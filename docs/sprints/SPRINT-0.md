@@ -1,7 +1,8 @@
 # TBI Lab — Sprint 0: Core Feasibility
 
-**Status:** IN PROGRESS — Gates A and D PASS; Gate B CONDITIONAL PASS; continuation approved
-2026-09-20 to investigate existing classic-ESP32 GPIO implementations (Phases 1-7).
+**Status:** IN PROGRESS — Gates A, C and D PASS. Gate B verdict to be revisited in the final
+report on the new evidence. Phases 1-4 complete; Phase 5 (browser-local classic ESP32) in
+progress.
 **Opened:** 2026-09-20
 **Last updated:** 2026-09-20
 **Sprint type:** Technical feasibility. Not product development.
@@ -36,7 +37,7 @@ and is kept separate from future product code (see section 8).
 |------|---------|--------|
 | A | Electrical simulation feasibility | **PASS** — see 4.7 |
 | B | ESP32 Classic feasibility | **CONDITIONAL PASS** — see 5.5. Stopped for PM direction. |
-| C | MCU <-> electrical bridge | **BLOCKED** — awaiting PM direction on the Gate B gap |
+| C | MCU <-> electrical bridge | **PASS** — see 6.1 |
 | D | Local-first persistence | **PASS** — see 7.1 |
 
 Detailed evidence: `experiments/gate-a-electrical/README.md`,
@@ -261,10 +262,62 @@ maintenance of a carried patch against a GPLv2 fork. Not prototyped; treat as or
 
 ## 6. Gate C — MCU <-> Electrical Bridge
 
-**BLOCKED and not begun.** Gate B returned CONDITIONAL PASS, so per the sprint rule work stopped
-before any architectural workaround. Gate C needs exactly the two capabilities Gate B found missing:
-firmware-driven GPIO output observable externally, and externally supplied GPIO input. Awaiting PM
-direction.
+Gate B originally blocked this because Espressif's GPIO device is a stub. Following the PM decision
+of 2026-09-20, existing classic-ESP32 GPIO implementations were investigated (Phase 2), a runtime
+direction was chosen (Phase 3), and the bridge was then built (Phase 4).
+
+### 6.1 Gate C result: PASS
+
+Evidence: `experiments/gate-c-bridge/README.md`; survey in
+`docs/research/classic-esp32-gpio-implementations.md`. Run with `npm run test:esp32` (16 tests).
+
+**Runtime.** `a159x36/qemu @ esp-develop-9.2`, commit `03be9af0` (2026-07-07), GPL-2.0, built from
+source on this ARM64 host. It is a fork of `espressif/qemu` on the **same QEMU 9.2.2 base** as our
+Gate B baseline, and its `hw/gpio/esp32_gpio.c` is a full 1091-line implementation rather than
+Espressif's 108-line stub. Classic `esp32` machine throughout; no C3/S3 substitution anywhere.
+
+**Phase 2 — all five required capabilities proven** with real MicroPython ESP32_GENERIC firmware,
+across both register banks (GPIO2/18/19 and GPIO5 in bank 0; GPIO33 via `GPIO_OUT1` and GPIO35 via
+`GPIO_IN1`), using both the ordinary driver API and direct `GPIO_OUT_W1TS` register writes.
+
+**An electrical defect was found and fixed.** The upstream model emitted pin-drive events without
+gating on `GPIO_ENABLE`, so a pad configured as an *input* appeared to drive the net — precisely the
+"visually convenient but electrically incorrect abstraction" the brief warned about. A 42-line patch
+(`experiments/gate-c-bridge/qemu-patch/gpio-enable-gating.patch`) gates drive on the output enable,
+masks the `GPIO_IN` mirror, and adds `esp32_gpios_dir` lines so a consumer learns when a pad goes
+high impedance. The same test that detected the defect now reports TRM-correct.
+
+**Phase 3 decision: Preference B for Sprint 0** (use the existing GPIO-capable fork as the
+feasibility runtime, plus our correctness patch), **with Preference A recommended for production**.
+Porting onto an Espressif 9.2.2 baseline is cheap in principle (~1,150 lines across three files on
+an identical base) but Phase 5 may force the baseline to move to a wasm-capable QEMU 10.1+, so doing
+it now risks discarded work without proving anything Gate C does not already prove.
+
+**Phase 4 — the six required integration cases:**
+
+| # | Case | Result |
+|---|---|---|
+| 1 | firmware drives HIGH into resistor + LED | V(io2) = 3.205059 V, I = 5.753982 mA |
+| 2 | firmware drives LOW | V(io2) = 0 V, I = 0 A |
+| 3 | external circuit below V_IL | V(io5) = 0.299995 V -> firmware reads LOW |
+| 4 | external circuit above V_IH | V(io5) = 3.299950 V -> firmware reads HIGH |
+| 5 | electrical state changed while firmware runs | firmware follows HIGH -> LOW -> HIGH |
+| 6 | firmware changes output while running | 220 ohm -> 5.7540 mA; 1 kohm -> 1.4064 mA |
+
+The pin voltage in case 1 is **not** the 3.3 V rail: it sags to 3.205 V because 5.754 mA through the
+datasheet-derived 16.5 ohm driver resistance drops 0.095 V. Every pin constant comes from ESP32
+Series Datasheet v5.3 Table 5-3 with the arithmetic shown in code, and tests assert the model
+reproduces the datasheet's own V_OH and V_OL guarantees at their rated currents. Digital input uses
+V_IH = 2.475 V and V_IL = 0.825 V, **holding the previous level inside the datasheet's undefined
+band** as documented semantics.
+
+Nothing is hardcoded for the test circuit: expected values come from an independent bisection solve
+sharing no code path with the MNA solver (agreement asserted to 1e-6 relative), and case 6 changes a
+component value the firmware knows nothing about while the result tracks it.
+
+**Timing:** firmware register write -> host observation **< 1 ms**; electrical change -> solve and
+push into the MCU **3 ms**. Semantics are event-driven and deterministic; Sprint 0 makes no
+real-time claim.
 
 Must prove both directions with a reproducible test:
 
