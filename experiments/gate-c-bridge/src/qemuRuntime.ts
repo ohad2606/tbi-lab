@@ -18,6 +18,11 @@ export interface RuntimeOptions {
    */
   ignoreMask?: number;
   bootTimeoutMs?: number;
+  /**
+   * Serial text that signals the firmware is up. MicroPython prints a REPL prompt;
+   * Arduino firmware prints whatever it prints, so this is configurable.
+   */
+  readyMarker?: string;
 }
 
 /** Find a free-ish port triple. Ports are chosen high and randomised to avoid collisions. */
@@ -74,7 +79,7 @@ export class Esp32Runtime {
     // Serial first: the guest is held until it attaches, so nothing is missed.
     await this.connectSerial(ports.serial);
     await this.link.connect(ports.gpio);
-    await this.waitForPrompt(this.options.bootTimeoutMs ?? 120_000);
+    await this.waitForMarker(this.options.readyMarker ?? '>>>', this.options.bootTimeoutMs ?? 120_000);
   }
 
   private async connectSerial(port: number): Promise<void> {
@@ -101,13 +106,27 @@ export class Esp32Runtime {
     });
   }
 
-  private async waitForPrompt(timeoutMs: number): Promise<void> {
+  private async waitForMarker(marker: string, timeoutMs: number): Promise<void> {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
-      if (this.serialBuffer.includes('>>>')) return;
+      if (this.serialBuffer.includes(marker)) return;
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
-    throw new Error(`firmware did not reach a REPL prompt.\nboot log:\n${this.bootLog.slice(-1500)}`);
+    throw new Error(
+      `firmware never printed ${JSON.stringify(marker)}.\nboot log:\n${this.bootLog.slice(-1500)}`,
+    );
+  }
+
+  /** Wait for a string to appear anywhere in the serial output since boot. */
+  async waitForSerial(text: string, timeoutMs = 20_000): Promise<string> {
+    const deadline = Date.now() + timeoutMs;
+    const from = this.bootLog.length;
+    while (Date.now() < deadline) {
+      const slice = this.bootLog.slice(from);
+      if (slice.includes(text)) return slice;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    throw new Error(`timed out waiting for serial text ${JSON.stringify(text)}`);
   }
 
   /** Send one REPL line and return what the firmware printed for it. */
@@ -150,6 +169,9 @@ export const QEMU_BINARY =
   process.env.TBI_QEMU ?? '/home/ubuntu/tbi-tools/src/a159-qemu/build/qemu-system-xtensa';
 export const FLASH_IMAGE =
   process.env.TBI_FLASH ?? '/home/ubuntu/tbi-tools/fw/flash-4mb.bin';
+/** Arduino-built classic-ESP32 image for the Phase 6 compatibility proof. */
+export const ARDUINO_FLASH_IMAGE =
+  process.env.TBI_ARDUINO_FLASH ?? '/home/ubuntu/tbi-tools/fw/arduino-gpio-proof-4mb.bin';
 
 /**
  * GPIO 4, 16 and 27 are wired by the a159x36 TTGO board model to a display and a servo.
