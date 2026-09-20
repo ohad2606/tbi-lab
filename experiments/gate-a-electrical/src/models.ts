@@ -6,16 +6,46 @@
  * "Physics Must Be Real").
  */
 
-/** CODATA 2019 exact SI values. */
-export const BOLTZMANN_J_PER_K = 1.380649e-23;
-export const ELEMENTARY_CHARGE_C = 1.602176634e-19;
+export interface PhysicalConstants {
+  readonly boltzmannJPerK: number;
+  readonly elementaryChargeC: number;
+  readonly source: string;
+}
+
+/** Default: the exact SI values fixed by the 2019 redefinition. */
+export const CODATA_2019: PhysicalConstants = {
+  boltzmannJPerK: 1.380649e-23,
+  elementaryChargeC: 1.602176634e-19,
+  source: 'CODATA 2019 / SI 2019 redefinition (exact by definition)',
+};
+
+/**
+ * The constants ngspice 45.2 uses internally, identified empirically during the Gate A
+ * cross-check: the thermal voltage implied by ngspice's LED operating point matches
+ * CODATA 2014 to 1 part in 1e9, and differs from CODATA 2019 by 3.4e-7 relative.
+ *
+ * Kept here so the cross-check can separate "the two solvers disagree" from "the two
+ * solvers use different values of k and q".
+ */
+export const CODATA_2014: PhysicalConstants = {
+  boltzmannJPerK: 1.38064852e-23,
+  elementaryChargeC: 1.6021766208e-19,
+  source: 'CODATA 2014; matches the constants used by ngspice 45.2',
+};
+
+/** @deprecated kept for readability of older call sites */
+export const BOLTZMANN_J_PER_K = CODATA_2019.boltzmannJPerK;
+export const ELEMENTARY_CHARGE_C = CODATA_2019.elementaryChargeC;
 
 /** Datasheet reference temperature: 25 degC, expressed in kelvin. */
 export const T_AMBIENT_K = 298.15;
 
 /** Thermal voltage kT/q, in volts. ~25.693 mV at 25 degC. */
-export function thermalVoltage(temperatureK: number = T_AMBIENT_K): number {
-  return (BOLTZMANN_J_PER_K * temperatureK) / ELEMENTARY_CHARGE_C;
+export function thermalVoltage(
+  temperatureK: number = T_AMBIENT_K,
+  constants: PhysicalConstants = CODATA_2019,
+): number {
+  return (constants.boltzmannJPerK * temperatureK) / constants.elementaryChargeC;
 }
 
 export interface DiodeModel {
@@ -29,6 +59,8 @@ export interface DiodeModel {
   readonly seriesResistanceOhm: number;
   /** Temperature at which the parameters apply, kelvin. */
   readonly temperatureK: number;
+  /** Physical constants used for kT/q. Defaults to CODATA 2019. */
+  readonly constants?: PhysicalConstants;
   /** Provenance of every parameter above. */
   readonly provenance: string;
 }
@@ -71,8 +103,9 @@ export function fitSaturationCurrent(
   forwardCurrentA: number,
   emissionCoefficient: number,
   temperatureK: number = T_AMBIENT_K,
+  constants: PhysicalConstants = CODATA_2019,
 ): number {
-  const nVt = emissionCoefficient * thermalVoltage(temperatureK);
+  const nVt = emissionCoefficient * thermalVoltage(temperatureK, constants);
   return forwardCurrentA / (Math.exp(forwardVoltageV / nVt) - 1);
 }
 

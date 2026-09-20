@@ -335,7 +335,7 @@ export class Diode implements Device {
   }
 
   private get nVt(): number {
-    return this.model.emissionCoefficient * thermalVoltage(this.model.temperatureK);
+    return this.model.emissionCoefficient * thermalVoltage(this.model.temperatureK, this.model.constants);
   }
 
   /** Exact junction current for a junction voltage, amperes. */

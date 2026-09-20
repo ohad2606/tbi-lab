@@ -15,3 +15,6 @@ __pycache__/
 *.pyc
 .venv/
 venv/
+dist-browser/
+test-results/
+playwright-report/

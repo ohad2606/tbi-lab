@@ -7,9 +7,12 @@
   "scripts": {
     "test": "vitest run",
     "test:unit": "vitest run experiments/gate-a-electrical/tests",
-    "build:browser": "tsc -p experiments/gate-a-electrical/tsconfig.browser.json"
+    "build:browser": "tsc -p experiments/gate-a-electrical/tsconfig.browser.json && cp experiments/gate-a-electrical/browser/index.html experiments/gate-a-electrical/dist-browser/browser/",
+    "test:browser": "npm run build:browser && playwright test"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "eecircuit-engine": "^1.8.0",
     "typescript": "^5.9.2",
     "vitest": "^3.2.4"
   }
