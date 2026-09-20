@@ -1,7 +1,8 @@
 # TBI Lab — Sprint 0: Core Feasibility
 
-**Status:** PLANNING — execution plan awaiting PM approval. No gate work started.
+**Status:** IN PROGRESS — Gate A complete, Gate B complete and **stopped for PM direction**.
 **Opened:** 2026-09-20
+**Last updated:** 2026-09-20
 **Sprint type:** Technical feasibility. Not product development.
 
 ---
@@ -32,10 +33,13 @@ and is kept separate from future product code (see section 8).
 
 | Gate | Subject | Status |
 |------|---------|--------|
-| A | Electrical simulation feasibility | NOT STARTED — plan drafted, awaiting approval |
-| B | ESP32 Classic feasibility | RESEARCH ONLY — no toolchain installed; see 5.2 |
-| C | MCU <-> electrical bridge | BLOCKED by Gate B (by sprint rule) |
+| A | Electrical simulation feasibility | **PASS** — see 4.7 |
+| B | ESP32 Classic feasibility | **CONDITIONAL PASS** — see 5.5. Stopped for PM direction. |
+| C | MCU <-> electrical bridge | **BLOCKED** — awaiting PM direction on the Gate B gap |
 | D | Local-first persistence | NOT STARTED |
+
+Detailed evidence: `experiments/gate-a-electrical/README.md`,
+`experiments/gate-b-esp32/README.md`.
 
 ---
 
@@ -59,7 +63,7 @@ execution path.
 | 6 | Short circuit with current-limited PSU | CC mode, I = limit |
 | 7 | LED + resistor | documented, technically valid device model |
 
-### 4.3 Proposed tolerances (to be fixed before tests are written)
+### 4.3 Tolerances (fixed before the tests were written; all asserted in code)
 
 | Case | Reference | Tolerance |
 |------|-----------|-----------|
@@ -80,7 +84,7 @@ Every tolerance is asserted in code. "Looks reasonable" is not an accepted resul
 | circuitjs1 (Falstad/Sharp) | Interactive DC/AC/transient | Yes (GWT -> JS) | Neutral | GPLv2 | Active | Whole application, not an embeddable engine | n/a | Yes |
 | Xyce / other native SPICE | Very high | No credible browser path | Heavy build | Mixed | Active | High | n/a | Yes |
 
-### 4.5 Proposed Gate A approach (PENDING APPROVAL)
+### 4.5 Gate A approach (approved 2026-09-20, executed)
 
 Two-track, deliberately not committing to a final engine (per brief):
 
@@ -107,12 +111,67 @@ Device models to be documented in-repo before use:
   clamping. The idealisation (no output impedance, no loop dynamics, instantaneous mode transition)
   is documented as an explicit approximation valid for DC steady-state operating points.
 
-### 4.6 API direction to demonstrate (not final, not over-engineered)
+### 4.6 API direction demonstrated (not final, not over-engineered)
 
 `getNodeVoltage(nodeId)`, `getBranchCurrent(componentId)`, `setSupplyVoltage(supplyId, voltage)`,
-`setCurrentLimit(supplyId, current)`, `stepSimulation(dt)`. In a DC-only sprint `stepSimulation`
-re-solves the quasi-static operating point; the signature exists so the later transient path is not
-designed out.
+`setCurrentLimit(supplyId, current)`, `stepSimulation(dt)` — implemented in
+`experiments/gate-a-electrical/src/api.ts`. In a DC-only sprint `stepSimulation` re-solves the
+quasi-static operating point; the signature exists so the later transient path is not designed out.
+
+### 4.7 Gate A result: PASS
+
+| Case | Expected | Result |
+|------|----------|--------|
+| 1. 5 V + 1 kOhm | 5 mA | 5 mA |
+| 2. 12 V, 10 k / 10 k | 6 V | 6 V |
+| 3. 9 V, 1 k + 2 k | 3 mA | 3 mA |
+| 4. Open circuit | 0 A | 0 A exactly |
+| 5. PSU 5 V / 100 mA into 10 Ohm | CC, ~100 mA, ~1 V | **CC**, 100 mA, 1 V |
+| 6. Short circuit, current-limited PSU | CC at limit | **CC**, 100 mA, 100 uV across 1 mOhm |
+| 7. LED + 220 Ohm from 5 V | documented model | 13.7200 mA at 1.9816 V |
+
+Evidence against each acceptance criterion:
+
+- **Automated tests execute** — 25 Node tests (`npm test`) plus 10 ngspice cross-checks and 2
+  Chromium/Web-Worker specs (`npm run test:browser`). All passing.
+- **Numerically correct within documented tolerances** — every tolerance is stated with its kind
+  (absolute/relative) and unit in the test files and in the Gate A README.
+- **Deterministic electrical calculation** — repeated solves are bit-identical; the browser
+  reproduces the Node LED result bit-for-bit.
+- **Credible browser path** — the solver runs in a Web Worker in Chromium 153 at **0.092 ms per
+  nonlinear solve** (3000 solves in 275 ms), with the main thread verifiably still servicing its
+  timer loop. Pure TypeScript: no WASM, no native dependency.
+
+Two defects were found and fixed during bring-up, both recorded because they shaped the design:
+
+1. Newton reported convergence while junction-voltage limiting was still active, because the
+   linearisation point had stopped moving although it was not the solution. Convergence now
+   requires limiting to be inactive.
+2. A solution with a 9.8e24 A KCL residual was returned without complaint. The solver now
+   substitutes every solution back into the **exact, non-linearised** device equations and
+   **refuses to return** one that fails verification.
+
+Cross-validation with ngspice 45.2 initially differed by 3.3e-7 on the LED case. That was traced
+rather than tolerated, and both causes are now asserted in the test suite:
+
+- **3.34e-7** — ngspice evaluates kT/q with **CODATA 2014** constants; we use the exact **2019 SI**
+  values. (Identified by solving for the thermal voltage implied by ngspice's operating point; it
+  matches CODATA 2014 to 1 part in 1e9.)
+- **1.18e-8** — ngspice's default `RELTOL = 1e-3` stops Newton short of machine precision.
+
+With both aligned, the two independent solvers agree to **~1e-16 relative**.
+
+#### Documented approximations (Gate A)
+
+- **LED parameter identification.** The Vishay TLHR5400 datasheet gives one typical forward point
+  (V_F = 2 V at I_F = 20 mA), which cannot identify both I_S and N. N = 1.9 is assumed, I_S is
+  fitted to the anchor, R_S is not modelled. The cost is quantified, not hidden: across
+  N = 1.8 ... 2.5 the operating point moves only from 13.7157 mA to 13.7458 mA (**0.22 % spread**).
+  Valid for roughly 1 mA - 20 mA. This is a parameter-identification limit, not a solver limit.
+- **Ideal PSU.** No output impedance, no control-loop dynamics, instantaneous CV/CC transition, and
+  it cannot sink current. Valid for DC steady-state operating points, which is all Sprint 0 claims.
+- **gmin.** 1e-12 S in parallel with each junction (standard SPICE practice), included in the exact
+  residual computation so it is part of the verified model rather than a hidden fudge.
 
 ---
 
@@ -154,17 +213,57 @@ peripherals are realistically emulated; licensing and distribution obligations; 
 PASS / CONDITIONAL PASS / FAIL. On CONDITIONAL PASS or FAIL, stop before any major architectural
 workaround and request PM direction.
 
-**Current expectation, stated honestly in advance:** the evidence so far points to **CONDITIONAL
-PASS** — classic ESP32 firmware execution is well supported on the desktop/ARM64 host, but there is
-no ready-made browser-local classic-ESP32 runtime today, so a browser path requires real engineering
-(QEMU rebase + WASM port) or a hybrid. The gate will be run to confirm or refute this, not to
-rationalise it.
+### 5.5 Gate B result: CONDITIONAL PASS
+
+Full evidence: `experiments/gate-b-esp32/README.md`. Reproducible probe:
+`experiments/gate-b-esp32/gpio_probe.py` (exits non-zero while GPIO is unusable).
+
+**What works.** Real classic-ESP32 firmware executes faithfully. Espressif QEMU
+`esp-develop-9.2.2-20260417` (prebuilt aarch64, SHA256 `00de5985...f65339`, GPL-2.0) boots
+MicroPython `ESP32_GENERIC` v1.29.0 (SHA256 `e67ad601...bd95f6`, MIT, used **only** as a test
+artifact — this is not MicroPython support) through the mask ROM and second-stage bootloader to an
+interactive REPL reporting `Generic ESP32 module with ESP32`. Cost on this 1-core host: **3.29 s to
+REPL, ~209 MB peak RSS, ~0 % CPU when idle**, 72 MB of tooling. No local QEMU build was needed.
+
+**What does not work — the blocking finding.** Espressif's classic-ESP32 **GPIO peripheral is a
+stub**. In `hw/gpio/esp32_gpio.c` at that tag, `esp32_gpio_read()` handles only `GPIO_STRAP` and
+returns 0 for every other register, `esp32_gpio_write()` has an **empty body**, and the device state
+holds nothing but `strap_mode`. Experimentally, all four required capabilities fail:
+
+| Required for Gate B PASS | Result |
+|--------------------------|--------|
+| Execute real classic ESP32 firmware | **PASS** |
+| Expose firmware-driven GPIO output externally | **FAIL** |
+| Accept an externally supplied GPIO input state | **FAIL** |
+| Without substituting another ESP32 family member | **PASS** — classic `esp32` machine throughout |
+
+Driving GPIO2 via the driver API, via `GPIO_OUT_W1TS`, and by direct register write all leave
+`GPIO_OUT` reading `0x0`. The QEMU monitor reads `0x00000000`. A GDB-stub write to `GPIO_IN` returns
+**`OK`** and does not stick — a host tool can believe it set an input level when nothing happened.
+
+`IOMUX` (72 accesses during boot), `RTCIO`, `analog`, `APB control` and `I2S` are also unimplemented.
+**`esp32s3_gpio.c` is a 49-line stub too**, so there is no GPIO argument for switching chip family —
+and the MCU Rule forbids it regardless.
+
+**Browser delivery is not a version bump.** The fork is on QEMU 9.2.2; upstream Emscripten/WASM
+support landed in **10.1** and is experimental, limited to 32-bit guests through **TCI, QEMU's slow
+interpreter**. A browser-local classic ESP32 needs Espressif's patches rebased onto a WASM-capable
+upstream plus a WASM build plus validation. Browser startup/runtime cost is **unmeasured**; the
+native figures above are a lower bound.
+
+**Estimated gap, not implemented** (per the sprint rule): a real GPIO register block with backing
+state, an external interface to carry pin levels in and out, and minimal IOMUX routing —
+roughly **1-3 weeks** of focused QEMU device work for basic bidirectional digital GPIO, plus ongoing
+maintenance of a carried patch against a GPLv2 fork. Not prototyped; treat as order-of-magnitude.
 
 ---
 
 ## 6. Gate C — MCU <-> Electrical Bridge
 
-Not begun until Gate B establishes a usable MCU runtime direction.
+**BLOCKED and not begun.** Gate B returned CONDITIONAL PASS, so per the sprint rule work stopped
+before any architectural workaround. Gate C needs exactly the two capabilities Gate B found missing:
+firmware-driven GPIO output observable externally, and externally supplied GPIO input. Awaiting PM
+direction.
 
 Must prove both directions with a reproducible test:
 
@@ -190,39 +289,68 @@ Test state carries enough structure to prove future usefulness: `projectId`, `sc
 
 ---
 
-## 8. Proposed Repository Structure (PENDING APPROVAL)
+## 8. Repository Structure (as built)
 
 Minimal. No monorepo tooling, no build framework, no app shell.
 
 ```
-docs/sprints/SPRINT-0.md        # this file — authoritative sprint record
-experiments/                    # feasibility code, explicitly disposable
+docs/sprints/SPRINT-0.md              # this file — authoritative sprint record
+experiments/                          # feasibility code, explicitly disposable
   gate-a-electrical/
-  gate-b-esp32/                 # scripts + notes only; no binaries committed
-  gate-c-bridge/
-  gate-d-persistence/
-package.json                    # single root: typescript + vitest
-tsconfig.json
+    README.md                         # engine survey, model provenance, tolerances, results
+    src/                              # linalg, devices, circuit (MNA), api, models
+    tests/                            # reference cases, solver units, sensitivity, ngspice
+    browser/                          # Web Worker + Playwright proof
+    tsconfig.browser.json
+  gate-b-esp32/
+    README.md                         # findings, artifact provenance, verdict
+    gpio_probe.py                     # reproducible GPIO experiment (host stdlib only)
+package.json / tsconfig.json          # single root: typescript + vitest
+vitest.config.ts / playwright.config.ts
 ```
+
+Tools and firmware live **outside** the repository in `/home/ubuntu/tbi-tools/`; no binaries,
+toolchains or firmware images are committed. `dist-browser/`, `test-results/` and
+`playwright-report/` are git-ignored.
 
 `experiments/` is the boundary between feasibility code and future product code. Nothing in it is
 assumed to survive into V1.
 
 ---
 
-## 9. Proposed Dependencies (PENDING APPROVAL)
+## 9. Dependencies (approved 2026-09-20, as installed)
 
-| Dependency | Purpose | License | Scope |
-|------------|---------|---------|-------|
-| typescript | typed experiment code | Apache-2.0 | dev |
-| vitest | test runner for all gates | MIT | dev |
-| eecircuit-engine | Gate A independent SPICE cross-check | MIT (ngspice: BSD-3 + LGPL parts) | dev only; 43 MB unpacked — reviewed before install |
-| fake-indexeddb | Gate D automated persistence test in Node | Apache-2.0 | dev |
-| playwright (optional) | Gate D real-browser reload verification | Apache-2.0 | dev; only if ARM64 Chromium installs cleanly, else manual reproducible check |
-| Espressif QEMU prebuilt (aarch64) | Gate B smoke test | GPLv2 | local tool, **not committed to git** |
+| Dependency | Purpose | License | Scope | Status |
+|------------|---------|---------|-------|--------|
+| typescript 5.9 | typed experiment code | Apache-2.0 | dev | installed |
+| vitest 3.2 | Node test runner | MIT | dev | installed |
+| eecircuit-engine 1.8.0 | Gate A independent SPICE oracle | wrapper MIT | dev only | installed |
+| @playwright/test + Chromium 153 | browser/Worker proofs (Gate A, later Gate D) | Apache-2.0 | dev | installed |
+| Espressif QEMU prebuilt (aarch64) | Gate B | GPL-2.0 | local tool, outside git | installed |
+| fake-indexeddb | Gate D supplemental unit tests | Apache-2.0 | dev | not yet needed |
 
-No paid services. No Docker unless a specific experiment materially requires it. No runtime
-dependencies for the solver itself.
+**`eecircuit-engine` packaged-runtime licensing audit** (PM decision 4 required this rather than
+trusting the wrapper's package license):
+
+- Wrapper: **MIT**, © 2024 EElab.dev, `LICENSE` file present in the package.
+- Packaged runtime: **ngspice 45.2**, "Compiled with KLU Direct Linear Solver", build date
+  2026-09-05, banner © 1985-1994 Regents of the University of California and © 2001-2025 the
+  ngspice team. Confirmed by running it, not by reading the README.
+- ngspice itself is **BSD-3-Clause** since release 27 for files without their own header, but it is
+  a mixed-licence codebase: `numparam`, `adms` and `tclspice` are **LGPL**, `cider` is old-BSD,
+  `xspice` is public domain. The build configuration used to produce the WASM is **not published in
+  the package**, so which of those components are actually linked in **cannot be determined from the
+  artifact**. This is acceptable for a dev/test-only oracle and is **not** a basis for shipping it.
+
+**System packages installed** for headless Chromium and QEMU (`--no-install-recommends`):
+`libatk1.0-0t64`, `libatk-bridge2.0-0t64`, `libatspi2.0-0t64`, `libcups2t64`, `libdrm2`, `libgbm1`,
+`libxkbcommon0`, `libxcomposite1`, `libxdamage1`, `libxfixes3`, `libxrandr2`, `libasound2t64`,
+`libpango-1.0-0`, `libcairo2`, `libnss3`, `libnspr4`, `fonts-liberation`, `libsdl2-2.0-0`,
+`libslirp0`, `libgcrypt20`, `libpixman-1-0`. Playwright's full dependency set (72 packages including
+`xvfb` and CJK fonts) was **not** installed — only the libraries headless Chromium actually links.
+
+No paid services. No Docker. No persistent daemons. No runtime dependencies for the solver itself.
+System Python was not modified; the Gate B probe uses only the standard library.
 
 ---
 
@@ -232,11 +360,13 @@ dependencies for the solver itself.
 |----|------|--------|
 | R1 | **GPLv2 distribution obligations** if QEMU-WASM is ever shipped to browsers: source-offer duty, and the combined-work question for our loader/glue code | Could invalidate the whole browser-local ESP32 path; needs a PM/legal decision before engineering effort is spent |
 | R2 | Espressif fork is on QEMU 9.2.2; Emscripten support landed upstream in 10.1 | Browser build requires a patch rebase or port — significant, uncosted work |
-| R3 | External GPIO observation/control in Espressif QEMU classic-ESP32 is unverified | Direct Gate C blocker if absent |
-| R4 | Building ESP-IDF firmware locally needs a multi-GB toolchain on a 1-core / 3.8 GB host | Slow; a prebuilt merged flash image may be preferable for the smoke test |
-| R5 | QEMU-WASM startup and runtime cost in-browser is unmeasured | May force a hybrid architecture, which needs PM approval |
-| R6 | **Host is 1 CPU core**, weaker than the CLAUDE.md baseline implies | Any native compilation is slow; avoid builds where prebuilt artifacts exist |
-| R7 | Playwright ARM64 browser availability | Gate D may fall back to `fake-indexeddb` + documented manual browser check |
+| R3 | External GPIO observation/control in Espressif QEMU classic-ESP32 | **CONFIRMED ABSENT.** Device is a stub. Gate C is blocked; see 5.5 |
+| R4 | Building ESP-IDF firmware locally needs a multi-GB toolchain | **AVOIDED** — a prebuilt classic-ESP32 image was sufficient; ESP-IDF not installed |
+| R5 | QEMU-WASM startup and runtime cost in-browser is unmeasured | **STILL OPEN**, and now compounded by R2: there is no WASM build to measure |
+| R6 | **Host is 1 CPU core**, weaker than the CLAUDE.md baseline implies | **MANAGED** — no native builds were needed; prebuilt artifacts used throughout |
+| R7 | Playwright ARM64 browser availability | **RESOLVED** — Chromium 153 arm64 runs headless after installing 21 system libraries |
+| R8 | The prebuilt QEMU tarball ships **no LICENSE/COPYING file** | Compliance gap if those binaries are ever redistributed. Internal use only today |
+| R9 | ngspice WASM build configuration is not published in the package | Which mixed-licence ngspice components are linked cannot be determined from the artifact. Fine for a dev-only oracle; blocks any shipping decision |
 
 ---
 
@@ -244,11 +374,15 @@ dependencies for the solver itself.
 
 | ID | Decision | Status |
 |----|----------|--------|
-| D-001 | Gate A runs two independent tracks (own TS MNA solver + ngspice cross-check) rather than committing to a final engine | Proposed |
-| D-002 | PSU current limiting is modelled inside the electrical solver, mode determined by the solution, never by test-side clamping | Proposed |
-| D-003 | LED uses a Shockley-equation model with cited parameters; no unexplained constant-Vf rule | Proposed |
-| D-004 | `espressif/esp-emulator` is rejected for V1 despite its ready browser/WASM path, because it does not support classic ESP32 | Proposed |
-| D-005 | Gate B prototyping uses Espressif's prebuilt aarch64 QEMU binaries; no native QEMU build on this host | Proposed |
+| D-001 | Gate A runs two independent tracks (own TS MNA solver + ngspice cross-check) rather than committing to a final engine | **Accepted**, executed |
+| D-002 | PSU current limiting is modelled inside the electrical solver, mode determined by the solution, never by test-side clamping | **Accepted**, implemented as an active-set formulation |
+| D-003 | LED uses a Shockley-equation model with cited parameters; no unexplained constant-Vf rule | **Accepted**; the single-anchor limitation is quantified, not hidden |
+| D-004 | `espressif/esp-emulator` is rejected for V1 despite its ready browser/WASM path, because it does not support classic ESP32 | **Accepted**. Reinforced by Gate B: the S3 GPIO model is a stub too, so substitution would not even solve the GPIO problem |
+| D-005 | Gate B prototyping uses Espressif's prebuilt aarch64 QEMU binaries; no native QEMU build on this host | **Accepted**, executed |
+| D-006 | The solver verifies every solution against the exact non-linearised device equations and **refuses to return** one that fails, rather than reporting a plausible-looking number | **Accepted** (arising from a real defect found in bring-up) |
+| D-007 | Physical constants are explicit in the device model, so cross-checks can distinguish "solvers disagree" from "solvers use different values of k and q" | **Accepted** |
+| D-008 | MicroPython firmware is used as a **test artifact only** for Gate B; no MicroPython capability is implemented | **Accepted** |
+| D-009 | Gate C not started: Gate B returned CONDITIONAL PASS and the sprint rule requires stopping before a major architectural workaround | **Accepted** |
 
 ---
 
@@ -276,3 +410,15 @@ Findings recorded, deliberately NOT implemented in Sprint 0:
 - Transient simulation via companion models (backward Euler / trapezoidal) is a natural extension of
   the Gate A solver.
 - Renode (MIT) may be worth a second look if it gains a classic ESP32 platform.
+- **LED model fidelity.** Current parameters rest on a single datasheet anchor with an assumed
+  emission coefficient. A vendor SPICE model or bench I-V measurement would replace the assumption.
+- **Sparse matrix storage.** The Gate A solver uses dense LU, which is ample for tens of nodes and
+  wrong for thousands.
+- **Contributing a GPIO device upstream.** If the GPIO peripheral is implemented for Espressif's
+  QEMU fork, upstreaming it would remove the carried-patch maintenance burden — and would be a
+  visible contribution to the ESP32 ecosystem.
+- **ngspice as an optional "verification engine"** for users later, alongside our own solver.
+- **`esp32.iomux`, `rtcio`, `analog`, `i2s`** are all unimplemented in the fork; any future
+  peripheral work will hit these.
+- **QEMU GDB stub returns `OK` for discarded MMIO writes.** Any future host-side tooling must
+  verify by read-back rather than trusting the write acknowledgement.
