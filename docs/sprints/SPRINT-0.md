@@ -1,8 +1,8 @@
 # TBI Lab — Sprint 0: Core Feasibility
 
-**Status:** IN PROGRESS — Gates A, C and D PASS. Gate B verdict to be revisited in the final
-report on the new evidence. Phases 1-4 complete; Phase 5 (browser-local classic ESP32) in
-progress.
+**Status:** Gates A, C and D **PASS**. Gate B re-verdicted **PASS (native)** on the new evidence.
+Browser-local classic ESP32: **FAIL for Sprint 0**, blocker measured and classified.
+Phases 1-6 complete; final architecture report in section 14.
 **Opened:** 2026-09-20
 **Last updated:** 2026-09-20
 **Sprint type:** Technical feasibility. Not product development.
@@ -36,12 +36,16 @@ and is kept separate from future product code (see section 8).
 | Gate | Subject | Status |
 |------|---------|--------|
 | A | Electrical simulation feasibility | **PASS** — see 4.7 |
-| B | ESP32 Classic feasibility | **CONDITIONAL PASS** — see 5.5. Stopped for PM direction. |
+| B | ESP32 Classic feasibility | **PASS (native)** — re-verdicted, see 5.6 |
 | C | MCU <-> electrical bridge | **PASS** — see 6.1 |
 | D | Local-first persistence | **PASS** — see 7.1 |
 
-Detailed evidence: `experiments/gate-a-electrical/README.md`,
-`experiments/gate-b-esp32/README.md`.
+| Phase 6 | Arduino compatibility | **Demonstrated** — see 14.1 |
+
+Detailed evidence: `experiments/gate-a-electrical/README.md`, `experiments/gate-b-esp32/README.md`,
+`experiments/gate-c-bridge/README.md`, `experiments/gate-d-persistence/README.md`,
+`docs/research/classic-esp32-gpio-implementations.md`,
+`docs/research/browser-local-classic-esp32.md`.
 
 ---
 
@@ -259,6 +263,28 @@ roughly **1-3 weeks** of focused QEMU device work for basic bidirectional digita
 maintenance of a carried patch against a GPLv2 fork. Not prototyped; treat as order-of-magnitude.
 
 ---
+
+### 5.6 Gate B re-verdict: PASS (native execution) / FAIL (browser-local)
+
+The original CONDITIONAL PASS rested on one blocker: Espressif's classic-ESP32 GPIO device is a
+stub, so GPIO could be neither observed nor injected. That blocker is **gone**, and it was removed
+with existing work rather than a rewrite:
+
+- Real classic-ESP32 firmware executes (MicroPython and Arduino), through the mask ROM.
+- GPIO is observable and injectable in both directions, across both register banks.
+- The runtime is TRM-faithful after a 42-line correctness fix we made and verified.
+- Arduino and MicroPython are both demonstrated, answering two Gate B "later support" questions
+  with evidence instead of expectation.
+
+**Gate B is therefore PASS for the native/desktop execution path.** Deliberately split out, because
+conflating them would overstate the result:
+
+**Browser-local classic ESP32 is FAIL for Sprint 0.** Evidence in
+`docs/research/browser-local-classic-esp32.md`. It is not an architectural impossibility — QEMU's
+own CI builds `xtensa-softmmu` for WebAssembly — but **no wasm-capable QEMU contains the classic
+ESP32 machine**, and putting one there means rebasing **+19,292 lines across 237 files** from QEMU
+9.2.2 to 10.1+, plus the ~1,150-line GPIO implementation, plus our patch and bridge. Browser
+startup, memory and speed therefore remain **unmeasured**, because there is nothing to measure yet.
 
 ## 6. Gate C — MCU <-> Electrical Bridge
 
@@ -494,3 +520,130 @@ Findings recorded, deliberately NOT implemented in Sprint 0:
   peripheral work will hit these.
 - **QEMU GDB stub returns `OK` for discarded MMIO writes.** Any future host-side tooling must
   verify by read-back rather than trusting the write acknowledgement.
+
+---
+
+## 14. Phase 7 — Final Sprint 0 architecture report
+
+Compiled 2026-09-20. Every figure below is measured on this host unless marked *estimate*.
+
+### 14.1 Architecture decision table
+
+| Area | Verdict | Evidence | Confidence |
+|---|---|---|---|
+| **Gate A — DC simulation in the browser** | **PASS** | 7/7 reference cases; 25 Node tests; ngspice cross-check agrees to ~1e-16 once constants and convergence are aligned; runs in a Chromium Web Worker at 0.092 ms/solve, bit-identical to Node | High |
+| **Gate B — classic ESP32, native** | **PASS** | MicroPython and Arduino firmware boot through the mask ROM; GPIO both directions, both register banks | High |
+| **Gate B — classic ESP32, browser-local** | **FAIL (Sprint 0)** | No wasm-capable QEMU has the ESP32 machine; port measured at +19,292 lines / 237 files | High |
+| **Gate C — MCU <-> electrical bridge** | **PASS** | All 6 integration cases on the real runtime; values match an independent solver to 1e-6 | High |
+| **Gate D — local-first persistence** | **PASS** | Real Chromium + real IndexedDB; exact restore across reload and across a full browser restart | High |
+| **Arduino support (Phase 6)** | **Demonstrated** | Official esp32 core 3.3.12, FQBN `esp32:esp32:esp32`; `digitalWrite`/`digitalRead` work through the bridge | High |
+| **MicroPython support** | **Demonstrated** | Used as the Gate B/C test firmware throughout | High |
+| **Overall V1 architecture as specified** | **Partially proven** | Everything proven except browser-local MCU execution | — |
+
+### 14.2 Native classic ESP32 feasibility — PROVEN
+
+| Metric | Measured |
+|---|---|
+| Boot to application (MicroPython) | **3.29 s** wall, ~3.1 s CPU |
+| Peak RSS | **~209 MB** |
+| CPU at idle | **~0 %** (guest executes `WAITI`) |
+| Emulator footprint | 72 MB unpacked |
+| GPIO output: firmware write -> host observation | **< 1 ms** |
+| Electrical change -> solve -> level pushed to MCU | **3 ms** |
+| Native QEMU build (this 1-core host) | ~50 min from scratch; **seconds** for an incremental device change |
+
+### 14.3 Browser-local classic ESP32 feasibility — NOT ACHIEVED
+
+| Metric | Value |
+|---|---|
+| Is the Xtensa target wasm-buildable? | **Yes** — QEMU's own CI builds the default target list, which includes `xtensa-softmmu` |
+| Is the classic ESP32 machine in any wasm-capable QEMU? | **No** |
+| Port required: ESP32 machine + peripherals | **+19,292 lines / 237 files**, QEMU 9.2.2 -> 10.1+ |
+| Port required: GPIO/IOMUX on top | ~1,150 lines, plus our 42-line fix and 192-line bridge |
+| Browser payload size | **Unmeasured** — nothing runnable exists to measure |
+| Cold start to firmware execution | **Unmeasured** |
+| Steady-state memory / CPU / relative speed | **Unmeasured** |
+| Blocker classification | **Build/porting effort.** Not architecture, not licensing, not browser limits |
+
+**Blocker, precisely.** Three independent things must be true at once and currently are not:
+(1) a QEMU baseline that supports Emscripten (10.1+), (2) the classic ESP32 machine, which exists
+only on 9.2.2, and (3) a GPIO implementation, which exists only as a further fork of 9.2.2. No
+single tree has two of the three, let alone all three.
+
+**Host constraint, stated honestly.** The Emscripten dependency chain (zlib, libffi, pixman) was
+reproduced natively on this 1-core / 3.8 GB ARM64 host; glib was still building when this report was
+written. Even completed, that build could only run a *generic* Xtensa machine, which the brief
+correctly refuses to count as a browser result. The host is a real constraint on iteration speed —
+a full QEMU build is ~50 minutes, and Emscripten builds are slower still — but it is **not** the
+reason browser-local ESP32 failed. The porting gap is.
+
+### 14.4 Performance measurements
+
+| Subsystem | Measurement |
+|---|---|
+| DC solver, nonlinear circuit, browser Worker | **0.092 ms/solve** (3000 solves in 275 ms), main thread unblocked |
+| DC solver determinism | Browser result **bit-identical** to Node |
+| Solver vs ngspice, LED case | ~1e-16 relative, aligned; 3.3e-7 at both sides' defaults, fully attributed |
+| ESP32 boot to app | 3.29 s |
+| ESP32 emulator RSS | ~209 MB |
+| GPIO transport latency | < 1 ms |
+| Solve + push to MCU | 3 ms |
+| IndexedDB round trip | Sub-second including a full browser restart |
+
+### 14.5 Licensing constraints
+
+| Component | Licence | Status |
+|---|---|---|
+| Our solver, bridge host code, persistence | ours | unencumbered |
+| `tbi_gpio_bridge.c`, our GPIO patch | **GPL-2.0** (derived from QEMU) | fine internally; part of the QEMU distribution question |
+| QEMU (Espressif / a159x36 / lcgamboa) | **GPL-2.0** | **unresolved for production distribution** |
+| ngspice via `eecircuit-engine` | wrapper MIT; ngspice BSD-3 with LGPL parts | dev/test oracle only; **build config not published in the artifact**, so linked components cannot be determined |
+| MicroPython test image | MIT | test artifact only |
+| Arduino ESP32 core 3.3.12 | LGPL-2.1 / Apache-2.0 | build-time only, not distributed by us |
+| Velxio | **AGPL-3.0** | inspected as reference only; **nothing copied** |
+
+**The open licensing question is unchanged and remains a PM decision:** shipping QEMU into a browser
+is distribution of GPL-2.0 code, with source-offer obligations and a combined-work question for our
+loader. Sprint 0 made no production licensing commitment. Two compliance gaps were logged: the
+prebuilt Espressif QEMU tarball ships **no COPYING file**, and the ngspice WASM build configuration
+is not published.
+
+### 14.6 Maintenance burden
+
+| Item | Burden |
+|---|---|
+| GPIO implementation | ~1,150-line carried patch against a GPLv2 fork Espressif rebases periodically |
+| Our GPIO correctness fix | 42 lines. **Worth offering upstream** to a159x36/lcgamboa, which would remove it from our plate |
+| `tbi_gpio_bridge.c` | 192 lines, ours, stable interface |
+| Gate A solver | ours, no third-party runtime dependency |
+| ngspice oracle | dev-only; can be dropped without affecting the product |
+| Browser ESP32, if pursued | a ~20,000-line rebase plus permanent carry across QEMU releases — **the dominant long-term cost in this whole design** |
+
+### 14.7 Unresolved blockers and open decisions
+
+| # | Item | Needs |
+|---|---|---|
+| B1 | **Browser-local classic ESP32 is not feasible in Sprint 0.** The credible alternatives are a large port, or hybrid/server execution | **PM decision.** Sprint 0 did not fall back to a server, as instructed |
+| B2 | GPL-2.0 distribution of QEMU into the browser or product | PM/legal decision before any browser-MCU engineering |
+| B3 | Production QEMU baseline (Preference A port onto Espressif 9.2.2) deliberately deferred, since B1 may move the baseline | PM direction, sequenced after B1 |
+| B4 | LED model rests on one datasheet anchor with an assumed emission coefficient (0.22 % spread over N = 1.8-2.5) | Vendor SPICE model or bench measurement |
+| B5 | Pin model uses maximum-drive-strength datasheet figures; drive strength, open-drain and firmware-controlled pulls are not modelled | Later sprint |
+| B6 | Bridge exposes 32 output lines (bank 0 only); GPIO32-39 outputs are not evented | Small extension to the patch |
+| B7 | Arduino requires `FlashMode=dio`; QIO stalls in QEMU | Document for users, or fix the flash model |
+| B8 | `IOMUX`, `RTCIO`, `analog`, `APB`, `I2S` unimplemented in the runtime | Out of Sprint 0 scope |
+| B9 | Compliance gaps: no COPYING in the QEMU tarball; unpublished ngspice build config | Track if shipping |
+
+### 14.8 What Sprint 0 answered
+
+1. **Deterministic, physically valid DC simulation in the browser?** **Yes** — verified against an
+   independent solver and against ngspice, running in a Worker without blocking the UI.
+2. **Can the classic ESP32 execute in our intended architecture?** **Natively, yes** — real
+   firmware, real GPIO, Arduino and MicroPython. **In the browser, not yet**, and the gap is
+   measured rather than guessed.
+3. **Can MCU and electrical state be exchanged both ways?** **Yes** — with a datasheet-derived pin
+   model, on the real runtime, with no hardcoded results.
+4. **Can a project be stored and restored locally without a server?** **Yes** — real IndexedDB,
+   exact restore across reload and across a browser restart.
+
+The one architectural assumption that did **not** survive contact with evidence is browser-local
+MCU execution. Everything else in the V1 direction is now supported by reproducible tests.
