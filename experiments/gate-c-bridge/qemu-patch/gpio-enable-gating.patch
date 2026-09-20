@@ -1,0 +1,110 @@
+diff --git a/hw/gpio/esp32_gpio.c b/hw/gpio/esp32_gpio.c
+index 576fc50..52123bd 100644
+--- a/hw/gpio/esp32_gpio.c
++++ b/hw/gpio/esp32_gpio.c
+@@ -830,6 +830,8 @@ static void esp32_gpio_write(void *opaque, hwaddr addr, uint64_t value,
+     int clearirq;
+     uint32_t oldvalue = s->gpio_out;
+     uint32_t oldvalue1 = s->gpio_out1;
++    uint32_t oldenable = s->gpio_enable;
++    uint32_t oldenable1 = s->gpio_enable1;
+     switch (addr) {
+         case A_GPIO_OUT:
+             s->gpio_out = value;
+@@ -841,19 +843,19 @@ static void esp32_gpio_write(void *opaque, hwaddr addr, uint64_t value,
+             break;
+         case A_GPIO_OUT_W1TS:
+             s->gpio_out |= value;
+-            s->gpio_in |= value;
++            s->gpio_in |= (value & s->gpio_enable);
+             break;
+         case A_GPIO_OUT_W1TC:
+             s->gpio_out &= ~value;
+-            s->gpio_in &= ~value;
++            s->gpio_in &= ~(value & s->gpio_enable);
+             break;
+         case A_GPIO_OUT1_W1TS:
+             s->gpio_out1 |= value;
+-            s->gpio_in1 |= value;
++            s->gpio_in1 |= (value & s->gpio_enable1);
+             break;
+         case A_GPIO_OUT1_W1TC:
+             s->gpio_out1 &= ~value;
+-            s->gpio_in1 &= ~value;
++            s->gpio_in1 &= ~(value & s->gpio_enable1);
+             break;
+         case A_GPIO_ENABLE:
+         	s->gpio_enable = value;
+@@ -933,10 +935,16 @@ static void esp32_gpio_write(void *opaque, hwaddr addr, uint64_t value,
+             break;
+     }
+ 
+-    if (s->gpio_out != oldvalue) {
+-        uint32_t diff = (s->gpio_out ^ oldvalue);
++    /*
++     * TBI Lab correctness fix: a pad only drives the net when its output enable is set.
++     * Upstream emitted a drive event on any GPIO_OUT change, so a pin configured as an
++     * input appeared to drive. Emit on an output change OR on an enable change, but only
++     * for pins that are output-enabled now.
++     */
++    if (s->gpio_out != oldvalue || s->gpio_enable != oldenable) {
++        uint32_t diff = (s->gpio_out ^ oldvalue) | (s->gpio_enable ^ oldenable);
+         for (int i = 0; i < 32; i++) {
+-            if ((1 << i) & diff) {
++            if (((1 << i) & diff) && ((1 << i) & s->gpio_enable)) {
+                 if(i!=16) {
+                     s->redraw=1;
+                 }
+@@ -944,10 +952,19 @@ static void esp32_gpio_write(void *opaque, hwaddr addr, uint64_t value,
+             }
+         }
+     }
+-    if (s->gpio_out1 != oldvalue1) {
+-        uint32_t diff = (s->gpio_out1 ^ oldvalue1);
+-        for (int i = 0; i < 16; i++) {
++    /* Report direction changes so a consumer can model a pad going high impedance. */
++    if (s->gpio_enable != oldenable) {
++        uint32_t diff = (s->gpio_enable ^ oldenable);
++        for (int i = 0; i < 32; i++) {
+             if ((1 << i) & diff) {
++                qemu_set_irq(s->gpios_dir[i], (s->gpio_enable & (1 << i)) ? 1 : 0);
++            }
++        }
++    }
++    if (s->gpio_out1 != oldvalue1 || s->gpio_enable1 != oldenable1) {
++        uint32_t diff = (s->gpio_out1 ^ oldvalue1) | (s->gpio_enable1 ^ oldenable1);
++        for (int i = 0; i < 16; i++) {
++            if (((1 << i) & diff) && ((1 << i) & s->gpio_enable1)) {
+                 qemu_set_irq(s->gpios[i+32], (s->gpio_out1 & (1 << i)) ? 1 : 0);
+             }
+         }
+@@ -1049,6 +1066,7 @@ static void esp32_gpio_init(Object *obj) {
+     sysbus_init_irq(sbd, &s->irq);
+     qdev_init_gpio_out_named(dev, &s->irq, SYSBUS_DEVICE_GPIO_IRQ, 1);
+     qdev_init_gpio_out_named(dev, s->gpios, ESP32_GPIOS, 32);
++    qdev_init_gpio_out_named(dev, s->gpios_dir, ESP32_GPIOS_DIR, 32);
+     qdev_init_gpio_out_named(dev, &s->rtc_wakeup, ESP32_RTCIO_WAKEUP_GPIO, 1);
+     qdev_init_gpio_in_named(dev, set_gpio, ESP32_GPIOS_IN, N_GPIOS);
+     qdev_init_gpio_in_named(dev, func_gpio, ESP32_GPIOS_FUNC,1);
+diff --git a/include/hw/gpio/esp32_gpio.h b/include/hw/gpio/esp32_gpio.h
+index eab79e1..e144b0b 100644
+--- a/include/hw/gpio/esp32_gpio.h
++++ b/include/hw/gpio/esp32_gpio.h
+@@ -119,6 +119,9 @@ typedef struct Esp32GpioState {
+     uint32_t gpio_in_sel[256];
+     uint32_t gpio_out_sel[40];
+     qemu_irq gpios[40];
++    /* TBI Lab: per-pin output-enable state, so an external consumer knows when a pad
++     * is high impedance rather than driving. */
++    qemu_irq gpios_dir[40];
+     uint32_t iomux_regs[41];
+     uint32_t rtc_gpio_out;
+     uint32_t rtc_gpio_in;
+@@ -140,6 +143,7 @@ typedef struct Esp32GpioClass {
+ } Esp32GpioClass;
+ 
+ #define ESP32_GPIOS "esp32_gpios"
++#define ESP32_GPIOS_DIR "esp32_gpios_dir"
+ #define ESP32_GPIOS_IN "esp32_gpios_in"
+ #define ESP32_GPIOS_FUNC "esp32_gpios_func"
+ 

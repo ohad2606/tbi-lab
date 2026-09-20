@@ -2,8 +2,9 @@
  * Host side of the QEMU GPIO bridge protocol.
  *
  * Speaks the line protocol implemented by `qemu-patch/tbi_gpio_bridge.c`:
- *   QEMU -> host   O <pin> <level>
- *   host -> QEMU   I <pin> <level>
+ *   QEMU -> host   O <pin> <level>      pad is driving at <level>
+ *   QEMU -> host   D <pin> <isOutput>   pad direction; 0 means high impedance
+ *   host -> QEMU   I <pin> <level>      drive an input pin
  */
 
 import { Socket } from 'node:net';
@@ -15,8 +16,15 @@ export interface PinEvent {
   level: DigitalLevel;
 }
 
+export interface DirectionEvent {
+  pin: number;
+  /** true when the pad drives; false means high impedance. */
+  isOutput: boolean;
+}
+
 export interface GpioLink {
   onOutputChange(handler: (event: PinEvent) => void): void;
+  onDirectionChange(handler: (event: DirectionEvent) => void): void;
   setInput(pin: number, level: DigitalLevel): void;
 }
 
@@ -24,8 +32,11 @@ export class QemuGpioLink implements GpioLink {
   private socket: Socket | null = null;
   private buffer = '';
   private handlers: Array<(event: PinEvent) => void> = [];
+  private directionHandlers: Array<(event: DirectionEvent) => void> = [];
   /** Every output transition seen, in order. Useful evidence in tests. */
   readonly received: PinEvent[] = [];
+  /** Every direction change seen, in order. */
+  readonly directions: DirectionEvent[] = [];
 
   async connect(port: number, host = '127.0.0.1', timeoutMs = 15_000): Promise<void> {
     await new Promise<void>((resolve, reject) => {
@@ -60,15 +71,27 @@ export class QemuGpioLink implements GpioLink {
   }
 
   private handleLine(line: string): void {
-    const match = /^O\s+(\d+)\s+([01])$/.exec(line);
-    if (!match) return;
-    const event: PinEvent = { pin: Number(match[1]), level: Number(match[2]) as DigitalLevel };
-    this.received.push(event);
-    for (const handler of this.handlers) handler(event);
+    const level = /^O\s+(\d+)\s+([01])$/.exec(line);
+    if (level) {
+      const event: PinEvent = { pin: Number(level[1]), level: Number(level[2]) as DigitalLevel };
+      this.received.push(event);
+      for (const handler of this.handlers) handler(event);
+      return;
+    }
+    const dir = /^D\s+(\d+)\s+([01])$/.exec(line);
+    if (dir) {
+      const event: DirectionEvent = { pin: Number(dir[1]), isOutput: dir[2] === '1' };
+      this.directions.push(event);
+      for (const handler of this.directionHandlers) handler(event);
+    }
   }
 
   onOutputChange(handler: (event: PinEvent) => void): void {
     this.handlers.push(handler);
+  }
+
+  onDirectionChange(handler: (event: DirectionEvent) => void): void {
+    this.directionHandlers.push(handler);
   }
 
   setInput(pin: number, level: DigitalLevel): void {

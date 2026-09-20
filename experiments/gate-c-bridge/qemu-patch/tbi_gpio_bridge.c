@@ -11,8 +11,12 @@
  * circuit is encoded here.
  *
  * Line protocol (ASCII, newline terminated, both directions):
- *   QEMU -> host   O <pin> <level>     pin output level changed
+ *   QEMU -> host   O <pin> <level>     pin output level changed (pad is driving)
+ *   QEMU -> host   D <pin> <isOutput>  pad direction changed; 0 means high impedance
  *   host -> QEMU   I <pin> <level>     drive an input pin to <level>
+ *
+ * The D events matter electrically: a pad configured as an input must be modelled as high
+ * impedance, not as driving its last output level.
  *
  * Thread model: chardev read handlers and qemu_set_irq both run on the QEMU main loop
  * thread under the BQL, so no additional locking is required here.
@@ -40,6 +44,7 @@
  */
 #define TBI_GPIO_QOM_TYPE   "esp32.gpio"
 #define TBI_GPIO_OUT_LINES  "esp32_gpios"
+#define TBI_GPIO_DIR_LINES  "esp32_gpios_dir"
 #define TBI_GPIO_IN_LINES   "esp32_gpios_in"
 
 /* The ESP32 GPIO device publishes 32 output lines (bank 0) and 40 input lines. */
@@ -69,7 +74,7 @@ static void tbi_emit(TbiGpioBridge *s, char kind, int pin, int level)
     }
 }
 
-/* Called by the GPIO device whenever an output pin changes level. */
+/* Called by the GPIO device whenever an output-enabled pin changes level. */
 static void tbi_pin_changed(void *opaque, int pin, int level)
 {
     TbiGpioBridge *s = TBI_GPIO_BRIDGE(opaque);
@@ -81,6 +86,20 @@ static void tbi_pin_changed(void *opaque, int pin, int level)
         return;
     }
     tbi_emit(s, 'O', pin, level ? 1 : 0);
+}
+
+/* Called when a pad's output enable changes: 1 = driving, 0 = high impedance. */
+static void tbi_dir_changed(void *opaque, int pin, int isOutput)
+{
+    TbiGpioBridge *s = TBI_GPIO_BRIDGE(opaque);
+
+    if (pin < 0 || pin >= TBI_OUT_PINS) {
+        return;
+    }
+    if (s->ignore_mask & (1u << pin)) {
+        return;
+    }
+    tbi_emit(s, 'D', pin, isOutput ? 1 : 0);
 }
 
 static void tbi_handle_line(TbiGpioBridge *s, const char *line)
@@ -140,13 +159,17 @@ static void tbi_gpio_bridge_realize(DeviceState *dev, Error **errp)
     }
     gpio = DEVICE(obj);
 
-    /* Observe: route the GPIO controller's output lines into this device. */
-    qdev_init_gpio_in(dev, tbi_pin_changed, TBI_OUT_PINS);
+    /* Observe: route the GPIO controller's level and direction lines into this device. */
+    qdev_init_gpio_in_named(dev, tbi_pin_changed, "pin-level", TBI_OUT_PINS);
+    qdev_init_gpio_in_named(dev, tbi_dir_changed, "pin-dir", TBI_OUT_PINS);
     for (int i = 0; i < TBI_OUT_PINS; i++) {
         if (s->ignore_mask & (1u << i)) {
             continue;
         }
-        qdev_connect_gpio_out_named(gpio, TBI_GPIO_OUT_LINES, i, qdev_get_gpio_in(dev, i));
+        qdev_connect_gpio_out_named(gpio, TBI_GPIO_OUT_LINES, i,
+                                    qdev_get_gpio_in_named(dev, "pin-level", i));
+        qdev_connect_gpio_out_named(gpio, TBI_GPIO_DIR_LINES, i,
+                                    qdev_get_gpio_in_named(dev, "pin-dir", i));
     }
 
     /* Inject: cache the controller's input lines so the host can drive them. */

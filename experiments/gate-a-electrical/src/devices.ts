@@ -106,7 +106,8 @@ abstract class TwoTerminal implements Device {
 /** Ideal linear resistor. I = (Va - Vb) / R. */
 export class Resistor extends TwoTerminal {
   readonly kind = 'resistor';
-  constructor(id: string, nodeA: string, nodeB: string, readonly resistanceOhm: number) {
+  /** Mutable: a user editing a circuit changes component values between solves. */
+  constructor(id: string, nodeA: string, nodeB: string, public resistanceOhm: number) {
     super(id, nodeA, nodeB);
     if (!(resistanceOhm > 0)) throw new Error(`Resistor ${id}: resistance must be > 0`);
   }

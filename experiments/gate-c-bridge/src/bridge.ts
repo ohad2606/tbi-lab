@@ -14,7 +14,7 @@
 import { Circuit } from '../../gate-a-electrical/src/circuit.js';
 import type { SolveResult } from '../../gate-a-electrical/src/circuit.js';
 import { GpioPin, interpretDigitalInput, type DigitalLevel } from './pinModel.js';
-import type { GpioLink, PinEvent } from './qemuLink.js';
+import type { DirectionEvent, GpioLink, PinEvent } from './qemuLink.js';
 
 export interface BridgePin {
   /** GPIO number on the classic ESP32. */
@@ -48,6 +48,21 @@ export class McuElectricalBridge {
       if (pin.direction === 'input') this.inputLevels.set(pin.gpio, 0);
     }
     this.link.onOutputChange((event) => this.handleFirmwareOutput(event));
+    this.link.onDirectionChange((event) => this.handleDirectionChange(event));
+  }
+
+  /**
+   * Firmware reconfigured a pad's direction. A pad that is not output-enabled is high
+   * impedance and must stop driving the network, which is an electrical change, not
+   * bookkeeping: leaving it driving its last level would inject a phantom source.
+   */
+  private handleDirectionChange(event: DirectionEvent): void {
+    const pin = this.pins.find((p) => p.gpio === event.pin && p.direction === 'output');
+    if (!pin) return;
+    if (!event.isOutput) {
+      pin.device.setMode('input');
+      this.solveAndPropagate();
+    }
   }
 
   /** Firmware changed an output pin: update its electrical model and re-solve. */
