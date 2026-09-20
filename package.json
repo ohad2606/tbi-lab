@@ -1,0 +1,16 @@
+{
+  "name": "tbi-lab-experiments",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "TBI Lab Sprint 0 feasibility experiments. Not product code.",
+  "scripts": {
+    "test": "vitest run",
+    "test:unit": "vitest run experiments/gate-a-electrical/tests",
+    "build:browser": "tsc -p experiments/gate-a-electrical/tsconfig.browser.json"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
+  }
+}
