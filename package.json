@@ -7,12 +7,15 @@
   "scripts": {
     "test": "vitest run",
     "test:unit": "vitest run experiments/gate-a-electrical/tests",
-    "build:browser": "tsc -p experiments/gate-a-electrical/tsconfig.browser.json && cp experiments/gate-a-electrical/browser/index.html experiments/gate-a-electrical/dist-browser/browser/",
-    "test:browser": "npm run build:browser && playwright test"
+    "build:browser": "tsc -p experiments/gate-a-electrical/tsconfig.browser.json && cp experiments/gate-a-electrical/browser/index.html experiments/gate-a-electrical/dist-browser/browser/ && tsc -p experiments/gate-d-persistence/tsconfig.browser.json && cp experiments/gate-d-persistence/browser/index.html experiments/gate-d-persistence/dist-browser/browser/",
+    "test:browser": "npm run build:browser && playwright test",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.specs.json"
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",
+    "@types/node": "^26.6.2",
     "eecircuit-engine": "^1.8.0",
+    "fake-indexeddb": "^6.2.5",
     "typescript": "^5.9.2",
     "vitest": "^3.2.4"
   }

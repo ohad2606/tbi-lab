@@ -1,6 +1,7 @@
 # TBI Lab — Sprint 0: Core Feasibility
 
-**Status:** IN PROGRESS — Gate A complete, Gate B complete and **stopped for PM direction**.
+**Status:** IN PROGRESS — Gates A and D PASS; Gate B CONDITIONAL PASS; continuation approved
+2026-09-20 to investigate existing classic-ESP32 GPIO implementations (Phases 1-7).
 **Opened:** 2026-09-20
 **Last updated:** 2026-09-20
 **Sprint type:** Technical feasibility. Not product development.
@@ -36,7 +37,7 @@ and is kept separate from future product code (see section 8).
 | A | Electrical simulation feasibility | **PASS** — see 4.7 |
 | B | ESP32 Classic feasibility | **CONDITIONAL PASS** — see 5.5. Stopped for PM direction. |
 | C | MCU <-> electrical bridge | **BLOCKED** — awaiting PM direction on the Gate B gap |
-| D | Local-first persistence | NOT STARTED |
+| D | Local-first persistence | **PASS** — see 7.1 |
 
 Detailed evidence: `experiments/gate-a-electrical/README.md`,
 `experiments/gate-b-esp32/README.md`.
@@ -286,6 +287,24 @@ Test state carries enough structure to prove future usefulness: `projectId`, `sc
 `revision`, `components`, `nets/connections`, `powerSupply` settings. Sync-ready metadata fields are
 *designed* but not acted on: `localRevision`, `cloudRevision`, `baseRevision`, `updatedAt`,
 `deviceId`. No cloud sync, no CRDT, no realtime collaboration.
+
+### 7.1 Gate D result: PASS
+
+Evidence: `experiments/gate-d-persistence/README.md`. Acceptance proof is real Chromium with real
+IndexedDB (`browser/persistence.spec.ts`); `fake-indexeddb` is used only for 9 supplemental fast
+tests and is explicitly not the evidence.
+
+- **Reload:** create -> edit every field -> autosave -> **page reload** -> reopen the database ->
+  `expect(restored).toEqual(edited)` as a whole-state deep equality. Restored rev 3 with 4
+  components, 4 connections and PSU 3.3 V / 0.25 A. Autosave coalesced the edit burst into fewer
+  physical writes than edits.
+- **Browser restart:** with `chromium.launchPersistentContext` against a temporary profile, the
+  browser is **closed entirely** and relaunched. The project restores deeply equal and `deviceId`
+  is the same value, proving it is persisted rather than regenerated.
+- All required fields round trip, and `updatedAt` survives as exact ISO-8601.
+
+Defect found: `setTimeout` held as a field and invoked as a method throws `Illegal invocation` in
+browsers. Node tests could not have caught it — a concrete argument for browser-based acceptance.
 
 ---
 

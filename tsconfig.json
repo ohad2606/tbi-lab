@@ -11,5 +11,6 @@
     "noEmit": true,
     "types": []
   },
-  "include": ["experiments/**/*.ts"]
+  "include": ["experiments/**/*.ts"],
+  "exclude": ["experiments/**/browser/*.spec.ts", "**/dist-browser/**"]
 }
