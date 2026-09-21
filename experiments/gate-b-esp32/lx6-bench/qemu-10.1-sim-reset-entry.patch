@@ -1,0 +1,35 @@
+diff --git a/hw/xtensa/sim.c b/hw/xtensa/sim.c
+index 49d17e7..9460a4a 100644
+--- a/hw/xtensa/sim.c
++++ b/hw/xtensa/sim.c
+@@ -93,6 +93,15 @@ XtensaCPU *xtensa_sim_common_init(MachineState *machine)
+     return cpu;
+ }
+ 
++static uint64_t sim_elf_entry;
++
++static void xtensa_sim_reset_to_entry(void *opaque)
++{
++    XtensaCPU *cpu = opaque;
++
++    cpu->env.pc = sim_elf_entry;
++}
++
+ void xtensa_sim_load_kernel(XtensaCPU *cpu, MachineState *machine)
+ {
+     const char *kernel_filename = machine->kernel_filename;
+@@ -106,6 +115,14 @@ void xtensa_sim_load_kernel(XtensaCPU *cpu, MachineState *machine)
+ 
+         if (success > 0) {
+             cpu->env.pc = elf_entry;
++            /*
++             * TBI Lab: the machine's startup reset runs after this and rewrites pc to the
++             * core's reset vector. For cores whose reset vector lies outside the memory the
++             * sim machine maps (e.g. the ESP32 core: 0x50000000) execution then faults at
++             * once. Re-apply the ELF entry after every reset.
++             */
++            sim_elf_entry = elf_entry;
++            qemu_register_reset(xtensa_sim_reset_to_entry, cpu);
+         }
+     }
+ }
