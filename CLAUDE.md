@@ -65,6 +65,7 @@ V1 starts with:
 - local-first project persistence
 - desktop browser usage
 - keyboard and mouse as first-class input methods
+- first-class English and Hebrew product support
 
 Later capabilities may include:
 - Arduino C/C++
@@ -78,8 +79,225 @@ Later capabilities may include:
 - logic analyzer
 - AI circuit generation
 - AI troubleshooting
+- additional product languages such as German, Spanish and others
 
 Do not implement later capabilities unless they are part of the active sprint.
+
+---
+
+## Internationalization and Localization — Architectural Requirement
+
+TBI Lab is not a bilingual product architecture.
+
+It is a multilingual product architecture that launches first in English and Hebrew and must be capable of supporting an arbitrary number of additional languages later.
+
+Launch languages:
+- English (`en`)
+- Hebrew (`he`)
+
+Expected future language candidates include German, Spanish and other languages, but they must not be implemented before they are explicitly prioritized.
+
+### Core principle
+
+One project. Any supported language. Same electrical truth.
+
+A project created while the UI is in Hebrew must be able to open later in English, German, Spanish or another supported locale without conversion of the electrical project and without any change to simulation behavior.
+
+Language and locale must never affect:
+- circuit topology
+- component identity
+- electrical values
+- simulation results
+- firmware
+- net relationships
+- project correctness
+
+### Language-neutral project data
+
+Persistent project data must use canonical, language-neutral identifiers.
+
+Do not store localized display strings as domain identifiers.
+
+Good conceptual example:
+
+```json
+{
+  "type": "component.resistor",
+  "id": "R1",
+  "value": 1000,
+  "unit": "ohm"
+}
+```
+
+The localization layer may render that same component as:
+- English: `Resistor`
+- Hebrew: `נגד`
+- German: `Widerstand`
+- Spanish: `Resistencia`
+
+The canonical project object remains unchanged.
+
+### No hard-coded bilingual assumptions
+
+Do not architect the product around `English vs Hebrew` logic.
+
+Avoid application concepts such as:
+- `isHebrew`
+- `if language === he then ...` as a general architecture pattern
+- duplicated English/Hebrew business objects
+
+Prefer general concepts such as:
+- `locale`
+- `direction`
+- translation keys
+- locale-aware formatting
+- terminology dictionaries
+
+The architecture must support `N` locales rather than exactly two.
+
+### Localized system text vs user-authored text
+
+System-owned text must be localizable through translation keys.
+
+Examples:
+- buttons
+- menus
+- validation messages
+- simulation warnings
+- instrument labels
+- component display names
+- system-generated explanations
+- error messages
+
+User-authored content must not be silently translated or modified when the UI language changes.
+
+Examples:
+- project names
+- user notes
+- custom net names
+- labels written by the user
+- comments in firmware
+
+Future explicit AI features may translate user-authored project notes or presentations, but this must be an intentional user action, not an implicit side effect of changing locale.
+
+### RTL and LTR
+
+Hebrew requires first-class RTL support.
+
+However, RTL must not mirror or corrupt technical content that is naturally directional or language-neutral.
+
+The following should remain LTR or use an appropriate direction-independent technical presentation even when the application UI is Hebrew:
+- circuit canvas coordinates and topology
+- firmware/code editor
+- serial monitor content
+- formulas
+- component identifiers such as `R1`, `Q2`, `C3`
+- GPIO labels
+- voltage/current values
+- units
+- net identifiers
+- oscilloscope axes and waveforms
+- UART / SPI / I2C technical labels
+
+Changing locale must never rearrange the electrical circuit itself.
+
+### Code editor direction
+
+Firmware source code is always LTR.
+
+Do not allow RTL layout rules to alter code presentation.
+
+### Search and discovery
+
+Component search must eventually support localized names, technical English names and useful aliases.
+
+Conceptually, components should be able to expose metadata such as:
+
+```text
+displayName.<locale>
+keywords.<locale>[]
+aliases[]
+```
+
+Examples of searches that should ultimately resolve to the same component:
+- `resistor`
+- `נגד`
+- `10k`
+
+or:
+- `relay`
+- `ריליי`
+- `ממסר`
+
+Do not implement the complete multilingual search system unless it is in the active sprint, but do not design component metadata in a way that prevents it.
+
+### Professional terminology
+
+TBI Lab should maintain a controlled technical terminology glossary per locale.
+
+The goal is consistency across:
+- UI
+- AI Engineer
+- documentation
+- warnings
+- presentations
+- component descriptions
+
+Do not invent awkward localized terminology when the accepted professional term is commonly used in English inside another language.
+
+Technical terms such as `GPIO`, `PWM`, `MOSFET`, `Pull-up` or `Flyback` may remain in English when that is the clearest and most natural professional usage for the target locale.
+
+### AI language behavior
+
+The AI Engineer must be able to communicate naturally in the user's selected language while reasoning over canonical, language-neutral project state.
+
+The AI must not depend on translated component names to identify circuit entities.
+
+It should reason over stable identifiers, netlist data, firmware state and simulation measurements, then render explanations in the requested locale.
+
+Changing AI response language must not change the electrical conclusion.
+
+### Locale-aware formatting
+
+Simulation and project data must be stored canonically.
+
+Locale may affect presentation of:
+- decimal formatting
+- thousands separators
+- dates/times
+- textual units where appropriate
+
+Locale must not alter numerical values or physical units in the underlying project state.
+
+### UI layout resilience
+
+Do not design UI controls around English string lengths.
+
+Layouts must tolerate languages whose translations are significantly longer than English, including German.
+
+Avoid brittle fixed-width controls that only fit the English label.
+
+### Project URLs and identity
+
+Project identity must be language-neutral.
+
+Do not encode the project language into the project identifier or require different copies of the same project for different locales.
+
+The same project must be able to open under any supported locale.
+
+### Scope discipline for localization
+
+The architecture must be localization-ready from the beginning.
+
+This does NOT authorize implementation of all future translations now.
+
+Current priority:
+- make domain models language-neutral
+- avoid hard-coded UI strings in product code when UI implementation begins
+- support general locale/direction concepts
+- ensure RTL-readiness
+
+Future language translation work belongs to later approved sprints.
 
 ---
 
@@ -102,6 +320,7 @@ Do NOT implement unless explicitly approved:
 - billing
 - production cloud infrastructure
 - large component libraries
+- additional language translation packs beyond the active approved locales
 - visual polish unrelated to the active technical goal
 
 ---
@@ -269,4 +488,3 @@ A feature is not complete because it looks correct.
 For simulation features, correctness must be verified numerically and with reproducible tests.
 
 For unsupported behavior, explicit failure is preferable to incorrect simulation.
-
