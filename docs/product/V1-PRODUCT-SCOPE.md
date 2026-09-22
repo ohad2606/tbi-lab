@@ -1,6 +1,9 @@
 # TBI Lab — V1 Product Scope
 
-**Status:** DRAFT for PM review · **Date:** 2026-09-22 · **Phase:** Product scope (after Sprint 1)
+**Status:** **Approved in direction** by the PM. PM decisions PM-1..PM-8 are recorded as decided
+(§21). · **Date:** 2026-09-22 · **Phase:** Product scope closure (after Sprint 1)
+
+**Release model:** V1 is a **controlled pilot**, not public general availability (§25).
 
 **Baseline evidence.** Sprint 0 (`docs/sprints/SPRINT-0.md`, `SPRINT-0-SUMMARY.md`,
 `SPRINT-0-ERRATA.md`) proved feasibility. Sprint 1 (`docs/architecture/V1-ARCHITECTURE.md`,
@@ -42,6 +45,9 @@ CLAUDE.md, "Physics Must Be Real".
 | (added) Visual quality and accessibility | §16 |
 | (added) Performance expectations | §17 |
 | (added) Conflicts found against Sprint 0/1 | §24 |
+| (added) Export package contents and import rules | §10.4 |
+| (added) Identity boundary — what needs an account | §11.2 |
+| (added) Release model and pilot terminology | §25 |
 
 ---
 
@@ -125,8 +131,8 @@ The smallest complete journey. Everything in §4 exists to serve it.
 | **Breadboard** | Physical board with rows, holes and jumper wires | Instantly recognisable; matches what a maker physically builds; good for "wire it like this" instructions | Connectivity is implicit in geometry (row rules, rails, split gutter) and must be inferred; errors are geometric rather than electrical; visually heavy at projector scale; every new component needs a physical footprint; this is essentially Fritzing's territory |
 | **Constrained combination** | Schematic model with an optional breadboard *view* | Best long-term story | Two representations to keep in sync, two sets of interactions, roughly double the editor work for V1 |
 
-**Recommendation for V1: schematic-style editing, with component symbols that stay physically
-suggestive** — in particular, the ESP32 is drawn as a DevKit-shaped block with its real pin names
+**Approved for V1 (PM-1): a professional schematic workspace, with standard, physically suggestive
+symbols** — in particular, the ESP32 is drawn as a DevKit-shaped block with its real pin names
 (`GPIO2`, `3V3`, `GND`) in their real order, so wiring knowledge transfers to a physical board.
 
 Reasons, in order of weight:
@@ -142,9 +148,9 @@ Reasons, in order of weight:
 5. **Localization.** A schematic canvas is language-neutral and stays LTR under a Hebrew UI without
    any mirroring question.
 
-**Deferred:** a breadboard *view* over the same net model (V1.1/Future). Because connectivity lives
-in the data rather than in geometry, adding that view later does not invalidate V1 projects. **This
-is PM decision PM-1.**
+**Deferred:** a breadboard *view* over the same net model. Because connectivity lives in the data
+rather than in geometry, adding that view later does not invalidate V1 projects — and the net/project
+model **must not** be designed in a way that prevents it (PM-1).
 
 ### 4.2 Editing interactions required in V1
 
@@ -202,7 +208,8 @@ Excluded means: **not built, not promised, and stated in the UI where a user mig
 | Wi-Fi, Bluetooth | Not modelled; the session has no network by design (invariant 14) |
 | Deep/light sleep | The runtime's sleep timer uses the host clock, which breaks determinism |
 | `esp_restart()`, watchdog reset, in-place EN/reset button | Still asynchronous in QEMU; PM decision P10 keeps them unsupported until they pass R-MCU-1 |
-| GPIO 32-39 as **outputs** | The bridge reports bank-0 outputs only (blocker B6). Inputs on 32-39 are proven (GPIO35) |
+| GPIO 34-39 as outputs, or with internal pulls | **Hardware**: those pads are input-only and have no internal pulls |
+| GPIO 32/33 outputs, until the bridge gap is closed | **Simulator limitation**, not hardware: the bridge events bank-0 outputs only (blocker B6). Pre-release fix (§7.2) |
 | Drive-strength, open-drain, firmware-controlled pulls | Not driven from firmware register state (blocker B5) |
 | MicroPython authoring | Sprint 0 used it as a test artifact only: "This is not MicroPython support" |
 | Arduino library ecosystem / dependency management | Out of scope; V1 builds a single sketch against the core only |
@@ -214,7 +221,13 @@ Excluded means: **not built, not promised, and stated in the UI where a user mig
 
 ## 6. Component catalog
 
-### 6.1 Included in V1
+### 6.1 The V1 catalog is CLOSED
+
+The eight components below are the complete V1 catalog (PM-6). **No component may be added during
+implementation without an explicit scope decision** — this includes transistors, sensors, relays,
+555 timers, motors and any other part that seems small at the time.
+
+#### Included in V1
 
 | Component | Type id | User-editable properties | Model status | Live interaction | New engine work |
 |---|---|---|---|---|---|
@@ -244,12 +257,12 @@ solver's conditioning in mind). An ideal open circuit would disconnect a subnet 
 matrix singular; the solver already refuses singular systems rather than inventing an answer, so the
 open resistance is a **documented model parameter**, not a hidden fudge.
 
-### 6.2 Deferred, with the reason
+#### Deferred, with the reason
 
 | Component | Decision | Reason |
 |---|---|---|
-| **Potentiometer** | **V1.1** | Electrically cheap (a wiper splitting one resistance), but its main teaching use is feeding an **ADC**, which V1 does not support. It belongs with ADC |
-| **Capacitor / inductor** | **Future (needs transient)** | In a DC operating point a capacitor is an open circuit and an inductor a short. Showing them without transient analysis teaches something false |
+| **Potentiometer** | **V1.1 (PM-6)** | Electrically cheap (a wiper splitting one resistance), but its main teaching use is feeding an **ADC**, which V1 does not support. It belongs with ADC |
+| **Capacitor / inductor** | **Deferred until transient can be modelled honestly (PM-6)** | In a DC operating point a capacitor is an open circuit and an inductor a short. Showing them without transient analysis teaches something false |
 | **Transistor (BJT, MOSFET)** | **Future** | New nonlinear models plus validation against an independent reference; a dedicated sprint |
 | **Relay** | **Future** | Needs a coil/contact model and, realistically, transient behaviour |
 | **Sensors (LDR, thermistor, DHT…)** | **Future** | Most are meaningful only with ADC or a digital protocol |
@@ -261,52 +274,98 @@ open resistance is a **documented model parameter**, not a hidden fudge.
 
 ## 7. ESP32 capability scope
 
-**The target is the classic/original ESP32 (Xtensa LX6, ESP32 DevKit class). No C3/S3/C6
+**The target is the classic/original ESP32 (Xtensa LX6) on a WROOM-32-style DevKit board. No C3/S3/C6
 substitution, silent or otherwise** (CLAUDE.md MCU rule; architecture invariant 5).
 
-### 7.1 Supported in V1
+### 7.1 Pin behaviour comes from a board capability map, not numeric ranges
+
+V1 represents a **real board**, so every pin-related product behaviour — what the editor offers, what
+the connection validator refuses, what the inspector shows — derives from **explicit per-pin
+metadata** in a board profile (`board.esp32_devkitc_wroom32`), not from hard-coded ranges.
+
+Each pin carries at least:
+
+| Attribute | Meaning |
+|---|---|
+| `headerLabel` | What is printed on the board (`IO25`, `SVP`, `TX0`, `CLK`) |
+| `gpio` | GPIO number, where one exists |
+| `exposed` | Present on the DevKit header at all |
+| `digitalInput` | **Hardware** capability |
+| `digitalOutput` | **Hardware** capability |
+| `internalPull` | Whether the chip has an internal pull-up/pull-down on this pad |
+| `role` | `general` \| `flash` \| `console_uart` \| `input_only` \| `power` |
+| `strapping` | Boot-sensitive pin whose level at reset changes chip behaviour |
+| `simulatorSupport` | `supported` \| `limited` \| `unsupported`, **with a reason** |
+
+**Two layers, never conflated.** Hardware capability and simulator support are separate fields. A pin
+that the chip can drive but our runtime cannot yet observe is shown as a **simulator limitation**, not
+as a hardware property. This is a product rule, not a UI detail: mislabelling our own gap as silicon
+behaviour would teach the user something false.
+
+### 7.2 V1 board profile — ESP32-DevKitC (WROOM-32) policy
+
+| Pins | Hardware | V1 policy |
+|---|---|---|
+| **GPIO 6-11** (`CLK`, `SD0`, `SD1`, `SD2`, `SD3`, `CMD`) | Broken out on the 38-pin header but connected to the module's SPI flash | **Reserved.** Never offered as ordinary user GPIO; wiring them is refused with the reason "used by the module's flash" |
+| **GPIO 34, 35, 36 (`SVP`), 39 (`SVN`)** | **Input-only in hardware, and no internal pull-up/pull-down** | Digital input only; the inspector offers **no** pull option and explains why (external pull required) |
+| **GPIO 32, 33** | Full digital input **and output**, with internal pulls | Input and output. **Runtime gap:** the Sprint 0/1 bridge events bank-0 outputs only (blocker B6). Either close that gap before release (preferred) or mark these as `simulatorSupport: limited` with the reason. **They are never described as input-only** |
+| **GPIO 0, 2, 5, 12, 15** | Normal GPIO, but **strapping / boot-sensitive** | Usable, flagged in the editor: holding one at the wrong level at reset changes boot behaviour. The warning is informational, not a block |
+| **GPIO 1 (`TX0`), 3 (`RX0`)** | Normal GPIO, wired to the board's USB-serial console | Usable, flagged: using them conflicts with the serial monitor |
+| **GPIO 25, 26** | Normal GPIO; DAC-capable in hardware | Usable as digital I/O. DAC is **not simulated** in V1, and the pin says so |
+| **GPIO 4, 13, 14, 16, 17, 18, 19, 21, 22, 23, 27** | Normal GPIO with pulls | Fully usable |
+| **GPIO 20, 24, 28-31, 37, 38** | Not available on a WROOM-32 module | Not shown |
+| **`3V3`, `GND`, `VIN`, `EN`** | Power and enable pins | `3V3`/`GND` are wirable nodes. `EN` is **not** exposed as a control in V1, because chip reset is unsupported (P10) |
+
+**Runtime artifact to clear before release.** The Sprint 0/1 harness masks GPIO **4, 16 and 27**
+because the community QEMU fork wires them inside its machine model to its own demo peripherals (a
+display backlight, a display command line and a servo). That is an **artifact of the fork, not of the
+DevKit**. The production runtime must not carry those board devices, so these pins become ordinary
+user GPIO. Until that is done they are `simulatorSupport: limited`, with that exact reason. This is
+tracked with the Espressif-baseline port (P8).
+
+**Sourcing rule.** Every row of the board profile must be verified against the ESP32 datasheet and the
+DevKit schematic when the profile is implemented, and the source recorded with it. The table above is
+**product policy**; the per-pin data is engineering data with provenance, exactly like the LED and pin
+electrical models.
+
+### 7.3 Supported ESP32 capabilities in V1
 
 | Capability | Status | Evidence |
 |---|---|---|
-| Digital output on GPIO 0-31 (bank 0) | **Supported** | Gate C: GPIO2/18/19 drive and are observed; direct register writes honoured |
-| Digital input on GPIO 0-39 | **Supported** | Gate C: GPIO5 (bank 0) and GPIO35 (bank 1) read injected levels |
-| Pin direction / high-Z | **Supported** | Direction events are reported; a pad that loses output-enable stops driving |
-| Datasheet-accurate pin electricals | **Supported** | 16.5 Ω / 17.68 Ω driver resistances, V_IH 2.475 V, V_IL 0.825 V, hold in the undefined band |
-| Internal pull-up / pull-down **set by the user in the editor** | **Supported** | 45 kΩ pulls exist in the pin model |
+| Digital output on output-capable, non-reserved pins | **Supported** | Gate C: GPIO2/18/19 drive and are observed; direct register writes honoured |
+| Digital input on input-capable pins | **Supported** | Gate C: GPIO5 (bank 0) and GPIO35 (bank 1) read injected levels |
+| Pin direction / high-Z | **Supported** | Direction events reported; a pad losing output-enable stops driving |
+| Datasheet-accurate pin electricals | **Supported** | 16.5 Ω / 17.68 Ω driver resistances; V_IH 2.475 V, V_IL 0.825 V; hold inside the undefined band |
+| Internal pull-up / pull-down **configured by the user** on pins that have them | **Supported** | 45 kΩ pulls in the pin model |
 | Deterministic firmware <-> circuit interaction | **Supported** | Release gate R-MCU-1: 62 full runs + 30 stressed boot runs, zero divergences |
-| UART0 serial **output** (the console the sketch prints to) | **Supported** | Serial output is part of the determinism fingerprint |
-| Arduino core firmware, DIO flash mode, 4 MB image | **Supported** | Arduino core 3.3.12, FQBN `esp32:esp32:esp32`, `--flash-mode dio` |
-| Firmware-initiated behaviour that only uses the above | **Supported** | — |
+| UART0 console **output** | **Supported** | Serial output is part of the determinism fingerprint |
+| Arduino firmware, DIO flash mode, 4 MB image | **Supported** | Arduino core 3.3.12, FQBN `esp32:esp32:esp32`, `--flash-mode dio` |
 
-### 7.2 Unsupported in V1, and what the user sees
+### 7.4 Unsupported in V1, and what the user sees
 
 | Capability | V1 behaviour |
 |---|---|
-| ADC, DAC, touch | Pin marked **not simulated** in the editor; using it in firmware produces no electrical effect and raises a runtime notice |
-| PWM / LEDC | Same. A duty cycle cannot be shown honestly by a DC engine |
-| I2C, SPI, external UART devices | No device models exist; the pins behave as plain GPIO |
-| GPIO 32-39 as outputs | Editor marks these pins **input-only in V1** and refuses to treat them as drivers (blocker B6) |
-| Flash pins (GPIO 6-11) and board-reserved pins | Marked reserved in the editor; wiring them is blocked with an explanation |
-| Drive strength, open-drain | Not modelled; the editor does not offer them |
-| Wi-Fi, Bluetooth, deep/light sleep | Unsupported; firmware using them will not behave like hardware, and the session reports it |
-| `esp_restart()`, watchdog reset, in-place reset button | **Not exposed** (P10). Restarting means Stop then Run, which is a fresh, deterministic session |
-| Serial **input** (host -> firmware) | Deferred to V1.1; the monitor is read-only in V1 |
+| ADC, DAC, touch | Pin metadata marks the capability **not simulated**; firmware using it produces no electrical effect |
+| PWM / LEDC | Not simulated. A duty-cycled waveform cannot be represented honestly by a DC engine |
+| I2C, SPI, externally wired UART | No device models exist; those pins behave as plain GPIO |
+| Wi-Fi, Bluetooth, deep/light sleep | Unsupported; sessions have no network, and sleep breaks determinism |
+| `esp_restart()`, watchdog reset, EN/in-place reset | **Not exposed** (P10). Restart = Stop then Run, which is a fresh deterministic session |
+| Serial **input** (host -> firmware) | V1.1. The monitor is read-only in V1 |
+| Drive strength, open-drain | Not modelled (blocker B5); not offered in the inspector |
 
-### 7.3 Diagnostics the user sees
+### 7.5 What "supported" means, and the limits of detection
 
-V1 gives **pin-level, static diagnostics** (from a per-board capability table in the catalog) and
-**best-effort runtime notices**:
+**The V1 guarantee covers only the documented subset above.** Compiling successfully, or loading a
+`.bin` successfully, does **not** imply that every ESP32 peripheral behaves like hardware.
 
-- **Static (reliable):** reserved pin, input-only pin, unsupported peripheral role, "this pin has no
-  electrical model in V1". These come from data we control and are shown while editing.
-- **Runtime (best-effort):** the runtime can report accesses to unimplemented peripherals (QEMU
-  already counts them: `iomux` 72, `analog` 46, `rtcio` 38, `apbctrl` 32, `i2s` 30 in one boot).
-  V1 surfaces a **single, honest notice** — "the firmware used a peripheral TBI Lab does not
-  simulate" — with the peripheral name when available.
-- **What V1 does not claim:** complete detection of every unsupported firmware behaviour. The
-  product says what it simulates; it does not promise to catch everything it does not.
+| Firmware source | What V1 can honestly do |
+|---|---|
+| **Built by TBI Lab from user source** | The source is available, so implementation *may* add preflight/static diagnostics for common unsupported APIs (`analogRead`, `ledcWrite`, `Wire`, `SPI`, `WiFi`, `esp_deep_sleep_start`, `esp_restart`) and warn before the run. Scope of that check is a roadmap decision, not a promise here |
+| **Uploaded `.bin`** | **No claim of complete detection.** The binary is opaque; V1 must not imply otherwise |
+| **Either, at runtime** | Where access to an unsupported emulated peripheral is **reliably detectable**, show a clear diagnostic naming it. Never present fabricated, valid-looking behaviour in its place |
 
----
+This is the product-level form of the physics rule: TBI Lab states what it simulates, warns where it
+reliably can, and never invents a plausible result for something it does not model.
 
 ## 8. Firmware / code workflow
 
@@ -319,7 +378,13 @@ V1 gives **pin-level, static diagnostics** (from a per-board capability table in
 | **C. Both** | B as the main path, A as the advanced/fallback path | Strong | Strong | Same as B | Same as B | Same as B |
 | **D. Curated prebuilt sketches only** | Ship example binaries; no user code | Weak: not really "your code" | Weak | None | Lowest | Best |
 
-### 8.2 Recommendation — **Option C, deliberately narrow**
+### 8.2 Approved: **both paths, deliberately narrow** (PM-2)
+
+The approved V1 workflow is:
+
+> **single Arduino sketch -> Build -> firmware artifact -> Run**
+
+with `.bin` upload retained as the advanced path. **This is not an Arduino IDE replacement.**
 
 - **Primary path:** a plain, single-file Arduino C++ editor (`setup()` / `loop()`), built by the
   service with the pinned core `esp32:esp32@3.3.12`, FQBN `esp32:esp32:esp32`, `--flash-mode dio`,
@@ -327,8 +392,12 @@ V1 gives **pin-level, static diagnostics** (from a per-board capability table in
   defines (`fw_sha256_…`), stored in the browser next to the project.
 - **Secondary path:** upload a `.bin`, with the existing validation (target, magic, size, flash
   mode; QIO rejected with `unsupported_flash_mode`, never converted — P7).
-- **Explicitly not in V1:** multi-file projects, third-party libraries or a library manager, board
-  variants beyond the classic ESP32, a serial-upload/flash workflow, debugging, an IDE clone.
+- **Reproducibility.** The Arduino-ESP32 core, toolchain and build flags are **pinned** and recorded
+  with the artifact, so the same source produces the same firmware. The pinned identity is part of
+  the build metadata and travels with an exported project (§10.3).
+- **Explicitly not in V1 (PM-2):** a third-party Library Manager, arbitrary board packages, multi-file
+  IDE/project systems, general Arduino-ecosystem support, a serial-upload/flash workflow, debugging,
+  or anything resembling an IDE clone.
 
 **Why C rather than A.** Option A makes the product's headline capability unreachable for exactly
 the audience it targets: a student who must first install an Arduino toolchain will not get to step
@@ -350,15 +419,15 @@ cannot build.
 | Cost discipline | A build host plus a session host is the V1 server footprint. Both are covered by the capacity gate (P2) |
 | Flash-mode advantage | For the compiled path we control the flags, so DIO is guaranteed and the QIO failure mode disappears |
 
-**This is PM decision PM-2.** If the PM chooses A for V1.0, the journey's step 9 becomes
-"upload a `.bin`", the six examples ship as prebuilt images, and the editor moves to V1.1.
+**Decided (PM-2): both paths, as scoped above.**
 
-### 8.3 MicroPython — explicit decision
+### 8.3 MicroPython — decided: not in V1 (PM-4)
 
-**Recommendation: not in V1.** Sprint 0 used MicroPython only as a convenient trustworthy binary and
-said so in writing. MicroPython authoring is a *different product surface* — a filesystem, a REPL,
-paste/run semantics, and a different mental model — and none of it is proven or designed. It is a
-strong **V1.1/V2** candidate because the runtime already boots it. **PM decision PM-4.**
+**MicroPython authoring is not part of V1 and is not advertised as a supported workflow.** Sprint 0's
+MicroPython result stays what it was: feasibility evidence that the runtime boots a real classic-ESP32
+binary. MicroPython authoring is a *different product surface* — a filesystem, a REPL, paste/run
+semantics, and a different mental model — and none of it is proven or designed. It stays a candidate
+for a later release because the runtime already boots it.
 
 ---
 
@@ -383,14 +452,18 @@ V1 distinguishes three things deliberately:
 | CV / CC indication | Yes | The mode is part of the solution, not a post-hoc label |
 | Output impedance, loop dynamics, current sinking | **No** | Documented idealisations of the model |
 
-### 9.2 Measurements — **in V1 (probe/inspector form)**
+### 9.2 Measurements — **in V1: probes and inspector, not a meter** (PM-3)
+
+**Naming rule:** V1 must not call this a multimeter. It exposes **solver-backed values**; it does not
+reproduce meter behaviour (leads, ranges, burden voltage, de-energized resistance measurement).
 
 - Select a net -> its voltage. Select a component -> its current, terminal voltages, and derived
   values (e.g. LED forward voltage).
 - Pin a probe so a value stays visible while running.
-- **DC voltage and DC current only.**
+- Values V1 may expose: **node voltage, component/branch current, PSU measured voltage and current,
+  GPIO pin state.** DC only.
 
-### 9.3 Multimeter as an instrument — **recommend V1.1** (PM-3)
+### 9.3 Full multimeter — **decided: V1.1** (PM-3)
 
 A DMM panel with V/A/Ω would be familiar, but:
 
@@ -399,7 +472,7 @@ A DMM panel with V/A/Ω would be familiar, but:
   **de-energized** network. That is a new measurement mode with its own semantics and its own
   failure cases (measuring resistance in a live circuit), and it is not proven.
 
-Recommendation: ship probes in V1, ship the DMM (including a correct Ω mode) in V1.1.
+Decided: probes in V1; the meter, including a correct Ω mode, in V1.1.
 
 ### 9.4 Oscilloscope — **deferred, explicitly**
 
@@ -455,13 +528,39 @@ netlist**.
 | Save-state indicator | Yes | "All changes saved" / "Saving…" / "Could not save" |
 | Recent projects list | Yes | Local |
 | Open, duplicate, delete | Yes | Delete asks for confirmation; duplicate copies the firmware reference, not a second copy of the binary |
-| Export / import a project file | **Recommended yes** (PM-7) | One `.tbilab.json` file; optionally embeds the firmware image (≤ 4 MB) so a teacher can hand out a complete, runnable project |
+| Export / import a project file | **Yes (PM-7)** | Must be **meaningfully portable** — see §10.4. A project must never export a dangling local firmware reference |
 | Schema migration | Yes, conceptually | A project from an older schema migrates forward on open; a project from a **newer** schema opens **read-only** with a clear message. Gate D proved round-tripping but built no migration framework |
 | Cloud storage, accounts, sharing links | **No** | Not in V1 |
 
 ---
 
-## 11. Offline / online behaviour
+### 10.4 Export must be portable (PM-7)
+
+An exported project is a **package**, not a pointer. Conceptually it carries everything needed to
+reproduce the project on another machine:
+
+| Content | Why |
+|---|---|
+| Project / schema data (components, nets, connections, values, layout, annotations, `schemaVersion`) | The circuit itself |
+| User-authored Arduino source, where the project has any | So the recipient can read, edit and rebuild it |
+| The required firmware artifact(s) | So the project runs without a rebuild, and without the original machine |
+| Firmware hashes and compatibility metadata (`sha256`, target, flash mode/size, pinned core and toolchain identity) | So the recipient knows exactly what produced it, and validation can refuse a mismatch |
+| User-authored text (name, net names, notes) verbatim | Never translated or normalised |
+
+**Import rules**
+
+- Validate `schemaVersion`, artifact integrity (hash matches bytes) and target compatibility **before**
+  anything is added to the user's projects.
+- A newer schema opens **read-only** with a clear message; it is never silently down-converted.
+- **Engineering values are never silently reinterpreted** — no unit guessing, no rounding, no
+  "repairing" a value that does not parse. Refuse with a specific reason instead.
+- An artifact that fails validation is refused, not converted (P7 applies: QIO is never rewritten).
+
+The exact container format is an implementation decision for the roadmap.
+
+## 11. Offline / online behaviour and the identity boundary
+
+### 11.1 What works without the network
 
 | Situation | V1 behaviour |
 |---|---|
@@ -474,6 +573,27 @@ netlist**.
 
 **Hard rule (architecture invariants 1-3):** opening, editing and saving an ESP32 project must never
 depend on the server.
+
+### 11.2 The identity boundary (PM-8)
+
+**Local functionality must not require an account merely because the product has server features.**
+
+| Capability | Requires sign-in? |
+|---|---|
+| Create / open local projects | **No** |
+| Edit circuits, configure values | **No** |
+| Autosave locally | **No** |
+| Import / export a project package | **No** |
+| Browser-local non-MCU electrical simulation | **No** |
+| **Arduino build service** | **Yes** — authenticated and authorized |
+| **Classic ESP32 simulation service** | **Yes** — authenticated and authorized |
+
+Before either service is exposed over the public Internet, **authentication, authorization, resource
+limits and abuse protection are mandatory** (P6).
+
+**Authentication does not imply cloud storage.** Signing in grants access to compute, nothing more.
+Project ownership stays browser-local exactly as Sprint 1 defines it (ADR-001, invariants 1, 12). Cloud
+project storage is a separate future decision and is **not** part of V1.
 
 ---
 
@@ -502,15 +622,16 @@ topology, values and simulation results.
 
 | Target | V1 | Basis |
 |---|---|---|
-| Chromium desktop (Chrome, Edge) | **Supported** | The only browser ever tested in this project: all browser proofs run on Chromium 153, including Web Worker, IndexedDB and full-restart persistence |
-| Firefox desktop | **Not promised in V1** | Never tested; no test infrastructure exists for it |
-| Safari desktop | **Not promised in V1** | Never tested; IndexedDB and Worker behaviour differ enough to require real testing |
+| Chromium desktop (Chrome, Edge) | **Supported for the V1 controlled pilot** | The only browser ever tested in this project: all browser proofs run on Chromium 153, including Web Worker, IndexedDB and full-restart persistence |
+| Firefox desktop | **Next expansion target** (after V1) | Never tested; no test lane exists yet |
+| Safari desktop | **Not a V1 commitment** | Never tested; IndexedDB and Worker behaviour differ enough to require real testing |
 | Mobile / tablet browsers | **No** | Desktop-first product (CLAUDE.md) |
 | Native desktop app | **No** | — |
 
 **Expansion path:** add browser projects to the Playwright configuration, run the Gate A/Gate D
 equivalents (Worker determinism, IndexedDB persistence across restart, WebSocket behaviour) in
-Firefox, then Safari, and promise a browser only once those pass in CI. This is PM decision **PM-5**.
+Firefox, then Safari, and promise a browser only once those pass in CI. **Decided (PM-5): Chromium-family for the pilot, Firefox next,
+Safari not committed, no mobile or native target.**
 
 **Do not promise what is untested** — the product should say "works in Chrome and Edge; other
 browsers untested" rather than listing browsers optimistically.
@@ -637,53 +758,54 @@ V1 separates two categories, and the UI must look different for each.
 | Wi-Fi / Bluetooth simulation | **Excluded.** Sessions have no network by design |
 | Additional MCU families | **Excluded.** CLAUDE.md fixes the classic ESP32 as the V1 target |
 | Cloud project sync, collaboration, CRDT | **Excluded.** ADR-001 keeps the browser authoritative; sync is a later, separate design |
-| Accounts | **Excluded as a product feature.** The only identity V1 may need is authorization for the simulation service (P6) — see PM-8 |
+| Accounts as a product feature | **Excluded.** The only identity in V1 authorizes the **build and simulation services** (PM-8). It brings no profile, no cloud storage and no gating of local work (§11.2) |
 | Billing | **Excluded** |
 | AI features | **Excluded.** The engine is the source of truth; AI explanations would blur that in the first release |
 | Mobile, tablet, native apps | **Excluded** |
 | Full Arduino IDE replacement, library ecosystem | **Excluded.** V1 builds one sketch against the pinned core |
-| MicroPython authoring | **Excluded from V1** (PM-4) |
-| Fritzing-style breadboard/PCB workflow | **Excluded from V1** (PM-1); a realistic breadboard view is a future consideration, not a V1 duplication of Fritzing |
+| MicroPython authoring | **Excluded** (PM-4); not advertised as supported |
+| Fritzing-style breadboard/PCB workflow | **Excluded** (PM-1); a realistic breadboard view is a future consideration, not a V1 duplication of Fritzing |
 | Instructor/classroom management | **Excluded** |
 
 ---
 
 ## 19. Product acceptance journey
 
-One end-to-end scenario. **V1 is not V1 until a person can do all of this, in both languages,
-without a workaround.** This is product acceptance, not a test specification.
+One end-to-end scenario over the **approved** scope. **V1 (controlled pilot) is not ready until a
+person can do all of this, in both languages, without a workaround.** This is product acceptance, not
+a test specification. Full-chip **Reset is deliberately absent**, because that capability is
+unsupported (P10).
 
 | # | Step | Must be true |
 |---|---|---|
-| 1 | Open TBI Lab in a supported browser, first visit | An empty project or the example gallery is reachable in one action |
-| 2 | Create a project and name it (Hebrew name accepted) | Saved locally; the name is shown verbatim |
-| 3 | Place a PSU, ground, resistor and LED | Placement, move and rotate work with mouse and keyboard |
-| 4 | Wire them into a series loop | Junctions unambiguous; a deliberate mistake (unconnected terminal) is flagged specifically |
-| 5 | Set the resistor to 220 Ω and the PSU to 5 V / 100 mA, output on | Unit-aware entry; values echoed in the inspector |
-| 6 | Run | Results appear without a noticeable wait |
-| 7 | Observe | Node voltages, LED current and forward voltage, PSU mode CV, LED shown lit — all derived from the solve |
-| 8 | Lower the current limit until the supply enters CC | CC is shown as a **normal supply behaviour**, not an error, with correct values |
-| 9 | Stop, close the browser completely, reopen, open the project | Exact restore: components, wires, values, name |
-| 10 | Switch the UI to Hebrew | UI mirrors; canvas geometry, identifiers, pin labels and numbers stay LTR; **no project value changes** |
-| 11 | Add a classic ESP32 DevKit and wire GPIO2 -> resistor -> LED -> GND, and a push button to a GPIO input with a pull | Reserved and input-only pins are visibly marked and refused where appropriate |
-| 12 | Provide firmware (write and build a sketch, or upload a `.bin` — per PM-2) | Content-addressed artifact attached to the project; QIO rejected with a clear reason if uploaded |
-| 13 | Run | Explicit session states: creating, loading, booting, running |
-| 14 | Watch the firmware drive the circuit | The LED responds to `digitalWrite`; the pin voltage reflects the real driver resistance, not 3.3 V |
-| 15 | Press the button in the UI | The firmware reads the new level and reacts; the serial monitor shows its output |
-| 16 | Pause and resume | Simulation time freezes and continues; no jump or drift |
-| 17 | Stop, change the resistor, run again | The restart is explicit and quick; new results are consistent with the new value |
-| 18 | Simulate a network interruption | The run pauses and reattaches within the grace period; after expiry the message is clear. **No project data is lost in either case** |
-| 19 | Close and reopen the ESP32 project **while offline** | The project opens and edits normally; only running the MCU is unavailable, and it says so |
-| 20 | Re-run the same firmware and circuit twice | The observable behaviour is the same both times (the determinism promise, visible to the user) |
-
----
+| 1 | **Create a local project** and name it (Hebrew name accepted) | No sign-in required; saved locally at once; the name is shown verbatim |
+| 2 | **Place components** on the schematic: PSU, ground, resistor, LED | Place, move, rotate, select, delete — mouse and keyboard |
+| 3 | **Wire** them into a series loop | Junctions unambiguous; a deliberate mistake (unconnected terminal) is flagged specifically |
+| 4 | **Configure** 220 Ω, PSU 5 V / 100 mA, output on | Unit-aware entry; values echoed in the inspector |
+| 5 | **Run the passive circuit** | Results appear without a noticeable wait; no server involved |
+| 6 | **Probe values** | Node voltage, component current, LED forward voltage, PSU measured V/I and CV; lowering the limit shows **CC as normal behaviour**, not an error |
+| 7 | **Autosave and reopen** — close the browser completely, reopen, open the project | Exact restore: components, wires, values, name |
+| 8 | **Export the project, then import it** (fresh profile or after deleting it) | The package is portable: schema data, any sketch source, firmware artifact and hashes. Import validates and never reinterprets engineering values |
+| 9 | **Switch Hebrew <-> English** | UI mirrors; canvas geometry, identifiers, pin labels, numbers and units stay LTR; **no engineering data changes** |
+| 10 | **Add a classic ESP32 DevKit** | Board symbol with real header labels |
+| 11 | **Use supported DevKit pins**: GPIO2 -> resistor -> LED -> GND, and a push button into a supported input with a pull | Reserved flash pins are refused with a reason; input-only pins offer no pull; strapping pins are flagged but usable |
+| 12 | **Provide firmware**: write and build a single-file sketch, **or** upload a compatible `.bin` | Build produces a content-addressed artifact with pinned toolchain metadata; QIO upload is rejected with a clear reason and never converted |
+| 13 | **Start the MCU simulation** — authenticated | Sign-in is required **here**, not earlier; explicit states: creating, loading, booting, running |
+| 14 | **GPIO output affects the circuit** | The LED responds to `digitalWrite`; the pin voltage reflects the real driver resistance, not 3.3 V |
+| 15 | **The circuit affects GPIO input** | Pressing the button changes the level the firmware reads, through the datasheet thresholds |
+| 16 | **Observe serial output** | The sketch's console output streams with its simulation timestamps |
+| 17 | **Pause and resume** | Simulation time freezes and continues with no jump or drift |
+| 18 | **Stop, edit, run again** | Structural edits state plainly that they restart the simulation; new results match the new values |
+| 19 | **Lose and regain the simulation service** | The run pauses and reattaches within the grace period; after expiry the message is clear. **No project work is lost in either case** |
+| 20 | **Reopen the ESP32 project while offline / signed out** | It opens, edits and saves normally; only running the MCU is unavailable, and it says so |
+| 21 | **Run the same firmware and circuit twice** | The observable behaviour is identical both times — the determinism promise, visible to the user |
 
 ## 20. V1 / V1.1 / Future matrix
 
 | Capability | V1 | V1.1 | Future |
 |---|---|---|---|
 | Schematic editor, wiring, nets, undo/redo | ● | | |
-| Breadboard view over the same net model | | ○ | ● |
+| Breadboard view over the same net model | | | ● |
 | Lab PSU (CV/CC, enable, measured V/I) | ● | | |
 | Resistor, LED, diode, ground | ● | | |
 | Push button, toggle switch | ● | | |
@@ -699,25 +821,28 @@ without a workaround.** This is product acceptance, not a test specification.
 | Oscilloscope | | | ● |
 | Serial monitor (output) | ● | | |
 | Serial input to firmware | | ● | |
+| Preflight static diagnostics for unsupported APIs (built source) | | ● | |
 | GPIO state on the board symbol | ● | | |
 | GPIO timeline / logic-analyser view | | ● | |
 | Classic ESP32: digital I/O, direction, pulls, deterministic loop | ● | | |
-| GPIO 32-39 as outputs (bridge extension) | | ● | |
+| GPIO 32/33 outputs (close the bank-1 bridge gap) | ● *(pre-release fix)* | | |
 | ESP32 ADC | | ● | |
+| Potentiometer + ADC together | | ● | |
 | ESP32 PWM/LEDC, DAC, touch | | | ● |
 | ESP32 I2C / SPI with device models | | | ● |
 | Wi-Fi / Bluetooth | | | ● |
 | `esp_restart()` / WDT / EN reset (after R-MCU-1) | | ● | |
 | Deep / light sleep | | | ● |
-| Arduino sketch editor + server build | ● (PM-2) | | |
+| Arduino sketch editor + server build (single file, pinned toolchain) | ● | | |
 | `.bin` upload | ● | | |
 | Multi-file sketches, libraries | | | ● |
-| MicroPython authoring | | ○ | ● |
+| MicroPython authoring | | | ● |
 | Local-first projects, autosave, recent, duplicate, delete | ● | | |
-| Export / import project file | ● (PM-7) | | |
+| Export / import portable project package | ● | | |
 | Cloud sync, accounts, sharing | | | ● |
 | Hebrew + English, N-locale-ready | ● | | |
 | Additional languages (German, Spanish…) | | ○ | ● |
+| Public / general-availability release (abuse posture, public-scale capacity) | | | ● |
 | Example projects (6) | ● | | |
 | Templates, user-authored templates | | | ● |
 | Chromium desktop support | ● | | |
@@ -728,97 +853,39 @@ without a workaround.** This is product acceptance, not a test specification.
 
 ● = planned there · ○ = candidate, not committed
 
----
-
-## 21. PM decisions required
-
-Each decision below changes product scope, not implementation detail.
-
-### PM-1 — Primary editing paradigm
-
-| Option | Implication | Engineering cost / risk |
-|---|---|---|
-| **A. Schematic only (recommended)** | Clearest mapping to the data model; fastest to build well; least risk of connectivity bugs | Lowest. One editor |
-| B. Breadboard only | Most familiar to makers; weakest for correctness and for larger circuits; effectively re-treads Fritzing | High: footprints, row/rail semantics, geometric connectivity inference, its own validation |
-| C. Both | Best long-term; halves the quality we can reach in V1 | Highest: two editors, two interaction models, sync between them |
-
-**Recommendation: A.** Keep the breadboard as a *view* to add later, which the net-based schema
-already allows.
-
-### PM-2 — Firmware / code workflow
-
-| Option | Implication | Engineering cost / risk |
-|---|---|---|
-| A. `.bin` upload only | V1 ships sooner; the headline journey is out of reach for beginners without an external toolchain | Lowest |
-| B. Editor + server build only | Best beginner story; no path for firmware we cannot build | Medium-high: sandboxed build service, queue, cache, quotas; compile latency unmeasured |
-| **C. Both (recommended)** | Beginners get edit-build-run; advanced users keep upload; QIO problem disappears on the built path | Same as B plus a small amount; upload already exists in the artifact design |
-
-**Recommendation: C**, narrowly scoped: one file, pinned core, no libraries. If the PM prefers to
-de-risk V1.0, option A with the editor in V1.1 is coherent — but the product then demos far worse.
-
-### PM-3 — Multimeter
-
-| Option | Implication | Engineering cost / risk |
-|---|---|---|
-| **A. Probes/inspector only in V1 (recommended)** | Users can read every voltage and current; no instrument metaphor | Low |
-| B. DMM with DC V and A | Familiar framing, no new physics | Low-medium (UI work, little engine work) |
-| C. DMM with V, A and Ω | Resistance needs a de-energized test-current measurement mode: new semantics, new failure cases | Medium, plus a new measurement concept to validate |
-
-**Recommendation: A for V1, C for V1.1.**
-
-### PM-4 — MicroPython
-
-| Option | Implication | Engineering cost / risk |
-|---|---|---|
-| **A. Not in V1 (recommended)** | One code story to do well | None |
-| B. MicroPython authoring in V1 | Needs a filesystem/REPL product surface; doubles the firmware story | High, and unproven as a product surface |
-
-**Recommendation: A.** Revisit for V1.1 — the runtime already boots MicroPython, so the cost is
-product design, not feasibility.
-
-### PM-5 — Browser support scope
-
-| Option | Implication | Engineering cost / risk |
-|---|---|---|
-| **A. Chromium-family only at V1 (recommended)** | Honest: it is the only family ever tested | Low |
-| B. Chromium + Firefox | Broader reach; must build and maintain a second test lane before promising it | Medium; unknown until the suites actually run there |
-| C. Chromium + Firefox + Safari | Broadest; Safari's IndexedDB/Worker differences are a real risk on a constrained dev host | High |
-
-**Recommendation: A**, with Firefox as the first V1.1 expansion once its test lane is green.
-
-### PM-6 — Minimum credible catalog
-
-| Option | Implication | Engineering cost / risk |
-|---|---|---|
-| A. PSU, ground, resistor, LED, ESP32 | Smallest; cannot demo "circuit drives firmware" naturally | Lowest |
-| **B. A + diode + push button + toggle switch (recommended)** | Enables the full closed-loop story and basic teaching circuits | Small: one new switch device, one diode card |
-| C. B + potentiometer + capacitor | Looks richer; capacitor is misleading without transient, and the potentiometer's real use needs ADC | Medium, and it weakens the physics claim |
-
-**Recommendation: B.**
-
-### PM-7 — Project export / import
-
-| Option | Implication | Engineering cost / risk |
-|---|---|---|
-| **A. Include in V1 (recommended)** | A teacher can hand out a complete runnable project without accounts or cloud; also the user's own backup path in a local-first product | Low-medium: one serialization format, size limits, validation on import |
-| B. Defer to V1.1 | Users have no way to move a project between machines, which is a real gap in a local-first product with no sync | Lower now, more support pain later |
-
-**Recommendation: A**, single file, optional embedded firmware image, validated on import.
-
-### PM-8 — Is V1 publicly available, or a controlled pilot?
-
-This is a scope question, not an implementation one. **PM decision P6 makes authentication,
-authorization and resource limiting mandatory before the simulation service is publicly exposed.**
-
-| Option | Implication | Engineering cost / risk |
-|---|---|---|
-| A. Public V1 | Requires identity, authorization, per-user limits and abuse handling **inside V1 scope**, plus the production capacity gate (P2) | Significant, and currently unplanned in any sprint |
-| **B. Controlled pilot (recommended)** | Instructors/classes onboarded with issued access; the same limits still apply but the surface is bounded | Moderate: still needs authorization and limits, but not a public-scale abuse posture |
-| C. Local/offline-only V1 (no MCU) | Removes the server entirely — and with it the product's headline capability | Low cost, high product loss |
-
-**Recommendation: B**, and the answer determines whether "accounts" enter V1 at all.
+**Confirmed outside V1** (PM): potentiometer; full multimeter / resistance mode; capacitor and
+transient behaviour; oscilloscope; ADC/DAC; PWM/LEDC; externally wired UART; I2C/SPI; Wi-Fi/Bluetooth;
+MicroPython authoring; additional MCU families; breadboard view; cloud project sync; collaboration;
+mobile and native apps. Placement between V1.1 and Future is as shown above — nothing on that list is
+automatically V1.1.
 
 ---
+
+## 21. PM decisions — recorded as approved
+
+All eight decisions raised in the first draft are **decided**. The alternatives and their trade-offs
+remain in the sections cited, so a later reversal is an informed one.
+
+| # | Decision | Approved outcome | Where it is applied |
+|---|---|---|---|
+| **PM-1** | Workspace | **Schematic-only V1.** Professional schematic workspace, standard/physically suggestive symbols, ESP32 drawn as a DevKit block with real header labels. Breadboard deferred; the net/project model must not prevent a future breadboard view | §4.1 |
+| **PM-2** | Firmware workflow | **Both, narrowly scoped**: single sketch -> Build -> artifact -> Run, plus `.bin` upload as the advanced path. Pinned Arduino-ESP32 toolchain. No Library Manager, no arbitrary board packages, no multi-file project system, no general ecosystem support. DIO and runtime compatibility rules still apply | §8 |
+| **PM-3** | Measurements | **Probes / inspector only.** Solver-backed node voltage, component current, PSU V/I and GPIO state. **Not called a multimeter.** Resistance and a full meter move to V1.1 | §9.2, §9.3 |
+| **PM-4** | MicroPython | **Not in V1**, and not advertised as a supported workflow. Sprint 0's result stays feasibility evidence | §8.3 |
+| **PM-5** | Browser scope | **Chromium-family desktop** for the controlled pilot; **Firefox** next; **Safari** not committed; no mobile or native target | §13 |
+| **PM-6** | Component catalog | **Closed eight-item catalog** (§6.1). Potentiometer V1.1; capacitor deferred until transient is honest; no transistors, sensors, relays, 555s or motors without an explicit scope decision | §6 |
+| **PM-7** | Export / import | **In V1**, and **meaningfully portable**: schema data, user-authored source, firmware artifacts, hashes and compatibility metadata. Import validates; it never silently corrupts or reinterprets engineering values. Container format is a roadmap decision | §10.4 |
+| **PM-8** | Release model | **V1 is a controlled pilot**, not public GA. Local work never requires an account; the build and simulation services require authentication and authorization. Auth, limits and abuse protection are mandatory before public exposure. Authentication does not bring cloud storage | §11.2, §25 |
+
+### Additional PM corrections recorded
+
+| Correction | Effect |
+|---|---|
+| **ESP32 pin capability model** | Numeric range claims ("outputs 0-31, inputs 0-39") are replaced by a **board capability map** with explicit per-pin metadata, including a separate `simulatorSupport` field. Hardware capability and simulator gaps are never conflated | §7.1, §7.2 |
+| **GPIO 6-11** | Never exposed as ordinary user GPIO on a WROOM-style DevKit; they belong to the module's flash | §7.2 |
+| **GPIO 34-39** | Represented as input-only **without** internal pulls, because that is the hardware | §7.2 |
+| **GPIO 32/33** | Hardware output-capable. Our bridge's bank-0-only event limitation is labelled a **simulator limitation**, to be closed before release or stated as such | §7.2, §24 |
+| **Unsupported peripherals** | The guarantee covers the documented subset only. Static preflight diagnostics are possible for source we build; **no perfect detection is claimed for uploaded `.bin`**; reliable runtime detection produces a diagnostic rather than fabricated behaviour | §7.5 |
 
 ## 22. Risks to product scope
 
@@ -837,26 +904,42 @@ authorization and resource limiting mandatory before the simulation service is p
 
 ---
 
-## 23. Definition of Done — product scope phase
+## 23. Definition of Done
 
-This phase is complete when:
+### 23.1 This product-scope phase
 
-1. **Every capability in V1 is traceable** to proven evidence or to explicitly accepted new work
-   (done: §4-§9 cite Sprint 0/1 evidence).
-2. **Every exclusion has a stated reason**, not merely an omission (done: §5, §18).
-3. **The component catalog is closed** for V1, with model status per component (done: §6).
-4. **The ESP32 promise is exact**, pin-level, with user-visible diagnostics defined (done: §7).
-5. **One firmware workflow is chosen** (pending PM-2).
-6. **The acceptance journey is agreed** and is the definition of "V1 exists" (done: §19, pending
-   PM sign-off).
-7. **The V1/V1.1/Future matrix is agreed** so later features have a home (done: §20).
-8. **The PM decisions in §21 are answered.**
-9. **No item in this document contradicts Sprint 0 or Sprint 1 evidence** (checked; see the
-   conflicts noted in §24).
-10. After sign-off, this document becomes the authoritative product scope, and the implementation
-    roadmap is written from it — **not before**.
+Complete when:
 
----
+1. Every V1 capability is traceable to proven evidence or to explicitly accepted new work (§4-§9).
+2. Every exclusion has a stated reason (§5, §18).
+3. The component catalog is **closed** (§6.1, PM-6).
+4. The ESP32 promise is expressed as a **board capability map**, not numeric ranges (§7).
+5. One firmware workflow is decided (§8, PM-2). ✔
+6. The acceptance journey is agreed as the definition of "V1 exists" (§19).
+7. The V1 / V1.1 / Future matrix is agreed (§20).
+8. PM decisions PM-1..PM-8 are recorded (§21). ✔
+9. Nothing contradicts Sprint 0 or Sprint 1 evidence (§24).
+10. Only after sign-off is the implementation roadmap written.
+
+### 23.2 V1 itself — readiness for the **controlled pilot**
+
+V1's Definition of Done is **pilot readiness**, not public-scale readiness. It requires:
+
+| Requirement | Note |
+|---|---|
+| The acceptance journey (§19) passes end to end, in English and Hebrew | Including export/import and the offline path |
+| The closed catalog behaves per §6, with model provenance recorded | No component added silently |
+| The board capability map is implemented and datasheet-sourced (§7.2) | Including the `simulatorSupport` field |
+| The bank-1 output gap is closed, **or** GPIO 32/33 are labelled a simulator limitation | §7.2, §24 |
+| The runtime carries no fork-specific board devices on GPIO 4/16/27 | §7.2 |
+| The deterministic release gate R-MCU-1 still passes | Sprint 1 gate, with pinned fingerprints |
+| Authentication, authorization and per-user limits protect the build and simulation services | P6, at pilot scale |
+| Pilot capacity is measured on the hardware the pilot actually runs on | P2; **not** a public-scale capacity claim |
+| Unsupported capabilities are stated in-product, not only in documents | §7.4, §7.5 |
+| Visual legibility verified on a real projector | §16.1 |
+
+**Explicitly not required for the pilot:** public-scale abuse protection, multi-region capacity, GA
+support processes, marketing-facing browser breadth, or any cloud storage.
 
 ## 24. Conflicts and tensions found against Sprint 0 / Sprint 1
 
@@ -867,10 +950,35 @@ proven evidence.
 |---|---|---|
 | 1 | A **capacitor** is a natural "basic component" expectation, but the engine is DC-only | Excluded from V1 with the reason stated (§6.2). Including it would violate the physics rule |
 | 2 | A **multimeter with resistance** is a natural lab expectation, but Ω is not a solve of the live circuit | Probes in V1; Ω with the DMM in V1.1 (§9.3, PM-3) |
-| 3 | **GPIO 32-39 outputs** are not evented by the bridge (blocker B6) | Those pins are marked input-only in V1; the bridge extension is a V1.1 item |
+| 3 | **GPIO 32/33 outputs** are not evented by the bridge (blocker B6), although the hardware supports them | Corrected per PM: this is a **simulator limitation**, never presented as hardware. Closing it is a pre-release item; until then the pins carry that reason. GPIO 34-39 are input-only **in hardware**, which is a different statement |
 | 4 | **Reset** is an obvious simulation control, but full-chip reset is not deterministic yet (P10) | No reset control in V1; Stop/Run is the restart path |
 | 5 | **MicroPython** technically boots, which invites "so it is supported" | Explicitly not supported as an authoring workflow (§8.3, PM-4) |
 | 6 | **Oscilloscope** is expected in anything called a lab | Excluded; requires transient analysis (§9.4) |
-| 7 | **P6** requires auth/limits before public exposure, but no sprint owns that work | Raised as PM-8: it decides whether V1 is public or a controlled pilot |
+| 7 | **P6** requires auth/limits before public exposure | Resolved by PM-8: V1 is a controlled pilot. Auth and limits guard the two services; local work needs no account (§11.2) |
+| 10 | The QEMU fork wires **GPIO 4, 16 and 27** to its own demo peripherals (display backlight, display command, servo), so our harness masks them | Product-visible: those are ordinary DevKit pins. The production runtime must not carry those board devices (§7.2), tracked with the Espressif-baseline port (P8) |
 | 8 | Sprint 0 recorded **looser pre-registered tolerances** than the code asserts | No product impact; noted so that future claims quote the asserted values |
 | 9 | Sprint 0 harnesses attach the firmware image **writable** (errata E-2) | Product requirement already in the architecture: each session boots from a verified copy |
+
+---
+
+## 25. Release model and pilot terminology
+
+The two release stages are named, and the product must not blur them.
+
+| Term | Meaning |
+|---|---|
+| **V1 controlled pilot** | The scope in this document, delivered to a **bounded, invited audience** (e.g. specific instructors and their classes). The build and simulation services are reachable only by authorized users. Capacity is measured for that audience. This is what "V1 is done" means (§23.2) |
+| **Public / general-availability release** | A later release offered openly. It additionally requires public-scale abuse protection, capacity measured for open traffic, support processes and the browser breadth we choose to promise. **Not in V1, and not implied by V1** |
+
+Rules that follow from this:
+
+1. **Do not plan V1 against public-scale assumptions.** Pilot capacity is measured on the hardware the
+   pilot runs on (P2), and no capacity claim is generalized beyond it.
+2. **Do not gate local work on identity.** Creating, editing, saving, importing, exporting and
+   browser-local simulation work without an account (§11.2).
+3. **Do not add cloud project storage because authentication exists.** Sign-in grants access to
+   compute. Project ownership stays local (ADR-001).
+4. **Say which stage a statement belongs to.** Documentation, in-product text and any external
+   material distinguish "pilot" from "generally available".
+5. **Pilot feedback is a product input, not an automatic scope change.** New requests go into the
+   matrix (§20), not into V1.
