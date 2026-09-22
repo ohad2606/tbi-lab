@@ -1,0 +1,236 @@
+--- a/hw/misc/tbi_gpio_bridge.c (sprint-0-complete)
++++ b/hw/misc/tbi_gpio_bridge.c (Sprint 1 spike: vclock, sync, inline; all default off)
+@@ -35,6 +35,11 @@
+ #include "hw/irq.h"
+ #include "chardev/char-fe.h"
+ #include "qom/object.h"
++#include "qemu/timer.h"
++#include "sysemu/runstate.h"
++#include "qemu/main-loop.h"
++#include "qemu/thread.h"
++#include "hw/core/cpu.h"
+ 
+ #define TYPE_TBI_GPIO_BRIDGE "tbi-gpio-bridge"
+ 
+@@ -61,19 +66,123 @@
+     unsigned rx_len;
+     /* Pins the host explicitly asked not to observe, as a 32-bit mask. */
+     uint32_t ignore_mask;
++    /*
++     * Sprint 1 spike: when set, events carry QEMU_CLOCK_VIRTUAL in nanoseconds as a fourth
++     * field ("O <pin> <level> <vns>"). Off by default so the Sprint 0 protocol is unchanged.
++     */
++    bool vclock;
++    /*
++     * Sprint 1 spike: lockstep. After emitting any GPIO event the VM is paused; it resumes only
++     * when the host sends "C". With -icount, virtual time is frozen while paused, so host-applied
++     * inputs land at exactly the virtual time of the triggering event. Off by default.
++     */
++    bool sync;
++    /* Events emitted but not yet acknowledged with "C" by the host. */
++    uint32_t unacked;
++    QEMUBH *resume_bh;
++    /*
++     * Sprint 1 spike: inline. The vCPU is held INSIDE the GPIO write until the host answers
++     * with "C". Inputs sent while it waits are applied by the vCPU itself before the write
++     * returns, i.e. at the exact instruction boundary with zero virtual time elapsed.
++     */
++    bool inline_sync;
++    QemuMutex lock;
++    QemuCond cond;
++    bool waiting;
++    bool reply_ready;
++    int pend_n;
++    int pend_pin[2 * TBI_IN_PINS];
++    int pend_level[2 * TBI_IN_PINS];
+ };
+ 
+ OBJECT_DECLARE_SIMPLE_TYPE(TbiGpioBridge, TBI_GPIO_BRIDGE)
+ 
+ static void tbi_emit(TbiGpioBridge *s, char kind, int pin, int level)
+ {
+-    char buf[32];
+-    int len = snprintf(buf, sizeof(buf), "%c %d %d\n", kind, pin, level);
++    char buf[64];
++    int len = s->vclock
++        ? snprintf(buf, sizeof(buf), "%c %d %d %" PRId64 "\n", kind, pin, level,
++                   qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL))
++        : snprintf(buf, sizeof(buf), "%c %d %d\n", kind, pin, level);
+     if (len > 0) {
+         qemu_chr_fe_write_all(&s->chr, (const uint8_t *)buf, len);
+     }
+ }
+ 
++static void tbi_request_pause(TbiGpioBridge *s)
++{
++    if (!s->sync) {
++        return;
++    }
++    s->unacked++;
++    /* Safe from vCPU context: the stop takes effect at the end of the current TB. */
++    qemu_system_vmstop_request_prepare();
++    qemu_system_vmstop_request(RUN_STATE_PAUSED);
++}
++
++static void tbi_resume_bh(void *opaque)
++{
++    TbiGpioBridge *s = TBI_GPIO_BRIDGE(opaque);
++
++    if (s->unacked == 0 && runstate_check(RUN_STATE_PAUSED)) {
++        vm_start();
++    }
++}
++
++/*
++ * The host may acknowledge an event before the requested stop has taken effect. Whichever
++ * happens last -- the final "C", or the transition to PAUSED -- triggers the resume.
++ */
++static void tbi_vm_state_change(void *opaque, bool running, RunState state)
++{
++    TbiGpioBridge *s = TBI_GPIO_BRIDGE(opaque);
++
++    if (!running && state == RUN_STATE_PAUSED && s->unacked == 0) {
++        qemu_bh_schedule(s->resume_bh);
++    }
++}
++
++/* Arm the wait BEFORE emitting, so a fast host reply cannot be lost. */
++static bool tbi_inline_arm(TbiGpioBridge *s)
++{
++    if (!s->inline_sync || !current_cpu) {
++        return false;          /* only block vCPU threads, never the main loop */
++    }
++    qemu_mutex_lock(&s->lock);
++    s->waiting = true;
++    s->reply_ready = false;
++    s->pend_n = 0;
++    qemu_mutex_unlock(&s->lock);
++    return true;
++}
++
++static void tbi_inline_wait(TbiGpioBridge *s)
++{
++    int n;
++    int pins[2 * TBI_IN_PINS];
++    int levels[2 * TBI_IN_PINS];
++
++    bql_unlock();
++    qemu_mutex_lock(&s->lock);
++    while (!s->reply_ready) {
++        qemu_cond_wait(&s->cond, &s->lock);
++    }
++    n = s->pend_n;
++    memcpy(pins, s->pend_pin, sizeof(int) * n);
++    memcpy(levels, s->pend_level, sizeof(int) * n);
++    s->pend_n = 0;
++    s->waiting = false;
++    qemu_mutex_unlock(&s->lock);
++    bql_lock();
++
++    for (int i = 0; i < n; i++) {
++        qemu_set_irq(s->in_lines[pins[i]], levels[i]);
++        if (s->vclock) {
++            tbi_emit(s, 'A', pins[i], levels[i]);
++        }
++    }
++}
++
+ /* Called by the GPIO device whenever an output-enabled pin changes level. */
+ static void tbi_pin_changed(void *opaque, int pin, int level)
+ {
+@@ -85,7 +194,13 @@
+     if (s->ignore_mask & (1u << pin)) {
+         return;
+     }
++    bool armed = tbi_inline_arm(s);
+     tbi_emit(s, 'O', pin, level ? 1 : 0);
++    if (armed) {
++        tbi_inline_wait(s);
++    } else {
++        tbi_request_pause(s);
++    }
+ }
+ 
+ /* Called when a pad's output enable changes: 1 = driving, 0 = high impedance. */
+@@ -99,7 +214,13 @@
+     if (s->ignore_mask & (1u << pin)) {
+         return;
+     }
++    bool armed = tbi_inline_arm(s);
+     tbi_emit(s, 'D', pin, isOutput ? 1 : 0);
++    if (armed) {
++        tbi_inline_wait(s);
++    } else {
++        tbi_request_pause(s);
++    }
+ }
+ 
+ static void tbi_handle_line(TbiGpioBridge *s, const char *line)
+@@ -107,9 +228,41 @@
+     int pin;
+     int level;
+ 
++    if (s->inline_sync && sscanf(line, "I %d %d", &pin, &level) == 2 &&
++        pin >= 0 && pin < TBI_IN_PINS && s->in_lines[pin]) {
++        qemu_mutex_lock(&s->lock);
++        if (s->waiting && s->pend_n < 2 * TBI_IN_PINS) {
++            /* A reply to the event the vCPU is waiting on: the vCPU applies it. */
++            s->pend_pin[s->pend_n] = pin;
++            s->pend_level[s->pend_n] = level ? 1 : 0;
++            s->pend_n++;
++            qemu_mutex_unlock(&s->lock);
++            return;
++        }
++        qemu_mutex_unlock(&s->lock);
++        /* Spontaneous external change: apply now, at the next available instant. */
++    }
+     if (sscanf(line, "I %d %d", &pin, &level) == 2) {
+         if (pin >= 0 && pin < TBI_IN_PINS && s->in_lines[pin]) {
+             qemu_set_irq(s->in_lines[pin], level ? 1 : 0);
++            if (s->vclock) {
++                /* Acknowledge with the virtual time at which the input was applied. */
++                tbi_emit(s, 'A', pin, level ? 1 : 0);
++            }
++        }
++    } else if (line[0] == 'C' && line[1] == '\0' && s->inline_sync) {
++        qemu_mutex_lock(&s->lock);
++        if (s->waiting) {
++            s->reply_ready = true;
++            qemu_cond_signal(&s->cond);
++        }
++        qemu_mutex_unlock(&s->lock);
++    } else if (line[0] == 'C' && line[1] == '\0') {
++        if (s->unacked > 0) {
++            s->unacked--;
++        }
++        if (s->unacked == 0) {
++            qemu_bh_schedule(s->resume_bh);
+         }
+     }
+ }
+@@ -178,6 +331,15 @@
+     }
+ 
+     qemu_chr_fe_set_handlers(&s->chr, tbi_can_receive, tbi_receive, NULL, NULL, s, NULL, true);
++
++    if (s->inline_sync) {
++        qemu_mutex_init(&s->lock);
++        qemu_cond_init(&s->cond);
++    }
++    if (s->sync) {
++        s->resume_bh = qemu_bh_new(tbi_resume_bh, s);
++        qemu_add_vm_change_state_handler(tbi_vm_state_change, s);
++    }
+ }
+ 
+ static Property tbi_gpio_bridge_properties[] = {
+@@ -187,6 +349,9 @@
+      * hijacked. Bit N set => do not connect to output pin N.
+      */
+     DEFINE_PROP_UINT32("ignore-mask", TbiGpioBridge, ignore_mask, 0),
++    DEFINE_PROP_BOOL("vclock", TbiGpioBridge, vclock, false),
++    DEFINE_PROP_BOOL("sync", TbiGpioBridge, sync, false),
++    DEFINE_PROP_BOOL("inline", TbiGpioBridge, inline_sync, false),
+     DEFINE_PROP_END_OF_LIST(),
+ };
+ 
