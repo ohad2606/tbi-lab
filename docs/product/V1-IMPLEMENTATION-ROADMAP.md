@@ -1,6 +1,6 @@
 # TBI Lab — V1 Implementation Roadmap
 
-**Status:** DRAFT for PM review · **Date:** 2026-09-22 · **Baseline:** tag `v1-product-scope-complete`
+**Status:** APPROVED (with PM corrections RC-1..RC-7, applied below) · **Date:** 2026-09-22 · **Baseline:** tag `v1-product-scope-complete`
 (commit `09d5089`)
 
 **Inputs, all approved and closed:** `docs/sprints/SPRINT-0.md` + `SPRINT-0-ERRATA.md` (feasibility),
@@ -16,6 +16,21 @@ potentiometer, multimeter, oscilloscope, PWM, ADC/DAC, I2C/SPI, Wi-Fi/Bluetooth,
 authoring, breadboard, cloud sync, collaboration, mobile and AI are **absent by construction**. Where
 a dependency looked like it needed one, it is flagged in §17 rather than quietly added. No such
 contradiction was found.
+
+### Roadmap closure — PM corrections (approved 2026-09-22)
+
+The roadmap was approved with the following corrections. They are applied in the body of this
+document; this table is the index.
+
+| # | Correction | Where applied |
+|---|---|---|
+| RC-1 | **Schema v2 core freezes at the end of Sprint 2**, not Sprint 3. Sprint 2 is the first sprint that persists real product data, so its model is not disposable. From Sprint 3 on, schema changes are additive/backward-compatible where possible, and an explicit migration is required whenever persistence semantics change | §6.1, §6.4, §3 (Sprint 2/3), §17 risk 2, §18.3, §19 |
+| RC-2 | **The proven community QEMU fork is a development contingency, not an approved pilot runtime.** R1 must port the GPIO work and both determinism fixes onto the maintained Espressif baseline and re-run the release gate. If that port fails materially, the old runtime may keep unblocking development/testing, but **pilot runtime selection becomes a PM/architecture blocker** — it is never shipped silently | §3 (R1), §9, §17 risk 1, §18.3 |
+| RC-3 | **The four QEMU patch artifacts are reclassified `Promote` -> `Adapt / Port`.** Their logic is proven and must be preserved, but the artifacts are not production-ready until ported to the selected maintained baseline, reviewed against it, rebuilt reproducibly and revalidated by the deterministic gate. The release-gate test stays **Promote**; the electrical solver/model code stays **Promote** | §1.2 |
+| RC-4 | **Sprint 2 CI must not depend on the ~9.8 GB unversioned ESP32 toolchain.** It covers the fast product path only. The real-ESP32 suite becomes a separate provisioned CI/release-gate job after R1 makes the runtime reproducible. No routine product PR depends on `/home/ubuntu/tbi-tools/` | §1.1, §14.3, Sprint 2 plan |
+| RC-5 | **Product maturity milestones are named separately:** First Working Screen (end of Sprint 2), Product Alpha / Demoable Lab (~Sprint 4/5), ESP32-enabled Alpha (after Sprint 6/7), Controlled Pilot Ready (end of Sprint 8). There is no single "V1 date" | §18.4 |
+| RC-6 | **No PM decision on pilot audience size yet.** Capacity benchmarking stays parameterized; the decision is taken before Sprint 8 completion from measured data. Infrastructure is never dimensioned from the dev host | §16.3, §18.3, Sprint 2 plan §11 |
+| RC-7 | Approved product scope is not reopened by any of the above | — |
 
 ---
 
@@ -40,7 +55,9 @@ contradiction was found.
 **Three readiness gaps that the roadmap must close, none of which is product scope:**
 
 1. **No CI.** Every gate this roadmap defines (determinism, reference cases, performance, bit-identity)
-   is only as real as its automation. Sprint 2 introduces CI, starting with the suites that exist.
+   is only as real as its automation. Sprint 2 introduces CI for the **fast product path only**; it
+   must not depend on the unversioned ESP32 toolchain (RC-4). The real-ESP32 suite becomes a separate
+   provisioned job after R1.
 2. **No reproducible runtime provisioning.** The ESP32 tests depend on 9.8 GB of un-versioned state at
    absolute paths. Before the runtime track can be trusted — and long before a pilot deploys — the
    runtime needs a pinned, scripted provisioning path (versions, checksums, build recipe). Sprint R1.
@@ -49,7 +66,9 @@ contradiction was found.
 
 ### 1.2 Classification — Promote / Adapt / Disposable
 
-**Promote** = the logic is production-suitable with bounded cleanup. **Adapt** = technically valid and
+**Promote** = the logic is production-suitable with bounded cleanup. **Adapt / Port** = the logic is
+proven and must be preserved, but the artifact is not production-ready until ported to its production
+base, reviewed there, rebuilt reproducibly and revalidated (RC-3). **Adapt** = technically valid and
 must inform production, but should not be copied in. **Disposable** = evidence and harness; it stays
 where it is and never becomes product architecture.
 
@@ -63,10 +82,10 @@ where it is and never becomes product architecture.
 | `gate-d-persistence/src/store.ts` | 98 | **Promote** | Minimal IndexedDB wrapper, proven across a real full-browser restart | `app/` persistence layer | Needs migrations, error handling and a project index; the `Illegal invocation` defect is already fixed here |
 | `gate-d-persistence/src/autosave.ts` | 58 | **Promote** | Debounced autosave with an injectable timer; proven to coalesce a burst | `app/` persistence layer | Needs save-state reporting for the UI indicator |
 | `sprint-1-spikes/tests/closed-loop.esp32.test.ts` | 69 | **Promote** | **The release gate (R-MCU-1)** with pinned fingerprints | Production ESP32 test suite | Fingerprints must be re-pinned on the new QEMU baseline |
-| `sprint-1-spikes/esp32-appcpu-reset-determinism.patch` | 18 added | **Promote** | Required for determinism | `runtime/qemu/` patch set | Must be ported to the Espressif baseline |
-| `sprint-1-spikes/icount-warp-race-determinism.patch` | 18 added | **Promote** | Required for determinism; generic QEMU core fix | `runtime/qemu/` patch set + upstream candidate | Same |
-| `gate-c-bridge/qemu-patch/gpio-enable-gating.patch` | 42 lines | **Promote** | Correct GPIO drive gating; without it inputs inject phantom sources | `runtime/qemu/` patch set | Same |
-| `gate-c-bridge/qemu-patch/tbi_gpio_bridge.c` + `sprint-1-spikes/tbi_gpio_bridge.sprint1-spike.diff` | 192 + 413 | **Promote** | The bridge device incl. the synchronous `syncport` mode and virtual tick that make determinism possible | `runtime/qemu/` bridge device | Spike-only properties (`sync`, `inline`, keepalive) should be dropped; bank-1 output support added |
+| `sprint-1-spikes/esp32-appcpu-reset-determinism.patch` | 18 added | **Adapt / Port** | Required for determinism; logic proven | `runtime/qemu/` patch set | Must be ported to, reviewed against and rebuilt on the maintained Espressif baseline, then revalidated by the release gate |
+| `sprint-1-spikes/icount-warp-race-determinism.patch` | 18 added | **Adapt / Port** | Required for determinism; generic QEMU core fix; logic proven | `runtime/qemu/` patch set + upstream candidate | Same |
+| `gate-c-bridge/qemu-patch/gpio-enable-gating.patch` | 42 lines | **Adapt / Port** | Correct GPIO drive gating; without it inputs inject phantom sources | `runtime/qemu/` patch set | Same |
+| `gate-c-bridge/qemu-patch/tbi_gpio_bridge.c` + `sprint-1-spikes/tbi_gpio_bridge.sprint1-spike.diff` | 192 + 413 | **Adapt / Port** | The bridge device incl. the synchronous `syncport` mode and virtual tick that make determinism possible | `runtime/qemu/` bridge device | Spike-only properties (`sync`, `inline`, keepalive) should be dropped; bank-1 output support added |
 | `gate-c-bridge/src/bridge.ts` | 120 | **Adapt** | Correct event→solve→inject logic, but written for the asynchronous Sprint 0 loop | `server/session-host/` bridge | The production bridge is synchronous (exchange on the emulator thread); the *semantics* transfer, the transport does not |
 | `gate-c-bridge/src/qemuLink.ts` | 124 | **Adapt** | The line protocol is right; the chardev transport is superseded by syncsock | `server/session-host/` | Reuse the wire vocabulary, not the socket code |
 | `sprint-1-spikes/closed-loop/closedLoop.ts` | 246 | **Adapt** | The best existing reference for the production session loop: verified pristine flash copy, stimulus scheduling in simulation time, full fingerprinting | `server/session-host/` session loop | It is a harness: single-run, process-spawning, test-shaped. The *design* transfers |
@@ -84,11 +103,12 @@ where it is and never becomes product architecture.
 | `gate-a-electrical/browser/browser.spec.ts`, `gate-d-persistence/browser/persistence.spec.ts` | 339 | **Adapt** | The two browser acceptance proofs (bit-identity in a Worker; restore across a real browser restart) | Production browser suites re-express both against the real app | These two behaviours are product acceptance criteria, not just tests |
 | `gate-b-esp32/*` (probe, WASM bench, lx6-bench) | 387 + assets | **Disposable** | The record of why the MCU runs server-side | — | Never revisited unless browser emulation technology changes |
 
-**Summary:** 11 items to promote (the entire electrical core, the pin model, persistence primitives,
-the release gate and all four QEMU patches), 8 to adapt (session loop, bridge semantics, Worker
-pattern, revision metadata, and the acceptance-test behaviours), and the rest stays as evidence.
-**Roughly 1,300 lines of proven logic can be promoted**, which is why Milestone B is reachable in
-Sprint 3 rather than late.
+**Summary:** 8 items to promote (the entire electrical core, the pin model, persistence primitives and
+the release-gate test), 4 to adapt/port (the QEMU patch set: two determinism fixes, GPIO enable
+gating, the bridge device), 8 to adapt (session loop, bridge semantics, Worker pattern, revision
+metadata, and the acceptance-test behaviours), and the rest stays as evidence. **Roughly 1,300 lines
+of proven logic can be promoted**, which is why Milestone B is reachable in Sprint 3 rather than late.
+The QEMU patches are not counted as production-ready until R1 has ported and revalidated them.
 
 ---
 
@@ -141,7 +161,7 @@ skill profile, not a pause in the product track.
 | **In scope** | Production repo layout (`app/`, `packages/domain/`); schema v2 core (components, nets, connections, layout, values+units, revision metadata, schemaVersion, migration hook); app shell (menu, canvas, inspector panel); locale infrastructure with **complete** he/en for everything shipped; RTL chrome + LTR canvas; place/move/rotate/select/delete for **PSU, ground, resistor**; wire drawing with junction/net semantics; IndexedDB persistence with debounced autosave and save-state indicator; new/open/recent projects |
 | **Out of scope** | Any simulation, Run control, LED/diode/button/switch, ESP32, undo/redo, probes, export/import, examples, server anything |
 | **Acceptance** | See `docs/sprints/SPRINT-2.md` §8 — including the full-browser-restart restore and the Hebrew/English acceptance run |
-| **Risks retired** | Schematic interaction feasibility; schema shape under real editing; RTL from day one |
+| **Risks retired** | Schematic interaction feasibility; schema shape under real editing; RTL from day one. **Schema v2 core frozen at Sprint 2 DoD** (RC-1) |
 
 ### Sprint 3 — Electrical vertical slice
 
@@ -152,7 +172,7 @@ skill profile, not a pause in the product track.
 | **In scope** | Promote the Gate A engine into `packages/engine` with a stable API and a component-model registry; Worker host and transport; compile-from-snapshot (nets -> nodes); LED component with its model card; unit-aware property editing; run/stop state machine in the UI; first-class solver error surface (no ground, singular, non-convergence); engine determinism and reference-case tests carried into production tests |
 | **Out of scope** | Probes as pinned overlays, PSU instrument panel, CV/CC UI polish, other components, any server work |
 | **Acceptance** | Gate A's seven reference circuits reproduce **bit-identically** through the production engine and Worker; a deliberate no-ground circuit refuses to run with a specific message; edit-rerun loop stays responsive |
-| **Risks retired** | Engine promotion; Worker transport; "no fake simulation state" |
+| **Risks retired** | Engine promotion; Worker transport; "no fake simulation state". Sprint 3 may **extend** the frozen schema core additively for engine needs; it must not casually replace the persisted Sprint 2 model |
 
 ### Sprint 4 — Catalog and interaction completion
 
@@ -173,7 +193,8 @@ skill profile, not a pause in the product track.
 | **User-visible outcome** | None directly — this is the prerequisite that makes Milestone D possible. Its demonstration is the release-gate report |
 | **In scope** | Port the GPIO work onto the maintained Espressif QEMU baseline (P8); carry both determinism patches (synchronous APP-CPU reset; icount warp race); add bank-1 (GPIO32/33) output events (blocker B6); remove the community fork's demo board devices from GPIO 4/16/27; per-session immutable base firmware with a private writable flash copy; keep the provenance manifest and licence records; re-run and re-pin the release-gate fingerprints |
 | **Out of scope** | Any new peripheral (ADC/PWM/I2C/SPI/Wi-Fi/BT); reset paths; product UI |
-| **Acceptance** | R-MCU-1 passes on the new baseline with stress, with new pinned fingerprints; GPIO32/33 outputs are evented and covered by the gate; no pin is masked for fork-specific reasons; patch provenance recorded |
+| **Acceptance** | R-MCU-1 passes on the new baseline with stress, with new pinned fingerprints; GPIO32/33 outputs are evented and covered by the gate; no pin is masked for fork-specific reasons; patch provenance recorded; runtime provisioning is scripted and reproducible so the ESP32 suite can run as a separate provisioned CI/release-gate job |
+| **If the port fails materially** | The proven community fork remains a **development contingency** only: it may keep unblocking development and testing while the issue is investigated. It is **not** an approved pilot runtime and is never shipped silently. Pilot runtime selection then becomes a **PM/architecture blocker** (RC-2) |
 | **Risks retired** | The largest remaining technical unknown: whether the GPIO/bridge work survives a baseline change |
 
 ### Sprint R2 — Session Host service *(parallel track)*
@@ -402,7 +423,12 @@ gains new non-evidence code. This keeps the boundary honest without forbidding r
 The schema is the highest-coupling artifact in the project. It becomes production-grade in three
 steps, and **freezes** between them.
 
-### 6.1 Step 1 — v2 core (Sprint 2)
+### 6.1 Step 1 — v2 core (Sprint 2, **frozen at Sprint 2 DoD**)
+
+Sprint 2 is the first sprint that persists real product data, so this model is **not disposable**
+(RC-1). By the Sprint 2 Definition of Done the following core concepts are stable: project identity
+and schema version; component instance identity; stable language-neutral component type ids;
+terminals/pins; nets; engineering values and units; position/rotation; revision metadata.
 
 | Element | Decision for V1 |
 |---|---|
@@ -435,13 +461,17 @@ The package format wraps the project document rather than changing it (§12).
 
 | Freeze | When | Meaning |
 |---|---|---|
-| **Core freeze** | End of Sprint 3 | Components, nets, connections, values, layout, revision metadata and the migration mechanism are fixed. After this, only **additive** changes, each with a migration and a test |
+| **Core freeze** | **End of Sprint 2** | Project identity, schemaVersion, component instances, type ids, terminals, nets, connections, values/units, layout (position/rotation), revision metadata and the migration mechanism are fixed. From Sprint 3 on, changes are **backward-compatible/additive** where possible; any change to persistence semantics requires an explicit migration and a test |
 | **MCU freeze** | End of Sprint 6 | MCU and firmware fields fixed |
 | **Package freeze** | End of Sprint 7 | Export format version fixed, since artifacts and build metadata are then final |
 
-Sprint 3 is the right core-freeze point because by then the schema has survived **two** real
-consumers — the editor and the engine's compile step — which is what exposes shape mistakes. Freezing
-earlier is guesswork; freezing later blocks the parallel tracks.
+**Why Sprint 2, not Sprint 3 (RC-1).** Sprint 2 writes real user projects to IndexedDB. A model that
+persists user data cannot be treated as disposable, and deferring the freeze would invite a casual
+replacement in Sprint 3. The engine is still the second consumer: **Sprint 3 may extend the schema**
+for real electrical-engine needs (for example compile-time metadata), additively and with migrations
+where semantics change, but it must not replace the persisted Sprint 2 model. To make the early freeze
+safe, Sprint 2 shapes the core against the engine's known needs (nets -> nodes, `role: "ground"`,
+canonical SI values) as documented in the architecture, not against the editor alone.
 
 ---
 
@@ -546,7 +576,7 @@ In dependency order. Sprint R1 unless noted.
 | M2 | **Bank-1 GPIO output support** | Extend the bridge so GPIO32/33 output events are reported (blocker B6). Until done, those pins are `simulatorSupport: limited` | Release-gate test extended to cover a bank-1 output |
 | M3 | **Remove fork demo devices** | Drop the community fork's display/servo wiring on GPIO 4/16/27 so they are ordinary user pins | No pin masked for fork-specific reasons; a test asserts the mask is empty |
 | M4 | **Carry the determinism fixes** | Synchronous APP-CPU reset; icount `sleep=off` warp race. Both currently exist as patches in `experiments/sprint-1-spikes/` | Both applied to the new baseline with provenance |
-| M5 | **Port onto the maintained Espressif baseline** | P8: move the GPIO work and the bridge device onto Espressif's QEMU, keeping licence and provenance records | Full ESP32 suite green on the new baseline |
+| M5 | **Port onto the maintained Espressif baseline** | P8: move the GPIO work and the bridge device onto Espressif's QEMU, keeping licence and provenance records | Full ESP32 suite green on the new baseline. A material failure does **not** fall back silently to the fork for the pilot; it becomes a PM/architecture blocker (RC-2) |
 | M6 | **Deterministic closed-loop regression suite** | Promote the release-gate test into the production test suite; re-pin fingerprints for the new baseline; keep main-loop stress; add per-capability cases | R-MCU-1 passes, stressed, with new pinned fingerprints |
 | M7 | **Per-session firmware isolation** | Immutable base artifact + a private writable flash copy per session; hash verified before boot; `flashWritten` observable | A session that writes flash cannot affect the next session; verified by test |
 | M8 | **Unsupported-reset handling** *(Sprint 6)* | No reset control in the product; firmware-initiated restart is detected where possible and reported as unsupported rather than silently producing a non-deterministic run | Documented and surfaced; not implemented as a feature |
@@ -735,13 +765,15 @@ pinned to its tag rather than edited, and the reason is recorded.
 
 | Stage | Runs | When |
 |---|---|---|
-| Fast | typecheck, lint, unit tests | Every change |
-| Browser | Playwright Chromium suite | Every change (single worker; the dev host has one core) |
-| ESP32 | Release gate + ESP32 integration | On runtime changes and nightly — it needs the provisioned runtime |
+| Fast | install, typecheck, lint, unit tests, schema/domain tests, locale key checks (he/en) | Every change |
+| Browser | Playwright Chromium suite (editor, persistence) where practical | Every change (single worker; the dev host has one core) |
+| ESP32 | Release gate + ESP32 integration | **Separate provisioned job**, on runtime changes and nightly — only after R1 provides reproducible runtime/toolchain setup |
 | Performance | Solver budget and editor-interaction budget | Nightly, with recorded history |
 
-CI does not exist yet. Sprint 2 introduces it with the fast and browser stages; R1 adds the ESP32
-stage once runtime provisioning is scripted.
+CI does not exist yet. Sprint 2 introduces the fast and browser stages. **Sprint 2 CI must not depend
+on the ~9.8 GB unversioned, hard-coded ESP32 toolchain** (RC-4): no routine browser/product change may
+depend on `/home/ubuntu/tbi-tools/` paths. R1 adds the ESP32 stage as a separate provisioned
+CI/release-gate job once runtime provisioning is scripted and reproducible.
 
 ---
 
@@ -808,8 +840,11 @@ Each scenario records: CPU per session at pace 1.0 and unpaced, peak and steady 
 Session Host, session start latency, simulated/wall ratio under contention, build-service behaviour
 with concurrent builds, and the failure mode when admission control refuses.
 
-**V1 does not commit to any of these levels.** The pilot-audience decision selects the required one,
-and the capacity gate (P2) is measured on the hardware the pilot will actually use.
+**V1 does not commit to any of these levels.** No PM decision on audience size is required yet
+(RC-6). The decision is made **before Sprint 8 completion**, based on measured full-session CPU/RAM,
+build-service measurements, representative pilot hardware, the expected usage pattern and cost. The
+capacity gate (P2) is measured on the hardware the pilot will actually use; **infrastructure is never
+dimensioned from the current development host.**
 
 ---
 
@@ -819,8 +854,8 @@ Ranked by probability × impact. "Retired by" names the sprint or gate that remo
 
 | # | Risk | P | I | Retired by | How |
 |---|---|---|---|---|---|
-| **1** | **QEMU baseline port breaks determinism or GPIO** (the largest technical unknown left) | Med | **High** | **R1** | Port early, in parallel; the release gate with stress is the pass/fail. If it fails, V1 ships on the carried fork and the port becomes post-pilot — the fork is proven and patched |
-| **2** | **Schema churn ripples across editor, engine, persistence, protocol, export** | Med | **High** | **Sprint 3 core freeze** (§6.4) | Freeze after two real consumers; additive-only afterwards, each with a migration and a test |
+| **1** | **QEMU baseline port breaks determinism or GPIO** (the largest technical unknown left) | Med | **High** | **R1** | Port early, in parallel; the release gate with stress is the pass/fail. The proven community fork is a **development contingency only**: if the maintained-baseline port fails materially, the fork may keep unblocking development/testing, but it is **not** shipped in the pilot silently — pilot runtime selection becomes a **PM/architecture blocker** (RC-2) |
+| **2** | **Schema churn ripples across editor, engine, persistence, protocol, export** | Med | **High** | **Sprint 2 core freeze** (§6.4) | Freeze when real data is first persisted; Sprint 3 extends additively for the engine; explicit migration + test whenever persistence semantics change |
 | **3** | **Schematic interaction complexity** (wiring, junctions, nets, undo) is underestimated | **High** | Med | **Sprints 2 and 4** | Wiring and net semantics are in Sprint 2, deliberately first; undo/redo and wire editing in Sprint 4, where E16 may be reduced to delete-and-redraw |
 | **4** | **Arduino build latency makes the integrated workflow unpleasant** | Med | Med | **Sprint 7** | Measure cold and warm latency before committing UX; cache by source hash; if cold latency is unacceptable, ship `.bin` upload plus prebuilt examples while it is optimised |
 | **5** | **Server cost and capacity unknown for the pilot** | Med | Med | **Sprint 8 capacity gate** | Parameterized benchmark (§16.3) on pilot hardware; admission control and limits designed in from R2 |
@@ -875,19 +910,31 @@ the runtime track runs in parallel and PM review does not block for long.
 - **First real electrical results: end of Sprint 3 — roughly two weeks.**
 - **Controlled pilot: end of Sprint 8 — roughly two months.**
 
+The ~8-9 week controlled-pilot path stands. The maturity milestones along it are distinguished in
+§18.4; they are **not** collapsed into one "V1 date".
+
 ### 18.3 What could move the pilot date materially
 
 | Cause | Effect | Mitigation |
 |---|---|---|
-| **R1 (QEMU baseline port) starts late or fails** | Direct slip, day for day. It is the longest pole and the only item with a genuine unknown | Start it in parallel with Sprint 4 at the latest; fall back to the proven carried fork for the pilot and port afterwards |
-| **Schema churn after the core freeze** | Rework across up to five consumers | Freeze at Sprint 3; additive-only afterwards |
+| **R1 (QEMU baseline port) starts late or fails** | Direct slip, day for day. It is the longest pole and the only item with a genuine unknown | Start it in parallel with Sprint 4 at the latest. The carried fork may keep development/testing unblocked, but it is **not** an approved pilot runtime: a material port failure makes pilot runtime selection a **PM/architecture blocker** (RC-2) |
+| **Schema churn after the core freeze** | Rework across up to five consumers | Freeze at the end of Sprint 2; additive/backward-compatible afterwards, explicit migrations when semantics change |
 | **Arduino build latency far worse than expected** | Milestone E weakens or slips | Measure in Sprint 7 before committing the UX; `.bin` path already covers the journey |
 | **Capacity benchmark forces infrastructure change** | Sprint 8 extends | Parameterized scenarios; the decision is the PM's choice of level, taken with data |
-| **Pilot-audience size decided late** | The benchmark cannot be scoped | Needs a PM answer before Sprint 8, not before Sprint 2 |
+| **Pilot-audience size decided late** | The benchmark cannot be scoped | Benchmark stays parameterized (§16.3); the PM decides before Sprint 8 completion from measured data (RC-6) |
 | **Editor interaction quality needs more iteration** | Sprints 2 and 4 stretch | The most likely soft slip; it is also the most visible product value, so it is worth the time |
 
 No sprint carries blanket contingency. The two genuine unknowns — the baseline port and build latency
 — carry explicit ranges instead.
+
+### 18.4 Product maturity milestones (RC-5)
+
+| Maturity milestone | Target | What it means | What it does **not** mean |
+|---|---|---|---|
+| **First Working Screen** | End of Sprint 2 (~1 week) | The real product shell and a persistent schematic-editing slice: create/open a local project, place PSU/ground/resistor, wire, he/en, survives a full browser restart | Any simulation |
+| **Product Alpha / Demoable Lab** | Around Sprint 4/5 (~3-5 weeks) | A complete-enough non-MCU electrical experience to demonstrate seriously: real schematic editing, real DC simulation, the approved non-MCU catalog, measurements, project persistence, localization, and the project/file workflow as scheduled | Pilot readiness; any server-security readiness |
+| **ESP32-enabled Alpha** | After Sprint 6/7 as applicable (~6-7 weeks) | The real classic-ESP32 product workflow available in a controlled development/test environment | Pilot readiness; an approved pilot runtime (see RC-2) |
+| **Controlled Pilot Ready** | End of Sprint 8 (~8-9 weeks) | Authentication, isolation, limits, security gates, representative capacity measurements and deployment readiness all passed | Public/GA readiness |
 
 ---
 
@@ -908,9 +955,9 @@ and one subtraction.**
 | PSU / ground / resistor placement | **Keep** |
 | Wiring | **Keep**, including junction/net semantics, which is the correctness core |
 | IndexedDB persistence | **Keep** — promoted from Gate D, proven across a real browser restart |
-| Enough production schema for the slice | **Keep**, and make it the *core* of schema v2 (§6.1) rather than a temporary shape, because a throwaway schema would guarantee churn in Sprint 3 |
+| Enough production schema for the slice | **Keep**, and make it the *core* of schema v2 (§6.1) rather than a temporary shape — **frozen at Sprint 2 DoD** (RC-1), because Sprint 2 persists real data |
 | **Added: repository production boundary** (`app/`, `packages/domain/`, workspaces, lint/format) | The first production code must land in the right place; doing it later means moving files during a feature sprint |
-| **Added: CI** (typecheck, lint, unit, browser) | Every later gate depends on automation that does not exist yet. Cheap now, expensive to retrofit |
+| **Added: CI** (install, typecheck, lint, unit, domain, browser, locale keys) | Every later gate depends on automation that does not exist yet. Cheap now, expensive to retrofit. **No dependency on the ESP32 toolchain** (RC-4) |
 | **Added: migration mechanism** (not migrations) | Sprint 2 creates persisted data. Without a version check and a migration hook, every later schema change risks a developer's saved projects |
 | **Subtracted: nothing** | The candidate is already a genuine vertical slice |
 

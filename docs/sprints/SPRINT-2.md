@@ -1,6 +1,7 @@
 # Sprint 2 — First Product Surface
 
-**Status:** PLAN ONLY — awaiting PM approval. **Nothing in this document has been implemented.**
+**Status:** APPROVED — authorized for execution with roadmap corrections RC-1..RC-7
+(`docs/product/V1-IMPLEMENTATION-ROADMAP.md`, "Roadmap closure").
 **Date:** 2026-09-22 · **Milestone:** A · **Baseline:** `v1-product-scope-complete` (`09d5089`)
 
 **Authority:** `docs/product/V1-PRODUCT-SCOPE.md` (approved), `docs/architecture/V1-ARCHITECTURE.md`
@@ -47,15 +48,20 @@ control is shown.
 | `packages/domain/` | Project schema v2 core, types, validation, migration registry, catalog metadata. Pure data: no UI, no I/O, no locale |
 | Workspaces | npm workspaces + TypeScript project references. **No monorepo tool** |
 | Lint / format | ESLint + Prettier with a minimal shared config, applied to production code (experiments stay as they are) |
-| CI | Pipeline running typecheck, lint, unit tests and the browser suite on every change |
+| CI | Pipeline on every change: install, typecheck, lint, unit tests, schema/domain tests, he/en locale key checks, and the browser editor/persistence suite where practical. **Must not depend on the ESP32 toolchain** (`/home/ubuntu/tbi-tools/`, ~9.8 GB, unversioned): the real-ESP32 suite is a separate provisioned job introduced after R1 (RC-4) |
 | Boundary guard | A check that fails if production code imports from `experiments/` |
 
 `experiments/` is **not touched**. Nothing is moved out of it; promoted logic is copied deliberately,
 with the promotion recorded in the sprint report.
 
-### 3.2 Schema slice (`packages/domain`) — schema v2 core
+### 3.2 Schema slice (`packages/domain`) — schema v2 core (**frozen at Sprint 2 DoD**)
 
-Per roadmap §6.1. Implemented in full for the types this sprint ships:
+Per roadmap §6.1. Sprint 2 is the first sprint that persists real product data, so this model is
+**not disposable** (RC-1). At Sprint 2 DoD the core is stable: project identity/schema version,
+component instance identity, stable language-neutral type ids, terminals, nets, engineering
+values/units, position/rotation and revision metadata. From Sprint 3 on, changes are additive or
+backward-compatible where possible, with an explicit migration whenever persistence semantics change.
+Implemented in full for the types this sprint ships:
 
 | Element | Sprint 2 content |
 |---|---|
@@ -129,7 +135,7 @@ the legibility principles.
 | # | Task | Notes |
 |---|---|---|
 | T1 | Workspace layout, `app/` and `packages/domain/`, TS project references, lint/format | Keep `experiments/` scripts working unchanged |
-| T2 | CI pipeline: typecheck, lint, unit, browser; boundary guard | Single worker for browser tests (1-core host) |
+| T2 | CI pipeline: install, typecheck, lint, unit/domain, locale keys, browser; boundary guard | Single worker for browser tests (1-core host). No ESP32 toolchain dependency (RC-4) |
 | T3 | `packages/domain`: schema v2 core types, validation, migration registry | Pure functions, fully unit-tested |
 | T4 | `packages/domain`: catalog definitions for PSU, ground, resistor (terminals, params, units, translation keys, symbol ids) | Data, not code paths |
 | T5 | App shell: layout, palette, inspector, top bar, project lifecycle, recent list | |
@@ -185,7 +191,7 @@ The sprint is complete when **all** of the following are demonstrated:
 | A8 | The UI is complete in English **and** Hebrew, with no missing key and no hard-coded string |
 | A9 | Hebrew mirrors the chrome while the canvas, identifiers, numbers and units stay LTR, and **no project byte changes** on switch |
 | A10 | Core actions are reachable by keyboard with visible focus |
-| A11 | CI runs typecheck, lint, unit and browser tests on every change and is green |
+| A11 | CI runs install, typecheck, lint, unit/domain, locale-key and browser tests on every change, is green, and does not depend on the ESP32 toolchain |
 | A12 | Production code contains **no import from `experiments/`**, enforced by the boundary check |
 | A13 | The app shows nothing that does not work: no Run control, no simulation affordance |
 | A14 | The sprint report records what was promoted from feasibility code and every decision taken |
@@ -196,7 +202,8 @@ The sprint is complete when **all** of the following are demonstrated:
 2. All pre-existing tests still pass (55 unit, 4 browser, 20 ESP32 untouched).
 3. New tests per §6 exist and pass in CI.
 4. Schema v2 core is documented in `packages/domain` with the roadmap §6.1 table as its reference,
-   and is **not yet frozen** (freeze is end of Sprint 3).
+   and is **frozen** at the end of this sprint (RC-1). Sprint 3 may extend it additively for engine
+   needs; it may not casually replace it.
 5. No product capability outside the approved V1 scope was introduced.
 6. The sprint report is committed, including: promoted code, decisions (framework choice and why),
    the interaction performance baseline, anything deferred, and any PM decision surfaced.
@@ -210,7 +217,7 @@ The sprint is complete when **all** of the following are demonstrated:
 | Risk: wiring and net semantics harder than estimated | The mitigation is ordering: T9 starts early, and its acceptance tests are written first |
 | Risk: framework choice debated mid-sprint | Decide in the first hours against roadmap §7.1 criteria; record it in the sprint report |
 | Risk: Hebrew treated as a later pass | A8/A9 are acceptance criteria; a screen without Hebrew is not done |
-| Risk: schema shaped only by the editor | Accepted deliberately — the engine is the second consumer in Sprint 3, which is why the freeze is then, not now |
+| Risk: schema shaped only by the editor | Mitigated: the core is shaped against the engine's documented needs (nets -> nodes, `role: "ground"`, canonical SI values) because it freezes at this sprint's DoD; Sprint 3 extends it additively only |
 | Risk: scope creep toward "just add the LED" | The catalog for this sprint is three components. The LED arrives with simulation in Sprint 3, where it can be shown truthfully |
 
 ## 11. PM decisions required
@@ -219,5 +226,5 @@ The sprint is complete when **all** of the following are demonstrated:
 choice (React / Preact / vanilla TypeScript) is an engineering decision to be recorded, not a product
 decision.
 
-One PM answer will be needed **later, before Sprint 8**, and is noted here only so it is not
-forgotten: the **pilot audience size**, which selects the capacity benchmark level (roadmap §16.3).
+No PM decision on pilot audience size is required yet (RC-6). Capacity benchmarking stays
+parameterized; the decision is made before Sprint 8 completion from measured data (roadmap §16.3).
