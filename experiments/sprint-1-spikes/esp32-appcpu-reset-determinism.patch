@@ -1,0 +1,33 @@
+--- a/hw/xtensa/esp32.c (a159x36 03be9af0)
++++ b/hw/xtensa/esp32.c (TBI: synchronous APP CPU reset under icount)
+@@ -9,6 +9,7 @@
+  */
+ 
+ #include "qemu/osdep.h"
++#include "sysemu/cpu-timers.h"
+ #include "qemu/log.h"
+ #include "qemu/error-report.h"
+ #include "qemu/units.h"
+@@ -118,6 +119,22 @@
+ static void esp32_cpu_reset(void* opaque, int n, int level)
+ {
+     Esp32SocState *s = ESP32_SOC(opaque);
++    if (level && n == 1 && icount_enabled()) {
++        /*
++         * TBI Lab determinism fix. An APP CPU reset only touches CPU 1 (see the
++         * ESP32_SOC_RESET_APPCPU branch of esp32_soc_reset). Routing it through
++         * qemu_system_reset_request() defers it to the main loop, so the instruction at
++         * which CPU 1 restarts -- and therefore the whole dual-core interleaving from
++         * then on -- depends on host scheduling. Under -icount every vCPU runs on one
++         * round-robin thread, so CPU 1 is not executing here and the same steps can be
++         * applied synchronously, at a point fixed by the guest's instruction stream.
++         */
++        s->rtc_cntl.reset_cause[1] = ESP32_SW_CPU_RESET;
++        xtensa_select_static_vectors(&s->cpu[1].env, s->rtc_cntl.stat_vector_sel[1]);
++        remove_cpu_watchpoints(&s->cpu[1]);
++        cpu_reset(CPU(&s->cpu[1]));
++        return;
++    }
+     if (level) {
+         s->requested_reset = (n == 0) ? ESP32_SOC_RESET_PROCPU : ESP32_SOC_RESET_APPCPU;
+         /* Use different cause for APP CPU so that its reset doesn't cause QEMU to exit,

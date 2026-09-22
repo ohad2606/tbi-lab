@@ -1,6 +1,6 @@
 --- a/hw/misc/tbi_gpio_bridge.c (sprint-0-complete)
-+++ b/hw/misc/tbi_gpio_bridge.c (Sprint 1 spike: vclock, sync, inline; all default off)
-@@ -35,6 +35,11 @@
++++ b/hw/misc/tbi_gpio_bridge.c (Sprint 1: vclock, sync, inline, syncport, poll-us, keepalive-us, Q; all default off)
+@@ -35,6 +35,15 @@
  #include "hw/irq.h"
  #include "chardev/char-fe.h"
  #include "qom/object.h"
@@ -9,10 +9,14 @@
 +#include "qemu/main-loop.h"
 +#include "qemu/thread.h"
 +#include "hw/core/cpu.h"
++#include <sys/socket.h>
++#include <netinet/in.h>
++#include <netinet/tcp.h>
++#include <arpa/inet.h>
  
  #define TYPE_TBI_GPIO_BRIDGE "tbi-gpio-bridge"
  
-@@ -61,19 +66,123 @@
+@@ -61,19 +70,247 @@
      unsigned rx_len;
      /* Pins the host explicitly asked not to observe, as a 32-bit mask. */
      uint32_t ignore_mask;
@@ -43,6 +47,26 @@
 +    int pend_n;
 +    int pend_pin[2 * TBI_IN_PINS];
 +    int pend_level[2 * TBI_IN_PINS];
++
++    /*
++     * Sprint 1 closure spike: synchronous socket ("syncsock"). The device owns a private
++     * blocking TCP connection to the host and performs every exchange ON THE CALLING THREAD
++     * WHILE HOLDING THE BQL. Nothing else in QEMU can run during the exchange, so host latency
++     * stretches wall time only and cannot move any guest-visible event in virtual time.
++     *   device -> host   O|D <pin> <v> <vns>   GPIO event at virtual time vns
++     *   device -> host   T <vns>               periodic virtual-time tick (poll_us)
++     *   host -> device   I <pin> <level>       apply input NOW (answered with A ... <vns>)
++     *   host -> device   C                     continue
++     */
++    uint32_t syncport;
++    uint32_t poll_us;
++    int sfd;
++    char sbuf[256];
++    int slen;
++    QEMUTimer *poll_timer;
++    /* Timing probe: a periodic virtual timer that does nothing but re-arm. */
++    uint32_t keepalive_us;
++    QEMUTimer *keepalive_timer;
  };
  
  OBJECT_DECLARE_SIMPLE_TYPE(TbiGpioBridge, TBI_GPIO_BRIDGE)
@@ -94,6 +118,110 @@
 +    }
 +}
 +
++static void tbi_sock_write(TbiGpioBridge *s, const char *line)
++{
++    size_t n = strlen(line), off = 0;
++    while (off < n) {
++        ssize_t w = send(s->sfd, line + off, n - off, 0);
++        if (w <= 0) {
++            error_report("tbi-gpio-bridge: syncsock write failed");
++            exit(1);
++        }
++        off += w;
++    }
++}
++
++/* Blocking read of one line from the private socket. */
++static void tbi_sock_readline(TbiGpioBridge *s, char *out, size_t cap)
++{
++    for (;;) {
++        char *nl = memchr(s->sbuf, '\n', s->slen);
++        if (nl) {
++            size_t len = nl - s->sbuf;
++            if (len >= cap) {
++                len = cap - 1;
++            }
++            memcpy(out, s->sbuf, len);
++            out[len] = '\0';
++            memmove(s->sbuf, nl + 1, s->slen - (nl + 1 - s->sbuf));
++            s->slen -= (nl + 1 - s->sbuf);
++            return;
++        }
++        ssize_t r = recv(s->sfd, s->sbuf + s->slen, sizeof(s->sbuf) - s->slen, 0);
++        if (r <= 0) {
++            error_report("tbi-gpio-bridge: syncsock host disconnected");
++            exit(1);
++        }
++        s->slen += r;
++    }
++}
++
++/* Send one event line, then serve host commands until "C". Caller holds the BQL. */
++static void tbi_sync_exchange(TbiGpioBridge *s, const char *event)
++{
++    char line[128];
++    int pin, level;
++
++    tbi_sock_write(s, event);
++    for (;;) {
++        tbi_sock_readline(s, line, sizeof(line));
++        if (line[0] == 'C' && line[1] == '\0') {
++            return;
++        }
++        if (sscanf(line, "I %d %d", &pin, &level) == 2 &&
++            pin >= 0 && pin < TBI_IN_PINS && s->in_lines[pin]) {
++            char ack[96];
++            qemu_set_irq(s->in_lines[pin], level ? 1 : 0);
++            snprintf(ack, sizeof(ack), "A %d %d %" PRId64 "\n", pin, level ? 1 : 0,
++                     qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL));
++            tbi_sock_write(s, ack);
++        }
++    }
++}
++
++static bool tbi_sync_event(TbiGpioBridge *s, char kind, int pin, int level)
++{
++    char ev[96];
++
++    if (!s->syncport) {
++        return false;
++    }
++    snprintf(ev, sizeof(ev), "%c %d %d %" PRId64 "\n", kind, pin, level,
++             qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL));
++    tbi_sync_exchange(s, ev);
++    return true;
++}
++
++static void tbi_poll_cb(void *opaque)
++{
++    TbiGpioBridge *s = TBI_GPIO_BRIDGE(opaque);
++    char ev[128];
++    int64_t now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
++
++    {
++        /* Diagnostic: append each vCPU's PC and halted state, to localise divergence. */
++        CPUState *cpu;
++        int off = snprintf(ev, sizeof(ev), "T %" PRId64, now);
++        CPU_FOREACH(cpu) {
++            CPUClass *cc = CPU_GET_CLASS(cpu);
++            if (off < (int)sizeof(ev) - 24) {
++                off += snprintf(ev + off, sizeof(ev) - off, " %08" PRIx64 ":%d",
++                                (uint64_t)cc->get_pc(cpu), cpu->halted);
++            }
++        }
++        snprintf(ev + off, sizeof(ev) - off, "\n");
++    }
++    tbi_sync_exchange(s, ev);
++    timer_mod(s->poll_timer, now + (int64_t)s->poll_us * 1000);
++}
++
++static void tbi_keepalive_cb(void *opaque)
++{
++    TbiGpioBridge *s = TBI_GPIO_BRIDGE(opaque);
++    timer_mod(s->keepalive_timer,
++              qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + (int64_t)s->keepalive_us * 1000);
++}
++
 +/* Arm the wait BEFORE emitting, so a fast host reply cannot be lost. */
 +static bool tbi_inline_arm(TbiGpioBridge *s)
 +{
@@ -138,10 +266,13 @@
  /* Called by the GPIO device whenever an output-enabled pin changes level. */
  static void tbi_pin_changed(void *opaque, int pin, int level)
  {
-@@ -85,7 +194,13 @@
+@@ -85,7 +322,16 @@
      if (s->ignore_mask & (1u << pin)) {
          return;
      }
++    if (tbi_sync_event(s, 'O', pin, level ? 1 : 0)) {
++        return;
++    }
 +    bool armed = tbi_inline_arm(s);
      tbi_emit(s, 'O', pin, level ? 1 : 0);
 +    if (armed) {
@@ -152,10 +283,13 @@
  }
  
  /* Called when a pad's output enable changes: 1 = driving, 0 = high impedance. */
-@@ -99,7 +214,13 @@
+@@ -99,7 +345,16 @@
      if (s->ignore_mask & (1u << pin)) {
          return;
      }
++    if (tbi_sync_event(s, 'D', pin, isOutput ? 1 : 0)) {
++        return;
++    }
 +    bool armed = tbi_inline_arm(s);
      tbi_emit(s, 'D', pin, isOutput ? 1 : 0);
 +    if (armed) {
@@ -166,7 +300,7 @@
  }
  
  static void tbi_handle_line(TbiGpioBridge *s, const char *line)
-@@ -107,9 +228,41 @@
+@@ -107,9 +362,45 @@
      int pin;
      int level;
  
@@ -192,6 +326,10 @@
 +                tbi_emit(s, 'A', pin, level ? 1 : 0);
 +            }
 +        }
++    } else if (line[0] == 'Q' && line[1] == '\0') {
++        char v[48];
++        int n = snprintf(v, sizeof(v), "V %" PRId64 "\n", qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL));
++        qemu_chr_fe_write_all(&s->chr, (const uint8_t *)v, n);
 +    } else if (line[0] == 'C' && line[1] == '\0' && s->inline_sync) {
 +        qemu_mutex_lock(&s->lock);
 +        if (s->waiting) {
@@ -208,10 +346,46 @@
          }
      }
  }
-@@ -178,6 +331,15 @@
+@@ -147,8 +438,8 @@
+     Object *obj;
+     DeviceState *gpio;
+ 
+-    if (!qemu_chr_fe_backend_connected(&s->chr)) {
+-        error_setg(errp, TYPE_TBI_GPIO_BRIDGE ": a chardev is required");
++    if (!s->syncport && !qemu_chr_fe_backend_connected(&s->chr)) {
++        error_setg(errp, TYPE_TBI_GPIO_BRIDGE ": a chardev (or syncport) is required");
+         return;
      }
  
-     qemu_chr_fe_set_handlers(&s->chr, tbi_can_receive, tbi_receive, NULL, NULL, s, NULL, true);
+@@ -177,7 +468,39 @@
+         s->in_lines[i] = qdev_get_gpio_in_named(gpio, TBI_GPIO_IN_LINES, i);
+     }
+ 
+-    qemu_chr_fe_set_handlers(&s->chr, tbi_can_receive, tbi_receive, NULL, NULL, s, NULL, true);
++    if (qemu_chr_fe_backend_connected(&s->chr)) {
++        qemu_chr_fe_set_handlers(&s->chr, tbi_can_receive, tbi_receive, NULL, NULL, s, NULL, true);
++    }
++
++    if (s->syncport) {
++        struct sockaddr_in a = { .sin_family = AF_INET, .sin_port = htons(s->syncport) };
++        int one = 1;
++        a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
++        s->sfd = socket(AF_INET, SOCK_STREAM, 0);
++        if (s->sfd < 0 || connect(s->sfd, (struct sockaddr *)&a, sizeof(a)) != 0) {
++            error_setg(errp, TYPE_TBI_GPIO_BRIDGE ": cannot connect syncport %u", s->syncport);
++            return;
++        }
++        setsockopt(s->sfd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
++        if (s->poll_us) {
++            s->poll_timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, tbi_poll_cb, s);
++            timer_mod(s->poll_timer, (int64_t)s->poll_us * 1000);
++        }
++    }
++
++    if (s->keepalive_us) {
++        s->keepalive_timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, tbi_keepalive_cb, s);
++        timer_mod(s->keepalive_timer, (int64_t)s->keepalive_us * 1000);
++    }
 +
 +    if (s->inline_sync) {
 +        qemu_mutex_init(&s->lock);
@@ -224,13 +398,16 @@
  }
  
  static Property tbi_gpio_bridge_properties[] = {
-@@ -187,6 +349,9 @@
+@@ -187,6 +510,12 @@
       * hijacked. Bit N set => do not connect to output pin N.
       */
      DEFINE_PROP_UINT32("ignore-mask", TbiGpioBridge, ignore_mask, 0),
 +    DEFINE_PROP_BOOL("vclock", TbiGpioBridge, vclock, false),
 +    DEFINE_PROP_BOOL("sync", TbiGpioBridge, sync, false),
 +    DEFINE_PROP_BOOL("inline", TbiGpioBridge, inline_sync, false),
++    DEFINE_PROP_UINT32("syncport", TbiGpioBridge, syncport, 0),
++    DEFINE_PROP_UINT32("poll-us", TbiGpioBridge, poll_us, 0),
++    DEFINE_PROP_UINT32("keepalive-us", TbiGpioBridge, keepalive_us, 0),
      DEFINE_PROP_END_OF_LIST(),
  };
  

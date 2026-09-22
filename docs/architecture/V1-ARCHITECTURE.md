@@ -46,8 +46,8 @@ come from the 1-core ARM64 dev host and are **not** production projections.
 | Component | Responsibility |
 |---|---|
 | **Simulation Service** | One service. It terminates WebSocket connections, admits sessions, enforces limits, and spawns, supervises and reaps Session Hosts. It holds **no project data** beyond live sessions. |
-| **Session Host** (one per session) | A single process. It hosts the Electrical Engine (the same code as the browser), the MCU <-> electrical Bridge, the MCU Runtime driver and the session event loop. |
-| **QEMU process** (one per session) | The classic-ESP32 emulator: a separate OS process, connected to its Session Host over local IPC (chardev socket for GPIO, QMP for lifecycle, a chardev for UART). This is the GPL boundary (§15). |
+| **Session Host** (logical: one per session) | The session controller: the Electrical Engine (the same code as the browser), the MCU <-> electrical Bridge, the MCU Runtime driver and the session event loop. Whether each Session Host is its own OS process, or several are multiplexed in one process with strict per-session state, is an **implementation choice** (§11). |
+| **QEMU process** (**required**: one per active MCU session) | The classic-ESP32 emulator: always a separate OS process, never shared between sessions, connected to its Session Host over local IPC (the bridge socket for GPIO, QMP for lifecycle, a chardev for UART). This is both the isolation boundary for untrusted firmware and the GPL boundary (§15). |
 
 No other services exist in V1: no separate firmware service, database, message broker or
 orchestrator. Authentication and project sync are future boundaries (§2.6) and are **not**
@@ -129,10 +129,21 @@ content. Every other copy is derived and disposable:
 - Runtime values — node voltages, currents, pin levels, supply mode (CV/CC), serial output,
   simulated time, LED "lit" state — live in a separate **Runtime State** model. They are **never**
   written into the Project Document.
-- A value that is *both* a setting and runtime-adjustable (e.g. a PSU setpoint turned during a run)
-  exists twice: the **project value** (persistent) and the **runtime value** (session). Changing it
-  during a run changes only the runtime value. Writing it back to the project is an explicit user
-  action ("keep this setting"), handled by the browser as an ordinary project edit.
+- Changes made while a simulation exists fall into **exactly three categories**. The browser
+  classifies every change before anything reaches a simulation:
+
+| Category | Examples | What the browser does | What the session receives | Persistent? |
+|---|---|---|---|---|
+| **1. Persistent project edit** | add/remove/rewire a component, change a component type, assign different firmware | writes the Project Document (new `localRevision`, IndexedDB) | nothing live; the next run gets a **new snapshot** (controlled restart, §5) | yes |
+| **2. Live mirror of a persistent edit** | turn the PSU setpoint to 3.3 V, change a current limit, toggle PSU output, flip a panel switch whose position is part of the design | **first** writes the Project Document (new revision), **then** sends a `sim.control` carrying the new value and the revision it came from | the value, applied at a simulation instant (§7); acknowledged with that instant | yes — the **browser's** copy |
+| **3. Transient runtime command** | pause, resume, stop, MCU reset (EN), a momentary button press, a temporary stimulus | no project write | the command | no |
+
+  The server is **never authoritative for any project value**. In category 2 the session only holds
+  a runtime copy of what the browser already persisted. If the session is lost, nothing is lost. If
+  the command is rejected (`stale_snapshot`, `invalid_state`), the project still holds the user's
+  value, and the next snapshot carries it.
+- A category-2 change is a *topology-preserving* parameter change. Anything that changes topology is
+  category 1, by definition.
 
 ### 2.3 What is sent to the simulation service
 
@@ -189,7 +200,9 @@ flowchart TB
   end
   SNAP -- "send" --> Session
   RTS -- "frames" --> RS
-  RS -. "explicit user action only:<br/>'keep this setting'" .-> PD
+  UI2[User edit] -- "cat. 1 and 2: persist FIRST" --> PD
+  UI2 -. "cat. 2: then mirror as sim.control" .-> Session
+  UI2 -. "cat. 3: transient command only" .-> Session
   Session -. "no write path" .-x PD
 ```
 
@@ -413,6 +426,14 @@ Decisions:
    board. **`stop`** ends the run and returns to `ready` at t = 0.
 4. **Client disconnect never kills a session immediately.** The session auto-pauses and enters
    `detached` for a grace period. It then either reattaches or expires.
+5. **Initial session policy (PM decision P5; configurable, wall-clock based):**
+   - on disconnect, pause;
+   - reconnect grace **60 s**;
+   - paused or disconnected idle timeout **10 min**;
+   - maximum continuous active run **2 h**;
+   - **1** active MCU session per user.
+
+   These are policy values, not simulation inputs. They never affect the simulated timeline.
 
 ### 5.2 State machine
 
@@ -512,7 +533,10 @@ Every message:
 { "v":1, "type":"run.start",  "sessionId":"ses_7f", "seq":3, "cmdId":"c3", "snapshotId":"snp_sha256_…" }
 { "v":1, "type":"run.pause",  "sessionId":"ses_7f", "seq":4, "cmdId":"c4" }
 { "v":1, "type":"sim.control","sessionId":"ses_7f", "seq":5, "cmdId":"c5", "snapshotId":"snp_sha256_…",
+  "category":"mirror", "projectRevision":15,
   "target":"PSU1", "param":"setpointVoltage", "value":{ "value":3.3, "unit":"volt" } }
+{ "v":1, "type":"sim.input",  "sessionId":"ses_7f", "seq":6, "cmdId":"c6", "snapshotId":"snp_sha256_…",
+  "category":"transient", "target":"SW1", "param":"pressed", "value":true, "durationNs":50000000 }
 { "v":1, "type":"mcu.reset",  "sessionId":"ses_7f", "seq":6, "cmdId":"c6", "target":"U1" }
 { "v":1, "type":"run.stop",   "sessionId":"ses_7f", "seq":7, "cmdId":"c7" }
 { "v":1, "type":"session.attach", "sessionId":"ses_7f", "seq":1, "cmdId":"a1",
@@ -534,7 +558,7 @@ Every message:
     "D1":   { "current": 0.0057540 },
     "PSU1": { "mode":"cv", "current": 0.0061 },
     "U1":   { "gpio": { "2": { "dir":"output", "level":1, "togglesSinceLastFrame":0 } } } },
-  "pace": { "simPerWall": 0.31 } }
+  "pace": { "simPerWall": 0.99 } }
 
 { "v":1, "type":"serial.out", "seq":104, "port":"uart0", "simTimeNs":1851000000,
   "data":"IN=1\n" }
@@ -551,12 +575,25 @@ Every message:
 No QEMU instructions, individual solver iterations, Newton steps or per-transition GPIO events.
 `sim.frame` carries the **latest** values of UI-relevant quantities, plus aggregates such as
 `togglesSinceLastFrame` so that fast activity is visible without flooding the link. Frame rate is
-set by the client (default ≤ 20 Hz wall-clock) and is **independent of simulation progress** (§7.6).
+set by the client (default ≤ 20 Hz wall-clock) and is **independent of simulation progress** (§7.7).
 
 Aggregates are **counts, not inferred physics**. The protocol never reports a PWM-averaged
 "voltage" as a DC value: that would invent behaviour the DC engine does not model.
 
-### 6.6 Ordering, staleness and errors
+### 6.6 Command categories on the wire
+
+Every mutating command carries `category` (§2.2):
+
+- `"mirror"` — a live mirror of a persistent edit. It also carries the `projectRevision` that the
+  browser **already persisted** it in. The session records the value as runtime state only.
+- `"transient"` — pause, resume, stop, `mcu.reset`, momentary inputs and temporary stimuli. There is
+  no project revision.
+
+There is **no** category for "server-originated project change". The session answers every command
+with `cmd.result`, carrying `appliedAtSimTimeNs`. That instant, together with the ordered command log,
+is what makes a run reproducible (§7).
+
+### 6.7 Ordering, staleness and errors
 
 - **Ordering.** Commands execute in `seq` order. Server events are totally ordered by server `seq`
   and carry `simTimeNs`.
@@ -568,7 +605,7 @@ Aggregates are **counts, not inferred physics**. The protocol never reports a PW
   `unsupported_target`, `limit_exceeded`, `engine_nonconvergence`, `runtime_crash`, `internal`.
   Each carries `retryable`.
 
-### 6.7 Reconnect
+### 6.8 Reconnect
 
 `session.create` returns a `resumeToken`. After a disconnect, the client sends `session.attach`
 with `lastEventSeq`. The server answers with a **full `session.state` and `sim.frame`** — runtime
@@ -580,79 +617,192 @@ it says so.
 
 ## 7. Simulation time and determinism (ADR-007)
 
-This is where the evidence is weakest, so this section states exactly what is proven, what is
-targeted, and what is not claimed. Evidence: `docs/research/sprint-1-simulation-time.md`.
+This section states exactly what is proven, what is required for release, and what is not claimed.
+Evidence: `docs/research/sprint-1-simulation-time.md` (Results 1-3, and the Sprint 1 closure
+sections C1-C6).
 
-### 7.1 Two clocks, never mixed
+### 7.1 Three separate properties
+
+These three properties are independent. Each is claimed, or not claimed, on its own evidence.
+
+| Property | Meaning | V1 status |
+|---|---|---|
+| **Deterministic causality** | The same inputs produce the same observable events, in the same order, at the same **simulation** timestamps | **Required for release (R-MCU-1).** Achieved for the tested scope (§7.4) |
+| **Timing fidelity** | How closely simulated durations match real ESP32 silicon | **Partial, and stated honestly** (§7.5). Not cycle-accurate |
+| **Execution speed** | Simulated seconds per wall-clock second | **Host-dependent.** About 1.5x (unpaced) on the dev host in the V1 configuration (§7.7) |
+
+**Deterministic does not mean cycle-accurate.** A run can be bit-reproducible and still take
+longer in simulated time than real silicon would. **Execution speed never affects either of the
+other two**: a slow host stretches wall time only.
+
+### 7.2 Two clocks, never mixed
 
 | Clock | Source | Used for |
 |---|---|---|
-| **Simulation time** | QEMU's virtual clock (`QEMU_CLOCK_VIRTUAL`) under `-icount` | Ordering, stamping events, firmware timers, when controls apply |
-| **Wall-clock time** | Host and browser clocks | Pacing, UI frame rate, timeouts, diagnostics |
+| **Simulation time** | QEMU's virtual clock (`QEMU_CLOCK_VIRTUAL`) under `-icount` | Ordering, causality, stamping events, firmware timers, when commands apply |
+| **Wall-clock time** | Host and browser clocks | Pacing, UI frame rate, timeouts, idle/grace policies, diagnostics |
 
-**Wall-clock time never enters an electrical calculation.** The Electrical Engine is a pure function
-of (snapshot, pin states, runtime controls). That is proven: the solver is deterministic and
-bit-identical between Node and browser (Gate A).
+**Causality is defined in simulation time only.** Wall-clock time, host scheduling and network
+timing never decide the order or the instant of anything the firmware or the circuit can observe.
+The Electrical Engine is a pure function of (snapshot, pin states, runtime controls), and is
+bit-identical between Node and the browser (Gate A).
 
-### 7.2 How simulated time advances
+### 7.3 Release requirement R-MCU-1 — the closed-loop determinism contract
 
-- QEMU runs in **instruction-count mode** (`-icount shift=3,sleep=off`). Virtual time advances by
-  8 ns per executed instruction, and jumps directly to the next timer deadline when the guest is
-  idle. This is the **only validated setting**. `shift=2` (closer to the real 240 MHz) was unstable
-  and `sleep=on` was not reproducible.
-- **Consequence to state plainly:** the virtual CPU runs at the equivalent of **125 MHz**. Code
-  timed by ESP32 peripheral timers (`delay()`, FreeRTOS ticks, timer interrupts) is accurate in
-  simulated time — `delay(200)` measured exactly 200.000 ms. **Instruction-bound code** (busy
-  loops, heavy computation) takes about **1.9x longer in simulated time** than on a 240 MHz chip.
-  V1 is not cycle-accurate and does not claim to be.
+> Given an identical **project snapshot, firmware artifact, runtime configuration** (§14:
+> `runtimeVersion`, including the scheduling tick and the serial backend), **initial state**, and
+> **ordered command/input sequence**, where each command carries its simulation-time application
+> instant, the ESP32 simulation must reproduce identically:
+>
+> - GPIO output events (level and direction);
+> - electrical results (every solve: node voltages, branch currents, PSU mode);
+> - digital input transitions injected into the MCU;
+> - firmware-observable behaviour (the serial output stream);
+>
+> **each with the same simulation timestamp.**
+>
+> Internal emulator state (QEMU TB caches, host thread interleaving, memory layout) need **not** be
+> bit-identical.
 
-### 7.3 Electrical solve points
+- **Scope.** This applies to ESP32 (Mode B) simulation. It does **not** block Mode A (browser-local,
+  no MCU), whose solver is already deterministic (Gate A).
+- **Status.** The ESP32 feature is **not V1-ready** until R-MCU-1 holds in the automated release-gate
+  test **for the supported feature set** (§7.4 lists what is not yet covered).
+
+### 7.4 How the closed loop is made deterministic
+
+The mechanism has three parts. All three are measured; none is a correction constant.
+
+1. **Instruction-count time.** QEMU runs with `-icount shift=3,sleep=off`: 8 ns of simulation time
+   per executed instruction, and an idle guest jumps to the next timer deadline. This is the only
+   validated setting (`shift=2` was unstable; `sleep=on` was not reproducible).
+2. **A synchronous bridge ("syncsock").** The GPIO bridge device owns a private blocking socket to
+   the Session Host. Every exchange runs **on the emulator thread, holding the Big QEMU Lock**:
+   - A GPIO output event produces `O|D <pin> <level> <vns>`. The Session Host solves the circuit,
+     sends back changed input levels (`I`), and releases the emulator (`C`). Inputs are applied
+     before the guest executes its next instruction, at **zero elapsed simulation time**.
+   - A **periodic virtual-time tick** (`T <vns>`) is the only point at which runtime commands (§6.6)
+     are applied. A command is applied at the **first tick at or after its scheduled instant**, so
+     command timing is quantized to the tick. The tick instant is recorded and echoed.
+   - While an exchange is in progress, nothing in QEMU can run. Host or WAN latency stretches wall
+     time only, and cannot change ordering.
+3. **Two small QEMU fixes (18 added lines each).**
+   - **Synchronous APP-CPU reset** (ESP32 machine). Releasing the second core from reset went through
+     QEMU's asynchronous main-loop reset request, so the instant at which core 1 started depended on
+     host timing. Under icount the reset is now applied synchronously
+     (`experiments/sprint-1-spikes/esp32-appcpu-reset-determinism.patch`).
+   - **icount warp race** (QEMU core, `accel/tcg`). With `sleep=off`, the main loop could jump the idle
+     clock forward using a value that omitted a vCPU slice's not-yet-accounted instructions. The
+     overshoot depended on host timing (observed: 992 ns). The warp is now refused while a slice is
+     in flight (`experiments/sprint-1-spikes/icount-warp-race-determinism.patch`).
+4. **A pristine initial state.** The guest can write its flash image: a panic writes the coredump
+   partition, and that changes every later boot. Each session must boot from a fresh copy of the
+   hash-verified artifact (§11). This is part of "identical initial state".
+
+**Evidence.** The release-gate test `experiments/sprint-1-spikes/tests/closed-loop.esp32.test.ts`
+drives the real engine and pin model:
+
+- circuit: GPIO2 -> LED, GPIO2 -> 10 k -> GPIO5 <- 10 k <- PSU;
+- 4 PSU commands scheduled in simulation time;
+- for each run, it hashes the full timeline and the serial output.
+
+| Runtime | Scenario | Stress | Runs | Distinct results |
+|---|---|---|---|---|
+| No fixes | 3 s boot window | QMP main-loop stress | 20 | **4** |
+| No fixes | full 15.5 s | none | 10 | **2** |
+| APP-CPU fix only, pristine image | full, 1 ms tick | QMP main-loop stress | 10 | **2** |
+| **Both fixes** | full, 1 ms tick | QMP main-loop stress | 30 | **1** |
+| Both fixes | full, 1 ms tick | none | 14 | **1** |
+| Both fixes | full, 10 ms tick | QMP main-loop stress | 10 | **1** |
+| Both fixes | full, 10 ms tick | none | 8 | **1** |
+| Both fixes | 3 s boot window, 10 ms tick | QMP main-loop stress | 30 | **1** |
+
+With both fixes: **62 full-scenario runs (40 stressed) and 30 stressed boot-window runs, with zero
+divergences.** The hashes are also identical **across separate processes and batches**:
+
+- 1 ms tick: timeline `1382cd99…`, serial `c4d82896…`;
+- 10 ms tick: timeline `b779e313…`, same serial.
+
+Each run has 90 GPIO events, 45 solves, 5 injected input transitions and 4 commands. The reference
+fingerprints are pinned in the test.
+
+**Not yet covered, and blocking the claim for these features:**
+
+| Path | Why it is not deterministic yet | V1 treatment until fixed |
+|---|---|---|
+| Full-system / PRO-CPU reset (`esp_restart()`, watchdog reset, `mcu.reset` implemented as a system reset) | Still uses QEMU's asynchronous reset request | Must receive the same synchronous treatment before `mcu.reset`, restart or WDT is supported |
+| Deep/light sleep | The RTC sleep timer uses the host real-time clock | **Unsupported** — detect and report |
+| Wi-Fi / Bluetooth | Not modelled; timestamps use the host clock | **Unsupported** (already a V1 non-goal) |
+
+The proof covers **one firmware and one circuit**. Every future peripheral or bridge feature must
+extend the release-gate test before it is claimed.
+
+### 7.5 Timing fidelity — the honest claim
+
+Measured on the dev host (research note C4), with no correction constant anywhere:
+
+| What | Simulated result | Fidelity statement |
+|---|---|---|
+| `delay(1000)` | 999.90-1000.51 ms | Peripheral-timer time is consistent: firmware `millis()`, `esp_timer` and the CPU cycle counter all agree with simulation time to < 0.06 % |
+| Hardware timer, 100 ms period, over a 1 s window | 999.985 ms, 9 alarms | Timer intervals are exact in simulation time |
+| 1M-iteration busy loop | 48.8 ms (11.7 M cycles) | **Instruction-bound code is about 1.9x slower than silicon.** The virtual CPU is 125 MHz-equivalent vs 240 MHz on the real chip. This is an estimate; no physical board was measured |
+| Reset -> first `setup()` GPIO | 0.889 s (no tick), 0.468 s (10 ms tick), **0.379 s (1 ms tick)** | **Boot timing is not faithful.** It depends on the dual-core scheduling quantum (below). Real silicon boot time was not measured |
+
+**Where the "~12.9 s boot" came from.** It was **not** the emulator's boot path. The firmware image had
+been modified by the guest: an earlier panic had written the Arduino coredump partition, and every
+later boot processed that core dump. The same firmware with only that partition changed boots in
+12.789 s simulated; the pristine image boots in 0.889 s. The fix is artifact hygiene (§7.4 item 4).
+
+**The remaining boot effect is the scheduling quantum.** Under icount, QEMU runs the two ESP32 cores
+**round-robin on one thread**. It switches cores only at the next virtual-timer deadline: QEMU's 100 ms
+kick period by default, or the bridge tick when one is configured. Early boot phases land on exact
+multiples of the quantum (400.000 and 100.000 ms at 100 ms; 310.000 and 30.000 ms at 10 ms), and boot
+shrinks from 0.889 s to 0.379 s as the quantum goes from 100 ms to 1 ms. Real silicon runs both cores
+concurrently. Flash emulation and ROM/bootloader content are not the cause.
+
+**Consequences:**
+
+- The **tick is part of the timing model**, not just a polling interval. It is fixed per
+  `runtimeVersion` (§14), because changing it changes the simulated timeline.
+- **Recommended V1 tick: 1 ms.** Boot to `setup()` takes 0.38 s simulated, commands are quantized to
+  1 ms, and the unpaced run is still about 1.5x real time on the dev host. The value needs PM confirmation
+  (§18.1).
+- The UI and documentation may say: *"peripheral timers and `delay()` behave like the real chip;
+  CPU-heavy code runs about 2x slower; boot time is not representative."* They must not claim
+  cycle accuracy.
+
+### 7.6 Electrical solve points
 
 The DC engine is quasi-static: between events the network does not change, so no solve is needed.
 Solves occur only at:
 
-1. **t = 0**, after `session.load` (initial operating point);
-2. each **GPIO level or direction change** emitted by the MCU;
-3. each **runtime control**, at its application instant;
-4. each **MCU reset (EN)** event.
+1. **t = 0**, after `session.load` (the initial operating point);
+2. each **GPIO level or direction change** emitted by the MCU (synchronous exchange);
+3. each **runtime command**, at the tick where it is applied;
+4. each **MCU reset (EN)** event (once deterministic reset is in place, §7.4).
 
-Each solve is an event at one simulation instant, processed in emission order: update the pin
-models, solve, interpret digital inputs (datasheet V_IH/V_IL with hold in the undefined band), then
-inject any changed input levels. Gate C measured the whole step at about 3 ms of wall-clock time.
+Each solve is one event at one simulation instant, processed in emission order:
 
-### 7.4 Guarantees — honest tiers
+1. update the pin models;
+2. solve;
+3. interpret the digital inputs (datasheet V_IH/V_IL, with hold in the undefined band);
+4. inject any changed input levels before the guest continues.
 
-| Tier | Guarantee | Status |
-|---|---|---|
-| **G1** | Electrical results depend only on snapshot, pin states and controls — never on wall time, network or host load | **Proven** (Gate A determinism; Gate C independent-solver agreement) |
-| **G1** | Within a session, every event has a simulation timestamp and a single total order; commands apply in `seq` order at recorded instants | **By design**; mechanisms proven in Gate C |
-| **G1** | The MCU's own event timeline is reproducible across runs of the same firmware | **Proven** under `icount shift=3,sleep=off`: 6/6 identical, 0 ns divergence |
-| **G2 (target)** | Electrical responses are visible to firmware **at the same simulation instant** as the output that caused them (zero-delay DC response), **and** the whole closed loop is bit-reproducible run to run | **Not yet achieved.** Zero-lag response was measured (0 ns, `inline` spike), and a reproducible MCU timeline was measured (icount), but **not both at once**: holding the vCPU perturbed the timeline, and pausing at a TB boundary let the reply land non-deterministically |
-| — | Cycle accuracy; real-silicon instruction timing; analog/transient effects | **Not claimed in V1** |
+### 7.7 Pause, reset, stop, pacing
 
-**The strongest V1 guarantee we can state today is G1.** G2 is the V1 target. It is an explicit
-implementation item for the next runtime sprint, with a named hypothesis — apply bridge responses
-at a deterministic stop point, such as a `cpu_exit` at the GPIO write under icount — and an existing
-acceptance test (`experiments/sprint-1-spikes/lockstep_check.py`, which must report identical
-acknowledgements across runs). **If G2 cannot be achieved, V1 ships with G1, and the UI must not
-imply bit-reproducible replay.** This is flagged for PM input (§18).
-
-### 7.5 Pause, reset, stop
-
-- **Pause:** the VM stops, so virtual time freezes (icount). The engine is idle. Controls issued
-  while paused take effect at the paused instant, when the run resumes.
+- **Pause:** the Session Host withholds the reply to the next tick exchange, which freezes
+  simulation time. Commands issued while paused apply at the first tick after resume.
 - **MCU reset (EN):** a simulation event at the current time. The firmware restarts, the circuit
-  stays powered and the network state persists, as on real hardware.
+  stays powered, and the network state persists, as on real hardware. It requires the synchronous
+  reset path first (§7.4).
 - **Stop:** discards the run. The next start begins at t = 0 from the same snapshot.
-
-### 7.6 Pacing and the UI
-
-- Simulation progresses as fast as the host allows, capped at real time for interactive runs. On
-  a fast host the cap is applied by **pausing the VM between slices**; virtual time is frozen while
-  paused, so pacing cannot alter the simulated timeline.
-- On a slow host, the simulation runs **slower than real time**. The dev host measured **0.31x**.
-  The UI must show the ratio (`pace.simPerWall`) rather than hide it: a 1 Hz blink then visibly
-  blinks at about 0.3 Hz of wall time, while the simulation still reports 1 Hz of *simulated* time.
+- **Pacing:** the simulation runs as fast as the host allows, capped at real time for interactive
+  runs. The cap is applied by **delaying the tick reply**. Simulation time does not advance while
+  the reply is withheld, so pacing cannot alter the simulated timeline.
+- **Measured speed (V1 configuration, dev host, unpaced):** 15.5 s simulated in 10.3 s wall with a 1 ms
+  tick (**~1.5x**), and in 8.6 s with a 10 ms tick (~1.8x). The ROM phase alone runs at about 0.06x
+  (0.3 s simulated in ~5 s wall), so the first ~5 s of wall time after start show little progress. The UI
+  shows `pace.simPerWall` rather than hiding it.
 - UI frames are throttled independently (§6.5). Rendering never slows or speeds the simulation.
 
 ---
@@ -763,7 +913,7 @@ The runtime consumes a **Firmware Artifact** and does not care where it came fro
 | `sha256` | full hash | must match bytes |
 | `target` | `esp32` | must equal runtime target; image header chip ID checked |
 | `format` | `esp32.flash_image.merged` (bootloader + partitions + app at offsets, whole flash) | size = flash size, ESP image magic `0xE9` at `0x1000` |
-| `flash` | `size`, `mode`, `freq` | `mode` must be supported by the runtime version — **QIO is currently rejected** (Sprint 0: stalls at "Failed to set QIE bit"; build with DIO) |
+| `flash` | `size`, `mode`, `freq` | `mode` must be supported by the runtime version. **QIO is rejected** with the diagnostic `unsupported_flash_mode` (Sprint 0: the runtime stalls at "Failed to set QIE bit"). The server never converts or rewrites firmware. **DIO** is the supported V1 mode (P7) |
 | `producer` | `{kind, toolchain/core version}` — informational | not trusted for anything |
 | `runtimeCompat` | set of runtime versions it has been validated on (optional) | informational |
 
@@ -785,10 +935,10 @@ deployment technology (containers, VMs, seccomp profiles, cgroups) is chosen lat
 
 | Concern | Requirement |
 |---|---|
-| Process isolation | One QEMU process **per session**, unprivileged, never shared between users. Session Hosts are never shared between sessions. |
+| Process isolation | **Required:** one QEMU process **per active MCU session**, unprivileged, never shared between sessions or users. This is where untrusted firmware runs. **Optional (implementation choice):** whether the host-side session controller (engine + bridge + driver) is also one OS process per session, or several controllers share a process with strict per-session state. Per-process is simpler to reason about; multiplexing saves memory (the controller's own footprint is not yet measured, §12). |
 | CPU | Per-session CPU cap (planning figure: 1 core; §12). A runaway guest can only consume its own allowance. |
 | Memory | Per-session hard limit (planning figure: 512 MB for QEMU + Session Host); exceeding it fails the session, never the host. |
-| Time limits | Idle timeout with no client and no activity; `detached` grace period; maximum run duration per session. |
+| Time limits | Initial values (P5): reconnect grace 60 s, paused/disconnected idle timeout 10 min, maximum continuous active run 2 h, 1 active MCU session per user. Configurable. |
 | Guest networking | **None.** QEMU is started without network devices or user-mode networking, and no host-forward. (The ESP32 Wi-Fi/Ethernet models remain unused.) |
 | Filesystem | QEMU sees only a per-session scratch directory holding the flash image copy. No host paths, no shared directories, removed on reap. |
 | Host interfaces | No QEMU monitor exposed outside the Session Host; QMP and chardevs bound to per-session local sockets; no GDB stub in production. |
@@ -804,52 +954,75 @@ the Simulation Service is exposed publicly** (§18).
 
 ## 12. Resource model
 
-### 12.1 Measured inputs (Sprint 0 and Sprint 1, 1-core Neoverse-N1)
+### 12.1 Measured values (1-core Neoverse-N1 dev host)
 
-| Quantity | Value |
-|---|---|
-| QEMU RSS, MicroPython idle (Espressif build) | ~209 MB |
-| QEMU RSS, Arduino firmware, real-time mode | ~204 MB |
-| QEMU RSS, Arduino firmware, `icount` (V1 mode) | 84-132 MB |
-| QEMU CPU, Arduino firmware, real-time | ~0.8 core |
-| QEMU CPU, Arduino firmware, `icount` | ~0.91 core (CPU-bound: runs until paced or at host speed) |
-| QEMU CPU, idle MicroPython REPL, real-time | ~0 % |
-| Simulated/real-time ratio, `icount`, this host | **0.31x** |
-| Boot to MicroPython REPL (native, real-time) | 3.29 s |
-| First Arduino application GPIO event | ~12.9 s **simulated** time — see risk R3 |
-| Engine: nonlinear DC solve | 0.07-0.09 ms |
-| Bridge: event -> solve -> inject | ~3 ms wall (Gate C) |
-| Session Host (Node) baseline RSS | *not measured*; planning assumption ~60-80 MB |
+Every figure here was measured. Anything not measured is marked **unknown**; no planning
+assumption is substituted for a measurement.
 
-### 12.2 The dominant cost is CPU
+| Component and configuration | Memory (RSS) | CPU | Source |
+|---|---|---|---|
+| Espressif QEMU 9.2.2, MicroPython idle at REPL, real-time | **~209 MB** | ~0 % idle | Sprint 0 Gate B |
+| Selected GPIO-capable runtime (a159x36 + TBI patches), Arduino firmware, real-time | **~204 MB** | ~0.8 core | Sprint 1 |
+| Same runtime, `icount shift=3,sleep=off`, chardev bridge | **84-132 MB** | ~0.91 core (CPU-bound) | Sprint 1 |
+| Same runtime, V1 closed-loop configuration (icount + synchronous bridge + tick) | **145 MB** peak (`VmHWM`); ~90 MB sampled steady-state | ~0.8-0.9 core unpaced | Sprint 1 closure (§12.4) |
+| Minimal Node engine host (engine + one socket, no WebSocket server, no session logic) | **53 MB** bare Node; **66 MB** with engine and socket loaded | ~0.1-0.3 ms per nonlinear solve | Sprint 1 closure |
+| Full Session Host (session controller with WebSocket, protocol, buffers) | **unknown** | **unknown** | not built |
 
-The electrical engine is negligible: about 0.1 ms per solve, and solves occur only on GPIO events.
-**QEMU dominates.** In the V1 `icount` mode an active session uses about **one core** until it is
-paced to real time. Memory is second-order: roughly 150-300 MB per session, including the Session
-Host.
-
-### 12.3 Planning examples (estimates, not commitments)
-
-Assumptions: every session is actively running (the worst case), 1 core and ~300 MB each (QEMU plus
-Session Host plus headroom), and 20 % host reserve.
-
-| Concurrent active sessions | Cores | Memory |
+| Throughput and latency | Value | Source |
 |---|---|---|
-| 10 | ~12 | ~4 GB |
-| 50 | ~60 | ~18 GB |
-| 100 | ~120 | ~36 GB |
+| Nonlinear DC solve | 0.07-0.09 ms (browser Worker, uncontended); 0.31 ms (Node, while QEMU competed for the single core) | Gate A; Sprint 1 |
+| Bridge event -> solve -> inject, asynchronous bridge | ~3 ms wall | Gate C |
+| Simulated/wall ratio | configuration-dependent; see §7.7 | Sprint 1 closure |
 
-Mitigations that change these numbers, and that should be measured before any infrastructure
-decision:
+### 12.2 The dominant cost
 
-- **Real-time pacing** caps CPU on hosts faster than real time, because a paced session idles
-  between slices.
-- **Paused, detached and idle sessions** cost memory only, not CPU.
-- **Faster cores matter more than more cores.** QEMU `icount` is single-threaded per session, so the
-  0.31x ratio can only be raised by per-core speed.
+**QEMU dominates, and CPU dominates within QEMU.** An actively running ESP32 session in the V1
+timing mode consumed roughly one core on this host, because icount without sleep executes as fast as
+the host allows. Pacing to real time (§7.7) is what would make a session cheaper on a fast host. The
+electrical engine costs almost nothing, since it solves only at events.
 
-**This dev server is not representative of production.** Per-core speed on production-class x86 or
-Graviton hosts will change the pace ratio and CPU figures substantially, and must be measured (§18).
+Memory is second-order, but not small. The QEMU process alone is ~84-209 MB depending on
+configuration (145 MB peak in the V1 configuration), and the Session Host adds an unknown amount on top of the 66 MB minimal figure.
+
+### 12.3 Capacity planning — not yet possible, and not claimed
+
+No concurrent-session capacity figures are given here. Per-session CPU on a production-class core,
+the effect of pacing, and the full Session Host footprint are all unmeasured. Figures derived from
+this 1-core ARM64 dev server would not be representative.
+
+**Pre-production capacity gate.** Before any capacity or infrastructure commitment, the V1 runtime
+configuration must be benchmarked on **representative production-class hardware**, measuring per
+active session: CPU at pace = 1.0, CPU when unpaced, peak and steady RSS for QEMU and for the Session
+Host, boot time, and the simulated/wall ratio. This gate does **not** block general product
+implementation (PM decision P2).
+
+Once measured, capacity follows from:
+`sessions per host ≈ min(usable_cores / cpu_per_active_session, usable_memory / (qemu_rss + host_rss))`,
+with paused, detached and idle sessions costing memory but little CPU.
+
+### 12.4 V1 closed-loop configuration
+
+**Scope of the measurement:**
+
+- QEMU process only;
+- pristine firmware image, full 15.5 s release-gate scenario;
+- `-icount shift=3,sleep=off`, synchronous bridge;
+- unpaced (as fast as the host allows).
+
+Peak RSS is the kernel's `VmHWM`; the sampled figure is the maximum `VmRSS` in 200 ms samples.
+
+| Tick | QEMU peak RSS | Max sampled RSS | QEMU CPU time | Wall time | Simulated/wall |
+|---|---|---|---|---|---|
+| **1 ms** (recommended) | **145 MB** | 90 MB | 8.5 s | 10.3 s | ~1.5x |
+| 10 ms | **144 MB** | — | 7.5 s | 8.6 s | ~1.8x |
+
+- **Memory limits must use the peak.** A first measurement pass reported 92-94 MB. That was sampled
+  RSS on a modified image, and it understated the peak.
+- The host-side process in this test ran under the TypeScript dev toolchain (vite-node, 112-114 MB),
+  so it is **not** a Session Host figure. The Session Host remains **unknown** (§12.1).
+- None of these figures is a capacity claim (§12.3).
+
+Evidence: `docs/research/sprint-1-simulation-time.md` C5.
 
 ---
 
@@ -883,14 +1056,15 @@ Only dimensions that answer "what exactly produced this result?" are kept.
 | component `typeVersion` | integer per type | each component instance |
 | `protocolVersion` | integer | every message (`v`) |
 | `engineVersion` | semver + build hash | every solve result; `session.state` |
-| `runtimeVersion` | Session Host build (semver + hash) | `session.state` |
-| `qemuBuild` | upstream fork + commit + our patch set hash (e.g. `a159x36@03be9af0+tbi.p1(sha)`) | `session.state` |
+| `runtimeVersion` | Session Host build (semver + hash) **plus the timing configuration**: icount shift, bridge tick (§7.5) and serial backend. Each of these changes the simulated timeline | `session.state` |
+| `qemuBuild` | upstream fork + commit + our patch set hash (e.g. `a159x36@03be9af0+tbi.p1(sha)`). The patch set now includes the GPIO enable-gating fix, the bridge device, the ESP32 machine APP-CPU reset fix and the icount warp-race fix (QEMU core) | `session.state` |
 | `firmware` | `artifactId` (content hash) | snapshot and `session.state` |
 | `snapshotId` | content hash of the canonical snapshot | every result |
 
 **Reproducibility requirement.** A bug report carries `{snapshotId, firmware artifactId,
 engineVersion, runtimeVersion, qemuBuild, runConfig}`. With those, the exact run environment can be
-reconstructed. With G2 achieved (§7.4), the exact event timeline can be too. The Mode A equivalent is
+reconstructed. Under the determinism contract (§7.3), so can the exact event timeline, given the
+same ordered command sequence. The Mode A equivalent is
 `{snapshotId, engineVersion}`.
 
 Not versioned separately: the catalog as a whole (covered by per-type `typeVersion`) and the
@@ -925,7 +1099,12 @@ flowchart LR
   bundle contains QEMU.
 - **Provenance** for every QEMU change is recorded (SPRINT-0.md §15): upstream fork, commit, patch
   files and licence headers. The production QEMU build will carry a manifest of the same form (§14
-  `qemuBuild`).
+  `qemuBuild`). Sprint 1 added two patches to the GPL-2.0 tree, both recorded in
+  `experiments/sprint-1-spikes/`:
+  - the synchronous bridge mode, in `tbi_gpio_bridge.c`;
+  - the synchronous APP-CPU reset, in `hw/xtensa/esp32.c` of the a159x36 fork;
+  - the icount warp-race fix, in `accel/tcg/icount-common.c`, `accel/tcg/tcg-accel-ops-rr.c` and
+    `include/sysemu/cpu-timers.h`. This is generic QEMU code and a candidate for upstream submission.
 - The missing COPYING file in Espressif's **prebuilt binary** is a packaging/compliance finding. Our
   licence record uses the authoritative source-tree licensing.
 - **Formal legal/licence review** of the QEMU integration is required before commercial
@@ -979,15 +1158,23 @@ Every implementation sprint must preserve these. A change that breaks one requir
 9. **Runtime state and persistent project state are separate concepts and separate types.**
 10. **Feasibility experiments stay separate from production code** unless deliberately promoted,
     and promotion is recorded.
-11. **Wall-clock time never influences an electrical value.** Simulation time and wall time are
-    separate clocks (§7.1).
-12. **The simulation service has no write path to project data.**
+11. **Simulation causality is defined in simulation time, never by host wall-clock scheduling.**
+    Wall-clock time never influences an electrical value, an event's order, or the instant at which
+    an input reaches the firmware (§7).
+12. **The simulation service cannot mutate authoritative project state.** It has no write path, and
+    live changes are persisted by the browser before they are mirrored to a session (§2.2).
 13. **Unsupported behaviour fails explicitly** (unknown component, non-convergence, unsupported
     flash mode, wrong target). It is never approximated silently.
 14. **Untrusted firmware runs only inside a per-session, network-less, resource-limited QEMU
     process.**
 15. **QEMU stays behind a process boundary** and is never linked into, or shipped with, the browser
     application.
+16. **Deterministic does not mean cycle-accurate.** Reproducibility (deterministic causality), fidelity
+    to real ESP32 timing, and execution speed are separate properties, and each is claimed only as far
+    as it has been measured (§7).
+17. **Production capacity claims require representative measurements** (§12.3).
+18. **The ESP32 feature is not V1-ready until the integrated closed loop satisfies the determinism
+    contract** (§7.3, release gate R-MCU-1).
 
 ---
 
@@ -1003,56 +1190,64 @@ Every implementation sprint must preserve these. A change that breaks one requir
 | 4 | QEMU, bridge and engine co-located per session; the WebSocket carries only commands and throttled frames | ADR-004 |
 | 5 | Language-neutral project schema; user text verbatim | ADR-005 |
 | 6 | QEMU is a separate GPL-2.0 process, server-side only | ADR-006 (from Sprint 0 B2) |
-| 7 | Simulation time = QEMU virtual clock under `icount shift=3,sleep=off`; tiered guarantees G1 (now) / G2 (target) | ADR-007 |
+| 7 | Simulation time = QEMU virtual clock under `icount shift=3,sleep=off`. Closed-loop determinism contract R-MCU-1 is a release gate for ESP32 | ADR-007, §7.3 |
 | 8 | One electrical engine package, two hosts | ADR-008 |
 | 9 | Topology immutable during a session; edits = controlled restart; runtime controls dynamic | §5.1 |
 | 10 | `reset` = ESP32 EN event within the run; `stop` = back to t = 0 | §5.1 |
 | 11 | An MCU in the circuit always means Mode B; no "absent MCU" approximation | §4.3 |
 | 12 | WebSocket; JSON control, binary firmware upload; full-state resync on reattach | §6 |
-| 13 | QIO firmware rejected by the V1 runtime (DIO required) | §10 |
+| 13 | QIO firmware rejected with a diagnostic, never converted (DIO required) | §10, P7 |
+| 14 | Synchronous bridge: exchanges run on the emulator thread under the BQL; responses apply at zero elapsed simulation time | §7.4 |
+| 15 | Runtime commands apply only at the periodic virtual-time tick (quantized to the tick) | §7.4 |
+| 16 | The APP-CPU reset is synchronous under icount (QEMU machine fix), and a `sleep=off` warp is refused while a vCPU slice is in flight (QEMU core fix) | §7.4 |
+| 18 | Every session boots from a fresh copy of the hash-verified firmware artifact; the artifact is never attached writable | §7.4, §11 |
+| 17 | The tick is part of `runtimeVersion`. **Recommended value: 1 ms; awaiting PM confirmation** | §7.5, §14 |
 
 ### 18.2 Assumptions
 
 - No V1 user data exists yet, so schema v2 can start clean (Gate D v1 is feasibility-only).
-- A Session Host (Node) costs roughly 60-80 MB. *Not measured.*
-- One QEMU process and one Session Host process per session is acceptable at V1 scale. Pooling
-  Session Hosts is a later optimisation.
+- One QEMU process per active MCU session is **required** (§11). Whether each session also gets its own
+  Session Host process is an implementation choice. It is assumed acceptable at V1 scale, pending the
+  capacity gate (§12.3).
 - Firmware images stay ≤ 4 MB (validated flash layout).
 - UI frames at ≤ 20 Hz are sufficient for V1 presentation.
 
-### 18.3 Decisions that need PM input before implementation
+### 18.3 PM decisions (recorded 2026-09-22)
 
-| # | Question | Why it matters |
-|---|---|---|
-| P1 | **Accept G1 as the V1 floor, with G2 (bit-reproducible closed loop) as a target item for the next runtime sprint?** If G2 is mandatory for V1, it becomes a gating deliverable, not a target. | Determines whether "replay" can ever be a product promise |
-| P2 | **Approve measuring the runtime on production-class hardware** before any capacity or infrastructure plan. The dev host runs deterministic simulation at 0.31x real time. | Whether V1 simulation feels real-time at all |
-| P3 | **`icount` (deterministic, possibly slower than real time) as the only V1 timing mode**, with no real-time mode? Real-time mode is faster on this host but irreproducible (9.5 s divergence). | Product feel vs trustworthiness |
-| P4 | **Session start latency.** Emulated Arduino boot reaches `setup()` after ~12.9 s of *simulated* time (real chip: < 1 s). Approve investigating it as a runtime work item? | First-run experience |
-| P5 | **Session policy defaults**: idle timeout, detach grace, maximum run length, concurrent sessions per user | Cost and abuse control |
-| P6 | **Authentication before any public exposure** of the Simulation Service. Confirm it is required before, or in, the first sprint that deploys it. | Security |
-| P7 | **Unsupported flash modes**: reject QIO with a clear message (current decision), or convert images server-side? | Upload UX |
-| P8 | **Production QEMU baseline** (Preference A: GPIO on a maintained Espressif baseline). Schedule it now that QEMU is server-side. | Maintenance burden |
+| # | Decision |
+|---|---|
+| P1 | **Closed-loop determinism (formerly "G2", now contract R-MCU-1, §7.3) is required** before the ESP32 simulation feature is V1-ready. Solver-only determinism (formerly "G1") remains valid evidence but is not sufficient. This gates the MCU feature only; browser-local non-MCU simulation is not blocked. |
+| P2 | **Benchmark production-class hardware** before capacity or infrastructure commitments. This does not block general product implementation. |
+| P3 | **The V1 product uses deterministic simulation mode only.** Wall-clock / real-time mode is engineering and debug only. |
+| P4 | **Investigate start-up timing now**, as part of timing fidelity (§7.5). |
+| P5 | Initial, configurable **session policy**: on disconnect, pause; reconnect grace **60 s**; paused/disconnected idle timeout **10 min**; maximum continuous active run **2 h**; active MCU sessions per user **1**. |
+| P6 | **Authentication, authorization and resource limiting are mandatory before public exposure** of the simulation service. Not implemented in Sprint 1. |
+| P7 | **Reject QIO firmware** with a clear diagnostic. Do not silently convert or rewrite firmware on the server. DIO is the supported V1 configuration unless runtime support changes. |
+| P8 | **Prove the deterministic closed loop first** (done in Sprint 1 closure, §7.4). Then port and minimize the GPIO work onto a maintained Espressif QEMU baseline **before** productionizing the simulation service or expanding MCU peripheral scope. |
 
 ### 18.4 Risks
 
 | # | Risk | Impact | Mitigation |
 |---|---|---|---|
 | R1 | Deterministic mode too slow on production hosts | Simulation visibly slower than real time | Measure (P2); pace display honestly; faster cores |
-| R2 | G2 not achievable with QEMU's current mechanisms | Replay not bit-reproducible | G1 is still solid; hypothesis and test defined; fallback documented |
-| R3 | Long emulated boot | Slow first run | Investigate (P4); keep sessions warm across controlled restarts where the firmware is unchanged |
+| R2 | Determinism regresses: a new peripheral, the Espressif-baseline port (P8) or a QEMU rebase reintroduces a host-timing path | R-MCU-1 fails | The release-gate test runs with main-loop stress; each new feature extends it. Known open paths: full-system reset, sleep (§7.4) |
+| R3 | Emulated boot timing is not faithful; it depends on the dual-core scheduling quantum | 0.38 s to `setup()` at a 1 ms tick (0.89 s without a tick) | Root cause found (§7.5). Tick fixed per `runtimeVersion`. Boot time is documented as non-representative |
+| R11 | Upstream QEMU core changes (warp-race fix) must be carried through rebases | Determinism regresses silently on a rebase | Pinned release-gate fingerprints; offer the fix upstream |
 | R4 | ~1 core per active session | Hosting cost | Pacing; pause idle and detached sessions; measure (P2) |
 | R5 | Carrying QEMU fork patches (GPIO, bridge, fixes) | Maintenance on Espressif rebases | Preference A baseline; offer fixes upstream |
 | R6 | GPL obligations for the server-side QEMU | Compliance | Process boundary; provenance manifest; legal review before distribution |
 | R7 | Engine divergence between hosts | Different physics in A and B | Single build; bit-identity CI test |
-| R8 | `shift=3` virtual CPU is ~1.9x slower than real silicon for instruction-bound code | Timing-sensitive firmware behaves differently from hardware | Documented; peripheral-timer timing is exact; revisit `shift` once stable |
+| R8 | `shift=3` virtual CPU is ~1.9x slower than real silicon for instruction-bound code | Timing-sensitive firmware behaves differently from hardware | Documented; peripheral-timer timing agrees to < 0.06 %; revisit `shift` once stable |
+| R9 | Full-system reset (`esp_restart`, WDT, EN implemented as a system reset) is still asynchronous | `mcu.reset`/restart not deterministic | Apply the synchronous-reset treatment before these are supported; until then they are outside R-MCU-1 |
+| R10 | Tick-quantized command timing (1 ms) | A command lands up to one tick after its requested instant | Record and echo the actual application instant; document the quantum |
 
 ### 18.5 Promotion plan (for later sprints, not Sprint 1)
 
 | Feasibility code | Promoted to | Changes allowed |
 |---|---|---|
 | `gate-a-electrical/src` + `gate-c-bridge/src/pinModel.ts` | Electrical Engine package | packaging, compile-from-snapshot front end; **physics untouched** |
-| `gate-c-bridge/src/bridge.ts` | Session Host bridge | timestamped events, G2 mechanism |
-| `gate-c-bridge/qemu-patch/*` | production QEMU patch set | provenance manifest |
+| `gate-c-bridge/src/bridge.ts` + `sprint-1-spikes/closed-loop/` | Session Host bridge | synchronous (syncsock) protocol, tick-scheduled commands |
+| `gate-c-bridge/qemu-patch/*` + Sprint 1 bridge diff + APP-CPU reset and icount warp patches | production QEMU patch set (on the Espressif baseline, P8) | provenance manifest |
 | `gate-d-persistence/src` | Project Store | schema v2, migrations |
 
 Every promotion is a deliberate, reviewed step with its own tests carried over, per invariant 10.
