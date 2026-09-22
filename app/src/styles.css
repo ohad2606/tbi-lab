@@ -1,0 +1,644 @@
+/*
+ * TBI Lab — application styles.
+ * Chrome uses logical properties only (inline-start/end), so it mirrors cleanly under RTL.
+ * The canvas is a technical LTR space and is never mirrored.
+ */
+
+:root {
+  --bg: #f4f5f7;
+  --panel: #ffffff;
+  --border: #c9ced6;
+  --text: #16191d;
+  --muted: #4f5761;
+  --accent: #0b57d0;
+  --accent-soft: #dbe7fb;
+  --danger: #b3261e;
+  --warning-bg: #fff4d6;
+  --error-bg: #fde7e5;
+  --ok: #1b6e3a;
+  --canvas-bg: #ffffff;
+  --grid: #c3c9d2;
+  --ink: #1d232b;
+  --wire: #1d232b;
+  --selected: #0b57d0;
+  --focus: #e8710a;
+  font-family: system-ui, 'Segoe UI', Roboto, 'Noto Sans', 'Noto Sans Hebrew', Arial, sans-serif;
+  font-size: 15px;
+  color: var(--text);
+  background: var(--bg);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+.app {
+  height: 100%;
+  display: grid;
+  grid-template-rows: auto auto 1fr;
+}
+
+.app-message {
+  padding: 2rem;
+  font-size: 1.1rem;
+}
+
+:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* ---------------------------------------------------------------- top bar */
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding-block: 0.5rem;
+  padding-inline: 1rem;
+  background: var(--panel);
+  border-block-end: 1px solid var(--border);
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.brand {
+  font-weight: 700;
+  font-size: 1.1rem;
+  letter-spacing: 0.02em;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.project-name {
+  font: inherit;
+  font-weight: 600;
+  min-width: 12rem;
+  max-width: 28rem;
+  flex: 0 1 22rem;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+}
+
+.project-name:hover,
+.project-name:focus {
+  border-color: var(--border);
+  background: var(--panel);
+}
+
+.language {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+select,
+input {
+  font: inherit;
+}
+
+select {
+  padding: 0.3rem 0.4rem;
+}
+
+.save-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.save-icon {
+  display: inline-grid;
+  place-items: center;
+  inline-size: 1.3rem;
+  block-size: 1.3rem;
+  border-radius: 50%;
+  font-size: 0.8rem;
+  font-weight: 700;
+  border: 1.5px solid currentColor;
+}
+
+.save-saved {
+  color: var(--ok);
+}
+
+.save-error {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+/* ---------------------------------------------------------------- controls */
+
+.button {
+  font: inherit;
+  padding: 0.4rem 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--panel);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.button:hover {
+  background: var(--accent-soft);
+}
+
+.button-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.button-primary:hover {
+  background: #0842a0;
+}
+
+.button-danger {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.link-button {
+  font: inherit;
+  background: none;
+  border: none;
+  color: var(--accent);
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 0;
+}
+
+.icon-button {
+  inline-size: 2.2rem;
+  block-size: 2.2rem;
+  font-size: 1.2rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--panel);
+  cursor: pointer;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.small {
+  font-size: 0.87rem;
+}
+
+.technical {
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  unicode-bidi: isolate;
+}
+
+/* ---------------------------------------------------------------- banners */
+
+.banner {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  padding-block: 0.5rem;
+  padding-inline: 1rem;
+  border-block-end: 1px solid var(--border);
+}
+
+.banner-warning {
+  background: var(--warning-bg);
+}
+
+.banner-error {
+  background: var(--error-bg);
+  color: var(--danger);
+}
+
+/* ---------------------------------------------------------------- home */
+
+.home {
+  max-width: 52rem;
+  margin-inline: auto;
+  padding: 1.5rem 1rem;
+  overflow: auto;
+}
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 1rem 1.25rem;
+  margin-block-end: 1rem;
+}
+
+.card h2 {
+  margin-block-start: 0;
+  font-size: 1.1rem;
+}
+
+.new-project {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: flex-end;
+}
+
+.new-project label {
+  display: grid;
+  gap: 0.3rem;
+  flex: 1 1 18rem;
+}
+
+.new-project input {
+  padding: 0.45rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.project-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.project-entry {
+  inline-size: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.5rem;
+  text-align: start;
+  font: inherit;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--panel);
+  cursor: pointer;
+}
+
+.project-entry:hover {
+  background: var(--accent-soft);
+}
+
+.project-entry-name {
+  font-weight: 600;
+}
+
+/* ---------------------------------------------------------------- workspace */
+
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(11rem, 14rem) 1fr minmax(15rem, 20rem);
+  min-height: 0;
+}
+
+.palette,
+.inspector {
+  background: var(--panel);
+  padding: 0.75rem;
+  overflow: auto;
+}
+
+.palette {
+  border-inline-end: 1px solid var(--border);
+}
+
+.inspector {
+  border-inline-start: 1px solid var(--border);
+}
+
+.palette h2,
+.inspector h2 {
+  font-size: 1rem;
+  margin: 0 0 0.6rem;
+}
+
+.palette ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.palette-item {
+  inline-size: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font: inherit;
+  text-align: start;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--panel);
+  cursor: pointer;
+}
+
+.palette-item:hover,
+.palette-item.active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.palette-icon {
+  inline-size: 2.6rem;
+  block-size: 1.8rem;
+  flex: none;
+}
+
+.props {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.3rem 0.75rem;
+  margin: 0 0 0.75rem;
+}
+
+.props dt {
+  color: var(--muted);
+}
+
+.props dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+.field {
+  display: grid;
+  gap: 0.25rem;
+  margin-block-end: 0.8rem;
+}
+
+.field label {
+  font-weight: 600;
+}
+
+.field-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.field-row input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.field-row input[aria-invalid='true'] {
+  border-color: var(--danger);
+}
+
+.field-check {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.field-error {
+  color: var(--danger);
+  margin: 0;
+  font-size: 0.87rem;
+}
+
+.field p {
+  margin: 0;
+}
+
+.unit {
+  font-weight: 600;
+}
+
+.inspector-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-block: 0.5rem 1rem;
+}
+
+/* ---------------------------------------------------------------- canvas */
+
+.canvas-wrap {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  direction: ltr;
+}
+
+.canvas {
+  display: block;
+  inline-size: 100%;
+  block-size: 100%;
+  background: var(--canvas-bg);
+  touch-action: none;
+  user-select: none;
+  direction: ltr;
+}
+
+.canvas:focus-visible {
+  outline-offset: -3px;
+}
+
+.canvas.mode-placing,
+.canvas.mode-wiring {
+  cursor: crosshair;
+}
+
+.canvas.mode-pan {
+  cursor: grabbing;
+}
+
+.grid-dot {
+  fill: var(--grid);
+}
+
+.symbol {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.symbol .symbol-body {
+  fill: #f8f9fb;
+}
+
+.component {
+  cursor: move;
+  outline: none;
+}
+
+.component-hit {
+  fill: transparent;
+  stroke: none;
+}
+
+.component.selected .symbol {
+  stroke: var(--selected);
+}
+
+.component.selected .component-hit {
+  fill: rgba(11, 87, 208, 0.08);
+  stroke: var(--selected);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+}
+
+.focus-ring {
+  fill: none;
+  stroke: var(--focus);
+  stroke-width: 3;
+  visibility: hidden;
+}
+
+.component:focus-visible .focus-ring {
+  visibility: visible;
+}
+
+.ref-label,
+.value-label {
+  font-size: 14px;
+  fill: var(--ink);
+  stroke: none;
+  direction: ltr;
+  unicode-bidi: isolate;
+  pointer-events: none;
+}
+
+.ref-label {
+  font-weight: 700;
+}
+
+.wire {
+  fill: none;
+  stroke: var(--wire);
+  stroke-width: 2.5;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.wire-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 12;
+  cursor: pointer;
+}
+
+.wire-group.selected .wire {
+  stroke: var(--selected);
+  stroke-width: 4;
+}
+
+.wire-preview {
+  stroke: var(--selected);
+  stroke-dasharray: 6 4;
+  pointer-events: none;
+}
+
+.terminal {
+  cursor: crosshair;
+}
+
+.terminal-hit {
+  fill: transparent;
+}
+
+.terminal-mark {
+  fill: #fff;
+  stroke: var(--ink);
+  stroke-width: 1.5;
+  pointer-events: none;
+}
+
+.terminal.connected .terminal-mark {
+  fill: var(--ink);
+  r: 2.5px;
+}
+
+.terminal:hover .terminal-mark {
+  fill: var(--accent-soft);
+  stroke: var(--selected);
+  stroke-width: 2.5;
+  r: 7px;
+}
+
+.junction-dot {
+  fill: var(--wire);
+  stroke: none;
+  pointer-events: none;
+}
+
+.junction-hit {
+  fill: transparent;
+  cursor: pointer;
+}
+
+.junction.selected .junction-dot {
+  fill: var(--selected);
+}
+
+.rubber-band {
+  fill: rgba(11, 87, 208, 0.08);
+  stroke: var(--selected);
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+  pointer-events: none;
+}
+
+.ghost {
+  opacity: 0.5;
+  pointer-events: none;
+  fill: none;
+  stroke: var(--selected);
+  stroke-width: 2.5;
+}
+
+.canvas-controls {
+  position: absolute;
+  inset-block-start: 0.75rem;
+  inset-inline-end: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.canvas-hint {
+  position: absolute;
+  inset-block-end: 0.6rem;
+  inset-inline: 0.75rem;
+  width: fit-content;
+  max-width: calc(100% - 1.5rem);
+  padding: 0.3rem 0.6rem;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 0.87rem;
+  color: var(--muted);
+  pointer-events: none;
+}
+
+.canvas-hint[dir='rtl'] {
+  margin-inline-start: auto;
+}
+
+.control-icon {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  vertical-align: middle;
+}

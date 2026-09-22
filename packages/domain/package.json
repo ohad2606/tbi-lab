@@ -1,0 +1,10 @@
+{
+  "name": "@tbi-lab/domain",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "TBI Lab project schema v2, catalog metadata, validation, migrations and editing operations. Pure data: no UI, no I/O, no locale.",
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

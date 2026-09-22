@@ -1,0 +1,119 @@
+/**
+ * Local project store on IndexedDB.
+ *
+ * Promoted from experiments/gate-d-persistence/src/store.ts (proven across a real full-browser
+ * restart), extended with a project index for the recent list and atomic document + index
+ * writes. Documents are stored exactly as produced by the domain layer; opening them goes
+ * through the domain's version check and migration registry (see state/app.ts).
+ */
+
+import type { ProjectDocument } from '@tbi-lab/domain';
+
+export const DB_NAME = 'tbi-lab';
+export const DB_VERSION = 1;
+const PROJECTS = 'projects';
+const INDEX = 'projectIndex';
+const META = 'meta';
+
+/** What the recent-projects list needs, without loading whole documents. */
+export interface ProjectIndexEntry {
+  projectId: string;
+  /** User-authored, verbatim. */
+  name: string;
+  updatedAt: string;
+  schemaVersion: number;
+}
+
+function promisify<T>(request: IDBRequest<T>): Promise<T> {
+  return new Promise((resolve, reject) => {
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+function transactionDone(tx: IDBTransaction): Promise<void> {
+  return new Promise((resolve, reject) => {
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error ?? new Error('IndexedDB transaction failed'));
+    tx.onabort = () => reject(tx.error ?? new Error('IndexedDB transaction aborted'));
+  });
+}
+
+export function openDatabase(factory: IDBFactory = indexedDB): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const request = factory.open(DB_NAME, DB_VERSION);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(PROJECTS))
+        db.createObjectStore(PROJECTS, { keyPath: 'projectId' });
+      if (!db.objectStoreNames.contains(INDEX))
+        db.createObjectStore(INDEX, { keyPath: 'projectId' });
+      if (!db.objectStoreNames.contains(META)) db.createObjectStore(META);
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+export interface ProjectStorage {
+  save(doc: ProjectDocument): Promise<void>;
+  load(projectId: string): Promise<unknown>;
+  list(): Promise<ProjectIndexEntry[]>;
+  getOrCreateDeviceId(generate: () => string): Promise<string>;
+}
+
+export class ProjectStore implements ProjectStorage {
+  constructor(private readonly db: IDBDatabase) {}
+
+  static async open(factory: IDBFactory = indexedDB): Promise<ProjectStore> {
+    return new ProjectStore(await openDatabase(factory));
+  }
+
+  /** Document and index entry are written in one transaction: both land or neither does. */
+  async save(doc: ProjectDocument): Promise<void> {
+    const tx = this.db.transaction([PROJECTS, INDEX], 'readwrite');
+    tx.objectStore(PROJECTS).put(doc);
+    const entry: ProjectIndexEntry = {
+      projectId: doc.projectId,
+      name: doc.name,
+      updatedAt: doc.revision.updatedAt,
+      schemaVersion: doc.schemaVersion,
+    };
+    tx.objectStore(INDEX).put(entry);
+    await transactionDone(tx);
+  }
+
+  /** Raw stored value: it has not been validated or migrated yet. */
+  async load(projectId: string): Promise<unknown> {
+    const tx = this.db.transaction(PROJECTS, 'readonly');
+    const result = await promisify(tx.objectStore(PROJECTS).get(projectId));
+    await transactionDone(tx);
+    return result;
+  }
+
+  /** Most recently changed first. */
+  async list(): Promise<ProjectIndexEntry[]> {
+    const tx = this.db.transaction(INDEX, 'readonly');
+    const all = (await promisify(tx.objectStore(INDEX).getAll())) as ProjectIndexEntry[];
+    await transactionDone(tx);
+    return all.sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : a.updatedAt > b.updatedAt ? -1 : 0));
+  }
+
+  /** A stable identifier for this browser profile, created once and then reused. */
+  async getOrCreateDeviceId(generate: () => string): Promise<string> {
+    const readTx = this.db.transaction(META, 'readonly');
+    const existing = (await promisify(readTx.objectStore(META).get('deviceId'))) as
+      string | undefined;
+    await transactionDone(readTx);
+    if (existing) return existing;
+    const created = generate();
+    const writeTx = this.db.transaction(META, 'readwrite');
+    writeTx.objectStore(META).put(created, 'deviceId');
+    await transactionDone(writeTx);
+    return created;
+  }
+
+  close(): void {
+    this.db.close();
+  }
+}

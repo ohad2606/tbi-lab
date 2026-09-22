@@ -14,5 +14,6 @@ at the evidence.
 | [006](ADR-006-qemu-licensing-runtime-boundary.md) | QEMU licensing and runtime boundary | Accepted (PM, Sprint 0 B2) |
 | [007](ADR-007-simulation-time-contract.md) | Simulation time contract | Accepted (P1, P3, P4, P9, P10) |
 | [008](ADR-008-one-electrical-engine-two-hosts.md) | One electrical engine, two hosts | Proposed |
+| [009](ADR-009-browser-ui-stack.md) | Browser UI stack: Preact, Vite, inline SVG, in-house localization | Accepted (engineering, Sprint 2) |
 
 Status values: **Proposed** (awaiting PM review), **Accepted**, **Superseded by ADR-NNN**.

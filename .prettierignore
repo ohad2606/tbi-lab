@@ -1,0 +1,6 @@
+experiments/
+docs/
+node_modules/
+dist/
+test-results/
+package-lock.json

@@ -1,0 +1,144 @@
+/**
+ * TBI Lab project schema v2 — core.
+ *
+ * FROZEN at the end of Sprint 2 (roadmap RC-1). From Sprint 3 on, changes are additive or
+ * backward-compatible where possible, and any change to persistence semantics requires an
+ * explicit migration (see migrate.ts) and a test. See ../SCHEMA.md for the field reference.
+ *
+ * Every identifier here is language-neutral. User-authored text (project name, net names) is
+ * stored verbatim and never translated. Runtime/simulation values never appear in this model.
+ */
+
+export const SCHEMA_VERSION = 2;
+export const DOCUMENT_FORMAT = 'tbi-lab.project';
+
+/** Canonical SI unit ids. Locale affects only how a value is displayed. */
+export type UnitId = 'ohm' | 'volt' | 'ampere';
+
+/** An engineering value: an SI number plus its canonical unit id. */
+export interface Quantity {
+  value: number;
+  unit: UnitId;
+}
+
+export type ParamValue = Quantity | boolean;
+
+/** Component type ids are namespaced and language-neutral. */
+export type ComponentTypeId = 'instrument.lab_psu' | 'component.ground' | 'component.resistor';
+
+export interface ComponentInstance {
+  /** Stable reference designator (`R1`, `PSU1`), unique per project, never reused. */
+  id: string;
+  type: ComponentTypeId;
+  /** Version of the component type definition this instance was written against. */
+  typeVersion: number;
+  params: Record<string, ParamValue>;
+}
+
+export type NetRole = 'ground';
+
+export interface Net {
+  /** Opaque stable id (`N_1`). Never shown as a translated string. */
+  id: string;
+  /** `ground` exactly when the net contains a ground reference terminal; otherwise null. */
+  role: NetRole | null;
+  /** Optional user-authored name, stored verbatim, never translated. */
+  userName: string | null;
+}
+
+/** One terminal's membership of one net. A terminal belongs to at most one net. */
+export interface Connection {
+  component: string;
+  terminal: string;
+  net: string;
+}
+
+/** Integer schematic units. The editor grid pitch is GRID units (layout.ts). */
+export interface Point {
+  x: number;
+  y: number;
+}
+
+export type Rotation = 0 | 90 | 180 | 270;
+
+export interface ComponentPlacement {
+  x: number;
+  y: number;
+  rotation: Rotation;
+}
+
+/**
+ * A wire endpoint. Wires attach to terminals or junctions by reference, never by geometry:
+ * two wires that merely cross are not connected.
+ */
+export type WireEnd =
+  | { kind: 'terminal'; component: string; terminal: string }
+  | { kind: 'junction'; junction: string };
+
+export interface Wire {
+  id: string;
+  from: WireEnd;
+  to: WireEnd;
+  /**
+   * Intermediate waypoints. The drawn path is an orthogonal route through
+   * from -> vertices... -> to, horizontal leg first (layout.ts `wireRoute`).
+   */
+  vertices: Point[];
+}
+
+/** A point where wires join. Part of exactly one net. */
+export interface Junction {
+  id: string;
+  x: number;
+  y: number;
+}
+
+/**
+ * The schematic drawing. It defines connectivity through explicit wire endpoint references;
+ * `nets` + `connections` are the canonical netlist derived from it (nets.ts) and are what a
+ * simulation snapshot reads. Layout itself is excluded from any snapshot.
+ */
+export interface Layout {
+  components: Record<string, ComponentPlacement>;
+  wires: Wire[];
+  junctions: Junction[];
+}
+
+export interface RevisionMetadata {
+  /** Advances on every persisted local change. */
+  localRevision: number;
+  /** Last revision known to the cloud. Always null in V1: nothing acts on it. */
+  cloudRevision: number | null;
+  /** Local revision the cloud revision was derived from. Always null in V1. */
+  baseRevision: number | null;
+  /** ISO-8601 UTC. */
+  updatedAt: string;
+  /** Stable per-browser-profile id of the device that made the last change. */
+  deviceId: string;
+}
+
+export interface ProjectDocument {
+  format: typeof DOCUMENT_FORMAT;
+  schemaVersion: number;
+  /** Language-neutral project identity. Contains no locale. */
+  projectId: string;
+  createdWith: { app: string; schemaVersion: number };
+  createdAt: string;
+  revision: RevisionMetadata;
+  /** User-authored, verbatim. */
+  name: string;
+  components: ComponentInstance[];
+  nets: Net[];
+  connections: Connection[];
+  layout: Layout;
+  /**
+   * Last number issued per id prefix (`R` -> 3 means R1..R3 were issued). Guarantees that a
+   * deleted reference is never reused within the project.
+   */
+  idCounters: Record<string, number>;
+}
+
+/** Deep copy of JSON data. Project documents are plain JSON by construction. */
+export function cloneDocument<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
+}

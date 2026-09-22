@@ -1,7 +1,7 @@
 # Sprint 2 — First Product Surface
 
-**Status:** APPROVED — authorized for execution with roadmap corrections RC-1..RC-7
-(`docs/product/V1-IMPLEMENTATION-ROADMAP.md`, "Roadmap closure").
+**Status:** EXECUTED — awaiting PM review (report in §12). Authorized with roadmap corrections
+RC-1..RC-7 (`docs/product/V1-IMPLEMENTATION-ROADMAP.md`, "Roadmap closure").
 **Date:** 2026-09-22 · **Milestone:** A · **Baseline:** `v1-product-scope-complete` (`09d5089`)
 
 **Authority:** `docs/product/V1-PRODUCT-SCOPE.md` (approved), `docs/architecture/V1-ARCHITECTURE.md`
@@ -228,3 +228,147 @@ decision.
 
 No PM decision on pilot audience size is required yet (RC-6). Capacity benchmarking stays
 parameterized; the decision is made before Sprint 8 completion from measured data (roadmap §16.3).
+
+---
+
+## 12. Sprint report
+
+**Outcome: all acceptance criteria A1-A14 demonstrated on Chromium, with one qualification on A11
+(CI is defined and its exact steps pass in a clean clone, but it has not run on GitHub, because
+Sprint 2 is not pushed).** No PM decision was needed during the sprint. No stop condition (§11 of
+the PM direction) was hit.
+
+### 12.1 What exists now
+
+A real TBI Lab application (`app/`) on top of a pure domain package (`packages/domain/`):
+
+- **Project home:** create a project (name in any language, stored verbatim), a recent-projects
+  list, and a note that projects live in this browser. The last project reopens on launch.
+- **Workspace:** top bar (Projects, editable project name, save state, language), component palette
+  (lab PSU, ground, resistor), schematic canvas, and a property inspector.
+- **Canvas:** grid, zoom (wheel, buttons, keys), pan (middle-drag, Space+drag, arrows with nothing
+  selected) and fit-to-view. Click-to-place with automatic references. Select by click,
+  shift-click or rubber band. Move by drag or arrows, with wires following. Rotate in 90° steps (R,
+  or the inspector). Delete (Delete/Backspace, or the inspector).
+- **Wiring:** click a terminal, optionally click empty space to add bends, then click a terminal,
+  junction or wire. Drag-to-wire also works. Routing is orthogonal. Ending on a wire splits it and
+  creates a junction. Junction dots are drawn where three or more wire ends meet, including at a
+  terminal with two wires. **Crossings are never connections.** Unconnected terminals are open
+  circles; connected ones are filled.
+- **Inspector:** reference and localized type; unit-aware value fields (`220`, `1k`, `4k7`, `1.5k`,
+  `4R7`, `100mA`, `3.3V`) with range and specific localized errors; the PSU's output-enabled
+  setting.
+- **Persistence:** IndexedDB with debounced autosave and a save-state indicator ("All changes saved"
+  / "Saving…" / "Could not save" + retry). A failed write never drops the in-memory document.
+- **Localization:** complete English and Hebrew. Hebrew mirrors the chrome; the canvas, identifiers,
+  numbers, units and value fields stay LTR.
+- **Honesty:** there is no Run control, no simulation affordance and no computed value anywhere.
+  Values beside symbols are design values only.
+
+Screenshots of the English and Hebrew workspace and the Hebrew home were taken during acceptance.
+They are not committed, to keep binaries out of the repository.
+
+### 12.2 Acceptance criteria
+
+| # | Result | Evidence |
+|---|---|---|
+| A1 | **Pass** | `app/e2e/editor.spec.ts` "A1": Hebrew-named project is created, persisted and listed |
+| A2 | **Pass** | editor.spec "A2-A4" and "A2: move and rotate…": place, move (drag), rotate (R), rubber band, shift-click, delete |
+| A3 | **Pass** | editor.spec "A2-A4": terminal-to-terminal net; wire ending mid-wire creates a junction and joins nets; geometric crossing at (40,60) stays two nets; deleting R2 removes its wires, dissolves the junction, leaves no reference to R2 |
+| A4 | **Pass** | Browser: the persisted document is validated by the domain validator after every step. Unit: 5 seeds × 400 random edits, validated after each (`packages/domain/tests/fuzz.test.ts`) |
+| A5 | **Pass** | editor.spec "A5": `4k7` -> `{value: 4700, unit: "ohm"}`; `220`; `3.3` V; invalid and out-of-range inputs refused with no write |
+| A6 | **Pass** | editor.spec "A6", `app/tests/autosave.test.ts` (burst coalescing, saving->saved, failure->error->retry) |
+| A7 | **Pass** | `app/e2e/restart.spec.ts`: persistent profile, browser process closed and relaunched. The document is byte-identical, the last project reopens by itself in the remembered language, and wires and values render |
+| A8 | **Pass** | `app/tests/i18n.test.ts`: identical key sets, placeholders, catalog keys, and a TSX scan for hard-coded strings (with a self-test that it catches each form). `locale.spec.ts`: no untranslated word on any Hebrew screen |
+| A9 | **Pass** | locale.spec "A9": he -> en -> he leaves the stored JSON byte-identical and the viewBox, wire points and component position (relative to the canvas) unchanged. Computed direction is `ltr` for the canvas, value labels, value inputs and references under Hebrew |
+| A10 | **Pass** | `app/e2e/keyboard.spec.ts`: Tab to palette, Enter places at view centre, focus lands on the new component with a visible focus ring; arrows move, R rotates, Tab/Shift+Tab move between components, Delete deletes |
+| A11 | **Pass locally; not yet run on GitHub** | `.github/workflows/ci.yml`: install, typecheck, lint (+ boundary), unit/domain/locale tests, browser suites. No dependency on `/home/ubuntu/tbi-tools` (RC-4). The identical steps pass from a clean clone (§12.4) |
+| A12 | **Pass** | `scripts/check-boundaries.mjs` (in `npm run lint`) plus an ESLint `no-restricted-imports` rule. Verified to fail on a planted violation |
+| A13 | **Pass** | editor.spec "A13": no Run/Simulate/Start/Stop/Play control or text |
+| A14 | **Pass** | This report (§12.3 promotions, §12.5 decisions) |
+
+### 12.3 Promoted from feasibility code
+
+| From | To | Changes |
+|---|---|---|
+| `experiments/gate-d-persistence/src/store.ts` | `app/src/persistence/store.ts` | Project index store for the recent list; document + index written in **one** transaction; `load` returns raw data (validation/migration happen in the domain) |
+| `experiments/gate-d-persistence/src/autosave.ts` | `app/src/persistence/autosave.ts` | Save-state reporting; failed writes keep the newest document and are retried; injectable cancel. The Gate D `Illegal invocation` fix is carried |
+| Revision metadata of `experiments/gate-d-persistence/src/projectState.ts` | `packages/domain/src/schema.ts` | Fields only (`localRevision`, `cloudRevision`, `baseRevision`, `updatedAt`, `deviceId`). The feasibility component shape was **not** promoted, as the roadmap required |
+
+`experiments/` is unchanged (`git diff` against the roadmap tag is empty for it).
+
+### 12.4 Tests
+
+| Suite | Count | Result |
+|---|---:|---|
+| `packages/domain` unit (schema, units, editing/nets, validation incl. 2,000 corrupted documents, migration, fuzz) | 104 | pass |
+| `app` unit (locale bundles + hard-coded-string scan, formatting, autosave, IndexedDB store, app store) | 36 | pass |
+| `app` browser acceptance, Chromium (`npm run test:e2e`) | 14 | pass |
+| **New in Sprint 2** | **154** | **all pass** |
+| Sprint 0/1 unit (unchanged) | 55 | pass |
+| Sprint 0 browser (unchanged) | 4 | pass |
+| Real classic-ESP32 integration (unchanged, run locally with the provisioned toolchain) | 20 | pass (80.8 s) |
+
+**Clean-clone CI rehearsal:** the committed tree was cloned into an empty directory and the
+workflow's steps were run in order there: `npm ci`, `typecheck`, `lint`, `npm test`, `test:e2e`,
+`test:browser`. All passed. The GitHub run itself happens on the first push.
+
+### 12.5 Engineering decisions
+
+| Decision | Choice and reason |
+|---|---|
+| UI stack | **Preact 10 + Vite 8**, inline SVG canvas, no graphics or diagram framework, in-house localization. See **ADR-009**. Production bundle: 69 KB JS (24 KB gzip), 7.5 KB CSS |
+| Workspaces | npm workspaces. `@tbi-lab/domain` exports its TypeScript source, so it has no build step, and each project is typechecked separately. **Deviation:** TypeScript project references were not needed |
+| Connectivity model | **Wires reference terminals/junctions; geometry never connects.** `nets` + `connections` are the canonical netlist, re-derived after every edit, with stable net ids. This keeps a future breadboard view possible (PM-1) |
+| Where wires live | `layout.wires` / `layout.junctions`, next to `layout.components`. Layout (and so wires) stays out of simulation snapshots, and the netlist carries connectivity |
+| Reference ids | `idCounters` in the document guarantees that a deleted reference is never reused, even after reload |
+| Grid and coordinates | Integer schematic units on a 20-unit grid; clockwise rotation in 90° steps |
+| Routing | Orthogonal, horizontal leg first. Splitting a wire and dissolving a two-wire junction both preserve the drawn path exactly (tested) |
+| New project content | Opens with PSU1 and GND1 placed and unwired (product scope §10.3, §14.1) |
+| Parameter ranges (input validation, not physics) | Resistance 1 mΩ-1 GΩ; PSU setpoint 0-30 V; current limit 1 mA-5 A. Defaults 1 kΩ, 5 V, 100 mA, **output disabled**, like a real bench supply at power-on |
+| Newer-schema projects | Opened read-only if their core still validates under v2 rules; otherwise reported as not displayable. Never written |
+| Letter shortcuts | Physical key codes (`KeyR`, `KeyF`), so they work on a Hebrew keyboard layout |
+| Preferences | Locale and last-opened project live in `localStorage` per device, never in a project |
+
+### 12.6 Schema v2 core — status
+
+**Frozen** (RC-1), documented in `packages/domain/SCHEMA.md`. It stabilizes project identity and
+`schemaVersion`, component instance identity, language-neutral type ids with `typeVersion`,
+terminals, nets (role, verbatim user name), connections, SI values with canonical units, position
+and rotation, wires and junctions, revision metadata, and id counters. The migration registry is in
+place and empty; a newer schema is refused for writing. **Differences from the architecture's
+illustrative example (§3.2, "not a frozen wire format"):** added `format`, `createdAt` and
+`idCounters`; `layout` is `{components, wires, junctions}` rather than a bare placement map.
+
+### 12.7 Measurements
+
+| Measurement | Value (1-core ARM64 dev host) |
+|---|---|
+| Drag interaction, 30 components + 29 wires, 40 moves, per move incl. rendered frame | median 33-34 ms, p95 50-69 ms, max 55-80 ms (two runs). **Baseline for Sprint 3** |
+| Production bundle | 69.2 KB JS / 24 KB gzip; 7.5 KB CSS |
+| App browser suite wall time | ~32 s (14 specs, 1 worker) |
+
+### 12.8 Deviations from this plan
+
+1. TypeScript project references were not used (see §12.5); the typecheck and dependency direction
+   are enforced per project instead.
+2. A new project starts with PSU1 + GND1 already placed (product scope §10.3). All three types can
+   still be placed from the palette.
+3. **Keyboard wiring is not implemented.** The Sprint 2 plan's keyboard path covers
+   place/select/move/rotate/delete. Wiring by keyboard is a product-scope V1 requirement (§16.2);
+   it belongs to E15 "complete" (Sprint 5).
+4. Net naming is supported by the schema and the domain (`renameNet`, tested) but has **no UI**
+   yet; there was no Sprint 2 task for it.
+5. CI has not run on GitHub (Sprint 2 not pushed). See A11.
+
+### 12.9 Remaining risks for Sprint 3
+
+| Risk | Note |
+|---|---|
+| **Disabled PSU output** | New PSUs default to `outputEnabled: false`. Gate A's `LabPsu` has no enable state. Sprint 3 must model a disabled output truthfully (e.g. as an open source). It must not be treated as a 0 V source, and the circuit it leaves floating must not be solved into invented values |
+| **Floating islands** | User circuits routinely contain parts not connected to the reference (e.g. a lone resistor). The engine refuses singular systems. Sprint 3 needs a clear, localized refusal naming the floating parts; the product scope places this rule in §15.2 |
+| **Input ranges vs solver conditioning** | The 1 mΩ-1 GΩ resistance range is an input rule chosen without solver evidence. Sprint 3 must verify conditioning across it. Narrowing it later would make stored values invalid and need a migration, which the freeze makes expensive |
+| **Wire over an unconnected terminal** | A wire can pass visually over a terminal without connecting (correct by the reference model, and shown by the open terminal mark), but it is ambiguous to a reader. Candidate Sprint 4 validation/visual rule |
+| **Hebrew terminology sign-off** | Translations are complete and consistent, but terms such as "הארקה" (ground), "רשת" (net) and "הדק" (terminal) should be confirmed for the controlled glossary before more strings are added |
+| **CI on GitHub** | First real run happens at the first push; runner differences (fonts, timing) could surface there |
+| **Engine as second schema consumer** | The schema is frozen before the engine consumes it. The netlist shape was designed for compile-from-snapshot (nets -> nodes, `role: "ground"`, SI values), but any Sprint 3 need must be met **additively** |

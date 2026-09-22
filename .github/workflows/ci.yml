@@ -1,0 +1,61 @@
+# TBI Lab CI — the fast product path (roadmap RC-4).
+#
+# Deliberately NOT here: the real-ESP32 integration suite (`npm run test:esp32`) and the
+# QEMU-WASM measurement. They depend on the unversioned ~9.8 GB toolchain under
+# /home/ubuntu/tbi-tools and become a separate provisioned CI/release-gate job once Sprint R1
+# makes runtime provisioning reproducible. No step below may depend on that toolchain.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fast:
+    name: Install, typecheck, lint, unit and domain tests, locale keys
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      # ESLint + Prettier on production code, plus the experiments/ import boundary guard.
+      - run: npm run lint
+      # Sprint 0/1 unit suites + packages/domain + app unit tests (includes the he/en key
+      # completeness and hard-coded-string checks in app/tests/i18n.test.ts).
+      - run: npm test
+
+  browser:
+    name: Browser acceptance (Chromium)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      # Product: editor, persistence incl. full browser restart, localization, keyboard.
+      - run: npm run test:e2e
+      # Sprint 0 browser proofs (Worker bit-identity, Gate D restart) stay green.
+      - run: npm run test:browser
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: browser-test-results
+          path: test-results/
+          retention-days: 7

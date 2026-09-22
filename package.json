@@ -1,24 +1,39 @@
 {
-  "name": "tbi-lab-experiments",
+  "name": "tbi-lab",
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "description": "TBI Lab Sprint 0 feasibility experiments. Not product code.",
+  "description": "TBI Lab. Production code lives in app/ and packages/; experiments/ is frozen Sprint 0/1 evidence.",
   "scripts": {
+    "dev": "npm run dev --workspace @tbi-lab/app",
+    "build": "npm run build --workspace @tbi-lab/app",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.specs.json && tsc --noEmit -p packages/domain && tsc --noEmit -p app && tsc --noEmit -p app/tsconfig.test.json",
+    "lint": "eslint . && prettier --check app packages scripts eslint.config.js playwright.app.config.ts vitest.config.ts && node scripts/check-boundaries.mjs",
+    "format": "prettier --write app packages scripts eslint.config.js playwright.app.config.ts vitest.config.ts",
     "test": "vitest run",
+    "test:product": "vitest run packages app/tests",
     "test:unit": "vitest run experiments/gate-a-electrical/tests",
+    "test:e2e": "playwright test -c playwright.app.config.ts",
     "build:browser": "tsc -p experiments/gate-a-electrical/tsconfig.browser.json && cp experiments/gate-a-electrical/browser/index.html experiments/gate-a-electrical/dist-browser/browser/ && tsc -p experiments/gate-d-persistence/tsconfig.browser.json && cp experiments/gate-d-persistence/browser/index.html experiments/gate-d-persistence/dist-browser/browser/",
     "test:browser": "npm run build:browser && playwright test",
-    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.specs.json",
     "test:esp32": "vitest run --config vitest.esp32.config.ts",
     "test:qemu-wasm": "TBI_QEMU_WASM=1 playwright test experiments/gate-b-esp32/browser/qemu-wasm.wasm.spec.ts"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.63.0",
     "@types/node": "^26.6.2",
     "eecircuit-engine": "^1.8.0",
+    "eslint": "^10.11.0",
     "fake-indexeddb": "^6.2.5",
+    "globals": "^17.12.0",
+    "prettier": "^3.9.8",
     "typescript": "^5.9.2",
+    "typescript-eslint": "^8.70.1",
     "vitest": "^3.2.4"
-  }
+  },
+  "workspaces": [
+    "app",
+    "packages/*"
+  ]
 }
