@@ -575,7 +575,7 @@ Every message:
 No QEMU instructions, individual solver iterations, Newton steps or per-transition GPIO events.
 `sim.frame` carries the **latest** values of UI-relevant quantities, plus aggregates such as
 `togglesSinceLastFrame` so that fast activity is visible without flooding the link. Frame rate is
-set by the client (default ≤ 20 Hz wall-clock) and is **independent of simulation progress** (§7.7).
+set by the client (default ≤ 20 Hz wall-clock) and is **independent of simulation progress** (§7.8).
 
 Aggregates are **counts, not inferred physics**. The protocol never reports a PWM-averaged
 "voltage" as a DC value: that would invent behaviour the DC engine does not model.
@@ -730,7 +730,7 @@ fingerprints are pinned in the test.
 
 | Path | Why it is not deterministic yet | V1 treatment until fixed |
 |---|---|---|
-| Full-system / PRO-CPU reset (`esp_restart()`, watchdog reset, `mcu.reset` implemented as a system reset) | Still uses QEMU's asynchronous reset request | Must receive the same synchronous treatment before `mcu.reset`, restart or WDT is supported |
+| Full-chip reset: `esp_restart()`, watchdog reset, in-place UI / EN reset | Still uses QEMU's asynchronous reset request | **Unsupported and open.** Each must satisfy R-MCU-1 before the product exposes it as supported behaviour. It does **not** block Sprint 1 closure (P10), and is not implemented now |
 | Deep/light sleep | The RTC sleep timer uses the host real-time clock | **Unsupported** — detect and report |
 | Wi-Fi / Bluetooth | Not modelled; timestamps use the host clock | **Unsupported** (already a V1 non-goal) |
 
@@ -764,14 +764,50 @@ concurrently. Flash emulation and ROM/bootloader content are not the cause.
 
 - The **tick is part of the timing model**, not just a polling interval. It is fixed per
   `runtimeVersion` (§14), because changing it changes the simulated timeline.
-- **Recommended V1 tick: 1 ms.** Boot to `setup()` takes 0.38 s simulated, commands are quantized to
-  1 ms, and the unpaced run is still about 1.5x real time on the dev host. The value needs PM confirmation
-  (§18.1).
+- **`hostCommandQuantum` = 1 ms of simulated time is the approved V1 default** (PM decision P9). At
+  that value, boot to `setup()` takes 0.38 s simulated and the unpaced run is about 1.5x real time on
+  the dev host. See §7.6 for exactly what the quantum is and is not.
 - The UI and documentation may say: *"peripheral timers and `delay()` behave like the real chip;
   CPU-heavy code runs about 2x slower; boot time is not representative."* They must not claim
   cycle accuracy.
 
-### 7.6 Electrical solve points
+### 7.6 `hostCommandQuantum` — what it is, and what it is not
+
+**Definition.** `hostCommandQuantum` is the **default scheduling quantum for host and runtime
+commands**: the period of the bridge's virtual-time tick, and therefore the only set of simulation
+instants at which a command from the Session Host can be applied. A command scheduled for instant `t`
+is applied at the first tick at or after `t`, and the run echoes the actual application instant.
+
+**Approved V1 default: 1 ms of simulated time** (PM decision P9).
+
+**It is part of the runtime and reproducibility configuration.** It belongs to `runtimeVersion` (§14)
+and to the `runConfig` carried in bug reports, because it participates in the simulated timeline.
+
+**It is configurable internally.** Other values (e.g. 10 ms) are used in engineering and measurement
+work, and both 1 ms and 10 ms are covered by the release-gate test. **V1 exposes only the approved
+1 ms product mode**; the quantum is not a user-facing setting.
+
+**It is NOT:**
+
+| Not this | Because |
+|---|---|
+| the electrical solver timestep | The DC engine is quasi-static and event-driven. It solves at events (§7.7), not on a fixed grid |
+| GPIO resolution | GPIO output events are timestamped at the instruction that produced them |
+| PWM resolution | Peripheral behaviour comes from the emulated hardware, at instruction and peripheral-timer resolution |
+| MCU instruction resolution | Instructions advance simulated time at 8 ns each (`shift=3`) |
+| evidence of cycle accuracy | Nothing here is cycle-accurate (§7.1, §7.5) |
+
+**The GPIO -> electrical -> GPIO-input path is independent of the quantum.** It is event-driven: it runs
+at the relevant emulator boundary, as a synchronous exchange at the instruction that changed the pin,
+and the response is applied with **zero elapsed simulation time** (§7.4). The quantum governs only when
+commands *from the host* enter the simulation.
+
+**Different quantum values may legitimately produce different timelines.** Determinism means identical
+externally observable results for the **same complete runtime configuration, including the quantum** —
+not identity across different configurations. The release-gate test holds one reference fingerprint per
+quantum, which demonstrates both properties at once.
+
+### 7.7 Electrical solve points
 
 The DC engine is quasi-static: between events the network does not change, so no solve is needed.
 Solves occur only at:
@@ -788,13 +824,13 @@ Each solve is one event at one simulation instant, processed in emission order:
 3. interpret the digital inputs (datasheet V_IH/V_IL, with hold in the undefined band);
 4. inject any changed input levels before the guest continues.
 
-### 7.7 Pause, reset, stop, pacing
+### 7.8 Pause, reset, stop, pacing
 
 - **Pause:** the Session Host withholds the reply to the next tick exchange, which freezes
   simulation time. Commands issued while paused apply at the first tick after resume.
-- **MCU reset (EN):** a simulation event at the current time. The firmware restarts, the circuit
-  stays powered, and the network state persists, as on real hardware. It requires the synchronous
-  reset path first (§7.4).
+- **MCU reset (EN):** conceptually a simulation event at the current time: the firmware restarts, the
+  circuit stays powered, and the network state persists, as on real hardware. **Not supported in V1
+  yet** — it needs the deterministic reset path first (§7.4, P10).
 - **Stop:** discards the run. The next start begins at t = 0 from the same snapshot.
 - **Pacing:** the simulation runs as fast as the host allows, capped at real time for interactive
   runs. The cap is applied by **delaying the tick reply**. Simulation time does not advance while
@@ -972,13 +1008,13 @@ assumption is substituted for a measurement.
 |---|---|---|
 | Nonlinear DC solve | 0.07-0.09 ms (browser Worker, uncontended); 0.31 ms (Node, while QEMU competed for the single core) | Gate A; Sprint 1 |
 | Bridge event -> solve -> inject, asynchronous bridge | ~3 ms wall | Gate C |
-| Simulated/wall ratio | configuration-dependent; see §7.7 | Sprint 1 closure |
+| Simulated/wall ratio | configuration-dependent; see §7.8 | Sprint 1 closure |
 
 ### 12.2 The dominant cost
 
 **QEMU dominates, and CPU dominates within QEMU.** An actively running ESP32 session in the V1
 timing mode consumed roughly one core on this host, because icount without sleep executes as fast as
-the host allows. Pacing to real time (§7.7) is what would make a session cheaper on a fast host. The
+the host allows. Pacing to real time (§7.8) is what would make a session cheaper on a fast host. The
 electrical engine costs almost nothing, since it solves only at events.
 
 Memory is second-order, but not small. The QEMU process alone is ~84-209 MB depending on
@@ -1056,7 +1092,7 @@ Only dimensions that answer "what exactly produced this result?" are kept.
 | component `typeVersion` | integer per type | each component instance |
 | `protocolVersion` | integer | every message (`v`) |
 | `engineVersion` | semver + build hash | every solve result; `session.state` |
-| `runtimeVersion` | Session Host build (semver + hash) **plus the timing configuration**: icount shift, bridge tick (§7.5) and serial backend. Each of these changes the simulated timeline | `session.state` |
+| `runtimeVersion` | Session Host build (semver + hash) **plus the timing configuration**: icount shift, `hostCommandQuantum` (§7.6) and serial backend. Each of these changes the simulated timeline | `session.state` |
 | `qemuBuild` | upstream fork + commit + our patch set hash (e.g. `a159x36@03be9af0+tbi.p1(sha)`). The patch set now includes the GPIO enable-gating fix, the bridge device, the ESP32 machine APP-CPU reset fix and the icount warp-race fix (QEMU core) | `session.state` |
 | `firmware` | `artifactId` (content hash) | snapshot and `session.state` |
 | `snapshotId` | content hash of the canonical snapshot | every result |
@@ -1201,7 +1237,7 @@ Every implementation sprint must preserve these. A change that breaks one requir
 | 15 | Runtime commands apply only at the periodic virtual-time tick (quantized to the tick) | §7.4 |
 | 16 | The APP-CPU reset is synchronous under icount (QEMU machine fix), and a `sleep=off` warp is refused while a vCPU slice is in flight (QEMU core fix) | §7.4 |
 | 18 | Every session boots from a fresh copy of the hash-verified firmware artifact; the artifact is never attached writable | §7.4, §11 |
-| 17 | The tick is part of `runtimeVersion`. **Recommended value: 1 ms; awaiting PM confirmation** | §7.5, §14 |
+| 17 | `hostCommandQuantum` (the tick) is part of `runtimeVersion`. **Approved V1 default: 1 ms simulated** (P9); internally configurable, product-exposed only at 1 ms | §7.6, §14 |
 
 ### 18.2 Assumptions
 
@@ -1223,6 +1259,8 @@ Every implementation sprint must preserve these. A change that breaks one requir
 | P5 | Initial, configurable **session policy**: on disconnect, pause; reconnect grace **60 s**; paused/disconnected idle timeout **10 min**; maximum continuous active run **2 h**; active MCU sessions per user **1**. |
 | P6 | **Authentication, authorization and resource limiting are mandatory before public exposure** of the simulation service. Not implemented in Sprint 1. |
 | P7 | **Reject QIO firmware** with a clear diagnostic. Do not silently convert or rewrite firmware on the server. DIO is the supported V1 configuration unless runtime support changes. |
+| P9 | **`hostCommandQuantum` = 1 ms of simulated time is the approved V1 default.** It is the scheduling quantum for host/runtime commands and part of the reproducibility configuration; it is internally configurable but V1 exposes only the 1 ms product mode. It is not the solver timestep, GPIO/PWM resolution, instruction resolution, or evidence of cycle accuracy (§7.6). |
+| P10 | **The full-chip reset gap does not block Sprint 1 closure.** `esp_restart()`, watchdog reset and in-place UI/EN reset stay **unsupported and open**: each must satisfy the same deterministic closed-loop release gate (R-MCU-1) before the product exposes it as supported. Not implemented now. |
 | P8 | **Prove the deterministic closed loop first** (done in Sprint 1 closure, §7.4). Then port and minimize the GPIO work onto a maintained Espressif QEMU baseline **before** productionizing the simulation service or expanding MCU peripheral scope. |
 
 ### 18.4 Risks
@@ -1238,8 +1276,8 @@ Every implementation sprint must preserve these. A change that breaks one requir
 | R6 | GPL obligations for the server-side QEMU | Compliance | Process boundary; provenance manifest; legal review before distribution |
 | R7 | Engine divergence between hosts | Different physics in A and B | Single build; bit-identity CI test |
 | R8 | `shift=3` virtual CPU is ~1.9x slower than real silicon for instruction-bound code | Timing-sensitive firmware behaves differently from hardware | Documented; peripheral-timer timing agrees to < 0.06 %; revisit `shift` once stable |
-| R9 | Full-system reset (`esp_restart`, WDT, EN implemented as a system reset) is still asynchronous | `mcu.reset`/restart not deterministic | Apply the synchronous-reset treatment before these are supported; until then they are outside R-MCU-1 |
-| R10 | Tick-quantized command timing (1 ms) | A command lands up to one tick after its requested instant | Record and echo the actual application instant; document the quantum |
+| R9 | Full-chip reset (`esp_restart`, WDT, in-place UI/EN reset) is still asynchronous | Those paths are not deterministic | Declared unsupported and open (P10). Each must pass R-MCU-1 before the product exposes it |
+| R10 | Command timing is quantized to `hostCommandQuantum` (1 ms) | A command lands up to one quantum after its requested instant | Record and echo the actual application instant; document the quantum |
 
 ### 18.5 Promotion plan (for later sprints, not Sprint 1)
 

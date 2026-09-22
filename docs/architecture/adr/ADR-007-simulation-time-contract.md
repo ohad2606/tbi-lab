@@ -1,7 +1,7 @@
 # ADR-007 — Simulation time contract
 
-**Status:** Accepted (PM decisions P1, P3, P4 recorded 2026-09-22). The tick value is awaiting PM
-confirmation. · **Date:** 2026-09-22 (revised in the Sprint 1 closure)
+**Status:** Accepted (PM decisions P1, P3, P4, P9, P10 recorded 2026-09-22) · **Date:** 2026-09-22
+(revised in the Sprint 1 closure)
 
 ## Context
 The Sprint 0 bridge ran QEMU on wall-clock time, and was never tested for reproducibility
@@ -43,7 +43,14 @@ The Sprint 0 bridge ran QEMU on wall-clock time, and was never tested for reprod
   4. **Synchronous APP-CPU reset** under icount (a QEMU machine fix).
   5. **No `sleep=off` clock warp while a vCPU slice is in flight** (a QEMU core fix).
   6. **Each session boots from a fresh copy of the hash-verified firmware artifact.**
-- **The tick is part of the timing model and of `runtimeVersion`.** Recommended: **1 ms**.
+- **`hostCommandQuantum` = 1 ms of simulated time is the approved V1 default** (P9). It is the
+  scheduling quantum for host/runtime commands and part of the runtime/reproducibility configuration
+  (`runtimeVersion`). It is internally configurable, but V1 exposes only the 1 ms product mode.
+  It is **not** the electrical solver timestep, GPIO resolution, PWM resolution, MCU instruction
+  resolution, or evidence of cycle accuracy. The GPIO -> solver -> GPIO-input path stays event-driven
+  at the relevant emulator boundary, independently of the quantum.
+- **Different quantum values may legitimately produce different timelines.** The contract requires
+  identical observable results for the **same complete runtime configuration**, the quantum included.
 - **Only deterministic mode ships (P3).** Real-time mode is engineering/debug only.
 - **Timing-fidelity claim:**
   - peripheral timers, `delay()`, `millis()` and the cycle counter agree with simulation time to
@@ -56,7 +63,9 @@ The Sprint 0 bridge ran QEMU on wall-clock time, and was never tested for reprod
 
 ## Consequences
 - **Paths outside the contract until fixed:**
-  - full-system / PRO-CPU reset (`esp_restart`, WDT, EN as a system reset) is still asynchronous;
+  - full-chip reset (`esp_restart`, watchdog, in-place UI/EN reset) is still asynchronous. It is
+    **unsupported and open**, does not block Sprint 1 closure (P10), and must pass R-MCU-1 before the
+    product exposes it;
   - deep/light sleep uses the host clock and is unsupported;
   - Wi-Fi/BT are unsupported.
 - Every new peripheral or bridge feature must extend the release-gate test

@@ -297,6 +297,10 @@ virtual clock read exactly.
 
 ## C5. Resources and speed in the V1 configuration
 
+The V1 configuration uses the approved `hostCommandQuantum` of **1 ms** of simulated time (PM decision
+P9; V1-ARCHITECTURE §7.6). The 10 ms rows are engineering measurements, kept because they show that
+a different quantum yields a different — but equally reproducible — timeline.
+
 Pristine image, full 15.5 s scenario, unpaced, 1-core dev host. QEMU figures read from `/proc`:
 `VmHWM` gives the kernel-recorded peak RSS, and the 200 ms samples give the maximum sampled `VmRSS`.
 

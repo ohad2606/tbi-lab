@@ -12,7 +12,7 @@ at the evidence.
 | [004](ADR-004-mcu-and-solver-co-located.md) | MCU runtime and electrical solver are co-located | Proposed |
 | [005](ADR-005-language-independent-project-data.md) | Language-independent project data model | Proposed |
 | [006](ADR-006-qemu-licensing-runtime-boundary.md) | QEMU licensing and runtime boundary | Accepted (PM, Sprint 0 B2) |
-| [007](ADR-007-simulation-time-contract.md) | Simulation time contract | Accepted (P1, P3, P4); tick value awaiting PM confirmation |
+| [007](ADR-007-simulation-time-contract.md) | Simulation time contract | Accepted (P1, P3, P4, P9, P10) |
 | [008](ADR-008-one-electrical-engine-two-hosts.md) | One electrical engine, two hosts | Proposed |
 
 Status values: **Proposed** (awaiting PM review), **Accepted**, **Superseded by ADR-NNN**.
