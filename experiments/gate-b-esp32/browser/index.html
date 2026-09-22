@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>TBI Lab Phase 5 QEMU-wasm harness</title>
+  </head>
+  <body>
+    <p>Phase 5 feasibility harness: QEMU compiled to WebAssembly running a bare-metal
+       classic-ESP32 (LX6) CPU benchmark. No product UI.</p>
+    <script type="module">
+      // Timestamps are relative to navigation start (performance.now()).
+      const marks = { pageStart: performance.now() };
+      const out = [];
+      window.__marks = marks;
+      window.__out = out;
+
+      window.__run = async ({ elfUrl, args }) => {
+        marks.fetchElfStart = performance.now();
+        const elf = new Uint8Array(await (await fetch(elfUrl)).arrayBuffer());
+        marks.importStart = performance.now();
+        const { default: createQemu } = await import('./qemu/qemu-system-xtensa.js');
+        marks.importDone = performance.now();
+
+        return await new Promise((resolve, reject) => {
+          const done = (reason) => {
+            marks.done = performance.now();
+            resolve({ reason, out, marks });
+          };
+          const onLine = (text) => {
+            if (marks.firstOutput === undefined) marks.firstOutput = performance.now();
+            out.push(text);
+            if (/TBI-LX6-BENCH checksum=0x[0-9a-f]{8}/.test(text)) done('checksum');
+          };
+          createQemu({
+            arguments: args,
+            noExitRuntime: false,
+            locateFile: (p) => './qemu/' + p,
+            print: onLine,
+            printErr: (t) => out.push('[stderr] ' + t),
+            preRun: [(mod) => { mod.FS.writeFile('/bench.elf', elf); }],
+            onRuntimeInitialized: () => { marks.runtimeInitialized = performance.now(); },
+            onExit: (code) => { out.push('[exit ' + code + ']'); if (!marks.done) done('exit'); },
+            onAbort: (what) => { out.push('[abort] ' + what); reject(new Error('abort: ' + what)); },
+          }).then((m) => { window.__module = m; marks.factoryResolved = performance.now(); },
+                  reject);
+        });
+      };
+
+      // Main-thread liveness: if QEMU ran on the main thread this would stall.
+      window.__tick = 0;
+      (function loop() { window.__tick++; setTimeout(loop, 10); })();
+
+      window.__ready = true;
+    </script>
+  </body>
+</html>

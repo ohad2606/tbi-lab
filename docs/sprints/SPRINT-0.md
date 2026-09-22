@@ -533,7 +533,7 @@ Compiled 2026-09-20. Every figure below is measured on this host unless marked *
 |---|---|---|---|
 | **Gate A — DC simulation in the browser** | **PASS** | 7/7 reference cases; 25 Node tests; ngspice cross-check agrees to ~1e-16 once constants and convergence are aligned; runs in a Chromium Web Worker at 0.092 ms/solve, bit-identical to Node | High |
 | **Gate B — classic ESP32, native** | **PASS** | MicroPython and Arduino firmware boot through the mask ROM; GPIO both directions, both register banks | High |
-| **Gate B — classic ESP32, browser-local** | **FAIL (Sprint 0)** | No wasm-capable QEMU has the ESP32 machine; port measured at +19,292 lines / 237 files | High |
+| **Gate B — classic ESP32, browser-local** | **FAIL (Sprint 0)** | ESP32 machine not in any wasm-capable QEMU (+19,292-line port); LX6 CPU core ported and measured in Chromium at ~10 MIPS, ~24x slower than silicon (est.) | High |
 | **Gate C — MCU <-> electrical bridge** | **PASS** | All 6 integration cases on the real runtime; values match an independent solver to 1e-6 | High |
 | **Gate D — local-first persistence** | **PASS** | Real Chromium + real IndexedDB; exact restore across reload and across a full browser restart | High |
 | **Arduino support (Phase 6)** | **Demonstrated** | Official esp32 core 3.3.12, FQBN `esp32:esp32:esp32`; `digitalWrite`/`digitalRead` work through the bridge | High |
@@ -552,30 +552,41 @@ Compiled 2026-09-20. Every figure below is measured on this host unless marked *
 | Electrical change -> solve -> level pushed to MCU | **3 ms** |
 | Native QEMU build (this 1-core host) | ~50 min from scratch; **seconds** for an incremental device change |
 
-### 14.3 Browser-local classic ESP32 feasibility — NOT ACHIEVED
+### 14.3 Browser-local classic ESP32 feasibility — NOT ACHIEVED (now measured)
+
+Updated 2026-09-22. QEMU 10.1 was built for WebAssembly on this host with the classic-ESP32 LX6
+**CPU core** ported in, and a bare-metal LX6 benchmark was run in Chromium. That is CPU-only —
+no ESP32 ROM, peripherals or GPIO — so it is **not** classic ESP32 firmware in the browser and is
+not counted as a PASS. It measures the part of the problem porting cannot fix.
 
 | Metric | Value |
 |---|---|
-| Is the Xtensa target wasm-buildable? | **Yes** — QEMU's own CI builds the default target list, which includes `xtensa-softmmu` |
-| Is the classic ESP32 machine in any wasm-capable QEMU? | **No** |
-| Port required: ESP32 machine + peripherals | **+19,292 lines / 237 files**, QEMU 9.2.2 -> 10.1+ |
-| Port required: GPIO/IOMUX on top | ~1,150 lines, plus our 42-line fix and 192-line bridge |
-| Browser payload size | **Unmeasured** — nothing runnable exists to measure |
-| Cold start to firmware execution | **Unmeasured** |
-| Steady-state memory / CPU / relative speed | **Unmeasured** |
-| Blocker classification | **Build/porting effort.** Not architecture, not licensing, not browser limits |
+| Xtensa target wasm-buildable? | **Yes — built and run here** (QEMU 10.1, Emscripten 3.1.69, ARM64 host) |
+| Classic ESP32 **CPU core** in wasm | **Yes — ported (mechanical, ~20k generated lines) and verified correct in Chromium** |
+| Classic ESP32 **machine/peripherals** in wasm | **No** — still needs the +19,292-line / 237-file port from 9.2.2 |
+| GPIO in wasm | **No** — depends on the machine port, plus ~1,150 lines |
+| Payload | **26.1 MB** wasm (**9.07 MB** gzip) + 339 KB JS (85 KB gzip) |
+| Runtime initialisation | **1.0-1.3 s** after module import |
+| Fixed overhead before guest compute | ~4.9-6.2 s |
+| LX6 speed under wasm (TCI) | **~10 M instructions/s** |
+| vs native QEMU (same source) | **~300x slower** (297x / 317x) |
+| vs real 240 MHz ESP32 | **~24x slower** — *estimate*, assuming 1 instruction/cycle |
+| Memory | ~390-460 MB attributable (Chromium peak 776-847 MB over a ~390 MB idle baseline) |
+| Worker | **Yes** — QEMU runs in a pthread Worker; the page's main thread stayed responsive |
+| Browser requirements | COOP/COEP cross-origin isolation (SharedArrayBuffer) — verified |
 
-**Blocker, precisely.** Three independent things must be true at once and currently are not:
-(1) a QEMU baseline that supports Emscripten (10.1+), (2) the classic ESP32 machine, which exists
-only on 9.2.2, and (3) a GPIO implementation, which exists only as a further fork of 9.2.2. No
-single tree has two of the three, let alone all three.
+**Blocker classification, now measured:** (1) **porting effort** for the ESP32 machine and GPIO,
+and (2) **Xtensa execution performance** — interpreted LX6 is ~24x slower than the real part.
+Payload, memory, Worker hosting and browser security requirements were measured and are workable;
+they are **not** the blocker. Full detail: `docs/research/browser-local-classic-esp32.md`,
+Finding 6.
 
-**Host constraint, stated honestly.** The Emscripten dependency chain (zlib, libffi, pixman) was
-reproduced natively on this 1-core / 3.8 GB ARM64 host; glib was still building when this report was
-written. Even completed, that build could only run a *generic* Xtensa machine, which the brief
-correctly refuses to count as a browser result. The host is a real constraint on iteration speed —
-a full QEMU build is ~50 minutes, and Emscripten builds are slower still — but it is **not** the
-reason browser-local ESP32 failed. The porting gap is.
+**Why this matters for B1.** Even after the ~20,000-line machine port, CPU-bound firmware would run
+at roughly 1/24 of real time under upstream QEMU's wasm TCI. A translate-to-wasm JIT (as in
+`ktock/qemu-wasm`, not upstream) might change that, and was not measured.
+
+**Host caveat.** Everything shared one CPU core, so wall times are pessimistic for a multi-core
+desktop; per-core interpretation speed dominates and would not change by an order of magnitude.
 
 ### 14.4 Performance measurements
 
@@ -586,6 +597,9 @@ reason browser-local ESP32 failed. The porting gap is.
 | Solver vs ngspice, LED case | ~1e-16 relative, aligned; 3.3e-7 at both sides' defaults, fully attributed |
 | ESP32 boot to app | 3.29 s |
 | ESP32 emulator RSS | ~209 MB |
+| LX6 CPU under QEMU-wasm in Chromium | ~10 M instr/s; ~300x slower than native QEMU; ~24x slower than silicon (est.) |
+| QEMU-wasm payload | 26.1 MB wasm (9.07 MB gzip) + 339 KB JS |
+| QEMU-wasm runtime init | 1.0-1.3 s |
 | GPIO transport latency | < 1 ms |
 | Solve + push to MCU | 3 ms |
 | IndexedDB round trip | Sub-second including a full browser restart |
@@ -623,7 +637,7 @@ is not published.
 
 | # | Item | Needs |
 |---|---|---|
-| B1 | **Browser-local classic ESP32 is not feasible in Sprint 0.** The credible alternatives are a large port, or hybrid/server execution | **PM decision.** Sprint 0 did not fall back to a server, as instructed |
+| B1 | **Browser-local classic ESP32 is not feasible in Sprint 0.** Two measured obstacles: a ~20,000-line machine port, and interpreted LX6 at ~24x slower than real silicon. Alternatives: the port (plus a wasm JIT effort), or hybrid/server execution | **PM decision.** Sprint 0 did not fall back to a server, as instructed |
 | B2 | GPL-2.0 distribution of QEMU into the browser or product | PM/legal decision before any browser-MCU engineering |
 | B3 | Production QEMU baseline (Preference A port onto Espressif 9.2.2) deliberately deferred, since B1 may move the baseline | PM direction, sequenced after B1 |
 | B4 | LED model rests on one datasheet anchor with an assumed emission coefficient (0.22 % spread over N = 1.8-2.5) | Vendor SPICE model or bench measurement |

@@ -33,3 +33,20 @@ index 49d17e7..9460a4a 100644
          }
      }
  }
+diff --git a/meson.build b/meson.build
+index 50c774a..03e944f 100644
+--- a/meson.build
++++ b/meson.build
+@@ -4301,7 +4301,11 @@ foreach target : target_dirs
+ 
+     c_args += ['-DCONFIG_DEVICES="@0@-config-devices.h"'.format(target)]
+     arch_srcs += config_devices_h[target]
+-    link_args += ['@block.syms', '@qemu.syms']
++    # TBI Lab: Debian's Emscripten 3.1.69 does not expand response files nested inside the
++    # linker's own response file, and both lists are empty for a static wasm build anyway.
++    if host_os != 'emscripten'
++      link_args += ['@block.syms', '@qemu.syms']
++    endif
+   else
+     abi = config_target['TARGET_ABI_DIR']
+     target_type='user'
