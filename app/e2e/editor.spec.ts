@@ -13,16 +13,26 @@ import {
   storedProject,
   terminal,
   toScreen,
+  waitForStoredProject,
   waitSaved,
   wire,
 } from './helpers.js';
 
-async function savedValid(page: Page): Promise<ProjectDocument> {
-  await waitSaved(page);
-  const doc = await storedProject(page);
+/**
+ * Wait until the operation just performed has reached IndexedDB (described by `persisted`),
+ * then assert the stored document is structurally valid (A4).
+ */
+async function savedValid(
+  page: Page,
+  persisted: (doc: ProjectDocument) => boolean,
+  what: string,
+): Promise<ProjectDocument> {
+  const doc = await waitForStoredProject(page, persisted, what);
   expect(validateProject(doc)).toEqual([]);
   return doc;
 }
+
+const has = (id: string) => (doc: ProjectDocument) => doc.components.some((c) => c.id === id);
 
 const netOf = (doc: ProjectDocument, c: string, t: string) =>
   doc.connections.find((x) => x.component === c && x.terminal === t)?.net;
@@ -38,7 +48,7 @@ test('A1: a project named in Hebrew is created and appears in the recent list', 
 }) => {
   await createProject(page, 'מעגל ראשון');
   await expect(page.getByTestId('project-name')).toHaveValue('מעגל ראשון');
-  const doc = await savedValid(page);
+  const doc = await savedValid(page, (d) => d.name === 'מעגל ראשון', 'named project');
   expect(doc.name).toBe('מעגל ראשון');
   expect(doc.components.map((c) => c.id)).toEqual(['PSU1', 'GND1']);
   await page.getByRole('button', { name: 'Projects' }).click();
@@ -52,29 +62,29 @@ test('A2-A4: place, wire, junction, crossing, delete — valid after every opera
   // R1 at (0,0): a=(-40,0) b=(40,0). R2 at (0,100): a=(-40,100) b=(40,100).
   // R3 at (140,60): a=(100,60). R4 at (-40,60): b=(0,60).
   await place(page, 'component.resistor', { x: 0, y: 0 });
-  await savedValid(page);
+  await savedValid(page, has('R1'), 'R1 placed');
   await place(page, 'component.resistor', { x: 0, y: 100 });
   await place(page, 'component.resistor', { x: 140, y: 60 });
   await place(page, 'component.resistor', { x: -40, y: 60 });
-  let doc = await savedValid(page);
+  let doc = await savedValid(page, has('R4'), 'R4 placed');
   expect(doc.components.map((c) => c.id)).toEqual(['PSU1', 'GND1', 'R1', 'R2', 'R3', 'R4']);
   expect(doc.layout.components.R3).toEqual({ x: 140, y: 60, rotation: 0 });
 
   // Terminal to terminal.
   await wire(page, ['PSU1', 'positive'], ['R1', 'a']);
-  doc = await savedValid(page);
+  doc = await savedValid(page, (d) => netOf(d, 'R1', 'a') !== undefined, 'PSU1+ to R1.a wired');
   expect(netOf(doc, 'PSU1', 'positive')).toBeDefined();
   expect(netOf(doc, 'PSU1', 'positive')).toBe(netOf(doc, 'R1', 'a'));
 
   await wire(page, ['PSU1', 'negative'], ['GND1', 'ref']);
-  doc = await savedValid(page);
+  doc = await savedValid(page, (d) => netOf(d, 'GND1', 'ref') !== undefined, 'GND wired');
   expect(doc.nets.find((n) => n.id === netOf(doc, 'GND1', 'ref'))!.role).toBe('ground');
 
   // End a wire on the middle of an existing wire: a junction forms and the nets join.
   // PSU1.positive (-80,-20) -> R1.a (-40,0) routes via (-40,-20); (-60,-20) lies on it.
   await terminal(page, 'R2', 'a').locator('.terminal-hit').click();
   await clickWorld(page, { x: -60, y: -20 });
-  doc = await savedValid(page);
+  doc = await savedValid(page, (d) => d.layout.junctions.length === 1, 'junction created');
   expect(doc.layout.junctions).toHaveLength(1);
   expect(doc.layout.junctions[0]).toMatchObject({ x: -60, y: -20 });
   expect(netOf(doc, 'R2', 'a')).toBe(netOf(doc, 'R1', 'a'));
@@ -83,7 +93,11 @@ test('A2-A4: place, wire, junction, crossing, delete — valid after every opera
   // Two wires that geometrically cross at (40,60) are NOT connected.
   await wire(page, ['R1', 'b'], ['R2', 'b']);
   await wire(page, ['R4', 'b'], ['R3', 'a']);
-  doc = await savedValid(page);
+  doc = await savedValid(
+    page,
+    (d) => netOf(d, 'R1', 'b') !== undefined && netOf(d, 'R4', 'b') !== undefined,
+    'both crossing wires stored',
+  );
   expect(doc.layout.junctions).toHaveLength(1);
   expect(netOf(doc, 'R1', 'b')).toBe(netOf(doc, 'R2', 'b'));
   expect(netOf(doc, 'R4', 'b')).toBe(netOf(doc, 'R3', 'a'));
@@ -93,7 +107,7 @@ test('A2-A4: place, wire, junction, crossing, delete — valid after every opera
   await component(page, 'R2').locator('.component-hit').click();
   await expect(component(page, 'R2')).toHaveAttribute('data-selected', 'true');
   await page.keyboard.press('Delete');
-  doc = await savedValid(page);
+  doc = await savedValid(page, (d) => !has('R2')(d), 'R2 deleted');
   expect(doc.components.some((c) => c.id === 'R2')).toBe(false);
   expect(doc.connections.some((c) => c.component === 'R2')).toBe(false);
   expect(doc.layout.junctions).toEqual([]);
@@ -102,7 +116,7 @@ test('A2-A4: place, wire, junction, crossing, delete — valid after every opera
 
   // A deleted reference is never reused.
   await place(page, 'component.resistor', { x: 0, y: 200 });
-  doc = await savedValid(page);
+  doc = await savedValid(page, (d) => d.components.length === 6, 'fifth resistor placed');
   expect(doc.components.at(-1)!.id).toBe('R5');
 });
 
@@ -111,7 +125,7 @@ test('A2: move and rotate keep wires attached; rubber band selects several', asy
   await place(page, 'component.resistor', { x: 0, y: 0 });
   await place(page, 'component.resistor', { x: 0, y: 100 });
   await wire(page, ['PSU1', 'positive'], ['R1', 'a']);
-  let doc = await savedValid(page);
+  let doc = await savedValid(page, (d) => netOf(d, 'R1', 'a') !== undefined, 'R1.a wired');
   const net = netOf(doc, 'R1', 'a');
 
   // Drag R1 by (+80, +40) world units.
@@ -122,7 +136,7 @@ test('A2: move and rotate keep wires attached; rubber band selects several', asy
   await page.mouse.move((from.x + to.x) / 2, (from.y + to.y) / 2, { steps: 4 });
   await page.mouse.move(to.x, to.y, { steps: 4 });
   await page.mouse.up();
-  doc = await savedValid(page);
+  doc = await savedValid(page, (d) => d.layout.components.R1?.x === 80, 'R1 moved');
   expect(doc.layout.components.R1).toEqual({ x: 80, y: 40, rotation: 0 });
   expect(netOf(doc, 'R1', 'a')).toBe(net);
   // The drawn wire ends exactly on the moved terminal.
@@ -131,7 +145,7 @@ test('A2: move and rotate keep wires attached; rubber band selects several', asy
 
   // Rotate with the R key (physical key, layout-independent).
   await page.keyboard.press('r');
-  doc = await savedValid(page);
+  doc = await savedValid(page, (d) => d.layout.components.R1?.rotation === 90, 'R1 rotated');
   expect(doc.layout.components.R1!.rotation).toBe(90);
   expect(netOf(doc, 'R1', 'a')).toBe(net);
 
@@ -164,7 +178,13 @@ test('A5: unit-aware resistance input is stored as canonical SI', async ({ page 
 
   await field.fill('4k7');
   await field.press('Enter');
-  let doc = await savedValid(page);
+  let doc = await savedValid(
+    page,
+    (d) =>
+      JSON.stringify(d.components.find((c) => c.id === 'R1')?.params.resistance) ===
+      JSON.stringify({ value: 4700, unit: 'ohm' }),
+    'R1 = 4.7 kΩ',
+  );
   expect(doc.components.find((c) => c.id === 'R1')!.params.resistance).toEqual({
     value: 4700,
     unit: 'ohm',
@@ -173,7 +193,13 @@ test('A5: unit-aware resistance input is stored as canonical SI', async ({ page 
 
   await field.fill('220');
   await field.press('Enter');
-  doc = await savedValid(page);
+  doc = await savedValid(
+    page,
+    (d) =>
+      JSON.stringify(d.components.find((c) => c.id === 'R1')?.params.resistance) ===
+      JSON.stringify({ value: 220, unit: 'ohm' }),
+    'R1 = 220 Ω',
+  );
   expect(doc.components.find((c) => c.id === 'R1')!.params.resistance).toEqual({
     value: 220,
     unit: 'ohm',
@@ -195,7 +221,13 @@ test('A5: unit-aware resistance input is stored as canonical SI', async ({ page 
   const v = page.getByTestId('param-PSU1-setpointVoltage');
   await v.fill('3.3');
   await v.press('Enter');
-  doc = await savedValid(page);
+  doc = await savedValid(
+    page,
+    (d) =>
+      JSON.stringify(d.components[0]!.params.setpointVoltage) ===
+      JSON.stringify({ value: 3.3, unit: 'volt' }),
+    'PSU1 setpoint = 3.3 V',
+  );
   expect(doc.components[0]!.params.setpointVoltage).toEqual({ value: 3.3, unit: 'volt' });
 });
 
@@ -206,8 +238,9 @@ test('A6: autosave runs without user action and the indicator reflects reality',
   await expect(page.getByTestId('save-state')).toHaveText(/All changes saved/);
   const before = (await storedProject(page)).revision.localRevision;
   await place(page, 'component.resistor', { x: 0, y: 0 });
+  // Durability of the edit itself, then the indicator must settle on "saved".
+  const after = await waitForStoredProject(page, has('R1'), 'R1 placed');
   await waitSaved(page);
-  const after = await storedProject(page);
   expect(after.revision.localRevision).toBeGreaterThan(before);
   expect(after.components.some((c) => c.id === 'R1')).toBe(true);
 });
@@ -227,7 +260,7 @@ test('opening a project saved by a newer version is read-only and never written'
   page,
 }) => {
   await createProject(page, 'Future');
-  const doc = await savedValid(page);
+  const doc = await savedValid(page, (d) => d.name === 'Future', 'project stored');
   await page.evaluate(
     (d) =>
       new Promise<void>((resolve, reject) => {

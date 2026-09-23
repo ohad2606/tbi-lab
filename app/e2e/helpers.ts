@@ -27,8 +27,40 @@ export async function storedProject(page: Page): Promise<ProjectDocument> {
   return all[0]!;
 }
 
+/**
+ * The save indicator currently reads "saved".
+ *
+ * NOT proof that a mutation just made has persisted: immediately after an edit the DOM can
+ * still show the previous "saved" state because the app has not rendered its pending
+ * "saving" state yet (CI run 35828605417). To prove a specific change is durable, use
+ * `waitForStoredProject` with a predicate describing that change.
+ */
 export async function waitSaved(page: Page): Promise<void> {
   await expect(page.getByTestId('save-state')).toHaveAttribute('data-state', 'saved');
+}
+
+/**
+ * Poll the REAL IndexedDB until the single stored project satisfies `predicate` (bounded by
+ * Playwright's expect timeout), and return that document. This checks the durability claim
+ * itself rather than the UI indicator.
+ */
+export async function waitForStoredProject(
+  page: Page,
+  predicate: (doc: ProjectDocument) => boolean,
+  what: string,
+): Promise<ProjectDocument> {
+  let match: ProjectDocument | undefined;
+  await expect
+    .poll(
+      async () => {
+        const all = await storedProjects(page);
+        match = all.length === 1 && predicate(all[0]!) ? all[0] : undefined;
+        return match !== undefined;
+      },
+      { message: `stored project: ${what}` },
+    )
+    .toBe(true);
+  return match!;
 }
 
 export async function createProject(page: Page, name?: string): Promise<void> {
@@ -36,6 +68,13 @@ export async function createProject(page: Page, name?: string): Promise<void> {
   if (name !== undefined) await page.getByTestId('new-project-name').fill(name);
   await page.getByTestId('create-project').click();
   await expect(page.getByTestId('canvas')).toBeVisible();
+  // The new project is durable (not merely "the indicator says saved").
+  const expected = name ?? (await page.getByTestId('project-name').inputValue());
+  await expect
+    .poll(async () => (await storedProjects(page)).some((p) => p.name === expected.trim()), {
+      message: `project "${expected}" stored`,
+    })
+    .toBe(true);
   await waitSaved(page);
 }
 

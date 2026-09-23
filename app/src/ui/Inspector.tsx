@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import {
   CATALOG,
   deleteSelection,
@@ -134,13 +134,20 @@ function ParamField({
   const current = c.params[def.key];
   const id = `param-${c.id}-${def.key}`;
 
-  const [draft, setDraft] = useState('');
-  const [error, setError] = useState<string | null>(null);
   const shown =
     def.kind === 'quantity' && current && typeof current === 'object'
       ? inputForm(current.value)
       : '';
+  // The draft starts at the stored value, so the first render is complete by itself. The
+  // effect below resets it ONLY when the stored value or component really changes: a passive
+  // effect runs after paint, and on mount it would otherwise wipe text typed (and the error
+  // it produced) in the meantime (CI run 35828605417).
+  const [draft, setDraft] = useState(shown);
+  const [error, setError] = useState<string | null>(null);
+  const synced = useRef({ shown, id: c.id });
   useEffect(() => {
+    if (synced.current.shown === shown && synced.current.id === c.id) return;
+    synced.current = { shown, id: c.id };
     setDraft(shown);
     setError(null);
   }, [shown, c.id]);

@@ -1,6 +1,6 @@
 /** A10: core actions are reachable by keyboard with visible focus. */
 import { expect, test } from '@playwright/test';
-import { component, createProject, storedProject, waitSaved } from './helpers.js';
+import { component, createProject, waitForStoredProject } from './helpers.js';
 
 test('A10: keyboard-only place, select, move, rotate and delete with visible focus', async ({
   page,
@@ -23,21 +23,22 @@ test('A10: keyboard-only place, select, move, rotate and delete with visible foc
   expect(await r1.locator('.focus-ring').evaluate((el) => getComputedStyle(el).visibility)).toBe(
     'visible',
   );
-  await waitSaved(page);
-  const placed = (await storedProject(page)).layout.components.R1!;
+  const placed = (
+    await waitForStoredProject(page, (d) => d.layout.components.R1 !== undefined, 'R1 placed')
+  ).layout.components.R1!;
 
   await page.keyboard.press('ArrowRight');
   await page.keyboard.press('ArrowDown');
-  await waitSaved(page);
-  expect((await storedProject(page)).layout.components.R1).toEqual({
-    x: placed.x + 20,
-    y: placed.y + 20,
-    rotation: 0,
-  });
+  const moved = await waitForStoredProject(
+    page,
+    (d) =>
+      d.layout.components.R1?.x === placed.x + 20 && d.layout.components.R1?.y === placed.y + 20,
+    'R1 moved by one grid step right and down',
+  );
+  expect(moved.layout.components.R1).toEqual({ x: placed.x + 20, y: placed.y + 20, rotation: 0 });
 
   await page.keyboard.press('r');
-  await waitSaved(page);
-  expect((await storedProject(page)).layout.components.R1!.rotation).toBe(90);
+  await waitForStoredProject(page, (d) => d.layout.components.R1?.rotation === 90, 'R1 rotated');
 
   // Tab moves focus between canvas components, selecting the focused one.
   await page.keyboard.press('Shift+Tab');
@@ -47,6 +48,6 @@ test('A10: keyboard-only place, select, move, rotate and delete with visible foc
   await expect(r1).toBeFocused();
 
   await page.keyboard.press('Delete');
-  await waitSaved(page);
-  expect((await storedProject(page)).components.map((c) => c.id)).toEqual(['PSU1', 'GND1']);
+  const after = await waitForStoredProject(page, (d) => d.components.length === 2, 'R1 deleted');
+  expect(after.components.map((c) => c.id)).toEqual(['PSU1', 'GND1']);
 });

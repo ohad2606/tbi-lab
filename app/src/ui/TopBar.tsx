@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { LOCALES } from '../i18n/i18n.js';
 import { useAppState, useStore, useT } from './context.js';
 
@@ -45,7 +45,13 @@ function ProjectName({ name, disabled }: { name: string; disabled: boolean }) {
   const store = useStore();
   const t = useT();
   const [draft, setDraft] = useState(name);
-  useEffect(() => setDraft(name), [name]);
+  // Re-sync only when the stored name really changes, never on mount (see ParamField).
+  const synced = useRef(name);
+  useEffect(() => {
+    if (synced.current === name) return;
+    synced.current = name;
+    setDraft(name);
+  }, [name]);
   /**
    * Commit the element's actual value, not the draft state: Enter/Blur can arrive before a
    * pending state render has run (CI run 35789744836).

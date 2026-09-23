@@ -11,7 +11,7 @@ import {
   createProject as createDoc,
   type ProjectDocument,
 } from '@tbi-lab/domain';
-import { component, storedProject, toScreen, waitSaved } from './helpers.js';
+import { component, toScreen, waitForStoredProject } from './helpers.js';
 
 function ok<T extends { ok: boolean }>(r: T): Extract<T, { ok: true }> {
   if (!r.ok) throw new Error(JSON.stringify(r));
@@ -80,8 +80,11 @@ test('baseline: dragging a component in a 30-component circuit', async ({ page }
     samples.push(Date.now() - t0);
   }
   await page.mouse.up();
-  await waitSaved(page);
-  expect((await storedProject(page)).layout.components.R10).not.toEqual(doc.layout.components.R10);
+  await waitForStoredProject(
+    page,
+    (d) => JSON.stringify(d.layout.components.R10) !== JSON.stringify(doc.layout.components.R10),
+    'R10 moved',
+  );
 
   const sorted = [...samples].sort((a, b) => a - b);
   const result = {

@@ -8,7 +8,15 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { validateProject } from '@tbi-lab/domain';
-import { component, createProject, place, storedProject, waitSaved, wire } from './helpers.js';
+import {
+  component,
+  createProject,
+  place,
+  storedProject,
+  waitForStoredProject,
+  waitSaved,
+  wire,
+} from './helpers.js';
 
 test('A7: full browser restart restores the project exactly', async ({ baseURL }) => {
   const profile = await mkdtemp(join(tmpdir(), 'tbi-lab-restart-'));
@@ -28,8 +36,16 @@ test('A7: full browser restart restores the project exactly', async ({ baseURL }
     await field.fill('4k7');
     await field.press('Enter');
     await page.getByTestId('language-select').selectOption('he');
+    // Prove the last edits reached IndexedDB before the browser is killed.
+    const before = await waitForStoredProject(
+      page,
+      (d) =>
+        JSON.stringify(d.components.find((c) => c.id === 'R2')?.params.resistance) ===
+          JSON.stringify({ value: 4700, unit: 'ohm' }) &&
+        d.connections.some((c) => c.component === 'R2' && c.terminal === 'a'),
+      'R2 = 4.7 kΩ and wired',
+    );
     await waitSaved(page);
-    const before = await storedProject(page);
     expect(validateProject(before)).toEqual([]);
     await context.close(); // the whole browser process ends
 

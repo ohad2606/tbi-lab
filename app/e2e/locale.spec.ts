@@ -3,7 +3,15 @@
  * changes no project byte and does not move the circuit.
  */
 import { expect, test, type Page } from '@playwright/test';
-import { component, createProject, place, storedProject, waitSaved, wire } from './helpers.js';
+import {
+  component,
+  createProject,
+  place,
+  storedProject,
+  waitForStoredProject,
+  waitSaved,
+  wire,
+} from './helpers.js';
 
 /** Words of Latin script left in the UI once allowed technical tokens are removed. */
 async function untranslatedWords(page: Page): Promise<string[]> {
@@ -100,9 +108,16 @@ test('A9: switching language changes no project byte and does not move the circu
   await wire(page, ['PSU1', 'positive'], ['R1', 'a']);
   await wire(page, ['R1', 'b'], ['R2', 'a']);
   await page.keyboard.press('Escape');
+  // Baseline only once the last wire is durable; otherwise a pending autosave could land
+  // during the language loop and be mistaken for a language-caused write.
+  const baseline = await waitForStoredProject(
+    page,
+    (d) => d.connections.some((c) => c.component === 'R2' && c.terminal === 'a'),
+    'R1.b to R2.a wired',
+  );
   await waitSaved(page);
 
-  const bytesBefore = JSON.stringify(await storedProject(page));
+  const bytesBefore = JSON.stringify(baseline);
   // Positions are compared relative to the canvas element: the chrome around it mirrors
   // (which moves the canvas on screen), the circuit inside it must not.
   const inCanvas = async () => {
