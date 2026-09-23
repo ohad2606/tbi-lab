@@ -1,6 +1,6 @@
 # Sprint 3 — Real Electrical Vertical Slice
 
-**Status:** EXECUTED — local only, awaiting PM review. Not pushed; no `sprint-3-complete` tag.
+**Status:** CLOSED — approved; A17 passed on GitHub Actions (§14).
 **Date:** 2026-09-23 · **Milestone:** B · **Base:** `99f90b6` (final Sprint 2 closure commit), local branch `sprint-3`
 **Authority:** PM Sprint 3 directive (2026-09-23), `docs/product/V1-IMPLEMENTATION-ROADMAP.md`
 (approved, RC-1..RC-7), `docs/architecture/V1-ARCHITECTURE.md` + ADR-001..009, product scope,
@@ -102,7 +102,7 @@ stay LTR.
 | A14 | **Pass** | The worker script is replaced with one that throws: status "Could not run", "The simulation stopped unexpectedly. The project is not affected…". No stack or internals shown, project bytes unchanged, Stop and a retried Run work. Unit tests: crash and timeout |
 | A15 | **Pass** | §5 |
 | A16 | **Pass** | Only Run/Stop exist (no Pause/Step/Reset). No runtime value is shown before Run. Every asserted UI value equals the production engine's output on the same stored project |
-| A17 | **Local only** | Every CI-equivalent step passes locally (§8). Remote CI for Sprint 3 is **pending**: Sprint 3 is not pushed, by instruction |
+| A17 | **Pass on GitHub Actions** (run `35838206319` on `b95387c`, §14). *At first report: local only* | Every CI-equivalent step passes locally (§8). Remote CI for Sprint 3 is **pending**: Sprint 3 is not pushed, by instruction |
 
 ## 8. Tests and CI-equivalent run
 
@@ -243,3 +243,10 @@ No assertion was weakened, and no sleeps were added.
 **Evidence changed by the rebase:** only the test counts (§8, +10 commit-race regressions) and
 the ESP32 re-run. Every electrical value, acceptance result and performance figure in this
 report is unchanged: the engine and simulation code are identical to before the rebase.
+
+## 14. Closure (added 2026-09-23)
+
+Sprint 3 (`b95387ca0776d17d939eb0c5d0c1079cdcc834c5`) was pushed to `main` as a fast-forward
+from the Sprint 2 closure. GitHub Actions run **`35838206319`** passed both jobs: the fast job
+(typecheck, lint, unit), and browser acceptance (`npm run test:e2e` and
+`npm run test:browser`). **A17 = PASS.** Sprint 3 was approved by the PM.
