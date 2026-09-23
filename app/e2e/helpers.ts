@@ -65,6 +65,11 @@ export async function waitForStoredProject(
 
 export async function createProject(page: Page, name?: string): Promise<void> {
   await page.goto('/');
+  // The app reopens the last project; go back to the project home to create a new one.
+  const home = page.getByTestId('new-project-name');
+  const projects = page.getByRole('button', { name: /^(Projects|פרויקטים)$/ });
+  await expect(home.or(projects)).toBeVisible();
+  if (!(await home.isVisible())) await projects.click();
   if (name !== undefined) await page.getByTestId('new-project-name').fill(name);
   await page.getByTestId('create-project').click();
   await expect(page.getByTestId('canvas')).toBeVisible();

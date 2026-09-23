@@ -245,15 +245,17 @@ test('A6: autosave runs without user action and the indicator reflects reality',
   expect(after.components.some((c) => c.id === 'R1')).toBe(true);
 });
 
-test('A13: nothing is shown that does not work — no Run control, no simulation affordance', async ({
+test('A16 (supersedes Sprint 2 A13): Run and Stop are the only simulation controls; no value exists before Run', async ({
   page,
 }) => {
   await createProject(page, 'Honest');
-  for (const name of [/run/i, /simulat/i, /start/i, /stop/i, /play/i]) {
+  await expect(page.getByTestId('sim-run')).toBeEnabled();
+  await expect(page.getByTestId('sim-stop')).toBeDisabled();
+  for (const name of [/pause/i, /resume/i, /step/i, /reset/i, /play/i]) {
     await expect(page.getByRole('button', { name })).toHaveCount(0);
   }
-  const text = await page.locator('body').innerText();
-  expect(text).not.toMatch(/\b(run|simulate|simulation)\b/i);
+  await expect(page.locator('.runtime-label')).toHaveCount(0);
+  await expect(page.getByTestId('sim-results')).toHaveCount(0);
 });
 
 test('opening a project saved by a newer version is read-only and never written', async ({

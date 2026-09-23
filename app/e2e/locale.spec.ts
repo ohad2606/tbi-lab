@@ -24,7 +24,10 @@ async function untranslatedWords(page: Page): Promise<string[]> {
     /^TBI$/,
     /^Lab$/, // product name
     /^English$/, // the language's autonym in the language menu
-    /^(PSU|R|GND)\d+$/, // reference designators
+    /^(PSU|R|GND|D)\d+$/, // reference designators
+    /^(GND|LED|DC|CV|CC)$/, // technical terms kept in Hebrew by the glossary
+    /^Vishay$/,
+    /^TLHR5400$/, // LED model card name
     /^N_\d+$/, // net ids
     /^(k|m|M|G|µ|u|n|p)?(Ω|V|A)$/,
     /^m(Ω|V|A)$/, // units

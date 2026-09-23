@@ -42,6 +42,18 @@ export function SimControls() {
         aria-live="polite"
         data-testid="sim-status"
         data-status={sim.status}
+        // Measured timings of the latest solve, for performance evidence (not displayed).
+        {...(sim.status === 'running'
+          ? {
+              'data-solves': sim.solves,
+              'data-worker-start-ms': sim.timings.workerStartMs ?? '',
+              'data-request-ms': sim.timings.requestTransferMs,
+              'data-solve-ms': sim.timings.solveMs,
+              'data-result-ms': sim.timings.resultTransferMs,
+              'data-total-ms': sim.timings.totalMs,
+              'data-applied-revision': sim.outcome.appliedRevision,
+            }
+          : {})}
       >
         {t(`sim.status.${sim.status}`)}
       </span>
