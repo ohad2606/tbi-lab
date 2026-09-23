@@ -401,7 +401,15 @@ test('A15: English and Hebrew show identical engineering results for Sprint 4 fe
   page,
 }) => {
   await seriesBench(page, 'component.toggle_switch', 'Parity');
+  // 1. The engineering edit (a real, persistent toggle), then wait until exactly that state is
+  //    durable. Capturing bytes before its debounced autosave lands compares two different
+  //    engineering states (CI run 35884629891: rev 8 / open vs rev 9 / closed).
   await page.getByTestId('actuator-SW1').click();
+  const edited = await waitForStoredProject(
+    page,
+    (d) => d.components.find((c) => c.id === 'SW1')!.params.closed === true,
+    'toggle SW1 closed is durable',
+  );
   await run(page);
   await probe(page, () => select(page, 'R1'));
   await select(page, 'PSU1');
@@ -415,11 +423,17 @@ test('A15: English and Hebrew show identical engineering results for Sprint 4 fe
     mode: await page.getByTestId('psu-mode').getAttribute('data-mode'),
     sw: await component(page, 'SW1').getAttribute('data-closed'),
   });
-  const english = await read();
+  // 2. Baseline AFTER all intended edits: the persisted bytes and the English results.
   const bytes = JSON.stringify(await storedProject(page));
+  expect(bytes).toBe(JSON.stringify(edited)); // nothing else was written since the toggle
+  const english = await read();
+  expect(english).toMatchObject({ probe: 'I(R1) = 5 mA', mode: 'cv', sw: 'true' });
+  // 3. Locale only.
   await page.getByTestId('language-select').selectOption('he');
   await expect(page.getByTestId('psu-panel')).toContainText('ספק כוח מעבדתי');
   await expect(page.getByTestId('probes-section')).toContainText('נקודות מדידה');
+  // 4. Identical engineering results, and the locale switch wrote nothing (waiting past the
+  //    autosave debounce proves an absence of writes; it is not a race fix).
   expect(await read()).toEqual(english);
   await page.waitForTimeout(400);
   expect(JSON.stringify(await storedProject(page))).toBe(bytes);
