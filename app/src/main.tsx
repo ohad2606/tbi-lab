@@ -5,6 +5,7 @@ import { AppStore, type Preferences } from './state/app.js';
 import { App } from './ui/App.js';
 import { StoreContext } from './ui/context.js';
 import './styles.css';
+import { randomId } from './ids.js';
 
 /** Per-device preferences, kept apart from project data. Failure is never fatal. */
 const prefs: Preferences = {
@@ -40,7 +41,7 @@ async function main() {
     storage,
     prefs,
     languages: navigator.languages,
-    newId: () => crypto.randomUUID().replace(/-/g, ''),
+    newId: randomId,
   });
   render(
     <StoreContext.Provider value={store}>

@@ -334,10 +334,10 @@ result.
 |---|---:|---:|---|
 | `packages/engine` (reference + bit-identity, product path, OFF model, diagnostics, live controls, range; **new:** diode 9, switch 13, multiple GND 1) | 57 | 34 | pass |
 | `packages/domain` (**new:** `sprint4.test.ts` 13: catalog, polarity under rotation, button has no persisted state, toggle persistence, `historyTarget`, checks) | 121 | 108 | pass |
-| `app` unit (**new:** `history.test.ts` 8) | 60 | 52 | pass |
+| `app` unit (**new:** `history.test.ts` 8, `ids.test.ts` 2) | 62 | 52 | pass |
 | Sprint 0/1 unit (`experiments/`), unchanged | 55 | 55 | pass |
-| **Unit total** (`npm test`, 24 files) | **293** | 249 | pass |
-| `app` Chromium acceptance (`npm run test:e2e`): all Sprint 2 race tests and Sprint 3 electrical acceptance tests, plus **new** `sprint4.spec` (11) and `sprint4-performance.spec` (1) | **48** | 36 | pass |
+| **Unit total** (`npm test`, 25 files) | **295** | 249 | pass |
+| `app` Chromium acceptance (`npm run test:e2e`): all Sprint 2 race tests and Sprint 3 electrical acceptance tests, plus **new** `sprint4.spec` (11), `sprint4-performance.spec` (1) and `insecure-context.spec` (1) | **49** | 36 | pass |
 | Sprint 0 browser (`npm run test:browser`), unchanged | 4 | 4 | pass |
 
 Every CI-equivalent step passes locally on the final tree, as in `.github/workflows/ci.yml`:
@@ -443,6 +443,11 @@ reproduction script, not a dependency. ngspice is not used.
   Fixed, and the test was strengthened.
 - A held button could stay pressed after focus moved away (the release listened to non-bubbling
   `blur`). Fixed with `focusout`, and tested.
+- **Startup failure on non-secure origins** (found while setting up the dev preview). The app
+  generated ids with `crypto.randomUUID`, which browsers expose only on HTTPS or localhost. Over
+  plain HTTP on a hostname or LAN address, startup threw and the page stayed on "Loading…". Ids
+  now come from `crypto.getRandomValues` (`app/src/ids.ts`; same 32-hex format, 128 random bits).
+  A browser regression removes `randomUUID` before load; it fails without the fix.
 - Performance regression on Stop/Run cycling (§15): top-bar re-wrap, a `NumberFormat` built per
   render, and checks recomputed per render. All three fixed.
 
