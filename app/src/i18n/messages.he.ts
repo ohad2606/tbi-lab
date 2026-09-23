@@ -46,17 +46,22 @@ export const he: Record<MessageKey, string> = {
   'component.instrument.lab_psu.name': 'ספק כוח מעבדתי',
   'component.component.ground.name': 'הארקה',
   'component.component.resistor.name': 'נגד',
+  'component.component.led.name': 'נורית LED',
 
   'terminal.positive': 'חיובי (+)',
   'terminal.negative': 'שלילי (−)',
   'terminal.ref': 'ייחוס',
   'terminal.a': 'הדק a',
   'terminal.b': 'הדק b',
+  'terminal.anode': 'אנודה',
+  'terminal.cathode': 'קתודה',
 
   'param.setpointVoltage': 'מתח מכוון',
   'param.currentLimit': 'הגבלת זרם',
   'param.outputEnabled': 'יציאה פעילה',
   'param.resistance': 'התנגדות',
+  'param.model': 'דגם',
+  'model.led.vishay_tlhr5400': 'אדומה 5 מ"מ (Vishay TLHR5400)',
 
   'unit.ohm.symbol': 'Ω',
   'unit.volt.symbol': 'V',

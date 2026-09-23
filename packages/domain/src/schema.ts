@@ -21,10 +21,15 @@ export interface Quantity {
   unit: UnitId;
 }
 
-export type ParamValue = Quantity | boolean;
+/**
+ * A parameter value: an engineering quantity, a boolean setting, or a language-neutral enum
+ * token (for example a model card id). The enum form was added in Sprint 3 (additive).
+ */
+export type ParamValue = Quantity | boolean | string;
 
 /** Component type ids are namespaced and language-neutral. */
-export type ComponentTypeId = 'instrument.lab_psu' | 'component.ground' | 'component.resistor';
+export type ComponentTypeId =
+  'instrument.lab_psu' | 'component.ground' | 'component.resistor' | 'component.led';
 
 export interface ComponentInstance {
   /** Stable reference designator (`R1`, `PSU1`), unique per project, never reused. */

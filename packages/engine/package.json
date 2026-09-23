@@ -1,0 +1,13 @@
+{
+  "name": "@tbi-lab/engine",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "The one TBI Lab electrical engine: DC operating-point solver, device models, compile-from-snapshot. Pure TypeScript, no I/O, no DOM, no locale.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@tbi-lab/domain": "0.1.0"
+  }
+}

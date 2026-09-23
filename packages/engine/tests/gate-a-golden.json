@@ -1,0 +1,42 @@
+{
+  "case1": {
+    "iR1": "7b14ae47e17a743f",
+    "vN1": "0000000000001440",
+    "mode": null
+  },
+  "case2": {
+    "vMid": "0000000000001840",
+    "iR1": "613255302aa9433f",
+    "mode": null
+  },
+  "case3": {
+    "iR1": "f87e6abc7493683f",
+    "vB": "0100000000001840",
+    "mode": null
+  },
+  "case4": {
+    "iR1": "0000000000000000",
+    "vDangling": "0000000000001440",
+    "mode": null
+  },
+  "case5": {
+    "iPsu": "9a9999999999b93f",
+    "vOut": "000000000000f03f",
+    "mode": "CC"
+  },
+  "case6": {
+    "iPsu": "9a9999999999b93f",
+    "vOut": "2d431cebe2361a3f",
+    "mode": "CC"
+  },
+  "case7": {
+    "iD1": "05e8e6cc39198c3f",
+    "vAnode": "0821d3a7a4b4ff3f",
+    "mode": null
+  },
+  "case7psu": {
+    "iD1": "05e8e6cc39198c3f",
+    "vAnode": "0821d3a7a4b4ff3f",
+    "mode": "CV"
+  }
+}

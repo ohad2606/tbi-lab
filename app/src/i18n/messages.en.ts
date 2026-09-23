@@ -44,17 +44,22 @@ export const en = {
   'component.instrument.lab_psu.name': 'Lab power supply',
   'component.component.ground.name': 'Ground',
   'component.component.resistor.name': 'Resistor',
+  'component.component.led.name': 'LED',
 
   'terminal.positive': 'Positive (+)',
   'terminal.negative': 'Negative (−)',
   'terminal.ref': 'Reference',
   'terminal.a': 'Terminal a',
   'terminal.b': 'Terminal b',
+  'terminal.anode': 'Anode',
+  'terminal.cathode': 'Cathode',
 
   'param.setpointVoltage': 'Voltage setpoint',
   'param.currentLimit': 'Current limit',
   'param.outputEnabled': 'Output enabled',
   'param.resistance': 'Resistance',
+  'param.model': 'Model',
+  'model.led.vishay_tlhr5400': 'Red 5 mm (Vishay TLHR5400)',
 
   'unit.ohm.symbol': 'Ω',
   'unit.volt.symbol': 'V',

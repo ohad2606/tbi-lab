@@ -129,6 +129,8 @@ export function validateProject(input: unknown): ValidationIssue[] {
         add('missing_param', pp);
       } else if (p.kind === 'boolean') {
         if (typeof v !== 'boolean') add('bad_param', pp);
+      } else if (p.kind === 'enum') {
+        if (typeof v !== 'string' || !p.options.some((o) => o.value === v)) add('bad_param', pp);
       } else if (
         !isObj(v) ||
         v.unit !== p.unit ||

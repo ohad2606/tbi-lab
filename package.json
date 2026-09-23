@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "npm run dev --workspace @tbi-lab/app",
     "build": "npm run build --workspace @tbi-lab/app",
-    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.specs.json && tsc --noEmit -p packages/domain && tsc --noEmit -p app && tsc --noEmit -p app/tsconfig.test.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.specs.json && tsc --noEmit -p packages/domain && tsc --noEmit -p packages/engine && tsc --noEmit -p app && tsc --noEmit -p app/tsconfig.test.json",
     "lint": "eslint . && prettier --check app packages scripts eslint.config.js playwright.app.config.ts vitest.config.ts && node scripts/check-boundaries.mjs",
     "format": "prettier --write app packages scripts eslint.config.js playwright.app.config.ts vitest.config.ts",
     "test": "vitest run",

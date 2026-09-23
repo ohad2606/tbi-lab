@@ -26,7 +26,15 @@ export type ParamDef =
       default: number;
       labelKey: string;
     }
-  | { kind: 'boolean'; key: string; default: boolean; labelKey: string };
+  | { kind: 'boolean'; key: string; default: boolean; labelKey: string }
+  | {
+      kind: 'enum';
+      key: string;
+      /** Language-neutral tokens; each has its own translation key. */
+      options: { value: string; labelKey: string }[];
+      default: string;
+      labelKey: string;
+    };
 
 export interface ComponentTypeDef {
   type: ComponentTypeId;
@@ -112,6 +120,28 @@ export const CATALOG: Record<ComponentTypeId, ComponentTypeDef> = {
     ],
     aliases: ['res'],
   },
+  'component.led': {
+    type: 'component.led',
+    typeVersion: 1,
+    refPrefix: 'D',
+    nameKey: 'component.component.led.name',
+    symbol: 'symbol.led',
+    terminals: [
+      { id: 'anode', offset: { x: -40, y: 0 }, labelKey: 'terminal.anode' },
+      { id: 'cathode', offset: { x: 40, y: 0 }, labelKey: 'terminal.cathode' },
+    ],
+    params: [
+      {
+        kind: 'enum',
+        key: 'model',
+        // The curated list holds only datasheet-sourced model cards (product scope §6.1).
+        options: [{ value: 'model.led.vishay_tlhr5400', labelKey: 'model.led.vishay_tlhr5400' }],
+        default: 'model.led.vishay_tlhr5400',
+        labelKey: 'param.model',
+      },
+    ],
+    aliases: ['led', 'light'],
+  },
 };
 
 /** Palette order. */
@@ -119,6 +149,7 @@ export const CATALOG_ORDER: readonly ComponentTypeId[] = [
   'instrument.lab_psu',
   'component.ground',
   'component.resistor',
+  'component.led',
 ];
 
 export function isComponentType(type: string): type is ComponentTypeId {

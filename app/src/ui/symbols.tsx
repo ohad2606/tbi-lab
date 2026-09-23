@@ -23,6 +23,23 @@ export const SYMBOLS: Record<ComponentTypeId, SymbolDef> = {
       </>
     ),
   },
+  'component.led': {
+    bbox: [-40, -26, 40, 14],
+    draw: () => (
+      <>
+        <line x1={-40} y1={0} x2={-12} y2={0} />
+        {/* Diode triangle pointing from anode to cathode, with the cathode bar. */}
+        <polygon points="-12,-12 -12,12 12,0" class="led-body" />
+        <line x1={12} y1={-12} x2={12} y2={12} />
+        <line x1={12} y1={0} x2={40} y2={0} />
+        {/* Emission arrows: the conventional LED mark, not an illumination display. */}
+        <line x1={-2} y1={-14} x2={6} y2={-22} />
+        <polyline points="2,-22 6,-22 6,-18" />
+        <line x1={6} y1={-10} x2={14} y2={-18} />
+        <polyline points="10,-18 14,-18 14,-14" />
+      </>
+    ),
+  },
   'component.ground': {
     bbox: [-16, -20, 16, 12],
     draw: () => (

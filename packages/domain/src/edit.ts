@@ -128,13 +128,16 @@ export function setParam(
     if (!def) return 'unknown_param';
     if (def.kind === 'boolean') {
       if (typeof value !== 'boolean') return 'param_type';
+    } else if (def.kind === 'enum') {
+      if (typeof value !== 'string') return 'param_type';
+      if (!def.options.some((o) => o.value === value)) return 'out_of_range';
     } else {
-      if (typeof value === 'boolean' || value.unit !== def.unit) return 'param_type';
+      if (typeof value !== 'object' || value.unit !== def.unit) return 'param_type';
       if (!Number.isFinite(value.value) || value.value < def.min || value.value > def.max) {
         return 'out_of_range';
       }
     }
-    c.params[key] = typeof value === 'boolean' ? value : { value: value.value, unit: value.unit };
+    c.params[key] = typeof value === 'object' ? { value: value.value, unit: value.unit } : value;
   });
 }
 

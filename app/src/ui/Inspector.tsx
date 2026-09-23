@@ -170,6 +170,29 @@ function ParamField({
     );
   }
 
+  if (def.kind === 'enum') {
+    return (
+      <div class="field">
+        <label for={id}>{catalogText(locale, def.labelKey)}</label>
+        <select
+          id={id}
+          data-testid={id}
+          value={typeof current === 'string' ? current : def.default}
+          disabled={readOnly}
+          onChange={(e) =>
+            doc && store.apply(setParam(doc, c.id, def.key, (e.target as HTMLSelectElement).value))
+          }
+        >
+          {def.options.map((o) => (
+            <option key={o.value} value={o.value}>
+              {catalogText(locale, o.labelKey)}
+            </option>
+          ))}
+        </select>
+      </div>
+    );
+  }
+
   const range = {
     min: isolateLtr(formatQuantity(locale, { value: def.min, unit: def.unit })),
     max: isolateLtr(formatQuantity(locale, { value: def.max, unit: def.unit })),
