@@ -9,3 +9,7 @@ export * from './validate.js';
 export * from './migrate.js';
 export * from './snapshot.js';
 export * from './checks.js';
+export * from './sha256.js';
+export * from './canonical.js';
+export * from './package.js';
+export * from './library.js';
