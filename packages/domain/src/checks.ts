@@ -102,31 +102,43 @@ export function checkCircuit(doc: ProjectDocument): CheckIssue[] {
       issues.push({ code: 'floating_island', severity: 'warning', components: floating });
   }
 
-  // Visual ambiguity: a wire drawn across a terminal it is NOT connected to.
+  // Visual ambiguity: a wire drawn across a terminal it is NOT connected to. Terminal
+  // positions are computed once, and each wire is tested only against terminals inside its
+  // route's bounding box, so the cost stays near-linear for V1-sized workspaces.
   const groupOf = new Map<string, number>();
   wireGroups(doc).forEach((g, i) => g.forEach((k) => groupOf.set(k, i)));
+  const terminals: { component: string; terminal: string; key: string; x: number; y: number }[] =
+    [];
+  for (const c of doc.components) {
+    for (const t of CATALOG[c.type].terminals) {
+      const p = terminalPosition(doc, c.id, t.id);
+      if (p) {
+        const key = nodeKey({ kind: 'terminal', component: c.id, terminal: t.id });
+        terminals.push({ component: c.id, terminal: t.id, key, x: p.x, y: p.y });
+      }
+    }
+  }
   for (const w of doc.layout.wires) {
     const route = wireRoute(doc, w);
     if (!route) continue;
     const group = groupOf.get(nodeKey(w.from));
-    for (const c of doc.components) {
-      for (const t of CATALOG[c.type].terminals) {
-        const key = nodeKey({ kind: 'terminal', component: c.id, terminal: t.id });
-        if (group !== undefined && groupOf.get(key) === group) continue; // same net: consistent
-        const p = terminalPosition(doc, c.id, t.id);
-        if (!p) continue;
-        const touches = route.some(
-          (a, i) => i < route.length - 1 && pointOnSegment(p, a, route[i + 1]!),
-        );
-        if (touches) {
-          issues.push({
-            code: 'wire_over_terminal',
-            severity: 'warning',
-            components: [c.id],
-            terminals: [t.id],
-            wire: w.id,
-          });
-        }
+    const xs = route.map((p) => p.x);
+    const ys = route.map((p) => p.y);
+    const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+    for (const term of terminals) {
+      if (term.x < x0 || term.x > x1 || term.y < y0 || term.y > y1) continue;
+      if (group !== undefined && groupOf.get(term.key) === group) continue; // same net: consistent
+      const touches = route.some(
+        (a, i) => i < route.length - 1 && pointOnSegment(term, a, route[i + 1]!),
+      );
+      if (touches) {
+        issues.push({
+          code: 'wire_over_terminal',
+          severity: 'warning',
+          components: [term.component],
+          terminals: [term.terminal],
+          wire: w.id,
+        });
       }
     }
   }

@@ -9,6 +9,7 @@ import { toEngineering } from '@tbi-lab/domain';
 import {
   catalogText,
   isolateLtr,
+  numberFormat,
   translate,
   unitSymbol,
   type LocaleInfo,
@@ -23,10 +24,9 @@ const DISPLAY_FLOOR = 1e-12;
 export function formatResult(locale: LocaleInfo, value: number, unit: UnitId): string {
   const v = Math.abs(value) < DISPLAY_FLOOR ? 0 : value;
   const { mantissa, prefix } = toEngineering(v);
-  const n = new Intl.NumberFormat(locale.code, {
-    maximumSignificantDigits: 4,
-    useGrouping: false,
-  }).format(mantissa);
+  const n = numberFormat(locale.code, { maximumSignificantDigits: 4, useGrouping: false }).format(
+    mantissa,
+  );
   return `${n} ${prefix}${unitSymbol(locale, unit)}`;
 }
 

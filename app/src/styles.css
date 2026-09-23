@@ -968,3 +968,32 @@ select {
 .check-info {
   color: var(--muted);
 }
+
+/*
+ * The top bar never wraps: a wrap point that moved when the run-status text changed length
+ * resized the canvas on every Run/Stop and forced a full relayout (Sprint 4 perf finding).
+ * Long labels (other locales) shrink the project-name field instead of adding a line.
+ */
+.topbar {
+  flex-wrap: nowrap;
+  overflow: hidden;
+}
+
+.topbar > * {
+  flex-shrink: 0;
+}
+
+.topbar .project-name {
+  flex: 1 1 8rem;
+  min-width: 5rem;
+}
+
+.topbar .spacer {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.sim-status {
+  min-inline-size: 13rem;
+  text-align: center;
+}

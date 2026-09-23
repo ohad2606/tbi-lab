@@ -295,3 +295,22 @@ describe('snapshot', () => {
     expect(resistorLoop(5, 0.1, 1001).snapshot().snapshotId).not.toBe(snap.snapshotId);
   });
 });
+
+describe('A14: multiple GND symbols are one global reference', () => {
+  it('two GND symbols that are not wired to each other are the same electrical node', () => {
+    const b = new Bench();
+    const r = b.add('component.resistor');
+    const g2 = b.add('component.ground');
+    // PSU- goes to GND1, the resistor returns through a separate GND2 symbol.
+    b.wire('PSU1.positive', `${r}.a`).wire(`${r}.b`, `${g2}.ref`).wire('PSU1.negative', 'GND1.ref');
+    b.psu(5, 0.1).ohms(r, 1000);
+    const snap = b.snapshot();
+    // The drawing has two separate ground-role nets ...
+    expect(snap.nets.filter((n) => n.role === 'ground')).toHaveLength(2);
+    // ... and the engine treats both as the single reference: the loop closes through GND.
+    const res = ok(new EngineSession(snap).solve());
+    rel(res.components[r]!.current, 5e-3, 'I(R) through GND1 and GND2');
+    for (const n of snap.nets.filter((x) => x.role === 'ground'))
+      expect(res.netVoltages[n.id]).toBe(0);
+  });
+});

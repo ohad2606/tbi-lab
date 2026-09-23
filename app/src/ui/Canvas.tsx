@@ -14,7 +14,6 @@ import {
   GRID,
   addComponent,
   addWire,
-  checkCircuit,
   setParam,
   deleteSelection,
   emptySelection,
@@ -37,6 +36,7 @@ import { catalogText, formatQuantity, type LocaleInfo, type MessageKey } from '.
 import type { ComponentResult } from '@tbi-lab/engine';
 import { formatResult } from '../sim/format.js';
 import { useAppState, useStore, useT } from './context.js';
+import { checksFor } from './checks.js';
 import { SYMBOLS, type SymbolState } from './symbols.js';
 import { probeAnchor, probeTargetName, readProbe, type Probe, type ProbeInput } from './probes.js';
 
@@ -669,7 +669,7 @@ export function Canvas({
   const probedParts = new Set(
     probes.filter((p) => p.kind === 'current').map((p) => (p as { component: string }).component),
   );
-  const issues = useMemo(() => (simActive ? [] : checkCircuit(doc)), [doc, simActive]);
+  const issues = simActive ? [] : checksFor(doc);
   const markers = issues.flatMap((i) =>
     i.code === 'partially_wired' || i.code === 'wire_over_terminal'
       ? (i.terminals ?? []).map((term) => ({
@@ -705,7 +705,8 @@ export function Canvas({
         onPointerUp={onPointerUp}
         onPointerCancel={releaseButton}
         onLostPointerCapture={releaseButton}
-        onBlur={releaseKeyHeld}
+        // focusout bubbles from the focused part (blur would not): any focus loss releases.
+        onFocusOut={releaseKeyHeld}
         onPointerLeave={() => setCursor(null)}
         onWheel={onWheel}
         onKeyDown={onKeyDown}

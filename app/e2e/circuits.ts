@@ -18,7 +18,7 @@ export async function setValue(page: Page, id: string, key: string, text: string
   await field.press('Enter');
 }
 
-async function link(page: Page, a: [string, string], b: [string, string]) {
+export async function link(page: Page, a: [string, string], b: [string, string]) {
   await terminal(page, ...a)
     .locator('.terminal-hit')
     .click();

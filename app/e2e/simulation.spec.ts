@@ -92,7 +92,9 @@ test('A6: 5 V / 100 mA PSU into 10 Ω enters CC at 100 mA / 1 V', async ({ page 
   await run(page);
   await expect(page.getByTestId('result-PSU1')).toHaveText('1 V · 100 mA · CC');
   await component(page, 'PSU1').locator('.component-hit').click();
-  await expect(page.getByTestId('result-mode')).toHaveText('CC · current limit');
+  // The Sprint 4 PSU panel shows the solver's operating mode (formerly the result section).
+  await expect(page.getByTestId('psu-mode')).toHaveAttribute('data-mode', 'cc');
+  await expect(page.getByTestId('psu-mode')).toContainText('CC · current limit');
   // Current limiting is physical behaviour, never an error.
   await expect(page.getByTestId('sim-error')).toHaveCount(0);
 });
@@ -124,7 +126,8 @@ test('A7 + A10: output OFF is an open circuit; enabling it live re-solves with p
   await expect(status(page)).toHaveAttribute('data-solves', '2');
   await expect(await resultOf(page, 'D1')).toHaveText('1.982 V · 13.72 mA');
 
-  // Setpoint change while running.
+  // Setpoint change while running (reselect the supply: reading D1 selected D1).
+  await component(page, 'PSU1').locator('.component-hit').click();
   const v = page.getByTestId('param-PSU1-setpointVoltage');
   await expect(v).toBeEnabled();
   await v.fill('3.3');

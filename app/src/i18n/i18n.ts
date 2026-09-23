@@ -72,11 +72,26 @@ export function catalogText(locale: LocaleInfo, key: string): string {
   return isMessageKey(key) ? translate(locale, key) : key;
 }
 
+/**
+ * Cached `Intl.NumberFormat` per locale and options. Constructing a formatter is expensive
+ * (it was the main cost of re-rendering a 30-part canvas: Sprint 4 profile), formatting is not.
+ */
+const numberFormats = new Map<string, Intl.NumberFormat>();
+export function numberFormat(
+  localeCode: string,
+  options: Intl.NumberFormatOptions,
+): Intl.NumberFormat {
+  const key = `${localeCode}|${JSON.stringify(options)}`;
+  let f = numberFormats.get(key);
+  if (!f) {
+    f = new Intl.NumberFormat(localeCode, options);
+    numberFormats.set(key, f);
+  }
+  return f;
+}
+
 export function formatNumber(locale: LocaleInfo, value: number): string {
-  return new Intl.NumberFormat(locale.code, {
-    maximumFractionDigits: 3,
-    useGrouping: false,
-  }).format(value);
+  return numberFormat(locale.code, { maximumFractionDigits: 3, useGrouping: false }).format(value);
 }
 
 /** `4.7 kΩ`, formatted for the locale; always a single LTR run. */

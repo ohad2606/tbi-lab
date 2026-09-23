@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import {
   CATALOG,
-  checkCircuit,
   deleteSelection,
   emptySelection,
   parseQuantity,
@@ -15,6 +14,7 @@ import { catalogText, formatQuantity, inputForm, isolateLtr, unitSymbol } from '
 import type { SolveSuccess } from '@tbi-lab/engine';
 import { formatResult } from '../sim/format.js';
 import { useAppState, useStore, useT } from './context.js';
+import { checksFor } from './checks.js';
 import { probeTargetName, readProbe, type Probe } from './probes.js';
 
 interface InspectorProps {
@@ -110,7 +110,8 @@ export function Inspector({ probes, onRemoveProbe, onClearProbes }: InspectorPro
       )}
       {actions}
       <ProbesSection probes={probes} onRemove={onRemoveProbe} onClear={onClearProbes} />
-      {!simActive && <ChecksSection />}
+      {/* Kept mounted while running (hidden), so Run/Stop never re-renders the list. */}
+      <ChecksSection hidden={simActive} />
       <p class="muted small">{t('inspector.shortcuts')}</p>
     </aside>
   );
@@ -555,11 +556,11 @@ function ProbesSection({
 }
 
 /** Editor-time checks (domain `checkCircuit`): explanations only; they change nothing. */
-function ChecksSection() {
+function ChecksSection({ hidden }: { hidden: boolean }) {
   const { doc, locale } = useAppState();
   const t = useT();
   if (!doc) return null;
-  const issues = checkCircuit(doc);
+  const issues = checksFor(doc);
   const list = (ids: string[]) => isolateLtr(ids.join(', '));
   const termName = (component: string, term: string) => {
     const c = doc.components.find((x) => x.id === component);
@@ -588,7 +589,12 @@ function ChecksSection() {
     }
   };
   return (
-    <section class="checks-section" aria-labelledby="checks-heading" data-testid="circuit-checks">
+    <section
+      class="checks-section"
+      aria-labelledby="checks-heading"
+      data-testid="circuit-checks"
+      hidden={hidden}
+    >
       <h3 id="checks-heading">{t('checks.heading')}</h3>
       {issues.length === 0 ? (
         <p class="muted small">{t('checks.none')}</p>

@@ -303,7 +303,7 @@ export class AppStore {
       return false;
     }
     this.past.pop();
-    this.future.push({ before: entry.before, after: this.stateValue.doc! });
+    this.future.push(entry); // redo returns to entry.after
     this.syncHistory();
     return true;
   }
@@ -315,7 +315,7 @@ export class AppStore {
     const target = historyTarget(current, entry.after);
     if (!this.apply({ ok: true, doc: target }, undefined, { record: false })) return false;
     this.future.pop();
-    this.past.push({ before: current, after: this.stateValue.doc! });
+    this.past.push(entry); // undo returns to entry.before again
     this.syncHistory();
     return true;
   }
