@@ -48,12 +48,16 @@ export async function waitForStoredProject(
   page: Page,
   predicate: (doc: ProjectDocument) => boolean,
   what: string,
+  /** When several projects are stored, the name of the one the test is working on. */
+  projectName?: string,
 ): Promise<ProjectDocument> {
   let match: ProjectDocument | undefined;
   await expect
     .poll(
       async () => {
-        const all = await storedProjects(page);
+        const all = (await storedProjects(page)).filter(
+          (p) => projectName === undefined || p.name === projectName,
+        );
         match = all.length === 1 && predicate(all[0]!) ? all[0] : undefined;
         return match !== undefined;
       },

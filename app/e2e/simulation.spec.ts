@@ -10,7 +10,14 @@ import { EngineSession, type SolveSuccess } from '@tbi-lab/engine';
 import { getLocale } from '../src/i18n/i18n.js';
 import { formatResult } from '../src/sim/format.js';
 import { drawLoop, run, setValue } from './circuits.js';
-import { component, place, storedProject, terminal, waitSaved } from './helpers.js';
+import {
+  component,
+  place,
+  storedProject,
+  terminal,
+  waitForStoredProject,
+  waitSaved,
+} from './helpers.js';
 
 const en = getLocale('en');
 
@@ -91,8 +98,11 @@ test('A7 + A10: output OFF is an open circuit; enabling it live re-solves with p
   await component(page, 'PSU1').locator('.component-hit').click();
   await page.getByTestId('param-PSU1-outputEnabled').check();
   await expect(page.getByTestId('result-PSU1')).toHaveText(/ · CV$/);
-  await waitSaved(page);
-  const after = await storedProject(page);
+  const after = await waitForStoredProject(
+    page,
+    (d) => d.components[0]!.params.outputEnabled === true,
+    'PSU1 output enabled',
+  );
   expect(after.components[0]!.params.outputEnabled).toBe(true);
   expect(after.revision.localRevision).toBe(before.revision.localRevision + 1);
   await expect(status(page)).toHaveAttribute(
@@ -107,7 +117,11 @@ test('A7 + A10: output OFF is an open circuit; enabling it live re-solves with p
   await expect(v).toBeEnabled();
   await v.fill('3.3');
   await v.press('Enter');
-  await waitSaved(page);
+  await waitForStoredProject(
+    page,
+    (d) => (d.components[0]!.params.setpointVoltage as { value: number }).value === 3.3,
+    'PSU1 setpoint = 3.3 V',
+  );
   const truth = await engineTruth(page);
   await expect(page.getByTestId('result-D1')).toHaveText(
     `${V(truth.components.D1!.voltage!)} · ${I(truth.components.D1!.current)}`,

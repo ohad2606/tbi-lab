@@ -1,6 +1,15 @@
 /** Draw the Sprint 3 acceptance circuits through the real UI, as a user would. */
 import { expect, type Page } from '@playwright/test';
-import { clickWorld, component, createProject, place, terminal, waitSaved } from './helpers.js';
+import { parseQuantity, type ProjectDocument } from '@tbi-lab/domain';
+import {
+  clickWorld,
+  component,
+  createProject,
+  place,
+  terminal,
+  waitForStoredProject,
+  waitSaved,
+} from './helpers.js';
 
 export async function setValue(page: Page, id: string, key: string, text: string): Promise<void> {
   await component(page, id).locator('.component-hit').click();
@@ -48,6 +57,29 @@ export async function drawLoop(page: Page, loop: Loop, name = 'Bench'): Promise<
     await page.getByTestId('param-PSU1-outputEnabled').check();
   }
   await clickWorld(page, { x: 400, y: 300 }); // clear the selection on empty canvas
+  // The configured circuit must be durable before any test takes a baseline of the stored
+  // project (the save indicator alone may still show a previous "saved" state).
+  const num = (text: string, unit: 'ohm' | 'volt' | 'ampere') => {
+    const r = parseQuantity(text, unit);
+    if (!r.ok) throw new Error(`bad test value ${text}`);
+    return r.value;
+  };
+  const q = (d: ProjectDocument, id: string, key: string) =>
+    (d.components.find((c) => c.id === id)?.params[key] as { value: number } | undefined)?.value;
+  const wired = (d: ProjectDocument, id: string, t: string) =>
+    d.connections.some((c) => c.component === id && c.terminal === t);
+  await waitForStoredProject(
+    page,
+    (d) =>
+      q(d, 'R1', 'resistance') === num(loop.ohms, 'ohm') &&
+      (!loop.volts || q(d, 'PSU1', 'setpointVoltage') === num(loop.volts, 'volt')) &&
+      (!loop.limit || q(d, 'PSU1', 'currentLimit') === num(loop.limit, 'ampere')) &&
+      d.components[0]!.params.outputEnabled === (loop.enable ?? true) &&
+      wired(d, 'PSU1', 'negative') &&
+      (loop.led ? wired(d, 'D1', 'cathode') : wired(d, 'R1', 'b')),
+    'drawn circuit stored',
+    name,
+  );
   await waitSaved(page);
 }
 
