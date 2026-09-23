@@ -856,7 +856,14 @@ export function Canvas({
                 data-testid={`probe-${probeTargetName(p)}`}
               >
                 <path class="probe-pin" d={`M${at.x} ${at.y} l8 -14 h4 l-8 14 z`} />
-                <text class="probe-label" x={at.x - 6} y={at.y - 18} text-anchor="end">
+                {/* A current probe sits on the part's centre: its label goes above the part's
+                    reference label instead of over it. */}
+                <text
+                  class="probe-label"
+                  x={p.kind === 'current' ? at.x : at.x - 6}
+                  y={p.kind === 'current' ? at.y - 52 : at.y - 18}
+                  text-anchor={p.kind === 'current' ? 'middle' : 'end'}
+                >
                   {label}
                 </text>
               </g>

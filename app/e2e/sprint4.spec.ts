@@ -421,3 +421,55 @@ test('A15: English and Hebrew show identical engineering results for Sprint 4 fe
   await expect(page.getByTestId('palette-component.toggle_switch')).toContainText('מתג');
   await expect(page.getByTestId('palette-component.diode')).toContainText('דיודה');
 });
+
+test('A15: new Sprint 4 surfaces are fully translated in Hebrew (technical tokens only)', async ({
+  page,
+}) => {
+  await createProject(page, 'Hebrew surfaces');
+  await place(page, 'component.push_button', { x: 0, y: -20 });
+  await place(page, 'component.toggle_switch', { x: 120, y: -20 });
+  await place(page, 'component.diode', { x: 60, y: 100 });
+  await link(page, ['PSU1', 'positive'], ['SW1', 'a']);
+  await page.getByTestId('language-select').selectOption('he');
+  await run(page);
+  await probe(page, () => select(page, 'SW1'));
+  const allowed = [
+    /^TBI$/,
+    /^Lab$/,
+    /^English$/,
+    /^(PSU|R|GND|D|SW)\d+$/,
+    /^N_\d+$/,
+    /^(GND|LED|DC|CV|CC|OFF)$/,
+    /^Vishay$/,
+    /^(TLHR5400|N4148)$/, // model names (1N4148 tokenizes as N4148)
+    /^Esc$/,
+    /^Delete$/,
+    /^R$/,
+    /^a$/,
+    /^b$/,
+    /^[VI]$/,
+    /^k$/,
+    /^\d+k\d*$/,
+  ];
+  const words = async () => {
+    const text = (await page.locator('body').innerText()).replace(
+      /[kmMGµunp]?[ΩVA](?![A-Za-z])/g,
+      ' ',
+    );
+    return [
+      ...new Set(
+        (text.match(/[A-Za-z_][A-Za-z0-9_]*/g) ?? []).filter(
+          (w) => !allowed.some((re) => re.test(w)),
+        ),
+      ),
+    ];
+  };
+  for (const id of ['SW1', 'SW2', 'D1', 'PSU1']) {
+    await select(page, id);
+    expect(await words(), id).toEqual([]);
+  }
+  await page.getByTestId('sim-stop').click();
+  await select(page, 'D1'); // checks list visible while stopped
+  await expect(page.getByTestId('circuit-checks')).toContainText('בדיקות מעגל');
+  expect(await words(), 'checks').toEqual([]);
+});
