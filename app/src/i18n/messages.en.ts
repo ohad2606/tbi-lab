@@ -38,11 +38,13 @@ export const en = {
   'canvas.hint.placing': 'Click on the canvas to place. Esc cancels.',
   'canvas.hint.wiring':
     'Click a terminal, junction or wire to finish. Click empty space to add a bend. Esc cancels.',
+  'canvas.hint.running':
+    'Simulation running: select a part to see its values. Stop to change the circuit.',
   'canvas.componentLabel': '{ref}, {type}',
   'canvas.junctionLabel': 'Junction {id}',
 
   'component.instrument.lab_psu.name': 'Lab power supply',
-  'component.component.ground.name': 'Ground',
+  'component.component.ground.name': '[[ground]]',
   'component.component.resistor.name': 'Resistor',
   'component.component.led.name': 'LED',
 
@@ -64,6 +66,61 @@ export const en = {
   'unit.ohm.symbol': 'Ω',
   'unit.volt.symbol': 'V',
   'unit.ampere.symbol': 'A',
+
+  'sim.run': 'Run',
+  'sim.stop': 'Stop',
+  'sim.controls': 'Simulation',
+  'sim.status.stopped': 'Stopped',
+  'sim.status.starting': 'Starting…',
+  'sim.status.running': 'Running · DC operating point',
+  'sim.status.failed': 'Could not run',
+  'sim.stopToEdit':
+    'Stop the simulation to change the circuit. Moving parts and changing the power supply settings are allowed while it runs.',
+  'sim.error.empty_circuit':
+    'Nothing to simulate yet: wire the components to the power supply and to [[ground]].',
+  'sim.error.no_ground': 'The circuit has no reference. Add [[ground]] and wire it to the circuit.',
+  'sim.error.floating_circuit':
+    'These parts form a floating circuit with no connection to GND: {components}. Connect them to the circuit or remove them.',
+  'sim.error.floating_output_off':
+    'These parts reach GND only through {supplies}, whose output is off: {components}. Turn the output on or connect them to GND.',
+  'sim.error.psu_shorted':
+    '{components}: the output terminals are joined by a wire (a short circuit). Remove that wire to run.',
+  'sim.error.invalid_parameter': '{components}: the value of “{param}” cannot be simulated.',
+  'sim.error.unsupported_component': '{components} cannot be simulated yet.',
+  'sim.error.singular_circuit':
+    'The circuit has no unique solution, for example two supplies forcing different voltages on the same [[net]]. Involved: {components}.',
+  'sim.error.no_convergence':
+    'The solver could not find an operating point, so no values are shown. Involved: {components}.',
+  'sim.error.internal': 'An internal simulation error occurred. The project is not affected.',
+  'sim.error.worker_crashed':
+    'The simulation stopped unexpectedly. The project is not affected. Press Run to try again.',
+  'sim.error.timeout':
+    'The simulation did not respond in time and was stopped. The project is not affected. Press Run to try again.',
+  'sim.notConnected': 'Not connected, not simulated: {components}',
+  'sim.results.heading': 'Simulation result',
+  'sim.results.note': 'Solved values. They are not saved in the project.',
+  'sim.results.current': 'Current',
+  'sim.results.voltage': 'Voltage across',
+  'sim.results.forwardVoltage': 'Forward voltage',
+  'sim.results.forwardCurrent': 'Forward current',
+  'sim.results.outputVoltage': 'Output voltage',
+  'sim.results.outputCurrent': 'Output current',
+  'sim.results.mode': 'Operating mode',
+  'sim.results.netVoltage': 'Voltage to GND',
+  'sim.results.potential': 'Potential at {terminal}',
+  'sim.results.undefined': 'not defined',
+  'sim.results.notSimulated': 'Not connected: not simulated.',
+  'sim.results.outsideModel':
+    'Outside the LED model’s documented range (1–20 mA). The value follows the model but may differ from a real part.',
+  'sim.results.ledLit':
+    'The LED symbol brightness is a visual cue derived from the solved current, not a light measurement.',
+  'sim.mode.cv': 'CV · constant voltage',
+  'sim.mode.cc': 'CC · current limit',
+  'sim.mode.off': 'Output off',
+  'sim.badge.cv': 'CV',
+  'sim.badge.cc': 'CC',
+  'sim.badge.off': 'OFF',
+  'inspector.stopToChange': 'Stop the simulation to change this value.',
 
   'inspector.heading': 'Properties',
   'inspector.empty': 'Nothing selected. Select a component to see and edit its properties.',

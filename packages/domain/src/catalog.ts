@@ -25,8 +25,10 @@ export type ParamDef =
       max: number;
       default: number;
       labelKey: string;
+      /** May change while a simulation runs (mirrored as a live control, not a restart). */
+      live?: boolean;
     }
-  | { kind: 'boolean'; key: string; default: boolean; labelKey: string }
+  | { kind: 'boolean'; key: string; default: boolean; labelKey: string; live?: boolean }
   | {
       kind: 'enum';
       key: string;
@@ -34,6 +36,7 @@ export type ParamDef =
       options: { value: string; labelKey: string }[];
       default: string;
       labelKey: string;
+      live?: boolean;
     };
 
 export interface ComponentTypeDef {
@@ -72,6 +75,7 @@ export const CATALOG: Record<ComponentTypeId, ComponentTypeDef> = {
         max: 30,
         default: 5,
         labelKey: 'param.setpointVoltage',
+        live: true,
       },
       {
         kind: 'quantity',
@@ -81,8 +85,15 @@ export const CATALOG: Record<ComponentTypeId, ComponentTypeDef> = {
         max: 5,
         default: 0.1,
         labelKey: 'param.currentLimit',
+        live: true,
       },
-      { kind: 'boolean', key: 'outputEnabled', default: false, labelKey: 'param.outputEnabled' },
+      {
+        kind: 'boolean',
+        key: 'outputEnabled',
+        default: false,
+        labelKey: 'param.outputEnabled',
+        live: true,
+      },
     ],
     aliases: ['psu', 'power supply'],
   },

@@ -8,8 +8,10 @@
  * round, so there is no second topology definition that could drift from the document.
  */
 
+import { CATALOG } from './catalog.js';
 import {
   cloneDocument,
+  type ParamValue,
   type ComponentInstance,
   type Connection,
   type Net,
@@ -56,4 +58,46 @@ export function createSnapshot(doc: ProjectDocument): SimulationSnapshot {
     projectRevision: doc.revision.localRevision,
     ...content,
   };
+}
+
+/**
+ * Everything a running simulation depends on EXCEPT live-capable parameters: the netlist,
+ * component identities and types, and every non-live parameter. While a simulation runs,
+ * an edit that changes this key would change the loaded topology and must not be applied
+ * silently; an edit that leaves it unchanged is layout-only or a live change.
+ */
+export function topologyKey(doc: ProjectDocument): string {
+  const components = doc.components.map((c) => {
+    const def = CATALOG[c.type];
+    const params = Object.fromEntries(
+      Object.entries(c.params).filter(([k]) => !def?.params.find((p) => p.key === k)?.live),
+    );
+    return { id: c.id, type: c.type, typeVersion: c.typeVersion, params };
+  });
+  return JSON.stringify({
+    components,
+    nets: doc.nets.map((n) => ({ id: n.id, role: n.role })),
+    connections: doc.connections,
+  });
+}
+
+/** Live-capable parameters whose values differ between two revisions, per component. */
+export function liveChanges(
+  before: ProjectDocument,
+  after: ProjectDocument,
+): { component: string; params: Record<string, ParamValue> }[] {
+  const out: { component: string; params: Record<string, ParamValue> }[] = [];
+  for (const c of after.components) {
+    const prev = before.components.find((x) => x.id === c.id);
+    if (!prev) continue;
+    const params: Record<string, ParamValue> = {};
+    for (const p of CATALOG[c.type].params) {
+      if (!p.live) continue;
+      if (JSON.stringify(prev.params[p.key]) !== JSON.stringify(c.params[p.key])) {
+        params[p.key] = c.params[p.key]!;
+      }
+    }
+    if (Object.keys(params).length) out.push({ component: c.id, params });
+  }
+  return out;
 }

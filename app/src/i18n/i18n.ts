@@ -7,6 +7,7 @@
 import { toEngineering, type Quantity, type UnitId } from '@tbi-lab/domain';
 import { en, type MessageKey } from './messages.en.js';
 import { he } from './messages.he.js';
+import { GLOSSARY, applyGlossary } from './glossary.js';
 
 export type Direction = 'ltr' | 'rtl';
 
@@ -19,8 +20,8 @@ export interface LocaleInfo {
 }
 
 export const LOCALES: readonly LocaleInfo[] = [
-  { code: 'en', dir: 'ltr', autonym: 'English', messages: en },
-  { code: 'he', dir: 'rtl', autonym: 'עברית', messages: he },
+  { code: 'en', dir: 'ltr', autonym: 'English', messages: applyGlossary(en, GLOSSARY.en!) },
+  { code: 'he', dir: 'rtl', autonym: 'עברית', messages: applyGlossary(he, GLOSSARY.he!) },
 ];
 
 export const DEFAULT_LOCALE = 'en';

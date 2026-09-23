@@ -1,0 +1,224 @@
+/**
+ * Main-thread side of Mode A simulation: owns the Worker, the Run/Stop state machine and the
+ * runtime results. It never solves anything itself, and it never writes project data.
+ *
+ *   stopped --run--> starting --outcome--> running --stop--> stopped
+ *                        |                    |  live PSU control -> re-solve (stays running)
+ *                        +--engine refusal / worker crash / timeout--> failed --run/stop-->
+ *
+ * Runtime results live only here, in memory. Reopening the page always starts stopped.
+ */
+
+import { createSnapshot, type ProjectDocument } from '@tbi-lab/domain';
+import type { EngineError, PsuControl, SolveOutcome } from '@tbi-lab/engine';
+import type { FromWorker, ToWorker, WorkerTiming } from './protocol.js';
+
+export interface WorkerLike {
+  postMessage(message: ToWorker): void;
+  terminate(): void;
+  onmessage: ((event: MessageEvent<FromWorker>) => void) | null;
+  onerror: ((event: ErrorEvent) => void) | null;
+}
+
+export type SimFailure =
+  | { kind: 'engine'; error: EngineError }
+  | { kind: 'worker'; code: 'worker_crashed' | 'timeout'; detail?: string };
+
+export interface RunTimings {
+  /** Worker construction to its first message; null when an existing worker was reused. */
+  workerStartMs: number | null;
+  /** postMessage on the main thread to receipt in the worker (structured clone included). */
+  requestTransferMs: number;
+  solveMs: number;
+  /** End of the solve in the worker to receipt on the main thread. */
+  resultTransferMs: number;
+  /** Run pressed (or control sent) to outcome received, including any worker start. */
+  totalMs: number;
+}
+
+export type SimState =
+  | { status: 'stopped' }
+  | { status: 'starting' }
+  | { status: 'running'; outcome: SolveOutcome; timings: RunTimings; solves: number }
+  | { status: 'failed'; failure: SimFailure };
+
+export interface ControllerDeps {
+  createWorker: () => WorkerLike;
+  now?: () => number;
+  timeoutMs?: number;
+}
+
+interface Pending {
+  requestId: number;
+  startedAt: number;
+  workerStartMs: number | null;
+  timer: ReturnType<typeof setTimeout>;
+}
+
+export class SimulationController {
+  private stateValue: SimState = { status: 'stopped' };
+  private listeners = new Set<() => void>();
+  private worker: WorkerLike | null = null;
+  private workerReady: Promise<number> | null = null;
+  private nextRequest = 1;
+  /** Only the latest request of the current run may update the state. */
+  private pending: Pending | null = null;
+  private solves = 0;
+  private readonly now: () => number;
+  private readonly timeoutMs: number;
+
+  constructor(private readonly deps: ControllerDeps) {
+    // Absolute time, comparable with the worker's clock (each has its own time origin).
+    this.now = deps.now ?? (() => performance.timeOrigin + performance.now());
+    this.timeoutMs = deps.timeoutMs ?? 10_000;
+  }
+
+  get state(): SimState {
+    return this.stateValue;
+  }
+
+  /** Starting or running: structural edits must not reach the loaded topology. */
+  get active(): boolean {
+    return this.stateValue.status === 'starting' || this.stateValue.status === 'running';
+  }
+
+  subscribe(listener: () => void): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  private set(state: SimState): void {
+    this.stateValue = state;
+    for (const l of this.listeners) l();
+  }
+
+  private ensureWorker(): Promise<number> {
+    if (this.worker && this.workerReady) return this.workerReady.then(() => -1);
+    const created = this.now();
+    const worker = this.deps.createWorker();
+    this.worker = worker;
+    this.workerReady = new Promise<number>((resolve, reject) => {
+      worker.onmessage = (e) => {
+        if (e.data.type === 'ready') {
+          worker.onmessage = (ev) => this.onMessage(ev.data);
+          resolve(this.now() - created);
+        }
+      };
+      worker.onerror = (e) => {
+        e.preventDefault?.();
+        reject(new Error(e.message || 'worker error'));
+        this.crash('worker_crashed', e.message);
+      };
+    });
+    return this.workerReady;
+  }
+
+  private discardWorker(): void {
+    this.worker?.terminate();
+    this.worker = null;
+    this.workerReady = null;
+  }
+
+  private crash(code: 'worker_crashed' | 'timeout', detail?: string): void {
+    if (this.pending) clearTimeout(this.pending.timer);
+    this.pending = null;
+    this.discardWorker();
+    this.set({
+      status: 'failed',
+      failure: { kind: 'worker', code, ...(detail ? { detail } : {}) },
+    });
+  }
+
+  private send(message: ToWorker, startedAt: number, workerStartMs: number | null): void {
+    if (this.pending) clearTimeout(this.pending.timer);
+    const timer = setTimeout(() => this.crash('timeout'), this.timeoutMs);
+    this.pending = { requestId: message.requestId, startedAt, workerStartMs, timer };
+    try {
+      this.worker!.postMessage(message);
+    } catch (e) {
+      this.crash('worker_crashed', e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  /** Run: snapshot the browser-owned project and solve it in the Worker. */
+  async run(doc: ProjectDocument): Promise<void> {
+    const startedAt = this.now();
+    const snapshot = createSnapshot(doc);
+    this.solves = 0;
+    this.set({ status: 'starting' });
+    let workerStartMs: number | null;
+    try {
+      const ms = await this.ensureWorker();
+      workerStartMs = ms >= 0 ? ms : null;
+    } catch {
+      return; // crash() already reported it
+    }
+    if (this.stateValue.status !== 'starting') return; // stopped while the worker started
+    const requestId = this.nextRequest++;
+    this.send({ type: 'load', requestId, snapshot, sentAt: this.now() }, startedAt, workerStartMs);
+  }
+
+  /**
+   * Mirror a live PSU change the browser has ALREADY persisted at `projectRevision`
+   * (architecture §2.2, category 2). Ignored unless a simulation is running.
+   */
+  control(component: string, control: PsuControl, projectRevision: number): boolean {
+    if (this.stateValue.status !== 'running' || !this.worker) return false;
+    const requestId = this.nextRequest++;
+    this.send(
+      { type: 'control', requestId, component, control, projectRevision, sentAt: this.now() },
+      this.now(),
+      null,
+    );
+    return true;
+  }
+
+  /** Stop: drop all runtime state. The project is untouched. */
+  stop(): void {
+    if (this.pending) clearTimeout(this.pending.timer);
+    this.pending = null;
+    if (this.worker && this.stateValue.status !== 'failed') {
+      this.worker.postMessage({ type: 'stop', requestId: this.nextRequest++ });
+    }
+    this.set({ status: 'stopped' });
+  }
+
+  dispose(): void {
+    this.stop();
+    this.discardWorker();
+  }
+
+  private onMessage(msg: FromWorker): void {
+    if (msg.type === 'ready' || msg.type === 'stopped') return;
+    const p = this.pending;
+    if (!p || msg.requestId !== p.requestId) return; // stale: a newer request or a stop superseded it
+    clearTimeout(p.timer);
+    this.pending = null;
+    if (msg.type === 'failure') {
+      this.crash('worker_crashed', msg.message);
+      return;
+    }
+    const receivedAt = this.now();
+    const timings = computeTimings(msg.timing, receivedAt, p);
+    const { outcome } = msg;
+    if (this.stateValue.status === 'starting' && !outcome.ok) {
+      // The engine refused the circuit: nothing is running; the user edits and runs again.
+      this.worker?.postMessage({ type: 'stop', requestId: this.nextRequest++ });
+      this.set({ status: 'failed', failure: { kind: 'engine', error: outcome.error } });
+      return;
+    }
+    if (this.stateValue.status !== 'starting' && this.stateValue.status !== 'running') return;
+    this.solves++;
+    this.set({ status: 'running', outcome, timings, solves: this.solves });
+  }
+}
+
+function computeTimings(t: WorkerTiming, receivedAt: number, p: Pending): RunTimings {
+  return {
+    workerStartMs: p.workerStartMs,
+    requestTransferMs: t.receivedAt - t.sentAt,
+    solveMs: t.solveEnd - t.solveStart,
+    resultTransferMs: receivedAt - t.solveEnd,
+    totalMs: receivedAt - p.startedAt,
+  };
+}

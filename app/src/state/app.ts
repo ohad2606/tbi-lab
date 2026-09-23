@@ -11,6 +11,8 @@ import {
   SCHEMA_VERSION,
   createProject,
   emptySelection,
+  liveChanges,
+  topologyKey,
   openDocument,
   renameProject,
   stampRevision,
@@ -28,6 +30,7 @@ import {
 } from '../i18n/i18n.js';
 import { Autosave, type SaveState } from '../persistence/autosave.js';
 import type { ProjectIndexEntry, ProjectStorage } from '../persistence/store.js';
+import type { SimState, SimulationController } from '../sim/controller.js';
 
 export const APP_VERSION = '0.1.0';
 
@@ -53,6 +56,8 @@ export interface AppState {
   selection: Selection;
   saveState: SaveState;
   notice: Notice | null;
+  /** Runtime simulation state. Never persisted: a reopened project is always stopped. */
+  sim: SimState;
 }
 
 export interface AppDeps {
@@ -62,6 +67,8 @@ export interface AppDeps {
   newId: () => string;
   clock?: { now(): Date };
   autosaveDebounceMs?: number;
+  /** Mode A simulation host. Absent in contexts that never simulate (some unit tests). */
+  simulation?: SimulationController;
 }
 
 export class AppStore {
@@ -82,7 +89,9 @@ export class AppStore {
       selection: emptySelection(),
       saveState: 'saved',
       notice: null,
+      sim: { status: 'stopped' },
     };
+    deps.simulation?.subscribe(() => this.set({ sim: deps.simulation!.state }));
   }
 
   get state(): AppState {
@@ -138,6 +147,7 @@ export class AppStore {
   }
 
   async newProject(name: string): Promise<void> {
+    this.deps.simulation?.stop();
     const doc = createProject({
       projectId: `prj_${this.deps.newId()}`,
       deviceId: this.deviceId,
@@ -159,6 +169,7 @@ export class AppStore {
   }
 
   async openProject(projectId: string): Promise<void> {
+    this.deps.simulation?.stop();
     await this.autosave?.flush();
     const raw = await this.deps.storage?.load(projectId);
     if (raw === undefined) {
@@ -202,6 +213,7 @@ export class AppStore {
   }
 
   async goHome(): Promise<void> {
+    this.deps.simulation?.stop();
     await this.autosave?.flush();
     await this.refreshProjects();
     this.set({ screen: 'home', doc: null, readOnly: null, selection: emptySelection() });
@@ -216,7 +228,17 @@ export class AppStore {
    * surfaces its code; an accepted one advances the revision and is autosaved.
    */
   apply(result: EditResult, selection?: Selection): boolean {
-    if (this.stateValue.readOnly || !this.stateValue.doc) return false;
+    const current = this.stateValue.doc;
+    if (this.stateValue.readOnly || !current) return false;
+    if (result.ok && this.deps.simulation?.active) {
+      // The running simulation holds an immutable snapshot. An edit that would change what it
+      // depends on (anything but layout and live PSU controls) is refused, never applied
+      // silently: the user stops the simulation first.
+      if (topologyKey(result.doc) !== topologyKey(current)) {
+        this.set({ notice: { key: 'sim.stopToEdit' } });
+        return false;
+      }
+    }
     if (!result.ok) {
       const specific: Partial<Record<string, MessageKey>> = {
         same_endpoint: 'error.edit.same_endpoint',
@@ -230,7 +252,45 @@ export class AppStore {
       return false;
     }
     this.commit(result.doc, selection);
+    this.mirrorLiveChanges(current);
     return true;
+  }
+
+  /**
+   * Category-2 edits (architecture §2.2): the change is already persisted in the browser's
+   * document at a new revision; only now is it mirrored to the running session.
+   */
+  private mirrorLiveChanges(before: ProjectDocument): void {
+    const sim = this.deps.simulation;
+    const after = this.stateValue.doc;
+    if (!sim?.active || !after) return;
+    for (const change of liveChanges(before, after)) {
+      const control: { setpointVoltage?: number; currentLimit?: number; outputEnabled?: boolean } =
+        {};
+      for (const [key, value] of Object.entries(change.params)) {
+        if (key === 'outputEnabled' && typeof value === 'boolean') control.outputEnabled = value;
+        else if (
+          (key === 'setpointVoltage' || key === 'currentLimit') &&
+          typeof value === 'object'
+        ) {
+          control[key] = value.value;
+        }
+      }
+      sim.control(change.component, control, after.revision.localRevision);
+    }
+  }
+
+  /** Run: simulate the current browser-owned project revision. */
+  run(): void {
+    const doc = this.stateValue.doc;
+    if (!doc || !this.deps.simulation) return;
+    this.set({ notice: null });
+    void this.deps.simulation.run(doc);
+  }
+
+  /** Stop: discard runtime state only. */
+  stop(): void {
+    this.deps.simulation?.stop();
   }
 
   rename(name: string): boolean {

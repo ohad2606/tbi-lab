@@ -10,10 +10,14 @@ import {
   type ParamDef,
 } from '@tbi-lab/domain';
 import { catalogText, formatQuantity, inputForm, isolateLtr, unitSymbol } from '../i18n/i18n.js';
+import type { SolveSuccess } from '@tbi-lab/engine';
+import { formatResult } from '../sim/format.js';
 import { useAppState, useStore, useT } from './context.js';
 
 export function Inspector() {
-  const { doc, selection, readOnly } = useAppState();
+  const { doc, selection, readOnly, sim } = useAppState();
+  const simActive = sim.status === 'running' || sim.status === 'starting';
+  const outcome = sim.status === 'running' && sim.outcome.ok ? sim.outcome : null;
   const store = useStore();
   const t = useT();
   if (!doc) return null;
@@ -44,6 +48,7 @@ export function Inspector() {
         type="button"
         class="button button-danger"
         data-testid="inspector-delete"
+        disabled={simActive}
         onClick={() => store.apply(deleteSelection(doc, selection), emptySelection())}
       >
         {t('inspector.delete')}
@@ -66,6 +71,7 @@ export function Inspector() {
       {count === 0 && <p class="muted">{t('inspector.empty')}</p>}
       {count > 1 && <p>{t('inspector.multi', { count })}</p>}
       {single && <ComponentProperties component={single} readOnly={!!readOnly} />}
+      {single && outcome && <ComponentResultView outcome={outcome} component={single} />}
       {wire && (
         <dl class="props">
           <dt>{t('inspector.type')}</dt>
@@ -80,6 +86,7 @@ export function Inspector() {
           )}
         </dl>
       )}
+      {wire && outcome && <NetResultView outcome={outcome} net={netOfWire()} />}
       {junction && (
         <dl class="props">
           <dt>{t('inspector.type')}</dt>
@@ -128,10 +135,19 @@ function ParamField({
   def: ParamDef;
   readOnly: boolean;
 }) {
-  const { doc, locale } = useAppState();
+  const { doc, locale, sim } = useAppState();
   const store = useStore();
   const t = useT();
   const current = c.params[def.key];
+  // While a simulation runs only live-capable parameters (PSU controls) may change; any other
+  // value belongs to the loaded snapshot and needs a Stop first.
+  const locked = (sim.status === 'running' || sim.status === 'starting') && !def.live;
+  const disabled = readOnly || locked;
+  const lockedHint = locked && (
+    <p class="muted small" data-testid={`param-${c.id}-${def.key}-locked`}>
+      {t('inspector.stopToChange')}
+    </p>
+  );
   const id = `param-${c.id}-${def.key}`;
 
   const shown =
@@ -160,12 +176,13 @@ function ParamField({
           type="checkbox"
           data-testid={id}
           checked={current === true}
-          disabled={readOnly}
+          disabled={disabled}
           onChange={(e) =>
             doc && store.apply(setParam(doc, c.id, def.key, (e.target as HTMLInputElement).checked))
           }
         />
         <label for={id}>{catalogText(locale, def.labelKey)}</label>
+        {lockedHint}
       </div>
     );
   }
@@ -178,7 +195,7 @@ function ParamField({
           id={id}
           data-testid={id}
           value={typeof current === 'string' ? current : def.default}
-          disabled={readOnly}
+          disabled={disabled}
           onChange={(e) =>
             doc && store.apply(setParam(doc, c.id, def.key, (e.target as HTMLSelectElement).value))
           }
@@ -189,6 +206,7 @@ function ParamField({
             </option>
           ))}
         </select>
+        {lockedHint}
       </div>
     );
   }
@@ -226,7 +244,7 @@ function ParamField({
           autocomplete="off"
           spellcheck={false}
           value={draft}
-          disabled={readOnly}
+          disabled={disabled}
           aria-invalid={error ? 'true' : 'false'}
           aria-describedby={`${id}-hint`}
           onInput={(e) => setDraft((e.target as HTMLInputElement).value)}
@@ -250,6 +268,129 @@ function ParamField({
           {t('inspector.range', range)}
         </p>
       )}
+      {lockedHint}
     </div>
+  );
+}
+
+function ResultRow({ label, value, testId }: { label: string; value: string; testId: string }) {
+  return (
+    <>
+      <dt>{label}</dt>
+      <dd class="technical" dir="ltr" data-testid={testId}>
+        {value}
+      </dd>
+    </>
+  );
+}
+
+/** Solved values for one component. Runtime only: visually and structurally apart from the
+ *  editable, persisted properties above. */
+function ComponentResultView({
+  outcome,
+  component,
+}: {
+  outcome: SolveSuccess;
+  component: ComponentInstance;
+}) {
+  const { locale } = useAppState();
+  const t = useT();
+  const r = outcome.components[component.id];
+  const I = (v: number) => formatResult(locale, v, 'ampere');
+  const V = (v: number | null) =>
+    v === null ? t('sim.results.undefined') : formatResult(locale, v, 'volt');
+  const def = CATALOG[component.type];
+  return (
+    <section class="sim-results" aria-labelledby="sim-results-heading" data-testid="sim-results">
+      <h3 id="sim-results-heading">{t('sim.results.heading')}</h3>
+      <p class="muted small">{t('sim.results.note')}</p>
+      {!r ? (
+        <p data-testid="sim-results-none">
+          {component.type === 'component.ground' ? V(0) : t('sim.results.notSimulated')}
+        </p>
+      ) : (
+        <dl class="props">
+          {r.type === 'instrument.lab_psu' && (
+            <>
+              <ResultRow
+                label={t('sim.results.mode')}
+                value={t(`sim.mode.${r.mode ?? 'off'}`)}
+                testId="result-mode"
+              />
+              <ResultRow
+                label={t('sim.results.outputVoltage')}
+                value={V(r.voltage)}
+                testId="result-voltage"
+              />
+              <ResultRow
+                label={t('sim.results.outputCurrent')}
+                value={I(r.current)}
+                testId="result-current"
+              />
+            </>
+          )}
+          {r.type === 'component.led' && (
+            <>
+              <ResultRow
+                label={t('sim.results.forwardVoltage')}
+                value={V(r.voltage)}
+                testId="result-voltage"
+              />
+              <ResultRow
+                label={t('sim.results.forwardCurrent')}
+                value={I(r.current)}
+                testId="result-current"
+              />
+            </>
+          )}
+          {r.type === 'component.resistor' && (
+            <>
+              <ResultRow
+                label={t('sim.results.current')}
+                value={I(r.current)}
+                testId="result-current"
+              />
+              <ResultRow
+                label={t('sim.results.voltage')}
+                value={V(r.voltage)}
+                testId="result-voltage"
+              />
+            </>
+          )}
+          {def.terminals.map((term) => (
+            <ResultRow
+              key={term.id}
+              label={t('sim.results.potential', { terminal: catalogText(locale, term.labelKey) })}
+              value={V(r.terminals[term.id] ?? null)}
+              testId={`result-terminal-${term.id}`}
+            />
+          ))}
+        </dl>
+      )}
+      {r?.outsideModelRange && (
+        <p class="sim-note" data-testid="result-outside-model">
+          {t('sim.results.outsideModel')}
+        </p>
+      )}
+      {r?.type === 'component.led' && <p class="muted small">{t('sim.results.ledLit')}</p>}
+    </section>
+  );
+}
+
+function NetResultView({ outcome, net }: { outcome: SolveSuccess; net: string | undefined }) {
+  const { locale } = useAppState();
+  const t = useT();
+  const v = net !== undefined ? outcome.netVoltages[net] : undefined;
+  return (
+    <section class="sim-results" data-testid="sim-results">
+      <h3>{t('sim.results.heading')}</h3>
+      <dl class="props">
+        <ResultRow
+          label={t('sim.results.netVoltage')}
+          value={v === undefined ? t('sim.results.undefined') : formatResult(locale, v, 'volt')}
+          testId="result-net-voltage"
+        />
+      </dl>
+    </section>
   );
 }

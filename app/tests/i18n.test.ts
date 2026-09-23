@@ -8,6 +8,7 @@ import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 import { CATALOG } from '@tbi-lab/domain';
 import { en } from '../src/i18n/messages.en.js';
+import { GLOSSARY, GLOSSARY_TERMS, applyGlossary } from '../src/i18n/glossary.js';
 import {
   LOCALES,
   formatQuantity,
@@ -44,8 +45,11 @@ describe('locale bundles', () => {
       (k) => he[k as keyof typeof en] === en[k as keyof typeof en],
     );
     // Only language-neutral messages may be identical (unit symbols, the reference-and-type pattern).
+    // CV and CC stay as professional technical terms in Hebrew (product scope §12).
     expect(same.sort()).toEqual([
       'canvas.componentLabel',
+      'sim.badge.cc',
+      'sim.badge.cv',
       'unit.ampere.symbol',
       'unit.ohm.symbol',
       'unit.volt.symbol',
@@ -70,6 +74,36 @@ describe('locale bundles', () => {
     expect(negotiateLocale(['he-IL', 'en-US'])).toBe('he');
     expect(negotiateLocale(['de-DE', 'en-GB'])).toBe('en');
     expect(negotiateLocale(['fr'])).toBe('en');
+  });
+});
+
+describe('electrical glossary', () => {
+  it('adopts the PM-approved Hebrew V1 terms', () => {
+    expect(GLOSSARY.he).toMatchObject({
+      ground: 'אדמה (GND)',
+      net: 'רשת',
+      terminal: 'הדק',
+      junction: 'צומת',
+      component: 'רכיב',
+      pin: 'פין',
+    });
+  });
+  it('defines every term in every locale', () => {
+    for (const locale of LOCALES) {
+      expect(Object.keys(GLOSSARY[locale.code]!).sort()).toEqual([...GLOSSARY_TERMS].sort());
+    }
+  });
+  it('never uses protective-earth wording for circuit ground', () => {
+    const he = getLocale('he').messages;
+    for (const [key, text] of Object.entries(he)) expect(text, key).not.toContain('הארקה');
+    expect(he['component.component.ground.name']).toBe('אדמה (GND)');
+  });
+  it('resolves every [[term]] reference in the bundles', () => {
+    for (const locale of LOCALES) {
+      for (const [key, text] of Object.entries(locale.messages))
+        expect(text, key).not.toMatch(/\[\[/);
+    }
+    expect(() => applyGlossary({ k: '[[nope]]' }, GLOSSARY.en!)).toThrow(/nope/);
   });
 });
 

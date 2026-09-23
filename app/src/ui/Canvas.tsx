@@ -31,7 +31,9 @@ import {
   type Selection,
   type WireTarget,
 } from '@tbi-lab/domain';
-import { catalogText, formatQuantity } from '../i18n/i18n.js';
+import { catalogText, formatQuantity, type LocaleInfo, type MessageKey } from '../i18n/i18n.js';
+import type { ComponentResult } from '@tbi-lab/engine';
+import { formatResult } from '../sim/format.js';
 import { useAppState, useStore, useT } from './context.js';
 import { SYMBOLS } from './symbols.js';
 
@@ -145,6 +147,8 @@ export function Canvas({ placing, onPlacingDone, apiRef }: Props) {
   const t = useT();
   const doc = state.doc!;
   const readOnly = !!state.readOnly;
+  const simActive = state.sim.status === 'running' || state.sim.status === 'starting';
+  const outcome = state.sim.status === 'running' ? state.sim.outcome : null;
   const selection = state.selection;
 
   const svgRef = useRef<SVGSVGElement>(null);
@@ -318,6 +322,10 @@ export function Canvas({ placing, onPlacingDone, apiRef }: Props) {
     if (e.button !== 0 || readOnly) return;
     svg.focus({ preventScroll: true });
 
+    if (placing && simActive) {
+      onPlacingDone(); // the palette is disabled while running; nothing is placed
+      return;
+    }
     if (placing) {
       place(placing, world);
       onPlacingDone();
@@ -329,7 +337,12 @@ export function Canvas({ placing, onPlacingDone, apiRef }: Props) {
       }
       return;
     }
-    if (hit.kind === 'terminal') {
+    if (hit.kind === 'terminal' && simActive) {
+      // While running, wiring is structural and not allowed: a terminal selects its part.
+      toggleOrSelect({ kind: 'component', id: hit.component }, e.shiftKey);
+      return;
+    }
+    if (hit.kind === 'terminal' && !simActive) {
       const fromPos = terminalPosition(doc, hit.component, hit.terminal)!;
       svg.setPointerCapture(e.pointerId);
       setMode({
@@ -534,14 +547,16 @@ export function Canvas({ placing, onPlacingDone, apiRef }: Props) {
 
   const viewW = Math.max(1, size.w) / camera.scale;
   const viewH = Math.max(1, size.h) / camera.scale;
-  const hint = placing
-    ? 'canvas.hint.placing'
-    : mode.kind === 'wiring'
-      ? 'canvas.hint.wiring'
-      : 'canvas.hint.idle';
+  const hint = simActive
+    ? 'canvas.hint.running'
+    : placing
+      ? 'canvas.hint.placing'
+      : mode.kind === 'wiring'
+        ? 'canvas.hint.wiring'
+        : 'canvas.hint.idle';
 
   return (
-    <div class="canvas-wrap" dir="ltr">
+    <div class={simActive ? 'canvas-wrap running' : 'canvas-wrap'} dir="ltr">
       <svg
         ref={svgRef}
         class={`canvas mode-${placing ? 'placing' : mode.kind}`}
@@ -609,6 +624,7 @@ export function Canvas({ placing, onPlacingDone, apiRef }: Props) {
                   store.select({ ...emptySelection(), components: [c.id] });
                 }
               }}
+              result={outcome?.ok ? outcome.components[c.id] : undefined}
             />
           ))}
         </g>
@@ -723,14 +739,19 @@ function ComponentView({
   selected,
   label,
   onFocus,
+  result,
 }: {
   doc: ProjectDocument;
   component: ComponentInstance;
   selected: boolean;
   label: string;
   onFocus(): void;
+  /** Solved values while a simulation runs; runtime state, never part of the document. */
+  result: ComponentResult | undefined;
 }) {
   const { locale } = useAppState();
+  const t = useT();
+  const runtime = result ? runtimeLabel(result, locale, t) : '';
   const p = doc.layout.components[c.id]!;
   const box = componentBox(doc, c);
   const cx = (box.minX + box.maxX) / 2;
@@ -764,6 +785,15 @@ function ComponentView({
       />
       <g class="symbol" transform={`translate(${p.x} ${p.y}) rotate(${p.rotation})`}>
         {SYMBOLS[c.type].draw()}
+        {c.type === 'component.led' && result && result.current > 0 && (
+          // Visual cue only: opacity follows the solved forward current (full at 20 mA). It is
+          // not a photometric model and feeds nothing back into the simulation.
+          <polygon
+            class="led-glow"
+            points="-12,-12 -12,12 12,0"
+            style={{ fillOpacity: Math.min(1, Math.max(0.08, result.current / 0.02)) }}
+          />
+        )}
       </g>
       {c.type !== 'component.ground' && (
         <text class="ref-label" x={cx} y={box.minY - 8} text-anchor="middle">
@@ -781,8 +811,40 @@ function ComponentView({
           {values}
         </text>
       )}
+      {runtime && (
+        <text
+          class="runtime-label"
+          x={cx}
+          y={box.maxY + (values ? 42 : 22)}
+          text-anchor="middle"
+          data-testid={`result-${c.id}`}
+        >
+          {runtime}
+        </text>
+      )}
     </g>
   );
+}
+
+/** Solved values shown on the canvas while running. Styled apart from design values. */
+function runtimeLabel(
+  r: ComponentResult,
+  locale: LocaleInfo,
+  t: (key: MessageKey) => string,
+): string {
+  const i = formatResult(locale, r.current, 'ampere');
+  const v =
+    r.voltage === null ? t('sim.results.undefined') : formatResult(locale, r.voltage, 'volt');
+  switch (r.type) {
+    case 'component.resistor':
+      return i;
+    case 'component.led':
+      return `${v} · ${i}`;
+    case 'instrument.lab_psu':
+      return `${v} · ${i} · ${t(`sim.badge.${r.mode ?? 'off'}`)}`;
+    default:
+      return '';
+  }
 }
 
 /** Design values shown beside a symbol (never simulation results). */

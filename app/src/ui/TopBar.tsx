@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { LOCALES } from '../i18n/i18n.js';
 import { useAppState, useStore, useT } from './context.js';
+import { SimControls } from './SimControls.js';
 
 const BRAND = 'TBI Lab';
 
@@ -22,6 +23,7 @@ export function TopBar() {
         <ProjectName name={state.doc.name} disabled={!!state.readOnly} />
       )}
       <span class="spacer" />
+      {state.screen === 'editor' && state.doc && <SimControls />}
       {state.screen === 'editor' && !state.readOnly && <SaveIndicator />}
       <label class="language">
         <span>{t('topbar.language')}</span>

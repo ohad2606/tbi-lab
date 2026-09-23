@@ -1,5 +1,6 @@
 import { render } from 'preact';
 import { ProjectStore } from './persistence/store.js';
+import { SimulationController, type WorkerLike } from './sim/controller.js';
 import { AppStore, type Preferences } from './state/app.js';
 import { App } from './ui/App.js';
 import { StoreContext } from './ui/context.js';
@@ -26,7 +27,16 @@ const prefs: Preferences = {
 async function main() {
   // Without IndexedDB (e.g. a locked-down profile) the app says so instead of pretending to save.
   const storage = await ProjectStore.open().catch(() => null);
+  // The electrical engine runs only in this module Worker, never on the UI thread.
+  const simulation = new SimulationController({
+    createWorker: () =>
+      new Worker(new URL('./sim/worker.ts', import.meta.url), {
+        type: 'module',
+        name: 'tbi-lab-engine',
+      }) as unknown as WorkerLike,
+  });
   const store = new AppStore({
+    simulation,
     storage,
     prefs,
     languages: navigator.languages,

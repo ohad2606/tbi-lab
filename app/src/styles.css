@@ -642,3 +642,119 @@ select {
   stroke-width: 2;
   vertical-align: middle;
 }
+
+/* ---------------------------------------------------------------- simulation (Sprint 3) */
+
+:root {
+  --runtime: #0a6b6b;
+  --runtime-bg: #e3f4f4;
+  --info-bg: #e8f0fe;
+}
+
+.sim-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.button-run {
+  background: var(--ok);
+  border-color: var(--ok);
+  color: #fff;
+  font-weight: 600;
+}
+
+.button-run:hover {
+  background: #145a2f;
+}
+
+.button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.sim-status {
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  font-size: 0.87rem;
+  white-space: nowrap;
+}
+
+.sim-running,
+.sim-starting {
+  background: var(--runtime-bg);
+  border-color: var(--runtime);
+  color: var(--runtime);
+  font-weight: 600;
+}
+
+.sim-failed {
+  background: var(--error-bg);
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.banner-info {
+  background: var(--info-bg);
+}
+
+/* Running looks different from editing, visible across a room (product scope §16.1). */
+.canvas-wrap.running .canvas {
+  box-shadow: inset 0 0 0 4px var(--runtime);
+}
+
+.runtime-label {
+  font-size: 13px;
+  font-weight: 700;
+  fill: var(--runtime);
+  stroke: none;
+  direction: ltr;
+  unicode-bidi: isolate;
+  pointer-events: none;
+  paint-order: stroke;
+}
+
+.symbol .led-body {
+  fill: #fff;
+}
+
+.symbol .led-glow {
+  fill: #e0201b;
+  stroke: none;
+}
+
+.sim-results {
+  margin-block: 0.75rem;
+  padding: 0.6rem 0.75rem;
+  border-inline-start: 4px solid var(--runtime);
+  background: var(--runtime-bg);
+  border-radius: 4px;
+}
+
+.sim-results h3 {
+  margin: 0 0 0.25rem;
+  font-size: 0.95rem;
+  color: var(--runtime);
+}
+
+.sim-results dd {
+  color: var(--runtime);
+}
+
+.sim-note {
+  font-size: 0.87rem;
+  color: #7a4b00;
+  background: var(--warning-bg);
+  padding: 0.35rem 0.5rem;
+  border-radius: 4px;
+}
+
+.sim-results dd {
+  white-space: nowrap;
+}
+
+.sim-icon {
+  fill: currentColor;
+  vertical-align: -1px;
+}

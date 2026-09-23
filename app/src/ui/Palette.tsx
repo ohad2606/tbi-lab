@@ -9,7 +9,9 @@ interface Props {
 }
 
 export function Palette({ placing, onPick }: Props) {
-  const { locale, readOnly } = useAppState();
+  const { locale, readOnly, sim } = useAppState();
+  // Placing is structural: not while a simulation holds the current topology.
+  const locked = !!readOnly || sim.status === 'running' || sim.status === 'starting';
   const t = useT();
   return (
     <aside class="palette" aria-labelledby="palette-heading">
@@ -24,7 +26,7 @@ export function Palette({ placing, onPick }: Props) {
                 class={placing === type ? 'palette-item active' : 'palette-item'}
                 data-testid={`palette-${type}`}
                 aria-pressed={placing === type}
-                disabled={!!readOnly}
+                disabled={locked}
                 // A keyboard activation has detail 0: place immediately at the view centre.
                 onClick={(e) => onPick(type, e.detail === 0)}
               >
