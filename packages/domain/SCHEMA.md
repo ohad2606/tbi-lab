@@ -101,6 +101,15 @@ larger part the old id and the rest a fresh one, and user net names travel with 
 Because connectivity lives in explicit references rather than geometry, a later breadboard view
 (PM-1, deferred) can derive the same netlist from a different drawing without changing this model.
 
+### Additive changes after the freeze
+
+| Sprint | Change                                                                                                                                        | Compatibility                           |
+| ------ | --------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- |
+| 3      | New type `component.led` (typeVersion 1): terminals `anode`, `cathode`; parameter `model`, a curated enum token (`model.led.vishay_tlhr5400`) | Additive; `schemaVersion` stays 2       |
+| 3      | New parameter kind: language-neutral enum token (`ParamValue` gains `string`)                                                                 | Additive; existing parameters unchanged |
+| 3      | Catalog metadata `live: true` on the PSU's `setpointVoltage`, `currentLimit`, `outputEnabled` (may change while running)                      | Catalog only, nothing persisted         |
+| 3      | `createSnapshot(doc)`: derived, layout-free simulation input; never stored                                                                    | No persisted change                     |
+
 ### Excluded by design
 
 These are not part of the project document: simulation results, runtime state (CV/CC mode, currents,

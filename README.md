@@ -13,16 +13,18 @@ Primary focus:
 
 ## Status
 
-V1 implementation, Sprint 2: the first product surface. It includes the application shell,
-schematic editing (lab PSU, ground, resistor, wiring), local projects in IndexedDB, and English and
-Hebrew. **There is no simulation yet**; the electrical engine is integrated in Sprint 3.
+V1 implementation, Sprint 3: the first electrical vertical slice. Draw a circuit with a lab PSU,
+ground, resistors and LEDs, press Run, and see DC operating-point values solved by the production
+engine in a browser Web Worker. Local projects live in IndexedDB; the UI runs in English and
+Hebrew.
 
 ## Repository layout
 
 | Path | Contents |
 |---|---|
 | `app/` | The browser application (Preact + Vite) |
-| `packages/domain/` | Project schema v2, catalog, validation, migrations, editing operations. Pure data |
+| `packages/domain/` | Project schema v2, catalog, validation, migrations, editing operations, snapshots. Pure data |
+| `packages/engine/` | The one electrical engine (promoted from Gate A): DC solver, device models, compile-from-snapshot |
 | `experiments/` | Frozen Sprint 0/1 feasibility evidence. Never imported by production code |
 | `docs/` | Product scope, architecture, ADRs, roadmap, sprint records |
 
