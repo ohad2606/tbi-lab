@@ -1,19 +1,15 @@
 # Sprint 3 — Real Electrical Vertical Slice
 
 **Status:** EXECUTED — local only, awaiting PM review. Not pushed; no `sprint-3-complete` tag.
-**Date:** 2026-09-23 · **Milestone:** B · **Base:** `b79e42f` (Sprint 2), on local branch `sprint-3`
+**Date:** 2026-09-23 · **Milestone:** B · **Base:** `99f90b6` (final Sprint 2 closure commit), local branch `sprint-3`
 **Authority:** PM Sprint 3 directive (2026-09-23), `docs/product/V1-IMPLEMENTATION-ROADMAP.md`
 (approved, RC-1..RC-7), `docs/architecture/V1-ARCHITECTURE.md` + ADR-001..009, product scope,
 `CLAUDE.md`.
 
-> **Sprint 2 closure is still pending.** The PM directive asks for Sprint 2 to be closed on
-> GitHub first: push, observe the real Actions run, record A11, then tag `sprint-2-complete`.
-> `b79e42f` **was pushed** (remote `main` = `b79e42f`). The repository is private, and this
-> host has only an SSH deploy key, which cannot read Actions results. The GitHub CLI is
-> installed (`~/.local/bin/gh`) but not signed in. The remote CI run therefore has **not
-> been observed**, so Sprint 2 A11 is still open and `sprint-2-complete` has **not** been
-> created. Sprint 3 was built on a separate local branch so that the Sprint 2 baseline
-> stays untouched until that closure is done. See §12.9.
+> **Rebased (§13).** Sprint 3 was first built on `b79e42f` while Sprint 2 closure was pending.
+> After the Sprint 2 CI fixes (`14a575e`, `c6f2e0b`; A11 passed in GitHub Actions run
+> `35832013633`) and the closure record `99f90b6`, the four Sprint 3 commits were rebased onto
+> `99f90b6`, not recreated.
 
 ---
 
@@ -115,10 +111,10 @@ stay LTR.
 | `packages/engine` (reference + bit-identity, product path, OFF model, diagnostics, live controls, range) | 34 | pass |
 | `packages/domain` | 108 (+4) | pass |
 | `app` unit (incl. controller/store simulation with the real engine, glossary) | 52 (+16) | pass |
-| `app` Chromium acceptance (`npm run test:e2e`) | 26 (+12; Sprint 2 A13 superseded by A16) | pass |
+| `app` Chromium acceptance (`npm run test:e2e`) | 36: 26 from Sprint 3 (Sprint 2 A13 superseded by A16) + 10 Sprint 2 commit-race regressions | pass |
 | Sprint 0/1 unit, unchanged | 55 | pass |
 | Sprint 0 browser, unchanged | 4 | pass |
-| Real classic-ESP32 | 20 | not re-run: `experiments/` and the runtime are untouched, and the suite is not a product CI dependency |
+| Real classic-ESP32 | 20 | pass (re-run after the rebase; not a product CI dependency) |
 
 CI-equivalent steps run locally, as in `.github/workflows/ci.yml`: `npm ci`, `typecheck`, `lint`
 (ESLint, Prettier, boundary), `npm test`, `test:e2e`, `test:browser`. The CI workflow needs no
@@ -168,15 +164,10 @@ bundled by the existing Vite.
 
 ### 12.1 Deviations from the directive
 
-1. **Sprint 2 closure is incomplete** (remote CI not observable). Sprint 3 was therefore
-   developed on local branch `sprint-3` rather than on top of a `sprint-2-complete` tag, which
-   does not exist yet. It can be rebased onto the tag once the closure is done.
-2. **Parts with nothing wired** are reported as "not connected, not simulated" rather than
-   refusing the run. Only wired floating islands are refused. Nothing is invented for them, but it
-   is a behaviour choice worth PM confirmation (§12.4).
-3. **Resistance edits while running** are refused (Stop first). Only PSU settings are live. The
-   product scope suggests live parameter edits; this sprint kept the simplest safe behaviour.
-4. Run/Stop state is shown in the top bar. There is no separate PSU panel (Sprint 4).
+1. Sprint 3 was built before the Sprint 2 closure and later rebased onto it (§13).
+2. Run/Stop state is shown in the top bar. There is no separate PSU panel (Sprint 4).
+
+Two behaviours first listed here as deviations were **approved by the PM** (§12.4).
 
 ### 12.2 Promotions
 
@@ -193,21 +184,62 @@ verbatim line.
 | Live edits beyond the PSU | Switch positions are live by the product scope. The live-param mechanism is catalog-driven (`live: true`), but a switch changes topology inside the model; it must re-solve, not recompile silently |
 | Result display density | Canvas runtime labels can overlap wires in dense layouts. Probes (Sprint 4) should replace always-on labels |
 | LED model range | Circuits beyond 20 mA are flagged; users may still push the model. A second, datasheet-sourced card would help |
-| Remote CI | Neither Sprint 2 nor Sprint 3 has a GitHub run yet (§12.9) |
+| Remote CI | Sprint 3 has not run on GitHub yet (not pushed, by instruction). The Sprint 2 closure showed that real CI finds timing issues local runs miss |
+| Button vs switch semantics | Decided by the PM (§12.4). The button is a transient runtime command and never touches the project; the switch is a live persistent edit, and `live: true` + `liveChanges` already carry it |
 
 ### 12.4 Decisions for the PM
 
-- **Needed before Sprint 4? No.** Sprint 4 is not blocked.
-- **To confirm (non-blocking):** (a) wholly unwired parts are skipped with a notice rather than
-  refusing the run; (b) resistance changes need Stop in V1 (the scope suggests live changes).
-- **Operational:** GitHub access for this host (`gh auth login`, or equivalent) is needed to
-  observe CI and to complete the Sprint 2 closure.
+**PM decisions recorded 2026-09-23 (approved):**
+
+- **Unwired components.** A component with no electrical connection at all may be omitted from
+  the solve with a clear "not connected / not simulated" notice. A partially wired component or a
+  connected floating island is **never** skipped: it goes through normal topology validation and
+  the floating diagnostics. This is already the implemented behaviour (engine `notConnected` vs
+  `floating_circuit`).
+- **Resistor value while running.** Changing it requires Stop in V1. No live resistor mutation;
+  live persistent edits stay deliberately narrow (PSU setpoint, current limit, output enable).
+- **Future interaction semantics (Sprint 4; decided, not implemented):**
+  - *Push button* press/release is a **transient runtime interaction**, not persisted project
+    state.
+  - *Toggle switch* position is **persistent project state**. When it changes during Run, the
+    browser persists first, then mirrors the change to the runtime and triggers a re-solve
+    (architecture §2.2, category 2).
+
+**Needed before Sprint 4? No.** No PM decision blocks Sprint 4.
 
 ### 12.9 Sprint 2 closure status
 
 | Step | Status |
 |---|---|
-| Working tree clean, `b79e42f` pushed fast-forward to `main` | **Done** (remote `main` = `b79e42f`) |
-| Observe the GitHub Actions run for `b79e42f` | **Blocked**: private repo, deploy key only, `gh` not signed in |
-| Update Sprint 2 A11 with the real remote result | Pending the above |
-| Tag `sprint-2-complete` | **Not created**, deliberately, until A11 is closed |
+| Sprint 2 CI fixes pushed | `14a575e` (commit race), `c6f2e0b` (mount-effect race; durable test waits) |
+| A11 on GitHub Actions | **PASS**, run `35832013633` on `c6f2e0b` (both jobs) |
+| Closure record pushed | `99f90b6` (`docs/sprints/SPRINT-2.md` §13) |
+| Tag `sprint-2-complete` | Targets the final closure commit once its own CI run is confirmed green |
+
+## 13. Rebase onto the Sprint 2 closure
+
+The four Sprint 3 commits were **rebased** (not recreated) from `b79e42f` onto `99f90b6`.
+
+**Textual conflicts: none.** The Sprint 2 fixes and the Sprint 3 changes touched different lines.
+Because a clean textual merge does not prove a correct result, the merged code was checked
+semantically:
+
+| Area | Result after rebase |
+|---|---|
+| `Inspector.tsx` `ParamField` | Keeps the Sprint 2 fixes: commit of `e.currentTarget.value` on Enter and Blur, field state initialised from the stored value, reset only when the stored value or component changes (never on mount), no-op re-commit. Also keeps the Sprint 3 behaviour: running-lock for non-live params, locked hint, enum field, results section |
+| `TopBar.tsx`, `Home.tsx` | Sprint 2 raw-value commit fixes kept; Sprint 3 Run/Stop controls present |
+| `app/e2e/helpers.ts` | Keeps both `waitForStoredProject` and the durable `createProject` wait (Sprint 2), plus the return-to-Projects navigation (Sprint 3). `waitForStoredProject` gained an optional project-name filter for tests that hold several projects |
+
+**Sprint 3 test synchronization brought up to the Sprint 2 standard.** Sprint 3 specs were
+written before the harness fix and used the save indicator as proof of persistence:
+
+- `drawLoop` now waits until the drawn and configured circuit (values, output enable, wires) is
+  durable in IndexedDB. Several tests take byte baselines right after it.
+- The live-edit test waits for the exact persisted change (output enabled; setpoint 3.3 V)
+  before comparing revisions and recomputing the engine truth.
+
+No assertion was weakened, and no sleeps were added.
+
+**Evidence changed by the rebase:** only the test counts (§8, +10 commit-race regressions) and
+the ESP32 re-run. Every electrical value, acceptance result and performance figure in this
+report is unchanged: the engine and simulation code are identical to before the rebase.
