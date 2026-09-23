@@ -501,3 +501,27 @@ Sprint 0 browser tests pass; both A15 tests pass 10/10 each; the corrected A15 p
 autosave delay stretched to 1.5 s.
 
 **All Sprint 4 acceptance criteria A1–A18 are PASS.**
+
+**No Sprint 5 work exists in this baseline.** Every commit from `113b7f7` to this closure is
+Sprint 4 implementation (`79657a6`…`5f875a4`), the A15 test correction (`f359718`) or Sprint 4
+documentation. No Sprint 5 branch existed when the implementation baseline `5f875a4` was made.
+
+### 19.1 Product Alpha handoff (to Sprint 5)
+
+Sprint 4 hands Sprint 5 a complete non-MCU laboratory core: the closed seven-part catalog, the
+one production engine with the 1N4148 and switch models, live and transient runtime interaction,
+probes, the PSU panel, undo/redo, circuit checks, and English/Hebrew parity. These electrical and
+runtime semantics are settled; Sprint 5 builds on them and does not reopen them without evidence
+of a defect.
+
+Carried into Sprint 5 as Product Alpha work (PM visual review, accepted as polish backlog, no
+redesign):
+
+- top-bar hierarchy (navigation, simulation controls, save state, language);
+- sidebar hierarchy, so that empty sections (probes, checks) do not dominate;
+- small catalog spacing and icon consistency;
+- result density in larger circuits;
+- the §18.3 risks: export/import must carry the three new types and exclude the pressed state and
+  history; Space stays reserved for switch actuators.
+
+`sprint-4-complete` goes on this closure commit once the PM confirms its GitHub Actions run.
