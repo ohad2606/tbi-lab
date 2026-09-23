@@ -4,6 +4,7 @@ export {
   type ComponentResult,
   type EngineError,
   type EngineErrorCode,
+  type LiveControl,
   type PsuControl,
   type SolveFailure,
   type SolveOutcome,

@@ -20,7 +20,9 @@ const ok = (o: SolveOutcome): SolveSuccess => {
   if (!o.ok) throw new Error(JSON.stringify(o.error));
   return o;
 };
-const relErr = (a: number, e: number) => Math.abs(a - e) / Math.abs(e);
+/** Relative error; a missing (null) value is an infinite error, never a pass. */
+const relErr = (a: number | null, e: number) =>
+  a === null ? Infinity : Math.abs(a - e) / Math.abs(e);
 
 describe('supported resistance range', () => {
   it('covers exactly the catalog input range 1 mΩ .. 1 GΩ', () => {

@@ -4,6 +4,7 @@
 
 import { CATALOG, defaultParams } from './catalog.js';
 import {
+  cloneDocument,
   DOCUMENT_FORMAT,
   SCHEMA_VERSION,
   type ComponentTypeId,
@@ -88,4 +89,21 @@ export function stampRevision(
       deviceId,
     },
   };
+}
+
+/**
+ * The document to commit when undo/redo returns to `target` from `current` (Sprint 4).
+ *
+ * - Content (components, nets, layout, parameters, name) is `target`'s.
+ * - Identity never goes backwards: every id counter keeps the highest value ever issued, so
+ *   an id consumed after `target` (for example a component placed and then undone) is never
+ *   reissued. Redo restores exactly the same ids.
+ * - Revision metadata is `current`'s. The caller commits it through the normal path, which
+ *   advances `localRevision` monotonically; undo never decrements or resurrects a revision.
+ */
+export function historyTarget(current: ProjectDocument, target: ProjectDocument): ProjectDocument {
+  const counters: Record<string, number> = { ...target.idCounters };
+  for (const [k, v] of Object.entries(current.idCounters))
+    counters[k] = Math.max(v, counters[k] ?? 0);
+  return { ...cloneDocument(target), idCounters: counters, revision: { ...current.revision } };
 }

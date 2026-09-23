@@ -10,10 +10,13 @@ const ok = (o: SolveOutcome): SolveSuccess => {
   if (!o.ok) throw new Error(JSON.stringify(o.error));
   return o;
 };
-const rel = (a: number, e: number, label: string) =>
-  expect(Math.abs(a - e) / Math.abs(e), `${label}: ${a} vs ${e}`).toBeLessThanOrEqual(REL);
-const bits = (x: number) =>
-  [...new Uint8Array(new Float64Array([x]).buffer)]
+const rel = (a: number | null, e: number, label: string) =>
+  expect(
+    a === null ? Infinity : Math.abs(a - e) / Math.abs(e),
+    `${label}: ${a} vs ${e}`,
+  ).toBeLessThanOrEqual(REL);
+const bits = (x: number | null) =>
+  [...new Uint8Array(new Float64Array([x ?? NaN]).buffer)]
     .map((b) => b.toString(16).padStart(2, '0'))
     .join('');
 
@@ -93,7 +96,7 @@ describe('product path: project document -> snapshot -> engine', () => {
     const r3 = b.add('component.resistor');
     b.wire('PSU1.positive', `${r3}.a`);
     r = ok(new EngineSession(b.snapshot()).solve());
-    expect(Math.abs(r.components[r3]!.current)).toBeLessThanOrEqual(1e-12);
+    expect(Math.abs(r.components[r3]!.current!)).toBeLessThanOrEqual(1e-12);
     rel(r.components[r3]!.terminals.b!, 9, 'open end sits at the supply potential');
     // Current-limited short: 1 mΩ.
     r = ok(new EngineSession(resistorLoop(5, 0.1, 1e-3).snapshot()).solve());
@@ -108,7 +111,7 @@ describe('A7: PSU output OFF is an open circuit, not a 0 V source', () => {
     expect(off.components.PSU1!.mode).toBe('off');
     expect(off.components.PSU1!.current).toBe(0);
     expect(off.components.R1!.current).toBe(0);
-    expect(Math.abs(off.components.D1!.current)).toBe(0);
+    expect(Math.abs(off.components.D1!.current!)).toBe(0);
     expect(off.components.D1!.voltage).toBe(0);
     const on = ok(new EngineSession(ledLoop(5, 0.1, 220, true).snapshot()).solve());
     rel(on.components.D1!.current, ledReference(5, 220).current, 'I(D1) once enabled');

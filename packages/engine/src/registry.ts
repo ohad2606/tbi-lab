@@ -3,10 +3,11 @@
  * documented device model cards. An unknown id is refused, never approximated.
  */
 
-import { LED_TLHR5400, type DiodeModel } from './models.js';
+import { DIODE_1N4148, LED_TLHR5400, type DiodeModel } from './models.js';
 
 export const MODEL_CARDS: Readonly<Record<string, DiodeModel>> = {
   'model.led.vishay_tlhr5400': LED_TLHR5400,
+  'model.diode.vishay_1n4148': DIODE_1N4148,
 };
 
 /**
@@ -17,4 +18,6 @@ export const MODEL_CARDS: Readonly<Record<string, DiodeModel>> = {
  */
 export const MODEL_VALID_CURRENT_A: Readonly<Record<string, readonly [number, number]>> = {
   'model.led.vishay_tlhr5400': [1e-3, 20e-3],
+  // The span of the datasheet anchors the card was fitted to (models.ts).
+  'model.diode.vishay_1n4148': [1e-4, 0.1],
 };

@@ -8,3 +8,4 @@ export * from './edit.js';
 export * from './validate.js';
 export * from './migrate.js';
 export * from './snapshot.js';
+export * from './checks.js';

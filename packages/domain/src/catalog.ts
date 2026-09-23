@@ -53,6 +53,11 @@ export interface ComponentTypeDef {
   groundTerminal?: string;
   /** Search metadata keys; the full multilingual search is a later sprint. */
   aliases: string[];
+  /**
+   * The component has a momentary actuator whose state is TRANSIENT RUNTIME input only: it is
+   * never stored in the project, never advances the revision and resets on Stop/reopen.
+   */
+  momentary?: boolean;
 }
 
 export const CATALOG: Record<ComponentTypeId, ComponentTypeDef> = {
@@ -153,6 +158,59 @@ export const CATALOG: Record<ComponentTypeId, ComponentTypeDef> = {
     ],
     aliases: ['led', 'light'],
   },
+  'component.diode': {
+    type: 'component.diode',
+    typeVersion: 1,
+    refPrefix: 'D',
+    nameKey: 'component.component.diode.name',
+    symbol: 'symbol.diode',
+    terminals: [
+      { id: 'anode', offset: { x: -40, y: 0 }, labelKey: 'terminal.anode' },
+      { id: 'cathode', offset: { x: 40, y: 0 }, labelKey: 'terminal.cathode' },
+    ],
+    params: [
+      {
+        kind: 'enum',
+        key: 'model',
+        // Datasheet-sourced card only (packages/engine/PROVENANCE.md).
+        options: [{ value: 'model.diode.vishay_1n4148', labelKey: 'model.diode.vishay_1n4148' }],
+        default: 'model.diode.vishay_1n4148',
+        labelKey: 'param.model',
+      },
+    ],
+    aliases: ['diode', '1n4148'],
+  },
+  'component.push_button': {
+    type: 'component.push_button',
+    typeVersion: 1,
+    refPrefix: 'SW',
+    nameKey: 'component.component.push_button.name',
+    symbol: 'symbol.push_button',
+    terminals: [
+      { id: 'a', offset: { x: -40, y: 0 }, labelKey: 'terminal.a' },
+      { id: 'b', offset: { x: 40, y: 0 }, labelKey: 'terminal.b' },
+    ],
+    // Normally open, momentary SPST. Its pressed state is runtime input, not a parameter.
+    params: [],
+    momentary: true,
+    aliases: ['button', 'push button', 'momentary'],
+  },
+  'component.toggle_switch': {
+    type: 'component.toggle_switch',
+    typeVersion: 1,
+    refPrefix: 'SW',
+    nameKey: 'component.component.toggle_switch.name',
+    symbol: 'symbol.toggle_switch',
+    terminals: [
+      { id: 'a', offset: { x: -40, y: 0 }, labelKey: 'terminal.a' },
+      { id: 'b', offset: { x: 40, y: 0 }, labelKey: 'terminal.b' },
+    ],
+    // SPST. Its position is persistent project state and a live control while running.
+    params: [
+      { kind: 'boolean', key: 'closed', default: false, labelKey: 'param.closed', live: true },
+    ],
+    aliases: ['switch', 'toggle', 'spst'],
+  },
 };
 
 /** Palette order. */
@@ -161,6 +219,9 @@ export const CATALOG_ORDER: readonly ComponentTypeId[] = [
   'component.ground',
   'component.resistor',
   'component.led',
+  'component.diode',
+  'component.push_button',
+  'component.toggle_switch',
 ];
 
 export function isComponentType(type: string): type is ComponentTypeId {

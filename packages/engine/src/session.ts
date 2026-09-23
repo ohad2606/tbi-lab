@@ -13,7 +13,7 @@
 
 import type { ComponentInstance, SimulationSnapshot } from '@tbi-lab/domain';
 import { Circuit, ConvergenceError } from './circuit.js';
-import { Diode, LabPsu, Resistor, type Device } from './devices.js';
+import { Diode, LabPsu, Resistor, VoltageSource, type Device } from './devices.js';
 import { SingularMatrixError } from './linalg.js';
 import { MODEL_CARDS, MODEL_VALID_CURRENT_A } from './registry.js';
 
@@ -29,6 +29,13 @@ export interface PsuControl {
   currentLimit?: number;
   outputEnabled?: boolean;
 }
+
+/**
+ * A LIVE PERSISTENT control: a value the browser has already persisted in the project, now
+ * mirrored into the running session (architecture §2.2, category 2). PSU settings, and the
+ * toggle-switch position (`closed`).
+ */
+export type LiveControl = PsuControl & { closed?: boolean };
 
 export type EngineErrorCode =
   | 'empty_circuit'
@@ -58,19 +65,22 @@ export interface ComponentResult {
   id: string;
   type: ComponentInstance['type'];
   /**
-   * Current in amperes. Resistor: terminal a -> b. LED: anode -> cathode.
-   * PSU: delivered out of the + terminal into the circuit.
+   * Current in amperes. Resistor and switches: terminal a -> b. LED and diode: anode ->
+   * cathode. PSU: delivered out of the + terminal into the circuit. `null` only for a closed
+   * switch in parallel with another ideal path, whose own share is not defined.
    */
-  current: number;
+  current: number | null;
   /** Voltage across the component in volts (a-b, anode-cathode, + minus -), or null if undefined. */
   voltage: number | null;
   /** Potential of each terminal relative to GND, or null where it is not defined. */
   terminals: Record<string, number | null>;
   /** PSU only: the operating state found by the solver. */
   mode?: SupplyMode;
+  /** Switches only: whether the contact was closed for this solve. */
+  closed?: boolean;
   /**
-   * LED only, and only when forward current flows: true when that current lies outside the
-   * model card's documented validity range. A conducting-state flag; it never alters numbers.
+   * LED and diode only, and only when forward current flows: true when that current lies
+   * outside the model card's documented validity range. A flag; it never alters numbers.
    */
   outsideModelRange?: boolean;
 }
@@ -139,12 +149,29 @@ class UnionFind {
 interface Element {
   component: ComponentInstance;
   nodes: [string, string];
-  /** A PSU whose output is off contributes no element to the solved topology. */
+  /**
+   * Whether the element conducts in the solved topology. A PSU whose output is off and an
+   * OPEN switch contribute no element at all: an open circuit, with no leakage added.
+   */
   active: boolean;
 }
 
+const TERMINALS: Record<string, [string, string]> = {
+  'component.resistor': ['a', 'b'],
+  'component.led': ['anode', 'cathode'],
+  'component.diode': ['anode', 'cathode'],
+  'component.push_button': ['a', 'b'],
+  'component.toggle_switch': ['a', 'b'],
+  'instrument.lab_psu': ['positive', 'negative'],
+};
+
+const isSwitch = (type: string) =>
+  type === 'component.push_button' || type === 'component.toggle_switch';
+
 export class EngineSession {
-  private readonly overrides = new Map<string, PsuControl>();
+  private readonly overrides = new Map<string, LiveControl>();
+  /** TRANSIENT runtime input: push buttons currently held. Never persisted anywhere. */
+  private readonly pressed = new Set<string>();
   private appliedRevision: number;
 
   constructor(private readonly snapshot: SimulationSnapshot) {
@@ -156,33 +183,70 @@ export class EngineSession {
   }
 
   /**
-   * Mirror a live PSU change that the browser has ALREADY persisted at `projectRevision`.
-   * Only PSU setpoint, current limit and output enable are live in V1 Sprint 3; anything
-   * else requires a new snapshot.
+   * Mirror a live persistent change that the browser has ALREADY persisted at
+   * `projectRevision`: PSU setpoint / current limit / output enable, or a toggle-switch
+   * position. Anything else needs a new snapshot.
    */
+  applyControl(
+    componentId: string,
+    control: LiveControl,
+    projectRevision: number,
+  ): EngineError | null {
+    const c = this.snapshot.components.find((x) => x.id === componentId);
+    const refuse = { code: 'unsupported_component' as const, components: [componentId] };
+    if (!c) return refuse;
+    const psuKeys = ['setpointVoltage', 'currentLimit', 'outputEnabled'] as const;
+    const hasPsuKeys = psuKeys.some((k) => control[k] !== undefined);
+    if (c.type === 'instrument.lab_psu') {
+      if (control.closed !== undefined) return refuse;
+      if (
+        control.setpointVoltage !== undefined &&
+        !(control.setpointVoltage >= 0 && Number.isFinite(control.setpointVoltage))
+      ) {
+        return { code: 'invalid_parameter', components: [componentId], param: 'setpointVoltage' };
+      }
+      if (
+        control.currentLimit !== undefined &&
+        !(control.currentLimit > 0 && Number.isFinite(control.currentLimit))
+      ) {
+        return { code: 'invalid_parameter', components: [componentId], param: 'currentLimit' };
+      }
+    } else if (c.type === 'component.toggle_switch') {
+      if (hasPsuKeys || typeof control.closed !== 'boolean') return refuse;
+    } else {
+      return refuse;
+    }
+    this.overrides.set(componentId, { ...this.overrides.get(componentId), ...control });
+    this.appliedRevision = Math.max(this.appliedRevision, projectRevision);
+    return null;
+  }
+
+  /** @deprecated Sprint 3 name, kept for the PSU-only callers: use `applyControl`. */
   applyPsuControl(
     componentId: string,
     control: PsuControl,
     projectRevision: number,
   ): EngineError | null {
+    return this.applyControl(componentId, control, projectRevision);
+  }
+
+  /**
+   * TRANSIENT runtime input: press or release a momentary push button. Not a project value:
+   * no revision is involved and nothing is persisted.
+   */
+  setMomentary(componentId: string, pressed: boolean): EngineError | null {
     const c = this.snapshot.components.find((x) => x.id === componentId);
-    if (!c || c.type !== 'instrument.lab_psu')
+    if (!c || c.type !== 'component.push_button') {
       return { code: 'unsupported_component', components: [componentId] };
-    if (
-      control.setpointVoltage !== undefined &&
-      !(control.setpointVoltage >= 0 && Number.isFinite(control.setpointVoltage))
-    ) {
-      return { code: 'invalid_parameter', components: [componentId], param: 'setpointVoltage' };
     }
-    if (
-      control.currentLimit !== undefined &&
-      !(control.currentLimit > 0 && Number.isFinite(control.currentLimit))
-    ) {
-      return { code: 'invalid_parameter', components: [componentId], param: 'currentLimit' };
-    }
-    this.overrides.set(componentId, { ...this.overrides.get(componentId), ...control });
-    this.appliedRevision = Math.max(this.appliedRevision, projectRevision);
+    if (pressed) this.pressed.add(componentId);
+    else this.pressed.delete(componentId);
     return null;
+  }
+
+  private switchClosed(c: ComponentInstance): boolean {
+    if (c.type === 'component.push_button') return this.pressed.has(c.id);
+    return this.overrides.get(c.id)?.closed ?? c.params.closed === true;
   }
 
   private base(): OutcomeBase {
@@ -263,7 +327,8 @@ export class EngineSession {
           });
           break;
         }
-        case 'component.led': {
+        case 'component.led':
+        case 'component.diode': {
           if (typeof c.params.model !== 'string' || !MODEL_CARDS[c.params.model]) {
             return this.fail({ code: 'invalid_parameter', components: [c.id], param: 'model' });
           }
@@ -274,6 +339,14 @@ export class EngineSession {
           });
           break;
         }
+        case 'component.push_button':
+        case 'component.toggle_switch':
+          elements.push({
+            component: c,
+            nodes: [nodeOf(c.id, 'a'), nodeOf(c.id, 'b')],
+            active: this.switchClosed(c),
+          });
+          break;
         case 'instrument.lab_psu': {
           const s = this.psuSettings(c);
           if (!(s.setpointV !== undefined && s.setpointV >= 0 && Number.isFinite(s.setpointV))) {
@@ -305,6 +378,21 @@ export class EngineSession {
     }
 
     if (elements.length === 0) return this.fail({ code: 'empty_circuit' });
+
+    // Ideal conductors: nodes joined by closed switches are one electrical node. An enabled
+    // supply whose terminals they join is shorted exactly as by a wire: refused, not guessed.
+    const shorts = new UnionFind();
+    const closedSwitches = elements.filter((e) => isSwitch(e.component.type) && e.active);
+    for (const e of closedSwitches) shorts.union(e.nodes[0], e.nodes[1]);
+    for (const e of elements) {
+      if (e.component.type !== 'instrument.lab_psu' || !e.active) continue;
+      if (shorts.find(e.nodes[0]) === shorts.find(e.nodes[1])) {
+        const path = closedSwitches
+          .filter((sw) => shorts.find(sw.nodes[0]) === shorts.find(e.nodes[0]))
+          .map((sw) => sw.component.id);
+        return this.fail({ code: 'psu_shorted', components: [e.component.id, ...path] });
+      }
+    }
     if (!hasGround)
       return this.fail({ code: 'no_ground', components: elements.map((e) => e.component.id) });
 
@@ -334,13 +422,25 @@ export class EngineSession {
     // ---- Build and solve the circuit with the promoted Gate A devices ----------------------
     const circuit = new Circuit();
     const devices = new Map<string, Device>();
+    // A closed switch is an ideal conductor: a 0 V branch whose current is an MNA unknown.
+    // Closed switches forming a loop among themselves (or across one node) are redundant
+    // ideal paths: their current split is not defined, so only a spanning forest is built.
+    const forest = new UnionFind();
+    const redundantSwitches = new Set<string>();
     for (const e of elements) {
       if (!e.active) continue;
       const c = e.component;
       let d: Device;
-      if (c.type === 'component.resistor')
+      if (isSwitch(c.type)) {
+        if (forest.find(e.nodes[0]) === forest.find(e.nodes[1])) {
+          redundantSwitches.add(c.id);
+          continue;
+        }
+        forest.union(e.nodes[0], e.nodes[1]);
+        d = new VoltageSource(c.id, e.nodes[0], e.nodes[1], 0);
+      } else if (c.type === 'component.resistor')
         d = new Resistor(c.id, e.nodes[0], e.nodes[1], quantity(c.params, 'resistance')!);
-      else if (c.type === 'component.led')
+      else if (c.type === 'component.led' || c.type === 'component.diode')
         d = new Diode(c.id, e.nodes[0], e.nodes[1], MODEL_CARDS[c.params.model as string]!);
       else {
         const s = this.psuSettings(c);
@@ -399,7 +499,12 @@ export class EngineSession {
     }
 
     // ---- Report ------------------------------------------------------------------------------
-    const potential = (node: string): number | null => nodeVoltages.get(node) ?? null;
+    // IEEE -0 is normalised to 0 in everything reported (it is the same physical value).
+    const clean = (v: number) => v + 0;
+    const potential = (node: string): number | null => {
+      const v = nodeVoltages.get(node);
+      return v === undefined ? null : clean(v);
+    };
     const netVoltages: Record<string, number> = {};
     for (const n of snap.nets) {
       const v = potential(groundNets.has(n.id) ? REF : n.id);
@@ -409,25 +514,27 @@ export class EngineSession {
     for (const e of elements) {
       const c = e.component;
       const [a, b] = e.nodes.map(potential) as [number | null, number | null];
-      const terminalIds =
-        c.type === 'component.resistor'
-          ? ['a', 'b']
-          : c.type === 'component.led'
-            ? ['anode', 'cathode']
-            : ['positive', 'negative'];
+      const terminalIds = TERMINALS[c.type]!;
+      let current: number | null;
+      if (!e.active)
+        current = 0; // open switch, output-off supply: exactly zero by construction
+      else if (redundantSwitches.has(c.id)) current = null;
+      else if (isSwitch(c.type))
+        current = clean(-currents.get(c.id)!); // 0 V branch: a -> b
+      else current = clean(currents.get(c.id)!);
       const result: ComponentResult = {
         id: c.id,
         type: c.type,
-        // A disabled supply is an open circuit: exactly zero current by construction.
-        current: e.active ? currents.get(c.id)! : 0,
-        voltage: a !== null && b !== null ? a - b : null,
-        terminals: { [terminalIds[0]!]: a, [terminalIds[1]!]: b },
+        current,
+        voltage: a !== null && b !== null ? clean(a - b) : null,
+        terminals: { [terminalIds[0]]: a, [terminalIds[1]]: b },
       };
-      if (c.type === 'component.led') {
+      if (isSwitch(c.type)) result.closed = e.active;
+      if ((c.type === 'component.led' || c.type === 'component.diode') && current !== null) {
         const range = MODEL_VALID_CURRENT_A[c.params.model as string];
-        const i = result.current;
-        // Below ~1 µA the LED is simply off; the flag concerns meaningful conduction only.
-        if (range && i > 1e-6) result.outsideModelRange = i < range[0] || i > range[1];
+        // Below ~1 µA the junction is simply off; the flag concerns meaningful conduction.
+        if (range && current > 1e-6)
+          result.outsideModelRange = current < range[0] || current > range[1];
       }
       if (c.type === 'instrument.lab_psu') {
         result.mode = !e.active ? 'off' : modes.get(c.id) === 'CC' ? 'cc' : 'cv';

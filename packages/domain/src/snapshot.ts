@@ -101,3 +101,23 @@ export function liveChanges(
   }
   return out;
 }
+
+/**
+ * The three kinds of persistent edit, relative to a running simulation (Sprint 4, explicit):
+ *
+ * - `layout`: only the drawing changed (move, rotate, rename). Allowed while running; the
+ *   loaded snapshot is unaffected.
+ * - `live`: only live-capable parameters changed (PSU setpoint / limit / output, toggle
+ *   position). Allowed while running: persisted first, then mirrored to the session.
+ * - `structural`: anything the snapshot depends on changed (wiring, parts, non-live
+ *   parameters such as a resistance). Refused while running.
+ *
+ * TRANSIENT runtime interaction (push-button press/release) is not an edit at all: it never
+ * produces a new document and never reaches this function.
+ */
+export type EditKind = 'layout' | 'live' | 'structural';
+
+export function classifyEdit(before: ProjectDocument, after: ProjectDocument): EditKind {
+  if (topologyKey(before) !== topologyKey(after)) return 'structural';
+  return liveChanges(before, after).length ? 'live' : 'layout';
+}

@@ -29,7 +29,13 @@ export type ParamValue = Quantity | boolean | string;
 
 /** Component type ids are namespaced and language-neutral. */
 export type ComponentTypeId =
-  'instrument.lab_psu' | 'component.ground' | 'component.resistor' | 'component.led';
+  | 'instrument.lab_psu'
+  | 'component.ground'
+  | 'component.resistor'
+  | 'component.led'
+  | 'component.diode'
+  | 'component.push_button'
+  | 'component.toggle_switch';
 
 export interface ComponentInstance {
   /** Stable reference designator (`R1`, `PSU1`), unique per project, never reused. */

@@ -116,3 +116,57 @@ export const LED_TLHR5400: DiodeModel = {
     `N = ${RED_LED_EMISSION_COEFFICIENT} assumed (see RED_LED_EMISSION_COEFFICIENT). ` +
     'R_S not modelled (not identifiable from the available datasheet data).',
 };
+
+/**
+ * Datasheet anchors for the Vishay 1N4148 small-signal switching diode (Sprint 4).
+ *
+ * Source: Vishay Semiconductors, "1N4148 Small Signal Fast Switching Diodes", Document
+ * Number 81857, Rev. 1.6, 07-Nov-2024 (https://www.vishay.com/docs/81857/1n4148.pdf,
+ * SHA-256 aefe8540…46a44b7). Fig. 1, "Typical Forward Voltage vs. Junction Temperature",
+ * read at T_j = 25 degC. The figure's lines were read from the PDF's VECTOR path data and
+ * calibrated against its own gridlines, not digitized from pixels:
+ * packages/engine/tools/extract_1n4148.py reproduces every number below.
+ */
+export const VISHAY_1N4148_ANCHORS = {
+  /** [forward current A, typical forward voltage V] at T_j = 25 degC. */
+  typicalForward: [
+    [1e-4, 0.499],
+    [1e-3, 0.6105],
+    [1e-2, 0.7306],
+    [1e-1, 0.8775],
+  ] as ReadonlyArray<readonly [number, number]>,
+  /** Electrical Characteristics table limits (not used by the fit; checked by tests). */
+  maxForwardVoltageAt10mA: 1.0,
+  maxReverseCurrentAt20V: 25e-9,
+  source:
+    'Vishay 1N4148 datasheet, Document 81857, Rev. 1.6 (07-Nov-2024): Fig. 1 typical V_F at ' +
+    'T_j = 25 degC for I_F = 0.1/1/10/100 mA (vector-extracted); Electrical Characteristics table.',
+} as const;
+
+/**
+ * Shockley + series-resistance card for the 1N4148, fitted by least squares to the four
+ * anchors above (V_F = N*Vt*ln(I/I_S + 1) + I*R_S, Vt from CODATA 2019 at 298.15 K). Every
+ * anchor is reproduced within 1.8 mV. Three independent Fig. 2 points of the 25 degC curve
+ * at 6-22 uA agree within 5.2 mV.
+ *
+ * ASSUMPTIONS AND LIMITS (documented, tested):
+ *  - Typical (not worst-case) part at 25 degC; no temperature dependence is modelled.
+ *  - Forward validity 0.1 mA .. 100 mA (the anchor span). Above it the card is extrapolated;
+ *    the rated continuous current is 300 mA.
+ *  - Reverse bias: the model's saturation current (about 4.2 nA) is its reverse current. That
+ *    is within the datasheet's 25 nA maximum at 20 V, but real reverse leakage comes from
+ *    mechanisms this DC card does not model; it is an order-of-magnitude stand-in only.
+ *  - Reverse breakdown (V_(BR) >= 100 V) is NOT modelled. V1 supplies are at most 30 V each,
+ *    below the 75 V reverse-voltage rating.
+ */
+export const DIODE_1N4148: DiodeModel = {
+  name: '1N4148',
+  // Exact least-squares fit of the recorded anchors (reproduced in tests/diode.test.ts).
+  saturationCurrentA: 4.210299409142904e-9,
+  emissionCoefficient: 1.924181620316481,
+  seriesResistanceOhm: 0.3798725839542013,
+  temperatureK: T_AMBIENT_K,
+  provenance:
+    `Least-squares Shockley + R_S fit to ${VISHAY_1N4148_ANCHORS.source} ` +
+    'Reproduced by packages/engine/tools/extract_1n4148.py. Breakdown not modelled.',
+};
