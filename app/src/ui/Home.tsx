@@ -17,13 +17,16 @@ export function Home() {
           class="new-project"
           onSubmit={(e) => {
             e.preventDefault();
-            void store.newProject(value);
+            // Read the submitted field itself, not state that may not have rendered yet.
+            const field = e.currentTarget.elements.namedItem('projectName') as HTMLInputElement;
+            void store.newProject(field.value);
           }}
         >
           <label>
             <span>{t('home.new.nameLabel')}</span>
             <input
               data-testid="new-project-name"
+              name="projectName"
               dir="auto"
               value={value}
               onInput={(e) => setName((e.target as HTMLInputElement).value)}

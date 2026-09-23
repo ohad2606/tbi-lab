@@ -167,12 +167,19 @@ function ParamField({
     min: isolateLtr(formatQuantity(locale, { value: def.min, unit: def.unit })),
     max: isolateLtr(formatQuantity(locale, { value: def.max, unit: def.unit })),
   };
-  const commit = () => {
-    if (!doc || draft === shown) return setError(null);
-    const parsed = parseQuantity(draft, def.unit);
+  /**
+   * Commit exactly the text being committed, taken from the input element itself. The draft
+   * state only drives rendering: a fast Enter or Blur can arrive before a pending state
+   * render has run, so correctness must not depend on it (CI run 35789744836).
+   */
+  const commit = (raw: string) => {
+    if (!doc || raw === shown) return setError(null);
+    const parsed = parseQuantity(raw, def.unit);
     if (!parsed.ok) return setError(t(`error.parse.${parsed.error}`));
     if (parsed.value < def.min || parsed.value > def.max) return setError(t('error.range', range));
     setError(null);
+    // Committing the value already stored (e.g. Enter then Blur) is not a new revision.
+    if (typeof current === 'object' && current.value === parsed.value) return;
     store.apply(setParam(doc, c.id, def.key, { value: parsed.value, unit: def.unit }));
   };
 
@@ -193,9 +200,9 @@ function ParamField({
           aria-invalid={error ? 'true' : 'false'}
           aria-describedby={`${id}-hint`}
           onInput={(e) => setDraft((e.target as HTMLInputElement).value)}
-          onBlur={commit}
+          onBlur={(e) => commit(e.currentTarget.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter') commit();
+            if (e.key === 'Enter') commit(e.currentTarget.value);
             if (e.key === 'Escape') {
               setDraft(shown);
               setError(null);

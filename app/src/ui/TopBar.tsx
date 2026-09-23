@@ -46,9 +46,19 @@ function ProjectName({ name, disabled }: { name: string; disabled: boolean }) {
   const t = useT();
   const [draft, setDraft] = useState(name);
   useEffect(() => setDraft(name), [name]);
-  const commit = () => {
-    if (draft === name) return;
-    if (!store.rename(draft)) setDraft(name);
+  /**
+   * Commit the element's actual value, not the draft state: Enter/Blur can arrive before a
+   * pending state render has run (CI run 35789744836).
+   */
+  const commit = (input: HTMLInputElement) => {
+    const raw = input.value;
+    if (raw === name) return;
+    if (!store.rename(raw)) {
+      // Refused (e.g. empty): restore both the state and the element itself, which may
+      // already hold the stale text if no render is pending.
+      input.value = name;
+      setDraft(name);
+    }
   };
   return (
     <input
@@ -59,12 +69,14 @@ function ProjectName({ name, disabled }: { name: string; disabled: boolean }) {
       value={draft}
       disabled={disabled}
       onInput={(e) => setDraft((e.target as HTMLInputElement).value)}
-      onBlur={commit}
+      onBlur={(e) => commit(e.currentTarget)}
       onKeyDown={(e) => {
-        if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+        if (e.key === 'Enter') e.currentTarget.blur();
         if (e.key === 'Escape') {
+          // Restore synchronously so the blur that follows commits nothing.
+          e.currentTarget.value = name;
           setDraft(name);
-          (e.target as HTMLInputElement).blur();
+          e.currentTarget.blur();
         }
       }}
     />
