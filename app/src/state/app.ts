@@ -32,6 +32,7 @@ import {
 import {
   negotiateLocale,
   getLocale,
+  isolateUserText,
   translate,
   type LocaleInfo,
   type MessageKey,
@@ -349,7 +350,13 @@ export class AppStore {
       const copy = copyAsNewProject(source, this.newIdentity(name));
       await this.deps.storage!.add(copy);
       await this.refreshProjects();
-      this.set({ notice: { key: 'library.duplicated', params: { name }, tone: 'info' } });
+      this.set({
+        notice: {
+          key: 'library.duplicated',
+          params: { name: isolateUserText(name) },
+          tone: 'info',
+        },
+      });
       return copy.projectId;
     } catch (e) {
       this.storageFailure(e, 'library.error.duplicate');
@@ -384,7 +391,9 @@ export class AppStore {
       this.set({ screen: 'home', doc: null, readOnly: null, selection: emptySelection() });
     }
     await this.refreshProjects().catch(() => undefined);
-    this.set({ notice: { key: 'library.deleted', params: { name }, tone: 'info' } });
+    this.set({
+      notice: { key: 'library.deleted', params: { name: isolateUserText(name) }, tone: 'info' },
+    });
     return true;
   }
 
@@ -450,7 +459,7 @@ export class AppStore {
     this.set({
       notice: {
         key: copied ? 'import.doneCopy' : 'import.done',
-        params: { name: doc.name },
+        params: { name: isolateUserText(doc.name) },
         tone: 'info',
       },
     });

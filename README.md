@@ -13,13 +13,13 @@ Primary focus:
 
 ## Status
 
-V1 implementation, Sprint 4: the complete non-MCU laboratory core. Draw circuits with a lab PSU,
-ground, resistors, LEDs, a 1N4148 diode, a push button and a toggle switch, press Run, and see
-DC operating-point values solved by the production engine in a browser Web Worker. Press the
-button or flip the switch while running and the circuit re-solves. Probes read node voltages and
-branch currents, the PSU panel shows measured V/I and OFF/CV/CC, undo/redo covers project edits,
-and circuit checks flag partial wiring, floating parts and ambiguous drawings. Local projects live
-in IndexedDB; the UI runs in English and Hebrew.
+V1 Product Alpha (Sprint 5): the complete non-MCU laboratory. Start from one of six curated
+examples or a new project, then build circuits from a lab PSU, ground, resistors, LEDs, a 1N4148
+diode, a push button and a toggle switch. Press Run to see DC operating-point values solved by
+the production engine in a browser Web Worker, then probe voltages and currents and interact with
+switches while the circuit runs. Projects are saved automatically in this browser. A local project
+library supports rename, duplicate and delete, and portable `.tbilab` files support export and
+import (format: `packages/domain/PACKAGE.md`). The UI runs in English and Hebrew.
 
 ## Repository layout
 

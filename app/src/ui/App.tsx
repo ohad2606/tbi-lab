@@ -59,8 +59,11 @@ export function App() {
   }
   if (state.screen === 'unavailable') {
     return (
-      <div class="app-message" role="alert">
-        {t('app.storageUnavailable')}
+      <div class="app-message" role="alert" data-testid="storage-unavailable">
+        <p>{t('app.storageUnavailable')}</p>
+        <button type="button" class="button button-primary" onClick={() => location.reload()}>
+          {t('app.reload')}
+        </button>
       </div>
     );
   }

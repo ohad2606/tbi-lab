@@ -22,7 +22,7 @@ export const PACKAGE_VERSION = 1;
 export const PACKAGE_EXTENSION = '.tbilab';
 export const PACKAGE_MEDIA_TYPE = 'application/vnd.tbi-lab.package+json';
 /**
- * 2 MiB. A 30-component project packages to about 25 KB, so this is ~80x the largest V1
+ * 2 MiB. A 30-component project packages to 27.5 KB (measured), so this is ~75x a large V1
  * circuit while keeping a hostile file from being read into memory at all.
  */
 export const PACKAGE_MAX_BYTES = 2 * 1024 * 1024;

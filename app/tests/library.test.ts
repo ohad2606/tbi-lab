@@ -125,7 +125,9 @@ describe('project library (A1, A2, A3)', () => {
     const source = await buildCircuit(app, 'Bench A');
     await app.goHome();
     const copy = await stored(storage, (await app.duplicate(source.projectId))!);
-    expect(copy.name).toBe('Bench A (עותק)');
+    expect(copy.name).toBe('Bench A (עותק)'); // stored exactly, no bidi control characters
+    // The confirmation isolates the user's text so mixed-direction names read correctly.
+    expect(app.state.notice?.params?.name).toBe('\u2068Bench A (עותק)\u2069');
   });
 
   it('delete removes only that project; deleting the open project returns to the library', async () => {

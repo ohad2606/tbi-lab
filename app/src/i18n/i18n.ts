@@ -49,6 +49,17 @@ export function isolateLtr(text: string): string {
   return `${LRI}${text}${PDI}`;
 }
 
+const FSI = '\u2068';
+
+/**
+ * User-authored text (a project name) inside a translated sentence: a first-strong isolate,
+ * so an English name in a Hebrew sentence (or the reverse) keeps its own direction without
+ * scrambling the surrounding punctuation. The text itself is never changed.
+ */
+export function isolateUserText(text: string): string {
+  return `${FSI}${text}${PDI}`;
+}
+
 export type Params = Record<string, string | number>;
 
 export function translate(locale: LocaleInfo, key: MessageKey, params?: Params): string {

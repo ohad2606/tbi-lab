@@ -115,6 +115,20 @@ Because connectivity lives in explicit references rather than geometry, a later 
 | 4      | Undo/redo: session-only, never persisted. An undo or redo commits a normal new revision (`localRevision` still only increases) and never lowers an `idCounters` entry                                            | No persisted change                               |
 | 4      | Probes and circuit checks: presentation/derived state, never stored                                                                                                                                              | No persisted change                               |
 
+### Sprint 5: no schema change
+
+Sprint 5 adds **no** field to the project document and does not change `schemaVersion`.
+
+- **Portable package.** A separate, independently versioned envelope wraps the unchanged
+  document (`PACKAGE.md`).
+- **Library metadata.** The recent-project index (name, last change) remains a separate
+  IndexedDB store derived from each document. Deleting a project removes both in one
+  transaction.
+- **Duplicate, import-as-copy and example instantiation.** All use `copyAsNewProject`: a new
+  `projectId`, `createdAt` and `createdWith`, and `revision` restarted at 1. The engineering
+  content and user text are copied exactly; id counters are copied, so references continue
+  from the source's numbering.
+
 ### Excluded by design
 
 These are not part of the project document: simulation results, runtime state (CV/CC mode, currents,

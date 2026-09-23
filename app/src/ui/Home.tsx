@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { PACKAGE_EXTENSION, PACKAGE_MAX_BYTES, PACKAGE_MEDIA_TYPE } from '@tbi-lab/domain';
 import { downloadProject } from './download.js';
 import { EXAMPLES } from '../examples/catalog.js';
-import { formatDateTime, type LocaleInfo } from '../i18n/i18n.js';
+import { formatDateTime, isolateUserText, type LocaleInfo } from '../i18n/i18n.js';
 import type { ProjectIndexEntry } from '../persistence/store.js';
 import { useAppState, useStore, useT } from './context.js';
 
@@ -306,7 +306,7 @@ function ConfirmDelete({
       }}
     >
       <h2 id="delete-title">{t('library.delete.title')}</h2>
-      <p id="delete-body">{t('library.delete.body', { name: entry.name })}</p>
+      <p id="delete-body">{t('library.delete.body', { name: isolateUserText(entry.name) })}</p>
       <div class="dialog-actions">
         <button
           type="button"
