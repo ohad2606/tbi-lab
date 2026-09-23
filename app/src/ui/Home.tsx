@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { PACKAGE_EXTENSION, PACKAGE_MAX_BYTES, PACKAGE_MEDIA_TYPE } from '@tbi-lab/domain';
 import { downloadProject } from './download.js';
 import { EXAMPLES } from '../examples/catalog.js';
-import { formatDateTime } from '../i18n/i18n.js';
+import { formatDateTime, type LocaleInfo } from '../i18n/i18n.js';
 import type { ProjectIndexEntry } from '../persistence/store.js';
 import { useAppState, useStore, useT } from './context.js';
 
@@ -15,6 +15,22 @@ export function Home() {
   const [deleting, setDeleting] = useState<ProjectIndexEntry | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const value = name ?? t('home.new.defaultName');
+  // Rows get the locale and translation as props and are rebuilt only when the list or the
+  // language changes: 50+ rows each subscribed to the whole app state made every store update
+  // re-render the entire library (Sprint 5 measurement).
+  const rows = useMemo(
+    () =>
+      state.projects.map((p) => (
+        <ProjectRow
+          key={p.projectId}
+          entry={p}
+          locale={state.locale}
+          t={t}
+          onDelete={() => setDeleting(p)}
+        />
+      )),
+    [state.projects, state.locale],
+  );
 
   const importFile = async (file: File) => {
     if (file.size > PACKAGE_MAX_BYTES) {
@@ -118,9 +134,7 @@ export function Home() {
           <p class="muted">{t('home.recent.empty')}</p>
         ) : (
           <ul class="project-list" data-testid="project-list">
-            {state.projects.map((p) => (
-              <ProjectRow key={p.projectId} entry={p} onDelete={() => setDeleting(p)} />
-            ))}
+            {rows}
           </ul>
         )}
         <p class="muted small">{t('home.browserNote')}</p>
@@ -141,16 +155,24 @@ export function Home() {
   );
 }
 
-function ProjectRow({ entry, onDelete }: { entry: ProjectIndexEntry; onDelete: () => void }) {
-  const { locale } = useAppState();
+function ProjectRow({
+  entry,
+  locale,
+  t,
+  onDelete,
+}: {
+  entry: ProjectIndexEntry;
+  locale: LocaleInfo;
+  t: ReturnType<typeof useT>;
+  onDelete: () => void;
+}) {
   const store = useStore();
-  const t = useT();
   const [renaming, setRenaming] = useState(false);
   const name = <bdi dir="auto">{entry.name}</bdi>;
   return (
     <li class="project-row" data-testid={`project-${entry.projectId}`} data-name={entry.name}>
       {renaming ? (
-        <RenameForm entry={entry} onDone={() => setRenaming(false)} />
+        <RenameForm entry={entry} t={t} onDone={() => setRenaming(false)} />
       ) : (
         <button
           type="button"
@@ -210,9 +232,16 @@ function ProjectRow({ entry, onDelete }: { entry: ProjectIndexEntry; onDelete: (
   );
 }
 
-function RenameForm({ entry, onDone }: { entry: ProjectIndexEntry; onDone: () => void }) {
+function RenameForm({
+  entry,
+  t,
+  onDone,
+}: {
+  entry: ProjectIndexEntry;
+  t: ReturnType<typeof useT>;
+  onDone: () => void;
+}) {
   const store = useStore();
-  const t = useT();
   const input = useRef<HTMLInputElement>(null);
   useEffect(() => {
     input.current?.focus();

@@ -829,6 +829,8 @@ select {
   fill: var(--runtime);
   stroke: #fff;
   stroke-width: 1;
+  /* A probe only observes: it must never stop a click reaching the part underneath. */
+  pointer-events: none;
 }
 
 .probe-label {

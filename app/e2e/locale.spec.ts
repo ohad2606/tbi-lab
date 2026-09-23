@@ -16,18 +16,21 @@ import {
 /** Words of Latin script left in the UI once allowed technical tokens are removed. */
 async function untranslatedWords(page: Page): Promise<string[]> {
   // Unit symbols with an SI prefix (mΩ, kΩ, GΩ, mA) are technical tokens, not words.
+  // (Not after a letter: the V of "CV" is part of a word, not a unit.)
   const text = (await page.locator('body').innerText()).replace(
-    /[kmMGµunp]?[ΩVA](?![A-Za-z])/g,
+    /(?<![A-Za-z])[kmMGµunp]?[ΩVA](?![A-Za-z])/g,
     ' ',
   );
   const allowed = [
     /^TBI$/,
     /^Lab$/, // product name
     /^English$/, // the language's autonym in the language menu
-    /^(PSU|R|GND|D)\d+$/, // reference designators
+    /^(PSU|R|GND|D|SW)\d+$/, // reference designators (SW: Sprint 4 switches)
     /^(GND|LED|DC|CV|CC)$/, // technical terms kept in Hebrew by the glossary
     /^Vishay$/,
     /^TLHR5400$/, // LED model card name
+    /^N4148$/, // the 1N4148 diode model (tokenized after its leading digit)
+    /^I$/, // the current symbol in formulas such as I = V / R (example summaries)
     /^N_\d+$/, // net ids
     /^(k|m|M|G|µ|u|n|p)?(Ω|V|A)$/,
     /^m(Ω|V|A)$/, // units

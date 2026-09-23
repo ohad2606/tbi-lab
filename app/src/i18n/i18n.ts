@@ -110,10 +110,19 @@ export function unitSymbol(locale: LocaleInfo, unit: UnitId): string {
   return translate(locale, `unit.${unit}.symbol`);
 }
 
+const dateTimeFormats = new Map<string, Intl.DateTimeFormat>();
+
+/**
+ * Locale date-time display. The formatter is cached per locale: constructing one per call
+ * made a 50-project library re-render measurably slower on the dev host (Sprint 5).
+ */
 export function formatDateTime(locale: LocaleInfo, iso: string): string {
-  return new Intl.DateTimeFormat(locale.code, { dateStyle: 'medium', timeStyle: 'short' }).format(
-    new Date(iso),
-  );
+  let f = dateTimeFormats.get(locale.code);
+  if (!f) {
+    f = new Intl.DateTimeFormat(locale.code, { dateStyle: 'medium', timeStyle: 'short' });
+    dateTimeFormats.set(locale.code, f);
+  }
+  return f.format(new Date(iso));
 }
 
 export type { MessageKey };

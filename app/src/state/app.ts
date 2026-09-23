@@ -443,8 +443,10 @@ export class AppStore {
       this.storageFailure(e, 'import.error.storage');
       return false;
     }
-    await this.refreshProjects().catch(() => undefined);
+    // Open first, then refresh the list: re-rendering the whole library just before leaving it
+    // was the largest part of the import time with 50+ projects (Sprint 5 measurement).
     await this.openProject(doc.projectId);
+    await this.refreshProjects().catch(() => undefined);
     this.set({
       notice: {
         key: copied ? 'import.doneCopy' : 'import.done',
