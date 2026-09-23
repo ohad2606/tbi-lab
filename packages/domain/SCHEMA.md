@@ -82,7 +82,7 @@ Reference: roadmap §6.1, architecture §3 and ADR-005. Types: `src/schema.ts`. 
 | Schema version              | `schemaVersion`, `format`              | Integer. Older versions are migrated on open through the registry (none exist yet). A **newer** version is never guessed at: it opens read-only if its core still validates, otherwise the app reports that it cannot display it |
 | Component instance identity | `components[].id`                      | Reference designator `<prefix><n>` (`R1`, `PSU1`, `GND1`). Unique per project. **Never reused** after delete, enforced by `idCounters`                                                                                           |
 | Component type ids          | `components[].type`, `typeVersion`     | Namespaced, language-neutral (`component.resistor`). `typeVersion` lets one type evolve without a whole-project migration. Unknown types are rejected, never approximated                                                        |
-| Terminals                   | catalog `terminals[].id`               | Language-neutral per type: `positive`/`negative` (PSU), `ref` (ground), `a`/`b` (resistor). Later: `anode`/`cathode`, MCU header ids                                                                                             |
+| Terminals                   | catalog `terminals[].id`               | Language-neutral per type: `positive`/`negative` (PSU), `ref` (ground), `a`/`b` (resistor, push button, toggle switch), `anode`/`cathode` (LED, diode). Later: MCU header ids                                                    |
 | Engineering values          | `params.<key>`                         | `{ value, unit }`: an SI number plus a canonical unit id (`ohm`, `volt`, `ampere`). Locale affects display only. Values are range-checked against the catalog                                                                    |
 | Nets                        | `nets[]`                               | Opaque stable ids `N_<n>`. `role` is `"ground"` exactly when the net contains a ground reference terminal. `userName` is user-authored and verbatim                                                                              |
 | Connections                 | `connections[]`                        | One record per wired terminal: `{component, terminal, net}`. A terminal belongs to at most one net. Kept in canonical order (component order, then terminal order)                                                               |
@@ -103,16 +103,21 @@ Because connectivity lives in explicit references rather than geometry, a later 
 
 ### Additive changes after the freeze
 
-| Sprint | Change                                                                                                                                        | Compatibility                           |
-| ------ | --------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- |
-| 3      | New type `component.led` (typeVersion 1): terminals `anode`, `cathode`; parameter `model`, a curated enum token (`model.led.vishay_tlhr5400`) | Additive; `schemaVersion` stays 2       |
-| 3      | New parameter kind: language-neutral enum token (`ParamValue` gains `string`)                                                                 | Additive; existing parameters unchanged |
-| 3      | Catalog metadata `live: true` on the PSU's `setpointVoltage`, `currentLimit`, `outputEnabled` (may change while running)                      | Catalog only, nothing persisted         |
-| 3      | `createSnapshot(doc)`: derived, layout-free simulation input; never stored                                                                    | No persisted change                     |
+| Sprint | Change                                                                                                                                                                                                           | Compatibility                                     |
+| ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| 3      | New type `component.led` (typeVersion 1): terminals `anode`, `cathode`; parameter `model`, a curated enum token (`model.led.vishay_tlhr5400`)                                                                    | Additive; `schemaVersion` stays 2                 |
+| 3      | New parameter kind: language-neutral enum token (`ParamValue` gains `string`)                                                                                                                                    | Additive; existing parameters unchanged           |
+| 3      | Catalog metadata `live: true` on the PSU's `setpointVoltage`, `currentLimit`, `outputEnabled` (may change while running)                                                                                         | Catalog only, nothing persisted                   |
+| 3      | `createSnapshot(doc)`: derived, layout-free simulation input; never stored                                                                                                                                       | No persisted change                               |
+| 4      | New type `component.diode` (typeVersion 1, refs `D<n>` shared with the LED): terminals `anode`, `cathode`; parameter `model`, curated enum token `model.diode.vishay_1n4148`                                     | Additive; `schemaVersion` stays 2                 |
+| 4      | New type `component.push_button` (typeVersion 1, refs `SW<n>`): terminals `a`, `b`; **no parameters**. Catalog metadata `momentary: true`. Its pressed state is runtime-only and is never persisted              | Additive; nothing persisted for the pressed state |
+| 4      | New type `component.toggle_switch` (typeVersion 1, refs `SW<n>`, shared counter with the button): terminals `a`, `b`; boolean parameter `closed` (default `false`, `live: true`), the persistent switch position | Additive                                          |
+| 4      | Undo/redo: session-only, never persisted. An undo or redo commits a normal new revision (`localRevision` still only increases) and never lowers an `idCounters` entry                                            | No persisted change                               |
+| 4      | Probes and circuit checks: presentation/derived state, never stored                                                                                                                                              | No persisted change                               |
 
 ### Excluded by design
 
 These are not part of the project document: simulation results, runtime state (CV/CC mode, currents,
-pin levels), view state (zoom, pan, selection) and UI locale. Also excluded until their approved
+pin levels, push-button pressed state), undo/redo history, probes, view state (zoom, pan, selection) and UI locale. Also excluded until their approved
 sprints: MCU/firmware fields and `runConfig` (Sprint 6, additive), annotations/notes, and the export
 package format (Sprint 5).

@@ -123,6 +123,15 @@ test('A3/A4: push button conducts only while held; pressing never touches the pr
   await expect(reading).toHaveText('I(R1) = 0 A');
   await expect(component(page, 'SW1')).toHaveAttribute('data-pressed', 'false');
 
+  // Pointer cancel (e.g. the OS takes the pointer away) releases a held button.
+  await page.mouse.down();
+  await expect(reading).toHaveText('I(R1) = 5 mA');
+  await page.getByTestId('canvas').dispatchEvent('pointercancel', { pointerId: 1 });
+  await expect(reading).toHaveText('I(R1) = 0 A');
+  await expect(component(page, 'SW1')).toHaveAttribute('data-pressed', 'false');
+  await page.mouse.up();
+  await expect(reading).toHaveText('I(R1) = 0 A');
+
   // Keyboard: Space held on the focused button is momentary, not a toggle.
   await component(page, 'SW1').focus();
   await page.keyboard.down('Space');
@@ -139,7 +148,7 @@ test('A3/A4: push button conducts only while held; pressing never touches the pr
   await page.keyboard.up('Space');
 
   // Every re-solve was real (worker round trips), and the project never changed.
-  expect(Number(await status(page).getAttribute('data-solves'))).toBeGreaterThanOrEqual(7);
+  expect(Number(await status(page).getAttribute('data-solves'))).toBeGreaterThanOrEqual(9);
   await page.waitForTimeout(400); // longer than the autosave debounce: nothing may be written
   expect(JSON.stringify(await storedProject(page))).toBe(bytes);
   await expect(page.getByTestId('undo')).toBeEnabled(); // history holds only real edits
