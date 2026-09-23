@@ -4,7 +4,8 @@ import { engineErrorMessage, simFailureMessage } from '../sim/format.js';
 import { useAppState, useStore, useT } from './context.js';
 
 export function NoticeBar() {
-  const { notice, readOnly, unreadable, sim, locale, doc } = useAppState();
+  const { notice, readOnly, unreadable, sim, locale, doc, saveState, saveError, screen } =
+    useAppState();
   const store = useStore();
   const t = useT();
   const running = sim.status === 'running' ? sim.outcome : null;
@@ -47,8 +48,22 @@ export function NoticeBar() {
           {t('readonly.unreadable', { version: isolateLtr(String(unreadable.schemaVersion)) })}
         </div>
       )}
+      {screen === 'editor' && saveState === 'error' && (
+        <div class="banner banner-warning" role="alert" data-testid="save-error">
+          <span>{t(saveError === 'quota' ? 'save.error.quotaBanner' : 'save.error.banner')}</span>
+          <button type="button" class="link-button" onClick={() => void store.retrySave()}>
+            {t('save.retry')}
+          </button>
+        </div>
+      )}
       {notice && (
-        <div class="banner banner-error" role="alert" data-testid="notice">
+        <div
+          class={`banner banner-${notice.tone ?? 'error'}`}
+          role={notice.tone === 'info' ? 'status' : 'alert'}
+          data-testid="notice"
+          data-key={notice.key}
+          data-tone={notice.tone ?? 'error'}
+        >
           <span>{t(notice.key, notice.params)}</span>
           <button type="button" class="link-button" onClick={() => store.dismissNotice()}>
             {t('notice.dismiss')}

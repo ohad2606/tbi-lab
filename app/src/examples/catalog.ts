@@ -1,0 +1,89 @@
+/**
+ * The six curated Product Alpha examples (Sprint 5).
+ *
+ * Each example is PRODUCT DATA: an ordinary schema v2 project document in ./data (authored by
+ * app/tests/exampleRecipes.ts through the normal editing operations). Opening an example
+ * creates a fresh, independent local project from it (new identity, name in the current UI
+ * language); it then runs through the same production engine as any other project, with no
+ * special physics path and no hidden simulation state.
+ *
+ * `probes` are suggested measurement points: editor presentation state, applied when the
+ * example is opened and never stored in the project.
+ */
+import type { ProjectDocument } from '@tbi-lab/domain';
+import type { MessageKey } from '../i18n/messages.en.js';
+import ccMode from './data/cc-mode.json';
+import diodePolarity from './data/diode-polarity.json';
+import ledCurrent from './data/led-current.json';
+import ohmsLaw from './data/ohms-law.json';
+import pushButton from './data/push-button.json';
+import voltageDivider from './data/voltage-divider.json';
+
+export type ExampleProbe =
+  | { kind: 'terminal'; component: string; terminal: string }
+  | { kind: 'current'; component: string };
+
+export interface Example {
+  id: string;
+  titleKey: MessageKey;
+  summaryKey: MessageKey;
+  document: ProjectDocument;
+  probes: ExampleProbe[];
+}
+
+const doc = (json: unknown) => json as ProjectDocument;
+const I = (component: string): ExampleProbe => ({ kind: 'current', component });
+const V = (component: string, terminal: string): ExampleProbe => ({
+  kind: 'terminal',
+  component,
+  terminal,
+});
+
+export const EXAMPLES: readonly Example[] = [
+  {
+    id: 'ohms-law',
+    titleKey: 'example.ohms-law.title',
+    summaryKey: 'example.ohms-law.summary',
+    document: doc(ohmsLaw),
+    probes: [I('R1')],
+  },
+  {
+    id: 'voltage-divider',
+    titleKey: 'example.voltage-divider.title',
+    summaryKey: 'example.voltage-divider.summary',
+    document: doc(voltageDivider),
+    probes: [V('R2', 'a'), I('R1')],
+  },
+  {
+    id: 'led-current',
+    titleKey: 'example.led-current.title',
+    summaryKey: 'example.led-current.summary',
+    document: doc(ledCurrent),
+    probes: [V('D1', 'anode'), I('D1')],
+  },
+  {
+    id: 'diode-polarity',
+    titleKey: 'example.diode-polarity.title',
+    summaryKey: 'example.diode-polarity.summary',
+    document: doc(diodePolarity),
+    probes: [I('D1'), I('D2')],
+  },
+  {
+    id: 'push-button',
+    titleKey: 'example.push-button.title',
+    summaryKey: 'example.push-button.summary',
+    document: doc(pushButton),
+    probes: [I('D1')],
+  },
+  {
+    id: 'cc-mode',
+    titleKey: 'example.cc-mode.title',
+    summaryKey: 'example.cc-mode.summary',
+    document: doc(ccMode),
+    probes: [I('R2'), V('R2', 'a')],
+  },
+];
+
+export function findExample(id: string): Example | undefined {
+  return EXAMPLES.find((e) => e.id === id);
+}

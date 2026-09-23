@@ -5,7 +5,7 @@
 export const en = {
   'app.loading': 'Loading…',
   'app.storageUnavailable':
-    'Local storage is not available in this browser, so projects cannot be saved.',
+    "TBI Lab cannot use this browser's local storage (it may be blocked, for example in some private windows), so projects cannot be saved here. Nothing was changed. Allow site storage or use a regular window, then reload.",
 
   'home.title': 'Projects',
   'home.new.heading': 'New project',
@@ -188,13 +188,102 @@ export const en = {
   'error.edit.name_empty': 'The project name cannot be empty.',
   'error.edit.generic': 'The change could not be applied ({code}).',
 
-  'open.error.invalid': 'This project is damaged and cannot be opened.',
+  'open.error.invalid':
+    'This project is damaged and cannot be opened. Your other projects are not affected.',
   'open.error.unmigratable': 'This project uses an older format that cannot be converted.',
   'open.error.missing': 'This project no longer exists in this browser.',
   'readonly.newer':
     'This project was saved by a newer version of TBI Lab (format {version}). It is open read-only and changes are not saved.',
   'readonly.unreadable':
     'This project was saved by a newer version of TBI Lab (format {version}) and cannot be displayed by this version.',
+  'app.reload': 'Reload',
+  'library.examples.heading': 'Start from an example',
+  'library.examples.intro':
+    'Each example opens as a new project of your own. Press Run to see real results.',
+  'library.examples.open': 'Open example',
+  'library.examples.openNamed': 'Open example: {name}',
+  'library.import.button': 'Import project…',
+  'library.import.label': 'Import a TBI Lab project file (.tbilab)',
+  'library.actions': 'Actions for {name}',
+  'library.open': 'Open {name}',
+  'library.rename': 'Rename',
+  'library.rename.label': 'New name for {name}',
+  'library.rename.save': 'Save',
+  'library.rename.cancel': 'Cancel',
+  'library.duplicate': 'Duplicate',
+  'library.export': 'Export',
+  'library.delete': 'Delete',
+  'library.delete.title': 'Delete this project?',
+  'library.delete.body':
+    '"{name}" will be permanently removed from this browser. Your other projects are not affected. This cannot be undone, so export the project first if you may need it again.',
+  'library.delete.confirm': 'Delete project',
+  'library.delete.cancel': 'Keep project',
+  'library.copyName': '{name} (copy)',
+  'library.duplicated': 'Created "{name}".',
+  'library.deleted': 'Deleted "{name}".',
+  'library.error.rename': 'The project could not be renamed. It is unchanged; try again.',
+  'library.error.duplicate':
+    'The copy could not be created. The original project is unchanged; try again.',
+  'library.error.delete':
+    'The project could not be deleted. It is still in the list, unchanged; try again.',
+  'library.error.create':
+    "The project could not be created in this browser's storage. Nothing was changed; try again.",
+  'library.error.newer':
+    'This project was saved by a newer version of TBI Lab and cannot be changed or exported by this version.',
+  'storage.error.read':
+    "TBI Lab could not read this browser's project storage. Your projects have not been changed. Reload the page to try again.",
+  'storage.error.quota':
+    "This browser's storage for TBI Lab is full, so nothing new could be saved. Your existing projects are safe. Export or delete projects you no longer need, then try again.",
+  'save.error.banner':
+    'Your latest changes are not saved yet. They are still here in the editor. Try again, or export a copy to keep them safe.',
+  'save.error.quotaBanner':
+    'Browser storage is full, so your latest changes are not saved yet. They are still here in the editor. Export a copy, or delete projects you no longer need, then try again.',
+  'export.button': 'Export',
+  'export.title': 'Save this project as a portable .tbilab file',
+  'export.error':
+    'The project file could not be created. The project itself is unchanged; try again.',
+  'import.done': 'Imported "{name}".',
+  'import.doneCopy':
+    'Imported "{name}" as a new copy, because a project with the same identity already exists in this browser. The existing project was not changed.',
+  'import.error.too_large':
+    'This file is larger than 2 MB, far too large for a TBI Lab project. Nothing was imported.',
+  'import.error.not_package':
+    'This file is not a TBI Lab project file (.tbilab). Nothing was imported.',
+  'import.error.damaged':
+    'This project file is damaged or was changed outside TBI Lab, so it cannot be trusted. Nothing was imported.',
+  'import.error.newer':
+    'This project file was made by a newer version of TBI Lab. Update TBI Lab to open it. Nothing was imported.',
+  'import.error.old':
+    'This project file uses an old format that cannot be converted. Nothing was imported.',
+  'import.error.invalid':
+    'This project file contains a circuit TBI Lab cannot accept (for example an unknown component or an invalid value). Nothing was imported.',
+  'import.error.read': 'The file could not be read. Nothing was imported.',
+  'import.error.storage':
+    "The project could not be saved in this browser's storage. Nothing was imported; try again.",
+  'example.error': 'This example could not be opened.',
+  'example.ohms-law.title': "Ohm's law",
+  'example.ohms-law.summary':
+    'A 5 V supply across 1 kΩ. Run it and read I = V / R = 5 mA, then change the resistance and run again.',
+  'example.voltage-divider.title': 'Voltage divider',
+  'example.voltage-divider.summary':
+    'Two resistors split 9 V. The midpoint is 9 V × 20 kΩ / (10 kΩ + 20 kΩ) = 6 V; a probe at R2.a reads it.',
+  'example.led-current.title': 'LED current limiting',
+  'example.led-current.summary':
+    'A 220 Ω resistor sets the current of a red LED from 5 V. The LED is nonlinear: it settles near 2 V and about 14 mA.',
+  'example.diode-polarity.title': 'Diode polarity',
+  'example.diode-polarity.summary':
+    'Two identical branches with a 1N4148 diode. D1 is forward biased and conducts about 4.3 mA; D2 is reversed and blocks (a few nA).',
+  'example.push-button.title': 'Momentary push button',
+  'example.push-button.summary':
+    'Press Run, then hold SW1: the LED lights only while the button is held. Pressing never changes the saved project.',
+  'example.cc-mode.title': 'Current limit (CC mode)',
+  'example.cc-mode.summary':
+    '5 V with a 100 mA limit: 100 Ω draws 50 mA (CV). While running, close SW1 to add 10 Ω. That load would need 550 mA, so the supply holds 100 mA and its voltage drops (CC). This is normal, not a fault.',
+  'palette.group.sources': 'Supply and reference',
+  'palette.group.passive': 'Resistors',
+  'palette.group.semiconductors': 'Diodes',
+  'palette.group.switches': 'Switches',
+  'inspector.shortcutsHeading': 'Keyboard shortcuts',
 } as const;
 
 export type MessageKey = keyof typeof en;

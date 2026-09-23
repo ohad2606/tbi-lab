@@ -12,15 +12,20 @@ import { probeExists, sameTarget, type Probe, type ProbeInput } from './probes.j
  * session only and are never written into the project document.
  */
 export function Editor() {
-  const { doc } = useAppState();
+  const { doc, suggestedProbes } = useAppState();
   const [placing, setPlacing] = useState<ComponentTypeId | null>(null);
   const [probeMode, setProbeMode] = useState(false);
   const [probes, setProbes] = useState<Probe[]>([]);
   const nextProbe = useRef(1);
   const canvasApi = useRef<CanvasApi | null>(null);
 
-  // A different project starts without probes.
-  useEffect(() => setProbes([]), [doc?.projectId]);
+  // A different project starts without probes, unless it was just opened from an example
+  // that suggests some (presentation state only, never stored in the project).
+  useEffect(() => {
+    const suggested =
+      suggestedProbes && suggestedProbes.projectId === doc?.projectId ? suggestedProbes.probes : [];
+    setProbes(suggested.map((p) => ({ ...p, id: `probe${nextProbe.current++}` }) as Probe));
+  }, [doc?.projectId]);
   // Probes whose target was deleted disappear with it.
   const live = doc ? probes.filter((p) => probeExists(p, doc)) : [];
 

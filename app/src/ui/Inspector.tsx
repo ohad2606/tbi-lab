@@ -112,7 +112,10 @@ export function Inspector({ probes, onRemoveProbe, onClearProbes }: InspectorPro
       <ProbesSection probes={probes} onRemove={onRemoveProbe} onClear={onClearProbes} />
       {/* Kept mounted while running (hidden), so Run/Stop never re-renders the list. */}
       <ChecksSection hidden={simActive} />
-      <p class="muted small">{t('inspector.shortcuts')}</p>
+      <details class="shortcuts">
+        <summary>{t('inspector.shortcutsHeading')}</summary>
+        <p class="muted small">{t('inspector.shortcuts')}</p>
+      </details>
     </aside>
   );
 }
@@ -548,9 +551,9 @@ function ProbesSection({
           <button type="button" class="link-button small" onClick={onClear}>
             {t('probes.clear')}
           </button>
+          <p class="muted small">{t('probes.note')}</p>
         </>
       )}
-      <p class="muted small">{t('probes.note')}</p>
     </section>
   );
 }

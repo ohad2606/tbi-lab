@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { LOCALES } from '../i18n/i18n.js';
 import { useAppState, useStore, useT } from './context.js';
+import { downloadProject } from './download.js';
 import { SimControls } from './SimControls.js';
 
 const BRAND = 'TBI Lab';
@@ -9,37 +10,62 @@ export function TopBar() {
   const state = useAppState();
   const store = useStore();
   const t = useT();
+  const editing = state.screen === 'editor' && !!state.doc;
   return (
     <header class="topbar">
-      <span class="brand" dir="ltr">
-        {BRAND}
-      </span>
-      {state.screen === 'editor' && (
-        <button type="button" class="button" onClick={() => void store.goHome()}>
-          {t('topbar.projects')}
-        </button>
-      )}
-      {state.screen === 'editor' && state.doc && (
-        <ProjectName name={state.doc.name} disabled={!!state.readOnly} />
-      )}
+      {/* 1. Where am I: brand, back to the library, the project's own name. */}
+      <div class="topbar-group topbar-nav">
+        <span class="brand" dir="ltr">
+          {BRAND}
+        </span>
+        {editing && (
+          <button type="button" class="button button-quiet" onClick={() => void store.goHome()}>
+            <span aria-hidden="true" class="nav-arrow">
+              ‹
+            </span>{' '}
+            {t('topbar.projects')}
+          </button>
+        )}
+        {editing && <ProjectName name={state.doc!.name} disabled={!!state.readOnly} />}
+      </div>
       <span class="spacer" />
-      {state.screen === 'editor' && state.doc && !state.readOnly && <HistoryControls />}
-      {state.screen === 'editor' && state.doc && <SimControls />}
-      {state.screen === 'editor' && !state.readOnly && <SaveIndicator />}
-      <label class="language">
-        <span>{t('topbar.language')}</span>
-        <select
-          data-testid="language-select"
-          value={state.locale.code}
-          onChange={(e) => store.setLocale((e.target as HTMLSelectElement).value)}
-        >
-          {LOCALES.map((l) => (
-            <option key={l.code} value={l.code} lang={l.code} dir={l.dir}>
-              {l.autonym}
-            </option>
-          ))}
-        </select>
-      </label>
+      {/* 2. Work on the circuit: history, then the simulation. */}
+      {editing && (
+        <div class="topbar-group topbar-work">
+          {!state.readOnly && <HistoryControls />}
+          <SimControls />
+        </div>
+      )}
+      {/* 3. Project file state and application settings. */}
+      <div class="topbar-group topbar-meta">
+        {editing && !state.readOnly && <SaveIndicator />}
+        {editing && !state.readOnly && (
+          <button
+            type="button"
+            class="button button-quiet"
+            data-testid="export-current"
+            title={t('export.title')}
+            onClick={() => void downloadProject(store, state.doc!.projectId)}
+          >
+            {t('export.button')}
+          </button>
+        )}
+        <label class="language">
+          {/* The select shows each language's own name; the label stays for assistive tech. */}
+          <span class="visually-hidden">{t('topbar.language')}</span>
+          <select
+            data-testid="language-select"
+            value={state.locale.code}
+            onChange={(e) => store.setLocale((e.target as HTMLSelectElement).value)}
+          >
+            {LOCALES.map((l) => (
+              <option key={l.code} value={l.code} lang={l.code} dir={l.dir}>
+                {l.autonym}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
     </header>
   );
 }

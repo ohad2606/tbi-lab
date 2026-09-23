@@ -57,10 +57,38 @@ export function openDatabase(factory: IDBFactory = indexedDB): Promise<IDBDataba
 
 export interface ProjectStorage {
   save(doc: ProjectDocument): Promise<void>;
+  /**
+   * Insert a NEW project: fails with `ProjectExistsError` if the id is already stored, so an
+   * import or duplicate can never overwrite an existing project, even under a race.
+   */
+  add(doc: ProjectDocument): Promise<void>;
   load(projectId: string): Promise<unknown>;
+  /** Remove one project (document and index entry together). Other projects are untouched. */
+  delete(projectId: string): Promise<void>;
   list(): Promise<ProjectIndexEntry[]>;
   getOrCreateDeviceId(generate: () => string): Promise<string>;
 }
+
+/** `add` found a project with the same id. Nothing was written. */
+export class ProjectExistsError extends Error {
+  constructor(readonly projectId: string) {
+    super('project exists');
+    this.name = 'ProjectExistsError';
+  }
+}
+
+/** The error name browsers use when the storage quota is exhausted. */
+export function isQuotaError(e: unknown): boolean {
+  const name = (e as { name?: unknown } | null)?.name;
+  return name === 'QuotaExceededError' || name === 'NS_ERROR_DOM_QUOTA_REACHED';
+}
+
+const indexEntry = (doc: ProjectDocument): ProjectIndexEntry => ({
+  projectId: doc.projectId,
+  name: doc.name,
+  updatedAt: doc.revision.updatedAt,
+  schemaVersion: doc.schemaVersion,
+});
 
 export class ProjectStore implements ProjectStorage {
   constructor(private readonly db: IDBDatabase) {}
@@ -73,13 +101,30 @@ export class ProjectStore implements ProjectStorage {
   async save(doc: ProjectDocument): Promise<void> {
     const tx = this.db.transaction([PROJECTS, INDEX], 'readwrite');
     tx.objectStore(PROJECTS).put(doc);
-    const entry: ProjectIndexEntry = {
-      projectId: doc.projectId,
-      name: doc.name,
-      updatedAt: doc.revision.updatedAt,
-      schemaVersion: doc.schemaVersion,
-    };
-    tx.objectStore(INDEX).put(entry);
+    tx.objectStore(INDEX).put(indexEntry(doc));
+    await transactionDone(tx);
+  }
+
+  async add(doc: ProjectDocument): Promise<void> {
+    const tx = this.db.transaction([PROJECTS, INDEX], 'readwrite');
+    // `add` (not `put`) aborts the whole transaction with ConstraintError if the key exists.
+    const request = tx.objectStore(PROJECTS).add(doc);
+    request.onerror = (e) => e.preventDefault(); // reported through the transaction below
+    tx.objectStore(INDEX).put(indexEntry(doc));
+    try {
+      await transactionDone(tx);
+    } catch (e) {
+      if ((e as { name?: string } | null)?.name === 'ConstraintError') {
+        throw new ProjectExistsError(doc.projectId);
+      }
+      throw e;
+    }
+  }
+
+  async delete(projectId: string): Promise<void> {
+    const tx = this.db.transaction([PROJECTS, INDEX], 'readwrite');
+    tx.objectStore(PROJECTS).delete(projectId);
+    tx.objectStore(INDEX).delete(projectId);
     await transactionDone(tx);
   }
 

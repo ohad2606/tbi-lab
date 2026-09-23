@@ -17,6 +17,10 @@ class MemoryStorage implements ProjectStorage {
     }
     this.saved.push(d);
   }
+  async add(d: ProjectDocument) {
+    await this.save(d);
+  }
+  async delete() {}
   async load() {
     return undefined;
   }

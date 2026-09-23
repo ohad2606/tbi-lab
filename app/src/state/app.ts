@@ -10,16 +10,22 @@
 import {
   CATALOG,
   SCHEMA_VERSION,
+  copyAsNewProject,
+  createPackage,
   createProject,
   emptySelection,
   classifyEdit,
   historyTarget,
   liveChanges,
   openDocument,
+  packageFileName,
+  parsePackage,
   renameProject,
+  serializePackage,
   stampRevision,
   validateProject,
   type EditResult,
+  type ImportError,
   type ProjectDocument,
   type Selection,
 } from '@tbi-lab/domain';
@@ -31,7 +37,13 @@ import {
   type MessageKey,
 } from '../i18n/i18n.js';
 import { Autosave, type SaveState } from '../persistence/autosave.js';
-import type { ProjectIndexEntry, ProjectStorage } from '../persistence/store.js';
+import {
+  ProjectExistsError,
+  isQuotaError,
+  type ProjectIndexEntry,
+  type ProjectStorage,
+} from '../persistence/store.js';
+import { findExample, type ExampleProbe } from '../examples/catalog.js';
 import type { LiveControl } from '@tbi-lab/engine';
 import type { SimState, SimulationController } from '../sim/controller.js';
 
@@ -42,7 +54,7 @@ interface HistoryEntry {
 
 const HISTORY_LIMIT = 100;
 
-export const APP_VERSION = '0.1.0';
+export const APP_VERSION = '0.2.0';
 
 export interface Preferences {
   get(key: string): string | null;
@@ -52,7 +64,22 @@ export interface Preferences {
 export const PREF_LOCALE = 'tbi-lab.locale';
 export const PREF_LAST_PROJECT = 'tbi-lab.lastProject';
 
-export type Notice = { key: MessageKey; params?: Record<string, string | number> };
+/**
+ * One user-facing message. `tone` separates technical failures (`error`: something did not
+ * happen) from advice (`warning`) and confirmations (`info`). Text is always a message key:
+ * no raw exception text ever reaches the UI.
+ */
+export type Notice = {
+  key: MessageKey;
+  params?: Record<string, string | number>;
+  tone?: 'error' | 'warning' | 'info';
+};
+
+/** A project file ready to be handed to the browser as a download. */
+export interface ExportedFile {
+  fileName: string;
+  text: string;
+}
 
 export interface AppState {
   screen: 'loading' | 'home' | 'editor' | 'unavailable';
@@ -70,6 +97,10 @@ export interface AppState {
   sim: SimState;
   /** Undo/redo depth (the history itself is session state, never persisted). */
   history: { undo: number; redo: number };
+  /** Why saving failed, when saveState is 'error'. */
+  saveError: 'quota' | 'write' | null;
+  /** Probes an opened example suggests for its project (editor presentation state only). */
+  suggestedProbes: { projectId: string; probes: ExampleProbe[] } | null;
 }
 
 export interface AppDeps {
@@ -110,6 +141,8 @@ export class AppStore {
       notice: null,
       sim: { status: 'stopped' },
       history: { undo: 0, redo: 0 },
+      saveError: null,
+      suggestedProbes: null,
     };
     deps.simulation?.subscribe(() => this.set({ sim: deps.simulation!.state }));
   }
@@ -143,10 +176,15 @@ export class AppStore {
         : { debounceMs: this.deps.autosaveDebounceMs },
     );
     this.autosave.onState((saveState) => {
-      this.set({ saveState });
-      if (saveState === 'saved') void this.refreshProjects();
+      this.set({ saveState, saveError: saveState === 'error' ? this.autosave!.lastError : null });
+      if (saveState === 'saved') void this.refreshProjects().catch(() => undefined);
     });
-    await this.refreshProjects();
+    try {
+      await this.refreshProjects();
+    } catch {
+      this.set({ screen: 'unavailable' });
+      return;
+    }
     const last = this.deps.prefs.get(PREF_LAST_PROJECT);
     if (last && this.stateValue.projects.some((p) => p.projectId === last)) {
       await this.openProject(last);
@@ -157,6 +195,7 @@ export class AppStore {
 
   async refreshProjects(): Promise<void> {
     if (!this.deps.storage) return;
+    // Failures propagate to the caller, which decides what to tell the user.
     this.set({ projects: await this.deps.storage.list() });
   }
 
@@ -192,9 +231,16 @@ export class AppStore {
   async openProject(projectId: string): Promise<void> {
     this.deps.simulation?.stop();
     await this.autosave?.flush();
-    const raw = await this.deps.storage?.load(projectId);
+    let raw: unknown;
+    try {
+      raw = await this.deps.storage?.load(projectId);
+    } catch {
+      this.set({ notice: { key: 'storage.error.read' } });
+      return;
+    }
     if (raw === undefined) {
       this.set({ notice: { key: 'open.error.missing' } });
+      await this.refreshProjects().catch(() => undefined);
       return;
     }
     const result = openDocument(raw);
@@ -234,11 +280,219 @@ export class AppStore {
     }
   }
 
+  // -------------------------------------------------------------------------------------------
+  // Project library (Sprint 5). Every operation is awaited to durability before it reports
+  // success, and a failure leaves every stored project exactly as it was.
+
+  /** A stored project as a valid current-schema document, or null (with a notice). */
+  private async loadValid(projectId: string): Promise<ProjectDocument | null> {
+    if (this.stateValue.doc?.projectId === projectId && !this.stateValue.readOnly) {
+      await this.flush();
+      return this.stateValue.doc;
+    }
+    const raw = await this.deps.storage?.load(projectId);
+    if (raw === undefined) {
+      this.set({ notice: { key: 'open.error.missing' } });
+      return null;
+    }
+    const opened = openDocument(raw);
+    if (opened.status !== 'ok') {
+      this.set({
+        notice: { key: opened.status === 'newer' ? 'library.error.newer' : 'open.error.invalid' },
+      });
+      return null;
+    }
+    return opened.doc;
+  }
+
+  private storageFailure(e: unknown, key: MessageKey): void {
+    this.set({ notice: { key: isQuotaError(e) ? 'storage.error.quota' : key } });
+  }
+
+  private newIdentity(name?: string) {
+    return {
+      projectId: `prj_${this.deps.newId()}`,
+      deviceId: this.deviceId,
+      appVersion: APP_VERSION,
+      ...(name === undefined ? {} : { name }),
+      ...(this.deps.clock ? { clock: this.deps.clock } : {}),
+    };
+  }
+
+  /** Rename a project from the library: the same project (same id), a normal new revision. */
+  async renameInLibrary(projectId: string, name: string): Promise<boolean> {
+    if (this.stateValue.doc?.projectId === projectId) return this.rename(name);
+    try {
+      const doc = await this.loadValid(projectId);
+      if (!doc) return false;
+      const renamed = renameProject(doc, name);
+      if (!renamed.ok) {
+        this.set({ notice: { key: 'error.edit.name_empty' } });
+        return false;
+      }
+      if (renamed.doc.name === doc.name) return true;
+      await this.deps.storage!.save(stampRevision(renamed.doc, this.deviceId, this.deps.clock));
+      await this.refreshProjects();
+      return true;
+    } catch (e) {
+      this.storageFailure(e, 'library.error.rename');
+      return false;
+    }
+  }
+
+  /** A new, independent project with the same engineering content. Returns its id. */
+  async duplicate(projectId: string): Promise<string | null> {
+    try {
+      const source = await this.loadValid(projectId);
+      if (!source) return null;
+      const name = translate(this.stateValue.locale, 'library.copyName', { name: source.name });
+      const copy = copyAsNewProject(source, this.newIdentity(name));
+      await this.deps.storage!.add(copy);
+      await this.refreshProjects();
+      this.set({ notice: { key: 'library.duplicated', params: { name }, tone: 'info' } });
+      return copy.projectId;
+    } catch (e) {
+      this.storageFailure(e, 'library.error.duplicate');
+      return null;
+    }
+  }
+
+  /**
+   * Delete one project (the UI asks for confirmation first). A pending autosave of it is
+   * discarded and any in-flight write awaited BEFORE the delete, so nothing can write the
+   * project back afterwards. Deleting the open project returns to the library.
+   */
+  async deleteProject(projectId: string): Promise<boolean> {
+    const open = this.stateValue.doc?.projectId === projectId;
+    const name =
+      this.stateValue.projects.find((p) => p.projectId === projectId)?.name ??
+      this.stateValue.doc?.name ??
+      '';
+    if (open) this.deps.simulation?.stop();
+    await this.autosave?.discard(projectId);
+    try {
+      await this.deps.storage!.delete(projectId);
+    } catch (e) {
+      this.storageFailure(e, 'library.error.delete');
+      return false;
+    }
+    if (this.deps.prefs.get(PREF_LAST_PROJECT) === projectId) {
+      this.deps.prefs.set(PREF_LAST_PROJECT, '');
+    }
+    if (open) {
+      this.clearHistory();
+      this.set({ screen: 'home', doc: null, readOnly: null, selection: emptySelection() });
+    }
+    await this.refreshProjects().catch(() => undefined);
+    this.set({ notice: { key: 'library.deleted', params: { name }, tone: 'info' } });
+    return true;
+  }
+
+  /**
+   * The portable package of a project. For the open project, pending edits are flushed first
+   * and the in-memory document is exported, so an export right after an edit includes it (and
+   * still works as a rescue copy if the browser storage is failing).
+   */
+  async exportProject(projectId: string): Promise<ExportedFile | null> {
+    try {
+      const doc = await this.loadValid(projectId);
+      if (!doc) return null;
+      const exportedAt = (this.deps.clock ?? { now: () => new Date() }).now().toISOString();
+      const text = serializePackage(createPackage(doc, { appVersion: APP_VERSION, exportedAt }));
+      return { fileName: packageFileName(doc.name), text };
+    } catch {
+      this.set({ notice: { key: 'export.error' } });
+      return null;
+    }
+  }
+
+  /** Report a failure to hand an exported file to the browser. */
+  exportFailed(): void {
+    this.set({ notice: { key: 'export.error' } });
+  }
+
+  /**
+   * Import a package. It is parsed and fully validated before anything is written; a
+   * project id that already exists locally is never overwritten: the package is imported as
+   * an independent copy with a new id, and the user is told. On success the project opens.
+   */
+  async importPackage(text: string): Promise<boolean> {
+    const parsed = parsePackage(text);
+    if (!parsed.ok) {
+      this.set({ notice: importNotice(parsed.error) });
+      return false;
+    }
+    const storage = this.deps.storage!;
+    let doc = parsed.doc;
+    let copied = false;
+    try {
+      if ((await storage.load(doc.projectId)) !== undefined) {
+        doc = copyAsNewProject(doc, this.newIdentity());
+        copied = true;
+      }
+      try {
+        await storage.add(doc);
+      } catch (e) {
+        // Created by someone else between the check and the write: still never overwrite.
+        if (!(e instanceof ProjectExistsError) || copied) throw e;
+        doc = copyAsNewProject(doc, this.newIdentity());
+        copied = true;
+        await storage.add(doc);
+      }
+    } catch (e) {
+      this.storageFailure(e, 'import.error.storage');
+      return false;
+    }
+    await this.refreshProjects().catch(() => undefined);
+    await this.openProject(doc.projectId);
+    this.set({
+      notice: {
+        key: copied ? 'import.doneCopy' : 'import.done',
+        params: { name: doc.name },
+        tone: 'info',
+      },
+    });
+    return true;
+  }
+
+  /** Start a new local project from a curated example. */
+  async openExample(exampleId: string): Promise<boolean> {
+    const example = findExample(exampleId);
+    const opened = example ? openDocument(example.document) : null;
+    if (!example || opened?.status !== 'ok') {
+      this.set({ notice: { key: 'example.error' } });
+      return false;
+    }
+    this.deps.simulation?.stop();
+    await this.autosave?.flush();
+    const name = translate(this.stateValue.locale, example.titleKey);
+    const doc = copyAsNewProject(opened.doc, this.newIdentity(name));
+    try {
+      await this.deps.storage!.add(doc);
+    } catch (e) {
+      this.storageFailure(e, 'library.error.create');
+      return false;
+    }
+    this.deps.prefs.set(PREF_LAST_PROJECT, doc.projectId);
+    this.clearHistory();
+    this.set({
+      screen: 'editor',
+      doc,
+      readOnly: null,
+      unreadable: null,
+      selection: emptySelection(),
+      notice: null,
+      suggestedProbes: { projectId: doc.projectId, probes: example.probes },
+    });
+    await this.refreshProjects().catch(() => undefined);
+    return true;
+  }
+
   async goHome(): Promise<void> {
     this.deps.simulation?.stop();
     this.clearHistory();
     await this.autosave?.flush();
-    await this.refreshProjects();
+    await this.refreshProjects().catch(() => this.set({ notice: { key: 'storage.error.read' } }));
     this.set({ screen: 'home', doc: null, readOnly: null, selection: emptySelection() });
   }
 
@@ -398,6 +652,11 @@ export class AppStore {
     this.autosave?.queue(stamped);
   }
 
+  /** Show a message from the UI layer (e.g. a file that could not be read). */
+  notify(notice: Notice): void {
+    this.set({ notice });
+  }
+
   dismissNotice(): void {
     this.set({ notice: null });
   }
@@ -425,4 +684,21 @@ export function pruneSelection(sel: Selection, doc: ProjectDocument): Selection 
     wires: sel.wires.filter((id) => wires.has(id)),
     junctions: sel.junctions.filter((id) => juncs.has(id)),
   };
+}
+
+/** The localized notice for a refused import. */
+export function importNotice(error: ImportError): Notice {
+  const keys: Record<ImportError['code'], MessageKey> = {
+    too_large: 'import.error.too_large',
+    not_json: 'import.error.not_package',
+    not_a_package: 'import.error.not_package',
+    bad_package: 'import.error.damaged',
+    newer_package: 'import.error.newer',
+    unsupported_content: 'import.error.newer',
+    hash_mismatch: 'import.error.damaged',
+    newer_schema: 'import.error.newer',
+    unsupported_schema: 'import.error.old',
+    invalid_project: 'import.error.invalid',
+  };
+  return { key: keys[error.code], params: { code: error.code } };
 }

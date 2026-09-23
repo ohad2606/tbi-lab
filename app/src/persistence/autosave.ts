@@ -8,7 +8,7 @@
  */
 
 import type { ProjectDocument } from '@tbi-lab/domain';
-import type { ProjectStorage } from './store.js';
+import { isQuotaError, type ProjectStorage } from './store.js';
 
 /** Injectable timer so unit tests can drive the debounce deterministically. */
 export type ScheduleFn = (handler: () => void, delayMs: number) => unknown;
@@ -31,6 +31,8 @@ export class Autosave {
   private readonly cancel: CancelFn;
   private listeners = new Set<(s: SaveState) => void>();
   private stateValue: SaveState = 'saved';
+  /** Why the last write failed, so the UI can say something specific. */
+  lastError: 'quota' | 'write' | null = null;
 
   /** Number of physical writes performed, so tests can assert debouncing actually happened. */
   writeCount = 0;
@@ -75,6 +77,23 @@ export class Autosave {
     this.timer = this.schedule(() => void this.flush(), this.debounceMs);
   }
 
+  /**
+   * Drop any queued, not-yet-written change of `projectId` and wait until no write is in
+   * flight. Used before deleting a project, so that a pending autosave cannot write the
+   * deleted project back afterwards.
+   */
+  async discard(projectId: string): Promise<void> {
+    if (this.pending?.projectId === projectId) {
+      if (this.timer !== null) {
+        this.cancel(this.timer);
+        this.timer = null;
+      }
+      this.pending = null;
+    }
+    await this.inFlight;
+    if (!this.pending) this.setState('saved');
+  }
+
   /** Re-attempt after a failure. */
   retry(): Promise<void> {
     return this.flush();
@@ -94,11 +113,13 @@ export class Autosave {
       try {
         await this.store.save(doc);
         this.writeCount++;
+        this.lastError = null;
         // A newer change may have been queued while this write was in flight.
         this.setState(this.pending ? 'saving' : 'saved');
-      } catch {
+      } catch (e) {
         // Keep the newest document: a later queue() replaces it, retry() re-attempts it.
         this.pending ??= doc;
+        this.lastError = isQuotaError(e) ? 'quota' : 'write';
         this.setState('error');
       }
     });

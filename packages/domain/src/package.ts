@@ -73,6 +73,20 @@ export function createPackage(
   };
 }
 
+/**
+ * A safe download file name from the user's project name: the name is kept (any script,
+ * including Hebrew), only characters that file systems refuse are replaced.
+ */
+export function packageFileName(projectName: string): string {
+  const cleaned = projectName
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u001f\u007f<>:"/\\|?*]/g, '_')
+    .replace(/\s+/g, ' ')
+    .replace(/^[\s.]+|[\s.]+$/g, '')
+    .slice(0, 80);
+  return `${cleaned || 'tbi-lab-project'}${PACKAGE_EXTENSION}`;
+}
+
 /** Human-readable file text (2-space JSON, trailing newline). The hash does not depend on it. */
 export function serializePackage(pkg: ProjectPackage): string {
   return `${JSON.stringify(pkg, null, 2)}\n`;

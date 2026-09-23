@@ -7,7 +7,8 @@ import type { MessageKey } from './messages.en.js';
  */
 export const he: Record<MessageKey, string> = {
   'app.loading': 'טוען…',
-  'app.storageUnavailable': 'האחסון המקומי אינו זמין בדפדפן זה, ולכן לא ניתן לשמור פרויקטים.',
+  'app.storageUnavailable':
+    'TBI Lab אינו יכול להשתמש באחסון המקומי של הדפדפן (ייתכן שהוא חסום, למשל בחלון גלישה פרטית), ולכן לא ניתן לשמור כאן פרויקטים. דבר לא שונה. אפשרו אחסון לאתר או השתמשו בחלון רגיל, ואז טענו מחדש.',
 
   'home.title': 'פרויקטים',
   'home.new.heading': 'פרויקט חדש',
@@ -188,11 +189,91 @@ export const he: Record<MessageKey, string> = {
   'error.edit.name_empty': 'שם הפרויקט אינו יכול להיות ריק.',
   'error.edit.generic': 'לא ניתן היה להחיל את השינוי ({code}).',
 
-  'open.error.invalid': 'הפרויקט פגום ולא ניתן לפתוח אותו.',
+  'open.error.invalid': 'הפרויקט פגום ולא ניתן לפתוח אותו. שאר הפרויקטים שלכם אינם מושפעים.',
   'open.error.unmigratable': 'הפרויקט שמור בפורמט ישן שלא ניתן להמיר.',
   'open.error.missing': 'הפרויקט כבר אינו קיים בדפדפן זה.',
   'readonly.newer':
     'הפרויקט נשמר בגרסה חדשה יותר של TBI Lab (פורמט {version}). הוא פתוח לקריאה בלבד והשינויים אינם נשמרים.',
   'readonly.unreadable':
     'הפרויקט נשמר בגרסה חדשה יותר של TBI Lab (פורמט {version}) ולא ניתן להציג אותו בגרסה זו.',
+  'app.reload': 'טעינה מחדש',
+  'library.examples.heading': 'התחלה מדוגמה',
+  'library.examples.intro':
+    'כל דוגמה נפתחת כפרויקט חדש משלכם. לחצו על "הרצה" כדי לראות תוצאות אמיתיות.',
+  'library.examples.open': 'פתיחת הדוגמה',
+  'library.examples.openNamed': 'פתיחת הדוגמה: {name}',
+  'library.import.button': 'ייבוא פרויקט…',
+  'library.import.label': 'ייבוא קובץ פרויקט של TBI Lab ‏(.tbilab)',
+  'library.actions': 'פעולות עבור {name}',
+  'library.open': 'פתיחת {name}',
+  'library.rename': 'שינוי שם',
+  'library.rename.label': 'שם חדש עבור {name}',
+  'library.rename.save': 'שמירה',
+  'library.rename.cancel': 'ביטול',
+  'library.duplicate': 'שכפול',
+  'library.export': 'ייצוא',
+  'library.delete': 'מחיקה',
+  'library.delete.title': 'למחוק את הפרויקט?',
+  'library.delete.body':
+    'הפרויקט "{name}" יוסר לצמיתות מדפדפן זה. שאר הפרויקטים שלכם אינם מושפעים. לא ניתן לבטל פעולה זו, לכן ייצאו את הפרויקט קודם אם ייתכן שתצטרכו אותו שוב.',
+  'library.delete.confirm': 'מחיקת הפרויקט',
+  'library.delete.cancel': 'השארת הפרויקט',
+  'library.copyName': '{name} (עותק)',
+  'library.duplicated': 'נוצר "{name}".',
+  'library.deleted': 'נמחק "{name}".',
+  'library.error.rename': 'לא ניתן היה לשנות את שם הפרויקט. הוא לא השתנה; נסו שוב.',
+  'library.error.duplicate': 'לא ניתן היה ליצור את העותק. הפרויקט המקורי לא השתנה; נסו שוב.',
+  'library.error.delete': 'לא ניתן היה למחוק את הפרויקט. הוא עדיין ברשימה, ללא שינוי; נסו שוב.',
+  'library.error.create': 'לא ניתן היה ליצור את הפרויקט באחסון של הדפדפן. דבר לא שונה; נסו שוב.',
+  'library.error.newer':
+    'הפרויקט נשמר בגרסה חדשה יותר של TBI Lab, ולא ניתן לשנות או לייצא אותו בגרסה זו.',
+  'storage.error.read':
+    'TBI Lab לא הצליח לקרוא את אחסון הפרויקטים של הדפדפן. הפרויקטים שלכם לא שונו. טענו את הדף מחדש כדי לנסות שוב.',
+  'storage.error.quota':
+    'האחסון של TBI Lab בדפדפן זה מלא, ולכן לא ניתן היה לשמור דבר חדש. הפרויקטים הקיימים שלכם בטוחים. ייצאו או מחקו פרויקטים שאינכם צריכים, ונסו שוב.',
+  'save.error.banner':
+    'השינויים האחרונים שלכם עדיין לא נשמרו. הם עדיין כאן בעורך. נסו שוב, או ייצאו עותק כדי לשמור עליהם.',
+  'save.error.quotaBanner':
+    'אחסון הדפדפן מלא, ולכן השינויים האחרונים שלכם עדיין לא נשמרו. הם עדיין כאן בעורך. ייצאו עותק או מחקו פרויקטים שאינכם צריכים, ונסו שוב.',
+  'export.button': 'ייצוא',
+  'export.title': 'שמירת הפרויקט כקובץ נייד ‏.tbilab',
+  'export.error': 'לא ניתן היה ליצור את קובץ הפרויקט. הפרויקט עצמו לא השתנה; נסו שוב.',
+  'import.done': 'יובא "{name}".',
+  'import.doneCopy':
+    '"{name}" יובא כעותק חדש, כי פרויקט עם אותה זהות כבר קיים בדפדפן זה. הפרויקט הקיים לא שונה.',
+  'import.error.too_large': 'הקובץ גדול מ־⁦2 MB⁩, גדול בהרבה מפרויקט של TBI Lab. דבר לא יובא.',
+  'import.error.not_package': 'זה אינו קובץ פרויקט של TBI Lab ‏(.tbilab). דבר לא יובא.',
+  'import.error.damaged':
+    'קובץ הפרויקט פגום או שונה מחוץ ל־TBI Lab, ולכן אי אפשר לסמוך עליו. דבר לא יובא.',
+  'import.error.newer':
+    'קובץ הפרויקט נוצר בגרסה חדשה יותר של TBI Lab. עדכנו את TBI Lab כדי לפתוח אותו. דבר לא יובא.',
+  'import.error.old': 'קובץ הפרויקט שמור בפורמט ישן שלא ניתן להמיר. דבר לא יובא.',
+  'import.error.invalid':
+    'קובץ הפרויקט מכיל מעגל ש־TBI Lab אינו יכול לקבל (למשל [[component]] לא מוכר או ערך לא תקין). דבר לא יובא.',
+  'import.error.read': 'לא ניתן היה לקרוא את הקובץ. דבר לא יובא.',
+  'import.error.storage': 'לא ניתן היה לשמור את הפרויקט באחסון של הדפדפן. דבר לא יובא; נסו שוב.',
+  'example.error': 'לא ניתן היה לפתוח את הדוגמה.',
+  'example.ohms-law.title': 'חוק אוהם',
+  'example.ohms-law.summary':
+    'ספק של ⁦5 V⁩ על נגד של ⁦1 kΩ⁩. הריצו וקראו ⁦I = V / R = 5 mA⁩, ואז שנו את ההתנגדות והריצו שוב.',
+  'example.voltage-divider.title': 'מחלק מתח',
+  'example.voltage-divider.summary':
+    'שני נגדים מחלקים ⁦9 V⁩. נקודת האמצע היא ⁦9 V × 20 kΩ / (10 kΩ + 20 kΩ) = 6 V⁩; [[probe]] ב־⁦R2.a⁩ מודדת אותה.',
+  'example.led-current.title': 'הגבלת זרם לנורית LED',
+  'example.led-current.summary':
+    'נגד של ⁦220 Ω⁩ קובע את הזרם של נורית LED אדומה מ־⁦5 V⁩. הנורית אינה ליניארית: היא מתייצבת סביב ⁦2 V⁩ ובערך ⁦14 mA⁩.',
+  'example.diode-polarity.title': 'קוטביות דיודה',
+  'example.diode-polarity.summary':
+    'שני ענפים זהים עם [[diode]] ⁦1N4148⁩. ⁦D1⁩ בממתח קדמי ומוליכה כ־⁦4.3 mA⁩; ⁦D2⁩ הפוכה וחוסמת (ננו־אמפרים בודדים).',
+  'example.push-button.title': 'לחצן רגעי',
+  'example.push-button.summary':
+    'לחצו על "הרצה" ואז החזיקו את ⁦SW1⁩: הנורית דולקת רק כל עוד הלחצן לחוץ. הלחיצה אינה משנה את הפרויקט השמור.',
+  'example.cc-mode.title': 'הגבלת זרם (מצב CC)',
+  'example.cc-mode.summary':
+    '⁦5 V⁩ עם הגבלה של ⁦100 mA⁩: נגד של ⁦100 Ω⁩ צורך ⁦50 mA⁩ (CV). בזמן ההרצה סגרו את ⁦SW1⁩ כדי להוסיף ⁦10 Ω⁩. עומס זה היה דורש ⁦550 mA⁩, ולכן הספק מחזיק ⁦100 mA⁩ והמתח שלו יורד (CC). זו התנהגות רגילה, לא תקלה.',
+  'palette.group.sources': 'הזנה וייחוס',
+  'palette.group.passive': 'נגדים',
+  'palette.group.semiconductors': 'דיודות',
+  'palette.group.switches': 'מתגים',
+  'inspector.shortcutsHeading': 'קיצורי מקלדת',
 };

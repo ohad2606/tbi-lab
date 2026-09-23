@@ -997,3 +997,246 @@ select {
   min-inline-size: 13rem;
   text-align: center;
 }
+
+/* ---------------------------------------------------------------- Sprint 5: Product Alpha */
+
+/* Top bar hierarchy: navigation | circuit work | file state and settings. */
+.topbar-group {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-width: 0;
+}
+
+.topbar .topbar-nav {
+  flex: 1 1 auto;
+  flex-shrink: 1;
+}
+
+.topbar-group + .topbar-group,
+.spacer + .topbar-group {
+  border-inline-start: 1px solid var(--border);
+  padding-inline-start: 0.75rem;
+}
+
+.topbar .spacer {
+  flex: 0 0 0;
+}
+
+.button-quiet {
+  border-color: transparent;
+  background: transparent;
+}
+
+.button-quiet:hover {
+  background: var(--accent-soft);
+  border-color: var(--border);
+}
+
+.nav-arrow {
+  display: inline-block;
+  font-weight: 700;
+}
+
+:dir(rtl) .nav-arrow {
+  transform: scaleX(-1);
+}
+
+.button-small {
+  padding: 0.25rem 0.6rem;
+  font-size: 0.87rem;
+}
+
+.button-danger-solid {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
+
+.button-danger-solid:hover {
+  background: #8c1d17;
+}
+
+.visually-hidden {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Library. */
+.home-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-block-end: 1rem;
+}
+
+.home-header h1 {
+  margin: 0;
+  font-size: 1.5rem;
+}
+
+.card h3 {
+  margin-block: 0 0.25rem;
+  font-size: 1rem;
+}
+
+.example-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+  gap: 0.75rem;
+}
+
+.example {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+}
+
+.example p {
+  margin: 0;
+  flex: 1;
+}
+
+.example .button {
+  align-self: flex-start;
+}
+
+.project-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  border-block-end: 1px solid var(--border);
+  padding-block: 0.35rem;
+}
+
+.project-row:last-child {
+  border-block-end: none;
+}
+
+.project-row .project-entry {
+  flex: 1 1 16rem;
+  border: none;
+}
+
+.project-actions {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.rename-form {
+  display: flex;
+  gap: 0.5rem;
+  flex: 1 1 100%;
+  padding-block: 0.25rem;
+}
+
+.rename-form input {
+  flex: 1 1 12rem;
+  padding: 0.35rem 0.5rem;
+}
+
+.dialog {
+  max-inline-size: 30rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1.25rem 1.5rem;
+  color: var(--text);
+}
+
+.dialog::backdrop {
+  background: rgb(22 25 29 / 45%);
+}
+
+.dialog h2 {
+  margin-block-start: 0;
+  font-size: 1.15rem;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  margin-block-start: 1rem;
+}
+
+/* Palette groups: a quiet label, not another heading level of noise. */
+.palette-group + .palette-group {
+  margin-block-start: 0.6rem;
+}
+
+.palette-group-heading {
+  margin: 0 0 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+/* Inspector: secondary sections are visually lighter than the selection's properties. */
+.probes-section,
+.checks-section {
+  border-block-start: 1px solid var(--border);
+  padding-block-start: 0.6rem;
+  margin-block-start: 0.8rem;
+}
+
+.probes-section h3,
+.checks-section h3 {
+  font-size: 0.85rem;
+  margin-block: 0 0.3rem;
+}
+
+.probes-section p,
+.checks-section p {
+  margin-block: 0.2rem;
+}
+
+.shortcuts {
+  margin-block-start: 0.8rem;
+  font-size: 0.87rem;
+  color: var(--muted);
+}
+
+.shortcuts summary {
+  cursor: pointer;
+}
+
+/* Canvas text keeps a canvas-coloured halo, so a label that must cross a wire stays legible. */
+.ref-label,
+.value-label,
+.switch-state,
+.runtime-label,
+.probe-label {
+  stroke: var(--canvas-bg);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+  paint-order: stroke;
+}
+
+.brand,
+.topbar .button,
+.language {
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.topbar .topbar-nav .project-name {
+  flex: 1 1 10rem;
+  min-width: 6rem;
+  max-width: 24rem;
+}

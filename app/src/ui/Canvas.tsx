@@ -857,13 +857,9 @@ export function Canvas({
               >
                 <path class="probe-pin" d={`M${at.x} ${at.y} l8 -14 h4 l-8 14 z`} />
                 {/* A current probe sits on the part's centre: its label goes above the part's
-                    reference label instead of over it. */}
-                <text
-                  class="probe-label"
-                  x={p.kind === 'current' ? at.x : at.x - 6}
-                  y={p.kind === 'current' ? at.y - 52 : at.y - 18}
-                  text-anchor={p.kind === 'current' ? 'middle' : 'end'}
-                >
+                    reference label, or, for an upright part (whose labels are on its right),
+                    to its left. A voltage label sits up and to the left of its pin. */}
+                <text class="probe-label" {...probeLabelAt(p, at, view)}>
                   {label}
                 </text>
               </g>
@@ -978,7 +974,16 @@ function ComponentView({
   const p = doc.layout.components[c.id]!;
   const box = componentBox(doc, c);
   const cx = (box.minX + box.maxX) / 2;
+  const cy = (box.minY + box.maxY) / 2;
   const values = valueLabel(c, (q) => formatQuantity(locale, q));
+  // A two-terminal part turned upright has its wires above and below it: its labels go beside
+  // the body instead of across those wires (Sprint 5 result-density polish).
+  const upright =
+    (p.rotation === 90 || p.rotation === 270) &&
+    CATALOG[c.type].terminals.length === 2 &&
+    c.type !== 'component.ground';
+  const side = upright ? { x: box.maxX + 10, anchor: 'start' } : { x: cx, anchor: 'middle' };
+  const below = values || switchState;
   return (
     <g
       data-hit="component"
@@ -1033,32 +1038,42 @@ function ComponentView({
         )}
       </g>
       {c.type !== 'component.ground' && (
-        <text class="ref-label" x={cx} y={box.minY - 8} text-anchor="middle">
+        <text
+          class="ref-label"
+          x={side.x}
+          y={upright ? cy - 6 : box.minY - 8}
+          text-anchor={side.anchor}
+        >
           {c.id}
         </text>
       )}
       {values && (
         <text
           class="value-label"
-          x={cx}
-          y={box.maxY + 20}
-          text-anchor="middle"
+          x={side.x}
+          y={upright ? cy + 14 : box.maxY + 20}
+          text-anchor={side.anchor}
           data-testid={`value-${c.id}`}
         >
           {values}
         </text>
       )}
       {switchState && (
-        <text class="switch-state" x={cx} y={box.maxY + 18} text-anchor="middle">
+        <text
+          class="switch-state"
+          x={side.x}
+          y={upright ? cy + 14 : box.maxY + 18}
+          text-anchor={side.anchor}
+        >
           {switchState}
         </text>
       )}
       {runtime && (
         <text
           class="runtime-label"
-          x={cx}
-          y={box.maxY + (values ? 42 : switchState ? 36 : 22)}
-          text-anchor="middle"
+          x={side.x}
+          y={upright ? cy + (below ? 34 : 14) : box.maxY + (values ? 42 : switchState ? 36 : 22)}
+          text-anchor={side.anchor}
           data-testid={`result-${c.id}`}
         >
           {runtime}
@@ -1110,4 +1125,29 @@ function valueLabel(
     default:
       return '';
   }
+}
+
+function probeLabelAt(p: Probe, at: Point, doc: ProjectDocument) {
+  const end = 'end' as const;
+  const start = 'start' as const;
+  if (p.kind === 'net') return { x: at.x - 6, y: at.y - 18, 'text-anchor': end };
+  const placement = doc.layout.components[p.component];
+  const rotation = placement?.rotation ?? 0;
+  if (p.kind === 'current') {
+    return rotation === 90 || rotation === 270
+      ? { x: at.x - 18, y: at.y + 4, 'text-anchor': end }
+      : { x: at.x, y: at.y - 52, 'text-anchor': 'middle' as const };
+  }
+  // A terminal's wire leaves in its outward direction: keep the label off that line.
+  const c = doc.components.find((x) => x.id === p.component);
+  const offset = c && CATALOG[c.type].terminals.find((t) => t.id === p.terminal)?.offset;
+  const out = offset ? rotatePoint(offset, rotation) : { x: -1, y: 0 };
+  if (Math.abs(out.x) >= Math.abs(out.y)) {
+    // Wire runs sideways: the label sits just above it, extending outward.
+    return out.x < 0
+      ? { x: at.x - 4, y: at.y - 10, 'text-anchor': end }
+      : { x: at.x + 4, y: at.y - 10, 'text-anchor': start };
+  }
+  // Wire runs up or down: the label sits beside the terminal, clear of it.
+  return { x: at.x + 14, y: out.y < 0 ? at.y - 4 : at.y + 16, 'text-anchor': start };
 }
