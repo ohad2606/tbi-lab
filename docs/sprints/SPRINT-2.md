@@ -1,6 +1,6 @@
 # Sprint 2 — First Product Surface
 
-**Status:** EXECUTED — awaiting PM review (report in §12). Authorized with roadmap corrections
+**Status:** CLOSED — A11 passed on GitHub Actions (§13). Authorized with roadmap corrections
 RC-1..RC-7 (`docs/product/V1-IMPLEMENTATION-ROADMAP.md`, "Roadmap closure").
 **Date:** 2026-09-22 · **Milestone:** A · **Baseline:** `v1-product-scope-complete` (`09d5089`)
 
@@ -282,7 +282,7 @@ They are not committed, to keep binaries out of the repository.
 | A8 | **Pass** | `app/tests/i18n.test.ts`: identical key sets, placeholders, catalog keys, and a TSX scan for hard-coded strings (with a self-test that it catches each form). `locale.spec.ts`: no untranslated word on any Hebrew screen |
 | A9 | **Pass** | locale.spec "A9": he -> en -> he leaves the stored JSON byte-identical and the viewBox, wire points and component position (relative to the canvas) unchanged. Computed direction is `ltr` for the canvas, value labels, value inputs and references under Hebrew |
 | A10 | **Pass** | `app/e2e/keyboard.spec.ts`: Tab to palette, Enter places at view centre, focus lands on the new component with a visible focus ring; arrows move, R rotates, Tab/Shift+Tab move between components, Delete deletes |
-| A11 | **Pass locally; not yet run on GitHub** | `.github/workflows/ci.yml`: install, typecheck, lint (+ boundary), unit/domain/locale tests, browser suites. No dependency on `/home/ubuntu/tbi-tools` (RC-4). The identical steps pass from a clean clone (§12.4) |
+| A11 | **Pass on GitHub Actions** (run `35832013633`, §13). *At first report: pass locally, not yet run on GitHub* | `.github/workflows/ci.yml`: install, typecheck, lint (+ boundary), unit/domain/locale tests, browser suites. No dependency on `/home/ubuntu/tbi-tools` (RC-4). The identical steps pass from a clean clone (§12.4) |
 | A12 | **Pass** | `scripts/check-boundaries.mjs` (in `npm run lint`) plus an ESLint `no-restricted-imports` rule. Verified to fail on a planted violation |
 | A13 | **Pass** | editor.spec "A13": no Run/Simulate/Start/Stop/Play control or text |
 | A14 | **Pass** | This report (§12.3 promotions, §12.5 decisions) |
@@ -372,3 +372,40 @@ illustrative example (§3.2, "not a frozen wire format"):** added `format`, `cre
 | **Hebrew terminology sign-off** | Translations are complete and consistent, but terms such as "הארקה" (ground), "רשת" (net) and "הדק" (terminal) should be confirmed for the controlled glossary before more strings are added |
 | **CI on GitHub** | First real run happens at the first push; runner differences (fonts, timing) could surface there |
 | **Engine as second schema consumer** | The schema is frozen before the engine consumes it. The netlist shape was designed for compile-from-snapshot (nets -> nodes, `role: "ground"`, SI values), but any Sprint 3 need must be met **additively** |
+
+---
+
+## 13. Closure: real CI evidence (added 2026-09-23)
+
+A11 was not closed by the local clean-clone rehearsal (§12.4). It was closed by real
+GitHub Actions runs, and those runs found two defects the local runs had not.
+
+| Commit | GitHub Actions run | Result |
+|---|---|---|
+| `b79e42f` (Sprint 2 implementation) | `35789744836` | **Fail**: fast job passed; browser job 11 passed, 3 failed (A5 setpoint persisted as 5 V, Hebrew `1,5k` validation error missing, A7 R2 restored as 1 kΩ) |
+| `14a575e` (closure fix 1) | `35828605417` | **Fail**: fast job passed; all 8 new commit-race regressions passed; the same 3 acceptance tests still failed |
+| `c6f2e0bbfb0742b1a164fb4ee581cac11f34095a` (closure fix 2) | **`35832013633`** | **Success**: both jobs passed (install/typecheck/lint/unit-domain-localization; browser acceptance on Chromium, including `npm run test:e2e` and `npm run test:browser`) |
+
+**A11 = PASS**, on commit `c6f2e0bbfb0742b1a164fb4ee581cac11f34095a`, run `35832013633`.
+
+### Defects found by real CI
+
+1. **Product commit/mount timing races** (fixed in `14a575e` and `c6f2e0b`).
+   - Property fields, the project name and the new-project form committed component state
+     rather than the input's actual value. A fast Enter or Blur could commit the previous
+     value. They now commit the element's value.
+   - The property field also started empty and filled its value (and cleared errors) in a
+     post-paint effect. Text and its validation error entered right after the field appeared
+     were then wiped. The field now starts from the stored value and resets only when that
+     value or the component changes.
+   - Regressions: `app/e2e/commit-race.spec.ts`. They dispatch input and commit in a single
+     task, including a Hebrew-first mount case, and each failed on the code before its fix.
+2. **Acceptance-harness persistence race** (fixed in `c6f2e0b`). `waitSaved()` read only the
+   save indicator, which can still show the previous "saved" state right after an edit. Tests
+   then read IndexedDB or restarted the browser before the autosave landed. The new
+   `waitForStoredProject(page, predicate)` polls the real IndexedDB until the specific
+   expected change is durable. Every post-mutation read now uses it; `waitSaved()` only means
+   "no save pending". No sleeps were added.
+
+Local stress runs before the final push: A5 ×10, Hebrew ×10, A7 restart ×10 and all 10
+commit-race tests ×5 all passed.
