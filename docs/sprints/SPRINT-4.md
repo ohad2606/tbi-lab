@@ -1,7 +1,7 @@
 # Sprint 4 — Complete the Non-MCU Laboratory Core
 
-**Status:** COMPLETE LOCALLY — awaiting PM review. Not pushed, not tagged (by instruction).
-**Date:** 2026-09-23 · **Base:** `113b7f7` (Sprint 3 closure record, on `origin/main`), local branch `sprint-4`
+**Status:** TECHNICALLY COMPLETE — pushed to `main`; A17 passed on GitHub Actions (run `35889275941`, §19). Tag `sprint-4-complete` pending PM verification of this closure commit's CI.
+**Date:** 2026-09-23 · **Base:** `113b7f7` (Sprint 3 closure, tag `sprint-3-complete`) · **Product baseline:** `5f875a4` · **Final test baseline:** `f359718`
 **Authority:** PM Sprint 4 directive (2026-09-23), `docs/product/V1-IMPLEMENTATION-ROADMAP.md`,
 `docs/architecture/V1-ARCHITECTURE.md` + ADRs, product scope, PM decisions recorded in
 `SPRINT-3.md` §12.4, `CLAUDE.md`.
@@ -16,11 +16,12 @@ directive's second path applied: the smallest documentation-only closure commit,
 pushed to `main` as a fast-forward from `b95387c`. Only `SPRINT-3.md` changed; earlier evidence
 was not rewritten.
 
-**`sprint-3-complete` has NOT been created yet.** The directive requires the closure commit's own
-GitHub CI to be verified green first. That run cannot be read from this host (the repository is
-private and the GitHub CLI is not authenticated here), and a green result must not be assumed.
-Sprint 4 is built on `113b7f7`; creating the tag there once its CI is confirmed changes nothing
-in Sprint 4.
+**`sprint-3-complete` exists** and points at `113b7f7`. The PM confirmed the closure commit's own
+GitHub Actions run, **`35838914523`**, as green (fast job, Chromium acceptance, `test:e2e`,
+`test:browser`). The annotated tag was then created and pushed, and its remote target was
+verified (`refs/tags/sprint-3-complete^{}` = `113b7f7ab311a006cdd41741989015862dd8b629`). Sprint 4
+is built on that commit. *At first report the tag did not exist yet, because this host cannot read
+the private repository's CI.*
 
 ## 1. Goal and outcome
 
@@ -312,7 +313,7 @@ result.
 | A1 | **Pass** | §3: real Shockley + R_S device in the one engine, sourced from a Vishay datasheet with reproducible extraction; provenance in `packages/engine/PROVENANCE.md` |
 | A2 | **Pass** | §3 table: forward, reverse, polarity, sweep and CC agree with an independent bisection to 1e-9 relative (1e-6 for nA reverse current). Browser values equal the engine run on the stored project |
 | A3 | **Pass** | `sprint4.spec` A3/A4: `I(R1) = 0 A` → held (pointer) `5 mA` → released `0 A`. The same with Space held, and pointer cancel and focus loss release it. Each transition re-solves in the Worker (`data-solves` ≥ 9) |
-| A4 | **Pass** | Same test: stored bytes (and so revision) identical after all presses, checked after waiting past the autosave debounce (the one fixed wait in the new specs: it proves an absence, not a race); undo history holds only real edits; a new Run starts released. Unit tests: store refuses to press non-momentary parts, and history is untouched |
+| A4 | **Pass** | Same test: stored bytes (and so revision) identical after all presses, checked after waiting past the autosave debounce (a fixed wait that proves an absence of writes, not a race fix; A15 uses the same kind); undo history holds only real edits; a new Run starts released. Unit tests: store refuses to press non-momentary parts, and history is untouched |
 | A5 | **Pass** | `sprint4.spec` A5/A6: toggle → `closed: true` at revision r0+1 in IndexedDB; reopen shows it closed |
 | A6 | **Pass** | Same test + `history.test`: while running, IndexedDB updates first, then `appliedRevision` = new revision, then re-solve (`5 mA` ↔ `0 A`, `data-solves` 2) |
 | A7 | **Pass** | §4.5: all decades 1 mΩ–1 GΩ exact; 1,000 toggle transitions and 1,000 button cycles bit-identical to fresh solves; tolerances unchanged |
@@ -323,9 +324,9 @@ result.
 | A12 | **Pass** | §8: `sprint4.spec` A12/A13 (unwired D1 noted and omitted while Run proceeds in CV; partially wired R1 flagged) and "A12 floating" (connected island → `floating_circuit`, never skipped) |
 | A13 | **Pass** | §8: wire drawn across R1.a is flagged on canvas and in the list, and the stored connections still lack R1.a; domain tests |
 | A14 | **Pass** | §9 |
-| A15 | **Pass** | §12: parity and completeness browser tests |
+| A15 | **Pass** | §12: parity and completeness browser tests. The parity test's baseline was corrected in `f359718` (§19); no product change |
 | A16 | **Pass** | Domain test: the catalog is exactly PSU, Ground, Resistor, LED, Diode, Push button, Toggle switch. No other types added |
-| A17 | **Pass locally** | All Sprint 2 race tests and Sprint 3 electrical acceptance tests pass (§14). Remote GitHub CI is **pending**: Sprint 4 is not pushed, by instruction |
+| A17 | **Pass on GitHub Actions** (run `35889275941` on `f359718`, §19). *At first report: local only* | All Sprint 2 race tests and Sprint 3 electrical acceptance tests pass (§14), locally and in CI. The earlier run `35884629891` failed only on an A15 test-ordering defect (§19) |
 | A18 | **Pass** | No change to `.github/workflows/ci.yml`. Nothing in `npm test`, `test:e2e` or `test:browser` touches the ESP32 toolchain. `tools/extract_1n4148.py` is not run in CI |
 
 ## 14. Tests and CI-equivalent run
@@ -353,8 +354,8 @@ depends on changed.
 - Result helpers accept `null` currents.
 - The Sprint 3 LED browser tests select D1.
 
-No assertion was relaxed, and no sleeps were added to fix races. The one fixed wait in the new
-specs proves that nothing is written (A4).
+No assertion was relaxed, and no sleeps were added to fix races. The only fixed waits in the new
+specs (A4, A15) prove that nothing is written.
 
 ## 15. Performance (measured, not promised)
 
@@ -427,8 +428,8 @@ reproduction script, not a dependency. ngspice is not used.
 
 ### 18.1 Deviations from the directive
 
-1. **`sprint-3-complete` not yet created** (§0). Its closure commit's CI could not be verified from
-   this host. Sprint 4 is built on that commit (`113b7f7`), not on a tag.
+1. **`sprint-3-complete` was created after Sprint 4 was built** (§0). Sprint 4 was built on the
+   closure commit `113b7f7` before its CI was confirmed; the tag now points at that same commit.
 2. **Redundant parallel closed switches report "not defined" current.** This is the honest result
    for ideal contacts in a loop. The circuit values are exact.
 3. **Pre-Run circuit checks are advisory.** The engine at Run remains authoritative. `floating_island`
@@ -455,7 +456,7 @@ reproduction script, not a dependency. ngspice is not used.
 
 | Risk | Note |
 |---|---|
-| Remote CI | Sprint 4 has not run on GitHub (not pushed, by instruction). Earlier sprints showed CI finds timing issues local runs miss; the new specs use durable IndexedDB waits, not sleeps |
+| CI timing | CI found one timing-dependent test in Sprint 4 (A15, §19), as in earlier sprints. New tests must wait for the exact durable state they compare against, never for the save indicator or a delay |
 | Single-core timing | The button/toggle browser timings include Playwright polling. On CI hardware they may differ; no SLA is asserted |
 | Diode temperature | 25 °C only. A future thermal feature would need Fig. 1's temperature slope (the extraction already reads those lines) |
 | Keyboard wiring (Sprint 5) | Switch actuators take Space on focused parts. Keyboard wiring must not conflict with that key |
@@ -467,5 +468,36 @@ reproduction script, not a dependency. ngspice is not used.
 
 **No PM decision blocks Sprint 5.**
 
-The one open action is procedural: confirm the GitHub CI result for `113b7f7`, after which
-`sprint-3-complete` is created on it.
+The one open action is procedural: the PM verifies this closure commit's CI, and then
+`sprint-4-complete` is created on it.
+
+## 19. Closure (added 2026-09-23)
+
+| Step | Result |
+|---|---|
+| Sprint 4 pushed to `main` | `113b7f7..5f875a4`, fast-forward: the six Sprint 4 commits, unchanged. **Product implementation is complete at `5f875a4`** |
+| GitHub Actions run `35884629891` on `5f875a4` | **Red**: fast job passed; Chromium acceptance 48/49; `test:browser` skipped. Only failure: A15 parity |
+| A15 test correction | `f359718` (test only, fast-forward to `main`) |
+| GitHub Actions run **`35889275941`** on `f359718` | **Green**: fast job, Chromium acceptance (`npm run test:e2e`, `npm run test:browser`). **A17 = PASS**, verified by the PM |
+
+**Why `35884629891` failed.** A15 flipped SW1, a legitimate persistent edit that is saved
+through the 300 ms autosave debounce. The test then captured the stored project bytes without
+waiting for that save. On the CI runner the capture ran before the toggle's write landed
+(stored revision 8, SW1 open). The write then landed as revision 9, SW1 closed, and the
+"switching language writes nothing" check compared the two different engineering states.
+
+An instrumented local reproduction showed that the toggle's write was the only write in the
+sequence, and that three locale switches after the toggle was durable wrote nothing. Delaying the
+toggle's save reproduced the CI failure exactly.
+
+**The fix changed the test only.** A15 now waits until `SW1.closed = true` is durable, captures
+the bytes and English results after all intended edits, and then switches locale only. No
+assertion was removed. Two were added: the captured bytes equal the durable edited state, and
+the English baseline is 5 mA, CV, closed.
+
+**No product behaviour was changed.** Toggle position remains persistent project state, and a
+locale switch still writes nothing. Local evidence for `f359718`: 295 unit, 49 app browser, 4
+Sprint 0 browser tests pass; both A15 tests pass 10/10 each; the corrected A15 passes with the
+autosave delay stretched to 1.5 s.
+
+**All Sprint 4 acceptance criteria A1–A18 are PASS.**
