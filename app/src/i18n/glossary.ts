@@ -15,6 +15,10 @@ export const GLOSSARY_TERMS = [
   'component',
   'components',
   'pin',
+  'diode',
+  'pushButton',
+  'toggleSwitch',
+  'probe',
 ] as const;
 
 export type GlossaryTerm = (typeof GLOSSARY_TERMS)[number];
@@ -28,6 +32,10 @@ export const GLOSSARY: Record<string, Record<GlossaryTerm, string>> = {
     component: 'component',
     components: 'components',
     pin: 'pin',
+    diode: 'Diode',
+    pushButton: 'Push button',
+    toggleSwitch: 'Toggle switch',
+    probe: 'probe',
   },
   he: {
     ground: 'אדמה (GND)',
@@ -37,6 +45,10 @@ export const GLOSSARY: Record<string, Record<GlossaryTerm, string>> = {
     component: 'רכיב',
     components: 'רכיבים',
     pin: 'פין',
+    diode: 'דיודה',
+    pushButton: 'לחצן',
+    toggleSwitch: 'מתג',
+    probe: 'נקודת מדידה',
   },
 };
 

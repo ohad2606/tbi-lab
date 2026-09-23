@@ -7,7 +7,7 @@
  */
 
 import type { SimulationSnapshot } from '@tbi-lab/domain';
-import type { PsuControl, SolveOutcome } from '@tbi-lab/engine';
+import type { LiveControl, SolveOutcome } from '@tbi-lab/engine';
 
 export type ToWorker =
   | { type: 'load'; requestId: number; snapshot: SimulationSnapshot; sentAt: number }
@@ -15,9 +15,17 @@ export type ToWorker =
       type: 'control';
       requestId: number;
       component: string;
-      control: PsuControl;
+      control: LiveControl;
       /** The project revision at which the browser already persisted this value. */
       projectRevision: number;
+      sentAt: number;
+    }
+  | {
+      /** TRANSIENT runtime input (push button). Carries no revision: nothing was persisted. */
+      type: 'momentary';
+      requestId: number;
+      component: string;
+      pressed: boolean;
       sentAt: number;
     }
   | { type: 'stop'; requestId: number };

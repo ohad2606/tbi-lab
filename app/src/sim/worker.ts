@@ -30,9 +30,12 @@ self.onmessage = (event: MessageEvent<ToWorker>) => {
     if (msg.type === 'load') {
       session = new EngineSession(msg.snapshot);
     } else {
-      if (!session) throw new Error('control received with no loaded snapshot');
-      const refused = session.applyPsuControl(msg.component, msg.control, msg.projectRevision);
-      if (refused) throw new Error(`control refused: ${refused.code}`);
+      if (!session) throw new Error(`${msg.type} received with no loaded snapshot`);
+      const refused =
+        msg.type === 'control'
+          ? session.applyControl(msg.component, msg.control, msg.projectRevision)
+          : session.setMomentary(msg.component, msg.pressed);
+      if (refused) throw new Error(`${msg.type} refused: ${refused.code}`);
     }
     const solveStart = clock();
     const outcome = session.solve();

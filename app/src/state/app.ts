@@ -8,11 +8,13 @@
  */
 
 import {
+  CATALOG,
   SCHEMA_VERSION,
   createProject,
   emptySelection,
+  classifyEdit,
+  historyTarget,
   liveChanges,
-  topologyKey,
   openDocument,
   renameProject,
   stampRevision,
@@ -30,7 +32,15 @@ import {
 } from '../i18n/i18n.js';
 import { Autosave, type SaveState } from '../persistence/autosave.js';
 import type { ProjectIndexEntry, ProjectStorage } from '../persistence/store.js';
+import type { LiveControl } from '@tbi-lab/engine';
 import type { SimState, SimulationController } from '../sim/controller.js';
+
+interface HistoryEntry {
+  before: ProjectDocument;
+  after: ProjectDocument;
+}
+
+const HISTORY_LIMIT = 100;
 
 export const APP_VERSION = '0.1.0';
 
@@ -58,6 +68,8 @@ export interface AppState {
   notice: Notice | null;
   /** Runtime simulation state. Never persisted: a reopened project is always stopped. */
   sim: SimState;
+  /** Undo/redo depth (the history itself is session state, never persisted). */
+  history: { undo: number; redo: number };
 }
 
 export interface AppDeps {
@@ -75,6 +87,13 @@ export class AppStore {
   private stateValue: AppState;
   private listeners = new Set<() => void>();
   private autosave: Autosave | null = null;
+  /**
+   * Undo/redo history of persistent edits: pairs of document contents. Session-only (a
+   * reopened project starts with an empty history). Never holds language, Run/Stop, results,
+   * button presses, selection or camera: those are not project edits.
+   */
+  private past: HistoryEntry[] = [];
+  private future: HistoryEntry[] = [];
   private deviceId = 'unknown-device';
 
   constructor(private readonly deps: AppDeps) {
@@ -90,6 +109,7 @@ export class AppStore {
       saveState: 'saved',
       notice: null,
       sim: { status: 'stopped' },
+      history: { undo: 0, redo: 0 },
     };
     deps.simulation?.subscribe(() => this.set({ sim: deps.simulation!.state }));
   }
@@ -156,6 +176,7 @@ export class AppStore {
       ...(this.deps.clock ? { clock: this.deps.clock } : {}),
     });
     this.deps.prefs.set(PREF_LAST_PROJECT, doc.projectId);
+    this.clearHistory();
     this.set({
       screen: 'editor',
       doc,
@@ -177,6 +198,7 @@ export class AppStore {
       return;
     }
     const result = openDocument(raw);
+    this.clearHistory();
     const base = { selection: emptySelection(), notice: null, unreadable: null };
     if (result.status === 'ok') {
       this.deps.prefs.set(PREF_LAST_PROJECT, projectId);
@@ -214,6 +236,7 @@ export class AppStore {
 
   async goHome(): Promise<void> {
     this.deps.simulation?.stop();
+    this.clearHistory();
     await this.autosave?.flush();
     await this.refreshProjects();
     this.set({ screen: 'home', doc: null, readOnly: null, selection: emptySelection() });
@@ -227,14 +250,14 @@ export class AppStore {
    * Apply the result of a domain edit. A refused edit leaves the document untouched and
    * surfaces its code; an accepted one advances the revision and is autosaved.
    */
-  apply(result: EditResult, selection?: Selection): boolean {
+  apply(result: EditResult, selection?: Selection, options: { record?: boolean } = {}): boolean {
     const current = this.stateValue.doc;
     if (this.stateValue.readOnly || !current) return false;
     if (result.ok && this.deps.simulation?.active) {
-      // The running simulation holds an immutable snapshot. An edit that would change what it
-      // depends on (anything but layout and live PSU controls) is refused, never applied
-      // silently: the user stops the simulation first.
-      if (topologyKey(result.doc) !== topologyKey(current)) {
+      // The running simulation holds an immutable snapshot. A STRUCTURAL edit would change
+      // what it depends on and is refused, never applied silently: the user stops first.
+      // Layout and live edits (PSU settings, toggle position) are allowed.
+      if (classifyEdit(current, result.doc) === 'structural') {
         this.set({ notice: { key: 'sim.stopToEdit' } });
         return false;
       }
@@ -252,8 +275,69 @@ export class AppStore {
       return false;
     }
     this.commit(result.doc, selection);
+    if (options.record ?? true) {
+      this.past.push({ before: current, after: this.stateValue.doc! });
+      if (this.past.length > HISTORY_LIMIT) this.past.shift();
+      this.future = [];
+      this.syncHistory();
+    }
     this.mirrorLiveChanges(current);
     return true;
+  }
+
+  /**
+   * Undo the last persistent edit. It is committed like any edit: a NEW revision is stamped
+   * and autosaved (revisions never go back), id counters never go back (no id is reissued),
+   * and while running it obeys the same rules (structural undo refused; a live undo is
+   * persisted first, then mirrored and re-solved).
+   */
+  undo(): boolean {
+    const entry = this.past.at(-1);
+    const current = this.stateValue.doc;
+    if (!entry || !current) return false;
+    if (
+      !this.apply({ ok: true, doc: historyTarget(current, entry.before) }, undefined, {
+        record: false,
+      })
+    ) {
+      return false;
+    }
+    this.past.pop();
+    this.future.push({ before: entry.before, after: this.stateValue.doc! });
+    this.syncHistory();
+    return true;
+  }
+
+  redo(): boolean {
+    const entry = this.future.at(-1);
+    const current = this.stateValue.doc;
+    if (!entry || !current) return false;
+    const target = historyTarget(current, entry.after);
+    if (!this.apply({ ok: true, doc: target }, undefined, { record: false })) return false;
+    this.future.pop();
+    this.past.push({ before: current, after: this.stateValue.doc! });
+    this.syncHistory();
+    return true;
+  }
+
+  private clearHistory(): void {
+    this.past = [];
+    this.future = [];
+    this.syncHistory();
+  }
+
+  private syncHistory(): void {
+    this.set({ history: { undo: this.past.length, redo: this.future.length } });
+  }
+
+  /**
+   * TRANSIENT runtime interaction: press/release a momentary push button while running. The
+   * project document is not touched: no revision, no autosave, no undo entry.
+   */
+  press(componentId: string, pressed: boolean): boolean {
+    const c = this.stateValue.doc?.components.find((x) => x.id === componentId);
+    if (!c || !CATALOG[c.type].momentary) return false;
+    return this.deps.simulation?.momentary(componentId, pressed) ?? false;
   }
 
   /**
@@ -265,11 +349,11 @@ export class AppStore {
     const after = this.stateValue.doc;
     if (!sim?.active || !after) return;
     for (const change of liveChanges(before, after)) {
-      const control: { setpointVoltage?: number; currentLimit?: number; outputEnabled?: boolean } =
-        {};
+      const control: LiveControl = {};
       for (const [key, value] of Object.entries(change.params)) {
-        if (key === 'outputEnabled' && typeof value === 'boolean') control.outputEnabled = value;
-        else if (
+        if ((key === 'outputEnabled' || key === 'closed') && typeof value === 'boolean') {
+          control[key] = value;
+        } else if (
           (key === 'setpointVoltage' || key === 'currentLimit') &&
           typeof value === 'object'
         ) {
@@ -299,7 +383,13 @@ export class AppStore {
   }
 
   private commit(doc: ProjectDocument, selection?: Selection): void {
-    const stamped = stampRevision(doc, this.deviceId, this.deps.clock);
+    // Revisions only move forward, whatever revision the incoming content carries.
+    const latest = Math.max(
+      doc.revision.localRevision,
+      this.stateValue.doc?.revision.localRevision ?? 0,
+    );
+    const based = { ...doc, revision: { ...doc.revision, localRevision: latest } };
+    const stamped = stampRevision(based, this.deviceId, this.deps.clock);
     this.set({
       doc: stamped,
       notice: null,

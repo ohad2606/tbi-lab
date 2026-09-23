@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { validateProject } from '@tbi-lab/domain';
 import { drawLoop, run } from './circuits.js';
-import { storedProject } from './helpers.js';
+import { component, storedProject } from './helpers.js';
 
 test('A12: browser restart during a run reopens stopped, intact, and able to run again', async ({
   baseURL,
@@ -20,6 +20,7 @@ test('A12: browser restart during a run reopens stopped, intact, and able to run
     let page = context.pages()[0] ?? (await context.newPage());
     await drawLoop(page, { ohms: '220', led: true }, 'Restart bench');
     await run(page);
+    await component(page, 'D1').locator('.component-hit').click();
     await expect(page.getByTestId('result-D1')).toHaveText('1.982 V · 13.72 mA');
     const before = await storedProject(page);
     await context.close(); // the browser process ends while "running"
@@ -35,6 +36,7 @@ test('A12: browser restart during a run reopens stopped, intact, and able to run
     expect(validateProject(after)).toEqual([]);
     expect(JSON.stringify(after)).not.toMatch(/"(running|outcome|netVoltages|current)"/);
     await run(page);
+    await component(page, 'D1').locator('.component-hit').click();
     await expect(page.getByTestId('result-D1')).toHaveText('1.982 V · 13.72 mA');
     await context.close();
   } finally {

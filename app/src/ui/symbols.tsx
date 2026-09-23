@@ -6,11 +6,34 @@
 
 import type { ComponentTypeId } from '@tbi-lab/domain';
 
+/** Visual state some symbols depict. Presentation only: never an electrical input. */
+export interface SymbolState {
+  /** Toggle switch: the persisted position. */
+  closed?: boolean;
+  /** Push button: held right now (transient runtime input). */
+  pressed?: boolean;
+}
+
 export interface SymbolDef {
   /** Local bounding box [minX, minY, maxX, maxY] at rotation 0, including leads. */
   bbox: [number, number, number, number];
-  draw: () => preact.JSX.Element;
+  draw: (state?: SymbolState) => preact.JSX.Element;
+  /**
+   * The operable part of a switch symbol (local coordinates). Pointer input there actuates
+   * the switch instead of selecting or dragging the component.
+   */
+  actuator?: [number, number, number, number];
 }
+
+/** Two contact points of a switch, with leads to the terminals. */
+const contacts = () => (
+  <>
+    <line x1={-40} y1={0} x2={-16} y2={0} />
+    <line x1={16} y1={0} x2={40} y2={0} />
+    <circle cx={-16} cy={0} r={2.5} class="contact" />
+    <circle cx={16} cy={0} r={2.5} class="contact" />
+  </>
+);
 
 export const SYMBOLS: Record<ComponentTypeId, SymbolDef> = {
   'component.resistor': {
@@ -37,6 +60,50 @@ export const SYMBOLS: Record<ComponentTypeId, SymbolDef> = {
         <polyline points="2,-22 6,-22 6,-18" />
         <line x1={6} y1={-10} x2={14} y2={-18} />
         <polyline points="10,-18 14,-18 14,-14" />
+      </>
+    ),
+  },
+  'component.diode': {
+    bbox: [-40, -12, 40, 12],
+    draw: () => (
+      <>
+        <line x1={-40} y1={0} x2={-12} y2={0} />
+        <polygon points="-12,-12 -12,12 12,0" class="diode-body" />
+        <line x1={12} y1={-12} x2={12} y2={12} />
+        <line x1={12} y1={0} x2={40} y2={0} />
+      </>
+    ),
+  },
+  'component.push_button': {
+    bbox: [-40, -28, 40, 6],
+    actuator: [-22, -30, 22, 2],
+    // Normally open: the bridging bar sits above the contacts and touches them only while held.
+    draw: (state) => {
+      const y = state?.pressed ? -3 : -12;
+      return (
+        <>
+          {contacts()}
+          <line x1={-20} y1={y} x2={20} y2={y} class="actuator-part" />
+          <line x1={0} y1={y} x2={0} y2={y - 12} class="actuator-part" />
+          <line x1={-8} y1={y - 12} x2={8} y2={y - 12} class="actuator-part" />
+        </>
+      );
+    },
+  },
+  'component.toggle_switch': {
+    bbox: [-40, -24, 40, 6],
+    actuator: [-20, -26, 22, 4],
+    // SPST: the blade pivots on the left contact and rests on the right one when closed.
+    draw: (state) => (
+      <>
+        {contacts()}
+        <line
+          x1={-16}
+          y1={0}
+          x2={state?.closed ? 16 : 13}
+          y2={state?.closed ? 0 : -18}
+          class="actuator-part"
+        />
       </>
     ),
   },

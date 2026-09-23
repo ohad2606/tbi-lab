@@ -48,6 +48,9 @@ describe('locale bundles', () => {
     // CV and CC stay as professional technical terms in Hebrew (product scope §12).
     expect(same.sort()).toEqual([
       'canvas.componentLabel',
+      'probe.currentLabel',
+      'probe.noValue',
+      'probe.voltageLabel',
       'sim.badge.cc',
       'sim.badge.cv',
       'unit.ampere.symbol',

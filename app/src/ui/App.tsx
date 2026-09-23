@@ -25,10 +25,25 @@ export function App() {
         e.preventDefault();
       }
     };
+    // Project undo/redo shortcuts. Inside text fields the browser's own input undo applies to
+    // the draft text only; project history is never delegated to it.
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+      const el = e.target as HTMLElement | null;
+      if (el?.closest?.('input, textarea, select, [contenteditable="true"]')) return;
+      const redo = (e.code === 'KeyZ' && e.shiftKey) || (e.code === 'KeyY' && !e.shiftKey);
+      const undo = e.code === 'KeyZ' && !e.shiftKey;
+      if (!undo && !redo) return;
+      e.preventDefault();
+      if (undo) store.undo();
+      else store.redo();
+    };
+    document.addEventListener('keydown', onKey);
     document.addEventListener('visibilitychange', onVisibility);
     window.addEventListener('pagehide', flush);
     window.addEventListener('beforeunload', beforeUnload);
     return () => {
+      document.removeEventListener('keydown', onKey);
       document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('pagehide', flush);
       window.removeEventListener('beforeunload', beforeUnload);

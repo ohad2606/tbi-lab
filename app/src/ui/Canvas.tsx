@@ -14,6 +14,8 @@ import {
   GRID,
   addComponent,
   addWire,
+  checkCircuit,
+  setParam,
   deleteSelection,
   emptySelection,
   moveSelection,
@@ -35,7 +37,8 @@ import { catalogText, formatQuantity, type LocaleInfo, type MessageKey } from '.
 import type { ComponentResult } from '@tbi-lab/engine';
 import { formatResult } from '../sim/format.js';
 import { useAppState, useStore, useT } from './context.js';
-import { SYMBOLS } from './symbols.js';
+import { SYMBOLS, type SymbolState } from './symbols.js';
+import { probeAnchor, probeTargetName, readProbe, type Probe, type ProbeInput } from './probes.js';
 
 export interface CanvasApi {
   placeAtCenter(type: ComponentTypeId): void;
@@ -45,6 +48,11 @@ interface Props {
   placing: ComponentTypeId | null;
   onPlacingDone(): void;
   apiRef: MutableRef<CanvasApi | null>;
+  /** Probe tool active: clicks pin observational readouts instead of editing. */
+  probeMode: boolean;
+  onProbeModeChange(on: boolean): void;
+  probes: Probe[];
+  onProbe(input: ProbeInput): void;
 }
 
 interface Camera {
@@ -58,6 +66,7 @@ type Hit =
   | { kind: 'terminal'; component: string; terminal: string }
   | { kind: 'wire'; id: string }
   | { kind: 'junction'; id: string }
+  | { kind: 'actuator'; id: string }
   | { kind: 'empty' };
 
 type Mode =
@@ -73,7 +82,9 @@ type Mode =
       vertices: Point[];
       cursor: Point;
       pressClient: Point | null;
-    };
+    }
+  /** A push button held with the pointer (transient runtime input). */
+  | { kind: 'button'; id: string };
 
 const MIN_SCALE = 0.25;
 const MAX_SCALE = 4;
@@ -94,6 +105,8 @@ function hitOf(target: EventTarget | null): Hit {
       return { kind: 'wire', id: d.id! };
     case 'junction':
       return { kind: 'junction', id: d.id! };
+    case 'actuator':
+      return { kind: 'actuator', id: d.id! };
     default:
       return { kind: 'empty' };
   }
@@ -141,13 +154,23 @@ function pointOnRoute(route: Point[], p: Point): Point {
 
 const points = (ps: Point[]) => ps.map((p) => `${p.x},${p.y}`).join(' ');
 
-export function Canvas({ placing, onPlacingDone, apiRef }: Props) {
+export function Canvas({
+  placing,
+  onPlacingDone,
+  apiRef,
+  probeMode,
+  onProbeModeChange,
+  probes,
+  onProbe,
+}: Props) {
   const state = useAppState();
   const store = useStore();
   const t = useT();
   const doc = state.doc!;
   const readOnly = !!state.readOnly;
   const simActive = state.sim.status === 'running' || state.sim.status === 'starting';
+  const simRunning = state.sim.status === 'running';
+  const pressed = new Set(state.sim.status === 'running' ? state.sim.pressed : []);
   const outcome = state.sim.status === 'running' ? state.sim.outcome : null;
   const selection = state.selection;
 
@@ -158,6 +181,7 @@ export function Canvas({ placing, onPlacingDone, apiRef }: Props) {
   const [mode, setMode] = useState<Mode>({ kind: 'idle' });
   const [cursor, setCursor] = useState<Point | null>(null);
   const spaceHeld = useRef(false);
+  const heldByKey = useRef<string | null>(null);
   const pointerDown = useRef(false);
   const fitted = useRef<string | null>(null);
 
@@ -322,6 +346,47 @@ export function Canvas({ placing, onPlacingDone, apiRef }: Props) {
     if (e.button !== 0 || readOnly) return;
     svg.focus({ preventScroll: true });
 
+    if (probeMode) {
+      // Observation only: a probe never edits the project or the circuit.
+      if (hit.kind === 'terminal')
+        onProbe({ kind: 'terminal', component: hit.component, terminal: hit.terminal });
+      else if (hit.kind === 'component' || hit.kind === 'actuator')
+        onProbe({ kind: 'current', component: hit.id });
+      else if (hit.kind === 'wire') {
+        const w = doc.layout.wires.find((x) => x.id === hit.id);
+        const end = w && [w.from, w.to].find((x) => x.kind === 'terminal');
+        const net =
+          end?.kind === 'terminal'
+            ? doc.connections.find(
+                (c) => c.component === end.component && c.terminal === end.terminal,
+              )?.net
+            : undefined;
+        const route = w && wireRoute(doc, w);
+        if (net && route) onProbe({ kind: 'net', net, at: pointOnRoute(route, world) });
+      }
+      return;
+    }
+    if (hit.kind === 'actuator') {
+      const c = doc.components.find((x) => x.id === hit.id);
+      if (c?.type === 'component.toggle_switch') {
+        // PERSISTENT edit: the browser document first (revision, autosave, undo); while
+        // running it is then mirrored to the session as a live control.
+        store.apply(setParam(doc, c.id, 'closed', c.params.closed !== true), {
+          ...emptySelection(),
+          components: [c.id],
+        });
+        return;
+      }
+      if (c?.type === 'component.push_button' && simRunning) {
+        // TRANSIENT runtime input: held while the pointer is down, never persisted.
+        svg.setPointerCapture(e.pointerId);
+        store.press(c.id, true);
+        setMode({ kind: 'button', id: c.id });
+        return;
+      }
+      toggleOrSelect({ kind: 'component', id: hit.id }, e.shiftKey);
+      return;
+    }
     if (placing && simActive) {
       onPlacingDone(); // the palette is disabled while running; nothing is placed
       return;
@@ -401,10 +466,20 @@ export function Canvas({ placing, onPlacingDone, apiRef }: Props) {
     }
   };
 
+  /** Release a held push button on every way a press can end (up, cancel, capture lost). */
+  const releaseButton = () => {
+    if (mode.kind !== 'button') return;
+    store.press(mode.id, false);
+    setMode({ kind: 'idle' });
+  };
+
   const onPointerUp = (e: PointerEvent) => {
     pointerDown.current = false;
     const world = toWorld(e.clientX, e.clientY);
     switch (mode.kind) {
+      case 'button':
+        releaseButton();
+        break;
       case 'pan':
       case 'press':
         setMode({ kind: 'idle' });
@@ -463,14 +538,39 @@ export function Canvas({ placing, onPlacingDone, apiRef }: Props) {
   // ---------------------------------------------------------------------------------------------
   // Keyboard input (layout-independent: physical key codes for letter shortcuts)
 
+  /** The switch component that has keyboard focus, if any. */
+  const focusedSwitch = (e: KeyboardEvent) => {
+    const el = (e.target as Element | null)?.closest?.(
+      '[data-hit="component"]',
+    ) as SVGElement | null;
+    const c = el ? doc.components.find((x) => x.id === el.dataset.id) : undefined;
+    return c && (c.type === 'component.push_button' || c.type === 'component.toggle_switch')
+      ? c
+      : undefined;
+  };
+
   const onKeyDown = (e: KeyboardEvent) => {
     if (e.key === ' ') {
-      spaceHeld.current = true;
       e.preventDefault();
+      const sw = focusedSwitch(e);
+      if (sw?.type === 'component.toggle_switch' && !readOnly) {
+        if (!e.repeat) store.apply(setParam(doc, sw.id, 'closed', sw.params.closed !== true));
+        return;
+      }
+      if (sw?.type === 'component.push_button') {
+        // Momentary: held exactly while the key is down; auto-repeat changes nothing.
+        if (!e.repeat && simRunning) {
+          heldByKey.current = sw.id;
+          store.press(sw.id, true);
+        }
+        return;
+      }
+      spaceHeld.current = true;
       return;
     }
     if (e.key === 'Escape') {
-      if (placing) onPlacingDone();
+      if (probeMode) onProbeModeChange(false);
+      else if (placing) onPlacingDone();
       else if (mode.kind !== 'idle') setMode({ kind: 'idle' });
       else store.select(emptySelection());
       return;
@@ -511,8 +611,27 @@ export function Canvas({ placing, onPlacingDone, apiRef }: Props) {
   };
 
   const onKeyUp = (e: KeyboardEvent) => {
-    if (e.key === ' ') spaceHeld.current = false;
+    if (e.key !== ' ') return;
+    spaceHeld.current = false;
+    if (heldByKey.current) {
+      store.press(heldByKey.current, false);
+      heldByKey.current = null;
+    }
   };
+
+  // A button can never stay stuck: losing focus, or the simulation stopping, releases it.
+  const releaseKeyHeld = () => {
+    if (heldByKey.current) {
+      store.press(heldByKey.current, false);
+      heldByKey.current = null;
+    }
+  };
+  useEffect(() => {
+    if (!simRunning) {
+      heldByKey.current = null;
+      if (mode.kind === 'button') setMode({ kind: 'idle' });
+    }
+  }, [simRunning]);
 
   // ---------------------------------------------------------------------------------------------
   // Rendering
@@ -545,21 +664,38 @@ export function Canvas({ placing, onPlacingDone, apiRef }: Props) {
     }
   }
 
+  // Canvas values are deliberately sparse (dense-result UX): supplies always, other parts
+  // only when selected or probed. Details live in the inspector and on probes.
+  const probedParts = new Set(
+    probes.filter((p) => p.kind === 'current').map((p) => (p as { component: string }).component),
+  );
+  const issues = useMemo(() => (simActive ? [] : checkCircuit(doc)), [doc, simActive]);
+  const markers = issues.flatMap((i) =>
+    i.code === 'partially_wired' || i.code === 'wire_over_terminal'
+      ? (i.terminals ?? []).map((term) => ({
+          code: i.code,
+          component: i.components[0]!,
+          terminal: term,
+        }))
+      : [],
+  );
   const viewW = Math.max(1, size.w) / camera.scale;
   const viewH = Math.max(1, size.h) / camera.scale;
-  const hint = simActive
-    ? 'canvas.hint.running'
-    : placing
-      ? 'canvas.hint.placing'
-      : mode.kind === 'wiring'
-        ? 'canvas.hint.wiring'
-        : 'canvas.hint.idle';
+  const hint = probeMode
+    ? 'canvas.hint.probe'
+    : simActive
+      ? 'canvas.hint.running'
+      : placing
+        ? 'canvas.hint.placing'
+        : mode.kind === 'wiring'
+          ? 'canvas.hint.wiring'
+          : 'canvas.hint.idle';
 
   return (
     <div class={simActive ? 'canvas-wrap running' : 'canvas-wrap'} dir="ltr">
       <svg
         ref={svgRef}
-        class={`canvas mode-${placing ? 'placing' : mode.kind}`}
+        class={`canvas mode-${probeMode ? 'probe' : placing ? 'placing' : mode.kind}`}
         data-testid="canvas"
         viewBox={`${camera.x} ${camera.y} ${viewW} ${viewH}`}
         tabIndex={0}
@@ -567,6 +703,9 @@ export function Canvas({ placing, onPlacingDone, apiRef }: Props) {
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
+        onPointerCancel={releaseButton}
+        onLostPointerCapture={releaseButton}
+        onBlur={releaseKeyHeld}
         onPointerLeave={() => setCursor(null)}
         onWheel={onWheel}
         onKeyDown={onKeyDown}
@@ -625,6 +764,12 @@ export function Canvas({ placing, onPlacingDone, apiRef }: Props) {
                 }
               }}
               result={outcome?.ok ? outcome.components[c.id] : undefined}
+              showRuntime={
+                c.type === 'instrument.lab_psu' ||
+                selected.components.has(c.id) ||
+                probedParts.has(c.id)
+              }
+              symbolState={{ closed: c.params.closed === true, pressed: pressed.has(c.id) }}
             />
           ))}
         </g>
@@ -672,6 +817,52 @@ export function Canvas({ placing, onPlacingDone, apiRef }: Props) {
           ))}
         </g>
 
+        <g class="check-markers">
+          {markers.map((m) => {
+            const p = terminalPosition(view, m.component, m.terminal);
+            if (!p) return null;
+            return (
+              <circle
+                key={`${m.code}.${m.component}.${m.terminal}`}
+                class={`check-marker check-${m.code}`}
+                data-testid={`check-marker-${m.component}.${m.terminal}`}
+                data-code={m.code}
+                cx={p.x}
+                cy={p.y}
+                r={11}
+              />
+            );
+          })}
+        </g>
+
+        <g class="probes">
+          {probes.map((p) => {
+            const at = probeAnchor(p, view);
+            if (!at) return null;
+            const reading = readProbe(p, view, outcome?.ok ? outcome : null);
+            const value =
+              reading.value === null
+                ? t('probe.noValue')
+                : formatResult(state.locale, reading.value, reading.quantity);
+            const label = t(p.kind === 'current' ? 'probe.currentLabel' : 'probe.voltageLabel', {
+              point: probeTargetName(p),
+              value,
+            });
+            return (
+              <g
+                key={p.id}
+                class={`probe probe-${p.kind}`}
+                data-testid={`probe-${probeTargetName(p)}`}
+              >
+                <path class="probe-pin" d={`M${at.x} ${at.y} l8 -14 h4 l-8 14 z`} />
+                <text class="probe-label" x={at.x - 6} y={at.y - 18} text-anchor="end">
+                  {label}
+                </text>
+              </g>
+            );
+          })}
+        </g>
+
         {mode.kind === 'wiring' && (
           <polyline
             class="wire wire-preview"
@@ -694,6 +885,19 @@ export function Canvas({ placing, onPlacingDone, apiRef }: Props) {
         )}
       </svg>
       <div class="canvas-controls" role="group">
+        <button
+          type="button"
+          class={probeMode ? 'icon-button active' : 'icon-button'}
+          data-testid="canvas-probe"
+          aria-pressed={probeMode}
+          aria-label={t('probe.tool')}
+          title={t('probe.tool')}
+          onClick={() => onProbeModeChange(!probeMode)}
+        >
+          <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true" class="control-icon">
+            <path d="M3 17 L9 11 M9 11 l6 -8 l2 2 l-8 6 z" />
+          </svg>
+        </button>
         <button
           type="button"
           class="icon-button"
@@ -740,6 +944,8 @@ function ComponentView({
   label,
   onFocus,
   result,
+  showRuntime,
+  symbolState,
 }: {
   doc: ProjectDocument;
   component: ComponentInstance;
@@ -748,10 +954,19 @@ function ComponentView({
   onFocus(): void;
   /** Solved values while a simulation runs; runtime state, never part of the document. */
   result: ComponentResult | undefined;
+  showRuntime: boolean;
+  symbolState: SymbolState;
 }) {
   const { locale } = useAppState();
   const t = useT();
-  const runtime = result ? runtimeLabel(result, locale, t) : '';
+  const runtime = result && showRuntime ? runtimeLabel(result, locale, t) : '';
+  const def = SYMBOLS[c.type];
+  const switchState =
+    c.type === 'component.toggle_switch'
+      ? t(symbolState.closed ? 'switch.state.closed' : 'switch.state.open')
+      : c.type === 'component.push_button'
+        ? t(symbolState.pressed ? 'switch.state.pressed' : 'switch.state.released')
+        : '';
   const p = doc.layout.components[c.id]!;
   const box = componentBox(doc, c);
   const cx = (box.minX + box.maxX) / 2;
@@ -765,7 +980,9 @@ function ComponentView({
       class={selected ? 'component selected' : 'component'}
       tabIndex={0}
       role="button"
-      aria-label={values ? `${label}, ${values}` : label}
+      aria-label={[label, values, switchState].filter(Boolean).join(', ')}
+      data-closed={c.type === 'component.toggle_switch' ? String(symbolState.closed) : undefined}
+      data-pressed={c.type === 'component.push_button' ? String(symbolState.pressed) : undefined}
       onFocus={onFocus}
     >
       <rect
@@ -784,14 +1001,26 @@ function ComponentView({
         height={box.maxY - box.minY + 8}
       />
       <g class="symbol" transform={`translate(${p.x} ${p.y}) rotate(${p.rotation})`}>
-        {SYMBOLS[c.type].draw()}
-        {c.type === 'component.led' && result && result.current > 0 && (
+        {def.draw(symbolState)}
+        {def.actuator && (
+          <rect
+            class="actuator"
+            data-hit="actuator"
+            data-id={c.id}
+            data-testid={`actuator-${c.id}`}
+            x={def.actuator[0]}
+            y={def.actuator[1]}
+            width={def.actuator[2] - def.actuator[0]}
+            height={def.actuator[3] - def.actuator[1]}
+          />
+        )}
+        {c.type === 'component.led' && result && result.current !== null && result.current > 0 && (
           // Visual cue only: opacity follows the solved forward current (full at 20 mA). It is
           // not a photometric model and feeds nothing back into the simulation.
           <polygon
             class="led-glow"
             points="-12,-12 -12,12 12,0"
-            style={{ fillOpacity: Math.min(1, Math.max(0.08, result.current / 0.02)) }}
+            style={{ fillOpacity: Math.min(1, Math.max(0.08, (result.current ?? 0) / 0.02)) }}
           />
         )}
       </g>
@@ -811,11 +1040,16 @@ function ComponentView({
           {values}
         </text>
       )}
+      {switchState && (
+        <text class="switch-state" x={cx} y={box.maxY + 18} text-anchor="middle">
+          {switchState}
+        </text>
+      )}
       {runtime && (
         <text
           class="runtime-label"
           x={cx}
-          y={box.maxY + (values ? 42 : 22)}
+          y={box.maxY + (values ? 42 : switchState ? 36 : 22)}
           text-anchor="middle"
           data-testid={`result-${c.id}`}
         >
@@ -832,13 +1066,17 @@ function runtimeLabel(
   locale: LocaleInfo,
   t: (key: MessageKey) => string,
 ): string {
-  const i = formatResult(locale, r.current, 'ampere');
+  const i =
+    r.current === null ? t('sim.results.undefined') : formatResult(locale, r.current, 'ampere');
   const v =
     r.voltage === null ? t('sim.results.undefined') : formatResult(locale, r.voltage, 'volt');
   switch (r.type) {
     case 'component.resistor':
+    case 'component.push_button':
+    case 'component.toggle_switch':
       return i;
     case 'component.led':
+    case 'component.diode':
       return `${v} · ${i}`;
     case 'instrument.lab_psu':
       return `${v} · ${i} · ${t(`sim.badge.${r.mode ?? 'off'}`)}`;

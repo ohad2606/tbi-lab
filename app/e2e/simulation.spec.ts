@@ -27,9 +27,21 @@ async function engineTruth(page: Page): Promise<SolveSuccess> {
   if (!outcome.ok) throw new Error(JSON.stringify(outcome.error));
   return outcome;
 }
-const I = (v: number) => formatResult(en, v, 'ampere');
+const I = (v: number | null) => {
+  if (v === null) throw new Error('current not defined');
+  return formatResult(en, v, 'ampere');
+};
 const V = (v: number) => formatResult(en, v, 'volt');
 const status = (page: Page) => page.getByTestId('sim-status');
+
+/**
+ * Sprint 4 dense-result rule: a part's solved values appear on the canvas when it is selected
+ * or probed (supplies always). Select the part, then read its canvas result label.
+ */
+async function resultOf(page: Page, id: string) {
+  await component(page, id).locator('.component-hit').click();
+  return page.getByTestId(`result-${id}`);
+}
 
 test.beforeEach(({ page }) => {
   page.on('pageerror', (e) => {
@@ -44,10 +56,10 @@ test('A3/A4: 5 V -> 1 kΩ -> GND runs in a real Web Worker and shows 5 mA', asyn
   await run(page);
   await expect(status(page)).toHaveAttribute('data-status', 'running');
   expect(workers.some((u) => /\/assets\/worker-[\w-]+\.js$/.test(u))).toBe(true);
-  await expect(page.getByTestId('result-R1')).toHaveText('5 mA');
+  await expect(await resultOf(page, 'R1')).toHaveText('5 mA');
   await expect(page.getByTestId('result-PSU1')).toHaveText('5 V · 5 mA · CV');
   const truth = await engineTruth(page);
-  expect(Math.abs(truth.components.R1!.current - 5e-3) / 5e-3).toBeLessThanOrEqual(1e-9);
+  expect(Math.abs(truth.components.R1!.current! - 5e-3) / 5e-3).toBeLessThanOrEqual(1e-9);
   await component(page, 'R1').locator('.component-hit').click();
   await expect(page.getByTestId('result-current')).toHaveText(I(truth.components.R1!.current));
   await expect(page.getByTestId('result-voltage')).toHaveText(V(truth.components.R1!.voltage!));
@@ -60,17 +72,17 @@ test('A5: 5 V -> 220 Ω -> LED -> GND shows the real nonlinear operating point',
   await run(page);
   const truth = await engineTruth(page);
   const d1 = truth.components.D1!;
-  expect(d1.current).toBeGreaterThan(0.013);
-  expect(d1.current).toBeLessThan(0.0145);
+  expect(d1.current!).toBeGreaterThan(0.013);
+  expect(d1.current!).toBeLessThan(0.0145);
   expect(d1.voltage).toBeGreaterThan(1.95);
   expect(d1.voltage).toBeLessThan(2.0);
-  await expect(page.getByTestId('result-D1')).toHaveText(`${V(d1.voltage!)} · ${I(d1.current)}`);
-  await expect(page.getByTestId('result-D1')).toHaveText('1.982 V · 13.72 mA');
+  await expect(await resultOf(page, 'D1')).toHaveText(`${V(d1.voltage!)} · ${I(d1.current)}`);
+  await expect(await resultOf(page, 'D1')).toHaveText('1.982 V · 13.72 mA');
   // The LED symbol's brightness cue follows the solved current (visual only).
   const opacity = await component(page, 'D1')
     .locator('.led-glow')
     .evaluate((el) => Number(getComputedStyle(el).fillOpacity));
-  expect(opacity).toBeCloseTo(Math.min(1, d1.current / 0.02), 3);
+  expect(opacity).toBeCloseTo(Math.min(1, d1.current! / 0.02), 3);
   await component(page, 'D1').locator('.component-hit').click();
   await expect(page.getByTestId('result-outside-model')).toHaveCount(0);
 });
@@ -91,7 +103,7 @@ test('A7 + A10: output OFF is an open circuit; enabling it live re-solves with p
   await drawLoop(page, { ohms: '220', led: true, enable: false });
   await run(page);
   await expect(page.getByTestId('result-PSU1')).toHaveText('0 V · 0 A · OFF');
-  await expect(page.getByTestId('result-D1')).toHaveText('0 V · 0 A');
+  await expect(await resultOf(page, 'D1')).toHaveText('0 V · 0 A');
   const before = await storedProject(page);
 
   // Live persistent edit while running: persisted first, mirrored, re-solved in the worker.
@@ -110,7 +122,7 @@ test('A7 + A10: output OFF is an open circuit; enabling it live re-solves with p
     String(after.revision.localRevision),
   );
   await expect(status(page)).toHaveAttribute('data-solves', '2');
-  await expect(page.getByTestId('result-D1')).toHaveText('1.982 V · 13.72 mA');
+  await expect(await resultOf(page, 'D1')).toHaveText('1.982 V · 13.72 mA');
 
   // Setpoint change while running.
   const v = page.getByTestId('param-PSU1-setpointVoltage');
@@ -123,7 +135,7 @@ test('A7 + A10: output OFF is an open circuit; enabling it live re-solves with p
     'PSU1 setpoint = 3.3 V',
   );
   const truth = await engineTruth(page);
-  await expect(page.getByTestId('result-D1')).toHaveText(
+  await expect(await resultOf(page, 'D1')).toHaveText(
     `${V(truth.components.D1!.voltage!)} · ${I(truth.components.D1!.current)}`,
   );
   expect((await storedProject(page)).components[0]!.params.setpointVoltage).toEqual({
@@ -164,7 +176,7 @@ test('A9 + A11: results are runtime only; structural edits cannot reach the runn
   await drawLoop(page, { ohms: '1k' });
   const bytes = JSON.stringify(await storedProject(page));
   await run(page);
-  await expect(page.getByTestId('result-R1')).toHaveText('5 mA');
+  await expect(await resultOf(page, 'R1')).toHaveText('5 mA');
   await page.waitForTimeout(500);
   expect(JSON.stringify(await storedProject(page))).toBe(bytes);
 
@@ -194,7 +206,7 @@ test('A9 + A11: results are runtime only; structural edits cannot reach the runn
   await setValue(page, 'R1', 'resistance', '2k');
   await waitSaved(page);
   await run(page);
-  await expect(page.getByTestId('result-R1')).toHaveText('2.5 mA');
+  await expect(await resultOf(page, 'R1')).toHaveText('2.5 mA');
 });
 
 test('A13: English and Hebrew show identical numbers; switching language writes nothing', async ({
@@ -202,6 +214,7 @@ test('A13: English and Hebrew show identical numbers; switching language writes 
 }) => {
   await drawLoop(page, { ohms: '220', led: true });
   await run(page);
+  await component(page, 'D1').locator('.component-hit').click();
   const labels = async () =>
     page
       .locator('.runtime-label')
@@ -246,7 +259,7 @@ test('A14: a Worker failure leaves the project intact and gives a useful diagnos
   await page.getByTestId('sim-stop').click();
   await expect(status(page)).toHaveAttribute('data-status', 'stopped');
   await run(page);
-  await expect(page.getByTestId('result-R1')).toHaveText('5 mA');
+  await expect(await resultOf(page, 'R1')).toHaveText('5 mA');
 });
 
 test('empty and ground-less circuits are refused with specific messages', async ({ page }) => {
@@ -267,8 +280,8 @@ test('parts with nothing wired are reported as not simulated, and get no values'
   await waitSaved(page);
   await run(page);
   await expect(page.getByTestId('sim-not-connected')).toContainText('D1');
-  await expect(page.getByTestId('result-D1')).toHaveCount(0);
-  await expect(page.getByTestId('result-R1')).toHaveText('5 mA');
+  await expect(await resultOf(page, 'D1')).toHaveCount(0);
+  await expect(await resultOf(page, 'R1')).toHaveText('5 mA');
 });
 
 export type { ProjectDocument };

@@ -37,7 +37,9 @@ export class FakeWorker implements WorkerLike {
         return this.emit({ type: 'stopped', requestId: msg.requestId });
       }
       if (msg.type === 'load') this.session = new EngineSession(msg.snapshot);
-      else this.session!.applyPsuControl(msg.component, msg.control, msg.projectRevision);
+      else if (msg.type === 'control')
+        this.session!.applyControl(msg.component, msg.control, msg.projectRevision);
+      else this.session!.setMomentary(msg.component, msg.pressed);
       const t = Date.now();
       this.emit({
         type: 'outcome',

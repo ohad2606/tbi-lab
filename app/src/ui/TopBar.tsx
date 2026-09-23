@@ -23,6 +23,7 @@ export function TopBar() {
         <ProjectName name={state.doc.name} disabled={!!state.readOnly} />
       )}
       <span class="spacer" />
+      {state.screen === 'editor' && state.doc && !state.readOnly && <HistoryControls />}
       {state.screen === 'editor' && state.doc && <SimControls />}
       {state.screen === 'editor' && !state.readOnly && <SaveIndicator />}
       <label class="language">
@@ -117,5 +118,42 @@ function SaveIndicator() {
         </button>
       )}
     </span>
+  );
+}
+
+/** Project undo/redo (persistent edits only; see AppStore). */
+function HistoryControls() {
+  const { history } = useAppState();
+  const store = useStore();
+  const t = useT();
+  return (
+    <div class="history-controls" role="group">
+      <button
+        type="button"
+        class="button"
+        data-testid="undo"
+        disabled={history.undo === 0}
+        aria-keyshortcuts="Control+Z Meta+Z"
+        onClick={() => store.undo()}
+      >
+        <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" class="control-icon">
+          <path d="M6 3 L2 7 L6 11 M2 7 H10 a4 4 0 0 1 0 8 H8" />
+        </svg>{' '}
+        {t('history.undo')}
+      </button>
+      <button
+        type="button"
+        class="button"
+        data-testid="redo"
+        disabled={history.redo === 0}
+        aria-keyshortcuts="Control+Shift+Z Meta+Shift+Z Control+Y"
+        onClick={() => store.redo()}
+      >
+        <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" class="control-icon">
+          <path d="M10 3 L14 7 L10 11 M14 7 H6 a4 4 0 0 0 0 8 H8" />
+        </svg>{' '}
+        {t('history.redo')}
+      </button>
+    </div>
   );
 }

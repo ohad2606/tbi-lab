@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import {
   CATALOG,
+  checkCircuit,
   deleteSelection,
   emptySelection,
   parseQuantity,
   rotateComponents,
   setParam,
+  type CheckIssue,
   type ComponentInstance,
   type ParamDef,
 } from '@tbi-lab/domain';
@@ -13,8 +15,15 @@ import { catalogText, formatQuantity, inputForm, isolateLtr, unitSymbol } from '
 import type { SolveSuccess } from '@tbi-lab/engine';
 import { formatResult } from '../sim/format.js';
 import { useAppState, useStore, useT } from './context.js';
+import { probeTargetName, readProbe, type Probe } from './probes.js';
 
-export function Inspector() {
+interface InspectorProps {
+  probes: Probe[];
+  onRemoveProbe(id: string): void;
+  onClearProbes(): void;
+}
+
+export function Inspector({ probes, onRemoveProbe, onClearProbes }: InspectorProps) {
   const { doc, selection, readOnly, sim } = useAppState();
   const simActive = sim.status === 'running' || sim.status === 'starting';
   const outcome = sim.status === 'running' && sim.outcome.ok ? sim.outcome : null;
@@ -70,8 +79,14 @@ export function Inspector() {
       <h2 id="inspector-heading">{t('inspector.heading')}</h2>
       {count === 0 && <p class="muted">{t('inspector.empty')}</p>}
       {count > 1 && <p>{t('inspector.multi', { count })}</p>}
-      {single && <ComponentProperties component={single} readOnly={!!readOnly} />}
-      {single && outcome && <ComponentResultView outcome={outcome} component={single} />}
+      {single?.type === 'instrument.lab_psu' ? (
+        <PsuPanel component={single} readOnly={!!readOnly} />
+      ) : (
+        single && <ComponentProperties component={single} readOnly={!!readOnly} />
+      )}
+      {single && single.type !== 'instrument.lab_psu' && outcome && (
+        <ComponentResultView outcome={outcome} component={single} />
+      )}
       {wire && (
         <dl class="props">
           <dt>{t('inspector.type')}</dt>
@@ -94,6 +109,8 @@ export function Inspector() {
         </dl>
       )}
       {actions}
+      <ProbesSection probes={probes} onRemove={onRemoveProbe} onClear={onClearProbes} />
+      {!simActive && <ChecksSection />}
       <p class="muted small">{t('inspector.shortcuts')}</p>
     </aside>
   );
@@ -122,6 +139,16 @@ function ComponentProperties({
       {def.params.map((p) => (
         <ParamField key={`${c.id}.${p.key}`} component={c} def={p} readOnly={readOnly} />
       ))}
+      {c.type === 'component.push_button' && (
+        <p class="muted small" data-testid="switch-hint">
+          {t('switch.button.hint')}
+        </p>
+      )}
+      {c.type === 'component.toggle_switch' && (
+        <p class="muted small" data-testid="switch-hint">
+          {t('switch.toggle.hint')}
+        </p>
+      )}
     </>
   );
 }
@@ -296,7 +323,8 @@ function ComponentResultView({
   const { locale } = useAppState();
   const t = useT();
   const r = outcome.components[component.id];
-  const I = (v: number) => formatResult(locale, v, 'ampere');
+  const I = (v: number | null) =>
+    v === null ? t('sim.results.undefined') : formatResult(locale, v, 'ampere');
   const V = (v: number | null) =>
     v === null ? t('sim.results.undefined') : formatResult(locale, v, 'volt');
   const def = CATALOG[component.type];
@@ -329,7 +357,7 @@ function ComponentResultView({
               />
             </>
           )}
-          {r.type === 'component.led' && (
+          {(r.type === 'component.led' || r.type === 'component.diode') && (
             <>
               <ResultRow
                 label={t('sim.results.forwardVoltage')}
@@ -338,6 +366,20 @@ function ComponentResultView({
               />
               <ResultRow
                 label={t('sim.results.forwardCurrent')}
+                value={I(r.current)}
+                testId="result-current"
+              />
+            </>
+          )}
+          {(r.type === 'component.push_button' || r.type === 'component.toggle_switch') && (
+            <>
+              <ResultRow
+                label={t('sim.results.contact')}
+                value={t(r.closed ? 'switch.state.closed' : 'switch.state.open')}
+                testId="result-contact"
+              />
+              <ResultRow
+                label={t('sim.results.current')}
                 value={I(r.current)}
                 testId="result-current"
               />
@@ -391,6 +433,182 @@ function NetResultView({ outcome, net }: { outcome: SolveSuccess; net: string | 
           testId="result-net-voltage"
         />
       </dl>
+    </section>
+  );
+}
+
+/**
+ * The V1 laboratory power supply (single channel, DC). Editable SETTINGS (persistent project
+ * values; live while running) are kept visually and structurally apart from the MEASURED
+ * OUTPUT (runtime values from the engine). CV/CC/OFF is the solver's operating state.
+ */
+function PsuPanel({ component: c, readOnly }: { component: ComponentInstance; readOnly: boolean }) {
+  const { locale, sim } = useAppState();
+  const t = useT();
+  const def = CATALOG[c.type];
+  const outcome = sim.status === 'running' && sim.outcome.ok ? sim.outcome : null;
+  const r = outcome?.components[c.id];
+  const mode = r?.mode;
+  const dash = t('probe.noValue');
+  return (
+    <section class="psu-panel" data-testid="psu-panel" aria-labelledby="psu-panel-title">
+      <h3 id="psu-panel-title">
+        {t('psu.panel.title')}{' '}
+        <span class="technical" dir="ltr">
+          {c.id}
+        </span>
+      </h3>
+      <div class="psu-display" data-testid="psu-display" role="status" aria-live="polite">
+        <div class="psu-display-heading">{t('psu.measured')}</div>
+        <div class="psu-readouts" dir="ltr">
+          <div class="psu-readout">
+            <span class="psu-readout-label">{t('psu.voltage')}</span>
+            <span class="psu-readout-value" data-testid="psu-measured-voltage">
+              {r && r.voltage !== null ? formatResult(locale, r.voltage, 'volt') : dash}
+            </span>
+          </div>
+          <div class="psu-readout">
+            <span class="psu-readout-label">{t('psu.current')}</span>
+            <span class="psu-readout-value" data-testid="psu-measured-current">
+              {r && r.current !== null ? formatResult(locale, r.current, 'ampere') : dash}
+            </span>
+          </div>
+        </div>
+        <div
+          class={`psu-mode psu-mode-${mode ?? 'none'}`}
+          data-testid="psu-mode"
+          data-mode={mode ?? 'none'}
+        >
+          <span class="psu-mode-badge" aria-hidden="true">
+            {mode ? t(`sim.badge.${mode}`) : dash}
+          </span>
+          <span>{mode ? t(`sim.mode.${mode}`) : t('psu.notRunning')}</span>
+        </div>
+        {mode === 'cc' && <p class="small psu-cc-note">{t('psu.ccNote')}</p>}
+      </div>
+      <div class="psu-settings">
+        <h4>{t('psu.settings')}</h4>
+        {def.params.map((p) => (
+          <ParamField key={`${c.id}.${p.key}`} component={c} def={p} readOnly={readOnly} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ProbesSection({
+  probes,
+  onRemove,
+  onClear,
+}: {
+  probes: Probe[];
+  onRemove(id: string): void;
+  onClear(): void;
+}) {
+  const { doc, sim, locale } = useAppState();
+  const t = useT();
+  if (!doc) return null;
+  const outcome = sim.status === 'running' && sim.outcome.ok ? sim.outcome : null;
+  return (
+    <section class="probes-section" aria-labelledby="probes-heading" data-testid="probes-section">
+      <h3 id="probes-heading">{t('probes.heading')}</h3>
+      {probes.length === 0 ? (
+        <p class="muted small">{t('probes.empty')}</p>
+      ) : (
+        <>
+          <ul class="probe-list">
+            {probes.map((p) => {
+              const reading = readProbe(p, doc, outcome);
+              const value =
+                reading.value === null
+                  ? t('probe.noValue')
+                  : formatResult(locale, reading.value, reading.quantity);
+              const name = probeTargetName(p);
+              return (
+                <li key={p.id}>
+                  <span class="technical" dir="ltr" data-testid={`probe-reading-${name}`}>
+                    {t(p.kind === 'current' ? 'probe.currentLabel' : 'probe.voltageLabel', {
+                      point: name,
+                      value,
+                    })}
+                  </span>
+                  <button
+                    type="button"
+                    class="link-button"
+                    aria-label={t('probes.remove', { point: name })}
+                    onClick={() => onRemove(p.id)}
+                  >
+                    ×
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+          <button type="button" class="link-button small" onClick={onClear}>
+            {t('probes.clear')}
+          </button>
+        </>
+      )}
+      <p class="muted small">{t('probes.note')}</p>
+    </section>
+  );
+}
+
+/** Editor-time checks (domain `checkCircuit`): explanations only; they change nothing. */
+function ChecksSection() {
+  const { doc, locale } = useAppState();
+  const t = useT();
+  if (!doc) return null;
+  const issues = checkCircuit(doc);
+  const list = (ids: string[]) => isolateLtr(ids.join(', '));
+  const termName = (component: string, term: string) => {
+    const c = doc.components.find((x) => x.id === component);
+    const def = c ? CATALOG[c.type].terminals.find((x) => x.id === term) : undefined;
+    return def ? catalogText(locale, def.labelKey) : term;
+  };
+  const text = (i: CheckIssue): string => {
+    const component = isolateLtr(i.components[0] ?? '');
+    switch (i.code) {
+      case 'partially_wired':
+        return t('checks.partially_wired', {
+          component,
+          terminals: (i.terminals ?? []).map((x) => termName(i.components[0]!, x)).join(', '),
+        });
+      case 'wire_over_terminal':
+        return t('checks.wire_over_terminal', {
+          component,
+          terminal: termName(i.components[0]!, i.terminals?.[0] ?? ''),
+        });
+      case 'psu_shorted_by_wire':
+        return t('checks.psu_shorted_by_wire', { component });
+      case 'no_ground':
+        return t('checks.no_ground');
+      default:
+        return t(`checks.${i.code}`, { components: list(i.components) });
+    }
+  };
+  return (
+    <section class="checks-section" aria-labelledby="checks-heading" data-testid="circuit-checks">
+      <h3 id="checks-heading">{t('checks.heading')}</h3>
+      {issues.length === 0 ? (
+        <p class="muted small">{t('checks.none')}</p>
+      ) : (
+        <ul class="check-list">
+          {issues.map((i, n) => (
+            <li
+              key={n}
+              class={`check check-${i.severity}`}
+              data-code={i.code}
+              data-testid={`check-${i.code}`}
+            >
+              <span class="check-icon" aria-hidden="true">
+                {i.severity === 'warning' ? '!' : '•'}
+              </span>
+              <span>{text(i)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
     </section>
   );
 }

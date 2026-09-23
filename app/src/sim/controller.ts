@@ -10,7 +10,7 @@
  */
 
 import { createSnapshot, type ProjectDocument } from '@tbi-lab/domain';
-import type { EngineError, PsuControl, SolveOutcome } from '@tbi-lab/engine';
+import type { EngineError, LiveControl, SolveOutcome } from '@tbi-lab/engine';
 import type { FromWorker, ToWorker, WorkerTiming } from './protocol.js';
 
 export interface WorkerLike {
@@ -39,7 +39,14 @@ export interface RunTimings {
 export type SimState =
   | { status: 'stopped' }
   | { status: 'starting' }
-  | { status: 'running'; outcome: SolveOutcome; timings: RunTimings; solves: number }
+  | {
+      status: 'running';
+      outcome: SolveOutcome;
+      timings: RunTimings;
+      solves: number;
+      /** Push buttons held right now: transient runtime input, never project data. */
+      pressed: string[];
+    }
   | { status: 'failed'; failure: SimFailure };
 
 export interface ControllerDeps {
@@ -64,6 +71,7 @@ export class SimulationController {
   /** Only the latest request of the current run may update the state. */
   private pending: Pending | null = null;
   private solves = 0;
+  private pressed = new Set<string>();
   private readonly now: () => number;
   private readonly timeoutMs: number;
 
@@ -120,6 +128,7 @@ export class SimulationController {
   }
 
   private crash(code: 'worker_crashed' | 'timeout', detail?: string): void {
+    this.pressed.clear();
     if (this.pending) clearTimeout(this.pending.timer);
     this.pending = null;
     this.discardWorker();
@@ -145,6 +154,7 @@ export class SimulationController {
     const startedAt = this.now();
     const snapshot = createSnapshot(doc);
     this.solves = 0;
+    this.pressed.clear(); // a new run always starts with every button released
     this.set({ status: 'starting' });
     let workerStartMs: number | null;
     try {
@@ -162,7 +172,7 @@ export class SimulationController {
    * Mirror a live PSU change the browser has ALREADY persisted at `projectRevision`
    * (architecture §2.2, category 2). Ignored unless a simulation is running.
    */
-  control(component: string, control: PsuControl, projectRevision: number): boolean {
+  control(component: string, control: LiveControl, projectRevision: number): boolean {
     if (this.stateValue.status !== 'running' || !this.worker) return false;
     const requestId = this.nextRequest++;
     this.send(
@@ -173,8 +183,28 @@ export class SimulationController {
     return true;
   }
 
+  /**
+   * TRANSIENT runtime input: press or release a momentary push button. No project value is
+   * involved: nothing is persisted and no revision is sent. Ignored unless running.
+   */
+  momentary(component: string, pressed: boolean): boolean {
+    if (this.stateValue.status !== 'running' || !this.worker) return false;
+    if (this.pressed.has(component) === pressed) return true; // already in that state
+    if (pressed) this.pressed.add(component);
+    else this.pressed.delete(component);
+    const requestId = this.nextRequest++;
+    this.send(
+      { type: 'momentary', requestId, component, pressed, sentAt: this.now() },
+      this.now(),
+      null,
+    );
+    this.set({ ...this.stateValue, pressed: [...this.pressed] });
+    return true;
+  }
+
   /** Stop: drop all runtime state. The project is untouched. */
   stop(): void {
+    this.pressed.clear();
     if (this.pending) clearTimeout(this.pending.timer);
     this.pending = null;
     if (this.worker && this.stateValue.status !== 'failed') {
@@ -209,7 +239,13 @@ export class SimulationController {
     }
     if (this.stateValue.status !== 'starting' && this.stateValue.status !== 'running') return;
     this.solves++;
-    this.set({ status: 'running', outcome, timings, solves: this.solves });
+    this.set({
+      status: 'running',
+      outcome,
+      timings,
+      solves: this.solves,
+      pressed: [...this.pressed],
+    });
   }
 }
 

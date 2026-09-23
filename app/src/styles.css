@@ -758,3 +758,213 @@ select {
   fill: currentColor;
   vertical-align: -1px;
 }
+
+/* ---------------------------------------------------------------- Sprint 4 */
+
+.history-controls {
+  display: inline-flex;
+  gap: 0.3rem;
+}
+
+.icon-button.active {
+  background: var(--runtime-bg);
+  border-color: var(--runtime);
+  color: var(--runtime);
+}
+
+.canvas.mode-probe {
+  cursor: crosshair;
+}
+
+.symbol .diode-body {
+  fill: var(--ink);
+}
+
+.symbol .contact {
+  fill: #fff;
+}
+
+.symbol .actuator-part {
+  stroke-width: 3;
+}
+
+.actuator {
+  fill: transparent;
+  stroke: none;
+  cursor: pointer;
+}
+
+.component[data-pressed='true'] .actuator-part,
+.component[data-closed='true'] .actuator-part {
+  stroke: var(--runtime);
+}
+
+.switch-state {
+  font-size: 12px;
+  fill: var(--muted);
+  stroke: none;
+  direction: ltr;
+  unicode-bidi: isolate;
+  pointer-events: none;
+}
+
+.check-marker {
+  fill: none;
+  stroke-width: 2;
+  pointer-events: none;
+}
+
+.check-partially_wired {
+  stroke: #c77700;
+  stroke-dasharray: 3 3;
+}
+
+.check-wire_over_terminal {
+  stroke: var(--danger);
+  stroke-dasharray: 4 2;
+  stroke-width: 2.5;
+}
+
+.probe-pin {
+  fill: var(--runtime);
+  stroke: #fff;
+  stroke-width: 1;
+}
+
+.probe-label {
+  font-size: 12px;
+  font-weight: 700;
+  fill: var(--runtime);
+  stroke: #fff;
+  stroke-width: 3px;
+  paint-order: stroke;
+  direction: ltr;
+  unicode-bidi: isolate;
+  pointer-events: none;
+}
+
+.psu-panel h3,
+.probes-section h3,
+.checks-section h3 {
+  font-size: 0.95rem;
+  margin: 0.75rem 0 0.4rem;
+}
+
+.psu-panel h4 {
+  font-size: 0.9rem;
+  margin: 0.6rem 0 0.4rem;
+}
+
+/* Measured output: a dark instrument display, visually apart from the editable settings. */
+.psu-display {
+  background: #10261f;
+  color: #d8f5e6;
+  border-radius: 6px;
+  padding: 0.6rem 0.75rem;
+}
+
+.psu-display-heading {
+  font-size: 0.8rem;
+  opacity: 0.85;
+}
+
+.psu-readouts {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.psu-readout {
+  display: grid;
+}
+
+.psu-readout-label {
+  font-size: 0.75rem;
+  opacity: 0.8;
+}
+
+.psu-readout-value {
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 1.35rem;
+  font-weight: 700;
+}
+
+.psu-mode {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.4rem;
+}
+
+.psu-mode-badge {
+  display: inline-block;
+  min-width: 2.6rem;
+  text-align: center;
+  font-weight: 800;
+  border-radius: 4px;
+  padding: 0.1rem 0.35rem;
+  border: 2px solid currentColor;
+}
+
+/* Mode is never colour alone: the badge text (CV / CC / OFF) and its label carry it too. */
+.psu-mode-cv .psu-mode-badge {
+  color: #7ee2a8;
+}
+
+.psu-mode-cc .psu-mode-badge {
+  color: #ffcf5c;
+  border-style: double;
+  border-width: 3px;
+}
+
+.psu-mode-off .psu-mode-badge,
+.psu-mode-none .psu-mode-badge {
+  color: #b9c3bf;
+  border-style: dashed;
+}
+
+.psu-cc-note {
+  margin: 0.3rem 0 0;
+  opacity: 0.9;
+}
+
+.probe-list,
+.check-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 0.4rem;
+  display: grid;
+  gap: 0.3rem;
+}
+
+.probe-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.check {
+  display: flex;
+  gap: 0.4rem;
+  font-size: 0.87rem;
+}
+
+.check-icon {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  inline-size: 1.2rem;
+  block-size: 1.2rem;
+  border-radius: 50%;
+  font-weight: 800;
+  font-size: 0.75rem;
+  border: 1.5px solid currentColor;
+}
+
+.check-warning {
+  color: #8a4b00;
+}
+
+.check-info {
+  color: var(--muted);
+}
