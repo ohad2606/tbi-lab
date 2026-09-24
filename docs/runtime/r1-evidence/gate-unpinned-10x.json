@@ -1,0 +1,146 @@
+{
+  "runtime": {
+    "runtimeId": "567e58e704a0e43e",
+    "upstream": "https://github.com/espressif/qemu.git",
+    "tag": "esp-develop-9.2.2-20260417",
+    "commit": "40edccac415693c5130f91c01d84176ae6008566",
+    "patches": [
+      {
+        "file": "0001-accel-tcg-defer-sleep-off-icount-warp-while-a-round-.patch",
+        "sha256": "7fc846113fefe3c43d995f337086ec6049eff464207ae225003475d845f8ca4e"
+      },
+      {
+        "file": "0002-hw-xtensa-esp32-apply-the-APP-CPU-reset-synchronousl.patch",
+        "sha256": "a29bf7bf7fa29685464d34c55ae42f1b7451f88159fc62c4db4f3f72e461e702"
+      },
+      {
+        "file": "0003-hw-gpio-esp32_gpio-classic-ESP32-digital-GPIO-regist.patch",
+        "sha256": "ee3fa808721d842ce4c7556dd84ca004d2e5961337d69889b7efc6ffe5890465"
+      },
+      {
+        "file": "0004-hw-misc-tbi_bridge-TBI-Lab-synchronous-runtime-bridg.patch",
+        "sha256": "e4a1a574514b409b5d22036fa78a7b01da13217a509602a420338ce3bcca8e57"
+      }
+    ],
+    "builtAt": "2026-09-24T12:45:42Z",
+    "host": "aarch64"
+  },
+  "artifact": {
+    "path": "$TBI_RUNTIME_HOME/artifacts/5f177cbe95f490dce1f6efe7dda501e03762d523b79771968f967b297d3a44af.bin",
+    "sha256": "5f177cbe95f490dce1f6efe7dda501e03762d523b79771968f967b297d3a44af"
+  },
+  "summary": [
+    {
+      "config": "1 ms tick, full workload",
+      "runs": 10,
+      "distinctTimelines": 1,
+      "distinctSerialTimed": 1,
+      "timelineSha256": "2fadf3ae624080b13cd995428c5520925ae8edbeaa379b26b961c2c724fa8cbb",
+      "serialTimedSha256": "1a8db052c6c4fa4aadecc2020f1739f047192d3993385194c7d4f3d7c3de7b64",
+      "serialSha256": "45b7ded872c2e3936e3903ca08980cffd38c23ccc0e3a43e8460ac47fb1be1c3",
+      "counts": {
+        "padEvents": 83,
+        "solves": 44,
+        "injections": 5,
+        "commands": 4
+      },
+      "ticks": 15500,
+      "wallMs": [
+        11473,
+        14271,
+        11240,
+        11273,
+        11085,
+        10791,
+        10460,
+        10673,
+        10622,
+        10536
+      ]
+    },
+    {
+      "config": "1 ms tick, full workload, main-loop stress",
+      "runs": 10,
+      "distinctTimelines": 1,
+      "distinctSerialTimed": 1,
+      "timelineSha256": "2fadf3ae624080b13cd995428c5520925ae8edbeaa379b26b961c2c724fa8cbb",
+      "serialTimedSha256": "1a8db052c6c4fa4aadecc2020f1739f047192d3993385194c7d4f3d7c3de7b64",
+      "serialSha256": "45b7ded872c2e3936e3903ca08980cffd38c23ccc0e3a43e8460ac47fb1be1c3",
+      "counts": {
+        "padEvents": 83,
+        "solves": 44,
+        "injections": 5,
+        "commands": 4
+      },
+      "ticks": 15500,
+      "wallMs": [
+        16139,
+        34231,
+        28725,
+        21411,
+        22833,
+        18277,
+        15617,
+        15637,
+        15783,
+        16860
+      ]
+    },
+    {
+      "config": "10 ms tick, full workload",
+      "runs": 10,
+      "distinctTimelines": 1,
+      "distinctSerialTimed": 1,
+      "timelineSha256": "12efd464dbe6bb3a7899d2a32480b0f63aa40209c331a6a5c71702aa0ebd087c",
+      "serialTimedSha256": "39d81de4911e98b94fca6a7be0fef68469f47f645a2333e84502ebc57e1c17cb",
+      "serialSha256": "45b7ded872c2e3936e3903ca08980cffd38c23ccc0e3a43e8460ac47fb1be1c3",
+      "counts": {
+        "padEvents": 83,
+        "solves": 44,
+        "injections": 5,
+        "commands": 4
+      },
+      "ticks": 1550,
+      "wallMs": [
+        9163,
+        8827,
+        8792,
+        8834,
+        9273,
+        8683,
+        8914,
+        8946,
+        8840,
+        9398
+      ]
+    },
+    {
+      "config": "1 ms tick, early boot window (3 s)",
+      "runs": 10,
+      "distinctTimelines": 1,
+      "distinctSerialTimed": 1,
+      "timelineSha256": "b64f0bd3e94c22c4798c0010c5b8f4b918b18a511207e832fa354fe40b09b716",
+      "serialTimedSha256": "4dc46111f588e958611da68bb31fd0ef42224305adc742981484e775eca7ccd4",
+      "serialSha256": "9874f2e574af4adb91fd3f2b5a9e36fed1cd72da54ba0cfca2c5f18693f7790b",
+      "counts": {
+        "padEvents": 21,
+        "solves": 9,
+        "injections": 1,
+        "commands": 0
+      },
+      "ticks": 3000,
+      "wallMs": [
+        7387,
+        7555,
+        7266,
+        7065,
+        7135,
+        7392,
+        7334,
+        7342,
+        7197,
+        7289
+      ]
+    }
+  ]
+}

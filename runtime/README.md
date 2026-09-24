@@ -34,7 +34,7 @@ Each downloaded input is verified:
 | MicroPython ESP32_GENERIC v1.29.0 | sha256 pinned                                                            |
 | Test firmware                     | rebuilt reproducibly; must equal `firmware/artifacts.lock.json`          |
 
-Measured on the development host (1 vCPU aarch64, 3 GB RAM). Times and sizes: see
+Measured on the development host (1 vCPU aarch64 Neoverse-N1, 3.8 GiB RAM). Times and sizes: see
 `docs/runtime/R1-REPORT.md`.
 
 **Prerequisites (Debian/Ubuntu):** `build-essential git ninja-build pkg-config python3 python3-venv

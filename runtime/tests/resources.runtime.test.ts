@@ -1,6 +1,6 @@
 /**
  * R1.12: resource measurements for one classic-ESP32 session on this host. Measurements only:
- * nothing here is a capacity claim (the host is 1 vCPU / 3 GB, and one workload is measured).
+ * nothing here is a capacity claim (the host is 1 vCPU / 3.8 GiB, and one workload is measured).
  *
  * Recorded per workload: QEMU startup (spawn -> bridge handshake), RSS after boot, peak RSS
  * (VmHWM), host (Node) RSS, QEMU CPU time and wall time against simulation time, shutdown time,

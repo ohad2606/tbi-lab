@@ -1,0 +1,34 @@
+2026-09-24T12:33:56Z
+[provision 12:33:56] host prerequisites present (aarch64, 1 CPU)
+[provision 12:33:56] fetching https://github.com/espressif/qemu.git @ 40edccac415693c5130f91c01d84176ae6008566 (esp-develop-9.2.2-20260417)
+[provision 12:34:04] source verified at 40edccac415693c5130f91c01d84176ae6008566
+[provision 12:34:04] preparing patched tree for runtime 567e58e704a0e43e
+[provision 12:34:07] applying 0001-accel-tcg-defer-sleep-off-icount-warp-while-a-round-.patch
+[provision 12:34:07] applying 0002-hw-xtensa-esp32-apply-the-APP-CPU-reset-synchronousl.patch
+[provision 12:34:07] applying 0003-hw-gpio-esp32_gpio-classic-ESP32-digital-GPIO-regist.patch
+[provision 12:34:07] applying 0004-hw-misc-tbi_bridge-TBI-Lab-synchronous-runtime-bridg.patch
+[provision 12:34:07] configuring (xtensa-softmmu only)
+[provision 12:34:27] building (this is the long step on a small host)
+[provision 12:43:28] built in 541 s
+[provision 12:45:42] qemu ready: $TBI_RUNTIME_HOME/qemu-current -> qemu-567e58e704a0e43e
+[provision 12:45:42] downloading arduino-cli 1.5.1
+[provision 12:45:52] installing arduino-esp32 3.3.12 (large download)
+[provision 12:50:27] arduino ready: arduino-cli  Version: 1.5.1 Commit: 01f3d4f2b Date: 2026-06-05T10:22:11Z / esp32:esp32@3.3.12
+[provision 12:50:27] downloading MicroPython
+[provision 12:50:28] artifact micropython = 23b8b47fdab856b33c44eb5911852e86c96dfeac2f1d2033dba8ddb6c681b0a1
+[provision 12:50:28] building firmware TbiBanks (esp32:esp32:esp32:FlashMode=dio)
+[provision 12:51:00] artifact TbiBanks = 4574ec0019bd1f92cf84975f860a4074cbb85d8d1b64a4d2c24437d4469ffabc
+[provision 12:51:00] building firmware TbiGpioProof (esp32:esp32:esp32:FlashMode=dio)
+[provision 12:51:28] artifact TbiGpioProof = 352cca6f786205a22d962da1d309c737571a1e97614cbe92aff6c35bf13866be
+[provision 12:51:28] building firmware TbiNvs (esp32:esp32:esp32:FlashMode=dio)
+[provision 12:51:58] artifact TbiNvs = dffa8a26c20c885b96adcd3c8ef5a03e4fd61e05e346fe3b75d19971165dc109
+[provision 12:51:58] building firmware TbiRestart (esp32:esp32:esp32:FlashMode=dio)
+[provision 12:52:25] artifact TbiRestart = b3da37af71a62c534a391ef9d77e1a468c577972913bd6bce9de4498165ba541
+[provision 12:52:25] building firmware TbiTiming (esp32:esp32:esp32:FlashMode=dio)
+[provision 12:52:54] artifact TbiTiming = 877308406dba51d2de2a56f24879d520e0a7cf638a67d51a5218190e4dfcbc34
+
+real	18m57.873s
+user	10m54.028s
+sys	2m27.414s
+EXIT 0
+2026-09-24T12:52:54Z

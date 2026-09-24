@@ -12,9 +12,11 @@
  *         SPI flash; avoid using them. Note [3]: GPIO16/17 are usable on ESP32-WROOM and
  *         ESP32-SOLO-1 boards (reserved on WROVER boards) - this map is for WROOM-32.
  *   [DS]  Espressif, "ESP32 Series Datasheet" v5.3 (sha256 a7917e6b...29adf):
- *         section 3 Boot Configurations - strapping pins GPIO0, GPIO2, MTDI (GPIO12), MTDO (GPIO15),
- *         GPIO5; pin-list note - GPIO34..39 are input-only and have no output driver and no internal
- *         pull-up/pull-down; digital pads otherwise support internal pull-up/pull-down.
+ *         section 3 Boot Configurations, Table 3-1 - strapping pins GPIO0, GPIO2, MTDI (GPIO12),
+ *         MTDO (GPIO15), GPIO5; Appendix A (IO_MUX) note 2 - GPIO34..39 are input-only and have no
+ *         output driver and no internal pull-up/pull-down; Appendix A IO_MUX table (wpu/wpd) and
+ *         section 4.8.1 GPIO - the other digital pads have configurable internal pull-up/pull-down
+ *         (R_PU/R_PD 45 kOhm typ., section 5.3 DC Characteristics); U0TXD/U0RXD are GPIO1/GPIO3.
  *   [RT]  TBI Lab runtime R1 (docs/runtime/R1-REPORT.md): what the simulator implements.
  */
 
@@ -194,8 +196,8 @@ export const ESP32_DEVKITC_WROOM32: BoardCapabilityMap = {
     'Full-chip reset (EN, esp_restart, watchdog) is not supported in V1.',
   ],
   sources: [
-    'Espressif, ESP32-DevKitC V4 User Guide, esp-dev-kits documentation (latest), Header Block J2/J3 and notes [1]-[3], fetched 2026-09-24',
-    'Espressif, ESP32 Series Datasheet v5.3 (sha256 a7917e6b47528c9dcab06837a49d452e582751335797db879f1cf2d17cd29adf), section 3 Boot Configurations and pin-list notes',
+    'Espressif, ESP32-DevKitC V4 User Guide, esp-dev-kits documentation (latest; fetched page sha256 2829b9924eaf1b744a59d317534509a3baa4a35e99e309f40ea25642cc5a7028), Header Block J2/J3 and notes [1]-[3], fetched 2026-09-24',
+    'Espressif, ESP32 Series Datasheet v5.3 (sha256 a7917e6b47528c9dcab06837a49d452e582751335797db879f1cf2d17cd29adf), section 3 Boot Configurations (Table 3-1), section 4.8.1 GPIO, Appendix A IO_MUX table and note 2',
     'TBI Lab runtime R1 report, docs/runtime/R1-REPORT.md',
   ],
 };

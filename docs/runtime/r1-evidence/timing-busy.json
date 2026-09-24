@@ -1,0 +1,8 @@
+{
+  "markerMs": 48.802992,
+  "micros": 48804,
+  "cycles": 11712920,
+  "cpuMhzReported": 240,
+  "cyclesPerIteration": 11.71292,
+  "atSetup": "AT_SETUP millis=39 micros=39071"
+}

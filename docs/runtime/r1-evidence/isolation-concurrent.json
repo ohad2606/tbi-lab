@@ -1,0 +1,14 @@
+{
+  "solo": "2fadf3ae624080b13cd995428c5520925ae8edbeaa379b26b961c2c724fa8cbb",
+  "concurrent": [
+    "2fadf3ae624080b13cd995428c5520925ae8edbeaa379b26b961c2c724fa8cbb",
+    "2fadf3ae624080b13cd995428c5520925ae8edbeaa379b26b961c2c724fa8cbb"
+  ],
+  "wallMs": {
+    "solo": 10699.527160999998,
+    "concurrent": [
+      37833.20768200001,
+      37918.304197
+    ]
+  }
+}
