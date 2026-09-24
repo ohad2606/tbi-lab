@@ -162,17 +162,59 @@ test('2. directly paralleled supplies: a clear "not yet supported" diagnosis, in
 });
 
 test.describe('3. one Run/Stop control', () => {
-  /** Boxes of the toolbar controls around the simulation control. */
-  const boxes = (page: Page) =>
-    page.evaluate(() =>
-      ['undo', 'redo', 'sim-run', 'sim-stop', 'sim-status', 'save-state', 'language-select']
-        .map((id) => document.querySelector(`[data-testid="${id}"]`))
-        .filter((el): el is Element => !!el)
-        .map((el) => {
-          const r = el.getBoundingClientRect();
-          return [r.x, r.y, r.width, r.height].map((v) => Math.round(v * 10) / 10);
-        }),
-    );
+  /**
+   * Geometry of the controls whose stability IS the Run/Stop requirement: the single control,
+   * its status pill, and its immediate neighbours Undo and Redo. The save indicator is not one of
+   * them: its label ("Saving…" / "All changes saved") changes width on its own (accepted backlog)
+   * and, the toolbar being end-aligned, would move these neighbours. So every snapshot records the
+   * save indicator's state and label too, and snapshots are only compared when that label is the
+   * same settled "saved" label in both.
+   */
+  const layout = (page: Page) =>
+    page.evaluate(() => {
+      const box = (el: Element | null) => {
+        if (!el) return null;
+        const r = el.getBoundingClientRect();
+        return [r.x, r.y, r.width, r.height].map((v) => Math.round(v * 10) / 10);
+      };
+      const q = (id: string) => document.querySelector(`[data-testid="${id}"]`);
+      const save = q('save-state') as HTMLElement | null;
+      return {
+        save: `${save?.dataset.state}:${save?.textContent}`,
+        controls: {
+          toggle: box(document.querySelector('.sim-controls button')),
+          status: box(q('sim-status')),
+          undo: box(q('undo')),
+          redo: box(q('redo')),
+        },
+      };
+    });
+
+  /**
+   * The layout once everything that changes independently has settled: the simulation is in
+   * `status`, the save indicator reads "saved", the stored project's revision no longer changes
+   * (durable in IndexedDB) and two consecutive reads agree. Polled, never slept.
+   */
+  async function settled(page: Page, status: 'stopped' | 'running') {
+    await expect(page.getByTestId('sim-status')).toHaveAttribute('data-status', status);
+    let previous = '';
+    let result: Awaited<ReturnType<typeof layout>> | undefined;
+    await expect
+      .poll(
+        async () => {
+          const l = await layout(page);
+          const revs = (await storedProjects(page)).map((d) => d.revision.localRevision).join(',');
+          const key = JSON.stringify([l, revs]);
+          const steady = key === previous && l.save.startsWith('saved:');
+          previous = key;
+          result = l;
+          return steady;
+        },
+        { message: `toolbar settled (${status}, save state "saved", project durable)` },
+      )
+      .toBe(true);
+    return result!;
+  }
 
   for (const [locale, runText, stopText] of [
     ['en', 'Run', 'Stop'],
@@ -188,28 +230,35 @@ test.describe('3. one Run/Stop control', () => {
       const button = page.getByRole('button', { name: runText, exact: true });
       await expect(button).toHaveAttribute('data-action', 'run');
       await expect(page.getByRole('button', { name: stopText, exact: true })).toHaveCount(0);
-      const stopped = await boxes(page);
+      const stopped = await settled(page, 'stopped');
 
+      // Run -> Stop: same element, same place and size; the neighbours do not move.
       await button.click();
-      await expect(page.getByTestId('sim-status')).toHaveAttribute('data-status', 'running');
       const stop = page.getByRole('button', { name: stopText, exact: true });
       await expect(stop).toHaveAttribute('data-action', 'stop');
       await expect(page.getByRole('button', { name: runText, exact: true })).toHaveCount(0);
       await expect(controls).toHaveCount(1);
-      expect(await boxes(page)).toEqual(stopped); // same place, same size, neighbours unmoved
+      const running = await settled(page, 'running');
+      expect(running.save).toBe(stopped.save); // same settled save label: it cannot explain a shift
+      expect(running.controls).toEqual(stopped.controls);
 
-      // Keyboard: focus stays on the control through both transitions.
+      // Stop -> Run by keyboard: focus stays on the control, nothing moves.
       await stop.focus();
       await page.keyboard.press('Enter');
-      await expect(page.getByTestId('sim-status')).toHaveAttribute('data-status', 'stopped');
       await expect(controls.first()).toBeFocused();
       await expect(controls.first()).toHaveAccessibleName(runText);
+      const stoppedAgain = await settled(page, 'stopped');
+      expect(stoppedAgain.save).toBe(stopped.save);
+      expect(stoppedAgain.controls).toEqual(stopped.controls);
+
+      // Run -> Stop by keyboard (Space), then back.
       await page.keyboard.press('Space');
       await expect(controls.first()).toHaveAccessibleName(stopText);
       await expect(controls.first()).toBeFocused();
-      expect(await boxes(page)).toEqual(stopped);
+      expect((await settled(page, 'running')).controls).toEqual(stopped.controls);
       await page.keyboard.press('Enter');
       await expect(controls.first()).toHaveAttribute('data-action', 'run');
+      await expect(controls).toHaveCount(1);
     });
   }
 
