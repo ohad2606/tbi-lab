@@ -82,6 +82,28 @@ export function simFailureMessage(
   return engineErrorMessage(locale, failure.error, doc);
 }
 
+/**
+ * A structured explanation for errors that are a known unsupported configuration rather than a
+ * solver failure: a short title, the explanation, and what to do. Others have only a body.
+ */
+export function engineErrorParts(
+  locale: LocaleInfo,
+  error: EngineError,
+  doc: ProjectDocument | null,
+): { title?: string; body: string; hint?: string } {
+  if (error.code === 'psu_parallel') {
+    const supplies = new Intl.ListFormat(locale.code, { type: 'conjunction' }).format(
+      (error.components ?? []).map((id) => isolateLtr(id)),
+    );
+    return {
+      title: translate(locale, 'sim.error.psu_parallel.title'),
+      body: translate(locale, 'sim.error.psu_parallel', { supplies }),
+      hint: translate(locale, 'sim.error.psu_parallel.hint'),
+    };
+  }
+  return { body: engineErrorMessage(locale, error, doc) };
+}
+
 export function engineErrorMessage(
   locale: LocaleInfo,
   error: EngineError,
@@ -102,6 +124,10 @@ export function engineErrorMessage(
       const def = c ? CATALOG[c.type].params.find((p) => p.key === error.param) : undefined;
       const param = def ? catalogText(locale, def.labelKey) : (error.param ?? '');
       return t('sim.error.invalid_parameter', { components, param });
+    }
+    case 'psu_parallel': {
+      const p = engineErrorParts(locale, error, doc);
+      return [p.title, p.body, p.hint].join(' ');
     }
     default:
       return t(`sim.error.${error.code}`, { components });

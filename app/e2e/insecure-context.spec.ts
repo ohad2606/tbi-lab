@@ -51,6 +51,8 @@ test('export, hashing and import work without crypto.subtle or randomUUID (plain
     mimeType: 'application/json',
     buffer: Buffer.from(text),
   });
-  await expect(page.getByTestId('notice')).toHaveAttribute('data-key', 'import.doneCopy');
+  // Same id AND same name as the local project: a copy with a copy-style name (Product Alpha
+  // maintenance: no two projects may read the same).
+  await expect(page.getByTestId('notice')).toHaveAttribute('data-key', 'import.doneCopyRenamed');
   expect(errors).toEqual([]);
 });

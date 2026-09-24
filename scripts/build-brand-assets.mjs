@@ -3,7 +3,11 @@
  * each). Run from app/ (so Playwright resolves):  node ../scripts/build-brand-assets.mjs <dir>
  *   <dir>/logo_rounded.png -> src/assets/brand/tbi-mark.png   (circle, transparent outside, 128 px)
  *                          -> public/favicon.png              (64 px)
- *   <dir>/logo_main.png    -> src/assets/brand/tbi-logo.png   (auto-cropped to the artwork, 200 px tall)
+ *   <dir>/logo_main.png    -> src/assets/brand/tbi-logo.png   (elongated logo: auto-cropped to the
+ *                             artwork, its painted navy background turned into real transparency by
+ *                             colour-to-alpha against the measured background colour; 300 px tall,
+ *                             shown at 150 px on the Projects screen, i.e. 2x for sharp displays)
+ * logo_no_bg.png is NOT used: it has no alpha channel and a checkerboard painted into its pixels.
  * Chromium's canvas does the resampling (high-quality smoothing, halving steps).
  */
 import { writeFileSync, readFileSync } from 'node:fs';
@@ -22,6 +26,21 @@ async function render(file, job) {
       img.src = src;
       await img.decode();
       let crop = { x: 0, y: 0, w: img.width, h: img.height };
+      if (job.key === 'measure') {
+        // The background colour: the median of the four corner pixels' channels.
+        const c = document.createElement('canvas');
+        c.width = img.width;
+        c.height = img.height;
+        const g = c.getContext('2d');
+        g.drawImage(img, 0, 0);
+        const px = [
+          [0, 0],
+          [img.width - 1, 0],
+          [0, img.height - 1],
+          [img.width - 1, img.height - 1],
+        ].map(([x, y]) => [...g.getImageData(x, y, 1, 1).data.slice(0, 3)]);
+        job.key = [0, 1, 2].map((ch) => px.map((p) => p[ch]).sort((a, b) => a - b)[1]);
+      }
       if (job.autocrop) {
         const c = document.createElement('canvas');
         c.width = img.width;
@@ -76,6 +95,38 @@ async function render(file, job) {
         g.clip();
       }
       g.drawImage(cur, 0, 0, outW, outH);
+      if (job.key) {
+        // Colour-to-alpha (the classic un-blend): every pixel is treated as artwork colour A
+        // over the measured background B with opacity a, C = a*A + (1-a)*B. a is the smallest
+        // opacity that explains C with an in-gamut A; A is then recovered exactly. The painted
+        // background becomes transparent, glows become translucent, nothing is redrawn.
+        // The background's own texture (grain, faint glow) up to job.floor opacity is cleared.
+        const img2 = g.getImageData(0, 0, outW, outH);
+        const d = img2.data;
+        const B = job.key;
+        for (let i = 0; i < d.length; i += 4) {
+          let a = 0;
+          for (let c = 0; c < 3; c++) {
+            const v = d[i + c];
+            // The artwork is light-on-dark: only brightness above the background is artwork.
+            // (Darker-than-background grain would otherwise become opaque dark speckles, since
+            // a near-zero channel turns a 2-level dip into a large ratio.)
+            const ac = v > B[c] ? (v - B[c]) / (255 - B[c]) : 0;
+            if (ac > a) a = ac;
+          }
+          if (a <= job.floor) {
+            d[i + 3] = 0;
+            continue;
+          }
+          for (let c = 0; c < 3; c++) {
+            d[i + c] = Math.max(0, Math.min(255, Math.round((d[i + c] - B[c]) / a + B[c])));
+          }
+          // Soft floor: opacities just above the painted background's texture fade in linearly
+          // instead of being cut, so glow edges stay smooth.
+          d[i + 3] = Math.round(((a - job.floor) / (1 - job.floor)) * 255);
+        }
+        g.putImageData(img2, 0, 0);
+      }
       return out.toDataURL('image/png');
     },
     { src, job },
@@ -86,7 +137,11 @@ async function render(file, job) {
 const outputs = [
   ['logo_rounded.png', { height: 128, circle: true }, 'src/assets/brand/tbi-mark.png'],
   ['logo_rounded.png', { height: 64, circle: true }, 'public/favicon.png'],
-  ['logo_main.png', { height: 200, autocrop: 24 }, 'src/assets/brand/tbi-logo.png'],
+  [
+    'logo_main.png',
+    { height: 300, autocrop: 24, key: 'measure', floor: 0.03 },
+    'src/assets/brand/tbi-logo.png',
+  ],
 ];
 for (const [file, job, out] of outputs) {
   const png = await render(file, job);

@@ -52,10 +52,10 @@ export async function drawLoop(page: Page, loop: Loop, name = 'Bench'): Promise<
   await setValue(page, 'R1', 'resistance', loop.ohms);
   if (loop.volts) await setValue(page, 'PSU1', 'setpointVoltage', loop.volts);
   if (loop.limit) await setValue(page, 'PSU1', 'currentLimit', loop.limit);
-  if (loop.enable ?? true) {
-    await component(page, 'PSU1').locator('.component-hit').click();
-    await page.getByTestId('param-PSU1-outputEnabled').check();
-  }
+  // Set the output explicitly both ways: a new supply's output is ON by default (Product
+  // Alpha maintenance), so an OFF loop must switch it off.
+  await component(page, 'PSU1').locator('.component-hit').click();
+  await page.getByTestId('param-PSU1-outputEnabled').setChecked(loop.enable ?? true);
   await clickWorld(page, { x: 400, y: 300 }); // clear the selection on empty canvas
   // The configured circuit must be durable before any test takes a baseline of the stored
   // project (the save indicator alone may still show a previous "saved" state).

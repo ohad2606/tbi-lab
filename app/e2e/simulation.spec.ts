@@ -225,7 +225,7 @@ test('A13: English and Hebrew show identical numbers; switching language writes 
   const enValues = await labels();
   const bytes = JSON.stringify(await storedProject(page));
   await page.getByTestId('language-select').selectOption('he');
-  await expect(page.getByTestId('sim-status')).toHaveText('פועל · נקודת עבודה DC');
+  await expect(page.getByTestId('sim-status-label')).toHaveText('פועל · נקודת עבודה DC');
   expect(await labels()).toEqual(enValues);
   await page.waitForTimeout(400);
   expect(JSON.stringify(await storedProject(page))).toBe(bytes);
@@ -257,10 +257,11 @@ test('A14: a Worker failure leaves the project intact and gives a useful diagnos
   await expect(page.getByTestId('sim-error')).toContainText('The project is not affected');
   expect(await page.getByTestId('sim-error').innerText()).not.toMatch(/injected|stack|at /);
   expect(JSON.stringify(await storedProject(page))).toBe(bytes);
-  // Editing continues, and Stop / a retried Run work once the worker is healthy again.
+  // Editing continues. After a failure the single control reads Run again (nothing is
+  // running), and a retried Run works once the worker is healthy again.
   await page.unroute(/\/assets\/worker-[\w-]+\.js$/);
-  await page.getByTestId('sim-stop').click();
-  await expect(status(page)).toHaveAttribute('data-status', 'stopped');
+  await expect(page.getByTestId('sim-stop')).toHaveCount(0);
+  await expect(page.getByTestId('sim-run')).toBeEnabled();
   await run(page);
   await expect(await resultOf(page, 'R1')).toHaveText('5 mA');
 });

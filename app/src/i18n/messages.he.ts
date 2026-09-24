@@ -14,6 +14,7 @@ export const he: Record<MessageKey, string> = {
   'home.new.heading': 'פרויקט חדש',
   'home.new.nameLabel': 'שם הפרויקט',
   'home.new.defaultName': 'פרויקט ללא שם',
+  'home.new.defaultNameN': 'פרויקט ללא שם {n}',
   'home.new.create': 'יצירת פרויקט',
   'home.recent.heading': 'פרויקטים אחרונים',
   'home.recent.empty': 'אין עדיין פרויקטים. צרו פרויקט כדי להתחיל.',
@@ -94,6 +95,10 @@ export const he: Record<MessageKey, string> = {
     'ה[[components]] האלה מגיעים ל-GND רק דרך {supplies}, שהיציאה שלו כבויה: {components}. הפעילו את היציאה או חברו אותם ל-GND.',
   'sim.error.psu_shorted':
     '{components}: הדקי היציאה מחוברים זה לזה בחוט (קצר). הסירו את החוט כדי להריץ.',
+  'sim.error.psu_parallel.title': 'ספקי כוח במקביל עדיין אינם נתמכים',
+  'sim.error.psu_parallel':
+    '{supplies} מחוברים ישירות במקביל. הסימולטור אינו יכול עדיין לקבוע חלוקת זרם יחידה בין הספקים.',
+  'sim.error.psu_parallel.hint': 'השתמשו בספק אחד, או הפרידו בין היציאות באמצעות רכיבי מעגל.',
   'sim.error.invalid_parameter': '{components}: לא ניתן לדמות את הערך של „{param}”.',
   'sim.error.unsupported_component': 'עדיין לא ניתן לדמות את {components}.',
   'sim.error.singular_circuit':
@@ -221,6 +226,8 @@ export const he: Record<MessageKey, string> = {
   'library.delete.confirm': 'מחיקת הפרויקט',
   'library.delete.cancel': 'השארת הפרויקט',
   'library.copyName': '{name} (עותק)',
+  'library.copyNameN': '{name} (עותק {n})',
+  'library.error.nameTaken': 'כבר קיים פרויקט בשם "{name}". בחרו שם אחר.',
   'library.duplicated': 'נוצר "{name}".',
   'library.deleted': 'נמחק "{name}".',
   'library.error.rename': 'לא ניתן היה לשנות את שם הפרויקט. הוא לא השתנה; נסו שוב.',
@@ -243,6 +250,9 @@ export const he: Record<MessageKey, string> = {
   'import.done': 'יובא "{name}".',
   'import.doneCopy':
     '"{name}" יובא כעותק חדש, כי פרויקט עם אותה זהות כבר קיים בדפדפן זה. הפרויקט הקיים לא שונה.',
+  'import.doneRenamed': 'יובא בשם "{name}", כי כבר קיים בדפדפן זה פרויקט בשם "{original}".',
+  'import.doneCopyRenamed':
+    'יובא כעותק חדש בשם "{name}", כי הפרויקט כבר קיים בדפדפן זה. הפרויקט הקיים לא שונה.',
   'import.error.too_large': 'הקובץ גדול מ־⁦2 MB⁩, גדול בהרבה מפרויקט של TBI Lab. דבר לא יובא.',
   'import.error.not_package': 'זה אינו קובץ פרויקט של TBI Lab ‏(.tbilab). דבר לא יובא.',
   'import.error.damaged':

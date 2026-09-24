@@ -209,9 +209,11 @@ describe('export / import (A4-A9)', () => {
     expect(await stored(storage, doc.projectId)).toEqual(local); // untouched
     const copy = app.state.doc!;
     expect(copy.projectId).not.toBe(doc.projectId);
-    expect(copy.name).toBe(doc.name);
+    // The local project still has the same name, so the copy takes a copy-style name
+    // (Product Alpha maintenance: no two projects may read the same).
+    expect(copy.name).toBe(`${doc.name} (copy)`);
     expect(engineeringContent(copy)).toEqual(engineeringContent(doc));
-    expect(app.state.notice).toMatchObject({ key: 'import.doneCopy', tone: 'info' });
+    expect(app.state.notice).toMatchObject({ key: 'import.doneCopyRenamed', tone: 'info' });
     expect(app.state.projects).toHaveLength(2);
   });
 

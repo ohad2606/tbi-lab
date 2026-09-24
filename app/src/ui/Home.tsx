@@ -15,7 +15,9 @@ export function Home() {
   const [name, setName] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<ProjectIndexEntry | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
-  const value = name ?? t('home.new.defaultName');
+  // Suggest the first free default name, so accepting the suggestion never conflicts.
+  const value = name ?? store.defaultProjectName(state.projects.map((p) => p.name));
+  const createConflict = state.nameConflict?.scope === 'create' ? state.nameConflict : null;
   // Rows get the locale and translation as props and are rebuilt only when the list or the
   // language changes: 50+ rows each subscribed to the whole app state made every store update
   // re-render the entire library (Sprint 5 measurement).
@@ -55,8 +57,8 @@ export function Home() {
           class="brand-hero-logo"
           src={logoUrl}
           alt={t('brand.logoAlt')}
-          width={355}
-          height={200}
+          width={533}
+          height={300}
           decoding="async"
         />
         <div class="brand-hero-text">
@@ -111,12 +113,27 @@ export function Home() {
                   name="projectName"
                   dir="auto"
                   value={value}
-                  onInput={(e) => setName((e.target as HTMLInputElement).value)}
+                  aria-invalid={createConflict ? 'true' : undefined}
+                  aria-describedby={createConflict ? 'new-project-error' : undefined}
+                  onInput={(e) => {
+                    setName((e.target as HTMLInputElement).value);
+                    store.clearNameConflict();
+                  }}
                 />
               </label>
               <button type="submit" class="button button-primary" data-testid="create-project">
                 {t('home.new.create')}
               </button>
+              {createConflict && (
+                <p
+                  class="field-error"
+                  id="new-project-error"
+                  role="alert"
+                  data-testid="name-conflict"
+                >
+                  {t('library.error.nameTaken', { name: isolateUserText(createConflict.name) })}
+                </p>
+              )}
             </form>
           </section>
 
@@ -259,11 +276,21 @@ function RenameForm({
   onDone: () => void;
 }) {
   const store = useStore();
+  const { nameConflict } = useAppState();
+  const conflict =
+    nameConflict?.scope === 'rename' && nameConflict.projectId === entry.projectId
+      ? nameConflict
+      : null;
+  const errorId = `rename-error-${entry.projectId}`;
   const input = useRef<HTMLInputElement>(null);
   useEffect(() => {
     input.current?.focus();
     input.current?.select();
   }, []);
+  const close = () => {
+    store.clearNameConflict();
+    onDone();
+  };
   return (
     <form
       class="rename-form"
@@ -281,14 +308,22 @@ function RenameForm({
         data-testid="rename-input"
         aria-label={t('library.rename.label', { name: entry.name })}
         defaultValue={entry.name}
-        onKeyDown={(e) => e.key === 'Escape' && onDone()}
+        aria-invalid={conflict ? 'true' : undefined}
+        aria-describedby={conflict ? errorId : undefined}
+        onInput={() => store.clearNameConflict()}
+        onKeyDown={(e) => e.key === 'Escape' && close()}
       />
       <button type="submit" class="button button-primary" data-testid="rename-save">
         {t('library.rename.save')}
       </button>
-      <button type="button" class="button" onClick={onDone}>
+      <button type="button" class="button" onClick={close}>
         {t('library.rename.cancel')}
       </button>
+      {conflict && (
+        <p class="field-error" id={errorId} role="alert" data-testid="name-conflict">
+          {t('library.error.nameTaken', { name: isolateUserText(conflict.name) })}
+        </p>
+      )}
     </form>
   );
 }

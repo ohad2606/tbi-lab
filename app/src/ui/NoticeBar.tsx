@@ -1,12 +1,7 @@
 import { isolateLtr } from '../i18n/i18n.js';
 import type { SimFailure } from '../sim/controller.js';
 import type { RatingWarning } from '@tbi-lab/engine';
-import {
-  engineErrorMessage,
-  groupByComponent,
-  ratingRow,
-  simFailureMessage,
-} from '../sim/format.js';
+import { engineErrorParts, groupByComponent, ratingRow, simFailureMessage } from '../sim/format.js';
 import { warningsFor } from '../sim/ratings.js';
 import { useAppState, useStore, useT } from './context.js';
 
@@ -25,7 +20,11 @@ export function NoticeBar() {
           data-testid="sim-error"
           data-code={failureCode(sim.failure)}
         >
-          {simFailureMessage(locale, sim.failure, doc)}
+          {sim.failure.kind === 'engine' ? (
+            <EngineErrorText parts={engineErrorParts(locale, sim.failure.error, doc)} />
+          ) : (
+            simFailureMessage(locale, sim.failure, doc)
+          )}
         </div>
       )}
       {running && !running.ok && (
@@ -35,7 +34,7 @@ export function NoticeBar() {
           data-testid="sim-error"
           data-code={running.error.code}
         >
-          {engineErrorMessage(locale, running.error, doc)}
+          <EngineErrorText parts={engineErrorParts(locale, running.error, doc)} />
         </div>
       )}
       {running?.ok && doc && warningsFor(doc, running).length > 0 && (
@@ -89,6 +88,21 @@ export function NoticeBar() {
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * A known unsupported configuration reads as a titled explanation with guidance, not as a
+ * mysterious solver failure; other errors are one sentence.
+ */
+function EngineErrorText({ parts }: { parts: ReturnType<typeof engineErrorParts> }) {
+  if (!parts.title) return <>{parts.body}</>;
+  return (
+    <span class="banner-structured" data-testid="sim-error-structured">
+      <strong class="banner-title">{parts.title}</strong>
+      <span>{parts.body}</span>
+      {parts.hint && <span class="banner-hint">{parts.hint}</span>}
+    </span>
   );
 }
 

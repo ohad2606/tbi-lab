@@ -429,6 +429,18 @@ select {
   margin: 0;
 }
 
+/* A name conflict is shown on its own line under the field it belongs to. */
+.new-project .field-error,
+.rename-form .field-error {
+  flex: 1 1 100%;
+}
+
+.new-project input[aria-invalid='true'],
+.rename-form input[aria-invalid='true'] {
+  border-color: var(--danger);
+  outline-color: var(--danger);
+}
+
 .unit {
   font-weight: 600;
 }
@@ -667,15 +679,42 @@ select {
   gap: 0.4rem;
 }
 
-.button-run {
-  background: var(--ok);
-  border-color: var(--ok);
+/* One Run/Stop control: both faces share one grid cell, so its size never changes. */
+.sim-toggle {
+  display: inline-grid;
   color: #fff;
   font-weight: 600;
 }
 
-.button-run:hover {
+.sim-toggle-face {
+  grid-area: 1 / 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35em;
+}
+
+.sim-toggle-run .sim-toggle-face[data-face='stop'],
+.sim-toggle-stop .sim-toggle-face[data-face='run'] {
+  visibility: hidden;
+}
+
+.sim-toggle-run {
+  background: var(--ok);
+  border-color: var(--ok);
+}
+
+.sim-toggle-run:hover {
   background: #145a2f;
+}
+
+.sim-toggle-stop {
+  background: var(--danger);
+  border-color: var(--danger);
+}
+
+.sim-toggle-stop:hover {
+  background: #8c1d17;
 }
 
 .button:disabled {
@@ -1006,8 +1045,17 @@ select {
 }
 
 .sim-status {
-  min-inline-size: 13rem;
-  text-align: center;
+  display: inline-grid;
+  justify-items: center;
+}
+
+.sim-status-label,
+.sim-status-sizer {
+  grid-area: 1 / 1;
+}
+
+.sim-status-sizer {
+  visibility: hidden;
 }
 
 /* ---------------------------------------------------------------- Sprint 5: Product Alpha */
@@ -1151,6 +1199,7 @@ select {
 
 .rename-form {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.5rem;
   flex: 1 1 100%;
   padding-block: 0.25rem;
@@ -1365,16 +1414,17 @@ select {
 .brand-hero {
   display: flex;
   align-items: center;
-  gap: 1.75rem;
-  padding: 1rem 1.5rem;
-  margin-block-end: 1.25rem;
-  border-radius: 10px;
+  gap: 2rem;
+  padding: 1.1rem 2rem;
+  margin-block-end: 1.5rem;
+  border-radius: 12px;
   background: var(--brand-navy);
   color: #fff;
 }
 
+/* The elongated TBI logo, transparent over the navy band (asset is 2x for sharp displays). */
 .brand-hero-logo {
-  block-size: 100px;
+  block-size: 150px;
   inline-size: auto;
   flex-shrink: 0;
 }
@@ -1385,14 +1435,18 @@ select {
 }
 
 .brand-hero h1 {
-  margin: 0 0 0.35rem;
-  font-size: 1.6rem;
+  margin: 0 0 0.5rem;
+  font-size: 2.1rem;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
 }
 
 .brand-hero p {
   margin: 0;
+  font-size: 1.05rem;
   color: #c7d3e6;
-  max-width: 44rem;
+  max-width: 40rem;
 }
 
 .button-on-dark {
@@ -1534,4 +1588,14 @@ select {
 .wire-bridge.selected .wire {
   stroke: var(--selected);
   stroke-width: 4;
+}
+
+/* An unsupported configuration: title, explanation, then what to do. */
+.banner-structured {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.banner-hint {
+  font-weight: 500;
 }

@@ -11,6 +11,7 @@ export const en = {
   'home.new.heading': 'New project',
   'home.new.nameLabel': 'Project name',
   'home.new.defaultName': 'Untitled project',
+  'home.new.defaultNameN': 'Untitled project {n}',
   'home.new.create': 'Create project',
   'home.recent.heading': 'Recent projects',
   'home.recent.empty': 'No projects yet. Create one to get started.',
@@ -92,6 +93,10 @@ export const en = {
     'These parts reach GND only through {supplies}, whose output is off: {components}. Turn the output on or connect them to GND.',
   'sim.error.psu_shorted':
     '{components}: the output terminals are joined by a wire (a short circuit). Remove that wire to run.',
+  'sim.error.psu_parallel.title': 'Parallel power supplies are not yet supported',
+  'sim.error.psu_parallel':
+    '{supplies} are directly connected in parallel. The current simulator cannot determine a unique current sharing between supplies.',
+  'sim.error.psu_parallel.hint': 'Use one supply, or separate the outputs with circuit elements.',
   'sim.error.invalid_parameter': '{components}: the value of “{param}” cannot be simulated.',
   'sim.error.unsupported_component': '{components} cannot be simulated yet.',
   'sim.error.singular_circuit':
@@ -221,6 +226,8 @@ export const en = {
   'library.delete.confirm': 'Delete project',
   'library.delete.cancel': 'Keep project',
   'library.copyName': '{name} (copy)',
+  'library.copyNameN': '{name} (copy {n})',
+  'library.error.nameTaken': 'A project named "{name}" already exists. Choose a different name.',
   'library.duplicated': 'Created "{name}".',
   'library.deleted': 'Deleted "{name}".',
   'library.error.rename': 'The project could not be renamed. It is unchanged; try again.',
@@ -247,6 +254,10 @@ export const en = {
   'import.done': 'Imported "{name}".',
   'import.doneCopy':
     'Imported "{name}" as a new copy, because a project with the same identity already exists in this browser. The existing project was not changed.',
+  'import.doneRenamed':
+    'Imported as "{name}", because a project named "{original}" already exists in this browser.',
+  'import.doneCopyRenamed':
+    'Imported as a new copy, "{name}", because this project already exists in this browser. The existing project was not changed.',
   'import.error.too_large':
     'This file is larger than 2 MB, far too large for a TBI Lab project. Nothing was imported.',
   'import.error.not_package':

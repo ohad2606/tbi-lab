@@ -14,6 +14,9 @@ import {
   createPackage,
   createProject,
   emptySelection,
+  firstAvailableName,
+  projectNameKey,
+  projectNameTaken,
   classifyEdit,
   historyTarget,
   liveChanges,
@@ -102,6 +105,13 @@ export interface AppState {
   saveError: 'quota' | 'write' | null;
   /** Probes an opened example suggests for its project (editor presentation state only). */
   suggestedProbes: { projectId: string; probes: ExampleProbe[] } | null;
+  /**
+   * The name just submitted to create or rename a project reads the same as another project's
+   * name in this library (see projectNameKey). Shown inline next to the field; nothing was
+   * written.
+   */
+  nameConflict:
+    { scope: 'create'; name: string } | { scope: 'rename'; projectId: string; name: string } | null;
 }
 
 export interface AppDeps {
@@ -144,6 +154,7 @@ export class AppStore {
       history: { undo: 0, redo: 0 },
       saveError: null,
       suggestedProbes: null,
+      nameConflict: null,
     };
     deps.simulation?.subscribe(() => this.set({ sim: deps.simulation!.state }));
   }
@@ -206,12 +217,29 @@ export class AppStore {
     this.set({ locale });
   }
 
-  async newProject(name: string): Promise<void> {
+  /**
+   * Create a project. An empty name gets the first free default name ("Untitled project",
+   * "Untitled project 2", ...). A typed name that reads the same as an existing project's name
+   * is refused: nothing is created and `nameConflict` explains it inline.
+   */
+  async newProject(name: string): Promise<boolean> {
+    let names: string[];
+    try {
+      names = await this.libraryNames();
+    } catch {
+      this.set({ notice: { key: 'storage.error.read' } });
+      return false;
+    }
+    const typed = name.trim();
+    if (typed !== '' && projectNameTaken(typed, names)) {
+      this.set({ nameConflict: { scope: 'create', name: typed } });
+      return false;
+    }
     this.deps.simulation?.stop();
     const doc = createProject({
       projectId: `prj_${this.deps.newId()}`,
       deviceId: this.deviceId,
-      name: name.trim() || translate(this.stateValue.locale, 'home.new.defaultName'),
+      name: typed || this.defaultProjectName(names),
       appVersion: APP_VERSION,
       ...(this.deps.clock ? { clock: this.deps.clock } : {}),
     });
@@ -224,9 +252,56 @@ export class AppStore {
       unreadable: null,
       selection: emptySelection(),
       notice: null,
+      nameConflict: null,
     });
     this.autosave?.queue(doc);
     await this.autosave?.flush();
+    return true;
+  }
+
+  // -------------------------------------------------------------------------------------------
+  // Display names. The project id is the identity; names are compared by projectNameKey so the
+  // library never gains two projects a person would read as the same. Existing duplicates (from
+  // before this rule) are left exactly as they are and stay openable.
+
+  /** Display names of the projects in this library, optionally without one project. */
+  private async libraryNames(exceptId?: string): Promise<string[]> {
+    const list = this.deps.storage ? await this.deps.storage.list() : this.stateValue.projects;
+    return list.filter((p) => p.projectId !== exceptId).map((p) => p.name);
+  }
+
+  /** The first free default name for a new project, in the active locale. */
+  defaultProjectName(
+    names: readonly string[] = this.stateValue.projects.map((p) => p.name),
+  ): string {
+    const locale = this.stateValue.locale;
+    return firstAvailableName(names, (n) =>
+      n === 1
+        ? translate(locale, 'home.new.defaultName')
+        : translate(locale, 'home.new.defaultNameN', { n }),
+    );
+  }
+
+  /** `base` if free, else the first free copy name: "base (copy)", "base (copy 2)", ... */
+  private uniqueName(base: string, names: readonly string[], forceCopy = false): string {
+    const locale = this.stateValue.locale;
+    if (!forceCopy && !projectNameTaken(base, names)) return base;
+    return firstAvailableName(names, (n) =>
+      n === 1
+        ? translate(locale, 'library.copyName', { name: base })
+        : translate(locale, 'library.copyNameN', { name: base, n }),
+    );
+  }
+
+  /** A rename to `name` would collide with ANOTHER project (renaming to itself is fine). */
+  private renameCollides(current: string, name: string, others: readonly string[]): boolean {
+    if (projectNameKey(name) === projectNameKey(current)) return false;
+    return projectNameTaken(name, others);
+  }
+
+  /** The user edited the name field after a conflict: stop showing it. */
+  clearNameConflict(): void {
+    if (this.stateValue.nameConflict) this.set({ nameConflict: null });
   }
 
   async openProject(projectId: string): Promise<void> {
@@ -246,7 +321,12 @@ export class AppStore {
     }
     const result = openDocument(raw);
     this.clearHistory();
-    const base = { selection: emptySelection(), notice: null, unreadable: null };
+    const base = {
+      selection: emptySelection(),
+      notice: null,
+      unreadable: null,
+      nameConflict: null,
+    };
     if (result.status === 'ok') {
       this.deps.prefs.set(PREF_LAST_PROJECT, projectId);
       this.set({ ...base, screen: 'editor', doc: result.doc, readOnly: null });
@@ -331,9 +411,17 @@ export class AppStore {
         this.set({ notice: { key: 'error.edit.name_empty' } });
         return false;
       }
-      if (renamed.doc.name === doc.name) return true;
+      if (renamed.doc.name === doc.name) {
+        this.clearNameConflict();
+        return true;
+      }
+      if (this.renameCollides(doc.name, renamed.doc.name, await this.libraryNames(projectId))) {
+        this.set({ nameConflict: { scope: 'rename', projectId, name: renamed.doc.name } });
+        return false;
+      }
       await this.deps.storage!.save(stampRevision(renamed.doc, this.deviceId, this.deps.clock));
       await this.refreshProjects();
+      this.clearNameConflict();
       return true;
     } catch (e) {
       this.storageFailure(e, 'library.error.rename');
@@ -346,7 +434,8 @@ export class AppStore {
     try {
       const source = await this.loadValid(projectId);
       if (!source) return null;
-      const name = translate(this.stateValue.locale, 'library.copyName', { name: source.name });
+      // Always succeeds: the first free "(copy)", "(copy 2)", ... in the active locale.
+      const name = this.uniqueName(source.name, await this.libraryNames(), true);
       const copy = copyAsNewProject(source, this.newIdentity(name));
       await this.deps.storage!.add(copy);
       await this.refreshProjects();
@@ -434,10 +523,18 @@ export class AppStore {
     const storage = this.deps.storage!;
     let doc = parsed.doc;
     let copied = false;
+    const original = doc.name;
+    let renamed = false;
     try {
       if ((await storage.load(doc.projectId)) !== undefined) {
         doc = copyAsNewProject(doc, this.newIdentity());
         copied = true;
+      }
+      // Never add a second project with a name that reads the same: take a copy-style name.
+      const names = await this.libraryNames();
+      if (projectNameTaken(doc.name, names)) {
+        doc = { ...doc, name: this.uniqueName(doc.name, names, true) };
+        renamed = true;
       }
       try {
         await storage.add(doc);
@@ -458,8 +555,14 @@ export class AppStore {
     await this.refreshProjects().catch(() => undefined);
     this.set({
       notice: {
-        key: copied ? 'import.doneCopy' : 'import.done',
-        params: { name: isolateUserText(doc.name) },
+        key: renamed
+          ? copied
+            ? 'import.doneCopyRenamed'
+            : 'import.doneRenamed'
+          : copied
+            ? 'import.doneCopy'
+            : 'import.done',
+        params: { name: isolateUserText(doc.name), original: isolateUserText(original) },
         tone: 'info',
       },
     });
@@ -476,9 +579,11 @@ export class AppStore {
     }
     this.deps.simulation?.stop();
     await this.autosave?.flush();
-    const name = translate(this.stateValue.locale, example.titleKey);
-    const doc = copyAsNewProject(opened.doc, this.newIdentity(name));
+    let doc: ProjectDocument;
     try {
+      const title = translate(this.stateValue.locale, example.titleKey);
+      const name = this.uniqueName(title, await this.libraryNames());
+      doc = copyAsNewProject(opened.doc, this.newIdentity(name));
       await this.deps.storage!.add(doc);
     } catch (e) {
       this.storageFailure(e, 'library.error.create');
@@ -504,7 +609,13 @@ export class AppStore {
     this.clearHistory();
     await this.autosave?.flush();
     await this.refreshProjects().catch(() => this.set({ notice: { key: 'storage.error.read' } }));
-    this.set({ screen: 'home', doc: null, readOnly: null, selection: emptySelection() });
+    this.set({
+      screen: 'home',
+      doc: null,
+      readOnly: null,
+      selection: emptySelection(),
+      nameConflict: null,
+    });
   }
 
   select(selection: Selection): void {
@@ -642,9 +753,32 @@ export class AppStore {
     this.deps.simulation?.stop();
   }
 
+  /**
+   * Rename the open project. Refused, with nothing written, when the new name reads the same
+   * as another project's name in the library.
+   */
   rename(name: string): boolean {
     const doc = this.stateValue.doc;
-    return !!doc && this.apply(renameProject(doc, name));
+    if (!doc) return false;
+    const result = renameProject(doc, name);
+    if (result.ok && result.doc.name !== doc.name) {
+      const others = this.stateValue.projects
+        .filter((p) => p.projectId !== doc.projectId)
+        .map((p) => p.name);
+      if (this.renameCollides(doc.name, result.doc.name, others)) {
+        this.set({
+          nameConflict: { scope: 'rename', projectId: doc.projectId, name: result.doc.name },
+          notice: {
+            key: 'library.error.nameTaken',
+            params: { name: isolateUserText(result.doc.name) },
+          },
+        });
+        return false;
+      }
+    }
+    if (!this.apply(result)) return false;
+    this.clearNameConflict();
+    return true;
   }
 
   private commit(doc: ProjectDocument, selection?: Selection): void {

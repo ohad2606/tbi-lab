@@ -67,7 +67,9 @@ async function seriesBench(
     page,
     (d) =>
       d.components[0]!.params.outputEnabled === true &&
-      d.connections.some((c) => c.component === 'R1' && c.terminal === 'b'),
+      d.connections.some((c) => c.component === 'R1' && c.terminal === 'b') &&
+      // The last link: output-on alone no longer marks the end (it is on by default now).
+      d.connections.some((c) => c.component === 'PSU1' && c.terminal === 'negative'),
     'bench stored',
     name,
   );
@@ -210,6 +212,8 @@ test('A8: PSU panel shows settings apart from measured V/I and OFF / CV / CC', a
   await link(page, ['PSU1', 'negative'], ['GND1', 'ref']);
   await setValue(page, 'R1', 'resistance', '10');
   await select(page, 'PSU1');
+  // A new supply's output is ON by default (Product Alpha maintenance); start from OFF here.
+  await page.getByTestId('param-PSU1-outputEnabled').uncheck();
   const panel = page.getByTestId('psu-panel');
   await expect(page.getByTestId('psu-mode')).toHaveAttribute('data-mode', 'none'); // not running
   await expect(page.getByTestId('psu-measured-voltage')).toHaveText('—');
@@ -242,10 +246,12 @@ test('A9: probes read node voltage to GND and branch current without changing an
   await link(page, ['R2', 'a'], ['GND1', 'ref']);
   await link(page, ['PSU1', 'negative'], ['GND1', 'ref']);
   await enableOutput(page);
+  // The output is on by default now (Product Alpha maintenance), so "output on" no longer
+  // implies the wiring is durable: wait for the wires themselves.
   await waitForStoredProject(
     page,
-    (d) => d.components[0]!.params.outputEnabled === true,
-    'output on',
+    (d) => d.components[0]!.params.outputEnabled === true && d.layout.wires.length === 4,
+    'output on and circuit wired',
   );
   const bytes = JSON.stringify(await storedProject(page));
   await run(page);
@@ -491,8 +497,12 @@ test('A15: new Sprint 4 surfaces are fully translated in Hebrew (technical token
     await select(page, id);
     expect(await words(), id).toEqual([]);
   }
-  await page.getByTestId('sim-stop').click();
-  await select(page, 'D1'); // checks list visible while stopped
+  // This circuit has no ground, so the run failed (nothing is running). With the single Run/Stop
+  // control (Product Alpha maintenance) a failed run shows Run, not Stop; the checks list is
+  // visible whenever nothing is running.
+  await expect(status(page)).toHaveAttribute('data-status', 'failed');
+  await expect(page.getByTestId('sim-stop')).toHaveCount(0);
+  await select(page, 'D1'); // checks list visible while not running
   await expect(page.getByTestId('circuit-checks')).toContainText('בדיקות מעגל');
   expect(await words(), 'checks').toEqual([]);
 });
