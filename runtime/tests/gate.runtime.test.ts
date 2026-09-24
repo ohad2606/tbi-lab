@@ -20,14 +20,29 @@ const RUNS = Number(process.env.TBI_GATE_RUNS ?? 3);
 const UNPINNED = process.env.TBI_GATE_UNPINNED === '1';
 
 /**
- * Pinned fingerprints (sha256 prefixes) for runtime build + artifacts.lock.json TbiGpioProof.
+ * Pinned fingerprints (sha256 prefixes) for runtimeId 567e58e704a0e43e (espressif/qemu 40edccac +
+ * runtime/qemu/patches 0001-0004) and artifacts.lock.json TbiGpioProof (5f177cbe…). Established on
+ * 2026-09-24 from 40 unpinned runs (10 per configuration) that converged to exactly one result each;
+ * see docs/runtime/R1-REPORT.md.
  * A change to the runtime (patches, upstream commit, QEMU arguments) or the artifact is a new
  * runtime version and re-establishes these through a documented repeated-run baseline.
  */
 const PINNED: Record<string, { timeline: string; serialTimed: string; serial: string }> = {
-  full: { timeline: 'TBD', serialTimed: 'TBD', serial: 'TBD' },
-  full10ms: { timeline: 'TBD', serialTimed: 'TBD', serial: 'TBD' },
-  boot: { timeline: 'TBD', serialTimed: 'TBD', serial: 'TBD' },
+  full: {
+    timeline: '2fadf3ae624080b1',
+    serialTimed: '1a8db052c6c4fa4a',
+    serial: '45b7ded872c2e393',
+  },
+  full10ms: {
+    timeline: '12efd464dbe6bb3a',
+    serialTimed: '39d81de4911e98b9',
+    serial: '45b7ded872c2e393',
+  },
+  boot: {
+    timeline: 'b64f0bd3e94c22c4',
+    serialTimed: '4dc46111f588e958',
+    serial: '9874f2e574af4adb',
+  },
 };
 
 interface Config {
