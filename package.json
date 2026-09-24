@@ -17,6 +17,7 @@
     "build:browser": "tsc -p experiments/gate-a-electrical/tsconfig.browser.json && cp experiments/gate-a-electrical/browser/index.html experiments/gate-a-electrical/dist-browser/browser/ && tsc -p experiments/gate-d-persistence/tsconfig.browser.json && cp experiments/gate-d-persistence/browser/index.html experiments/gate-d-persistence/dist-browser/browser/",
     "test:browser": "npm run build:browser && playwright test",
     "test:esp32": "vitest run --config vitest.esp32.config.ts",
+    "test:runtime": "vitest run --config vitest.runtime.config.ts",
     "test:qemu-wasm": "TBI_QEMU_WASM=1 playwright test experiments/gate-b-esp32/browser/qemu-wasm.wasm.spec.ts"
   },
   "devDependencies": {
