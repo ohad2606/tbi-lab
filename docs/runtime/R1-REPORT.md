@@ -407,3 +407,55 @@ These do not block R1:
 | App browser acceptance (`npm run test:e2e`) | 67 | pass |
 | Sprint 0 browser (`npm run test:browser`) | 4 | pass |
 | Typecheck, lint, Prettier, boundary check (now including `runtime/`) | — | pass |
+
+## 20. PM decisions on the R1 review (2026-09-24)
+
+The review of `1e7d8a5` approved R1 for push, not for closure. There is one closure blocker.
+
+**Internal pull-up / pull-down.** The hardware supports them (capability map `internalPull`), but
+the V1 simulator does not model them and must not advertise them as supported.
+`INPUT_PULLUP`, `INPUT_PULLDOWN` or an equivalent configuration must never silently behave as a
+plain input. The product/runtime contract must return an explicit unsupported-feature diagnostic.
+Plain digital input polling stays supported.
+
+**GPIO interrupts.** They are not in the supported V1 MCU subset. `attachInterrupt` or equivalent
+must not run silently with handlers that never fire; integration must diagnose it explicitly.
+Polling with `digitalRead` is the supported path. Interrupts are not to be implemented just to
+close R1.
+
+**Host command quantum — R1 closure blocker.** Production stays pinned at
+`hostCommandQuantum = 1 ms` of simulated time. The observation in risk 1 (§17) conflicts with the
+invariant that the command quantum is not an MCU execution timestep, and it is **not** accepted as
+documented behaviour. A targeted follow-up must decouple host-command scheduling from guest
+execution and core scheduling. Acceptance:
+- with identical firmware and no host commands whose timing differs, changing the quantum must
+  not materially alter the guest execution timeline;
+- pad events and electrical feedback stay event-driven and synchronous, never quantised to 1 ms;
+- the release gate stays single-result under stress;
+- timing stays within the accepted non-cycle-accurate envelope;
+- tested at 1 ms and 10 ms at least.
+
+If decoupling needs a materially different QEMU scheduling design, work stops for a PM report
+before any broad rewrite.
+
+**ESP32 ROM images.** Development continues with upstream-fetched ROM images. ROM binaries are not
+committed and not redistributed inside any runtime or container artifact; provisioning keeps
+obtaining them from the authoritative source (Espressif's repository at the pinned commit). ROM
+licensing is a packaging/deployment gate before any redistributable runtime or controlled pilot
+image.
+
+**Mutated Sprint 1 reference image — formal acknowledgement.**
+
+| Item | Value |
+| ---- | ----- |
+| File (outside the repository) | `/home/ubuntu/tbi-tools/fw/arduino-gpio-proof-4mb.bin`, 4 194 304 bytes |
+| Historical checksum (Sprint 1 pin, `experiments/sprint-1-spikes/closed-loop/closedLoop.ts`) | `d069fffc27f7d7246ff94120ed4b0d3bddb0b85228dee3d9fbb20ba1a20cdd44` |
+| Current checksum | `9ac7f05630f7b56bca477e33a0b6373186625bf89927593b9725e88321888847` |
+| Last modified | 2026-09-23 08:04:01 UTC, after the Sprint 1 work |
+| Guest-written data | an ELF core dump (`\x7fELF` header) in the coredump partition, 0x3F0000–0x3F2C7F (11 187 non-erased bytes); otadata at 0xE000 written. NVS (0x9000–0xDFFF) is erased |
+
+The file was modified by a guest crash dump after the original work, because a harness attached
+it to QEMU directly. It was **not repaired, overwritten or deleted**. Sprint 1 therefore cannot be
+replayed bit for bit from that file. Sprint 1 history and the `sprint-1-complete` tag are
+unchanged. R1's immutable, content-addressed artifacts with per-session private copies (§12)
+supersede that mechanism.
