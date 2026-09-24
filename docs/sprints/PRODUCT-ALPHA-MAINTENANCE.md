@@ -3,6 +3,9 @@
 This pass implements exactly five PM review items on top of `runtime-r1-complete` (`1df4fa5`). It is
 not Sprint 6, and it does not touch the R1 runtime (`runtime/`) or the schema (still version 2).
 
+**Status: complete (closure record below).** Final implementation baseline
+`fa08c9b7ec3889246b57fefa7ae8e879f9cc2321`, GitHub Actions run `36041805538`: PASS.
+
 ## 1. Unambiguous project names
 
 The project id remains the identity. A display name is user-authored text, stored exactly as typed
@@ -74,7 +77,8 @@ There is now exactly one control. The run semantics are unchanged.
 
 - Both faces are rendered in one grid cell and the inactive one is hidden. The button therefore
   always has the width of its longer label in the current locale, with no English-tuned width.
-- The status pill reserves the width of its longest label in the same way, so a state change never
+- The status pill reserves the width of its longest label, at both font weights it uses (see the
+  closure record), in the same way, so a state change never
   moves the toolbar.
 - The accessible name follows the visible label. The element never changes, so keyboard focus stays
   on it.
@@ -111,9 +115,55 @@ Existing e2e tests were changed only where the approved behaviour changed:
 - circuits set the PSU output explicitly in both directions;
 - two waits no longer use "output on" as proof that the wiring is durable.
 
-## Remaining concerns / backlog
+## Accepted backlog
 
 - The save indicator's label ("Saving…" / "All changes saved") still changes width, which moves the
-  end-aligned toolbar group while a save is in progress. This is not caused by Run/Stop and was not
-  changed in this pass.
-- Supporting an all-CC parallel operating point would need a solver change and a PM decision.
+  end-aligned toolbar group while a save is in progress. It is not caused by Run/Stop. The PM
+  accepted it as non-blocking UI backlog.
+
+## Closure record
+
+| Item | Value |
+| ---- | ----- |
+| Final implementation baseline | `fa08c9b7ec3889246b57fefa7ae8e879f9cc2321` on `main` |
+| Final implementation CI | GitHub Actions run `36041805538`: **PASS** (fast job with typecheck, lint, unit and domain; Chromium browser acceptance with `npm run test:e2e` and `npm run test:browser`). Verified independently by the PM |
+| Test baseline, local and CI | 403 unit, 77 e2e, 4 browser; typecheck and lint clean |
+| Commits | `4d54238`, `02fb16f`, `da7c423` (reviewed implementation and record), `71a8c69` (test), `fa08c9b` (layout fix) |
+
+**All five items are complete:**
+1. normalized, unique project display names;
+2. a professional "not yet supported" diagnostic for directly paralleled supplies;
+3. a single stateful Run/Stop control;
+4. new supplies have the output ON by default;
+5. stronger branding on the Projects screen.
+
+**PM decisions recorded:**
+- Example instantiation obeys the same unique-name rule as duplicate and import.
+- Directly paralleled laboratory supplies remain unsupported throughout V1, including the case where
+  every supply happens to be current-limiting. No current sharing is invented. Future support needs
+  an explicit, defensible PSU current-sharing model.
+- The save-indicator width shift is accepted backlog (above).
+
+**Invariants kept:**
+- Existing saved PSU output states are unchanged; only newly created supplies default to ON.
+- The schema remains version 2, with no migration change.
+- No new dependencies.
+- The R1 runtime (`runtime/`) is unchanged.
+- No R2 or Sprint 6 work is included.
+
+**CI-discovered Run/Stop layout issue and resolution:**
+1. The first implementation CI (run `36025780589`, on `da7c423`) failed the two Run/Stop
+   no-layout-shift tests (English and Hebrew): toolbar controls moved.
+2. The test was strengthened (`71a8c69`). Snapshots are now compared only when the save indicator
+   has settled on the same label in both and the project is durable in IndexedDB. This separates
+   save-state transitions from simulation-state layout.
+3. The second CI (run `36027865203`) then proved that the simulation status pill itself changed width:
+   English 208.1 → 233.1 px, Hebrew 154.3 → 166 px. All neighbours moved by exactly that amount.
+4. Root cause: the running state's bold text also applied to the hidden labels that reserve the pill's
+   width. Under a proportional font the reserved width therefore grew. The development host renders
+   the UI in Liberation Mono, where bold and regular have equal widths, which masked it. It was
+   reproduced locally with Liberation Sans.
+5. The fix (`fa08c9b`) reserves the width of the longest real localized label at both font weights.
+   The pill is `flex: none` and `box-sizing: border-box`, has no hard-coded width, and clips nothing.
+6. The tests remained strict and unchanged after the product fix. The final CI
+   (run `36041805538`) passes in the GitHub font environment.
