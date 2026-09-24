@@ -21,7 +21,8 @@ describe('createProject', () => {
     expect(doc.components[0]!.params).toEqual({
       setpointVoltage: { value: 5, unit: 'volt' },
       currentLimit: { value: 0.1, unit: 'ampere' },
-      outputEnabled: false,
+      // A new supply is ready to power the circuit (Product Alpha maintenance).
+      outputEnabled: true,
     });
     expect(doc.nets).toEqual([]);
     expect(doc.revision).toEqual({

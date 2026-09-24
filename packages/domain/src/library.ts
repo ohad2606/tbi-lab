@@ -56,3 +56,47 @@ export function engineeringContent(doc: ProjectDocument) {
     idCounters: doc.idCounters,
   };
 }
+
+// ---------------------------------------------------------------------------------------------
+// Project display names (Product Alpha maintenance). The project id is the identity; the
+// display name is user-authored text stored verbatim. Within one library, two projects must not
+// have names a person would read as the same, so new names are compared by a KEY that is never
+// stored or shown:
+//   - Unicode NFKC normalization (composed/decomposed and compatibility forms compare equal);
+//   - directional marks and isolates removed (invisible, typically pasted from bidi text);
+//   - leading/trailing whitespace trimmed and internal whitespace runs collapsed to one space;
+//   - case-insensitive (lowercased; affects cased scripts such as Latin, not Hebrew).
+
+const BIDI_CONTROLS = /[\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/g;
+
+/** The comparison key of a project display name. Never stored, never displayed. */
+export function projectNameKey(name: string): string {
+  return name
+    .normalize('NFKC')
+    .replace(BIDI_CONTROLS, '')
+    .trim()
+    .replace(/\s+/gu, ' ')
+    .toLowerCase();
+}
+
+/** Whether `name` would read as the same as one of `existing` (display names). */
+export function projectNameTaken(name: string, existing: readonly string[]): boolean {
+  const key = projectNameKey(name);
+  return existing.some((n) => projectNameKey(n) === key);
+}
+
+/**
+ * The first name in the sequence `format(1)`, `format(2)`, ... that is not taken. Deterministic:
+ * it depends only on the existing names. `format` produces the localized candidate, e.g.
+ * n => n === 1 ? 'Project (copy)' : `Project (copy ${n})`.
+ */
+export function firstAvailableName(
+  existing: readonly string[],
+  format: (n: number) => string,
+): string {
+  const taken = new Set(existing.map(projectNameKey));
+  for (let n = 1; ; n++) {
+    const candidate = format(n);
+    if (!taken.has(projectNameKey(candidate))) return candidate;
+  }
+}

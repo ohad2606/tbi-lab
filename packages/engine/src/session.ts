@@ -42,6 +42,7 @@ export type EngineErrorCode =
   | 'no_ground'
   | 'floating_circuit'
   | 'psu_shorted'
+  | 'psu_parallel'
   | 'invalid_parameter'
   | 'unsupported_component'
   | 'singular_circuit'
@@ -392,6 +393,22 @@ export class EngineSession {
           .map((sw) => sw.component.id);
         return this.fail({ code: 'psu_shorted', components: [e.component.id, ...path] });
       }
+    }
+    // Directly paralleled supplies: two enabled outputs across the same pair of electrical
+    // nodes (either polarity). With the lab-PSU model (ideal CV source / ideal CC source) this has
+    // no unique operating point: in CV-CV the current split is undetermined (equal setpoints) or
+    // the voltages contradict (unequal); with equal setpoints, which one is in CC is ambiguous.
+    // Only an all-CC state can be unique, and the solver cannot reach it from its CV start.
+    // Refused as an unsupported configuration: no current sharing, balancing resistance or
+    // source priority is invented.
+    const byTerminals = new Map<string, string[]>();
+    for (const e of elements) {
+      if (e.component.type !== 'instrument.lab_psu' || !e.active) continue;
+      const key = [shorts.find(e.nodes[0]), shorts.find(e.nodes[1])].sort().join('\u0000');
+      byTerminals.set(key, [...(byTerminals.get(key) ?? []), e.component.id]);
+    }
+    for (const ids of byTerminals.values()) {
+      if (ids.length > 1) return this.fail({ code: 'psu_parallel', components: ids });
     }
     if (!hasGround)
       return this.fail({ code: 'no_ground', components: elements.map((e) => e.component.id) });

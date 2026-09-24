@@ -245,7 +245,7 @@ describe('A8: topology diagnostics instead of cryptic solver failures', () => {
     expect(new EngineSession(b.psu(5, 0.1, false).snapshot()).solve().ok).toBe(true);
   });
 
-  it('contradictory supplies are reported as having no unique solution', () => {
+  it('contradictory directly-paralleled supplies are refused as an unsupported configuration', () => {
     const b = new Bench();
     const p2 = b.add('instrument.lab_psu');
     const r = b.add('component.resistor');
@@ -258,7 +258,8 @@ describe('A8: topology diagnostics instead of cryptic solver failures', () => {
       .set(p2, 'outputEnabled', true);
     const o = new EngineSession(b.snapshot()).solve();
     expect(o.ok).toBe(false);
-    if (!o.ok) expect(['singular_circuit', 'no_convergence']).toContain(o.error.code);
+    if (!o.ok)
+      expect(o.error).toMatchObject({ code: 'psu_parallel', components: ['PSU1', 'PSU2'] });
   });
 
   it('never throws: malformed parameters become invalid_parameter', () => {

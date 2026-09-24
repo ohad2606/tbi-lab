@@ -95,7 +95,9 @@ export const CATALOG: Record<ComponentTypeId, ComponentTypeDef> = {
       {
         kind: 'boolean',
         key: 'outputEnabled',
-        default: false,
+        // A newly created supply is ready to power the circuit (Product Alpha maintenance).
+        // Stored projects keep their own value: defaults apply only to new components.
+        default: true,
         labelKey: 'param.outputEnabled',
         live: true,
       },
