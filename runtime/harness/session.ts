@@ -41,7 +41,14 @@ export type Outcome =
    */
   | 'stalled'
   /** QEMU exited before completing the bridge handshake (bad arguments, bad firmware path...). */
-  | 'start_failed';
+  | 'start_failed'
+  /** Runtime R2: no bridge handshake within `startupTimeoutMs`; QEMU was terminated. */
+  | 'start_timeout'
+  /**
+   * Runtime R2: ended on request (`signal` aborted), or QEMU did not exit within `quitGraceMs`
+   * after the host asked it to quit. QEMU was terminated.
+   */
+  | 'terminated';
 
 export interface PadEvent {
   vns: bigint;
@@ -80,6 +87,17 @@ export interface SessionOptions {
     kind: 'malformed_reply' | 'invalid_pad' | 'drop_connection' | 'stop_replying';
   };
   onSpawn?(pid: number): void;
+  // ---- Runtime R2 (Session Host); all optional, defaults keep the R1 behaviour ----------------
+  /** Abort: terminate QEMU (SIGTERM, then SIGKILL after `killGraceMs`). Outcome 'terminated'. */
+  signal?: AbortSignal;
+  /** Environment for QEMU. Default: the host's (R1). The Session Host passes a minimal one. */
+  env?: NodeJS.ProcessEnv;
+  /** Wall time allowed from spawn to the bridge handshake. Default: none (R1). */
+  startupTimeoutMs?: number;
+  /** After `Q`, wall time allowed for QEMU to exit before it is killed. Default: none (R1). */
+  quitGraceMs?: number;
+  /** SIGTERM -> SIGKILL grace when terminating on abort. Default 0 (immediate SIGKILL). */
+  killGraceMs?: number;
 }
 
 export interface ResourceSample {
@@ -145,6 +163,9 @@ export function runSession(opts: SessionOptions, handler: SessionHandler): Promi
   let progressMark: { wall: number; vns: bigint } | null = null;
   let hostHolding = false;
   let stalled = false;
+  let startupTimedOut = false;
+  let terminated = false;
+  let quitForced = false;
   const started = performance.now();
 
   return new Promise<SessionResult>((resolve) => {
@@ -273,7 +294,10 @@ export function runSession(opts: SessionOptions, handler: SessionHandler): Promi
         `tbi-bridge,syncport=127.0.0.1:${port},tick-us=${tickUs}`,
         ...(opts.stressMainLoop ? ['-qmp', `unix:${qmp},server=on,wait=off`] : []),
       ];
-      child = spawn(opts.qemu, args, { stdio: ['ignore', 'ignore', 'pipe'] });
+      child = spawn(opts.qemu, args, {
+        stdio: ['ignore', 'ignore', 'pipe'],
+        ...(opts.env ? { env: opts.env } : {}),
+      });
       let spawnError: string | undefined;
       child.on('error', (e) => (spawnError = e.message));
       if (child.pid !== undefined) opts.onSpawn?.(child.pid);
@@ -287,7 +311,9 @@ export function runSession(opts: SessionOptions, handler: SessionHandler): Promi
         const now = performance.now();
         if (progressMark && now - progressMark.wall > (opts.stallTimeoutMs ?? 10_000)) {
           const progressed = lastVns - progressMark.vns >= STALL_MIN_PROGRESS_NS;
-          if (!progressed && quitAt === null && !hostHolding && !stalled) {
+          // Stalls count only after the handshake: before it, `startupTimeoutMs` (R2) or the
+          // wall timeout owns the failure.
+          if (!progressed && startupMs !== null && quitAt === null && !hostHolding && !stalled) {
             stalled = true;
             kill('SIGKILL');
           }
@@ -299,6 +325,39 @@ export function runSession(opts: SessionOptions, handler: SessionHandler): Promi
         timedOut = true;
         kill('SIGKILL');
       }, opts.wallTimeoutMs ?? 240_000);
+      // Runtime R2 controls.
+      const r2Timers: ReturnType<typeof setTimeout>[] = [];
+      if (opts.startupTimeoutMs !== undefined) {
+        r2Timers.push(
+          setTimeout(() => {
+            if (startupMs === null && !settled) {
+              startupTimedOut = true;
+              kill('SIGKILL');
+            }
+          }, opts.startupTimeoutMs),
+        );
+      }
+      const terminate = () => {
+        if (settled || terminated) return;
+        terminated = true;
+        const grace = opts.killGraceMs ?? 0;
+        if (grace <= 0) return kill('SIGKILL');
+        kill('SIGTERM');
+        r2Timers.push(setTimeout(() => !settled && kill('SIGKILL'), grace));
+      };
+      if (opts.signal?.aborted) terminate();
+      else opts.signal?.addEventListener('abort', terminate, { once: true });
+      if (opts.quitGraceMs !== undefined) {
+        const grace = opts.quitGraceMs;
+        const watch = setInterval(() => {
+          if (quitAt !== null && !settled && performance.now() - quitAt > grace) {
+            clearInterval(watch);
+            quitForced = true;
+            kill('SIGKILL');
+          }
+        }, 50);
+        r2Timers.push(watch as unknown as ReturnType<typeof setTimeout>);
+      }
 
       let stress: ReturnType<typeof setInterval> | null = null;
       if (opts.stressMainLoop) {
@@ -319,12 +378,16 @@ export function runSession(opts: SessionOptions, handler: SessionHandler): Promi
         settled = true;
         clearInterval(sampler);
         clearTimeout(timer);
+        for (const t of r2Timers) clearTimeout(t as ReturnType<typeof setTimeout>);
+        opts.signal?.removeEventListener('abort', terminate);
         if (stress) clearInterval(stress);
         server.close();
         (sock as Socket | null)?.destroy();
         const ended = performance.now();
         let outcome: Outcome;
         if (hostOutcome) outcome = hostOutcome;
+        else if (terminated || quitForced) outcome = 'terminated';
+        else if (startupTimedOut) outcome = 'start_timeout';
         else if (timedOut) outcome = 'timeout';
         else if (stalled) outcome = 'stalled';
         else if (code === 3) outcome = 'protocol_error_runtime';
