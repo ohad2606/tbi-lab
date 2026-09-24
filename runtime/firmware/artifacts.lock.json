@@ -1,0 +1,35 @@
+{
+  "comment": "Pinned firmware artifacts for the classic-ESP32 runtime tests (R1.5). Identity = sha256 of the 4 MiB flash image. Built reproducibly by runtime/provision/provision.sh from the pins in versions.env; a rebuild must reproduce these bytes exactly.",
+  "toolchain": {
+    "arduinoCli": "1.5.1",
+    "arduinoEsp32": "3.3.12",
+    "fqbn": "esp32:esp32:esp32:FlashMode=dio",
+    "sourceDateEpoch": 1767225600
+  },
+  "artifacts": {
+    "TbiBanks": {
+      "sha256": "47ab8c22a46325219fba511e83f502ea03c4d951756ab0c35791b2cc50e37a1c",
+      "source": "runtime/firmware/arduino/TbiBanks (provision.sh firmware)"
+    },
+    "TbiGpioProof": {
+      "sha256": "aad841ddd82e28f60476aa66015ff90d1a89401e9f89b052c5a712b622ad16b7",
+      "source": "runtime/firmware/arduino/TbiGpioProof (provision.sh firmware)"
+    },
+    "TbiNvs": {
+      "sha256": "8541dceb65a965d29d8248bd2feb24caad515d6900adb3dacc1a528ec6986740",
+      "source": "runtime/firmware/arduino/TbiNvs (provision.sh firmware)"
+    },
+    "TbiRestart": {
+      "sha256": "dff9944314390ad20a5b156fc12ee9dce571b48836e358598a71b0ae0dcf0126",
+      "source": "runtime/firmware/arduino/TbiRestart (provision.sh firmware)"
+    },
+    "TbiTiming": {
+      "sha256": "da7fc8fcea73b2ea01c2e5a7af0b872b78de58aa931c777936f69834eb57762a",
+      "source": "runtime/firmware/arduino/TbiTiming (provision.sh firmware)"
+    },
+    "micropython": {
+      "sha256": "23b8b47fdab856b33c44eb5911852e86c96dfeac2f1d2033dba8ddb6c681b0a1",
+      "source": "MicroPython ESP32_GENERIC v1.29.0 (e67ad6015a0a504c1fec9aa9bbf589d0432ed28e62546f4f8dd8a147f8bd95f6) at 0x1000 of a 4 MiB 0xff-filled image (provision.sh micropython)"
+    }
+  }
+}

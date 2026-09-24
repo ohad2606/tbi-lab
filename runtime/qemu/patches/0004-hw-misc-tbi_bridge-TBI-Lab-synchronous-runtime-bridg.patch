@@ -1,0 +1,419 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: TBI Lab runtime <runtime@tbi-lab.local>
+Date: Thu, 24 Sep 2026 12:00:00 +0000
+Subject: [PATCH] hw/misc/tbi_bridge: TBI Lab synchronous runtime bridge
+
+Connects the classic ESP32 GPIO pads and UART0 to one host process over a
+private blocking TCP stream. Every exchange runs on the raising thread
+under the BQL, so host responses apply at zero elapsed virtual time.
+Fails closed with distinct exit statuses on protocol errors (3) and host
+connection loss (4).
+---
+ hw/misc/meson.build  |   3 +-
+ hw/misc/tbi_bridge.c | 383 +++++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 385 insertions(+), 1 deletion(-)
+ create mode 100644 hw/misc/tbi_bridge.c
+
+diff --git a/hw/misc/meson.build b/hw/misc/meson.build
+index 4c2b5b3..c811a86 100644
+--- a/hw/misc/meson.build
++++ b/hw/misc/meson.build
+@@ -145,7 +145,8 @@ system_ss.add(when: 'CONFIG_XTENSA_ESP32', if_true: files(
+   'esp32_aes.c',
+   'esp32_ledc.c',
+   'esp32_flash_enc.c',
+-  'ssi_psram.c'
++  'ssi_psram.c',
++  'tbi_bridge.c'
+ ))
+ 
+ system_ss.add(when: 'CONFIG_RISCV_ESP32C3', if_true: files(
+diff --git a/hw/misc/tbi_bridge.c b/hw/misc/tbi_bridge.c
+new file mode 100644
+index 0000000..0862f2a
+--- /dev/null
++++ b/hw/misc/tbi_bridge.c
+@@ -0,0 +1,383 @@
++/*
++ * TBI Lab synchronous runtime bridge (runtime R1)
++ *
++ * Copyright (c) 2026 TBI Lab
++ *
++ * This program is free software; you can redistribute it and/or modify it under the terms of the
++ * GNU General Public License version 2 or (at your option) any later version.
++ *
++ * The QEMU-side half of the TBI Lab MCU <-> electrical loop. It connects the classic ESP32 GPIO
++ * pads and UART0 to ONE host process over a private, blocking TCP stream, and performs every
++ * exchange on the thread that raised it while holding the Big QEMU Lock. Nothing else in QEMU
++ * runs during an exchange, so host latency stretches wall time only: responses are applied
++ * before the next guest instruction, at zero elapsed virtual time (ADR-007). Board or circuit
++ * knowledge lives entirely in the host; this device only forwards.
++ *
++ * Wire protocol v1 (ASCII lines, '\n' terminated). QEMU -> host:
++ *   H tbi-bridge 1 <tick_ns>            once, at realize; host replies (commands...) C
++ *   G <vns> <pad> <drive> <level>       a pad's drive/level changed; host replies (commands...) C
++ *   T <vns>                             periodic virtual-time tick; host replies (commands...) C
++ *   S <vns> <hex>                       guest UART0 bytes (from chardev "tbi-serial"); no reply
++ * host -> QEMU, inside a reply:
++ *   I <pad> <level>                     apply an external logic level to a pad (immediately)
++ *   R <hex>                             queue bytes for the guest UART0 receiver (tick replies)
++ *   Q                                   request an orderly shutdown
++ *   C                                   end of reply; the guest continues
++ * <vns> is QEMU_CLOCK_VIRTUAL in ns (simulation time under -icount shift=3,sleep=off).
++ *
++ * Fail closed: a malformed or unexpected reply, or the loss of the host connection, terminates
++ * QEMU at once with a distinct exit status (EXIT_PROTOCOL / EXIT_PEER_LOST) and a diagnostic on
++ * stderr. There is no retry and no silent continuation. Guest serial output never goes to stderr;
++ * QEMU's own diagnostics never enter the protocol stream.
++ */
++
++#include "qemu/osdep.h"
++#include "qemu/error-report.h"
++#include "qemu/timer.h"
++#include "qemu/cutils.h"
++#include "qapi/error.h"
++#include "hw/qdev-properties.h"
++#include "hw/irq.h"
++#include "chardev/char.h"
++#include "sysemu/runstate.h"
++#include "qom/object.h"
++#include <netinet/in.h>
++#include <netinet/tcp.h>
++#include <arpa/inet.h>
++
++#define TYPE_TBI_BRIDGE "tbi-bridge"
++#define TYPE_CHARDEV_TBI_SERIAL "chardev-tbi-serial"
++
++/* Published by hw/gpio/esp32_gpio.c (referenced by name, no header dependency). */
++#define TBI_GPIO_QOM_TYPE "esp32.gpio"
++#define TBI_PAD_OUT "esp32-pad"
++#define TBI_PAD_IN "esp32-pad-in"
++#define TBI_PADS 40
++
++#define TBI_LINE_MAX 1024
++#define TBI_SERIAL_CHUNK 256
++#define TBI_RX_PENDING_MAX 4096
++
++#define EXIT_PROTOCOL 3
++#define EXIT_PEER_LOST 4
++
++struct TbiBridge {
++    DeviceState parent_obj;
++
++    char *syncport;
++    uint32_t tick_us;
++
++    int fd;
++    char in[TBI_LINE_MAX];
++    size_t in_len;
++    qemu_irq pad_in[TBI_PADS];
++    QEMUTimer *tick;
++    int64_t next_tick_ns;
++    uint8_t rx_pending[TBI_RX_PENDING_MAX];
++    size_t rx_len;
++};
++
++OBJECT_DECLARE_SIMPLE_TYPE(TbiBridge, TBI_BRIDGE)
++
++/* The single bridge of this QEMU process (one session = one process). */
++static TbiBridge *tbi_bridge;
++/* The guest serial chardev, if one was created (-chardev tbi-serial,id=...). */
++static Chardev *tbi_serial;
++
++static void G_GNUC_NORETURN tbi_fail(int status, const char *what)
++{
++    error_report("tbi-bridge: %s; terminating (fail closed)", what);
++    exit(status);
++}
++
++static int64_t tbi_now(void)
++{
++    return qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
++}
++
++static void tbi_send(TbiBridge *s, const char *buf, size_t len)
++{
++    while (len) {
++        ssize_t n = send(s->fd, buf, len, MSG_NOSIGNAL);
++        if (n < 0 && errno == EINTR) {
++            continue;
++        }
++        if (n <= 0) {
++            tbi_fail(EXIT_PEER_LOST, "host connection lost while sending");
++        }
++        buf += n;
++        len -= (size_t)n;
++    }
++}
++
++/* Read one reply line (blocking). The host is the only other party, so it may not stall us. */
++static void tbi_read_line(TbiBridge *s, char *line)
++{
++    for (;;) {
++        char *nl = memchr(s->in, '\n', s->in_len);
++        if (nl) {
++            size_t n = (size_t)(nl - s->in);
++            memcpy(line, s->in, n);
++            line[n] = '\0';
++            memmove(s->in, nl + 1, s->in_len - n - 1);
++            s->in_len -= n + 1;
++            return;
++        }
++        if (s->in_len == sizeof(s->in)) {
++            tbi_fail(EXIT_PROTOCOL, "reply line too long");
++        }
++        ssize_t r = recv(s->fd, s->in + s->in_len, sizeof(s->in) - s->in_len, 0);
++        if (r < 0 && errno == EINTR) {
++            continue;
++        }
++        if (r <= 0) {
++            tbi_fail(EXIT_PEER_LOST, "host connection lost while waiting for a reply");
++        }
++        s->in_len += (size_t)r;
++    }
++}
++
++static int tbi_hex(char c)
++{
++    if (c >= '0' && c <= '9') {
++        return c - '0';
++    }
++    if (c >= 'a' && c <= 'f') {
++        return c - 'a' + 10;
++    }
++    return -1;
++}
++
++static void tbi_flush_rx(TbiBridge *s)
++{
++    while (s->rx_len && tbi_serial) {
++        int room = qemu_chr_be_can_write(tbi_serial);
++        if (room <= 0) {
++            return;
++        }
++        size_t n = MIN((size_t)room, s->rx_len);
++        qemu_chr_be_write(tbi_serial, s->rx_pending, n);
++        memmove(s->rx_pending, s->rx_pending + n, s->rx_len - n);
++        s->rx_len -= n;
++    }
++}
++
++/* Process host commands until 'C'. Anything unexpected ends the session. */
++static void tbi_reply(TbiBridge *s, bool allow_rx)
++{
++    char line[TBI_LINE_MAX];
++
++    for (;;) {
++        tbi_read_line(s, line);
++        if (strcmp(line, "C") == 0) {
++            return;
++        }
++        if (strcmp(line, "Q") == 0) {
++            qemu_system_shutdown_request(SHUTDOWN_CAUSE_HOST_QMP_QUIT);
++            continue;
++        }
++        if (line[0] == 'I' && line[1] == ' ') {
++            unsigned pad, level;
++            char tail;
++            if (sscanf(line + 2, "%u %u%c", &pad, &level, &tail) != 2 || pad >= TBI_PADS ||
++                level > 1) {
++                tbi_fail(EXIT_PROTOCOL, "malformed input command");
++            }
++            qemu_set_irq(s->pad_in[pad], (int)level);
++            continue;
++        }
++        if (line[0] == 'R' && line[1] == ' ' && allow_rx) {
++            const char *h = line + 2;
++            size_t n = strlen(h);
++            if (n == 0 || n % 2 || s->rx_len + n / 2 > sizeof(s->rx_pending)) {
++                tbi_fail(EXIT_PROTOCOL, "malformed or oversized serial input");
++            }
++            for (size_t i = 0; i < n; i += 2) {
++                int hi = tbi_hex(h[i]), lo = tbi_hex(h[i + 1]);
++                if (hi < 0 || lo < 0) {
++                    tbi_fail(EXIT_PROTOCOL, "malformed serial input");
++                }
++                s->rx_pending[s->rx_len++] = (uint8_t)(hi << 4 | lo);
++            }
++            continue;
++        }
++        tbi_fail(EXIT_PROTOCOL, "unexpected reply from host");
++    }
++}
++
++static void tbi_exchange(TbiBridge *s, const char *frame, bool allow_rx)
++{
++    tbi_send(s, frame, strlen(frame));
++    tbi_reply(s, allow_rx);
++    tbi_flush_rx(s);
++}
++
++/* A pad changed: (drive << 1) | level, from hw/gpio/esp32_gpio.c. */
++static void tbi_pad_changed(void *opaque, int pad, int state)
++{
++    TbiBridge *s = TBI_BRIDGE(opaque);
++    char frame[96];
++
++    snprintf(frame, sizeof(frame), "G %" PRId64 " %d %d %d\n", tbi_now(), pad, (state >> 1) & 1,
++             state & 1);
++    tbi_exchange(s, frame, false);
++}
++
++static void tbi_tick(void *opaque)
++{
++    TbiBridge *s = TBI_BRIDGE(opaque);
++    char frame[48];
++
++    snprintf(frame, sizeof(frame), "T %" PRId64 "\n", tbi_now());
++    tbi_exchange(s, frame, true);
++    /* Ticks sit on exact multiples of the quantum, independent of when this one ran. */
++    s->next_tick_ns += (int64_t)s->tick_us * 1000;
++    timer_mod(s->tick, s->next_tick_ns);
++}
++
++/* Guest UART0 output, stamped with simulation time, in the same ordered stream. */
++static void tbi_serial_out(const uint8_t *buf, int len)
++{
++    static const char digits[] = "0123456789abcdef";
++    char frame[48 + 2 * TBI_SERIAL_CHUNK];
++
++    if (!tbi_bridge) {
++        return;
++    }
++    while (len > 0) {
++        int n = MIN(len, TBI_SERIAL_CHUNK);
++        int off = snprintf(frame, sizeof(frame), "S %" PRId64 " ", tbi_now());
++        for (int i = 0; i < n; i++) {
++            frame[off++] = digits[buf[i] >> 4];
++            frame[off++] = digits[buf[i] & 15];
++        }
++        frame[off++] = '\n';
++        tbi_send(tbi_bridge, frame, (size_t)off);
++        buf += n;
++        len -= n;
++    }
++}
++
++static int tbi_connect(const char *spec, Error **errp)
++{
++    unsigned port;
++    char host[64];
++    struct sockaddr_in sa = { .sin_family = AF_INET };
++
++    if (sscanf(spec, "%63[^:]:%u", host, &port) != 2 || port == 0 || port > 65535 ||
++        inet_pton(AF_INET, host, &sa.sin_addr) != 1) {
++        error_setg(errp, TYPE_TBI_BRIDGE ": syncport must be <ipv4>:<port>");
++        return -1;
++    }
++    sa.sin_port = htons((uint16_t)port);
++    int fd = socket(AF_INET, SOCK_STREAM, 0);
++    if (fd < 0 || connect(fd, (struct sockaddr *)&sa, sizeof(sa)) < 0) {
++        error_setg_errno(errp, errno, TYPE_TBI_BRIDGE ": cannot connect to %s", spec);
++        if (fd >= 0) {
++            close(fd);
++        }
++        return -1;
++    }
++    int one = 1;
++    setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
++    return fd;
++}
++
++static void tbi_bridge_realize(DeviceState *dev, Error **errp)
++{
++    TbiBridge *s = TBI_BRIDGE(dev);
++    Object *obj;
++    DeviceState *gpio;
++    char hello[64];
++
++    if (tbi_bridge) {
++        error_setg(errp, TYPE_TBI_BRIDGE ": only one bridge per QEMU process");
++        return;
++    }
++    if (!s->syncport || s->tick_us == 0) {
++        error_setg(errp, TYPE_TBI_BRIDGE ": syncport and a non-zero tick-us are required");
++        return;
++    }
++    obj = object_resolve_path_type("", TBI_GPIO_QOM_TYPE, NULL);
++    if (!obj) {
++        error_setg(errp, TYPE_TBI_BRIDGE ": no " TBI_GPIO_QOM_TYPE " device in this machine");
++        return;
++    }
++    gpio = DEVICE(obj);
++
++    s->fd = tbi_connect(s->syncport, errp);
++    if (s->fd < 0) {
++        return;
++    }
++    tbi_bridge = s;
++
++    qdev_init_gpio_in_named(dev, tbi_pad_changed, "pad", TBI_PADS);
++    for (int i = 0; i < TBI_PADS; i++) {
++        qdev_connect_gpio_out_named(gpio, TBI_PAD_OUT, i, qdev_get_gpio_in_named(dev, "pad", i));
++        s->pad_in[i] = qdev_get_gpio_in_named(gpio, TBI_PAD_IN, i);
++    }
++
++    /* Initial state: the host applies its initial pad levels before the first instruction. */
++    snprintf(hello, sizeof(hello), "H tbi-bridge 1 %" PRIu64 "\n", (uint64_t)s->tick_us * 1000);
++    tbi_exchange(s, hello, false);
++
++    s->tick = timer_new_ns(QEMU_CLOCK_VIRTUAL, tbi_tick, s);
++    s->next_tick_ns = (int64_t)s->tick_us * 1000;
++    timer_mod(s->tick, s->next_tick_ns);
++}
++
++static Property tbi_bridge_properties[] = {
++    DEFINE_PROP_STRING("syncport", TbiBridge, syncport),
++    /* The host command quantum (ADR-007): 1000 us = 1 ms of simulation time in V1. */
++    DEFINE_PROP_UINT32("tick-us", TbiBridge, tick_us, 1000),
++    DEFINE_PROP_END_OF_LIST(),
++};
++
++static void tbi_bridge_class_init(ObjectClass *klass, void *data)
++{
++    DeviceClass *dc = DEVICE_CLASS(klass);
++
++    dc->realize = tbi_bridge_realize;
++    dc->user_creatable = true;
++    dc->desc = "TBI Lab synchronous runtime bridge";
++    device_class_set_props(dc, tbi_bridge_properties);
++}
++
++/* ---- guest serial chardev: -chardev tbi-serial,id=X -serial chardev:X ---------------------- */
++
++static int tbi_serial_write(Chardev *chr, const uint8_t *buf, int len)
++{
++    tbi_serial_out(buf, len);
++    return len;
++}
++
++static void tbi_serial_open(Chardev *chr, ChardevBackend *backend, bool *be_opened,
++                            Error **errp)
++{
++    tbi_serial = chr;
++}
++
++static void tbi_serial_class_init(ObjectClass *oc, void *data)
++{
++    ChardevClass *cc = CHARDEV_CLASS(oc);
++
++    cc->open = tbi_serial_open;
++    cc->chr_write = tbi_serial_write;
++}
++
++static const TypeInfo tbi_types[] = {
++    {
++        .name = TYPE_TBI_BRIDGE,
++        .parent = TYPE_DEVICE,
++        .instance_size = sizeof(TbiBridge),
++        .class_init = tbi_bridge_class_init,
++    },
++    {
++        .name = TYPE_CHARDEV_TBI_SERIAL,
++        .parent = TYPE_CHARDEV,
++        .instance_size = sizeof(Chardev),
++        .class_init = tbi_serial_class_init,
++    },
++};
++
++DEFINE_TYPES(tbi_types)

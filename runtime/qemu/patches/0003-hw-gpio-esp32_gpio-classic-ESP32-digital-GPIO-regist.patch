@@ -1,0 +1,370 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: TBI Lab runtime <runtime@tbi-lab.local>
+Date: Thu, 24 Sep 2026 12:00:00 +0000
+Subject: [PATCH] hw/gpio/esp32_gpio: classic ESP32 digital GPIO register model
+
+TBI Lab (runtime R1). Replaces the upstream stub's behaviour for the classic
+esp32 machine only (property classic-registers, set by hw/xtensa/esp32.c; the
+ESP32-S3/C3 subclasses keep the stub). Written from the ESP32 Technical
+Reference Manual and ESP-IDF soc/gpio_reg.h offsets:
+
+- GPIO_OUT/OUT1, ENABLE/ENABLE1 with their W1TS/W1TC aliases, IN/IN1,
+  STATUS/STATUS1 and STRAP, for all 40 pads (both banks, incl. GPIO32/33);
+- a pad drives only when output-enabled and output-capable (GPIO34..39 are
+  input-only; non-existent pads never drive); undriven pads read the applied
+  external level;
+- one 'esp32-pad' line per pad publishes (drive << 1 | level) on change, and
+  one 'esp32-pad-in' line per pad accepts the external level.
+
+Not modelled: GPIO interrupts, GPIO-matrix peripheral routing, IO_MUX, pulls,
+open-drain, drive strength.
+
+Signed-off-by: TBI Lab <runtime@tbi-lab.local>
+---
+ hw/gpio/esp32_gpio.c         | 200 +++++++++++++++++++++++++++++++++++
+ hw/xtensa/esp32.c            |   2 +
+ include/hw/gpio/esp32_gpio.h |  52 +++++++++
+ 3 files changed, 254 insertions(+)
+
+diff --git a/hw/gpio/esp32_gpio.c b/hw/gpio/esp32_gpio.c
+index 4fea1f5..4db6569 100644
+--- a/hw/gpio/esp32_gpio.c
++++ b/hw/gpio/esp32_gpio.c
+@@ -2,10 +2,29 @@
+  * ESP32 GPIO emulation
+  *
+  * Copyright (c) 2019 Espressif Systems (Shanghai) Co. Ltd.
++ * Classic ESP32 register model: Copyright (c) 2026 TBI Lab
+  *
+  * This program is free software; you can redistribute it and/or modify
+  * it under the terms of the GNU General Public License version 2 or
+  * (at your option) any later version.
++ *
++ * TBI Lab (runtime R1): the classic ESP32 digital GPIO register model, written from the ESP32
++ * Technical Reference Manual ("IO_MUX and GPIO Matrix": GPIO_OUT/OUT1, ENABLE/ENABLE1, the
++ * W1TS/W1TC set/clear aliases, IN/IN1, STATUS/STATUS1, STRAP) and the register offsets of ESP-IDF
++ * soc/gpio_reg.h. It is enabled only when the "classic-registers" property is set (the esp32
++ * machine does); without it this device keeps the upstream stub behaviour, which the ESP32-S3/C3
++ * subclasses rely on.
++ *
++ * Electrical meaning, not only register storage:
++ *   - a pad drives the net only while its output enable is set AND it has an output driver.
++ *     GPIO34..39 have none (TRM: input-only), and pads that do not exist on the chip
++ *     (20, 24, 28..31) never drive;
++ *   - a pad that is not driving is high impedance: GPIO_IN then reflects the externally applied
++ *     level (the "esp32-pad-in" lines). A driving pad reads back its own output level;
++ *   - every change of a pad's (drive, level) is published once, on its "esp32-pad" line.
++ * Not modelled (documented runtime limitations): GPIO interrupts (STATUS bits are storage only),
++ * the GPIO matrix routing of peripheral signals (FUNCn_IN/OUT_SEL are storage only), IO_MUX pad
++ * functions, internal pull-ups/pull-downs, open-drain mode and drive strength.
+  */
+ 
+ #include "qemu/osdep.h"
+@@ -19,12 +38,159 @@
+ #include "hw/qdev-properties.h"
+ #include "hw/gpio/esp32_gpio.h"
+ 
++/* Pads that exist on the classic ESP32 (datasheet pin list): 0-19, 21-23, 25-27, 32-39. */
++#define PADS_EXIST      0xff0eefffffULL
++/* Pads with an output driver: the existing pads except the input-only GPIO34..39. */
++#define PADS_OUTPUT     (PADS_EXIST & ~0xfc00000000ULL)
++
++static uint64_t esp32_gpio_levels(Esp32GpioState *s)
++{
++    return (uint64_t)s->out | ((uint64_t)(s->out1 & 0xff) << 32);
++}
++
++static uint64_t esp32_gpio_drivers(Esp32GpioState *s)
++{
++    return ((uint64_t)s->enable | ((uint64_t)(s->enable1 & 0xff) << 32)) & PADS_OUTPUT;
++}
++
++/* Publish every pad whose (drive, level) changed, in ascending pad order. */
++static void esp32_gpio_update_pads(Esp32GpioState *s)
++{
++    uint64_t levels = esp32_gpio_levels(s);
++    uint64_t drivers = esp32_gpio_drivers(s);
++
++    for (int i = 0; i < ESP32_GPIO_PADS; i++) {
++        uint8_t drive = (drivers >> i) & 1;
++        uint8_t state = (drive << 1) | (drive ? ((levels >> i) & 1) : 0);
++        if (state != s->pad_state[i]) {
++            s->pad_state[i] = state;
++            qemu_set_irq(s->pad[i], state);
++        }
++    }
++}
++
++/* GPIO_IN / GPIO_IN1: a driving pad reads its own output, any other pad the applied level. */
++static uint64_t esp32_gpio_inputs(Esp32GpioState *s)
++{
++    uint64_t drivers = esp32_gpio_drivers(s);
++    return ((esp32_gpio_levels(s) & drivers) | (s->ext_in & ~drivers)) & PADS_EXIST;
++}
++
++static uint64_t esp32_gpio_classic_read(Esp32GpioState *s, hwaddr addr)
++{
++    switch (addr) {
++    case A_GPIO_OUT:
++        return s->out;
++    case A_GPIO_OUT1:
++        return s->out1 & 0xff;
++    case A_GPIO_ENABLE:
++        return s->enable;
++    case A_GPIO_ENABLE1:
++        return s->enable1 & 0xff;
++    case A_GPIO_STRAP:
++        return s->strap_mode;
++    case A_GPIO_IN:
++        return (uint32_t)esp32_gpio_inputs(s);
++    case A_GPIO_IN1:
++        return (uint32_t)(esp32_gpio_inputs(s) >> 32) & 0xff;
++    case A_GPIO_STATUS:
++        return s->status;
++    case A_GPIO_STATUS1:
++        return s->status1 & 0xff;
++    case A_GPIO_OUT_W1TS:
++    case A_GPIO_OUT_W1TC:
++    case A_GPIO_OUT1_W1TS:
++    case A_GPIO_OUT1_W1TC:
++    case A_GPIO_ENABLE_W1TS:
++    case A_GPIO_ENABLE_W1TC:
++    case A_GPIO_ENABLE1_W1TS:
++    case A_GPIO_ENABLE1_W1TC:
++    case A_GPIO_STATUS_W1TS:
++    case A_GPIO_STATUS_W1TC:
++    case A_GPIO_STATUS1_W1TS:
++    case A_GPIO_STATUS1_W1TC:
++        return 0; /* write-only aliases */
++    default:
++        return s->regs[addr / 4];
++    }
++}
+ 
++static void esp32_gpio_classic_write(Esp32GpioState *s, hwaddr addr, uint32_t v)
++{
++    switch (addr) {
++    case A_GPIO_OUT:
++        s->out = v;
++        break;
++    case A_GPIO_OUT_W1TS:
++        s->out |= v;
++        break;
++    case A_GPIO_OUT_W1TC:
++        s->out &= ~v;
++        break;
++    case A_GPIO_OUT1:
++        s->out1 = v & 0xff;
++        break;
++    case A_GPIO_OUT1_W1TS:
++        s->out1 |= v & 0xff;
++        break;
++    case A_GPIO_OUT1_W1TC:
++        s->out1 &= ~v;
++        break;
++    case A_GPIO_ENABLE:
++        s->enable = v;
++        break;
++    case A_GPIO_ENABLE_W1TS:
++        s->enable |= v;
++        break;
++    case A_GPIO_ENABLE_W1TC:
++        s->enable &= ~v;
++        break;
++    case A_GPIO_ENABLE1:
++        s->enable1 = v & 0xff;
++        break;
++    case A_GPIO_ENABLE1_W1TS:
++        s->enable1 |= v & 0xff;
++        break;
++    case A_GPIO_ENABLE1_W1TC:
++        s->enable1 &= ~v;
++        break;
++    case A_GPIO_STRAP:
++    case A_GPIO_IN:
++    case A_GPIO_IN1:
++        return; /* read-only */
++    case A_GPIO_STATUS:
++        s->status = v;
++        return;
++    case A_GPIO_STATUS_W1TS:
++        s->status |= v;
++        return;
++    case A_GPIO_STATUS_W1TC:
++        s->status &= ~v;
++        return;
++    case A_GPIO_STATUS1:
++        s->status1 = v & 0xff;
++        return;
++    case A_GPIO_STATUS1_W1TS:
++        s->status1 |= v & 0xff;
++        return;
++    case A_GPIO_STATUS1_W1TC:
++        s->status1 &= ~v;
++        return;
++    default:
++        s->regs[addr / 4] = v;
++        return;
++    }
++    esp32_gpio_update_pads(s);
++}
+ 
+ static uint64_t esp32_gpio_read(void *opaque, hwaddr addr, unsigned int size)
+ {
+     Esp32GpioState *s = ESP32_GPIO(opaque);
+     uint64_t r = 0;
++
++    if (s->classic) {
++        return esp32_gpio_classic_read(s, addr & ~3);
++    }
+     switch (addr) {
+     case A_GPIO_STRAP:
+         r = s->strap_mode;
+@@ -39,6 +205,26 @@ static uint64_t esp32_gpio_read(void *opaque, hwaddr addr, unsigned int size)
+ static void esp32_gpio_write(void *opaque, hwaddr addr,
+                        uint64_t value, unsigned int size)
+ {
++    Esp32GpioState *s = ESP32_GPIO(opaque);
++
++    if (s->classic) {
++        esp32_gpio_classic_write(s, addr & ~3, (uint32_t)value);
++    }
++}
++
++/* An external level applied to a pad (e.g. by the TBI Lab bridge from the electrical solve). */
++static void esp32_gpio_pad_in(void *opaque, int pad, int level)
++{
++    Esp32GpioState *s = ESP32_GPIO(opaque);
++
++    if (pad < 0 || pad >= ESP32_GPIO_PADS) {
++        return;
++    }
++    if (level) {
++        s->ext_in |= 1ULL << pad;
++    } else {
++        s->ext_in &= ~(1ULL << pad);
++    }
+ }
+ 
+ static const MemoryRegionOps uart_ops = {
+@@ -49,6 +235,17 @@ static const MemoryRegionOps uart_ops = {
+ 
+ static void esp32_gpio_reset_hold(Object *obj, ResetType type)
+ {
++    Esp32GpioState *s = ESP32_GPIO(obj);
++
++    if (!s->classic) {
++        return;
++    }
++    /* Registers return to their reset values; the externally applied levels are the outside
++     * world and are kept. Pads that were driving are reported as released. */
++    s->out = s->out1 = s->enable = s->enable1 = 0;
++    s->status = s->status1 = 0;
++    memset(s->regs, 0, sizeof(s->regs));
++    esp32_gpio_update_pads(s);
+ }
+ 
+ static void esp32_gpio_realize(DeviceState *dev, Error **errp)
+@@ -67,12 +264,15 @@ static void esp32_gpio_init(Object *obj)
+                           TYPE_ESP32_GPIO, 0x1000);
+     sysbus_init_mmio(sbd, &s->iomem);
+     sysbus_init_irq(sbd, &s->irq);
++    qdev_init_gpio_out_named(DEVICE(obj), s->pad, ESP32_GPIO_PAD_OUT, ESP32_GPIO_PADS);
++    qdev_init_gpio_in_named(DEVICE(obj), esp32_gpio_pad_in, ESP32_GPIO_PAD_IN, ESP32_GPIO_PADS);
+ }
+ 
+ static Property esp32_gpio_properties[] = {
+     /* The strap_mode needs to be explicitly set in the instance init, thus, set
+      * the default value to 0. */
+     DEFINE_PROP_UINT32("strap_mode", Esp32GpioState, strap_mode, 0),
++    DEFINE_PROP_BOOL("classic-registers", Esp32GpioState, classic, false),
+     DEFINE_PROP_END_OF_LIST(),
+ };
+ 
+diff --git a/hw/xtensa/esp32.c b/hw/xtensa/esp32.c
+index 8e98eb6..e811927 100644
+--- a/hw/xtensa/esp32.c
++++ b/hw/xtensa/esp32.c
+@@ -429,6 +429,8 @@ static void esp32_soc_realize(DeviceState *dev, Error **errp)
+                                     qdev_get_gpio_in_named(dev, ESP32_RTC_CPU_STALL_GPIO, i));
+     }
+ 
++    /* TBI Lab (R1): the classic ESP32 digital GPIO register model (hw/gpio/esp32_gpio.c). */
++    object_property_set_bool(OBJECT(&s->gpio), "classic-registers", true, &error_fatal);
+     qdev_realize(DEVICE(&s->gpio), &s->periph_bus, &error_fatal);
+     esp32_soc_add_periph_device(sys_mem, &s->gpio, DR_REG_GPIO_BASE);
+ 
+diff --git a/include/hw/gpio/esp32_gpio.h b/include/hw/gpio/esp32_gpio.h
+index 163b41a..74d3f98 100644
+--- a/include/hw/gpio/esp32_gpio.h
++++ b/include/hw/gpio/esp32_gpio.h
+@@ -9,17 +9,69 @@
+ #define ESP32_GPIO_GET_CLASS(obj)   OBJECT_GET_CLASS(Esp32GpioClass, obj, TYPE_ESP32_GPIO)
+ #define ESP32_GPIO_CLASS(klass)     OBJECT_CLASS_CHECK(Esp32GpioClass, klass, TYPE_ESP32_GPIO)
+ 
++/*
++ * Classic ESP32 GPIO register offsets (ESP32 Technical Reference Manual, chapter "IO_MUX and GPIO
++ * Matrix", GPIO register summary; ESP-IDF components/soc/esp32/register/soc/gpio_reg.h).
++ */
++REG32(GPIO_OUT, 0x0004)
++REG32(GPIO_OUT_W1TS, 0x0008)
++REG32(GPIO_OUT_W1TC, 0x000c)
++REG32(GPIO_OUT1, 0x0010)
++REG32(GPIO_OUT1_W1TS, 0x0014)
++REG32(GPIO_OUT1_W1TC, 0x0018)
++REG32(GPIO_ENABLE, 0x0020)
++REG32(GPIO_ENABLE_W1TS, 0x0024)
++REG32(GPIO_ENABLE_W1TC, 0x0028)
++REG32(GPIO_ENABLE1, 0x002c)
++REG32(GPIO_ENABLE1_W1TS, 0x0030)
++REG32(GPIO_ENABLE1_W1TC, 0x0034)
+ REG32(GPIO_STRAP, 0x0038)
++REG32(GPIO_IN, 0x003c)
++REG32(GPIO_IN1, 0x0040)
++REG32(GPIO_STATUS, 0x0044)
++REG32(GPIO_STATUS_W1TS, 0x0048)
++REG32(GPIO_STATUS_W1TC, 0x004c)
++REG32(GPIO_STATUS1, 0x0050)
++REG32(GPIO_STATUS1_W1TS, 0x0054)
++REG32(GPIO_STATUS1_W1TC, 0x0058)
+ 
+ #define ESP32_STRAP_MODE_FLASH_BOOT 0x12
+ #define ESP32_STRAP_MODE_UART_BOOT  0x0f
+ 
++/* Classic ESP32 pads, GPIO0..GPIO39. */
++#define ESP32_GPIO_PADS 40
++/*
++ * Named GPIO lines of the classic register model (TBI Lab, R1):
++ *   out "esp32-pad"    one line per pad; value = (drive << 1) | level. `drive` is 1 only when the
++ *                      pad's output driver is enabled AND the pad has one (GPIO34..39 are
++ *                      input-only). Emitted only on change, in ascending pad order.
++ *   in  "esp32-pad-in" one line per pad; the externally applied logic level of the pad.
++ */
++#define ESP32_GPIO_PAD_OUT "esp32-pad"
++#define ESP32_GPIO_PAD_IN  "esp32-pad-in"
++
+ typedef struct Esp32GpioState {
+     SysBusDevice parent_obj;
+ 
+     MemoryRegion iomem;
+     qemu_irq irq;
+     uint32_t strap_mode;
++
++    /*
++     * Classic ESP32 register model, enabled by the "classic-registers" property (set by the
++     * esp32 machine only, so the ESP32-S3/C3 subclasses keep the upstream stub behaviour).
++     */
++    bool classic;
++    uint32_t out;      /* GPIO_OUT: pads 0..31 */
++    uint32_t out1;     /* GPIO_OUT1: pads 32..39 in bits 0..7 */
++    uint32_t enable;   /* GPIO_ENABLE */
++    uint32_t enable1;  /* GPIO_ENABLE1 */
++    uint32_t status;
++    uint32_t status1;
++    uint64_t ext_in;   /* externally applied pad levels, bit N = pad N */
++    uint8_t pad_state[ESP32_GPIO_PADS]; /* last (drive << 1 | level) reported per pad */
++    uint32_t regs[0x1000 / 4];          /* plain storage for the other registers */
++    qemu_irq pad[ESP32_GPIO_PADS];
+ } Esp32GpioState;
+ 
+ typedef struct Esp32GpioClass {

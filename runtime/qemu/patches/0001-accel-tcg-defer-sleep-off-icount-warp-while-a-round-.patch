@@ -1,0 +1,87 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: TBI Lab runtime <runtime@tbi-lab.local>
+Date: Thu, 24 Sep 2026 12:00:00 +0000
+Subject: [PATCH] accel/tcg: defer sleep=off icount warp while a round-robin
+ slice is in flight
+
+TBI Lab determinism fix (Sprint 1, carried to the maintained baseline in R1).
+With -icount sleep=off the main loop could warp QEMU_CLOCK_VIRTUAL while a
+round-robin vCPU slice was executing, using a 'now' that excluded the slice's
+unaccounted instructions; the warp then overshot by a host-timing-dependent
+amount. The warp is refused while the slice is in flight; the rr thread already
+notifies the main loop once all CPUs are idle and accounted.
+
+Signed-off-by: TBI Lab <runtime@tbi-lab.local>
+---
+ accel/tcg/icount-common.c    | 13 +++++++++++++
+ accel/tcg/tcg-accel-ops-rr.c |  2 ++
+ include/sysemu/cpu-timers.h  |  5 +++++
+ 3 files changed, 20 insertions(+)
+
+diff --git a/accel/tcg/icount-common.c b/accel/tcg/icount-common.c
+index 30bf850..ce4db22 100644
+--- a/accel/tcg/icount-common.c
++++ b/accel/tcg/icount-common.c
+@@ -288,6 +288,8 @@ static void icount_timer_cb(void *opaque)
+     icount_warp_rt();
+ }
+ 
++bool icount_rr_slice_in_flight;
++
+ void icount_start_warp_timer(void)
+ {
+     int64_t clock;
+@@ -295,6 +297,17 @@ void icount_start_warp_timer(void)
+ 
+     assert(icount_enabled());
+ 
++    /*
++     * TBI: with sleep=off the warp adds (next deadline - now) to the bias. While a round-robin
++     * slice is in flight, a caller outside the vCPU thread (e.g. the main loop) reads a "now"
++     * that excludes the slice's executed-but-unaccounted instructions, so the warp overshoots
++     * by a host-timing-dependent amount. Defer: once the slice is accounted and all CPUs are
++     * idle, the rr thread notifies the main loop, which warps from an exact clock.
++     */
++    if (!icount_sleep && icount_rr_slice_in_flight) {
++        return;
++    }
++
+     /*
+      * Nothing to do if the VM is stopped: QEMU_CLOCK_VIRTUAL timers
+      * do not fire, so computing the deadline does not make sense.
+diff --git a/accel/tcg/tcg-accel-ops-rr.c b/accel/tcg/tcg-accel-ops-rr.c
+index 8ebadf8..2ba4fdf 100644
+--- a/accel/tcg/tcg-accel-ops-rr.c
++++ b/accel/tcg/tcg-accel-ops-rr.c
+@@ -254,6 +254,7 @@ static void *rr_cpu_thread_fn(void *arg)
+             if (cpu_can_run(cpu)) {
+                 int r;
+ 
++                icount_rr_slice_in_flight = icount_enabled();
+                 bql_unlock();
+                 if (icount_enabled()) {
+                     icount_prepare_for_run(cpu, cpu_budget);
+@@ -263,6 +264,7 @@ static void *rr_cpu_thread_fn(void *arg)
+                     icount_process_data(cpu);
+                 }
+                 bql_lock();
++                icount_rr_slice_in_flight = false;
+ 
+                 if (r == EXCP_DEBUG) {
+                     cpu_handle_guest_debug(cpu);
+diff --git a/include/sysemu/cpu-timers.h b/include/sysemu/cpu-timers.h
+index 7bfa960..441c3d4 100644
+--- a/include/sysemu/cpu-timers.h
++++ b/include/sysemu/cpu-timers.h
+@@ -70,6 +70,11 @@ int64_t icount_round(int64_t count);
+ 
+ /* if the CPUs are idle, start accounting real time to virtual clock. */
+ void icount_start_warp_timer(void);
++/*
++ * TBI: true (under the BQL) while the round-robin vCPU thread is executing a slice whose
++ * instructions are not yet accounted to QEMU_CLOCK_VIRTUAL. See icount_start_warp_timer().
++ */
++extern bool icount_rr_slice_in_flight;
+ void icount_account_warp_timer(void);
+ void icount_notify_exit(void);
+ 
