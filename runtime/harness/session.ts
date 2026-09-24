@@ -207,7 +207,7 @@ export function runSession(opts: SessionOptions, handler: SessionHandler): Promi
         return null;
       }
       if (quitAt !== null) return 'C\n'; // shutting down: let QEMU finish, change nothing
-      let cmds: Command[] = [];
+      let cmds: Command[];
       if (f.type === 'H') {
         if (f.version !== 1) throw new ProtocolError(`unsupported bridge protocol ${f.version}`);
         if (f.tickNs !== BigInt(tickUs) * 1000n) throw new ProtocolError('tick mismatch');

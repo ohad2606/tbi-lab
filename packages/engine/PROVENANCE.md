@@ -106,3 +106,15 @@ cards. The solver never uses them. They only let the product warn, never change 
 Resistors have no documented rating in V1 (no power-rating parameter exists), so they are
 never flagged. Adding one would need a parameter and a decision about what rating a generic
 resistor has, which is a PM decision, not an invented limit.
+
+## Added in runtime R1
+
+| Production file    | Source                                                                                            | Changes                                                                                                |
+| ------------------ | ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `src/esp32Gpio.ts` | `experiments/gate-c-bridge/src/pinModel.ts` (Gate C, tag `sprint-1-complete`; approved pin model) | Provenance header; imports point at `./devices.js`; Prettier formatting. Constants and logic unchanged |
+
+The classic-ESP32 pin model (output 3.3 V behind 16.5 Ω high / 17.679 Ω low, input leakage,
+V_IL 0.825 V, V_IH 2.475 V with the previous level held in between) is used by the MCU runtime
+harness (`runtime/harness`) to close the MCU ↔ electrical loop through this engine, the one
+engine (ADR-008). The runtime tests (`runtime/tests/electrical.runtime.test.ts`) check every solve in
+the loop against the pin equations exactly (1e-9 V).

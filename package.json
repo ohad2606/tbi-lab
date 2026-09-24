@@ -7,9 +7,9 @@
   "scripts": {
     "dev": "npm run dev --workspace @tbi-lab/app",
     "build": "npm run build --workspace @tbi-lab/app",
-    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.specs.json && tsc --noEmit -p packages/domain && tsc --noEmit -p packages/engine && tsc --noEmit -p app && tsc --noEmit -p app/tsconfig.test.json",
-    "lint": "eslint . && prettier --check app packages scripts eslint.config.js playwright.app.config.ts vitest.config.ts && node scripts/check-boundaries.mjs",
-    "format": "prettier --write app packages scripts eslint.config.js playwright.app.config.ts vitest.config.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.specs.json && tsc --noEmit -p packages/domain && tsc --noEmit -p packages/engine && tsc --noEmit -p runtime && tsc --noEmit -p app && tsc --noEmit -p app/tsconfig.test.json",
+    "lint": "eslint . && prettier --check app packages runtime scripts eslint.config.js playwright.app.config.ts vitest.config.ts vitest.runtime.config.ts && node scripts/check-boundaries.mjs",
+    "format": "prettier --write app packages runtime scripts eslint.config.js playwright.app.config.ts vitest.config.ts vitest.runtime.config.ts",
     "test": "vitest run",
     "test:product": "vitest run packages app/tests",
     "test:unit": "vitest run experiments/gate-a-electrical/tests",

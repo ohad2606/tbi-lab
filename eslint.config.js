@@ -17,6 +17,7 @@ export default tseslint.config(
     files: [
       'app/**/*.{ts,tsx}',
       'packages/**/*.ts',
+      'runtime/**/*.{ts,mjs}',
       '*.config.ts',
       'scripts/**/*.mjs',
       'eslint.config.js',

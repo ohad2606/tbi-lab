@@ -45,6 +45,9 @@ export interface ClosedLoopOptions {
   stressMainLoop?: boolean;
   /** Apply the scheduled VEXT commands (the boot-window configuration has none before 3 s). */
   commands?: boolean;
+  /** Observation only (measurements): never changes what the session does. */
+  onSpawn?(pid: number): void;
+  onTick?(vns: bigint): void;
 }
 
 export interface ClosedLoopRecord {
@@ -108,6 +111,7 @@ export async function runClosedLoop(opts: ClosedLoopOptions): Promise<ClosedLoop
         dir: overlay.dir,
         tickUs: opts.tickUs,
         ...(opts.stressMainLoop ? { stressMainLoop: true } : {}),
+        ...(opts.onSpawn ? { onSpawn: opts.onSpawn } : {}),
       },
       {
         hello: () => solveAt(0n, 'initial'),
@@ -119,6 +123,7 @@ export async function runClosedLoop(opts: ClosedLoopOptions): Promise<ClosedLoop
           return solveAt(e.vns, 'gpio2');
         },
         tick: (vns) => {
+          opts.onTick?.(vns);
           if (vns >= opts.endNs) return [{ type: 'Q' }];
           const due = schedule.due(vns);
           if (!due.length) return [];

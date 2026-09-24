@@ -217,10 +217,11 @@ cmd_firmware() {
     rm -rf "$stage" && mkdir -p "$stage" && cp -r "$dir"/. "$stage/"
     local maps="-ffile-prefix-map=$RT/arduino/data=/arduino-data -ffile-prefix-map=$stage=/sketch -ffile-prefix-map=/tmp/tbi-fw-build=/build"
     log "building firmware $name ($ARDUINO_FQBN)"
-    SOURCE_DATE_EPOCH="$FIRMWARE_SOURCE_DATE_EPOCH" arduino_cli compile --fqbn "$ARDUINO_FQBN" --build-path "/tmp/tbi-fw-build/.build-$name" \
+    # Compile from the staging directory: DWARF records the working directory (DW_AT_comp_dir).
+    (cd "$stage" && SOURCE_DATE_EPOCH="$FIRMWARE_SOURCE_DATE_EPOCH" arduino_cli compile --fqbn "$ARDUINO_FQBN" --build-path "/tmp/tbi-fw-build/.build-$name" \
       --build-property "compiler.c.extra_flags=$maps" \
       --build-property "compiler.cpp.extra_flags=$maps" \
-      --output-dir "$out" "$stage" >"$RT/logs/fw-$name.log" 2>&1 || die "build failed: $RT/logs/fw-$name.log"
+      --output-dir "$out" "$stage") >"$RT/logs/fw-$name.log" 2>&1 || die "build failed: $RT/logs/fw-$name.log"
     local ino="$name.ino"
     "$esptool" --chip esp32 merge-bin --output "$out/$name-4mb.bin" --fill-flash-size 4MB \
       --flash-mode dio --flash-freq 40m --flash-size 4MB \

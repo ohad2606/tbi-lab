@@ -8,23 +8,23 @@
   },
   "artifacts": {
     "TbiBanks": {
-      "sha256": "47ab8c22a46325219fba511e83f502ea03c4d951756ab0c35791b2cc50e37a1c",
+      "sha256": "9ca3a5cea66e46a2b54f14f38e0b065f36bc8cf70398cc88fae421028930a03d",
       "source": "runtime/firmware/arduino/TbiBanks (provision.sh firmware)"
     },
     "TbiGpioProof": {
-      "sha256": "aad841ddd82e28f60476aa66015ff90d1a89401e9f89b052c5a712b622ad16b7",
+      "sha256": "5f177cbe95f490dce1f6efe7dda501e03762d523b79771968f967b297d3a44af",
       "source": "runtime/firmware/arduino/TbiGpioProof (provision.sh firmware)"
     },
     "TbiNvs": {
-      "sha256": "8541dceb65a965d29d8248bd2feb24caad515d6900adb3dacc1a528ec6986740",
+      "sha256": "23881828bd850c3c5786f17125b0fd0fecfd60975daa2130ebbf8156646e989d",
       "source": "runtime/firmware/arduino/TbiNvs (provision.sh firmware)"
     },
     "TbiRestart": {
-      "sha256": "dff9944314390ad20a5b156fc12ee9dce571b48836e358598a71b0ae0dcf0126",
+      "sha256": "a49d6ed8584b364f94d0af18e1e92313d15bb8babf6c228ca2084c31f78da54a",
       "source": "runtime/firmware/arduino/TbiRestart (provision.sh firmware)"
     },
     "TbiTiming": {
-      "sha256": "da7fc8fcea73b2ea01c2e5a7af0b872b78de58aa931c777936f69834eb57762a",
+      "sha256": "2b6ab2fb7566f28c4d64241caa7c2496915625b6dc652bf342033bdc09afa151",
       "source": "runtime/firmware/arduino/TbiTiming (provision.sh firmware)"
     },
     "micropython": {
