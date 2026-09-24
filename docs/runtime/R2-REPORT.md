@@ -93,6 +93,13 @@ creating --prepared--> ready --run--> running --stop/terminate--> stopping --exi
 - A guest `esp_restart` is reported as `failed(guest_reset)` and is never repeated.
 - `stop` and `terminate` are idempotent: a second call returns the same completion.
 
+**A session is one-shot (binding for S6).** One Session Host session is exactly one execution:
+one boot of one private flash copy. `stop` ends that execution: the session goes to
+`ended(stopped)`, its QEMU and private flash are gone, and it can never run again (`run` is
+accepted only in `ready`, which is never re-entered). A later product-level **Run** therefore
+creates a **fresh session** from the browser's current persisted project revision; it never
+resumes or restarts a stopped one. Product "pause/resume" is not a Session Host operation.
+
 Reasons:
 
 - `ended`: `stopped`, `terminated`, `lease_expired`, `lifetime_exceeded`, `host_shutdown`.
@@ -103,18 +110,19 @@ Reasons:
 
 ## 3. Protocol `tbi-lab.session/1` (frozen)
 
-The API is the smallest practical one: seven routes.
+The API is the smallest practical one: `GET /health` plus seven session routes (create, status,
+run, stop, terminate, commands, event stream), eight routes in all.
 
 | Route | Result |
 |---|---|
 | `GET /health` | protocol version and session counts by state (no identifiers) |
 | `POST /sessions` | 201 `{sessionId, token, status}`; 400 invalid; 429 session limit; 503 shutting down |
-| `GET /sessions/:id` | status: state, reason, detail, simNs, lastEventSeq, times, runtime pid/outcome |
+| `GET /sessions/:id` | status: state, reason, detail, simNs, lastEventSeq, times, runtime pid/outcome, mirror `revisions` |
 | `POST /sessions/:id/run` | 202; 409 if not `ready` |
 | `POST /sessions/:id/stop` | 202; idempotent |
 | `DELETE /sessions/:id` | terminate; answers once resources are released; idempotent |
-| `POST /sessions/:id/commands` | 202 accepted / 409 rejected (with reason); 400 malformed |
-| `GET /sessions/:id/events` | Server-Sent Events; resume with `Last-Event-ID` or `?after=` |
+| `POST /sessions/:id/commands` | 202 accepted / 409 rejected (with reason; mirrors also return `revisions`); 400 malformed |
+| `GET /sessions/:id/events` | Server-Sent Events; resume with `Last-Event-ID` or `?after=` (400 malformed, 409 ahead of the stream; see §5) |
 
 - **Create body:**
   - `protocol`;
@@ -144,6 +152,40 @@ never commands.
 | **B. Live mirror** of A | `category:'mirror'`, with a required `projectRevision` (the revision in which the browser persisted the value), `component`, `control` | Applied at a command tick through `EngineSession.applyControl` (the same code path as the browser). If it cannot be applied, the command is rejected (`unsupported_control`) and the session ends `failed(mirror_failed)`: it no longer represents the project and says so. The project is untouched. |
 | **C. Transient** | `category:'transient'`, `action: press/release`, `component` | Runtime-only (push buttons). Never enters a project. A rejected transient never fails the session. |
 
+### Mirror revision semantics (browser authority, mechanically enforced)
+
+- Every `category:'mirror'` command must carry `projectRevision` (a non-negative integer);
+  validation refuses a mirror without it (400). A `transient` command must not carry one (400):
+  transients take no part in revision semantics and never change the revisions below.
+- Per session the host keeps `revisions = {snapshot, accepted, applied}`:
+  - `snapshot`: the revision of the snapshot the session was created from;
+  - `accepted`: the highest mirror revision accepted into the queue (starts at `snapshot`);
+  - `applied`: the highest revision the runtime actually represents (starts at `snapshot`).
+- On receipt a mirror is rejected, never guessed or applied:
+  - `stale_revision` if `projectRevision < accepted` (an older edit arriving late; whatever it
+    carries never reaches the engine);
+  - `duplicate_revision` if `projectRevision == accepted` (a retry of an already accepted edit,
+    or the snapshot's own revision).
+  Accepted mirrors therefore carry strictly increasing revisions. Gaps are allowed (the browser's
+  revision is the authority; revisions need not be contiguous). One persisted edit is one mirror;
+  several controls of one component edited together go in one `control` object.
+- A mirror refused for any other reason (`late`, `out_of_order`, `queue_full`, ...) does not
+  consume its revision: the browser may resend it with a new `seq`.
+- Retries are idempotent twice over: the same `seq` is `duplicate`, the same revision under a new
+  `seq` is `duplicate_revision`. One persisted edit can never become a second runtime mutation.
+- At apply time (command tick, client order) the host checks again that the revision is above
+  `applied` (defence in depth; unreachable through `submit`), applies it through
+  `EngineSession.applyControl`, and only then sets `applied` to it.
+- Surfaces that tell the browser where the runtime stands:
+  - the command response (202/409) for a mirror includes `revisions`;
+  - every `command` event for a mirror (applied or rejected) carries its `projectRevision`;
+    transient acks carry none;
+  - `GET /sessions/:id` includes `revisions`;
+  - every `electrical` outcome carries the engine's `appliedRevision`.
+  The session represents browser revision R when `revisions.applied >= R` and the session is not
+  failed. `accepted > applied` means mirrors are still queued. After `failed(mirror_failed)` the
+  session is stale for good: `applied` stays at the last revision that was really applied.
+
 Structural edits (topology, adding or removing parts, resistor values) are persistent edits with
 no live mirror in V1. The browser marks the session stale and creates a new one. This keeps the
 protocol small and avoids a partially mirrored circuit. Recorded as decision D3.
@@ -164,9 +206,10 @@ Mirrorable controls are exactly the ones the browser engine already supports liv
   1. `duplicate` (`seq` ≤ last);
   2. `not_running`;
   3. `unknown_component`;
-  4. `late` (`atSimNs` ≤ the last tick already executed; never applied late);
-  5. `out_of_order` (`atSimNs` earlier than an already queued timed command; never reordered);
-  6. `queue_full` (`maxQueuedCommands`).
+  4. mirrors only: `stale_revision` / `duplicate_revision` (§4);
+  5. `late` (`atSimNs` ≤ the last tick already executed; never applied late);
+  6. `out_of_order` (`atSimNs` earlier than an already queued timed command; never reordered);
+  7. `queue_full` (`maxQueuedCommands`).
 - A duplicate `seq` burns nothing: the last accepted `seq` still stands.
 - Accepted commands apply at the first tick ≥ `atSimNs`, in client order, and are acknowledged
   (`command`, `applied`/`rejected`) with that tick's simulation time. After any applied command,
@@ -185,8 +228,19 @@ Mirrorable controls are exactly the ones the browser engine already supports liv
     the window was over `serialWindowMaxBytes`);
   - lifecycle `state` events carry `simNs: null`;
   - the same session inputs give the same event stream (§11).
-- Events are held in a per-session ring (`eventLogCapacity`). A client that resumes from before
-  the ring's window receives `resync {missed}` first, then the retained events.
+- **Resume (SSE).** Events are held in a per-session ring (`eventLogCapacity`). The resume point
+  is `Last-Event-ID` (sent by EventSource on reconnect) or `?after=`; the header wins; absent or
+  empty means from the start. Validated before the stream opens:
+  - malformed (anything but 1–15 decimal digits) → **400**;
+  - greater than the last event the session has produced → **409** (it cannot be an id this
+    stream sent; never reinterpreted as another point in the stream);
+  - still retained → exactly the events after it, in `seq` order, then live events;
+  - already evicted (older than the ring) → first an explicit
+    `resync {seq: oldestRetained-1, missed: n}` event (SSE `id` = `oldestRetained-1`, so a
+    further reconnect continues correctly), then every retained event in order. The client is
+    told it lost `n` events and must treat its view as incomplete (take the next `electrical` /
+    `gpio` events and `GET` status as the new baseline). It is never silently continued from the
+    oldest retained event.
 
 ## 6. Lease policy (disconnect and reconnect)
 
@@ -309,7 +363,7 @@ wall time.
 
 | Case | Runs | Distinct stream hashes |
 |---|---|---|
-| Gate, 1 ms quantum | 5 per heavy pass | 1 (`0b6b7597506b3550`) |
+| Gate, 1 ms quantum | 5 per heavy pass | 1 (`0b6b7597506b3550` in passes 1–3; `72935ade7dce072d` from pass 4, see §16) |
 | Gate, 1 ms vs 10 ms quantum (mirrors on 10 ms multiples) | 2 per pass | 1 (same hash) |
 | **TbiTiming, no host commands, 1 ms vs 10 ms** | 2 per pass | 1 (`6c9dddce6df617fc`); every GPIO marker and serial byte at identical simulation times |
 | Gate, two concurrent sessions vs solo | 3 per pass | 1 (same hash as above) |
@@ -376,11 +430,11 @@ host; it is not a capacity figure.
 
 ## 15. Tests and the CI vs heavy split
 
-- **Routine CI (`npm test`, 451 tests in total; no QEMU, no toolchain).** A Node fake runtime
+- **Routine CI (`npm test`, 453 tests in total; no QEMU, no toolchain).** A Node fake runtime
   (`runtime/host/tests/fixtures/fake-runtime.mjs`) speaks the real R1 bridge protocol. It writes
   to its private flash copy, toggles pads off the tick grid, echoes inputs and injects each
   failure mode, so the whole host is exercised in CI. Tests:
-  - host: 40 (lifecycle 11, failures 19, protocol 7, http 3);
+  - host: 42 (lifecycle 12, failures 19, protocol 7, http 4);
   - engine pin equivalence: 8.
 - **Heavy (`npm run test:r2`; provisioned runtime, `TBI_RUNTIME_HOME`).** Builds the host bundle
   and runs 16 tests: `r2-acceptance` (5) and `r2-failures` (11). Most repeat internally (×3 or
@@ -399,7 +453,8 @@ All runs used runtime `979f09d739382157`.
 | Heavy pass 1 (`npm run test:r2`) | R2 heavy, 16 tests | 16/16 ✓ |
 | Heavy pass 2 (`npm run test:r2`) | R2 heavy, 16 tests | 16/16 ✓ |
 | Heavy pass 3 (`npm run test:runtime`) | full runtime suite: R1 (59) + R2 (16) | 75/75 ✓ (R1 unaffected by the harness extension) |
-| Routine: `npm test` | unit, product, host (fake runtime), engine | 451/451 ✓ (host suite ×3 consecutive: 40/40) |
+| Heavy pass 4 (`npm run test:r2`, pre-push audit code) | R2 heavy, 16 tests | 16/16 ✓ |
+| Routine: `npm test` (pre-push audit code) | unit, product, host (fake runtime), engine | 453/453 ✓ (host suite ×3 consecutive: 42/42) |
 | Routine: typecheck, lint, boundaries | | ✓ |
 | `npm run test:e2e` / `npm run test:browser` | product app / browser engine | 77/77 ✓ / 4/4 ✓ |
 
@@ -412,7 +467,20 @@ Every hash was identical across all three passes:
 - TbiTiming at 1 ms and 10 ms: `6c9dddce6df617fc`;
 - electrical equivalence: 41 operating points, largest difference 0.
 
-Evidence JSON for passes 2 and 3: `docs/runtime/r2-evidence/runtime-979f09d739382157/`.
+Evidence JSON for passes 2, 3 and 4: `docs/runtime/r2-evidence/runtime-979f09d739382157/`.
+**Pre-push audit (pass 4).** Mirror `command` events now carry `projectRevision` (§4). The gate
+stream contains the mirror acks, so its hash changed from `0b6b7597506b3550` to
+`72935ade7dce072d`. A real gate session hashed both ways shows that this is the only change: the
+new stream hashes to `72935ade7dce072d`, and with the new field stripped from the acks it hashes
+to the pre-audit `0b6b7597506b3550`. Pass 4 results:
+
+- gate: one hash ×5, identical at 1 ms and 10 ms, and ×3 concurrent;
+- TbiTiming (no commands): unchanged, `6c9dddce6df617fc` at both quanta;
+- electrical equivalence: 41 operating points, largest difference 0;
+- isolation, failure injection and cleanup: unchanged.
+
+The audit did not touch the shared R1 harness or runtime, so R1 was not re-run. Evidence:
+`r2-*.pass4.json`.
 
 Hygiene found during the runs:
 

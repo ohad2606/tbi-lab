@@ -40,6 +40,7 @@ import {
   type CommandRejection,
   type CreateSessionRequest,
   type EndReason,
+  type MirrorRevisions,
   type FailReason,
   type SessionCommand,
   type SessionState,
@@ -64,6 +65,7 @@ export interface SessionStatus {
   createdAt: string;
   endedAt: string | null;
   runtime: { pid: number | null; outcome: Outcome | null };
+  revisions: MirrorRevisions;
 }
 
 export class HostSession {
@@ -104,6 +106,9 @@ export class HostSession {
   private serialDropped = 0;
   private latest: SolveOutcome | null = null;
   private readonly inputOnlyDiagnosed = new Set<number>();
+  /** Mirror revisions (see MirrorRevisions); both start at the snapshot's revision. */
+  private acceptedRevision: number;
+  private appliedRevision: number;
   private latestPublished: string | null = null;
 
   constructor(
@@ -114,6 +119,7 @@ export class HostSession {
     this.token = randomBytes(24).toString('base64url');
     this.tokenHash = SHA(Buffer.from(this.token));
     this.log = new EventLog(config.eventLogCapacity);
+    this.acceptedRevision = this.appliedRevision = request.circuit.projectRevision;
     this.dir = sessionDir(tmpRoot, this.id);
     this.flash = join(this.dir, 'flash.bin');
     const quantumUs = request.commandQuantumUs ?? COMMAND_QUANTUM_US;
@@ -476,8 +482,15 @@ export class HostSession {
         commandSeq: c.seq,
         result,
         ...(reason ? { reason } : {}),
+        ...(c.category === 'mirror' ? { projectRevision: c.projectRevision } : {}),
       });
     if (c.category === 'mirror') {
+      // Accepted mirrors are strictly increasing (submit); applying in client order keeps them
+      // so. Checked again here so that no path can ever apply an older revision.
+      if (c.projectRevision <= this.appliedRevision) {
+        ack('rejected', 'stale_revision');
+        return false;
+      }
       const err = this.engine!.applyControl(c.component, c.control, c.projectRevision);
       if (err) {
         ack('rejected', 'unsupported_control');
@@ -488,6 +501,7 @@ export class HostSession {
         };
         return false;
       }
+      this.appliedRevision = c.projectRevision;
       ack('applied');
       return true;
     }
@@ -534,7 +548,13 @@ export class HostSession {
   // -------------------------------------------------------------------------------------------
   // Commands from the client (validated structurally by protocol.ts before reaching here)
 
-  submit(c: SessionCommand): { accepted: boolean; reason?: CommandRejection } {
+  submit(c: SessionCommand): {
+    accepted: boolean;
+    reason?: CommandRejection;
+    revisions?: MirrorRevisions;
+  } {
+    const mirror = c.category === 'mirror';
+    const revisions = () => (mirror ? { revisions: this.revisions() } : {});
     const reject = (reason: CommandRejection) => {
       this.log.append({
         type: 'command',
@@ -542,21 +562,33 @@ export class HostSession {
         commandSeq: c.seq,
         result: 'rejected',
         reason,
+        ...(mirror ? { projectRevision: c.projectRevision } : {}),
       });
-      return { accepted: false, reason };
+      return { accepted: false, reason, ...revisions() };
     };
     if (c.seq <= this.lastClientSeq) return reject('duplicate');
     this.lastClientSeq = c.seq;
     if (this.sm.state !== 'running' && this.sm.state !== 'ready') return reject('not_running');
     if (!this.request.circuit.components.some((x) => x.id === c.component))
       return reject('unknown_component');
+    if (mirror && c.projectRevision < this.acceptedRevision) return reject('stale_revision');
+    if (mirror && c.projectRevision === this.acceptedRevision) return reject('duplicate_revision');
     const atNs = c.atSimNs === undefined ? null : BigInt(c.atSimNs);
     if (atNs !== null && atNs <= this.lastTickNs) return reject('late');
     const tail = [...this.queue].reverse().find((q) => q.atNs !== null);
     if (atNs !== null && tail && tail.atNs! > atNs) return reject('out_of_order');
     if (this.queue.length >= this.config.maxQueuedCommands) return reject('queue_full');
     this.queue.push({ command: c, atNs });
-    return { accepted: true };
+    if (mirror) this.acceptedRevision = c.projectRevision;
+    return { accepted: true, ...revisions() };
+  }
+
+  revisions(): MirrorRevisions {
+    return {
+      snapshot: this.request.circuit.projectRevision,
+      accepted: this.acceptedRevision,
+      applied: this.appliedRevision,
+    };
   }
 
   status(): SessionStatus {
@@ -570,6 +602,7 @@ export class HostSession {
       createdAt: this.createdAt.toISOString(),
       endedAt: this.endedAt?.toISOString() ?? null,
       runtime: { pid: this.pid, outcome: this.outcome },
+      revisions: this.revisions(),
     };
   }
 

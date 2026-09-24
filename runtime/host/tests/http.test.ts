@@ -104,6 +104,68 @@ describe('HTTP + SSE adapter', () => {
     expect(tail.at(-1)).toMatchObject({ type: 'state', state: 'ended', reason: 'terminated' });
   });
 
+  it('resume: retained id replays after it; evicted id gets resync first; future/malformed ids refused', async () => {
+    const { host, art, base } = await serve({ eventLogCapacity: 8 });
+    const created = (await (
+      await fetch(`${base}/sessions`, json(createRequest(art.sha256)))
+    ).json()) as {
+      sessionId: string;
+      token: string;
+    };
+    const { sessionId, token } = created;
+    const s = host.get(sessionId, token);
+    if (!s.ok) throw new Error('no session');
+    const session = s.value;
+    session.run();
+    await expect.poll(() => session.log.lastSeq, { timeout: 10_000 }).toBeGreaterThan(30);
+    await host.terminate(session); // a finished stream: the replays below are complete and stable
+    const last = session.log.lastSeq;
+    const first = last - session.log.size + 1; // oldest retained event (capacity 8)
+    expect(session.log.size).toBe(8);
+    const url = `${base}/sessions/${sessionId}/events?token=${token}`;
+    const seqs = (es: SessionEvent[]) => es.map((e) => e.seq);
+    const range = (a: number, b: number) => Array.from({ length: b - a + 1 }, (_, i) => a + i);
+
+    // Retained: exactly the events after the id, in order, no marker.
+    const kept = await readEvents(url, () => false, { 'last-event-id': String(last - 3) });
+    expect(seqs(kept)).toEqual(range(last - 2, last));
+    expect(kept.some((e) => e.type === 'resync')).toBe(false);
+    // Up to date: nothing is replayed (the terminal stream simply ends).
+    expect(await readEvents(url, () => false, { 'last-event-id': String(last) })).toEqual([]);
+
+    // Evicted: an explicit resync marker (how many were lost) BEFORE the oldest retained event.
+    for (const id of ['2', String(first - 2)]) {
+      const r = await readEvents(url, () => false, { 'last-event-id': id });
+      expect(r[0]).toMatchObject({
+        type: 'resync',
+        seq: first - 1,
+        missed: first - 1 - Number(id),
+      });
+      expect(seqs(r.slice(1))).toEqual(range(first, last));
+    }
+    // ?after= behaves the same; the header wins when both are present.
+    const viaQuery = await readEvents(`${url}&after=2`, () => false);
+    expect(viaQuery[0]).toMatchObject({ type: 'resync' });
+    const both = await readEvents(`${url}&after=2`, () => false, {
+      'last-event-id': String(last - 1),
+    });
+    expect(seqs(both)).toEqual([last]);
+    // Absent or empty id: from the start, which is also behind the window -> resync first.
+    const fresh = await readEvents(url, () => false, { 'last-event-id': '' });
+    expect(fresh[0]).toMatchObject({ type: 'resync', missed: first - 1 });
+
+    // Future and malformed ids are refused, never reinterpreted as another point in the stream.
+    const status = async (headers: Record<string, string>, q = '') =>
+      (await fetch(`${url}${q}`, { headers })).status;
+    expect(await status({ 'last-event-id': String(last + 1) })).toBe(409);
+    expect(await status({}, `&after=${last + 1000}`)).toBe(409);
+    for (const bad of ['abc', '-1', '1.5', '1e3', '0x7', '9'.repeat(16)])
+      expect(await status({ 'last-event-id': bad }), bad).toBe(400);
+    expect(await status({}, '&after=x')).toBe(400);
+    // The host and the session are unaffected.
+    expect(host.get(sessionId, token).ok).toBe(true);
+  });
+
   it('commands over HTTP are acknowledged; rejections are explicit', async () => {
     const { art, base } = await serve();
     const req = createRequest(art.sha256);

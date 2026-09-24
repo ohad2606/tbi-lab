@@ -107,7 +107,14 @@ interface CommandBase {
 
 export interface MirrorCommand extends CommandBase {
   category: 'mirror';
-  /** The project revision in which the browser persisted this value. */
+  /**
+   * The project revision in which the browser persisted this value (the browser is the
+   * authority). Per session, accepted mirrors carry STRICTLY increasing revisions, each greater
+   * than the snapshot revision the session was created from; gaps are allowed. A lower revision
+   * is rejected `stale_revision`, an equal one `duplicate_revision`: an older edit can never
+   * mutate the runtime, and one persisted edit can never become a second runtime mutation.
+   * One persisted edit = one mirror (several controls of one component fit in one `control`).
+   */
   projectRevision: number;
   component: string;
   control: MirrorControl;
@@ -153,6 +160,8 @@ export type SessionEvent = EventBase &
         commandSeq: number;
         result: 'applied' | 'rejected';
         reason?: CommandRejection;
+        /** Mirrors only: the command's project revision (absent for transient commands). */
+        projectRevision?: number;
       }
     | { type: 'diagnostic'; severity: 'warning' | 'error'; code: string; detail?: unknown }
     | { type: 'resync'; missed: number }
@@ -165,7 +174,22 @@ export type CommandRejection =
   | 'queue_full'
   | 'not_running'
   | 'unknown_component'
-  | 'unsupported_control';
+  | 'unsupported_control'
+  | 'stale_revision' // mirror: projectRevision below the latest accepted mirror revision
+  | 'duplicate_revision'; // mirror: projectRevision equal to it (retry of an accepted edit)
+
+/**
+ * Mirror revisions of a session (status `revisions`). `snapshot`: the revision the session was
+ * created from. `accepted`: the highest mirror revision accepted (queued or applied).
+ * `applied`: the highest revision the runtime actually represents. The runtime is in sync with
+ * browser revision R when `applied >= R` and the session is not failed; `accepted > applied`
+ * means mirrors are still queued for a later command tick.
+ */
+export interface MirrorRevisions {
+  snapshot: number;
+  accepted: number;
+  applied: number;
+}
 
 // ---------------------------------------------------------------------------------------------
 // Validation: strict, structural, total (never throws). Unknown fields are refused.

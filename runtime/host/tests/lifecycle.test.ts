@@ -264,6 +264,113 @@ describe('commands and the co-located loop', () => {
     expect(gone(s.privateDir)).toBe(true);
   });
 
+  it('mirror revisions: strictly increasing, gaps allowed, stale/duplicate never mutate, applied revision reported', async () => {
+    const { host, art } = start();
+    const s = created(host, art.sha256);
+    const sw = createRequest(art.sha256).circuit.components.find(
+      (c) => c.type === 'component.toggle_switch',
+    )!.id;
+    const pb = createRequest(art.sha256).circuit.components.find(
+      (c) => c.type === 'component.push_button',
+    )!.id;
+    const mirror = (
+      seq: number,
+      projectRevision: number,
+      atSimNs: string,
+      component: string,
+      control: Record<string, unknown>,
+    ) => host.command(s, { category: 'mirror', seq, atSimNs, projectRevision, component, control });
+    const snapshot = createRequest(art.sha256).circuit.projectRevision; // 1
+    expect(s.status().revisions).toEqual({ snapshot, accepted: snapshot, applied: snapshot });
+    // The snapshot already contains its own revision; anything at or below it is not newer.
+    expect(mirror(1, snapshot, '20000000', sw, { closed: false })).toMatchObject({
+      value: { accepted: false, reason: 'duplicate_revision' },
+    });
+    expect(mirror(2, snapshot - 1, '20000000', sw, { closed: false })).toMatchObject({
+      value: { accepted: false, reason: 'stale_revision' },
+    });
+    // Accepted: the answer says which revision the session has accepted and which it applied.
+    expect(mirror(3, 5, '20000000', sw, { closed: true })).toMatchObject({
+      value: { accepted: true, revisions: { snapshot, accepted: 5, applied: snapshot } },
+    });
+    // Retry of the same persisted edit: same seq -> duplicate; new seq -> duplicate_revision.
+    expect(mirror(3, 5, '21000000', sw, { closed: true })).toMatchObject({
+      value: { accepted: false, reason: 'duplicate' },
+    });
+    expect(mirror(4, 5, '21000000', sw, { closed: false })).toMatchObject({
+      value: { accepted: false, reason: 'duplicate_revision', revisions: { accepted: 5 } },
+    });
+    // An older revision arriving late is rejected, whatever it carries.
+    expect(mirror(5, 3, '22000000', 'PSU1', { setpointVoltage: 1 })).toMatchObject({
+      value: { accepted: false, reason: 'stale_revision' },
+    });
+    // Gaps are allowed: the browser's revision is the authority.
+    expect(mirror(6, 9, '30000000', 'PSU1', { setpointVoltage: 3 })).toMatchObject({
+      value: { accepted: true, revisions: { accepted: 9 } },
+    });
+    // A mirror refused for another reason does not consume its revision.
+    expect(mirror(7, 12, '25000000', 'PSU1', { setpointVoltage: 3.3 })).toMatchObject({
+      value: { accepted: false, reason: 'out_of_order', revisions: { accepted: 9 } },
+    });
+    expect(mirror(8, 12, '40000000', 'PSU1', { setpointVoltage: 3.3 })).toMatchObject({
+      value: { accepted: true, revisions: { accepted: 12, applied: snapshot } },
+    });
+    // Transient commands carry no revision (refused by validation) and do not touch revisions.
+    expect(
+      host.command(s, {
+        category: 'transient',
+        seq: 9,
+        action: 'press',
+        component: pb,
+        projectRevision: 13,
+      }),
+    ).toMatchObject({ ok: false, status: 400 });
+    expect(
+      host.command(s, { category: 'transient', seq: 10, action: 'press', component: pb }),
+    ).toMatchObject({ value: { accepted: true } });
+    expect(s.status().revisions).toEqual({ snapshot, accepted: 12, applied: snapshot });
+
+    s.run();
+    await waitEvent(s, (e) => e.type === 'command' && e.commandSeq === 10);
+    expect(s.status().revisions).toEqual({ snapshot, accepted: 12, applied: 12 });
+    const acks = s.log.since(0).filter((e) => e.type === 'command') as (SessionEvent & {
+      type: 'command';
+    })[];
+    // Exactly the accepted commands were applied, once each, in client order; mirrors carry
+    // their revision, transients none.
+    expect(
+      acks.filter((a) => a.result === 'applied').map((a) => [a.commandSeq, a.projectRevision]),
+    ).toEqual([
+      [3, 5],
+      [6, 9],
+      [8, 12],
+      [10, undefined], // client order: the untimed transient queued behind the timed mirrors
+    ]);
+    for (const a of acks.filter((x) => x.commandSeq !== 9 && x.commandSeq !== 10))
+      expect(a.projectRevision, `seq ${a.commandSeq}`).toBeTypeOf('number');
+    // The runtime represents revision 12: switch closed (rev 5), PSU at 3.3 V (rev 12). The
+    // duplicate (closed: false) and the stale 1 V setpoint never reached the engine.
+    await waitEvent(s, (e) => e.type === 'electrical' && BigInt(e.simNs!) >= 40_000_000n);
+    const last = s.log
+      .since(0)
+      .filter((e) => e.type === 'electrical')
+      .at(-1) as {
+      outcome: {
+        appliedRevision: number;
+        components: Record<string, { closed?: boolean; voltage: number }>;
+      };
+    };
+    expect(last.outcome.appliedRevision).toBe(12);
+    expect(last.outcome.components[sw]!.closed).toBe(true);
+    expect(last.outcome.components.PSU1!.voltage).toBeCloseTo(3.3, 12);
+    const volts = s.log
+      .since(0)
+      .filter((e) => e.type === 'electrical')
+      .map((e) => (e as typeof last).outcome.components.PSU1!.voltage);
+    expect(volts.some((v) => Math.abs(v - 1) < 1e-9)).toBe(false);
+    await s.terminate('terminated');
+  });
+
   it('identical inputs give an identical runtime event stream (repeated runs)', async () => {
     const { host, art } = start();
     const sw = createRequest(art.sha256).circuit.components.find(

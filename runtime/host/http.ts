@@ -10,7 +10,9 @@
  *   DELETE /sessions/:id                    terminate; responds once resources are released
  *   POST   /sessions/:id/commands           one SessionCommand (mirror | transient)
  *   GET    /sessions/:id/events             Server-Sent Events, ordered; resume with
- *                                           Last-Event-ID (or ?after=)
+ *                                           Last-Event-ID (or ?after=): 400 if malformed,
+ *                                           409 if ahead of the stream, `resync` first if
+ *                                           older than the retained window
  *
  * Every session route needs the session's token: `Authorization: Bearer <token>`, or `?token=`
  * for EventSource, which cannot set headers. Unknown sessions and wrong tokens are the same 404.
@@ -86,9 +88,15 @@ function sseEvent(e: SessionEvent): string {
 }
 
 function stream(req: IncomingMessage, res: ServerResponse, s: HostSession, url: URL): void {
+  // Resume point: Last-Event-ID (EventSource reconnect) or ?after=. Absent/empty = from the
+  // start. It must name an event this stream has actually sent: a malformed id is 400, an id
+  // beyond the last event is 409 (never silently reinterpreted as another point in the stream).
+  // An id older than the retained window is valid: the replay starts with a `resync` marker.
   const header = req.headers['last-event-id'];
-  const raw = (Array.isArray(header) ? header[0] : header) ?? url.searchParams.get('after') ?? '0';
-  const after = /^\d{1,15}$/.test(raw) ? Number(raw) : 0;
+  const raw = (Array.isArray(header) ? header[0] : header) || url.searchParams.get('after') || '0';
+  if (!/^\d{1,15}$/.test(raw)) throw new HttpError(400, 'malformed Last-Event-ID');
+  const after = Number(raw);
+  if (after > s.log.lastSeq) throw new HttpError(409, 'Last-Event-ID is ahead of the stream');
   res.writeHead(200, {
     'content-type': 'text/event-stream; charset=utf-8',
     'cache-control': 'no-store',
