@@ -1,0 +1,143 @@
+{
+  "runtime": {
+    "runtimeId": "979f09d739382157",
+    "upstream": "https://github.com/espressif/qemu.git",
+    "tag": "esp-develop-9.2.2-20260417",
+    "commit": "40edccac415693c5130f91c01d84176ae6008566",
+    "patches": [
+      {
+        "file": "0001-accel-tcg-defer-sleep-off-icount-warp-while-a-round-.patch",
+        "sha256": "7fc846113fefe3c43d995f337086ec6049eff464207ae225003475d845f8ca4e"
+      },
+      {
+        "file": "0002-hw-xtensa-esp32-apply-the-APP-CPU-reset-synchronousl.patch",
+        "sha256": "a29bf7bf7fa29685464d34c55ae42f1b7451f88159fc62c4db4f3f72e461e702"
+      },
+      {
+        "file": "0003-hw-gpio-esp32_gpio-classic-ESP32-digital-GPIO-regist.patch",
+        "sha256": "ee3fa808721d842ce4c7556dd84ca004d2e5961337d69889b7efc6ffe5890465"
+      },
+      {
+        "file": "0004-hw-misc-tbi_bridge-TBI-Lab-synchronous-runtime-bridg.patch",
+        "sha256": "e4a1a574514b409b5d22036fa78a7b01da13217a509602a420338ce3bcca8e57"
+      },
+      {
+        "file": "0005-accel-tcg-util-qemu-timer-host-sync-timers-must-not-.patch",
+        "sha256": "dad4cc010dffa8c38e6e4870804dae23e0241aa41deb5082916e1a6f23f3ede6"
+      }
+    ],
+    "builtAt": "2026-09-24T14:24:00Z",
+    "host": "aarch64"
+  },
+  "artifact": {
+    "path": "$TBI_RUNTIME_HOME/artifacts/5f177cbe95f490dce1f6efe7dda501e03762d523b79771968f967b297d3a44af.bin",
+    "sha256": "5f177cbe95f490dce1f6efe7dda501e03762d523b79771968f967b297d3a44af"
+  },
+  "summary": [
+    {
+      "config": "1 ms tick, full workload",
+      "runs": 3,
+      "distinctTimelines": 1,
+      "distinctSerialTimed": 1,
+      "timelineSha256": "0bf7b9df4df50bc020d608705facf06e7117cc1a43407910c7627cd0dae38719",
+      "serialTimedSha256": "f3c0ce4a6b1d92127eb4e8a0109c20f91f6060b3fc814705c57291d5fefd6bab",
+      "serialSha256": "4aad86fc79e88ce070503326ef10ca11274be96c2d96d558ea2a7ac204946936",
+      "counts": {
+        "padEvents": 81,
+        "solves": 43,
+        "injections": 5,
+        "commands": 4
+      },
+      "ticks": 15500,
+      "wallMs": [
+        13130,
+        12870,
+        12702
+      ]
+    },
+    {
+      "config": "1 ms tick, full workload, main-loop stress",
+      "runs": 3,
+      "distinctTimelines": 1,
+      "distinctSerialTimed": 1,
+      "timelineSha256": "0bf7b9df4df50bc020d608705facf06e7117cc1a43407910c7627cd0dae38719",
+      "serialTimedSha256": "f3c0ce4a6b1d92127eb4e8a0109c20f91f6060b3fc814705c57291d5fefd6bab",
+      "serialSha256": "4aad86fc79e88ce070503326ef10ca11274be96c2d96d558ea2a7ac204946936",
+      "counts": {
+        "padEvents": 81,
+        "solves": 43,
+        "injections": 5,
+        "commands": 4
+      },
+      "ticks": 15500,
+      "wallMs": [
+        18268,
+        17965,
+        18386
+      ]
+    },
+    {
+      "config": "10 ms tick, full workload",
+      "runs": 3,
+      "distinctTimelines": 1,
+      "distinctSerialTimed": 1,
+      "timelineSha256": "0bf7b9df4df50bc020d608705facf06e7117cc1a43407910c7627cd0dae38719",
+      "serialTimedSha256": "f3c0ce4a6b1d92127eb4e8a0109c20f91f6060b3fc814705c57291d5fefd6bab",
+      "serialSha256": "4aad86fc79e88ce070503326ef10ca11274be96c2d96d558ea2a7ac204946936",
+      "counts": {
+        "padEvents": 81,
+        "solves": 43,
+        "injections": 5,
+        "commands": 4
+      },
+      "ticks": 1550,
+      "wallMs": [
+        10573,
+        10571,
+        10600
+      ]
+    },
+    {
+      "config": "1 ms tick, early boot window (3 s)",
+      "runs": 3,
+      "distinctTimelines": 1,
+      "distinctSerialTimed": 1,
+      "timelineSha256": "81aa9c4b7f0b19163d14d154c602eb9044fec1864059e3664025654bbe3a98c0",
+      "serialTimedSha256": "f6de86c978e386533b2460758e95208fa008e55c0c867f3799452f95a3e8f253",
+      "serialSha256": "4cfdcad418d3496017e86458116308fccf90af5b94f05f2ec8edae40faf4471b",
+      "counts": {
+        "padEvents": 18,
+        "solves": 8,
+        "injections": 1,
+        "commands": 0
+      },
+      "ticks": 3000,
+      "wallMs": [
+        9296,
+        9152,
+        9329
+      ]
+    },
+    {
+      "config": "10 ms tick, early boot window (3 s)",
+      "runs": 3,
+      "distinctTimelines": 1,
+      "distinctSerialTimed": 1,
+      "timelineSha256": "81aa9c4b7f0b19163d14d154c602eb9044fec1864059e3664025654bbe3a98c0",
+      "serialTimedSha256": "f6de86c978e386533b2460758e95208fa008e55c0c867f3799452f95a3e8f253",
+      "serialSha256": "4cfdcad418d3496017e86458116308fccf90af5b94f05f2ec8edae40faf4471b",
+      "counts": {
+        "padEvents": 18,
+        "solves": 8,
+        "injections": 1,
+        "commands": 0
+      },
+      "ticks": 300,
+      "wallMs": [
+        8751,
+        8726,
+        8855
+      ]
+    }
+  ]
+}

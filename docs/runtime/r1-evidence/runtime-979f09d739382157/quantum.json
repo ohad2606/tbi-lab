@@ -1,0 +1,63 @@
+{
+  "gate": {
+    "timeline": [
+      "0bf7b9df4df50bc020d608705facf06e7117cc1a43407910c7627cd0dae38719",
+      "0bf7b9df4df50bc020d608705facf06e7117cc1a43407910c7627cd0dae38719"
+    ],
+    "serialTimed": [
+      "f3c0ce4a6b1d92127eb4e8a0109c20f91f6060b3fc814705c57291d5fefd6bab",
+      "f3c0ce4a6b1d92127eb4e8a0109c20f91f6060b3fc814705c57291d5fefd6bab"
+    ],
+    "firstPadEvent": [
+      "G 301726792 gpio11 drive=1 level=0",
+      "G 301726792 gpio11 drive=1 level=0"
+    ],
+    "padEvents": {
+      "identical": true,
+      "maxShiftNs": "0",
+      "first": null
+    }
+  },
+  "timing": [
+    {
+      "tickUs": 1000,
+      "timeline": "7bdef8eb9b74965697f8d2407533a71f1c6bdd7e7581934177a3e85a52e18223",
+      "serialTimed": "7d74e75e29c1253261f090aeee871532a10f688bc273289575751064460bf1b2",
+      "padEventsVs1ms": {
+        "identical": true,
+        "maxShiftNs": "0",
+        "first": null
+      }
+    },
+    {
+      "tickUs": 10000,
+      "timeline": "7bdef8eb9b74965697f8d2407533a71f1c6bdd7e7581934177a3e85a52e18223",
+      "serialTimed": "7d74e75e29c1253261f090aeee871532a10f688bc273289575751064460bf1b2",
+      "padEventsVs1ms": {
+        "identical": true,
+        "maxShiftNs": "0",
+        "first": null
+      }
+    },
+    {
+      "tickUs": 7000,
+      "timeline": "7bdef8eb9b74965697f8d2407533a71f1c6bdd7e7581934177a3e85a52e18223",
+      "serialTimed": "7d74e75e29c1253261f090aeee871532a10f688bc273289575751064460bf1b2",
+      "padEventsVs1ms": {
+        "identical": true,
+        "maxShiftNs": "0",
+        "first": null
+      }
+    },
+    {
+      "tickUs": 250,
+      "timeline": "7bdef8eb9b74965697f8d2407533a71f1c6bdd7e7581934177a3e85a52e18223",
+      "serialTimed": "7d74e75e29c1253261f090aeee871532a10f688bc273289575751064460bf1b2",
+      "padEventsVs1ms": {
+        "identical": true,
+        "maxShiftNs": "0",
+        "first": null
+      }
+    }
+  ]
+}

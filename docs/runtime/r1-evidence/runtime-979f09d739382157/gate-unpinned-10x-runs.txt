@@ -1,0 +1,40 @@
+[1 ms tick, full workload] run 1: timeline 0bf7b9df4df50bc0 serialTimed f3c0ce4a6b1d9212 serial 4aad86fc79e88ce0 G=81 V=43 I=5 K=4 T=15500 wall=13.1s
+[1 ms tick, full workload] run 2: timeline 0bf7b9df4df50bc0 serialTimed f3c0ce4a6b1d9212 serial 4aad86fc79e88ce0 G=81 V=43 I=5 K=4 T=15500 wall=13.6s
+[1 ms tick, full workload] run 3: timeline 0bf7b9df4df50bc0 serialTimed f3c0ce4a6b1d9212 serial 4aad86fc79e88ce0 G=81 V=43 I=5 K=4 T=15500 wall=12.6s
+[1 ms tick, full workload] run 4: timeline 0bf7b9df4df50bc0 serialTimed f3c0ce4a6b1d9212 serial 4aad86fc79e88ce0 G=81 V=43 I=5 K=4 T=15500 wall=12.5s
+[1 ms tick, full workload] run 5: timeline 0bf7b9df4df50bc0 serialTimed f3c0ce4a6b1d9212 serial 4aad86fc79e88ce0 G=81 V=43 I=5 K=4 T=15500 wall=12.7s
+[1 ms tick, full workload] run 6: timeline 0bf7b9df4df50bc0 serialTimed f3c0ce4a6b1d9212 serial 4aad86fc79e88ce0 G=81 V=43 I=5 K=4 T=15500 wall=12.9s
+[1 ms tick, full workload] run 7: timeline 0bf7b9df4df50bc0 serialTimed f3c0ce4a6b1d9212 serial 4aad86fc79e88ce0 G=81 V=43 I=5 K=4 T=15500 wall=13.1s
+[1 ms tick, full workload] run 8: timeline 0bf7b9df4df50bc0 serialTimed f3c0ce4a6b1d9212 serial 4aad86fc79e88ce0 G=81 V=43 I=5 K=4 T=15500 wall=12.8s
+[1 ms tick, full workload] run 9: timeline 0bf7b9df4df50bc0 serialTimed f3c0ce4a6b1d9212 serial 4aad86fc79e88ce0 G=81 V=43 I=5 K=4 T=15500 wall=13.2s
+[1 ms tick, full workload] run 10: timeline 0bf7b9df4df50bc0 serialTimed f3c0ce4a6b1d9212 serial 4aad86fc79e88ce0 G=81 V=43 I=5 K=4 T=15500 wall=12.7s
+[1 ms tick, full workload, main-loop stress] run 1: timeline 0bf7b9df4df50bc0 serialTimed f3c0ce4a6b1d9212 serial 4aad86fc79e88ce0 G=81 V=43 I=5 K=4 T=15500 wall=18.9s
+[1 ms tick, full workload, main-loop stress] run 2: timeline 0bf7b9df4df50bc0 serialTimed f3c0ce4a6b1d9212 serial 4aad86fc79e88ce0 G=81 V=43 I=5 K=4 T=15500 wall=19.3s
+[1 ms tick, full workload, main-loop stress] run 3: timeline 0bf7b9df4df50bc0 serialTimed f3c0ce4a6b1d9212 serial 4aad86fc79e88ce0 G=81 V=43 I=5 K=4 T=15500 wall=18.1s
+[1 ms tick, full workload, main-loop stress] run 4: timeline 0bf7b9df4df50bc0 serialTimed f3c0ce4a6b1d9212 serial 4aad86fc79e88ce0 G=81 V=43 I=5 K=4 T=15500 wall=18.8s
+[1 ms tick, full workload, main-loop stress] run 5: timeline 0bf7b9df4df50bc0 serialTimed f3c0ce4a6b1d9212 serial 4aad86fc79e88ce0 G=81 V=43 I=5 K=4 T=15500 wall=18.6s
+[1 ms tick, full workload, main-loop stress] run 6: timeline 0bf7b9df4df50bc0 serialTimed f3c0ce4a6b1d9212 serial 4aad86fc79e88ce0 G=81 V=43 I=5 K=4 T=15500 wall=19.7s
+[1 ms tick, full workload, main-loop stress] run 7: timeline 0bf7b9df4df50bc0 serialTimed f3c0ce4a6b1d9212 serial 4aad86fc79e88ce0 G=81 V=43 I=5 K=4 T=15500 wall=19.2s
+[1 ms tick, full workload, main-loop stress] run 8: timeline 0bf7b9df4df50bc0 serialTimed f3c0ce4a6b1d9212 serial 4aad86fc79e88ce0 G=81 V=43 I=5 K=4 T=15500 wall=17.7s
+[1 ms tick, full workload, main-loop stress] run 9: timeline 0bf7b9df4df50bc0 serialTimed f3c0ce4a6b1d9212 serial 4aad86fc79e88ce0 G=81 V=43 I=5 K=4 T=15500 wall=18.1s
+[1 ms tick, full workload, main-loop stress] run 10: timeline 0bf7b9df4df50bc0 serialTimed f3c0ce4a6b1d9212 serial 4aad86fc79e88ce0 G=81 V=43 I=5 K=4 T=15500 wall=19.4s
+[10 ms tick, full workload] run 1: timeline 0bf7b9df4df50bc0 serialTimed f3c0ce4a6b1d9212 serial 4aad86fc79e88ce0 G=81 V=43 I=5 K=4 T=1550 wall=10.7s
+[10 ms tick, full workload] run 2: timeline 0bf7b9df4df50bc0 serialTimed f3c0ce4a6b1d9212 serial 4aad86fc79e88ce0 G=81 V=43 I=5 K=4 T=1550 wall=10.5s
+[10 ms tick, full workload] run 3: timeline 0bf7b9df4df50bc0 serialTimed f3c0ce4a6b1d9212 serial 4aad86fc79e88ce0 G=81 V=43 I=5 K=4 T=1550 wall=11.2s
+[10 ms tick, full workload] run 4: timeline 0bf7b9df4df50bc0 serialTimed f3c0ce4a6b1d9212 serial 4aad86fc79e88ce0 G=81 V=43 I=5 K=4 T=1550 wall=10.8s
+[10 ms tick, full workload] run 5: timeline 0bf7b9df4df50bc0 serialTimed f3c0ce4a6b1d9212 serial 4aad86fc79e88ce0 G=81 V=43 I=5 K=4 T=1550 wall=10.7s
+[10 ms tick, full workload] run 6: timeline 0bf7b9df4df50bc0 serialTimed f3c0ce4a6b1d9212 serial 4aad86fc79e88ce0 G=81 V=43 I=5 K=4 T=1550 wall=10.8s
+[10 ms tick, full workload] run 7: timeline 0bf7b9df4df50bc0 serialTimed f3c0ce4a6b1d9212 serial 4aad86fc79e88ce0 G=81 V=43 I=5 K=4 T=1550 wall=10.6s
+[10 ms tick, full workload] run 8: timeline 0bf7b9df4df50bc0 serialTimed f3c0ce4a6b1d9212 serial 4aad86fc79e88ce0 G=81 V=43 I=5 K=4 T=1550 wall=10.9s
+[10 ms tick, full workload] run 9: timeline 0bf7b9df4df50bc0 serialTimed f3c0ce4a6b1d9212 serial 4aad86fc79e88ce0 G=81 V=43 I=5 K=4 T=1550 wall=10.6s
+[10 ms tick, full workload] run 10: timeline 0bf7b9df4df50bc0 serialTimed f3c0ce4a6b1d9212 serial 4aad86fc79e88ce0 G=81 V=43 I=5 K=4 T=1550 wall=10.8s
+[1 ms tick, early boot window (3 s)] run 1: timeline 81aa9c4b7f0b1916 serialTimed f6de86c978e38653 serial 4cfdcad418d34960 G=18 V=8 I=1 K=0 T=3000 wall=9.5s
+[1 ms tick, early boot window (3 s)] run 2: timeline 81aa9c4b7f0b1916 serialTimed f6de86c978e38653 serial 4cfdcad418d34960 G=18 V=8 I=1 K=0 T=3000 wall=9.5s
+[1 ms tick, early boot window (3 s)] run 3: timeline 81aa9c4b7f0b1916 serialTimed f6de86c978e38653 serial 4cfdcad418d34960 G=18 V=8 I=1 K=0 T=3000 wall=9.3s
+[1 ms tick, early boot window (3 s)] run 4: timeline 81aa9c4b7f0b1916 serialTimed f6de86c978e38653 serial 4cfdcad418d34960 G=18 V=8 I=1 K=0 T=3000 wall=10.2s
+[1 ms tick, early boot window (3 s)] run 5: timeline 81aa9c4b7f0b1916 serialTimed f6de86c978e38653 serial 4cfdcad418d34960 G=18 V=8 I=1 K=0 T=3000 wall=9.4s
+[1 ms tick, early boot window (3 s)] run 6: timeline 81aa9c4b7f0b1916 serialTimed f6de86c978e38653 serial 4cfdcad418d34960 G=18 V=8 I=1 K=0 T=3000 wall=9.2s
+[1 ms tick, early boot window (3 s)] run 7: timeline 81aa9c4b7f0b1916 serialTimed f6de86c978e38653 serial 4cfdcad418d34960 G=18 V=8 I=1 K=0 T=3000 wall=9.5s
+[1 ms tick, early boot window (3 s)] run 8: timeline 81aa9c4b7f0b1916 serialTimed f6de86c978e38653 serial 4cfdcad418d34960 G=18 V=8 I=1 K=0 T=3000 wall=9.2s
+[1 ms tick, early boot window (3 s)] run 9: timeline 81aa9c4b7f0b1916 serialTimed f6de86c978e38653 serial 4cfdcad418d34960 G=18 V=8 I=1 K=0 T=3000 wall=9.1s
+[1 ms tick, early boot window (3 s)] run 10: timeline 81aa9c4b7f0b1916 serialTimed f6de86c978e38653 serial 4cfdcad418d34960 G=18 V=8 I=1 K=0 T=3000 wall=9.2s

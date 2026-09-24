@@ -1,15 +1,21 @@
 # Runtime R1 — Classic ESP32 production baseline: report
 
-Status: **implemented and verified locally; submitted for PM review.** R1 is not closed or
-tagged, and nothing has been pushed. No R2 or Sprint 6 work was started.
+Status: the baseline review of `1e7d8a5` was approved for push (pushed to `main` as `99d3798`), not
+for closure. The one closure blocker (host command quantum coupled to guest execution) is resolved
+locally by patch 0005 and awaits PM review (§21). R1 is **not closed and not tagged**. No R2 or
+Sprint 6 work was started.
+
+Sections 1–19 record the baseline as reviewed (runtime `567e58e704a0e43e`). **§21 supersedes their
+runtime-specific values** (runtime id, gate fingerprints, timing, resources, risk 1) for the current
+runtime `979f09d739382157`.
 
 | Item                 | Value                                                                              |
 | -------------------- | ---------------------------------------------------------------------------------- |
 | Branch / worktree    | `runtime-r1`, created from `sprint-5-complete` (`dce6a87`), worktree `../tbi-lab-r1` |
 | Target               | Original ESP32 (Xtensa LX6), ESP32-DevKitC V4 with an ESP32-WROOM-32. No C3/S3 substitution |
-| Runtime build        | `runtimeId 567e58e704a0e43e` = espressif/qemu `40edccac` + `runtime/qemu/patches/0001-0004` |
+| Runtime build        | current: `runtimeId 979f09d739382157` = espressif/qemu `40edccac` + `runtime/qemu/patches/0001-0005` (reviewed baseline: `567e58e704a0e43e`, patches 0001-0004) |
 | Test host            | 1 vCPU aarch64 (Neoverse-N1), 3.8 GiB RAM, Ubuntu, Node 24                          |
-| Evidence             | `docs/runtime/r1-evidence/*.json` (written by the runtime tests), `provision-clean-all.txt` |
+| Evidence             | `docs/runtime/r1-evidence/runtime-<runtimeId>/` (JSON written by the runtime tests, provisioning logs) |
 
 ## 1. Acceptance gates
 
@@ -105,7 +111,7 @@ Pins (`runtime/provision/versions.env`):
 - MicroPython v1.29.0 (sha256 `e67ad601…`);
 - firmware `SOURCE_DATE_EPOCH` 1767225600.
 
-Clean run from a fresh clone into an empty home (`r1-evidence/provision-clean-all.txt`):
+Clean run from a fresh clone into an empty home (`r1-evidence/runtime-567e58e704a0e43e/provision-clean-all.txt`):
 
 | Step | Wall time |
 | ---- | --------- |
@@ -215,6 +221,8 @@ The approved Gate C pin model is promoted unchanged into `packages/engine/src/es
 
 ## 9. Deterministic release gate (R1.6)
 
+*Values for the reviewed runtime `567e58e704a0e43e`; superseded by §21.3.*
+
 Workload: the Sprint 1 scenario (TbiGpioProof, VEXT 3.3/0/3.3/0 V at 13.0/13.6/14.2/14.9 s, end
 at 15.5 s). The fingerprint covers pad events, full-precision solves, injections, commands, and
 serial output with its simulation timestamps.
@@ -241,6 +249,8 @@ Per 1 ms run:
 - 5 injections, 4 commands, 15 500 ticks, 431 serial frames.
 
 ## 10. Timing (R1.7)
+
+*Values for the reviewed runtime `567e58e704a0e43e`; superseded by §21.4.*
 
 The runtime is deterministic, not cycle-accurate. At `-icount shift=3` each guest instruction
 costs 8 ns of simulation time, which is 125 M instructions per simulated second.
@@ -313,7 +323,9 @@ nothing restarts.
 
 ## 14. Resources (R1.12): measurements, not capacity
 
-One gate session (15.5 s simulated, 1 ms tick) on 1 vCPU (`r1-evidence/resources.json`):
+*Values for the reviewed runtime `567e58e704a0e43e`; superseded by §21.5.*
+
+One gate session (15.5 s simulated, 1 ms tick) on 1 vCPU (`r1-evidence/runtime-567e58e704a0e43e/resources.json`):
 
 | Metric | R1 | Sprint 1 |
 | ------ | -- | -------- |
@@ -362,7 +374,7 @@ Full notes are in `runtime/qemu/README.md`.
 
 ## 17. Risks
 
-1. **The tick quantum affects guest timing (invariant 8).**
+1. **The tick quantum affects guest timing (invariant 8).** *Resolved by patch 0005; see §21.*
    - Under icount, QEMU switches between the two cores at virtual-timer deadlines. The command
      tick is such a deadline, so it also sets the core-interleaving granularity.
    - Each quantum is deterministic, but 1 ms and 10 ms give different timelines.
@@ -399,6 +411,8 @@ These do not block R1:
   remain documented, but can no longer be re-verified from that file.
 
 ## 19. Test counts
+
+*At the reviewed baseline `1e7d8a5`; see §21.6 for the current counts.*
 
 | Suite | Count | Result |
 | ----- | ----- | ------ |
@@ -459,3 +473,151 @@ it to QEMU directly. It was **not repaired, overwritten or deleted**. Sprint 1 t
 replayed bit for bit from that file. Sprint 1 history and the `sprint-1-complete` tag are
 unchanged. R1's immutable, content-addressed artifacts with per-session private copies (§12)
 supersede that mechanism.
+
+## 21. Closure blocker: host command quantum decoupled from guest execution
+
+Work was done locally after the baseline push (`99d3798`), limited to this blocker. Current runtime:
+**`979f09d739382157`** (espressif/qemu `40edccac` + patches 0001–0005; clean provisioning build 10 min
+33 s; `r1-evidence/runtime-979f09d739382157/provision-qemu.txt`).
+
+### 21.1 Exact cause
+
+Under `-icount`, QEMU runs both ESP32 cores round-robin on one thread (`accel/tcg/tcg-accel-ops-rr.c`).
+Three upstream mechanisms made the bridge's command tick, an ordinary `QEMU_CLOCK_VIRTUAL` timer,
+shape how the cores interleave:
+
+1. **Slice sizing and rotation.** At each rotation the loop sizes every core's timeslice as
+   (instructions to the next virtual-timer deadline) ÷ (number of cores). A core stopped at a
+   deadline yields to the next core. The tick was a deadline, so it bounded every slice and forced
+   a core switch at every tick.
+2. **Kicks when servicing a deadline.** When the round-robin thread runs a due timer
+   (`icount_handle_deadline` → `qemu_clock_notify` → `rr_kick_vcpu_thread`), it sets `exit_request`
+   on the vCPUs, including one that has not run yet in this rotation. That vCPU then ends the rotation
+   early and the slices are recomputed. Each tick added such an event.
+3. **"Earliest timer" decisions.** When the guest arms a timer (e.g. FreeRTOS writing `CCOMPARE0`
+   in `_frxt_tick_timer_init`), QEMU kicks the running vCPU only if the new timer becomes the
+   earliest in the list. With a 1 ms tick pending first, it was not the earliest, so there was no
+   kick. With a 10 ms tick it was, so there was a kick. The guest's own timer changed its effect
+   depending on the host quantum.
+
+Mechanism 1 alone accounted for most of the difference: the first application pad event was at
+377.10 ms (1 ms) against 486.31 ms (10 ms). Mechanisms 2 and 3 were located by instrumented
+scheduler traces (temporary, removed) that compared the 1 ms and 10 ms runs slice by slice until
+they were identical.
+
+### 21.2 Fix design (patch 0005, 6 files, +134 lines)
+
+- A new timer attribute, `QEMU_TIMER_ATTR_HOST_SYNC`, marks a virtual timer whose only purpose is
+  host synchronisation. `tbi-bridge` arms its tick with it. **Machines without such a timer behave
+  exactly as upstream.**
+- Timeslices are sized from the other timers only. Execution still stops **exactly** at the tick
+  deadline, so the host exchange (and any command) happens at the exact simulation time.
+- A vCPU stopped only by a host-sync deadline services it and then **resumes with the rest of its
+  slice**; the rotation is not advanced. Whether a run will be cut by a host-sync deadline is decided
+  before the run, on the vCPU thread, so it cannot depend on host thread timing.
+- `exit_request` kicks produced while servicing a host-sync timer are discarded (no vCPU was
+  running). Stop requests are unaffected (`cpu->stop`).
+- Host-sync timers are ignored when deciding whether a newly armed guest timer is the earliest.
+
+Not changed: pad events, electrical feedback and serial remain synchronous exchanges at the exact
+instruction that caused them (no quantisation). Commands still apply only at tick boundaries.
+Two further candidate changes (a grid-aligned round-robin kick timer, suppressing notifications
+when the tick re-arms) had no effect and were not kept.
+
+### 21.3 Results: guest timeline vs host command quantum
+
+`runtime/tests/quantum.runtime.test.ts` (new). The same firmware runs with no commands whose timing
+differs: every workload command is on a multiple of 10 ms. It compares the complete observable
+timeline: pad events, solves, injections, commands, and serial with timestamps.
+
+| Comparison | Before (`567e58e7`) | After (`979f09d7`) |
+| ---------- | ------------------- | ------------------ |
+| Release-gate workload, 1 ms vs 10 ms: timeline sha256 | `2fadf3ae…` vs `12efd464…` | `0bf7b9df…` = `0bf7b9df…` |
+| Timed serial | `1a8db052…` vs `39d81de4…` | `f3c0ce4a…` = `f3c0ce4a…` |
+| First application pad event | 377.10 ms vs 486.31 ms | 890.15 ms = 890.15 ms |
+| Largest pad-event time difference | 109.43 ms (78 of 83 events shifted) | **0 ns** |
+| Timing probe (TbiTiming, no commands) at 1 / 10 / 7 / 0.25 ms | 1 ms vs 10 ms differ by up to 109.43 ms | **identical at all four** (`7bdef8eb…`, serial `7d74e75e…`) |
+
+**Deterministic release gate on the new runtime.**
+- New baseline: 40 unpinned runs, 10 per configuration, each converging to **exactly one** result
+  (`r1-evidence/runtime-979f09d739382157/gate-unpinned-10x-runs.txt`).
+- Pins updated.
+- Pinned confirmation: 3 runs × 5 configurations, all matching.
+
+| Configuration | Timeline | Timed serial | Serial bytes |
+| ------------- | -------- | ------------ | ------------ |
+| 1 ms, full workload | `0bf7b9df4df50bc0` | `f3c0ce4a6b1d9212` | `4aad86fc79e88ce0` |
+| 1 ms, full workload, QMP main-loop stress | **same** | **same** | **same** |
+| 10 ms, full workload | **same** | **same** | **same** |
+| 1 ms, boot window 0–3 s | `81aa9c4b7f0b1916` | `f6de86c978e38653` | `4cfdcad418d34960` |
+| 10 ms, boot window 0–3 s (new) | **same as 1 ms** | **same** | **same** |
+
+Gate runs on this runtime: 55 (40 baseline + 15 confirmation), 0 divergences. The isolation test's
+concurrent runs also equal the solo run. Each full run has 81 pad events, 43 solves, 5 injections and
+4 commands.
+
+### 21.4 Timing (accepted non-cycle-accurate envelope)
+
+| Measurement | Before (1 ms tick) | After (any quantum) | Sprint 1 without tick / 10 ms |
+| ----------- | ------------------ | ------------------- | ----------------------------- |
+| `delay(1000)`, markers | 1000.297 ms | 1000.513 ms (`millis` 1001, `micros` 1 000 514, 240.12 M cycles) | 1000.513 / 1000.514 ms |
+| 100 ms timer, 1 s window | 9 ticks | 9 ticks | 9 |
+| 1 M busy loop | 48.803 ms | 48.801 ms (11.71 cycles/iteration) | 48.801 ms |
+| Boot to `setup()` | 376.8 ms | **889.9 ms** (`millis` 338 at `setup`) | 0.889 s / 0.468 s |
+
+The peripheral clocks still agree with simulation time within the accepted 0.06 %.
+
+**Boot to `setup()` changed.** The 377 ms figure was produced by the 1 ms tick forcing sub-millisecond
+core switches. Core switching is now set by the guest's own timers and QEMU's fixed 100 ms
+round-robin kick. Before FreeRTOS arms its 1 kHz tick, only the kick applies. The result equals
+Sprint 1's tick-free measurement (0.889 s). Neither figure is a silicon measurement.
+
+### 21.5 Resources (one gate session, 1 vCPU; measurement, not capacity)
+
+| Metric | Before | After |
+| ------ | ------ | ----- |
+| Startup | 62 ms | 68 ms |
+| QEMU RSS after boot / peak | 70.3 / 143.8 MB | 65.5 / 142.4 MB |
+| QEMU CPU for 15.5 s simulated | 8.64 s | 10.4 s (0.671 per simulated s) |
+| Wall | 10.99 s | 12.4 s (0.80 per simulated s) |
+| Wall under main-loop stress | 15.6–34.2 s | 17.7–19.7 s |
+| Shutdown / overlay | 7 ms / 6.7 ms | 8 ms / 6.5 ms |
+
+### 21.6 Regressions and changes
+
+- **Functional regressions: none.**
+  - The runtime suite (59 tests, 10 files) passes, pinned.
+  - Unit tests (374), typecheck, lint and the boundary check all pass.
+  - Banks (bank 0 and bank 1, GPIO32/33, GPIO4/16/27), electrical (exact pin equations to
+    1e-9 V), two-way feedback, event-driven feedback off the 1 ms grid, isolation, serial,
+    failure modes and timing all pass.
+  - Patches 0001–0004 are unchanged.
+- **Workload coverage.** With the new boot phase, the gate firmware's once-per-800 ms `IN=` print
+  never falls inside a HIGH hold window of the unchanged Sprint 1 stimulus. GPIO5 is held HIGH
+  during 13.000–13.600 s and 14.4908–14.900 s, and the reads fall at 12.89, 13.69, 14.49 and 15.29 s. The
+  14.49 s read comes 9 µs before the second HIGH injection. The gate and electrical tests therefore assert that both
+  levels are injected, and that every `IN=` equals the last injected level, instead of requiring an
+  `IN=1` print. The stimulus was deliberately **not** retuned. `digitalRead() == 1` reaching the
+  firmware is covered by the banks test (VA → GPIO35 → firmware → GPIO33 → LED, `ECHO35=1`) and
+  by MicroPython (`IN35 1`).
+- **Performance:** about 20 % more QEMU CPU and 13 % more wall time per simulated second (§21.5).
+- **Boot to `setup()`** is 890 ms instead of 377 ms (§21.4).
+
+### 21.7 Option for the PM (not implemented)
+
+Core-interleaving granularity is now a property of the MCU runtime alone: guest timers plus the
+fixed 100 ms round-robin kick. Finer early-boot interleaving (closer to the old 377 ms boot) could be
+obtained later as an explicit, pinned MCU-execution parameter, a shorter round-robin kick period,
+still independent of the host command quantum. That would change the fingerprints and needs a PM
+decision; it is not required by the acceptance criteria.
+
+### 21.8 Closure readiness
+
+Every acceptance requirement for the blocker is met locally:
+- the guest timeline is identical at 1, 10, 7 and 0.25 ms quanta;
+- feedback remains event-driven and synchronous;
+- the gate is single-result under stress;
+- timing is within the envelope.
+
+R1 is ready for PM closure review. It still needs PM authorisation to push, and then a routine CI
+run. It is not closed or tagged here.

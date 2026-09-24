@@ -1,0 +1,17 @@
+[provision 14:13:28] host prerequisites present (aarch64, 1 CPU)
+[provision 14:13:28] source verified at 40edccac415693c5130f91c01d84176ae6008566
+[provision 14:13:28] preparing patched tree for runtime 979f09d739382157
+[provision 14:13:29] applying 0001-accel-tcg-defer-sleep-off-icount-warp-while-a-round-.patch
+[provision 14:13:29] applying 0002-hw-xtensa-esp32-apply-the-APP-CPU-reset-synchronousl.patch
+[provision 14:13:29] applying 0003-hw-gpio-esp32_gpio-classic-ESP32-digital-GPIO-regist.patch
+[provision 14:13:29] applying 0004-hw-misc-tbi_bridge-TBI-Lab-synchronous-runtime-bridg.patch
+[provision 14:13:29] applying 0005-accel-tcg-util-qemu-timer-host-sync-timers-must-not-.patch
+[provision 14:13:29] configuring (xtensa-softmmu only)
+[provision 14:13:51] building (this is the long step on a small host)
+[provision 14:21:46] built in 475 s
+[provision 14:24:00] qemu ready: $TBI_RUNTIME_HOME/qemu-current -> qemu-979f09d739382157
+
+real	10m32.758s
+user	7m58.776s
+sys	1m15.531s
+EXIT 0

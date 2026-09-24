@@ -1,0 +1,36 @@
+{
+  "gate": {
+    "timeline": [
+      "2fadf3ae624080b13cd995428c5520925ae8edbeaa379b26b961c2c724fa8cbb",
+      "12efd464dbe6bb3a7899d2a32480b0f63aa40209c331a6a5c71702aa0ebd087c"
+    ],
+    "serialTimed": [
+      "1a8db052c6c4fa4aadecc2020f1739f047192d3993385194c7d4f3d7c3de7b64",
+      "39d81de4911e98b94fca6a7be0fef68469f47f645a2333e84502ebc57e1c17cb"
+    ],
+    "firstPadEvent": [
+      "G 301726792 gpio11 drive=1 level=0",
+      "G 301726792 gpio11 drive=1 level=0"
+    ],
+    "padEvents": {
+      "identical": false,
+      "maxShiftNs": "109426672",
+      "first": "#5: G 377099816 gpio2 drive=1 level=0 | G 486307856 gpio2 drive=1 level=0"
+    }
+  },
+  "timing": {
+    "timeline": [
+      "058bba5cf74d7938ae766686254006b50adf742f526da38987b101f47f8fb0ce",
+      "93de7560a71592035a7d3a2976f49835f071f2eeacdd35e15db98a83acfd9228"
+    ],
+    "serialTimed": [
+      "d7e55930d55d035c8a63e03fcf787cf74088d5b25cb38440fb0c03ca3b9c843b",
+      "8191910caecdb82c7049fa72a959339e388842c3783e87896209ce0ba4fa05f5"
+    ],
+    "padEvents": {
+      "identical": false,
+      "maxShiftNs": "109426668",
+      "first": "#5: G 376832560 gpio2 drive=1 level=0 | G 486062312 gpio2 drive=1 level=0"
+    }
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "solo": "0bf7b9df4df50bc020d608705facf06e7117cc1a43407910c7627cd0dae38719",
+  "concurrent": [
+    "0bf7b9df4df50bc020d608705facf06e7117cc1a43407910c7627cd0dae38719",
+    "0bf7b9df4df50bc020d608705facf06e7117cc1a43407910c7627cd0dae38719"
+  ],
+  "wallMs": {
+    "solo": 12645.723874999996,
+    "concurrent": [
+      45932.768503,
+      46197.463771
+    ]
+  }
+}
