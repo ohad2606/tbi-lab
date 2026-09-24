@@ -1,7 +1,12 @@
 import { isolateLtr } from '../i18n/i18n.js';
 import type { SimFailure } from '../sim/controller.js';
-import { MODEL_CARDS } from '@tbi-lab/engine';
-import { engineErrorMessage, ratingMessage, simFailureMessage } from '../sim/format.js';
+import type { RatingWarning } from '@tbi-lab/engine';
+import {
+  engineErrorMessage,
+  groupByComponent,
+  ratingRow,
+  simFailureMessage,
+} from '../sim/format.js';
 import { warningsFor } from '../sim/ratings.js';
 import { useAppState, useStore, useT } from './context.js';
 
@@ -37,15 +42,11 @@ export function NoticeBar() {
         // A documented datasheet limit is exceeded: a WARNING (amber), distinct from the red
         // solver errors above. The solved values are unchanged.
         <div class="banner banner-warning banner-rating" role="status" data-testid="rating-warning">
-          <strong>{t('rating.heading')}</strong>
-          <ul class="rating-list">
-            {warningsFor(doc, running).map((w) => (
-              <li key={`${w.component}.${w.code}`} data-code={w.code} data-component={w.component}>
-                {ratingMessage(locale, w, MODEL_CARDS[w.model]?.name ?? w.model)}
-              </li>
-            ))}
-          </ul>
-          <span class="small">{t('rating.note')}</span>
+          <strong class="rating-title">{t('rating.heading')}</strong>
+          {groupByComponent(warningsFor(doc, running)).map(([id, rows]) => (
+            <RatingGroup key={id} component={id} rows={rows} />
+          ))}
+          <span class="rating-note small">{t('rating.note')}</span>
         </div>
       )}
       {running?.ok && running.notConnected.length > 0 && (
@@ -93,4 +94,22 @@ export function NoticeBar() {
 
 function failureCode(f: SimFailure): string {
   return f.kind === 'engine' ? f.error.code : f.code;
+}
+
+/** One over-stressed part: "D1 may be damaged", then one compact row per exceeded rating. */
+export function RatingGroup({ component, rows }: { component: string; rows: RatingWarning[] }) {
+  const { locale } = useAppState();
+  const t = useT();
+  return (
+    <div class="rating-group" data-testid={`rating-${component}`} data-model={rows[0]?.model}>
+      <span class="rating-summary">{t('rating.atRisk', { component: isolateLtr(component) })}</span>
+      <ul class="rating-list">
+        {rows.map((w) => (
+          <li key={w.code} data-code={w.code}>
+            {ratingRow(locale, w)}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
 }

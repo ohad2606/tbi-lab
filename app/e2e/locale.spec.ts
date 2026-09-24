@@ -133,9 +133,12 @@ test('A9: switching language changes no project byte and does not move the circu
   };
   const r1Before = await inCanvas();
   const viewBoxBefore = await page.getByTestId('canvas').getAttribute('viewBox');
+  // The drawn wire geometry (path data since Sprint 5; it must really be there).
   const wiresBefore = await page
     .locator('.wires .wire')
-    .evaluateAll((els) => els.map((e) => e.getAttribute('points')));
+    .evaluateAll((els) => els.map((e) => e.getAttribute('d')));
+  expect(wiresBefore.length).toBeGreaterThan(0);
+  expect(wiresBefore.every((d) => typeof d === 'string' && d.startsWith('M'))).toBe(true);
 
   for (const locale of ['he', 'en', 'he']) {
     await page.getByTestId('language-select').selectOption(locale);
@@ -145,9 +148,7 @@ test('A9: switching language changes no project byte and does not move the circu
     expect(await inCanvas()).toEqual(r1Before);
     expect(await page.getByTestId('canvas').getAttribute('viewBox')).toBe(viewBoxBefore);
     expect(
-      await page
-        .locator('.wires .wire')
-        .evaluateAll((els) => els.map((e) => e.getAttribute('points'))),
+      await page.locator('.wires .wire').evaluateAll((els) => els.map((e) => e.getAttribute('d'))),
     ).toEqual(wiresBefore);
   }
   // The user-authored name is shown verbatim in either language.

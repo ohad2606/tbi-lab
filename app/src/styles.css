@@ -1267,19 +1267,52 @@ select {
 }
 
 .banner-rating {
+  display: grid;
+  gap: 0.2rem;
+  justify-items: start;
+}
+
+.rating-group {
+  display: flex;
   flex-wrap: wrap;
   align-items: baseline;
+  gap: 0.25rem 1rem;
+}
+
+.rating-summary {
+  font-weight: 700;
 }
 
 .rating-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1.25rem;
   margin: 0;
-  padding-inline-start: 1.1rem;
+  padding: 0;
+  list-style: none;
+}
+
+.rating-note {
+  opacity: 0.9;
+}
+
+.sim-warning .rating-group {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.sim-warning .rating-list {
+  display: grid;
+  gap: 0.1rem;
 }
 
 .sim-warning {
   color: var(--warning-ink);
-  font-weight: 600;
   font-size: 0.87rem;
+  margin-block: 0.5rem;
+  padding: 0.4rem 0.6rem;
+  border-inline-start: 3px solid var(--warning-ink);
+  background: var(--warning-bg);
 }
 
 /* ================================================================ Product Alpha: brand */
@@ -1483,4 +1516,22 @@ select {
 .banner-warning {
   background: var(--warning-bg);
   color: var(--warning-ink);
+}
+
+/* Wire bridges at unconnected crossings (visual only). The casing hides the crossed wire under
+   the arc, so the hop clearly passes over it. */
+.wire-bridge-casing {
+  fill: none;
+  stroke: var(--canvas-bg);
+  stroke-width: 7;
+  pointer-events: none;
+}
+
+.wire-bridge .wire {
+  pointer-events: none;
+}
+
+.wire-bridge.selected .wire {
+  stroke: var(--selected);
+  stroke-width: 4;
 }

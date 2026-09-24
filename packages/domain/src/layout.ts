@@ -135,3 +135,67 @@ export function locateOnWire(
   }
   return undefined;
 }
+
+/**
+ * A place where two wires are drawn across each other WITHOUT being connected (Sprint 5).
+ *
+ * Presentation only: crossings are derived from the drawing and never stored, and they have no
+ * electrical meaning. Connectivity comes from explicit wire endpoints (terminals, junctions)
+ * alone; a crossing is by definition not a connection, and the canvas draws a bridge (line hop)
+ * there so the drawing says so too.
+ */
+export interface WireCrossing {
+  x: number;
+  y: number;
+  /** The wire whose VERTICAL segment carries the bridge (it hops over the other). */
+  over: string;
+  /** The wire whose horizontal segment passes straight underneath. */
+  under: string;
+}
+
+/**
+ * Every unconnected orthogonal crossing in the drawing, in a deterministic order.
+ *
+ * A vertical segment of one wire and a horizontal segment of another (or of the same wire,
+ * non-adjacent) cross when the point lies STRICTLY inside both segments. Not a crossing:
+ * a point where either segment ends (a shared endpoint, a corner, a T), a junction position or a
+ * terminal position (where a connection is or could be explicit), and collinear overlaps (no
+ * single crossing point).
+ */
+export function wireCrossings(doc: ProjectDocument): WireCrossing[] {
+  type Seg = { wire: string; a: Point; b: Point };
+  const vertical: Seg[] = [];
+  const horizontal: Seg[] = [];
+  for (const w of doc.layout.wires) {
+    const r = wireRoute(doc, w);
+    if (!r) continue;
+    for (let i = 0; i < r.length - 1; i++) {
+      const a = r[i]!;
+      const b = r[i + 1]!;
+      if (a.x === b.x && a.y !== b.y) vertical.push({ wire: w.id, a, b });
+      else if (a.y === b.y && a.x !== b.x) horizontal.push({ wire: w.id, a, b });
+    }
+  }
+  const blocked = new Set<string>();
+  for (const j of doc.layout.junctions) blocked.add(`${j.x},${j.y}`);
+  for (const c of doc.components) {
+    for (const t of getTypeDef(c.type)?.terminals ?? []) {
+      const p = terminalPosition(doc, c.id, t.id);
+      if (p) blocked.add(`${p.x},${p.y}`);
+    }
+  }
+  const inside = (v: number, p: number, q: number) => v > Math.min(p, q) && v < Math.max(p, q);
+  const out: WireCrossing[] = [];
+  for (const v of vertical) {
+    for (const h of horizontal) {
+      const x = v.a.x;
+      const y = h.a.y;
+      if (!inside(x, h.a.x, h.b.x) || !inside(y, v.a.y, v.b.y)) continue;
+      if (blocked.has(`${x},${y}`)) continue;
+      out.push({ x, y, over: v.wire, under: h.wire });
+    }
+  }
+  return out.sort(
+    (p, q) => p.x - q.x || p.y - q.y || (p.over < q.over ? -1 : p.over > q.over ? 1 : 0),
+  );
+}

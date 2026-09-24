@@ -43,28 +43,30 @@ export function formatPower(locale: LocaleInfo, watts: number): string {
   return `${n} ${prefix}${translate(locale, 'unit.watt.symbol')}`;
 }
 
-/** One localized over-stress line: "D1: forward current 60.3 mA is above ... 30 mA." */
-export function ratingMessage(
-  locale: LocaleInfo,
-  w: {
-    component: string;
-    model: string;
-    code: 'forward_current' | 'reverse_voltage' | 'power';
-    value: number;
-    limit: number;
-  },
-  modelName: string,
-): string {
+type RatingLike = {
+  component: string;
+  code: 'forward_current' | 'reverse_voltage' | 'power';
+  value: number;
+  limit: number;
+};
+
+/** One compact over-stress row: "Current: 62.64 mA (maximum 30 mA)". Values stay LTR. */
+export function ratingRow(locale: LocaleInfo, w: RatingLike): string {
   const fmt = (v: number) =>
     w.code === 'power'
       ? formatPower(locale, v)
       : formatResult(locale, v, w.code === 'forward_current' ? 'ampere' : 'volt');
-  return translate(locale, `rating.${w.code}`, {
-    component: isolateLtr(w.component),
+  return translate(locale, `rating.row.${w.code}`, {
     value: isolateLtr(fmt(w.value)),
     limit: isolateLtr(fmt(w.limit)),
-    model: isolateLtr(modelName),
   });
+}
+
+/** Warnings grouped by component, in first-seen order: one summary per part, rows below. */
+export function groupByComponent<T extends { component: string }>(warnings: T[]): [string, T[]][] {
+  const groups = new Map<string, T[]>();
+  for (const w of warnings) groups.set(w.component, [...(groups.get(w.component) ?? []), w]);
+  return [...groups];
 }
 
 const list = (ids: string[] | undefined) => isolateLtr((ids ?? []).join(', '));

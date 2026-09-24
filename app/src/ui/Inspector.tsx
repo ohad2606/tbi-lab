@@ -11,8 +11,9 @@ import {
   type ParamDef,
 } from '@tbi-lab/domain';
 import { catalogText, formatQuantity, inputForm, isolateLtr, unitSymbol } from '../i18n/i18n.js';
-import { MODEL_CARDS, type SolveSuccess } from '@tbi-lab/engine';
-import { formatPower, formatResult, ratingMessage } from '../sim/format.js';
+import type { SolveSuccess } from '@tbi-lab/engine';
+import { formatPower, formatResult } from '../sim/format.js';
+import { RatingGroup } from './NoticeBar.js';
 import { warningsFor } from '../sim/ratings.js';
 import { useAppState, useStore, useT } from './context.js';
 import { checksFor } from './checks.js';
@@ -429,13 +430,14 @@ function ComponentResultView({
           </dl>
         )}
       {doc &&
-        warningsFor(doc, outcome)
-          .filter((w) => w.component === component.id)
-          .map((w) => (
-            <p class="sim-warning" data-testid="result-rating" data-code={w.code} key={w.code}>
-              {ratingMessage(locale, w, MODEL_CARDS[w.model]?.name ?? w.model)}
-            </p>
-          ))}
+        (() => {
+          const rows = warningsFor(doc, outcome).filter((w) => w.component === component.id);
+          return rows.length ? (
+            <div class="sim-warning" data-testid="result-rating">
+              <RatingGroup component={component.id} rows={rows} />
+            </div>
+          ) : null;
+        })()}
       {r?.outsideModelRange && (
         <p class="sim-note" data-testid="result-outside-model">
           {t('sim.results.outsideModel')}

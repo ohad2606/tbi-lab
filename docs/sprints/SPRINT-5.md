@@ -239,12 +239,12 @@ separate IndexedDB index. See `SCHEMA.md` ("Sprint 5: no schema change").
 
 | Suite | Count | Sprint 4 | Result |
 |---|---:|---:|---|
-| `packages/domain` (**new:** `package.test.ts` 23: SHA-256, canonical JSON, package, import rejection, copy identity; `wire-edit.test.ts` 6) | 150 | 121 | pass |
+| `packages/domain` (**new:** `package.test.ts` 23: SHA-256, canonical JSON, package, import rejection, copy identity; `wire-edit.test.ts` 6; `crossings.test.ts` 6) | 156 | 121 | pass |
 | `packages/engine` (**new:** `ratings.test.ts` 7; solver tests unchanged) | 64 | 57 | pass |
 | `app` unit (**new:** `library.test.ts` 18, `examples.test.ts` 10) | 90 | 62 | pass |
 | Sprint 0/1 (`experiments/`, unchanged) | 55 | 55 | pass |
-| **Unit total** (`npm test`, 30 files) | **359** | 295 | pass |
-| `app` Chromium acceptance (`npm run test:e2e`) (**new:** `sprint5.spec` 11, `sprint5-performance.spec` 1, insecure-context export/import 1, `sprint5-prepush.spec` 3) | **65** | 49 | pass |
+| **Unit total** (`npm test`, 31 files) | **365** | 295 | pass |
+| `app` Chromium acceptance (`npm run test:e2e`) (**new:** `sprint5.spec` 11, `sprint5-performance.spec` 1, insecure-context export/import 1, `sprint5-prepush.spec` 5) | **67** | 49 | pass |
 | Sprint 0 browser (`npm run test:browser`) | 4 | 4 | pass |
 
 `typecheck`, `lint` (ESLint, Prettier, boundary) are clean.
@@ -287,6 +287,70 @@ The PM reviewed Product Alpha in the browser and asked for a targeted pass befor
 The library cold load is the one consistent change, about +40 ms. It is not the logo decode:
 asynchronous decoding changed nothing. It comes from the wider two-column layout and styling
 on first load, is recorded here, and is not visibly sluggish.
+
+## 12b. Final polish (PM review, 2026-09-24)
+
+### Wire bridges at unconnected crossings
+
+- **Rule** (`wireCrossings`, `packages/domain/src/layout.ts`; pure, derived, never stored):
+  - a vertical segment of one wire and a horizontal segment of another (or of the same wire)
+    cross when the point lies **strictly inside both** segments;
+  - there is no bridge at a point where either segment ends (a shared endpoint, a corner, a
+    T), at a junction position, at a terminal position, or along a collinear overlap;
+  - a real junction always splits the wires there, so a joined crossing is never a crossing.
+    Its junction dot stays the only connection marker, and the wires stay continuous.
+- **Interpretation:** "segments electrically connected through an explicit junction" is read
+  as a junction *at that point*. Two wires of the same net that cross somewhere else,
+  unjoined, still get a bridge there, because they are not connected at that point.
+- **Geometry:**
+  - the **vertical** wire always carries the bridge: a semicircle centred on the crossing,
+    bulging toward +x (the canvas is always LTR), in whichever direction the segment runs;
+  - the arc is redrawn on top over a 7-unit canvas-coloured casing, so it clearly passes over
+    the horizontal wire;
+  - radius = clamp(5 px / zoom, 6, 9) schematic units: at least about 5 screen pixels at
+    every zoom, and always under half the 20-unit grid, so hops never touch each other or a
+    parallel wire.
+- **Visual only:** the hit line of every wire stays its straight route (clicking and segment
+  dragging are unchanged). Bridges are recomputed from the drawing shown, including the live
+  drag preview, so they follow a dragged segment. They are not stored, not in the snapshot
+  (which has no layout) and not in the solver input.
+- **Tests:**
+  - 6 domain tests: crossing → one bridge on the vertical wire with separate nets; the same
+    geometry with a junction → no bridge and joined nets; a T or corner → none; derivation
+    leaves the document and snapshot byte-identical; follows a drag and vanishes when dragged
+    away; deleting a wire removes it.
+  - 2 browser tests: bridge vs junction in the real UI; drag moves the bridge; undo/redo move
+    it back and forth; re-routing and deleting remove it.
+  - The solver proves it is visual only: a 1 kΩ + 1 kΩ divider whose middle wire crosses the
+    5 V wire reads **2.5 V** at the crossing wire, and **5 V** only when a junction joins them.
+    Electrical results are identical before and after moving or removing a bridge.
+
+### Over-stress warning copy (limits and logic unchanged)
+
+| | Before | After |
+|---|---|---|
+| Title (en) | Beyond datasheet limits | **Component rating exceeded** |
+| Title (he) | מעבר לגבולות גיליון הנתונים | **חריגה מדירוגי הרכיב** |
+| Per part (en) | one sentence per limit: "D1: forward current 62.64 mA is above the TLHR5400 maximum of 30 mA." | **D1 may be damaged** + rows "Current: 62.64 mA (maximum 30 mA)", "Power: 128.8 mW (maximum 100 mW)" (also "Reverse voltage: … (maximum …)") |
+| Per part (he) | "D1: הזרם הקדמי … גבוה מהמקסימום של TLHR5400, 30 mA." | **D1 עלול להינזק** + "זרם: … (מקסימום 30 mA)", "הספק: … (מקסימום 100 mW)", "מתח הפוך: …" |
+| Footer (en) | "A real part would likely be damaged. The simulation does not model damage: the values shown are still the electrical model's. This is a warning, not a simulation error." | **"The simulation continues to show the calculated values and does not model physical damage."** |
+| Footer (he) | "רכיב אמיתי צפוי להינזק. … זו אזהרה, לא שגיאת סימולציה." | **"הסימולציה ממשיכה להציג את הערכים המחושבים ואינה מדמה נזק לרכיב."** |
+
+- One group per over-stressed part, with compact rows; the amber treatment is kept, and the
+  footer appears once.
+- The inspector shows the same compact group, without the footer prose.
+- The model id stays available as `data-model` for diagnostics.
+- The browser test compares the banner line by line in both languages with values from the
+  engine, and checks that it never says "error" / "שגיאה".
+
+### Existing tests adapted (not weakened)
+
+The visible wire is now an SVG `path` (so it can carry hops) instead of a `polyline`.
+
+- `editor.spec` A2 reads the drawn path's final point (still `40,40`).
+- `locale.spec` compares the path data across language switches. That check had become
+  vacuous, comparing lists of `null` once the attribute changed, and was **restored and
+  strengthened**: it now also asserts that the geometry is present.
 
 ## 13. Performance (measured on the 1-core ARM64 dev host; no SLA)
 

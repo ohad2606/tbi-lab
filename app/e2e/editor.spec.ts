@@ -140,8 +140,16 @@ test('A2: move and rotate keep wires attached; rubber band selects several', asy
   expect(doc.layout.components.R1).toEqual({ x: 80, y: 40, rotation: 0 });
   expect(netOf(doc, 'R1', 'a')).toBe(net);
   // The drawn wire ends exactly on the moved terminal.
-  const endpoint = await page.locator('.wires .wire').first().getAttribute('points');
-  expect(endpoint!.trim().split(' ').at(-1)).toBe('40,40');
+  // (The drawn wire is a path since Sprint 5, so crossings can carry a bridge.)
+  const drawn = await page.locator('.wires .wire').first().getAttribute('d');
+  expect(
+    drawn!
+      .trim()
+      .split(/[ML ]+/)
+      .filter(Boolean)
+      .slice(-2)
+      .join(','),
+  ).toBe('40,40');
 
   // Rotate with the R key (physical key, layout-independent).
   await page.keyboard.press('r');

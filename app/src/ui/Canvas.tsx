@@ -25,6 +25,7 @@ import {
   snap,
   snapPoint,
   terminalPosition,
+  wireCrossings,
   wireRoute,
   type ComponentInstance,
   type ComponentTypeId,
@@ -137,6 +138,46 @@ function componentBox(doc: ProjectDocument, c: ComponentInstance) {
 }
 
 /** Nearest grid point on a wire's drawn route to `p`. */
+/**
+ * Radius of a wire bridge in schematic units: at least ~5 screen pixels at any zoom, and always
+ * between 6 and 9 units, i.e. under half the 20-unit grid pitch, so two hops on one segment or a
+ * hop and a parallel wire can never touch.
+ */
+export function hopRadius(scale: number): number {
+  return Math.min(9, Math.max(6, 5 / scale));
+}
+
+/**
+ * The drawn path of a wire: its orthogonal route, with a semicircular hop in a vertical segment
+ * wherever it crosses another wire unconnected. The hop bulges toward +x, whichever way the
+ * segment runs.
+ */
+function wirePath(route: Point[], hops: Point[] | undefined, r: number): string {
+  let d = `M${route[0]!.x} ${route[0]!.y}`;
+  for (let i = 0; i < route.length - 1; i++) {
+    const a = route[i]!;
+    const b = route[i + 1]!;
+    if (hops && a.x === b.x) {
+      const down = b.y > a.y;
+      const here = hops
+        .filter((h) => h.x === a.x && h.y > Math.min(a.y, b.y) && h.y < Math.max(a.y, b.y))
+        .sort((p, q) => (down ? p.y - q.y : q.y - p.y));
+      for (const h of here) {
+        const y1 = down ? h.y - r : h.y + r;
+        const y2 = down ? h.y + r : h.y - r;
+        d += ` L${a.x} ${y1} A${r} ${r} 0 0 ${down ? 1 : 0} ${a.x} ${y2}`;
+      }
+    }
+    d += ` L${b.x} ${b.y}`;
+  }
+  return d;
+}
+
+/** Just the hop arc at a crossing (drawn again on top, over a casing). */
+function hopArc(c: Point, r: number): string {
+  return `M${c.x} ${c.y - r} A${r} ${r} 0 0 1 ${c.x} ${c.y + r}`;
+}
+
 /** Index of the route segment nearest to `p`. */
 function nearestSegment(route: Point[], p: Point): number {
   let best = 0;
@@ -715,6 +756,15 @@ export function Canvas({
           })()
         : doc;
 
+  // Unconnected crossings of the drawing being shown (including a live drag preview).
+  const crossings = useMemo(() => wireCrossings(view), [view]);
+  const hopR = hopRadius(camera.scale);
+  const hopsOver = useMemo(() => {
+    const m = new Map<string, Point[]>();
+    for (const c of crossings) m.set(c.over, [...(m.get(c.over) ?? []), c]);
+    return m;
+  }, [crossings]);
+
   const selected = useMemo(
     () => ({
       components: new Set(selection.components),
@@ -820,10 +870,30 @@ export function Canvas({
                 class={selected.wires.has(w.id) ? 'wire-group selected' : 'wire-group'}
               >
                 <polyline class="wire-hit" points={points(route)} />
-                <polyline class="wire" points={points(route)} />
+                <path class="wire" d={wirePath(route, hopsOver.get(w.id), hopR)} />
               </g>
             );
           })}
+        </g>
+
+        {/* Bridges (line hops) at unconnected crossings: visual only, never topology. The
+            arc is redrawn over a canvas-coloured casing so it reads as passing OVER the
+            other wire. Junction dots, not bridges, mark real connections. */}
+        <g class="wire-bridges">
+          {crossings.map((c) => (
+            <g
+              key={`${c.over}.${c.under}.${c.x}.${c.y}`}
+              class={selected.wires.has(c.over) ? 'wire-bridge selected' : 'wire-bridge'}
+              data-testid="wire-bridge"
+              data-over={c.over}
+              data-under={c.under}
+              data-x={c.x}
+              data-y={c.y}
+            >
+              <path class="wire-bridge-casing" d={hopArc(c, hopR)} />
+              <path class="wire" d={hopArc(c, hopR)} />
+            </g>
+          ))}
         </g>
 
         <g class="components">

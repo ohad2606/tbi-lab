@@ -5,12 +5,18 @@
 import { expect, test, type Page } from '@playwright/test';
 import { createSnapshot, wireRoute, type ProjectDocument } from '@tbi-lab/domain';
 import { EngineSession, ratingWarnings, type SolveSuccess } from '@tbi-lab/engine';
+import { getLocale } from '../src/i18n/i18n.js';
+import { formatPower, formatResult } from '../src/sim/format.js';
+
+const en = getLocale('en');
+const plain = (s: string) => s.replace(/[\u200e\u200f\u2066-\u2069]/g, '');
 import { link, run, setValue } from './circuits.js';
 import {
   component,
   createProject,
   place,
   storedProject,
+  terminal,
   toScreen,
   waitForStoredProject,
 } from './helpers.js';
@@ -157,21 +163,209 @@ test('over-stress: an LED past its datasheet maximum is a warning (not an error)
   await run(page);
   const expected = ratingWarnings(createSnapshot(doc), truth(doc));
   expect(expected.map((w) => w.code).sort()).toEqual(['forward_current', 'power']);
+  const r = truth(doc).components.D1!;
+  const current = formatResult(en, r.current!, 'ampere');
+  const power = formatPower(en, Math.abs(r.current! * r.voltage!));
   const banner = page.getByTestId('rating-warning');
   await expect(banner).toBeVisible();
-  await expect(banner.locator('li')).toHaveCount(2);
-  await expect(banner).toContainText('TLHR5400');
-  await expect(banner).toContainText('30 mA');
-  await expect(banner).toContainText('not a simulation error');
+  // One glance: title, which part, what exceeded, actual vs maximum, and a short footer.
+  expect(
+    plain(await banner.innerText())
+      .split('\n')
+      .map((l) => l.trim())
+      .filter(Boolean),
+  ).toEqual([
+    'Component rating exceeded',
+    'D1 may be damaged',
+    `Current: ${current} (maximum 30 mA)`,
+    `Power: ${power} (maximum 100 mW)`,
+    'The simulation continues to show the calculated values and does not model physical damage.',
+  ]);
+  await expect(banner.getByTestId('rating-D1')).toHaveAttribute(
+    'data-model',
+    'model.led.vishay_tlhr5400',
+  );
+  await expect(banner).not.toContainText(/error/i); // a warning, never called an error
   await expect(page.getByTestId('sim-error')).toHaveCount(0);
   await expect(component(page, 'D1')).toHaveAttribute('data-overstressed', 'true');
   // The warning never alters the solved values shown.
   await component(page, 'D1').locator('.component-hit').click();
-  const r = truth(doc).components.D1!;
-  await expect(page.getByTestId('result-rating')).toHaveCount(2);
-  await expect(page.getByTestId('result-current')).toContainText(
-    `${Math.round(r.current! * 1e5) / 100}`,
-  );
+  await expect(page.getByTestId('result-current')).toHaveText(current);
+  const inspector = page.getByTestId('result-rating');
+  await expect(inspector).toHaveCount(1); // one compact group, no repeated prose
+  await expect(inspector.locator('li')).toHaveCount(2);
+  await expect(inspector).not.toContainText('does not model');
+  // Hebrew: the same facts, localized; values and identifiers stay LTR.
+  await page.getByTestId('language-select').selectOption('he');
+  const he = plain(await banner.innerText())
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean);
+  expect(he).toEqual([
+    'חריגה מדירוגי הרכיב',
+    'D1 עלול להינזק',
+    `זרם: ${current} (מקסימום 30 mA)`,
+    `הספק: ${power} (מקסימום 100 mW)`,
+    'הסימולציה ממשיכה להציג את הערכים המחושבים ואינה מדמה נזק לרכיב.',
+  ]);
+  await expect(banner).not.toContainText('שגיאה');
   // Nothing about the warning is stored in the project.
   expect(JSON.stringify(await storedProject(page))).not.toMatch(/rating|overstress|warning/i);
+});
+
+// ------------------------------------------------------------------------------------------
+// Wire bridges at unconnected crossings (visual only).
+
+/**
+ * PSU+ (5 V) -> W1 straight along y = -20 to R3 (200,-20) -> GND2; and a 1 kΩ + 1 kΩ divider
+ * PSU+ -> R1 (0,-100) ... R2 (0,100) -> GND, whose middle wire runs vertically along x = 40,
+ * straight across W1 at (40,-20). Unconnected, the divider middle is 2.5 V; if the crossing
+ * were ever a connection it would be 5 V.
+ */
+async function crossingBench(page: Page, name: string) {
+  await createProject(page, name);
+  for (let i = 0; i < 2; i++) await page.getByRole('button', { name: 'Zoom out' }).click();
+  await place(page, 'component.resistor', { x: 0, y: -100 });
+  await place(page, 'component.resistor', { x: 0, y: 100 });
+  await place(page, 'component.resistor', { x: 200, y: -20 });
+  await place(page, 'component.ground', { x: 240, y: 40 });
+  await link(page, ['PSU1', 'positive'], ['R3', 'a']); // W1
+  await link(page, ['R3', 'b'], ['GND2', 'ref']);
+  await link(page, ['PSU1', 'negative'], ['GND1', 'ref']);
+  await link(page, ['PSU1', 'positive'], ['R1', 'a']);
+  await link(page, ['R2', 'a'], ['GND1', 'ref']);
+  await component(page, 'PSU1').locator('.component-hit').click();
+  await page.getByTestId('param-PSU1-outputEnabled').check();
+}
+
+const bridges = (page: Page) => page.getByTestId('wire-bridge');
+/** The electrical result only (revision bookkeeping legitimately advances with every edit). */
+const electrical = (o: SolveSuccess) => ({
+  components: o.components,
+  netVoltages: o.netVoltages,
+  notConnected: o.notConnected,
+});
+const netOf = (d: ProjectDocument, c: string, t: string) =>
+  d.connections.find((x) => x.component === c && x.terminal === t)?.net;
+
+test('bridges: an unconnected crossing hops; the same geometry with a junction does not', async ({
+  page,
+}) => {
+  await crossingBench(page, 'Crossing');
+  await link(page, ['R1', 'b'], ['R2', 'b']); // vertical x = 40, across W1
+  const crossed = await waitForStoredProject(
+    page,
+    (d) => d.layout.wires.length === 6 && d.components[0]!.params.outputEnabled === true,
+    'crossing circuit stored',
+    'Crossing',
+  );
+  // 1. A bridge at (40,-20) on the vertical wire; the nets stay separate.
+  await expect(bridges(page)).toHaveCount(1);
+  await expect(bridges(page)).toHaveAttribute('data-x', '40');
+  await expect(bridges(page)).toHaveAttribute('data-y', '-20');
+  const vertical = crossed.layout.wires.find(
+    (w) => w.from.kind === 'terminal' && w.from.component === 'R1' && w.from.terminal === 'b',
+  )!;
+  await expect(bridges(page)).toHaveAttribute('data-over', vertical.id);
+  // Its drawn path really hops (an arc), while its hit line stays straight.
+  expect(
+    await page.locator(`[data-hit="wire"][data-id="${vertical.id}"] path.wire`).getAttribute('d'),
+  ).toMatch(/ A[\d.]+ [\d.]+ 0 0 [01] /);
+  await expect(page.locator('.junctions .junction-dot')).toHaveCount(0); // no explicit junction
+  expect(netOf(crossed, 'R1', 'b')).toBe(netOf(crossed, 'R2', 'b'));
+  expect(netOf(crossed, 'R1', 'b')).not.toBe(netOf(crossed, 'PSU1', 'positive'));
+  // 5. The solver sees no connection: the divider middle is 2.5 V, not 5 V.
+  await run(page);
+  await component(page, 'R1').locator('.component-hit').click();
+  await expect(page.getByTestId('result-terminal-b')).toHaveText(
+    formatResult(en, truth(crossed).components.R1!.terminals.b!, 'volt'),
+  );
+  expect(truth(crossed).components.R1!.terminals.b).toBeCloseTo(2.5, 12);
+  await page.getByTestId('sim-stop').click();
+
+  // 2. Same geometry, but connected through an explicit junction: no bridge, a dot, one net.
+  await crossingBench(page, 'Joined');
+  await terminal(page, 'R1', 'b').locator('.terminal-hit').click();
+  const onW1 = await toScreen(page, { x: 40, y: -20 });
+  await page.mouse.click(onW1.x, onW1.y); // ends on W1: splits it with a junction
+  await terminal(page, 'R2', 'b').locator('.terminal-hit').click();
+  await page.mouse.click(onW1.x, onW1.y); // ends on that junction
+  const joined = await waitForStoredProject(
+    page,
+    (d) => d.layout.junctions.length === 1 && d.layout.wires.length === 8,
+    'joined circuit stored',
+    'Joined',
+  );
+  expect(joined.layout.junctions[0]).toMatchObject({ x: 40, y: -20 });
+  await expect(bridges(page)).toHaveCount(0);
+  await expect(page.locator('.junctions .junction-dot')).toHaveCount(1);
+  const net = netOf(joined, 'PSU1', 'positive');
+  expect(netOf(joined, 'R1', 'b')).toBe(net);
+  expect(netOf(joined, 'R2', 'b')).toBe(net);
+  expect(truth(joined).components.R1!.terminals.b).toBeCloseTo(5, 12);
+});
+
+test('bridges: follow a dragged wire, vanish when the crossing is dragged away or deleted, never change the solve', async ({
+  page,
+}) => {
+  await crossingBench(page, 'Moving');
+  await link(page, ['R1', 'b'], ['R2', 'b']);
+  const before = await waitForStoredProject(
+    page,
+    (d) => d.layout.wires.length === 6,
+    'crossing circuit stored',
+  );
+  const vertical = before.layout.wires.find(
+    (w) => w.from.kind === 'terminal' && w.from.component === 'R1',
+  )!;
+  const solved = truth(before);
+  // 3. Drag the vertical run 60 to the right: the bridge moves with it.
+  const a = await toScreen(page, { x: 40, y: 40 });
+  await page.mouse.click(a.x, a.y); // select the vertical wire (away from the crossing)
+  const b = await toScreen(page, { x: 100, y: 40 });
+  await page.mouse.move(a.x, a.y);
+  await page.mouse.down();
+  await page.mouse.move(b.x, b.y, { steps: 6 });
+  await page.mouse.up();
+  const moved = await waitForStoredProject(
+    page,
+    (d) => d.layout.wires.find((w) => w.id === vertical.id)!.vertices.length > 0,
+    'vertical run moved',
+  );
+  await expect(bridges(page)).toHaveCount(1);
+  await expect(bridges(page)).toHaveAttribute('data-x', '100');
+  expect(moved.connections).toEqual(before.connections);
+  expect(moved.nets).toEqual(before.nets);
+  // 5. Same topology, same solve: moving the bridge changes no solved value.
+  expect(electrical(truth(moved))).toEqual(electrical(solved));
+  // Undo / redo carry the bridge back and forth.
+  await page.getByTestId('undo').click();
+  await expect(bridges(page)).toHaveAttribute('data-x', '40');
+  await page.getByTestId('redo').click();
+  await expect(bridges(page)).toHaveAttribute('data-x', '100');
+  // 4a. Re-route W1 below everything: the crossing, and its bridge, are gone.
+  const w1 = await toScreen(page, { x: 130, y: -20 });
+  await page.mouse.click(w1.x, w1.y);
+  const w1to = await toScreen(page, { x: 130, y: -160 });
+  await page.mouse.move(w1.x, w1.y);
+  await page.mouse.down();
+  await page.mouse.move(w1to.x, w1to.y, { steps: 6 });
+  await page.mouse.up();
+  await expect(bridges(page)).toHaveCount(0);
+  const rerouted = await waitForStoredProject(
+    page,
+    (d) =>
+      JSON.stringify(d.layout.wires) !== JSON.stringify(moved.layout.wires) &&
+      d.revision.localRevision > moved.revision.localRevision + 2,
+    'W1 rerouted',
+  );
+  expect(rerouted.connections).toEqual(before.connections);
+  expect(electrical(truth(rerouted))).toEqual(electrical(solved));
+  // 4b. Undo the reroute (bridge back), then delete the vertical wire: the bridge goes.
+  await page.getByTestId('undo').click();
+  await expect(bridges(page)).toHaveCount(1);
+  const v = await toScreen(page, { x: 100, y: 40 });
+  await page.mouse.click(v.x, v.y);
+  await page.keyboard.press('Delete');
+  await expect(bridges(page)).toHaveCount(0);
 });

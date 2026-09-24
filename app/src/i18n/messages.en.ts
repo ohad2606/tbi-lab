@@ -288,18 +288,17 @@ export const en = {
   'inspector.shortcutsHeading': 'Keyboard shortcuts',
   'unit.watt.symbol': 'W',
   'sim.results.power': 'Power',
-  'rating.heading': 'Beyond datasheet limits',
-  'rating.forward_current':
-    '{component}: forward current {value} is above the {model} maximum of {limit}.',
-  'rating.reverse_voltage':
-    '{component}: reverse voltage {value} is above the {model} maximum of {limit}.',
-  'rating.power': '{component}: power {value} is above the {model} maximum of {limit}.',
-  'rating.note':
-    "A real part would likely be damaged. The simulation does not model damage: the values shown are still the electrical model's. This is a warning, not a simulation error.",
   'brand.logoAlt': 'TBI: Think, Bring ideas to life, Invent',
   'home.subtitle':
     'Circuits are simulated and saved right here in your browser. Start from an example, or create your own project.',
   'app.narrowScreen': 'TBI Lab is designed for desktop screens at least 1024 pixels wide.',
+  'rating.heading': 'Component rating exceeded',
+  'rating.atRisk': '{component} may be damaged',
+  'rating.row.forward_current': 'Current: {value} (maximum {limit})',
+  'rating.row.reverse_voltage': 'Reverse voltage: {value} (maximum {limit})',
+  'rating.row.power': 'Power: {value} (maximum {limit})',
+  'rating.note':
+    'The simulation continues to show the calculated values and does not model physical damage.',
 } as const;
 
 export type MessageKey = keyof typeof en;
