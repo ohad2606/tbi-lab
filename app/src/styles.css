@@ -1047,6 +1047,9 @@ select {
 .sim-status {
   display: inline-grid;
   justify-items: center;
+  box-sizing: border-box;
+  /* Its size comes only from the reserved labels below: flex never grows or shrinks it. */
+  flex: none;
 }
 
 .sim-status-label,
@@ -1054,8 +1057,18 @@ select {
   grid-area: 1 / 1;
 }
 
+/* The width reservation must not depend on the state's own styling (running is bold): the
+   hidden labels are rendered at both weights, fixed here. */
 .sim-status-sizer {
   visibility: hidden;
+}
+
+.sim-status-sizer-regular {
+  font-weight: 400;
+}
+
+.sim-status-sizer-bold {
+  font-weight: 600;
 }
 
 /* ---------------------------------------------------------------- Sprint 5: Product Alpha */

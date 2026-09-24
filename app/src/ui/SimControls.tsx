@@ -63,13 +63,21 @@ export function SimControls() {
         <span class="sim-status-label" data-testid="sim-status-label">
           {t(`sim.status.${sim.status}`)}
         </span>
-        {/* Every status label, invisible, in the same grid cell: the pill always has the width
-            of the longest one in this locale, so a status change never moves the toolbar. */}
-        {STATUSES.map((s) => (
-          <span key={s} class="sim-status-sizer" aria-hidden="true">
-            {t(`sim.status.${s}`)}
-          </span>
-        ))}
+        {/* Every status label, invisible, in the same grid cell, in BOTH font weights the pill
+            uses (running/starting are bold): the pill always has the width of the longest label
+            at its widest weight in this locale and font, whatever the current state, so a status
+            change never moves the toolbar. */}
+        {STATUSES.flatMap((s) =>
+          (['regular', 'bold'] as const).map((w) => (
+            <span
+              key={`${s}-${w}`}
+              class={`sim-status-sizer sim-status-sizer-${w}`}
+              aria-hidden="true"
+            >
+              {t(`sim.status.${s}`)}
+            </span>
+          )),
+        )}
       </span>
     </div>
   );
