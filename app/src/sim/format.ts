@@ -30,6 +30,43 @@ export function formatResult(locale: LocaleInfo, value: number, unit: UnitId): s
   return `${n} ${prefix}${unitSymbol(locale, unit)}`;
 }
 
+/**
+ * A solved power, same presentation as `formatResult`. Watts are a derived quantity shown by
+ * the product only; they are not a stored engineering unit (UnitId stays unchanged).
+ */
+export function formatPower(locale: LocaleInfo, watts: number): string {
+  const v = Math.abs(watts) < DISPLAY_FLOOR ? 0 : watts;
+  const { mantissa, prefix } = toEngineering(v);
+  const n = numberFormat(locale.code, { maximumSignificantDigits: 4, useGrouping: false }).format(
+    mantissa,
+  );
+  return `${n} ${prefix}${translate(locale, 'unit.watt.symbol')}`;
+}
+
+/** One localized over-stress line: "D1: forward current 60.3 mA is above ... 30 mA." */
+export function ratingMessage(
+  locale: LocaleInfo,
+  w: {
+    component: string;
+    model: string;
+    code: 'forward_current' | 'reverse_voltage' | 'power';
+    value: number;
+    limit: number;
+  },
+  modelName: string,
+): string {
+  const fmt = (v: number) =>
+    w.code === 'power'
+      ? formatPower(locale, v)
+      : formatResult(locale, v, w.code === 'forward_current' ? 'ampere' : 'volt');
+  return translate(locale, `rating.${w.code}`, {
+    component: isolateLtr(w.component),
+    value: isolateLtr(fmt(w.value)),
+    limit: isolateLtr(fmt(w.limit)),
+    model: isolateLtr(modelName),
+  });
+}
+
 const list = (ids: string[] | undefined) => isolateLtr((ids ?? []).join(', '));
 
 /** The localized explanation for a failed run. Error codes are the language-neutral truth. */

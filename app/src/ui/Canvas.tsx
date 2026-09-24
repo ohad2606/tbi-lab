@@ -18,6 +18,7 @@ import {
   deleteSelection,
   emptySelection,
   moveSelection,
+  moveWireSegment,
   orthogonalRoute,
   rotateComponents,
   rotatePoint,
@@ -38,6 +39,7 @@ import { formatResult } from '../sim/format.js';
 import { useAppState, useStore, useT } from './context.js';
 import { checksFor } from './checks.js';
 import { SYMBOLS, type SymbolState } from './symbols.js';
+import { warningsFor } from '../sim/ratings.js';
 import { probeAnchor, probeTargetName, readProbe, type Probe, type ProbeInput } from './probes.js';
 
 export interface CanvasApi {
@@ -71,8 +73,10 @@ type Hit =
 
 type Mode =
   | { kind: 'idle' }
-  | { kind: 'press'; client: Point; world: Point }
+  | { kind: 'press'; client: Point; world: Point; wire?: string }
   | { kind: 'drag'; world: Point; delta: Point }
+  /** Dragging one straight segment of a single selected wire (Sprint 5). */
+  | { kind: 'segment'; wire: string; segment: number; world: Point; delta: Point }
   | { kind: 'rubber'; start: Point; current: Point; additive: boolean }
   | { kind: 'pan'; client: Point; camera: Camera }
   | {
@@ -133,6 +137,26 @@ function componentBox(doc: ProjectDocument, c: ComponentInstance) {
 }
 
 /** Nearest grid point on a wire's drawn route to `p`. */
+/** Index of the route segment nearest to `p`. */
+function nearestSegment(route: Point[], p: Point): number {
+  let best = 0;
+  let bestD = Infinity;
+  for (let i = 0; i < route.length - 1; i++) {
+    const a = route[i]!;
+    const b = route[i + 1]!;
+    const q = {
+      x: clamp(p.x, Math.min(a.x, b.x), Math.max(a.x, b.x)),
+      y: clamp(p.y, Math.min(a.y, b.y), Math.max(a.y, b.y)),
+    };
+    const d = Math.hypot(q.x - p.x, q.y - p.y);
+    if (d < bestD) {
+      bestD = d;
+      best = i;
+    }
+  }
+  return best;
+}
+
 function pointOnRoute(route: Point[], p: Point): Point {
   let best = route[0]!;
   let bestD = Infinity;
@@ -233,9 +257,11 @@ export function Canvas({
   const fit = () => {
     const b = contentBounds();
     if (!b) return setCamera({ x: -size.w / 2, y: -size.h / 2, scale: 1 });
-    const margin = 80;
-    const bw = b.maxX - b.minX + margin * 2;
-    const bh = b.maxY - b.minY + margin * 2;
+    // Room for labels, which sit outside the parts' boxes (upright parts label to the side).
+    const marginX = 150;
+    const marginY = 90;
+    const bw = b.maxX - b.minX + marginX * 2;
+    const bh = b.maxY - b.minY + marginY * 2;
     const scale = clamp(Math.min(size.w / bw, size.h / bh), MIN_SCALE, 1.5);
     setCamera({
       scale,
@@ -428,7 +454,12 @@ export function Canvas({
     }
     toggleOrSelect(hit, e.shiftKey);
     svg.setPointerCapture(e.pointerId);
-    setMode({ kind: 'press', client: { x: e.clientX, y: e.clientY }, world });
+    setMode({
+      kind: 'press',
+      client: { x: e.clientX, y: e.clientY },
+      world,
+      ...(hit.kind === 'wire' && !e.shiftKey ? { wire: hit.id } : {}),
+    });
   };
 
   const onPointerMove = (e: PointerEvent) => {
@@ -444,6 +475,30 @@ export function Canvas({
         break;
       case 'press':
         if (Math.hypot(e.clientX - mode.client.x, e.clientY - mode.client.y) > DRAG_THRESHOLD_PX) {
+          // A press on a wire that is the only thing selected drags that wire's segment;
+          // anything else moves the selection as before.
+          const route = mode.wire
+            ? wireRoute(
+                doc,
+                doc.layout.wires.find((w) => w.id === mode.wire)!,
+              )
+            : undefined;
+          const onlyThisWire =
+            !!mode.wire &&
+            selection.components.length === 0 &&
+            selection.junctions.length === 0 &&
+            selection.wires.length === 1 &&
+            selection.wires[0] === mode.wire;
+          if (route && onlyThisWire) {
+            setMode({
+              kind: 'segment',
+              wire: mode.wire!,
+              segment: nearestSegment(route, mode.world),
+              world: mode.world,
+              delta: snapPoint({ x: world.x - mode.world.x, y: world.y - mode.world.y }),
+            });
+            break;
+          }
           setMode({
             kind: 'drag',
             world: mode.world,
@@ -452,6 +507,7 @@ export function Canvas({
         }
         break;
       case 'drag':
+      case 'segment':
         setMode({
           ...mode,
           delta: snapPoint({ x: world.x - mode.world.x, y: world.y - mode.world.y }),
@@ -486,6 +542,16 @@ export function Canvas({
         break;
       case 'drag':
         if (mode.delta.x || mode.delta.y) store.apply(moveSelection(doc, selection, mode.delta));
+        setMode({ kind: 'idle' });
+        break;
+      case 'segment':
+        if (mode.delta.x || mode.delta.y) {
+          const r = moveWireSegment(doc, mode.wire, mode.segment, mode.delta);
+          // A drag along the segment's own axis changes nothing: no edit, no revision.
+          if (r.ok && JSON.stringify(r.doc.layout.wires) !== JSON.stringify(doc.layout.wires)) {
+            store.apply(r, selection);
+          }
+        }
         setMode({ kind: 'idle' });
         break;
       case 'rubber': {
@@ -642,7 +708,12 @@ export function Canvas({
           const r = moveSelection(doc, selection, mode.delta);
           return r.ok ? r.doc : doc;
         })()
-      : doc;
+      : mode.kind === 'segment' && (mode.delta.x || mode.delta.y)
+        ? (() => {
+            const r = moveWireSegment(doc, mode.wire, mode.segment, mode.delta);
+            return r.ok ? r.doc : doc;
+          })()
+        : doc;
 
   const selected = useMemo(
     () => ({
@@ -669,6 +740,9 @@ export function Canvas({
   const probedParts = new Set(
     probes.filter((p) => p.kind === 'current').map((p) => (p as { component: string }).component),
   );
+  const overstressed = new Set(
+    outcome?.ok ? warningsFor(doc, outcome).map((w) => w.component) : [],
+  );
   const issues = simActive ? [] : checksFor(doc);
   const markers = issues.flatMap((i) =>
     i.code === 'partially_wired' || i.code === 'wire_over_terminal'
@@ -689,7 +763,11 @@ export function Canvas({
         ? 'canvas.hint.placing'
         : mode.kind === 'wiring'
           ? 'canvas.hint.wiring'
-          : 'canvas.hint.idle';
+          : selection.wires.length === 1 &&
+              selection.components.length === 0 &&
+              selection.junctions.length === 0
+            ? 'canvas.hint.wire'
+            : 'canvas.hint.idle';
 
   return (
     <div class={simActive ? 'canvas-wrap running' : 'canvas-wrap'} dir="ltr">
@@ -771,6 +849,7 @@ export function Canvas({
                 probedParts.has(c.id)
               }
               symbolState={{ closed: c.params.closed === true, pressed: pressed.has(c.id) }}
+              overstressed={overstressed.has(c.id)}
             />
           ))}
         </g>
@@ -950,6 +1029,7 @@ function ComponentView({
   result,
   showRuntime,
   symbolState,
+  overstressed,
 }: {
   doc: ProjectDocument;
   component: ComponentInstance;
@@ -960,6 +1040,8 @@ function ComponentView({
   result: ComponentResult | undefined;
   showRuntime: boolean;
   symbolState: SymbolState;
+  /** Solved operating point beyond the part's datasheet absolute maximum (warning only). */
+  overstressed: boolean;
 }) {
   const { locale } = useAppState();
   const t = useT();
@@ -990,7 +1072,8 @@ function ComponentView({
       data-id={c.id}
       data-type={c.type}
       data-selected={selected ? 'true' : 'false'}
-      class={selected ? 'component selected' : 'component'}
+      class={`component${selected ? ' selected' : ''}${overstressed ? ' overstressed' : ''}`}
+      data-overstressed={overstressed ? 'true' : undefined}
       tabIndex={0}
       role="button"
       aria-label={[label, values, switchState].filter(Boolean).join(', ')}
@@ -1014,6 +1097,15 @@ function ComponentView({
         height={box.maxY - box.minY + 8}
       />
       <g class="symbol" transform={`translate(${p.x} ${p.y}) rotate(${p.rotation})`}>
+        {/* Components sit ON TOP of wires: an opaque knock-out behind the line-art symbol, so a
+            wire routed across a part is drawn passing behind it rather than through it. */}
+        <rect
+          class="symbol-knockout"
+          x={def.bbox[0]}
+          y={def.bbox[1]}
+          width={def.bbox[2] - def.bbox[0]}
+          height={def.bbox[3] - def.bbox[1]}
+        />
         {def.draw(symbolState)}
         {def.actuator && (
           <rect

@@ -13,3 +13,10 @@ export {
   type SupplyMode,
 } from './session.js';
 export { MODEL_CARDS, MODEL_VALID_CURRENT_A } from './registry.js';
+export {
+  MODEL_RATINGS,
+  ratingWarnings,
+  type AbsoluteMaximumRatings,
+  type RatingCode,
+  type RatingWarning,
+} from './ratings.js';

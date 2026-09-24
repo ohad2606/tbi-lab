@@ -34,6 +34,8 @@ export const en = {
   'canvas.zoomIn': 'Zoom in',
   'canvas.zoomOut': 'Zoom out',
   'canvas.zoomFit': 'Fit to view',
+  'canvas.hint.wire':
+    'Drag a straight part of the wire to move it. Its ends stay connected. Delete removes it.',
   'canvas.hint.idle': 'Click a terminal to start a wire. Drag on empty space to select.',
   'canvas.hint.placing': 'Click on the canvas to place. Esc cancels.',
   'canvas.hint.wiring':
@@ -284,6 +286,20 @@ export const en = {
   'palette.group.semiconductors': 'Diodes',
   'palette.group.switches': 'Switches',
   'inspector.shortcutsHeading': 'Keyboard shortcuts',
+  'unit.watt.symbol': 'W',
+  'sim.results.power': 'Power',
+  'rating.heading': 'Beyond datasheet limits',
+  'rating.forward_current':
+    '{component}: forward current {value} is above the {model} maximum of {limit}.',
+  'rating.reverse_voltage':
+    '{component}: reverse voltage {value} is above the {model} maximum of {limit}.',
+  'rating.power': '{component}: power {value} is above the {model} maximum of {limit}.',
+  'rating.note':
+    "A real part would likely be damaged. The simulation does not model damage: the values shown are still the electrical model's. This is a warning, not a simulation error.",
+  'brand.logoAlt': 'TBI: Think, Bring ideas to life, Invent',
+  'home.subtitle':
+    'Circuits are simulated and saved right here in your browser. Start from an example, or create your own project.',
+  'app.narrowScreen': 'TBI Lab is designed for desktop screens at least 1024 pixels wide.',
 } as const;
 
 export type MessageKey = keyof typeof en;

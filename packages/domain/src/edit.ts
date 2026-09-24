@@ -8,7 +8,16 @@
  */
 
 import { CATALOG, defaultParams, getTypeDef } from './catalog.js';
-import { GRID, endPosition, locateOnWire, nextRotation, snapPoint, wireRoute } from './layout.js';
+import {
+  GRID,
+  endPosition,
+  locateOnWire,
+  nextRotation,
+  orthogonalRoute,
+  snap,
+  snapPoint,
+  wireRoute,
+} from './layout.js';
 import { nodeKey, nodeNets, settleNets } from './nets.js';
 import { allocateId } from './project.js';
 import {
@@ -213,6 +222,50 @@ export function addWire(
     draft.layout.wires.push({ id, from: a, to: b, vertices: vertices.map(snapPoint) });
   });
   return r.ok ? { ...r, id } : r;
+}
+
+/**
+ * Drag one straight segment of a wire's drawn route perpendicular to itself (Sprint 5).
+ *
+ * `segment` indexes the wire's minimal orthogonal route (`wireRoute`). A horizontal segment
+ * moves by `delta.y`, a vertical one by `delta.x` (snapped to the grid); the other component of
+ * `delta` is ignored. The wire's ENDPOINTS never move: dragging a segment that touches a
+ * terminal or junction inserts a short jog so the end stays exactly where it was. The resulting
+ * bends become the wire's stored vertices. Connectivity and nets are unchanged, so this is a
+ * layout edit (allowed while running, undoable like any move).
+ */
+export function moveWireSegment(
+  doc: ProjectDocument,
+  wireId: string,
+  segment: number,
+  delta: Point,
+): EditResult {
+  return transact(doc, (draft) => {
+    const wire = draft.layout.wires.find((w) => w.id === wireId);
+    if (!wire) return 'unknown_wire';
+    const route = wireRoute(draft, wire);
+    if (!route || !Number.isInteger(segment) || segment < 0 || segment >= route.length - 1) {
+      return 'not_on_wire';
+    }
+    const a = route[segment]!;
+    const b = route[segment + 1]!;
+    const horizontal = a.y === b.y;
+    const d = snap(horizontal ? delta.y : delta.x);
+    if (d === 0) return;
+    const shift = (p: Point): Point =>
+      horizontal ? { x: p.x, y: p.y + d } : { x: p.x + d, y: p.y };
+    const last = route.length - 1;
+    const pts: Point[] = [route[0]!];
+    if (segment === 0) pts.push(shift(route[0]!)); // jog out of the fixed start
+    for (let i = 1; i < last; i++) {
+      pts.push(i === segment || i === segment + 1 ? shift(route[i]!) : route[i]!);
+    }
+    if (segment === last - 1) pts.push(shift(route[last]!)); // jog into the fixed end
+    pts.push(route[last]!);
+    // Consecutive points are axis-aligned, so the orthogonal route through them is exactly
+    // this polyline; the minimal form drops points made redundant by the move.
+    wire.vertices = orthogonalRoute(pts).slice(1, -1);
+  });
 }
 
 function resolveTarget(doc: ProjectDocument, t: WireTarget): WireEnd | EditError {

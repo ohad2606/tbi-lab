@@ -69,6 +69,9 @@ export function App() {
   }
   return (
     <div class="app">
+      <div class="narrow-note" role="note">
+        {t('app.narrowScreen')}
+      </div>
       <TopBar />
       <NoticeBar />
       {state.screen === 'editor' && state.doc ? <Editor /> : <Home />}

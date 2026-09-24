@@ -1,6 +1,8 @@
 import { isolateLtr } from '../i18n/i18n.js';
 import type { SimFailure } from '../sim/controller.js';
-import { engineErrorMessage, simFailureMessage } from '../sim/format.js';
+import { MODEL_CARDS } from '@tbi-lab/engine';
+import { engineErrorMessage, ratingMessage, simFailureMessage } from '../sim/format.js';
+import { warningsFor } from '../sim/ratings.js';
 import { useAppState, useStore, useT } from './context.js';
 
 export function NoticeBar() {
@@ -29,6 +31,21 @@ export function NoticeBar() {
           data-code={running.error.code}
         >
           {engineErrorMessage(locale, running.error, doc)}
+        </div>
+      )}
+      {running?.ok && doc && warningsFor(doc, running).length > 0 && (
+        // A documented datasheet limit is exceeded: a WARNING (amber), distinct from the red
+        // solver errors above. The solved values are unchanged.
+        <div class="banner banner-warning banner-rating" role="status" data-testid="rating-warning">
+          <strong>{t('rating.heading')}</strong>
+          <ul class="rating-list">
+            {warningsFor(doc, running).map((w) => (
+              <li key={`${w.component}.${w.code}`} data-code={w.code} data-component={w.component}>
+                {ratingMessage(locale, w, MODEL_CARDS[w.model]?.name ?? w.model)}
+              </li>
+            ))}
+          </ul>
+          <span class="small">{t('rating.note')}</span>
         </div>
       )}
       {running?.ok && running.notConnected.length > 0 && (

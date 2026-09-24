@@ -5,23 +5,33 @@
  */
 
 :root {
-  --bg: #f4f5f7;
+  /* TBI Lab colour system (Sprint 5 pre-push). Taken from the TBI logo, used sparingly:
+     blue = primary action, selection, focus rings' partner; green = the running simulation and
+     "saved"; orange/amber = warnings and keyboard focus; red = real errors only. */
+  --brand-navy: #0a1a33;
+  --brand-blue: #1e88e5;
+  --brand-green: #6aa121;
+  --brand-orange: #ef7d17;
+  --bg: #f2f4f8;
   --panel: #ffffff;
-  --border: #c9ced6;
-  --text: #16191d;
-  --muted: #4f5761;
-  --accent: #0b57d0;
-  --accent-soft: #dbe7fb;
+  --panel-alt: #f6f8fb;
+  --border: #cdd4de;
+  --text: #14181f;
+  --muted: #4b5563;
+  --accent: #1565c0;
+  --accent-strong: #0d4f9e;
+  --accent-soft: #e3eefc;
   --danger: #b3261e;
-  --warning-bg: #fff4d6;
+  --warning-bg: #fff3e0;
+  --warning-ink: #9a4a00;
   --error-bg: #fde7e5;
-  --ok: #1b6e3a;
+  --ok: #2e7d32;
   --canvas-bg: #ffffff;
   --grid: #c3c9d2;
   --ink: #1d232b;
   --wire: #1d232b;
-  --selected: #0b57d0;
-  --focus: #e8710a;
+  --selected: #1565c0;
+  --focus: #ef7d17;
   font-family: system-ui, 'Segoe UI', Roboto, 'Noto Sans', 'Noto Sans Hebrew', Arial, sans-serif;
   font-size: 15px;
   color: var(--text);
@@ -646,8 +656,8 @@ select {
 /* ---------------------------------------------------------------- simulation (Sprint 3) */
 
 :root {
-  --runtime: #0a6b6b;
-  --runtime-bg: #e3f4f4;
+  --runtime: #0f7a45;
+  --runtime-bg: #e4f5ec;
   --info-bg: #e8f0fe;
 }
 
@@ -1241,4 +1251,236 @@ select {
   flex: 1 1 10rem;
   min-width: 6rem;
   max-width: 24rem;
+}
+
+/* Wire/component layering (Sprint 5 pre-push): wires < component bodies < terminals and
+   junctions < markers, probes and labels. The knock-out hides wire lines under a part body. */
+.symbol .symbol-knockout {
+  fill: var(--canvas-bg);
+  stroke: none;
+  pointer-events: none;
+}
+
+/* Over-stress warning (datasheet absolute maximum exceeded): amber, never the error red. */
+.component.overstressed .symbol {
+  stroke: var(--warning-ink);
+}
+
+.banner-rating {
+  flex-wrap: wrap;
+  align-items: baseline;
+}
+
+.rating-list {
+  margin: 0;
+  padding-inline-start: 1.1rem;
+}
+
+.sim-warning {
+  color: var(--warning-ink);
+  font-weight: 600;
+  font-size: 0.87rem;
+}
+
+/* ================================================================ Product Alpha: brand */
+
+.topbar {
+  border-block-end: 0;
+  box-shadow: inset 0 -3px 0 0 transparent;
+  background:
+    linear-gradient(90deg, var(--brand-blue), var(--brand-green), var(--brand-orange)) bottom / 100%
+      3px no-repeat,
+    var(--panel);
+  padding-block-end: calc(0.5rem + 3px);
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 800;
+  font-size: 1.15rem;
+  letter-spacing: 0.03em;
+  color: var(--brand-navy);
+}
+
+.brand-mark {
+  inline-size: 30px;
+  block-size: 30px;
+  border-radius: 50%;
+}
+
+.brand-t {
+  color: var(--brand-blue);
+}
+
+.brand-b {
+  color: var(--brand-green);
+}
+
+.brand-i {
+  color: var(--brand-orange);
+}
+
+/* Library: a restrained navy brand band, then a two-column desktop layout. */
+.home {
+  max-width: 92rem;
+  width: 100%;
+  padding: 1.5rem 2rem 2rem;
+}
+
+.brand-hero {
+  display: flex;
+  align-items: center;
+  gap: 1.75rem;
+  padding: 1rem 1.5rem;
+  margin-block-end: 1.25rem;
+  border-radius: 10px;
+  background: var(--brand-navy);
+  color: #fff;
+}
+
+.brand-hero-logo {
+  block-size: 100px;
+  inline-size: auto;
+  flex-shrink: 0;
+}
+
+.brand-hero-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.brand-hero h1 {
+  margin: 0 0 0.35rem;
+  font-size: 1.6rem;
+}
+
+.brand-hero p {
+  margin: 0;
+  color: #c7d3e6;
+  max-width: 44rem;
+}
+
+.button-on-dark {
+  background: transparent;
+  color: #fff;
+  border-color: #6d86ad;
+}
+
+.button-on-dark:hover {
+  background: rgb(255 255 255 / 12%);
+}
+
+.home-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 1.25rem;
+  align-items: start;
+}
+
+.home-column > .card:last-child {
+  margin-block-end: 0;
+}
+
+.example-list {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (min-width: 1700px) {
+  .example-list {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.example {
+  border-inline-start: 4px solid var(--accent);
+  background: var(--panel-alt);
+}
+
+.card h2 {
+  color: var(--brand-navy);
+}
+
+.project-row:hover {
+  background: var(--panel-alt);
+}
+
+/* Desktop first: narrower screens are explicitly unsupported, not squeezed. */
+.app {
+  min-width: 1024px;
+}
+
+.narrow-note {
+  display: none;
+}
+
+@media (max-width: 1023px) {
+  .app {
+    grid-template-rows: auto auto auto 1fr;
+  }
+
+  .narrow-note {
+    display: block;
+    padding: 0.5rem 1rem;
+    background: var(--warning-bg);
+    color: var(--warning-ink);
+  }
+}
+
+/* ================================================================ Product Alpha: colour */
+
+.palette,
+.inspector {
+  background: var(--panel-alt);
+}
+
+.palette h2,
+.inspector h2 {
+  color: var(--brand-navy);
+  padding-block-end: 0.35rem;
+  border-block-end: 2px solid var(--accent-soft);
+}
+
+.palette-group-heading {
+  color: var(--accent);
+}
+
+.palette-item {
+  background: var(--panel);
+}
+
+.palette-item:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.probes-section h3,
+.checks-section h3,
+.sim-results h3,
+.psu-panel h3 {
+  color: var(--accent-strong);
+}
+
+.button-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.button-primary:hover {
+  background: var(--accent-strong);
+}
+
+.component.selected .symbol {
+  stroke: var(--selected);
+}
+
+.banner-info {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
+.banner-warning {
+  background: var(--warning-bg);
+  color: var(--warning-ink);
 }

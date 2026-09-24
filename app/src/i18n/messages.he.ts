@@ -37,6 +37,8 @@ export const he: Record<MessageKey, string> = {
   'canvas.zoomIn': 'הגדלה',
   'canvas.zoomOut': 'הקטנה',
   'canvas.zoomFit': 'התאמה לתצוגה',
+  'canvas.hint.wire':
+    'גררו קטע ישר של החוט כדי להזיז אותו. הקצוות נשארים מחוברים. Delete מוחק אותו.',
   'canvas.hint.idle': 'לחצו על [[terminal]] כדי להתחיל חוט. גררו על שטח ריק כדי לבחור.',
   'canvas.hint.placing': 'לחצו על משטח השרטוט כדי למקם. Esc לביטול.',
   'canvas.hint.wiring':
@@ -276,4 +278,15 @@ export const he: Record<MessageKey, string> = {
   'palette.group.semiconductors': 'דיודות',
   'palette.group.switches': 'מתגים',
   'inspector.shortcutsHeading': 'קיצורי מקלדת',
+  'unit.watt.symbol': 'W',
+  'sim.results.power': 'הספק',
+  'rating.heading': 'מעבר לגבולות גיליון הנתונים',
+  'rating.forward_current': '{component}: הזרם הקדמי {value} גבוה מהמקסימום של {model}, {limit}.',
+  'rating.reverse_voltage': '{component}: המתח ההפוך {value} גבוה מהמקסימום של {model}, {limit}.',
+  'rating.power': '{component}: ההספק {value} גבוה מהמקסימום של {model}, {limit}.',
+  'rating.note':
+    'רכיב אמיתי צפוי להינזק. הסימולציה אינה מדמה נזק: הערכים המוצגים הם עדיין של המודל החשמלי. זו אזהרה, לא שגיאת סימולציה.',
+  'brand.logoAlt': 'TBI: חושבים, מפיחים חיים ברעיונות, ממציאים',
+  'home.subtitle': 'המעגלים מדומים ונשמרים כאן, בדפדפן שלכם. התחילו מדוגמה, או צרו פרויקט משלכם.',
+  'app.narrowScreen': 'TBI Lab מיועד למסכי מחשב ברוחב של 1024 פיקסלים לפחות.',
 };

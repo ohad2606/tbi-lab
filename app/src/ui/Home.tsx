@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { PACKAGE_EXTENSION, PACKAGE_MAX_BYTES, PACKAGE_MEDIA_TYPE } from '@tbi-lab/domain';
 import { downloadProject } from './download.js';
+import logoUrl from '../assets/brand/tbi-logo.png';
 import { EXAMPLES } from '../examples/catalog.js';
 import { formatDateTime, isolateUserText, type LocaleInfo } from '../i18n/i18n.js';
 import type { ProjectIndexEntry } from '../persistence/store.js';
@@ -49,8 +50,19 @@ export function Home() {
 
   return (
     <main class="home">
-      <div class="home-header">
-        <h1>{t('home.title')}</h1>
+      <header class="brand-hero">
+        <img
+          class="brand-hero-logo"
+          src={logoUrl}
+          alt={t('brand.logoAlt')}
+          width={355}
+          height={200}
+          decoding="async"
+        />
+        <div class="brand-hero-text">
+          <h1>{t('home.title')}</h1>
+          <p>{t('home.subtitle')}</p>
+        </div>
         <div class="home-header-actions">
           <input
             ref={fileInput}
@@ -69,7 +81,7 @@ export function Home() {
           />
           <button
             type="button"
-            class="button"
+            class="button button-on-dark"
             data-testid="import-project"
             title={t('library.import.label')}
             onClick={() => fileInput.current?.click()}
@@ -77,68 +89,73 @@ export function Home() {
             {t('library.import.button')}
           </button>
         </div>
-      </div>
+      </header>
 
-      <section class="card" aria-labelledby="new-project-heading">
-        <h2 id="new-project-heading">{t('home.new.heading')}</h2>
-        <form
-          class="new-project"
-          onSubmit={(e) => {
-            e.preventDefault();
-            // Read the submitted field itself, not state that may not have rendered yet.
-            const field = e.currentTarget.elements.namedItem('projectName') as HTMLInputElement;
-            void store.newProject(field.value);
-          }}
-        >
-          <label>
-            <span>{t('home.new.nameLabel')}</span>
-            <input
-              data-testid="new-project-name"
-              name="projectName"
-              dir="auto"
-              value={value}
-              onInput={(e) => setName((e.target as HTMLInputElement).value)}
-            />
-          </label>
-          <button type="submit" class="button button-primary" data-testid="create-project">
-            {t('home.new.create')}
-          </button>
-        </form>
-      </section>
-
-      <section class="card" aria-labelledby="examples-heading">
-        <h2 id="examples-heading">{t('library.examples.heading')}</h2>
-        <p class="muted small">{t('library.examples.intro')}</p>
-        <ul class="example-list" data-testid="example-list">
-          {EXAMPLES.map((ex) => (
-            <li key={ex.id} class="example" data-testid={`example-${ex.id}`}>
-              <h3>{t(ex.titleKey)}</h3>
-              <p class="muted small">{t(ex.summaryKey)}</p>
-              <button
-                type="button"
-                class="button"
-                data-testid={`open-example-${ex.id}`}
-                aria-label={t('library.examples.openNamed', { name: t(ex.titleKey) })}
-                onClick={() => void store.openExample(ex.id)}
-              >
-                {t('library.examples.open')}
+      <div class="home-grid">
+        <div class="home-column">
+          <section class="card" aria-labelledby="new-project-heading">
+            <h2 id="new-project-heading">{t('home.new.heading')}</h2>
+            <form
+              class="new-project"
+              onSubmit={(e) => {
+                e.preventDefault();
+                // Read the submitted field itself, not state that may not have rendered yet.
+                const field = e.currentTarget.elements.namedItem('projectName') as HTMLInputElement;
+                void store.newProject(field.value);
+              }}
+            >
+              <label>
+                <span>{t('home.new.nameLabel')}</span>
+                <input
+                  data-testid="new-project-name"
+                  name="projectName"
+                  dir="auto"
+                  value={value}
+                  onInput={(e) => setName((e.target as HTMLInputElement).value)}
+                />
+              </label>
+              <button type="submit" class="button button-primary" data-testid="create-project">
+                {t('home.new.create')}
               </button>
-            </li>
-          ))}
-        </ul>
-      </section>
+            </form>
+          </section>
 
-      <section class="card" aria-labelledby="recent-heading">
-        <h2 id="recent-heading">{t('home.recent.heading')}</h2>
-        {state.projects.length === 0 ? (
-          <p class="muted">{t('home.recent.empty')}</p>
-        ) : (
-          <ul class="project-list" data-testid="project-list">
-            {rows}
-          </ul>
-        )}
-        <p class="muted small">{t('home.browserNote')}</p>
-      </section>
+          <section class="card" aria-labelledby="recent-heading">
+            <h2 id="recent-heading">{t('home.recent.heading')}</h2>
+            {state.projects.length === 0 ? (
+              <p class="muted">{t('home.recent.empty')}</p>
+            ) : (
+              <ul class="project-list" data-testid="project-list">
+                {rows}
+              </ul>
+            )}
+            <p class="muted small">{t('home.browserNote')}</p>
+          </section>
+        </div>
+        <div class="home-column">
+          <section class="card examples-card" aria-labelledby="examples-heading">
+            <h2 id="examples-heading">{t('library.examples.heading')}</h2>
+            <p class="muted small">{t('library.examples.intro')}</p>
+            <ul class="example-list" data-testid="example-list">
+              {EXAMPLES.map((ex) => (
+                <li key={ex.id} class="example" data-testid={`example-${ex.id}`}>
+                  <h3>{t(ex.titleKey)}</h3>
+                  <p class="muted small">{t(ex.summaryKey)}</p>
+                  <button
+                    type="button"
+                    class="button"
+                    data-testid={`open-example-${ex.id}`}
+                    aria-label={t('library.examples.openNamed', { name: t(ex.titleKey) })}
+                    onClick={() => void store.openExample(ex.id)}
+                  >
+                    {t('library.examples.open')}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        </div>
+      </div>
 
       {deleting && (
         <ConfirmDelete

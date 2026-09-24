@@ -1,10 +1,18 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
+import markUrl from '../assets/brand/tbi-mark.png';
 import { LOCALES } from '../i18n/i18n.js';
 import { useAppState, useStore, useT } from './context.js';
 import { downloadProject } from './download.js';
 import { SimControls } from './SimControls.js';
 
 const BRAND = 'TBI Lab';
+/** The TBI letters take the logo's three colours; the product name follows in ink. */
+const BRAND_LETTERS: readonly [string, string][] = [
+  ['T', 'brand-t'],
+  ['B', 'brand-b'],
+  ['I', 'brand-i'],
+];
+const BRAND_SUFFIX = '\u00a0Lab';
 
 export function TopBar() {
   const state = useAppState();
@@ -15,8 +23,16 @@ export function TopBar() {
     <header class="topbar">
       {/* 1. Where am I: brand, back to the library, the project's own name. */}
       <div class="topbar-group topbar-nav">
-        <span class="brand" dir="ltr">
-          {BRAND}
+        <span class="brand" dir="ltr" aria-label={BRAND}>
+          <img class="brand-mark" src={markUrl} alt="" width={30} height={30} />
+          <span class="brand-word" aria-hidden="true">
+            {BRAND_LETTERS.map(([letter, cls]) => (
+              <span key={letter} class={cls}>
+                {letter}
+              </span>
+            ))}
+            {BRAND_SUFFIX}
+          </span>
         </span>
         {editing && (
           <button type="button" class="button button-quiet" onClick={() => void store.goHome()}>

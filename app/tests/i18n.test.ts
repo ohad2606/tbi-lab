@@ -56,6 +56,7 @@ describe('locale bundles', () => {
       'unit.ampere.symbol',
       'unit.ohm.symbol',
       'unit.volt.symbol',
+      'unit.watt.symbol',
     ]);
   });
 

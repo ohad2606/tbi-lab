@@ -11,8 +11,9 @@ import {
   type ParamDef,
 } from '@tbi-lab/domain';
 import { catalogText, formatQuantity, inputForm, isolateLtr, unitSymbol } from '../i18n/i18n.js';
-import type { SolveSuccess } from '@tbi-lab/engine';
-import { formatResult } from '../sim/format.js';
+import { MODEL_CARDS, type SolveSuccess } from '@tbi-lab/engine';
+import { formatPower, formatResult, ratingMessage } from '../sim/format.js';
+import { warningsFor } from '../sim/ratings.js';
 import { useAppState, useStore, useT } from './context.js';
 import { checksFor } from './checks.js';
 import { probeTargetName, readProbe, type Probe } from './probes.js';
@@ -324,7 +325,7 @@ function ComponentResultView({
   outcome: SolveSuccess;
   component: ComponentInstance;
 }) {
-  const { locale } = useAppState();
+  const { locale, doc } = useAppState();
   const t = useT();
   const r = outcome.components[component.id];
   const I = (v: number | null) =>
@@ -413,6 +414,28 @@ function ComponentResultView({
           ))}
         </dl>
       )}
+      {r &&
+        (r.type === 'component.resistor' ||
+          r.type === 'component.led' ||
+          r.type === 'component.diode') &&
+        r.voltage !== null &&
+        r.current !== null && (
+          <dl class="props">
+            <ResultRow
+              label={t('sim.results.power')}
+              value={formatPower(locale, Math.abs(r.voltage * r.current))}
+              testId="result-power"
+            />
+          </dl>
+        )}
+      {doc &&
+        warningsFor(doc, outcome)
+          .filter((w) => w.component === component.id)
+          .map((w) => (
+            <p class="sim-warning" data-testid="result-rating" data-code={w.code} key={w.code}>
+              {ratingMessage(locale, w, MODEL_CARDS[w.model]?.name ?? w.model)}
+            </p>
+          ))}
       {r?.outsideModelRange && (
         <p class="sim-note" data-testid="result-outside-model">
           {t('sim.results.outsideModel')}
