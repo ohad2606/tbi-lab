@@ -91,3 +91,18 @@ solver tolerances are unchanged.
 
 Every `component.ground` terminal is the one reference node, even when two GND symbols are not
 wired to each other (`tests/session.test.ts`, "A14").
+
+## Added in Sprint 5 (pre-push): datasheet absolute maximum ratings
+
+`src/ratings.ts` records the absolute maximum ratings from the same datasheets as the model
+cards. The solver never uses them. They only let the product warn, never change a number:
+
+| Model                       | Source                                                                                                              | I_F max                     | V_R max | P max                          |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------- | --------------------------- | ------- | ------------------------------ |
+| `model.led.vishay_tlhr5400` | Vishay TLHR540./TLHY540., Document 83012, Rev. 2.7 (25-Jan-2024), fetched 2026-09-24 (SHA-256 `5dc7a75d…8ed50`)     | 30 mA (DC, T_amb ≤ 65 °C)   | 6 V     | 100 mW (T_amb ≤ 65 °C)         |
+| `model.diode.vishay_1n4148` | Vishay 1N4148, Document 81857, Rev. 1.6 (07-Nov-2024), the same file as the model card (SHA-256 `aefe8540…46a44b7`) | 300 mA (forward continuous) | 75 V    | 500 mW (l = 4 mm, T_L ≤ 25 °C) |
+
+`ratingWarnings(snapshot, outcome)` flags a solved operating point above any of these.
+Resistors have no documented rating in V1 (no power-rating parameter exists), so they are
+never flagged. Adding one would need a parameter and a decision about what rating a generic
+resistor has, which is a PM decision, not an invented limit.
