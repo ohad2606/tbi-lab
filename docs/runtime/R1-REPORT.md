@@ -1,9 +1,9 @@
 # Runtime R1 — Classic ESP32 production baseline: report
 
-Status: the baseline review of `1e7d8a5` was approved for push (pushed to `main` as `99d3798`), not
-for closure. The one closure blocker (host command quantum coupled to guest execution) is resolved
-locally by patch 0005 and awaits PM review (§21). R1 is **not closed and not tagged**. No R2 or
-Sprint 6 work was started.
+Status: **R1 is ready for formal closure (§22).** The final implementation baseline is `147b139`
+(CI run `36015690354` PASS). All R1 acceptance gates pass. The closure blocker (host command quantum
+coupled to guest execution) is resolved by patch 0005 (§21). The `runtime-r1-complete` tag is created
+only after PM verification of this closure commit's CI. No R2 or Sprint 6 work was started.
 
 Sections 1–19 record the baseline as reviewed (runtime `567e58e704a0e43e`). **§21 supersedes their
 runtime-specific values** (runtime id, gate fingerprints, timing, resources, risk 1) for the current
@@ -619,5 +619,55 @@ Every acceptance requirement for the blocker is met locally:
 - the gate is single-result under stress;
 - timing is within the envelope.
 
-R1 is ready for PM closure review. It still needs PM authorisation to push, and then a routine CI
-run. It is not closed or tagged here.
+The PM approved the blocker review; `ed02669..147b139` was pushed and its CI verified green (§22).
+
+## 22. R1 closure record (2026-09-24)
+
+| Item | Value |
+| ---- | ----- |
+| Final R1 implementation baseline | `147b139cd58418f4736f5a5f60f8bce945b21340` on `main` |
+| CI on that baseline | GitHub Actions run `36015690354`: **PASS** (fast job; Chromium browser acceptance: `npm run test:e2e`, `npm run test:browser`). Verified independently by the PM |
+| Earlier baseline CI | `99d3798` run `36007511844`: PASS |
+| Final QEMU runtime build | `runtimeId 979f09d739382157`: espressif/qemu `40edccac` (`esp-develop-9.2.2-20260417`) + `runtime/qemu/patches/0001-0005` |
+| Acceptance gates | **R1-A1 to R1-A18: all PASS** (§1; A8/A9/A10/A11/A18 on the final runtime per §21) |
+
+**Closure blocker resolved.**
+- Patch 0005 adds `QEMU_TIMER_ATTR_HOST_SYNC`. It decouples the host command quantum from guest
+  execution and core scheduling.
+- With identical firmware and commands, the guest timeline is **bit-identical at 1 ms and 10 ms**
+  command quanta. The largest event-time difference after the fix is **0 ns** (before: 109.4 ms).
+  The timing probe is also identical at 7 ms and 0.25 ms.
+- **55 confirmation runs**, zero divergences: a 40-run baseline plus 15 pinned runs, including
+  main-loop stress.
+
+**Pinned fingerprints (final runtime).**
+
+| Workload | Timeline | Timed serial | Serial bytes |
+| -------- | -------- | ------------ | ------------ |
+| Full release gate (1 ms, 1 ms under stress, 10 ms) | `0bf7b9df4df50bc0` | `f3c0ce4a6b1d9212` | `4aad86fc79e88ce0` |
+| First 3 s (1 ms and 10 ms) | `81aa9c4b7f0b1916` | `f6de86c978e38653` | `4cfdcad418d34960` |
+
+**Accepted timing** (deterministic, not cycle-accurate):
+- `delay(1000)` = 1000.513 ms;
+- boot to `setup()` ≈ 890 ms, which aligns with the Sprint 1 tick-free measurement; the earlier
+  ~0.38 s was an artifact of the command tick and is not a target;
+- 100 ms hardware timer = 9 ticks in the 1 s window;
+- busy loop = 48.801 ms.
+
+The QEMU round-robin kick stays at its fixed 100 ms (PM decision): it is not shortened to recover a
+faster boot.
+
+**Accepted resource measurements:** QEMU CPU ≈ 10.4 s and wall ≈ 12.4 s for 15.5 s simulated, on 1
+vCPU. These are **not a production capacity claim.**
+
+**Standing policies carried forward.**
+- Internal pull-ups/pull-downs and GPIO interrupts remain unsupported in the V1 simulator. Their use
+  must be diagnosed explicitly, never run silently (§20).
+- ESP32 ROM images are not committed to the repository and not included in any redistributable
+  runtime image. ROM licensing is a packaging/deployment gate (§20).
+- The mutated Sprint 1 reference image is acknowledged and left untouched (§20). Sprint 1 history
+  and tags are unchanged.
+
+**Scope.** This closure commit is documentation only. No R2 or Sprint 6 work is included.
+R1 is ready for formal closure. The annotated tag `runtime-r1-complete` is created on this commit
+only after PM verification of its CI.
