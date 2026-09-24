@@ -10,7 +10,7 @@
  * running unaffected while a client briefly reconnects.
  */
 import { createHash, timingSafeEqual } from 'node:crypto';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import type { HostConfig } from './config.js';
 import { validateCommand, validateCreate, type EndReason } from './protocol.js';
@@ -26,8 +26,12 @@ export class SessionHost {
   private closing = false;
 
   constructor(readonly config: HostConfig) {
+    // A host that was killed outright cannot clean up: its runtimes exit on their own (the
+    // bridge connection drops), but its private root would remain. Remove any root whose
+    // owning host process no longer exists.
+    removeStaleRoots(config.tmpParent);
     // Private (0700) root for every session directory of this host process.
-    this.tmpRoot = mkdtempSync(join(config.tmpParent, 'tbi-host-'));
+    this.tmpRoot = mkdtempSync(join(config.tmpParent, `tbi-host-${process.pid}-`));
     this.timer = setInterval(() => this.housekeeping(), config.housekeepingMs);
     this.timer.unref();
   }
@@ -103,5 +107,20 @@ export class SessionHost {
   /** Test support: sessions currently registered (terminal ones until retention expires). */
   get size(): number {
     return this.sessions.size;
+  }
+}
+
+function removeStaleRoots(parent: string): void {
+  for (const name of readdirSync(parent)) {
+    const m = /^tbi-host-(\d+)-/.exec(name);
+    if (!m) continue;
+    const pid = Number(m[1]);
+    let alive = true;
+    try {
+      process.kill(pid, 0);
+    } catch (e) {
+      alive = (e as NodeJS.ErrnoException).code === 'EPERM';
+    }
+    if (!alive) rmSync(join(parent, name), { recursive: true, force: true });
   }
 }

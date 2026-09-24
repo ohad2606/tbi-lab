@@ -1,0 +1,100 @@
+{
+  "isolation": [
+    {
+      "a": "terminated",
+      "b": "stopped"
+    },
+    {
+      "a": "terminated",
+      "b": "stopped"
+    },
+    {
+      "a": "terminated",
+      "b": "stopped"
+    }
+  ],
+  "concurrentGate": [
+    "0b6b7597506b3550",
+    "0b6b7597506b3550",
+    "0b6b7597506b3550"
+  ],
+  "terminate": [
+    {
+      "startup": "terminated",
+      "running": "terminated"
+    },
+    {
+      "startup": "terminated",
+      "running": "terminated"
+    },
+    {
+      "startup": "terminated",
+      "running": "terminated"
+    }
+  ],
+  "leaseExpiryWallMs": 1526,
+  "hostCrash": [
+    {
+      "qemuGoneAfterHostKillMs": 51
+    },
+    {
+      "qemuGoneAfterHostKillMs": 50
+    },
+    {
+      "qemuGoneAfterHostKillMs": 50
+    }
+  ],
+  "sseDisconnectToReleaseMs": 2271,
+  "measurements": {
+    "one": [
+      {
+        "createMs": 27,
+        "runToFirstSerialMs": 5460,
+        "wallMsFor10sSimulated": 11648,
+        "qemuRssBytes": 75747328,
+        "qemuPeakRssBytes": 150286336,
+        "sessionStorageBytes": 4194304,
+        "eventsLogged": 88
+      },
+      {
+        "createMs": 19,
+        "runToFirstSerialMs": 5935,
+        "wallMsFor10sSimulated": 11864,
+        "qemuRssBytes": 79544320,
+        "qemuPeakRssBytes": 152793088,
+        "sessionStorageBytes": 4194304,
+        "eventsLogged": 88
+      },
+      {
+        "createMs": 20,
+        "runToFirstSerialMs": 5574,
+        "wallMsFor10sSimulated": 11723,
+        "qemuRssBytes": 73830400,
+        "qemuPeakRssBytes": 150323200,
+        "sessionStorageBytes": 4194304,
+        "eventsLogged": 88
+      }
+    ],
+    "two": [
+      {
+        "createMs": 18,
+        "runToFirstSerialMs": 11312,
+        "wallMsFor10sSimulated": 24214,
+        "qemuRssBytes": 75677696,
+        "qemuPeakRssBytes": 150511616,
+        "sessionStorageBytes": 4194304,
+        "eventsLogged": 88
+      },
+      {
+        "createMs": 23,
+        "runToFirstSerialMs": 11299,
+        "wallMsFor10sSimulated": 24170,
+        "qemuRssBytes": 71675904,
+        "qemuPeakRssBytes": 150773760,
+        "sessionStorageBytes": 4194304,
+        "eventsLogged": 88
+      }
+    ],
+    "testProcessRssBytes": 141185024
+  }
+}

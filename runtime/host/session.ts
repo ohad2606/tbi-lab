@@ -103,6 +103,7 @@ export class HostSession {
   private serialWindowBytes = 0;
   private serialDropped = 0;
   private latest: SolveOutcome | null = null;
+  private readonly inputOnlyDiagnosed = new Set<number>();
   private latestPublished: string | null = null;
 
   constructor(
@@ -408,6 +409,22 @@ export class HostSession {
   private onPad(vns: bigint, pad: number, drive: 0 | 1, level: 0 | 1): Command[] {
     this.simNs = vns;
     const pin = boardPinForGpio(ESP32_DEVKITC_WROOM32, pad);
+    if (pin?.simulatorSupport === 'digital-input' && drive) {
+      // GPIO34..39 have no output driver: enabling output does nothing on the hardware, so the
+      // pad stays an input electrically. Diagnosed (once per pad), never silently driven.
+      if (!this.inputOnlyDiagnosed.has(pad)) {
+        this.inputOnlyDiagnosed.add(pad);
+        this.log.append({
+          type: 'diagnostic',
+          simNs: vns.toString(),
+          severity: 'warning',
+          code: 'output_on_input_only_pad',
+          detail: { gpio: pad, level },
+        });
+      }
+      drive = 0;
+      level = 0;
+    }
     if (pin && pin.simulatorSupport !== 'none') {
       const w = this.gpioWindow.get(pad);
       this.gpioWindow.set(pad, { drive, level, transitions: (w?.transitions ?? 0) + 1 });

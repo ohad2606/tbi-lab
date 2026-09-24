@@ -55,7 +55,6 @@ export type FailReason =
   | 'host_protocol_error' // the host rejected QEMU (malformed frame, time going backwards)
   | 'bridge_lost' // QEMU lost the bridge connection
   | 'guest_reset' // the firmware requested a reset: unsupported in V1, never repeated
-  | 'queue_overflow'
   | 'storage_limit'
   | 'internal';
 

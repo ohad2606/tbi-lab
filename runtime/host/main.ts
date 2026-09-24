@@ -10,11 +10,17 @@
  * SIGTERM / SIGINT: stop accepting requests, terminate every session (host_shutdown), release
  * every child process and temporary file, then exit.
  */
+import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { QEMU, RUNTIME_HOME } from '../harness/env.js';
 import { defaultConfig, type HostConfig } from './config.js';
 import { SessionHost } from './host.js';
 import { createHttpServer } from './http.js';
+
+// Same locations as runtime/provision/provision.sh (and harness/env.ts).
+const RUNTIME_HOME =
+  process.env.TBI_RUNTIME_HOME ??
+  join(process.env.XDG_DATA_HOME ?? join(homedir(), '.local', 'share'), 'tbi-lab-runtime');
+const QEMU = join(RUNTIME_HOME, 'qemu-current', 'bin', 'qemu-system-xtensa');
 
 const port = Number(process.env.TBI_HOST_PORT ?? 7400);
 const bind = process.env.TBI_HOST_BIND ?? '127.0.0.1';

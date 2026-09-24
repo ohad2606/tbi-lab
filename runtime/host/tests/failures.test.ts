@@ -150,6 +150,39 @@ describe('artifact, request and capability failures', () => {
       irq.log.since(0).some((e) => e.type === 'diagnostic' && e.code === 'unsupported_feature'),
     ).toBe(true);
   });
+
+  it('an input-only pad the guest tries to drive stays an input and is diagnosed', async () => {
+    const { host, art } = start('drive_input_only');
+    const req = createRequest(art.sha256);
+    const r4 = req.attachments.find((a) => a.gpio === 18)!.component;
+    req.attachments.push({ gpio: 34, component: r4, terminal: 'b' });
+    const r = host.create(req);
+    if (!r.ok) throw new Error(r.error);
+    const s = r.value.session;
+    expect(s.state).toBe('ready');
+    s.run();
+    const d = await waitEvent(s, (e) => e.type === 'diagnostic');
+    expect(d).toMatchObject({
+      severity: 'warning',
+      code: 'output_on_input_only_pad',
+      detail: { gpio: 34, level: 1 },
+    });
+    // Electrical events are published only when the operating point changes: wait on time.
+    await waitEvent(s, (e) => e.type === 'gpio' && BigInt(e.simNs!) >= 30_000_000n);
+    const last = s.log
+      .since(0)
+      .filter((e) => e.type === 'electrical')
+      .at(-1) as { outcome: { pins: { gpio: number; mode: string }[] } };
+    expect(last.outcome.pins.find((p) => p.gpio === 34)!.mode).toBe('input');
+    const g = s.log.since(0).find((e) => e.type === 'gpio' && e.changes.some((c) => c.gpio === 34));
+    expect(g && g.type === 'gpio' && g.changes.find((c) => c.gpio === 34)).toMatchObject({
+      drive: 0,
+      level: 0,
+    });
+    expect(s.state).toBe('running');
+    s.stop();
+    await waitState(s, 'ended');
+  });
 });
 
 describe('isolation', () => {

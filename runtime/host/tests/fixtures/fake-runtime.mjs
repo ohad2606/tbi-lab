@@ -10,7 +10,7 @@
  *   - GPIO18 follows the injected level of GPIO5 immediately (at the same simulation time + 8 ns);
  *   - prints `IN5=<level>` whenever GPIO5's injected level changes.
  * Failure modes: no_hello, crash, stall, garbage, guest_reset, serial_flood, ignore_term,
- * time_backwards.
+ * time_backwards; drive_input_only (drives input-only GPIO34 HIGH at 20 ms).
  */
 import { connect } from 'node:net';
 import { openSync, readSync, writeSync, closeSync } from 'node:fs';
@@ -103,6 +103,7 @@ async function main() {
       level ^= 1;
       await setPad(2, 1, level, vns - tick + 1234n);
     }
+    if (mode === 'drive_input_only' && n === 20) await setPad(34, 1, 1, vns - 500n);
     if (mode === 'serial_flood') serial(vns, 'x'.repeat(200));
     if (mode === 'garbage' && n === 20) sock.write('Z this is not a frame\n');
     if (mode === 'time_backwards' && n === 20) {

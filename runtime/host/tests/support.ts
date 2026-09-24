@@ -3,10 +3,11 @@
  * real bridge protocol). Circuits are real domain projects, snapshotted as the browser does.
  */
 import { createHash } from 'node:crypto';
-import { chmodSync, existsSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { afterAll } from 'vitest';
 import {
   addComponent,
   addWire,
@@ -24,9 +25,16 @@ import type { HostSession } from '../session.js';
 
 export const FAKE_RUNTIME = fileURLToPath(new URL('./fixtures/fake-runtime.mjs', import.meta.url));
 
+/** Artifact directories this test file created; removed after the file's tests. */
+const created: string[] = [];
+afterAll(() => {
+  for (const d of created.splice(0)) rmSync(d, { recursive: true, force: true });
+});
+
 /** A directory of immutable artifacts: one 4 MiB erased image, named by its sha256. */
 export function artifactsDir(): { dir: string; sha256: string; path: string } {
   const dir = mkdtempSync(join(tmpdir(), 'tbi-art-'));
+  created.push(dir);
   const img = Buffer.alloc(4 << 20, 0xff);
   const sha256 = createHash('sha256').update(img).digest('hex');
   const path = join(dir, `${sha256}.bin`);
