@@ -14,6 +14,7 @@
 import type { ComponentInstance, SimulationSnapshot } from '@tbi-lab/domain';
 import { Circuit, ConvergenceError } from './circuit.js';
 import { Diode, LabPsu, Resistor, VoltageSource, type Device } from './devices.js';
+import { GpioPin } from './esp32Gpio.js';
 import { SingularMatrixError } from './linalg.js';
 import { MODEL_CARDS, MODEL_VALID_CURRENT_A } from './registry.js';
 
@@ -23,6 +24,32 @@ export const ENGINE_VERSION = '0.1.0';
 const REF = '0';
 
 export type SupplyMode = 'cv' | 'cc' | 'off';
+
+/**
+ * Runtime R2: an MCU pad attached to a component terminal's electrical node. The pad is the
+ * approved ESP32 pin model (`GpioPin`, esp32Gpio.ts) between that node and GND; its drive mode
+ * is TRANSIENT runtime state set by the running firmware, never a project value. Until the MCU
+ * becomes a project component (Sprint 6), attachments are supplied with the session. Without
+ * attachments the engine is exactly the browser path.
+ */
+export interface McuPinAttachment {
+  /** ESP32 GPIO number. Capability rules (flash pads, input-only pads) are enforced by the host. */
+  gpio: number;
+  component: string;
+  terminal: string;
+}
+
+/** The drive modes a running firmware can put a pad in (internal pulls are not supported). */
+export type RuntimePinMode = 'input' | 'output-high' | 'output-low';
+
+export interface PinResult {
+  gpio: number;
+  mode: RuntimePinMode;
+  /** Pad potential relative to GND, volts. */
+  voltage: number;
+  /** Current delivered by the pad into the circuit, amperes. */
+  current: number;
+}
 
 export interface PsuControl {
   setpointVoltage?: number;
@@ -45,6 +72,7 @@ export type EngineErrorCode =
   | 'psu_parallel'
   | 'invalid_parameter'
   | 'unsupported_component'
+  | 'invalid_attachment'
   | 'singular_circuit'
   | 'no_convergence'
   | 'internal';
@@ -106,6 +134,8 @@ interface OutcomeBase {
 
 export interface SolveSuccess extends OutcomeBase {
   ok: true;
+  /** Only when MCU pins are attached (runtime R2): one entry per attached pad, by GPIO order. */
+  pins?: PinResult[];
   /** Net id -> potential relative to GND, volts. Nets with no defined potential are absent. */
   netVoltages: Record<string, number>;
   components: Record<string, ComponentResult>;
@@ -174,9 +204,29 @@ export class EngineSession {
   /** TRANSIENT runtime input: push buttons currently held. Never persisted anywhere. */
   private readonly pressed = new Set<string>();
   private appliedRevision: number;
+  /** TRANSIENT runtime state: each attached pad's drive mode, set by the running firmware. */
+  private readonly pinModes = new Map<number, RuntimePinMode>();
+  private readonly pins: readonly McuPinAttachment[];
 
-  constructor(private readonly snapshot: SimulationSnapshot) {
+  constructor(
+    private readonly snapshot: SimulationSnapshot,
+    mcu?: { pins: readonly McuPinAttachment[] },
+  ) {
     this.appliedRevision = snapshot.projectRevision;
+    this.pins = [...(mcu?.pins ?? [])].sort((a, b) => a.gpio - b.gpio);
+    for (const p of this.pins) this.pinModes.set(p.gpio, 'input');
+  }
+
+  /**
+   * TRANSIENT runtime input from the MCU: the drive mode of an attached pad. Not a project value:
+   * nothing is persisted and no revision is involved.
+   */
+  setPinMode(gpio: number, mode: RuntimePinMode): EngineError | null {
+    if (!this.pinModes.has(gpio)) {
+      return { code: 'invalid_attachment', detail: { gpio } };
+    }
+    this.pinModes.set(gpio, mode);
+    return null;
   }
 
   get snapshotId(): string {
@@ -296,7 +346,31 @@ export class EngineSession {
       if (net === undefined) return `~${component}.${terminal}`; // unwired terminal: its own node
       return groundNets.has(net) ? REF : net;
     };
-    const wired = (component: string) => snap.connections.some((c) => c.component === component);
+    const wired = (component: string) =>
+      snap.connections.some((c) => c.component === component) ||
+      this.pins.some((p) => p.component === component);
+
+    // ---- MCU pad attachments (runtime R2): structural validation only ----------------------
+    const pinNodes: { pin: McuPinAttachment; node: string }[] = [];
+    for (const [i, p] of this.pins.entries()) {
+      const c = snap.components.find((x) => x.id === p.component);
+      const terminals = c ? TERMINALS[c.type] : undefined;
+      const ok =
+        Number.isInteger(p.gpio) &&
+        p.gpio >= 0 &&
+        p.gpio < 40 &&
+        (i === 0 || this.pins[i - 1]!.gpio !== p.gpio) &&
+        !!terminals &&
+        terminals.includes(p.terminal);
+      if (!ok) {
+        return this.fail({
+          code: 'invalid_attachment',
+          ...(c ? { components: [c.id] } : {}),
+          detail: { gpio: p.gpio, component: p.component, terminal: p.terminal },
+        });
+      }
+      pinNodes.push({ pin: p, node: nodeOf(p.component, p.terminal) });
+    }
 
     // ---- Compile: validate, and turn components into topology elements -----------------
     const elements: Element[] = [];
@@ -418,6 +492,8 @@ export class EngineSession {
       const uf = new UnionFind();
       const used = elements.filter((e) => e.active || useInactive);
       for (const e of used) uf.union(e.nodes[0], e.nodes[1]);
+      // An attached pad is referenced to GND through the MCU (its driver or input leakage).
+      for (const { node } of pinNodes) uf.union(node, REF);
       const referenced = uf.find(REF);
       const floating = used.filter((e) => uf.find(e.nodes[0]) !== referenced);
       return { floating, uf };
@@ -465,6 +541,12 @@ export class EngineSession {
       }
       devices.set(c.id, circuit.add(d));
     }
+    // Attached MCU pads: the approved ESP32 pin model, in the firmware's current drive mode.
+    const pinDevices = pinNodes.map(({ pin, node }) => ({
+      pin,
+      node,
+      device: circuit.add(new GpioPin(`GPIO${pin.gpio}`, node, this.pinModes.get(pin.gpio)!)),
+    }));
 
     let nodeVoltages: ReadonlyMap<string, number> = new Map([[REF, 0]]);
     let currents: ReadonlyMap<string, number> = new Map();
@@ -558,6 +640,22 @@ export class EngineSession {
       }
       components[c.id] = result;
     }
-    return { ok: true, ...this.base(), netVoltages, components, notConnected, stats };
+    const outcome: SolveSuccess = {
+      ok: true,
+      ...this.base(),
+      netVoltages,
+      components,
+      notConnected,
+      stats,
+    };
+    if (pinDevices.length) {
+      outcome.pins = pinDevices.map(({ pin, node }) => ({
+        gpio: pin.gpio,
+        mode: this.pinModes.get(pin.gpio)!,
+        voltage: potential(node) ?? 0,
+        current: clean(currents.get(`GPIO${pin.gpio}`) ?? 0),
+      }));
+    }
+    return outcome;
   }
 }

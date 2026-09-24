@@ -101,6 +101,7 @@ export const he: Record<MessageKey, string> = {
   'sim.error.psu_parallel.hint': 'השתמשו בספק אחד, או הפרידו בין היציאות באמצעות רכיבי מעגל.',
   'sim.error.invalid_parameter': '{components}: לא ניתן לדמות את הערך של „{param}”.',
   'sim.error.unsupported_component': 'עדיין לא ניתן לדמות את {components}.',
+  'sim.error.invalid_attachment': 'פין של המיקרו-בקר מחובר להדק שאינו קיים: {components}.',
   'sim.error.singular_circuit':
     'למעגל אין פתרון יחיד, למשל שני ספקים שכופים מתחים שונים על אותה [[net]]. מעורבים: {components}.',
   'sim.error.no_convergence':

@@ -99,6 +99,7 @@ export const en = {
   'sim.error.psu_parallel.hint': 'Use one supply, or separate the outputs with circuit elements.',
   'sim.error.invalid_parameter': '{components}: the value of “{param}” cannot be simulated.',
   'sim.error.unsupported_component': '{components} cannot be simulated yet.',
+  'sim.error.invalid_attachment': 'An MCU pin is attached to a terminal that does not exist: {components}.',
   'sim.error.singular_circuit':
     'The circuit has no unique solution, for example two supplies forcing different voltages on the same [[net]]. Involved: {components}.',
   'sim.error.no_convergence':
