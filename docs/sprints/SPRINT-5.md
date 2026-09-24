@@ -1,9 +1,10 @@
 # Sprint 5 — Product Alpha
 
-**Status:** COMPLETE LOCALLY, including the PM pre-push polish pass (§12a). Not pushed, not
-tagged, not merged (by instruction).
-**Date:** 2026-09-23 · **Base:** `5c9d16c` (Sprint 4 closure; `sprint-4-complete` pending PM
-CI verification) · **Branch/worktree:** `sprint-5` in `~/projects/tbi-lab-sprint5`
+**Status:** TECHNICALLY COMPLETE. **Product Alpha milestone achieved.** Pushed to `main`;
+GitHub Actions run `35989198004` = PASS on `cbf2f3f` (§16). Ready for formal closure: the tag
+`sprint-5-complete` follows the PM's verification of this closure commit's CI.
+**Date:** 2026-09-23 – 2026-09-24 · **Base:** `5c9d16c` (Sprint 4 closure, tag `sprint-4-complete`)
+· **Final implementation baseline:** `cbf2f3f943aa26426dc84ffc1f66d2c54cc96c64`
 **Authority:** PM long-run directive (2026-09-23): Phase A (Sprint 4 closure), Phase B (Sprint 5
 Product Alpha); `docs/product/V1-IMPLEMENTATION-ROADMAP.md`; `CLAUDE.md`.
 
@@ -231,7 +232,7 @@ separate IndexedDB index. See `SCHEMA.md` ("Sprint 5: no schema change").
 | A15 | **Pass** | Browser: `dir=rtl` chrome, canvas and probe readings `ltr` |
 | A16 | **Pass** | Browser A16: rename + navigate, duplicate + open, export right after an edit, locale switches during autosave (+1 revision exactly), edit + leave + delete (no resurrection), example + immediate run, import + reload. Unit: delete with a pending autosave (fails without `Autosave.discard`) |
 | A17 | **Pass** | §13: library, duplicate, export, import, example and reopen measured; the 30-part editor matches Sprint 4 |
-| A18 | **Pass locally** | All Sprint 0-4 unit and browser tests pass (§12). Remote CI pending: not pushed, by instruction |
+| A18 | **Pass on GitHub Actions** (run `35989198004` on `cbf2f3f`, §16). *At first report: local only* | All Sprint 0-4 unit and browser tests pass (§12), locally and in CI |
 | A19 | **Pass** | No workflow change; nothing routine touches the ESP32/QEMU toolchain |
 | A20 | **Pass** | Browser A20: example → edit → run → probe → export → delete → import → Hebrew run, with no developer steps |
 
@@ -437,7 +438,7 @@ existing `vite-node` (from Vitest).
 
 | Risk | Note |
 |---|---|
-| Remote CI | Sprint 5 has not run on GitHub (not pushed, by instruction) |
+| Remote CI | Resolved: run `35989198004` passed on `cbf2f3f` (§16) |
 | Browser storage eviction | Projects live in best-effort IndexedDB. The app does not request `navigator.storage.persist()`, so a browser under storage pressure may evict them. Export is the user's backup; requesting persistence is a small follow-up decision |
 | Firmware in packages (Sprint 6/7) | Version 1 is JSON-only. Firmware images need a format version 2 (ZIP or base64). This must be decided before the package freeze (end of Sprint 7); it does not block Sprint 6 |
 | Pure-JS SHA-256 throughput | About 10 MB/s (Node on the dev host): a 4 MB firmware image would take roughly 0.4 s. Acceptable, but in Sprint 6 hash in the Worker, or use Web Crypto when available with this implementation as the fallback |
@@ -452,8 +453,47 @@ existing `vite-node` (from Vitest).
 
 **No PM decision blocks Sprint 6.** Open, non-blocking items:
 
-- **Procedural:** verify `5c9d16c`'s CI, then tag `sprint-4-complete` on it.
+- **Procedural:** done. `sprint-4-complete` → `5c9d16c` (CI `35892639558`).
 - **Before the Sprint 7 package freeze:** how firmware bytes enter the package (ZIP container
   vs base64 in JSON).
 - **Optional:** whether Product Alpha should request persistent storage
   (`navigator.storage.persist()`).
+
+## 16. Closure (added 2026-09-24)
+
+| Step | Result |
+|---|---|
+| Sprint 5 pushed to `main` | `5c9d16c..cbf2f3f`, fast-forward: the seven reviewed commits, unchanged |
+| Final implementation baseline | `cbf2f3f943aa26426dc84ffc1f66d2c54cc96c64` |
+| GitHub Actions run **`35989198004`** on `cbf2f3f` | **PASS**: fast job (typecheck, lint, unit); Chromium browser acceptance (`npm run test:e2e`, `npm run test:browser`). Verified by the PM |
+| Acceptance | **A1–A20 all PASS** (§11). A18 passed on GitHub Actions |
+| Final test counts (local = CI) | Unit **365** (domain 156, engine 64, app 90, experiments 55); app browser acceptance **67**; Sprint 0 browser **4** |
+
+**Product Alpha milestone achieved.** A new user can start from an example or a new project,
+edit, run, probe, rely on autosave, export, import and switch English/Hebrew without developer
+steps (A20). The electrical engine and the Sprint 4 runtime semantics are unchanged.
+
+**Final polish included in the baseline** (PM reviews, §12a and §12b):
+
+- TBI branding and a restrained colour system from the TBI logo;
+- wire/component layering (parts drawn over wires; terminals and junctions on top);
+- a desktop-first Projects screen (narrow screens explicitly unsupported);
+- draggable wire segments (layout-only, undoable);
+- datasheet-limit over-stress warnings (TLHR5400, 1N4148; limits with provenance);
+- wire bridges at unconnected crossings. PM-confirmed semantic: no junction at the crossing
+  means a bridge, even when the two wires share a net elsewhere;
+- a simplified over-stress warning ("Component rating exceeded" / "D1 may be damaged" with
+  compact rows).
+
+**Accepted non-blocking backlog** (PM, 2026-09-24):
+
+- the brand assets are raster-only (derived from the provided PNGs; vector or transparent
+  finals would sharpen the mark);
+- a wire may still cross a component's side label (the label halo keeps it readable);
+- resistor over-power warnings need an explicit product decision on a resistor power rating.
+
+**No Sprint 6 work is included.** Every commit from `5c9d16c` to this closure is Sprint 5
+implementation, tests or documentation.
+
+**Sprint 5 is ready for formal closure.** `sprint-5-complete` goes on this closure commit once
+the PM confirms its GitHub Actions run.
