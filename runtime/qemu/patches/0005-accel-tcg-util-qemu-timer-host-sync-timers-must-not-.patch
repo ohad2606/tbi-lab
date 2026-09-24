@@ -1,0 +1,318 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: TBI Lab runtime <runtime@tbi-lab.local>
+Date: Thu, 24 Sep 2026 15:00:00 +0000
+Subject: [PATCH] accel/tcg, util/qemu-timer: host sync timers must not shape
+ vCPU scheduling
+
+TBI Lab (runtime R1 closure blocker). Under -icount the round-robin loop
+sizes each vCPU timeslice from the next QEMU_CLOCK_VIRTUAL deadline and
+rotates to the next vCPU whenever a deadline stops execution. The TBI
+bridge's host command tick is such a deadline, so the host command
+quantum decided where the two cores switched: with identical firmware a
+1 ms and a 10 ms quantum gave guest timelines up to 109 ms apart.
+
+A new timer attribute, QEMU_TIMER_ATTR_HOST_SYNC, marks a virtual timer
+that only synchronises with a host process. For such timers:
+
+- timeslices are sized from the other timers only;
+- execution still stops exactly at the timer's deadline, but the rr loop
+  services it and then resumes the same vCPU with the rest of its slice
+  instead of rotating;
+- the vCPU kicks raised while servicing it (exit_request via
+  qemu_clock_notify) are discarded, since no vCPU was running;
+- whether a newly armed guest timer is the earliest one (and therefore
+  kicks the running vCPU) is decided ignoring host sync timers.
+
+tbi-bridge arms its tick with the attribute. Machines without host sync
+timers behave exactly as before.
+
+Signed-off-by: TBI Lab <runtime@tbi-lab.local>
+---
+ accel/tcg/tcg-accel-ops-icount.c | 49 ++++++++++++++++++++++--
+ accel/tcg/tcg-accel-ops-icount.h |  5 ++-
+ accel/tcg/tcg-accel-ops-rr.c     | 66 ++++++++++++++++++++++++++++++--
+ hw/misc/tbi_bridge.c             |  4 +-
+ include/qemu/timer.h             |  7 ++++
+ util/qemu-timer.c                | 13 ++++++-
+ 6 files changed, 134 insertions(+), 10 deletions(-)
+
+diff --git a/accel/tcg/tcg-accel-ops-icount.c b/accel/tcg/tcg-accel-ops-icount.c
+index 9e1ae66..60b6278 100644
+--- a/accel/tcg/tcg-accel-ops-icount.c
++++ b/accel/tcg/tcg-accel-ops-icount.c
+@@ -34,7 +34,7 @@
+ #include "tcg-accel-ops-icount.h"
+ #include "tcg-accel-ops-rr.h"
+ 
+-static int64_t icount_get_limit(void)
++static int64_t icount_get_limit_mask(int virtual_attr_mask)
+ {
+     int64_t deadline;
+ 
+@@ -44,7 +44,7 @@ static int64_t icount_get_limit(void)
+          * Too long CPU execution may create unnecessary delay in UI.
+          */
+         deadline = qemu_clock_deadline_ns_all(QEMU_CLOCK_VIRTUAL,
+-                                              QEMU_TIMER_ATTR_ALL);
++                                              virtual_attr_mask);
+         /* Check realtime timers, because they help with input processing */
+         deadline = qemu_soonest_timeout(deadline,
+                 qemu_clock_deadline_ns_all(QEMU_CLOCK_REALTIME,
+@@ -66,6 +66,36 @@ static int64_t icount_get_limit(void)
+     }
+ }
+ 
++/* Instructions until the next timer of any kind: execution must stop there. */
++static int64_t icount_get_limit(void)
++{
++    return icount_get_limit_mask(QEMU_TIMER_ATTR_ALL);
++}
++
++/*
++ * TBI: the virtual timers that shape vCPU scheduling: all except host synchronisation points
++ * (QEMU_TIMER_ATTR_HOST_SYNC), so the host command quantum is not a guest execution timestep.
++ */
++#define ICOUNT_SCHED_ATTR_MASK (QEMU_TIMER_ATTR_ALL & ~QEMU_TIMER_ATTR_HOST_SYNC)
++
++/*
++ * Whether a run granted `slice` instructions will be cut short by a host synchronisation timer
++ * rather than by the slice itself or a scheduling-relevant timer. Evaluated before the run, on
++ * the vCPU thread, so the answer cannot depend on when another thread services that timer.
++ */
++bool icount_host_sync_cuts(int64_t slice)
++{
++    int64_t all = icount_get_limit();
++
++    return all < MIN(slice, icount_get_limit_mask(ICOUNT_SCHED_ATTR_MASK));
++}
++
++/* A timer is due now (with icount_host_sync_cuts() true, it is a host synchronisation timer). */
++bool icount_deadline_now(void)
++{
++    return icount_get_limit() == 0;
++}
++
+ static void icount_notify_aio_contexts(void)
+ {
+     /* Wake up other AioContexts.  */
+@@ -92,7 +122,7 @@ void icount_handle_deadline(void)
+ /* Distribute the budget evenly across all CPUs */
+ int64_t icount_percpu_budget(int cpu_count)
+ {
+-    int64_t limit = icount_get_limit();
++    int64_t limit = icount_get_limit_mask(ICOUNT_SCHED_ATTR_MASK);
+     int64_t timeslice = limit / cpu_count;
+ 
+     if (timeslice == 0) {
+@@ -102,7 +132,7 @@ int64_t icount_percpu_budget(int cpu_count)
+     return timeslice;
+ }
+ 
+-void icount_prepare_for_run(CPUState *cpu, int64_t cpu_budget)
++int64_t icount_prepare_for_run(CPUState *cpu, int64_t cpu_budget)
+ {
+     int insns_left;
+ 
+@@ -130,6 +160,17 @@ void icount_prepare_for_run(CPUState *cpu, int64_t cpu_budget)
+         icount_notify_aio_contexts();
+         bql_unlock();
+     }
++    return cpu->icount_budget;
++}
++
++/*
++ * Instructions of the current run's budget not yet executed. cpu_exec() refills the decrementer
++ * from icount_extra and accounts executed instructions against icount_budget as it goes, so the
++ * unexecuted remainder is exactly the decrementer plus the extra.
++ */
++int64_t icount_left_in_run(CPUState *cpu)
++{
++    return cpu->neg.icount_decr.u16.low + cpu->icount_extra;
+ }
+ 
+ void icount_process_data(CPUState *cpu)
+diff --git a/accel/tcg/tcg-accel-ops-icount.h b/accel/tcg/tcg-accel-ops-icount.h
+index 16a301b..f968e79 100644
+--- a/accel/tcg/tcg-accel-ops-icount.h
++++ b/accel/tcg/tcg-accel-ops-icount.h
+@@ -11,7 +11,10 @@
+ #define TCG_ACCEL_OPS_ICOUNT_H
+ 
+ void icount_handle_deadline(void);
+-void icount_prepare_for_run(CPUState *cpu, int64_t cpu_budget);
++int64_t icount_prepare_for_run(CPUState *cpu, int64_t cpu_budget);
++int64_t icount_left_in_run(CPUState *cpu);
++bool icount_host_sync_cuts(int64_t slice);
++bool icount_deadline_now(void);
+ int64_t icount_percpu_budget(int cpu_count);
+ void icount_process_data(CPUState *cpu);
+ 
+diff --git a/accel/tcg/tcg-accel-ops-rr.c b/accel/tcg/tcg-accel-ops-rr.c
+index 2ba4fdf..7a4db9f 100644
+--- a/accel/tcg/tcg-accel-ops-rr.c
++++ b/accel/tcg/tcg-accel-ops-rr.c
+@@ -62,6 +62,15 @@ void rr_kick_vcpu_thread(CPUState *unused)
+ static QEMUTimer *rr_kick_vcpu_timer;
+ static CPUState *rr_current_cpu;
+ 
++/*
++ * TBI: a vCPU timeslice interrupted only by a host synchronisation timer
++ * (QEMU_TIMER_ATTR_HOST_SYNC) is resumed on the same vCPU with the rest of its slice once the
++ * timer has run, instead of rotating to the next vCPU. Together with slices sized without such
++ * timers, the host command quantum then has no effect on how the vCPUs interleave.
++ */
++static int64_t rr_rotation_budget;
++static int64_t rr_resume_left = -1;
++
+ static inline int64_t rr_next_kick_time(void)
+ {
+     return qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + TCG_KICK_PERIOD;
+@@ -231,9 +240,38 @@ static void *rr_cpu_thread_fn(void *arg)
+              * Run the timers here.  This is much more efficient than
+              * waking up the I/O thread and waiting for completion.
+              */
+-            icount_handle_deadline();
++            if (rr_resume_left >= 0) {
++                /*
++                 * TBI: servicing a host synchronisation timer notifies QEMU_CLOCK_VIRTUAL, which
++                 * kicks every vCPU (exit_request). The vCPUs are not running and nothing
++                 * guest-visible happened, so keep their exit requests as they were: otherwise a
++                 * later vCPU of this rotation would end it early and the host quantum would shape
++                 * the interleaving. Stop requests still apply (cpu->stop, checked by
++                 * cpu_can_run()).
++                 */
++                bool pending[64] = { false };
++                CPUState *c;
++
++                CPU_FOREACH(c) {
++                    if (c->cpu_index < 64) {
++                        pending[c->cpu_index] = qatomic_read(&c->exit_request);
++                    }
++                }
++                icount_handle_deadline();
++                CPU_FOREACH(c) {
++                    if (c->cpu_index < 64 && !pending[c->cpu_index]) {
++                        qatomic_set(&c->exit_request, 0);
++                    }
++                }
++            } else {
++                icount_handle_deadline();
++            }
+ 
+-            cpu_budget = icount_percpu_budget(cpu_count);
++            if (rr_resume_left >= 0) {
++                cpu_budget = rr_rotation_budget; /* same rotation, paused for host sync */
++            } else {
++                cpu_budget = icount_percpu_budget(cpu_count);
++            }
+         }
+ 
+         replay_mutex_unlock();
+@@ -253,19 +291,41 @@ static void *rr_cpu_thread_fn(void *arg)
+ 
+             if (cpu_can_run(cpu)) {
+                 int r;
++                int64_t slice = 0, granted = 0, executed = 0;
++                bool host_sync_cut = false;
+ 
++                if (icount_enabled()) {
++                    slice = rr_resume_left >= 0 ? rr_resume_left : cpu_budget;
++                    rr_resume_left = -1;
++                    host_sync_cut = icount_host_sync_cuts(slice);
++                    if (host_sync_cut && icount_deadline_now()) {
++                        /* A host sync point is due before this run: service it, then run. */
++                        rr_rotation_budget = cpu_budget;
++                        rr_resume_left = slice;
++                        break;
++                    }
++                }
+                 icount_rr_slice_in_flight = icount_enabled();
+                 bql_unlock();
+                 if (icount_enabled()) {
+-                    icount_prepare_for_run(cpu, cpu_budget);
++                    granted = icount_prepare_for_run(cpu, slice);
+                 }
+                 r = tcg_cpu_exec(cpu);
+                 if (icount_enabled()) {
++                    executed = granted - icount_left_in_run(cpu);
+                     icount_process_data(cpu);
+                 }
+                 bql_lock();
+                 icount_rr_slice_in_flight = false;
+ 
++                if (host_sync_cut && granted < slice && executed == granted &&
++                    r != EXCP_DEBUG && r != EXCP_ATOMIC) {
++                    /* Stopped exactly at a host sync point: run it, then resume this vCPU. */
++                    rr_rotation_budget = cpu_budget;
++                    rr_resume_left = slice - executed;
++                    break;
++                }
++
+                 if (r == EXCP_DEBUG) {
+                     cpu_handle_guest_debug(cpu);
+                     break;
+diff --git a/hw/misc/tbi_bridge.c b/hw/misc/tbi_bridge.c
+index 0862f2a..1c3ea9e 100644
+--- a/hw/misc/tbi_bridge.c
++++ b/hw/misc/tbi_bridge.c
+@@ -321,7 +321,9 @@ static void tbi_bridge_realize(DeviceState *dev, Error **errp)
+     snprintf(hello, sizeof(hello), "H tbi-bridge 1 %" PRIu64 "\n", (uint64_t)s->tick_us * 1000);
+     tbi_exchange(s, hello, false);
+ 
+-    s->tick = timer_new_ns(QEMU_CLOCK_VIRTUAL, tbi_tick, s);
++    /* A host synchronisation point only: it must not shape vCPU scheduling (see timer.h). */
++    s->tick = timer_new_full(NULL, QEMU_CLOCK_VIRTUAL, SCALE_NS, QEMU_TIMER_ATTR_HOST_SYNC,
++                             tbi_tick, s);
+     s->next_tick_ns = (int64_t)s->tick_us * 1000;
+     timer_mod(s->tick, s->next_tick_ns);
+ }
+diff --git a/include/qemu/timer.h b/include/qemu/timer.h
+index cc167bd..7354e72 100644
+--- a/include/qemu/timer.h
++++ b/include/qemu/timer.h
+@@ -62,14 +62,21 @@ typedef enum {
+  * The following attributes are available:
+  *
+  * QEMU_TIMER_ATTR_EXTERNAL: drives external subsystem
++ * QEMU_TIMER_ATTR_HOST_SYNC: host synchronisation point only (TBI Lab)
+  * QEMU_TIMER_ATTR_ALL: mask for all existing attributes
+  *
+  * Timers with this attribute do not recorded in rr mode, therefore it could be
+  * used for the subsystems that operate outside the guest core. Applicable only
+  * with virtual clock type.
++ *
++ * QEMU_TIMER_ATTR_HOST_SYNC marks a QEMU_CLOCK_VIRTUAL timer whose only purpose is to
++ * synchronise with a host process at exact virtual times (TBI Lab host command quantum).
++ * Under icount it still stops execution exactly at its deadline, but it does not size the
++ * round-robin vCPU timeslices, so its period cannot change how the guest's CPUs interleave.
+  */
+ 
+ #define QEMU_TIMER_ATTR_EXTERNAL ((int)BIT(0))
++#define QEMU_TIMER_ATTR_HOST_SYNC ((int)BIT(1))
+ #define QEMU_TIMER_ATTR_ALL      0xffffffff
+ 
+ typedef struct QEMUTimerList QEMUTimerList;
+diff --git a/util/qemu-timer.c b/util/qemu-timer.c
+index ffe9a3c..bfc21ac 100644
+--- a/util/qemu-timer.c
++++ b/util/qemu-timer.c
+@@ -404,7 +404,18 @@ static bool timer_mod_ns_locked(QEMUTimerList *timer_list,
+     ts->next = *pt;
+     qatomic_set(pt, ts);
+ 
+-    return pt == &timer_list->active_timers;
++    /*
++     * TBI: the new timer needs a rearm (deadline recalculation, vCPU kick) when it is the
++     * earliest timer, disregarding host synchronisation timers (QEMU_TIMER_ATTR_HOST_SYNC):
++     * whether an unrelated host tick happens to be pending first must not decide whether the
++     * guest's own timer interrupts the running vCPU.
++     */
++    for (t = timer_list->active_timers; t != ts; t = t->next) {
++        if (!(t->attributes & QEMU_TIMER_ATTR_HOST_SYNC)) {
++            return false;
++        }
++    }
++    return true;
+ }
+ 
+ static void timerlist_rearm(QEMUTimerList *timer_list)

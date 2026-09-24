@@ -24,17 +24,18 @@ repeated-run baseline (see `docs/runtime/R1-REPORT.md`).
 
 ## Patches (R1.1, R1.11)
 
-All four patches were written by TBI Lab. None contains code from a community fork
+All five patches were written by TBI Lab. None contains code from a community fork
 (a159x36, lcgamboa/PICSimLab) or from any AGPL project (Velxio). Those were inspected as
 references in Sprint 0 (`docs/research/classic-esp32-gpio-implementations.md`). Nothing from
 them was copied.
 
-| #    | Patch                                                                     | Origin                                                                                                                                                                                                         | Size          |
-| ---- | ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- |
-| 0001 | accel/tcg: defer sleep=off icount warp during a round-robin slice         | Sprint 1 determinism fix (TBI, `docs/research/sprint-1-simulation-time.md`), applied unchanged                                                                                                                 | 3 files, +20  |
-| 0002 | hw/xtensa/esp32: synchronous APP CPU reset under icount                   | Sprint 1 determinism fix (TBI), applied with a 9-line offset                                                                                                                                                   | 1 file, +17   |
-| 0003 | hw/gpio/esp32_gpio: classic ESP32 digital GPIO register model             | New in R1. Clean-room from the ESP32 TRM (IO_MUX and GPIO Matrix chapter) and the ESP-IDF `soc/gpio_reg.h` offsets. Property-gated (`classic-registers`), so the ESP32-S3/C3 subclasses keep the upstream stub | 3 files, +254 |
-| 0004 | hw/misc/tbi_bridge: TBI synchronous runtime bridge + `tbi-serial` chardev | New in R1. Replaces the Sprint 0/1 `tbi-gpio-bridge`/`syncsock` design. No demo devices, no ignore-mask                                                                                                        | 2 files, +385 |
+| #    | Patch                                                                       | Origin                                                                                                                                                                                                                                                                                          | Size          |
+| ---- | --------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- |
+| 0001 | accel/tcg: defer sleep=off icount warp during a round-robin slice           | Sprint 1 determinism fix (TBI, `docs/research/sprint-1-simulation-time.md`), applied unchanged                                                                                                                                                                                                  | 3 files, +20  |
+| 0002 | hw/xtensa/esp32: synchronous APP CPU reset under icount                     | Sprint 1 determinism fix (TBI), applied with a 9-line offset                                                                                                                                                                                                                                    | 1 file, +17   |
+| 0003 | hw/gpio/esp32_gpio: classic ESP32 digital GPIO register model               | New in R1. Clean-room from the ESP32 TRM (IO_MUX and GPIO Matrix chapter) and the ESP-IDF `soc/gpio_reg.h` offsets. Property-gated (`classic-registers`), so the ESP32-S3/C3 subclasses keep the upstream stub                                                                                  | 3 files, +254 |
+| 0004 | hw/misc/tbi_bridge: TBI synchronous runtime bridge + `tbi-serial` chardev   | New in R1. Replaces the Sprint 0/1 `tbi-gpio-bridge`/`syncsock` design. No demo devices, no ignore-mask                                                                                                                                                                                         | 2 files, +385 |
+| 0005 | accel/tcg, util/qemu-timer: host sync timers must not shape vCPU scheduling | New in R1 (closure blocker). Adds `QEMU_TIMER_ATTR_HOST_SYNC`; icount round-robin slices ignore such timers, a vCPU stopped by one resumes its slice, kicks from servicing it are discarded, and they do not count when deciding whether a new guest timer is earliest. The bridge tick uses it | 6 files, +134 |
 
 The patch SHA-256s are recorded in each build's `runtime.json` and in the R1 report.
 
