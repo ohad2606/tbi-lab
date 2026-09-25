@@ -726,3 +726,55 @@ No stop condition was reached:
 R2 is **not** validated for production capacity, public exposure or multi-tenant hosting. That
 needs D1, D4, D6 and D7. S6 can build on the frozen protocol `tbi-lab.session/1`, taking D2, D3
 (confirmed by the PM: restart on structural edit) and D5 into account.
+
+## 20. R2 closure record (2026-09-25)
+
+Runtime R2 passed PM review, implementation CI and the overnight endurance gate. It is
+**closed**.
+
+**Baseline and results**
+
+| Item | Record |
+|---|---|
+| Final implementation baseline | `76c3b799600105f36e8aad78981c33f42073a48a` (on `main` as a fast-forward from `73d1eae`) |
+| Implementation CI | GitHub Actions run `36113974192`: PASS (typecheck, lint, unit/domain/host tests, E2E, browser acceptance) |
+| Routine baseline | `npm test` 453/453; E2E 77/77; browser 4/4; typecheck, lint and boundaries clean |
+| Heavy acceptance | R2 heavy suite 16/16 on the final protocol code (§16, pass 4); earlier R1 regression 75/75, including R1 59/59 (§16, pass 3) |
+| Overnight soak | 480.7 min, seed 20260925, 3,405 sessions created and released, 0 failures, 0 warnings (§16.1) |
+| Soak evidence | `docs/runtime/r2-evidence/runtime-979f09d739382157/r2-soak-20260924T221259Z.json` |
+
+**Frozen contract: `tbi-lab.session/1`**
+
+- **The browser remains the project authority.** The runtime only mirrors persisted edits. A
+  mirror carries its `projectRevision`, and the session reports
+  `revisions = {snapshot, accepted, applied}` (§4).
+- **Mirror revisions.** A stale mirror (`stale_revision`) or a duplicate one
+  (`duplicate_revision`, or a repeated `seq`, `duplicate`) is rejected and never mutates the
+  runtime. A rejected mirror does not consume its revision. Retries are idempotent. Transient
+  commands take no part in revision semantics.
+- **SSE resume after event-log eviction** starts with an explicit
+  `resync {missed}` marker. A malformed `Last-Event-ID` is refused with 400 and a future one
+  with 409. History is never skipped silently (§5).
+- **Sessions are one-shot (binding for S6).** Stop ends that execution session. A later
+  product-level Run creates a fresh session and never resumes a stopped one. Full-chip reset
+  remains unsupported.
+
+**Architecture invariants**
+
+- The WAN stays outside the MCU ↔ electrical feedback loop.
+- The browser and the Session Host share one production electrical implementation.
+- Firmware artifacts are immutable. Each session writes only its private copy, which is
+  discarded at the end.
+- `hostCommandQuantum = 1 ms simulated time` only schedules commands. It is not a CPU, GPIO,
+  solver or instruction timestep.
+
+**Limits and observations**
+
+- No production-capacity claim is made. Public or multi-tenant deployment still requires D1,
+  D4, D6 and D7 (§18).
+- The soak-process RSS rise and plateau (§16.1) is a deployment observation, not a demonstrated
+  leak.
+- The single shakedown stall case without the ROM line (§16.1) remains documented and is
+  non-blocking.
+
+Sprint 6 has not started.
