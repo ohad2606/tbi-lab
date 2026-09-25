@@ -441,6 +441,8 @@ host; it is not a capacity figure.
   ×5); results go to `$TBI_RUNTIME_HOME/results/r2-*.json` and are copied to
   `docs/runtime/r2-evidence/`.
 - **Full runtime suite (`npm run test:runtime`).** R1 plus R2.
+- **Soak (`npm run test:r2:soak`, `R2_SOAK_MINUTES`).** Heavy-only endurance runner (§16.1). It
+  is not a vitest suite and never runs in routine CI.
 
 §16 records the repeated passes.
 
@@ -491,6 +493,170 @@ Hygiene found during the runs:
   `/tmp` per run. It was not modified (R1 baseline); recorded for a future R1 maintenance item.
 - No Session Host root or session directory survived any R2 run. One leftover root came from an
   early development build, before stale-root recovery existed; it was removed by hand.
+
+### 16.1 Overnight soak (pre-push endurance gate)
+
+**This is engineering endurance evidence from one 1-vCPU / 4 GB aarch64 host. It is NOT a
+capacity benchmark and makes no capacity claim.**
+
+**Setup**
+
+- Harness: `runtime/soak/r2-soak.ts`, run with
+  `TBI_RUNTIME_HOME=<provisioned home> R2_SOAK_MINUTES=480 npm run test:r2:soak`. It is
+  heavy-only and never runs in routine CI.
+- Each round rotates through six phases:
+  - A: lifecycle churn;
+  - B: concurrent isolation;
+  - C: long deterministic sessions;
+  - D: mirror/transient command stress;
+  - E: SSE reconnect / bounded log;
+  - F: failure injection and host-process recovery.
+- Every random choice is seeded per (seed, round, phase). `R2_SOAK_REPLAY=<phase>:<round>`
+  replays one phase instance. The replay is exact for A, B, C and F; for D and E it reproduces
+  the command and connection sequence, but submit timing relative to simulation time follows
+  wall clock.
+- Hard failures stop the run and preserve the evidence:
+  - orphan QEMU;
+  - leaked private directory;
+  - artifact mutation;
+  - cross-session contamination;
+  - command-order or revision invariant violation;
+  - silent SSE loss;
+  - event-order or determinism divergence;
+  - a limit not enforced.
+- SIGINT, SIGTERM and SIGHUP release every host, child host and QEMU and remove the soak's
+  private temporary root.
+
+**Run**
+
+| | |
+|---|---|
+| Start / end | 2026-09-24T22:12:59Z / 2026-09-25T06:13:39Z |
+| Wall time | 480.7 min, budget 480; the last phase finished past the budget |
+| Git | `d9d3e14` plus this harness, uncommitted at run time |
+| Harness sha256 | `r2-soak.ts` `c859da18…0d12`; `r2-support.ts` `f1124061…df1b` (identical to the committed files) |
+| Seed | 20260925 |
+| Runtime | `979f09d739382157` (QEMU 9.2.2) |
+| Node | v24.21.0 |
+| Host | Neoverse-N1 ×1, 3.8 GiB |
+| Verdict | **PASSED**: 0 failures, 0 warnings |
+| Evidence | `r2-evidence/runtime-979f09d739382157/r2-soak-20260924T221259Z.json`, including 1,667 telemetry samples |
+
+**Phases** (118 rounds)
+
+| Phase | Runs | Content |
+|---|---|---|
+| A | 118 | 472 lifecycles: 236 stop, 118 terminate, 118 terminate-early. Every one had a fresh flash copy equal to the artifact and `TBI-NVS-BOOTS=1`. Plus 118 session-limit (429) checks. |
+| B | 118 | Concurrent TbiNvs pairs: both `BOOTS=1`; tokens never cross; the survivor keeps advancing (A terminated first 59 times, B first 59 times). Concurrent gate pairs: 236 streams, all equal to the solo reference. |
+| C | 117 | TbiTiming for 30 s at 1 ms and 10 ms, and the gate with scheduled mirrors for 120 s (59 runs at 1 ms, 58 at 10 ms). Also, in every run, an R1 reference-loop equivalence check. |
+| D | 117 | 17,048 command batches; details below. |
+| E | 117 | 3,393 SSE connections; details below. |
+| F | 117 | Each of these 117 times: crash, guest reset, stall, start failure, terminate during startup, terminate while running, lease, lifetime, host SIGTERM, host SIGKILL plus restart. |
+
+Totals:
+
+- 3,405 sessions created, 3,405 released and verified (QEMU gone, private directory gone);
+- 705 checkpoints, each checking for orphans, leaks and artifact hashes;
+- 635,336 events.
+
+**Determinism** (every value identical in every run)
+
+| Workload | Hash | Runs |
+|---|---|---|
+| Gate, 15.5 s | `72935ade7dce072d` | 353 (B concurrent + C) |
+| Long-gate prefix | `72935ade7dce072d` | 117 |
+| Long gate, 120 s | `a86b3e0ad86eef28` | 117 (1 ms: 59; 10 ms: 58) |
+| TbiTiming, 30 s | `6c9dddce6df617fc` | 234 (117 × 1 ms and 10 ms) |
+
+- TbiTiming is idle after setup, so its 30 s hash equals its 4 s hash.
+- 1 ms vs 10 ms equal with no commands: 117/117.
+- Electrical equivalence against the R1 reference loop: 4,797 operating points, largest
+  absolute difference 8.9e-16 (tolerance 1e-9).
+- The reference loop's 9,477 off-grid pad events confirm that feedback isn't quantised.
+
+**Commands (D)**
+
+- 259,861 submitted; 182,228 accepted.
+- 160,107 applied, each exactly once and in client order.
+- The accepted commands not applied were the ones still queued when a session was stopped
+  (C long-gate tails and D batch ends).
+- Rejected, each with the expected reason:
+
+  | Reason | Count |
+  |---|---|
+  | `stale_revision` | 15,362 |
+  | `duplicate_revision` | 15,563 |
+  | `duplicate` | 10,177 |
+  | `late` | 13,506 |
+  | `out_of_order` | 11,733 |
+  | `queue_full` | 11,292 (at the exact bound, 16) |
+
+- Revision checks after every command and every 25 ms:
+  - `accepted` and `applied` never moved backwards;
+  - `accepted > applied` held exactly while mirrors were queued;
+  - every electrical outcome's `appliedRevision`, PSU setpoint, switch and button state matched
+    the accepted commands;
+  - rejected commands never changed the engine;
+  - transient commands never touched revisions.
+- The bounded event log (128 events) wrapped 3,476 times in total across D and E, and never
+  exceeded its capacity.
+
+**SSE (E)**
+
+- 819 resync markers, each with the exact `missed` count (33,345 events in total). No
+  unmarked gaps, duplicates or reordering in 47,970 validated events.
+- 468 each: retained replays, current-id replays and post-resync continuations.
+- 936 each: malformed ids refused (400), future ids refused (409) and header-vs-`?after=`
+  precedence checks.
+- 117 lease expiries after repeated attach/detach.
+
+**Cleanup**
+
+- 0 orphan QEMU at any of 705 checkpoints.
+- QEMU exited on its own after a host SIGKILL in about 25 ms on average (2,922 ms over 117).
+- The next host removed the stale root every time.
+- Artifacts identical before and after.
+- The soak added no `tbi-*` entries to the global temp directory.
+- Teardown: no QEMU left, private root removed.
+
+**Telemetry** (start / min / max / final)
+
+| Metric | Start | Min | Max | Final |
+|---|---|---|---|---|
+| Soak-process RSS (in-process Session Host + harness) | 180 MB | 129 MB | 276 MB | 264 MB |
+| JS heap | 38 MB | 17 MB | 40 MB | 25 MB |
+| FDs | 24 | 24 | 34 | 24 |
+| Concurrent QEMU | 0 | 0 | 2 | 0 |
+
+- QEMU peak RSS stayed at about 146 MB in every hour.
+- The soak's temporary storage stayed between 4 and 12 MiB (final 4 MiB: the erased test image).
+- Free space in `/tmp` stayed between 1.246 and 1.255 GB.
+
+**Trend flagged for PM review (not a failure).** Soak-process RSS rose from an hourly median of
+211 MB (hour 0) to 249 MB (hour 4), then stayed flat at 249–251 MB through hour 8:
+
+| Hour | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 |
+|---|---|---|---|---|---|---|---|---|
+| RSS median (MB) | 211 | 214 | 227 | 238 | 249 | 250 | 251 | 251 |
+
+Over the same period, JS heap stayed flat (about 24 MB median), and FDs and temporary storage did
+not grow. The rise-then-plateau shape fits native allocator and cache growth settling, not an
+accumulating leak. It should be watched in any longer-running deployment.
+
+**Found by the shakedown (before the overnight run)**
+
+- Four harness bugs, all fixed:
+  - a false apply-time rejection;
+  - long sessions hitting the host's 30 s lease: correct host behaviour, so the harness now
+    renews it as a client would;
+  - a long-gate schedule placing a command on the 15.5 s comparison boundary;
+  - a routine-test helper that couldn't be reused outside vitest.
+- One unresolved event: a single stall case in a shakedown ended `stalled` without the ROM's
+  `invalid header` line. It didn't reproduce in 4 replays or in 117 overnight runs.
+  - Suspected cause (not proven): CPU starvation on the 1-vCPU host, which the 3 s stall
+    detector would have interpreted as no progress.
+  - That case's window was widened to 5 s, and diagnostics were added.
+- No host, protocol or runtime code changed after the pre-push audit (`d9d3e14`).
 
 ## 17. Unsupported behaviour (explicit)
 
@@ -544,7 +710,8 @@ R2's acceptance evidence is complete for one engineering host. The evidence show
 - browser/server electrical equivalence (same engine, bit-identical results);
 - no orphan process or directory after a QEMU crash, a host SIGTERM or a host SIGKILL.
 
-Every item was repeated (×3 or ×5 inside each pass, across 3 passes).
+Every item was repeated (×3 or ×5 inside each pass, across 4 passes). It was then repeated
+throughout an 8-hour overnight soak on the final code (§16.1: 3,405 sessions, 0 failures).
 
 No stop condition was reached:
 

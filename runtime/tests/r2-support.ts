@@ -36,7 +36,8 @@ export function realHost(over: Partial<HostConfig> = {}): SessionHost {
   );
 }
 
-class Doc {
+/** A project document under construction (real domain edits, as the browser makes them). */
+export class Doc {
   doc: ProjectDocument = createProject({
     projectId: 'prj_r2',
     deviceId: 'd',
@@ -79,6 +80,22 @@ export function gateRequest(
   firmware: string,
   extra: Partial<CreateSessionRequest> = {},
 ): CreateSessionRequest {
+  const { d, r1, r2 } = gateProject();
+  return {
+    protocol: PROTOCOL,
+    artifact: { sha256: artifact(firmware).sha256 },
+    board: 'board.esp32_devkitc_wroom32',
+    circuit: createSnapshot(d.doc),
+    attachments: [
+      { gpio: 2, component: r1, terminal: 'a' },
+      { gpio: 5, component: r2, terminal: 'b' },
+    ],
+    ...extra,
+  };
+}
+
+/** The gate circuit as an editable project (the soak extends it); ids of the pad resistors. */
+export function gateProject(): { d: Doc; r1: string; r2: string } {
   const d = new Doc();
   const r1 = d.add('component.resistor');
   const d1 = d.add('component.led');
@@ -93,17 +110,7 @@ export function gateRequest(
   d.set('PSU1', 'setpointVoltage', { value: 0, unit: 'volt' });
   d.set('PSU1', 'currentLimit', { value: 0.1, unit: 'ampere' });
   d.set('PSU1', 'outputEnabled', true);
-  return {
-    protocol: PROTOCOL,
-    artifact: { sha256: artifact(firmware).sha256 },
-    board: 'board.esp32_devkitc_wroom32',
-    circuit: createSnapshot(d.doc),
-    attachments: [
-      { gpio: 2, component: r1, terminal: 'a' },
-      { gpio: 5, component: r2, terminal: 'b' },
-    ],
-    ...extra,
-  };
+  return { d, r1, r2 };
 }
 
 /** The R1 VEXT stimulus as persistent mirrors (the browser would have persisted each value). */
