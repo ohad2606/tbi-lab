@@ -1,6 +1,7 @@
 export * from './schema.js';
 export * from './catalog.js';
 export * from './layout.js';
+export * from './route.js';
 export * from './units.js';
 export * from './project.js';
 export * from './nets.js';

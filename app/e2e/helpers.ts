@@ -1,5 +1,5 @@
 import { expect, type Page } from '@playwright/test';
-import type { Point, ProjectDocument } from '@tbi-lab/domain';
+import { createPackage, serializePackage, type Point, type ProjectDocument } from '@tbi-lab/domain';
 
 /** Every stored project document, read straight from the real IndexedDB. */
 export async function storedProjects(page: Page): Promise<ProjectDocument[]> {
@@ -134,4 +134,28 @@ export async function wire(
 
 export function component(page: Page, id: string) {
   return page.locator(`[data-hit="component"][data-id="${id}"]`);
+}
+
+/**
+ * Import a project document through the real import control and open it in the editor. Used
+ * for fixtures whose wires carry explicit stored geometry, e.g. a project drawn before new wires
+ * were auto-routed around terminals and bodies: its stored geometry is kept as is.
+ */
+export async function openImported(page: Page, doc: ProjectDocument): Promise<void> {
+  const text = serializePackage(
+    createPackage(doc, { appVersion: '0.1.0', exportedAt: '2026-09-26T00:00:00.000Z' }),
+  );
+  await page.goto('/');
+  const library = page.getByTestId('example-list');
+  await expect(library.or(page.getByTestId('canvas'))).toBeVisible();
+  if (!(await library.isVisible())) {
+    await page.getByRole('button', { name: /^‹?\s*(Projects|פרויקטים)$/ }).click();
+    await expect(library).toBeVisible();
+  }
+  await page.getByTestId('import-file').setInputFiles({
+    name: 'fixture.tbilab',
+    mimeType: 'application/json',
+    buffer: Buffer.from(text, 'utf8'),
+  });
+  await expect(page.getByTestId('canvas')).toBeVisible();
 }

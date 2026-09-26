@@ -19,7 +19,10 @@ import {
   emptySelection,
   moveSelection,
   moveWireSegment,
-  orthogonalRoute,
+  autoRoute,
+  autoRouteVertices,
+  endPosition,
+  routeObstacles,
   rotateComponents,
   rotatePoint,
   snap,
@@ -249,6 +252,16 @@ export function Canvas({
   const heldByKey = useRef<string | null>(null);
   const pointerDown = useRef(false);
   const fitted = useRef<string | null>(null);
+  // Obstacles for routing a NEW wire: existing wire segments, terminals and junctions, and the
+  // component bodies. The preview and the committed wire use the same route.
+  const routeObs = useMemo(
+    () =>
+      routeObstacles(
+        doc,
+        doc.components.map((c) => componentBox(doc, c)),
+      ),
+    [doc],
+  );
 
   // Keep the camera sized to the element.
   useLayoutEffect(() => {
@@ -394,7 +407,12 @@ export function Canvas({
       if (route) to = { kind: 'wire', wire: hit.id, at: pointOnRoute(route, world) };
     }
     if (!to) return false;
-    store.apply(addWire(doc, m.from, to, m.vertices), emptySelection());
+    const end = to.kind === 'wire' ? to.at : endPosition(doc, to);
+    if (!end) return false;
+    // The wire gets a visually independent route: the router's corners are stored as its
+    // ordinary vertices (the points the user clicked stay waypoints of the route).
+    const vertices = autoRouteVertices([m.fromPos, ...m.vertices, end], routeObs);
+    store.apply(addWire(doc, m.from, to, vertices), emptySelection());
     setMode({ kind: 'idle' });
     return true;
   };
@@ -1019,7 +1037,7 @@ export function Canvas({
         {mode.kind === 'wiring' && (
           <polyline
             class="wire wire-preview"
-            points={points(orthogonalRoute([mode.fromPos, ...mode.vertices, mode.cursor]))}
+            points={points(autoRoute([mode.fromPos, ...mode.vertices, mode.cursor], routeObs))}
           />
         )}
         {mode.kind === 'rubber' && (

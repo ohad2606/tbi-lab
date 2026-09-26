@@ -3,7 +3,13 @@
  * electrical value is checked against the production engine on the same stored project.
  */
 import { expect, test, type Page } from '@playwright/test';
-import { createSnapshot, type ProjectDocument } from '@tbi-lab/domain';
+import {
+  addComponent,
+  addWire,
+  createProject as createProjectDoc,
+  createSnapshot,
+  type ProjectDocument,
+} from '@tbi-lab/domain';
 import { EngineSession, type SolveSuccess } from '@tbi-lab/engine';
 import { getLocale } from '../src/i18n/i18n.js';
 import { formatResult } from '../src/sim/format.js';
@@ -11,6 +17,7 @@ import { link, run, setValue } from './circuits.js';
 import {
   component,
   createProject,
+  openImported,
   place,
   storedProject,
   storedProjects,
@@ -81,6 +88,11 @@ test.beforeEach(({ page }) => {
     throw e;
   });
 });
+
+function must<T extends { ok: boolean }>(r: T): Extract<T, { ok: true }> {
+  if (!r.ok) throw new Error(`fixture edit failed: ${JSON.stringify(r)}`);
+  return r as Extract<T, { ok: true }>;
+}
 
 test('A1/A2: diode forward conducts and reverse blocks, matching the production engine', async ({
   page,
@@ -333,11 +345,26 @@ test('A10/A11: undo/redo of project edits with new revisions and stable ids (key
 test('A12/A13: unwired notice, partial-wiring and wire-over-terminal checks; nothing auto-connects', async ({
   page,
 }) => {
-  await createProject(page, 'Checks');
-  await place(page, 'component.resistor', { x: 60, y: 0 });
-  // R1.b -> GND is auto-routed back across R1's own terminal a (not connected to it).
-  await link(page, ['R1', 'b'], ['GND1', 'ref']);
-  await place(page, 'component.led', { x: 60, y: 140 });
+  // A project whose wire R1.b -> GND runs back across R1's own terminal a (not connected to it)
+  // and across a PSU terminal: stored geometry, e.g. drawn before new wires were auto-routed
+  // around terminals, or dragged there. New wires no longer get this route by default.
+  let fixture = createProjectDoc({
+    projectId: 'prj_checks01',
+    deviceId: 'e2e',
+    name: 'Checks',
+    appVersion: '0.1.0',
+  });
+  fixture = must(addComponent(fixture, 'component.resistor', { x: 60, y: 0 })).doc;
+  fixture = must(
+    addWire(
+      fixture,
+      { kind: 'terminal', component: 'R1', terminal: 'b' },
+      { kind: 'terminal', component: 'GND1', terminal: 'ref' },
+      [{ x: -80, y: 0 }],
+    ),
+  ).doc;
+  fixture = must(addComponent(fixture, 'component.led', { x: 60, y: 140 })).doc;
+  await openImported(page, fixture);
   await waitSaved(page);
   const checks = page.getByTestId('circuit-checks');
   // (The auto-route also crosses a PSU terminal: each ambiguity is reported separately.)

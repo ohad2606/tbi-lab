@@ -3,7 +3,15 @@
  * datasheet over-stress warnings. Durability is proven on the real IndexedDB.
  */
 import { expect, test, type Page } from '@playwright/test';
-import { createSnapshot, wireRoute, type ProjectDocument } from '@tbi-lab/domain';
+import {
+  addComponent,
+  addWire,
+  createProject as createProjectDoc,
+  createSnapshot,
+  rotateComponents,
+  wireRoute,
+  type ProjectDocument,
+} from '@tbi-lab/domain';
 import { EngineSession, ratingWarnings, type SolveSuccess } from '@tbi-lab/engine';
 import { getLocale } from '../src/i18n/i18n.js';
 import { formatPower, formatResult } from '../src/sim/format.js';
@@ -14,6 +22,7 @@ import { link, run, setValue } from './circuits.js';
 import {
   component,
   createProject,
+  openImported,
   place,
   storedProject,
   terminal,
@@ -28,6 +37,11 @@ test.beforeEach(({ page }) => {
 });
 
 /** The data-hit element topmost at a world point (what the user sees and clicks). */
+function must<T extends { ok: boolean }>(r: T): Extract<T, { ok: true }> {
+  if (!r.ok) throw new Error(`fixture edit failed: ${JSON.stringify(r)}`);
+  return r as Extract<T, { ok: true }>;
+}
+
 async function topHit(page: Page, world: { x: number; y: number }) {
   const s = await toScreen(page, world);
   return page.evaluate(({ x, y }) => {
@@ -39,15 +53,27 @@ async function topHit(page: Page, world: { x: number; y: number }) {
 test('layering: a wire crossing a part runs behind its body; terminals and junctions stay on top', async ({
   page,
 }) => {
-  await createProject(page, 'Layers');
-  await page.getByRole('button', { name: 'Zoom out' }).click();
   // R1 upright at (60,-20): its body spans y -60..20 on x = 60; terminals at (60,-60) and (60,20).
-  await place(page, 'component.resistor', { x: 60, y: -20 });
-  await component(page, 'R1').locator('.component-hit').click();
-  await page.keyboard.press('r');
-  await place(page, 'component.resistor', { x: 140, y: -20 });
-  // PSU+ (-80,-20) -> R2.a (100,-20): a straight wire straight across R1's body.
-  await link(page, ['PSU1', 'positive'], ['R2', 'a']);
+  // PSU+ (-80,-20) -> R2.a (100,-20): a stored straight wire straight across R1's body (e.g.
+  // drawn before new wires were auto-routed around bodies, or dragged there).
+  let fixture = createProjectDoc({
+    projectId: 'prj_layers01',
+    deviceId: 'e2e',
+    name: 'Layers',
+    appVersion: '0.1.0',
+  });
+  fixture = must(addComponent(fixture, 'component.resistor', { x: 60, y: -20 })).doc;
+  fixture = must(rotateComponents(fixture, ['R1'])).doc;
+  fixture = must(addComponent(fixture, 'component.resistor', { x: 140, y: -20 })).doc;
+  fixture = must(
+    addWire(
+      fixture,
+      { kind: 'terminal', component: 'PSU1', terminal: 'positive' },
+      { kind: 'terminal', component: 'R2', terminal: 'a' },
+    ),
+  ).doc;
+  await openImported(page, fixture);
+  await page.getByRole('button', { name: 'Zoom out' }).click();
   const doc = await waitForStoredProject(
     page,
     (d) => d.layout.wires.length === 1 && d.layout.components.R1?.rotation === 90,
