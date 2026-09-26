@@ -19,6 +19,9 @@ import {
   emptySelection,
   moveSelection,
   moveWireSegment,
+  ESP32_DEVKITC_WROOM32,
+  boardPinPosition,
+  boardTerminalId,
   autoRoute,
   autoRouteVertices,
   endPosition,
@@ -34,6 +37,7 @@ import {
   type ComponentTypeId,
   type Point,
   type ProjectDocument,
+  type Rotation,
   type Selection,
   type WireTarget,
 } from '@tbi-lab/domain';
@@ -43,6 +47,7 @@ import { formatResult } from '../sim/format.js';
 import { useAppState, useStore, useT } from './context.js';
 import { checksFor } from './checks.js';
 import { SYMBOLS, type SymbolState } from './symbols.js';
+import type { GpioLevel } from '../runtime/view.js';
 import { warningsFor } from '../sim/ratings.js';
 import { probeAnchor, probeTargetName, readProbe, type Probe, type ProbeInput } from './probes.js';
 
@@ -938,6 +943,11 @@ export function Canvas({
               }
               symbolState={{ closed: c.params.closed === true, pressed: pressed.has(c.id) }}
               overstressed={overstressed.has(c.id)}
+              pinLevels={
+                'runtime' in state.sim && state.sim.runtime?.board === c.id
+                  ? state.sim.runtime.gpio
+                  : undefined
+              }
             />
           ))}
         </g>
@@ -1118,6 +1128,7 @@ function ComponentView({
   showRuntime,
   symbolState,
   overstressed,
+  pinLevels,
 }: {
   doc: ProjectDocument;
   component: ComponentInstance;
@@ -1130,6 +1141,8 @@ function ComponentView({
   symbolState: SymbolState;
   /** Solved operating point beyond the part's datasheet absolute maximum (warning only). */
   overstressed: boolean;
+  /** ESP32 board only, while a session runs: live pad levels (ephemeral runtime view). */
+  pinLevels?: Record<number, GpioLevel>;
 }) {
   const { locale } = useAppState();
   const t = useT();
@@ -1217,6 +1230,9 @@ function ComponentView({
           />
         )}
       </g>
+      {c.type === 'board.esp32_devkitc_wroom32' && (
+        <BoardPins rotation={p.rotation} at={p} levels={pinLevels} />
+      )}
       {c.type !== 'component.ground' && (
         <text
           class="ref-label"
@@ -1330,4 +1346,55 @@ function probeLabelAt(p: Probe, at: Point, doc: ProjectDocument) {
   }
   // Wire runs up or down: the label sits beside the terminal, clear of it.
   return { x: at.x + 14, y: out.y < 0 ? at.y - 4 : at.y + 16, 'text-anchor': start };
+}
+
+/**
+ * ESP32 DevKitC pin names and, while a session runs, a live level dot on each driven or read pad
+ * (Sprint 6). Drawn upright at any rotation (symbols carry no text), always LTR: pin names are
+ * technical silkscreen tokens. Presentation only: never an electrical input.
+ */
+function BoardPins({
+  rotation,
+  at,
+  levels,
+}: {
+  rotation: Rotation;
+  at: Point;
+  levels: Record<number, GpioLevel> | undefined;
+}) {
+  return (
+    <g class="board-pins" aria-hidden="true">
+      {ESP32_DEVKITC_WROOM32.pins.map((pin) => {
+        const local = boardPinPosition(pin);
+        const inward = local.x < 0 ? -40 : 40;
+        const label = rotatePoint({ x: inward, y: local.y }, rotation);
+        const dot = rotatePoint({ x: local.x < 0 ? -70 : 70, y: local.y }, rotation);
+        const live = pin.gpio !== null ? levels?.[pin.gpio] : undefined;
+        const usable = boardTerminalId(pin) !== undefined;
+        return (
+          <g key={`${pin.header}${pin.position}`}>
+            <text
+              class={usable ? 'pin-label' : 'pin-label pin-label-unavailable'}
+              x={at.x + label.x}
+              y={at.y + label.y + 3}
+              text-anchor="middle"
+              direction="ltr"
+            >
+              {pin.headerLabel}
+            </text>
+            {live && (
+              <circle
+                class={live.level ? 'pin-level pin-high' : 'pin-level pin-low'}
+                data-testid={`pin-level-${pin.gpio}`}
+                data-level={String(live.level)}
+                cx={at.x + dot.x}
+                cy={at.y + dot.y}
+                r={4}
+              />
+            )}
+          </g>
+        );
+      })}
+    </g>
+  );
 }

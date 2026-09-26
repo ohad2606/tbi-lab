@@ -49,7 +49,8 @@ export function checkCircuit(doc: ProjectDocument): CheckIssue[] {
       continue;
     }
     wiredParts.push(c.id);
-    if (unwired.length) {
+    // A board with unused pins is normal (Sprint 6): only wired pins take part in the circuit.
+    if (unwired.length && c.type !== 'board.esp32_devkitc_wroom32') {
       issues.push({
         code: 'partially_wired',
         severity: 'warning',
@@ -71,9 +72,12 @@ export function checkCircuit(doc: ProjectDocument): CheckIssue[] {
   // Reference analysis over the drawn topology. Every two-terminal part is treated as
   // possibly conducting (a switch may be closed, a supply switched on): an island that cannot
   // reach GND even then is certainly floating.
-  const hasGround = doc.components.some(
-    (c) => c.type === 'component.ground' && netOf.has(`${c.id}\u0000ref`),
-  );
+  // A wired ground terminal is the circuit reference: the GND symbol, or the GND pin of an
+  // MCU board, whose pads the runtime drives against it (Sprint 6).
+  const hasGround = doc.components.some((c) => {
+    const g = CATALOG[c.type].groundTerminal;
+    return g !== undefined && netOf.has(`${c.id}\u0000${g}`);
+  });
   if (wiredParts.length && !hasGround) {
     issues.push({ code: 'no_ground', severity: 'warning', components: wiredParts });
   } else if (wiredParts.length) {
@@ -90,7 +94,15 @@ export function checkCircuit(doc: ProjectDocument): CheckIssue[] {
       const n = netOf.get(`${c}\u0000${t}`);
       return n === undefined ? `~${c}.${t}` : groundNets.has(n) ? REF : n;
     };
-    const two = doc.components.filter((c) => wiredParts.includes(c.id));
+    const isBoard = (c: { type: string }) => c.type === 'board.esp32_devkitc_wroom32';
+    // A wired MCU pad is referenced to GND through the MCU (its driver or input leakage), as in
+    // the engine's reference analysis.
+    for (const c of doc.components.filter(isBoard)) {
+      for (const t of CATALOG[c.type].terminals) {
+        if (netOf.has(`${c.id}\u0000${t.id}`)) parent.set(find(node(c.id, t.id)), find(REF));
+      }
+    }
+    const two = doc.components.filter((c) => wiredParts.includes(c.id) && !isBoard(c));
     for (const c of two) {
       const [t0, t1] = CATALOG[c.type].terminals.map((t) => t.id) as [string, string];
       parent.set(find(node(c.id, t0)), find(node(c.id, t1)));

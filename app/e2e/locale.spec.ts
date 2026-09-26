@@ -24,6 +24,7 @@ async function untranslatedWords(page: Page): Promise<string[]> {
   const allowed = [
     /^TBI$/,
     /^Lab$/, // product name
+    /^(ESP32|DevKitC|GPIO\d+)$/, // Classic ESP32 technical tokens: MCU, board, pin names (Sprint 6)
     /^English$/, // the language's autonym in the language menu
     /^(PSU|R|GND|D|SW)\d+$/, // reference designators (SW: Sprint 4 switches)
     /^(GND|LED|DC|CV|CC)$/, // technical terms kept in Hebrew by the glossary

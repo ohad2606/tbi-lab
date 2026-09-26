@@ -24,11 +24,24 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'], viewport: { width: 1400, height: 860 } },
     },
   ],
-  webServer: {
-    command:
-      'npm run build --workspace @tbi-lab/app && npm run preview --workspace @tbi-lab/app -- --host 127.0.0.1',
-    url: 'http://127.0.0.1:4173',
-    reuseExistingServer: !process.env.CI,
-    timeout: 120_000,
-  },
+  webServer: [
+    {
+      // Routine CI has no QEMU: ESP32 sessions go to a fake Session Host that serves the real
+      // R2 transport and the real engine with a scripted MCU (app/e2e/fixtures). Heavy real-QEMU
+      // acceptance points the preview at a real Session Host instead (TBI_RUNTIME_PROXY).
+      command: 'npx vite-node app/e2e/fixtures/fake-session-host.ts',
+      url: 'http://127.0.0.1:7499/health',
+      env: { PORT: '7499' },
+      reuseExistingServer: !process.env.CI,
+      timeout: 60_000,
+    },
+    {
+      command:
+        'npm run build --workspace @tbi-lab/app && npm run preview --workspace @tbi-lab/app -- --host 127.0.0.1',
+      url: 'http://127.0.0.1:4173',
+      env: { TBI_RUNTIME_PROXY: process.env.TBI_RUNTIME_PROXY ?? 'http://127.0.0.1:7499' },
+      reuseExistingServer: !process.env.CI,
+      timeout: 120_000,
+    },
+  ],
 });

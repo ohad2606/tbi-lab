@@ -18,6 +18,7 @@ import { warningsFor } from '../sim/ratings.js';
 import { useAppState, useStore, useT } from './context.js';
 import { checksFor } from './checks.js';
 import { probeTargetName, readProbe, type Probe } from './probes.js';
+import { McuPanel } from './McuPanel.js';
 
 interface InspectorProps {
   probes: Probe[];
@@ -145,6 +146,7 @@ function ComponentProperties({
       {def.params.map((p) => (
         <ParamField key={`${c.id}.${p.key}`} component={c} def={p} readOnly={readOnly} />
       ))}
+      {c.type === 'board.esp32_devkitc_wroom32' && <McuPanel component={c} />}
       {c.type === 'component.push_button' && (
         <p class="muted small" data-testid="switch-hint">
           {t('switch.button.hint')}
@@ -174,7 +176,9 @@ function ParamField({
   const current = c.params[def.key];
   // While a simulation runs only live-capable parameters (PSU controls) may change; any other
   // value belongs to the loaded snapshot and needs a Stop first.
-  const locked = (sim.status === 'running' || sim.status === 'starting') && !def.live;
+  const locked =
+    (sim.status === 'running' || sim.status === 'starting' || sim.status === 'stopping') &&
+    !def.live;
   const disabled = readOnly || locked;
   const lockedHint = locked && (
     <p class="muted small" data-testid={`param-${c.id}-${def.key}-locked`}>

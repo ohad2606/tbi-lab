@@ -1,0 +1,41 @@
+# R2 Session Host for the dev-lab controlled preview (Sprint 6).
+# Installed as /etc/systemd/system/tbi-session-host.service.
+#
+# Loopback only (127.0.0.1:7400). The browser reaches it solely through the same-origin
+# /runtime/ route of the internal Caddy origin, which sits behind oauth2-proxy (Google login +
+# exact-email allowlist). Neither this port nor QEMU's per-session bridge ports are reachable
+# from outside (host firewall: only 22/80/443).
+[Unit]
+Description=TBI Lab R2 Session Host (dev-lab preview)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=ubuntu
+Group=ubuntu
+Environment=TBI_HOST_BIND=127.0.0.1
+Environment=TBI_HOST_PORT=7400
+# Provisioned R1 runtime (QEMU build + pinned firmware artifacts), read-only for the service.
+Environment=TBI_RUNTIME_HOME=/home/ubuntu/tbi-r1-clean/rt
+ExecStart=/home/ubuntu/.nvm/versions/node/v24.21.0/bin/node /srv/tbi-lab/session-host/current/session-host.mjs
+Restart=on-failure
+RestartSec=2
+# SIGTERM: the host terminates every session and releases every QEMU and temp directory.
+KillSignal=SIGTERM
+TimeoutStopSec=20
+
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=read-only
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+LockPersonality=true
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

@@ -35,7 +35,9 @@ export type ComponentTypeId =
   | 'component.led'
   | 'component.diode'
   | 'component.push_button'
-  | 'component.toggle_switch';
+  | 'component.toggle_switch'
+  /** Classic ESP32 DevKitC V4 (ESP32-WROOM-32), Sprint 6 (additive). */
+  | 'board.esp32_devkitc_wroom32';
 
 export interface ComponentInstance {
   /** Stable reference designator (`R1`, `PSU1`), unique per project, never reused. */

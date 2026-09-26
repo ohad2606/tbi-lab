@@ -4,7 +4,12 @@
  * those points. Symbols contain no text at all, so they read correctly at every rotation.
  */
 
-import type { ComponentTypeId } from '@tbi-lab/domain';
+import {
+  ESP32_DEVKITC_WROOM32,
+  boardPinPosition,
+  boardTerminalId,
+  type ComponentTypeId,
+} from '@tbi-lab/domain';
 
 /** Visual state some symbols depict. Presentation only: never an electrical input. */
 export interface SymbolState {
@@ -35,7 +40,43 @@ const contacts = () => (
   </>
 );
 
+/**
+ * Classic ESP32 DevKitC (Sprint 6): board outline, WROOM module can, and one stub per header
+ * position. Connectable pins run out to their terminal point; pins the simulator does not offer
+ * (power, EN, flash, UART0 console, the other GND pins) are short dashed stubs that stop at the
+ * board edge, so they visibly cannot be wired. Pin names are drawn by the canvas, upright.
+ */
+function esp32Board() {
+  return (
+    <>
+      <rect x={-60} y={-196} width={120} height={392} rx={6} class="symbol-body" />
+      <rect x={-22} y={-186} width={44} height={80} rx={3} class="board-module" />
+      {ESP32_DEVKITC_WROOM32.pins.map((pin) => {
+        const p = boardPinPosition(pin);
+        const edge = p.x < 0 ? -60 : 60;
+        const connectable = boardTerminalId(pin) !== undefined;
+        return connectable ? (
+          <line key={`${pin.header}${pin.position}`} x1={edge} y1={p.y} x2={p.x} y2={p.y} />
+        ) : (
+          <line
+            key={`${pin.header}${pin.position}`}
+            x1={edge}
+            y1={p.y}
+            x2={edge + (p.x < 0 ? -8 : 8)}
+            y2={p.y}
+            class="pin-unavailable"
+          />
+        );
+      })}
+    </>
+  );
+}
+
 export const SYMBOLS: Record<ComponentTypeId, SymbolDef> = {
+  'board.esp32_devkitc_wroom32': {
+    bbox: [-80, -196, 80, 196],
+    draw: esp32Board,
+  },
   'component.resistor': {
     bbox: [-40, -10, 40, 10],
     draw: () => (

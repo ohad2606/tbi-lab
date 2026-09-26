@@ -463,6 +463,7 @@ test('A13/A15: new Sprint 5 surfaces are Hebrew (technical tokens only), RTL chr
     /^Lab$/,
     /^English$/,
     /^tbilab$/,
+    /^(ESP32|DevKitC|GPIO\d+)$/, // Classic ESP32 technical tokens: MCU, board, pin names (Sprint 6)
     /^(PSU|R|GND|D|SW)\d+$/,
     /^(GND|LED|DC|CV|CC|OFF|MB)$/,
     /^N4148$/,

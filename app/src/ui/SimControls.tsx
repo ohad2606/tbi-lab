@@ -11,14 +11,29 @@ import { useAppState, useStore, useT } from './context.js';
  * no width is tuned to English. The hidden face is aria-hidden, so the accessible name is the
  * visible label. The element itself never changes, so keyboard focus stays on it.
  */
-const STATUSES = ['stopped', 'starting', 'running', 'failed'] as const;
+/** Status labels, including the ESP32 running label (Sprint 6): all of them size the pill. */
+const LABELS = [
+  'sim.status.stopped',
+  'sim.status.starting',
+  'sim.status.running',
+  'sim.status.runningMcu',
+  'sim.status.stopping',
+  'sim.status.failed',
+] as const;
 
 export function SimControls() {
   const { sim } = useAppState();
   const store = useStore();
   const t = useT();
-  const active = sim.status === 'running' || sim.status === 'starting';
+  const active = sim.status === 'running' || sim.status === 'starting' || sim.status === 'stopping';
   const action = active ? 'stop' : 'run';
+  // An ESP32 session is ending: the control stays "Stop" but is busy until it has ended.
+  const busy = sim.status === 'stopping';
+  const mcu = 'runtime' in sim && sim.runtime !== undefined;
+  const label =
+    sim.status === 'running' && mcu
+      ? 'sim.status.runningMcu'
+      : (`sim.status.${sim.status}` as const);
   return (
     <div class="sim-controls" role="group" aria-label={t('sim.controls')}>
       <button
@@ -26,6 +41,9 @@ export function SimControls() {
         class={`button sim-toggle sim-toggle-${action}`}
         data-testid={`sim-${action}`}
         data-action={action}
+        data-engine={mcu ? 'mcu' : 'local'}
+        disabled={busy}
+        aria-busy={busy ? 'true' : undefined}
         onClick={() => (active ? store.stop() : store.run())}
       >
         <span class="sim-toggle-face" data-face="run" aria-hidden={active ? 'true' : undefined}>
@@ -47,6 +65,19 @@ export function SimControls() {
         aria-live="polite"
         data-testid="sim-status"
         data-status={sim.status}
+        {...(mcu && 'runtime' in sim && sim.runtime
+          ? {
+              'data-engine': 'mcu',
+              'data-session-state': sim.runtime.sessionState,
+              'data-sim-ns': sim.runtime.simNs,
+              'data-connection': sim.runtime.connection,
+              // Determinism evidence: canonical hash of the runtime events so far, and its
+              // per-simulated-second checkpoints (see runtime/view.ts).
+              'data-trace-events': sim.runtime.trace.events,
+              'data-trace-hash': sim.runtime.trace.hash,
+              'data-trace-checkpoints': JSON.stringify(sim.runtime.trace.checkpoints),
+            }
+          : {})}
         // Measured timings of the latest solve, for performance evidence (not displayed).
         {...(sim.status === 'running'
           ? {
@@ -61,20 +92,20 @@ export function SimControls() {
           : {})}
       >
         <span class="sim-status-label" data-testid="sim-status-label">
-          {t(`sim.status.${sim.status}`)}
+          {t(label)}
         </span>
         {/* Every status label, invisible, in the same grid cell, in BOTH font weights the pill
             uses (running/starting are bold): the pill always has the width of the longest label
             at its widest weight in this locale and font, whatever the current state, so a status
             change never moves the toolbar. */}
-        {STATUSES.flatMap((s) =>
+        {LABELS.flatMap((s) =>
           (['regular', 'bold'] as const).map((w) => (
             <span
               key={`${s}-${w}`}
               class={`sim-status-sizer sim-status-sizer-${w}`}
               aria-hidden="true"
             >
-              {t(`sim.status.${s}`)}
+              {t(s)}
             </span>
           )),
         )}

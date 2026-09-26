@@ -11,6 +11,7 @@ import {
   addComponent,
   addWire,
   createProject,
+  deleteSelection,
   moveSelection,
   rotateComponents,
   setParam,
@@ -66,6 +67,16 @@ class Recipe {
     };
     this.doc = this.ok(moveSelection(this.doc, sel, { x: dx, y: 0 })).doc;
     return this.doc;
+  }
+  /** Set a language-neutral enum parameter (e.g. the firmware artifact identity). */
+  choose(id: string, key: string, value: string) {
+    this.doc = this.ok(setParam(this.doc, id, key, value)).doc;
+  }
+  /** Remove parts placed with every new project (an ESP32 example may not need the supply). */
+  remove(...ids: string[]) {
+    this.doc = this.ok(
+      deleteSelection(this.doc, { components: ids, wires: [], junctions: [] }),
+    ).doc;
   }
   /** PSU setpoint/limit, output ON, and PSU- to the GND symbol placed with every project. */
   supply(volts: number, limit: number) {
@@ -171,5 +182,61 @@ export const RECIPES: Record<string, () => ProjectDocument> = {
     r.wire(T(SW, 'b'), T(R2, 'a'));
     r.wire(T(R2, 'b'), T(G3, 'ref'));
     return r.centre(-60);
+  },
+  /**
+   * Sprint 6. Classic ESP32 running the prebuilt TbiGpioProof firmware: GPIO2 drives a red LED
+   * through 220 Ω (blinking in an 800 ms pattern). The board GND is the circuit reference.
+   */
+  'esp32-blink': () => {
+    const r = new Recipe('esp32-blink', 'ESP32: blink an LED');
+    r.remove('PSU1', 'GND1');
+    const U1 = r.place('board.esp32_devkitc_wroom32', 300, 0);
+    r.choose(U1, 'firmware', '5f177cbe95f490dce1f6efe7dda501e03762d523b79771968f967b297d3a44af');
+    const R1 = r.place('component.resistor', 480, 100);
+    const D1 = r.place('component.led', 600, 100);
+    const G2 = r.place('component.ground', 680, 180);
+    const G3 = r.place('component.ground', 440, -120);
+    r.set(R1, 'resistance', 220, 'ohm');
+    r.wire(T(U1, 'gpio2'), T(R1, 'a'));
+    r.wire(T(R1, 'b'), T(D1, 'anode'));
+    r.wire(T(D1, 'cathode'), T(G2, 'ref'));
+    r.wire(T(U1, 'gnd'), T(G3, 'ref'));
+    return r.centre(-240);
+  },
+  /**
+   * Sprint 6. Classic ESP32 running the prebuilt TbiBanks firmware, which copies GPIO34 to GPIO4.
+   * A toggle switch (persistent) and a push button (transient) in parallel feed 3.3 V through
+   * 1 kΩ into the input-only GPIO34, pulled down by 10 kΩ (the pad has no internal pull). GPIO4
+   * drives a red LED through 220 Ω: switch closed or button held -> the firmware lights the LED.
+   */
+  'esp32-input-echo': () => {
+    const r = new Recipe('esp32-input-echo', 'ESP32: switch input to LED output');
+    r.supply(3.3, 0.05);
+    const U1 = r.place('board.esp32_devkitc_wroom32', 300, 0);
+    r.choose(U1, 'firmware', '9ca3a5cea66e46a2b54f14f38e0b065f36bc8cf70398cc88fae421028930a03d');
+    const SW = r.place('component.toggle_switch', 0, -100);
+    const PB = r.place('component.push_button', 0, -160);
+    const R2 = r.place('component.resistor', 140, -100);
+    const R3 = r.place('component.resistor', 200, -40, 1);
+    const G2 = r.place('component.ground', 200, 60);
+    const R1 = r.place('component.resistor', 480, 60);
+    const D1 = r.place('component.led', 600, 60);
+    const G3 = r.place('component.ground', 680, 140);
+    const G4 = r.place('component.ground', 440, -120);
+    r.set(R2, 'resistance', 1000, 'ohm');
+    r.set(R3, 'resistance', 10_000, 'ohm');
+    r.set(R1, 'resistance', 220, 'ohm');
+    r.wire(T('PSU1', 'positive'), T(SW, 'a'));
+    r.wire(T(SW, 'a'), T(PB, 'a'));
+    r.wire(T(SW, 'b'), T(R2, 'a'));
+    r.wire(T(PB, 'b'), T(R2, 'a'));
+    const w = r.wire(T(R2, 'b'), T(U1, 'gpio34'));
+    r.wire({ kind: 'wire', wire: w, at: { x: 200, y: -100 } }, T(R3, 'a'));
+    r.wire(T(R3, 'b'), T(G2, 'ref'));
+    r.wire(T(U1, 'gpio4'), T(R1, 'a'));
+    r.wire(T(R1, 'b'), T(D1, 'anode'));
+    r.wire(T(D1, 'cathode'), T(G3, 'ref'));
+    r.wire(T(U1, 'gnd'), T(G4, 'ref'));
+    return r.centre(-240);
   },
 };

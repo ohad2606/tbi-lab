@@ -49,7 +49,7 @@ import {
 } from '../persistence/store.js';
 import { findExample, type ExampleProbe } from '../examples/catalog.js';
 import type { LiveControl } from '@tbi-lab/engine';
-import type { SimState, SimulationController } from '../sim/controller.js';
+import type { SimState, SimulationHost } from '../sim/controller.js';
 
 interface HistoryEntry {
   before: ProjectDocument;
@@ -122,7 +122,7 @@ export interface AppDeps {
   clock?: { now(): Date };
   autosaveDebounceMs?: number;
   /** Mode A simulation host. Absent in contexts that never simulate (some unit tests). */
-  simulation?: SimulationController;
+  simulation?: SimulationHost;
 }
 
 export class AppStore {

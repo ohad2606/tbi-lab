@@ -13,6 +13,7 @@ export const PALETTE_GROUPS: readonly { key: MessageKey; types: readonly Compone
   { key: 'palette.group.passive', types: ['component.resistor'] },
   { key: 'palette.group.semiconductors', types: ['component.led', 'component.diode'] },
   { key: 'palette.group.switches', types: ['component.push_button', 'component.toggle_switch'] },
+  { key: 'palette.group.mcu', types: ['board.esp32_devkitc_wroom32'] },
 ];
 const GROUPS = PALETTE_GROUPS;
 
@@ -24,7 +25,11 @@ interface Props {
 export function Palette({ placing, onPick }: Props) {
   const { locale, readOnly, sim } = useAppState();
   // Placing is structural: not while a simulation holds the current topology.
-  const locked = !!readOnly || sim.status === 'running' || sim.status === 'starting';
+  const locked =
+    !!readOnly ||
+    sim.status === 'running' ||
+    sim.status === 'starting' ||
+    sim.status === 'stopping';
   const t = useT();
   return (
     <aside class="palette" aria-labelledby="palette-heading">

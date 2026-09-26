@@ -300,4 +300,114 @@ export const he: Record<MessageKey, string> = {
   'rating.row.reverse_voltage': 'מתח הפוך: {value} (מקסימום {limit})',
   'rating.row.power': 'הספק: {value} (מקסימום {limit})',
   'rating.note': 'הסימולציה ממשיכה להציג את הערכים המחושבים ואינה מדמה נזק לרכיב.',
+
+  // ---- Sprint 6: Classic ESP32 through the R2 Session Host ----
+  'component.board.esp32_devkitc_wroom32.name': 'ESP32 DevKitC (ESP32 קלאסי)',
+  'param.firmware': 'קושחה',
+  'firmware.none': 'לא נבחרה קושחה',
+  'firmware.tbi-gpio-proof.name': 'הבהוב GPIO2/GPIO18, דיווח GPIO5',
+  'firmware.tbi-gpio-proof.description':
+    'קושחת בדיקה מוכנה מראש: מפעילה את GPIO2 ואת GPIO18 בתבנית חוזרת של 800 ms ומדפיסה את רמת GPIO5 בפלט הטורי.',
+  'firmware.tbi-banks.name': 'העתקת כניסות ליציאות (GPIO34→GPIO4, GPIO35→GPIO33)',
+  'firmware.tbi-banks.description':
+    'קושחת בדיקה מוכנה מראש: מפעילה פעם אחת בעלייה את GPIO4, 16, 25, 27, 32 ו-33, ואז מעתיקה את GPIO34 ל-GPIO4 ואת GPIO35 ל-GPIO33 ומדפיסה כל שינוי.',
+  'sim.status.runningMcu': 'רץ · ESP32',
+  'sim.status.stopping': 'עוצר…',
+  'sim.error.mcu_multiple': 'בגרסה זו ניתן להריץ לוח ESP32 אחד לכל פרויקט. נמצאו: {components}.',
+  'sim.error.mcu_no_firmware': 'בחרו קושחה עבור {components} בחלונית המאפיינים, ואז לחצו על הרצה.',
+  'sim.error.mcu_unknown_firmware':
+    'הקושחה שנבחרה עבור {components} אינה זמינה בגרסה זו. בחרו קושחה אחרת.',
+  'sim.error.mcu_ground_unconnected':
+    'חברו את פין ה-GND של {components} ל[[ground]], ואז לחצו על הרצה.',
+  'sim.error.mcu_pin_without_circuit':
+    '{pins} של {components} מחוברים רק לפינים אחרים של הלוח. חברו אותם דרך רכיב במעגל (למשל נגד).',
+  'sim.error.runtime.session_create_failed':
+    'לא ניתן להפעיל סשן ESP32: שירות הריצה אינו זמין. הפרויקט לא נפגע.',
+  'sim.error.runtime.runtime_busy':
+    'שירות הריצה של ESP32 עמוס כרגע. נסו שוב בעוד רגע. הפרויקט לא נפגע.',
+  'sim.error.runtime.firmware_unavailable':
+    'הקושחה שנבחרה אינה זמינה בשירות הריצה. הפרויקט לא נפגע.',
+  'sim.error.runtime.unsupported_feature':
+    'הקושחה משתמשת ביכולת שהסימולטור אינו תומך בה בגרסה זו (Pull-up/Pull-down פנימי או פסיקות GPIO).',
+  'sim.error.runtime.invalid_attachment': 'פין ESP32 מחובר אינו זמין לשימוש בסימולטור.',
+  'sim.error.runtime.startup_failed':
+    'לא ניתן היה להפעיל את ה-ESP32. הפרויקט לא נפגע. לחצו על הרצה כדי לנסות שוב.',
+  'sim.error.runtime.runtime_crashed':
+    'שירות הריצה של ESP32 נעצר באופן בלתי צפוי והסשן הסתיים. הפרויקט לא נפגע.',
+  'sim.error.runtime.guest_reset':
+    'הקושחה ביקשה איפוס של השבב, והסימולטור אינו תומך בכך. הסשן הסתיים; לחצו על הרצה להתחלה חדשה.',
+  'sim.error.runtime.stalled': 'ה-ESP32 הפסיק להתקדם (למשל, קובץ הקושחה אינו עולה). הסשן הסתיים.',
+  'sim.error.runtime.session_lost':
+    'סשן ה-ESP32 אבד (החיבור נותק או שהסשן פג). הפרויקט בטוח; לחצו על הרצה לסשן חדש.',
+  'sim.error.runtime.session_expired':
+    'סשן ה-ESP32 הגיע למשך המרבי שלו והסתיים. לחצו על הרצה לסשן חדש.',
+  'sim.error.runtime.mirror_failed':
+    'סשן ה-ESP32 הפעיל לא הצליח להחיל את השינוי שלכם ולכן נעצר. הפרויקט שומר על השינוי.',
+  'sim.error.runtime.protocol_error':
+    'שירות הריצה שלח תשובה בלתי צפויה והסשן הסתיים. הפרויקט לא נפגע.',
+  'mcu.heading': 'ריצת ESP32',
+  'mcu.notRunning': 'לחצו על הרצה כדי לראות רמות פינים ופלט טורי בזמן אמת.',
+  'mcu.pins.heading': 'פינים',
+  'mcu.pins.pin': 'פין',
+  'mcu.pins.support': 'תמיכת הסימולטור',
+  'mcu.pins.state': 'חי',
+  'mcu.support.digital-io': 'קלט/פלט דיגיטלי',
+  'mcu.support.digital-input': 'קלט בלבד',
+  'mcu.support.none': 'לא זמין',
+  'mcu.caveat.strapping': 'פין Strapping: רמת האתחול אינה נדגמת; תמיד עולה מהזיכרון',
+  'mcu.caveat.flash': 'מחובר לזיכרון ה-Flash של המודול',
+  'mcu.caveat.console': 'קונסולה טורית (UART0)',
+  'mcu.caveat.inputOnly': 'ללא דוחף יציאה, ללא Pull פנימי',
+  'mcu.caveat.power': 'פין הזנה',
+  'mcu.caveat.enable': 'הפעלת השבב: איפוס אינו מדומה',
+  'mcu.note.unsupported':
+    'לא מדומה בגרסה זו: Pull-up/Pull-down פנימי, פסיקות GPIO, איפוס שבב, אנלוגי, PWM, Wi-Fi.',
+  'mcu.level.high': 'HIGH',
+  'mcu.level.low': 'LOW',
+  'mcu.mode.output': 'יציאה',
+  'mcu.mode.input': 'כניסה',
+  'mcu.serial.heading': 'פלט טורי',
+  'mcu.serial.empty': 'אין פלט עדיין.',
+  'mcu.serial.dropped': 'פלט ישן יותר קוצץ ({count} תווים).',
+  'mcu.warnings.heading': 'אזהרות ריצה',
+  'mcu.warning.output_on_input_only_pad':
+    'GPIO{gpio} הוא קלט בלבד: הקושחה ניסתה להפעיל אותו כיציאה, והוא נשאר קלט.',
+  'mcu.warning.transient_rejected': 'לחיצה על לחצן לא נמסרה לסשן הפעיל.',
+  'mcu.warning.generic': 'אזהרת ריצה: {code}',
+  'mcu.connection.reconnecting': 'מתחבר מחדש לסשן ה-ESP32…',
+  'mcu.resync': '{count} עדכוני ריצה לא התקבלו בזמן ההתחברות מחדש. הערכים יתעדכנו בשינוי הבא.',
+  'mcu.firmware.label': 'קושחה',
+  'example.esp32-blink.title': 'ESP32: הבהוב נורית LED',
+  'example.esp32-blink.summary':
+    'ESP32 קלאסי מריץ קושחה מוכנה מראש שמדליקה ומכבה את GPIO2; נורית ה-LED על GPIO2 מהבהבת. רץ בשירות הריצה של ESP32.',
+  'example.esp32-input-echo.title': 'ESP32: מתג בכניסה, LED ביציאה',
+  'example.esp32-input-echo.summary':
+    'סגרו את המתג או החזיקו את הלחצן: ‏3.3 V מגיעים ל-GPIO34, הקושחה מעתיקה אותו ל-GPIO4 ונורית ה-LED נדלקת. רץ בשירות הריצה של ESP32.',
+  'palette.group.mcu': 'בקר (מיקרו-בקר)',
+  // Board pin silkscreen names (Sprint 6): technical tokens, verbatim in every locale.
+  'pin.gpio36': 'VP',
+  'pin.gpio39': 'VN',
+  'pin.gpio34': 'IO34',
+  'pin.gpio35': 'IO35',
+  'pin.gpio32': 'IO32',
+  'pin.gpio33': 'IO33',
+  'pin.gpio25': 'IO25',
+  'pin.gpio26': 'IO26',
+  'pin.gpio27': 'IO27',
+  'pin.gpio14': 'IO14',
+  'pin.gpio12': 'IO12',
+  'pin.gpio13': 'IO13',
+  'pin.gnd': 'GND',
+  'pin.gpio23': 'IO23',
+  'pin.gpio22': 'IO22',
+  'pin.gpio21': 'IO21',
+  'pin.gpio19': 'IO19',
+  'pin.gpio18': 'IO18',
+  'pin.gpio5': 'IO5',
+  'pin.gpio17': 'IO17',
+  'pin.gpio16': 'IO16',
+  'pin.gpio4': 'IO4',
+  'pin.gpio0': 'IO0',
+  'pin.gpio2': 'IO2',
+  'pin.gpio15': 'IO15',
 };

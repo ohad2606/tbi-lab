@@ -31,6 +31,15 @@ http://:8080 {
 
 	root * /srv/tbi-lab/dev-lab/current
 
+	# The R2 Session Host API (Sprint 6), same-origin. Reached only through oauth2-proxy (this
+	# origin is loopback-only), so every runtime request needs the same Google login and allowlist
+	# as the site itself. The event stream is passed through unbuffered.
+	handle_path /runtime/* {
+		reverse_proxy 127.0.0.1:7400 {
+			flush_interval -1
+		}
+	}
+
 	# Hashed build assets can be cached privately; the HTML entry point (and the SPA fallback)
 	# never is, so after sign-out the app cannot load without passing authentication again.
 	@assets path /assets/*

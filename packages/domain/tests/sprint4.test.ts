@@ -30,7 +30,10 @@ const place = (doc: ProjectDocument, type: ComponentTypeId, x: number, y: number
 
 describe('Sprint 4 catalog: the non-MCU V1 catalog is complete and closed (A16)', () => {
   it('holds exactly the seven approved non-MCU types', () => {
-    expect([...CATALOG_ORDER].sort()).toEqual(
+    const mcu = (t: string) => t.startsWith('board.');
+    // Sprint 6 adds the one PM-approved MCU item; the catalog stays closed.
+    expect(CATALOG_ORDER.filter(mcu)).toEqual(['board.esp32_devkitc_wroom32']);
+    expect([...CATALOG_ORDER].filter((t) => !mcu(t)).sort()).toEqual(
       [
         'component.diode',
         'component.ground',

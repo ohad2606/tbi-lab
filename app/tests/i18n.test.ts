@@ -44,9 +44,14 @@ describe('locale bundles', () => {
     const same = Object.keys(en).filter(
       (k) => he[k as keyof typeof en] === en[k as keyof typeof en],
     );
+    // Technical tokens kept verbatim in every locale (terminology rule, Sprint 6): board pin
+    // silkscreen names (IO34, VP, GND) and the digital logic levels HIGH / LOW.
+    const technical = (k: string) => k.startsWith('pin.') || k.startsWith('mcu.level.');
+    for (const k of same.filter(technical))
+      expect(en[k as keyof typeof en], k).toMatch(/^[A-Z][A-Z0-9]*$/);
     // Only language-neutral messages may be identical (unit symbols, the reference-and-type pattern).
     // CV and CC stay as professional technical terms in Hebrew (product scope §12).
-    expect(same.sort()).toEqual([
+    expect(same.filter((k) => !technical(k)).sort()).toEqual([
       'canvas.componentLabel',
       'probe.currentLabel',
       'probe.noValue',

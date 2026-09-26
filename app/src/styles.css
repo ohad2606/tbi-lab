@@ -1612,3 +1612,93 @@ select {
 .banner-hint {
   font-weight: 500;
 }
+
+/* ---- Sprint 6: Classic ESP32 board and runtime panel ---------------------------------- */
+.symbol .board-module {
+  fill: var(--panel-alt);
+  stroke: var(--ink);
+  stroke-width: 1;
+}
+.symbol .pin-unavailable {
+  stroke: var(--grid);
+  stroke-dasharray: 2 2;
+}
+.pin-label {
+  font:
+    600 8px ui-monospace,
+    'SFMono-Regular',
+    Menlo,
+    Consolas,
+    monospace;
+  fill: var(--ink);
+  pointer-events: none;
+}
+.pin-label-unavailable {
+  fill: var(--muted);
+  font-weight: 400;
+}
+.pin-level {
+  stroke: var(--ink);
+  stroke-width: 1;
+  pointer-events: none;
+}
+.pin-high {
+  fill: var(--brand-orange);
+}
+.pin-low {
+  fill: var(--canvas-bg);
+}
+.mcu-panel h3 {
+  margin: 0.75rem 0 0.25rem;
+}
+.mcu-pin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+.mcu-pin-table th,
+.mcu-pin-table td {
+  text-align: start;
+  padding: 2px 4px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+.mcu-pin-table tr[data-support='none'] td {
+  color: var(--muted);
+}
+.mcu-pin-table tr[data-level='1'] td:last-child {
+  color: var(--warning-ink);
+  font-weight: 600;
+}
+.block {
+  display: block;
+}
+.mcu-warnings {
+  background: var(--warning-bg);
+  color: var(--warning-ink);
+  padding: 0.4rem 0.6rem;
+  border-radius: 4px;
+  margin: 0.4rem 0;
+}
+.mcu-warnings ul {
+  margin: 0.2rem 0 0;
+  padding-inline-start: 1.1rem;
+}
+.serial-output {
+  max-height: 12rem;
+  overflow: auto;
+  margin: 0.25rem 0 0;
+  padding: 0.4rem;
+  background: var(--panel-alt);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font:
+    0.75rem/1.35 ui-monospace,
+    'SFMono-Regular',
+    Menlo,
+    Consolas,
+    monospace;
+  white-space: pre-wrap;
+  unicode-bidi: isolate;
+  text-align: left;
+}

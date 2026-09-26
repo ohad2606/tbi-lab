@@ -32,7 +32,7 @@ const near = (a: number | null | undefined, e: number, rel = REL) => {
 const example = (id: string) => EXAMPLES.find((e) => e.id === id)!.document;
 
 describe('the example set', () => {
-  it('has exactly six examples, each with English and Hebrew title and summary', () => {
+  it('has the six DC examples and the two ESP32 examples, each titled in English and Hebrew', () => {
     expect(EXAMPLES.map((e) => e.id)).toEqual([
       'ohms-law',
       'voltage-divider',
@@ -40,6 +40,8 @@ describe('the example set', () => {
       'diode-polarity',
       'push-button',
       'cc-mode',
+      'esp32-blink',
+      'esp32-input-echo',
     ]);
     for (const e of EXAMPLES) {
       for (const key of [e.titleKey, e.summaryKey]) {

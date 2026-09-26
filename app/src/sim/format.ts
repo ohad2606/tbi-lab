@@ -79,6 +79,13 @@ export function simFailureMessage(
 ): string {
   const t = (key: MessageKey, params?: Record<string, string>) => translate(locale, key, params);
   if (failure.kind === 'worker') return t(`sim.error.${failure.code}`);
+  if (failure.kind === 'mcu') {
+    return t(`sim.error.${failure.code}`, {
+      components: list(failure.components),
+      pins: list((failure.pins ?? []).map((p) => `GPIO${p}`)),
+    });
+  }
+  if (failure.kind === 'runtime') return t(`sim.error.runtime.${failure.code}`);
   return engineErrorMessage(locale, failure.error, doc);
 }
 

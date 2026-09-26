@@ -495,6 +495,7 @@ test('A15: new Sprint 4 surfaces are fully translated in Hebrew (technical token
     /^English$/,
     /^(PSU|R|GND|D|SW)\d+$/,
     /^N_\d+$/,
+    /^(ESP32|DevKitC|GPIO\d+)$/, // Classic ESP32 technical tokens: MCU, board, pin names (Sprint 6)
     /^(GND|LED|DC|CV|CC|OFF)$/,
     /^Vishay$/,
     /^(TLHR5400|N4148)$/, // model names (1N4148 tokenizes as N4148)

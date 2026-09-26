@@ -15,3 +15,4 @@ export * from './canonical.js';
 export * from './package.js';
 export * from './library.js';
 export * from './boards/esp32DevkitcWroom32.js';
+export * from './firmware.js';

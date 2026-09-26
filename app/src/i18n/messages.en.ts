@@ -312,6 +312,119 @@ export const en = {
   'rating.row.power': 'Power: {value} (maximum {limit})',
   'rating.note':
     'The simulation continues to show the calculated values and does not model physical damage.',
+
+  // ---- Sprint 6: Classic ESP32 through the R2 Session Host ----
+  'component.board.esp32_devkitc_wroom32.name': 'ESP32 DevKitC (Classic ESP32)',
+  'param.firmware': 'Firmware',
+  'firmware.none': 'No firmware selected',
+  'firmware.tbi-gpio-proof.name': 'Blink GPIO2/GPIO18, report GPIO5',
+  'firmware.tbi-gpio-proof.description':
+    'Prebuilt test firmware: drives GPIO2 and GPIO18 in a repeating 800 ms pattern and prints the level of GPIO5 on the serial output.',
+  'firmware.tbi-banks.name': 'Echo inputs to outputs (GPIO34→GPIO4, GPIO35→GPIO33)',
+  'firmware.tbi-banks.description':
+    'Prebuilt test firmware: sweeps GPIO4, 16, 25, 27, 32 and 33 once at start-up, then copies GPIO34 to GPIO4 and GPIO35 to GPIO33, printing each change.',
+  'sim.status.runningMcu': 'Running · ESP32',
+  'sim.status.stopping': 'Stopping…',
+  'sim.error.mcu_multiple': 'This version runs one ESP32 board per project. Found: {components}.',
+  'sim.error.mcu_no_firmware':
+    'Select a firmware for {components} in the inspector, then press Run.',
+  'sim.error.mcu_unknown_firmware':
+    'The firmware selected for {components} is not available in this version. Select another firmware.',
+  'sim.error.mcu_ground_unconnected':
+    'Connect the GND pin of {components} to [[ground]], then press Run.',
+  'sim.error.mcu_pin_without_circuit':
+    '{pins} of {components} connect only to other pins of the board. Connect them through a circuit element (for example a resistor).',
+  'sim.error.runtime.session_create_failed':
+    'Could not start an ESP32 session: the runtime service is not reachable. The project is not affected.',
+  'sim.error.runtime.runtime_busy':
+    'The ESP32 runtime service is busy. Try again in a moment. The project is not affected.',
+  'sim.error.runtime.firmware_unavailable':
+    'The selected firmware is not available on the runtime service. The project is not affected.',
+  'sim.error.runtime.unsupported_feature':
+    'The firmware uses a feature the simulator does not support in this version (internal pull-up/pull-down or GPIO interrupts).',
+  'sim.error.runtime.invalid_attachment': 'A connected ESP32 pin cannot be used in the simulator.',
+  'sim.error.runtime.startup_failed':
+    'The ESP32 could not start. The project is not affected. Press Run to try again.',
+  'sim.error.runtime.runtime_crashed':
+    'The ESP32 runtime stopped unexpectedly and the session ended. The project is not affected.',
+  'sim.error.runtime.guest_reset':
+    'The firmware requested a chip reset, which the simulator does not support. The session ended; press Run for a fresh start.',
+  'sim.error.runtime.stalled':
+    'The ESP32 stopped making progress (for example, the firmware image does not boot). The session ended.',
+  'sim.error.runtime.session_lost':
+    'The ESP32 session was lost (connection lost or session expired). The project is safe; press Run for a fresh session.',
+  'sim.error.runtime.session_expired':
+    'The ESP32 session reached its maximum duration and ended. Press Run for a fresh session.',
+  'sim.error.runtime.mirror_failed':
+    'The running ESP32 session could not apply your change, so it was stopped. The project keeps your change.',
+  'sim.error.runtime.protocol_error':
+    'The runtime service sent an unexpected response and the session ended. The project is not affected.',
+  'mcu.heading': 'ESP32 runtime',
+  'mcu.notRunning': 'Press Run to see live pin levels and serial output.',
+  'mcu.pins.heading': 'Pins',
+  'mcu.pins.pin': 'Pin',
+  'mcu.pins.support': 'Simulator support',
+  'mcu.pins.state': 'Live',
+  'mcu.support.digital-io': 'Digital I/O',
+  'mcu.support.digital-input': 'Input only',
+  'mcu.support.none': 'Not available',
+  'mcu.caveat.strapping': 'Strapping pin: boot level is not sampled; always boots from flash',
+  'mcu.caveat.flash': 'Connected to the module flash',
+  'mcu.caveat.console': 'Serial console (UART0)',
+  'mcu.caveat.inputOnly': 'No output driver, no internal pull',
+  'mcu.caveat.power': 'Supply pin',
+  'mcu.caveat.enable': 'Chip enable: reset is not simulated',
+  'mcu.note.unsupported':
+    'Not simulated in this version: internal pull-up/pull-down, GPIO interrupts, chip reset, analog, PWM, Wi-Fi.',
+  'mcu.level.high': 'HIGH',
+  'mcu.level.low': 'LOW',
+  'mcu.mode.output': 'output',
+  'mcu.mode.input': 'input',
+  'mcu.serial.heading': 'Serial output',
+  'mcu.serial.empty': 'No output yet.',
+  'mcu.serial.dropped': 'Older output was trimmed ({count} characters).',
+  'mcu.warnings.heading': 'Runtime warnings',
+  'mcu.warning.output_on_input_only_pad':
+    'GPIO{gpio} is input-only: the firmware tried to drive it, and it stays an input.',
+  'mcu.warning.transient_rejected': 'A button press could not be delivered to the running session.',
+  'mcu.warning.generic': 'Runtime warning: {code}',
+  'mcu.connection.reconnecting': 'Reconnecting to the ESP32 session…',
+  'mcu.resync':
+    '{count} runtime updates were missed while reconnecting. Values refresh on the next change.',
+  'mcu.firmware.label': 'Firmware',
+  'example.esp32-blink.title': 'ESP32: blink an LED',
+  'example.esp32-blink.summary':
+    'A Classic ESP32 runs prebuilt firmware that switches GPIO2 on and off; the LED on GPIO2 blinks. Runs on the ESP32 runtime service.',
+  'example.esp32-input-echo.title': 'ESP32: switch input to LED output',
+  'example.esp32-input-echo.summary':
+    'Close the switch or hold the button: 3.3 V reaches GPIO34, the firmware copies it to GPIO4 and the LED lights. Runs on the ESP32 runtime service.',
+  'palette.group.mcu': 'Microcontroller',
+  // Board pin silkscreen names (Sprint 6): technical tokens, verbatim in every locale.
+  'pin.gpio36': 'VP',
+  'pin.gpio39': 'VN',
+  'pin.gpio34': 'IO34',
+  'pin.gpio35': 'IO35',
+  'pin.gpio32': 'IO32',
+  'pin.gpio33': 'IO33',
+  'pin.gpio25': 'IO25',
+  'pin.gpio26': 'IO26',
+  'pin.gpio27': 'IO27',
+  'pin.gpio14': 'IO14',
+  'pin.gpio12': 'IO12',
+  'pin.gpio13': 'IO13',
+  'pin.gnd': 'GND',
+  'pin.gpio23': 'IO23',
+  'pin.gpio22': 'IO22',
+  'pin.gpio21': 'IO21',
+  'pin.gpio19': 'IO19',
+  'pin.gpio18': 'IO18',
+  'pin.gpio5': 'IO5',
+  'pin.gpio17': 'IO17',
+  'pin.gpio16': 'IO16',
+  'pin.gpio4': 'IO4',
+  'pin.gpio0': 'IO0',
+  'pin.gpio2': 'IO2',
+  'pin.gpio15': 'IO15',
 } as const;
 
 export type MessageKey = keyof typeof en;

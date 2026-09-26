@@ -1,0 +1,220 @@
+{
+  "format": "tbi-lab.project",
+  "schemaVersion": 2,
+  "projectId": "prj_exampleesp32blink",
+  "createdWith": {
+    "app": "0.2.0",
+    "schemaVersion": 2
+  },
+  "createdAt": "2026-09-23T00:00:00.000Z",
+  "revision": {
+    "localRevision": 1,
+    "cloudRevision": null,
+    "baseRevision": null,
+    "updatedAt": "2026-09-23T00:00:00.000Z",
+    "deviceId": "dev_tbilab_examples"
+  },
+  "name": "ESP32: blink an LED",
+  "components": [
+    {
+      "id": "U1",
+      "type": "board.esp32_devkitc_wroom32",
+      "typeVersion": 1,
+      "params": {
+        "firmware": "5f177cbe95f490dce1f6efe7dda501e03762d523b79771968f967b297d3a44af"
+      }
+    },
+    {
+      "id": "R1",
+      "type": "component.resistor",
+      "typeVersion": 1,
+      "params": {
+        "resistance": {
+          "value": 220,
+          "unit": "ohm"
+        }
+      }
+    },
+    {
+      "id": "D1",
+      "type": "component.led",
+      "typeVersion": 1,
+      "params": {
+        "model": "model.led.vishay_tlhr5400"
+      }
+    },
+    {
+      "id": "GND2",
+      "type": "component.ground",
+      "typeVersion": 1,
+      "params": {}
+    },
+    {
+      "id": "GND3",
+      "type": "component.ground",
+      "typeVersion": 1,
+      "params": {}
+    }
+  ],
+  "nets": [
+    {
+      "id": "N_1",
+      "role": null,
+      "userName": null
+    },
+    {
+      "id": "N_2",
+      "role": null,
+      "userName": null
+    },
+    {
+      "id": "N_3",
+      "role": "ground",
+      "userName": null
+    },
+    {
+      "id": "N_4",
+      "role": "ground",
+      "userName": null
+    }
+  ],
+  "connections": [
+    {
+      "component": "U1",
+      "terminal": "gnd",
+      "net": "N_4"
+    },
+    {
+      "component": "U1",
+      "terminal": "gpio2",
+      "net": "N_1"
+    },
+    {
+      "component": "R1",
+      "terminal": "a",
+      "net": "N_1"
+    },
+    {
+      "component": "R1",
+      "terminal": "b",
+      "net": "N_2"
+    },
+    {
+      "component": "D1",
+      "terminal": "anode",
+      "net": "N_2"
+    },
+    {
+      "component": "D1",
+      "terminal": "cathode",
+      "net": "N_3"
+    },
+    {
+      "component": "GND2",
+      "terminal": "ref",
+      "net": "N_3"
+    },
+    {
+      "component": "GND3",
+      "terminal": "ref",
+      "net": "N_4"
+    }
+  ],
+  "layout": {
+    "components": {
+      "U1": {
+        "x": 60,
+        "y": 0,
+        "rotation": 0
+      },
+      "R1": {
+        "x": 240,
+        "y": 100,
+        "rotation": 0
+      },
+      "D1": {
+        "x": 360,
+        "y": 100,
+        "rotation": 0
+      },
+      "GND2": {
+        "x": 440,
+        "y": 180,
+        "rotation": 0
+      },
+      "GND3": {
+        "x": 200,
+        "y": -120,
+        "rotation": 0
+      }
+    },
+    "wires": [
+      {
+        "id": "W1",
+        "from": {
+          "kind": "terminal",
+          "component": "U1",
+          "terminal": "gpio2"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "R1",
+          "terminal": "a"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W2",
+        "from": {
+          "kind": "terminal",
+          "component": "R1",
+          "terminal": "b"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "D1",
+          "terminal": "anode"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W3",
+        "from": {
+          "kind": "terminal",
+          "component": "D1",
+          "terminal": "cathode"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "GND2",
+          "terminal": "ref"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W4",
+        "from": {
+          "kind": "terminal",
+          "component": "U1",
+          "terminal": "gnd"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "GND3",
+          "terminal": "ref"
+        },
+        "vertices": []
+      }
+    ],
+    "junctions": []
+  },
+  "idCounters": {
+    "PSU": 1,
+    "GND": 3,
+    "U": 1,
+    "R": 1,
+    "D": 1,
+    "W": 4,
+    "N": 4
+  }
+}

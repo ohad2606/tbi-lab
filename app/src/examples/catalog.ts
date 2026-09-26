@@ -1,5 +1,6 @@
 /**
- * The six curated Product Alpha examples (Sprint 5).
+ * The curated Product Alpha examples (Sprint 5), and the two Classic ESP32 examples (Sprint 6),
+ * which run through the R2 Session Host with a prebuilt firmware.
  *
  * Each example is PRODUCT DATA: an ordinary schema v2 project document in ./data (authored by
  * app/tests/exampleRecipes.ts through the normal editing operations). Opening an example
@@ -14,6 +15,8 @@ import type { ProjectDocument } from '@tbi-lab/domain';
 import type { MessageKey } from '../i18n/messages.en.js';
 import ccMode from './data/cc-mode.json';
 import diodePolarity from './data/diode-polarity.json';
+import esp32Blink from './data/esp32-blink.json';
+import esp32InputEcho from './data/esp32-input-echo.json';
 import ledCurrent from './data/led-current.json';
 import ohmsLaw from './data/ohms-law.json';
 import pushButton from './data/push-button.json';
@@ -81,6 +84,20 @@ export const EXAMPLES: readonly Example[] = [
     summaryKey: 'example.cc-mode.summary',
     document: doc(ccMode),
     probes: [I('R2'), V('R2', 'a')],
+  },
+  {
+    id: 'esp32-blink',
+    titleKey: 'example.esp32-blink.title',
+    summaryKey: 'example.esp32-blink.summary',
+    document: doc(esp32Blink),
+    probes: [I('D1')],
+  },
+  {
+    id: 'esp32-input-echo',
+    titleKey: 'example.esp32-input-echo.title',
+    summaryKey: 'example.esp32-input-echo.summary',
+    document: doc(esp32InputEcho),
+    probes: [I('D1'), V('R1', 'b')],
   },
 ];
 

@@ -7,6 +7,8 @@
  */
 
 import type { ComponentTypeId, ParamValue, Point, UnitId } from './schema.js';
+import { ESP32_DEVKITC_WROOM32, type BoardPin } from './boards/esp32DevkitcWroom32.js';
+import { FIRMWARE_ARTIFACTS, NO_FIRMWARE } from './firmware.js';
 
 export interface TerminalDef {
   /** Language-neutral terminal id, persisted in connections and wire endpoints. */
@@ -59,6 +61,31 @@ export interface ComponentTypeDef {
    */
   momentary?: boolean;
 }
+
+/**
+ * Classic ESP32 DevKitC geometry (Sprint 6). Header J2 runs down the left side and J3 down the
+ * right side, in the board's own pin order, one grid step per header position. Only pins the
+ * runtime supports (R1 capability map: digital I/O and input-only pads) and one GND are
+ * connectable terminals; 3V3, 5V, EN, the other GND pins, the flash pins and the UART0 console
+ * are drawn but not connectable, so no unsupported capability can be wired.
+ */
+export const BOARD_PIN_PITCH = 20;
+export const BOARD_HALF_WIDTH = 60;
+export function boardPinPosition(pin: Pick<BoardPin, 'header' | 'position'>): Point {
+  const x = pin.header === 'J2' ? -(BOARD_HALF_WIDTH + 20) : BOARD_HALF_WIDTH + 20;
+  return { x, y: -200 + BOARD_PIN_PITCH * pin.position };
+}
+/** The terminal id of a connectable board pin, or undefined if it is not connectable. */
+export function boardTerminalId(pin: BoardPin): string | undefined {
+  if (pin.gpio !== null && pin.simulatorSupport !== 'none') return `gpio${pin.gpio}`;
+  if (pin.role === 'ground' && pin.header === 'J3' && pin.position === 1) return 'gnd';
+  return undefined;
+}
+const ESP32_TERMINALS: TerminalDef[] = ESP32_DEVKITC_WROOM32.pins.flatMap((pin) => {
+  const id = boardTerminalId(pin);
+  // Pin names are technical silkscreen tokens (IO32, GND): `pin.<terminal>` in every locale.
+  return id ? [{ id, offset: boardPinPosition(pin), labelKey: `pin.${id}` }] : [];
+});
 
 export const CATALOG: Record<ComponentTypeId, ComponentTypeDef> = {
   'instrument.lab_psu': {
@@ -213,6 +240,31 @@ export const CATALOG: Record<ComponentTypeId, ComponentTypeDef> = {
     ],
     aliases: ['switch', 'toggle', 'spst'],
   },
+  'board.esp32_devkitc_wroom32': {
+    type: 'board.esp32_devkitc_wroom32',
+    typeVersion: 1,
+    refPrefix: 'U',
+    nameKey: 'component.board.esp32_devkitc_wroom32.name',
+    symbol: 'symbol.esp32_devkitc',
+    terminals: ESP32_TERMINALS,
+    params: [
+      {
+        // Content identity (sha256) of a prebuilt, immutable firmware artifact (Sprint 6).
+        // Not live: changing firmware while running is a structural edit (Stop first).
+        kind: 'enum',
+        key: 'firmware',
+        options: [
+          { value: NO_FIRMWARE, labelKey: 'firmware.none' },
+          ...FIRMWARE_ARTIFACTS.map((f) => ({ value: f.sha256, labelKey: f.nameKey })),
+        ],
+        default: NO_FIRMWARE,
+        labelKey: 'param.firmware',
+      },
+    ],
+    // The board GND is the circuit reference the runtime drives its pads against.
+    groundTerminal: 'gnd',
+    aliases: ['esp32', 'devkit', 'mcu', 'wroom'],
+  },
 };
 
 /** Palette order. */
@@ -224,6 +276,7 @@ export const CATALOG_ORDER: readonly ComponentTypeId[] = [
   'component.diode',
   'component.push_button',
   'component.toggle_switch',
+  'board.esp32_devkitc_wroom32',
 ];
 
 export function isComponentType(type: string): type is ComponentTypeId {

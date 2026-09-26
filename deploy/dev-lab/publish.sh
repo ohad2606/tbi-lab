@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Build TBI Lab from an exact git ref in a clean temporary worktree and publish the production
-# build to /srv/tbi-lab/dev-lab/<sha>, then point /srv/tbi-lab/dev-lab/current at it.
+# build to /srv/tbi-lab/dev-lab/<sha>, then point /srv/tbi-lab/dev-lab/current at it. Since
+# Sprint 6 it also publishes the R2 Session Host bundle of the same ref to
+# /srv/tbi-lab/session-host/<sha> (outside the web root: never served) and restarts the host
+# service, which ends any running preview session (sessions are ephemeral by design).
 #
 #   deploy/dev-lab/publish.sh runtime-r2-complete
 #
@@ -15,7 +18,7 @@ work="$(mktemp -d)"
 trap 'git -C "$repo" worktree remove --force "$work/src" >/dev/null 2>&1 || true; rm -rf "$work"' EXIT
 
 git -C "$repo" worktree add --detach "$work/src" "$sha" >/dev/null
-(cd "$work/src" && npm ci --no-audit --no-fund && npm run build)
+(cd "$work/src" && npm ci --no-audit --no-fund && npm run build && npm run host:build)
 
 sudo install -d -m 0755 "$root"
 sudo rm -rf "$root/$sha"
@@ -25,3 +28,16 @@ sudo chmod -R a+rX,go-w "$root/$sha"
 sudo ln -sfn "$root/$sha" "$root/current.tmp"
 sudo mv -T "$root/current.tmp" "$root/current"
 echo "published $sha -> $root/current"
+
+# The Session Host bundle of the same ref (Sprint 6).
+host_root=/srv/tbi-lab/session-host
+if [ -f "$work/src/runtime/host/dist/session-host.mjs" ]; then
+  sudo install -d -m 0755 "$host_root/$sha"
+  sudo install -m 0644 "$work/src/runtime/host/dist/session-host.mjs" "$host_root/$sha/session-host.mjs"
+  sudo ln -sfn "$host_root/$sha" "$host_root/current.tmp"
+  sudo mv -T "$host_root/current.tmp" "$host_root/current"
+  if systemctl list-unit-files tbi-session-host.service >/dev/null 2>&1; then
+    sudo systemctl restart tbi-session-host.service
+  fi
+  echo "published session host $sha -> $host_root/current"
+fi

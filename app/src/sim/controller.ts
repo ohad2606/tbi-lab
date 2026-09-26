@@ -12,6 +12,8 @@
 import { createSnapshot, type ProjectDocument } from '@tbi-lab/domain';
 import type { EngineError, LiveControl, SolveOutcome } from '@tbi-lab/engine';
 import type { FromWorker, ToWorker, WorkerTiming } from './protocol.js';
+import type { McuPlanError } from '../runtime/snapshot.js';
+import type { RuntimeFailCode, RuntimeView } from '../runtime/view.js';
 
 export interface WorkerLike {
   postMessage(message: ToWorker): void;
@@ -22,7 +24,11 @@ export interface WorkerLike {
 
 export type SimFailure =
   | { kind: 'engine'; error: EngineError }
-  | { kind: 'worker'; code: 'worker_crashed' | 'timeout'; detail?: string };
+  | { kind: 'worker'; code: 'worker_crashed' | 'timeout'; detail?: string }
+  /** The project cannot start an ESP32 session as drawn (Sprint 6). */
+  | { kind: 'mcu'; code: McuPlanError['code']; components: string[]; pins?: number[] }
+  /** An ESP32 session could not start, or ended abnormally (Sprint 6). */
+  | { kind: 'runtime'; code: RuntimeFailCode; detail?: string };
 
 export interface RunTimings {
   /** Worker construction to its first message; null when an existing worker was reused. */
@@ -36,9 +42,14 @@ export interface RunTimings {
   totalMs: number;
 }
 
+/**
+ * `runtime` is present only for an ESP32 session (Sprint 6): the ephemeral runtime view. A
+ * local DC simulation never has it. `stopping` exists only for ESP32 sessions: the session is
+ * ending and its resources are being released.
+ */
 export type SimState =
   | { status: 'stopped' }
-  | { status: 'starting' }
+  | { status: 'starting'; runtime?: RuntimeView }
   | {
       status: 'running';
       outcome: SolveOutcome;
@@ -46,8 +57,22 @@ export type SimState =
       solves: number;
       /** Push buttons held right now: transient runtime input, never project data. */
       pressed: string[];
+      runtime?: RuntimeView;
     }
-  | { status: 'failed'; failure: SimFailure };
+  | { status: 'stopping'; runtime?: RuntimeView }
+  | { status: 'failed'; failure: SimFailure; runtime?: RuntimeView };
+
+/** What the application store needs from a simulation host (local Worker or ESP32 session). */
+export interface SimulationHost {
+  readonly state: SimState;
+  readonly active: boolean;
+  subscribe(listener: () => void): () => void;
+  run(doc: ProjectDocument): Promise<void>;
+  control(component: string, control: LiveControl, projectRevision: number): boolean;
+  momentary(component: string, pressed: boolean): boolean;
+  stop(): void;
+  dispose(): void;
+}
 
 export interface ControllerDeps {
   createWorker: () => WorkerLike;
@@ -62,7 +87,7 @@ interface Pending {
   timer: ReturnType<typeof setTimeout>;
 }
 
-export class SimulationController {
+export class SimulationController implements SimulationHost {
   private stateValue: SimState = { status: 'stopped' };
   private listeners = new Set<() => void>();
   private worker: WorkerLike | null = null;
