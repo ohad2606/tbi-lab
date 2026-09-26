@@ -1,0 +1,47 @@
+# TBI Lab private development preview: dev-lab.tbi-tech.net
+#
+#   browser --HTTPS--> Caddy :443 --> oauth2-proxy 127.0.0.1:4180 (Google OIDC, exact-email
+#   allowlist) --> Caddy 127.0.0.1:8080 (static production build, SPA fallback)
+#
+# Caddy is the only public listener (80, 443). Every request, static assets included, passes
+# through oauth2-proxy before any file is served. Port 80 only answers the ACME HTTP-01
+# challenge and redirects to HTTPS (Caddy's automatic HTTPS).
+#
+# Installed as /etc/caddy/Caddyfile. No secrets here.
+
+dev-lab.tbi-tech.net {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:4180
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+		-Server
+	}
+}
+
+# Internal static origin. Bound to loopback only; only oauth2-proxy forwards to it. It must
+# match any Host: oauth2-proxy passes the browser's Host (dev-lab.tbi-tech.net) upstream, and a
+# host-specific site address here would answer every authenticated request with an empty 200.
+# Assets are served as files only (a missing asset is a 404, never index.html); every other
+# path falls back to the single-page app's index.html.
+http://:8080 {
+	bind 127.0.0.1
+
+	root * /srv/tbi-lab/dev-lab/current
+
+	# Hashed build assets can be cached privately; the HTML entry point (and the SPA fallback)
+	# never is, so after sign-out the app cannot load without passing authentication again.
+	@assets path /assets/*
+	handle @assets {
+		header Cache-Control "private, max-age=31536000, immutable"
+		file_server
+	}
+
+	handle {
+		header Cache-Control "no-store"
+		try_files {path} /index.html
+		file_server
+	}
+}
