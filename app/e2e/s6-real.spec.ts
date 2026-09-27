@@ -11,8 +11,9 @@
  */
 import { execFileSync } from 'node:child_process';
 import { expect, test, type Page } from '@playwright/test';
-import { goToProjects, storedProject, waitSaved } from './helpers.js';
+import { buildProgram, goToProjects, storedProject, waitSaved } from './helpers.js';
 
+test.setTimeout(420_000);
 test.skip(!process.env.TBI_S6_REAL, 'heavy: needs the real Session Host + QEMU (TBI_S6_REAL=1)');
 test.describe.configure({ mode: 'serial' });
 
@@ -37,6 +38,9 @@ async function openExample(page: Page, id: string) {
   await page.getByTestId(`open-example-${id}`).click();
   await expect(page.getByTestId('canvas')).toBeVisible();
   await waitSaved(page);
+  // Sprint 7: the example's Arduino code is built by the real build service (a cold build takes
+  // ~30 s on the dev host; later opens find the build by lookup or hit the cache).
+  await buildProgram(page, 240_000);
 }
 
 const status = (page: Page) => page.getByTestId('sim-status');
