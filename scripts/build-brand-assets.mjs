@@ -1,15 +1,16 @@
 /**
  * Build the web brand assets from the PM-provided TBI logo files (not committed; 1.1-1.4 MB
  * each). Run from app/ (so Playwright resolves):  node ../scripts/build-brand-assets.mjs <dir>
- *   <dir>/logo_rounded.png -> src/assets/brand/tbi-mark.png   (circle, transparent outside, 128 px)
- *                          -> public/favicon.png              (64 px)
+ *   <dir>/logo_rounded.png -> src/assets/brand/tbi-mark.png   (circle, transparent outside, 128 px;
+ *                             a profile asset, not used in the product UI)
  *   <dir>/logo_main.png    -> src/assets/brand/tbi-logo.png   (elongated logo: auto-cropped to the
  *                             artwork, its painted navy background turned into real transparency by
  *                             colour-to-alpha against the measured background colour; 300 px tall,
  *                             shown at 150 px on the Projects screen, i.e. 2x for sharp displays)
  *   <dir>/logo_no_bg.png   -> src/assets/brand/tbi-logo-light.png (the same logo for light surfaces:
  *                             no alpha channel, a light checkerboard painted in; cleared by
- *                             colour-to-alpha towards dark; 120 px tall, top bar at 38 px)
+ *                             colour-to-alpha towards dark; 120 px tall, top bar at 38 px,
+ *                             also the favicon)
  * An optional second argument builds only that output path.
  * Chromium's canvas does the resampling (high-quality smoothing, halving steps).
  */
@@ -147,7 +148,6 @@ async function render(file, job) {
 const only = process.argv[3]; // optional: build just this output path
 const outputs = [
   ['logo_rounded.png', { height: 128, circle: true }, 'src/assets/brand/tbi-mark.png'],
-  ['logo_rounded.png', { height: 64, circle: true }, 'public/favicon.png'],
   [
     'logo_main.png',
     { height: 300, autocrop: 24, key: 'measure', floor: 0.03 },

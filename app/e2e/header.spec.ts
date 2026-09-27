@@ -65,6 +65,23 @@ test('the top bar uses the regular TBI logo for light surfaces: no tile, never t
       .evaluateAll((imgs) => imgs.map((i) => (i as HTMLImageElement).src));
     expect(srcs.filter((s) => /tbi-mark/.test(s))).toEqual([]);
   }
+  // Nothing the product renders or declares refers to the round mark, favicon metadata
+  // included: the tab icon is the approved light logo.
+  const icons = await page
+    .locator('link[rel~="icon"], link[rel="apple-touch-icon"], link[rel="manifest"]')
+    .evaluateAll((links) => links.map((l) => (l as HTMLLinkElement).href));
+  expect(icons).toHaveLength(1);
+  expect(icons[0]).toMatch(/tbi-logo-light/);
+  const icon = await page.request.get(icons[0]!);
+  expect(icon.headers()['content-type']).toBe('image/png');
+  const html = await page.evaluate(() => document.documentElement.outerHTML);
+  expect(html).not.toMatch(/tbi-mark|favicon\.png/);
+  const styles = await page.evaluate(() =>
+    [...document.styleSheets]
+      .flatMap((sheet) => [...sheet.cssRules].map((r) => r.cssText))
+      .join('\n'),
+  );
+  expect(styles).not.toMatch(/tbi-mark/);
   // The large Projects hero logo is unchanged.
   await goToProjects(page);
   expect(await page.locator('.brand-hero-logo').getAttribute('src')).toMatch(/tbi-logo-[^l]/);
