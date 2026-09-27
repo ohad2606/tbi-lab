@@ -26,7 +26,14 @@ export type SimFailure =
   | { kind: 'engine'; error: EngineError }
   | { kind: 'worker'; code: 'worker_crashed' | 'timeout'; detail?: string }
   /** The project cannot start an ESP32 session as drawn (Sprint 6). */
-  | { kind: 'mcu'; code: McuPlanError['code']; components: string[]; pins?: number[] }
+  | {
+      kind: 'mcu';
+      code: McuPlanError['code'];
+      components: string[];
+      pins?: number[];
+      /** Unmodelled features a build uses (mcu_unsupported_features). */
+      features?: string[];
+    }
   /** An ESP32 session could not start, or ended abnormally (Sprint 6). */
   | { kind: 'runtime'; code: RuntimeFailCode; detail?: string };
 
@@ -63,11 +70,16 @@ export type SimState =
   | { status: 'failed'; failure: SimFailure; runtime?: RuntimeView };
 
 /** What the application store needs from a simulation host (local Worker or ESP32 session). */
+export interface RunOptions {
+  prebuilt?: { sha256: string; bytes: number; origin: 'build' | 'prebuilt' };
+}
+
 export interface SimulationHost {
   readonly state: SimState;
   readonly active: boolean;
   subscribe(listener: () => void): () => void;
-  run(doc: ProjectDocument): Promise<void>;
+  /** `options.prebuilt`: an Advanced prebuilt image for this Run (ESP32 host only). */
+  run(doc: ProjectDocument, options?: RunOptions): Promise<void>;
   control(component: string, control: LiveControl, projectRevision: number): boolean;
   momentary(component: string, pressed: boolean): boolean;
   stop(): void;

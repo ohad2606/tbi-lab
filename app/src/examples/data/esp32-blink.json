@@ -1,10 +1,10 @@
 {
   "format": "tbi-lab.project",
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "projectId": "prj_exampleesp32blink",
   "createdWith": {
     "app": "0.2.0",
-    "schemaVersion": 2
+    "schemaVersion": 3
   },
   "createdAt": "2026-09-23T00:00:00.000Z",
   "revision": {
@@ -21,7 +21,7 @@
       "type": "board.esp32_devkitc_wroom32",
       "typeVersion": 1,
       "params": {
-        "firmware": "5f177cbe95f490dce1f6efe7dda501e03762d523b79771968f967b297d3a44af"
+        "firmware": "program"
       }
     },
     {
@@ -216,5 +216,13 @@
     "D": 1,
     "W": 4,
     "N": 4
+  },
+  "programs": {
+    "U1": {
+      "language": "arduino-cpp",
+      "profile": "esp32-arduino-3.3.12",
+      "fileName": "sketch.ino",
+      "text": "/*\n * Phase 6 — Arduino compatibility proof for the classic ESP32 runtime.\n *\n * Deliberately minimal: it only has to show that ordinary Arduino-style GPIO firmware\n * executes through the runtime we selected, using the normal Arduino API rather than\n * register pokes. This is not a product feature and there is no Arduino IDE involved.\n *\n * Output pins are toggled in a fixed, recognisable pattern so the host bridge can assert\n * the exact sequence it observes. An input pin is read back and echoed over serial so the\n * host can prove injection reaches Arduino's digitalRead().\n */\n\nconst int OUT_PIN_A = 2;   // bank 0\nconst int OUT_PIN_B = 18;  // bank 0, different register bit\nconst int IN_PIN    = 5;   // bank 0 input\n\nvoid setup() {\n  Serial.begin(115200);\n  pinMode(OUT_PIN_A, OUTPUT);\n  pinMode(OUT_PIN_B, OUTPUT);\n  pinMode(IN_PIN, INPUT);\n\n  digitalWrite(OUT_PIN_A, LOW);\n  digitalWrite(OUT_PIN_B, LOW);\n  Serial.println(\"TBI-ARDUINO-READY\");\n}\n\nvoid loop() {\n  // A recognisable, asymmetric pattern: A and B must not be confusable.\n  digitalWrite(OUT_PIN_A, HIGH);\n  delay(200);\n  digitalWrite(OUT_PIN_B, HIGH);\n  delay(200);\n  digitalWrite(OUT_PIN_A, LOW);\n  delay(200);\n  digitalWrite(OUT_PIN_B, LOW);\n  delay(200);\n\n  Serial.print(\"IN=\");\n  Serial.println(digitalRead(IN_PIN));\n}\n"
+    }
   }
 }

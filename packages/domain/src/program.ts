@@ -12,6 +12,7 @@
  * identities and runtime state are never project data.
  */
 import { canonicalJson } from './canonical.js';
+import type { ProgramSource } from './schema.js';
 import { sha256Utf8 } from './sha256.js';
 
 /** Programming environments. V1 ships only `arduino-cpp`. */
@@ -69,6 +70,22 @@ export function sourceKey(
   };
   return sha256Utf8(canonicalJson(input));
 }
+
+/** The program a newly placed board starts with (a product template, not user content). */
+export function starterProgram(boardType: string): ProgramSource | undefined {
+  const profile = defaultProfileForBoard(boardType);
+  if (!profile) return undefined;
+  return {
+    language: profile.language,
+    profile: profile.id,
+    fileName: profile.fileName,
+    text: STARTER_SOURCE[profile.language],
+  };
+}
+
+const STARTER_SOURCE: Record<ProgramLanguage, string> = {
+  'arduino-cpp': 'void setup() {\n  // runs once\n}\n\nvoid loop() {\n  // runs repeatedly\n}\n',
+};
 
 /** UTF-8 byte length of a string (source limits are in bytes). */
 export function utf8Length(text: string): number {

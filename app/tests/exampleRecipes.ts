@@ -7,6 +7,7 @@
  * `npx vite-node scripts/build-examples.ts`; tests/examples.test.ts checks that the committed
  * JSON still equals these recipes.
  */
+import { readFileSync } from 'node:fs';
 import {
   addComponent,
   addWire,
@@ -15,6 +16,7 @@ import {
   moveSelection,
   rotateComponents,
   setParam,
+  setProgramText,
   type ComponentTypeId,
   type ParamValue,
   type ProjectDocument,
@@ -71,6 +73,11 @@ class Recipe {
   /** Set a language-neutral enum parameter (e.g. the firmware artifact identity). */
   choose(id: string, key: string, value: string) {
     this.doc = this.ok(setParam(this.doc, id, key, value)).doc;
+  }
+  /** The board's program: the Arduino/C++ source of a sketch in runtime/firmware/arduino (S7). */
+  program(id: string, sketch: string) {
+    const url = new URL(`../../runtime/firmware/arduino/${sketch}/${sketch}.ino`, import.meta.url);
+    this.doc = this.ok(setProgramText(this.doc, id, readFileSync(url, 'utf8'))).doc;
   }
   /** Remove parts placed with every new project (an ESP32 example may not need the supply). */
   remove(...ids: string[]) {
@@ -184,14 +191,15 @@ export const RECIPES: Record<string, () => ProjectDocument> = {
     return r.centre(-60);
   },
   /**
-   * Sprint 6. Classic ESP32 running the prebuilt TbiGpioProof firmware: GPIO2 drives a red LED
-   * through 220 Ω (blinking in an 800 ms pattern). The board GND is the circuit reference.
+   * Sprint 6, Arduino source since Sprint 7. Classic ESP32 running the TbiGpioProof sketch
+   * (visible, editable; Build then Run): GPIO2 drives a red LED through 220 Ω (blinking in an
+   * 800 ms pattern). The board GND is the circuit reference.
    */
   'esp32-blink': () => {
     const r = new Recipe('esp32-blink', 'ESP32: blink an LED');
     r.remove('PSU1', 'GND1');
     const U1 = r.place('board.esp32_devkitc_wroom32', 300, 0);
-    r.choose(U1, 'firmware', '5f177cbe95f490dce1f6efe7dda501e03762d523b79771968f967b297d3a44af');
+    r.program(U1, 'TbiGpioProof');
     const R1 = r.place('component.resistor', 480, 100);
     const D1 = r.place('component.led', 600, 100);
     const G2 = r.place('component.ground', 680, 180);
@@ -204,7 +212,8 @@ export const RECIPES: Record<string, () => ProjectDocument> = {
     return r.centre(-240);
   },
   /**
-   * Sprint 6. Classic ESP32 running the prebuilt TbiBanks firmware, which copies GPIO34 to GPIO4.
+   * Sprint 6, Arduino source since Sprint 7. Classic ESP32 running the TbiBanks sketch (visible,
+   * editable; Build then Run), which copies GPIO34 to GPIO4.
    * A toggle switch (persistent) and a push button (transient) in parallel feed 3.3 V through
    * 1 kΩ into the input-only GPIO34, pulled down by 10 kΩ (the pad has no internal pull). GPIO4
    * drives a red LED through 220 Ω: switch closed or button held -> the firmware lights the LED.
@@ -213,7 +222,7 @@ export const RECIPES: Record<string, () => ProjectDocument> = {
     const r = new Recipe('esp32-input-echo', 'ESP32: switch input to LED output');
     r.supply(3.3, 0.05);
     const U1 = r.place('board.esp32_devkitc_wroom32', 300, 0);
-    r.choose(U1, 'firmware', '9ca3a5cea66e46a2b54f14f38e0b065f36bc8cf70398cc88fae421028930a03d');
+    r.program(U1, 'TbiBanks');
     const SW = r.place('component.toggle_switch', 0, -100);
     const PB = r.place('component.push_button', 0, -160);
     const R2 = r.place('component.resistor', 140, -100);

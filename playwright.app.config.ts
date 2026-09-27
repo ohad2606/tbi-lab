@@ -39,7 +39,10 @@ export default defineConfig({
       command:
         'npm run build --workspace @tbi-lab/app && npm run preview --workspace @tbi-lab/app -- --host 127.0.0.1',
       url: 'http://127.0.0.1:4173',
-      env: { TBI_RUNTIME_PROXY: process.env.TBI_RUNTIME_PROXY ?? 'http://127.0.0.1:7499' },
+      env: {
+        TBI_RUNTIME_PROXY: process.env.TBI_RUNTIME_PROXY ?? 'http://127.0.0.1:7499',
+        TBI_BUILD_PROXY: process.env.TBI_BUILD_PROXY ?? 'http://127.0.0.1:7498',
+      },
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,
     },
@@ -49,7 +52,11 @@ export default defineConfig({
       command:
         'npm run build --workspace @tbi-lab/app -- --outDir .tmp/dist-signout && npm run preview --workspace @tbi-lab/app -- --outDir .tmp/dist-signout --host 127.0.0.1 --port 4174 --strictPort',
       url: 'http://127.0.0.1:4174',
-      env: { VITE_SIGN_OUT_URL: '/oauth2/sign_out' },
+      env: {
+        VITE_SIGN_OUT_URL: '/oauth2/sign_out',
+        TBI_RUNTIME_PROXY: process.env.TBI_RUNTIME_PROXY ?? 'http://127.0.0.1:7499',
+        TBI_BUILD_PROXY: process.env.TBI_BUILD_PROXY ?? 'http://127.0.0.1:7498',
+      },
       reuseExistingServer: !process.env.CI,
       timeout: 240_000,
     },

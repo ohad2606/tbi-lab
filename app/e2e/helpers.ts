@@ -194,3 +194,17 @@ export async function reopenFromLibrary(page: Page, projectId?: string): Promise
   await row.getByTestId('open-project').click();
   await expect(page.getByTestId('canvas')).toBeVisible();
 }
+
+/**
+ * Build the open project's program (Sprint 7): Code tab → Build → wait until the build of the
+ * current source is ready → back to the circuit. Runs need a current build (D-S7-4).
+ */
+export async function buildProgram(page: Page, timeout = 60_000): Promise<void> {
+  await page.getByTestId('view-code').click();
+  await page.getByTestId('build-button').click();
+  await expect(page.getByTestId('build-phase')).toHaveAttribute('data-phase', 'current', {
+    timeout,
+  });
+  await page.getByTestId('view-circuit').click();
+  await expect(page.getByTestId('canvas')).toBeVisible();
+}

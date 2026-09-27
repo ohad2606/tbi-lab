@@ -62,6 +62,12 @@ export const FIRMWARE_ARTIFACTS: readonly FirmwareArtifact[] = [
 
 /** The project value meaning "no firmware selected". */
 export const NO_FIRMWARE = 'none';
+/**
+ * The board runs its authored program (schema v3, Sprint 7): the artifact is the current build of
+ * `programs[boardId]`. The pinned artifacts above stay as reference images for examples, tests and
+ * engineering (not the normal firmware choice).
+ */
+export const PROGRAM_FIRMWARE = 'program';
 
 export function firmwareBySha(sha256: string): FirmwareArtifact | undefined {
   return FIRMWARE_ARTIFACTS.find((f) => f.sha256 === sha256);

@@ -2115,3 +2115,308 @@ select {
 :root[dir='rtl'] .mcu-terminal-chevron:not(.open) {
   transform: scaleX(-1);
 }
+
+/* ================================================================ S7: program code view */
+
+/* The centre column: an optional Circuit/Code switch above the canvas or the code view. */
+.workspace-center {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+}
+
+.workspace-center > :only-child,
+.workspace-center > .canvas-slot:first-child {
+  grid-row: 1 / -1;
+}
+
+.canvas-slot {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+}
+
+.canvas-slot[hidden] {
+  display: none;
+}
+
+.view-tabs {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.3rem 0.6rem 0;
+  border-block-end: 1px solid var(--border);
+  background: var(--panel-alt);
+}
+
+.view-tab {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  font: inherit;
+  padding: 0.35rem 0.8rem;
+  border: 1px solid transparent;
+  border-block-end: 0;
+  border-radius: 6px 6px 0 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  margin-block-end: -1px;
+}
+
+.view-tab[aria-selected='true'] {
+  background: var(--panel);
+  border-color: var(--border);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.view-tab-file {
+  font-size: 0.8rem;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.code-view {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--panel);
+}
+
+.code-view > * {
+  flex: none;
+}
+
+/* The editor takes the free height; everything else keeps its own. */
+.code-view > .code-editor {
+  flex: 1 1 auto;
+}
+
+.code-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.9rem;
+  padding: 0.5rem 0.75rem;
+  border-block-end: 1px solid var(--border);
+}
+
+.code-file {
+  font-weight: 600;
+}
+
+.build-phase {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+  cursor: default;
+}
+
+.build-dot {
+  inline-size: 0.55rem;
+  block-size: 0.55rem;
+  border-radius: 50%;
+  background: var(--warning-ink);
+}
+
+.phase-building .build-dot {
+  background: var(--accent);
+}
+
+.phase-current {
+  color: var(--ok);
+  font-weight: 600;
+}
+
+.phase-current .build-dot {
+  background: var(--ok);
+}
+
+.phase-failed {
+  color: var(--danger);
+}
+
+.phase-failed .build-dot {
+  background: var(--danger);
+}
+
+.build-button {
+  font-weight: 600;
+}
+
+.code-toolchain {
+  margin-inline-start: auto;
+}
+
+.code-notes > * {
+  margin: 0;
+  padding: 0.35rem 0.75rem;
+}
+
+.code-notes:empty {
+  display: none;
+}
+
+.build-features {
+  background: var(--warning-bg);
+  color: var(--warning-ink);
+}
+
+.build-features ul {
+  margin: 0.2rem 0 0;
+  padding-inline-start: 1.2rem;
+}
+
+/* The editor: always LTR (code), a line gutter scrolled with the text, no wrapping. */
+.code-editor {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  min-height: 0;
+  font:
+    0.85rem/1.5 ui-monospace,
+    'SFMono-Regular',
+    Menlo,
+    Consolas,
+    'Liberation Mono',
+    monospace;
+  border-block-end: 1px solid var(--border);
+}
+
+.code-gutter {
+  overflow: hidden;
+  padding: 0.5rem 0.4rem 0.5rem 0.6rem;
+  text-align: right;
+  color: #8a94a3;
+  background: var(--panel-alt);
+  border-inline-end: 1px solid var(--border);
+  user-select: none;
+}
+
+.gutter-line {
+  padding-inline: 0.25rem;
+  border-radius: 3px;
+}
+
+.gutter-line.mark-error {
+  background: var(--error-bg);
+  color: var(--danger);
+  font-weight: 700;
+}
+
+.gutter-line.mark-warning {
+  background: var(--warning-bg);
+  color: var(--warning-ink);
+}
+
+.code-text {
+  font: inherit;
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  border: 0;
+  outline: none;
+  resize: none;
+  white-space: pre;
+  overflow: auto;
+  tab-size: 2;
+  color: var(--text);
+  background: var(--canvas-bg);
+  min-height: 0;
+  block-size: 100%;
+}
+
+.code-text:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--focus);
+}
+
+.code-status {
+  display: flex;
+  gap: 1.25rem;
+  padding: 0.25rem 0.75rem;
+}
+
+.build-diagnostics {
+  max-block-size: 11rem;
+  overflow: auto;
+  padding: 0.35rem 0.75rem 0.5rem;
+  border-block-start: 1px solid var(--border);
+}
+
+.build-diagnostics h3 {
+  margin: 0 0 0.3rem;
+  font-size: 0.9rem;
+}
+
+.build-diagnostics ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.2rem;
+}
+
+.diag-jump {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem 0.6rem;
+  inline-size: 100%;
+  text-align: start;
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 0.25rem 0.4rem;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.diag-jump:hover:not(:disabled) {
+  background: var(--accent-soft);
+}
+
+.diag-severity {
+  font-weight: 700;
+}
+
+.diag-error .diag-severity {
+  color: var(--danger);
+}
+
+.diag-warning .diag-severity {
+  color: var(--warning-ink);
+}
+
+.diag-where,
+.diag-message {
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, 'Liberation Mono', monospace;
+}
+
+.build-details {
+  padding: 0.35rem 0.75rem 0.5rem;
+  border-block-start: 1px solid var(--border);
+}
+
+.build-log {
+  max-block-size: 10rem;
+  overflow: auto;
+  margin: 0.3rem 0 0;
+  padding: 0.4rem 0.6rem;
+  background: #0f1720;
+  color: #d7e3ef;
+  font:
+    0.75rem/1.4 ui-monospace,
+    'SFMono-Regular',
+    Menlo,
+    Consolas,
+    'Liberation Mono',
+    monospace;
+  white-space: pre-wrap;
+  text-align: left;
+}
+
+.mcu-advanced {
+  margin-block: 0.5rem;
+}

@@ -8,7 +8,7 @@
 
 import type { ComponentTypeId, ParamValue, Point, UnitId } from './schema.js';
 import { ESP32_DEVKITC_WROOM32, type BoardPin } from './boards/esp32DevkitcWroom32.js';
-import { FIRMWARE_ARTIFACTS, NO_FIRMWARE } from './firmware.js';
+import { FIRMWARE_ARTIFACTS, PROGRAM_FIRMWARE } from './firmware.js';
 
 export interface TerminalDef {
   /** Language-neutral terminal id, persisted in connections and wire endpoints. */
@@ -249,15 +249,16 @@ export const CATALOG: Record<ComponentTypeId, ComponentTypeDef> = {
     terminals: ESP32_TERMINALS,
     params: [
       {
-        // Content identity (sha256) of a prebuilt, immutable firmware artifact (Sprint 6).
-        // Not live: changing firmware while running is a structural edit (Stop first).
+        // What the board runs: its authored program (`program`, Sprint 7: the current build of
+        // `programs[boardId]`), or a pinned reference image by content identity (sha256; examples,
+        // tests and engineering). Not live: changing it while running is structural (Stop first).
         kind: 'enum',
         key: 'firmware',
         options: [
-          { value: NO_FIRMWARE, labelKey: 'firmware.none' },
+          { value: PROGRAM_FIRMWARE, labelKey: 'firmware.program' },
           ...FIRMWARE_ARTIFACTS.map((f) => ({ value: f.sha256, labelKey: f.nameKey })),
         ],
-        default: NO_FIRMWARE,
+        default: PROGRAM_FIRMWARE,
         labelKey: 'param.firmware',
       },
     ],

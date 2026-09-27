@@ -8,6 +8,7 @@ import {
   PACKAGE_FORMAT,
   PACKAGE_MAX_BYTES,
   PACKAGE_VERSION,
+  SCHEMA_VERSION,
   addComponent,
   addWire,
   canonicalJson,
@@ -207,7 +208,9 @@ describe('import validation rejects before anything is written (A7)', () => {
     expect(code('PK\u0003\u0004binary')).toBe('newer_package');
   });
   it('package version: future refused, malformed refused', () => {
-    expect(code(JSON.stringify({ ...good(), formatVersion: 2 }))).toBe('newer_package');
+    expect(code(JSON.stringify({ ...good(), formatVersion: PACKAGE_VERSION + 1 }))).toBe(
+      'newer_package',
+    );
     const r = parsePackage(JSON.stringify({ ...good(), formatVersion: 7 }));
     expect(!r.ok && r.error.version).toBe(7);
     expect(code(JSON.stringify({ ...good(), formatVersion: '1' }))).toBe('bad_package');
@@ -240,9 +243,9 @@ describe('import validation rejects before anything is written (A7)', () => {
   });
   it('a future schema is refused safely, even with a valid hash', () => {
     const p = good();
-    p.project.schemaVersion = 3;
+    p.project.schemaVersion = SCHEMA_VERSION + 1;
     const r = parsePackage(rehash(p));
-    expect(!r.ok && r.error).toEqual({ code: 'newer_schema', version: 3 });
+    expect(!r.ok && r.error).toEqual({ code: 'newer_schema', version: SCHEMA_VERSION + 1 });
   });
   it('an older schema without a migration is refused', () => {
     const p = good();

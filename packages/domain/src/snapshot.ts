@@ -112,12 +112,17 @@ export function liveChanges(
  * - `structural`: anything the snapshot depends on changed (wiring, parts, non-live
  *   parameters such as a resistance). Refused while running.
  *
+ * - `program` (Sprint 7): only a board's program source changed. Allowed while running; the
+ *   running session keeps its immutable firmware and the edit never reaches it (the next Run
+ *   needs a new build).
+ *
  * TRANSIENT runtime interaction (push-button press/release) is not an edit at all: it never
  * produces a new document and never reaches this function.
  */
-export type EditKind = 'layout' | 'live' | 'structural';
+export type EditKind = 'layout' | 'live' | 'program' | 'structural';
 
 export function classifyEdit(before: ProjectDocument, after: ProjectDocument): EditKind {
   if (topologyKey(before) !== topologyKey(after)) return 'structural';
-  return liveChanges(before, after).length ? 'live' : 'layout';
+  if (liveChanges(before, after).length) return 'live';
+  return JSON.stringify(before.programs) !== JSON.stringify(after.programs) ? 'program' : 'layout';
 }

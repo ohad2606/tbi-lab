@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { addComponent, createSnapshot, setParam, validateProject } from '../src/index.js';
+import {
+  SCHEMA_VERSION,
+  addComponent,
+  createSnapshot,
+  setParam,
+  validateProject,
+} from '../src/index.js';
 import { must, newDoc } from './helpers.js';
 
 describe('LED component type (Sprint 3, additive)', () => {
@@ -29,7 +35,7 @@ describe('LED component type (Sprint 3, additive)', () => {
 
   it('Sprint 2 documents stay valid unchanged (the schema change is additive)', () => {
     expect(validateProject(newDoc())).toEqual([]);
-    expect(newDoc().schemaVersion).toBe(2);
+    expect(newDoc().schemaVersion).toBe(SCHEMA_VERSION);
   });
 });
 

@@ -25,6 +25,8 @@ import {
   parsePackage,
   renameProject,
   serializePackage,
+  setProgramText,
+  useBoardProgram,
   stampRevision,
   validateProject,
   type EditResult,
@@ -50,11 +52,19 @@ import {
 import { findExample, type ExampleProbe } from '../examples/catalog.js';
 import type { LiveControl } from '@tbi-lab/engine';
 import type { SimState, SimulationHost } from '../sim/controller.js';
+import type { ProgramBuilds } from '../programs/state.js';
+import { BuildTransportError, type BuildClient } from '../programs/client.js';
 
 interface HistoryEntry {
   before: ProjectDocument;
   after: ProjectDocument;
+  /** Consecutive edits with the same tag (typing in the code editor) form one undo step. */
+  tag?: string;
+  at?: number;
 }
+
+/** Typing pauses longer than this start a new undo step. */
+const COALESCE_MS = 1500;
 
 const HISTORY_LIMIT = 100;
 
@@ -124,6 +134,10 @@ export interface AppDeps {
   autosaveDebounceMs?: number;
   /** Mode A simulation host. Absent in contexts that never simulate (some unit tests). */
   simulation?: SimulationHost;
+  /** Program build state (Sprint 7); absent where no build service is used. */
+  builds?: ProgramBuilds;
+  /** Build service client, for the Advanced prebuilt image upload. */
+  buildClient?: BuildClient;
 }
 
 export class AppStore {
@@ -170,8 +184,82 @@ export class AppStore {
   }
 
   private set(patch: Partial<AppState>): void {
+    const before = this.stateValue.doc?.projectId;
     this.stateValue = { ...this.stateValue, ...patch };
     for (const l of this.listeners) l();
+    const doc = this.stateValue.doc;
+    if (doc && doc.projectId !== before) this.lookupBuilds(doc);
+  }
+
+  /** Program build state, when a build service is configured. */
+  get builds(): ProgramBuilds | null {
+    return this.deps.builds ?? null;
+  }
+
+  /** A project was opened: recover existing builds of its programs (never builds). */
+  private lookupBuilds(doc: ProjectDocument): void {
+    const builds = this.deps.builds;
+    if (!builds) return;
+    for (const [boardId, program] of Object.entries(doc.programs))
+      void builds.lookup(doc.projectId, boardId, program);
+  }
+
+  /**
+   * Replace a board's program source (exact text). A program edit is ordinary project work:
+   * allowed while running (the running session keeps its firmware), autosaved, and one undo
+   * step per burst of typing.
+   */
+  setProgramText(boardId: string, text: string): boolean {
+    const doc = this.stateValue.doc;
+    if (!doc) return false;
+    return this.apply(setProgramText(doc, boardId, text), undefined, {
+      coalesce: `program:${boardId}`,
+    });
+  }
+
+  /** A board on a reference image switches to running its own program (structural). */
+  useBoardProgram(boardId: string): boolean {
+    const doc = this.stateValue.doc;
+    if (!doc) return false;
+    return this.apply(useBoardProgram(doc, boardId));
+  }
+
+  /** Explicit Build of a board's program. Not while an ESP32 session runs (D-S7-9). */
+  async buildProgram(boardId: string): Promise<boolean> {
+    const doc = this.stateValue.doc;
+    const builds = this.deps.builds;
+    const program = doc?.programs[boardId];
+    if (!doc || !builds || !program || this.stateValue.readOnly) return false;
+    if (this.deps.simulation?.active) {
+      this.set({ notice: { key: 'build.blockedRunning' } });
+      return false;
+    }
+    return builds.build(doc.projectId, boardId, program);
+  }
+
+  /**
+   * Advanced: run a prebuilt merged flash image once. The service computes its identity; the
+   * image is not analysed and is never stored in the project.
+   */
+  async runPrebuilt(file: File): Promise<boolean> {
+    const doc = this.stateValue.doc;
+    const client = this.deps.buildClient;
+    if (!doc || !client || !this.deps.simulation) return false;
+    if (this.deps.simulation.active) {
+      this.set({ notice: { key: 'sim.stopToEdit' } });
+      return false;
+    }
+    let artifact;
+    try {
+      artifact = await client.uploadPrebuilt(await file.arrayBuffer());
+    } catch (e) {
+      const code = e instanceof BuildTransportError ? e.code : 'unreachable';
+      this.set({ notice: { key: `mcu.advanced.error.${code}` as MessageKey } });
+      return false;
+    }
+    this.set({ notice: null });
+    void this.deps.simulation.run(doc, { prebuilt: artifact });
+    return true;
   }
 
   /** Load the project list and reopen the last project, as a desktop application would. */
@@ -624,7 +712,11 @@ export class AppStore {
    * Apply the result of a domain edit. A refused edit leaves the document untouched and
    * surfaces its code; an accepted one advances the revision and is autosaved.
    */
-  apply(result: EditResult, selection?: Selection, options: { record?: boolean } = {}): boolean {
+  apply(
+    result: EditResult,
+    selection?: Selection,
+    options: { record?: boolean; coalesce?: string } = {},
+  ): boolean {
     const current = this.stateValue.doc;
     if (this.stateValue.readOnly || !current) return false;
     if (result.ok && this.deps.simulation?.active) {
@@ -650,8 +742,24 @@ export class AppStore {
     }
     this.commit(result.doc, selection);
     if (options.record ?? true) {
-      this.past.push({ before: current, after: this.stateValue.doc! });
-      if (this.past.length > HISTORY_LIMIT) this.past.shift();
+      const last = this.past.at(-1);
+      const now = Date.now();
+      if (
+        options.coalesce &&
+        last?.tag === options.coalesce &&
+        this.future.length === 0 &&
+        now - (last.at ?? 0) < COALESCE_MS
+      ) {
+        last.after = this.stateValue.doc!;
+        last.at = now;
+      } else {
+        this.past.push({
+          before: current,
+          after: this.stateValue.doc!,
+          ...(options.coalesce ? { tag: options.coalesce, at: now } : {}),
+        });
+        if (this.past.length > HISTORY_LIMIT) this.past.shift();
+      }
       this.future = [];
       this.syncHistory();
     }

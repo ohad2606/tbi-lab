@@ -14,12 +14,14 @@
  *     POST /__test/capacity?n=N          event-log capacity for new sessions
  *     POST /__test/pause?ms=N            stop emitting for N ms (events pile up server-side)
  *     GET  /__test/sessions              live/terminal counts
+ *     POST /__test/reset-builds          fresh fake build service (empty store, no records)
  */
 import { randomBytes, createHash, timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { EngineSession, interpretDigitalInput, type DigitalLevel } from '@tbi-lab/engine';
 import { FIRMWARE_ARTIFACTS } from '@tbi-lab/domain';
 import { createHttpServer } from '../../../runtime/host/http.js';
+import { STAND_IN, resetFakeBuildService, startFakeBuildService } from './fake-build-service.js';
 import { EventLog } from '../../../runtime/host/eventLog.js';
 import {
   validateCommand,
@@ -32,8 +34,18 @@ import type { SessionHost } from '../../../runtime/host/host.js';
 
 const PORT = Number(process.env.PORT ?? 7499);
 const STEP_NS = 10_000_000n;
-const GPIO_PROOF = FIRMWARE_ARTIFACTS.find((f) => f.id === 'tbi-gpio-proof')!.sha256;
-const BANKS = FIRMWARE_ARTIFACTS.find((f) => f.id === 'tbi-banks')!.sha256;
+const REF_GPIO_PROOF = FIRMWARE_ARTIFACTS.find((f) => f.id === 'tbi-gpio-proof')!.sha256;
+const REF_BANKS = FIRMWARE_ARTIFACTS.find((f) => f.id === 'tbi-banks')!.sha256;
+/**
+ * Scripted MCU behaviour by artifact identity: the pinned reference images, and (Sprint 7) the
+ * fake build service's stand-in images of the same curated sketches.
+ */
+const SCRIPT: Record<string, 'gpio-proof' | 'banks'> = {
+  [REF_GPIO_PROOF]: 'gpio-proof',
+  [STAND_IN.gpioProof]: 'gpio-proof',
+  [REF_BANKS]: 'banks',
+  [STAND_IN.banks]: 'banks',
+};
 
 let capacity = 4096;
 let failNextCreate: number | null = null;
@@ -65,7 +77,7 @@ class FakeSession {
   constructor(readonly req: CreateSessionRequest) {
     this.accepted = this.applied = req.circuit.projectRevision;
     this.emitState();
-    if (req.artifact.sha256 !== GPIO_PROOF && req.artifact.sha256 !== BANKS) {
+    if (!SCRIPT[req.artifact.sha256]) {
       this.end('failed', 'artifact_unknown');
       return;
     }
@@ -188,7 +200,7 @@ class FakeSession {
   private latest: ReturnType<EngineSession['solve']> | null = null;
   private firmware() {
     const t = Number(this.simNs / 1_000_000n); // ms
-    if (this.req.artifact.sha256 === GPIO_PROOF) {
+    if (SCRIPT[this.req.artifact.sha256] === 'gpio-proof') {
       if (this.step === 0) this.serial += 'TBI-ARDUINO-READY\r\n';
       const phase = t % 800;
       if (phase === 0) this.drive(2, 1);
@@ -332,8 +344,16 @@ const server = createServer((req: IncomingMessage, res: ServerResponse) => {
       return reply({ ok: true });
     case '/__test/sessions':
       return reply(host.health());
+    case '/__test/reset-builds':
+      resetFakeBuildService();
+      return reply({ ok: true });
     default:
       res.writeHead(404).end();
   }
 });
 server.listen(PORT, '127.0.0.1', () => process.stdout.write(`fake session host on ${PORT}\n`));
+// Sprint 7: the fake build service beside it (the preview proxies /build there).
+const BUILD_PORT = Number(process.env.BUILD_PORT ?? 7498);
+void startFakeBuildService(BUILD_PORT).then(() =>
+  process.stdout.write(`fake build service on ${BUILD_PORT}\n`),
+);

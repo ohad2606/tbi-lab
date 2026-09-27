@@ -2,6 +2,9 @@ import { render } from 'preact';
 import { ProjectStore } from './persistence/store.js';
 import { McuSimulation } from './runtime/controller.js';
 import { RuntimeClient } from './runtime/client.js';
+import { resolveFirmware } from './runtime/snapshot.js';
+import { BuildClient } from './programs/client.js';
+import { ProgramBuilds } from './programs/state.js';
 import { SimulationDispatcher } from './sim/dispatch.js';
 import { SimulationController, type WorkerLike } from './sim/controller.js';
 import { AppStore, type Preferences } from './state/app.js';
@@ -41,14 +44,42 @@ async function main() {
   });
   // ESP32 projects run on the R2 Session Host, reached same-origin through the deployment's
   // authenticating proxy (Sprint 6). Ordinary DC projects never use it.
+  // Sprint 7: programs are built by the build service (same origin, same authentication).
+  const buildClient = new BuildClient({ base: import.meta.env.VITE_BUILD_BASE ?? '/build' });
+  let simulation: SimulationDispatcher | null = null;
+  const builds = new ProgramBuilds({
+    client: buildClient,
+    sessionActive: () => simulation?.engine === 'mcu' && simulation.active,
+  });
   const mcu = new McuSimulation({
     client: new RuntimeClient({ base: import.meta.env.VITE_RUNTIME_BASE ?? '/runtime' }),
+    // What the board runs: the CURRENT build of its program (never a stale one), a reference
+    // image, or an Advanced prebuilt image for this Run.
+    resolve: (doc, board, options) => {
+      const program = doc.programs[board.id];
+      return resolveFirmware(doc, board, {
+        build: program ? builds.current(doc.projectId, board.id, program) : null,
+        ...(options.prebuilt ? { prebuilt: options.prebuilt } : {}),
+      });
+    },
+    // Pin the artifact until the Session Host has its private copy (D-S7-8). An evicted build
+    // is forgotten: the program shows "Build required" again; its source is untouched.
+    lease: async (firmware, board) => {
+      const ok = await buildClient.lease(firmware.sha256);
+      if (!ok && firmware.origin === 'program') {
+        const doc = store.state.doc;
+        if (doc) builds.forget(doc.projectId, board.id, firmware.sha256);
+      }
+      return ok;
+    },
   });
-  const simulation = new SimulationDispatcher(local, mcu);
+  simulation = new SimulationDispatcher(local, mcu);
   // A closing page releases its session at once (otherwise the host's lease reclaims it).
   addEventListener('pagehide', () => mcu.dispose());
-  const store = new AppStore({
+  const store: AppStore = new AppStore({
     simulation,
+    builds,
+    buildClient,
     storage,
     prefs,
     languages: navigator.languages,

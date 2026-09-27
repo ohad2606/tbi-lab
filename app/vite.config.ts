@@ -5,12 +5,20 @@ import { defineConfig } from 'vite';
  * authenticating reverse proxy routes it; for local development and tests Vite proxies it to a
  * Session Host on loopback (TBI_RUNTIME_PROXY, default http://127.0.0.1:7400). The event stream
  * is proxied unbuffered.
+ *
+ * `/build` is the build service (Sprint 7), likewise same-origin: TBI_BUILD_PROXY, default
+ * http://127.0.0.1:7420.
  */
 const runtimeProxy = {
   '/runtime': {
     target: process.env.TBI_RUNTIME_PROXY ?? 'http://127.0.0.1:7400',
     changeOrigin: false,
     rewrite: (path: string) => path.replace(/^\/runtime/, ''),
+  },
+  '/build': {
+    target: process.env.TBI_BUILD_PROXY ?? 'http://127.0.0.1:7420',
+    changeOrigin: false,
+    rewrite: (path: string) => path.replace(/^\/build/, ''),
   },
 };
 

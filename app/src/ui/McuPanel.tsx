@@ -9,6 +9,7 @@
  */
 import {
   ESP32_DEVKITC_WROOM32,
+  PROGRAM_FIRMWARE,
   firmwareBySha,
   type BoardPin,
   type ComponentInstance,
@@ -16,7 +17,8 @@ import {
 import { formatQuantity, isolateLtr } from '../i18n/i18n.js';
 import type { MessageKey } from '../i18n/messages.en.js';
 import type { RuntimeView, RuntimeWarning } from '../runtime/view.js';
-import { useAppState, useT } from './context.js';
+import { useRef } from 'preact/hooks';
+import { useAppState, useStore, useT } from './context.js';
 
 function caveatKey(pin: BoardPin): MessageKey | null {
   if (pin.role === 'flash') return 'mcu.caveat.flash';
@@ -30,9 +32,12 @@ function caveatKey(pin: BoardPin): MessageKey | null {
 }
 
 export function McuPanel({ component: c }: { component: ComponentInstance }) {
-  const { sim, locale } = useAppState();
+  const { sim, locale, readOnly } = useAppState();
+  const store = useStore();
   const t = useT();
   const fw = typeof c.params.firmware === 'string' ? firmwareBySha(c.params.firmware) : undefined;
+  const active = sim.status === 'starting' || sim.status === 'running' || sim.status === 'stopping';
+  const prebuiltInput = useRef<HTMLInputElement>(null);
   const runtime: RuntimeView | undefined =
     'runtime' in sim && sim.runtime?.board === c.id ? sim.runtime : undefined;
   const pins =
@@ -42,10 +47,31 @@ export function McuPanel({ component: c }: { component: ComponentInstance }) {
   return (
     <section class="mcu-panel" data-testid="mcu-panel" aria-labelledby="mcu-panel-heading">
       <h3 id="mcu-panel-heading">{t('mcu.heading')}</h3>
-      {fw && (
-        <p class="muted small" data-testid="mcu-firmware-description">
-          {t(fw.descriptionKey as MessageKey)}
+      {/* What the board runs (Sprint 7): its code (the normal workflow), or a reference image. */}
+      {c.params.firmware === PROGRAM_FIRMWARE ? (
+        <p class="small" data-testid="mcu-runs" data-runs="program">
+          {t('mcu.runs.program')}
         </p>
+      ) : (
+        fw && (
+          <div data-testid="mcu-runs" data-runs="reference">
+            <p class="small">{t('mcu.runs.reference', { name: t(fw.nameKey as MessageKey) })}</p>
+            <p class="muted small" data-testid="mcu-firmware-description">
+              {t(fw.descriptionKey as MessageKey)}
+            </p>
+            {!readOnly && (
+              <button
+                type="button"
+                class="button button-small"
+                data-testid="mcu-use-program"
+                disabled={active}
+                onClick={() => store.useBoardProgram(c.id)}
+              >
+                {t('mcu.runs.useProgram')}
+              </button>
+            )}
+          </div>
+        )
       )}
       {!runtime && <p class="muted small">{t('mcu.notRunning')}</p>}
       {runtime?.connection === 'reconnecting' && (
@@ -104,6 +130,36 @@ export function McuPanel({ component: c }: { component: ComponentInstance }) {
         </table>
       )}
       {/* Serial output: the ESP32 terminal under the properties (McuTerminal). */}
+      {store.builds?.available && (
+        <details class="mcu-advanced" data-testid="mcu-advanced">
+          <summary>{t('mcu.advanced.heading')}</summary>
+          <p class="muted small">{t('mcu.advanced.note')}</p>
+          <input
+            ref={prebuiltInput}
+            type="file"
+            class="visually-hidden"
+            tabIndex={-1}
+            accept=".bin,application/octet-stream"
+            aria-label={t('mcu.advanced.runPrebuilt')}
+            data-testid="mcu-prebuilt-file"
+            onChange={(e) => {
+              const el = e.currentTarget;
+              const file = el.files?.[0];
+              el.value = '';
+              if (file) void store.runPrebuilt(file);
+            }}
+          />
+          <button
+            type="button"
+            class="button button-small"
+            data-testid="mcu-run-prebuilt"
+            disabled={active}
+            onClick={() => prebuiltInput.current?.click()}
+          >
+            {t('mcu.advanced.runPrebuilt')}
+          </button>
+        </details>
+      )}
       <details class="mcu-pins" data-testid="mcu-pins">
         <summary>{t('mcu.pins.heading')}</summary>
         <table class="mcu-pin-table">

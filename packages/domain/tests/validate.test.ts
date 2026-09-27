@@ -134,8 +134,8 @@ describe('openDocument and the migration registry', () => {
     expect(r).toEqual({ status: 'ok', doc, migratedFrom: null });
   });
 
-  it('has no migrations yet: v2 is the first production schema', () => {
-    expect(Object.keys(MIGRATIONS)).toEqual([]);
+  it('registers exactly the v2 → v3 migration (Sprint 7: programs)', () => {
+    expect(Object.keys(MIGRATIONS)).toEqual(['2']);
   });
 
   it('refuses to interpret a NEWER schema and reports it for read-only opening', () => {
@@ -156,8 +156,12 @@ describe('openDocument and the migration registry', () => {
         calls.push(1);
         return { ...d, idCounters: target.idCounters };
       },
+      2: (d) => {
+        calls.push(2);
+        return MIGRATIONS[2]!(d);
+      },
     });
-    expect(calls).toEqual([1]);
+    expect(calls).toEqual([1, 2]);
     expect(r).toEqual({ status: 'ok', doc: target, migratedFrom: 1 });
   });
 

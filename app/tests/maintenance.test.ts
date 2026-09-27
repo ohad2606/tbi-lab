@@ -6,6 +6,7 @@
 import { IDBFactory } from 'fake-indexeddb';
 import { describe, expect, it } from 'vitest';
 import {
+  SCHEMA_VERSION,
   addComponent,
   addWire,
   createProject,
@@ -232,7 +233,7 @@ describe('PSU output default', () => {
     const placed = addComponent(app.state.doc!, 'instrument.lab_psu', { x: 200, y: 0 });
     expect(app.apply(placed)).toBe(true);
     expect(psuEnabled(app.state.doc!, 'PSU2')).toBe(true);
-    expect(app.state.doc!.schemaVersion).toBe(2);
+    expect(app.state.doc!.schemaVersion).toBe(SCHEMA_VERSION);
   });
 
   it('the first Run of a brand-new simple circuit sees the supply on', async () => {

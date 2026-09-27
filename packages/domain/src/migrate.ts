@@ -13,7 +13,27 @@ import type { ProjectDocument } from './schema.js';
 export type Migration = (doc: Record<string, unknown>) => Record<string, unknown>;
 
 /** Keyed by the version a migration upgrades FROM. */
-export const MIGRATIONS: Readonly<Record<number, Migration>> = {};
+export const MIGRATIONS: Readonly<Record<number, Migration>> = {
+  /**
+   * v2 → v3 (Sprint 7): projects gain `programs` (authored board programs), empty for every v2
+   * project. A board that ran no firmware (`none`) now runs its program (`program`), which starts
+   * empty; a board on a pinned reference image keeps it. Deterministic, adds no user content.
+   */
+  2: (doc) => {
+    const d = doc as Record<string, unknown> & { components?: unknown };
+    const components = Array.isArray(d.components)
+      ? (d.components as Record<string, unknown>[]).map((c) =>
+          c.type === 'board.esp32_devkitc_wroom32' &&
+          typeof c.params === 'object' &&
+          c.params !== null &&
+          (c.params as Record<string, unknown>).firmware === 'none'
+            ? { ...c, params: { ...(c.params as Record<string, unknown>), firmware: 'program' } }
+            : c,
+        )
+      : d.components;
+    return { ...d, components, programs: {} };
+  },
+};
 
 export type OpenResult =
   | { status: 'ok'; doc: ProjectDocument; migratedFrom: number | null }

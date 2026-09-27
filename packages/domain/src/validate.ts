@@ -10,6 +10,7 @@
 import { CATALOG, isComponentType } from './catalog.js';
 import { GRID, ROTATIONS } from './layout.js';
 import { nodeKey, wireGroups } from './nets.js';
+import { profileById, utf8Length } from './program.js';
 import { DOCUMENT_FORMAT, SCHEMA_VERSION, type ProjectDocument, type WireEnd } from './schema.js';
 
 export type ValidationCode =
@@ -32,7 +33,8 @@ export type ValidationCode =
   | 'netlist_mismatch'
   | 'bad_net_role'
   | 'self_wire'
-  | 'reused_id';
+  | 'reused_id'
+  | 'bad_program';
 
 export interface ValidationIssue {
   code: ValidationCode;
@@ -265,6 +267,38 @@ export function validateProject(input: unknown): ValidationIssue[] {
     }
     if (doc.nets.length !== groupNets.size) {
       add('netlist_mismatch', 'nets', `${doc.nets.length} nets for ${groups.length} groups`);
+    }
+  }
+
+  // Programs (schema v3): keyed by an existing board of the profile's board type; at most one
+  // in V1; the profile's file name; exact text within the profile's size limit.
+  if (!isObj(input.programs)) add('bad_field', 'programs');
+  else {
+    const entries = Object.entries(input.programs);
+    if (entries.length > 1) add('bad_program', 'programs', 'more than one program');
+    for (const [boardId, program] of entries) {
+      const path = `programs.${boardId}`;
+      const board = doc.components.find((c) => c.id === boardId);
+      if (!isObj(program)) {
+        add('bad_program', path);
+        continue;
+      }
+      const profile =
+        typeof program.profile === 'string' ? profileById(program.profile) : undefined;
+      if (!profile) add('bad_program', `${path}.profile`, String(program.profile));
+      else if (!board || board.type !== profile.board) add('bad_program', path, 'no such board');
+      else if (program.language !== profile.language) add('bad_program', `${path}.language`);
+      else if (program.fileName !== profile.fileName) add('bad_program', `${path}.fileName`);
+      else if (
+        typeof program.text !== 'string' ||
+        program.text.includes('\u0000') ||
+        utf8Length(program.text) > profile.maxSourceBytes
+      )
+        add('bad_program', `${path}.text`);
+      const extra = Object.keys(program).filter(
+        (k) => !['language', 'profile', 'fileName', 'text'].includes(k),
+      );
+      if (extra.length) add('bad_program', path, `unknown ${extra.join(',')}`);
     }
   }
 

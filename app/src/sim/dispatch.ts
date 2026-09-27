@@ -12,7 +12,7 @@
 import type { LiveControl } from '@tbi-lab/engine';
 import type { ProjectDocument } from '@tbi-lab/domain';
 import { requiresMcuRuntime } from '../runtime/snapshot.js';
-import type { SimState, SimulationHost } from './controller.js';
+import type { RunOptions, SimState, SimulationHost } from './controller.js';
 
 export class SimulationDispatcher implements SimulationHost {
   private current: SimulationHost;
@@ -48,13 +48,13 @@ export class SimulationDispatcher implements SimulationHost {
     return () => this.listeners.delete(listener);
   }
 
-  async run(doc: ProjectDocument): Promise<void> {
+  async run(doc: ProjectDocument, options?: RunOptions): Promise<void> {
     const next = requiresMcuRuntime(doc) ? this.mcu : this.local;
     if (next !== this.current) {
       this.current.stop();
       this.current = next;
     }
-    await next.run(doc);
+    await next.run(doc, options);
   }
 
   control(component: string, control: LiveControl, projectRevision: number): boolean {

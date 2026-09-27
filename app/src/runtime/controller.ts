@@ -20,14 +20,20 @@
 import { sha256Utf8, type ProjectDocument } from '@tbi-lab/domain';
 import type { LiveControl, SolveOutcome } from '@tbi-lab/engine';
 import type { FailReason, SessionEvent } from '../../../runtime/host/protocol.js';
-import type { SimFailure, SimState, SimulationHost } from '../sim/controller.js';
+import type { RunOptions, SimFailure, SimState, SimulationHost } from '../sim/controller.js';
 import {
   RuntimeTransportError,
   type RuntimeClient,
   type RuntimeSession,
   type StreamStatus,
 } from './client.js';
-import { buildSessionRequest } from './snapshot.js';
+import {
+  buildSessionRequest,
+  resolveFirmware,
+  type McuPlanError,
+  type ResolvedFirmware,
+} from './snapshot.js';
+import type { ComponentInstance } from '@tbi-lab/domain';
 import {
   SERIAL_MAX_CHARS,
   TRACE_CHECKPOINTS_MAX,
@@ -39,6 +45,20 @@ import {
 
 export interface McuDeps {
   client: RuntimeClient;
+  /**
+   * What the board runs (Sprint 7): the current build of its program from the browser's build
+   * state. Without it (tests), only reference images and Advanced prebuilt images resolve.
+   */
+  resolve?: (
+    doc: ProjectDocument,
+    board: ComponentInstance,
+    options: RunOptions,
+  ) => ResolvedFirmware | McuPlanError;
+  /**
+   * Pin the artifact against eviction until the Session Host has copied it (D-S7-8). False when
+   * the artifact no longer exists (evicted): the program needs a new Build.
+   */
+  lease?: (firmware: ResolvedFirmware, board: ComponentInstance) => Promise<boolean>;
   now?: () => number;
   /** After Stop, how long to wait for the orderly end before terminating. */
   stopTimeoutMs?: number;
@@ -112,7 +132,7 @@ export class McuSimulation implements SimulationHost {
       this.set({ ...s, runtime });
   }
 
-  async run(doc: ProjectDocument): Promise<void> {
+  async run(doc: ProjectDocument, options: RunOptions = {}): Promise<void> {
     this.release();
     const runId = ++this.runId;
     this.outcome = null;
@@ -120,24 +140,37 @@ export class McuSimulation implements SimulationHost {
     this.pressed.clear();
     this.stopRequested = false;
     this.startedAt = this.now();
-    const planned = buildSessionRequest(doc);
+    const planned = buildSessionRequest(doc, (board) =>
+      this.deps.resolve
+        ? this.deps.resolve(doc, board, options)
+        : resolveFirmware(doc, board, {
+            build: null,
+            ...(options.prebuilt ? { prebuilt: options.prebuilt } : {}),
+          }),
+    );
     if (!planned.ok) {
       this.view = null;
-      const e = planned.error;
-      this.set({
-        status: 'failed',
-        failure: {
-          kind: 'mcu',
-          code: e.code,
-          components: e.components,
-          ...('pins' in e ? { pins: e.pins } : {}),
-        },
-      });
+      this.failPlan(planned.error);
       return;
     }
     const { plan } = planned;
-    this.view = emptyView(plan.board.id, plan.firmware.id); // serial and GPIO start empty
+    this.view = emptyView(plan.board.id, plan.firmware.sha256); // serial and GPIO start empty
     this.set({ status: 'starting', runtime: { ...this.view } });
+    if (this.deps.lease) {
+      let leased: boolean;
+      try {
+        leased = await this.deps.lease(plan.firmware, plan.board);
+      } catch (e) {
+        if (runId === this.runId) this.fail(transportFailure(e));
+        return;
+      }
+      if (runId !== this.runId) return;
+      if (!leased) {
+        this.view = null;
+        this.failPlan({ code: 'mcu_build_required', components: [plan.board.id] });
+        return;
+      }
+    }
     let session: RuntimeSession;
     try {
       session = await this.deps.client.create(plan.request);
@@ -161,6 +194,19 @@ export class McuSimulation implements SimulationHost {
     } catch (e) {
       if (runId === this.runId && !this.stopRequested) this.failAndRelease(transportFailure(e));
     }
+  }
+
+  private failPlan(e: McuPlanError): void {
+    this.set({
+      status: 'failed',
+      failure: {
+        kind: 'mcu',
+        code: e.code,
+        components: e.components,
+        ...('pins' in e ? { pins: e.pins } : {}),
+        ...('features' in e ? { features: e.features } : {}),
+      },
+    });
   }
 
   /**

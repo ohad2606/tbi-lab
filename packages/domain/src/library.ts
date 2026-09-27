@@ -43,6 +43,7 @@ export function copyAsNewProject(source: ProjectDocument, id: NewIdentity): Proj
     connections: content.connections,
     layout: content.layout,
     idCounters: content.idCounters,
+    programs: content.programs, // authored source travels with the copy, exactly
   };
 }
 

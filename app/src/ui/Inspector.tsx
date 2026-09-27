@@ -143,9 +143,13 @@ function ComponentProperties({
         <dt>{t('inspector.type')}</dt>
         <dd>{catalogText(locale, def.nameKey)}</dd>
       </dl>
-      {def.params.map((p) => (
-        <ParamField key={`${c.id}.${p.key}`} component={c} def={p} readOnly={readOnly} />
-      ))}
+      {/* The board's firmware choice is not a normal-user picker (D-S7-5): the ESP32 panel shows
+          what the board runs; the Advanced prebuilt path is there too. */}
+      {def.params
+        .filter((p) => !(c.type === 'board.esp32_devkitc_wroom32' && p.key === 'firmware'))
+        .map((p) => (
+          <ParamField key={`${c.id}.${p.key}`} component={c} def={p} readOnly={readOnly} />
+        ))}
       {c.type === 'board.esp32_devkitc_wroom32' && <McuPanel component={c} />}
       {c.type === 'component.push_button' && (
         <p class="muted small" data-testid="switch-hint">

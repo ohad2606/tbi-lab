@@ -58,6 +58,7 @@ export function createProject(input: CreateProjectInput): ProjectDocument {
     connections: [],
     layout: { components: {}, wires: [], junctions: [] },
     idCounters: {},
+    programs: {},
   };
   placeInitial(doc, 'instrument.lab_psu', -120, 0);
   placeInitial(doc, 'component.ground', -80, 120);

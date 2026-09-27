@@ -19,6 +19,7 @@ import {
   wireRoute,
 } from './layout.js';
 import { nodeKey, nodeNets, settleNets } from './nets.js';
+import { starterProgram, profileById, utf8Length } from './program.js';
 import { allocateId } from './project.js';
 import {
   cloneDocument,
@@ -42,7 +43,10 @@ export type EditError =
   | 'out_of_range'
   | 'not_on_wire'
   | 'same_endpoint'
-  | 'name_empty';
+  | 'name_empty'
+  | 'no_program'
+  | 'source_too_large'
+  | 'source_invalid';
 
 export type EditResult<T = object> =
   ({ ok: true; doc: ProjectDocument } & T) | { ok: false; error: EditError };
@@ -83,6 +87,10 @@ export function addComponent(
   const r = transact(doc, (d) => {
     id = allocateId(d, def.refPrefix);
     d.components.push({ id, type, typeVersion: def.typeVersion, params: defaultParams(def) });
+    // A programmable board starts with its environment's starter program (Sprint 7). V1 has at
+    // most one program per project (D-S7-1); a second board gets none (it cannot run anyway).
+    const program = starterProgram(type);
+    if (program && Object.keys(d.programs).length === 0) d.programs[id] = program;
     const p = snapPoint(at);
     d.layout.components[id] = { x: p.x, y: p.y, rotation: 0 };
   });
@@ -191,8 +199,48 @@ export function deleteSelection(doc: ProjectDocument, sel: Selection): EditResul
     );
     draft.layout.junctions = draft.layout.junctions.filter((j) => !juncs.has(j.id));
     draft.components = draft.components.filter((c) => !comps.has(c.id));
-    for (const id of comps) delete draft.layout.components[id];
+    for (const id of comps) {
+      delete draft.layout.components[id];
+      delete draft.programs[id]; // a board's program goes with the board
+    }
   });
+}
+
+// ---------------------------------------------------------------------------------------------
+// Programs (Sprint 7)
+
+/**
+ * Make a board run its own program (instead of a reference image), creating the environment's
+ * starter program if it has none. V1 keeps one program per project.
+ */
+export function useBoardProgram(doc: ProjectDocument, boardId: string): EditResult {
+  const board = doc.components.find((c) => c.id === boardId);
+  if (!board) return { ok: false, error: 'unknown_component' };
+  const program = doc.programs[boardId] ?? starterProgram(board.type);
+  if (!program) return { ok: false, error: 'no_program' };
+  if (!doc.programs[boardId] && Object.keys(doc.programs).length > 0)
+    return { ok: false, error: 'no_program' };
+  return transact(doc, (d) => {
+    d.components.find((c) => c.id === boardId)!.params.firmware = 'program';
+    d.programs[boardId] = program;
+  });
+}
+
+/**
+ * Replace a board's program source text exactly (no normalisation of any kind). A program edit
+ * never changes the loaded circuit: it is allowed while a session runs and never reaches it.
+ */
+export function setProgramText(doc: ProjectDocument, boardId: string, text: string): EditResult {
+  const program = doc.programs[boardId];
+  if (!program) return { ok: false, error: 'no_program' };
+  if (text.includes('\u0000')) return { ok: false, error: 'source_invalid' };
+  const profile = profileById(program.profile);
+  if (profile && utf8Length(text) > profile.maxSourceBytes)
+    return { ok: false, error: 'source_too_large' };
+  if (program.text === text) return { ok: true, doc };
+  const draft = cloneDocument(doc);
+  draft.programs[boardId] = { ...program, text };
+  return { ok: true, doc: draft };
 }
 
 // ---------------------------------------------------------------------------------------------

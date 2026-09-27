@@ -281,7 +281,7 @@ test('opening a project saved by a newer version is read-only and never written'
         const req = indexedDB.open('tbi-lab');
         req.onsuccess = () => {
           const tx = req.result.transaction('projects', 'readwrite');
-          tx.objectStore('projects').put({ ...d, schemaVersion: 3, futureField: { x: 1 } });
+          tx.objectStore('projects').put({ ...d, schemaVersion: 4, futureField: { x: 1 } });
           tx.oncomplete = () => (req.result.close(), resolve());
           tx.onerror = () => reject(tx.error);
         };
@@ -297,6 +297,6 @@ test('opening a project saved by a newer version is read-only and never written'
   await page.keyboard.press('Delete');
   await page.waitForTimeout(600);
   const stored = await storedProject(page);
-  expect(stored.schemaVersion).toBe(3);
+  expect(stored.schemaVersion).toBe(4);
   expect(stored.components).toHaveLength(2);
 });

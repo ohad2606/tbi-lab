@@ -205,7 +205,7 @@ test('A4-A6: export -> delete -> import restores the exact project; no runtime s
   const text = await exportCurrent(page);
   const pkg = JSON.parse(text) as ProjectPackage;
   expect(pkg.format).toBe('tbi-lab.package');
-  expect(pkg.formatVersion).toBe(1);
+  expect(pkg.formatVersion).toBe(2);
   expect([pkg.source, pkg.firmware, pkg.toolchain]).toEqual([null, null, null]);
   expect(pkg.project).toEqual(edited);
   expect(pkg.integrity.project).toBe(projectHash(edited));
@@ -237,12 +237,12 @@ test('A7: malformed, damaged, future and oversized files are refused before anyt
   const cases: [string, string][] = [
     ['{ this is not json', 'import.error.not_package'],
     [JSON.stringify({ hello: 'world' }), 'import.error.not_package'],
-    [JSON.stringify({ ...good, formatVersion: 2 }), 'import.error.newer'],
+    [JSON.stringify({ ...good, formatVersion: 3 }), 'import.error.newer'],
     [
       JSON.stringify({ ...good, project: { ...good.project, name: 'Changed' } }),
       'import.error.damaged',
     ],
-    [text.replace('"schemaVersion": 2', '"schemaVersion": 3'), 'import.error.damaged'],
+    [text.replace('"schemaVersion": 3', '"schemaVersion": 4'), 'import.error.damaged'],
   ];
   for (const [body, key] of cases) {
     await importText(page, body);
@@ -257,7 +257,7 @@ test('A7: malformed, damaged, future and oversized files are refused before anyt
     project: ProjectDocument;
     integrity: { project: string };
   };
-  future.project.schemaVersion = 3;
+  future.project.schemaVersion = 4;
   future.integrity.project = projectHash(future.project);
   await importText(page, JSON.stringify(future));
   await expect(page.getByTestId('notice')).toHaveAttribute('data-key', 'import.error.newer');

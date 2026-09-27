@@ -8,7 +8,7 @@ import {
   CATALOG,
   ESP32_DEVKITC_WROOM32,
   FIRMWARE_ARTIFACTS,
-  NO_FIRMWARE,
+  PROGRAM_FIRMWARE,
   addComponent,
   addWire,
   boardTerminalId,
@@ -48,12 +48,18 @@ describe('Classic ESP32 DevKitC catalog item', () => {
     expect(def.kind).toBe('enum');
     expect(def.live).toBeFalsy();
     const values = def.kind === 'enum' ? def.options.map((o) => o.value) : [];
-    expect(values[0]).toBe(NO_FIRMWARE);
+    expect(values[0]).toBe(PROGRAM_FIRMWARE);
     for (const v of values.slice(1)) expect(v).toMatch(/^[0-9a-f]{64}$/);
     let doc = newDoc();
     const r = must(addComponent(doc, BOARD, { x: 300, y: 0 }));
     doc = r.doc;
-    expect(doc.components.find((c) => c.id === r.id)!.params.firmware).toBe(NO_FIRMWARE);
+    expect(doc.components.find((c) => c.id === r.id)!.params.firmware).toBe(PROGRAM_FIRMWARE);
+    // A new board starts with the pinned Arduino/C++ starter program (Sprint 7).
+    expect(doc.programs[r.id]).toMatchObject({
+      language: 'arduino-cpp',
+      profile: 'esp32-arduino-3.3.12',
+      fileName: 'sketch.ino',
+    });
     const next = must(setParam(doc, r.id, 'firmware', FIRMWARE_ARTIFACTS[0]!.sha256)).doc;
     expect(validateProject(next)).toEqual([]);
     expect(classifyEdit(doc, next)).toBe('structural'); // Stop first, like a resistor value

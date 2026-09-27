@@ -8,6 +8,7 @@ import type { EngineError } from '@tbi-lab/engine';
 import { toEngineering } from '@tbi-lab/domain';
 import {
   catalogText,
+  isMessageKey,
   isolateLtr,
   numberFormat,
   translate,
@@ -83,6 +84,7 @@ export function simFailureMessage(
     return t(`sim.error.${failure.code}`, {
       components: list(failure.components),
       pins: list((failure.pins ?? []).map((p) => `GPIO${p}`)),
+      features: (failure.features ?? []).map((f) => featureName(locale, f)).join(', '),
     });
   }
   if (failure.kind === 'runtime') return t(`sim.error.runtime.${failure.code}`);
@@ -139,4 +141,12 @@ export function engineErrorMessage(
     default:
       return t(`sim.error.${error.code}`, { components });
   }
+}
+
+/** Localized name of a firmware feature the simulator does not model (build feature report). */
+export function featureName(locale: LocaleInfo, feature: string): string {
+  if (feature.startsWith('library:'))
+    return translate(locale, 'build.feature.library', { name: isolateLtr(feature.slice(8)) });
+  const key = `build.feature.${feature}`;
+  return isMessageKey(key) ? translate(locale, key) : isolateLtr(feature);
 }

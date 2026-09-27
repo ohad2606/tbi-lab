@@ -1,0 +1,144 @@
+/**
+ * Browser client of the build service (`tbi-lab.build/1`, Sprint 7), reached same-origin under
+ * `/build` behind the preview's authentication. Toolchain-neutral: it sends a profile and files
+ * and receives an immutable artifact identity plus diagnostics. The service never stores the
+ * project; the browser sends only the current source snapshot of one program.
+ *
+ * A build is submitted, then polled (the authenticating proxy cuts long requests, and a cold
+ * compile takes tens of seconds). A cache hit answers at once. `lookup` finds an existing build
+ * of exactly this source without building; `lease` pins an artifact just before a Run.
+ */
+import type {
+  ArtifactInfo,
+  BuildResult,
+  BuildStatus,
+  SourceFile,
+} from '../../../runtime/builder/protocol.js';
+import { BUILD_PROTOCOL } from '../../../runtime/builder/protocol.js';
+
+export type {
+  ArtifactInfo,
+  BuildResult,
+  Diagnostic,
+  FeatureReport,
+} from '../../../runtime/builder/protocol.js';
+
+export type BuildErrorCode =
+  'unreachable' | 'busy' | 'refused' | 'too_large' | 'not_an_image' | 'protocol';
+
+export class BuildTransportError extends Error {
+  constructor(
+    readonly code: BuildErrorCode,
+    readonly status?: number,
+  ) {
+    super(code);
+  }
+}
+
+export interface BuildClientOptions {
+  base?: string;
+  fetch?: typeof fetch;
+  pollMs?: number;
+  /** Give up polling after this long (the service's hard timeout plus queueing headroom). */
+  maxWaitMs?: number;
+}
+
+export class BuildClient {
+  private readonly base: string;
+  private readonly fetchFn: typeof fetch;
+  private readonly pollMs: number;
+  private readonly maxWaitMs: number;
+
+  constructor(opts: BuildClientOptions = {}) {
+    this.base = (opts.base ?? '/build').replace(/\/$/, '');
+    this.fetchFn = opts.fetch ?? ((input, init) => fetch(input, init));
+    this.pollMs = opts.pollMs ?? 500;
+    this.maxWaitMs = opts.maxWaitMs ?? 20 * 60 * 1000;
+  }
+
+  private async request(
+    path: string,
+    init: RequestInit = {},
+  ): Promise<{ status: number; body: unknown }> {
+    let res: Response;
+    try {
+      res = await this.fetchFn(`${this.base}/v1${path}`, { credentials: 'same-origin', ...init });
+    } catch {
+      throw new BuildTransportError('unreachable');
+    }
+    let body: unknown;
+    const type = res.headers.get('content-type') ?? '';
+    if (!/^application\/json\b/.test(type)) {
+      // A login page or proxy error instead of the service: not something to interpret.
+      throw new BuildTransportError(res.status >= 500 ? 'unreachable' : 'protocol', res.status);
+    }
+    try {
+      body = await res.json();
+    } catch {
+      throw new BuildTransportError('protocol', res.status);
+    }
+    return { status: res.status, body };
+  }
+
+  /** Build (or find) the artifact for these files. `onProgress` reports queued/building. */
+  async build(
+    profile: string,
+    files: SourceFile[],
+    onProgress?: (s: BuildStatus['state'], position?: number) => void,
+    signal?: AbortSignal,
+  ): Promise<BuildResult> {
+    const { status, body } = await this.request('/builds', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ protocol: BUILD_PROTOCOL, profile, files }),
+    });
+    if (status === 200) return (body as { build: BuildResult }).build;
+    if (status === 429) throw new BuildTransportError('busy', status);
+    if (status === 413) throw new BuildTransportError('too_large', status);
+    if (status !== 202)
+      throw new BuildTransportError(status >= 500 ? 'unreachable' : 'refused', status);
+    const { buildId, token } = body as { buildId: string; token: string };
+    const started = Date.now();
+    for (;;) {
+      if (signal?.aborted) throw new BuildTransportError('unreachable');
+      await new Promise((r) => setTimeout(r, this.pollMs));
+      const s = await this.request(`/builds/${buildId}`, {
+        headers: { authorization: `Bearer ${token}` },
+      });
+      if (s.status !== 200) throw new BuildTransportError('protocol', s.status);
+      const st = s.body as BuildStatus;
+      if ((st.state === 'succeeded' || st.state === 'failed') && st.result) return st.result;
+      onProgress?.(st.state, st.position);
+      if (Date.now() - started > this.maxWaitMs) throw new BuildTransportError('unreachable');
+    }
+  }
+
+  /** An existing successful build of exactly this source key, or null. Never builds. */
+  async lookup(key: string): Promise<BuildResult | null> {
+    const { status, body } = await this.request(`/lookup?key=${encodeURIComponent(key)}`);
+    if (status === 404) return null;
+    if (status !== 200) throw new BuildTransportError('protocol', status);
+    return (body as { build: BuildResult }).build;
+  }
+
+  /** Pin an artifact against eviction for the next Run. False when it no longer exists. */
+  async lease(sha256: string): Promise<boolean> {
+    const { status } = await this.request(`/artifacts/${sha256}/lease`, { method: 'POST' });
+    if (status === 404) return false;
+    if (status !== 200) throw new BuildTransportError('protocol', status);
+    return true;
+  }
+
+  /** Advanced: upload a prebuilt merged flash image; the service computes its identity. */
+  async uploadPrebuilt(bytes: ArrayBuffer): Promise<ArtifactInfo> {
+    const { status, body } = await this.request('/artifacts', {
+      method: 'POST',
+      headers: { 'content-type': 'application/octet-stream' },
+      body: bytes,
+    });
+    if (status === 413) throw new BuildTransportError('too_large', status);
+    if (status === 422) throw new BuildTransportError('not_an_image', status);
+    if (status !== 200) throw new BuildTransportError('protocol', status);
+    return (body as { artifact: ArtifactInfo }).artifact;
+  }
+}

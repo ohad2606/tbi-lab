@@ -9,7 +9,7 @@
  * stored verbatim and never translated. Runtime/simulation values never appear in this model.
  */
 
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 export const DOCUMENT_FORMAT = 'tbi-lab.project';
 
 /** Canonical SI unit ids. Locale affects only how a value is displayed. */
@@ -149,6 +149,25 @@ export interface ProjectDocument {
    * deleted reference is never reused within the project.
    */
   idCounters: Record<string, number>;
+  /**
+   * Authored programs, keyed by the id of the board component that runs them (schema v3,
+   * Sprint 7). The source text is user-authored and stored exactly; build results, artifact
+   * identities and runtime state are never part of the project. V1: at most one program, for a
+   * Classic ESP32 board, in Arduino/C++.
+   */
+  programs: Record<string, ProgramSource>;
+}
+
+/** One board's program: its programming environment, pinned build profile and source file. */
+export interface ProgramSource {
+  /** Programming environment (V1: `arduino-cpp`). */
+  language: string;
+  /** Build profile id: board + environment + pinned toolchain configuration. */
+  profile: string;
+  /** The profile's source file name (V1: `sketch.ino`). */
+  fileName: string;
+  /** Exact source text. */
+  text: string;
 }
 
 /** Deep copy of JSON data. Project documents are plain JSON by construction. */

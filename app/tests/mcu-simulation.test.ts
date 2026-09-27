@@ -3,13 +3,7 @@
  * fake R2 client (routine CI, no network, no QEMU).
  */
 import { describe, expect, it } from 'vitest';
-import {
-  addComponent,
-  addWire,
-  deleteSelection,
-  setParam,
-  type ProjectDocument,
-} from '@tbi-lab/domain';
+import { addComponent, addWire, deleteSelection, type ProjectDocument } from '@tbi-lab/domain';
 import {
   validateCreate,
   type CreateSessionRequest,
@@ -18,13 +12,36 @@ import {
 import { EXAMPLES } from '../src/examples/catalog.js';
 import { McuSimulation } from '../src/runtime/controller.js';
 import type { RuntimeClient } from '../src/runtime/client.js';
-import { buildSessionRequest, requiresMcuRuntime } from '../src/runtime/snapshot.js';
+import {
+  buildSessionRequest,
+  requiresMcuRuntime,
+  resolveFirmware,
+} from '../src/runtime/snapshot.js';
+import type { BuildResult } from '../src/programs/client.js';
 import { SERIAL_MAX_CHARS, WARNINGS_MAX } from '../src/runtime/view.js';
 import { SimulationDispatcher } from '../src/sim/dispatch.js';
 import type { SimState, SimulationHost } from '../src/sim/controller.js';
 
-const example = (id: string) =>
+/** The example as shipped (Sprint 7: its board runs its Arduino program). */
+const shipped = (id: string) =>
   structuredClone(EXAMPLES.find((e) => e.id === id)!.document) as ProjectDocument;
+/**
+ * The ESP32 examples on their pinned reference images (no build needed): the session lifecycle
+ * tests below are about the runtime, not about building.
+ */
+const REFERENCE: Record<string, string> = {
+  'esp32-blink': '5f177cbe95f490dce1f6efe7dda501e03762d523b79771968f967b297d3a44af',
+  'esp32-input-echo': '9ca3a5cea66e46a2b54f14f38e0b065f36bc8cf70398cc88fae421028930a03d',
+};
+const example = (id: string) => {
+  const doc = shipped(id);
+  const board = doc.components.find((c) => c.type === 'board.esp32_devkitc_wroom32');
+  if (board && REFERENCE[id]) board.params.firmware = REFERENCE[id]!;
+  return doc;
+};
+/** Session request with the board's firmware resolved as the app does (no current build). */
+const plan = (doc: ProjectDocument, build: BuildResult | null = null) =>
+  buildSessionRequest(doc, (b) => resolveFirmware(doc, b, { build }));
 const ok = <T extends { ok: boolean }>(r: T) => {
   if (!r.ok) throw new Error(JSON.stringify(r));
   return r as Extract<T, { ok: true }>;
@@ -128,7 +145,7 @@ describe('project -> R2 session snapshot', () => {
     const doc = example('esp32-input-echo');
     expect(requiresMcuRuntime(doc)).toBe(true);
     expect(requiresMcuRuntime(example('ohms-law'))).toBe(false);
-    const b = buildSessionRequest(deepFreeze(doc));
+    const b = plan(deepFreeze(doc));
     if (!b.ok) throw new Error(b.error.code);
     const req = b.plan.request;
     expect(validateCreate(req)).toMatchObject({ ok: true });
@@ -145,13 +162,14 @@ describe('project -> R2 session snapshot', () => {
   it('refuses what cannot run, explicitly', () => {
     let doc = example('esp32-blink');
     const board = doc.components.find((c) => c.id === 'U1')!;
-    const noFw = ok(setParam(doc, board.id, 'firmware', 'none')).doc;
-    expect(buildSessionRequest(noFw)).toMatchObject({
+    // Its program without a current build: Build required, before any runtime request.
+    expect(plan(shipped('esp32-blink'))).toMatchObject({
       ok: false,
-      error: { code: 'mcu_no_firmware' },
+      error: { code: 'mcu_build_required', components: ['U1'] },
     });
+    void board;
     const two = ok(addComponent(doc, 'board.esp32_devkitc_wroom32', { x: 900, y: 0 })).doc;
-    expect(buildSessionRequest(two)).toMatchObject({ ok: false, error: { code: 'mcu_multiple' } });
+    expect(plan(two)).toMatchObject({ ok: false, error: { code: 'mcu_multiple' } });
     // GND not wired.
     const gndWire = doc.layout.wires.find(
       (w) => w.from.kind === 'terminal' && w.from.component === 'U1' && w.from.terminal === 'gnd',
@@ -159,7 +177,7 @@ describe('project -> R2 session snapshot', () => {
     const noGnd = ok(
       deleteSelection(doc, { components: [], wires: [gndWire.id], junctions: [] }),
     ).doc;
-    expect(buildSessionRequest(noGnd)).toMatchObject({
+    expect(plan(noGnd)).toMatchObject({
       ok: false,
       error: { code: 'mcu_ground_unconnected' },
     });
@@ -171,7 +189,7 @@ describe('project -> R2 session snapshot', () => {
         { kind: 'terminal', component: 'U1', terminal: 'gpio33' },
       ),
     ).doc;
-    expect(buildSessionRequest(doc)).toMatchObject({
+    expect(plan(doc)).toMatchObject({
       ok: false,
       error: { code: 'mcu_pin_without_circuit', pins: [32, 33] },
     });

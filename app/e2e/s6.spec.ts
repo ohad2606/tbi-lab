@@ -7,6 +7,7 @@ import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 import type { ProjectDocument } from '@tbi-lab/domain';
 import {
+  buildProgram,
   createProject,
   exportFromMenu,
   goToProjects,
@@ -16,9 +17,21 @@ import {
   storedProjects,
   terminal,
   waitSaved,
+  wire,
 } from './helpers.js';
 
 const FAKE = 'http://127.0.0.1:7499';
+/** The example sketches' exact source (the examples embed these files). */
+const EXAMPLE_SOURCE: Record<string, string> = {
+  'esp32-blink': readFileSync(
+    new URL('../../runtime/firmware/arduino/TbiGpioProof/TbiGpioProof.ino', import.meta.url),
+    'utf8',
+  ),
+  'esp32-input-echo': readFileSync(
+    new URL('../../runtime/firmware/arduino/TbiBanks/TbiBanks.ino', import.meta.url),
+    'utf8',
+  ),
+};
 const status = (page: Page) => page.getByTestId('sim-status');
 const selectBoard = (page: Page) =>
   page.locator('[data-hit="component"][data-id="U1"] .component-hit').click();
@@ -31,6 +44,8 @@ async function openExample(page: Page, id: string) {
   await page.getByTestId(`open-example-${id}`).click();
   await expect(page.getByTestId('canvas')).toBeVisible();
   await waitSaved(page);
+  // Sprint 7: an ESP32 example runs its Arduino code, which is built first.
+  if (id.startsWith('esp32-')) await buildProgram(page);
 }
 
 /** Count requests to the runtime API made by the page. */
@@ -58,7 +73,7 @@ test.beforeEach(async ({ request }) => {
   await request.post(`${FAKE}/__test/end-all?reason=terminated`);
 });
 
-test('the board: only runtime-supported pins are connectable; Run without firmware explains, offline', async ({
+test('the board: only runtime-supported pins are connectable; Run without a build explains, offline', async ({
   page,
 }) => {
   const calls = runtimeRequests(page);
@@ -77,9 +92,13 @@ test('the board: only runtime-supported pins are connectable; Run without firmwa
   await expect(page.getByTestId('mcu-pin-34')).toHaveAttribute('data-support', 'digital-input');
   await expect(page.getByTestId('mcu-pin-9')).toHaveAttribute('data-support', 'none');
   await expect(page.getByTestId('mcu-pin-2')).toContainText('Strapping');
-  // No firmware: Run explains what to do, and nothing is sent anywhere.
+  await wire(page, ['U1', 'gnd'], ['GND1', 'ref']);
+  // The new board has its starter code but no build: Run explains (Build required), leads to the
+  // code and its Build action, and no runtime request is made.
   await page.getByTestId('sim-run').click();
-  await expect(page.getByTestId('sim-error')).toHaveAttribute('data-code', 'mcu_no_firmware');
+  await expect(page.getByTestId('sim-error')).toHaveAttribute('data-code', 'mcu_build_required');
+  await expect(page.getByTestId('code-view')).toBeVisible();
+  await expect(page.getByTestId('build-button')).toBeFocused();
   expect(calls.count).toBe(0);
 });
 
@@ -153,11 +172,14 @@ test('toggle mirrors browser-first; push button is transient; structural edits w
   await page.keyboard.press('Delete');
   await expect(page.getByTestId('notice')).toHaveAttribute('data-key', 'sim.stopToEdit');
   expect((await storedProject(page)).components.some((c) => c.id === 'R3')).toBe(true);
-  // Firmware is not live: it waits for Stop.
-  await selectBoard(page);
-  await expect(page.getByTestId('param-U1-firmware')).toBeDisabled();
+  // The code stays editable while running, but a new Build waits for Stop (D-S7-9); the running
+  // session keeps its firmware.
+  await page.getByTestId('view-code').click();
+  await expect(page.getByTestId('build-button')).toBeDisabled();
+  await expect(page.getByTestId('build-blocked-note')).toBeVisible();
+  await expect(page.getByTestId('code-text')).toBeEditable();
   await stopAndWait(page);
-  await expect(page.getByTestId('param-U1-firmware')).toBeEnabled();
+  await expect(page.getByTestId('build-button')).toBeEnabled();
 });
 
 test('a dropped event stream reconnects with Last-Event-ID; nothing is missed or repeated', async ({
@@ -249,10 +271,24 @@ test('no runtime state in the project: reload, duplicate and export carry only e
   await stopAndWait(page);
   await waitSaved(page);
   const doc = await storedProject(page);
-  const text = JSON.stringify(doc);
-  for (const word of ['session', 'token', 'serial', 'simNs', 'gpio":', 'TBI-BANKS', 'eventId'])
+  // The authored source is stored exactly (it contains the firmware's own strings); everything
+  // else carries no runtime or build state: no session, serial output, artifact or build.
+  const source = EXAMPLE_SOURCE['esp32-input-echo'];
+  expect(doc.programs.U1!.text).toBe(source);
+  const text = JSON.stringify({ ...doc, programs: {} });
+  for (const word of [
+    'session',
+    'token',
+    'serial',
+    'simNs',
+    'gpio":',
+    'TBI-BANKS',
+    'eventId',
+    'artifact',
+    'build',
+  ])
     expect(text, word).not.toContain(word);
-  expect(doc.components.find((c) => c.id === 'U1')!.params.firmware).toMatch(/^[0-9a-f]{64}$/);
+  expect(doc.components.find((c) => c.id === 'U1')!.params.firmware).toBe('program');
   expect(doc.components.find((c) => c.id === 'SW1')!.params.closed).toBe(true); // persisted edit
   // Reload: the app opens on Projects; the project reopens stopped, unchanged.
   await page.reload();
@@ -262,10 +298,17 @@ test('no runtime state in the project: reload, duplicate and export carry only e
   // Export: the package carries the firmware identity and no runtime state.
   const download = await exportFromMenu(page);
   const pkg = readFileSync((await download.path())!, 'utf8');
-  expect(pkg).toContain(doc.components.find((c) => c.id === 'U1')!.params.firmware as string);
-  for (const word of ['session', 'token', 'TBI-BANKS', 'serial']) expect(pkg).not.toContain(word);
-  const parsed = JSON.parse(pkg) as { project: ProjectDocument; firmware: null };
-  expect(parsed.firmware).toBeNull(); // artifact bytes are never embedded (S6 scope)
+  const parsed = JSON.parse(pkg) as {
+    project: ProjectDocument;
+    firmware: null;
+    formatVersion: number;
+  };
+  expect(parsed.formatVersion).toBe(2);
+  expect(parsed.project.programs.U1!.text).toBe(source); // the source travels exactly
+  const outside = JSON.stringify({ ...parsed, project: { ...parsed.project, programs: {} } });
+  for (const word of ['session', 'token', 'TBI-BANKS', 'serial', 'artifact'])
+    expect(outside).not.toContain(word);
+  expect(parsed.firmware).toBeNull(); // artifacts are never exported (rebuilt from source)
   expect((await storedProjects(page)).length).toBeGreaterThanOrEqual(1);
 });
 
@@ -313,7 +356,11 @@ test('ESP32 terminal: the serial console under the properties, from boot; kept r
   await expect(state).toHaveAttribute('data-state', 'ended');
   await expect(out).toHaveAttribute('data-ended', 'true');
   await expect(out).toContainText('TBI-ARDUINO-READY');
-  expect(JSON.stringify(await storedProjects(page))).not.toContain('TBI-ARDUINO-READY');
+  // Only the authored source mentions it: the terminal output itself is never stored.
+  const storedNow = await storedProjects(page);
+  expect(JSON.stringify(storedNow.map((d) => ({ ...d, programs: {} })))).not.toContain(
+    'TBI-ARDUINO-READY',
+  );
 
   // A new Run is a new session: the terminal starts over.
   await runAndWait(page);

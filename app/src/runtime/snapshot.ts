@@ -13,10 +13,16 @@
  *     circuit reference the runtime drives its pads against (runtime R2 model assumption).
  * Everything else (components, nets, PSU and toggle states) is the project's own snapshot,
  * unchanged, and the same production engine solves it on the server.
+ *
+ * Firmware (Sprint 7) is always an immutable artifact identified by its sha256: the CURRENT build
+ * of the board's program (the normal workflow), a pinned reference image (examples, tests,
+ * engineering), or an Advanced prebuilt image. A program without a current build is refused here,
+ * before any runtime request (D-S7-4); so is a build that uses features the simulator does not
+ * model, explicitly and by name.
  */
 import {
   ESP32_BOARD,
-  NO_FIRMWARE,
+  PROGRAM_FIRMWARE,
   createSnapshot,
   firmwareBySha,
   type ComponentInstance,
@@ -24,17 +30,69 @@ import {
   type ProjectDocument,
 } from '@tbi-lab/domain';
 import { PROTOCOL, type CreateSessionRequest } from '../../../runtime/host/protocol.js';
+import type { ArtifactInfo, BuildResult } from '../programs/client.js';
 
 export type McuPlanError =
   | { code: 'mcu_multiple'; components: string[] }
-  | { code: 'mcu_no_firmware'; components: string[] }
+  | { code: 'mcu_no_program'; components: string[] }
+  | { code: 'mcu_build_required'; components: string[] }
+  | { code: 'mcu_unsupported_features'; components: string[]; features: string[] }
   | { code: 'mcu_unknown_firmware'; components: string[] }
   | { code: 'mcu_ground_unconnected'; components: string[] }
   | { code: 'mcu_pin_without_circuit'; components: string[]; pins: number[] };
 
+/** The immutable image a session runs, and where it came from. */
+export interface ResolvedFirmware {
+  sha256: string;
+  origin: 'program' | 'reference' | 'prebuilt';
+  /** R2 feature declaration (pins with internal pulls / interrupts). */
+  features?: { internalPull: number[]; gpioInterrupt: number[] };
+  /** The curated reference image, when the board uses one. */
+  reference?: FirmwareArtifact;
+}
+
+/**
+ * What the board runs. `build` is the current successful build of the board's program (or null),
+ * `prebuilt` an Advanced image uploaded for this Run.
+ */
+export function resolveFirmware(
+  doc: ProjectDocument,
+  board: ComponentInstance,
+  opts: { build: BuildResult | null; prebuilt?: ArtifactInfo },
+): ResolvedFirmware | McuPlanError {
+  const components = [board.id];
+  if (opts.prebuilt) return { sha256: opts.prebuilt.sha256, origin: 'prebuilt' };
+  const choice = board.params.firmware;
+  if (choice === PROGRAM_FIRMWARE) {
+    if (!doc.programs[board.id]) return { code: 'mcu_no_program', components };
+    const build = opts.build;
+    if (!build?.ok || !build.artifact) return { code: 'mcu_build_required', components };
+    const f = build.features;
+    const features = [
+      ...(f?.internalPull.length ? ['internal_pull'] : []),
+      ...(f?.gpioInterrupt.length ? ['interrupt'] : []),
+      ...(f?.restart ? ['restart'] : []),
+      ...(f?.unsupported ?? []),
+    ];
+    if (features.length) return { code: 'mcu_unsupported_features', components, features };
+    return { sha256: build.artifact.sha256, origin: 'program' };
+  }
+  const reference = typeof choice === 'string' ? firmwareBySha(choice) : undefined;
+  if (!reference) return { code: 'mcu_unknown_firmware', components };
+  return {
+    sha256: reference.sha256,
+    origin: 'reference',
+    reference,
+    features: {
+      internalPull: [...reference.features.internalPull],
+      gpioInterrupt: [...reference.features.gpioInterrupt],
+    },
+  };
+}
+
 export interface McuPlan {
   board: ComponentInstance;
-  firmware: FirmwareArtifact;
+  firmware: ResolvedFirmware;
   request: CreateSessionRequest;
   /** Project revision the session starts from (mirrors must carry later revisions). */
   revision: number;
@@ -48,21 +106,23 @@ export function requiresMcuRuntime(doc: ProjectDocument): boolean {
 const gpioOf = (terminal: string) =>
   /^gpio(\d+)$/.exec(terminal) ? Number(terminal.slice(4)) : null;
 
+/** The one Classic ESP32 board of a project (V1 runs exactly one). */
+export function mcuBoard(doc: ProjectDocument): ComponentInstance | McuPlanError {
+  const boards = doc.components.filter((c) => c.type === ESP32_BOARD);
+  if (boards.length !== 1) return { code: 'mcu_multiple', components: boards.map((b) => b.id) };
+  return boards[0]!;
+}
+
 export function buildSessionRequest(
   doc: ProjectDocument,
+  resolve: (board: ComponentInstance) => ResolvedFirmware | McuPlanError,
 ): { ok: true; plan: McuPlan } | { ok: false; error: McuPlanError } {
-  const boards = doc.components.filter((c) => c.type === ESP32_BOARD);
-  if (boards.length !== 1)
-    return { ok: false, error: { code: 'mcu_multiple', components: boards.map((b) => b.id) } };
-  const board = boards[0]!;
-  const sha = board.params.firmware;
-  if (typeof sha !== 'string' || sha === NO_FIRMWARE)
-    return { ok: false, error: { code: 'mcu_no_firmware', components: [board.id] } };
-  const firmware = firmwareBySha(sha);
-  if (!firmware)
-    return { ok: false, error: { code: 'mcu_unknown_firmware', components: [board.id] } };
+  const found = mcuBoard(doc);
+  if ('code' in found) return { ok: false, error: found };
+  const board = found;
 
   const own = doc.connections.filter((c) => c.component === board.id);
+  // Circuit checks come before the firmware: they are the same whatever the board runs.
   const others = doc.connections.filter((c) => c.component !== board.id);
   const gnd = own.find((c) => c.terminal === 'gnd');
   if (!gnd) return { ok: false, error: { code: 'mcu_ground_unconnected', components: [board.id] } };
@@ -88,6 +148,8 @@ export function buildSessionRequest(
       },
     };
   attachments.sort((a, b) => a.gpio - b.gpio);
+  const firmware = resolve(board);
+  if ('code' in firmware) return { ok: false, error: firmware };
 
   // The execution projection: the board replaced by its ground reference element.
   const groundId = `${board.id}_gnd`;
@@ -109,7 +171,8 @@ export function buildSessionRequest(
     board: 'board.esp32_devkitc_wroom32',
     circuit,
     attachments,
-    ...(firmware.features.internalPull.length || firmware.features.gpioInterrupt.length
+    ...(firmware.features &&
+    (firmware.features.internalPull.length || firmware.features.gpioInterrupt.length)
       ? {
           firmwareFeatures: {
             internalPull: [...firmware.features.internalPull],

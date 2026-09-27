@@ -1,10 +1,16 @@
 /**
- * Portable project package, format version 1 (Sprint 5). Specification: ../PACKAGE.md.
+ * Portable project package (`.tbilab`). Specification: ../PACKAGE.md.
  *
- * A single UTF-8 JSON file (`.tbilab`) that WRAPS the schema v2 project document without
- * changing it. Sections for Arduino source, firmware artifacts and toolchain metadata exist
- * from version 1 on and are `null` for non-MCU projects, so Sprint 6/7 can fill them without
- * redefining the envelope. `formatVersion` is independent of the project `schemaVersion`.
+ * A single UTF-8 JSON file that WRAPS the project document without changing it.
+ *
+ * - Format version 1 (Sprint 5): schema v2 projects.
+ * - Format version 2 (Sprint 7, D-S7-2): schema v3 projects, whose authored board programs
+ *   (`project.programs`) travel inside the project and are covered by `integrity.project`. The
+ *   reserved `source`, `firmware` and `toolchain` sections stay `null`: source is part of the
+ *   project, and build results and artifacts are never exported (they are rebuilt from source).
+ *
+ * The exporter writes version 2; the importer accepts versions 1 and 2 (a v1 project is migrated
+ * to the current schema). `formatVersion` is independent of the project `schemaVersion`.
  *
  * Import is parse-then-validate: nothing here performs I/O, and a package is either accepted
  * whole, as a valid current-schema document, or refused with a structured code. Nothing in a
@@ -18,7 +24,7 @@ import { SCHEMA_VERSION, type ProjectDocument } from './schema.js';
 import type { ValidationIssue } from './validate.js';
 
 export const PACKAGE_FORMAT = 'tbi-lab.package';
-export const PACKAGE_VERSION = 1;
+export const PACKAGE_VERSION = 2;
 export const PACKAGE_EXTENSION = '.tbilab';
 export const PACKAGE_MEDIA_TYPE = 'application/vnd.tbi-lab.package+json';
 /**
@@ -30,13 +36,13 @@ export const PACKAGE_MAX_BYTES = 2 * 1024 * 1024;
 export interface ProjectPackage {
   format: typeof PACKAGE_FORMAT;
   formatVersion: number;
-  /** The exact engineering project document (schema v2). */
+  /** The exact engineering project document (current schema; programs included). */
   project: ProjectDocument;
-  /** Arduino sketch source. Not used before Sprint 7: always null. */
+  /** Reserved; always null (source travels inside `project.programs` from version 2). */
   source: null;
-  /** Firmware artifacts with per-artifact sha256. Not used before Sprint 6: always null. */
+  /** Reserved; always null (artifacts are never exported; they are rebuilt from source). */
   firmware: null;
-  /** Build/toolchain metadata. Not used before Sprint 7: always null. */
+  /** Reserved; always null (the program's build profile pins the toolchain). */
   toolchain: null;
   integrity: {
     algorithm: 'sha256';
@@ -232,6 +238,7 @@ export function unexpectedFields(doc: ProjectDocument): string[] {
       'connections',
       'layout',
       'idCounters',
+      'programs',
     ],
     '',
   );
