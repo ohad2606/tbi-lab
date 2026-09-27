@@ -69,3 +69,27 @@ immutable`. A missing asset is a **404**, never `index.html`, so an outdated ass
     to `index.html`, always with `Cache-Control: no-store`. After sign-out, the app cannot load
     from the browser cache; every page load passes through the gate again.
 - Rollback: `sudo ln -sfn /srv/tbi-lab/dev-lab/<old-sha> /srv/tbi-lab/dev-lab/current`.
+
+## Build service (Sprint 7)
+
+- `tbi-build.service` (one-time setup: `setup-build.sh`) compiles Arduino sketches for the Classic
+  ESP32 with the pinned toolchain. It listens on 127.0.0.1:7420 only; the browser reaches it
+  same-origin at `/build/*` through Caddy's internal origin, i.e. behind the same Google login
+  and allowlist. Unauthenticated `/build/...` redirects to Google like every other path.
+- Isolation (controlled preview, not public multi-tenant hardening, which is Sprint 8):
+  - own system user `tbi-build`; no home directory is visible; the provisioned toolchain and
+    Node are bind-mounted read-only;
+  - no network except loopback (`IPAddressDeny=any`), so neither the service nor a compile can
+    download anything;
+  - it writes only its job directories (`/var/lib/tbi-build/jobs`, one private directory per
+    build, removed afterwards and swept at start) and the shared artifact store;
+  - `MemoryMax=1536M`, `CPUQuota=80%`, `TasksMax=128`; one compile at a time, 3 queued, a 240 s
+    hard timeout, 512 MiB of temporary files per build, 256 KiB of retained compiler output.
+- Artifacts: `/var/lib/tbi-lab/artifacts/<sha256>.bin` (+ `.json` manifests), content-addressed
+  and write-once, 256 MiB LRU (the R1 reference images are never evicted; an artifact leased for
+  a starting session is never evicted). The Session Host reads the same directory
+  (`TBI_ARTIFACTS`) and still re-hashes and privately copies every image before QEMU starts.
+- The toolchain is verified against the pinned file hashes
+  (`runtime/builder/profiles/esp32-arduino-3.3.12.json`) at every start; a mismatch stops the
+  service.
+- `publish.sh` builds and installs the build service bundle of the same ref and restarts it.

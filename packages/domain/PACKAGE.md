@@ -1,8 +1,18 @@
-# TBI Lab portable project package — format version 1
+# TBI Lab portable project package — format version 2
 
 Introduced in Sprint 5 (`src/package.ts`). This is the file a user exports and imports. It
-**wraps** the schema v2 project document and does not change it: `formatVersion` (the package)
-and `schemaVersion` (the project) are versioned independently (roadmap §6.3).
+**wraps** the project document and does not change it: `formatVersion` (the package) and
+`schemaVersion` (the project) are versioned independently (roadmap §6.3).
+
+| Version | Since    | Project inside                                                                                     |
+| ------- | -------- | -------------------------------------------------------------------------------------------------- |
+| 1       | Sprint 5 | schema v2                                                                                          |
+| 2       | Sprint 7 | schema v3: authored board programs (Arduino source) travel inside the project, covered by the hash |
+
+The exporter writes version 2; the importer accepts versions 1 and 2 (D-S7-2). A version 1
+package's schema v2 project is migrated to schema v3 on import (`programs: {}`; a board that ran
+no firmware now runs its program). Build results and firmware artifacts are **never** exported:
+they are rebuilt from the source, so a package stays small and portable.
 
 ## File
 
@@ -24,8 +34,8 @@ refuses a file beginning with `PK\x03\x04` as a newer package version.
 ```json
 {
   "format": "tbi-lab.package",
-  "formatVersion": 1,
-  "project": { "…the exact schema v2 ProjectDocument…": "" },
+  "formatVersion": 2,
+  "project": { "…the exact schema v3 ProjectDocument (with programs)…": "" },
   "source": null,
   "firmware": null,
   "toolchain": null,
@@ -41,11 +51,11 @@ refuses a file beginning with `PK\x03\x04` as a newer package version.
 | Field               | Meaning                                                                                                                                                                                                                       |
 | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `format`            | Always `tbi-lab.package`                                                                                                                                                                                                      |
-| `formatVersion`     | Integer, `1`. A higher value is refused as a newer package; a missing or malformed value is refused                                                                                                                           |
+| `formatVersion`     | Integer, `1` or `2` (writers use `2`). A higher value is refused as a newer package; a missing or malformed value is refused                                                                                                  |
 | `project`           | The engineering project document, exactly as stored locally: components and parameters (including toggle-switch positions), nets and their user names, connections, layout, id counters, name, identity and revision metadata |
-| `source`            | Arduino sketch source (Sprint 7). **Must be `null` in version 1**                                                                                                                                                             |
-| `firmware`          | Firmware artifacts with per-artifact SHA-256 (Sprint 6). **Must be `null` in version 1**                                                                                                                                      |
-| `toolchain`         | Build/toolchain metadata (Sprint 7). **Must be `null` in version 1**                                                                                                                                                          |
+| `source`            | Reserved. **Must be `null`**: from version 2 the source is part of the project (`project.programs`)                                                                                                                           |
+| `firmware`          | Reserved. **Must be `null`**: artifacts are never exported (rebuilt from source)                                                                                                                                              |
+| `toolchain`         | Reserved. **Must be `null`**: each program names its pinned build profile                                                                                                                                                     |
 | `integrity.project` | SHA-256 of the canonical bytes of `project`                                                                                                                                                                                   |
 | `exported`          | Export provenance. It is not engineering state and is never written into the project                                                                                                                                          |
 
@@ -87,7 +97,7 @@ Checks, in order, with the resulting refusal code:
 | 2   | Not a ZIP container                                                                                                               | `newer_package`                       |
 | 3   | Valid JSON, no forbidden keys                                                                                                     | `not_json`                            |
 | 4   | An object with `format: "tbi-lab.package"`                                                                                        | `not_a_package`                       |
-| 5   | Integer `formatVersion` ≥ 1; > 1 is newer                                                                                         | `bad_package` / `newer_package`       |
+| 5   | Integer `formatVersion` ≥ 1; > 2 is newer                                                                                         | `bad_package` / `newer_package`       |
 | 6   | Exactly the envelope fields above                                                                                                 | `bad_package`                         |
 | 7   | `source`, `firmware`, `toolchain` are `null`                                                                                      | `unsupported_content`                 |
 | 8   | `integrity` and `exported` are well-formed                                                                                        | `bad_package`                         |
