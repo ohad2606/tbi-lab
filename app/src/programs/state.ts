@@ -23,8 +23,6 @@ export type BuildPhase =
 
 export interface BuildView {
   phase: BuildPhase;
-  /** Key of the current source. */
-  key: string;
   /** The result for the current source (current or failed). */
   result?: BuildResult;
   /** A result for an earlier version of the source (stale), kept for its diagnostics only. */
@@ -35,16 +33,49 @@ export interface BuildView {
   error?: BuildTransportError['code'];
 }
 
+/**
+ * Identity of a program's input without hashing it: the exact text and its profile/file name.
+ * Matching a build to the current source compares these directly (a native string comparison),
+ * so typing never hashes the whole sketch; the content key is computed only to build or look up.
+ */
+interface Input {
+  profile: string;
+  fileName: string;
+  text: string;
+}
+const same = (a: Input | undefined, b: ProgramSource) =>
+  !!a && a.text === b.text && a.profile === b.profile && a.fileName === b.fileName;
+const inputOf = (p: ProgramSource): Input => ({
+  profile: p.profile,
+  fileName: p.fileName,
+  text: p.text,
+});
+
 interface Entry {
   result?: BuildResult;
-  building?: { key: string; position?: number };
-  error?: { key: string; code: BuildTransportError['code'] };
+  /** The input `result` was built from. */
+  resultInput?: Input;
+  building?: { input: Input; position?: number };
+  error?: { input: Input; code: BuildTransportError['code'] };
 }
 
 const MAX_ENTRIES = 8;
 
-export const programKey = (program: ProgramSource) =>
-  sourceKey(program.profile, [{ name: program.fileName, text: program.text }]);
+/**
+ * The source key of a program. Memoised on the exact inputs: the editor asks for it on every
+ * render, and hashing a large sketch per keystroke is measurable (Sprint 7 measurement).
+ */
+const keyCache = new Map<string, string>();
+export function programKey(program: ProgramSource): string {
+  const id = `${program.profile}\u0000${program.fileName}\u0000${program.text}`;
+  let key = keyCache.get(id);
+  if (key === undefined) {
+    key = sourceKey(program.profile, [{ name: program.fileName, text: program.text }]);
+    keyCache.set(id, key);
+    while (keyCache.size > 8) keyCache.delete(keyCache.keys().next().value!);
+  }
+  return key;
+}
 
 export class ProgramBuilds {
   private readonly entries = new Map<string, Entry>();
@@ -87,21 +118,18 @@ export class ProgramBuilds {
   }
 
   view(projectId: string, boardId: string, program: ProgramSource): BuildView {
-    const key = programKey(program);
     const e = this.entries.get(`${projectId}/${boardId}`) ?? {};
-    if (e.building?.key === key)
+    if (e.building && same(e.building.input, program))
       return {
         phase: 'building',
-        key,
         ...(e.building.position !== undefined ? { position: e.building.position } : {}),
       };
-    if (e.result?.key === key)
-      return { phase: e.result.ok ? 'current' : 'failed', key, result: e.result };
+    if (e.result && same(e.resultInput, program))
+      return { phase: e.result.ok ? 'current' : 'failed', result: e.result };
     return {
       phase: 'required',
-      key,
       ...(e.result ? { previous: e.result } : {}),
-      ...(e.error?.key === key ? { error: e.error.code } : {}),
+      ...(e.error && same(e.error.input, program) ? { error: e.error.code } : {}),
     };
   }
 
@@ -115,10 +143,10 @@ export class ProgramBuilds {
   async build(projectId: string, boardId: string, program: ProgramSource): Promise<boolean> {
     const client = this.deps.client;
     if (!client || this.deps.sessionActive()) return false;
-    const key = programKey(program);
+    const input = inputOf(program);
     const e = this.entry(projectId, boardId);
     if (e.building) return false; // one build per program at a time
-    e.building = { key };
+    e.building = { input };
     delete e.error;
     this.changed();
     try {
@@ -126,20 +154,18 @@ export class ProgramBuilds {
         program.profile,
         [{ name: program.fileName, text: program.text }],
         (state, position) => {
-          if (e.building?.key !== key) return;
+          if (e.building?.input !== input) return;
           e.building = {
-            key,
+            input,
             ...(state === 'queued' && position !== undefined ? { position } : {}),
           };
           this.changed();
         },
       );
       e.result = result;
+      e.resultInput = input;
     } catch (err) {
-      e.error = {
-        key,
-        code: err instanceof BuildTransportError ? err.code : 'unreachable',
-      };
+      e.error = { input, code: err instanceof BuildTransportError ? err.code : 'unreachable' };
     } finally {
       delete e.building;
       this.changed();
@@ -151,13 +177,15 @@ export class ProgramBuilds {
   async lookup(projectId: string, boardId: string, program: ProgramSource): Promise<void> {
     const client = this.deps.client;
     if (!client) return;
-    const key = programKey(program);
     const e = this.entry(projectId, boardId);
-    if (e.result?.key === key || e.building) return;
+    if (same(e.resultInput, program) || e.building) return;
+    const input = inputOf(program);
+    const key = programKey(program);
     try {
       const found = await client.lookup(key);
       if (found && found.key === key && !e.building) {
         e.result = found;
+        e.resultInput = input;
         this.changed();
       }
     } catch {
@@ -173,6 +201,7 @@ export class ProgramBuilds {
     const e = this.entries.get(`${projectId}/${boardId}`);
     if (e?.result?.artifact?.sha256 === sha256) {
       delete e.result;
+      delete e.resultInput;
       this.changed();
     }
   }

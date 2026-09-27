@@ -18,6 +18,8 @@ import type { Diagnostic } from '../programs/client.js';
 import type { MessageKey } from '../i18n/messages.en.js';
 import { isolateLtr } from '../i18n/i18n.js';
 
+const NO_DIAGNOSTICS: Diagnostic[] = [];
+
 /** Subscribe to the program build state (ephemeral, outside the project store). */
 function useBuildView(
   projectId: string,
@@ -80,7 +82,7 @@ export function CodeView({ boardId, focusBuild }: { boardId: string; focusBuild:
   const lines = useMemo(() => program.text.split('\n').length, [program.text]);
   const result = view?.result ?? (view?.phase === 'required' ? view.previous : undefined);
   // Diagnostics are shown for the current source only (a stale build's lines may have moved).
-  const diagnostics = view?.result?.diagnostics ?? [];
+  const diagnostics = view?.result?.diagnostics ?? NO_DIAGNOSTICS;
   const marked = useMemo(() => {
     const m = new Map<number, Diagnostic['severity']>();
     for (const d of diagnostics)
@@ -89,9 +91,26 @@ export function CodeView({ boardId, focusBuild }: { boardId: string; focusBuild:
     return m;
   }, [diagnostics]);
 
+  // Re-rendered only when the number of lines or the diagnostics change, not per keystroke.
+  const gutterLines = useMemo(
+    () =>
+      Array.from({ length: lines }, (_, i) => (
+        <div
+          key={i}
+          class={marked.has(i + 1) ? `gutter-line mark-${marked.get(i + 1)}` : 'gutter-line'}
+        >
+          {i + 1}
+        </div>
+      )),
+    [lines, marked],
+  );
+
+  // Scroll events keep the gutter aligned; re-align only when the gutter itself changes. (Reading
+  // the textarea's scroll position on every render forces a layout of the whole text: measured
+  // as most of the per-keystroke cost of a large sketch.)
   useLayoutEffect(() => {
     if (gutter.current && area.current) gutter.current.scrollTop = area.current.scrollTop;
-  });
+  }, [gutterLines]);
 
   const track = () => {
     const el = area.current;
@@ -202,14 +221,7 @@ export function CodeView({ boardId, focusBuild }: { boardId: string; focusBuild:
       </div>
       <div class="code-editor" dir="ltr">
         <div class="code-gutter" ref={gutter} aria-hidden="true">
-          {Array.from({ length: lines }, (_, i) => (
-            <div
-              key={i}
-              class={marked.has(i + 1) ? `gutter-line mark-${marked.get(i + 1)}` : 'gutter-line'}
-            >
-              {i + 1}
-            </div>
-          ))}
+          {gutterLines}
         </div>
         <textarea
           ref={area}
