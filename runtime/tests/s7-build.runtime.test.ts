@@ -65,15 +65,13 @@ async function build(service: BuildService, text: string): Promise<BuildResult> 
   return service.status(out.buildId, out.token)!.result!;
 }
 
-/** Toolchain processes still alive (arduino-cli, the compiler, esptool). */
+/** Toolchain processes still alive: those whose program (argv[0]) lives in the toolchain. */
 function toolchainProcesses(): string[] {
-  try {
-    return execFileSync('pgrep', ['-a', '-f', `${HOME}/`], { encoding: 'utf8' })
-      .split('\n')
-      .filter(Boolean);
-  } catch {
-    return [];
-  }
+  const out = execFileSync('ps', ['-eo', 'pid=,args='], { encoding: 'utf8' });
+  return out
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => (l.split(/\s+/)[1] ?? '').startsWith(`${HOME}/`));
 }
 
 const evidence: Record<string, unknown> = {};
@@ -136,7 +134,7 @@ describe.skipIf(!RT)('S7 build service with the real pinned toolchain', () => {
     const r = await build(service, sketch('TbiBanks'));
     expect(r).toMatchObject({ ok: false, failure: 'timeout' });
     expect(readdirSync(work)).toEqual([]);
-    await new Promise((resolve) => setTimeout(resolve, 500));
-    expect(toolchainProcesses()).toEqual([]);
+    // The whole process group was killed; give the kernel a moment to reap it.
+    await expect.poll(toolchainProcesses, { timeout: 5_000 }).toEqual([]);
   });
 });
