@@ -285,7 +285,7 @@ test('Hebrew: S6 surfaces are translated; pins, levels and serial stay LTR', asy
   await page.getByTestId('language-select').selectOption('en');
 });
 
-test('ESP32 terminal: the serial console under the canvas, from boot; kept readable after Stop; fresh per Run', async ({
+test('ESP32 terminal: the serial console under the properties, from boot; kept readable after Stop; fresh per Run', async ({
   page,
 }) => {
   // Ordinary DC projects have no terminal.

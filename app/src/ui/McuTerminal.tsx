@@ -1,7 +1,7 @@
 /**
  * ESP32 terminal (Sprint 6): the board's serial console (UART0) as the running session reports
  * it, from the chip's own boot ROM lines to the firmware's prints, with the session state above
- * it. Shown under the canvas for projects with a Classic ESP32 board.
+ * it. Shown in the side column under the properties, for projects with a Classic ESP32 board.
  *
  * Everything here is ephemeral runtime view (bounded to the runtime view's serial window), never
  * project data. After Stop the last session's output stays readable, marked as ended, until the

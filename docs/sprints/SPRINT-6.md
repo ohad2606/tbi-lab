@@ -325,7 +325,7 @@ proxy setting was changed for streaming.
   unchanged.
 - **Start screen:** the app always opens on the Projects screen (it no longer reopens the last
   project on start); a project opens only when the user chooses it.
-- **ESP32 terminal:** for projects with a Classic ESP32 board, a terminal under the canvas shows
+- **ESP32 terminal:** for projects with a Classic ESP32 board, a terminal in the side column under the properties shows
   the board's serial console (UART0) as the session reports it: the chip's boot ROM lines
   (`ets Jul 29 2019 …`, `rst:0x1 (POWERON_RESET)…`) and the firmware's prints, with the session
   state (Not running / Starting session / Booting / Running · simulated time / Stopping /

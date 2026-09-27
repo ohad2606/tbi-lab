@@ -50,26 +50,27 @@ export function Editor() {
           }
         }}
       />
-      <div class="workspace-center">
-        <Canvas
-          placing={placing}
-          onPlacingDone={() => setPlacing(null)}
-          apiRef={canvasApi}
-          probeMode={probeMode}
-          onProbeModeChange={(on) => {
-            setProbeMode(on);
-            if (on) setPlacing(null);
-          }}
+      <Canvas
+        placing={placing}
+        onPlacingDone={() => setPlacing(null)}
+        apiRef={canvasApi}
+        probeMode={probeMode}
+        onProbeModeChange={(on) => {
+          setProbeMode(on);
+          if (on) setPlacing(null);
+        }}
+        probes={live}
+        onProbe={addProbe}
+      />
+      {/* The side column: properties, and under them the ESP32 terminal for ESP32 projects. */}
+      <div class="side-column">
+        <Inspector
           probes={live}
-          onProbe={addProbe}
+          onRemoveProbe={(id) => setProbes(live.filter((p) => p.id !== id))}
+          onClearProbes={() => setProbes([])}
         />
         {doc && requiresMcuRuntime(doc) && <McuTerminal />}
       </div>
-      <Inspector
-        probes={live}
-        onRemoveProbe={(id) => setProbes(live.filter((p) => p.id !== id))}
-        onClearProbes={() => setProbes([])}
-      />
     </main>
   );
 }
