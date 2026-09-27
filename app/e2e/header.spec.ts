@@ -379,3 +379,71 @@ test('menu Export and Import reuse the product flows; Projects navigates home', 
   await goToProjects(page);
   await expect(page.getByTestId('project-list').locator('.project-row')).toHaveCount(2);
 });
+
+test('menu: up to three recent projects, most recent first, never the open one; opens the chosen project safely', async ({
+  page,
+}) => {
+  const long = 'A very long project name that keeps going and going well past the menu width';
+  for (const n of ['Oldest', 'Second', long, 'מחלק מתח', 'Newest']) await createProject(page, n);
+  // Newest is open: the section lists the three most recently changed others, in order.
+  await openAppMenu(page);
+  const recent = page.getByTestId('menu-recent');
+  await expect(recent.getByRole('menuitem')).toHaveText(['מחלק מתח', long, 'Second']);
+  await expect(recent).toContainText('Recent projects');
+  // A long name is cut with an ellipsis; the menu stays compact; full name stays available.
+  const longItem = recent.getByRole('menuitem', { name: `Open ${long}` });
+  await expect(longItem).toHaveAttribute('title', long);
+  expect((await menu(page).boundingBox())!.width).toBeLessThanOrEqual(20 * 15 + 1);
+  expect(await longItem.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
+  await page.keyboard.press('Escape');
+
+  // Start a run in the open project, then switch through the menu with the keyboard.
+  const target = (await storedProjects(page)).find((p) => p.name === 'Second')!;
+  await page.getByTestId('sim-run').click();
+  await expect(page.getByTestId('sim-status')).toHaveAttribute('data-status', /running|failed/);
+  await menuButton(page).focus();
+  await page.keyboard.press('Enter');
+  const item = page.getByTestId(`menu-recent-${target.projectId}`);
+  while (!(await item.evaluate((el) => el === document.activeElement)))
+    await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('Enter');
+  await expect(menu(page)).toHaveCount(0);
+  await expect(page.getByTestId('project-name')).toHaveValue('Second');
+  // The run did not carry over; nothing was copied or changed.
+  await expect(page.getByTestId('sim-status')).toHaveAttribute('data-status', 'stopped');
+  const all = await storedProjects(page);
+  expect(all).toHaveLength(5);
+  expect(all.find((p) => p.projectId === target.projectId)).toEqual(target);
+  expect(JSON.stringify(all)).not.toMatch(/"(sessionId|token|runtime|serial)"/);
+
+  // Hebrew: translated label (the Projects screen's term), user names exact, open one excluded.
+  await page.getByTestId('language-select').selectOption('he');
+  await openAppMenu(page);
+  await expect(recent).toContainText('פרויקטים אחרונים');
+  await expect(recent.getByRole('menuitem')).toHaveText(['Newest', 'מחלק מתח', long]);
+  // Mouse selection closes the menu too.
+  await recent.getByRole('menuitem', { name: /Newest/ }).click();
+  await expect(menu(page)).toHaveCount(0);
+  await expect(page.getByTestId('project-name')).toHaveValue('Newest');
+  await page.getByTestId('language-select').selectOption('en');
+});
+
+test('one light header surface on Projects and in the editor, distinct from white', async ({
+  page,
+}) => {
+  const surface = () =>
+    page.locator('header.topbar').evaluate((h) => getComputedStyle(h).backgroundColor);
+  await page.goto('/');
+  await expect(page.getByTestId('example-list')).toBeVisible();
+  const projects = await surface();
+  await page.getByTestId('open-example-led-current').click();
+  await expect(page.getByTestId('canvas')).toBeVisible();
+  const editor = await surface();
+  expect(editor).toBe(projects);
+  expect(projects).toBe('rgb(221, 228, 238)');
+  // The large dark hero is not affected.
+  await goToProjects(page);
+  expect(
+    await page.locator('.brand-hero').evaluate((h) => getComputedStyle(h).backgroundColor),
+  ).toBe('rgb(10, 26, 51)');
+});

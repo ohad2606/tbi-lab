@@ -79,6 +79,9 @@ export function AppMenu({ chooseImport }: { chooseImport: () => void }) {
     action();
   };
   const doc = state.doc;
+  // The library's own order (most recently changed first), without the open project. Opening
+  // one uses the Projects screen's path: simulation stopped, pending save flushed, then load.
+  const recent = state.projects.filter((p) => p.projectId !== doc?.projectId).slice(0, 3);
 
   return (
     <div class="app-menu" onKeyDown={(e) => open && onMenuKey(e)}>
@@ -136,7 +139,7 @@ export function AppMenu({ chooseImport }: { chooseImport: () => void }) {
           >
             {t('menu.newProject')}
           </button>
-          <div role="separator" class="app-menu-separator" />
+
           <button
             type="button"
             role="menuitem"
@@ -146,6 +149,33 @@ export function AppMenu({ chooseImport }: { chooseImport: () => void }) {
           >
             {t('library.import.button')}
           </button>
+          {recent.length > 0 && (
+            <>
+              <div role="separator" class="app-menu-separator" />
+              <div role="group" aria-labelledby="app-menu-recent-label" data-testid="menu-recent">
+                <div id="app-menu-recent-label" class="app-menu-label" role="presentation">
+                  {t('home.recent.heading')}
+                </div>
+                {recent.map((p) => (
+                  <button
+                    key={p.projectId}
+                    type="button"
+                    role="menuitem"
+                    tabIndex={-1}
+                    class="app-menu-recent"
+                    dir="auto"
+                    data-testid={`menu-recent-${p.projectId}`}
+                    title={p.name}
+                    aria-label={t('library.open', { name: p.name })}
+                    onClick={run(() => void store.openProject(p.projectId))}
+                  >
+                    {p.name}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+          {doc && !state.readOnly && <div role="separator" class="app-menu-separator" />}
           {doc && !state.readOnly && (
             <button
               type="button"

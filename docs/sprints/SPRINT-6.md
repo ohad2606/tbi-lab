@@ -314,10 +314,15 @@ proxy setting was changed for streaming.
   tab stop, `role="status"`, a reserved width so it never moves the header. The project-name
   field keeps the existing rename path; its text aligns left in English and right in Hebrew.
 - **Menu:** Projects, New project… (the Projects screen's own create form, focused), Import
-  project…, Export project, and Sign out when configured. It is a single list: keyboard
+  project…, Recent projects (up to three, most recently changed first, never the open one;
+  opened through the Projects screen's own open path), Export project, and Sign out when
+  configured. It is a single list: keyboard
   operable (arrows, Home/End), Escape returns focus to the button, a click outside or Tab
   closes it, it closes after every action, opens from the button's leading edge, and stays
   inside the viewport. Import and export reuse the existing flows.
+- **Header surface:** one light cool blue-grey (`--header-bg`) on Projects and the editor, so
+  the transparent logo stays legible; the brand divider is kept; the dark Projects hero is
+  unchanged.
 - Nothing in the project schema, simulation, R2 client, Session Host or persistence changed.
 
 ## 15. Tests and evidence

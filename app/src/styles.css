@@ -15,6 +15,9 @@
   --bg: #f2f4f8;
   --panel: #ffffff;
   --panel-alt: #f6f8fb;
+  /* Application header surface: a cool blue-grey between --bg and --border, light but distinct
+     from white so the transparent logo's pale strokes stay legible (S6). */
+  --header-bg: #dde4ee;
   --border: #cdd4de;
   --text: #14181f;
   --muted: #4b5563;
@@ -1418,7 +1421,7 @@ select {
   background:
     linear-gradient(90deg, var(--brand-blue), var(--brand-green), var(--brand-orange)) bottom / 100%
       3px no-repeat,
-    var(--panel);
+    var(--header-bg);
   padding-block-end: calc(0.5rem + 3px);
 }
 
@@ -1939,4 +1942,36 @@ select {
 
 .topbar-home .spacer + .topbar-group {
   border-inline-start: 0;
+}
+
+/* Menu: recent projects (at most three, most recently changed first, never the open one).
+   The list fits its items up to 20rem; a longer name is cut with an ellipsis (full name in
+   its title and accessible name). */
+.app-menu-list {
+  grid-template-columns: minmax(0, 1fr);
+  inline-size: max-content;
+  max-inline-size: min(20rem, calc(100vw - 2rem));
+}
+
+.app-menu-label {
+  padding: 0.35rem 0.7rem 0.15rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.app-menu-list .app-menu-recent {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-inline-size: 100%;
+}
+
+/* A recent item takes its name's own direction (dir="auto"), so a long name is cut at its end,
+   never its beginning; it still aligns with the menu's reading edge. */
+:root[dir='ltr'] .app-menu-list .app-menu-recent {
+  text-align: left;
+}
+
+:root[dir='rtl'] .app-menu-list .app-menu-recent {
+  text-align: right;
 }
