@@ -7,7 +7,10 @@
  *                             artwork, its painted navy background turned into real transparency by
  *                             colour-to-alpha against the measured background colour; 300 px tall,
  *                             shown at 150 px on the Projects screen, i.e. 2x for sharp displays)
- * logo_no_bg.png is NOT used: it has no alpha channel and a checkerboard painted into its pixels.
+ *   <dir>/logo_no_bg.png   -> src/assets/brand/tbi-logo-light.png (the same logo for light surfaces:
+ *                             no alpha channel, a light checkerboard painted in; cleared by
+ *                             colour-to-alpha towards dark; 120 px tall, top bar at 38 px)
+ * An optional second argument builds only that output path.
  * Chromium's canvas does the resampling (high-quality smoothing, halving steps).
  */
 import { writeFileSync, readFileSync } from 'node:fs';
@@ -108,10 +111,17 @@ async function render(file, job) {
           let a = 0;
           for (let c = 0; c < 3; c++) {
             const v = d[i + c];
-            // The artwork is light-on-dark: only brightness above the background is artwork.
+            // Light-on-dark artwork: only brightness above the background is artwork.
             // (Darker-than-background grain would otherwise become opaque dark speckles, since
-            // a near-zero channel turns a 2-level dip into a large ratio.)
-            const ac = v > B[c] ? (v - B[c]) / (255 - B[c]) : 0;
+            // a near-zero channel turns a 2-level dip into a large ratio.) Dark-on-light artwork
+            // (job.light): only darkness below the background is artwork, towards black.
+            const ac = job.light
+              ? v < B[c]
+                ? (B[c] - v) / B[c]
+                : 0
+              : v > B[c]
+                ? (v - B[c]) / (255 - B[c])
+                : 0;
             if (ac > a) a = ac;
           }
           if (a <= job.floor) {
@@ -134,6 +144,7 @@ async function render(file, job) {
   return Buffer.from(url.split(',')[1], 'base64');
 }
 
+const only = process.argv[3]; // optional: build just this output path
 const outputs = [
   ['logo_rounded.png', { height: 128, circle: true }, 'src/assets/brand/tbi-mark.png'],
   ['logo_rounded.png', { height: 64, circle: true }, 'public/favicon.png'],
@@ -142,8 +153,15 @@ const outputs = [
     { height: 300, autocrop: 24, key: 'measure', floor: 0.03 },
     'src/assets/brand/tbi-logo.png',
   ],
+  // The same regular logo for light surfaces (the top bar): the PM's light-background version,
+  // whose painted checkerboard (~248/252 grey) is cleared by the floor.
+  [
+    'logo_no_bg.png',
+    { height: 120, autocrop: 12, key: 'measure', floor: 0.06, light: true },
+    'src/assets/brand/tbi-logo-light.png',
+  ],
 ];
-for (const [file, job, out] of outputs) {
+for (const [file, job, out] of outputs.filter(([, , o]) => !only || o === only)) {
   const png = await render(file, job);
   writeFileSync(out, png);
   const sha = createHash('sha256')

@@ -298,20 +298,26 @@ proxy setting was changed for streaming.
 
 ## 14a. Pre-soak UI polish (PM review of the deployed preview)
 
-- **Brand:** the top bar shows the regular TBI logo (`tbi-logo.png`, the Projects-hero asset,
-  on its navy brand colour, 34 px tall, aspect kept) and the "TBI Lab" wordmark. The round
-  profile mark (`tbi-mark.png`) is no longer used in the product UI; it stays in the repository
-  as a brand asset, and the browser-tab favicon is unchanged.
+- **Brand:** the top bar shows the regular TBI logo in its light-surface version
+  (`tbi-logo-light.png`, from the PM's `logo_no_bg.png` via `scripts/build-brand-assets.mjs`,
+  38 px tall, aspect kept, no tile) and the "TBI Lab" wordmark. The round profile mark is not
+  used in the product UI (favicon only). The large Projects-hero logo is unchanged.
 - **Projects screen:** a wider shell (up to 112rem) with three separate areas: New project
   (with Import), Recent projects, and Examples. On wide desktops create/recent share the start
   column and examples take the wider end column (cards auto-fill, 3–4 per row); below 1180 px
   one column in the same order. The screen's header keeps only brand, language and Sign out.
-- **Editor header:** brand and project name | save state, Undo, Redo, the one Run/Stop control
-  | language and a menu (≡). The menu holds Projects, New project… (the Projects screen's own
-  create form, focused), Import project…, Export project, and Sign out when configured. It is
-  a single list: keyboard operable (arrows, Home/End), Escape returns focus to the button, a
-  click outside or Tab closes it, it closes after every action, aligns to the button's inline
-  end in LTR and RTL, and stays inside the viewport. Import and export reuse the existing flows.
+- **Editor header (single row):** menu (≡) | labelled, visibly editable project-name field |
+  save state, Undo, Redo, the one Run/Stop control and its status | language and the logo.
+  The edges are exact: English has the menu at the far left and the logo at the far right;
+  Hebrew the reverse (the leading/trailing edges of each direction). The status is plain text
+  ("Status: Running" / "מצב: רץ") with a small dot: no border, background, hover, pointer or
+  tab stop, `role="status"`, a reserved width so it never moves the header. The project-name
+  field keeps the existing rename path; its text aligns left in English and right in Hebrew.
+- **Menu:** Projects, New project… (the Projects screen's own create form, focused), Import
+  project…, Export project, and Sign out when configured. It is a single list: keyboard
+  operable (arrows, Home/End), Escape returns focus to the button, a click outside or Tab
+  closes it, it closes after every action, opens from the button's leading edge, and stays
+  inside the viewport. Import and export reuse the existing flows.
 - Nothing in the project schema, simulation, R2 client, Session Host or persistence changed.
 
 ## 15. Tests and evidence

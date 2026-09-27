@@ -13,7 +13,7 @@ export function AppMenu({ chooseImport }: { chooseImport: () => void }) {
   const store = useStore();
   const t = useT();
   const [open, setOpen] = useState(false);
-  const [place, setPlace] = useState<{ top: number; end: number } | null>(null);
+  const [place, setPlace] = useState<{ top: number; start: number } | null>(null);
   const button = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
 
@@ -25,14 +25,14 @@ export function AppMenu({ chooseImport }: { chooseImport: () => void }) {
   const items = () => [...(menu.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [])];
 
   // The top bar clips its overflow, so the list is fixed to the viewport under the button,
-  // aligned to the button's inline end (right in LTR, left in RTL).
+  // aligned to the button's inline start (the header's leading edge: left in LTR, right in RTL).
   useLayoutEffect(() => {
     if (!open || !button.current) return;
     const r = button.current.getBoundingClientRect();
     const rtl = getComputedStyle(button.current).direction === 'rtl';
     setPlace({
       top: r.bottom + 4,
-      end: rtl ? r.left : document.documentElement.clientWidth - r.right,
+      start: rtl ? document.documentElement.clientWidth - r.right : r.left,
     });
   }, [open, state.locale]);
 
@@ -114,7 +114,7 @@ export function AppMenu({ chooseImport }: { chooseImport: () => void }) {
           data-testid="app-menu"
           style={
             place
-              ? { top: `${place.top}px`, insetInlineEnd: `${place.end}px` }
+              ? { top: `${place.top}px`, insetInlineStart: `${place.start}px` }
               : { visibility: 'hidden' }
           }
         >

@@ -83,10 +83,11 @@ export const en = {
   'sim.run': 'Run',
   'sim.stop': 'Stop',
   'sim.controls': 'Simulation',
+  'sim.status.prefix': 'Status:',
   'sim.status.stopped': 'Stopped',
   'sim.status.starting': 'Starting…',
-  'sim.status.running': 'Running · DC operating point',
-  'sim.status.failed': 'Could not run',
+  'sim.status.running': 'Running',
+  'sim.status.failed': 'Failed',
   'sim.stopToEdit':
     'Stop the simulation to change the circuit. Moving parts and changing the power supply settings are allowed while it runs.',
   'sim.error.empty_circuit':

@@ -11,7 +11,7 @@ import { useAppState, useStore, useT } from './context.js';
  * no width is tuned to English. The hidden face is aria-hidden, so the accessible name is the
  * visible label. The element itself never changes, so keyboard focus stays on it.
  */
-/** Status labels, including the ESP32 running label (Sprint 6): all of them size the pill. */
+/** Status labels, including the ESP32 running label (Sprint 6): all of them size the status. */
 const LABELS = [
   'sim.status.stopped',
   'sim.status.starting',
@@ -91,24 +91,29 @@ export function SimControls() {
             }
           : {})}
       >
-        <span class="sim-status-label" data-testid="sim-status-label">
-          {t(label)}
-        </span>
-        {/* Every status label, invisible, in the same grid cell, in BOTH font weights the pill
-            uses (running/starting are bold): the pill always has the width of the longest label
+        {/* A state, not an action: plain text with a small state dot, never focusable. */}
+        <span class="sim-status-dot" aria-hidden="true" />
+        <span class="sim-status-prefix">{t('sim.status.prefix')}</span>
+        <span class="sim-status-value">
+          <span class="sim-status-label" data-testid="sim-status-label">
+            {t(label)}
+          </span>
+          {/* Every status label, invisible, in the same grid cell, in BOTH font weights the status
+            uses (running/starting are bold): the value always has the width of the longest label
             at its widest weight in this locale and font, whatever the current state, so a status
             change never moves the toolbar. */}
-        {LABELS.flatMap((s) =>
-          (['regular', 'bold'] as const).map((w) => (
-            <span
-              key={`${s}-${w}`}
-              class={`sim-status-sizer sim-status-sizer-${w}`}
-              aria-hidden="true"
-            >
-              {t(s)}
-            </span>
-          )),
-        )}
+          {LABELS.flatMap((s) =>
+            (['regular', 'bold'] as const).map((w) => (
+              <span
+                key={`${s}-${w}`}
+                class={`sim-status-sizer sim-status-sizer-${w}`}
+                aria-hidden="true"
+              >
+                {t(s)}
+              </span>
+            )),
+          )}
+        </span>
       </span>
     </div>
   );

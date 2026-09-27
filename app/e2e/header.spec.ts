@@ -12,6 +12,7 @@ import {
   goToProjects,
   openAppMenu,
   storedProjects,
+  waitForStoredProject,
   waitSaved,
 } from './helpers.js';
 
@@ -22,7 +23,9 @@ async function box(page: Page, testId: string) {
   return (await page.getByTestId(testId).boundingBox())!;
 }
 
-test('the top bar uses the regular TBI logo, never the round profile mark', async ({ page }) => {
+test('the top bar uses the regular TBI logo for light surfaces: no tile, never the round mark', async ({
+  page,
+}) => {
   await page.goto('/');
   await expect(page.getByTestId('example-list')).toBeVisible();
   for (const screen of ['projects', 'editor']) {
@@ -32,16 +35,39 @@ test('the top bar uses the regular TBI logo, never the round profile mark', asyn
     }
     const logo = page.getByTestId('brand-logo');
     await expect(logo).toBeVisible();
-    expect(await logo.getAttribute('src')).toMatch(/tbi-logo/);
-    // Aspect ratio kept (533 x 300 asset), compact toolbar height.
-    const b = (await logo.boundingBox())!;
-    expect(b.height).toBeLessThanOrEqual(40);
-    expect(b.width / b.height).toBeCloseTo(533 / 300, 1);
+    expect(await logo.getAttribute('src')).toMatch(/tbi-logo-light/);
+    // Aspect ratio kept (204 x 120 asset), compact toolbar height, real transparency.
+    const info = await logo.evaluate((img: HTMLImageElement) => {
+      const c = document.createElement('canvas');
+      c.width = img.naturalWidth;
+      c.height = img.naturalHeight;
+      const g = c.getContext('2d')!;
+      g.drawImage(img, 0, 0);
+      const r = img.getBoundingClientRect();
+      // Nothing painted behind the logo: its container and itself are transparent.
+      const bg = (el: Element) => getComputedStyle(el).backgroundColor;
+      return {
+        natural: [img.naturalWidth, img.naturalHeight],
+        w: r.width,
+        h: r.height,
+        corner: g.getImageData(0, 0, 1, 1).data[3],
+        backgrounds: [bg(img), bg(img.parentElement!)],
+      };
+    });
+    expect(info.natural).toEqual([204, 120]);
+    expect(info.h).toBeLessThanOrEqual(40);
+    expect(info.w / info.h).toBeCloseTo(204 / 120, 1);
+    expect(info.corner).toBe(0);
+    expect(info.backgrounds).toEqual(['rgba(0, 0, 0, 0)', 'rgba(0, 0, 0, 0)']);
+    await expect(page.locator('.brand-logo-tile')).toHaveCount(0);
     const srcs = await page
       .locator('img')
       .evaluateAll((imgs) => imgs.map((i) => (i as HTMLImageElement).src));
     expect(srcs.filter((s) => /tbi-mark/.test(s))).toEqual([]);
   }
+  // The large Projects hero logo is unchanged.
+  await goToProjects(page);
+  expect(await page.locator('.brand-hero-logo').getAttribute('src')).toMatch(/tbi-logo-[^l]/);
 });
 
 test('Projects: three separate areas that use a wide desktop and collapse on narrower windows', async ({
@@ -88,46 +114,148 @@ test('Projects: three separate areas that use a wide desktop and collapse on nar
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(1100);
 });
 
-test('editor header: brand and project, then editing and the one simulation control, then language and menu', async ({
+for (const width of [1366, 1600, 1920]) {
+  test(`editor header at ${width} px: menu and logo on the exact physical edges, groups between, no overflow`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 860 });
+    await page.goto('/');
+    await page.getByTestId('open-example-led-current').click();
+    await expect(page.getByTestId('canvas')).toBeVisible();
+    await waitSaved(page);
+    const xs = async () => {
+      const ids = [
+        'app-menu-button',
+        'project-name',
+        'save-state',
+        'undo',
+        'sim-status',
+        'language-select',
+        'brand-logo',
+      ];
+      return Promise.all(ids.map(async (id) => (await box(page, id)).x));
+    };
+    const header = (await page.locator('header.topbar').boundingBox())!;
+    for (const lang of ['en', 'he']) {
+      await page.getByTestId('language-select').selectOption(lang);
+      const menuBox = await box(page, 'app-menu-button');
+      const logoBox = await box(page, 'brand-logo');
+      if (lang === 'en') {
+        // English: menu on the far LEFT, logo on the far RIGHT.
+        expect(menuBox.x).toBeLessThan(40);
+        expect(width - (logoBox.x + logoBox.width)).toBeLessThan(40);
+        const x = await xs();
+        expect([...x].sort((a, b) => a - b)).toEqual(x);
+      } else {
+        // Hebrew: menu on the far RIGHT, logo on the far LEFT.
+        expect(width - (menuBox.x + menuBox.width)).toBeLessThan(40);
+        expect(logoBox.x).toBeLessThan(40);
+        const x = await xs();
+        expect([...x].sort((a, b) => b - a)).toEqual(x);
+      }
+      // Nothing is clipped by the single-row header.
+      expect(
+        await page.locator('header.topbar').evaluate((h) => h.scrollWidth <= h.clientWidth),
+      ).toBe(true);
+      expect(header.height).toBeLessThan(70);
+    }
+    await page.getByTestId('language-select').selectOption('en');
+  });
+}
+
+test('one simulation action; its status is plain, non-interactive text that never moves', async ({
   page,
 }) => {
-  await page.setViewportSize({ width: 1366, height: 860 });
   await page.goto('/');
   await page.getByTestId('open-example-led-current').click();
   await expect(page.getByTestId('canvas')).toBeVisible();
   await waitSaved(page);
-  const order = async () => ({
-    brand: await box(page, 'brand'),
-    name: await box(page, 'project-name'),
-    save: await box(page, 'save-state'),
-    undo: await box(page, 'undo'),
-    status: await box(page, 'sim-status'),
-    lang: await box(page, 'language-select'),
-    menu: await box(page, 'app-menu-button'),
+  const status = page.getByTestId('sim-status');
+  await expect(page.locator('.sim-controls button')).toHaveCount(1);
+  await expect(page.locator('.sim-controls a, .sim-controls [tabindex]')).toHaveCount(0);
+  await expect(status).toHaveAttribute('role', 'status');
+  await expect(status).toHaveAttribute('aria-live', 'polite');
+  const look = await status.evaluate((el) => {
+    const cs = getComputedStyle(el);
+    return {
+      tag: el.tagName,
+      tabIndex: (el as HTMLElement).tabIndex,
+      cursor: cs.cursor,
+      border: cs.borderTopWidth,
+      background: cs.backgroundColor,
+    };
   });
-  let o = await order();
-  const seq = [o.brand, o.name, o.save, o.undo, o.status, o.lang, o.menu].map((b) => b.x);
-  expect([...seq].sort((a, b) => a - b)).toEqual(seq);
-  // Hebrew: the same hierarchy, mirrored.
-  await page.getByTestId('language-select').selectOption('he');
-  o = await order();
-  const rtl = [o.brand, o.name, o.save, o.undo, o.status, o.lang, o.menu].map((b) => b.x);
-  expect([...rtl].sort((a, b) => b - a)).toEqual(rtl);
-  await expect(menuButton(page)).toHaveAccessibleName('תפריט');
-  await page.getByTestId('language-select').selectOption('en');
-  await expect(menuButton(page)).toHaveAccessibleName('Menu');
-
-  // Exactly one simulation control; nothing in the header moves when the state changes.
-  await expect(page.locator('.sim-controls button')).toHaveCount(1);
-  const before = [await box(page, 'sim-status'), await box(page, 'app-menu-button')];
+  expect(look).toEqual({
+    tag: 'SPAN',
+    tabIndex: -1,
+    cursor: 'default',
+    border: '0px',
+    background: 'rgba(0, 0, 0, 0)',
+  });
+  const text = async () => (await status.innerText()).replace(/\s+/g, ' ').trim();
+  expect(await text()).toBe('Status: Stopped');
+  const stopped = await box(page, 'sim-status');
   await page.getByTestId('sim-run').click();
-  await expect(page.getByTestId('sim-status')).toHaveAttribute('data-status', /running|failed/);
+  await expect(status).toHaveAttribute('data-status', 'running');
+  expect(await text()).toBe('Status: Running');
   await expect(page.locator('.sim-controls button')).toHaveCount(1);
-  expect([await box(page, 'sim-status'), await box(page, 'app-menu-button')]).toEqual(before);
-  await page
-    .getByTestId('sim-stop')
-    .click()
-    .catch(() => undefined);
+  expect(await box(page, 'sim-status')).toEqual(stopped);
+  // Keyboard: Tab from the one control never lands on the status.
+  await page.getByTestId('sim-stop').focus();
+  await page.keyboard.press('Tab');
+  expect(
+    await page.evaluate(() => document.activeElement?.closest('[data-testid="sim-status"]')),
+  ).toBeNull();
+  await page.getByTestId('sim-stop').click();
+  await expect(status).toHaveAttribute('data-status', 'stopped');
+  expect(await box(page, 'sim-status')).toEqual(stopped);
+  await page.getByTestId('language-select').selectOption('he');
+  expect(await text()).toBe('מצב: עצור');
+  await page.getByTestId('sim-run').click();
+  await expect(status).toHaveAttribute('data-status', 'running');
+  expect(await text()).toBe('מצב: רץ');
+  await page.getByTestId('sim-stop').click();
+  await page.getByTestId('language-select').selectOption('en');
+});
+
+test('the project name is a labelled, editable field that renames through the existing path', async ({
+  page,
+}) => {
+  await createProject(page, 'Name field');
+  const field = page.getByTestId('project-name');
+  // A visible label, associated with the field.
+  await expect(page.getByRole('textbox', { name: 'Project name' })).toBeVisible();
+  await expect(page.locator('.project-name-label')).toHaveText('Project name');
+  const look = await field.evaluate((el) => {
+    const cs = getComputedStyle(el);
+    return { align: cs.textAlign, border: cs.borderTopWidth, cursor: cs.cursor };
+  });
+  expect(look).toEqual({ align: 'left', border: '1px', cursor: 'text' });
+  // Keyboard editing: focus, type, Enter commits through the store's rename.
+  await field.focus();
+  const focusRing = await field.evaluate((el) => getComputedStyle(el).outlineStyle);
+  expect(focusRing).not.toBe('none');
+  await field.fill('Renamed by keyboard');
+  await page.keyboard.press('Enter');
+  await expect(field).not.toBeFocused();
+  const doc = await waitForStoredProject(page, (d) => d.name === 'Renamed by keyboard', 'renamed');
+  expect(doc.name).toBe('Renamed by keyboard');
+  // Escape restores; nothing is stored.
+  await field.focus();
+  await field.fill('Discarded');
+  await page.keyboard.press('Escape');
+  await expect(field).toHaveValue('Renamed by keyboard');
+  // Hebrew: label translated, text aligned right, user text exact.
+  await page.getByTestId('language-select').selectOption('he');
+  await expect(page.getByRole('textbox', { name: 'שם הפרויקט' })).toHaveValue(
+    'Renamed by keyboard',
+  );
+  expect(await field.evaluate((el) => getComputedStyle(el).textAlign)).toBe('right');
+  await field.fill('פרויקט בדיקה');
+  await field.blur();
+  await waitForStoredProject(page, (d) => d.name === 'פרויקט בדיקה', 'hebrew name');
+  await page.getByTestId('language-select').selectOption('en');
+  await expect(field).toHaveValue('פרויקט בדיקה');
 });
 
 test('the application menu: keyboard, Escape, click outside, Tab; contents; closes after an action', async ({
@@ -185,8 +313,9 @@ test('the application menu: keyboard, Escape, click outside, Tab; contents; clos
     const vw = page.viewportSize()!.width;
     expect(m.x).toBeGreaterThanOrEqual(0);
     expect(m.x + m.width).toBeLessThanOrEqual(vw);
-    if (lang === 'en') expect(Math.abs(m.x + m.width - (b.x + b.width))).toBeLessThan(2);
-    else expect(Math.abs(m.x - b.x)).toBeLessThan(2);
+    // Aligned to the button's leading edge: left in English, right in Hebrew.
+    if (lang === 'en') expect(Math.abs(m.x - b.x)).toBeLessThan(2);
+    else expect(Math.abs(m.x + m.width - (b.x + b.width))).toBeLessThan(2);
     if (lang === 'he')
       await expect(menu(page).getByRole('menuitem')).toHaveText([
         'פרויקטים',

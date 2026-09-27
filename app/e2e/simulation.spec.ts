@@ -225,7 +225,7 @@ test('A13: English and Hebrew show identical numbers; switching language writes 
   const enValues = await labels();
   const bytes = JSON.stringify(await storedProject(page));
   await page.getByTestId('language-select').selectOption('he');
-  await expect(page.getByTestId('sim-status-label')).toHaveText('פועל · נקודת עבודה DC');
+  await expect(page.getByTestId('sim-status-label')).toHaveText('רץ');
   expect(await labels()).toEqual(enValues);
   await page.waitForTimeout(400);
   expect(JSON.stringify(await storedProject(page))).toBe(bytes);

@@ -86,10 +86,11 @@ export const he: Record<MessageKey, string> = {
   'sim.run': 'הרצה',
   'sim.stop': 'עצירה',
   'sim.controls': 'סימולציה',
+  'sim.status.prefix': 'מצב:',
   'sim.status.stopped': 'עצור',
   'sim.status.starting': 'מתחיל…',
-  'sim.status.running': 'פועל · נקודת עבודה DC',
-  'sim.status.failed': 'לא ניתן להריץ',
+  'sim.status.running': 'רץ',
+  'sim.status.failed': 'נכשל',
   'sim.stopToEdit':
     'יש לעצור את הסימולציה כדי לשנות את המעגל. בזמן ריצה מותר להזיז [[components]] ולשנות את הגדרות ספק הכוח.',
   'sim.error.empty_circuit': 'אין עדיין מה לדמות: חברו את ה[[components]] לספק הכוח ול[[ground]].',

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import logoUrl from '../assets/brand/tbi-logo.png';
+import logoUrl from '../assets/brand/tbi-logo-light.png';
 import { SIGN_OUT_URL } from '../deployment.js';
 import { LOCALES } from '../i18n/i18n.js';
 import { AppMenu } from './AppMenu.js';
@@ -29,23 +29,15 @@ const BRAND_LETTERS: readonly [string, string][] = [
   ['I', 'brand-i'],
 ];
 
-/** The regular TBI logo (made for the navy brand colour, as in the Projects hero) and name. */
+/**
+ * The regular TBI logo (its light-surface version) with the product name. The logo sits on the
+ * header's trailing edge: right in English, left in Hebrew (DOM order follows the direction).
+ */
 function Brand() {
   const t = useT();
   return (
-    <span class="brand" data-testid="brand" dir="ltr">
-      <span class="brand-logo-tile">
-        <img
-          class="brand-logo"
-          data-testid="brand-logo"
-          src={logoUrl}
-          alt={t('brand.logoAlt')}
-          width={533}
-          height={300}
-          decoding="async"
-        />
-      </span>
-      <span class="brand-word">
+    <span class="brand" data-testid="brand">
+      <span class="brand-word" dir="ltr">
         {BRAND_LETTERS.map(([letter, cls]) => (
           <span key={letter} class={cls}>
             {letter}
@@ -53,17 +45,24 @@ function Brand() {
         ))}
         {BRAND_SUFFIX}
       </span>
+      <img
+        class="brand-logo"
+        data-testid="brand-logo"
+        src={logoUrl}
+        alt={t('brand.logoAlt')}
+        width={204}
+        height={120}
+        decoding="async"
+      />
     </span>
   );
 }
 
+/** Projects screen (itself the navigation hub): language, sign-out and the brand. */
 function HomeBar() {
   const t = useT();
   return (
     <>
-      <div class="topbar-group topbar-nav">
-        <Brand />
-      </div>
       <span class="spacer" />
       <div class="topbar-group topbar-meta">
         <LanguageSelect />
@@ -73,33 +72,35 @@ function HomeBar() {
             {t('topbar.signOut')}
           </a>
         )}
+        <Brand />
       </div>
     </>
   );
 }
 
+/**
+ * Editor, from the leading edge: the menu | the project's name | file state, history, the one
+ * simulation control and its status | language and the brand on the trailing edge.
+ */
 function EditorBar() {
   const state = useAppState();
   const picker = useImportPicker();
   return (
     <>
-      {/* 1. Where am I: the brand and the project's own name. */}
       <div class="topbar-group topbar-nav">
-        <Brand />
+        {picker.input}
+        <AppMenu chooseImport={picker.choose} />
         <ProjectName name={state.doc!.name} disabled={!!state.readOnly} />
       </div>
-      {/* 2. Work on the circuit: file state, history, the one simulation control. */}
       <div class="topbar-group topbar-work">
         {!state.readOnly && <SaveIndicator />}
         {!state.readOnly && <HistoryControls />}
         <SimControls />
       </div>
       <span class="spacer" />
-      {/* 3. Application: language, then projects, files and account in the menu. */}
       <div class="topbar-group topbar-meta">
         <LanguageSelect />
-        {picker.input}
-        <AppMenu chooseImport={picker.choose} />
+        <Brand />
       </div>
     </>
   );
@@ -158,25 +159,38 @@ function ProjectName({ name, disabled }: { name: string; disabled: boolean }) {
     }
   };
   return (
-    <input
-      class="project-name"
-      data-testid="project-name"
-      aria-label={t('topbar.projectName')}
-      dir="auto"
-      value={draft}
-      disabled={disabled}
-      onInput={(e) => setDraft((e.target as HTMLInputElement).value)}
-      onBlur={(e) => commit(e.currentTarget)}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') e.currentTarget.blur();
-        if (e.key === 'Escape') {
-          // Restore synchronously so the blur that follows commits nothing.
-          e.currentTarget.value = name;
-          setDraft(name);
-          e.currentTarget.blur();
-        }
-      }}
-    />
+    <label class="project-name-field">
+      <span class="project-name-label">{t('topbar.projectName')}</span>
+      <span class="project-name-box">
+        <input
+          class="project-name"
+          data-testid="project-name"
+          dir="auto"
+          value={draft}
+          disabled={disabled}
+          onInput={(e) => setDraft((e.target as HTMLInputElement).value)}
+          onBlur={(e) => commit(e.currentTarget)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') e.currentTarget.blur();
+            if (e.key === 'Escape') {
+              // Restore synchronously so the blur that follows commits nothing.
+              e.currentTarget.value = name;
+              setDraft(name);
+              e.currentTarget.blur();
+            }
+          }}
+        />
+        <svg
+          viewBox="0 0 16 16"
+          width="13"
+          height="13"
+          aria-hidden="true"
+          class="project-name-icon"
+        >
+          <path d="M3 13 L3.6 10.4 L10.8 3.2 L12.8 5.2 L5.6 12.4 Z M9.8 4.2 L11.8 6.2" />
+        </svg>
+      </span>
+    </label>
   );
 }
 

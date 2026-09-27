@@ -722,26 +722,45 @@ select {
   cursor: not-allowed;
 }
 
+/* The simulation state beside the one Run/Stop control: plain status text with a small dot,
+   no border, background, hover or pointer, so it never reads as a second button. */
 .sim-status {
-  padding: 0.2rem 0.55rem;
-  border-radius: 999px;
-  border: 1px solid var(--border);
   font-size: 0.87rem;
   white-space: nowrap;
+  color: var(--muted);
+  cursor: default;
+  user-select: none;
 }
 
-.sim-running,
-.sim-starting {
-  background: var(--runtime-bg);
-  border-color: var(--runtime);
+.sim-status-dot {
+  inline-size: 0.55rem;
+  block-size: 0.55rem;
+  border-radius: 50%;
+  background: var(--muted);
+  flex: none;
+}
+
+.sim-running .sim-status-value,
+.sim-starting .sim-status-value {
   color: var(--runtime);
   font-weight: 600;
 }
 
-.sim-failed {
-  background: var(--error-bg);
-  border-color: var(--danger);
+.sim-running .sim-status-dot,
+.sim-starting .sim-status-dot {
+  background: var(--runtime);
+}
+
+.sim-stopping .sim-status-dot {
+  background: var(--warning-ink);
+}
+
+.sim-failed .sim-status-value {
   color: var(--danger);
+}
+
+.sim-failed .sim-status-dot {
+  background: var(--danger);
 }
 
 .banner-info {
@@ -1045,11 +1064,17 @@ select {
 }
 
 .sim-status {
-  display: inline-grid;
-  justify-items: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
   box-sizing: border-box;
-  /* Its size comes only from the reserved labels below: flex never grows or shrinks it. */
+  /* Its size comes only from the prefix and the reserved labels: flex never resizes it. */
   flex: none;
+}
+
+.sim-status-value {
+  display: inline-grid;
+  justify-items: start;
 }
 
 .sim-status-label,
@@ -1411,18 +1436,10 @@ select {
   flex-shrink: 0;
 }
 
-/* The regular TBI logo (the Projects hero asset) on its navy brand colour, at toolbar size;
-   aspect ratio kept. */
-.brand-logo-tile {
-  display: inline-flex;
-  padding: 2px 6px;
-  border-radius: 6px;
-  background: var(--brand-navy);
-}
-
+/* The regular TBI logo, light-surface version, at toolbar size; aspect ratio kept. */
 .brand-logo {
   display: block;
-  block-size: 34px;
+  block-size: 38px;
   inline-size: auto;
 }
 
@@ -1838,4 +1855,88 @@ select {
   block-size: 1px;
   margin-block: 0.25rem;
   background: var(--border);
+}
+
+/* Project name: a visibly editable field with its label, text aligned to the UI's reading
+   edge (left in English, right in Hebrew) whatever language the name itself is in. */
+.project-name-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.project-name-box {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  flex: 1 1 14rem;
+  min-width: 9rem;
+  max-width: 22rem;
+}
+
+.project-name-label {
+  font-size: 0.8rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.topbar .topbar-nav .project-name-field .project-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: none;
+  inline-size: 100%;
+  font-weight: 600;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding-block: 0.3rem;
+  cursor: text;
+}
+
+/* Physical sides: the field keeps dir="auto" for the name's own bidi, so its logical sides
+   follow the name, not the UI. The edit mark sits at the UI's trailing edge. */
+:root[dir='ltr'] .project-name {
+  text-align: left;
+  padding-left: 0.5rem;
+  padding-right: 1.6rem;
+}
+
+:root[dir='rtl'] .project-name {
+  text-align: right;
+  padding-right: 0.5rem;
+  padding-left: 1.6rem;
+}
+
+.project-name:hover:not(:disabled) {
+  border-color: var(--muted);
+}
+
+.project-name:focus {
+  border-color: var(--accent);
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+
+.project-name-icon {
+  position: absolute;
+  inset-inline-end: 0.5rem;
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 1.3;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+
+.brand-word {
+  font-weight: 800;
+}
+
+.topbar-home .spacer {
+  flex: 1 1 0;
+}
+
+.topbar-home .spacer + .topbar-group {
+  border-inline-start: 0;
 }
