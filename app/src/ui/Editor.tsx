@@ -3,6 +3,8 @@ import type { ComponentTypeId } from '@tbi-lab/domain';
 import { Canvas, type CanvasApi } from './Canvas.js';
 import { useAppState } from './context.js';
 import { Inspector } from './Inspector.js';
+import { McuTerminal } from './McuTerminal.js';
+import { requiresMcuRuntime } from '../runtime/snapshot.js';
 import { Palette } from './Palette.js';
 import { probeExists, sameTarget, type Probe, type ProbeInput } from './probes.js';
 
@@ -48,18 +50,21 @@ export function Editor() {
           }
         }}
       />
-      <Canvas
-        placing={placing}
-        onPlacingDone={() => setPlacing(null)}
-        apiRef={canvasApi}
-        probeMode={probeMode}
-        onProbeModeChange={(on) => {
-          setProbeMode(on);
-          if (on) setPlacing(null);
-        }}
-        probes={live}
-        onProbe={addProbe}
-      />
+      <div class="workspace-center">
+        <Canvas
+          placing={placing}
+          onPlacingDone={() => setPlacing(null)}
+          apiRef={canvasApi}
+          probeMode={probeMode}
+          onProbeModeChange={(on) => {
+            setProbeMode(on);
+            if (on) setPlacing(null);
+          }}
+          probes={live}
+          onProbe={addProbe}
+        />
+        {doc && requiresMcuRuntime(doc) && <McuTerminal />}
+      </div>
       <Inspector
         probes={live}
         onRemoveProbe={(id) => setProbes(live.filter((p) => p.id !== id))}

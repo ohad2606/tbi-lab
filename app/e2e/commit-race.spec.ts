@@ -16,6 +16,7 @@ import {
   component,
   createProject,
   place,
+  reopenFromLibrary,
   storedProject,
   waitForStoredProject,
   waitSaved,
@@ -146,6 +147,7 @@ test('a value committed immediately survives a full browser restart (the CI A7 c
     context = await chromium.launchPersistentContext(profile, { baseURL: baseURL!, viewport });
     page = context.pages()[0] ?? (await context.newPage());
     await page.goto('/');
+    await reopenFromLibrary(page); // the app opens on Projects (S6)
     await expect(page.getByTestId('value-R1')).toHaveText('4.7 kΩ');
     expect(await resistance(page)).toEqual({ value: 4700, unit: 'ohm' });
     await context.close();

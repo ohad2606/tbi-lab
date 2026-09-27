@@ -11,6 +11,7 @@ import {
   exportFromMenu,
   goToProjects,
   place,
+  reopenFromLibrary,
   storedProject,
   storedProjects,
   terminal,
@@ -253,9 +254,9 @@ test('no runtime state in the project: reload, duplicate and export carry only e
     expect(text, word).not.toContain(word);
   expect(doc.components.find((c) => c.id === 'U1')!.params.firmware).toMatch(/^[0-9a-f]{64}$/);
   expect(doc.components.find((c) => c.id === 'SW1')!.params.closed).toBe(true); // persisted edit
-  // Reload: the project reopens stopped, unchanged.
+  // Reload: the app opens on Projects; the project reopens stopped, unchanged.
   await page.reload();
-  await expect(page.getByTestId('canvas')).toBeVisible();
+  await reopenFromLibrary(page, doc.projectId);
   await expect(status(page)).toHaveAttribute('data-status', 'stopped');
   expect(await storedProject(page)).toEqual(doc);
   // Export: the package carries the firmware identity and no runtime state.
@@ -282,4 +283,74 @@ test('Hebrew: S6 surfaces are translated; pins, levels and serial stay LTR', asy
   await stopAndWait(page);
   // The project is the same whatever the language.
   await page.getByTestId('language-select').selectOption('en');
+});
+
+test('ESP32 terminal: the serial console under the canvas, from boot; kept readable after Stop; fresh per Run', async ({
+  page,
+}) => {
+  // Ordinary DC projects have no terminal.
+  await openExample(page, 'led-current');
+  await expect(page.getByTestId('mcu-terminal')).toHaveCount(0);
+
+  await openExample(page, 'esp32-blink');
+  const terminal = page.getByTestId('mcu-terminal');
+  const out = page.getByTestId('mcu-serial-output');
+  const state = page.getByTestId('mcu-terminal-state');
+  await expect(terminal).toBeVisible();
+  await expect(terminal).toContainText('ESP32 terminal');
+  await expect(state).toHaveAttribute('data-state', 'idle');
+  await expect(out).toHaveAttribute('dir', 'ltr');
+  await expect(out).toContainText('Press Run');
+
+  // Running: output appears without selecting the board; the state reads as running.
+  await runAndWait(page);
+  await expect(state).toHaveAttribute('data-state', 'running');
+  await expect(out).toContainText('TBI-ARDUINO-READY');
+  await expect(state).toContainText(/Running · \u2066?[\d.]+ s\u2069? simulated/);
+
+  // Stop: the last output stays, marked as ended; nothing of it is stored.
+  await stopAndWait(page);
+  await expect(state).toHaveAttribute('data-state', 'ended');
+  await expect(out).toHaveAttribute('data-ended', 'true');
+  await expect(out).toContainText('TBI-ARDUINO-READY');
+  expect(JSON.stringify(await storedProjects(page))).not.toContain('TBI-ARDUINO-READY');
+
+  // A new Run is a new session: the terminal starts over.
+  await runAndWait(page);
+  await expect(out).not.toHaveAttribute('data-ended', 'true');
+  await expect(out).toContainText('TBI-ARDUINO-READY');
+  expect(((await out.textContent()) ?? '').split('TBI-ARDUINO-READY').length - 1).toBe(1);
+
+  // Collapsible, keyboard operable; the output is a scrollable, focusable log.
+  const toggle = page.getByTestId('mcu-terminal-toggle');
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  await toggle.focus();
+  await page.keyboard.press('Enter');
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await expect(out).toHaveCount(0);
+  await page.keyboard.press('Enter');
+  await expect(out).toBeVisible();
+  await expect(out).toHaveAttribute('role', 'log');
+
+  // Hebrew chrome, technical output still LTR.
+  await page.getByTestId('language-select').selectOption('he');
+  await expect(terminal).toContainText('מסוף ESP32');
+  await expect(state).toContainText('רץ');
+  await expect(out).toHaveAttribute('dir', 'ltr');
+  await page.getByTestId('language-select').selectOption('en');
+  await stopAndWait(page);
+
+  // Another project never shows this session's output.
+  await openExample(page, 'esp32-input-echo');
+  await expect(page.getByTestId('mcu-terminal-state')).toHaveAttribute('data-state', 'idle');
+  await expect(page.getByTestId('mcu-serial-output')).not.toContainText('TBI-ARDUINO-READY');
+});
+
+test('the app opens on the Projects screen, also after working in a project', async ({ page }) => {
+  await openExample(page, 'esp32-blink');
+  await page.reload();
+  await expect(page.getByTestId('example-list')).toBeVisible();
+  await expect(page.getByTestId('canvas')).toHaveCount(0);
+  await page.goto('/');
+  await expect(page.getByTestId('example-list')).toBeVisible();
 });

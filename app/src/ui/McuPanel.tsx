@@ -1,7 +1,8 @@
 /**
  * Classic ESP32 panel in the inspector (Sprint 6): what the selected firmware does, the board's
  * pin capabilities as the simulator supports them (R1 capability map, nothing inferred), and,
- * while a session runs, live pin levels, runtime warnings and a small bounded serial view.
+ * while a session runs, live pin levels and runtime warnings. Serial output is in the ESP32
+ * terminal under the canvas (McuTerminal).
  *
  * Runtime values come only from the ephemeral runtime view; nothing here is project data.
  * Pin names, GPIO numbers, levels, voltages and serial text are technical content: always LTR.
@@ -102,19 +103,7 @@ export function McuPanel({ component: c }: { component: ComponentInstance }) {
           </tbody>
         </table>
       )}
-      {runtime && (
-        <div class="mcu-serial" data-testid="mcu-serial">
-          <h4>{t('mcu.serial.heading')}</h4>
-          {runtime.serialDropped > 0 && (
-            <p class="muted small">
-              {t('mcu.serial.dropped', { count: isolateLtr(String(runtime.serialDropped)) })}
-            </p>
-          )}
-          <pre class="serial-output" dir="ltr" data-testid="mcu-serial-output">
-            {runtime.serial || t('mcu.serial.empty')}
-          </pre>
-        </div>
-      )}
+      {/* Serial output: the ESP32 terminal under the canvas (McuTerminal). */}
       <details class="mcu-pins" data-testid="mcu-pins">
         <summary>{t('mcu.pins.heading')}</summary>
         <table class="mcu-pin-table">

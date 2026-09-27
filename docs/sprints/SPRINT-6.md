@@ -323,6 +323,17 @@ proxy setting was changed for streaming.
 - **Header surface:** one light cool blue-grey (`--header-bg`) on Projects and the editor, so
   the transparent logo stays legible; the brand divider is kept; the dark Projects hero is
   unchanged.
+- **Start screen:** the app always opens on the Projects screen (it no longer reopens the last
+  project on start); a project opens only when the user chooses it.
+- **ESP32 terminal:** for projects with a Classic ESP32 board, a terminal under the canvas shows
+  the board's serial console (UART0) as the session reports it: the chip's boot ROM lines
+  (`ets Jul 29 2019 …`, `rst:0x1 (POWERON_RESET)…`) and the firmware's prints, with the session
+  state (Not running / Starting session / Booting / Running · simulated time / Stopping /
+  Session failed / Session ended). It is dark, monospace, LTR in every locale, bounded by the
+  runtime view's 16 KiB serial window, follows new output unless scrolled back, and can be
+  collapsed. After Stop the last output stays readable (marked as ended) until the next Run or
+  another project; it is never stored. The inspector's ESP32 panel keeps live pins and
+  warnings; its serial box moved to the terminal.
 - Nothing in the project schema, simulation, R2 client, Session Host or persistence changed.
 
 ## 15. Tests and evidence

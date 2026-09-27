@@ -11,6 +11,7 @@ import {
   createProject,
   goToProjects,
   place,
+  reopenFromLibrary,
   storedProject,
   terminal,
   toScreen,
@@ -288,6 +289,7 @@ test('opening a project saved by a newer version is read-only and never written'
     doc,
   );
   await page.reload();
+  await reopenFromLibrary(page);
   await expect(page.getByTestId('readonly-banner')).toContainText('read-only');
   await expect(page.getByTestId('palette-component.resistor')).toBeDisabled();
   await expect(page.getByTestId('save-state')).toHaveCount(0);

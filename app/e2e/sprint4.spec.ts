@@ -19,6 +19,7 @@ import {
   createProject,
   openImported,
   place,
+  reopenFromLibrary,
   storedProject,
   storedProjects,
   terminal,
@@ -188,6 +189,7 @@ test('A5/A6: toggle position persists; while running it is persisted first, then
 
   // Reopen restores the saved position.
   await page.reload();
+  await reopenFromLibrary(page);
   await expect(component(page, 'SW1')).toHaveAttribute('data-closed', 'true');
 
   // Running: toggle open -> stored first -> mirrored with that revision -> real re-solve.

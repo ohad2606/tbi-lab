@@ -12,6 +12,7 @@ import {
   component,
   createProject,
   place,
+  reopenFromLibrary,
   storedProject,
   waitForStoredProject,
   waitSaved,
@@ -53,6 +54,7 @@ test('A7: full browser restart restores the project exactly', async ({ baseURL }
     context = await chromium.launchPersistentContext(profile, { baseURL: baseURL!, viewport });
     page = context.pages()[0] ?? (await context.newPage());
     await page.goto('/');
+    await reopenFromLibrary(page); // the app opens on Projects (S6)
     // The last project reopens by itself, in the remembered language.
     await expect(page.getByTestId('project-name')).toHaveValue('שולחן עבודה');
     await expect(page.locator('html')).toHaveAttribute('dir', 'rtl');

@@ -389,6 +389,18 @@ export const en = {
   'mcu.serial.heading': 'Serial output',
   'mcu.serial.empty': 'No output yet.',
   'mcu.serial.dropped': 'Older output was trimmed ({count} characters).',
+  'mcu.terminal.heading': 'ESP32 terminal',
+  'mcu.terminal.idle':
+    'Press Run to start the ESP32. Its serial console output appears here, from boot.',
+  'mcu.terminal.simTime': '{time} simulated',
+  'mcu.terminal.state.idle': 'Not running',
+  'mcu.terminal.state.starting': 'Starting session…',
+  'mcu.terminal.state.booting': 'Booting…',
+  'mcu.terminal.state.running': 'Running',
+  'mcu.terminal.state.reconnecting': 'Reconnecting…',
+  'mcu.terminal.state.stopping': 'Stopping…',
+  'mcu.terminal.state.failed': 'Session failed',
+  'mcu.terminal.state.ended': 'Session ended (last output)',
   'mcu.warnings.heading': 'Runtime warnings',
   'mcu.warning.output_on_input_only_pad':
     'GPIO{gpio} is input-only: the firmware tried to drive it, and it stays an input.',

@@ -181,3 +181,16 @@ export async function exportFromMenu(page: Page): Promise<Download> {
   ]);
   return download;
 }
+
+/**
+ * After a reload the app opens on the Projects screen (S6): open a stored project from the
+ * library (the only one, or the one with this id).
+ */
+export async function reopenFromLibrary(page: Page, projectId?: string): Promise<void> {
+  await expect(page.getByTestId('example-list')).toBeVisible();
+  const row = projectId
+    ? page.getByTestId(`project-${projectId}`)
+    : page.getByTestId('project-list').locator('.project-row').first();
+  await row.getByTestId('open-project').click();
+  await expect(page.getByTestId('canvas')).toBeVisible();
+}

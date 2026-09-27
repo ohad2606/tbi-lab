@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { validateProject } from '@tbi-lab/domain';
 import { drawLoop, run } from './circuits.js';
-import { component, storedProject } from './helpers.js';
+import { component, reopenFromLibrary, storedProject } from './helpers.js';
 
 test('A12: browser restart during a run reopens stopped, intact, and able to run again', async ({
   baseURL,
@@ -28,6 +28,7 @@ test('A12: browser restart during a run reopens stopped, intact, and able to run
     context = await chromium.launchPersistentContext(profile, { baseURL: baseURL!, viewport });
     page = context.pages()[0] ?? (await context.newPage());
     await page.goto('/');
+    await reopenFromLibrary(page); // the app opens on Projects (S6)
     await expect(page.getByTestId('project-name')).toHaveValue('Restart bench');
     await expect(page.getByTestId('sim-status')).toHaveAttribute('data-status', 'stopped');
     await expect(page.locator('.runtime-label')).toHaveCount(0);

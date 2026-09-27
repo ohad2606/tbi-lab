@@ -66,6 +66,7 @@ export interface Preferences {
 }
 
 export const PREF_LOCALE = 'tbi-lab.locale';
+/** The most recently opened project (a per-device note; the app no longer reopens it on start). */
 export const PREF_LAST_PROJECT = 'tbi-lab.lastProject';
 
 /**
@@ -197,11 +198,8 @@ export class AppStore {
       this.set({ screen: 'unavailable' });
       return;
     }
-    const last = this.deps.prefs.get(PREF_LAST_PROJECT);
-    if (last && this.stateValue.projects.some((p) => p.projectId === last)) {
-      await this.openProject(last);
-      if (this.stateValue.screen === 'editor') return;
-    }
+    // The application always opens on the Projects screen (PM, S6): the project library is the
+    // entry point, and a project opens only when the user chooses it.
     this.set({ screen: 'home' });
   }
 

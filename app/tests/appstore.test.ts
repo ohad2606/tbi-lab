@@ -71,14 +71,15 @@ describe('AppStore', () => {
     expect(app.hasUnsavedChanges).toBe(false);
   });
 
-  it('reopens the last project after a restart', async () => {
+  it('opens on the Projects screen after a restart; the saved project is listed, not reopened', async () => {
     const first = await setup();
     await first.app.newProject('Persistent');
     await first.app.flush();
     const id = first.app.state.doc!.projectId;
     const second = await setup(first.prefs, first.factory);
-    expect(second.app.state.screen).toBe('editor');
-    expect(second.app.state.doc!.projectId).toBe(id);
+    expect(second.app.state.screen).toBe('home');
+    expect(second.app.state.doc).toBeNull();
+    expect(second.app.state.projects.map((p) => p.projectId)).toContain(id);
   });
 
   it('opens a newer-schema project read-only and refuses every edit', async () => {

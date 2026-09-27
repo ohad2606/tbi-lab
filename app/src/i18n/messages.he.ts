@@ -375,6 +375,18 @@ export const he: Record<MessageKey, string> = {
   'mcu.serial.heading': 'פלט טורי',
   'mcu.serial.empty': 'אין פלט עדיין.',
   'mcu.serial.dropped': 'פלט ישן יותר קוצץ ({count} תווים).',
+  'mcu.terminal.heading': 'מסוף ESP32',
+  'mcu.terminal.idle':
+    'לחצו על "הרצה" כדי להפעיל את ה־ESP32. הפלט של המסוף הטורי שלו יופיע כאן, כבר מהאתחול.',
+  'mcu.terminal.simTime': '{time} של סימולציה',
+  'mcu.terminal.state.idle': 'לא פועל',
+  'mcu.terminal.state.starting': 'מתחיל סשן…',
+  'mcu.terminal.state.booting': 'מאתחל…',
+  'mcu.terminal.state.running': 'רץ',
+  'mcu.terminal.state.reconnecting': 'מתחבר מחדש…',
+  'mcu.terminal.state.stopping': 'עוצר…',
+  'mcu.terminal.state.failed': 'הסשן נכשל',
+  'mcu.terminal.state.ended': 'הסשן הסתיים (הפלט האחרון)',
   'mcu.warnings.heading': 'אזהרות ריצה',
   'mcu.warning.output_on_input_only_pad':
     'GPIO{gpio} הוא קלט בלבד: הקושחה ניסתה להפעיל אותו כיציאה, והוא נשאר קלט.',
