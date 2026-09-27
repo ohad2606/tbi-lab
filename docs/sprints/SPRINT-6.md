@@ -1,11 +1,12 @@
 # Sprint 6 — ESP32 Product Integration
 
-**Status:** FUNCTIONALLY COMPLETE, awaiting PM review. **Not closed:** the ~10-hour integrated
-browser/product endurance run is a required closure gate (§15). Not pushed, not tagged.
+**Status:** CLOSED (2026-09-27, §21). The long integrated endurance run is **deferred** by the
+PM to post-S7 / pre-S8; it is not recorded as passed.
 **Date:** 2026-09-26 · **Base:** `main` = `d04978d` · **Runtime foundation:**
 `runtime-r2-complete^{}` = `db93cfe` (R1 runtime `979f09d739382157`, protocol
 `tbi-lab.session/1`), unchanged.
-**Implementation:** `19320ac` on branch `sprint-6` (worktree `~/projects/tbi-lab-s6`).
+**Implementation:** `19320ac` … `b959feb` on branch `sprint-6` (worktree `~/projects/tbi-lab-s6`);
+closure record in §21.
 
 ## 1. Outcome
 
@@ -435,19 +436,73 @@ Out of S6 and belonging to S7:
 
 S6 provides the S7 hooks: artifacts by content identity, and the declaration path to the host.
 
-## 19. Open decisions
+## 19. Decisions (PM, 2026-09-27)
 
-- **D-S6-1:** Are these firmware choices the right S6 demo set, or should a purpose-built "blink
-  + button" firmware be provisioned? That would change the pinned R1 artifact set.
-- **D-S6-2:** Should pin labels be hidden or abbreviated on rotated boards?
-- **D-S6-3:** Is a persistent Session Host service acceptable on the preview host (cost rule)?
-  It was added because this directive requires an end-to-end ESP32 run through the deployed
-  site.
-- **D-S6-4:** Before S8, public exposure needs authentication, rate limits, per-user session
-  quotas and multi-tenant isolation (R2 D1/D4/D6/D7).
+- **D-S6-1:** keep the two pinned demo firmware artifacts for S6; S7 replaces them with the
+  Arduino build flow.
+- **D-S6-2:** ESP32 pin labels stay screen-upright and LTR when the board rotates; they sit on
+  the geometrically appropriate side, never sideways or upside down.
+- **D-S6-3:** the always-on Session Host service on the private preview host is approved; QEMU
+  stays per-session.
+- **D-S6-4:** for the controlled preview, Google OAuth plus the exact-email allowlist is
+  sufficient; public authentication, rate limits and quotas are S8. The R2 per-session limits
+  stay.
 
-## 20. Readiness
+## 20. Readiness (superseded by §21)
 
-Functionally complete, and verified by routine, heavy real-QEMU and deployed-site acceptance.
-**Ready for the ~10-hour integrated browser/product endurance gate,** which the PM runs. S6 is
-not closed before it.
+Functionally complete and verified by routine, heavy real-QEMU and deployed-site acceptance.
+
+## 21. Closure (PM decision, 2026-09-27)
+
+**Sprint 6 is closed** on the final product state below. The planned 465-minute integrated
+endurance run is **deferred** to post-S7 / pre-S8 (S7 changes the firmware/build/artifact
+workflow, so a long run is more valuable after it). It is **not recorded as PASS**.
+
+**Closure evidence**
+
+- Functional S6 implementation complete (`19320ac` … `b959feb`).
+- Real-QEMU acceptance complete: blink, input echo and product-level determinism (3/3), run
+  locally and through the deployed site's internal origin on every deployed build, last on
+  `b959feb`. Determinism: identical canonical checkpoint hashes for simulated seconds 1–6.
+- The authenticated private-preview path was exercised manually through Google OAuth on
+  `https://dev-lab.tbi-tech.net` (final smoke on `b959feb`, 2026-09-27 13:56 UTC): open an ESP32
+  example, rename, Run with real runtime traffic, Stop with QEMU gone and no session temp
+  directory left, menu, export, recent project, sign-out (the next `/` redirects to Google),
+  sign-in again.
+- Routine regressions complete on the closure commit (counts below).
+- The integrated endurance harness passed a representative 12-minute trial against the internal
+  origin: 32 ESP32 sessions with QEMU gone after each Stop, 31 local DC runs with correct values
+  and no `/runtime` requests, 4 matching determinism checks, persistence and security checks,
+  and bounded buffers.
+- **Review item for the deferred run:** browser storage grew during the trial (IndexedDB usage
+  38 KB → 725 KB in 12 minutes while the project count stayed constant; in a later check the
+  logical content was 17.8 KB against 202 KB on disk). The app overwrites projects in place, so
+  this looks like storage-engine churn; whether it plateaus must be measured in the long run.
+- No production capacity, concurrency or long-duration resource claims are made from S6 evidence.
+
+**Final S6 product state**
+
+- Classic ESP32 DevKitC in the product: capability-map pins, unsupported pins and features
+  refused, never faked.
+- Browser/R2 dispatch: DC projects in the browser Worker, ESP32 projects on the R2 Session Host;
+  the browser stays the project authority.
+- Immutable prebuilt firmware artifacts selected by content identity (two pinned demos).
+- Same-origin `/runtime` behind the private-preview OAuth boundary; host and QEMU loopback-only.
+- One-shot sessions under a single Run/Stop control with a non-interactive status.
+- Live mirrors (toggle, PSU) persisted first and carrying their revision; transient push
+  buttons.
+- Reconnect handling with a liveness watchdog; explicit resync marking.
+- GPIO visualization on the canvas and in the inspector.
+- Bounded ESP32 serial terminal in the side column (boot ROM lines and firmware prints).
+- Recent-project menu; finalized header (menu and logo edges per locale, editable project name,
+  plain status, light header surface, approved light logo and favicon); the app opens on the
+  Projects screen.
+- dev-lab private deployment (`publish.sh`, `tbi-session-host.service`, Caddy `/runtime`).
+
+**Final routine verification (on `b959feb` plus this docs-only closure):** typecheck, lint and
+boundaries clean; `npm test` 495 tests in 46 files; `test:e2e` 103 passed, 3 heavy real-QEMU
+tests skipped (run separately, 3/3); `test:browser` 4; production build OK.
+
+**Deferred to post-S7 / pre-S8:** the integrated long run (browser/editor, source autosave,
+repeated Arduino builds, artifacts, R2/QEMU sessions, the local DC path and the IndexedDB
+storage trend). Its harness exists as an uncommitted engineering tool from this sprint.
