@@ -62,7 +62,8 @@ export class FakeProvider implements BuildProvider {
         log: { text: 'sketch.ino:2:3: error: boom', truncated: false },
       };
     const image = join(job.dir, 'image.bin');
-    await writeFile(image, fakeImage(text));
+    // `#same`: every such source compiles to the same bytes (like comment-only edits).
+    await writeFile(image, fakeImage(text.includes('#same') ? '#same' : text));
     return {
       ok: true,
       imagePath: image,

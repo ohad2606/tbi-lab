@@ -135,9 +135,9 @@ export class BuildService {
   }
 
   private cachedResult(key: string): BuildResult | null {
-    const m = this.store.findByKey(key);
-    if (!m?.result) return null;
-    return { ...m.result, timings: { queuedMs: 0, buildMs: 0 } };
+    const found = this.store.findBuild(key);
+    if (!found) return null;
+    return { ...found, timings: { queuedMs: 0, buildMs: 0 } };
   }
 
   private prune() {

@@ -3,7 +3,12 @@
  *
  *   <dir>/<sha256>.bin    the artifact bytes (0444), exactly what R2 resolves, re-hashes and
  *                         copies into a private session directory before starting QEMU
- *   <dir>/<sha256>.json   the service's manifest (origin, build key, result) — never read by R2
+ *   <dir>/<sha256>.json   the service's manifest (origin, and one build record per source key that
+ *                         produced these bytes) — never read by R2
+ *
+ * Several sources can compile to the same bytes (a comment-only edit, for example): the artifact
+ * is stored once, and each source keeps its own build record (its key, diagnostics, features),
+ * so a cache hit or lookup always answers with the record of the source that was asked for.
  *
  * The service always computes the sha256 itself; a client-supplied hash is never trusted.
  * Publishing writes a temporary file and renames it into place, so R2 never sees a partial file,
@@ -25,11 +30,21 @@ export interface Manifest {
   sha256: string;
   bytes: number;
   origin: ArtifactInfo['origin'];
-  /** Build key (source key) for built artifacts. */
-  key?: string;
-  /** The successful build result, for cache hits (timings are not kept). */
-  result?: Omit<BuildResult, 'timings'>;
+  /** Build records by source key (timings are not kept), at most MAX_BUILDS_PER_ARTIFACT. */
+  builds?: Record<string, StoredBuild>;
   createdAt: string;
+}
+
+export type StoredBuild = Omit<BuildResult, 'timings'>;
+
+/** Distinct sources remembered per artifact (oldest record dropped first). */
+const MAX_BUILDS_PER_ARTIFACT = 32;
+
+/** What a publish adds: the origin and, for a build, the record of the source that built it. */
+export interface ManifestFields {
+  origin: ArtifactInfo['origin'];
+  key?: string;
+  result?: StoredBuild;
 }
 
 export interface StoreOptions {
@@ -43,7 +58,6 @@ export interface StoreOptions {
 
 const SHA = /^[0-9a-f]{64}$/;
 
-type ManifestFields = Omit<Manifest, 'sha256' | 'bytes' | 'createdAt'>;
 export type ManifestInput = ManifestFields | ((info: ArtifactInfo) => ManifestFields);
 
 export class ArtifactStore {
@@ -70,10 +84,22 @@ export class ArtifactStore {
       const m = /^([0-9a-f]{64})\.json$/.exec(name);
       if (!m) continue;
       try {
-        const manifest = JSON.parse(await readFile(join(this.opts.dir, name), 'utf8')) as Manifest;
-        if (manifest.sha256 !== m[1] || !this.exists(manifest.sha256)) continue;
+        const raw = JSON.parse(await readFile(join(this.opts.dir, name), 'utf8')) as Manifest & {
+          key?: string;
+          result?: StoredBuild;
+        };
+        if (raw.sha256 !== m[1] || !this.exists(raw.sha256)) continue;
+        // Early Sprint 7 manifests held one `key`/`result`: read them as one build record.
+        const builds = raw.builds ?? (raw.key && raw.result ? { [raw.key]: raw.result } : {});
+        const manifest: Manifest = {
+          sha256: raw.sha256,
+          bytes: raw.bytes,
+          origin: raw.origin,
+          builds,
+          createdAt: raw.createdAt,
+        };
         this.manifests.set(manifest.sha256, manifest);
-        if (manifest.key) this.byKey.set(manifest.key, manifest.sha256);
+        for (const key of Object.keys(builds)) this.byKey.set(key, manifest.sha256);
         this.lastUsed.set(manifest.sha256, statSync(this.binPath(manifest.sha256)).mtimeMs);
       } catch {
         // unreadable manifest: the artifact stays but is not indexed
@@ -94,8 +120,8 @@ export class ArtifactStore {
     }
   }
 
-  /** A successful build for this key whose artifact is still present. */
-  findByKey(key: string): Manifest | undefined {
+  /** The successful build record of exactly this source key, if its artifact is still present. */
+  findBuild(key: string): StoredBuild | undefined {
     const sha = this.byKey.get(key);
     if (!sha) return undefined;
     if (!this.exists(sha)) {
@@ -103,7 +129,7 @@ export class ArtifactStore {
       return undefined;
     }
     this.touch(sha);
-    return this.manifests.get(sha);
+    return this.manifests.get(sha)?.builds?.[key];
   }
 
   manifest(sha: string): Manifest | undefined {
@@ -134,11 +160,21 @@ export class ArtifactStore {
       await rename(tmp, bin);
     }
     const existing = this.manifests.get(sha);
+    const builds: Record<string, StoredBuild> = { ...(existing?.builds ?? {}) };
+    if (meta.key && meta.result) {
+      delete builds[meta.key]; // re-insert: most recent last
+      builds[meta.key] = meta.result;
+    }
+    const keys = Object.keys(builds);
+    for (const old of keys.slice(0, Math.max(0, keys.length - MAX_BUILDS_PER_ARTIFACT))) {
+      delete builds[old];
+      if (this.byKey.get(old) === sha) this.byKey.delete(old);
+    }
     const manifest: Manifest = {
-      ...(existing ?? {}),
-      ...meta,
       sha256: sha,
       bytes: bytes.length,
+      origin: existing?.origin ?? meta.origin,
+      builds,
       createdAt: existing?.createdAt ?? new Date(this.now()).toISOString(),
     };
     // Unmanaged reference images (no manifest) stay unmanaged: never write a manifest for them.
@@ -147,7 +183,7 @@ export class ArtifactStore {
       await writeFile(tmp, JSON.stringify(manifest), { mode: 0o444 });
       await rename(tmp, join(this.opts.dir, `${sha}.json`));
       this.manifests.set(sha, manifest);
-      if (manifest.key) this.byKey.set(manifest.key, sha);
+      for (const key of Object.keys(builds)) this.byKey.set(key, sha);
     }
     this.touch(sha);
     await this.evict();
@@ -181,7 +217,8 @@ export class ArtifactStore {
 
   private forget(sha: string) {
     const m = this.manifests.get(sha);
-    if (m?.key && this.byKey.get(m.key) === sha) this.byKey.delete(m.key);
+    for (const key of Object.keys(m?.builds ?? {}))
+      if (this.byKey.get(key) === sha) this.byKey.delete(key);
     this.manifests.delete(sha);
     this.lastUsed.delete(sha);
     this.leases.delete(sha);

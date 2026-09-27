@@ -130,6 +130,49 @@ describe('BuildService', () => {
   });
 });
 
+describe('several sources, one artifact', () => {
+  it('each source keeps its own build record: cache hits and lookups answer for the source asked, also after a restart', async () => {
+    const { service, provider, storeDir } = setup();
+    const a = await finish(service, service.submit(sketch('#same // version a')));
+    const b = await finish(service, service.submit(sketch('#same // version b')));
+    expect(a.artifact!.sha256).toBe(b.artifact!.sha256); // identical bytes, stored once
+    expect(a.key).not.toBe(b.key);
+    expect(service.lookup(a.key)?.key).toBe(a.key);
+    expect(service.lookup(b.key)?.key).toBe(b.key);
+    const hit = service.submit(sketch('#same // version a'));
+    expect('cached' in hit && hit.cached.key).toBe(a.key);
+    expect(provider.builds).toBe(2);
+    // A new process reads every source's record back from the manifest.
+    const restarted = new ArtifactStore({ dir: storeDir, capBytes: 256 * 1024 * 1024, graceMs: 0 });
+    await restarted.load();
+    expect(restarted.findBuild(a.key)?.key).toBe(a.key);
+    expect(restarted.findBuild(b.key)?.key).toBe(b.key);
+  });
+
+  it('reads an early single-record manifest', async () => {
+    const dir = tempDir('tbi-store-');
+    cleanup.push(dir);
+    const img = fakeImage('legacy');
+    const sha = createHash('sha256').update(img).digest('hex');
+    writeFileSync(join(dir, `${sha}.bin`), img);
+    const record = { key: 'k1', ok: true, diagnostics: [] };
+    writeFileSync(
+      join(dir, `${sha}.json`),
+      JSON.stringify({
+        sha256: sha,
+        bytes: img.length,
+        origin: 'build',
+        key: 'k1',
+        result: record,
+        createdAt: 'x',
+      }),
+    );
+    const store = new ArtifactStore({ dir, capBytes: 64 * 1024 * 1024, graceMs: 0 });
+    await store.load();
+    expect(store.findBuild('k1')).toEqual(record);
+  });
+});
+
 describe('ArtifactStore', () => {
   it('LRU evicts managed artifacts above the cap, never leased ones, never provisioned references', async () => {
     let now = 1_000_000;
@@ -158,7 +201,7 @@ describe('ArtifactStore', () => {
     expect(store.exists(b.sha256)).toBe(false); // least recently used, not leased
     expect(store.exists(c.sha256)).toBe(true);
     expect(store.exists(refSha)).toBe(true); // provisioned reference: never managed
-    expect(store.findByKey('kb')).toBeUndefined();
+    expect(store.findBuild('kb')).toBeUndefined();
     // Once the lease ends, a can go too (still above the cap only if more are added).
     now += 120_000;
     await store.publish(fakeImage('d'), { origin: 'build', key: 'kd' });
