@@ -503,6 +503,14 @@ workflow, so a long run is more valuable after it). It is **not recorded as PASS
 boundaries clean; `npm test` 495 tests in 46 files; `test:e2e` 103 passed, 3 heavy real-QEMU
 tests skipped (run separately, 3/3); `test:browser` 4; production build OK.
 
+**CI correction (GitHub Actions 36328598866 failed on `50c7df1`):** two timing defects that
+only showed on the slower runner, both reproduced locally and fixed in the implementation:
+the page `dir`/`lang` was applied in a post-paint effect, so the first Hebrew frame still had
+`dir="ltr"` (project name left-aligned); and the menu focused its first item in a post-paint
+effect that could take focus back after an immediate End key. Both now happen in the same commit
+as the render. Two regression tests encode the causes (fail on the old code, pass now). Final
+counts after the fix: `npm test` 495; `test:e2e` 105 passed, 3 heavy skipped; `test:browser` 4.
+
 **Deferred to post-S7 / pre-S8:** the integrated long run (browser/editor, source autosave,
 repeated Arduino builds, artifacts, R2/QEMU sessions, the local DC path and the IndexedDB
 storage trend). Its harness exists as an uncommitted engineering tool from this sprint.

@@ -447,3 +447,64 @@ test('one light header surface on Projects and in the editor, distinct from whit
     await page.locator('.brand-hero').evaluate((h) => getComputedStyle(h).backgroundColor),
   ).toBe('rgb(10, 26, 51)');
 });
+
+test('locale direction switches in the same commit as the translated text (no mixed frame)', async ({
+  page,
+}) => {
+  await createProject(page, 'Direction commit');
+  // Watch the exact moment the Hebrew label renders and read direction and alignment there.
+  const seen = await page.evaluate(
+    () =>
+      new Promise<{ dir: string; align: string }>((resolve) => {
+        const label = document.querySelector('.project-name-label')!;
+        const field = document.querySelector('[data-testid="project-name"]')!;
+        const obs = new MutationObserver(() => {
+          if (!/שם/.test(label.textContent ?? '')) return;
+          obs.disconnect();
+          resolve({
+            dir: document.documentElement.dir,
+            align: getComputedStyle(field).textAlign,
+          });
+        });
+        obs.observe(label, { childList: true, characterData: true, subtree: true });
+        const sel = document.querySelector<HTMLSelectElement>('[data-testid="language-select"]')!;
+        sel.value = 'he';
+        sel.dispatchEvent(new Event('change', { bubbles: true }));
+      }),
+  );
+  expect(seen).toEqual({ dir: 'rtl', align: 'right' });
+  await page.getByTestId('language-select').selectOption('en');
+});
+
+test('menu keyboard contract holds when animation frames arrive late (slow runner)', async ({
+  page,
+}) => {
+  // Delay every animation frame, as on a busy CI runner (GitHub Actions 36328598866).
+  await page.addInitScript(() => {
+    const raf = window.requestAnimationFrame.bind(window);
+    window.requestAnimationFrame = (cb) => {
+      setTimeout(() => raf(cb), 250);
+      return 0;
+    };
+  });
+  await createProject(page, 'Slow frames');
+  const button = menuButton(page);
+  for (let i = 0; i < 3; i++) {
+    await button.focus();
+    await page.keyboard.press('Enter');
+    // End immediately: the last item keeps focus (nothing steals it back later).
+    await page.keyboard.press('End');
+    await expect(page.getByTestId('export-current')).toBeFocused();
+    await page.waitForTimeout(600);
+    await expect(page.getByTestId('export-current')).toBeFocused();
+    await page.keyboard.press('Home');
+    await expect(page.getByTestId('menu-projects')).toBeFocused();
+    await page.keyboard.press('ArrowUp');
+    await expect(page.getByTestId('export-current')).toBeFocused();
+    await page.keyboard.press('ArrowDown');
+    await expect(page.getByTestId('menu-projects')).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(menu(page)).toHaveCount(0);
+    await expect(button).toBeFocused();
+  }
+});

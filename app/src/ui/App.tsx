@@ -1,4 +1,4 @@
-import { useEffect } from 'preact/hooks';
+import { useEffect, useLayoutEffect } from 'preact/hooks';
 import { useAppState, useStore, useT } from './context.js';
 import { Editor } from './Editor.js';
 import { Home } from './Home.js';
@@ -11,7 +11,10 @@ export function App() {
   const t = useT();
 
   // Direction and language apply to the application chrome; the canvas opts out (dir="ltr").
-  useEffect(() => {
+  // A layout effect: set in the same commit as the translated text, so no frame ever shows
+  // one locale's text with the other's direction (a post-paint effect lagged on slow runners,
+  // GitHub Actions 36328598866).
+  useLayoutEffect(() => {
     document.documentElement.lang = state.locale.code;
     document.documentElement.dir = state.locale.dir;
   }, [state.locale]);

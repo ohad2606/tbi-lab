@@ -26,20 +26,32 @@ export function AppMenu({ chooseImport }: { chooseImport: () => void }) {
 
   // The top bar clips its overflow, so the list is fixed to the viewport under the button,
   // aligned to the button's inline start (the header's leading edge: left in LTR, right in RTL).
-  useLayoutEffect(() => {
-    if (!open || !button.current) return;
-    const r = button.current.getBoundingClientRect();
-    const rtl = getComputedStyle(button.current).direction === 'rtl';
-    setPlace({
+  const placeUnderButton = () => {
+    const b = button.current;
+    if (!b) return null;
+    const r = b.getBoundingClientRect();
+    const rtl = getComputedStyle(b).direction === 'rtl';
+    return {
       top: r.bottom + 4,
       start: rtl ? document.documentElement.clientWidth - r.right : r.left,
-    });
-  }, [open, state.locale]);
+    };
+  };
+  // Placed when opened, so the list is never rendered unplaced (hidden) first.
+  const openMenu = () => {
+    setPlace(placeUnderButton());
+    setOpen(true);
+  };
+  useLayoutEffect(() => {
+    if (open) setPlace(placeUnderButton());
+  }, [state.locale]);
 
-  // Focus the first item once the list is placed (it is hidden until then).
-  useEffect(() => {
-    if (open && place) items()[0]?.focus();
-  }, [open, place === null]);
+  // Focus the first item in the same commit that shows the list, before any key can arrive,
+  // and never take focus back from an item the user already moved to (a post-paint effect
+  // could run after an End key press and steal its focus: GitHub Actions 36328598866).
+  useLayoutEffect(() => {
+    if (!open) return;
+    if (!menu.current?.contains(document.activeElement)) items()[0]?.focus();
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -95,11 +107,11 @@ export function AppMenu({ chooseImport }: { chooseImport: () => void }) {
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? 'app-menu-list' : undefined}
-        onClick={() => (open ? close(false) : setOpen(true))}
+        onClick={() => (open ? close(false) : openMenu())}
         onKeyDown={(e) => {
           if (e.key === 'ArrowDown' && !open) {
             e.preventDefault();
-            setOpen(true);
+            openMenu();
           }
         }}
       >
