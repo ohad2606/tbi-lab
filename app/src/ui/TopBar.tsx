@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import markUrl from '../assets/brand/tbi-mark.png';
+import { SIGN_OUT_URL } from '../deployment.js';
 import { LOCALES } from '../i18n/i18n.js';
 import { useAppState, useStore, useT } from './context.js';
 import { downloadProject } from './download.js';
@@ -81,6 +82,12 @@ export function TopBar() {
             ))}
           </select>
         </label>
+        {/* Only a protected deployment configures this; a plain navigation leaves it. */}
+        {SIGN_OUT_URL && (
+          <a class="button button-quiet sign-out" data-testid="sign-out" href={SIGN_OUT_URL}>
+            {t('topbar.signOut')}
+          </a>
+        )}
       </div>
     </header>
   );

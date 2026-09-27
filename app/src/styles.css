@@ -1106,6 +1106,14 @@ select {
   border-color: var(--border);
 }
 
+/* Preview sign-out (deployment-configured): a secondary link styled as a quiet button. */
+.sign-out {
+  display: inline-block;
+  text-decoration: none;
+  white-space: nowrap;
+  color: var(--muted);
+}
+
 .nav-arrow {
   display: inline-block;
   font-weight: 700;

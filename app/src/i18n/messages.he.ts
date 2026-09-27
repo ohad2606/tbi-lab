@@ -24,6 +24,7 @@ export const he: Record<MessageKey, string> = {
   'topbar.projects': 'פרויקטים',
   'topbar.projectName': 'שם הפרויקט',
   'topbar.language': 'שפה',
+  'topbar.signOut': 'יציאה',
 
   'save.saved': 'כל השינויים נשמרו',
   'save.saving': 'שומר…',

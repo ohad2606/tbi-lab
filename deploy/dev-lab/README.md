@@ -54,6 +54,9 @@ save`. Also add the matching ingress rules in the Oracle Cloud security list for
   answers unauthenticated.
 - Any other Google account authenticates with Google but is refused by oauth2-proxy with 403.
 - Sign-out: `https://dev-lab.tbi-tech.net/oauth2/sign_out` clears the session cookie.
+  - The app shows a secondary **Sign out** link (Hebrew: יציאה) in the top bar, a plain
+    navigation to it. `publish.sh` builds with `VITE_SIGN_OUT_URL=/oauth2/sign_out`; builds
+    without that variable (local, CI) show no sign-out control.
   - The next visit goes back to Google with the account chooser (`prompt=select_account`).
   - Google's own browser session is not ended; that is a limitation of Google as an identity
     provider.

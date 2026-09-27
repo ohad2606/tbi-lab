@@ -43,5 +43,15 @@ export default defineConfig({
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,
     },
+    {
+      // The same source built as a protected preview is: with a sign-out destination
+      // (signout.spec.ts). Its own output directory; the routine build above has none.
+      command:
+        'npm run build --workspace @tbi-lab/app -- --outDir .tmp/dist-signout && npm run preview --workspace @tbi-lab/app -- --outDir .tmp/dist-signout --host 127.0.0.1 --port 4174 --strictPort',
+      url: 'http://127.0.0.1:4174',
+      env: { VITE_SIGN_OUT_URL: '/oauth2/sign_out' },
+      reuseExistingServer: !process.env.CI,
+      timeout: 240_000,
+    },
   ],
 });

@@ -288,6 +288,10 @@ proxy setting was changed for streaming.
 - The full heavy acceptance (blink, input echo, determinism) passed through the deployed Caddy
   route and systemd Session Host (internal origin, loopback).
 - The Google-login hop needs a browser check by an allowed user.
+- **Sign out (preview UX):** the top bar shows a secondary "Sign out" / "יציאה" link when the
+  build sets `VITE_SIGN_OUT_URL` (dev-lab: `/oauth2/sign_out`, the proxy's endpoint). It is a
+  plain top-level navigation; the app has no identity display and no knowledge of the provider.
+  Without the variable (local builds, CI) there is no control.
 - **Rollback:** point `/srv/tbi-lab/dev-lab/current` and `/srv/tbi-lab/session-host/current` at
   the previous build, and restore `/etc/caddy/Caddyfile.pre-s6`.
 

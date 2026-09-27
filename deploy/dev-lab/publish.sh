@@ -18,7 +18,9 @@ work="$(mktemp -d)"
 trap 'git -C "$repo" worktree remove --force "$work/src" >/dev/null 2>&1 || true; rm -rf "$work"' EXIT
 
 git -C "$repo" worktree add --detach "$work/src" "$sha" >/dev/null
-(cd "$work/src" && npm ci --no-audit --no-fund && npm run build && npm run host:build)
+# The preview is protected by oauth2-proxy; the app only learns where signing out goes.
+(cd "$work/src" && npm ci --no-audit --no-fund &&
+  VITE_SIGN_OUT_URL=/oauth2/sign_out npm run build && npm run host:build)
 
 sudo install -d -m 0755 "$root"
 sudo rm -rf "$root/$sha"

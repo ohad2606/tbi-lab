@@ -21,6 +21,7 @@ export const en = {
   'topbar.projects': 'Projects',
   'topbar.projectName': 'Project name',
   'topbar.language': 'Language',
+  'topbar.signOut': 'Sign out',
 
   'save.saved': 'All changes saved',
   'save.saving': 'Saving…',
