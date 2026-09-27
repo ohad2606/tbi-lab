@@ -1,7 +1,7 @@
 # TBI Lab private development preview: dev-lab.tbi-tech.net
 #
 #   browser --HTTPS--> Caddy :443 --> oauth2-proxy 127.0.0.1:4180 (Google OIDC, exact-email
-#   allowlist) --> Caddy 127.0.0.1:8080 (static production build, SPA fallback)
+#   allowlist) --> Caddy 127.0.0.1:8080 (static production build, SPA fallback, /runtime, /build)
 #
 # Caddy is the only public listener (80, 443). Every request, static assets included, passes
 # through oauth2-proxy before any file is served. Port 80 only answers the ACME HTTP-01
@@ -38,6 +38,16 @@ http://:8080 {
 		reverse_proxy 127.0.0.1:7400 {
 			flush_interval -1
 		}
+	}
+
+	# The build service (Sprint 7), same-origin behind the same login. Build requests are small
+	# JSON; the Advanced prebuilt upload is one 4 MiB image. Never cached.
+	handle_path /build/* {
+		request_body {
+			max_size 5MB
+		}
+		header Cache-Control "no-store"
+		reverse_proxy 127.0.0.1:7420
 	}
 
 	# Hashed build assets can be cached privately; the HTML entry point (and the SPA fallback)

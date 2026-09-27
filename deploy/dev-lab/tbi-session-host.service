@@ -17,6 +17,10 @@ Environment=TBI_HOST_BIND=127.0.0.1
 Environment=TBI_HOST_PORT=7400
 # Provisioned R1 runtime (QEMU build + pinned firmware artifacts), read-only for the service.
 Environment=TBI_RUNTIME_HOME=/home/ubuntu/tbi-r1-clean/rt
+# Sprint 7: artifacts come from the shared content-addressed store the build service publishes to
+# (seeded with the R1 reference images). Lookup, re-hash and private copy are unchanged.
+Environment=TBI_ARTIFACTS=/var/lib/tbi-lab/artifacts
+SupplementaryGroups=tbi-artifacts
 ExecStart=/home/ubuntu/.nvm/versions/node/v24.21.0/bin/node /srv/tbi-lab/session-host/current/session-host.mjs
 Restart=on-failure
 RestartSec=2

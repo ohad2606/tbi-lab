@@ -1,0 +1,63 @@
+# TBI Lab build service for the dev-lab controlled preview (Sprint 7).
+# Installed as /etc/systemd/system/tbi-build.service (setup: deploy/dev-lab/setup-build.sh).
+#
+# Loopback only (127.0.0.1:7420). The browser reaches it solely through the same-origin /build/
+# route of the internal Caddy origin, behind oauth2-proxy (Google login + exact-email allowlist).
+# It runs as its own user, sees no home directory (the pinned toolchain and Node are bind-mounted
+# read-only), cannot reach the network (loopback only, so neither the service nor a compile can
+# download anything), and can write only its job directories and the shared artifact store,
+# which the Session Host reads. It holds no secrets.
+[Unit]
+Description=TBI Lab build service (dev-lab preview)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=tbi-build
+Group=tbi-artifacts
+UMask=0027
+Environment=TBI_BUILD_BIND=127.0.0.1
+Environment=TBI_BUILD_PORT=7420
+Environment=TBI_ARDUINO_HOME=/opt/tbi-arduino
+Environment=TBI_ARTIFACT_STORE=/var/lib/tbi-lab/artifacts
+Environment=TBI_BUILD_WORK=/var/lib/tbi-build/jobs
+Environment=TBI_ARTIFACT_CAP_MB=256
+Environment=TBI_ARTIFACT_LEASE_MS=600000
+StateDirectory=tbi-build tbi-build/jobs
+StateDirectoryMode=0700
+BindReadOnlyPaths=/home/ubuntu/tbi-r1-clean/rt/arduino:/opt/tbi-arduino
+BindReadOnlyPaths=/home/ubuntu/.nvm/versions/node/v24.21.0:/opt/tbi-node
+BindReadOnlyPaths=/srv/tbi-lab/build-service/current:/opt/tbi-build
+ReadWritePaths=/var/lib/tbi-lab/artifacts
+ExecStart=/opt/tbi-node/bin/node /opt/tbi-build/build-service.mjs
+Restart=on-failure
+RestartSec=2
+KillMode=control-group
+TimeoutStopSec=20
+
+# Hardening.
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+IPAddressDeny=any
+IPAddressAllow=localhost
+# Resource limits (one build at a time, so these bound each build too).
+MemoryMax=1536M
+CPUQuota=80%
+TasksMax=128
+
+[Install]
+WantedBy=multi-user.target

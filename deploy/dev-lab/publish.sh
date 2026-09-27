@@ -20,7 +20,7 @@ trap 'git -C "$repo" worktree remove --force "$work/src" >/dev/null 2>&1 || true
 git -C "$repo" worktree add --detach "$work/src" "$sha" >/dev/null
 # The preview is protected by oauth2-proxy; the app only learns where signing out goes.
 (cd "$work/src" && npm ci --no-audit --no-fund &&
-  VITE_SIGN_OUT_URL=/oauth2/sign_out npm run build && npm run host:build)
+  VITE_SIGN_OUT_URL=/oauth2/sign_out npm run build && npm run host:build && npm run buildsvc:build)
 
 sudo install -d -m 0755 "$root"
 sudo rm -rf "$root/$sha"
@@ -42,4 +42,17 @@ if [ -f "$work/src/runtime/host/dist/session-host.mjs" ]; then
     sudo systemctl restart tbi-session-host.service
   fi
   echo "published session host $sha -> $host_root/current"
+fi
+
+# The build service bundle of the same ref (Sprint 7).
+build_root=/srv/tbi-lab/build-service
+if [ -f "$work/src/runtime/builder/dist/build-service.mjs" ] && [ -d "$build_root" ]; then
+  sudo install -d -m 0755 "$build_root/$sha"
+  sudo install -m 0644 "$work/src/runtime/builder/dist/build-service.mjs" "$build_root/$sha/build-service.mjs"
+  sudo ln -sfn "$build_root/$sha" "$build_root/current.tmp"
+  sudo mv -T "$build_root/current.tmp" "$build_root/current"
+  if systemctl list-unit-files tbi-build.service >/dev/null 2>&1; then
+    sudo systemctl restart tbi-build.service
+  fi
+  echo "published build service $sha -> $build_root/current"
 fi

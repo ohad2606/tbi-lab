@@ -5,6 +5,9 @@
  *   TBI_HOST_BIND      bind address (default 127.0.0.1; the host is not meant to face the
  *                      internet directly: a pilot puts an authenticating proxy in front)
  *   TBI_RUNTIME_HOME   provisioned runtime (R1 provision.sh); QEMU and artifacts come from here
+ *   TBI_ARTIFACTS      artifact directory override (Sprint 7: the content-addressed store the
+ *                      build service publishes to); default $TBI_RUNTIME_HOME/artifacts. Only
+ *                      the location changes: lookup, re-hash and private copy are unchanged.
  *   TBI_HOST_*_MS etc. operator-tunable limits (see TUNABLE below)
  *
  * SIGTERM / SIGINT: stop accepting requests, terminate every session (host_shutdown), release
@@ -40,7 +43,7 @@ for (const [env, key] of Object.entries(TUNABLE)) {
 }
 const config = defaultConfig({
   qemu: process.env.TBI_QEMU ?? QEMU,
-  artifactsDir: join(RUNTIME_HOME, 'artifacts'),
+  artifactsDir: process.env.TBI_ARTIFACTS ?? join(RUNTIME_HOME, 'artifacts'),
   ...overrides,
 });
 const host = new SessionHost(config);
