@@ -9,6 +9,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 import type { ProjectDocument } from '@tbi-lab/domain';
+import { exportFromMenu, goToProjects, openAppMenu } from './helpers.js';
 
 const EXAMPLES = [
   'ohms-law',
@@ -128,10 +129,11 @@ test('Sprint 5: project library and portability measurements', async ({ page }) 
         `!!document.querySelector('[data-hit="component"][data-id="R1"]')`,
       ),
     );
+    await openAppMenu(page);
     library.push(
       await timeInPage(
         page,
-        '.topbar-nav .button',
+        '[data-testid="menu-projects"]',
         `document.querySelectorAll('.project-row').length >= 50`,
       ),
     );
@@ -147,7 +149,7 @@ test('Sprint 5: project library and portability measurements', async ({ page }) 
         `!!document.querySelector('[data-hit="component"][data-id="R1"]')`,
       ),
     );
-    await page.locator('.topbar-nav .button').click();
+    await goToProjects(page);
     await expect(page.getByTestId('example-list')).toBeVisible();
   }
 
@@ -158,14 +160,11 @@ test('Sprint 5: project library and portability measurements', async ({ page }) 
   let text = '';
   for (let i = 0; i < 10; i++) {
     const t0 = Date.now();
-    const [download] = await Promise.all([
-      page.waitForEvent('download'),
-      page.getByTestId('export-current').click(),
-    ]);
+    const download = await exportFromMenu(page);
     exportTimes.push(Date.now() - t0);
     text = readFileSync((await download.path())!, 'utf8');
   }
-  await page.locator('.topbar-nav .button').click();
+  await goToProjects(page);
   await expect(page.getByTestId('example-list')).toBeVisible();
   const importTimes: number[] = [];
   const importInApp: number[] = [];
@@ -199,7 +198,7 @@ test('Sprint 5: project library and portability measurements', async ({ page }) 
     importInApp.push(
       await page.evaluate(() => (window as unknown as { __importMs: Promise<number> }).__importMs),
     );
-    await page.locator('.topbar-nav .button').click();
+    await goToProjects(page);
     await expect(page.getByTestId('example-list')).toBeVisible();
   }
 

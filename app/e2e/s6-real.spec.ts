@@ -11,7 +11,7 @@
  */
 import { execFileSync } from 'node:child_process';
 import { expect, test, type Page } from '@playwright/test';
-import { storedProject, waitSaved } from './helpers.js';
+import { goToProjects, storedProject, waitSaved } from './helpers.js';
 
 test.skip(!process.env.TBI_S6_REAL, 'heavy: needs the real Session Host + QEMU (TBI_S6_REAL=1)');
 test.describe.configure({ mode: 'serial' });
@@ -32,7 +32,7 @@ async function openExample(page: Page, id: string) {
   const library = page.getByTestId('example-list');
   await expect(library.or(page.getByTestId('canvas'))).toBeVisible();
   if (!(await library.isVisible())) {
-    await page.getByRole('button', { name: /^‹?\s*(Projects|פרויקטים)$/ }).click();
+    await goToProjects(page);
   }
   await page.getByTestId(`open-example-${id}`).click();
   await expect(page.getByTestId('canvas')).toBeVisible();

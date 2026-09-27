@@ -1,4 +1,4 @@
-import { expect, type Page } from '@playwright/test';
+import { expect, type Download, type Page } from '@playwright/test';
 import { createPackage, serializePackage, type Point, type ProjectDocument } from '@tbi-lab/domain';
 
 /** Every stored project document, read straight from the real IndexedDB. */
@@ -71,9 +71,8 @@ export async function createProject(page: Page, name?: string): Promise<void> {
   await page.goto('/');
   // The app reopens the last project; go back to the project home to create a new one.
   const home = page.getByTestId('new-project-name');
-  const projects = page.getByRole('button', { name: /^(Projects|פרויקטים)$/ });
-  await expect(home.or(projects)).toBeVisible();
-  if (!(await home.isVisible())) await projects.click();
+  await expect(home.or(page.getByTestId('canvas'))).toBeVisible();
+  if (!(await home.isVisible())) await goToProjects(page);
   if (name !== undefined) await page.getByTestId('new-project-name').fill(name);
   await page.getByTestId('create-project').click();
   await expect(page.getByTestId('canvas')).toBeVisible();
@@ -149,8 +148,7 @@ export async function openImported(page: Page, doc: ProjectDocument): Promise<vo
   const library = page.getByTestId('example-list');
   await expect(library.or(page.getByTestId('canvas'))).toBeVisible();
   if (!(await library.isVisible())) {
-    await page.getByRole('button', { name: /^‹?\s*(Projects|פרויקטים)$/ }).click();
-    await expect(library).toBeVisible();
+    await goToProjects(page);
   }
   await page.getByTestId('import-file').setInputFiles({
     name: 'fixture.tbilab',
@@ -158,4 +156,28 @@ export async function openImported(page: Page, doc: ProjectDocument): Promise<vo
     buffer: Buffer.from(text, 'utf8'),
   });
   await expect(page.getByTestId('canvas')).toBeVisible();
+}
+
+/** Open the editor's application menu (projects, files, account). */
+export async function openAppMenu(page: Page): Promise<void> {
+  const button = page.getByTestId('app-menu-button');
+  if ((await button.getAttribute('aria-expanded')) !== 'true') await button.click();
+  await expect(page.getByTestId('app-menu')).toBeVisible();
+}
+
+/** From the editor, back to the Projects screen through the application menu. */
+export async function goToProjects(page: Page): Promise<void> {
+  await openAppMenu(page);
+  await page.getByTestId('menu-projects').click();
+  await expect(page.getByTestId('example-list')).toBeVisible();
+}
+
+/** Export the open project through the application menu; resolves with the download. */
+export async function exportFromMenu(page: Page): Promise<Download> {
+  await openAppMenu(page);
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    page.getByTestId('export-current').click(),
+  ]);
+  return download;
 }

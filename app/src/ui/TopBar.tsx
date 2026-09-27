@@ -1,87 +1,72 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import markUrl from '../assets/brand/tbi-mark.png';
+import logoUrl from '../assets/brand/tbi-logo.png';
 import { SIGN_OUT_URL } from '../deployment.js';
 import { LOCALES } from '../i18n/i18n.js';
+import { AppMenu } from './AppMenu.js';
 import { useAppState, useStore, useT } from './context.js';
-import { downloadProject } from './download.js';
+import { useImportPicker } from './importFile.js';
 import { SimControls } from './SimControls.js';
 
-const BRAND = 'TBI Lab';
-/** The TBI letters take the logo's three colours; the product name follows in ink. */
+/**
+ * Top bar. Editor: brand and project | editing and simulation | language and the menu.
+ * Projects screen (itself the navigation hub): brand | language and sign-out.
+ */
+export function TopBar() {
+  const state = useAppState();
+  const editing = state.screen === 'editor' && !!state.doc;
+  return (
+    <header class={`topbar ${editing ? 'topbar-editor' : 'topbar-home'}`}>
+      {editing ? <EditorBar /> : <HomeBar />}
+    </header>
+  );
+}
+
+/** The TBI brand letters take the logo's three colours; the product name follows in ink. */
+const BRAND_SUFFIX = '\u00a0Lab';
 const BRAND_LETTERS: readonly [string, string][] = [
   ['T', 'brand-t'],
   ['B', 'brand-b'],
   ['I', 'brand-i'],
 ];
-const BRAND_SUFFIX = '\u00a0Lab';
 
-export function TopBar() {
-  const state = useAppState();
-  const store = useStore();
+/** The regular TBI logo (made for the navy brand colour, as in the Projects hero) and name. */
+function Brand() {
   const t = useT();
-  const editing = state.screen === 'editor' && !!state.doc;
   return (
-    <header class="topbar">
-      {/* 1. Where am I: brand, back to the library, the project's own name. */}
-      <div class="topbar-group topbar-nav">
-        <span class="brand" dir="ltr" aria-label={BRAND}>
-          <img class="brand-mark" src={markUrl} alt="" width={30} height={30} />
-          <span class="brand-word" aria-hidden="true">
-            {BRAND_LETTERS.map(([letter, cls]) => (
-              <span key={letter} class={cls}>
-                {letter}
-              </span>
-            ))}
-            {BRAND_SUFFIX}
+    <span class="brand" data-testid="brand" dir="ltr">
+      <span class="brand-logo-tile">
+        <img
+          class="brand-logo"
+          data-testid="brand-logo"
+          src={logoUrl}
+          alt={t('brand.logoAlt')}
+          width={533}
+          height={300}
+          decoding="async"
+        />
+      </span>
+      <span class="brand-word">
+        {BRAND_LETTERS.map(([letter, cls]) => (
+          <span key={letter} class={cls}>
+            {letter}
           </span>
-        </span>
-        {editing && (
-          <button type="button" class="button button-quiet" onClick={() => void store.goHome()}>
-            <span aria-hidden="true" class="nav-arrow">
-              ‹
-            </span>{' '}
-            {t('topbar.projects')}
-          </button>
-        )}
-        {editing && <ProjectName name={state.doc!.name} disabled={!!state.readOnly} />}
+        ))}
+        {BRAND_SUFFIX}
+      </span>
+    </span>
+  );
+}
+
+function HomeBar() {
+  const t = useT();
+  return (
+    <>
+      <div class="topbar-group topbar-nav">
+        <Brand />
       </div>
       <span class="spacer" />
-      {/* 2. Work on the circuit: history, then the simulation. */}
-      {editing && (
-        <div class="topbar-group topbar-work">
-          {!state.readOnly && <HistoryControls />}
-          <SimControls />
-        </div>
-      )}
-      {/* 3. Project file state and application settings. */}
       <div class="topbar-group topbar-meta">
-        {editing && !state.readOnly && <SaveIndicator />}
-        {editing && !state.readOnly && (
-          <button
-            type="button"
-            class="button button-quiet"
-            data-testid="export-current"
-            title={t('export.title')}
-            onClick={() => void downloadProject(store, state.doc!.projectId)}
-          >
-            {t('export.button')}
-          </button>
-        )}
-        <label class="language">
-          {/* The select shows each language's own name; the label stays for assistive tech. */}
-          <span class="visually-hidden">{t('topbar.language')}</span>
-          <select
-            data-testid="language-select"
-            value={state.locale.code}
-            onChange={(e) => store.setLocale((e.target as HTMLSelectElement).value)}
-          >
-            {LOCALES.map((l) => (
-              <option key={l.code} value={l.code} lang={l.code} dir={l.dir}>
-                {l.autonym}
-              </option>
-            ))}
-          </select>
-        </label>
+        <LanguageSelect />
         {/* Only a protected deployment configures this; a plain navigation leaves it. */}
         {SIGN_OUT_URL && (
           <a class="button button-quiet sign-out" data-testid="sign-out" href={SIGN_OUT_URL}>
@@ -89,7 +74,61 @@ export function TopBar() {
           </a>
         )}
       </div>
-    </header>
+    </>
+  );
+}
+
+function EditorBar() {
+  const state = useAppState();
+  const picker = useImportPicker();
+  return (
+    <>
+      {/* 1. Where am I: the brand and the project's own name. */}
+      <div class="topbar-group topbar-nav">
+        <Brand />
+        <ProjectName name={state.doc!.name} disabled={!!state.readOnly} />
+      </div>
+      {/* 2. Work on the circuit: file state, history, the one simulation control. */}
+      <div class="topbar-group topbar-work">
+        {!state.readOnly && <SaveIndicator />}
+        {!state.readOnly && <HistoryControls />}
+        <SimControls />
+      </div>
+      <span class="spacer" />
+      {/* 3. Application: language, then projects, files and account in the menu. */}
+      <div class="topbar-group topbar-meta">
+        <LanguageSelect />
+        {picker.input}
+        <AppMenu chooseImport={picker.choose} />
+      </div>
+    </>
+  );
+}
+
+function LanguageSelect() {
+  const state = useAppState();
+  const store = useStore();
+  const t = useT();
+  return (
+    <label class="language">
+      {/* The select shows each language's own name; the label stays for assistive tech. */}
+      <span class="visually-hidden">{t('topbar.language')}</span>
+      <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" class="control-icon">
+        <circle cx="8" cy="8" r="6.2" />
+        <path d="M1.8 8 H14.2 M8 1.8 C5.6 4.2 5.6 11.8 8 14.2 M8 1.8 C10.4 4.2 10.4 11.8 8 14.2" />
+      </svg>
+      <select
+        data-testid="language-select"
+        value={state.locale.code}
+        onChange={(e) => store.setLocale((e.target as HTMLSelectElement).value)}
+      >
+        {LOCALES.map((l) => (
+          <option key={l.code} value={l.code} lang={l.code} dir={l.dir}>
+            {l.autonym}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
 

@@ -9,6 +9,7 @@ import {
   clickWorld,
   component,
   createProject,
+  goToProjects,
   place,
   storedProject,
   terminal,
@@ -51,7 +52,7 @@ test('A1: a project named in Hebrew is created and appears in the recent list', 
   const doc = await savedValid(page, (d) => d.name === 'מעגל ראשון', 'named project');
   expect(doc.name).toBe('מעגל ראשון');
   expect(doc.components.map((c) => c.id)).toEqual(['PSU1', 'GND1']);
-  await page.getByRole('button', { name: 'Projects' }).click();
+  await goToProjects(page);
   await expect(page.getByTestId('project-list')).toContainText('מעגל ראשון');
 });
 

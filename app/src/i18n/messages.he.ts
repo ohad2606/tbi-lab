@@ -25,6 +25,10 @@ export const he: Record<MessageKey, string> = {
   'topbar.projectName': 'שם הפרויקט',
   'topbar.language': 'שפה',
   'topbar.signOut': 'יציאה',
+  'menu.button': 'תפריט',
+  'menu.newProject': 'פרויקט חדש…',
+  'menu.export': 'ייצוא פרויקט',
+  'home.import.lead': 'או המשיכו מקובץ ⁦.tbilab⁩:',
 
   'save.saved': 'כל השינויים נשמרו',
   'save.saving': 'שומר…',

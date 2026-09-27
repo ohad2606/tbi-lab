@@ -12,6 +12,8 @@ import { drawLoop, link, run, setValue } from './circuits.js';
 import {
   component,
   createProject,
+  exportFromMenu,
+  goToProjects,
   place,
   storedProjects,
   waitForStoredProject,
@@ -20,7 +22,7 @@ import {
 const names = async (page: Page) => (await storedProjects(page)).map((p) => p.name).sort();
 
 async function goLibrary(page: Page) {
-  await page.getByRole('button', { name: /^‹?\s*(Projects|פרויקטים)$/ }).click();
+  await goToProjects(page);
   await expect(page.getByTestId('example-list')).toBeVisible();
 }
 
@@ -91,10 +93,7 @@ test.describe('1. project names', () => {
     page,
   }) => {
     await createProject(page, 'Bench');
-    const [download] = await Promise.all([
-      page.waitForEvent('download'),
-      page.getByTestId('export-current').click(),
-    ]);
+    const download = await exportFromMenu(page);
     const text = await (
       await import('node:fs')
     ).promises.readFile((await download.path())!, 'utf8');

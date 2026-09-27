@@ -288,12 +288,31 @@ proxy setting was changed for streaming.
 - The full heavy acceptance (blink, input echo, determinism) passed through the deployed Caddy
   route and systemd Session Host (internal origin, loopback).
 - The Google-login hop needs a browser check by an allowed user.
-- **Sign out (preview UX):** the top bar shows a secondary "Sign out" / "יציאה" link when the
-  build sets `VITE_SIGN_OUT_URL` (dev-lab: `/oauth2/sign_out`, the proxy's endpoint). It is a
+- **Sign out (preview UX):** when the build sets `VITE_SIGN_OUT_URL` (dev-lab:
+  `/oauth2/sign_out`, the proxy's endpoint) a "Sign out" / "יציאה" link appears beside the
+  language selector on the Projects screen and as the last item of the editor's menu. It is a
   plain top-level navigation; the app has no identity display and no knowledge of the provider.
   Without the variable (local builds, CI) there is no control.
 - **Rollback:** point `/srv/tbi-lab/dev-lab/current` and `/srv/tbi-lab/session-host/current` at
   the previous build, and restore `/etc/caddy/Caddyfile.pre-s6`.
+
+## 14a. Pre-soak UI polish (PM review of the deployed preview)
+
+- **Brand:** the top bar shows the regular TBI logo (`tbi-logo.png`, the Projects-hero asset,
+  on its navy brand colour, 34 px tall, aspect kept) and the "TBI Lab" wordmark. The round
+  profile mark (`tbi-mark.png`) is no longer used in the product UI; it stays in the repository
+  as a brand asset, and the browser-tab favicon is unchanged.
+- **Projects screen:** a wider shell (up to 112rem) with three separate areas: New project
+  (with Import), Recent projects, and Examples. On wide desktops create/recent share the start
+  column and examples take the wider end column (cards auto-fill, 3–4 per row); below 1180 px
+  one column in the same order. The screen's header keeps only brand, language and Sign out.
+- **Editor header:** brand and project name | save state, Undo, Redo, the one Run/Stop control
+  | language and a menu (≡). The menu holds Projects, New project… (the Projects screen's own
+  create form, focused), Import project…, Export project, and Sign out when configured. It is
+  a single list: keyboard operable (arrows, Home/End), Escape returns focus to the button, a
+  click outside or Tab closes it, it closes after every action, aligns to the button's inline
+  end in LTR and RTL, and stays inside the viewport. Import and export reuse the existing flows.
+- Nothing in the project schema, simulation, R2 client, Session Host or persistence changed.
 
 ## 15. Tests and evidence
 

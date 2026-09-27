@@ -6,7 +6,7 @@
 import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 import { projectHash, type ProjectDocument } from '@tbi-lab/domain';
-import { createProject, waitForStoredProject } from './helpers.js';
+import { createProject, exportFromMenu, goToProjects, waitForStoredProject } from './helpers.js';
 
 test('starts, creates and stores a project without crypto.randomUUID', async ({ page }) => {
   const errors: string[] = [];
@@ -38,14 +38,11 @@ test('export, hashing and import work without crypto.subtle or randomUUID (plain
   await page.goto('/');
   expect(await page.evaluate(() => typeof crypto.subtle)).toBe('undefined');
   await createProject(page, 'Plain HTTP');
-  const [download] = await Promise.all([
-    page.waitForEvent('download'),
-    page.getByTestId('export-current').click(),
-  ]);
+  const download = await exportFromMenu(page);
   const text = readFileSync((await download.path())!, 'utf8');
   const pkg = JSON.parse(text) as { project: ProjectDocument; integrity: { project: string } };
   expect(pkg.integrity.project).toBe(projectHash(pkg.project)); // same SHA-256 as Node's
-  await page.getByRole('button', { name: /^Projects$/ }).click();
+  await goToProjects(page);
   await page.getByTestId('import-file').setInputFiles({
     name: 'plain.tbilab',
     mimeType: 'application/json',

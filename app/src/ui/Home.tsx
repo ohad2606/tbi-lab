@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { PACKAGE_EXTENSION, PACKAGE_MAX_BYTES, PACKAGE_MEDIA_TYPE } from '@tbi-lab/domain';
 import { downloadProject } from './download.js';
+import { useImportPicker } from './importFile.js';
 import logoUrl from '../assets/brand/tbi-logo.png';
 import { EXAMPLES } from '../examples/catalog.js';
 import { formatDateTime, isolateUserText, type LocaleInfo } from '../i18n/i18n.js';
@@ -14,7 +14,7 @@ export function Home() {
   const t = useT();
   const [name, setName] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<ProjectIndexEntry | null>(null);
-  const fileInput = useRef<HTMLInputElement>(null);
+  const picker = useImportPicker();
   // Suggest the first free default name, so accepting the suggestion never conflicts.
   const value = name ?? store.defaultProjectName(state.projects.map((p) => p.name));
   const createConflict = state.nameConflict?.scope === 'create' ? state.nameConflict : null;
@@ -35,21 +35,6 @@ export function Home() {
     [state.projects, state.locale],
   );
 
-  const importFile = async (file: File) => {
-    if (file.size > PACKAGE_MAX_BYTES) {
-      store.notify({ key: 'import.error.too_large' });
-      return;
-    }
-    let text: string;
-    try {
-      text = await file.text();
-    } catch {
-      store.notify({ key: 'import.error.read' });
-      return;
-    }
-    await store.importPackage(text);
-  };
-
   return (
     <main class="home">
       <header class="brand-hero">
@@ -65,113 +50,106 @@ export function Home() {
           <h1>{t('home.title')}</h1>
           <p>{t('home.subtitle')}</p>
         </div>
-        <div class="home-header-actions">
-          <input
-            ref={fileInput}
-            type="file"
-            class="visually-hidden"
-            tabIndex={-1}
-            accept={`${PACKAGE_EXTENSION},application/json,${PACKAGE_MEDIA_TYPE}`}
-            aria-label={t('library.import.label')}
-            data-testid="import-file"
-            onChange={(e) => {
-              const input = e.currentTarget;
-              const file = input.files?.[0];
-              input.value = ''; // the same file can be chosen again after a refusal
-              if (file) void importFile(file);
-            }}
-          />
-          <button
-            type="button"
-            class="button button-on-dark"
-            data-testid="import-project"
-            title={t('library.import.label')}
-            onClick={() => fileInput.current?.click()}
-          >
-            {t('library.import.button')}
-          </button>
-        </div>
       </header>
 
+      {/* Three areas: create something, reopen your work, start from an example. */}
       <div class="home-grid">
-        <div class="home-column">
-          <section class="card" aria-labelledby="new-project-heading">
-            <h2 id="new-project-heading">{t('home.new.heading')}</h2>
-            <form
-              class="new-project"
-              onSubmit={(e) => {
-                e.preventDefault();
-                // Read the submitted field itself, not state that may not have rendered yet.
-                const field = e.currentTarget.elements.namedItem('projectName') as HTMLInputElement;
-                void store.newProject(field.value);
-              }}
-            >
-              <label>
-                <span>{t('home.new.nameLabel')}</span>
-                <input
-                  data-testid="new-project-name"
-                  name="projectName"
-                  dir="auto"
-                  value={value}
-                  aria-invalid={createConflict ? 'true' : undefined}
-                  aria-describedby={createConflict ? 'new-project-error' : undefined}
-                  onInput={(e) => {
-                    setName((e.target as HTMLInputElement).value);
-                    store.clearNameConflict();
-                  }}
-                />
-              </label>
-              <button type="submit" class="button button-primary" data-testid="create-project">
-                {t('home.new.create')}
-              </button>
-              {createConflict && (
-                <p
-                  class="field-error"
-                  id="new-project-error"
-                  role="alert"
-                  data-testid="name-conflict"
-                >
-                  {t('library.error.nameTaken', { name: isolateUserText(createConflict.name) })}
-                </p>
-              )}
-            </form>
-          </section>
-
-          <section class="card" aria-labelledby="recent-heading">
-            <h2 id="recent-heading">{t('home.recent.heading')}</h2>
-            {state.projects.length === 0 ? (
-              <p class="muted">{t('home.recent.empty')}</p>
-            ) : (
-              <ul class="project-list" data-testid="project-list">
-                {rows}
-              </ul>
+        <section class="card home-new" aria-labelledby="new-project-heading" data-testid="home-new">
+          <h2 id="new-project-heading">{t('home.new.heading')}</h2>
+          <form
+            class="new-project"
+            onSubmit={(e) => {
+              e.preventDefault();
+              // Read the submitted field itself, not state that may not have rendered yet.
+              const field = e.currentTarget.elements.namedItem('projectName') as HTMLInputElement;
+              void store.newProject(field.value);
+            }}
+          >
+            <label>
+              <span>{t('home.new.nameLabel')}</span>
+              <input
+                data-testid="new-project-name"
+                name="projectName"
+                dir="auto"
+                value={value}
+                aria-invalid={createConflict ? 'true' : undefined}
+                aria-describedby={createConflict ? 'new-project-error' : undefined}
+                onInput={(e) => {
+                  setName((e.target as HTMLInputElement).value);
+                  store.clearNameConflict();
+                }}
+              />
+            </label>
+            <button type="submit" class="button button-primary" data-testid="create-project">
+              {t('home.new.create')}
+            </button>
+            {createConflict && (
+              <p
+                class="field-error"
+                id="new-project-error"
+                role="alert"
+                data-testid="name-conflict"
+              >
+                {t('library.error.nameTaken', { name: isolateUserText(createConflict.name) })}
+              </p>
             )}
-            <p class="muted small">{t('home.browserNote')}</p>
-          </section>
-        </div>
-        <div class="home-column">
-          <section class="card examples-card" aria-labelledby="examples-heading">
-            <h2 id="examples-heading">{t('library.examples.heading')}</h2>
-            <p class="muted small">{t('library.examples.intro')}</p>
-            <ul class="example-list" data-testid="example-list">
-              {EXAMPLES.map((ex) => (
-                <li key={ex.id} class="example" data-testid={`example-${ex.id}`}>
-                  <h3>{t(ex.titleKey)}</h3>
-                  <p class="muted small">{t(ex.summaryKey)}</p>
-                  <button
-                    type="button"
-                    class="button"
-                    data-testid={`open-example-${ex.id}`}
-                    aria-label={t('library.examples.openNamed', { name: t(ex.titleKey) })}
-                    onClick={() => void store.openExample(ex.id)}
-                  >
-                    {t('library.examples.open')}
-                  </button>
-                </li>
-              ))}
+          </form>
+          <div class="home-import">
+            <span class="muted small">{t('home.import.lead')}</span>
+            {picker.input}
+            <button
+              type="button"
+              class="button"
+              data-testid="import-project"
+              title={t('library.import.label')}
+              onClick={picker.choose}
+            >
+              {t('library.import.button')}
+            </button>
+          </div>
+        </section>
+
+        <section
+          class="card home-recent"
+          aria-labelledby="recent-heading"
+          data-testid="home-recent"
+        >
+          <h2 id="recent-heading">{t('home.recent.heading')}</h2>
+          {state.projects.length === 0 ? (
+            <p class="muted">{t('home.recent.empty')}</p>
+          ) : (
+            <ul class="project-list" data-testid="project-list">
+              {rows}
             </ul>
-          </section>
-        </div>
+          )}
+          <p class="muted small">{t('home.browserNote')}</p>
+        </section>
+
+        <section
+          class="card examples-card home-examples"
+          aria-labelledby="examples-heading"
+          data-testid="home-examples"
+        >
+          <h2 id="examples-heading">{t('library.examples.heading')}</h2>
+          <p class="muted small">{t('library.examples.intro')}</p>
+          <ul class="example-list" data-testid="example-list">
+            {EXAMPLES.map((ex) => (
+              <li key={ex.id} class="example" data-testid={`example-${ex.id}`}>
+                <h3>{t(ex.titleKey)}</h3>
+                <p class="muted small">{t(ex.summaryKey)}</p>
+                <button
+                  type="button"
+                  class="button"
+                  data-testid={`open-example-${ex.id}`}
+                  aria-label={t('library.examples.openNamed', { name: t(ex.titleKey) })}
+                  onClick={() => void store.openExample(ex.id)}
+                >
+                  {t('library.examples.open')}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
       </div>
 
       {deleting && (

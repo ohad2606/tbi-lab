@@ -13,7 +13,7 @@ import {
   type ProjectDocument,
 } from '@tbi-lab/domain';
 import { drawLoop } from './circuits.js';
-import { component } from './helpers.js';
+import { component, goToProjects } from './helpers.js';
 
 interface Sample {
   workerStartMs: number | null;
@@ -147,7 +147,7 @@ test('Worker Run-to-result breakdown and main-thread responsiveness', async ({ p
       }),
     doc,
   );
-  await page.getByRole('button', { name: 'Projects' }).click();
+  await goToProjects(page);
   await page.getByRole('button', { name: /Sim perf 30/ }).click();
 
   // Main-thread responsiveness while solving: long tasks and rAF gaps during repeated runs.

@@ -1407,10 +1407,23 @@ select {
   color: var(--brand-navy);
 }
 
-.brand-mark {
-  inline-size: 30px;
-  block-size: 30px;
-  border-radius: 50%;
+.brand {
+  flex-shrink: 0;
+}
+
+/* The regular TBI logo (the Projects hero asset) on its navy brand colour, at toolbar size;
+   aspect ratio kept. */
+.brand-logo-tile {
+  display: inline-flex;
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: var(--brand-navy);
+}
+
+.brand-logo {
+  display: block;
+  block-size: 34px;
+  inline-size: auto;
 }
 
 .brand-t {
@@ -1427,17 +1440,19 @@ select {
 
 /* Library: a restrained navy brand band, then a two-column desktop layout. */
 .home {
-  max-width: 92rem;
+  /* Uses a wide desktop, but lines and cards never stretch without limit. */
+  max-width: 112rem;
   width: 100%;
-  padding: 1.5rem 2rem 2rem;
+  box-sizing: border-box;
+  padding: 1.25rem clamp(1.25rem, 2.5vw, 3rem) 2rem;
 }
 
 .brand-hero {
   display: flex;
   align-items: center;
   gap: 2rem;
-  padding: 1.1rem 2rem;
-  margin-block-end: 1.5rem;
+  padding: 0.9rem 2rem;
+  margin-block-end: 1.25rem;
   border-radius: 12px;
   background: var(--brand-navy);
   color: #fff;
@@ -1480,25 +1495,61 @@ select {
   background: rgb(255 255 255 / 12%);
 }
 
+/*
+ * Three areas that stay apart: create (compact), reopen your work, start from an example.
+ * Wide desktops: create and recent share the start column, examples take the wider end
+ * column. Narrower windows: one column in the same order.
+ */
 .home-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: 'new' 'recent' 'examples';
   gap: 1.25rem;
   align-items: start;
 }
 
-.home-column > .card:last-child {
+@media (min-width: 1180px) {
+  .home-grid {
+    grid-template-columns: minmax(26rem, 5fr) minmax(0, 7fr);
+    grid-template-areas:
+      'new examples'
+      'recent examples';
+    grid-template-rows: auto 1fr;
+  }
+}
+
+.home-grid > .card {
   margin-block-end: 0;
+  border-block-start: 3px solid var(--section-accent, var(--border));
+}
+
+.home-new {
+  grid-area: new;
+  --section-accent: var(--brand-blue);
+}
+
+.home-recent {
+  grid-area: recent;
+  --section-accent: var(--brand-green);
+}
+
+.home-examples {
+  grid-area: examples;
+  --section-accent: var(--brand-orange);
+}
+
+.home-import {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  margin-block-start: 0.9rem;
+  padding-block-start: 0.8rem;
+  border-block-start: 1px dashed var(--border);
 }
 
 .example-list {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-@media (min-width: 1700px) {
-  .example-list {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
+  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
 }
 
 .example {
@@ -1709,4 +1760,82 @@ select {
   white-space: pre-wrap;
   unicode-bidi: isolate;
   text-align: left;
+}
+
+/* ================================================================ S6 polish: top bar */
+
+/* Editor: brand and project | editing and simulation | language and menu. The project
+   context takes the free space (its name field is capped), so the work area and the
+   application group sit together at the inline end and never move with the run state. */
+.topbar-editor .topbar-nav {
+  flex: 1 1 auto;
+}
+
+.topbar-editor .topbar-meta {
+  flex: none;
+}
+
+.topbar-editor .spacer {
+  display: none;
+}
+
+.topbar-editor .topbar-work {
+  border-inline-end: 1px solid var(--border);
+  padding-inline-end: 0.75rem;
+}
+
+.topbar-editor .topbar-meta {
+  border-inline-start: 0;
+}
+
+.language {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--muted);
+}
+
+.app-menu-button {
+  display: inline-flex;
+  align-items: center;
+  padding-inline: 0.55rem;
+}
+
+.app-menu-list {
+  position: fixed;
+  z-index: 50;
+  min-inline-size: 14rem;
+  max-inline-size: calc(100vw - 2rem);
+  display: grid;
+  padding: 0.3rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgb(15 23 42 / 16%);
+}
+
+.app-menu-list [role='menuitem'] {
+  display: block;
+  font: inherit;
+  text-align: start;
+  text-decoration: none;
+  color: var(--text);
+  background: none;
+  border: 0;
+  border-radius: 4px;
+  padding: 0.45rem 0.7rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.app-menu-list [role='menuitem']:hover,
+.app-menu-list [role='menuitem']:focus-visible {
+  background: var(--accent-soft);
+  outline-offset: -2px;
+}
+
+.app-menu-separator {
+  block-size: 1px;
+  margin-block: 0.25rem;
+  background: var(--border);
 }

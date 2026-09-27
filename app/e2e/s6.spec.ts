@@ -8,6 +8,8 @@ import { expect, test, type Page } from '@playwright/test';
 import type { ProjectDocument } from '@tbi-lab/domain';
 import {
   createProject,
+  exportFromMenu,
+  goToProjects,
   place,
   storedProject,
   storedProjects,
@@ -24,8 +26,7 @@ async function openExample(page: Page, id: string) {
   await page.goto('/');
   const library = page.getByTestId('example-list');
   await expect(library.or(page.getByTestId('canvas'))).toBeVisible();
-  if (!(await library.isVisible()))
-    await page.getByRole('button', { name: /^‹?\s*(Projects|פרויקטים)$/ }).click();
+  if (!(await library.isVisible())) await goToProjects(page);
   await page.getByTestId(`open-example-${id}`).click();
   await expect(page.getByTestId('canvas')).toBeVisible();
   await waitSaved(page);
@@ -258,10 +259,7 @@ test('no runtime state in the project: reload, duplicate and export carry only e
   await expect(status(page)).toHaveAttribute('data-status', 'stopped');
   expect(await storedProject(page)).toEqual(doc);
   // Export: the package carries the firmware identity and no runtime state.
-  const [download] = await Promise.all([
-    page.waitForEvent('download'),
-    page.getByTestId('export-current').click(),
-  ]);
+  const download = await exportFromMenu(page);
   const pkg = readFileSync((await download.path())!, 'utf8');
   expect(pkg).toContain(doc.components.find((c) => c.id === 'U1')!.params.firmware as string);
   for (const word of ['session', 'token', 'TBI-BANKS', 'serial']) expect(pkg).not.toContain(word);

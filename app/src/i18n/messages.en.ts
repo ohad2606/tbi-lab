@@ -22,6 +22,10 @@ export const en = {
   'topbar.projectName': 'Project name',
   'topbar.language': 'Language',
   'topbar.signOut': 'Sign out',
+  'menu.button': 'Menu',
+  'menu.newProject': 'New project…',
+  'menu.export': 'Export project',
+  'home.import.lead': 'Or continue from a .tbilab file:',
 
   'save.saved': 'All changes saved',
   'save.saving': 'Saving…',

@@ -1,0 +1,189 @@
+import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
+import { SIGN_OUT_URL } from '../deployment.js';
+import { useAppState, useStore, useT } from './context.js';
+import { downloadProject } from './download.js';
+
+/**
+ * The editor's application menu: navigation, project files and the account action, kept out
+ * of the circuit-work area of the top bar. One flat list; no hover behaviour. Escape, a click
+ * outside, Tab, or choosing an item closes it.
+ */
+export function AppMenu({ chooseImport }: { chooseImport: () => void }) {
+  const state = useAppState();
+  const store = useStore();
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  const [place, setPlace] = useState<{ top: number; end: number } | null>(null);
+  const button = useRef<HTMLButtonElement>(null);
+  const menu = useRef<HTMLDivElement>(null);
+
+  const close = (focusButton: boolean) => {
+    setOpen(false);
+    setPlace(null);
+    if (focusButton) button.current?.focus();
+  };
+  const items = () => [...(menu.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [])];
+
+  // The top bar clips its overflow, so the list is fixed to the viewport under the button,
+  // aligned to the button's inline end (right in LTR, left in RTL).
+  useLayoutEffect(() => {
+    if (!open || !button.current) return;
+    const r = button.current.getBoundingClientRect();
+    const rtl = getComputedStyle(button.current).direction === 'rtl';
+    setPlace({
+      top: r.bottom + 4,
+      end: rtl ? r.left : document.documentElement.clientWidth - r.right,
+    });
+  }, [open, state.locale]);
+
+  // Focus the first item once the list is placed (it is hidden until then).
+  useEffect(() => {
+    if (open && place) items()[0]?.focus();
+  }, [open, place === null]);
+
+  useEffect(() => {
+    if (!open) return;
+    const outside = (e: PointerEvent) => {
+      const target = e.target as Node;
+      if (!menu.current?.contains(target) && !button.current?.contains(target)) close(false);
+    };
+    const onResize = () => close(false);
+    document.addEventListener('pointerdown', outside, true);
+    window.addEventListener('resize', onResize);
+    return () => {
+      document.removeEventListener('pointerdown', outside, true);
+      window.removeEventListener('resize', onResize);
+    };
+  }, [open]);
+
+  const onMenuKey = (e: KeyboardEvent) => {
+    const list = items();
+    const at = list.indexOf(document.activeElement as HTMLElement);
+    const move = (i: number) => {
+      e.preventDefault();
+      list[(i + list.length) % list.length]?.focus();
+    };
+    if (e.key === 'Escape') {
+      e.stopPropagation();
+      e.preventDefault();
+      close(true);
+    } else if (e.key === 'Tab') close(false);
+    else if (e.key === 'ArrowDown') move(at + 1);
+    else if (e.key === 'ArrowUp') move(at - 1);
+    else if (e.key === 'Home') move(0);
+    else if (e.key === 'End') move(list.length - 1);
+  };
+
+  const run = (action: () => void) => () => {
+    close(false);
+    action();
+  };
+  const doc = state.doc;
+
+  return (
+    <div class="app-menu" onKeyDown={(e) => open && onMenuKey(e)}>
+      <button
+        ref={button}
+        type="button"
+        class="button button-quiet app-menu-button"
+        data-testid="app-menu-button"
+        aria-label={t('menu.button')}
+        title={t('menu.button')}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls={open ? 'app-menu-list' : undefined}
+        onClick={() => (open ? close(false) : setOpen(true))}
+        onKeyDown={(e) => {
+          if (e.key === 'ArrowDown' && !open) {
+            e.preventDefault();
+            setOpen(true);
+          }
+        }}
+      >
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" class="control-icon">
+          <path d="M2 4 H14 M2 8 H14 M2 12 H14" />
+        </svg>
+      </button>
+      {open && (
+        <div
+          ref={menu}
+          id="app-menu-list"
+          class="app-menu-list"
+          role="menu"
+          aria-label={t('menu.button')}
+          data-testid="app-menu"
+          style={
+            place
+              ? { top: `${place.top}px`, insetInlineEnd: `${place.end}px` }
+              : { visibility: 'hidden' }
+          }
+        >
+          <button
+            type="button"
+            role="menuitem"
+            tabIndex={-1}
+            data-testid="menu-projects"
+            onClick={run(() => void store.goHome())}
+          >
+            {t('topbar.projects')}
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            tabIndex={-1}
+            data-testid="menu-new-project"
+            onClick={run(() => void store.goHome().then(focusNewProjectName))}
+          >
+            {t('menu.newProject')}
+          </button>
+          <div role="separator" class="app-menu-separator" />
+          <button
+            type="button"
+            role="menuitem"
+            tabIndex={-1}
+            data-testid="menu-import"
+            onClick={run(chooseImport)}
+          >
+            {t('library.import.button')}
+          </button>
+          {doc && !state.readOnly && (
+            <button
+              type="button"
+              role="menuitem"
+              tabIndex={-1}
+              data-testid="export-current"
+              title={t('export.title')}
+              onClick={run(() => void downloadProject(store, doc.projectId))}
+            >
+              {t('menu.export')}
+            </button>
+          )}
+          {SIGN_OUT_URL && (
+            <>
+              <div role="separator" class="app-menu-separator" />
+              {/* A plain top-level navigation to the deployment's sign-out endpoint. */}
+              <a
+                role="menuitem"
+                tabIndex={-1}
+                data-testid="sign-out"
+                href={SIGN_OUT_URL}
+                onClick={() => setOpen(false)}
+              >
+                {t('topbar.signOut')}
+              </a>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** "New project" leads to the Projects screen's own create form, ready to type a name. */
+function focusNewProjectName() {
+  requestAnimationFrame(() => {
+    const field = document.querySelector<HTMLInputElement>('[data-testid="new-project-name"]');
+    field?.focus();
+    field?.select();
+  });
+}

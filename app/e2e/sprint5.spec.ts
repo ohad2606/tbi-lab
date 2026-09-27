@@ -16,7 +16,13 @@ import { EngineSession, type SolveSuccess } from '@tbi-lab/engine';
 import { getLocale } from '../src/i18n/i18n.js';
 import { formatResult } from '../src/sim/format.js';
 import { run, setValue } from './circuits.js';
-import { component, createProject, storedProjects } from './helpers.js';
+import {
+  component,
+  createProject,
+  exportFromMenu,
+  goToProjects,
+  storedProjects,
+} from './helpers.js';
 
 const en = getLocale('en');
 const A = (v: number) => formatResult(en, v, 'ampere');
@@ -59,17 +65,14 @@ async function waitStored(
 }
 
 async function goLibrary(page: Page) {
-  await page.getByRole('button', { name: /^‹?\s*(Projects|פרויקטים)$/ }).click();
+  await goToProjects(page);
   await expect(page.getByTestId('example-list')).toBeVisible();
 }
 
 const row = (page: Page, projectId: string) => page.getByTestId(`project-${projectId}`);
 
 async function exportCurrent(page: Page): Promise<string> {
-  const [download] = await Promise.all([
-    page.waitForEvent('download'),
-    page.getByTestId('export-current').click(),
-  ]);
+  const download = await exportFromMenu(page);
   expect(download.suggestedFilename()).toMatch(/\.tbilab$/);
   return readFileSync((await download.path())!, 'utf8');
 }
