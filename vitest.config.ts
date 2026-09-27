@@ -11,6 +11,8 @@ export default defineConfig({
       // Runtime R2 Session Host: protocol, state machine and lifecycle against a fake runtime
       // that speaks the real bridge protocol. No QEMU; the heavy suite is npm run test:r2.
       'runtime/host/tests/**/*.test.ts',
+      // Build service (Sprint 7) with a fake provider; the real toolchain is the heavy suite.
+      'runtime/builder/tests/**/*.test.ts',
     ],
     // *.esp32.test.ts spawn a real QEMU classic-ESP32 runtime and take minutes.
     // They are run explicitly via `npm run test:esp32`.

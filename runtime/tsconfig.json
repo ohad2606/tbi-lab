@@ -2,7 +2,8 @@
   "extends": "../tsconfig.json",
   "compilerOptions": {
     "lib": ["ES2022"],
-    "types": ["node"]
+    "types": ["node"],
+    "resolveJsonModule": true
   },
-  "include": ["harness/**/*.ts", "host/**/*.ts", "tests/**/*.ts", "soak/**/*.ts"]
+  "include": ["harness/**/*.ts", "host/**/*.ts", "tests/**/*.ts", "soak/**/*.ts", "builder/**/*.ts"]
 }

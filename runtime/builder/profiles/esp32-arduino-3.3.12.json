@@ -1,0 +1,39 @@
+{
+  "id": "esp32-arduino-3.3.12",
+  "board": "board.esp32_devkitc_wroom32",
+  "language": "arduino-cpp",
+  "fileName": "sketch.ino",
+  "toolchain": {
+    "arduinoCli": "1.5.1",
+    "arduinoEsp32": "3.3.12",
+    "gcc": "esp-14.2.0_20260121",
+    "esptool": "5.3.1"
+  },
+  "fqbn": "esp32:esp32:esp32:FlashMode=dio",
+  "sourceDateEpoch": 1767225600,
+  "prefixMaps": ["<data>=/arduino-data", "<job>/sketch=/sketch", "<job>=/build"],
+  "image": {
+    "chip": "esp32",
+    "flashMode": "dio",
+    "flashFreq": "40m",
+    "flashSize": "4MB",
+    "layout": [
+      ["0x1000", "bootloader"],
+      ["0x8000", "partitions"],
+      ["0xe000", "boot_app0"],
+      ["0x10000", "app"]
+    ],
+    "bytes": 4194304
+  },
+  "files": {
+    "arm64": {
+      "bin/arduino-cli": "b878632298958d61fd1eb19e70ac5d2e803d83db8930bc72dc6915eee6e8f433",
+      "data/packages/esp32/tools/esp-x32/2601/bin/xtensa-esp32-elf-g++": "0cecb37914d9ef3ffc3836929915d8bc89d62b5c197ba43afab7262c2556a2b3",
+      "data/packages/esp32/tools/esptool_py/5.3.1/esptool": "78db2803f59f355e396339a928acb63a9060b3aaea7612b23f7b6aff3f6a8891",
+      "data/packages/esp32/hardware/esp32/3.3.12/tools/partitions/boot_app0.bin": "f94c5d786a7a8fab06ac5d10e33bf37711a6697636dc037559ea19cc410a17f0",
+      "data/packages/esp32/hardware/esp32/3.3.12/tools/partitions/default.csv": "2683fd26b661bc909dcb8a9f05723d36c4000f9396995941a278fda409b753f7",
+      "data/packages/esp32/hardware/esp32/3.3.12/platform.txt": "a205ad3ee8db95e95b4ba2419413af78dfb79145782ac847146f1396e875b187",
+      "data/packages/esp32/hardware/esp32/3.3.12/boards.txt": "31c820f215889dfb1da31fc437c59f6a5684f483de84f867942f9bcbf4828f37"
+    }
+  }
+}
