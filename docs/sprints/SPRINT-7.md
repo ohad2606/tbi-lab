@@ -1,8 +1,8 @@
 # Sprint 7 — Arduino Firmware Workflow
 
 **Status:** IMPLEMENTATION COMPLETE (phases 1–4 of the approved sequence), deployed to the dev-lab
-private preview. **Not closed:** the post-S7 integrated endurance run (phase 5) and the PM's
-authenticated smoke are pending. Not pushed beyond the branch, not tagged.
+private preview. The post-S7 integrated endurance run passed (§13). **Not closed:** the PM's
+authenticated smoke and final CI are pending (§14). Not pushed beyond the branch, not tagged.
 **Base:** `sprint-6-complete^{}` = `1cdd0c7`. **Branch:** `sprint-7`. **Architecture:**
 [SPRINT-7-ARCHITECTURE.md](SPRINT-7-ARCHITECTURE.md) (D-S7-1..9), plus the PM's pre-implementation
 decisions on toolchain-neutral contracts and the Advanced `.bin` workflow.
@@ -283,13 +283,163 @@ Two editor costs found by profiling were removed:
 - **Build while running** is not allowed in V1 (D-S7-9).
 - **Deployment** is a controlled preview (§5), not the S8 public design.
 
-## 13. Remaining before closure
+## 13. Integrated endurance run (phase 5, part 2): PASS
 
-1. **Post-S7 integrated endurance run.** It reuses and extends the S6 harness
-   (`~/projects/tbi-lab-s6/.tmp/endurance/`) with editor typing, source autosave, repeated builds
-   (fresh and cached), artifact store growth and eviction, R2/QEMU sessions, the local DC path,
-   and the IndexedDB logical vs on-disk trend. The duration is the PM's. It needs a fresh
-   authenticated cookie at the start.
-2. **PM authenticated smoke on dev-lab** through Google login: Code → Build → Run → Stop, an edit
+The post-S7 / pre-S8 run, which also stands in for the S6 run that was deferred.
+
+**Setup**
+
+| | |
+|---|---|
+| Tested commit | `7e1a596`: app, Session Host and build service, all serving the same commit on dev-lab |
+| Environment | `https://dev-lab.tbi-tech.net` through Caddy and oauth2-proxy with an authenticated session (the cookie is not recorded and was deleted after the run); headless Chromium 153; host arm64, 1 vCPU (Neoverse-N1), 3.9 GB RAM |
+| Window | 2026-09-28 05:47:04 → 13:32:54 UTC, **465.8 min** (planned 465) |
+| Seed | `2026092701` |
+| Harness | The S6 harness extended for S7 (git-ignored, not product code). It samples every minute and reports trends per hour. |
+| Owner smoke | None reported during the window. No non-harness user load is attributed to this run. |
+
+**Workload.** A seeded rotation of phases:
+- ESP32 blink churn;
+- echo with mirrored commands and transient presses (including Stop while a button is held);
+- reconnects;
+- the editor (wires, undo/redo, autosave);
+- local DC;
+- locale switches;
+- code edit → Build → Run;
+- queue bursts.
+
+Timed checks ran alongside: determinism, persistence, security, post-GC heap and project reopens.
+
+Source edits were of three kinds:
+- binary-changing;
+- comment-only, which reuses an existing artifact;
+- edits while a session was running.
+
+In addition:
+- old source versions were revisited (oldest first once eviction had begun);
+- a compile error was injected about every 30 min;
+- a queue burst of 5 submissions ran each hour.
+
+**Totals**
+
+| Area | Result |
+|---|---|
+| ESP32 sessions | **392** created, 392 stopped, **0 failures**. QEMU was gone after every Stop: 318 orderly Stops plus 74 Stops while a button was held. |
+| Runtime | 134,128 events; 444 mirrored commands; 74 transient presses; 52 forced disconnects, all reconnected, **0 resyncs** |
+| Local DC runs | 331, with correct values |
+| Editor | 1,444 edits; 653 autosaves; 400 wires routed; 400 undo/redo; 76 locale switches; 574 project reopens; 107 temporary projects created and deleted |
+| Builds | 177 requests: **135 fresh compiles**, 35 cache hits, 311 "already current". There were **15 compile errors, all deliberately injected**; every one was reported at the broken line (26). |
+| Build queue | 7 bursts. Each gave 4 × 202 and 1 × 429 at queue depth 4, and all 28 accepted builds completed. |
+| Lookup | 159 hits; 4 misses, all of them evicted builds |
+| Leases | 392, all 200; **0 lease misses** |
+| Run-artifact checks | 392. The artifact each session ran was the one the page resolved: **0 wrong-source results**, 0 build-result key mismatches, 0 stale-run leaks (12 stale Runs refused before any runtime request). |
+| Infrastructure | 0 build-service 5xx, 0 transport errors, 0 infrastructure failures, 0 page errors, 0 harness errors |
+| Determinism | 12 checks, identical checkpoint hashes for simulated seconds 1–6 every time (see Anomalies) |
+| Persistence | 8 checks: export equals stored, no forbidden or invalid data, only the two expected localStorage keys |
+| Security | 17 checks: only ports 22/111/80/443 exposed; Session Host 127.0.0.1:7400 and build service 127.0.0.1:7420 loopback-only; unauthenticated `/` and `/build` → 302 to Google; 0 token log lines |
+| Cleanup at the end | No QEMU left, no build job directories, no temporary projects; the 6 canonical projects valid; browser profile removed |
+
+**Artifact store and eviction**
+
+- **Store fill.** The store started at 160 MiB managed (40 artifacts from earlier trials). It reached the **256 MiB managed cap** at 118 min (07:45 UTC) and stayed exactly at the cap (64 managed images) to the end.
+- **Reference images.** The 11 unmanaged R1 images were present throughout and **never evicted** (75 images in total at the end).
+- **Evictions.** 69 observed in the store, from 07:53 UTC. The first 38 were artifacts from before the run; from 11:12 UTC the run's own older builds were evicted.
+- **Revisits of old versions.** 20 revisits: 16 were still stored, **4 had been evicted** (variants 11, 14, 15 and 16, aged 306–395 min). Each evicted revisit went through the full sequence, observed live with no deviation:
+  1. lookup returned 404, and the page showed Build required;
+  2. Run was refused with `mcu_build_required` and no runtime request;
+  3. Build made a fresh compile, not a cache hit;
+  4. the rebuilt image had the **same sha256** as the evicted one (4/4);
+  5. Run succeeded.
+
+  This matches the §8 reproducibility result under real eviction.
+- **Leases under concurrent sessions.** 392 leases, 0 misses. No leased artifact went missing and no hash mismatch occurred.
+
+**Build service and runtime figures**
+
+| Measure | Result (median / p95 per hour, range over the 8 hours) |
+|---|---|
+| Fresh build, submit → done | 32.0–33.6 s / 32.5–40.9 s |
+| Compile error | 4.3–5.0 s |
+| Cache hit | 54–73 ms (single p95 values of 248–273 ms in 4 hours, n = 3–5) |
+| Lookup on reopen | 290–391 ms |
+| Revisit → running | ~10.3 s when still stored; ~43–48 s when evicted (includes the fresh ~32 s compile) |
+| Burst of 4 accepted builds, submit → done | 127–131 s, strictly serial |
+| ESP32 Run → session created | 100–105 ms / 125–169 ms (last hour p95 277 ms, max 1.3 s) |
+| ESP32 Run → first result | 500–559 ms / 546–725 ms (last hour p95 1.13 s, max 1.64 s) |
+| ESP32 Stop | 96–111 ms / 131–258 ms |
+| SSE reconnect | 1.07–2.01 s / 1.3–3.2 s |
+| Local DC Run → result / Stop | 87–99 ms / 59–66 ms |
+| Autosave, keystroke → saved | 341–349 ms / 377–551 ms |
+
+**Resources** (hourly medians, first hour → last hour)
+
+| Process | Trend |
+|---|---|
+| Session Host RSS | 87 → 93 → 91.5 → 81 → 76 → 77 → 77.5 → 89 MB. The range was 76–101 MB throughout and the last hour stayed below the second hour's maximum. File descriptors 22–27. |
+| Build service RSS | 81 → 72 MB, falling slightly. Its cgroup memory (including page cache) was 294 → 387 MB, with peaks of 688–828 MB during compiles. The limit is 1536 MB. Tasks 11–18; job directory at most 7 MB. |
+| QEMU per session | 64 MB median (max 72 MB); CPU 77 % median |
+| Browser | total 460 → 375 MB; renderer ~180 MB flat; JS heap ~8 MB; post-GC heap 4.5–4.9 MB at every checkpoint; DOM ~1,270 nodes; 1 document |
+| Host | free memory 1.70–1.94 GB (hourly medians). Swap rose 1.36 → 2.02 GB over the first 4 hours, then stayed flat at 2.0–2.1 GB. |
+| Harness process | 256 → 514 MB. It keeps every variant's text and every record for the evidence file; this is the harness, not the product. |
+
+**Browser storage.**
+- Logical content stayed at 26–29 KB (15 records, 7 projects) throughout.
+- On disk, Chromium's IndexedDB followed a bounded sawtooth, never above 5.5 MB. The compactions seen in the run:
+  - 3.9 → 2.2 MB at about 170 min;
+  - 5.3 → 0.13 MB at about 285 min;
+  - later cycles down to 0.44 MB (hourly median) in the last hour.
+
+  The end figure was 0.87 MB.
+- An isolated experiment (a separate profile, overwriting one 26 KB record) reproduced the same cycle: the LevelDB write-ahead log grows to about 4 MB and is then compacted.
+- The app writes only one record per project, an index entry, a device id and two localStorage keys. Build state and history are memory-only and bounded.
+- The S6 review item (on-disk growth against constant logical content) is therefore resolved: it is storage-engine churn, and it is bounded.
+
+**Anomalies and review flags** (none is a failure)
+
+- **Determinism checkpoints differ from the S6 acceptance constants** (12/12, `determinism_known`). They are identical to each other across all 12 checks. The determinism project is the blink example, which in S7 runs its **built** sketch (`7e877f84…`, §8) instead of the S6 pinned R1 image (`5f177cbe…`), so different firmware gives a different trace. This was expected.
+- **Six automatic trend flags**, which compare the first hour with the last:
+  - **Session Host RSS "still rising at the end" (77 → 89 MB).** It is not monotonic: the same process was higher in hours 1–2 (up to 101 MB) and lower in hours 3–6. Kept for the S8 review; not treated as a leak.
+  - **Run → session created / first result p95 in the last hour.** A few outliers (max 1.3 s / 1.6 s) while medians were unchanged (101 / 522 ms), on a 1-vCPU host at 81–100 % CPU during the evicted-revisit rebuilds. Earlier hours had p95 below 170 / 725 ms.
+  - **SSE reconnect p95 2.2 s in the last hour** against 3.2 s in the second hour: no trend.
+  - **Cache-hit p95 260 ms.** Single values with n = 4; the same happened in hours 1, 5 and 6; medians stayed at about 70 ms.
+  - **Revisit → running p95 43 s.** This is the fresh compile after eviction (the intended path), which could only happen once the run's own builds were being evicted.
+- **Swap** grew during the first 4 hours and then held at about 2.1 GB, with free memory stable; no service's RSS grew. Kept as an observation for the S8 capacity work on this 4 GB host.
+
+**Comparison with S6.**
+- The S6 465-min run was deferred, so there is no earlier long run to compare against; this run is the first.
+- Against the S6 12-min trial, everything the trial checked held for 465 min: QEMU gone after every Stop, correct DC values with no `/runtime` traffic, matching determinism, persistence, security and bounded buffers. Serial peaked at 2,285 of 16,384 characters, warnings 0 of 20, checkpoints 120 of 120, 0 serial characters dropped.
+- The S6 browser-storage review item is resolved (above).
+- ESP32 Run → first result (median 500–559 ms) is in line with the harness's initial S6 figure of 558 ms.
+
+**Result per criterion**
+
+| Criterion | Result |
+|---|---|
+| No hard failure for the full duration | PASS (465.8 min, `hardFailure: null`) |
+| Every ESP32 session starts, runs and stops; QEMU and session files cleaned | PASS (392/392, 0 failures) |
+| Runtime stream: reconnects recover, no resync, buffers bounded | PASS |
+| Local DC path correct with no runtime traffic | PASS (331 runs) |
+| Builds: fresh and cached correct; compile errors line-mapped; no infrastructure failure | PASS |
+| Queue limit enforced (1 active + 3 queued, then 429) and every accepted build completes | PASS (7/7 bursts) |
+| Exact-source rule: no wrong-source result, no stale build run | PASS (0 / 0; 12 refusals) |
+| Store bounded at 256 MiB with LRU eviction; R1 images never evicted | PASS |
+| D-S7-8 lease: no leased artifact missing or mismatched | PASS (392/392) |
+| Evicted old version → Build required → rebuild → Run | PASS, **observed live 4 times**, same image each time |
+| Persistence and security checks | PASS (8/8, 17/17) |
+| No unbounded growth in product processes or browser storage | PASS, with the review flags above |
+| Determinism stable within the run | PASS |
+
+**Conclusion: PASS.**
+- The integrated S7 stack at `7e1a596` ran for 465.8 min under a mixed editor, build and runtime workload on the 1-vCPU preview host with no hard failure, no session failure and no wrong-source, lease or hash error.
+- The artifact store operated at its cap with real eviction, and the evicted-version path was exercised live.
+- Evidence: `evidence-2026-09-28T05-47-04-740Z.json` and the matching minute-by-minute samples in the harness directory (git-ignored).
+- Nothing in these figures is a capacity claim for S8.
+
+## 14. Remaining before closure
+
+1. **PM authenticated smoke on dev-lab** through Google login: Code → Build → Run → Stop, an edit
    making the build stale, Advanced prebuilt, and Hebrew.
-3. **CI** on the pushed branch/PR when the PM asks for it.
+2. **Two tests approved by the PM after the run** (test-only):
+   - the build service compiles the same source afresh after eviction, giving the same sha;
+   - a failed lease leads to Build required → Build → current → Run.
+3. **Final CI** on the final commit.
