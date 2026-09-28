@@ -210,15 +210,15 @@ s7-build`). Each build ran through a fresh service with an empty store and new j
 
 **Routine CI** (no toolchain, no QEMU):
 - Typecheck, lint and boundaries clean.
-- `npm test`: 531 passed. Additions:
+- `npm test`: 534 passed. Additions:
   - builder: protocol, service limits and queue, timeout and storage kill, cleanup, store LRU,
     leases and write-once, HTTP contract including Advanced upload validation, feature analysis;
   - domain: source key and profiles, schema v3 and migration, program validation and edits,
     package v2 round trip and v1 import;
   - app: build state, stale semantics, lookup, eviction, and the Run guard (refusal before
     runtime, lease before create, prebuilt, features).
-- `test:e2e`: 112 passed, 3 heavy skipped.
-  - New `s7.spec.ts` (7 tests) runs against a fake build service that reuses the real builder
+- `test:e2e`: 113 passed, 3 heavy skipped.
+  - New `s7.spec.ts` (8 tests) runs against a fake build service that reuses the real builder
     transport, queue and store with a scripted provider. It covers:
     - exact source bytes (typing, Tab, locale switch, reload, export v2) and CRLF preservation;
     - Build required → refused Run with zero runtime requests → Build → Run;
@@ -226,12 +226,16 @@ s7-build`). Each build ran through a fresh service with an empty store and new j
     - diagnostics jump and Hebrew;
     - unmodelled features refused with zero runtime requests;
     - the Advanced prebuilt Run and a wrong-file refusal;
-    - lookup on reopen with no rebuild, and DC projects never calling `/build`.
+    - lookup on reopen with no rebuild, and DC projects never calling `/build`;
+    - a current build whose artifact is evicted by another client's build: the lease fails,
+      nothing reaches the runtime, and the page shows Build required → Build → current → Run
+      (§13.1).
   - The S6 specs build before Run.
 - `test:browser`: 4. Production build OK.
 
 **Heavy** (real toolchain and QEMU):
-- `s7-build.runtime.test.ts`: 5/5 (§8).
+- `s7-build.runtime.test.ts`: 5/5 (§8), plus the eviction test added after the endurance run
+  (§13.1). The whole suite is rerun on the final commit with the final CI.
 - The real-QEMU browser acceptance `s6-real.spec.ts`, now building the examples through the real
   build service, passed 3/3 through the deployed dev-lab internal origin: blink LED and serial,
   echo mirrors and transients, product-level determinism.
@@ -435,11 +439,25 @@ In addition:
 - Evidence: `evidence-2026-09-28T05-47-04-740Z.json` and the matching minute-by-minute samples in the harness directory (git-ignored).
 - Nothing in these figures is a capacity claim for S8.
 
+### 13.1 Tests added after the run (PM-approved)
+
+Test-only additions: no product code changed, so the endurance evidence stands. They give the
+live eviction path (above) direct automated coverage.
+
+| Test | Level | What it proves | Result |
+|---|---|---|---|
+| Rebuild after eviction (`service.test.ts`) | Routine: real service, store and LRU; fake provider | A one-image store evicts the first build when another is published. The same source is then **not** a cache hit, compiles again, and the server-computed identity equals the first; lookup finds it again. | PASS |
+| Rebuild after eviction (`s7-build.runtime.test.ts`) | Heavy: real pinned toolchain | Blink built, evicted by the input-echo build, rebuilt with a real compile. The artifact is bit-identical, and the sha256 is recomputed from the file on disk. | PASS (98 s) |
+| Failed lease recovery (`s7.spec.ts`) | Browser: real app wiring, real builder transport, store and lease | The page holds a current build; another client's build evicts its artifact. Run → lease 404 → `mcu_build_required` with zero runtime requests → Build required with Build focused → Build (a fresh compile, same artifact id) → current → lease 200 → Run reaches running with the LED on. | PASS |
+
+The browser test was checked against a mutation: with the app's "forget the build when its lease
+fails" step removed, it fails, because the page stays on "current". Two test-only changes support
+it:
+- the fake build service's test reset accepts a store size in images (`capImages`);
+- the default store size is unchanged.
+
 ## 14. Remaining before closure
 
 1. **PM authenticated smoke on dev-lab** through Google login: Code → Build → Run → Stop, an edit
-   making the build stale, Advanced prebuilt, and Hebrew.
-2. **Two tests approved by the PM after the run** (test-only):
-   - the build service compiles the same source afresh after eviction, giving the same sha;
-   - a failed lease leads to Build required → Build → current → Run.
-3. **Final CI** on the final commit.
+   making the build stale, diagnostics, Advanced prebuilt, and Hebrew.
+2. **Final CI** on the final commit, after the smoke passes.

@@ -7,11 +7,13 @@
  *   empty store and new job directories, must give bit-identical artifacts. Whether they equal
  *   the R1-provisioned reference images is recorded, not required (the sketch name and build
  *   path differ from provisioning).
+ * - After eviction, the same source compiles afresh into a bit-identical artifact.
  * - A compiler error gives line-mapped diagnostics and no artifact.
  * - A build over the hard timeout is killed with every process and temporary file gone.
  */
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
@@ -35,7 +37,7 @@ afterAll(() => {
   for (const d of dirs) rmSync(d, { recursive: true, force: true });
 });
 
-function freshService(limits: Partial<ServiceLimits> = {}) {
+function freshService(limits: Partial<ServiceLimits> = {}, capBytes = 256 * 1024 * 1024) {
   const store = mkdtempSync(join(tmpdir(), 's7-store-'));
   const work = mkdtempSync(join('/var/tmp', 's7-work-'));
   dirs.push(store, work);
@@ -47,7 +49,7 @@ function freshService(limits: Partial<ServiceLimits> = {}) {
   });
   const service = new BuildService(
     [provider],
-    new ArtifactStore({ dir: store, capBytes: 256 * 1024 * 1024, graceMs: 0 }),
+    new ArtifactStore({ dir: store, capBytes, graceMs: 0 }),
     work,
     { ...DEFAULT_LIMITS, ...limits },
   );
@@ -118,6 +120,33 @@ describe.skipIf(!RT)('S7 build service with the real pinned toolchain', () => {
       );
     });
   }
+
+  it('after eviction the same source is compiled afresh into a bit-identical artifact', async () => {
+    // One service with a store of one image: the second sketch's artifact evicts the first.
+    const { service, store } = freshService({}, 4 * 1024 * 1024);
+    const blink = sketch('TbiGpioProof');
+    const first = await build(service, blink);
+    expect(first.ok, JSON.stringify(first.diagnostics)).toBe(true);
+    const sha = first.artifact!.sha256;
+    expect((await build(service, sketch('TbiBanks'))).ok).toBe(true);
+    expect(existsSync(join(store, `${sha}.bin`))).toBe(false);
+    expect(service.lookup(first.key)).toBeNull();
+    const out = service.submit({
+      protocol: 'tbi-lab.build/1',
+      profile: ESP32_ARDUINO_PROFILE.id,
+      files: [{ name: 'sketch.ino', text: blink }],
+    });
+    expect('cached' in out).toBe(false); // a real compile, not the old record
+    await service.whenIdle();
+    const rebuilt = 'cached' in out ? out.cached : service.status(out.buildId, out.token)!.result!;
+    expect(rebuilt.ok).toBe(true);
+    expect(rebuilt.artifact).toEqual(first.artifact);
+    const onDisk = createHash('sha256')
+      .update(readFileSync(join(store, `${sha}.bin`)))
+      .digest('hex');
+    expect(onDisk).toBe(sha);
+    evidence['rebuildAfterEviction'] = { sha256: sha, identical: true };
+  });
 
   it('a compiler error is reported by line with no artifact', async () => {
     const { service } = freshService();

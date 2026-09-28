@@ -14,7 +14,8 @@
  *     POST /__test/capacity?n=N          event-log capacity for new sessions
  *     POST /__test/pause?ms=N            stop emitting for N ms (events pile up server-side)
  *     GET  /__test/sessions              live/terminal counts
- *     POST /__test/reset-builds          fresh fake build service (empty store, no records)
+ *     POST /__test/reset-builds[?capImages=N]  fresh fake build service (empty store, no
+ *                                        records); with N, a store of N images that evicts
  */
 import { randomBytes, createHash, timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
@@ -345,7 +346,9 @@ const server = createServer((req: IncomingMessage, res: ServerResponse) => {
     case '/__test/sessions':
       return reply(host.health());
     case '/__test/reset-builds':
-      resetFakeBuildService();
+      resetFakeBuildService(
+        url.searchParams.has('capImages') ? Number(url.searchParams.get('capImages')) : undefined,
+      );
       return reply({ ok: true });
     default:
       res.writeHead(404).end();

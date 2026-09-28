@@ -95,12 +95,15 @@ class ScriptedProvider implements BuildProvider {
 
 let current: ReturnType<typeof createBuildHttpServer> | null = null;
 
-/** A fresh service: empty store, no build records (test control, before each test). */
-export function resetFakeBuildService(): void {
+/**
+ * A fresh service: empty store, no build records (test control, before each test). `capImages`
+ * shrinks the store so that publishing more images evicts the least recently used (no grace).
+ */
+export function resetFakeBuildService(capImages?: number): void {
   const store = new ArtifactStore({
     dir: mkdtempSync(join(tmpdir(), 'tbi-fake-store-')),
-    capBytes: 64 * 1024 * 1024,
-    graceMs: 60_000,
+    capBytes: (capImages ?? 16) * IMAGE_BYTES,
+    graceMs: capImages ? 0 : 60_000,
   });
   const service = new BuildService(
     [new ScriptedProvider()],

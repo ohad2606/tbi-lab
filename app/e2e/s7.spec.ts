@@ -16,6 +16,7 @@ import {
 } from './helpers.js';
 
 const FAKE = 'http://127.0.0.1:7499';
+const BUILD = 'http://127.0.0.1:7498';
 const status = (page: Page) => page.getByTestId('sim-status');
 const phase = (page: Page) => page.getByTestId('build-phase');
 const code = (page: Page) => page.getByTestId('code-text');
@@ -135,6 +136,74 @@ test('Build required → Run refused before any runtime request → Build → Ru
   await page.getByTestId('sim-run').click();
   await expect(page.getByTestId('sim-error')).toHaveAttribute('data-code', 'mcu_build_required');
   expect(runtime.filter((r) => r === 'POST /runtime/sessions').length).toBe(creates);
+});
+
+test('a build whose artifact was evicted fails its lease: Build required → Build → current → Run', async ({
+  page,
+  request,
+}) => {
+  // A store of one image: publishing a second build evicts the first (the real LRU).
+  await request.post(`${FAKE}/__test/reset-builds?capImages=1`);
+  const runtime = requests(page, '/runtime');
+  const leases: number[] = [];
+  page.on('response', (r) => {
+    if (/\/build\/v1\/artifacts\/[0-9a-f]{64}\/lease$/.test(new URL(r.url()).pathname))
+      leases.push(r.status());
+  });
+  const artifactId = async () => {
+    await page.getByTestId('build-details').locator('summary').click();
+    const text = (await page.getByTestId('build-artifact').textContent()) ?? '';
+    await page.getByTestId('build-details').locator('summary').click();
+    return /[0-9a-f]{16}/.exec(text)?.[0];
+  };
+  await openExample(page, 'esp32-blink');
+  await buildProgram(page);
+  await page.getByTestId('view-code').click();
+  const original = await artifactId();
+  expect(original).toBeTruthy();
+  // Meanwhile another client builds other source, which takes the store's only place: the
+  // artifact this page holds as current is evicted (the page is not told).
+  const other = await request.post(`${BUILD}/v1/builds`, {
+    data: {
+      protocol: 'tbi-lab.build/1',
+      profile: 'esp32-arduino-3.3.12',
+      files: [{ name: 'sketch.ino', text: 'void setup() {}\nvoid loop() {}\n' }],
+    },
+  });
+  expect(other.status()).toBe(202);
+  const { buildId, token } = (await other.json()) as { buildId: string; token: string };
+  await expect
+    .poll(async () => {
+      const r = await request.get(`${BUILD}/v1/builds/${buildId}`, {
+        headers: { authorization: `Bearer ${token}` },
+      });
+      return ((await r.json()) as { state: string }).state;
+    })
+    .toBe('succeeded');
+  await expect(phase(page)).toHaveAttribute('data-phase', 'current');
+  // Run: the lease finds no artifact, so nothing reaches the runtime and the build is forgotten.
+  await page.getByTestId('view-circuit').click();
+  await page.getByTestId('sim-run').click();
+  await expect(page.getByTestId('sim-error')).toHaveAttribute('data-code', 'mcu_build_required');
+  expect(leases).toEqual([404]);
+  expect(runtime).toEqual([]);
+  await expect(phase(page)).toHaveAttribute('data-phase', 'required');
+  await expect(page.getByTestId('build-button')).toBeFocused();
+  // Recovery: Build compiles the same source again into the same artifact, and Run succeeds.
+  await page.getByTestId('build-button').click();
+  await expect(phase(page)).toHaveAttribute('data-phase', 'building');
+  await expect(phase(page)).toHaveAttribute('data-phase', 'current');
+  expect(await artifactId()).toBe(original);
+  await page.getByTestId('view-circuit').click();
+  await page.getByTestId('sim-run').click();
+  await expect(status(page)).toHaveAttribute('data-status', 'running', { timeout: 20_000 });
+  await expect(page.getByTestId('pin-level-2')).toHaveAttribute('data-level', '1', {
+    timeout: 5_000,
+  });
+  expect(leases).toEqual([404, 200]);
+  expect(runtime.filter((r) => r === 'POST /runtime/sessions')).toHaveLength(1);
+  await page.getByTestId('sim-stop').click();
+  await expect(status(page)).toHaveAttribute('data-status', 'stopped');
 });
 
 test('compiler diagnostics are listed by line and jump to the source; build output never enters the terminal', async ({

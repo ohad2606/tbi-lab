@@ -111,6 +111,29 @@ describe('BuildService', () => {
     expect(readdirSync(work)).toEqual([]);
   });
 
+  it('after eviction the same source compiles afresh into the same artifact identity', async () => {
+    // A store of one image: publishing another build evicts the first (the real LRU).
+    const { service, provider, artifacts, storeDir } = setup({}, { capBytes: 4 * 1024 * 1024 });
+    const req = sketch('void setup() {}\nvoid loop() { /* a */ }\n');
+    const first = await finish(service, service.submit(req));
+    const sha = first.artifact!.sha256;
+    await finish(service, service.submit(sketch('void setup() {}\nvoid loop() { /* b */ }\n')));
+    expect(artifacts.exists(sha)).toBe(false);
+    expect(existsSync(join(storeDir, `${sha}.bin`))).toBe(false);
+    expect(service.lookup(first.key)).toBeNull();
+    expect(provider.builds).toBe(2);
+    // Eviction changed availability only: the same source is not a cache hit, compiles again,
+    // and the server-computed identity is the same.
+    const again = service.submit(req);
+    expect('cached' in again).toBe(false);
+    const rebuilt = await finish(service, again);
+    expect(provider.builds).toBe(3);
+    expect(rebuilt.key).toBe(first.key);
+    expect(rebuilt.artifact).toEqual(first.artifact);
+    expect(artifacts.exists(sha)).toBe(true);
+    expect(service.lookup(first.key)?.artifact?.sha256).toBe(sha);
+  });
+
   it('compile errors keep their diagnostics and are not cached', async () => {
     const { service, provider } = setup();
     const r = await finish(service, service.submit(sketch('#error')));
