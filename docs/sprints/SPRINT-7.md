@@ -1,8 +1,13 @@
 # Sprint 7 — Arduino Firmware Workflow
 
-**Status:** IMPLEMENTATION COMPLETE (phases 1–4 of the approved sequence), deployed to the dev-lab
-private preview. The post-S7 integrated endurance run passed (§13). **Not closed:** the PM's
-authenticated smoke and final CI are pending (§14). Not pushed beyond the branch, not tagged.
+**Status:** ALL GATES PASSED, **awaiting PM closure approval**. The implementation (phases 1–4) is
+deployed to the dev-lab private preview. The following gates passed (§13, §14):
+- the post-S7 integrated endurance run;
+- the post-run tests;
+- the owner's authenticated smoke;
+- the final CI.
+
+Not merged to `main`, not tagged.
 **Base:** `sprint-6-complete^{}` = `1cdd0c7`. **Branch:** `sprint-7`. **Architecture:**
 [SPRINT-7-ARCHITECTURE.md](SPRINT-7-ARCHITECTURE.md) (D-S7-1..9), plus the PM's pre-implementation
 decisions on toolchain-neutral contracts and the Advanced `.bin` workflow.
@@ -456,8 +461,54 @@ it:
 - the fake build service's test reset accepts a store size in images (`capImages`);
 - the default store size is unchanged.
 
-## 14. Remaining before closure
+## 14. Final verification
 
-1. **PM authenticated smoke on dev-lab** through Google login: Code → Build → Run → Stop, an edit
-   making the build stale, diagnostics, Advanced prebuilt, and Hebrew.
-2. **Final CI** on the final commit, after the smoke passes.
+**Tested code head:** `50cf2a3`.
+- Product code there is identical to the endurance-tested `7e1a596`: only the tests and this
+  record changed (`git diff 7e1a596 50cf2a3` outside tests and docs is empty).
+- The endurance result (§13) therefore stands, and the 465-min run was not repeated.
+- A documentation-only commit that records this section follows `50cf2a3` and is not re-tested
+  by the heavy suites.
+
+**Owner authenticated smoke on dev-lab: PASS**, reported by the owner.
+- Coverage, through Google login on `https://dev-lab.tbi-tech.net` (serving `7e1a596`):
+  - the main flow: Code → edit → Build → Run → Stop;
+  - the stale-build flow;
+  - diagnostics;
+  - the Advanced prebuilt `.bin`;
+  - the Hebrew UI.
+- Result: the main flow worked correctly, Hebrew appeared correct, and no issues were reported.
+
+**Final CI** (local, from `50cf2a3`, 2026-09-28):
+
+| Suite | Result |
+|---|---|
+| `npm ci` | PASS |
+| Typecheck (all projects) | PASS |
+| Lint, formatting and architecture boundaries | PASS |
+| Unit (`npm test`) | **534 passed** (51 files) |
+| Production build | PASS (`index` JS 260.6 KB, gzip 75.2 KB; CSS 29.9 KB) |
+| Browser/e2e (`test:e2e`, Chromium) | **113 passed**, 3 heavy skipped (run below) |
+| Legacy browser suite (`test:browser`) | **4 passed** |
+| Heavy runtime suite (`test:runtime`: R1, R2 and S7 real toolchain) | **81 passed** (13 files, 19.5 min) |
+| Reproducibility gate (part of the heavy suite) | PASS. Three fresh builds each were bit-identical, with the same shas as §8: TbiGpioProof `7e877f84…`, TbiBanks `4a81f348…` |
+| Rebuild after eviction, real toolchain (§13.1) | PASS |
+| Real-QEMU browser acceptance (`s6-real.spec.ts`, `TBI_S6_REAL=1`) through the dev-lab internal origin | **3 passed**: blink, input echo, determinism |
+
+GitHub Actions runs on pull requests and on pushes to `main`. It runs for Sprint 7 with the
+closure pull request / merge, and the tag waits for it to be green.
+
+## 15. Deferred (Sprint 8 or later)
+
+- **Capacity.** On the 4 GB preview host, swap reached about 2.1 GB during the first four hours of
+  the endurance run and then stayed flat (§13). Track in the S8 capacity work.
+- **Public hardening (S8).** Per-build sandboxing, per-user quotas and rate limits, per-user
+  artifact access, the host trusting manifests instead of browser-sent features, and multi-tenant
+  build capacity (§5).
+- **MicroPython.** Enabled by the architecture as a future programming-environment profile (§2);
+  not implemented.
+- **Arduino-family boards beyond the Classic ESP32 path:** future scope.
+- **Unmodelled peripherals** (Wi-Fi, I2C, SPI, ADC, PWM, pulls, interrupts, restart): still refused
+  at Run (§6, §12).
+- **Libraries, and Build while a session is running:** not in V1 (D-S7-6, D-S7-9).
+- **Potentiometer:** remains deferred to V1.1 (PM-6).
