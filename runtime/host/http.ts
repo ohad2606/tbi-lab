@@ -22,6 +22,7 @@
  * A failing request never takes the host down.
  */
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
+import { principalOf, type IdentityConfig } from '../identity/principal.js';
 import type { SessionHost } from './host.js';
 import { PROTOCOL, type SessionEvent } from './protocol.js';
 import type { HostSession } from './session.js';
@@ -130,9 +131,13 @@ function stream(req: IncomingMessage, res: ServerResponse, s: HostSession, url: 
   req.on('close', close);
 }
 
-export function createHttpServer(host: SessionHost): Server {
+/**
+ * `identity`: the gate-asserted identity (Sprint 8, D-S8-1). Every route but `/health` requires
+ * it; without one the answer is 401.
+ */
+export function createHttpServer(host: SessionHost, identity: IdentityConfig): Server {
   return createServer((req, res) => {
-    void handle(host, req, res).catch((e: unknown) => {
+    void handle(host, identity, req, res).catch((e: unknown) => {
       const status = e instanceof HttpError ? e.status : 500;
       if (!res.headersSent)
         send(res, status, { error: e instanceof HttpError ? e.message : 'internal error' });
@@ -141,7 +146,12 @@ export function createHttpServer(host: SessionHost): Server {
   });
 }
 
-async function handle(host: SessionHost, req: IncomingMessage, res: ServerResponse): Promise<void> {
+async function handle(
+  host: SessionHost,
+  identity: IdentityConfig,
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
   const url = new URL(req.url ?? '/', 'http://host.invalid');
   const parts = url.pathname.split('/').filter(Boolean);
   const method = req.method ?? 'GET';
@@ -149,6 +159,8 @@ async function handle(host: SessionHost, req: IncomingMessage, res: ServerRespon
   if (method === 'GET' && url.pathname === '/health') {
     return send(res, 200, { protocol: PROTOCOL, sessions: host.health() });
   }
+  const principal = principalOf(req, identity);
+  if (!principal) throw new HttpError(401, 'identity required');
   if (parts[0] !== 'sessions') throw new HttpError(404, 'not found');
 
   if (parts.length === 1 && method === 'POST') {

@@ -13,6 +13,8 @@ export default defineConfig({
       'runtime/host/tests/**/*.test.ts',
       // Build service (Sprint 7) with a fake provider; the real toolchain is the heavy suite.
       'runtime/builder/tests/**/*.test.ts',
+      // Sprint 8 identity boundary (principal derivation, listening, the test gate).
+      'runtime/identity/tests/**/*.test.ts',
     ],
     // *.esp32.test.ts spawn a real QEMU classic-ESP32 runtime and take minutes.
     // They are run explicitly via `npm run test:esp32`.

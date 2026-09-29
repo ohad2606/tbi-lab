@@ -15,6 +15,8 @@
  */
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { describeListen, listen, parseListen } from '../identity/listen.js';
+import { identityFromEnv } from '../identity/principal.js';
 import { defaultConfig, type HostConfig } from './config.js';
 import { SessionHost } from './host.js';
 import { createHttpServer } from './http.js';
@@ -25,8 +27,13 @@ const RUNTIME_HOME =
   join(process.env.XDG_DATA_HOME ?? join(homedir(), '.local', 'share'), 'tbi-lab-runtime');
 const QEMU = join(RUNTIME_HOME, 'qemu-current', 'bin', 'qemu-system-xtensa');
 
-const port = Number(process.env.TBI_HOST_PORT ?? 7400);
-const bind = process.env.TBI_HOST_BIND ?? '127.0.0.1';
+// `unix:/path.sock` in deployment (reachable only by the internal proxy), `host:port` locally.
+const where = parseListen(
+  process.env.TBI_HOST_LISTEN ??
+    `${process.env.TBI_HOST_BIND ?? '127.0.0.1'}:${process.env.TBI_HOST_PORT ?? 7400}`,
+);
+const socketGid = process.env.TBI_SOCKET_GID ? Number(process.env.TBI_SOCKET_GID) : undefined;
+const identity = identityFromEnv();
 /** Operator-tunable engineering controls (never client-controlled). */
 const TUNABLE: Record<string, keyof HostConfig> = {
   TBI_HOST_LEASE_MS: 'leaseMs',
@@ -47,10 +54,9 @@ const config = defaultConfig({
   ...overrides,
 });
 const host = new SessionHost(config);
-const server = createHttpServer(host);
-server.listen(port, bind, () => {
-  process.stdout.write(`tbi-session-host listening on ${bind}:${port}\n`);
-});
+const server = createHttpServer(host, identity);
+await listen(server, where, socketGid);
+process.stdout.write(`tbi-session-host listening on ${describeListen(where)}\n`);
 
 let stopping = false;
 const stop = () => {

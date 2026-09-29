@@ -22,6 +22,7 @@ import type {
 } from '../../../runtime/builder/provider.js';
 import { BuildService, DEFAULT_LIMITS } from '../../../runtime/builder/service.js';
 import { ArtifactStore } from '../../../runtime/builder/store.js';
+import { E2E_IDENTITY } from './identity.js';
 import { ownedTempDir, removeOwnedTempDir, sweepStaleTempDirs } from './temp-dirs.js';
 
 const IMAGE_BYTES = 4 * 1024 * 1024;
@@ -126,7 +127,7 @@ export function resetFakeBuildService(capImages?: number): { store: string; work
     graceMs: capImages ? 0 : 60_000,
   });
   const service = new BuildService([new ScriptedProvider()], store, dirs.work, DEFAULT_LIMITS);
-  current = createBuildHttpServer(service, { leaseMs: 60_000 });
+  current = createBuildHttpServer(service, { leaseMs: 60_000, identity: E2E_IDENTITY });
   return dirs;
 }
 

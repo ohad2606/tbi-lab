@@ -4,6 +4,7 @@
  * prefix is stripped by the proxy). See protocol.ts for the routes.
  */
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
+import { principalOf, type IdentityConfig } from '../identity/principal.js';
 import { RequestError, validateBuildRequest } from './protocol.js';
 import type { BuildService } from './service.js';
 
@@ -14,6 +15,8 @@ const MAX_JSON_BYTES = 1024 * 1024;
 export interface HttpOptions {
   /** How long a lease pins an artifact against eviction (covers session create → private copy). */
   leaseMs: number;
+  /** Identity asserted by the gate (Sprint 8, D-S8-1): every route but health requires it. */
+  identity: IdentityConfig;
 }
 
 export function createBuildHttpServer(service: BuildService, opts: HttpOptions): Server {
@@ -74,6 +77,11 @@ async function handle(
     send(res, 200, { ok: true, profiles: service.profiles() });
     return;
   }
+
+  // Who is asking: only the gate asserts it; without an identity nothing else is answered.
+  const principal = principalOf(req, opts.identity);
+  if (!principal) throw new RequestError(401, 'identity_required');
+  void principal; // ownership (grants) uses it from Phase 2
 
   if (method === 'POST' && path === '/v1/builds') {
     if (!/^application\/json\b/.test(req.headers['content-type'] ?? ''))

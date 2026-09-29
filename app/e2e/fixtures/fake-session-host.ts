@@ -23,6 +23,7 @@ import { EngineSession, interpretDigitalInput, type DigitalLevel } from '@tbi-la
 import { FIRMWARE_ARTIFACTS } from '@tbi-lab/domain';
 import { createHttpServer } from '../../../runtime/host/http.js';
 import { STAND_IN, resetFakeBuildService, startFakeBuildService } from './fake-build-service.js';
+import { E2E_IDENTITY } from './identity.js';
 import { EventLog } from '../../../runtime/host/eventLog.js';
 import {
   validateCommand,
@@ -317,7 +318,7 @@ const host = {
   },
 };
 
-const inner = createHttpServer(host as unknown as SessionHost);
+const inner = createHttpServer(host as unknown as SessionHost, E2E_IDENTITY);
 const server = createServer((req: IncomingMessage, res: ServerResponse) => {
   const url = new URL(req.url ?? '/', 'http://fake.invalid');
   if (!url.pathname.startsWith('/__test/')) return inner.emit('request', req, res);

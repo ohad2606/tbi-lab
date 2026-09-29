@@ -13,6 +13,7 @@ import { createBuildHttpServer, PREBUILT_IMAGE_BYTES } from '../http.js';
 import { validateBuildRequest } from '../protocol.js';
 import { BuildService, DEFAULT_LIMITS, type ServiceLimits } from '../service.js';
 import { ArtifactStore } from '../store.js';
+import { startTestGate, testIdentity } from '../../identity/test-gate.js';
 import { FakeProvider, fakeImage, sketch, tempDir } from './support.js';
 
 const cleanup: string[] = [];
@@ -248,16 +249,23 @@ describe('ArtifactStore', () => {
 
 describe('HTTP contract', () => {
   const servers: import('node:http').Server[] = [];
+  const gates: (() => void)[] = [];
   afterEach(() => {
     for (const s of servers.splice(0)) s.close();
+    for (const close of gates.splice(0)) close();
   });
 
-  async function serve() {
+  /** The service behind a test gate that asserts `subject` (the deployment's oauth2-proxy role). */
+  async function serve(subject: string | null = 'user-a') {
     const ctx = setup();
-    const server = createBuildHttpServer(ctx.service, { leaseMs: 60_000 });
+    const identity = testIdentity();
+    const server = createBuildHttpServer(ctx.service, { leaseMs: 60_000, identity });
     await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
     servers.push(server);
-    return { ...ctx, base: `http://127.0.0.1:${(server.address() as AddressInfo).port}/v1` };
+    const target = { host: '127.0.0.1', port: (server.address() as AddressInfo).port };
+    const gate = await startTestGate(target, identity, subject);
+    gates.push(gate.close);
+    return { ...ctx, identity, target, base: `${gate.base}/v1` };
   }
 
   it('submit → poll with the token → lookup by key; wrong token is 404', async () => {

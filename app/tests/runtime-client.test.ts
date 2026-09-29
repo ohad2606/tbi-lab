@@ -5,6 +5,7 @@
 import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
 import { afterEach, describe, expect, it } from 'vitest';
+import { startTestGate, testIdentity } from '../../runtime/identity/test-gate.js';
 import type { SessionEvent } from '../../runtime/host/protocol.js';
 import type { SessionHost } from '../../runtime/host/host.js';
 import { createHttpServer } from '../../runtime/host/http.js';
@@ -17,7 +18,9 @@ import {
 } from '../src/runtime/client.js';
 
 let open: { host: SessionHost; server: Server }[] = [];
+const gates: (() => void)[] = [];
 afterEach(async () => {
+  for (const close of gates.splice(0)) close();
   for (const { host, server } of open) {
     server.closeAllConnections();
     await new Promise((r) => server.close(r));
@@ -28,10 +31,18 @@ afterEach(async () => {
 
 async function serve(over = {}) {
   const { host, art } = fakeHost('normal', over);
-  const server = createHttpServer(host);
+  const identity = testIdentity();
+  const server = createHttpServer(host, identity);
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+  // Reached through a test gate that asserts one user (the deployment's oauth2-proxy role).
+  const gate = await startTestGate(
+    { host: '127.0.0.1', port: (server.address() as AddressInfo).port },
+    identity,
+    'user-a',
+  );
+  gates.push(gate.close);
   open.push({ host, server });
-  return { host, server, art, base: `http://127.0.0.1:${(server.address() as AddressInfo).port}` };
+  return { host, server, art, base: gate.base, identity };
 }
 
 /** Collect a session's stream; resolve helpers wait for conditions on it. */

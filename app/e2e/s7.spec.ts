@@ -7,6 +7,7 @@ import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 import type { ProjectDocument } from '@tbi-lab/domain';
 import { standInImage } from './fixtures/fake-build-service.js';
+import { asUser } from './fixtures/identity.js';
 import {
   buildProgram,
   exportFromMenu,
@@ -163,7 +164,9 @@ test('a build whose artifact was evicted fails its lease: Build required → Bui
   expect(original).toBeTruthy();
   // Meanwhile another client builds other source, which takes the store's only place: the
   // artifact this page holds as current is evicted (the page is not told).
+  // (The test calls the fake service directly, so it plays the gate for that other user.)
   const other = await request.post(`${BUILD}/v1/builds`, {
+    headers: asUser('other-client'),
     data: {
       protocol: 'tbi-lab.build/1',
       profile: 'esp32-arduino-3.3.12',
@@ -175,7 +178,7 @@ test('a build whose artifact was evicted fails its lease: Build required → Bui
   await expect
     .poll(async () => {
       const r = await request.get(`${BUILD}/v1/builds/${buildId}`, {
-        headers: { authorization: `Bearer ${token}` },
+        headers: { authorization: `Bearer ${token}`, ...asUser('other-client') },
       });
       return ((await r.json()) as { state: string }).state;
     })

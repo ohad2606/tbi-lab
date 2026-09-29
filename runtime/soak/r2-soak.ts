@@ -44,7 +44,7 @@
  * evidence.
  */
 import { spawn, execFileSync, type ChildProcess } from 'node:child_process';
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import {
   chmodSync,
   existsSync,
@@ -68,6 +68,7 @@ import { runClosedLoop } from '../harness/closedLoop.js';
 import { QEMU, RUNTIME_HOME, artifact, runtimeInfo } from '../harness/env.js';
 import type { SessionHost } from '../host/host.js';
 import { createHttpServer } from '../host/http.js';
+import { createTestGate, testIdentity } from '../identity/test-gate.js';
 import type { MirrorRevisions, SessionCommand, SessionEvent } from '../host/protocol.js';
 import type { HostSession } from '../host/session.js';
 import { isTerminal } from '../host/stateMachine.js';
@@ -1361,10 +1362,20 @@ async function phaseE(ctx: Ctx): Promise<void> {
   const CAP = 32;
   const LEASE = 3000;
   const host = newHost(ctx, { eventLogCapacity: CAP, leaseMs: LEASE, housekeepingMs: 100 });
-  const server = createHttpServer(host);
+  const identity = testIdentity();
+  const server = createHttpServer(host, identity);
   servers.add(server);
   ctx.servers.push(server);
-  const base = await listen(server);
+  const direct = await listen(server);
+  // Through a test gate asserting one user (the deployment's oauth2-proxy role, Sprint 8).
+  const gate = createTestGate(
+    { host: '127.0.0.1', port: Number(new URL(direct).port) },
+    identity,
+    () => 'soak-user',
+  );
+  servers.add(gate);
+  ctx.servers.push(gate);
+  const base = await listen(gate);
   const cr = await fetch(`${base}/sessions`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -1497,6 +1508,13 @@ async function freePort(): Promise<number> {
   return port;
 }
 
+/** The child host needs a gate identity key (Sprint 8); this phase only uses /health. */
+function soakIdentityKeyFile(tmp: string): string {
+  const file = join(tmp, 'identity.key');
+  writeFileSync(file, randomBytes(32), { mode: 0o600 });
+  return file;
+}
+
 async function startChild(tmp: string, port: number): Promise<ChildProcess> {
   const child = spawn(process.execPath, [BUNDLE], {
     env: {
@@ -1504,6 +1522,7 @@ async function startChild(tmp: string, port: number): Promise<ChildProcess> {
       TMPDIR: tmp,
       TBI_RUNTIME_HOME: RUNTIME_HOME,
       TBI_HOST_PORT: String(port),
+      TBI_IDENTITY_KEY_FILE: soakIdentityKeyFile(tmp),
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
