@@ -9,9 +9,6 @@
  */
 import { chromium, expect, test, type Locator, type Page } from '@playwright/test';
 import type { ProjectDocument } from '@tbi-lab/domain';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import {
   component,
   createProject,
@@ -21,6 +18,7 @@ import {
   waitForStoredProject,
   waitSaved,
 } from './helpers.js';
+import { ownedTempDir, removeOwnedTempDir } from './fixtures/temp-dirs.js';
 
 type Commit = 'enter' | 'blur';
 
@@ -134,7 +132,7 @@ test('a new project name submitted immediately by Enter is the one created', asy
 test('a value committed immediately survives a full browser restart (the CI A7 case)', async ({
   baseURL,
 }) => {
-  const profile = await mkdtemp(join(tmpdir(), 'tbi-lab-commit-race-'));
+  const profile = ownedTempDir('tbi-lab-commit-race-'); // removed below, at exit, or by the next run
   const viewport = { width: 1400, height: 860 };
   try {
     let context = await chromium.launchPersistentContext(profile, { baseURL: baseURL!, viewport });
@@ -152,7 +150,7 @@ test('a value committed immediately survives a full browser restart (the CI A7 c
     expect(await resistance(page)).toEqual({ value: 4700, unit: 'ohm' });
     await context.close();
   } finally {
-    await rm(profile, { recursive: true, force: true });
+    removeOwnedTempDir(profile);
   }
 });
 

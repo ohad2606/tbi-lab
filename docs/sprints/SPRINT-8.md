@@ -1,6 +1,6 @@
 # Sprint 8 — Public Hardening & Capacity
 
-**Status:** PHASE 0 COMPLETE; awaiting the PM checkpoint. No product code has changed and nothing is
+**Status:** PHASE 0 COMPLETE and approved (2026-09-29); Phases 1–3 in progress. No product code has changed and nothing is
 deployed.
 
 **Base:** `sprint-7-complete^{}` = `a2ad7c6`. **Branch:** `sprint-8`. **Architecture:**
@@ -85,9 +85,18 @@ No new dependency is needed.
 - **New tests** in `app/tests/fake-build-service.test.ts` (3).
 - **Results.** Unit 537 passed. A full e2e run (113 passed) left no directory and no fixture
   process.
-- **Also found (not fixed; outside the approved scope):**
-  - the R1 heavy test `failures.runtime.test.ts` leaves a 4 MiB image in `/tmp` per run (11 found);
-  - two browser specs leave small browser-profile directories.
+- **Also found, then fixed at the PM's decision (Phase 0 close-out):**
+  - the R1 heavy test `failures.runtime.test.ts` left a 4 MiB image in `/tmp` on every run
+    (11 had accumulated);
+  - two browser specs (`commit-race`, `sim-restart`) left browser-profile directories when
+    interrupted.
+- **Close-out mechanism.** A shared helper, `app/e2e/fixtures/temp-dirs.ts`, creates owned
+  directories named `<prefix><pid>-*`. They are removed by the caller, at exit and on
+  SIGINT/SIGTERM, and swept by the next run when their owner died. The fixture and both specs use
+  it. The R1 test writes its image to disk (`/var/tmp`), removes it in `finally` and at exit, and
+  sweeps images left by dead runs.
+- **Coverage.** 4 hygiene tests. The R1 invalid-firmware test, `commit-race`, `sim-restart` and
+  `s7` pass and leave nothing behind. Unit suite: 538 passed.
 
 ### E. Clean capacity and swap baseline (1 vCPU preview host)
 
@@ -133,7 +142,8 @@ Other results:
      means a new runtimeId, and the R1/R2 heavy suites and determinism hashes are the gate.
    - **(b)** allow QEMU loopback TCP only. This is weaker than "network denied".
 
-   This needs a PM decision; (a) is recommended.
+   **PM decision: (a).** The bridge moves to a unix socket or an inherited descriptor, whichever
+   is simpler and safer. There is no TCP exception without owner approval.
 2. **Build/publish split.** A dynamic-uid job cannot write a service-owned directory. Job
    directories must be created for, or by, the job unit, and outputs handed back to the service
    for publishing (Phase 3 design detail).

@@ -4,10 +4,9 @@
  * serial so far, exit status) is preserved in the result. Full-chip reset is unsupported.
  */
 import { Circuit, GpioPin } from '@tbi-lab/engine';
-import { writeFileSync } from 'node:fs';
+import { readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
-import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { createSessionOverlay, sha256File } from '../harness/artifacts.js';
@@ -61,28 +60,51 @@ function note(
   };
 }
 
+/** Where the invalid-firmware test writes its image (test hygiene, Sprint 8 D-S8-13). */
+const INVALID_FW_DIR = process.env.TBI_TEST_TMPDIR ?? '/var/tmp';
+function invalidFirmwarePath(): string {
+  for (const name of readdirSync(INVALID_FW_DIR)) {
+    const m = /^tbi-invalid-fw-(\d+)\.bin$/.exec(name);
+    if (!m) continue;
+    try {
+      process.kill(Number(m[1]), 0); // owner still running: leave it
+    } catch {
+      rmSync(join(INVALID_FW_DIR, name), { force: true });
+    }
+  }
+  const path = join(INVALID_FW_DIR, `tbi-invalid-fw-${process.pid}.bin`);
+  process.once('exit', () => rmSync(path, { force: true }));
+  return path;
+}
+
 describe('R1.13 failure modes fail closed', () => {
   assertProvisioned();
 
   it('invalid firmware (erased flash): the ROM rejects it, simulation stops advancing, the session ends as stalled', async () => {
     const img = Buffer.alloc(4 << 20, 0xff);
-    const path = join(tmpdir(), `tbi-invalid-fw-${process.pid}.bin`);
+    // A 4 MiB image: kept off the RAM-backed /tmp, removed in `finally`, at exit at the latest,
+    // and swept by the next run if this process was killed outright.
+    const path = invalidFirmwarePath();
     writeFileSync(path, img, { mode: 0o444 });
-    const r = await runCircuitSession({
-      qemu: QEMU,
-      artifact: path,
-      artifactSha256: createHash('sha256').update(img).digest('hex'),
-      circuit: new Circuit(),
-      pads: [],
-      endNs: 5_000_000_000n,
-      session: { stallTimeoutMs: 5_000 },
-    });
-    note('invalid_firmware', r);
-    expect(r.session.outcome).toBe('stalled');
-    expect(r.session.frames.H).toBe(1);
-    expect(r.session.serial.toString()).toMatch(/invalid header: 0xffffffff/);
-    expect(r.session.lastVns).toBeLessThan(5_000_000_000n);
-    expect(r.padEvents).toEqual([]);
+    try {
+      const r = await runCircuitSession({
+        qemu: QEMU,
+        artifact: path,
+        artifactSha256: createHash('sha256').update(img).digest('hex'),
+        circuit: new Circuit(),
+        pads: [],
+        endNs: 5_000_000_000n,
+        session: { stallTimeoutMs: 5_000 },
+      });
+      note('invalid_firmware', r);
+      expect(r.session.outcome).toBe('stalled');
+      expect(r.session.frames.H).toBe(1);
+      expect(r.session.serial.toString()).toMatch(/invalid header: 0xffffffff/);
+      expect(r.session.lastVns).toBeLessThan(5_000_000_000n);
+      expect(r.padEvents).toEqual([]);
+    } finally {
+      rmSync(path, { force: true });
+    }
   });
 
   it('artifact hash mismatch: refused before QEMU starts', () => {

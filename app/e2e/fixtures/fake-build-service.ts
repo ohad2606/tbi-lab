@@ -8,10 +8,9 @@
  * the source (symbols inferred from tokens). Builds take ~0.4 s so "Building…" is observable.
  */
 import { createHash } from 'node:crypto';
-import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ESP32_ARDUINO_PROFILE } from '@tbi-lab/domain';
 import { analyzeFeatures } from '../../../runtime/builder/features.js';
@@ -23,6 +22,7 @@ import type {
 } from '../../../runtime/builder/provider.js';
 import { BuildService, DEFAULT_LIMITS } from '../../../runtime/builder/service.js';
 import { ArtifactStore } from '../../../runtime/builder/store.js';
+import { ownedTempDir, removeOwnedTempDir, sweepStaleTempDirs } from './temp-dirs.js';
 
 const IMAGE_BYTES = 4 * 1024 * 1024;
 
@@ -95,39 +95,16 @@ class ScriptedProvider implements BuildProvider {
 
 let current: ReturnType<typeof createBuildHttpServer> | null = null;
 
-/**
- * Temporary directories. Everything this process creates lives under one parent named after its
- * pid, removed on reset, on exit and on SIGINT/SIGTERM; a parent left by a process that was killed
- * outright (SIGKILL) is swept by the next start. `TBI_TEST_TMPDIR` moves it off a RAM-backed /tmp.
- */
-const TMP_BASE = process.env.TBI_TEST_TMPDIR ?? tmpdir();
+/** Everything this process creates lives under one owned parent (fixtures/temp-dirs.ts). */
 const PARENT_PREFIX = 'tbi-fake-build-service-';
 let parent: string | null = null;
 
-function alive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (e) {
-    return (e as NodeJS.ErrnoException).code === 'EPERM';
-  }
-}
-
 /** Remove parents left by fake build services that are no longer running. */
-export function sweepStaleFakeBuildDirs(base = TMP_BASE): string[] {
-  const removed: string[] = [];
-  for (const name of readdirSync(base)) {
-    const m = new RegExp(`^${PARENT_PREFIX}(\\d+)-`).exec(name);
-    if (!m || alive(Number(m[1]))) continue;
-    rmSync(join(base, name), { recursive: true, force: true });
-    removed.push(name);
-  }
-  return removed;
-}
+export const sweepStaleFakeBuildDirs = (base?: string) => sweepStaleTempDirs(PARENT_PREFIX, base);
 
 /** Remove every directory this process created (the store and job directories). */
 export function removeFakeBuildDirs(): void {
-  if (parent) rmSync(parent, { recursive: true, force: true });
+  if (parent) removeOwnedTempDir(parent);
   parent = null;
 }
 
@@ -138,7 +115,7 @@ export function removeFakeBuildDirs(): void {
  */
 export function resetFakeBuildService(capImages?: number): { store: string; work: string } {
   removeFakeBuildDirs();
-  parent = mkdtempSync(join(TMP_BASE, `${PARENT_PREFIX}${process.pid}-`));
+  parent = ownedTempDir(PARENT_PREFIX);
   const dirs = {
     store: mkdtempSync(join(parent, 'store-')),
     work: mkdtempSync(join(parent, 'build-')),
@@ -153,19 +130,8 @@ export function resetFakeBuildService(capImages?: number): { store: string; work
   return dirs;
 }
 
-let exitHooks = false;
 export async function startFakeBuildService(port: number): Promise<void> {
-  sweepStaleFakeBuildDirs();
-  if (!exitHooks) {
-    exitHooks = true;
-    process.on('exit', removeFakeBuildDirs);
-    for (const signal of ['SIGINT', 'SIGTERM'] as const)
-      process.once(signal, () => {
-        removeFakeBuildDirs();
-        process.exit(130);
-      });
-  }
-  resetFakeBuildService();
+  resetFakeBuildService(); // sweeps parents of processes that no longer run
   const server = createServer((req, res) => current!.emit('request', req, res));
   await new Promise<void>((resolve) => server.listen(port, '127.0.0.1', resolve));
 }

@@ -72,3 +72,20 @@ describe('fake build service temporary directories', () => {
     }
   });
 });
+
+describe('owned temporary directories (browser-profile specs, fixtures)', () => {
+  it('a directory is removed on request and a dead owner’s directory is swept, a live one kept', async () => {
+    vi.stubEnv('TBI_TEST_TMPDIR', base);
+    vi.resetModules();
+    const t = await import('../e2e/fixtures/temp-dirs.js');
+    const mine = t.ownedTempDir('tbi-lab-commit-race-');
+    expect(mine.startsWith(join(base, `tbi-lab-commit-race-${process.pid}-`))).toBe(true);
+    t.removeOwnedTempDir(mine);
+    expect(existsSync(mine)).toBe(false);
+    const dead = spawnSync(process.execPath, ['-e', '']).pid!;
+    mkdirSync(join(base, `tbi-lab-sim-restart-${dead}-zzz`));
+    const live = t.ownedTempDir('tbi-lab-sim-restart-'); // sweeps first
+    expect(readdirSync(base)).toEqual([live.slice(base.length + 1)]);
+    t.removeOwnedTempDir(live);
+  });
+});
