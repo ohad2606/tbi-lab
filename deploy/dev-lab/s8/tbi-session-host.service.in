@@ -33,6 +33,9 @@ ExecStart=/opt/tbi-node/bin/node /opt/tbi-build/session-host.mjs
 Restart=on-failure
 RestartSec=2
 KillSignal=SIGTERM
+# SIGTERM to the host only: it ends its sessions in order (each runtime unit stops, records its
+# exit, then the session directory goes). Anything left gets SIGKILL after the timeout.
+KillMode=mixed
 TimeoutStopSec=20
 
 NoNewPrivileges=yes

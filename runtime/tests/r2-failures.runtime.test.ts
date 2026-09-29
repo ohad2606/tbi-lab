@@ -9,7 +9,13 @@ import { createHash } from 'node:crypto';
 import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
-import { principalFor } from '../identity/test-gate.js';
+import {
+  TEST_IDENTITY,
+  TEST_SUBJECT,
+  TEST_TICKET_KEY,
+  principalFor,
+  ticketFor,
+} from '../identity/test-gate.js';
 import { RUNTIME_HOME, artifact, assertProvisioned, recordEvidence } from '../harness/env.js';
 import { alive, gone, serialText, waitEvent, waitState } from '../host/tests/support.js';
 import type { HostSession } from '../host/session.js';
@@ -25,6 +31,7 @@ afterAll(async () => {
   await host.shutdown();
   recordEvidence('r2-failures', evidence);
   rmSync(SCRATCH, { recursive: true, force: true });
+  rmSync(KEYS, { recursive: true, force: true });
 });
 
 const fileSha = (p: string) => createHash('sha256').update(readFileSync(p)).digest('hex');
@@ -166,7 +173,11 @@ describe('R2 failure injection (real runtime)', () => {
     writeFileSync(join(dir, `${sha}.bin`), img, { mode: 0o444 });
     const h = realHost({ tmpParent: SCRATCH, artifactsDir: dir, stallTimeoutMs: 3000 });
     try {
-      const s = open(h, { ...loadRequest('TbiGpioProof'), artifact: { sha256: sha } });
+      const s = open(h, {
+        ...loadRequest('TbiGpioProof'),
+        artifact: { sha256: sha },
+        ticket: ticketFor(sha), // a run ticket names exactly one artifact
+      });
       const pdir = s.privateDir;
       s.run();
       const pid = await pidOf(s);
@@ -228,6 +239,14 @@ describe('R2 failure injection (real runtime)', () => {
 
 const BUNDLE = join(process.cwd(), 'runtime/host/dist/session-host.mjs');
 
+/** Key files outside the host's temporary root (whose emptiness the tests check). */
+const KEYS = mkdtempSync(join(RUNTIME_HOME, 'r2-keys-'));
+function keyFile(name: string, key: Buffer): string {
+  const file = join(KEYS, name);
+  writeFileSync(file, key, { mode: 0o600 });
+  return file;
+}
+
 async function startHostProcess(tmpParent: string, port: number, env: Record<string, string> = {}) {
   const child = spawn(process.execPath, [BUNDLE], {
     env: {
@@ -235,6 +254,10 @@ async function startHostProcess(tmpParent: string, port: number, env: Record<str
       TMPDIR: tmpParent,
       TBI_RUNTIME_HOME: RUNTIME_HOME,
       TBI_HOST_PORT: String(port),
+      // Sprint 8: the host needs the gate identity and run-ticket keys (the test keys here).
+      TBI_IDENTITY_KEY_FILE: keyFile('identity.key', TEST_IDENTITY.key),
+      TBI_IDENTITY_ISSUER: TEST_IDENTITY.issuer,
+      TBI_TICKET_KEY_FILE: keyFile('ticket.key', TEST_TICKET_KEY),
       ...env,
     },
     stdio: ['ignore', 'pipe', 'inherit'],
@@ -250,6 +273,8 @@ async function api(port: number, method: string, path: string, token?: string, b
   const r = await fetch(`http://127.0.0.1:${port}${path}`, {
     method,
     headers: {
+      // The test plays the gate: it asserts the subject its tickets were minted for.
+      'x-forwarded-user': TEST_SUBJECT,
       ...(token ? { authorization: `Bearer ${token}` } : {}),
       ...(body ? { 'content-type': 'application/json' } : {}),
     },
@@ -312,14 +337,23 @@ describe('R2 host process (bundle): shutdown, crash, client disconnect', () => {
       const t0 = performance.now();
       await expect.poll(() => alive(pid), { timeout: 15_000, interval: 50 }).toBe(false);
       rows.push({ qemuGoneAfterHostKillMs: Math.round(performance.now() - t0) });
-      expect(readdirSync(tmp)).toHaveLength(1); // the dead host's root, with its session dir
+      // What the dead host left: its root (with its session dir) and possibly its short bridge
+      // socket directory — all named after its pid, so the next host can sweep them.
+      const left = readdirSync(tmp);
+      expect(left.length).toBeGreaterThanOrEqual(1);
+      expect(left.every((n) => n.startsWith(`tbi-host-${child.pid}-`))).toBe(true);
       const next = await startHostProcess(tmp, port);
       expect(readdirSync(tmp)).toHaveLength(1); // only the new host's (empty) root remains
       expect(readdirSync(join(tmp, readdirSync(tmp)[0]!))).toEqual([]);
       const e2 = exited(next);
       next.kill('SIGTERM');
       await e2;
-      expect(readdirSync(tmp)).toEqual([]);
+      expect(
+        readdirSync(tmp),
+        `next pid ${next.pid}, crashed pid ${child.pid}: ${readdirSync(tmp)
+          .map((n) => `${n}[${readdirSync(join(tmp, n)).join(',')}]`)
+          .join(' ')}`,
+      ).toEqual([]);
       rmSync(tmp, { recursive: true, force: true });
     }
     evidence.hostCrash = rows;
@@ -334,12 +368,11 @@ describe('R2 host process (bundle): shutdown, crash, client disconnect', () => {
       const { sessionId, token, pid } = await runningSession(port);
       // Attach, read a little, then drop the connection (the WAN goes away).
       const ctl = new AbortController();
-      const r = await fetch(
-        `http://127.0.0.1:${port}/sessions/${sessionId}/events?token=${token}`,
-        {
-          signal: ctl.signal,
-        },
-      );
+      // Sprint 8: the token travels in the header only; the test plays the gate.
+      const r = await fetch(`http://127.0.0.1:${port}/sessions/${sessionId}/events`, {
+        signal: ctl.signal,
+        headers: { authorization: `Bearer ${token}`, 'x-forwarded-user': TEST_SUBJECT },
+      });
       const reader = r.body!.getReader();
       const first = new TextDecoder().decode((await reader.read()).value);
       expect(first).toMatch(/^id: 1\nevent: state\n/);

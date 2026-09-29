@@ -70,9 +70,9 @@ const config = defaultConfig({
 });
 const host = new SessionHost(config);
 const server = createHttpServer(host, identity);
-await listen(server, where, socketGid);
-process.stdout.write(`tbi-session-host listening on ${describeListen(where)}\n`);
 
+// Signal handlers first: a supervisor may stop the host the moment it reports "listening", and
+// an unhandled SIGTERM would skip the cleanup of its sessions and temporary root.
 let stopping = false;
 const stop = () => {
   if (stopping) return;
@@ -83,3 +83,6 @@ const stop = () => {
 };
 process.on('SIGTERM', stop);
 process.on('SIGINT', stop);
+
+await listen(server, where, socketGid);
+process.stdout.write(`tbi-session-host listening on ${describeListen(where)}\n`);

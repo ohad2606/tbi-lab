@@ -104,6 +104,13 @@ export function systemdLauncher(opts: SystemdLauncherOptions): RuntimeLauncher {
     }) as unknown as RuntimeProcess;
     waiter.on('error', (e) => ev.emit('error', e));
     waiter.on('close', () => {
+      // The waiter can end before the unit (e.g. it was signalled): report the end only once the
+      // unit is really inactive, so its exit record exists and its directory is no longer bound.
+      for (let i = 0; i < 100; i++) {
+        const state = spawnSync(systemctl, ['is-active', unit], { encoding: 'utf8' }).stdout.trim();
+        if (state !== 'active' && state !== 'activating' && state !== 'deactivating') break;
+        spawnSync('sleep', ['0.05']);
+      }
       // How QEMU itself ended, as the unit's ExecStopPost recorded it: `exited <n>` or
       // `killed|dumped <SIGNAME>`. Missing: the unit never ran QEMU (a start failure).
       let code: number | null = null;

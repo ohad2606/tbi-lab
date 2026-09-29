@@ -9,7 +9,8 @@
  * diagnostics (stderr) are kept strictly apart and both are bounded.
  */
 import { directLauncher, type RuntimeLauncher, type RuntimeProcess } from './launcher.js';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { connect, createServer, type Socket } from 'node:net';
 import { join } from 'node:path';
 import { encodeReply, parseFrame, ProtocolError, type Command, type Level } from './protocol.js';
@@ -277,9 +278,18 @@ export function runSession(opts: SessionOptions, handler: SessionHandler): Promi
     });
     // The bridge endpoint is a unix socket in the private session directory (Sprint 8): QEMU
     // connects by path, so it needs no network access at all.
-    const bridgePath = join(opts.dir, 'bridge.sock');
-    if (bridgePath.includes(',') || Buffer.byteLength(bridgePath) >= 108)
-      throw new Error(`unusable bridge socket path: ${bridgePath}`);
+    // A unix socket path must fit in 108 bytes. A session directory nested deep (tests) gets its
+    // socket in a short private directory instead, removed with the session; the sandboxed runtime
+    // unit always uses <session root>/s-<id>/bridge.sock, which is short.
+    let shortDir: string | null = null;
+    let bridgePath = join(opts.dir, 'bridge.sock');
+    if (Buffer.byteLength(bridgePath) >= 100) {
+      // Named like a host root (tbi-host-<pid>-…): if this process dies outright, the next
+      // host's stale-root sweep removes it.
+      shortDir = mkdtempSync(join(tmpdir(), `tbi-host-${process.pid}-br-`));
+      bridgePath = join(shortDir, 'b.sock');
+    }
+    if (bridgePath.includes(',')) throw new Error(`unusable bridge socket path: ${bridgePath}`);
     server.listen(bridgePath, () => start(bridgePath));
 
     function start(path: string): void {
@@ -398,6 +408,7 @@ export function runSession(opts: SessionOptions, handler: SessionHandler): Promi
         opts.signal?.removeEventListener('abort', terminate);
         if (stress) clearInterval(stress);
         server.close();
+        if (shortDir) rmSync(shortDir, { recursive: true, force: true });
         (sock as Socket | null)?.destroy();
         const ended = performance.now();
         let outcome: Outcome;

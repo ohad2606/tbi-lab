@@ -61,6 +61,7 @@ mkuser tbi-buildjob tbi-buildio
 mkuser tbi-runtime tbi-runtimeio
 mkuser tbi-qemu tbi-runtimeio
 GATE_GID="$(getent group tbi-gate | cut -d: -f3)"
+JOB_UID="$(id -u tbi-buildjob)"
 
 # Keys: root-only files, handed to the two services as systemd credentials.
 sudo install -d -m 0700 "/etc/$N"
@@ -92,7 +93,7 @@ fi
 render() {
   sed -e "s|@N@|$N|g" -e "s|@NRE@|${N//-/\\\\-}|g" -e "s|@STORE@|$STORE|g" -e "s|@BUNDLES@|$BUNDLES|g" \
     -e "s|@ARDUINO@|$ARDUINO|g" -e "s|@NODE@|$NODE|g" -e "s|@RUNTIME@|$RUNTIME|g" \
-    -e "s|@GATE_GID@|$GATE_GID|g" "$1"
+    -e "s|@GATE_GID@|$GATE_GID|g" -e "s|@JOB_UID@|$JOB_UID|g" "$1"
 }
 render "$here/tbi-build.service.in" | sudo tee "/etc/systemd/system/$N-build.service" >/dev/null
 render "$here/tbi-build-job@.service.in" | sudo tee "/etc/systemd/system/$N-build-job@.service" >/dev/null

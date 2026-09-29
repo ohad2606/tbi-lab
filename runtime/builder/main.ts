@@ -82,10 +82,7 @@ const server = createBuildHttpServer(service, {
   identity,
   allowPrebuiltBinary: () => allowPrebuilt,
 });
-await listen(server, where, socketGid);
-process.stdout.write(
-  `tbi-build listening on ${describeListen(where)} (profiles: ${service.profiles().join(', ')})\n`,
-);
+// Signal handlers first (see the Session Host): stop cleanly even right after start.
 const stop = () => {
   server.close();
   server.closeAllConnections();
@@ -93,3 +90,8 @@ const stop = () => {
 };
 process.on('SIGTERM', stop);
 process.on('SIGINT', stop);
+
+await listen(server, where, socketGid);
+process.stdout.write(
+  `tbi-build listening on ${describeListen(where)} (profiles: ${service.profiles().join(', ')})\n`,
+);

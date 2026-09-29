@@ -92,6 +92,8 @@ export function stopTemplateInstances(systemctl: string, prefix: string): void {
     if (unit && unit.startsWith(`${prefix}@`))
       spawnSync(systemctl, ['stop', unit], { stdio: 'ignore' });
   }
+  // …and clear failed-unit records the previous process left (nothing runs in them).
+  spawnSync(systemctl, ['reset-failed', `${prefix}@*.service`], { stdio: 'ignore' });
 }
 
 export class SandboxToolRunner implements ToolRunner {
