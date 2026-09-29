@@ -773,3 +773,26 @@ The following are not part of Sprint 8:
 | P5 | Cross-user compile cost (D-S8-3) | Measure in Phase 5; opt-in sharing later if the PM wants |
 | P6 | The 1-vCPU host cannot demonstrate multi-user *capacity* beyond about 1 real-time session | **Resolved (Q1):** also measure on a temporary 4-vCPU class host in Phase 5 |
 | P7 | The dev/test workload on the preview host distorts memory and swap | **Resolved (Q5):** clean-host procedure in Phase 0; heavy experiments moved off the host where practical |
+
+## Implementation notes (Phases 1–3, recorded at the Phase 3 checkpoint)
+
+Where the implementation made a concrete choice that the approved text left open or described
+differently:
+
+- **D-S8-1: where the principal is derived.**
+  - oauth2-proxy asserts `X-Forwarded-User`, the provider's stable subject, overwriting any client
+    value.
+  - Each backend derives the opaque principal itself with the shared HMAC key, instead of Caddy
+    computing an `X-TBI-Principal` header (Caddy cannot compute an HMAC).
+  - Caddy strips every `X-Tbi-*` header, and all hops are unix sockets.
+  - Same guarantees; one fewer component that must hold the key.
+- **D-S8-5: no separate stream ticket.** The client already reads the event stream with `fetch` and
+  an `Authorization` header, so the host simply stopped accepting `?token=` in URLs. Same outcome:
+  no secret in URLs or logs.
+- **D-S8-6/7: sandbox users.**
+  - Fixed system users `tbi-buildjob` and `tbi-qemu` instead of `DynamicUser`, so the service can
+    share exactly one directory with a job through a group.
+  - Isolation between concurrent jobs or sessions comes from the per-unit mount view, which binds
+    only that job's or session's directory, and from a private PID namespace.
+- **D-S8-7: QEMU bridge (owner decision 1).** A unix-domain socket (`syncpath=`), not an inherited
+  descriptor, because systemd, not the host, starts the sandboxed QEMU. TCP was removed.
