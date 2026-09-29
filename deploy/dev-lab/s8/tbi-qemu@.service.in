@@ -1,0 +1,67 @@
+# Sprint 8 (D-S8-7): ONE sandboxed runtime (QEMU) for one session. Rendered by install.sh.
+# The Session Host may only start/stop/kill instances of this template (polkit). Instance = the
+# session id; the session directory is <session root>/s-<id>.
+#
+# View: an empty root with read-only /usr, the pinned runtime at /opt/tbi-runtime, and THIS
+# session's directory at /session (its private flash copy and the bridge socket). No network (the
+# bridge is a unix socket), no home directories, no credentials, no other session.
+[Unit]
+Description=TBI Lab sandboxed runtime for session %i
+
+[Service]
+Type=exec
+User=tbi-qemu
+Group=tbi-runtimeio
+UMask=0007
+RootDirectory=/var/lib/@N@-runtime/sandbox-root
+MountAPIVFS=yes
+BindReadOnlyPaths=/usr
+BindReadOnlyPaths=@RUNTIME@:/opt/tbi-runtime
+BindPaths=/var/lib/@N@-runtime/sessions/s-%i:/session
+TemporaryFileSystem=/tmp:size=8M
+WorkingDirectory=/session
+EnvironmentFile=/var/lib/@N@-runtime/sessions/s-%i/runtime.env
+Environment=LANG=C
+StandardOutput=null
+StandardError=file:/var/lib/@N@-runtime/sessions/s-%i/runtime.stderr
+ExecStart=/opt/tbi-runtime/bin/qemu-system-xtensa -L /opt/tbi-runtime/share/qemu -machine esp32 -display none -monitor none -no-reboot -drive file=/session/flash.bin,if=mtd,format=raw -icount shift=3,sleep=off -chardev tbi-serial,id=tbiser -serial chardev:tbiser -device tbi-bridge,syncpath=/session/bridge.sock,tick-us=${TBI_TICK_US}
+# How QEMU ended, for the Session Host (exit status 3/4 are the bridge's fail-closed codes).
+ExecStopPost=/usr/bin/sh -c 'echo "$EXIT_CODE $EXIT_STATUS" > /session/runtime.exit'
+
+# Isolation
+PrivateNetwork=yes
+IPAddressDeny=any
+RestrictAddressFamilies=AF_UNIX
+PrivatePIDs=yes
+PrivateIPC=yes
+PrivateDevices=yes
+ProtectProc=invisible
+ProcSubset=pid
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictNamespaces=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+LockPersonality=yes
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+SystemCallFilter=@system-service
+SystemCallArchitectures=native
+
+# Limits: memory without swap, at most one CPU at high weight (a live session is real time),
+# tasks, session storage, lifetime (the host's own 30 min limit is the primary one).
+MemoryMax=384M
+MemorySwapMax=0
+CPUQuota=100%
+CPUWeight=200
+TasksMax=32
+LimitFSIZE=16M
+LimitNOFILE=256
+RuntimeMaxSec=1900
+KillMode=control-group
+TimeoutStopSec=3

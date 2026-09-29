@@ -31,28 +31,18 @@ sudo ln -sfn "$root/$sha" "$root/current.tmp"
 sudo mv -T "$root/current.tmp" "$root/current"
 echo "published $sha -> $root/current"
 
-# The Session Host bundle of the same ref (Sprint 6).
-host_root=/srv/tbi-lab/session-host
-if [ -f "$work/src/runtime/host/dist/session-host.mjs" ]; then
-  sudo install -d -m 0755 "$host_root/$sha"
-  sudo install -m 0644 "$work/src/runtime/host/dist/session-host.mjs" "$host_root/$sha/session-host.mjs"
-  sudo ln -sfn "$host_root/$sha" "$host_root/current.tmp"
-  sudo mv -T "$host_root/current.tmp" "$host_root/current"
-  if systemctl list-unit-files tbi-session-host.service >/dev/null 2>&1; then
-    sudo systemctl restart tbi-session-host.service
-  fi
-  echo "published session host $sha -> $host_root/current"
-fi
-
-# The build service bundle of the same ref (Sprint 7).
-build_root=/srv/tbi-lab/build-service
-if [ -f "$work/src/runtime/builder/dist/build-service.mjs" ] && [ -d "$build_root" ]; then
-  sudo install -d -m 0755 "$build_root/$sha"
-  sudo install -m 0644 "$work/src/runtime/builder/dist/build-service.mjs" "$build_root/$sha/build-service.mjs"
-  sudo ln -sfn "$build_root/$sha" "$build_root/current.tmp"
-  sudo mv -T "$build_root/current.tmp" "$build_root/current"
-  if systemctl list-unit-files tbi-build.service >/dev/null 2>&1; then
-    sudo systemctl restart tbi-build.service
-  fi
-  echo "published build service $sha -> $build_root/current"
+# The backend bundles of the same ref (Sprint 8 layout, deploy/dev-lab/s8): the build service,
+# its in-sandbox step driver and the Session Host, together in /srv/tbi-lab/services/<sha>
+# (outside the web root: never served). Restarting the two services ends running preview
+# sessions and builds (they are ephemeral by design); their sandbox units stop with them.
+services_root=/srv/tbi-lab/services
+if [ -d "$services_root" ]; then
+  sudo install -d -m 0755 "$services_root/$sha"
+  sudo install -m 0644 "$work/src/runtime/builder/dist/build-service.mjs" \
+    "$work/src/runtime/builder/dist/build-job.mjs" "$work/src/runtime/host/dist/session-host.mjs" \
+    "$services_root/$sha/"
+  sudo ln -sfn "$services_root/$sha" "$services_root/current.tmp"
+  sudo mv -T "$services_root/current.tmp" "$services_root/current"
+  sudo systemctl restart tbi-build.service tbi-session-host.service
+  echo "published services $sha -> $services_root/current"
 fi

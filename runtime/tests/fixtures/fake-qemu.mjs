@@ -7,9 +7,9 @@
 import { connect } from 'node:net';
 
 const arg = process.argv.find((a) => a.startsWith('tbi-bridge,'));
-const [host, port] = /syncport=([^,]+)/.exec(arg)[1].split(':');
+const path = /syncpath=([^,]+)/.exec(arg)[1]; // Sprint 8: a unix socket, no network
 const mode = process.env.TBI_FAKE_QEMU_MODE;
-const s = connect(Number(port), host);
+const s = connect(path);
 const script = {
   malformed_frame: ['H tbi-bridge 1 1000000', 'G 5 99 1 1'],
   time_backwards: ['H tbi-bridge 1 1000000', 'T 2000000', 'T 1000000'],

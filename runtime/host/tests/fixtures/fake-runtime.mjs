@@ -18,13 +18,14 @@ import { openSync, readSync, writeSync, closeSync } from 'node:fs';
 const mode = process.env.TBI_FAKE_MODE ?? 'normal';
 const arg = (prefix) => process.argv.find((a) => a.startsWith(prefix));
 const device = arg('tbi-bridge,');
-const [, host, port, tickUs] = /syncport=([^:]+):(\d+),tick-us=(\d+)/.exec(device);
+// Sprint 8: the bridge is a unix socket path (no network).
+const [, path, tickUs] = /syncpath=([^,]+),tick-us=(\d+)/.exec(device);
 const flash = /file=([^,]+)/.exec(arg('file='))[1];
 const tick = BigInt(tickUs) * 1000n;
 
 if (mode === 'ignore_term') process.on('SIGTERM', () => {});
 
-const sock = connect(Number(port), host);
+const sock = connect(path);
 sock.setNoDelay(true);
 let buf = '';
 let waiting = null; // resolve of the pending reply

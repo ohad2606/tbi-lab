@@ -10,14 +10,14 @@
  */
 import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync } from 'node:fs';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { arch } from 'node:os';
 import { join } from 'node:path';
 import { canonicalJson, type BuildProfile } from '@tbi-lab/domain';
 import { analyzeFeatures } from './features.js';
 import type { Diagnostic, Severity } from './protocol.js';
 import type { BuildProvider, JobContext, ProviderOutput } from './provider.js';
-import { runTool } from './run.js';
+import { LocalToolRunner, type ToolRunner } from './runner.js';
 
 export interface ArduinoProfileRecord {
   id: string;
@@ -35,6 +35,8 @@ export interface ArduinoProviderOptions {
   home: string;
   /** Raw output kept for the details view (bytes). */
   retainedOutputBytes: number;
+  /** Where the tools run (Sprint 8): the per-job sandbox in deployment; local by default. */
+  runner?: ToolRunner;
 }
 
 /** Output the tools may produce before we stop reading (JSON wraps the compiler output). */
@@ -46,28 +48,37 @@ export class ArduinoEsp32Provider implements BuildProvider {
   readonly profile: BuildProfile;
   readonly profileHash: string;
   private readonly data: string;
-  private readonly cli: string;
-  private readonly core: string;
   private readonly toolsBin: string;
+  private readonly runner: ToolRunner;
 
   constructor(private readonly opts: ArduinoProviderOptions) {
+    this.runner = opts.runner ?? new LocalToolRunner(opts.home);
     this.profile = opts.profile;
     this.profileHash = createHash('sha256').update(canonicalJson(opts.record)).digest('hex');
     this.data = join(opts.home, 'data');
-    this.cli = join(opts.home, 'bin', 'arduino-cli');
     const pkgs = join(this.data, 'packages', 'esp32');
-    this.core = join(pkgs, 'hardware', 'esp32', opts.record.toolchain.arduinoEsp32);
     this.toolsBin = join(pkgs, 'tools');
   }
 
-  private get esptool() {
-    return join(this.toolsBin, 'esptool_py', this.opts.record.toolchain.esptool, 'esptool');
-  }
-
-  private get nm() {
-    const x32 = join(this.toolsBin, 'esp-x32');
-    const version = readdirSync(x32).sort().at(-1)!;
-    return join(x32, version, 'bin', 'xtensa-esp32-elf-nm');
+  /** Toolchain paths as the tools see them (the runner's view of the pinned home). */
+  private view() {
+    const data = join(this.runner.home, 'data');
+    const tools = join(data, 'packages', 'esp32', 'tools');
+    const version = readdirSync(join(this.toolsBin, 'esp-x32')).sort().at(-1)!;
+    return {
+      data,
+      cli: join(this.runner.home, 'bin', 'arduino-cli'),
+      core: join(
+        data,
+        'packages',
+        'esp32',
+        'hardware',
+        'esp32',
+        this.opts.record.toolchain.arduinoEsp32,
+      ),
+      esptool: join(tools, 'esptool_py', this.opts.record.toolchain.esptool, 'esptool'),
+      nm: join(tools, 'esp-x32', version, 'bin', 'xtensa-esp32-elf-nm'),
+    };
   }
 
   async verifyToolchain(): Promise<void> {
@@ -94,58 +105,72 @@ export class ArduinoEsp32Provider implements BuildProvider {
     if (Buffer.byteLength(source, 'utf8') > p.maxSourceBytes)
       return fail(`The sketch is larger than ${p.maxSourceBytes / 1024} KiB.`);
 
+    // Real paths (the service writes and reads the job) and the tools' view of the same job.
     const d = (sub: string) => join(job.dir, sub);
-    for (const sub of ['sketch', 'user', 'cache', 'out', 'build', 'downloads'])
-      await mkdir(d(sub), { mode: 0o700 });
-    await writeFile(join(d('sketch'), p.fileName), source, { mode: 0o600 });
+    const J = this.runner.jobPath(job.dir);
+    const v = (sub: string) => join(J, sub);
+    const t = this.view();
+    const run = (file: string, args: string[], cwd: string, maxOutputBytes: number) =>
+      this.runner.run(job.dir, file, args, { cwd, env, signal: job.signal, maxOutputBytes });
+    await this.runner.prepare(job.dir);
+    // Group-writable whatever the umask: in the sandbox the tools run as the job user, which
+    // shares only the group of this job directory.
+    for (const sub of ['sketch', 'user', 'cache', 'out', 'build', 'downloads']) {
+      await mkdir(d(sub));
+      await chmod(d(sub), 0o770);
+    }
+    await writeFile(join(d('sketch'), p.fileName), source);
+    await chmod(join(d('sketch'), p.fileName), 0o660);
     // Pinned read-only core; an empty user directory (no sketchbook libraries); per-job cache.
     await writeFile(
       d('cli.yaml'),
       [
         'directories:',
-        `  data: ${this.data}`,
-        `  downloads: ${d('downloads')}`,
-        `  user: ${d('user')}`,
+        `  data: ${t.data}`,
+        `  downloads: ${v('downloads')}`,
+        `  user: ${v('user')}`,
         'build_cache:',
-        `  path: ${d('cache')}`,
+        `  path: ${v('cache')}`,
         'network:',
         '  connection_timeout: 1s',
         '',
       ].join('\n'),
     );
+    await chmod(d('cli.yaml'), 0o660);
     const maps = [
-      `-ffile-prefix-map=${this.data}=/arduino-data`,
-      `-ffile-prefix-map=${d('sketch')}=/sketch`,
-      `-ffile-prefix-map=${job.dir}=/build`,
+      `-ffile-prefix-map=${t.data}=/arduino-data`,
+      `-ffile-prefix-map=${v('sketch')}=/sketch`,
+      `-ffile-prefix-map=${J}=/build`,
     ].join(' ');
     const env = {
       PATH: '/usr/bin:/bin',
-      HOME: job.dir,
-      TMPDIR: job.dir,
+      HOME: J,
+      TMPDIR: J,
       LANG: 'C.UTF-8',
       SOURCE_DATE_EPOCH: String(this.opts.record.sourceDateEpoch),
     };
-    const compile = await runTool(
-      this.cli,
+    const compile = await run(
+      t.cli,
       [
         '--config-file',
-        d('cli.yaml'),
+        v('cli.yaml'),
         'compile',
         '--format',
         'json',
         '--fqbn',
         this.opts.record.fqbn,
         '--build-path',
-        d('build'),
+        v('build'),
         '--output-dir',
-        d('out'),
+        v('out'),
         '--build-property',
         `compiler.c.extra_flags=${maps}`,
         '--build-property',
         `compiler.cpp.extra_flags=${maps}`,
-        d('sketch'),
+        v('sketch'),
       ],
-      { cwd: d('sketch'), env, signal: job.signal, maxOutputBytes: TOOL_OUTPUT_CAP },
+      v('sketch'),
+      TOOL_OUTPUT_CAP,
     );
     if (compile.aborted) return this.internal('aborted', compile.stderr);
 
@@ -171,15 +196,17 @@ export class ArduinoEsp32Provider implements BuildProvider {
     }
     const scrub = (text: string) =>
       text
-        .split(d('sketch') + '/')
+        .split(v('sketch') + '/')
         .join('')
-        .split(job.dir)
+        .split(J)
         .join('/build')
+        .split(t.data)
+        .join('/arduino-data')
         .split(this.data)
         .join('/arduino-data');
     const log = this.bounded(scrub((result.compiler_out ?? '') + (result.compiler_err ?? '')));
     const diagnostics: Diagnostic[] = (result.builder_result?.diagnostics ?? []).map((x) => {
-      const inSketch = x.file === join(d('sketch'), p.fileName);
+      const inSketch = x.file === join(v('sketch'), p.fileName);
       const severity = (x.severity ?? 'ERROR').toLowerCase();
       return {
         severity: (['error', 'warning', 'note'].includes(severity)
@@ -201,16 +228,15 @@ export class ArduinoEsp32Provider implements BuildProvider {
     }
 
     // Merge into the 4 MiB flash image (the R2 artifact form).
-    const out = (suffix: string) => join(d('out'), `${p.fileName}${suffix}`);
-    const image = d('image.bin');
-    const merge = await runTool(
-      this.esptool,
+    const out = (suffix: string) => join(v('out'), `${p.fileName}${suffix}`);
+    const merge = await run(
+      t.esptool,
       [
         '--chip',
         this.opts.record.image.chip,
         'merge-bin',
         '--output',
-        image,
+        v('image.bin'),
         '--fill-flash-size',
         this.opts.record.image.flashSize,
         '--flash-mode',
@@ -224,21 +250,22 @@ export class ArduinoEsp32Provider implements BuildProvider {
         '0x8000',
         out('.partitions.bin'),
         '0xe000',
-        join(this.core, 'tools', 'partitions', 'boot_app0.bin'),
+        join(t.core, 'tools', 'partitions', 'boot_app0.bin'),
         '0x10000',
         out('.bin'),
       ],
-      { cwd: job.dir, env, signal: job.signal, maxOutputBytes: 64 * 1024 },
+      J,
+      64 * 1024,
     );
     if (merge.aborted) return this.internal('aborted', merge.stderr);
     if (merge.code !== 0) return this.internal('image merge failed', merge.stdout + merge.stderr);
 
-    const nm = await runTool(this.nm, ['--defined-only', '--format=posix', out('.elf')], {
-      cwd: job.dir,
-      env,
-      signal: job.signal,
-      maxOutputBytes: 16 * 1024 * 1024,
-    });
+    const nm = await run(
+      t.nm,
+      ['--defined-only', '--format=posix', out('.elf')],
+      J,
+      16 * 1024 * 1024,
+    );
     if (nm.code !== 0) return this.internal('symbol listing failed', nm.stderr);
     const symbols = nm.stdout.split('\n').map((l) => l.split(' ')[0] ?? '');
     const libraries =
@@ -247,7 +274,7 @@ export class ArduinoEsp32Provider implements BuildProvider {
 
     return {
       ok: true,
-      imagePath: image,
+      imagePath: d('image.bin'),
       features: analyzeFeatures({ source, symbols, libraries }),
       ...sizesOf(result.compiler_out ?? ''),
       diagnostics,

@@ -4,14 +4,15 @@ Date: Thu, 24 Sep 2026 12:00:00 +0000
 Subject: [PATCH] hw/misc/tbi_bridge: TBI Lab synchronous runtime bridge
 
 Connects the classic ESP32 GPIO pads and UART0 to one host process over a
-private blocking TCP stream. Every exchange runs on the raising thread
+private blocking unix-domain stream socket (syncpath=<absolute path>), so
+the runtime needs no network access. Every exchange runs on the raising thread
 under the BQL, so host responses apply at zero elapsed virtual time.
 Fails closed with distinct exit statuses on protocol errors (3) and host
 connection loss (4).
 ---
  hw/misc/meson.build  |   3 +-
- hw/misc/tbi_bridge.c | 383 +++++++++++++++++++++++++++++++++++++++++++
- 2 files changed, 385 insertions(+), 1 deletion(-)
+ hw/misc/tbi_bridge.c | 379 +++++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 381 insertions(+), 1 deletion(-)
  create mode 100644 hw/misc/tbi_bridge.c
 
 diff --git a/hw/misc/meson.build b/hw/misc/meson.build
@@ -30,10 +31,10 @@ index 4c2b5b3..c811a86 100644
  system_ss.add(when: 'CONFIG_RISCV_ESP32C3', if_true: files(
 diff --git a/hw/misc/tbi_bridge.c b/hw/misc/tbi_bridge.c
 new file mode 100644
-index 0000000..0862f2a
+index 0000000..c936665
 --- /dev/null
 +++ b/hw/misc/tbi_bridge.c
-@@ -0,0 +1,383 @@
+@@ -0,0 +1,379 @@
 +/*
 + * TBI Lab synchronous runtime bridge (runtime R1)
 + *
@@ -43,7 +44,8 @@ index 0000000..0862f2a
 + * GNU General Public License version 2 or (at your option) any later version.
 + *
 + * The QEMU-side half of the TBI Lab MCU <-> electrical loop. It connects the classic ESP32 GPIO
-+ * pads and UART0 to ONE host process over a private, blocking TCP stream, and performs every
++ * pads and UART0 to ONE host process over a private, blocking unix-domain stream socket (a
++ * filesystem path: the runtime needs no network access at all), and performs every
 + * exchange on the thread that raised it while holding the Big QEMU Lock. Nothing else in QEMU
 + * runs during an exchange, so host latency stretches wall time only: responses are applied
 + * before the next guest instruction, at zero elapsed virtual time (ADR-007). Board or circuit
@@ -77,9 +79,8 @@ index 0000000..0862f2a
 +#include "chardev/char.h"
 +#include "sysemu/runstate.h"
 +#include "qom/object.h"
-+#include <netinet/in.h>
-+#include <netinet/tcp.h>
-+#include <arpa/inet.h>
++#include <sys/socket.h>
++#include <sys/un.h>
 +
 +#define TYPE_TBI_BRIDGE "tbi-bridge"
 +#define TYPE_CHARDEV_TBI_SERIAL "chardev-tbi-serial"
@@ -100,7 +101,7 @@ index 0000000..0862f2a
 +struct TbiBridge {
 +    DeviceState parent_obj;
 +
-+    char *syncport;
++    char *syncpath;
 +    uint32_t tick_us;
 +
 +    int fd;
@@ -294,28 +295,24 @@ index 0000000..0862f2a
 +    }
 +}
 +
-+static int tbi_connect(const char *spec, Error **errp)
++static int tbi_connect(const char *path, Error **errp)
 +{
-+    unsigned port;
-+    char host[64];
-+    struct sockaddr_in sa = { .sin_family = AF_INET };
++    struct sockaddr_un sa = { .sun_family = AF_UNIX };
 +
-+    if (sscanf(spec, "%63[^:]:%u", host, &port) != 2 || port == 0 || port > 65535 ||
-+        inet_pton(AF_INET, host, &sa.sin_addr) != 1) {
-+        error_setg(errp, TYPE_TBI_BRIDGE ": syncport must be <ipv4>:<port>");
++    if (path[0] != '/' || strlen(path) >= sizeof(sa.sun_path)) {
++        error_setg(errp, TYPE_TBI_BRIDGE ": syncpath must be an absolute socket path shorter "
++                   "than %zu bytes", sizeof(sa.sun_path));
 +        return -1;
 +    }
-+    sa.sin_port = htons((uint16_t)port);
-+    int fd = socket(AF_INET, SOCK_STREAM, 0);
++    memcpy(sa.sun_path, path, strlen(path) + 1);
++    int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
 +    if (fd < 0 || connect(fd, (struct sockaddr *)&sa, sizeof(sa)) < 0) {
-+        error_setg_errno(errp, errno, TYPE_TBI_BRIDGE ": cannot connect to %s", spec);
++        error_setg_errno(errp, errno, TYPE_TBI_BRIDGE ": cannot connect to %s", path);
 +        if (fd >= 0) {
 +            close(fd);
 +        }
 +        return -1;
 +    }
-+    int one = 1;
-+    setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
 +    return fd;
 +}
 +
@@ -330,8 +327,8 @@ index 0000000..0862f2a
 +        error_setg(errp, TYPE_TBI_BRIDGE ": only one bridge per QEMU process");
 +        return;
 +    }
-+    if (!s->syncport || s->tick_us == 0) {
-+        error_setg(errp, TYPE_TBI_BRIDGE ": syncport and a non-zero tick-us are required");
++    if (!s->syncpath || s->tick_us == 0) {
++        error_setg(errp, TYPE_TBI_BRIDGE ": syncpath and a non-zero tick-us are required");
 +        return;
 +    }
 +    obj = object_resolve_path_type("", TBI_GPIO_QOM_TYPE, NULL);
@@ -341,7 +338,7 @@ index 0000000..0862f2a
 +    }
 +    gpio = DEVICE(obj);
 +
-+    s->fd = tbi_connect(s->syncport, errp);
++    s->fd = tbi_connect(s->syncpath, errp);
 +    if (s->fd < 0) {
 +        return;
 +    }
@@ -363,7 +360,7 @@ index 0000000..0862f2a
 +}
 +
 +static Property tbi_bridge_properties[] = {
-+    DEFINE_PROP_STRING("syncport", TbiBridge, syncport),
++    DEFINE_PROP_STRING("syncpath", TbiBridge, syncpath),
 +    /* The host command quantum (ADR-007): 1000 us = 1 ms of simulation time in V1. */
 +    DEFINE_PROP_UINT32("tick-us", TbiBridge, tick_us, 1000),
 +    DEFINE_PROP_END_OF_LIST(),

@@ -252,10 +252,10 @@ index 2ba4fdf..7a4db9f 100644
                      cpu_handle_guest_debug(cpu);
                      break;
 diff --git a/hw/misc/tbi_bridge.c b/hw/misc/tbi_bridge.c
-index 0862f2a..1c3ea9e 100644
+index c936665..d50c4e9 100644
 --- a/hw/misc/tbi_bridge.c
 +++ b/hw/misc/tbi_bridge.c
-@@ -321,7 +321,9 @@ static void tbi_bridge_realize(DeviceState *dev, Error **errp)
+@@ -317,7 +317,9 @@ static void tbi_bridge_realize(DeviceState *dev, Error **errp)
      snprintf(hello, sizeof(hello), "H tbi-bridge 1 %" PRIu64 "\n", (uint64_t)s->tick_us * 1000);
      tbi_exchange(s, hello, false);
  

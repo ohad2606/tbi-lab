@@ -1,0 +1,69 @@
+# Sprint 8 (D-S8-6): ONE sandboxed build step. Rendered by install.sh (@N@ = unit/name prefix).
+# The build service may only start/stop/kill instances of this template (polkit, 50-tbi-lab.rules);
+# everything about the sandbox is fixed here. Instance = the job directory name (job-XXXXXX).
+#
+# View: an empty root with read-only /usr, the pinned toolchain at /opt/tbi-arduino, Node and the
+# driver read-only, and this job's directory at /job. No artifact store, no home directories, no
+# credentials, no other job, no network.
+[Unit]
+Description=TBI Lab sandboxed build step %i
+CollectMode=inactive-or-failed
+
+[Service]
+Type=oneshot
+User=tbi-buildjob
+Group=tbi-buildio
+UMask=0007
+RootDirectory=/var/lib/@N@-build/sandbox-root
+MountAPIVFS=yes
+BindReadOnlyPaths=/usr
+BindReadOnlyPaths=@ARDUINO@:/opt/tbi-arduino
+BindReadOnlyPaths=@NODE@:/opt/tbi-node
+BindReadOnlyPaths=@BUNDLES@:/opt/tbi-build
+BindPaths=/var/lib/@N@-build/jobs/%i:/job
+TemporaryFileSystem=/tmp:size=16M
+WorkingDirectory=/job
+ExecStart=/opt/tbi-node/bin/node /opt/tbi-build/build-job.mjs
+# After every step (success, failure, timeout or kill), as the job user: the tools create some
+# directories with fixed modes; make the whole job group-writable so the service can remove it.
+ExecStopPost=/usr/bin/chmod -R g+rwX /job
+
+# Isolation
+PrivateNetwork=yes
+IPAddressDeny=any
+RestrictAddressFamilies=AF_UNIX
+PrivateUsers=no
+PrivatePIDs=yes
+PrivateIPC=yes
+PrivateDevices=yes
+ProtectProc=invisible
+ProcSubset=pid
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictNamespaces=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+LockPersonality=yes
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+SystemCallFilter=@system-service
+SystemCallArchitectures=native
+
+# Limits (the service's own watchdogs stay as an outer bound): memory without swap, one CPU at
+# low weight (live sessions come first), tasks, file size, wall time.
+MemoryMax=1G
+MemorySwapMax=0
+CPUQuota=80%
+CPUWeight=20
+TasksMax=64
+LimitFSIZE=512M
+LimitNOFILE=1024
+# A oneshot step's wall-time limit (the service's own 240 s timeout is the primary one).
+TimeoutStartSec=260
+KillMode=control-group
+TimeoutStopSec=5

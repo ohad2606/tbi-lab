@@ -1,0 +1,62 @@
+# Sprint 8: the R2 Session Host as its own non-login user (D-S8-7). Rendered by install.sh.
+#
+# It never runs QEMU itself: each session's runtime is an instance of @N@-qemu@.service, which it
+# may only start/stop/kill (polkit). Sessions live on disk under /var/lib/@N@-runtime/sessions
+# (not the RAM-backed /tmp). Reached only through its unix socket (group tbi-gate).
+[Unit]
+Description=TBI Lab Session Host (@N@)
+After=network-online.target
+
+[Service]
+User=tbi-runtime
+Group=tbi-runtimeio
+SupplementaryGroups=tbi-artifacts tbi-gate
+UMask=0007
+Environment=TBI_HOST_LISTEN=unix:/run/@N@-runtime/api.sock
+Environment=TBI_SOCKET_GID=@GATE_GID@
+Environment=TBI_ARTIFACTS=@STORE@
+Environment=TBI_QEMU=/opt/tbi-runtime/bin/qemu-system-xtensa
+Environment=TBI_HOST_SESSION_ROOT=/var/lib/@N@-runtime/sessions
+Environment=TBI_HOST_RUNTIME_UNIT=@N@-qemu
+Environment=TBI_IDENTITY_KEY_FILE=%d/identity.key
+Environment=TBI_TICKET_KEY_FILE=%d/ticket.key
+LoadCredential=identity.key:/etc/@N@/identity.key
+LoadCredential=ticket.key:/etc/@N@/ticket.key
+RuntimeDirectory=@N@-runtime
+RuntimeDirectoryMode=0755
+StateDirectory=@N@-runtime/sessions
+StateDirectoryMode=0770
+BindReadOnlyPaths=@NODE@:/opt/tbi-node
+BindReadOnlyPaths=@BUNDLES@:/opt/tbi-build
+ReadOnlyPaths=@STORE@
+ExecStart=/opt/tbi-node/bin/node /opt/tbi-build/session-host.mjs
+Restart=on-failure
+RestartSec=2
+KillSignal=SIGTERM
+TimeoutStopSec=20
+
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+SystemCallFilter=@system-service
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_UNIX
+IPAddressDeny=any
+MemoryMax=512M
+TasksMax=256
+
+[Install]
+WantedBy=multi-user.target

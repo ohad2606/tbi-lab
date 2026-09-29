@@ -8,6 +8,8 @@
  *   TBI_TICKET_KEY_FILE    run-ticket key shared with the Session Host (identity/ticket.ts)
  *   TBI_BUILD_STATE        private state directory (grants.db)
  *   TBI_ALLOW_PREBUILT     `1`/`0`: the allowPrebuiltBinary capability (default 1 in the preview)
+ *   TBI_BUILD_JOB_UNIT     template unit prefix of the per-job sandbox (e.g. tbi-build-job);
+ *                          unset: tools run as child processes (development only)
  *   TBI_ARDUINO_HOME       provisioned Arduino home (bin/arduino-cli, data/), read-only
  *   TBI_ARTIFACT_STORE     shared content-addressed store (<sha>.bin), read by the Session Host
  *   TBI_BUILD_WORK         private root for per-build job directories
@@ -25,6 +27,7 @@ import { describeListen, listen, parseListen } from '../identity/listen.js';
 import { identityFromEnv } from '../identity/principal.js';
 import { loadTicketKey } from '../identity/ticket.js';
 import { Grants } from './grants.js';
+import { SandboxToolRunner } from './runner.js';
 import { systemSourceKeys } from './system-sources.js';
 import { ArduinoEsp32Provider, type ArduinoProfileRecord } from './arduino.js';
 import { createBuildHttpServer } from './http.js';
@@ -49,12 +52,16 @@ const workRoot = process.env.TBI_BUILD_WORK ?? join(RUNTIME_HOME, 'build-jobs');
 const capBytes = Number(process.env.TBI_ARTIFACT_CAP_MB ?? 256) * 1024 * 1024;
 const leaseMs = Number(process.env.TBI_ARTIFACT_LEASE_MS ?? 600_000);
 
+const jobUnit = process.env.TBI_BUILD_JOB_UNIT;
 const provider = new ArduinoEsp32Provider({
   profile: ESP32_ARDUINO_PROFILE,
   record: record as ArduinoProfileRecord,
   home: arduinoHome,
   retainedOutputBytes: 256 * 1024,
+  ...(jobUnit ? { runner: new SandboxToolRunner({ unit: jobUnit }) } : {}),
 });
+// Jobs of a previous process never outlive it (they would write into swept directories).
+if (jobUnit) new SandboxToolRunner({ unit: jobUnit }).stopAll();
 await provider.verifyToolchain();
 const grants = new Grants(join(stateDir, 'grants.db'));
 const store = new ArtifactStore({

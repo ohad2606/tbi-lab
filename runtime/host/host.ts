@@ -31,9 +31,17 @@ export class SessionHost {
     // A host that was killed outright cannot clean up: its runtimes exit on their own (the
     // bridge connection drops), but its private root would remain. Remove any root whose
     // owning host process no longer exists.
-    removeStaleRoots(config.tmpParent);
-    // Private (0700) root for every session directory of this host process.
-    this.tmpRoot = mkdtempSync(join(config.tmpParent, `tbi-host-${process.pid}-`));
+    if (config.sessionRoot) {
+      // A fixed root this host owns alone (deployment): anything in it is left over from a
+      // previous host process and is removed.
+      this.tmpRoot = config.sessionRoot;
+      for (const name of readdirSync(this.tmpRoot))
+        rmSync(join(this.tmpRoot, name), { recursive: true, force: true });
+    } else {
+      removeStaleRoots(config.tmpParent);
+      // Private (0700) root for every session directory of this host process.
+      this.tmpRoot = mkdtempSync(join(config.tmpParent, `tbi-host-${process.pid}-`));
+    }
     this.timer = setInterval(() => this.housekeeping(), config.housekeepingMs);
     this.timer.unref();
   }
@@ -107,7 +115,10 @@ export class SessionHost {
     clearInterval(this.timer);
     await Promise.all([...this.sessions.values()].map((s) => s.terminate('host_shutdown')));
     await Promise.all([...this.sessions.values()].map((s) => s.done()));
-    rmSync(this.tmpRoot, { recursive: true, force: true });
+    if (this.config.sessionRoot)
+      for (const name of readdirSync(this.tmpRoot))
+        rmSync(join(this.tmpRoot, name), { recursive: true, force: true });
+    else rmSync(this.tmpRoot, { recursive: true, force: true });
   }
 
   /** Session count by state (health endpoint; no identifiers). */

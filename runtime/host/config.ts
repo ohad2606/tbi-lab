@@ -5,6 +5,7 @@
  */
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import type { RuntimeLauncher } from '../harness/launcher.js';
 import { COMMAND_QUANTUM_US } from './protocol.js';
 
 export interface HostConfig {
@@ -14,6 +15,14 @@ export interface HostConfig {
   artifactsDir: string;
   /** Key shared with the build service: run tickets are verified with it (Sprint 8). */
   ticketKey: Buffer;
+  /**
+   * Sprint 8 containment: a fixed, disk-backed directory owned by this host that holds the
+   * session directories (the sandboxed runtime unit binds `<sessionRoot>/s-<id>`). Unset: a
+   * private per-process root under `tmpParent` (tests, development).
+   */
+  sessionRoot?: string;
+  /** How QEMU is started (default: a direct child). The sandboxed unit in deployment. */
+  launch?: RuntimeLauncher;
   /** Parent directory for the host's private (0700) temporary root. */
   tmpParent: string;
   /** Environment given to the runtime process. Minimal by default. */

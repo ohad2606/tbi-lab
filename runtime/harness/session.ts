@@ -8,7 +8,7 @@
  * on a private overlay, artifacts.ts). Guest serial output (UART0, `S` frames) and QEMU's own
  * diagnostics (stderr) are kept strictly apart and both are bounded.
  */
-import { spawn, type ChildProcess } from 'node:child_process';
+import { directLauncher, type RuntimeLauncher, type RuntimeProcess } from './launcher.js';
 import { readFileSync } from 'node:fs';
 import { connect, createServer, type Socket } from 'node:net';
 import { join } from 'node:path';
@@ -70,7 +70,10 @@ export interface SessionOptions {
   qemu: string;
   /** The session's private writable flash (artifacts.ts overlay). */
   flash: string;
-  /** Private session directory (for the optional monitor socket). */
+  /**
+   * Private session directory: the bridge's unix socket (and the optional monitor socket) live
+   * here (Sprint 8: no TCP, so the runtime needs no network access).
+   */
   dir: string;
   /** Host command quantum, microseconds of simulation time. V1: 1000 (ADR-007). */
   tickUs?: number;
@@ -98,6 +101,8 @@ export interface SessionOptions {
   quitGraceMs?: number;
   /** SIGTERM -> SIGKILL grace when terminating on abort. Default 0 (immediate SIGKILL). */
   killGraceMs?: number;
+  /** How QEMU is started (Sprint 8): directly (default) or as a sandboxed per-session unit. */
+  launch?: RuntimeLauncher;
 }
 
 export interface ResourceSample {
@@ -171,7 +176,7 @@ export function runSession(opts: SessionOptions, handler: SessionHandler): Promi
   return new Promise<SessionResult>((resolve) => {
     let sock: Socket | null = null;
     let settled = false;
-    let child: ChildProcess;
+    let child: RuntimeProcess;
     const server = createServer((s) => {
       if (sock) {
         s.destroy(); // exactly one bridge connection per session
@@ -270,9 +275,14 @@ export function runSession(opts: SessionOptions, handler: SessionHandler): Promi
         qemu: null,
       });
     });
-    server.listen(0, '127.0.0.1', () => start((server.address() as { port: number }).port));
+    // The bridge endpoint is a unix socket in the private session directory (Sprint 8): QEMU
+    // connects by path, so it needs no network access at all.
+    const bridgePath = join(opts.dir, 'bridge.sock');
+    if (bridgePath.includes(',') || Buffer.byteLength(bridgePath) >= 108)
+      throw new Error(`unusable bridge socket path: ${bridgePath}`);
+    server.listen(bridgePath, () => start(bridgePath));
 
-    function start(port: number): void {
+    function start(path: string): void {
       const qmp = join(opts.dir, 'qmp.sock');
       const args = [
         '-machine',
@@ -291,12 +301,18 @@ export function runSession(opts: SessionOptions, handler: SessionHandler): Promi
         '-serial',
         'chardev:tbiser',
         '-device',
-        `tbi-bridge,syncport=127.0.0.1:${port},tick-us=${tickUs}`,
+        `tbi-bridge,syncpath=${path},tick-us=${tickUs}`,
         ...(opts.stressMainLoop ? ['-qmp', `unix:${qmp},server=on,wait=off`] : []),
       ];
-      child = spawn(opts.qemu, args, {
-        stdio: ['ignore', 'ignore', 'pipe'],
+      child = (opts.launch ?? directLauncher)({
+        qemu: opts.qemu,
+        args,
         ...(opts.env ? { env: opts.env } : {}),
+        dir: opts.dir,
+        flash: opts.flash,
+        bridgePath: path,
+        tickUs,
+        stressMainLoop: !!opts.stressMainLoop,
       });
       let spawnError: string | undefined;
       child.on('error', (e) => (spawnError = e.message));

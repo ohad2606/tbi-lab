@@ -9,7 +9,7 @@
  * are still stored once). A lease issues a run ticket for the Session Host.
  */
 import { randomBytes } from 'node:crypto';
-import { mkdtemp, readdir, rm, lstat } from 'node:fs/promises';
+import { mkdtemp, readdir, readFile, rm, lstat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { sourceKey } from '@tbi-lab/domain';
 import {
@@ -238,7 +238,9 @@ export class BuildService {
     next.state = 'building';
     try {
       next.result = await this.run(next);
-    } catch {
+    } catch (e) {
+      // Operator log: the error only (never source text or identifiers).
+      process.stderr.write(`build ${next.id}: internal error: ${(e as Error).message}\n`);
       next.result = this.failed(next, 'internal', 'Build service: internal error.', 0);
     }
     next.state = next.result.ok ? 'succeeded' : 'failed';
@@ -297,7 +299,12 @@ export class BuildService {
           diagnostics: out.diagnostics,
           log: out.log,
         };
-        const artifact = await this.store.publishFile(out.imagePath, 'build');
+        // The job's output is untrusted (it comes out of the sandbox): only a well-formed
+        // merged image is published, and the store computes its identity itself.
+        const bytes = await readFile(out.imagePath);
+        if (!isMergedImage(bytes))
+          return this.failed(r, 'internal', 'Build service: the build produced no valid image.', 0);
+        const artifact = await this.store.publish(bytes, 'build');
         this.access.grants.recordBuild(r.owner, { ...base, artifact });
         const result: BuildResult = {
           ...base,
@@ -337,6 +344,11 @@ export class BuildService {
       timings: { queuedMs, buildMs },
     };
   }
+}
+
+/** A merged Classic ESP32 flash image: exactly 4 MiB, ESP image headers at 0x1000 and 0x10000. */
+export function isMergedImage(b: Buffer): boolean {
+  return b.length === 4 * 1024 * 1024 && b[0x1000] === 0xe9 && b[0x10000] === 0xe9;
 }
 
 /** Total size of a directory tree (bytes); symlinks are not followed. */

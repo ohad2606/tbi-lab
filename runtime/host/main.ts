@@ -18,6 +18,8 @@ import { join } from 'node:path';
 import { describeListen, listen, parseListen } from '../identity/listen.js';
 import { identityFromEnv } from '../identity/principal.js';
 import { loadTicketKey } from '../identity/ticket.js';
+import { systemdLauncher } from '../harness/launcher.js';
+import { stopTemplateInstances } from '../builder/runner.js';
 import { defaultConfig, type HostConfig } from './config.js';
 import { SessionHost } from './host.js';
 import { createHttpServer } from './http.js';
@@ -51,7 +53,16 @@ for (const [env, key] of Object.entries(TUNABLE)) {
 }
 const ticketFile = process.env.TBI_TICKET_KEY_FILE;
 if (!ticketFile) throw new Error('TBI_TICKET_KEY_FILE is required');
+// Sprint 8 containment: QEMU as a sandboxed per-session unit, sessions on disk.
+//   TBI_HOST_SESSION_ROOT   fixed session root (e.g. /var/lib/tbi-runtime/sessions)
+//   TBI_HOST_RUNTIME_UNIT   template unit prefix (e.g. tbi-qemu → tbi-qemu@<session>.service)
+const sessionRoot = process.env.TBI_HOST_SESSION_ROOT;
+const runtimeUnit = process.env.TBI_HOST_RUNTIME_UNIT;
+// A previous host process's runtimes end with it (their sessions are gone).
+if (runtimeUnit) stopTemplateInstances('/usr/bin/systemctl', runtimeUnit);
 const config = defaultConfig({
+  ...(sessionRoot ? { sessionRoot } : {}),
+  ...(runtimeUnit ? { launch: systemdLauncher({ unit: runtimeUnit }) } : {}),
   ticketKey: loadTicketKey(ticketFile),
   qemu: process.env.TBI_QEMU ?? QEMU,
   artifactsDir: process.env.TBI_ARTIFACTS ?? join(RUNTIME_HOME, 'artifacts'),

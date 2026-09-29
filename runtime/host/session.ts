@@ -243,6 +243,12 @@ export class HostSession {
     mkdirSync(this.dir, { mode: 0o700 });
     copyFileSync(artifact, this.flash);
     chmodSync(this.flash, 0o600);
+    if (this.config.sessionRoot) {
+      // Sandboxed runtime (Sprint 8): QEMU runs as the runtime unit's own user, which shares only
+      // this directory's group; the unit's mount view holds this directory and nothing else.
+      chmodSync(this.dir, 0o770);
+      chmodSync(this.flash, 0o660);
+    }
     if (fileSha(this.flash) !== sha) return this.fail('artifact_hash_mismatch', { sha256: sha });
     if (this.storageBytes() > this.config.maxSessionStorageBytes) return this.fail('storage_limit');
 
@@ -343,6 +349,7 @@ export class HostSession {
           quitGraceMs: this.config.quitGraceMs,
           killGraceMs: this.config.killGraceMs,
           onSpawn: (pid) => (this.pid = pid),
+          ...(this.config.launch ? { launch: this.config.launch } : {}),
         },
         {
           hello: () => this.onHello(),
