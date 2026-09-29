@@ -34,6 +34,8 @@ export default defineConfig({
       env: { PORT: '7499' },
       reuseExistingServer: !process.env.CI,
       timeout: 60_000,
+      // Stop it with SIGTERM (not the default kill) so it removes its temporary stores.
+      gracefulShutdown: { signal: 'SIGTERM', timeout: 5_000 },
     },
     {
       command:

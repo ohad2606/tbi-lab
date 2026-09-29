@@ -14,7 +14,6 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { ESP32_ARDUINO_PROFILE } from '@tbi-lab/domain';
@@ -38,7 +37,8 @@ afterAll(() => {
 });
 
 function freshService(limits: Partial<ServiceLimits> = {}, capBytes = 256 * 1024 * 1024) {
-  const store = mkdtempSync(join(tmpdir(), 's7-store-'));
+  // Disk-backed, like the job directories: 4 MiB images do not belong on the RAM-backed /tmp.
+  const store = mkdtempSync(join('/var/tmp', 's7-store-'));
   const work = mkdtempSync(join('/var/tmp', 's7-work-'));
   dirs.push(store, work);
   const provider = new ArduinoEsp32Provider({

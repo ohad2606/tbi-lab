@@ -8,7 +8,7 @@
  * the source (symbols inferred from tokens). Builds take ~0.4 s so "Building…" is observable.
  */
 import { createHash } from 'node:crypto';
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
@@ -96,25 +96,75 @@ class ScriptedProvider implements BuildProvider {
 let current: ReturnType<typeof createBuildHttpServer> | null = null;
 
 /**
+ * Temporary directories. Everything this process creates lives under one parent named after its
+ * pid, removed on reset, on exit and on SIGINT/SIGTERM; a parent left by a process that was killed
+ * outright (SIGKILL) is swept by the next start. `TBI_TEST_TMPDIR` moves it off a RAM-backed /tmp.
+ */
+const TMP_BASE = process.env.TBI_TEST_TMPDIR ?? tmpdir();
+const PARENT_PREFIX = 'tbi-fake-build-service-';
+let parent: string | null = null;
+
+function alive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    return (e as NodeJS.ErrnoException).code === 'EPERM';
+  }
+}
+
+/** Remove parents left by fake build services that are no longer running. */
+export function sweepStaleFakeBuildDirs(base = TMP_BASE): string[] {
+  const removed: string[] = [];
+  for (const name of readdirSync(base)) {
+    const m = new RegExp(`^${PARENT_PREFIX}(\\d+)-`).exec(name);
+    if (!m || alive(Number(m[1]))) continue;
+    rmSync(join(base, name), { recursive: true, force: true });
+    removed.push(name);
+  }
+  return removed;
+}
+
+/** Remove every directory this process created (the store and job directories). */
+export function removeFakeBuildDirs(): void {
+  if (parent) rmSync(parent, { recursive: true, force: true });
+  parent = null;
+}
+
+/**
  * A fresh service: empty store, no build records (test control, before each test). `capImages`
  * shrinks the store so that publishing more images evicts the least recently used (no grace).
+ * The previous service's directories are removed.
  */
-export function resetFakeBuildService(capImages?: number): void {
+export function resetFakeBuildService(capImages?: number): { store: string; work: string } {
+  removeFakeBuildDirs();
+  parent = mkdtempSync(join(TMP_BASE, `${PARENT_PREFIX}${process.pid}-`));
+  const dirs = {
+    store: mkdtempSync(join(parent, 'store-')),
+    work: mkdtempSync(join(parent, 'build-')),
+  };
   const store = new ArtifactStore({
-    dir: mkdtempSync(join(tmpdir(), 'tbi-fake-store-')),
+    dir: dirs.store,
     capBytes: (capImages ?? 16) * IMAGE_BYTES,
     graceMs: capImages ? 0 : 60_000,
   });
-  const service = new BuildService(
-    [new ScriptedProvider()],
-    store,
-    mkdtempSync(join(tmpdir(), 'tbi-fake-build-')),
-    DEFAULT_LIMITS,
-  );
+  const service = new BuildService([new ScriptedProvider()], store, dirs.work, DEFAULT_LIMITS);
   current = createBuildHttpServer(service, { leaseMs: 60_000 });
+  return dirs;
 }
 
+let exitHooks = false;
 export async function startFakeBuildService(port: number): Promise<void> {
+  sweepStaleFakeBuildDirs();
+  if (!exitHooks) {
+    exitHooks = true;
+    process.on('exit', removeFakeBuildDirs);
+    for (const signal of ['SIGINT', 'SIGTERM'] as const)
+      process.once(signal, () => {
+        removeFakeBuildDirs();
+        process.exit(130);
+      });
+  }
   resetFakeBuildService();
   const server = createServer((req, res) => current!.emit('request', req, res));
   await new Promise<void>((resolve) => server.listen(port, '127.0.0.1', resolve));
