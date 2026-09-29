@@ -21,6 +21,10 @@ import { ArduinoEsp32Provider, type ArduinoProfileRecord } from '../builder/ardu
 import type { BuildResult } from '../builder/protocol.js';
 import { BuildService, DEFAULT_LIMITS, type ServiceLimits } from '../builder/service.js';
 import { ArtifactStore } from '../builder/store.js';
+import { Grants } from '../builder/grants.js';
+import { TEST_TICKET_KEY, principalFor } from '../identity/test-gate.js';
+
+const A = principalFor();
 import record from '../builder/profiles/esp32-arduino-3.3.12.json' with { type: 'json' };
 
 const RT = process.env.TBI_RUNTIME_HOME ?? '';
@@ -47,24 +51,34 @@ function freshService(limits: Partial<ServiceLimits> = {}, capBytes = 256 * 1024
     home: HOME,
     retainedOutputBytes: 256 * 1024,
   });
+  const grants = new Grants(':memory:');
   const service = new BuildService(
     [provider],
-    new ArtifactStore({ dir: store, capBytes, graceMs: 0 }),
+    new ArtifactStore({
+      dir: store,
+      capBytes,
+      graceMs: 0,
+      onEvicted: (s) => grants.dropArtifact(s),
+    }),
     work,
     { ...DEFAULT_LIMITS, ...limits },
+    { grants, ticketKey: TEST_TICKET_KEY, systemKeys: new Set() },
   );
   return { service, provider, store, work };
 }
 
 async function build(service: BuildService, text: string): Promise<BuildResult> {
-  const out = service.submit({
-    protocol: 'tbi-lab.build/1',
-    profile: ESP32_ARDUINO_PROFILE.id,
-    files: [{ name: 'sketch.ino', text }],
-  });
+  const out = service.submit(
+    {
+      protocol: 'tbi-lab.build/1',
+      profile: ESP32_ARDUINO_PROFILE.id,
+      files: [{ name: 'sketch.ino', text }],
+    },
+    A,
+  );
   if ('cached' in out) return out.cached;
   await service.whenIdle();
-  return service.status(out.buildId, out.token)!.result!;
+  return service.status(out.buildId, out.token, A)!.result!;
 }
 
 /** Toolchain processes still alive: those whose program (argv[0]) lives in the toolchain. */
@@ -130,15 +144,19 @@ describe.skipIf(!RT)('S7 build service with the real pinned toolchain', () => {
     const sha = first.artifact!.sha256;
     expect((await build(service, sketch('TbiBanks'))).ok).toBe(true);
     expect(existsSync(join(store, `${sha}.bin`))).toBe(false);
-    expect(service.lookup(first.key)).toBeNull();
-    const out = service.submit({
-      protocol: 'tbi-lab.build/1',
-      profile: ESP32_ARDUINO_PROFILE.id,
-      files: [{ name: 'sketch.ino', text: blink }],
-    });
+    expect(service.lookup(first.key, A)).toBeNull();
+    const out = service.submit(
+      {
+        protocol: 'tbi-lab.build/1',
+        profile: ESP32_ARDUINO_PROFILE.id,
+        files: [{ name: 'sketch.ino', text: blink }],
+      },
+      A,
+    );
     expect('cached' in out).toBe(false); // a real compile, not the old record
     await service.whenIdle();
-    const rebuilt = 'cached' in out ? out.cached : service.status(out.buildId, out.token)!.result!;
+    const rebuilt =
+      'cached' in out ? out.cached : service.status(out.buildId, out.token, A)!.result!;
     expect(rebuilt.ok).toBe(true);
     expect(rebuilt.artifact).toEqual(first.artifact);
     const onDisk = createHash('sha256')

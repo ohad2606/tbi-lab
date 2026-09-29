@@ -5,7 +5,7 @@
 import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
 import { afterEach, describe, expect, it } from 'vitest';
-import { startTestGate, testIdentity } from '../../identity/test-gate.js';
+import { startTestGate, principalFor, TEST_IDENTITY } from '../../identity/test-gate.js';
 import type { SessionHost } from '../host.js';
 import { createHttpServer } from '../http.js';
 import type { SessionEvent } from '../protocol.js';
@@ -25,7 +25,7 @@ afterEach(async () => {
 
 async function serve(over = {}) {
   const { host, art } = fakeHost('normal', over);
-  const identity = testIdentity();
+  const identity = TEST_IDENTITY;
   const server = createHttpServer(host, identity);
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
   // Reached through a test gate that asserts one user (the deployment's oauth2-proxy role).
@@ -46,7 +46,7 @@ const json = (body: unknown) => ({
 });
 
 /** Read SSE events until `stop` says so (or the stream ends). */
-async function readEvents(
+async function readEventsAs(
   url: string,
   stop: (e: SessionEvent) => boolean,
   headers: Record<string, string> = {},
@@ -93,13 +93,14 @@ describe('HTTP + SSE adapter', () => {
     const auth = { authorization: `Bearer ${token}` };
     const run = await fetch(`${base}/sessions/${sessionId}/run`, { method: 'POST', headers: auth });
     expect(run.status).toBe(202);
-    const first = await readEvents(
-      `${base}/sessions/${sessionId}/events?token=${token}`,
+    const first = await readEventsAs(
+      `${base}/sessions/${sessionId}/events`,
       (e) => e.seq >= 20,
+      auth,
     );
     expect(first.map((e) => e.seq)).toEqual(Array.from({ length: first.length }, (_, i) => i + 1));
     // Reconnect: resume strictly after the last seen event, nothing repeated, nothing skipped.
-    const again = await readEvents(`${base}/sessions/${sessionId}/events`, (e) => e.seq >= 30, {
+    const again = await readEventsAs(`${base}/sessions/${sessionId}/events`, (e) => e.seq >= 30, {
       ...auth,
       'last-event-id': '20',
     });
@@ -107,10 +108,15 @@ describe('HTTP + SSE adapter', () => {
     const del = await fetch(`${base}/sessions/${sessionId}`, { method: 'DELETE', headers: auth });
     expect(((await del.json()) as { state: string }).state).toBe('ended');
     // After termination the stream delivers the terminal state and closes.
-    const tail = await readEvents(
-      `${base}/sessions/${sessionId}/events?token=${token}&after=30`,
+    const tail = await readEventsAs(
+      `${base}/sessions/${sessionId}/events?after=30`,
       () => false,
+      auth,
     );
+    // Sprint 8 (D-S8-5): a token in the URL is never accepted, only the Authorization header.
+    const inUrl = await fetch(`${base}/sessions/${sessionId}/events?token=${token}`);
+    expect(inUrl.status).toBe(404);
+    await inUrl.body?.cancel();
     expect(tail.at(-1)).toMatchObject({ type: 'state', state: 'ended', reason: 'terminated' });
   });
 
@@ -123,7 +129,7 @@ describe('HTTP + SSE adapter', () => {
       token: string;
     };
     const { sessionId, token } = created;
-    const s = host.get(sessionId, token);
+    const s = host.get(sessionId, token, principalFor());
     if (!s.ok) throw new Error('no session');
     const session = s.value;
     session.run();
@@ -132,7 +138,9 @@ describe('HTTP + SSE adapter', () => {
     const last = session.log.lastSeq;
     const first = last - session.log.size + 1; // oldest retained event (capacity 8)
     expect(session.log.size).toBe(8);
-    const url = `${base}/sessions/${sessionId}/events?token=${token}`;
+    const url = `${base}/sessions/${sessionId}/events`;
+    const readEvents = (u: string, until: (e: SessionEvent) => boolean, h = {}) =>
+      readEventsAs(u, until, { authorization: `Bearer ${token}`, ...h });
     const seqs = (es: SessionEvent[]) => es.map((e) => e.seq);
     const range = (a: number, b: number) => Array.from({ length: b - a + 1 }, (_, i) => a + i);
 
@@ -154,9 +162,9 @@ describe('HTTP + SSE adapter', () => {
       expect(seqs(r.slice(1))).toEqual(range(first, last));
     }
     // ?after= behaves the same; the header wins when both are present.
-    const viaQuery = await readEvents(`${url}&after=2`, () => false);
+    const viaQuery = await readEvents(`${url}?after=2`, () => false);
     expect(viaQuery[0]).toMatchObject({ type: 'resync' });
-    const both = await readEvents(`${url}&after=2`, () => false, {
+    const both = await readEvents(`${url}?after=2`, () => false, {
       'last-event-id': String(last - 1),
     });
     expect(seqs(both)).toEqual([last]);
@@ -166,14 +174,15 @@ describe('HTTP + SSE adapter', () => {
 
     // Future and malformed ids are refused, never reinterpreted as another point in the stream.
     const status = async (headers: Record<string, string>, q = '') =>
-      (await fetch(`${url}${q}`, { headers })).status;
+      (await fetch(`${url}${q}`, { headers: { authorization: `Bearer ${token}`, ...headers } }))
+        .status;
     expect(await status({ 'last-event-id': String(last + 1) })).toBe(409);
-    expect(await status({}, `&after=${last + 1000}`)).toBe(409);
+    expect(await status({}, `?after=${last + 1000}`)).toBe(409);
     for (const bad of ['abc', '-1', '1.5', '1e3', '0x7', '9'.repeat(16)])
       expect(await status({ 'last-event-id': bad }), bad).toBe(400);
-    expect(await status({}, '&after=x')).toBe(400);
+    expect(await status({}, '?after=x')).toBe(400);
     // The host and the session are unaffected.
-    expect(host.get(sessionId, token).ok).toBe(true);
+    expect(host.get(sessionId, token, principalFor()).ok).toBe(true);
   });
 
   it('commands over HTTP are acknowledged; rejections are explicit', async () => {
@@ -255,9 +264,9 @@ describe('HTTP + SSE adapter', () => {
     // The host is still healthy and the session untouched.
     const health = await fetch(`${base}/health`);
     expect(await health.json()).toMatchObject({
-      protocol: 'tbi-lab.session/1',
+      protocol: 'tbi-lab.session/2',
       sessions: { ready: 1 },
     });
-    expect(host.get(sessionId, token).ok).toBe(true);
+    expect(host.get(sessionId, token, principalFor()).ok).toBe(true);
   });
 });

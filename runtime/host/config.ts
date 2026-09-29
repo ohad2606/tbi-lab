@@ -12,6 +12,8 @@ export interface HostConfig {
   qemu: string;
   /** Directory of immutable, content-addressed firmware artifacts (`<sha256>.bin`). */
   artifactsDir: string;
+  /** Key shared with the build service: run tickets are verified with it (Sprint 8). */
+  ticketKey: Buffer;
   /** Parent directory for the host's private (0700) temporary root. */
   tmpParent: string;
   /** Environment given to the runtime process. Minimal by default. */
@@ -48,9 +50,9 @@ export interface HostConfig {
 }
 
 export function defaultConfig(
-  overrides: Partial<HostConfig> & Pick<HostConfig, 'qemu' | 'artifactsDir'>,
+  overrides: Partial<HostConfig> & Pick<HostConfig, 'qemu' | 'artifactsDir' | 'ticketKey'>,
 ): HostConfig {
-  const base: Omit<HostConfig, 'qemu' | 'artifactsDir'> = {
+  const base: Omit<HostConfig, 'qemu' | 'artifactsDir' | 'ticketKey'> = {
     tmpParent: tmpdir(),
     runtimeEnv: { LANG: 'C' },
     maxSessions: 4,

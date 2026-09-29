@@ -65,12 +65,12 @@ async function main() {
     // Pin the artifact until the Session Host has its private copy (D-S7-8). An evicted build
     // is forgotten: the program shows "Build required" again; its source is untouched.
     lease: async (firmware, board) => {
-      const ok = await buildClient.lease(firmware.sha256);
-      if (!ok && firmware.origin === 'program') {
+      const ticket = await buildClient.lease(firmware.sha256);
+      if (ticket === null && firmware.origin === 'program') {
         const doc = store.state.doc;
         if (doc) builds.forget(doc.projectId, board.id, firmware.sha256);
       }
-      return ok;
+      return ticket;
     },
   });
   simulation = new SimulationDispatcher(local, mcu);

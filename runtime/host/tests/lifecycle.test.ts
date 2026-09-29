@@ -5,6 +5,7 @@
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { afterEach, describe, expect, it } from 'vitest';
+import { principalFor } from '../../identity/test-gate.js';
 import type { SessionHost } from '../host.js';
 import type { SessionEvent } from '../protocol.js';
 import type { HostSession } from '../session.js';
@@ -30,7 +31,7 @@ function start(mode = 'normal', over = {}) {
 }
 
 function created(host: SessionHost, sha: string, extra = {}): HostSession {
-  const r = host.create(createRequest(sha, extra));
+  const r = host.create(createRequest(sha, extra), principalFor());
   if (!r.ok) throw new Error(r.error);
   return r.value.session;
 }
@@ -241,7 +242,7 @@ describe('commands and the co-located loop', () => {
 
   it('a mirror that leaves no valid operating point fails closed (electrical_error), naming why', async () => {
     const { host, art } = start();
-    const r = host.create(createRequest(art.sha256, {}, { parallelPsu: true }));
+    const r = host.create(createRequest(art.sha256, {}, { parallelPsu: true }), principalFor());
     if (!r.ok) throw new Error(r.error);
     const s = r.value.session;
     s.run();

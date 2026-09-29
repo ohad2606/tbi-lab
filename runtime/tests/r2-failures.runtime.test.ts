@@ -9,6 +9,7 @@ import { createHash } from 'node:crypto';
 import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
+import { principalFor } from '../identity/test-gate.js';
 import { RUNTIME_HOME, artifact, assertProvisioned, recordEvidence } from '../harness/env.js';
 import { alive, gone, serialText, waitEvent, waitState } from '../host/tests/support.js';
 import type { HostSession } from '../host/session.js';
@@ -57,8 +58,8 @@ describe('R2 isolation (real runtime)', () => {
       expect(a.id).not.toBe(b.id);
       expect(a.privateDir).not.toBe(b.privateDir);
       // Identifiers cannot cross: A's id with B's token is the same 404 as an unknown session.
-      expect(host.get(a.id, b.token)).toMatchObject({ ok: false, status: 404 });
-      expect(host.get(b.id, a.token)).toMatchObject({ ok: false, status: 404 });
+      expect(host.get(a.id, b.token, principalFor())).toMatchObject({ ok: false, status: 404 });
+      expect(host.get(b.id, a.token, principalFor())).toMatchObject({ ok: false, status: 404 });
       a.run();
       b.run();
       await waitEvent(a, () => serialText(a).includes('TBI-NVS-DONE'), 60_000);

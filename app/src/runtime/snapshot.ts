@@ -93,7 +93,8 @@ export function resolveFirmware(
 export interface McuPlan {
   board: ComponentInstance;
   firmware: ResolvedFirmware;
-  request: CreateSessionRequest;
+  /** The session request, completed with the run ticket once the artifact is leased. */
+  request: Omit<CreateSessionRequest, 'ticket'>;
   /** Project revision the session starts from (mirrors must carry later revisions). */
   revision: number;
 }
@@ -165,21 +166,14 @@ export function buildSessionRequest(
   const usedNets = new Set(circuit.connections.map((c) => c.net));
   circuit.nets = circuit.nets.filter((n) => usedNets.has(n.id));
 
-  const request: CreateSessionRequest = {
+  // The firmware's features are not sent: the Session Host takes them from the build service's
+  // run ticket (Sprint 8). The Run guard above has already refused what V1 does not model.
+  const request: Omit<CreateSessionRequest, 'ticket'> = {
     protocol: PROTOCOL,
     artifact: { sha256: firmware.sha256 },
     board: 'board.esp32_devkitc_wroom32',
     circuit,
     attachments,
-    ...(firmware.features &&
-    (firmware.features.internalPull.length || firmware.features.gpioInterrupt.length)
-      ? {
-          firmwareFeatures: {
-            internalPull: [...firmware.features.internalPull],
-            gpioInterrupt: [...firmware.features.gpioInterrupt],
-          },
-        }
-      : {}),
   };
   return { ok: true, plan: { board, firmware, request, revision: doc.revision.localRevision } };
 }

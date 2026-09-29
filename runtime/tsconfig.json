@@ -5,5 +5,12 @@
     "types": ["node"],
     "resolveJsonModule": true
   },
-  "include": ["harness/**/*.ts", "host/**/*.ts", "tests/**/*.ts", "soak/**/*.ts", "builder/**/*.ts"]
+  "include": [
+    "harness/**/*.ts",
+    "host/**/*.ts",
+    "tests/**/*.ts",
+    "soak/**/*.ts",
+    "builder/**/*.ts",
+    "identity/**/*.ts"
+  ]
 }

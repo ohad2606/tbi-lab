@@ -14,8 +14,10 @@
  *                                           409 if ahead of the stream, `resync` first if
  *                                           older than the retained window
  *
- * Every session route needs the session's token: `Authorization: Bearer <token>`, or `?token=`
- * for EventSource, which cannot set headers. Unknown sessions and wrong tokens are the same 404.
+ * Every session route needs the gate-asserted identity of the session's owner and the session's
+ * token in `Authorization: Bearer <token>` (never in the URL). Unknown sessions, wrong tokens and
+ * other principals' sessions are the same 404. Creating a session needs a run ticket (protocol
+ * `/2`, Sprint 8).
  *
  * Untrusted input: bodies are size-bounded and parsed as JSON only, validated strictly
  * (protocol.ts), and no request field ever reaches a shell, a file path or an executable name.
@@ -78,10 +80,14 @@ function readBody(req: IncomingMessage, limit: number): Promise<unknown> {
   });
 }
 
-function tokenOf(req: IncomingMessage, url: URL): string | null {
+/**
+ * The session token, from the Authorization header only. Sprint 8 (D-S8-5): tokens are never
+ * accepted in the URL, where proxies and logs would record them; the client reads the event
+ * stream with `fetch`, which carries the header.
+ */
+function tokenOf(req: IncomingMessage): string | null {
   const auth = req.headers.authorization;
-  if (auth?.startsWith('Bearer ')) return auth.slice(7);
-  return url.searchParams.get('token');
+  return auth?.startsWith('Bearer ') ? auth.slice(7) : null;
 }
 
 function sseEvent(e: SessionEvent): string {
@@ -165,13 +171,13 @@ async function handle(
 
   if (parts.length === 1 && method === 'POST') {
     const body = await readBody(req, host.config.maxRequestBytes);
-    const r = host.create(body);
+    const r = host.create(body, principal);
     if (!r.ok) throw new HttpError(r.status, r.error);
     const s = r.value.session;
     return send(res, 201, { sessionId: s.id, token: s.token, status: s.status() });
   }
 
-  const found = host.get(parts[1] ?? '', tokenOf(req, url));
+  const found = host.get(parts[1] ?? '', tokenOf(req), principal);
   if (!found.ok) throw new HttpError(found.status, found.error);
   const s = found.value;
   const action = parts[2];

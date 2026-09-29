@@ -55,10 +55,11 @@ export interface McuDeps {
     options: RunOptions,
   ) => ResolvedFirmware | McuPlanError;
   /**
-   * Pin the artifact against eviction until the Session Host has copied it (D-S7-8). False when
-   * the artifact no longer exists (evicted): the program needs a new Build.
+   * Pin the artifact against eviction until the Session Host has copied it (D-S7-8) and obtain
+   * its run ticket (Sprint 8), which the session request carries. Null when the artifact no
+   * longer exists (evicted) or is not this user's: the program needs a new Build.
    */
-  lease?: (firmware: ResolvedFirmware, board: ComponentInstance) => Promise<boolean>;
+  lease?: (firmware: ResolvedFirmware, board: ComponentInstance) => Promise<string | null>;
   now?: () => number;
   /** After Stop, how long to wait for the orderly end before terminating. */
   stopTimeoutMs?: number;
@@ -156,8 +157,9 @@ export class McuSimulation implements SimulationHost {
     const { plan } = planned;
     this.view = emptyView(plan.board.id, plan.firmware.sha256); // serial and GPIO start empty
     this.set({ status: 'starting', runtime: { ...this.view } });
+    let ticket = ''; // without a lease step (tests with a fake client) there is no ticket
     if (this.deps.lease) {
-      let leased: boolean;
+      let leased: string | null;
       try {
         leased = await this.deps.lease(plan.firmware, plan.board);
       } catch (e) {
@@ -165,15 +167,16 @@ export class McuSimulation implements SimulationHost {
         return;
       }
       if (runId !== this.runId) return;
-      if (!leased) {
+      if (leased === null) {
         this.view = null;
         this.failPlan({ code: 'mcu_build_required', components: [plan.board.id] });
         return;
       }
+      ticket = leased;
     }
     let session: RuntimeSession;
     try {
-      session = await this.deps.client.create(plan.request);
+      session = await this.deps.client.create({ ...plan.request, ticket });
     } catch (e) {
       if (runId === this.runId) this.fail(transportFailure(e));
       return;

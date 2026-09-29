@@ -13,6 +13,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { createBuildHttpServer } from '../../builder/http.js';
 import { BuildService, DEFAULT_LIMITS } from '../../builder/service.js';
 import { ArtifactStore } from '../../builder/store.js';
+import { Grants } from '../../builder/grants.js';
 import { FakeProvider } from '../../builder/tests/support.js';
 import { createHttpServer } from '../../host/http.js';
 import { fakeHost } from '../../host/tests/support.js';
@@ -104,8 +105,13 @@ async function serveBuild(identity: IdentityConfig) {
     new ArtifactStore({ dir, capBytes: 64 << 20, graceMs: 0 }),
     work,
     DEFAULT_LIMITS,
+    { grants: new Grants(':memory:'), ticketKey: randomBytes(32), systemKeys: new Set() },
   );
-  const server = createBuildHttpServer(service, { leaseMs: 60_000, identity });
+  const server = createBuildHttpServer(service, {
+    leaseMs: 60_000,
+    identity,
+    allowPrebuiltBinary: () => true,
+  });
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
   cleanup.push(() => void server.close());
   return { host: '127.0.0.1', port: (server.address() as AddressInfo).port };

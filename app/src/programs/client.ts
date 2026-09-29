@@ -121,12 +121,18 @@ export class BuildClient {
     return (body as { build: BuildResult }).build;
   }
 
-  /** Pin an artifact against eviction for the next Run. False when it no longer exists. */
-  async lease(sha256: string): Promise<boolean> {
-    const { status } = await this.request(`/artifacts/${sha256}/lease`, { method: 'POST' });
-    if (status === 404) return false;
+  /**
+   * Pin an artifact against eviction for the next Run and obtain its run ticket (Sprint 8): the
+   * build service's statement that this user may run it, which the Session Host requires. Null
+   * when the artifact no longer exists, or is not this user's: a new Build is needed.
+   */
+  async lease(sha256: string): Promise<string | null> {
+    const { status, body } = await this.request(`/artifacts/${sha256}/lease`, { method: 'POST' });
+    if (status === 404) return null;
     if (status !== 200) throw new BuildTransportError('protocol', status);
-    return true;
+    const ticket = (body as { ticket?: unknown }).ticket;
+    if (typeof ticket !== 'string') throw new BuildTransportError('protocol', status);
+    return ticket;
   }
 
   /** Advanced: upload a prebuilt merged flash image; the service computes its identity. */

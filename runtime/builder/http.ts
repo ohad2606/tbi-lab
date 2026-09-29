@@ -4,7 +4,7 @@
  * prefix is stripped by the proxy). See protocol.ts for the routes.
  */
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
-import { principalOf, type IdentityConfig } from '../identity/principal.js';
+import { principalOf, type IdentityConfig, type Principal } from '../identity/principal.js';
 import { RequestError, validateBuildRequest } from './protocol.js';
 import type { BuildService } from './service.js';
 
@@ -17,6 +17,8 @@ export interface HttpOptions {
   leaseMs: number;
   /** Identity asserted by the gate (Sprint 8, D-S8-1): every route but health requires it. */
   identity: IdentityConfig;
+  /** Policy capability `allowPrebuiltBinary` (owner decision Q2) for this principal. */
+  allowPrebuiltBinary: (principal: Principal) => boolean;
 }
 
 export function createBuildHttpServer(service: BuildService, opts: HttpOptions): Server {
@@ -81,7 +83,6 @@ async function handle(
   // Who is asking: only the gate asserts it; without an identity nothing else is answered.
   const principal = principalOf(req, opts.identity);
   if (!principal) throw new RequestError(401, 'identity_required');
-  void principal; // ownership (grants) uses it from Phase 2
 
   if (method === 'POST' && path === '/v1/builds') {
     if (!/^application\/json\b/.test(req.headers['content-type'] ?? ''))
@@ -93,7 +94,7 @@ async function handle(
       if (e instanceof RequestError) throw e;
       throw new RequestError(400, 'bad_json');
     }
-    const out = service.submit(validateBuildRequest(body));
+    const out = service.submit(validateBuildRequest(body), principal);
     if ('cached' in out) send(res, 200, { build: out.cached });
     else send(res, 202, out);
     return;
@@ -102,7 +103,7 @@ async function handle(
   const status = /^\/v1\/builds\/(b_[0-9a-f]{24})$/.exec(path);
   if (method === 'GET' && status) {
     const auth = /^Bearer ([A-Za-z0-9_-]{16,64})$/.exec(req.headers.authorization ?? '');
-    const s = auth ? service.status(status[1]!, auth[1]!) : null;
+    const s = auth ? service.status(status[1]!, auth[1]!, principal) : null;
     if (!s) throw new RequestError(404, 'not_found');
     send(res, 200, s);
     return;
@@ -111,29 +112,37 @@ async function handle(
   if (method === 'GET' && path === '/v1/lookup') {
     const key = url.searchParams.get('key') ?? '';
     if (!/^[0-9a-f]{64}$/.test(key)) throw new RequestError(400, 'bad_key');
-    const build = service.lookup(key);
+    const build = service.lookup(key, principal);
     if (!build) throw new RequestError(404, 'not_found');
     send(res, 200, { build });
     return;
   }
 
   if (method === 'POST' && path === '/v1/artifacts') {
+    // A policy capability (Sprint 8, owner decision Q2), never a weaker path when enabled.
+    if (!opts.allowPrebuiltBinary(principal)) throw new RequestError(403, 'capability_disabled');
     const bytes = await readBody(req, PREBUILT_IMAGE_BYTES);
     // Form check only (no analysis or patching): the size and the two ESP image headers of a
     // merged Classic ESP32 flash image (bootloader at 0x1000, app at 0x10000).
     if (bytes.length !== PREBUILT_IMAGE_BYTES || bytes[0x1000] !== 0xe9 || bytes[0x10000] !== 0xe9)
       throw new RequestError(422, 'not_a_merged_image');
-    const artifact = await service.store.publish(bytes, { origin: 'prebuilt' });
-    service.store.lease(artifact.sha256, opts.leaseMs);
+    // Stored once, granted to the uploader only; run through the same lease/ticket path.
+    const artifact = await service.publishPrebuilt(principal, bytes);
     send(res, 200, { artifact });
     return;
   }
 
   const lease = /^\/v1\/artifacts\/([0-9a-f]{64})\/lease$/.exec(path);
   if (method === 'POST' && lease) {
-    const until = service.store.lease(lease[1]!, opts.leaseMs);
-    if (until === null) throw new RequestError(404, 'not_found');
-    send(res, 200, { sha256: lease[1], leaseUntil: new Date(until).toISOString() });
+    // Not yours and not present are the same answer.
+    const granted = service.lease(principal, lease[1]!, opts.leaseMs);
+    if (!granted) throw new RequestError(404, 'not_found');
+    send(res, 200, {
+      sha256: lease[1],
+      leaseUntil: new Date(granted.until).toISOString(),
+      // For the Session Host: this principal may run this artifact now (D-S8-4).
+      ticket: granted.ticket,
+    });
     return;
   }
 

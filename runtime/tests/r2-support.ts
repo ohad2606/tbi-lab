@@ -15,6 +15,7 @@ import {
   type ProjectDocument,
 } from '@tbi-lab/domain';
 import { QEMU, RUNTIME_HOME, artifact } from '../harness/env.js';
+import { TEST_TICKET_KEY, principalFor, ticketFor } from '../identity/test-gate.js';
 import { defaultConfig, type HostConfig } from '../host/config.js';
 import { SessionHost } from '../host/host.js';
 import {
@@ -30,6 +31,7 @@ export function realHost(over: Partial<HostConfig> = {}): SessionHost {
     defaultConfig({
       qemu: QEMU,
       artifactsDir: join(RUNTIME_HOME, 'artifacts'),
+      ticketKey: TEST_TICKET_KEY,
       stallTimeoutMs: 5_000,
       ...over,
     }),
@@ -86,6 +88,7 @@ export function gateRequest(
     artifact: { sha256: artifact(firmware).sha256 },
     board: 'board.esp32_devkitc_wroom32',
     circuit: createSnapshot(d.doc),
+    ticket: ticketFor(artifact(firmware).sha256), // the default test principal (user-a)
     attachments: [
       { gpio: 2, component: r1, terminal: 'a' },
       { gpio: 5, component: r2, terminal: 'b' },
@@ -144,13 +147,14 @@ export function loadRequest(
     artifact: { sha256: artifact(firmware).sha256 },
     board: 'board.esp32_devkitc_wroom32',
     circuit: createSnapshot(d.doc),
+    ticket: ticketFor(artifact(firmware).sha256), // the default test principal (user-a)
     attachments: [{ gpio: 2, component: r1, terminal: 'a' }],
     ...extra,
   };
 }
 
 export function open(host: SessionHost, req: CreateSessionRequest): HostSession {
-  const r = host.create(req);
+  const r = host.create(req, principalFor());
   if (!r.ok) throw new Error(r.error);
   return r.value.session;
 }

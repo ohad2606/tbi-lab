@@ -6,6 +6,8 @@
 import { chmodSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { afterEach, describe, expect, it } from 'vitest';
+import type { TicketFeatures } from '../../identity/ticket.js';
+import { principalFor, ticketFor } from '../../identity/test-gate.js';
 import type { SessionHost } from '../host.js';
 import type { HostSession } from '../session.js';
 import {
@@ -28,7 +30,7 @@ function start(mode = 'normal', over = {}) {
   return r;
 }
 function created(host: SessionHost, sha: string, extra = {}): HostSession {
-  const r = host.create(createRequest(sha, extra));
+  const r = host.create(createRequest(sha, extra), principalFor());
   if (!r.ok) throw new Error(r.error);
   return r.value.session;
 }
@@ -120,7 +122,7 @@ describe('artifact, request and capability failures', () => {
       { ...good, attachments: [{ gpio: 99, component: 'R1', terminal: 'a' }] },
       { ...good, circuit: { ...good.circuit, components: 'x' } },
     ]) {
-      const r = host.create(body);
+      const r = host.create(body, principalFor());
       expect(r.ok).toBe(false);
       if (!r.ok) expect(r.status).toBe(400);
     }
@@ -138,17 +140,42 @@ describe('artifact, request and capability failures', () => {
         reason: 'invalid_attachment',
       });
     }
-    const pull = created(host, art.sha256, { firmwareFeatures: { internalPull: [5] } });
+    // Sprint 8: the features come from the build service's run ticket, never from the client.
+    const declared = (over: Partial<TicketFeatures>) => ({
+      internalPull: [],
+      gpioInterrupt: [],
+      restart: false,
+      unsupported: [],
+      ...over,
+    });
+    const withFeatures = (over: Partial<TicketFeatures>) => ({
+      ticket: ticketFor(art.sha256, principalFor(), declared(over)),
+    });
+    const pull = created(host, art.sha256, withFeatures({ internalPull: [5] }));
     expect(pull.status()).toMatchObject({
       state: 'failed',
       reason: 'unsupported_feature',
       detail: { internalPull: [5] },
     });
-    const irq = created(host, art.sha256, { firmwareFeatures: { gpioInterrupt: [5] } });
+    const irq = created(host, art.sha256, withFeatures({ gpioInterrupt: [5] }));
     expect(irq.status()).toMatchObject({ state: 'failed', reason: 'unsupported_feature' });
     expect(
       irq.log.since(0).some((e) => e.type === 'diagnostic' && e.code === 'unsupported_feature'),
     ).toBe(true);
+    const restart = created(host, art.sha256, withFeatures({ restart: true }));
+    expect(restart.status()).toMatchObject({
+      reason: 'unsupported_feature',
+      detail: { restart: true },
+    });
+    const wifi = created(host, art.sha256, withFeatures({ unsupported: ['wifi'] }));
+    expect(wifi.status()).toMatchObject({
+      reason: 'unsupported_feature',
+      detail: { unsupported: ['wifi'] },
+    });
+    // A client-sent feature list is not part of the protocol any more.
+    expect(
+      host.create({ ...createRequest(art.sha256), firmwareFeatures: {} }, principalFor()),
+    ).toMatchObject({ ok: false, status: 400 });
   });
 
   it('an input-only pad the guest tries to drive stays an input and is diagnosed', async () => {
@@ -156,7 +183,7 @@ describe('artifact, request and capability failures', () => {
     const req = createRequest(art.sha256);
     const r4 = req.attachments.find((a) => a.gpio === 18)!.component;
     req.attachments.push({ gpio: 34, component: r4, terminal: 'b' });
-    const r = host.create(req);
+    const r = host.create(req, principalFor());
     if (!r.ok) throw new Error(r.error);
     const s = r.value.session;
     expect(s.state).toBe('ready');
@@ -200,8 +227,8 @@ describe('isolation', () => {
     expect(readFileSync(`${a.privateDir}/flash.bin`)[0x9000]).toBe(1);
     expect(readFileSync(`${b.privateDir}/flash.bin`)[0x9000]).toBe(1);
     // A's token cannot reach B.
-    expect(host.get(b.id, a.token)).toMatchObject({ ok: false, status: 404 });
-    expect(host.get(b.id, b.token).ok).toBe(true);
+    expect(host.get(b.id, a.token, principalFor())).toMatchObject({ ok: false, status: 404 });
+    expect(host.get(b.id, b.token, principalFor()).ok).toBe(true);
     const bPid = b.status().runtime.pid;
     await a.terminate('terminated');
     expect(b.state).toBe('running');
@@ -245,9 +272,9 @@ describe('leases, limits and shutdown', () => {
     const { host, art } = start('normal', { retainEndedMs: 200 });
     const s = created(host, art.sha256);
     await s.terminate('terminated');
-    expect(host.get(s.id, s.token).ok).toBe(true);
+    expect(host.get(s.id, s.token, principalFor()).ok).toBe(true);
     await waitEvent(s, () => false, 600).catch(() => undefined);
-    expect(host.get(s.id, s.token).ok).toBe(false);
+    expect(host.get(s.id, s.token, principalFor()).ok).toBe(false);
   });
 
   it('limits: maximum sessions, lifetime, storage, event buffering (resync), serial flood', async () => {
@@ -257,7 +284,10 @@ describe('leases, limits and shutdown', () => {
       serialWindowMaxBytes: 256,
     });
     const s = created(host, art.sha256, { limits: { maxLifetimeMs: 1500 } });
-    expect(host.create(createRequest(art.sha256))).toMatchObject({ ok: false, status: 429 });
+    expect(host.create(createRequest(art.sha256), principalFor())).toMatchObject({
+      ok: false,
+      status: 429,
+    });
     s.run();
     const st = await terminalOf(s);
     expect(st).toMatchObject({ state: 'ended', reason: 'lifetime_exceeded' });
@@ -267,7 +297,7 @@ describe('leases, limits and shutdown', () => {
     expect(s.log.since(0).some((e) => e.type === 'serial' && (e.dropped ?? 0) > 0)).toBe(true);
 
     const tiny = start('normal', { maxSessionStorageBytes: 1024 });
-    const small = tiny.host.create(createRequest(tiny.art.sha256));
+    const small = tiny.host.create(createRequest(tiny.art.sha256), principalFor());
     if (!small.ok) throw new Error(small.error);
     expect(small.value.session.status()).toMatchObject({
       state: 'failed',
@@ -291,7 +321,10 @@ describe('leases, limits and shutdown', () => {
       expect(s.status()).toMatchObject({ state: 'ended', reason: 'host_shutdown' });
     for (const pid of pids) expect(alive(pid)).toBe(false);
     expect(gone(host.tmpRoot)).toBe(true);
-    expect(host.create(createRequest(art.sha256))).toMatchObject({ ok: false, status: 503 });
+    expect(host.create(createRequest(art.sha256), principalFor())).toMatchObject({
+      ok: false,
+      status: 503,
+    });
   });
 });
 

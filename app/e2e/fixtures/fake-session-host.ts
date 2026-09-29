@@ -23,7 +23,9 @@ import { EngineSession, interpretDigitalInput, type DigitalLevel } from '@tbi-la
 import { FIRMWARE_ARTIFACTS } from '@tbi-lab/domain';
 import { createHttpServer } from '../../../runtime/host/http.js';
 import { STAND_IN, resetFakeBuildService, startFakeBuildService } from './fake-build-service.js';
-import { E2E_IDENTITY } from './identity.js';
+import type { Principal } from '../../../runtime/identity/principal.js';
+import { verifyTicket } from '../../../runtime/identity/ticket.js';
+import { E2E_IDENTITY, E2E_TICKET_KEY } from './identity.js';
 import { EventLog } from '../../../runtime/host/eventLog.js';
 import {
   validateCommand,
@@ -76,7 +78,10 @@ class FakeSession {
   private applied: number;
   private step = 0;
 
-  constructor(readonly req: CreateSessionRequest) {
+  constructor(
+    readonly req: CreateSessionRequest,
+    readonly owner: Principal,
+  ) {
     this.accepted = this.applied = req.circuit.projectRevision;
     this.emitState();
     if (!SCRIPT[req.artifact.sha256]) {
@@ -281,7 +286,9 @@ class FakeSession {
 const sessions = new Map<string, FakeSession>();
 const host = {
   config: { maxRequestBytes: 1024 * 1024 },
-  create(body: unknown) {
+  // Like the real host (Sprint 8): a valid run ticket for this principal and artifact, and the
+  // session belongs to that principal.
+  create(body: unknown, principal: Principal) {
     if (failNextCreate) {
       const status = failNextCreate;
       failNextCreate = null;
@@ -289,13 +296,17 @@ const host = {
     }
     const v = validateCreate(body);
     if (!v.ok) return { ok: false, status: 400, error: v.error };
-    const s = new FakeSession(v.value);
+    const ticket = verifyTicket(E2E_TICKET_KEY, v.value.ticket);
+    if (!ticket || ticket.principal !== principal || ticket.sha256 !== v.value.artifact.sha256)
+      return { ok: false, status: 403, error: 'ticket invalid' };
+    const s = new FakeSession(v.value, principal);
     sessions.set(s.id, s);
     return { ok: true, value: { session: s } };
   },
-  get(id: string, token: string | null) {
+  get(id: string, token: string | null, principal: Principal) {
     const s = sessions.get(id);
-    if (!s || token === null) return { ok: false, status: 404, error: 'no such session' };
+    if (!s || token === null || s.owner !== principal)
+      return { ok: false, status: 404, error: 'no such session' };
     const given = createHash('sha256').update(token).digest();
     const want = Buffer.from(s.tokenHash, 'hex');
     if (given.length !== want.length || !timingSafeEqual(given, want))

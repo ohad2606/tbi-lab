@@ -21,7 +21,11 @@
  */
 import type { SimulationSnapshot } from '@tbi-lab/domain';
 
-export const PROTOCOL = 'tbi-lab.session/1';
+/**
+ * `/2` (Sprint 8, D-S8-4): session creation requires a run ticket from the build service; the
+ * firmware's features come from that ticket, never from the client.
+ */
+export const PROTOCOL = 'tbi-lab.session/2';
 
 /** The only host command quantum V1 supports (ADR-007): 1 ms of SIMULATION time. */
 export const COMMAND_QUANTUM_US = 1000;
@@ -77,11 +81,12 @@ export interface CreateSessionRequest {
   /** Which board GPIO pads connect to which component terminals (until the MCU is a project part). */
   attachments: McuAttachmentRequest[];
   /**
-   * Features the firmware build declares it uses (to be produced by source analysis in S7).
-   * V1 does not simulate internal pulls or GPIO interrupts: declaring either refuses the session
-   * with a diagnostic instead of letting it run with silently wrong behaviour.
+   * The build service's run ticket for this principal and artifact (Sprint 8). It also carries
+   * the server-side feature record: V1 does not simulate internal pulls, GPIO interrupts,
+   * restarts or the facilities named in `unsupported`, so a ticket declaring any of them refuses
+   * the session instead of letting it run with silently wrong behaviour.
    */
-  firmwareFeatures?: { internalPull?: number[]; gpioInterrupt?: number[] };
+  ticket: string;
   /** Engineering controls a client may only make STRICTER than the host's configuration. */
   limits?: { maxLifetimeMs?: number };
   /** Test/diagnostic only: the host command quantum. Default and V1 value: 1000 us. */
@@ -236,9 +241,6 @@ function validSnapshot(v: unknown): string | null {
   return null;
 }
 
-const gpioList = (v: unknown) =>
-  Array.isArray(v) && v.length <= 40 && v.every((g) => isInt(g, 0, 39));
-
 export function validateCreate(v: unknown): Validation<CreateSessionRequest> {
   const bad = (error: string): Validation<CreateSessionRequest> => ({ ok: false, error });
   if (!isObj(v)) return bad('body must be an object');
@@ -248,7 +250,7 @@ export function validateCreate(v: unknown): Validation<CreateSessionRequest> {
     'board',
     'circuit',
     'attachments',
-    'firmwareFeatures',
+    'ticket',
     'limits',
     'commandQuantumUs',
   ];
@@ -272,15 +274,9 @@ export function validateCreate(v: unknown): Validation<CreateSessionRequest> {
     if (typeof a.terminal !== 'string' || !ID.test(a.terminal))
       return bad('attachments[].terminal');
   }
-  if (v.firmwareFeatures !== undefined) {
-    const f = v.firmwareFeatures;
-    if (!isObj(f) || !onlyKeys(f, ['internalPull', 'gpioInterrupt']))
-      return bad('firmwareFeatures');
-    if (f.internalPull !== undefined && !gpioList(f.internalPull))
-      return bad('firmwareFeatures.internalPull');
-    if (f.gpioInterrupt !== undefined && !gpioList(f.gpioInterrupt))
-      return bad('firmwareFeatures.gpioInterrupt');
-  }
+  // Verified by the host (MAC, principal, artifact, expiry); here only its outer form.
+  if (typeof v.ticket !== 'string' || v.ticket.length === 0 || v.ticket.length > 4096)
+    return bad('ticket');
   if (v.limits !== undefined) {
     if (!isObj(v.limits) || !onlyKeys(v.limits, ['maxLifetimeMs'])) return bad('limits');
     if (

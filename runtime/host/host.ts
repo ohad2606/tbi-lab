@@ -10,6 +10,8 @@
  * running unaffected while a client briefly reconnects.
  */
 import { createHash, timingSafeEqual } from 'node:crypto';
+import type { Principal } from '../identity/principal.js';
+import { verifyTicket } from '../identity/ticket.js';
 import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import type { HostConfig } from './config.js';
@@ -36,23 +38,34 @@ export class SessionHost {
     this.timer.unref();
   }
 
-  /** Validate, admit and prepare a new session. Artifact problems yield a FAILED session. */
-  create(body: unknown): HostResult<{ session: HostSession }> {
+  /**
+   * Validate, authorize, admit and prepare a new session for `principal`. The run ticket must be
+   * the build service's, for this principal and exactly this artifact, and unexpired (D-S8-4);
+   * the session's firmware features come from it. Artifact problems yield a FAILED session.
+   */
+  create(body: unknown, principal: Principal): HostResult<{ session: HostSession }> {
     if (this.closing) return { ok: false, status: 503, error: 'host shutting down' };
     const v = validateCreate(body);
     if (!v.ok) return { ok: false, status: 400, error: v.error };
+    const ticket = verifyTicket(this.config.ticketKey, v.value.ticket);
+    if (!ticket || ticket.principal !== principal || ticket.sha256 !== v.value.artifact.sha256)
+      return { ok: false, status: 403, error: 'ticket invalid' };
     const live = [...this.sessions.values()].filter((s) => !isTerminal(s.state)).length;
     if (live >= this.config.maxSessions) return { ok: false, status: 429, error: 'session limit' };
-    const session = new HostSession(this.config, this.tmpRoot, v.value);
+    const session = new HostSession(this.config, this.tmpRoot, v.value, principal, ticket.features);
     this.sessions.set(session.id, session);
     session.prepare();
     return { ok: true, value: { session } };
   }
 
-  /** The session for an id, only with its own token (constant-time comparison). */
-  get(sessionId: string, token: string | null): HostResult<HostSession> {
+  /**
+   * The session for an id, only for its owner and with its own token (constant-time
+   * comparison). Another principal's session is indistinguishable from none (Sprint 8).
+   */
+  get(sessionId: string, token: string | null, principal: Principal): HostResult<HostSession> {
     const s = /^[0-9a-f]{32}$/.test(sessionId) ? this.sessions.get(sessionId) : undefined;
-    if (!s || token === null) return { ok: false, status: 404, error: 'no such session' };
+    if (!s || token === null || s.owner !== principal)
+      return { ok: false, status: 404, error: 'no such session' };
     const given = createHash('sha256').update(token).digest();
     const want = Buffer.from(s.tokenHash, 'hex');
     if (given.length !== want.length || !timingSafeEqual(given, want))

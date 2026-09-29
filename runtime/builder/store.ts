@@ -1,50 +1,37 @@
 /**
- * Content-addressed, write-once artifact store shared with the R2 Session Host (Sprint 7).
+ * Content-addressed, write-once artifact store shared with the R2 Session Host (Sprint 7): the
+ * BLOB layer only (Sprint 8, D-S8-2). Who may use an artifact and which source built it are
+ * grants (grants.ts), never kept here.
  *
  *   <dir>/<sha256>.bin    the artifact bytes (0444), exactly what R2 resolves, re-hashes and
  *                         copies into a private session directory before starting QEMU
- *   <dir>/<sha256>.json   the service's manifest (origin, and one build record per source key that
- *                         produced these bytes) — never read by R2
- *
- * Several sources can compile to the same bytes (a comment-only edit, for example): the artifact
- * is stored once, and each source keeps its own build record (its key, diagnostics, features),
- * so a cache hit or lookup always answers with the record of the source that was asked for.
+ *   <dir>/<sha256>.json   the service's manifest (origin, size, creation time) — never read by R2
  *
  * The service always computes the sha256 itself; a client-supplied hash is never trusted.
  * Publishing writes a temporary file and renames it into place, so R2 never sees a partial file,
  * and an existing `<sha>.bin` is never rewritten. Files without a manifest (the R1-provisioned
- * reference images) are not managed here and are never evicted.
+ * reference images) are not managed here, are never evicted, and are usable by everyone.
  *
  * Eviction (LRU over managed artifacts, above the byte cap) skips any artifact under a lease:
- * the browser leases the artifact just before it creates a runtime session, which covers the
- * interval until the Session Host has made its private copy (D-S7-8). A leased or recently used
- * artifact is never removed.
+ * a lease is taken just before a runtime session is created, which covers the interval until the
+ * Session Host has made its private copy (D-S7-8). `onEvicted` lets the owner of the grants drop
+ * them with the blob.
+ *
+ * Migration from Sprint 7: manifests may still carry `builds` records (one per source key). They
+ * are ignored — build records now belong to their principal — so users simply build again; the
+ * blobs stay until LRU removes them.
  */
 import { createHash, randomBytes } from 'node:crypto';
 import { readdirSync, statSync } from 'node:fs';
 import { chmod, readFile, rename, rm, stat, writeFile, copyFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { ArtifactInfo, BuildResult } from './protocol.js';
+import type { ArtifactInfo } from './protocol.js';
 
 export interface Manifest {
   sha256: string;
   bytes: number;
   origin: ArtifactInfo['origin'];
-  /** Build records by source key (timings are not kept), at most MAX_BUILDS_PER_ARTIFACT. */
-  builds?: Record<string, StoredBuild>;
   createdAt: string;
-}
-
-export type StoredBuild = Omit<BuildResult, 'timings'>;
-
-/** Distinct sources remembered per artifact (oldest record dropped first). */
-const MAX_BUILDS_PER_ARTIFACT = 32;
-
-/** What a publish adds: the origin and, for a build, the record of the source that built it. */
-export interface ManifestFields {
-  origin: ArtifactInfo['origin'];
-  key?: string;
-  result?: StoredBuild;
 }
 
 export interface StoreOptions {
@@ -54,15 +41,14 @@ export interface StoreOptions {
   /** Minimum time an artifact stays after its last use or lease request. */
   graceMs: number;
   now?: () => number;
+  /** Called for every evicted artifact (the grants on it are dropped). */
+  onEvicted?: (sha256: string) => void;
 }
 
 const SHA = /^[0-9a-f]{64}$/;
 
-export type ManifestInput = ManifestFields | ((info: ArtifactInfo) => ManifestFields);
-
 export class ArtifactStore {
   private readonly manifests = new Map<string, Manifest>();
-  private readonly byKey = new Map<string, string>();
   private readonly lastUsed = new Map<string, number>();
   private readonly leases = new Map<string, number>();
   private readonly now: () => number;
@@ -84,23 +70,16 @@ export class ArtifactStore {
       const m = /^([0-9a-f]{64})\.json$/.exec(name);
       if (!m) continue;
       try {
-        const raw = JSON.parse(await readFile(join(this.opts.dir, name), 'utf8')) as Manifest & {
-          key?: string;
-          result?: StoredBuild;
-        };
+        const raw = JSON.parse(await readFile(join(this.opts.dir, name), 'utf8')) as Manifest;
         if (raw.sha256 !== m[1] || !this.exists(raw.sha256)) continue;
-        // Early Sprint 7 manifests held one `key`/`result`: read them as one build record.
-        const builds = raw.builds ?? (raw.key && raw.result ? { [raw.key]: raw.result } : {});
-        const manifest: Manifest = {
+        // Any Sprint 7 `builds`/`key`/`result` fields are deliberately not read (see above).
+        this.manifests.set(raw.sha256, {
           sha256: raw.sha256,
           bytes: raw.bytes,
           origin: raw.origin,
-          builds,
           createdAt: raw.createdAt,
-        };
-        this.manifests.set(manifest.sha256, manifest);
-        for (const key of Object.keys(builds)) this.byKey.set(key, manifest.sha256);
-        this.lastUsed.set(manifest.sha256, statSync(this.binPath(manifest.sha256)).mtimeMs);
+        });
+        this.lastUsed.set(raw.sha256, statSync(this.binPath(raw.sha256)).mtimeMs);
       } catch {
         // unreadable manifest: the artifact stays but is not indexed
       }
@@ -120,16 +99,9 @@ export class ArtifactStore {
     }
   }
 
-  /** The successful build record of exactly this source key, if its artifact is still present. */
-  findBuild(key: string): StoredBuild | undefined {
-    const sha = this.byKey.get(key);
-    if (!sha) return undefined;
-    if (!this.exists(sha)) {
-      this.forget(sha);
-      return undefined;
-    }
-    this.touch(sha);
-    return this.manifests.get(sha)?.builds?.[key];
+  /** A provisioned reference image (R1): global by nature, never evicted. */
+  isReference(sha: string): boolean {
+    return this.provisioned.has(sha) && !this.manifests.has(sha) && this.exists(sha);
   }
 
   manifest(sha: string): Manifest | undefined {
@@ -137,22 +109,13 @@ export class ArtifactStore {
   }
 
   /** Publish bytes from a file the service produced; returns the service-computed identity. */
-  async publishFile(path: string, meta: ManifestInput) {
-    return this.publish(await readFile(path), meta);
+  async publishFile(path: string, origin: ArtifactInfo['origin']) {
+    return this.publish(await readFile(path), origin);
   }
 
-  /**
-   * Publish bytes. The identity is computed here; `meta` may be a function of it (a manifest
-   * that records the artifact's own identity, such as a build result).
-   */
-  async publish(bytes: Buffer, metaInput: ManifestInput): Promise<ArtifactInfo> {
+  /** Publish bytes. The identity is computed here, never taken from a client. */
+  async publish(bytes: Buffer, origin: ArtifactInfo['origin']): Promise<ArtifactInfo> {
     const sha = createHash('sha256').update(bytes).digest('hex');
-    const info0: ArtifactInfo = {
-      sha256: sha,
-      bytes: bytes.length,
-      origin: typeof metaInput === 'function' ? 'build' : metaInput.origin,
-    };
-    const meta = typeof metaInput === 'function' ? metaInput(info0) : metaInput;
     const bin = this.binPath(sha);
     if (!this.exists(sha)) {
       const tmp = join(this.opts.dir, `.tmp-${randomBytes(8).toString('hex')}`);
@@ -160,34 +123,27 @@ export class ArtifactStore {
       await rename(tmp, bin);
     }
     const existing = this.manifests.get(sha);
-    const builds: Record<string, StoredBuild> = { ...(existing?.builds ?? {}) };
-    if (meta.key && meta.result) {
-      delete builds[meta.key]; // re-insert: most recent last
-      builds[meta.key] = meta.result;
-    }
-    const keys = Object.keys(builds);
-    for (const old of keys.slice(0, Math.max(0, keys.length - MAX_BUILDS_PER_ARTIFACT))) {
-      delete builds[old];
-      if (this.byKey.get(old) === sha) this.byKey.delete(old);
-    }
-    const manifest: Manifest = {
-      sha256: sha,
-      bytes: bytes.length,
-      origin: existing?.origin ?? meta.origin,
-      builds,
-      createdAt: existing?.createdAt ?? new Date(this.now()).toISOString(),
-    };
     // Unmanaged reference images (no manifest) stay unmanaged: never write a manifest for them.
-    if (existing || !this.unmanaged(sha)) {
+    if (!existing && !this.isReference(sha)) {
+      const manifest: Manifest = {
+        sha256: sha,
+        bytes: bytes.length,
+        origin,
+        createdAt: new Date(this.now()).toISOString(),
+      };
       const tmp = join(this.opts.dir, `.tmp-${randomBytes(8).toString('hex')}`);
       await writeFile(tmp, JSON.stringify(manifest), { mode: 0o444 });
       await rename(tmp, join(this.opts.dir, `${sha}.json`));
       this.manifests.set(sha, manifest);
-      for (const key of Object.keys(builds)) this.byKey.set(key, sha);
     }
     this.touch(sha);
     await this.evict();
-    return { sha256: sha, bytes: bytes.length, origin: manifest.origin };
+    return { sha256: sha, bytes: bytes.length, origin: existing?.origin ?? origin };
+  }
+
+  /** Mark an artifact as used now (a cache hit or lookup on it). */
+  used(sha: string): void {
+    if (this.manifests.has(sha)) this.touch(sha);
   }
 
   /** Pin an artifact for `ms` (from now): it cannot be evicted before the lease ends. */
@@ -210,15 +166,7 @@ export class ArtifactStore {
     this.lastUsed.set(sha, this.now());
   }
 
-  private unmanaged(sha: string): boolean {
-    // A file that existed before any manifest (provisioned reference image).
-    return this.exists(sha) && !this.manifests.has(sha) && this.provisioned.has(sha);
-  }
-
   private forget(sha: string) {
-    const m = this.manifests.get(sha);
-    for (const key of Object.keys(m?.builds ?? {}))
-      if (this.byKey.get(key) === sha) this.byKey.delete(key);
     this.manifests.delete(sha);
     this.lastUsed.delete(sha);
     this.leases.delete(sha);
@@ -238,6 +186,7 @@ export class ArtifactStore {
       await rm(join(this.opts.dir, `${m.sha256}.json`), { force: true });
       await rm(this.binPath(m.sha256), { force: true });
       this.forget(m.sha256);
+      this.opts.onEvicted?.(m.sha256);
       total -= m.bytes;
       removed.push(m.sha256);
     }

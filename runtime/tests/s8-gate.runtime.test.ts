@@ -16,6 +16,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createBuildHttpServer } from '../builder/http.js';
 import { BuildService, DEFAULT_LIMITS } from '../builder/service.js';
 import { ArtifactStore } from '../builder/store.js';
+import { Grants } from '../builder/grants.js';
 import { FakeProvider } from '../builder/tests/support.js';
 import { listen } from '../identity/listen.js';
 import { derivePrincipal, identityConfig, principalOf } from '../identity/principal.js';
@@ -63,9 +64,14 @@ beforeAll(async () => {
   mkdirSync(join(dir, 'store'));
   const store = new ArtifactStore({ dir: join(dir, 'store'), capBytes: 64 << 20, graceMs: 0 });
   mkdirSync(join(dir, 'work'));
+  const grants = new Grants(':memory:');
   const build = createBuildHttpServer(
-    new BuildService([new FakeProvider()], store, join(dir, 'work'), DEFAULT_LIMITS),
-    { leaseMs: 60_000, identity },
+    new BuildService([new FakeProvider()], store, join(dir, 'work'), DEFAULT_LIMITS, {
+      grants,
+      ticketKey: randomBytes(32),
+      systemKeys: new Set(),
+    }),
+    { leaseMs: 60_000, identity, allowPrebuiltBinary: () => false },
   );
   await listen(build, { unix: join(run, 'build.sock') });
   servers.push(echo, build);

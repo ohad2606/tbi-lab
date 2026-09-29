@@ -148,7 +148,8 @@ describe('project -> R2 session snapshot', () => {
     const b = plan(deepFreeze(doc));
     if (!b.ok) throw new Error(b.error.code);
     const req = b.plan.request;
-    expect(validateCreate(req)).toMatchObject({ ok: true });
+    // Completed with the run ticket at Run time (Sprint 8), it is a valid protocol request.
+    expect(validateCreate({ ...req, ticket: 't' })).toMatchObject({ ok: true });
     expect(req.artifact.sha256).toBe(doc.components.find((c) => c.id === 'U1')!.params.firmware);
     expect(req.circuit.components.some((c) => c.id === 'U1')).toBe(false);
     expect(req.circuit.components.find((c) => c.id === 'U1_gnd')?.type).toBe('component.ground');

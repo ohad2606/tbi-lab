@@ -2,6 +2,11 @@
  * Build service core (Sprint 7): one compilation at a time, a short queue, a hard timeout, a
  * temporary-storage watchdog, guaranteed cleanup, a cache by source key, and short-lived build
  * records. Providers do the toolchain work; this module owns every limit (D-S7-8).
+ *
+ * Sprint 8 (D-S8-2/3/4): every call names its principal. Cache hits, lookups, build status and
+ * leases see only the caller's own grants plus the shared system records (curated sources, R1
+ * reference images); an identical private source of another user is compiled again (the bytes
+ * are still stored once). A lease issues a run ticket for the Session Host.
  */
 import { randomBytes } from 'node:crypto';
 import { mkdtemp, readdir, rm, lstat } from 'node:fs/promises';
@@ -14,8 +19,20 @@ import {
   type BuildState,
   type BuildStatus,
 } from './protocol.js';
+import type { Principal } from '../identity/principal.js';
+import { signTicket, type TicketFeatures } from '../identity/ticket.js';
+import { GLOBAL, type Grants, type Owner } from './grants.js';
 import type { BuildProvider, ProviderOutput } from './provider.js';
 import type { ArtifactStore } from './store.js';
+
+/** Ownership and authorization (Sprint 8). */
+export interface ServiceAccess {
+  grants: Grants;
+  /** Key shared with the Session Host for run tickets. */
+  ticketKey: Buffer;
+  /** Source keys of the curated system sources: their builds are shared (`global`). */
+  systemKeys: ReadonlySet<string>;
+}
 
 export interface ServiceLimits {
   /** Builds waiting behind the active one (D-S7-8: 3). */
@@ -44,6 +61,8 @@ interface BuildRecord {
   id: string;
   token: string;
   key: string;
+  /** Who the build belongs to: the submitter, or `global` for a curated system source. */
+  owner: Owner;
   request: BuildRequest;
   provider: BuildProvider;
   state: BuildState;
@@ -63,7 +82,8 @@ export class BuildService {
     providers: BuildProvider[],
     readonly store: ArtifactStore,
     private readonly workRoot: string,
-    readonly limits: ServiceLimits = DEFAULT_LIMITS,
+    readonly limits: ServiceLimits,
+    readonly access: ServiceAccess,
   ) {
     for (const p of providers) this.providers.set(p.profile.id, p);
   }
@@ -83,14 +103,19 @@ export class BuildService {
    * Submit a build. A finished successful build of the same input is returned at once (cache
    * hit, no compilation); an identical build already queued or running is shared.
    */
-  submit(request: BuildRequest): { cached: BuildResult } | { buildId: string; token: string } {
+  submit(
+    request: BuildRequest,
+    principal: Principal,
+  ): { cached: BuildResult } | { buildId: string; token: string } {
     const provider = this.providers.get(request.profile);
     if (!provider) throw new RequestError(400, 'unknown_profile');
     const key = sourceKey(request.profile, request.files);
-    const hit = this.cachedResult(key);
+    const hit = this.cachedResult(principal, key);
     if (hit) return { cached: hit };
+    const owner: Owner = this.access.systemKeys.has(key) ? GLOBAL : principal;
+    // Only the same owner's pending build is shared: joining someone else's would reveal it.
     const pending = [...this.queue, ...(this.active ? [this.active] : [])].find(
-      (r) => r.key === key,
+      (r) => r.key === key && r.owner === owner,
     );
     if (pending) return { buildId: pending.id, token: pending.token };
     if (this.queue.length >= this.limits.maxQueued) throw new RequestError(429, 'busy');
@@ -99,6 +124,7 @@ export class BuildService {
       id: `b_${randomBytes(12).toString('hex')}`,
       token: randomBytes(24).toString('base64url'),
       key,
+      owner,
       request,
       provider,
       state: 'queued',
@@ -110,10 +136,13 @@ export class BuildService {
     return { buildId: record.id, token: record.token };
   }
 
-  /** Status of a build; a wrong token is indistinguishable from an unknown id. */
-  status(id: string, token: string): BuildStatus | null {
+  /**
+   * Status of a build, for its owner only (a shared system build: anyone holding its token). A
+   * wrong token or another owner is indistinguishable from an unknown id.
+   */
+  status(id: string, token: string, principal: Principal): BuildStatus | null {
     const r = this.records.get(id);
-    if (!r || r.token !== token) return null;
+    if (!r || r.token !== token || (r.owner !== principal && r.owner !== GLOBAL)) return null;
     const position = r.state === 'queued' ? this.queue.indexOf(r) : undefined;
     return {
       buildId: r.id,
@@ -123,9 +152,48 @@ export class BuildService {
     };
   }
 
-  /** The successful build of a source key, if its artifact still exists. Never builds. */
-  lookup(key: string): BuildResult | null {
-    return this.cachedResult(key);
+  /** The caller's successful build of a source key, if its artifact still exists. Never builds. */
+  lookup(key: string, principal: Principal): BuildResult | null {
+    return this.cachedResult(principal, key);
+  }
+
+  /**
+   * Pin an artifact the principal may use and issue a run ticket for it; null (like "unknown")
+   * when there is no grant — own, global, or an R1 reference image — or no blob.
+   */
+  lease(principal: Principal, sha: string, ms: number): { until: number; ticket: string } | null {
+    const reference = this.store.isReference(sha);
+    if (!reference && !this.access.grants.canUse(principal, sha)) return null;
+    const until = this.store.lease(sha, ms);
+    if (until === null) {
+      this.access.grants.dropArtifact(sha);
+      return null;
+    }
+    if (!reference) this.access.grants.touchFor(principal, sha);
+    const f = reference ? null : this.access.grants.features(principal, sha);
+    const features: TicketFeatures | null = f
+      ? {
+          internalPull: f.internalPull,
+          gpioInterrupt: f.gpioInterrupt,
+          restart: f.restart,
+          unsupported: f.unsupported,
+        }
+      : null;
+    const ticket = signTicket(this.access.ticketKey, {
+      v: 1,
+      principal,
+      sha256: sha,
+      features,
+      exp: until,
+    });
+    return { until, ticket };
+  }
+
+  /** An Advanced prebuilt image: stored once, granted to its uploader only. */
+  async publishPrebuilt(principal: Principal, bytes: Buffer) {
+    const artifact = await this.store.publish(bytes, 'prebuilt');
+    this.access.grants.recordPrebuilt(principal, artifact.sha256);
+    return artifact;
   }
 
   /** Resolves when no build is active or queued (tests, shutdown). */
@@ -134,9 +202,14 @@ export class BuildService {
     return new Promise((resolve) => this.idle.add(resolve));
   }
 
-  private cachedResult(key: string): BuildResult | null {
-    const found = this.store.findBuild(key);
-    if (!found) return null;
+  private cachedResult(principal: Principal, key: string): BuildResult | null {
+    const found = this.access.grants.findBuild(principal, key);
+    if (!found?.artifact) return null;
+    if (!this.store.exists(found.artifact.sha256)) {
+      this.access.grants.dropArtifact(found.artifact.sha256);
+      return null;
+    }
+    this.store.used(found.artifact.sha256);
     return { ...found, timings: { queuedMs: 0, buildMs: 0 } };
   }
 
@@ -224,11 +297,8 @@ export class BuildService {
           diagnostics: out.diagnostics,
           log: out.log,
         };
-        const artifact = await this.store.publishFile(out.imagePath, (info) => ({
-          origin: 'build',
-          key: r.key,
-          result: { ...base, artifact: info },
-        }));
+        const artifact = await this.store.publishFile(out.imagePath, 'build');
+        this.access.grants.recordBuild(r.owner, { ...base, artifact });
         const result: BuildResult = {
           ...base,
           artifact,

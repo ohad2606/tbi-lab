@@ -15,7 +15,13 @@ import {
   type Server,
 } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { identityConfig, type IdentityConfig } from './principal.js';
+import {
+  derivePrincipal,
+  identityConfig,
+  type IdentityConfig,
+  type Principal,
+} from './principal.js';
+import { signTicket, type TicketFeatures } from './ticket.js';
 
 /** A per-process identity configuration for tests (random key). */
 export function testIdentity(issuer = 'test'): IdentityConfig {
@@ -90,4 +96,35 @@ export async function startTestGate(
       gate.close();
     },
   };
+}
+
+/**
+ * TEST ONLY: fixed identity and ticket keys, so test helpers can mint a valid run ticket for the
+ * principal a test gate asserts (subject `user-a` unless stated).
+ */
+export const TEST_IDENTITY: IdentityConfig = identityConfig({
+  issuer: 'test',
+  key: Buffer.from('tbi-lab test identity key -- tests only, not a secret'),
+});
+export const TEST_TICKET_KEY = Buffer.from(
+  'tbi-lab test run-ticket key -- tests only, not a secret',
+);
+export const TEST_SUBJECT = 'user-a';
+export const principalFor = (subject = TEST_SUBJECT): Principal =>
+  derivePrincipal(TEST_IDENTITY, subject);
+
+/** A run ticket as the build service would issue it after a lease (default: 10 minutes). */
+export function ticketFor(
+  sha256: string,
+  principal: Principal = principalFor(),
+  features: TicketFeatures | null = null,
+  ttlMs = 600_000,
+): string {
+  return signTicket(TEST_TICKET_KEY, {
+    v: 1,
+    principal,
+    sha256,
+    features,
+    exp: Date.now() + ttlMs,
+  });
 }

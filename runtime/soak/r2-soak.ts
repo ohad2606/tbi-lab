@@ -68,7 +68,12 @@ import { runClosedLoop } from '../harness/closedLoop.js';
 import { QEMU, RUNTIME_HOME, artifact, runtimeInfo } from '../harness/env.js';
 import type { SessionHost } from '../host/host.js';
 import { createHttpServer } from '../host/http.js';
-import { createTestGate, testIdentity } from '../identity/test-gate.js';
+import {
+  TEST_IDENTITY,
+  TEST_SUBJECT,
+  createTestGate,
+  principalFor,
+} from '../identity/test-gate.js';
 import type { MirrorRevisions, SessionCommand, SessionEvent } from '../host/protocol.js';
 import type { HostSession } from '../host/session.js';
 import { isTerminal } from '../host/stateMachine.js';
@@ -647,13 +652,13 @@ function track(ctx: Ctx, s: HostSession): HostSession {
  * with `keepalive: false` (F) and over HTTP/SSE (E).
  */
 function create(ctx: Ctx, host: SessionHost, req: unknown, keepalive = true): HostSession {
-  const r = host.create(req);
+  const r = host.create(req, principalFor());
   if (!r.ok) throw new PhaseError(`create refused: ${r.status} ${r.error}`);
   const s = r.value.session;
   if (keepalive) {
     const t = setInterval(() => {
       if (isTerminal(s.state)) clearInterval(t);
-      else host.get(s.id, s.token);
+      else host.get(s.id, s.token, principalFor());
     }, 5000);
     t.unref();
   }
@@ -800,7 +805,7 @@ async function phaseA(ctx: Ctx): Promise<void> {
   const held: HostSession[] = [];
   for (let i = 0; i < host.config.maxSessions; i++)
     held.push(create(ctx, host, loadRequest('TbiNvs')));
-  const over = host.create(loadRequest('TbiNvs'));
+  const over = host.create(loadRequest('TbiNvs'), principalFor());
   if (over.ok) track(ctx, over.value.session);
   crit(!over.ok && over.status === 429, 'limit_not_enforced', 'A: a session beyond the limit');
   for (const h of held) {
@@ -820,7 +825,7 @@ async function phaseB(ctx: Ctx): Promise<void> {
   const b = create(ctx, host, loadRequest('TbiNvs'));
   crit(a.id !== b.id && a.privateDir !== b.privateDir, 'contamination', 'B: shared identity');
   crit(
-    !host.get(a.id, b.token).ok && !host.get(b.id, a.token).ok,
+    !host.get(a.id, b.token, principalFor()).ok && !host.get(b.id, a.token, principalFor()).ok,
     'contamination',
     "B: one session's token opens the other",
   );
@@ -1362,7 +1367,8 @@ async function phaseE(ctx: Ctx): Promise<void> {
   const CAP = 32;
   const LEASE = 3000;
   const host = newHost(ctx, { eventLogCapacity: CAP, leaseMs: LEASE, housekeepingMs: 100 });
-  const identity = testIdentity();
+  // The test identity whose default principal the requests' run tickets name (user-a).
+  const identity = TEST_IDENTITY;
   const server = createHttpServer(host, identity);
   servers.add(server);
   ctx.servers.push(server);
@@ -1371,7 +1377,7 @@ async function phaseE(ctx: Ctx): Promise<void> {
   const gate = createTestGate(
     { host: '127.0.0.1', port: Number(new URL(direct).port) },
     identity,
-    () => 'soak-user',
+    () => TEST_SUBJECT,
   );
   servers.add(gate);
   ctx.servers.push(gate);
@@ -1383,7 +1389,7 @@ async function phaseE(ctx: Ctx): Promise<void> {
   });
   check(cr.status === 201, `E: create ${cr.status}`);
   const { sessionId, token } = (await cr.json()) as { sessionId: string; token: string };
-  const got = host.get(sessionId, token);
+  const got = host.get(sessionId, token, principalFor());
   check(got.ok, 'E: session not found in-process');
   const s = track(ctx, got.ok ? got.value : (null as never));
   const auth = { authorization: `Bearer ${token}` };
@@ -1509,8 +1515,8 @@ async function freePort(): Promise<number> {
 }
 
 /** The child host needs a gate identity key (Sprint 8); this phase only uses /health. */
-function soakIdentityKeyFile(tmp: string): string {
-  const file = join(tmp, 'identity.key');
+function soakIdentityKeyFile(tmp: string, name = 'identity.key'): string {
+  const file = join(tmp, name);
   writeFileSync(file, randomBytes(32), { mode: 0o600 });
   return file;
 }
@@ -1523,6 +1529,7 @@ async function startChild(tmp: string, port: number): Promise<ChildProcess> {
       TBI_RUNTIME_HOME: RUNTIME_HOME,
       TBI_HOST_PORT: String(port),
       TBI_IDENTITY_KEY_FILE: soakIdentityKeyFile(tmp),
+      TBI_TICKET_KEY_FILE: soakIdentityKeyFile(tmp, 'ticket.key'),
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });

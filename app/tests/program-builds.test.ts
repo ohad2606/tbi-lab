@@ -47,7 +47,7 @@ function fakeBuildClient(opts: { fail?: boolean; lookup?: BuildResult | null } =
     },
     async lease(sha: string) {
       calls.lease.push(sha);
-      return sha !== 'e'.repeat(64);
+      return sha !== 'e'.repeat(64) ? 'ticket' : null;
     },
   } as unknown as BuildClient;
   return { client, calls, finish: () => release?.() };
@@ -145,16 +145,19 @@ describe('firmware resolution (the Run guard)', () => {
     const r = plan(doc, null, { sha256: 'b'.repeat(64) });
     expect(r.ok && r.plan.request.artifact.sha256).toBe('b'.repeat(64));
     expect(r.ok && r.plan.firmware.origin).toBe('prebuilt');
-    expect(r.ok && r.plan.request.firmwareFeatures).toBeUndefined();
+    // No feature list is ever sent: the Session Host takes features from the run ticket.
+    expect(r.ok && 'firmwareFeatures' in r.plan.request).toBe(false);
   });
 
   it('the artifact is leased before the session is created; an evicted one means Build required', async () => {
     const doc = blink();
     const key = programKey(doc.programs.U1!);
     const creates: string[] = [];
+    const tickets: string[] = [];
     const client = {
-      async create(req: { artifact: { sha256: string } }) {
+      async create(req: { artifact: { sha256: string }; ticket: string }) {
         creates.push(req.artifact.sha256);
+        tickets.push(req.ticket);
         throw new Error('stop here');
       },
     } as unknown as RuntimeClient;
@@ -168,7 +171,7 @@ describe('firmware resolution (the Run guard)', () => {
           }),
         lease: async (fw) => {
           leased.push(fw.sha256);
-          return sha !== 'e'.repeat(64);
+          return sha !== 'e'.repeat(64) ? `ticket-for-${fw.sha256.slice(0, 4)}` : null;
         },
       });
       await sim.run(doc);
@@ -180,5 +183,6 @@ describe('firmware resolution (the Run guard)', () => {
     await run('c'.repeat(64));
     expect(leased).toEqual(['e'.repeat(64), 'c'.repeat(64)]);
     expect(creates).toEqual(['c'.repeat(64)]); // lease first, then create
+    expect(tickets).toEqual(['ticket-for-cccc']); // the session request carries the run ticket
   });
 });

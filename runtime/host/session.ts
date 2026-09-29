@@ -31,6 +31,8 @@ import {
 } from '@tbi-lab/engine';
 import type { Command } from '../harness/protocol.js';
 import { runSession, type Outcome, type SessionResult } from '../harness/session.js';
+import type { Principal } from '../identity/principal.js';
+import type { TicketFeatures } from '../identity/ticket.js';
 import type { HostConfig } from './config.js';
 import { sessionDir } from './config.js';
 import { EventLog } from './eventLog.js';
@@ -115,6 +117,10 @@ export class HostSession {
     private readonly config: HostConfig,
     private readonly tmpRoot: string,
     private readonly request: CreateSessionRequest,
+    /** The principal that created the session: the only one who may use it (Sprint 8). */
+    readonly owner: Principal,
+    /** The firmware's features, from the verified run ticket (null: not analysed). */
+    private readonly features: TicketFeatures | null,
   ) {
     this.token = randomBytes(24).toString('base64url');
     this.tokenHash = SHA(Buffer.from(this.token));
@@ -204,10 +210,12 @@ export class HostSession {
     if (actual !== sha) return this.fail('artifact_hash_mismatch', { sha256: sha });
 
     // Features V1 does not simulate: refuse explicitly instead of running with dead behaviour.
-    const f = this.request.firmwareFeatures ?? {};
+    const f = this.features;
     const unsupported = {
-      ...(f.internalPull?.length ? { internalPull: f.internalPull } : {}),
-      ...(f.gpioInterrupt?.length ? { gpioInterrupt: f.gpioInterrupt } : {}),
+      ...(f?.internalPull.length ? { internalPull: f.internalPull } : {}),
+      ...(f?.gpioInterrupt.length ? { gpioInterrupt: f.gpioInterrupt } : {}),
+      ...(f?.restart ? { restart: true } : {}),
+      ...(f?.unsupported.length ? { unsupported: f.unsupported } : {}),
     };
     if (Object.keys(unsupported).length) {
       this.log.append({

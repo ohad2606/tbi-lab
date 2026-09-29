@@ -10,5 +10,8 @@ export const E2E_IDENTITY = identityConfig({
   key: Buffer.from('tbi-lab e2e test identity key -- not a secret, tests only'),
 });
 
+/** The run-ticket key shared by the fake build service and the fake Session Host. */
+export const E2E_TICKET_KEY = Buffer.from('tbi-lab e2e run-ticket key -- not a secret, tests only');
+
 /** Headers a test uses when it calls a fake backend directly (it is the gate then). */
 export const asUser = (subject = 'e2e-user') => ({ 'x-forwarded-user': subject });

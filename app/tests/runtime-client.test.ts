@@ -5,7 +5,7 @@
 import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
 import { afterEach, describe, expect, it } from 'vitest';
-import { startTestGate, testIdentity } from '../../runtime/identity/test-gate.js';
+import { TEST_IDENTITY, startTestGate } from '../../runtime/identity/test-gate.js';
 import type { SessionEvent } from '../../runtime/host/protocol.js';
 import type { SessionHost } from '../../runtime/host/host.js';
 import { createHttpServer } from '../../runtime/host/http.js';
@@ -31,7 +31,7 @@ afterEach(async () => {
 
 async function serve(over = {}) {
   const { host, art } = fakeHost('normal', over);
-  const identity = testIdentity();
+  const identity = TEST_IDENTITY;
   const server = createHttpServer(host, identity);
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
   // Reached through a test gate that asserts one user (the deployment's oauth2-proxy role).

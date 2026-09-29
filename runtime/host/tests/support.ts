@@ -18,6 +18,7 @@ import {
   type ParamValue,
   type ProjectDocument,
 } from '@tbi-lab/domain';
+import { TEST_TICKET_KEY, ticketFor } from '../../identity/test-gate.js';
 import { defaultConfig, type HostConfig } from '../config.js';
 import { SessionHost } from '../host.js';
 import { PROTOCOL, type CreateSessionRequest, type SessionEvent } from '../protocol.js';
@@ -49,6 +50,7 @@ export function fakeHost(mode = 'normal', over: Partial<HostConfig> = {}) {
     defaultConfig({
       qemu: FAKE_RUNTIME,
       artifactsDir: art.dir,
+      ticketKey: TEST_TICKET_KEY,
       runtimeEnv: { PATH: process.env.PATH, TBI_FAKE_MODE: mode },
       startupTimeoutMs: 3_000,
       stallTimeoutMs: 1_500,
@@ -146,6 +148,8 @@ export function createRequest(
     board: 'board.esp32_devkitc_wroom32',
     circuit: createSnapshot(doc),
     attachments,
+    // A valid run ticket for the default test principal (the test gate's `user-a`).
+    ticket: ticketFor(sha256),
     ...extra,
   };
 }

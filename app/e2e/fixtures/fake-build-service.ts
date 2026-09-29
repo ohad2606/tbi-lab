@@ -22,7 +22,9 @@ import type {
 } from '../../../runtime/builder/provider.js';
 import { BuildService, DEFAULT_LIMITS } from '../../../runtime/builder/service.js';
 import { ArtifactStore } from '../../../runtime/builder/store.js';
-import { E2E_IDENTITY } from './identity.js';
+import { Grants } from '../../../runtime/builder/grants.js';
+import { systemSourceKeys } from '../../../runtime/builder/system-sources.js';
+import { E2E_IDENTITY, E2E_TICKET_KEY } from './identity.js';
 import { ownedTempDir, removeOwnedTempDir, sweepStaleTempDirs } from './temp-dirs.js';
 
 const IMAGE_BYTES = 4 * 1024 * 1024;
@@ -114,20 +116,36 @@ export function removeFakeBuildDirs(): void {
  * shrinks the store so that publishing more images evicts the least recently used (no grace).
  * The previous service's directories are removed.
  */
+let currentGrants: Grants | null = null;
 export function resetFakeBuildService(capImages?: number): { store: string; work: string } {
+  currentGrants?.close();
+  currentGrants = null;
   removeFakeBuildDirs();
   parent = ownedTempDir(PARENT_PREFIX);
   const dirs = {
     store: mkdtempSync(join(parent, 'store-')),
     work: mkdtempSync(join(parent, 'build-')),
   };
+  let grantsRef: Grants | null = null;
   const store = new ArtifactStore({
     dir: dirs.store,
     capBytes: (capImages ?? 16) * IMAGE_BYTES,
     graceMs: capImages ? 0 : 60_000,
+    onEvicted: (sha) => grantsRef?.dropArtifact(sha),
   });
-  const service = new BuildService([new ScriptedProvider()], store, dirs.work, DEFAULT_LIMITS);
-  current = createBuildHttpServer(service, { leaseMs: 60_000, identity: E2E_IDENTITY });
+  const grants = new Grants(join(parent, 'grants.db'));
+  const service = new BuildService([new ScriptedProvider()], store, dirs.work, DEFAULT_LIMITS, {
+    grants,
+    ticketKey: E2E_TICKET_KEY,
+    systemKeys: systemSourceKeys(), // as deployed: the curated examples are shared records
+  });
+  grantsRef = grants;
+  currentGrants = grants;
+  current = createBuildHttpServer(service, {
+    leaseMs: 60_000,
+    identity: E2E_IDENTITY,
+    allowPrebuiltBinary: () => true,
+  });
   return dirs;
 }
 

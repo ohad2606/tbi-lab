@@ -17,6 +17,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { describeListen, listen, parseListen } from '../identity/listen.js';
 import { identityFromEnv } from '../identity/principal.js';
+import { loadTicketKey } from '../identity/ticket.js';
 import { defaultConfig, type HostConfig } from './config.js';
 import { SessionHost } from './host.js';
 import { createHttpServer } from './http.js';
@@ -48,7 +49,10 @@ for (const [env, key] of Object.entries(TUNABLE)) {
   const v = process.env[env];
   if (v !== undefined && /^\d+$/.test(v)) (overrides as Record<string, number>)[key] = Number(v);
 }
+const ticketFile = process.env.TBI_TICKET_KEY_FILE;
+if (!ticketFile) throw new Error('TBI_TICKET_KEY_FILE is required');
 const config = defaultConfig({
+  ticketKey: loadTicketKey(ticketFile),
   qemu: process.env.TBI_QEMU ?? QEMU,
   artifactsDir: process.env.TBI_ARTIFACTS ?? join(RUNTIME_HOME, 'artifacts'),
   ...overrides,

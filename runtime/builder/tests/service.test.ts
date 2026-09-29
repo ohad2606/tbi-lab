@@ -13,7 +13,13 @@ import { createBuildHttpServer, PREBUILT_IMAGE_BYTES } from '../http.js';
 import { validateBuildRequest } from '../protocol.js';
 import { BuildService, DEFAULT_LIMITS, type ServiceLimits } from '../service.js';
 import { ArtifactStore } from '../store.js';
-import { startTestGate, testIdentity } from '../../identity/test-gate.js';
+import {
+  TEST_TICKET_KEY,
+  principalFor,
+  startTestGate,
+  testIdentity,
+} from '../../identity/test-gate.js';
+import { Grants } from '../grants.js';
 import { FakeProvider, fakeImage, sketch, tempDir } from './support.js';
 
 const cleanup: string[] = [];
@@ -21,27 +27,44 @@ afterEach(() => {
   for (const d of cleanup.splice(0)) rmSync(d, { recursive: true, force: true });
 });
 
+/** The principal a test gate asserts for `user-a` (cross-user cases: ownership.test.ts). */
+const A = principalFor('user-a');
+
 function setup(
   limits: Partial<ServiceLimits> = {},
   store: Partial<{ capBytes: number; graceMs: number }> = {},
+  systemKeys: ReadonlySet<string> = new Set(),
 ) {
   const storeDir = tempDir('tbi-store-');
   const work = tempDir('tbi-work-');
-  cleanup.push(storeDir, work);
+  const state = tempDir('tbi-state-');
+  cleanup.push(storeDir, work, state);
   const provider = new FakeProvider();
+  const grants = new Grants(join(state, 'grants.db'));
   const artifacts = new ArtifactStore({
     dir: storeDir,
     capBytes: store.capBytes ?? 256 * 1024 * 1024,
     graceMs: store.graceMs ?? 0,
+    onEvicted: (sha) => grants.dropArtifact(sha),
   });
-  const service = new BuildService([provider], artifacts, work, { ...DEFAULT_LIMITS, ...limits });
-  return { service, provider, artifacts, storeDir, work };
+  const service = new BuildService(
+    [provider],
+    artifacts,
+    work,
+    { ...DEFAULT_LIMITS, ...limits },
+    { grants, ticketKey: TEST_TICKET_KEY, systemKeys },
+  );
+  return { service, provider, artifacts, grants, storeDir, work, state };
 }
 
-async function finish(service: BuildService, out: ReturnType<BuildService['submit']>) {
+async function finish(
+  service: BuildService,
+  out: ReturnType<BuildService['submit']>,
+  principal = A,
+) {
   if ('cached' in out) return out.cached;
   await service.whenIdle();
-  return service.status(out.buildId, out.token)!.result!;
+  return service.status(out.buildId, out.token, principal)!.result!;
 }
 
 describe('request validation', () => {
@@ -64,7 +87,7 @@ describe('BuildService', () => {
   it('builds, publishes a server-hashed artifact, cleans its job directory, then serves cache hits', async () => {
     const { service, provider, storeDir, work } = setup();
     const req = sketch('void setup() {}\nvoid loop() {}\n');
-    const first = await finish(service, service.submit(req));
+    const first = await finish(service, service.submit(req, A));
     expect(first.ok).toBe(true);
     expect(first.key).toBe(sourceKey(req.profile, req.files));
     const sha = createHash('sha256').update(fakeImage(req.files[0]!.text)).digest('hex');
@@ -72,26 +95,26 @@ describe('BuildService', () => {
     expect(statSync(join(storeDir, `${sha}.bin`)).mode & 0o777).toBe(0o444);
     expect(readdirSync(work)).toEqual([]); // job directory removed
     // Same input: no compilation, same result, immediately.
-    const again = service.submit(req);
+    const again = service.submit(req, A);
     expect('cached' in again).toBe(true);
     expect(provider.builds).toBe(1);
-    expect(service.lookup(first.key)?.artifact?.sha256).toBe(sha);
-    expect(service.lookup('0'.repeat(64))).toBeNull();
+    expect(service.lookup(first.key, A)?.artifact?.sha256).toBe(sha);
+    expect(service.lookup('0'.repeat(64), A)).toBeNull();
   });
 
   it('one compilation at a time, three queued, then busy; identical pending input is shared', async () => {
     const { service, provider } = setup({ timeoutMs: 1500 });
-    const a = service.submit(sketch('#stall a'));
-    const b = service.submit(sketch('b'));
-    const c = service.submit(sketch('c'));
-    const d = service.submit(sketch('d'));
-    expect(() => service.submit(sketch('e'))).toThrow('busy');
-    const same = service.submit(sketch('c'));
+    const a = service.submit(sketch('#stall a'), A);
+    const b = service.submit(sketch('b'), A);
+    const c = service.submit(sketch('c'), A);
+    const d = service.submit(sketch('d'), A);
+    expect(() => service.submit(sketch('e'), A)).toThrow('busy');
+    const same = service.submit(sketch('c'), A);
     expect(same).toEqual(c);
     if ('cached' in a || 'cached' in b) throw new Error('unexpected cache hit');
-    expect(service.status(a.buildId, a.token)?.state).toBe('building');
-    expect(service.status(b.buildId, b.token)?.position).toBe(0);
-    expect(service.status(b.buildId, 'wrong-token-wrong-token')).toBeNull();
+    expect(service.status(a.buildId, a.token, A)?.state).toBe('building');
+    expect(service.status(b.buildId, b.token, A)?.position).toBe(0);
+    expect(service.status(b.buildId, 'wrong-token-wrong-token', A)).toBeNull();
     await expect.poll(() => provider.builds).toBe(1);
     void d;
     await service.whenIdle(); // the stalled build times out; the queue drains
@@ -100,14 +123,14 @@ describe('BuildService', () => {
 
   it('a build over the hard timeout is stopped and reported; the job directory is removed', async () => {
     const { service, work } = setup({ timeoutMs: 300 });
-    const r = await finish(service, service.submit(sketch('#stall')));
+    const r = await finish(service, service.submit(sketch('#stall'), A));
     expect(r).toMatchObject({ ok: false, failure: 'timeout' });
     expect(readdirSync(work)).toEqual([]);
   });
 
   it('a build over the temporary-storage limit is stopped', async () => {
     const { service, work } = setup({ maxTempBytes: 1024 * 1024, watchdogMs: 50 });
-    const r = await finish(service, service.submit(sketch('#fill')));
+    const r = await finish(service, service.submit(sketch('#fill'), A));
     expect(r).toMatchObject({ ok: false, failure: 'storage_limit' });
     expect(readdirSync(work)).toEqual([]);
   });
@@ -116,31 +139,31 @@ describe('BuildService', () => {
     // A store of one image: publishing another build evicts the first (the real LRU).
     const { service, provider, artifacts, storeDir } = setup({}, { capBytes: 4 * 1024 * 1024 });
     const req = sketch('void setup() {}\nvoid loop() { /* a */ }\n');
-    const first = await finish(service, service.submit(req));
+    const first = await finish(service, service.submit(req, A));
     const sha = first.artifact!.sha256;
-    await finish(service, service.submit(sketch('void setup() {}\nvoid loop() { /* b */ }\n')));
+    await finish(service, service.submit(sketch('void setup() {}\nvoid loop() { /* b */ }\n'), A));
     expect(artifacts.exists(sha)).toBe(false);
     expect(existsSync(join(storeDir, `${sha}.bin`))).toBe(false);
-    expect(service.lookup(first.key)).toBeNull();
+    expect(service.lookup(first.key, A)).toBeNull();
     expect(provider.builds).toBe(2);
     // Eviction changed availability only: the same source is not a cache hit, compiles again,
     // and the server-computed identity is the same.
-    const again = service.submit(req);
+    const again = service.submit(req, A);
     expect('cached' in again).toBe(false);
     const rebuilt = await finish(service, again);
     expect(provider.builds).toBe(3);
     expect(rebuilt.key).toBe(first.key);
     expect(rebuilt.artifact).toEqual(first.artifact);
     expect(artifacts.exists(sha)).toBe(true);
-    expect(service.lookup(first.key)?.artifact?.sha256).toBe(sha);
+    expect(service.lookup(first.key, A)?.artifact?.sha256).toBe(sha);
   });
 
   it('compile errors keep their diagnostics and are not cached', async () => {
     const { service, provider } = setup();
-    const r = await finish(service, service.submit(sketch('#error')));
+    const r = await finish(service, service.submit(sketch('#error'), A));
     expect(r.ok).toBe(false);
     expect(r.diagnostics[0]).toMatchObject({ file: 'sketch.ino', line: 2, column: 3 });
-    await finish(service, service.submit(sketch('#error')));
+    await finish(service, service.submit(sketch('#error'), A));
     expect(provider.builds).toBe(2);
   });
 
@@ -156,24 +179,25 @@ describe('BuildService', () => {
 
 describe('several sources, one artifact', () => {
   it('each source keeps its own build record: cache hits and lookups answer for the source asked, also after a restart', async () => {
-    const { service, provider, storeDir } = setup();
-    const a = await finish(service, service.submit(sketch('#same // version a')));
-    const b = await finish(service, service.submit(sketch('#same // version b')));
+    const { service, provider, storeDir, state } = setup();
+    const a = await finish(service, service.submit(sketch('#same // version a'), A));
+    const b = await finish(service, service.submit(sketch('#same // version b'), A));
     expect(a.artifact!.sha256).toBe(b.artifact!.sha256); // identical bytes, stored once
     expect(a.key).not.toBe(b.key);
-    expect(service.lookup(a.key)?.key).toBe(a.key);
-    expect(service.lookup(b.key)?.key).toBe(b.key);
-    const hit = service.submit(sketch('#same // version a'));
+    expect(service.lookup(a.key, A)?.key).toBe(a.key);
+    expect(service.lookup(b.key, A)?.key).toBe(b.key);
+    const hit = service.submit(sketch('#same // version a'), A);
     expect('cached' in hit && hit.cached.key).toBe(a.key);
     expect(provider.builds).toBe(2);
-    // A new process reads every source's record back from the manifest.
-    const restarted = new ArtifactStore({ dir: storeDir, capBytes: 256 * 1024 * 1024, graceMs: 0 });
-    await restarted.load();
-    expect(restarted.findBuild(a.key)?.key).toBe(a.key);
-    expect(restarted.findBuild(b.key)?.key).toBe(b.key);
+    // A new process reads every source's record back (grants are persistent).
+    const again = new Grants(join(state, 'grants.db'));
+    expect(again.findBuild(A, a.key)?.key).toBe(a.key);
+    expect(again.findBuild(A, b.key)?.key).toBe(b.key);
+    again.close();
+    void storeDir;
   });
 
-  it('reads an early single-record manifest', async () => {
+  it('Sprint 7 manifests (build records inside) load as blobs only: users build again', async () => {
     const dir = tempDir('tbi-store-');
     cleanup.push(dir);
     const img = fakeImage('legacy');
@@ -193,7 +217,11 @@ describe('several sources, one artifact', () => {
     );
     const store = new ArtifactStore({ dir, capBytes: 64 * 1024 * 1024, graceMs: 0 });
     await store.load();
-    expect(store.findBuild('k1')).toEqual(record);
+    // The blob is managed (evictable) and intact; the old record grants nobody anything.
+    expect(store.manifest(sha)).toMatchObject({ sha256: sha, origin: 'build' });
+    expect(store.exists(sha)).toBe(true);
+    expect(store.isReference(sha)).toBe(false);
+    void record;
   });
 });
 
@@ -213,22 +241,21 @@ describe('ArtifactStore', () => {
       now: () => now,
     });
     await store.load();
-    const a = await store.publish(fakeImage('a'), { origin: 'build', key: 'ka' });
+    const a = await store.publish(fakeImage('a'), 'build');
     now += 10_000;
-    const b = await store.publish(fakeImage('b'), { origin: 'build', key: 'kb' });
+    const b = await store.publish(fakeImage('b'), 'build');
     store.lease(a.sha256, 60_000); // a is about to be used by a session
     now += 10_000;
-    const c = await store.publish(fakeImage('c'), { origin: 'build', key: 'kc' });
+    const c = await store.publish(fakeImage('c'), 'build');
     now += 10_000;
     await store.evict();
     expect(store.exists(a.sha256)).toBe(true); // leased
     expect(store.exists(b.sha256)).toBe(false); // least recently used, not leased
     expect(store.exists(c.sha256)).toBe(true);
     expect(store.exists(refSha)).toBe(true); // provisioned reference: never managed
-    expect(store.findBuild('kb')).toBeUndefined();
     // Once the lease ends, a can go too (still above the cap only if more are added).
     now += 120_000;
-    await store.publish(fakeImage('d'), { origin: 'build', key: 'kd' });
+    await store.publish(fakeImage('d'), 'build');
     now += 10_000;
     await store.evict();
     expect(store.managedBytes()).toBeLessThanOrEqual(2 * 4 * 1024 * 1024);
@@ -239,8 +266,8 @@ describe('ArtifactStore', () => {
     cleanup.push(dir);
     const store = new ArtifactStore({ dir, capBytes: 64 * 1024 * 1024, graceMs: 0 });
     const img = fakeImage('same');
-    const one = await store.publish(img, { origin: 'prebuilt' });
-    const two = await store.publish(img, { origin: 'prebuilt' });
+    const one = await store.publish(img, 'prebuilt');
+    const two = await store.publish(img, 'prebuilt');
     expect(one.sha256).toBe(createHash('sha256').update(img).digest('hex'));
     expect(two).toEqual(one);
     expect(readdirSync(dir).filter((n) => n.startsWith('.tmp-'))).toEqual([]);
@@ -259,7 +286,11 @@ describe('HTTP contract', () => {
   async function serve(subject: string | null = 'user-a') {
     const ctx = setup();
     const identity = testIdentity();
-    const server = createBuildHttpServer(ctx.service, { leaseMs: 60_000, identity });
+    const server = createBuildHttpServer(ctx.service, {
+      leaseMs: 60_000,
+      identity,
+      allowPrebuiltBinary: () => true,
+    });
     await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
     servers.push(server);
     const target = { host: '127.0.0.1', port: (server.address() as AddressInfo).port };
