@@ -16,6 +16,7 @@ import {
   principalFor,
   ticketFor,
 } from '../identity/test-gate.js';
+import { openPolicyConfig } from '../policy/testing.js';
 import { RUNTIME_HOME, artifact, assertProvisioned, recordEvidence } from '../harness/env.js';
 import { alive, gone, serialText, waitEvent, waitState } from '../host/tests/support.js';
 import type { HostSession } from '../host/session.js';
@@ -258,6 +259,8 @@ async function startHostProcess(tmpParent: string, port: number, env: Record<str
       TBI_IDENTITY_KEY_FILE: keyFile('identity.key', TEST_IDENTITY.key),
       TBI_IDENTITY_ISSUER: TEST_IDENTITY.issuer,
       TBI_TICKET_KEY_FILE: keyFile('ticket.key', TEST_TICKET_KEY),
+      // Not a policy test: the open test policy (Phase 4 policy has its own suites).
+      TBI_POLICY_FILE: keyFile('policy.json', Buffer.from(JSON.stringify(openPolicyConfig()))),
       ...env,
     },
     stdio: ['ignore', 'pipe', 'inherit'],

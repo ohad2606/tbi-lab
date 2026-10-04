@@ -13,6 +13,7 @@ import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:f
 import { createServer, type Server } from 'node:http';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { openAccessPolicy } from '../policy/testing.js';
 import { createBuildHttpServer } from '../builder/http.js';
 import { BuildService, DEFAULT_LIMITS } from '../builder/service.js';
 import { ArtifactStore } from '../builder/store.js';
@@ -70,8 +71,9 @@ beforeAll(async () => {
       grants,
       ticketKey: randomBytes(32),
       systemKeys: new Set(),
+      ...openAccessPolicy(),
     }),
-    { leaseMs: 60_000, identity, allowPrebuiltBinary: () => false },
+    { leaseMs: 60_000, identity },
   );
   await listen(build, { unix: join(run, 'build.sock') });
   servers.push(echo, build);

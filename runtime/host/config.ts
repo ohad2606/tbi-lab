@@ -6,6 +6,9 @@
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import type { RuntimeLauncher } from '../harness/launcher.js';
+import type { Policy } from '../policy/policy.js';
+import type { RateLimiter } from '../policy/rate.js';
+import type { ResourceProbe } from '../policy/resources.js';
 import { COMMAND_QUANTUM_US } from './protocol.js';
 
 export interface HostConfig {
@@ -23,6 +26,12 @@ export interface HostConfig {
   sessionRoot?: string;
   /** How QEMU is started (default: a direct child). The sandboxed unit in deployment. */
   launch?: RuntimeLauncher;
+  /** Phase 4: plans and global limits; without it only `maxSessions` applies (tests). */
+  policy?: Policy;
+  /** Persistent per-principal rate windows (session creation). */
+  rates?: RateLimiter;
+  /** Host resources (disk, memory); tests substitute. */
+  probe?: ResourceProbe;
   /** Parent directory for the host's private (0700) temporary root. */
   tmpParent: string;
   /** Environment given to the runtime process. Minimal by default. */

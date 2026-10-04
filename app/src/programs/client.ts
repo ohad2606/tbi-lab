@@ -24,7 +24,40 @@ export type {
 } from '../../../runtime/builder/protocol.js';
 
 export type BuildErrorCode =
-  'unreachable' | 'busy' | 'refused' | 'too_large' | 'not_an_image' | 'protocol';
+  | 'unreachable'
+  | 'busy'
+  | 'refused'
+  | 'too_large'
+  | 'not_an_image'
+  | 'protocol'
+  // Sprint 8 policy refusals (stable server codes, runtime/policy/refusal.ts):
+  | 'quota'
+  | 'rate_limited'
+  | 'cooldown'
+  | 'storage_quota'
+  | 'capability_disabled';
+
+/** A policy refusal from the build service, as this client's error code (or null). */
+function refusal(body: unknown): BuildErrorCode | null {
+  switch ((body as { error?: unknown } | null)?.error) {
+    case 'build_quota':
+      return 'quota';
+    case 'build_cooldown':
+      return 'cooldown';
+    case 'rate_limited':
+      return 'rate_limited';
+    case 'storage_quota':
+      return 'storage_quota';
+    case 'capability_disabled':
+      return 'capability_disabled';
+    case 'builder_busy':
+    case 'storage_pressure':
+    case 'memory_pressure':
+      return 'busy';
+    default:
+      return null;
+  }
+}
 
 export class BuildTransportError extends Error {
   constructor(
@@ -93,6 +126,8 @@ export class BuildClient {
       body: JSON.stringify({ protocol: BUILD_PROTOCOL, profile, files }),
     });
     if (status === 200) return (body as { build: BuildResult }).build;
+    const refused = refusal(body);
+    if (refused) throw new BuildTransportError(refused, status);
     if (status === 429) throw new BuildTransportError('busy', status);
     if (status === 413) throw new BuildTransportError('too_large', status);
     if (status !== 202)
@@ -129,6 +164,8 @@ export class BuildClient {
   async lease(sha256: string): Promise<string | null> {
     const { status, body } = await this.request(`/artifacts/${sha256}/lease`, { method: 'POST' });
     if (status === 404) return null;
+    const refused = refusal(body);
+    if (refused) throw new BuildTransportError(refused, status);
     if (status !== 200) throw new BuildTransportError('protocol', status);
     const ticket = (body as { ticket?: unknown }).ticket;
     if (typeof ticket !== 'string') throw new BuildTransportError('protocol', status);
@@ -142,6 +179,8 @@ export class BuildClient {
       headers: { 'content-type': 'application/octet-stream' },
       body: bytes,
     });
+    const refused = refusal(body);
+    if (refused) throw new BuildTransportError(refused, status);
     if (status === 413) throw new BuildTransportError('too_large', status);
     if (status === 422) throw new BuildTransportError('not_an_image', status);
     if (status !== 200) throw new BuildTransportError('protocol', status);

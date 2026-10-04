@@ -19,6 +19,8 @@ import { describeListen, listen, parseListen } from '../identity/listen.js';
 import { identityFromEnv } from '../identity/principal.js';
 import { loadTicketKey } from '../identity/ticket.js';
 import { systemdLauncher } from '../harness/launcher.js';
+import { Policy } from '../policy/policy.js';
+import { RateLimiter } from '../policy/rate.js';
 import { stopTemplateInstances } from '../builder/runner.js';
 import { defaultConfig, type HostConfig } from './config.js';
 import { SessionHost } from './host.js';
@@ -60,7 +62,13 @@ const sessionRoot = process.env.TBI_HOST_SESSION_ROOT;
 const runtimeUnit = process.env.TBI_HOST_RUNTIME_UNIT;
 // A previous host process's runtimes end with it (their sessions are gone).
 if (runtimeUnit) stopTemplateInstances('/usr/bin/systemctl', runtimeUnit);
+// Phase 4: plans, quotas and global limits; session-creation rates survive a restart.
+//   TBI_POLICY_FILE    policy (default: built-in)    TBI_HOST_STATE   directory for rates.db
+const policy = Policy.fromEnv();
+const stateDir = process.env.TBI_HOST_STATE;
 const config = defaultConfig({
+  policy,
+  ...(stateDir ? { rates: new RateLimiter(join(stateDir, 'rates.db')) } : {}),
   ...(sessionRoot ? { sessionRoot } : {}),
   ...(runtimeUnit ? { launch: systemdLauncher({ unit: runtimeUnit }) } : {}),
   ticketKey: loadTicketKey(ticketFile),

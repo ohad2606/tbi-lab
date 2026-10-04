@@ -12,6 +12,8 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import type { Principal } from '../identity/principal.js';
 import { verifyTicket } from '../identity/ticket.js';
+import { Refusal } from '../policy/refusal.js';
+import { checkResources } from '../policy/resources.js';
 import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import type { HostConfig } from './config.js';
@@ -19,7 +21,15 @@ import { validateCommand, validateCreate, type EndReason } from './protocol.js';
 import { HostSession } from './session.js';
 import { isTerminal } from './stateMachine.js';
 
-export type HostResult<T> = { ok: true; value: T } | { ok: false; status: number; error: string };
+export type HostResult<T> =
+  { ok: true; value: T } | { ok: false; status: number; error: string; refusal?: Refusal };
+
+const refused = (r: Refusal): { ok: false; status: number; error: string; refusal: Refusal } => ({
+  ok: false,
+  status: r.status,
+  error: r.code,
+  refusal: r,
+});
 
 export class SessionHost {
   private readonly sessions = new Map<string, HostSession>();
@@ -58,9 +68,35 @@ export class SessionHost {
     const ticket = verifyTicket(this.config.ticketKey, v.value.ticket);
     if (!ticket || ticket.principal !== principal || ticket.sha256 !== v.value.artifact.sha256)
       return { ok: false, status: 403, error: 'ticket invalid' };
-    const live = [...this.sessions.values()].filter((s) => !isTerminal(s.state)).length;
-    if (live >= this.config.maxSessions) return { ok: false, status: 429, error: 'session limit' };
-    const session = new HostSession(this.config, this.tmpRoot, v.value, principal, ticket.features);
+    const live = [...this.sessions.values()].filter((s) => !isTerminal(s.state));
+    const policy = this.config.policy;
+    let request = v.value;
+    if (policy) {
+      // Phase 4 admission, in order: the user's own limit, the host's capacity (another user's
+      // session is never stopped, nor named), host resources, then the user's creation rate —
+      // taken last, so a refused request does not consume it.
+      const plan = policy.plan(principal);
+      if (live.filter((s) => s.owner === principal).length >= plan.runtime.maxSessions)
+        return refused(new Refusal('session_quota'));
+      if (live.length >= Math.min(policy.maxLiveSessions, this.config.maxSessions))
+        return refused(new Refusal('runtime_capacity', 15_000));
+      try {
+        checkResources(policy.config.global.resources, this.tmpRoot, this.config.probe);
+      } catch (e) {
+        if (e instanceof Refusal) return refused(e);
+        throw e;
+      }
+      const rate = this.config.rates?.take(principal, 'session-create', plan.runtime.creations);
+      if (rate && !rate.ok) return refused(new Refusal('rate_limited', rate.retryAfterMs));
+      // The plan's lifetime caps the session (a client may only make it stricter).
+      const lifetime = Math.min(
+        request.limits?.maxLifetimeMs ?? Infinity,
+        plan.runtime.maxLifetimeMs,
+      );
+      request = { ...request, limits: { ...request.limits, maxLifetimeMs: lifetime } };
+    } else if (live.length >= this.config.maxSessions)
+      return { ok: false, status: 429, error: 'session limit' };
+    const session = new HostSession(this.config, this.tmpRoot, request, principal, ticket.features);
     this.sessions.set(session.id, session);
     session.prepare();
     return { ok: true, value: { session } };

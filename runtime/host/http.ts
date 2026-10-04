@@ -25,6 +25,8 @@
  */
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { principalOf, type IdentityConfig } from '../identity/principal.js';
+import { MemoryRate } from '../policy/rate.js';
+import { Refusal, admissionEvent, sendRefusal } from '../policy/refusal.js';
 import type { SessionHost } from './host.js';
 import { PROTOCOL, type SessionEvent } from './protocol.js';
 import type { HostSession } from './session.js';
@@ -142,9 +144,13 @@ function stream(req: IncomingMessage, res: ServerResponse, s: HostSession, url: 
  * it; without one the answer is 401.
  */
 export function createHttpServer(host: SessionHost, identity: IdentityConfig): Server {
+  const requests = new MemoryRate();
   return createServer((req, res) => {
-    void handle(host, identity, req, res).catch((e: unknown) => {
+    void handle(host, identity, requests, req, res).catch((e: unknown) => {
       const status = e instanceof HttpError ? e.status : 500;
+      // Operator log for the unexpected: the error only (no request data, identities or bodies).
+      if (status === 500)
+        process.stderr.write(`session host http: internal error: ${(e as Error)?.message ?? e}\n`);
       if (!res.headersSent)
         send(res, status, { error: e instanceof HttpError ? e.message : 'internal error' });
       else res.destroy();
@@ -155,6 +161,7 @@ export function createHttpServer(host: SessionHost, identity: IdentityConfig): S
 async function handle(
   host: SessionHost,
   identity: IdentityConfig,
+  requests: MemoryRate,
   req: IncomingMessage,
   res: ServerResponse,
 ): Promise<void> {
@@ -167,12 +174,25 @@ async function handle(
   }
   const principal = principalOf(req, identity);
   if (!principal) throw new HttpError(401, 'identity required');
+  // Anti-hammering backstop over every route of this principal (Phase 4).
+  if (host.config.policy) {
+    const r = requests.take(principal, 'request', host.config.policy.plan(principal).requests);
+    if (!r.ok) {
+      admissionEvent('runtime', 'request', 'rate_limited', principal);
+      return sendRefusal(res, new Refusal('rate_limited', r.retryAfterMs));
+    }
+  }
   if (parts[0] !== 'sessions') throw new HttpError(404, 'not found');
 
   if (parts.length === 1 && method === 'POST') {
     const body = await readBody(req, host.config.maxRequestBytes);
     const r = host.create(body, principal);
+    if (!r.ok && r.refusal) {
+      admissionEvent('runtime', 'session-create', r.refusal.code, principal);
+      return sendRefusal(res, r.refusal);
+    }
     if (!r.ok) throw new HttpError(r.status, r.error);
+    if (host.config.policy) admissionEvent('runtime', 'session-create', 'admitted', principal);
     const s = r.value.session;
     return send(res, 201, { sessionId: s.id, token: s.token, status: s.status() });
   }

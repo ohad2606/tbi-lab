@@ -8,6 +8,7 @@ import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { sourceKey } from '@tbi-lab/domain';
 import { afterEach, describe, expect, it } from 'vitest';
+import { openAccessPolicy } from '../../policy/testing.js';
 import { derivePrincipal } from '../../identity/principal.js';
 import {
   TEST_IDENTITY,
@@ -56,6 +57,7 @@ function world(opts: { capBytes?: number; reference?: Buffer } = {}) {
     grants,
     ticketKey: TEST_TICKET_KEY,
     systemKeys: new Set([SYSTEM_KEY]),
+    ...openAccessPolicy(),
   });
   return { service, provider, store, grants, refSha };
 }
@@ -180,11 +182,9 @@ describe('artifacts and build records belong to their principal', () => {
 describe('over HTTP: not yours and not present are the same answer', () => {
   it('lease, lookup, status and prebuilt upload for users A and B through their gates', async () => {
     const { service } = world({ reference: fakeImage('r1') });
-    let prebuiltAllowed = true;
     const server = createBuildHttpServer(service, {
       leaseMs: 60_000,
       identity: TEST_IDENTITY,
-      allowPrebuiltBinary: () => prebuiltAllowed,
     });
     await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
     closers.push(() => server.close());
@@ -243,7 +243,8 @@ describe('over HTTP: not yours and not present are the same answer', () => {
     expect(
       (await fetch(`${gb.base}/v1/artifacts/${artifact.sha256}/lease`, { method: 'POST' })).status,
     ).toBe(404);
-    prebuiltAllowed = false;
+    // The capability is policy (Phase 4): switch it off for every principal of the default plan.
+    service.access.policy.config.plans.preview!.capabilities.allowPrebuiltBinary = false;
     const refused = await fetch(`${ga.base}/v1/artifacts`, { method: 'POST', body: img });
     expect(refused.status).toBe(403);
     expect(await refused.json()).toEqual({ error: 'capability_disabled' });

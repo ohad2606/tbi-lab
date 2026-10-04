@@ -141,6 +141,23 @@ export class ArtifactStore {
     return { sha256: sha, bytes: bytes.length, origin: existing?.origin ?? origin };
   }
 
+  /** Whether a lease currently protects the artifact. */
+  isLeased(sha: string): boolean {
+    return (this.leases.get(sha) ?? 0) > this.now();
+  }
+
+  /**
+   * Remove one managed artifact now (quota or retention: its last grant is gone). Never a leased
+   * or reference image; returns whether it was removed.
+   */
+  async remove(sha: string): Promise<boolean> {
+    if (!this.manifests.has(sha) || this.isLeased(sha)) return false;
+    await rm(join(this.opts.dir, `${sha}.json`), { force: true });
+    await rm(this.binPath(sha), { force: true });
+    this.forget(sha);
+    return true;
+  }
+
   /** Mark an artifact as used now (a cache hit or lookup on it). */
   used(sha: string): void {
     if (this.manifests.has(sha)) this.touch(sha);

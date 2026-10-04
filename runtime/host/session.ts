@@ -87,7 +87,8 @@ export class HostSession {
   private engine: EngineSession | null = null;
   private readonly quantumNs: bigint;
   private readonly publishNs: bigint;
-  private readonly lifetimeMs: number;
+  /** Effective lifetime: the host limit, a stricter client limit, and the plan (Phase 4). */
+  readonly lifetimeMs: number;
   private readonly abort = new AbortController();
   private pid: number | null = null;
   private outcome: Outcome | null = null;

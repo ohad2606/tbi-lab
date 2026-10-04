@@ -353,6 +353,14 @@ export const en = {
   'build.unavailable': 'The build service is not available here.',
   'build.error.unreachable': 'Could not reach the build service. Your code is safe; try again.',
   'build.error.busy': 'The build service is busy. Try again in a moment.',
+  'build.error.quota':
+    'You already have a build in progress and one waiting. Wait for them to finish.',
+  'build.error.rate_limited': 'Too many builds in a short time. Try again in a few minutes.',
+  'build.error.cooldown':
+    'Several builds failed in a row. Wait a few minutes before building again.',
+  'build.error.storage_quota':
+    'Your saved builds are at their limit and are all in use. Stop the running session, then build again.',
+  'build.error.capability_disabled': 'Running a prebuilt binary is not available for your account.',
   'build.error.refused': 'The build service refused this request.',
   'build.error.too_large': 'The code is too large to build (the limit is 64 KiB).',
   'build.error.not_an_image': 'The build service could not use this file.',
@@ -362,6 +370,8 @@ export const en = {
   'build.failure.storage_limit': 'The build used too much temporary storage and was stopped.',
   'build.failure.unsupported_input': 'This code cannot be built in this environment.',
   'build.failure.internal': 'The build service had an internal problem. Try again.',
+  'build.failure.capacity_timeout':
+    'The build waited too long for the build service and did not start. Try again.',
   'build.diagnostics.heading': 'Problems',
   'build.severity.error': 'Error',
   'build.severity.warning': 'Warning',
@@ -408,6 +418,10 @@ export const en = {
     'Could not start an ESP32 session: the runtime service is not reachable. The project is not affected.',
   'sim.error.runtime.runtime_busy':
     'The ESP32 runtime service is busy. Try again in a moment. The project is not affected.',
+  'sim.error.runtime.session_quota':
+    'You already have an ESP32 session running. Stop it before starting another. The project is not affected.',
+  'sim.error.runtime.rate_limited':
+    'Too many ESP32 sessions were started in a short time. Try again in a few minutes. The project is not affected.',
   'sim.error.runtime.firmware_unavailable':
     'The selected firmware is not available on the runtime service. The project is not affected.',
   'sim.error.runtime.unsupported_feature':

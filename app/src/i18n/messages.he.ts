@@ -339,6 +339,12 @@ export const he: Record<MessageKey, string> = {
   'build.unavailable': 'שירות הבנייה אינו זמין כאן.',
   'build.error.unreachable': 'לא ניתן היה להתחבר לשירות הבנייה. הקוד שלכם שמור; נסו שוב.',
   'build.error.busy': 'שירות הבנייה עמוס. נסו שוב בעוד רגע.',
+  'build.error.quota': 'כבר יש לך בנייה בתהליך ובנייה ממתינה. המתינו לסיומן.',
+  'build.error.rate_limited': 'יותר מדי בניות בזמן קצר. נסו שוב בעוד כמה דקות.',
+  'build.error.cooldown': 'כמה בניות נכשלו ברצף. המתינו כמה דקות לפני בנייה נוספת.',
+  'build.error.storage_quota':
+    'הבניות השמורות שלך הגיעו למגבלה וכולן בשימוש. עצרו את הריצה ונסו לבנות שוב.',
+  'build.error.capability_disabled': 'הרצת קובץ בינארי מוכן אינה זמינה בחשבון שלך.',
   'build.error.refused': 'שירות הבנייה דחה את הבקשה.',
   'build.error.too_large': 'הקוד גדול מדי לבנייה (המגבלה היא 64 KiB).',
   'build.error.not_an_image': 'שירות הבנייה לא יכול היה להשתמש בקובץ הזה.',
@@ -347,6 +353,7 @@ export const he: Record<MessageKey, string> = {
   'build.failure.storage_limit': 'הבנייה השתמשה ביותר מדי אחסון זמני ונעצרה.',
   'build.failure.unsupported_input': 'אי אפשר לבנות את הקוד הזה בסביבה הזו.',
   'build.failure.internal': 'בשירות הבנייה אירעה תקלה פנימית. נסו שוב.',
+  'build.failure.capacity_timeout': 'הבנייה המתינה יותר מדי לשירות הבנייה ולא התחילה. נסו שוב.',
   'build.diagnostics.heading': 'בעיות',
   'build.severity.error': 'שגיאה',
   'build.severity.warning': 'אזהרה',
@@ -392,6 +399,10 @@ export const he: Record<MessageKey, string> = {
     'לא ניתן להפעיל סשן ESP32: שירות הריצה אינו זמין. הפרויקט לא נפגע.',
   'sim.error.runtime.runtime_busy':
     'שירות הריצה של ESP32 עמוס כרגע. נסו שוב בעוד רגע. הפרויקט לא נפגע.',
+  'sim.error.runtime.session_quota':
+    'כבר יש לך ריצת ESP32 פעילה. עצרו אותה לפני שתתחילו אחרת. הפרויקט לא נפגע.',
+  'sim.error.runtime.rate_limited':
+    'הופעלו יותר מדי ריצות ESP32 בזמן קצר. נסו שוב בעוד כמה דקות. הפרויקט לא נפגע.',
   'sim.error.runtime.firmware_unavailable':
     'הקושחה שנבחרה אינה זמינה בשירות הריצה. הפרויקט לא נפגע.',
   'sim.error.runtime.unsupported_feature':

@@ -1,3 +1,4 @@
+import { openAccessPolicy } from '../../../runtime/policy/testing.js';
 /**
  * Fake build service for ROUTINE browser tests (Sprint 7). No toolchain.
  *
@@ -138,13 +139,13 @@ export function resetFakeBuildService(capImages?: number): { store: string; work
     grants,
     ticketKey: E2E_TICKET_KEY,
     systemKeys: systemSourceKeys(), // as deployed: the curated examples are shared records
+    ...openAccessPolicy(),
   });
   grantsRef = grants;
   currentGrants = grants;
   current = createBuildHttpServer(service, {
     leaseMs: 60_000,
     identity: E2E_IDENTITY,
-    allowPrebuiltBinary: () => true,
   });
   return dirs;
 }

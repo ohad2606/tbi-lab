@@ -16,6 +16,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
+import { openAccessPolicy } from '../policy/testing.js';
 import { ESP32_ARDUINO_PROFILE } from '@tbi-lab/domain';
 import { ArduinoEsp32Provider, type ArduinoProfileRecord } from '../builder/arduino.js';
 import type { BuildResult } from '../builder/protocol.js';
@@ -62,7 +63,7 @@ function freshService(limits: Partial<ServiceLimits> = {}, capBytes = 256 * 1024
     }),
     work,
     { ...DEFAULT_LIMITS, ...limits },
-    { grants, ticketKey: TEST_TICKET_KEY, systemKeys: new Set() },
+    { grants, ticketKey: TEST_TICKET_KEY, systemKeys: new Set(), ...openAccessPolicy() },
   );
   return { service, provider, store, work };
 }

@@ -15,6 +15,8 @@ export default defineConfig({
       'runtime/builder/tests/**/*.test.ts',
       // Sprint 8 identity boundary (principal derivation, listening, the test gate).
       'runtime/identity/tests/**/*.test.ts',
+      // Sprint 8 Phase 4 policy, quotas, rate limits and admission.
+      'runtime/policy/tests/**/*.test.ts',
     ],
     // *.esp32.test.ts spawn a real QEMU classic-ESP32 runtime and take minutes.
     // They are run explicitly via `npm run test:esp32`.

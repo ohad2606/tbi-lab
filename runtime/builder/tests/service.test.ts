@@ -8,6 +8,7 @@ import { existsSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } f
 import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { openAccessPolicy } from '../../policy/testing.js';
 import { sourceKey } from '@tbi-lab/domain';
 import { createBuildHttpServer, PREBUILT_IMAGE_BYTES } from '../http.js';
 import { validateBuildRequest } from '../protocol.js';
@@ -52,7 +53,7 @@ function setup(
     artifacts,
     work,
     { ...DEFAULT_LIMITS, ...limits },
-    { grants, ticketKey: TEST_TICKET_KEY, systemKeys },
+    { grants, ticketKey: TEST_TICKET_KEY, systemKeys, ...openAccessPolicy() },
   );
   return { service, provider, artifacts, grants, storeDir, work, state };
 }
@@ -289,7 +290,6 @@ describe('HTTP contract', () => {
     const server = createBuildHttpServer(ctx.service, {
       leaseMs: 60_000,
       identity,
-      allowPrebuiltBinary: () => true,
     });
     await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
     servers.push(server);
@@ -365,5 +365,32 @@ describe('HTTP contract', () => {
       body: JSON.stringify({ ...sketch('x'), profile: 'esp32-micropython-1.29' }),
     });
     expect(unknown.status).toBe(400);
+  });
+});
+
+describe('grants schema upgrades', () => {
+  it('a Phase 2 database (no sizes) is upgraded in place and its sizes backfilled', async () => {
+    const { DatabaseSync } = await import('node:sqlite');
+    const dir = tempDir('tbi-grants-up-');
+    cleanup.push(dir);
+    const file = join(dir, 'grants.db');
+    const old = new DatabaseSync(file);
+    old.exec(`CREATE TABLE artifact_grant (owner TEXT NOT NULL, sha256 TEXT NOT NULL,
+      origin TEXT NOT NULL, source_key TEXT NOT NULL DEFAULT '', record TEXT,
+      created_at INTEGER NOT NULL, last_used_at INTEGER NOT NULL,
+      PRIMARY KEY (owner, sha256, source_key))`);
+    old
+      .prepare(`INSERT INTO artifact_grant VALUES (?, ?, 'prebuilt', '', NULL, 1, 1)`)
+      .run(principalFor('user-a'), 'a'.repeat(64));
+    old.close();
+    const grants = new Grants(file);
+    expect(grants.usage(principalFor('user-a'))).toEqual({ artifacts: 1, bytes: 0 });
+    expect(grants.backfillBytes(() => 4 * 1024 * 1024)).toBe(1);
+    expect(grants.usage(principalFor('user-a'))).toEqual({ artifacts: 1, bytes: 4 * 1024 * 1024 });
+    grants.close();
+    // Reopening is a no-op upgrade.
+    const again = new Grants(file);
+    expect(again.usage(principalFor('user-a')).bytes).toBe(4 * 1024 * 1024);
+    again.close();
   });
 });

@@ -10,6 +10,7 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { openAccessPolicy } from '../../policy/testing.js';
 import { createBuildHttpServer } from '../../builder/http.js';
 import { BuildService, DEFAULT_LIMITS } from '../../builder/service.js';
 import { ArtifactStore } from '../../builder/store.js';
@@ -105,12 +106,16 @@ async function serveBuild(identity: IdentityConfig) {
     new ArtifactStore({ dir, capBytes: 64 << 20, graceMs: 0 }),
     work,
     DEFAULT_LIMITS,
-    { grants: new Grants(':memory:'), ticketKey: randomBytes(32), systemKeys: new Set() },
+    {
+      grants: new Grants(':memory:'),
+      ticketKey: randomBytes(32),
+      systemKeys: new Set(),
+      ...openAccessPolicy(),
+    },
   );
   const server = createBuildHttpServer(service, {
     leaseMs: 60_000,
     identity,
-    allowPrebuiltBinary: () => true,
   });
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
   cleanup.push(() => void server.close());

@@ -5,6 +5,8 @@
  */
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { principalOf, type IdentityConfig, type Principal } from '../identity/principal.js';
+import { MemoryRate } from '../policy/rate.js';
+import { Refusal, admissionEvent, sendRefusal } from '../policy/refusal.js';
 import { RequestError, validateBuildRequest } from './protocol.js';
 import type { BuildService } from './service.js';
 
@@ -17,15 +19,19 @@ export interface HttpOptions {
   leaseMs: number;
   /** Identity asserted by the gate (Sprint 8, D-S8-1): every route but health requires it. */
   identity: IdentityConfig;
-  /** Policy capability `allowPrebuiltBinary` (owner decision Q2) for this principal. */
-  allowPrebuiltBinary: (principal: Principal) => boolean;
 }
 
 export function createBuildHttpServer(service: BuildService, opts: HttpOptions): Server {
+  const requests = new MemoryRate();
   return createServer((req, res) => {
-    void handle(service, opts, req, res).catch((e: unknown) => {
-      if (e instanceof RequestError) send(res, e.status, { error: e.reason });
-      else send(res, 500, { error: 'internal' });
+    void handle(service, opts, requests, req, res).catch((e: unknown) => {
+      if (e instanceof Refusal) sendRefusal(res, e);
+      else if (e instanceof RequestError) send(res, e.status, { error: e.reason });
+      else {
+        // Operator log: the error only (no request data, identities or bodies).
+        process.stderr.write(`build http: internal error: ${(e as Error)?.message ?? e}\n`);
+        send(res, 500, { error: 'internal' });
+      }
     });
   });
 }
@@ -68,6 +74,7 @@ function readBody(req: IncomingMessage, max: number): Promise<Buffer> {
 async function handle(
   service: BuildService,
   opts: HttpOptions,
+  requests: MemoryRate,
   req: IncomingMessage,
   res: ServerResponse,
 ): Promise<void> {
@@ -83,6 +90,33 @@ async function handle(
   // Who is asking: only the gate asserts it; without an identity nothing else is answered.
   const principal = principalOf(req, opts.identity);
   if (!principal) throw new RequestError(401, 'identity_required');
+  // Anti-hammering backstop over every route of this principal (Phase 4).
+  const plan = service.access.policy.plan(principal);
+  const r = requests.take(principal, 'request', plan.requests);
+  if (!r.ok) return refuse(new Refusal('rate_limited', r.retryAfterMs), principal, 'request');
+  try {
+    await route(service, opts, req, res, url, principal);
+  } catch (e) {
+    if (e instanceof Refusal) return refuse(e, principal, url.pathname.split('/')[2] ?? 'request');
+    throw e;
+  }
+
+  function refuse(e: Refusal, who: Principal, action: string): void {
+    admissionEvent('build', action, e.code, who);
+    sendRefusal(res, e);
+  }
+}
+
+async function route(
+  service: BuildService,
+  opts: HttpOptions,
+  req: IncomingMessage,
+  res: ServerResponse,
+  url: URL,
+  principal: Principal,
+): Promise<void> {
+  const path = url.pathname;
+  const method = req.method ?? 'GET';
 
   if (method === 'POST' && path === '/v1/builds') {
     if (!/^application\/json\b/.test(req.headers['content-type'] ?? ''))
@@ -119,8 +153,10 @@ async function handle(
   }
 
   if (method === 'POST' && path === '/v1/artifacts') {
-    // A policy capability (Sprint 8, owner decision Q2), never a weaker path when enabled.
-    if (!opts.allowPrebuiltBinary(principal)) throw new RequestError(403, 'capability_disabled');
+    // A policy capability (Sprint 8, owner decision Q2), never a weaker path when enabled:
+    // refused before the 4 MiB body is read.
+    if (!service.access.policy.plan(principal).capabilities.allowPrebuiltBinary)
+      throw new Refusal('capability_disabled');
     const bytes = await readBody(req, PREBUILT_IMAGE_BYTES);
     // Form check only (no analysis or patching): the size and the two ESP image headers of a
     // merged Classic ESP32 flash image (bootloader at 0x1000, app at 0x10000).

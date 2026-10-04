@@ -76,7 +76,14 @@ export interface BuildResult {
   /** Bounded raw toolchain output (details view only). */
   log: { text: string; truncated: boolean };
   /** The reason a build could not complete (timeout, resource limit, internal). */
-  failure?: 'compile_error' | 'timeout' | 'storage_limit' | 'unsupported_input' | 'internal';
+  failure?:
+    | 'compile_error'
+    | 'timeout'
+    | 'storage_limit'
+    | 'unsupported_input'
+    | 'internal'
+    /** Sprint 8: waited in the queue longer than the policy allows (capacity was busy). */
+    | 'capacity_timeout';
   timings: { queuedMs: number; buildMs: number };
 }
 

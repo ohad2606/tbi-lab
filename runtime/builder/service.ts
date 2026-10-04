@@ -24,14 +24,29 @@ import { signTicket, type TicketFeatures } from '../identity/ticket.js';
 import { GLOBAL, type Grants, type Owner } from './grants.js';
 import type { BuildProvider, ProviderOutput } from './provider.js';
 import type { ArtifactStore } from './store.js';
+import type { Policy } from '../policy/policy.js';
+import type { RateLimiter } from '../policy/rate.js';
+import { Refusal, admissionEvent } from '../policy/refusal.js';
+import { checkResources, type ResourceProbe } from '../policy/resources.js';
 
-/** Ownership and authorization (Sprint 8). */
+/** Ownership, authorization and policy (Sprint 8). */
 export interface ServiceAccess {
   grants: Grants;
   /** Key shared with the Session Host for run tickets. */
   ticketKey: Buffer;
   /** Source keys of the curated system sources: their builds are shared (`global`). */
   systemKeys: ReadonlySet<string>;
+  /** Plans, quotas and global limits (Phase 4). */
+  policy: Policy;
+  /** Persistent per-principal rate windows (submissions, failures, uploads). */
+  rates: RateLimiter;
+  /** Host resources (disk, memory); tests substitute. */
+  probe?: ResourceProbe;
+  /**
+   * Live runtime sessions on this host right now (the Session Host's health). New builds do not
+   * START while sessions use the CPUs (policy); unknown → builds are not deferred.
+   */
+  liveSessions?: () => number | null;
 }
 
 export interface ServiceLimits {
@@ -63,6 +78,8 @@ interface BuildRecord {
   key: string;
   /** Who the build belongs to: the submitter, or `global` for a curated system source. */
   owner: Owner;
+  /** Who asked for it: their quota and limits apply (also for a shared system source). */
+  submitter: Principal;
   request: BuildRequest;
   provider: BuildProvider;
   state: BuildState;
@@ -118,13 +135,14 @@ export class BuildService {
       (r) => r.key === key && r.owner === owner,
     );
     if (pending) return { buildId: pending.id, token: pending.token };
-    if (this.queue.length >= this.limits.maxQueued) throw new RequestError(429, 'busy');
+    this.admit(principal);
     this.prune();
     const record: BuildRecord = {
       id: `b_${randomBytes(12).toString('hex')}`,
       token: randomBytes(24).toString('base64url'),
       key,
       owner,
+      submitter: principal,
       request,
       provider,
       state: 'queued',
@@ -132,8 +150,81 @@ export class BuildService {
     };
     this.records.set(record.id, record);
     this.queue.push(record);
+    admissionEvent('build', 'submit', 'admitted', principal);
     void this.pump();
     return { buildId: record.id, token: record.token };
+  }
+
+  /**
+   * Admission of a NEW compilation (Phase 4), checked synchronously in one go so that concurrent
+   * requests cannot race past a limit; the rate token is taken last, so a refused request never
+   * consumes it. Order: the user's own limits, then shared capacity, then the user's rate.
+   */
+  private admit(principal: Principal): void {
+    const plan = this.access.policy.plan(principal);
+    const g = this.access.policy.config.global;
+    const mine = (r: BuildRecord | null) => r?.submitter === principal;
+    const inFlight = this.queue.filter(mine).length + (mine(this.active) ? 1 : 0);
+    if (inFlight >= plan.build.maxActive + plan.build.maxQueued) throw new Refusal('build_quota');
+    const failures = this.access.rates.check(principal, 'build-failure', plan.build.failures);
+    if (!failures.ok) {
+      const last = this.access.rates.latest(principal, 'build-failure') ?? Date.now();
+      const wait = last + plan.build.cooldownMs - Date.now();
+      if (wait > 0) throw new Refusal('build_cooldown', wait);
+    }
+    this.checkStorage(principal);
+    checkResources(g.resources, this.workRoot, this.access.probe);
+    if (this.queue.length >= g.build.maxQueued) throw new Refusal('builder_busy', 30_000);
+    const rate = this.access.rates.take(principal, 'build-submit', plan.build.submissions);
+    if (!rate.ok) throw new Refusal('rate_limited', rate.retryAfterMs);
+  }
+
+  /**
+   * A principal at their artifact quota can still build when their own least recently used,
+   * unleased artifact can make room; otherwise `storage_quota`.
+   */
+  private checkStorage(principal: Principal): void {
+    const s = this.access.policy.plan(principal).storage;
+    const u = this.access.grants.usage(principal);
+    if (u.artifacts < s.maxArtifacts && u.bytes < s.maxBytes) return;
+    const evictable = this.access.grants
+      .lruOf(principal)
+      .some((a) => !this.store.isLeased(a.sha256));
+    if (!evictable) throw new Refusal('storage_quota');
+  }
+
+  /**
+   * Bring a principal back within their storage quota by dropping their own least recently used
+   * grants (never a leased artifact, never someone else's); a blob is removed only when nobody
+   * holds a grant on it any more.
+   */
+  private async enforceStorage(principal: Principal): Promise<void> {
+    const s = this.access.policy.plan(principal).storage;
+    for (const a of this.access.grants.lruOf(principal)) {
+      const u = this.access.grants.usage(principal);
+      if (u.artifacts <= s.maxArtifacts && u.bytes <= s.maxBytes) return;
+      if (this.store.isLeased(a.sha256)) continue;
+      this.access.grants.dropGrant(principal, a.sha256);
+      if (this.access.grants.holders(a.sha256) === 0) await this.store.remove(a.sha256);
+    }
+  }
+
+  /**
+   * Retention (policy, not schema): private grants unused longer than their owner's plan allows
+   * are dropped — never a leased artifact, never a shared system record; an artifact nobody holds
+   * any more is removed. Returns how many grants were dropped.
+   */
+  async sweepRetention(now = Date.now()): Promise<number> {
+    const policy = this.access.policy;
+    let dropped = 0;
+    for (const c of this.access.grants.unusedSince(now - policy.minRetentionMs)) {
+      const days = policy.plan(c.owner).storage.retentionDays;
+      if (c.lastUsedAt >= now - days * 24 * 3600_000 || this.store.isLeased(c.sha256)) continue;
+      this.access.grants.dropGrant(c.owner, c.sha256);
+      dropped++;
+      if (this.access.grants.holders(c.sha256) === 0) await this.store.remove(c.sha256);
+    }
+    return dropped;
   }
 
   /**
@@ -189,10 +280,26 @@ export class BuildService {
     return { until, ticket };
   }
 
-  /** An Advanced prebuilt image: stored once, granted to its uploader only. */
+  /**
+   * An Advanced prebuilt image: stored once, granted to its uploader only, under the same policy
+   * as built firmware — capability, upload rate, storage quota, host resources.
+   */
   async publishPrebuilt(principal: Principal, bytes: Buffer) {
+    const plan = this.access.policy.plan(principal);
+    if (!plan.capabilities.allowPrebuiltBinary) throw new Refusal('capability_disabled');
+    this.checkStorage(principal);
+    checkResources(
+      this.access.policy.config.global.resources,
+      this.workRoot,
+      this.access.probe,
+      false,
+    );
+    const rate = this.access.rates.take(principal, 'prebuilt-upload', plan.storage.prebuiltUploads);
+    if (!rate.ok) throw new Refusal('rate_limited', rate.retryAfterMs);
     const artifact = await this.store.publish(bytes, 'prebuilt');
-    this.access.grants.recordPrebuilt(principal, artifact.sha256);
+    this.access.grants.recordPrebuilt(principal, artifact.sha256, artifact.bytes);
+    await this.enforceStorage(principal);
+    admissionEvent('build', 'prebuilt', 'admitted', principal);
     return artifact;
   }
 
@@ -226,14 +333,42 @@ export class BuildService {
         .forEach((r) => this.records.delete(r.id));
   }
 
+  private deferred: ReturnType<typeof setTimeout> | null = null;
+
+  /**
+   * Start the next build when capacity allows (Phase 4 admission):
+   * - a build that waited longer than the policy allows fails as `capacity_timeout` (it never
+   *   starts late into contention);
+   * - while live runtime sessions occupy the CPUs, NO NEW build starts (sessions have priority;
+   *   nothing that runs is ever stopped) — it waits in the queue and is retried every second.
+   */
   private async pump(): Promise<void> {
     if (this.active) return;
-    const next = this.queue.shift();
-    if (!next) {
+    const policy = this.access.policy;
+    const now = Date.now();
+    for (const r of [...this.queue])
+      if (now - r.submittedAt > policy.config.global.build.maxQueueWaitMs) {
+        this.queue.splice(this.queue.indexOf(r), 1);
+        r.result = this.failed(r, 'capacity_timeout', 'The build waited too long for capacity.', 0);
+        r.state = 'failed';
+        r.finishedAt = now;
+        admissionEvent('build', 'start', 'builder_busy', r.submitter);
+      }
+    if (!this.queue.length) {
       for (const done of this.idle) done();
       this.idle.clear();
       return;
     }
+    const live = this.access.liveSessions?.() ?? null;
+    if (live !== null && live >= policy.deferBuildsAtLiveSessions) {
+      if (!this.deferred)
+        this.deferred = setTimeout(() => {
+          this.deferred = null;
+          void this.pump();
+        }, 1000);
+      return;
+    }
+    const next = this.queue.shift()!;
     this.active = next;
     next.state = 'building';
     try {
@@ -245,8 +380,34 @@ export class BuildService {
     }
     next.state = next.result.ok ? 'succeeded' : 'failed';
     next.finishedAt = Date.now();
+    // Failed builds count toward the submitter's cool-down; they hold no capacity afterwards.
+    // (Bookkeeping must never take the pump down: a failure here is logged, the queue goes on.)
+    try {
+      if (!next.result.ok && next.result.failure !== 'internal')
+        this.access.rates.record(next.submitter, 'build-failure');
+    } catch (e) {
+      process.stderr.write(
+        `build ${next.id}: could not record a failure: ${(e as Error).message}\n`,
+      );
+    }
+    if (next.result.ok && next.owner === next.submitter)
+      await this.enforceStorage(next.submitter).catch(() => undefined);
     this.active = null;
     void this.pump();
+  }
+
+  /** Builds of a principal currently queued or compiling (tests, operator summaries). */
+  inFlight(principal: Principal): number {
+    return (
+      this.queue.filter((r) => r.submitter === principal).length +
+      (this.active?.submitter === principal ? 1 : 0)
+    );
+  }
+
+  /** Stop the deferral timer (shutdown, tests). */
+  close(): void {
+    if (this.deferred) clearTimeout(this.deferred);
+    this.deferred = null;
   }
 
   private failed(

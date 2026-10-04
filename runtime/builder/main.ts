@@ -7,7 +7,9 @@
  *   TBI_IDENTITY_KEY_FILE, TBI_IDENTITY_ISSUER, TBI_IDENTITY_HEADER   gate identity (identity/)
  *   TBI_TICKET_KEY_FILE    run-ticket key shared with the Session Host (identity/ticket.ts)
  *   TBI_BUILD_STATE        private state directory (grants.db)
- *   TBI_ALLOW_PREBUILT     `1`/`0`: the allowPrebuiltBinary capability (default 1 in the preview)
+ *   TBI_POLICY_FILE        plans, quotas and global limits (runtime/policy; default: built-in)
+ *   TBI_RUNTIME_HEALTH     the Session Host's socket (`unix:/path`): its live sessions defer new
+ *                          builds (sessions first); unset: builds are never deferred
  *   TBI_BUILD_JOB_UNIT     template unit prefix of the per-job sandbox (e.g. tbi-build-job);
  *                          unset: tools run as child processes (development only)
  *   TBI_ARDUINO_HOME       provisioned Arduino home (bin/arduino-cli, data/), read-only
@@ -26,7 +28,10 @@ import { ESP32_ARDUINO_PROFILE } from '@tbi-lab/domain';
 import { describeListen, listen, parseListen } from '../identity/listen.js';
 import { identityFromEnv } from '../identity/principal.js';
 import { loadTicketKey } from '../identity/ticket.js';
+import { Policy } from '../policy/policy.js';
+import { RateLimiter } from '../policy/rate.js';
 import { Grants } from './grants.js';
+import { watchLiveSessions } from './live-sessions.js';
 import { SandboxToolRunner } from './runner.js';
 import { systemSourceKeys } from './system-sources.js';
 import { ArduinoEsp32Provider, type ArduinoProfileRecord } from './arduino.js';
@@ -45,7 +50,11 @@ const ticketFile = process.env.TBI_TICKET_KEY_FILE;
 if (!ticketFile) throw new Error('TBI_TICKET_KEY_FILE is required');
 const ticketKey = loadTicketKey(ticketFile);
 const stateDir = process.env.TBI_BUILD_STATE ?? join(RUNTIME_HOME, 'build-state');
-const allowPrebuilt = (process.env.TBI_ALLOW_PREBUILT ?? '1') === '1';
+const policy = Policy.fromEnv();
+const rates = new RateLimiter(join(stateDir, 'rates.db'));
+const liveSessions = process.env.TBI_RUNTIME_HEALTH
+  ? watchLiveSessions(parseListen(process.env.TBI_RUNTIME_HEALTH))
+  : undefined;
 const arduinoHome = process.env.TBI_ARDUINO_HOME ?? join(RUNTIME_HOME, 'arduino');
 const storeDir = process.env.TBI_ARTIFACT_STORE ?? join(RUNTIME_HOME, 'artifacts');
 const workRoot = process.env.TBI_BUILD_WORK ?? join(RUNTIME_HOME, 'build-jobs');
@@ -71,17 +80,25 @@ const store = new ArtifactStore({
   onEvicted: (sha) => grants.dropArtifact(sha),
 });
 await store.load();
+// Grants recorded before Phase 4 learn their sizes (storage quota).
+grants.backfillBytes(
+  (sha) => store.manifest(sha)?.bytes ?? (store.isReference(sha) ? 4 * 1024 * 1024 : undefined),
+);
 const service = new BuildService([provider], store, workRoot, DEFAULT_LIMITS, {
   grants,
   ticketKey,
   systemKeys: systemSourceKeys(),
+  policy,
+  rates,
+  ...(liveSessions ? { liveSessions } : {}),
 });
+// Retention (policy): unused private grants and the artifacts nobody holds any more.
+setInterval(
+  () => void service.sweepRetention().catch(() => undefined),
+  policy.config.global.retention.sweepIntervalMs,
+).unref();
 await service.sweep();
-const server = createBuildHttpServer(service, {
-  leaseMs,
-  identity,
-  allowPrebuiltBinary: () => allowPrebuilt,
-});
+const server = createBuildHttpServer(service, { leaseMs, identity });
 // Signal handlers first (see the Session Host): stop cleanly even right after start.
 const stop = () => {
   server.close();

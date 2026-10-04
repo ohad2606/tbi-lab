@@ -70,6 +70,8 @@ export function emptyView(board: string, firmware: string): RuntimeView {
 export type RuntimeFailCode =
   | 'session_create_failed'
   | 'runtime_busy'
+  | 'session_quota'
+  | 'rate_limited'
   | 'firmware_unavailable'
   | 'unsupported_feature'
   | 'invalid_attachment'

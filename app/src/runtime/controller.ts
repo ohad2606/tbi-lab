@@ -445,6 +445,8 @@ function transportFailure(e: unknown): SimFailure {
   if (e instanceof RuntimeTransportError) {
     if (e.code === 'busy' || e.code === 'shutting_down')
       return { kind: 'runtime', code: 'runtime_busy' };
+    if (e.code === 'session_quota') return { kind: 'runtime', code: 'session_quota' };
+    if (e.code === 'rate_limited') return { kind: 'runtime', code: 'rate_limited' };
     if (e.code === 'not_found') return { kind: 'runtime', code: 'session_lost' };
     if (e.code === 'protocol') return { kind: 'runtime', code: 'protocol_error' };
     return { kind: 'runtime', code: 'session_create_failed', detail: e.code };

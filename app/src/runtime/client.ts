@@ -24,7 +24,9 @@ import type {
 
 export type TransportErrorCode =
   | 'unreachable' // network failure or 5xx from the proxy/host
-  | 'busy' // 429: the host's session limit
+  | 'busy' // 429/503: the host's capacity (or low host resources)
+  | 'session_quota' // Sprint 8: this user's live sessions are at their limit
+  | 'rate_limited' // Sprint 8: too many sessions started recently
   | 'shutting_down' // 503
   | 'refused' // 400/415/413: the host refused the request (protocol/validation)
   | 'not_found' // 404: unknown session (ended and forgotten, or never existed)
@@ -143,7 +145,17 @@ export class RuntimeClient {
     const r = await this.request('POST', '/sessions', undefined, req);
     if (r.status !== 201) {
       const error = (r.body as { error?: string } | null)?.error;
-      throw new RuntimeTransportError(statusCode(r.status), r.status, error);
+      const code: TransportErrorCode =
+        error === 'session_quota'
+          ? 'session_quota'
+          : error === 'rate_limited'
+            ? 'rate_limited'
+            : error === 'runtime_capacity' ||
+                error === 'memory_pressure' ||
+                error === 'storage_pressure'
+              ? 'busy'
+              : statusCode(r.status);
+      throw new RuntimeTransportError(code, r.status, error);
     }
     const b = r.body as { sessionId?: unknown; token?: unknown; status?: unknown };
     if (typeof b?.sessionId !== 'string' || typeof b.token !== 'string' || !b.status)
