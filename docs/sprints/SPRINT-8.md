@@ -382,3 +382,199 @@ Caddy) ran beside dev-lab, which kept serving `a2ad7c6` unchanged.
   groups `tbi-buildio`, `tbi-runtimeio`, `tbi-gate`.
 - **Removal:** `deploy/dev-lab/s8/install.sh staging --uninstall` removes everything except the
   accounts.
+
+## Phase 4 — Policy, quotas, rate limits and admission
+
+### Policy model
+
+- One JSON policy (`runtime/policy/policy.ts`; deployed as `deploy/dev-lab/s8/policy.json`):
+  - read by both services from `TBI_POLICY_FILE` (a systemd `LoadCredential`, root 0400);
+  - validated at load, so a bad policy stops the service from starting.
+- Two plans only: `preview` (every user by default) and `system` (explicit principal assignments).
+  There is no Free/Basic/Pro.
+- A plan holds:
+  - `requests`;
+  - `build` {maxActive, maxQueued, submissions, failures, cooldownMs};
+  - `runtime` {maxSessions, creations, maxLifetimeMs};
+  - `storage` {maxArtifacts, maxBytes, retentionDays, prebuiltUploads};
+  - `capabilities.allowPrebuiltBinary`.
+- `global` holds the build queue, live-session capacity, resource floors and the retention sweep
+  interval.
+- `'cpus'` resolves to `availableParallelism()` on the host.
+
+| Plan value | preview | system |
+|---|---|---|
+| HTTP requests | 600 / min | 6000 / min |
+| Builds in flight (active + queued) | 1 + 1 | 1 + 3 |
+| Build submissions (compiles only) | 20 / 10 min | 200 / 10 min |
+| Compile failures before cool-down | 10 / 10 min | 100 / 10 min |
+| Cool-down | 5 min | 1 min |
+| Live sessions | 1 | 4 |
+| Session creations | 20 / 10 min | 200 / 10 min |
+| Session lifetime cap | 30 min | 30 min |
+| Stored artifacts / bytes | 32 / 128 MiB | 256 / 1 GiB |
+| Retention after last use | 30 days | 365 days |
+| `.bin` uploads | 10 / h | 100 / h |
+| `allowPrebuiltBinary` | true | true |
+
+**Global values:**
+- build queue 3, maximum queue wait 10 min;
+- defer builds while live sessions ≥ `'cpus'`;
+- live sessions ≤ `'cpus'`;
+- minimum free disk 1024 MB, minimum available memory 256 MB;
+- retention sweep every hour.
+
+### Quotas
+
+- **In flight.** Per-principal in-flight builds are counted from the service's own queue/active
+  records (by submitter). Admission is checked and recorded synchronously in one tick, so
+  simultaneous submissions cannot race past it (tested over HTTP).
+- **Storage.**
+  - A grant now stores its artifact's `bytes`. The schema upgrades in place, versioned by
+    `PRAGMA user_version` 1 → 2, and bytes are backfilled from the store.
+  - Usage = the principal's own grants only. System/reference records are never counted.
+  - When over quota after a build or upload, the user's own least-recently-used **unleased**
+    grants are dropped. A blob is deleted only when no grant holds it and it has no lease.
+  - If nothing can be freed, the request is refused (`storage_quota`) before work.
+- **Failures.** Compile failures are recorded in a window. Past the limit, that user alone gets
+  `build_cooldown`; nothing is consumed permanently.
+- **No compile slot.** Cache hits and lookups never take a compile slot or a submission.
+
+### Rate limits
+
+- `RateLimiter` keeps persistent sliding windows in SQLite:
+  - table `rate_event` (key = rule:principal);
+  - `BEGIN IMMEDIATE` for the check-and-record.
+- It lives in `stateDir/rates.db` (build) and `TBI_HOST_STATE/rates.db` (Session Host).
+  Windows survive restarts and are exact across connections (tested with two connections).
+- Refusals return `429 rate_limited` with `Retry-After` = time until the oldest event leaves the
+  window. A refused attempt consumes nothing.
+- The per-request rate is an in-memory backstop per principal (`MemoryRate`), deliberately not
+  persisted.
+
+### Admission algorithm
+
+**Build** (in order; the first refusal wins, and the rate is taken last so refusals are free):
+1. per-user in flight → `build_quota`
+2. failure cool-down → `build_cooldown`
+3. storage quota → `storage_quota`
+4. disk/memory floors → `storage_pressure` / `memory_pressure`
+5. global queue full → `builder_busy`
+6. submission rate → `rate_limited`
+
+**Build deferral (CPU is binding):**
+- The build service polls the Session Host `/health` every second (`TBI_RUNTIME_HEALTH`).
+- While live sessions ≥ the defer threshold, the queue pump starts no new compile. Running
+  compiles and sessions are never stopped.
+- A queued build that cannot start within `maxQueueWaitMs` ends as `capacity_timeout` (not run
+  late).
+- If the health value is stale or unavailable, builds are not deferred, so a lost host never
+  wedges the builder.
+
+**Session** (Session Host `create`, in order):
+1. ticket
+2. per-user live sessions → `session_quota`
+3. global `min(maxLiveSessions, host maxSessions)` → `runtime_capacity` (503, Retry-After 15)
+4. disk/memory floors
+5. creation rate → `rate_limited`
+
+The plan's lifetime caps each session.
+
+**Advanced `.bin`:**
+- The capability is checked from policy **before the body is read** → `403 capability_disabled`.
+- When enabled, the upload rate and storage quota apply exactly as for compiled firmware.
+- `TBI_ALLOW_PREBUILT` is removed.
+
+**Retention:**
+- The hourly sweep drops private grants whose last use is older than the owner's plan period.
+- Leased artifacts and system/reference records are exempt.
+- Timestamps are stored; no expiry date is stored.
+- No cleanup was run against dev-lab data.
+
+### Failure codes (stable)
+
+| Code | HTTP | Meaning |
+|---|---|---|
+| `build_quota` | 429 | user's builds in flight at limit |
+| `build_cooldown` | 429 | too many recent compile failures |
+| `rate_limited` | 429 | a rate window is full (Retry-After set) |
+| `builder_busy` | 503 | global build queue full |
+| `session_quota` | 429 | user's live sessions at limit |
+| `runtime_capacity` | 503 | host live-session capacity reached |
+| `capability_disabled` | 403 | `.bin` not allowed for this plan |
+| `storage_quota` | 403 | storage quota full and nothing evictable |
+| `storage_pressure` / `memory_pressure` | 503 | host below resource floor |
+| build failure `capacity_timeout` | — | queued build could not start in time |
+
+The app maps each code to its own error and localized message (en/he). Host-capacity refusals
+are shown as "busy".
+
+**Admission events.**
+- One JSON line per decision on stderr (journal): `{event, service, action, outcome, who}`.
+- `who` is the first 10 characters of the opaque principal.
+- No emails, source, binaries, headers or secrets are logged.
+
+### Validation
+
+| Suite | Result |
+|---|---|
+| Typecheck, lint, boundaries, production build | PASS |
+| Unit (`npm test`) | **587 passed** (57 files), including 23 new policy tests, 3 app refusal tests and the grants schema upgrade |
+| Browser/e2e | 114 passed; legacy browser 4 passed |
+| S8 containment + real gate on staging (Phase 4 bundles) | 14/14 |
+| **S8 policy staging validation** (`s8-policy.runtime.test.ts`) | **6/6** |
+| R2 failures (bundle host given the open test policy) | 11/11 |
+| S7 reproducibility, real toolchain | 6/6, bit-identical `7e877f84…` / `4a81f348…` |
+| Real-QEMU acceptance (`s6-real.spec.ts`) on staging under the **real** policy | 3/3; 6 admission events, all `admitted` |
+
+**What the staging policy run covers:**
+- two principals with a validation policy;
+- the build quota (A refused while B admitted);
+- the submission rate with a wait;
+- a restart keeping windows;
+- `.bin` allowed and then denied before the body is read;
+- the session quota and global capacity;
+- a live session deferring a build that then completes;
+- the creation rate surviving a host restart;
+- bounded admission events.
+
+Afterwards:
+- the real policy was restored (`cmp` identical);
+- no QEMU, unit, session or job was left.
+
+The identity, ownership and containment suites are unchanged and pass.
+
+**Policy unit tests also cover:**
+- concurrency, both via HTTP and via two DB connections;
+- restart persistence;
+- one user cannot fill the queue;
+- bounded progress;
+- cache hits are free;
+- failure cool-down per user;
+- `capacity_timeout`;
+- resource floors;
+- LRU eviction respecting leases;
+- system storage not counted;
+- retention exemptions.
+
+### Capacity findings
+
+- This host has 1 vCPU, so `'cpus'` = 1:
+  - **one live session at a time, globally**;
+  - new builds wait while it runs (up to 10 min, then `capacity_timeout`).
+- That is the intended "CPU is binding" behaviour. On a larger host the same policy scales with
+  the CPU count, with no change to the policy file.
+
+### Deviations and risks
+
+- **Request rate in memory.** The per-request rate is in memory only (resets on restart). Build,
+  session, failure and upload windows are persistent.
+- **Schema upgrade.** The grants schema change (`bytes`) is an in-place upgrade. Found because
+  staging still held the Phase 2 schema; covered by a test.
+- **`TBI_ALLOW_PREBUILT` replaced** by policy. Its unit-file entry is removed.
+- **R2 test policy.** R2's bundle host now runs with an explicit open test policy, because its
+  scenario holds several sessions at once.
+- **Staleness fallback.** Deferral relies on the Session Host health poll. A stale reading does
+  not defer builds (availability over strictness).
+- **Not deployed.** dev-lab still serves `a2ad7c6` on runtime `979f09d739382157`; Phase 4 has
+  been deployed to staging only.
