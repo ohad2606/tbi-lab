@@ -71,6 +71,9 @@ for k in identity ticket; do
   sudo chmod 0400 "/etc/$N/$k.key"
 done
 
+# Policy (Phase 4): plans, quotas, global limits — the values this instance enforces.
+sudo install -m 0400 "$here/policy.json" "/etc/$N/policy.json"
+
 # Artifact store (staging has its own) and the empty sandbox roots with their mount points.
 sudo install -d -o tbi-build -g tbi-artifacts -m 2750 "$STORE"
 root() { # $1 root dir, rest: mount points

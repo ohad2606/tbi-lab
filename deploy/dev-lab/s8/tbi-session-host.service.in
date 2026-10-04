@@ -22,9 +22,13 @@ Environment=TBI_IDENTITY_KEY_FILE=%d/identity.key
 Environment=TBI_TICKET_KEY_FILE=%d/ticket.key
 LoadCredential=identity.key:/etc/@N@/identity.key
 LoadCredential=ticket.key:/etc/@N@/ticket.key
+# Phase 4: plans, quotas and global limits; session-creation rates survive a restart.
+LoadCredential=policy.json:/etc/@N@/policy.json
+Environment=TBI_POLICY_FILE=%d/policy.json
+Environment=TBI_HOST_STATE=/var/lib/@N@-runtime/state
 RuntimeDirectory=@N@-runtime
 RuntimeDirectoryMode=0755
-StateDirectory=@N@-runtime/sessions
+StateDirectory=@N@-runtime/sessions @N@-runtime/state
 StateDirectoryMode=0770
 BindReadOnlyPaths=@NODE@:/opt/tbi-node
 BindReadOnlyPaths=@BUNDLES@:/opt/tbi-build

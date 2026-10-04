@@ -1,0 +1,102 @@
+{
+  "version": 1,
+  "defaultPlan": "preview",
+  "plans": {
+    "preview": {
+      "requests": {
+        "count": 600,
+        "windowMs": 60000
+      },
+      "build": {
+        "maxActive": 1,
+        "maxQueued": 1,
+        "submissions": {
+          "count": 20,
+          "windowMs": 600000
+        },
+        "failures": {
+          "count": 10,
+          "windowMs": 600000
+        },
+        "cooldownMs": 300000
+      },
+      "runtime": {
+        "maxSessions": 1,
+        "creations": {
+          "count": 20,
+          "windowMs": 600000
+        },
+        "maxLifetimeMs": 1800000
+      },
+      "storage": {
+        "maxArtifacts": 32,
+        "maxBytes": 134217728,
+        "retentionDays": 30,
+        "prebuiltUploads": {
+          "count": 10,
+          "windowMs": 3600000
+        }
+      },
+      "capabilities": {
+        "allowPrebuiltBinary": true
+      }
+    },
+    "system": {
+      "requests": {
+        "count": 6000,
+        "windowMs": 60000
+      },
+      "build": {
+        "maxActive": 1,
+        "maxQueued": 3,
+        "submissions": {
+          "count": 200,
+          "windowMs": 600000
+        },
+        "failures": {
+          "count": 100,
+          "windowMs": 600000
+        },
+        "cooldownMs": 60000
+      },
+      "runtime": {
+        "maxSessions": 4,
+        "creations": {
+          "count": 200,
+          "windowMs": 600000
+        },
+        "maxLifetimeMs": 1800000
+      },
+      "storage": {
+        "maxArtifacts": 256,
+        "maxBytes": 1073741824,
+        "retentionDays": 365,
+        "prebuiltUploads": {
+          "count": 100,
+          "windowMs": 3600000
+        }
+      },
+      "capabilities": {
+        "allowPrebuiltBinary": true
+      }
+    }
+  },
+  "assignments": {},
+  "global": {
+    "build": {
+      "maxQueued": 3,
+      "maxQueueWaitMs": 600000,
+      "deferWhileLiveSessionsAtLeast": "cpus"
+    },
+    "runtime": {
+      "maxLiveSessions": "cpus"
+    },
+    "resources": {
+      "minFreeDiskMb": 1024,
+      "minAvailableMemoryMb": 256
+    },
+    "retention": {
+      "sweepIntervalMs": 3600000
+    }
+  }
+}
