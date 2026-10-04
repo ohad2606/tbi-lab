@@ -1,8 +1,8 @@
 # Sprint 8 — Public Hardening & Capacity
 
-**Status:** PHASES 0–3 COMPLETE (identity, ownership, containment); awaiting the PM checkpoint.
-Phases 4–6 not started. Nothing deployed to dev-lab or production; `main` unchanged. No product code has changed and nothing is
-deployed.
+**Status:** PHASES 0–4 COMPLETE (identity, ownership, containment, policy/admission). Deployed
+to dev-lab at `c31d62e`; technical validation passed; **awaiting owner smoke**. Phases 5–6 not
+started. `main` and production unchanged; no PR, merge or tag.
 
 **Base:** `sprint-7-complete^{}` = `a2ad7c6`. **Branch:** `sprint-8`. **Architecture:**
 [SPRINT-8-ARCHITECTURE.md](SPRINT-8-ARCHITECTURE.md) (D-S8-1..13, owner decisions Q1–Q6).
@@ -604,3 +604,79 @@ The identity, ownership and containment suites are unchanged and pass.
 - Validation after the fix: typecheck, lint, boundaries, production build PASS; unit **593
   passed** (57 files; policy suite 29/29, three consecutive runs); staging containment + gate
   14/14; staging policy 7/7.
+
+## First dev-lab deployment (after the Phase 4 approval)
+
+**Deployed commit:** `c31d62e`. App, build service, build-job driver and Session Host all come
+from it via `publish.sh c31d62e`. The service bundles and app are byte-identical to `57b91a2`
+(the corrected Phase 4 code); `c31d62e` adds only deployment fixes and tests.
+
+**Procedure:**
+1. Backup to `/var/backups/tbi-lab/pre-s8-20261004/` (root 0700):
+   - the Sprint 7 unit files, `Caddyfile`, `oauth2-proxy.cfg` and `oauth2-proxy.service`;
+   - a tarball of `/var/lib/tbi-lab` and `/var/lib/tbi-build` (139 store entries);
+   - the release symlinks (all `a2ad7c6`).
+2. `publish.sh` (app plus `/srv/tbi-lab/services/<sha>`).
+3. `TBI_S8_RUNTIME=~/tbi-s8-rt/qemu-33e35e4ac5e798d7 install.sh dev-lab`.
+4. The Sprint 8 `Caddyfile` and `oauth2-proxy.cfg`; caddy and oauth2-proxy restarted.
+
+**Deployment fixes found on the real host** (both in `c31d62e`):
+- **Internal-origin socket.**
+  - Caddy 2.6.2 creates its unix listener with its umask (0755 `caddy:caddy`), and connecting
+    needs write permission. So oauth2-proxy could not reach the origin: about one minute of
+    errors for signed-in requests, before any owner use.
+  - Fix: `/run/tbi-gate` is setgid (`2750 caddy:tbi-gate`), and a caddy drop-in sets
+    `UMask=0007` (`s8/caddy-gate.conf`). The socket is now `0770 caddy:tbi-gate`.
+  - The Phase 1 gate test ran Caddy and oauth2-proxy as one user, so it could not see this.
+    The post-deploy checks now cover it.
+- **Gate request log.** oauth2-proxy's default request-log format wrote the account email on
+  every request (pre-existing since Sprint 6). `request_logging_format` now omits the user.
+
+**Migration:**
+- New `grants.db` at schema v2, plus `rates.db` for the build service and the Session Host.
+- Sprint 7 artifacts stay as blobs. Their build records grant nobody, so a user's first build
+  is "Build required" or a rebuild (by design, Phase 2). R1 references stay global.
+- The store's existing 256 MiB LRU evicted two older managed blobs during validation builds
+  (one of them the curated TbiBanks build, rebuilt on demand). Both are in the backup tarball.
+
+**Rollback:**
+- `deploy/dev-lab/s8/rollback-dev-lab.sh /var/backups/tbi-lab/pre-s8-20261004` restores the
+  Sprint 7 units, gate configuration and app release `a2ad7c6`, and removes the Sprint 8
+  templates, polkit rule and caddy drop-in.
+- The Sprint 7 bundles are still in `/srv/tbi-lab/{build-service,session-host}/a2ad7c6…`.
+- Checked without touching dev-lab: the Sprint 7 build service, run on a copy of the
+  post-deploy store, loads it and leases a Sprint 8-written artifact (200).
+
+**Post-deploy validation (dev-lab, real policy, fresh test principals per run):**
+
+| Check | Result |
+|---|---|
+| Services active; identities | `tbi-build` / `tbi-runtime` / jobs `tbi-buildjob` / QEMU `tbi-qemu`, all nologin without home; nothing as `ubuntu` |
+| Unauthenticated `/`, `/build/*`, `/runtime/*`, `/assets/*` (also with forged `X-Forwarded-User`, `X-Tbi-*`, `X-Forwarded-Email`) | 302 to Google |
+| TCP 7400/7420/8080 | closed (only 80/443 public, 4180 loopback) |
+| Sockets as `ubuntu`, `nobody`, `tbi-buildjob`, `tbi-qemu` | refused (all three sockets) |
+| Sockets as `oauth2-proxy` (origin) | 200 for `/`, `/build`, `/runtime` |
+| `s8-containment` (`TBI_S8_INSTANCE=tbi`) | **9/9**: sandboxed bit-identical build `7e877f84…`, no compile access to store/home/keys, cross-user lease 404, QEMU sandbox (own user, no network, session dir on disk), crash and restart cleanup |
+| `s8-deployed-policy` (new, real policy, twice) | **7/7**, covering the items below |
+| Real gate binaries (`s8-gate`) | 5/5 |
+| Real-QEMU browser acceptance (`s6-real.spec.ts`) through the dev-lab sockets | **3/3** |
+| After all runs | no QEMU, unit, session directory or job directory left |
+| Logs (product services since deploy) | no email, no source, no Authorization, ticket or cookie, no binary payloads; admission events are bounded |
+
+`s8-deployed-policy` covers:
+- the installed policy is the repository policy;
+- build quota 1 + 1 (`build_quota`, another user admitted);
+- `.bin` allowed, private (404 for another user even with the sha), upload rate 10/h
+  (`rate_limited`, Retry-After);
+- `session_quota`;
+- `runtime_capacity` 503;
+- a session is invisible and un-endable to another user;
+- a live session holds a queued build;
+- stale health (Session Host stopped) admits no compile until it is back;
+- bounded admission events.
+
+**Not verifiable by me:**
+- The signed-in Google path, which needs the owner's login. The oauth2-proxy session shows
+  `user` = Google's numeric subject, which the gate forwards as `X-Forwarded-User`.
+- Capability denial on dev-lab. The real policy allows `.bin`; denial was validated on
+  staging.
