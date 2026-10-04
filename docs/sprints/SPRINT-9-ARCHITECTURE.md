@@ -115,3 +115,6 @@ shown. Switching views never changes the document or the simulation.
 | D | 3D: scene description, models, renderer, lazy loading, fallback, tab, i18n, tests |
 | E | integration, examples, Hebrew RTL review, performance and leak measurements |
 | F | full regression, documentation, report |
+
+Outcome: see [SPRINT-9.md](SPRINT-9.md). One change from the plan: the Schematic and 3D view
+modules are lazy-loaded too (not only three.js), which keeps the startup bundle at +5.7 kB.
