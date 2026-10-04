@@ -173,10 +173,15 @@ test('3D without WebGL: a localized explanation; Circuit and Schematic keep work
 test('switching views while simulating is safe and changes neither the run nor the project', async ({
   page,
 }) => {
-  await openExample(page, 'voltage-divider');
+  await openExample(page, 'led-current');
+  await tab(page, '3d').click();
+  await expect(page.getByTestId('view3d')).toHaveAttribute('data-status', 'ready');
+  await expect(page.getByTestId('view3d')).toHaveAttribute('data-lit', ''); // stopped: dark
   await page.getByTestId('sim-run').click();
   const status = page.getByTestId('sim-status');
   await expect(status).toHaveAttribute('data-status', 'running');
+  // The 3D view shows the running LED lit (the solved current, as on the circuit canvas).
+  await expect(page.getByTestId('view3d')).toHaveAttribute('data-lit', 'D1');
   const before = await revision(page);
   for (const v of ['schematic', '3d', 'circuit', '3d', 'schematic', 'circuit']) {
     await tab(page, v).click();
