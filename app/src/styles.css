@@ -2565,3 +2565,26 @@ select {
   font-size: 0.8rem;
   pointer-events: none;
 }
+
+.view3d-host {
+  position: absolute;
+  inset: 0;
+}
+
+.view3d-canvas {
+  display: block;
+  inline-size: 100%;
+  block-size: 100%;
+  touch-action: none;
+  outline: none;
+}
+
+.view3d-message {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 2rem;
+  color: var(--muted);
+  text-align: center;
+}

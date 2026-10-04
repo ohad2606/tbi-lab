@@ -4,18 +4,20 @@ import { Canvas, type CanvasApi } from './Canvas.js';
 import { useAppState, useT } from './context.js';
 import { CodeView } from './CodeView.js';
 import { SchematicView } from './SchematicView.js';
+import { ThreeView } from './ThreeView.js';
 import { Inspector } from './Inspector.js';
 import { McuTerminal } from './McuTerminal.js';
 import { requiresMcuRuntime } from '../runtime/snapshot.js';
 import { Palette } from './Palette.js';
 import { probeExists, sameTarget, type Probe, type ProbeInput } from './probes.js';
 
-type View = 'circuit' | 'schematic' | 'code';
+type View = 'circuit' | 'schematic' | '3d' | 'code';
 /** Views every project has; Code joins them for a project with a programmable board. */
-const VIEWS: View[] = ['circuit', 'schematic'];
+const VIEWS: View[] = ['circuit', 'schematic', '3d'];
 const VIEW_LABEL = {
   circuit: 'program.tab.circuit',
   schematic: 'view.tab.schematic',
+  '3d': 'view.tab.3d',
   code: 'program.tab.code',
 } as const;
 
@@ -122,6 +124,12 @@ export function Editor() {
         {active === 'schematic' && (
           <div class="view-slot">
             <SchematicView />
+          </div>
+        )}
+        {/* Mounted only while shown: leaving the tab releases the 3D renderer entirely. */}
+        {active === '3d' && (
+          <div class="view-slot">
+            <ThreeView />
           </div>
         )}
         <div class="canvas-slot" hidden={active !== 'circuit'}>
