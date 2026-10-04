@@ -93,3 +93,24 @@ immutable`. A missing asset is a **404**, never `index.html`, so an outdated ass
   (`runtime/builder/profiles/esp32-arduino-3.3.12.json`) at every start; a mismatch stops the
   service.
 - `publish.sh` builds and installs the build service bundle of the same ref and restarts it.
+
+## Sprint 8 layout (identity, ownership, containment, policy)
+
+```
+browser --HTTPS--> Caddy :443 --> oauth2-proxy 127.0.0.1:4180 (Google OIDC, allowlist; asserts
+  X-Forwarded-User = Google subject) --> Caddy internal origin unix:/run/tbi-gate/internal.sock
+  (0770 caddy:tbi-gate) --> /build: unix:/run/tbi-build/api.sock, /runtime: unix:/run/tbi-runtime/api.sock
+```
+
+- No backend TCP port is open (7400, 7420 and 8080 are gone). The sockets are group `tbi-gate`.
+- Services: `tbi-build` (user `tbi-build`), `tbi-session-host` (user `tbi-runtime`); each build step
+  runs as `tbi-build-job@…` (user `tbi-buildjob`), each session's QEMU as `tbi-qemu@…` (user
+  `tbi-qemu`). All are system accounts without login or home.
+- Keys and policy: `/etc/tbi/{identity,ticket}.key`, `/etc/tbi/policy.json` (root 0400, systemd
+  credentials). State: `/var/lib/tbi-build/state` (grants, rate windows),
+  `/var/lib/tbi-runtime/{state,sessions}`.
+- Deploy: `deploy/dev-lab/publish.sh <ref>` (app and service bundles, `/srv/tbi-lab/services/<sha>`),
+  then `TBI_S8_RUNTIME=<runtime prefix> deploy/dev-lab/s8/install.sh dev-lab`, then install
+  `Caddyfile` and `oauth2-proxy.cfg` and **restart** (not reload) caddy and oauth2-proxy, which
+  picks up the `tbi-gate` group and Caddy's `UMask=0007` drop-in (`s8/caddy-gate.conf`).
+- Rollback to Sprint 7: `deploy/dev-lab/s8/rollback-dev-lab.sh /var/backups/tbi-lab/pre-s8-<date>`.

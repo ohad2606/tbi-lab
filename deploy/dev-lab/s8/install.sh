@@ -110,6 +110,10 @@ if [[ "$target" == dev-lab ]]; then
   sudo usermod -aG tbi-gate oauth2-proxy
   sudo install -m 0644 "$here/tbi-gate.conf" /etc/tmpfiles.d/tbi-gate.conf
   sudo systemd-tmpfiles --create /etc/tmpfiles.d/tbi-gate.conf
+  sudo install -d -m 0755 /etc/systemd/system/caddy.service.d
+  sudo install -m 0644 "$here/caddy-gate.conf" /etc/systemd/system/caddy.service.d/tbi-gate.conf
+  # (Caddy and oauth2-proxy must restart, not reload, for the group and umask to apply; the
+  # Caddyfile and oauth2-proxy.cfg are installed by hand, deploy/dev-lab/README.md.)
 fi
 sudo systemctl daemon-reload
 sudo systemctl enable "$N-build.service" "$N-session-host.service"

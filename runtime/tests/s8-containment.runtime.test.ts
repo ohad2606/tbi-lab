@@ -1,6 +1,8 @@
 /**
  * Sprint 8 Phase 3 heavy acceptance: CONTAINMENT, against the staging instance installed by
- * `deploy/dev-lab/s8/install.sh staging` (units tbi-s8-*; the dev-lab services are untouched).
+ * `deploy/dev-lab/s8/install.sh staging` (units tbi-s8-*; the dev-lab services are untouched), or
+ * with TBI_S8_INSTANCE=tbi against the deployed dev-lab instance (post-deploy validation; its real
+ * policy applies, and every run uses fresh test principals).
  * Skipped unless that instance is running and passwordless sudo is available.
  *
  * The backends' sockets belong to the gate group; a relay started with sudo plays the gate for
@@ -19,7 +21,9 @@ import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { loadRequest } from './r2-support.js';
 
-const N = 'tbi-s8';
+const N = process.env.TBI_S8_INSTANCE ?? 'tbi-s8';
+const STORE = N === 'tbi' ? '/var/lib/tbi-lab/artifacts' : `/var/lib/${N}-artifacts`;
+const run = Date.now().toString(36); // fresh principals per run (the instance keeps its records)
 const BUILD_SOCK = `/run/${N}-build/api.sock`;
 const HOST_SOCK = `/run/${N}-runtime/api.sock`;
 const SESSIONS = `/var/lib/${N}-runtime/sessions`;
@@ -185,13 +189,13 @@ describe.skipIf(!HAVE)(
       // whose artifact is shared by design).
       // Unique per run (staging keeps its records between runs), so it always compiles afresh.
       const r = await build(
-        'stage-a',
+        `stage-a-${run}`,
         blink.replace('delay(200);', `delay(${1000 + (Date.now() % 1_000_000)});`),
       );
       expect(r.ok, JSON.stringify(r.diagnostics)).toBe(true);
       expect(r.jobsSeen!.length).toBeGreaterThan(0); // the steps ran as template instances
       // The unmodified sketch reproduces the Sprint 7 / reproducibility-gate identity exactly.
-      const exact = await build('stage-a', blink);
+      const exact = await build(`stage-a-${run}`, blink);
       expect(exact.artifact!.sha256).toBe(
         '7e877f84e64743988349ae6c71cd46e05bbca73c8af95fe17db01b4516f1f4ed',
       );
@@ -202,13 +206,16 @@ describe.skipIf(!HAVE)(
 
     it('a sketch cannot compile in anything from outside its sandbox view', async () => {
       const outside = [
-        '/var/lib/tbi-s8-artifacts',
+        STORE,
         '/home/ubuntu/.ssh/authorized_keys',
-        '/etc/tbi-s8/identity.key',
+        `/etc/${N}/identity.key`,
         '/etc/hostname',
       ];
       for (const path of outside) {
-        const r = await build('stage-a', `#include "${path}"\nvoid setup() {}\nvoid loop() {}\n`);
+        const r = await build(
+          `stage-a-${run}`,
+          `#include "${path}"\nvoid setup() {}\nvoid loop() {}\n`,
+        );
         expect(r.ok, path).toBe(false);
         expect(r.failure, path).toBe('compile_error');
         expect(r.diagnostics.map((d) => d.message).join(' '), path).toMatch(
@@ -220,7 +227,7 @@ describe.skipIf(!HAVE)(
     it('user B can neither lease user A’s artifact nor see A’s build', async () => {
       const other = await fetch(`${BUILD}/v1/artifacts/${sha}/lease`, {
         method: 'POST',
-        headers: as('stage-b'),
+        headers: as(`stage-b-${run}`),
       });
       expect(other.status).toBe(404);
     });
@@ -229,7 +236,7 @@ describe.skipIf(!HAVE)(
       const lease = (await (
         await fetch(`${BUILD}/v1/artifacts/${sha}/lease`, {
           method: 'POST',
-          headers: as('stage-a'),
+          headers: as(`stage-a-${run}`),
         })
       ).json()) as { ticket: string };
       const body = {
@@ -242,12 +249,12 @@ describe.skipIf(!HAVE)(
       );
       const created = await fetch(`${HOST}/sessions`, {
         method: 'POST',
-        headers: as('stage-a', { 'content-type': 'application/json' }),
+        headers: as(`stage-a-${run}`, { 'content-type': 'application/json' }),
         body: JSON.stringify(body),
       });
       expect(created.status).toBe(201);
       const { sessionId, token } = (await created.json()) as { sessionId: string; token: string };
-      const auth = as('stage-a', { authorization: `Bearer ${token}` });
+      const auth = as(`stage-a-${run}`, { authorization: `Bearer ${token}` });
       expect(
         (await fetch(`${HOST}/sessions/${sessionId}/run`, { method: 'POST', headers: auth }))
           .status,
@@ -256,7 +263,7 @@ describe.skipIf(!HAVE)(
       expect(
         (
           await fetch(`${HOST}/sessions/${sessionId}`, {
-            headers: as('stage-b', { authorization: `Bearer ${token}` }),
+            headers: as(`stage-b-${run}`, { authorization: `Bearer ${token}` }),
           })
         ).status,
       ).toBe(404);
@@ -296,9 +303,9 @@ describe.skipIf(!HAVE)(
       ).toBe('');
       for (const hidden of [
         '/home',
-        '/var/lib/tbi-s8-artifacts',
-        '/etc/tbi-s8',
-        '/var/lib/tbi-s8-runtime/sessions',
+        STORE,
+        `/etc/${N}`,
+        `/var/lib/${N}-runtime/sessions`,
         '/etc/passwd',
       ])
         expect(view(hidden), hidden).toBe(false);
@@ -323,7 +330,7 @@ describe.skipIf(!HAVE)(
       const lease = (await (
         await fetch(`${BUILD}/v1/artifacts/${sha}/lease`, {
           method: 'POST',
-          headers: as('stage-a'),
+          headers: as(`stage-a-${run}`),
         })
       ).json()) as { ticket: string };
       const body = {
@@ -334,11 +341,11 @@ describe.skipIf(!HAVE)(
       const { sessionId, token } = (await (
         await fetch(`${HOST}/sessions`, {
           method: 'POST',
-          headers: as('stage-a', { 'content-type': 'application/json' }),
+          headers: as(`stage-a-${run}`, { 'content-type': 'application/json' }),
           body: JSON.stringify(body),
         })
       ).json()) as { sessionId: string; token: string };
-      const auth = as('stage-a', { authorization: `Bearer ${token}` });
+      const auth = as(`stage-a-${run}`, { authorization: `Bearer ${token}` });
       await fetch(`${HOST}/sessions/${sessionId}/run`, { method: 'POST', headers: auth });
       const unit = `${N}-qemu@${sessionId}.service`;
       await new Promise((r) => setTimeout(r, 3000));
@@ -363,7 +370,7 @@ describe.skipIf(!HAVE)(
       const text = blink.replace('delay(200);', `delay(${2_000_000 + (Date.now() % 1_000_000)});`);
       const r = await fetch(`${BUILD}/v1/builds`, {
         method: 'POST',
-        headers: as('stage-a', { 'content-type': 'application/json' }),
+        headers: as(`stage-a-${run}`, { 'content-type': 'application/json' }),
         body: JSON.stringify({
           protocol: 'tbi-lab.build/1',
           profile: 'esp32-arduino-3.3.12',
@@ -392,7 +399,7 @@ describe.skipIf(!HAVE)(
       const lease = (await (
         await fetch(`${BUILD}/v1/artifacts/${sha}/lease`, {
           method: 'POST',
-          headers: as('stage-a'),
+          headers: as(`stage-a-${run}`),
         })
       ).json()) as { ticket: string };
       const body = {
@@ -403,13 +410,13 @@ describe.skipIf(!HAVE)(
       const { sessionId, token } = (await (
         await fetch(`${HOST}/sessions`, {
           method: 'POST',
-          headers: as('stage-a', { 'content-type': 'application/json' }),
+          headers: as(`stage-a-${run}`, { 'content-type': 'application/json' }),
           body: JSON.stringify(body),
         })
       ).json()) as { sessionId: string; token: string };
       await fetch(`${HOST}/sessions/${sessionId}/run`, {
         method: 'POST',
-        headers: as('stage-a', { authorization: `Bearer ${token}` }),
+        headers: as(`stage-a-${run}`, { authorization: `Bearer ${token}` }),
       });
       const unit = `${N}-qemu@${sessionId}.service`;
       for (
