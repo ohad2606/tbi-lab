@@ -342,6 +342,8 @@ export const en = {
   'view.tabs': 'Project views',
   'view.tab.schematic': 'Schematic',
   'view.tab.3d': '3D',
+  'view.loading': 'Loading…',
+  'view.loadFailed': 'This view could not be loaded. The other views work as usual.',
   'schematic.aria': 'Schematic of {name}',
   'schematic.controls': 'Schematic view controls',
   'schematic.note': 'Generated from the circuit. Edit in the Circuit view.',

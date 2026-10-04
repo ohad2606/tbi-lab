@@ -329,6 +329,8 @@ export const he: Record<MessageKey, string> = {
   'view.tabs': 'תצוגות הפרויקט',
   'view.tab.schematic': 'סכמה',
   'view.tab.3d': 'תלת־ממד',
+  'view.loading': 'טוען…',
+  'view.loadFailed': 'לא ניתן לטעון את התצוגה הזו. שאר התצוגות פועלות כרגיל.',
   'schematic.aria': 'סכמה של {name}',
   'schematic.controls': 'פקדי תצוגת הסכמה',
   'schematic.note': 'נוצרה מהמעגל. העריכה נעשית בתצוגת המעגל.',

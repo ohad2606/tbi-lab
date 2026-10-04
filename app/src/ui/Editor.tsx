@@ -3,13 +3,16 @@ import type { ComponentTypeId } from '@tbi-lab/domain';
 import { Canvas, type CanvasApi } from './Canvas.js';
 import { useAppState, useT } from './context.js';
 import { CodeView } from './CodeView.js';
-import { SchematicView } from './SchematicView.js';
-import { ThreeView } from './ThreeView.js';
+import { LazyView } from './LazyView.js';
 import { Inspector } from './Inspector.js';
 import { McuTerminal } from './McuTerminal.js';
 import { requiresMcuRuntime } from '../runtime/snapshot.js';
 import { Palette } from './Palette.js';
 import { probeExists, sameTarget, type Probe, type ProbeInput } from './probes.js';
+
+// The generated views load on first use (not part of the editor's startup bundle).
+const loadSchematic = () => import('./SchematicView.js').then((m) => m.SchematicView);
+const loadThree = () => import('./ThreeView.js').then((m) => m.ThreeView);
 
 type View = 'circuit' | 'schematic' | '3d' | 'code';
 /** Views every project has; Code joins them for a project with a programmable board. */
@@ -123,13 +126,13 @@ export function Editor() {
         {showCode && <CodeView boardId={programBoard!} focusBuild={focusBuild} />}
         {active === 'schematic' && (
           <div class="view-slot">
-            <SchematicView />
+            <LazyView load={loadSchematic} />
           </div>
         )}
         {/* Mounted only while shown: leaving the tab releases the 3D renderer entirely. */}
         {active === '3d' && (
           <div class="view-slot">
-            <ThreeView />
+            <LazyView load={loadThree} />
           </div>
         )}
         <div class="canvas-slot" hidden={active !== 'circuit'}>
