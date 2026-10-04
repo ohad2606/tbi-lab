@@ -15,7 +15,7 @@ import { useAppState, useT } from './context.js';
 type Status = 'loading' | 'ready' | 'unavailable' | 'failed';
 
 export function ThreeView() {
-  const { doc, locale } = useAppState();
+  const { doc, locale, sim } = useAppState();
   const t = useT();
   const host = useRef<HTMLDivElement>(null);
   const viewer = useRef<Viewer | null>(null);
@@ -53,6 +53,21 @@ export function ThreeView() {
     viewer.current.update(scene, { resetCamera });
   }, [scene, status]);
 
+  // While running: LED glow from the solved forward current (visual cue only, as on the circuit
+  // canvas). Off when stopped.
+  const outcome = sim.status === 'running' && sim.outcome.ok ? sim.outcome : null;
+  const levels: Record<string, number> = {};
+  if (outcome && doc)
+    for (const c of doc.components)
+      if (c.type === 'component.led') {
+        const i = outcome.components[c.id]?.current ?? 0;
+        if (i && i > 0) levels[c.id] = Math.min(1, Math.max(0.08, i / 0.02));
+      }
+  const levelKey = JSON.stringify(levels);
+  useEffect(() => {
+    if (status === 'ready') viewer.current?.setLive(levels);
+  }, [levelKey, status, scene]);
+
   if (!doc) return null;
   return (
     <div
@@ -65,6 +80,7 @@ export function ThreeView() {
       data-geometries={stats?.geometries}
       data-textures={stats?.textures}
       data-objects={stats?.objects}
+      data-lit={Object.keys(levels).join(' ')}
     >
       <div
         class="view3d-host"

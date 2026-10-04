@@ -238,6 +238,7 @@ const BUILDERS: Record<ModelKey, Builder> = {
     );
     dome.position.y = base + 0.25 + 1.4;
     dome.userData.lens = true;
+    g.userData.lensMaterial = lens;
     g.add(rim, body, dome);
     const y0 = TERMINAL_HEIGHT[c.model];
     // Anode leg (longer, as on the real part) to the anode terminal; cathode leg to the other.

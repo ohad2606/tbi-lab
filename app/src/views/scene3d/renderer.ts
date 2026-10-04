@@ -24,6 +24,11 @@ export interface ViewerStats {
 
 export interface Viewer {
   update(scene: SceneDescription, opts?: { resetCamera?: boolean }): void;
+  /**
+   * Live presentation state while a simulation runs: LED glow level 0..1 per component id (the
+   * same visual cue as the circuit view: full at 20 mA). Never an electrical input.
+   */
+  setLive(levels: Record<string, number>): void;
   resetCamera(): void;
   /** Frame the whole circuit from the current viewing direction. */
   fit(): void;
@@ -84,13 +89,24 @@ export function createViewer(container: HTMLElement, onRender?: (s: ViewerStats)
   let own = new OwnedResources();
   let current: SceneDescription | null = null;
   let renders = 0;
+  /** LED lens materials by component id, and the last live levels applied to them. */
+  let lenses = new Map<string, THREE.MeshStandardMaterial>();
+  let liveLevels: Record<string, number> = {};
+  function applyLive() {
+    for (const [id, mat] of lenses) {
+      const level = liveLevels[id] ?? 0;
+      mat.emissive.copy(mat.color);
+      mat.emissiveIntensity = level * 1.6;
+      mat.opacity = 0.85 + 0.15 * level;
+    }
+  }
   let disposed = false;
 
   const controls = new OrbitControls(camera, canvas);
   controls.enableDamping = false;
   controls.screenSpacePanning = true;
   controls.maxPolarAngle = Math.PI * 0.495; // stay above the base plane
-  controls.addEventListener('change', () => render());
+  controls.addEventListener('change', () => requestRender());
 
   const stats = (): ViewerStats => {
     let objects = 0;
@@ -108,6 +124,15 @@ export function createViewer(container: HTMLElement, onRender?: (s: ViewerStats)
     renderer.render(scene, camera);
     renders++;
     onRender?.(stats());
+  }
+  /** Coalesce bursts (camera drags, fast simulation updates) into one render per frame. */
+  let pending = 0;
+  function requestRender() {
+    if (pending || disposed) return;
+    pending = requestAnimationFrame(() => {
+      pending = 0;
+      render();
+    });
   }
 
   function resize() {
@@ -255,11 +280,23 @@ export function createViewer(container: HTMLElement, onRender?: (s: ViewerStats)
       current = desc;
       content = build(desc);
       scene.add(content);
+      lenses = new Map();
+      content.traverse((o) => {
+        const lens = o.userData.lensMaterial as THREE.MeshStandardMaterial | undefined;
+        if (lens && o.userData.component) lenses.set(o.userData.component as string, lens);
+      });
+      applyLive();
       if (first || opts.resetCamera) {
         resize();
         frame(desc);
       }
       render();
+    },
+    setLive(levels) {
+      if (disposed) return;
+      liveLevels = levels;
+      applyLive();
+      requestRender();
     },
     resetCamera() {
       if (current) frame(current);
@@ -292,6 +329,7 @@ export function createViewer(container: HTMLElement, onRender?: (s: ViewerStats)
     dispose() {
       if (disposed) return;
       disposed = true;
+      if (pending) cancelAnimationFrame(pending);
       ro.disconnect();
       controls.dispose();
       if (content) scene.remove(content);
