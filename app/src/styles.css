@@ -2420,3 +2420,148 @@ select {
 .mcu-advanced {
   margin-block: 0.5rem;
 }
+
+/* ================================================================ S9: generated views */
+
+/* Schematic and 3D views fill the centre column like the circuit canvas. */
+.view-slot {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+}
+
+.schematic-wrap,
+.view3d-wrap {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  direction: ltr;
+  background: var(--canvas-bg);
+}
+
+.schematic {
+  display: block;
+  inline-size: 100%;
+  block-size: 100%;
+  touch-action: none;
+  user-select: none;
+  cursor: grab;
+}
+
+.sch-wire {
+  fill: none;
+  stroke: var(--wire);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.sch-junction {
+  fill: var(--wire);
+}
+
+.sch-symbol,
+.sch-mark,
+.sch-pin {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.sch-symbol .sch-fill {
+  fill: var(--ink);
+}
+
+.sch-part {
+  cursor: pointer;
+  outline: none;
+}
+
+.sch-hit {
+  fill: transparent;
+  stroke: none;
+}
+
+.sch-part.selected .sch-symbol,
+.sch-part.selected .sch-module-body {
+  stroke: var(--selected);
+}
+
+.sch-part.selected .sch-hit {
+  fill: rgba(11, 87, 208, 0.08);
+}
+
+.sch-part:focus-visible .sch-hit,
+.sch-part:focus-visible .sch-module-body {
+  stroke: var(--focus);
+  stroke-width: 3;
+}
+
+.sch-module-body {
+  fill: #f8f9fb;
+  stroke: var(--ink);
+  stroke-width: 2;
+}
+
+.sch-ref,
+.sch-value,
+.sch-module-name,
+.sch-pin-name,
+.sch-rail-label,
+.sch-net-label {
+  stroke: none;
+  fill: var(--ink);
+  direction: ltr;
+  unicode-bidi: isolate;
+  pointer-events: none;
+}
+
+.sch-ref {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.sch-value,
+.sch-rail-label {
+  font-size: 12px;
+}
+
+.sch-rail-label {
+  font-weight: 600;
+}
+
+.sch-module-name {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.sch-pin-name,
+.sch-net-label {
+  font:
+    600 10px ui-monospace,
+    'SFMono-Regular',
+    Menlo,
+    Consolas,
+    monospace;
+}
+
+.sch-net-dot {
+  fill: var(--ink);
+  stroke: none;
+}
+
+/* A short, unobtrusive explanation along the bottom edge of a generated view. */
+.view-note {
+  position: absolute;
+  inset-block-end: 0.5rem;
+  inset-inline-start: 0.75rem;
+  max-inline-size: calc(100% - 5rem);
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--panel) 88%, transparent);
+  color: var(--muted);
+  font-size: 0.8rem;
+  pointer-events: none;
+}

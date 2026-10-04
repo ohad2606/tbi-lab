@@ -3,11 +3,21 @@ import type { ComponentTypeId } from '@tbi-lab/domain';
 import { Canvas, type CanvasApi } from './Canvas.js';
 import { useAppState, useT } from './context.js';
 import { CodeView } from './CodeView.js';
+import { SchematicView } from './SchematicView.js';
 import { Inspector } from './Inspector.js';
 import { McuTerminal } from './McuTerminal.js';
 import { requiresMcuRuntime } from '../runtime/snapshot.js';
 import { Palette } from './Palette.js';
 import { probeExists, sameTarget, type Probe, type ProbeInput } from './probes.js';
+
+type View = 'circuit' | 'schematic' | 'code';
+/** Views every project has; Code joins them for a project with a programmable board. */
+const VIEWS: View[] = ['circuit', 'schematic'];
+const VIEW_LABEL = {
+  circuit: 'program.tab.circuit',
+  schematic: 'view.tab.schematic',
+  code: 'program.tab.code',
+} as const;
 
 /**
  * The editing workspace: palette, canvas and inspector. Run/Stop live in the top bar.
@@ -21,7 +31,7 @@ export function Editor() {
   const programBoard = doc
     ? Object.keys(doc.programs).find((id) => doc.components.some((c) => c.id === id))
     : undefined;
-  const [view, setView] = useState<'circuit' | 'code'>('circuit');
+  const [view, setView] = useState<View>('circuit');
   const [focusBuild, setFocusBuild] = useState(0);
   useEffect(() => setView('circuit'), [doc?.projectId]);
   // Run refused for want of a current build: take the user to the code and its Build action.
@@ -33,6 +43,8 @@ export function Editor() {
     }
   }, [refusal, sim]);
   const showCode = view === 'code' && !!programBoard;
+  const views: View[] = programBoard ? [...VIEWS, 'code'] : VIEWS;
+  const active: View = views.includes(view) ? view : 'circuit';
   const [placing, setPlacing] = useState<ComponentTypeId | null>(null);
   const [probeMode, setProbeMode] = useState(false);
   const [probes, setProbes] = useState<Probe[]>([]);
@@ -69,30 +81,50 @@ export function Editor() {
         }}
       />
       <div class="workspace-center">
-        {programBoard && (
-          <div class="view-tabs" role="tablist" aria-label={t('program.tab.code')}>
-            {(['circuit', 'code'] as const).map((v) => (
-              <button
-                key={v}
-                type="button"
-                role="tab"
-                class="view-tab"
-                data-testid={`view-${v}`}
-                aria-selected={view === v}
-                onClick={() => setView(v)}
-              >
-                {t(v === 'circuit' ? 'program.tab.circuit' : 'program.tab.code')}
-                {v === 'code' && (
-                  <span class="view-tab-file technical" dir="ltr">
-                    {doc!.programs[programBoard]!.fileName}
-                  </span>
-                )}
-              </button>
-            ))}
+        <div
+          class="view-tabs"
+          role="tablist"
+          aria-label={t('view.tabs')}
+          onKeyDown={(e) => {
+            // Arrow keys move between tabs, in reading order (mirrored under RTL).
+            const step = { ArrowRight: 1, ArrowLeft: -1 }[e.key];
+            if (!step) return;
+            e.preventDefault();
+            const forward = document.documentElement.dir === 'rtl' ? -step : step;
+            const next = views[(views.indexOf(active) + forward + views.length) % views.length]!;
+            setView(next);
+            (e.currentTarget as HTMLElement)
+              .querySelector<HTMLElement>(`[data-testid="view-${next}"]`)
+              ?.focus();
+          }}
+        >
+          {views.map((v) => (
+            <button
+              key={v}
+              type="button"
+              role="tab"
+              class="view-tab"
+              data-testid={`view-${v}`}
+              aria-selected={active === v}
+              tabIndex={active === v ? 0 : -1}
+              onClick={() => setView(v)}
+            >
+              {t(VIEW_LABEL[v])}
+              {v === 'code' && (
+                <span class="view-tab-file technical" dir="ltr">
+                  {doc!.programs[programBoard!]!.fileName}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+        {showCode && <CodeView boardId={programBoard!} focusBuild={focusBuild} />}
+        {active === 'schematic' && (
+          <div class="view-slot">
+            <SchematicView />
           </div>
         )}
-        {showCode && <CodeView boardId={programBoard!} focusBuild={focusBuild} />}
-        <div class="canvas-slot" hidden={showCode}>
+        <div class="canvas-slot" hidden={active !== 'circuit'}>
           <Canvas
             placing={placing}
             onPlacingDone={() => setPlacing(null)}

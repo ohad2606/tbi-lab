@@ -1,0 +1,109 @@
+/**
+ * Schematic symbol registry (Sprint 9, D-S9-2): how each component TYPE appears in the generated
+ * professional schematic — which conventional symbol, and how its project terminals map to that
+ * symbol's pins. Data only: the layout and the renderer have no per-type code paths. A new
+ * component type adds one entry here (and, if it needs a new symbol, one drawing in the renderer).
+ *
+ * Two-pin symbols are drawn horizontally at rotation 0 with pin `a` at (−40, 0) and pin `b` at
+ * (+40, 0); `a`/`b` name the project terminals on those ends (e.g. an LED's anode is its `a` end,
+ * so the triangle points from anode to cathode wherever the layout puts it).
+ */
+
+import {
+  ESP32_DEVKITC_WROOM32,
+  boardTerminalId,
+  type ComponentInstance,
+  type ComponentTypeId,
+} from '@tbi-lab/domain';
+
+export type SchematicSymbolKey =
+  'resistor' | 'led' | 'diode' | 'switch.push' | 'switch.toggle' | 'source.dc' | 'module';
+
+export interface TwoPinSymbol {
+  kind: 'two-pin';
+  key: SchematicSymbolKey;
+  /** Project terminal on the symbol's left end (rotation 0). */
+  a: string;
+  /** Project terminal on the symbol's right end (rotation 0). */
+  b: string;
+  /** A design value printed beside the symbol: the quantity parameter that names the part. */
+  valueParam?: string;
+}
+
+export interface ModulePin {
+  terminal: string;
+  /** Technical pin name (silkscreen token), LTR in every locale. */
+  name: string;
+  side: 'left' | 'right';
+  /** Order along its side, top to bottom. */
+  order: number;
+}
+
+export interface ModuleSymbol {
+  kind: 'module';
+  key: 'module';
+  /** Every connectable pin of the module, by side and order. */
+  pins: ModulePin[];
+  /** Short technical name printed inside the block (not translated: a part name). */
+  partName: string;
+}
+
+/** A reference symbol: the part itself is drawn as a ground mark at its connection. */
+export interface GroundSymbol {
+  kind: 'ground';
+  terminal: string;
+}
+
+export type SchematicSymbol = TwoPinSymbol | ModuleSymbol | GroundSymbol;
+
+/**
+ * ESP32 DevKitC: a module block with its connectable header pins by NAME (IO4, IO34, GND); the
+ * J2 header is the left side and J3 the right side, in header order — the same sides as on the
+ * physical board, so the two views are easy to relate.
+ */
+const ESP32_PINS: ModulePin[] = ESP32_DEVKITC_WROOM32.pins.flatMap((pin) => {
+  const terminal = boardTerminalId(pin);
+  return terminal
+    ? [
+        {
+          terminal,
+          name: pin.headerLabel,
+          side: pin.header === 'J2' ? ('left' as const) : ('right' as const),
+          order: pin.position,
+        },
+      ]
+    : [];
+});
+
+export const SCHEMATIC_SYMBOLS: Record<ComponentTypeId, SchematicSymbol> = {
+  'component.resistor': {
+    kind: 'two-pin',
+    key: 'resistor',
+    a: 'a',
+    b: 'b',
+    valueParam: 'resistance',
+  },
+  'component.led': { kind: 'two-pin', key: 'led', a: 'anode', b: 'cathode' },
+  'component.diode': { kind: 'two-pin', key: 'diode', a: 'anode', b: 'cathode' },
+  'component.push_button': { kind: 'two-pin', key: 'switch.push', a: 'a', b: 'b' },
+  'component.toggle_switch': { kind: 'two-pin', key: 'switch.toggle', a: 'a', b: 'b' },
+  // The lab supply is a DC voltage source: + on its `a` end.
+  'instrument.lab_psu': {
+    kind: 'two-pin',
+    key: 'source.dc',
+    a: 'positive',
+    b: 'negative',
+    valueParam: 'setpointVoltage',
+  },
+  'component.ground': { kind: 'ground', terminal: 'ref' },
+  'board.esp32_devkitc_wroom32': {
+    kind: 'module',
+    key: 'module',
+    pins: ESP32_PINS,
+    partName: 'ESP32-DevKitC',
+  },
+};
+
+export function schematicSymbol(c: Pick<ComponentInstance, 'type'>): SchematicSymbol {
+  return SCHEMATIC_SYMBOLS[c.type];
+}
