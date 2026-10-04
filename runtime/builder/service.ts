@@ -44,7 +44,9 @@ export interface ServiceAccess {
   probe?: ResourceProbe;
   /**
    * Live runtime sessions on this host right now (the Session Host's health). New builds do not
-   * START while sessions use the CPUs (policy); unknown → builds are not deferred.
+   * START while sessions use the CPUs (policy). `null` = unknown (health stale or unreachable):
+   * fail closed — no new build starts until a fresh reading shows free CPUs. Absent = no runtime
+   * on this host (development, unit tests): builds are never deferred.
    */
   liveSessions?: () => number | null;
 }
@@ -340,7 +342,10 @@ export class BuildService {
    * - a build that waited longer than the policy allows fails as `capacity_timeout` (it never
    *   starts late into contention);
    * - while live runtime sessions occupy the CPUs, NO NEW build starts (sessions have priority;
-   *   nothing that runs is ever stopped) — it waits in the queue and is retried every second.
+   *   nothing that runs is ever stopped) — it waits in the queue and is retried every second;
+   * - the same when that count is UNKNOWN (stale/unavailable Session Host health): fail closed, so
+   *   a compile never starts on top of a live session nobody can see. A wait that outlasts the
+   *   policy ends as `capacity_timeout` above.
    */
   private async pump(): Promise<void> {
     if (this.active) return;
@@ -359,8 +364,9 @@ export class BuildService {
       this.idle.clear();
       return;
     }
-    const live = this.access.liveSessions?.() ?? null;
-    if (live !== null && live >= policy.deferBuildsAtLiveSessions) {
+    const watch = this.access.liveSessions;
+    const live = watch ? watch() : 0;
+    if (live === null || live >= policy.deferBuildsAtLiveSessions) {
       if (!this.deferred)
         this.deferred = setTimeout(() => {
           this.deferred = null;

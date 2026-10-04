@@ -1,7 +1,7 @@
 /**
  * How many runtime sessions are live on this host (Sprint 8 Phase 4 admission): the Session Host's
  * `/health` (counts by state, no identifiers), polled once a second over its socket. Unknown or
- * stale (the host is down) → null, and builds are not deferred.
+ * stale (the host is down or not answering) → null, and new builds are held (fail closed).
  */
 import { request } from 'node:http';
 import type { ListenSpec } from '../identity/listen.js';

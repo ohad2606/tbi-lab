@@ -9,7 +9,8 @@
  *   TBI_BUILD_STATE        private state directory (grants.db)
  *   TBI_POLICY_FILE        plans, quotas and global limits (runtime/policy; default: built-in)
  *   TBI_RUNTIME_HEALTH     the Session Host's socket (`unix:/path`): its live sessions defer new
- *                          builds (sessions first); unset: builds are never deferred
+ *                          builds (sessions first); stale/unreachable: no new build starts
+ *                          (fail closed); unset: no runtime on this host, never deferred
  *   TBI_BUILD_JOB_UNIT     template unit prefix of the per-job sandbox (e.g. tbi-build-job);
  *                          unset: tools run as child processes (development only)
  *   TBI_ARDUINO_HOME       provisioned Arduino home (bin/arduino-cli, data/), read-only

@@ -217,6 +217,27 @@ describe.skipIf(!HAVE)(
       ).toBe('failed'); // it ran (a deliberate compile error) once the CPU was free
     });
 
+    it('unknown runtime capacity fails closed: with the Session Host down a build waits; it starts once health is fresh', async () => {
+      sudo('systemctl', 'stop', `${N}-session-host.service`);
+      try {
+        await new Promise((r) => setTimeout(r, 6000)); // the last health reading has gone stale
+        const b = await submit('p4-i', `void setup( { // ${run} stale health\n`);
+        expect(b.status).toBe(202);
+        await new Promise((r) => setTimeout(r, 4000));
+        expect((await poll('p4-i', b.body.buildId as string, b.body.token as string)).state).toBe(
+          'queued',
+        );
+        sudo('systemctl', 'start', `${N}-session-host.service`);
+        await waitHealthy();
+        expect(
+          (await until('p4-i', b.body.buildId as string, b.body.token as string, ['failed'])).result
+            ?.failure,
+        ).toBe('compile_error'); // it ran (a deliberate compile error) once capacity was known
+      } finally {
+        sudo('systemctl', 'start', `${N}-session-host.service`);
+      }
+    });
+
     it('the session-creation rate refuses with a wait and survives a Session Host restart', async () => {
       expect((await upload('p4-g')).status).toBe(200);
       for (let i = 0; i < 3; i++) {

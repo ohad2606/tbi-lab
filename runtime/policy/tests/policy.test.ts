@@ -46,7 +46,12 @@ function preview(tweak: (c: PolicyConfig) => void = () => {}, cpus = 1): Policy 
 
 function buildWorld(
   policy: Policy,
-  opts: { live?: () => number | null; probe?: ResourceProbe; capImages?: number } = {},
+  opts: {
+    live?: () => number | null;
+    probe?: ResourceProbe;
+    capImages?: number;
+    provider?: FakeProvider;
+  } = {},
 ) {
   const storeDir = tempDir('tbi-pol-store-');
   const work = tempDir('tbi-pol-work-');
@@ -60,7 +65,7 @@ function buildWorld(
     graceMs: 0,
     onEvicted: (sha) => grants.dropArtifact(sha),
   });
-  const provider = new FakeProvider();
+  const provider = opts.provider ?? new FakeProvider();
   const service = new BuildService(
     [provider],
     store,
@@ -341,6 +346,106 @@ describe('admission against live sessions (CPU is the binding resource)', () => 
     expect(service.status(out.buildId, out.token, A)?.result?.failure).toBe('capacity_timeout');
     expect(provider.builds).toBe(0);
     expect(service.inFlight(A)).toBe(0);
+  });
+
+  // Stale/unavailable Session Host health (the watcher returns null) fails CLOSED: an unseen
+  // live QEMU session may hold the only CPU. Nothing running is stopped; the wait is bounded.
+  describe('runtime health freshness', () => {
+    const state = (service: BuildService, out: ReturnType<BuildService['submit']>) => {
+      if ('cached' in out) throw new Error('unexpected');
+      return service.status(out.buildId, out.token, A)?.state;
+    };
+
+    it('fresh health with no live session: the build starts', async () => {
+      const { service, provider } = buildWorld(preview(), { live: () => 0 });
+      const out = service.submit(sketch('void setup(){} // fresh'), A);
+      await expect.poll(() => state(service, out), { timeout: 5000 }).toBe('succeeded');
+      expect(provider.builds).toBe(1);
+    });
+
+    it('fresh health with the CPU occupied: the build waits', async () => {
+      let live = 1;
+      const { service, provider } = buildWorld(preview(), { live: () => live });
+      const out = service.submit(sketch('void setup(){} // busy'), A);
+      await new Promise((r) => setTimeout(r, 1500));
+      expect(provider.builds).toBe(0);
+      expect(state(service, out)).toBe('queued');
+      live = 0; // let the queue drain before cleanup
+      await expect.poll(() => state(service, out), { timeout: 5000 }).toBe('succeeded');
+    });
+
+    it('stale health: no new build starts', async () => {
+      let live: number | null = null;
+      const { service, provider } = buildWorld(preview(), { live: () => live });
+      const out = service.submit(sketch('void setup(){} // stale'), A);
+      await new Promise((r) => setTimeout(r, 2500));
+      expect(provider.builds).toBe(0);
+      expect(state(service, out)).toBe('queued');
+      live = 0; // let the queue drain before cleanup
+      await expect.poll(() => state(service, out), { timeout: 5000 }).toBe('succeeded');
+    });
+
+    it('health fresh and free again before the timeout: the waiting build starts', async () => {
+      let live: number | null = null;
+      const { service, provider } = buildWorld(preview(), { live: () => live });
+      const out = service.submit(sketch('void setup(){} // recovers'), A);
+      await new Promise((r) => setTimeout(r, 1500));
+      expect(provider.builds).toBe(0);
+      live = 0;
+      await expect.poll(() => state(service, out), { timeout: 5000 }).toBe('succeeded');
+      expect(provider.builds).toBe(1);
+    });
+
+    it('health stays stale: the waiting build ends as capacity_timeout, never compiled', async () => {
+      const { service, provider } = buildWorld(
+        preview((c) => (c.global.build.maxQueueWaitMs = 1000)),
+        { live: () => null },
+      );
+      const out = service.submit(sketch('void setup(){} // stays stale'), A);
+      await expect.poll(() => state(service, out), { timeout: 5000 }).toBe('failed');
+      if ('cached' in out) throw new Error('unexpected');
+      expect(service.status(out.buildId, out.token, A)?.result?.failure).toBe('capacity_timeout');
+      expect(provider.builds).toBe(0);
+      expect(service.inFlight(A)).toBe(0);
+    });
+
+    it('a running build is not stopped when health later goes stale (the next one waits)', async () => {
+      let release!: () => void;
+      const gate = new Promise<void>((r) => (release = r));
+      class Slow extends FakeProvider {
+        override async build(job: Parameters<FakeProvider['build']>[0]) {
+          if (this.builds === 0) {
+            this.builds++;
+            await gate;
+            this.builds--;
+          }
+          return super.build(job);
+        }
+      }
+      let live: number | null = 0;
+      const { service, provider } = buildWorld(preview(), {
+        live: () => live,
+        provider: new Slow(),
+      });
+      closers.push(() => {
+        live = 0; // on failure, let everything drain before the idle-wait cleanup
+        release();
+      });
+      const first = service.submit(sketch('void setup(){} // running'), A);
+      await expect.poll(() => state(service, first), { timeout: 5000 }).toBe('building');
+      live = null;
+      const second = service.submit(sketch('void setup(){} // behind'), A);
+      // (Under the test world's 1.5 s compile limit: release while the first is still running.)
+      await new Promise((r) => setTimeout(r, 1000));
+      expect(state(service, first)).toBe('building');
+      release();
+      await expect.poll(() => state(service, first), { timeout: 5000 }).toBe('succeeded');
+      await new Promise((r) => setTimeout(r, 1500));
+      expect(state(service, second)).toBe('queued');
+      expect(provider.builds).toBe(1);
+      live = 0;
+      await expect.poll(() => state(service, second), { timeout: 5000 }).toBe('succeeded');
+    }, 20_000);
   });
 
   it('low disk or memory refuses new builds before any work', () => {

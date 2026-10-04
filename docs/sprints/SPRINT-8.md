@@ -468,8 +468,13 @@ Caddy) ran beside dev-lab, which kept serving `a2ad7c6` unchanged.
   compiles and sessions are never stopped.
 - A queued build that cannot start within `maxQueueWaitMs` ends as `capacity_timeout` (not run
   late).
-- If the health value is stale or unavailable, builds are not deferred, so a lost host never
-  wedges the builder.
+- **Unknown capacity fails closed** (correction after the Phase 4 review): if the health
+  reading is stale (older than 5 s) or the Session Host is unreachable, no new compile starts.
+  Queued builds keep waiting, running builds are untouched, and a wait past `maxQueueWaitMs`
+  ends as `capacity_timeout`. A fresh reading with free CPUs lets the queue go on. Reason: on
+  the 1-vCPU host a compile must never start on top of a live QEMU session nobody can see.
+  (Without `TBI_RUNTIME_HEALTH` configured — no runtime on that host, development only —
+  builds are not deferred.)
 
 **Session** (Session Host `create`, in order):
 1. ticket
@@ -574,7 +579,28 @@ The identity, ownership and containment suites are unchanged and pass.
 - **`TBI_ALLOW_PREBUILT` replaced** by policy. Its unit-file entry is removed.
 - **R2 test policy.** R2's bundle host now runs with an explicit open test policy, because its
   scenario holds several sessions at once.
-- **Staleness fallback.** Deferral relies on the Session Host health poll. A stale reading does
-  not defer builds (availability over strictness).
+- **Staleness.** Deferral relies on the Session Host health poll. Originally a stale reading did
+  not defer builds; corrected to fail closed (see below). Consequence: if the Session Host is
+  down for longer than `maxQueueWaitMs` (10 min), queued builds end as `capacity_timeout`.
 - **Not deployed.** dev-lab still serves `a2ad7c6` on runtime `979f09d739382157`; Phase 4 has
   been deployed to staging only.
+
+### Correction: stale runtime health fails closed (after the Phase 4 review)
+
+- `BuildService.pump`: a configured live-session watch returning `null` (stale/unreachable)
+  now holds the queue exactly like "CPUs occupied". No separate recovery path: the existing
+  1-second retry and `capacity_timeout` apply.
+- Regression tests (`policy.test.ts`, "runtime health freshness"):
+  1. fresh health, no session → the build starts;
+  2. fresh health, CPU occupied → it waits;
+  3. stale health → it does not start;
+  4. health fresh and free again before the timeout → the waiting build starts;
+  5. health stays stale → `capacity_timeout`, never compiled;
+  6. a running build is not stopped when health goes stale; the next one waits until health is
+     fresh.
+- Staging (`s8-policy.runtime.test.ts`, new case): with `tbi-s8-session-host` stopped a submitted
+  build stays `queued`; after the host starts again it compiles. 7/7 on staging; the real
+  policy was restored (`cmp` identical).
+- Validation after the fix: typecheck, lint, boundaries, production build PASS; unit **593
+  passed** (57 files; policy suite 29/29, three consecutive runs); staging containment + gate
+  14/14; staging policy 7/7.
