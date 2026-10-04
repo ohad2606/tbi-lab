@@ -17,3 +17,4 @@ export * from './library.js';
 export * from './boards/esp32DevkitcWroom32.js';
 export * from './firmware.js';
 export * from './program.js';
+export * from './connectivity.js';
