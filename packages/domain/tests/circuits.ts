@@ -19,13 +19,15 @@ export function wire(doc: ProjectDocument, a: [string, string], b: [string, stri
   ).doc;
 }
 
-/** ESP32 + button input (to the supply) and LED output, every part grounded separately. */
+/**
+ * ESP32 + button input (to the supply) and LED output, every part grounded separately: the
+ * representative mixed circuit (ESP32, LED, resistors, push button, supply, ground).
+ */
 export function mixedCircuit() {
   let doc = newDoc();
-  const ids: Record<string, string> = {};
+  // A new project already holds its lab supply and a ground (PSU1, GND1).
+  const ids: Record<string, string> = { psu: 'PSU1', g1: 'GND1' };
   for (const [k, type, x, y] of [
-    ['psu', 'instrument.lab_psu', -400, 0],
-    ['g1', 'component.ground', -360, 120],
     ['u', 'board.esp32_devkitc_wroom32', 100, 0],
     ['sw', 'component.push_button', -240, -100],
     ['rin', 'component.resistor', -100, -100],
