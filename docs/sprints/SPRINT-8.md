@@ -2,8 +2,8 @@
 
 **Status:** PHASES 0–4 COMPLETE (identity, ownership, containment, policy/admission). Deployed
 to dev-lab at `c31d62e`; technical validation passed. A closure blocker found during the owner's
-use (QEMU task limit, 2026-10-05) is fixed and deployed (see the end of this record);
-**awaiting owner smoke (Run/Stop path)**. Phases 5–6 not
+use (QEMU task limit, 2026-10-05) is fixed and deployed (see the end of this record). **Owner
+smoke (repeated Run/Stop): PASS** (2026-10-05). Closure proposed; no PR, merge or tag yet. Phases 5–6 not
 started. `main` and production unchanged; no PR, merge or tag.
 
 **Base:** `sprint-7-complete^{}` = `a2ad7c6`. **Branch:** `sprint-8`. **Architecture:**
@@ -747,8 +747,12 @@ build service, Session Host, Caddy and oauth2-proxy keep their start times; dev-
 - Unchanged and still valid: identity, ownership, policy/admission, gate and build validation
   (nothing they exercise changed).
 
-**Owner smoke.** Only the Run/Stop path needs repeating (ESP32 example: Build, Run, interact,
-Stop, Run again), not the whole checklist.
+**Sprint 8 owner Run/Stop: PASS** (repeated after the fix, 2026-10-05; the owner reports everything works correctly). The `TasksMax=80` fix is accepted for Sprint 8. Only the Run/Stop
+path was repeated, as the fix touched nothing else. The dev-lab journal for the owner's identity
+agrees: 5 sessions from 06:36 to 06:38 UTC, each running 14.5–40.4 s (well past the ~5.4 s
+thread burst), each ending with Stop as `Deactivated successfully`; the second and later Runs
+started cleanly after the previous Stop; no `fork rejected` since the fix (the dev-lab QEMU
+slice still counts only the one rejection from before it).
 
 **Also cleaned up.** Two root TCP relays left from a Sep 29 staging validation run
 (127.0.0.1:7811 → `/run/tbi-s8-build/api.sock`, 127.0.0.1:7812 → `/run/tbi-s8-runtime/api.sock`,
