@@ -32,11 +32,12 @@ const near = (a: number | null | undefined, e: number, rel = REL) => {
 const example = (id: string) => EXAMPLES.find((e) => e.id === id)!.document;
 
 describe('the example set', () => {
-  it('has the six DC examples and the two ESP32 examples, each titled in English and Hebrew', () => {
+  it('has the seven DC examples and the two ESP32 examples, each titled in English and Hebrew', () => {
     expect(EXAMPLES.map((e) => e.id)).toEqual([
       'ohms-law',
       'voltage-divider',
       'led-current',
+      'led-colours',
       'diode-polarity',
       'push-button',
       'cc-mode',
@@ -106,6 +107,33 @@ describe('expected engineering results (production engine)', () => {
     near(r.components.D1!.current, 13.72e-3, 1e-3);
     // KVL: resistor drop + LED voltage = 5 V exactly (solver verification).
     near(r.components.R1!.voltage! + r.components.D1!.voltage!, 5);
+  });
+
+  it('LED colours (Sprint 10): one resistor, three colour cards, three different currents', () => {
+    const doc = example('led-colours');
+    expect(
+      doc.components.filter((c) => c.type === 'component.led').map((c) => c.params.model),
+    ).toEqual([
+      'model.led.vishay_tlhr5400',
+      'model.led.vishay_tlhy5400',
+      'model.led.vishay_tlhg4900',
+    ]);
+    const r = solve(doc);
+    near(r.components.D1!.current, 16.72e-3, 1e-3);
+    near(r.components.D2!.current, 14.53e-3, 1e-3);
+    near(r.components.D3!.current, 14.53e-3, 1e-3);
+    for (const [d, res] of [
+      ['D1', 'R1'],
+      ['D2', 'R2'],
+      ['D3', 'R3'],
+    ] as const) {
+      // KVL on each branch, and inside each card's documented 1-20 mA range.
+      near(r.components[res]!.voltage! + r.components[d]!.voltage!, 5);
+      expect(r.components[d]!.current!).toBeGreaterThan(1e-3);
+      expect(r.components[d]!.current!).toBeLessThan(20e-3);
+    }
+    // A higher forward voltage leaves less across the same resistor.
+    expect(r.components.D2!.current!).toBeLessThan(r.components.D1!.current!);
   });
 
   it('diode polarity: D1 forward ~4.314 mA / 685.8 mV; D2 reversed blocks at nA', () => {

@@ -133,6 +133,38 @@ export const RECIPES: Record<string, () => ProjectDocument> = {
     r.wire(T(D1, 'cathode'), T(G, 'ref'));
     return r.centre(-60);
   },
+  /**
+   * Sprint 10: the three approved LED colour cards side by side. 5 V through 180 Ω each into a red
+   * (TLHR5400), a yellow (TLHY5400) and a green (TLHG4900) LED: the same resistor sets a different
+   * current because each colour has its own forward voltage (datasheet V_F at 20 mA: 2.0 V red,
+   * 2.4 V yellow and green).
+   */
+  'led-colours': () => {
+    const r = new Recipe('led-colours', 'LED colours');
+    r.supply(5, 0.1);
+    const branch = (i: number, model: string) => {
+      const R = r.place('component.resistor', 60 + 160 * i, -20);
+      const D = r.place('component.led', 140 + 160 * i, 40, 1);
+      const G = r.place('component.ground', 140 + 160 * i, 140);
+      r.set(R, 'resistance', 180, 'ohm');
+      r.choose(D, 'model', model);
+      r.wire(T(R, 'b'), T(D, 'anode'));
+      r.wire(T(D, 'cathode'), T(G, 'ref'));
+      return R;
+    };
+    const R1 = branch(0, 'model.led.vishay_tlhr5400');
+    const R2 = branch(1, 'model.led.vishay_tlhy5400');
+    const R3 = branch(2, 'model.led.vishay_tlhg4900');
+    // One supply rail along y = -80, with a junction above each resistor (right to left, so
+    // each split lands on the part of the rail still running from the supply).
+    const rail = r.wire(T('PSU1', 'positive'), T(R3, 'a'), [
+      { x: -40, y: -80 },
+      { x: 340, y: -80 },
+    ]);
+    r.wire({ kind: 'wire', wire: rail, at: { x: 180, y: -80 } }, T(R2, 'a'));
+    r.wire({ kind: 'wire', wire: rail, at: { x: 20, y: -80 } }, T(R1, 'a'));
+    return r.centre(-200);
+  },
   /** Two identical 1 kΩ + 1N4148 branches; D1 forward conducts ~4.3 mA, D2 reversed blocks (nA). */
   'diode-polarity': () => {
     const r = new Recipe('diode-polarity', 'Diode polarity');

@@ -298,6 +298,9 @@ export const en = {
   'example.led-current.title': 'LED current limiting',
   'example.led-current.summary':
     'A 220 Ω resistor sets the current of a red LED from 5 V. The LED is nonlinear: it settles near 2 V and about 14 mA.',
+  'example.led-colours.title': 'LED colours: one resistor, different currents',
+  'example.led-colours.summary':
+    'Red, yellow and green LEDs, each from 5 V through 180 Ω. Each colour has its own forward voltage (about 2.0 V red, 2.4 V yellow and green), so the same resistor sets about 16.7 mA through the red LED and 14.5 mA through the others.',
   'example.diode-polarity.title': 'Diode polarity',
   'example.diode-polarity.summary':
     'Two identical branches with a 1N4148 diode. D1 is forward biased and conducts about 4.3 mA; D2 is reversed and blocks (a few nA).',

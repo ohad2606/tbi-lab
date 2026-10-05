@@ -17,6 +17,7 @@ import ccMode from './data/cc-mode.json';
 import diodePolarity from './data/diode-polarity.json';
 import esp32Blink from './data/esp32-blink.json';
 import esp32InputEcho from './data/esp32-input-echo.json';
+import ledColours from './data/led-colours.json';
 import ledCurrent from './data/led-current.json';
 import ohmsLaw from './data/ohms-law.json';
 import pushButton from './data/push-button.json';
@@ -63,6 +64,13 @@ export const EXAMPLES: readonly Example[] = [
     summaryKey: 'example.led-current.summary',
     document: doc(ledCurrent),
     probes: [V('D1', 'anode'), I('D1')],
+  },
+  {
+    id: 'led-colours',
+    titleKey: 'example.led-colours.title',
+    summaryKey: 'example.led-colours.summary',
+    document: doc(ledColours),
+    probes: [I('D1'), I('D2'), I('D3')],
   },
   {
     id: 'diode-polarity',

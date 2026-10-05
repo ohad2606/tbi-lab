@@ -288,6 +288,9 @@ export const he: Record<MessageKey, string> = {
   'example.led-current.title': 'הגבלת זרם לנורית LED',
   'example.led-current.summary':
     'נגד של ⁦220 Ω⁩ קובע את הזרם של נורית LED אדומה מ־⁦5 V⁩. הנורית אינה ליניארית: היא מתייצבת סביב ⁦2 V⁩ ובערך ⁦14 mA⁩.',
+  'example.led-colours.title': 'צבעי LED: אותו נגד, זרמים שונים',
+  'example.led-colours.summary':
+    'נוריות LED אדומה, צהובה וירוקה, כל אחת מ־⁦5 V⁩ דרך ⁦180 Ω⁩. לכל צבע מתח קדמי משלו (בערך ⁦2.0 V⁩ באדומה, ⁦2.4 V⁩ בצהובה ובירוקה), ולכן אותו נגד קובע בערך ⁦16.7 mA⁩ באדומה ו־⁦14.5 mA⁩ באחרות.',
   'example.diode-polarity.title': 'קוטביות דיודה',
   'example.diode-polarity.summary':
     'שני ענפים זהים עם [[diode]] ⁦1N4148⁩. ⁦D1⁩ בממתח קדמי ומוליכה כ־⁦4.3 mA⁩; ⁦D2⁩ הפוכה וחוסמת (ננו־אמפרים בודדים).',
