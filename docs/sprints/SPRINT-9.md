@@ -388,6 +388,61 @@ in `009783f`. Published history was not rewritten. Commits since `009783f` were 
 independently valid (code before its tests, nothing relying on a later commit); the full checks
 ran at `1679128`, `83edd67` and the final HEAD, not separately at every intermediate commit.
 
+## Owner review: build latency (2026-10-05)
+
+During the owner's visual review one Build took more than 10 s. Classified as **not a Sprint 9
+regression**:
+
+> First build of a sketch may require a real Arduino/ESP32 compile and take roughly 30–36 seconds
+> on the current single-vCPU dev-lab host. Rebuilding identical source is served from cache and
+> should be effectively instant.
+
+- **The observed build** (05:31:45 UTC) was the first build of the "ESP32: switch input to LED"
+  example's source on the Sprint 8 backend (Sprint 8 deliberately did not carry the Sprint 7
+  cache forward): one real compile, 34.2 s wall, 25.8 CPU-s, 727 MB peak. That example's build is
+  now cached for every user.
+- **Measured** through the deployed `/build/` route (the preview's same-origin path), fresh test
+  principals, 5 runs each:
+
+| Case | Wall time | Cache | Queue | Compile |
+|---|---|---|---|---|
+| First build of the (now cached) example | 1–11 ms | hit | 0 | 0 |
+| Identical source again | 1–8 ms | hit | 0 | 0 |
+| Trivial edit | 33.7–36.7 s (median 34.2 s) | fresh | 0–2 ms | 33.5–36.3 s |
+| Reverted to a cached source | 1–3 ms | hit | 0 | 0 |
+| Real code edit (one run) | 35.7 s, then 2 ms | fresh, then hit | 0 | 35.4 s |
+
+  A comment-only edit compiles to an identical image (same artifact SHA); a code edit gives a new
+  one, and reverting returns the old one from cache. Sprint 8 recorded 30–36 s for a fresh
+  compile, so this is the known single-vCPU limit, not a change.
+- **Frontend overhead:** none. With the same mocked `/build`, the Sprint 8 and Sprint 9 frontends
+  both send the request ≈ 1 ms after the click and show the result 6–19 ms after the last
+  response; Sprint 9 changed no build or runtime client code.
+- **Host during the measurements:** CPU busy (median 88 %, the compile itself), load ≤ 1.25, no
+  QEMU session, no queue (≤ 2 ms), light swap traffic.
+
+Build behaviour and backend policy are unchanged.
+
+## Owner visual-review checklist
+
+1. Sign in at `https://dev-lab.tbi-tech.net/s9-preview/`; the amber "Sprint 9 preview ·
+   experimental" strip is shown; the project list is the preview's own (empty at first).
+2. Open "ESP32: switch input to LED": Circuit and Code work; Build and Run work against the
+   Sprint 8 backend. **The first build of a sketch may require a real Arduino/ESP32 compile and
+   take roughly 30–36 seconds on the current single-vCPU dev-lab host; rebuilding identical
+   source is served from cache and should be effectively instant.**
+3. Schematic: only `GND`, `IO34`, `IO4` on the ESP32 block; resistor, LED, button, supply and
+   ground symbols readable; also Voltage divider, LED current, Push button, ESP32 blink.
+4. Click a part in the schematic: the inspector selects it; the save state does not change.
+5. 3D: orbit all the way round, right-drag pan, wheel zoom, fit, reset; wires and parts
+   identifiable from every side.
+6. LED current → Run: the LED lights in 3D.
+7. Switch tabs 10–20 times: the browser stays responsive.
+8. עברית: tabs "מעגל · סכמה · תלת־ממד · קוד"; the schematic tab's tooltip is "סכמה חשמלית";
+   RTL layout with code, pin names and values LTR.
+9. Verdict: 3D sizes, schematic layout and labels, the preview strip — acceptable, or what to
+   change.
+
 ## Limitations (first implementation, stated plainly)
 
 **3D**
