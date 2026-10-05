@@ -134,12 +134,12 @@ export const TOGGLE = {
  * the terminal point where the wire is soldered [REP].
  */
 export const GROUND_POST = {
-  plateMm: 5.0,
-  plateThicknessMm: 0.6,
-  postDiameterMm: 3.6,
-  postHeightMm: 5.5,
+  plateMm: 4.4,
+  plateThicknessMm: 0.5,
+  postDiameterMm: 3.0,
+  postHeightMm: 4.6,
   /** Post centre behind the terminal (2D: the symbol body is below its terminal). */
-  postOffsetZMm: 3.8,
+  postOffsetZMm: 3.4,
   /** The lug's ring at the terminal. */
   attachHeightMm: 0.9,
 };
