@@ -1,12 +1,13 @@
 # Sprint 9 — Three views of one circuit
 
 **Status:** **Sprint 9 formally opened** (2026-10-05) from `sprint-9` `3bbeb4c` (which includes
-`sprint-8-complete`). **S9-M1** (foundation, owner visual review PASS) and **S9-M2/M3** (polish,
-regression, compatibility) are done; the refreshed **isolated preview** at
-`https://dev-lab.tbi-tech.net/s9-preview/` serves `8ac8b86` and awaits the owner's review
-(**S9-M4**). No PR, merge, tag or production deployment. dev-lab keeps the validated Sprint 8
-deployment. Production for Sprint 9 waits for the separate carried-forward capacity/security
-track as well.
+`sprint-8-complete`). S9-M1 to M3 are done. The owner's S9-M4 review found three issues
+(false-looking wire connections, direct terminal contact, 3D pan); they are fixed (see "Owner
+review fixes" below). The refreshed **isolated preview** at
+`https://dev-lab.tbi-tech.net/s9-preview/` serves `198ca92` and awaits the owner's re-review. **Not
+ready for closure** until then. No PR, merge, tag or production deployment. dev-lab keeps the
+validated Sprint 8 deployment. Production for Sprint 9 also waits for the separate
+carried-forward capacity/security track.
 Architecture and decisions: [SPRINT-9-ARCHITECTURE.md](SPRINT-9-ARCHITECTURE.md).
 
 ## Product rule
@@ -152,6 +153,116 @@ page and service start times unchanged). The 51-check browser validation of the 
 passes (main app, schematic, 3D incl. 20 cycles and LED glow, Hebrew, WebGL fallback, isolated
 storage). Evidence: `s9-evidence/m2-schematic-diode-polarity.png`, `m2-3d-cc-mode.png`,
 `m2-3d-big-board.png`.
+
+## Owner review fixes: electrical semantics and 3D pan (2026-10-05)
+
+The owner's S9-M4 review found three concrete issues; Sprint 9 is not ready for closure until
+they are reviewed again. Rule applied throughout: **a connection exists only in the domain
+model; no view may draw one the model does not have, or hide one it has.**
+
+**1. Wire crossings never connect; routing keeps wires off headers.**
+- Already true in the domain since Sprint 2: connectivity comes only from explicit wire
+  endpoints (terminals, junctions); crossings are drawn with a bridge, junctions with a dot.
+  Now proven by regression tests: a wire run down the ESP32 header crosses the 18 other pins of that header and
+  connects to none (each connectable pin it crosses is flagged); crossing wires stay separate nets; an
+  explicit junction joins them; save/load keeps exactly the explicit connectivity.
+- **Root cause of the observed defect:** a wire keeps its stored vertices when a part it is
+  attached to moves, so its fixed horizontal-first route could end up running straight down the
+  ESP32 header. And the router did not know the board's **unconnectable** header pins (3V3, EN,
+  flash pins…): only connectable terminals were obstacles.
+- **Fix:** every pin a board draws is now a routing obstacle; after a move or rotation, each wire
+  the part drags along whose route now runs over a header, a body or an unrelated terminal is
+  re-routed (the router's shapes through its own vertices, or straight between its ends,
+  whichever is strictly better). Clean wires and wires moved rigidly with the selection are
+  never touched; endpoints never change, so nets cannot change. Not a PCB router.
+- In 3D (same rule): a wire whose route passes over a terminal, a header pin, a junction or
+  another part's body is lifted above every terminal and every other wire's riser there; wires
+  whose routes meet anywhere but a shared end get different heights, 0.45 apart (more than a
+  wire's 0.28 diameter). The previous index-based heights let two wires touch in the
+  representative mixed circuit; the new invariant test catches that.
+
+**2. Direct terminal-to-terminal contact.**
+- **Representation:** a contact is an ordinary wire between two terminals of different parts,
+  with no vertices, whose terminals coincide. **No schema change**; nets, validation, snapshots,
+  simulation, import/export and every view already treat a wire as a connection, and older
+  readers load it as the zero-length wire it is. Chosen over a new field or a geometric rule: it
+  is stored (not visual-only), and it needs no migration.
+- **Made and broken only by placement edits** (add, move, rotate): a terminal of a part that was
+  placed or moved landing exactly on another part's terminal gets a contact. Placement snaps to
+  the 20-unit grid and every terminal offset is a grid multiple, so the snap tolerance is half
+  a grid step of pointer travel; terminals one grid step apart stay separate. A contact whose
+  terminals no longer coincide after an edit is removed; it is not stretched into a wire. At
+  least one side must be a lead (resistor, LED, diode, switch): a lead may touch a lead, a
+  header pin, a binding post or a ground post, but a header pin laid on a binding post is not a
+  physical contact. Bodies, wires and unconnectable pins never make one.
+- **Nothing is inferred on read.** A project made elsewhere can hold touching terminals that are
+  not connected (the owner's R1/D1 case). They stay separate, and every view says so: the canvas
+  shows a red not-connected marker plus a new check, *"R1 b touches D1 anode but is not connected
+  to it"* (EN/HE). In 3D, both leads stop short (a visible gap) and a red ring marks the spot,
+  instead of leads that look joined. Moving either part off and back joins them.
+- Drawn as a connection: a dot on the canvas, a solder joint in 3D, one continuous node in the
+  schematic. The simulation conducts through it exactly as through a wire; the LED current is
+  equal to 12 digits.
+
+**3. 3D pan.** Right-drag already panned (OrbitControls), but middle-drag zoomed and the view's
+note was easy to miss. Now: left drag orbits; **right or middle drag pans**; Shift/Ctrl-drag also
+pans (for trackpads); the wheel zooms; one finger orbits, **two fingers pan and pinch-zoom**;
+**Shift + arrow keys** pan; the existing ← → + − Home keys are kept. Standard OrbitControls behaviour throughout; the
+keyboard pan moves camera and target along the camera's screen axes. Fit and Reset re-centre on
+the circuit. Panning never touches the project.
+
+**4. Visual semantics audit.** A new invariant test (`app/tests/semantics.test.ts`) reads each
+view's drawing back by geometry alone and requires **domain connectivity == schematic read-back
+== 3D read-back**. The circuit canvas must also mark every spot where geometry alone suggests a
+connection the model lacks. It covers every curated example, the mixed ESP32 circuit, a wire down
+a header, crossing wires, a junction, a contact, touching-but-separate terminals, and a sequence
+of moves and a rotation. The audit found and fixed one schematic defect: a part with one pin on
+ground or a rail and the other open was drawn as fully unconnected, losing that connection. It
+now carries its ground/rail mark.
+Known gap: a wire drawn with manual waypoints straight over an **unconnectable** header pin is
+not flagged on the canvas (it can never connect; the router avoids it).
+
+**Commits** (on `d5302ec`): `a4315d5` direct contact (domain, check, canvas dot) · `22782be`
+routing · `b5eaa56` 3D joints, wire heights, pan · `b3a0d75` schematic fix + invariant test ·
+`198ca92` browser tests. Each commit typechecks, lints and passes the unit suite on its own.
+
+**Tests (at `198ca92`):** typecheck, lint, boundaries and build pass. Unit **636** passed (+19):
+- domain: wire semantics and routing (5), contacts (7);
+- engine: a contact conducts like a wire (1);
+- 3D: joints, wire heights (2);
+- the invariant test (4).
+
+Browser **133 passed**, 3 heavy skipped (+4, in `s9-semantics.spec.ts`):
+- header routing;
+- a contact made and broken across the canvas, schematic, 3D and simulation;
+- an imported touching pair marked in the canvas and 3D;
+- 3D pan: right and middle drag, Shift + arrows, Fit and Reset re-centre, repeated navigation
+  keeps resources flat and writes nothing.
+
+Legacy browser 4 passed. Mutation check: with the old 3D wire heights, or without the open-lead
+gap, the invariant test fails.
+
+**Compatibility:** no schema change (`schemaVersion` 3), no migration. Every existing project,
+example and package opens unchanged and keeps its connectivity exactly; nothing is inferred on
+read. New behaviour applies only to new edits: placement contacts, and re-routing of wires
+dragged by a move. A project with contacts loads in an older build as zero-length wires, with
+the same nets.
+
+**Bundles:**
+
+| Chunk | Before | After |
+|---|---|---|
+| `index` | 270.2 kB | 274.4 kB (79.5 kB gzip) |
+| `ThreeView` (the scene description, now with joints and heights) | 7.8 kB | 11.6 kB |
+| `renderer` | 575.2 kB | 577.1 kB |
+| `SchematicView` | 17.7 kB | 17.8 kB |
+
+**Preview:** `198ca92` published with `publish.sh` (static only). The 51-check validation of the
+published files passes; the dev-lab page (`f8423e91…`) and every service start time are
+unchanged. Evidence:
+- `s9-evidence/fix-contact-canvas.png` and `fix-contact-3d.png` (a solder joint);
+- `fix-touching-canvas.png` and `fix-touching-3d.png` (marker and check; gap and red ring);
+- `fix-header-routing.png` (the ground wire runs beside the header, not down it).
 
 ## Approved product decisions (PM, 2026-10-05)
 
@@ -644,7 +755,8 @@ Build behaviour and backend policy are unchanged.
 ## Decisions for the product owner
 
 The five first-pass questions were decided by the PM on 2026-10-05 (see "Approved product
-decisions" above). Open: the owner's S9-M4 visual review of the refreshed preview.
+decisions" above). Open: the owner's re-review of the preview after the owner-review fixes
+(`198ca92`).
 
 ## Future 3D backlog (deferred to a dedicated 3D effort)
 
