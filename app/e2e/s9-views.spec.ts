@@ -194,13 +194,34 @@ test('Hebrew: tabs and notes are localized; technical labels stay LTR', async ({
   await openExample(page, 'esp32-input-echo');
   await page.getByTestId('language-select').selectOption('he');
   await expect(page.getByRole('tab')).toHaveText(['מעגל', 'סכמה', 'תלת־ממד', /קוד/]);
+  // The tab shows the short form; its accessible name and tooltip are the full product term.
+  await expect(tab(page, 'schematic')).toHaveAccessibleName('סכמה חשמלית');
+  await expect(tab(page, 'schematic')).toHaveAttribute('title', 'סכמה חשמלית');
+  await expect(page.getByRole('tab', { name: 'סכמה חשמלית' })).toHaveCount(1);
   await tab(page, 'schematic').click();
   const view = page.getByTestId('schematic-view');
   await expect(view).toHaveAttribute('dir', 'ltr');
+  await expect(view.getByRole('img', { name: /^סכמה חשמלית של / })).toBeVisible();
   await expect(view.locator('.sch-pin-name')).toContainText(['IO34']);
   await expect(view.locator('.view-note')).toHaveAttribute('dir', 'rtl');
   await tab(page, '3d').click();
   await expect(page.getByTestId('view3d')).toHaveAttribute('data-status', 'ready');
   await expect(page.getByTestId('view3d').locator('.view-note')).toContainText('העריכה');
   await expect(page.getByRole('button', { name: 'איפוס המצלמה' })).toBeVisible();
+});
+
+test('the ESP32 schematic block shows only the connected pins, in both languages', async ({
+  page,
+}) => {
+  await openExample(page, 'esp32-input-echo');
+  await expect(tab(page, 'schematic')).toHaveAccessibleName('Schematic');
+  await tab(page, 'schematic').click();
+  const names = page.getByTestId('schematic-view').locator('.sch-pin-name');
+  await expect(names.first()).toBeVisible();
+  const en = (await names.allTextContents()).sort();
+  // Not the DevKitC's 38 header pins: exactly the connected ones (input, output, ground).
+  expect(en).toEqual(['GND', 'IO34', 'IO4']);
+  await page.getByTestId('language-select').selectOption('he');
+  await expect(names.first()).toBeVisible();
+  expect((await names.allTextContents()).sort()).toEqual(en);
 });

@@ -5,7 +5,8 @@
 import { IDBFactory } from 'fake-indexeddb';
 import { describe, expect, it } from 'vitest';
 import { createProject, stampRevision } from '@tbi-lab/domain';
-import { ProjectStore } from '../src/persistence/store.js';
+import { DB_NAME, ProjectStore } from '../src/persistence/store.js';
+import { storageName } from '../src/deployment.js';
 
 const clockAt = (iso: string) => ({ now: () => new Date(iso) });
 
@@ -53,5 +54,25 @@ describe('ProjectStore', () => {
     s1.close();
     const s2 = await ProjectStore.open(factory);
     expect(await s2.getOrCreateDeviceId(() => 'dev_2')).toBe(id);
+  });
+
+  it('a namespaced store (a preview on the same origin) shares nothing with the default one', async () => {
+    const factory = new IDBFactory();
+    const regular = await ProjectStore.open(factory);
+    const preview = await ProjectStore.open(factory, storageName(DB_NAME, 's9-preview'));
+    const doc = createProject({
+      projectId: 'prj_p',
+      deviceId: 'd',
+      name: 'Preview only',
+      appVersion: '0',
+      clock: clockAt('2026-01-01T00:00:00Z'),
+    });
+    await preview.save(doc);
+    expect((await preview.list()).map((p) => p.projectId)).toEqual(['prj_p']);
+    expect(await regular.list()).toEqual([]);
+    expect((await factory.databases()).map((d) => d.name).sort()).toEqual([
+      's9-preview/tbi-lab',
+      'tbi-lab',
+    ]);
   });
 });

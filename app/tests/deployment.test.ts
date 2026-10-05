@@ -1,6 +1,11 @@
-/** Preview sign-out destination (deployment configuration, not product logic). */
+/** Deployment configuration (not product logic): sign-out destination, preview identity. */
 import { describe, expect, it } from 'vitest';
-import { parseSignOutUrl } from '../src/deployment.js';
+import {
+  parsePreviewName,
+  parseSignOutUrl,
+  parseStorageNamespace,
+  storageName,
+} from '../src/deployment.js';
 
 describe('sign-out destination', () => {
   it('absent or empty configuration means no sign-out control', () => {
@@ -18,5 +23,23 @@ describe('sign-out destination', () => {
   it('refuses anything that is not a navigation target', () => {
     for (const v of ['javascript:alert(1)', 'data:text/html,x', '//evil.test/x', 'oauth2/sign_out'])
       expect(parseSignOutUrl(v)).toBeNull();
+  });
+});
+
+describe('preview deployment (Sprint 9 preview)', () => {
+  it('a preview name is a short plain label; anything else means a regular deployment', () => {
+    expect(parsePreviewName('Sprint 9')).toBe('Sprint 9');
+    expect(parsePreviewName(' Sprint 9 ')).toBe('Sprint 9');
+    for (const v of [undefined, '', '  ', 9, '<b>x</b>', 'a'.repeat(25), '-x'])
+      expect(parsePreviewName(v)).toBeNull();
+  });
+
+  it('a storage namespace keeps databases and preference keys apart; none changes nothing', () => {
+    expect(parseStorageNamespace('s9-preview')).toBe('s9-preview');
+    for (const v of [undefined, '', 'S9', 'a/b', '../x', 'a'.repeat(33)])
+      expect(parseStorageNamespace(v)).toBeNull();
+    expect(storageName('tbi-lab', null)).toBe('tbi-lab');
+    expect(storageName('tbi-lab.lastProject', null)).toBe('tbi-lab.lastProject');
+    expect(storageName('tbi-lab', 's9-preview')).toBe('s9-preview/tbi-lab');
   });
 });
