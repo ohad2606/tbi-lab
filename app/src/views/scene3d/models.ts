@@ -14,6 +14,7 @@
  */
 
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { CATALOG, ESP32_DEVKITC_WROOM32, boardPinPosition, boardTerminalId } from '@tbi-lab/domain';
 import {
   DIODE_DO35,
@@ -39,24 +40,24 @@ export function createMaterials() {
     new THREE.MeshStandardMaterial({ color, roughness: 0.6, metalness: 0, ...extra });
   return {
     /** Tinned copper leads. */
-    lead: std('#c4c8cd', { metalness: 0.9, roughness: 0.32 }),
+    lead: std('#c9cdd2', { metalness: 0.55, roughness: 0.3 }),
     /** Gold-flashed header pins. */
-    gold: std('#d8b45a', { metalness: 0.95, roughness: 0.28 }),
+    gold: std('#d9b558', { metalness: 0.6, roughness: 0.3 }),
     /** Soldermask: the DevKitC's near-black board. */
     pcb: std('#16191e', { roughness: 0.55 }),
     pcbEdge: std('#3a3f2c', { roughness: 0.8 }),
     moduleBoard: std('#1b2733', { roughness: 0.6 }),
-    shield: std('#cfd3d8', { metalness: 0.9, roughness: 0.38 }),
+    shield: std('#d3d7dc', { metalness: 0.55, roughness: 0.36 }),
     blackPlastic: std('#1d1e21', { roughness: 0.55 }),
     darkPlastic: std('#2c2f34', { roughness: 0.5 }),
     ic: std('#202226', { roughness: 0.45 }),
-    chrome: std('#e2e5e9', { metalness: 1, roughness: 0.18 }),
-    steel: std('#aeb4ba', { metalness: 0.9, roughness: 0.35 }),
+    chrome: std('#e4e7ea', { metalness: 0.6, roughness: 0.2 }),
+    steel: std('#b4bac0', { metalness: 0.55, roughness: 0.35 }),
     resistorBody: std('#d8c29a', { roughness: 0.55 }),
     /** DO-35: amber-tinted glass with the junction inside. */
     glass: std('#d9772a', { roughness: 0.12, transparent: true, opacity: 0.72 }),
     cathodeBand: std('#151515', { roughness: 0.5 }),
-    psuCase: std('#b9bfc6', { roughness: 0.5, metalness: 0.15 }),
+    psuCase: std('#b9bfc6', { roughness: 0.5, metalness: 0.1 }),
     psuPanel: std('#2b3139', { roughness: 0.55 }),
     red: std('#c62828', { roughness: 0.4 }),
     black: std('#1b1c1e', { roughness: 0.4 }),
@@ -229,7 +230,7 @@ function canvasTexture(
   const canvas = document.createElement('canvas');
   canvas.width = w;
   canvas.height = h;
-  const ctx = canvas.getContext('2d')!;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
   draw(ctx);
   const tex = own.tex(new THREE.CanvasTexture(canvas));
   tex.colorSpace = THREE.SRGBColorSpace;
@@ -768,12 +769,9 @@ const BUILDERS: Record<ModelKey, Builder> = {
     const dispV = new THREE.Mesh(
       own.shared('plane:psuDisplay', () => new THREE.PlaneGeometry(4.6, 1.75)),
       own.mat(
-        new THREE.MeshStandardMaterial({
-          map: screen,
-          emissive: '#ffffff',
-          emissiveMap: screen,
-          emissiveIntensity: 0.9,
-        }),
+        // The plain textured variant (no emissive map: one shader program fewer); the
+        // display's own bright digits read as lit.
+        new THREE.MeshStandardMaterial({ map: screen, roughness: 0.3 }),
       ),
     );
     dispV.rotation.y = Math.PI / 2;
@@ -781,12 +779,9 @@ const BUILDERS: Record<ModelKey, Builder> = {
     const dispA = new THREE.Mesh(
       own.shared('plane:psuDisplay', () => new THREE.PlaneGeometry(4.6, 1.75)),
       own.mat(
-        new THREE.MeshStandardMaterial({
-          map: screenA,
-          emissive: '#ffffff',
-          emissiveMap: screenA,
-          emissiveIntensity: 0.9,
-        }),
+        // The plain textured variant (no emissive map: one shader program fewer); the
+        // display's own bright digits read as lit.
+        new THREE.MeshStandardMaterial({ map: screenA, roughness: 0.3 }),
       ),
     );
     dispA.rotation.y = Math.PI / 2;
@@ -955,7 +950,7 @@ function buildEsp32(c: SceneComponent, m: Materials, own: OwnedResources): THREE
     ctx.fillText('Espressif', 160, 200);
   });
   const shieldTop = own.mat(
-    new THREE.MeshStandardMaterial({ map: marking, metalness: 0.75, roughness: 0.4 }),
+    new THREE.MeshStandardMaterial({ map: marking, metalness: 0.5, roughness: 0.4 }),
   );
   const shieldGeo = own.shared(
     'esp32:shield',
@@ -1010,22 +1005,21 @@ function buildEsp32(c: SceneComponent, m: Materials, own: OwnedResources): THREE
         0,
       ]),
     );
+  // Every header pin, as one merged geometry (one draw, and no instanced shader variant: on
+  // software WebGL every extra shader program costs a noticeable compile on each opening).
   const pinLen = top + d.pinStubAboveMm;
-  const pins = new THREE.InstancedMesh(
-    own.shared(
-      `box:${d.pinSizeMm}:${pinLen}:${d.pinSizeMm}`,
-      () => new THREE.BoxGeometry(d.pinSizeMm, pinLen, d.pinSizeMm),
-    ),
-    m.gold,
-    ESP32_DEVKITC_WROOM32.pins.length,
-  );
-  const mtx = new THREE.Matrix4();
-  ESP32_DEVKITC_WROOM32.pins.forEach((pin, i) => {
-    const local = boardPinPosition(pin);
-    mtx.makeTranslation(Math.sign(local.x) * rowX, pinLen / 2, realPinZ(pin.position));
-    pins.setMatrixAt(i, mtx);
+  const pinGeo = own.shared(`esp32:pins:${pinLen}`, () => {
+    const one = new THREE.BoxGeometry(d.pinSizeMm, pinLen, d.pinSizeMm).toNonIndexed();
+    const parts = ESP32_DEVKITC_WROOM32.pins.map((pin) => {
+      const local = boardPinPosition(pin);
+      return one.clone().translate(Math.sign(local.x) * rowX, pinLen / 2, realPinZ(pin.position));
+    });
+    const merged = mergeGeometries(parts, false)!;
+    one.dispose();
+    for (const g of parts) g.dispose();
+    return merged;
   });
-  pins.castShadow = true;
+  const pins = mesh(pinGeo, m.gold);
   pins.userData.headerPins = ESP32_DEVKITC_WROOM32.pins.length;
   g.add(pins);
   const wired = new Set(c.visual.wiredPins ?? []);

@@ -80,10 +80,14 @@ export function ThreeView() {
       data-status={status}
       data-components={scene?.components.map((c) => c.id).join(' ')}
       data-wires={scene?.wires.length}
+      data-quality={stats?.quality}
       data-geometries={stats?.geometries}
       data-textures={stats?.textures}
       data-objects={stats?.objects}
       data-lit={Object.keys(levels).join(' ')}
+      data-leds={scene?.components
+        .flatMap((c) => (c.visual.led ? [`${c.id}:${c.visual.led.package}`] : []))
+        .join(' ')}
       data-target={stats?.target.join(',')}
       data-contacts={scene?.joints
         .filter((j) => j.kind === 'contact')

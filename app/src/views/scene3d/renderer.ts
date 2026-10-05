@@ -13,7 +13,7 @@
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { buildComponent, createMaterials, OwnedResources, roundPath } from './models.js';
 import { WIRE } from './physical.js';
 import { MODEL_HEIGHT, WIRE_RADIUS, type SceneDescription } from './scene.js';
@@ -27,6 +27,8 @@ const LABEL_MAX_PX = 26;
 const FRAME_FILL = 0.95;
 
 export interface ViewerStats {
+  /** Rendering quality chosen for this device (see RenderQuality). */
+  quality: RenderQuality;
   geometries: number;
   textures: number;
   objects: number;
@@ -62,20 +64,51 @@ export class WebGLUnavailableError extends Error {}
 let live = 0;
 export const liveViewers = () => live;
 
-function webglAvailable(): boolean {
+/**
+ * Rendering quality. `full`: soft shadows from the key light and multisample antialiasing.
+ * `reduced`: neither. Chosen per device: a SOFTWARE rasteriser (SwiftShader, llvmpipe, a "basic
+ * render driver", as on GPU-less servers and CI) gets `reduced`, because there each shadow pass
+ * and every MSAA sample is CPU work that costs about a second per opening; every real GPU gets
+ * `full`. A per-browser override (localStorage `tbi-lab.3d.quality` = full | reduced) exists for
+ * evidence capture and troubleshooting. The scene itself (parts, wires, colours) is identical.
+ */
+export type RenderQuality = 'full' | 'reduced';
+const QUALITY_KEY = 'tbi-lab.3d.quality';
+const SOFTWARE_RENDERER = /swiftshader|llvmpipe|softpipe|software|basic render/i;
+
+/** Whether WebGL works here, and which quality this device should get. */
+function probeWebgl(): RenderQuality | null {
   try {
     const c = document.createElement('canvas');
-    return !!(c.getContext('webgl2') ?? c.getContext('webgl'));
+    const gl = (c.getContext('webgl2') ?? c.getContext('webgl')) as WebGLRenderingContext | null;
+    if (!gl) return null;
+    let override: string | null = null;
+    try {
+      override = localStorage.getItem(QUALITY_KEY);
+    } catch {
+      /* storage unavailable: no override */
+    }
+    if (override === 'full' || override === 'reduced') return override;
+    const info = gl.getExtension('WEBGL_debug_renderer_info');
+    const name = String(
+      info ? gl.getParameter(info.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER),
+    );
+    gl.getExtension('WEBGL_lose_context')?.loseContext();
+    return SOFTWARE_RENDERER.test(name) ? 'reduced' : 'full';
   } catch {
-    return false;
+    return null;
   }
 }
 
 export function createViewer(container: HTMLElement, onRender?: (s: ViewerStats) => void): Viewer {
-  if (!webglAvailable()) throw new WebGLUnavailableError('WebGL is not available');
+  const quality = probeWebgl();
+  if (!quality) throw new WebGLUnavailableError('WebGL is not available');
   let renderer: THREE.WebGLRenderer;
   try {
-    renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'low-power' });
+    renderer = new THREE.WebGLRenderer({
+      antialias: quality === 'full',
+      powerPreference: 'low-power',
+    });
   } catch (e) {
     throw new WebGLUnavailableError((e as Error).message);
   }
@@ -85,8 +118,11 @@ export function createViewer(container: HTMLElement, onRender?: (s: ViewerStats)
   // Neutral tone mapping keeps part colours (LED lenses, colour bands, wire colours) true.
   renderer.toneMapping = THREE.NeutralToneMapping;
   renderer.toneMappingExposure = 1.0;
-  renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.enabled = quality === 'full';
+  // The key light is fixed in the world, so shadows depend only on the scene, not on the camera:
+  // the shadow map is rendered when the scene is (re)built, not on every orbit/pan frame.
+  renderer.shadowMap.autoUpdate = false;
+  renderer.shadowMap.type = THREE.PCFShadowMap;
   renderer.setClearColor('#e9edf2');
   const canvas = renderer.domElement;
   canvas.classList.add('view3d-canvas');
@@ -95,26 +131,23 @@ export function createViewer(container: HTMLElement, onRender?: (s: ViewerStats)
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 2000);
-  // A clean workbench: soft image-based light from a neutral room (no asset is loaded; three.js
-  // builds it), one shadow-casting key light from the front right, a weak cool fill.
-  const pmrem = new THREE.PMREMGenerator(renderer);
-  const room = new RoomEnvironment();
-  const envMap = pmrem.fromScene(room, 0.04).texture;
-  room.dispose();
-  pmrem.dispose();
-  scene.environment = envMap;
-  scene.environmentIntensity = 0.55;
-  scene.add(new THREE.HemisphereLight('#ffffff', '#9aa1a8', 0.9));
+  // A clean workbench: a bright sky/bench hemisphere, one shadow-casting key light from the front
+  // right, a cool fill and a low rim light that puts highlights on metal (pins, leads, the module
+  // can). No image-based environment: prefiltering one (PMREM) costs seconds per opening on
+  // software WebGL, and every viewer has its own WebGL context, so it could not be shared.
+  scene.add(new THREE.HemisphereLight('#ffffff', '#a3aab1', 1.35));
   const sun = new THREE.DirectionalLight('#fff8ef', 2.1);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.mapSize.set(1024, 1024);
   sun.shadow.bias = -0.0004;
   sun.shadow.normalBias = 0.03;
   sun.shadow.radius = 3;
   scene.add(sun, sun.target);
-  const fill = new THREE.DirectionalLight('#e8f0ff', 0.45);
+  const fill = new THREE.DirectionalLight('#e8f0ff', 0.55);
   fill.position.set(-60, 50, -40);
-  scene.add(fill);
+  const rim = new THREE.DirectionalLight('#ffffff', 0.6);
+  rim.position.set(-20, 15, 80);
+  scene.add(fill, rim);
   /** Aim the key light and fit its shadow camera to the content (mm). */
   function fitShadow(desc: SceneDescription) {
     const { min, max } = desc.bounds;
@@ -203,6 +236,7 @@ export function createViewer(container: HTMLElement, onRender?: (s: ViewerStats)
       textures: renderer.info.memory.textures,
       objects,
       renders,
+      quality,
       target: controls.target.toArray().map((v) => Math.round(v * 100) / 100) as [
         number,
         number,
@@ -376,8 +410,54 @@ export function createViewer(container: HTMLElement, onRender?: (s: ViewerStats)
       }
     });
 
+    batchStatic(group);
     for (const c of desc.components) group.add(label(c.id, c.x, c.z, desc));
     return group;
+  }
+
+  /**
+   * Static batching: the scene does not change between rebuilds, so every opaque mesh that
+   * shares a material is merged into ONE draw (its transform baked in). On software WebGL each
+   * draw is expensive and shadows draw every caster twice; this takes a circuit from hundreds of
+   * draws to a few dozen. Meshes that must stay their own (an LED lens that glows, textured or
+   * multi-material parts, instanced pins, sprites) are left alone.
+   */
+  function batchStatic(group: THREE.Group) {
+    group.updateMatrixWorld(true);
+    const inverse = group.matrixWorld.clone().invert();
+    const buckets = new Map<THREE.Material, { geo: THREE.BufferGeometry; cast: boolean }[]>();
+    const merged: THREE.Mesh[] = [];
+    group.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (!mesh.isMesh || (mesh as unknown as THREE.InstancedMesh).isInstancedMesh) return;
+      if (o.name === 'base') return;
+      const mat = mesh.material;
+      if (Array.isArray(mat) || mat.transparent || (mat as THREE.MeshStandardMaterial).map) return;
+      if (o.userData.lens || o.parent?.userData.lensMaterial === mat) return;
+      let geo = mesh.geometry.index ? mesh.geometry.toNonIndexed() : mesh.geometry.clone();
+      for (const name of Object.keys(geo.attributes))
+        if (name !== 'position' && name !== 'normal') geo.deleteAttribute(name);
+      geo.applyMatrix4(mesh.matrixWorld.clone().premultiply(inverse));
+      geo = own.geo(geo);
+      const list = buckets.get(mat) ?? [];
+      list.push({ geo, cast: mesh.castShadow });
+      buckets.set(mat, list);
+      merged.push(mesh);
+    });
+    for (const m of merged) m.removeFromParent();
+    for (const [mat, list] of buckets) {
+      const geo = mergeGeometries(
+        list.map((x) => x.geo),
+        false,
+      );
+      if (!geo) continue;
+      own.geo(geo);
+      const batch = new THREE.Mesh(geo, mat);
+      batch.castShadow = list.some((x) => x.cast);
+      batch.receiveShadow = true;
+      batch.userData.batch = list.length;
+      group.add(batch);
+    }
   }
 
   /**
@@ -389,7 +469,7 @@ export function createViewer(container: HTMLElement, onRender?: (s: ViewerStats)
     const canvas2d = document.createElement('canvas');
     canvas2d.width = 256;
     canvas2d.height = 96;
-    const ctx = canvas2d.getContext('2d')!;
+    const ctx = canvas2d.getContext('2d', { willReadFrequently: true })!;
     ctx.fillStyle = 'rgba(255,255,255,0.9)';
     ctx.strokeStyle = 'rgba(20,24,31,0.35)';
     ctx.lineWidth = 3;
@@ -478,6 +558,7 @@ export function createViewer(container: HTMLElement, onRender?: (s: ViewerStats)
       current = desc;
       content = build(desc);
       fitShadow(desc);
+      renderer.shadowMap.needsUpdate = true;
       scene.add(content);
       lenses = new Map();
       labels = [];
@@ -555,7 +636,6 @@ export function createViewer(container: HTMLElement, onRender?: (s: ViewerStats)
       own.dispose();
       for (const m of shared) m.dispose();
       haloTexture.dispose();
-      envMap.dispose();
       sun.shadow.map?.dispose();
       renderer.dispose();
       renderer.forceContextLoss();
@@ -570,7 +650,7 @@ function glowTexture(): THREE.Texture {
   const c = document.createElement('canvas');
   c.width = 128;
   c.height = 128;
-  const ctx = c.getContext('2d')!;
+  const ctx = c.getContext('2d', { willReadFrequently: true })!;
   const g = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
   g.addColorStop(0, 'rgba(255,255,255,1)');
   g.addColorStop(0.25, 'rgba(255,255,255,0.45)');
