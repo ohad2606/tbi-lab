@@ -215,7 +215,7 @@ test('Circuit → Schematic → 3D → Code → Circuit, in English and Hebrew, 
   await tab(page, 'schematic').click();
   await expect(page.locator('.sch-pin-name')).toContainText(['IO34', 'IO4']);
   for (const v of await page.locator('.sch-value').allTextContents())
-    expect(v).toMatch(/^[\d.]+ (k?Ω|V)$/); // numbers and units, never mirrored
+    expect(v).toMatch(/^([\d.]+ (k?Ω|V)|[A-Z0-9]+)$/); // values, units and part numbers, never mirrored
 });
 
 async function readText(path: string | null): Promise<string> {

@@ -16,6 +16,7 @@ import {
   type ProjectDocument,
 } from '@tbi-lab/domain';
 import { catalogText, formatQuantity, type LocaleInfo } from '../i18n/i18n.js';
+import { MODEL_CARDS } from '@tbi-lab/engine';
 import { useAppState, useStore, useT } from './context.js';
 import {
   schematicLayout,
@@ -215,8 +216,14 @@ function PartView({
   locale: LocaleInfo;
 }) {
   const sym = SCHEMATIC_SYMBOLS[c.type];
+  // A value (resistance, supply voltage), or for an LED or diode its part number (the model
+  // card's datasheet part: a technical, language-neutral token, like a pin name).
   const value =
-    sym.kind === 'two-pin' && sym.valueParam ? quantityText(c, sym.valueParam, locale) : '';
+    sym.kind === 'two-pin' && sym.valueParam
+      ? quantityText(c, sym.valueParam, locale)
+      : c.type === 'component.led' || c.type === 'component.diode'
+        ? (MODEL_CARDS[String(c.params.model)]?.name ?? '')
+        : '';
   const name = catalogText(locale, CATALOG[c.type].nameKey);
   // Vertical parts carry their labels beside the body, clear of its widest feature.
   const side = p.x + (LABEL_OFFSET[p.key] ?? 16);

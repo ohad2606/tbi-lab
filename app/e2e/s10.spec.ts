@@ -57,6 +57,14 @@ test('LED colours: three approved cards, three currents, each glowing in its own
   expect(r).toBeCloseTo(16.7, 1);
   expect(y).toBeCloseTo(14.5, 1);
   expect(g).toBeCloseTo(14.5, 1);
+  // Schematic: each LED labelled with its part number (language-neutral, LTR).
+  await tab(page, 'schematic').click();
+  for (const [id, part] of [
+    ['D1', 'TLHR5400'],
+    ['D2', 'TLHY5400'],
+    ['D3', 'TLHG4900'],
+  ])
+    await expect(page.locator(`[data-part="${id}"] .sch-value`)).toHaveText(part);
   // 3D: each LED with its datasheet package, all three lit while running.
   await show3d(page);
   const view = page.getByTestId('view3d');
