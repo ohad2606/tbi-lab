@@ -181,6 +181,35 @@ describe('generated schematic', () => {
     }
   });
 
+  it('independent groups stand side by side with their rails level, wrapping into rows', () => {
+    // Diode polarity: two rail-to-ground branches beside the supply, not one below the other.
+    const dp = EXAMPLES.find((e) => e.id === 'diode-polarity')!.document;
+    const l = expectFaithful(dp);
+    const at = (id: string) => l.parts.find((p) => p.component === id)!;
+    expect(at('R1').y).toBe(at('R2').y);
+    expect(at('D1').y).toBe(at('D2').y);
+    expect(new Set(l.marks.filter((m) => m.kind === 'rail').map((m) => m.at.y)).size).toBe(1);
+    expect(l.bounds.maxY - l.bounds.minY).toBeLessThanOrEqual(260);
+
+    // Twelve LED branches off one rail: rows of groups, never one tall column, never too wide.
+    let doc = newDoc();
+    doc = wire(doc, ['PSU1', 'negative'], ['GND1', 'ref']);
+    for (let i = 0; i < 12; i++) {
+      const r = place(doc, 'component.resistor', 200 + i * 120, 100);
+      const d = place(r.doc, 'component.led', 200 + i * 120, 300);
+      const g = place(d.doc, 'component.ground', 200 + i * 120, 500);
+      doc = wire(g.doc, ['PSU1', 'positive'], [r.id, 'a']);
+      doc = wire(doc, [r.id, 'b'], [d.id, 'anode']);
+      doc = wire(doc, [d.id, 'cathode'], [g.id, 'ref']);
+    }
+    const many = expectFaithful(doc);
+    expect(crossings(many)).toBe(0);
+    const ys = new Set(many.parts.filter((p) => p.key === 'resistor').map((p) => p.y));
+    expect(ys.size).toBeGreaterThan(1); // wrapped
+    expect(ys.size).toBeLessThan(12); // but rows, not a column
+    expect(many.bounds.maxX - many.bounds.minX).toBeLessThanOrEqual(1100);
+  });
+
   it('cycles and a node on two MCU pins are joined by net labels of the same name', () => {
     const fixture = mixedCircuit();
     const ids = fixture.ids;

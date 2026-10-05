@@ -225,3 +225,22 @@ test('the ESP32 schematic block shows only the connected pins, in both languages
   await expect(names.first()).toBeVisible();
   expect((await names.allTextContents()).sort()).toEqual(en);
 });
+
+test('3D: the keyboard orbits, zooms and resets; nothing is written', async ({ page }) => {
+  await openExample(page, 'voltage-divider');
+  await tab(page, '3d').click();
+  await expect(page.getByTestId('view3d')).toHaveAttribute('data-status', 'ready');
+  const host = page.getByTestId('view3d-host');
+  const shot = async () => (await host.screenshot()).toString('base64');
+  const before = await revision(page);
+  await host.focus();
+  await expect(host).toBeFocused();
+  let last = await shot();
+  // Each key changes the view; Home then undoes the net rotation and zoom.
+  for (const key of ['ArrowRight', 'ArrowRight', 'ArrowLeft', '+', '+', '-', 'Home']) {
+    await page.keyboard.press(key);
+    await expect.poll(shot, { message: key }).not.toBe(last);
+    last = await shot();
+  }
+  expect(await revision(page)).toBe(before);
+});
