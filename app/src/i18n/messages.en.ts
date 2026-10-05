@@ -177,6 +177,8 @@ export const en = {
   'checks.partially_wired': '{component}: {terminals} not connected.',
   'checks.wire_over_terminal':
     'A wire crosses {component} {terminal} without connecting to it. Wires connect only at terminals and junction dots.',
+  'checks.terminals_touching':
+    '{component} {terminal} touches {other} {otherTerminal} but is not connected to it. Move one part away and back to join them, or draw a wire.',
   'checks.floating_island': 'No path to GND: {components}.',
   'checks.no_ground': 'The circuit has no GND. Add [[ground]] and wire it to the circuit.',
   'checks.psu_shorted_by_wire': '{component}: the output terminals are joined by a wire.',

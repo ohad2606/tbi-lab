@@ -5,6 +5,7 @@ export * from './route.js';
 export * from './units.js';
 export * from './project.js';
 export * from './nets.js';
+export * from './contacts.js';
 export * from './edit.js';
 export * from './validate.js';
 export * from './migrate.js';

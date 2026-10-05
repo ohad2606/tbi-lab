@@ -890,6 +890,11 @@ select {
   stroke-dasharray: 3 3;
 }
 
+.check-terminals_touching {
+  stroke: var(--danger);
+  stroke-width: 2.5;
+}
+
 .check-wire_over_terminal {
   stroke: var(--danger);
   stroke-dasharray: 4 2;

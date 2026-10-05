@@ -177,6 +177,8 @@ export const he: Record<MessageKey, string> = {
   'checks.partially_wired': '{component}: {terminals} לא מחובר.',
   'checks.wire_over_terminal':
     'חוט עובר מעל {component} {terminal} בלי להתחבר אליו. חוטים מתחברים רק בהדקים ובנקודות צומת.',
+  'checks.terminals_touching':
+    '{component} {terminal} נוגע ב-{other} {otherTerminal} אבל אינו מחובר אליו. הזיזו אחד הרכיבים והחזירו אותו כדי לחבר, או ציירו חוט.',
   'checks.floating_island': 'אין מסלול ל-GND: {components}.',
   'checks.no_ground': 'למעגל אין GND. הוסיפו [[ground]] וחברו אותה למעגל.',
   'checks.psu_shorted_by_wire': '{component}: הדקי היציאה מחוברים זה לזה בחוט.',

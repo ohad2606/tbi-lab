@@ -616,6 +616,13 @@ function ChecksSection({ hidden }: { hidden: boolean }) {
           component,
           terminal: termName(i.components[0]!, i.terminals?.[0] ?? ''),
         });
+      case 'terminals_touching':
+        return t('checks.terminals_touching', {
+          component,
+          terminal: termName(i.components[0]!, i.terminals?.[0] ?? ''),
+          other: isolateLtr(i.components[1] ?? ''),
+          otherTerminal: termName(i.components[1]!, i.terminals?.[1] ?? ''),
+        });
       case 'psu_shorted_by_wire':
         return t('checks.psu_shorted_by_wire', { component });
       case 'no_ground':

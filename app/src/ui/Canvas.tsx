@@ -24,6 +24,7 @@ import {
   boardTerminalId,
   autoRoute,
   autoRouteVertices,
+  contacts,
   endPosition,
   routeObstacles,
   rotateComponents,
@@ -797,7 +798,12 @@ export function Canvas({
     [selection],
   );
 
-  // Terminals with two or more wire ends get a junction dot, like a junction.
+  // Terminals with two or more wire ends get a junction dot, like a junction; so does a direct
+  // terminal-to-terminal contact (a real connection, drawn as one).
+  const contactAt = new Map<string, string>();
+  for (const w of contacts(view))
+    for (const end of [w.from, w.to])
+      if (end.kind === 'terminal') contactAt.set(`${end.component}\u0000${end.terminal}`, w.id);
   const endCounts = new Map<string, number>();
   for (const w of view.layout.wires) {
     for (const end of [w.from, w.to]) {
@@ -818,13 +824,15 @@ export function Canvas({
   );
   const issues = simActive ? [] : checksFor(doc);
   const markers = issues.flatMap((i) =>
-    i.code === 'partially_wired' || i.code === 'wire_over_terminal'
-      ? (i.terminals ?? []).map((term) => ({
-          code: i.code,
-          component: i.components[0]!,
-          terminal: term,
-        }))
-      : [],
+    i.code === 'terminals_touching'
+      ? [{ code: i.code, component: i.components[0]!, terminal: i.terminals![0]! }]
+      : i.code === 'partially_wired' || i.code === 'wire_over_terminal'
+        ? (i.terminals ?? []).map((term) => ({
+            code: i.code,
+            component: i.components[0]!,
+            terminal: term,
+          }))
+        : [],
   );
   const viewW = Math.max(1, size.w) / camera.scale;
   const viewH = Math.max(1, size.h) / camera.scale;
@@ -957,9 +965,19 @@ export function Canvas({
             CATALOG[c.type].terminals.map((term) => {
               const p = terminalPosition(view, c.id, term.id)!;
               const ends = endCounts.get(`${c.id}\u0000${term.id}`) ?? 0;
+              const contact = contactAt.get(`${c.id}\u0000${term.id}`);
               return (
                 <g key={`${c.id}.${term.id}`}>
-                  {ends >= 2 && <circle class="junction-dot" cx={p.x} cy={p.y} r={4.5} />}
+                  {(ends >= 2 || contact) && (
+                    <circle
+                      class={contact ? 'junction-dot contact-dot' : 'junction-dot'}
+                      data-testid={contact ? `contact-${c.id}.${term.id}` : undefined}
+                      data-contact={contact}
+                      cx={p.x}
+                      cy={p.y}
+                      r={4.5}
+                    />
+                  )}
                   <g
                     class={ends > 0 ? 'terminal connected' : 'terminal'}
                     data-hit="terminal"

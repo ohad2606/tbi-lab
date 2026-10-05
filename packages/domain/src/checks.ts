@@ -9,6 +9,7 @@
  */
 
 import { CATALOG } from './catalog.js';
+import { touchingUnconnected } from './contacts.js';
 import { terminalPosition, wireRoute, pointOnSegment } from './layout.js';
 import { nodeKey, wireGroups } from './nets.js';
 import type { ProjectDocument } from './schema.js';
@@ -17,6 +18,7 @@ export type CheckCode =
   | 'not_connected'
   | 'partially_wired'
   | 'wire_over_terminal'
+  | 'terminals_touching'
   | 'floating_island'
   | 'no_ground'
   | 'psu_shorted_by_wire';
@@ -153,6 +155,18 @@ export function checkCircuit(doc: ProjectDocument): CheckIssue[] {
         });
       }
     }
+  }
+
+  // Visual ambiguity: terminals of different parts drawn on top of each other but NOT connected
+  // (only in a document made elsewhere; editing makes such a touch a direct contact).
+  for (const t of touchingUnconnected(doc)) {
+    const [a, b] = t.terminals as [(typeof t.terminals)[0], (typeof t.terminals)[0]];
+    issues.push({
+      code: 'terminals_touching',
+      severity: 'warning',
+      components: [a.component, b.component],
+      terminals: [a.terminal, b.terminal],
+    });
   }
   return issues;
 }

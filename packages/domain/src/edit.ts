@@ -18,6 +18,7 @@ import {
   snapPoint,
   wireRoute,
 } from './layout.js';
+import { settleContacts } from './contacts.js';
 import { nodeKey, nodeNets, settleNets } from './nets.js';
 import { starterProgram, profileById, utf8Length } from './program.js';
 import { allocateId } from './project.js';
@@ -59,15 +60,21 @@ export interface Selection {
 
 export const emptySelection = (): Selection => ({ components: [], wires: [], junctions: [] });
 
-/** Run a mutation on a clone and settle nets, keeping net ids stable. */
+/**
+ * Run a mutation on a clone and settle nets, keeping net ids stable. `placed` names the
+ * components the mutation added, moved or rotated: their terminals make and break direct
+ * contacts (contacts.ts) before the nets are settled.
+ */
 function transact(
   doc: ProjectDocument,
   mutate: (draft: ProjectDocument) => EditError | void,
+  placed: () => Iterable<string> = () => [],
 ): EditResult {
   const previous = nodeNets(doc);
   const draft = cloneDocument(doc);
   const error = mutate(draft);
   if (error) return { ok: false, error };
+  settleContacts(doc, draft, placed());
   cleanupJunctions(draft);
   settleNets(draft, previous);
   return { ok: true, doc: draft };
@@ -84,52 +91,64 @@ export function addComponent(
   const def = getTypeDef(type);
   if (!def) return { ok: false, error: 'unknown_type' };
   let id = '';
-  const r = transact(doc, (d) => {
-    id = allocateId(d, def.refPrefix);
-    d.components.push({ id, type, typeVersion: def.typeVersion, params: defaultParams(def) });
-    // A programmable board starts with its environment's starter program (Sprint 7). V1 has at
-    // most one program per project (D-S7-1); a second board gets none (it cannot run anyway).
-    const program = starterProgram(type);
-    if (program && Object.keys(d.programs).length === 0) d.programs[id] = program;
-    const p = snapPoint(at);
-    d.layout.components[id] = { x: p.x, y: p.y, rotation: 0 };
-  });
+  const r = transact(
+    doc,
+    (d) => {
+      id = allocateId(d, def.refPrefix);
+      d.components.push({ id, type, typeVersion: def.typeVersion, params: defaultParams(def) });
+      // A programmable board starts with its environment's starter program (Sprint 7). V1 has at
+      // most one program per project (D-S7-1); a second board gets none (it cannot run anyway).
+      const program = starterProgram(type);
+      if (program && Object.keys(d.programs).length === 0) d.programs[id] = program;
+      const p = snapPoint(at);
+      d.layout.components[id] = { x: p.x, y: p.y, rotation: 0 };
+    },
+    () => [id],
+  );
   return r.ok ? { ...r, id } : r;
 }
 
 /** Move components, junctions and the waypoints of selected wires by a grid-snapped offset. */
 export function moveSelection(doc: ProjectDocument, sel: Selection, delta: Point): EditResult {
   const d = snapPoint(delta);
-  return transact(doc, (draft) => {
-    for (const id of sel.components) {
-      const p = draft.layout.components[id];
-      if (!p) return 'unknown_component';
-      p.x += d.x;
-      p.y += d.y;
-    }
-    for (const id of sel.junctions) {
-      const j = draft.layout.junctions.find((x) => x.id === id);
-      if (!j) return 'unknown_junction';
-      j.x += d.x;
-      j.y += d.y;
-    }
-    for (const id of sel.wires) {
-      const w = draft.layout.wires.find((x) => x.id === id);
-      if (!w) return 'unknown_wire';
-      w.vertices = w.vertices.map((v) => ({ x: v.x + d.x, y: v.y + d.y }));
-    }
-  });
+  return transact(
+    doc,
+    (draft) => {
+      for (const id of sel.components) {
+        const p = draft.layout.components[id];
+        if (!p) return 'unknown_component';
+        p.x += d.x;
+        p.y += d.y;
+      }
+      for (const id of sel.junctions) {
+        const j = draft.layout.junctions.find((x) => x.id === id);
+        if (!j) return 'unknown_junction';
+        j.x += d.x;
+        j.y += d.y;
+      }
+      for (const id of sel.wires) {
+        const w = draft.layout.wires.find((x) => x.id === id);
+        if (!w) return 'unknown_wire';
+        w.vertices = w.vertices.map((v) => ({ x: v.x + d.x, y: v.y + d.y }));
+      }
+    },
+    () => (d.x || d.y ? sel.components : []),
+  );
 }
 
 /** Rotate each component 90° clockwise about its own origin; attached wires follow. */
 export function rotateComponents(doc: ProjectDocument, ids: string[]): EditResult {
-  return transact(doc, (draft) => {
-    for (const id of ids) {
-      const p = draft.layout.components[id];
-      if (!p) return 'unknown_component';
-      p.rotation = nextRotation(p.rotation);
-    }
-  });
+  return transact(
+    doc,
+    (draft) => {
+      for (const id of ids) {
+        const p = draft.layout.components[id];
+        if (!p) return 'unknown_component';
+        p.rotation = nextRotation(p.rotation);
+      }
+    },
+    () => ids,
+  );
 }
 
 export function setParam(
