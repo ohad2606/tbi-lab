@@ -20,6 +20,7 @@ import {
   ESP32_ATTACH_HEIGHT,
   ESP32_PIN_TOP,
   LEAD_ATTACH_HEIGHT,
+  LED_PACKAGES,
   WIRE,
 } from '../src/views/scene3d/physical.js';
 import { EXAMPLES } from '../src/examples/catalog.js';
@@ -222,5 +223,23 @@ describe('3D scene description', () => {
     // It runs a clearance above the bodies and leads it passes over.
     const clear = MODEL_HEIGHT['resistor.axial'] + WIRE.clearanceMm;
     expect(w.points.slice(1, -1).every((p) => p.y >= clear - 1e-9)).toBe(true);
+  });
+
+  it('each LED card shows its datasheet package and colour (presentation only)', () => {
+    let doc = place(newDoc(), 'component.led', 100, 200).doc;
+    const look = (model: string) => {
+      const d = must(setParam(doc, 'D1', 'model', model)).doc;
+      return deriveScene(d).components.find((c) => c.id === 'D1')!.visual.led;
+    };
+    expect(look('model.led.vishay_tlhr5400')).toMatchObject({ package: 't1_34', clear: false });
+    expect(look('model.led.vishay_tlhy5400')).toMatchObject({ package: 't1_34', clear: false });
+    expect(look('model.led.vishay_tlhg4900')).toMatchObject({ package: 't1', clear: true });
+    doc = must(setParam(doc, 'D1', 'model', 'model.led.vishay_tlhg4900')).doc;
+    // The 3 mm part is smaller than the 5 mm one; both stand on the same terminals.
+    expect(LED_PACKAGES.t1.bodyDiameterMm).toBeLessThan(LED_PACKAGES.t1_34.bodyDiameterMm);
+    const terms = deriveScene(doc).components.find((c) => c.id === 'D1')!.terminals;
+    expect(terms.map((t) => t.x)).toEqual(
+      [(100 - 40) * SCALE, (100 + 40) * SCALE].map((x) => expect.closeTo(x, 9)),
+    );
   });
 });

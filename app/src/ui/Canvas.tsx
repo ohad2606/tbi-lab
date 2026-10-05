@@ -47,6 +47,7 @@ import { useAppState, useStore, useT } from './context.js';
 import { checksFor } from './checks.js';
 import { SYMBOLS, type SymbolState } from './symbols.js';
 import { componentBox, componentBoxes, moveRouted, rotateRouted } from './routing.js';
+import { ledLook } from '../views/ledLooks.js';
 import type { GpioLevel } from '../runtime/view.js';
 import { warningsFor } from '../sim/ratings.js';
 import { probeAnchor, probeTargetName, readProbe, type Probe, type ProbeInput } from './probes.js';
@@ -1216,7 +1217,10 @@ function ComponentView({
           <polygon
             class="led-glow"
             points="-12,-12 -12,12 12,0"
-            style={{ fillOpacity: Math.min(1, Math.max(0.08, (result.current ?? 0) / 0.02)) }}
+            style={{
+              fill: ledLook(c.params.model).color,
+              fillOpacity: Math.min(1, Math.max(0.08, (result.current ?? 0) / 0.02)),
+            }}
           />
         )}
       </g>

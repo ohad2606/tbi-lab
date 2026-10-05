@@ -170,3 +170,69 @@ export const DIODE_1N4148: DiodeModel = {
     `Least-squares Shockley + R_S fit to ${VISHAY_1N4148_ANCHORS.source} ` +
     'Reproduced by packages/engine/tools/extract_1n4148.py. Breakdown not modelled.',
 };
+
+/**
+ * Sprint 10: the approved additional LED colour cards (product scope §6.1, LED row: "1-2 more
+ * colour cards from datasheets"). Each is built exactly like the red card above: the datasheet
+ * gives one typical forward operating point; one point cannot identify both I_S and N, so N is
+ * the same documented assumption (RED_LED_EMISSION_COEFFICIENT: mid-range of the N ~ 1.8 to 2.5
+ * commonly reported for visible III-V/GaP LEDs) and I_S is fitted to reproduce the anchor
+ * exactly. Series resistance is not identifiable and not modelled; each card is documented as
+ * valid for 1 mA - 20 mA. tests/led-cards.test.ts reports the operating point across the N range.
+ *
+ * Datasheet files (retrieved 2026-10-05, SHA-256):
+ *   tlhr540x_tlhy540x.pdf  5dc7a75d5c11cccd890f81b4ed3cf596239a8e5bd5789930435973125840ed50
+ *   tlhr4900_tlhg4900.pdf  585526b8856c491fa236c920744c59dcbe579f9e18b9f89469dff58c992d306b
+ */
+
+/** Yellow 5 mm, GaAsP on GaP (the same document and technology as the red TLHR5400). */
+export const TLHY5400_ANCHOR = {
+  forwardVoltageV: 2.4,
+  forwardCurrentA: 0.02,
+  source:
+    'Vishay TLHR540./TLHY540. datasheet, document 83012, rev. 2.7 (25-Jan-2024), TLHY540. ' +
+    'Optical and Electrical Characteristics table: V_F typ. 2.4 V at I_F = 20 mA, T_amb = 25 degC ' +
+    '(GaAsP on GaP).',
+} as const;
+
+export const LED_TLHY5400: DiodeModel = {
+  name: 'TLHY5400',
+  saturationCurrentA: fitSaturationCurrent(
+    TLHY5400_ANCHOR.forwardVoltageV,
+    TLHY5400_ANCHOR.forwardCurrentA,
+    RED_LED_EMISSION_COEFFICIENT,
+  ),
+  emissionCoefficient: RED_LED_EMISSION_COEFFICIENT,
+  seriesResistanceOhm: 0,
+  temperatureK: T_AMBIENT_K,
+  provenance:
+    `I_S fitted to ${TLHY5400_ANCHOR.source} ` +
+    `N = ${RED_LED_EMISSION_COEFFICIENT} assumed (see RED_LED_EMISSION_COEFFICIENT). ` +
+    'R_S not modelled (not identifiable from the available datasheet data).',
+};
+
+/** Green 3 mm clear, GaP on GaP. */
+export const TLHG4900_ANCHOR = {
+  forwardVoltageV: 2.4,
+  forwardCurrentA: 0.02,
+  source:
+    'Vishay TLHR4900, TLHG4900 datasheet, document 83009, rev. 2.7 (21-Jul-2022), TLHG4900 ' +
+    'Optical and Electrical Characteristics table: V_F typ. 2.4 V at I_F = 20 mA, T_amb = 25 degC ' +
+    '(GaP on GaP).',
+} as const;
+
+export const LED_TLHG4900: DiodeModel = {
+  name: 'TLHG4900',
+  saturationCurrentA: fitSaturationCurrent(
+    TLHG4900_ANCHOR.forwardVoltageV,
+    TLHG4900_ANCHOR.forwardCurrentA,
+    RED_LED_EMISSION_COEFFICIENT,
+  ),
+  emissionCoefficient: RED_LED_EMISSION_COEFFICIENT,
+  seriesResistanceOhm: 0,
+  temperatureK: T_AMBIENT_K,
+  provenance:
+    `I_S fitted to ${TLHG4900_ANCHOR.source} ` +
+    `N = ${RED_LED_EMISSION_COEFFICIENT} assumed (see RED_LED_EMISSION_COEFFICIENT). ` +
+    'R_S not modelled (not identifiable from the available datasheet data).',
+};

@@ -180,7 +180,12 @@ export const CATALOG: Record<ComponentTypeId, ComponentTypeDef> = {
         kind: 'enum',
         key: 'model',
         // The curated list holds only datasheet-sourced model cards (product scope §6.1).
-        options: [{ value: 'model.led.vishay_tlhr5400', labelKey: 'model.led.vishay_tlhr5400' }],
+        options: [
+          { value: 'model.led.vishay_tlhr5400', labelKey: 'model.led.vishay_tlhr5400' },
+          // Sprint 10: the approved additional colour cards (§6.1 LED row), datasheet-sourced.
+          { value: 'model.led.vishay_tlhy5400', labelKey: 'model.led.vishay_tlhy5400' },
+          { value: 'model.led.vishay_tlhg4900', labelKey: 'model.led.vishay_tlhg4900' },
+        ],
         default: 'model.led.vishay_tlhr5400',
         labelKey: 'param.model',
       },

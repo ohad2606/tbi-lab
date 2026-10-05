@@ -78,6 +78,8 @@ export const en = {
   'param.closed': 'Switch closed',
   'model.diode.vishay_1n4148': 'Small-signal 1N4148 (Vishay)',
   'model.led.vishay_tlhr5400': 'Red 5 mm (Vishay TLHR5400)',
+  'model.led.vishay_tlhy5400': 'Yellow 5 mm (Vishay TLHY5400)',
+  'model.led.vishay_tlhg4900': 'Green 3 mm (Vishay TLHG4900)',
 
   'unit.ohm.symbol': 'Ω',
   'unit.volt.symbol': 'V',

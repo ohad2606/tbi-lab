@@ -55,6 +55,7 @@ import {
   TOGGLE,
   WIRE,
 } from './physical.js';
+import { ledLook } from '../ledLooks.js';
 
 /** Scene units (millimetres) per 2D layout unit (physical.ts). */
 export const SCALE = MM_PER_LAYOUT_UNIT;
@@ -279,17 +280,6 @@ export function resistorBands(ohms: number): string[] | null {
   return null;
 }
 
-/**
- * Emission colour, package and lens of each curated LED model card (its datasheet: colour and
- * package drawing). An unknown card falls back to the red 5 mm part's look; the electrical model
- * is never chosen here.
- */
-const LED_LOOKS: Record<string, { color: string; package: LedPackage; clear: boolean }> = {
-  'model.led.vishay_tlhr5400': { color: '#e53935', package: 't1_34', clear: false },
-  'model.led.vishay_tlhy5400': { color: '#fbc02d', package: 't1_34', clear: false },
-  'model.led.vishay_tlhg4900': { color: '#43c64a', package: 't1', clear: true },
-};
-
 /** Along an ESP32 header, the real pin centre (2.54 mm pitch, centred on the board origin). */
 export const realPinZ = (position: number) =>
   (position - (ESP32_DEVKITC.headerPins + 1) / 2) * ESP32_DEVKITC.pinPitchMm;
@@ -369,8 +359,7 @@ export function deriveScene(doc: ProjectDocument): SceneDescription {
       const r = c.params.resistance as Quantity | undefined;
       visual.bands = r ? resistorBands(r.value) : null;
     }
-    if (c.type === 'component.led')
-      visual.led = LED_LOOKS[String(c.params.model)] ?? LED_LOOKS['model.led.vishay_tlhr5400']!;
+    if (c.type === 'component.led') visual.led = ledLook(c.params.model);
     if (c.type === 'component.toggle_switch') visual.closed = c.params.closed === true;
     if (c.type === 'instrument.lab_psu') {
       const v = c.params.setpointVoltage as Quantity | undefined;

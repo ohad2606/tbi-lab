@@ -81,6 +81,8 @@ export const he: Record<MessageKey, string> = {
   'param.closed': '[[toggleSwitch]] סגור',
   'model.diode.vishay_1n4148': 'דיודת אות קטן 1N4148 (Vishay)',
   'model.led.vishay_tlhr5400': 'אדומה 5 מ"מ (Vishay TLHR5400)',
+  'model.led.vishay_tlhy5400': 'צהובה 5 מ"מ (Vishay TLHY5400)',
+  'model.led.vishay_tlhg4900': 'ירוקה 3 מ"מ (Vishay TLHG4900)',
 
   'unit.ohm.symbol': 'Ω',
   'unit.volt.symbol': 'V',

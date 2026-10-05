@@ -33,6 +33,24 @@ export const MODEL_RATINGS: Readonly<Record<string, AbsoluteMaximumRatings>> = {
       'Maximum Ratings: V_R 6 V; DC forward current I_F 30 mA (T_amb <= 65 degC); power ' +
       'dissipation P_V 100 mW (T_amb <= 65 degC).',
   },
+  'model.led.vishay_tlhy5400': {
+    forwardCurrentA: 0.03,
+    reverseVoltageV: 6,
+    powerW: 0.1,
+    source:
+      'Vishay TLHR540./TLHY540. datasheet, Document 83012, Rev. 2.7 (25-Jan-2024), Absolute ' +
+      'Maximum Ratings (TLHR540., TLHY540.): V_R 6 V; DC forward current I_F 30 mA ' +
+      '(T_amb <= 65 degC); power dissipation P_V 100 mW (T_amb <= 65 degC).',
+  },
+  'model.led.vishay_tlhg4900': {
+    forwardCurrentA: 0.03,
+    reverseVoltageV: 6,
+    powerW: 0.1,
+    source:
+      'Vishay TLHR4900, TLHG4900 datasheet, Document 83009, Rev. 2.7 (21-Jul-2022), Absolute ' +
+      'Maximum Ratings: V_R 6 V; DC forward current I_F 30 mA (T_amb <= 60 degC); power ' +
+      'dissipation P_V 100 mW (T_amb <= 60 degC).',
+  },
   'model.diode.vishay_1n4148': {
     forwardCurrentA: 0.3,
     reverseVoltageV: 75,
