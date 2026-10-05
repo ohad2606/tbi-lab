@@ -2571,6 +2571,11 @@ select {
   inset: 0;
 }
 
+.view3d-host:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -3px;
+}
+
 .view3d-canvas {
   display: block;
   inline-size: 100%;

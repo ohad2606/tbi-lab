@@ -87,6 +87,26 @@ export function ThreeView() {
         ref={host}
         role="img"
         aria-label={t('view3d.aria', { name: doc.name })}
+        aria-keyshortcuts="ArrowLeft ArrowRight + - Home"
+        tabIndex={status === 'ready' ? 0 : -1}
+        data-testid="view3d-host"
+        onKeyDown={(e) => {
+          // The same camera actions as the buttons. Arrows are spatial: not mirrored under RTL.
+          const v = viewer.current;
+          if (!v) return;
+          const act: Record<string, () => void> = {
+            ArrowLeft: () => v.rotate(-Math.PI / 8),
+            ArrowRight: () => v.rotate(Math.PI / 8),
+            '+': () => v.zoom(1.25),
+            '=': () => v.zoom(1.25),
+            '-': () => v.zoom(0.8),
+            Home: () => v.resetCamera(),
+          };
+          const run = act[e.key];
+          if (!run || e.ctrlKey || e.metaKey || e.altKey) return;
+          e.preventDefault();
+          run();
+        }}
       />
       {status === 'loading' && (
         <div class="view3d-message" role="status" dir={locale.dir}>
