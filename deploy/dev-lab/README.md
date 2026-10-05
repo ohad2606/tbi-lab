@@ -114,3 +114,21 @@ browser --HTTPS--> Caddy :443 --> oauth2-proxy 127.0.0.1:4180 (Google OIDC, allo
   `Caddyfile` and `oauth2-proxy.cfg` and **restart** (not reload) caddy and oauth2-proxy, which
   picks up the `tbi-gate` group and Caddy's `UMask=0007` drop-in (`s8/caddy-gate.conf`).
 - Rollback to Sprint 7: `deploy/dev-lab/s8/rollback-dev-lab.sh /var/backups/tbi-lab/pre-s8-<date>`.
+
+## Sprint 9 preview (`s9-preview/`, experimental)
+
+An isolated static build of the `sprint-9` branch at `https://dev-lab.tbi-tech.net/s9-preview/`,
+behind the same login. It does not replace or touch the dev-lab release, its services or their
+state; it uses the same-origin `/runtime` and `/build` unchanged, and keeps its browser storage
+apart (`s9-preview/…`).
+
+```bash
+deploy/dev-lab/s9-preview/publish.sh sprint-9      # static files only; restarts nothing
+deploy/dev-lab/s9-preview/install-route.sh         # once: add the route to the gate (backup, validate, reload)
+deploy/dev-lab/s9-preview/install-route.sh --remove   # take the route out again
+```
+
+Note: if `/etc/caddy/Caddyfile` is re-installed from `deploy/dev-lab/Caddyfile` (by hand, as
+above), the import line is gone and the preview is unreachable (dev-lab itself is unaffected);
+re-run `install-route.sh` if the preview should stay.
+

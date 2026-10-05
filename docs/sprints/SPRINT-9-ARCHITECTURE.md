@@ -105,6 +105,26 @@ Circuit · Schematic · 3D (· Code for ESP32 projects), a keyboard-accessible t
 stays mounted (hidden) so its camera and editing state survive; Schematic and 3D mount only while
 shown. Switching views never changes the document or the simulation.
 
+### PM decisions, 2026-10-05 (details in SPRINT-9.md)
+
+- **Schematic pins:** the ESP32 block shows only connected pins (default). A future
+  "Show all pins" belongs in the layout as an option to `placeModule`; not implemented.
+- **Hebrew term:** "סכמה חשמלית" (tab text may be "סכמה"; accessible name and tooltip in full).
+- **3D sizing rule:** 2D determines placement; the component model determines visual size and
+  height. Realistic relative dimensions later, as per-model metadata in the model registry,
+  never in the project schema. Not mechanical CAD.
+- **Colours:** node colours are 3D-only; the 2D editor is unchanged ("Color by net" later, opt-in).
+- **Live values:** only the LED glow in 3D for Sprint 9.
+
+### D-S9-5 Isolated preview on the dev-lab gate
+
+A static build under `/s9-preview/` on the same origin, behind the same oauth2-proxy, from its
+own web root (`deploy/dev-lab/s9-preview/`). Same-origin means the existing `/runtime` and
+`/build` work unchanged and no CORS or gate rule is weakened; the price is a shared browser
+origin, so the preview build gets its own storage namespace (IndexedDB database and
+localStorage keys) and a permanent "experimental preview" strip. Both are build-time settings
+(`VITE_STORAGE_NAMESPACE`, `VITE_PREVIEW_NAME`); without them a build behaves exactly as before.
+
 ## Plan
 
 | Phase | Content |

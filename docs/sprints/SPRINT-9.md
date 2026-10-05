@@ -1,15 +1,19 @@
 # Sprint 9 — Three views of one circuit
 
-**Status:** implementation track, first pass complete on branch `sprint-9` (from `sprint-8`
-`ed20843`). Not reviewed by the PM, not deployed anywhere. Sprint 8 is untouched: no Sprint 8 file,
-deployment or validation record was changed, and the Sprint 8 dev-lab instance was not touched.
+**Status:** implementation track on branch `sprint-9` (from `sprint-8` `ed20843`). First pass
+complete (`009783f`); the PM's product decisions of 2026-10-05 are applied (below), and an
+**isolated, experimental preview** is live at `https://dev-lab.tbi-tech.net/s9-preview/` for the
+owner's visual review. No PR, merge, tag or production deployment. Sprint 8 is untouched: no
+Sprint 8 file, branch, release, service or validation record was changed; the preview is not
+Sprint 8 evidence, and Sprint 8 keeps its own owner smoke and closure.
 Architecture and decisions: [SPRINT-9-ARCHITECTURE.md](SPRINT-9-ARCHITECTURE.md).
 
 ## Product rule
 
-**The 2D circuit editor is the construction/editing surface. 3D is a derived 360° visualization.
-The professional schematic is a derived electrical/topological representation. All three use the
-same authoritative circuit model.**
+**The 2D Circuit view is the construction/editing surface.  
+3D is a derived visualization.  
+Professional Schematic is a derived electrical/topological representation.  
+All three use one authoritative circuit model.**
 
 - The project document is the only editable state. Neither generated view writes to it, and
   neither keeps state of its own beyond a camera (zoom, pan, orbit).
@@ -18,6 +22,30 @@ same authoritative circuit model.**
   views.
 - Views are re-derived on every document change, so they cannot drift from the circuit.
   Switching tabs changes neither the document nor the simulation.
+
+## Approved product decisions (PM, 2026-10-05)
+
+| | Decision | Implementation |
+|---|---|---|
+| A | **ESP32 schematic: only the connected pins** (default; keeps the schematic readable). A "Show all pins" option may come later. | Already the behaviour; unchanged. The layout skips a module pin whose terminal has no node (`placeModule` in `layout.ts`); an optional "show all pins" would be a layout option there, not implemented. Now also pinned by a browser test (EN and HE: exactly `GND`, `IO34`, `IO4` for the input-echo example). |
+| B | **Hebrew: the full product term is "סכמה חשמלית"**; the tab may show the short "סכמה" with the full term as accessible name and tooltip. | Tab text "סכמה"; `aria-label` and `title` "סכמה חשמלית" (`view.name.schematic`). The schematic's accessible name ("סכמה חשמלית של …"), its controls' label and the 3D fallback text use the full term. Checked: correct logical character order, no bidi control characters, rendered correctly (screenshots below). English unchanged: "Schematic". "שרטוט חשמלי" is not used anywhere. |
+| C | **3D: 2D determines placement; the component model determines realistic visual size/height.** Not mechanical CAD; no large refactor now. | No change to placement (no 3D position state, no schema change). Model sizes were reviewed against real parts (below); none is obviously unrealistic relative to the others, so no model was changed. Realistic relative dimensions are a follow-up. |
+| D | **2D wire colours unchanged.** Node colours stay 3D-only; "Color by net" may come later as an optional mode, not a default. | Unchanged: `Canvas.tsx` and `symbols.tsx` are identical to Sprint 8 (`git diff ed20843` is empty for both). Recorded in the backlog. |
+| E | **Live values: no broadening.** LED glow in 3D is enough for Sprint 9; switch/LED state and optional current/voltage visualization later, optional, never cluttering the schematic. | Unchanged: the only live visual in the new views is the 3D LED glow. |
+
+**3D sizing review** (relative to the board, measured against its length: real ESP32 DevKitC
+54 × 28 mm):
+
+| Part | Model vs real, relative to the board |
+|---|---|
+| Resistor body (6.3 × 2.5 mm) | ≈ 0.8 length, 0.7 diameter |
+| Tactile switch (6 × 6 mm) | ≈ 0.8 |
+| LED (5 mm) | ≈ 0.55: on the small side |
+| ESP32 board width | ≈ 0.6: set by the header spacing of the 2D board drawing, i.e. by placement |
+| Bench supply | symbolic (a real one is several times the board's size) |
+
+Realistic relative dimensions (per-model size metadata, in the model registry, never in the
+project schema) are a follow-up.
 
 ## What was built
 
@@ -117,6 +145,8 @@ The ESP32 module block:
 ### Localization
 
 - All new UI strings are in English and Hebrew.
+- Schematic tab: "Schematic" / "סכמה", with the full Hebrew term "סכמה חשמלית" as its accessible
+  name and tooltip (decision B).
 - Technical labels (refs, pin names, values, net names) stay LTR.
 - The views' notes follow the UI direction.
 
@@ -125,9 +155,11 @@ The ESP32 module block:
 | Suite | Result |
 |---|---|
 | Typecheck, lint, architecture boundaries, production build | PASS |
-| Unit (`npm test`) | **613 passed**, 60 files (Sprint 8: 593); new: 5 connectivity, 6 schematic, 6 scene |
-| Browser/e2e (`test:e2e`) | **121 passed**, 3 heavy skipped (Sprint 8: 114); new: 7 in `s9-views.spec.ts` |
+| Unit (`npm test`) | **616 passed**, 60 files (Sprint 8: 593); new: 5 connectivity, 6 schematic, 6 scene, 3 preview deployment/storage |
+| Browser/e2e (`test:e2e`) | **122 passed**, 3 heavy skipped (Sprint 8: 114); new: 8 in `s9-views.spec.ts` |
 | Legacy browser (`test:browser`) | 4 passed |
+
+(Counts at the HEAD after the product decisions; the first pass at `009783f` had 613 and 121.)
 
 The project-format tests (validation, migration, packages, fuzz) are unchanged and pass.
 
@@ -172,7 +204,8 @@ Further checks:
 - WebGL disabled: localized fallback, Circuit and Schematic still work;
 - view switching during a run keeps the run and the project unchanged, and the running LED is
   lit in 3D;
-- Hebrew labels.
+- Hebrew labels, and the Hebrew schematic tab's accessible name and tooltip "סכמה חשמלית";
+- the ESP32 block shows exactly its connected pins, in English and Hebrew.
 
 ## Measurements
 
@@ -183,10 +216,13 @@ faster.
 
 | Bundle | Size |
 |---|---|
-| Startup bundle (`index`) | 263.2 → **268.9 kB** (+5.7 kB; gzip 76.1 → 78.4 kB, +2.2 kB): tabs, lazy loader, strings, connectivity |
-| `SchematicView` chunk | 17.3 kB (6.2 kB gzip), on first schematic open |
-| `ThreeView` chunk | 7.0 kB (2.9 kB gzip), on first 3D open |
-| `renderer` chunk (three.js + models) | 574.1 kB (143.3 kB gzip), on first 3D open |
+| Startup bundle (`index`) | Sprint 8 263.2 → `009783f` 268.9 → **270.1 kB** (gzip 76.1 → 78.4 → 78.7 kB): tabs, lazy loader, strings, connectivity; then the decision strings and the preview hooks (+1.2 kB) |
+| `SchematicView` chunk | 17.3 kB (6.2 kB gzip), on first schematic open; unchanged by the decisions |
+| `ThreeView` chunk | 7.4 kB (3.1 kB gzip), on first 3D open; unchanged by the decisions |
+| `renderer` chunk (three.js + models) | 574.5 kB (143.5 kB gzip), on first 3D open; unchanged by the decisions |
+
+(The `ThreeView` and `renderer` sizes first recorded here, 7.0 and 574.1 kB, predate the LED
+glow commit; the values above are rebuilt from `009783f` and from the current HEAD.)
 
 **Activation** (representative ESP32 circuit):
 
@@ -222,6 +258,23 @@ resource remains after leaving.
 **Idle editor.** With the 3D view closed, nothing of it runs; the existing performance suites
 pass unchanged.
 
+**Remeasured on the preview build** (published files, same host, representative ESP32
+circuit, three runs after the page had settled):
+
+| Measure | Result |
+|---|---|
+| Schematic, first open | 120–150 ms |
+| Schematic, again | 60–130 ms |
+| 3D, first open | 1.3–1.4 s |
+| 3D, again | 0.32–0.36 s |
+| Orbit drag step | ≈ 100 ms |
+| Heap: before / in 3D / after 20 cycles in 3D / after leaving | 2.8 / 7.4 / 8.8 / 7.2 MB |
+| 3D canvases left after leaving | 0 |
+
+Opening the schematic **immediately** after a project loads took 5.3–5.6 s in two of five runs
+(0.29 s in another): on this 1-vCPU host the first chunk load competes with the project's
+start-up work. Not seen once the page had settled; not measured on a multi-core machine.
+
 ## Visual validation
 
 Screenshots are in [s9-evidence/](s9-evidence/):
@@ -253,12 +306,94 @@ Fixes made during this review:
 - LED, resistor, diode and button models were enlarged, since they read as specks next to the
   board.
 
+## Isolated Sprint 9 preview
+
+**URL:** `https://dev-lab.tbi-tech.net/s9-preview/`. Experimental; for the owner's visual review.
+
+```
+browser ─HTTPS─> Caddy :443 ─> oauth2-proxy (same Google login + allowlist as dev-lab)
+   ─> Caddy internal origin (unix socket)
+        /s9-preview/*        → /srv/tbi-lab/s9-preview/current   Sprint 9 static build (new)
+        /runtime/*, /build/* → Sprint 8 backends, unchanged (same origin, used by both apps)
+        everything else      → /srv/tbi-lab/dev-lab/current      Sprint 8, unchanged
+```
+
+- **Static only.** `deploy/dev-lab/s9-preview/publish.sh <ref>` builds a ref in a clean worktree
+  and installs it under `/srv/tbi-lab/s9-preview/<sha>`. Unlike `deploy/dev-lab/publish.sh` it
+  builds no backend, writes nothing under dev-lab's releases or `services/`, and restarts
+  nothing. Published: `83edd67`.
+- **One additive gate route.** `install-route.sh` installs `s9-preview.caddy` as
+  `/etc/caddy/tbi-s9-preview.caddy` and adds one `import` line to the internal origin of
+  `/etc/caddy/Caddyfile` (backed up first, validated, graceful reload; `--remove` takes it out).
+  Every existing dev-lab route is unchanged; no TCP port, CORS or header rule was added or
+  weakened. The preview's HTML is `no-store` and `noindex`; hashed assets as for dev-lab.
+- **Same backends, unchanged.** Sprint 9 is frontend-only; the preview app calls the same-origin
+  `/runtime` and `/build` of the validated Sprint 8 services, under the same identity.
+- **Never mistaken for dev-lab.** An amber strip on every screen: "Sprint 9 preview ·
+  experimental — An experimental preview, separate from the validated deployment. Its projects
+  are stored apart." (Hebrew: "תצוגה מקדימה Sprint 9 · ניסיונית …"); the page title starts with
+  "Sprint 9 preview". A first version put a badge in the top bar; the visual check showed it
+  collapsing the project name over the save status at 1280–1400 px, so it moved to the banner
+  row (`83edd67`); the top bar is exactly as in Sprint 8.
+- **Its own browser storage.** Same origin as dev-lab, so the build sets
+  `VITE_STORAGE_NAMESPACE=s9-preview`: projects in the IndexedDB database `s9-preview/tbi-lab`,
+  preferences under `s9-preview/…` keys. The preview never reads or writes dev-lab's projects
+  (relevant while Sprint 8's owner smoke is pending). To look at an existing project in the
+  preview, export it from dev-lab and import it there.
+- **Rollback / removal:** re-point `current`, or `install-route.sh --remove` (dev-lab is then
+  exactly as before).
+
+**Validation of the preview** (2026-10-05):
+
+- Gate, through the real Caddy internal origin: `/s9-preview` → 308 `/s9-preview/`; the index and
+  all 9 published files are served byte-identical to the release; a missing asset is 404; the
+  public URL (page and assets) redirects to Google sign-in without a session.
+- Sprint 8 after the route was added: the dev-lab index is served byte-identical to its release
+  (`c31d62e`); its assets, SPA fallback, `/runtime` and `/build` answer as before; both release
+  links are unchanged; oauth2-proxy, tbi-build and tbi-session-host have the same start times
+  (not restarted).
+- Browser, 51/51 checks, against the published preview files served at `/s9-preview/` exactly
+  as the route serves them (loopback harness, not committed):
+  - **main app:** loads from `/s9-preview/assets/`; strip and title; a project opens; Circuit,
+    Code (sketch shown, LTR under Hebrew) and back; storage namespaced (only the
+    `s9-preview/tbi-lab` database, every preference key prefixed); top bar not crowded;
+  - **schematic:** opens; ESP32 shows exactly `GND`, `IO34`, `IO4`; resistor, LED, button,
+    supply and ground symbols; voltage divider, LED current, push button and ESP32 blink
+    render; selecting R1 selects it in the inspector; no project write;
+  - **3D:** opens; three.js loaded only on the 3D tab, from the preview path; 13 wires; board,
+    resistors, LED, switches, supply and grounds present; rotate buttons, drag orbit,
+    right-drag pan, wheel zoom, fit and reset each change the rendered image; no project write;
+    20 enter/leave cycles leave no canvas, cost the same 48 geometries each time, no "too many
+    WebGL contexts" warning; heap 8.9 → 7.2 MB on leaving; the LED is dark when stopped and lit
+    while the simulation runs;
+  - **Hebrew:** RTL document; tabs "מעגל · סכמה · תלת־ממד · קוד"; schematic tab title and
+    accessible name "סכמה חשמלית"; schematic accessible name "סכמה חשמלית של …"; drawing and
+    pin names LTR, note RTL; 3D controls localized; no page errors;
+  - **WebGL unavailable:** localized explanation; Schematic and Circuit keep working.
+- **Not validated by me:** the signed-in path through Google login (headless cannot sign in as
+  the owner; the gate checks above cover routing and protection), and ESP32 Run/Build from the
+  preview against the Sprint 8 backends (unchanged code and endpoints; the LED-glow run uses
+  the local DC engine). Both are part of the owner review.
+
+Screenshots of the preview in [s9-evidence/](s9-evidence/): `preview-projects-en.png`,
+`preview-he-tabs.png`, `preview-schematic-he-esp32-input-echo.png`, `preview-3d-he.png`,
+`preview-3d-en-led-lit.png`, `preview-3d-no-webgl.png`.
+
+## Development-history caveat
+
+The commits between `6f6442b` and `009783f` do not pass their tests on their own: a change to
+the shared test fixture (`packages/domain/tests/circuits.ts`, the mixed circuit wiring the new
+project's own supply and ground) was used by every test run from Phase C on but committed only
+in `009783f`. Published history was not rewritten. Commits since `009783f` were made to be
+independently valid (code before its tests, nothing relying on a later commit); the full checks
+ran at `1679128`, `83edd67` and the final HEAD, not separately at every intermediate commit.
+
 ## Limitations (first implementation, stated plainly)
 
 **3D**
 - 3D is a **visualization only**: no 3D editing, placing or wiring. It is not mechanical CAD
-  and not a PCB view. Parts sit where the 2D layout puts them, so proportions follow the 2D
-  drawing, not real dimensions.
+  and not a PCB view. Parts sit where the 2D layout puts them (decision C); model sizes are
+  approximate (the sizing review above), not realistic relative dimensions yet.
 - Models are procedural and simplified. There are no photoreal assets, no shadows, and no pin
   labels on the ESP32 board in 3D.
 - The 3D view does not show simulation values. Only LED glow is mirrored.
@@ -270,7 +405,7 @@ Fixes made during this review:
 - Layout covers the educational topologies in the current catalog. It is not a KiCad-class
   placer or router; complex meshes fall back to net labels, which is correct but less pictorial.
 - Large circuits produce tall drawings.
-- Only connected ESP32 pins are shown, not the full 38-pin module symbol.
+- Only connected ESP32 pins are shown (decision A, by design); there is no "show all pins" option yet.
 - Schematic values are design values. Live simulation values are not shown in the schematic.
 
 **Performance**
@@ -279,24 +414,18 @@ Fixes made during this review:
 
 ## Decisions for the product owner
 
-1. **Schematic pin scope.** Show only connected ESP32 pins (current), or the full module symbol
-   with every header pin?
-2. **Tab label in Hebrew.** "סכמה" is used for Schematic. Confirm, or prefer "סכמה חשמלית" /
-   "שרטוט חשמלי".
-3. **3D proportions.** Keep the 2D layout's proportions (current: one source of placement), or
-   introduce real part dimensions? Real dimensions would need per-part visual metadata, still
-   outside the project schema.
-4. **Wire colours.** Node-based colours (ground black, supply red, signals from a palette) are a
-   presentation choice the 2D editor does not share yet. Should the 2D editor adopt them?
-5. **Simulation values in the new views.** Should a later sprint show solved voltages and
-   currents in the schematic or 3D?
+The five first-pass questions were decided by the PM on 2026-10-05 (see "Approved product
+decisions" above). Open: the owner's visual review of the 3D and schematic views in the preview.
 
 ## Future / backlog (not implemented)
 
 - 3D picking synchronized with the selection.
 - glTF models for selected parts, through the model registry.
 - Schematic export (SVG/PDF) and print.
-- Showing unconnected ESP32 pins.
-- Live values in the schematic.
+- "Show all pins" for the ESP32 schematic block, as an option (default stays connected-only).
+- Realistic relative component dimensions in 3D (per-model size metadata; 2D keeps placement).
+- "Color by net" for the 2D editor, as an optional visualization mode, never the default.
+- Optional live state in the views (switch and LED state, current/voltage), never cluttering the
+  schematic.
 - 3D labels for ESP32 pins.
 - Multi-board schematics with sheet-style layout.
