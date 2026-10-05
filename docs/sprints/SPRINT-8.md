@@ -1,7 +1,9 @@
 # Sprint 8 — Public Hardening & Capacity
 
 **Status:** PHASES 0–4 COMPLETE (identity, ownership, containment, policy/admission). Deployed
-to dev-lab at `c31d62e`; technical validation passed; **awaiting owner smoke**. Phases 5–6 not
+to dev-lab at `c31d62e`; technical validation passed. A closure blocker found during the owner's
+use (QEMU task limit, 2026-10-05) is fixed and deployed (see the end of this record);
+**awaiting owner smoke (Run/Stop path)**. Phases 5–6 not
 started. `main` and production unchanged; no PR, merge or tag.
 
 **Base:** `sprint-7-complete^{}` = `a2ad7c6`. **Branch:** `sprint-8`. **Architecture:**
@@ -294,7 +296,7 @@ Session Host (`tbi-runtime`), which may only manage that template's instances.
 - User `tbi-qemu` (no login, no home).
 - An empty root with read-only `/usr` and runtime, and ONLY its session directory at `/session`.
 - Private network (loopback only), PID and IPC namespaces.
-- Memory 384 MiB with no swap, CPU 100 % at high weight (200), 32 tasks, 16 MiB per file, lifetime
+- Memory 384 MiB with no swap, CPU 100 % at high weight (200), 32 tasks (80 since 2026-10-05, see the closure blocker below), 16 MiB per file, lifetime
   limit.
 - Its exit is recorded by `ExecStopPost`.
 
@@ -680,3 +682,76 @@ from it via `publish.sh c31d62e`. The service bundles and app are byte-identical
   `user` = Google's numeric subject, which the gate forwards as `X-Forwarded-User`.
 - Capability denial on dev-lab. The real policy allows `.bin`; denial was validated on
   staging.
+
+## Closure blocker: QEMU task limit (2026-10-05)
+
+**Observed.** During the owner's first Run on dev-lab (05:32:39 UTC) the session's QEMU was
+killed after 5 s: the kernel logged `cgroup: fork rejected by pids controller` for its unit and
+QEMU exited `status=5/TRAP`. A retry 14 s later ran normally. The dev-lab QEMU slice showed
+`pids.peak` 32 (= `TasksMax`) and `pids.events max 1`. Not caused by Sprint 9 (frontend only).
+
+**Measured** (real sessions of the owner's example, `esp32-input-echo`, through the session
+host, cgroup `pids.current` every 5–20 ms plus the kernel's exact per-unit `pids.peak`):
+
+| | Result |
+|---|---|
+| Idle / steady state while running | 4 tasks |
+| Burst | about 5.4 s into a run (with or without input commands) |
+| Peak per session, staging, 37 sessions held past the burst | 6–38 (most 7–9; 18–27 in about a quarter; 38 once) |
+| Peak per session, dev-lab after the fix, 10 sessions | 7–20 |
+| Shutdown | the unit, its cgroup and every QEMU task gone after every Stop; no growth over any run of cycles |
+| Rejected forks after the fix | 0 (staging and dev-lab) |
+
+**Root cause: an undersized limit, not a leak.** The flash is a file-backed `-drive` with QEMU's
+default threaded AIO; the block layer's thread pool spawns one worker per concurrent request (at
+most **64** by default; idle workers exit after ~10 s). The burst of flash reads ~5 s into a run
+spawns workers. QEMU's legitimate ceiling is therefore 4 + 64 + 1 (the unit's `ExecStopPost`)
+= **69** tasks; 32 was below it, so an ordinary burst could be refused and QEMU died.
+- **Proved** on staging with temporary drop-ins (removed afterwards): capping the pool
+  (`-object main-loop,thread-pool-max=2`) fixed the peak at 5 in 8/8 sessions; an uncapped pool
+  under `TasksMax=6` reproduced the owner's failure exactly in 3/3 sessions (same kernel
+  message, `status=5/TRAP`, session `failed`).
+- No leak: counts return to zero after every Stop, no process, unit or cgroup survives, the
+  per-session peaks do not grow across cycles; no unexpected child process (all tasks are QEMU
+  threads).
+
+**Fix.** `deploy/dev-lab/s8/tbi-qemu@.service.in`: `TasksMax=32` → **`TasksMax=80`** (the
+ceiling 69 plus headroom; still a finite bound). A pure resource-limit change: no application,
+runtime or QEMU-argument change. Alternative not taken (needs a QEMU command-line change): cap
+the pool with `-object main-loop,id=main-loop,thread-pool-max=N` and keep a tighter limit.
+
+**Regression test.** `runtime/tests/s8-qemu-tasks.runtime.test.ts` (staging, or
+`TBI_S8_INSTANCE=tbi` for dev-lab; fixture `fixtures/s8-input-echo-session.json`, the request the
+app sends for that example):
+- the loaded unit's `TasksMax` is finite and at least 69 + 8 headroom (fails at 32: "expected 32
+  to be greater than or equal to 77", verified before the fix);
+- `TBI_S8_QEMU_CYCLES` (default 5) real sessions held past the burst with input commands: running
+  throughout, no rejected fork, peak ≤ 69 and ≤ limit − 8; after Stop the unit, cgroup and QEMU
+  process are gone; no accumulation of units.
+`s8-containment` now expects `TasksMax=80`.
+
+**Deployment** (2026-10-05 06:08 UTC). The installed `tbi-qemu@.service` (and the staging
+`tbi-s8-qemu@.service`) edited to exactly the new template's rendering (backup
+`/etc/systemd/system/tbi-qemu@.service.pre-tasksmax.20261005T060803Z`), then `daemon-reload`.
+No service restarted: the template applies to each new session; there was no live session. The
+build service, Session Host, Caddy and oauth2-proxy keep their start times; dev-lab still serves
+`c31d62e`; the Sprint 9 preview is untouched. Rollback: restore the backup and `daemon-reload`.
+
+**Validation after the fix.**
+- Staging: `s8-qemu-tasks` 10 sessions (peaks 7–38) and the full `s8-containment` **11/11**.
+- dev-lab (`TBI_S8_INSTANCE=tbi`, fresh test principals): `s8-qemu-tasks` 10 sessions (peaks
+  7–20) **2/2**; `s8-containment` **7/7** (unit properties, sandboxed bit-identical build, no
+  compile access outside the sandbox, cross-user lease, QEMU sandbox, crash cleanup). The two
+  tests that restart the instance's build service and Session Host were not rerun on dev-lab:
+  unaffected by a QEMU task limit, and they would restart dev-lab's services.
+- Unchanged and still valid: identity, ownership, policy/admission, gate and build validation
+  (nothing they exercise changed).
+
+**Owner smoke.** Only the Run/Stop path needs repeating (ESP32 example: Build, Run, interact,
+Stop, Run again), not the whole checklist.
+
+**Also cleaned up.** Two root TCP relays left from a Sep 29 staging validation run
+(127.0.0.1:7811 → `/run/tbi-s8-build/api.sock`, 127.0.0.1:7812 → `/run/tbi-s8-runtime/api.sock`,
+orphaned `sudo` parents) were terminated by PID after verifying they served only staging and
+nothing used them; both ports are closed.
+
