@@ -165,7 +165,7 @@ describe.skipIf(!HAVE)(
         );
       for (const [unit, mem, tasks] of [
         [`${N}-build-job@job-aaaaaa.service`, String(1 << 30), '64'],
-        [`${N}-qemu@${'0'.repeat(32)}.service`, String(384 << 20), '32'],
+        [`${N}-qemu@${'0'.repeat(32)}.service`, String(384 << 20), '80'],
       ] as const) {
         const p = props(unit);
         expect(p, unit).toMatchObject({
