@@ -267,7 +267,8 @@ class Builder {
       cursorY = y + Math.max(...row.map((r) => r.size.down)) + GROUP_GAP;
     }
 
-    // 4. Ground parts are drawn as the marks of what they ground; unwired parts stand apart.
+    // 4. Ground parts are drawn as the marks of what they ground; parts no track reached (unwired,
+    // or wired only at one end) stand apart.
     let x = originX;
     for (const c of comps) {
       if (this.claimed.has(c.id)) continue;
@@ -282,8 +283,14 @@ class Builder {
         continue;
       }
       if (s.kind === 'two-pin') {
-        this.out.unconnected.push(c.id);
-        this.addPart(c, s, { x: x + HALF, y: cursorY + LABEL_ABOVE }, false, false);
+        // A part no track reached may still have a pin on ground or a rail (its other pin
+        // open): that pin carries its mark, so the connection is drawn, not lost.
+        const na = this.nodeOf(c.id, s.a);
+        const nb = this.nodeOf(c.id, s.b);
+        if (na === null && nb === null) this.out.unconnected.push(c.id);
+        const part = this.addPart(c, s, { x: x + HALF, y: cursorY + LABEL_ABOVE }, false, false);
+        this.endMark(na, part.pins[s.a]!, 'left');
+        this.endMark(nb, part.pins[s.b]!, 'right');
         x += 2 * HALF + COL / 2;
       }
     }
