@@ -1,3 +1,4 @@
+import { PREVIEW_NAME } from '../deployment.js';
 import { isolateLtr } from '../i18n/i18n.js';
 import type { SimFailure } from '../sim/controller.js';
 import type { RatingWarning } from '@tbi-lab/engine';
@@ -13,6 +14,14 @@ export function NoticeBar() {
   const running = sim.status === 'running' ? sim.outcome : null;
   return (
     <div class="banners">
+      {/* A preview deployment says so on every screen (deployment.ts), never in the top bar's
+          space, which the editor's controls need. */}
+      {PREVIEW_NAME && (
+        <div class="banner preview-strip" role="note" data-testid="preview-badge">
+          <strong>{t('deployment.preview', { name: PREVIEW_NAME })}</strong>
+          <span>{t('deployment.previewNote')}</span>
+        </div>
+      )}
       {sim.status === 'failed' && (
         <div
           class="banner banner-error"

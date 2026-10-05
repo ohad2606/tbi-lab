@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import logoUrl from '../assets/brand/tbi-logo-light.png';
-import { PREVIEW_NAME, SIGN_OUT_URL } from '../deployment.js';
+import { SIGN_OUT_URL } from '../deployment.js';
 import { LOCALES } from '../i18n/i18n.js';
 import { AppMenu } from './AppMenu.js';
 import { useAppState, useStore, useT } from './context.js';
@@ -65,7 +65,6 @@ function HomeBar() {
     <>
       <span class="spacer" />
       <div class="topbar-group topbar-meta">
-        <PreviewBadge />
         <LanguageSelect />
         {/* Only a protected deployment configures this; a plain navigation leaves it. */}
         {SIGN_OUT_URL && (
@@ -100,22 +99,10 @@ function EditorBar() {
       </div>
       <span class="spacer" />
       <div class="topbar-group topbar-meta">
-        <PreviewBadge />
         <LanguageSelect />
         <Brand />
       </div>
     </>
-  );
-}
-
-/** A preview deployment says so on every screen (deployment.ts). */
-function PreviewBadge() {
-  const t = useT();
-  if (!PREVIEW_NAME) return null;
-  return (
-    <span class="preview-badge" data-testid="preview-badge" title={t('deployment.previewNote')}>
-      {t('deployment.preview', { name: PREVIEW_NAME })}
-    </span>
   );
 }
 

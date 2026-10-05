@@ -2589,15 +2589,11 @@ select {
   text-align: center;
 }
 
-/* A preview deployment's badge (deployment.ts): unmistakable, never mistaken for dev-lab. */
-.preview-badge {
-  flex-shrink: 0;
-  padding: 0.15rem 0.55rem;
-  border: 1px solid #b26a00;
-  border-radius: 999px;
+/* A preview deployment's strip (deployment.ts): unmistakable, never mistaken for dev-lab. */
+.banner.preview-strip {
+  padding-block: 0.2rem;
   background: #fff4e0;
   color: #7a4700;
   font-size: 0.8rem;
-  font-weight: 700;
-  white-space: nowrap;
+  border-block-end-color: #e0a64a;
 }
