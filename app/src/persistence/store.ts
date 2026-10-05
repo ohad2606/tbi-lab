@@ -39,9 +39,12 @@ function transactionDone(tx: IDBTransaction): Promise<void> {
   });
 }
 
-export function openDatabase(factory: IDBFactory = indexedDB): Promise<IDBDatabase> {
+export function openDatabase(
+  factory: IDBFactory = indexedDB,
+  name: string = DB_NAME,
+): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const request = factory.open(DB_NAME, DB_VERSION);
+    const request = factory.open(name, DB_VERSION);
     request.onupgradeneeded = () => {
       const db = request.result;
       if (!db.objectStoreNames.contains(PROJECTS))
@@ -93,8 +96,8 @@ const indexEntry = (doc: ProjectDocument): ProjectIndexEntry => ({
 export class ProjectStore implements ProjectStorage {
   constructor(private readonly db: IDBDatabase) {}
 
-  static async open(factory: IDBFactory = indexedDB): Promise<ProjectStore> {
-    return new ProjectStore(await openDatabase(factory));
+  static async open(factory: IDBFactory = indexedDB, name?: string): Promise<ProjectStore> {
+    return new ProjectStore(await openDatabase(factory, name));
   }
 
   /** Document and index entry are written in one transaction: both land or neither does. */

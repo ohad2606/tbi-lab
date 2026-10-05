@@ -25,6 +25,9 @@ export const he: Record<MessageKey, string> = {
   'topbar.projectName': 'שם הפרויקט',
   'topbar.language': 'שפה',
   'topbar.signOut': 'יציאה',
+  'deployment.preview': 'תצוגה מקדימה {name} · ניסיונית',
+  'deployment.previewNote':
+    'תצוגה מקדימה ניסיונית, נפרדת מהסביבה המאומתת. הפרויקטים שלה נשמרים בנפרד.',
   'menu.button': 'תפריט',
   'menu.newProject': 'פרויקט חדש…',
   'menu.export': 'ייצוא פרויקט',

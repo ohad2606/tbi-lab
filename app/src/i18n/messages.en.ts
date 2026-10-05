@@ -22,6 +22,9 @@ export const en = {
   'topbar.projectName': 'Project name',
   'topbar.language': 'Language',
   'topbar.signOut': 'Sign out',
+  'deployment.preview': '{name} preview · experimental',
+  'deployment.previewNote':
+    'An experimental preview, separate from the validated deployment. Its projects are stored apart.',
   'menu.button': 'Menu',
   'menu.newProject': 'New project…',
   'menu.export': 'Export project',

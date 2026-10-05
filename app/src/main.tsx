@@ -1,5 +1,6 @@
 import { render } from 'preact';
-import { ProjectStore } from './persistence/store.js';
+import { PREVIEW_NAME, STORAGE_NAMESPACE, storageName } from './deployment.js';
+import { DB_NAME, ProjectStore } from './persistence/store.js';
 import { McuSimulation } from './runtime/controller.js';
 import { RuntimeClient } from './runtime/client.js';
 import { resolveFirmware } from './runtime/snapshot.js';
@@ -17,14 +18,14 @@ import { randomId } from './ids.js';
 const prefs: Preferences = {
   get: (key) => {
     try {
-      return localStorage.getItem(key);
+      return localStorage.getItem(storageName(key, STORAGE_NAMESPACE));
     } catch {
       return null;
     }
   },
   set: (key, value) => {
     try {
-      localStorage.setItem(key, value);
+      localStorage.setItem(storageName(key, STORAGE_NAMESPACE), value);
     } catch {
       // Preferences are a convenience; projects are stored in IndexedDB.
     }
@@ -33,7 +34,10 @@ const prefs: Preferences = {
 
 async function main() {
   // Without IndexedDB (e.g. a locked-down profile) the app says so instead of pretending to save.
-  const storage = await ProjectStore.open().catch(() => null);
+  const storage = await ProjectStore.open(indexedDB, storageName(DB_NAME, STORAGE_NAMESPACE)).catch(
+    () => null,
+  );
+  if (PREVIEW_NAME) document.title = `${PREVIEW_NAME} preview · ${document.title}`;
   // The electrical engine runs only in this module Worker, never on the UI thread.
   const local = new SimulationController({
     createWorker: () =>
