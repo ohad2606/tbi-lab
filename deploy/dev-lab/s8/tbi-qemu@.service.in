@@ -59,7 +59,10 @@ MemoryMax=384M
 MemorySwapMax=0
 CPUQuota=100%
 CPUWeight=200
-TasksMax=32
+# Tasks: QEMU idles at 4; its block I/O thread pool adds up to 64 workers in bursts (first
+# inputs make the emulated flash read new code); ExecStopPost adds 1. Ceiling 69, plus headroom.
+# 32 was below that ceiling: a burst was refused (fork rejected) and QEMU died (SIGTRAP), 2026-10-05.
+TasksMax=80
 LimitFSIZE=16M
 LimitNOFILE=256
 RuntimeMaxSec=1900
