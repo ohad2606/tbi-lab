@@ -1,13 +1,13 @@
 # Sprint 9 — Three views of one circuit
 
 **Status:** **Sprint 9 formally opened** (2026-10-05) from `sprint-9` `3bbeb4c` (which includes
-`sprint-8-complete`). S9-M1 to M3 are done. The owner's S9-M4 review found three issues
-(false-looking wire connections, direct terminal contact, 3D pan); they are fixed (see "Owner
-review fixes" below). The refreshed **isolated preview** at
-`https://dev-lab.tbi-tech.net/s9-preview/` serves `198ca92` and awaits the owner's re-review. **Not
-ready for closure** until then. No PR, merge, tag or production deployment. dev-lab keeps the
-validated Sprint 8 deployment. Production for Sprint 9 also waits for the separate
-carried-forward capacity/security track.
+`sprint-8-complete`). S9-M1 to M3 are done. The owner's S9-M4 review found three issues; they
+are fixed (see "Owner review fixes" below). **Since 2026-10-05 17:5x UTC the normal demo URL
+`https://dev-lab.tbi-tech.net/` serves the Sprint 9 frontend (`198ca92`) on the unchanged,
+validated Sprint 8 backends** (see "Normal demo deployment" below). The owner's re-review
+continues there. **Not ready for closure** until then. No PR, merge, tag or production
+deployment. Production for Sprint 9 also waits for the separate carried-forward
+capacity/security track.
 Architecture and decisions: [SPRINT-9-ARCHITECTURE.md](SPRINT-9-ARCHITECTURE.md).
 
 ## Product rule
@@ -263,6 +263,88 @@ unchanged. Evidence:
 - `s9-evidence/fix-contact-canvas.png` and `fix-contact-3d.png` (a solder joint);
 - `fix-touching-canvas.png` and `fix-touching-3d.png` (marker and check; gap and red ring);
 - `fix-header-routing.png` (the ground wire runs beside the header, not down it).
+
+## Normal demo deployment (2026-10-05)
+
+**What:** the dev-lab app at **`https://dev-lab.tbi-tech.net/`** (the normal authenticated
+simulator URL; no special path) now serves the **Sprint 9 frontend**, with the existing
+validated Sprint 8 backends. This is a demo deployment, not production, and no merge or tag.
+
+| | |
+|---|---|
+| Switched | 2026-10-05, ≈ 17:50 UTC |
+| Deployed code | `198ca92` (`sprint-9` HEAD was `222435d`, which adds docs only; the build is of `198ca92`) |
+| Release | `/srv/tbi-lab/dev-lab/198ca926…` ← `/srv/tbi-lab/dev-lab/current` |
+| Previous release | `/srv/tbi-lab/dev-lab/c31d62e8…` (Sprint 8 app, `c31d62e`), kept |
+| Backends | unchanged: `/srv/tbi-lab/services/current` → `c31d62e8…`; no service restarted |
+| Caddy, oauth2-proxy, sockets | unchanged (file hashes and service start times identical before and after) |
+
+**Method:** `deploy/dev-lab/publish-frontend.sh 198ca92`, a new frontend-only variant of
+`publish.sh`:
+- it builds in a clean temporary worktree and copies the release to a new directory;
+- it re-points `current` atomically;
+- it builds no backend bundle, writes nothing under `services/` and restarts nothing.
+
+The build settings match `publish.sh` (base `/`, the gate's sign-out URL), with no preview badge
+and no storage namespace, so the app uses dev-lab's existing browser projects.
+
+The frontend↔backend contract is unchanged: no runtime or protocol source differs between
+`c31d62e` and `198ca92`, and the request paths are the same (`/build/v1/…`, `/runtime/sessions…`).
+
+**Rollback** (one atomic symlink move, verified target present):
+
+```
+sudo ln -sfn /srv/tbi-lab/dev-lab/c31d62e8fc2544e6583d91520c7b1f6c491a4f91 /srv/tbi-lab/dev-lab/current.tmp
+sudo mv -T /srv/tbi-lab/dev-lab/current.tmp /srv/tbi-lab/dev-lab/current
+```
+
+Projects saved by Sprint 9 load in the Sprint 8 app. A direct contact is a plain zero-length wire,
+so connectivity is the same.
+
+**Authentication:** unauthenticated requests to `/`, a hashed asset, `/build/*`, `/runtime/*`
+and `/s9-preview/` get 302 to Google sign-in, also with forged `X-Forwarded-User`,
+`X-Forwarded-Email` and `X-Tbi-*` headers. Behind the gate, the backends answer 401 without an
+identity. Gate configuration is untouched.
+
+**Smoke:** 49/49. Run with a fresh test principal (`s9demo-smoke-…`) through the real Caddy
+internal origin (the gate's upstream socket, via a temporary root relay stopped by PID
+afterwards) against the real backends. Google sign-in itself is covered by the checks above.
+- **Navigation:**
+  - the app loads at `/` with no preview badge;
+  - the project list opens and an example project opens;
+  - Circuit, Code, Schematic and 3D work;
+  - a stored project reopens;
+  - a reload on Circuit, Schematic or 3D stays at `/` and opens on Projects, the app's start
+    screen since Sprint 6 (never a preview path).
+- **Build/Run/Stop** on the real backends:
+  - Build reaches current (cached, 200) and Run runs (GPIO2 high seen, LED lit in 3D);
+  - Stop stops;
+  - an edit makes the build stale and Run is refused before any session is created;
+  - restoring the source is current again from the cache.
+- **Sprint 9 behaviour:**
+  - the schematic and 3D render;
+  - a direct contact gives canvas dots, a 3D solder joint and a running LED, and pulling the
+    part away removes it;
+  - a ground moved under the ESP32 GND pin is routed beside the header;
+  - an imported touching-but-unconnected pair shows its marker and a 3D gap with a ring;
+  - 3D pans with right drag, middle drag and Shift + arrows, and Fit and Reset re-centre.
+- **Hebrew:**
+  - the shell is RTL;
+  - the schematic tab shows `סכמה`, with full name `סכמה חשמלית` as accessible name and tooltip;
+  - the schematic, pin names, code and serial terminal stay LTR;
+  - schematic and 3D controls work.
+- **Hygiene:**
+  - no 4xx/5xx response; all 52 asset responses are 200;
+  - every request is same-origin, none goes to `/s9-preview`, and API calls go only to `/build`
+    and `/runtime`;
+  - no page or console errors;
+  - no session left running.
+- **Evidence:** `s9-evidence/demo-contact-3d.png`, `demo-he-schematic.png`.
+
+**Preview path:** `https://dev-lab.tbi-tech.net/s9-preview/` stays for now as a fallback and
+reference, serving the same code (`198ca92`). Its build adds only the experimental badge and its
+own browser storage. **The owner should use the normal demo URL.** Removing the preview route is a
+separate, trivial step (`install-route.sh --remove`), left for a later decision.
 
 ## Approved product decisions (PM, 2026-10-05)
 
@@ -755,8 +837,8 @@ Build behaviour and backend policy are unchanged.
 ## Decisions for the product owner
 
 The five first-pass questions were decided by the PM on 2026-10-05 (see "Approved product
-decisions" above). Open: the owner's re-review of the preview after the owner-review fixes
-(`198ca92`).
+decisions" above). Open: the owner's re-review of the owner-review fixes, now on the normal demo
+URL `https://dev-lab.tbi-tech.net/` (`198ca92`).
 
 ## Future 3D backlog (deferred to a dedicated 3D effort)
 
