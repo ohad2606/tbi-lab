@@ -1,0 +1,32 @@
+# Sprint 9 preview: an isolated, experimental static build of the `sprint-9` branch at
+# https://dev-lab.tbi-tech.net/s9-preview/ — imported into the internal origin of
+# /etc/caddy/Caddyfile (the `http://` site behind oauth2-proxy) by install-route.sh, so it sits
+# behind exactly the same Google login and allowlist as dev-lab itself.
+#
+# Its own web root (/srv/tbi-lab/s9-preview/current); dev-lab's root, releases and services are
+# never touched. Sprint 9 is frontend-only: the preview app calls the existing same-origin
+# /runtime and /build endpoints of the validated Sprint 8 backends, unchanged. Its projects and
+# preferences are kept apart in the browser (VITE_STORAGE_NAMESPACE, see publish.sh).
+#
+# Installed as /etc/caddy/tbi-s9-preview.caddy. No secrets here.
+
+redir /s9-preview /s9-preview/ 308
+
+handle_path /s9-preview/* {
+	root * /srv/tbi-lab/s9-preview/current
+
+	# Hashed build assets, as for dev-lab: cached privately; a missing asset is a 404.
+	@s9assets path /assets/*
+	handle @s9assets {
+		header Cache-Control "private, max-age=31536000, immutable"
+		file_server
+	}
+
+	# The HTML entry point is never cached, so the preview cannot load without the gate.
+	handle {
+		header Cache-Control "no-store"
+		header X-Robots-Tag "noindex"
+		try_files {path} /index.html
+		file_server
+	}
+}
