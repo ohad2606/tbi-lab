@@ -363,7 +363,7 @@ export const en = {
     'The 3D view needs WebGL, which this browser or device does not provide. The circuit, schematic and code views work as usual.',
   'view3d.loadFailed': 'The 3D view could not be loaded. The other views work as usual.',
   'view3d.note':
-    'A visualization of the circuit: drag or ← → to rotate, scroll or + − to zoom, right-drag to pan. Edit in the Circuit view.',
+    'A visualization of the circuit: drag or ← → to rotate; right-drag, Shift-drag or Shift + arrows to pan; scroll or + − to zoom. Edit in the Circuit view.',
   'program.editor.label': 'Arduino source code of {board}',
   'program.position': 'Line {line}, column {column}',
   'program.size': '{used} of {max}',

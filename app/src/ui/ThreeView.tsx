@@ -14,6 +14,9 @@ import { useAppState, useT } from './context.js';
 
 type Status = 'loading' | 'ready' | 'unavailable' | 'failed';
 
+/** Shift + arrow pan step, as a fraction of the visible height. */
+const PAN_STEP = 0.1;
+
 export function ThreeView() {
   const { doc, locale, sim } = useAppState();
   const t = useT();
@@ -81,27 +84,44 @@ export function ThreeView() {
       data-textures={stats?.textures}
       data-objects={stats?.objects}
       data-lit={Object.keys(levels).join(' ')}
+      data-target={stats?.target.join(',')}
+      data-contacts={scene?.joints
+        .filter((j) => j.kind === 'contact')
+        .map((j) => j.terminals.join('+'))
+        .join(' ')}
+      data-open={scene?.joints
+        .filter((j) => j.kind === 'open')
+        .map((j) => j.terminals.join('+'))
+        .join(' ')}
     >
       <div
         class="view3d-host"
         ref={host}
         role="img"
         aria-label={t('view3d.aria', { name: doc.name })}
-        aria-keyshortcuts="ArrowLeft ArrowRight + - Home"
+        aria-keyshortcuts="ArrowLeft ArrowRight Shift+ArrowLeft Shift+ArrowRight Shift+ArrowUp Shift+ArrowDown + - Home"
         tabIndex={status === 'ready' ? 0 : -1}
         data-testid="view3d-host"
         onKeyDown={(e) => {
           // The same camera actions as the buttons. Arrows are spatial: not mirrored under RTL.
           const v = viewer.current;
           if (!v) return;
-          const act: Record<string, () => void> = {
-            ArrowLeft: () => v.rotate(-Math.PI / 8),
-            ArrowRight: () => v.rotate(Math.PI / 8),
-            '+': () => v.zoom(1.25),
-            '=': () => v.zoom(1.25),
-            '-': () => v.zoom(0.8),
-            Home: () => v.resetCamera(),
-          };
+          // Shift + arrows pan (the view moves the way the arrow points).
+          const act: Record<string, () => void> = e.shiftKey
+            ? {
+                ArrowLeft: () => v.pan(-PAN_STEP, 0),
+                ArrowRight: () => v.pan(PAN_STEP, 0),
+                ArrowUp: () => v.pan(0, PAN_STEP),
+                ArrowDown: () => v.pan(0, -PAN_STEP),
+              }
+            : {
+                ArrowLeft: () => v.rotate(-Math.PI / 8),
+                ArrowRight: () => v.rotate(Math.PI / 8),
+                '+': () => v.zoom(1.25),
+                '=': () => v.zoom(1.25),
+                '-': () => v.zoom(0.8),
+                Home: () => v.resetCamera(),
+              };
           const run = act[e.key];
           if (!run || e.ctrlKey || e.metaKey || e.altKey) return;
           e.preventDefault();

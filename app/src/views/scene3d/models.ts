@@ -140,10 +140,20 @@ function lead(own: OwnedResources, pts: [number, number, number][], mat: THREE.M
   return group;
 }
 
-/** Two-terminal parts: terminal x positions at rotation 0 (local, scene units). */
+/**
+ * How far a lead stops short of a terminal that another part's terminal touches WITHOUT a
+ * connection (scene.ts `open`): the two lead ends then show a visible gap instead of meeting.
+ */
+export const OPEN_LEAD_GAP = 0.45;
+const isOpen = (c: SceneComponent, id: string) => c.terminals.some((t) => t.id === id && t.open);
+
+/** Two-terminal parts: where the leads end at rotation 0 (local x, scene units). */
 function ends(c: SceneComponent): [number, number] {
-  const t = CATALOG[c.type].terminals;
-  return [t[0]!.offset.x * S, t[1]!.offset.x * S];
+  const [a, b] = CATALOG[c.type].terminals;
+  return [
+    a!.offset.x * S + (isOpen(c, a!.id) ? OPEN_LEAD_GAP : 0),
+    b!.offset.x * S - (isOpen(c, b!.id) ? OPEN_LEAD_GAP : 0),
+  ];
 }
 
 /** Axial body with leads bent down to both terminals. */
@@ -384,7 +394,11 @@ const BUILDERS: Record<ModelKey, Builder> = {
           own,
           [
             [t.offset.x * S - 1.2, TERMINAL_HEIGHT[c.model], t.offset.y * S],
-            [t.offset.x * S, TERMINAL_HEIGHT[c.model], t.offset.y * S],
+            [
+              t.offset.x * S - (isOpen(c, t.id) ? OPEN_LEAD_GAP : 0),
+              TERMINAL_HEIGHT[c.model],
+              t.offset.y * S,
+            ],
           ],
           m.lead,
           0.09,
@@ -424,13 +438,18 @@ const BUILDERS: Record<ModelKey, Builder> = {
       const top = box(own, 0.22, 0.6, 0.22, m.gold);
       top.position.set(side * 5.4, lift + 1.1, z);
       g.add(top);
-      if (boardTerminalId(pin))
+      const terminal = boardTerminalId(pin);
+      if (terminal)
         g.add(
           lead(
             own,
             [
               [side * 5.4, TERMINAL_HEIGHT[c.model], z],
-              [p.x * S, TERMINAL_HEIGHT[c.model], z],
+              [
+                p.x * S - (isOpen(c, terminal) ? side * OPEN_LEAD_GAP : 0),
+                TERMINAL_HEIGHT[c.model],
+                z,
+              ],
             ],
             m.gold,
             0.08,

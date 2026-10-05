@@ -6,14 +6,15 @@
  *   loop; nothing runs while the view is idle or closed.
  * - Every geometry, material and texture it creates is owned and released: a rebuild disposes the
  *   previous build; `dispose()` releases everything, including the WebGL context.
- * - Navigation (OrbitControls): rotate a full 360° around the circuit, zoom, pan. It never edits
+ * - Navigation (OrbitControls): rotate a full 360° around the circuit, zoom, pan (right or middle
+ *   drag, two fingers, Shift + arrow keys). Fit and Reset re-centre on the circuit. It never edits
  *   anything: the viewer has no access to the project, only to a scene description.
  */
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { buildComponent, createMaterials, OwnedResources, segment } from './models.js';
-import { MODEL_HEIGHT, type SceneDescription } from './scene.js';
+import { MODEL_HEIGHT, WIRE_RADIUS, type SceneDescription } from './scene.js';
 
 /** Reference labels: world height (perspective), capped on screen so near ones never loom. */
 const LABEL_WORLD_HEIGHT = 1.8;
@@ -26,6 +27,8 @@ export interface ViewerStats {
   textures: number;
   objects: number;
   renders: number;
+  /** The camera's orbit target (what pan moves), rounded to 0.01 scene units. */
+  target: [number, number, number];
 }
 
 export interface Viewer {
@@ -40,6 +43,11 @@ export interface Viewer {
   fit(): void;
   rotate(radians: number): void;
   zoom(factor: number): void;
+  /**
+   * Move the view (camera and target together) by a fraction of the visible height, right and
+   * up on screen: the same motion as a right- or middle-button drag.
+   */
+  pan(right: number, up: number): void;
   stats(): ViewerStats;
   dispose(): void;
 }
@@ -126,6 +134,14 @@ export function createViewer(container: HTMLElement, onRender?: (s: ViewerStats)
   const controls = new OrbitControls(camera, canvas);
   controls.enableDamping = false;
   controls.screenSpacePanning = true;
+  // Left drag orbits, right OR middle drag pans, the wheel zooms; one finger orbits, two fingers
+  // pan and pinch-zoom (OrbitControls' touch default).
+  controls.mouseButtons = {
+    LEFT: THREE.MOUSE.ROTATE,
+    MIDDLE: THREE.MOUSE.PAN,
+    RIGHT: THREE.MOUSE.PAN,
+  };
+  controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
   controls.maxPolarAngle = Math.PI * 0.495; // stay above the base plane
   controls.addEventListener('change', () => requestRender());
 
@@ -137,6 +153,11 @@ export function createViewer(container: HTMLElement, onRender?: (s: ViewerStats)
       textures: renderer.info.memory.textures,
       objects,
       renders,
+      target: controls.target.toArray().map((v) => Math.round(v * 100) / 100) as [
+        number,
+        number,
+        number,
+      ],
     };
   };
 
@@ -212,7 +233,7 @@ export function createViewer(container: HTMLElement, onRender?: (s: ViewerStats)
           own,
           new THREE.Vector3(p0.x, p0.y, p0.z),
           new THREE.Vector3(p1.x, p1.y, p1.z),
-          0.14,
+          WIRE_RADIUS,
           mat,
           10,
         );
@@ -221,13 +242,33 @@ export function createViewer(container: HTMLElement, onRender?: (s: ViewerStats)
       // Rounded joints so bends read as one continuous wire.
       for (const q of w.points) {
         const joint = new THREE.Mesh(
-          own.shared('joint', () => new THREE.SphereGeometry(0.14, 10, 8)),
+          own.shared('joint', () => new THREE.SphereGeometry(WIRE_RADIUS, 10, 8)),
           mat,
         );
         joint.position.set(q.x, q.y, q.z);
         wire.add(joint);
       }
       group.add(wire);
+    }
+
+    // Where terminals meet: a solder joint only where the project connects them; touching but
+    // unconnected terminals get a red not-connected ring over the gap their leads leave.
+    for (const j of desc.joints) {
+      const mark =
+        j.kind === 'contact'
+          ? new THREE.Mesh(
+              own.shared('solder', () => new THREE.SphereGeometry(0.3, 16, 12)),
+              materials.silver,
+            )
+          : new THREE.Mesh(
+              own.shared('open', () => new THREE.TorusGeometry(0.55, 0.07, 8, 28)),
+              materials.red,
+            );
+      if (j.kind === 'open') mark.rotation.x = Math.PI / 2;
+      mark.position.set(j.x, j.y, j.z);
+      mark.name = `joint:${j.kind}:${j.terminals.join('+')}`;
+      mark.userData.joint = j.kind;
+      group.add(mark);
     }
 
     for (const c of desc.components) group.add(label(c.id, c.x, c.z, desc));
@@ -379,6 +420,19 @@ export function createViewer(container: HTMLElement, onRender?: (s: ViewerStats)
         controls.maxDistance,
       );
       camera.position.copy(controls.target.clone().add(offset.setLength(len)));
+      controls.update();
+    },
+    pan(right, up) {
+      // The visible height at the target's distance; move camera and target together along the
+      // camera's own screen axes (what OrbitControls' screen-space pan does).
+      const distance = camera.position.distanceTo(controls.target);
+      const visible = 2 * distance * Math.tan((camera.fov * Math.PI) / 360);
+      camera.updateMatrixWorld();
+      const x = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0);
+      const y = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 1);
+      const move = x.multiplyScalar(-right * visible).addScaledVector(y, -up * visible);
+      camera.position.add(move);
+      controls.target.add(move);
       controls.update();
     },
     stats,

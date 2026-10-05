@@ -14,9 +14,16 @@ import {
   terminalPosition,
 } from '@tbi-lab/domain';
 import { mixedCircuit, place, wire } from '../../packages/domain/tests/circuits.js';
-import { must } from '../../packages/domain/tests/helpers.js';
+import { must, newDoc } from '../../packages/domain/tests/helpers.js';
 import { EXAMPLES } from '../src/examples/catalog.js';
-import { MODEL_FOR, SCALE, deriveScene, resistorBands } from '../src/views/scene3d/scene.js';
+import {
+  MODEL_FOR,
+  OVER_HEIGHT,
+  SCALE,
+  TERMINAL_HEIGHT,
+  deriveScene,
+  resistorBands,
+} from '../src/views/scene3d/scene.js';
 
 describe('3D scene description', () => {
   it('has one part per component, at its 2D layout position, with the right model', () => {
@@ -134,5 +141,61 @@ describe('3D scene description', () => {
     expect(resistorBands(4750)).toEqual(['yellow', 'violet', 'green', 'brown', 'brown']);
     expect(resistorBands(1234.5)).toBeNull();
     expect(resistorBands(0)).toBeNull();
+  });
+
+  it('marks where terminals meet: a solder joint for a contact, a gap and an open mark otherwise', () => {
+    let doc = place(newDoc(), 'component.resistor', 100, 200).doc;
+    doc = place(doc, 'component.led', 180, 200).doc; // D1.anode on R1.b: a contact
+    const joined = deriveScene(doc);
+    expect(joined.joints).toEqual([
+      {
+        kind: 'contact',
+        x: 14,
+        z: 20,
+        y: TERMINAL_HEIGHT['resistor.axial'],
+        terminals: ['D1:anode', 'R1:b'],
+        node: joined.components.find((c) => c.id === 'R1')!.terminals[1]!.node,
+      },
+    ]);
+    expect(joined.joints[0]!.node).not.toBeNull();
+    expect(joined.wires).toEqual([]); // a contact has no wire to draw
+    expect(joined.components.flatMap((c) => c.terminals).some((t) => t.open)).toBe(false);
+    // The same parts touching in a document that does not connect them (made elsewhere).
+    const apart = must(
+      moveSelection(doc, { components: ['D1'], wires: [], junctions: [] }, { x: 60, y: 0 }),
+    ).doc;
+    apart.layout.components.D1!.x = 180;
+    const open = deriveScene(apart);
+    expect(open.joints.map((j) => [j.kind, j.terminals, j.node])).toEqual([
+      ['open', ['D1:anode', 'R1:b'], null],
+    ]);
+    const flags = open.components.flatMap((c) =>
+      c.terminals.filter((t) => t.open).map((t) => `${c.id}:${t.id}`),
+    );
+    expect(flags.sort()).toEqual(['D1:anode', 'R1:b']);
+  });
+
+  it('wires that cross get different heights; a wire over terminals runs above them all', () => {
+    let doc = newDoc();
+    for (const [x, y] of [
+      [0, -100],
+      [200, -100],
+      [100, -200],
+      [100, 0],
+    ] as const)
+      doc = place(doc, 'component.resistor', x, y).doc;
+    doc = wire(doc, ['R1', 'b'], ['R2', 'a']);
+    doc = wire(doc, ['R3', 'b'], ['R4', 'b']);
+    const scene = deriveScene(doc);
+    const level = (id: string) => scene.wires.find((w) => w.id === id)!.points[1]!.y;
+    const [a, b] = doc.layout.wires.map((w) => w.id) as [string, string];
+    expect(Math.abs(level(a) - level(b))).toBeGreaterThan(0.44);
+    // R1.a → R2.b along y = -100 passes over R1.b and R2.a (and both bodies).
+    const over = wire(doc, ['R1', 'a'], ['R2', 'b']);
+    const s2 = deriveScene(over);
+    const w = s2.wires.find((x) => x.id === over.layout.wires.at(-1)!.id)!;
+    expect(w.points.slice(1, -1).every((p) => p.y >= OVER_HEIGHT)).toBe(true);
+    const tallest = Math.max(...Object.values(TERMINAL_HEIGHT));
+    expect(OVER_HEIGHT).toBeGreaterThan(tallest + 0.45);
   });
 });

@@ -17,14 +17,19 @@
 
 import {
   CATALOG,
+  ESP32_DEVKITC_WROOM32,
   GROUND_NODE,
+  boardPinPosition,
   connectivity,
+  contacts,
   nodeKey,
   rotatePoint,
   terminalPosition,
+  touchingUnconnected,
   wireGroups,
   wireRoute,
   type ComponentTypeId,
+  type Point,
   type ProjectDocument,
   type Quantity,
 } from '@tbi-lab/domain';
@@ -68,6 +73,11 @@ export interface SceneTerminal {
   z: number;
   /** Node it belongs to, or null when unwired. */
   node: string | null;
+  /**
+   * Set when another part's terminal sits on this one WITHOUT a connection: the model stops its
+   * lead short of the terminal, so touching leads never read as joined.
+   */
+  open?: true;
 }
 
 export interface SceneComponent {
@@ -101,9 +111,27 @@ export interface SceneWire {
   points: Vec3[];
 }
 
+/**
+ * A point where terminals meet. `contact`: a direct terminal-to-terminal connection in the
+ * project (drawn as a solder joint). `open`: terminals that touch but are NOT connected (drawn
+ * as a gap with a not-connected mark).
+ */
+export interface SceneJoint {
+  kind: 'contact' | 'open';
+  x: number;
+  z: number;
+  /** Terminal height there (the highest of the parts that meet). */
+  y: number;
+  /** Pin keys `component:terminal` that meet here. */
+  terminals: string[];
+  /** The node of a contact; null for an open joint. */
+  node: string | null;
+}
+
 export interface SceneDescription {
   components: SceneComponent[];
   wires: SceneWire[];
+  joints: SceneJoint[];
   /** Base plane rectangle (plan). */
   base: { minX: number; maxX: number; minZ: number; maxZ: number };
   /** Bounding box of the content, for fitting the camera. */
@@ -136,7 +164,13 @@ export const MODEL_HEIGHT: Record<ModelKey, number> = {
   generic: 1.5,
 };
 
-const WIRE_HEIGHTS = [0.7, 1.0, 1.3];
+/**
+ * Wire levels above the plane. One level step (0.45) is well over a wire's diameter (0.28), so
+ * wires at different levels visibly pass over one another.
+ */
+const WIRE_HEIGHTS = [0.7, 1.15, 1.6];
+/** Radius of a wire tube (the renderer draws wires at this radius). */
+export const WIRE_RADIUS = 0.14;
 const GROUND_COLOR = '#202326';
 const SUPPLY_COLOR = '#d32f2f';
 /** Signal wire colours, in the order nodes are first met (no red or black: those mean ±). */
@@ -257,13 +291,12 @@ export function deriveScene(doc: ProjectDocument): SceneDescription {
     return c ? TERMINAL_HEIGHT[c.model] : WIRE_HEIGHTS[0]!;
   };
   const wires: SceneWire[] = [];
-  doc.layout.wires.forEach((w, i) => {
+  const heights = wireHeights(doc);
+  doc.layout.wires.forEach((w) => {
     const route = wireRoute(doc, w);
     if (!route || route.length < 2) return;
     const node = groupNode.get(nodeKey(w.from)) ?? null;
-    // Lifted above the plane; neighbouring wires at different heights, so wires that cross
-    // in the drawing (unconnected) pass over one another instead of touching.
-    const h = WIRE_HEIGHTS[i % WIRE_HEIGHTS.length]!;
+    const h = heights.get(w.id)!;
     const flat = route.map((p) => ({ x: p.x * SCALE, z: p.y * SCALE }));
     const first = flat[0]!;
     const last = flat[flat.length - 1]!;
@@ -280,8 +313,198 @@ export function deriveScene(doc: ProjectDocument): SceneDescription {
     });
   });
 
-  return { components, wires, ...extent(components, wires) };
+  // Where terminals meet: the project's direct contacts, and touching terminals it does NOT
+  // connect.
+  const height = (id: string) => {
+    const c = components.find((x) => x.id === id);
+    return c ? TERMINAL_HEIGHT[c.model] : WIRE_HEIGHTS[0]!;
+  };
+  const joints: SceneJoint[] = [];
+  const contactAt = new Map<string, SceneJoint>();
+  for (const w of contacts(doc)) {
+    if (w.from.kind !== 'terminal' || w.to.kind !== 'terminal') continue;
+    const p = terminalPosition(doc, w.from.component, w.from.terminal)!;
+    const k = `${p.x},${p.y}`;
+    let j = contactAt.get(k);
+    if (!j) {
+      j = {
+        kind: 'contact',
+        x: p.x * SCALE,
+        z: p.y * SCALE,
+        y: 0,
+        terminals: [],
+        node: g.nodeOf.get(`${w.from.component}:${w.from.terminal}`) ?? null,
+      };
+      contactAt.set(k, j);
+      joints.push(j);
+    }
+    for (const e of [w.from, w.to]) {
+      const key = `${e.component}:${e.terminal}`;
+      if (!j.terminals.includes(key)) j.terminals.push(key);
+      j.y = Math.max(j.y, height(e.component));
+    }
+  }
+  for (const t of touchingUnconnected(doc)) {
+    const keys = t.terminals.map((e) => `${e.component}:${e.terminal}`);
+    joints.push({
+      kind: 'open',
+      x: t.x * SCALE,
+      z: t.y * SCALE,
+      y: Math.max(...t.terminals.map((e) => height(e.component))),
+      terminals: keys,
+      node: null,
+    });
+    for (const e of t.terminals) {
+      const term = components
+        .find((c) => c.id === e.component)
+        ?.terminals.find((x) => x.id === e.terminal);
+      if (term) term.open = true;
+    }
+  }
+  for (const j of joints) j.terminals.sort();
+
+  return { components, wires, joints, ...extent(components, wires) };
 }
+
+/** Height of a wire that has to pass over terminals, header pins, junctions or a part. */
+export const OVER_HEIGHT = 2.2;
+const LEVEL_STEP = 0.45;
+
+type Seg = [Point, Point];
+const segsOf = (r: Point[]): Seg[] => r.slice(1).map((b, i) => [r[i]!, b]);
+const onSeg = (p: Point, [a, b]: Seg) =>
+  p.x >= Math.min(a.x, b.x) &&
+  p.x <= Math.max(a.x, b.x) &&
+  p.y >= Math.min(a.y, b.y) &&
+  p.y <= Math.max(a.y, b.y) &&
+  (a.x === b.x ? p.x === a.x : p.y === a.y);
+/** Points two axis-aligned segments share (the ends of a collinear overlap, or one point). */
+function shared(s: Seg, t: Seg): Point[] {
+  const out: Point[] = [];
+  for (const p of [...s, ...t]) if (onSeg(p, s) && onSeg(p, t)) out.push(p);
+  const sv = s[0].x === s[1].x;
+  const tv = t[0].x === t[1].x;
+  if (sv !== tv) {
+    const p = sv ? { x: s[0].x, y: t[0].y } : { x: t[0].x, y: s[0].y };
+    if (onSeg(p, s) && onSeg(p, t)) out.push(p);
+  }
+  return out;
+}
+
+/**
+ * Wire heights (Sprint 9: no 3D geometry may suggest a connection the project does not have).
+ * - A wire whose route passes over a terminal, a drawn header pin or a junction that is not one
+ *   of its own ends, or across another part's body, runs at OVER_HEIGHT and above: higher than
+ *   every terminal, lead and wire end, so it visibly passes over them.
+ * - Wires whose routes meet anywhere other than an end they share (a crossing, a corner on a
+ *   segment, an overlap) never get the same height, so they pass over one another.
+ * Deterministic: wires in document order, each at the lowest free level (starting at a level
+ * that varies with its index, so neighbouring wires read apart).
+ */
+function wireHeights(doc: ProjectDocument): Map<string, number> {
+  const routes = new Map<string, Point[]>();
+  for (const w of doc.layout.wires) {
+    const r = wireRoute(doc, w);
+    if (r && r.length >= 2) routes.set(w.id, r);
+  }
+  const spots: Point[] = doc.layout.junctions.map((j) => ({ x: j.x, y: j.y }));
+  const bodies: { id: string; minX: number; maxX: number; minY: number; maxY: number }[] = [];
+  for (const c of doc.components) {
+    const placement = doc.layout.components[c.id];
+    if (!placement) continue;
+    for (const t of CATALOG[c.type].terminals) spots.push(terminalPosition(doc, c.id, t.id)!);
+    if (c.type === 'board.esp32_devkitc_wroom32')
+      for (const pin of ESP32_DEVKITC_WROOM32.pins) {
+        const q = rotatePoint(boardPinPosition(pin), placement.rotation);
+        spots.push({ x: placement.x + q.x, y: placement.y + q.y });
+      }
+    const [hx, hz] = FOOTPRINT[MODEL_FOR[c.type] ?? 'generic'];
+    const corner = rotatePoint({ x: hx / SCALE, y: hz / SCALE }, placement.rotation);
+    const ex = Math.abs(corner.x);
+    const ey = Math.abs(corner.y);
+    bodies.push({
+      id: c.id,
+      minX: placement.x - ex,
+      maxX: placement.x + ex,
+      minY: placement.y - ey,
+      maxY: placement.y + ey,
+    });
+  }
+  const crossesBody = (r: Point[], b: (typeof bodies)[0]) =>
+    segsOf(r).some(([a, c]) =>
+      a.y === c.y
+        ? a.y > b.minY && a.y < b.maxY && Math.max(a.x, c.x) > b.minX && Math.min(a.x, c.x) < b.maxX
+        : a.x > b.minX &&
+          a.x < b.maxX &&
+          Math.max(a.y, c.y) > b.minY &&
+          Math.min(a.y, c.y) < b.maxY,
+    );
+  const eq = (p: Point, q: Point) => p.x === q.x && p.y === q.y;
+  const key = (p: Point) => `${p.x},${p.y}`;
+  // Spots each wire passes over (not its own ends), and the wires that END at each spot (their
+  // vertical riser stands there, up to their own height).
+  const passes = new Map<string, Set<string>>();
+  const endsAt = new Map<string, string[]>();
+  const over = new Map<string, boolean>();
+  for (const w of doc.layout.wires) {
+    const r = routes.get(w.id);
+    if (!r) continue;
+    const ends = [r[0]!, r[r.length - 1]!];
+    for (const e of ends) endsAt.set(key(e), [...(endsAt.get(key(e)) ?? []), w.id]);
+    const own = new Set(
+      [w.from, w.to].flatMap((e) => (e.kind === 'terminal' ? [e.component] : [])),
+    );
+    const passed = spots.filter(
+      (p) => !ends.some((e) => eq(e, p)) && segsOf(r).some((s) => onSeg(p, s)),
+    );
+    passes.set(w.id, new Set(passed.map(key)));
+    over.set(w.id, passed.length > 0 || bodies.some((b) => !own.has(b.id) && crossesBody(r, b)));
+  }
+  // Wires whose routes meet other than at an end both share.
+  const ids = [...routes.keys()];
+  const meets = new Map<string, Set<string>>(ids.map((id) => [id, new Set()]));
+  for (let i = 0; i < ids.length; i++)
+    for (let j = i + 1; j < ids.length; j++) {
+      const a = routes.get(ids[i]!)!;
+      const b = routes.get(ids[j]!)!;
+      const endOfBoth = (p: Point) =>
+        (eq(p, a[0]!) || eq(p, a[a.length - 1]!)) && (eq(p, b[0]!) || eq(p, b[b.length - 1]!));
+      const hit = segsOf(a).some((s) =>
+        segsOf(b).some((t) => shared(s, t).some((p) => !endOfBoth(p))),
+      );
+      if (hit) {
+        meets.get(ids[i]!)!.add(ids[j]!);
+        meets.get(ids[j]!)!.add(ids[i]!);
+      }
+    }
+  // Wires at plane level first, then the lifted ones: each lifted wire also runs above every
+  // wire whose end (riser) stands on a spot it passes over. Repeated until stable (a lifted wire
+  // may pass over the end of another lifted wire).
+  const height = new Map<string, number>();
+  const assign = (w: { id: string }, i: number) => {
+    const risers = [...passes.get(w.id)!].flatMap((k) =>
+      (endsAt.get(k) ?? []).filter((o) => o !== w.id).map((o) => height.get(o) ?? 0),
+    );
+    const base = over.get(w.id)
+      ? Math.max(OVER_HEIGHT, ...risers.map((h) => round(h + LEVEL_STEP)))
+      : WIRE_HEIGHTS[0]!;
+    const taken = new Set(
+      [...meets.get(w.id)!].map((o) => height.get(o)).filter((h) => h !== undefined),
+    );
+    const levels = [i % WIRE_HEIGHTS.length, ...Array.from({ length: 64 }, (_, k) => k)];
+    const level = levels.find((k) => !taken.has(round(base + k * LEVEL_STEP)))!;
+    height.set(w.id, round(base + level * LEVEL_STEP));
+  };
+  const placed = doc.layout.wires.map((w, i) => ({ w, i })).filter(({ w }) => routes.has(w.id));
+  for (const { w, i } of placed) if (!over.get(w.id)) assign(w, i);
+  for (let round_ = 0; round_ < 4; round_++) {
+    const before = JSON.stringify([...height]);
+    for (const { w, i } of placed) if (over.get(w.id)) assign(w, i);
+    if (JSON.stringify([...height]) === before) break;
+  }
+  return height;
+}
+const round = (v: number) => Math.round(v * 100) / 100;
 
 function dedupe(points: Vec3[]): Vec3[] {
   return points.filter(
