@@ -24,7 +24,7 @@ trap 'git -C "$repo" worktree remove --force "$work/src" >/dev/null 2>&1 || true
 git -C "$repo" worktree add --detach "$work/src" "$sha" >/dev/null
 (cd "$work/src" && npm ci --no-audit --no-fund &&
   VITE_SIGN_OUT_URL=/oauth2/sign_out VITE_PREVIEW_NAME="Sprint 9" \
-    VITE_STORAGE_NAMESPACE=s9-preview npm run build -- --base=/s9-preview/)
+    VITE_STORAGE_NAMESPACE=s9-preview npm run build --workspace @tbi-lab/app -- --base=/s9-preview/)
 
 sudo install -d -m 0755 "$root"
 sudo rm -rf "$root/$sha"
