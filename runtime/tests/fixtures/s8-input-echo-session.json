@@ -1,0 +1,271 @@
+{
+  "_comment": "Generated from app/src/examples/data/esp32-input-echo.json with app/src/runtime/snapshot.ts buildSessionRequest (the request the app sends for that example, minus artifact and ticket). Used by s8-qemu-tasks.runtime.test.ts.",
+  "profile": "esp32-arduino-3.3.12",
+  "files": [
+    {
+      "name": "sketch.ino",
+      "text": "/*\n * TBI Lab runtime R1: classic-ESP32 GPIO bank coverage. Runtime test firmware, not product code.\n *\n * Ordinary Arduino API only (pinMode / digitalWrite / digitalRead).\n *   Outputs: GPIO4, GPIO16, GPIO27 (bank 0; masked by the Sprint 0/1 feasibility runtime),\n *            GPIO25 (bank 0), GPIO32, GPIO33 (bank 1: GPIO_OUT1 / GPIO_ENABLE1).\n *   Inputs:  GPIO34, GPIO35, GPIO36, GPIO39 (bank 1, input-only pads, GPIO_IN1).\n * Setup sweeps every output HIGH then LOW and reads each back (a driving pad reads its own level).\n * Loop echoes inputs to outputs across banks (GPIO35 -> GPIO33, GPIO34 -> GPIO4), so a host\n * circuit that drives the inputs closes a two-way loop through the firmware.\n */\nconst int OUTS[] = {4, 16, 27, 25, 32, 33};\nconst int INS[] = {34, 35, 36, 39};\n\nvoid setup() {\n  Serial.begin(115200);\n  for (int o : OUTS) {\n    pinMode(o, OUTPUT);\n    digitalWrite(o, LOW);\n  }\n  for (int i : INS) pinMode(i, INPUT);\n  Serial.println(\"TBI-BANKS-READY\");\n  for (int o : OUTS) {\n    digitalWrite(o, HIGH);\n    delay(10);\n    Serial.printf(\"RB%d=%d\\n\", o, digitalRead(o));\n    digitalWrite(o, LOW);\n    delay(10);\n  }\n  Serial.printf(\"IN36=%d IN39=%d\\n\", digitalRead(36), digitalRead(39));\n  Serial.println(\"TBI-BANKS-SWEEP-DONE\");\n}\n\nvoid loop() {\n  static int last35 = -1, last34 = -1;\n  int v35 = digitalRead(35);\n  int v34 = digitalRead(34);\n  if (v35 != last35) {\n    digitalWrite(33, v35);\n    last35 = v35;\n    Serial.printf(\"ECHO35=%d\\n\", v35);\n  }\n  if (v34 != last34) {\n    digitalWrite(4, v34);\n    last34 = v34;\n    Serial.printf(\"ECHO34=%d\\n\", v34);\n  }\n  delay(5);\n}\n"
+    }
+  ],
+  "request": {
+    "protocol": "tbi-lab.session/2",
+    "board": "board.esp32_devkitc_wroom32",
+    "circuit": {
+      "format": "tbi-lab.snapshot",
+      "schemaVersion": 3,
+      "snapshotId": "snap_4c79904006756597",
+      "projectId": "prj_exampleesp32inputecho",
+      "projectRevision": 1,
+      "components": [
+        {
+          "id": "PSU1",
+          "type": "instrument.lab_psu",
+          "typeVersion": 1,
+          "params": {
+            "setpointVoltage": {
+              "value": 3.3,
+              "unit": "volt"
+            },
+            "currentLimit": {
+              "value": 0.05,
+              "unit": "ampere"
+            },
+            "outputEnabled": true
+          }
+        },
+        {
+          "id": "GND1",
+          "type": "component.ground",
+          "typeVersion": 1,
+          "params": {}
+        },
+        {
+          "id": "SW1",
+          "type": "component.toggle_switch",
+          "typeVersion": 1,
+          "params": {
+            "closed": false
+          }
+        },
+        {
+          "id": "SW2",
+          "type": "component.push_button",
+          "typeVersion": 1,
+          "params": {}
+        },
+        {
+          "id": "R1",
+          "type": "component.resistor",
+          "typeVersion": 1,
+          "params": {
+            "resistance": {
+              "value": 1000,
+              "unit": "ohm"
+            }
+          }
+        },
+        {
+          "id": "R2",
+          "type": "component.resistor",
+          "typeVersion": 1,
+          "params": {
+            "resistance": {
+              "value": 10000,
+              "unit": "ohm"
+            }
+          }
+        },
+        {
+          "id": "GND2",
+          "type": "component.ground",
+          "typeVersion": 1,
+          "params": {}
+        },
+        {
+          "id": "R3",
+          "type": "component.resistor",
+          "typeVersion": 1,
+          "params": {
+            "resistance": {
+              "value": 220,
+              "unit": "ohm"
+            }
+          }
+        },
+        {
+          "id": "D1",
+          "type": "component.led",
+          "typeVersion": 1,
+          "params": {
+            "model": "model.led.vishay_tlhr5400"
+          }
+        },
+        {
+          "id": "GND3",
+          "type": "component.ground",
+          "typeVersion": 1,
+          "params": {}
+        },
+        {
+          "id": "GND4",
+          "type": "component.ground",
+          "typeVersion": 1,
+          "params": {}
+        },
+        {
+          "id": "U1_gnd",
+          "type": "component.ground",
+          "typeVersion": 1,
+          "params": {}
+        }
+      ],
+      "nets": [
+        {
+          "id": "N_1",
+          "role": "ground"
+        },
+        {
+          "id": "N_2",
+          "role": null
+        },
+        {
+          "id": "N_3",
+          "role": null
+        },
+        {
+          "id": "N_4",
+          "role": null
+        },
+        {
+          "id": "N_5",
+          "role": "ground"
+        },
+        {
+          "id": "N_6",
+          "role": null
+        },
+        {
+          "id": "N_7",
+          "role": null
+        },
+        {
+          "id": "N_8",
+          "role": "ground"
+        },
+        {
+          "id": "N_9",
+          "role": "ground"
+        }
+      ],
+      "connections": [
+        {
+          "component": "PSU1",
+          "terminal": "positive",
+          "net": "N_2"
+        },
+        {
+          "component": "PSU1",
+          "terminal": "negative",
+          "net": "N_1"
+        },
+        {
+          "component": "GND1",
+          "terminal": "ref",
+          "net": "N_1"
+        },
+        {
+          "component": "SW1",
+          "terminal": "a",
+          "net": "N_2"
+        },
+        {
+          "component": "SW1",
+          "terminal": "b",
+          "net": "N_3"
+        },
+        {
+          "component": "SW2",
+          "terminal": "a",
+          "net": "N_2"
+        },
+        {
+          "component": "SW2",
+          "terminal": "b",
+          "net": "N_3"
+        },
+        {
+          "component": "R1",
+          "terminal": "a",
+          "net": "N_3"
+        },
+        {
+          "component": "R1",
+          "terminal": "b",
+          "net": "N_4"
+        },
+        {
+          "component": "R2",
+          "terminal": "a",
+          "net": "N_4"
+        },
+        {
+          "component": "R2",
+          "terminal": "b",
+          "net": "N_5"
+        },
+        {
+          "component": "GND2",
+          "terminal": "ref",
+          "net": "N_5"
+        },
+        {
+          "component": "R3",
+          "terminal": "a",
+          "net": "N_6"
+        },
+        {
+          "component": "R3",
+          "terminal": "b",
+          "net": "N_7"
+        },
+        {
+          "component": "D1",
+          "terminal": "anode",
+          "net": "N_7"
+        },
+        {
+          "component": "D1",
+          "terminal": "cathode",
+          "net": "N_8"
+        },
+        {
+          "component": "GND3",
+          "terminal": "ref",
+          "net": "N_8"
+        },
+        {
+          "component": "GND4",
+          "terminal": "ref",
+          "net": "N_9"
+        },
+        {
+          "component": "U1_gnd",
+          "terminal": "ref",
+          "net": "N_9"
+        }
+      ]
+    },
+    "attachments": [
+      {
+        "gpio": 4,
+        "component": "R3",
+        "terminal": "a"
+      },
+      {
+        "gpio": 34,
+        "component": "R1",
+        "terminal": "b"
+      }
+    ]
+  }
+}
