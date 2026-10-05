@@ -1,12 +1,10 @@
 # Sprint 9 — Three views of one circuit
 
-**Status:** **Owner re-review PASS** (2026-10-05) on the normal demo URL
-`https://dev-lab.tbi-tech.net/`, which serves the Sprint 9 frontend (`198ca92`) on the unchanged,
-validated Sprint 8 backends. Final CI is green on the final code state (tested code `198ca92`,
-final branch HEAD `507f4be` before this record; see "Owner re-review and closure readiness").
-**Closure is proposed, not executed:** no tag, PR, merge or production deployment until the
-owner approves. Production for Sprint 9 also waits for the separate carried-forward
-capacity/security track.
+**Status:** **Sprint 9 closed** (2026-10-05): owner re-review PASS, final CI PASS, demo smoke
+49/49 PASS. Closed as `sprint-9-complete` on `main` (see "Closure" below). The normal demo URL
+`https://dev-lab.tbi-tech.net/` serves the Sprint 9 frontend (`198ca92`) on the unchanged Sprint 8
+backends (`c31d62e`). Production deployment is intentionally deferred to the separate
+carried-forward capacity/security track.
 Architecture and decisions: [SPRINT-9-ARCHITECTURE.md](SPRINT-9-ARCHITECTURE.md).
 
 ## Product rule
@@ -262,6 +260,29 @@ unchanged. Evidence:
 - `s9-evidence/fix-contact-canvas.png` and `fix-contact-3d.png` (a solder joint);
 - `fix-touching-canvas.png` and `fix-touching-3d.png` (marker and check; gap and red ring);
 - `fix-header-routing.png` (the ground wire runs beside the header, not down it).
+
+## Closure (2026-10-05)
+
+Approved by the owner and executed as proposed.
+
+| | |
+|---|---|
+| Owner re-review | **PASS**, on the normal demo URL (mobile layout out of scope) |
+| Final CI | **PASS**: unit 636, browser 133 (+3 heavy skipped), legacy 4; typecheck, lint, boundaries, build. PR #3 CI run 37359893433 green on `e574178` |
+| Demo smoke | **49/49 PASS** on the real backends |
+| Tested code HEAD | `198ca92` (everything after it is docs and `deploy/` tooling only) |
+| Deployed demo code | `198ca92`, byte-identical to a clean rebuild; `https://dev-lab.tbi-tech.net/` |
+| Closure commit | this docs-only commit, the final `sprint-9` HEAD, fast-forwarded to `main` and tagged `sprint-9-complete` (annotated) |
+| Backends | unchanged, still `c31d62e`; no service restarted for the deployment or the closure |
+| Production | **deferred** to the separate carried-forward capacity/security track |
+| Old preview route | `/s9-preview/` **intentionally kept for now** (same code commit); its removal (`install-route.sh --remove`) is a separate, later approval |
+| Rollback target | the dev-lab release `c31d62e8…` is kept |
+
+Sequence:
+1. PR #3 (`sprint-9` → `main`) with green CI.
+2. This closure commit, with PR CI green again on it.
+3. `main` fast-forwarded to it (no merge commit), with `main` CI green.
+4. The annotated tag `sprint-9-complete` on it.
 
 ## Owner re-review and closure readiness (2026-10-05)
 
@@ -917,8 +938,8 @@ Build behaviour and backend policy are unchanged.
 ## Decisions for the product owner
 
 The five first-pass questions were decided by the PM on 2026-10-05 (see "Approved product
-decisions" above). The owner's re-review PASSED (2026-10-05). Open: approval of the closure
-proposal (tag `sprint-9-complete`, merge to `main`).
+decisions" above). The owner's re-review PASSED and Sprint 9 is closed (2026-10-05). Open,
+separately: removing the old preview route; production with the carried-forward track.
 
 ## Future 3D backlog (deferred to a dedicated 3D effort)
 
