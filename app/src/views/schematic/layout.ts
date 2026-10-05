@@ -122,6 +122,10 @@ const MODULE_W = 140;
 const MARK_EXT = 40;
 const NET_LABEL_LEN = 70;
 const GROUP_GAP = 80;
+/** Groups the MCU does not reach share a row up to this width before a new row starts. */
+const ROW_WIDTH = 900;
+/** Between groups in a row: their nearest columns end up 1.5 column pitches apart. */
+const ROW_GROUP_GAP = COL / 2 - LEAD;
 
 type End = 'ground' | 'rail' | 'open' | 'label';
 
@@ -232,17 +236,35 @@ class Builder {
     }
     let firstFree = modules.length === 0;
 
-    // 3. Nodes no module reaches: their own tracks, below.
+    // 3. Nodes no module reaches: their own tracks, side by side in rows (each row's tracks at
+    // one height, so rail labels line up), wrapping at ROW_WIDTH. Without a module the first
+    // group continues the supply column's pitch; below a module the rows start under it.
+    const runs: { run: Run; size: NonNullable<Run['size']> }[] = [];
     for (const n of this.g.nodes) {
       if (n.kind !== 'signal' || this.placedNodes.has(n.id)) continue;
       const hasPart = n.pins.some((p) => !this.claimed.has(p.component));
       if (!hasPart) continue;
       const run = this.buildRun(n.id);
-      const size = this.measure(run);
-      const y = firstFree ? cursorY : cursorY + size.up;
+      runs.push({ run, size: this.measure(run) });
+    }
+    const rowX0 =
+      modules.length === 0 && sources.length ? sources.length * COL - COL / 2 - LEAD : originX;
+    for (let i = 0; i < runs.length;) {
+      const row: typeof runs = [];
+      let width = 0;
+      while (i < runs.length && (row.length === 0 || width + runs[i]!.size.len <= ROW_WIDTH)) {
+        width += runs[i]!.size.len + ROW_GROUP_GAP;
+        row.push(runs[i++]!);
+      }
+      const up = Math.max(...row.map((r) => r.size.up));
+      const y = firstFree ? cursorY : cursorY + up;
       firstFree = false;
-      this.placeRun(run, originX, y, 1, false);
-      cursorY = y + size.down + GROUP_GAP;
+      let x = rowX0;
+      for (const r of row) {
+        this.placeRun(r.run, x, y, 1, false);
+        x += r.size.len + ROW_GROUP_GAP;
+      }
+      cursorY = y + Math.max(...row.map((r) => r.size.down)) + GROUP_GAP;
     }
 
     // 4. Ground parts are drawn as the marks of what they ground; unwired parts stand apart.

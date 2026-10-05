@@ -2540,7 +2540,7 @@ select {
 .sch-pin-name,
 .sch-net-label {
   font:
-    600 10px ui-monospace,
+    600 11px ui-monospace,
     'SFMono-Regular',
     Menlo,
     Consolas,
