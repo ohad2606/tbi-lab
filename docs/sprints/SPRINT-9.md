@@ -1,12 +1,12 @@
 # Sprint 9 — Three views of one circuit
 
-**Status:** implementation track on branch `sprint-9` (from `sprint-8` `ed20843`). First pass
-complete (`009783f`); the PM's product decisions of 2026-10-05 are applied (below), and an
-**isolated, experimental preview** is live at `https://dev-lab.tbi-tech.net/s9-preview/` for the
-owner's visual review. **Owner visual review: PASS for the currently approved scope**
-(2026-10-05). No PR, merge, tag or production deployment. Sprint 8 is untouched: no
-Sprint 8 file, branch, release, service or validation record was changed; the preview is not
-Sprint 8 evidence, and Sprint 8 keeps its own owner smoke and closure.
+**Status:** **Sprint 9 formally opened** (2026-10-05) from `sprint-9` `3bbeb4c` (which includes
+`sprint-8-complete`). **S9-M1** (foundation, owner visual review PASS) and **S9-M2/M3** (polish,
+regression, compatibility) are done; the refreshed **isolated preview** at
+`https://dev-lab.tbi-tech.net/s9-preview/` serves `8ac8b86` and awaits the owner's review
+(**S9-M4**). No PR, merge, tag or production deployment. dev-lab keeps the validated Sprint 8
+deployment. Production for Sprint 9 waits for the separate carried-forward capacity/security
+track as well.
 Architecture and decisions: [SPRINT-9-ARCHITECTURE.md](SPRINT-9-ARCHITECTURE.md).
 
 ## Product rule
@@ -23,6 +23,135 @@ All three use one authoritative circuit model.**
   views.
 - Views are re-derived on every document change, so they cannot drift from the circuit.
   Switching tabs changes neither the document nor the simulation.
+
+## Official Sprint 9 scope (opened 2026-10-05)
+
+**Objective:** turn the working new views into a coherent, production-quality first release of
+the **Circuit**, **Professional Schematic**, **3D** and **Code** views, all derived from one
+authoritative project/circuit model.
+
+**Permanent rule:** the 2D Circuit view is the construction/editing surface; the Schematic is a
+derived electrical/topological representation; the 3D view is a derived visualization. Neither
+may become a separate editable circuit model.
+
+**In scope:**
+- **Schematic polish:** symbol, label and group spacing, ESP32 block readability, connected-pin
+  layout, routing, net-label placement, less needless height, consistency across the examples.
+  Read-only; connected ESP32 pins only by default; no second netlist; no write from viewing or
+  selecting. Not a schematic editor.
+- **3D first-release polish**, targeted and low-risk only: framing/fit, camera defaults,
+  readability, clearly misleading proportions, simple wire elevation, cheap stable
+  materials/lighting, EN/HE labels and tooltips, navigation friction, loading/fallback. Not 3D
+  editing, PCB/CAD, mechanical placement, pin-level 3D interaction, 3D routing, physics or a new
+  asset pipeline.
+- **Component representation review** (ESP32 DevKitC, resistor, LED, diode, push button, toggle
+  switch, ground, lab supply), keeping the generic fallback.
+- **View synchronization:** edits, rewiring, values, project switches, import, old projects,
+  simulation; no manual refresh, no stale topology.
+- **Live simulation:** LED glow in 3D only (no broad overlays).
+- **Localization and RTL**, and **performance** (lazy loading, disposal, no work while inactive).
+
+**Three.js** is the approved rendering technology, as a rendering layer only. The layers stay
+separate: project/circuit model → scene description (`scene.ts`, pure) → component model
+definitions (`models.ts`) → renderer (`renderer.ts`: three.js objects, camera/control state);
+no product or domain logic in three.js objects. Lazy-loaded; no animation loop; every geometry,
+material, texture and the WebGL context released on leaving.
+
+**Milestones**
+
+| Milestone | Content | Status |
+|---|---|---|
+| S9-M1 Foundation | schematic MVP, 3D MVP, localization, isolated preview, owner visual review PASS | **done** |
+| S9-M2 Polish | schematic readability, targeted 3D usability, component review, synchronization review | **done** (below) |
+| S9-M3 Regression and compatibility | full regression, old projects, import/export, repeated view switching/resources | **done** (below) |
+| S9-M4 Owner preview review | refreshed isolated preview; owner visual review | preview live at `8ac8b86`; **awaiting owner** |
+| S9-M5 Closure | after owner PASS: final CI, closure proposal, PR, merge, tag | not started |
+
+No production deployment from Sprint 9 until the separate capacity/security track is complete.
+
+**Separate carried-forward track (Sprint 8 Phases 5–6): NOT part of Sprint 9's product scope.**
+Required before production; tracked apart and not touched by this sprint's UI work:
+- capacity: measurements on the 1-vCPU host and a temporary 4-vCPU host (queue wait, session
+  slowdown, stall-timeout margin, memory headroom, sandbox overhead, cross-user compile cost),
+  CPU weighting under load, metrics/events/operator tooling, final admission and global caps,
+  swap/memory pressure under mixed load;
+- security/validation: the adversarial suite, the multi-user endurance run, the rest of Phase 6.
+
+**Stop conditions:** a polish change that would need a schema redesign, a component-system
+rewrite, 3D editing, a backend or runtime change, or a capacity-policy change is stopped and
+reported first.
+
+## S9-M2/M3: polish, regression and compatibility (2026-10-05)
+
+**Schematic**
+- Groups the MCU does not reach (independent branches) were stacked one below another even
+  with nothing beside them. They now stand **side by side in rows** (each row's tracks at one
+  height, so all rail labels line up with the supply column), 1.5 column pitches apart, wrapping
+  at 900 units; without an MCU the first group continues the supply column's pitch.
+  Drawing sizes (units): diode polarity 310×560 → **350×240**; voltage divider, LED current,
+  push button and CC mode each 110 narrower; no example grew; ESP32 examples unchanged.
+- Pin names and net labels 10 → 11 units (the ESP32 input example fits at about 0.75 scale).
+- Checked unchanged and correct: read-only, connected ESP32 pins only, symbol orientation
+  (diode/LED cathodes, supply polarity), selection writes nothing.
+
+**3D**
+- **Labels capped on screen:** near labels were about twice the size of far ones. Labels keep
+  perspective (a 68-part circuit is not buried in labels at fit) but never exceed 26 px; applied
+  per render, one distance per label.
+- **Fit/reset frame the content's box:** the camera distance is solved from the projected box of
+  the content (labels included) at 95 % of the view instead of wrapping a sphere around a flat
+  circuit: tighter and centred on every example.
+- **Keyboard camera:** the 3D view is focusable (visible focus ring); ← → rotate, + / − zoom, Home
+  resets (the same actions as the buttons; arrows not mirrored under RTL); the view's note names
+  the keys in EN and HE.
+- Tried and reverted: constant-size labels everywhere (they buried the 68-part circuit at fit).
+
+**Component representation review** (no model or symbol changed):
+
+| Part | Schematic | 3D | Verdict |
+|---|---|---|---|
+| ESP32 DevKitC | module block, connected pins by name on their header side | board, module can, USB, EN/BOOT, header pins | identifiable. Its board is narrow (set by the 2D header spacing) and connectable pins run out sideways to their 2D terminals: deferred to the 3D effort, since changing it moves where wires meet the board |
+| Resistor | zig-zag, value | axial with the real colour code | clear |
+| LED | diode + emission arrows, cathode bar | 5 mm lens, glows when running | clear; on the small side relative to the board (≈ 0.55) |
+| Diode | diode, cathode bar | axial, cathode band | clear, orientation visible |
+| Push button | normally-open push switch | tactile switch, red cap | clear, distinct from the toggle |
+| Toggle switch | SPST in its persisted position | lever in its persisted position | clear |
+| Ground | ground symbol | post on a plate | clear |
+| Lab supply | DC source, + on top | bench box, red/black posts | clear; deliberately symbolic size |
+
+**Synchronization review:** verified (and now covered by `app/e2e/s9-sync.spec.ts`): a project
+switch reopens on Circuit and the generated views show only the new project; a value change
+(R1 10 kΩ → 4.7 kΩ) appears in the schematic at once and rebuilds the 3D scene; deleting a part
+removes it from both; a current package and an **old package (format 1, schema v2)** import,
+migrate and open in every view; viewing Schematic/3D changes nothing that export carries and the
+export re-imports alike; LED glow follows a run across view switches, a return to 3D shows the
+current state, Stop returns it dark at once; Circuit → Schematic → 3D → Code in EN and HE keeps
+code, pin names and values LTR.
+
+**Tests (at `8ac8b86`):** typecheck, lint, boundaries and build pass; unit **617** passed
+(+1: schematic row packing, 12 independent branches wrapped, faithful, no crossings); browser
+**129 passed**, 3 heavy skipped (+7: six in `s9-sync.spec.ts`, the 3D keyboard test); legacy
+browser 4 passed. The existing 20× 3D enter/leave resource test passes unchanged.
+
+**Measurements** (preview build, this 1-vCPU host, software WebGL, three runs after settling):
+
+| | Before (preview `83edd67`) | After (`8ac8b86`) |
+|---|---|---|
+| Startup bundle `index` | 270.1 kB | 270.2 kB (78.8 kB gzip) |
+| `SchematicView` chunk | 17.3 kB | 17.7 kB |
+| `ThreeView` chunk | 7.4 kB | 7.8 kB |
+| `renderer` chunk (three.js) | 574.5 kB | 575.2 kB (143.8 kB gzip) |
+| Schematic, first open / again | 120–150 / 60–130 ms | 124–130 / 56–66 ms |
+| 3D, first open / again | 1.3–1.4 s / 0.32–0.36 s | 1.41–1.44 s / 0.39–0.52 s |
+| Orbit (60 drag steps) | ≈ 100 ms per step | ≈ 92–96 ms per step |
+| Heap after 20 enter/leave cycles, after leaving | 7.2 MB | 7.2–7.3 MB; 0 canvases left |
+
+**Preview (S9-M4):** `8ac8b86` published to `/srv/tbi-lab/s9-preview/` with
+`deploy/dev-lab/s9-preview/publish.sh` (static files only; no service restarted; the dev-lab
+page and service start times unchanged). The 51-check browser validation of the published files
+passes (main app, schematic, 3D incl. 20 cycles and LED glow, Hebrew, WebGL fallback, isolated
+storage). Evidence: `s9-evidence/m2-schematic-diode-polarity.png`, `m2-3d-cc-mode.png`,
+`m2-3d-big-board.png`.
 
 ## Approved product decisions (PM, 2026-10-05)
 
@@ -404,7 +533,9 @@ deliberately planned, dedicated 3D-focused effort (not by growing this sprint in
 sprint). The rule stays: **3D is a derived visualization of the authoritative circuit model, not
 a separate circuit editor**; the user must never place or wire the same circuit again in 3D.
 
-Future 3D direction (recorded, not implemented):
+Future 3D direction: see **Future 3D backlog** below.
+
+Owner's list as given (recorded, not implemented):
 - substantially higher-quality component models;
 - more realistic relative component dimensions;
 - improved ESP32 board/model detail;
@@ -488,30 +619,58 @@ Build behaviour and backend policy are unchanged.
   labels on the ESP32 board in 3D.
 - The 3D view does not show simulation values. Only LED glow is mirrored.
 - 3D picking (selecting a part in 3D) is not implemented.
+- The ESP32 board is narrower than the real one and its connectable pins run out sideways to the
+  wires' 2D terminal points (placement comes from the 2D layout); the LED is small relative to the
+  board. Both are deferred to the dedicated 3D effort.
+- On a large circuit the reference labels at fit are small (perspective, by design, so they do
+  not bury the circuit); zoom in to read them.
 
 **Schematic**
 - The schematic is generated and **read-only**: it cannot be edited or annotated, and it does not
   print or export yet.
 - Layout covers the educational topologies in the current catalog. It is not a KiCad-class
   placer or router; complex meshes fall back to net labels, which is correct but less pictorial.
-- Large circuits produce tall drawings.
+- Large circuits produce tall drawings (an ESP32 with many used pins); independent groups now
+  pack into rows. Wide drawings fit below scale 1 (the ESP32 input example at about 0.75): text
+  stays readable but small; zoom is available.
 - Only connected ESP32 pins are shown (decision A, by design); there is no "show all pins" option yet.
 - Schematic values are design values. Live simulation values are not shown in the schematic.
 
 **Performance**
-- On this software-WebGL host, 3D activation (1.5–1.9 s) and orbit (about 110 ms per step) are
-  slow. On a GPU-backed browser they should be far faster, but this was **not measured here**.
+- On this software-WebGL host, 3D activation (about 1.4 s first, 0.4–0.5 s again) and orbit
+  (about 95 ms per step) are slow. On a GPU-backed browser they should be far faster, but this
+  was **not measured here**.
 
 ## Decisions for the product owner
 
 The five first-pass questions were decided by the PM on 2026-10-05 (see "Approved product
-decisions" above). Open: the owner's visual review of the 3D and schematic views in the preview.
+decisions" above). Open: the owner's S9-M4 visual review of the refreshed preview.
+
+## Future 3D backlog (deferred to a dedicated 3D effort)
+
+The current 3D view is a foundation and first usable visualization. A deliberately planned,
+dedicated 3D-focused effort (not this sprint) should consider:
+- substantially higher-quality component models (e.g. glTF through the model registry);
+- realistic relative component dimensions (per-model size metadata; 2D keeps placement);
+- improved ESP32 board/model detail, and the board's real width;
+- physical connectors and headers (pins down into the board, wires meeting the header);
+- better wire geometry/routing and depth/elevation in 3D;
+- better materials and lighting;
+- clearer component identity at normal zoom;
+- ESP32 pin identification / labels;
+- component selection/picking where useful;
+- camera/navigation ergonomics and fit/framing beyond Sprint 9's improvements;
+- performance on real desktop GPUs and lower-end systems (measured; this host has software WebGL);
+- richer live simulation visualization: switch and other component state;
+- optional electrical-state overlays where educationally useful.
+
+The rule holds throughout: **3D is a derived visualization of the authoritative circuit model,
+not a separate circuit editor**; nobody places or wires a circuit again in 3D.
 
 ## Future / backlog (not implemented)
 
 - 3D picking synchronized with the selection.
-- **A dedicated 3D effort** (owner direction, 2026-10-05): see "Owner visual review" above for
-  the full list; the current 3D view is its foundation.
+- **A dedicated 3D effort** (owner direction, 2026-10-05): see "Future 3D backlog" above.
 - glTF models for selected parts, through the model registry.
 - Schematic export (SVG/PDF) and print.
 - "Show all pins" for the ESP32 schematic block, as an option (default stays connected-only).
