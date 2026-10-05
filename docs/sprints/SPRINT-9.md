@@ -1,12 +1,11 @@
 # Sprint 9 — Three views of one circuit
 
-**Status:** **Sprint 9 formally opened** (2026-10-05) from `sprint-9` `3bbeb4c` (which includes
-`sprint-8-complete`). S9-M1 to M3 are done. The owner's S9-M4 review found three issues; they
-are fixed (see "Owner review fixes" below). **Since 2026-10-05 17:5x UTC the normal demo URL
-`https://dev-lab.tbi-tech.net/` serves the Sprint 9 frontend (`198ca92`) on the unchanged,
-validated Sprint 8 backends** (see "Normal demo deployment" below). The owner's re-review
-continues there. **Not ready for closure** until then. No PR, merge, tag or production
-deployment. Production for Sprint 9 also waits for the separate carried-forward
+**Status:** **Owner re-review PASS** (2026-10-05) on the normal demo URL
+`https://dev-lab.tbi-tech.net/`, which serves the Sprint 9 frontend (`198ca92`) on the unchanged,
+validated Sprint 8 backends. Final CI is green on the final code state (tested code `198ca92`,
+final branch HEAD `507f4be` before this record; see "Owner re-review and closure readiness").
+**Closure is proposed, not executed:** no tag, PR, merge or production deployment until the
+owner approves. Production for Sprint 9 also waits for the separate carried-forward
 capacity/security track.
 Architecture and decisions: [SPRINT-9-ARCHITECTURE.md](SPRINT-9-ARCHITECTURE.md).
 
@@ -263,6 +262,70 @@ unchanged. Evidence:
 - `s9-evidence/fix-contact-canvas.png` and `fix-contact-3d.png` (a solder joint);
 - `fix-touching-canvas.png` and `fix-touching-3d.png` (marker and check; gap and red ring);
 - `fix-header-routing.png` (the ground wire runs beside the header, not down it).
+
+## Owner re-review and closure readiness (2026-10-05)
+
+**Owner re-review: PASS**, on the normal demo URL `https://dev-lab.tbi-tech.net/` (Sprint 9
+frontend `198ca92`).
+- Circuit, Schematic, 3D and Code views accepted.
+- Direct terminal-to-terminal contact, the routing improvements and 3D pan / orbit / zoom /
+  fit / reset accepted.
+- **Mobile layout is explicitly out of scope** and not an acceptance target. The owner happened
+  to open the demo on a phone; that was incidental functional verification only. Mobile and
+  responsive UX are not a supported platform (see Limitations).
+
+**Tested code vs. branch HEAD.** The last application-code commit is `198ca92`. The commits after
+it change only `docs/` and `deploy/`:
+- `222435d`: record and evidence;
+- `e4def5e`: `deploy/dev-lab/publish-frontend.sh`;
+- `507f4be`: the deployment record.
+
+`git diff 198ca92 507f4be` over `app`, `packages`, `runtime`, `scripts`, `experiments`, the
+package files, and the TypeScript, ESLint, Vitest and Playwright configs is empty, and the `app`
+tree hash is identical. **Tested code HEAD = `198ca92`. The final branch HEAD is this docs-only
+commit on top of `507f4be`.** The deploy script is tooling; it was exercised by the deployment
+itself and its syntax is checked.
+
+**Final CI** (run on `507f4be`, code-identical to `198ca92`, this host, 2026-10-05):
+
+| Check | Result |
+|---|---|
+| `npm run typecheck` (all projects, incl. specs and tests) | pass |
+| `npm run lint` (ESLint, Prettier, boundary check) | pass |
+| Production build | pass |
+| Unit (`npm test`) | **636 passed**, 64 files |
+| Browser / e2e (`npm run test:e2e`) | **133 passed**, 3 skipped |
+| Legacy browser (`npm run test:browser`) | **4 passed** |
+
+The 3 skipped tests are the heavy real-QEMU tests (`TBI_S6_REAL`), which routine CI never runs.
+The real backends were exercised by the 49/49 demo smoke instead.
+
+The unit and browser totals include:
+- the schematic (7) and 3D scene (8) suites;
+- cross-view agreement (4);
+- direct contact (domain 7, simulation 1) and wire semantics/routing (5, plus route 11);
+- i18n (35), package import/export (23) and validation (39, including 2,000 corrupted
+  documents);
+- examples (10), and old-project migration in `s9-sync`;
+- browser: `s9-views`, `s9-sync` and `s9-semantics` (19 tests), including the 20× 3D
+  enter/leave resource test.
+
+Not rerun, by design: the Sprint 8 backend containment, admission, policy and endurance
+suites. Sprint 9 changes no backend code, and the deployed backends are unchanged.
+
+**Deployed artifact equivalence.**
+- A clean rebuild of `198ca92` with `publish-frontend.sh`'s settings is byte-identical to the
+  deployed release, all 14 files (`/srv/tbi-lab/dev-lab/198ca926…`, `current` points there).
+- The served JavaScript contains no preview-only strings; only source maps mention Sprint 9, in
+  comments.
+- The old preview (`/srv/tbi-lab/s9-preview/198ca926…`) serves the same code commit; its build
+  adds only the experimental badge and its own browser storage.
+
+**Deployment invariants (rechecked after CI).**
+- Unauthenticated `/`, an asset, `/build/*` and `/runtime/*` get 302 to Google sign-in.
+- Every gate and backend service has the same start time and PID as before the Sprint 9
+  deployment; no restart.
+- `Caddyfile` is unchanged, and `services/current` is still `c31d62e8…`.
 
 ## Normal demo deployment (2026-10-05)
 
@@ -829,6 +892,23 @@ Build behaviour and backend policy are unchanged.
 - Only connected ESP32 pins are shown (decision A, by design); there is no "show all pins" option yet.
 - Schematic values are design values. Live simulation values are not shown in the schematic.
 
+**Editing, routing and connections**
+- The router is not a PCB-class autorouter: it picks the best of a fixed set of orthogonal
+  shapes. Where no clean shape exists, a wire may still pass visually close to things; it never
+  connects to them.
+- A wire drawn with manual bends straight over a **non-connectable** ESP32 header pin is not
+  flagged on the canvas. It can never connect, and automatic routing avoids it.
+- Touching-but-unconnected terminals next to a supply post or a ground post rely mainly on the
+  red ring in 3D (only part leads are pulled back to leave a gap); the canvas marker and the
+  circuit check apply in every case.
+- Live values are limited: LED glow in 3D, and the circuit view's readouts and probes. There is no
+  live overlay in the schematic or 3D.
+
+**Platform**
+- Desktop browsers with keyboard and mouse are the product target. **Mobile and responsive
+  layout are not a supported target** and are not part of Sprint 9's acceptance. Use on a phone
+  may work, incidentally, but is not designed or tested for.
+
 **Performance**
 - On this software-WebGL host, 3D activation (about 1.4 s first, 0.4–0.5 s again) and orbit
   (about 95 ms per step) are slow. On a GPU-backed browser they should be far faster, but this
@@ -837,8 +917,8 @@ Build behaviour and backend policy are unchanged.
 ## Decisions for the product owner
 
 The five first-pass questions were decided by the PM on 2026-10-05 (see "Approved product
-decisions" above). Open: the owner's re-review of the owner-review fixes, now on the normal demo
-URL `https://dev-lab.tbi-tech.net/` (`198ca92`).
+decisions" above). The owner's re-review PASSED (2026-10-05). Open: approval of the closure
+proposal (tag `sprint-9-complete`, merge to `main`).
 
 ## Future 3D backlog (deferred to a dedicated 3D effort)
 
@@ -873,4 +953,8 @@ not a separate circuit editor**; nobody places or wires a circuit again in 3D.
 - Optional live state in the views (switch and LED state, current/voltage), never cluttering the
   schematic.
 - 3D labels for ESP32 pins.
+- Richer live value overlays (voltages/currents on the views, opt-in).
+- More realistic 3D dimensions (part of the dedicated 3D effort).
+- Broader component catalog support, each part with its schematic symbol and 3D model.
+- Flagging manual wire bends over non-connectable header pins on the canvas.
 - Multi-board schematics with sheet-style layout.
