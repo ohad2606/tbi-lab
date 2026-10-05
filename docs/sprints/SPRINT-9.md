@@ -3,7 +3,8 @@
 **Status:** implementation track on branch `sprint-9` (from `sprint-8` `ed20843`). First pass
 complete (`009783f`); the PM's product decisions of 2026-10-05 are applied (below), and an
 **isolated, experimental preview** is live at `https://dev-lab.tbi-tech.net/s9-preview/` for the
-owner's visual review. No PR, merge, tag or production deployment. Sprint 8 is untouched: no
+owner's visual review. **Owner visual review: PASS for the currently approved scope**
+(2026-10-05). No PR, merge, tag or production deployment. Sprint 8 is untouched: no
 Sprint 8 file, branch, release, service or validation record was changed; the preview is not
 Sprint 8 evidence, and Sprint 8 keeps its own owner smoke and closure.
 Architecture and decisions: [SPRINT-9-ARCHITECTURE.md](SPRINT-9-ARCHITECTURE.md).
@@ -388,6 +389,40 @@ in `009783f`. Published history was not rewritten. Commits since `009783f` were 
 independently valid (code before its tests, nothing relying on a later commit); the full checks
 ran at `1679128`, `83edd67` and the final HEAD, not separately at every intermediate commit.
 
+## Owner visual review (2026-10-05)
+
+**Sprint 9 visual review: PASS for the currently approved scope.** The existing implementation
+is accepted as the first version: 2D Circuit as the editing/construction surface, the derived
+read-only Professional Schematic, the derived 360° 3D visualization, one synchronized circuit
+model, 3D orbit/pan/zoom/fit/reset, the current component models, LED live glow, English and
+Hebrew, the WebGL fallback and the isolated preview architecture. No product change follows from
+the review.
+
+**3D is deliberately an initial implementation**, a foundation and first usable visualization,
+not a finished 3D experience. The owner intends to invest substantially in it later, in a
+deliberately planned, dedicated 3D-focused effort (not by growing this sprint into a 3D/CAD
+sprint). The rule stays: **3D is a derived visualization of the authoritative circuit model, not
+a separate circuit editor**; the user must never place or wire the same circuit again in 3D.
+
+Future 3D direction (recorded, not implemented):
+- substantially higher-quality component models;
+- more realistic relative component dimensions;
+- improved ESP32 board/model detail;
+- better physical representation of connectors and headers;
+- improved wire geometry/routing in 3D, and better depth/elevation of wires;
+- improved materials and lighting;
+- clearer component identity at normal zoom;
+- ESP32 pin identification / labels;
+- component selection/picking where useful;
+- better camera/navigation ergonomics, and improved fit/framing;
+- performance on real desktop GPUs and on lower-end systems;
+- richer live simulation visualization, possibly live state for switches and other components;
+- optional electrical-state overlays where educationally useful.
+
+The build-latency finding stands: a fresh ESP32 compile takes about 30–36 s on the current
+dev-lab host, an identical-source build is a cache hit (effectively instant), and Sprint 9
+introduced no frontend build-performance regression.
+
 ## Owner review: build latency (2026-10-05)
 
 During the owner's visual review one Build took more than 10 s. Classified as **not a Sprint 9
@@ -475,6 +510,8 @@ decisions" above). Open: the owner's visual review of the 3D and schematic views
 ## Future / backlog (not implemented)
 
 - 3D picking synchronized with the selection.
+- **A dedicated 3D effort** (owner direction, 2026-10-05): see "Owner visual review" above for
+  the full list; the current 3D view is its foundation.
 - glTF models for selected parts, through the model registry.
 - Schematic export (SVG/PDF) and print.
 - "Show all pins" for the ESP32 schematic block, as an option (default stays connected-only).
