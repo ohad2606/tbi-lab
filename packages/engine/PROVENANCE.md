@@ -118,3 +118,35 @@ V_IL 0.825 V, V_IH 2.475 V with the previous level held in between) is used by t
 harness (`runtime/harness`) to close the MCU ↔ electrical loop through this engine, the one
 engine (ADR-008). The runtime tests (`runtime/tests/electrical.runtime.test.ts`) check every solve in
 the loop against the pin equations exactly (1e-9 V).
+
+## Added in Sprint 10
+
+**LED colour cards** (product scope §6.1, LED row: the approved "1–2 more colour cards from
+datasheets"). They are built like `LED_TLHR5400`: one typical anchor, N fixed by the same documented
+assumption, I_S fitted exactly, R_S not modelled, valid 1–20 mA.
+
+| Model id                    | Anchor and ratings source                                                                                                                                          | Abs. max                           |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------- |
+| `model.led.vishay_tlhy5400` | Vishay TLHR540./TLHY540., Document 83012, Rev. 2.7 (25-Jan-2024): V_F typ. 2.4 V at 20 mA (GaAsP on GaP). The same file as the red card (SHA-256 `5dc7a75d…8ed50`) | 30 mA, 6 V, 100 mW (T_amb ≤ 65 °C) |
+| `model.led.vishay_tlhg4900` | Vishay TLHR4900, TLHG4900, Document 83009, Rev. 2.7 (21-Jul-2022): V_F typ. 2.4 V at 20 mA (GaP on GaP, 3 mm clear); fetched 2026-10-05 (SHA-256 `585526b8…d306b`) | 30 mA, 6 V, 100 mW (T_amb ≤ 60 °C) |
+
+**Internal time-domain core** (`src/circuit.ts` `Circuit.transient`, `src/devices.ts` `Capacitor`,
+`TimeStep`).
+
+- **Additive.** `StampOptions.step` is absent for DC, so every existing device and DC result is
+  unchanged; the Gate A golden values stay bit-identical (`tests/reference.test.ts`).
+- **Not exposed.** No catalog type, snapshot field, session API or UI uses it (product scope PM-6:
+  capacitors wait until transient can be modelled honestly; this is the engine step towards that,
+  pending a PM decision).
+- **Integration.**
+  - Backward Euler or trapezoidal companion models, with a fixed step.
+  - Time zero is either the DC operating point, or the discharged state (each capacitor held at
+    0 V by a backward-Euler step of length dt·1e-9).
+  - A declared discontinuity is integrated with backward Euler (SPICE breakpoint practice).
+- **Validation (`tests/transient.test.ts`):**
+  - closed-form RC charge and discharge;
+  - convergence order (trapezoidal second order, backward Euler first order);
+  - charge conservation to 1e-15 C;
+  - determinism and bounds;
+  - an RC + LED discharge against ngspice (`eecircuit-engine`, the Gate A oracle) within 2e-4
+    relative.

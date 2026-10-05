@@ -30,9 +30,22 @@ export interface StampTarget {
   addZ(row: number, value: number): void;
 }
 
+/**
+ * One time step of a transient solve (Sprint 10, internal: no product feature uses it yet).
+ * Absent for a DC operating point; every device without state ignores it, so DC is unchanged.
+ */
+export interface TimeStep {
+  /** Step length, seconds. */
+  readonly dt: number;
+  /** Integration rule for stateful devices: backward Euler (L-stable, 1st order) or trapezoidal (2nd order). */
+  readonly method: 'backward-euler' | 'trapezoidal';
+}
+
 export interface StampOptions {
   /** Conductance added in parallel with every nonlinear junction, siemens. */
   readonly gmin: number;
+  /** The time step being solved, or undefined for a DC operating point. */
+  readonly step?: TimeStep;
 }
 
 export interface TerminalCurrent {
@@ -66,6 +79,13 @@ export interface Device {
   branchResidual(x: readonly number[]): { value: number; unit: 'V' | 'A' } | null;
   /** Reported device current, amperes, using the sign convention documented above. */
   current(x: readonly number[], opts: StampOptions): number;
+  /**
+   * Stateful devices only (Sprint 10): set the state from a solution taken as time zero (a DC
+   * operating point, or the all-zero state), before the first step.
+   */
+  initializeState?(x: readonly number[] | null, opts: StampOptions): void;
+  /** Stateful devices only: a step converged at x; it becomes the history of the next step. */
+  acceptStep?(x: readonly number[], opts: StampOptions): void;
 }
 
 /** Helper: stamp only if the node is not ground. */
@@ -413,5 +433,85 @@ export class Diode implements Device {
       out.push({ nodeIndex: this.iInt, currentLeaving: -irs });
     }
     return out;
+  }
+}
+
+/**
+ * Ideal linear capacitor (Sprint 10, INTERNAL: an engine primitive for a future, approved
+ * component; no catalog type, snapshot field or UI uses it). Current positive from `a` to `b`:
+ * i = C dv/dt with v = Va - Vb.
+ *
+ * - DC operating point: an open circuit (it stamps nothing). A node reached only through
+ *   capacitors is then floating and the solver refuses the singular system, as it must.
+ * - Time step (companion model, solved by the same Newton/active-set/verification loop):
+ *     backward Euler   i_n = (C/dt)(v_n - v_{n-1})
+ *     trapezoidal      i_n = (2C/dt)(v_n - v_{n-1}) - i_{n-1}
+ *   i.e. a conductance G in parallel with a history current source; the exact residual check
+ *   verifies the discretised equation at every step.
+ */
+export class Capacitor extends TwoTerminal {
+  readonly kind = 'capacitor';
+  /** Voltage and current at the last accepted time point (the integration history). */
+  private vPrev = 0;
+  private iPrev = 0;
+
+  constructor(
+    id: string,
+    nodeA: string,
+    nodeB: string,
+    public capacitanceF: number,
+  ) {
+    super(id, nodeA, nodeB);
+    if (!(capacitanceF > 0) || !Number.isFinite(capacitanceF))
+      throw new Error(`Capacitor ${id}: capacitance must be > 0`);
+  }
+
+  private companion(step: TimeStep): { g: number; history: number } {
+    if (step.method === 'trapezoidal') {
+      const g = (2 * this.capacitanceF) / step.dt;
+      return { g, history: g * this.vPrev + this.iPrev };
+    }
+    const g = this.capacitanceF / step.dt;
+    return { g, history: g * this.vPrev };
+  }
+
+  private voltage(x: readonly number[]): number {
+    return nodeVoltage(x, this.ia) - nodeVoltage(x, this.ib);
+  }
+
+  stamp(t: StampTarget, _x: readonly number[] | null, opts: StampOptions): void {
+    if (!opts.step) return; // open circuit at DC
+    const { g, history } = this.companion(opts.step);
+    addA(t, this.ia, this.ia, g);
+    addA(t, this.ia, this.ib, -g);
+    addA(t, this.ib, this.ib, g);
+    addA(t, this.ib, this.ia, -g);
+    // i = g v - history leaves node a: move the constant to the right-hand side.
+    addZ(t, this.ia, history);
+    addZ(t, this.ib, -history);
+  }
+
+  current(x: readonly number[], opts: StampOptions): number {
+    if (!opts.step) return 0;
+    const { g, history } = this.companion(opts.step);
+    return g * this.voltage(x) - history;
+  }
+
+  exactTerminalCurrents(x: readonly number[], opts: StampOptions): TerminalCurrent[] {
+    const i = this.current(x, opts);
+    return [
+      { nodeIndex: this.ia, currentLeaving: i },
+      { nodeIndex: this.ib, currentLeaving: -i },
+    ];
+  }
+
+  initializeState(x: readonly number[] | null): void {
+    this.vPrev = x ? this.voltage(x) : 0;
+    this.iPrev = 0; // at a DC operating point (or at rest) no current flows into a capacitor
+  }
+
+  acceptStep(x: readonly number[], opts: StampOptions): void {
+    this.iPrev = this.current(x, opts);
+    this.vPrev = this.voltage(x);
   }
 }

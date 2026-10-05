@@ -25,7 +25,42 @@ import {
   type PsuMode,
   type StampOptions,
   type StampTarget,
+  type TimeStep,
 } from './devices.js';
+
+/** Upper bound on the steps of one transient run (bounded numerical work). */
+export const MAX_TRANSIENT_STEPS = 100_000;
+
+export interface TransientOptions extends SolveOptions {
+  /** Step length, seconds. */
+  dt: number;
+  /** Number of steps after time zero. */
+  steps: number;
+  /** Integration rule (default trapezoidal). */
+  method?: TimeStep['method'];
+  /** Time zero: the DC operating point (default) or the all-zero (discharged) state. */
+  initial?: 'op' | 'zero';
+  /**
+   * Deterministic stimulus: called before step k (1-based) is solved, with the time it solves
+   * for (k * dt). It may change device values (a source's voltage, a switch's resistance); the
+   * change applies from that step on. This is how time-varying inputs enter a run.
+   * Return `true` when it made a step change (a discontinuity): that one step is then integrated
+   * with backward Euler, as SPICE does at a breakpoint, because the trapezoidal rule integrates
+   * straight across a jump and leaves an error proportional to the step (and can ring).
+   */
+  beforeStep?: (k: number, t: number) => boolean | void;
+}
+
+export interface TransientResult {
+  /** Sample times, seconds: 0, dt, 2 dt, ... */
+  time: Float64Array;
+  /** Node name -> voltage at each sample. */
+  nodeVoltages: Map<string, Float64Array>;
+  /** Device id -> current at each sample (device sign conventions). */
+  deviceCurrents: Map<string, Float64Array>;
+  /** Newton iterations over all steps. */
+  newtonIterations: number;
+}
 
 export interface SolveOptions {
   /** Max Newton iterations per active-set pass. */
@@ -162,8 +197,80 @@ export class Circuit {
   }
 
   solve(options: SolveOptions = {}): SolveResult {
+    return this.solveAt(options, undefined);
+  }
+
+  /**
+   * Fixed-step transient analysis (Sprint 10, INTERNAL: no product feature uses it yet; see
+   * docs/sprints/SPRINT-10-ARCHITECTURE.md). Deterministic: the same circuit and options give
+   * the same numbers. Time zero is the DC operating point (capacitors open), or the all-zero
+   * state ('zero': every capacitor discharged). Each step is solved by the same Newton, PSU
+   * active-set and exact-verification machinery as a DC solve, with stateful devices replaced by
+   * their companion models; the work is bounded by `steps`.
+   */
+  transient(options: TransientOptions): TransientResult {
+    const {
+      dt,
+      steps,
+      method = 'trapezoidal',
+      initial = 'op',
+      beforeStep,
+      ...solveOptions
+    } = options;
+    if (!(dt > 0) || !Number.isFinite(dt)) throw new Error('transient: dt must be > 0');
+    if (!Number.isInteger(steps) || steps < 1 || steps > MAX_TRANSIENT_STEPS)
+      throw new Error(`transient: steps must be an integer in 1..${MAX_TRANSIENT_STEPS}`);
+    const gmin = solveOptions.gmin ?? DEFAULTS.gmin;
+    const step: TimeStep = { dt, method };
+    const record = (r: SolveResult, k: number) => {
+      out.time[k] = k * dt;
+      for (const [n, v] of r.nodeVoltages)
+        (out.nodeVoltages.get(n) ?? set(out.nodeVoltages, n))[k] = v;
+      for (const [d, i] of r.deviceCurrents)
+        (out.deviceCurrents.get(d) ?? set(out.deviceCurrents, d))[k] = i;
+    };
+    const set = (m: Map<string, Float64Array>, key: string) => {
+      const a = new Float64Array(steps + 1);
+      m.set(key, a);
+      return a;
+    };
+    const out: TransientResult = {
+      time: new Float64Array(steps + 1),
+      nodeVoltages: new Map(),
+      deviceCurrents: new Map(),
+      newtonIterations: 0,
+    };
+    if (initial === 'op') {
+      const op = this.solveAt(solveOptions, undefined);
+      for (const d of this.devices) d.initializeState?.(op.x, { gmin });
+      record(op, 0);
+    } else {
+      // Time zero of a discharged circuit: every capacitor held at 0 V. Solved as one backward-
+      // Euler step of negligible length (dt * 1e-9) from the discharged state, so a capacitor is
+      // a 0 V short there; the solution is the true t = 0+ state, including the current that
+      // starts flowing into each capacitor (which the trapezoidal rule needs as its history).
+      this.buildIndex();
+      for (const d of this.devices) d.initializeState?.(null, { gmin });
+      const start: TimeStep = { dt: dt * 1e-9, method: 'backward-euler' };
+      const r0 = this.solveAt(solveOptions, start);
+      for (const d of this.devices) d.acceptStep?.(r0.x, { gmin, step: start });
+      out.newtonIterations += r0.newtonIterations;
+      record(r0, 0);
+    }
+    for (let k = 1; k <= steps; k++) {
+      const jump = beforeStep?.(k, k * dt) === true;
+      const thisStep: TimeStep = jump ? { dt, method: 'backward-euler' } : step;
+      const r = this.solveAt(solveOptions, thisStep);
+      for (const d of this.devices) d.acceptStep?.(r.x, { gmin, step: thisStep });
+      out.newtonIterations += r.newtonIterations;
+      record(r, k);
+    }
+    return out;
+  }
+
+  private solveAt(options: SolveOptions, step: TimeStep | undefined): SolveResult {
     const o = { ...DEFAULTS, ...options };
-    const stampOpts: StampOptions = { gmin: o.gmin };
+    const stampOpts: StampOptions = step ? { gmin: o.gmin, step } : { gmin: o.gmin };
 
     this.buildIndex();
     for (const d of this.devices) d.resetState();
