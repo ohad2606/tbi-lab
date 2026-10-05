@@ -15,6 +15,12 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { buildComponent, createMaterials, OwnedResources, segment } from './models.js';
 import { MODEL_HEIGHT, type SceneDescription } from './scene.js';
 
+/** Reference labels: world height (perspective), capped on screen so near ones never loom. */
+const LABEL_WORLD_HEIGHT = 1.8;
+const LABEL_MAX_PX = 26;
+/** Fit/reset: the content's projected box spans this fraction of the view (NDC half-extent). */
+const FRAME_FILL = 0.95;
+
 export interface ViewerStats {
   geometries: number;
   textures: number;
@@ -91,6 +97,21 @@ export function createViewer(container: HTMLElement, onRender?: (s: ViewerStats)
   let renders = 0;
   /** LED lens materials by component id, and the last live levels applied to them. */
   let lenses = new Map<string, THREE.MeshStandardMaterial>();
+  let labels: THREE.Sprite[] = [];
+  const toCamera = new THREE.Vector3();
+  /** Cap each label's on-screen height (cheap: one distance per label, only when rendering). */
+  function sizeLabels() {
+    const pxPerUnitAt1 = container.clientHeight / (2 * Math.tan((camera.fov * Math.PI) / 360));
+    for (const l of labels) {
+      const d = toCamera
+        .copy(l.position)
+        .applyMatrix4(l.parent!.matrixWorld)
+        .distanceTo(camera.position);
+      const px = (LABEL_WORLD_HEIGHT * pxPerUnitAt1) / Math.max(d, 1e-3);
+      const h = LABEL_WORLD_HEIGHT * Math.min(1, LABEL_MAX_PX / px);
+      l.scale.set((h * 4.8) / 1.8, h, 1);
+    }
+  }
   let liveLevels: Record<string, number> = {};
   function applyLive() {
     for (const [id, mat] of lenses) {
@@ -121,6 +142,7 @@ export function createViewer(container: HTMLElement, onRender?: (s: ViewerStats)
 
   function render() {
     if (disposed) return;
+    sizeLabels();
     renderer.render(scene, camera);
     renders++;
     onRender?.(stats());
@@ -212,7 +234,11 @@ export function createViewer(container: HTMLElement, onRender?: (s: ViewerStats)
     return group;
   }
 
-  /** A reference designator (R1, U1) floating above its part, always facing the camera. LTR. */
+  /**
+   * A reference designator (R1, U1) floating above its part, always facing the camera, LTR. It
+   * keeps perspective (far labels small, so large circuits do not drown in labels) but never
+   * grows beyond LABEL_MAX_PX on screen (sizeLabels).
+   */
   function label(text: string, x: number, z: number, desc: SceneDescription) {
     const canvas2d = document.createElement('canvas');
     canvas2d.width = 256;
@@ -240,17 +266,23 @@ export function createViewer(container: HTMLElement, onRender?: (s: ViewerStats)
     const c = desc.components.find((k) => k.id === text);
     const height = (c ? MODEL_HEIGHT[c.model] : 1.5) + 1.6;
     sprite.position.set(x, height, z);
-    sprite.scale.set(4.8, 1.8, 1);
+    sprite.scale.set(4.8, LABEL_WORLD_HEIGHT, 1);
+    sprite.userData.label = true;
     sprite.renderOrder = 10;
     sprite.name = `label:${text}`;
     return sprite;
   }
 
-  /** Frame the whole circuit, looking along `direction` (default: the standard view). */
+  /**
+   * Frame the whole circuit, looking along `direction` (default: the standard view): the camera
+   * distance is solved so the content's box (labels included) fills FRAME_FILL of the view in its
+   * tighter dimension, instead of wrapping a sphere around a flat, wide circuit.
+   */
   function frame(desc: SceneDescription, direction?: THREE.Vector3) {
     const { min, max } = desc.bounds;
-    const center = new THREE.Vector3((min.x + max.x) / 2, (min.y + max.y) / 4, (min.z + max.z) / 2);
-    const radius = 0.5 * Math.max(8, Math.hypot(max.x - min.x, max.z - min.z, max.y - min.y));
+    const top = max.y + 1.6; // the reference labels sit 1.6 above their part
+    const center = new THREE.Vector3((min.x + max.x) / 2, top / 3, (min.z + max.z) / 2);
+    const radius = 0.5 * Math.max(8, Math.hypot(max.x - min.x, max.z - min.z, top - min.y));
     const fov = (camera.fov * Math.PI) / 180;
     const fit = Math.max(
       radius / Math.sin(fov / 2),
@@ -258,8 +290,28 @@ export function createViewer(container: HTMLElement, onRender?: (s: ViewerStats)
     );
     // Default view: from the front (the 2D drawing's bottom edge), raised and a little to the right.
     const dir = (direction ?? new THREE.Vector3(0.35, 0.85, 1)).clone().normalize();
-    camera.position.copy(center.clone().add(dir.multiplyScalar(fit * 0.85)));
-    camera.near = Math.max(0.1, fit / 100);
+    const corners: THREE.Vector3[] = [];
+    for (const x of [min.x, max.x])
+      for (const y of [min.y, top])
+        for (const z of [min.z, max.z]) corners.push(new THREE.Vector3(x, y, z));
+    let distance = fit;
+    const p = new THREE.Vector3();
+    for (let i = 0; i < 6; i++) {
+      camera.position.copy(center).addScaledVector(dir, distance);
+      camera.lookAt(center);
+      camera.updateMatrixWorld();
+      let extent = 0;
+      for (const c of corners) {
+        p.copy(c).project(camera);
+        extent = Math.max(extent, Math.abs(p.x), Math.abs(p.y));
+      }
+      if (!Number.isFinite(extent) || extent <= 0) break;
+      // Perspective is not linear in distance; a few proportional steps converge.
+      distance = Math.max(radius * 0.3, distance * (extent / FRAME_FILL));
+    }
+    const fitDistance = distance;
+    camera.position.copy(center).addScaledVector(dir, fitDistance);
+    camera.near = Math.max(0.1, fitDistance / 100);
     camera.far = fit * 20;
     camera.updateProjectionMatrix();
     controls.target.copy(center);
@@ -281,6 +333,10 @@ export function createViewer(container: HTMLElement, onRender?: (s: ViewerStats)
       content = build(desc);
       scene.add(content);
       lenses = new Map();
+      labels = [];
+      content.traverse((o) => {
+        if (o.userData.label) labels.push(o as THREE.Sprite);
+      });
       content.traverse((o) => {
         const lens = o.userData.lensMaterial as THREE.MeshStandardMaterial | undefined;
         if (lens && o.userData.component) lenses.set(o.userData.component as string, lens);
@@ -333,6 +389,8 @@ export function createViewer(container: HTMLElement, onRender?: (s: ViewerStats)
       ro.disconnect();
       controls.dispose();
       if (content) scene.remove(content);
+      labels = [];
+      lenses = new Map();
       own.dispose();
       for (const m of shared) m.dispose();
       renderer.dispose();
