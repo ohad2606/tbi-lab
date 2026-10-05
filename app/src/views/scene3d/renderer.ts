@@ -13,11 +13,15 @@
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { buildComponent, createMaterials, OwnedResources, segment } from './models.js';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+import { buildComponent, createMaterials, OwnedResources, roundPath } from './models.js';
+import { WIRE } from './physical.js';
 import { MODEL_HEIGHT, WIRE_RADIUS, type SceneDescription } from './scene.js';
 
-/** Reference labels: world height (perspective), capped on screen so near ones never loom. */
-const LABEL_WORLD_HEIGHT = 1.8;
+/** Reference labels: world height in mm (perspective), capped on screen so near ones never loom. */
+const LABEL_WORLD_HEIGHT = 2.4;
+/** Labels float this far (mm) above their part's tallest point. */
+const LABEL_LIFT = 2.6;
 const LABEL_MAX_PX = 26;
 /** Fit/reset: the content's projected box spans this fraction of the view (NDC half-extent). */
 const FRAME_FILL = 0.95;
@@ -78,7 +82,11 @@ export function createViewer(container: HTMLElement, onRender?: (s: ViewerStats)
   live++;
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.outputColorSpace = THREE.SRGBColorSpace;
-  renderer.setClearColor('#eef1f5');
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.05;
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.setClearColor('#e9edf2');
   const canvas = renderer.domElement;
   canvas.classList.add('view3d-canvas');
   canvas.setAttribute('aria-hidden', 'true');
@@ -86,18 +94,54 @@ export function createViewer(container: HTMLElement, onRender?: (s: ViewerStats)
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 2000);
-  scene.add(new THREE.HemisphereLight('#ffffff', '#8a8f96', 1.6));
-  const sun = new THREE.DirectionalLight('#ffffff', 1.6);
-  sun.position.set(30, 60, 40);
-  scene.add(sun);
-  const fill = new THREE.DirectionalLight('#ffffff', 0.5);
-  fill.position.set(-40, 30, -30);
+  // A clean workbench: soft image-based light from a neutral room (no asset is loaded; three.js
+  // builds it), one shadow-casting key light from the front right, a weak cool fill.
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  const room = new RoomEnvironment();
+  const envMap = pmrem.fromScene(room, 0.04).texture;
+  room.dispose();
+  pmrem.dispose();
+  scene.environment = envMap;
+  scene.environmentIntensity = 0.55;
+  scene.add(new THREE.HemisphereLight('#ffffff', '#9aa1a8', 0.9));
+  const sun = new THREE.DirectionalLight('#fff8ef', 2.1);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.bias = -0.0004;
+  sun.shadow.normalBias = 0.03;
+  sun.shadow.radius = 3;
+  scene.add(sun, sun.target);
+  const fill = new THREE.DirectionalLight('#e8f0ff', 0.45);
+  fill.position.set(-60, 50, -40);
   scene.add(fill);
+  /** Aim the key light and fit its shadow camera to the content (mm). */
+  function fitShadow(desc: SceneDescription) {
+    const { min, max } = desc.bounds;
+    const cx = (min.x + max.x) / 2;
+    const cz = (min.z + max.z) / 2;
+    const r = 0.5 * Math.hypot(max.x - min.x, max.z - min.z, max.y) + 10;
+    sun.target.position.set(cx, 0, cz);
+    sun.position.set(cx + r * 0.55, r * 1.4, cz + r * 0.8);
+    const cam = sun.shadow.camera;
+    cam.left = -r;
+    cam.right = r;
+    cam.top = r;
+    cam.bottom = -r;
+    cam.near = 1;
+    cam.far = r * 4;
+    cam.updateProjectionMatrix();
+  }
 
   const materials = createMaterials();
   const shared: THREE.Material[] = Object.values(materials);
-  const baseMat = new THREE.MeshStandardMaterial({ color: '#f7f8fa', roughness: 0.9 });
-  shared.push(baseMat);
+  const baseMat = new THREE.MeshStandardMaterial({ color: '#dfe5ea', roughness: 0.95 });
+  const soldermat = new THREE.MeshStandardMaterial({
+    color: '#cfd4d9',
+    metalness: 0.9,
+    roughness: 0.25,
+  });
+  const haloTexture = glowTexture();
+  shared.push(baseMat, soldermat);
 
   let content: THREE.Group | null = null;
   let own = new OwnedResources();
@@ -121,12 +165,17 @@ export function createViewer(container: HTMLElement, onRender?: (s: ViewerStats)
     }
   }
   let liveLevels: Record<string, number> = {};
+  /** Glow halos of the LEDs, by component id. */
+  let halos = new Map<string, THREE.Sprite>();
   function applyLive() {
     for (const [id, mat] of lenses) {
       const level = liveLevels[id] ?? 0;
-      mat.emissive.copy(mat.color);
-      mat.emissiveIntensity = level * 1.6;
-      mat.opacity = 0.85 + 0.15 * level;
+      mat.emissiveIntensity = level * 2.2;
+      const halo = halos.get(id);
+      if (halo) {
+        halo.visible = level > 0;
+        (halo.material as THREE.SpriteMaterial).opacity = 0.75 * level;
+      }
     }
   }
   let disposed = false;
@@ -198,55 +247,62 @@ export function createViewer(container: HTMLElement, onRender?: (s: ViewerStats)
     );
     base.position.set((b.minX + b.maxX) / 2, -0.1, (b.minZ + b.maxZ) / 2);
     base.name = 'base';
+    base.receiveShadow = true;
     group.add(base);
-    // A light grid on the base at the circuit editor's grid pitch (20 units = 2 scene units).
+    // A faint grid on the bench every 5 editor grid steps (12.7 mm = 0.5 in).
+    const step = 12.7;
     const lines: number[] = [];
-    for (let x = Math.ceil(b.minX / 2) * 2; x <= b.maxX; x += 2)
+    for (let x = Math.ceil(b.minX / step) * step; x <= b.maxX; x += step)
       lines.push(x, 0.01, b.minZ, x, 0.01, b.maxZ);
-    for (let z = Math.ceil(b.minZ / 2) * 2; z <= b.maxZ; z += 2)
+    for (let z = Math.ceil(b.minZ / step) * step; z <= b.maxZ; z += step)
       lines.push(b.minX, 0.01, z, b.maxX, 0.01, z);
     const gridGeo = own.geo(new THREE.BufferGeometry());
     gridGeo.setAttribute('position', new THREE.Float32BufferAttribute(lines, 3));
     const grid = new THREE.LineSegments(
       gridGeo,
-      own.mat(new THREE.LineBasicMaterial({ color: '#dfe4ea' })),
+      own.mat(new THREE.LineBasicMaterial({ color: '#cdd4db' })),
     );
     grid.name = 'grid';
     group.add(grid);
 
     for (const c of desc.components) group.add(buildComponent(c, materials, own));
 
+    // Wires: insulated round wire with smooth bends, coloured by electrical node.
     const wireMats = new Map<string, THREE.Material>();
     for (const w of desc.wires) {
       let mat = wireMats.get(w.color);
       if (!mat) {
-        mat = own.mat(new THREE.MeshStandardMaterial({ color: w.color, roughness: 0.55 }));
+        mat = own.mat(new THREE.MeshStandardMaterial({ color: w.color, roughness: 0.48 }));
         wireMats.set(w.color, mat);
       }
       const wire = new THREE.Group();
       wire.name = `wire:${w.id}`;
       wire.userData.node = w.node;
-      for (let i = 1; i < w.points.length; i++) {
-        const p0 = w.points[i - 1]!;
-        const p1 = w.points[i]!;
-        const seg = segment(
-          own,
-          new THREE.Vector3(p0.x, p0.y, p0.z),
-          new THREE.Vector3(p1.x, p1.y, p1.z),
-          WIRE_RADIUS,
+      const path = roundPath(
+        w.points.map((p) => [p.x, p.y, p.z] as [number, number, number]),
+        WIRE.bendRadiusMm,
+      );
+      const tube = new THREE.Mesh(
+        own.geo(
+          new THREE.TubeGeometry(
+            path,
+            Math.max(12, Math.ceil(path.getLength() / 0.8)),
+            WIRE_RADIUS,
+            10,
+          ),
+        ),
+        mat,
+      );
+      tube.castShadow = true;
+      wire.add(tube);
+      // Rounded wire ends.
+      for (const q of [w.points[0]!, w.points[w.points.length - 1]!]) {
+        const end = new THREE.Mesh(
+          own.shared('wireEnd', () => new THREE.SphereGeometry(WIRE_RADIUS, 12, 8)),
           mat,
-          10,
         );
-        if (seg) wire.add(seg);
-      }
-      // Rounded joints so bends read as one continuous wire.
-      for (const q of w.points) {
-        const joint = new THREE.Mesh(
-          own.shared('joint', () => new THREE.SphereGeometry(WIRE_RADIUS, 10, 8)),
-          mat,
-        );
-        joint.position.set(q.x, q.y, q.z);
-        wire.add(joint);
+        end.position.set(q.x, q.y, q.z);
+        wire.add(end);
       }
       group.add(wire);
     }
@@ -257,11 +313,11 @@ export function createViewer(container: HTMLElement, onRender?: (s: ViewerStats)
       const mark =
         j.kind === 'contact'
           ? new THREE.Mesh(
-              own.shared('solder', () => new THREE.SphereGeometry(0.3, 16, 12)),
-              materials.silver,
+              own.shared('solder', () => new THREE.SphereGeometry(0.75, 16, 12)),
+              soldermat,
             )
           : new THREE.Mesh(
-              own.shared('open', () => new THREE.TorusGeometry(0.55, 0.07, 8, 28)),
+              own.shared('open', () => new THREE.TorusGeometry(1.5, 0.2, 8, 32)),
               materials.red,
             );
       if (j.kind === 'open') mark.rotation.x = Math.PI / 2;
@@ -269,7 +325,55 @@ export function createViewer(container: HTMLElement, onRender?: (s: ViewerStats)
       mark.name = `joint:${j.kind}:${j.terminals.join('+')}`;
       mark.userData.joint = j.kind;
       group.add(mark);
+      // A lead soldered to a pin a step away: bridge them.
+      for (const l of j.links ?? []) {
+        const link = new THREE.Mesh(
+          own.geo(
+            new THREE.TubeGeometry(
+              roundPath(
+                [
+                  [j.x, j.y, j.z],
+                  [l.x, j.y, l.z],
+                  [l.x, l.y, l.z],
+                ],
+                0.5,
+              ),
+              12,
+              0.3,
+              8,
+            ),
+          ),
+          soldermat,
+        );
+        group.add(link);
+      }
     }
+
+    // LED glow halos (hidden until a running simulation lights the LED).
+    halos = new Map();
+    group.traverse((o) => {
+      if (o.userData.lensMaterial && o.userData.component) {
+        const halo = new THREE.Sprite(
+          own.mat(
+            new THREE.SpriteMaterial({
+              map: haloTexture,
+              color: o.userData.ledColor as string,
+              transparent: true,
+              opacity: 0,
+              blending: THREE.AdditiveBlending,
+              depthWrite: false,
+            }),
+          ),
+        );
+        halo.visible = false;
+        halo.userData.halo = o.userData.component;
+        const top = o.userData.ledTop as number;
+        halo.position.set(0, top - 2, 0);
+        halo.scale.set(16, 16, 1);
+        o.add(halo);
+        halos.set(o.userData.component as string, halo);
+      }
+    });
 
     for (const c of desc.components) group.add(label(c.id, c.x, c.z, desc));
     return group;
@@ -305,9 +409,9 @@ export function createViewer(container: HTMLElement, onRender?: (s: ViewerStats)
       own.mat(new THREE.SpriteMaterial({ map: tex, depthTest: false })),
     );
     const c = desc.components.find((k) => k.id === text);
-    const height = (c ? MODEL_HEIGHT[c.model] : 1.5) + 1.6;
+    const height = (c ? MODEL_HEIGHT[c.model] : 3) + LABEL_LIFT;
     sprite.position.set(x, height, z);
-    sprite.scale.set(4.8, LABEL_WORLD_HEIGHT, 1);
+    sprite.scale.set((LABEL_WORLD_HEIGHT * 4.8) / 1.8, LABEL_WORLD_HEIGHT, 1);
     sprite.userData.label = true;
     sprite.renderOrder = 10;
     sprite.name = `label:${text}`;
@@ -321,9 +425,9 @@ export function createViewer(container: HTMLElement, onRender?: (s: ViewerStats)
    */
   function frame(desc: SceneDescription, direction?: THREE.Vector3) {
     const { min, max } = desc.bounds;
-    const top = max.y + 1.6; // the reference labels sit 1.6 above their part
+    const top = max.y + LABEL_LIFT + LABEL_WORLD_HEIGHT / 2; // the reference labels above parts
     const center = new THREE.Vector3((min.x + max.x) / 2, top / 3, (min.z + max.z) / 2);
-    const radius = 0.5 * Math.max(8, Math.hypot(max.x - min.x, max.z - min.z, top - min.y));
+    const radius = 0.5 * Math.max(20, Math.hypot(max.x - min.x, max.z - min.z, top - min.y));
     const fov = (camera.fov * Math.PI) / 180;
     const fit = Math.max(
       radius / Math.sin(fov / 2),
@@ -372,6 +476,7 @@ export function createViewer(container: HTMLElement, onRender?: (s: ViewerStats)
       }
       current = desc;
       content = build(desc);
+      fitShadow(desc);
       scene.add(content);
       lenses = new Map();
       labels = [];
@@ -445,12 +550,33 @@ export function createViewer(container: HTMLElement, onRender?: (s: ViewerStats)
       if (content) scene.remove(content);
       labels = [];
       lenses = new Map();
+      halos = new Map();
       own.dispose();
       for (const m of shared) m.dispose();
+      haloTexture.dispose();
+      envMap.dispose();
+      sun.shadow.map?.dispose();
       renderer.dispose();
       renderer.forceContextLoss();
       canvas.remove();
       live--;
     },
   };
+}
+
+/** A soft radial glow (LED halo), drawn once per viewer. */
+function glowTexture(): THREE.Texture {
+  const c = document.createElement('canvas');
+  c.width = 128;
+  c.height = 128;
+  const ctx = c.getContext('2d')!;
+  const g = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+  g.addColorStop(0, 'rgba(255,255,255,1)');
+  g.addColorStop(0.25, 'rgba(255,255,255,0.45)');
+  g.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 128, 128);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
 }

@@ -5,6 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   CATALOG,
+  ESP32_DEVKITC_WROOM32,
   GROUND_NODE,
   connectivity,
   deleteSelection,
@@ -15,13 +16,20 @@ import {
 } from '@tbi-lab/domain';
 import { mixedCircuit, place, wire } from '../../packages/domain/tests/circuits.js';
 import { must, newDoc } from '../../packages/domain/tests/helpers.js';
+import {
+  ESP32_ATTACH_HEIGHT,
+  ESP32_PIN_TOP,
+  LEAD_ATTACH_HEIGHT,
+  WIRE,
+} from '../src/views/scene3d/physical.js';
 import { EXAMPLES } from '../src/examples/catalog.js';
 import {
   MODEL_FOR,
-  OVER_HEIGHT,
   SCALE,
-  TERMINAL_HEIGHT,
+  MODEL_HEIGHT,
+  WIRE_RADIUS,
   deriveScene,
+  realPinZ,
   resistorBands,
 } from '../src/views/scene3d/scene.js';
 
@@ -34,10 +42,25 @@ describe('3D scene description', () => {
       const p = doc.layout.components[c.id]!;
       expect([c.x, c.z]).toEqual([p.x * SCALE, p.y * SCALE]);
       expect(c.model).toBe(MODEL_FOR[c.type]);
-      // Terminals sit exactly where the circuit view has them (plan view).
+      // Terminals attach where the circuit view has them (plan view, mm). An ESP32 pin attaches
+      // on the 2D pin column (the real header row) at its REAL position along the header (2.54 mm
+      // pitch; the 2D grid is 3.175 mm).
       for (const t of c.terminals) {
         const at = terminalPosition(doc, c.id, t.id)!;
-        expect([t.x, t.z]).toEqual([at.x * SCALE, at.y * SCALE]);
+        if (c.model === 'board.esp32_devkitc') {
+          const pin = ESP32_DEVKITC_WROOM32.pins.find(
+            (p) =>
+              `gpio${p.gpio}` === t.id ||
+              (t.id === 'gnd' && p.role === 'ground' && p.header === 'J3' && p.position === 1),
+          )!;
+          expect(t.x).toBeCloseTo(at.x * SCALE, 9);
+          expect(t.z - c.z).toBeCloseTo(realPinZ(pin.position), 9);
+          expect(Math.abs(t.x - c.x)).toBeCloseTo(12.7, 9);
+          expect([ESP32_ATTACH_HEIGHT, ESP32_PIN_TOP]).toContain(t.y);
+        } else {
+          expect(t.x).toBeCloseTo(at.x * SCALE, 9);
+          expect(t.z).toBeCloseTo(at.y * SCALE, 9);
+        }
       }
     }
     // Every catalog type has a dedicated model (none falls back to the generic box).
@@ -85,8 +108,9 @@ describe('3D scene description', () => {
     const moved = must(
       moveSelection(doc, { components: [ids.rled!], wires: [], junctions: [] }, { x: 0, y: 200 }),
     ).doc;
-    expect(deriveScene(moved).components.find((c) => c.id === ids.rled)!.z).toBe(
+    expect(deriveScene(moved).components.find((c) => c.id === ids.rled)!.z).toBeCloseTo(
       before.components.find((c) => c.id === ids.rled)!.z + 200 * SCALE,
+      9,
     );
     const rotated = must(rotateComponents(doc, [ids.rled!])).doc;
     const r = deriveScene(rotated).components.find((c) => c.id === ids.rled)!;
@@ -150,9 +174,9 @@ describe('3D scene description', () => {
     expect(joined.joints).toEqual([
       {
         kind: 'contact',
-        x: 14,
-        z: 20,
-        y: TERMINAL_HEIGHT['resistor.axial'],
+        x: 140 * SCALE,
+        z: 200 * SCALE,
+        y: LEAD_ATTACH_HEIGHT,
         terminals: ['D1:anode', 'R1:b'],
         node: joined.components.find((c) => c.id === 'R1')!.terminals[1]!.node,
       },
@@ -189,13 +213,14 @@ describe('3D scene description', () => {
     const scene = deriveScene(doc);
     const level = (id: string) => scene.wires.find((w) => w.id === id)!.points[1]!.y;
     const [a, b] = doc.layout.wires.map((w) => w.id) as [string, string];
-    expect(Math.abs(level(a) - level(b))).toBeGreaterThan(0.44);
+    expect(Math.abs(level(a) - level(b))).toBeGreaterThanOrEqual(WIRE.levelStepMm - 1e-9);
+    expect(WIRE.levelStepMm).toBeGreaterThan(2 * WIRE_RADIUS);
     // R1.a → R2.b along y = -100 passes over R1.b and R2.a (and both bodies).
     const over = wire(doc, ['R1', 'a'], ['R2', 'b']);
     const s2 = deriveScene(over);
     const w = s2.wires.find((x) => x.id === over.layout.wires.at(-1)!.id)!;
-    expect(w.points.slice(1, -1).every((p) => p.y >= OVER_HEIGHT)).toBe(true);
-    const tallest = Math.max(...Object.values(TERMINAL_HEIGHT));
-    expect(OVER_HEIGHT).toBeGreaterThan(tallest + 0.45);
+    // It runs a clearance above the bodies and leads it passes over.
+    const clear = MODEL_HEIGHT['resistor.axial'] + WIRE.clearanceMm;
+    expect(w.points.slice(1, -1).every((p) => p.y >= clear - 1e-9)).toBe(true);
   });
 });

@@ -29,8 +29,9 @@ import {
 import { mixedCircuit, place, wire } from '../../packages/domain/tests/circuits.js';
 import { must, newDoc } from '../../packages/domain/tests/helpers.js';
 import { EXAMPLES } from '../src/examples/catalog.js';
+import { ESP32_DEVKITC, ESP32_PCB_TOP, WIRE } from '../src/views/scene3d/physical.js';
 import {
-  TERMINAL_HEIGHT,
+  SCALE,
   WIRE_RADIUS,
   deriveScene,
   type SceneDescription,
@@ -88,9 +89,13 @@ function segDistance(a: P3, b: P3, c: P3, d: P3): number {
   const q = { x: c.x + v.x * tc, y: c.y + v.y * tc, z: c.z + v.z * tc };
   return Math.sqrt(dot(sub(p, q), sub(p, q)));
 }
-/** Visual contact: tubes (wire radius, lead radius 0.08) closer than their radii plus a hair. */
+/**
+ * Visual contact: tubes closer than their radii plus a hair. A wire meets a terminal at its attach
+ * point (a lead end, a pin's jumper housing, a lug ring): within a wire radius plus the largest
+ * lead half-thickness (0.35 mm) of it, they touch.
+ */
 const WIRE_TOUCH = 2 * WIRE_RADIUS + 0.05;
-const LEAD_TOUCH = WIRE_RADIUS + 0.08 + 0.05;
+const LEAD_TOUCH = WIRE_RADIUS + 0.35 + 0.05;
 
 /**
  * The 3D drawing read back by geometry: wires are conductors; a wire touching a terminal's lead
@@ -103,7 +108,7 @@ function sceneGroups(scene: SceneDescription): Map<string, string> {
     c.terminals.map((t) => ({
       key: `${c.id}:${t.id}`,
       open: !!t.open,
-      at: { x: t.x, y: TERMINAL_HEIGHT[c.model], z: t.z },
+      at: { x: t.x, y: t.y, z: t.z },
     })),
   );
   for (const t of terms) uf.find(t.key);
@@ -344,10 +349,12 @@ describe('one electrical truth across Circuit, Schematic and 3D', () => {
     const placement = doc.layout.components.U1!;
     const pins = ESP32_DEVKITC_WROOM32.pins.map((p) => {
       const q = rotatePoint(boardPinPosition(p), placement.rotation);
-      return { x: (placement.x + q.x) / 10, z: (placement.y + q.y) / 10 };
+      return { x: (placement.x + q.x) * SCALE, z: (placement.y + q.y) * SCALE };
     });
     const interior = w.points.slice(1, -1);
-    expect(interior.every((p) => p.y >= 2.2)).toBe(true);
+    // Above every header pin (its stub top) by the wire clearance: it can never touch one.
+    const pinTop = ESP32_PCB_TOP + ESP32_DEVKITC.pinStubAboveMm;
+    expect(interior.every((p) => p.y >= pinTop + WIRE.clearanceMm - 1e-9)).toBe(true);
     expect(pins.length).toBeGreaterThan(30);
   });
 });
