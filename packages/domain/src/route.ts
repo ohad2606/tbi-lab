@@ -28,9 +28,11 @@
  * endpoints (terminals, junctions), never from where a route happens to pass, so a new wire can
  * only ever join the net it is explicitly attached to.
  */
-import { getTypeDef } from './catalog.js';
-import { GRID, orthogonalRoute, terminalPosition, wireRoute } from './layout.js';
-import type { Point, ProjectDocument } from './schema.js';
+import { boardPinPosition, getTypeDef } from './catalog.js';
+import { ESP32_DEVKITC_WROOM32 } from './boards/esp32DevkitcWroom32.js';
+import { isContact } from './contacts.js';
+import { GRID, orthogonalRoute, rotatePoint, terminalPosition, wireRoute } from './layout.js';
+import type { Point, ProjectDocument, Wire } from './schema.js';
 
 /** An axis-aligned component body; only its strict interior is an obstacle. */
 export interface RouteBox {
@@ -226,23 +228,111 @@ export function autoRouteVertices(waypoints: readonly Point[], obstacles: RouteO
 }
 
 /**
- * Obstacles of a document for routing a new wire: every existing wire segment and every
- * terminal and junction position, plus the component bodies the caller supplies (symbol
- * geometry is presentation, owned by the app).
+ * Obstacles of a document for routing a new wire: every existing wire segment (except the
+ * `except` wires), every terminal and junction position and every pin a board draws (its
+ * unconnectable header pins included: a wire running along a header would read as connected to
+ * each pin it passes), plus the component bodies the caller supplies (symbol geometry is
+ * presentation, owned by the app).
  */
-export function routeObstacles(doc: ProjectDocument, boxes: readonly RouteBox[]): RouteObstacles {
+export function routeObstacles(
+  doc: ProjectDocument,
+  boxes: readonly RouteBox[],
+  except: ReadonlySet<string> = new Set(),
+): RouteObstacles {
   const segments: [Point, Point][] = [];
   for (const w of doc.layout.wires) {
+    if (except.has(w.id)) continue;
     const r = wireRoute(doc, w);
     if (!r) continue;
     for (let i = 0; i < r.length - 1; i++) segments.push([r[i]!, r[i + 1]!]);
   }
   const points: Point[] = doc.layout.junctions.map((j) => ({ x: j.x, y: j.y }));
+  const seen = new Set<string>();
+  const add = (p: Point) => {
+    const k = `${p.x},${p.y}`;
+    if (seen.has(k)) return;
+    seen.add(k);
+    points.push(p);
+  };
   for (const c of doc.components) {
     for (const t of getTypeDef(c.type)?.terminals ?? []) {
       const p = terminalPosition(doc, c.id, t.id);
-      if (p) points.push(p);
+      if (p) add(p);
     }
+    const placement = doc.layout.components[c.id];
+    if (c.type === 'board.esp32_devkitc_wroom32' && placement)
+      for (const pin of ESP32_DEVKITC_WROOM32.pins) {
+        const q = rotatePoint(boardPinPosition(pin), placement.rotation);
+        add({ x: placement.x + q.x, y: placement.y + q.y });
+      }
   }
   return { segments, boxes, points };
+}
+
+/**
+ * Re-route existing wires after a placement edit (Sprint 9). A stored wire keeps its vertices
+ * when a part it is attached to moves, so its fixed horizontal-first route can end up running
+ * along a header, through a body or over unrelated terminals. Each of the given wires whose
+ * route now does so is replaced by the best of:
+ *   - the router's shapes through its own vertices (the user's waypoints are kept), and
+ *   - the router's shapes straight between its ends,
+ * when that is strictly better by the router's cost (module comment). A wire whose route is
+ * clean is never touched, and a direct contact (contacts.ts) has no route to improve.
+ *
+ * Presentation only: endpoints never change, so connectivity and nets cannot change. Returns
+ * a new document (the input is not mutated), or the same document if nothing changed.
+ */
+export function rerouteWires(
+  doc: ProjectDocument,
+  wireIds: Iterable<string>,
+  boxes: readonly RouteBox[],
+): ProjectDocument {
+  let out = doc;
+  for (const id of new Set(wireIds)) {
+    const wire = out.layout.wires.find((w) => w.id === id);
+    if (!wire || isContact(out, wire)) continue;
+    const route = wireRoute(out, wire);
+    if (!route || route.length < 2) continue;
+    const obs = routeObstacles(out, boxes, new Set([id]));
+    const ends = [route[0]!, route[route.length - 1]!];
+    const now = cost(route, obs, ends);
+    if (now[0] === 0 && now[1] === 0 && now[2] === 0) continue;
+    let best: Point[] | null = null;
+    let bestCost = now;
+    for (const waypoints of [[ends[0]!, ...wire.vertices, ends[1]!], ends]) {
+      const candidate = autoRoute(waypoints, obs);
+      const k = cost(candidate, obs, ends);
+      if (better(k, bestCost)) {
+        best = candidate;
+        bestCost = k;
+      }
+    }
+    if (!best) continue;
+    const vertices = best.slice(1, -1);
+    out = {
+      ...out,
+      layout: {
+        ...out.layout,
+        wires: out.layout.wires.map((w): Wire => (w.id === id ? { ...w, vertices } : w)),
+      },
+    };
+  }
+  return out;
+}
+
+/**
+ * The wires a placement edit of `components` drags along: every wire with a terminal end on one
+ * of them, except the wires that were selected and moved rigidly with them.
+ */
+export function attachedWires(
+  doc: ProjectDocument,
+  components: Iterable<string>,
+  movedWires: Iterable<string> = [],
+): string[] {
+  const parts = new Set(components);
+  const rigid = new Set(movedWires);
+  const on = (e: Wire['from']) => e.kind === 'terminal' && parts.has(e.component);
+  return doc.layout.wires
+    .filter((w) => !rigid.has(w.id) && (on(w.from) || on(w.to)))
+    .map((w) => w.id);
 }

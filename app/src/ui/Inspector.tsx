@@ -4,7 +4,6 @@ import {
   deleteSelection,
   emptySelection,
   parseQuantity,
-  rotateComponents,
   setParam,
   type CheckIssue,
   type ComponentInstance,
@@ -17,6 +16,7 @@ import { RatingGroup } from './NoticeBar.js';
 import { warningsFor } from '../sim/ratings.js';
 import { useAppState, useStore, useT } from './context.js';
 import { checksFor } from './checks.js';
+import { rotateRouted } from './routing.js';
 import { probeTargetName, readProbe, type Probe } from './probes.js';
 import { McuPanel } from './McuPanel.js';
 
@@ -51,7 +51,7 @@ export function Inspector({ probes, onRemoveProbe, onClearProbes }: InspectorPro
         <button
           type="button"
           class="button"
-          onClick={() => store.apply(rotateComponents(doc, selection.components))}
+          onClick={() => store.apply(rotateRouted(doc, selection.components))}
         >
           {t('inspector.rotate')}
         </button>

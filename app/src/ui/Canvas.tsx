@@ -17,7 +17,6 @@ import {
   setParam,
   deleteSelection,
   emptySelection,
-  moveSelection,
   moveWireSegment,
   ESP32_DEVKITC_WROOM32,
   boardPinPosition,
@@ -27,7 +26,6 @@ import {
   contacts,
   endPosition,
   routeObstacles,
-  rotateComponents,
   rotatePoint,
   snap,
   snapPoint,
@@ -48,6 +46,7 @@ import { formatResult } from '../sim/format.js';
 import { useAppState, useStore, useT } from './context.js';
 import { checksFor } from './checks.js';
 import { SYMBOLS, type SymbolState } from './symbols.js';
+import { componentBox, componentBoxes, moveRouted, rotateRouted } from './routing.js';
 import type { GpioLevel } from '../runtime/view.js';
 import { warningsFor } from '../sim/ratings.js';
 import { probeAnchor, probeTargetName, readProbe, type Probe, type ProbeInput } from './probes.js';
@@ -124,26 +123,6 @@ function hitOf(target: EventTarget | null): Hit {
     default:
       return { kind: 'empty' };
   }
-}
-
-/** World-space bounding box of a placed component (rotation applied). */
-function componentBox(doc: ProjectDocument, c: ComponentInstance) {
-  const p = doc.layout.components[c.id]!;
-  const [x0, y0, x1, y1] = SYMBOLS[c.type].bbox;
-  const corners = [
-    { x: x0, y: y0 },
-    { x: x1, y: y0 },
-    { x: x0, y: y1 },
-    { x: x1, y: y1 },
-  ].map((q) => rotatePoint(q, p.rotation));
-  const xs = corners.map((q) => q.x + p.x);
-  const ys = corners.map((q) => q.y + p.y);
-  return {
-    minX: Math.min(...xs),
-    minY: Math.min(...ys),
-    maxX: Math.max(...xs),
-    maxY: Math.max(...ys),
-  };
 }
 
 /** Nearest grid point on a wire's drawn route to `p`. */
@@ -260,14 +239,7 @@ export function Canvas({
   const fitted = useRef<string | null>(null);
   // Obstacles for routing a NEW wire: existing wire segments, terminals and junctions, and the
   // component bodies. The preview and the committed wire use the same route.
-  const routeObs = useMemo(
-    () =>
-      routeObstacles(
-        doc,
-        doc.components.map((c) => componentBox(doc, c)),
-      ),
-    [doc],
-  );
+  const routeObs = useMemo(() => routeObstacles(doc, componentBoxes(doc)), [doc]);
 
   // Keep the camera sized to the element.
   useLayoutEffect(() => {
@@ -606,7 +578,7 @@ export function Canvas({
         setMode({ kind: 'idle' });
         break;
       case 'drag':
-        if (mode.delta.x || mode.delta.y) store.apply(moveSelection(doc, selection, mode.delta));
+        if (mode.delta.x || mode.delta.y) store.apply(moveRouted(doc, selection, mode.delta));
         setMode({ kind: 'idle' });
         break;
       case 'segment':
@@ -722,7 +694,7 @@ export function Canvas({
       e.preventDefault();
       const step = GRID * (e.shiftKey ? 5 : 1);
       if (hasSelection && !readOnly)
-        store.apply(moveSelection(doc, selection, { x: dir.x * step, y: dir.y * step }));
+        store.apply(moveRouted(doc, selection, { x: dir.x * step, y: dir.y * step }));
       else
         setCamera((c) => ({
           ...c,
@@ -737,7 +709,7 @@ export function Canvas({
       store.apply(deleteSelection(doc, selection), emptySelection());
       svgRef.current?.focus();
     } else if (e.code === 'KeyR' && !e.ctrlKey && !e.metaKey && selection.components.length) {
-      store.apply(rotateComponents(doc, selection.components));
+      store.apply(rotateRouted(doc, selection.components));
     }
   };
 
@@ -770,7 +742,7 @@ export function Canvas({
   const view =
     mode.kind === 'drag' && (mode.delta.x || mode.delta.y)
       ? (() => {
-          const r = moveSelection(doc, selection, mode.delta);
+          const r = moveRouted(doc, selection, mode.delta);
           return r.ok ? r.doc : doc;
         })()
       : mode.kind === 'segment' && (mode.delta.x || mode.delta.y)
