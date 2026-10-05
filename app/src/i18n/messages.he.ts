@@ -328,11 +328,13 @@ export const he: Record<MessageKey, string> = {
   // Sprint 9: generated views of the same circuit.
   'view.tabs': 'תצוגות הפרויקט',
   'view.tab.schematic': 'סכמה',
+  // The full product term; the tab shows the short form, its accessible name and tooltip this.
+  'view.name.schematic': 'סכמה חשמלית',
   'view.tab.3d': 'תלת־ממד',
   'view.loading': 'טוען…',
   'view.loadFailed': 'לא ניתן לטעון את התצוגה הזו. שאר התצוגות פועלות כרגיל.',
-  'schematic.aria': 'סכמה של {name}',
-  'schematic.controls': 'פקדי תצוגת הסכמה',
+  'schematic.aria': 'סכמה חשמלית של {name}',
+  'schematic.controls': 'פקדי תצוגת הסכמה החשמלית',
   'schematic.note': 'נוצרה מהמעגל. העריכה נעשית בתצוגת המעגל.',
   'view3d.aria': 'תצוגת תלת־ממד של {name}',
   'view3d.controls': 'פקדי תצוגת התלת־ממד',
@@ -341,7 +343,7 @@ export const he: Record<MessageKey, string> = {
   'view3d.rotateRight': 'סיבוב ימינה',
   'view3d.loading': 'טוען את תצוגת התלת־ממד…',
   'view3d.unavailable':
-    'תצוגת התלת־ממד דורשת WebGL, שאינו זמין בדפדפן או במכשיר הזה. תצוגות המעגל, הסכמה והקוד פועלות כרגיל.',
+    'תצוגת התלת־ממד דורשת WebGL, שאינו זמין בדפדפן או במכשיר הזה. תצוגות המעגל, הסכמה החשמלית והקוד פועלות כרגיל.',
   'view3d.loadFailed': 'לא ניתן לטעון את תצוגת התלת־ממד. שאר התצוגות פועלות כרגיל.',
   'view3d.note':
     'הדמיה של המעגל: גרירה לסיבוב, גלילה לזום, גרירה בלחצן הימני להזזה. העריכה נעשית בתצוגת המעגל.',

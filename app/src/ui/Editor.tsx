@@ -23,6 +23,10 @@ const VIEW_LABEL = {
   '3d': 'view.tab.3d',
   code: 'program.tab.code',
 } as const;
+/** Full view names where the tab shows a short form (accessible name and tooltip). */
+const VIEW_NAME: Partial<Record<View, 'view.name.schematic'>> = {
+  schematic: 'view.name.schematic',
+};
 
 /**
  * The editing workspace: palette, canvas and inspector. Run/Stop live in the top bar.
@@ -111,6 +115,8 @@ export function Editor() {
               class="view-tab"
               data-testid={`view-${v}`}
               aria-selected={active === v}
+              aria-label={VIEW_NAME[v] && t(VIEW_NAME[v])}
+              title={VIEW_NAME[v] && t(VIEW_NAME[v])}
               tabIndex={active === v ? 0 : -1}
               onClick={() => setView(v)}
             >

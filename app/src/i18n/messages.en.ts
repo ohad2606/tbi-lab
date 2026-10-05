@@ -341,6 +341,7 @@ export const en = {
   // Sprint 9: generated views of the same circuit.
   'view.tabs': 'Project views',
   'view.tab.schematic': 'Schematic',
+  'view.name.schematic': 'Schematic',
   'view.tab.3d': '3D',
   'view.loading': 'Loading…',
   'view.loadFailed': 'This view could not be loaded. The other views work as usual.',
