@@ -1,10 +1,11 @@
 # Sprint 8 — Public Hardening & Capacity
 
-**Status:** PHASES 0–4 COMPLETE (identity, ownership, containment, policy/admission). Deployed
-to dev-lab at `c31d62e`; technical validation passed. A closure blocker found during the owner's
-use (QEMU task limit, 2026-10-05) is fixed and deployed (see the end of this record). **Owner
-smoke (repeated Run/Stop): PASS** (2026-10-05). Closure proposed; no PR, merge or tag yet. Phases 5–6 not
-started. `main` and production unchanged; no PR, merge or tag.
+**Status:** **CLOSED** (2026-10-05) for Phases 0–4 (identity, ownership, containment,
+policy/admission) plus the QEMU `TasksMax` closure fix. Owner smoke PASS (Run/Stop repeated
+after the fix). Merged to `main` through PR #2 (CI run 37295624782 green on `4a4a6d9`); this
+docs-only commit is the closure commit, tagged `sprint-8-complete`. **Phases 5–6 are not done
+and are carried forward** (see "Closure" at the end). **Production deployment is deferred.**
+dev-lab runs this code (`c31d62e` release, QEMU unit at `TasksMax=80`).
 
 **Base:** `sprint-7-complete^{}` = `a2ad7c6`. **Branch:** `sprint-8`. **Architecture:**
 [SPRINT-8-ARCHITECTURE.md](SPRINT-8-ARCHITECTURE.md) (D-S8-1..13, owner decisions Q1–Q6).
@@ -758,4 +759,33 @@ slice still counts only the one rejection from before it).
 (127.0.0.1:7811 → `/run/tbi-s8-build/api.sock`, 127.0.0.1:7812 → `/run/tbi-s8-runtime/api.sock`,
 orphaned `sudo` parents) were terminated by PID after verifying they served only staging and
 nothing used them; both ports are closed.
+
+## Closure (2026-10-05)
+
+- **PR:** #2 `sprint-8` → `main`; CI run 37295624782 green on `4a4a6d9`.
+- **Closure commit:** this docs-only commit on top of `4a4a6d9` (tested code `36b56e4`: final
+  checks at `4a4a6d9`, identical code: typecheck, lint, 593 unit tests, QEMU task-limit test on
+  dev-lab 2/2). `main` fast-forwards from `a2ad7c6` (Sprint 7) to it; tag `sprint-8-complete`.
+- **dev-lab:** not redeployed. Its release (`c31d62e`) differs from the closure commit only in
+  documentation, tests and the QEMU unit template, whose installed unit already matches it.
+
+**Carried forward (not done in Sprint 8):**
+- **Phase 5, capacity and observability:**
+  - the measurements of §H of the architecture (queue wait vs arrival rate, session slowdown vs
+    concurrent sessions and builds, stall-timeout margin under load, memory headroom with N
+    sessions plus a compile, sandbox start overhead) on the 1-vCPU baseline **and** a temporary
+    4-vCPU class host (owner decision Q1); the cross-user compile cost (P5);
+  - CPU weighting validated under load (the QEMU unit's `CPUWeight=200` is in place, unmeasured);
+  - metrics, events and the operator script;
+  - the final `preview` plan values and global admission caps (today's values are provisional);
+  - per-cgroup swap/PSI under mixed load.
+- **Phase 6, validation:** the adversarial suite and the multi-user endurance run. (Deployment to
+  dev-lab, also listed under Phase 6, is done.)
+
+**Production: deferred**, because the Phase 5 capacity work was not performed on the larger
+temporary host, the current admission and capacity limits are provisional, and the current
+dev-lab host has one vCPU.
+
+**Staging:** the `tbi-s8-*` staging instance remains installed (idle). Removing it
+(`deploy/dev-lab/s8/install.sh staging --uninstall`) is a separate cleanup to be proposed first.
 
