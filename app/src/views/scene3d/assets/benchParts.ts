@@ -402,15 +402,18 @@ export function buildPsu(
     const win = new THREE.Mesh(
       own.shared('psu:lcd', () => new THREE.PlaneGeometry(4.4, 1.7)),
       own.mat(
-        new THREE.MeshPhysicalMaterial({
-          map: tex,
-          emissiveMap: tex,
-          emissive: '#ffffff',
-          emissiveIntensity: 0.9,
-          roughness: 0.15,
-          clearcoat: 1,
-          clearcoatRoughness: 0.05,
-        }),
+        own.tier === 'full'
+          ? new THREE.MeshPhysicalMaterial({
+              map: tex,
+              emissiveMap: tex,
+              emissive: '#ffffff',
+              emissiveIntensity: 0.9,
+              roughness: 0.15,
+              clearcoat: 1,
+              clearcoatRoughness: 0.05,
+            })
+          : // Reduced tier: the plain textured variant (one shader program fewer).
+            new THREE.MeshStandardMaterial({ map: tex, roughness: 0.3 }),
       ),
     );
     win.rotation.y = Math.PI / 2;

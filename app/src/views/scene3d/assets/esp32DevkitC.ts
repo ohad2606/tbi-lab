@@ -54,17 +54,19 @@ function finish(own: OwnedResources, name: string, original: THREE.Material): TH
         break;
       case 'markings':
         m.map = tex.marks;
-        m.transparent = false;
-        // Crisp printed edges without sorting: alpha-to-coverage with the stage's multisampling
-        // (full), a plain alpha test otherwise.
-        m.alphaTest = 0.4;
+        // Full: crisp printed edges without sorting (alpha-to-coverage with the stage's
+        // multisampling). Reduced: plain blending (an alpha test is another shader program).
+        m.transparent = !full;
+        m.depthWrite = full;
+        m.alphaTest = full ? 0.4 : 0;
         m.alphaToCoverage = full;
         m.polygonOffset = true;
         m.polygonOffsetFactor = -2;
         m.polygonOffsetUnits = -4;
         break;
       case 'shield_can':
-        m.roughnessMap = tex.brushed;
+        // Full tier only: on software WebGL each extra map is another shader program per opening.
+        if (full) m.roughnessMap = tex.brushed;
         break;
     }
     m.needsUpdate = true;

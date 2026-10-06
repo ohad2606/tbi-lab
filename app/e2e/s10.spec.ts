@@ -110,6 +110,8 @@ test('the inspector offers the approved LED cards by name (EN/HE); a choice chan
 test('physical 3D: viewing writes nothing; 20 enter/leave cycles of the ESP32 scene keep resources flat', async ({
   page,
 }) => {
+  // 20 openings on the software renderer at ~3 s each (Sprint 10 realism pass, SPRINT-10 Part H).
+  test.setTimeout(150_000);
   await openExample(page, 'esp32-input-echo');
   await waitSaved(page);
   const revisions = async () =>

@@ -122,6 +122,9 @@ test('3D: opens lazily, reflects the circuit, follows edits and project changes'
 });
 
 test('3D: entering and leaving repeatedly releases the renderer every time', async ({ page }) => {
+  // 20 openings on the software renderer at ~3 s each (Sprint 10 realism pass, measured in
+  // SPRINT-10 Part H): more than the default 60 s, by design of the test, not a leak.
+  test.setTimeout(150_000);
   const warnings: string[] = [];
   page.on('console', (m) => /WebGL|context/i.test(m.text()) && warnings.push(m.text()));
   await openExample(page, 'esp32-input-echo');

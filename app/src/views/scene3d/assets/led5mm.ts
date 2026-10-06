@@ -128,7 +128,7 @@ export function buildLedHiFi(
           opacity: look.clear ? 0.38 : 0.9,
           emissive: look.color,
           emissiveIntensity: 0,
-          emissiveMap: glowProfile(own),
+          // (reduced tier: no emissive map: one shader program fewer on software WebGL)
           depthWrite: false,
         }),
   );
