@@ -22,6 +22,7 @@ export const GLOSSARY_TERMS = [
   'relay',
   'photoresistor',
   'buzzer',
+  'transistor',
 ] as const;
 
 export type GlossaryTerm = (typeof GLOSSARY_TERMS)[number];
@@ -42,6 +43,7 @@ export const GLOSSARY: Record<string, Record<GlossaryTerm, string>> = {
     relay: 'Relay',
     photoresistor: 'Photoresistor (LDR)',
     buzzer: 'Buzzer',
+    transistor: 'Transistor',
   },
   he: {
     ground: 'אדמה (GND)',
@@ -58,6 +60,7 @@ export const GLOSSARY: Record<string, Record<GlossaryTerm, string>> = {
     relay: 'ממסר',
     photoresistor: 'נגד תלוי אור (LDR)',
     buzzer: 'זמזם',
+    transistor: 'טרנזיסטור',
   },
 };
 

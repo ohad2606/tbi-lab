@@ -19,6 +19,7 @@ import esp32Blink from './data/esp32-blink.json';
 import esp32InputEcho from './data/esp32-input-echo.json';
 import ledColours from './data/led-colours.json';
 import ledCurrent from './data/led-current.json';
+import nightLight from './data/night-light.json';
 import lightSensor from './data/light-sensor.json';
 import relayLoad from './data/relay-load.json';
 import rgbMixer from './data/rgb-mixer.json';
@@ -89,6 +90,13 @@ export const EXAMPLES: readonly Example[] = [
     summaryKey: 'example.light-sensor.summary',
     document: doc(lightSensor),
     probes: [V('R1', 'a')],
+  },
+  {
+    id: 'night-light',
+    titleKey: 'example.night-light.title',
+    summaryKey: 'example.night-light.summary',
+    document: doc(nightLight),
+    probes: [V('Q1', 'base'), I('D1')],
   },
   {
     id: 'relay-load',

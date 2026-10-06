@@ -60,7 +60,10 @@ describe('locale bundles', () => {
       'sim.badge.cc',
       'sim.badge.cv',
       // Sprint 10: RGB channel letters (R, G, B) are technical tokens, like pin names.
+      'sim.part.short.base',
       'sim.part.short.blue',
+      'sim.part.short.collector',
+      'sim.part.short.emitter',
       'sim.part.short.green',
       'sim.part.short.red',
       'unit.ampere.symbol',

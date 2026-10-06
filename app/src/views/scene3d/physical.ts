@@ -283,3 +283,19 @@ export const RELAY_SRD = {
     nc: [-19.1 / 2 + 15.6, 6],
   } as Record<string, readonly [number, number]>,
 };
+
+/**
+ * TO-92 (onsemi Case 29-11, straight leads): body 4.45-5.20 wide (flat face), 4.32-5.33 high,
+ * 3.18-4.19 deep; leads 0.41-0.53 wide at 1.15-1.39 mm pitch, E-B-C facing the flat side [TO92].
+ * Mid-tolerance values; standoff [REP].
+ */
+export const TO92 = {
+  widthMm: 4.8,
+  heightMm: 4.8,
+  depthMm: 3.7,
+  leadPitchMm: 1.27,
+  leadWidthMm: 0.46,
+  standoffMm: 3.0,
+  /** Lead order facing the flat face, left to right. */
+  pinOrder: ['emitter', 'base', 'collector'] as const,
+};

@@ -104,6 +104,11 @@ export interface SolveResult {
   activeSetIterations: number;
   /** Raw unknown vector, for debugging only. */
   x: readonly number[];
+  /**
+   * Sprint 10: set when the Newton step criterion was not met at the iteration limit but the
+   * iterate passed the exact-equation verification (an ill-conditioned femtoamp node).
+   */
+  acceptedByResidual?: boolean;
 }
 
 export class ConvergenceError extends Error {
@@ -282,6 +287,7 @@ export class Circuit {
     let x: number[] | null = null;
     let newtonTotal = 0;
     let activeSetPasses = 0;
+    let acceptedByResidual = false;
     const visitedModeSets = new Set<string>();
 
     for (;;) {
@@ -321,6 +327,21 @@ export class Circuit {
         x = xNew;
       }
       newtonTotal += iterations;
+      // Sprint 10: a node held only by femtoamp-level currents (a transistor in cut-off feeding an
+      // LED) next to an internal 1-ohm resistance is ill-conditioned: its voltage keeps jittering
+      // in the last digits and the step criterion (1e-12) cannot be met. Reaching the iteration
+      // limit with no device limiting, the iterate is accepted ONLY if it satisfies the exact device
+      // equations (the same verification every solution must pass, report()). Circuits that converge
+      // by the step criterion never reach this path, so their results are unchanged.
+      if (
+        !converged &&
+        x !== null &&
+        !this.devices.some((d) => d.limitingActive) &&
+        this.passesVerification(x, stampOpts, o)
+      ) {
+        converged = true;
+        acceptedByResidual = true;
+      }
       if (!converged || x === null) {
         throw new ConvergenceError('Newton-Raphson did not converge', {
           iterations,
@@ -349,7 +370,23 @@ export class Circuit {
       visitedModeSets.add(key);
     }
 
-    return this.report(x, stampOpts, newtonTotal, activeSetPasses, o);
+    const result = this.report(x, stampOpts, newtonTotal, activeSetPasses, o);
+    return acceptedByResidual ? { ...result, acceptedByResidual } : result;
+  }
+
+  /** Whether x satisfies the exact device equations within the report() thresholds. */
+  private passesVerification(
+    x: readonly number[],
+    stampOpts: StampOptions,
+    o: Required<SolveOptions>,
+  ): boolean {
+    try {
+      this.report(x, stampOpts, 0, 0, o);
+      return true;
+    } catch (e) {
+      if (e instanceof ConvergenceError) return false;
+      throw e;
+    }
   }
 
   /** Build the result and verify it against the exact, non-linearised device equations. */

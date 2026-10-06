@@ -548,12 +548,17 @@ function PartResultRows({ result: r }: { result: ComponentResult }) {
     <>
       {r.voltage !== null && (
         <ResultRow
-          label={t('sim.results.voltage')}
+          // A part may name its voltage (a transistor's is V_CE): `sim.part.voltage.<type>`.
+          label={
+            label(`sim.part.voltage.${r.type}`) === `sim.part.voltage.${r.type}`
+              ? t('sim.results.voltage')
+              : label(`sim.part.voltage.${r.type}`)
+          }
           value={formatResult(locale, r.voltage, 'volt')}
           testId="result-voltage"
         />
       )}
-      {r.current !== null && (
+      {r.current !== null && !r.currents && (
         <ResultRow label={t('sim.results.current')} value={I(r.current)} testId="result-current" />
       )}
       {Object.entries(r.currents ?? {}).map(([k, v]) => (

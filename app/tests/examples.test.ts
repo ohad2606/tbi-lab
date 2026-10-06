@@ -32,7 +32,7 @@ const near = (a: number | null | undefined, e: number, rel = REL) => {
 const example = (id: string) => EXAMPLES.find((e) => e.id === id)!.document;
 
 describe('the example set', () => {
-  it('has the ten DC examples and the two ESP32 examples, each titled in English and Hebrew', () => {
+  it('has the eleven DC examples and the two ESP32 examples, each titled in English and Hebrew', () => {
     expect(EXAMPLES.map((e) => e.id)).toEqual([
       'ohms-law',
       'voltage-divider',
@@ -40,6 +40,7 @@ describe('the example set', () => {
       'led-colours',
       'rgb-mixer',
       'light-sensor',
+      'night-light',
       'relay-load',
       'diode-polarity',
       'push-button',
@@ -141,6 +142,24 @@ describe('expected engineering results (production engine)', () => {
     const r = solve(example('light-sensor'));
     near(r.components.R1!.terminals.a, (9 * 10e3) / (10e3 + Math.sqrt(2e8)), 1e-9);
     expect(r.components.LDR1!.outsideModelRange).toBe(false);
+  });
+
+  it('night light (Sprint 10): dark (5 lx) lights the LED through the 2N3904; bright (100 lx) does not', () => {
+    const doc = example('night-light');
+    const dark = solve(doc);
+    // 5 lx: the divider puts the 2N3904 well into conduction (forward active, about 9 mA).
+    expect(dark.components.Q1!.state!.region).toBe('active');
+    expect(dark.components.D1!.current).toBeGreaterThan(0.008);
+    const bright = solve({
+      ...doc,
+      components: doc.components.map((c) =>
+        c.id === 'LDR1'
+          ? { ...c, params: { ...c.params, illuminance: { value: 100, unit: 'lux' } } }
+          : c,
+      ),
+    });
+    expect(bright.components.Q1!.state!.region).toBe('cutoff');
+    expect(bright.components.D1!.current!).toBeLessThan(1e-5);
   });
 
   it('relay load (Sprint 10): at rest the buzzer sounds through NC and the LED is dark', () => {

@@ -48,6 +48,7 @@ describe('Sprint 4 catalog: the non-MCU V1 catalog is complete and closed (A16)'
         'component.photoresistor',
         'component.buzzer',
         'component.relay',
+        'component.bjt_npn',
       ].sort(),
     );
   });

@@ -13,7 +13,7 @@ export const PALETTE_GROUPS: readonly { key: MessageKey; types: readonly Compone
   { key: 'palette.group.passive', types: ['component.resistor'] },
   {
     key: 'palette.group.semiconductors',
-    types: ['component.led', 'component.rgb_led', 'component.diode'],
+    types: ['component.led', 'component.rgb_led', 'component.diode', 'component.bjt_npn'],
   },
   {
     key: 'palette.group.switches',

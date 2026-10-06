@@ -45,7 +45,8 @@ export type ComponentTypeId =
   | 'component.rgb_led'
   | 'component.photoresistor'
   | 'component.buzzer'
-  | 'component.relay';
+  | 'component.relay'
+  | 'component.bjt_npn';
 
 export interface ComponentInstance {
   /** Stable reference designator (`R1`, `PSU1`), unique per project, never reused. */

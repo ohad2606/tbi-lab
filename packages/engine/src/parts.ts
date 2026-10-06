@@ -61,6 +61,8 @@ export interface PartSolution {
   contactCurrent(key: string): number | null;
   /** The device object of one of the part's elements (for model-specific readouts). */
   device(key: string): Device | undefined;
+  /** A multi-terminal device's exact terminal currents at the solution (into the device). */
+  deviceTerminalCurrents?(key: string): { ic: number; ib: number; ie: number } | undefined;
 }
 
 /** One datasheet-sourced part a model id stands for. */

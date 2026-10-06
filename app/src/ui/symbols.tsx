@@ -147,6 +147,22 @@ export const SYMBOLS: Record<ComponentTypeId, SymbolDef> = {
       </>
     ),
   },
+  'component.bjt_npn': {
+    bbox: [-40, -40, 26, 40],
+    // NPN: base bar, collector up, emitter down with the arrow pointing out of the emitter.
+    draw: () => (
+      <>
+        <circle cx={4} cy={0} r={20} class="symbol-body" />
+        <line x1={-40} y1={0} x2={-6} y2={0} />
+        <line x1={-6} y1={-13} x2={-6} y2={13} class="actuator-part" />
+        <line x1={-6} y1={-6} x2={20} y2={-22} />
+        <line x1={20} y1={-22} x2={20} y2={-40} />
+        <line x1={-6} y1={6} x2={20} y2={22} />
+        <line x1={20} y1={22} x2={20} y2={40} />
+        <polygon points="20,22 10,21 15,14" class="diode-body" />
+      </>
+    ),
+  },
   'component.relay': {
     bbox: [-60, -28, 60, 40],
     // Coil and change-over contact; the dashed link is mechanical, not electrical. The blade shows

@@ -40,6 +40,7 @@ export const LEADED_TYPES: ReadonlySet<ComponentTypeId> = new Set<ComponentTypeI
   'component.rgb_led',
   'component.photoresistor',
   'component.buzzer',
+  'component.bjt_npn',
 ]);
 
 const same = (a: { x: number; y: number } | undefined, b: { x: number; y: number } | undefined) =>

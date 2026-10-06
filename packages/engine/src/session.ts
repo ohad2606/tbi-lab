@@ -15,6 +15,10 @@ import type { ComponentInstance, SimulationSnapshot } from '@tbi-lab/domain';
 import { Circuit, ConvergenceError } from './circuit.js';
 import { Diode, LabPsu, Resistor, VoltageSource, type Device } from './devices.js';
 import { GpioPin } from './esp32Gpio.js';
+import { Npn } from './bjt.js';
+
+/** The solver's default junction gmin (circuit.ts DEFAULTS), for exact device readouts. */
+const DC_GMIN = 1e-12;
 import { SingularMatrixError } from './linalg.js';
 import { MODEL_CARDS, MODEL_VALID_CURRENT_A } from './registry.js';
 import {
@@ -703,6 +707,7 @@ export class EngineSession {
     let nodeVoltages: ReadonlyMap<string, number> = new Map([[REF, 0]]);
     let currents: ReadonlyMap<string, number> = new Map();
     let modes: ReadonlyMap<string, string> = new Map();
+    let xSolution: readonly number[] = [];
     let stats: SolveStats = {
       unknowns: 0,
       newtonIterations: 0,
@@ -719,6 +724,7 @@ export class EngineSession {
     if (hasUnknowns) {
       try {
         const r = circuit.solve();
+        xSolution = r.x;
         nodeVoltages = r.nodeVoltages;
         currents = r.deviceCurrents;
         modes = r.supplyModes;
@@ -806,6 +812,12 @@ export class EngineSession {
               ? null
               : clean(-(currents.get(key) ?? 0)), // 0 V branch: first node -> second
         device: (key) => devices.get(key),
+        deviceTerminalCurrents: (key) => {
+          const d = devices.get(key);
+          if (!(d instanceof Npn) || !xSolution.length) return undefined;
+          const t = d.terminalCurrents(xSolution, DC_GMIN);
+          return { ic: clean(t.ic), ib: clean(t.ib), ie: clean(t.ie) };
+        },
       };
       components[p.c.id] = { id: p.c.id, type: p.c.type, ...p.model.report(p.ctx, p.state, sol) };
       if (p.model.nextState) next.set(p.c.id, p.model.nextState(p.ctx, p.state, sol));

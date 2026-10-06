@@ -22,6 +22,7 @@ import {
   LDR_GL5528,
   RELAY_SRD,
   RGB_LED_5MM,
+  TO92,
   ESP32_DEVKITC,
   ESP32_PCB_BOTTOM,
   ESP32_PCB_TOP,
@@ -649,7 +650,64 @@ function buildRelay(_c: SceneComponent, m: Materials, own: OwnedResources) {
 // ---------------------------------------------------------------------------------------------
 // Builders
 
+function buildTo92(c: SceneComponent, m: Materials, own: OwnedResources) {
+  const p = TO92;
+  const g = new THREE.Group();
+  const y0 = p.standoffMm;
+  // The D-shaped body: flat face towards +z (the viewer of the default camera), round back.
+  const r = p.widthMm / 2;
+  const flatZ = p.depthMm - r; // the flat face's distance in front of the round back's centre
+  const body = mesh(
+    own.shared('to92', () => {
+      // In the shape plane, y maps to -z: the chord at y = -flatZ becomes the flat face at
+      // z = +flatZ (towards the default camera), the arc through +y the round back.
+      const a = Math.asin(Math.min(1, flatZ / r));
+      const sh = new THREE.Shape();
+      sh.absarc(0, 0, r, -a, Math.PI + a, false);
+      sh.lineTo(r * Math.cos(-a), -flatZ);
+      const geo = new THREE.ExtrudeGeometry(sh, {
+        depth: p.heightMm,
+        bevelEnabled: false,
+        curveSegments: 24,
+      });
+      geo.rotateX(-Math.PI / 2);
+      return geo;
+    }),
+    m.ic,
+    [0, y0, 0],
+  );
+  g.add(body);
+  // The marking on the flat face.
+  const tex = canvasTexture(own, 256, 256, (ctx) => {
+    ctx.clearRect(0, 0, 256, 256);
+    ctx.fillStyle = '#9da2a8';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = 'bold 54px sans-serif';
+    ctx.fillText('2N', 128, 92);
+    ctx.fillText('3904', 128, 160);
+  });
+  const face = new THREE.Mesh(
+    own.shared('plane:to92face', () => new THREE.PlaneGeometry(p.widthMm * 0.8, p.heightMm * 0.8)),
+    own.mat(new THREE.MeshStandardMaterial({ map: tex, transparent: true, roughness: 0.6 })),
+  );
+  // Facing the flat side (from +z), the leads read E-B-C left to right, as on the drawing.
+  face.position.set(0, y0 + p.heightMm / 2, flatZ + 0.01);
+  g.add(face);
+  const xs = p.pinOrder.map((_, i) => (i - 1) * p.leadPitchMm);
+  const at = (pin: string) => xs[p.pinOrder.indexOf(pin as (typeof p.pinOrder)[number])]!;
+  g.add(
+    splayedLeads(c, own, m.lead, p.leadWidthMm / 2, [
+      { terminal: 'emitter', from: [at('emitter'), 0], top: y0 + 0.2, knee: 1.8 },
+      { terminal: 'base', from: [at('base'), 0], top: y0 + 0.2, knee: 1.0 },
+      { terminal: 'collector', from: [at('collector'), 0], top: y0 + 0.2, knee: 1.4 },
+    ]),
+  );
+  return g;
+}
+
 const BUILDERS: Record<ModelKey, Builder> = {
+  'transistor.to92': buildTo92,
   'led.rgb': buildRgbLed,
   'ldr.disc': buildPhotoresistor,
   'buzzer.can': buildBuzzer,

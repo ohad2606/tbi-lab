@@ -198,6 +198,29 @@ const SPRINT10_TYPES = {
     aliases: ['buzzer', 'beeper', 'sounder', 'active buzzer'],
     mcuRuntime: false,
   },
+  'component.bjt_npn': {
+    type: 'component.bjt_npn',
+    typeVersion: 1,
+    refPrefix: 'Q',
+    nameKey: 'component.component.bjt_npn.name',
+    symbol: 'symbol.bjt_npn',
+    terminals: [
+      { id: 'collector', offset: { x: 20, y: -40 }, labelKey: 'terminal.collector' },
+      { id: 'base', offset: { x: -40, y: 0 }, labelKey: 'terminal.base' },
+      { id: 'emitter', offset: { x: 20, y: 40 }, labelKey: 'terminal.emitter' },
+    ],
+    params: [
+      {
+        kind: 'enum',
+        key: 'model',
+        options: [{ value: 'model.bjt.fairchild_2n3904', labelKey: 'model.bjt.fairchild_2n3904' }],
+        default: 'model.bjt.fairchild_2n3904',
+        labelKey: 'param.model',
+      },
+    ],
+    aliases: ['transistor', 'npn', 'bjt', '2n3904', 'טרנזיסטור'],
+    mcuRuntime: false,
+  },
   'component.relay': {
     type: 'component.relay',
     typeVersion: 1,
@@ -229,10 +252,7 @@ const SPRINT10_TYPES = {
     aliases: ['relay', 'spdt relay', 'srd-05vdc', 'ממסר', 'ריליי'],
     mcuRuntime: false,
   },
-} satisfies Record<
-  'component.rgb_led' | 'component.photoresistor' | 'component.buzzer' | 'component.relay',
-  ComponentTypeDef
->;
+} satisfies Partial<Record<ComponentTypeId, ComponentTypeDef>>;
 
 export const CATALOG: Record<ComponentTypeId, ComponentTypeDef> = {
   ...SPRINT10_TYPES,
@@ -434,6 +454,7 @@ export const CATALOG_ORDER: readonly ComponentTypeId[] = [
   'component.photoresistor',
   'component.buzzer',
   'component.relay',
+  'component.bjt_npn',
   'board.esp32_devkitc_wroom32',
 ];
 

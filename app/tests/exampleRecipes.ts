@@ -257,6 +257,34 @@ export const RECIPES: Record<string, () => ProjectDocument> = {
     r.wire(T(B, 'negative'), T(G5, 'ref'), [{ x: 640, y: -100 }]);
     return r.centre(-240);
   },
+  /**
+   * Sprint 10. Night light: 47 kΩ over a GL5528 photoresistor biases a 2N3904's base; the LED and
+   * 220 Ω sit in its collector. In the dark the divider turns the transistor on (the LED lights);
+   * in bright light the base falls below conduction and the LED goes out.
+   */
+  'night-light': () => {
+    const r = new Recipe('night-light', 'Night light');
+    r.supply(5, 0.1);
+    const R1 = r.place('component.resistor', 160, 20, 1);
+    const L = r.place('component.photoresistor', 160, 140, 1);
+    const G2 = r.place('component.ground', 160, 240);
+    const Q = r.place('component.bjt_npn', 280, 60);
+    const G3 = r.place('component.ground', 300, 180);
+    const D = r.place('component.led', 300, -60, 1);
+    const R2 = r.place('component.resistor', 240, -140);
+    r.set(R1, 'resistance', 47_000, 'ohm');
+    r.set(R2, 'resistance', 220, 'ohm');
+    r.set(L, 'illuminance', 5, 'lux');
+    const feed = r.wire(T('PSU1', 'positive'), T(R1, 'a'));
+    r.wire(T(R1, 'b'), T(L, 'a'));
+    r.wire(T(L, 'b'), T(G2, 'ref'));
+    r.wire(T(R1, 'b'), T(Q, 'base'));
+    r.wire(T(Q, 'emitter'), T(G3, 'ref'));
+    r.wire(T(D, 'cathode'), T(Q, 'collector'));
+    r.wire({ kind: 'wire', wire: feed, at: { x: 100, y: -20 } }, T(R2, 'a'), [{ x: 100, y: -140 }]);
+    r.wire(T(R2, 'b'), T(D, 'anode'), [{ x: 300, y: -140 }]);
+    return r.centre(-120);
+  },
   /** Two identical 1 kΩ + 1N4148 branches; D1 forward conducts ~4.3 mA, D2 reversed blocks (nA). */
   'diode-polarity': () => {
     const r = new Recipe('diode-polarity', 'Diode polarity');

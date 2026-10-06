@@ -127,6 +127,17 @@ export const SCHEMATIC_SYMBOLS: Record<ComponentTypeId, SchematicSymbol> = {
     partName: 'RGB LED',
     glyph: 'rgb_led.cc',
   },
+  'component.bjt_npn': {
+    kind: 'module',
+    key: 'module',
+    pins: [
+      { terminal: 'base', name: 'B', side: 'left', order: 1 },
+      { terminal: 'collector', name: 'C', side: 'right', order: 1 },
+      { terminal: 'emitter', name: 'E', side: 'right', order: 2 },
+    ],
+    partName: 'NPN',
+    glyph: 'bjt.npn',
+  },
   'component.relay': {
     kind: 'module',
     key: 'module',

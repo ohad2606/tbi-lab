@@ -46,6 +46,7 @@ import {
   LDR_GL5528,
   RELAY_SRD,
   RGB_LED_5MM,
+  TO92,
   ESP32_ATTACH_HEIGHT,
   ESP32_DEVKITC,
   ESP32_PIN_TOP,
@@ -77,6 +78,7 @@ export type ModelKey =
   | 'ldr.disc'
   | 'buzzer.can'
   | 'relay.cube'
+  | 'transistor.to92'
   | 'generic';
 
 /** Which model draws each component type. A type without an entry gets the generic box. */
@@ -93,6 +95,7 @@ export const MODEL_FOR: Partial<Record<ComponentTypeId, ModelKey>> = {
   'component.photoresistor': 'ldr.disc',
   'component.buzzer': 'buzzer.can',
   'component.relay': 'relay.cube',
+  'component.bjt_npn': 'transistor.to92',
 };
 
 export interface Vec3 {
@@ -200,6 +203,7 @@ export const MODEL_HEIGHT: Record<ModelKey, number> = {
   'ldr.disc': LDR_GL5528.standoffMm + LDR_GL5528.thicknessMm,
   'buzzer.can': BUZZER_CEM1205.standoffMm + BUZZER_CEM1205.heightMm,
   'relay.cube': RELAY_SRD.standoffMm + RELAY_SRD.heightMm,
+  'transistor.to92': TO92.standoffMm + TO92.heightMm,
   generic: 3,
 };
 
@@ -250,6 +254,7 @@ export const FOOTPRINT: Record<ModelKey, readonly [number, number, number, numbe
     -RELAY_SRD.widthMm / 2,
     RELAY_SRD.widthMm / 2,
   ],
+  'transistor.to92': [-6.7, 3.6, -6.7, 6.7],
   generic: [-6.35, 6.35, -1.5, 1.5],
 };
 

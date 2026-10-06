@@ -30,6 +30,7 @@ const NEW_TYPES: ComponentTypeId[] = [
   'component.photoresistor',
   'component.buzzer',
   'component.relay',
+  'component.bjt_npn',
 ];
 
 describe('Sprint 10 parts: catalog and serialization', () => {

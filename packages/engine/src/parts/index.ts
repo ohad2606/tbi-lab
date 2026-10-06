@@ -3,3 +3,4 @@ import './rgbLed.js';
 import './photoresistor.js';
 import './buzzer.js';
 import './relay.js';
+import './bjtNpn.js';
