@@ -8,27 +8,42 @@
  * of a wire being drawn, a Manhattan shape that stays visually independent. The chosen corners
  * become the wire's ordinary stored vertices; the schema and every existing wire are unchanged.
  *
- * Deterministic and grid-aligned. Each hop picks the lowest-cost candidate from a fixed,
- * ordered set:
+ * Deterministic and grid-aligned. Each hop first tries a fixed, ordered set of short shapes:
  *   0  horizontal-then-vertical L (the previous fixed rule; wins every tie)
  *   1  vertical-then-horizontal L
  *   2+ three-segment channels (V-H-V and H-V-H) whose middle segment runs on a grid line
  *      between the endpoints or up to 8 grid steps outside them
- * compared lexicographically by:
- *   1. length running coincident with an existing wire segment   (never look like one wire)
- *   2. length through a component body                            (never cross a symbol)
- *   3. touches: passing through another terminal/junction, or meeting an existing wire at a
- *      point that is not a clean crossing (a T or an end on the wire reads as a connection)
- *   4. crossings + bends (a clean crossing is allowed and drawn with a bridge; it costs the
+ * and, when none of them is clean, a grid search (any number of bends, around bodies and pin
+ * fields; `searchRoute`). Routes are compared lexicographically by:
+ *   1. TERMINAL KEEP-OUT: unrelated terminals, board pins and junctions the route enters, i.e.
+ *      passes within `TERMINAL_KEEP_OUT` of (Sprint 10 owner blocker). A wire drawn through a pin
+ *      reads as connected to it, so this ranks above everything else: a longer route around
+ *      the part always beats a short one along a header. Only the hop's own two endpoints are
+ *      exempt.
+ *   2. length running coincident with an existing wire segment   (never look like one wire)
+ *   3. length through a component body                            (never cross a symbol)
+ *   4. length running along a wire that is attached at the hop's own endpoint: the same terminal,
+ *      so the same net, and nothing false is implied. Needed when that wire takes the only free
+ *      way out of a pin (along a header the neighbouring pins block both other directions)
+ *   5. touches: meeting an existing wire at a point that is not a clean crossing (a T or an end
+ *      on the wire reads as a connection)
+ *   6. pin-field clearance: unrelated board header pins the route runs right beside (one grid
+ *      step away). Not misleading, but a wire hugging a header reads poorly; a wire goes around
+ *      a pin field with a visible gap when that costs only bends and length. The pins next to
+ *      the hop's own endpoints are exempt (every way out of a header pin passes them)
+ *   7. crossings + bends (a clean crossing is allowed and drawn with a bridge; it costs the
  *      same as one extra bend)
- *   5. total length
- *   6. candidate order
+ *   8. total length
+ *   9. candidate order (the short shapes before the search result)
  *
  * Presentation only. A route has NO electrical meaning: connectivity comes from explicit wire
  * endpoints (terminals, junctions), never from where a route happens to pass, so a new wire can
  * only ever join the net it is explicitly attached to.
  */
-import { boardPinPosition, getTypeDef } from './catalog.js';
+import { BOARD_HALF_WIDTH, boardPinPosition, boardTerminalId, getTypeDef } from './catalog.js';
+
+/** Length of the stub drawn for a board pin that cannot be wired (app symbol). */
+const BOARD_STUB = 8;
 import { ESP32_DEVKITC_WROOM32 } from './boards/esp32DevkitcWroom32.js';
 import { isContact } from './contacts.js';
 import { GRID, orthogonalRoute, rotatePoint, terminalPosition, wireRoute } from './layout.js';
@@ -49,10 +64,31 @@ export interface RouteObstacles {
   boxes: readonly RouteBox[];
   /** Terminal and junction positions a route must not pass through. */
   points: readonly Point[];
+  /**
+   * Drawn terminal LEAD-INS (Sprint 10): the line a symbol draws from its body out to a terminal
+   * (a board's pin stub). A wire running along or into one reads as attached to that pin, so a
+   * lead is keep-out like its terminal. `[terminal end, body end]`; the lead of a hop's own
+   * endpoint terminal is exempt. Optional: none when a symbol's leads lie inside its body box.
+   */
+  leads?: readonly (readonly [Point, Point])[];
+  /**
+   * Pin-field positions (a board's header pins, Sprint 10): a route keeps a full grid step of
+   * clearance from them where it can (criterion 6). Optional.
+   */
+  field?: readonly Point[];
 }
 
 /** How far outside its endpoints a channel may run, in grid steps. */
 const CHANNEL_REACH = 8;
+
+/**
+ * Terminal keep-out radius: a route segment closer than this to an unrelated terminal, board pin
+ * or junction ENTERS it. Larger than every marker the canvas draws there (terminal mark r 3.5,
+ * junction dot r 4.5, terminal hit area r 9), and half a grid step: on the routing grid a route
+ * either runs through a pin's centre line (entered) or a full grid step beside it (clear of its
+ * hit area by 11 units).
+ */
+export const TERMINAL_KEEP_OUT = GRID / 2;
 
 type Seg = readonly [Point, Point];
 const eq = (p: Point, q: Point) => p.x === q.x && p.y === q.y;
@@ -159,23 +195,55 @@ function crosses(s: Seg, t: Seg): boolean {
   return inside(v[0].x, h[0].x, h[1].x) && inside(h[0].y, v[0].y, v[1].y);
 }
 
+/** Distance from `p` to the segment `s`. */
+function distance(p: Point, s: Seg): number {
+  const x = Math.max(Math.min(s[0].x, s[1].x), Math.min(p.x, Math.max(s[0].x, s[1].x)));
+  const y = Math.max(Math.min(s[0].y, s[1].y), Math.min(p.y, Math.max(s[0].y, s[1].y)));
+  return Math.hypot(p.x - x, p.y - y);
+}
+
+/** Unrelated terminals, pins and junctions the path enters (not its own endpoints). */
+/** Distance between two axis-aligned segments (0 when they meet). */
+function segDistance(s: Seg, t: Seg): number {
+  const meet =
+    Math.max(Math.min(s[0].x, s[1].x), Math.min(t[0].x, t[1].x)) <=
+      Math.min(Math.max(s[0].x, s[1].x), Math.max(t[0].x, t[1].x)) &&
+    Math.max(Math.min(s[0].y, s[1].y), Math.min(t[0].y, t[1].y)) <=
+      Math.min(Math.max(s[0].y, s[1].y), Math.max(t[0].y, t[1].y));
+  if (meet) return 0;
+  return Math.min(distance(s[0], t), distance(s[1], t), distance(t[0], s), distance(t[1], s));
+}
+
+/** Unrelated terminals, pins, junctions and lead-ins the path enters (not its own endpoints'). */
+function keepOutHits(segs: readonly Seg[], obs: RouteObstacles, isEnd: (p: Point) => boolean) {
+  let n = 0;
+  for (const p of obs.points)
+    if (!isEnd(p) && segs.some((s) => distance(p, s) < TERMINAL_KEEP_OUT)) n++;
+  for (const l of obs.leads ?? [])
+    if (!isEnd(l[0]) && segs.some((s) => segDistance(s, l) < TERMINAL_KEEP_OUT)) n++;
+  return n;
+}
+
 function cost(path: Point[], obs: RouteObstacles, ends: readonly Point[]): number[] {
   const segs: Seg[] = [];
   for (let i = 0; i < path.length - 1; i++) segs.push([path[i]!, path[i + 1]!]);
   let overlap = 0;
+  let shared = 0;
   let body = 0;
   let touches = 0;
   let crossings = 0;
   const isEnd = (p: Point) => ends.some((e) => eq(e, p));
   for (const s of segs) {
     for (const t of obs.segments) {
-      overlap += overlapLength(s, t);
+      if (sharesEnd(t, ends)) shared += overlapLength(s, t);
+      else overlap += overlapLength(s, t);
       if (crosses(s, t)) crossings++;
     }
     for (const box of obs.boxes) body += boxLength(s, box);
   }
-  // Points where the new route meets something without a clean crossing.
-  for (const p of obs.points) if (!isEnd(p) && segs.some((s) => onSeg(p, s))) touches++;
+  const keepOut = keepOutHits(segs, obs, isEnd);
+  const hug = hugs(segs, obs, ends);
+  // Points where the new route meets an existing wire without a clean crossing.
   for (const t of obs.segments) {
     for (const q of [t[0], t[1]]) if (!isEnd(q) && segs.some((s) => onSeg(q, s))) touches++;
   }
@@ -185,7 +253,268 @@ function cost(path: Point[], obs: RouteObstacles, ends: readonly Point[]): numbe
     (n, s) => n + Math.abs(s[1].x - s[0].x) + Math.abs(s[1].y - s[0].y),
     0,
   );
-  return [overlap, body, touches, crossings + bends, length];
+  return [keepOut, overlap, body, shared, touches, hug, crossings + bends, length];
+}
+
+/** An existing wire segment that ends at one of the hop's endpoints (a wire on the same terminal). */
+const sharesEnd = (t: Seg, ends: readonly Point[]) => ends.some((e) => eq(t[0], e) || eq(t[1], e));
+
+/**
+ * A route is clean when it enters no terminal, runs along no other wire, through no body, and
+ * touches no wire.
+ */
+const clean = (k: readonly number[]) =>
+  k[0] === 0 && k[1] === 0 && k[2] === 0 && k[3] === 0 && k[4] === 0 && k[5] === 0;
+
+/** Whether pin-field point p is one grid step beside a segment (clear of it, but hugging it). */
+const beside = (p: Point, s: Seg) => {
+  const d = distance(p, s);
+  return d >= TERMINAL_KEEP_OUT && d <= GRID;
+};
+/** Pin-field points hugged by the path (criterion 6), the endpoints' neighbours exempt. */
+function hugs(segs: readonly Seg[], obs: RouteObstacles, ends: readonly Point[]): number {
+  let n = 0;
+  for (const p of obs.field ?? []) {
+    if (ends.some((e) => Math.hypot(p.x - e.x, p.y - e.y) <= GRID)) continue;
+    if (segs.some((s) => beside(p, s))) n++;
+  }
+  return n;
+}
+
+/** Weights that make the search's additive cost follow the lexicographic order above. */
+const W_KEEP = 1e15;
+const W_OVERLAP = 1e13; // per grid step
+const W_BODY = 1e11; // per grid step
+const W_SHARED = 1e9; // per grid step
+const W_TOUCH = 1e7;
+const W_HUG = 1e5; // per grid step beside a pin-field point
+const W_BEND = 1e3; // a bend or a clean crossing; a grid step of length costs 1
+/**
+ * Search area: a margin around the endpoints and the bodies it reaches, widened (doubling) while
+ * the best route still enters a keep-out, up to `SEARCH_MARGIN_MAX`; and its largest size.
+ */
+const SEARCH_MARGIN = 4 * GRID;
+const SEARCH_MARGIN_MAX = 32 * GRID;
+const SEARCH_MAX_NODES = 60_000;
+const DIRS: readonly Point[] = [
+  { x: GRID, y: 0 },
+  { x: 0, y: GRID },
+  { x: -GRID, y: 0 },
+  { x: 0, y: -GRID },
+];
+
+/**
+ * Grid search for a hop none of the short shapes routes cleanly (Sprint 10): a least-cost path on
+ * the routing grid through `a`, with any number of bends, priced by the same order as `cost`
+ * (keep-out, then wire overlap, body, touches, bends and crossings, length). It finds the way
+ * around a board's pin field or a dense group of parts. Null when the endpoints are not on one
+ * grid lattice or the area is too large; the caller keeps the best short shape then.
+ * The result is compared with the short shapes by `cost`, so it is used only when it is better.
+ */
+function searchRoute(a: Point, b: Point, obs: RouteObstacles, margin: number): Point[] | null {
+  if ((b.x - a.x) % GRID !== 0 || (b.y - a.y) % GRID !== 0) return null;
+  // Area: the endpoints, grown by every body it reaches, plus a margin to go around them.
+  let minX = Math.min(a.x, b.x) - margin;
+  let maxX = Math.max(a.x, b.x) + margin;
+  let minY = Math.min(a.y, b.y) - margin;
+  let maxY = Math.max(a.y, b.y) + margin;
+  for (let grown = true; grown;) {
+    grown = false;
+    for (const q of obs.boxes) {
+      if (q.maxX < minX || q.minX > maxX || q.maxY < minY || q.minY > maxY) continue;
+      const nx0 = Math.min(minX, q.minX - margin);
+      const nx1 = Math.max(maxX, q.maxX + margin);
+      const ny0 = Math.min(minY, q.minY - margin);
+      const ny1 = Math.max(maxY, q.maxY + margin);
+      if (nx0 < minX || nx1 > maxX || ny0 < minY || ny1 > maxY) grown = true;
+      [minX, maxX, minY, maxY] = [nx0, nx1, ny0, ny1];
+    }
+  }
+  // Lattice through `a`.
+  const x0 = a.x - Math.ceil((a.x - minX) / GRID) * GRID;
+  const y0 = a.y - Math.ceil((a.y - minY) / GRID) * GRID;
+  const nx = Math.floor((maxX - x0) / GRID) + 1;
+  const ny = Math.floor((maxY - y0) / GRID) + 1;
+  if (nx * ny > SEARCH_MAX_NODES) return null;
+  const node = (p: Point) => ((p.y - y0) / GRID) * nx + (p.x - x0) / GRID;
+  const at = (n: number): Point => ({ x: x0 + (n % nx) * GRID, y: y0 + Math.floor(n / nx) * GRID });
+  const isEnd = (p: Point) => eq(p, a) || eq(p, b);
+  // Spatial buckets (by nearest lattice node) of keep-out points and wire segments.
+  const cell = (x: number, y: number) =>
+    `${Math.round((x - x0) / GRID)},${Math.round((y - y0) / GRID)}`;
+  const pointsAt = new Map<string, Point[]>();
+  for (const p of obs.points) {
+    if (isEnd(p)) continue;
+    const k = cell(p.x, p.y);
+    pointsAt.set(k, [...(pointsAt.get(k) ?? []), p]);
+  }
+  const fieldAt = new Map<string, Point[]>();
+  for (const p of obs.field ?? []) {
+    if (Math.hypot(p.x - a.x, p.y - a.y) <= GRID || Math.hypot(p.x - b.x, p.y - b.y) <= GRID)
+      continue;
+    const k = cell(p.x, p.y);
+    fieldAt.set(k, [...(fieldAt.get(k) ?? []), p]);
+  }
+  const leadsAt = new Map<string, Seg[]>();
+  for (const l of obs.leads ?? []) {
+    if (isEnd(l[0])) continue;
+    for (const q of [l[0], l[1]]) {
+      const k = cell(q.x, q.y);
+      leadsAt.set(k, [...(leadsAt.get(k) ?? []), l]);
+    }
+  }
+  const segsAt = new Map<string, Seg[]>();
+  for (const t of obs.segments) {
+    const len = Math.abs(t[1].x - t[0].x) + Math.abs(t[1].y - t[0].y);
+    const n = Math.max(1, Math.ceil(len / GRID));
+    for (let i = 0; i <= n; i++) {
+      const k = cell(t[0].x + ((t[1].x - t[0].x) * i) / n, t[0].y + ((t[1].y - t[0].y) * i) / n);
+      const list = segsAt.get(k) ?? [];
+      if (!list.includes(t)) list.push(t);
+      segsAt.set(k, list);
+    }
+  }
+  const near = <T>(map: Map<string, T[]>, p: Point): T[] => {
+    const out = new Set<T>();
+    const cx = Math.round((p.x - x0) / GRID);
+    const cy = Math.round((p.y - y0) / GRID);
+    for (let i = -1; i <= 1; i++)
+      for (let j = -1; j <= 1; j++)
+        for (const v of map.get(`${cx + i},${cy + j}`) ?? []) out.add(v);
+    return [...out];
+  };
+  /** What lies near each lattice node (points, leads, wire segments); memoized. */
+  const around: ({ p: Point[]; l: Seg[]; t: Seg[]; f: Point[] } | undefined)[] = [];
+  const nearNode = (n: number) =>
+    (around[n] ??= {
+      p: near(pointsAt, at(n)),
+      l: near(leadsAt, at(n)),
+      t: near(segsAt, at(n)),
+      f: near(fieldAt, at(n)),
+    });
+  const union = <T>(x: T[], y: T[]): T[] => (y.length ? [...new Set([...x, ...y])] : x);
+  const total = nx * ny * 4;
+  /** Price of one grid step from lattice node n in direction d (without bends); memoized. */
+  const steps = new Float64Array(total).fill(-1);
+  const stepCost = (n: number, d: number): number => {
+    const memo = steps[n * 4 + d]!;
+    if (memo >= 0) return memo;
+    const u = at(n);
+    const v = { x: u.x + DIRS[d]!.x, y: u.y + DIRS[d]!.y };
+    const s: Seg = [u, v];
+    let c = 1;
+    const nu = nearNode(n);
+    const nv = nearNode(node(v));
+    for (const p of union(nu.p, nv.p)) if (distance(p, s) < TERMINAL_KEEP_OUT) c += W_KEEP;
+    for (const l of union(nu.l, nv.l)) if (segDistance(s, l) < TERMINAL_KEEP_OUT) c += W_KEEP;
+    for (const p of union(nu.f, nv.f)) if (beside(p, s)) c += W_HUG;
+    for (const t of union(nu.t, nv.t)) {
+      const o = overlapLength(s, t) / GRID;
+      c += o * (sharesEnd(t, [a, b]) ? W_SHARED : W_OVERLAP);
+      if (crosses(s, t)) c += W_BEND;
+    }
+    for (const q of obs.boxes) c += (boxLength(s, q) / GRID) * W_BODY;
+    steps[n * 4 + d] = c;
+    return c;
+  };
+  /** Wire segments through each lattice node (for crossings and touches); memoized. */
+  const through = new Map<number, Seg[]>();
+  const segsThrough = (n: number): Seg[] => {
+    let list = through.get(n);
+    if (!list) {
+      const v = at(n);
+      list = nearNode(n).t.filter((t) => onSeg(v, t));
+      through.set(n, list);
+    }
+    return list;
+  };
+  /** Price of passing through lattice node n from direction `din` to `dout`. */
+  const turnCost = (n: number, din: number, dout: number): number => {
+    let c = din >= 0 && din !== dout ? W_BEND : 0;
+    const v = at(n);
+    if (isEnd(v)) return c;
+    for (const t of segsThrough(n)) {
+      const atEnd = eq(v, t[0]) || eq(v, t[1]);
+      const perpendicular = vertical(t) ? DIRS[dout]!.y === 0 : DIRS[dout]!.x === 0;
+      // Straight through a wire's interior is a clean crossing; anything else meets it (a T).
+      if (atEnd || !perpendicular || din !== dout) c += W_TOUCH;
+      else c += W_BEND;
+    }
+    return c;
+  };
+  const dist = new Float64Array(total).fill(Infinity);
+  const prev = new Int32Array(total).fill(-1);
+  // Binary heap of [cost, state].
+  const heap: [number, number][] = [];
+  const push = (e: [number, number]) => {
+    heap.push(e);
+    for (let i = heap.length - 1; i > 0;) {
+      const j = (i - 1) >> 1;
+      if (heap[j]![0] < e[0] || (heap[j]![0] === e[0] && heap[j]![1] <= e[1])) break;
+      heap[i] = heap[j]!;
+      heap[j] = e;
+      i = j;
+    }
+  };
+  const pop = (): [number, number] => {
+    const top = heap[0]!;
+    const last = heap.pop()!;
+    if (heap.length) {
+      heap[0] = last;
+      for (let i = 0; ;) {
+        const l = 2 * i + 1;
+        const r = l + 1;
+        let m = i;
+        const less = (x: number, y: number) =>
+          heap[x]![0] < heap[y]![0] || (heap[x]![0] === heap[y]![0] && heap[x]![1] < heap[y]![1]);
+        if (l < heap.length && less(l, m)) m = l;
+        if (r < heap.length && less(r, m)) m = r;
+        if (m === i) break;
+        [heap[i], heap[m]] = [heap[m]!, heap[i]!];
+        i = m;
+      }
+    }
+    return top;
+  };
+  const inArea = (p: Point) =>
+    p.x >= x0 && p.y >= y0 && p.x < x0 + nx * GRID && p.y < y0 + ny * GRID;
+  // A*: every grid step costs at least 1, so the remaining Manhattan steps never overestimate.
+  const h = (n: number) => (Math.abs(at(n).x - b.x) + Math.abs(at(n).y - b.y)) / GRID;
+  const goal = node(b);
+  const relax = (from: number, n: number, din: number) => {
+    const u = at(n);
+    for (let d = 0; d < 4; d++) {
+      if (din >= 0 && (d + 2) % 4 === din) continue; // no U-turn in place
+      const v = { x: u.x + DIRS[d]!.x, y: u.y + DIRS[d]!.y };
+      if (!inArea(v)) continue;
+      const base = from < 0 ? 0 : dist[from]! + turnCost(n, din, d);
+      const c = base + stepCost(n, d);
+      const m = node(v);
+      const s = m * 4 + d;
+      if (c < dist[s]!) {
+        dist[s] = c;
+        prev[s] = from;
+        push([c + h(m), s]);
+      }
+    }
+  };
+  relax(-1, node(a), -1);
+  let found = -1;
+  while (heap.length) {
+    const [f, s] = pop();
+    const n = s >> 2;
+    if (f > dist[s]! + h(n)) continue;
+    if (n === goal) {
+      found = s;
+      break;
+    }
+    relax(s, n, s & 3);
+  }
+  if (found < 0) return null;
+  const pts: Point[] = [];
+  for (let s = found; s >= 0; s = prev[s]!) pts.push(at(s >> 2));
+  pts.push(a);
+  return orthogonalRoute(pts.reverse());
 }
 
 function better(p: number[], q: number[]): boolean {
@@ -214,6 +543,17 @@ export function autoRoute(waypoints: readonly Point[], obstacles: RouteObstacles
         best = c;
         bestCost = k;
       }
+    }
+    // None of the short shapes is clean: search, widening the area while a keep-out remains.
+    for (let m = SEARCH_MARGIN; !clean(bestCost) && m <= SEARCH_MARGIN_MAX; m *= 2) {
+      const found = searchRoute(a, b, obs, m);
+      if (!found) break;
+      const k = cost(found, obs, [a, b]);
+      if (better(k, bestCost)) {
+        best = found;
+        bestCost = k;
+      }
+      if (bestCost[0] === 0) break;
     }
     for (let j = 0; j < best!.length - 1; j++) segments.push([best![j]!, best![j + 1]!]);
     path.push(...best!.slice(1));
@@ -254,19 +594,33 @@ export function routeObstacles(
     seen.add(k);
     points.push(p);
   };
+  const leads: [Point, Point][] = [];
+  const field: Point[] = [];
   for (const c of doc.components) {
     for (const t of getTypeDef(c.type)?.terminals ?? []) {
       const p = terminalPosition(doc, c.id, t.id);
       if (p) add(p);
     }
     const placement = doc.layout.components[c.id];
-    if (c.type === 'board.esp32_devkitc_wroom32' && placement)
+    if (c.type === 'board.esp32_devkitc_wroom32' && placement) {
+      const at = (q: Point): Point => {
+        const r = rotatePoint(q, placement.rotation);
+        return { x: placement.x + r.x, y: placement.y + r.y };
+      };
       for (const pin of ESP32_DEVKITC_WROOM32.pins) {
-        const q = rotatePoint(boardPinPosition(pin), placement.rotation);
-        add({ x: placement.x + q.x, y: placement.y + q.y });
+        const pos = boardPinPosition(pin);
+        add(at(pos));
+        field.push(at(pos));
+        // The stub the board draws for the pin (app symbol): from the board edge out to the
+        // terminal, or a short stub at the edge for a pin that cannot be wired.
+        const edge = pos.x < 0 ? -BOARD_HALF_WIDTH : BOARD_HALF_WIDTH;
+        const outer =
+          boardTerminalId(pin) !== undefined ? pos.x : edge + Math.sign(pos.x) * BOARD_STUB;
+        leads.push([at({ x: outer, y: pos.y }), at({ x: edge, y: pos.y })]);
       }
+    }
   }
-  return { segments, boxes, points };
+  return { segments, boxes, points, leads, field };
 }
 
 /**
@@ -296,7 +650,7 @@ export function rerouteWires(
     const obs = routeObstacles(out, boxes, new Set([id]));
     const ends = [route[0]!, route[route.length - 1]!];
     const now = cost(route, obs, ends);
-    if (now[0] === 0 && now[1] === 0 && now[2] === 0) continue;
+    if (clean(now)) continue;
     let best: Point[] | null = null;
     let bestCost = now;
     for (const waypoints of [[ends[0]!, ...wire.vertices, ends[1]!], ends]) {
