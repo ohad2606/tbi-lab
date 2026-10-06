@@ -95,6 +95,12 @@ export class ProgramBuilds {
     return this.deps.client !== null;
   }
 
+  /** Whether any build is queued or compiling (a reload would abandon it). */
+  get busy(): boolean {
+    for (const e of this.entries.values()) if (e.building) return true;
+    return false;
+  }
+
   subscribe(listener: () => void): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);

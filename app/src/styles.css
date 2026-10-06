@@ -2840,3 +2840,13 @@ select {
   border-inline-start: 3px solid var(--muted);
   background: var(--panel-alt, rgba(0, 0, 0, 0.03));
 }
+
+/* New version available (UpdateBanner): actions at the inline end. */
+.update-banner .update-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-inline-start: auto;
+}
+.update-banner .update-version {
+  font-family: var(--mono, ui-monospace, monospace);
+}
