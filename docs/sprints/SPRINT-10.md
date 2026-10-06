@@ -9,6 +9,15 @@ Sprint 9 (`198ca92`), and the backends are unchanged (`c31d62e`).
 
 Architecture and scope: [SPRINT-10-ARCHITECTURE.md](SPRINT-10-ARCHITECTURE.md).
 
+## Scope decision (2026-10-06, after the first owner review)
+
+The PM revised PM-6: the closed eight-item catalog is superseded by the approved component families
+in `docs/product/V1-PRODUCT-SCOPE.md` §6.0. The potentiometer remains V1.1. The yellow and green LED
+cards are accepted and stay. The physical-scale 3D direction is accepted. Sprint 10 continues on the
+same branch and preview, in the PM's tier order (RGB LED, LDR, buzzer, relay, servo, I2C LCD; then
+sensors, matrix, transistor, capacitor/555). The rest of this record is updated as that work lands;
+the section below records the first overnight outcome.
+
 ## Scope outcome (read first)
 
 The authoritative product scope keeps the V1 catalog **closed at eight types** (PM-6). Transistors,

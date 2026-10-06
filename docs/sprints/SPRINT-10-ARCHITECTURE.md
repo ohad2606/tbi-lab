@@ -53,7 +53,14 @@ time."
 | MicroPython | Not in V1 (PM-4); the board and environment separation stays | PM-4 |
 | Arduino-family boards | Future ("additional MCU families") | §20 |
 
-### Scope conflict (recorded, not resolved by implementation)
+### Scope conflict — RESOLVED by the PM on 2026-10-06
+
+The PM revised PM-6 (`docs/product/V1-PRODUCT-SCOPE.md` §6.0). The closed eight-item catalog is
+superseded. The approved families may be added; the potentiometer remains V1.1; transient-dependent
+parts wait for honest time-domain simulation; displays are I2C only. The original record follows,
+unchanged.
+
+### Scope conflict (as recorded before the decision)
 
 The Sprint 10 brief names catalog expansion (RGB LED, transistors, capacitors, relay, buzzer,
 sensors, servo, 555, I2C LCD…). The same brief directs that the authoritative documents decide.

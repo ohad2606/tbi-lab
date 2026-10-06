@@ -1,7 +1,8 @@
 # TBI Lab — V1 Product Scope
 
 **Status:** **Approved in direction** by the PM. PM decisions PM-1..PM-8 are recorded as decided
-(§21). · **Date:** 2026-09-22 · **Phase:** Product scope closure (after Sprint 1)
+(§21). · **Date:** 2026-09-22 · **Phase:** Product scope closure (after Sprint 1) ·
+**Revised:** 2026-10-06, PM-6 catalog revision (§6.0, Sprint 10)
 
 **Release model:** V1 is a **controlled pilot**, not public general availability (§25).
 
@@ -200,8 +201,8 @@ Excluded means: **not built, not promised, and stated in the UI where a user mig
 |---|---|
 | AC analysis, transient analysis, waveforms over time | The engine is a DC operating-point solver. "DC only. No transient, no AC, no reactive components" (Gate A) |
 | Oscilloscope, signal generator, logic analyser | All require a time-domain engine that does not exist |
-| Capacitors, inductors | Meaningless in a DC-only engine: a capacitor is simply an open circuit. Including them would teach the wrong thing |
-| Transistors (BJT/MOSFET) | No model exists; a new nonlinear model plus validation is a sprint of its own |
+| Capacitors, inductors | Meaningless in a DC-only engine: a capacitor is simply an open circuit. Including them would teach the wrong thing. *2026-10-06 (§6.0): the capacitor is approved once transient simulation is exposed honestly* |
+| Transistors (BJT/MOSFET) | No model exists; a new nonlinear model plus validation is a sprint of its own. *2026-10-06 (§6.0): one identified transistor with a validated model is approved* |
 | ESP32 ADC, DAC, touch | The runtime's `analog` and `rtcio` peripherals are unimplemented (46 and 38 unimplemented accesses observed in one boot) |
 | ESP32 PWM/LEDC | Not in the emulated peripheral set, and a DC engine cannot represent a duty-cycled waveform honestly |
 | ESP32 I2C, SPI (user-level), external UART wiring | Not modelled in the electrical engine; no device models to talk to |
@@ -221,7 +222,50 @@ Excluded means: **not built, not promised, and stated in the UI where a user mig
 
 ## 6. Component catalog
 
-### 6.1 The V1 catalog is CLOSED
+### 6.0 PM-6 revised — the V1 catalog is open to the approved families (2026-10-06, Sprint 10)
+
+**This decision supersedes the closed eight-item catalog of §6.1.** The original PM-6 freeze no
+longer represents the approved product direction. §6.1 is kept below unchanged as the record of
+the original decision, but its "no component may be added" rule is **no longer authoritative**.
+
+**Still deferred:** the **potentiometer** stays **V1.1 (PM-6)**, with the ADC.
+
+**Approved component families for V1 development:**
+
+| Family | Approved members | Condition for exposure |
+|---|---|---|
+| Controllers | ESP32 family (current priority) | The architecture stays extensible to Arduino boards later. Board and programming environment remain separate concepts (§8) |
+| Switching | Push button, toggle switch, multi-position switch | A multi-position switch only where the model supports it cleanly |
+| Lighting | LED colours (datasheet model cards), RGB LED | RGB: genuine separate channels and one declared package (common cathode or common anode); emitted colour derives from the channel currents |
+| Basic components | Resistor, diode, transistor, capacitor, photoresistor (LDR), buzzer, relay | Transistor: one clearly identified part and model, with documented limits. Capacitor: **only when the transient model is exposed honestly** (below). Relay: coil side and contact side never electrically merged. Buzzer: electrical model separate from optional sound |
+| Sensors | Temperature/humidity, ultrasonic distance, PIR motion; more later through the same sensor abstraction | The simulated environment is a clear user control; device semantics are deterministic; no example-specific hard-coded outputs |
+| Matrices | A small LED matrix; larger later | Only if the first abstraction is sound (no per-LED UI state) |
+| Power | The existing lab supply | — |
+| ICs | Common educational ICs such as the 555 | **Only when the pin-level behaviour is technically credible.** Never a "magic oscillator" block |
+| Actuators | Servo | Its position derives from the actual control signal; no slider bypassing the electrical/control signal |
+| Displays | Character LCD through **I2C only** | Legacy parallel-wired LCDs are **not** in scope. The I2C path uses a reusable bus/peripheral abstraction, not tied to Arduino APIs, so future MicroPython support can reuse the same device semantics |
+
+This authorises the families. It does **not** require shipping all of them at once: complete
+components are preferred over placeholders.
+
+**Rules that still apply to every new component:**
+
+1. **Physics must be real** (CLAUDE.md). Each model is deterministic and traceable to a datasheet or
+   manufacturer model, with every assumption documented.
+2. **Transient-dependent components** (capacitor, 555 and anything whose behaviour is defined over
+   time) are exposed only once time-domain simulation is user-facing, deterministic, bounded and
+   integrated with Run/Stop. Until then they stay internal.
+3. **MCU-coupled behaviour** must come from the runtime. A component whose function depends on an
+   ESP32 facility the runtime does not yet model (PWM/LEDC, I2C, microsecond input timing) may be
+   exposed for local circuits only where it is meaningful there. Its ESP32 path stays refused with a
+   specific reason until the runtime models that facility.
+4. **Definition of done** for an exposed component: catalog, inspector, serialization, terminals,
+   2D, schematic, 3D, simulation semantics, English and Hebrew, and tests for each layer, including
+   cross-view agreement.
+5. **Board and toolchain extensibility is unchanged:** boards and programming environments remain
+   separate concepts. Arduino-family boards and MicroPython remain future work (§8.3).
+
+### 6.1 The V1 catalog is CLOSED *(original PM-6 — superseded by §6.0 on 2026-10-06)*
 
 The eight components below are the complete V1 catalog (PM-6). **No component may be added during
 implementation without an explicit scope decision** — this includes transistors, sensors, relays,
@@ -810,9 +854,11 @@ unsupported (P10).
 | Resistor, LED, diode, ground | ● | | |
 | Push button, toggle switch | ● | | |
 | Potentiometer | | ● | |
-| Capacitor / inductor (with transient) | | | ● |
-| Transistors, relays, op-amps, 555 | | | ● |
-| Sensors (LDR, thermistor, digital sensors) | | | ● |
+| Capacitor (with honest transient, §6.0); inductor | ○ | | ● |
+| Transistor, relay (§6.0) | ● | | |
+| 555 (only when credible, §6.0); op-amps | ○ | | ● |
+| RGB LED, buzzer, LED matrix, servo, I2C LCD (§6.0) | ● | | |
+| Sensors: LDR, PIR, ultrasonic, temperature/humidity (§6.0); thermistor | ● | | ○ |
 | DC operating-point simulation (browser-local) | ● | | |
 | Transient analysis | | | ● |
 | AC analysis | | | ● |
@@ -853,6 +899,8 @@ unsupported (P10).
 
 ● = planned there · ○ = candidate, not committed
 
+*2026-10-06: the §6.0 revision moves the component families above into V1 development; the list below is otherwise unchanged.*
+
 **Confirmed outside V1** (PM): potentiometer; full multimeter / resistance mode; capacitor and
 transient behaviour; oscilloscope; ADC/DAC; PWM/LEDC; externally wired UART; I2C/SPI; Wi-Fi/Bluetooth;
 MicroPython authoring; additional MCU families; breadboard view; cloud project sync; collaboration;
@@ -873,7 +921,7 @@ remain in the sections cited, so a later reversal is an informed one.
 | **PM-3** | Measurements | **Probes / inspector only.** Solver-backed node voltage, component current, PSU V/I and GPIO state. **Not called a multimeter.** Resistance and a full meter move to V1.1 | §9.2, §9.3 |
 | **PM-4** | MicroPython | **Not in V1**, and not advertised as a supported workflow. Sprint 0's result stays feasibility evidence | §8.3 |
 | **PM-5** | Browser scope | **Chromium-family desktop** for the controlled pilot; **Firefox** next; **Safari** not committed; no mobile or native target | §13 |
-| **PM-6** | Component catalog | **Closed eight-item catalog** (§6.1). Potentiometer V1.1; capacitor deferred until transient is honest; no transistors, sensors, relays, 555s or motors without an explicit scope decision | §6 |
+| **PM-6** | Component catalog | ~~Closed eight-item catalog (§6.1)~~ **Revised 2026-10-06 (§6.0):** the approved families (switching, lighting incl. RGB, transistor, LDR, buzzer, relay, sensors, LED matrix, servo, I2C-only LCD, 555 and capacitor once their time-domain behaviour is honest) may be added. Potentiometer remains V1.1 | §6 |
 | **PM-7** | Export / import | **In V1**, and **meaningfully portable**: schema data, user-authored source, firmware artifacts, hashes and compatibility metadata. Import validates; it never silently corrupts or reinterprets engineering values. Container format is a roadmap decision | §10.4 |
 | **PM-8** | Release model | **V1 is a controlled pilot**, not public GA. Local work never requires an account; the build and simulation services require authentication and authorization. Auth, limits and abuse protection are mandatory before public exposure. Authentication does not bring cloud storage | §11.2, §25 |
 
@@ -912,7 +960,7 @@ Complete when:
 
 1. Every V1 capability is traceable to proven evidence or to explicitly accepted new work (§4-§9).
 2. Every exclusion has a stated reason (§5, §18).
-3. The component catalog is **closed** (§6.1, PM-6).
+3. The component catalog is **closed** (§6.1, PM-6). *Superseded 2026-10-06: the catalog is open to the approved families of §6.0.*
 4. The ESP32 promise is expressed as a **board capability map**, not numeric ranges (§7).
 5. One firmware workflow is decided (§8, PM-2). ✔
 6. The acceptance journey is agreed as the definition of "V1 exists" (§19).
@@ -928,7 +976,7 @@ V1's Definition of Done is **pilot readiness**, not public-scale readiness. It r
 | Requirement | Note |
 |---|---|
 | The acceptance journey (§19) passes end to end, in English and Hebrew | Including export/import and the offline path |
-| The closed catalog behaves per §6, with model provenance recorded | No component added silently |
+| The catalog behaves per §6 (§6.0 since 2026-10-06), with model provenance recorded | No component added silently or outside the approved families |
 | The board capability map is implemented and datasheet-sourced (§7.2) | Including the `simulatorSupport` field |
 | The bank-1 output gap is closed, **or** GPIO 32/33 are labelled a simulator limitation | §7.2, §24 |
 | The runtime carries no fork-specific board devices on GPIO 4/16/27 | §7.2 |
