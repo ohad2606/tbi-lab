@@ -208,3 +208,19 @@ export async function buildProgram(page: Page, timeout = 60_000): Promise<void> 
   await page.getByTestId('view-circuit').click();
   await expect(page.getByTestId('canvas')).toBeVisible();
 }
+
+/**
+ * The page's visible text for translation scans, without the build-identity status line: its
+ * content (version, commit) is technical identity, the same in every language, and checked by
+ * version.spec.ts (left-to-right in Hebrew, equal to /version.json).
+ */
+export async function scannedText(page: Page): Promise<string> {
+  return page.evaluate(() => {
+    const bar = document.querySelector<HTMLElement>('.statusbar');
+    const before = bar?.style.display ?? '';
+    if (bar) bar.style.display = 'none';
+    const text = document.body.innerText;
+    if (bar) bar.style.display = before;
+    return text;
+  });
+}

@@ -11,16 +11,14 @@ import {
   waitForStoredProject,
   waitSaved,
   wire,
+  scannedText,
 } from './helpers.js';
 
 /** Words of Latin script left in the UI once allowed technical tokens are removed. */
 async function untranslatedWords(page: Page): Promise<string[]> {
   // Unit symbols with an SI prefix (mΩ, kΩ, GΩ, mA) are technical tokens, not words.
   // (Not after a letter: the V of "CV" is part of a word, not a unit.)
-  const text = (await page.locator('body').innerText()).replace(
-    /(?<![A-Za-z])[kmMGµunp]?[ΩVA](?![A-Za-z])/g,
-    ' ',
-  );
+  const text = (await scannedText(page)).replace(/(?<![A-Za-z])[kmMGµunp]?[ΩVA](?![A-Za-z])/g, ' ');
   const allowed = [
     /^TBI$/,
     /^Lab$/, // product name
@@ -104,7 +102,7 @@ test('English: every shipped screen reads in English with LTR chrome', async ({ 
   const canvas = (await page.getByTestId('canvas').boundingBox())!;
   expect(palette.x).toBeLessThan(canvas.x);
   // The only Hebrew allowed is the language menu's own name for Hebrew (its autonym).
-  const text = (await page.locator('body').innerText()).replace('עברית', '');
+  const text = (await scannedText(page)).replace('עברית', '');
   expect(text).not.toMatch(/[֐-׿]/);
 });
 

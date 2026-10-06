@@ -22,6 +22,7 @@ import {
   exportFromMenu,
   goToProjects,
   storedProjects,
+  scannedText,
 } from './helpers.js';
 
 const en = getLocale('en');
@@ -478,7 +479,7 @@ test('A13/A15: new Sprint 5 surfaces are Hebrew (technical tokens only), RTL chr
     /^k$/,
   ];
   const words = async () => {
-    const text = (await page.locator('body').innerText()).replace(
+    const text = (await scannedText(page)).replace(
       /(?<![A-Za-z])[kmMGµunp]?[ΩVA](?![A-Za-z])/g,
       ' ',
     );

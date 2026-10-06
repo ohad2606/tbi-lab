@@ -28,6 +28,7 @@ import {
   toScreen,
   waitForStoredProject,
   waitSaved,
+  scannedText,
 } from './helpers.js';
 
 /** Drag with the left button from one world point to another. */
@@ -546,10 +547,7 @@ test('A15: new Sprint 4 surfaces are fully translated in Hebrew (technical token
     /^\d+k\d*$/,
   ];
   const words = async () => {
-    const text = (await page.locator('body').innerText()).replace(
-      /[kmMGµunp]?[ΩVA](?![A-Za-z])/g,
-      ' ',
-    );
+    const text = (await scannedText(page)).replace(/[kmMGµunp]?[ΩVA](?![A-Za-z])/g, ' ');
     return [
       ...new Set(
         (text.match(/[A-Za-z_][A-Za-z0-9_]*/g) ?? []).filter(
