@@ -2,12 +2,127 @@
 
 **Status (2026-10-06):** developed on `sprint-10` (worktree `~/projects/tbi-lab-s10`), from
 `7f09d74` = `main` = `sprint-9-complete`. **The frontend/local simulation is promoted to the normal
-demo (`/`) as `bd78d2e`** (Part D), with PM approval. **Waiting for the owner smoke.**
+demo (`/`)** (Part D, with PM approval). **Owner smoke was BLOCKED by a wire-routing defect**
+(Part E); the fix is validated and republished. **Owner smoke is PENDING again, starting with the
+ESP32 GND routing case.**
 
 Not done: no PR, merge, tag, production deployment or backend deployment. The backends are unchanged
 (`c31d62e`, runtime `33e35e4ac5e798d7`). The isolated preview `/s10-preview/` stays.
 
 Architecture and scope: [SPRINT-10-ARCHITECTURE.md](SPRINT-10-ARCHITECTURE.md).
+
+## Part E — owner smoke BLOCKED: wire routed through ESP32 pins (2026-10-06)
+
+**Report (owner).** In an ESP32 project, connecting the ESP32 GND pin to a ground gave an
+automatic route straight down the right-hand pin row (J3), over many unrelated pin circles: it
+looked as if those pins were tied together. Release blocker; smoke stopped; R1 not started.
+
+**Root cause** (`packages/domain/src/route.ts`, reproduced numerically).
+- The router compared routes lexicographically by:
+  1. overlap with an existing wire;
+  2. length through a body;
+  3. "touches", which included passing through a terminal.
+- A terminal was only an exact point (no clearance), and only L-shapes and three-segment
+  channels were tried.
+- In the blink example the GND pin is already wired out to the right. Every clean way round
+  started by running 20 units along that wire (rank 1), and going left crossed the board
+  (rank 2). The route down the J3 column, through 18 pins, therefore won on rank 3.
+- Sweep with the old router, a ground at every grid position around the board:
+  - GND wire: 698 of 4186 routes passed over unrelated pins;
+  - every ESP32 terminal: 1196 of 5700 (blink) and 2509 of 5375 (input-echo).
+- A fresh project's single GND wire, and the re-routing of a dragged wire (Sprint 9), were already
+  clean (0 of 4186 and 0 of 2093). The defect needs existing wires near the pin.
+
+**Fix (`0bc0e98`): terminal keep-out.**
+- **Keep-out rule.** A route segment closer than `TERMINAL_KEEP_OUT` = 10 units (half a grid step)
+  to a terminal, board header pin (all 38, wireable or not) or junction ENTERS it. This is larger
+  than every marker drawn there (terminal mark r 3.5, junction dot r 4.5, hit area r 9).
+  - Only the hop's own source and destination are exempt.
+  - A board's drawn pin **lead-ins** (the stubs from the board edge to each pin) are keep-out
+    too, so a wire never runs along the board edge where the stubs meet it (that reads as a bus).
+- **New ranking:**
+  1. keep-out;
+  2. overlap with an unrelated wire;
+  3. body;
+  4. running along a wire attached at the hop's own endpoint (same terminal, same net: nothing
+     false is implied);
+  5. T-touches on wires;
+  6. **pin-field clearance**: a header pin one grid step beside the route; the pins next to the
+     route's own endpoint are exempt;
+  7. bends and crossings;
+  8. length.
+- **Detours.** When none of the short shapes is clean, a deterministic grid A* runs with the same
+  priorities (any number of bends, around the board or dense parts). Its area widens (doubling)
+  while a keep-out remains. It is used only when it is better.
+- No fake bridges over pins: routes never enter the pin zones.
+
+**Connectivity is unchanged in kind.**
+- Nets come only from explicit endpoints, junctions and direct contacts (terminal snapped to
+  terminal).
+- A wire crossing a pin or a wire never connects. A stored wire that does cross pins (an older
+  project) still connects nothing it crosses, and keeps the `wire_over_terminal` warning.
+- No schema or serialization change. Stored wires are not rewritten on load. A wire is re-routed
+  only when a part it is attached to is moved (Sprint 9 behaviour, now with the new rule).
+
+**Result (same sweeps).**
+- 0 routes over unrelated pins: GND 0 of 4186, both directions; all terminals 0 of 5700 and 0 of 5375.
+- 0 through a body in blink.
+- In input-echo, 8 pins are boxed in at every position (215 each, 1720 routes) by neighbour
+  pins, an adjacent resistor or a junction on three sides. They cross a body instead of a pin,
+  which is the intended fallback.
+- Time per new-wire route: median 2–3 ms, p99 about 20 ms, worst about 16 ms warm.
+
+**Regression tests.**
+- `packages/domain/tests/route-keepout.test.ts` (8):
+  - the owner case in both directions (exact route, no pin, lead or body entered, pin-field clearance);
+  - committed nets: only U1.gnd joins ground, and every other pin keeps its previous node;
+  - an old header route connects nothing and is flagged on exactly the crossed pins;
+  - a ground at every grid position: about 1000 routes, 0 entering a pin;
+  - generic third terminal on the straight path;
+  - dense 900-unit pin column (longer safe path);
+  - boxed-in pin;
+  - save/load.
+- `app/tests/route-keepout-views.test.ts` (2): schematic and 3D follow connectivity for the routed
+  wire and for an old header route.
+- `app/e2e/routing-keepout.spec.ts` (1): the owner flow in the browser (ESP32 example, new
+  ground, wire); route, markers, nets, schematic, 3D, reload.
+
+**Validation of the fix (`2b014c2`).**
+
+| Check | Result |
+|---|---|
+| Typecheck, lint with boundaries, production build | pass |
+| Unit (domain routing and connectivity, schematic, 3D, cross-view, serialization) | **741 passed**, 77 files (731 + 10 new) |
+| Browser, complete suite | **145 passed**, 3 skipped (the usual heavy specs), **0 failed** (144 + the new owner-flow spec) |
+| Legacy browser | 4 passed |
+
+- The first full run (on `0bc0e98`) had 1 failure: the Sprint 5 library test, which after
+  `reload()` checked `isVisible()` before the app had rendered. That is a test race in an
+  untouched area; the spec passed 3 of 3 repeats.
+- It was fixed in the test (wait for the app before branching, `2b014c2`), and the complete
+  suite was re-run clean.
+
+**Republished (frontend only).**
+- `2b014c2` (`2b014c283e906471a10de0247a84601d7387e330`) via `publish-frontend.sh`; previous
+  release `bd78d2e`.
+- Installed tree byte-identical to an independent clean pre-build (16 files).
+- Rollback targets intact: `bd78d2e` (16/16) and `198ca92` (14/14). Rollback:
+  ```
+  sudo ln -sfn /srv/tbi-lab/dev-lab/bd78d2ebb400703d2714673487acc19d8c677a5e /srv/tbi-lab/dev-lab/current.tmp
+  sudo mv -T /srv/tbi-lab/dev-lab/current.tmp /srv/tbi-lab/dev-lab/current
+  ```
+
+| Post-deploy check (against `/`, fresh principals) | Result |
+|---|---|
+| Served files against `2b014c2` | **16/16** hash-match |
+| Sprint 10 demo checks, now including the owner's GND case (route, no marker, exported netlist: only U1.gnd in the new ground's net) | **32/32** |
+| Sprint 9 demo smoke, including ESP32 Build → Run → Stop on the unchanged backend | **all passed**, 0 failed |
+| Services (6): start times and PIDs | unchanged |
+| Backend files (`c31d62e`), session-host in both running hosts, Caddy, QEMU `538af3d7…`, runtime `33e35e4ac5e798d7` | unchanged |
+
+Screenshot of the corrected route on the live demo: [s10-evidence/esp32-gnd-route-demo.png](s10-evidence/esp32-gnd-route-demo.png).
+
+**Owner smoke: PENDING again.** First item: the ESP32 GND routing case. Phase R1 has not started.
 
 ## Part D — promotion to the normal demo (2026-10-06)
 
