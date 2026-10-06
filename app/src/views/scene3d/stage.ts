@@ -76,8 +76,11 @@ export function createStage(
   renderer.shadowMap.type = THREE.PCFShadowMap;
 
   // Backdrop: a soft vertical gradient (lighter above), a 2 x 64 texture.
-  const backdrop = gradientTexture(BACKDROP_TOP, BACKDROP_BOTTOM);
+  // Reduced tier: a plain clear colour (a background texture is one more full-screen draw, and
+  // fill rate is what a software rasteriser pays for).
+  const backdrop = full ? gradientTexture(BACKDROP_TOP, BACKDROP_BOTTOM) : null;
   scene.background = backdrop;
+  renderer.setClearColor(BACKDROP_BOTTOM);
 
   // Lights. A warm key light high from the back left (seen from the default camera its shadows
   // fall forward, where they read as contact with the bench), a cool fill from the front right,
@@ -147,13 +150,15 @@ export function createStage(
 
   /** Bench texture: a fine, non-repeating-looking matte grain (bump and roughness). */
   let grain: THREE.Texture | null = null;
+  // Full tier: the bench fades out towards its rim (alpha), so no horizon line shows. Reduced
+  // tier: opaque (a blended full-screen plane is costly on a software rasteriser), its size
+  // limited to the circuit's surroundings.
   const benchMat = new THREE.MeshStandardMaterial({
     color: BENCH,
     roughness: 0.94,
     metalness: 0,
-    transparent: true,
-    // The bench fades out towards its rim (alpha), so no horizon line shows.
-    alphaMap: radialFade(),
+    transparent: full,
+    alphaMap: full ? radialFade() : null,
     depthWrite: true,
   });
   if (full) {
@@ -198,7 +203,7 @@ export function createStage(
       const cx = (b.minX + b.maxX) / 2;
       const cz = (b.minZ + b.maxZ) / 2;
       // Large enough that its faded rim lies well outside any view of the circuit.
-      const size = 6 * Math.max(b.maxX - b.minX, b.maxZ - b.minZ, 80);
+      const size = (full ? 6 : 1.6) * Math.max(b.maxX - b.minX, b.maxZ - b.minZ, 80);
       const plane = new THREE.Mesh(
         own.geo(new THREE.PlaneGeometry(size, size).rotateX(-Math.PI / 2)),
         benchMat,
@@ -232,7 +237,7 @@ export function createStage(
       composer?.renderTarget2.dispose();
       gtao?.dispose();
       env?.dispose();
-      backdrop.dispose();
+      backdrop?.dispose();
       benchMat.alphaMap?.dispose();
       benchMat.dispose();
       grain?.dispose();

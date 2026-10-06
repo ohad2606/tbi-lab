@@ -4,6 +4,9 @@
  */
 import * as THREE from 'three';
 
+/** Templates of the viewer-lifetime textures, kept for the page (CPU-side images only). */
+const pageTextures = new Map<string, THREE.Texture>();
+
 /** Per-build resources (geometries, one-off materials, textures) the viewer disposes on rebuild. */
 export class OwnedResources {
   /**
@@ -20,7 +23,11 @@ export class OwnedResources {
     const store = this.persistent ?? this;
     let t = store.texCache.get(key) as T | undefined;
     if (!t) {
-      t = store.tex(make());
+      // Drawn once per page: a later viewer gets a copy sharing the drawn image (only the GPU
+      // upload is per viewer), so re-entering the 3D view never redraws these textures.
+      const template = pageTextures.get(key) as T | undefined;
+      t = store.tex(template ? (template.clone() as T) : make());
+      if (!template) pageTextures.set(key, t.clone());
       store.texCache.set(key, t);
     }
     return t;
@@ -202,18 +209,29 @@ export function canvasTexture(
   return tex;
 }
 
-/** A canvas texture not yet owned by anyone (for OwnedResources.lasting). */
+/** Drawn canvases by key, for the page's lifetime (they hold no GPU resource). */
+const drawn = new Map<string, HTMLCanvasElement>();
+
+/**
+ * A canvas texture not yet owned by anyone (for OwnedResources.lasting). With `cacheKey`, the
+ * drawing is done once per page and reused by later viewers (only the upload is per viewer):
+ * re-entering the 3D view does not redraw board surfaces.
+ */
 export function drawTexture(
   w: number,
   h: number,
   draw: (ctx: CanvasRenderingContext2D) => void,
   color = true,
+  cacheKey?: string,
 ): THREE.CanvasTexture {
-  const canvas = document.createElement('canvas');
-  canvas.width = w;
-  canvas.height = h;
-  const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
-  draw(ctx);
+  let canvas = cacheKey ? drawn.get(cacheKey) : undefined;
+  if (!canvas) {
+    canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    draw(canvas.getContext('2d', { willReadFrequently: true })!);
+    if (cacheKey) drawn.set(cacheKey, canvas);
+  }
   const tex = new THREE.CanvasTexture(canvas);
   if (color) tex.colorSpace = THREE.SRGBColorSpace;
   tex.anisotropy = 8;

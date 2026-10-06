@@ -54,9 +54,9 @@ beforeAll(async () => {
 });
 
 /** Build every component of a scene; return world-space meshes per component id. */
-function build(scene: SceneDescription) {
+function build(scene: SceneDescription, tier: 'full' | 'reduced' = 'full') {
   const m = createMaterials();
-  const own = new OwnedResources();
+  const own = new OwnedResources(null, tier);
   const out = new Map<string, THREE.Object3D>();
   const root = new THREE.Group();
   for (const c of scene.components) {
@@ -181,5 +181,27 @@ describe('3D models agree with the netlist (anchors)', () => {
     expect(column.length).toBeGreaterThan(0);
     expect(Math.min(...column.map((v) => v.y))).toBeLessThan(box.min.y);
     expect(Math.max(...column.map((v) => v.y))).toBeGreaterThan(box.min.y);
+  });
+
+  it('both quality tiers build the same geometry: tiers change materials, never parts or anchors', () => {
+    let doc: ProjectDocument = place(newDoc(), 'board.esp32_devkitc_wroom32', 300, 0).doc;
+    doc = place(doc, 'component.resistor', 600, 100).doc;
+    doc = place(doc, 'component.led', 700, 100).doc;
+    doc = place(doc, 'component.diode', 600, 200).doc;
+    doc = place(doc, 'component.push_button', 400, 300).doc;
+    doc = place(doc, 'component.toggle_switch', 600, 300).doc;
+    doc = wire(doc, ['U1', 'gpio2'], ['R1', 'a']);
+    const s = deriveScene(doc);
+    const full = build(s, 'full');
+    const reduced = build(s, 'reduced');
+    for (const c of s.components) {
+      const a = vertices(full.get(c.id)!);
+      const b = vertices(reduced.get(c.id)!);
+      expect(b.length, c.id).toBe(a.length);
+      expect(
+        b.every((v, i) => v.distanceTo(a[i]!) < 1e-9),
+        c.id,
+      ).toBe(true);
+    }
   });
 });

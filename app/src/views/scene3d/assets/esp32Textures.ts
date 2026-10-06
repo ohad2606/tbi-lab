@@ -450,9 +450,9 @@ function drawBoard(ctx: CanvasRenderingContext2D, kk: number, top: boolean, heig
 }
 
 export interface BoardTextures {
-  top: { map: THREE.Texture; bump: THREE.Texture };
-  bottom: { map: THREE.Texture; bump: THREE.Texture };
-  moduleTop: { map: THREE.Texture; bump: THREE.Texture };
+  top: { map: THREE.Texture; bump: THREE.Texture | null };
+  bottom: { map: THREE.Texture; bump: THREE.Texture | null };
+  moduleTop: { map: THREE.Texture; bump: THREE.Texture | null };
   marks: THREE.Texture;
   brushed: THREE.Texture;
 }
@@ -468,20 +468,24 @@ export function esp32Textures(own: OwnedResources): BoardTextures {
   const Hh = Math.round(D.pcbLengthMm * kh);
   const face = (top: boolean) => ({
     map: own.lasting(`esp32:${top ? 'top' : 'bottom'}:${k}`, () =>
-      drawTexture(W, H, (ctx) => drawBoard(ctx, k, top, false)),
+      drawTexture(W, H, (ctx) => drawBoard(ctx, k, top, false), true, `esp32:${top}:${k}`),
     ),
     // The relief is soft (the mask flows over the copper's edges): every shape drawn blurred.
-    bump: own.lasting(`esp32:${top ? 'top' : 'bottom'}:bump:${kh}`, () =>
-      drawTexture(
-        Wh,
-        Hh,
-        (ctx) => {
-          ctx.filter = 'blur(1px)';
-          drawBoard(ctx, kh, top, true);
-        },
-        false,
-      ),
-    ),
+    // Full tier only (the reduced tier draws no bump maps).
+    bump: !full
+      ? null
+      : own.lasting(`esp32:${top ? 'top' : 'bottom'}:bump:${kh}`, () =>
+          drawTexture(
+            Wh,
+            Hh,
+            (ctx) => {
+              ctx.filter = 'blur(1px)';
+              drawBoard(ctx, kh, top, true);
+            },
+            false,
+            `esp32:${top}:bump:${kh}`,
+          ),
+        ),
   });
   return {
     top: face(true),
@@ -542,9 +546,11 @@ function moduleTop(own: OwnedResources, full: boolean) {
     map: own.lasting(`esp32:module:${k}`, () =>
       drawTexture(Math.round(w * k), Math.round(l * k), draw(false)),
     ),
-    bump: own.lasting(`esp32:module:bump:${k}`, () =>
-      drawTexture(Math.round(w * k), Math.round(l * k), draw(true), false),
-    ),
+    bump: !full
+      ? null
+      : own.lasting(`esp32:module:bump:${k}`, () =>
+          drawTexture(Math.round(w * k), Math.round(l * k), draw(true), false),
+        ),
   };
 }
 

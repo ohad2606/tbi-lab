@@ -96,6 +96,68 @@ class Portion extends THREE.Curve<THREE.Vector3> {
   }
 }
 
+/**
+ * A curve re-parameterised so that equal parameter steps fall densely in the bends and sparsely
+ * on straight runs: a TubeGeometry over it needs one segment per straight run and a few per bend,
+ * instead of a segment every half millimetre (a 10x saving on long wires, same silhouette).
+ */
+class Adaptive extends THREE.Curve<THREE.Vector3> {
+  /** Arc-length fractions at the segment boundaries. */
+  private readonly stops: number[];
+  constructor(
+    private readonly curve: THREE.Curve<THREE.Vector3>,
+    pieces: { length: number; bend: boolean }[],
+    bendSegments: number,
+  ) {
+    super();
+    const total = pieces.reduce((n, p) => n + p.length, 0) || 1;
+    const stops = [0];
+    let at = 0;
+    for (const p of pieces) {
+      const n = p.bend ? bendSegments : 1;
+      for (let i = 1; i <= n; i++) stops.push((at + (p.length * i) / n) / total);
+      at += p.length;
+    }
+    stops[stops.length - 1] = 1;
+    this.stops = stops;
+  }
+  get segments() {
+    return this.stops.length - 1;
+  }
+  private map(u: number) {
+    const x = Math.min(Math.max(u, 0), 1) * this.segments;
+    const i = Math.min(Math.floor(x), this.segments - 1);
+    return this.stops[i]! + (this.stops[i + 1]! - this.stops[i]!) * (x - i);
+  }
+  override getPoint(u: number, target = new THREE.Vector3()) {
+    return target.copy(this.curve.getPointAt(this.map(u)));
+  }
+  override getPointAt(u: number, target = new THREE.Vector3()) {
+    return this.getPoint(u, target);
+  }
+  override getTangent(u: number, target = new THREE.Vector3()) {
+    return target.copy(this.curve.getTangentAt(this.map(u)));
+  }
+  override getTangentAt(u: number, target = new THREE.Vector3()) {
+    return this.getTangent(u, target);
+  }
+}
+
+/** The pieces of a bent path (its straight runs and bends) between two arc-length fractions. */
+function pieces(path: THREE.CurvePath<THREE.Vector3>, u0: number, u1: number) {
+  const total = path.getLength();
+  const out: { length: number; bend: boolean }[] = [];
+  let at = 0;
+  for (const c of path.curves) {
+    const len = c.getLength();
+    const a = Math.max(at, u0 * total);
+    const b = Math.min(at + len, u1 * total);
+    if (b > a + 1e-9) out.push({ length: b - a, bend: !(c as THREE.LineCurve3).isLineCurve3 });
+    at += len;
+  }
+  return out;
+}
+
 /** One wire: jacket tube, stripped ends, the jacket's cut faces. */
 export function buildWire(w: SceneWire, own: OwnedResources, m: WireMaterials): THREE.Group {
   const g = new THREE.Group();
@@ -112,13 +174,17 @@ export function buildWire(w: SceneWire, own: OwnedResources, m: WireMaterials): 
   const stripped = (k: 0 | 1) => w.ends[k] === 'lead' || w.ends[k] === 'post';
   const s0 = stripped(0) ? Math.min(STRIP, length * 0.25) / length : 0;
   const s1 = stripped(1) ? Math.min(STRIP, length * 0.25) / length : 0;
-  const jacketCurve = s0 || s1 ? new Portion(path, s0, 1 - s1) : path;
-  const jacketLen = length * (1 - s0 - s1);
+  const bendSegs = own.tier === 'full' ? 8 : 6;
+  const jacketCurve = new Adaptive(
+    s0 || s1 ? new Portion(path, s0, 1 - s1) : path,
+    pieces(path, s0, 1 - s1),
+    bendSegs,
+  );
   const jacket = new THREE.Mesh(
     own.geo(
       new THREE.TubeGeometry(
         jacketCurve,
-        Math.max(16, Math.ceil(jacketLen / 0.5)),
+        jacketCurve.segments,
         WIRE_RADIUS,
         own.tier === 'full' ? 14 : 10,
         false,

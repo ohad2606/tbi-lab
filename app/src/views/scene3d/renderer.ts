@@ -129,6 +129,16 @@ export type LiveLevel =
 const QUALITY_KEY = 'tbi-lab.3d.quality';
 const SOFTWARE_RENDERER = /swiftshader|llvmpipe|softpipe|software|basic render/i;
 
+/**
+ * The quality tier for a WebGL renderer name (UNMASKED_RENDERER_WEBGL) and an optional per-browser
+ * override: software rasterisers get `reduced`, every real GPU `full`. Capability-based (the
+ * renderer string), never by browser brand.
+ */
+export function chooseQuality(renderer: string, override: string | null): RenderQuality {
+  if (override === 'full' || override === 'reduced') return override;
+  return SOFTWARE_RENDERER.test(renderer) ? 'reduced' : 'full';
+}
+
 /** Whether WebGL works here, and which quality this device should get. */
 function probeWebgl(): RenderQuality | null {
   try {
@@ -141,13 +151,13 @@ function probeWebgl(): RenderQuality | null {
     } catch {
       /* storage unavailable: no override */
     }
-    if (override === 'full' || override === 'reduced') return override;
     const info = gl.getExtension('WEBGL_debug_renderer_info');
     const name = String(
       info ? gl.getParameter(info.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER),
     );
+    // Release the probe's context in every case (browsers cap live WebGL contexts).
     gl.getExtension('WEBGL_lose_context')?.loseContext();
-    return SOFTWARE_RENDERER.test(name) ? 'reduced' : 'full';
+    return chooseQuality(name, override);
   } catch {
     return null;
   }
@@ -357,6 +367,9 @@ export function createViewer(container: HTMLElement, onRender?: (s: ViewerStats)
     if (disposed) return;
     sizeLabels();
     const t0 = performance.now();
+    // Count every pass of the frame (shadow, AO, beauty, output), not only the last one.
+    renderer.info.autoReset = false;
+    renderer.info.reset();
     stage.render();
     lastRenderMs = performance.now() - t0;
     lastCalls = renderer.info.render.calls;
@@ -529,7 +542,9 @@ export function createViewer(container: HTMLElement, onRender?: (s: ViewerStats)
       radius / Math.sin(Math.atan(Math.tan(fov / 2) * camera.aspect)),
     );
     // Default view: from the front (the 2D drawing's bottom edge), raised and a little to the right.
-    const dir = (direction ?? new THREE.Vector3(0.35, 0.85, 1)).clone().normalize();
+    // Realism pass: a 3/4 inspection angle about 30 degrees above the bench (was about 45),
+    // so heights, pin rows and leads read while the layout still reads as the 2D drawing.
+    const dir = (direction ?? new THREE.Vector3(0.55, 0.68, 1)).clone().normalize();
     const corners: THREE.Vector3[] = [];
     for (const x of [min.x, max.x])
       for (const y of [min.y, top])
@@ -748,6 +763,12 @@ function simplifyMaterials(root: THREE.Object3D, cache: Map<THREE.Material, THRE
         opacity: p.opacity,
         emissive: p.emissive,
         emissiveIntensity: p.emissiveIntensity,
+        emissiveMap: p.emissiveMap,
+        alphaTest: p.alphaTest,
+        side: p.side,
+        polygonOffset: p.polygonOffset,
+        polygonOffsetFactor: p.polygonOffsetFactor,
+        polygonOffsetUnits: p.polygonOffsetUnits,
         depthWrite: p.depthWrite,
       });
       out.userData = p.userData;

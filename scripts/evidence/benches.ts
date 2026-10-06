@@ -69,3 +69,30 @@ export function partsBench(): ProjectDocument {
   doc = wire(doc, [ids.ledc!, 'cathode'], [ids.g2!, 'ref']);
   return doc;
 }
+
+/**
+ * A dense bench for performance: an ESP32 driving ten LEDs through ten resistors (each LED to its
+ * own ground), plus six diodes and four push buttons placed beside them.
+ */
+export function denseBench(): ProjectDocument {
+  let doc = newDoc();
+  doc.name = 'Realism bench: dense';
+  const u = place(doc, 'board.esp32_devkitc_wroom32', 0, 0);
+  doc = u.doc;
+  const pins = [23, 22, 21, 19, 18, 5, 17, 16, 4, 2];
+  pins.forEach((gpio, i) => {
+    const y = -180 + i * 40;
+    const r = place(doc, 'component.resistor', 300, y);
+    doc = r.doc;
+    const d = place(doc, 'component.led', 440, y);
+    doc = d.doc;
+    const g = place(doc, 'component.ground', 520, y + 20);
+    doc = g.doc;
+    doc = wire(doc, [u.id, `gpio${gpio}`], [r.id, 'a']);
+    doc = wire(doc, [r.id, 'b'], [d.id, 'anode']);
+    doc = wire(doc, [d.id, 'cathode'], [g.id, 'ref']);
+  });
+  for (let i = 0; i < 6; i++) doc = place(doc, 'component.diode', -300, -160 + i * 60).doc;
+  for (let i = 0; i < 4; i++) doc = place(doc, 'component.push_button', -460, -120 + i * 80).doc;
+  return doc;
+}

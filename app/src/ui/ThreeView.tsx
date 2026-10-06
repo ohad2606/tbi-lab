@@ -115,6 +115,8 @@ export function ThreeView() {
       data-assets-ms={assetMs ?? undefined}
       data-render-ms={stats?.renderMs}
       data-objects={stats?.objects}
+      data-renders={stats?.renders}
+      data-programs={stats?.programs}
       data-draw-calls={stats?.drawCalls}
       data-triangles={stats?.triangles}
       data-materials={stats?.materials}
