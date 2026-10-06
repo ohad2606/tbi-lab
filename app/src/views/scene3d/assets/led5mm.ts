@@ -65,14 +65,15 @@ export function buildLedHiFi(
   const top = base + p.heightMm;
   const lens = own.mat(
     new THREE.MeshPhysicalMaterial({
+      // Tinted-diffused epoxy is a deep, nearly opaque colour; water-clear is a faint tint.
       color: look.clear
         ? new THREE.Color(look.color).lerp(new THREE.Color('#ffffff'), 0.72)
-        : look.color,
+        : new THREE.Color(look.color).lerp(new THREE.Color('#000000'), 0.18),
       roughness: look.clear ? 0.04 : 0.42,
       clearcoat: 1,
       clearcoatRoughness: 0.06,
       transparent: true,
-      opacity: look.clear ? 0.38 : 0.86,
+      opacity: look.clear ? 0.38 : 0.93,
       emissive: look.color,
       emissiveIntensity: 0,
       depthWrite: false,

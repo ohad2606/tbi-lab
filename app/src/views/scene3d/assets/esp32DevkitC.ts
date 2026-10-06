@@ -30,13 +30,14 @@ function silkscreen(own: OwnedResources): THREE.Texture {
     ctx.strokeStyle = '#eef0f2';
     ctx.lineWidth = 0.18 * k;
     ctx.textBaseline = 'middle';
-    ctx.font = `bold ${Math.round(1.05 * k)}px ui-sans-serif, Arial, sans-serif`;
+    // Pin labels: small enough to end before the module's castellated edge (x = +-9 mm).
+    ctx.font = `bold ${Math.round(0.8 * k)}px ui-sans-serif, Arial, sans-serif`;
     const rowX = D.headerRowSpacingMm / 2;
     for (const pin of ESP32_DEVKITC_WROOM32.pins) {
       const left = boardPinPosition(pin).x < 0;
       const x = left ? -rowX : rowX;
       ctx.textAlign = left ? 'left' : 'right';
-      ctx.fillText(pin.headerLabel, X(left ? x + 1.7 : x - 1.7), Z(pinZ(pin.position)));
+      ctx.fillText(pin.headerLabel, X(left ? x + 1.55 : x - 1.55), Z(pinZ(pin.position)));
     }
     // Header outlines (the silkscreen box around each row) and pin-1 marks.
     for (const sx of [-1, 1]) {
@@ -53,12 +54,9 @@ function silkscreen(own: OwnedResources): THREE.Texture {
     const zBottom = D.pcbCentreZMm + D.pcbLengthMm / 2;
     ctx.fillText('EN', X(-8.2), Z(zBottom - 8.0));
     ctx.fillText('BOOT', X(8.2), Z(zBottom - 8.0));
-    ctx.save();
-    ctx.translate(X(-5.2), Z(D.pcbCentreZMm + 6));
-    ctx.rotate(-Math.PI / 2);
-    ctx.font = `bold ${Math.round(0.9 * k)}px ui-sans-serif, Arial, sans-serif`;
-    ctx.fillText('ESP32-DevKitC V4', 0, 0);
-    ctx.restore();
+    // Board name, horizontally in the free strip just below the module.
+    ctx.font = `bold ${Math.round(0.85 * k)}px ui-sans-serif, Arial, sans-serif`;
+    ctx.fillText('ESP32-DevKitC V4', X(0), Z(D.pcbCentreZMm - 3.6));
   });
 }
 
