@@ -138,6 +138,17 @@ export const SCHEMATIC_SYMBOLS: Record<ComponentTypeId, SchematicSymbol> = {
     partName: 'NPN',
     glyph: 'bjt.npn',
   },
+  'sensor.pir_hc_sr501': {
+    kind: 'module',
+    key: 'module',
+    pins: [
+      { terminal: 'vcc', name: 'VCC', side: 'left', order: 1 },
+      { terminal: 'gnd', name: 'GND', side: 'left', order: 2 },
+      { terminal: 'out', name: 'OUT', side: 'right', order: 1 },
+    ],
+    partName: 'PIR',
+    glyph: 'pir',
+  },
   'component.relay': {
     kind: 'module',
     key: 'module',

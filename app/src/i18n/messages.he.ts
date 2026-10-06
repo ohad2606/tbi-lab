@@ -134,6 +134,18 @@ export const he: Record<MessageKey, string> = {
   'sim.part.short.base': 'I_B',
   'sim.part.short.emitter': 'I_E',
   'sim.part.voltage.component.bjt_npn': 'מתח קולקטור–אמיטר (V_CE)',
+  'component.sensor.pir_hc_sr501.name': 'חיישן תנועה PIR',
+  'terminal.moduleGnd': 'אדמה (GND)',
+  'terminal.out': 'יציאה (OUT)',
+  'terminal.vcc': 'הזנה (VCC)',
+  'param.motion': 'תנועה מול החיישן',
+  'model.pir.hc_sr501': 'מודול HC-SR501 (BISS0001, יציאה 3.3 V)',
+  'sim.part.current.supply': 'זרם הזנה',
+  'sim.part.current.output': 'זרם יציאה',
+  'sim.part.state.powered': 'מוזן (הזנה 4.5–20 V)',
+  'sim.part.state.output': 'יציאה',
+  'sim.part.state.output.high': 'HIGH (זוהתה תנועה)',
+  'sim.part.state.output.low': 'LOW',
   'sim.part.short.red': 'R',
   'sim.part.short.green': 'G',
   'sim.part.short.blue': 'B',
@@ -371,6 +383,9 @@ export const he: Record<MessageKey, string> = {
   'example.night-light.title': 'מנורת לילה: טרנזיסטור שמופעל על ידי אור',
   'example.night-light.summary':
     'מחלק מתח עם נגד תלוי אור מטה טרנזיסטור 2N3904. הנמיכו את האור המדומה על התא: מתח הבסיס עולה, הטרנזיסטור נפתח והנורית בקולקטור נדלקת.',
+  'example.pir-alarm.title': 'אזעקת PIR: תנועה מפעילה זמזם',
+  'example.pir-alarm.summary':
+    'חיישן תנועה HC-SR501 מפעיל טרנזיסטור 2N3904 שמפעיל זמזם. הריצו, ואז לחצו על כיפת החיישן (או סמנו את תיבת התנועה) כדי ליצור תנועה מולו.',
   'example.led-colours.title': 'צבעי LED: אותו נגד, זרמים שונים',
   'example.led-colours.summary':
     'נוריות LED אדומה, צהובה וירוקה, כל אחת מ־⁦5 V⁩ דרך ⁦180 Ω⁩. לכל צבע מתח קדמי משלו (בערך ⁦2.0 V⁩ באדומה, ⁦2.4 V⁩ בצהובה ובירוקה), ולכן אותו נגד קובע בערך ⁦16.7 mA⁩ באדומה ו־⁦14.5 mA⁩ באחרות.',

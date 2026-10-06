@@ -66,6 +66,7 @@ describe('locale bundles', () => {
       'sim.part.short.emitter',
       'sim.part.short.green',
       'sim.part.short.red',
+      'sim.part.state.output.low',
       'unit.ampere.symbol',
       'unit.lux.symbol',
       'unit.ohm.symbol',

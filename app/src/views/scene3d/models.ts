@@ -23,6 +23,7 @@ import {
   RELAY_SRD,
   RGB_LED_5MM,
   TO92,
+  PIR_HC_SR501,
   ESP32_DEVKITC,
   ESP32_PCB_BOTTOM,
   ESP32_PCB_TOP,
@@ -706,7 +707,62 @@ function buildTo92(c: SceneComponent, m: Materials, own: OwnedResources) {
   return g;
 }
 
+function buildPir(_c: SceneComponent, m: Materials, own: OwnedResources) {
+  const p = PIR_HC_SR501;
+  const g = new THREE.Group();
+  const y0 = p.standoffMm;
+  const green = own.sharedMat(
+    'pirPcb',
+    () => new THREE.MeshStandardMaterial({ color: '#1f6b3c', roughness: 0.6 }),
+  );
+  g.add(
+    box(own, p.boardXMm, p.boardThicknessMm, p.boardZMm, green, [
+      0,
+      y0 + p.boardThicknessMm / 2,
+      0,
+    ]),
+  );
+  // Fresnel dome: a body of revolution with shallow ridges (the lens facets), milky white.
+  const R = p.domeDiameterMm / 2;
+  const profile: [number, number][] = [[R, 0]];
+  const steps = 24;
+  for (let i = 1; i <= steps; i++) {
+    const a = (i / steps) * (Math.PI / 2);
+    const ridge = i % 3 === 0 ? 0.25 : 0;
+    profile.push([Math.max(0.001, (R + ridge) * Math.cos(a)), p.domeHeightMm * Math.sin(a)]);
+  }
+  const dome = lathe(
+    own,
+    'pirDome',
+    profile,
+    own.sharedMat(
+      'pirDome',
+      () => new THREE.MeshStandardMaterial({ color: '#f1f2ee', roughness: 0.7 }),
+    ),
+  );
+  dome.position.y = y0 + p.boardThicknessMm;
+  dome.userData.pirDome = true;
+  g.add(dome);
+  // Underneath: the two orange trim pots (delay, sensitivity) and the trigger jumper.
+  const orange = own.sharedMat(
+    'trimPot',
+    () => new THREE.MeshStandardMaterial({ color: '#e8862a', roughness: 0.5 }),
+  );
+  for (const z of [-6, 6]) g.add(cylinder(own, 2.6, 2.2, orange, [10, y0 - 1.1, z], 20));
+  g.add(box(own, 2.0, 2.4, 5.2, m.blackPlastic, [4, y0 - 1.2, -9]));
+  // The 3-pin header (GND, OUT, +V): plastic spacer under the board, pins down to the bench.
+  g.add(box(own, 2.5, 2.5, 7.6, m.blackPlastic, [p.pins.gnd![0], y0 - 1.25, 0]));
+  for (const [id, [x, z]] of Object.entries(p.pins)) {
+    g.add(box(own, 0.64, y0, 0.64, m.gold, [x, y0 / 2, z]));
+    const blob = cylinder(own, 0.55, 0.9, m.chrome, [x, p.attachHeightMm, z], 16, 0.75);
+    blob.userData.pin = id;
+    g.add(blob);
+  }
+  return g;
+}
+
 const BUILDERS: Record<ModelKey, Builder> = {
+  'sensor.pir': buildPir,
   'transistor.to92': buildTo92,
   'led.rgb': buildRgbLed,
   'ldr.disc': buildPhotoresistor,

@@ -49,6 +49,8 @@ describe('Sprint 4 catalog: the non-MCU V1 catalog is complete and closed (A16)'
         'component.buzzer',
         'component.relay',
         'component.bjt_npn',
+        // Sensors (§6.0).
+        'sensor.pir_hc_sr501',
       ].sort(),
     );
   });

@@ -2661,3 +2661,39 @@ select {
   inline-size: 100%;
   direction: ltr;
 }
+
+.symbol .pir-dome {
+  fill: #fbfbf8;
+}
+
+.symbol .pir-dome-ring {
+  fill: none;
+  stroke: var(--muted);
+}
+
+.symbol .pir-motion path {
+  fill: none;
+  stroke: var(--runtime);
+  stroke-dasharray: 3 3;
+}
+
+.symbol .pir-out-high {
+  stroke: var(--runtime);
+  stroke-width: 3;
+}
+
+.sound-toggle {
+  padding-inline: 0.45rem;
+}
+
+.sound-toggle .sound-waves {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+}
+
+.sound-toggle[aria-pressed='true'] {
+  color: var(--runtime);
+  border-color: var(--runtime);
+}

@@ -126,3 +126,34 @@ test('relay: holding the button energizes the coil, NO lights the LED and NC sil
   for (const pin of ['coil1', 'coil2', 'com', 'no', 'nc'])
     await expect(page.locator(`[data-part="K1"] [data-pin="${pin}"]`)).toBeVisible();
 });
+
+test('PIR alarm: clicking the sensor dome puts motion in front of it; the transistor drives the buzzer', async ({
+  page,
+}) => {
+  await openExample(page, 'pir-alarm');
+  await waitSaved(page);
+  await run(page);
+  const u = component(page, 'U1');
+  await expect(u).toHaveAttribute('data-output', 'low');
+  await expect(component(page, 'BZ1')).toHaveAttribute('data-sounding', 'false');
+  await page.getByTestId('actuator-U1').click();
+  await expect(u).toHaveAttribute('data-motion', 'true');
+  await expect(u).toHaveAttribute('data-output', 'high');
+  await expect(component(page, 'BZ1')).toHaveAttribute('data-sounding', 'true');
+  await expect(page.getByTestId('probe-reading-U1.out')).toContainText(/2\.0\d+ V/);
+  // The motion is the sensor's simulated environment: persisted, shown in its own section.
+  // (Select the module at its edge: its centre is the dome, which toggles the motion.)
+  await component(page, 'U1')
+    .locator('.component-hit')
+    .click({ position: { x: 4, y: 4 } });
+  await expect(page.getByTestId('param-U1-motion')).toBeChecked();
+  await expect
+    .poll(async () => {
+      const docs = await storedProjects(page);
+      docs.sort((a, b) => b.revision.updatedAt.localeCompare(a.revision.updatedAt));
+      return docs[0]!.components.find((c) => c.id === 'U1')!.params.motion;
+    })
+    .toBe(true);
+  await page.getByTestId('param-U1-motion').uncheck();
+  await expect(u).toHaveAttribute('data-output', 'low');
+});

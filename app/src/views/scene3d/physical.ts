@@ -299,3 +299,24 @@ export const TO92 = {
   /** Lead order facing the flat face, left to right. */
   pinOrder: ['emitter', 'base', 'collector'] as const,
 };
+
+/**
+ * HC-SR501 PIR module: 32 x 24 mm board, Fresnel dome Ø23 mm [HC-SR501 sheet p.1/p.3]; dome height
+ * not published: a hemisphere-like 11.5 mm [REP]. The 3-pin header (GND, OUT, +V at 2.54 mm) under
+ * one short edge stands the board up; trim pots and the trigger jumper underneath [REP layout].
+ */
+export const PIR_HC_SR501 = {
+  boardXMm: 32,
+  boardZMm: 24,
+  boardThicknessMm: 1.2,
+  domeDiameterMm: 23,
+  domeHeightMm: 11.5,
+  /** Underside of the board above the bench (header pin length). */
+  standoffMm: 8.5,
+  attachHeightMm: 0.8,
+  pins: {
+    gnd: [-13.5, -2.54],
+    out: [-13.5, 0],
+    vcc: [-13.5, 2.54],
+  } as Record<string, readonly [number, number]>,
+};

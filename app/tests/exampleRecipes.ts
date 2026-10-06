@@ -285,6 +285,34 @@ export const RECIPES: Record<string, () => ProjectDocument> = {
     r.wire(T(R2, 'b'), T(D, 'anode'), [{ x: 300, y: -140 }]);
     return r.centre(-120);
   },
+  /**
+   * Sprint 10. PIR alarm: an HC-SR501 drives a 2N3904 through 1 kΩ; the buzzer is the collector
+   * load. Motion (the sensor's simulated environment) turns the transistor on and the buzzer sounds.
+   */
+  'pir-alarm': () => {
+    const r = new Recipe('pir-alarm', 'PIR alarm');
+    r.supply(5, 0.2);
+    const U = r.place('sensor.pir_hc_sr501', 140, 60, 2);
+    const G2 = r.place('component.ground', 220, 140);
+    const R1 = r.place('component.resistor', 280, 60);
+    const Q = r.place('component.bjt_npn', 380, 60);
+    const G3 = r.place('component.ground', 400, 180);
+    const B = r.place('component.buzzer', 400, -40, 1);
+    r.set(R1, 'resistance', 1000, 'ohm');
+    const feed = r.wire(T('PSU1', 'positive'), T(U, 'vcc'), [
+      { x: 220, y: -20 },
+      { x: 220, y: 40 },
+    ]);
+    r.wire(T(U, 'gnd'), T(G2, 'ref'), [{ x: 220, y: 80 }]);
+    r.wire(T(U, 'out'), T(R1, 'a'));
+    r.wire(T(R1, 'b'), T(Q, 'base'));
+    r.wire(T(Q, 'emitter'), T(G3, 'ref'));
+    r.wire(T(B, 'negative'), T(Q, 'collector'));
+    r.wire({ kind: 'wire', wire: feed, at: { x: 120, y: -20 } }, T(B, 'positive'), [
+      { x: 120, y: -80 },
+    ]);
+    return r.centre(-160);
+  },
   /** Two identical 1 kΩ + 1N4148 branches; D1 forward conducts ~4.3 mA, D2 reversed blocks (nA). */
   'diode-polarity': () => {
     const r = new Recipe('diode-polarity', 'Diode polarity');

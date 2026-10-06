@@ -24,6 +24,7 @@ import lightSensor from './data/light-sensor.json';
 import relayLoad from './data/relay-load.json';
 import rgbMixer from './data/rgb-mixer.json';
 import ohmsLaw from './data/ohms-law.json';
+import pirAlarm from './data/pir-alarm.json';
 import pushButton from './data/push-button.json';
 import voltageDivider from './data/voltage-divider.json';
 
@@ -97,6 +98,13 @@ export const EXAMPLES: readonly Example[] = [
     summaryKey: 'example.night-light.summary',
     document: doc(nightLight),
     probes: [V('Q1', 'base'), I('D1')],
+  },
+  {
+    id: 'pir-alarm',
+    titleKey: 'example.pir-alarm.title',
+    summaryKey: 'example.pir-alarm.summary',
+    document: doc(pirAlarm),
+    probes: [V('U1', 'out'), I('BZ1')],
   },
   {
     id: 'relay-load',

@@ -46,7 +46,8 @@ export type ComponentTypeId =
   | 'component.photoresistor'
   | 'component.buzzer'
   | 'component.relay'
-  | 'component.bjt_npn';
+  | 'component.bjt_npn'
+  | 'sensor.pir_hc_sr501';
 
 export interface ComponentInstance {
   /** Stable reference designator (`R1`, `PSU1`), unique per project, never reused. */

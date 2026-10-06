@@ -19,7 +19,7 @@ export const PALETTE_GROUPS: readonly { key: MessageKey; types: readonly Compone
     key: 'palette.group.switches',
     types: ['component.push_button', 'component.toggle_switch', 'component.relay'],
   },
-  { key: 'palette.group.sensors', types: ['component.photoresistor'] },
+  { key: 'palette.group.sensors', types: ['component.photoresistor', 'sensor.pir_hc_sr501'] },
   { key: 'palette.group.output', types: ['component.buzzer'] },
   { key: 'palette.group.mcu', types: ['board.esp32_devkitc_wroom32'] },
 ];

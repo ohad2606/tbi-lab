@@ -310,6 +310,14 @@ function junctionCircuit() {
 }
 
 describe('one electrical truth across Circuit, Schematic and 3D', () => {
+  it('holds for the PIR module (wired at its header pins) at every rotation', () => {
+    let doc = EXAMPLES.find((e) => e.id === 'pir-alarm')!.document;
+    for (let i = 0; i < 4; i++) {
+      expectAllViewsAgree(doc, `pir-alarm U1 x${i}`);
+      doc = must(rotateRouted(doc, ['U1'])).doc;
+    }
+  });
+
   it('holds for the 2N3904 (TO-92 leads splayed to C, B, E) at every rotation', () => {
     let doc = EXAMPLES.find((e) => e.id === 'night-light')!.document;
     for (let i = 0; i < 4; i++) {

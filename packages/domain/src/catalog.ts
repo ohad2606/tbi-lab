@@ -76,6 +76,11 @@ export interface ComponentTypeDef {
    */
   momentary?: boolean;
   /**
+   * Sprint 10: the boolean parameter the part's on-canvas actuator toggles (a toggle switch's
+   * position, the motion in front of a PIR sensor). A persistent, live edit.
+   */
+  toggleParam?: string;
+  /**
    * Sprint 10: false when the deployed ESP32 runtime (Session Host) does not know this type yet.
    * A project with an ESP32 board and such a part is refused at Run with a specific reason,
    * before any session starts; local circuits simulate it normally. Absent means supported.
@@ -219,6 +224,40 @@ const SPRINT10_TYPES = {
       },
     ],
     aliases: ['transistor', 'npn', 'bjt', '2n3904', 'טרנזיסטור'],
+    mcuRuntime: false,
+  },
+  'sensor.pir_hc_sr501': {
+    type: 'sensor.pir_hc_sr501',
+    typeVersion: 1,
+    refPrefix: 'U',
+    nameKey: 'component.sensor.pir_hc_sr501.name',
+    symbol: 'symbol.pir',
+    // The module's header, in its pin order (GND, OUT, +V).
+    terminals: [
+      { id: 'gnd', offset: { x: -60, y: -20 }, labelKey: 'terminal.moduleGnd' },
+      { id: 'out', offset: { x: -60, y: 0 }, labelKey: 'terminal.out' },
+      { id: 'vcc', offset: { x: -60, y: 20 }, labelKey: 'terminal.vcc' },
+    ],
+    params: [
+      {
+        kind: 'enum',
+        key: 'model',
+        options: [{ value: 'model.pir.hc_sr501', labelKey: 'model.pir.hc_sr501' }],
+        default: 'model.pir.hc_sr501',
+        labelKey: 'param.model',
+      },
+      {
+        // What is in front of the sensor: the simulated environment, not a part property.
+        kind: 'boolean',
+        key: 'motion',
+        default: false,
+        labelKey: 'param.motion',
+        live: true,
+        environment: {},
+      },
+    ],
+    toggleParam: 'motion',
+    aliases: ['pir', 'motion sensor', 'hc-sr501', 'חיישן תנועה'],
     mcuRuntime: false,
   },
   'component.relay': {
@@ -411,6 +450,7 @@ export const CATALOG: Record<ComponentTypeId, ComponentTypeDef> = {
     params: [
       { kind: 'boolean', key: 'closed', default: false, labelKey: 'param.closed', live: true },
     ],
+    toggleParam: 'closed',
     aliases: ['switch', 'toggle', 'spst'],
   },
   'board.esp32_devkitc_wroom32': {
@@ -455,6 +495,7 @@ export const CATALOG_ORDER: readonly ComponentTypeId[] = [
   'component.buzzer',
   'component.relay',
   'component.bjt_npn',
+  'sensor.pir_hc_sr501',
   'board.esp32_devkitc_wroom32',
 ];
 

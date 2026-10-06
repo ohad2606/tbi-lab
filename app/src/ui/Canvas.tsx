@@ -439,10 +439,11 @@ export function Canvas({
     }
     if (hit.kind === 'actuator') {
       const c = doc.components.find((x) => x.id === hit.id);
-      if (c?.type === 'component.toggle_switch') {
+      const toggle = c && CATALOG[c.type].toggleParam;
+      if (c && toggle) {
         // PERSISTENT edit: the browser document first (revision, autosave, undo); while
         // running it is then mirrored to the session as a live control.
-        store.apply(setParam(doc, c.id, 'closed', c.params.closed !== true), {
+        store.apply(setParam(doc, c.id, toggle, c.params[toggle] !== true), {
           ...emptySelection(),
           components: [c.id],
         });
@@ -655,17 +656,16 @@ export function Canvas({
       '[data-hit="component"]',
     ) as SVGElement | null;
     const c = el ? doc.components.find((x) => x.id === el.dataset.id) : undefined;
-    return c && (c.type === 'component.push_button' || c.type === 'component.toggle_switch')
-      ? c
-      : undefined;
+    return c && (c.type === 'component.push_button' || CATALOG[c.type].toggleParam) ? c : undefined;
   };
 
   const onKeyDown = (e: KeyboardEvent) => {
     if (e.key === ' ') {
       e.preventDefault();
       const sw = focusedSwitch(e);
-      if (sw?.type === 'component.toggle_switch' && !readOnly) {
-        if (!e.repeat) store.apply(setParam(doc, sw.id, 'closed', sw.params.closed !== true));
+      const toggle = sw && CATALOG[sw.type].toggleParam;
+      if (sw && toggle && !readOnly) {
+        if (!e.repeat) store.apply(setParam(doc, sw.id, toggle, sw.params[toggle] !== true));
         return;
       }
       if (sw?.type === 'component.push_button') {
@@ -931,6 +931,11 @@ export function Canvas({
               }
               symbolState={{
                 closed: c.params.closed === true,
+                motion: c.params.motion === true,
+                // Solved module state (Sprint 10): presentation only.
+                outputHigh: outcome?.ok
+                  ? outcome.components[c.id]?.state?.output === 'high'
+                  : false,
                 pressed: pressed.has(c.id),
                 // Solved part states (Sprint 10): presentation of the result, never an input.
                 energized: outcome?.ok
@@ -1187,6 +1192,10 @@ function ComponentView({
       data-closed={c.type === 'component.toggle_switch' ? String(symbolState.closed) : undefined}
       data-pressed={c.type === 'component.push_button' ? String(symbolState.pressed) : undefined}
       data-energized={c.type === 'component.relay' ? String(!!symbolState.energized) : undefined}
+      data-motion={c.type === 'sensor.pir_hc_sr501' ? String(!!symbolState.motion) : undefined}
+      data-output={
+        c.type === 'sensor.pir_hc_sr501' ? (symbolState.outputHigh ? 'high' : 'low') : undefined
+      }
       data-sounding={c.type === 'component.buzzer' ? String(!!symbolState.sounding) : undefined}
       onFocus={onFocus}
     >

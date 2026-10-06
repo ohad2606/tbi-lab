@@ -47,6 +47,7 @@ import {
   RELAY_SRD,
   RGB_LED_5MM,
   TO92,
+  PIR_HC_SR501,
   ESP32_ATTACH_HEIGHT,
   ESP32_DEVKITC,
   ESP32_PIN_TOP,
@@ -79,6 +80,7 @@ export type ModelKey =
   | 'buzzer.can'
   | 'relay.cube'
   | 'transistor.to92'
+  | 'sensor.pir'
   | 'generic';
 
 /** Which model draws each component type. A type without an entry gets the generic box. */
@@ -96,6 +98,7 @@ export const MODEL_FOR: Partial<Record<ComponentTypeId, ModelKey>> = {
   'component.buzzer': 'buzzer.can',
   'component.relay': 'relay.cube',
   'component.bjt_npn': 'transistor.to92',
+  'sensor.pir_hc_sr501': 'sensor.pir',
 };
 
 export interface Vec3 {
@@ -204,6 +207,7 @@ export const MODEL_HEIGHT: Record<ModelKey, number> = {
   'buzzer.can': BUZZER_CEM1205.standoffMm + BUZZER_CEM1205.heightMm,
   'relay.cube': RELAY_SRD.standoffMm + RELAY_SRD.heightMm,
   'transistor.to92': TO92.standoffMm + TO92.heightMm,
+  'sensor.pir': PIR_HC_SR501.standoffMm + PIR_HC_SR501.boardThicknessMm + PIR_HC_SR501.domeHeightMm,
   generic: 3,
 };
 
@@ -255,6 +259,12 @@ export const FOOTPRINT: Record<ModelKey, readonly [number, number, number, numbe
     RELAY_SRD.widthMm / 2,
   ],
   'transistor.to92': [-6.7, 3.6, -6.7, 6.7],
+  'sensor.pir': [
+    -PIR_HC_SR501.boardXMm / 2,
+    PIR_HC_SR501.boardXMm / 2,
+    -PIR_HC_SR501.boardZMm / 2,
+    PIR_HC_SR501.boardZMm / 2,
+  ],
   generic: [-6.35, 6.35, -1.5, 1.5],
 };
 
@@ -347,6 +357,10 @@ function localAttach(
       return { x, y: PSU.attachHeightMm, z };
     case 'ground.post':
       return { x, y: GROUND_POST.attachHeightMm, z };
+    case 'sensor.pir': {
+      const [px, pz] = PIR_HC_SR501.pins[terminal]!;
+      return { x: px, y: PIR_HC_SR501.attachHeightMm, z: pz };
+    }
     case 'relay.cube': {
       // The real pin (bottom face), as the ESP32's header pins: the wire's end follows it.
       const [px, pz] = RELAY_SRD.pins[terminal]!;

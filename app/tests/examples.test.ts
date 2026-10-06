@@ -32,7 +32,7 @@ const near = (a: number | null | undefined, e: number, rel = REL) => {
 const example = (id: string) => EXAMPLES.find((e) => e.id === id)!.document;
 
 describe('the example set', () => {
-  it('has the eleven DC examples and the two ESP32 examples, each titled in English and Hebrew', () => {
+  it('has the twelve DC examples and the two ESP32 examples, each titled in English and Hebrew', () => {
     expect(EXAMPLES.map((e) => e.id)).toEqual([
       'ohms-law',
       'voltage-divider',
@@ -41,6 +41,7 @@ describe('the example set', () => {
       'rgb-mixer',
       'light-sensor',
       'night-light',
+      'pir-alarm',
       'relay-load',
       'diode-polarity',
       'push-button',
@@ -160,6 +161,23 @@ describe('expected engineering results (production engine)', () => {
     });
     expect(bright.components.Q1!.state!.region).toBe('cutoff');
     expect(bright.components.D1!.current!).toBeLessThan(1e-5);
+  });
+
+  it('PIR alarm (Sprint 10): no motion, silent; motion drives the 2N3904 into saturation and the buzzer sounds', () => {
+    const doc = example('pir-alarm');
+    const quiet = solve(doc);
+    expect(quiet.components.U1!.state).toEqual({ powered: true, output: 'low' });
+    expect(quiet.components.BZ1!.state).toEqual({ sounding: false });
+    const alarm = solve({
+      ...doc,
+      components: doc.components.map((c) =>
+        c.id === 'U1' ? { ...c, params: { ...c.params, motion: true } } : c,
+      ),
+    });
+    expect(alarm.components.U1!.state!.output).toBe('high');
+    expect(alarm.components.Q1!.state!.region).toBe('saturation');
+    expect(alarm.components.BZ1!.state).toEqual({ sounding: true });
+    expect(alarm.components.BZ1!.current).toBeGreaterThan(0.025);
   });
 
   it('relay load (Sprint 10): at rest the buzzer sounds through NC and the LED is dark', () => {

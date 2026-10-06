@@ -21,6 +21,10 @@ export interface SymbolState {
   energized?: boolean;
   /** Buzzer: sounding in the solved operating point (runtime result). */
   sounding?: boolean;
+  /** PIR sensor: the simulated motion in front of it (persisted environment parameter). */
+  motion?: boolean;
+  /** PIR sensor: its solved output level is high (runtime result). */
+  outputHigh?: boolean;
 }
 
 export interface SymbolDef {
@@ -160,6 +164,34 @@ export const SYMBOLS: Record<ComponentTypeId, SymbolDef> = {
         <line x1={-6} y1={6} x2={20} y2={22} />
         <line x1={20} y1={22} x2={20} y2={40} />
         <polygon points="20,22 10,21 15,14" class="diode-body" />
+      </>
+    ),
+  },
+  'sensor.pir_hc_sr501': {
+    bbox: [-60, -40, 50, 40],
+    // Module board with the Fresnel dome; pin marks: ground bars at GND, an output arrow at OUT,
+    // + at VCC. Clicking the dome toggles the simulated motion in front of it.
+    actuator: [-12, -32, 42, 32],
+    draw: (state) => (
+      <>
+        <rect x={-40} y={-36} width={88} height={72} rx={4} class="symbol-body" />
+        <line x1={-60} y1={-20} x2={-40} y2={-20} />
+        <line x1={-60} y1={0} x2={-40} y2={0} />
+        <line x1={-60} y1={20} x2={-40} y2={20} />
+        <line x1={-34} y1={-26} x2={-34} y2={-14} />
+        <line x1={-31} y1={-24} x2={-31} y2={-16} />
+        <polyline points="-36,-4 -30,0 -36,4" class={state?.outputHigh ? 'pir-out-high' : ''} />
+        <line x1={-36} y1={20} x2={-28} y2={20} />
+        <line x1={-32} y1={16} x2={-32} y2={24} />
+        <circle cx={15} cy={0} r={25} class="pir-dome" />
+        <circle cx={15} cy={0} r={16} class="pir-dome-ring" />
+        <circle cx={15} cy={0} r={7} class="pir-dome-ring" />
+        {state?.motion && (
+          <g class="pir-motion">
+            <path d="M 44 -22 A 30 30 0 0 1 44 22" />
+            <path d="M 38 -14 A 20 20 0 0 1 38 14" />
+          </g>
+        )}
       </>
     ),
   },

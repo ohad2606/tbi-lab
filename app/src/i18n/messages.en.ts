@@ -132,6 +132,18 @@ export const en = {
   'sim.part.short.base': 'I_B',
   'sim.part.short.emitter': 'I_E',
   'sim.part.voltage.component.bjt_npn': 'Collector–emitter voltage (V_CE)',
+  'component.sensor.pir_hc_sr501.name': 'PIR motion sensor',
+  'terminal.moduleGnd': 'Ground (GND)',
+  'terminal.out': 'Output (OUT)',
+  'terminal.vcc': 'Supply (VCC)',
+  'param.motion': 'Motion in front of the sensor',
+  'model.pir.hc_sr501': 'HC-SR501 module (BISS0001, 3.3 V output)',
+  'sim.part.current.supply': 'Supply current',
+  'sim.part.current.output': 'Output current',
+  'sim.part.state.powered': 'Powered (supply 4.5–20 V)',
+  'sim.part.state.output': 'Output',
+  'sim.part.state.output.high': 'HIGH (motion detected)',
+  'sim.part.state.output.low': 'LOW',
   'sim.part.short.red': 'R',
   'sim.part.short.green': 'G',
   'sim.part.short.blue': 'B',
@@ -382,6 +394,9 @@ export const en = {
   'example.night-light.title': 'Night light: a transistor switched by light',
   'example.night-light.summary':
     'A photoresistor divider biases a 2N3904. Lower the simulated light on the cell: the base voltage rises, the transistor turns on and the LED in its collector lights.',
+  'example.pir-alarm.title': 'PIR alarm: motion sounds a buzzer',
+  'example.pir-alarm.summary':
+    'An HC-SR501 motion sensor drives a 2N3904 that switches a buzzer. Run it, then click the sensor dome (or tick the motion box) to put motion in front of it.',
   'example.led-colours.title': 'LED colours: one resistor, different currents',
   'example.led-colours.summary':
     'Red, yellow and green LEDs, each from 5 V through 180 Ω. Each colour has its own forward voltage (about 2.0 V red, 2.4 V yellow and green), so the same resistor sets about 16.7 mA through the red LED and 14.5 mA through the others.',

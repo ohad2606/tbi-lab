@@ -31,6 +31,7 @@ const NEW_TYPES: ComponentTypeId[] = [
   'component.buzzer',
   'component.relay',
   'component.bjt_npn',
+  'sensor.pir_hc_sr501',
 ];
 
 describe('Sprint 10 parts: catalog and serialization', () => {
