@@ -158,6 +158,9 @@ test('A1-A3: library create, rename, duplicate, delete (with confirmation) survi
   // A full reload (the app restarts from IndexedDB) shows exactly the same library.
   await page.reload();
   const home = page.getByTestId('example-list');
+  // Wait for the app to render before choosing a branch (an immediate isVisible() can run
+  // before the restarted app shows anything; seen once in the full run of 0bc0e98).
+  await expect(home.or(page.getByTestId('canvas'))).toBeVisible();
   if (!(await home.isVisible())) await goLibrary(page);
   await expect(row(page, beta)).toHaveAttribute('data-name', 'Beta — בטא');
   await expect(row(page, copy.projectId)).toBeVisible();
