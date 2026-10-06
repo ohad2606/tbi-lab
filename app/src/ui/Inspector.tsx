@@ -12,6 +12,7 @@ import {
 } from '@tbi-lab/domain';
 import {
   catalogText,
+  formatNumber,
   formatQuantity,
   inputForm,
   isMessageKey,
@@ -577,7 +578,9 @@ function PartResultRows({ result: r }: { result: ComponentResult }) {
             typeof v === 'boolean'
               ? t(v ? 'sim.part.yes' : 'sim.part.no')
               : typeof v === 'number'
-                ? formatResult(locale, v, STATE_UNITS[k] ?? 'ohm')
+                ? STATE_UNITS[k]
+                  ? formatResult(locale, v, STATE_UNITS[k])
+                  : formatNumber(locale, v)
                 : label(`sim.part.state.${k}.${v}`)
           }
           testId={`result-state-${k}`}

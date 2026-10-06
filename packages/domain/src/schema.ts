@@ -47,7 +47,8 @@ export type ComponentTypeId =
   | 'component.buzzer'
   | 'component.relay'
   | 'component.bjt_npn'
-  | 'sensor.pir_hc_sr501';
+  | 'sensor.pir_hc_sr501'
+  | 'display.led_matrix_8x8';
 
 export interface ComponentInstance {
   /** Stable reference designator (`R1`, `PSU1`), unique per project, never reused. */

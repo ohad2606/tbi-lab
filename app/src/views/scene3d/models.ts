@@ -24,6 +24,8 @@ import {
   RGB_LED_5MM,
   TO92,
   PIR_HC_SR501,
+  LED_MATRIX_1088AS,
+  matrixPinXZ,
   ESP32_DEVKITC,
   ESP32_PCB_BOTTOM,
   ESP32_PCB_TOP,
@@ -761,7 +763,66 @@ function buildPir(_c: SceneComponent, m: Materials, own: OwnedResources) {
   return g;
 }
 
+/** Paint the matrix face: every dot dark, or lit by its level (0..1, from the solved current). */
+export function paintMatrixFace(ctx: CanvasRenderingContext2D, size: number, levels: number[]) {
+  const n = 8;
+  ctx.fillStyle = '#121315';
+  ctx.fillRect(0, 0, size, size);
+  const step = size / n;
+  levels.forEach((l, k) => {
+    const x = (k % n) * step + step / 2;
+    const y = Math.floor(k / n) * step + step / 2;
+    ctx.beginPath();
+    ctx.arc(x, y, step * 0.36, 0, 2 * Math.PI);
+    if (l > 0) {
+      const a = Math.min(1, 0.25 + 0.75 * l);
+      ctx.fillStyle = `rgba(255, ${Math.round(60 + 120 * l)}, ${Math.round(40 + 60 * l)}, ${a})`;
+    } else ctx.fillStyle = '#26272a';
+    ctx.fill();
+  });
+}
+
+function buildLedMatrix(_c: SceneComponent, m: Materials, own: OwnedResources) {
+  const p = LED_MATRIX_1088AS;
+  const g = new THREE.Group();
+  const y0 = p.standoffMm;
+  const body = own.sharedMat(
+    'matrixBody',
+    () => new THREE.MeshStandardMaterial({ color: '#e9eaec', roughness: 0.6 }),
+  );
+  g.add(box(own, p.sizeMm, p.heightMm, p.sizeMm, body, [0, y0 + p.heightMm / 2, 0]));
+  // The face: its own canvas texture, repainted live from the dot currents (renderer).
+  const tex = canvasTexture(own, 256, 256, (ctx) =>
+    paintMatrixFace(ctx, 256, new Array(64).fill(0)),
+  );
+  const faceMat = own.mat(
+    new THREE.MeshStandardMaterial({
+      map: tex,
+      roughness: 0.35,
+      emissiveMap: tex,
+      emissive: '#000000',
+    }),
+  );
+  const face = new THREE.Mesh(
+    own.shared('plane:matrixFace', () => new THREE.PlaneGeometry(p.sizeMm - 0.6, p.sizeMm - 0.6)),
+    faceMat,
+  );
+  face.rotation.x = -Math.PI / 2;
+  face.position.y = y0 + p.heightMm + 0.02;
+  g.add(face);
+  for (let n = 1; n <= 16; n++) {
+    const [x, z] = matrixPinXZ(n);
+    g.add(box(own, 0.5, y0, 0.5, m.lead, [x, y0 / 2, z]));
+    const blob = cylinder(own, 0.55, 0.9, m.chrome, [x, p.attachHeightMm, z], 16, 0.75);
+    blob.userData.pin = n;
+    g.add(blob);
+  }
+  g.userData.matrixFace = { texture: tex, material: faceMat };
+  return g;
+}
+
 const BUILDERS: Record<ModelKey, Builder> = {
+  'display.matrix': buildLedMatrix,
   'sensor.pir': buildPir,
   'transistor.to92': buildTo92,
   'led.rgb': buildRgbLed,

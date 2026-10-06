@@ -146,6 +146,11 @@ export interface ComponentResult {
    * `sounding`. Language-neutral keys and values.
    */
   state?: Record<string, number | boolean | string>;
+  /**
+   * Arrays of identical elements (Sprint 10, LED matrices): their currents in row-major order,
+   * amperes (a dot's forward current).
+   */
+  array?: { rows: number; cols: number; currents: number[] };
 }
 
 export interface SolveStats {

@@ -52,7 +52,11 @@ export function checkCircuit(doc: ProjectDocument): CheckIssue[] {
     }
     wiredParts.push(c.id);
     // A board with unused pins is normal (Sprint 6): only wired pins take part in the circuit.
-    if (unwired.length && c.type !== 'board.esp32_devkitc_wroom32') {
+    // Sprint 10: likewise any terminal the type declares optional (a matrix's unused lines, an
+    // RGB LED's unused channel, the relay contact not used).
+    const optional = CATALOG[c.type].optionalTerminals;
+    const missing = optional === 'all' ? [] : unwired.filter((t) => !(optional ?? []).includes(t));
+    if (missing.length) {
       issues.push({
         code: 'partially_wired',
         severity: 'warning',

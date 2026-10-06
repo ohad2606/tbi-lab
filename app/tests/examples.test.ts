@@ -32,7 +32,7 @@ const near = (a: number | null | undefined, e: number, rel = REL) => {
 const example = (id: string) => EXAMPLES.find((e) => e.id === id)!.document;
 
 describe('the example set', () => {
-  it('has the twelve DC examples and the two ESP32 examples, each titled in English and Hebrew', () => {
+  it('has the thirteen DC examples and the two ESP32 examples, each titled in English and Hebrew', () => {
     expect(EXAMPLES.map((e) => e.id)).toEqual([
       'ohms-law',
       'voltage-divider',
@@ -42,6 +42,7 @@ describe('the example set', () => {
       'light-sensor',
       'night-light',
       'pir-alarm',
+      'led-matrix',
       'relay-load',
       'diode-polarity',
       'push-button',
@@ -178,6 +179,22 @@ describe('expected engineering results (production engine)', () => {
     expect(alarm.components.Q1!.state!.region).toBe('saturation');
     expect(alarm.components.BZ1!.state).toEqual({ sounding: true });
     expect(alarm.components.BZ1!.current).toBeGreaterThan(0.025);
+  });
+
+  it('LED matrix (Sprint 10): row 2 grounded lights (2,2) and (2,7); closing row 7 adds (7,2) and (7,7)', () => {
+    const doc = example('led-matrix');
+    const lit = (o: SolveSuccess) =>
+      o.components.DS1!.array!.currents.flatMap((i, k) =>
+        i > 1e-6 ? [`${Math.floor(k / 8) + 1}.${(k % 8) + 1}`] : [],
+      );
+    expect(lit(solve(doc))).toEqual(['2.2', '2.7']);
+    const both = solve({
+      ...doc,
+      components: doc.components.map((c) =>
+        c.id === 'SW2' ? { ...c, params: { ...c.params, closed: true } } : c,
+      ),
+    });
+    expect(lit(both)).toEqual(['2.2', '2.7', '7.2', '7.7']);
   });
 
   it('relay load (Sprint 10): at rest the buzzer sounds through NC and the LED is dark', () => {

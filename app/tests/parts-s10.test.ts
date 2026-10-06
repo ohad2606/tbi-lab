@@ -32,6 +32,7 @@ const NEW_TYPES: ComponentTypeId[] = [
   'component.relay',
   'component.bjt_npn',
   'sensor.pir_hc_sr501',
+  'display.led_matrix_8x8',
 ];
 
 describe('Sprint 10 parts: catalog and serialization', () => {

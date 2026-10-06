@@ -313,6 +313,42 @@ export const RECIPES: Record<string, () => ProjectDocument> = {
     ]);
     return r.centre(-160);
   },
+  /**
+   * Sprint 10. LED matrix: columns 2 and 7 driven from 5 V through 220 Ω each; rows 2 and 7 to
+   * GND through switches. A dot lights only where a driven column meets a grounded row (the
+   * principle of row/column scanning); dots on one column share its resistor.
+   */
+  'led-matrix': () => {
+    const r = new Recipe('led-matrix', 'LED matrix');
+    r.supply(5, 0.2);
+    // Pins (1088AS map): r2 = pin 14 and c7 = pin 15 on the rear edge, r7 = pin 2 and c2 = pin 3
+    // on the front edge.
+    const M = r.place('display.led_matrix_8x8', 420, 0);
+    const S2 = r.place('component.toggle_switch', 460, -200);
+    const S7 = r.place('component.toggle_switch', 280, 200);
+    const G2 = r.place('component.ground', 540, -140);
+    const G3 = r.place('component.ground', 200, 260);
+    const Rc7 = r.place('component.resistor', 360, -200, 1);
+    const Rc2 = r.place('component.resistor', 380, 220, 1);
+    r.set(Rc7, 'resistance', 220, 'ohm');
+    r.set(Rc2, 'resistance', 220, 'ohm');
+    r.set(S2, 'closed', true);
+    r.wire(T(M, 'r2'), T(S2, 'a'), [{ x: 380, y: -200 }]);
+    r.wire(T(S2, 'b'), T(G2, 'ref'), [{ x: 540, y: -200 }]);
+    r.wire(T(M, 'r7'), T(S7, 'b'), [{ x: 360, y: 200 }]);
+    r.wire(T(S7, 'a'), T(G3, 'ref'), [{ x: 200, y: 200 }]);
+    r.wire(T(Rc7, 'b'), T(M, 'c7'));
+    r.wire(T(M, 'c2'), T(Rc2, 'a'));
+    const rail = r.wire(T('PSU1', 'positive'), T(Rc7, 'a'), [
+      { x: 100, y: -20 },
+      { x: 100, y: -240 },
+    ]);
+    r.wire({ kind: 'wire', wire: rail, at: { x: 70, y: -20 } }, T(Rc2, 'b'), [
+      { x: 70, y: 300 },
+      { x: 380, y: 300 },
+    ]);
+    return r.centre(-240);
+  },
   /** Two identical 1 kΩ + 1N4148 branches; D1 forward conducts ~4.3 mA, D2 reversed blocks (nA). */
   'diode-polarity': () => {
     const r = new Recipe('diode-polarity', 'Diode polarity');

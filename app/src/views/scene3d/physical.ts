@@ -320,3 +320,25 @@ export const PIR_HC_SR501 = {
     vcc: [-13.5, 2.54],
   } as Record<string, readonly [number, number]>,
 };
+
+/**
+ * 1088AS 8x8 matrix: 32 x 32 x 8 mm, 3 mm dots [VMP502]. The pin pitch, row spacing and pin-1
+ * corner are not published: 2.54 mm pitch, two rows 27.94 mm apart, DIP-style numbering (1-8 along
+ * the front edge left to right, 9-16 back along the rear edge) [REP]. Pin map from the sheet:
+ * columns 1-8 = pins 13, 3, 4, 10, 6, 11, 15, 16; rows 1-8 = pins 9, 14, 8, 12, 1, 7, 2, 5.
+ */
+export const LED_MATRIX_1088AS = {
+  sizeMm: 32,
+  heightMm: 8,
+  dotDiameterMm: 3,
+  standoffMm: 3,
+  attachHeightMm: 0.8,
+  pitchMm: 2.54,
+  rowZMm: 13.97,
+};
+
+/** Plan position of a 1088AS pin number (local, mm). */
+export function matrixPinXZ(n: number): readonly [number, number] {
+  const p = LED_MATRIX_1088AS;
+  return n <= 8 ? [(n - 4.5) * p.pitchMm, p.rowZMm] : [(12.5 - n) * p.pitchMm, -p.rowZMm];
+}

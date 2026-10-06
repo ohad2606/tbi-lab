@@ -23,6 +23,7 @@
 import {
   CATALOG,
   ESP32_DEVKITC_WROOM32,
+  MATRIX_1088AS_PINS,
   GROUND_NODE,
   boardPinPosition,
   connectivity,
@@ -48,6 +49,8 @@ import {
   RGB_LED_5MM,
   TO92,
   PIR_HC_SR501,
+  LED_MATRIX_1088AS,
+  matrixPinXZ,
   ESP32_ATTACH_HEIGHT,
   ESP32_DEVKITC,
   ESP32_PIN_TOP,
@@ -81,6 +84,7 @@ export type ModelKey =
   | 'relay.cube'
   | 'transistor.to92'
   | 'sensor.pir'
+  | 'display.matrix'
   | 'generic';
 
 /** Which model draws each component type. A type without an entry gets the generic box. */
@@ -99,6 +103,7 @@ export const MODEL_FOR: Partial<Record<ComponentTypeId, ModelKey>> = {
   'component.relay': 'relay.cube',
   'component.bjt_npn': 'transistor.to92',
   'sensor.pir_hc_sr501': 'sensor.pir',
+  'display.led_matrix_8x8': 'display.matrix',
 };
 
 export interface Vec3 {
@@ -208,6 +213,7 @@ export const MODEL_HEIGHT: Record<ModelKey, number> = {
   'relay.cube': RELAY_SRD.standoffMm + RELAY_SRD.heightMm,
   'transistor.to92': TO92.standoffMm + TO92.heightMm,
   'sensor.pir': PIR_HC_SR501.standoffMm + PIR_HC_SR501.boardThicknessMm + PIR_HC_SR501.domeHeightMm,
+  'display.matrix': LED_MATRIX_1088AS.standoffMm + LED_MATRIX_1088AS.heightMm,
   generic: 3,
 };
 
@@ -259,6 +265,12 @@ export const FOOTPRINT: Record<ModelKey, readonly [number, number, number, numbe
     RELAY_SRD.widthMm / 2,
   ],
   'transistor.to92': [-6.7, 3.6, -6.7, 6.7],
+  'display.matrix': [
+    -LED_MATRIX_1088AS.sizeMm / 2,
+    LED_MATRIX_1088AS.sizeMm / 2,
+    -LED_MATRIX_1088AS.sizeMm / 2,
+    LED_MATRIX_1088AS.sizeMm / 2,
+  ],
   'sensor.pir': [
     -PIR_HC_SR501.boardXMm / 2,
     PIR_HC_SR501.boardXMm / 2,
@@ -357,6 +369,12 @@ function localAttach(
       return { x, y: PSU.attachHeightMm, z };
     case 'ground.post':
       return { x, y: GROUND_POST.attachHeightMm, z };
+    case 'display.matrix': {
+      // The real pin under the block (rows and columns by the 1088AS pin map).
+      const n = MATRIX_1088AS_PINS.indexOf(terminal) + 1;
+      const [px, pz] = matrixPinXZ(n);
+      return { x: px, y: LED_MATRIX_1088AS.attachHeightMm, z: pz };
+    }
     case 'sensor.pir': {
       const [px, pz] = PIR_HC_SR501.pins[terminal]!;
       return { x: px, y: PIR_HC_SR501.attachHeightMm, z: pz };
@@ -449,7 +467,7 @@ export function deriveScene(doc: ProjectDocument): SceneDescription {
   }
 
   // Plan routes in mm, each end moved onto its terminal's physical attach point.
-  const routes = new Map<string, { flat: Point[]; ends: [Vec3, Vec3] }>();
+  const routes = new Map<string, Route>();
   for (const w of doc.layout.wires) {
     const route = wireRoute(doc, w);
     if (!route || route.length < 2) continue;
@@ -460,8 +478,21 @@ export function deriveScene(doc: ProjectDocument): SceneDescription {
     };
     const a = endAt(w.from, flat[0]!);
     const b = endAt(w.to, flat[flat.length - 1]!);
-    flat = moveEnd(moveEnd(flat, { x: a.x, y: a.z }, 'start'), { x: b.x, y: b.z }, 'end');
-    routes.set(w.id, { flat, ends: [a, b] });
+    // Pins under a part's body (relay, PIR module, matrix): the wire's last run reaches the pin
+    // straight in from outside the body, perpendicular to the nearest edge, so wires to
+    // neighbouring pins run side by side instead of overlapping (and passing over each other's
+    // pins). Every other end keeps the Sprint 9/10 rule (moveEnd only).
+    const approach = (e: WireEnd, at: Vec3): [Point, Point] | null =>
+      e.kind === 'terminal' ? underBodyApproach(components, e.component, e.terminal, at) : null;
+    const pa = approach(w.from, a);
+    const pb = approach(w.to, b);
+    // [pre, approach]: the run comes in along the pin's own perpendicular (unique per pin), drops
+    // at the approach point and goes in at pin level.
+    if (pa) flat = [{ x: a.x, y: a.z }, pa[1], ...moveEnd(flat, pa[0], 'start')];
+    else flat = moveEnd(flat, { x: a.x, y: a.z }, 'start');
+    if (pb) flat = [...moveEnd(flat, pb[0], 'end'), pb[1], { x: b.x, y: b.z }];
+    else flat = moveEnd(flat, { x: b.x, y: b.z }, 'end');
+    routes.set(w.id, { flat, ends: [a, b], under: [!!pa, !!pb] });
   }
 
   const wires: SceneWire[] = [];
@@ -472,7 +503,18 @@ export function deriveScene(doc: ProjectDocument): SceneDescription {
     const node = groupNode.get(nodeKey(w.from)) ?? null;
     const h = heights.get(w.id)!;
     const [a, b] = r.ends;
-    const points: Vec3[] = [a, ...r.flat.map((p) => ({ x: p.x, y: h, z: p.y })), b];
+    // An end under a part's body: the wire drops at the approach point (outside the body) to the
+    // pin's level and runs straight in at that level (under the body edge) to the pin.
+    const run = r.flat.map((p) => ({ x: p.x, y: h, z: p.y }));
+    if (r.under[0]) {
+      const ap = run[1]!;
+      run.splice(0, 2, { x: a.x, y: a.y, z: a.z }, { x: ap.x, y: a.y, z: ap.z }, ap);
+    }
+    if (r.under[1]) {
+      const ap = run[run.length - 2]!;
+      run.splice(run.length - 2, 2, ap, { x: ap.x, y: b.y, z: ap.z }, { x: b.x, y: b.y, z: b.z });
+    }
+    const points: Vec3[] = [a, ...run, b];
     wires.push({
       id: w.id,
       node,
@@ -532,6 +574,69 @@ export function deriveScene(doc: ProjectDocument): SceneDescription {
 
   return { components, wires, joints, ...extent(components, wires) };
 }
+
+interface Route {
+  flat: Point[];
+  ends: [Vec3, Vec3];
+  /** Whether each end reaches a pin under a part's body (its last plan run is at pin level). */
+  under: [boolean, boolean];
+}
+
+/** The plan route at the wire's own height: without the pin-level runs under a body. */
+const main = (r: Route): Point[] =>
+  r.flat.slice(r.under[0] ? 1 : 0, r.under[1] ? r.flat.length - 1 : r.flat.length);
+
+/** Models whose pins sit under their body. */
+const UNDER_BODY: ReadonlySet<ModelKey> = new Set(['relay.cube', 'sensor.pir', 'display.matrix']);
+
+/**
+ * For a pin under a part's body: the plan point just outside the body, straight out from the pin
+ * across the nearest edge (perpendicular to it), from which the wire's last run goes to the pin.
+ */
+function underBodyApproach(
+  components: SceneComponent[],
+  id: string,
+  terminal: string,
+  at: Vec3,
+): [Point, Point] | null {
+  const c = components.find((x) => x.id === id);
+  if (!c || !UNDER_BODY.has(c.model)) return null;
+  // The pin in the part's local frame (undo the placement rotation).
+  const back = rotatePoint(
+    { x: at.x - c.x, y: at.z - c.z },
+    ((360 - c.rotation) % 360) as Rotation,
+  );
+  const [x0, x1, z0, z1] = FOOTPRINT[c.model];
+  const out = (k: number) => [
+    { d: back.x - x0, p: { x: x0 - k, y: back.y } },
+    { d: x1 - back.x, p: { x: x1 + k, y: back.y } },
+    { d: back.y - z0, p: { x: back.x, y: z0 - k } },
+    { d: z1 - back.y, p: { x: back.x, y: z1 + k } },
+  ];
+  const side = out(0).reduce((m, g, i, all) => (g.d < all[m]!.d ? i : m), 0);
+  // The drop is at least CLEAR_OUT outside the body, and no nearer than the terminal's own 2D
+  // position (a package whose pins have stubs in 2D: the drop is at the stub's end, where 2D
+  // routing lets no other wire pass).
+  const off = CATALOG[c.type].terminals.find((t) => t.id === terminal)!.offset;
+  const tx = off.x * SCALE;
+  const tz = off.y * SCALE;
+  const beyond = [x0 - tx, tx - x1, z0 - tz, tz - z1][side]!;
+  // Stubs reaching well beyond the body: turn in at the stub row and drop just inside it.
+  const stub = beyond > CLEAR_OUT + STUB_IN;
+  const drop = stub ? beyond - STUB_IN : CLEAR_OUT;
+  const pre = stub ? beyond : CLEAR_OUT + PRE_OUT;
+  const world = (q: Point) => {
+    const r = rotatePoint(q, c.rotation);
+    return { x: c.x + r.x, y: c.z + r.y };
+  };
+  return [world(out(pre)[side]!.p), world(out(drop)[side]!.p)];
+}
+/** The run before the drop comes in along the pin's own line over this length (mm). */
+const PRE_OUT = 2.5;
+/** With 2D pin stubs: the drop is this far inside the stub row (mm). */
+const STUB_IN = 1.5;
+/** How far outside the body the last run starts (mm). */
+const CLEAR_OUT = 2.0;
 
 /**
  * Move one end of an orthogonal plan route onto `to`, keeping it orthogonal: the final straight
@@ -595,7 +700,7 @@ const round = (v: number) => Math.round(v * 100) / 100;
 function wireHeights(
   doc: ProjectDocument,
   components: SceneComponent[],
-  routes: Map<string, { flat: Point[]; ends: [Vec3, Vec3] }>,
+  routes: Map<string, Route>,
 ): Map<string, number> {
   // Spots a wire may pass over: every attach point, every physical header pin, every junction.
   const spots: { p: Point; h: number }[] = doc.layout.junctions.map((j) => ({
@@ -648,6 +753,20 @@ function wireHeights(
           Math.min(a.y, c.y) < b.maxZ,
     );
   const key = (p: Point) => `${round(p.x)},${round(p.y)}`;
+  // The pin-level runs under a body (deriveScene): other wires must clear them like a pin.
+  const lowRuns: { wire: string; p: Point; h: number }[] = [];
+  for (const [id, r] of routes)
+    for (const k of [0, 1] as const) {
+      if (!r.under[k]) continue;
+      const [pin, ap] = k === 0 ? [r.flat[0]!, r.flat[1]!] : [r.flat.at(-1)!, r.flat.at(-2)!];
+      const h = r.ends[k].y;
+      for (const f of [0, 0.25, 0.5, 0.75])
+        lowRuns.push({
+          wire: id,
+          p: { x: ap.x + (pin.x - ap.x) * f, y: ap.y + (pin.y - ap.y) * f },
+          h,
+        });
+    }
 
   const floor = new Map<string, number>();
   const passes = new Map<string, Set<string>>();
@@ -655,13 +774,21 @@ function wireHeights(
   for (const w of doc.layout.wires) {
     const r = routes.get(w.id);
     if (!r) continue;
-    const ends = [r.flat[0]!, r.flat[r.flat.length - 1]!];
+    // Where this wire's risers stand: its route ends, or for a pin under a body the approach point
+    // outside it (the wire drops there).
+    const m = main(r);
+    const ends = [m[0]!, m[m.length - 1]!];
     for (const e of ends) endsAt.set(key(e), [...(endsAt.get(key(e)) ?? []), w.id]);
     const own = new Set(
       [w.from, w.to].flatMap((e) => (e.kind === 'terminal' ? [e.component] : [])),
     );
-    const segs = segsOf(r.flat);
-    const passed = spots.filter(
+    const underOwn = new Set(
+      ([w.from, w.to] as const).flatMap((e, k) =>
+        e.kind === 'terminal' && r.under[k] ? [e.component] : [],
+      ),
+    );
+    const segs = segsOf(m);
+    const passed = [...spots, ...lowRuns.filter((l) => l.wire !== w.id)].filter(
       (s) =>
         !ends.some((e) => Math.hypot(e.x - s.p.x, e.y - s.p.y) < NEAR_MM) &&
         segs.some((g) => nearSeg(s.p, g)),
@@ -670,7 +797,9 @@ function wireHeights(
     const over = Math.max(
       ...passed.map((s) => s.h + WIRE.clearanceMm),
       ...bodies
-        .filter((b) => !own.has(b.id) && crossesBody(r.flat, b))
+        // A wire clears the bodies it crosses, its own part's too when it reaches a pin under
+        // that body (its last run goes under the edge at pin level, see deriveScene).
+        .filter((b) => (!own.has(b.id) || underOwn.has(b.id)) && crossesBody(main(r), b))
         .map((b) => b.h + WIRE.clearanceMm),
       0,
     );
@@ -681,8 +810,8 @@ function wireHeights(
   const meets = new Map<string, Set<string>>(ids.map((id) => [id, new Set()]));
   for (let i = 0; i < ids.length; i++)
     for (let j = i + 1; j < ids.length; j++) {
-      const a = routes.get(ids[i]!)!.flat;
-      const b = routes.get(ids[j]!)!.flat;
+      const a = main(routes.get(ids[i]!)!);
+      const b = main(routes.get(ids[j]!)!);
       const endOfBoth = (p: Point) =>
         (eq(p, a[0]!) || eq(p, a[a.length - 1]!)) && (eq(p, b[0]!) || eq(p, b[b.length - 1]!));
       const hit = segsOf(a).some((s) =>

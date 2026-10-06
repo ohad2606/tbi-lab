@@ -2697,3 +2697,22 @@ select {
   color: var(--runtime);
   border-color: var(--runtime);
 }
+
+.symbol .matrix-face {
+  fill: #16181b;
+}
+
+.symbol .matrix-dot {
+  fill: #2c2f33;
+  stroke: #3a3e44;
+}
+
+.symbol .matrix-glow {
+  fill: #ff3b2f;
+  stroke: none;
+}
+
+.board-pins .matrix-pin-label {
+  fill: #c9ccd1;
+  font-size: 8px;
+}

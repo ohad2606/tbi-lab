@@ -81,6 +81,11 @@ export interface ComponentTypeDef {
    */
   toggleParam?: string;
   /**
+   * Terminals that are normally left unwired (no "partially wired" warning): `all` for a board's
+   * or a matrix's pins, or the listed ones (an RGB LED's channels, a relay's NO/NC).
+   */
+  optionalTerminals?: 'all' | readonly string[];
+  /**
    * Sprint 10: false when the deployed ESP32 runtime (Session Host) does not know this type yet.
    * A project with an ESP32 board and such a part is refused at Run with a specific reason,
    * before any session starts; local circuits simulate it normally. Absent means supported.
@@ -113,6 +118,30 @@ const ESP32_TERMINALS: TerminalDef[] = ESP32_DEVKITC_WROOM32.pins.flatMap((pin) 
   return id ? [{ id, offset: boardPinPosition(pin), labelKey: `pin.${id}` }] : [];
 });
 
+/**
+ * 1088AS 8x8 LED matrix pin map (Velleman VMP502 info sheet): pin n (1..16) -> the row (cathode) or
+ * column (anode) line it carries. Columns 1-8 are pins 13, 3, 4, 10, 6, 11, 15, 16; rows 1-8 are pins
+ * 9, 14, 8, 12, 1, 7, 2, 5.
+ */
+export const MATRIX_1088AS_PINS: readonly string[] = [
+  'r5',
+  'r7',
+  'c2',
+  'c3',
+  'r8',
+  'c5',
+  'r6',
+  'r3', // pins 1-8
+  'r1',
+  'c4',
+  'c6',
+  'r4',
+  'c1',
+  'r2',
+  'c7',
+  'c8', // pins 9-16
+];
+
 /** Sprint 10 (PM-6 revision, V1-PRODUCT-SCOPE.md §6.0): one datasheet-sourced part per type. */
 const SPRINT10_TYPES = {
   'component.rgb_led': {
@@ -143,6 +172,7 @@ const SPRINT10_TYPES = {
       },
     ],
     aliases: ['rgb', 'rgb led', 'full colour led'],
+    optionalTerminals: ['red', 'green', 'blue'],
     mcuRuntime: false,
   },
   'component.photoresistor': {
@@ -260,6 +290,42 @@ const SPRINT10_TYPES = {
     aliases: ['pir', 'motion sensor', 'hc-sr501', 'חיישן תנועה'],
     mcuRuntime: false,
   },
+  'display.led_matrix_8x8': {
+    type: 'display.led_matrix_8x8',
+    typeVersion: 1,
+    refPrefix: 'DS',
+    nameKey: 'component.display.led_matrix_8x8.name',
+    symbol: 'symbol.led_matrix',
+    // The package's 16 pins as on the part: 1-8 along the front edge (left to right), 9-16 back
+    // along the rear edge (DIP numbering), each the row (dot cathodes) or column (dot anodes) line
+    // the 1088AS pin map gives it. Terminal ids name the LINE (r1..r8, c1..c8).
+    terminals: MATRIX_1088AS_PINS.map((line, k) => {
+      const n = k + 1;
+      const front = n <= 8;
+      const col = front ? n - 1 : 16 - n;
+      return {
+        id: line,
+        offset: { x: -80 + 20 * col, y: front ? 140 : -140 },
+        labelKey: line.startsWith('r')
+          ? `terminal.row${line.slice(1)}`
+          : `terminal.col${line.slice(1)}`,
+      };
+    }),
+    params: [
+      {
+        kind: 'enum',
+        key: 'model',
+        options: [
+          { value: 'model.led_matrix.oasis_1088as', labelKey: 'model.led_matrix.oasis_1088as' },
+        ],
+        default: 'model.led_matrix.oasis_1088as',
+        labelKey: 'param.model',
+      },
+    ],
+    aliases: ['led matrix', 'matrix', 'dot matrix', '1088as', '8x8'],
+    optionalTerminals: 'all',
+    mcuRuntime: false,
+  },
   'component.relay': {
     type: 'component.relay',
     typeVersion: 1,
@@ -289,6 +355,7 @@ const SPRINT10_TYPES = {
       },
     ],
     aliases: ['relay', 'spdt relay', 'srd-05vdc', 'ממסר', 'ריליי'],
+    optionalTerminals: ['no', 'nc'],
     mcuRuntime: false,
   },
 } satisfies Partial<Record<ComponentTypeId, ComponentTypeDef>>;
@@ -478,6 +545,7 @@ export const CATALOG: Record<ComponentTypeId, ComponentTypeDef> = {
     // The board GND is the circuit reference the runtime drives its pads against.
     groundTerminal: 'gnd',
     aliases: ['esp32', 'devkit', 'mcu', 'wroom'],
+    optionalTerminals: 'all',
   },
 };
 
@@ -496,6 +564,7 @@ export const CATALOG_ORDER: readonly ComponentTypeId[] = [
   'component.relay',
   'component.bjt_npn',
   'sensor.pir_hc_sr501',
+  'display.led_matrix_8x8',
   'board.esp32_devkitc_wroom32',
 ];
 

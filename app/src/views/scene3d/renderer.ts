@@ -14,7 +14,13 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { buildComponent, createMaterials, OwnedResources, roundPath } from './models.js';
+import {
+  buildComponent,
+  createMaterials,
+  OwnedResources,
+  paintMatrixFace,
+  roundPath,
+} from './models.js';
 import { WIRE } from './physical.js';
 import { MODEL_HEIGHT, WIRE_RADIUS, type SceneDescription } from './scene.js';
 
@@ -78,7 +84,11 @@ export const liveViewers = () => live;
  */
 export type RenderQuality = 'full' | 'reduced';
 
-export type LiveLevel = number | { level: number; color: string };
+export type LiveLevel =
+  | number
+  | { level: number; color: string }
+  /** An LED matrix: each dot's level (0..1), row-major. */
+  | { dots: number[] };
 const QUALITY_KEY = 'tbi-lab.3d.quality';
 const SOFTWARE_RENDERER = /swiftshader|llvmpipe|softpipe|software|basic render/i;
 
@@ -189,6 +199,11 @@ export function createViewer(container: HTMLElement, onRender?: (s: ViewerStats)
   let renders = 0;
   /** LED lens materials by component id, and the last live levels applied to them. */
   let lenses = new Map<string, THREE.MeshStandardMaterial>();
+  /** LED matrix faces by component id (canvas texture + material), repainted live. */
+  let matrices = new Map<
+    string,
+    { texture: THREE.CanvasTexture; material: THREE.MeshStandardMaterial }
+  >();
   let labels: THREE.Sprite[] = [];
   const toCamera = new THREE.Vector3();
   /** Cap each label's on-screen height (cheap: one distance per label, only when rendering). */
@@ -208,8 +223,22 @@ export function createViewer(container: HTMLElement, onRender?: (s: ViewerStats)
   /** Glow halos of the LEDs, by component id. */
   let halos = new Map<string, THREE.Sprite>();
   function applyLive() {
+    // LED matrices: repaint the face from the dot levels (dark when nothing is live).
+    for (const [id, face] of matrices) {
+      const live = liveLevels[id];
+      const dots =
+        live && typeof live === 'object' && 'dots' in live ? live.dots : new Array(64).fill(0);
+      const canvas = face.texture.image as HTMLCanvasElement;
+      paintMatrixFace(canvas.getContext('2d')!, canvas.width, dots);
+      face.texture.needsUpdate = true;
+      const any = dots.some((d) => d > 0);
+      face.material.emissive.set(any ? '#ffffff' : '#000000');
+      face.material.emissiveIntensity = any ? 0.9 : 0;
+    }
     for (const [id, mat] of lenses) {
-      const live = liveLevels[id] ?? 0;
+      const raw = liveLevels[id] ?? 0;
+      if (typeof raw === 'object' && 'dots' in raw) continue;
+      const live = raw;
       const level = typeof live === 'number' ? live : live.level;
       // A coloured live mix (RGB) on a water-clear lens: weaker emission so the hue reads, not white.
       mat.emissiveIntensity = level * (typeof live === 'number' ? 2.2 : 0.9);
@@ -578,9 +607,12 @@ export function createViewer(container: HTMLElement, onRender?: (s: ViewerStats)
       content.traverse((o) => {
         if (o.userData.label) labels.push(o as THREE.Sprite);
       });
+      matrices = new Map();
       content.traverse((o) => {
         const lens = o.userData.lensMaterial as THREE.MeshStandardMaterial | undefined;
         if (lens && o.userData.component) lenses.set(o.userData.component as string, lens);
+        if (o.userData.matrixFace && o.userData.component)
+          matrices.set(o.userData.component as string, o.userData.matrixFace);
       });
       applyLive();
       if (first || opts.resetCamera) {

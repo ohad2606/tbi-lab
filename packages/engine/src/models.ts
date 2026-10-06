@@ -347,3 +347,32 @@ export const RGB_WP154A4SUREQBFZGC = {
   green: rgbChannel('green'),
   blue: rgbChannel('blue'),
 } as const;
+
+/**
+ * LED matrix dot card, 8x8 1088AS (Sprint 10; manufacturer OASIS per the Velleman VMP502 info sheet,
+ * retrieved 2026-10-06, SHA-256 25a14d7a…f4cdad): red 625-630 nm, V_F 2.1-2.5 V, I_F 20 mA. The
+ * sheet gives a V_F RANGE without a test current and no typical value, so this card rests on two
+ * documented assumptions: the anchor is the range midpoint 2.3 V at the stated 20 mA, and N is the
+ * same red-LED assumption as the TLHR5400 card. Valid 1-20 mA. No absolute maximum ratings are
+ * published: none are checked (none is invented).
+ */
+export const LED_MATRIX_1088AS_ANCHOR = {
+  forwardVoltageV: 2.3,
+  forwardCurrentA: 0.02,
+  source:
+    'Velleman VMP502 info sheet for the 1088AS (OASIS): V_F 2.1-2.5 V, I_F 20 mA; anchor = range ' +
+    'midpoint at the stated current (assumption).',
+} as const;
+
+export const LED_MATRIX_1088AS_DOT: DiodeModel = {
+  name: '1088AS-dot',
+  saturationCurrentA: fitSaturationCurrent(
+    LED_MATRIX_1088AS_ANCHOR.forwardVoltageV,
+    LED_MATRIX_1088AS_ANCHOR.forwardCurrentA,
+    RED_LED_EMISSION_COEFFICIENT,
+  ),
+  emissionCoefficient: RED_LED_EMISSION_COEFFICIENT,
+  seriesResistanceOhm: 0,
+  temperatureK: T_AMBIENT_K,
+  provenance: `I_S fitted to ${LED_MATRIX_1088AS_ANCHOR.source} N = ${RED_LED_EMISSION_COEFFICIENT} assumed.`,
+};

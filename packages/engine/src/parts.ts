@@ -104,7 +104,7 @@ export interface PartModel {
     state: PartState,
     sol: PartSolution,
   ): Pick<ComponentResult, 'current' | 'voltage' | 'terminals'> &
-    Partial<Pick<ComponentResult, 'currents' | 'state' | 'outsideModelRange'>>;
+    Partial<Pick<ComponentResult, 'currents' | 'state' | 'outsideModelRange' | 'array'>>;
 }
 
 const registry = new Map<string, PartModel>();

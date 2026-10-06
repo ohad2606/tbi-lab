@@ -19,6 +19,7 @@ import esp32Blink from './data/esp32-blink.json';
 import esp32InputEcho from './data/esp32-input-echo.json';
 import ledColours from './data/led-colours.json';
 import ledCurrent from './data/led-current.json';
+import ledMatrix from './data/led-matrix.json';
 import nightLight from './data/night-light.json';
 import lightSensor from './data/light-sensor.json';
 import relayLoad from './data/relay-load.json';
@@ -105,6 +106,13 @@ export const EXAMPLES: readonly Example[] = [
     summaryKey: 'example.pir-alarm.summary',
     document: doc(pirAlarm),
     probes: [V('U1', 'out'), I('BZ1')],
+  },
+  {
+    id: 'led-matrix',
+    titleKey: 'example.led-matrix.title',
+    summaryKey: 'example.led-matrix.summary',
+    document: doc(ledMatrix),
+    probes: [I('R1'), I('R2')],
   },
   {
     id: 'relay-load',

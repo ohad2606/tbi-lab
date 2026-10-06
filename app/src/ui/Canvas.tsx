@@ -52,7 +52,14 @@ import type { ComponentResult } from '@tbi-lab/engine';
 import { formatResult } from '../sim/format.js';
 import { useAppState, useStore, useT } from './context.js';
 import { checksFor } from './checks.js';
-import { RGB_CHANNELS, SYMBOLS, rgbTriangle, type SymbolState } from './symbols.js';
+import {
+  MATRIX_COLS,
+  MATRIX_ROWS,
+  RGB_CHANNELS,
+  SYMBOLS,
+  rgbTriangle,
+  type SymbolState,
+} from './symbols.js';
 import { componentBox, componentBoxes, moveRouted, rotateRouted } from './routing.js';
 import { RGB_LOOKS, ledLook } from '../views/ledLooks.js';
 import type { GpioLevel } from '../runtime/view.js';
@@ -1268,9 +1275,28 @@ function ComponentView({
               />
             ) : null;
           })}
+        {c.type === 'display.led_matrix_8x8' &&
+          result?.array &&
+          // Each dot glows by ITS solved forward current (full at 20 mA): what the circuit drives.
+          result.array.currents.map((i, k) =>
+            i > 1e-6 ? (
+              <circle
+                key={k}
+                class="led-glow matrix-glow"
+                data-dot={`${Math.floor(k / result.array!.cols) + 1}.${(k % result.array!.cols) + 1}`}
+                cx={MATRIX_COLS[k % result.array!.cols]}
+                cy={MATRIX_ROWS[Math.floor(k / result.array!.cols)]}
+                r={6}
+                style={{ fillOpacity: Math.min(1, Math.max(0.15, i / 0.02)) }}
+              />
+            ) : null,
+          )}
       </g>
       {c.type === 'board.esp32_devkitc_wroom32' && (
         <BoardPins rotation={p.rotation} at={p} levels={pinLevels} />
+      )}
+      {c.type === 'display.led_matrix_8x8' && (
+        <LinePins type={c.type} rotation={p.rotation} at={p} />
       )}
       {c.type !== 'component.ground' && (
         <text
@@ -1393,6 +1419,41 @@ function probeLabelAt(p: Probe, at: Point, doc: ProjectDocument) {
   }
   // Wire runs up or down: the label sits beside the terminal, clear of it.
   return { x: at.x + 14, y: out.y < 0 ? at.y - 4 : at.y + 16, 'text-anchor': start };
+}
+
+/**
+ * A package's pin names as the lines they carry (Sprint 10, the LED matrix: R5, C2, ...): technical
+ * tokens, drawn upright just inside each pin, always LTR. Presentation only.
+ */
+function LinePins({
+  type,
+  rotation,
+  at,
+}: {
+  type: ComponentTypeId;
+  rotation: Rotation;
+  at: Point;
+}) {
+  return (
+    <g class="board-pins" aria-hidden="true">
+      {CATALOG[type].terminals.map((t) => {
+        const inward = { x: t.offset.x, y: t.offset.y - Math.sign(t.offset.y) * 50 };
+        const label = rotatePoint(inward, rotation);
+        return (
+          <text
+            key={t.id}
+            class="pin-label matrix-pin-label"
+            x={at.x + label.x}
+            y={at.y + label.y + 3}
+            text-anchor="middle"
+            direction="ltr"
+          >
+            {t.id.toUpperCase()}
+          </text>
+        );
+      })}
+    </g>
+  );
 }
 
 /**

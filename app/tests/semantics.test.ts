@@ -310,6 +310,14 @@ function junctionCircuit() {
 }
 
 describe('one electrical truth across Circuit, Schematic and 3D', () => {
+  it('holds for the LED matrix (wired at its 16 pins by the 1088AS pin map) at every rotation', () => {
+    let doc = EXAMPLES.find((e) => e.id === 'led-matrix')!.document;
+    for (let i = 0; i < 4; i++) {
+      expectAllViewsAgree(doc, `led-matrix DS1 x${i}`);
+      doc = must(rotateRouted(doc, ['DS1'])).doc;
+    }
+  });
+
   it('holds for the PIR module (wired at its header pins) at every rotation', () => {
     let doc = EXAMPLES.find((e) => e.id === 'pir-alarm')!.document;
     for (let i = 0; i < 4; i++) {

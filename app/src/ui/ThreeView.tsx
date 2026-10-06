@@ -66,6 +66,13 @@ export function ThreeView() {
       if (c.type === 'component.led') {
         const i = outcome.components[c.id]?.current ?? 0;
         if (i && i > 0) levels[c.id] = Math.min(1, Math.max(0.08, i / 0.02));
+      } else if (c.type === 'display.led_matrix_8x8') {
+        // Each dot's level from ITS solved current (full at 20 mA).
+        const arr = outcome.components[c.id]?.array;
+        if (arr && arr.currents.some((i) => i > 1e-6))
+          levels[c.id] = {
+            dots: arr.currents.map((i) => (i > 1e-6 ? Math.min(1, Math.max(0.15, i / 0.02)) : 0)),
+          };
       } else if (c.type === 'component.rgb_led') {
         // The emitted colour is the mix of the SOLVED channel currents (never a chosen colour).
         const mix = rgbMix(outcome.components[c.id]?.currents ?? {});
@@ -91,7 +98,7 @@ export function ThreeView() {
       data-objects={stats?.objects}
       data-lit={Object.keys(levels).join(' ')}
       data-glow={Object.entries(levels)
-        .flatMap(([id, l]) => (typeof l === 'number' ? [] : [`${id}:${l.color}`]))
+        .flatMap(([id, l]) => (typeof l === 'object' && 'color' in l ? [`${id}:${l.color}`] : []))
         .join(' ')}
       data-leds={scene?.components
         .flatMap((c) => (c.visual.led ? [`${c.id}:${c.visual.led.package}`] : []))

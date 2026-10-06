@@ -138,6 +138,26 @@ export const SCHEMATIC_SYMBOLS: Record<ComponentTypeId, SchematicSymbol> = {
     partName: 'NPN',
     glyph: 'bjt.npn',
   },
+  'display.led_matrix_8x8': {
+    kind: 'module',
+    key: 'module',
+    pins: [
+      ...Array.from({ length: 8 }, (_, i) => ({
+        terminal: `r${i + 1}`,
+        name: `R${i + 1}`,
+        side: 'left' as const,
+        order: i + 1,
+      })),
+      ...Array.from({ length: 8 }, (_, j) => ({
+        terminal: `c${j + 1}`,
+        name: `C${j + 1}`,
+        side: 'right' as const,
+        order: j + 1,
+      })),
+    ],
+    partName: 'LED 8×8',
+    glyph: 'led_matrix',
+  },
   'sensor.pir_hc_sr501': {
     kind: 'module',
     key: 'module',

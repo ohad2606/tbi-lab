@@ -157,3 +157,25 @@ test('PIR alarm: clicking the sensor dome puts motion in front of it; the transi
   await page.getByTestId('param-U1-motion').uncheck();
   await expect(u).toHaveAttribute('data-output', 'low');
 });
+
+test('LED matrix: a dot lights only where a driven column meets a grounded row (2D and 3D)', async ({
+  page,
+}) => {
+  await openExample(page, 'led-matrix');
+  await run(page);
+  const dots = () =>
+    component(page, 'DS1')
+      .locator('.matrix-glow')
+      .evaluateAll((els) => els.map((e) => e.getAttribute('data-dot')));
+  await expect.poll(dots).toEqual(['2.2', '2.7']);
+  await page.getByTestId('actuator-SW2').click();
+  await expect.poll(dots).toEqual(['2.2', '2.7', '7.2', '7.7']);
+  await component(page, 'DS1')
+    .locator('.component-hit')
+    .click({ position: { x: 4, y: 4 } });
+  await expect(page.getByTestId('result-state-lit')).toHaveText('4');
+  await page.getByTestId('view-3d').click();
+  const view = page.getByTestId('view3d');
+  await expect(view).toHaveAttribute('data-status', 'ready', { timeout: 60_000 });
+  await expect(view).toHaveAttribute('data-lit', 'DS1');
+});

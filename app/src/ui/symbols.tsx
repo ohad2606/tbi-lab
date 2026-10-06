@@ -90,6 +90,10 @@ const emission = (x: number, y: number) => (
   </>
 );
 
+/** LED matrix 8x8: dot centres (row-major), inside the 32 mm package outline. */
+export const MATRIX_ROWS = Array.from({ length: 8 }, (_, i) => -70 + 20 * i);
+export const MATRIX_COLS = Array.from({ length: 8 }, (_, j) => -80 + 20 * j);
+
 /** RGB LED (common cathode): one emitter per channel, cathodes on a common bar. */
 export const RGB_CHANNELS = [
   { id: 'red', y: -20 },
@@ -164,6 +168,28 @@ export const SYMBOLS: Record<ComponentTypeId, SymbolDef> = {
         <line x1={-6} y1={6} x2={20} y2={22} />
         <line x1={20} y1={22} x2={20} y2={40} />
         <polygon points="20,22 10,21 15,14" class="diode-body" />
+      </>
+    ),
+  },
+  'display.led_matrix_8x8': {
+    bbox: [-100, -140, 80, 140],
+    // The package: its 16 pins as on the part (front and rear edges; the canvas names each pin's
+    // row or column line), the dot grid on the black face. Each dot glows by its own solved
+    // current (Canvas), never from stored state.
+    draw: () => (
+      <>
+        <rect x={-100} y={-100} width={180} height={200} rx={4} class="matrix-face" />
+        {MATRIX_COLS.map((x) => (
+          <g key={x}>
+            <line x1={x} y1={100} x2={x} y2={140} />
+            <line x1={x} y1={-100} x2={x} y2={-140} />
+          </g>
+        ))}
+        {MATRIX_ROWS.flatMap((y) =>
+          MATRIX_COLS.map((x) => (
+            <circle key={`${x},${y}`} cx={x} cy={y} r={6} class="matrix-dot" />
+          )),
+        )}
       </>
     ),
   },
