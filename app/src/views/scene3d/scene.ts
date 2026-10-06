@@ -235,9 +235,10 @@ export const FOOTPRINT: Record<ModelKey, readonly [number, number, number, numbe
     ESP32_DEVKITC.pcbCentreZMm + ESP32_DEVKITC.pcbLengthMm / 2 + 1.0,
   ],
   'resistor.axial': [-6.7, 6.7, -RESISTOR.bodyDiameterMm / 2, RESISTOR.bodyDiameterMm / 2],
+  // The flange: the legs stand under it (high-fidelity model, Sprint 10).
   'led.radial': [
-    -6.7,
-    6.7,
+    -LED_PACKAGES.t1_34.flangeDiameterMm / 2,
+    LED_PACKAGES.t1_34.flangeDiameterMm / 2,
     -LED_PACKAGES.t1_34.flangeDiameterMm / 2,
     LED_PACKAGES.t1_34.flangeDiameterMm / 2,
   ],
@@ -385,6 +386,15 @@ function localAttach(
     case 'sensor.pir': {
       const [px, pz] = PIR_HC_SR501.pins[terminal]!;
       return { x: px, y: PIR_HC_SR501.attachHeightMm, z: pz };
+    }
+    case 'led.radial': {
+      // The real leg tips (2.54 mm pitch under the body), not the 2D terminal spacing: the wire's
+      // end follows the leg, as for the relay's and the ESP32's real pins (assets/led5mm.ts).
+      return {
+        x: Math.sign(x) * (LED_PACKAGES.t1_34.leadPitchMm / 2),
+        y: LEAD_ATTACH_HEIGHT,
+        z: 0,
+      };
     }
     case 'relay.cube': {
       // The real pin (bottom face), as the ESP32's header pins: the wire's end follows it.
@@ -596,7 +606,12 @@ const main = (r: Route): Point[] =>
   r.flat.slice(r.under[0] ? 1 : 0, r.under[1] ? r.flat.length - 1 : r.flat.length);
 
 /** Models whose pins sit under their body. */
-const UNDER_BODY: ReadonlySet<ModelKey> = new Set(['relay.cube', 'sensor.pir', 'display.matrix']);
+const UNDER_BODY: ReadonlySet<ModelKey> = new Set([
+  'relay.cube',
+  'sensor.pir',
+  'display.matrix',
+  'led.radial',
+]);
 
 /**
  * For a pin under a part's body: the plan point just outside the body, straight out from the pin

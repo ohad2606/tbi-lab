@@ -24,6 +24,8 @@ export function ThreeView() {
   const host = useRef<HTMLDivElement>(null);
   const viewer = useRef<Viewer | null>(null);
   const [status, setStatus] = useState<Status>('loading');
+  /** How long the bundled glTF assets took to fetch and parse (once per page), ms. */
+  const [assetMs, setAssetMs] = useState<number | null>(null);
   const [stats, setStats] = useState<ViewerStats | null>(null);
   const scene = useMemo(() => (doc ? deriveScene(doc) : null), [doc]);
   const shownProject = useRef<string | null>(null);
@@ -31,7 +33,13 @@ export function ThreeView() {
   // Load the renderer once per opening; release everything on close.
   useEffect(() => {
     let cancelled = false;
+    // The renderer chunk, then the bundled glTF assets (fetched once per page, never at start-up).
     import('../views/scene3d/renderer.js')
+      .then(async (mod) => {
+        await mod.loadAssets();
+        setAssetMs(mod.assetLoadStats()?.ms ?? null);
+        return mod;
+      })
       .then((mod) => {
         if (cancelled || !host.current) return;
         try {
@@ -95,6 +103,9 @@ export function ThreeView() {
       data-quality={stats?.quality}
       data-geometries={stats?.geometries}
       data-textures={stats?.textures}
+      data-gpu-bytes={stats ? stats.gpuBytes.geometry + stats.gpuBytes.textures : undefined}
+      data-assets-ms={assetMs ?? undefined}
+      data-render-ms={stats?.renderMs}
       data-objects={stats?.objects}
       data-lit={Object.keys(levels).join(' ')}
       data-glow={Object.entries(levels)
@@ -250,6 +261,24 @@ export function ThreeView() {
                 <path d="M3 10 10 3l7 7M5 8.5V17h10V8.5" />
               </svg>
             </button>
+          </div>
+          <div
+            class="view3d-presets"
+            role="group"
+            aria-label={t('view3d.presets')}
+            dir={locale.dir}
+          >
+            {(['top', 'front', 'side', 'rear'] as const).map((p) => (
+              <button
+                key={p}
+                type="button"
+                class="text-button"
+                data-testid={`view3d-view-${p}`}
+                onClick={() => viewer.current?.view(p)}
+              >
+                {t(`view3d.view.${p}`)}
+              </button>
+            ))}
           </div>
           <div class="view-note" dir={locale.dir}>
             {t('view3d.note')}

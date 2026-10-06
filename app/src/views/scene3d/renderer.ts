@@ -22,6 +22,9 @@ import {
   roundPath,
 } from './models.js';
 import { WIRE } from './physical.js';
+import { assetLoadStats, loadAssets } from './assets/library.js';
+
+export { assetLoadStats, loadAssets };
 import { MODEL_HEIGHT, WIRE_RADIUS, type SceneDescription } from './scene.js';
 
 /** Reference labels: world height in mm (perspective), capped on screen so near ones never loom. */
@@ -39,6 +42,14 @@ export interface ViewerStats {
   textures: number;
   objects: number;
   renders: number;
+  /**
+   * Estimated GPU memory of the current scene, bytes: vertex/index buffers of every drawn
+   * geometry (shared ones counted once) and textures (RGBA8, with mipmaps). An estimate from the
+   * CPU-side sizes; drivers may pad.
+   */
+  gpuBytes: { geometry: number; textures: number };
+  /** CPU time of the last frame's render call, ms (on software WebGL this is the whole cost). */
+  renderMs: number;
   /** The camera's orbit target (what pan moves), rounded to 0.01 scene units. */
   target: [number, number, number];
 }
@@ -55,6 +66,11 @@ export interface Viewer {
    */
   setLive(levels: Record<string, LiveLevel>): void;
   resetCamera(): void;
+  /**
+   * Frame the whole circuit from a standard direction (camera ergonomics, Sprint 10): straight
+   * from above, from the front or the side at a low angle, or from the rear.
+   */
+  view(preset: ViewPreset): void;
   /** Frame the whole circuit from the current viewing direction. */
   fit(): void;
   rotate(radians: number): void;
@@ -67,6 +83,18 @@ export interface Viewer {
   stats(): ViewerStats;
   dispose(): void;
 }
+
+export type ViewPreset = 'top' | 'front' | 'side' | 'rear';
+
+/** Viewing directions (from the target towards the camera) of the standard views. */
+const PRESETS: Record<ViewPreset, [number, number, number]> = {
+  // Straight down (a hair of +z keeps "up" on screen towards the 2D drawing's top edge).
+  top: [0, 1, 0.0005],
+  // Low angles: about 15 degrees above the bench, so leads, pins and wire heights read.
+  front: [0, 0.27, 1],
+  side: [1, 0.27, 0],
+  rear: [0, 0.27, -1],
+};
 
 export class WebGLUnavailableError extends Error {}
 
@@ -151,7 +179,17 @@ export function createViewer(container: HTMLElement, onRender?: (s: ViewerStats)
   // right, a cool fill and a low rim light that puts highlights on metal (pins, leads, the module
   // can). No image-based environment: prefiltering one (PMREM) costs seconds per opening on
   // software WebGL, and every viewer has its own WebGL context, so it could not be shared.
-  scene.add(new THREE.HemisphereLight('#ffffff', '#a3aab1', 1.35));
+  // Sky/bench fill: lower with the studio environment (`full`), which also fills.
+  scene.add(new THREE.HemisphereLight('#ffffff', '#a3aab1', quality === 'full' ? 1.0 : 1.35));
+  // A soft studio environment for reflections (metal pins, leads, the RF can, connector shells
+  // and the glossy lacquers need something to reflect, or metals read black): a tiny procedural
+  // gradient cube (bright overhead, neutral walls, darker bench), prefiltered once per viewer.
+  // `full` quality only: on a SOFTWARE rasteriser its prefiltering and the extra shader variants
+  // cost seconds per opening (measured: esp32-blink first open 14.2 s with it, 3.0 s without), so
+  // `reduced` renders without it and with standard materials (simplifyMaterials).
+  const env = quality === 'full' ? studioEnvironment(renderer) : null;
+  scene.environment = env;
+  scene.environmentIntensity = 0.5;
   const sun = new THREE.DirectionalLight('#fff8ef', 2.1);
   sun.castShadow = true;
   sun.shadow.mapSize.set(1024, 1024);
@@ -182,6 +220,8 @@ export function createViewer(container: HTMLElement, onRender?: (s: ViewerStats)
     cam.updateProjectionMatrix();
   }
 
+  /** `reduced` quality: standard stand-ins for physical materials, one per original (reused). */
+  const simplified = new Map<THREE.Material, THREE.Material>();
   const materials = createMaterials();
   const shared: THREE.Material[] = Object.values(materials);
   const baseMat = new THREE.MeshStandardMaterial({ color: '#dfe5ea', roughness: 0.95 });
@@ -197,6 +237,7 @@ export function createViewer(container: HTMLElement, onRender?: (s: ViewerStats)
   let own = new OwnedResources();
   let current: SceneDescription | null = null;
   let renders = 0;
+  let lastRenderMs = 0;
   /** LED lens materials by component id, and the last live levels applied to them. */
   let lenses = new Map<string, THREE.MeshStandardMaterial>();
   /** LED matrix faces by component id (canvas texture + material), repainted live. */
@@ -273,7 +314,30 @@ export function createViewer(container: HTMLElement, onRender?: (s: ViewerStats)
   const stats = (): ViewerStats => {
     let objects = 0;
     content?.traverse(() => objects++);
+    const seenGeo = new Set<THREE.BufferGeometry>();
+    const seenTex = new Set<THREE.Texture>();
+    let geometry = 0;
+    let textures = 0;
+    content?.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (!mesh.isMesh && !(o as THREE.Sprite).isSprite) return;
+      if (mesh.geometry && !seenGeo.has(mesh.geometry)) {
+        seenGeo.add(mesh.geometry);
+        for (const a of Object.values(mesh.geometry.attributes))
+          geometry += (a as THREE.BufferAttribute).array.byteLength;
+        geometry += mesh.geometry.index?.array.byteLength ?? 0;
+      }
+      for (const m of Array.isArray(mesh.material) ? mesh.material : [mesh.material])
+        for (const t of Object.values(m ?? {}))
+          if ((t as THREE.Texture)?.isTexture && !seenTex.has(t as THREE.Texture)) {
+            seenTex.add(t as THREE.Texture);
+            const img = (t as THREE.Texture).image as { width?: number; height?: number } | null;
+            if (img?.width && img.height) textures += Math.round(img.width * img.height * 4 * 1.33);
+          }
+    });
     return {
+      gpuBytes: { geometry, textures },
+      renderMs: Math.round(lastRenderMs * 10) / 10,
       geometries: renderer.info.memory.geometries,
       textures: renderer.info.memory.textures,
       objects,
@@ -290,7 +354,9 @@ export function createViewer(container: HTMLElement, onRender?: (s: ViewerStats)
   function render() {
     if (disposed) return;
     sizeLabels();
+    const t0 = performance.now();
     renderer.render(scene, camera);
+    lastRenderMs = performance.now() - t0;
     renders++;
     onRender?.(stats());
   }
@@ -598,7 +664,10 @@ export function createViewer(container: HTMLElement, onRender?: (s: ViewerStats)
         own = new OwnedResources();
       }
       current = desc;
+      for (const m of simplified.values()) m.dispose();
+      simplified.clear();
       content = build(desc);
+      if (quality === 'reduced') simplifyMaterials(content, simplified);
       fitShadow(desc);
       renderer.shadowMap.needsUpdate = true;
       scene.add(content);
@@ -633,6 +702,10 @@ export function createViewer(container: HTMLElement, onRender?: (s: ViewerStats)
     },
     fit() {
       if (current) frame(current, camera.position.clone().sub(controls.target));
+      render();
+    },
+    view(preset) {
+      if (current) frame(current, new THREE.Vector3(...PRESETS[preset]));
       render();
     },
     rotate(radians) {
@@ -681,6 +754,8 @@ export function createViewer(container: HTMLElement, onRender?: (s: ViewerStats)
       own.dispose();
       for (const m of shared) m.dispose();
       haloTexture.dispose();
+      env?.dispose();
+      for (const m of simplified.values()) m.dispose();
       sun.shadow.map?.dispose();
       renderer.dispose();
       renderer.forceContextLoss();
@@ -705,4 +780,94 @@ function glowTexture(): THREE.Texture {
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   return t;
+}
+
+/**
+ * The studio environment: a 16 px gradient cube map (no image files), prefiltered with PMREM.
+ * Faces: +Y bright ceiling light, the four walls a neutral light grey with a brighter band at
+ * eye level, -Y the bench. Deterministic; owned and disposed by its viewer.
+ */
+function studioEnvironment(renderer: THREE.WebGLRenderer): THREE.Texture {
+  const N = 16;
+  const face = (draw: (ctx: CanvasRenderingContext2D) => void) => {
+    const c = document.createElement('canvas');
+    c.width = N;
+    c.height = N;
+    draw(c.getContext('2d')!);
+    return c;
+  };
+  const wall = face((ctx) => {
+    const g = ctx.createLinearGradient(0, 0, 0, N);
+    g.addColorStop(0, '#f4f6f8');
+    g.addColorStop(0.45, '#ffffff');
+    g.addColorStop(0.6, '#d9dde1');
+    g.addColorStop(1, '#9ea4aa');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, N, N);
+  });
+  const ceiling = face((ctx) => {
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, N, N);
+  });
+  const floor = face((ctx) => {
+    ctx.fillStyle = '#8d939a';
+    ctx.fillRect(0, 0, N, N);
+  });
+  const cube = new THREE.CubeTexture([wall, wall, ceiling, floor, wall, wall]);
+  cube.colorSpace = THREE.SRGBColorSpace;
+  cube.needsUpdate = true;
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  const target = pmrem.fromCubemap(cube);
+  pmrem.dispose();
+  cube.dispose();
+  return target.texture;
+}
+
+/**
+ * `reduced` quality (software rasterisers): replace physical materials (clearcoat, sheen) by
+ * standard ones of the same colour, map and finish, and damp metalness (no environment to
+ * reflect: a fully metallic surface would read black). Same scene, same colours; only the
+ * shading model is simpler. Each original maps to one stand-in, reused across rebuilds.
+ */
+function simplifyMaterials(root: THREE.Object3D, cache: Map<THREE.Material, THREE.Material>) {
+  const swap = (m: THREE.Material): THREE.Material => {
+    const p = m as THREE.MeshPhysicalMaterial;
+    if (!p.isMeshPhysicalMaterial) {
+      const s = m as THREE.MeshStandardMaterial;
+      if (s.isMeshStandardMaterial && s.metalness > 0.6 && !cache.has(m)) {
+        // Metals of the procedural models: damped the same way (and kept per original).
+        const c = s.clone();
+        c.metalness = 0.55;
+        c.roughness = Math.max(c.roughness, 0.3);
+        cache.set(m, c);
+      }
+      return cache.get(m) ?? m;
+    }
+    let out = cache.get(m);
+    if (!out) {
+      out = new THREE.MeshStandardMaterial({
+        name: p.name,
+        color: p.color,
+        map: p.map,
+        roughness: p.roughness,
+        metalness: Math.min(p.metalness, 0.55),
+        transparent: p.transparent,
+        opacity: p.opacity,
+        emissive: p.emissive,
+        emissiveIntensity: p.emissiveIntensity,
+        depthWrite: p.depthWrite,
+      });
+      out.userData = p.userData;
+      cache.set(m, out);
+    }
+    return out;
+  };
+  root.traverse((o) => {
+    // An LED's live glow drives its lens material: point it at the stand-in that is drawn.
+    const lens = o.userData.lensMaterial as THREE.Material | undefined;
+    if (lens) o.userData.lensMaterial = swap(lens);
+    const mesh = o as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    mesh.material = Array.isArray(mesh.material) ? mesh.material.map(swap) : swap(mesh.material);
+  });
 }

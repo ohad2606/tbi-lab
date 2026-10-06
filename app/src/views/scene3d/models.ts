@@ -34,12 +34,28 @@ import {
   LEAD_ATTACH_HEIGHT,
   LED_PACKAGES,
   PSU,
-  RESISTOR,
   TACTILE,
   TOGGLE,
   type AxialPhysics,
 } from './physical.js';
 import { SCALE, realPinZ, type ModelKey, type SceneComponent } from './scene.js';
+import {
+  OwnedResources,
+  box,
+  canvasTexture,
+  cylinder,
+  lathe,
+  mesh,
+  roundPath,
+  tube,
+  type V3,
+} from './kit.js';
+
+import { buildResistorHiFi } from './assets/resistorAxial.js';
+import { buildLedHiFi } from './assets/led5mm.js';
+import { buildEsp32Asset } from './assets/esp32DevkitC.js';
+
+export { OwnedResources, roundPath };
 
 export type Materials = ReturnType<typeof createMaterials>;
 
@@ -77,175 +93,7 @@ export function createMaterials() {
   };
 }
 
-const BAND_COLORS: Record<string, string> = {
-  black: '#121212',
-  brown: '#6d3b16',
-  red: '#d32f2f',
-  orange: '#f57c00',
-  yellow: '#fbc02d',
-  green: '#2e7d32',
-  blue: '#1565c0',
-  violet: '#7b1fa2',
-  grey: '#8e8e8e',
-  white: '#f5f5f5',
-  gold: '#c9a227',
-  silver: '#c0c0c0',
-};
-
 type Builder = (c: SceneComponent, m: Materials, own: OwnedResources) => THREE.Object3D;
-
-/** Per-build resources (geometries, one-off materials, textures) the viewer disposes on rebuild. */
-export class OwnedResources {
-  readonly geometries: THREE.BufferGeometry[] = [];
-  private readonly cache = new Map<string, THREE.BufferGeometry>();
-  private readonly matCache = new Map<string, THREE.Material>();
-  /** One shared geometry per shape key (identical parts and pins reuse it). */
-  shared<T extends THREE.BufferGeometry>(key: string, make: () => T): T {
-    let g = this.cache.get(key) as T | undefined;
-    if (!g) {
-      g = this.geo(make());
-      this.cache.set(key, g);
-    }
-    return g;
-  }
-  /** One shared material per key (band colours, LED lenses of one colour…). */
-  sharedMat<T extends THREE.Material>(key: string, make: () => T): T {
-    let m = this.matCache.get(key) as T | undefined;
-    if (!m) {
-      m = this.mat(make());
-      this.matCache.set(key, m);
-    }
-    return m;
-  }
-  readonly materials: THREE.Material[] = [];
-  readonly textures: THREE.Texture[] = [];
-  geo<T extends THREE.BufferGeometry>(g: T): T {
-    this.geometries.push(g);
-    return g;
-  }
-  mat<T extends THREE.Material>(m: T): T {
-    this.materials.push(m);
-    return m;
-  }
-  tex<T extends THREE.Texture>(t: T): T {
-    this.textures.push(t);
-    return t;
-  }
-  dispose() {
-    for (const g of this.geometries) g.dispose();
-    for (const m of this.materials) m.dispose();
-    for (const t of this.textures) t.dispose();
-    this.geometries.length = 0;
-    this.cache.clear();
-    this.matCache.clear();
-    this.materials.length = 0;
-    this.textures.length = 0;
-  }
-}
-
-// ---------------------------------------------------------------------------------------------
-// Geometry helpers
-
-type V3 = [number, number, number];
-
-function mesh(g: THREE.BufferGeometry, m: THREE.Material, at?: V3): THREE.Mesh {
-  const x = new THREE.Mesh(g, m);
-  if (at) x.position.set(...at);
-  x.castShadow = true;
-  x.receiveShadow = true;
-  return x;
-}
-
-function box(own: OwnedResources, w: number, h: number, d: number, m: THREE.Material, at?: V3) {
-  return mesh(
-    own.shared(`box:${w}:${h}:${d}`, () => new THREE.BoxGeometry(w, h, d)),
-    m,
-    at,
-  );
-}
-
-function cylinder(
-  own: OwnedResources,
-  r: number,
-  h: number,
-  m: THREE.Material,
-  at?: V3,
-  seg = 24,
-  r2 = r,
-) {
-  return mesh(
-    own.shared(`cyl:${r}:${r2}:${h}:${seg}`, () => new THREE.CylinderGeometry(r, r2, h, seg)),
-    m,
-    at,
-  );
-}
-
-/**
- * A wire-like round path through `pts` with rounded corners (radius `bend`): leads, legs. Shared
- * by key, so identical parts reuse one geometry.
- */
-export function roundPath(pts: V3[], bend: number): THREE.CurvePath<THREE.Vector3> {
-  const v = pts.map((p) => new THREE.Vector3(...p));
-  const path = new THREE.CurvePath<THREE.Vector3>();
-  let from = v[0]!;
-  for (let i = 1; i < v.length - 1; i++) {
-    const p = v[i]!;
-    const a = v[i - 1]!;
-    const b = v[i + 1]!;
-    const r = Math.min(bend, a.distanceTo(p) / 2, p.distanceTo(b) / 2);
-    const inP = p.clone().add(a.clone().sub(p).setLength(r));
-    const outP = p.clone().add(b.clone().sub(p).setLength(r));
-    if (from.distanceTo(inP) > 1e-6) path.add(new THREE.LineCurve3(from, inP));
-    if (r > 1e-6) path.add(new THREE.QuadraticBezierCurve3(inP, p, outP));
-    from = outP;
-  }
-  const end = v[v.length - 1]!;
-  if (from.distanceTo(end) > 1e-6) path.add(new THREE.LineCurve3(from, end));
-  return path;
-}
-
-function tube(own: OwnedResources, pts: V3[], r: number, m: THREE.Material, bend = 0.8) {
-  const key = `tube:${r}:${bend}:${pts.map((p) => p.map((n) => n.toFixed(3)).join(',')).join(';')}`;
-  const g = own.shared(key, () => {
-    const path = roundPath(pts, bend);
-    const segs = Math.max(8, Math.ceil(path.getLength() / 0.6));
-    return new THREE.TubeGeometry(path, segs, r, 8, false);
-  });
-  return mesh(g, m);
-}
-
-/** A body of revolution around +Y from (radius, height) pairs. */
-function lathe(own: OwnedResources, key: string, profile: [number, number][], m: THREE.Material) {
-  return mesh(
-    own.shared(
-      `lathe:${key}`,
-      () =>
-        new THREE.LatheGeometry(
-          profile.map(([r, y]) => new THREE.Vector2(r, y)),
-          32,
-        ),
-    ),
-    m,
-  );
-}
-
-/** A canvas texture (silkscreen, markings, displays). */
-function canvasTexture(
-  own: OwnedResources,
-  w: number,
-  h: number,
-  draw: (ctx: CanvasRenderingContext2D) => void,
-): THREE.CanvasTexture {
-  const canvas = document.createElement('canvas');
-  canvas.width = w;
-  canvas.height = h;
-  const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
-  draw(ctx);
-  const tex = own.tex(new THREE.CanvasTexture(canvas));
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.anisotropy = 4;
-  return tex;
-}
 
 /** Terminal x positions at rotation 0, mm, and whether each is `open` (touching, unconnected). */
 function twoTerminals(c: SceneComponent) {
@@ -914,54 +762,15 @@ const BUILDERS: Record<ModelKey, Builder> = {
   'ldr.disc': buildPhotoresistor,
   'buzzer.can': buildBuzzer,
   'relay.cube': buildRelay,
+  // High-fidelity proof set (Sprint 10): the real part form (assets/resistorAxial.ts).
   'resistor.axial': (c, m, own) => {
-    const p = RESISTOR;
-    const g = new THREE.Group();
-    const y = p.standoffMm + p.bodyDiameterMm / 2;
-    const L = p.bodyLengthMm;
-    const R = p.bodyDiameterMm / 2;
-    // The carbon-film "dog bone": end caps slightly fatter than the middle, rounded ends.
-    const profile: [number, number][] = [
-      [0.001, -L / 2],
-      [R * 0.7, -L / 2 + 0.05],
-      [R, -L / 2 + 0.45],
-      [R, -L / 2 + 1.5],
-      [R * 0.88, -L / 2 + 1.9],
-      [R * 0.88, L / 2 - 1.9],
-      [R, L / 2 - 1.5],
-      [R, L / 2 - 0.45],
-      [R * 0.7, L / 2 - 0.05],
-      [0.001, L / 2],
-    ];
-    g.add(alongX(lathe(own, `resistor:${L}:${R}`, profile, m.resistorBody), y));
-    // Colour bands, from the value (presentation of the design value; never invented).
-    const bands = c.visual.bands;
-    if (bands) {
-      const xs =
-        bands.length === 4
-          ? [-L / 2 + 1.05, -L / 2 + 1.75, -0.35, L / 2 - 1.05]
-          : [-L / 2 + 1.0, -L / 2 + 1.65, -0.45, 0.25, L / 2 - 1.0];
-      bands.forEach((b, i) => {
-        const x = xs[i]!;
-        const inEnd = Math.abs(x) > L / 2 - 1.9;
-        const mat = own.sharedMat(
-          `band:${b}`,
-          () =>
-            new THREE.MeshStandardMaterial({
-              color: BAND_COLORS[b] ?? '#000',
-              roughness: 0.5,
-              metalness: b === 'gold' || b === 'silver' ? 0.7 : 0,
-            }),
-        );
-        const ring = cylinder(own, (inEnd ? R : R * 0.88) + 0.02, 0.42, mat, undefined, 28);
-        ring.rotation.z = Math.PI / 2;
-        ring.position.set(x, y, 0);
-        ring.userData.band = b;
-        g.add(ring);
-      });
-    }
-    g.add(axialLeads(c, p, m, own));
-    return g;
+    const { xa, xb, openA, openB } = twoTerminals(c);
+    return buildResistorHiFi(own, {
+      bands: c.visual.bands,
+      xa: xa + (openA ? OPEN_LEAD_GAP : 0),
+      xb: xb - (openB ? OPEN_LEAD_GAP : 0),
+      leadMaterial: m.lead,
+    });
   },
 
   'diode.axial': (c, m, own) => {
@@ -1000,127 +809,18 @@ const BUILDERS: Record<ModelKey, Builder> = {
     return g;
   },
 
+  // High-fidelity proof set (Sprint 10): the real part form; legs at the real pitch are its
+  // anchors (assets/led5mm.ts, scene.ts).
   'led.radial': (c, m, own) => {
     const look = c.visual.led ?? { color: '#e53935', package: 't1_34' as const, clear: false };
-    const p = LED_PACKAGES[look.package];
-    const g = new THREE.Group();
-    // Each LED has its own lens material, so its glow is its own.
-    const own_lens = own.mat(
-      new THREE.MeshStandardMaterial({
-        color: look.clear
-          ? new THREE.Color(look.color).lerp(new THREE.Color('#ffffff'), 0.6)
-          : look.color,
-        roughness: look.clear ? 0.08 : 0.32,
-        transparent: true,
-        opacity: look.clear ? 0.5 : 0.82,
-        emissive: look.color,
-        emissiveIntensity: 0,
-        depthWrite: false,
-      }),
-    );
-    const base = p.standoffMm;
-    const R = p.bodyDiameterMm / 2;
-    const F = p.flangeDiameterMm / 2;
-    const top = base + p.heightMm;
-    const domeStart = top - p.domeRadiusMm;
-    // Cylinder and dome as one body of revolution, on a flange with the cathode flat (the
-    // cathode is the second terminal, +x): the flat is cut into the flange, as on the real part.
-    const profile: [number, number][] = [
-      [0.001, base + p.flangeThicknessMm],
-      [R, base + p.flangeThicknessMm],
-      [R, domeStart],
-    ];
-    for (let i = 1; i <= 10; i++) {
-      const a = (i / 10) * (Math.PI / 2);
-      profile.push([
-        Math.max(0.001, p.domeRadiusMm * Math.cos(a)),
-        domeStart + p.domeRadiusMm * Math.sin(a),
-      ]);
-    }
-    const body = lathe(own, `led:${look.package}`, profile, own_lens);
-    body.castShadow = false;
-    body.userData.lens = true;
-    g.add(body);
-    const flatX = F - 0.45; // the flat's distance from the axis
-    const flange = mesh(
-      own.shared(`ledFlange:${look.package}`, () => {
-        const a = Math.acos(flatX / F);
-        const shape = new THREE.Shape();
-        shape.absarc(0, 0, F, a, 2 * Math.PI - a, false);
-        shape.lineTo(flatX, F * Math.sin(a));
-        const geo = new THREE.ExtrudeGeometry(shape, {
-          depth: p.flangeThicknessMm,
-          bevelEnabled: false,
-          curveSegments: 32,
-        });
-        geo.rotateX(-Math.PI / 2);
-        return geo;
-      }),
-      own_lens,
-      [0, base, 0],
-    );
-    flange.castShadow = false;
-    flange.userData.cathodeFlat = flatX;
-    g.add(flange);
-    // Inside the lens: the anode post and the wider cathode anvil with its reflector cup.
-    const inner = base + p.flangeThicknessMm;
-    const postH = (domeStart - inner) * 0.75;
-    g.add(box(own, 0.35, postH, 0.35, m.lead, [-p.leadPitchMm / 2 + 0.3, inner + postH / 2, 0]));
-    g.add(
-      box(own, 0.9, postH * 0.85, 0.35, m.lead, [
-        p.leadPitchMm / 2 - 0.45,
-        inner + (postH * 0.85) / 2,
-        0,
-      ]),
-    );
-    g.add(
-      cylinder(
-        own,
-        0.45,
-        0.35,
-        m.lead,
-        [p.leadPitchMm / 2 - 0.45, inner + postH * 0.85, 0],
-        16,
-        0.3,
-      ),
-    );
-    // Leads: down from the seating plane at 2.54 mm, splayed to the terminals.
-    const { xa, xb, openA, openB } = twoTerminals(c);
-    const endA = xa + (openA ? OPEN_LEAD_GAP : 0);
-    const endB = xb - (openB ? OPEN_LEAD_GAP : 0);
-    const lr = p.leadSizeMm / 2;
-    const kneeA = 1.6;
-    const kneeB = 1.1; // the cathode lead is the shorter one on the real part
-    g.add(
-      tube(
-        own,
-        [
-          [-p.leadPitchMm / 2, base + 0.2, 0],
-          [-p.leadPitchMm / 2, kneeA, 0],
-          [endA, kneeA, 0],
-          [endA, LEAD_ATTACH_HEIGHT - 0.3, 0],
-        ],
-        lr,
-        m.lead,
-      ),
-    );
-    g.add(
-      tube(
-        own,
-        [
-          [p.leadPitchMm / 2, base + 0.2, 0],
-          [p.leadPitchMm / 2, kneeB, 0],
-          [endB, kneeB, 0],
-          [endB, LEAD_ATTACH_HEIGHT - 0.3, 0],
-        ],
-        lr,
-        m.lead,
-      ),
-    );
-    g.userData.lensMaterial = own_lens;
-    g.userData.ledTop = top;
-    g.userData.ledColor = look.color;
-    return g;
+    const { group, lens, top } = buildLedHiFi(own, look.package, LED_PACKAGES[look.package], look, {
+      lead: m.lead,
+      frame: m.lead,
+    });
+    group.userData.lensMaterial = lens;
+    group.userData.ledTop = top;
+    group.userData.ledColor = look.color;
+    return group;
   },
 
   'switch.tactile': (c, m, own) => {
@@ -1450,8 +1150,13 @@ const BUILDERS: Record<ModelKey, Builder> = {
   },
 };
 
-/** ESP32-DevKitC V4 at its real size (physical.ts, [ESP-DIM]). */
+/**
+ * ESP32-DevKitC V4: the high-fidelity glTF asset (Sprint 10) when it is loaded; otherwise this
+ * procedural board (Sprint 9/10) at its real size (physical.ts, [ESP-DIM]).
+ */
 function buildEsp32(c: SceneComponent, m: Materials, own: OwnedResources): THREE.Object3D {
+  const asset = buildEsp32Asset(own, c.visual.wiredPins ?? [], m.blackPlastic);
+  if (asset) return asset;
   const d = ESP32_DEVKITC;
   const g = new THREE.Group();
   const zc = d.pcbCentreZMm;

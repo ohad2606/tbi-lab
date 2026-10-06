@@ -4,6 +4,8 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
+  rotatePoint,
+  type Rotation,
   CATALOG,
   ESP32_DEVKITC_WROOM32,
   GROUND_NODE,
@@ -58,6 +60,15 @@ describe('3D scene description', () => {
           expect(t.z - c.z).toBeCloseTo(realPinZ(pin.position), 9);
           expect(Math.abs(t.x - c.x)).toBeCloseTo(12.7, 9);
           expect([ESP32_ATTACH_HEIGHT, ESP32_PIN_TOP]).toContain(t.y);
+        } else if (c.model === 'led.radial') {
+          // An LED's anchors are its real legs (2.54 mm pitch under the body, Sprint 10
+          // high-fidelity model): anode leg on the anode side, cathode leg on the flat side.
+          const local = rotatePoint(
+            { x: t.x - c.x, y: t.z - c.z },
+            ((360 - c.rotation) % 360) as Rotation,
+          );
+          expect(local.x).toBeCloseTo(t.id === 'anode' ? -1.27 : 1.27, 9);
+          expect(local.y).toBeCloseTo(0, 9);
         } else {
           expect(t.x).toBeCloseTo(at.x * SCALE, 9);
           expect(t.z).toBeCloseTo(at.y * SCALE, 9);
@@ -175,11 +186,14 @@ describe('3D scene description', () => {
     expect(joined.joints).toEqual([
       {
         kind: 'contact',
-        x: 140 * SCALE,
+        x: 180 * SCALE - 1.27,
         z: 200 * SCALE,
         y: LEAD_ATTACH_HEIGHT,
         terminals: ['D1:anode', 'R1:b'],
         node: joined.components.find((c) => c.id === 'R1')!.terminals[1]!.node,
+        // The LED's anchor is its real anode leg (2.54 mm pitch), not the 2D terminal: the joint
+        // is at the leg and a solder link bridges it to the resistor lead's end.
+        links: [{ x: 140 * SCALE, y: LEAD_ATTACH_HEIGHT, z: 200 * SCALE }],
       },
     ]);
     expect(joined.joints[0]!.node).not.toBeNull();
@@ -235,11 +249,12 @@ describe('3D scene description', () => {
     expect(look('model.led.vishay_tlhy5400')).toMatchObject({ package: 't1_34', clear: false });
     expect(look('model.led.vishay_tlhg4900')).toMatchObject({ package: 't1', clear: true });
     doc = must(setParam(doc, 'D1', 'model', 'model.led.vishay_tlhg4900')).doc;
-    // The 3 mm part is smaller than the 5 mm one; both stand on the same terminals.
+    // The 3 mm part is smaller than the 5 mm one; both stand on legs at the same 2.54 mm pitch.
     expect(LED_PACKAGES.t1.bodyDiameterMm).toBeLessThan(LED_PACKAGES.t1_34.bodyDiameterMm);
+    expect(LED_PACKAGES.t1.leadPitchMm).toBe(LED_PACKAGES.t1_34.leadPitchMm);
     const terms = deriveScene(doc).components.find((c) => c.id === 'D1')!.terminals;
     expect(terms.map((t) => t.x)).toEqual(
-      [(100 - 40) * SCALE, (100 + 40) * SCALE].map((x) => expect.closeTo(x, 9)),
+      [100 * SCALE - 1.27, 100 * SCALE + 1.27].map((x) => expect.closeTo(x, 9)),
     );
   });
 });

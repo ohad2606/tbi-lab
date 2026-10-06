@@ -2558,6 +2558,38 @@ select {
 }
 
 /* A short, unobtrusive explanation along the bottom edge of a generated view. */
+/* 3D standard views (Top / Front / Side / Rear), top-left of the view (inline start). */
+.view3d-presets {
+  position: absolute;
+  inset-block-start: 0.75rem;
+  inset-inline-start: 0.75rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  max-inline-size: calc(100% - 5rem);
+}
+
+.view3d-presets button {
+  min-block-size: 1.9rem;
+  padding: 0.15rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.view3d-presets button:hover {
+  border-color: var(--selected);
+}
+
+.view3d-presets button:focus-visible {
+  outline: 2px solid var(--selected);
+  outline-offset: 1px;
+}
+
 .view-note {
   position: absolute;
   inset-block-end: 0.5rem;
