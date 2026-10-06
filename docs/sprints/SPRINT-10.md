@@ -62,6 +62,18 @@ separate approval.
 
 **Multi-position switch — not started**; not part of the runtime work.
 
+**Validation (pre-promotion).**
+
+| Check | Result |
+|---|---|
+| Full suite on `bd78d2e` (final code): typecheck, lint + boundaries, build | pass |
+| Unit (domain, engine incl. ngspice cross-checks, transient, diagnostics, serialization, schematic, 3D, cross-view) | **731 passed**, 75 files |
+| Browser, complete suite | **144 passed**, 3 skipped (the usual heavy specs), **0 failed** |
+| Legacy browser | 4 passed |
+| Preview `3ba2292`, fresh run, as published | **62/62**; clean rebuild byte-identical to the 14 published files; 14/14 served files hash-match disk |
+| Preview `bd78d2e` (republished with the final code) | **68/68** (the 62 + ESP32 palette rule EN/HE, local-project board rule, lazy example chunk); 16/16 served files hash-match disk |
+| Services, normal demo (`198ca92`), demo `index.html` | unchanged |
+
 **Runtime expansion (architecture only):** [docs/runtime/R3-CAPABILITY-PLAN.md](../runtime/R3-CAPABILITY-PLAN.md):
 PWM/edge timing, I2C bridge, microsecond inputs, protocol changes, revalidation impact and phases.
 No backend change is made in Sprint 10.
