@@ -13,6 +13,7 @@ import { App } from './ui/App.js';
 import { StoreContext } from './ui/context.js';
 import './styles.css';
 import { randomId } from './ids.js';
+import { prefetchExamples } from './examples/catalog.js';
 
 /** Per-device preferences, kept apart from project data. Failure is never fatal. */
 const prefs: Preferences = {
@@ -95,6 +96,11 @@ async function main() {
     </StoreContext.Provider>,
     document.getElementById('root')!,
   );
+  // The example documents are not needed to start: fetch them when the browser is idle.
+  const idle = (globalThis as { requestIdleCallback?: (f: () => void) => void })
+    .requestIdleCallback;
+  if (idle) idle(prefetchExamples);
+  else setTimeout(prefetchExamples, 2000);
   await store.init();
 }
 

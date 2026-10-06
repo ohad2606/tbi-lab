@@ -49,7 +49,7 @@ import {
   type ProjectIndexEntry,
   type ProjectStorage,
 } from '../persistence/store.js';
-import { findExample, type ExampleProbe } from '../examples/catalog.js';
+import { findExample, loadExampleDocument, type ExampleProbe } from '../examples/catalog.js';
 import type { LiveControl } from '@tbi-lab/engine';
 import type { SimState, SimulationHost } from '../sim/controller.js';
 import type { ProgramBuilds } from '../programs/state.js';
@@ -658,7 +658,10 @@ export class AppStore {
   /** Start a new local project from a curated example. */
   async openExample(exampleId: string): Promise<boolean> {
     const example = findExample(exampleId);
-    const opened = example ? openDocument(example.document) : null;
+    const document = example
+      ? await loadExampleDocument(exampleId).catch(() => undefined)
+      : undefined;
+    const opened = document ? openDocument(document) : null;
     if (!example || opened?.status !== 'ok') {
       this.set({ notice: { key: 'example.error' } });
       return false;

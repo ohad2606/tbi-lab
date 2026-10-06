@@ -244,3 +244,22 @@ test('ESP32 projects: parts the runtime cannot simulate are disabled in the pale
   await expect(page.getByTestId('palette-note-board_needs_runtime')).toBeVisible();
   await expect(page.getByTestId('palette-note-part_needs_runtime')).toHaveCount(0);
 });
+
+test('example documents load lazily, are prefetched when idle, and then open offline', async ({
+  page,
+  context,
+}) => {
+  const fetched: string[] = [];
+  page.on('request', (r) => r.url().includes('/assets/documents-') && fetched.push(r.url()));
+  await page.goto('/');
+  await expect(page.getByTestId('example-list').or(page.getByTestId('canvas'))).toBeVisible();
+  // Prefetched after start-up, without opening anything.
+  await expect.poll(() => fetched.length, { timeout: 10_000 }).toBe(1);
+  if (!(await page.getByTestId('example-list').isVisible())) await goToProjects(page);
+  await context.setOffline(true);
+  await page.getByTestId('open-example-night-light').click();
+  await expect(page.getByTestId('canvas')).toBeVisible();
+  await expect(component(page, 'Q1')).toBeVisible();
+  await context.setOffline(false);
+  expect(fetched.length).toBe(1);
+});

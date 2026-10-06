@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { setProgramText, type ProjectDocument } from '@tbi-lab/domain';
-import { EXAMPLES } from '../src/examples/catalog.js';
+import { EXAMPLES_WITH_DOCUMENTS as EXAMPLES } from '../src/examples/documents.js';
 import { BuildTransportError, type BuildClient, type BuildResult } from '../src/programs/client.js';
 import { ProgramBuilds, programKey } from '../src/programs/state.js';
 import { McuSimulation } from '../src/runtime/controller.js';

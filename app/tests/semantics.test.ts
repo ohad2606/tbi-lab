@@ -28,7 +28,7 @@ import {
 } from '@tbi-lab/domain';
 import { mixedCircuit, place, wire } from '../../packages/domain/tests/circuits.js';
 import { must, newDoc } from '../../packages/domain/tests/helpers.js';
-import { EXAMPLES } from '../src/examples/catalog.js';
+import { EXAMPLES_WITH_DOCUMENTS as EXAMPLES } from '../src/examples/documents.js';
 import { ESP32_DEVKITC, ESP32_PCB_TOP, WIRE } from '../src/views/scene3d/physical.js';
 import {
   SCALE,

@@ -14,7 +14,7 @@ import {
   type ProjectDocument,
 } from '@tbi-lab/domain';
 import { EngineSession, type SolveSuccess } from '@tbi-lab/engine';
-import { EXAMPLES } from '../src/examples/catalog.js';
+import { EXAMPLES_WITH_DOCUMENTS as EXAMPLES } from '../src/examples/documents.js';
 import { en } from '../src/i18n/messages.en.js';
 import { he } from '../src/i18n/messages.he.js';
 import { RECIPES } from './exampleRecipes.js';

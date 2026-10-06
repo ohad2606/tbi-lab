@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { GROUND_NODE, deleteSelection, moveSelection, setParam } from '@tbi-lab/domain';
 import { mixedCircuit, place, wire } from '../../packages/domain/tests/circuits.js';
 import { must, newDoc } from '../../packages/domain/tests/helpers.js';
-import { EXAMPLES } from '../src/examples/catalog.js';
+import { EXAMPLES_WITH_DOCUMENTS as EXAMPLES } from '../src/examples/documents.js';
 import { schematicLayout } from '../src/views/schematic/layout.js';
 import { SCHEMATIC_SYMBOLS } from '../src/views/schematic/symbols.js';
 import { crossings, expectFaithful } from './schematicReadback.js';

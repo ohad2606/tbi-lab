@@ -9,7 +9,7 @@ import {
   type CreateSessionRequest,
   type SessionEvent,
 } from '../../runtime/host/protocol.js';
-import { EXAMPLES } from '../src/examples/catalog.js';
+import { EXAMPLES_WITH_DOCUMENTS as EXAMPLES } from '../src/examples/documents.js';
 import { McuSimulation } from '../src/runtime/controller.js';
 import type { RuntimeClient } from '../src/runtime/client.js';
 import {

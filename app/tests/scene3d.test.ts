@@ -23,7 +23,7 @@ import {
   LED_PACKAGES,
   WIRE,
 } from '../src/views/scene3d/physical.js';
-import { EXAMPLES } from '../src/examples/catalog.js';
+import { EXAMPLES_WITH_DOCUMENTS as EXAMPLES } from '../src/examples/documents.js';
 import {
   MODEL_FOR,
   SCALE,
