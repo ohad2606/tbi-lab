@@ -174,3 +174,26 @@ same datasheet table as the pad model).
 NXP UM10204) and `src/peripherals/hd44780.ts` (PCF8574 backpack + HD44780 4-bit controller, Hitachi
 ADE-207-272(Z)). No product path drives them yet: the deployed ESP32 runtime does not model the I2C
 controller.
+
+### Further Sprint 10 parts (same revision)
+
+| Part (model id)                                 | Source (SHA-256 prefix)                                                                                                               | Model                                                                                                                                                        | Assumptions / limits                                                                                                                                                                                                                                   |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| NPN 2N3904 `model.bjt.fairchild_2n3904`         | Fairchild 2N3904/MMBT3904/PZT3904 datasheet Rev A (2001) p.2 "Spice Model" (`ab6a67a6…`); ratings onsemi 2N3903/D Rev 9 (`25403336…`) | SPICE Gummel–Poon DC (`src/bjt.ts`): Early effect, IKF, ISE/NE leakage, RB/RC internal nodes, pnjlim, SPICE temperature scaling TNOM 27 °C → 25 °C           | `Ise=6.734f` (the datasheet prints `6.734`, an evident typo; the Fairchild library listing has the `f`). DC only, no breakdown, no self-heating. Matches ngspice on the same card within ~1e-6 V at eight bias points                                  |
+| PIR HC-SR501 `model.pir.hc_sr501`               | Module sheet with schematic (alldatasheet copy, `955d333a…`); Tayda and Handson guides                                                | Powered at 4.5–20 V (discrete state); OUT = 3.3 V / 0 V behind R14 1 kΩ, output current drawn from VCC (`RegulatedOutput`); 50 µA quiescent (`ConstantSink`) | No single manufacturer; quiescent current conflict (< 50 µA vs "65 mA"): the bound is used. Delay, blocking time, warm-up, range and angle not modelled (DC)                                                                                           |
+| LED matrix 8×8 `model.led_matrix.oasis_1088as`  | Velleman VMP502 info sheet (OASIS 1088AS, `25a14d7a…`)                                                                                | `ledMatrixPart` (any rows × cols): one `Diode` per dot, rows cathodes / columns anodes, pin map from the sheet                                               | V_F given as 2.1–2.5 V without a test current: anchor 2.3 V at the stated 20 mA (assumption), N as the red cards. No absolute maximums published: none checked. Pin pitch and pin-1 location not published (3D uses DIP-style 2.54 mm, representative) |
+| Capacitor `component.capacitor` (no model card) | —                                                                                                                                     | Ideal non-polarised C, backward-Euler companion in time-stepped sessions (`EngineSession.advance`), discharged at t = 0                                      | No ESR, leakage or absorption. User-set rated voltage checked as a rating                                                                                                                                                                              |
+
+**Time-stepped sessions:** `EngineSession.advance(dt)` (backward Euler, L-stable), per-part history,
+deterministic reset, failed steps do not advance time. Circuits without a time-dependent part keep
+the DC path unchanged.
+
+**Solver robustness:** at the Newton iteration limit with no device limiting, an iterate is
+accepted only if it passes the exact-equation verification (`circuit.ts`); needed for a femtoamp
+node beside the 2N3904's 1 Ω internal collector resistance. Converging circuits are unchanged.
+
+**Internal device semantics (no product path yet):** `peripherals/servo.ts` (SG90: pulse widths →
+angle, deadband, slew; pulse map an assumption: TowerPro gives about 150° travel, vendor sheets
+1–2 ms for ±90°), `peripherals/hcsr04.ts` (echo width 2d/c, c = 331.3 + 0.606 T; echo start after
+the 8-cycle burst is an assumption), `peripherals/dht22.ts` (40-bit frame reproducing the AM2302
+worked example; bit timing 27/70 µs).

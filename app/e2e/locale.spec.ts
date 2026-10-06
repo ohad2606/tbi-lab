@@ -31,6 +31,7 @@ async function untranslatedWords(page: Page): Promise<string[]> {
     /^(GND|LED|DC|CV|CC)$/, // technical terms kept in Hebrew by the glossary
     /^Vishay$/,
     /^TLHR5400$/, // LED model card name
+    /^(RGB|NPN|LDR|PIR|NC|NO|COM|RC|GL5528|N3904|HC|SR501|F)$/, // Sprint 10: part numbers and standard acronyms (technical tokens)
     /^N4148$/, // the 1N4148 diode model (tokenized after its leading digit)
     /^I$/, // the current symbol in formulas such as I = V / R (example summaries)
     /^N_\d+$/, // net ids

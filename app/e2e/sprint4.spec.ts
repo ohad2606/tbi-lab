@@ -501,6 +501,7 @@ test('A15: new Sprint 4 surfaces are fully translated in Hebrew (technical token
     /^(GND|LED|DC|CV|CC|OFF)$/,
     /^Vishay$/,
     /^(TLHR5400|N4148)$/, // model names (1N4148 tokenizes as N4148)
+    /^(RGB|NPN|LDR|PIR|NC|NO|COM|RC|GL5528|N3904|HC|SR501|F)$/, // Sprint 10: part numbers and standard acronyms (technical tokens)
     /^Esc$/,
     /^Delete$/,
     /^R$/,

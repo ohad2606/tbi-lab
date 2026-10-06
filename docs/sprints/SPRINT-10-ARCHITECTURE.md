@@ -182,3 +182,109 @@ documentation, not hidden.
 - The project schema (`schemaVersion` 3). Direct contacts stay zero-length wires.
 - The dev-lab demo (Sprint 9, `198ca92`), until the owner approves a promotion.
 - Production stays deferred.
+
+---
+
+## 5. After the PM-6 revision (2026-10-06): architecture for the approved families
+
+### 5.1 Part models (engine)
+
+The eight original types keep their dedicated, frozen session path (Gate A golden values and every
+DC result unchanged). Every type added since is a **part model** (`packages/engine/src/parts.ts`):
+
+- `elements(ctx, state)`: engine devices with any number of nodes, and **ideal contacts** (a 0 V
+  branch when closed, nothing when open) that join the existing short and redundant-loop analysis
+  of the switches;
+- `report(...)`: language-neutral results: `current`, `voltage`, terminal potentials, named
+  `currents` (RGB channels, a BJT's terminals, a relay coil), `state` (relay armature, buzzer
+  sounding, PIR output, BJT region) and `array` (matrix dot currents);
+- `ratings(...)`: datasheet absolute-maximum checks (warnings only);
+- `liveParams`: parameters a running session accepts (`LiveControl.params`);
+- `cards`: the model ids the part accepts, with their manufacturer part number.
+
+The **reference analysis** follows the elements: a device joins its nodes, a closed contact its two
+nodes, an open contact nothing. A relay's coil and contacts are therefore separate islands, as in
+the part.
+
+**Discrete state** (`initialState` / `nextState`): a relay armature, a module being powered. The
+session solves, derives each part's implied state, and re-solves until nothing changes (bounded:
+32 passes, cycle detection). It starts from the state the previous solve left, so hysteresis is
+real; a circuit that never settles (a relay interrupting its own coil) is refused with
+`no_steady_state`, never shown in a transitory state.
+
+**Time-dependent parts** (`timeDependent`, `history`): a circuit holding one runs **time-stepped**
+(`EngineSession.advance(dt)`, backward Euler). History is committed only for accepted steps, kept
+separate from the discrete-state fixed point. Every session starts at t = 0 with all histories empty
+(capacitors discharged).
+
+### 5.2 Time and Run/Stop
+
+| Circuit | Run | Live controls | Stop |
+| --- | --- | --- | --- |
+| No time-dependent part | One DC solve per request, exactly as before | Re-solve | Drop the session |
+| With a capacitor | t = 0, discharged; the Worker advances 1 ms steps paced to wall-clock time, at most 25 ms CPU per 50 ms tick (simulated time slows rather than skipping steps), posting each tick's state | Apply from the next step (backward Euler handles the step change without ringing) | Drop the session and its time |
+| With an ESP32 | The Session Host's MCU time drives the circuit (unchanged) | Mirrored (unchanged) | Ends the session |
+
+A time-dependent part in an ESP32 project is refused at Run (`mcu_component_unsupported`): the
+deployed runtime does not know it, and MCU time and circuit time are not coupled for it yet.
+
+### 5.3 Sensors and the simulated environment
+
+A sensor's input is its **simulated environment**, declared in the catalog as an environment
+parameter (`environment` on a quantity or boolean parameter, always live): the light on a
+photoresistor (lux, logarithmic slider), the motion in front of a PIR module. It is:
+
+- persisted like a toggle position (reproducible projects), language-neutral, in SI units;
+- edited in the inspector's **Simulated environment** section, or on the canvas through the part's
+  actuator (`toggleParam`: clicking the PIR dome);
+- mirrored to a running session as a live control; the part model reads it like any parameter.
+
+No sensor output is hard-coded: each part model computes its electrical behaviour from the
+environment value. Future sensors (temperature/humidity, distance) declare their own environment
+parameters on the same path; their device protocols are already modelled internally (5.5).
+
+### 5.4 Diagnostics
+
+`ratingWarnings` covers the datasheet ratings of every part model, plus the ESP32 pads:
+contention (opposite drives on one net), an output HIGH on GND, an output LOW on a supply +, and
+pad current beyond I_OH 40 mA / I_OL 28 mA. They are amber warnings; the run continues and the
+solved values are unchanged.
+
+### 5.5 Peripherals and buses (internal)
+
+`packages/engine/src/peripherals/` holds MCU- and language-agnostic device semantics:
+
+- `i2c.ts`: an I2C bus with 7-bit addressing (reserved addresses and conflicts refused), at
+  transaction level (what an MCU's I2C controller does) and line level (SDA/SCL decoding per NXP
+  UM10204, including the target's ACK);
+- `hd44780.ts`: PCF8574 expander + HD44780 controller (4-bit initialisation, instruction set, DDRAM
+  map, ROM A00), i.e. the I2C LCD;
+- `servo.ts`, `hcsr04.ts`, `dht22.ts`: the servo's pulse decoding, the ultrasonic echo timing, the
+  DHT22 frame.
+
+Nothing in them knows Arduino or MicroPython: a runtime that produces bus transactions or pad
+edges drives the same objects. **What blocks exposure** is the runtime, not these models (5.6).
+
+### 5.6 Runtime constraint (recorded)
+
+The deployed classic-ESP32 runtime (QEMU bridge, R1/R2) reports digital pad levels and applies
+input changes at 1 ms command ticks. Its builder refuses `ledc*`/`analogWrite` (PWM), `Wire`/I2C,
+ADC and interrupts. So:
+
+| Part | Needs from the runtime |
+| --- | --- |
+| Servo | LEDC (PWM) routed to pads, with edge timestamps to the Session Host |
+| I2C LCD | The I2C controller modelled in QEMU and bridged as bus transactions (or line-level SDA/SCL with sub-ms input injection) |
+| HC-SR04, DHT22 | Input injection with microsecond timing (today: 1 ms ticks) |
+| Any Sprint 10 part in an ESP32 project | A Session Host built with this engine (the deployed one predates the part models) |
+
+These are Sprint 8 backend changes; per the standing constraints they are not made in this sprint.
+
+### 5.7 3D: pins under a part's body
+
+Leaded parts keep the Sprint 10 rule (leads splayed to the 2D terminal positions). Packages whose
+pins sit under their body (relay, PIR module, LED matrix) are wired at their **real pins**: each wire
+comes in along the pin's own perpendicular, drops just outside the body (at a 2D pin stub's row when
+the symbol has one) and runs in at pin level. Drop points and pin-level runs are obstacles for every
+other wire. Crossing wires keep a full level (1.6 mm) apart; the earlier rule only kept their
+heights unequal, which a test caught. Cross-view agreement holds for every new part at every rotation.

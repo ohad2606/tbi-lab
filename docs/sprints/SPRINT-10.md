@@ -1,4 +1,4 @@
-# Sprint 10 — Physical 3D, engine time-domain core, approved catalog growth
+# Sprint 10 — Physical 3D, engine time-domain core, the approved component families
 
 **Status (2026-10-06, overnight):** developed on `sprint-10` (worktree `~/projects/tbi-lab-s10`),
 from `7f09d74` = `main` = `sprint-9-complete`. Ready for the owner's morning review on the
@@ -8,6 +8,38 @@ Not done: no PR, merge, tag or production deployment. The normal demo (`/`) stil
 Sprint 9 (`198ca92`), and the backends are unchanged (`c31d62e`).
 
 Architecture and scope: [SPRINT-10-ARCHITECTURE.md](SPRINT-10-ARCHITECTURE.md).
+
+## Part B — the approved component families (2026-10-06, after the PM-6 revision)
+
+Scope commit: `b02fbaf` (`V1-PRODUCT-SCOPE.md` §6.0). Architecture: SPRINT-10-ARCHITECTURE.md §5.
+Datasheet facts with SHA-256 and pages: [s10-evidence/datasheets/FACTS.md](s10-evidence/datasheets/FACTS.md).
+
+### B.1 Component matrix
+
+COMPLETE means every column is done and tested; anything else says what is missing.
+
+| Component | 2D | Simulation | Schematic | 3D | Inspector | Serialization | Tests | Status |
+|---|---|---|---|---|---|---|---|---|
+| RGB LED (Kingbright WP154A4SUREQBFZGC, common cathode) | ✔ per-channel glow from solved currents | ✔ 3 fitted dice (ngspice 1e-6) | ✔ block + glyph + part no. | ✔ clear lamp, 3 dice, live mixed colour | ✔ channel currents, EN/HE | ✔ | ✔ engine, ngspice, cross-view, browser | **COMPLETE** (local circuits) |
+| Photoresistor (Senba GL5528) | ✔ | ✔ R(E) power law, light = live environment | ✔ + part no. | ✔ CdS disc | ✔ environment slider, resistance | ✔ (lux) | ✔ | **COMPLETE** (local) |
+| Buzzer (CUI/Same Sky CEM-1205-IC) | ✔ sound waves when sounding | ✔ datasheet V-I curve, sounding 3–6 V | ✔ + part no. | ✔ can, "+", marking | ✔ | ✔ | ✔ incl. optional sound toggle | **COMPLETE** (local) |
+| Relay (Songle SRD-05VDC-SL-C) | ✔ blade follows armature | ✔ coil/contacts separate, hysteresis, chatter refused | ✔ block, coil + changeover glyph | ✔ case on its real pins | ✔ coil/contact current, state | ✔ | ✔ | **COMPLETE** (local) |
+| NPN transistor (2N3904, Fairchild SPICE card) | ✔ | ✔ Gummel–Poon DC (ngspice 1e-6 V) | ✔ block + NPN glyph | ✔ TO-92, E-B-C | ✔ I_C/I_B/I_E, V_CE, region | ✔ | ✔ | **COMPLETE** (local) |
+| PIR motion sensor (HC-SR501) | ✔ dome toggles motion | ✔ powered state, 3.3 V/1 kΩ output from VCC | ✔ block | ✔ board, Fresnel dome, pots, header | ✔ motion = environment | ✔ | ✔ | **COMPLETE** (local) |
+| LED matrix 8×8 (1088AS) | ✔ per-dot glow, pin names | ✔ 64 dots, any-size abstraction | ✔ block | ✔ face lit live, 16 pins | ✔ dots lit | ✔ | ✔ | **COMPLETE** (local) |
+| Capacitor (ideal, non-polarised) | ✔ | ✔ time-stepped (backward Euler), Run/Stop | ✔ + value | ✔ disc / NP can by value | ✔ charge, energy, rated V | ✔ (farad) | ✔ | **COMPLETE** (local) |
+| Servo (SG90) | — | internal: pulse → angle | — | — | — | — | ✔ (internal) | **INTERNAL** — needs ESP32 PWM/LEDC (runtime) |
+| I2C LCD 16×2 (PCF8574 + HD44780) | — | internal: I2C bus + controller | — | — | — | — | ✔ (internal) | **INTERNAL** — needs the I2C controller bridged (runtime) |
+| Ultrasonic (HC-SR04) | — | internal: echo timing | — | — | — | — | ✔ (internal) | **INTERNAL** — needs µs input timing (runtime) |
+| Temperature/humidity (DHT22) | — | internal: 40-bit frame | — | — | — | — | ✔ (internal) | **INTERNAL** — needs µs input timing (runtime) |
+| 555 timer | — | — | — | — | — | — | — | **NOT STARTED** (only when pin-level behaviour is credible) |
+| Multi-position switch | — | — | — | — | — | — | — | **NOT STARTED** |
+| Potentiometer | — | — | — | — | — | — | — | **V1.1** (unchanged) |
+
+"Local" = circuits without an ESP32. With an ESP32 every new part is refused at Run with a
+specific message (`mcu_component_unsupported`): the deployed Session Host predates the part models.
+
+<!-- PART-B-REST -->
 
 ## Scope decision (2026-10-06, after the first owner review)
 
