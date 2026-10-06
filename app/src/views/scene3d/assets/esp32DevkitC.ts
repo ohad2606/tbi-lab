@@ -4,7 +4,8 @@
  * - the board's surface: solder mask over copper, pads and silkscreen on both PCB faces, the
  *   module's antenna area, and the marking atlas of the can and the ICs (esp32Textures.ts), drawn
  *   once per viewer and shared by every board in it;
- * - brushed-metal anisotropy on the RF can (full tier);
+ * - brushed-metal roughness on the RF can's top (anisotropic shading was tried: without true
+ *   tangents on the drawn walls it breaks into noise);
  * - a jumper wire's female housing (dupont.ts) on every header pin that carries a wire; its top is
  *   that pin's electrical anchor (scene.ts ESP32_ATTACH_HEIGHT).
  * Materials are cloned once per viewer (the shared glTF template is never modified).
@@ -64,10 +65,6 @@ function finish(own: OwnedResources, name: string, original: THREE.Material): TH
         break;
       case 'shield_can':
         m.roughnessMap = tex.brushed;
-        if (full) {
-          m.anisotropy = 0.55;
-          m.anisotropyRotation = 0;
-        }
         break;
     }
     m.needsUpdate = true;

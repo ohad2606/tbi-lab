@@ -341,10 +341,13 @@ export function authorEsp32DevkitC(): THREE.Group {
   // brushing runs along x), 1 unit per 8 mm.
   {
     const pos = canGeo.attributes.position!;
+    const nor = canGeo.attributes.normal!;
     const uv = new Float32Array(pos.count * 2);
     for (let i = 0; i < pos.count; i++) {
-      uv[i * 2] = pos.getX(i) / 8;
-      uv[i * 2 + 1] = pos.getZ(i) / 8;
+      // The walls (drawn, not brushed) take one texel: a projection would smear the streaks.
+      const top = nor.getY(i) > 0.7;
+      uv[i * 2] = top ? pos.getX(i) / 8 : 0.5;
+      uv[i * 2 + 1] = top ? pos.getZ(i) / 8 : 0.5;
     }
     canGeo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
   }
