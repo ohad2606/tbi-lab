@@ -1,13 +1,89 @@
 # Sprint 10 — Physical 3D, engine time-domain core, the approved component families
 
-**Status (2026-10-06, overnight):** developed on `sprint-10` (worktree `~/projects/tbi-lab-s10`),
-from `7f09d74` = `main` = `sprint-9-complete`. Ready for the owner's morning review on the
-isolated preview `https://dev-lab.tbi-tech.net/s10-preview/`.
+**Status (2026-10-06):** developed on `sprint-10` (worktree `~/projects/tbi-lab-s10`), from
+`7f09d74` = `main` = `sprint-9-complete`. **The frontend/local simulation is promoted to the normal
+demo (`/`) as `bd78d2e`** (Part D), with PM approval. **Waiting for the owner smoke.**
 
-Not done: no PR, merge, tag or production deployment. The normal demo (`/`) still serves
-Sprint 9 (`198ca92`), and the backends are unchanged (`c31d62e`).
+Not done: no PR, merge, tag, production deployment or backend deployment. The backends are unchanged
+(`c31d62e`, runtime `33e35e4ac5e798d7`). The isolated preview `/s10-preview/` stays.
 
 Architecture and scope: [SPRINT-10-ARCHITECTURE.md](SPRINT-10-ARCHITECTURE.md).
+
+## Part D — promotion to the normal demo (2026-10-06)
+
+**Approved:** the Sprint 10 frontend and local simulation only. Static files, from the exact
+validated commit. No backend, service, runtime, build-service, Caddy or auth change.
+
+**What was promoted.**
+- `bd78d2e` (`bd78d2ebb400703d2714673487acc19d8c677a5e`), published with
+  `deploy/dev-lab/publish-frontend.sh bd78d2e`. It builds in a clean temporary worktree, copies to
+  `/srv/tbi-lab/dev-lab/<sha>` and switches `current` atomically. No service is restarted.
+- Switched at 2026-10-06 07:37:39 UTC; the previous release was `198ca92` (Sprint 9).
+- The script's own checks passed: the installed tree is byte-identical to a pre-build of the same
+  commit made before the switch (16 files), its manifest matches, and the rollback target is intact.
+
+**Bundle (accepted):**
+- Start-up chunk: 272.8 kB raw / 81.3 kB gzip (Part A) → 356.3 / 102.5 (Part B) → **promoted
+  302.7 kB raw / 96.8 kB gzip**.
+- Start-up time about 202 ms, against 190 ms for Part A and 212 ms for Part B.
+- Accepted as is. Moving the engine off the main thread and loading only the active locale stay as
+  lazy-loading candidates (Part C).
+
+**Rollback.**
+- A snapshot was taken before the switch: the 14 files of `198ca92` hashed, and the service
+  releases, unit start times, backend hashes, Caddy configuration and runtime were fingerprinted.
+- The rollback target was verified again after validation (14/14).
+- Rollback is one atomic switch back. It needs no service restart:
+  ```
+  sudo ln -sfn /srv/tbi-lab/dev-lab/198ca926e3ef1e49f1944816a3e7d501b9bbbbbe /srv/tbi-lab/dev-lab/current.tmp
+  sudo mv -T /srv/tbi-lab/dev-lab/current.tmp /srv/tbi-lab/dev-lab/current
+  ```
+
+**Post-promotion validation (against `/`, through the gate's internal origin, fresh principals).**
+
+| Check | Result |
+|---|---|
+| Served files against `bd78d2e` | **16/16** hash-match |
+| Sprint 9 demo smoke | **47/47** |
+| Sprint 10 demo checks | **29/29** |
+| Services: caddy, oauth2-proxy, tbi-build, tbi-session-host, tbi-s8-build, tbi-s8-session-host | start times and PIDs identical to the snapshot |
+| Backend files in `/srv/tbi-lab/services/current` (= `c31d62e`) | 3/3 hashes identical |
+| Session-host bundle in each running host's own mount view | `c4965cb2…` (unchanged) |
+| Caddy configuration | unchanged |
+| QEMU | binary `538af3d7…f9df` unchanged; runtime id `33e35e4ac5e798d7` |
+| Rollback target `198ca92` | intact |
+
+What the two runs cover:
+- **Sprint 9 smoke (47 checks):**
+  - landing and project list; an existing example; an existing stored project;
+  - ESP32 Build → Run (GPIO2 blinks; LED lit in 3D) → Stop, through the real build service and Session Host;
+  - stale build refused; cached build;
+  - schematic and 3D; reloads;
+  - contacts and routing;
+  - Hebrew RTL, with code, serial and schematic staying LTR;
+  - every request same-origin, every asset 200, no 4xx/5xx, no console errors.
+- **Sprint 10 checks (29 checks):**
+  - no preview badge; assets served from `/assets/`;
+  - all 8 new parts offered in a local project; lazy example chunk;
+  - local simulation of all eight parts:
+    - RGB LED, with a live channel change;
+    - photoresistor, 3.728 V → 6.641 V with the live light level;
+    - relay: hold → NO lights the LED and NC silences the buzzer;
+    - 2N3904 night-light;
+    - PIR → transistor → buzzer;
+    - matrix dots 2.2 2.7 7.2 7.7;
+  - capacitor transient: time advances, the LED fades in, discharges when the switch opens, Stop removes the time, Run restarts at t = 0;
+  - schematic and 3D;
+  - export and re-import of a matrix project, with language-neutral tokens;
+  - ESP32 palette rule in EN and HE (RTL); no servo, I2C LCD, HC-SR04 or DHT22 offered;
+  - no page errors.
+
+**ESP32 capability gating is unchanged.** RGB LED, LDR, buzzer, relay, transistor, PIR, matrix and
+capacitor are disabled in ESP32 projects. Servo, I2C LCD, HC-SR04 and DHT22 remain internal.
+
+**Owner smoke: PENDING.** Runtime expansion waits for it. Each runtime phase (R1 backend redeploy
+with the emulator unchanged, R2 microsecond inputs, R3 I2C, R4 PWM/servo) is its own approval. The
+R1 plan, prepared and not executed: [docs/runtime/PHASE-R1-DEPLOYMENT-PLAN.md](../runtime/PHASE-R1-DEPLOYMENT-PLAN.md).
 
 ## Part C — pre-promotion pass (2026-10-06)
 
