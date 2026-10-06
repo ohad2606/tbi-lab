@@ -70,7 +70,7 @@ describe('2N3904 against ngspice (same Gummel-Poon card)', () => {
         res.data.find((x: { name: string }) => x.name.toLowerCase() === `v(${n})`)!
           .values as number[]
       )[0]!;
-    return { vb: v('b'), vc: v('c'), ve: re > 0 || true ? v('e') : 0 };
+    return { vb: v('b'), vc: v('c'), ve: v('e') };
   }
 
   const cases: [string, number, number, number, number, boolean][] = [
