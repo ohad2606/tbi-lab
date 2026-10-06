@@ -11,6 +11,7 @@
  */
 
 import type { SimulationSnapshot } from '@tbi-lab/domain';
+import { I_OH_A, I_OL_A } from './esp32Gpio.js';
 import type { SolveSuccess } from './session.js';
 
 export interface AbsoluteMaximumRatings {
@@ -62,16 +63,47 @@ export const MODEL_RATINGS: Readonly<Record<string, AbsoluteMaximumRatings>> = {
   },
 };
 
-export type RatingCode = 'forward_current' | 'reverse_voltage' | 'power';
+export type RatingCode =
+  | 'forward_current'
+  | 'reverse_voltage'
+  | 'power'
+  // Sprint 10: ESP32 pads (the board's datasheet drive specification, esp32Gpio.ts).
+  /** An output-HIGH pad sources more than I_OH. */
+  | 'gpio_source_current'
+  /** An output-LOW pad sinks more than I_OL. */
+  | 'gpio_sink_current'
+  /** Two pads on one net drive opposite levels: the drivers fight. */
+  | 'gpio_contention'
+  /** An output-HIGH pad is wired straight to GND. */
+  | 'gpio_short_ground'
+  /** An output-LOW pad is wired straight to a supply's + terminal. */
+  | 'gpio_short_supply';
+
+/** The unit each warning's `value` and `limit` are in. */
+export const RATING_UNIT: Readonly<Record<RatingCode, 'ampere' | 'volt' | 'watt'>> = {
+  forward_current: 'ampere',
+  reverse_voltage: 'volt',
+  power: 'watt',
+  gpio_source_current: 'ampere',
+  gpio_sink_current: 'ampere',
+  gpio_contention: 'ampere',
+  gpio_short_ground: 'ampere',
+  gpio_short_supply: 'ampere',
+};
 
 export interface RatingWarning {
   component: string;
+  /** The model card, or for a board pad the board type. */
   model: string;
   code: RatingCode;
-  /** The solved value (A, V or W; reverse voltage as a positive number). */
+  /** The solved value (A, V or W; reverse voltage and sink current as positive numbers). */
   value: number;
   /** The datasheet limit in the same unit. */
   limit: number;
+  /** Board pads only: the GPIO the row is about. */
+  gpio?: number;
+  /** Contention only: the other GPIO driving the same net. */
+  otherGpio?: number;
 }
 
 /** Parts whose solved operating point exceeds their datasheet absolute maximum ratings. */
@@ -94,6 +126,71 @@ export function ratingWarnings(
       add('reverse_voltage', -r.voltage, rating.reverseVoltageV);
     const power = Math.abs(r.voltage * r.current);
     if (power > rating.powerW) add('power', power, rating.powerW);
+  }
+  return [...out, ...gpioWarnings(snapshot, outcome)];
+}
+
+/**
+ * ESP32 pads in an electrically unsafe configuration (Sprint 10). The solved values are the
+ * engine's, unchanged; this only classifies them against the datasheet drive specification the
+ * pad model is built from (I_OH 40 mA source, I_OL 28 mA sink: esp32Gpio.ts). One row per pad,
+ * the most specific that applies:
+ * - two pads on one net driving opposite levels (contention);
+ * - an output-HIGH pad on the GND net, or an output-LOW pad on a supply's + net (a short);
+ * - otherwise a pad sourcing more than I_OH or sinking more than I_OL.
+ * Experimentation is not prevented: the circuit keeps running and showing what it solves.
+ */
+function gpioWarnings(snapshot: SimulationSnapshot, outcome: SolveSuccess): RatingWarning[] {
+  if (!outcome.pins?.length) return [];
+  const board = snapshot.components.find((c) => c.type.startsWith('board.'));
+  // Server sessions solve a projection without the board; the browser's snapshot has it.
+  if (!board) return [];
+  const netOfGpio = new Map<number, string>();
+  for (const conn of snapshot.connections) {
+    const m = conn.component === board.id ? /^gpio(\d+)$/.exec(conn.terminal) : null;
+    if (m) netOfGpio.set(Number(m[1]), conn.net);
+  }
+  const ground = new Set(snapshot.nets.filter((n) => n.role === 'ground').map((n) => n.id));
+  const supplyPlus = new Set(
+    snapshot.connections
+      .filter((conn) => {
+        const c = snapshot.components.find((x) => x.id === conn.component);
+        return c?.type === 'instrument.lab_psu' && conn.terminal === 'positive';
+      })
+      .map((conn) => conn.net),
+  );
+  const out: RatingWarning[] = [];
+  const add = (code: RatingCode, gpio: number, value: number, limit: number, other?: number) =>
+    out.push({
+      component: board.id,
+      model: board.type,
+      code,
+      value,
+      limit,
+      gpio,
+      ...(other === undefined ? {} : { otherGpio: other }),
+    });
+  for (const pin of outcome.pins) {
+    if (pin.mode === 'input') continue;
+    const high = pin.mode === 'output-high';
+    const net = netOfGpio.get(pin.gpio);
+    const limit = high ? I_OH_A : I_OL_A;
+    const magnitude = Math.abs(pin.current);
+    const rival = outcome.pins.find(
+      (q) =>
+        q.gpio !== pin.gpio &&
+        net !== undefined &&
+        netOfGpio.get(q.gpio) === net &&
+        q.mode === (high ? 'output-low' : 'output-high'),
+    );
+    if (rival) add('gpio_contention', pin.gpio, magnitude, limit, rival.gpio);
+    else if (high && net !== undefined && ground.has(net))
+      add('gpio_short_ground', pin.gpio, magnitude, limit);
+    else if (!high && net !== undefined && supplyPlus.has(net))
+      add('gpio_short_supply', pin.gpio, magnitude, limit);
+    else if (high && pin.current > I_OH_A) add('gpio_source_current', pin.gpio, pin.current, limit);
+    else if (!high && -pin.current > I_OL_A)
+      add('gpio_sink_current', pin.gpio, -pin.current, limit);
   }
   return out;
 }

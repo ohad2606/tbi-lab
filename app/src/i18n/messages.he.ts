@@ -117,6 +117,8 @@ export const he: Record<MessageKey, string> = {
     'למעגל אין פתרון יחיד, למשל שני ספקים שכופים מתחים שונים על אותה [[net]]. מעורבים: {components}.',
   'sim.error.no_convergence':
     'הפותר לא מצא נקודת עבודה, ולכן לא מוצגים ערכים. מעורבים: {components}.',
+  'sim.error.no_steady_state':
+    'למעגל אין מצב יציב: {components} ממשיך להדליק ולכבות את עצמו (ממסר שמנתק את הסליל של עצמו מרטט). סימולציית DC אינה יכולה להציג אחד ממצבי המעבר שלו.',
   'sim.error.internal': 'אירעה שגיאה פנימית בסימולציה. הפרויקט לא נפגע.',
   'sim.error.worker_crashed':
     'הסימולציה נעצרה באופן בלתי צפוי. הפרויקט לא נפגע. לחצו על הרצה כדי לנסות שוב.',
@@ -315,6 +317,14 @@ export const he: Record<MessageKey, string> = {
   'rating.row.forward_current': 'זרם: {value} (מקסימום {limit})',
   'rating.row.reverse_voltage': 'מתח הפוך: {value} (מקסימום {limit})',
   'rating.row.power': 'הספק: {value} (מקסימום {limit})',
+  'rating.row.gpio_source_current': '{pin} ביציאה HIGH מספק {value} (דירוג ההנעה {limit})',
+  'rating.row.gpio_sink_current': '{pin} ביציאה LOW בולע {value} (דירוג ההנעה {limit})',
+  'rating.row.gpio_contention':
+    '{pin} ו־{other} מניעים רמות הפוכות על אותו נט: {value} זורם ביניהם (דירוג ההנעה {limit})',
+  'rating.row.gpio_short_ground':
+    '{pin} ביציאה HIGH מחובר ישירות ל־GND: {value} (דירוג ההנעה {limit})',
+  'rating.row.gpio_short_supply':
+    '{pin} ביציאה LOW מחובר ישירות ל־+ של ספק: {value} (דירוג ההנעה {limit})',
   'rating.note': 'הסימולציה ממשיכה להציג את הערכים המחושבים ואינה מדמה נזק לרכיב.',
 
   // ---- Sprint 6: Classic ESP32 through the R2 Session Host ----

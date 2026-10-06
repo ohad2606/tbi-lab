@@ -49,6 +49,14 @@ export const V_IL_V = 0.25 * VDD_V;
  * driver, valid near the operating points above and increasingly optimistic far from them.
  */
 export const R_DRIVE_HIGH_OHM = (VDD_V - 2.64) / 0.04;
+
+/**
+ * The datasheet drive specification itself (Table 5-3, maximum drive strength): a pad sourcing
+ * more than I_OH or sinking more than I_OL is outside what the manufacturer specifies. Used only
+ * by the diagnostics (ratings.ts), never by the electrical model.
+ */
+export const I_OH_A = 0.04;
+export const I_OL_A = 0.028;
 export const R_DRIVE_LOW_OHM = 0.495 / 0.028;
 
 /** Internal pull-up / pull-down resistance, datasheet typical. */

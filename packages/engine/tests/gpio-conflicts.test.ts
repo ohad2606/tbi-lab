@@ -18,6 +18,7 @@ import {
   R_DRIVE_LOW_OHM,
   VDD_V,
   interpretDigitalInput,
+  ratingWarnings,
   type SolveOutcome,
   type SolveSuccess,
 } from '../src/index.js';
@@ -101,5 +102,94 @@ describe('ESP32 pads: contention and edge cases, solved as drawn', () => {
       expect(interpretDigitalInput(pin.voltage, 0)).toBe(0);
     }
     expect(G_INPUT_LEAKAGE_S).toBeCloseTo(50e-9 / 3.3, 20);
+  });
+});
+
+/**
+ * Sprint 10: the same configurations produce visible circuit diagnostics. The browser holds the
+ * project (with the board); the session solved the projection without it (as the Session Host
+ * does). The diagnostics classify the solved pad currents; they never change them.
+ */
+describe('ESP32 pad diagnostics (ratingWarnings)', () => {
+  /** A board wired by its terminals, plus the session over the board-less projection. */
+  function boardBench(build: (b: Bench, u: string) => void) {
+    const b = new Bench();
+    const u = b.add('board.esp32_devkitc_wroom32');
+    b.wire(`${u}.gnd`, 'GND1.ref').wire('PSU1.negative', 'GND1.ref');
+    build(b, u);
+    const full = b.snapshot();
+    const projected = {
+      ...full,
+      components: full.components.filter((c) => c.id !== u),
+      connections: full.connections.filter((c) => c.component !== u),
+    };
+    // The pads attach to another terminal on their net (runtime/snapshot.ts does the same).
+    const pins = full.connections
+      .filter((c) => c.component === u && /^gpio\d+$/.test(c.terminal))
+      .map((c) => {
+        const at = projected.connections.find((x) => x.net === c.net)!;
+        return {
+          gpio: Number(c.terminal.slice(4)),
+          component: at.component,
+          terminal: at.terminal,
+        };
+      });
+    return { full, session: new EngineSession(projected, { pins }), u };
+  }
+
+  it('two pads driving opposite levels on one net: contention on both, with the solved current', () => {
+    const { full, session, u } = boardBench((b, u) => {
+      const r = b.add('component.resistor');
+      b.ohms(r, 1e-3).wire(`${u}.gpio2`, `${r}.a`).wire(`${u}.gpio4`, `${r}.a`);
+      b.wire(`${r}.b`, 'GND1.ref').ohms(r, 1e6);
+    });
+    session.setPinMode(2, 'output-high');
+    session.setPinMode(4, 'output-low');
+    const out = ok(session.solve());
+    const w = ratingWarnings(full, out);
+    const i = VDD_V / (R_DRIVE_HIGH_OHM + R_DRIVE_LOW_OHM);
+    expect(w.map((x) => [x.code, x.gpio, x.otherGpio])).toEqual([
+      ['gpio_contention', 2, 4],
+      ['gpio_contention', 4, 2],
+    ]);
+    expect(w[0]!.component).toBe(u);
+    expect(w[0]!.value).toBeCloseTo(i, 4);
+    // The solved values are untouched by the classification.
+    expect(out.pins!.find((p) => p.gpio === 2)!.current).toBeCloseTo(i, 4);
+  });
+
+  it('an output-HIGH pad on the GND net is a short to ground; output-LOW on a supply + is a short to the supply', () => {
+    const g = boardBench((b, u) => b.wire(`${u}.gpio2`, 'GND1.ref'));
+    g.session.setPinMode(2, 'output-high');
+    expect(ratingWarnings(g.full, ok(g.session.solve())).map((x) => x.code)).toEqual([
+      'gpio_short_ground',
+    ]);
+    const s = boardBench((b, u) => b.wire(`${u}.gpio4`, 'PSU1.positive').psu(3.3, 1));
+    s.session.setPinMode(4, 'output-low');
+    const w = ratingWarnings(s.full, ok(s.session.solve()));
+    expect(w.map((x) => x.code)).toEqual(['gpio_short_supply']);
+    expect(w[0]!.value).toBeCloseTo(3.3 / R_DRIVE_LOW_OHM, 3);
+  });
+
+  it('a pad loaded past its drive specification (but not shorted) is flagged; a normal LED load is not', () => {
+    const heavy = boardBench((b, u) => {
+      const r = b.add('component.resistor');
+      b.ohms(r, 22).wire(`${u}.gpio5`, `${r}.a`).wire(`${r}.b`, 'GND1.ref');
+    });
+    heavy.session.setPinMode(5, 'output-high');
+    const w = ratingWarnings(heavy.full, ok(heavy.session.solve()));
+    expect(w.map((x) => [x.code, x.limit])).toEqual([['gpio_source_current', 0.04]]);
+    expect(w[0]!.value).toBeCloseTo(VDD_V / (R_DRIVE_HIGH_OHM + 22), 6);
+
+    const normal = boardBench((b, u) => {
+      const r = b.add('component.resistor');
+      const d = b.add('component.led');
+      b.ohms(r, 220)
+        .wire(`${u}.gpio5`, `${r}.a`)
+        .wire(`${r}.b`, `${d}.anode`)
+        .wire(`${d}.cathode`, 'GND1.ref');
+    });
+    normal.session.setPinMode(5, 'output-high');
+    expect(ratingWarnings(normal.full, ok(normal.session.solve()))).toEqual([]);
   });
 });

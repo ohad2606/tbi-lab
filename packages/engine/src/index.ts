@@ -18,6 +18,7 @@ export {
 export { MODEL_CARDS, MODEL_VALID_CURRENT_A } from './registry.js';
 export {
   MODEL_RATINGS,
+  RATING_UNIT,
   ratingWarnings,
   type AbsoluteMaximumRatings,
   type RatingCode,
@@ -32,6 +33,8 @@ export { DIODE_1N4148, LED_TLHR5400 } from './models.js';
 export {
   G_INPUT_LEAKAGE_S,
   GpioPin,
+  I_OH_A,
+  I_OL_A,
   R_DRIVE_HIGH_OHM,
   R_DRIVE_LOW_OHM,
   R_PULL_OHM,

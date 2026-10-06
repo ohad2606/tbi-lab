@@ -4,7 +4,7 @@
  */
 
 import { CATALOG, type ProjectDocument, type UnitId } from '@tbi-lab/domain';
-import type { EngineError } from '@tbi-lab/engine';
+import { RATING_UNIT, type EngineError, type RatingWarning } from '@tbi-lab/engine';
 import { toEngineering } from '@tbi-lab/domain';
 import {
   catalogText,
@@ -44,22 +44,23 @@ export function formatPower(locale: LocaleInfo, watts: number): string {
   return `${n} ${prefix}${translate(locale, 'unit.watt.symbol')}`;
 }
 
-type RatingLike = {
-  component: string;
-  code: 'forward_current' | 'reverse_voltage' | 'power';
-  value: number;
-  limit: number;
-};
+type RatingLike = Pick<RatingWarning, 'component' | 'code' | 'value' | 'limit'> &
+  Partial<Pick<RatingWarning, 'gpio' | 'otherGpio'>>;
 
-/** One compact over-stress row: "Current: 62.64 mA (maximum 30 mA)". Values stay LTR. */
+/**
+ * One compact over-stress row: "Current: 62.64 mA (maximum 30 mA)", or for a board pad
+ * "IO2 drives HIGH into IO4 driving LOW: 97.4 mA (drive rating 40 mA)". Values and pin names stay
+ * LTR technical tokens.
+ */
 export function ratingRow(locale: LocaleInfo, w: RatingLike): string {
+  const unit = RATING_UNIT[w.code];
   const fmt = (v: number) =>
-    w.code === 'power'
-      ? formatPower(locale, v)
-      : formatResult(locale, v, w.code === 'forward_current' ? 'ampere' : 'volt');
+    unit === 'watt' ? formatPower(locale, v) : formatResult(locale, v, unit);
   return translate(locale, `rating.row.${w.code}`, {
     value: isolateLtr(fmt(w.value)),
     limit: isolateLtr(fmt(w.limit)),
+    pin: isolateLtr(w.gpio === undefined ? '' : `IO${w.gpio}`),
+    other: isolateLtr(w.otherGpio === undefined ? '' : `IO${w.otherGpio}`),
   });
 }
 

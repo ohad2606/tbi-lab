@@ -116,6 +116,8 @@ export const en = {
     'The circuit has no unique solution, for example two supplies forcing different voltages on the same [[net]]. Involved: {components}.',
   'sim.error.no_convergence':
     'The solver could not find an operating point, so no values are shown. Involved: {components}.',
+  'sim.error.no_steady_state':
+    'This circuit has no steady state: {components} keeps switching itself on and off (a relay that interrupts its own coil chatters). A DC simulation cannot show one of its transitory states.',
   'sim.error.internal': 'An internal simulation error occurred. The project is not affected.',
   'sim.error.worker_crashed':
     'The simulation stopped unexpectedly. The project is not affected. Press Run to try again.',
@@ -326,6 +328,14 @@ export const en = {
   'rating.row.forward_current': 'Current: {value} (maximum {limit})',
   'rating.row.reverse_voltage': 'Reverse voltage: {value} (maximum {limit})',
   'rating.row.power': 'Power: {value} (maximum {limit})',
+  'rating.row.gpio_source_current': '{pin} output HIGH sources {value} (drive rating {limit})',
+  'rating.row.gpio_sink_current': '{pin} output LOW sinks {value} (drive rating {limit})',
+  'rating.row.gpio_contention':
+    '{pin} and {other} drive opposite levels on the same net: {value} flows between them (drive rating {limit})',
+  'rating.row.gpio_short_ground':
+    '{pin} output HIGH is wired straight to GND: {value} (drive rating {limit})',
+  'rating.row.gpio_short_supply':
+    '{pin} output LOW is wired straight to a supply +: {value} (drive rating {limit})',
   'rating.note':
     'The simulation continues to show the calculated values and does not model physical damage.',
 
