@@ -9,6 +9,63 @@ Sprint 9 (`198ca92`), and the backends are unchanged (`c31d62e`).
 
 Architecture and scope: [SPRINT-10-ARCHITECTURE.md](SPRINT-10-ARCHITECTURE.md).
 
+## Part C — pre-promotion pass (2026-10-06)
+
+**Component-support rule.** A component is usable in a board project only when that board's runtime
+can simulate it honestly. The deployed ESP32 runtime supports digital GPIO and serial only, so:
+- the eight completed parts stay **COMPLETE for local circuits**;
+- servo, I2C LCD, HC-SR04 and DHT22 stay **INTERNAL**;
+- in an ESP32 project the palette **disables** the parts the runtime cannot simulate, with one
+  localized note at the top of the palette ("Requires runtime support not available for ESP32
+  yet." / "דורש תמיכת Runtime שעדיין אינה זמינה ל־ESP32."). A local project that already holds
+  such parts disables the ESP32 board. The Run refusal (`mcu_component_unsupported`) remains the
+  backstop for imported projects (`3c97f37`).
+
+**Start-up bundle.** Byte attribution through the build's source maps, first-night build `d3b79b0`
+→ Part B → after the change below:
+
+| Start-up chunk | Raw | Gzip |
+|---|---|---|
+| `d3b79b0` (Part A) | 272.8 kB | 81.3 kB |
+| Part B (`3ba2292`) | 356.3 kB | 102.5 kB |
+| Now (`bd78d2e`): example documents lazy | 302.7 kB | 96.8 kB |
+
+Where the Part B growth (+83.5 kB raw, +21.2 kB gzip) came from:
+
+| Area | Δ raw | Δ gzip (alone) |
+|---|---|---|
+| Example documents (7 new examples; 16 inlined in all) | +29.5 kB (62 kB in all) | +2.5 kB (5.7 kB in all; repetitive JSON) |
+| Engine code on the main thread (ratings → part registry → part models, BJT, devices) | +24.7 kB | +8.4 kB |
+| i18n messages (EN + HE for the new parts) | +14.7 kB | +6.1 kB |
+| UI (canvas, inspector, symbols, sound toggle) and domain catalog | +14.6 kB | +4.2 kB |
+
+Done: the example **documents** moved to their own chunk, loaded when an example is opened and
+**prefetched on idle** after start-up, so they still work offline once the app has loaded (browser
+test). Metadata (titles, probes) stays eager.
+
+Measured start-up (navigation → project list, 12 runs, this host): Part A 189–190 ms median, Part B
+212 ms, now 202 ms.
+
+Candidates not done (follow-up, each with its own risk):
+- **Engine off the main thread** (about −25 kB raw, −8 kB gzip). The worker would compute rating
+  warnings and attach them to the outcome, with a light GPIO-only path for ESP32 outcomes. Medium
+  risk: it changes the warning data flow.
+- **Only the active locale eager** (about −34 kB raw, −12 kB gzip). It touches the whole i18n
+  layer; medium risk.
+- **Part-specific 3D builders** are already in the lazy 3D chunk; nothing to move.
+
+**555 timer — feasible, not started.** The time-stepped engine and the 2N3904 Gummel–Poon model now
+exist, so a pin-level 555 (two comparators, an SR latch, the discharge transistor, the resistor
+divider) can be simulated honestly. It is a separate component task: real pin-level model,
+schematic, 2D, 3D, inspector, serialization and tests. No behaviour-only oscillator block without a
+separate approval.
+
+**Multi-position switch — not started**; not part of the runtime work.
+
+**Runtime expansion (architecture only):** [docs/runtime/R3-CAPABILITY-PLAN.md](../runtime/R3-CAPABILITY-PLAN.md):
+PWM/edge timing, I2C bridge, microsecond inputs, protocol changes, revalidation impact and phases.
+No backend change is made in Sprint 10.
+
 ## Part B — the approved component families (2026-10-06, after the PM-6 revision)
 
 Scope commit: `b02fbaf` (`V1-PRODUCT-SCOPE.md` §6.0). Architecture: SPRINT-10-ARCHITECTURE.md §5.
