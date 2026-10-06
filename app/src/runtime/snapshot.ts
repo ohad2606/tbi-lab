@@ -21,6 +21,7 @@
  * model, explicitly and by name.
  */
 import {
+  CATALOG,
   ESP32_BOARD,
   PROGRAM_FIRMWARE,
   createSnapshot,
@@ -39,7 +40,9 @@ export type McuPlanError =
   | { code: 'mcu_unsupported_features'; components: string[]; features: string[] }
   | { code: 'mcu_unknown_firmware'; components: string[] }
   | { code: 'mcu_ground_unconnected'; components: string[] }
-  | { code: 'mcu_pin_without_circuit'; components: string[]; pins: number[] };
+  | { code: 'mcu_pin_without_circuit'; components: string[]; pins: number[] }
+  /** Sprint 10: parts the deployed ESP32 runtime does not simulate yet (catalog `mcuRuntime`). */
+  | { code: 'mcu_component_unsupported'; components: string[] };
 
 /** The immutable image a session runs, and where it came from. */
 export interface ResolvedFirmware {
@@ -121,6 +124,14 @@ export function buildSessionRequest(
   const found = mcuBoard(doc);
   if ('code' in found) return { ok: false, error: found };
   const board = found;
+
+  // Parts the deployed runtime predates are refused before anything is sent (catalog flag).
+  const unknown = doc.components.filter((c) => CATALOG[c.type].mcuRuntime === false);
+  if (unknown.length)
+    return {
+      ok: false,
+      error: { code: 'mcu_component_unsupported', components: unknown.map((c) => c.id) },
+    };
 
   const own = doc.connections.filter((c) => c.component === board.id);
   // Circuit checks come before the firmware: they are the same whatever the board runs.

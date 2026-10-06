@@ -45,7 +45,7 @@ export function formatPower(locale: LocaleInfo, watts: number): string {
 }
 
 type RatingLike = Pick<RatingWarning, 'component' | 'code' | 'value' | 'limit'> &
-  Partial<Pick<RatingWarning, 'gpio' | 'otherGpio'>>;
+  Partial<Pick<RatingWarning, 'gpio' | 'otherGpio' | 'channel'>>;
 
 /**
  * One compact over-stress row: "Current: 62.64 mA (maximum 30 mA)", or for a board pad
@@ -56,12 +56,17 @@ export function ratingRow(locale: LocaleInfo, w: RatingLike): string {
   const unit = RATING_UNIT[w.code];
   const fmt = (v: number) =>
     unit === 'watt' ? formatPower(locale, v) : formatResult(locale, v, unit);
-  return translate(locale, `rating.row.${w.code}`, {
+  const row = translate(locale, `rating.row.${w.code}`, {
     value: isolateLtr(fmt(w.value)),
     limit: isolateLtr(fmt(w.limit)),
     pin: isolateLtr(w.gpio === undefined ? '' : `IO${w.gpio}`),
     other: isolateLtr(w.otherGpio === undefined ? '' : `IO${w.otherGpio}`),
   });
+  if (!w.channel) return row;
+  // A part's element (an RGB channel, a relay coil): named by its result label.
+  const key = `sim.part.current.${w.channel}`;
+  const channel = isMessageKey(key) ? translate(locale, key) : w.channel;
+  return translate(locale, 'rating.channel', { channel, row });
 }
 
 /** Warnings grouped by component, in first-seen order: one summary per part, rows below. */

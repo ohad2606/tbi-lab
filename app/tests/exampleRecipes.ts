@@ -20,6 +20,7 @@ import {
   type ComponentTypeId,
   type ParamValue,
   type ProjectDocument,
+  type UnitId,
   type WireTarget,
 } from '@tbi-lab/domain';
 
@@ -56,7 +57,7 @@ class Recipe {
     this.doc = r.doc;
     return r.id;
   }
-  set(id: string, key: string, value: number | boolean, unit?: 'ohm' | 'volt' | 'ampere') {
+  set(id: string, key: string, value: number | boolean, unit?: UnitId) {
     const v: ParamValue = unit ? { value: value as number, unit } : (value as boolean);
     this.doc = this.ok(setParam(this.doc, id, key, v)).doc;
   }
@@ -164,6 +165,97 @@ export const RECIPES: Record<string, () => ProjectDocument> = {
     r.wire({ kind: 'wire', wire: rail, at: { x: 180, y: -80 } }, T(R2, 'a'));
     r.wire({ kind: 'wire', wire: rail, at: { x: 20, y: -80 } }, T(R1, 'a'));
     return r.centre(-200);
+  },
+  /**
+   * Sprint 10. RGB LED (common cathode): each channel through its own toggle and resistor, so the
+   * colour is what the switches let the circuit drive (red and green on: about 17 and 15 mA).
+   */
+  'rgb-mixer': () => {
+    const r = new Recipe('rgb-mixer', 'RGB colour mixer');
+    r.supply(5, 0.2);
+    const ch = (y: number, ohms: number, closed: boolean) => {
+      const S = r.place('component.toggle_switch', 140, y);
+      const R = r.place('component.resistor', 260, y);
+      r.set(R, 'resistance', ohms, 'ohm');
+      r.set(S, 'closed', closed);
+      r.wire(T(S, 'b'), T(R, 'a'));
+      return { S, R };
+    };
+    const red = ch(-100, 180, true);
+    const green = ch(0, 120, true);
+    const blue = ch(100, 120, false);
+    const D = r.place('component.rgb_led', 400, 0);
+    const G = r.place('component.ground', 480, 100);
+    r.wire(T(red.R, 'b'), T(D, 'red'), [
+      { x: 320, y: -100 },
+      { x: 320, y: -20 },
+    ]);
+    r.wire(T(green.R, 'b'), T(D, 'green'));
+    r.wire(T(blue.R, 'b'), T(D, 'blue'), [
+      { x: 320, y: 100 },
+      { x: 320, y: 20 },
+    ]);
+    r.wire(T(D, 'cathode'), T(G, 'ref'), [{ x: 480, y: 0 }]);
+    const rail = r.wire(T('PSU1', 'positive'), T(red.S, 'a'), [
+      { x: 70, y: -20 },
+      { x: 70, y: -100 },
+    ]);
+    const mid = r.wire({ kind: 'wire', wire: rail, at: { x: 70, y: -20 } }, T(green.S, 'a'), [
+      { x: 70, y: 0 },
+    ]);
+    r.wire({ kind: 'wire', wire: mid, at: { x: 70, y: 0 } }, T(blue.S, 'a'), [{ x: 70, y: 100 }]);
+    return r.centre(-200);
+  },
+  /**
+   * Sprint 10. Photoresistor (GL5528) over 10 kΩ from 9 V: the divider voltage follows the light
+   * (10 lx: R = 14.1 kΩ, 3.73 V; 100 lx: 3.55 kΩ, 6.64 V).
+   */
+  'light-sensor': () => {
+    const r = new Recipe('light-sensor', 'Light sensor');
+    r.supply(9, 0.1);
+    const L = r.place('component.photoresistor', 140, -20);
+    const R = r.place('component.resistor', 220, 40, 1);
+    const G = r.place('component.ground', 220, 140);
+    r.set(R, 'resistance', 10_000, 'ohm');
+    r.set(L, 'illuminance', 10, 'lux');
+    r.wire(T('PSU1', 'positive'), T(L, 'a'));
+    r.wire(T(L, 'b'), T(R, 'a'));
+    r.wire(T(R, 'b'), T(G, 'ref'));
+    return r.centre(-100);
+  },
+  /**
+   * Sprint 10. A push button energizes a relay coil (70 Ω, 71 mA at 5 V); its contacts switch a
+   * separate load circuit: NC feeds a buzzer at rest, NO lights an LED while the coil is energized.
+   */
+  'relay-load': () => {
+    const r = new Recipe('relay-load', 'Relay switching a load');
+    r.supply(5, 0.3);
+    const S = r.place('component.push_button', 140, -20);
+    const K = r.place('component.relay', 360, 0);
+    const G2 = r.place('component.ground', 300, 120);
+    const R = r.place('component.resistor', 500, 0);
+    const D = r.place('component.led', 580, 60, 1);
+    const G4 = r.place('component.ground', 580, 160);
+    const B = r.place('component.buzzer', 520, -100);
+    const G5 = r.place('component.ground', 640, -20);
+    r.set(R, 'resistance', 220, 'ohm');
+    const feed = r.wire(T('PSU1', 'positive'), T(S, 'a'));
+    r.wire(T(S, 'b'), T(K, 'coil1'));
+    r.wire(T(K, 'coil2'), T(G2, 'ref'));
+    // The contact side from the same supply, by its own route (a junction on the supply wire).
+    r.wire({ kind: 'wire', wire: feed, at: { x: 70, y: -20 } }, T(K, 'com'), [
+      { x: 70, y: 200 },
+      { x: 380, y: 200 },
+    ]);
+    r.wire(T(K, 'no'), T(R, 'a'));
+    r.wire(T(R, 'b'), T(D, 'anode'), [{ x: 580, y: 0 }]);
+    r.wire(T(D, 'cathode'), T(G4, 'ref'));
+    r.wire(T(K, 'nc'), T(B, 'positive'), [
+      { x: 440, y: -20 },
+      { x: 440, y: -100 },
+    ]);
+    r.wire(T(B, 'negative'), T(G5, 'ref'), [{ x: 640, y: -100 }]);
+    return r.centre(-240);
   },
   /** Two identical 1 kΩ + 1N4148 branches; D1 forward conducts ~4.3 mA, D2 reversed blocks (nA). */
   'diode-polarity': () => {

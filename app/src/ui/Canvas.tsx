@@ -33,6 +33,7 @@ import {
   wireCrossings,
   wireRoute,
   type ComponentInstance,
+  type Quantity,
   type ComponentTypeId,
   type Point,
   type ProjectDocument,
@@ -40,14 +41,20 @@ import {
   type Selection,
   type WireTarget,
 } from '@tbi-lab/domain';
-import { catalogText, formatQuantity, type LocaleInfo, type MessageKey } from '../i18n/i18n.js';
+import {
+  catalogText,
+  formatQuantity,
+  isMessageKey,
+  type LocaleInfo,
+  type MessageKey,
+} from '../i18n/i18n.js';
 import type { ComponentResult } from '@tbi-lab/engine';
 import { formatResult } from '../sim/format.js';
 import { useAppState, useStore, useT } from './context.js';
 import { checksFor } from './checks.js';
-import { SYMBOLS, type SymbolState } from './symbols.js';
+import { RGB_CHANNELS, SYMBOLS, rgbTriangle, type SymbolState } from './symbols.js';
 import { componentBox, componentBoxes, moveRouted, rotateRouted } from './routing.js';
-import { ledLook } from '../views/ledLooks.js';
+import { RGB_LOOKS, ledLook } from '../views/ledLooks.js';
 import type { GpioLevel } from '../runtime/view.js';
 import { warningsFor } from '../sim/ratings.js';
 import { probeAnchor, probeTargetName, readProbe, type Probe, type ProbeInput } from './probes.js';
@@ -922,7 +929,15 @@ export function Canvas({
                 selected.components.has(c.id) ||
                 probedParts.has(c.id)
               }
-              symbolState={{ closed: c.params.closed === true, pressed: pressed.has(c.id) }}
+              symbolState={{
+                closed: c.params.closed === true,
+                pressed: pressed.has(c.id),
+                // Solved part states (Sprint 10): presentation of the result, never an input.
+                energized: outcome?.ok
+                  ? outcome.components[c.id]?.state?.energized === true
+                  : false,
+                sounding: outcome?.ok ? outcome.components[c.id]?.state?.sounding === true : false,
+              }}
               overstressed={overstressed.has(c.id)}
               pinLevels={
                 'runtime' in state.sim && state.sim.runtime?.board === c.id
@@ -1171,6 +1186,8 @@ function ComponentView({
       aria-label={[label, values, switchState].filter(Boolean).join(', ')}
       data-closed={c.type === 'component.toggle_switch' ? String(symbolState.closed) : undefined}
       data-pressed={c.type === 'component.push_button' ? String(symbolState.pressed) : undefined}
+      data-energized={c.type === 'component.relay' ? String(!!symbolState.energized) : undefined}
+      data-sounding={c.type === 'component.buzzer' ? String(!!symbolState.sounding) : undefined}
       onFocus={onFocus}
     >
       <rect
@@ -1223,6 +1240,25 @@ function ComponentView({
             }}
           />
         )}
+        {c.type === 'component.rgb_led' &&
+          result?.currents &&
+          // Each channel's emitter glows by ITS solved current, in its datasheet colour: the mix
+          // the eye sees is whatever the circuit drives, never a selected colour.
+          RGB_CHANNELS.map(({ id, y }) => {
+            const i = result.currents?.[id] ?? 0;
+            return i !== null && i > 1e-6 ? (
+              <polygon
+                key={id}
+                class="led-glow rgb-glow"
+                data-channel={id}
+                points={rgbTriangle(y)}
+                style={{
+                  fill: RGB_LOOKS[id],
+                  fillOpacity: Math.min(1, Math.max(0.08, i / 0.02)),
+                }}
+              />
+            ) : null;
+          })}
       </g>
       {c.type === 'board.esp32_devkitc_wroom32' && (
         <BoardPins rotation={p.rotation} at={p} levels={pinLevels} />
@@ -1293,16 +1329,24 @@ function runtimeLabel(
       return `${v} · ${i}`;
     case 'instrument.lab_psu':
       return `${v} · ${i} · ${t(`sim.badge.${r.mode ?? 'off'}`)}`;
-    default:
-      return '';
+    default: {
+      // Sprint 10 parts: their named currents ("R 12.1 mA · G 0 A · B 3.2 mA"), else V · I.
+      if (r.currents) {
+        return Object.entries(r.currents)
+          .map(([k, val]) => {
+            const short = `sim.part.short.${k}`;
+            const label = isMessageKey(short) ? t(short) : t(`sim.part.current.${k}` as MessageKey);
+            return `${label} ${val === null ? t('sim.results.undefined') : formatResult(locale, val, 'ampere')}`;
+          })
+          .join(' · ');
+      }
+      return r.voltage !== null || r.current !== null ? `${v} · ${i}` : '';
+    }
   }
 }
 
 /** Design values shown beside a symbol (never simulation results). */
-function valueLabel(
-  c: ComponentInstance,
-  fmt: (q: { value: number; unit: 'ohm' | 'volt' | 'ampere' }) => string,
-): string {
+function valueLabel(c: ComponentInstance, fmt: (q: Quantity) => string): string {
   const q = (k: string) => {
     const v = c.params[k];
     return v && typeof v === 'object' ? fmt(v) : '';

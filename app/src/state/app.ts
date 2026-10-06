@@ -840,6 +840,12 @@ export class AppStore {
           typeof value === 'object'
         ) {
           control[key] = value.value;
+        } else {
+          // Sprint 10 part models: their declared live parameters, in SI units.
+          control.params = {
+            ...control.params,
+            [key]: typeof value === 'object' ? value.value : value,
+          };
         }
       }
       sim.control(change.component, control, after.revision.localRevision);

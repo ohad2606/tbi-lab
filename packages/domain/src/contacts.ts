@@ -36,6 +36,10 @@ export const LEADED_TYPES: ReadonlySet<ComponentTypeId> = new Set<ComponentTypeI
   'component.diode',
   'component.push_button',
   'component.toggle_switch',
+  // Sprint 10: leaded parts (the relay's pins sit under its case: wired, not touching).
+  'component.rgb_led',
+  'component.photoresistor',
+  'component.buzzer',
 ]);
 
 const same = (a: { x: number; y: number } | undefined, b: { x: number; y: number } | undefined) =>

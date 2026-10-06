@@ -17,7 +17,11 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { CATALOG, ESP32_DEVKITC_WROOM32, boardPinPosition, boardTerminalId } from '@tbi-lab/domain';
 import {
+  BUZZER_CEM1205,
   DIODE_DO35,
+  LDR_GL5528,
+  RELAY_SRD,
+  RGB_LED_5MM,
   ESP32_DEVKITC,
   ESP32_PCB_BOTTOM,
   ESP32_PCB_TOP,
@@ -299,9 +303,357 @@ function alongX(o: THREE.Object3D, y: number) {
 }
 
 // ---------------------------------------------------------------------------------------------
+// Sprint 10 parts
+
+/**
+ * A multi-lead part's leads: each from its exit point under the body, down to its own knee height,
+ * along a plan path (optional detour points), to its terminal, then down to the bench. Distinct
+ * knee heights keep leads that cross in plan apart (more than a lead's thickness). A terminal that
+ * another part touches without a connection stops OPEN_LEAD_GAP short.
+ */
+function splayedLeads(
+  c: SceneComponent,
+  own: OwnedResources,
+  mat: THREE.Material,
+  radius: number,
+  leads: {
+    terminal: string;
+    from: [number, number];
+    top: number;
+    knee: number;
+    via?: [number, number][];
+  }[],
+) {
+  const g = new THREE.Group();
+  const def = CATALOG[c.type];
+  for (const l of leads) {
+    const t = def.terminals.find((x) => x.id === l.terminal)!;
+    let tx = t.offset.x * SCALE;
+    let tz = t.offset.y * SCALE;
+    const prev = l.via?.at(-1) ?? l.from;
+    if (c.terminals.some((x) => x.id === l.terminal && x.open)) {
+      const d = Math.hypot(tx - prev[0], tz - prev[1]) || 1;
+      tx -= ((tx - prev[0]) / d) * OPEN_LEAD_GAP;
+      tz -= ((tz - prev[1]) / d) * OPEN_LEAD_GAP;
+    }
+    const pts: V3[] = [
+      [l.from[0], l.top, l.from[1]],
+      [l.from[0], l.knee, l.from[1]],
+      ...(l.via ?? []).map(([x, z]): V3 => [x, l.knee, z]),
+      [tx, l.knee, tz],
+      [tx, LEAD_ATTACH_HEIGHT - 0.3, tz],
+    ];
+    g.add(tube(own, pts, radius, mat, 0.5));
+  }
+  return g;
+}
+
+/** A flat label/marking on the top of a part (a plane, canvas-textured, facing up). */
+function topLabel(
+  own: OwnedResources,
+  key: string,
+  w: number,
+  d: number,
+  y: number,
+  px: [number, number],
+  draw: (ctx: CanvasRenderingContext2D, w: number, h: number) => void,
+) {
+  const tex = canvasTexture(own, px[0], px[1], (ctx) => draw(ctx, px[0], px[1]));
+  const plane = new THREE.Mesh(
+    own.shared(`plane:${key}`, () => new THREE.PlaneGeometry(w, d)),
+    own.mat(new THREE.MeshStandardMaterial({ map: tex, roughness: 0.5, transparent: true })),
+  );
+  plane.rotation.x = -Math.PI / 2;
+  plane.position.y = y;
+  plane.receiveShadow = true;
+  return plane;
+}
+
+function buildRgbLed(c: SceneComponent, m: Materials, own: OwnedResources) {
+  const p = RGB_LED_5MM;
+  const g = new THREE.Group();
+  // Water-clear lens: its glow colour is set live from the solved channel currents (renderer).
+  const lens = own.mat(
+    new THREE.MeshStandardMaterial({
+      color: '#eef3f7',
+      roughness: 0.06,
+      transparent: true,
+      opacity: 0.45,
+      emissive: '#ffffff',
+      emissiveIntensity: 0,
+      depthWrite: false,
+    }),
+  );
+  const base = p.standoffMm;
+  const R = p.bodyDiameterMm / 2;
+  const top = base + p.heightMm;
+  const domeStart = top - p.domeRadiusMm;
+  const profile: [number, number][] = [
+    [0.001, base + p.flangeThicknessMm],
+    [R, base + p.flangeThicknessMm],
+    [R, domeStart],
+  ];
+  for (let i = 1; i <= 10; i++) {
+    const a = (i / 10) * (Math.PI / 2);
+    profile.push([
+      Math.max(0.001, p.domeRadiusMm * Math.cos(a)),
+      domeStart + p.domeRadiusMm * Math.sin(a),
+    ]);
+  }
+  const body = lathe(own, 'rgbLed', profile, lens);
+  body.castShadow = false;
+  body.userData.lens = true;
+  g.add(body);
+  const flange = cylinder(
+    own,
+    p.flangeDiameterMm / 2,
+    p.flangeThicknessMm,
+    lens,
+    [0, base + p.flangeThicknessMm / 2, 0],
+    32,
+  );
+  flange.castShadow = false;
+  g.add(flange);
+  // Inside: four posts in a row; the three dice (red, blue, green) sit on the cathode anvil.
+  const inner = base + p.flangeThicknessMm;
+  const postH = (domeStart - inner) * 0.7;
+  const xs = p.pinOrder.map((_, i) => (i - 1.5) * p.leadPitchMm);
+  p.pinOrder.forEach((pin, i) =>
+    g.add(
+      box(own, pin === 'cathode' ? 0.8 : 0.3, postH, 0.3, m.lead, [xs[i]!, inner + postH / 2, 0]),
+    ),
+  );
+  const dieY = inner + postH + 0.12;
+  (
+    [
+      ['#d81b1b', -0.35],
+      ['#1e4dd8', 0],
+      ['#17b04a', 0.35],
+    ] as const
+  ).forEach(([col, dx]) =>
+    g.add(
+      box(
+        own,
+        0.28,
+        0.2,
+        0.28,
+        own.sharedMat(
+          `die:${col}`,
+          () => new THREE.MeshStandardMaterial({ color: col, roughness: 0.4 }),
+        ),
+        [xs[1]! + dx, dieY, 0],
+      ),
+    ),
+  );
+  // Leads at 1.27 mm (pin 1 red, 2 cathode, 3 blue, 4 green), splayed to the terminals at
+  // distinct knee heights; the cathode and green leads detour round the other pins.
+  g.add(
+    splayedLeads(c, own, m.lead, p.leadSizeMm / 2, [
+      { terminal: 'red', from: [xs[0]!, 0], top: base + 0.2, knee: 1.0 },
+      {
+        terminal: 'cathode',
+        from: [xs[1]!, 0],
+        top: base + 0.2,
+        knee: 1.0,
+        via: [
+          [xs[1]!, -1.3],
+          [6.35, -1.3],
+        ],
+      },
+      { terminal: 'blue', from: [xs[2]!, 0], top: base + 0.2, knee: 1.6 },
+      {
+        terminal: 'green',
+        from: [xs[3]!, 0],
+        top: base + 0.2,
+        knee: 2.3,
+        via: [
+          [xs[3]!, 1.7],
+          [-6.35, 1.7],
+        ],
+      },
+    ]),
+  );
+  g.userData.lensMaterial = lens;
+  g.userData.ledTop = top;
+  g.userData.ledColor = '#ffffff';
+  g.userData.rgb = true;
+  return g;
+}
+
+function buildPhotoresistor(c: SceneComponent, m: Materials, own: OwnedResources) {
+  const p = LDR_GL5528;
+  const g = new THREE.Group();
+  const R = p.diameterMm / 2;
+  const flat = p.flatToFlatMm / 2;
+  const outline = () => {
+    const a = Math.asin(flat / R);
+    const sh = new THREE.Shape();
+    // Two flats parallel to x (the leads' axis), as on the part's top view.
+    sh.absarc(0, 0, R, -a, a, false);
+    sh.lineTo(R * Math.cos(a), flat);
+    sh.absarc(0, 0, R, a, Math.PI - a, false);
+    sh.absarc(0, 0, R, Math.PI - a, Math.PI + a, false);
+    sh.absarc(0, 0, R, Math.PI + a, 2 * Math.PI - a, false);
+    return sh;
+  };
+  const ceramic = own.sharedMat(
+    'ldrCeramic',
+    () => new THREE.MeshStandardMaterial({ color: '#efe6d2', roughness: 0.65 }),
+  );
+  const disc = mesh(
+    own.shared('ldrDisc', () => {
+      const geo = new THREE.ExtrudeGeometry(outline(), {
+        depth: p.thicknessMm,
+        bevelEnabled: false,
+        curveSegments: 24,
+      });
+      geo.rotateX(-Math.PI / 2);
+      return geo;
+    }),
+    ceramic,
+    [0, p.standoffMm, 0],
+  );
+  g.add(disc);
+  // The light-sensitive face: the CdS serpentine between two comb electrodes, under clear epoxy.
+  const face = topLabel(
+    own,
+    'ldrFace',
+    p.diameterMm,
+    p.diameterMm,
+    p.standoffMm + p.thicknessMm + 0.01,
+    [256, 256],
+    (ctx, w, h) => {
+      ctx.clearRect(0, 0, w, h);
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(w / 2, h / 2, w / 2 - 2, 0, 2 * Math.PI);
+      ctx.clip();
+      ctx.fillStyle = '#efe6d2';
+      ctx.fillRect(0, 0, w, h);
+      ctx.fillStyle = '#c9a36a'; // the two electrode pads
+      ctx.fillRect(0, 0, w, 40);
+      ctx.fillRect(0, h - 40, w, 40);
+      ctx.strokeStyle = '#a0521d'; // the CdS track
+      ctx.lineWidth = 16;
+      ctx.beginPath();
+      const turns = 6;
+      for (let i = 0; i <= turns; i++) {
+        const x = 40 + (i * (w - 80)) / turns;
+        if (i === 0) ctx.moveTo(x, 40);
+        ctx.lineTo(x, i % 2 ? h - 40 : 40);
+        if (i < turns) ctx.lineTo(x + (w - 80) / turns, i % 2 ? h - 40 : 40);
+      }
+      ctx.stroke();
+      ctx.restore();
+    },
+  );
+  face.rotation.z = Math.PI / 2;
+  g.add(face);
+  g.add(
+    splayedLeads(c, own, m.lead, p.leadDiameterMm / 2, [
+      { terminal: 'a', from: [-p.leadSpacingMm / 2, 0], top: p.standoffMm + 0.2, knee: 1.3 },
+      { terminal: 'b', from: [p.leadSpacingMm / 2, 0], top: p.standoffMm + 0.2, knee: 1.3 },
+    ]),
+  );
+  return g;
+}
+
+function buildBuzzer(c: SceneComponent, m: Materials, own: OwnedResources) {
+  const p = BUZZER_CEM1205;
+  const g = new THREE.Group();
+  const R = p.diameterMm / 2;
+  const y0 = p.standoffMm;
+  g.add(cylinder(own, R, p.heightMm, m.blackPlastic, [0, y0 + p.heightMm / 2, 0], 48));
+  // Top: the sound hole in the middle, "+" beside the positive pin (-x), the laser marking.
+  const top = topLabel(
+    own,
+    'buzzerTop',
+    p.diameterMm,
+    p.diameterMm,
+    y0 + p.heightMm + 0.01,
+    [256, 256],
+    (ctx, w, h) => {
+      ctx.clearRect(0, 0, w, h);
+      ctx.fillStyle = '#060607';
+      ctx.beginPath();
+      ctx.arc(w / 2, h / 2, (p.soundHoleDiameterMm / p.diameterMm) * w * 0.5, 0, 2 * Math.PI);
+      ctx.fill();
+      ctx.fillStyle = '#8d9096';
+      ctx.font = 'bold 64px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('+', w * 0.2, h * 0.5);
+      ctx.font = '22px sans-serif';
+      ctx.fillText('CEM1205IC', w / 2, h * 0.78);
+    },
+  );
+  g.add(top);
+  g.add(
+    splayedLeads(c, own, m.gold, p.pinDiameterMm / 2, [
+      { terminal: 'positive', from: [-p.pinSpacingMm / 2, 0], top: y0 + 0.2, knee: 0.8 },
+      { terminal: 'negative', from: [p.pinSpacingMm / 2, 0], top: y0 + 0.2, knee: 0.8 },
+    ]),
+  );
+  return g;
+}
+
+function buildRelay(_c: SceneComponent, m: Materials, own: OwnedResources) {
+  const p = RELAY_SRD;
+  const g = new THREE.Group();
+  const blue = own.sharedMat(
+    'relayCase',
+    () => new THREE.MeshStandardMaterial({ color: '#1d5fc4', roughness: 0.38 }),
+  );
+  const y0 = p.standoffMm;
+  g.add(box(own, p.lengthMm, p.heightMm, p.widthMm, blue, [0, y0 + p.heightMm / 2, 0]));
+  // The printed top: maker, part number and the contact ratings (as on the part).
+  g.add(
+    topLabel(
+      own,
+      'relayTop',
+      p.lengthMm - 1.2,
+      p.widthMm - 1.2,
+      y0 + p.heightMm + 0.01,
+      [512, 416],
+      (ctx, w, h) => {
+        ctx.clearRect(0, 0, w, h);
+        ctx.fillStyle = '#f4f6f8';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.font = 'bold 64px sans-serif';
+        ctx.fillText('SONGLE', w / 2, h * 0.18);
+        ctx.font = 'bold 46px sans-serif';
+        ctx.fillText('SRD-05VDC-SL-C', w / 2, h * 0.38);
+        ctx.font = '34px sans-serif';
+        ctx.fillText('10A 250VAC  10A 125VAC', w / 2, h * 0.6);
+        ctx.fillText('10A 30VDC   10A 28VDC', w / 2, h * 0.75);
+      },
+    ),
+  );
+  // Five pins down to the bench: round coil/COM pins, flat contact pins; a solder joint at each
+  // tip where its wire is attached.
+  for (const [id, [x, z]] of Object.entries(p.pins)) {
+    const flatPin = id === 'no' || id === 'nc';
+    g.add(
+      flatPin
+        ? box(own, 1.0, y0, 0.4, m.lead, [x, y0 / 2, z])
+        : cylinder(own, 0.3, y0, m.lead, [x, y0 / 2, z], 12),
+    );
+    const blob = cylinder(own, 0.55, 0.9, m.chrome, [x, p.attachHeightMm, z], 16, 0.75);
+    blob.userData.pin = id;
+    g.add(blob);
+  }
+  return g;
+}
+
+// ---------------------------------------------------------------------------------------------
 // Builders
 
 const BUILDERS: Record<ModelKey, Builder> = {
+  'led.rgb': buildRgbLed,
+  'ldr.disc': buildPhotoresistor,
+  'buzzer.can': buildBuzzer,
+  'relay.cube': buildRelay,
   'resistor.axial': (c, m, own) => {
     const p = RESISTOR;
     const g = new THREE.Group();

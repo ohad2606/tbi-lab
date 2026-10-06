@@ -43,7 +43,11 @@ export interface Viewer {
    * Live presentation state while a simulation runs: LED glow level 0..1 per component id (the
    * same visual cue as the circuit view: full at 20 mA). Never an electrical input.
    */
-  setLive(levels: Record<string, number>): void;
+  /**
+   * Live emission per LED component: a level in [0, 1], or for a part whose colour is itself a
+   * result (an RGB LED's mix of solved channel currents) a level and a colour.
+   */
+  setLive(levels: Record<string, LiveLevel>): void;
   resetCamera(): void;
   /** Frame the whole circuit from the current viewing direction. */
   fit(): void;
@@ -73,6 +77,8 @@ export const liveViewers = () => live;
  * evidence capture and troubleshooting. The scene itself (parts, wires, colours) is identical.
  */
 export type RenderQuality = 'full' | 'reduced';
+
+export type LiveLevel = number | { level: number; color: string };
 const QUALITY_KEY = 'tbi-lab.3d.quality';
 const SOFTWARE_RENDERER = /swiftshader|llvmpipe|softpipe|software|basic render/i;
 
@@ -198,17 +204,24 @@ export function createViewer(container: HTMLElement, onRender?: (s: ViewerStats)
       l.scale.set((h * 4.8) / 1.8, h, 1);
     }
   }
-  let liveLevels: Record<string, number> = {};
+  let liveLevels: Record<string, LiveLevel> = {};
   /** Glow halos of the LEDs, by component id. */
   let halos = new Map<string, THREE.Sprite>();
   function applyLive() {
     for (const [id, mat] of lenses) {
-      const level = liveLevels[id] ?? 0;
-      mat.emissiveIntensity = level * 2.2;
+      const live = liveLevels[id] ?? 0;
+      const level = typeof live === 'number' ? live : live.level;
+      // A coloured live mix (RGB) on a water-clear lens: weaker emission so the hue reads, not white.
+      mat.emissiveIntensity = level * (typeof live === 'number' ? 2.2 : 0.9);
       const halo = halos.get(id);
+      if (typeof live !== 'number') {
+        mat.emissive.set(live.color);
+        if (halo) (halo.material as THREE.SpriteMaterial).color.set(live.color);
+      }
       if (halo) {
         halo.visible = level > 0;
-        (halo.material as THREE.SpriteMaterial).opacity = 0.75 * level;
+        (halo.material as THREE.SpriteMaterial).opacity =
+          (typeof live === 'number' ? 0.75 : 0.55) * level;
       }
     }
   }

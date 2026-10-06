@@ -12,8 +12,11 @@
 export const SCHEMA_VERSION = 3;
 export const DOCUMENT_FORMAT = 'tbi-lab.project';
 
-/** Canonical SI unit ids. Locale affects only how a value is displayed. */
-export type UnitId = 'ohm' | 'volt' | 'ampere';
+/**
+ * Canonical SI unit ids. Locale affects only how a value is displayed. `lux` (illuminance) was
+ * added in Sprint 10 for a sensor's simulated environment (additive).
+ */
+export type UnitId = 'ohm' | 'volt' | 'ampere' | 'lux';
 
 /** An engineering value: an SI number plus its canonical unit id. */
 export interface Quantity {
@@ -37,7 +40,12 @@ export type ComponentTypeId =
   | 'component.push_button'
   | 'component.toggle_switch'
   /** Classic ESP32 DevKitC V4 (ESP32-WROOM-32), Sprint 6 (additive). */
-  | 'board.esp32_devkitc_wroom32';
+  | 'board.esp32_devkitc_wroom32'
+  /** Sprint 10, PM-6 revision (additive): the approved component families. */
+  | 'component.rgb_led'
+  | 'component.photoresistor'
+  | 'component.buzzer'
+  | 'component.relay';
 
 export interface ComponentInstance {
   /** Stable reference designator (`R1`, `PSU1`), unique per project, never reused. */

@@ -17,7 +17,15 @@ import {
 } from '@tbi-lab/domain';
 
 export type SchematicSymbolKey =
-  'resistor' | 'led' | 'diode' | 'switch.push' | 'switch.toggle' | 'source.dc' | 'module';
+  | 'resistor'
+  | 'led'
+  | 'diode'
+  | 'switch.push'
+  | 'switch.toggle'
+  | 'source.dc'
+  | 'module'
+  | 'photoresistor'
+  | 'buzzer';
 
 export interface TwoPinSymbol {
   kind: 'two-pin';
@@ -39,6 +47,13 @@ export interface ModulePin {
   order: number;
 }
 
+/**
+ * Sprint 10: the conventional symbol drawn inside a multi-pin part's block (the block carries the
+ * pin names; the glyph shows what the part IS: a relay's coil and change-over contact, an RGB
+ * LED's three emitters on a common cathode, ...).
+ */
+export type ModuleGlyph = 'mcu' | 'rgb_led.cc' | 'relay.spdt' | 'bjt.npn' | 'pir' | 'led_matrix';
+
 export interface ModuleSymbol {
   kind: 'module';
   key: 'module';
@@ -46,6 +61,7 @@ export interface ModuleSymbol {
   pins: ModulePin[];
   /** Short technical name printed inside the block (not translated: a part name). */
   partName: string;
+  glyph: ModuleGlyph;
 }
 
 /** A reference symbol: the part itself is drawn as a ground mark at its connection. */
@@ -96,11 +112,40 @@ export const SCHEMATIC_SYMBOLS: Record<ComponentTypeId, SchematicSymbol> = {
     valueParam: 'setpointVoltage',
   },
   'component.ground': { kind: 'ground', terminal: 'ref' },
+  // Sprint 10 parts.
+  'component.photoresistor': { kind: 'two-pin', key: 'photoresistor', a: 'a', b: 'b' },
+  'component.buzzer': { kind: 'two-pin', key: 'buzzer', a: 'positive', b: 'negative' },
+  'component.rgb_led': {
+    kind: 'module',
+    key: 'module',
+    pins: [
+      { terminal: 'red', name: 'R', side: 'left', order: 1 },
+      { terminal: 'green', name: 'G', side: 'left', order: 2 },
+      { terminal: 'blue', name: 'B', side: 'left', order: 3 },
+      { terminal: 'cathode', name: 'K', side: 'right', order: 1 },
+    ],
+    partName: 'RGB LED',
+    glyph: 'rgb_led.cc',
+  },
+  'component.relay': {
+    kind: 'module',
+    key: 'module',
+    pins: [
+      { terminal: 'coil1', name: 'A1', side: 'left', order: 1 },
+      { terminal: 'coil2', name: 'A2', side: 'left', order: 2 },
+      { terminal: 'nc', name: 'NC', side: 'right', order: 1 },
+      { terminal: 'com', name: 'COM', side: 'right', order: 2 },
+      { terminal: 'no', name: 'NO', side: 'right', order: 3 },
+    ],
+    partName: 'Relay SPDT',
+    glyph: 'relay.spdt',
+  },
   'board.esp32_devkitc_wroom32': {
     kind: 'module',
     key: 'module',
     pins: ESP32_PINS,
     partName: 'ESP32-DevKitC',
+    glyph: 'mcu',
   },
 };
 

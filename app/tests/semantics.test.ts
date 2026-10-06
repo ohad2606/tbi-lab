@@ -38,6 +38,7 @@ import {
 } from '../src/views/scene3d/scene.js';
 import { componentBoxes, moveRouted, rotateRouted } from '../src/ui/routing.js';
 import { expectFaithful } from './schematicReadback.js';
+import { sprint10Circuit } from './circuits10.js';
 
 class UF {
   private p = new Map<string, string>();
@@ -309,6 +310,16 @@ function junctionCircuit() {
 }
 
 describe('one electrical truth across Circuit, Schematic and 3D', () => {
+  it('holds for the Sprint 10 parts (RGB LED, relay, buzzer, photoresistor), at every rotation', () => {
+    const { doc, ids } = sprint10Circuit();
+    expectAllViewsAgree(doc, 'sprint10');
+    let turned = doc;
+    for (const id of [ids.k!, ids.rgb!, ids.bz!, ids.ldr!]) {
+      turned = must(rotateRouted(turned, [id])).doc;
+      expectAllViewsAgree(turned, `sprint10 rotated ${id}`);
+    }
+  });
+
   it('holds for every curated example and the representative mixed circuit', () => {
     for (const e of EXAMPLES) expectAllViewsAgree(e.document, e.id);
     expectAllViewsAgree(mixedCircuit().doc, 'mixed');

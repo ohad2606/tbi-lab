@@ -5,14 +5,22 @@ import { useAppState, useT } from './context.js';
 import { SYMBOLS } from './symbols.js';
 
 /**
- * Visual grouping of the closed V1 catalog. Every catalog type appears in exactly one group
+ * Visual grouping of the V1 catalog (approved families, product scope §6.0). Every catalog type appears in exactly one group
  * (tests/palette.test.ts), in CATALOG_ORDER.
  */
 export const PALETTE_GROUPS: readonly { key: MessageKey; types: readonly ComponentTypeId[] }[] = [
   { key: 'palette.group.sources', types: ['instrument.lab_psu', 'component.ground'] },
   { key: 'palette.group.passive', types: ['component.resistor'] },
-  { key: 'palette.group.semiconductors', types: ['component.led', 'component.diode'] },
-  { key: 'palette.group.switches', types: ['component.push_button', 'component.toggle_switch'] },
+  {
+    key: 'palette.group.semiconductors',
+    types: ['component.led', 'component.rgb_led', 'component.diode'],
+  },
+  {
+    key: 'palette.group.switches',
+    types: ['component.push_button', 'component.toggle_switch', 'component.relay'],
+  },
+  { key: 'palette.group.sensors', types: ['component.photoresistor'] },
+  { key: 'palette.group.output', types: ['component.buzzer'] },
   { key: 'palette.group.mcu', types: ['board.esp32_devkitc_wroom32'] },
 ];
 const GROUPS = PALETTE_GROUPS;

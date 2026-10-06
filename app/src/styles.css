@@ -2607,3 +2607,57 @@ select {
   font-size: 0.8rem;
   border-block-end-color: #e0a64a;
 }
+
+/* ---------------------------------------------------------------- Sprint 10 parts */
+
+/* Relay: the coil-to-contact link is mechanical, never a conductor: dashed and muted. */
+.symbol .mechanical-link,
+.sch-symbol .sch-mechanical {
+  stroke-dasharray: 4 3;
+  stroke: var(--muted);
+}
+
+.symbol .relay-blade {
+  stroke-width: 3;
+}
+
+.component[data-energized='true'] .relay-blade {
+  stroke: var(--runtime);
+}
+
+/* Buzzer: sound waves while the solved operating point makes it sound. */
+.symbol .buzz-wave path {
+  fill: none;
+  stroke: var(--runtime);
+}
+
+.symbol .rgb-glow {
+  mix-blend-mode: normal;
+}
+
+.sch-symbol .sch-arrow {
+  fill: var(--ink);
+}
+
+.sch-glyph circle {
+  fill: none;
+}
+
+/* Inspector: the simulated environment (a simulation control, not a part property). */
+.environment {
+  margin-block: 0.6rem;
+  padding: 0.5rem 0.65rem;
+  border: 1px dashed var(--runtime);
+  border-radius: 6px;
+}
+
+.environment-heading {
+  margin: 0 0 0.2rem;
+  font-size: 0.92rem;
+  color: var(--runtime);
+}
+
+.environment-slider {
+  inline-size: 100%;
+  direction: ltr;
+}

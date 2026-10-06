@@ -16,7 +16,7 @@ import {
   type ProjectDocument,
 } from '@tbi-lab/domain';
 import { catalogText, formatQuantity, type LocaleInfo } from '../i18n/i18n.js';
-import { MODEL_CARDS } from '@tbi-lab/engine';
+import { MODEL_CARDS, partNumber } from '@tbi-lab/engine';
 import { useAppState, useStore, useT } from './context.js';
 import {
   schematicLayout,
@@ -223,7 +223,7 @@ function PartView({
       ? quantityText(c, sym.valueParam, locale)
       : c.type === 'component.led' || c.type === 'component.diode'
         ? (MODEL_CARDS[String(c.params.model)]?.name ?? '')
-        : '';
+        : (partNumber(c.params.model) ?? '');
   const name = catalogText(locale, CATALOG[c.type].nameKey);
   // Vertical parts carry their labels beside the body, clear of its widest feature.
   const side = p.x + (LABEL_OFFSET[p.key] ?? 16);
@@ -304,6 +304,8 @@ function PartView({
 
 const LABEL_OFFSET: Partial<Record<SchematicSymbolKey, number>> = {
   'source.dc': 26,
+  photoresistor: 26,
+  buzzer: 18,
   led: 26,
   diode: 18,
   'switch.push': 28,
@@ -348,6 +350,21 @@ function ModuleView({
       <text class="sch-module-name" x={m.x + m.width / 2} y={m.y + 18} text-anchor="middle">
         {m.partName}
       </text>
+      {partNumber(c.params.model) && (
+        // The datasheet part (a language-neutral technical token), as two-pin parts show it.
+        <text class="sch-value" x={m.x + m.width / 2} y={m.y + 32} text-anchor="middle">
+          {partNumber(c.params.model)}
+        </text>
+      )}
+      {m.glyph !== 'mcu' && (
+        <g
+          class="sch-symbol sch-glyph"
+          data-glyph={m.glyph}
+          transform={`translate(${m.x + m.width / 2} ${m.y + Math.max(52, m.height / 2 + 10)}) scale(${Math.min(1.6, Math.max(1, (m.height - 40) / 60))})`}
+        >
+          {moduleGlyph(m.glyph)}
+        </g>
+      )}
       {m.pins.map((pin) => (
         <g key={pin.terminal} data-pin={pin.terminal}>
           <line class="sch-pin" x1={pin.inner.x} y1={pin.inner.y} x2={pin.at.x} y2={pin.at.y} />
@@ -363,6 +380,78 @@ function ModuleView({
       ))}
     </g>
   );
+}
+
+/**
+ * The conventional symbol inside a multi-pin part's block, centred on (0, 0), about 80 x 44 units.
+ * Drawn from the same line-art vocabulary as the two-pin symbols; pin names are on the block edge.
+ */
+function moduleGlyph(glyph: SchModule['glyph']) {
+  switch (glyph) {
+    case 'rgb_led.cc':
+      // Three emitters (R, G, B) whose cathodes join the common cathode bar.
+      return (
+        <>
+          {[-14, 0, 14].map((y) => (
+            <g key={y}>
+              <line x1={-30} y1={y} x2={-10} y2={y} />
+              <polygon points={`-10,${y - 5} -10,${y + 5} 0,${y}`} class="led-body" />
+              <line x1={0} y1={y - 5} x2={0} y2={y + 5} />
+              <line x1={0} y1={y} x2={14} y2={y} />
+            </g>
+          ))}
+          <line x1={14} y1={-14} x2={14} y2={14} />
+          <line x1={14} y1={0} x2={30} y2={0} />
+        </>
+      );
+    case 'relay.spdt':
+      // Coil (box) mechanically linked (dashed) to a change-over contact: COM, NC (rest), NO.
+      return (
+        <>
+          <rect x={-34} y={-10} width={16} height={20} />
+          <line x1={-26} y1={-22} x2={-26} y2={-10} />
+          <line x1={-26} y1={10} x2={-26} y2={22} />
+          <line x1={-18} y1={0} x2={6} y2={-4} class="sch-mechanical" />
+          <circle cx={6} cy={10} r={2} />
+          <line x1={6} y1={10} x2={26} y2={-8} />
+          <circle cx={28} cy={-10} r={2} />
+          <circle cx={28} cy={10} r={2} />
+          <line x1={6} y1={10} x2={6} y2={22} />
+        </>
+      );
+    case 'bjt.npn':
+      return (
+        <>
+          <circle cx={4} cy={0} r={18} />
+          <line x1={-26} y1={0} x2={-6} y2={0} />
+          <line x1={-6} y1={-11} x2={-6} y2={11} />
+          <line x1={-6} y1={-5} x2={12} y2={-16} />
+          <line x1={-6} y1={5} x2={12} y2={16} />
+          <polygon points="12,16 4,15 8,9" class="sch-arrow" />
+        </>
+      );
+    case 'pir':
+      // Sensor dome over a module body with a digital output.
+      return (
+        <>
+          <rect x={-26} y={-2} width={52} height={14} />
+          <path d="M -16 -2 A 16 14 0 0 1 16 -2" />
+          <polyline points="30,10 36,10 36,2 42,2" />
+        </>
+      );
+    case 'led_matrix':
+      return (
+        <>
+          {[0, 1, 2, 3].flatMap((r) =>
+            [0, 1, 2, 3].map((c) => (
+              <circle key={`${r}.${c}`} cx={-15 + c * 10} cy={-15 + r * 10} r={3} />
+            )),
+          )}
+        </>
+      );
+    default:
+      return null;
+  }
 }
 
 function MarkView({
@@ -492,6 +581,28 @@ function drawSymbol(key: SchematicSymbolKey, c: ComponentInstance) {
         </>
       );
     }
+    case 'photoresistor':
+      return (
+        <>
+          <line x1={-40} y1={0} x2={-24} y2={0} />
+          <polyline points="-24,0 -20,-8 -12,8 -4,-8 4,8 12,-8 20,8 24,0" />
+          <line x1={24} y1={0} x2={40} y2={0} />
+          <line x1={-18} y1={-24} x2={-8} y2={-12} />
+          <polyline points="-12,-12 -8,-12 -8,-16" />
+          <line x1={-2} y1={-24} x2={8} y2={-12} />
+          <polyline points="4,-12 8,-12 8,-16" />
+        </>
+      );
+    case 'buzzer':
+      return (
+        <>
+          <line x1={-40} y1={0} x2={-12} y2={0} />
+          <line x1={12} y1={0} x2={40} y2={0} />
+          <path d="M -12 2 L -12 -4 A 12 12 0 0 1 12 -4 L 12 2 Z" />
+          <line x1={-30} y1={-8} x2={-22} y2={-8} />
+          <line x1={-26} y1={-12} x2={-26} y2={-4} />
+        </>
+      );
     case 'source.dc':
       return (
         <>

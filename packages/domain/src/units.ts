@@ -28,6 +28,7 @@ const UNIT_SUFFIXES: Record<UnitId, string[]> = {
   ohm: ['ω', 'Ω', 'ohms', 'ohm'],
   volt: ['v', 'volts', 'volt'],
   ampere: ['a', 'amps', 'amp', 'amperes', 'ampere'],
+  lux: ['lx', 'lux'],
 };
 
 export type ParseError = 'empty' | 'invalid' | 'decimal_comma' | 'wrong_unit';

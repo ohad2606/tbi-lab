@@ -32,12 +32,15 @@ const near = (a: number | null | undefined, e: number, rel = REL) => {
 const example = (id: string) => EXAMPLES.find((e) => e.id === id)!.document;
 
 describe('the example set', () => {
-  it('has the seven DC examples and the two ESP32 examples, each titled in English and Hebrew', () => {
+  it('has the ten DC examples and the two ESP32 examples, each titled in English and Hebrew', () => {
     expect(EXAMPLES.map((e) => e.id)).toEqual([
       'ohms-law',
       'voltage-divider',
       'led-current',
       'led-colours',
+      'rgb-mixer',
+      'light-sensor',
+      'relay-load',
       'diode-polarity',
       'push-button',
       'cc-mode',
@@ -107,6 +110,54 @@ describe('expected engineering results (production engine)', () => {
     near(r.components.D1!.current, 13.72e-3, 1e-3);
     // KVL: resistor drop + LED voltage = 5 V exactly (solver verification).
     near(r.components.R1!.voltage! + r.components.D1!.voltage!, 5);
+  });
+
+  it('RGB mixer (Sprint 10): red and green switched on, blue off; each channel its own current', () => {
+    const doc = example('rgb-mixer');
+    const r = solve(doc);
+    const i = r.components.D1!.currents!;
+    // KVL per channel: supply = resistor drop + that channel's forward voltage.
+    for (const [ch, res] of [
+      ['red', 'R1'],
+      ['green', 'R2'],
+    ] as const) {
+      near(r.components[res]!.current, i[ch]!);
+      expect(i[ch]!).toBeGreaterThan(0.012);
+      expect(i[ch]!).toBeLessThan(0.02);
+    }
+    expect(Math.abs(i.blue!)).toBeLessThan(1e-9);
+    expect(r.components.D1!.outsideModelRange).toBe(false);
+    // Flipping the blue switch (a live control) adds the third channel.
+    const all = solve({
+      ...doc,
+      components: doc.components.map((c) =>
+        c.id === 'SW3' ? { ...c, params: { ...c.params, closed: true } } : c,
+      ),
+    });
+    expect(all.components.D1!.currents!.blue).toBeGreaterThan(0.012);
+  });
+
+  it('light sensor (Sprint 10): 9 V x 10k / (10k + R_LDR(10 lx) = 14.14k) = 3.728 V', () => {
+    const r = solve(example('light-sensor'));
+    near(r.components.R1!.terminals.a, (9 * 10e3) / (10e3 + Math.sqrt(2e8)), 1e-9);
+    expect(r.components.LDR1!.outsideModelRange).toBe(false);
+  });
+
+  it('relay load (Sprint 10): at rest the buzzer sounds through NC and the LED is dark', () => {
+    const r = solve(example('relay-load'));
+    expect(r.components.K1!.state).toEqual({ energized: false, contact: 'nc' });
+    expect(r.components.BZ1!.state).toEqual({ sounding: true });
+    near(r.components.BZ1!.current, 0.0276, 1e-6);
+    expect(Math.abs(r.components.D1!.current!)).toBeLessThan(1e-9);
+    // Holding the button (transient input): the coil energizes, NO lights the LED, the buzzer stops.
+    const s = new EngineSession(createSnapshot(example('relay-load')));
+    expect(s.setMomentary('SW1', true)).toBeNull();
+    const held = s.solve();
+    if (!held.ok) throw new Error(held.error.code);
+    expect(held.components.K1!.state).toEqual({ energized: true, contact: 'no' });
+    near(held.components.K1!.currents!.coil, 5 / 70, 1e-9);
+    expect(held.components.D1!.current).toBeGreaterThan(0.012);
+    expect(held.components.BZ1!.state).toEqual({ sounding: false });
   });
 
   it('LED colours (Sprint 10): one resistor, three colour cards, three different currents', () => {

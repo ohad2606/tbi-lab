@@ -63,6 +63,8 @@ export interface SchModulePin extends ModulePin {
 export interface SchModule {
   component: string;
   partName: string;
+  /** The conventional symbol drawn inside the block. */
+  glyph: ModuleSymbol['glyph'];
   /** Block rectangle. */
   x: number;
   y: number;
@@ -403,6 +405,7 @@ class Builder {
     const mod: SchModule = {
       component: m.id,
       partName: sym.partName,
+      glyph: sym.glyph,
       x: blockX,
       y: blockTop,
       width: MODULE_W,

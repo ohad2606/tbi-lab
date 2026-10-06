@@ -217,3 +217,69 @@ export const WIRE = {
   /** Bend radius of the drawn corners. */
   bendRadiusMm: 1.2,
 };
+
+// ---- Sprint 10 parts (PM-6 revision) --------------------------------------------------------
+// Sources: [KB-RGB] Kingbright WP154A4SUREQBFZGC Rev V.11A package drawing; [SENBA] Senba GL55
+// series manual p.3; [CEM] Same Sky CEM-1205-IC mechanical drawing (p.2); [SRD] Songle SRD
+// datasheet dimension and drilling drawing (p.1). Fact sheet: docs/sprints/s10-evidence/datasheets.
+
+/** RGB LED, T-1 3/4 water clear, 4 leads at 1.27 mm [KB-RGB]; standoff as the 5 mm LEDs [REP]. */
+export const RGB_LED_5MM = {
+  kind: 'led',
+  bodyDiameterMm: 5.0,
+  flangeDiameterMm: 5.9,
+  flangeThicknessMm: 1.0,
+  heightMm: 8.6,
+  domeRadiusMm: 2.49,
+  leadPitchMm: 1.27,
+  leadSizeMm: 0.5,
+  standoffMm: 3.0,
+  /** Lead order along the row: pin 1 red, 2 common cathode (longest), 3 blue, 4 green. */
+  pinOrder: ['red', 'cathode', 'blue', 'green'] as const,
+} as const;
+
+/** GL5528 CdS cell: Ø5.1 disc with two flats (4.3 mm), 2.1 mm thick, leads 3.0 mm apart [SENBA]. */
+export const LDR_GL5528 = {
+  diameterMm: 5.1,
+  flatToFlatMm: 4.3,
+  thicknessMm: 2.1,
+  leadSpacingMm: 3.0,
+  leadDiameterMm: 0.5,
+  /** Cell face up, standing on its leads [REP]. */
+  standoffMm: 4.0,
+};
+
+/** CEM-1205-IC: Ø12.0 x 9.5 mm black can, 2 pins Ø0.6 at 7.6 mm [CEM]. */
+export const BUZZER_CEM1205 = {
+  diameterMm: 12.0,
+  heightMm: 9.5,
+  pinSpacingMm: 7.6,
+  pinDiameterMm: 0.6,
+  /** Seated on its pins just above the bench [REP]. */
+  standoffMm: 1.2,
+  soundHoleDiameterMm: 2.0,
+};
+
+/**
+ * SRD relay: 19.1 x 15.5 x 15.3 mm (max) case [SRD]. Pins (bottom face, x along the length,
+ * centred): COM 1.4 mm from one end on the centre line; the coil pins 2.0 mm further in, 12.0 mm
+ * apart; NO and NC 12.2 mm beyond the coil pins (NO opposite coil 1's side) [SRD drilling plan;
+ * the drawing's view direction is not stated: the mirror image would swap NO/NC sides only].
+ */
+export const RELAY_SRD = {
+  lengthMm: 19.1,
+  widthMm: 15.5,
+  heightMm: 15.3,
+  /** Case raised on its pins so the pins (and the wires soldered to them) show [REP]. */
+  standoffMm: 3.5,
+  pinLengthMm: 5.0,
+  /** Wires are soldered to the pin tips just above the bench. */
+  attachHeightMm: 0.8,
+  pins: {
+    com: [-19.1 / 2 + 1.4, 0],
+    coil1: [-19.1 / 2 + 3.4, -6],
+    coil2: [-19.1 / 2 + 3.4, 6],
+    no: [-19.1 / 2 + 15.6, -6],
+    nc: [-19.1 / 2 + 15.6, 6],
+  } as Record<string, readonly [number, number]>,
+};

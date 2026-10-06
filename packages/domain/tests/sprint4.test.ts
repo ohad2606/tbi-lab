@@ -29,9 +29,10 @@ const place = (doc: ProjectDocument, type: ComponentTypeId, x: number, y: number
   must(addComponent(doc, type, { x, y }));
 
 describe('Sprint 4 catalog: the non-MCU V1 catalog is complete and closed (A16)', () => {
-  it('holds exactly the seven approved non-MCU types', () => {
+  it('holds exactly the seven original non-MCU types plus the approved Sprint 10 parts', () => {
     const mcu = (t: string) => t.startsWith('board.');
-    // Sprint 6 adds the one PM-approved MCU item; the catalog stays closed.
+    // Sprint 6 adds the one PM-approved MCU item. The PM-6 revision (product scope §6.0,
+    // 2026-10-06) opens the approved families; every type added is listed here explicitly.
     expect(CATALOG_ORDER.filter(mcu)).toEqual(['board.esp32_devkitc_wroom32']);
     expect([...CATALOG_ORDER].filter((t) => !mcu(t)).sort()).toEqual(
       [
@@ -42,6 +43,11 @@ describe('Sprint 4 catalog: the non-MCU V1 catalog is complete and closed (A16)'
         'component.resistor',
         'component.toggle_switch',
         'instrument.lab_psu',
+        // Sprint 10 (§6.0): lighting, basic components.
+        'component.rgb_led',
+        'component.photoresistor',
+        'component.buzzer',
+        'component.relay',
       ].sort(),
     );
   });

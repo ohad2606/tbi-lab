@@ -8,9 +8,17 @@ import {
   type CheckIssue,
   type ComponentInstance,
   type ParamDef,
+  type UnitId,
 } from '@tbi-lab/domain';
-import { catalogText, formatQuantity, inputForm, isolateLtr, unitSymbol } from '../i18n/i18n.js';
-import type { SolveSuccess } from '@tbi-lab/engine';
+import {
+  catalogText,
+  formatQuantity,
+  inputForm,
+  isMessageKey,
+  isolateLtr,
+  unitSymbol,
+} from '../i18n/i18n.js';
+import type { ComponentResult, SolveSuccess } from '@tbi-lab/engine';
 import { formatPower, formatResult } from '../sim/format.js';
 import { RatingGroup } from './NoticeBar.js';
 import { warningsFor } from '../sim/ratings.js';
@@ -147,9 +155,23 @@ function ComponentProperties({
           what the board runs; the Advanced prebuilt path is there too. */}
       {def.params
         .filter((p) => !(c.type === 'board.esp32_devkitc_wroom32' && p.key === 'firmware'))
+        .filter((p) => !p.environment)
         .map((p) => (
           <ParamField key={`${c.id}.${p.key}`} component={c} def={p} readOnly={readOnly} />
         ))}
+      {def.params.some((p) => p.environment) && (
+        // Sprint 10: what the part senses is the SIMULATED ENVIRONMENT, not a part property. It
+        // is a live control: changing it while running re-solves at once.
+        <section class="environment" data-testid={`environment-${c.id}`}>
+          <h3 class="environment-heading">{t('inspector.environment')}</h3>
+          <p class="muted small">{t('inspector.environmentNote')}</p>
+          {def.params
+            .filter((p) => p.environment)
+            .map((p) => (
+              <ParamField key={`${c.id}.${p.key}`} component={c} def={p} readOnly={readOnly} />
+            ))}
+        </section>
+      )}
       {c.type === 'board.esp32_devkitc_wroom32' && <McuPanel component={c} />}
       {c.type === 'component.push_button' && (
         <p class="muted small" data-testid="switch-hint">
@@ -300,6 +322,25 @@ function ParamField({
         />
         <span class="unit">{unitSymbol(locale, def.unit)}</span>
       </div>
+      {def.environment && (
+        <input
+          type="range"
+          class="environment-slider"
+          data-testid={`${id}-slider`}
+          aria-label={catalogText(locale, def.labelKey)}
+          min={0}
+          max={SLIDER_STEPS}
+          step={1}
+          value={sliderPosition(def, typeof current === 'object' ? current.value : def.default)}
+          disabled={disabled}
+          onChange={(e) => {
+            if (!doc) return;
+            const value = sliderValue(def, Number((e.target as HTMLInputElement).value));
+            if (typeof current === 'object' && current.value === value) return;
+            store.apply(setParam(doc, c.id, def.key, { value, unit: def.unit }));
+          }}
+        />
+      )}
       {error ? (
         <p class="field-error" role="alert" data-testid={`${id}-error`}>
           {error}
@@ -312,6 +353,26 @@ function ParamField({
       {lockedHint}
     </div>
   );
+}
+
+/** Environment sliders: positions 0..SLIDER_STEPS over [min, max], linear or logarithmic. */
+const SLIDER_STEPS = 1000;
+type QuantityDef = Extract<ParamDef, { kind: 'quantity' }>;
+function sliderPosition(def: QuantityDef, value: number): number {
+  const f =
+    def.environment?.scale === 'log'
+      ? Math.log(value / def.min) / Math.log(def.max / def.min)
+      : (value - def.min) / (def.max - def.min);
+  return Math.round(Math.min(1, Math.max(0, f)) * SLIDER_STEPS);
+}
+function sliderValue(def: QuantityDef, position: number): number {
+  const f = position / SLIDER_STEPS;
+  const raw =
+    def.environment?.scale === 'log'
+      ? def.min * (def.max / def.min) ** f
+      : def.min + f * (def.max - def.min);
+  // Three significant digits: a slider sets a round value; the field accepts any exact one.
+  return Math.min(def.max, Math.max(def.min, Number(raw.toPrecision(3))));
 }
 
 function ResultRow({ label, value, testId }: { label: string; value: string; testId: string }) {
@@ -413,6 +474,7 @@ function ComponentResultView({
               />
             </>
           )}
+          {!ORIGINAL_TYPES.has(r.type) && <PartResultRows result={r} />}
           {def.terminals.map((term) => (
             <ResultRow
               key={term.id}
@@ -453,6 +515,70 @@ function ComponentResultView({
       )}
       {r?.type === 'component.led' && <p class="muted small">{t('sim.results.ledLit')}</p>}
     </section>
+  );
+}
+
+/** Units of numeric part states (language-neutral keys). */
+const STATE_UNITS: Record<string, UnitId> = { resistance: 'ohm' };
+
+/** The eight original types have dedicated rows above; parts added since are described by data. */
+const ORIGINAL_TYPES = new Set<string>([
+  'instrument.lab_psu',
+  'component.ground',
+  'component.resistor',
+  'component.led',
+  'component.diode',
+  'component.push_button',
+  'component.toggle_switch',
+  'board.esp32_devkitc_wroom32',
+]);
+
+/**
+ * Sprint 10 part results, generically: voltage and current where the part defines them, then its
+ * named currents (`sim.part.current.<key>`: an RGB channel, a relay coil) and states
+ * (`sim.part.state.<key>`, values `sim.part.state.<key>.<value>` or a boolean yes/no).
+ */
+function PartResultRows({ result: r }: { result: ComponentResult }) {
+  const { locale } = useAppState();
+  const t = useT();
+  const I = (v: number | null) =>
+    v === null ? t('sim.results.undefined') : formatResult(locale, v, 'ampere');
+  const label = (key: string) => (isMessageKey(key) ? t(key) : key);
+  return (
+    <>
+      {r.voltage !== null && (
+        <ResultRow
+          label={t('sim.results.voltage')}
+          value={formatResult(locale, r.voltage, 'volt')}
+          testId="result-voltage"
+        />
+      )}
+      {r.current !== null && (
+        <ResultRow label={t('sim.results.current')} value={I(r.current)} testId="result-current" />
+      )}
+      {Object.entries(r.currents ?? {}).map(([k, v]) => (
+        <ResultRow
+          key={`i-${k}`}
+          label={label(`sim.part.current.${k}`)}
+          value={I(v)}
+          testId={`result-current-${k}`}
+        />
+      ))}
+      {Object.entries(r.state ?? {}).map(([k, v]) => (
+        <ResultRow
+          key={`s-${k}`}
+          label={label(`sim.part.state.${k}`)}
+          value={
+            typeof v === 'boolean'
+              ? t(v ? 'sim.part.yes' : 'sim.part.no')
+              : typeof v === 'number'
+                ? formatResult(locale, v, STATE_UNITS[k] ?? 'ohm')
+                : label(`sim.part.state.${k}.${v}`)
+          }
+          testId={`result-state-${k}`}
+        />
+      ))}
+    </>
   );
 }
 

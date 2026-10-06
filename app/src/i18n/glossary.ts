@@ -19,6 +19,9 @@ export const GLOSSARY_TERMS = [
   'pushButton',
   'toggleSwitch',
   'probe',
+  'relay',
+  'photoresistor',
+  'buzzer',
 ] as const;
 
 export type GlossaryTerm = (typeof GLOSSARY_TERMS)[number];
@@ -36,6 +39,9 @@ export const GLOSSARY: Record<string, Record<GlossaryTerm, string>> = {
     pushButton: 'Push button',
     toggleSwitch: 'Toggle switch',
     probe: 'probe',
+    relay: 'Relay',
+    photoresistor: 'Photoresistor (LDR)',
+    buzzer: 'Buzzer',
   },
   he: {
     ground: 'אדמה (GND)',
@@ -49,6 +55,9 @@ export const GLOSSARY: Record<string, Record<GlossaryTerm, string>> = {
     pushButton: 'לחצן',
     toggleSwitch: 'מתג',
     probe: 'נקודת מדידה',
+    relay: 'ממסר',
+    photoresistor: 'נגד תלוי אור (LDR)',
+    buzzer: 'זמזם',
   },
 };
 

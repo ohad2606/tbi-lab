@@ -9,7 +9,8 @@
 
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { deriveScene } from '../views/scene3d/scene.js';
-import type { Viewer, ViewerStats } from '../views/scene3d/renderer.js';
+import type { LiveLevel, Viewer, ViewerStats } from '../views/scene3d/renderer.js';
+import { rgbMix } from '../views/ledLooks.js';
 import { useAppState, useT } from './context.js';
 
 type Status = 'loading' | 'ready' | 'unavailable' | 'failed';
@@ -59,12 +60,16 @@ export function ThreeView() {
   // While running: LED glow from the solved forward current (visual cue only, as on the circuit
   // canvas). Off when stopped.
   const outcome = sim.status === 'running' && sim.outcome.ok ? sim.outcome : null;
-  const levels: Record<string, number> = {};
+  const levels: Record<string, LiveLevel> = {};
   if (outcome && doc)
     for (const c of doc.components)
       if (c.type === 'component.led') {
         const i = outcome.components[c.id]?.current ?? 0;
         if (i && i > 0) levels[c.id] = Math.min(1, Math.max(0.08, i / 0.02));
+      } else if (c.type === 'component.rgb_led') {
+        // The emitted colour is the mix of the SOLVED channel currents (never a chosen colour).
+        const mix = rgbMix(outcome.components[c.id]?.currents ?? {});
+        if (mix) levels[c.id] = { level: mix.intensity, color: mix.color };
       }
   const levelKey = JSON.stringify(levels);
   useEffect(() => {
@@ -85,6 +90,9 @@ export function ThreeView() {
       data-textures={stats?.textures}
       data-objects={stats?.objects}
       data-lit={Object.keys(levels).join(' ')}
+      data-glow={Object.entries(levels)
+        .flatMap(([id, l]) => (typeof l === 'number' ? [] : [`${id}:${l.color}`]))
+        .join(' ')}
       data-leds={scene?.components
         .flatMap((c) => (c.visual.led ? [`${c.id}:${c.visual.led.package}`] : []))
         .join(' ')}

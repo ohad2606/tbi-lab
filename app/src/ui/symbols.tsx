@@ -17,6 +17,10 @@ export interface SymbolState {
   closed?: boolean;
   /** Push button: held right now (transient runtime input). */
   pressed?: boolean;
+  /** Relay: the armature position the solver settled (runtime result; rest position otherwise). */
+  energized?: boolean;
+  /** Buzzer: sounding in the solved operating point (runtime result). */
+  sounding?: boolean;
 }
 
 export interface SymbolDef {
@@ -72,7 +76,109 @@ function esp32Board() {
   );
 }
 
+/** Emission arrows (the conventional LED mark), from (x, y) up and to the right. */
+const emission = (x: number, y: number) => (
+  <>
+    <line x1={x} y1={y} x2={x + 8} y2={y - 8} />
+    <polyline points={`${x + 4},${y - 8} ${x + 8},${y - 8} ${x + 8},${y - 4}`} />
+    <line x1={x + 8} y1={y + 4} x2={x + 16} y2={y - 4} />
+    <polyline points={`${x + 12},${y - 4} ${x + 16},${y - 4} ${x + 16},${y}`} />
+  </>
+);
+
+/** RGB LED (common cathode): one emitter per channel, cathodes on a common bar. */
+export const RGB_CHANNELS = [
+  { id: 'red', y: -20 },
+  { id: 'green', y: 0 },
+  { id: 'blue', y: 20 },
+] as const;
+export const rgbTriangle = (y: number) => `-8,${y - 6} -8,${y + 6} 4,${y}`;
+
 export const SYMBOLS: Record<ComponentTypeId, SymbolDef> = {
+  'component.rgb_led': {
+    bbox: [-40, -30, 40, 28],
+    draw: () => (
+      <>
+        {RGB_CHANNELS.map(({ id, y }) => (
+          <g key={id}>
+            <line x1={-40} y1={y} x2={-8} y2={y} />
+            <polygon points={rgbTriangle(y)} class="led-body" />
+            <line x1={4} y1={y - 6} x2={4} y2={y + 6} />
+            <line x1={4} y1={y} x2={16} y2={y} />
+          </g>
+        ))}
+        <line x1={16} y1={-20} x2={16} y2={20} />
+        <line x1={16} y1={0} x2={40} y2={0} />
+        {emission(20, -18)}
+      </>
+    ),
+  },
+  'component.photoresistor': {
+    bbox: [-40, -28, 40, 10],
+    draw: () => (
+      <>
+        <line x1={-40} y1={0} x2={-24} y2={0} />
+        <polyline points="-24,0 -20,-8 -12,8 -4,-8 4,8 12,-8 20,8 24,0" />
+        <line x1={24} y1={0} x2={40} y2={0} />
+        {/* Incoming light: arrows pointing AT the resistor (an LED's point away from it). */}
+        <line x1={-18} y1={-26} x2={-8} y2={-14} />
+        <polyline points="-12,-14 -8,-14 -8,-18" />
+        <line x1={-2} y1={-26} x2={8} y2={-14} />
+        <polyline points="4,-14 8,-14 8,-18" />
+      </>
+    ),
+  },
+  'component.buzzer': {
+    bbox: [-40, -22, 40, 6],
+    draw: (state) => (
+      <>
+        <line x1={-40} y1={0} x2={-12} y2={0} />
+        <line x1={12} y1={0} x2={40} y2={0} />
+        <path d="M -12 2 L -12 -4 A 12 12 0 0 1 12 -4 L 12 2 Z" class="symbol-body" />
+        {/* + at the positive lead, as geometry (correct at every rotation). */}
+        <line x1={-30} y1={-8} x2={-22} y2={-8} />
+        <line x1={-26} y1={-12} x2={-26} y2={-4} />
+        {state?.sounding && (
+          <g class="buzz-wave">
+            <path d="M 16 -16 A 8 8 0 0 1 16 -6" />
+            <path d="M 21 -20 A 13 13 0 0 1 21 -2" />
+          </g>
+        )}
+      </>
+    ),
+  },
+  'component.relay': {
+    bbox: [-60, -28, 60, 40],
+    // Coil and change-over contact; the dashed link is mechanical, not electrical. The blade shows
+    // the armature position the solver settled (rest = on NC).
+    draw: (state) => {
+      const tip = state?.energized ? { x: 38, y: 1 } : { x: 37, y: -18 };
+      return (
+        <>
+          <line x1={-60} y1={-20} x2={-32} y2={-20} />
+          <line x1={-32} y1={-20} x2={-32} y2={-12} />
+          <line x1={-60} y1={20} x2={-32} y2={20} />
+          <line x1={-32} y1={20} x2={-32} y2={12} />
+          <rect x={-44} y={-12} width={24} height={24} class="symbol-body" />
+          <line x1={-44} y1={12} x2={-20} y2={-12} />
+          <line
+            x1={-20}
+            y1={0}
+            x2={(20 + tip.x) / 2}
+            y2={(8 + tip.y) / 2}
+            class="mechanical-link"
+          />
+          <line x1={20} y1={40} x2={20} y2={8} />
+          <circle cx={20} cy={8} r={2.5} class="contact" />
+          <line x1={20} y1={8} x2={tip.x} y2={tip.y} class="relay-blade" />
+          <circle cx={40} cy={-20} r={2.5} class="contact" />
+          <line x1={40} y1={-20} x2={60} y2={-20} />
+          <circle cx={40} cy={0} r={2.5} class="contact" />
+          <line x1={40} y1={0} x2={60} y2={0} />
+        </>
+      );
+    },
+  },
   'board.esp32_devkitc_wroom32': {
     bbox: [-80, -196, 80, 196],
     draw: esp32Board,

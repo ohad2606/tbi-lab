@@ -81,9 +81,48 @@ export const en = {
   'model.led.vishay_tlhy5400': 'Yellow 5 mm (Vishay TLHY5400)',
   'model.led.vishay_tlhg4900': 'Green 3 mm (Vishay TLHG4900)',
 
+  // ---- Sprint 10: approved component families (PM-6 revision) ----
+  'component.component.rgb_led.name': 'RGB LED',
+  'component.component.photoresistor.name': '[[photoresistor]]',
+  'component.component.buzzer.name': '[[buzzer]]',
+  'component.component.relay.name': '[[relay]]',
+  'terminal.red': 'Red anode (R)',
+  'terminal.green': 'Green anode (G)',
+  'terminal.blue': 'Blue anode (B)',
+  'terminal.commonCathode': 'Common cathode (K)',
+  'terminal.coil1': 'Coil (A1)',
+  'terminal.coil2': 'Coil (A2)',
+  'terminal.com': 'Common (COM)',
+  'terminal.no': 'Normally open (NO)',
+  'terminal.nc': 'Normally closed (NC)',
+  'param.illuminance': 'Light on the cell (illuminance)',
+  'model.rgb_led.kingbright_wp154a4sureqbfzgc':
+    'Common cathode 5 mm (Kingbright WP154A4SUREQBFZGC)',
+  'model.ldr.senba_gl5528': 'CdS cell 5 mm (GL5528)',
+  'model.buzzer.cui_cem_1205_ic': 'Active 5 V, 12 mm (CUI Devices CEM-1205-IC)',
+  'model.relay.songle_srd_05vdc_sl_c': '5 V coil, SPDT (Songle SRD-05VDC-SL-C)',
+  'sim.part.current.red': 'Red channel current',
+  'sim.part.current.green': 'Green channel current',
+  'sim.part.current.blue': 'Blue channel current',
+  'sim.part.current.coil': 'Coil current',
+  'sim.part.current.contact': 'Contact current (COM)',
+  'sim.part.state.energized': 'Relay energized',
+  'sim.part.state.contact': 'COM connected to',
+  'sim.part.state.contact.no': 'NO (normally open)',
+  'sim.part.state.contact.nc': 'NC (normally closed)',
+  'sim.part.state.sounding': 'Sounding',
+  'sim.part.state.resistance': 'Resistance at this light level',
+  'sim.part.short.red': 'R',
+  'sim.part.short.green': 'G',
+  'sim.part.short.blue': 'B',
+  'rating.row.current': 'Current: {value} (maximum {limit})',
+  'rating.row.voltage': 'Voltage: {value} (maximum {limit})',
+  'rating.channel': '{channel} — {row}',
+
   'unit.ohm.symbol': 'Ω',
   'unit.volt.symbol': 'V',
   'unit.ampere.symbol': 'A',
+  'unit.lux.symbol': 'lx',
 
   'sim.run': 'Run',
   'sim.stop': 'Stop',
@@ -118,12 +157,16 @@ export const en = {
     'The solver could not find an operating point, so no values are shown. Involved: {components}.',
   'sim.error.no_steady_state':
     'This circuit has no steady state: {components} keeps switching itself on and off (a relay that interrupts its own coil chatters). A DC simulation cannot show one of its transitory states.',
+  'sim.error.mcu_component_unsupported':
+    'The ESP32 simulator does not support {components} yet. These parts simulate in circuits without an ESP32; with the board they need a runtime update.',
   'sim.error.internal': 'An internal simulation error occurred. The project is not affected.',
   'sim.error.worker_crashed':
     'The simulation stopped unexpectedly. The project is not affected. Press Run to try again.',
   'sim.error.timeout':
     'The simulation did not respond in time and was stopped. The project is not affected. Press Run to try again.',
   'sim.notConnected': 'Not connected, not simulated: {components}',
+  'sim.part.yes': 'yes',
+  'sim.part.no': 'no',
   'sim.results.heading': 'Simulation result',
   'sim.results.note': 'Solved values. They are not saved in the project.',
   'sim.results.current': 'Current',
@@ -189,6 +232,9 @@ export const en = {
   'history.undo': 'Undo',
   'history.redo': 'Redo',
   'sim.results.contact': 'Contact',
+  'inspector.environment': 'Simulated environment',
+  'inspector.environmentNote':
+    'What this part senses around it. A simulation control, not a property of the part; it can change while running.',
   'inspector.heading': 'Properties',
   'inspector.empty': 'Nothing selected. Select a component to see and edit its properties.',
   'inspector.multi': '{count} items selected',
@@ -300,6 +346,15 @@ export const en = {
   'example.led-current.title': 'LED current limiting',
   'example.led-current.summary':
     'A 220 Ω resistor sets the current of a red LED from 5 V. The LED is nonlinear: it settles near 2 V and about 14 mA.',
+  'example.rgb-mixer.title': 'RGB LED: mixing colour with currents',
+  'example.rgb-mixer.summary':
+    'One common-cathode RGB LED, each channel through its own switch and resistor. Flip the switches while it runs: the colour is the mix of the currents the circuit drives.',
+  'example.light-sensor.title': 'Light sensor: a photoresistor divider',
+  'example.light-sensor.summary':
+    'A GL5528 photoresistor over 10 kΩ from 9 V. Change the simulated light on the cell in the inspector and watch the divider voltage follow.',
+  'example.relay-load.title': 'Relay: a small current switches a separate load',
+  'example.relay-load.summary':
+    'Press the button to energize the relay coil (about 71 mA). Its contacts move from NC (buzzer) to NO (LED): the coil and the load are separate circuits.',
   'example.led-colours.title': 'LED colours: one resistor, different currents',
   'example.led-colours.summary':
     'Red, yellow and green LEDs, each from 5 V through 180 Ω. Each colour has its own forward voltage (about 2.0 V red, 2.4 V yellow and green), so the same resistor sets about 16.7 mA through the red LED and 14.5 mA through the others.',
@@ -315,6 +370,8 @@ export const en = {
   'palette.group.sources': 'Supply and reference',
   'palette.group.passive': 'Resistors',
   'palette.group.semiconductors': 'Diodes',
+  'palette.group.sensors': 'Sensors',
+  'palette.group.output': 'Sound and signalling',
   'palette.group.switches': 'Switches',
   'inspector.shortcutsHeading': 'Keyboard shortcuts',
   'unit.watt.symbol': 'W',

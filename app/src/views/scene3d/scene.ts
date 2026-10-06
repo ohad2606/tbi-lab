@@ -41,7 +41,11 @@ import {
   type WireEnd,
 } from '@tbi-lab/domain';
 import {
+  BUZZER_CEM1205,
   DIODE_DO35,
+  LDR_GL5528,
+  RELAY_SRD,
+  RGB_LED_5MM,
   ESP32_ATTACH_HEIGHT,
   ESP32_DEVKITC,
   ESP32_PIN_TOP,
@@ -69,6 +73,10 @@ export type ModelKey =
   | 'switch.toggle'
   | 'ground.post'
   | 'instrument.psu'
+  | 'led.rgb'
+  | 'ldr.disc'
+  | 'buzzer.can'
+  | 'relay.cube'
   | 'generic';
 
 /** Which model draws each component type. A type without an entry gets the generic box. */
@@ -81,6 +89,10 @@ export const MODEL_FOR: Partial<Record<ComponentTypeId, ModelKey>> = {
   'component.toggle_switch': 'switch.toggle',
   'component.ground': 'ground.post',
   'instrument.lab_psu': 'instrument.psu',
+  'component.rgb_led': 'led.rgb',
+  'component.photoresistor': 'ldr.disc',
+  'component.buzzer': 'buzzer.can',
+  'component.relay': 'relay.cube',
 };
 
 export interface Vec3 {
@@ -184,6 +196,10 @@ export const MODEL_HEIGHT: Record<ModelKey, number> = {
     TOGGLE.standoffMm + TOGGLE.bodyHeightMm + TOGGLE.bushingHeightMm + TOGGLE.leverLengthMm * 0.9,
   'ground.post': GROUND_POST.plateThicknessMm + GROUND_POST.postHeightMm,
   'instrument.psu': PSU.bodyHeightMm,
+  'led.rgb': RGB_LED_5MM.standoffMm + RGB_LED_5MM.heightMm,
+  'ldr.disc': LDR_GL5528.standoffMm + LDR_GL5528.thicknessMm,
+  'buzzer.can': BUZZER_CEM1205.standoffMm + BUZZER_CEM1205.heightMm,
+  'relay.cube': RELAY_SRD.standoffMm + RELAY_SRD.heightMm,
   generic: 3,
 };
 
@@ -219,6 +235,20 @@ export const FOOTPRINT: Record<ModelKey, readonly [number, number, number, numbe
     PSU.frontXMm + PSU.postLengthMm,
     -PSU.bodyZMm / 2,
     PSU.bodyZMm / 2,
+  ],
+  'led.rgb': [-6.7, 6.7, -3.6, 3.6],
+  'ldr.disc': [-6.7, 6.7, -LDR_GL5528.diameterMm / 2, LDR_GL5528.diameterMm / 2],
+  'buzzer.can': [
+    -BUZZER_CEM1205.diameterMm / 2,
+    BUZZER_CEM1205.diameterMm / 2,
+    -BUZZER_CEM1205.diameterMm / 2,
+    BUZZER_CEM1205.diameterMm / 2,
+  ],
+  'relay.cube': [
+    -RELAY_SRD.lengthMm / 2,
+    RELAY_SRD.lengthMm / 2,
+    -RELAY_SRD.widthMm / 2,
+    RELAY_SRD.widthMm / 2,
   ],
   generic: [-6.35, 6.35, -1.5, 1.5],
 };
@@ -312,6 +342,11 @@ function localAttach(
       return { x, y: PSU.attachHeightMm, z };
     case 'ground.post':
       return { x, y: GROUND_POST.attachHeightMm, z };
+    case 'relay.cube': {
+      // The real pin (bottom face), as the ESP32's header pins: the wire's end follows it.
+      const [px, pz] = RELAY_SRD.pins[terminal]!;
+      return { x: px, y: RELAY_SRD.attachHeightMm, z: pz };
+    }
     default:
       return { x, y: LEAD_ATTACH_HEIGHT, z };
   }
@@ -647,11 +682,14 @@ function wireHeights(
       (endsAt.get(k) ?? []).filter((o) => o !== id).map((o) => height.get(o) ?? 0),
     );
     const base = Math.max(floor.get(id)!, ...risers.map((h) => round(h + WIRE.levelStepMm)));
-    const taken = new Set(
-      [...meets.get(id)!].map((o) => height.get(o)).filter((h) => h !== undefined),
-    );
+    // Wires that meet must be a full level apart (more than a wire's diameter), not merely at
+    // different heights: two floors that differ by less than a level would still touch.
+    const taken = [...meets.get(id)!]
+      .map((o) => height.get(o))
+      .filter((h): h is number => h !== undefined);
+    const free = (h: number) => taken.every((t) => Math.abs(t - h) >= WIRE.levelStepMm - 1e-6);
     const levels = [i % 3, ...Array.from({ length: 64 }, (_, k) => k)];
-    const level = levels.find((k) => !taken.has(round(base + k * WIRE.levelStepMm)))!;
+    const level = levels.find((k) => free(round(base + k * WIRE.levelStepMm)))!;
     height.set(id, round(base + level * WIRE.levelStepMm));
   };
   const order = doc.layout.wires

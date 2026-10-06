@@ -19,6 +19,9 @@ import esp32Blink from './data/esp32-blink.json';
 import esp32InputEcho from './data/esp32-input-echo.json';
 import ledColours from './data/led-colours.json';
 import ledCurrent from './data/led-current.json';
+import lightSensor from './data/light-sensor.json';
+import relayLoad from './data/relay-load.json';
+import rgbMixer from './data/rgb-mixer.json';
 import ohmsLaw from './data/ohms-law.json';
 import pushButton from './data/push-button.json';
 import voltageDivider from './data/voltage-divider.json';
@@ -71,6 +74,28 @@ export const EXAMPLES: readonly Example[] = [
     summaryKey: 'example.led-colours.summary',
     document: doc(ledColours),
     probes: [I('D1'), I('D2'), I('D3')],
+  },
+  // Sprint 10 (PM-6 revision): the new parts, each in a complete, explainable circuit.
+  {
+    id: 'rgb-mixer',
+    titleKey: 'example.rgb-mixer.title',
+    summaryKey: 'example.rgb-mixer.summary',
+    document: doc(rgbMixer),
+    probes: [I('R1'), I('R2'), I('R3')],
+  },
+  {
+    id: 'light-sensor',
+    titleKey: 'example.light-sensor.title',
+    summaryKey: 'example.light-sensor.summary',
+    document: doc(lightSensor),
+    probes: [V('R1', 'a')],
+  },
+  {
+    id: 'relay-load',
+    titleKey: 'example.relay-load.title',
+    summaryKey: 'example.relay-load.summary',
+    document: doc(relayLoad),
+    probes: [I('D1'), I('BZ1')],
   },
   {
     id: 'diode-polarity',

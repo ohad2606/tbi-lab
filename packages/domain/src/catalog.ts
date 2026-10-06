@@ -2,8 +2,8 @@
  * Component type definitions for the types Sprint 2 ships.
  *
  * Data, not code paths. Display text is referenced by translation KEY only; the app resolves
- * keys through its locale bundles. The V1 catalog is closed (product scope PM-6): new types
- * require a PM scope decision.
+ * keys through its locale bundles. New types follow the approved component families of the PM-6
+ * revision (product scope §6.0, 2026-10-06), each with a datasheet-sourced model.
  */
 
 import type { ComponentTypeId, ParamValue, Point, UnitId } from './schema.js';
@@ -29,8 +29,22 @@ export type ParamDef =
       labelKey: string;
       /** May change while a simulation runs (mirrored as a live control, not a restart). */
       live?: boolean;
+      /**
+       * Sprint 10: the value is the part's SIMULATED ENVIRONMENT (the light on a photoresistor),
+       * not a property of the part. Always live; the inspector groups it as an environment
+       * control. `scale` picks the control's scale (illuminance spans decades: logarithmic).
+       */
+      environment?: { scale: 'linear' | 'log' };
     }
-  | { kind: 'boolean'; key: string; default: boolean; labelKey: string; live?: boolean }
+  | {
+      kind: 'boolean';
+      key: string;
+      default: boolean;
+      labelKey: string;
+      live?: boolean;
+      /** Sprint 10: a simulated environment state (motion in front of a PIR sensor). */
+      environment?: { scale?: never };
+    }
   | {
       kind: 'enum';
       key: string;
@@ -39,6 +53,7 @@ export type ParamDef =
       default: string;
       labelKey: string;
       live?: boolean;
+      environment?: never;
     };
 
 export interface ComponentTypeDef {
@@ -60,6 +75,12 @@ export interface ComponentTypeDef {
    * never stored in the project, never advances the revision and resets on Stop/reopen.
    */
   momentary?: boolean;
+  /**
+   * Sprint 10: false when the deployed ESP32 runtime (Session Host) does not know this type yet.
+   * A project with an ESP32 board and such a part is refused at Run with a specific reason,
+   * before any session starts; local circuits simulate it normally. Absent means supported.
+   */
+  mcuRuntime?: false;
 }
 
 /**
@@ -87,7 +108,135 @@ const ESP32_TERMINALS: TerminalDef[] = ESP32_DEVKITC_WROOM32.pins.flatMap((pin) 
   return id ? [{ id, offset: boardPinPosition(pin), labelKey: `pin.${id}` }] : [];
 });
 
+/** Sprint 10 (PM-6 revision, V1-PRODUCT-SCOPE.md §6.0): one datasheet-sourced part per type. */
+const SPRINT10_TYPES = {
+  'component.rgb_led': {
+    type: 'component.rgb_led',
+    typeVersion: 1,
+    refPrefix: 'D',
+    nameKey: 'component.component.rgb_led.name',
+    symbol: 'symbol.rgb_led',
+    // Common cathode (the declared package): one anode per channel, the shared cathode.
+    terminals: [
+      { id: 'red', offset: { x: -40, y: -20 }, labelKey: 'terminal.red' },
+      { id: 'green', offset: { x: -40, y: 0 }, labelKey: 'terminal.green' },
+      { id: 'blue', offset: { x: -40, y: 20 }, labelKey: 'terminal.blue' },
+      { id: 'cathode', offset: { x: 40, y: 0 }, labelKey: 'terminal.commonCathode' },
+    ],
+    params: [
+      {
+        kind: 'enum',
+        key: 'model',
+        options: [
+          {
+            value: 'model.rgb_led.kingbright_wp154a4sureqbfzgc',
+            labelKey: 'model.rgb_led.kingbright_wp154a4sureqbfzgc',
+          },
+        ],
+        default: 'model.rgb_led.kingbright_wp154a4sureqbfzgc',
+        labelKey: 'param.model',
+      },
+    ],
+    aliases: ['rgb', 'rgb led', 'full colour led'],
+    mcuRuntime: false,
+  },
+  'component.photoresistor': {
+    type: 'component.photoresistor',
+    typeVersion: 1,
+    refPrefix: 'LDR',
+    nameKey: 'component.component.photoresistor.name',
+    symbol: 'symbol.photoresistor',
+    terminals: [
+      { id: 'a', offset: { x: -40, y: 0 }, labelKey: 'terminal.a' },
+      { id: 'b', offset: { x: 40, y: 0 }, labelKey: 'terminal.b' },
+    ],
+    params: [
+      {
+        kind: 'enum',
+        key: 'model',
+        options: [{ value: 'model.ldr.senba_gl5528', labelKey: 'model.ldr.senba_gl5528' }],
+        default: 'model.ldr.senba_gl5528',
+        labelKey: 'param.model',
+      },
+      {
+        // The light falling on the cell: the simulated environment, not a part property.
+        kind: 'quantity',
+        key: 'illuminance',
+        unit: 'lux',
+        min: 1,
+        max: 10000,
+        default: 100,
+        labelKey: 'param.illuminance',
+        live: true,
+        environment: { scale: 'log' },
+      },
+    ],
+    aliases: ['ldr', 'photoresistor', 'light sensor', 'cds', 'gl5528'],
+    mcuRuntime: false,
+  },
+  'component.buzzer': {
+    type: 'component.buzzer',
+    typeVersion: 1,
+    refPrefix: 'BZ',
+    nameKey: 'component.component.buzzer.name',
+    symbol: 'symbol.buzzer',
+    terminals: [
+      { id: 'positive', offset: { x: -40, y: 0 }, labelKey: 'terminal.positive' },
+      { id: 'negative', offset: { x: 40, y: 0 }, labelKey: 'terminal.negative' },
+    ],
+    params: [
+      {
+        kind: 'enum',
+        key: 'model',
+        options: [{ value: 'model.buzzer.cui_cem_1205_ic', labelKey: 'model.buzzer.cui_cem_1205_ic' }],
+        default: 'model.buzzer.cui_cem_1205_ic',
+        labelKey: 'param.model',
+      },
+    ],
+    aliases: ['buzzer', 'beeper', 'sounder', 'active buzzer'],
+    mcuRuntime: false,
+  },
+  'component.relay': {
+    type: 'component.relay',
+    typeVersion: 1,
+    refPrefix: 'K',
+    nameKey: 'component.component.relay.name',
+    symbol: 'symbol.relay',
+    // Coil side (left) and contact side (right) are separate circuits, as in the part.
+    terminals: [
+      { id: 'coil1', offset: { x: -60, y: -20 }, labelKey: 'terminal.coil1' },
+      { id: 'coil2', offset: { x: -60, y: 20 }, labelKey: 'terminal.coil2' },
+      { id: 'com', offset: { x: 20, y: 40 }, labelKey: 'terminal.com' },
+      { id: 'no', offset: { x: 60, y: 0 }, labelKey: 'terminal.no' },
+      { id: 'nc', offset: { x: 60, y: -20 }, labelKey: 'terminal.nc' },
+    ],
+    params: [
+      {
+        kind: 'enum',
+        key: 'model',
+        options: [
+          {
+            value: 'model.relay.songle_srd_05vdc_sl_c',
+            labelKey: 'model.relay.songle_srd_05vdc_sl_c',
+          },
+        ],
+        default: 'model.relay.songle_srd_05vdc_sl_c',
+        labelKey: 'param.model',
+      },
+    ],
+    aliases: ['relay', 'spdt relay', 'srd-05vdc', 'ממסר', 'ריליי'],
+    mcuRuntime: false,
+  },
+} satisfies Record<
+  | 'component.rgb_led'
+  | 'component.photoresistor'
+  | 'component.buzzer'
+  | 'component.relay',
+  ComponentTypeDef
+>;
+
 export const CATALOG: Record<ComponentTypeId, ComponentTypeDef> = {
+  ...SPRINT10_TYPES,
   'instrument.lab_psu': {
     type: 'instrument.lab_psu',
     typeVersion: 1,
@@ -273,6 +422,7 @@ export const CATALOG: Record<ComponentTypeId, ComponentTypeDef> = {
   },
 };
 
+
 /** Palette order. */
 export const CATALOG_ORDER: readonly ComponentTypeId[] = [
   'instrument.lab_psu',
@@ -282,6 +432,10 @@ export const CATALOG_ORDER: readonly ComponentTypeId[] = [
   'component.diode',
   'component.push_button',
   'component.toggle_switch',
+  'component.rgb_led',
+  'component.photoresistor',
+  'component.buzzer',
+  'component.relay',
   'board.esp32_devkitc_wroom32',
 ];
 
