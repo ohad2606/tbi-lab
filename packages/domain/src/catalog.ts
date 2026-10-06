@@ -326,6 +326,41 @@ const SPRINT10_TYPES = {
     optionalTerminals: 'all',
     mcuRuntime: false,
   },
+  'component.capacitor': {
+    type: 'component.capacitor',
+    typeVersion: 1,
+    refPrefix: 'C',
+    nameKey: 'component.component.capacitor.name',
+    symbol: 'symbol.capacitor',
+    terminals: [
+      { id: 'a', offset: { x: -40, y: 0 }, labelKey: 'terminal.a' },
+      { id: 'b', offset: { x: 40, y: 0 }, labelKey: 'terminal.b' },
+    ],
+    // An ideal, non-polarised capacitor (engine: Capacitor). Its circuit runs time-stepped.
+    params: [
+      {
+        kind: 'quantity',
+        key: 'capacitance',
+        unit: 'farad',
+        min: 1e-9,
+        max: 0.01,
+        default: 100e-6,
+        labelKey: 'param.capacitance',
+      },
+      {
+        // A design value like a resistance: exceeding it is a rating warning.
+        kind: 'quantity',
+        key: 'ratedVoltage',
+        unit: 'volt',
+        min: 1,
+        max: 1000,
+        default: 16,
+        labelKey: 'param.ratedVoltage',
+      },
+    ],
+    aliases: ['capacitor', 'cap', 'קבל'],
+    mcuRuntime: false,
+  },
   'component.relay': {
     type: 'component.relay',
     typeVersion: 1,
@@ -565,6 +600,7 @@ export const CATALOG_ORDER: readonly ComponentTypeId[] = [
   'component.bjt_npn',
   'sensor.pir_hc_sr501',
   'display.led_matrix_8x8',
+  'component.capacitor',
   'board.esp32_devkitc_wroom32',
 ];
 

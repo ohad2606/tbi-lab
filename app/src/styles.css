@@ -2716,3 +2716,14 @@ select {
   fill: #c9ccd1;
   font-size: 8px;
 }
+
+.sim-time {
+  margin-inline-start: 0.6rem;
+  font-size: 0.85rem;
+  color: var(--runtime);
+  font-variant-numeric: tabular-nums;
+}
+
+.sim-time-behind {
+  color: var(--muted);
+}

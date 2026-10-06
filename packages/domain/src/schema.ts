@@ -16,7 +16,7 @@ export const DOCUMENT_FORMAT = 'tbi-lab.project';
  * Canonical SI unit ids. Locale affects only how a value is displayed. `lux` (illuminance) was
  * added in Sprint 10 for a sensor's simulated environment (additive).
  */
-export type UnitId = 'ohm' | 'volt' | 'ampere' | 'lux';
+export type UnitId = 'ohm' | 'volt' | 'ampere' | 'lux' | 'farad';
 
 /** An engineering value: an SI number plus its canonical unit id. */
 export interface Quantity {
@@ -48,7 +48,8 @@ export type ComponentTypeId =
   | 'component.relay'
   | 'component.bjt_npn'
   | 'sensor.pir_hc_sr501'
-  | 'display.led_matrix_8x8';
+  | 'display.led_matrix_8x8'
+  | 'component.capacitor';
 
 export interface ComponentInstance {
   /** Stable reference designator (`R1`, `PSU1`), unique per project, never reused. */

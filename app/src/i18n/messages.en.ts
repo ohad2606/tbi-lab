@@ -163,6 +163,15 @@ export const en = {
   'terminal.col6': 'Column 6 (dot anodes)',
   'terminal.col7': 'Column 7 (dot anodes)',
   'terminal.col8': 'Column 8 (dot anodes)',
+  'component.component.capacitor.name': 'Capacitor',
+  'param.capacitance': 'Capacitance',
+  'param.ratedVoltage': 'Rated voltage',
+  'sim.part.state.charge': 'Stored charge (coulomb)',
+  'sim.part.state.energy': 'Stored energy (joule)',
+  'sim.time': 't = {time}',
+  'sim.timeNote':
+    'Simulated time since Run (1 ms steps). Capacitors start discharged at every Run.',
+  'sim.timeBehind': 'running slower than real time',
   'sim.part.short.red': 'R',
   'sim.part.short.green': 'G',
   'sim.part.short.blue': 'B',
@@ -174,6 +183,7 @@ export const en = {
   'unit.volt.symbol': 'V',
   'unit.ampere.symbol': 'A',
   'unit.lux.symbol': 'lx',
+  'unit.farad.symbol': 'F',
 
   'sim.run': 'Run',
   'sim.stop': 'Stop',
@@ -419,6 +429,9 @@ export const en = {
   'example.led-matrix.title': 'LED matrix: rows and columns',
   'example.led-matrix.summary':
     'Two columns are driven from 5 V through 220 Ω; switches ground two rows. A dot lights only where a driven column meets a grounded row: the principle behind scanning a matrix.',
+  'example.rc-fade.title': 'RC timing: an LED that fades',
+  'example.rc-fade.summary':
+    'A 2200 µF capacitor charges through 1 kΩ and feeds an LED. Run: the LED fades in as the capacitor charges. Open the switch: it fades out as the capacitor discharges. Simulated time runs from Run.',
   'example.led-colours.title': 'LED colours: one resistor, different currents',
   'example.led-colours.summary':
     'Red, yellow and green LEDs, each from 5 V through 180 Ω. Each colour has its own forward voltage (about 2.0 V red, 2.4 V yellow and green), so the same resistor sets about 16.7 mA through the red LED and 14.5 mA through the others.',

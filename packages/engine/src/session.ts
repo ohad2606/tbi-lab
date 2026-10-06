@@ -12,6 +12,7 @@
  */
 
 import type { ComponentInstance, SimulationSnapshot } from '@tbi-lab/domain';
+import type { TimeStep } from './devices.js';
 import { Circuit, ConvergenceError } from './circuit.js';
 import { Diode, LabPsu, Resistor, VoltageSource, type Device } from './devices.js';
 import { GpioPin } from './esp32Gpio.js';
@@ -181,6 +182,8 @@ export interface SolveSuccess extends OutcomeBase {
   /** Components with no wired terminal: not part of the circuit, not simulated. */
   notConnected: string[];
   stats: SolveStats;
+  /** Time-stepped sessions (Sprint 10): simulated time of this state since Run, seconds. */
+  time?: number;
 }
 
 export interface SolveFailure extends OutcomeBase {
@@ -282,6 +285,15 @@ export class EngineSession {
   private readonly pinModes = new Map<number, RuntimePinMode>();
   private readonly pins: readonly McuPinAttachment[];
   /**
+   * Time-stepped sessions (Sprint 10): simulated time since Run (seconds), the step being solved,
+   * and each time-dependent part's history from the last accepted step. A new session starts at
+   * t = 0 with every history empty (capacitors discharged): the deterministic reset.
+   */
+  private time = 0;
+  private step: TimeStep | undefined;
+  private readonly history = new Map<string, PartState>();
+  private pendingHistory = new Map<string, PartState>();
+  /**
    * TRANSIENT runtime state (Sprint 10): each stateful part's discrete state (a relay armature),
    * carried from one solve to the next within a run, so hysteresis behaves as in the real part.
    * A new session starts from each part's initial state.
@@ -311,6 +323,38 @@ export class EngineSession {
 
   get snapshotId(): string {
     return this.snapshot.snapshotId;
+  }
+
+  /** Whether the circuit holds a time-dependent part: then it runs time-stepped (advance). */
+  get timeDependent(): boolean {
+    return this.snapshot.components.some((c) => partModel(c.type)?.timeDependent === true);
+  }
+
+  /** Simulated time since the session started, seconds (time-stepped sessions). */
+  get simulatedTime(): number {
+    return this.time;
+  }
+
+  /**
+   * Advance a time-stepped session by one backward-Euler step of `dt` seconds (Sprint 10).
+   * Live controls and pressed buttons apply from this step on (a step change, which backward
+   * Euler integrates without ringing). The outcome is the state at the new time; on failure the
+   * time and history do not advance.
+   */
+  advance(dt: number): SolveOutcome {
+    if (!(dt > 0) || !Number.isFinite(dt)) throw new Error('advance: dt must be > 0');
+    this.step = { dt, method: 'backward-euler' };
+    try {
+      const outcome = this.solve();
+      if (outcome.ok) {
+        for (const [id, h] of this.pendingHistory) this.history.set(id, h);
+        this.time += dt;
+        outcome.time = this.time;
+      }
+      return outcome;
+    } finally {
+      this.step = undefined;
+    }
   }
 
   /**
@@ -437,6 +481,7 @@ export class EngineSession {
    * original path, unchanged.
    */
   private solveUnchecked(): SolveOutcome {
+    this.pendingHistory = new Map();
     let states = new Map(this.discrete);
     const seen = new Set<string>();
     for (let pass = 1; ; pass++) {
@@ -471,6 +516,8 @@ export class EngineSession {
         return typeof v === 'number' ? v : quantity(c.params, key);
       },
       value: (key) => (key in live ? live[key] : c.params[key]),
+      ...(this.step ? { step: this.step } : {}),
+      history: () => this.history.get(c.id),
     };
   }
 
@@ -728,7 +775,7 @@ export class EngineSession {
     if (!hasUnknowns) currents = new Map([...devices.keys()].map((id) => [id, 0]));
     if (hasUnknowns) {
       try {
-        const r = circuit.solve();
+        const r = this.step ? circuit.solveStep(this.step) : circuit.solve();
         xSolution = r.x;
         nodeVoltages = r.nodeVoltages;
         currents = r.deviceCurrents;
@@ -826,6 +873,7 @@ export class EngineSession {
       };
       components[p.c.id] = { id: p.c.id, type: p.c.type, ...p.model.report(p.ctx, p.state, sol) };
       if (p.model.nextState) next.set(p.c.id, p.model.nextState(p.ctx, p.state, sol));
+      if (p.model.history) this.pendingHistory.set(p.c.id, p.model.history(p.ctx, sol));
     }
     const outcome: SolveSuccess = {
       ok: true,

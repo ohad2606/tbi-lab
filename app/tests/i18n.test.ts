@@ -52,6 +52,7 @@ describe('locale bundles', () => {
     // Only language-neutral messages may be identical (unit symbols, the reference-and-type pattern).
     // CV and CC stay as professional technical terms in Hebrew (product scope §12).
     expect(same.filter((k) => !technical(k)).sort()).toEqual([
+      // Sprint 10: RGB channel letters (R, G, B) are technical tokens, like pin names.
       'canvas.componentLabel',
       'probe.currentLabel',
       'probe.noValue',
@@ -59,7 +60,6 @@ describe('locale bundles', () => {
       'rating.channel',
       'sim.badge.cc',
       'sim.badge.cv',
-      // Sprint 10: RGB channel letters (R, G, B) are technical tokens, like pin names.
       'sim.part.short.base',
       'sim.part.short.blue',
       'sim.part.short.collector',
@@ -67,7 +67,9 @@ describe('locale bundles', () => {
       'sim.part.short.green',
       'sim.part.short.red',
       'sim.part.state.output.low',
+      'sim.time',
       'unit.ampere.symbol',
+      'unit.farad.symbol',
       'unit.lux.symbol',
       'unit.ohm.symbol',
       'unit.volt.symbol',

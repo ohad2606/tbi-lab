@@ -85,6 +85,7 @@ export type ModelKey =
   | 'transistor.to92'
   | 'sensor.pir'
   | 'display.matrix'
+  | 'capacitor.radial'
   | 'generic';
 
 /** Which model draws each component type. A type without an entry gets the generic box. */
@@ -104,6 +105,7 @@ export const MODEL_FOR: Partial<Record<ComponentTypeId, ModelKey>> = {
   'component.bjt_npn': 'transistor.to92',
   'sensor.pir_hc_sr501': 'sensor.pir',
   'display.led_matrix_8x8': 'display.matrix',
+  'component.capacitor': 'capacitor.radial',
 };
 
 export interface Vec3 {
@@ -153,6 +155,8 @@ export interface SceneComponent {
     psu?: { volts: number; amps: number };
     /** ESP32: the header pins that carry a wire (they get a jumper housing). */
     wiredPins?: string[];
+    /** Capacitor: its value, which picks the package (physical.ts capacitorPackage). */
+    farads?: number;
   };
 }
 
@@ -214,6 +218,8 @@ export const MODEL_HEIGHT: Record<ModelKey, number> = {
   'transistor.to92': TO92.standoffMm + TO92.heightMm,
   'sensor.pir': PIR_HC_SR501.standoffMm + PIR_HC_SR501.boardThicknessMm + PIR_HC_SR501.domeHeightMm,
   'display.matrix': LED_MATRIX_1088AS.standoffMm + LED_MATRIX_1088AS.heightMm,
+  // The largest can (the body of a given value is in its visual).
+  'capacitor.radial': 21,
   generic: 3,
 };
 
@@ -265,6 +271,7 @@ export const FOOTPRINT: Record<ModelKey, readonly [number, number, number, numbe
     RELAY_SRD.widthMm / 2,
   ],
   'transistor.to92': [-6.7, 3.6, -6.7, 6.7],
+  'capacitor.radial': [-6.7, 6.7, -6.25, 6.25],
   'display.matrix': [
     -LED_MATRIX_1088AS.sizeMm / 2,
     LED_MATRIX_1088AS.sizeMm / 2,
@@ -432,6 +439,8 @@ export function deriveScene(doc: ProjectDocument): SceneDescription {
       visual.bands = r ? resistorBands(r.value) : null;
     }
     if (c.type === 'component.led') visual.led = ledLook(c.params.model);
+    if (c.type === 'component.capacitor')
+      visual.farads = (c.params.capacitance as Quantity | undefined)?.value ?? 100e-6;
     if (c.type === 'component.toggle_switch') visual.closed = c.params.closed === true;
     if (c.type === 'instrument.lab_psu') {
       const v = c.params.setpointVoltage as Quantity | undefined;

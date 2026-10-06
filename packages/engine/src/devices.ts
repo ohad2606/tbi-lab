@@ -460,10 +460,16 @@ export class Capacitor extends TwoTerminal {
     nodeA: string,
     nodeB: string,
     public capacitanceF: number,
+    /** The integration history carried in from the previous step (Sprint 10 sessions). */
+    history?: { v: number; i: number },
   ) {
     super(id, nodeA, nodeB);
     if (!(capacitanceF > 0) || !Number.isFinite(capacitanceF))
       throw new Error(`Capacitor ${id}: capacitance must be > 0`);
+    if (history) {
+      this.vPrev = history.v;
+      this.iPrev = history.i;
+    }
   }
 
   private companion(step: TimeStep): { g: number; history: number } {
@@ -475,7 +481,8 @@ export class Capacitor extends TwoTerminal {
     return { g, history: g * this.vPrev };
   }
 
-  private voltage(x: readonly number[]): number {
+  /** Voltage a -> b at a solution. */
+  voltage(x: readonly number[]): number {
     return nodeVoltage(x, this.ia) - nodeVoltage(x, this.ib);
   }
 

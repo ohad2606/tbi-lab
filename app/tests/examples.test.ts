@@ -32,7 +32,7 @@ const near = (a: number | null | undefined, e: number, rel = REL) => {
 const example = (id: string) => EXAMPLES.find((e) => e.id === id)!.document;
 
 describe('the example set', () => {
-  it('has the thirteen DC examples and the two ESP32 examples, each titled in English and Hebrew', () => {
+  it('has the fourteen local examples and the two ESP32 examples, each titled in English and Hebrew', () => {
     expect(EXAMPLES.map((e) => e.id)).toEqual([
       'ohms-law',
       'voltage-divider',
@@ -43,6 +43,7 @@ describe('the example set', () => {
       'night-light',
       'pir-alarm',
       'led-matrix',
+      'rc-fade',
       'relay-load',
       'diode-polarity',
       'push-button',
@@ -195,6 +196,25 @@ describe('expected engineering results (production engine)', () => {
       ),
     });
     expect(lit(both)).toEqual(['2.2', '2.7', '7.2', '7.7']);
+  });
+
+  it('RC fade (Sprint 10, time-stepped): the LED fades in as C charges, and out when the switch opens', () => {
+    const doc = example('rc-fade');
+    const s = new EngineSession(createSnapshot(doc));
+    expect(s.timeDependent).toBe(true);
+    const led = (o: ReturnType<typeof s.advance>) => {
+      if (!o.ok) throw new Error(o.error.code);
+      return o.components.D1!.current!;
+    };
+    const early = led(s.advance(1e-3));
+    let later = 0;
+    for (let n = 0; n < 2000; n++) later = led(s.advance(1e-3));
+    expect(early).toBeLessThan(1e-4);
+    expect(later).toBeGreaterThan(0.004); // lit after 2 s
+    expect(s.applyControl('SW1', { closed: false }, 2)).toBeNull();
+    let off = later;
+    for (let n = 0; n < 3000; n++) off = led(s.advance(1e-3));
+    expect(off).toBeLessThan(later / 10); // faded out after 3 s
   });
 
   it('relay load (Sprint 10): at rest the buzzer sounds through NC and the LED is dark', () => {

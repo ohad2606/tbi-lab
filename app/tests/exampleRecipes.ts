@@ -349,6 +349,34 @@ export const RECIPES: Record<string, () => ProjectDocument> = {
     ]);
     return r.centre(-240);
   },
+  /**
+   * Sprint 10 (time-stepped). RC fade: 9 V through a switch and 1 kΩ charges 2200 µF; an LED with
+   * 470 Ω across the capacitor. Run with the switch closed: the LED fades in as C charges; open it:
+   * C discharges through the LED, which fades out.
+   */
+  'rc-fade': () => {
+    const r = new Recipe('rc-fade', 'RC fade');
+    r.supply(9, 0.2);
+    const S = r.place('component.toggle_switch', 140, -20);
+    const R1 = r.place('component.resistor', 260, -20);
+    const C = r.place('component.capacitor', 340, 40, 1);
+    const G2 = r.place('component.ground', 340, 140);
+    const R2 = r.place('component.resistor', 440, -20);
+    const D = r.place('component.led', 520, 40, 1);
+    const G3 = r.place('component.ground', 520, 140);
+    r.set(R1, 'resistance', 1000, 'ohm');
+    r.set(R2, 'resistance', 470, 'ohm');
+    r.set(C, 'capacitance', 2200e-6, 'farad');
+    r.set(S, 'closed', true);
+    r.wire(T('PSU1', 'positive'), T(S, 'a'));
+    r.wire(T(S, 'b'), T(R1, 'a'));
+    r.wire(T(R1, 'b'), T(C, 'a'), [{ x: 340, y: -20 }]);
+    r.wire(T(C, 'b'), T(G2, 'ref'));
+    r.wire(T(R1, 'b'), T(R2, 'a'));
+    r.wire(T(R2, 'b'), T(D, 'anode'), [{ x: 520, y: -20 }]);
+    r.wire(T(D, 'cathode'), T(G3, 'ref'));
+    return r.centre(-200);
+  },
   /** Two identical 1 kΩ + 1N4148 branches; D1 forward conducts ~4.3 mA, D2 reversed blocks (nA). */
   'diode-polarity': () => {
     const r = new Recipe('diode-polarity', 'Diode polarity');

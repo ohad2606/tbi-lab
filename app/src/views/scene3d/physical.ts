@@ -342,3 +342,33 @@ export function matrixPinXZ(n: number): readonly [number, number] {
   const p = LED_MATRIX_1088AS;
   return n <= 8 ? [(n - 4.5) * p.pitchMm, p.rowZMm] : [(12.5 - n) * p.pitchMm, -p.rowZMm];
 }
+
+/**
+ * Capacitor packages [REP]: the engine's capacitor is an ideal, non-polarised C, so the model shows
+ * a disc ceramic below 1 uF and a bipolar ("NP") radial electrolytic can above, sized by value from
+ * typical 16-25 V radial series (diameter x height, mm). Representative, not a datasheet part.
+ */
+export const CAPACITOR_PACKAGES = {
+  disc: { diameterMm: 5.0, thicknessMm: 2.5, leadSpacingMm: 2.54, standoffMm: 3.0 },
+  cans: [
+    { upToF: 22e-6, diameterMm: 5.0, heightMm: 11 },
+    { upToF: 220e-6, diameterMm: 6.3, heightMm: 11 },
+    { upToF: 1000e-6, diameterMm: 8.0, heightMm: 12 },
+    { upToF: 2200e-6, diameterMm: 10.0, heightMm: 16 },
+    { upToF: Infinity, diameterMm: 12.5, heightMm: 20 },
+  ],
+  canLeadSpacingMm: 2.5,
+  canStandoffMm: 1.0,
+};
+
+export function capacitorPackage(farads: number) {
+  if (farads < 1e-6) return { kind: 'disc' as const, ...CAPACITOR_PACKAGES.disc };
+  const can = CAPACITOR_PACKAGES.cans.find((c) => farads <= c.upToF)!;
+  return {
+    kind: 'can' as const,
+    diameterMm: can.diameterMm,
+    heightMm: can.heightMm,
+    leadSpacingMm: CAPACITOR_PACKAGES.canLeadSpacingMm,
+    standoffMm: CAPACITOR_PACKAGES.canStandoffMm,
+  };
+}

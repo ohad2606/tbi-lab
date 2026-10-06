@@ -26,6 +26,7 @@ import {
   PIR_HC_SR501,
   LED_MATRIX_1088AS,
   matrixPinXZ,
+  capacitorPackage,
   ESP32_DEVKITC,
   ESP32_PCB_BOTTOM,
   ESP32_PCB_TOP,
@@ -821,7 +822,91 @@ function buildLedMatrix(_c: SceneComponent, m: Materials, own: OwnedResources) {
   return g;
 }
 
+function buildCapacitor(c: SceneComponent, m: Materials, own: OwnedResources) {
+  const p = capacitorPackage(c.visual.farads ?? 100e-6);
+  const g = new THREE.Group();
+  const y0 = p.standoffMm;
+  if (p.kind === 'disc') {
+    // Disc ceramic, standing on edge (the disc's plane along x).
+    const disc = cylinder(
+      own,
+      p.diameterMm / 2,
+      p.thicknessMm,
+      own.sharedMat(
+        'ceramicDisc',
+        () => new THREE.MeshStandardMaterial({ color: '#d98a2b', roughness: 0.55 }),
+      ),
+      [0, y0 + p.diameterMm / 2, 0],
+      32,
+    );
+    disc.rotation.x = Math.PI / 2;
+    g.add(disc);
+  } else {
+    // Radial electrolytic, bipolar: sleeve, silver top with the vent cross, "NP" and value printed.
+    const R = p.diameterMm / 2;
+    g.add(
+      cylinder(
+        own,
+        R,
+        p.heightMm,
+        own.sharedMat(
+          'capSleeve',
+          () => new THREE.MeshStandardMaterial({ color: '#1d2f6b', roughness: 0.45 }),
+        ),
+        [0, y0 + p.heightMm / 2, 0],
+        32,
+      ),
+    );
+    g.add(cylinder(own, R * 0.96, 0.15, m.steel, [0, y0 + p.heightMm + 0.05, 0], 32));
+    const label = canvasTexture(own, 256, 256, (ctx) => {
+      ctx.clearRect(0, 0, 256, 256);
+      ctx.strokeStyle = '#7b8088';
+      ctx.lineWidth = 8;
+      ctx.beginPath();
+      ctx.moveTo(128, 50);
+      ctx.lineTo(128, 206);
+      ctx.moveTo(50, 128);
+      ctx.lineTo(206, 128);
+      ctx.stroke();
+    });
+    const top = new THREE.Mesh(
+      own.shared(`plane:capTop:${R}`, () => new THREE.CircleGeometry(R * 0.95, 32)),
+      own.mat(new THREE.MeshStandardMaterial({ map: label, transparent: true, roughness: 0.4 })),
+    );
+    top.rotation.x = -Math.PI / 2;
+    top.position.y = y0 + p.heightMm + 0.14;
+    g.add(top);
+    const uF = (c.visual.farads ?? 0) * 1e6;
+    const side = canvasTexture(own, 256, 256, (ctx) => {
+      ctx.clearRect(0, 0, 256, 256);
+      ctx.fillStyle = '#e9ecf2';
+      ctx.textAlign = 'center';
+      ctx.font = 'bold 44px sans-serif';
+      ctx.fillText('NP', 128, 90);
+      ctx.font = '38px sans-serif';
+      ctx.fillText(`${Number(uF.toPrecision(3))}µF`, 128, 150);
+    });
+    const face = new THREE.Mesh(
+      own.shared(
+        `plane:capSide:${R}:${p.heightMm}`,
+        () => new THREE.PlaneGeometry(R * 1.4, p.heightMm * 0.6),
+      ),
+      own.mat(new THREE.MeshStandardMaterial({ map: side, transparent: true, roughness: 0.5 })),
+    );
+    face.position.set(0, y0 + p.heightMm * 0.55, R + 0.02);
+    g.add(face);
+  }
+  g.add(
+    splayedLeads(c, own, m.lead, 0.25, [
+      { terminal: 'a', from: [-p.leadSpacingMm / 2, 0], top: y0 + 0.2, knee: 0.9 },
+      { terminal: 'b', from: [p.leadSpacingMm / 2, 0], top: y0 + 0.2, knee: 0.9 },
+    ]),
+  );
+  return g;
+}
+
 const BUILDERS: Record<ModelKey, Builder> = {
+  'capacitor.radial': buildCapacitor,
   'display.matrix': buildLedMatrix,
   'sensor.pir': buildPir,
   'transistor.to92': buildTo92,

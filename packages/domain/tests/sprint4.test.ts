@@ -53,6 +53,8 @@ describe('Sprint 4 catalog: the non-MCU V1 catalog is complete and closed (A16)'
         'sensor.pir_hc_sr501',
         // Matrices (§6.0).
         'display.led_matrix_8x8',
+        // Capacitor: exposed with time-stepped simulation (§6.0).
+        'component.capacitor',
       ].sort(),
     );
   });

@@ -305,6 +305,7 @@ function PartView({
 const LABEL_OFFSET: Partial<Record<SchematicSymbolKey, number>> = {
   'source.dc': 26,
   photoresistor: 26,
+  capacitor: 20,
   buzzer: 18,
   led: 26,
   diode: 18,
@@ -591,6 +592,15 @@ function drawSymbol(key: SchematicSymbolKey, c: ComponentInstance) {
           <polyline points="-12,-12 -8,-12 -8,-16" />
           <line x1={-2} y1={-24} x2={8} y2={-12} />
           <polyline points="4,-12 8,-12 8,-16" />
+        </>
+      );
+    case 'capacitor':
+      return (
+        <>
+          <line x1={-40} y1={0} x2={-5} y2={0} />
+          <line x1={-5} y1={-13} x2={-5} y2={13} />
+          <line x1={5} y1={-13} x2={5} y2={13} />
+          <line x1={5} y1={0} x2={40} y2={0} />
         </>
       );
     case 'buzzer':

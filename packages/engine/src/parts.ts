@@ -18,7 +18,7 @@
  */
 
 import type { ComponentInstance } from '@tbi-lab/domain';
-import type { Device } from './devices.js';
+import type { Device, TimeStep } from './devices.js';
 import type { ComponentResult, EngineError } from './session.js';
 
 /** A part's discrete state (language-neutral keys; booleans, numbers or tokens). */
@@ -49,6 +49,10 @@ export interface PartContext {
   quantity(key: string): number | undefined;
   /** A boolean or enum parameter, with any live value applied. */
   value(key: string): unknown;
+  /** Time-stepped sessions only (Sprint 10): the step being solved; undefined for a DC solve. */
+  readonly step?: TimeStep;
+  /** Time-stepped sessions: the part's history from the last accepted step (undefined at t = 0). */
+  history(): PartState | undefined;
 }
 
 /** The solved operating point, as a part model may read it. */
@@ -99,6 +103,12 @@ export interface PartModel {
   elements(ctx: PartContext, state: PartState): PartElement[];
   /** Stateful parts: the state the solved operating point implies. */
   nextState?(ctx: PartContext, state: PartState, sol: PartSolution): PartState;
+  /**
+   * Time-dependent parts (a capacitor): the session runs time-stepped when the circuit holds one.
+   * `history` is what the accepted step leaves for the next (integration history).
+   */
+  readonly timeDependent?: boolean;
+  history?(ctx: PartContext, sol: PartSolution): PartState;
   report(
     ctx: PartContext,
     state: PartState,

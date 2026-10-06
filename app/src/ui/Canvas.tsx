@@ -1389,6 +1389,8 @@ function valueLabel(c: ComponentInstance, fmt: (q: Quantity) => string): string 
   switch (c.type) {
     case 'component.resistor':
       return q('resistance');
+    case 'component.capacitor':
+      return q('capacitance');
     case 'instrument.lab_psu':
       return `${q('setpointVoltage')} / ${q('currentLimit')}`;
     default:

@@ -6,3 +6,4 @@ import './relay.js';
 import './bjtNpn.js';
 import './pir.js';
 import './ledMatrix.js';
+import './capacitor.js';

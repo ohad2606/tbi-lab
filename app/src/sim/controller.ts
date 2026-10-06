@@ -65,6 +65,8 @@ export type SimState =
       /** Push buttons held right now: transient runtime input, never project data. */
       pressed: string[];
       runtime?: RuntimeView;
+      /** Time-stepped sessions: how far simulated time trails real time, seconds. */
+      behindS?: number;
     }
   | { status: 'stopping'; runtime?: RuntimeView }
   | { status: 'failed'; failure: SimFailure; runtime?: RuntimeView };
@@ -257,6 +259,14 @@ export class SimulationController implements SimulationHost {
 
   private onMessage(msg: FromWorker): void {
     if (msg.type === 'ready' || msg.type === 'stopped') return;
+    if (msg.type === 'tick') {
+      // Time-stepped session: simulated time advanced. Only while running (a stop drops it).
+      const s = this.stateValue;
+      if (s.status !== 'running') return;
+      this.solves++;
+      this.set({ ...s, outcome: msg.outcome, solves: this.solves, behindS: msg.behindS });
+      return;
+    }
     const p = this.pending;
     if (!p || msg.requestId !== p.requestId) return; // stale: a newer request or a stop superseded it
     clearTimeout(p.timer);

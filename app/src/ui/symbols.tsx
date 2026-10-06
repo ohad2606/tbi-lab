@@ -121,6 +121,17 @@ export const SYMBOLS: Record<ComponentTypeId, SymbolDef> = {
       </>
     ),
   },
+  'component.capacitor': {
+    bbox: [-40, -14, 40, 14],
+    draw: () => (
+      <>
+        <line x1={-40} y1={0} x2={-5} y2={0} />
+        <line x1={-5} y1={-13} x2={-5} y2={13} class="actuator-part" />
+        <line x1={5} y1={-13} x2={5} y2={13} class="actuator-part" />
+        <line x1={5} y1={0} x2={40} y2={0} />
+      </>
+    ),
+  },
   'component.photoresistor': {
     bbox: [-40, -28, 40, 10],
     draw: () => (

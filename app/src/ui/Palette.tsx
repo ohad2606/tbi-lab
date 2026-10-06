@@ -10,7 +10,7 @@ import { SYMBOLS } from './symbols.js';
  */
 export const PALETTE_GROUPS: readonly { key: MessageKey; types: readonly ComponentTypeId[] }[] = [
   { key: 'palette.group.sources', types: ['instrument.lab_psu', 'component.ground'] },
-  { key: 'palette.group.passive', types: ['component.resistor'] },
+  { key: 'palette.group.passive', types: ['component.resistor', 'component.capacitor'] },
   {
     key: 'palette.group.semiconductors',
     types: ['component.led', 'component.rgb_led', 'component.diode', 'component.bjt_npn'],

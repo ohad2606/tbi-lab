@@ -256,7 +256,7 @@ describe('import validation rejects before anything is written (A7)', () => {
     const cases: [string, (p: Record<string, any>) => void, string][] = [
       [
         'unknown component type',
-        (p) => (p.project.components[0].type = 'component.capacitor'),
+        (p) => (p.project.components[0].type = 'component.potentiometer'), // V1.1, not a type
         'unknown_type',
       ],
       [

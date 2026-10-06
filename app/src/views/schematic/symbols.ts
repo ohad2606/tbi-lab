@@ -25,7 +25,8 @@ export type SchematicSymbolKey =
   | 'source.dc'
   | 'module'
   | 'photoresistor'
-  | 'buzzer';
+  | 'buzzer'
+  | 'capacitor';
 
 export interface TwoPinSymbol {
   kind: 'two-pin';
@@ -114,6 +115,13 @@ export const SCHEMATIC_SYMBOLS: Record<ComponentTypeId, SchematicSymbol> = {
   'component.ground': { kind: 'ground', terminal: 'ref' },
   // Sprint 10 parts.
   'component.photoresistor': { kind: 'two-pin', key: 'photoresistor', a: 'a', b: 'b' },
+  'component.capacitor': {
+    kind: 'two-pin',
+    key: 'capacitor',
+    a: 'a',
+    b: 'b',
+    valueParam: 'capacitance',
+  },
   'component.buzzer': { kind: 'two-pin', key: 'buzzer', a: 'positive', b: 'negative' },
   'component.rgb_led': {
     kind: 'module',

@@ -206,6 +206,14 @@ export class Circuit {
   }
 
   /**
+   * One time step (Sprint 10 sessions): stateful devices use their companion models with the
+   * history they were constructed with; everything else is the DC solve, unchanged.
+   */
+  solveStep(step: TimeStep, options: SolveOptions = {}): SolveResult {
+    return this.solveAt(options, step);
+  }
+
+  /**
    * Fixed-step transient analysis (Sprint 10, INTERNAL: no product feature uses it yet; see
    * docs/sprints/SPRINT-10-ARCHITECTURE.md). Deterministic: the same circuit and options give
    * the same numbers. Time zero is the DC operating point (capacitors open), or the all-zero

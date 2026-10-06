@@ -43,4 +43,9 @@ export type FromWorker =
   | { type: 'ready' }
   | { type: 'outcome'; requestId: number; outcome: SolveOutcome; timing: WorkerTiming }
   | { type: 'stopped'; requestId: number }
+  /**
+   * Sprint 10, time-stepped sessions: the latest state, posted as simulated time advances (no
+   * request). `behindS`: how far simulated time trails real time (a heavy circuit).
+   */
+  | { type: 'tick'; outcome: SolveOutcome; behindS: number }
   | { type: 'failure'; requestId: number; message: string };

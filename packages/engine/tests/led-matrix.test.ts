@@ -68,6 +68,7 @@ describe('LED matrix 8x8 (1088AS)', () => {
       node: (t: string) => t,
       quantity: () => undefined,
       value: () => undefined,
+      history: () => undefined,
     } as Parameters<typeof big.elements>[0];
     expect(big.elements(ctx, {})).toHaveLength(256);
   });

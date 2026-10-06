@@ -1,4 +1,5 @@
 import { useAppState, useStore, useT } from './context.js';
+import { formatNumber } from '../i18n/i18n.js';
 import { BuzzerSound } from './BuzzerSound.js';
 
 /**
@@ -23,7 +24,7 @@ const LABELS = [
 ] as const;
 
 export function SimControls() {
-  const { sim } = useAppState();
+  const { sim, locale } = useAppState();
   const store = useStore();
   const t = useT();
   const active = sim.status === 'running' || sim.status === 'starting' || sim.status === 'stopping';
@@ -92,6 +93,24 @@ export function SimControls() {
             }
           : {})}
       >
+        {sim.status === 'running' && sim.outcome.ok && sim.outcome.time !== undefined && (
+          // Time-stepped circuits (a capacitor): simulated time since Run.
+          <span
+            class="sim-time technical"
+            dir="ltr"
+            data-testid="sim-time"
+            data-time={sim.outcome.time}
+            title={t('sim.timeNote')}
+          >
+            {t('sim.time', {
+              // Seconds: an SI symbol, the same in every locale; the number is locale-formatted.
+              time: `${formatNumber(locale, Math.round(sim.outcome.time * 100) / 100)} s`,
+            })}
+            {(sim.behindS ?? 0) > 0.2 && (
+              <span class="sim-time-behind"> ({t('sim.timeBehind')})</span>
+            )}
+          </span>
+        )}
         {/* A state, not an action: plain text with a small state dot, never focusable. */}
         <span class="sim-status-dot" aria-hidden="true" />
         <span class="sim-status-prefix">{t('sim.status.prefix')}</span>

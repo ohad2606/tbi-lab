@@ -27,6 +27,7 @@ import rgbMixer from './data/rgb-mixer.json';
 import ohmsLaw from './data/ohms-law.json';
 import pirAlarm from './data/pir-alarm.json';
 import pushButton from './data/push-button.json';
+import rcFade from './data/rc-fade.json';
 import voltageDivider from './data/voltage-divider.json';
 
 export type ExampleProbe =
@@ -113,6 +114,13 @@ export const EXAMPLES: readonly Example[] = [
     summaryKey: 'example.led-matrix.summary',
     document: doc(ledMatrix),
     probes: [I('R1'), I('R2')],
+  },
+  {
+    id: 'rc-fade',
+    titleKey: 'example.rc-fade.title',
+    summaryKey: 'example.rc-fade.summary',
+    document: doc(rcFade),
+    probes: [V('C1', 'a'), I('D1')],
   },
   {
     id: 'relay-load',

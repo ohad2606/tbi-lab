@@ -179,3 +179,37 @@ test('LED matrix: a dot lights only where a driven column meets a grounded row (
   await expect(view).toHaveAttribute('data-status', 'ready', { timeout: 60_000 });
   await expect(view).toHaveAttribute('data-lit', 'DS1');
 });
+
+test('capacitor (time-stepped): the LED fades in as C charges; Stop/Run restarts discharged at t = 0', async ({
+  page,
+}) => {
+  await openExample(page, 'rc-fade');
+  await run(page);
+  const time = page.getByTestId('sim-time');
+  await expect(time).toBeVisible();
+  /** The LED probe reading in milliamps (the text is e.g. "I(D1) = 4.12 mA"). */
+  const ledMa = async () => {
+    const text = (await page.getByTestId('probe-reading-D1').textContent()) ?? '';
+    const m = /([\d.]+)\s*(m|µ|n)?A/.exec(text);
+    if (!m) return NaN;
+    const toMa = { m: 1, µ: 1e-3, n: 1e-6 } as Record<string, number>;
+    return Number(m[1]) * (m[2] ? toMa[m[2]]! : 1e3);
+  };
+  const t0 = Number(await time.getAttribute('data-time'));
+  expect(t0).toBeLessThan(0.5);
+  // Simulated time advances with real time; the LED current rises as the capacitor charges.
+  await expect
+    .poll(async () => Number(await time.getAttribute('data-time')), { timeout: 15_000 })
+    .toBeGreaterThan(1.5);
+  await expect.poll(ledMa, { timeout: 10_000 }).toBeGreaterThan(4);
+  // Open the switch: the capacitor discharges through the LED.
+  await page.getByTestId('actuator-SW1').click();
+  await expect.poll(ledMa, { timeout: 15_000 }).toBeLessThan(0.5);
+  // Stop discards the state; a new Run starts from t = 0, discharged.
+  await page.getByTestId('sim-stop').click();
+  await expect(time).toHaveCount(0);
+  await page.getByTestId('actuator-SW1').click(); // close it again
+  await run(page);
+  expect(Number(await page.getByTestId('sim-time').getAttribute('data-time'))).toBeLessThan(0.5);
+  await page.getByTestId('sim-stop').click();
+});

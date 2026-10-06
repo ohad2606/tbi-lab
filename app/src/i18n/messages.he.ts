@@ -165,6 +165,14 @@ export const he: Record<MessageKey, string> = {
   'terminal.col6': 'עמודה 6 (אנודות)',
   'terminal.col7': 'עמודה 7 (אנודות)',
   'terminal.col8': 'עמודה 8 (אנודות)',
+  'component.component.capacitor.name': 'קבל',
+  'param.capacitance': 'קיבול',
+  'param.ratedVoltage': 'מתח נקוב',
+  'sim.part.state.charge': 'מטען אגור (קולון)',
+  'sim.part.state.energy': 'אנרגיה אגורה (ג׳אול)',
+  'sim.time': 't = {time}',
+  'sim.timeNote': 'זמן מדומה מאז ההרצה (צעדים של 1 ms). הקבלים מתחילים פרוקים בכל הרצה.',
+  'sim.timeBehind': 'רץ לאט יותר מהזמן האמיתי',
   'sim.part.short.red': 'R',
   'sim.part.short.green': 'G',
   'sim.part.short.blue': 'B',
@@ -176,6 +184,7 @@ export const he: Record<MessageKey, string> = {
   'unit.volt.symbol': 'V',
   'unit.ampere.symbol': 'A',
   'unit.lux.symbol': 'lx',
+  'unit.farad.symbol': 'F',
 
   'sim.run': 'הרצה',
   'sim.stop': 'עצירה',
@@ -408,6 +417,9 @@ export const he: Record<MessageKey, string> = {
   'example.led-matrix.title': 'מטריצת LED: שורות ועמודות',
   'example.led-matrix.summary':
     'שתי עמודות מוזנות מ־5 V דרך 220 Ω; מתגים מחברים שתי שורות לאדמה. נקודה נדלקת רק במפגש של עמודה מוזנת ושורה מחוברת לאדמה: העיקרון שמאחורי סריקת מטריצה.',
+  'example.rc-fade.title': 'תזמון RC: נורית שדועכת',
+  'example.rc-fade.summary':
+    'קבל של 2200 µF נטען דרך 1 kΩ ומזין נורית. הריצו: הנורית מתבהרת בהדרגה בזמן שהקבל נטען. פתחו את המתג: היא דועכת בזמן שהקבל נפרק. הזמן המדומה נספר מרגע ההרצה.',
   'example.led-colours.title': 'צבעי LED: אותו נגד, זרמים שונים',
   'example.led-colours.summary':
     'נוריות LED אדומה, צהובה וירוקה, כל אחת מ־⁦5 V⁩ דרך ⁦180 Ω⁩. לכל צבע מתח קדמי משלו (בערך ⁦2.0 V⁩ באדומה, ⁦2.4 V⁩ בצהובה ובירוקה), ולכן אותו נגד קובע בערך ⁦16.7 mA⁩ באדומה ו־⁦14.5 mA⁩ באחרות.',
