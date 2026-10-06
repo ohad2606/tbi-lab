@@ -55,7 +55,80 @@ body,
 .app {
   height: 100%;
   display: grid;
-  grid-template-rows: auto auto 1fr;
+  grid-template-rows: auto auto 1fr auto;
+}
+
+/* Status line (Sprint 10): the build identity, always visible, never over content. */
+.statusbar {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  min-block-size: 1.35rem;
+  padding-inline: 0.6rem;
+  border-block-start: 1px solid var(--border);
+  background: var(--panel);
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.version-status {
+  position: relative;
+}
+
+.version-button {
+  border: 0;
+  background: none;
+  padding: 0.05rem 0.3rem;
+  font: inherit;
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, monospace;
+  color: inherit;
+  cursor: pointer;
+  border-radius: 3px;
+}
+
+.version-button:hover,
+.version-button:focus-visible {
+  color: var(--text);
+}
+
+.version-details {
+  display: none;
+  position: absolute;
+  inset-block-end: calc(100% + 0.3rem);
+  inset-inline-end: 0;
+  z-index: 50;
+  margin: 0;
+  padding: 0.5rem 0.7rem;
+  min-inline-size: 22rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+  color: var(--text);
+  font-size: 0.78rem;
+}
+
+.version-status:hover .version-details,
+.version-status:focus-within .version-details,
+.version-status.open .version-details {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.version-details div {
+  display: grid;
+  grid-template-columns: 7rem 1fr;
+  gap: 0.6rem;
+}
+
+.version-details dt {
+  color: var(--muted);
+}
+
+.version-details dd {
+  margin: 0;
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, monospace;
+  overflow-wrap: anywhere;
 }
 
 .app-message {
@@ -1601,7 +1674,7 @@ select {
 
 @media (max-width: 1023px) {
   .app {
-    grid-template-rows: auto auto auto 1fr;
+    grid-template-rows: auto auto auto 1fr auto;
   }
 
   .narrow-note {

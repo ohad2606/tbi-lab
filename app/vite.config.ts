@@ -1,5 +1,6 @@
 import type { IncomingMessage } from 'node:http';
-import { defineConfig, type ProxyOptions } from 'vite';
+import { defineConfig, type Plugin, type ProxyOptions } from 'vite';
+import { currentBuildInfo, versionJson } from './buildInfo.config.js';
 
 /**
  * `/runtime` is the R2 Session Host API, same-origin (Sprint 6). In production the deployment's
@@ -45,7 +46,18 @@ const runtimeProxy = {
   },
 };
 
+/** Build identity: one object, compiled in and emitted as /version.json (buildInfo.config.ts). */
+const buildInfo = currentBuildInfo(new URL('../', import.meta.url));
+const versionFile: Plugin = {
+  name: 'tbi-version-json',
+  generateBundle() {
+    this.emitFile({ type: 'asset', fileName: 'version.json', source: versionJson(buildInfo) });
+  },
+};
+
 export default defineConfig({
+  define: { __TBI_BUILD__: JSON.stringify(buildInfo) },
+  plugins: [versionFile],
   // Preact via the automatic JSX runtime; no framework preset or Babel needed.
   oxc: { jsx: { runtime: 'automatic', importSource: 'preact' } },
   build: { target: 'es2022', sourcemap: true },

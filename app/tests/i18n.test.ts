@@ -74,6 +74,8 @@ describe('locale bundles', () => {
       'unit.ohm.symbol',
       'unit.volt.symbol',
       'unit.watt.symbol',
+      // Sprint 10: "Commit" is the professional term for the build identity (version details).
+      'version.commit',
     ]);
   });
 

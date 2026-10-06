@@ -4,6 +4,7 @@ import { Editor } from './Editor.js';
 import { Home } from './Home.js';
 import { NoticeBar } from './NoticeBar.js';
 import { TopBar } from './TopBar.js';
+import { VersionStatus } from './VersionStatus.js';
 
 export function App() {
   const state = useAppState();
@@ -78,6 +79,7 @@ export function App() {
       <TopBar />
       <NoticeBar />
       {state.screen === 'editor' && state.doc ? <Editor /> : <Home />}
+      <VersionStatus />
     </div>
   );
 }
