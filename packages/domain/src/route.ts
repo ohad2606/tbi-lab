@@ -20,21 +20,26 @@
  *      reads as connected to it, so this ranks above everything else: a longer route around
  *      the part always beats a short one along a header. Only the hop's own two endpoints are
  *      exempt.
- *   2. length running coincident with an existing wire segment   (never look like one wire)
- *   3. length through a component body                            (never cross a symbol)
- *   4. length running along a wire that is attached at the hop's own endpoint: the same terminal,
+ *   2. HEADER-ROW BAND: length inside the exclusion band of a board header row (its pins and
+ *      their stubs, grown by `HEADER_CLEARANCE` on every side; Sprint 10 second owner blocker).
+ *      A wire running along or beside a pin row, or along the row's line beyond its last pin,
+ *      reads as attached to the row. Only a hop's own pin on that row may cross the band, and
+ *      only by its straight, outward exit (perpendicular to the row, away from the board)
+ *   3. length running coincident with an existing wire segment   (never look like one wire)
+ *   4. length through a component body                            (never cross a symbol)
+ *   5. length running along a wire that is attached at the hop's own endpoint: the same terminal,
  *      so the same net, and nothing false is implied. Needed when that wire takes the only free
  *      way out of a pin (along a header the neighbouring pins block both other directions)
- *   5. touches: meeting an existing wire at a point that is not a clean crossing (a T or an end
+ *   6. touches: meeting an existing wire at a point that is not a clean crossing (a T or an end
  *      on the wire reads as a connection)
- *   6. pin-field clearance: unrelated board header pins the route runs right beside (one grid
+ *   7. pin-field clearance: unrelated board header pins the route runs right beside (one grid
  *      step away). Not misleading, but a wire hugging a header reads poorly; a wire goes around
  *      a pin field with a visible gap when that costs only bends and length. The pins next to
  *      the hop's own endpoints are exempt (every way out of a header pin passes them)
- *   7. crossings + bends (a clean crossing is allowed and drawn with a bridge; it costs the
+ *   8. crossings + bends (a clean crossing is allowed and drawn with a bridge; it costs the
  *      same as one extra bend)
- *   8. total length
- *   9. candidate order (the short shapes before the search result)
+ *   9. total length
+ *  10. candidate order (the short shapes before the search result)
  *
  * Presentation only. A route has NO electrical meaning: connectivity comes from explicit wire
  * endpoints (terminals, junctions), never from where a route happens to pass, so a new wire can
@@ -76,6 +81,17 @@ export interface RouteObstacles {
    * clearance from them where it can (criterion 6). Optional.
    */
   field?: readonly Point[];
+  /**
+   * Board header rows (Sprint 10): the box of the row's pins and their stubs, and the unit
+   * direction pointing out of the board across the row. Criterion 2 keeps routes out of the box
+   * grown by `HEADER_CLEARANCE`, except a hop endpoint's straight outward exit. Optional.
+   */
+  headers?: readonly HeaderRow[];
+}
+
+export interface HeaderRow {
+  box: RouteBox;
+  outward: Point;
 }
 
 /** How far outside its endpoints a channel may run, in grid steps. */
@@ -89,6 +105,14 @@ const CHANNEL_REACH = 8;
  * hit area by 11 units).
  */
 export const TERMINAL_KEEP_OUT = GRID / 2;
+
+/**
+ * Header-row clearance band (Sprint 10): how far beyond a header row's pins and stubs other
+ * wires must stay. Two and a half grid steps: the nearest grid line a wire can use beside a row is
+ * three steps (60 units) from the pin centres, about 54 units of clear space to a pin marker, so
+ * a wire passing a header reads as a separate run, not as part of the row (owner review).
+ */
+export const HEADER_CLEARANCE = (5 * GRID) / 2;
 
 type Seg = readonly [Point, Point];
 const eq = (p: Point, q: Point) => p.x === q.x && p.y === q.y;
@@ -243,6 +267,7 @@ function cost(path: Point[], obs: RouteObstacles, ends: readonly Point[]): numbe
   }
   const keepOut = keepOutHits(segs, obs, isEnd);
   const hug = hugs(segs, obs, ends);
+  const banded = bandLength(segs, obs, ends);
   // Points where the new route meets an existing wire without a clean crossing.
   for (const t of obs.segments) {
     for (const q of [t[0], t[1]]) if (!isEnd(q) && segs.some((s) => onSeg(q, s))) touches++;
@@ -253,7 +278,7 @@ function cost(path: Point[], obs: RouteObstacles, ends: readonly Point[]): numbe
     (n, s) => n + Math.abs(s[1].x - s[0].x) + Math.abs(s[1].y - s[0].y),
     0,
   );
-  return [keepOut, overlap, body, shared, touches, hug, crossings + bends, length];
+  return [keepOut, banded, overlap, body, shared, touches, hug, crossings + bends, length];
 }
 
 /** An existing wire segment that ends at one of the hop's endpoints (a wire on the same terminal). */
@@ -264,7 +289,7 @@ const sharesEnd = (t: Seg, ends: readonly Point[]) => ends.some((e) => eq(t[0], 
  * touches no wire.
  */
 const clean = (k: readonly number[]) =>
-  k[0] === 0 && k[1] === 0 && k[2] === 0 && k[3] === 0 && k[4] === 0 && k[5] === 0;
+  k[0] === 0 && k[1] === 0 && k[2] === 0 && k[3] === 0 && k[4] === 0 && k[5] === 0 && k[6] === 0;
 
 /** Whether pin-field point p is one grid step beside a segment (clear of it, but hugging it). */
 const beside = (p: Point, s: Seg) => {
@@ -281,8 +306,76 @@ function hugs(segs: readonly Seg[], obs: RouteObstacles, ends: readonly Point[])
   return n;
 }
 
+/** A header row's exclusion band: its pin field grown by `HEADER_CLEARANCE`. */
+const band = (h: HeaderRow): RouteBox => ({
+  minX: h.box.minX - HEADER_CLEARANCE,
+  minY: h.box.minY - HEADER_CLEARANCE,
+  maxX: h.box.maxX + HEADER_CLEARANCE,
+  maxY: h.box.maxY + HEADER_CLEARANCE,
+});
+const inBox = (p: Point, q: RouteBox) =>
+  p.x >= q.minX && p.x <= q.maxX && p.y >= q.minY && p.y <= q.maxY;
+/** Length of an axis-aligned segment inside a box (its interior, or along its inside). */
+function lengthInside(s: Seg, q: RouteBox): number {
+  const x0 = Math.max(Math.min(s[0].x, s[1].x), q.minX);
+  const x1 = Math.min(Math.max(s[0].x, s[1].x), q.maxX);
+  const y0 = Math.max(Math.min(s[0].y, s[1].y), q.minY);
+  const y1 = Math.min(Math.max(s[0].y, s[1].y), q.maxY);
+  if (x0 > x1 || y0 > y1) return 0;
+  const inner = (v: number, lo: number, hi: number) => v > lo && v < hi;
+  if (horizontal(s)) return inner(s[0].y, q.minY, q.maxY) ? x1 - x0 : 0;
+  if (vertical(s)) return inner(s[0].x, q.minX, q.maxX) ? y1 - y0 : 0;
+  return 0;
+}
+/**
+ * Whether segment s is a hop endpoint's straight outward exit across header row h: it starts (or
+ * ends) at an endpoint inside the row's band and runs along the row's outward direction, away
+ * from the board.
+ */
+function outwardExit(s: Seg, h: HeaderRow, ends: readonly Point[]): boolean {
+  const q = band(h);
+  for (const [from, to] of [
+    [s[0], s[1]],
+    [s[1], s[0]],
+  ] as const) {
+    if (!ends.some((e) => eq(e, from)) || !inBox(from, q)) continue;
+    const dx = Math.sign(to.x - from.x);
+    const dy = Math.sign(to.y - from.y);
+    if (dx === Math.sign(h.outward.x) && dy === Math.sign(h.outward.y)) return true;
+  }
+  return false;
+}
+/**
+ * The search's per-step form of `outwardExit`: a grid step lying on an endpoint's outward exit
+ * line inside the band (on the endpoint's row, on its outward side). A whole straight exit is
+ * made of such steps; pricing only the step that touches the endpoint as exempt would make the
+ * search prefer the shortest band crossing instead of the straight exit.
+ */
+function onExitLine(s: Seg, h: HeaderRow, ends: readonly Point[]): boolean {
+  const q = band(h);
+  return ends.some((e) => {
+    if (!inBox(e, q)) return false;
+    return s.every((p) =>
+      h.outward.y === 0
+        ? p.y === e.y && Math.sign(p.x - e.x) !== -Math.sign(h.outward.x)
+        : p.x === e.x && Math.sign(p.y - e.y) !== -Math.sign(h.outward.y),
+    );
+  });
+}
+
+/** Criterion 2: route length inside header-row bands, outward exits of its own pins exempt. */
+function bandLength(segs: readonly Seg[], obs: RouteObstacles, ends: readonly Point[]): number {
+  let n = 0;
+  for (const h of obs.headers ?? []) {
+    const q = band(h);
+    for (const s of segs) if (!outwardExit(s, h, ends)) n += lengthInside(s, q);
+  }
+  return n;
+}
+
 /** Weights that make the search's additive cost follow the lexicographic order above. */
 const W_KEEP = 1e15;
+const W_BAND = 1e14; // per grid step inside a header-row band
 const W_OVERLAP = 1e13; // per grid step
 const W_BODY = 1e11; // per grid step
 const W_SHARED = 1e9; // per grid step
@@ -291,7 +384,7 @@ const W_HUG = 1e5; // per grid step beside a pin-field point
 const W_BEND = 1e3; // a bend or a clean crossing; a grid step of length costs 1
 /**
  * Search area: a margin around the endpoints and the bodies it reaches, widened (doubling) while
- * the best route still enters a keep-out, up to `SEARCH_MARGIN_MAX`; and its largest size.
+ * the best route still enters a keep-out or a header band, up to `SEARCH_MARGIN_MAX`; and its largest size.
  */
 const SEARCH_MARGIN = 4 * GRID;
 const SEARCH_MARGIN_MAX = 32 * GRID;
@@ -339,6 +432,7 @@ function searchRoute(a: Point, b: Point, obs: RouteObstacles, margin: number): P
   const node = (p: Point) => ((p.y - y0) / GRID) * nx + (p.x - x0) / GRID;
   const at = (n: number): Point => ({ x: x0 + (n % nx) * GRID, y: y0 + Math.floor(n / nx) * GRID });
   const isEnd = (p: Point) => eq(p, a) || eq(p, b);
+  const ends = [a, b];
   // Spatial buckets (by nearest lattice node) of keep-out points and wire segments.
   const cell = (x: number, y: number) =>
     `${Math.round((x - x0) / GRID)},${Math.round((y - y0) / GRID)}`;
@@ -408,6 +502,8 @@ function searchRoute(a: Point, b: Point, obs: RouteObstacles, margin: number): P
     for (const p of union(nu.p, nv.p)) if (distance(p, s) < TERMINAL_KEEP_OUT) c += W_KEEP;
     for (const l of union(nu.l, nv.l)) if (segDistance(s, l) < TERMINAL_KEEP_OUT) c += W_KEEP;
     for (const p of union(nu.f, nv.f)) if (beside(p, s)) c += W_HUG;
+    for (const h of obs.headers ?? [])
+      if (!onExitLine(s, h, ends)) c += (lengthInside(s, band(h)) / GRID) * W_BAND;
     for (const t of union(nu.t, nv.t)) {
       const o = overlapLength(s, t) / GRID;
       c += o * (sharesEnd(t, [a, b]) ? W_SHARED : W_OVERLAP);
@@ -545,6 +641,9 @@ export function autoRoute(waypoints: readonly Point[], obstacles: RouteObstacles
       }
     }
     // None of the short shapes is clean: search, widening the area while a keep-out remains.
+    // Widening stops once keep-out and band are solved, or when a wider area no longer reduces
+    // them (a pin boxed in by its neighbours cannot do better however far the search reaches).
+    let previous: number[] | null = null;
     for (let m = SEARCH_MARGIN; !clean(bestCost) && m <= SEARCH_MARGIN_MAX; m *= 2) {
       const found = searchRoute(a, b, obs, m);
       if (!found) break;
@@ -553,7 +652,10 @@ export function autoRoute(waypoints: readonly Point[], obstacles: RouteObstacles
         best = found;
         bestCost = k;
       }
-      if (bestCost[0] === 0) break;
+      if (bestCost[0] === 0 && bestCost[1] === 0) break;
+      // (Keep-out is always pursued to the largest area; only a band remainder may stop early.)
+      if (previous && k[0] === 0 && !better(k.slice(0, 2), previous.slice(0, 2))) break;
+      previous = k;
     }
     for (let j = 0; j < best!.length - 1; j++) segments.push([best![j]!, best![j + 1]!]);
     path.push(...best!.slice(1));
@@ -596,6 +698,7 @@ export function routeObstacles(
   };
   const leads: [Point, Point][] = [];
   const field: Point[] = [];
+  const headers: HeaderRow[] = [];
   for (const c of doc.components) {
     for (const t of getTypeDef(c.type)?.terminals ?? []) {
       const p = terminalPosition(doc, c.id, t.id);
@@ -618,9 +721,30 @@ export function routeObstacles(
           boardTerminalId(pin) !== undefined ? pos.x : edge + Math.sign(pos.x) * BOARD_STUB;
         leads.push([at({ x: outer, y: pos.y }), at({ x: edge, y: pos.y })]);
       }
+      // Each header row: its pins and their stubs, from the board edge out to the pin points.
+      for (const header of new Set(ESP32_DEVKITC_WROOM32.pins.map((p) => p.header))) {
+        const pos = ESP32_DEVKITC_WROOM32.pins
+          .filter((p) => p.header === header)
+          .map((p) => boardPinPosition(p));
+        const side = Math.sign(pos[0]!.x);
+        const corners = [
+          at({ x: side * BOARD_HALF_WIDTH, y: Math.min(...pos.map((p) => p.y)) }),
+          at({ x: pos[0]!.x, y: Math.max(...pos.map((p) => p.y)) }),
+        ];
+        const out = rotatePoint({ x: side, y: 0 }, placement.rotation);
+        headers.push({
+          box: {
+            minX: Math.min(corners[0]!.x, corners[1]!.x),
+            minY: Math.min(corners[0]!.y, corners[1]!.y),
+            maxX: Math.max(corners[0]!.x, corners[1]!.x),
+            maxY: Math.max(corners[0]!.y, corners[1]!.y),
+          },
+          outward: { x: Math.round(out.x), y: Math.round(out.y) },
+        });
+      }
     }
   }
-  return { segments, boxes, points, leads, field };
+  return { segments, boxes, points, leads, field, headers };
 }
 
 /**
@@ -672,6 +796,39 @@ export function rerouteWires(
     };
   }
   return out;
+}
+
+/**
+ * Repair stored wires that break the visual invariant (Sprint 10): a wire whose stored route
+ * enters an unrelated terminal's keep-out or a header-row band (criteria 1 and 2) reads as
+ * attached to something it is not connected to. Such a wire, typically drawn before these rules
+ * existed, is re-routed (`rerouteWires`). Every other wire keeps its stored route exactly, so
+ * drawings are not churned by softer preferences.
+ *
+ * Presentation only: endpoints never change, so connectivity and nets cannot change. Returns
+ * the same document when nothing needs repair.
+ */
+export function repairWireRoutes(
+  doc: ProjectDocument,
+  boxes: readonly RouteBox[],
+): ProjectDocument {
+  const broken = doc.layout.wires.filter((w) => {
+    if (isContact(doc, w)) return false;
+    const route = wireRoute(doc, w);
+    if (!route || route.length < 2) return false;
+    const k = cost(route, routeObstacles(doc, boxes, new Set([w.id])), [
+      route[0]!,
+      route[route.length - 1]!,
+    ]);
+    return k[0]! > 0 || k[1]! > 0;
+  });
+  return broken.length
+    ? rerouteWires(
+        doc,
+        broken.map((w) => w.id),
+        boxes,
+      )
+    : doc;
 }
 
 /**

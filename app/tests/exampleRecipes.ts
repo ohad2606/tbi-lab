@@ -370,7 +370,7 @@ export const RECIPES: Record<string, () => ProjectDocument> = {
     r.set(S, 'closed', true);
     r.wire(T('PSU1', 'positive'), T(S, 'a'));
     r.wire(T(S, 'b'), T(R1, 'a'));
-    r.wire(T(R1, 'b'), T(C, 'a'), [{ x: 340, y: -20 }]);
+    r.wire(T(R1, 'b'), T(C, 'a'), [{ x: 300, y: 0 }]);
     r.wire(T(C, 'b'), T(G2, 'ref'));
     r.wire(T(R1, 'b'), T(R2, 'a'));
     r.wire(T(R2, 'b'), T(D, 'anode'), [{ x: 520, y: -20 }]);
@@ -469,9 +469,11 @@ export const RECIPES: Record<string, () => ProjectDocument> = {
     r.program(U1, 'TbiBanks');
     const SW = r.place('component.toggle_switch', 0, -100);
     const PB = r.place('component.push_button', 0, -160);
-    const R2 = r.place('component.resistor', 140, -100);
-    const R3 = r.place('component.resistor', 200, -40, 1);
-    const G2 = r.place('component.ground', 200, 60);
+    // The pull-down branch stands three grid steps clear of the J2 header row (Sprint 10: no
+    // wire runs beside a header row).
+    const R2 = r.place('component.resistor', 100, -100);
+    const R3 = r.place('component.resistor', 160, -40, 1);
+    const G2 = r.place('component.ground', 160, 60);
     const R1 = r.place('component.resistor', 480, 60);
     const D1 = r.place('component.led', 600, 60);
     const G3 = r.place('component.ground', 680, 140);
@@ -484,7 +486,7 @@ export const RECIPES: Record<string, () => ProjectDocument> = {
     r.wire(T(SW, 'b'), T(R2, 'a'));
     r.wire(T(PB, 'b'), T(R2, 'a'));
     const w = r.wire(T(R2, 'b'), T(U1, 'gpio34'));
-    r.wire({ kind: 'wire', wire: w, at: { x: 200, y: -100 } }, T(R3, 'a'));
+    r.wire({ kind: 'wire', wire: w, at: { x: 160, y: -100 } }, T(R3, 'a'));
     r.wire(T(R3, 'b'), T(G2, 'ref'));
     r.wire(T(U1, 'gpio4'), T(R1, 'a'));
     r.wire(T(R1, 'b'), T(D1, 'anode'));

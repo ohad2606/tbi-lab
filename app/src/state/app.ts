@@ -138,6 +138,12 @@ export interface AppDeps {
   builds?: ProgramBuilds;
   /** Build service client, for the Advanced prebuilt image upload. */
   buildClient?: BuildClient;
+  /**
+   * Layout repair applied to a project when it is opened (Sprint 10): re-routes stored wires
+   * that run through an unrelated pin or along a header row (domain `repairWireRoutes`, given
+   * the canvas symbol boxes). Presentation only: endpoints and nets never change.
+   */
+  repairLayout?: (doc: ProjectDocument) => ProjectDocument;
 }
 
 export class AppStore {
@@ -415,8 +421,9 @@ export class AppStore {
     };
     if (result.status === 'ok') {
       this.deps.prefs.set(PREF_LAST_PROJECT, projectId);
-      this.set({ ...base, screen: 'editor', doc: result.doc, readOnly: null });
-      if (result.migratedFrom !== null) this.commit(result.doc);
+      const repaired = this.deps.repairLayout?.(result.doc) ?? result.doc;
+      this.set({ ...base, screen: 'editor', doc: repaired, readOnly: null });
+      if (result.migratedFrom !== null || repaired !== result.doc) this.commit(repaired);
     } else if (result.status === 'newer') {
       // Never guess at a newer schema. If its core still validates under this version's rules,
       // show it read-only; otherwise say plainly that it cannot be displayed.
@@ -672,7 +679,8 @@ export class AppStore {
     try {
       const title = translate(this.stateValue.locale, example.titleKey);
       const name = this.uniqueName(title, await this.libraryNames());
-      doc = copyAsNewProject(opened.doc, this.newIdentity(name));
+      const copy = copyAsNewProject(opened.doc, this.newIdentity(name));
+      doc = this.deps.repairLayout?.(copy) ?? copy;
       await this.deps.storage!.add(doc);
     } catch (e) {
       this.storageFailure(e, 'library.error.create');

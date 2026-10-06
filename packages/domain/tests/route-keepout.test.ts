@@ -12,12 +12,14 @@ import {
   addWire,
   autoRoute,
   autoRouteVertices,
+  boardPinPosition,
   boardTerminalId,
   checkCircuit,
   connectivity,
   createPackage,
   orthogonalRoute,
   parsePackage,
+  repairWireRoutes,
   rotatePoint,
   routeObstacles,
   serializePackage,
@@ -114,6 +116,91 @@ function throughBodies(r: Point[], bx: readonly RouteBox[]): number {
 const length = (r: Point[]) =>
   r.slice(1).reduce((n, q, i) => n + Math.abs(q.x - r[i]!.x) + Math.abs(q.y - r[i]!.y), 0);
 
+/**
+ * Rendered-geometry clearance (independent of the router): the visible ink gap between a route
+ * and every unrelated board pin marker and pin stub, as the canvas draws them (app symbols and
+ * styles: wire stroke 2.5, pin marker r 3.5 + stroke 1.5, stub stroke 2.5; stubs from the board
+ * edge at +-60 out to the pin at +-80, or 8 units for a pin that cannot be wired).
+ */
+const WIRE_HALF = 1.25;
+const MARK_R = 3.5 + 0.75;
+const STUB_HALF = 1.25;
+function inkGaps(doc: ProjectDocument, board: string, route: Point[]) {
+  const at = doc.layout.components[board]!;
+  const ends = [route[0]!, route.at(-1)!];
+  // Near an endpoint (within the header band's reach, 70 units): a route must reach its own pin
+  // or a part placed next to a header, so only a clear gap is required there.
+  const nearEnd = (p: Point) => ends.some((e) => Math.hypot(p.x - e.x, p.y - e.y) <= 70 + 1e-9);
+  const segMin = (p: Point) => Math.min(...route.slice(1).map((q, i) => dist(p, route[i]!, q)));
+  const out: { what: string; gap: number; adjacent: boolean }[] = [];
+  for (const pin of ESP32_DEVKITC_WROOM32.pins) {
+    const q = boardPinPosition(pin);
+    const p = { x: at.x + q.x, y: at.y + q.y };
+    if (ends.some((e) => e.x === p.x && e.y === p.y)) continue; // the route's own pin
+    const edge = { x: at.x + Math.sign(q.x) * 60, y: p.y };
+    const wireable = boardTerminalId(pin) !== undefined;
+    const outer = wireable ? p : { x: edge.x + Math.sign(q.x) * 8, y: p.y };
+    const adjacent = nearEnd(p);
+    if (wireable)
+      out.push({
+        what: `${pin.headerLabel} marker`,
+        gap: segMin(p) - WIRE_HALF - MARK_R,
+        adjacent,
+      });
+    // stub: distance between the route and the stub segment
+    let d = Infinity;
+    for (let i = 0; i < route.length - 1; i++) {
+      const [a, b] = [route[i]!, route[i + 1]!];
+      d = Math.min(
+        d,
+        dist(edge, a, b),
+        dist(outer, a, b),
+        dist(a, edge, outer),
+        dist(b, edge, outer),
+      );
+    }
+    out.push({ what: `${pin.headerLabel} stub`, gap: d - WIRE_HALF - STUB_HALF, adjacent });
+  }
+  return out;
+}
+/** Route length inside a header row's band (pins + stubs grown by 50), own outward exit excepted. */
+function headerBandLength(doc: ProjectDocument, board: string, route: Point[]): number {
+  const at = doc.layout.components[board]!;
+  const ends = [route[0]!, route.at(-1)!];
+  let n = 0;
+  for (const side of [-1, 1]) {
+    const q = {
+      minX: at.x + Math.min(side * 60, side * 80) - 50,
+      maxX: at.x + Math.max(side * 60, side * 80) + 50,
+      minY: at.y - 180 - 50,
+      maxY: at.y + 180 + 50,
+    };
+    for (let i = 0; i < route.length - 1; i++) {
+      const [a, b] = [route[i]!, route[i + 1]!];
+      const exit = ends.some(
+        (e) =>
+          (e.x === a.x && e.y === a.y && b.y === a.y && Math.sign(b.x - a.x) === side) ||
+          (e.x === b.x && e.y === b.y && b.y === a.y && Math.sign(a.x - b.x) === side),
+      );
+      if (exit) continue;
+      const x0 = Math.max(Math.min(a.x, b.x), q.minX);
+      const x1 = Math.min(Math.max(a.x, b.x), q.maxX);
+      const y0 = Math.max(Math.min(a.y, b.y), q.minY);
+      const y1 = Math.min(Math.max(a.y, b.y), q.maxY);
+      if (x0 <= x1 && y0 <= y1) n += x1 - x0 + (y1 - y0);
+    }
+  }
+  return n;
+}
+function expectVisuallyClear(doc: ProjectDocument, board: string, route: Point[], label = '') {
+  expect(headerBandLength(doc, board, route), `${label} header band`).toBe(0);
+  for (const g of inkGaps(doc, board, route)) {
+    // Right beside the route's own pin (the neighbours its exit passes): a clear gap; elsewhere a
+    // wide one (the route keeps three grid steps from the pin rows).
+    expect(g.gap, `${label} ${g.what}`).toBeGreaterThanOrEqual(g.adjacent ? 12 : 50);
+  }
+}
+
 const BOARD = 'board.esp32_devkitc_wroom32';
 const T = (component: string, terminal: string) =>
   ({ kind: 'terminal', component, terminal }) as const;
@@ -163,19 +250,13 @@ describe('terminal keep-out: the ESP32 GND case (owner blocker)', () => {
       expect(entered(route, obs)).toEqual([]);
       expect(leadsTouched(route, obs)).toBe(0);
       expect(throughBodies(route, obs.boxes)).toBe(0);
-      // Visible clearance around the pin field: no unrelated header pin within two grid steps
-      // of the route, except the GND pin's own neighbours (every way out passes them).
-      const hugged = (obs.field ?? []).filter(
-        (p) =>
-          Math.hypot(p.x - a.x, p.y - a.y) > 20 &&
-          route.slice(1).some((q, i) => dist(p, route[i]!, q) <= 20),
-      );
-      expect(hugged).toEqual([]);
-      expect(route).toEqual(
-        from === a
-          ? [a, { x: 140, y: -220 }, { x: -60, y: -220 }, { x: -60, y: 220 }, b]
-          : autoRoute([b, a], obs),
-      );
+      // Rendered geometry: clear of every unrelated pin marker, stub and header-row band. It
+      // leaves the GND pin straight out to the right (perpendicular to J3, away from the board;
+      // never along the J3 column) and keeps three grid steps from the pin rows.
+      expectVisuallyClear(doc, board, route);
+      const exit = from === a ? [route[0]!, route[1]!] : [route.at(-1)!, route.at(-2)!];
+      expect(exit[1]!.y).toBe(a.y);
+      expect(exit[1]!.x).toBeGreaterThanOrEqual(a.x + 60);
     }
   });
 
@@ -216,6 +297,21 @@ describe('terminal keep-out: the ESP32 GND case (owner blocker)', () => {
       old.doc,
       old.doc.layout.wires.find((x) => x.id === old.id)!,
     )!;
+    // The old route violates the rendered-geometry invariant...
+    expect(headerBandLength(old.doc, board, route)).toBeGreaterThan(0);
+    // ...and opening the project repairs it (presentation only: the same nets).
+    const repaired = repairWireRoutes(old.doc, boxes(old.doc));
+    const fixed = wireRoute(
+      repaired,
+      repaired.layout.wires.find((x) => x.id === old.id)!,
+    )!;
+    expectVisuallyClear(repaired, board, fixed, 'repaired');
+    expect([...connectivity(repaired).nodeOf.entries()]).toEqual([
+      ...connectivity(old.doc).nodeOf.entries(),
+    ]);
+    for (const w of old.doc.layout.wires.filter((x) => x.id !== old.id))
+      expect(repaired.layout.wires.find((x) => x.id === w.id)).toEqual(w); // others untouched
+    expect(repairWireRoutes(repaired, boxes(repaired))).toBe(repaired); // idempotent
     const crossed = ESP32_DEVKITC_WROOM32.pins
       .map((p) => boardTerminalId(p))
       .filter((t): t is string => !!t && t !== 'gnd')
@@ -233,7 +329,7 @@ describe('terminal keep-out: the ESP32 GND case (owner blocker)', () => {
     expect(flagged.sort()).toEqual([...crossed].sort());
   });
 
-  it('every ground position around the board: no GND route enters an unrelated pin (both directions)', () => {
+  it('every ground position around the board: every GND route is visually clear of the pin field (both directions)', () => {
     const { doc: base, board } = esp32GndCase();
     let routes = 0;
     for (let x = -400; x <= 600; x += 40)
@@ -258,6 +354,10 @@ describe('terminal keep-out: the ESP32 GND case (owner blocker)', () => {
         const obs = routeObstacles(doc, bx);
         const a = terminalPosition(doc, board, 'gnd')!;
         const b = terminalPosition(doc, g.id, 'ref')!;
+        // A ground whose terminal is itself inside a header band (placed against the row) is a
+        // degenerate layout: reaching it at all crosses part of the band.
+        const u = doc.layout.components[board]!;
+        if (Math.abs(Math.abs(b.x - u.x) - 70) < 60 && Math.abs(b.y - u.y) <= 230) continue;
         for (const [p, q] of [
           [a, b],
           [b, a],
@@ -266,6 +366,7 @@ describe('terminal keep-out: the ESP32 GND case (owner blocker)', () => {
           routes++;
           expect(entered(r, obs), `ground at ${x},${y}`).toEqual([]);
           expect(leadsTouched(r, obs), `ground at ${x},${y}`).toBe(0);
+          expectVisuallyClear(doc, board, r, `ground at ${x},${y}`);
         }
       }
     expect(routes).toBeGreaterThan(900);
