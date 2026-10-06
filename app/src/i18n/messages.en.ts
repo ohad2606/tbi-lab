@@ -447,6 +447,9 @@ export const en = {
   'palette.group.sources': 'Supply and reference',
   'palette.group.passive': 'Resistors',
   'palette.group.semiconductors': 'Diodes',
+  'palette.unavailable.part_needs_runtime': 'Requires runtime support not available for ESP32 yet.',
+  'palette.unavailable.board_needs_runtime':
+    'Not available while the project has parts the ESP32 runtime does not support yet.',
   'palette.group.sensors': 'Sensors',
   'palette.group.output': 'Sound and signalling',
   'palette.group.switches': 'Switches',

@@ -619,3 +619,25 @@ export function defaultParams(def: ComponentTypeDef): Record<string, ParamValue>
   }
   return params;
 }
+
+/**
+ * Sprint 10 product rule: a part is offered for a board project only when the board's runtime can
+ * simulate it honestly. Why `type` cannot be placed in `doc` right now, or null:
+ * - `part_needs_runtime`: the project has a Classic ESP32 and the part is not supported by the
+ *   ESP32 runtime yet (catalog `mcuRuntime: false`);
+ * - `board_needs_runtime`: `type` is the ESP32 board and the project already holds such parts.
+ * Local circuits (no board) can use every part.
+ */
+export type PlacementBlock = 'part_needs_runtime' | 'board_needs_runtime';
+
+export function placementBlock(
+  doc: { components: readonly { type: ComponentTypeId }[] },
+  type: ComponentTypeId,
+): PlacementBlock | null {
+  const isBoard = (t: ComponentTypeId) => t === 'board.esp32_devkitc_wroom32';
+  if (CATALOG[type].mcuRuntime === false && doc.components.some((c) => isBoard(c.type)))
+    return 'part_needs_runtime';
+  if (isBoard(type) && doc.components.some((c) => CATALOG[c.type].mcuRuntime === false))
+    return 'board_needs_runtime';
+  return null;
+}

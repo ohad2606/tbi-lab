@@ -13,6 +13,7 @@ import {
   CATALOG,
   GRID,
   addComponent,
+  placementBlock,
   addWire,
   setParam,
   deleteSelection,
@@ -344,6 +345,9 @@ export function Canvas({
     );
 
   const place = (type: ComponentTypeId, at: Point) => {
+    // The palette offers only what this project's board runtime can simulate (Sprint 10); an
+    // armed placement never bypasses that after the project changed.
+    if (placementBlock(doc, type)) return null;
     const r = addComponent(doc, type, at);
     if (r.ok) store.apply(r, { ...emptySelection(), components: [r.id] });
     return r.ok ? r.id : null;

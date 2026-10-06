@@ -435,6 +435,9 @@ export const he: Record<MessageKey, string> = {
   'palette.group.sources': 'הזנה וייחוס',
   'palette.group.passive': 'נגדים',
   'palette.group.semiconductors': 'דיודות',
+  'palette.unavailable.part_needs_runtime': 'דורש תמיכת Runtime שעדיין אינה זמינה ל־ESP32.',
+  'palette.unavailable.board_needs_runtime':
+    'לא זמין כל עוד בפרויקט יש רכיבים שה־Runtime של ESP32 עדיין אינו תומך בהם.',
   'palette.group.sensors': 'חיישנים',
   'palette.group.output': 'צליל ואיתות',
   'palette.group.switches': 'מתגים',

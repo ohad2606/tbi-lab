@@ -213,3 +213,34 @@ test('capacitor (time-stepped): the LED fades in as C charges; Stop/Run restarts
   expect(Number(await page.getByTestId('sim-time').getAttribute('data-time'))).toBeLessThan(0.5);
   await page.getByTestId('sim-stop').click();
 });
+
+test('ESP32 projects: parts the runtime cannot simulate are disabled in the palette, with a reason (EN/HE)', async ({
+  page,
+}) => {
+  await openExample(page, 'esp32-blink');
+  const rgb = page.getByTestId('palette-component.rgb_led');
+  await expect(rgb).toBeDisabled();
+  await expect(rgb).toHaveAttribute('data-unavailable', 'part_needs_runtime');
+  await expect(page.getByTestId('palette-note-part_needs_runtime')).toHaveText(
+    'Requires runtime support not available for ESP32 yet.',
+  );
+  for (const t of ['component.capacitor', 'component.relay', 'sensor.pir_hc_sr501'])
+    await expect(page.getByTestId(`palette-${t}`)).toBeDisabled();
+  // The original parts stay available.
+  await expect(page.getByTestId('palette-component.led')).toBeEnabled();
+  await page.getByTestId('language-select').selectOption('he');
+  await expect(page.getByTestId('palette-note-part_needs_runtime')).toHaveText(
+    'דורש תמיכת Runtime שעדיין אינה זמינה ל־ESP32.',
+  );
+  await page.getByTestId('language-select').selectOption('en');
+  // A local circuit holding such a part does not offer the board.
+  await openExample(page, 'rgb-mixer');
+  await expect(page.getByTestId('palette-component.rgb_led')).toBeEnabled();
+  await expect(page.getByTestId('palette-board.esp32_devkitc_wroom32')).toBeDisabled();
+  await expect(page.getByTestId('palette-board.esp32_devkitc_wroom32')).toHaveAttribute(
+    'data-unavailable',
+    'board_needs_runtime',
+  );
+  await expect(page.getByTestId('palette-note-board_needs_runtime')).toBeVisible();
+  await expect(page.getByTestId('palette-note-part_needs_runtime')).toHaveCount(0);
+});

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   CATALOG,
   CATALOG_ORDER,
+  placementBlock,
   addComponent,
   addWire,
   checkCircuit,
@@ -206,5 +207,24 @@ describe('checkCircuit: validation that never changes the circuit (A12, A13)', (
     const before = JSON.stringify(doc);
     checkCircuit(doc);
     expect(JSON.stringify(doc)).toBe(before);
+  });
+});
+
+describe('Sprint 10: parts offered only where the board runtime can simulate them', () => {
+  it('local circuits can use every part; an ESP32 project cannot use the parts its runtime lacks', () => {
+    let doc = newDoc();
+    expect(placementBlock(doc, 'component.rgb_led')).toBeNull();
+    expect(placementBlock(doc, 'board.esp32_devkitc_wroom32')).toBeNull();
+    doc = place(doc, 'board.esp32_devkitc_wroom32', 0, 0).doc;
+    for (const t of CATALOG_ORDER)
+      expect(placementBlock(doc, t), t).toBe(
+        CATALOG[t].mcuRuntime === false ? 'part_needs_runtime' : null,
+      );
+    // The original parts stay available with the board.
+    expect(placementBlock(doc, 'component.led')).toBeNull();
+    let local = place(newDoc(), 'component.relay', 0, 0).doc;
+    expect(placementBlock(local, 'board.esp32_devkitc_wroom32')).toBe('board_needs_runtime');
+    local = place(local, 'component.led', 200, 0).doc;
+    expect(placementBlock(local, 'component.capacitor')).toBeNull();
   });
 });

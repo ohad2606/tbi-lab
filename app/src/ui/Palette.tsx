@@ -1,4 +1,4 @@
-import { CATALOG, type ComponentTypeId } from '@tbi-lab/domain';
+import { CATALOG, CATALOG_ORDER, placementBlock, type ComponentTypeId } from '@tbi-lab/domain';
 import { catalogText } from '../i18n/i18n.js';
 import type { MessageKey } from '../i18n/messages.en.js';
 import { useAppState, useT } from './context.js';
@@ -31,7 +31,7 @@ interface Props {
 }
 
 export function Palette({ placing, onPick }: Props) {
-  const { locale, readOnly, sim } = useAppState();
+  const { locale, readOnly, sim, doc } = useAppState();
   // Placing is structural: not while a simulation holds the current topology.
   const locked =
     !!readOnly ||
@@ -39,9 +39,23 @@ export function Palette({ placing, onPick }: Props) {
     sim.status === 'starting' ||
     sim.status === 'stopping';
   const t = useT();
+  const blocks = doc
+    ? [...new Set(CATALOG_ORDER.map((type) => placementBlock(doc, type)).filter((b) => b !== null))]
+    : [];
   return (
     <aside class="palette" aria-labelledby="palette-heading">
       <h2 id="palette-heading">{t('palette.heading')}</h2>
+      {/* One note per reason a part is not offered for this project's board (Sprint 10). */}
+      {blocks.map((block) => (
+        <p
+          key={block}
+          class="palette-unavailable muted small"
+          id={`palette-note-${block}`}
+          data-testid={`palette-note-${block}`}
+        >
+          {t(`palette.unavailable.${block}`)}
+        </p>
+      ))}
       {GROUPS.map((group) => (
         <div
           class="palette-group"
@@ -55,14 +69,20 @@ export function Palette({ placing, onPick }: Props) {
           <ul>
             {group.types.map((type) => {
               const [x0, y0, x1, y1] = SYMBOLS[type].bbox;
+              // Sprint 10: not offered when the project's board runtime cannot simulate it.
+              const block = doc ? placementBlock(doc, type) : null;
+              const noteId = `palette-note-${block}`;
               return (
                 <li key={type}>
                   <button
                     type="button"
                     class={placing === type ? 'palette-item active' : 'palette-item'}
                     data-testid={`palette-${type}`}
+                    data-unavailable={block ?? undefined}
                     aria-pressed={placing === type}
-                    disabled={locked}
+                    aria-describedby={block ? noteId : undefined}
+                    title={block ? t(`palette.unavailable.${block}`) : undefined}
+                    disabled={locked || !!block}
                     // A keyboard activation has detail 0: place immediately at the view centre.
                     onClick={(e) => onPick(type, e.detail === 0)}
                   >
