@@ -1,15 +1,180 @@
 # Sprint 10 — Physical 3D, engine time-domain core, the approved component families
 
 **Status (2026-10-06):** developed on `sprint-10` (worktree `~/projects/tbi-lab-s10`), from
-`7f09d74` = `main` = `sprint-9-complete`. **The frontend/local simulation is promoted to the normal
-demo (`/`)** (Part D, with PM approval). **Owner smoke was BLOCKED by a wire-routing defect**
-(Part E); the fix is validated and republished. **Owner smoke is PENDING again, starting with the
-ESP32 GND routing case.**
+`7f09d74` = `main` = `sprint-9-complete`. **dev-lab.tbi-tech.net serves `9c94329`** (Part F): the
+header-row routing fix and the high-fidelity 3D proof set. **Owner review PENDING**, starting with
+the ESP32 GND routing case.
 
 Not done: no PR, merge, tag, production deployment or backend deployment. The backends are unchanged
 (`c31d62e`, runtime `33e35e4ac5e798d7`). The isolated preview `/s10-preview/` stays.
 
 Architecture and scope: [SPRINT-10-ARCHITECTURE.md](SPRINT-10-ARCHITECTURE.md).
+
+## Part F — second owner block: header-row routing, and the high-fidelity 3D proof set (2026-10-06)
+
+**Owner review BLOCKED again (two issues).**
+1. The live demo still let an ESP32 GND wire run visually along the J3 pin column.
+2. The 3D realism target was raised to high-fidelity component visualization.
+
+Smoke stopped and R1 not started. New standing rule: dev-lab is the only owner/dev test target;
+every validated frontend goes there with a rollback; report the exact commit served.
+
+### F.1 Routing: remaining root cause and fix (`5bc708c`)
+
+**Root cause (measured on the deployed `2b014c2`).** The point keep-out only stopped a route
+crossing a pin's centre.
+- The deployed owner route left the GND pin straight up the J3 column's own line,
+  `(140,-180) -> (140,-220)`, then went round the board. That is the rail's continuation.
+- Other routes ran one grid step beside a whole header (only a soft "hug" cost, with the pin's own
+  neighbours exempt).
+- Measured with a 30-unit band around each header row: 1985 of 1985 routes in the blink example
+  and 1191 of 2093 in a fresh project entered it.
+- Two contributing defects:
+  - the grid search priced an endpoint's straight exit per step, preferring short band crossings;
+  - stored wires from older versions were never repaired, so a project saved before the fix kept
+    its old route.
+
+**Header-row exclusion band (rank 2, after the point keep-out).**
+- Each board header row is its pins and stubs, from the board edge to the pin points, built from
+  the board's header geometry for any rotation, not hard-coded to one screenshot.
+- That row is grown by `HEADER_CLEARANCE` = 50 units: the nearest usable line is 60 units from the
+  pin centres, about 54 units of clear space to a marker.
+- Only a hop endpoint's straight, perpendicular, outward exit may cross the band. The search
+  exempts every step of that exit line. Widening continues while a keep-out remains.
+- The point keep-out (10 units), the stub lead-ins and the same-net / overlap / body ranking stay
+  as before.
+
+**Stored wires.**
+- `repairWireRoutes` runs when a project is opened, imported or copied from an example. A stored
+  wire that enters a keep-out or a band is re-routed: presentation only, the same endpoints and
+  nets. Every other wire keeps its exact route.
+- The `wire_over_terminal` check still guards what routing cannot prevent: a part dropped with a
+  lead on a wire.
+- Two examples were adjusted to the rule:
+  - esp32-input-echo: the pull-down branch moved three grid steps clear of J2;
+  - rc-fade: W4 as a clean L.
+
+**Owner case result.** GND leaves straight out to the right (60 units), goes over the top of the
+board, runs down 60 units clear of J2, and turns into the ground:
+`140,-180 200,-180 200,-240 -80,-240 -80,220 -20,220`.
+
+**Audits.**
+- Band intrusions: 0 of 49,625 routes from every ESP32 terminal to every ground position (blink).
+- Pins crossed: 0 in every sweep.
+- Body crossings occur only where a pin is boxed in by its neighbours and a junction or part on
+  three sides. All are in the input-echo example's original layout.
+- Route time: median 2–4 ms; p99 18–40 ms.
+
+**Tests.** The required cases assert measured geometry, not only nets:
+- domain `route-keepout.test.ts`:
+  - visible ink gaps to every unrelated pin marker and stub (≥ 12 next to the route's own ends,
+    ≥ 50 elsewhere) and band length 0;
+  - owner case both ways, the position sweep, legacy repair, generic third terminal, dense pins,
+    boxed-in pin, save/load.
+- browser `routing-keepout.spec.ts`:
+  - reads the drawn SVG (wire, markers, stubs, in world units, with real stroke widths);
+  - the owner flow, and a legacy project opening repaired.
+- Sprint 4 A12/A13 updated: legacy crossing repaired on open; the check fires when a part is dropped
+  onto a wire.
+
+### F.2 High-fidelity 3D proof set (`904f7f7`, `2c96547`)
+
+ESP32-DevKitC, resistor and 5 mm LED only. Every other part waits for the owner's approval of the
+visual standard. Architecture, asset pipeline, model records, tiered roadmap, and the approved
+model-driven behaviour and failure direction: [3D-HIGH-FIDELITY-ROADMAP.md](../product/3D-HIGH-FIDELITY-ROADMAP.md).
+
+**Models.**
+- **ESP32-DevKitC V4: a glTF asset**
+  - authored in the repository from Espressif's dimension drawings;
+  - deterministic export, byte-identical rebuild checked by test;
+  - loaded lazily when 3D opens;
+  - silkscreen and can marking drawn at runtime.
+- **Resistor: procedural.**
+  - lacquer dog-bone with end caps and lead necks;
+  - bands painted on the body;
+  - carbon-film (4 bands) or metal-film (5 bands) finish;
+  - formed leads.
+- **LED: procedural.**
+  - drafted lens and dome, flange flat;
+  - visible lead frame;
+  - legs at the real 2.54 mm pitch as its anchors (wires now end on the legs).
+
+**Consistency tests on the built geometry** (`scene3d-anchors.test.ts`):
+- connected R -> LED;
+- disconnected-but-touching (more than 0.5 mm apart);
+- direct contact (joint on the leg, link to the lead);
+- ESP32 pin wiring (wire on the housing over the pin).
+
+**Camera.** Standard views Top / Front / Side / Rear (EN/HE).
+
+**Asset sizes.**
+- ESP32 GLB: 483,268 bytes raw, 98 KB gzip (dev-lab serves it uncompressed, immutable-cached);
+  17k vertices, 15k triangles.
+- Resistor and LED: no files (procedural).
+
+**Bundle.**
+- Start-up chunk unchanged by the 3D work (byte-identical size before and after it).
+- Since the deployed `bd78d2e`, +7.0 kB raw / +2.8 kB gzip (302.7 -> 309.7 kB, 96.9 -> 99.7 kB),
+  from the routing code.
+- The lazy 3D chunk: 634.5 -> 713.5 kB raw (159.4 -> 181.5 kB gzip), mostly the glTF loader.
+
+**Performance** (this host: 1 vCPU ARM, no GPU, Chrome with SwiftShader).
+- `reduced` quality is what software rasterisers get. First open and re-opens are unchanged from
+  before:
+  - esp32-blink: 8.96 s / 0.47 s / 0.59 s before, 8.94 s / 0.54 s / 0.56 s after;
+  - asset fetch and parse: 38–89 ms.
+- GPU memory estimate and frame time (`reduced` quality):
+
+  | Scene | GPU memory (est.) | Frame median |
+  |---|---|---|
+  | esp32-blink | 9.1 MiB | 4.2 ms |
+  | board alone | 7.3 MiB | 3.5 ms |
+  | resistor | 0.7 MiB | 0.6 ms |
+  | LED | 0.4 MiB | 1.3 ms |
+
+- `full` quality (real GPUs: studio environment and physical materials) cannot be measured on real
+  hardware here. Forced on this software rasteriser it costs 10.9 s first open and about 2.8 s
+  re-open, against 4.2 / 0.55 s before. Shown honestly, not claimed for GPUs.
+- Repeated enter/leave keeps resources flat (the existing 20-cycle browser test passes).
+- Rendering stays on demand (no loop).
+
+**Evidence.** Before/after front/top/side views and the owner's GND case on the live demo:
+[s10-evidence/3d-proof/](s10-evidence/3d-proof/).
+
+### F.3 Validation and deployment
+
+| Check | Result |
+|---|---|
+| Full suite on `9c94329`: typecheck, lint with boundaries, build | pass |
+| Unit | **748 passed**, 79 files |
+| Browser, complete suite | **147 passed**, 3 skipped, **0 failed** |
+| Legacy browser | 4 passed |
+
+- The run on `2c96547` had 1 real failure: Sprint 4 A12/A13 tested the warning on legacy geometry
+  that opening now repairs. The test was updated (`9c94329`) and the complete suite re-run clean.
+
+**dev-lab.tbi-tech.net now serves `9c94329`** (`9c94329691e69dabc42abc938f21b3a7388167d5`),
+published with `publish-frontend.sh`; previous release `2b014c2`.
+
+| Post-deploy check | Result |
+|---|---|
+| Installed tree | byte-identical to an independent clean pre-build (17 files) |
+| Served files | **17/17** hash-match |
+| Sprint 10 demo checks | **36/36**: owner GND route, no marker, exported netlist (only U1.gnd in the new ground's net), GLB not fetched at start-up, fetched once on 3D open, no re-fetch, standard views |
+| Sprint 9 smoke | all 48 passed, including ESP32 Build -> Run -> Stop on the unchanged backend |
+| Services, start times and PIDs | unchanged |
+| Backend files `c31d62e`, the session-host bundle in both running hosts, Caddy | unchanged |
+| QEMU `538af3d7…`, runtime `33e35e4ac5e798d7` | unchanged |
+
+Rollback (atomic, no restart):
+```
+sudo ln -sfn /srv/tbi-lab/dev-lab/2b014c283e906471a10de0247a84601d7387e330 /srv/tbi-lab/dev-lab/current.tmp
+sudo mv -T /srv/tbi-lab/dev-lab/current.tmp /srv/tbi-lab/dev-lab/current
+```
+Earlier targets are also intact: `bd78d2e` and `198ca92`.
+
+**Owner review: PENDING.** First the GND routing case, then the 3D visual standard (proof set).
+R1 not started; no PR, merge, tag or production change.
 
 ## Part E — owner smoke BLOCKED: wire routed through ESP32 pins (2026-10-06)
 
