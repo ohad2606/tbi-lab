@@ -39,7 +39,109 @@ COMPLETE means every column is done and tested; anything else says what is missi
 "Local" = circuits without an ESP32. With an ESP32 every new part is refused at Run with a
 specific message (`mcu_component_unsupported`): the deployed Session Host predates the part models.
 
-<!-- PART-B-REST -->
+### B.2 Engine
+
+- **Part-model framework** (`3d6fda2`): multi-terminal parts, ideal contacts, discrete state settled
+  by a bounded fixed point (hysteresis kept between solves; `no_steady_state` for a circuit that
+  never settles), declared live parameters. The original eight types keep their frozen path: the
+  Gate A golden values and every DC result are unchanged.
+- **Time-stepped simulation** (`26b9016`): `EngineSession.advance(dt)`, backward Euler, per-part
+  history, discharged at t = 0, failed steps do not advance time. Active only when the circuit holds
+  a capacitor; otherwise the DC path is untouched.
+- **2N3904 Gummel–Poon DC** with SPICE temperature scaling; matches ngspice within ~1e-6 V.
+- **Solver robustness**: at the Newton limit with no device limiting, an iterate is accepted only
+  if it passes the exact-equation verification (a femtoamp node beside the transistor's 1 Ω
+  internal resistance). Converging circuits are unaffected.
+- **Primitives**: `PwlLoad` (datasheet V–I curves), `RegulatedOutput` (output current drawn from
+  the module supply), `ConstantSink`, `Npn`, capacitor history.
+
+### B.3 Diagnostics (`4e1b6e7`)
+
+Amber warnings, never changing a solved value, with EN/HE text:
+- ESP32 pads: two pads driving opposite levels on one net (contention), output HIGH wired to GND,
+  output LOW wired to a supply +, a pad sourcing more than 40 mA or sinking more than 28 mA (the
+  datasheet drive specification the pad model is built from).
+- Every new part's datasheet ratings: RGB per-die current/reverse/power, relay coil voltage and
+  contact current, 2N3904 I_C/V_CEO/V_CBO/V_EBO/power, LDR power and voltage, buzzer and PIR supply
+  voltage, capacitor rated voltage (a design value).
+- `no_steady_state` (a self-interrupting relay); "outside the model's documented range" for LDR
+  light, buzzer bias, RGB and matrix currents.
+
+### B.4 I2C and peripherals (internal)
+
+`packages/engine/src/peripherals/`: an I2C bus (transaction and line level, 7-bit addresses,
+conflicts refused), PCF8574 + HD44780 (the I2C LCD), SG90 pulse decoding, HC-SR04 echo timing and
+DHT22 frames. MCU- and language-agnostic: no Arduino or MicroPython API. They are not exposed
+because the deployed ESP32 runtime cannot drive them (architecture §5.6).
+
+### B.5 Sensors and the simulated environment
+
+Environment parameters (catalog `environment`, always live): the light on the photoresistor (lux,
+log slider) and the motion in front of the PIR (a box, or a click on its dome). They are persisted
+in the project, shown in the inspector's "Simulated environment" section, mirrored live and read by
+the part models; no sensor output is hard-coded.
+
+### B.6 3D
+
+New models at datasheet dimensions (representative where none is published, and marked so):
+RGB lamp with three dice and 1.27 mm leads, GL5528 disc with its CdS track, CEM-1205 can, Songle
+relay on its pins, TO-92 2N3904 (E-B-C, marked face), HC-SR501 board with Fresnel dome and trim pots,
+1088AS matrix with a live-lit face, disc ceramic or bipolar can for the capacitor. Live presentation:
+RGB colour mixed from channel currents, matrix dots from dot currents, LEDs as before. Wiring to pins
+under a body (relay, PIR, matrix) comes in along each pin's perpendicular and drops outside the body;
+crossing wires keep a full level apart (a pre-existing height rule could let them touch).
+
+### B.7 Examples
+
+`rgb-mixer`, `light-sensor`, `night-light` (LDR + 2N3904), `pir-alarm` (PIR + 2N3904 + buzzer),
+`led-matrix`, `rc-fade` (time-stepped), `relay-load`. Each has engine-level expected results.
+
+### B.8 Tests (HEAD `3ba2292`; full run on `c5f55c4`)
+
+| Suite | Result |
+|---|---|
+| Typecheck, lint, boundary check, build | pass |
+| Unit (vitest) | **730 passed**, 75 files (Part A: 657) |
+| Browser (Playwright) | 139 passed, 3 skipped as usual, 3 failed: Hebrew checks flagging the new part numbers (RGB, GL5528, 2N3904…) as untranslated; the allowlists were extended (`3ba2292`) and those 3 specs rerun: **pass**. Effective 142 passed |
+| Legacy browser | 4 passed |
+| Preview validation (`3ba2292`, deployed) | **62/62** (Part A checks plus 11 for the new parts) |
+
+New engine tests compare against ngspice (RGB, 2N3904) and closed forms (LDR divider, buzzer curve,
+relay hysteresis, backward-Euler recursion); cross-view agreement covers every new part at every
+rotation.
+
+### B.9 Performance (this host, Node, same method before/after)
+
+| Measure | Part A (`d3b79b0`) | Now |
+|---|---|---|
+| DC solve, LED current example | 0.76 ms | 0.62 ms |
+| DC solve, voltage divider / CC mode / diode polarity | 0.15 / 0.17 / 0.39 ms | 0.15 / 0.18 / 0.39 ms |
+| DC solve, dense 42-part circuit | 0.18 ms | 0.13 ms |
+| 3D scene derivation, dense circuit | 28.5 ms | 25.3 ms |
+| New: PIR alarm / LED matrix (64 diodes) / night light | — | 1.2 / 3.5 / 0.7 ms |
+| New: one 1 ms time step, rc-fade | — | 0.45 ms (≈45 % of one worker core while running; budget 50 %) |
+| Startup bundle (index) | 282.7 kB (81.7 gzip) | 367.1 kB (102.7 gzip) |
+| 3D chunk (lazy) | 623.6 kB | 634.4 kB |
+
+No regression in DC solving. The time-stepped run is the one new continuous cost, bounded by the
+tick budget; making each step cheaper (reusing the compiled circuit) is a follow-up.
+
+### B.10 Screenshots
+
+`s10-evidence/parts/`: each new part on the canvas while running, schematic blocks, 3D close-ups,
+and the deployed preview (`preview-s10-*`).
+
+### B.11 Blockers and decisions still required
+
+1. **ESP32 + new parts**: the deployed Session Host predates the part models, so every new part is
+   refused in ESP32 projects. Lifting it needs a backend redeploy from this branch (approval).
+2. **Servo, I2C LCD, HC-SR04, DHT22**: need runtime work (PWM/LEDC routed to pads with edge times;
+   an I2C controller bridge; microsecond input timing). Sprint 8 backend changes, not made here.
+3. **555**: not started; with the transient core and the BJT in place a pin-level model is now
+   feasible, as its own task.
+4. **Multi-position switch**: not started.
+5. **Time-step CPU**: acceptable within the budget; to be optimised before denser time-stepped circuits.
+
 
 ## Scope decision (2026-10-06, after the first owner review)
 
