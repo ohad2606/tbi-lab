@@ -1,0 +1,82 @@
+{
+  "esp32-overview": {
+    "drawCalls": 124,
+    "triangles": 130821,
+    "materials": 43,
+    "geometries": 42,
+    "textures": 32,
+    "gpuBytes": 37281792,
+    "renderMs": 23.5,
+    "quality": "full"
+  },
+  "esp32-three-quarter": {
+    "drawCalls": 115,
+    "triangles": 129297,
+    "materials": 43,
+    "geometries": 42,
+    "textures": 32,
+    "gpuBytes": 37281792,
+    "renderMs": 20.5,
+    "quality": "full"
+  },
+  "esp32-usb-buttons": {
+    "drawCalls": 71,
+    "triangles": 64297,
+    "materials": 43,
+    "geometries": 42,
+    "textures": 32,
+    "gpuBytes": 37281792,
+    "renderMs": 10.9,
+    "quality": "full"
+  },
+  "esp32-wroom-antenna": {
+    "drawCalls": 114,
+    "triangles": 130347,
+    "materials": 43,
+    "geometries": 42,
+    "textures": 32,
+    "gpuBytes": 37281792,
+    "renderMs": 11,
+    "quality": "full"
+  },
+  "esp32-header-pins": {
+    "drawCalls": 52,
+    "triangles": 56653,
+    "materials": 43,
+    "geometries": 42,
+    "textures": 32,
+    "gpuBytes": 37281792,
+    "renderMs": 5.7,
+    "quality": "full"
+  },
+  "esp32-wire-to-header": {
+    "drawCalls": 46,
+    "triangles": 52365,
+    "materials": 43,
+    "geometries": 42,
+    "textures": 32,
+    "gpuBytes": 37281792,
+    "renderMs": 4.2,
+    "quality": "full"
+  },
+  "esp32-underside": {
+    "drawCalls": 119,
+    "triangles": 130493,
+    "materials": 43,
+    "geometries": 42,
+    "textures": 32,
+    "gpuBytes": 37281792,
+    "renderMs": 4.7,
+    "quality": "full"
+  },
+  "esp32-top": {
+    "drawCalls": 78,
+    "triangles": 82951,
+    "materials": 43,
+    "geometries": 42,
+    "textures": 32,
+    "gpuBytes": 37281792,
+    "renderMs": 4.3,
+    "quality": "full"
+  }
+}

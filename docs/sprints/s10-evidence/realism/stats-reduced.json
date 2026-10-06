@@ -1,0 +1,192 @@
+{
+  "esp32-overview": {
+    "drawCalls": 45,
+    "triangles": 43840,
+    "materials": 43,
+    "geometries": 40,
+    "textures": 12,
+    "gpuBytes": 10318552,
+    "renderMs": 10.3,
+    "quality": "reduced"
+  },
+  "esp32-three-quarter": {
+    "drawCalls": 40,
+    "triangles": 42556,
+    "materials": 43,
+    "geometries": 40,
+    "textures": 12,
+    "gpuBytes": 10318552,
+    "renderMs": 5.1,
+    "quality": "reduced"
+  },
+  "esp32-usb-buttons": {
+    "drawCalls": 33,
+    "triangles": 30822,
+    "materials": 43,
+    "geometries": 40,
+    "textures": 12,
+    "gpuBytes": 10318552,
+    "renderMs": 2.5,
+    "quality": "reduced"
+  },
+  "esp32-wroom-antenna": {
+    "drawCalls": 39,
+    "triangles": 43606,
+    "materials": 43,
+    "geometries": 40,
+    "textures": 12,
+    "gpuBytes": 10318552,
+    "renderMs": 2.4,
+    "quality": "reduced"
+  },
+  "esp32-header-pins": {
+    "drawCalls": 23,
+    "triangles": 26946,
+    "materials": 43,
+    "geometries": 40,
+    "textures": 12,
+    "gpuBytes": 10318552,
+    "renderMs": 3.9,
+    "quality": "reduced"
+  },
+  "esp32-wire-to-header": {
+    "drawCalls": 20,
+    "triangles": 25266,
+    "materials": 43,
+    "geometries": 40,
+    "textures": 12,
+    "gpuBytes": 10318552,
+    "renderMs": 3.5,
+    "quality": "reduced"
+  },
+  "esp32-underside": {
+    "drawCalls": 42,
+    "triangles": 43728,
+    "materials": 43,
+    "geometries": 40,
+    "textures": 12,
+    "gpuBytes": 10318552,
+    "renderMs": 4.3,
+    "quality": "reduced"
+  },
+  "esp32-top": {
+    "drawCalls": 38,
+    "triangles": 40152,
+    "materials": 43,
+    "geometries": 40,
+    "textures": 12,
+    "gpuBytes": 10318552,
+    "renderMs": 3.5,
+    "quality": "reduced"
+  },
+  "parts-overview": {
+    "drawCalls": 43,
+    "triangles": 49188,
+    "materials": 41,
+    "geometries": 29,
+    "textures": 17,
+    "gpuBytes": 5723387,
+    "renderMs": 9.1,
+    "quality": "reduced"
+  },
+  "resistor-bands": {
+    "drawCalls": 10,
+    "triangles": 26584,
+    "materials": 41,
+    "geometries": 29,
+    "textures": 17,
+    "gpuBytes": 5723387,
+    "renderMs": 1.1,
+    "quality": "reduced"
+  },
+  "diode-glass": {
+    "drawCalls": 18,
+    "triangles": 31788,
+    "materials": 41,
+    "geometries": 29,
+    "textures": 17,
+    "gpuBytes": 5723387,
+    "renderMs": 3.5,
+    "quality": "reduced"
+  },
+  "direct-contact": {
+    "drawCalls": 16,
+    "triangles": 41190,
+    "materials": 41,
+    "geometries": 29,
+    "textures": 17,
+    "gpuBytes": 5723387,
+    "renderMs": 0.8,
+    "quality": "reduced"
+  },
+  "push-button": {
+    "drawCalls": 16,
+    "triangles": 20570,
+    "materials": 41,
+    "geometries": 29,
+    "textures": 17,
+    "gpuBytes": 5723387,
+    "renderMs": 1,
+    "quality": "reduced"
+  },
+  "toggle-switch": {
+    "drawCalls": 10,
+    "triangles": 18894,
+    "materials": 41,
+    "geometries": 29,
+    "textures": 17,
+    "gpuBytes": 5723387,
+    "renderMs": 0.4,
+    "quality": "reduced"
+  },
+  "psu": {
+    "drawCalls": 19,
+    "triangles": 20144,
+    "materials": 41,
+    "geometries": 29,
+    "textures": 17,
+    "gpuBytes": 5723387,
+    "renderMs": 2.5,
+    "quality": "reduced"
+  },
+  "ground-post": {
+    "drawCalls": 25,
+    "triangles": 36378,
+    "materials": 41,
+    "geometries": 29,
+    "textures": 17,
+    "gpuBytes": 5723387,
+    "renderMs": 1.4,
+    "quality": "reduced"
+  },
+  "led-unlit": {
+    "drawCalls": 17,
+    "triangles": 32268,
+    "materials": 41,
+    "geometries": 29,
+    "textures": 17,
+    "gpuBytes": 5723387,
+    "renderMs": 1,
+    "quality": "reduced"
+  },
+  "led-lit": {
+    "drawCalls": 18,
+    "triangles": 32270,
+    "materials": 41,
+    "geometries": 29,
+    "textures": 18,
+    "gpuBytes": 5723387,
+    "renderMs": 3.4,
+    "quality": "reduced"
+  },
+  "parts-lit-overview": {
+    "drawCalls": 43,
+    "triangles": 49072,
+    "materials": 41,
+    "geometries": 29,
+    "textures": 18,
+    "gpuBytes": 5723387,
+    "renderMs": 6.4,
+    "quality": "reduced"
+  }
+}

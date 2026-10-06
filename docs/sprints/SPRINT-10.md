@@ -10,6 +10,204 @@ Not done: no PR, merge, tag, production deployment or backend deployment. The ba
 
 Architecture and scope: [SPRINT-10-ARCHITECTURE.md](SPRINT-10-ARCHITECTURE.md).
 
+## Part H — 3D realism pass, version-update banner (2026-10-06, overnight)
+
+Owner direction: routing fix, version display and the first 3D step were accepted; the 3D target
+was raised to "a user opens the 3D view and says: these components look almost real", with the
+ESP32 DevKitC as the benchmark asset and the resistor, LED, 1N4148, push button, toggle switch and
+wires/connectors as the first set to reach that standard. Plus the approved new-version banner.
+Unchanged rules: 2D controls placement; physical metadata controls size; 3D is derived, read-only,
+never infers connectivity; no camera state in the project.
+
+### H.1 What changed (by area)
+
+| Area | Before (`f81cf97`) | After |
+|---|---|---|
+| Lighting | hemisphere + key from the camera side (shadows hidden behind the parts), tiny gradient env | `stage.ts`: RoomEnvironment studio reflections (procedural, bundled with three), key light high from the back left (shadows fall towards the viewer), cool front fill, rim; soft PCF shadows 2048²; **GTAO** contact shading; 4× MSAA; Khronos-neutral tone mapping |
+| Bench | flat light-grey box + grid | matte bench with fine grain (bump/roughness) fading into a gradient backdrop (no horizon), 0.5 in grid over the circuit only |
+| ESP32 | procedural-looking glTF, wrong board length | **hybrid** benchmark asset (H.2) |
+| Wires | uniform plastic tubes, sharp 1.2 mm bends, sphere ends | PVC jacket (satin, clearcoat, sheen), 2 mm plan / 3 mm riser bends, jacket runs into the jumper housing, **stripped tinned conductor** at leads and posts, adaptive tube sampling |
+| ESP32 jumpers | 2.5 × 6 mm black block | Dupont female housing at its real 2.54 × 2.54 × 14 mm: chamfered wire end, latch window with the crimp showing, pin entry; seated on the solder joint |
+| Direct contact | solder sphere + solder link (read as soldered) | **twisted tinned link** with wraps round both leads: a mechanical connection, deliberately not solder. Touching-but-not-connected keeps the red ring and the lead gap |
+| LED | uniformly emissive plastic | transmissive epoxy (IOR 1.5; frosted diffused / glass-clear), visible lead frame, light from the **die**, lens glow profile brightest in the dome, halo, and a fixed pool of 4 point lights so a lit LED tints the bench (full tier) |
+| 1N4148 | opaque amber cylinder | DO-35 **glass** (transmission, amber attenuation), DUMET slugs and die inside, painted cathode band |
+| Push button | box + cylinder | moulded base, stamped steel cover with clamping tabs and boss, chamfered actuator, legs |
+| Toggle switch | box + plain cylinder | phenolic base in plated frame, **threaded bushing**, keyed lock washer, chamfered hex nut, tapered chrome lever (persisted position), solder lugs |
+| Bench supply | grey box | compact supply (reduced symbolic scale, Part H.6): powder-coated case, vents, rubber feet, dark front panel with legend, recessed LCD windows (design setpoints), knurled knobs, red/black binding posts |
+| Ground | post on a plate | binding post on a plated plate engraved with ⏚ and GND; lug to the terminal (an abstract reference, not an earth rod) |
+| Materials | ad-hoc colours, metals at metalness 0.55–0.6 | one PBR library (`models.ts createMaterials`): metals are metals (tin, nickel/chrome, stainless, gold), plastics by finish, powder coat, rubber |
+| Camera | ~45° default | 3/4 inspection angle ~30° above the bench; FOV 35° |
+
+### H.2 ESP32-DevKitC V4 — the benchmark asset
+
+- **Dimension correction:** the board was 50.85 mm long (the 1.30/1.29 edge margins were added to
+  48.26 a second time). Espressif's drawing gives **48.26 mm edge to edge**, pin 1 1.30 mm from the
+  antenna edge. Fixed in `physical.ts`; footprint and bounds follow. Terminal positions unchanged.
+- **Layout from the real board:** part positions measured on the board photograph in Espressif's
+  user guide, scaled by the header pitch (14.65 px/mm), in one table (`assets/esp32Layout.ts`) used
+  by both the geometry and the surface texture: EN/BOOT SMD switches, micro-USB B, CP2102N QFN-28,
+  SOT-223 regulator, two SOT-23 auto-reset transistors, 24 chip passives / ESD diodes / power LED,
+  ENIG test pads, module outline.
+- **Geometry** (`esp32DevkitC.author.ts` → GLB, deterministic): 1.6 mm PCB with rounded corners and
+  edge break, FR-4 edge; header pins with chamfered tips, **solder cones** on top, segmented PBT
+  bodies; module substrate with castellations (plated edges + board fillets); RF can with stamped
+  top panel; micro-USB shell with the B profile, latch windows, cavity, tongue with 5 gold contacts
+  and SMD tails; tact switches (base, cover, skirts, gull-wing terminals, actuator); QFN with
+  terminations; SOT-223 / SOT-23 with gull-wing leads; chip parts with terminations and fillets.
+- **Surface** (runtime, `esp32Textures.ts`, drawn once per page): black mask over **copper pour and
+  traces with clearance gaps** (as on a real board), tented vias, tinned SMD and pin pads, and the
+  silkscreen **as printed** — short labels (34, 35, GND, CLK…) along the header, reading from the
+  board edge, part outlines, EN / Boot — plotted with an original **stroke font** (`strokeFont.ts`;
+  the vector-font look of real silkscreen, identical on every computer). The same drawing as a
+  height map gives the relief (full tier). Underside: traces, vias, `ESP32-DevKitC V4`, J2/J3.
+- **Markings atlas** (one texture): the can's etched marking (ESPRESSIF, ESP32-WROOM-32, FCC/IC
+  ids, data-matrix pattern), CP2102N, regulator and SOT-23 top marks as on the photographed board.
+  Text only; no logo artwork is reproduced.
+- The silkscreen is part of the board's surface material (no floating text plane).
+
+### H.3 Asset pipeline and licensing gate
+
+`manifest.ts` is now the **visual descriptor table for every model key**: `procedural` / `gltf` /
+`hybrid`, authoring source, anchors, materials, LOD, the live hooks the renderer may drive from
+solved results (`ledGlow`, `rgbGlow`, `matrixDots`), provenance and licence; plus the non-component
+visuals (wire, Dupont housing, contact, stage). **No third-party asset ships**: everything is
+original code or a glTF authored from code here. A third-party asset can only be added with
+source/author/licence/modification/attribution filled in — the test refuses it otherwise.
+
+Reference material used while modelling (not shipped, not in the repository):
+- Espressif, ESP32-DevKitC V4 dimension drawing (`esp32_devkitc_v4_dimensions`), and user guide
+  "functional overview" photograph:
+  <https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32/esp32-devkitc/user_guide.html>
+  (fetched 2026-10-06; measured, never traced or embedded).
+- Espressif ESP32-WROOM-32 datasheet (module outline 18 × 25.5 × 3.1 mm).
+- Vishay 1N4148 (doc. 81857, DO-35), TLHR540x (83012), TLHG4900 (83009); Yageo CFR-25.
+- JEDEC/EIA package outlines (QFN-28 5×5, SOT-223, SOT-23, SOD-523, 0402/0603/0805).
+
+### H.4 Quality tiers (automatic, capability-based)
+
+`chooseQuality(rendererString, override)`: a software rasteriser (SwiftShader, llvmpipe, softpipe,
+"basic render") → **reduced**; any real GPU → **full**; `localStorage tbi-lab.3d.quality` overrides
+(evidence/troubleshooting). Never by browser brand. Both tiers build **identical geometry** (tested).
+
+| | full (GPU) | reduced (software) |
+|---|---|---|
+| Pixel ratio | ≤ 2 | 1 |
+| Antialiasing | 4× MSAA (composer) | none |
+| Shadows | soft PCF 2048² (rendered on rebuild only) | none |
+| AO | GTAO, 5 mm radius (transparent parts excluded) | none |
+| Environment | RoomEnvironment PMREM | none |
+| Materials | physical: clearcoat, sheen, **transmission** (LED, glass) | standard; metals damped; translucent stand-ins |
+| Board textures | ~36 px/mm + bump maps | ~18 px/mm, no bump |
+| Bench | fading, grain, gradient backdrop | opaque, plain clear colour |
+| LED light pool | 4 point lights | none |
+
+### H.5 New-version banner (approved item)
+
+`updateCheck.ts` + `UpdateBanner.tsx`: the compiled-in commit is compared with `/version.json`
+(no-store) on window focus, when the tab becomes visible, and every 5 min while visible. A
+different commit shows **"A new version is available" / "גרסה חדשה זמינה"**, the served
+`v0.10-dev · <sha>` (LTR), **Reload** and **Later**. Never reloads by itself. Reload is held back
+(with the reason) while a simulation/ESP32 session runs, a firmware build is in progress, or changes
+are unsaved; it flushes the autosave before reloading. Later hides it for that build (per tab).
+Failed/malformed responses are ignored. `stop()` removes the listeners and the timer.
+
+### H.6 Scale notes
+
+World 1 unit = 1 mm; one 2D grid step (20 units) = 3.175 mm (unchanged). Real dimensions
+everywhere except two documented exceptions: the **bench supply** (reduced, symbolic scale: a real
+~300 mm unit cannot stand in a breadboard-scale circuit) and the **ground** element (an abstract
+reference point drawn as a binding post). The Dupont housing moved from a 6 mm stand-in to its real
+14 mm, so wires leaving ESP32 pins now start 25 mm above the bench, as real jumper wires do.
+
+### H.7 Measurements
+
+Bundle (production build): `renderer` chunk 714.4 kB → 786.7 kB (gzip 184.8 → 205.7 kB);
+`ThreeView` 21.6 → 21.8 kB; ESP32 GLB 483,268 → 721,168 bytes (≈ 23k vertices; budget 800 kB);
+no new runtime dependency (GTAO, RoomEnvironment, EffectComposer are three.js examples).
+
+Scene counters (`data-*` attributes; esp32-blink example). Full tier now counts **every pass** of
+the frame (shadow is cached; AO normal pass, transmission, beauty, output); before, only the
+beauty pass. The like-for-like single-pass figure is the reduced tier:
+
+| esp32-blink | before (beauty pass) | after, reduced (single pass) | after, full (all passes) |
+|---|---|---|---|
+| draw calls | 40 | 45 | 124 |
+| triangles | 34.3k | 43.8k | 131k |
+| materials | 39 | 43 | 43 |
+| shader programs | – | 6 | – |
+| GPU memory estimate | 7.6 MB | 10.4 MB | 37.3 MB (board textures + bump at 36 px/mm) |
+
+Timings on this host's **software** renderer (SwiftShader, 1 CPU), the default tier (`reduced`),
+same procedure for both builds (`scripts/evidence/perf-3d.spec.ts`):
+
+| | before | after |
+|---|---|---|
+| ESP32 first 3D open | 3.2 s | 3.6 s |
+| re-open | 2.2 s | 2.5 s |
+| orbit drag, per step | 175 ms | 201 ms |
+| pan drag, per step | 147 ms | 175 ms |
+| fit / reset (one frame each) | 372 / 44 ms | 39 / 352 ms (one software frame each; order-dependent noise) |
+| dense bench (ESP32, 10 R, 10 LED, 6 D, 4 SW, 30 wires) first open | 3.3 s | 4.1 s |
+| dense orbit, per step | 210 ms | 253 ms |
+| JS heap after 7 enter/leave cycles | 10 MB | 10 MB |
+| 3D canvases after leaving | 0 | 0 |
+
+The first version of the pass cost the software tier much more (first open 6.0 s, re-open 6.1 s,
+dense orbit 436 ms); recovered by sampling wire tubes only in bends, dropping bump maps and the
+fading bench/backdrop in the reduced tier, keeping drawn textures for the page, and removing
+shader variants from the reduced tier (9 → 6 programs: each is compiled again for every new WebGL
+context on a software rasteriser). The two 20-cycle enter/leave e2e tests now need ~3 s per opening
+(60 s → 150 s test limit); resources stay flat.
+**Full tier forced on the software renderer is not usable** (a dense open took 57 s; the 7-cycle
+ESP32 run exceeded 10 min): GTAO, MSAA and transmission are GPU work. That is why tier selection is
+automatic. **No hardware-GPU measurement was possible on this host**; the full tier must be
+checked on the owner's machine (expected cost on any integrated GPU: a few ms per frame; renders
+are on demand, nothing runs while idle).
+
+Evidence: `docs/sprints/s10-evidence/realism/` — `compare-*.jpg` (before | after, same camera),
+`after/*.jpg` (full tier), `reduced/*.jpg` (software tier), `stats-*.json`.
+
+### H.8 Tests added
+
+- `app/tests/scene3d-realism.test.ts`: descriptors for every model key; licence gate; DevKitC
+  dimensions (drawing and authored asset: PCB 27.94 × 48.26 × 1.6, module 18 mm wide, 6.04 mm
+  overhang, pin rows); stroke font covers every printed marking; silkscreen names; wire end kinds;
+  scene determinism; tier choice by renderer string and override; pixel-ratio clamp.
+- `app/tests/scene3d-anchors.test.ts`: Dupont housing top = ESP32 anchor (body only); both tiers
+  build identical geometry.
+- `app/tests/update-check.test.ts`: mismatch reported, same commit / bad responses silent, hidden
+  tab not polled, `stop()` leaves no listener or timer.
+- `app/e2e/version.spec.ts`: banner EN/HE, LTR version, never auto-reloads, Reload held during a
+  running simulation, Later, Reload works; no banner when the served build is the running one.
+- Existing: 20 enter/leave cycles keep resources flat (s10.spec), anchors, connectivity semantics.
+
+### H.9 Acceptance questions (honest answers)
+
+*Would a student recognise each benchmark part without its label?*
+ESP32 DevKitC — yes (layout, silkscreen, module, USB, buttons match the real board). Resistor — yes.
+1N4148 — yes (amber glass, band). Push button — yes. Toggle switch — yes. LED — yes, but the
+diffused epoxy still reads slightly glassy/plasticky up close. Jumper wires — yes at the ESP32
+(housings); elsewhere they are clean tubes.
+
+*Does the scene look closer to a photographed electronics setup than to a simulator illustration?*
+At close range (ESP32, resistor, diode, switches, contacts): yes. At the default overview: much
+closer than before, but the floating reference labels (R1, D1…), perfectly orthogonal wire runs
+at constant height, and the spotless bench still say "simulator". Those are the next steps (H.10).
+
+### H.10 What still gives an artificial look
+
+1. Reference labels floating over parts (needed for teaching; a subtler style or a toggle is a
+   product decision).
+2. Wire routing: orthogonal runs at exact heights (from the 2D route); real jumpers sag and curve.
+   A natural-drape presentation must keep clearance guarantees: a design task, not a polish.
+3. No breadboard: real setups put parts in a breadboard; ours stand on the bench.
+4. Too clean: no dust, fingerprints, scuffs, solder flux, wire-jacket printing.
+5. LED epoxy: no internal refraction of the frame, no bloom beyond the halo sprite.
+6. Remaining older models (relay, PIR, matrix, buzzer, LDR, capacitors, TO-92, RGB LED) are at the
+   previous standard.
+7. Full tier verified only by renders on a software GPU; needs an owner check on real hardware.
+
+
 ## Part G — build identity: why the owner saw an old build (2026-10-06)
 
 **Root cause (gate request log, no assumption).**

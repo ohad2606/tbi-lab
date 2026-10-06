@@ -1,0 +1,42 @@
+{
+  "quality": "auto",
+  "esp32": {
+    "first": 5010,
+    "reopen": 3678,
+    "orbitMsPerStep": 279,
+    "panMsPerStep": 273,
+    "fit": 572,
+    "reset": 603,
+    "scene": {
+      "quality": "reduced",
+      "geometries": 41,
+      "textures": 16,
+      "gpuBytes": 10448647,
+      "objects": 62,
+      "drawCalls": 46,
+      "triangles": 43842,
+      "materials": 43,
+      "renderMs": 8.9
+    },
+    "heap0": 10,
+    "heapOpen": 10,
+    "heapAfterCycles": 10,
+    "canvasesAfterLeave": 0
+  },
+  "dense": {
+    "first": 5825,
+    "orbitMsPerStep": 373,
+    "scene": {
+      "quality": "reduced",
+      "geometries": 67,
+      "textures": 66,
+      "gpuBytes": 24710184,
+      "objects": 269,
+      "drawCalls": 152,
+      "triangles": 233468,
+      "materials": 135,
+      "renderMs": 22.5
+    },
+    "heap": 37.3
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "quality": "full",
+  "dense": {
+    "first": 57403,
+    "orbitMsPerStep": 5339,
+    "scene": {
+      "quality": "full",
+      "geometries": 68,
+      "textures": 82,
+      "gpuBytes": 54867809,
+      "objects": 264,
+      "drawCalls": 1,
+      "triangles": 1,
+      "materials": 135,
+      "renderMs": 30.9
+    },
+    "heap": 39.6
+  }
+}
