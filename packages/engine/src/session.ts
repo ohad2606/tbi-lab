@@ -17,6 +17,16 @@ import { Diode, LabPsu, Resistor, VoltageSource, type Device } from './devices.j
 import { GpioPin } from './esp32Gpio.js';
 import { SingularMatrixError } from './linalg.js';
 import { MODEL_CARDS, MODEL_VALID_CURRENT_A } from './registry.js';
+import {
+  partModel,
+  sameState,
+  type PartContext,
+  type PartElement,
+  type PartModel,
+  type PartSolution,
+  type PartState,
+} from './parts.js';
+import './parts/index.js';
 
 export const ENGINE_VERSION = '0.1.0';
 
@@ -60,9 +70,14 @@ export interface PsuControl {
 /**
  * A LIVE PERSISTENT control: a value the browser has already persisted in the project, now
  * mirrored into the running session (architecture §2.2, category 2). PSU settings, and the
- * toggle-switch position (`closed`).
+ * toggle-switch position (`closed`). Parts added from Sprint 10 on (parts.ts) mirror their own
+ * declared live parameters (`liveParams`, e.g. a sensor's simulated environment) through `params`,
+ * in SI units.
  */
-export type LiveControl = PsuControl & { closed?: boolean };
+export type LiveControl = PsuControl & {
+  closed?: boolean;
+  params?: Record<string, number | boolean | string>;
+};
 
 export type EngineErrorCode =
   | 'empty_circuit'
@@ -75,6 +90,11 @@ export type EngineErrorCode =
   | 'invalid_attachment'
   | 'singular_circuit'
   | 'no_convergence'
+  /**
+   * Sprint 10: the circuit has no DC steady state because a part's discrete state contradicts the
+   * operating point it produces (a relay that switches off its own coil: it chatters/buzzes).
+   */
+  | 'no_steady_state'
   | 'internal';
 
 export interface EngineError {
@@ -112,6 +132,16 @@ export interface ComponentResult {
    * outside the model card's documented validity range. A flag; it never alters numbers.
    */
   outsideModelRange?: boolean;
+  /**
+   * Parts with several elements (Sprint 10): named currents in amperes, e.g. the RGB LED's
+   * `red`/`green`/`blue` channel currents or a relay's `coil` current. Language-neutral keys.
+   */
+  currents?: Record<string, number | null>;
+  /**
+   * Parts with a discrete or derived state (Sprint 10), e.g. a relay's `energized`, a buzzer's
+   * `sounding`. Language-neutral keys and values.
+   */
+  state?: Record<string, number | boolean | string>;
 }
 
 export interface SolveStats {
@@ -176,15 +206,24 @@ class UnionFind {
   }
 }
 
-/** One electrical element in the compiled topology: which two nodes it joins. */
+/**
+ * One electrical element in the compiled topology: which nodes it joins. The original types are
+ * one element each, keyed by their component id; a part model (parts.ts) may add several, each
+ * with its own key.
+ */
 interface Element {
   component: ComponentInstance;
-  nodes: [string, string];
+  /** Device id in the circuit. */
+  key: string;
+  /** `switch`: an ideal contact (0 V branch when active). `part`: a part model's device. */
+  kind: 'switch' | 'psu' | 'device' | 'part';
+  nodes: [string, string, ...string[]];
   /**
    * Whether the element conducts in the solved topology. A PSU whose output is off and an
    * OPEN switch contribute no element at all: an open circuit, with no leakage added.
    */
   active: boolean;
+  make?: () => Device;
 }
 
 const TERMINALS: Record<string, [string, string]> = {
@@ -199,6 +238,32 @@ const TERMINALS: Record<string, [string, string]> = {
 const isSwitch = (type: string) =>
   type === 'component.push_button' || type === 'component.toggle_switch';
 
+/** Terminal ids of a type the engine can simulate (original types, then part models). */
+const terminalsOf = (type: string): readonly string[] | undefined =>
+  TERMINALS[type] ?? partModel(type)?.terminals;
+
+/** Upper bound on the passes of the discrete-state fixed point (bounded work). */
+const MAX_STATE_PASSES = 32;
+
+function partElement(component: ComponentInstance, el: PartElement): Element {
+  return el.kind === 'contact'
+    ? {
+        component,
+        key: el.key,
+        kind: 'switch',
+        nodes: [el.nodes[0], el.nodes[1]],
+        active: el.closed,
+      }
+    : {
+        component,
+        key: el.key,
+        kind: 'part',
+        nodes: el.nodes as [string, string, ...string[]],
+        active: true,
+        make: el.make,
+      };
+}
+
 export class EngineSession {
   private readonly overrides = new Map<string, LiveControl>();
   /** TRANSIENT runtime input: push buttons currently held. Never persisted anywhere. */
@@ -207,6 +272,12 @@ export class EngineSession {
   /** TRANSIENT runtime state: each attached pad's drive mode, set by the running firmware. */
   private readonly pinModes = new Map<number, RuntimePinMode>();
   private readonly pins: readonly McuPinAttachment[];
+  /**
+   * TRANSIENT runtime state (Sprint 10): each stateful part's discrete state (a relay armature),
+   * carried from one solve to the next within a run, so hysteresis behaves as in the real part.
+   * A new session starts from each part's initial state.
+   */
+  private readonly discrete = new Map<string, PartState>();
 
   constructor(
     private readonly snapshot: SimulationSnapshot,
@@ -249,7 +320,7 @@ export class EngineSession {
     const psuKeys = ['setpointVoltage', 'currentLimit', 'outputEnabled'] as const;
     const hasPsuKeys = psuKeys.some((k) => control[k] !== undefined);
     if (c.type === 'instrument.lab_psu') {
-      if (control.closed !== undefined) return refuse;
+      if (control.closed !== undefined || control.params) return refuse;
       if (
         control.setpointVoltage !== undefined &&
         !(control.setpointVoltage >= 0 && Number.isFinite(control.setpointVoltage))
@@ -263,9 +334,21 @@ export class EngineSession {
         return { code: 'invalid_parameter', components: [componentId], param: 'currentLimit' };
       }
     } else if (c.type === 'component.toggle_switch') {
-      if (hasPsuKeys || typeof control.closed !== 'boolean') return refuse;
+      if (hasPsuKeys || typeof control.closed !== 'boolean' || control.params) return refuse;
     } else {
-      return refuse;
+      // A part model's declared live parameters (e.g. a sensor's simulated environment).
+      const live = partModel(c.type)?.liveParams ?? [];
+      const params = control.params;
+      if (hasPsuKeys || control.closed !== undefined || !params) return refuse;
+      for (const [key, value] of Object.entries(params)) {
+        if (!live.includes(key)) return refuse;
+        if (typeof value === 'number' && !Number.isFinite(value))
+          return { code: 'invalid_parameter', components: [componentId], param: key };
+      }
+      const prev = this.overrides.get(componentId);
+      this.overrides.set(componentId, { params: { ...prev?.params, ...params } });
+      this.appliedRevision = Math.max(this.appliedRevision, projectRevision);
+      return null;
     }
     this.overrides.set(componentId, { ...this.overrides.get(componentId), ...control });
     this.appliedRevision = Math.max(this.appliedRevision, projectRevision);
@@ -335,7 +418,57 @@ export class EngineSession {
     }
   }
 
+  /**
+   * Solve, then settle every stateful part (Sprint 10): a part's discrete state (a relay armature)
+   * determines the topology, and the solved operating point determines the state. Starting from
+   * the state the previous solve left (hysteresis is real), solve, update each state from the
+   * solution, and repeat until nothing changes. A circuit whose states never settle (a relay
+   * interrupting its own coil) has no DC steady state and is refused with `no_steady_state`,
+   * never shown in one of its transitory states. Without stateful parts this is one pass: the
+   * original path, unchanged.
+   */
   private solveUnchecked(): SolveOutcome {
+    let states = new Map(this.discrete);
+    const seen = new Set<string>();
+    for (let pass = 1; ; pass++) {
+      const next = new Map<string, PartState>();
+      const outcome = this.solveOnce(states, next);
+      if (!outcome.ok) return outcome;
+      const changed = [...next].filter(([id, st]) => !sameState(st, states.get(id) ?? {}));
+      if (changed.length === 0) {
+        for (const [id, st] of next) this.discrete.set(id, st);
+        return outcome;
+      }
+      const key = JSON.stringify([...next].sort(([a], [b]) => (a < b ? -1 : 1)));
+      if (seen.has(key) || pass >= MAX_STATE_PASSES) {
+        return this.fail({
+          code: 'no_steady_state',
+          components: changed.map(([id]) => id),
+          detail: { passes: pass },
+        });
+      }
+      seen.add(key);
+      states = next;
+    }
+  }
+
+  private partContext(c: ComponentInstance, nodeOf: (c: string, t: string) => string): PartContext {
+    const live = this.overrides.get(c.id)?.params ?? {};
+    return {
+      component: c,
+      node: (terminal) => nodeOf(c.id, terminal),
+      quantity: (key) => {
+        const v = live[key];
+        return typeof v === 'number' ? v : quantity(c.params, key);
+      },
+      value: (key) => (key in live ? live[key] : c.params[key]),
+    };
+  }
+
+  private solveOnce(
+    states: ReadonlyMap<string, PartState>,
+    next: Map<string, PartState>,
+  ): SolveOutcome {
     const snap = this.snapshot;
     const groundNets = new Set(snap.nets.filter((n) => n.role === 'ground').map((n) => n.id));
     const netOf = new Map<string, string>();
@@ -354,7 +487,7 @@ export class EngineSession {
     const pinNodes: { pin: McuPinAttachment; node: string }[] = [];
     for (const [i, p] of this.pins.entries()) {
       const c = snap.components.find((x) => x.id === p.component);
-      const terminals = c ? TERMINALS[c.type] : undefined;
+      const terminals = c ? terminalsOf(c.type) : undefined;
       const ok =
         Number.isInteger(p.gpio) &&
         p.gpio >= 0 &&
@@ -374,6 +507,8 @@ export class EngineSession {
 
     // ---- Compile: validate, and turn components into topology elements -----------------
     const elements: Element[] = [];
+    const parts: { c: ComponentInstance; model: PartModel; ctx: PartContext; state: PartState }[] =
+      [];
     const notConnected: string[] = [];
     let hasGround = false;
     for (const c of snap.components) {
@@ -397,6 +532,8 @@ export class EngineSession {
           }
           elements.push({
             component: c,
+            key: c.id,
+            kind: 'device',
             nodes: [nodeOf(c.id, 'a'), nodeOf(c.id, 'b')],
             active: true,
           });
@@ -409,6 +546,8 @@ export class EngineSession {
           }
           elements.push({
             component: c,
+            key: c.id,
+            kind: 'device',
             nodes: [nodeOf(c.id, 'anode'), nodeOf(c.id, 'cathode')],
             active: true,
           });
@@ -418,6 +557,8 @@ export class EngineSession {
         case 'component.toggle_switch':
           elements.push({
             component: c,
+            key: c.id,
+            kind: 'switch',
             nodes: [nodeOf(c.id, 'a'), nodeOf(c.id, 'b')],
             active: this.switchClosed(c),
           });
@@ -444,11 +585,20 @@ export class EngineSession {
             // meaningful operating point in this model: refused, never approximated.
             return this.fail({ code: 'psu_shorted', components: [c.id] });
           }
-          elements.push({ component: c, nodes, active: s.enabled });
+          elements.push({ component: c, key: c.id, kind: 'psu', nodes, active: s.enabled });
           break;
         }
-        default:
-          return this.fail({ code: 'unsupported_component', components: [c.id] });
+        default: {
+          // Sprint 10 parts: compiled by their registered model (parts.ts).
+          const model = partModel(c.type);
+          if (!model) return this.fail({ code: 'unsupported_component', components: [c.id] });
+          const ctx = this.partContext(c, nodeOf);
+          const invalid = model.validate(ctx);
+          if (invalid) return this.fail(invalid);
+          const state = states.get(c.id) ?? model.initialState?.(ctx) ?? {};
+          parts.push({ c, model, ctx, state });
+          for (const el of model.elements(ctx, state)) elements.push(partElement(c, el));
+        }
       }
     }
 
@@ -457,7 +607,7 @@ export class EngineSession {
     // Ideal conductors: nodes joined by closed switches are one electrical node. An enabled
     // supply whose terminals they join is shorted exactly as by a wire: refused, not guessed.
     const shorts = new UnionFind();
-    const closedSwitches = elements.filter((e) => isSwitch(e.component.type) && e.active);
+    const closedSwitches = elements.filter((e) => e.kind === 'switch' && e.active);
     for (const e of closedSwitches) shorts.union(e.nodes[0], e.nodes[1]);
     for (const e of elements) {
       if (e.component.type !== 'instrument.lab_psu' || !e.active) continue;
@@ -491,7 +641,7 @@ export class EngineSession {
     const islandsWithout = (useInactive: boolean) => {
       const uf = new UnionFind();
       const used = elements.filter((e) => e.active || useInactive);
-      for (const e of used) uf.union(e.nodes[0], e.nodes[1]);
+      for (const e of used) for (const n of e.nodes.slice(1)) uf.union(e.nodes[0], n);
       // An attached pad is referenced to GND through the MCU (its driver or input leakage).
       for (const { node } of pinNodes) uf.union(node, REF);
       const referenced = uf.find(REF);
@@ -524,22 +674,24 @@ export class EngineSession {
       if (!e.active) continue;
       const c = e.component;
       let d: Device;
-      if (isSwitch(c.type)) {
-        if (forest.find(e.nodes[0]) === forest.find(e.nodes[1])) {
-          redundantSwitches.add(c.id);
+      const [n0, n1] = e.nodes;
+      if (e.kind === 'switch') {
+        if (forest.find(n0) === forest.find(n1)) {
+          redundantSwitches.add(e.key);
           continue;
         }
-        forest.union(e.nodes[0], e.nodes[1]);
-        d = new VoltageSource(c.id, e.nodes[0], e.nodes[1], 0);
-      } else if (c.type === 'component.resistor')
-        d = new Resistor(c.id, e.nodes[0], e.nodes[1], quantity(c.params, 'resistance')!);
+        forest.union(n0, n1);
+        d = new VoltageSource(e.key, n0, n1, 0);
+      } else if (e.kind === 'part') d = e.make!();
+      else if (c.type === 'component.resistor')
+        d = new Resistor(c.id, n0, n1, quantity(c.params, 'resistance')!);
       else if (c.type === 'component.led' || c.type === 'component.diode')
-        d = new Diode(c.id, e.nodes[0], e.nodes[1], MODEL_CARDS[c.params.model as string]!);
+        d = new Diode(c.id, n0, n1, MODEL_CARDS[c.params.model as string]!);
       else {
         const s = this.psuSettings(c);
-        d = new LabPsu(c.id, e.nodes[0], e.nodes[1], s.setpointV!, s.limitA!);
+        d = new LabPsu(c.id, n0, n1, s.setpointV!, s.limitA!);
       }
-      devices.set(c.id, circuit.add(d));
+      devices.set(e.key, circuit.add(d));
     }
     // Attached MCU pads: the approved ESP32 pin model, in the firmware's current drive mode.
     const pinDevices = pinNodes.map(({ pin, node }) => ({
@@ -612,6 +764,7 @@ export class EngineSession {
     const components: Record<string, ComponentResult> = {};
     for (const e of elements) {
       const c = e.component;
+      if (e.kind === 'part' || !TERMINALS[c.type]) continue; // part models report below
       const [a, b] = e.nodes.map(potential) as [number | null, number | null];
       const terminalIds = TERMINALS[c.type]!;
       let current: number | null;
@@ -639,6 +792,23 @@ export class EngineSession {
         result.mode = !e.active ? 'off' : modes.get(c.id) === 'CC' ? 'cc' : 'cv';
       }
       components[c.id] = result;
+    }
+    // Part models (Sprint 10): each reports its own result and, if stateful, its next state.
+    const active = new Map(elements.map((e) => [e.key, e.active]));
+    for (const p of parts) {
+      const sol: PartSolution = {
+        potential: (terminal) => potential(p.ctx.node(terminal)),
+        deviceCurrent: (key) => clean(currents.get(key) ?? 0),
+        contactCurrent: (key) =>
+          !active.get(key)
+            ? 0
+            : redundantSwitches.has(key)
+              ? null
+              : clean(-(currents.get(key) ?? 0)), // 0 V branch: first node -> second
+        device: (key) => devices.get(key),
+      };
+      components[p.c.id] = { id: p.c.id, type: p.c.type, ...p.model.report(p.ctx, p.state, sol) };
+      if (p.model.nextState) next.set(p.c.id, p.model.nextState(p.ctx, p.state, sol));
     }
     const outcome: SolveSuccess = {
       ok: true,
