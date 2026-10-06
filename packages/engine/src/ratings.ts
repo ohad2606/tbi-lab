@@ -12,6 +12,7 @@
 
 import type { SimulationSnapshot } from '@tbi-lab/domain';
 import { I_OH_A, I_OL_A } from './esp32Gpio.js';
+import { partModel } from './parts.js';
 import type { SolveSuccess } from './session.js';
 
 export interface AbsoluteMaximumRatings {
@@ -67,6 +68,9 @@ export type RatingCode =
   | 'forward_current'
   | 'reverse_voltage'
   | 'power'
+  /** Sprint 10 parts: a voltage or current beyond a documented maximum (a relay coil, a buzzer). */
+  | 'voltage'
+  | 'current'
   // Sprint 10: ESP32 pads (the board's datasheet drive specification, esp32Gpio.ts).
   /** An output-HIGH pad sources more than I_OH. */
   | 'gpio_source_current'
@@ -84,6 +88,8 @@ export const RATING_UNIT: Readonly<Record<RatingCode, 'ampere' | 'volt' | 'watt'
   forward_current: 'ampere',
   reverse_voltage: 'volt',
   power: 'watt',
+  voltage: 'volt',
+  current: 'ampere',
   gpio_source_current: 'ampere',
   gpio_sink_current: 'ampere',
   gpio_contention: 'ampere',
@@ -104,6 +110,8 @@ export interface RatingWarning {
   gpio?: number;
   /** Contention only: the other GPIO driving the same net. */
   otherGpio?: number;
+  /** Sprint 10 parts: the element of the part the row is about (an RGB channel, a relay coil). */
+  channel?: string;
 }
 
 /** Parts whose solved operating point exceeds their datasheet absolute maximum ratings. */
@@ -113,6 +121,22 @@ export function ratingWarnings(
 ): RatingWarning[] {
   const out: RatingWarning[] = [];
   for (const c of snapshot.components) {
+    const part = partModel(c.type);
+    if (part) {
+      // Sprint 10 parts: their own datasheet checks.
+      const r = outcome.components[c.id];
+      if (r && part.ratings)
+        for (const x of part.ratings(c.params, r))
+          out.push({
+            component: c.id,
+            model: String(c.params.model),
+            code: x.code,
+            value: x.value,
+            limit: x.limit,
+            ...(x.channel ? { channel: x.channel } : {}),
+          });
+      continue;
+    }
     const model = c.params.model;
     if (typeof model !== 'string') continue;
     const rating = MODEL_RATINGS[model];

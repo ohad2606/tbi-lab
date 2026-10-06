@@ -16,6 +16,8 @@ export {
   type SupplyMode,
 } from './session.js';
 export { MODEL_CARDS, MODEL_VALID_CURRENT_A } from './registry.js';
+export { partModel, partNumber, type PartModel } from './parts.js';
+export { RGB_CHANNELS, RGB_RATINGS, RGB_VALID_CURRENT_A, type RgbChannel } from './parts/rgbLed.js';
 export {
   MODEL_RATINGS,
   RATING_UNIT,
@@ -29,7 +31,7 @@ export {
 // (runtime R1): the same physics implementation the browser uses (ADR-008).
 export { Circuit, ConvergenceError, type SolveResult } from './circuit.js';
 export { Diode, LabPsu, Resistor, VoltageSource, type Device } from './devices.js';
-export { DIODE_1N4148, LED_TLHR5400 } from './models.js';
+export { DIODE_1N4148, LED_TLHR5400, RGB_WP154A4SUREQBFZGC } from './models.js';
 export {
   G_INPUT_LEAKAGE_S,
   GpioPin,

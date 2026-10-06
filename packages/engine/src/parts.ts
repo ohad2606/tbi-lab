@@ -63,9 +63,31 @@ export interface PartSolution {
   device(key: string): Device | undefined;
 }
 
+/** One datasheet-sourced part a model id stands for. */
+export interface PartCard {
+  /** The manufacturer part number: a language-neutral technical token (schematic value). */
+  readonly partNumber: string;
+}
+
+/** A documented limit the solved result exceeds (ratings.ts turns it into a RatingWarning). */
+export interface PartRatingExcess {
+  code: 'forward_current' | 'reverse_voltage' | 'power' | 'voltage' | 'current';
+  value: number;
+  limit: number;
+  /** Which element of the part (an RGB channel, a relay's coil or contact), if not the whole part. */
+  channel?: string;
+}
+
 export interface PartModel {
   /** Terminal ids, as in the domain catalog. */
   readonly terminals: readonly string[];
+  /** The model ids (`params.model`) this part accepts, with their datasheet part. */
+  readonly cards: Readonly<Record<string, PartCard>>;
+  /**
+   * Datasheet absolute-maximum checks on a solved result (warnings only, never physics).
+   * `params` are the component's stored parameters.
+   */
+  ratings?(params: Readonly<Record<string, unknown>>, result: ComponentResult): PartRatingExcess[];
   /** Live parameters a running session accepts (mirrored after the browser persisted them). */
   readonly liveParams?: readonly string[];
   /** Parameter validation; null when the parameters are usable. */
@@ -93,6 +115,21 @@ export function registerPart(type: string, model: PartModel): void {
 
 export function partModel(type: string): PartModel | undefined {
   return registry.get(type);
+}
+
+/** The manufacturer part number behind a model id, for any registered part (or undefined). */
+export function partNumber(modelId: unknown): string | undefined {
+  if (typeof modelId !== 'string') return undefined;
+  for (const m of registry.values()) if (m.cards[modelId]) return m.cards[modelId]!.partNumber;
+  return undefined;
+}
+
+/** The standard model-id check: the stored model must be one of the part's cards. */
+export function validateCard(ctx: PartContext, cards: PartModel['cards']): EngineError | null {
+  const m = ctx.value('model');
+  return typeof m === 'string' && cards[m]
+    ? null
+    : { code: 'invalid_parameter', components: [ctx.component.id], param: 'model' };
 }
 
 export const sameState = (a: PartState, b: PartState): boolean => {

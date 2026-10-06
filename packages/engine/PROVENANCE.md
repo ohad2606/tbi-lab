@@ -150,3 +150,27 @@ assumption, I_S fitted exactly, R_S not modelled, valid 1–20 mA.
   - determinism and bounds;
   - an RC + LED discharge against ngspice (`eecircuit-engine`, the Gate A oracle) within 2e-4
     relative.
+
+## Added in Sprint 10, after the PM-6 revision (2026-10-06)
+
+New component types are **part models** (`src/parts.ts`, one file per part in `src/parts/`). The
+eight original types keep their frozen session path; the Gate A golden values are unchanged.
+Datasheets were retrieved 2026-10-06; full fact sheets with page references are in
+`docs/sprints/s10-evidence/datasheets/FACTS.md`.
+
+| Part (model id)                                      | Source (SHA-256 prefix)                                  | Model                                                                                                                                                                                      | Assumptions / limits                                                                                                                                                                                        |
+| ---------------------------------------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| RGB LED `model.rgb_led.kingbright_wp154a4sureqbfzgc` | Kingbright DSAJ8687 Rev V.11A, 03/25/2025 (`2433a903…`)  | Three `Diode`s, common cathode. Per channel: anchored least-squares Shockley + R_S (`fitAnchoredShockleyRs`) through the page 2 typical V_F at 20 mA (exact) and page 3 I-V graph readings | Graph readings ±10 mV. Valid 2–30 mA (green 2–25 mA). Breakdown not modelled. Cross-checked against ngspice (1e-6)                                                                                          |
+| Photoresistor `model.ldr.senba_gl5528`               | Senba GL55 series manual (`02b4172e…`)                   | Resistor R = R10 (E/10 lx)^-γ, E a live environment parameter                                                                                                                              | R10 = 14.14 kΩ (geometric centre of 10–20 kΩ); γ = 0.6 (manufacturer; a generic sheet says 0.7 and 8–20 kΩ: conflict recorded). Characterised 1–100 lx; outside is flagged. No response time or temperature |
+| Buzzer `model.buzzer.cui_cem_1205_ic`                | Same Sky / CUI CEM-1205-IC, 09/11/2024 (`a4a26a0f…`)     | Piecewise-linear load (`src/pwl.ts`) through the page 2 V-I graph readings (3/4/5/6 V: 13.3/22.5/27.6/30.0 mA); sounds at 3.0–6.0 V forward                                                | Below 3 V and reverse: outside the model, not sounding; reverse conducts only gmin. Sound is presentation only                                                                                              |
+| Relay `model.relay.songle_srd_05vdc_sl_c`            | Songle SRD datasheet via circuitbasics.com (`9967e9a6…`) | Coil 70 Ω resistor; ideal COM–NC / COM–NO contacts; armature = discrete state: picks up at ≥ 3.75 V (75 % max pull-in), drops out at ≤ 0.5 V (10 % min drop-out)                           | Guaranteed limits, not typical thresholds. Contact resistance (100 mΩ max), timing and coil inductance not modelled. A relay that interrupts its own coil is refused (`no_steady_state`)                    |
+
+**Engine additions:** `PartModel` registry; ideal contacts in the short/loop analysis; a bounded
+discrete-state fixed point (32 passes, cycle detection); `LiveControl.params` for declared live
+parameters; `PwlLoad`; ESP32 pad diagnostics in `ratingWarnings` (I_OH 40 mA / I_OL 28 mA from the
+same datasheet table as the pad model).
+
+**Internal, not exposed:** `src/peripherals/i2c.ts` (I2C bus, transaction and line level, per
+NXP UM10204) and `src/peripherals/hd44780.ts` (PCF8574 backpack + HD44780 4-bit controller, Hitachi
+ADE-207-272(Z)). No product path drives them yet: the deployed ESP32 runtime does not model the I2C
+controller.

@@ -1,2 +1,5 @@
 /** Registers every Sprint 10+ part model (side-effect imports, in catalog order). */
-export {};
+import './rgbLed.js';
+import './photoresistor.js';
+import './buzzer.js';
+import './relay.js';

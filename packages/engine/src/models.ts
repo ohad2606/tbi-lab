@@ -236,3 +236,114 @@ export const LED_TLHG4900: DiodeModel = {
     `N = ${RED_LED_EMISSION_COEFFICIENT} assumed (see RED_LED_EMISSION_COEFFICIENT). ` +
     'R_S not modelled (not identifiable from the available datasheet data).',
 };
+
+/**
+ * Least-squares Shockley + series-resistance fit through one EXACT typical anchor (Sprint 10).
+ * Model: V = I*R_S + N*Vt*ln(I/I_S) (I >> I_S). With the anchor (I_a, V_a) imposed exactly, the
+ * remaining parameters solve a linear least-squares problem in (R_S, N*Vt) over graph readings:
+ *   V - V_a = R_S (I - I_a) + N*Vt (ln I - ln I_a),   I_S = I_a exp(-(V_a - R_S I_a) / (N Vt)).
+ * Deterministic and closed form (2x2 normal equations); tests reproduce every card built with it.
+ */
+export function fitAnchoredShockleyRs(
+  points: ReadonlyArray<readonly [number, number]>,
+  anchor: readonly [number, number],
+  temperatureK: number = T_AMBIENT_K,
+  constants: PhysicalConstants = CODATA_2019,
+): { saturationCurrentA: number; emissionCoefficient: number; seriesResistanceOhm: number } {
+  const [ia, va] = anchor;
+  let s11 = 0;
+  let s12 = 0;
+  let s22 = 0;
+  let t1 = 0;
+  let t2 = 0;
+  for (const [i, v] of points) {
+    const x1 = i - ia;
+    const x2 = Math.log(i) - Math.log(ia);
+    const y = v - va;
+    s11 += x1 * x1;
+    s12 += x1 * x2;
+    s22 += x2 * x2;
+    t1 += x1 * y;
+    t2 += x2 * y;
+  }
+  const det = s11 * s22 - s12 * s12;
+  const rs = (t1 * s22 - t2 * s12) / det;
+  const nVt = (s11 * t2 - s12 * t1) / det;
+  return {
+    seriesResistanceOhm: rs,
+    emissionCoefficient: nVt / thermalVoltage(temperatureK, constants),
+    saturationCurrentA: ia * Math.exp(-(va - rs * ia) / nVt),
+  };
+}
+
+/**
+ * RGB LED, Kingbright WP154A4SUREQBFZGC (Sprint 10, PM-6 revision): T-1 3/4 (5 mm) full-colour
+ * lamp, water clear, COMMON CATHODE (datasheet circuit diagram: pin 2 the common cathode on the
+ * longest lead; pins 1 red, 3 blue, 4 green anodes).
+ *
+ * Source: Kingbright, Spec No DSAJ8687 / 1101026910, Rev V.11A, 03/25/2025, retrieved 2026-10-06
+ * (wp154a4sureqbfzgc.pdf, SHA-256 2433a90345da743a9b442d52146e2f0841fa1b8d68f11334e8ac6a92e47fdcbf).
+ * - Typical V_F at I_F = 20 mA (page 2 table): red 1.9 V, blue 3.3 V, green 3.3 V. Each card
+ *   reproduces its anchor EXACTLY.
+ * - The page 3 "Forward Current vs. Forward Voltage" curves (T_a = 25 degC) are GRAPH READINGS
+ *   (rendered at 400 dpi, read against the plot's own gridlines; about +-10 mV, +-0.3 mA). They
+ *   fix N and R_S, which one anchor cannot: the InGaN blue and green dice are strongly ohmic
+ *   (R_S ~ 17-20 ohm) with the high ideality factors typical of InGaN; the AlGaInP red die is not.
+ *   Fit residuals against the readings: red <= 8 mV, green <= 15 mV, blue <= 30 mV.
+ * - Validity: the span of the readings (2 mA .. 30 mA; green 2 .. 25 mA, its rated maximum).
+ * - Reverse bias: I_S is the model's reverse current (far below the 10/50 uA maxima at 5 V).
+ *   Reverse breakdown is not modelled; the 5 V reverse rating is checked by ratings.ts.
+ */
+export const WP154A4SUREQBFZGC_DATA = {
+  anchors: { red: [0.02, 1.9], green: [0.02, 3.3], blue: [0.02, 3.3] },
+  /** [I_F A, V_F V] graph readings, page 3. */
+  readings: {
+    red: [
+      [0.002, 1.755],
+      [0.005, 1.813],
+      [0.01, 1.847],
+      [0.02, 1.892],
+      [0.03, 1.933],
+    ],
+    green: [
+      [0.002, 2.63],
+      [0.005, 2.83],
+      [0.01, 3.0],
+      [0.015, 3.156],
+      [0.02, 3.296],
+      [0.025, 3.436],
+    ],
+    blue: [
+      [0.002, 2.65],
+      [0.005, 2.8],
+      [0.01, 3.0],
+      [0.02, 3.32],
+      [0.03, 3.505],
+    ],
+  },
+  source:
+    'Kingbright WP154A4SUREQBFZGC datasheet, Spec No DSAJ8687 / 1101026910, Rev V.11A ' +
+    '(03/25/2025): V_F typ. at 20 mA (page 2) and the Forward Current vs. Forward Voltage ' +
+    'curves at 25 degC (page 3, graph readings).',
+} as const;
+
+function rgbChannel(channel: 'red' | 'green' | 'blue'): DiodeModel {
+  const fit = fitAnchoredShockleyRs(
+    WP154A4SUREQBFZGC_DATA.readings[channel],
+    WP154A4SUREQBFZGC_DATA.anchors[channel],
+  );
+  return {
+    name: `WP154A4SUREQBFZGC-${channel}`,
+    ...fit,
+    temperatureK: T_AMBIENT_K,
+    provenance:
+      `Anchored least-squares Shockley + R_S fit (fitAnchoredShockleyRs) to ` +
+      `${WP154A4SUREQBFZGC_DATA.source}`,
+  };
+}
+
+export const RGB_WP154A4SUREQBFZGC = {
+  red: rgbChannel('red'),
+  green: rgbChannel('green'),
+  blue: rgbChannel('blue'),
+} as const;
