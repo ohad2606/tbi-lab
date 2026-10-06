@@ -18,6 +18,10 @@ export {
 export { MODEL_CARDS, MODEL_VALID_CURRENT_A } from './registry.js';
 export { partModel, partNumber, type PartModel } from './parts.js';
 export { RGB_CHANNELS, RGB_RATINGS, RGB_VALID_CURRENT_A, type RgbChannel } from './parts/rgbLed.js';
+export { CEM_1205_IC } from './parts/buzzer.js';
+import { CEM_1205_IC as BUZZER_CARD } from './parts/buzzer.js';
+/** The buzzer's rated tone (CEM-1205-IC: 2400 Hz), for an optional sound presentation. */
+export const BUZZER_TONE_HZ = BUZZER_CARD.frequencyHz;
 export {
   MODEL_RATINGS,
   RATING_UNIT,

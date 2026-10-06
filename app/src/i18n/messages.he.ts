@@ -165,6 +165,10 @@ export const he: Record<MessageKey, string> = {
   'sim.error.timeout':
     'הסימולציה לא הגיבה בזמן ונעצרה. הפרויקט לא נפגע. לחצו על הרצה כדי לנסות שוב.',
   'sim.notConnected': 'לא מחוברים ולכן לא מדומים: {components}',
+  'sound.off': 'צליל: כבוי',
+  'sound.on': 'צליל: פועל',
+  'sound.off.hint': 'השמעת זמזמים פעילים (הצגה בלבד; כבוי כברירת מחדל)',
+  'sound.on.hint': 'השתקת הזמזמים',
   'sim.part.yes': 'כן',
   'sim.part.no': 'לא',
   'sim.results.heading': 'תוצאת סימולציה',

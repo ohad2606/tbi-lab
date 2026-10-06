@@ -1,4 +1,5 @@
 import { useAppState, useStore, useT } from './context.js';
+import { BuzzerSound } from './BuzzerSound.js';
 
 /**
  * One stateful simulation control (Product Alpha maintenance). Stopped (or after a failed run):
@@ -115,6 +116,7 @@ export function SimControls() {
           )}
         </span>
       </span>
+      <BuzzerSound />
     </div>
   );
 }

@@ -165,6 +165,10 @@ export const en = {
   'sim.error.timeout':
     'The simulation did not respond in time and was stopped. The project is not affected. Press Run to try again.',
   'sim.notConnected': 'Not connected, not simulated: {components}',
+  'sound.off': 'Sound: off',
+  'sound.on': 'Sound: on',
+  'sound.off.hint': 'Hear sounding buzzers (presentation only; off by default)',
+  'sound.on.hint': 'Mute buzzers',
   'sim.part.yes': 'yes',
   'sim.part.no': 'no',
   'sim.results.heading': 'Simulation result',

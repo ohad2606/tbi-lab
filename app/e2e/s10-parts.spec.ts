@@ -101,6 +101,12 @@ test('relay: holding the button energizes the coil, NO lights the LED and NC sil
   await expect(k).toHaveAttribute('data-energized', 'false');
   await expect(bz).toHaveAttribute('data-sounding', 'true');
   await expect(page.getByTestId('probe-reading-D1')).toContainText('0 A');
+  // Sound is optional presentation: off until the user turns it on; it follows the solved state.
+  const sound = page.getByTestId('sound-toggle');
+  await expect(sound).toHaveAttribute('aria-pressed', 'false');
+  await expect(sound).toHaveAttribute('data-audible', 'BZ1');
+  await sound.click();
+  await expect(sound).toHaveAttribute('aria-pressed', 'true');
   const act = page.getByTestId('actuator-SW1');
   const b = (await act.boundingBox())!;
   await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
@@ -108,9 +114,12 @@ test('relay: holding the button energizes the coil, NO lights the LED and NC sil
   await expect(k).toHaveAttribute('data-energized', 'true');
   await expect(bz).toHaveAttribute('data-sounding', 'false');
   await expect(page.getByTestId('probe-reading-D1')).toContainText('13.72 mA');
+  await expect(sound).toHaveAttribute('data-audible', '');
   await page.mouse.up();
   await expect(k).toHaveAttribute('data-energized', 'false');
   await expect(bz).toHaveAttribute('data-sounding', 'true');
+  await sound.click(); // mute
+  await expect(sound).toHaveAttribute('aria-pressed', 'false');
   // Schematic: the relay block shows its coil and change-over contact glyph and every wired pin.
   await page.getByTestId('view-schematic').click();
   await expect(page.locator('[data-part="K1"] [data-glyph="relay.spdt"]')).toBeVisible();
