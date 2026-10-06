@@ -51,6 +51,9 @@ test('the ESP32 glTF asset is fetched only when 3D opens, once per page; standar
   await page.getByTestId('view-3d').click();
   await expect(view).toHaveAttribute('data-status', 'ready', { timeout: 60_000 });
   expect(glb).toHaveLength(1);
-  expect(Number(await view.getAttribute('data-gpu-bytes'))).toBeGreaterThan(100_000);
+  // The scene is built just after 'ready' (the first update): wait for its stats.
+  await expect
+    .poll(async () => Number(await view.getAttribute('data-gpu-bytes')), { timeout: 30_000 })
+    .toBeGreaterThan(100_000);
   expect(JSON.stringify(await storedProject(page))).toBe(before); // viewing writes nothing
 });
