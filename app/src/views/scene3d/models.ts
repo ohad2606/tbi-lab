@@ -30,12 +30,8 @@ import {
   ESP32_DEVKITC,
   ESP32_PCB_BOTTOM,
   ESP32_PCB_TOP,
-  GROUND_POST,
   LEAD_ATTACH_HEIGHT,
   LED_PACKAGES,
-  PSU,
-  TACTILE,
-  TOGGLE,
   type AxialPhysics,
 } from './physical.js';
 import { SCALE, realPinZ, type ModelKey, type SceneComponent } from './scene.js';
@@ -53,42 +49,59 @@ import {
 
 import { buildResistorHiFi } from './assets/resistorAxial.js';
 import { buildLedHiFi } from './assets/led5mm.js';
+import { buildDo35 } from './assets/diodeDo35.js';
+import { buildGround, buildPsu, buildTactile, buildToggle } from './assets/benchParts.js';
 import { buildEsp32Asset } from './assets/esp32DevkitC.js';
+import { buildDupont, dupontMaterials } from './assets/dupont.js';
 
 export { OwnedResources, roundPath };
 
 export type Materials = ReturnType<typeof createMaterials>;
 
-/** Shared materials of one viewer (disposed with it). */
+/**
+ * The material library (Sprint 10 realism pass): one physically based set per viewer, shared by
+ * every procedural part. Metals are metals (metalness 1, their colour the reflectance: tin, nickel,
+ * gold, stainless), plastics are dielectrics with the roughness of their finish (moulded PBT and
+ * nylon, glossy binding-post caps, a powder-coated case). In the reduced tier the viewer damps
+ * metalness (renderer.ts simplifyMaterials) because there is no environment to reflect.
+ */
 export function createMaterials() {
   const std = (color: string, extra: Partial<THREE.MeshStandardMaterialParameters> = {}) =>
     new THREE.MeshStandardMaterial({ color, roughness: 0.6, metalness: 0, ...extra });
+  const metal = (color: string, roughness: number) => std(color, { metalness: 1, roughness });
   return {
-    /** Tinned copper leads. */
-    lead: std('#c9cdd2', { metalness: 0.55, roughness: 0.3 }),
+    /** Tinned copper leads (hot-dip tin: bright, slightly soft reflections). */
+    lead: metal('#d3d6d9', 0.28),
     /** Gold-flashed header pins. */
-    gold: std('#d9b558', { metalness: 0.6, roughness: 0.3 }),
+    gold: metal('#e0b65c', 0.26),
     /** Soldermask: the DevKitC's near-black board. */
-    pcb: std('#16191e', { roughness: 0.55 }),
-    pcbEdge: std('#3a3f2c', { roughness: 0.8 }),
-    moduleBoard: std('#1b2733', { roughness: 0.6 }),
-    shield: std('#d3d7dc', { metalness: 0.55, roughness: 0.36 }),
-    blackPlastic: std('#1d1e21', { roughness: 0.55 }),
-    darkPlastic: std('#2c2f34', { roughness: 0.5 }),
-    ic: std('#202226', { roughness: 0.45 }),
-    chrome: std('#e4e7ea', { metalness: 0.6, roughness: 0.2 }),
-    steel: std('#b4bac0', { metalness: 0.55, roughness: 0.35 }),
+    pcb: std('#121417', { roughness: 0.45 }),
+    pcbEdge: std('#2a2a24', { roughness: 0.75 }),
+    moduleBoard: std('#15171a', { roughness: 0.45 }),
+    shield: metal('#cfd2d5', 0.36),
+    /** Moulded black plastics (PBT, nylon): matte with a faint sheen. */
+    blackPlastic: std('#141416', { roughness: 0.55 }),
+    darkPlastic: std('#24262a', { roughness: 0.45 }),
+    ic: std('#1b1c1f', { roughness: 0.55 }),
+    /** Bright nickel/chrome plating (bushings, levers, binding-post studs). */
+    chrome: metal('#f0f2f4', 0.18),
+    /** Stainless and plated steel (switch covers, nuts, washers). */
+    steel: metal('#c2c7cc', 0.3),
     resistorBody: std('#d8c29a', { roughness: 0.55 }),
-    /** DO-35: amber-tinted glass with the junction inside. */
+    /** DO-35: amber-tinted glass with the junction inside (procedural fallback only). */
     glass: std('#d9772a', { roughness: 0.12, transparent: true, opacity: 0.72 }),
     cathodeBand: std('#151515', { roughness: 0.5 }),
-    psuCase: std('#b9bfc6', { roughness: 0.5, metalness: 0.1 }),
-    psuPanel: std('#2b3139', { roughness: 0.55 }),
-    red: std('#c62828', { roughness: 0.4 }),
-    black: std('#1b1c1e', { roughness: 0.4 }),
+    /** Bench-supply case: powder-coated steel (fine texture, matte). */
+    psuCase: std('#8f969e', { roughness: 0.55 }),
+    psuPanel: std('#23272d', { roughness: 0.5 }),
+    /** Glossy moulded caps (binding posts, ground post). */
+    red: std('#c4161c', { roughness: 0.28 }),
+    black: std('#141416', { roughness: 0.3 }),
     white: std('#eceff1', { roughness: 0.5 }),
     smdTan: std('#a07c4f', { roughness: 0.6 }),
     smdLed: std('#e53935', { roughness: 0.3 }),
+    /** Rubber feet. */
+    rubber: std('#1c1c1e', { roughness: 0.9 }),
     generic: std('#8d97a3'),
   };
 }
@@ -146,13 +159,6 @@ function axialLeads(c: SceneComponent, p: AxialPhysics, m: Materials, own: Owned
     ),
   );
   return g;
-}
-
-/** Rotate a +Y lathe onto the +X axis, centred at height y. */
-function alongX(o: THREE.Object3D, y: number) {
-  o.rotation.z = -Math.PI / 2;
-  o.position.y = y;
-  return o;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -773,38 +779,10 @@ const BUILDERS: Record<ModelKey, Builder> = {
     });
   },
 
+  // DO-35 glass diode (realism pass): assets/diodeDo35.ts; the leads as every axial part's.
   'diode.axial': (c, m, own) => {
     const p = DIODE_DO35;
-    const g = new THREE.Group();
-    const y = p.standoffMm + p.bodyDiameterMm / 2;
-    const L = p.bodyLengthMm;
-    const R = p.bodyDiameterMm / 2;
-    const profile: [number, number][] = [
-      [0.001, -L / 2],
-      [R * 0.75, -L / 2 + 0.08],
-      [R, -L / 2 + 0.45],
-      [R, L / 2 - 0.45],
-      [R * 0.75, L / 2 - 0.08],
-      [0.001, L / 2],
-    ];
-    g.add(alongX(lathe(own, `do35:${L}:${R}`, profile, m.glass), y));
-    // Inside the glass: the dark junction slug between two metal studs.
-    const slug = cylinder(own, R * 0.42, L * 0.36, m.ic, undefined, 16);
-    slug.rotation.z = Math.PI / 2;
-    slug.position.set(0, y, 0);
-    g.add(slug);
-    for (const s of [-1, 1]) {
-      const stud = cylinder(own, R * 0.48, L * 0.3, m.lead, undefined, 16);
-      stud.rotation.z = Math.PI / 2;
-      stud.position.set(s * L * 0.33, y, 0);
-      g.add(stud);
-    }
-    // Cathode band on the cathode (second terminal, +x) end.
-    const band = cylinder(own, R + 0.03, 0.45, m.cathodeBand, undefined, 24);
-    band.rotation.z = Math.PI / 2;
-    band.position.set(L / 2 - 0.6, y, 0);
-    band.userData.cathodeBand = true;
-    g.add(band);
+    const g = buildDo35(own, p.standoffMm + p.bodyDiameterMm / 2, m.lead);
     g.add(axialLeads(c, p, m, own));
     return g;
   },
@@ -813,320 +791,54 @@ const BUILDERS: Record<ModelKey, Builder> = {
   // anchors (assets/led5mm.ts, scene.ts).
   'led.radial': (c, m, own) => {
     const look = c.visual.led ?? { color: '#e53935', package: 't1_34' as const, clear: false };
-    const { group, lens, top } = buildLedHiFi(own, look.package, LED_PACKAGES[look.package], look, {
-      lead: m.lead,
-      frame: m.lead,
-    });
+    const { group, lens, die, top, gain } = buildLedHiFi(
+      own,
+      look.package,
+      LED_PACKAGES[look.package],
+      look,
+      { lead: m.lead, frame: m.lead },
+    );
     group.userData.lensMaterial = lens;
+    group.userData.ledDie = die;
+    group.userData.ledGain = gain;
     group.userData.ledTop = top;
     group.userData.ledColor = look.color;
     return group;
   },
 
+  // Realism pass: assets/benchParts.ts (switches, supply, ground).
   'switch.tactile': (c, m, own) => {
-    const p = TACTILE;
-    const g = new THREE.Group();
-    const y0 = p.standoffMm;
-    g.add(
-      box(own, p.bodyMm, p.bodyHeightMm - 0.3, p.bodyMm, m.blackPlastic, [
-        0,
-        y0 + (p.bodyHeightMm - 0.3) / 2,
-        0,
-      ]),
-    );
-    // The steel cover plate with its corner tabs.
-    g.add(
-      box(own, p.bodyMm + 0.1, 0.3, p.bodyMm + 0.1, m.steel, [0, y0 + p.bodyHeightMm - 0.15, 0]),
-    );
-    for (const sx of [-1, 1])
-      g.add(
-        box(own, 0.6, p.bodyHeightMm * 0.7, 1.2, m.steel, [
-          sx * (p.bodyMm / 2 + 0.05),
-          y0 + p.bodyHeightMm * 0.6,
-          0,
-        ]),
-      );
-    // Round actuator.
-    g.add(
-      cylinder(
-        own,
-        p.actuatorDiameterMm / 2,
-        p.actuatorHeightMm,
-        m.darkPlastic,
-        [0, y0 + p.bodyHeightMm + p.actuatorHeightMm / 2, 0],
-        28,
-      ),
-    );
-    // Four legs (pairs are internally joined: the two -x legs are terminal a, the +x legs b), bent
-    // out to the terminals.
     const { xa, xb, openA, openB } = twoTerminals(c);
-    const legs = (sx: -1 | 1, end: number) => {
-      for (const sz of [-1, 1])
-        g.add(
-          tube(
-            own,
-            [
-              [sx * (p.legPitchXMm / 2), y0 + 0.4, sz * (p.legPitchZMm / 2)],
-              [sx * (p.legPitchXMm / 2), 0.9, sz * (p.legPitchZMm / 2)],
-              [end, 0.9, sz * (p.legPitchZMm / 2)],
-              [end, LEAD_ATTACH_HEIGHT - 0.3, sz * (p.legPitchZMm / 2)],
-            ],
-            p.legWidthMm / 2,
-            m.lead,
-            0.5,
-          ),
-        );
-      // The pair joined at the terminal.
-      g.add(
-        tube(
-          own,
-          [
-            [end, LEAD_ATTACH_HEIGHT - 0.2, -p.legPitchZMm / 2],
-            [end, LEAD_ATTACH_HEIGHT - 0.2, p.legPitchZMm / 2],
-          ],
-          p.legWidthMm / 2,
-          m.lead,
-        ),
-      );
-    };
-    legs(-1, xa + (openA ? OPEN_LEAD_GAP : 0));
-    legs(1, xb - (openB ? OPEN_LEAD_GAP : 0));
-    return g;
+    return buildTactile(own, m, xa + (openA ? OPEN_LEAD_GAP : 0), xb - (openB ? OPEN_LEAD_GAP : 0));
   },
 
   'switch.toggle': (c, m, own) => {
-    const p = TOGGLE;
-    const g = new THREE.Group();
-    const y0 = p.standoffMm;
-    g.add(
-      box(own, p.bodyXMm, p.bodyHeightMm, p.bodyZMm, m.darkPlastic, [
-        0,
-        y0 + p.bodyHeightMm / 2,
-        0,
-      ]),
-    );
-    // Chrome frame band around the body.
-    g.add(
-      box(own, p.bodyXMm + 0.2, 1.0, p.bodyZMm + 0.2, m.chrome, [0, y0 + p.bodyHeightMm - 0.5, 0]),
-    );
-    const bushTop = y0 + p.bodyHeightMm + p.bushingHeightMm;
-    g.add(
-      cylinder(
-        own,
-        p.bushingDiameterMm / 2,
-        p.bushingHeightMm,
-        m.chrome,
-        [0, y0 + p.bodyHeightMm + p.bushingHeightMm / 2, 0],
-        24,
-      ),
-    );
-    g.add(
-      cylinder(
-        own,
-        p.bushingDiameterMm / 2 + 0.9,
-        0.9,
-        m.steel,
-        [0, y0 + p.bodyHeightMm + 0.45, 0],
-        6,
-      ),
-    );
-    // Lever: leans toward one side when closed (the persisted position).
-    const tilt = c.visual.closed ? -0.38 : 0.38;
-    const lever = cylinder(
-      own,
-      p.leverDiameterMm / 2,
-      p.leverLengthMm,
-      m.chrome,
-      undefined,
-      16,
-      p.leverDiameterMm / 2 + 0.25,
-    );
-    lever.position.set(
-      Math.sin(-tilt) * (p.leverLengthMm / 2),
-      bushTop + Math.cos(tilt) * (p.leverLengthMm / 2),
-      0,
-    );
-    lever.rotation.z = tilt;
-    lever.userData.lever = c.visual.closed ? 'closed' : 'open';
-    g.add(lever);
-    const tip = new THREE.Mesh(
-      own.shared('sphere:0.95', () => new THREE.SphereGeometry(0.95, 16, 12)),
-      m.chrome,
-    );
-    tip.position.set(
-      Math.sin(-tilt) * p.leverLengthMm,
-      bushTop + Math.cos(tilt) * p.leverLengthMm,
-      0,
-    );
-    tip.castShadow = true;
-    g.add(tip);
     const { xa, xb, openA, openB } = twoTerminals(c);
-    for (const [sx, end] of [
-      [-1, xa + (openA ? OPEN_LEAD_GAP : 0)],
-      [1, xb - (openB ? OPEN_LEAD_GAP : 0)],
-    ] as const)
-      g.add(
-        tube(
-          own,
-          [
-            [sx * 2.54, y0 + 0.2, 0],
-            [sx * 2.54, 0.9, 0],
-            [end, 0.9, 0],
-            [end, LEAD_ATTACH_HEIGHT - 0.3, 0],
-          ],
-          0.4,
-          m.lead,
-          0.5,
-        ),
-      );
-    return g;
+    return buildToggle(
+      own,
+      m,
+      xa + (openA ? OPEN_LEAD_GAP : 0),
+      xb - (openB ? OPEN_LEAD_GAP : 0),
+      c.visual.closed === true,
+    );
   },
 
   'ground.post': (c, m, own) => {
-    // A small black binding post just behind the terminal, its tinned lug reaching the terminal.
-    const p = GROUND_POST;
-    const g = new THREE.Group();
     const t = CATALOG[c.type].terminals[0]!;
-    const x = t.offset.x * SCALE;
-    const z = t.offset.y * SCALE;
-    const pz = z + p.postOffsetZMm;
-    g.add(
-      box(own, p.plateMm, p.plateThicknessMm, p.plateMm, m.steel, [x, p.plateThicknessMm / 2, pz]),
-    );
-    const y0 = p.plateThicknessMm;
-    g.add(cylinder(own, 1.25, 0.9, m.chrome, [x, y0 + 0.45, pz], 6));
-    g.add(
-      cylinder(
-        own,
-        p.postDiameterMm / 2,
-        p.postHeightMm - 1.5,
-        m.black,
-        [x, y0 + 0.9 + (p.postHeightMm - 1.5) / 2, pz],
-        28,
-      ),
-    );
-    g.add(
-      cylinder(
-        own,
-        p.postDiameterMm / 2 + 0.1,
-        0.6,
-        m.black,
-        [x, y0 + p.postHeightMm - 0.3, pz],
-        28,
-        p.postDiameterMm / 2 - 0.3,
-      ),
-    );
-    // The lug: a flat tinned strip from the post's foot to a ring at the terminal.
-    g.add(
-      box(own, 1.2, 0.3, p.postOffsetZMm, m.lead, [
-        x,
-        p.attachHeightMm - 0.15,
-        z + p.postOffsetZMm / 2,
-      ]),
-    );
-    const ring = mesh(
-      own.shared('torus:lug', () => new THREE.TorusGeometry(0.7, 0.25, 8, 20)),
-      m.lead,
-      [x, p.attachHeightMm - 0.15, z],
-    );
-    ring.rotation.x = Math.PI / 2;
-    g.add(ring);
-    return g;
+    return buildGround(own, m, t.offset.x * SCALE, t.offset.y * SCALE);
   },
 
-  'instrument.psu': (c, m, own) => {
-    // A bench supply at REDUCED, SYMBOLIC scale (physical.ts PSU): case, front panel with its two
-    // displays (the design setpoints), knobs, and red/black binding posts at the terminals.
-    const p = PSU;
-    const g = new THREE.Group();
-    const cx = p.frontXMm - p.bodyXMm / 2;
-    g.add(box(own, p.bodyXMm, p.bodyHeightMm, p.bodyZMm, m.psuCase, [cx, p.bodyHeightMm / 2, 0]));
-    g.add(
-      box(own, 0.5, p.bodyHeightMm - 1.2, p.bodyZMm - 1.2, m.psuPanel, [
-        p.frontXMm + 0.2,
-        p.bodyHeightMm / 2,
-        0,
-      ]),
-    );
-    // Feet.
-    for (const sx of [-1, 1])
-      for (const sz of [-1, 1])
-        g.add(
-          box(own, 2, 0.6, 2, m.black, [
-            cx + sx * (p.bodyXMm / 2 - 1.6),
-            0.3,
-            sz * (p.bodyZMm / 2 - 1.6),
-          ]),
-        );
-    // Displays: the setpoint voltage (green) and current limit (red), as designed.
-    const v = { psuVolts: c.visual.psu?.volts, psuAmps: c.visual.psu?.amps };
-    const screen = canvasTexture(own, 256, 96, (ctx) => {
-      ctx.fillStyle = '#071810';
-      ctx.fillRect(0, 0, 256, 96);
-      ctx.font = 'bold 64px ui-monospace, Menlo, Consolas, monospace';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillStyle = '#5dff8a';
-      ctx.fillText(v.psuVolts !== undefined ? v.psuVolts.toFixed(2) : '0.00', 128, 52);
-    });
-    const screenA = canvasTexture(own, 256, 96, (ctx) => {
-      ctx.fillStyle = '#1a0806';
-      ctx.fillRect(0, 0, 256, 96);
-      ctx.font = 'bold 64px ui-monospace, Menlo, Consolas, monospace';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillStyle = '#ff6a4d';
-      ctx.fillText(v.psuAmps !== undefined ? v.psuAmps.toFixed(3) : '0.000', 128, 52);
-    });
-    const dispV = new THREE.Mesh(
-      own.shared('plane:psuDisplay', () => new THREE.PlaneGeometry(4.6, 1.75)),
-      own.mat(
-        // The plain textured variant (no emissive map: one shader program fewer); the
-        // display's own bright digits read as lit.
-        new THREE.MeshStandardMaterial({ map: screen, roughness: 0.3 }),
-      ),
-    );
-    dispV.rotation.y = Math.PI / 2;
-    dispV.position.set(p.frontXMm + 0.46, p.bodyHeightMm - 2.0, -2.75);
-    const dispA = new THREE.Mesh(
-      own.shared('plane:psuDisplay', () => new THREE.PlaneGeometry(4.6, 1.75)),
-      own.mat(
-        // The plain textured variant (no emissive map: one shader program fewer); the
-        // display's own bright digits read as lit.
-        new THREE.MeshStandardMaterial({ map: screenA, roughness: 0.3 }),
-      ),
-    );
-    dispA.rotation.y = Math.PI / 2;
-    dispA.position.set(p.frontXMm + 0.46, p.bodyHeightMm - 2.0, 2.75);
-    g.add(dispV, dispA);
-    for (const sz of [-1, 1]) {
-      const knob = cylinder(own, 1.05, 1.0, m.black, undefined, 24);
-      knob.rotation.z = Math.PI / 2;
-      knob.position.set(p.frontXMm + 0.9, p.bodyHeightMm - 4.6, sz * 2.75);
-      g.add(knob);
-    }
-    for (const t of CATALOG[c.type].terminals) {
-      const z = t.offset.y * SCALE;
-      const x = t.offset.x * SCALE;
-      const post = cylinder(
-        own,
-        p.postDiameterMm / 2,
-        p.postLengthMm,
-        t.id === 'positive' ? m.red : m.black,
-        undefined,
-        20,
-      );
-      post.rotation.z = Math.PI / 2;
-      post.position.set(p.frontXMm + p.postLengthMm / 2 + 0.4, p.attachHeightMm, z);
-      post.userData.polarity = t.id;
-      g.add(post);
-      const stud = cylinder(own, 0.5, x - p.frontXMm, m.chrome, undefined, 12);
-      stud.rotation.z = Math.PI / 2;
-      stud.position.set((x + p.frontXMm) / 2 + 0.3, p.attachHeightMm, z);
-      g.add(stud);
-    }
-    return g;
-  },
+  'instrument.psu': (c, m, own) =>
+    buildPsu(
+      own,
+      m,
+      CATALOG[c.type].terminals.map((t) => ({
+        id: t.id,
+        x: t.offset.x * SCALE,
+        z: t.offset.y * SCALE,
+      })),
+      { volts: c.visual.psu?.volts, amps: c.visual.psu?.amps },
+    ),
 
   'board.esp32_devkitc': (c, m, own) => buildEsp32(c, m, own),
 
@@ -1155,7 +867,7 @@ const BUILDERS: Record<ModelKey, Builder> = {
  * procedural board (Sprint 9/10) at its real size (physical.ts, [ESP-DIM]).
  */
 function buildEsp32(c: SceneComponent, m: Materials, own: OwnedResources): THREE.Object3D {
-  const asset = buildEsp32Asset(own, c.visual.wiredPins ?? [], m.blackPlastic);
+  const asset = buildEsp32Asset(own, c.visual.wiredPins ?? []);
   if (asset) return asset;
   const d = ESP32_DEVKITC;
   const g = new THREE.Group();
@@ -1344,11 +1056,8 @@ function buildEsp32(c: SceneComponent, m: Materials, own: OwnedResources): THREE
     const id = boardTerminalId(pin);
     if (!id || !wired.has(id)) continue;
     const local = boardPinPosition(pin);
-    const h = box(own, d.dupontSizeMm, d.dupontHeightMm, d.dupontSizeMm, m.blackPlastic, [
-      Math.sign(local.x) * rowX,
-      top + 0.3 + d.dupontHeightMm / 2,
-      realPinZ(pin.position),
-    ]);
+    const h = buildDupont(own, d.dupontSizeMm, d.dupontHeightMm, dupontMaterials(own));
+    h.position.set(Math.sign(local.x) * rowX, top + d.dupontSeatMm, realPinZ(pin.position));
     h.userData.jumper = id;
     g.add(h);
   }

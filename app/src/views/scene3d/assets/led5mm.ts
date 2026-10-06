@@ -14,7 +14,7 @@
  */
 import * as THREE from 'three';
 import { LEAD_ATTACH_HEIGHT, type LedPhysics } from '../physical.js';
-import { OwnedResources, mesh, tube } from '../kit.js';
+import { OwnedResources, drawTexture, mesh, tube } from '../kit.js';
 
 /** Leg tip (anchor) of each terminal, local frame, mm: anode at -x, cathode (the flat) at +x. */
 export function ledAnchors(p: LedPhysics) {
@@ -52,32 +52,85 @@ export interface LedLook {
   clear: boolean;
 }
 
-/** Build the LED in its local frame. Returns the group and its lens material (live glow). */
+/**
+ * The lens's emission profile when lit (an emissive map along the lathe's v, flange to apex): a
+ * lit diffused lens scatters the die's light through the whole epoxy, brightest round the die and
+ * in the dome, dimmer towards the flange.
+ */
+function glowProfile(own: OwnedResources): THREE.Texture {
+  return own.lasting('led:glowProfile', () => {
+    const t = drawTexture(
+      2,
+      64,
+      (ctx) => {
+        const g = ctx.createLinearGradient(0, 64, 0, 0);
+        g.addColorStop(0, '#1a1a1a');
+        g.addColorStop(0.45, '#7a7a7a');
+        g.addColorStop(0.75, '#ffffff');
+        g.addColorStop(1, '#e8e8e8');
+        ctx.fillStyle = g;
+        ctx.fillRect(0, 0, 2, 64);
+      },
+      true,
+    );
+    return t;
+  });
+}
+
+/** Build the LED in its local frame. Returns the group, its lens and die materials (live glow). */
 export function buildLedHiFi(
   own: OwnedResources,
   key: string,
   p: LedPhysics,
   look: LedLook,
   m: { lead: THREE.Material; frame: THREE.Material },
-): { group: THREE.Group; lens: THREE.MeshPhysicalMaterial; top: number } {
+): {
+  group: THREE.Group;
+  lens: THREE.MeshStandardMaterial;
+  die: THREE.MeshStandardMaterial;
+  top: number;
+  /** Lens emission per unit live level (diffused epoxy glows; a clear lens mostly shows the die). */
+  gain: number;
+} {
   const g = new THREE.Group();
   const base = p.standoffMm;
   const top = base + p.heightMm;
+  const full = own.tier === 'full';
+  const tint = new THREE.Color(look.color);
+  // The epoxy. Full tier: a transmissive, refracting body (IOR 1.5) with a glossy skin; tinted
+  // diffused epoxy is frosted (rough transmission, short absorption distance), water-clear is
+  // glass-like. Reduced tier: a plain translucent standard material of the same colour.
   const lens = own.mat(
-    new THREE.MeshPhysicalMaterial({
-      // Tinted-diffused epoxy is a deep, nearly opaque colour; water-clear is a faint tint.
-      color: look.clear
-        ? new THREE.Color(look.color).lerp(new THREE.Color('#ffffff'), 0.72)
-        : new THREE.Color(look.color).lerp(new THREE.Color('#000000'), 0.18),
-      roughness: look.clear ? 0.04 : 0.42,
-      clearcoat: 1,
-      clearcoatRoughness: 0.06,
-      transparent: true,
-      opacity: look.clear ? 0.38 : 0.93,
-      emissive: look.color,
-      emissiveIntensity: 0,
-      depthWrite: false,
-    }),
+    full
+      ? new THREE.MeshPhysicalMaterial({
+          color: look.clear
+            ? tint.clone().lerp(new THREE.Color('#ffffff'), 0.65)
+            : tint.clone().lerp(new THREE.Color('#ffffff'), 0.08),
+          roughness: look.clear ? 0.04 : 0.5,
+          transmission: look.clear ? 1 : 0.55,
+          thickness: p.bodyDiameterMm * 0.8,
+          ior: 1.5,
+          attenuationColor: tint.clone().lerp(new THREE.Color('#ffffff'), look.clear ? 0.4 : 0),
+          attenuationDistance: look.clear ? 6 : 1.2,
+          clearcoat: 1,
+          clearcoatRoughness: 0.04,
+          // Lit, the epoxy reads a little hotter (yellower) than its colour.
+          emissive: tint.clone().lerp(new THREE.Color('#ffd27a'), 0.18),
+          emissiveIntensity: 0,
+          emissiveMap: glowProfile(own),
+        })
+      : new THREE.MeshStandardMaterial({
+          color: look.clear
+            ? tint.clone().lerp(new THREE.Color('#ffffff'), 0.72)
+            : tint.clone().lerp(new THREE.Color('#000000'), 0.18),
+          roughness: look.clear ? 0.05 : 0.4,
+          transparent: true,
+          opacity: look.clear ? 0.38 : 0.9,
+          emissive: look.color,
+          emissiveIntensity: 0,
+          emissiveMap: glowProfile(own),
+          depthWrite: false,
+        }),
   );
   const body = mesh(
     own.shared(`led:lens:${key}`, () => new THREE.LatheGeometry(lensProfile(p), 48)),
@@ -178,18 +231,21 @@ export function buildLedHiFi(
     [cupX, frameTop, 0],
   );
   g.add(cup);
+  // The die: dark when off; when lit it is the light source (renderer: live level).
+  const dieMat = own.mat(
+    new THREE.MeshStandardMaterial({
+      color: '#262626',
+      emissive: tint.clone().lerp(new THREE.Color('#ffffff'), 0.35),
+      emissiveIntensity: 0,
+      roughness: 0.4,
+    }),
+  );
   const die = mesh(
-    own.shared('led:die', () => new THREE.BoxGeometry(0.26, 0.14, 0.26)),
-    own.mat(
-      new THREE.MeshStandardMaterial({
-        color: '#2b2b2b',
-        emissive: look.color,
-        emissiveIntensity: 0.15,
-        roughness: 0.4,
-      }),
-    ),
+    own.shared('led:die', () => new THREE.BoxGeometry(0.28, 0.16, 0.28)),
+    dieMat,
     [cupX, frameTop + 0.08, 0],
   );
+  die.userData.ledDie = true;
   g.add(die);
   g.add(
     tube(
@@ -218,5 +274,5 @@ export function buildLedHiFi(
     l.userData.leg = x < 0 ? 'anode' : 'cathode';
     g.add(l);
   }
-  return { group: g, lens, top };
+  return { group: g, lens, die: dieMat, top, gain: look.clear ? 0.9 : 2.2 };
 }

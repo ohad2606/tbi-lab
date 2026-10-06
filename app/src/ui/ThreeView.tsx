@@ -44,6 +44,14 @@ export function ThreeView() {
         if (cancelled || !host.current) return;
         try {
           viewer.current = mod.createViewer(host.current, (s) => setStats(s));
+          // Evidence capture (screenshots at fixed close-up cameras): the viewer is reachable from
+          // the page only when this browser opted in. Never used by the product.
+          try {
+            if (localStorage.getItem('tbi-lab.3d.inspect') === '1')
+              (host.current as unknown as { tbiViewer?: Viewer }).tbiViewer = viewer.current;
+          } catch {
+            /* storage unavailable */
+          }
           setStatus('ready');
         } catch (e) {
           setStatus(e instanceof mod.WebGLUnavailableError ? 'unavailable' : 'failed');
@@ -107,6 +115,9 @@ export function ThreeView() {
       data-assets-ms={assetMs ?? undefined}
       data-render-ms={stats?.renderMs}
       data-objects={stats?.objects}
+      data-draw-calls={stats?.drawCalls}
+      data-triangles={stats?.triangles}
+      data-materials={stats?.materials}
       data-lit={Object.keys(levels).join(' ')}
       data-glow={Object.entries(levels)
         .flatMap(([id, l]) => (typeof l === 'object' && 'color' in l ? [`${id}:${l.color}`] : []))

@@ -160,12 +160,21 @@ export interface SceneComponent {
   };
 }
 
+/**
+ * What a wire end meets, for its presentation (the renderer draws the end to suit; it never
+ * changes the route): a header pin's jumper housing (`jumper`), a binding post (`post`), a part's
+ * lead or pin tip (`lead`), or another wire at a junction (`junction`).
+ */
+export type WireEndKind = 'jumper' | 'post' | 'lead' | 'junction';
+
 export interface SceneWire {
   id: string;
   node: string | null;
   color: string;
   /** Polyline in scene space (mm), from the first end's attach point to the second's. */
   points: Vec3[];
+  /** What each end meets (presentation). */
+  ends: [WireEndKind, WireEndKind];
 }
 
 /**
@@ -534,11 +543,21 @@ export function deriveScene(doc: ProjectDocument): SceneDescription {
       run.splice(run.length - 2, 2, ap, { x: ap.x, y: b.y, z: ap.z }, { x: b.x, y: b.y, z: b.z });
     }
     const points: Vec3[] = [a, ...run, b];
+    const endKind = (e: WireEnd): WireEndKind => {
+      if (e.kind !== 'terminal') return 'junction';
+      const model = components.find((c) => c.id === e.component)?.model;
+      return model === 'board.esp32_devkitc'
+        ? 'jumper'
+        : model === 'instrument.psu' || model === 'ground.post'
+          ? 'post'
+          : 'lead';
+    };
     wires.push({
       id: w.id,
       node,
       color: node ? (nodeColor.get(node) ?? SIGNAL_COLORS[0]!) : '#9aa3ad',
       points: dedupe(points),
+      ends: [endKind(w.from), endKind(w.to)],
     });
   }
 

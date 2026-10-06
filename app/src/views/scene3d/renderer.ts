@@ -14,19 +14,17 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import {
-  buildComponent,
-  createMaterials,
-  OwnedResources,
-  paintMatrixFace,
-  roundPath,
-} from './models.js';
-import { WIRE } from './physical.js';
+import { buildComponent, createMaterials, OwnedResources, paintMatrixFace } from './models.js';
 import { assetLoadStats, loadAssets } from './assets/library.js';
+import { createStage } from './stage.js';
+import { buildJoint, buildWire, wireMaterials } from './wires.js';
 
 export { assetLoadStats, loadAssets };
-import { MODEL_HEIGHT, WIRE_RADIUS, type SceneDescription } from './scene.js';
+import { MODEL_HEIGHT, type SceneDescription } from './scene.js';
 
+/** LED light pool size and the light's intensity per unit live level (mm scene, decay 2). */
+const LED_LIGHTS = 4;
+const LED_LIGHT = 90;
 /** Reference labels: world height in mm (perspective), capped on screen so near ones never loom. */
 const LABEL_WORLD_HEIGHT = 2.4;
 /** Labels float this far (mm) above their part's tallest point. */
@@ -52,6 +50,12 @@ export interface ViewerStats {
   renderMs: number;
   /** The camera's orbit target (what pan moves), rounded to 0.01 scene units. */
   target: [number, number, number];
+  /** Last frame: draw calls and triangles (WebGLRenderer.info), and the scene's distinct materials. */
+  drawCalls: number;
+  triangles: number;
+  materials: number;
+  /** Shader programs compiled in this viewer's context. */
+  programs: number;
 }
 
 export interface Viewer {
@@ -80,6 +84,11 @@ export interface Viewer {
    * up on screen: the same motion as a right- or middle-button drag.
    */
   pan(right: number, up: number): void;
+  /**
+   * Evidence capture and close inspection: put the camera at `from`, looking at `target` (scene
+   * mm). Camera only; never part of the project.
+   */
+  inspect(target: [number, number, number], from: [number, number, number]): void;
   stats(): ViewerStats;
   dispose(): void;
 }
@@ -150,96 +159,67 @@ export function createViewer(container: HTMLElement, onRender?: (s: ViewerStats)
   let renderer: THREE.WebGLRenderer;
   try {
     renderer = new THREE.WebGLRenderer({
-      antialias: quality === 'full',
-      powerPreference: 'low-power',
+      // Full tier: the stage's multisampled frame does the antialiasing (stage.ts).
+      antialias: false,
+      powerPreference: quality === 'full' ? 'high-performance' : 'low-power',
     });
   } catch (e) {
     throw new WebGLUnavailableError((e as Error).message);
   }
   live++;
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-  renderer.outputColorSpace = THREE.SRGBColorSpace;
-  // Neutral tone mapping keeps part colours (LED lenses, colour bands, wire colours) true.
-  renderer.toneMapping = THREE.NeutralToneMapping;
-  renderer.toneMappingExposure = 1.0;
-  renderer.shadowMap.enabled = quality === 'full';
-  // The key light is fixed in the world, so shadows depend only on the scene, not on the camera:
-  // the shadow map is rendered when the scene is (re)built, not on every orbit/pan frame.
-  renderer.shadowMap.autoUpdate = false;
-  renderer.shadowMap.type = THREE.PCFShadowMap;
-  renderer.setClearColor('#e9edf2');
   const canvas = renderer.domElement;
   canvas.classList.add('view3d-canvas');
   canvas.setAttribute('aria-hidden', 'true');
   container.appendChild(canvas);
 
   const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 2000);
-  // A clean workbench: a bright sky/bench hemisphere, one shadow-casting key light from the front
-  // right, a cool fill and a low rim light that puts highlights on metal (pins, leads, the module
-  // can). No image-based environment: prefiltering one (PMREM) costs seconds per opening on
-  // software WebGL, and every viewer has its own WebGL context, so it could not be shared.
-  // Sky/bench fill: lower with the studio environment (`full`), which also fills.
-  scene.add(new THREE.HemisphereLight('#ffffff', '#a3aab1', quality === 'full' ? 1.0 : 1.35));
-  // A soft studio environment for reflections (metal pins, leads, the RF can, connector shells
-  // and the glossy lacquers need something to reflect, or metals read black): a tiny procedural
-  // gradient cube (bright overhead, neutral walls, darker bench), prefiltered once per viewer.
-  // `full` quality only: on a SOFTWARE rasteriser its prefiltering and the extra shader variants
-  // cost seconds per opening (measured: esp32-blink first open 14.2 s with it, 3.0 s without), so
-  // `reduced` renders without it and with standard materials (simplifyMaterials).
-  const env = quality === 'full' ? studioEnvironment(renderer) : null;
-  scene.environment = env;
-  scene.environmentIntensity = 0.5;
-  const sun = new THREE.DirectionalLight('#fff8ef', 2.1);
-  sun.castShadow = true;
-  sun.shadow.mapSize.set(1024, 1024);
-  sun.shadow.bias = -0.0004;
-  sun.shadow.normalBias = 0.03;
-  sun.shadow.radius = 3;
-  scene.add(sun, sun.target);
-  const fill = new THREE.DirectionalLight('#e8f0ff', 0.55);
-  fill.position.set(-60, 50, -40);
-  const rim = new THREE.DirectionalLight('#ffffff', 0.6);
-  rim.position.set(-20, 15, 80);
-  scene.add(fill, rim);
-  /** Aim the key light and fit its shadow camera to the content (mm). */
-  function fitShadow(desc: SceneDescription) {
-    const { min, max } = desc.bounds;
-    const cx = (min.x + max.x) / 2;
-    const cz = (min.z + max.z) / 2;
-    const r = 0.5 * Math.hypot(max.x - min.x, max.z - min.z, max.y) + 10;
-    sun.target.position.set(cx, 0, cz);
-    sun.position.set(cx + r * 0.55, r * 1.4, cz + r * 0.8);
-    const cam = sun.shadow.camera;
-    cam.left = -r;
-    cam.right = r;
-    cam.top = r;
-    cam.bottom = -r;
-    cam.near = 1;
-    cam.far = r * 4;
-    cam.updateProjectionMatrix();
-  }
+  const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 2000);
+  // Lights, environment, shadows, ambient occlusion, bench and backdrop: the stage (stage.ts).
+  const stage = createStage(renderer, scene, camera, quality);
+  /**
+   * LED light (full tier): a fixed pool of point lights, given to the brightest lit LEDs, so a lit
+   * LED tints the bench and the parts round it. A fixed count: lighting an LED never recompiles a
+   * shader. Presentation of the solved current only.
+   */
+  const ledLights =
+    quality === 'full'
+      ? Array.from({ length: LED_LIGHTS }, () => new THREE.PointLight('#ffffff', 0, 40, 2))
+      : [];
+  for (const l of ledLights) scene.add(l);
 
   /** `reduced` quality: standard stand-ins for physical materials, one per original (reused). */
   const simplified = new Map<THREE.Material, THREE.Material>();
   const materials = createMaterials();
   const shared: THREE.Material[] = Object.values(materials);
-  const baseMat = new THREE.MeshStandardMaterial({ color: '#dfe5ea', roughness: 0.95 });
   const soldermat = new THREE.MeshStandardMaterial({
     color: '#cfd4d9',
     metalness: 0.9,
     roughness: 0.25,
   });
   const haloTexture = glowTexture();
-  shared.push(baseMat, soldermat);
+  shared.push(soldermat);
 
   let content: THREE.Group | null = null;
-  let own = new OwnedResources();
+  /** Resources drawn once per viewer (board textures, atlases), kept across rebuilds. */
+  const persistent = new OwnedResources(null, quality);
+  let own = new OwnedResources(persistent, quality);
   let current: SceneDescription | null = null;
   let renders = 0;
   let lastRenderMs = 0;
+  let lastCalls = 0;
+  let lastTriangles = 0;
   /** LED lens materials by component id, and the last live levels applied to them. */
-  let lenses = new Map<string, THREE.MeshStandardMaterial>();
+  let lenses = new Map<
+    string,
+    {
+      lens: THREE.MeshStandardMaterial;
+      die?: THREE.MeshStandardMaterial;
+      gain: number;
+      /** Where its light comes from (the die), world space. */
+      at: THREE.Vector3;
+      color: string;
+    }
+  >();
   /** LED matrix faces by component id (canvas texture + material), repainted live. */
   let matrices = new Map<
     string,
@@ -276,13 +256,18 @@ export function createViewer(container: HTMLElement, onRender?: (s: ViewerStats)
       face.material.emissive.set(any ? '#ffffff' : '#000000');
       face.material.emissiveIntensity = any ? 0.9 : 0;
     }
-    for (const [id, mat] of lenses) {
+    // The light pool (full tier): the brightest lit LEDs light their surroundings.
+    const lit: { level: number; at: THREE.Vector3; color: string }[] = [];
+    for (const [id, { lens: mat, die, gain, at, color }] of lenses) {
       const raw = liveLevels[id] ?? 0;
       if (typeof raw === 'object' && 'dots' in raw) continue;
       const live = raw;
       const level = typeof live === 'number' ? live : live.level;
-      // A coloured live mix (RGB) on a water-clear lens: weaker emission so the hue reads, not white.
-      mat.emissiveIntensity = level * (typeof live === 'number' ? 2.2 : 0.9);
+      // The die is the light source; the epoxy glows with the light it scatters (diffused lenses
+      // more than clear ones). A coloured live mix (RGB) on a water-clear lens: weaker emission
+      // so the hue reads, not white.
+      mat.emissiveIntensity = level * (typeof live === 'number' ? gain : 0.9);
+      if (die) die.emissiveIntensity = level * 6;
       const halo = halos.get(id);
       if (typeof live !== 'number') {
         mat.emissive.set(live.color);
@@ -291,9 +276,19 @@ export function createViewer(container: HTMLElement, onRender?: (s: ViewerStats)
       if (halo) {
         halo.visible = level > 0;
         (halo.material as THREE.SpriteMaterial).opacity =
-          (typeof live === 'number' ? 0.75 : 0.55) * level;
+          (typeof live === 'number' ? 0.85 : 0.55) * level;
       }
+      if (level > 0) lit.push({ level, at, color: typeof live === 'number' ? color : live.color });
     }
+    lit.sort((a, b) => b.level - a.level);
+    ledLights.forEach((light, i) => {
+      const l = lit[i];
+      light.intensity = l ? LED_LIGHT * l.level : 0;
+      if (l) {
+        light.position.copy(l.at);
+        light.color.set(l.color);
+      }
+    });
   }
   let disposed = false;
 
@@ -318,6 +313,7 @@ export function createViewer(container: HTMLElement, onRender?: (s: ViewerStats)
     const seenTex = new Set<THREE.Texture>();
     let geometry = 0;
     let textures = 0;
+    const mats = new Set<THREE.Material>();
     content?.traverse((o) => {
       const mesh = o as THREE.Mesh;
       if (!mesh.isMesh && !(o as THREE.Sprite).isSprite) return;
@@ -327,13 +323,15 @@ export function createViewer(container: HTMLElement, onRender?: (s: ViewerStats)
           geometry += (a as THREE.BufferAttribute).array.byteLength;
         geometry += mesh.geometry.index?.array.byteLength ?? 0;
       }
-      for (const m of Array.isArray(mesh.material) ? mesh.material : [mesh.material])
+      for (const m of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) {
+        if (m) mats.add(m);
         for (const t of Object.values(m ?? {}))
           if ((t as THREE.Texture)?.isTexture && !seenTex.has(t as THREE.Texture)) {
             seenTex.add(t as THREE.Texture);
             const img = (t as THREE.Texture).image as { width?: number; height?: number } | null;
             if (img?.width && img.height) textures += Math.round(img.width * img.height * 4 * 1.33);
           }
+      }
     });
     return {
       gpuBytes: { geometry, textures },
@@ -343,6 +341,10 @@ export function createViewer(container: HTMLElement, onRender?: (s: ViewerStats)
       objects,
       renders,
       quality,
+      drawCalls: lastCalls,
+      triangles: lastTriangles,
+      materials: mats.size,
+      programs: renderer.info.programs?.length ?? 0,
       target: controls.target.toArray().map((v) => Math.round(v * 100) / 100) as [
         number,
         number,
@@ -355,8 +357,10 @@ export function createViewer(container: HTMLElement, onRender?: (s: ViewerStats)
     if (disposed) return;
     sizeLabels();
     const t0 = performance.now();
-    renderer.render(scene, camera);
+    stage.render();
     lastRenderMs = performance.now() - t0;
+    lastCalls = renderer.info.render.calls;
+    lastTriangles = renderer.info.render.triangles;
     renders++;
     onRender?.(stats());
   }
@@ -374,6 +378,7 @@ export function createViewer(container: HTMLElement, onRender?: (s: ViewerStats)
     const w = Math.max(1, container.clientWidth);
     const h = Math.max(1, container.clientHeight);
     renderer.setSize(w, h, false);
+    stage.setSize(w, h);
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
     render();
@@ -383,114 +388,15 @@ export function createViewer(container: HTMLElement, onRender?: (s: ViewerStats)
 
   function build(desc: SceneDescription) {
     const group = new THREE.Group();
-    const b = desc.base;
-    const base = new THREE.Mesh(
-      own.geo(new THREE.BoxGeometry(b.maxX - b.minX, 0.2, b.maxZ - b.minZ)),
-      baseMat,
-    );
-    base.position.set((b.minX + b.maxX) / 2, -0.1, (b.minZ + b.maxZ) / 2);
-    base.name = 'base';
-    base.receiveShadow = true;
-    group.add(base);
-    // A faint grid on the bench every 5 editor grid steps (12.7 mm = 0.5 in).
-    const step = 12.7;
-    const lines: number[] = [];
-    for (let x = Math.ceil(b.minX / step) * step; x <= b.maxX; x += step)
-      lines.push(x, 0.01, b.minZ, x, 0.01, b.maxZ);
-    for (let z = Math.ceil(b.minZ / step) * step; z <= b.maxZ; z += step)
-      lines.push(b.minX, 0.01, z, b.maxX, 0.01, z);
-    const gridGeo = own.geo(new THREE.BufferGeometry());
-    gridGeo.setAttribute('position', new THREE.Float32BufferAttribute(lines, 3));
-    const grid = new THREE.LineSegments(
-      gridGeo,
-      own.mat(new THREE.LineBasicMaterial({ color: '#cdd4db' })),
-    );
-    grid.name = 'grid';
-    group.add(grid);
+    group.add(stage.bench(desc, own));
 
     for (const c of desc.components) group.add(buildComponent(c, materials, own));
 
-    // Wires: insulated round wire with smooth bends, coloured by electrical node.
-    const wireMats = new Map<string, THREE.Material>();
-    for (const w of desc.wires) {
-      let mat = wireMats.get(w.color);
-      if (!mat) {
-        mat = own.mat(new THREE.MeshStandardMaterial({ color: w.color, roughness: 0.48 }));
-        wireMats.set(w.color, mat);
-      }
-      const wire = new THREE.Group();
-      wire.name = `wire:${w.id}`;
-      wire.userData.node = w.node;
-      const path = roundPath(
-        w.points.map((p) => [p.x, p.y, p.z] as [number, number, number]),
-        WIRE.bendRadiusMm,
-      );
-      const tube = new THREE.Mesh(
-        own.geo(
-          new THREE.TubeGeometry(
-            path,
-            Math.max(12, Math.ceil(path.getLength() / 0.8)),
-            WIRE_RADIUS,
-            10,
-          ),
-        ),
-        mat,
-      );
-      tube.castShadow = true;
-      wire.add(tube);
-      // Rounded wire ends.
-      for (const q of [w.points[0]!, w.points[w.points.length - 1]!]) {
-        const end = new THREE.Mesh(
-          own.shared('wireEnd', () => new THREE.SphereGeometry(WIRE_RADIUS, 12, 8)),
-          mat,
-        );
-        end.position.set(q.x, q.y, q.z);
-        wire.add(end);
-      }
-      group.add(wire);
-    }
-
-    // Where terminals meet: a solder joint only where the project connects them; touching but
-    // unconnected terminals get a red not-connected ring over the gap their leads leave.
-    for (const j of desc.joints) {
-      const mark =
-        j.kind === 'contact'
-          ? new THREE.Mesh(
-              own.shared('solder', () => new THREE.SphereGeometry(0.75, 16, 12)),
-              soldermat,
-            )
-          : new THREE.Mesh(
-              own.shared('open', () => new THREE.TorusGeometry(1.5, 0.2, 8, 32)),
-              materials.red,
-            );
-      if (j.kind === 'open') mark.rotation.x = Math.PI / 2;
-      mark.position.set(j.x, j.y, j.z);
-      mark.name = `joint:${j.kind}:${j.terminals.join('+')}`;
-      mark.userData.joint = j.kind;
-      group.add(mark);
-      // A lead soldered to a pin a step away: bridge them.
-      for (const l of j.links ?? []) {
-        const link = new THREE.Mesh(
-          own.geo(
-            new THREE.TubeGeometry(
-              roundPath(
-                [
-                  [j.x, j.y, j.z],
-                  [l.x, j.y, l.z],
-                  [l.x, l.y, l.z],
-                ],
-                0.5,
-              ),
-              12,
-              0.3,
-              8,
-            ),
-          ),
-          soldermat,
-        );
-        group.add(link);
-      }
-    }
+    // Wires (coloured by electrical node) and direct contacts: wires.ts.
+    const wm = wireMaterials(own, materials.lead);
+    for (const w of desc.wires) group.add(buildWire(w, own, wm));
+    for (const j of desc.joints)
+      group.add(buildJoint(j, own, { lead: materials.lead, notConnected: materials.red }));
 
     // LED glow halos (hidden until a running simulation lights the LED).
     halos = new Map();
@@ -512,7 +418,7 @@ export function createViewer(container: HTMLElement, onRender?: (s: ViewerStats)
         halo.userData.halo = o.userData.component;
         const top = o.userData.ledTop as number;
         halo.position.set(0, top - 2, 0);
-        halo.scale.set(16, 16, 1);
+        halo.scale.set(11, 11, 1);
         o.add(halo);
         halos.set(o.userData.component as string, halo);
       }
@@ -540,7 +446,7 @@ export function createViewer(container: HTMLElement, onRender?: (s: ViewerStats)
       if (!mesh.isMesh || (mesh as unknown as THREE.InstancedMesh).isInstancedMesh) return;
       if (o.name === 'base') return;
       const mat = mesh.material;
-      if (Array.isArray(mat) || mat.transparent || (mat as THREE.MeshStandardMaterial).map) return;
+      if (Array.isArray(mat) || mat.transparent || textured(mat)) return;
       if (o.userData.lens || o.parent?.userData.lensMaterial === mat) return;
       let geo = mesh.geometry.index ? mesh.geometry.toNonIndexed() : mesh.geometry.clone();
       for (const name of Object.keys(geo.attributes))
@@ -661,15 +567,14 @@ export function createViewer(container: HTMLElement, onRender?: (s: ViewerStats)
       if (content) {
         scene.remove(content);
         own.dispose();
-        own = new OwnedResources();
+        own = new OwnedResources(persistent, quality);
       }
       current = desc;
       for (const m of simplified.values()) m.dispose();
       simplified.clear();
       content = build(desc);
       if (quality === 'reduced') simplifyMaterials(content, simplified);
-      fitShadow(desc);
-      renderer.shadowMap.needsUpdate = true;
+      stage.fit(desc);
       scene.add(content);
       lenses = new Map();
       labels = [];
@@ -679,7 +584,14 @@ export function createViewer(container: HTMLElement, onRender?: (s: ViewerStats)
       matrices = new Map();
       content.traverse((o) => {
         const lens = o.userData.lensMaterial as THREE.MeshStandardMaterial | undefined;
-        if (lens && o.userData.component) lenses.set(o.userData.component as string, lens);
+        if (lens && o.userData.component)
+          lenses.set(o.userData.component as string, {
+            lens,
+            die: o.userData.ledDie as THREE.MeshStandardMaterial | undefined,
+            gain: (o.userData.ledGain as number | undefined) ?? 2.2,
+            at: o.localToWorld(new THREE.Vector3(0, (o.userData.ledTop as number) - 3.5, 0)),
+            color: (o.userData.ledColor as string | undefined) ?? '#ffffff',
+          });
         if (o.userData.matrixFace && o.userData.component)
           matrices.set(o.userData.component as string, o.userData.matrixFace);
       });
@@ -740,6 +652,14 @@ export function createViewer(container: HTMLElement, onRender?: (s: ViewerStats)
       controls.target.add(move);
       controls.update();
     },
+    inspect(target, from) {
+      controls.target.set(...target);
+      camera.position.set(...from);
+      camera.near = Math.max(0.05, camera.position.distanceTo(controls.target) / 200);
+      camera.updateProjectionMatrix();
+      controls.update();
+      render();
+    },
     stats,
     dispose() {
       if (disposed) return;
@@ -752,17 +672,31 @@ export function createViewer(container: HTMLElement, onRender?: (s: ViewerStats)
       lenses = new Map();
       halos = new Map();
       own.dispose();
+      persistent.dispose();
       for (const m of shared) m.dispose();
       haloTexture.dispose();
-      env?.dispose();
       for (const m of simplified.values()) m.dispose();
-      sun.shadow.map?.dispose();
+      stage.dispose();
       renderer.dispose();
       renderer.forceContextLoss();
       canvas.remove();
       live--;
     },
   };
+}
+
+/** Whether a material samples any texture (its mesh keeps its own texture coordinates). */
+function textured(m: THREE.Material): boolean {
+  const s = m as THREE.MeshPhysicalMaterial;
+  return !!(
+    s.map ||
+    s.roughnessMap ||
+    s.bumpMap ||
+    s.normalMap ||
+    s.alphaMap ||
+    s.emissiveMap ||
+    s.metalnessMap
+  );
 }
 
 /** A soft radial glow (LED halo), drawn once per viewer. */
@@ -780,47 +714,6 @@ function glowTexture(): THREE.Texture {
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   return t;
-}
-
-/**
- * The studio environment: a 16 px gradient cube map (no image files), prefiltered with PMREM.
- * Faces: +Y bright ceiling light, the four walls a neutral light grey with a brighter band at
- * eye level, -Y the bench. Deterministic; owned and disposed by its viewer.
- */
-function studioEnvironment(renderer: THREE.WebGLRenderer): THREE.Texture {
-  const N = 16;
-  const face = (draw: (ctx: CanvasRenderingContext2D) => void) => {
-    const c = document.createElement('canvas');
-    c.width = N;
-    c.height = N;
-    draw(c.getContext('2d')!);
-    return c;
-  };
-  const wall = face((ctx) => {
-    const g = ctx.createLinearGradient(0, 0, 0, N);
-    g.addColorStop(0, '#f4f6f8');
-    g.addColorStop(0.45, '#ffffff');
-    g.addColorStop(0.6, '#d9dde1');
-    g.addColorStop(1, '#9ea4aa');
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, N, N);
-  });
-  const ceiling = face((ctx) => {
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, N, N);
-  });
-  const floor = face((ctx) => {
-    ctx.fillStyle = '#8d939a';
-    ctx.fillRect(0, 0, N, N);
-  });
-  const cube = new THREE.CubeTexture([wall, wall, ceiling, floor, wall, wall]);
-  cube.colorSpace = THREE.SRGBColorSpace;
-  cube.needsUpdate = true;
-  const pmrem = new THREE.PMREMGenerator(renderer);
-  const target = pmrem.fromCubemap(cube);
-  pmrem.dispose();
-  cube.dispose();
-  return target.texture;
 }
 
 /**

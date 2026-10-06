@@ -166,11 +166,15 @@ export const PSU = {
  */
 export const ESP32_DEVKITC = {
   pcbWidthMm: 27.94,
-  /** Header span 48.26 + 1.30 + 1.29 to the board edges [ESP-DIM]. */
-  pcbLengthMm: 48.26 + 1.3 + 1.29,
+  /**
+   * Board length, edge to edge, 48.26 [ESP-DIM]: pin 1 is 1.30 from the antenna-end edge, the
+   * last pin about 1.29 from the USB-end edge (the 19 pins span 45.72). (Sprint 10 realism pass:
+   * corrects 50.85, which added those two edge distances to the board length a second time.)
+   */
+  pcbLengthMm: 48.26,
   pcbThicknessMm: 1.6,
-  /** Centre z of the PCB (the header is centred on the origin; the edges are 1.30 / 1.29). */
-  pcbCentreZMm: (1.29 - 1.3) / 2,
+  /** Centre z of the PCB: its antenna-end edge 1.30 beyond pin 1 (z = -22.86) [ESP-DIM]. */
+  pcbCentreZMm: -22.86 - 1.3 + 48.26 / 2,
   headerRowSpacingMm: 25.4,
   pinPitchMm: 2.54,
   headerSpanMm: 48.26,
@@ -188,9 +192,15 @@ export const ESP32_DEVKITC = {
   shieldWidthMm: 16.0,
   shieldLengthMm: 17.5,
   shieldHeightMm: 2.3,
-  /** Jumper (Dupont) housing over a connected pin; the wire leaves its top [REP]. */
-  dupontSizeMm: 2.5,
-  dupontHeightMm: 6.0,
+  /**
+   * Jumper wire's female (Dupont) housing plugged on a connected pin; the wire leaves its top.
+   * The common 1-way 2.54 mm crimp housing: 2.54 x 2.54 x 14 mm [REP] (Sprint 10 realism pass;
+   * was a 6 mm stand-in block).
+   */
+  dupontSizeMm: 2.54,
+  dupontHeightMm: 14.0,
+  /** The housing seats on the pin's solder joint (its fillet is ~0.9 mm tall). */
+  dupontSeatMm: 0.9,
 } as const;
 
 /** Bench height of the ESP32 PCB's bottom face: it stands on its header pins. */
@@ -200,7 +210,8 @@ export const ESP32_PCB_TOP = ESP32_PCB_BOTTOM + ESP32_DEVKITC.pcbThicknessMm;
 /** Top of a header pin's stub above the PCB. */
 export const ESP32_PIN_TOP = ESP32_PCB_TOP + ESP32_DEVKITC.pinStubAboveMm;
 /** Where a wire meets a connected header pin: the top of its jumper housing. */
-export const ESP32_ATTACH_HEIGHT = ESP32_PCB_TOP + 0.3 + ESP32_DEVKITC.dupontHeightMm;
+export const ESP32_ATTACH_HEIGHT =
+  ESP32_PCB_TOP + ESP32_DEVKITC.dupontSeatMm + ESP32_DEVKITC.dupontHeightMm;
 
 /** Where a lead's end meets the bench: wires clip onto it just above the bench. */
 export const LEAD_ATTACH_HEIGHT = 0.5;

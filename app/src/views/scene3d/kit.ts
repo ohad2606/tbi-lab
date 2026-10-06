@@ -6,6 +6,30 @@ import * as THREE from 'three';
 
 /** Per-build resources (geometries, one-off materials, textures) the viewer disposes on rebuild. */
 export class OwnedResources {
+  /**
+   * @param persistent the viewer's long-lived resources: what does not depend on the project
+   *   (board surface textures, marking atlases) is drawn once per viewer and kept across rebuilds.
+   * @param tier rendering tier: builders size textures and pick detail by it.
+   */
+  constructor(
+    readonly persistent: OwnedResources | null = null,
+    readonly tier: 'full' | 'reduced' = 'full',
+  ) {}
+  /** A viewer-lifetime texture (or this build's, without a persistent store), drawn once per key. */
+  lasting<T extends THREE.Texture>(key: string, make: () => T): T {
+    const store = this.persistent ?? this;
+    let t = store.texCache.get(key) as T | undefined;
+    if (!t) {
+      t = store.tex(make());
+      store.texCache.set(key, t);
+    }
+    return t;
+  }
+  private readonly texCache = new Map<string, THREE.Texture>();
+  /** A viewer-lifetime material, made once per key (parts whose look never depends on the project). */
+  lastingMat<T extends THREE.Material>(key: string, make: () => T): T {
+    return (this.persistent ?? this).sharedMat(`lasting:${key}`, make);
+  }
   readonly geometries: THREE.BufferGeometry[] = [];
   private readonly cache = new Map<string, THREE.BufferGeometry>();
   private readonly matCache = new Map<string, THREE.Material>();
@@ -48,6 +72,7 @@ export class OwnedResources {
     this.geometries.length = 0;
     this.cache.clear();
     this.matCache.clear();
+    this.texCache.clear();
     this.materials.length = 0;
     this.textures.length = 0;
   }
@@ -159,7 +184,7 @@ export function lathe(
   );
 }
 
-/** A canvas texture (silkscreen, markings, displays). */
+/** A canvas texture (silkscreen, markings, displays), owned by this build. */
 export function canvasTexture(
   own: OwnedResources,
   w: number,
@@ -174,5 +199,23 @@ export function canvasTexture(
   const tex = own.tex(new THREE.CanvasTexture(canvas));
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.anisotropy = 4;
+  return tex;
+}
+
+/** A canvas texture not yet owned by anyone (for OwnedResources.lasting). */
+export function drawTexture(
+  w: number,
+  h: number,
+  draw: (ctx: CanvasRenderingContext2D) => void,
+  color = true,
+): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
+  draw(ctx);
+  const tex = new THREE.CanvasTexture(canvas);
+  if (color) tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 8;
   return tex;
 }

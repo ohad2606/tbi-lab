@@ -1,118 +1,111 @@
 /**
- * ESP32-DevKitC V4 at runtime (Sprint 10 high-fidelity proof set): an instance of the bundled glTF
- * asset (esp32DevkitC.author.ts -> esp32-devkitc-v4.glb), with the parts that depend on the
- * project added here:
- * - the silkscreen and the module's laser marking, drawn on canvases into the asset's two named
- *   planes (presentation only);
- * - a jumper (Dupont) housing on every header pin that carries a wire; its top is that pin's
- *   electrical anchor (scene.ts ESP32_ATTACH_HEIGHT).
+ * ESP32-DevKitC V4 at runtime (Sprint 10; realism pass): an instance of the bundled glTF asset
+ * (esp32DevkitC.author.ts -> esp32-devkitc-v4.glb), finished with what the glTF does not carry:
+ * - the board's surface: solder mask over copper, pads and silkscreen on both PCB faces, the
+ *   module's antenna area, and the marking atlas of the can and the ICs (esp32Textures.ts), drawn
+ *   once per viewer and shared by every board in it;
+ * - brushed-metal anisotropy on the RF can (full tier);
+ * - a jumper wire's female housing (dupont.ts) on every header pin that carries a wire; its top is
+ *   that pin's electrical anchor (scene.ts ESP32_ATTACH_HEIGHT).
+ * Materials are cloned once per viewer (the shared glTF template is never modified).
  * Returns null when the asset is not loaded; the caller then builds the procedural board.
  */
 import * as THREE from 'three';
 import { ESP32_DEVKITC_WROOM32, boardPinPosition, boardTerminalId } from '@tbi-lab/domain';
 import { ESP32_DEVKITC as D, ESP32_PCB_TOP } from '../physical.js';
-import { OwnedResources, box, canvasTexture } from '../kit.js';
+import type { OwnedResources } from '../kit.js';
 import { instantiate } from './library.js';
+import { esp32Textures } from './esp32Textures.js';
+import { buildDupont, dupontMaterials } from './dupont.js';
 
 const pinZ = (position: number) => (position - (D.headerPins + 1) / 2) * D.pinPitchMm;
 
-/** White silkscreen ink on a transparent layer, in PCB coordinates (u across, v along). */
-function silkscreen(own: OwnedResources): THREE.Texture {
-  const W = 560;
-  const H = Math.round((W * D.pcbLengthMm) / D.pcbWidthMm);
-  return canvasTexture(own, W, H, (ctx) => {
-    const k = W / D.pcbWidthMm;
-    const zTop = D.pcbCentreZMm - D.pcbLengthMm / 2;
-    const X = (mm: number) => (mm + D.pcbWidthMm / 2) * k;
-    const Z = (mm: number) => (mm - zTop) * k;
-    ctx.clearRect(0, 0, W, H);
-    ctx.fillStyle = '#eef0f2';
-    ctx.strokeStyle = '#eef0f2';
-    ctx.lineWidth = 0.18 * k;
-    ctx.textBaseline = 'middle';
-    // Pin labels: small enough to end before the module's castellated edge (x = +-9 mm).
-    ctx.font = `bold ${Math.round(0.8 * k)}px ui-sans-serif, Arial, sans-serif`;
-    const rowX = D.headerRowSpacingMm / 2;
-    for (const pin of ESP32_DEVKITC_WROOM32.pins) {
-      const left = boardPinPosition(pin).x < 0;
-      const x = left ? -rowX : rowX;
-      ctx.textAlign = left ? 'left' : 'right';
-      ctx.fillText(pin.headerLabel, X(left ? x + 1.55 : x - 1.55), Z(pinZ(pin.position)));
+/** The viewer's finished material for a template material (textures applied once). */
+function finish(own: OwnedResources, name: string, original: THREE.Material): THREE.Material {
+  return own.lastingMat(`esp32:${name}:${original.uuid}`, () => {
+    const tex = esp32Textures(own);
+    const m = original.clone() as THREE.MeshPhysicalMaterial;
+    const full = own.tier === 'full';
+    switch (name) {
+      case 'pcb_top':
+      case 'pcb_bottom': {
+        const t = name === 'pcb_top' ? tex.top : tex.bottom;
+        m.map = t.map;
+        if (full) {
+          m.bumpMap = t.bump;
+          m.bumpScale = 1.6;
+        }
+        // Coplanar with the PCB's own faces: always win the depth test.
+        m.polygonOffset = true;
+        m.polygonOffsetFactor = -1;
+        m.polygonOffsetUnits = -2;
+        break;
+      }
+      case 'module_top':
+        m.map = tex.moduleTop.map;
+        if (full) {
+          m.bumpMap = tex.moduleTop.bump;
+          m.bumpScale = 1.4;
+        }
+        m.polygonOffset = true;
+        m.polygonOffsetFactor = -1;
+        m.polygonOffsetUnits = -2;
+        break;
+      case 'markings':
+        m.map = tex.marks;
+        m.transparent = false;
+        // Crisp printed edges without sorting: alpha-to-coverage with the stage's multisampling
+        // (full), a plain alpha test otherwise.
+        m.alphaTest = 0.4;
+        m.alphaToCoverage = full;
+        m.polygonOffset = true;
+        m.polygonOffsetFactor = -2;
+        m.polygonOffsetUnits = -4;
+        break;
+      case 'shield_can':
+        m.roughnessMap = tex.brushed;
+        if (full) {
+          m.anisotropy = 0.55;
+          m.anisotropyRotation = 0;
+        }
+        break;
     }
-    // Header outlines (the silkscreen box around each row) and pin-1 marks.
-    for (const sx of [-1, 1]) {
-      ctx.strokeRect(
-        X(sx * rowX - 1.35),
-        Z(pinZ(1) - 1.35),
-        2.7 * k,
-        (pinZ(D.headerPins) - pinZ(1) + 2.7) * k,
-      );
-    }
-    // Button labels, board name, and the outline of the module footprint.
-    ctx.textAlign = 'center';
-    ctx.font = `bold ${Math.round(0.95 * k)}px ui-sans-serif, Arial, sans-serif`;
-    const zBottom = D.pcbCentreZMm + D.pcbLengthMm / 2;
-    ctx.fillText('EN', X(-8.2), Z(zBottom - 8.0));
-    ctx.fillText('BOOT', X(8.2), Z(zBottom - 8.0));
-    // Board name, horizontally in the free strip just below the module.
-    ctx.font = `bold ${Math.round(0.85 * k)}px ui-sans-serif, Arial, sans-serif`;
-    ctx.fillText('ESP32-DevKitC V4', X(0), Z(D.pcbCentreZMm - 3.6));
-  });
-}
-
-/** The RF can's laser marking: etched, slightly darker than the can. */
-function moduleMarking(own: OwnedResources): THREE.Texture {
-  return canvasTexture(own, 512, 560, (ctx) => {
-    ctx.fillStyle = '#c8ccd0';
-    ctx.fillRect(0, 0, 512, 560);
-    ctx.fillStyle = '#6b7076';
-    ctx.textAlign = 'center';
-    ctx.font = 'bold 44px ui-sans-serif, Arial, sans-serif';
-    ctx.fillText('ESP32-WROOM-32', 256, 150);
-    ctx.font = '30px ui-sans-serif, Arial, sans-serif';
-    ctx.fillText('ESPRESSIF', 256, 210);
-    // The data-matrix square (a pattern, not real data).
-    let seed = 11;
-    const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-    for (let y = 0; y < 12; y++)
-      for (let x = 0; x < 12; x++)
-        if (x === 0 || y === 11 || rnd() > 0.55) ctx.fillRect(196 + x * 10, 390 + y * 10, 10, 10);
+    m.needsUpdate = true;
+    return m;
   });
 }
 
 export function buildEsp32Asset(
   own: OwnedResources,
   wiredPins: readonly string[],
-  housing: THREE.Material,
 ): THREE.Object3D | null {
   const root = instantiate('board.esp32_devkitc');
   if (!root) return null;
+  const finished = new Set(['pcb_top', 'pcb_bottom', 'module_top', 'markings', 'shield_can']);
   root.traverse((o) => {
     const mesh = o as THREE.Mesh;
     if (!mesh.isMesh) return;
-    mesh.castShadow = o.name !== 'silkscreen' && o.name !== 'module_label';
+    const skin = o.name === 'pcb_top' || o.name === 'pcb_bottom' || o.name === 'module_top';
+    mesh.castShadow = !skin && o.name !== 'markings';
     mesh.receiveShadow = true;
-    if (o.name === 'silkscreen' || o.name === 'module_label') {
-      // Per-instance copy of the plane's material with its drawn map.
-      const mat = (mesh.material as THREE.MeshPhysicalMaterial).clone();
-      mat.map = o.name === 'silkscreen' ? silkscreen(own) : moduleMarking(own);
-      mat.needsUpdate = true;
-      mesh.material = own.mat(mat);
-    }
+    if (finished.has(o.name)) mesh.material = finish(own, o.name, mesh.material as THREE.Material);
   });
   root.userData.asset = 'esp32-devkitc-v4.glb';
   // Jumper housings on the wired pins: the wire leaves each housing's top.
   const wired = new Set(wiredPins);
-  const top = ESP32_PCB_TOP;
+  const dm = dupontMaterials(own);
   for (const pin of ESP32_DEVKITC_WROOM32.pins) {
     const id = boardTerminalId(pin);
     if (!id || !wired.has(id)) continue;
     const local = boardPinPosition(pin);
-    const h = box(own, D.dupontSizeMm, D.dupontHeightMm, D.dupontSizeMm, housing, [
+    const h = buildDupont(own, D.dupontSizeMm, D.dupontHeightMm, dm);
+    // The latch window faces outward, away from the board's centre line.
+    h.rotation.y = local.x < 0 ? -Math.PI / 2 : Math.PI / 2;
+    h.position.set(
       Math.sign(local.x) * (D.headerRowSpacingMm / 2),
-      top + 0.3 + D.dupontHeightMm / 2,
+      ESP32_PCB_TOP + D.dupontSeatMm,
       pinZ(pin.position),
-    ]);
+    );
     h.userData.jumper = id;
     root.add(h);
   }

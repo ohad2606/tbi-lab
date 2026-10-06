@@ -24,8 +24,9 @@ describe('bundled 3D assets', () => {
     );
     const built = await exportGlb(authorEsp32DevkitC());
     expect(sha(built)).toBe(sha(committed));
-    // A size budget for the proof asset (raw; it is served compressed).
-    expect(committed.byteLength).toBeLessThan(600_000);
+    // A size budget for the asset (raw; it is served compressed). Realism pass: the board's
+    // parts at package level (castellations, chip passives, connector internals) ~720 KB.
+    expect(committed.byteLength).toBeLessThan(800_000);
   });
 
   it('the manifest names every proof-set model, with provenance and anchors', () => {

@@ -166,8 +166,10 @@ describe('3D models agree with the netlist (anchors)', () => {
     const housings: THREE.Mesh[] = [];
     board.traverse((o) => o.userData.jumper && housings.push(o as THREE.Mesh));
     expect(housings.map((h) => h.userData.jumper)).toEqual(['gpio2']);
-    // The anchor is the housing's top centre, and the pin is under it.
-    const box = new THREE.Box3().setFromObject(housings[0]!);
+    // The anchor is the housing's top centre (its body: the latch window's detail stands proud of
+    // one face), and the pin is under it.
+    const body = housings[0]!.children.find((o) => o.userData.dupontBody)!;
+    const box = new THREE.Box3().setFromObject(body);
     expect(box.max.y).toBeCloseTo(p.y, 6);
     expect((box.min.x + box.max.x) / 2).toBeCloseTo(p.x, 6);
     expect((box.min.z + box.max.z) / 2).toBeCloseTo(p.z, 6);
