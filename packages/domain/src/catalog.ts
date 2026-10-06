@@ -188,7 +188,9 @@ const SPRINT10_TYPES = {
       {
         kind: 'enum',
         key: 'model',
-        options: [{ value: 'model.buzzer.cui_cem_1205_ic', labelKey: 'model.buzzer.cui_cem_1205_ic' }],
+        options: [
+          { value: 'model.buzzer.cui_cem_1205_ic', labelKey: 'model.buzzer.cui_cem_1205_ic' },
+        ],
         default: 'model.buzzer.cui_cem_1205_ic',
         labelKey: 'param.model',
       },
@@ -228,10 +230,7 @@ const SPRINT10_TYPES = {
     mcuRuntime: false,
   },
 } satisfies Record<
-  | 'component.rgb_led'
-  | 'component.photoresistor'
-  | 'component.buzzer'
-  | 'component.relay',
+  'component.rgb_led' | 'component.photoresistor' | 'component.buzzer' | 'component.relay',
   ComponentTypeDef
 >;
 
@@ -421,7 +420,6 @@ export const CATALOG: Record<ComponentTypeId, ComponentTypeDef> = {
     aliases: ['esp32', 'devkit', 'mcu', 'wroom'],
   },
 };
-
 
 /** Palette order. */
 export const CATALOG_ORDER: readonly ComponentTypeId[] = [
