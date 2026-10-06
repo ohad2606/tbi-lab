@@ -1,14 +1,99 @@
 # Sprint 10 — Physical 3D, engine time-domain core, the approved component families
 
 **Status (2026-10-06):** developed on `sprint-10` (worktree `~/projects/tbi-lab-s10`), from
-`7f09d74` = `main` = `sprint-9-complete`. **dev-lab.tbi-tech.net serves `9c94329`** (Part F): the
-header-row routing fix and the high-fidelity 3D proof set. **Owner review PENDING**, starting with
-the ESP32 GND routing case.
+`7f09d74` = `main` = `sprint-9-complete`. **dev-lab.tbi-tech.net serves `afe3605`**, shown in the
+app as `v0.10-dev · afe3605` and in `/version.json` (Part G). The old preview routes are retired.
+**Owner review PENDING**: confirm the version, then the ESP32 GND routing case.
 
 Not done: no PR, merge, tag, production deployment or backend deployment. The backends are unchanged
 (`c31d62e`, runtime `33e35e4ac5e798d7`). The isolated preview `/s10-preview/` stays.
 
 Architecture and scope: [SPRINT-10-ARCHITECTURE.md](SPRINT-10-ARCHITECTURE.md).
+
+## Part G — build identity: why the owner saw an old build (2026-10-06)
+
+**Root cause (gate request log, no assumption).**
+- Every authenticated page load from the owner's Windows Chrome today was
+  `https://dev-lab.tbi-tech.net/s9-preview/`. That is the old Sprint 9 preview: its own web root,
+  its own build with the "Sprint 9 preview · experimental" banner, and the old routing.
+- That browser requested `/` only once, a sign-in redirect at 09:29.
+- `/` itself served the reported builds: `index.html` and the fallback are `no-store`, only
+  content-hashed `/assets/*` are immutable, and there is no service worker.
+- The post-deploy checks validated `/` through the gate's internal origin, never the route the
+  owner was actually using.
+
+**Changes (`cab4914`–`afe3605`).**
+- **Build identity, one object per build, made at build time** (`app/buildInfo.config.ts`):
+  - inputs: `VERSION` = `0.10-dev`; the exact commit (`TBI_BUILD_COMMIT`, set by the deploy script,
+    else git); environment; build time;
+  - compiled into the app and emitted as `/version.json`, so the visible version is the code
+    running.
+- **Status line** at the bottom of every screen: `v0.10-dev · <short sha>`.
+  - Hover, focus or click shows product, version, environment, full commit and build time.
+  - Runtime ID shows as "not reported by the backend": no backend API exposes it, and the backend
+    is unchanged.
+  - Technical tokens stay left-to-right in Hebrew.
+- **`publish-frontend.sh` + `verify-build.mjs`:**
+  - before the switch: the build's `/version.json` names the commit (dev-lab, clean), the bundle
+    carries it, every referenced asset is present;
+  - after the switch, on the gate's origin: `/version.json` (commit, `no-store`), `/` byte for byte
+    (`no-store`), every asset (hash, immutable);
+  - the public HTTPS site is up and gated (302 to Google sign-in);
+  - any mismatch rolls back and fails;
+  - it ends with "dev-lab now serves <commit>".
+- **Old preview routes retired** (`retire-preview.sh`, no Caddy change, `/` never redirected):
+  - `/s9-preview/` and `/s10-preview/`, deep links included, now show a "this preview has been
+    retired" page (EN/HE) linking to `/`;
+  - the old builds stay on disk; the re-open commands are in the deploy log;
+  - projects created in a preview stay in that browser's preview storage (re-open the route to
+    export them).
+- **Not changed (needs approval if wanted):**
+  - the public `/version.json` is behind the Google sign-in like everything else, so the script
+    reads it through the gate's origin. Making that one file public would be an auth change.
+  - a tab left open across a deploy keeps running the old code (lazy chunks of the old build are
+    no longer served). A "new version available, reload" prompt would close that gap.
+
+**Tests.**
+- Unit `build-info.test.ts`: fields, deterministic apart from the timestamp, malformed identities
+  refused, dirty marker, Hebrew keys, no preview name in a normal build.
+- Browser `version.spec.ts`: visible version = served `/version.json`, details, Hebrew LTR, no
+  preview label.
+- Hebrew translation scans skip the status line (technical identity).
+- The 3D asset spec waits for the scene stats (race fixed).
+
+**Validation.**
+- Full suite on `afe3605`:
+  - typecheck, lint with boundaries, build: pass;
+  - unit: **755 passed**, 80 files;
+  - browser: **148 passed**, 3 skipped, **0 failed**;
+  - legacy browser: pass.
+- An overlapping run by a second session in this worktree was stopped and discarded; this result is
+  from a fresh run.
+
+**dev-lab now serves `afe3605`** (`afe3605be57b865231d2c88cdb6762bfc5aa529c`), verified by
+`publish-frontend.sh`.
+
+| Post-deploy check | Result |
+|---|---|
+| Served `/version.json` | commit `afe3605…`, environment `dev-lab`, clean; `no-store` |
+| Served `/` | the release `index.html` byte for byte; `no-store` |
+| Served assets | content-hashed, immutable |
+| Public site | 302 to sign-in |
+| Live checks | **40/40**: visible `v0.10-dev · afe3605` equals `/version.json` (EN and HE, LTR), details, the owner GND case (route, no marker, netlist), 3D asset, examples |
+| Sprint 9 smoke | 48 passed, including ESP32 Build -> Run -> Stop |
+| Services, backend files, Caddy, QEMU and runtime ID | unchanged |
+
+Rollback target `9c94329` intact:
+```
+sudo ln -sfn /srv/tbi-lab/dev-lab/9c94329691e69dabc42abc938f21b3a7388167d5 /srv/tbi-lab/dev-lab/current.tmp
+sudo mv -T /srv/tbi-lab/dev-lab/current.tmp /srv/tbi-lab/dev-lab/current
+```
+
+Evidence: [s10-evidence/version/](s10-evidence/version/). It includes the GND case with
+`v0.10-dev · afe3605` visible, and the version details in EN and HE.
+
+**Owner review: PENDING.** Open `https://dev-lab.tbi-tech.net/` and confirm the status line reads
+`v0.10-dev · afe3605` before checking the GND routing case.
 
 ## Part F — second owner block: header-row routing, and the high-fidelity 3D proof set (2026-10-06)
 
