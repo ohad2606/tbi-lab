@@ -8,6 +8,8 @@ import {
   addWire,
   createProject as createProjectDoc,
   createSnapshot,
+  wireRoute,
+  type Point,
   type ProjectDocument,
 } from '@tbi-lab/domain';
 import { EngineSession, type SolveSuccess } from '@tbi-lab/engine';
@@ -23,9 +25,21 @@ import {
   storedProject,
   storedProjects,
   terminal,
+  toScreen,
   waitForStoredProject,
   waitSaved,
 } from './helpers.js';
+
+/** Drag with the left button from one world point to another. */
+async function dragWorld(page: Page, from: Point, to: Point) {
+  const a = await toScreen(page, from);
+  const b = await toScreen(page, to);
+  await page.mouse.move(a.x, a.y);
+  await page.mouse.down();
+  await page.mouse.move((a.x + b.x) / 2, (a.y + b.y) / 2, { steps: 4 });
+  await page.mouse.move(b.x, b.y, { steps: 4 });
+  await page.mouse.up();
+}
 
 const en = getLocale('en');
 const A = (v: number | null) => (v === null ? 'not defined' : formatResult(en, v, 'ampere'));
@@ -369,14 +383,33 @@ test('A12/A13: unwired notice, partial-wiring and wire-over-terminal checks; not
   await openImported(page, fixture);
   await waitSaved(page);
   const checks = page.getByTestId('circuit-checks');
-  // (The auto-route also crosses a PSU terminal: each ambiguity is reported separately.)
+  // Sprint 10: opening repairs such stored geometry (presentation only): the wire is re-routed
+  // clear of R1.a and the PSU terminal, with the same connections.
+  await expect(checks.getByTestId('check-wire_over_terminal')).toHaveCount(0);
+  const repaired = await storedProject(page);
+  expect(repaired.connections).toEqual(fixture.connections);
+  // The check still guards what routing cannot prevent: the user drops a part so that its
+  // terminal lands on the straight middle of an existing wire. D1's anode (40 left of its centre)
+  // goes onto the wire; nothing connects.
+  const route = wireRoute(repaired, repaired.layout.wires[0]!)!;
+  const spot = route
+    .slice(1)
+    .map((b, k) => [route[k]!, b] as const)
+    .filter(([a, b]) => a.y === b.y && Math.abs(b.x - a.x) >= 80)
+    .map(([a, b]) => ({ x: Math.min(a.x, b.x) + 40, y: a.y }))[0]!;
+  expect(spot).toBeDefined();
+  await dragWorld(page, { x: 60, y: 140 }, { x: spot.x + 40, y: spot.y });
+  await expect
+    .poll(async () => (await storedProject(page)).layout.components.D1)
+    .toMatchObject({ x: spot.x + 40, y: spot.y });
+  // (Both of its leads lie on that straight run: each crossing is reported.)
   await expect(
-    checks.getByTestId('check-wire_over_terminal').filter({ hasText: 'R1' }),
+    checks.getByTestId('check-wire_over_terminal').filter({ hasText: 'D1' }).first(),
   ).toContainText('without connecting');
-  // R1.a carries two markers: it is unwired (partial wiring) AND a wire crosses it.
   await expect(
-    page.locator('[data-testid="check-marker-R1.a"][data-code="wire_over_terminal"]'),
+    page.locator('[data-testid="check-marker-D1.anode"][data-code="wire_over_terminal"]'),
   ).toHaveCount(1);
+  // R1.a is unwired (partial wiring).
   await expect(
     page.locator('[data-testid="check-marker-R1.a"][data-code="partially_wired"]'),
   ).toHaveCount(1);
@@ -386,6 +419,7 @@ test('A12/A13: unwired notice, partial-wiring and wire-over-terminal checks; not
   );
   const doc: ProjectDocument = await storedProject(page);
   expect(doc.connections.some((c) => c.component === 'R1' && c.terminal === 'a')).toBe(false);
+  expect(doc.connections.some((c) => c.component === 'D1')).toBe(false); // nothing auto-connects
   // Complete the circuit; the partial-wiring warning goes, the ambiguity stays until redrawn.
   await link(page, ['PSU1', 'positive'], ['R1', 'a']);
   await link(page, ['PSU1', 'negative'], ['GND1', 'ref']);
