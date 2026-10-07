@@ -1,9 +1,9 @@
 # Sprint 10 — Physical 3D, engine time-domain core, the approved component families
 
 **Status (2026-10-07):** developed on `sprint-10` (worktree `~/projects/tbi-lab-s10`), from
-`7f09d74` = `main` = `sprint-9-complete`. **dev-lab.tbi-tech.net serves `5999a4c`**
-(`v0.10-dev · 5999a4c`, verified from `/version.json` and the served `index.html`; rollback
-release `3921186` kept). Part M: operating the toggle switch and push button in 3D during Run.
+`7f09d74` = `main` = `sprint-9-complete`. **dev-lab.tbi-tech.net serves `5fab982`**
+(`v0.10-dev · 5fab982`, verified from `/version.json` and the served `index.html`; rollback
+release `5999a4c` kept). Part N: realism pass 3 (high-fidelity visuals). Part M: operating the toggle switch and push button in 3D during Run.
 Part L: false-hop fix, net wire colours, limited 3D picking. Part K: fresh 3D wire routes (owner review: PIR alarm, relay -> LED).
 Part J: visual-only 3D body separation (owner review). Part I: realism
 pass 2 + product footer. **Owner review PENDING**: the 3D view on a real GPU (checklist I.6) and
@@ -13,6 +13,140 @@ Not done: no PR, merge, tag, production deployment or backend deployment. The ba
 (`c31d62e`, runtime `33e35e4ac5e798d7`). The isolated preview `/s10-preview/` stays.
 
 Architecture and scope: [SPRINT-10-ARCHITECTURE.md](SPRINT-10-ARCHITECTURE.md).
+
+## Part N — realism pass 3: high-fidelity visuals (owner direction, 2026-10-07)
+
+Scope frozen: the 3D control behaviour (Part M) is accepted and unchanged, apart from motion
+curves. This block went into visual realism.
+
+Method:
+- The current deployed build (`5999a4c`) was captured at full quality at fixed close-up cameras
+  (the evidence harness, `scripts/evidence`).
+- Each part was judged against its real counterpart.
+- The parts were changed where they read as "simulator", then recaptured at the same cameras.
+
+### N.1 What read as artificial (before)
+
+| Part | Problem |
+|---|---|
+| LED | An opaque red plastic cylinder; lit, the whole shell brightened uniformly; the legs rendered dark |
+| 1N4148 | Orange "candy" plastic: the copper slugs filled half the tube, behind a strong orange tint |
+| ESP32 header | Tall mirror-chrome solder cones under gold tips ("Christmas trees") |
+| Metal overall | Dull grey: the environment's intensity was only 0.4, so flat metal (USB shell, legs) read as grey plastic |
+| Push button | Round wire legs instead of stamped strips |
+
+### N.2 Changes
+
+| Part | Change | Type |
+|---|---|---|
+| LED | Frosted, translucent epoxy (transmission 0.82, roughness 0.4, the tint by absorption keeping hue): the lead frame shows inside. Lit, the light starts at the die: a glow core round it, the lens glowing most near the die and softer up the dome (no uniformly emissive shell). Current-driven brightness unchanged | procedural |
+| 1N4148 | Clear glass with a light amber cast; real-size DUMET slugs (~0.55 mm in the 1.75 mm envelope) and the die visible inside | procedural |
+| ESP32 | Header joints are low concave solder menisci (~0.45 mm) in satin lead-free solder; GLB regenerated (deterministic, 786 KB, was 721 KB) | hybrid (GLB + runtime) |
+| Leads (shared) | Tinned leads satin (roughness 0.4), chrome slightly softer; formed axial leads bend round a ~2× diameter radius with smooth 12-sided tubes | material library |
+| Push button | Flat stamped 0.7 × 0.3 mm legs (`kit.ts ribbon`, reusable for any flat lead or lug) | procedural |
+| Lighting | A project-owned product-shot studio for reflections, procedural with no image asset: a soft sky over a darker floor, an overhead softbox, two strip lights and a front card. Environment intensity 0.4 → 0.75, key light trimmed | stage |
+| Motion | Lever: ease-in-out (an over-centre snap). Cap: ease-out down, soft ease-in-out return. The electrical state is unchanged and immediate | renderer |
+
+Resistor, toggle switch, Dupont housings, wires, the direct-contact joint and the WROOM module
+were reviewed and kept. They are already at the standard (Parts H and I) and gain from the shared
+material and lighting changes.
+
+### N.3 Assets, sources, licences
+
+All visuals remain original to this project: procedural code, or a GLB authored from code here.
+No third-party asset ships. The licence gate (`manifest.ts`, `scene3d-realism.test.ts`) is
+unchanged. Dimension references, as in Parts H and I:
+
+| Part | References |
+|---|---|
+| ESP32 | [ESP-DIM], [WROOM] |
+| LED | [V83012], [V83009] |
+| 1N4148 | [V81857] |
+| Resistor | [CFR25] |
+| Tactile switch | [REP] 6 × 6 mm class |
+
+The studio environment is code in `stage.ts`.
+
+### N.4 Numbers (full tier, the evidence cameras)
+
+| Scene | Draw calls | Triangles | Materials | Geometries | Textures | GPU memory |
+|---|---|---|---|---|---|---|
+| ESP32 overview | 162 → 162 | 176k → 189k | 43 → 44 | 49 → 49 | 33 → 33 | 37.2 → 37.5 MB |
+| Parts bench | 149 → 149 | 196k → 202k | 41 → 43 | 44 → 44 | 34 → 34 | 6.4 → 6.5 MB |
+| ESP32 input echo | 238 → 238 | 330k → 344k | 64 → 65 | 69 → 69 | 45 → 45 | 41.5 → 41.8 MB |
+
+Software renderer (reduced tier), `5999a4c` → now:
+
+| Measure | Before | After |
+|---|---|---|
+| ESP32 first open | 3.8 s | 2.6 s |
+| Re-open | 2.0 s | 1.9 s |
+| Orbit, per step | 206 ms | 162 ms |
+| Pan, per step | 158 ms | 153 ms |
+| Dense first open | 3.6 s | 3.3 s |
+| Dense orbit, per step | 241 ms | 245 ms |
+| Draw calls (ESP32 / dense) | 48 / 185 | 48 / 185 |
+| Shader programs | 5 / 6 | 5 / 6 |
+| Heap, ESP32 after open/close cycles | 10 MB | 10 MB |
+| Heap, dense scene | 37 MB | 45 MB |
+
+The dense heap figure is a single measurement. It includes one glow-core material per LED, and
+garbage-collection timing may add to it.
+
+### N.5 Evidence
+
+`docs/sprints/s10-evidence/realism3/`: `compare-*.jpg`, before (`5999a4c`) and after, same
+cameras, full tier on this server's software renderer:
+- the ESP32 three-quarter, rear/underside, USB and buttons, WROOM, header pins, and wire into a
+  header;
+- the resistor, the LED unlit and lit, the diode, the toggle switch, the push button and the
+  direct contact;
+- LED colours, the parts overview and the echo overview;
+- `stats-*.json` and `perf/`.
+
+### N.6 Regression and deployment
+
+Regression on `5fab982` (clean tree):
+
+| Check | Result |
+|---|---|
+| Typecheck | PASS |
+| Lint | PASS |
+| Unit tests | 825/825 (89 files; +4 in `realism3.test.ts`) |
+| Browser | PASS |
+| Build | PASS |
+| e2e | 160 passed, 3 skipped (9.8 min) |
+
+Deployed frontend-only with `deploy/dev-lab/publish-frontend.sh 5fab982`: all publisher checks
+passed, and dev-lab serves `5fab982f927524254e82660e1319ca333e35b69d`.
+
+Live checks through the gate's origin:
+
+| Check | Result |
+|---|---|
+| live 3D | 7/7 |
+| demo10 | 40/40 |
+| Sprint 9 smoke | all passed |
+| ESP32 3D controls (real build, QEMU runtime) | 17/17 |
+
+The backends were not restarted: `tbi-session-host` and `tbi-build` are active since
+2026-10-04. Rollback:
+
+```sh
+sudo ln -sfn /srv/tbi-lab/dev-lab/5999a4c754fc2a812b2290e31312602e9ba7eda8 /srv/tbi-lab/dev-lab/current.tmp &&
+  sudo mv -T /srv/tbi-lab/dev-lab/current.tmp /srv/tbi-lab/dev-lab/current
+```
+
+### N.7 Honest assessment
+
+- **Obvious improvements:** the LED, the 1N4148 and the ESP32 header joints.
+- **Modest improvements:** metal everywhere, the push button's legs, the USB shell.
+- **Not yet at the "photographed bench" bar:**
+  - the ESP32's other features are unchanged this pass (USB stamping detail, SMD part detail,
+    rear-side detail);
+  - the bench is a clean grey plane with no breadboard;
+  - wires run orthogonally in plan;
+  - nothing has been seen on a real GPU yet.
 
 ## Part M — operating physical controls in 3D during a simulation (owner-approved, 2026-10-07)
 
