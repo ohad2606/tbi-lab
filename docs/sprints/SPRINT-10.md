@@ -11,6 +11,132 @@ Not done: no PR, merge, tag, production deployment or backend deployment. The ba
 
 Architecture and scope: [SPRINT-10-ARCHITECTURE.md](SPRINT-10-ARCHITECTURE.md).
 
+## Part I — realism pass 2 and the product footer (2026-10-07)
+
+Owner direction: keep pushing towards "this looks real"; the most visible remaining artificial cues
+were the floating labels, the geometrically perfect wires, the older component models, a slightly
+glassy LED and a sterile bench. Plus the approved product footer.
+
+### I.1 Labels: printed on the bench, not floating
+
+The reference designators were white rounded cards hovering over every part (the strongest
+"simulator UI" cue). They are now **printed on the bench beside their part** (`renderer.ts`
+`label`, placement `labels.ts`): dark ink in the boards' stroke font on a thin decal, lit and
+shadowed with the scene and hidden behind parts like real print. Placement is deterministic: in
+front of the part, else to its right, left, behind, further out; never on another part's
+footprint or another label (tested). A **Labels** toggle in the 3D view hides them (a per-browser
+preference, `tbi-lab.3d.labels`; never project data).
+
+### I.2 Wires: natural drape, still guaranteed clear (`wireShape.ts`)
+
+- long level runs (≥ 14 mm) **sag** up to 2 mm (≈ 3.5 % of the span) along a smooth profile; the
+  low point sits off-centre by a stable per-wire amount (hash of the wire id: asymmetry without
+  randomness);
+- a riser turns into its run with a **hand-formed bend** (radius up to 6 mm, limited by the riser
+  and the run); plan turns stay 2 mm;
+- out of a jumper housing the wire runs straight for 2.5 mm before it bends (strain relief);
+- **every draped wire is checked** against every other wire (surface gap ≥ 0.12 mm, as the route
+  guarantees) and every part body it does not connect to (never lower than its route there); if it
+  fails it is retried at half sag, then drawn as the route. Ends, connectivity, colours unchanged.
+- Result on the examples/benches: esp32-blink 4/4 wires draped, esp32-input-echo 11/13,
+  night-light 10/10, parts bench 8/10, dense bench 28/30; shaping takes 7–58 ms (software CPU).
+
+### I.3 LED material (moulded epoxy, not glass)
+
+Tinted-diffused: transmission 0.55 → 0.32, roughness 0.5 → 0.62 (the frame inside shows as a
+soft shape), satin moulded skin (clearcoat 0.55, roughness 0.22), deeper tint (the red read pale
+salmon). Water-clear (3 mm green): transmission 0.92, roughness 0.1. The LED's internal frame is
+excluded from ambient occlusion. Lit: unchanged principle (light from the die, lens glow profile,
+halo, bench tint from the light pool). Checked on the led-colours example (red, yellow, green).
+
+### I.4 Component audit (all components exposed in the palette)
+
+| Component | Standard | This pass |
+|---|---|---|
+| ESP32-DevKitC V4 | WOW | – |
+| Resistor | WOW | – |
+| 1N4148 diode | WOW | – |
+| LED (5 mm / 3 mm) | WOW (GPU check pending) | epoxy retuned |
+| Push button, toggle switch | WOW | – |
+| Bench supply, ground post | acceptable+ (symbolic scale) | – |
+| Jumper wires / Dupont housings | WOW at the ESP32 | drape |
+| RGB LED | was below | water-clear epoxy (full tier) → acceptable |
+| Buzzer | was below (plain cylinder) | moulded can, real sound-hole recess → acceptable |
+| Relay | was below (sharp box) | rounded glossy case → acceptable |
+| PIR HC-SR501 | was below (stepped dome) | smooth Fresnel dome, milky translucent → acceptable |
+| LED matrix 1088AS | was below (sharp box) | rounded body → acceptable |
+| Capacitors | was below (plain cylinders) | electrolytic sleeve with rolled groove and seal; domed disc → acceptable |
+| Photoresistor, TO-92 | acceptable | – |
+
+### I.5 Bench
+
+A soft light falloff across the bench (brighter under the lamp, ~10 % darker at the rim) on top of
+the existing grain, contact shadows and AO. No dirt, scratches or randomness.
+
+### I.6 Real-GPU validation
+
+This host has only a software rasteriser (SwiftShader): every render in the evidence was made
+there — the "full" tier forced for evidence, the "reduced" tier being what software rendering
+gets in normal use. **Full-tier quality is not verified on real GPU hardware.** To make the owner's
+check precise without telemetry, the build details (bottom-right version → hover/click) now show
+**3D graphics: <the browser's WebGL renderer> (full / reduced quality)**, probed locally.
+
+Owner checklist (normal PC, dev-lab, `v0.10-dev · <sha>` bottom right):
+1. Version details → *3D graphics* names the GPU and says **full quality**.
+2. ESP32 blink → 3D: the PCB reads black with visible traces; silkscreen readable when zoomed;
+   header solder joints shiny, not white; the can brushed, not noisy.
+3. Shadows soft, under parts, not hiding detail; no flicker while orbiting.
+4. LED (unlit): deep red, milky; the frame inside soft. Run: the LED glows from inside, a faint red
+   tint on the bench; no white blow-out.
+5. 1N4148: amber glass with the internals visible; the band black.
+6. Wires: gentle sag on long runs, round bends, jumper housings seated on the pins.
+7. Labels printed on the bench; **Labels** button hides/shows them.
+8. Orbit/pan/zoom feel immediate; opening 3D takes ~1–2 s at most.
+A screenshot of steps 2, 4 (lit) and 7 with the *3D graphics* line visible is enough.
+
+### I.7 Product footer (approved)
+
+`ProductFooter.tsx` in the bottom bar (`<footer aria-label="Product information and build">`):
+- EN: `TBI Lab · Developed by Ohad David · © 2026 TBI. All rights reserved. · support@tbi-tech.net`
+- HE: `TBI Lab · פותח על ידי אוהד דוד · © 2026 TBI. כל הזכויות שמורות. · support@tbi-tech.net`
+- the support address is a `mailto:` link (accessible name "Email support: …", visible focus
+  ring); product name, copyright and address are LTR-isolated inside the RTL sentence;
+- one muted line at the inline start; the version (`v0.10-dev · <sha>`) stays at the inline end in
+  its own style; wraps on narrow windows, adds no horizontal overflow; never covers the workspace.
+
+### I.8 Measurements (software renderer, default `reduced` tier; same procedure as Part H)
+
+| | `eb30708` | this pass |
+|---|---|---|
+| ESP32 first 3D open | 3.6 s | 2.8 s |
+| re-open | 2.5 s | 1.9 s |
+| orbit / pan per step | 201 / 175 ms | 172 / 161 ms |
+| dense bench first open / orbit per step | 4.1 s / 253 ms | 3.6 s / 243 ms |
+| ESP32 draw calls / triangles (reduced) | 45 / 43.8k | 48 / 43.8k |
+| shader programs (reduced) | 6 | 5 |
+| heap after 7 enter/leave cycles | 10 MB | 10 MB |
+| full tier ESP32 overview: draws / tris / materials | 124 / 131k / 43 | 129 / 131k / 43 |
+| full tier parts bench: draws / tris | 104 / 140k | 114 / 148k |
+| renderer chunk (gzip) | 205.7 kB | 208.0 kB |
+
+The labels moved from 256×96 sprites with a depth-test-off pass to small decals (one program
+fewer); the drape adds ~10 draws on wire-heavy scenes (bent tubes no longer merge into straight
+runs) and 7–58 ms of CPU shaping per rebuild. Wire tubes stay adaptively sampled (bends only).
+
+Evidence: `docs/sprints/s10-evidence/realism2/` — `compare-*.jpg` (eb30708 | this pass, same
+camera, full tier rendered on the software GPU), `after/*.jpg` (all views incl. the component
+audit `audit-*`, LED colours unlit/lit, labels off), `footer-*.png`, `stats-*.json`, `perf/`.
+
+### I.9 What still reads as artificial
+
+1. Wire routing is still orthogonal in plan (from the 2D route): the drape softens heights and
+   bends, not the plan path. Free plan curvature would need clearance proofs in plan too.
+2. No breadboard; parts stand on the bench by their leads.
+3. Older parts are now "acceptable", not WOW: relay, PIR board, buzzer, matrix, LDR, TO-92 still
+   lack the fine detail (pins, markings, PCB parts) of the benchmark set.
+4. The lit LED's glow is a halo sprite plus a point light: no true bloom.
+5. Full tier unverified on real GPU hardware (I.6).
+
 ## Part H — 3D realism pass, version-update banner (2026-10-06, overnight)
 
 Owner direction: routing fix, version display and the first 3D step were accepted; the 3D target

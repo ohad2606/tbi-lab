@@ -7,6 +7,7 @@
  */
 import { useState } from 'preact/hooks';
 import { BUILD_INFO, versionLabel } from '../buildInfo.js';
+import { probeGpu } from '../gpuInfo.js';
 import { useAppState, useT } from './context.js';
 import { ProductFooter } from './ProductFooter.js';
 
@@ -14,6 +15,10 @@ export function VersionStatus() {
   const t = useT();
   const { locale } = useAppState();
   const [open, setOpen] = useState(false);
+  // The 3D graphics this browser offers (probed once, when the details are first shown).
+  const [gpu, setGpu] = useState<{ renderer: string; tier: string } | null>(null);
+  const showGpu = () =>
+    gpu ?? setGpu(probeGpu() ?? { renderer: t('version.noWebgl'), tier: 'reduced' });
   const info = BUILD_INFO;
   if (!info)
     return (
@@ -29,6 +34,13 @@ export function VersionStatus() {
     [t('version.commit'), info.commit + (info.dirty ? ' (+)' : ''), true],
     [t('version.builtAt'), info.builtAt, true],
     [t('version.runtime'), t('version.runtimeUnknown'), false],
+    [
+      t('version.graphics'),
+      gpu
+        ? `${gpu.renderer} (${t(gpu.tier === 'full' ? 'version.tierFull' : 'version.tierReduced')})`
+        : '…',
+      true,
+    ],
   ];
   return (
     <footer class="statusbar" dir={locale.dir} aria-label={t('footer.aria')}>
@@ -45,7 +57,12 @@ export function VersionStatus() {
           aria-expanded={open}
           aria-label={t('version.aria', { version: label })}
           title={`${info.product} ${label}\n${info.environment} · ${info.commit}\n${info.builtAt}`}
-          onClick={() => setOpen((o) => !o)}
+          onClick={() => {
+            showGpu();
+            setOpen((o) => !o);
+          }}
+          onFocus={showGpu}
+          onMouseEnter={showGpu}
         >
           <bdi dir="ltr">{label}</bdi>
         </button>

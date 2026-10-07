@@ -17,6 +17,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { buildComponent, createMaterials, OwnedResources, paintMatrixFace } from './models.js';
 import { assetLoadStats, loadAssets } from './assets/library.js';
 import { createStage } from './stage.js';
+import { chooseQuality, probeGpu } from '../../gpuInfo.js';
 import { buildJoint, buildWire, wireMaterials } from './wires.js';
 import { shapeWires } from './wireShape.js';
 
@@ -129,41 +130,12 @@ export type LiveLevel =
   | { level: number; color: string }
   /** An LED matrix: each dot's level (0..1), row-major. */
   | { dots: number[] };
-const QUALITY_KEY = 'tbi-lab.3d.quality';
-const SOFTWARE_RENDERER = /swiftshader|llvmpipe|softpipe|software|basic render/i;
-
-/**
- * The quality tier for a WebGL renderer name (UNMASKED_RENDERER_WEBGL) and an optional per-browser
- * override: software rasterisers get `reduced`, every real GPU `full`. Capability-based (the
- * renderer string), never by browser brand.
- */
-export function chooseQuality(renderer: string, override: string | null): RenderQuality {
-  if (override === 'full' || override === 'reduced') return override;
-  return SOFTWARE_RENDERER.test(renderer) ? 'reduced' : 'full';
-}
+/** Re-exported for the tests: the tier choice lives in gpuInfo.ts (no three.js there). */
+export { chooseQuality };
 
 /** Whether WebGL works here, and which quality this device should get. */
 function probeWebgl(): RenderQuality | null {
-  try {
-    const c = document.createElement('canvas');
-    const gl = (c.getContext('webgl2') ?? c.getContext('webgl')) as WebGLRenderingContext | null;
-    if (!gl) return null;
-    let override: string | null = null;
-    try {
-      override = localStorage.getItem(QUALITY_KEY);
-    } catch {
-      /* storage unavailable: no override */
-    }
-    const info = gl.getExtension('WEBGL_debug_renderer_info');
-    const name = String(
-      info ? gl.getParameter(info.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER),
-    );
-    // Release the probe's context in every case (browsers cap live WebGL contexts).
-    gl.getExtension('WEBGL_lose_context')?.loseContext();
-    return chooseQuality(name, override);
-  } catch {
-    return null;
-  }
+  return probeGpu()?.tier ?? null;
 }
 
 export function createViewer(

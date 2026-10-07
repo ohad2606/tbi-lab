@@ -1,0 +1,212 @@
+{
+  "esp32-overview": {
+    "drawCalls": 124,
+    "triangles": 130821,
+    "materials": 43,
+    "geometries": 42,
+    "textures": 32,
+    "gpuBytes": 37281792,
+    "renderMs": 22.8,
+    "quality": "full"
+  },
+  "esp32-three-quarter": {
+    "drawCalls": 115,
+    "triangles": 129297,
+    "materials": 43,
+    "geometries": 42,
+    "textures": 32,
+    "gpuBytes": 37281792,
+    "renderMs": 18.4,
+    "quality": "full"
+  },
+  "esp32-usb-buttons": {
+    "drawCalls": 71,
+    "triangles": 64297,
+    "materials": 43,
+    "geometries": 42,
+    "textures": 32,
+    "gpuBytes": 37281792,
+    "renderMs": 11.6,
+    "quality": "full"
+  },
+  "esp32-wroom-antenna": {
+    "drawCalls": 114,
+    "triangles": 130347,
+    "materials": 43,
+    "geometries": 42,
+    "textures": 32,
+    "gpuBytes": 37281792,
+    "renderMs": 8,
+    "quality": "full"
+  },
+  "esp32-header-pins": {
+    "drawCalls": 52,
+    "triangles": 56653,
+    "materials": 43,
+    "geometries": 42,
+    "textures": 32,
+    "gpuBytes": 37281792,
+    "renderMs": 3.5,
+    "quality": "full"
+  },
+  "esp32-wire-to-header": {
+    "drawCalls": 46,
+    "triangles": 52365,
+    "materials": 43,
+    "geometries": 42,
+    "textures": 32,
+    "gpuBytes": 37281792,
+    "renderMs": 3.6,
+    "quality": "full"
+  },
+  "esp32-underside": {
+    "drawCalls": 119,
+    "triangles": 130493,
+    "materials": 43,
+    "geometries": 42,
+    "textures": 32,
+    "gpuBytes": 37281792,
+    "renderMs": 6.4,
+    "quality": "full"
+  },
+  "esp32-top": {
+    "drawCalls": 78,
+    "triangles": 82951,
+    "materials": 43,
+    "geometries": 42,
+    "textures": 32,
+    "gpuBytes": 37281792,
+    "renderMs": 3.6,
+    "quality": "full"
+  },
+  "parts-overview": {
+    "drawCalls": 104,
+    "triangles": 140029,
+    "materials": 41,
+    "geometries": 31,
+    "textures": 33,
+    "gpuBytes": 6514795,
+    "renderMs": 17.8,
+    "quality": "full"
+  },
+  "resistor-bands": {
+    "drawCalls": 25,
+    "triangles": 57719,
+    "materials": 41,
+    "geometries": 31,
+    "textures": 33,
+    "gpuBytes": 6514795,
+    "renderMs": 8.2,
+    "quality": "full"
+  },
+  "diode-glass": {
+    "drawCalls": 55,
+    "triangles": 98433,
+    "materials": 41,
+    "geometries": 31,
+    "textures": 33,
+    "gpuBytes": 6514795,
+    "renderMs": 6.6,
+    "quality": "full"
+  },
+  "direct-contact": {
+    "drawCalls": 49,
+    "triangles": 125795,
+    "materials": 41,
+    "geometries": 31,
+    "textures": 33,
+    "gpuBytes": 6514795,
+    "renderMs": 4.3,
+    "quality": "full"
+  },
+  "push-button": {
+    "drawCalls": 37,
+    "triangles": 45691,
+    "materials": 41,
+    "geometries": 31,
+    "textures": 33,
+    "gpuBytes": 6514795,
+    "renderMs": 2.6,
+    "quality": "full"
+  },
+  "toggle-switch": {
+    "drawCalls": 26,
+    "triangles": 42341,
+    "materials": 41,
+    "geometries": 31,
+    "textures": 33,
+    "gpuBytes": 6514795,
+    "renderMs": 8.9,
+    "quality": "full"
+  },
+  "psu": {
+    "drawCalls": 42,
+    "triangles": 44069,
+    "materials": 41,
+    "geometries": 31,
+    "textures": 33,
+    "gpuBytes": 6514795,
+    "renderMs": 5.3,
+    "quality": "full"
+  },
+  "ground-post": {
+    "drawCalls": 70,
+    "triangles": 107599,
+    "materials": 41,
+    "geometries": 31,
+    "textures": 33,
+    "gpuBytes": 6514795,
+    "renderMs": 5.6,
+    "quality": "full"
+  },
+  "led-unlit": {
+    "drawCalls": 50,
+    "triangles": 100393,
+    "materials": 41,
+    "geometries": 31,
+    "textures": 33,
+    "gpuBytes": 6514795,
+    "renderMs": 3.6,
+    "quality": "full"
+  },
+  "led-lit": {
+    "drawCalls": 51,
+    "triangles": 100395,
+    "materials": 41,
+    "geometries": 31,
+    "textures": 34,
+    "gpuBytes": 6514795,
+    "renderMs": 9.1,
+    "quality": "full"
+  },
+  "parts-lit-overview": {
+    "drawCalls": 100,
+    "triangles": 139673,
+    "materials": 41,
+    "geometries": 31,
+    "textures": 34,
+    "gpuBytes": 6514795,
+    "renderMs": 6.1,
+    "quality": "full"
+  },
+  "echo-overview": {
+    "drawCalls": 179,
+    "triangles": 246425,
+    "materials": 64,
+    "geometries": 53,
+    "textures": 44,
+    "gpuBytes": 41856453,
+    "renderMs": 23.3,
+    "quality": "full"
+  },
+  "echo-wires": {
+    "drawCalls": 108,
+    "triangles": 141155,
+    "materials": 64,
+    "geometries": 53,
+    "textures": 44,
+    "gpuBytes": 41856453,
+    "renderMs": 10,
+    "quality": "full"
+  }
+}
