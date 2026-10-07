@@ -527,6 +527,20 @@ export const he: Record<MessageKey, string> = {
   'update.busySimulation': 'יש לעצור את הסימולציה כדי לטעון מחדש.',
   'update.busyBuild': 'אפשר לטעון מחדש בסיום הבנייה.',
   'update.busySaving': 'השינויים נשמרים…',
+  // 3D rendering diagnostics (development readout, opened with #diag3d).
+  'view3d.diag.gpu': 'מעבד WebGL',
+  'view3d.diag.class': 'גרפיקה',
+  'view3d.diag.software': 'תוכנה (ללא GPU)',
+  'view3d.diag.hardware': 'GPU חומרתי',
+  'view3d.diag.tier': 'רמת איכות',
+  'view3d.diag.dpr': 'יחס פיקסלים',
+  'view3d.diag.drawCalls': 'קריאות ציור',
+  'view3d.diag.triangles': 'משולשים',
+  'view3d.diag.materials': 'חומרים',
+  'view3d.diag.textures': 'טקסטורות',
+  'view3d.diag.geometries': 'גאומטריות',
+  'view3d.diag.gpuMemory': 'זיכרון GPU (הערכה)',
+  'view3d.diag.frame': 'פריים אחרון (CPU)',
   'view3d.presets': 'מבטים קבועים',
   'view3d.labels': 'תוויות',
   'view3d.view.top': 'מלמעלה',
@@ -697,6 +711,9 @@ export const he: Record<MessageKey, string> = {
   'example.esp32-input-echo.title': 'ESP32: מתג בכניסה, LED ביציאה',
   'example.esp32-input-echo.summary':
     'סגרו את המתג או החזיקו את הלחצן: ‏3.3 V מגיעים ל-GPIO34, הקושחה מעתיקה אותו ל-GPIO4 ונורית ה-LED נדלקת. רץ בשירות הריצה של ESP32.',
+  'example.esp32-bench.title': 'שולחן ESP32: כניסות ונוריות חיווי',
+  'example.esp32-bench.summary':
+    'המעגל של מתג בכניסה ו-LED ביציאה על שולחן עבודה מלא יותר: נורית LED אדומה המונעת מ-GPIO4, ונוריות חיווי צהובה (מאחורי דיודת 1N4148) וירוקה המוזנות ישירות מספק ה-‏3.3 V. רץ בשירות הריצה של ESP32.',
   'palette.group.mcu': 'בקר (מיקרו-בקר)',
   // Board pin silkscreen names (Sprint 6): technical tokens, verbatim in every locale.
   'pin.gpio36': 'VP',

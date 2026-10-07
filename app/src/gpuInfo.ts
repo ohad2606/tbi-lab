@@ -8,6 +8,11 @@ export type RenderTier = 'full' | 'reduced';
 export const QUALITY_KEY = 'tbi-lab.3d.quality';
 const SOFTWARE_RENDERER = /swiftshader|llvmpipe|softpipe|software|basic render/i;
 
+/** Whether a WebGL renderer name is a software rasteriser (no real GPU). */
+export function isSoftwareRenderer(renderer: string): boolean {
+  return SOFTWARE_RENDERER.test(renderer);
+}
+
 /**
  * The tier for a renderer name (UNMASKED_RENDERER_WEBGL) and an optional per-browser override:
  * software rasterisers get `reduced`, every real GPU `full`. By capability, never by brand.

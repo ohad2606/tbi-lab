@@ -4,7 +4,9 @@
  *
  * The real part: a square glass-filled nylon tube, 2.54 x 2.54 x 14 mm, chamfered at the wire end,
  * with the locking-lance window on one face through which the tinned crimp terminal shows, and the
- * square pin entry at the other end [REP]. The wire's insulation enters the chamfered end.
+ * square pin entry at the other end [REP]. The wire's insulation enters the chamfered end through
+ * a square opening, where the terminal's insulation crimp (two tinned wings folded round the
+ * jacket) sits just inside (realism pass 4: the opening, the crimp and the lance are drawn).
  *
  * Local frame: the housing's axis on +Y, its pin end at y = 0, its wire end at y = height; the
  * latch window faces +Z.
@@ -79,21 +81,54 @@ export function buildDupont(
   const shell = mesh(body, m.housing);
   shell.userData.dupontBody = true;
   g.add(shell);
-  // The locking-lance window (+Z face), with the crimp terminal's tinned barrel showing in it.
+  // The locking-lance window (+Z face): a recess, the terminal's tinned barrel in it, and the
+  // lance (a tab stamped out of the barrel, bent outward) catching the window's upper edge.
+  const winH = 3.2;
+  const winY = height * 0.32;
   const win = mesh(
-    own.shared(`dupont:window:${size}`, () => new THREE.BoxGeometry(size * 0.5, 3.2, 0.06)),
+    own.shared(`dupont:window:${size}`, () => new THREE.BoxGeometry(size * 0.56, winH, 0.06)),
     m.dark,
-    [0, height * 0.32, size / 2 + 0.005],
+    [0, winY, size / 2 + 0.005],
   );
   win.castShadow = false;
   g.add(win);
   const crimp = mesh(
-    own.shared(`dupont:crimp:${size}`, () => new THREE.BoxGeometry(size * 0.32, 2.4, 0.05)),
+    own.shared(`dupont:crimp:${size}`, () => new THREE.BoxGeometry(size * 0.34, winH - 0.7, 0.05)),
     m.metal,
-    [0, height * 0.32, size / 2 + 0.02],
+    [0, winY - 0.2, size / 2 + 0.02],
   );
   crimp.castShadow = false;
   g.add(crimp);
+  const lance = mesh(
+    own.shared(`dupont:lance:${size}`, () =>
+      new THREE.BoxGeometry(size * 0.26, 0.9, 0.05).translate(0, -0.45, 0).rotateX(-0.35),
+    ),
+    m.metal,
+    [0, winY + winH / 2 - 0.15, size / 2 + 0.03],
+  );
+  lance.castShadow = false;
+  g.add(lance);
+  // The wire end: a square opening in the chamfer's top, the insulation crimp's folded wings just
+  // inside it round the jacket.
+  const open = mesh(
+    own.shared(
+      `dupont:opening:${size}`,
+      () => new THREE.BoxGeometry(size * 0.66, 0.04, size * 0.66),
+    ),
+    m.dark,
+    [0, height + 0.005, 0],
+  );
+  open.castShadow = false;
+  g.add(open);
+  const wings = mesh(
+    own.shared(`dupont:wings:${size}`, () =>
+      new THREE.CylinderGeometry(0.78, 0.82, 0.5, 14, 1, true).translate(0, -0.2, 0),
+    ),
+    m.metal,
+    [0, height, 0],
+  );
+  wings.castShadow = false;
+  g.add(wings);
   // The square pin entry at the bottom.
   const entry = mesh(
     own.shared(`dupont:entry:${size}`, () => new THREE.BoxGeometry(size * 0.42, 0.04, size * 0.42)),

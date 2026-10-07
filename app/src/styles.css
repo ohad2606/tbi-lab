@@ -2641,6 +2641,39 @@ select {
 
 /* A short, unobtrusive explanation along the bottom edge of a generated view. */
 /* 3D standard views (Top / Front / Side / Rear), top-left of the view (inline start). */
+/* 3D rendering diagnostics: development readout (#diag3d), technical values, always LTR. */
+.view3d-diag {
+  position: absolute;
+  inset-block-end: 3.2rem;
+  inset-inline-start: 0.75rem;
+  margin: 0;
+  padding: 0.4rem 0.6rem;
+  max-inline-size: min(26rem, calc(100% - 1.5rem));
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
+  color: var(--text);
+  font:
+    0.75rem/1.35 ui-monospace,
+    monospace;
+  pointer-events: none;
+}
+
+.view3d-diag div {
+  display: flex;
+  gap: 0.6rem;
+}
+
+.view3d-diag dt {
+  min-inline-size: 9rem;
+  color: var(--muted, inherit);
+}
+
+.view3d-diag dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
 .view3d-presets {
   position: absolute;
   inset-block-start: 0.75rem;

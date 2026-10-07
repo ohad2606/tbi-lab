@@ -60,6 +60,9 @@ export interface ViewerStats {
   materials: number;
   /** Shader programs compiled in this viewer's context. */
   programs: number;
+  /** This viewer's WebGL renderer (the GPU, or a software rasteriser) and its pixel ratio. */
+  gpu: string;
+  pixelRatio: number;
 }
 
 export interface Viewer {
@@ -191,6 +194,18 @@ export function createViewer(
   const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 2000);
   // Lights, environment, shadows, ambient occlusion, bench and backdrop: the stage (stage.ts).
   const stage = createStage(renderer, scene, camera, quality);
+  // The GPU this viewer actually renders on (development diagnostics; never sent anywhere).
+  const gpu = (() => {
+    try {
+      const gl = renderer.getContext();
+      const ext = gl.getExtension('WEBGL_debug_renderer_info');
+      return String(
+        ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER),
+      );
+    } catch {
+      return '';
+    }
+  })();
   /**
    * LED light (full tier): a fixed pool of point lights, given to the brightest lit LEDs, so a lit
    * LED tints the bench and the parts round it. A fixed count: lighting an LED never recompiles a
@@ -363,7 +378,7 @@ export function createViewer(
       const shape = currentShapes.get(id);
       if (!shape) continue;
       // A faint sleeve round the wire, the wire's own colour showing through.
-      const path = bentPath(shape.points, shape.radii);
+      const path = bentPath(shape.points, shape.radii, shape.arms);
       const geo = new THREE.TubeGeometry(
         path,
         Math.max(16, Math.ceil(path.getLength() / 1.5)),
@@ -513,6 +528,8 @@ export function createViewer(
       triangles: lastTriangles,
       materials: mats.size,
       programs: renderer.info.programs?.length ?? 0,
+      gpu,
+      pixelRatio: stage.pixelRatio,
       target: controls.target.toArray().map((v) => Math.round(v * 100) / 100) as [
         number,
         number,

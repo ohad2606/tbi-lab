@@ -199,8 +199,11 @@ export const ESP32_DEVKITC = {
    */
   dupontSizeMm: 2.54,
   dupontHeightMm: 14.0,
-  /** The housing seats on the pin's solder joint (its fillet is ~0.9 mm tall). */
-  dupontSeatMm: 0.9,
+  /**
+   * The housing seats just above the pin's solder joint (a 0.45 mm meniscus since realism pass 3;
+   * the 1.5 mm stub enters the housing's pin entry).
+   */
+  dupontSeatMm: 0.5,
 } as const;
 
 /** Bench height of the ESP32 PCB's bottom face: it stands on its header pins. */

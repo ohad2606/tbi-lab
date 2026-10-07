@@ -541,6 +541,20 @@ export const en = {
   'update.busySimulation': 'Stop the simulation to reload.',
   'update.busyBuild': 'Reload when the build has finished.',
   'update.busySaving': 'Saving your changes…',
+  // 3D rendering diagnostics (development readout, opened with #diag3d).
+  'view3d.diag.gpu': 'WebGL renderer',
+  'view3d.diag.class': 'Graphics',
+  'view3d.diag.software': 'software (no GPU)',
+  'view3d.diag.hardware': 'hardware GPU',
+  'view3d.diag.tier': 'Quality tier',
+  'view3d.diag.dpr': 'Pixel ratio',
+  'view3d.diag.drawCalls': 'Draw calls',
+  'view3d.diag.triangles': 'Triangles',
+  'view3d.diag.materials': 'Materials',
+  'view3d.diag.textures': 'Textures',
+  'view3d.diag.geometries': 'Geometries',
+  'view3d.diag.gpuMemory': 'GPU memory (est.)',
+  'view3d.diag.frame': 'Last frame (CPU)',
   'view3d.presets': 'Standard views',
   'view3d.labels': 'Labels',
   'view3d.view.top': 'Top',
@@ -718,6 +732,9 @@ export const en = {
   'example.esp32-input-echo.title': 'ESP32: switch input to LED output',
   'example.esp32-input-echo.summary':
     'Close the switch or hold the button: 3.3 V reaches GPIO34, the firmware copies it to GPIO4 and the LED lights. Runs on the ESP32 runtime service.',
+  'example.esp32-bench.title': 'ESP32 bench: inputs and indicators',
+  'example.esp32-bench.summary':
+    'The switch input to LED output circuit on a fuller bench: a red LED driven by GPIO4, and yellow (behind a 1N4148 diode) and green indicators fed straight from the 3.3 V supply. Runs on the ESP32 runtime service.',
   'palette.group.mcu': 'Microcontroller',
   // Board pin silkscreen names (Sprint 6): technical tokens, verbatim in every locale.
   'pin.gpio36': 'VP',

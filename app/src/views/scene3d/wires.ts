@@ -3,7 +3,8 @@
  * route, height and colour of every wire, and which terminals a contact joins, come from the scene
  * description (scene.ts), which comes from the project; nothing here infers a connection.
  *
- * Wires: solid-core hook-up wire, PVC jacket (a soft satin plastic), coloured by electrical node.
+ * Wires: solid-core hook-up wire, PVC jacket (soft matte plastic), coloured by electrical node
+ * (the shared palette, shown in 3D as the jacket pigment of that colour).
  * - Corners are bent, not mitred: a 2 mm bend radius where the run turns in plan, 3 mm where it
  *   rises from or drops to an end (always limited to half of each adjoining straight run).
  * - Ends meet their terminal the way the real wire would: inside a jumper housing (`jumper`: the
@@ -16,6 +17,7 @@
  */
 import * as THREE from 'three';
 import type { OwnedResources } from './kit.js';
+import { WIRE_COLOR_HEX } from '../wireColors.js';
 import { WIRE_RADIUS, type SceneJoint, type SceneWire, type Vec3 } from './scene.js';
 
 /** Bend radius where the run turns in plan, and where it rises from or drops to an end (mm). */
@@ -32,24 +34,47 @@ export interface WireMaterials {
   conductor: THREE.Material;
 }
 
-/** Wire materials for one build (jackets per colour). */
+/**
+ * The jacket's pigment for a palette colour (realism pass 4). The palette (wireColors.ts) is the
+ * same in both views and stays a clear screen colour in the Circuit view; a real PVC jacket is
+ * less saturated and a little darker, so 3D shows the insulation colour a jumper wire of that
+ * name actually has. Red stays red, black stays black: the conventions read the same.
+ */
+const JACKET_PIGMENT: Record<string, string> = {
+  [WIRE_COLOR_HEX.red]: '#b42a22',
+  [WIRE_COLOR_HEX.black]: '#1b1c1e',
+  [WIRE_COLOR_HEX.orange]: '#d06a1e',
+  [WIRE_COLOR_HEX.blue]: '#2160a8',
+  [WIRE_COLOR_HEX.green]: '#2f7b3c',
+  [WIRE_COLOR_HEX.purple]: '#6a3486',
+  [WIRE_COLOR_HEX.yellow]: '#d9ac2c',
+  [WIRE_COLOR_HEX.teal]: '#20786e',
+  [WIRE_COLOR_HEX.brown]: '#5e3e2e',
+};
+export const jacketPigment = (hex: string) => JACKET_PIGMENT[hex.toLowerCase()] ?? hex;
+
+/**
+ * Wire materials for one build (jackets per colour): soft PVC, matte with a faint satin sheen
+ * where the light grazes it (no glossy toy-plastic clearcoat).
+ */
 export function wireMaterials(own: OwnedResources, conductor: THREE.Material): WireMaterials {
   const full = own.tier === 'full';
   return {
     jacket: (color) =>
-      own.sharedMat(`jacket:${color}`, () =>
-        full
+      own.sharedMat(`jacket:${color}`, () => {
+        const pigment = jacketPigment(color);
+        return full
           ? new THREE.MeshPhysicalMaterial({
-              color,
-              roughness: 0.42,
-              clearcoat: 0.35,
-              clearcoatRoughness: 0.35,
-              sheen: 0.25,
-              sheenRoughness: 0.5,
-              sheenColor: new THREE.Color(color).lerp(new THREE.Color('#ffffff'), 0.5),
+              color: pigment,
+              roughness: 0.58,
+              clearcoat: 0.08,
+              clearcoatRoughness: 0.6,
+              sheen: 0.3,
+              sheenRoughness: 0.7,
+              sheenColor: new THREE.Color(pigment).lerp(new THREE.Color('#ffffff'), 0.35),
             })
-          : new THREE.MeshStandardMaterial({ color, roughness: 0.45 }),
-      ),
+          : new THREE.MeshStandardMaterial({ color: pigment, roughness: 0.62 });
+      }),
     conductor,
   };
 }
@@ -57,9 +82,16 @@ export function wireMaterials(own: OwnedResources, conductor: THREE.Material): W
 /**
  * A path through `pts` with round bends: per-corner radius (`radii[i - 1]` for the corner at
  * point i; by default vertical/horizontal corners wider), always limited to half of each
- * adjoining run and to the previous corner's tangent point.
+ * adjoining run and to the previous corner's tangent point. With `arms` (a physical cable shape,
+ * wireShape.ts) each corner instead has its own arm length into and out of it (a bend need not be
+ * symmetric: a wire curving into a terminal bends over most of its last run), still never past
+ * the previous corner's tangent point or the next point.
  */
-export function bentPath(pts: Vec3[], radii?: number[]): THREE.CurvePath<THREE.Vector3> {
+export function bentPath(
+  pts: Vec3[],
+  radii?: number[],
+  arms?: readonly (readonly [number, number])[],
+): THREE.CurvePath<THREE.Vector3> {
   const v = pts.map((p) => new THREE.Vector3(p.x, p.y, p.z));
   const path = new THREE.CurvePath<THREE.Vector3>();
   let from = v[0]!;
@@ -67,18 +99,27 @@ export function bentPath(pts: Vec3[], radii?: number[]): THREE.CurvePath<THREE.V
     const p = v[i]!;
     const a = v[i - 1]!;
     const b = v[i + 1]!;
-    const vertical = Math.abs(a.y - p.y) > 1e-6 || Math.abs(b.y - p.y) > 1e-6;
-    // Half of each adjoining run, and never past the previous corner's tangent point.
-    const r = Math.min(
-      radii?.[i - 1] ?? (vertical ? RISER_BEND : PLAN_BEND),
-      a.distanceTo(p) / 2,
-      p.distanceTo(b) / 2,
-      from.distanceTo(p),
-    );
-    const inP = p.clone().add(a.clone().sub(p).setLength(r));
-    const outP = p.clone().add(b.clone().sub(p).setLength(r));
+    let rin: number;
+    let rout: number;
+    const arm = arms?.[i - 1];
+    if (arm) {
+      rin = Math.min(arm[0], from.distanceTo(p));
+      rout = Math.min(arm[1], p.distanceTo(b));
+    } else {
+      const vertical = Math.abs(a.y - p.y) > 1e-6 || Math.abs(b.y - p.y) > 1e-6;
+      // Half of each adjoining run, and never past the previous corner's tangent point.
+      rin = rout = Math.min(
+        radii?.[i - 1] ?? (vertical ? RISER_BEND : PLAN_BEND),
+        a.distanceTo(p) / 2,
+        p.distanceTo(b) / 2,
+        from.distanceTo(p),
+      );
+    }
+    const inP = p.clone().add(a.clone().sub(p).setLength(rin));
+    const outP = p.clone().add(b.clone().sub(p).setLength(rout));
     if (from.distanceTo(inP) > 1e-6) path.add(new THREE.LineCurve3(from, inP));
-    if (r > 1e-6) path.add(new THREE.QuadraticBezierCurve3(inP, p, outP));
+    if (rin > 1e-6 && rout > 1e-6) path.add(new THREE.QuadraticBezierCurve3(inP, p, outP));
+    else if (inP.distanceTo(outP) > 1e-6) path.add(new THREE.LineCurve3(inP, outP));
     from = outP;
   }
   const end = v[v.length - 1]!;
@@ -110,16 +151,14 @@ class Adaptive extends THREE.Curve<THREE.Vector3> {
   private readonly stops: number[];
   constructor(
     private readonly curve: THREE.Curve<THREE.Vector3>,
-    pieces: { length: number; bend: boolean }[],
-    bendSegments: number,
+    pieces: { length: number; segments: number }[],
   ) {
     super();
     const total = pieces.reduce((n, p) => n + p.length, 0) || 1;
     const stops = [0];
     let at = 0;
     for (const p of pieces) {
-      const n = p.bend ? bendSegments : 1;
-      for (let i = 1; i <= n; i++) stops.push((at + (p.length * i) / n) / total);
+      for (let i = 1; i <= p.segments; i++) stops.push((at + (p.length * i) / p.segments) / total);
       at += p.length;
     }
     stops[stops.length - 1] = 1;
@@ -147,16 +186,27 @@ class Adaptive extends THREE.Curve<THREE.Vector3> {
   }
 }
 
-/** The pieces of a bent path (its straight runs and bends) between two arc-length fractions. */
-function pieces(path: THREE.CurvePath<THREE.Vector3>, u0: number, u1: number) {
+/**
+ * The pieces of a bent path (its straight runs and bends) between two arc-length fractions, each
+ * with the tube segments it needs: one per straight run; per bend, one per `step` radians it
+ * turns (a gentle bow needs two, a hairpin a dozen), so smooth wires stay cheap.
+ */
+export function pieces(path: THREE.CurvePath<THREE.Vector3>, u0: number, u1: number, step: number) {
   const total = path.getLength();
-  const out: { length: number; bend: boolean }[] = [];
+  const out: { length: number; segments: number }[] = [];
   let at = 0;
   for (const c of path.curves) {
     const len = c.getLength();
     const a = Math.max(at, u0 * total);
     const b = Math.min(at + len, u1 * total);
-    if (b > a + 1e-9) out.push({ length: b - a, bend: !(c as THREE.LineCurve3).isLineCurve3 });
+    if (b > a + 1e-9) {
+      let segments = 1;
+      if (!(c as THREE.LineCurve3).isLineCurve3) {
+        const turn = c.getTangent(0).angleTo(c.getTangent(1)) * ((b - a) / len);
+        segments = Math.min(12, Math.max(2, Math.ceil(turn / step)));
+      }
+      out.push({ length: b - a, segments });
+    }
     at += len;
   }
   return out;
@@ -167,7 +217,7 @@ export function buildWire(
   w: SceneWire,
   own: OwnedResources,
   m: WireMaterials,
-  shape?: { points: Vec3[]; radii: number[] },
+  shape?: { points: Vec3[]; radii: number[]; arms?: [number, number][] },
 ): THREE.Group {
   const g = new THREE.Group();
   g.name = `wire:${w.id}`;
@@ -175,25 +225,28 @@ export function buildWire(
   // The natural shape (wireShape.ts) when given, else the route as drawn.
   const pts = (shape?.points ?? w.points).map((p) => ({ ...p }));
   const radii = shape ? [...shape.radii] : undefined;
-  // A jumper end: the jacket continues down into the housing (out of sight).
+  const arms = shape?.arms ? shape.arms.map((a) => [...a] as [number, number]) : undefined;
+  // A jumper end: the jacket continues straight down into the housing (out of sight).
   if (w.ends[0] === 'jumper' && pts.length > 1 && pts[1]!.y > pts[0]!.y) {
     pts.unshift({ ...pts[0]!, y: pts[0]!.y - INTO_HOUSING });
     radii?.unshift(RISER_BEND);
+    arms?.unshift([0, 0]);
   }
   if (w.ends[1] === 'jumper' && pts.length > 1 && pts[pts.length - 2]!.y > pts[pts.length - 1]!.y) {
     pts.push({ ...pts[pts.length - 1]!, y: pts[pts.length - 1]!.y - INTO_HOUSING });
     radii?.push(RISER_BEND);
+    arms?.push([0, 0]);
   }
-  const path = bentPath(pts, radii);
+  const path = bentPath(pts, radii, arms);
   const length = path.getLength();
   const stripped = (k: 0 | 1) => w.ends[k] === 'lead' || w.ends[k] === 'post';
   const s0 = stripped(0) ? Math.min(STRIP, length * 0.25) / length : 0;
   const s1 = stripped(1) ? Math.min(STRIP, length * 0.25) / length : 0;
-  const bendSegs = own.tier === 'full' ? 8 : 6;
+  // One tube segment per ~9 degrees of bend (full tier), ~13 (reduced).
+  const step = own.tier === 'full' ? 0.16 : 0.23;
   const jacketCurve = new Adaptive(
     s0 || s1 ? new Portion(path, s0, 1 - s1) : path,
-    pieces(path, s0, 1 - s1),
-    bendSegs,
+    pieces(path, s0, 1 - s1, step),
   );
   const jacket = new THREE.Mesh(
     own.geo(

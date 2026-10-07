@@ -494,4 +494,67 @@ export const RECIPES: Record<string, () => ProjectDocument> = {
     r.wire(T(U1, 'gnd'), T(G4, 'ref'));
     return r.centre(-240);
   },
+  /**
+   * Sprint 10 (realism benchmark): the ESP32 input echo on a fuller bench, one scene with every
+   * part family the 3D view is judged on. Same firmware (TbiBanks: GPIO34 copied to GPIO4) and
+   * input chain as esp32-input-echo; GPIO4 drives the red LED through 220 Ω. Two indicators run
+   * straight off the 3.3 V supply: a yellow LED behind a 1N4148 (3.3 V less ~0.7 V and ~2.3 V
+   * over 33 Ω, about 8 mA) and a green LED through 68 Ω, its feed a long run across the bench.
+   */
+  'esp32-bench': () => {
+    const r = new Recipe('esp32-bench', 'ESP32 bench: inputs and indicators');
+    r.supply(3.3, 0.1);
+    const U1 = r.place('board.esp32_devkitc_wroom32', 300, 0);
+    r.program(U1, 'TbiBanks');
+    const SW = r.place('component.toggle_switch', 0, -100);
+    const PB = r.place('component.push_button', 0, -160);
+    const R2 = r.place('component.resistor', 100, -100);
+    const R3 = r.place('component.resistor', 160, -40, 1);
+    const G2 = r.place('component.ground', 160, 60);
+    const R1 = r.place('component.resistor', 480, 60);
+    const D1 = r.place('component.led', 600, 60);
+    const G3 = r.place('component.ground', 680, 140);
+    const G4 = r.place('component.ground', 440, -120);
+    // The supply-fed indicators below the board.
+    const R4 = r.place('component.resistor', 0, 280);
+    const D4 = r.place('component.diode', 120, 280);
+    const D2 = r.place('component.led', 240, 280);
+    // Its ground sits beyond the long feed: the two wires cross (not connected).
+    const G5 = r.place('component.ground', 320, 460);
+    const R5 = r.place('component.resistor', 480, 280);
+    const D3 = r.place('component.led', 600, 280);
+    const G6 = r.place('component.ground', 680, 360);
+    r.set(R2, 'resistance', 1000, 'ohm');
+    r.set(R3, 'resistance', 10_000, 'ohm');
+    r.set(R1, 'resistance', 220, 'ohm');
+    r.set(R4, 'resistance', 33, 'ohm');
+    r.set(R5, 'resistance', 68, 'ohm');
+    r.choose(D2, 'model', 'model.led.vishay_tlhy5400');
+    r.choose(D3, 'model', 'model.led.vishay_tlhg4900');
+    r.wire(T('PSU1', 'positive'), T(SW, 'a'));
+    r.wire(T(SW, 'a'), T(PB, 'a'));
+    r.wire(T(SW, 'b'), T(R2, 'a'));
+    r.wire(T(PB, 'b'), T(R2, 'a'));
+    const w = r.wire(T(R2, 'b'), T(U1, 'gpio34'));
+    r.wire({ kind: 'wire', wire: w, at: { x: 160, y: -100 } }, T(R3, 'a'));
+    r.wire(T(R3, 'b'), T(G2, 'ref'));
+    r.wire(T(U1, 'gpio4'), T(R1, 'a'));
+    r.wire(T(R1, 'b'), T(D1, 'anode'));
+    r.wire(T(D1, 'cathode'), T(G3, 'ref'));
+    r.wire(T(U1, 'gnd'), T(G4, 'ref'));
+    // The long feed: down the left, along the front and up into the green branch; the yellow
+    // branch taps it on the way down.
+    const low = r.wire(T('PSU1', 'positive'), T(R5, 'a'), [
+      { x: -60, y: 400 },
+      { x: 420, y: 400 },
+      { x: 420, y: 280 },
+    ]);
+    r.wire({ kind: 'wire', wire: low, at: { x: -60, y: 280 } }, T(R4, 'a'));
+    r.wire(T(R4, 'b'), T(D4, 'anode'));
+    r.wire(T(D4, 'cathode'), T(D2, 'anode'));
+    r.wire(T(D2, 'cathode'), T(G5, 'ref'));
+    r.wire(T(R5, 'b'), T(D3, 'anode'));
+    r.wire(T(D3, 'cathode'), T(G6, 'ref'));
+    return r.centre(-240);
+  },
 };

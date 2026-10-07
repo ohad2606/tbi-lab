@@ -239,7 +239,8 @@ export function authorEsp32DevkitC(): THREE.Group {
       [0.42, 0.37],
       [0.41, 0.45],
     ].map(([r, y]) => new THREE.Vector2(r, y)),
-    20,
+    // 16 segments: round at any distance a 1.7 mm joint is seen from (asset budget).
+    16,
   );
   // A square header pin with chamfered tips, full length from the bench to its cut stub.
   const pinLen = yt + D.pinStubAboveMm;
@@ -425,7 +426,33 @@ export function authorEsp32DevkitC(): THREE.Group {
         ),
       );
     }
+    // The mouth (realism pass 4): the drawn shell flares out a little at its front edge, a lip
+    // round the opening that catches the light, as on the real receptacle.
+    {
+      const lipOuter = profile(-0.16);
+      lipOuter.holes.push(new THREE.Path(profile(0.02).getPoints(1)));
+      const lip = new THREE.ExtrudeGeometry(lipOuter, { depth: 0.22, bevelEnabled: false });
+      shellParts.push(plain(lip).translate(u.x, yt + h + 0.08, u.front - 0.22));
+    }
     root.add(merged('usb_shell', shellParts, m.nickel));
+    // Its four anchor tabs soldered to their pads: a low fillet over each.
+    const usbSolder: THREE.BufferGeometry[] = [];
+    for (const sx of [-1, 1])
+      for (const [zc, len] of [
+        [u.front - 1.6, 1.6],
+        [u.front - depth + 1.0, 1.3],
+      ] as const)
+        usbSolder.push(
+          at(
+            new THREE.CylinderGeometry(0.62, 0.7, len + 0.35, 6, 1)
+              .rotateX(Math.PI / 2)
+              .scale(1, 0.32, 1),
+            u.x + sx * (w / 2 + 0.45),
+            yt + 0.12,
+            zc,
+          ),
+        );
+    root.add(merged('usb_solder', usbSolder, m.solder));
     // The latch windows on top (dark: the cavity shows through).
     const slots: THREE.BufferGeometry[] = [];
     for (const sx of [-1, 1])
@@ -512,6 +539,22 @@ export function authorEsp32DevkitC(): THREE.Group {
           );
       caps.push(at(new THREE.CylinderGeometry(0.62, 0.66, 0.42, 28), p.x, yt + b.h - 0.0, p.z));
     }
+    // Each gull-wing foot soldered to its pad: a low fillet beyond the foot.
+    const feet: THREE.BufferGeometry[] = [];
+    for (const p of [LAYOUT.en, LAYOUT.boot])
+      for (const sz of [-1, 1])
+        for (const sx of [-1, 1])
+          feet.push(
+            at(
+              new THREE.CylinderGeometry(0.4, 0.45, 0.55, 6, 1)
+                .rotateX(Math.PI / 2)
+                .scale(1, 0.4, 1),
+              p.x + sx * 0.8,
+              yt + 0.08,
+              p.z + sz * (b.z / 2 + 0.62),
+            ),
+          );
+    root.add(merged('switch_solder', feet, m.solder));
     root.add(merged('switch_bodies', bodies, m.switchBody));
     root.add(merged('switch_covers', covers, m.steel));
     root.add(merged('switch_actuators', caps, m.actuator));

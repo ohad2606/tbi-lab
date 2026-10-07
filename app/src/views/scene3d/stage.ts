@@ -11,24 +11,38 @@
  * - `reduced` (software rasterisers): hemisphere + key light, no shadows, no AO, no environment,
  *   standard materials. Every extra pass there costs about a second per frame on the CPU.
  *
- * Bench: a large matte surface that fades into the background at its edges (no horizon line), a
- * restrained 0.5 in grid over the circuit's area, and a soft gradient backdrop.
+ * Bench (realism pass 4): a finite ESD work mat under the circuit (muted blue-grey, matte, a fine
+ * grain, 2 mm thick with a soft rounded edge, a faint printed 0.5 in grid and a millimetre scale
+ * along its front edge) lying on a neutral desk that fades into the background (no horizon line),
+ * and a soft gradient backdrop. No breadboard: a breadboard is a real construction method, shown
+ * only when a project has one. Contact shadows: a soft darkening under every part where it meets
+ * the mat (one merged mesh, both tiers), so nothing floats even without shadow maps.
  */
 import * as THREE from 'three';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import { rotatePoint } from '@tbi-lab/domain';
 import type { OwnedResources } from './kit.js';
-import type { SceneDescription } from './scene.js';
+import { FOOTPRINT, type ModelKey, type SceneDescription } from './scene.js';
 
 export type Tier = 'full' | 'reduced';
 
-/** Bench and backdrop colours (sRGB). A cool, light neutral grey: parts and wire colours read true. */
-const BENCH = '#b8bdc3';
+/**
+ * Desk, mat and backdrop colours (sRGB). The mat a muted blue-grey (the common dissipative work
+ * mat), light enough that black wires and the ESP32's black PCB keep their edges; the desk a light
+ * warm neutral; the grid printed a little lighter than the mat.
+ */
+const DESK = '#c3c3c0';
+const MAT = '#7b8d97';
+const MAT_EDGE = '#6a7b85';
 const BACKDROP_TOP = '#f1f3f5';
 const BACKDROP_BOTTOM = '#cfd3d8';
-const GRID = '#aab1b9';
+const GRID = '#a9b8c0';
+/** Mat thickness (its top is the bench plane, y = 0), corner radius, margin round the circuit. */
+export const MAT_T = 2;
+const MAT_CORNER = 8;
 /** Bench grid pitch: five editor grid steps, 0.5 in. */
 const GRID_STEP_MM = 12.7;
 
@@ -81,19 +95,22 @@ export function createStage(
   scene.background = backdrop;
   renderer.setClearColor(BACKDROP_BOTTOM);
 
-  // Lights. A warm key light high from the back left (seen from the default camera its shadows
-  // fall forward, where they read as contact with the bench), a cool fill from the front right,
-  // a low rim for highlights on metal; full: the environment does most of the remaining fill.
-  const hemi = new THREE.HemisphereLight('#ffffff', '#9aa1a8', full ? 0.1 : 1.35);
-  const key = new THREE.DirectionalLight('#fff6ea', full ? 2.7 : 2.1);
+  // Lights: clean product photography (realism pass 4). A large, neutral key high from the back
+  // left (seen from the default camera its soft shadows fall forward, where they read as contact
+  // with the mat), a large neutral fill from the front right that keeps black plastics and the
+  // PCB's mask readable, a gentle rim for separation and highlights on metal; full: the studio
+  // environment does most of the remaining fill. No coloured or high-contrast lighting.
+  const hemi = new THREE.HemisphereLight('#ffffff', '#9aa1a8', full ? 0.12 : 1.35);
+  const key = new THREE.DirectionalLight('#fffaf3', full ? 2.5 : 2.1);
   key.castShadow = full;
   key.shadow.mapSize.set(2048, 2048);
   key.shadow.bias = -0.00025;
   key.shadow.normalBias = 0.02;
-  key.shadow.radius = 2.5;
-  key.shadow.blurSamples = 16;
-  const fill = new THREE.DirectionalLight('#e6eeff', full ? 0.35 : 0.55);
-  const rim = new THREE.DirectionalLight('#ffffff', full ? 0.5 : 0.6);
+  // A large source: soft-edged shadows.
+  key.shadow.radius = 4;
+  key.shadow.blurSamples = 20;
+  const fill = new THREE.DirectionalLight('#f3f6ff', full ? 0.6 : 0.6);
+  const rim = new THREE.DirectionalLight('#ffffff', full ? 0.45 : 0.6);
   rim.position.set(-20, 15, 80);
   scene.add(hemi, key, key.target, fill, rim);
 
@@ -149,28 +166,50 @@ export function createStage(
     composer.addPass(new OutputPass());
   }
 
-  /** Bench texture: a fine, non-repeating-looking matte grain (bump and roughness). */
+  /** A fine, non-repeating-looking matte grain (bump and roughness) for desk and mat. */
   let grain: THREE.Texture | null = null;
-  // Full tier: the bench fades out towards its rim (alpha), so no horizon line shows. Reduced
+  let matGrain: THREE.Texture | null = null;
+  // Full tier: the desk fades out towards its rim (alpha), so no horizon line shows. Reduced
   // tier: opaque (a blended full-screen plane is costly on a software rasteriser), its size
   // limited to the circuit's surroundings.
   const benchMat = new THREE.MeshStandardMaterial({
-    color: BENCH,
-    roughness: 0.94,
+    color: DESK,
+    roughness: 0.9,
     metalness: 0,
     transparent: full,
     alphaMap: full ? radialFade() : null,
     depthWrite: true,
   });
+  const matMat = new THREE.MeshStandardMaterial({ color: MAT, roughness: 0.86, metalness: 0 });
+  const matEdgeMat = new THREE.MeshStandardMaterial({
+    color: MAT_EDGE,
+    roughness: 0.9,
+    metalness: 0,
+  });
   if (full) {
-    // A bench lit from above is a little brighter under the lamp than at its rim (soft falloff).
+    // A desk lit from above is a little brighter under the lamp than at its rim (soft falloff).
     benchMat.map = falloffTexture();
     grain = grainTexture();
     benchMat.bumpMap = grain;
     benchMat.bumpScale = 0.4;
     benchMat.roughnessMap = grain;
+    // The mat: the same grain, finer (its UVs are in mm: about 6 texels per mm).
+    matGrain = grain.clone();
+    matGrain.repeat.set(1 / 42, 1 / 42);
+    matMat.bumpMap = matGrain;
+    matMat.bumpScale = 0.25;
+    matMat.roughnessMap = matGrain;
   }
-  const gridMat = new THREE.LineBasicMaterial({ color: GRID, transparent: true, opacity: 0.55 });
+  const gridMat = new THREE.LineBasicMaterial({ color: GRID, transparent: true, opacity: 0.32 });
+  const contactMat = new THREE.MeshBasicMaterial({
+    color: '#0d1114',
+    alphaMap: contactTexture(),
+    transparent: true,
+    depthWrite: false,
+    vertexColors: true,
+    polygonOffset: true,
+    polygonOffsetFactor: -2,
+  });
 
   return {
     pixelRatio,
@@ -205,33 +244,64 @@ export function createStage(
       const b = desc.base;
       const cx = (b.minX + b.maxX) / 2;
       const cz = (b.minZ + b.maxZ) / 2;
-      // Large enough that its faded rim lies well outside any view of the circuit.
-      const size = (full ? 6 : 1.6) * Math.max(b.maxX - b.minX, b.maxZ - b.minZ, 80);
+      const extent = Math.max(b.maxX - b.minX, b.maxZ - b.minZ, 80);
+      // The desk: large enough that its faded rim lies well outside any view of the circuit.
+      const size = (full ? 6 : 8) * extent;
       const plane = new THREE.Mesh(
         own.geo(new THREE.PlaneGeometry(size, size).rotateX(-Math.PI / 2)),
         benchMat,
       );
-      plane.position.set(cx, 0, cz);
+      plane.position.set(cx, -MAT_T, cz);
       plane.receiveShadow = true;
       plane.name = 'base';
       plane.renderOrder = -1;
       if (grain) {
-        // Grain at about 6 texels per mm, whatever the bench size.
+        // Grain at about 6 texels per mm, whatever the desk size.
         const rep = size / 40;
         grain.repeat.set(rep, rep);
       }
       g.add(plane);
-      // The grid over the circuit's area only (0.5 in), a hair above the bench.
+      // The mat: the circuit's area with a generous margin (a real mat is larger than the build).
+      const margin = Math.max(28, 0.3 * extent);
+      const mx0 = b.minX - margin;
+      const mx1 = b.maxX + margin;
+      const mz0 = b.minZ - margin;
+      const mz1 = b.maxZ + margin;
+      const mat = new THREE.Mesh(own.geo(matGeometry(mx1 - mx0, mz1 - mz0)), [matMat, matEdgeMat]);
+      mat.position.set((mx0 + mx1) / 2, 0, (mz0 + mz1) / 2);
+      mat.receiveShadow = true;
+      mat.name = 'mat';
+      g.add(mat);
+      // Printed on the mat: a faint 0.5 in grid over the circuit's area, and a millimetre scale
+      // (5 mm ticks, longer every 10 mm) along its front edge.
       const lines: number[] = [];
-      for (let x = Math.ceil(b.minX / GRID_STEP_MM) * GRID_STEP_MM; x <= b.maxX; x += GRID_STEP_MM)
-        lines.push(x, 0.01, b.minZ, x, 0.01, b.maxZ);
-      for (let z = Math.ceil(b.minZ / GRID_STEP_MM) * GRID_STEP_MM; z <= b.maxZ; z += GRID_STEP_MM)
-        lines.push(b.minX, 0.01, z, b.maxX, 0.01, z);
+      const y = 0.012;
+      const gx0 = Math.ceil((b.minX - 6) / GRID_STEP_MM) * GRID_STEP_MM;
+      const gz0 = Math.ceil((b.minZ - 6) / GRID_STEP_MM) * GRID_STEP_MM;
+      for (let x = gx0; x <= b.maxX + 6; x += GRID_STEP_MM)
+        lines.push(x, y, b.minZ - 6, x, y, b.maxZ + 6);
+      for (let z = gz0; z <= b.maxZ + 6; z += GRID_STEP_MM)
+        lines.push(b.minX - 6, y, z, b.maxX + 6, y, z);
+      const scaleZ = mz1 - 5;
+      for (let x = Math.ceil((mx0 + 12) / 5) * 5; x <= mx1 - 12; x += 5) {
+        const long = Math.round(x / 5) % 2 === 0;
+        lines.push(x, y, scaleZ, x, y, scaleZ - (long ? 3 : 1.6));
+      }
+      lines.push(mx0 + 12, y, scaleZ, mx1 - 12, y, scaleZ);
       const gridGeo = own.geo(new THREE.BufferGeometry());
       gridGeo.setAttribute('position', new THREE.Float32BufferAttribute(lines, 3));
       const grid = new THREE.LineSegments(gridGeo, gridMat);
       grid.name = 'grid';
       g.add(grid);
+      // Contact shadows under the parts.
+      const contact = contactShadows(desc, full ? 0.75 : 1);
+      if (contact) {
+        const m = new THREE.Mesh(own.geo(contact), contactMat);
+        m.name = 'contact-shadows';
+        m.renderOrder = 0;
+        m.userData.noAo = true;
+        g.add(m);
+      }
       return g;
     },
     dispose() {
@@ -245,6 +315,11 @@ export function createStage(
       benchMat.map?.dispose();
       benchMat.dispose();
       grain?.dispose();
+      matGrain?.dispose();
+      matMat.dispose();
+      matEdgeMat.dispose();
+      contactMat.alphaMap?.dispose();
+      contactMat.dispose();
       gridMat.dispose();
       key.shadow.map?.dispose();
     },
@@ -279,6 +354,127 @@ function excludeTransparentFromAo(pass: GTAOPass) {
       }
     });
   };
+}
+
+/**
+ * The mat: a rounded rectangle w x d mm, MAT_T thick, its top at y = 0, a small rounded bevel on
+ * the top edge. Group 0: the top (UVs in mm, for the grain); group 1: the edge and underside.
+ */
+export function matGeometry(w: number, d: number): THREE.BufferGeometry {
+  const r = Math.min(MAT_CORNER, w / 4, d / 4);
+  const shape = new THREE.Shape();
+  const x0 = -w / 2;
+  const z0 = -d / 2;
+  shape.moveTo(x0 + r, z0);
+  shape.lineTo(x0 + w - r, z0);
+  shape.quadraticCurveTo(x0 + w, z0, x0 + w, z0 + r);
+  shape.lineTo(x0 + w, z0 + d - r);
+  shape.quadraticCurveTo(x0 + w, z0 + d, x0 + w - r, z0 + d);
+  shape.lineTo(x0 + r, z0 + d);
+  shape.quadraticCurveTo(x0, z0 + d, x0, z0 + d - r);
+  shape.lineTo(x0, z0 + r);
+  shape.quadraticCurveTo(x0, z0, x0 + r, z0);
+  const bevel = 0.6;
+  const geo = new THREE.ExtrudeGeometry(shape, {
+    depth: MAT_T - 2 * bevel,
+    bevelEnabled: true,
+    bevelThickness: bevel,
+    bevelSize: bevel,
+    bevelOffset: -bevel,
+    bevelSegments: 3,
+    curveSegments: 6,
+  });
+  // Extruded along +z from the shape's plane: lay it down, top face up at y = 0.
+  geo.rotateX(Math.PI / 2);
+  geo.computeBoundingBox();
+  geo.translate(0, -geo.boundingBox!.max.y, 0);
+  // ExtrudeGeometry's groups: 0 the caps (top and bottom), 1 the sides; the top cap is group 0.
+  return geo;
+}
+
+/** Soft contact-shadow alpha: solid in the middle square, fading to nothing at the rim. */
+function contactTexture(): THREE.Texture {
+  const N = 64;
+  const t = new THREE.CanvasTexture(
+    canvas(N, N, (ctx) => {
+      const img = ctx.createImageData(N, N);
+      for (let y = 0; y < N; y++)
+        for (let x = 0; x < N; x++) {
+          // Distance outside the inner square [0.25, 0.75], in units of the 0.25 border.
+          const u = (x + 0.5) / N;
+          const v = (y + 0.5) / N;
+          const dx = Math.max(0.25 - u, 0, u - 0.75) / 0.25;
+          const dy = Math.max(0.25 - v, 0, v - 0.75) / 0.25;
+          const d = Math.min(1, Math.hypot(dx, dy));
+          const a = Math.round(255 * Math.pow(1 - d, 2.2));
+          const i = (y * N + x) * 4;
+          img.data[i] = img.data[i + 1] = img.data[i + 2] = a;
+          img.data[i + 3] = 255;
+        }
+      ctx.putImageData(img, 0, 0);
+    }),
+  );
+  return t;
+}
+
+/**
+ * How each part darkens the mat where it stands: its body's half-length along its axis when the
+ * footprint includes leads (axial parts, switches), the strength, and the softness (mm). A part on
+ * standoffs (the ESP32 on its header pins) casts a broad, faint one.
+ */
+const CONTACT: Partial<Record<ModelKey, { half?: number; strength: number; soft: number }>> = {
+  'board.esp32_devkitc': { strength: 0.32, soft: 7 },
+  'resistor.axial': { half: 3.4, strength: 0.3, soft: 2.2 },
+  'diode.axial': { half: 2.2, strength: 0.22, soft: 1.8 },
+  'switch.tactile': { half: 3.2, strength: 0.4, soft: 2.2 },
+  'switch.toggle': { half: 4.6, strength: 0.42, soft: 3 },
+  'led.radial': { strength: 0.32, soft: 2.2 },
+  'ground.post': { strength: 0.32, soft: 2 },
+  'instrument.psu': { strength: 0.45, soft: 5 },
+};
+
+/** One merged 9-slice quad per part (one draw call), its strength in the vertex alpha. */
+export function contactShadows(desc: SceneDescription, scale: number): THREE.BufferGeometry | null {
+  const pos: number[] = [];
+  const uv: number[] = [];
+  const col: number[] = [];
+  const index: number[] = [];
+  for (const c of desc.components) {
+    const k = CONTACT[c.model] ?? { strength: 0.3, soft: 2.5 };
+    const [fx0, fx1, z0, z1] = FOOTPRINT[c.model];
+    const mid = (fx0 + fx1) / 2;
+    const x0 = k.half !== undefined ? mid - k.half : fx0;
+    const x1 = k.half !== undefined ? mid + k.half : fx1;
+    const f = k.soft;
+    // Outer rect (falloff ends), inner rect (full strength), in the part's own frame.
+    const xs = [x0 - f / 2, x0 + f / 2, x1 - f / 2, x1 + f / 2];
+    const zs = [z0 - f / 2, z0 + f / 2, z1 - f / 2, z1 + f / 2];
+    if (xs[1]! > xs[2]!) xs[1] = xs[2] = (x0 + x1) / 2;
+    if (zs[1]! > zs[2]!) zs[1] = zs[2] = (z0 + z1) / 2;
+    const us = [0, 0.25, 0.75, 1];
+    const base = pos.length / 3;
+    const a = k.strength * scale;
+    for (let j = 0; j < 4; j++)
+      for (let i = 0; i < 4; i++) {
+        const p = rotatePoint({ x: xs[i]!, y: zs[j]! }, c.rotation);
+        pos.push(c.x + p.x, 0.02, c.z + p.y);
+        uv.push(us[i]!, us[j]!);
+        col.push(1, 1, 1, a);
+      }
+    for (let j = 0; j < 3; j++)
+      for (let i = 0; i < 3; i++) {
+        const q = base + j * 4 + i;
+        index.push(q, q + 4, q + 1, q + 1, q + 4, q + 5);
+      }
+  }
+  if (!pos.length) return null;
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 4));
+  geo.setIndex(index);
+  geo.computeVertexNormals();
+  return geo;
 }
 
 function canvas(w: number, h: number, draw: (ctx: CanvasRenderingContext2D) => void) {
@@ -374,7 +570,7 @@ function falloffTexture(): THREE.Texture {
 }
 
 /** How strongly the studio lights the scene's reflections (full tier). */
-const STUDIO_INTENSITY = 0.75;
+const STUDIO_INTENSITY = 0.85;
 
 /**
  * The studio the environment map is rendered from (scene units are arbitrary: only directions

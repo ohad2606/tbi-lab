@@ -8,6 +8,7 @@ import ccMode from './data/cc-mode.json';
 import diodePolarity from './data/diode-polarity.json';
 import esp32Blink from './data/esp32-blink.json';
 import esp32InputEcho from './data/esp32-input-echo.json';
+import esp32Bench from './data/esp32-bench.json';
 import ledColours from './data/led-colours.json';
 import ledCurrent from './data/led-current.json';
 import ledMatrix from './data/led-matrix.json';
@@ -38,6 +39,7 @@ export const EXAMPLE_DOCUMENTS: Record<string, ProjectDocument> = {
   'cc-mode': ccMode as unknown as ProjectDocument,
   'esp32-blink': esp32Blink as unknown as ProjectDocument,
   'esp32-input-echo': esp32InputEcho as unknown as ProjectDocument,
+  'esp32-bench': esp32Bench as unknown as ProjectDocument,
 };
 
 /** The examples with their documents (tests and tools; the app loads documents lazily). */

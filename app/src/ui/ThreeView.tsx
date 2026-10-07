@@ -15,6 +15,7 @@ import { controlKind, controlState, pressControl, toggleControl } from './contro
 import type { Obstacle } from '../views/scene3d/route3d.js';
 import type { LiveLevel, Viewer, ViewerStats } from '../views/scene3d/renderer.js';
 import { rgbMix } from '../views/ledLooks.js';
+import { isSoftwareRenderer } from '../gpuInfo.js';
 import { useAppState, useStore, useT } from './context.js';
 
 type Status = 'loading' | 'ready' | 'unavailable' | 'failed';
@@ -50,6 +51,8 @@ export function ThreeView() {
   const [assetMs, setAssetMs] = useState<number | null>(null);
   const [stats, setStats] = useState<ViewerStats | null>(null);
   const [labels, setLabels] = useState(readLabels);
+  // Development diagnostics (hidden): open the app with #diag3d to see the renderer readout.
+  const diagnostics = typeof location !== 'undefined' && /(^|[#&])diag3d\b/.test(location.hash);
   const scene = useMemo(() => (doc ? deriveScene(doc) : null), [doc]);
   const shownProject = useRef<string | null>(null);
 
@@ -558,6 +561,40 @@ export function ThreeView() {
               </button>
             ))}
           </div>
+          {diagnostics && stats && (
+            <dl class="view3d-diag" dir="ltr" data-testid="view3d-diagnostics">
+              {(
+                [
+                  ['view3d.diag.gpu', stats.gpu || '-'],
+                  [
+                    'view3d.diag.class',
+                    t(
+                      isSoftwareRenderer(stats.gpu)
+                        ? 'view3d.diag.software'
+                        : 'view3d.diag.hardware',
+                    ),
+                  ],
+                  ['view3d.diag.tier', stats.quality],
+                  ['view3d.diag.dpr', String(stats.pixelRatio)],
+                  ['view3d.diag.drawCalls', String(stats.drawCalls)],
+                  ['view3d.diag.triangles', String(stats.triangles)],
+                  ['view3d.diag.materials', String(stats.materials)],
+                  ['view3d.diag.textures', String(stats.textures)],
+                  ['view3d.diag.geometries', String(stats.geometries)],
+                  [
+                    'view3d.diag.gpuMemory',
+                    `${((stats.gpuBytes.geometry + stats.gpuBytes.textures) / 1048576).toFixed(1)} MB`,
+                  ],
+                  ['view3d.diag.frame', `${stats.renderMs} ms`],
+                ] as const
+              ).map(([k, v]) => (
+                <div key={k}>
+                  <dt>{t(k)}</dt>
+                  <dd>{v}</dd>
+                </div>
+              ))}
+            </dl>
+          )}
           <div class="view-note" dir={locale.dir}>
             {t('view3d.note')}
             {running && hasActuators && (

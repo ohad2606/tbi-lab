@@ -129,6 +129,13 @@ export const EXAMPLES: readonly Example[] = [
     summaryKey: 'example.esp32-input-echo.summary',
     probes: [I('D1'), V('R1', 'b')],
   },
+  // Sprint 10 (realism benchmark): every part family the 3D view is judged on, in one valid circuit.
+  {
+    id: 'esp32-bench',
+    titleKey: 'example.esp32-bench.title',
+    summaryKey: 'example.esp32-bench.summary',
+    probes: [I('D1'), I('D3'), I('D4')],
+  },
 ];
 
 export function findExample(id: string): Example | undefined {
