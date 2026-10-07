@@ -161,3 +161,43 @@ test('dense bench: open and orbit', async ({ page }) => {
   const orbit = await drag(page, 'left');
   result.dense = { first, orbitMsPerStep: orbit, scene, heap: await heapMb(page) };
 });
+
+test('benchmark bench (esp32-bench): open, re-open, orbit, pan, 20 enter/leave cycles', async ({
+  page,
+}) => {
+  test.setTimeout(1_200_000);
+  const doc = JSON.parse(
+    readFileSync(new URL('../../app/src/examples/data/esp32-bench.json', import.meta.url), 'utf8'),
+  );
+  doc.projectId = 'prj_perfbench';
+  await openText(page, pkg(doc));
+  const heap0 = await heapMb(page);
+  const first = await open3d(page);
+  await page.waitForTimeout(500);
+  const scene = await attrs(page);
+  const orbit = await drag(page, 'left');
+  const pan = await drag(page, 'right');
+  await page.getByTestId('view-circuit').click();
+  const reopen = await open3d(page);
+  const opens: number[] = [];
+  for (let i = 0; i < 20; i++) {
+    await page.getByTestId('view-circuit').click();
+    opens.push(await open3d(page));
+  }
+  await page.getByTestId('view-circuit').click();
+  await page.waitForTimeout(500);
+  const canvases = await page.locator('canvas.view3d-canvas').count();
+  await page.evaluate(() => (globalThis as unknown as { gc?: () => void }).gc?.());
+  const heapAfter = await heapMb(page);
+  result.bench = {
+    first,
+    reopen,
+    orbitMsPerStep: orbit,
+    panMsPerStep: pan,
+    scene,
+    heap0,
+    heapAfter20Cycles: heapAfter,
+    cycleOpenMs: { min: Math.min(...opens), max: Math.max(...opens) },
+    canvasesAfterLeave: canvases,
+  };
+});

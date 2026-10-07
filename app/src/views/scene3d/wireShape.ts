@@ -78,6 +78,8 @@ const BOW_PER_MM = 0.02;
 const MIN_BOW_RUN = 20;
 /** Interior points this close to an end are the router's end jogs (mm). */
 const END_JOG = 1.2;
+/** Steepest climb of a wire resting over something it crosses (mm per mm). */
+const MAX_CLIMB = 0.4;
 /** A bend's arms differ by at most this ratio (a very lopsided quadratic would kink). */
 const ARM_RATIO = 4;
 /** Spans shorter than this stay straight (a short jumper is taut). */
@@ -181,14 +183,20 @@ function restOn(chain: Vec3[], lift: number): (Vec3 & { soft: true; want: number
   const W = 2.5;
   const base = Math.max(a.y, b.y) + 0.1;
   const raised = s.filter((_, k) => chain[k]!.y > base);
-  const dil = ts.map((t, i) => {
+  const up = ts.map((t, i) => {
     let m = raw[i]!;
     for (let k = 0; k < s.length; k++) if (Math.abs(s[k]! - t) <= W) m = Math.max(m, chain[k]!.y);
     for (let k = 0; k <= n; k++) if (Math.abs(ts[k]! - t) <= W) m = Math.max(m, raw[k]!);
     const near = raised.length ? Math.min(...raised.map((r) => Math.abs(r - t))) : Infinity;
     const lw = Math.min(1, Math.max(0, 1 - (near - W) / 1.5));
+    return m + lift * lw;
+  });
+  // A jumper wire is too stiff to climb steeply: it rises over what it crosses at most MAX_CLIMB
+  // mm per mm (a cone under every raised point), so a hump has long gentle sides, not a step.
+  const cone = ts.map((t) => Math.max(...up.map((y, k) => y - MAX_CLIMB * Math.abs(t - ts[k]!))));
+  const dil = ts.map((t, i) => {
     const w = Math.min(1, Math.min(t, L - t) / 1.0);
-    return raw[i]! + (m - raw[i]! + lift * lw) * w;
+    return raw[i]! + Math.max(0, cone[i]! - raw[i]!) * w;
   });
   // Simplify, keeping the ends.
   const keep = new Set<number>([0, n]);
