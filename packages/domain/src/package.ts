@@ -264,7 +264,7 @@ export function unexpectedFields(doc: ProjectDocument): string[] {
   }
   doc.layout.wires.forEach((w, i) => {
     const path = `layout.wires[${i}]`;
-    check(w, ['id', 'from', 'to', 'vertices'], path);
+    check(w, ['id', 'from', 'to', 'vertices', 'color'], path);
     for (const end of ['from', 'to'] as const) {
       const e = w[end];
       check(

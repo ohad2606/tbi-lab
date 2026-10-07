@@ -11,7 +11,13 @@ import { CATALOG, isComponentType } from './catalog.js';
 import { GRID, ROTATIONS } from './layout.js';
 import { nodeKey, wireGroups } from './nets.js';
 import { profileById, utf8Length } from './program.js';
-import { DOCUMENT_FORMAT, SCHEMA_VERSION, type ProjectDocument, type WireEnd } from './schema.js';
+import {
+  DOCUMENT_FORMAT,
+  SCHEMA_VERSION,
+  WIRE_COLORS,
+  type ProjectDocument,
+  type WireEnd,
+} from './schema.js';
 
 export type ValidationCode =
   | 'not_an_object'
@@ -209,6 +215,9 @@ export function validateProject(input: unknown): ValidationIssue[] {
       !w.vertices.every((v) => isObj(v) && isInt(v.x) && isInt(v.y))
     ) {
       add('bad_field', `${path}.vertices`);
+    }
+    if (w.color !== undefined && !(WIRE_COLORS as readonly unknown[]).includes(w.color)) {
+      add('bad_field', `${path}.color`);
     }
   });
 

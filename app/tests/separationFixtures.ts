@@ -133,3 +133,27 @@ export function relayLedCircuit(): ProjectDocument {
   doc = wire(doc, ['PSU1', 'negative'], ['GND1', 'ref']);
   return doc;
 }
+
+/**
+ * The owner-reviewed false hop, reconstructed (the owner's own project is not available): a
+ * TO-92 transistor beside the bench supply, its base wired from a resistor chain. The base wire
+ * (a purple signal net) used to climb over the transistor's conservative footprint box although a
+ * low route next to the real body and leads is clear.
+ */
+export function transistorPsuCircuit(): ProjectDocument {
+  let doc = newDoc();
+  doc = place(doc, 'component.bjt_npn', 0, -40).doc; // Q1
+  doc = place(doc, 'component.resistor', -160, -120).doc; // R1
+  doc = place(doc, 'component.resistor', 160, 120).doc; // R2
+  doc = place(doc, 'component.resistor', 160, -120).doc; // R3
+  doc = place(doc, 'component.led', 260, 0).doc; // D1
+  doc = wire(doc, ['PSU1', 'positive'], ['R2', 'a']);
+  doc = wire(doc, ['R2', 'b'], ['D1', 'anode']);
+  doc = wire(doc, ['D1', 'cathode'], ['Q1', 'collector']);
+  doc = wire(doc, ['Q1', 'emitter'], ['GND1', 'ref']);
+  doc = wire(doc, ['PSU1', 'negative'], ['GND1', 'ref']);
+  doc = wire(doc, ['R1', 'a'], ['PSU1', 'positive']);
+  doc = wire(doc, ['R1', 'b'], ['R3', 'a']);
+  doc = wire(doc, ['R3', 'b'], ['Q1', 'base']);
+  return doc;
+}

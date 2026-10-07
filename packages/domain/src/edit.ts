@@ -24,11 +24,13 @@ import { starterProgram, profileById, utf8Length } from './program.js';
 import { allocateId } from './project.js';
 import {
   cloneDocument,
+  WIRE_COLORS,
   type ComponentTypeId,
   type ParamValue,
   type Point,
   type ProjectDocument,
   type Wire,
+  type WireColor,
   type WireEnd,
 } from './schema.js';
 
@@ -175,6 +177,25 @@ export function setParam(
     }
     c.params[key] = typeof value === 'object' ? { value: value.value, unit: value.unit } : value;
   });
+}
+
+/**
+ * Set a wire's colour, or clear it (`null`: automatic, from its net). Presentation only: the
+ * wire's ends, route and the nets are unchanged.
+ */
+export function setWireColor(
+  doc: ProjectDocument,
+  wireId: string,
+  color: WireColor | null,
+): EditResult {
+  if (color !== null && !(WIRE_COLORS as readonly string[]).includes(color))
+    return { ok: false, error: 'out_of_range' };
+  const draft = cloneDocument(doc);
+  const w = draft.layout.wires.find((x) => x.id === wireId);
+  if (!w) return { ok: false, error: 'unknown_wire' };
+  if (color === null) delete w.color;
+  else w.color = color;
+  return { ok: true, doc: draft };
 }
 
 export function renameProject(doc: ProjectDocument, name: string): EditResult {
@@ -368,6 +389,8 @@ function splitWire(doc: ProjectDocument, wireId: string, at: Point): WireEnd | E
     from: jEnd,
     to: wire.to,
     vertices: wire.vertices.slice(loc.hop),
+    // A wire the user coloured stays that colour on both sides of the new junction.
+    ...(wire.color ? { color: wire.color } : {}),
   };
   wire.to = jEnd;
   wire.vertices = wire.vertices.slice(0, loc.hop);

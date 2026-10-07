@@ -63,6 +63,7 @@ import {
 } from './symbols.js';
 import { componentBox, componentBoxes, moveRouted, rotateRouted } from './routing.js';
 import { RGB_LOOKS, ledLook } from '../views/ledLooks.js';
+import { resolveWireColors } from '../views/wireColors.js';
 import type { GpioLevel } from '../runtime/view.js';
 import { warningsFor } from '../sim/ratings.js';
 import { probeAnchor, probeTargetName, readProbe, type Probe, type ProbeInput } from './probes.js';
@@ -773,6 +774,8 @@ export function Canvas({
 
   // Unconnected crossings of the drawing being shown (including a live drag preview).
   const crossings = useMemo(() => wireCrossings(view), [view]);
+  // The same resolved colours as the 3D view (wireColors.ts).
+  const wireColors = useMemo(() => resolveWireColors(view), [view]);
   const hopR = hopRadius(camera.scale);
   const hopsOver = useMemo(() => {
     const m = new Map<string, Point[]>();
@@ -889,7 +892,10 @@ export function Canvas({
                 key={w.id}
                 data-hit="wire"
                 data-id={w.id}
+                data-color={wireColors.get(w.id)?.color ?? 'neutral'}
+                data-color-source={wireColors.get(w.id)?.source}
                 class={selected.wires.has(w.id) ? 'wire-group selected' : 'wire-group'}
+                style={{ '--wire-color': wireColors.get(w.id)?.hex }}
               >
                 <polyline class="wire-hit" points={points(route)} />
                 <path class="wire" d={wirePath(route, hopsOver.get(w.id), hopR)} />
@@ -906,6 +912,7 @@ export function Canvas({
             <g
               key={`${c.over}.${c.under}.${c.x}.${c.y}`}
               class={selected.wires.has(c.over) ? 'wire-bridge selected' : 'wire-bridge'}
+              style={{ '--wire-color': wireColors.get(c.over)?.hex }}
               data-testid="wire-bridge"
               data-over={c.over}
               data-under={c.under}

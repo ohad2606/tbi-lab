@@ -5,6 +5,10 @@ import {
   emptySelection,
   parseQuantity,
   setParam,
+  setWireColor,
+  WIRE_COLORS,
+  type Wire,
+  type WireColor,
   type CheckIssue,
   type ComponentInstance,
   type ParamDef,
@@ -25,6 +29,7 @@ import { RatingGroup } from './NoticeBar.js';
 import { warningsFor } from '../sim/ratings.js';
 import { useAppState, useStore, useT } from './context.js';
 import { checksFor } from './checks.js';
+import { NEUTRAL_HEX, resolveWireColors } from '../views/wireColors.js';
 import { rotateRouted } from './routing.js';
 import { probeTargetName, readProbe, type Probe } from './probes.js';
 import { McuPanel } from './McuPanel.js';
@@ -33,6 +38,54 @@ interface InspectorProps {
   probes: Probe[];
   onRemoveProbe(id: string): void;
   onClearProbes(): void;
+}
+
+/**
+ * A wire's colour: Auto (from its net, shown with the colour it gives) or one of the palette
+ * colours. The same resolution colours the wire in the Circuit and 3D views (wireColors.ts).
+ */
+function WireColorField({ wire, readOnly }: { wire: Wire; readOnly: boolean }) {
+  const { doc } = useAppState();
+  const store = useStore();
+  const t = useT();
+  if (!doc) return null;
+  const resolved = resolveWireColors(doc).get(wire.id);
+  const name = (c: WireColor) => t(`wireColor.${c}`);
+  return (
+    <>
+      <dt>
+        <label for="wire-color">{t('inspector.wireColor')}</label>
+      </dt>
+      <dd class="wire-color-field">
+        <span
+          class="wire-swatch"
+          aria-hidden="true"
+          style={{ background: resolved?.hex ?? NEUTRAL_HEX }}
+        />
+        <select
+          id="wire-color"
+          data-testid="wire-color"
+          value={wire.color ?? 'auto'}
+          disabled={readOnly}
+          onChange={(e) => {
+            const v = (e.target as HTMLSelectElement).value;
+            store.apply(setWireColor(doc, wire.id, v === 'auto' ? null : (v as WireColor)));
+          }}
+        >
+          <option value="auto">
+            {resolved?.auto
+              ? t('wireColor.autoIs', { color: name(resolved.auto) })
+              : t('wireColor.auto')}
+          </option>
+          {WIRE_COLORS.map((c) => (
+            <option key={c} value={c}>
+              {name(c)}
+            </option>
+          ))}
+        </select>
+      </dd>
+    </>
+  );
 }
 
 export function Inspector({ probes, onRemoveProbe, onClearProbes }: InspectorProps) {
@@ -103,6 +156,7 @@ export function Inspector({ probes, onRemoveProbe, onClearProbes }: InspectorPro
         <dl class="props">
           <dt>{t('inspector.type')}</dt>
           <dd>{t('inspector.wire')}</dd>
+          <WireColorField wire={wire} readOnly={!!readOnly} />
           {netOfWire() && (
             <>
               <dt>{t('inspector.net')}</dt>

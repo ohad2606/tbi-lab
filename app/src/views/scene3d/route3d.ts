@@ -14,6 +14,12 @@
  * - against other wires it passes UNDER where the other is high enough, otherwise it hops OVER
  *   the other locally (a full wire diameter plus a gap), never by lifting the whole wire.
  *
+ * Preference order (owner review): 1. valid connectivity; 2. no physical collision, checked
+ * against the parts' real volumes (a final true-distance check on the low route before any rise:
+ * clearLow); 3. the shortest physically plausible path; 4. the lowest reasonable height; 5. the
+ * fewest bends; 6. the least deviation from the 2D route. A conservative clearance never comes
+ * before the check that it is actually needed.
+ *
  * Obstacles: other parts' bodies (and the wire's own end parts except where it leaves them), every
  * terminal, header pin and junction it passes near (spots), and the wires routed before it
  * (document order). Deterministic: a function of the plan paths, the obstacles and the order.
@@ -169,6 +175,41 @@ function closest(plan: Point[], st: number[], p: Point): { s: number; d: number 
   return best;
 }
 
+/**
+ * Whether a wire following the low profile `h` over [s0, s1] stays a wire radius plus WIRE_GAP
+ * clear of an obstacle's box (true 3D point-to-box distance of the tube's axis).
+ */
+function clearLow(
+  plan: Point[],
+  st: number[],
+  s0: number,
+  s1: number,
+  o: Obstacle,
+  h: (s: number) => number,
+): boolean {
+  const need = WIRE.radiusMm + WIRE_GAP;
+  for (let s = Math.max(0, s0); s <= s1 + 1e-9; s += 0.25) {
+    const q = pointAt(plan, st, Math.min(s, s1));
+    const y = h(Math.min(s, s1));
+    const dx = Math.max(o.x0 - q.x, 0, q.x - o.x1);
+    const dz = Math.max(o.z0 - q.y, 0, q.y - o.z1);
+    const dy = Math.max(o.bottom - y, 0, y - o.top);
+    if (Math.hypot(dx, dy, dz) < need) return false;
+  }
+  return true;
+}
+
+/** Plan point at arc length s. */
+function pointAt(plan: Point[], st: number[], s: number): Point {
+  let i = 1;
+  while (i < plan.length - 1 && st[i]! < s) i++;
+  const a = plan[i - 1]!;
+  const b = plan[i]!;
+  const l = st[i]! - st[i - 1]!;
+  const t = l < 1e-9 ? 0 : Math.min(1, Math.max(0, (s - st[i - 1]!) / l));
+  return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+}
+
 /** The height profile: rests on the floor, ramps to every requirement and to the end heights. */
 function profile(
   L: number,
@@ -315,6 +356,7 @@ export function routeWires(
     // Part bodies: over them, except the own end part where the wire leaves it. A raised body
     // is decided like a wire (below): under it when there is room, else over.
     const raised: { s0: number; s1: number; lo: number; hi: number }[] = [];
+    const low = profile(L, w.startY, w.endY, []);
     for (const o of obstacles) {
       // Its own end parts: only where it really runs over them (it meets them at their edge).
       const own = o.part === w.parts[0] || o.part === w.parts[1];
@@ -329,6 +371,10 @@ export function routeWires(
         if (s1 > L - 1e-6 && o.part === w.parts[1])
           s1 = o.top <= w.endY + 2 * r ? s0 : Math.min(s1, L - OWN_EXIT);
         if (s1 <= s0) continue;
+        // Final actual-clearance check: the low route (resting on the bench, rising only to its
+        // ends) is tested against the body's real volume by true 3D distance (corners included);
+        // where it is already clear by a wire radius plus the gap, no rise is made.
+        if (!own && clearLow(plan, st, s0, s1, o, low)) continue;
         if (o.bottom > 2 * r + BODY_GAP + FLOOR)
           raised.push({
             s0,

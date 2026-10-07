@@ -65,6 +65,8 @@ export interface Body {
   boxes: Box[];
   /** Nodes of the part's terminals (an approach strip of one of them may touch it). */
   nodes: readonly string[];
+  /** Capacitor value (its package decides its routing volume). */
+  farads?: number;
 }
 
 export interface SeparationResult {
@@ -214,7 +216,28 @@ export function separateBodies(
     }
     return u.members.flatMap((m) => worldBoxes(m, dx, dz));
   };
-  const hits = (a: Placed[], b: Placed[]) => a.some((p) => b.some((q) => collide(p, q)));
+  // Broad phase first: two sets of boxes whose overall envelopes are apart cannot collide.
+  const envelope = new WeakMap<Placed[], [number, number, number, number]>();
+  const env = (a: Placed[]) => {
+    let e = envelope.get(a);
+    if (!e) {
+      e = [Infinity, -Infinity, Infinity, -Infinity];
+      for (const p of a) {
+        e[0] = Math.min(e[0], p.x0);
+        e[1] = Math.max(e[1], p.x1);
+        e[2] = Math.min(e[2], p.z0);
+        e[3] = Math.max(e[3], p.z1);
+      }
+      envelope.set(a, e);
+    }
+    return e;
+  };
+  const hits = (a: Placed[], b: Placed[]) => {
+    const p = env(a);
+    const q = env(b);
+    if (p[0] > q[1] || q[0] > p[1] || p[2] > q[3] || q[2] > p[3]) return false;
+    return a.some((x) => b.some((y) => collide(x, y)));
+  };
   // The less anchored of two units (it moves first).
   const weaker = (a: Unit, b: Unit): [Unit, Unit] => {
     if (a.rank[0] !== b.rank[0]) return a.rank[0] < b.rank[0] ? [a, b] : [b, a];
@@ -291,11 +314,12 @@ export function separateBodies(
     if (u.dx !== 0 || u.dz !== 0)
       for (const m of u.members) offsets.set(m.id, { dx: u.dx, dz: u.dz });
   const unresolved: [string, string][] = [];
+  // Each member's boxes at its final offset, once (not per pair).
+  const final = units.map((u) => u.members.map((m) => ({ m, boxes: worldBoxes(m, u.dx, u.dz) })));
   for (let i = 0; i < units.length; i++)
     for (let j = i + 1; j < units.length; j++)
-      for (const p of units[i]!.members)
-        for (const q of units[j]!.members)
-          if (bodiesCollide(p, q, units[i]!, units[j]!))
-            unresolved.push([p.id, q.id].sort() as [string, string]);
+      for (const p of final[i]!)
+        for (const q of final[j]!)
+          if (hits(p.boxes, q.boxes)) unresolved.push([p.m.id, q.m.id].sort() as [string, string]);
   return { offsets, unresolved };
 }

@@ -24,7 +24,6 @@ import {
   CATALOG,
   ESP32_DEVKITC_WROOM32,
   MATRIX_1088AS_PINS,
-  GROUND_NODE,
   boardPinPosition,
   connectivity,
   contacts,
@@ -67,6 +66,7 @@ import {
   WIRE,
 } from './physical.js';
 import { ledLook } from '../ledLooks.js';
+import { NEUTRAL_HEX, resolveWireColors } from '../wireColors.js';
 import { separateBodies, worldBoxes, type Body, type Box } from './separation.js';
 import {
   FLOOR,
@@ -321,11 +321,6 @@ export const FOOTPRINT: Record<ModelKey, readonly [number, number, number, numbe
 
 /** Radius of a wire tube (the renderer draws wires at this radius). */
 export const WIRE_RADIUS = WIRE.radiusMm;
-
-const GROUND_COLOR = '#202326';
-const SUPPLY_COLOR = '#d32f2f';
-/** Signal wire colours, in the order nodes are first met (no red or black: those mean ±). */
-const SIGNAL_COLORS = ['#ef7d17', '#1e88e5', '#43a047', '#8e24aa', '#f9a825', '#00897b', '#6d4c41'];
 
 const COLOR_CODE = [
   'black',
@@ -662,6 +657,7 @@ export function collisionBodies(
           wiredEnds.has(`${c.id}:${t}`) ? (nodeOf(t) ?? `${c.id}:${t}`) : null,
         ),
         nodes: CATALOG[c.type].terminals.flatMap((t) => nodeOf(t.id) ?? []),
+        farads,
       },
     ];
   });
@@ -691,17 +687,8 @@ function buildScene(
   router: 'fresh' | 'legacy' = 'fresh',
 ): SceneDescription {
   const g = connectivity(doc);
-  const nodeColor = new Map<string, string>();
-  let signal = 0;
-  for (const n of g.nodes)
-    nodeColor.set(
-      n.id,
-      n.id === GROUND_NODE
-        ? GROUND_COLOR
-        : n.kind === 'supply'
-          ? SUPPLY_COLOR
-          : SIGNAL_COLORS[signal++ % SIGNAL_COLORS.length]!,
-    );
+  // Wire colours: the one resolution the Circuit view uses too (wireColors.ts).
+  const wireColor = resolveWireColors(doc, g);
 
   const wiredEnds = wiredTerminals(doc);
   // Base transforms from the 2D layout, then the visual-only separation of physical bodies that
@@ -851,7 +838,7 @@ function buildScene(
       wires.push({
         id: w.id,
         node,
-        color: node ? (nodeColor.get(node) ?? SIGNAL_COLORS[0]!) : '#9aa3ad',
+        color: wireColor.get(w.id)?.hex ?? NEUTRAL_HEX,
         points: dedupe(points),
         ends: [endKind(w.from), endKind(w.to)],
       });
@@ -869,7 +856,7 @@ function buildScene(
       wires.push({
         id: w.id,
         node,
-        color: node ? (nodeColor.get(node) ?? SIGNAL_COLORS[0]!) : '#9aa3ad',
+        color: wireColor.get(w.id)?.hex ?? NEUTRAL_HEX,
         points: w.points,
         radii: w.radii,
         ends: [endKind(src.from), endKind(src.to)],
@@ -1571,7 +1558,7 @@ function dodge(plan: Point[], obstacles: Obstacle[]): Point[] {
  * reaching a lead end along the part does not climb over the whole part). Null: the part's
  * collision boxes (collisionBoxes) are used as they are.
  */
-function routeBoxes(model: ModelKey): Box[] | null {
+function routeBoxes(model: ModelKey, farads?: number): Box[] | null {
   const [x0, x1, z0, z1] = FOOTPRINT[model];
   const top = MODEL_HEIGHT[model];
   const LEADS = 2.8;
@@ -1586,12 +1573,63 @@ function routeBoxes(model: ModelKey): Box[] | null {
       return axial(DIODE_DO35.bodyLengthMm / 2 + 0.2, 0.6);
     case 'switch.toggle':
       return axial(TOGGLE.bodyXMm / 2, 0.8);
-    case 'instrument.psu':
-      // The case, and the binding posts in front of it (as high as the posts).
+    case 'instrument.psu': {
+      // The case, and its two binding posts sticking out of the front at post height (a wire may
+      // pass under them on the bench).
+      const r = PSU.postDiameterMm / 2;
+      const post = (zc: number): Box => ({
+        x0: PSU.frontXMm,
+        x1,
+        z0: zc - r,
+        z1: zc + r,
+        y0: PSU.attachHeightMm - r,
+        y1: PSU.attachHeightMm + r,
+      });
+      return [{ x0, x1: PSU.frontXMm, z0, z1, y0: 0, y1: top }, post(-3.175), post(3.175)];
+    }
+    case 'transistor.to92': {
+      // The D-shaped body, and each lead from under it to its terminal: high near the body, low
+      // near the terminal (the leads splay down to the bench).
+      const R = TO92.widthMm / 2;
+      const boxes: Box[] = [{ x0: -R, x1: R, z0: -R, z1: TO92.depthMm - R, y0: 0, y1: top }];
+      const lr = TO92.leadWidthMm / 2 + 0.1;
+      for (const t of CATALOG['component.bjt_npn'].terminals) {
+        const tx = t.offset.x * SCALE;
+        const tz = t.offset.y * SCALE;
+        const mx = tx / 2;
+        const mz = tz / 2;
+        const seg = (ax: number, az: number, bx: number, bz: number, y1: number): Box => ({
+          x0: Math.min(ax, bx) - lr,
+          x1: Math.max(ax, bx) + lr,
+          z0: Math.min(az, bz) - lr,
+          z1: Math.max(az, bz) + lr,
+          y0: 0,
+          y1,
+        });
+        boxes.push(seg(0, 0, mx, mz, TO92.standoffMm + 0.4), seg(mx, mz, tx, tz, 1.9));
+      }
+      return boxes;
+    }
+    case 'led.rgb': {
+      const R = RGB_LED_5MM.flangeDiameterMm / 2;
       return [
-        { x0, x1: PSU.frontXMm, z0, z1, y0: 0, y1: top },
-        { x0: PSU.frontXMm, x1, z0, z1, y0: 0, y1: PSU.attachHeightMm + PSU.postDiameterMm / 2 },
+        { x0: -R, x1: R, z0: -R, z1: R, y0: 0, y1: top },
+        { x0, x1, z0, z1, y0: 0, y1: LEADS },
       ];
+    }
+    case 'ldr.disc':
+      return axial(LDR_GL5528.diameterMm / 2, 0.6);
+    case 'capacitor.radial': {
+      // The disc or can over its leads; the leads low out to the terminals.
+      const p = capacitorPackage(farads ?? 100e-6);
+      const half = p.kind === 'disc' ? p.thicknessMm / 2 : p.diameterMm / 2;
+      const bodyX = p.diameterMm / 2;
+      const height = p.standoffMm + (p.kind === 'disc' ? p.diameterMm : p.heightMm);
+      return [
+        { x0: -bodyX, x1: bodyX, z0: -half, z1: half, y0: 0, y1: height },
+        { x0, x1, z0: -0.6, z1: 0.6, y0: 0, y1: LEADS },
+      ];
+    }
     case 'ground.post': {
       // The plate, and the post standing on it.
       const zc = -3.175 + GROUND_POST.postOffsetZMm;
@@ -1626,7 +1664,7 @@ function routingObstacles(
 ): Obstacle[] {
   const out: Obstacle[] = bodies.flatMap((body) => {
     const o = offsets.get(body.id) ?? { dx: 0, dz: 0 };
-    const lean = routeBoxes(body.model);
+    const lean = routeBoxes(body.model, body.farads);
     return worldBoxes(lean ? { ...body, boxes: lean } : body, o.dx, o.dz)
       .filter((q) => !q.node)
       .map((q) => ({

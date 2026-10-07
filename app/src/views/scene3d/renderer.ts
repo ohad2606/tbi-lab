@@ -18,13 +18,14 @@ import { buildComponent, createMaterials, OwnedResources, paintMatrixFace } from
 import { assetLoadStats, loadAssets } from './assets/library.js';
 import { createStage } from './stage.js';
 import { chooseQuality, probeGpu } from '../../gpuInfo.js';
-import { buildJoint, buildWire, wireMaterials } from './wires.js';
-import { shapeWires } from './wireShape.js';
+import { bentPath, buildJoint, buildWire, wireMaterials } from './wires.js';
+import { shapeWires, type WireShape } from './wireShape.js';
 
 export { assetLoadStats, loadAssets };
 import { type SceneDescription } from './scene.js';
 import { strokeText, strokeWidth } from './assets/strokeFont.js';
-import { placeLabels } from './labels.js';
+import { footprintRect, placeLabels } from './labels.js';
+import type { Ray } from './pick.js';
 
 /** LED light pool size and the light's intensity per unit live level (mm scene, decay 2). */
 const LED_LIGHTS = 4;
@@ -91,6 +92,17 @@ export interface Viewer {
    * mm). Camera only; never part of the project.
    */
   inspect(target: [number, number, number], from: [number, number, number]): void;
+  /** The ray through a point of the view (client pixels), for picking (pick.ts). */
+  rayAt(clientX: number, clientY: number): Ray;
+  /** Where a scene point appears, client pixels (tests, evidence). */
+  screenOf(p: [number, number, number]): { x: number; y: number };
+  /** The wires' drawn shapes of the current scene (picking hits what is drawn). */
+  wireShapes(): ReadonlyMap<string, WireShape>;
+  /**
+   * The project selection, shown subtly: a thin ring on the bench round a selected part, a faint
+   * sleeve along a selected wire. Presentation only.
+   */
+  setSelection(sel: { components: readonly string[]; wires: readonly string[] }): void;
   stats(): ViewerStats;
   /** Show or hide the reference labels (a presentation preference, never project data). */
   setLabels(visible: boolean): void;
@@ -194,6 +206,86 @@ export function createViewer(
   const persistent = new OwnedResources(null, quality);
   let own = new OwnedResources(persistent, quality);
   let current: SceneDescription | null = null;
+  let currentShapes: ReadonlyMap<string, WireShape> = new Map();
+  let selected: { components: readonly string[]; wires: readonly string[] } = {
+    components: [],
+    wires: [],
+  };
+  let selectionGroup: THREE.Group | null = null;
+  const SELECT_COLOR = '#1565c0';
+  /** Rebuild the selection marks (on a scene update or a selection change). */
+  function drawSelection() {
+    if (selectionGroup) {
+      scene.remove(selectionGroup);
+      selectionGroup.traverse((o) => {
+        const m = o as THREE.Mesh;
+        if (m.isMesh) {
+          m.geometry.dispose();
+          (m.material as THREE.Material).dispose();
+        }
+      });
+      selectionGroup = null;
+    }
+    if (!current || (!selected.components.length && !selected.wires.length)) return;
+    const g = new THREE.Group();
+    g.name = 'selection';
+    const mat = (opacity: number) =>
+      new THREE.MeshBasicMaterial({
+        color: SELECT_COLOR,
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity,
+        depthWrite: false,
+        polygonOffset: true,
+        polygonOffsetFactor: -2,
+        polygonOffsetUnits: -4,
+      });
+    for (const id of selected.components) {
+      const c = current.components.find((x) => x.id === id);
+      if (!c) continue;
+      // A thin ring on the bench, 1 mm round the part's footprint.
+      const r = footprintRect(c);
+      const pad = 1;
+      const w = 0.45;
+      const outer = new THREE.Shape();
+      outer.moveTo(r.x0 - pad - w, r.z0 - pad - w);
+      outer.lineTo(r.x1 + pad + w, r.z0 - pad - w);
+      outer.lineTo(r.x1 + pad + w, r.z1 + pad + w);
+      outer.lineTo(r.x0 - pad - w, r.z1 + pad + w);
+      outer.closePath();
+      const hole = new THREE.Path();
+      hole.moveTo(r.x0 - pad, r.z0 - pad);
+      hole.lineTo(r.x0 - pad, r.z1 + pad);
+      hole.lineTo(r.x1 + pad, r.z1 + pad);
+      hole.lineTo(r.x1 + pad, r.z0 - pad);
+      hole.closePath();
+      outer.holes.push(hole);
+      const geo = new THREE.ShapeGeometry(outer);
+      geo.rotateX(Math.PI / 2);
+      const ring = new THREE.Mesh(geo, mat(0.85));
+      ring.position.y = 0.04;
+      ring.userData.selection = id;
+      g.add(ring);
+    }
+    for (const id of selected.wires) {
+      const shape = currentShapes.get(id);
+      if (!shape) continue;
+      // A faint sleeve round the wire, the wire's own colour showing through.
+      const path = bentPath(shape.points, shape.radii);
+      const geo = new THREE.TubeGeometry(
+        path,
+        Math.max(16, Math.ceil(path.getLength() / 1.5)),
+        1.05,
+        10,
+        false,
+      );
+      const sleeve = new THREE.Mesh(geo, mat(0.3));
+      sleeve.userData.selection = id;
+      g.add(sleeve);
+    }
+    selectionGroup = g;
+    scene.add(g);
+  }
   let renders = 0;
   let lastRenderMs = 0;
   let lastCalls = 0;
@@ -374,6 +466,7 @@ export function createViewer(
     const wm = wireMaterials(own, materials.lead);
     // Their natural shape (sag, hand-formed bends), checked clear of every part and wire.
     const shapes = shapeWires(desc);
+    currentShapes = shapes;
     for (const w of desc.wires) group.add(buildWire(w, own, wm, shapes.get(w.id)));
     for (const j of desc.joints)
       group.add(buildJoint(j, own, { lead: materials.lead, notConnected: materials.red }));
@@ -604,6 +697,7 @@ export function createViewer(
           matrices.set(o.userData.component as string, o.userData.matrixFace);
       });
       applyLive();
+      drawSelection();
       if (first || opts.resetCamera) {
         resize();
         frame(desc);
@@ -669,6 +763,32 @@ export function createViewer(
       render();
     },
     stats,
+    rayAt(clientX, clientY) {
+      const rect = canvas.getBoundingClientRect();
+      const ndc = new THREE.Vector2(
+        ((clientX - rect.left) / Math.max(1, rect.width)) * 2 - 1,
+        -((clientY - rect.top) / Math.max(1, rect.height)) * 2 + 1,
+      );
+      const rc = new THREE.Raycaster();
+      camera.updateMatrixWorld();
+      rc.setFromCamera(ndc, camera);
+      return { origin: rc.ray.origin.toArray(), dir: rc.ray.direction.toArray() } as Ray;
+    },
+    screenOf(p) {
+      camera.updateMatrixWorld();
+      const v = new THREE.Vector3(...p).project(camera);
+      const rect = canvas.getBoundingClientRect();
+      return {
+        x: rect.left + ((v.x + 1) / 2) * rect.width,
+        y: rect.top + ((1 - v.y) / 2) * rect.height,
+      };
+    },
+    wireShapes: () => currentShapes,
+    setSelection(sel) {
+      selected = { components: [...sel.components], wires: [...sel.wires] };
+      drawSelection();
+      requestRender();
+    },
     setLabels(visible) {
       labelsVisible = visible;
       for (const l of labels) l.visible = visible;
@@ -681,6 +801,8 @@ export function createViewer(
       ro.disconnect();
       controls.dispose();
       if (content) scene.remove(content);
+      selected = { components: [], wires: [] };
+      drawSelection();
       labels = [];
       lenses = new Map();
       halos = new Map();

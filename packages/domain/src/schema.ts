@@ -100,6 +100,23 @@ export type WireEnd =
   | { kind: 'terminal'; component: string; terminal: string }
   | { kind: 'junction'; junction: string };
 
+/**
+ * Wire colours a user may choose (canonical, language-neutral ids; the app maps them to its
+ * palette). Presentation only: a colour never changes a net.
+ */
+export const WIRE_COLORS = [
+  'red',
+  'black',
+  'orange',
+  'blue',
+  'green',
+  'purple',
+  'yellow',
+  'teal',
+  'brown',
+] as const;
+export type WireColor = (typeof WIRE_COLORS)[number];
+
 export interface Wire {
   id: string;
   from: WireEnd;
@@ -109,6 +126,11 @@ export interface Wire {
    * from -> vertices... -> to, horizontal leg first (layout.ts `wireRoute`).
    */
   vertices: Point[];
+  /**
+   * The user's colour for this wire (Sprint 10, optional). Absent = automatic: derived from the
+   * wire's electrical net (app/src/views/wireColors.ts). Older projects have none.
+   */
+  color?: WireColor;
 }
 
 /** A point where wires join. Part of exactly one net. */

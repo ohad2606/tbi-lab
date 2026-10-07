@@ -626,7 +626,8 @@ select {
 
 .wire {
   fill: none;
-  stroke: var(--wire);
+  /* The wire's resolved colour (wireColors.ts), the same as in 3D. */
+  stroke: var(--wire-color, var(--wire));
   stroke-width: 2.5;
   stroke-linejoin: round;
   stroke-linecap: round;
@@ -639,9 +640,16 @@ select {
   cursor: pointer;
 }
 
+/* Selected: a soft halo behind the wire; the wire keeps its own colour (a blue wire stays
+   distinguishable from the selection). */
 .wire-group.selected .wire {
+  stroke-width: 3.5;
+}
+
+.wire-group.selected .wire-hit {
   stroke: var(--selected);
-  stroke-width: 4;
+  stroke-opacity: 0.3;
+  stroke-width: 10;
 }
 
 .wire-preview {
@@ -1758,8 +1766,7 @@ select {
 }
 
 .wire-bridge.selected .wire {
-  stroke: var(--selected);
-  stroke-width: 4;
+  stroke-width: 3.5;
 }
 
 /* An unsupported configuration: title, explanation, then what to do. */
@@ -2888,4 +2895,17 @@ select {
 .view3d-presets .text-button[aria-pressed='true'] {
   border-color: var(--accent, #1e6fd9);
   color: var(--accent-strong, #174ea6);
+}
+
+.wire-color-field {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.wire-swatch {
+  inline-size: 1.4rem;
+  block-size: 0.35rem;
+  border-radius: 999px;
+  flex: none;
 }

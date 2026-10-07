@@ -8,10 +8,13 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { deriveScene } from '../views/scene3d/scene.js';
+import { emptySelection } from '@tbi-lab/domain';
+import { deriveScene, sceneObstacles, type SceneDescription } from '../views/scene3d/scene.js';
+import { pick } from '../views/scene3d/pick.js';
+import type { Obstacle } from '../views/scene3d/route3d.js';
 import type { LiveLevel, Viewer, ViewerStats } from '../views/scene3d/renderer.js';
 import { rgbMix } from '../views/ledLooks.js';
-import { useAppState, useT } from './context.js';
+import { useAppState, useStore, useT } from './context.js';
 
 type Status = 'loading' | 'ready' | 'unavailable' | 'failed';
 
@@ -28,8 +31,12 @@ const readLabels = () => {
 /** Shift + arrow pan step, as a fraction of the visible height. */
 const PAN_STEP = 0.1;
 
+/** A press that moves less than this (px) is a click (selection); more is a camera drag. */
+const CLICK_SLOP = 5;
+
 export function ThreeView() {
-  const { doc, locale, sim } = useAppState();
+  const { doc, locale, sim, selection } = useAppState();
+  const store = useStore();
   const t = useT();
   const host = useRef<HTMLDivElement>(null);
   const viewer = useRef<Viewer | null>(null);
@@ -84,7 +91,44 @@ export function ThreeView() {
     const resetCamera = shownProject.current !== doc?.projectId;
     shownProject.current = doc?.projectId ?? null;
     viewer.current.update(scene, { resetCamera });
+    // Evidence and browser tests (opted in, as tbiViewer): the scene the view shows.
+    const h = host.current as unknown as { tbiViewer?: Viewer; tbiScene?: SceneDescription };
+    if (h?.tbiViewer) h.tbiScene = scene;
   }, [scene, status]);
+
+  // Selection: the project's own (Circuit, Schematic, Inspector, 3D show the same), marked subtly.
+  useEffect(() => {
+    if (status === 'ready') viewer.current?.setSelection(selection);
+  }, [selection, status, scene]);
+
+  // Picking (limited 3D interaction): a click without a drag selects the part or wire under the
+  // pointer, or clears the selection on empty bench; a drag is camera navigation. Nothing is
+  // edited here: the Inspector edits what is selected, as in the Circuit view.
+  const down = useRef<{ x: number; y: number } | null>(null);
+  const volumes = useRef<{ scene: SceneDescription; obstacles: Obstacle[] } | null>(null);
+  const onPointerDown = (e: PointerEvent) => {
+    down.current = e.button === 0 && e.isPrimary ? { x: e.clientX, y: e.clientY } : null;
+  };
+  const onPointerUp = (e: PointerEvent) => {
+    const d = down.current;
+    down.current = null;
+    const v = viewer.current;
+    if (!d || !v || !scene || !doc || e.button !== 0) return;
+    if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > CLICK_SLOP) return;
+    if (volumes.current?.scene !== scene)
+      volumes.current = { scene, obstacles: sceneObstacles(doc, scene) };
+    const hit = pick(
+      v.rayAt(e.clientX, e.clientY),
+      scene,
+      volumes.current.obstacles,
+      v.wireShapes(),
+    );
+    store.select(
+      hit
+        ? { ...emptySelection(), [hit.kind === 'component' ? 'components' : 'wires']: [hit.id] }
+        : emptySelection(),
+    );
+  };
 
   // While running: LED glow from the solved forward current (visual cue only, as on the circuit
   // canvas). Off when stopped.
@@ -151,6 +195,11 @@ export function ThreeView() {
         .map((j) => j.terminals.join('+'))
         .join(' ')}
       data-moved={scene?.separation.moved.map((m) => `${m.id}:${m.dx},${m.dz}`).join(' ')}
+      data-selected={[
+        ...selection.components.map((c) => `C:${c}`),
+        ...selection.wires.map((w) => `W:${w}`),
+      ].join(' ')}
+      data-wire-colors={scene?.wires.map((w) => `${w.id}:${w.color}`).join(' ')}
       data-open={scene?.joints
         .filter((j) => j.kind === 'open')
         .map((j) => j.terminals.join('+'))
@@ -159,6 +208,8 @@ export function ThreeView() {
       <div
         class="view3d-host"
         ref={host}
+        onPointerDown={onPointerDown}
+        onPointerUp={onPointerUp}
         role="img"
         aria-label={t('view3d.aria', { name: doc.name })}
         aria-keyshortcuts="ArrowLeft ArrowRight Shift+ArrowLeft Shift+ArrowRight Shift+ArrowUp Shift+ArrowDown + - Home"

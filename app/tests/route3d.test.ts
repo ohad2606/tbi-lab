@@ -30,7 +30,10 @@ import {
   esp32ModuleCircuit,
   pirMatrixCircuit,
   relayLedCircuit,
+  transistorPsuCircuit,
 } from './separationFixtures.js';
+import * as THREE from 'three';
+import { buildComponent, createMaterials, OwnedResources } from '../src/views/scene3d/models.js';
 
 const example = (id: string) =>
   JSON.parse(
@@ -85,10 +88,13 @@ function expectNoWireThroughBodies(doc: ProjectDocument, s: SceneDescription, la
     const own = [src.from, src.to].flatMap((e) =>
       e.kind === 'terminal' ? [e.component, `${e.component}:${e.terminal}`] : [],
     );
+    const ends = [w.points[0]!, w.points.at(-1)!];
     for (const p of samples(w, 0.5))
       for (const o of obstacles) {
         const isOwn = own.includes(o.part) || own.some((x) => o.part.startsWith(`${x}:`));
         if (isOwn && o.bottom < 2) continue;
+        // Its own terminal fitting (a supply's binding post) where it is fastened.
+        if (isOwn && ends.some((e) => Math.hypot(e.x - p.x, e.y - p.y, e.z - p.z) < 3)) continue;
         const inside =
           p.x > o.x0 - m &&
           p.x < o.x1 + m &&
@@ -203,6 +209,85 @@ describe('3D wire routes: the owner-reviewed PIR alarm', () => {
         expect(p).toEqual({ x: t.x, y: t.y, z: t.z });
       }
     }
+  });
+});
+
+describe('3D wire routes: no false hop (the owner-reviewed transistor / supply case)', () => {
+  it('the base wire stays low beside the transistor: clear of its real body and leads', () => {
+    (globalThis as { document?: unknown }).document ??= {
+      createElement: () => ({
+        width: 0,
+        height: 0,
+        style: {},
+        getContext: () =>
+          new Proxy(
+            {},
+            {
+              get: (_t, k) =>
+                k === 'createLinearGradient' || k === 'createRadialGradient'
+                  ? () => ({ addColorStop() {} })
+                  : k === 'measureText'
+                    ? () => ({ width: 10 })
+                    : () => undefined,
+              set: () => true,
+            },
+          ),
+      }),
+    };
+    const doc = transistorPsuCircuit();
+    const before = serializePackage(
+      createPackage(doc, { appVersion: 't', exportedAt: '2026-10-07T00:00:00Z' }),
+    );
+    const s = deriveScene(doc);
+    const w = ofWire(doc, s, 'R3:b', 'Q1:base');
+    // Low all the way: no raised bridge.
+    expect(maxY(w)).toBeLessThan(1.2);
+    expect(longestRiser(w)).toBeLessThan(1);
+    // Physically clear, checked against the built transistor (not the routing boxes): the
+    // wire's axis is a wire radius away from the body's box and from every vertex of the leads
+    // it is not connected to.
+    const q1 = s.components.find((c) => c.id === 'Q1')!;
+    const model = buildComponent(q1, createMaterials(), new OwnedResources(null, 'reduced'));
+    model.updateMatrixWorld(true);
+    const leads: THREE.Vector3[] = [];
+    let body: THREE.Box3 | null = null;
+    model.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (!m.isMesh) return;
+      if (m.userData.lead) {
+        const pos = m.geometry.attributes.position!;
+        for (let i = 0; i < pos.count; i++)
+          leads.push(new THREE.Vector3().fromBufferAttribute(pos, i).applyMatrix4(m.matrixWorld));
+      } else if (!body && m.geometry.type === 'ExtrudeGeometry')
+        body = new THREE.Box3().setFromObject(m);
+    });
+    expect(body).not.toBeNull();
+    const base = q1.terminals.find((t) => t.id === 'base')!;
+    for (const p of samples(w)) {
+      const v = new THREE.Vector3(p.x, p.y, p.z);
+      if (v.distanceTo(new THREE.Vector3(base.x, base.y, base.z)) < 4) continue; // its own lead
+      expect(body!.distanceToPoint(v)).toBeGreaterThanOrEqual(WIRE_RADIUS);
+      for (const l of leads)
+        if (Math.hypot(l.x - base.x, l.z - base.z) > 1.5)
+          expect(l.distanceTo(v)).toBeGreaterThanOrEqual(WIRE_RADIUS);
+    }
+    expectNoWireThroughBodies(doc, s, 'transistor+psu');
+    expect(touchingNodes(s)).toEqual([]);
+    expect(deriveScene(transistorPsuCircuit())).toEqual(s); // deterministic
+    expect(
+      serializePackage(createPackage(doc, { appVersion: 't', exportedAt: '2026-10-07T00:00:00Z' })),
+    ).toBe(before);
+  });
+
+  it('a wire really crossing the transistor still rises over it', () => {
+    let doc = place(newDoc(), 'component.bjt_npn', 300, 0).doc; // Q1
+    doc = place(doc, 'component.resistor', 160, 0).doc; // R1
+    doc = place(doc, 'component.resistor', 440, 0).doc; // R2
+    doc = wire(doc, ['R1', 'b'], ['R2', 'a']); // straight across the transistor's body
+    const s = deriveScene(doc);
+    const w = ofWire(doc, s, 'R1:b', 'R2:a');
+    expect(maxY(w)).toBeGreaterThan(4.8 + 3 + CLEARANCE - 1e-6);
+    expectNoWireThroughBodies(doc, s, 'across transistor');
   });
 });
 
