@@ -35,11 +35,13 @@ import {
   SCALE,
   WIRE_RADIUS,
   deriveScene,
+  realPinZ,
   type SceneDescription,
 } from '../src/views/scene3d/scene.js';
 import { componentBoxes, moveRouted, rotateRouted } from '../src/ui/routing.js';
 import { expectFaithful } from './schematicReadback.js';
 import { sprint10Circuit } from './circuits10.js';
+import { CLEARANCE } from '../src/views/scene3d/route3d.js';
 import {
   contactOverlapCircuit,
   denseMixedCircuit,
@@ -417,14 +419,34 @@ describe('one electrical truth across Circuit, Schematic and 3D', () => {
     const scene = deriveScene(doc);
     const w = scene.wires.find((x) => x.id === doc.layout.wires[0]!.id)!;
     const placement = doc.layout.components.U1!;
+    // The real header pins (2.54 mm pitch along the 2D pin columns), as the 3D model has them.
     const pins = ESP32_DEVKITC_WROOM32.pins.map((p) => {
-      const q = rotatePoint(boardPinPosition(p), placement.rotation);
-      return { x: (placement.x + q.x) * SCALE, z: (placement.y + q.y) * SCALE };
+      const local = boardPinPosition(p);
+      const q = rotatePoint(
+        { x: Math.sign(local.x) * (ESP32_DEVKITC.headerRowSpacingMm / 2), y: realPinZ(p.position) },
+        placement.rotation,
+      );
+      return { x: placement.x * SCALE + q.x, z: placement.y * SCALE + q.y };
     });
-    const interior = w.points.slice(1, -1);
-    // Above every header pin (its stub top) by the wire clearance: it can never touch one.
+    // Wherever it passes over a header pin (other than its own), it is above the pin's stub top
+    // by a radius plus a gap (route3d.ts CLEARANCE): it can never touch one. (Away from the header it may come down: the
+    // height is local, route3d.ts.)
     const pinTop = ESP32_PCB_TOP + ESP32_DEVKITC.pinStubAboveMm;
-    expect(interior.every((p) => p.y >= pinTop + WIRE.clearanceMm - 1e-9)).toBe(true);
+    const own = w.points[0]!;
+    let checked = 0;
+    for (let i = 1; i < w.points.length; i++) {
+      const a = w.points[i - 1]!;
+      const b = w.points[i]!;
+      for (let k = 0; k <= 20; k++) {
+        const t = k / 20;
+        const p = { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, z: a.z + (b.z - a.z) * t };
+        if (Math.hypot(p.x - own.x, p.z - own.z) < 2) continue;
+        if (!pins.some((q) => Math.hypot(q.x - p.x, q.z - p.z) < WIRE.radiusMm + 0.6)) continue;
+        checked++;
+        expect(p.y).toBeGreaterThanOrEqual(pinTop + CLEARANCE - 1e-9);
+      }
+    }
+    expect(checked).toBeGreaterThan(20); // it does run down the header
     expect(pins.length).toBeGreaterThan(30);
   });
 });

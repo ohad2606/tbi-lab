@@ -42,7 +42,9 @@ describe('natural wire shape', () => {
       }
       // Separation: as close as the plain routes are allowed (they are the reference), never
       // closer, except near an end two wires share.
-      const plain = new Map(desc.wires.map((w) => [w.id, sampleShape(plainShape(w.points))]));
+      const plain = new Map(
+        desc.wires.map((w) => [w.id, sampleShape(plainShape(w.points, w.radii))]),
+      );
       const ends = (id: string) => {
         const w = desc.wires.find((x) => x.id === id)!;
         return [w.points[0]!, w.points.at(-1)!].map((p) => new THREE.Vector3(p.x, p.y, p.z));
@@ -107,10 +109,23 @@ describe('natural wire shape', () => {
       expect(ms).toBeLessThan(2000);
     });
 
-  it('the scenes actually look natural: most wires keep a drape', () => {
-    const desc = deriveScene(denseBench());
-    const shapes = [...shapeWires(desc).values()];
-    expect(shapes.filter((s) => s.drape > 0).length).toBeGreaterThan(shapes.length / 2);
+  it('the scenes actually look natural: wires spanning in the air keep a drape', () => {
+    // Since the fresh 3D routes (route3d.ts) most wires rest on the bench, where there is nothing
+    // to sag; a wire with a long level span above the bench (over something) still sags.
+    for (const doc of [denseBench(), example('esp32-input-echo'), partsBench()]) {
+      const desc = deriveScene(doc);
+      const shapes = shapeWires(desc);
+      const spanning = desc.wires.filter((w) =>
+        w.points.some((b, i) => {
+          const a = w.points[i - 1];
+          return (
+            !!a && Math.abs(a.y - b.y) < 1e-6 && a.y > 3 && Math.hypot(b.x - a.x, b.z - a.z) >= 14
+          );
+        }),
+      );
+      const draped = spanning.filter((w) => shapes.get(w.id)!.drape > 0);
+      expect(draped.length).toBeGreaterThanOrEqual(spanning.length / 2);
+    }
   });
 });
 

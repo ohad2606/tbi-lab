@@ -203,3 +203,30 @@ test('body separation: PIR + matrix, ESP32 + module, dense mixed (top and angled
     for (const k of ['top', 'angled'] as const) await shot(page, `sep-${id}-${k}`, cams[id]![k]);
   }
 });
+
+// Listed shots (Sprint 10 wire routing): EVIDENCE_SHOTS=<json> with
+// [{ example: '<id>', shots: [{ name, target, from }] }]; curated examples by id.
+const SHOTS = process.env.EVIDENCE_SHOTS;
+test('listed shots of curated examples', async ({ page }) => {
+  test.skip(!SHOTS, 'EVIDENCE_SHOTS not set');
+  const list = JSON.parse(readFileSync(SHOTS!, 'utf8')) as {
+    example: string;
+    shots: { name: string; target: V; from: V }[];
+  }[];
+  for (const e of list) {
+    const doc = JSON.parse(
+      readFileSync(
+        new URL(`../../app/src/examples/data/${e.example}.json`, import.meta.url),
+        'utf8',
+      ),
+    );
+    await openDoc(
+      page,
+      serializePackage(
+        createPackage(doc, { appVersion: 'evidence', exportedAt: '2026-10-07T00:00:00Z' }),
+      ),
+    );
+    await open3d(page);
+    for (const s of e.shots) await shot(page, `${e.example}-${s.name}`, s);
+  }
+});

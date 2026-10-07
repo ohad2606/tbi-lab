@@ -58,7 +58,8 @@ const dist = (a: Vec3, b: Vec3) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
 const vertical = (a: Vec3, b: Vec3) => Math.abs(a.x - b.x) < 1e-6 && Math.abs(a.z - b.z) < 1e-6;
 
 /** The route's own shape (as drawn before this pass). */
-export function plainShape(points: Vec3[]): WireShape {
+export function plainShape(points: Vec3[], given?: number[]): WireShape {
+  if (given && given.length === points.length - 2) return { points, radii: [...given], drape: 0 };
   const radii: number[] = [];
   for (let i = 1; i < points.length - 1; i++) {
     const v = vertical(points[i - 1]!, points[i]!) || vertical(points[i]!, points[i + 1]!);
@@ -73,8 +74,14 @@ export function drapedShape(
   points: Vec3[],
   ends: readonly [string, string],
   sag: number,
+  given?: number[],
 ): WireShape {
-  let pts = points.map((p) => ({ ...p }));
+  // The router's corner radii (route3d.ts) stay with their points; inserted points get their own.
+  const known = given && given.length === points.length - 2;
+  let pts: (Vec3 & { r?: number })[] = points.map((p, i) => ({
+    ...p,
+    r: known && i > 0 && i < points.length - 1 ? given[i - 1] : undefined,
+  }));
   // Out of a jumper housing: a straight exit before the bend (the riser keeps its top).
   const exit = (k: 0 | 1) => {
     if (ends[k] !== 'jumper' || pts.length < 3) return;
@@ -88,7 +95,7 @@ export function drapedShape(
   exit(1);
   // Sag along long level runs (both ends at the same height, not vertical).
   if (sag > 0) {
-    const out: Vec3[] = [pts[0]!];
+    const out: (Vec3 & { r?: number })[] = [pts[0]!];
     for (let i = 1; i < pts.length; i++) {
       const a = pts[i - 1]!;
       const b = pts[i]!;
@@ -119,6 +126,10 @@ export function drapedShape(
     const a = pts[i - 1]!;
     const p = pts[i]!;
     const b = pts[i + 1]!;
+    if (p.r !== undefined) {
+      radii.push(p.r);
+      continue;
+    }
     const riser = vertical(a, p) || vertical(p, b);
     const turn = new THREE.Vector3(p.x - a.x, p.y - a.y, p.z - a.z)
       .normalize()
@@ -135,7 +146,11 @@ export function drapedShape(
       );
     } else radii.push(PLAN_BEND);
   }
-  return { points: pts, radii, drape: sag >= 1 ? 1 : sag > 0 ? 0.5 : 0 };
+  return {
+    points: pts.map(({ x, y, z }) => ({ x, y, z })),
+    radii,
+    drape: sag >= 1 ? 1 : sag > 0 ? 0.5 : 0,
+  };
 }
 
 /** Points along a shape, every `step` mm. */
@@ -182,7 +197,7 @@ class Grid {
  */
 export function shapeWires(desc: SceneDescription): Map<string, WireShape> {
   const wires = desc.wires;
-  const shapes = wires.map((w) => plainShape(w.points));
+  const shapes = wires.map((w) => plainShape(w.points, w.radii));
   const samples = shapes.map((s) => sampleShape(s));
   const grid = new Grid();
   samples.forEach((ss, i) => ss.forEach((p) => grid.add(p, i)));
@@ -246,7 +261,7 @@ export function shapeWires(desc: SceneDescription): Map<string, WireShape> {
     const original = samples[i]!;
     grid.remove(i);
     for (const sag of [1, 0.5]) {
-      const s = drapedShape(w.id, w.points, w.ends, sag);
+      const s = drapedShape(w.id, w.points, w.ends, sag, w.radii);
       const ss = sampleShape(s);
       if (ok(i, ss, original)) {
         shapes[i] = s;

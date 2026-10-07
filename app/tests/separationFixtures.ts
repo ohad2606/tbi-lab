@@ -119,3 +119,17 @@ export function denseMixedCircuit(): ProjectDocument {
   doc = wire(doc, ['PSU1', 'negative'], ['GND1', 'ref']);
   return doc;
 }
+
+/**
+ * The owner's relay -> LED case, as the editor draws it: a relay with an LED close beside it, the
+ * relay's NO contact wired straight to the LED (auto-routed wires).
+ */
+export function relayLedCircuit(): ProjectDocument {
+  let doc = place(newDoc(), 'component.relay', 300, 0).doc; // K1
+  doc = place(doc, 'component.led', 420, 0).doc; // D1
+  doc = wire(doc, ['K1', 'no'], ['D1', 'anode']);
+  doc = wire(doc, ['D1', 'cathode'], ['GND1', 'ref']);
+  doc = wire(doc, ['K1', 'com'], ['PSU1', 'positive']);
+  doc = wire(doc, ['PSU1', 'negative'], ['GND1', 'ref']);
+  return doc;
+}

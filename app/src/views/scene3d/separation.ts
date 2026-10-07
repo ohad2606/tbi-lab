@@ -182,7 +182,18 @@ export function separateBodies(
   }
   const units: Unit[] = [...byRoot.values()].map((members, index) => {
     const rects = members.flatMap((m) => worldBoxes(m).filter((b) => !b.node));
-    const area = rects.reduce((s, r) => s + (r.x1 - r.x0) * (r.z1 - r.z0), 0);
+    // Plan area: each member's largest box (its footprint), not the sum of stacked boxes.
+    const area = members.reduce(
+      (s, m) =>
+        s +
+        Math.max(
+          0,
+          ...worldBoxes(m)
+            .filter((b) => !b.node)
+            .map((r) => (r.x1 - r.x0) * (r.z1 - r.z0)),
+        ),
+      0,
+    );
     const span = Math.max(0, ...rects.map((r) => Math.max(r.x1 - r.x0, r.z1 - r.z0)));
     return {
       index,

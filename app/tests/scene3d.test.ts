@@ -23,7 +23,6 @@ import {
   ESP32_PIN_TOP,
   LEAD_ATTACH_HEIGHT,
   LED_PACKAGES,
-  WIRE,
 } from '../src/views/scene3d/physical.js';
 import { EXAMPLES_WITH_DOCUMENTS as EXAMPLES } from '../src/examples/documents.js';
 import {
@@ -219,7 +218,7 @@ describe('3D scene description', () => {
     expect(flags.sort()).toEqual(['D1:anode', 'R1:b']);
   });
 
-  it('wires that cross get different heights; a wire over terminals runs above them all', () => {
+  it('wires that cross pass over each other locally; a wire over parts and leads clears them', () => {
     let doc = newDoc();
     for (const [x, y] of [
       [0, -100],
@@ -231,17 +230,56 @@ describe('3D scene description', () => {
     doc = wire(doc, ['R1', 'b'], ['R2', 'a']);
     doc = wire(doc, ['R3', 'b'], ['R4', 'b']);
     const scene = deriveScene(doc);
-    const level = (id: string) => scene.wires.find((w) => w.id === id)!.points[1]!.y;
+    // Height of a wire's polyline at a plan point it passes through.
+    const heightAt = (id: string, x: number, z: number) => {
+      const pts = scene.wires.find((w) => w.id === id)!.points;
+      let best = -Infinity;
+      for (let i = 1; i < pts.length; i++) {
+        const a = pts[i - 1]!;
+        const b = pts[i]!;
+        for (let k = 0; k <= 200; k++) {
+          const t = k / 200;
+          const px = a.x + (b.x - a.x) * t;
+          const pz = a.z + (b.z - a.z) * t;
+          if (Math.hypot(px - x, pz - z) < 0.05) best = Math.max(best, a.y + (b.y - a.y) * t);
+        }
+      }
+      return best;
+    };
     const [a, b] = doc.layout.wires.map((w) => w.id) as [string, string];
-    expect(Math.abs(level(a) - level(b))).toBeGreaterThanOrEqual(WIRE.levelStepMm - 1e-9);
-    expect(WIRE.levelStepMm).toBeGreaterThan(2 * WIRE_RADIUS);
-    // R1.a → R2.b along y = -100 passes over R1.b and R2.a (and both bodies).
+    // They cross at (140, -100) in layout units: one passes over the other by more than a wire's
+    // diameter there.
+    const ha = heightAt(a, 140 * SCALE, -100 * SCALE);
+    const hb = heightAt(b, 140 * SCALE, -100 * SCALE);
+    expect(Number.isFinite(ha) && Number.isFinite(hb)).toBe(true);
+    expect(Math.abs(ha - hb)).toBeGreaterThanOrEqual(2 * WIRE_RADIUS + 0.3 - 1e-6);
+    // Away from the crossing, the lower one lies near the bench (no whole-wire lift).
+    const low = ha < hb ? a : b;
+    expect(Math.min(...scene.wires.find((w) => w.id === low)!.points.map((p) => p.y))).toBeLessThan(
+      1,
+    );
+    // R1.a -> R2.b along y = -100 passes over R1's body, R1.b, R2.a and R2's body: above all of
+    // them by a clearance wherever it is over them.
     const over = wire(doc, ['R1', 'a'], ['R2', 'b']);
     const s2 = deriveScene(over);
     const w = s2.wires.find((x) => x.id === over.layout.wires.at(-1)!.id)!;
-    // It runs a clearance above the bodies and leads it passes over.
-    const clear = MODEL_HEIGHT['resistor.axial'] + WIRE.clearanceMm;
-    expect(w.points.slice(1, -1).every((p) => p.y >= clear - 1e-9)).toBe(true);
+    const clear = MODEL_HEIGHT['resistor.axial'] + WIRE_RADIUS + 0.5;
+    const bodies = [0, 200].map((x) => x * SCALE);
+    let checked = 0;
+    for (let i = 1; i < w.points.length; i++) {
+      const p0 = w.points[i - 1]!;
+      const p1 = w.points[i]!;
+      for (let k = 0; k <= 50; k++) {
+        const t = k / 50;
+        const x = p0.x + (p1.x - p0.x) * t;
+        const y = p0.y + (p1.y - p0.y) * t;
+        // Over a body (centre +-3 mm), away from its own lead ends.
+        if (!bodies.some((c) => Math.abs(x - c) < 3)) continue;
+        checked++;
+        expect(y).toBeGreaterThanOrEqual(clear - 1e-6);
+      }
+    }
+    expect(checked).toBeGreaterThan(10);
   });
 
   it('each LED card shows its datasheet package and colour (presentation only)', () => {
