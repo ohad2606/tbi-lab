@@ -9,17 +9,99 @@
  *   housings; scene.ts sceneObstacles), which resolve to the part;
  * - every wire's shaped tube (the same shape the renderer draws, wireShape.ts), with a slightly
  *   generous radius so a thin wire is easy to hit;
- * and the nearest hit wins. The bench, the backdrop, labels and shadows are not in the set, so
+ * and the nearest hit wins (with `withActuators`, during a simulation, a physical control's
+ * actuator region first: `actuators`). The bench, the backdrop, labels and shadows are not in the set, so
  * they can never select anything. Pure and deterministic; run only on a click (no per-frame
  * raycasting).
  */
 import type * as THREE from 'three';
 import type { Obstacle } from './route3d.js';
-import type { SceneDescription } from './scene.js';
+import type { ModelKey, SceneDescription } from './scene.js';
 import { WIRE_RADIUS } from './scene.js';
+import { worldBoxes, type Box } from './separation.js';
+import { TACTILE, TOGGLE } from './physical.js';
+import { TOGGLE_TILT } from './assets/benchParts.js';
 import { sampleShape, type WireShape } from './wireShape.js';
 
-export type Pick = { kind: 'component'; id: string } | { kind: 'wire'; id: string } | null;
+export type Pick =
+  | { kind: 'component'; id: string }
+  | { kind: 'wire'; id: string }
+  /** A physical control's actuator (the toggle's lever, the button's cap) of a part. */
+  | { kind: 'actuator'; id: string; control: 'toggle' | 'momentary' }
+  | null;
+
+/** An interactive region of a part: where its actuator is (world box), and what it does. */
+export interface Actuator {
+  id: string;
+  control: 'toggle' | 'momentary';
+  box: Obstacle;
+}
+
+/**
+ * The interactive regions of a scene's physical controls (Sprint 10, operation during Run), from
+ * the parts' real dimensions: the toggle switch's lever (its whole swing above the nut, both
+ * positions) and the push button's actuator cap. Interaction descriptors, by model: a future
+ * control (a knob, a multi-position switch) adds its region here.
+ */
+export function actuators(scene: SceneDescription): Actuator[] {
+  const out: Actuator[] = [];
+  for (const c of scene.components) {
+    const local = ACTUATOR_REGIONS[c.model];
+    if (!local) continue;
+    const [box] = worldBoxes({
+      id: c.id,
+      model: c.model,
+      x: c.x,
+      z: c.z,
+      rotation: c.rotation,
+      boxes: [local.box],
+      nodes: [],
+    });
+    out.push({
+      id: c.id,
+      control: local.control,
+      box: {
+        part: c.id,
+        x0: box!.x0,
+        x1: box!.x1,
+        z0: box!.z0,
+        z1: box!.z1,
+        bottom: box!.y0,
+        top: box!.y1,
+      },
+    });
+  }
+  return out;
+}
+
+const toggleTop = TOGGLE.standoffMm + TOGGLE.bodyHeightMm;
+const togglePivot = toggleTop + TOGGLE.bushingHeightMm - 0.6;
+const swing = Math.sin(Math.abs(TOGGLE_TILT.open)) * TOGGLE.leverLengthMm + 1;
+const tactCover = TACTILE.standoffMm + TACTILE.bodyHeightMm - 0.35 + 0.12;
+const ACTUATOR_REGIONS: Partial<Record<ModelKey, { control: 'toggle' | 'momentary'; box: Box }>> = {
+  'switch.toggle': {
+    control: 'toggle',
+    box: {
+      x0: -swing,
+      x1: swing,
+      z0: -1.3,
+      z1: 1.3,
+      y0: togglePivot - 0.3,
+      y1: togglePivot + TOGGLE.leverLengthMm + 0.5,
+    },
+  },
+  'switch.tactile': {
+    control: 'momentary',
+    box: {
+      x0: -TACTILE.actuatorDiameterMm / 2 - 0.5,
+      x1: TACTILE.actuatorDiameterMm / 2 + 0.5,
+      z0: -TACTILE.actuatorDiameterMm / 2 - 0.5,
+      z1: TACTILE.actuatorDiameterMm / 2 + 0.5,
+      y0: tactCover,
+      y1: tactCover + 0.12 + TACTILE.actuatorHeightMm + 0.4,
+    },
+  },
+};
 
 export interface Ray {
   origin: [number, number, number];
@@ -85,6 +167,7 @@ export function pick(
   scene: SceneDescription,
   obstacles: readonly Obstacle[],
   shapes: ReadonlyMap<string, WireShape>,
+  withActuators = false,
 ): Pick {
   const n = Math.hypot(...ray.dir);
   const r: Ray = { origin: ray.origin, dir: ray.dir.map((v) => v / n) as Ray['dir'] };
@@ -93,9 +176,19 @@ export function pick(
     if (!best || t < best.t - 1e-9) best = { t, hit };
   };
   const parts = new Set(scene.components.map((c) => c.id));
+  // An actuator hit beats its own part's body (whose box encloses the lever), not what is in
+  // front of it.
+  const acted = new Set<string>();
+  for (const a of withActuators ? actuators(scene) : []) {
+    const t = hitBox(r, a.box);
+    if (t !== null) {
+      consider(t - 0.25, { kind: 'actuator', id: a.id, control: a.control });
+      acted.add(a.id);
+    }
+  }
   for (const o of obstacles) {
     const id = parts.has(o.part) ? o.part : o.part.split(':')[0]!;
-    if (!parts.has(id)) continue;
+    if (!parts.has(id) || acted.has(id)) continue;
     const t = hitBox(r, o);
     if (t !== null) consider(t, { kind: 'component', id });
   }

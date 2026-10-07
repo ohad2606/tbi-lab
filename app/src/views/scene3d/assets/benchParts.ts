@@ -81,21 +81,24 @@ export function buildTactile(own: OwnedResources, m: PartMaterials, xa: number, 
       ]);
       g.add(tab);
     }
-  // The actuator: a round stem with a chamfered top, dark moulded.
+  // The actuator: a round stem with a chamfered top, dark moulded. It is the part a finger
+  // presses (an interactive actuator: it travels down while pressed, renderer.ts).
   const a = p.actuatorDiameterMm / 2;
-  g.add(
-    mesh(
-      lathe(own, 'tact:actuator', [
-        [a, 0],
-        [a, p.actuatorHeightMm - 0.35],
-        [a - 0.05, p.actuatorHeightMm - 0.2],
-        [a - 0.35, p.actuatorHeightMm + 0.05],
-        [0.001, p.actuatorHeightMm + 0.05],
-      ]),
-      m.darkPlastic,
-      [0, coverY + 0.12, 0],
-    ),
+  const actuator = mesh(
+    lathe(own, 'tact:actuator', [
+      [a, 0],
+      [a, p.actuatorHeightMm - 0.35],
+      [a - 0.05, p.actuatorHeightMm - 0.2],
+      [a - 0.35, p.actuatorHeightMm + 0.05],
+      [0.001, p.actuatorHeightMm + 0.05],
+    ]),
+    m.darkPlastic,
+    [0, coverY + 0.12, 0],
   );
+  actuator.userData.actuator = 'momentary';
+  actuator.userData.restY = coverY + 0.12;
+  actuator.userData.travel = TACTILE_TRAVEL_MM;
+  g.add(actuator);
   // Four flat legs, out of the base's underside, kinked, along the bench to the terminals.
   const legs = (sx: -1 | 1, end: number) => {
     for (const sz of [-1, 1]) {
@@ -136,6 +139,11 @@ export function buildTactile(own: OwnedResources, m: PartMaterials, xa: number, 
 }
 
 // ---------------------------------------------------------------------------------------------
+
+/** The toggle lever's tilt about its pivot (radians, about z): towards -x when closed. */
+export const TOGGLE_TILT = { closed: -0.38, open: 0.38 } as const;
+/** A tactile switch's actuator travel when pressed (mm; the class is ~0.25-0.5 mm). */
+export const TACTILE_TRAVEL_MM = 0.45;
 
 /** Sub-miniature SPST toggle switch; lever towards -x when closed (the persisted position). */
 export function buildToggle(
@@ -225,10 +233,13 @@ export function buildToggle(
     ),
     m.chrome,
   );
-  const tilt = closed ? -0.38 : 0.38;
+  const tilt = closed ? TOGGLE_TILT.closed : TOGGLE_TILT.open;
   lever.position.set(0, top + p.bushingHeightMm - 0.6, 0);
   lever.rotation.z = tilt;
   lever.userData.lever = closed ? 'closed' : 'open';
+  // The interactive actuator: it swings about its pivot (the bushing's top) between the two
+  // positions (renderer.ts animates it from the switch's state).
+  lever.userData.actuator = 'toggle';
   g.add(lever);
   // Solder lugs under the base, and the leads from them to the terminals.
   for (const [sx, end] of [

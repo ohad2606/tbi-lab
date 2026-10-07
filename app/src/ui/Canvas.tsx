@@ -15,7 +15,6 @@ import {
   addComponent,
   placementBlock,
   addWire,
-  setParam,
   deleteSelection,
   emptySelection,
   moveWireSegment,
@@ -64,6 +63,7 @@ import {
 import { componentBox, componentBoxes, moveRouted, rotateRouted } from './routing.js';
 import { RGB_LOOKS, ledLook } from '../views/ledLooks.js';
 import { resolveWireColors } from '../views/wireColors.js';
+import { pressControl, toggleControl } from './controls.js';
 import type { GpioLevel } from '../runtime/view.js';
 import { warningsFor } from '../sim/ratings.js';
 import { probeAnchor, probeTargetName, readProbe, type Probe, type ProbeInput } from './probes.js';
@@ -453,18 +453,15 @@ export function Canvas({
       const c = doc.components.find((x) => x.id === hit.id);
       const toggle = c && CATALOG[c.type].toggleParam;
       if (c && toggle) {
-        // PERSISTENT edit: the browser document first (revision, autosave, undo); while
-        // running it is then mirrored to the session as a live control.
-        store.apply(setParam(doc, c.id, toggle, c.params[toggle] !== true), {
-          ...emptySelection(),
-          components: [c.id],
-        });
+        // PERSISTENT edit (controls.ts, the action the 3D view uses too): the browser document
+        // first (revision, autosave, undo); while running it is mirrored to the session.
+        toggleControl(store, doc, c.id, { select: true });
         return;
       }
       if (c?.type === 'component.push_button' && simRunning) {
         // TRANSIENT runtime input: held while the pointer is down, never persisted.
         svg.setPointerCapture(e.pointerId);
-        store.press(c.id, true);
+        pressControl(store, c.id, true);
         setMode({ kind: 'button', id: c.id });
         return;
       }
@@ -583,7 +580,7 @@ export function Canvas({
   /** Release a held push button on every way a press can end (up, cancel, capture lost). */
   const releaseButton = () => {
     if (mode.kind !== 'button') return;
-    store.press(mode.id, false);
+    pressControl(store, mode.id, false);
     setMode({ kind: 'idle' });
   };
 
@@ -677,14 +674,14 @@ export function Canvas({
       const sw = focusedSwitch(e);
       const toggle = sw && CATALOG[sw.type].toggleParam;
       if (sw && toggle && !readOnly) {
-        if (!e.repeat) store.apply(setParam(doc, sw.id, toggle, sw.params[toggle] !== true));
+        if (!e.repeat) toggleControl(store, doc, sw.id);
         return;
       }
       if (sw?.type === 'component.push_button') {
         // Momentary: held exactly while the key is down; auto-repeat changes nothing.
         if (!e.repeat && simRunning) {
           heldByKey.current = sw.id;
-          store.press(sw.id, true);
+          pressControl(store, sw.id, true);
         }
         return;
       }
@@ -737,7 +734,7 @@ export function Canvas({
     if (e.key !== ' ') return;
     spaceHeld.current = false;
     if (heldByKey.current) {
-      store.press(heldByKey.current, false);
+      pressControl(store, heldByKey.current, false);
       heldByKey.current = null;
     }
   };
@@ -745,7 +742,7 @@ export function Canvas({
   // A button can never stay stuck: losing focus, or the simulation stopping, releases it.
   const releaseKeyHeld = () => {
     if (heldByKey.current) {
-      store.press(heldByKey.current, false);
+      pressControl(store, heldByKey.current, false);
       heldByKey.current = null;
     }
   };

@@ -10,7 +10,8 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { emptySelection } from '@tbi-lab/domain';
 import { deriveScene, sceneObstacles, type SceneDescription } from '../views/scene3d/scene.js';
-import { pick } from '../views/scene3d/pick.js';
+import { actuators, pick } from '../views/scene3d/pick.js';
+import { controlKind, controlState, pressControl, toggleControl } from './controls.js';
 import type { Obstacle } from '../views/scene3d/route3d.js';
 import type { LiveLevel, Viewer, ViewerStats } from '../views/scene3d/renderer.js';
 import { rgbMix } from '../views/ledLooks.js';
@@ -33,6 +34,10 @@ const PAN_STEP = 0.1;
 
 /** A press that moves less than this (px) is a click (selection); more is a camera drag. */
 const CLICK_SLOP = 5;
+const NO_PRESS: readonly string[] = [];
+/** The scene without the controls' positions: equal keys need no rebuild. */
+const structuralKey = (s: SceneDescription) =>
+  JSON.stringify(s, (k, v: unknown) => (k === 'closed' && typeof v === 'boolean' ? undefined : v));
 
 export function ThreeView() {
   const { doc, locale, sim, selection } = useAppState();
@@ -86,15 +91,44 @@ export function ThreeView() {
   }, []);
 
   // The scene follows the document; a different project starts from the default camera.
+  // A change of a control's state only (a switch flipped) does not rebuild the scene: the
+  // actuator moves (setControls, below); anything else rebuilds it.
+  const built = useRef<string | null>(null);
   useEffect(() => {
     if (status !== 'ready' || !scene || !viewer.current) return;
     const resetCamera = shownProject.current !== doc?.projectId;
     shownProject.current = doc?.projectId ?? null;
-    viewer.current.update(scene, { resetCamera });
+    const key = structuralKey(scene);
+    if (resetCamera || built.current !== key) {
+      built.current = key;
+      viewer.current.update(scene, { resetCamera });
+    }
     // Evidence and browser tests (opted in, as tbiViewer): the scene the view shows.
-    const h = host.current as unknown as { tbiViewer?: Viewer; tbiScene?: SceneDescription };
-    if (h?.tbiViewer) h.tbiScene = scene;
+    const h = host.current as unknown as {
+      tbiViewer?: Viewer;
+      tbiScene?: SceneDescription;
+      tbiActuators?: ReturnType<typeof actuators>;
+    };
+    if (h?.tbiViewer) {
+      h.tbiScene = scene;
+      h.tbiActuators = actuators(scene);
+    }
   }, [scene, status]);
+
+  // Physical controls: the ONE state both views show (the document's switch positions, the
+  // session's pressed buttons; controls.ts). The 3D actuators move to match.
+  const running = sim.status === 'running';
+  const pressedNow = running ? sim.pressed : NO_PRESS;
+  const closedMap = useMemo(() => {
+    const out: Record<string, boolean> = {};
+    for (const c of doc?.components ?? [])
+      if (controlKind(c.type, true) === 'toggle') out[c.id] = controlState(doc!, [], c.id)!.on;
+    return out;
+  }, [doc]);
+  const controlKey = JSON.stringify([closedMap, pressedNow]);
+  useEffect(() => {
+    if (status === 'ready') viewer.current?.setControls({ closed: closedMap, pressed: pressedNow });
+  }, [controlKey, status, scene]);
 
   // Selection: the project's own (Circuit, Schematic, Inspector, 3D show the same), marked subtly.
   useEffect(() => {
@@ -106,23 +140,90 @@ export function ThreeView() {
   // edited here: the Inspector edits what is selected, as in the Circuit view.
   const down = useRef<{ x: number; y: number } | null>(null);
   const volumes = useRef<{ scene: SceneDescription; obstacles: Obstacle[] } | null>(null);
+  /** What is under a point of the view (with the actuators while a simulation runs). */
+  const pickAt = (x: number, y: number, withActuators: boolean) => {
+    const v = viewer.current;
+    if (!v || !scene || !doc) return null;
+    if (volumes.current?.scene !== scene)
+      volumes.current = { scene, obstacles: sceneObstacles(doc, scene) };
+    return pick(v.rayAt(x, y), scene, volumes.current.obstacles, v.wireShapes(), withActuators);
+  };
+  // Operating a physical control during a simulation (owner-approved): the lever toggles on
+  // press; the button is held exactly while the pointer is down. The press never reaches the
+  // camera controls (no orbit from an actuator), and is captured so its release always arrives.
+  const held = useRef<{ id: string; pointer: number } | null>(null);
+  const keyHeld = useRef<string | null>(null);
+  const releaseHeld = () => {
+    const h = held.current;
+    if (!h) return;
+    held.current = null;
+    pressControl(store, h.id, false);
+    try {
+      host.current?.releasePointerCapture(h.pointer);
+    } catch {
+      /* already released */
+    }
+  };
+  const releaseKey = () => {
+    if (keyHeld.current) pressControl(store, keyHeld.current, false);
+    keyHeld.current = null;
+  };
+  const onPointerDownCapture = (e: PointerEvent) => {
+    if (e.button !== 0 || !e.isPrimary || !running || !doc) return;
+    const hit = pickAt(e.clientX, e.clientY, true);
+    if (hit?.kind !== 'actuator') return;
+    e.stopPropagation();
+    e.preventDefault();
+    down.current = null;
+    if (hit.control === 'toggle') {
+      toggleControl(store, doc, hit.id);
+      return;
+    }
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    } catch {
+      /* not capturable (synthetic event) */
+    }
+    held.current = { id: hit.id, pointer: e.pointerId };
+    pressControl(store, hit.id, true);
+  };
+  // Stopping (or the session ending) while held: nothing stays pressed.
+  useEffect(() => {
+    if (running) return;
+    if (held.current) {
+      try {
+        host.current?.releasePointerCapture(held.current.pointer);
+      } catch {
+        /* gone */
+      }
+      held.current = null;
+    }
+    keyHeld.current = null;
+    if (host.current) host.current.style.cursor = '';
+  }, [running]);
+  const hasActuators = useMemo(() => (scene ? actuators(scene).length > 0 : false), [scene]);
+  const hover = useRef(0);
+  const onPointerMove = (e: PointerEvent) => {
+    if (!running || !hasActuators || e.buttons || held.current || hover.current) return;
+    const { clientX, clientY } = e;
+    hover.current = requestAnimationFrame(() => {
+      hover.current = 0;
+      const hit = pickAt(clientX, clientY, true);
+      if (host.current) host.current.style.cursor = hit?.kind === 'actuator' ? 'pointer' : '';
+    });
+  };
   const onPointerDown = (e: PointerEvent) => {
     down.current = e.button === 0 && e.isPrimary ? { x: e.clientX, y: e.clientY } : null;
   };
   const onPointerUp = (e: PointerEvent) => {
+    if (held.current && e.pointerId === held.current.pointer) return releaseHeld();
     const d = down.current;
     down.current = null;
     const v = viewer.current;
     if (!d || !v || !scene || !doc || e.button !== 0) return;
     if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > CLICK_SLOP) return;
-    if (volumes.current?.scene !== scene)
-      volumes.current = { scene, obstacles: sceneObstacles(doc, scene) };
-    const hit = pick(
-      v.rayAt(e.clientX, e.clientY),
-      scene,
-      volumes.current.obstacles,
-      v.wireShapes(),
-    );
+    // Not running: an actuator is just part of its component (selection, never operation).
+    const hit = pickAt(e.clientX, e.clientY, false);
     store.select(
       hit
         ? { ...emptySelection(), [hit.kind === 'component' ? 'components' : 'wires']: [hit.id] }
@@ -157,6 +258,29 @@ export function ThreeView() {
   }, [levelKey, status, scene]);
 
   if (!doc) return null;
+  // The selected part, when it is a physical control: operable from the keyboard, and named for
+  // assistive technology by a synchronized control (the WebGL meshes are not focusable).
+  const selectedId =
+    selection.components.length === 1 && !selection.wires.length ? selection.components[0]! : null;
+  const selectedPart = selectedId ? doc.components.find((c) => c.id === selectedId) : undefined;
+  const control =
+    selectedPart && controlKind(selectedPart.type, true)
+      ? { id: selectedPart.id, ...controlState(doc, pressedNow, selectedPart.id)! }
+      : null;
+  const controlLabel =
+    control &&
+    t(`view3d.control.${control.kind}`, {
+      id: control.id,
+      state: t(
+        control.kind === 'toggle'
+          ? control.on
+            ? 'switch.state.closed'
+            : 'switch.state.open'
+          : control.on
+            ? 'switch.state.pressed'
+            : 'switch.state.released',
+      ),
+    });
   // Parts the visual-only separation could not pull apart within its cap (separation.ts).
   const overlaps = scene?.separation.unresolved.length
     ? [...new Set(scene.separation.unresolved.flat())].sort().join(', ')
@@ -195,6 +319,10 @@ export function ThreeView() {
         .map((j) => j.terminals.join('+'))
         .join(' ')}
       data-moved={scene?.separation.moved.map((m) => `${m.id}:${m.dx},${m.dz}`).join(' ')}
+      data-controls={[
+        ...Object.entries(closedMap).map(([id, on]) => `${id}:${on ? 'closed' : 'open'}`),
+        ...pressedNow.map((id) => `${id}:pressed`),
+      ].join(' ')}
       data-selected={[
         ...selection.components.map((c) => `C:${c}`),
         ...selection.wires.map((w) => `W:${w}`),
@@ -208,14 +336,34 @@ export function ThreeView() {
       <div
         class="view3d-host"
         ref={host}
+        onPointerDownCapture={onPointerDownCapture}
         onPointerDown={onPointerDown}
         onPointerUp={onPointerUp}
+        onPointerMove={onPointerMove}
+        onPointerCancel={(e) => held.current?.pointer === e.pointerId && releaseHeld()}
+        onLostPointerCapture={(e) => held.current?.pointer === e.pointerId && releaseHeld()}
+        onKeyUp={(e) => {
+          if ((e.key === ' ' || e.key === 'Enter') && keyHeld.current) releaseKey();
+        }}
+        onBlur={releaseKey}
         role="img"
         aria-label={t('view3d.aria', { name: doc.name })}
         aria-keyshortcuts="ArrowLeft ArrowRight Shift+ArrowLeft Shift+ArrowRight Shift+ArrowUp Shift+ArrowDown + - Home"
         tabIndex={status === 'ready' ? 0 : -1}
         data-testid="view3d-host"
         onKeyDown={(e) => {
+          // A selected switch or button: Space/Enter operates it while running (as in the
+          // Circuit view; auto-repeat changes nothing).
+          if ((e.key === ' ' || e.key === 'Enter') && control) {
+            e.preventDefault();
+            if (e.repeat || !running || !doc) return;
+            if (control.kind === 'toggle') toggleControl(store, doc, control.id);
+            else if (!keyHeld.current) {
+              keyHeld.current = control.id;
+              pressControl(store, control.id, true);
+            }
+            return;
+          }
           // The same camera actions as the buttons. Arrows are spatial: not mirrored under RTL.
           const v = viewer.current;
           if (!v) return;
@@ -241,6 +389,35 @@ export function ThreeView() {
           run();
         }}
       />
+      {control && status === 'ready' && (
+        <button
+          type="button"
+          class="visually-hidden"
+          data-testid="view3d-control"
+          role={control.kind === 'toggle' ? 'switch' : undefined}
+          aria-checked={control.kind === 'toggle' ? control.on : undefined}
+          aria-pressed={control.kind === 'momentary' ? control.on : undefined}
+          aria-disabled={!running}
+          aria-label={running ? controlLabel! : `${controlLabel} ${t('view3d.control.stopped')}`}
+          onClick={(e) => {
+            if (control.kind === 'toggle' && running) toggleControl(store, doc, control.id);
+            e.preventDefault();
+          }}
+          onKeyDown={(e) => {
+            if (control.kind !== 'momentary' || (e.key !== ' ' && e.key !== 'Enter')) return;
+            e.preventDefault();
+            if (e.repeat || !running || keyHeld.current) return;
+            keyHeld.current = control.id;
+            pressControl(store, control.id, true);
+          }}
+          onKeyUp={(e) => {
+            if (e.key === ' ' || e.key === 'Enter') releaseKey();
+          }}
+          onBlur={releaseKey}
+        >
+          {controlLabel}
+        </button>
+      )}
       {status === 'loading' && (
         <div class="view3d-message" role="status" dir={locale.dir}>
           {t('view3d.loading')}
@@ -383,6 +560,11 @@ export function ThreeView() {
           </div>
           <div class="view-note" dir={locale.dir}>
             {t('view3d.note')}
+            {running && hasActuators && (
+              <div class="view-note-hint" data-testid="view3d-controls-hint">
+                {t('view3d.controlsHint')}
+              </div>
+            )}
             {overlaps && (
               <div class="view-note-warning" role="status" data-testid="view3d-overlap">
                 {t('view3d.overlap', { parts: overlaps })}

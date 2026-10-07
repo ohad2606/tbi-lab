@@ -26,6 +26,7 @@ import { type SceneDescription } from './scene.js';
 import { strokeText, strokeWidth } from './assets/strokeFont.js';
 import { footprintRect, placeLabels } from './labels.js';
 import type { Ray } from './pick.js';
+import { TOGGLE_TILT } from './assets/benchParts.js';
 
 /** LED light pool size and the light's intensity per unit live level (mm scene, decay 2). */
 const LED_LIGHTS = 4;
@@ -103,6 +104,18 @@ export interface Viewer {
    * sleeve along a selected wire. Presentation only.
    */
   setSelection(sel: { components: readonly string[]; wires: readonly string[] }): void;
+  /**
+   * The physical controls' state (the document's switch positions, the session's pressed
+   * buttons: the same state the Circuit view shows): each actuator moves to match, the lever
+   * swinging about its pivot, the button's cap travelling down. Animated briefly (instant when
+   * the user prefers reduced motion); frames are drawn only while something moves.
+   */
+  setControls(state: {
+    closed: Readonly<Record<string, boolean>>;
+    pressed: readonly string[];
+  }): void;
+  /** Each actuator's current pose (lever tilt, rad; cap height, mm): tests and evidence. */
+  poses(): Record<string, number>;
   stats(): ViewerStats;
   /** Show or hide the reference labels (a presentation preference, never project data). */
   setLabels(visible: boolean): void;
@@ -212,6 +225,81 @@ export function createViewer(
     wires: [],
   };
   let selectionGroup: THREE.Group | null = null;
+  // Physical controls: each actuator (userData.actuator, tagged by the part builders) by part.
+  let actuatorsById = new Map<string, { obj: THREE.Object3D; kind: string }>();
+  let controls3d: { closed: Readonly<Record<string, boolean>>; pressed: readonly string[] } = {
+    closed: {},
+    pressed: [],
+  };
+  const tweens = new Map<
+    THREE.Object3D,
+    { prop: 'rot' | 'y'; from: number; to: number; start: number; ms: number }
+  >();
+  let animating = 0;
+  const reducedMotion = () => {
+    try {
+      return matchMedia('(prefers-reduced-motion: reduce)').matches;
+    } catch {
+      return false;
+    }
+  };
+  /** Where an actuator belongs for the current control state. */
+  function poseOf(id: string, a: { obj: THREE.Object3D; kind: string }) {
+    if (a.kind === 'toggle')
+      return {
+        prop: 'rot' as const,
+        // Not yet told: as built (from the scene's own state).
+        to:
+          id in controls3d.closed
+            ? controls3d.closed[id]
+              ? TOGGLE_TILT.closed
+              : TOGGLE_TILT.open
+            : a.obj.rotation.z,
+      };
+    const rest = a.obj.userData.restY as number;
+    const travel = a.obj.userData.travel as number;
+    return { prop: 'y' as const, to: controls3d.pressed.includes(id) ? rest - travel : rest };
+  }
+  const poseNow = (o: THREE.Object3D, prop: 'rot' | 'y') =>
+    prop === 'rot' ? o.rotation.z : o.position.y;
+  const set = (o: THREE.Object3D, prop: 'rot' | 'y', v: number) => {
+    if (prop === 'rot') o.rotation.z = v;
+    else o.position.y = v;
+  };
+  /** Move every actuator to its pose: animated (`animate`) or at once. */
+  function applyControls(animate: boolean) {
+    const now = performance.now();
+    const instant = !animate || reducedMotion();
+    for (const [id, a] of actuatorsById) {
+      const { prop, to } = poseOf(id, a);
+      const from = poseNow(a.obj, prop);
+      if (Math.abs(from - to) < 1e-6) continue;
+      if (instant) {
+        set(a.obj, prop, to);
+        tweens.delete(a.obj);
+      } else {
+        // Short, restrained mechanical movement: a lever swing, a button's travel.
+        const ms = prop === 'rot' ? 150 : to < from ? 60 : 80;
+        tweens.set(a.obj, { prop, from, to, start: now, ms });
+      }
+    }
+    renderer.shadowMap.needsUpdate = true;
+    if (tweens.size && !animating) animating = requestAnimationFrame(step);
+    else requestRender();
+  }
+  function step(now: number) {
+    animating = 0;
+    if (disposed) return;
+    for (const [o, t] of tweens) {
+      const k = Math.min(1, (now - t.start) / t.ms);
+      const e = 1 - (1 - k) ** 3; // ease-out, no bounce
+      set(o, t.prop, t.from + (t.to - t.from) * e);
+      if (k >= 1) tweens.delete(o);
+    }
+    renderer.shadowMap.needsUpdate = true;
+    render();
+    if (tweens.size) animating = requestAnimationFrame(step);
+  }
   const SELECT_COLOR = '#1565c0';
   /** Rebuild the selection marks (on a scene update or a selection change). */
   function drawSelection() {
@@ -525,7 +613,8 @@ export function createViewer(
     group.traverse((o) => {
       const mesh = o as THREE.Mesh;
       if (!mesh.isMesh || (mesh as unknown as THREE.InstancedMesh).isInstancedMesh) return;
-      if (o.name === 'base' || o.userData.noAo) return;
+      // Actuators move (operated during a simulation): never merged into a static batch.
+      if (o.name === 'base' || o.userData.noAo || o.userData.actuator) return;
       const mat = mesh.material;
       if (Array.isArray(mat) || mat.transparent || textured(mat)) return;
       if (o.userData.lens || o.parent?.userData.lensMaterial === mat) return;
@@ -698,6 +787,19 @@ export function createViewer(
       });
       applyLive();
       drawSelection();
+      actuatorsById = new Map();
+      tweens.clear();
+      content.traverse((o) => {
+        if (!o.userData.actuator) return;
+        let p: THREE.Object3D | null = o;
+        while (p && !p.userData.component) p = p.parent;
+        if (p)
+          actuatorsById.set(p.userData.component as string, {
+            obj: o,
+            kind: o.userData.actuator as string,
+          });
+      });
+      applyControls(false);
       if (first || opts.resetCamera) {
         resize();
         frame(desc);
@@ -784,6 +886,17 @@ export function createViewer(
       };
     },
     wireShapes: () => currentShapes,
+    poses() {
+      const out: Record<string, number> = {};
+      for (const [id, a] of actuatorsById)
+        out[id] = a.kind === 'toggle' ? a.obj.rotation.z : a.obj.position.y;
+      return out;
+    },
+    setControls(state) {
+      if (disposed) return;
+      controls3d = { closed: { ...state.closed }, pressed: [...state.pressed] };
+      applyControls(true);
+    },
     setSelection(sel) {
       selected = { components: [...sel.components], wires: [...sel.wires] };
       drawSelection();
@@ -798,6 +911,7 @@ export function createViewer(
       if (disposed) return;
       disposed = true;
       if (pending) cancelAnimationFrame(pending);
+      if (animating) cancelAnimationFrame(animating);
       ro.disconnect();
       controls.dispose();
       if (content) scene.remove(content);

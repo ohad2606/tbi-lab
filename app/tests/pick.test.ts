@@ -7,7 +7,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import type { ProjectDocument } from '@tbi-lab/domain';
 import { deriveScene, sceneObstacles } from '../src/views/scene3d/scene.js';
-import { pick, type Ray } from '../src/views/scene3d/pick.js';
+import { actuators, pick, type Ray } from '../src/views/scene3d/pick.js';
 import { shapeWires, sampleShape } from '../src/views/scene3d/wireShape.js';
 import { placeLabels } from '../src/views/scene3d/labels.js';
 
@@ -101,5 +101,45 @@ describe('3D picking', () => {
     const t = performance.now();
     for (let i = 0; i < 20; i++) pick(slant(i, 3, i), scene, obstacles, shapes);
     expect((performance.now() - t) / 20).toBeLessThan(20);
+  });
+});
+
+describe('3D picking: physical controls (operated during a simulation)', () => {
+  const doc = example('esp32-input-echo'); // SW1 toggle switch, SW2 push button
+  const scene = deriveScene(doc);
+  const obstacles = sceneObstacles(doc, scene);
+  const shapes = shapeWires(scene);
+  const regions = actuators(scene);
+
+  it('each toggle switch and push button has an actuator region from its real dimensions', () => {
+    expect(regions.map((a) => [a.id, a.control])).toEqual([
+      ['SW1', 'toggle'],
+      ['SW2', 'momentary'],
+    ]);
+    const sw2 = regions.find((a) => a.id === 'SW2')!.box;
+    // The cap only: ~4.5 mm across, above the switch body's cover.
+    expect(sw2.x1 - sw2.x0).toBeLessThan(5);
+    expect(sw2.bottom).toBeGreaterThan(3);
+  });
+
+  it('while running, the lever and the cap operate; the rest of the part selects it', () => {
+    for (const a of regions) {
+      const cx = (a.box.x0 + a.box.x1) / 2;
+      const cz = (a.box.z0 + a.box.z1) / 2;
+      expect(pick(down(cx, cz), scene, obstacles, shapes, true)).toEqual({
+        kind: 'actuator',
+        id: a.id,
+        control: a.control,
+      });
+      // Stopped (no actuators): the same click selects the part.
+      expect(pick(down(cx, cz), scene, obstacles, shapes, false)).toEqual({
+        kind: 'component',
+        id: a.id,
+      });
+    }
+    // The toggle's body below the lever, from the side: the part, not its lever.
+    const sw1 = scene.components.find((c) => c.id === 'SW1')!;
+    const side: Ray = { origin: [sw1.x, 3, sw1.z + 40], dir: [0, 0, -1] };
+    expect(pick(side, scene, obstacles, shapes, true)).toEqual({ kind: 'component', id: 'SW1' });
   });
 });

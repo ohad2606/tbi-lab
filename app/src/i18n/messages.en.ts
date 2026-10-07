@@ -554,6 +554,10 @@ export const en = {
   'view3d.unavailable':
     'The 3D view needs WebGL, which this browser or device does not provide. The circuit, schematic and code views work as usual.',
   'view3d.loadFailed': 'The 3D view could not be loaded. The other views work as usual.',
+  'view3d.control.toggle': 'Toggle switch {id}, {state}',
+  'view3d.control.momentary': 'Push button {id}, {state}',
+  'view3d.control.stopped': 'Run the simulation to operate it.',
+  'view3d.controlsHint': 'Running: click a lever to toggle it; press and hold a button.',
   'view3d.note':
     'A visualization of the circuit: drag or ← → to rotate; right-drag, Shift-drag or Shift + arrows to pan; scroll or + − to zoom. Edit in the Circuit view.',
   'view3d.overlap':
