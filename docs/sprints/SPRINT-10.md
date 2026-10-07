@@ -1,9 +1,10 @@
 # Sprint 10 — Physical 3D, engine time-domain core, the approved component families
 
 **Status (2026-10-07):** developed on `sprint-10` (worktree `~/projects/tbi-lab-s10`), from
-`7f09d74` = `main` = `sprint-9-complete`. **dev-lab.tbi-tech.net serves `2eb6d9b`**
-(`v0.10-dev · 2eb6d9b`, verified from `/version.json` and the served `index.html`; rollback
-release `1fc122f` kept). Part J: visual-only 3D body separation (owner review). Part I: realism
+`7f09d74` = `main` = `sprint-9-complete`. **dev-lab.tbi-tech.net serves `1c5572b`**
+(`v0.10-dev · 1c5572b`, verified from `/version.json` and the served `index.html`; rollback
+release `2eb6d9b` kept). Part K: fresh 3D wire routes (owner review: PIR alarm, relay -> LED).
+Part J: visual-only 3D body separation (owner review). Part I: realism
 pass 2 + product footer. **Owner review PENDING**: the 3D view on a real GPU (checklist I.6) and
 the separation (J).
 
@@ -11,6 +12,167 @@ Not done: no PR, merge, tag, production deployment or backend deployment. The ba
 (`c31d62e`, runtime `33e35e4ac5e798d7`). The isolated preview `/s10-preview/` stays.
 
 Architecture and scope: [SPRINT-10-ARCHITECTURE.md](SPRINT-10-ARCHITECTURE.md).
+
+## Part K — fresh 3D wire routes (owner review: PIR alarm, relay -> LED; 2026-10-07)
+
+Owner findings:
+- In "PIR alarm: motion activates buzzer", the wires leaving the PIR rose in a vertical bundle, with sharp bends, crowding, and paths that still followed the old 2D route after the separation.
+- In the relay example, a short wire beside the relay climbed high before reaching its neighbour. That wire is K1.NO → R1, the resistor next to the LED.
+
+The body separation itself was accepted.
+
+### K.1 Root cause
+
+- **One height per wire.** The old router (`wireHeights`, kept as the fallback) gave each wire a
+  single height for its whole length: the highest thing anywhere along it, plus a per-wire level
+  offset. One tall obstacle (the relay, the PIR dome) lifted the entire wire, and every end became a
+  tall vertical riser. That produced the PIR "fence" and the relay climb.
+- **Ends under a body.** The 2D route ends at the 2D terminal, often inside the real 3D body. The end
+  hooked back to the real pin, and after a separation move it was stretched rather than re-routed.
+- **Corners.** Corner radii were 2–3 mm.
+
+### K.2 Order of operations (`scene.ts buildScene`)
+
+1. base transforms from 2D;
+2. body separation;
+3. final transforms;
+4. final terminal positions;
+5. fresh plan paths (`freshWires`);
+6. height profiles (`route3d.ts`);
+7. natural drape (`wireShape.ts`, now keeping the router's radii);
+8. labels.
+
+Nothing is routed before the separation and stretched afterwards.
+
+### K.3 Plan path, exit lanes, fan-out
+
+- **Exit lane.** A pin under a part's body (relay, PIR, matrix, LED legs) leaves through an exit lane:
+  straight out at pin level, past the body edge.
+  - The side is the cheapest valid one: distance to the edge plus half the distance onward to where
+    the wire is going. "Valid" means the lane passes no other pin of the part.
+  - So a relay pin exits towards a nearby destination, not merely towards the nearest edge.
+  - A lane never runs into another part.
+- **Fan-out** (any multi-pin part, nothing PIR-specific). Every lane on one side gets its own
+  distance:
+  - lanes turning the same way turn one after another, the one nearest that way first, one pin pitch
+    (2.54 mm) further out each, with concentric bends (radius 2.5 + k × 2.54 mm);
+  - straight lanes come next; lanes turning the other way come last.
+  - No two lateral runs share a line. The body separation reserves room for up to three lanes per
+    side.
+- **2D topology.** The 2D route supplies the path in between. Its stretch inside a lane part's zone is
+  dropped, and the lane rejoins the route by the cheapest orthogonal connection. The connection
+  never reverses, never re-enters the part, and pays heavily for crossing another part's body.
+- **Clean-up.**
+  - Back-and-forth spikes and collinear points are removed.
+  - **Small lateral offset first:** a run grazing a bench-level body by up to 3 mm sidesteps it in
+    plan with gentle tapers.
+  - A destination right in a lane's corridor (a resistor lead under the PIR board's edge) gets a
+    straight run.
+
+### K.4 Height and bend rules (`route3d.ts`)
+
+- **Local by default.** A wire rests just above the bench (centre 0.9 mm). A short local connection
+  stays low (the relay → LED case).
+- **Global only where needed.** Over an obstacle it rises to that obstacle's top + radius + 0.5 mm,
+  only over that stretch, with ramps of at most 35°. The ramp is steeper only when the wire must
+  climb more over its length, as to a jumper housing 25 mm up. Then it climbs evenly, not with a
+  vertical riser.
+- **Obstacles** (routing volumes):
+  - a leaded part = its body at full height plus its leads only as high as the leads (2.8 mm);
+  - the supply = case plus a low post strip; the ground post = plate plus post;
+  - the ESP32 = board up to the module top, plus each wired pin's jumper housing;
+  - the PIR = board and dome raised over its header, so a wire may pass **under** the board when there
+    is room (the ground wire to GND2 does);
+  - every terminal, header-pin stub and junction is a spot to clear.
+- **Own part.** A wire may leave its own part. Where it runs back over the part's body, it clears it.
+- **Other wires.** It passes under where the other wire is high enough. Otherwise it hops over
+  locally, by a diameter plus 0.3 mm, never by lifting the whole wire.
+- **Profile shape.**
+  - Valleys narrower than 12 mm between two raised stretches are spanned (fewer, longer curves).
+  - A wire that was found to pass under something is never pushed up into it.
+  - The profile is simplified so it never falls below the requirement.
+  - Bends: plan corners 4 mm, ramp knees 5 mm, lanes concentric. A jumper leaves its housing straight
+    up for 2.5 mm, then droops.
+
+### K.5 Collision fallback
+
+The rules apply in this order:
+1. plan sidestep of a shallow graze;
+2. local height (hop or arch) over the obstacle, or pass under a raised one;
+3. re-route with a different wire order when wires of different nodes still touch (deterministic, at
+   most 4 rounds, fewest contacts wins);
+4. then the previous safe route.
+
+`deriveScene` keeps the old router, then the 2D placement, as fallbacks if anything of different
+nodes still touches. No example or fixture uses a fallback (tested).
+
+### K.6 Tests
+
+`app/tests/route3d.test.ts`, 13 tests:
+- **PIR alarm** (the owner example): the PIR overlaps nothing; three wires leave three separate pins
+  along straight lanes at pin level; no vertical stretch over 1 mm; low within 12 mm of the module;
+  through no body; no zig-zag; nothing touching; deterministic; byte-identical save; exact ends.
+- **Relay → R1** in relay-load, and a relay wired to a nearby LED: below 1.5 mm, no climb, short.
+- **Genuinely obstructed** wire across a relay: rises over it as an arch with no vertical riser, and
+  is low at both ends.
+- **Fixtures:** PIR beside the ESP32; two neighbouring modules (moved PIR, unmoved matrix); dense
+  module wiring.
+- **All 16 examples:** through no body, no zig-zag, nothing touching, every bend ≥ 2.5 mm.
+- **Fan-out:** four matrix pins turn at four distances.
+- **No fallback:** every example and fixture shows the fresh routes.
+- **Determinism.**
+
+Updated for the new local-height rules:
+- `scene3d.test.ts`: crossing wires are a diameter + 0.3 apart at the crossing; a wire over parts
+  clears them where it is over them.
+- `semantics.test.ts`: header pins are checked at their real positions, and a wire over them clears
+  them by the clearance.
+- `wire-shape.test.ts`: the clearance reference uses the router's radii; drape is counted for wires
+  that span in the air.
+
+### K.7 Performance
+
+This host, software only; `deriveScene` and the drape (`shapeWires`), before (`2eb6d9b`) → after:
+
+| Scene | Derive before | Derive after | Drape before | Drape after |
+|---|---|---|---|---|
+| esp32-input-echo | 4.5 ms | 6.6 ms | 9.7 ms | 9.0 ms |
+| pir-alarm | 2.2 ms | 2.9 ms | 7.3 ms | 6.6 ms |
+| relay-load | 2.5 ms | 4.7 ms | 10.1 ms | 8.8 ms |
+| dense bench | 15.7 ms | 16.2 ms | 24.7 ms | 30.0 ms |
+| stress project (42 parts) | 16 ms | 74 ms | 131 ms | 129 ms |
+
+The stress project needs three routing rounds, about 15 ms each, plus the safety check.
+
+How the cost was brought down:
+- the height profile is computed on a 0.25 mm grid with forward and backward slope passes (linear
+  time);
+- bounding-box prefilters run before every exact distance test;
+- there is no general-purpose router.
+
+Regression on `1c5572b`:
+- CI: typecheck, lint, build pass; unit tests 803 passed; browser e2e 156 passed; legacy suite pass.
+- Live dev-lab: 3D 7/7, demo 40/40, Sprint 9 smoke 48/48.
+
+### K.8 Evidence
+
+`docs/sprints/s10-evidence/wires/`, before (dev-lab `2eb6d9b`) and after, same cameras:
+- **PIR alarm:** top, three-quarter, low side, pins close-up.
+- **Relay example:** top, three-quarter, low side, relay/LED close-up.
+- **Relay + LED, PIR + matrix, ESP32 + PIR, dense mixed:** top and angled.
+- **Overviews:** six other examples.
+
+Software renderer, reduced tier.
+
+### K.9 Still artificial
+
+- **2D topology.** Plan paths still follow the 2D route's orthogonal runs between ends (rounded
+  corners), not free-form curves.
+- **Very short climbs.** A wire to a jumper housing 25 mm up from a lead a few mm away is a steep ramp.
+- **Crowded fans.** With more than three wired pins on one side and no room, lanes share distances and
+  hop over each other.
+- **Old drawings.** A 2D route drawn across a part (old or imported drawings) makes the wire arch over
+  that part.
 
 ## Part J — 3D body separation (owner review, 2026-10-07)
 
