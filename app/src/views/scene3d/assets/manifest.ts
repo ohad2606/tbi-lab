@@ -94,7 +94,7 @@ export const ASSETS: Record<ModelKey, AssetRecord> = {
     anchors:
       'each header pin top stub (x = +-12.7, z = (position - 10) x 2.54, y = PCB top + 1.5); a wired pin gets a 2.54 x 2.54 x 14 mm jumper housing whose top is its anchor (scene.ts ESP32_ATTACH_HEIGHT)',
     materials:
-      'PBR: FR-4 edge, glossy mask with clearcoat (runtime map + bump: mask over copper pour and traces, tented vias, tinned pads, stroke-font silkscreen), ENIG gold pads, tin solder joints, gold-flash pins, PBT housings, brushed nickel-silver RF can (runtime roughness + anisotropy), nickel USB shell, IC mould compound; one marking atlas for the can and ICs',
+      'PBR: FR-4 edge, satin LPI mask (runtime map + bump: mask over copper pour and traces, tented vias, tinned pads, stroke-font silkscreen in off-white ink), ENIG gold pads, tin solder joints, gold-flash pins, PBT housings, brushed nickel-silver RF can (runtime roughness), drawn-steel micro-USB B shell (flared mouth, dark cavity, insert tongue with gold contacts, latch windows, runtime roughness grain), IC mould compound; one marking atlas for the can and ICs',
     levelOfDetail:
       'single LOD, ~23k vertices; repeated features merged per material; board textures drawn once per viewer (full ~36 px/mm, reduced half)',
     live: [],
