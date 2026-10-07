@@ -29,7 +29,8 @@ import {
   type Body,
 } from '../src/views/scene3d/separation.js';
 import { shapeWires } from '../src/views/scene3d/wireShape.js';
-import { footprintRect, placeLabels } from '../src/views/scene3d/labels.js';
+import { footprintRect } from '../src/views/scene3d/labels.js';
+import { labelAnchors } from '../src/views/scene3d/layers.js';
 import { componentBox } from '../src/ui/routing.js';
 import { EXAMPLE_DOCUMENTS } from '../src/examples/documents.js';
 import {
@@ -226,25 +227,18 @@ describe('3D bodies: visual-only separation', () => {
     expectTerminalsFollow(doc, s);
   });
 
-  it('labels follow the moved part and never land on it or on another label', () => {
+  it('label annotations follow the moved part: each above its own part, in its final place', () => {
     const s = deriveScene(pirMatrixCircuit());
-    const parts = s.components.map((c) => ({ c, w: 6, h: 2.2 }));
-    const at = placeLabels(parts, 1.4);
-    const u1 = s.components.find((c) => c.id === 'U1')!;
-    const f = footprintRect(u1);
-    const l = at.get('U1')!;
-    // Beside its final footprint (within a label's reach), not on any part.
-    expect(Math.max(f.x0 - l.x, l.x - f.x1, f.z0 - l.z, l.z - f.z1)).toBeLessThan(6);
-    for (const c of s.components) {
-      const g = footprintRect(c);
-      const p = at.get(c.id)!;
-      for (const o of s.components) {
-        const q = footprintRect(o);
-        const inside = p.x > q.x0 && p.x < q.x1 && p.z > q.z0 && p.z < q.z1;
-        expect(inside, `${c.id} label on ${o.id}`).toBe(false);
-      }
-      expect(g).toBeDefined();
+    const anchors = labelAnchors(s);
+    expect(anchors.map((a) => a.id)).toEqual(s.components.map((c) => c.id));
+    for (const a of anchors) {
+      const c = s.components.find((x) => x.id === a.id)!;
+      const f = footprintRect(c);
+      expect(a.x >= f.x0 && a.x <= f.x1 && a.z >= f.z0 && a.z <= f.z1, a.id).toBe(true);
     }
+    // U1 was moved apart in 3D: its annotation is where U1 is now.
+    const u1 = s.components.find((c) => c.id === 'U1')!;
+    expect(anchors.find((a) => a.id === 'U1')).toMatchObject({ x: u1.x, z: u1.z });
   });
 
   it('stays bounded on a pathological pile of 70 overlapping modules', () => {

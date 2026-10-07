@@ -299,6 +299,8 @@ export function createStage(
       gridGeo.setAttribute('position', new THREE.Float32BufferAttribute(lines, 3));
       const grid = new THREE.LineSegments(gridGeo, gridMat);
       grid.name = 'grid';
+      // An engineering guide, not part of the physical mat: the Grid layer (layers.ts).
+      grid.userData.layer = 'grid';
       g.add(grid);
       // Contact shadows under the parts.
       const contact = contactShadows(desc, full ? 0.75 : 1);

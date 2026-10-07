@@ -16,17 +16,25 @@ import type { Obstacle } from '../views/scene3d/route3d.js';
 import type { LiveLevel, Viewer, ViewerStats } from '../views/scene3d/renderer.js';
 import { rgbMix } from '../views/ledLooks.js';
 import { isSoftwareRenderer } from '../gpuInfo.js';
+import {
+  LAYERS,
+  PRESETS,
+  matchPreset,
+  presetVisibility,
+  readLayers,
+  writeLayers,
+  type LayerVisibility,
+} from '../views/scene3d/layers.js';
 import { useAppState, useStore, useT } from './context.js';
 
 type Status = 'loading' | 'ready' | 'unavailable' | 'failed';
 
-/** The reference-labels preference (per browser; never part of a project). */
-const LABELS_KEY = 'tbi-lab.3d.labels';
-const readLabels = () => {
+/** The visualization layers preference (per browser; never part of a project): layers.ts. */
+const storage = (): Storage | null => {
   try {
-    return localStorage.getItem(LABELS_KEY) !== 'off';
+    return localStorage;
   } catch {
-    return true;
+    return null;
   }
 };
 
@@ -50,7 +58,15 @@ export function ThreeView() {
   /** How long the bundled glTF assets took to fetch and parse (once per page), ms. */
   const [assetMs, setAssetMs] = useState<number | null>(null);
   const [stats, setStats] = useState<ViewerStats | null>(null);
-  const [labels, setLabels] = useState(readLabels);
+  const [layers, setLayers] = useState<LayerVisibility>(() => readLayers(storage()));
+  const [layersOpen, setLayersOpen] = useState(false);
+  const layersButton = useRef<HTMLButtonElement>(null);
+  const changeLayers = (next: LayerVisibility) => {
+    setLayers(next);
+    viewer.current?.setLayers(next);
+    writeLayers(storage(), next);
+  };
+  const preset = matchPreset(layers);
   // Development diagnostics (hidden): open the app with #diag3d to see the renderer readout.
   const diagnostics = typeof location !== 'undefined' && /(^|[#&])diag3d\b/.test(location.hash);
   const scene = useMemo(() => (doc ? deriveScene(doc) : null), [doc]);
@@ -70,7 +86,7 @@ export function ThreeView() {
         if (cancelled || !host.current) return;
         try {
           viewer.current = mod.createViewer(host.current, (s) => setStats(s), {
-            labels: readLabels(),
+            layers: readLayers(storage()),
           });
           // Evidence capture (screenshots at fixed close-up cameras): the viewer is reachable from
           // the page only when this browser opted in. Never used by the product.
@@ -302,7 +318,11 @@ export function ThreeView() {
       data-gpu-bytes={stats ? stats.gpuBytes.geometry + stats.gpuBytes.textures : undefined}
       data-assets-ms={assetMs ?? undefined}
       data-render-ms={stats?.renderMs}
-      data-labels={labels ? 'on' : 'off'}
+      data-labels={layers.labels ? 'on' : 'off'}
+      data-layers={LAYERS.filter((l) => layers[l.id])
+        .map((l) => l.id)
+        .join(' ')}
+      data-preset={preset}
       data-objects={stats?.objects}
       data-renders={stats?.renders}
       data-programs={stats?.programs}
@@ -531,24 +551,69 @@ export function ThreeView() {
             aria-label={t('view3d.presets')}
             dir={locale.dir}
           >
-            <button
-              type="button"
-              class="text-button"
-              data-testid="view3d-labels"
-              aria-pressed={labels}
-              onClick={() => {
-                const next = !labels;
-                setLabels(next);
-                viewer.current?.setLabels(next);
-                try {
-                  localStorage.setItem(LABELS_KEY, next ? 'on' : 'off');
-                } catch {
-                  /* preference not kept */
-                }
-              }}
-            >
-              {t('view3d.labels')}
-            </button>
+            <div class="view3d-layers">
+              <button
+                ref={layersButton}
+                type="button"
+                class="text-button"
+                data-testid="view3d-layers"
+                aria-expanded={layersOpen}
+                aria-controls="view3d-layers-panel"
+                onClick={() => setLayersOpen((o) => !o)}
+              >
+                {t('view3d.layers')}
+              </button>
+              {layersOpen && (
+                <div
+                  id="view3d-layers-panel"
+                  class="view3d-layers-panel"
+                  role="group"
+                  aria-label={t('view3d.layers.aria')}
+                  data-testid="view3d-layers-panel"
+                  dir={locale.dir}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Escape') {
+                      e.stopPropagation();
+                      setLayersOpen(false);
+                      layersButton.current?.focus();
+                    }
+                  }}
+                >
+                  <fieldset>
+                    <legend>{t('view3d.layers.preset')}</legend>
+                    {PRESETS.map((p) => (
+                      <label key={p.id}>
+                        <input
+                          type="radio"
+                          name="view3d-preset"
+                          data-testid={`view3d-preset-${p.id}`}
+                          checked={preset === p.id}
+                          onChange={() => changeLayers(presetVisibility(p.id))}
+                        />
+                        {t(p.titleKey)}
+                      </label>
+                    ))}
+                    {preset === 'custom' && (
+                      <span class="view3d-layers-custom">{t('view3d.preset.custom')}</span>
+                    )}
+                  </fieldset>
+                  <fieldset>
+                    <legend>{t('view3d.layers')}</legend>
+                    {LAYERS.map((l) => (
+                      <label key={l.id}>
+                        <input
+                          type="checkbox"
+                          data-testid={`view3d-layer-${l.id}`}
+                          checked={layers[l.id]}
+                          onChange={() => changeLayers({ ...layers, [l.id]: !layers[l.id] })}
+                        />
+                        {t(l.titleKey)}
+                      </label>
+                    ))}
+                  </fieldset>
+                </div>
+              )}
+            </div>
             {(['top', 'front', 'side', 'rear'] as const).map((p) => (
               <button
                 key={p}

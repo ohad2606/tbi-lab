@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest';
 import type { ProjectDocument } from '@tbi-lab/domain';
 import { deriveScene, MODEL_HEIGHT, WIRE_RADIUS } from '../src/views/scene3d/scene.js';
 import { sampleShape, shapeWires, plainShape } from '../src/views/scene3d/wireShape.js';
-import { footprintRect, placeLabels } from '../src/views/scene3d/labels.js';
+import { footprintRect } from '../src/views/scene3d/labels.js';
 import { denseBench, partsBench } from '../../scripts/evidence/benches.js';
 
 const example = (id: string) =>
@@ -125,35 +125,6 @@ describe('natural wire shape', () => {
       );
       const draped = spanning.filter((w) => shapes.get(w.id)!.drape > 0);
       expect(draped.length).toBeGreaterThanOrEqual(spanning.length / 2);
-    }
-  });
-});
-
-describe('bench-printed labels', () => {
-  it('every label beside its part: no two overlap, none on another part (deterministic)', () => {
-    for (const doc of [
-      partsBench(),
-      denseBench(),
-      example('esp32-input-echo'),
-      example('pir-alarm'),
-    ]) {
-      const desc = deriveScene(doc);
-      const parts = desc.components.map((c) => ({ c, w: 3 + c.id.length * 1.4, h: 3 }));
-      const a = placeLabels(parts, 1.4);
-      expect(placeLabels(parts, 1.4)).toEqual(a);
-      const rects = parts.map(({ c, w, h }) => {
-        const p = a.get(c.id)!;
-        return { id: c.id, x0: p.x - w / 2, x1: p.x + w / 2, z0: p.z - h / 2, z1: p.z + h / 2 };
-      });
-      const hit = (r: { x0: number; x1: number; z0: number; z1: number }, s: typeof r) =>
-        r.x0 < s.x1 && s.x0 < r.x1 && r.z0 < s.z1 && s.z0 < r.z1;
-      for (let i = 0; i < rects.length; i++)
-        for (let j = i + 1; j < rects.length; j++)
-          expect(hit(rects[i]!, rects[j]!), `${rects[i]!.id}/${rects[j]!.id}`).toBe(false);
-      let onParts = 0;
-      for (const r of rects)
-        for (const c of desc.components) if (c.id !== r.id && hit(r, footprintRect(c))) onParts++;
-      expect(onParts).toBeLessThanOrEqual(1); // only where no clear spot exists at all
     }
   });
 });

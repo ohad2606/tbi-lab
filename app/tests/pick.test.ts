@@ -9,7 +9,6 @@ import type { ProjectDocument } from '@tbi-lab/domain';
 import { deriveScene, sceneObstacles } from '../src/views/scene3d/scene.js';
 import { actuators, pick, type Ray } from '../src/views/scene3d/pick.js';
 import { shapeWires, sampleShape } from '../src/views/scene3d/wireShape.js';
-import { placeLabels } from '../src/views/scene3d/labels.js';
 
 const example = (id: string) =>
   JSON.parse(
@@ -77,22 +76,9 @@ describe('3D picking', () => {
     }
   });
 
-  it('the bench and the printed labels select nothing', () => {
+  it('the bench selects nothing (labels are an overlay, never in the scene)', () => {
     const far = scene.base;
     expect(pick(down(far.minX + 1, far.minZ + 1), scene, obstacles, shapes)).toBeNull();
-    const at = placeLabels(
-      scene.components.map((c) => ({ c, w: 3 + c.id.length * 1.4, h: 3 })),
-      1.4,
-    );
-    let checked = 0;
-    for (const c of scene.components) {
-      const p = at.get(c.id)!;
-      const hit = pick(down(p.x, p.z), scene, obstacles, shapes);
-      // A label lies on the bench: it never selects a part (a wire may run across it).
-      if (hit?.kind === 'component') expect(hit.id, `label ${c.id}`).not.toBe(c.id);
-      checked++;
-    }
-    expect(checked).toBe(scene.components.length);
   });
 
   it('is deterministic and cheap', () => {

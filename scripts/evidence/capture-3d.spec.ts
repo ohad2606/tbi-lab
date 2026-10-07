@@ -39,6 +39,14 @@ async function open3d(page: Page) {
     .toBeGreaterThan(0);
 }
 
+/** Switch the 3D view's visualization layers to a preset (layers.ts) and close the panel. */
+async function setPreset(page: Page, preset: 'realistic' | 'engineering') {
+  await page.getByTestId('view3d-layers').click();
+  await page.getByTestId(`view3d-preset-${preset}`).check();
+  await page.getByTestId('view3d-layers').click();
+  await expect(page.getByTestId('view3d')).toHaveAttribute('data-preset', preset);
+}
+
 async function shot(page: Page, name: string, cam?: { target: V; from: V }) {
   if (cam)
     await page.evaluate(({ target, from }) => {
@@ -143,9 +151,11 @@ test('wiring and LED colours (esp32-input-echo, led-colours)', async ({ page }) 
     await shot(page, shots[0]);
     if (id === 'esp32-input-echo') {
       await shot(page, shots[1], { target: [-10, 6, 0], from: [30, 30, 55] });
-      await page.getByTestId('view3d-labels').click();
-      await shot(page, 'echo-overview-nolabels');
-      await page.getByTestId('view3d-labels').click();
+      // Layers (Sprint 10): the default Realistic view, then the Engineering preset.
+      await shot(page, 'echo-overview-realistic');
+      await setPreset(page, 'engineering');
+      await shot(page, 'echo-overview-engineering');
+      await setPreset(page, 'realistic');
     } else {
       await shot(page, shots[1], { target: [8, 6, 5], from: [30, 22, 40] });
       await page.getByTestId('sim-run').click();
@@ -205,12 +215,15 @@ test('body separation: PIR + matrix, ESP32 + module, dense mixed (top and angled
 });
 
 // Listed shots (Sprint 10 wire routing): EVIDENCE_SHOTS=<json> with
-// [{ example: '<id>', shots: [{ name, target, from }] }]; curated examples by id.
+// [{ example: '<id>', run?: true, preset?: 'engineering', shots: [{ name, target, from }] }].
+// `run`: start the (local) simulation first, so lit LEDs show (circuits without a board).
 const SHOTS = process.env.EVIDENCE_SHOTS;
 test('listed shots of curated examples', async ({ page }) => {
   test.skip(!SHOTS, 'EVIDENCE_SHOTS not set');
   const list = JSON.parse(readFileSync(SHOTS!, 'utf8')) as {
     example: string;
+    run?: boolean;
+    preset?: 'realistic' | 'engineering';
     shots: { name: string; target: V; from: V }[];
   }[];
   for (const e of list) {
@@ -226,7 +239,16 @@ test('listed shots of curated examples', async ({ page }) => {
         createPackage(doc, { appVersion: 'evidence', exportedAt: '2026-10-07T00:00:00Z' }),
       ),
     );
+    if (e.run) {
+      await page.getByTestId('sim-run').click();
+      await expect(page.getByTestId('sim-status')).toHaveAttribute('data-status', 'running');
+    }
     await open3d(page);
-    for (const s of e.shots) await shot(page, `${e.example}-${s.name}`, s);
+    if (e.preset) await setPreset(page, e.preset);
+    if (e.run) await page.waitForTimeout(1500);
+    const suffix = `${e.run ? '-lit' : ''}${e.preset ? `-${e.preset}` : ''}`;
+    for (const s of e.shots) await shot(page, `${e.example}-${s.name}${suffix}`, s);
+    if (e.preset) await setPreset(page, 'realistic');
+    if (e.run) await page.getByTestId('sim-stop').click();
   }
 });

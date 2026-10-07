@@ -23,17 +23,15 @@ import { shapeWires, type WireShape } from './wireShape.js';
 
 export { assetLoadStats, loadAssets };
 import { type SceneDescription } from './scene.js';
-import { strokeText, strokeWidth } from './assets/strokeFont.js';
-import { footprintRect, placeLabels } from './labels.js';
+import { footprintRect } from './labels.js';
+import { CSS2DObject, CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
+import { DEFAULT_PRESET, labelAnchors, presetVisibility, type LayerVisibility } from './layers.js';
 import type { Ray } from './pick.js';
 import { TOGGLE_TILT } from './assets/benchParts.js';
 
 /** LED light pool size and the light's intensity per unit live level (mm scene, decay 2). */
 const LED_LIGHTS = 4;
 const LED_LIGHT = 90;
-/** Reference labels printed on the bench: cap height (mm) and gap in front of the part. */
-const LABEL_HEIGHT = 2.2;
-const LABEL_GAP = 1.4;
 /** Fit/reset: the content's projected box spans this fraction of the view (NDC half-extent). */
 const FRAME_FILL = 0.95;
 
@@ -120,8 +118,11 @@ export interface Viewer {
   /** Each actuator's current pose (lever tilt, rad; cap height, mm): tests and evidence. */
   poses(): Record<string, number>;
   stats(): ViewerStats;
-  /** Show or hide the reference labels (a presentation preference, never project data). */
-  setLabels(visible: boolean): void;
+  /**
+   * Which visualization layers show (layers.ts: a view preference, never project data). Changing
+   * it rebuilds nothing: tagged scene content is shown or hidden, overlays stop updating.
+   */
+  setLayers(visible: LayerVisibility): void;
   dispose(): void;
 }
 
@@ -169,9 +170,9 @@ function probeWebgl(): RenderQuality | null {
 export function createViewer(
   container: HTMLElement,
   onRender?: (s: ViewerStats) => void,
-  options: { labels?: boolean } = {},
+  options: { layers?: LayerVisibility } = {},
 ): Viewer {
-  let labelsVisible = options.labels ?? true;
+  let layers: LayerVisibility = { ...(options.layers ?? presetVisibility(DEFAULT_PRESET)) };
   const quality = probeWebgl();
   if (!quality) throw new WebGLUnavailableError('WebGL is not available');
   let renderer: THREE.WebGLRenderer;
@@ -189,6 +190,41 @@ export function createViewer(
   canvas.classList.add('view3d-canvas');
   canvas.setAttribute('aria-hidden', 'true');
   container.appendChild(canvas);
+
+  // The Labels layer (layers.ts): reference annotations as screen-space UI over the canvas, not
+  // objects in the physical scene. Their own scene; drawn only while the layer is visible.
+  const tags = new CSS2DRenderer();
+  tags.domElement.classList.add('view3d-tags');
+  tags.domElement.setAttribute('aria-hidden', 'true');
+  container.appendChild(tags.domElement);
+  const tagScene = new THREE.Scene();
+  function clearTags() {
+    for (const o of [...tagScene.children]) {
+      tagScene.remove(o);
+      (o as CSS2DObject).element.remove();
+    }
+  }
+  function buildTags(desc: SceneDescription) {
+    clearTags();
+    for (const a of labelAnchors(desc)) {
+      const el = document.createElement('div');
+      el.className = 'view3d-tag';
+      el.dir = 'ltr';
+      el.textContent = a.id;
+      el.dataset.component = a.id;
+      const tag = new CSS2DObject(el);
+      tag.position.set(a.x, a.y, a.z);
+      tagScene.add(tag);
+    }
+  }
+  /** Tagged scene content (`userData.layer`) follows its layer's visibility. */
+  function applyLayers() {
+    content?.traverse((o) => {
+      const id = o.userData.layer as keyof LayerVisibility | undefined;
+      if (id) o.visible = layers[id] ?? false;
+    });
+    tags.domElement.style.display = layers.labels ? '' : 'none';
+  }
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 2000);
@@ -416,7 +452,6 @@ export function createViewer(
     string,
     { texture: THREE.CanvasTexture; material: THREE.MeshStandardMaterial }
   >();
-  let labels: THREE.Object3D[] = [];
   let liveLevels: Record<string, LiveLevel> = {};
   /** Glow halos of the LEDs, by component id. */
   let halos = new Map<string, THREE.Sprite>();
@@ -545,6 +580,7 @@ export function createViewer(
     renderer.info.autoReset = false;
     renderer.info.reset();
     stage.render();
+    if (layers.labels) tags.render(tagScene, camera);
     lastRenderMs = performance.now() - t0;
     lastCalls = renderer.info.render.calls;
     lastTriangles = renderer.info.render.triangles;
@@ -566,6 +602,7 @@ export function createViewer(
     const h = Math.max(1, container.clientHeight);
     renderer.setSize(w, h, false);
     stage.setSize(w, h);
+    tags.setSize(w, h);
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
     render();
@@ -615,15 +652,6 @@ export function createViewer(
     });
 
     batchStatic(group);
-    // Labels beside their parts, clear of other parts and labels (labels.ts).
-    const spots = placeLabels(
-      desc.components.map((c) => ({ c, ...labelSize(c.id) })),
-      LABEL_GAP,
-    );
-    for (const c of desc.components) {
-      const at = spots.get(c.id)!;
-      group.add(label(c.id, at.x, at.z));
-    }
     return group;
   }
 
@@ -643,7 +671,7 @@ export function createViewer(
       const mesh = o as THREE.Mesh;
       if (!mesh.isMesh || (mesh as unknown as THREE.InstancedMesh).isInstancedMesh) return;
       // Actuators move (operated during a simulation): never merged into a static batch.
-      if (o.name === 'base' || o.userData.noAo || o.userData.actuator) return;
+      if (o.name === 'base' || o.userData.noAo || o.userData.actuator || o.userData.layer) return;
       const mat = mesh.material;
       if (Array.isArray(mat) || mat.transparent || textured(mat)) return;
       if (o.userData.lens || o.parent?.userData.lensMaterial === mat) return;
@@ -674,70 +702,14 @@ export function createViewer(
   }
 
   /**
-   * A reference designator (R1, U1) PRINTED ON THE BENCH just in front of its part (realism pass):
-   * dark ink in the boards' stroke font on a thin decal lying on the bench, lit and shadowed like
-   * the scene and hidden behind parts, as a label on a real lab mat would be; not a floating card.
-   * Always left-to-right. Hidden with the 3D view's Labels toggle (a per-browser preference).
-   */
-  /** The label's plane size for a text (mm). */
-  function labelSize(text: string) {
-    const h = LABEL_HEIGHT * (88 / 64);
-    return { w: (h * Math.ceil((strokeWidth(text) * (64 / 6) + 64 * 0.6) / 4) * 4) / 88, h };
-  }
-
-  function label(text: string, x: number, z: number) {
-    const H = 64;
-    const k = H / 6;
-    const W = Math.ceil((strokeWidth(text) * k + H * 0.6) / 4) * 4;
-    const tex = new THREE.CanvasTexture(
-      (() => {
-        const canvas2d = document.createElement('canvas');
-        canvas2d.width = W;
-        canvas2d.height = H + 24;
-        const ctx = canvas2d.getContext('2d', { willReadFrequently: true })!;
-        ctx.strokeStyle = 'rgba(38, 43, 50, 0.92)';
-        strokeText(ctx, text, W / 2, (H + 24) / 2, { height: H, align: 'center', weight: 0.14 });
-        return canvas2d;
-      })(),
-    );
-    tex.colorSpace = THREE.SRGBColorSpace;
-    tex.anisotropy = 8;
-    own.textures.push(tex);
-    const h = LABEL_HEIGHT * ((H + 24) / H);
-    const w = (h * W) / (H + 24);
-    const plane = new THREE.Mesh(
-      own.geo(new THREE.PlaneGeometry(w, h).rotateX(-Math.PI / 2)),
-      own.mat(
-        new THREE.MeshStandardMaterial({
-          map: tex,
-          transparent: true,
-          depthWrite: false,
-          roughness: 0.9,
-          polygonOffset: true,
-          polygonOffsetFactor: -2,
-          polygonOffsetUnits: -2,
-        }),
-      ),
-    );
-    plane.position.set(x, 0.03, z);
-    plane.receiveShadow = true;
-    plane.userData.label = true;
-    plane.renderOrder = 1;
-    plane.name = `label:${text}`;
-    plane.visible = labelsVisible;
-    return plane;
-  }
-
-  /**
    * Frame the whole circuit, looking along `direction` (default: the standard view): the camera
-   * distance is solved so the content's box (labels included) fills FRAME_FILL of the view in its
+   * distance is solved so the content's box fills FRAME_FILL of the view in its
    * tighter dimension, instead of wrapping a sphere around a flat, wide circuit.
    */
   function frame(desc: SceneDescription, direction?: THREE.Vector3) {
     const { min, max } = desc.bounds;
     const top = max.y;
-    // The labels lie on the bench in front of the parts: include their strip.
-    const maxZ = max.z + LABEL_GAP + LABEL_HEIGHT * 1.5;
+    const maxZ = max.z;
     const center = new THREE.Vector3((min.x + max.x) / 2, top / 3, (min.z + maxZ) / 2);
     const radius = 0.5 * Math.max(20, Math.hypot(max.x - min.x, maxZ - min.z, top - min.y));
     const fov = (camera.fov * Math.PI) / 180;
@@ -796,10 +768,8 @@ export function createViewer(
       stage.fit(desc);
       scene.add(content);
       lenses = new Map();
-      labels = [];
-      content.traverse((o) => {
-        if (o.userData.label) labels.push(o);
-      });
+      buildTags(desc);
+      applyLayers();
       matrices = new Map();
       content.traverse((o) => {
         const lens = o.userData.lensMaterial as THREE.MeshStandardMaterial | undefined;
@@ -935,9 +905,9 @@ export function createViewer(
       drawSelection();
       requestRender();
     },
-    setLabels(visible) {
-      labelsVisible = visible;
-      for (const l of labels) l.visible = visible;
+    setLayers(visible) {
+      layers = { ...visible };
+      applyLayers();
       requestRender();
     },
     dispose() {
@@ -950,7 +920,8 @@ export function createViewer(
       if (content) scene.remove(content);
       selected = { components: [], wires: [] };
       drawSelection();
-      labels = [];
+      clearTags();
+      tags.domElement.remove();
       lenses = new Map();
       halos = new Map();
       own.dispose();
