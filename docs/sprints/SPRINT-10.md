@@ -1,9 +1,10 @@
 # Sprint 10 — Physical 3D, engine time-domain core, the approved component families
 
-**Status (2026-10-06):** developed on `sprint-10` (worktree `~/projects/tbi-lab-s10`), from
-`7f09d74` = `main` = `sprint-9-complete`. **dev-lab.tbi-tech.net serves `afe3605`**, shown in the
-app as `v0.10-dev · afe3605` and in `/version.json` (Part G). The old preview routes are retired.
-**Owner review PENDING**: confirm the version, then the ESP32 GND routing case.
+**Status (2026-10-07):** developed on `sprint-10` (worktree `~/projects/tbi-lab-s10`), from
+`7f09d74` = `main` = `sprint-9-complete`. **dev-lab.tbi-tech.net serves `eb30708`**
+(`v0.10-dev · eb30708`, verified from `/version.json` and the served `index.html`; rollback
+release `afe3605` kept). Part H: 3D realism pass + new-version banner. **Owner review PENDING**:
+the 3D benchmark set on a real GPU (full tier).
 
 Not done: no PR, merge, tag, production deployment or backend deployment. The backends are unchanged
 (`c31d62e`, runtime `33e35e4ac5e798d7`). The isolated preview `/s10-preview/` stays.
@@ -163,6 +164,12 @@ ESP32 run exceeded 10 min): GTAO, MSAA and transmission are GPU work. That is wh
 automatic. **No hardware-GPU measurement was possible on this host**; the full tier must be
 checked on the owner's machine (expected cost on any integrated GPU: a few ms per frame; renders
 are on demand, nothing runs while idle).
+
+Deployed: `deploy/dev-lab/publish-frontend.sh eb30708` → all checks passed, "dev-lab now serves
+eb307088…"; live through the gate's origin: realism checks 7/7, Sprint 10 demo checks 40/40 (GND
+routing case included), Sprint 9 smoke 48/48 (ESP32 Build → Run → Stop, 3D LED lit while running).
+Backends, Caddy and services unchanged. Regression on `eb30708`: typecheck, lint, unit 771, e2e
+151 passed / 3 skipped / 0 failed, legacy 4.
 
 Evidence: `docs/sprints/s10-evidence/realism/` — `compare-*.jpg` (before | after, same camera),
 `after/*.jpg` (full tier), `reduced/*.jpg` (software tier), `stats-*.json`.
