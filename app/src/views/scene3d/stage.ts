@@ -85,7 +85,8 @@ export function createStage(
   // Khronos PBR Neutral: product-shot tone mapping that keeps base colours (LED lenses, colour
   // bands, wire insulation) true while rolling off highlights on metal.
   renderer.toneMapping = THREE.NeutralToneMapping;
-  renderer.toneMappingExposure = 1.0;
+  // Realism pass 5: +6 % (the mat's light pool darkens the frame's average a little).
+  renderer.toneMappingExposure = 1.06;
   renderer.shadowMap.enabled = full;
   // The lights are fixed in the world: the shadow map depends only on the scene, so it is drawn
   // when the scene is (re)built, never on an orbit or pan frame.

@@ -22,7 +22,7 @@ import { bentPath, buildJoint, buildSplice, buildWire, wireMaterials } from './w
 import { shapeWires, type WireShape } from './wireShape.js';
 
 export { assetLoadStats, loadAssets };
-import { type SceneDescription, type Vec3 } from './scene.js';
+import { MODEL_HEIGHT, type SceneDescription, type Vec3 } from './scene.js';
 import { footprintRect } from './labels.js';
 import { CSS2DObject, CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { DEFAULT_PRESET, labelAnchors, presetVisibility, type LayerVisibility } from './layers.js';
@@ -33,7 +33,9 @@ import { TOGGLE_TILT } from './assets/benchParts.js';
 const LED_LIGHTS = 4;
 const LED_LIGHT = 90;
 /** Fit/reset: the content's projected box spans this fraction of the view (NDC half-extent). */
-const FRAME_FILL = 0.95;
+// Realism pass 5: 0.88 now that the fit measures the parts and wires themselves (not the bounding
+// box), leaving room for the view's help note at the bottom edge.
+const FRAME_FILL = 0.88;
 
 export interface ViewerStats {
   /** Rendering quality chosen for this device (see RenderQuality). */
@@ -730,10 +732,23 @@ export function createViewer(
     // Realism pass: a 3/4 inspection angle about 30 degrees above the bench (was about 45),
     // so heights, pin rows and leads read while the layout still reads as the 2D drawing.
     const dir = (direction ?? new THREE.Vector3(0.55, 0.68, 1)).clone().normalize();
+    // Frame what is actually there (realism pass 5: composed, not merely bounded): each part's
+    // footprint at its own height and the wires' route points, instead of the bounding box's
+    // corners (on a wide bench the box's top corners, at the tallest part's height over the
+    // whole plan, left a band of empty mat and backdrop).
     const corners: THREE.Vector3[] = [];
-    for (const x of [min.x, max.x])
-      for (const y of [min.y, top])
-        for (const z of [min.z, maxZ]) corners.push(new THREE.Vector3(x, y, z));
+    for (const c of desc.components) {
+      const f = footprintRect(c);
+      for (const x of [f.x0, f.x1])
+        for (const z of [f.z0, f.z1])
+          for (const y of [0, MODEL_HEIGHT[c.model]]) corners.push(new THREE.Vector3(x, y, z));
+    }
+    for (const w of desc.wires)
+      for (const q of w.points) corners.push(new THREE.Vector3(q.x, q.y, q.z));
+    if (!corners.length)
+      for (const x of [min.x, max.x])
+        for (const y of [min.y, top])
+          for (const z of [min.z, maxZ]) corners.push(new THREE.Vector3(x, y, z));
     let distance = fit;
     const p = new THREE.Vector3();
     for (let i = 0; i < 6; i++) {

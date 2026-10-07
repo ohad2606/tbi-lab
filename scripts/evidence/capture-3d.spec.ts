@@ -224,7 +224,8 @@ test('listed shots of curated examples', async ({ page }) => {
     example: string;
     run?: boolean;
     preset?: 'realistic' | 'engineering';
-    shots: { name: string; target: V; from: V }[];
+    /** Without target/from: the default (home) camera, as a user first sees the scene. */
+    shots: { name: string; target?: V; from?: V }[];
   }[];
   for (const e of list) {
     const doc = JSON.parse(
@@ -247,7 +248,12 @@ test('listed shots of curated examples', async ({ page }) => {
     if (e.preset) await setPreset(page, e.preset);
     if (e.run) await page.waitForTimeout(1500);
     const suffix = `${e.run ? '-lit' : ''}${e.preset ? `-${e.preset}` : ''}`;
-    for (const s of e.shots) await shot(page, `${e.example}-${s.name}${suffix}`, s);
+    for (const s of e.shots)
+      await shot(
+        page,
+        `${e.example}-${s.name}${suffix}`,
+        s.target && s.from ? { target: s.target, from: s.from } : undefined,
+      );
     if (e.preset) await setPreset(page, 'realistic');
     if (e.run) await page.getByTestId('sim-stop').click();
   }

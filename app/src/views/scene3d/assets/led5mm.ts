@@ -340,5 +340,7 @@ export function buildLedHiFi(
     l.userData.leg = x < 0 ? 'anode' : 'cathode';
     g.add(l);
   }
-  return { group: g, lens, die: dieMat, core: coreMat, top, gain: look.clear ? 0.7 : 1.1 };
+  // Lit gain (renderer: emissive = level x gain). Diffused 1.7 (realism pass 5): the thinner,
+  // rougher epoxy spreads the emission, so the same current needs more to read as saturated.
+  return { group: g, lens, die: dieMat, core: coreMat, top, gain: look.clear ? 0.7 : 1.7 };
 }
