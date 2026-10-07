@@ -94,7 +94,10 @@ describe('high-fidelity pass 3: geometry from the real parts', () => {
     );
     const lens = led.lens as unknown as THREE.MeshPhysicalMaterial;
     expect(lens.transmission).toBeGreaterThanOrEqual(0.75);
-    expect(lens.roughness).toBeLessThanOrEqual(0.45);
+    // Diffused epoxy (realism pass 5): rough enough that what lies behind the LED only blurs
+    // through it, never so rough that the lead frame disappears.
+    expect(lens.roughness).toBeGreaterThanOrEqual(0.5);
+    expect(lens.roughness).toBeLessThanOrEqual(0.7);
     const core = led.group.children.find((c) => c.userData.ledCore) as THREE.Sprite;
     expect(core).toBeDefined();
     expect(core.visible).toBe(false); // off until lit

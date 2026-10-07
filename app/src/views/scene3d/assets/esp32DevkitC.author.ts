@@ -41,12 +41,13 @@ function materials() {
     // The PCB's body: its routed edge shows the glass-epoxy core under the black mask.
     fr4: phys({ color: '#24231f', roughness: 0.75 }, 'fr4_edge'),
     // Board faces: drawn at runtime (mask, copper, pads, silkscreen) on a glossy lacquer.
+    // Realism pass 5: a satin LPI mask (it was a glossy lacquer: too much like plastic).
     pcbTop: phys(
-      { color: '#ffffff', roughness: 0.48, clearcoat: 0.55, clearcoatRoughness: 0.3 },
+      { color: '#ffffff', roughness: 0.55, clearcoat: 0.3, clearcoatRoughness: 0.45 },
       'pcb_top',
     ),
     pcbBottom: phys(
-      { color: '#ffffff', roughness: 0.5, clearcoat: 0.5, clearcoatRoughness: 0.35 },
+      { color: '#ffffff', roughness: 0.58, clearcoat: 0.28, clearcoatRoughness: 0.5 },
       'pcb_bottom',
     ),
     // ENIG (gold) exposed copper, tinned solder, gold-flashed header pins.
@@ -68,9 +69,13 @@ function materials() {
     ),
     can: phys({ color: '#cfd2d5', metalness: 1, roughness: 0.36 }, 'shield_can'),
     // Connector shell (nickel-plated steel), its plastic tongue, gold contacts.
-    nickel: phys({ color: '#d6d9dc', metalness: 1, roughness: 0.22 }, 'usb_shell'),
+    // Double-sided: the shell is a thin drawn wall seen from inside through its mouth.
+    nickel: phys(
+      { color: '#d6d9dc', metalness: 1, roughness: 0.22, side: THREE.DoubleSide },
+      'usb_shell',
+    ),
     tongue: phys({ color: '#101011', roughness: 0.55 }, 'usb_tongue'),
-    shadowed: phys({ color: '#060607', roughness: 0.9 }, 'cavity'),
+    shadowed: phys({ color: '#060607', roughness: 0.9, side: THREE.DoubleSide }, 'cavity'),
     // IC moulding compound: dark grey, slightly textured matte.
     epoxy: phys({ color: '#1b1c1f', roughness: 0.58 }, 'ic_mould'),
     tin: phys({ color: '#c6cacd', metalness: 1, roughness: 0.28 }, 'lead_tin'),
@@ -371,110 +376,86 @@ export function authorEsp32DevkitC(): THREE.Group {
     ),
   ];
 
-  // ---- Micro-USB B receptacle -----------------------------------------------------------------
+  // ---- Micro-USB B receptacle (realism pass 5: rebuilt) -------------------------------------
+  // A drawn-steel shell (0.22 mm wall) of the micro-B profile: a trapezoid with its lower corners
+  // chamfered and its upper corners slightly rounded, flaring outward over the last 0.4 mm at the
+  // mouth; inside, a dark cavity and the moulded insert tongue in the upper half, its five gold
+  // contacts on the underside; two latch windows on top with their spring fingers; the rear wall
+  // and its folded flap; side anchor tabs soldered to the board.
   {
     const u = LAYOUT.usb;
     const w = u.width;
     const h = u.height;
-    const c = 0.85; // the B profile's chamfers
-    const profile = (inset: number) => {
+    const c = 0.85; // the B profile's lower chamfers
+    const rTop = 0.18; // the drawn shell's upper bend radius
+    /** The profile, centred on (0, 0): half-width W, half-height H, grown by `grow` (mm). */
+    const profile = (grow: number) => {
+      const W = w / 2 + grow;
+      const H = h / 2 + grow;
+      const C = c + grow * 0.4;
+      const r = Math.max(0.02, rTop + grow * 0.5);
       const p = new THREE.Shape();
-      const W = w / 2 - inset;
-      const H = h - 2 * inset;
-      const C = c - inset * 0.4;
-      p.moveTo(-W, 0);
-      p.lineTo(W, 0);
+      p.moveTo(-W + r, H);
+      p.lineTo(W - r, H);
+      p.quadraticCurveTo(W, H, W, H - r);
       p.lineTo(W, -H + C);
       p.lineTo(W - C, -H);
       p.lineTo(-W + C, -H);
       p.lineTo(-W, -H + C);
-      p.closePath();
+      p.lineTo(-W, H - r);
+      p.quadraticCurveTo(-W, H, -W + r, H);
       return p;
     };
+    const ring = (outer: number, inner: number, depth: number) => {
+      const shape = profile(outer);
+      shape.holes.push(new THREE.Path(profile(inner).getPoints(4)));
+      return plain(
+        new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: false, curveSegments: 4 }),
+      );
+    };
     const t = 0.22;
-    const outer = profile(0);
-    const hole = profile(t);
-    outer.holes.push(new THREE.Path(hole.getPoints(1)));
-    const depth = u.depth;
-    const shell = new THREE.ExtrudeGeometry(outer, {
-      depth,
-      bevelEnabled: true,
-      bevelThickness: 0.05,
-      bevelSize: 0.05,
-      bevelSegments: 1,
-    });
-    // Profile Y (down from the top) -> scene Y, extrusion -> +Z ending at the front face.
-    shell.translate(u.x, yt + h, u.front - depth);
-    const shellParts = [plain(shell)];
-    // Back wall, the two through-hole shell legs and the side flanges' soldered tabs.
-    shellParts.push(at(new THREE.BoxGeometry(w, h, 0.2), u.x, yt + h / 2, u.front - depth + 0.1));
-    for (const sx of [-1, 1]) {
-      shellParts.push(
-        at(
-          new THREE.BoxGeometry(0.9, 0.18, 1.6),
-          u.x + sx * (w / 2 + 0.4),
-          yt + 0.09,
-          u.front - 1.6,
-        ),
-      );
-      shellParts.push(
-        at(
-          new THREE.BoxGeometry(0.9, 0.18, 1.3),
-          u.x + sx * (w / 2 + 0.4),
-          yt + 0.09,
-          u.front - depth + 1.0,
-        ),
-      );
-    }
-    // The mouth (realism pass 4): the drawn shell flares out a little at its front edge, a lip
-    // round the opening that catches the light, as on the real receptacle.
-    {
-      const lipOuter = profile(-0.16);
-      lipOuter.holes.push(new THREE.Path(profile(0.02).getPoints(1)));
-      const lip = new THREE.ExtrudeGeometry(lipOuter, { depth: 0.22, bevelEnabled: false });
-      shellParts.push(plain(lip).translate(u.x, yt + h + 0.08, u.front - 0.22));
-    }
-    root.add(merged('usb_shell', shellParts, m.nickel));
-    // Its four anchor tabs soldered to their pads: a low fillet over each.
-    const usbSolder: THREE.BufferGeometry[] = [];
-    for (const sx of [-1, 1])
-      for (const [zc, len] of [
-        [u.front - 1.6, 1.6],
-        [u.front - depth + 1.0, 1.3],
-      ] as const)
-        usbSolder.push(
-          at(
-            new THREE.CylinderGeometry(0.62, 0.7, len + 0.35, 6, 1)
-              .rotateX(Math.PI / 2)
-              .scale(1, 0.32, 1),
-            u.x + sx * (w / 2 + 0.45),
-            yt + 0.12,
-            zc,
-          ),
-        );
-    root.add(merged('usb_solder', usbSolder, m.solder));
-    // The latch windows on top (dark: the cavity shows through).
-    const slots: THREE.BufferGeometry[] = [];
-    for (const sx of [-1, 1])
-      slots.push(
-        at(new THREE.BoxGeometry(0.9, 0.03, 1.3), u.x + sx * 2.2, yt + h + 0.005, u.front - 1.6),
-      );
-    // Inside: the dark cavity and the plastic tongue carrying five gold contacts underneath.
-    slots.push(
-      at(
-        new THREE.BoxGeometry(w - 2 * t - 0.05, h - 2 * t - 0.05, 0.05),
-        u.x,
-        yt + h / 2,
-        u.front - depth + 0.3,
-      ),
+    const flare = 0.4;
+    const yc = yt + h / 2;
+    const z0 = u.front - u.depth; // the rear face
+    const shellParts: THREE.BufferGeometry[] = [];
+    // The body of the shell, then the flared mouth (outer and inner grow together).
+    shellParts.push(ring(0, -t, u.depth - flare).translate(u.x, yc, z0));
+    shellParts.push(ring(0.14, -t + 0.14, flare).translate(u.x, yc, u.front - flare));
+    // The folded flap over the rear wall, from the top (the wall itself is in shadow: below).
+    shellParts.push(
+      at(new THREE.BoxGeometry(w * 0.62, 0.18, 1.1).rotateX(-0.95), u.x, yt + h - 0.3, z0 - 0.3),
     );
-    root.add(merged('usb_cavity', slots, m.shadowed));
-    const tongueTop = yt + h - t - 0.45;
+    // Rear anchor tabs, surface-mounted (the front pair goes through the board, out of sight).
+    for (const sx of [-1, 1])
+      shellParts.push(
+        at(new THREE.BoxGeometry(0.9, 0.16, 1.3), u.x + sx * (w / 2 + 0.4), yt + 0.08, z0 + 1.0),
+      );
+    // Spring fingers of the two latch windows: strips stamped from the top, seen in the window.
+    for (const sx of [-1, 1])
+      shellParts.push(
+        at(new THREE.BoxGeometry(0.3, 0.05, 0.9), u.x + sx * 2.2, yt + h + 0.012, u.front - 1.85),
+      );
+    root.add(merged('usb_shell', shellParts, m.nickel));
+    // The dark: the latch windows' openings, and the cavity liner (inner walls in shadow; the
+    // mouth's first 0.6 mm stays bright metal).
+    const dark: THREE.BufferGeometry[] = [];
+    for (const sx of [-1, 1])
+      dark.push(
+        at(new THREE.BoxGeometry(0.6, 0.03, 1.15), u.x + sx * 2.2, yt + h + 0.004, u.front - 1.85),
+      );
+    dark.push(ring(-t - 0.01, -t - 0.06, u.depth - 0.7).translate(u.x, yc, z0 + 0.12));
+    dark.push(plain(new THREE.ShapeGeometry(profile(-t * 0.5), 4)).translate(u.x, yc, z0 + 0.13));
+    root.add(merged('usb_cavity', dark, m.shadowed));
+    // The insert tongue: moulded, in the upper half of the opening, set back from the mouth.
+    const tongueW = 3.9;
+    const tongueH = 0.6;
+    const tongueTop = yt + h - t - 0.42;
+    const tongueLen = u.depth - 1.0;
     const tongue = new THREE.Mesh(
-      plain(new THREE.BoxGeometry(w - 2.6, 0.6, depth - 0.9)).translate(
+      plain(new RoundedBoxGeometry(tongueW, tongueH, tongueLen, 1, 0.08)).translate(
         u.x,
-        tongueTop - 0.3,
-        u.front - (depth - 0.9) / 2 - 0.5,
+        tongueTop - tongueH / 2,
+        z0 + 0.12 + tongueLen / 2,
       ),
       m.tongue,
     );
@@ -485,18 +466,34 @@ export function authorEsp32DevkitC(): THREE.Group {
       const x = u.x + (i - 2) * 0.65;
       contacts.push(
         at(
-          new THREE.BoxGeometry(0.3, 0.05, depth - 1.6),
+          new THREE.BoxGeometry(0.3, 0.05, tongueLen - 0.8),
           x,
-          tongueTop - 0.62,
-          u.front - (depth - 1.6) / 2 - 0.8,
+          tongueTop - tongueH - 0.02,
+          z0 + 0.12 + (tongueLen - 0.8) / 2 + 0.6,
         ),
       );
       // The SMD tails leaving the back of the connector onto their pads.
-      contacts.push(
-        at(new THREE.BoxGeometry(0.4, 0.12, 1.1), x, yt + 0.06, u.front - depth - 0.45),
-      );
+      contacts.push(at(new THREE.BoxGeometry(0.4, 0.12, 1.1), x, yt + 0.06, z0 - 0.45));
     }
     root.add(merged('usb_contacts', contacts, m.gold));
+    // The anchor tabs soldered to their pads: low fillets.
+    const usbSolder: THREE.BufferGeometry[] = [];
+    for (const sx of [-1, 1])
+      for (const [zc, len, dx] of [
+        [u.front - 1.6, 1.5, 0.3],
+        [z0 + 1.0, 1.3, 0.45],
+      ] as const)
+        usbSolder.push(
+          at(
+            new THREE.CylinderGeometry(0.55, 0.65, len + 0.3, 8, 1)
+              .rotateX(Math.PI / 2)
+              .scale(1, 0.32, 1),
+            u.x + sx * (w / 2 + dx),
+            yt + 0.06,
+            zc,
+          ),
+        );
+    root.add(merged('usb_solder', usbSolder, m.solder));
   }
 
   // ---- EN and BOOT SMD tact switches ----------------------------------------------------------

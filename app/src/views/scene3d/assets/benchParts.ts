@@ -385,6 +385,16 @@ export function buildPsu(
         0,
       ]),
     );
+  // Side vents: a row of louvre slots in each side of the cover.
+  for (const sz of [-1, 1])
+    for (let i = 0; i < 7; i++)
+      g.add(
+        mesh(boxGeo(own, 0.32, H * 0.42, 0.06), m.rubber, [
+          cx - p.bodyXMm * 0.32 + i * 0.75,
+          footH + H * 0.62,
+          sz * (p.bodyZMm / 2 + 0.005),
+        ]),
+      );
   // Rubber feet.
   for (const sx of [-1, 1])
     for (const sz of [-1, 1])
@@ -474,9 +484,11 @@ export function buildPsu(
 function groundPlate(own: OwnedResources) {
   return own.lasting('ground:plate', () =>
     drawTexture(128, 128, (ctx) => {
-      ctx.fillStyle = '#c6cacd';
+      // Realism pass 5: a black moulded terminal block with its legend printed in white (it was
+      // a plated plate with an engraving, which read as a prop).
+      ctx.fillStyle = '#1c1e21';
       ctx.fillRect(0, 0, 128, 128);
-      ctx.strokeStyle = '#3a3e43';
+      ctx.strokeStyle = '#d8d9d4';
       ctx.lineWidth = 5;
       ctx.lineCap = 'round';
       // The symbol, beside the post (the post stands in the plate's centre).
@@ -503,7 +515,10 @@ function groundPlate(own: OwnedResources) {
   );
 }
 
-/** Ground: a black binding post on a plated plate, behind its terminal; the lug reaches it. */
+/**
+ * Ground: a black binding post on a small black moulded terminal block (the earth symbol and GND
+ * printed on it), behind its terminal; the tinned lug reaches it.
+ */
 export function buildGround(own: OwnedResources, m: PartMaterials, x: number, z: number) {
   const p = GROUND_POST;
   const g = new THREE.Group();
@@ -512,8 +527,7 @@ export function buildGround(own: OwnedResources, m: PartMaterials, x: number, z:
     rbox(own, p.plateMm, p.plateThicknessMm, p.plateMm, 0.2, 1),
     own.lastingMat(
       'ground:plate',
-      () =>
-        new THREE.MeshStandardMaterial({ map: groundPlate(own), metalness: 1, roughness: 0.32 }),
+      () => new THREE.MeshStandardMaterial({ map: groundPlate(own), roughness: 0.55 }),
     ),
   );
   plate.position.set(x, p.plateThicknessMm / 2, pz);

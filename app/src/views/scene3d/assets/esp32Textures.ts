@@ -24,7 +24,8 @@ import { strokeText } from './strokeFont.js';
 const MASK = '#0f1114';
 /** Mask over copper (pour, traces): a shade lighter, with a faint green-blue cast of the resin. */
 const MASK_COPPER = '#181c20';
-const SILK = '#e6e7e1';
+/** Silkscreen ink: an off-white epoxy ink, a little warm (realism pass 5: was #e6e7e1, bolder). */
+const SILK = '#dddcd3';
 const PAD = '#c4c8cc';
 
 const pinZ = (position: number) => (position - (D.headerPins + 1) / 2) * D.pinPitchMm;
@@ -358,7 +359,7 @@ function drawBoard(ctx: CanvasRenderingContext2D, kk: number, top: boolean, heig
     // Silkscreen.
     ctx.strokeStyle = col(SILK, 170);
     ctx.fillStyle = col(SILK, 170);
-    const lw = 0.15;
+    const lw = 0.12;
     if (top) {
       for (const pin of ESP32_DEVKITC_WROOM32.pins) {
         const left = boardPinPosition(pin).x < 0;
@@ -371,7 +372,7 @@ function drawBoard(ctx: CanvasRenderingContext2D, kk: number, top: boolean, heig
             height: LAYOUT.pinLabelHeight * kk,
             align: 'center',
             rotate: left ? Math.PI / 2 : -Math.PI / 2,
-            weight: 0.17,
+            weight: 0.13,
           },
         );
       }
@@ -408,13 +409,13 @@ function drawBoard(ctx: CanvasRenderingContext2D, kk: number, top: boolean, heig
         height: 0.95 * kk,
         align: 'center',
         rotate: Math.PI / 2,
-        weight: 0.17,
+        weight: 0.13,
       });
       strokeText(ctx, 'Boot', s.X(LAYOUT.bootLabel.x), s.Z(LAYOUT.bootLabel.z), {
         height: 0.95 * kk,
         align: 'center',
         rotate: -Math.PI / 2,
-        weight: 0.17,
+        weight: 0.13,
       });
     } else {
       // The underside: the board's name and revision, the header names, the pin-1 marks.
@@ -426,13 +427,13 @@ function drawBoard(ctx: CanvasRenderingContext2D, kk: number, top: boolean, heig
         height: 1.5 * kk,
         align: 'center',
         rotate: -Math.PI / 2,
-        weight: 0.16,
+        weight: 0.13,
       });
       strokeText(ctx, 'ESPRESSIF', 2.6 * kk, 0, {
         height: 1.0 * kk,
         align: 'center',
         rotate: -Math.PI / 2,
-        weight: 0.16,
+        weight: 0.13,
       });
       ctx.restore();
       for (const [label, x] of [
@@ -442,7 +443,7 @@ function drawBoard(ctx: CanvasRenderingContext2D, kk: number, top: boolean, heig
         ctx.save();
         ctx.translate(s.X(x * 0.82), s.Z(-22.86 - 0.2));
         ctx.scale(-1, 1);
-        strokeText(ctx, label, 0, 0, { height: 0.9 * kk, align: 'center', weight: 0.17 });
+        strokeText(ctx, label, 0, 0, { height: 0.9 * kk, align: 'center', weight: 0.13 });
         ctx.restore();
       }
     }

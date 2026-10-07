@@ -139,9 +139,14 @@ export function buildLedHiFi(
           color: look.clear
             ? tint.clone().lerp(new THREE.Color('#ffffff'), 0.6)
             : tint.clone().lerp(new THREE.Color('#ffffff'), 0.18),
-          roughness: look.clear ? 0.1 : 0.4,
+          // Diffused epoxy scatters strongly: what lies behind the LED is only a blur through it
+          // (realism pass 5: 0.4 let a wire behind read through as a sharp band).
+          roughness: look.clear ? 0.1 : 0.62,
           transmission: look.clear ? 0.92 : 0.82,
-          thickness: p.bodyDiameterMm * 0.9,
+          // Realism pass 5: the transmission's refraction offset grows with `thickness`; at the
+          // body's full diameter it smeared the lead frame into a band across the lens. A real
+          // dome lenses the frame, it does not stretch it edge to edge.
+          thickness: 1.6,
           ior: 1.5,
           // The absorption keeps the hue (a yellow stays yellow through the full depth, never
           // darkening to orange): a light tint over a moderate distance.

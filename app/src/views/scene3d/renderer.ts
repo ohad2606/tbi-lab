@@ -18,11 +18,11 @@ import { buildComponent, createMaterials, OwnedResources, paintMatrixFace } from
 import { assetLoadStats, loadAssets } from './assets/library.js';
 import { createStage } from './stage.js';
 import { chooseQuality, probeGpu } from '../../gpuInfo.js';
-import { bentPath, buildJoint, buildWire, wireMaterials } from './wires.js';
+import { bentPath, buildJoint, buildSplice, buildWire, wireMaterials } from './wires.js';
 import { shapeWires, type WireShape } from './wireShape.js';
 
 export { assetLoadStats, loadAssets };
-import { type SceneDescription } from './scene.js';
+import { type SceneDescription, type Vec3 } from './scene.js';
 import { footprintRect } from './labels.js';
 import { CSS2DObject, CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { DEFAULT_PRESET, labelAnchors, presetVisibility, type LayerVisibility } from './layers.js';
@@ -622,6 +622,15 @@ export function createViewer(
     const shapes = shapeWires(desc);
     currentShapes = shapes;
     for (const w of desc.wires) group.add(buildWire(w, own, wm, shapes.get(w.id)));
+    // One twisted splice per junction (where the wires' stripped conductors meet).
+    const splices = new Map<string, Vec3>();
+    for (const w of desc.wires)
+      for (const k of [0, 1] as const)
+        if (w.ends[k] === 'junction') {
+          const p = k === 0 ? w.points[0]! : w.points[w.points.length - 1]!;
+          splices.set(`${p.x.toFixed(2)},${p.z.toFixed(2)}`, p);
+        }
+    for (const p of splices.values()) group.add(buildSplice(p, own, materials.lead));
     for (const j of desc.joints)
       group.add(buildJoint(j, own, { lead: materials.lead, notConnected: materials.red }));
 

@@ -23,6 +23,8 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
+import { VignetteShader } from 'three/examples/jsm/shaders/VignetteShader.js';
 import { rotatePoint } from '@tbi-lab/domain';
 import type { OwnedResources } from './kit.js';
 import { FOOTPRINT, type ModelKey, type SceneDescription } from './scene.js';
@@ -165,6 +167,12 @@ export function createStage(
     });
     excludeTransparentFromAo(gtao);
     composer.addPass(gtao);
+    // A lens's natural light fall-off towards the frame's corners (realism pass 5): subtle, it
+    // reads as a photograph rather than an evenly lit render. One cheap full-screen pass.
+    const vignette = new ShaderPass(VignetteShader);
+    vignette.uniforms.offset!.value = 1.05;
+    vignette.uniforms.darkness!.value = 0.75;
+    composer.addPass(vignette);
     composer.addPass(new OutputPass());
   }
 
@@ -182,7 +190,15 @@ export function createStage(
     alphaMap: full ? radialFade() : null,
     depthWrite: true,
   });
-  const matMat = new THREE.MeshStandardMaterial({ color: MAT, roughness: 0.86, metalness: 0 });
+  // The mat's colour map (both tiers): a gentle manufactured mottle and the pool of light under
+  // the lamp, falling off towards the mat's edges (one texture stretched over the whole mat).
+  const matPool = matPoolTexture();
+  const matMat = new THREE.MeshStandardMaterial({
+    color: MAT,
+    roughness: 0.86,
+    metalness: 0,
+    map: matPool,
+  });
   const matEdgeMat = new THREE.MeshStandardMaterial({
     color: MAT_EDGE,
     roughness: 0.9,
@@ -276,6 +292,9 @@ export function createStage(
       const mz1 = b.maxZ + margin;
       const mat = new THREE.Mesh(own.geo(matGeometry(mx1 - mx0, mz1 - mz0)), [matMat, matEdgeMat]);
       mat.position.set((mx0 + mx1) / 2, 0, (mz0 + mz1) / 2);
+      // Top-face UVs are in mm from the mat's centre: stretch the pool over the whole mat.
+      matPool.repeat.set(1 / (mx1 - mx0), 1 / (mz1 - mz0));
+      matPool.offset.set(0.5, 0.5);
       mat.receiveShadow = true;
       mat.name = 'mat';
       g.add(mat);
@@ -327,6 +346,7 @@ export function createStage(
       benchMat.dispose();
       grain?.dispose();
       matGrain?.dispose();
+      matPool.dispose();
       matMat.dispose();
       matEdgeMat.dispose();
       contactMat.map?.dispose();
@@ -401,6 +421,54 @@ export function matGeometry(w: number, d: number): THREE.BufferGeometry {
   geo.translate(0, -geo.boundingBox!.max.y, 0);
   // ExtrudeGeometry's groups: 0 the caps (top and bottom), 1 the sides; the top cap is group 0.
   return geo;
+}
+
+/**
+ * The mat's colour map: a light pool (brightest a little behind the centre, under the key light,
+ * about 12 % darker at the corners) times a faint low-frequency mottle (+-3 %), as a real
+ * dissipative mat under a lamp photographs. Deterministic; 256 px over the whole mat.
+ */
+function matPoolTexture(): THREE.Texture {
+  const N = 256;
+  const t = new THREE.CanvasTexture(
+    canvas(N, N, (ctx) => {
+      const img = ctx.createImageData(N, N);
+      let seed = 97531;
+      const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+      const G = 9;
+      const coarse = Array.from({ length: (G + 1) * (G + 1) }, rnd);
+      const at = (x: number, y: number) => coarse[y * (G + 1) + x]!;
+      for (let y = 0; y < N; y++)
+        for (let x = 0; x < N; x++) {
+          const u = x / (N - 1);
+          const v = y / (N - 1);
+          const fx = u * G;
+          const fy = v * G;
+          const x0 = Math.min(G - 1, Math.floor(fx));
+          const y0 = Math.min(G - 1, Math.floor(fy));
+          const tx = fx - x0;
+          const ty = fy - y0;
+          const sx = tx * tx * (3 - 2 * tx);
+          const sy = ty * ty * (3 - 2 * ty);
+          const n =
+            at(x0, y0) * (1 - sx) * (1 - sy) +
+            at(x0 + 1, y0) * sx * (1 - sy) +
+            at(x0, y0 + 1) * (1 - sx) * sy +
+            at(x0 + 1, y0 + 1) * sx * sy;
+          // The pool's centre a little towards the back (the key light's side).
+          const d = Math.hypot((u - 0.5) * 1.1, (v - 0.44) * 1.25);
+          const pool = 1 - 0.17 * Math.min(1, d * d * 2.2);
+          const k = pool * (1 + 0.06 * (n - 0.5));
+          const c = Math.round(255 * Math.min(1, k));
+          const i = (y * N + x) * 4;
+          img.data[i] = img.data[i + 1] = img.data[i + 2] = c;
+          img.data[i + 3] = 255;
+        }
+      ctx.putImageData(img, 0, 0);
+    }),
+  );
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
 }
 
 /** Contact-shadow strengths: one band of the atlas each (alpha at the centre). */

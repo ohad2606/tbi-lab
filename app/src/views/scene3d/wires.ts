@@ -26,6 +26,8 @@ const RISER_BEND = 3.0;
 /** Stripped length at a lead or post end (mm), and the conductor's radius (22 AWG solid). */
 const STRIP = 2.0;
 const CONDUCTOR_R = 0.32;
+/** Stripped length at a junction, where the conductors are twisted together (mm). */
+const JUNCTION_STRIP = 2.6;
 /** How far the jacket runs on into a jumper housing (hidden inside it). */
 const INTO_HOUSING = 1.2;
 
@@ -239,9 +241,13 @@ export function buildWire(
   }
   const path = bentPath(pts, radii, arms);
   const length = path.getLength();
-  const stripped = (k: 0 | 1) => w.ends[k] === 'lead' || w.ends[k] === 'post';
-  const s0 = stripped(0) ? Math.min(STRIP, length * 0.25) / length : 0;
-  const s1 = stripped(1) ? Math.min(STRIP, length * 0.25) / length : 0;
+  // Bare conductor at a lead, a post, and (realism pass 5) a junction, where the wires meeting
+  // there are twisted together (buildSplice): their jackets stop short instead of merging into a T.
+  const stripped = (k: 0 | 1) =>
+    w.ends[k] === 'lead' || w.ends[k] === 'post' || w.ends[k] === 'junction';
+  const stripOf = (k: 0 | 1) => (w.ends[k] === 'junction' ? JUNCTION_STRIP : STRIP);
+  const s0 = stripped(0) ? Math.min(stripOf(0), length * 0.25) / length : 0;
+  const s1 = stripped(1) ? Math.min(stripOf(1), length * 0.25) / length : 0;
   // One tube segment per ~9 degrees of bend (full tier), ~13 (reduced).
   const step = own.tier === 'full' ? 0.16 : 0.23;
   const jacketCurve = new Adaptive(
@@ -293,19 +299,14 @@ export function buildWire(
       );
       bare.userData.conductor = w.id;
       g.add(bare);
-      const tip = new THREE.Mesh(
-        own.shared('wire:tip', () => new THREE.SphereGeometry(CONDUCTOR_R, 10, 6)),
-        m.conductor,
-      );
-      tip.position.copy(path.getPointAt(k === 0 ? 0 : 1));
-      g.add(tip);
-    } else if (w.ends[k] === 'junction') {
-      const end = new THREE.Mesh(
-        own.shared('wire:end', () => new THREE.SphereGeometry(WIRE_RADIUS, 14, 10)),
-        m.jacket(w.color),
-      );
-      end.position.copy(path.getPointAt(k));
-      g.add(end);
+      if (w.ends[k] !== 'junction') {
+        const tip = new THREE.Mesh(
+          own.shared('wire:tip', () => new THREE.SphereGeometry(CONDUCTOR_R, 10, 6)),
+          m.conductor,
+        );
+        tip.position.copy(path.getPointAt(k === 0 ? 0 : 1));
+        g.add(tip);
+      }
     }
   }
   return g;
@@ -366,6 +367,34 @@ export function buildJoint(
     link.userData.contactLink = true;
     g.add(link);
     addWraps(l);
+  }
+  return g;
+}
+
+/**
+ * A junction (realism pass 5): where the project joins three or more wires at one point, their
+ * stripped conductors are twisted together into one short tinned splice lying on the bench (the
+ * same mechanical language as a direct contact). Deliberately not a solder blob: the project says
+ * "connected", not "soldered". One per junction; the wires' jackets stop short of it.
+ */
+export function buildSplice(at: Vec3, own: OwnedResources, conductor: THREE.Material): THREE.Group {
+  const g = new THREE.Group();
+  g.name = 'splice';
+  g.userData.splice = true;
+  // The twisted bundle: a short barrel of wraps.
+  const core = new THREE.Mesh(
+    own.shared('splice:core', () => new THREE.CylinderGeometry(0.42, 0.42, 0.9, 10)),
+    conductor,
+  );
+  core.position.set(at.x, at.y, at.z);
+  g.add(core);
+  const wrap = own.shared('splice:wrap', () => new THREE.TorusGeometry(0.42, 0.14, 6, 14));
+  for (const dy of [-0.3, 0, 0.3]) {
+    const r = new THREE.Mesh(wrap, conductor);
+    r.rotation.x = Math.PI / 2;
+    r.rotation.z = dy * 1.7;
+    r.position.set(at.x, at.y + dy, at.z);
+    g.add(r);
   }
   return g;
 }

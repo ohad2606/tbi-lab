@@ -68,6 +68,13 @@ function finish(own: OwnedResources, name: string, original: THREE.Material): TH
         // Full tier only: on software WebGL each extra map is another shader program per opening.
         if (full) m.roughnessMap = tex.brushed;
         break;
+      case 'usb_shell':
+        // Drawn steel is not a mirror: a faint grain in its roughness (full tier only).
+        if (full) {
+          m.roughnessMap = tex.brushed;
+          m.roughness = 0.3;
+        }
+        break;
     }
     m.needsUpdate = true;
     return m;
@@ -80,7 +87,14 @@ export function buildEsp32Asset(
 ): THREE.Object3D | null {
   const root = instantiate('board.esp32_devkitc');
   if (!root) return null;
-  const finished = new Set(['pcb_top', 'pcb_bottom', 'module_top', 'markings', 'shield_can']);
+  const finished = new Set([
+    'pcb_top',
+    'pcb_bottom',
+    'module_top',
+    'markings',
+    'shield_can',
+    'usb_shell',
+  ]);
   root.traverse((o) => {
     const mesh = o as THREE.Mesh;
     if (!mesh.isMesh) return;
