@@ -1,11 +1,11 @@
 # Sprint 10 — Physical 3D, engine time-domain core, the approved component families
 
 **Status (2026-10-07):** developed on `sprint-10` (worktree `~/projects/tbi-lab-s10`), from
-`7f09d74` = `main` = `sprint-9-complete`. **dev-lab.tbi-tech.net serves frontend `80448f9` and
-runtime `80448f9`** (frontend `v0.10-dev · 80448f9` from `/version.json` and the served
+`7f09d74` = `main` = `sprint-9-complete`. **dev-lab.tbi-tech.net serves frontend `c6e8f25` and
+runtime `80448f9`** (frontend `v0.10-dev · c6e8f25` from `/version.json` and the served
 `index.html`; runtime `v0.10-dev · 80448f9` from the Session Host's `/health`, also shown in the
-version details as *Runtime ID*). Rollbacks kept: frontend `8611c9b`, runtime/services release
-`c31d62e`. Part P: runtime sync (the Session Host runs the Sprint 10 engine: yellow/green LED
+version details as *Runtime ID*). Rollbacks kept: frontend `80448f9`, runtime/services release
+`c31d62e`. Part Q: realism pass 5 and the 3D layer model (Realistic / Engineering). Part P: runtime sync (the Session Host runs the Sprint 10 engine: yellow/green LED
 cards end to end). Part O: realism pass 4. Part N: realism pass 3. Part M: operating the toggle switch and push button in 3D during Run.
 Part L: false-hop fix, net wire colours, limited 3D picking. Part K: fresh 3D wire routes (owner review: PIR alarm, relay -> LED).
 Part J: visual-only 3D body separation (owner review). Part I: realism
@@ -17,6 +17,190 @@ Not done: no PR, merge, tag or production deployment. Backend: only the Session 
 unchanged (`33e35e4ac5e798d7`). The isolated preview `/s10-preview/` stays.
 
 Architecture and scope: [SPRINT-10-ARCHITECTURE.md](SPRINT-10-ARCHITECTURE.md).
+
+## Part Q — realism pass 5 and the 3D layer model (owner direction, 2026-10-07)
+
+The owner checked dev-lab on a real GPU (ANGLE / Direct3D 11, Intel Iris Xe, full tier, DPR 1).
+That made the full tier the primary target for this pass. This host still has only a software
+rasteriser: every image here is the full tier rendered in software at DPR 1, the closest
+available proxy. **No hardware-tier timings were measured here** (Q.6).
+
+### Q.1 3D visualization layers (owner-approved architecture)
+
+The physical scene and engineering information are now separate:
+
+- `layers.ts` (pure): a layer registry with, per layer, a stable id, a localized name and a
+  default per preset. Presets: **Realistic** (the default: the physical scene only) and
+  **Engineering** (labels and grid). Visibility is a view preference in localStorage
+  (`tbi-lab.3d.layers`), never project data and never part of the electrical schema.
+- Renderer: two layer kinds, with no layer-specific conditionals in the scene builder.
+  - Scene content tagged `userData.layer` is shown or hidden as a group (the grid; future debug
+    geometry).
+  - Overlay layers have build/update/visibility/dispose hooks. The **Labels** layer is
+    screen-space annotations (three.js `CSS2DRenderer`, its own scene), drawn only while
+    visible. Reference designators are no longer printed on the bench.
+- UI: the 3D toolbar's *Labels* button became a compact **Layers** popover (preset radios, one
+  checkbox per layer). English/Hebrew, RTL, keyboard; Escape returns focus.
+- Changing layers rebuilds nothing and restarts nothing; selection, controls and the simulation
+  are unaffected.
+- Not implemented (the architecture admits them): electrical values, net/current visualization,
+  simulation state, warnings, debug.
+- Tests:
+  - `layers.test.ts` (presets, manual toggle, junk-proof preference, EN/HE names, anchors per part,
+    no project change);
+  - `three-layers.spec.ts` (Realistic default, Engineering shows one correct tag per part, custom
+    toggles, ten toggles leak nothing, project unchanged, simulation unaffected, Hebrew RTL panel).
+- Evidence: `s10-evidence/realism5/layers-realistic-vs-engineering.jpg`.
+
+### Q.2 ESP32
+
+| Area | Change |
+|---|---|
+| Micro-USB B (rebuilt) | A drawn-steel shell, 0.22 mm wall, with slightly rounded upper corners and a flared mouth contiguous with the shell (the old lip floated 0.08 mm off). A dark cavity liner and rear wall (it read as an empty box). The insert tongue in the upper half with its five gold contacts. Two latch windows with spring fingers, a folded rear flap, soldered anchor tabs. Double-sided thin walls (the inside was being culled). A roughness grain on the shell (full tier) |
+| PCB | Satin LPI mask: clearcoat 0.55 → 0.3, rougher (it read as glossy plastic). Silkscreen in a warmer off-white ink, stroke 0.17 → 0.13 of the cap height (it read as bold) |
+| GLB | 771 KB, generated from code |
+| SMD population | Already measured from Espressif's photo; the CP2102N carrier has no crystal, so none was invented |
+
+### Q.3 Components, wiring, terminals
+
+| Area | Change |
+|---|---|
+| Junctions | Three or more wires at one point: the jackets stop 2.6 mm short and the stripped conductors meet in one tinned twisted splice. Mechanical, like the direct-contact joints: no jacket T, no solder blob |
+| LED (diffused) | Transmission thickness 4.5 → 1.6 mm (the refraction offset smeared the lead frame and anything behind into a band); epoxy roughness 0.62 so what is behind only blurs through; lit gain 1.7 so the glow stays saturated. The yellow card now reads yellow lit (the baseline rendered it orange) |
+| Ground terminal | A black moulded terminal block with the earth symbol and GND printed in white (it was a plated plate: a prop) |
+| Bench supply | Side louvres. It stays a stylized miniature (scale exception, Part H): a full-size supply would dominate the bench |
+
+### Q.4 Workbench, lighting, composition
+
+| Area | Change |
+|---|---|
+| Mat | A colour map over the whole mat: a soft light pool under the lamp (about 12 % darker at the corners) and a faint low-frequency mottle (±3 %): a manufactured surface, not a flat colour |
+| Full tier | A subtle lens vignette (one cheap pass); exposure +6 % |
+| Grid | Now the Grid layer, hidden in Realistic |
+| AO | GTAO (full tier) is kept unchanged; no new post-processing beyond the vignette |
+| Default framing | Fit and reset measure the parts (footprints at their own height) and the wire routes, not the bounding box's corners, which left a band of empty mat on wide benches. Fill 0.88 keeps the help note clear. The benchmark now fills the view |
+
+### Q.5 Assets and licences
+
+No new shipped non-code asset. The ESP32 GLB is regenerated from code; every texture (mat pool,
+shell grain, panel, plates) is drawn at runtime. The manifest's ESP32 descriptor was updated (satin
+mask, the rebuilt micro-USB). Everything remains original to the project.
+
+### Q.6 Numbers
+
+Full tier, benchmark three-quarter view (`80448f9` → this pass):
+
+| Measure | Before | After |
+|---|---|---|
+| Draw calls | 251 | 233 |
+| Triangles | 349k | 351k |
+| Materials | 92 | 73 |
+| Geometries | 90 | 70 |
+| Textures | 55 | 37 |
+| GPU memory (est.) | 44.5 MB | 43.2 MB |
+
+The per-part label meshes and textures are gone.
+
+Software renderer (default reduced tier, same procedure, back to back):
+
+| Measure | Before | After |
+|---|---|---|
+| Benchmark first open | 3.8 s | 3.5 s |
+| Benchmark re-open | 3.0 s | 2.8 s |
+| Benchmark orbit / pan per step | 199 / 192 ms | 238 / 240 ms |
+| Benchmark draw calls | 105 | 85 |
+| Shader programs | 6 | 5 |
+| 20 enter/leave cycles (open time) | 2.3–3.0 s | 2.5–3.1 s |
+| Heap after the cycles | 10 MB | 10 MB |
+| Canvases left | 0 | 0 |
+| ESP32 orbit per step | 194 ms | 229 ms |
+| Dense scene orbit per step | 277 ms | 307 ms |
+
+The orbit cost per step rose about 15–20 %. Fewer draws and programs make it unlikely to be
+scene cost. The most likely cause is the tighter default framing: a software rasteriser pays per
+pixel, and the parts now fill more of the frame.
+
+**Hardware tier (Intel Iris Xe): not measured here.** To record it on the owner's PC, open dev-lab
+with `#diag3d`. The readout shows renderer, tier, DPR, draw calls, triangles, textures, geometries,
+GPU memory and the last frame's CPU time; note first open, orbit smoothness and frame time.
+
+### Q.7 Evidence
+
+`s10-evidence/realism5/`, same cameras before and after (`cameras.json`), full tier at DPR 1:
+- default views: benchmark, blink, PIR alarm, LED colours;
+- benchmark three-quarter and the ESP32 front, rear and WROOM/header;
+- the USB, front and three-quarter, and the buttons with the SMD area;
+- wiring: Dupont, long wire, crossing, supply terminal, junction;
+- components: LED unlit and lit, the LED close-up unlit and lit, diode, resistor, push button,
+  toggle;
+- the layers pair, `stats-*.json` and `perf/`.
+
+### Q.9 Regression and deployment
+
+Regression on `c6e8f25` (clean tree):
+
+| Check | Result |
+|---|---|
+| Typecheck | PASS |
+| Lint | PASS |
+| Unit tests | 846/846 |
+| Browser | PASS |
+| Build | PASS |
+| e2e | 163 passed, 3 skipped (+ `three-layers` ×2) |
+
+Deployed frontend-only with `publish-frontend.sh c6e8f25`: all publisher checks passed. The
+backend and Session Host are untouched; the runtime stays `80448f9`, and the services' start times
+are unchanged.
+
+Live checks through the gate's origin:
+
+| Check | Result |
+|---|---|
+| live 3D | 7/7 |
+| demo10 | 40/40 |
+| Sprint 9 smoke | all passed |
+| ESP32 3D controls, `esp32-input-echo` (real build, QEMU) | 17/17 |
+| ESP32 3D controls, `esp32-bench` | 17/17 |
+| `esp32-bench` running | yellow D3 and green D4 lit in 3D; Stop → stopped, no page errors |
+| Version details | frontend `c6e8f25`, Runtime ID `v0.10-dev · 80448f9` |
+
+Cleanup: no QEMU units, no session directories. Frontend rollback, which leaves the runtime
+untouched:
+
+```sh
+sudo ln -sfn /srv/tbi-lab/dev-lab/80448f9426d10cf7cf1f8f809ed44cf1a5096675 /srv/tbi-lab/dev-lab/current.tmp &&
+  sudo mv -T /srv/tbi-lab/dev-lab/current.tmp /srv/tbi-lab/dev-lab/current
+```
+
+### Q.10 Self-critique (owner questions)
+
+**A. Does the ESP32 look close to a real product photograph?** Closer, not there.
+- Close up, the board surface, the satin mask, the silkscreen, the menisci and now the
+  micro-USB are convincing.
+- Still CG: perfectly clean edges everywhere, and the RF can's laser marking reads embossed.
+- Unusual but physically possible: the board standing 10 mm up on its header pins.
+
+**B. Do the small parts look like real components?**
+- Resistor, diode and toggle switch: mostly yes.
+- LEDs: lit, good; unlit from some angles, the transmission approximation still shows objects
+  behind as a band.
+- Push button and Dupont housings: correct but plain.
+
+**C. Do wires and connectors feel physically plausible?** Yes for shape (bends, sag, arches,
+crossings, junction splices). The jackets are still perfect uniform tubes.
+
+**D. Does the scene feel like a physical electronics bench?** It now reads as a clean, well-lit
+product render of a real bench setup: labels gone, a manufactured mat under a lamp, a composed
+view. It does not yet read as a photograph.
+
+**E. The three strongest remaining CG cues:**
+1. Lighting and surfaces that are too perfect: no micro-variation between identical parts, no
+   dust-free-but-real surface texture, uniform specular on every plastic.
+2. The miniature, stylized bench supply and the ground posts next to true-scale parts.
+3. Edges with no bevel highlights on many small parts (SMD bodies, Dupont housings, the PCB
+   outline), which a camera always catches.
+
+**Photographed-bench bar: not met.** The Realistic view is a substantial step toward it.
 
 ## Part P — runtime sync: the Session Host runs the Sprint 10 engine (owner-approved, 2026-10-07)
 
