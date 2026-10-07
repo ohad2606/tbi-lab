@@ -526,6 +526,7 @@ export const en = {
   'update.busyBuild': 'Reload when the build has finished.',
   'update.busySaving': 'Saving your changes…',
   'view3d.presets': 'Standard views',
+  'view3d.labels': 'Labels',
   'view3d.view.top': 'Top',
   'view3d.view.front': 'Front',
   'view3d.view.side': 'Side',

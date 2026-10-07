@@ -103,17 +103,20 @@ export function buildLedHiFi(
   const lens = own.mat(
     full
       ? new THREE.MeshPhysicalMaterial({
+          // Moulded epoxy, not glass (realism pass 2): tinted-diffused epoxy scatters most light
+          // inside it (low transmission, rough: the frame shows only as a soft shape) under a
+          // satin moulded skin; water-clear epoxy is clear but not optically perfect.
           color: look.clear
-            ? tint.clone().lerp(new THREE.Color('#ffffff'), 0.65)
-            : tint.clone().lerp(new THREE.Color('#ffffff'), 0.08),
-          roughness: look.clear ? 0.04 : 0.5,
-          transmission: look.clear ? 1 : 0.55,
-          thickness: p.bodyDiameterMm * 0.8,
+            ? tint.clone().lerp(new THREE.Color('#ffffff'), 0.6)
+            : tint.clone().multiplyScalar(0.82),
+          roughness: look.clear ? 0.1 : 0.62,
+          transmission: look.clear ? 0.92 : 0.32,
+          thickness: p.bodyDiameterMm * 0.9,
           ior: 1.5,
-          attenuationColor: tint.clone().lerp(new THREE.Color('#ffffff'), look.clear ? 0.4 : 0),
-          attenuationDistance: look.clear ? 6 : 1.2,
-          clearcoat: 1,
-          clearcoatRoughness: 0.04,
+          attenuationColor: tint.clone().lerp(new THREE.Color('#ffffff'), look.clear ? 0.35 : 0),
+          attenuationDistance: look.clear ? 5 : 0.8,
+          clearcoat: look.clear ? 0.9 : 0.55,
+          clearcoatRoughness: look.clear ? 0.06 : 0.22,
           // Lit, the epoxy reads a little hotter (yellower) than its colour.
           emissive: tint.clone().lerp(new THREE.Color('#ffd27a'), 0.18),
           emissiveIntensity: 0,
@@ -189,6 +192,7 @@ export function buildLedHiFi(
     m.frame,
     [-half, inner, 0],
   );
+  post.userData.noAo = true;
   g.add(post);
   const anvilW = Math.min(1.7, p.bodyDiameterMm * 0.36);
   const anvil = mesh(
@@ -210,6 +214,7 @@ export function buildLedHiFi(
     m.frame,
     [half, inner, 0],
   );
+  anvil.userData.noAo = true;
   g.add(anvil);
   // Reflector cup on the anvil, the die in it, and the bond wire from the post to the die.
   const cupX = half - anvilW / 2 + 0.2;
@@ -230,6 +235,7 @@ export function buildLedHiFi(
     m.frame,
     [cupX, frameTop, 0],
   );
+  cup.userData.noAo = true;
   g.add(cup);
   // The die: dark when off; when lit it is the light source (renderer: live level).
   const dieMat = own.mat(
@@ -246,6 +252,7 @@ export function buildLedHiFi(
     [cupX, frameTop + 0.08, 0],
   );
   die.userData.ledDie = true;
+  die.userData.noAo = true;
   g.add(die);
   g.add(
     tube(

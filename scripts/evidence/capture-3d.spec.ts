@@ -123,3 +123,63 @@ test('parts bench (toggle, button, resistor, LED, 1N4148, contact)', async ({ pa
   await shot(page, 'parts-lit-overview', { target: [-8, 4, 10], from: [30, 55, 80] });
   await page.getByTestId('sim-stop').click();
 });
+
+test('wiring and LED colours (esp32-input-echo, led-colours)', async ({ page }) => {
+  for (const [id, shots] of [
+    ['esp32-input-echo', ['echo-overview', 'echo-wires']],
+    ['led-colours', ['leds-overview', 'leds-close']],
+  ] as const) {
+    const doc = JSON.parse(
+      readFileSync(new URL(`../../app/src/examples/data/${id}.json`, import.meta.url), 'utf8'),
+    );
+    doc.projectId = `prj_evidence${id.replace(/-/g, '')}`;
+    await openDoc(
+      page,
+      serializePackage(
+        createPackage(doc, { appVersion: '0.1.0', exportedAt: '2026-10-06T00:00:00.000Z' }),
+      ),
+    );
+    await open3d(page);
+    await shot(page, shots[0]);
+    if (id === 'esp32-input-echo') {
+      await shot(page, shots[1], { target: [-10, 6, 0], from: [30, 30, 55] });
+      await page.getByTestId('view3d-labels').click();
+      await shot(page, 'echo-overview-nolabels');
+      await page.getByTestId('view3d-labels').click();
+    } else {
+      await shot(page, shots[1], { target: [8, 6, 5], from: [30, 22, 40] });
+      await page.getByTestId('sim-run').click();
+      await expect(page.getByTestId('sim-status')).toHaveAttribute('data-status', 'running');
+      await expect(page.getByTestId('view3d')).toHaveAttribute('data-lit', /D1/, {
+        timeout: 60_000,
+      });
+      await shot(page, 'leds-lit-overview');
+      await shot(page, 'leds-lit-close', { target: [8, 6, 5], from: [30, 22, 40] });
+      await page.getByTestId('sim-stop').click();
+    }
+  }
+});
+
+test('component audit: the examples with the older parts', async ({ page }) => {
+  for (const id of [
+    'relay-load',
+    'pir-alarm',
+    'led-matrix',
+    'night-light',
+    'rc-fade',
+    'rgb-mixer',
+  ]) {
+    const doc = JSON.parse(
+      readFileSync(new URL(`../../app/src/examples/data/${id}.json`, import.meta.url), 'utf8'),
+    );
+    doc.projectId = `prj_audit${id.replace(/-/g, '')}`;
+    await openDoc(
+      page,
+      serializePackage(
+        createPackage(doc, { appVersion: '0.1.0', exportedAt: '2026-10-06T00:00:00.000Z' }),
+      ),
+    );
+    await open3d(page);
+    await shot(page, `audit-${id}`);
+  }
+});

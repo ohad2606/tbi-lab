@@ -2878,3 +2878,9 @@ select {
 .statusbar .version-status {
   margin-inline-start: auto;
 }
+
+/* 3D view: the Labels toggle shows its state. */
+.view3d-presets .text-button[aria-pressed='true'] {
+  border-color: var(--accent, #1e6fd9);
+  color: var(--accent-strong, #174ea6);
+}

@@ -15,6 +15,7 @@
 
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { CATALOG, ESP32_DEVKITC_WROOM32, boardPinPosition, boardTerminalId } from '@tbi-lab/domain';
 import {
   BUZZER_CEM1205,
@@ -231,17 +232,30 @@ function topLabel(
 function buildRgbLed(c: SceneComponent, m: Materials, own: OwnedResources) {
   const p = RGB_LED_5MM;
   const g = new THREE.Group();
-  // Water-clear lens: its glow colour is set live from the solved channel currents (renderer).
+  // Water-clear epoxy (realism pass 2: transmissive on the full tier, like the single LEDs): its
+  // glow colour is set live from the solved channel currents (renderer).
   const lens = own.mat(
-    new THREE.MeshStandardMaterial({
-      color: '#eef3f7',
-      roughness: 0.06,
-      transparent: true,
-      opacity: 0.45,
-      emissive: '#ffffff',
-      emissiveIntensity: 0,
-      depthWrite: false,
-    }),
+    own.tier === 'full'
+      ? new THREE.MeshPhysicalMaterial({
+          color: '#f2f5f7',
+          roughness: 0.1,
+          transmission: 0.9,
+          thickness: 4,
+          ior: 1.5,
+          clearcoat: 0.9,
+          clearcoatRoughness: 0.06,
+          emissive: '#ffffff',
+          emissiveIntensity: 0,
+        })
+      : new THREE.MeshStandardMaterial({
+          color: '#eef3f7',
+          roughness: 0.06,
+          transparent: true,
+          opacity: 0.45,
+          emissive: '#ffffff',
+          emissiveIntensity: 0,
+          depthWrite: false,
+        }),
   );
   const base = p.standoffMm;
   const R = p.bodyDiameterMm / 2;
@@ -422,7 +436,43 @@ function buildBuzzer(c: SceneComponent, m: Materials, own: OwnedResources) {
   const g = new THREE.Group();
   const R = p.diameterMm / 2;
   const y0 = p.standoffMm;
-  g.add(cylinder(own, R, p.heightMm, m.blackPlastic, [0, y0 + p.heightMm / 2, 0], 48));
+  // Moulded can (realism pass 2): rounded base and top edges, the top's raised rim, the sound
+  // hole as a real recess; glossy black plastic.
+  const H = p.heightMm;
+  const hole = p.soundHoleDiameterMm / 2;
+  const can = mesh(
+    own.shared(
+      'buzzer:can',
+      () =>
+        new THREE.LatheGeometry(
+          (
+            [
+              [0.001, 0],
+              [R - 0.35, 0],
+              [R - 0.05, 0.15],
+              [R, 0.45],
+              [R, H - 0.55],
+              [R - 0.08, H - 0.18],
+              [R - 0.35, H],
+              [R - 0.9, H],
+              [R - 1.1, H - 0.2],
+              [hole + 0.6, H - 0.2],
+              [hole + 0.25, H - 0.08],
+              [hole, H - 0.12],
+              [hole, H - 1.2],
+              [0.001, H - 1.2],
+            ] as [number, number][]
+          ).map(([r, y]) => new THREE.Vector2(r, y)),
+          48,
+        ),
+    ),
+    own.sharedMat(
+      'buzzer:plastic',
+      () => new THREE.MeshStandardMaterial({ color: '#111113', roughness: 0.32 }),
+    ),
+    [0, y0, 0],
+  );
+  g.add(can);
   // Top: the sound hole in the middle, "+" beside the positive pin (-x), the laser marking.
   const top = topLabel(
     own,
@@ -432,11 +482,8 @@ function buildBuzzer(c: SceneComponent, m: Materials, own: OwnedResources) {
     y0 + p.heightMm + 0.01,
     [256, 256],
     (ctx, w, h) => {
+      // (The sound hole is geometry now: the marking leaves it clear.)
       ctx.clearRect(0, 0, w, h);
-      ctx.fillStyle = '#060607';
-      ctx.beginPath();
-      ctx.arc(w / 2, h / 2, (p.soundHoleDiameterMm / p.diameterMm) * w * 0.5, 0, 2 * Math.PI);
-      ctx.fill();
       ctx.fillStyle = '#8d9096';
       ctx.font = 'bold 64px sans-serif';
       ctx.textAlign = 'center';
@@ -461,10 +508,20 @@ function buildRelay(_c: SceneComponent, m: Materials, own: OwnedResources) {
   const g = new THREE.Group();
   const blue = own.sharedMat(
     'relayCase',
-    () => new THREE.MeshStandardMaterial({ color: '#1d5fc4', roughness: 0.38 }),
+    () => new THREE.MeshStandardMaterial({ color: '#1b5ac0', roughness: 0.3 }),
   );
   const y0 = p.standoffMm;
-  g.add(box(own, p.lengthMm, p.heightMm, p.widthMm, blue, [0, y0 + p.heightMm / 2, 0]));
+  // Moulded case (realism pass 2): rounded edges, glossy.
+  g.add(
+    mesh(
+      own.shared(
+        'relay:case',
+        () => new RoundedBoxGeometry(p.lengthMm, p.heightMm, p.widthMm, 3, 0.7),
+      ),
+      blue,
+      [0, y0 + p.heightMm / 2, 0],
+    ),
+  );
   // The printed top: maker, part number and the contact ratings (as on the part).
   g.add(
     topLabel(
@@ -581,20 +638,31 @@ function buildPir(_c: SceneComponent, m: Materials, own: OwnedResources) {
   );
   // Fresnel dome: a body of revolution with shallow ridges (the lens facets), milky white.
   const R = p.domeDiameterMm / 2;
+  // Realism pass 2: a smooth dome with fine, shallow facet rings (the Fresnel zones), milky
+  // translucent plastic on the full tier.
   const profile: [number, number][] = [[R, 0]];
-  const steps = 24;
+  const steps = 72;
   for (let i = 1; i <= steps; i++) {
     const a = (i / steps) * (Math.PI / 2);
-    const ridge = i % 3 === 0 ? 0.25 : 0;
+    const ridge = 0.07 * Math.abs(Math.sin(i * 0.9));
     profile.push([Math.max(0.001, (R + ridge) * Math.cos(a)), p.domeHeightMm * Math.sin(a)]);
   }
   const dome = lathe(
     own,
-    'pirDome',
+    'pirDome2',
     profile,
-    own.sharedMat(
-      'pirDome',
-      () => new THREE.MeshStandardMaterial({ color: '#f1f2ee', roughness: 0.7 }),
+    own.sharedMat('pirDome', () =>
+      own.tier === 'full'
+        ? new THREE.MeshPhysicalMaterial({
+            color: '#f4f4f0',
+            roughness: 0.55,
+            transmission: 0.25,
+            thickness: 1.5,
+            sheen: 0.4,
+            sheenRoughness: 0.5,
+            sheenColor: new THREE.Color('#ffffff'),
+          })
+        : new THREE.MeshStandardMaterial({ color: '#f1f2ee', roughness: 0.7 }),
     ),
   );
   dome.position.y = y0 + p.boardThicknessMm;
@@ -645,7 +713,16 @@ function buildLedMatrix(_c: SceneComponent, m: Materials, own: OwnedResources) {
     'matrixBody',
     () => new THREE.MeshStandardMaterial({ color: '#e9eaec', roughness: 0.6 }),
   );
-  g.add(box(own, p.sizeMm, p.heightMm, p.sizeMm, body, [0, y0 + p.heightMm / 2, 0]));
+  g.add(
+    mesh(
+      own.shared(
+        'matrix:body',
+        () => new RoundedBoxGeometry(p.sizeMm, p.heightMm, p.sizeMm, 2, 0.5),
+      ),
+      body,
+      [0, y0 + p.heightMm / 2, 0],
+    ),
+  );
   // The face: its own canvas texture, repainted live from the dot currents (renderer).
   const tex = canvasTexture(own, 256, 256, (ctx) =>
     paintMatrixFace(ctx, 256, new Array(64).fill(0)),
@@ -682,35 +759,74 @@ function buildCapacitor(c: SceneComponent, m: Materials, own: OwnedResources) {
   const y0 = p.standoffMm;
   if (p.kind === 'disc') {
     // Disc ceramic, standing on edge (the disc's plane along x).
-    const disc = cylinder(
-      own,
-      p.diameterMm / 2,
-      p.thicknessMm,
+    // Realism pass 2: the epoxy dip's rounded, slightly domed faces (not a flat cylinder).
+    const Rd = p.diameterMm / 2;
+    const t = p.thicknessMm / 2;
+    const disc = mesh(
+      own.shared(
+        `cap:disc:${Rd}:${t}`,
+        () =>
+          new THREE.LatheGeometry(
+            (
+              [
+                [0.001, -t],
+                [Rd * 0.6, -t * 0.97],
+                [Rd * 0.88, -t * 0.82],
+                [Rd, -t * 0.35],
+                [Rd, t * 0.35],
+                [Rd * 0.88, t * 0.82],
+                [Rd * 0.6, t * 0.97],
+                [0.001, t],
+              ] as [number, number][]
+            ).map(([r, y]) => new THREE.Vector2(r, y)),
+            40,
+          ),
+      ),
       own.sharedMat(
         'ceramicDisc',
-        () => new THREE.MeshStandardMaterial({ color: '#d98a2b', roughness: 0.55 }),
+        () => new THREE.MeshStandardMaterial({ color: '#c9772a', roughness: 0.45 }),
       ),
       [0, y0 + p.diameterMm / 2, 0],
-      32,
     );
     disc.rotation.x = Math.PI / 2;
     g.add(disc);
   } else {
     // Radial electrolytic, bipolar: sleeve, silver top with the vent cross, "NP" and value printed.
     const R = p.diameterMm / 2;
+    // Realism pass 2: the printed PVC sleeve over the can with its rolled-in groove near the top
+    // and its rounded shoulder, the rubber seal at the base.
+    const H = p.heightMm;
     g.add(
-      cylinder(
-        own,
-        R,
-        p.heightMm,
+      mesh(
+        own.shared(
+          `cap:can:${R}:${H}`,
+          () =>
+            new THREE.LatheGeometry(
+              (
+                [
+                  [R * 0.82, 0],
+                  [R * 0.97, 0.12],
+                  [R, 0.5],
+                  [R, H - 1.4],
+                  [R - 0.22, H - 1.15],
+                  [R - 0.22, H - 0.95],
+                  [R, H - 0.7],
+                  [R, H - 0.25],
+                  [R - 0.12, H - 0.02],
+                  [R * 0.9, H + 0.02],
+                ] as [number, number][]
+              ).map(([r, y]) => new THREE.Vector2(r, y)),
+              40,
+            ),
+        ),
         own.sharedMat(
           'capSleeve',
-          () => new THREE.MeshStandardMaterial({ color: '#1d2f6b', roughness: 0.45 }),
+          () => new THREE.MeshStandardMaterial({ color: '#1a2c66', roughness: 0.3 }),
         ),
-        [0, y0 + p.heightMm / 2, 0],
-        32,
+        [0, y0, 0],
       ),
     );
+    g.add(cylinder(own, R * 0.8, 0.5, m.rubber, [0, y0 + 0.2, 0], 32));
     g.add(cylinder(own, R * 0.96, 0.15, m.steel, [0, y0 + p.heightMm + 0.05, 0], 32));
     const label = canvasTexture(own, 256, 256, (ctx) => {
       ctx.clearRect(0, 0, 256, 256);

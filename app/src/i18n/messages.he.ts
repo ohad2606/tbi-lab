@@ -512,6 +512,7 @@ export const he: Record<MessageKey, string> = {
   'update.busyBuild': 'אפשר לטעון מחדש בסיום הבנייה.',
   'update.busySaving': 'השינויים נשמרים…',
   'view3d.presets': 'מבטים קבועים',
+  'view3d.labels': 'תוויות',
   'view3d.view.top': 'מלמעלה',
   'view3d.view.front': 'חזית',
   'view3d.view.side': 'צד',

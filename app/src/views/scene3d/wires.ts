@@ -54,8 +54,12 @@ export function wireMaterials(own: OwnedResources, conductor: THREE.Material): W
   };
 }
 
-/** A path through `pts` with round bends: per-corner radius (vertical/horizontal corners wider). */
-export function bentPath(pts: Vec3[]): THREE.CurvePath<THREE.Vector3> {
+/**
+ * A path through `pts` with round bends: per-corner radius (`radii[i - 1]` for the corner at
+ * point i; by default vertical/horizontal corners wider), always limited to half of each
+ * adjoining run and to the previous corner's tangent point.
+ */
+export function bentPath(pts: Vec3[], radii?: number[]): THREE.CurvePath<THREE.Vector3> {
   const v = pts.map((p) => new THREE.Vector3(p.x, p.y, p.z));
   const path = new THREE.CurvePath<THREE.Vector3>();
   let from = v[0]!;
@@ -66,7 +70,7 @@ export function bentPath(pts: Vec3[]): THREE.CurvePath<THREE.Vector3> {
     const vertical = Math.abs(a.y - p.y) > 1e-6 || Math.abs(b.y - p.y) > 1e-6;
     // Half of each adjoining run, and never past the previous corner's tangent point.
     const r = Math.min(
-      vertical ? RISER_BEND : PLAN_BEND,
+      radii?.[i - 1] ?? (vertical ? RISER_BEND : PLAN_BEND),
       a.distanceTo(p) / 2,
       p.distanceTo(b) / 2,
       from.distanceTo(p),
@@ -159,17 +163,28 @@ function pieces(path: THREE.CurvePath<THREE.Vector3>, u0: number, u1: number) {
 }
 
 /** One wire: jacket tube, stripped ends, the jacket's cut faces. */
-export function buildWire(w: SceneWire, own: OwnedResources, m: WireMaterials): THREE.Group {
+export function buildWire(
+  w: SceneWire,
+  own: OwnedResources,
+  m: WireMaterials,
+  shape?: { points: Vec3[]; radii: number[] },
+): THREE.Group {
   const g = new THREE.Group();
   g.name = `wire:${w.id}`;
   g.userData.node = w.node;
-  const pts = w.points.map((p) => ({ ...p }));
+  // The natural shape (wireShape.ts) when given, else the route as drawn.
+  const pts = (shape?.points ?? w.points).map((p) => ({ ...p }));
+  const radii = shape ? [...shape.radii] : undefined;
   // A jumper end: the jacket continues down into the housing (out of sight).
-  if (w.ends[0] === 'jumper' && pts.length > 1 && pts[1]!.y > pts[0]!.y)
+  if (w.ends[0] === 'jumper' && pts.length > 1 && pts[1]!.y > pts[0]!.y) {
     pts.unshift({ ...pts[0]!, y: pts[0]!.y - INTO_HOUSING });
-  if (w.ends[1] === 'jumper' && pts.length > 1 && pts[pts.length - 2]!.y > pts[pts.length - 1]!.y)
+    radii?.unshift(RISER_BEND);
+  }
+  if (w.ends[1] === 'jumper' && pts.length > 1 && pts[pts.length - 2]!.y > pts[pts.length - 1]!.y) {
     pts.push({ ...pts[pts.length - 1]!, y: pts[pts.length - 1]!.y - INTO_HOUSING });
-  const path = bentPath(pts);
+    radii?.push(RISER_BEND);
+  }
+  const path = bentPath(pts, radii);
   const length = path.getLength();
   const stripped = (k: 0 | 1) => w.ends[k] === 'lead' || w.ends[k] === 'post';
   const s0 = stripped(0) ? Math.min(STRIP, length * 0.25) / length : 0;

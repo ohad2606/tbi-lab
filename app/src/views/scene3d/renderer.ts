@@ -18,18 +18,19 @@ import { buildComponent, createMaterials, OwnedResources, paintMatrixFace } from
 import { assetLoadStats, loadAssets } from './assets/library.js';
 import { createStage } from './stage.js';
 import { buildJoint, buildWire, wireMaterials } from './wires.js';
+import { shapeWires } from './wireShape.js';
 
 export { assetLoadStats, loadAssets };
-import { MODEL_HEIGHT, type SceneDescription } from './scene.js';
+import { type SceneDescription } from './scene.js';
+import { strokeText, strokeWidth } from './assets/strokeFont.js';
+import { placeLabels } from './labels.js';
 
 /** LED light pool size and the light's intensity per unit live level (mm scene, decay 2). */
 const LED_LIGHTS = 4;
 const LED_LIGHT = 90;
-/** Reference labels: world height in mm (perspective), capped on screen so near ones never loom. */
-const LABEL_WORLD_HEIGHT = 2.4;
-/** Labels float this far (mm) above their part's tallest point. */
-const LABEL_LIFT = 2.6;
-const LABEL_MAX_PX = 26;
+/** Reference labels printed on the bench: cap height (mm) and gap in front of the part. */
+const LABEL_HEIGHT = 2.2;
+const LABEL_GAP = 1.4;
 /** Fit/reset: the content's projected box spans this fraction of the view (NDC half-extent). */
 const FRAME_FILL = 0.95;
 
@@ -90,6 +91,8 @@ export interface Viewer {
    */
   inspect(target: [number, number, number], from: [number, number, number]): void;
   stats(): ViewerStats;
+  /** Show or hide the reference labels (a presentation preference, never project data). */
+  setLabels(visible: boolean): void;
   dispose(): void;
 }
 
@@ -163,7 +166,12 @@ function probeWebgl(): RenderQuality | null {
   }
 }
 
-export function createViewer(container: HTMLElement, onRender?: (s: ViewerStats) => void): Viewer {
+export function createViewer(
+  container: HTMLElement,
+  onRender?: (s: ViewerStats) => void,
+  options: { labels?: boolean } = {},
+): Viewer {
+  let labelsVisible = options.labels ?? true;
   const quality = probeWebgl();
   if (!quality) throw new WebGLUnavailableError('WebGL is not available');
   let renderer: THREE.WebGLRenderer;
@@ -235,21 +243,7 @@ export function createViewer(container: HTMLElement, onRender?: (s: ViewerStats)
     string,
     { texture: THREE.CanvasTexture; material: THREE.MeshStandardMaterial }
   >();
-  let labels: THREE.Sprite[] = [];
-  const toCamera = new THREE.Vector3();
-  /** Cap each label's on-screen height (cheap: one distance per label, only when rendering). */
-  function sizeLabels() {
-    const pxPerUnitAt1 = container.clientHeight / (2 * Math.tan((camera.fov * Math.PI) / 360));
-    for (const l of labels) {
-      const d = toCamera
-        .copy(l.position)
-        .applyMatrix4(l.parent!.matrixWorld)
-        .distanceTo(camera.position);
-      const px = (LABEL_WORLD_HEIGHT * pxPerUnitAt1) / Math.max(d, 1e-3);
-      const h = LABEL_WORLD_HEIGHT * Math.min(1, LABEL_MAX_PX / px);
-      l.scale.set((h * 4.8) / 1.8, h, 1);
-    }
-  }
+  let labels: THREE.Object3D[] = [];
   let liveLevels: Record<string, LiveLevel> = {};
   /** Glow halos of the LEDs, by component id. */
   let halos = new Map<string, THREE.Sprite>();
@@ -365,7 +359,6 @@ export function createViewer(container: HTMLElement, onRender?: (s: ViewerStats)
 
   function render() {
     if (disposed) return;
-    sizeLabels();
     const t0 = performance.now();
     // Count every pass of the frame (shadow, AO, beauty, output), not only the last one.
     renderer.info.autoReset = false;
@@ -407,7 +400,9 @@ export function createViewer(container: HTMLElement, onRender?: (s: ViewerStats)
 
     // Wires (coloured by electrical node) and direct contacts: wires.ts.
     const wm = wireMaterials(own, materials.lead);
-    for (const w of desc.wires) group.add(buildWire(w, own, wm));
+    // Their natural shape (sag, hand-formed bends), checked clear of every part and wire.
+    const shapes = shapeWires(desc);
+    for (const w of desc.wires) group.add(buildWire(w, own, wm, shapes.get(w.id)));
     for (const j of desc.joints)
       group.add(buildJoint(j, own, { lead: materials.lead, notConnected: materials.red }));
 
@@ -438,7 +433,15 @@ export function createViewer(container: HTMLElement, onRender?: (s: ViewerStats)
     });
 
     batchStatic(group);
-    for (const c of desc.components) group.add(label(c.id, c.x, c.z, desc));
+    // Labels beside their parts, clear of other parts and labels (labels.ts).
+    const spots = placeLabels(
+      desc.components.map((c) => ({ c, ...labelSize(c.id) })),
+      LABEL_GAP,
+    );
+    for (const c of desc.components) {
+      const at = spots.get(c.id)!;
+      group.add(label(c.id, at.x, at.z));
+    }
     return group;
   }
 
@@ -457,7 +460,7 @@ export function createViewer(container: HTMLElement, onRender?: (s: ViewerStats)
     group.traverse((o) => {
       const mesh = o as THREE.Mesh;
       if (!mesh.isMesh || (mesh as unknown as THREE.InstancedMesh).isInstancedMesh) return;
-      if (o.name === 'base') return;
+      if (o.name === 'base' || o.userData.noAo) return;
       const mat = mesh.material;
       if (Array.isArray(mat) || mat.transparent || textured(mat)) return;
       if (o.userData.lens || o.parent?.userData.lensMaterial === mat) return;
@@ -488,42 +491,58 @@ export function createViewer(container: HTMLElement, onRender?: (s: ViewerStats)
   }
 
   /**
-   * A reference designator (R1, U1) floating above its part, always facing the camera, LTR. It
-   * keeps perspective (far labels small, so large circuits do not drown in labels) but never
-   * grows beyond LABEL_MAX_PX on screen (sizeLabels).
+   * A reference designator (R1, U1) PRINTED ON THE BENCH just in front of its part (realism pass):
+   * dark ink in the boards' stroke font on a thin decal lying on the bench, lit and shadowed like
+   * the scene and hidden behind parts, as a label on a real lab mat would be; not a floating card.
+   * Always left-to-right. Hidden with the 3D view's Labels toggle (a per-browser preference).
    */
-  function label(text: string, x: number, z: number, desc: SceneDescription) {
-    const canvas2d = document.createElement('canvas');
-    canvas2d.width = 256;
-    canvas2d.height = 96;
-    const ctx = canvas2d.getContext('2d', { willReadFrequently: true })!;
-    ctx.fillStyle = 'rgba(255,255,255,0.9)';
-    ctx.strokeStyle = 'rgba(20,24,31,0.35)';
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.roundRect(28, 14, 200, 68, 14);
-    ctx.fill();
-    ctx.stroke();
-    ctx.fillStyle = '#14181f';
-    ctx.font = 'bold 52px ui-monospace, Menlo, Consolas, monospace';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.direction = 'ltr';
-    ctx.fillText(text, 128, 50);
-    const tex = new THREE.CanvasTexture(canvas2d);
-    tex.colorSpace = THREE.SRGBColorSpace;
-    own.textures.push(tex);
-    const sprite = new THREE.Sprite(
-      own.mat(new THREE.SpriteMaterial({ map: tex, depthTest: false })),
+  /** The label's plane size for a text (mm). */
+  function labelSize(text: string) {
+    const h = LABEL_HEIGHT * (88 / 64);
+    return { w: (h * Math.ceil((strokeWidth(text) * (64 / 6) + 64 * 0.6) / 4) * 4) / 88, h };
+  }
+
+  function label(text: string, x: number, z: number) {
+    const H = 64;
+    const k = H / 6;
+    const W = Math.ceil((strokeWidth(text) * k + H * 0.6) / 4) * 4;
+    const tex = new THREE.CanvasTexture(
+      (() => {
+        const canvas2d = document.createElement('canvas');
+        canvas2d.width = W;
+        canvas2d.height = H + 24;
+        const ctx = canvas2d.getContext('2d', { willReadFrequently: true })!;
+        ctx.strokeStyle = 'rgba(38, 43, 50, 0.92)';
+        strokeText(ctx, text, W / 2, (H + 24) / 2, { height: H, align: 'center', weight: 0.14 });
+        return canvas2d;
+      })(),
     );
-    const c = desc.components.find((k) => k.id === text);
-    const height = (c ? MODEL_HEIGHT[c.model] : 3) + LABEL_LIFT;
-    sprite.position.set(x, height, z);
-    sprite.scale.set((LABEL_WORLD_HEIGHT * 4.8) / 1.8, LABEL_WORLD_HEIGHT, 1);
-    sprite.userData.label = true;
-    sprite.renderOrder = 10;
-    sprite.name = `label:${text}`;
-    return sprite;
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = 8;
+    own.textures.push(tex);
+    const h = LABEL_HEIGHT * ((H + 24) / H);
+    const w = (h * W) / (H + 24);
+    const plane = new THREE.Mesh(
+      own.geo(new THREE.PlaneGeometry(w, h).rotateX(-Math.PI / 2)),
+      own.mat(
+        new THREE.MeshStandardMaterial({
+          map: tex,
+          transparent: true,
+          depthWrite: false,
+          roughness: 0.9,
+          polygonOffset: true,
+          polygonOffsetFactor: -2,
+          polygonOffsetUnits: -2,
+        }),
+      ),
+    );
+    plane.position.set(x, 0.03, z);
+    plane.receiveShadow = true;
+    plane.userData.label = true;
+    plane.renderOrder = 1;
+    plane.name = `label:${text}`;
+    plane.visible = labelsVisible;
+    return plane;
   }
 
   /**
@@ -533,9 +552,11 @@ export function createViewer(container: HTMLElement, onRender?: (s: ViewerStats)
    */
   function frame(desc: SceneDescription, direction?: THREE.Vector3) {
     const { min, max } = desc.bounds;
-    const top = max.y + LABEL_LIFT + LABEL_WORLD_HEIGHT / 2; // the reference labels above parts
-    const center = new THREE.Vector3((min.x + max.x) / 2, top / 3, (min.z + max.z) / 2);
-    const radius = 0.5 * Math.max(20, Math.hypot(max.x - min.x, max.z - min.z, top - min.y));
+    const top = max.y;
+    // The labels lie on the bench in front of the parts: include their strip.
+    const maxZ = max.z + LABEL_GAP + LABEL_HEIGHT * 1.5;
+    const center = new THREE.Vector3((min.x + max.x) / 2, top / 3, (min.z + maxZ) / 2);
+    const radius = 0.5 * Math.max(20, Math.hypot(max.x - min.x, maxZ - min.z, top - min.y));
     const fov = (camera.fov * Math.PI) / 180;
     const fit = Math.max(
       radius / Math.sin(fov / 2),
@@ -548,7 +569,7 @@ export function createViewer(container: HTMLElement, onRender?: (s: ViewerStats)
     const corners: THREE.Vector3[] = [];
     for (const x of [min.x, max.x])
       for (const y of [min.y, top])
-        for (const z of [min.z, max.z]) corners.push(new THREE.Vector3(x, y, z));
+        for (const z of [min.z, maxZ]) corners.push(new THREE.Vector3(x, y, z));
     let distance = fit;
     const p = new THREE.Vector3();
     for (let i = 0; i < 6; i++) {
@@ -594,7 +615,7 @@ export function createViewer(container: HTMLElement, onRender?: (s: ViewerStats)
       lenses = new Map();
       labels = [];
       content.traverse((o) => {
-        if (o.userData.label) labels.push(o as THREE.Sprite);
+        if (o.userData.label) labels.push(o);
       });
       matrices = new Map();
       content.traverse((o) => {
@@ -676,6 +697,11 @@ export function createViewer(container: HTMLElement, onRender?: (s: ViewerStats)
       render();
     },
     stats,
+    setLabels(visible) {
+      labelsVisible = visible;
+      for (const l of labels) l.visible = visible;
+      requestRender();
+    },
     dispose() {
       if (disposed) return;
       disposed = true;

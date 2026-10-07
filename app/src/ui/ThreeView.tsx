@@ -15,6 +15,16 @@ import { useAppState, useT } from './context.js';
 
 type Status = 'loading' | 'ready' | 'unavailable' | 'failed';
 
+/** The reference-labels preference (per browser; never part of a project). */
+const LABELS_KEY = 'tbi-lab.3d.labels';
+const readLabels = () => {
+  try {
+    return localStorage.getItem(LABELS_KEY) !== 'off';
+  } catch {
+    return true;
+  }
+};
+
 /** Shift + arrow pan step, as a fraction of the visible height. */
 const PAN_STEP = 0.1;
 
@@ -27,6 +37,7 @@ export function ThreeView() {
   /** How long the bundled glTF assets took to fetch and parse (once per page), ms. */
   const [assetMs, setAssetMs] = useState<number | null>(null);
   const [stats, setStats] = useState<ViewerStats | null>(null);
+  const [labels, setLabels] = useState(readLabels);
   const scene = useMemo(() => (doc ? deriveScene(doc) : null), [doc]);
   const shownProject = useRef<string | null>(null);
 
@@ -43,7 +54,9 @@ export function ThreeView() {
       .then((mod) => {
         if (cancelled || !host.current) return;
         try {
-          viewer.current = mod.createViewer(host.current, (s) => setStats(s));
+          viewer.current = mod.createViewer(host.current, (s) => setStats(s), {
+            labels: readLabels(),
+          });
           // Evidence capture (screenshots at fixed close-up cameras): the viewer is reachable from
           // the page only when this browser opted in. Never used by the product.
           try {
@@ -114,6 +127,7 @@ export function ThreeView() {
       data-gpu-bytes={stats ? stats.gpuBytes.geometry + stats.gpuBytes.textures : undefined}
       data-assets-ms={assetMs ?? undefined}
       data-render-ms={stats?.renderMs}
+      data-labels={labels ? 'on' : 'off'}
       data-objects={stats?.objects}
       data-renders={stats?.renders}
       data-programs={stats?.programs}
@@ -281,6 +295,24 @@ export function ThreeView() {
             aria-label={t('view3d.presets')}
             dir={locale.dir}
           >
+            <button
+              type="button"
+              class="text-button"
+              data-testid="view3d-labels"
+              aria-pressed={labels}
+              onClick={() => {
+                const next = !labels;
+                setLabels(next);
+                viewer.current?.setLabels(next);
+                try {
+                  localStorage.setItem(LABELS_KEY, next ? 'on' : 'off');
+                } catch {
+                  /* preference not kept */
+                }
+              }}
+            >
+              {t('view3d.labels')}
+            </button>
             {(['top', 'front', 'side', 'rear'] as const).map((p) => (
               <button
                 key={p}

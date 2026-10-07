@@ -162,6 +162,8 @@ export function createStage(
     depthWrite: true,
   });
   if (full) {
+    // A bench lit from above is a little brighter under the lamp than at its rim (soft falloff).
+    benchMat.map = falloffTexture();
     grain = grainTexture();
     benchMat.bumpMap = grain;
     benchMat.bumpScale = 0.4;
@@ -239,6 +241,7 @@ export function createStage(
       env?.dispose();
       backdrop?.dispose();
       benchMat.alphaMap?.dispose();
+      benchMat.map?.dispose();
       benchMat.dispose();
       grain?.dispose();
       gridMat.dispose();
@@ -269,7 +272,7 @@ function excludeTransparentFromAo(pass: GTAOPass) {
           (Array.isArray(m)
             ? m.some((x) => x.transparent)
             : m.transparent || (m as THREE.MeshPhysicalMaterial).transmission > 0));
-      if (transparent && o.name !== 'base') {
+      if ((transparent || o.userData.noAo) && o.name !== 'base') {
         o.visible = false;
         p._visibilityCache.push(o);
       }
@@ -349,5 +352,22 @@ function grainTexture(): THREE.Texture {
   );
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
   t.anisotropy = 4;
+  return t;
+}
+
+/** A soft radial falloff (centre 100 %, rim about 90 %) for the bench's colour. */
+function falloffTexture(): THREE.Texture {
+  const t = new THREE.CanvasTexture(
+    canvas(128, 128, (ctx) => {
+      const g = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+      g.addColorStop(0, '#ffffff');
+      g.addColorStop(0.25, '#eeeeee');
+      g.addColorStop(0.6, '#e2e2e2');
+      g.addColorStop(1, '#dadada');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, 128, 128);
+    }),
+  );
+  t.colorSpace = THREE.SRGBColorSpace;
   return t;
 }
