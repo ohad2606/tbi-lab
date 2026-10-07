@@ -499,7 +499,7 @@ export const RECIPES: Record<string, () => ProjectDocument> = {
    * part family the 3D view is judged on. Same firmware (TbiBanks: GPIO34 copied to GPIO4) and
    * input chain as esp32-input-echo; GPIO4 drives the red LED through 220 Ω. Two indicators run
    * straight off the 3.3 V supply: a yellow LED behind a 1N4148 (3.3 V less ~0.7 V and ~2.3 V
-   * over 33 Ω, about 8 mA) and a green LED through 68 Ω, its feed a long run across the bench.
+   * over 33 Ω, about 7 mA) and a green LED through 68 Ω, its feed a long run across the bench.
    */
   'esp32-bench': () => {
     const r = new Recipe('esp32-bench', 'ESP32 bench: inputs and indicators');

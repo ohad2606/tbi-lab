@@ -1,9 +1,11 @@
 # Sprint 10 — Physical 3D, engine time-domain core, the approved component families
 
 **Status (2026-10-07):** developed on `sprint-10` (worktree `~/projects/tbi-lab-s10`), from
-`7f09d74` = `main` = `sprint-9-complete`. **dev-lab.tbi-tech.net serves `5fab982`**
-(`v0.10-dev · 5fab982`, verified from `/version.json` and the served `index.html`; rollback
-release `5999a4c` kept). Part N: realism pass 3 (high-fidelity visuals). Part M: operating the toggle switch and push button in 3D during Run.
+`7f09d74` = `main` = `sprint-9-complete`. **dev-lab.tbi-tech.net serves `8611c9b`**
+(`v0.10-dev · 8611c9b`, verified from `/version.json` and the served `index.html`; rollback
+release `5fab982` kept). Part O: realism pass 4 (physical wires, workbench, grounding; the
+benchmark example cannot Run on the frozen backend, see O.9). Part N: realism pass 3
+(high-fidelity visuals). Part M: operating the toggle switch and push button in 3D during Run.
 Part L: false-hop fix, net wire colours, limited 3D picking. Part K: fresh 3D wire routes (owner review: PIR alarm, relay -> LED).
 Part J: visual-only 3D body separation (owner review). Part I: realism
 pass 2 + product footer. **Owner review PENDING**: the 3D view on a real GPU (checklist I.6) and
@@ -13,6 +15,247 @@ Not done: no PR, merge, tag, production deployment or backend deployment. The ba
 (`c31d62e`, runtime `33e35e4ac5e798d7`). The isolated preview `/s10-preview/` stays.
 
 Architecture and scope: [SPRINT-10-ARCHITECTURE.md](SPRINT-10-ARCHITECTURE.md).
+
+## Part O — realism pass 4: physical wires, workbench, grounding (owner direction, 2026-10-07)
+
+Owner assessment entering this pass: "Better 3D: YES. Photographed-electronics-bench WOW: NOT YET."
+
+Priorities, in order:
+1. P1: physical wires and connectors.
+2. P2: workbench.
+3. P3: ESP32 close-up detail.
+4. P4: contact shadows, AO and lighting.
+5. P5: component texture.
+
+No breadboard: a breadboard is a real construction method and appears only when a project has
+one (owner decision).
+
+### O.1 Electrical route vs physical cable (P1)
+
+`wireShape.ts` now separates the two:
+`route polyline (unchanged, electrical) -> cleaned control polygon -> physical cable curve -> tube`.
+
+Endpoints, connectivity, colours and the route itself never change. Every stage is a pure,
+deterministic function of the route and the wire id, never of the camera or of time.
+
+What the cable does:
+
+| Behaviour | What happens |
+|---|---|
+| Cleaning | The router's sub-millimetre end jogs, duplicates and collinear points are dropped, so a wire curves into its lead instead of stepping into it |
+| Wide asymmetric bends | Each corner bends over up to 14 mm of each adjoining run, shared in proportion. A run that ends at a terminal may be used almost whole. Arms never differ by more than 4x, so a bend cannot kink. Replaces 2-4 mm elbows |
+| Relaxation | A run of 20 mm or more resting on the mat bows sideways by up to 1.6 mm (2 %), to a side fixed per wire: never ruler-straight |
+| Gravity | Level spans in the air sag (up to 2.5 mm); sloping spans hang below their chord |
+| Jumper arch | A Dupont jumper rises out of its housing, arches over and lands on the mat along the direction it then runs |
+| Resting over crossings | A wire crossing another wire or a row of leads rests on it. Its profile is dilated 2.5 mm (narrow gaps are bridged, as a stiff wire would), its climb is limited to 0.4 mm per mm (long gentle sides, not a step), then it is simplified and smoothed |
+| Safety | The shape steps down through five levels (narrower bends, no bow, no arch, half sag) until it is clear of every part body and never closer to another wire than the plain routes were. The last resort is the route as drawn |
+
+Result: in every test scene, every wire gets a physical shape. In the benchmark scene that is
+20 of 21 wires; the one exception is a supply wire that leaves the same post as another, where
+any curve would bring the two closer.
+
+Tests (`wire-shape.test.ts`):
+- the cable never bends tighter in plan than its route did;
+- the long feed bends at a radius of more than 6 mm;
+- long runs bow between 0.3 and 2 mm;
+- jumpers arch at least 3 mm above their housing exit;
+- a crossing is one smooth hump.
+
+Tubes: `wires.ts` tessellates by bend angle (about 9 degrees per segment on the full tier, 13 on
+the reduced tier) instead of a fixed count per bend. Smooth wires got cheaper: benchmark
+triangles fell 10 %.
+
+Jacket: matte PVC (roughness 0.58, almost no clearcoat, faint sheen; the toy shine is gone).
+Each palette colour is shown in 3D as a realistic pigment, less saturated and a little darker.
+The shared palette (2D and 3D colour rules, red for + and black for -) is unchanged.
+
+### O.2 Connectors
+
+| Connector | Change |
+|---|---|
+| Dupont housing | Now seats 0.5 mm above the 0.45 mm solder meniscus (was 0.9 mm, set for the old tall joint), the pin stub entering it. Added: the rear wire opening, the tinned insulation-crimp wings round the jacket, and the locking lance bent out of the window |
+| Lead ends | Unchanged; the cleaning above makes the wire meet the lead cleanly |
+| Supply binding post and ground terminal | Unchanged (ring tongue on the post) |
+| ESP32 micro-USB | A flared mouth lip, and solder fillets on the four anchor tabs |
+| EN and BOOT switches | Solder fillets on all eight gull-wing feet |
+
+The ESP32 GLB is 761 KB, down from 786 KB: the header joints' lathe went from 20 to 16 segments,
+which pays for the new parts.
+
+### O.3 Workbench (P2) and lighting, shadows, AO (P4)
+
+Workbench (`stage.ts`):
+- A finite ESD work mat: muted blue-grey `#7b8d97`, matte with a fine grain, 2 mm thick with a
+  rounded bevelled edge. It covers the circuit plus a margin of max(28 mm, 30 %).
+- Printed on the mat: a faint 0.5 in grid over the circuit and a millimetre scale along the
+  front edge.
+- The mat lies on a neutral desk that fades into the backdrop on the full tier. The reduced tier
+  draws no desk plane; it clears to the desk colour.
+
+Contact shadows:
+- A soft 9-slice quad under every part, with strength and softness per part family (the ESP32's
+  is broad and faint, standing on its pins).
+- Drawn as one merged mesh, using the labels' material kind and a 4-band strength atlas, so no
+  extra shader program is compiled.
+- Present on both tiers.
+
+Lighting:
+- A neutral key (`#fffaf3`, 2.5) with a softer shadow (radius 4).
+- Fill raised to 0.6 so black plastics and the mask stay readable.
+- A gentle rim, and the studio environment at 0.85.
+- GTAO is unchanged (full tier only); no new post-processing.
+
+### O.4 Benchmark scene and diagnostics
+
+`esp32-bench` (a new example, English and Hebrew):
+- The `esp32-input-echo` firmware and input chain.
+- A red LED on GPIO4, plus yellow (behind a 1N4148, 33 Ω) and green (68 Ω) LEDs fed from the
+  3.3 V supply. Solved with the board removed: 7.2 mA yellow, 13.5 mA green, the supply in CV
+  at 20.7 mA.
+- One long feed across the bench, and a ground wire crossing it.
+- It passes the circuit checks; the renderer has no special case for it.
+
+Diagnostics:
+- Open the app with `#diag3d` to see a readout in the 3D view: the WebGL renderer, hardware or
+  software, the quality tier, pixel ratio, draw calls, triangles, materials, textures,
+  geometries, estimated GPU memory and the last frame's CPU time.
+- Hidden otherwise (e2e: `three-diagnostics.spec.ts`).
+
+### O.5 Numbers
+
+Full tier, benchmark scene (`5fab982` → `8611c9b`):
+
+| Camera | Draw calls | Triangles | Materials | Geometries | Textures | GPU memory |
+|---|---|---|---|---|---|---|
+| Three-quarter | 244 → 251 | 387k → 349k | 89 → 92 | 88 → 90 | 54 → 55 | 45.0 → 44.5 MB |
+| ESP32 close-up | 91 → 96 | 179k → 158k | | | | |
+
+Software renderer (default reduced tier, same procedure; one run each, run-to-run noise about
+±15 %):
+
+| Measure | `5fab982` | `8611c9b` |
+|---|---|---|
+| ESP32 example: first open | 2.8 s | 2.9 s |
+| ESP32 example: re-open | 2.1 s | 2.3 s |
+| ESP32 example: orbit / pan per step | 163 / 156 ms | 177 / 172 ms |
+| Dense bench: first open | 3.7 s | 3.7 s |
+| Dense bench: orbit per step | 241 ms | 254 ms |
+| Benchmark: first open | 2.9 s | 3.0 s |
+| Benchmark: re-open | 2.4 s | 2.6 s |
+| Benchmark: orbit / pan per step | 167 / 164 ms | 178 / 170 ms |
+| Benchmark: 20 enter/leave cycles (open time) | 2.2–2.6 s | 2.2–2.5 s |
+| Benchmark: heap after the cycles | 10 MB | 10 MB |
+| Benchmark: canvases after leaving | 0 | 0 |
+| Shader programs (ESP32 / dense / benchmark) | 5 / 6 / 6 | 5 / 6 / 6 |
+| Benchmark: draw calls / triangles | 103 / 128k | 105 / 121k |
+
+A back-to-back A/B with two runs each found orbit and pan equal within noise and re-open about
+0.1 s slower. An earlier version cost about 1 s more per open, from one extra shader program for
+the contact shadows, and was fixed.
+
+### O.6 Evidence
+
+`docs/sprints/s10-evidence/realism4/`: 17 `compare-*.jpg`, before and after at the same cameras
+(`cameras.json`), full tier on this host's software renderer:
+- whole scene: three-quarter, opposite side, low, top;
+- ESP32: front, rear, USB, WROOM and header;
+- wiring: Dupont, long wire, crossing, supply terminal;
+- components: LED, diode, resistor, push button, toggle switch.
+
+`software/` holds the same comparisons on the reduced tier; `stats-*.json` and `perf/` hold the
+numbers.
+
+### O.7 Real-GPU validation (mandatory for the WOW claim): owner checklist
+
+This host has no GPU, so **nothing in this pass has been seen on real hardware**. On a normal
+Windows PC with Chrome or Edge, hardware acceleration on, open dev-lab with `#diag3d`, then
+Projects → **ESP32 bench: inputs and indicators** → 3D:
+1. The readout says **hardware GPU** with the GPU's name, tier **full** and DPR 1–2. Record the
+   line.
+2. First open and orbit: smooth, with no stutter while dragging. Note the first-open time.
+3. The mat: blue-grey, matte, with a visible rounded edge; no horizon line; the grid faint.
+4. Wires: curves, a slight bow on the long feed, the hump over the crossing, jumpers arching
+   out of their housings.
+5. Shadows soft under the board, the PSU, the switches and the LEDs; nothing floats.
+6. Glass diode clear with its internals; the LEDs translucent. To see an LED lit, use **ESP32:
+   switch input to LED output** and Run (the benchmark does not Run on dev-lab yet, see O.9).
+7. Metals: pins, USB shell and the RF can read as metal, not grey plastic.
+
+Screenshots of the whole scene, one close-up and the readout are enough.
+
+### O.8 Regression and deployment
+
+Regression on `8611c9b` (clean tree):
+
+| Check | Result |
+|---|---|
+| Typecheck | PASS |
+| Lint | PASS |
+| Unit tests | 830/830 (`wire-shape` +3, `workbench` +2) |
+| Browser | PASS |
+| Build | PASS |
+| e2e | 161 passed, 3 skipped (+`three-diagnostics`) |
+
+Deployed frontend-only with `deploy/dev-lab/publish-frontend.sh 8611c9b`: all publisher checks
+passed, and dev-lab serves `8611c9be5a1fb08173afafa01135187364247918`.
+
+Live checks through the gate's origin:
+
+| Check | Result |
+|---|---|
+| live 3D | 7/7 |
+| demo10 | 40/40 |
+| Sprint 9 smoke | all passed |
+| ESP32 3D controls on `esp32-input-echo` (real build, QEMU runtime) | 17/17 |
+
+The backends were not restarted: `tbi-session-host` and `tbi-build` are active since
+2026-10-04. Rollback:
+
+```sh
+sudo ln -sfn /srv/tbi-lab/dev-lab/5fab982f927524254e82660e1319ca333e35b69d /srv/tbi-lab/dev-lab/current.tmp &&
+  sudo mv -T /srv/tbi-lab/dev-lab/current.tmp /srv/tbi-lab/dev-lab/current
+```
+
+### O.9 Backend limitation found (STOP: a backend change would be needed)
+
+On dev-lab, `esp32-bench` builds but does not Run. It fails with "D3: the value of 'Model'
+cannot be simulated".
+
+- With an ESP32 in the circuit, the whole circuit is solved by the R2 session host: the frozen
+  Sprint 8 backend (`c31d62e`). Its engine predates the Sprint 10 yellow (`tlhy5400`) and green
+  (`tlhg4900`) LED models.
+- The same scene with all three LEDs on the red model builds and Runs, so the 1N4148 is
+  supported there.
+- This affects any ESP32 project with a yellow or green LED, not only this example.
+- The failure is explicit, never a faked result.
+
+Not changed. Options for the owner:
+1. Approve a session-host update to the Sprint 10 engine, with its own regression.
+2. Ship the benchmark with red LEDs only, which loses the colour check the brief asks for.
+3. Keep it as a visual benchmark that is not runnable on dev-lab until (1).
+
+The deployed example follows option 3 until a decision.
+
+### O.10 Assessment (critical)
+
+| Area | Change |
+|---|---|
+| Wires | The clearest change: elbows are gone, long runs relax, crossings drape, jumpers arch |
+| Mat | Turns an infinite grey CG plane into a finite object on a desk |
+| Contact grounding | Visible |
+| Lighting | A small change |
+| ESP32, Dupont, USB | Small changes, visible only up close |
+
+**Not reached: "closer to a photographed electronics setup than a simulator illustration."** The
+scene reads as a clean, well-made product render. What still gives it away:
+- perfectly even lighting with no falloff, and no imperfection anywhere;
+- the board standing 10 mm up on its header pins, with 14 mm housings on top: physically
+  possible but unusual;
+- the labels printed on the mat;
+- the miniature bench supply, and the stylised ground posts;
+- a T-shaped jacket where three wires meet at a junction (no splice);
+- part surfaces without micro-texture (P5 was not reached in this pass);
+- no real-GPU verification.
 
 ## Part N — realism pass 3: high-fidelity visuals (owner direction, 2026-10-07)
 
