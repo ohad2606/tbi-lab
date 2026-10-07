@@ -35,6 +35,8 @@ export type Tier = 'full' | 'reduced';
  * warm neutral; the grid printed a little lighter than the mat.
  */
 const DESK = '#c3c3c0';
+/** The reduced tier's clear colour: the desk as the lit plane shows it there. */
+const DESK_REDUCED = '#b9b9b6';
 const MAT = '#7b8d97';
 const MAT_EDGE = '#6a7b85';
 const BACKDROP_TOP = '#f1f3f5';
@@ -93,7 +95,7 @@ export function createStage(
   // fill rate is what a software rasteriser pays for).
   const backdrop = full ? gradientTexture(BACKDROP_TOP, BACKDROP_BOTTOM) : null;
   scene.background = backdrop;
-  renderer.setClearColor(BACKDROP_BOTTOM);
+  renderer.setClearColor(full ? BACKDROP_BOTTOM : DESK_REDUCED);
 
   // Lights: clean product photography (realism pass 4). A large, neutral key high from the back
   // left (seen from the default camera its soft shadows fall forward, where they read as contact
@@ -201,14 +203,17 @@ export function createStage(
     matMat.roughnessMap = matGrain;
   }
   const gridMat = new THREE.LineBasicMaterial({ color: GRID, transparent: true, opacity: 0.32 });
-  const contactMat = new THREE.MeshBasicMaterial({
-    color: '#0d1114',
-    alphaMap: contactTexture(),
+  // Contact shadows: the same material kind as the bench labels (a transparent map on a standard
+  // material), so no extra shader program is compiled for them: that costs about a second on a
+  // software rasteriser. The texture is black; its alpha carries the softness and the strength.
+  const contactMat = new THREE.MeshStandardMaterial({
+    map: contactTexture(),
     transparent: true,
     depthWrite: false,
-    vertexColors: true,
+    roughness: 0.9,
     polygonOffset: true,
     polygonOffsetFactor: -2,
+    polygonOffsetUnits: -2,
   });
 
   return {
@@ -245,8 +250,10 @@ export function createStage(
       const cx = (b.minX + b.maxX) / 2;
       const cz = (b.minZ + b.maxZ) / 2;
       const extent = Math.max(b.maxX - b.minX, b.maxZ - b.minZ, 80);
-      // The desk: large enough that its faded rim lies well outside any view of the circuit.
-      const size = (full ? 6 : 8) * extent;
+      // The desk: large enough that its faded rim lies well outside any view of the circuit. The
+      // reduced tier draws none: the frame is cleared to the desk's colour (a lit full-screen
+      // plane is what a software rasteriser pays most for), the mat lying on it.
+      const size = 6 * extent;
       const plane = new THREE.Mesh(
         own.geo(new THREE.PlaneGeometry(size, size).rotateX(-Math.PI / 2)),
         benchMat,
@@ -260,7 +267,7 @@ export function createStage(
         const rep = size / 40;
         grain.repeat.set(rep, rep);
       }
-      g.add(plane);
+      if (full) g.add(plane);
       // The mat: the circuit's area with a generous margin (a real mat is larger than the build).
       const margin = Math.max(28, 0.3 * extent);
       const mx0 = b.minX - margin;
@@ -299,6 +306,8 @@ export function createStage(
         const m = new THREE.Mesh(own.geo(contact), contactMat);
         m.name = 'contact-shadows';
         m.renderOrder = 0;
+        // As the labels (the same program variant in the full tier too).
+        m.receiveShadow = true;
         m.userData.noAo = true;
         g.add(m);
       }
@@ -318,7 +327,7 @@ export function createStage(
       matGrain?.dispose();
       matMat.dispose();
       matEdgeMat.dispose();
-      contactMat.alphaMap?.dispose();
+      contactMat.map?.dispose();
       contactMat.dispose();
       gridMat.dispose();
       key.shadow.map?.dispose();
@@ -392,28 +401,41 @@ export function matGeometry(w: number, d: number): THREE.BufferGeometry {
   return geo;
 }
 
-/** Soft contact-shadow alpha: solid in the middle square, fading to nothing at the rim. */
+/** Contact-shadow strengths: one band of the atlas each (alpha at the centre). */
+export const CONTACT_LEVELS = [0.22, 0.3, 0.38, 0.45] as const;
+
+/**
+ * Soft contact-shadow atlas: one 64 x 64 band per strength (CONTACT_LEVELS), each solid in its
+ * middle square and fading to nothing at its rim (so neighbouring bands never bleed). Black, the
+ * strength and softness in the alpha.
+ */
 function contactTexture(): THREE.Texture {
   const N = 64;
+  const B = CONTACT_LEVELS.length;
   const t = new THREE.CanvasTexture(
-    canvas(N, N, (ctx) => {
-      const img = ctx.createImageData(N, N);
-      for (let y = 0; y < N; y++)
-        for (let x = 0; x < N; x++) {
-          // Distance outside the inner square [0.25, 0.75], in units of the 0.25 border.
-          const u = (x + 0.5) / N;
-          const v = (y + 0.5) / N;
-          const dx = Math.max(0.25 - u, 0, u - 0.75) / 0.25;
-          const dy = Math.max(0.25 - v, 0, v - 0.75) / 0.25;
-          const d = Math.min(1, Math.hypot(dx, dy));
-          const a = Math.round(255 * Math.pow(1 - d, 2.2));
-          const i = (y * N + x) * 4;
-          img.data[i] = img.data[i + 1] = img.data[i + 2] = a;
-          img.data[i + 3] = 255;
-        }
+    canvas(N, N * B, (ctx) => {
+      const img = ctx.createImageData(N, N * B);
+      for (let band = 0; band < B; band++)
+        for (let y = 0; y < N; y++)
+          for (let x = 0; x < N; x++) {
+            // Distance outside the inner square [0.25, 0.75], in units of the 0.25 border.
+            const u = (x + 0.5) / N;
+            const v = (y + 0.5) / N;
+            const dx = Math.max(0.25 - u, 0, u - 0.75) / 0.25;
+            const dy = Math.max(0.25 - v, 0, v - 0.75) / 0.25;
+            const d = Math.min(1, Math.hypot(dx, dy));
+            // Canvas rows run down; texture v runs up: band k occupies v in [k / B, (k + 1) / B].
+            const row = (B - 1 - band) * N + y;
+            const i = (row * N + x) * 4;
+            img.data[i] = 13;
+            img.data[i + 1] = 17;
+            img.data[i + 2] = 20;
+            img.data[i + 3] = Math.round(255 * CONTACT_LEVELS[band]! * Math.pow(1 - d, 2.2));
+          }
       ctx.putImageData(img, 0, 0);
     }),
   );
+  t.colorSpace = THREE.SRGBColorSpace;
   return t;
 }
 
@@ -433,12 +455,15 @@ const CONTACT: Partial<Record<ModelKey, { half?: number; strength: number; soft:
   'instrument.psu': { strength: 0.45, soft: 5 },
 };
 
-/** One merged 9-slice quad per part (one draw call), its strength in the vertex alpha. */
+/**
+ * One merged 9-slice quad per part (one draw call), mapped into the atlas band nearest its
+ * strength (times `scale`).
+ */
 export function contactShadows(desc: SceneDescription, scale: number): THREE.BufferGeometry | null {
   const pos: number[] = [];
   const uv: number[] = [];
-  const col: number[] = [];
   const index: number[] = [];
+  const B = CONTACT_LEVELS.length;
   for (const c of desc.components) {
     const k = CONTACT[c.model] ?? { strength: 0.3, soft: 2.5 };
     const [fx0, fx1, z0, z1] = FOOTPRINT[c.model];
@@ -451,15 +476,18 @@ export function contactShadows(desc: SceneDescription, scale: number): THREE.Buf
     const zs = [z0 - f / 2, z0 + f / 2, z1 - f / 2, z1 + f / 2];
     if (xs[1]! > xs[2]!) xs[1] = xs[2] = (x0 + x1) / 2;
     if (zs[1]! > zs[2]!) zs[1] = zs[2] = (z0 + z1) / 2;
+    const want = k.strength * scale;
+    let band = 0;
+    CONTACT_LEVELS.forEach((l, i) => {
+      if (Math.abs(l - want) < Math.abs(CONTACT_LEVELS[band]! - want)) band = i;
+    });
     const us = [0, 0.25, 0.75, 1];
     const base = pos.length / 3;
-    const a = k.strength * scale;
     for (let j = 0; j < 4; j++)
       for (let i = 0; i < 4; i++) {
         const p = rotatePoint({ x: xs[i]!, y: zs[j]! }, c.rotation);
         pos.push(c.x + p.x, 0.02, c.z + p.y);
-        uv.push(us[i]!, us[j]!);
-        col.push(1, 1, 1, a);
+        uv.push(us[i]!, (band + us[j]!) / B);
       }
     for (let j = 0; j < 3; j++)
       for (let i = 0; i < 3; i++) {
@@ -471,7 +499,6 @@ export function contactShadows(desc: SceneDescription, scale: number): THREE.Buf
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
-  geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 4));
   geo.setIndex(index);
   geo.computeVertexNormals();
   return geo;

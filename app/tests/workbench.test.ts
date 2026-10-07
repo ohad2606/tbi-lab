@@ -8,7 +8,7 @@ import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import type { ProjectDocument } from '@tbi-lab/domain';
 import { deriveScene } from '../src/views/scene3d/scene.js';
-import { contactShadows, matGeometry, MAT_T } from '../src/views/scene3d/stage.js';
+import { CONTACT_LEVELS, contactShadows, matGeometry, MAT_T } from '../src/views/scene3d/stage.js';
 import { footprintRect } from '../src/views/scene3d/labels.js';
 
 const example = (id: string) =>
@@ -29,20 +29,26 @@ describe('workbench', () => {
     expect(new Set(geo.groups.map((g) => g.materialIndex))).toEqual(new Set([0, 1]));
   });
 
-  it('contact shadows: one soft 9-slice quad per part, under it, on the mat, one mesh', () => {
+  it('contact shadows: one soft 9-slice quad per part, under it, on the mat, one mesh, no extra program', () => {
     const desc = deriveScene(example('esp32-bench'));
     const geo = contactShadows(desc, 1)!;
     const pos = geo.getAttribute('position') as THREE.BufferAttribute;
-    const col = geo.getAttribute('color') as THREE.BufferAttribute;
+    const uv = geo.getAttribute('uv') as THREE.BufferAttribute;
     expect(pos.count).toBe(16 * desc.components.length);
-    expect(col.itemSize).toBe(4);
+    // No per-vertex colour: the strength lives in the texture atlas (no extra shader variant).
+    expect(geo.getAttribute('color')).toBeUndefined();
     for (let i = 0; i < pos.count; i++) {
       expect(pos.getY(i)).toBeGreaterThan(0);
       expect(pos.getY(i)).toBeLessThan(0.05);
-      // Faint: never a black blob.
-      expect(col.getW(i)).toBeGreaterThan(0);
-      expect(col.getW(i)).toBeLessThanOrEqual(0.5);
     }
+    // Each part's quad stays inside one strength band of the atlas (faint: at most 0.45).
+    const B = CONTACT_LEVELS.length;
+    expect(Math.max(...CONTACT_LEVELS)).toBeLessThanOrEqual(0.5);
+    desc.components.forEach((c, k) => {
+      const vs = Array.from({ length: 16 }, (_, i) => uv.getY(16 * k + i));
+      const band = Math.floor(Math.min(...vs) * B + 1e-6);
+      expect(Math.max(...vs), c.id).toBeLessThanOrEqual((band + 1) / B + 1e-6);
+    });
     // Each part's quad is centred on the part's body (within its footprint).
     desc.components.forEach((c, k) => {
       let x = 0;
