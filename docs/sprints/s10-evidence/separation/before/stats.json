@@ -1,0 +1,65 @@
+{
+  "sep-pir-matrix:moved": null,
+  "sep-pir-matrix-top": {
+    "drawCalls": 17,
+    "triangles": 19396,
+    "materials": 29,
+    "geometries": 29,
+    "textures": 12,
+    "gpuBytes": 4625471,
+    "renderMs": 1.4,
+    "quality": "reduced"
+  },
+  "sep-pir-matrix-angled": {
+    "drawCalls": 17,
+    "triangles": 19396,
+    "materials": 29,
+    "geometries": 29,
+    "textures": 12,
+    "gpuBytes": 4625471,
+    "renderMs": 1.3,
+    "quality": "reduced"
+  },
+  "sep-esp32-module:moved": null,
+  "sep-esp32-module-top": {
+    "drawCalls": 38,
+    "triangles": 36324,
+    "materials": 49,
+    "geometries": 49,
+    "textures": 13,
+    "gpuBytes": 11352548,
+    "renderMs": 4.7,
+    "quality": "reduced"
+  },
+  "sep-esp32-module-angled": {
+    "drawCalls": 39,
+    "triangles": 36326,
+    "materials": 49,
+    "geometries": 49,
+    "textures": 13,
+    "gpuBytes": 11352548,
+    "renderMs": 3,
+    "quality": "reduced"
+  },
+  "sep-dense-mixed:moved": null,
+  "sep-dense-mixed-top": {
+    "drawCalls": 79,
+    "triangles": 93956,
+    "materials": 82,
+    "geometries": 80,
+    "textures": 30,
+    "gpuBytes": 17725171,
+    "renderMs": 10.9,
+    "quality": "reduced"
+  },
+  "sep-dense-mixed-angled": {
+    "drawCalls": 79,
+    "triangles": 93956,
+    "materials": 82,
+    "geometries": 80,
+    "textures": 30,
+    "gpuBytes": 17725171,
+    "renderMs": 5.1,
+    "quality": "reduced"
+  }
+}

@@ -1,15 +1,134 @@
 # Sprint 10 — Physical 3D, engine time-domain core, the approved component families
 
 **Status (2026-10-07):** developed on `sprint-10` (worktree `~/projects/tbi-lab-s10`), from
-`7f09d74` = `main` = `sprint-9-complete`. **dev-lab.tbi-tech.net serves `1fc122f`**
-(`v0.10-dev · 1fc122f`, verified from `/version.json` and the served `index.html`; rollback
-release `eb30708` kept). Part I: realism pass 2 + product footer. **Owner review PENDING**: the 3D
-view on a real GPU (checklist I.6).
+`7f09d74` = `main` = `sprint-9-complete`. **dev-lab.tbi-tech.net serves `2eb6d9b`**
+(`v0.10-dev · 2eb6d9b`, verified from `/version.json` and the served `index.html`; rollback
+release `1fc122f` kept). Part J: visual-only 3D body separation (owner review). Part I: realism
+pass 2 + product footer. **Owner review PENDING**: the 3D view on a real GPU (checklist I.6) and
+the separation (J).
 
 Not done: no PR, merge, tag, production deployment or backend deployment. The backends are unchanged
 (`c31d62e`, runtime `33e35e4ac5e798d7`). The isolated preview `/s10-preview/` stays.
 
 Architecture and scope: [SPRINT-10-ARCHITECTURE.md](SPRINT-10-ARCHITECTURE.md).
+
+## Part J — 3D body separation (owner review, 2026-10-07)
+
+Owner finding: the 2D circuit is correct, but in 3D physically larger parts can intersect (seen:
+the LED matrix and the PIR module). Fixed generically, in the derived 3D scene only.
+
+### J.1 Root cause
+
+The 2D circuit places each part by its **symbol**; the 3D scene gives it its **real size**
+(physical.ts). For the large modules the two differ a lot: the HC-SR501 board is 32 × 24 mm with
+a 23 mm dome, its symbol 17.5 × 12.7 mm (`bbox` −60…50 × −40…40 layout units); the 1088AS matrix
+is 32 × 32 mm, its symbol 28.6 × 44.5 mm but offset. Symbols that sit one grid step apart in 2D
+put real bodies ~7 mm into each other. Nothing in the 3D derivation checked physical volumes.
+
+### J.2 Algorithm (`app/src/views/scene3d/separation.ts`, wired in `scene.ts`)
+
+`2D position → base 3D transform → physical collision check → minimal visual-only separation →
+final 3D transform`. The project is never touched.
+
+- **Collision volumes** (`scene.ts collisionBoxes`): each part is one or more boxes in its own
+  frame, each with a height range: by default its physical footprint (`FOOTPRINT`, the capacitor's
+  from its actual package) from the bench to its top; the PIR module as its board at its real
+  height (8.5 mm standoff) over its pin header, so a low part may sit under its edge as on a real
+  bench; for every **wired pin under a body** (PIR, matrix, relay, LED legs) the strip its wire
+  leaves by at pin level, tagged with the pin's node (it may touch parts that have a terminal on
+  that node, never others). Conservative, axis-aligned in plan.
+- **Allowed to touch:** parts joined by a direct contact or with touching terminals form one rigid
+  unit (moved together, never tested against each other); jumper housings belong to their board;
+  wires are not obstacles (they are re-routed and re-shaped from the final positions).
+- **Collision:** deeper than 0.4 mm on both plan axes and overlapping heights (merely touching
+  parts, as close passives, are left alone).
+- **Resolution, deterministic:** first overlapping pair in document order; the less anchored part
+  moves (J.3) along ONE plan axis by the smallest distance that clears the other by 1.0 mm (never
+  rotated, never lifted); of the four directions the one creating no new overlap wins, shorter
+  first, ties +x, −x, +z, −z; repeated until clear (at most 48 rounds).
+- **Following the move:** terminals, contacts and labels follow the final transform; each wire end
+  on a moved part is dragged with it keeping the route orthogonal (the last run stretches, or moves
+  across with the part), then the usual end rules, heights and the natural drape run on the final
+  scene. A riser at an under-body pin's approach point is now a spot other wires clear (a gap
+  the moved geometry exposed).
+- **Electrical safety net:** if a moved part's wires or terminals would touch anything of another
+  node (`touchingNodes`), the whole scene keeps the 2D-derived placement and the overlaps are
+  reported. The separation can never suggest a connection.
+
+### J.3 Displacement and priority rules
+
+- Anchoring: ESP32 board > bench supply > ground post > large module (PIR, matrix, relay, buzzer)
+  > small part; then the larger plan area stays; then the earlier part in the document stays. For
+  PIR + matrix only the PIR (smaller board) moves.
+- Cap: a part moves at most half its larger plan dimension, between 4 and 16 mm (a 32 mm module up
+  to 16 mm, a resistor 6.7 mm). If the mover cannot clear within its cap, the other part is tried
+  (never the board: the MCU stays where 2D put it). If neither can, both stay where 2D put them and
+  the 3D view shows a non-blocking notice naming the parts (EN/HE, `view3d.overlap`): a part laid
+  on another is not flung away and the circuit is not scattered.
+
+### J.4 Effect on existing scenes
+
+| Scene | Moved |
+|---|---|
+| All 16 curated examples | none (the PIR alarm's resistor and ground post sit under the PIR board's edge, which is physically fine) |
+| Parts bench, dense bench | none |
+| Shared mixed test circuit | R2 2.15 mm (under the bench supply), GND2 2.2 mm (on another ground post) |
+| Stress project (big.tbilab, 42 parts) | R2 2.15 mm, GND2 2.2 mm (same arrangement) |
+| PIR + matrix (owner case) | PIR 10.25 mm away from the matrix (its pin strips face the matrix) |
+| ESP32 + PIR beside it | PIR 8.7 mm outward; board unmoved |
+| Dense mixed bench | PIR 8.7 mm, C1 1.5 mm; board and passives unmoved |
+
+### J.5 Tests
+
+- `app/tests/separation.test.ts`:
+  - **A.** PIR + matrix (2D boxes clear, 3D bodies overlap): no overlap after; only the PIR moves, along one axis, exactly the 1 mm gap; 2D unchanged; terminals, nodes and wire ends on the moved pins; drape keeps the ends.
+  - **B.** ESP32 + module: board unmoved, module outward.
+  - **C.** close passives and every curated example: nothing moved.
+  - **D.** direct contact with overlapping bodies: not separated; a contact cluster moves as one.
+  - **E.** determinism.
+  - **F.** save/load: package text identical before/after, re-derived scene identical.
+  - Also: cap and unresolved report, labels on the final position, dense mixed bench, cost.
+- Cross-view agreement (`semantics.test.ts`): Circuit, Schematic and 3D agree for the four fixtures.
+  3D terminal identity (ids, order, nodes) equals the netlist; only transforms differ.
+- e2e `app/e2e/separation.spec.ts`:
+  - PIR moved in 3D (`data-moved`) while the stored project keeps its coordinates;
+  - a part laid on another shows the notice in EN and HE, and the view stays usable.
+
+### J.5a Performance (this host, software only, mean of repeated runs)
+
+| Scene | Collision pass | Safety check (only when something moved) | `deriveScene` before → after |
+|---|---|---|---|
+| esp32-input-echo (12 parts) | 0.36 ms | — | 3.3 → 4.0 ms |
+| dense bench (43 parts) | 2.2 ms | — | 9.5 → 13.7 ms |
+| stress project (42 parts) | 2.0 ms | 2.3 ms | 12.4 → 15.0 ms |
+| PIR + matrix | 0.19 ms | 0.14 ms | 0.8 → 1.0 ms |
+
+A plain pairwise pass (no spatial grid) is enough at these sizes. A pathological pile of 70 large
+bodies resolves in ~25 ms. Rendering is unchanged (same meshes, only positions differ).
+
+Regression on `2eb6d9b`:
+- CI: typecheck, lint, build pass; unit tests 790 passed; browser e2e 156 passed, 3 skipped; legacy suite pass.
+- Live dev-lab: 3D 7/7, demo 40/40, Sprint 9 smoke 48/48.
+
+### J.6 Evidence
+
+`docs/sprints/s10-evidence/separation/`:
+- `compare-sep-*.jpg`, before (the deployed `1fc122f` release) and after, same cameras, top and
+  angled: PIR + matrix, ESP32 + module, dense mixed;
+- `notice-en.png` and `notice-he.png`.
+
+Software renderer, reduced tier.
+
+### J.7 Cases that can still overlap visually
+
+- A part laid on (or almost on) another beyond the cap: it stays, with the notice.
+- The safety net: if moving would make different nodes touch, the whole scene keeps its 2D
+  placement, with the notice.
+- Parts inside one direct-contact cluster: never separated, by design.
+- Conservative boxes: round or irregular bodies (LED flange, TO-92, buzzer) are taken as their
+  rectangles, so in rare cases parts are pushed a little more than strictly needed. Nothing is
+  pushed less.
+- Wires are not obstacles for the separation. Wire heights are recomputed afterwards, as before.
 
 ## Part I — realism pass 2 and the product footer (2026-10-07)
 
