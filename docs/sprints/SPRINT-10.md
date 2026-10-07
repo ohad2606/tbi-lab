@@ -1,9 +1,10 @@
 # Sprint 10 — Physical 3D, engine time-domain core, the approved component families
 
 **Status (2026-10-07):** developed on `sprint-10` (worktree `~/projects/tbi-lab-s10`), from
-`7f09d74` = `main` = `sprint-9-complete`. **dev-lab.tbi-tech.net serves `3921186`**
-(`v0.10-dev · 3921186`, verified from `/version.json` and the served `index.html`; rollback
-release `1c5572b` kept). Part L: false-hop fix, net wire colours, limited 3D picking. Part K: fresh 3D wire routes (owner review: PIR alarm, relay -> LED).
+`7f09d74` = `main` = `sprint-9-complete`. **dev-lab.tbi-tech.net serves `5999a4c`**
+(`v0.10-dev · 5999a4c`, verified from `/version.json` and the served `index.html`; rollback
+release `3921186` kept). Part M: operating the toggle switch and push button in 3D during Run.
+Part L: false-hop fix, net wire colours, limited 3D picking. Part K: fresh 3D wire routes (owner review: PIR alarm, relay -> LED).
 Part J: visual-only 3D body separation (owner review). Part I: realism
 pass 2 + product footer. **Owner review PENDING**: the 3D view on a real GPU (checklist I.6) and
 the separation (J).
@@ -12,6 +13,143 @@ Not done: no PR, merge, tag, production deployment or backend deployment. The ba
 (`c31d62e`, runtime `33e35e4ac5e798d7`). The isolated preview `/s10-preview/` stays.
 
 Architecture and scope: [SPRINT-10-ARCHITECTURE.md](SPRINT-10-ARCHITECTURE.md).
+
+## Part M — operating physical controls in 3D during a simulation (owner-approved, 2026-10-07)
+
+Approved:
+- the toggle switch and the momentary push button, operable in the 3D view while a simulation
+  runs.
+
+Not approved, and not implemented:
+- general 3D editing (moving parts, wiring, topology), potentiometers, multi-position switches.
+
+### M.1 One control-action path (`app/src/ui/controls.ts`)
+
+The Circuit view and the 3D view call the same actions; neither has a control state of its own.
+- **Toggle** (`toggleControl`): the persistent document edit the Circuit view always made.
+  `setParam` on the type's `toggleParam`, through `store.apply`: revision, autosave, undo. While
+  running, the store mirrors it to the session as a live control.
+- **Momentary** (`pressControl`): the transient runtime input (`store.press` → the simulation
+  controller), the same path for the analog circuit and an ESP32's input pin. Only while running,
+  never persisted.
+- **State** (`controlState`): the document's switch position and the session's pressed set. Both
+  views render from it.
+
+The Circuit view now calls these actions instead of its own copies; its behaviour is unchanged.
+
+### M.2 Interaction descriptors and targeting
+
+- **Actuator tagging.** The part builders tag their actuators (`userData.actuator`): the toggle's
+  lever, a group pivoting at the bushing top with tilt ±0.38 rad (`TOGGLE_TILT`); the button's cap,
+  with rest height and 0.45 mm travel (`TACTILE_TRAVEL_MM`). Batching never merges an actuator.
+- **Actuator regions.** `pick.ts actuators(scene)` gives each control's region from the real
+  dimensions: the lever's whole swing above the nut, or just the cap. A future control (a knob, a
+  multi-position switch) adds a region there.
+- **While running:** a hit on an actuator region operates it. The part's own body box encloses the
+  lever, so it does not hide its own actuator, but other parts and wires in front still win.
+  Clicking the switch body or the button housing selects the part.
+- **Stopped:** actuators are not considered, so any click selects the part and nothing is operated.
+
+### M.3 Gestures (ThreeView)
+
+- **Pointer down on an actuator while running** is handled in the capture phase and stopped, so
+  the camera never orbits from an actuator:
+  - the toggle flips on press;
+  - the button is pressed and the pointer captured.
+- **Release always arrives:** pointer up, pointer cancel, lost capture, leaving the view (captured),
+  or Stop / session end all release it. A held button never stays pressed.
+- **Keyboard:** Space or Enter on the selected switch or button (the 3D view focused) toggles it,
+  or holds the button until key-up. Auto-repeat changes nothing.
+- **Accessibility:** a synchronized, visually hidden control for the selected switch or button,
+  named for assistive technology (EN/HE):
+  - "Toggle switch SW1, open" (`role=switch`, `aria-checked`);
+  - "Push button SW1, released" (`aria-pressed`);
+  - stopped, it adds "Run the simulation to operate it." and is `aria-disabled`.
+
+  The Circuit view's controls remain available.
+- **Cues:** the pointer cursor over an actuator while running (hover picking is throttled to
+  animation frames), and a one-line hint under the view note while running. No toasts.
+
+### M.4 Physical animation (renderer `setControls`)
+
+- **State first, animation follows.** Each actuator moves to the pose its state requires: the
+  lever swings about its pivot in 150 ms; the cap travels down 0.45 mm in 60 ms and returns in
+  80 ms. Ease-out, no bounce.
+- **Reduced motion:** with `prefers-reduced-motion` the pose changes at once.
+- **Rendering cost:** frames are drawn only while something moves, refreshing the shadow map
+  meanwhile; there is no permanent loop.
+- **No rebuild:** a control-only change does not rebuild the scene; the scene's structural key
+  ignores switch positions. Measured: the object count is unchanged, with about 3 frames per toggle.
+
+### M.5 Tests
+
+| Test file | Tests | What they check |
+|---|---|---|
+| `controls.test.ts` | 2 | Which parts are physical controls; state from the document and the session |
+| `pick.test.ts` | +2 | Actuator regions; while running the lever and cap operate, stopped they select; the toggle body from the side selects |
+| `three-controls.spec.ts` (e2e) | 2 | Toggle and push-button behaviour, below |
+
+The toggle e2e test, on `rgb-mixer` SW3:
+- stopped, a lever click selects and changes nothing;
+- running, a click closes the switch: the 3D state, the Circuit's `data-closed`, the lever pose
+  (−0.38 rad), the LED mix and the stored project all follow;
+- a second click opens it again;
+- Space on the selected switch toggles it, with the accessible name updated;
+- a toggle in the Circuit view is followed by the 3D lever.
+
+The push-button e2e test, on `push-button` SW1 → D1:
+- press → pressed in 3D and Circuit, LED lit, cap down;
+- release → off, cap back;
+- leaving the view while held → released;
+- pointer cancel → released;
+- keyboard hold → pressed only while the key is down;
+- Stop while held → released, cap back.
+
+Live ESP32, on dev-lab with the real build service and QEMU (`esp32-input-echo`: SW1 and SW2 →
+GPIO34 → firmware → GPIO4 → D1), operated only in 3D:
+- the lever closes SW1: the Circuit agrees, GPIO34 goes high, the firmware drives GPIO4 high and D1
+  lights;
+- the lever opens SW1: GPIO4 goes low;
+- SW2 held: GPIO34 and GPIO4 high, D1 lit;
+- SW2 released: both low.
+
+The live run (`.tmp/s10/live3dctl.mjs`) passed 17/17 checks. GPIO34 is an input-only pad, and the
+runtime reports levels only for driven pins. So the firmware's echo, `digitalRead(34)` →
+`digitalWrite(4)`, is the observation that the input reached it: GPIO4 followed every 3D operation.
+
+Regression on `5999a4c`:
+- CI: typecheck, lint, build pass; unit tests 821 passed; browser e2e 160 passed, 3 skipped;
+  legacy suite pass.
+- Live dev-lab: 3D 7/7, demo 40/40, Sprint 9 smoke 48/48, 3D controls on the ESP32 17/17.
+
+### M.6 Performance
+
+This host, software renderer:
+- From a click to the shared state changing: 14–885 ms, single runs. The first click includes
+  one-time setup of the part volumes, and the rest depends on the frames already in flight on the
+  software GPU.
+- No rebuild, about 3 animation frames per operation.
+- Hover picking is at most one pick per animation frame, only while running.
+
+### M.7 Evidence
+
+`docs/sprints/s10-evidence/controls/`:
+- `ctl-toggle.jpg`: rgb-mixer SW3 open → closed (blue joins the LED's mix) → open;
+- `ctl-button.jpg`: push-button SW1 released, held with D1 lit, and a cap close-up held and
+  released;
+- `controls-run.webm`: a recording of both sequences;
+- `esp32-3d-toggle-closed.png`, `esp32-3d-button-held.png`: the live dev-lab ESP32 run, D1 lit by
+  the firmware.
+
+### M.8 Limitations
+
+- **Software renderer.** Rendered on the server's software renderer. On a real GPU the movement is
+  smoother and quicker.
+- **Toggling on press.** The toggle flips on press, so a drag that starts on a lever does not orbit
+  the camera.
+- **Haptics and sound.** There is no haptic or sound feedback; the movement is the feedback.
+- **Accessible name.** It is set on the hidden control; a dedicated live region announcing every
+  change is not added.
 
 ## Part L — false-hop fix, net wire colours, limited 3D interaction (owner review, 2026-10-07)
 
