@@ -128,7 +128,7 @@ export const ASSETS: Record<ModelKey, AssetRecord> = {
       },
       anchors: `leg tips at x = -+${(led.leadPitchMm / 2).toFixed(2)} (2.54 mm pitch), z = 0, on the bench`,
       materials:
-        'epoxy: full tier transmissive (IOR 1.5, frosted for tinted-diffused, clear for water-clear), reduced tier translucent; lead frame and legs tinned; die emissive when lit',
+        'epoxy: full tier transmissive (IOR 1.5; tinted-diffused = frosted, translucent: transmission 0.82, roughness 0.4, the tint by absorption, the frame visible inside; water-clear = clear), reduced tier translucent; lead frame and legs tinned (satin); lit: the die emissive, a glow core round it, the lens glowing most at the die',
       live: ['ledGlow'],
     },
   ),
@@ -138,13 +138,13 @@ export const ASSETS: Record<ModelKey, AssetRecord> = {
     '[V81857] Vishay 1N4148 datasheet, DO-35 package: body 3.4 x 1.75 mm used, leads 0.5 mm',
     {
       materials:
-        'glass: full tier transmissive amber (IOR 1.5), reduced tier translucent; DUMET slugs, silicon die, painted cathode band',
+        'glass: full tier clear transmissive with a light amber cast (IOR 1.5), reduced tier translucent; real-size DUMET slugs (~0.55 mm) and the silicon die visible inside; painted cathode band',
     },
   ),
   'switch.tactile': procedural(
     'switch.tactile',
     'assets/benchParts.ts buildTactile',
-    '[REP] 6 x 6 mm through-hole tactile switch class (physical.ts TACTILE)',
+    '[REP] 6 x 6 mm through-hole tactile switch class (physical.ts TACTILE): flat stamped 0.7 x 0.3 mm legs; the actuator cap travels 0.45 mm when pressed',
   ),
   'switch.toggle': procedural(
     'switch.toggle',

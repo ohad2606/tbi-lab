@@ -171,6 +171,74 @@ export function tube(
   return mesh(g, m);
 }
 
+/**
+ * A flat stamped lead (a tactile switch's leg, a lug): a rectangular strip `width` x `thick` swept
+ * along a path with rounded bends. The strip's width lies along the fixed `widthAxis` (the path
+ * must stay perpendicular to it, as a formed leg in one plane does); its thickness along the
+ * path's normal in that plane. Shared per shape.
+ */
+export function ribbon(
+  own: OwnedResources,
+  pts: V3[],
+  width: number,
+  thick: number,
+  m: THREE.Material,
+  bend = 0.5,
+  widthAxis: V3 = [0, 0, 1],
+) {
+  const key = `ribbon:${width}:${thick}:${bend}:${widthAxis.join(',')}:${pts.map((p) => p.map((n) => n.toFixed(3)).join(',')).join(';')}`;
+  const g = own.shared(key, () => {
+    const path = roundPath(pts, bend);
+    const n = Math.max(8, Math.ceil(path.getLength() / 0.15));
+    const W = new THREE.Vector3(...widthAxis).normalize();
+    const corners = [
+      [-1, -1],
+      [1, -1],
+      [1, 1],
+      [-1, 1],
+    ] as const;
+    const pos: number[] = [];
+    const ring = (i: number) => {
+      const u = i / n;
+      const c = path.getPointAt(u);
+      const t = path.getTangentAt(u).normalize();
+      const N = new THREE.Vector3().crossVectors(t, W).normalize();
+      return corners.map(([a, b]) =>
+        c
+          .clone()
+          .addScaledVector(W, (a * width) / 2)
+          .addScaledVector(N, (b * thick) / 2),
+      );
+    };
+    let prev = ring(0);
+    const quad = (a: THREE.Vector3, b: THREE.Vector3, c: THREE.Vector3, d: THREE.Vector3) =>
+      pos.push(
+        ...a.toArray(),
+        ...b.toArray(),
+        ...c.toArray(),
+        ...a.toArray(),
+        ...c.toArray(),
+        ...d.toArray(),
+      );
+    // End caps.
+    quad(prev[0]!, prev[3]!, prev[2]!, prev[1]!);
+    for (let i = 1; i <= n; i++) {
+      const cur = ring(i);
+      for (let k = 0; k < 4; k++) {
+        const k2 = (k + 1) % 4;
+        quad(prev[k]!, prev[k2]!, cur[k2]!, cur[k]!);
+      }
+      prev = cur;
+    }
+    quad(prev[0]!, prev[1]!, prev[2]!, prev[3]!);
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geo.computeVertexNormals();
+    return geo;
+  });
+  return mesh(g, m);
+}
+
 /** A body of revolution around +Y from (radius, height) pairs. */
 export function lathe(
   own: OwnedResources,

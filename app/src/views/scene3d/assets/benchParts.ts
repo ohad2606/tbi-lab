@@ -17,7 +17,7 @@
  */
 import * as THREE from 'three';
 import { PSU, TACTILE, TOGGLE, GROUND_POST, LEAD_ATTACH_HEIGHT } from '../physical.js';
-import { OwnedResources, drawTexture, canvasTexture, mesh, tube, type V3 } from '../kit.js';
+import { OwnedResources, drawTexture, canvasTexture, mesh, ribbon, tube, type V3 } from '../kit.js';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { strokeText } from './strokeFont.js';
 
@@ -104,7 +104,8 @@ export function buildTactile(own: OwnedResources, m: PartMaterials, xa: number, 
     for (const sz of [-1, 1]) {
       const z = sz * (p.legPitchZMm / 2);
       const x0 = sx * (p.legPitchXMm / 2);
-      const leg = tube(
+      // Flat stamped legs (0.7 x 0.3 mm), as on the real part, not round wires.
+      const leg = ribbon(
         own,
         [
           [x0, y0 + 0.3, z],
@@ -112,12 +113,11 @@ export function buildTactile(own: OwnedResources, m: PartMaterials, xa: number, 
           [end, 0.9, z],
           [end, LEAD_ATTACH_HEIGHT - 0.3, z],
         ],
-        p.legWidthMm / 2,
+        p.legWidthMm,
+        0.3,
         m.lead,
         0.5,
-        8,
       );
-      leg.scale.set(1, 1, 1);
       g.add(leg);
     }
     // The pair joined at the terminal.

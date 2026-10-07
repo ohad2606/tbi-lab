@@ -292,7 +292,11 @@ export function createViewer(
     if (disposed) return;
     for (const [o, t] of tweens) {
       const k = Math.min(1, (now - t.start) / t.ms);
-      const e = 1 - (1 - k) ** 3; // ease-out, no bounce
+      // Mechanical feel, no bounce: the lever starts slowly and snaps through its centre (ease-
+      // in-out, an over-centre toggle); the cap goes down quickly (ease-out) and returns with a
+      // soft ease-in-out. The state itself changed at once; only the pose follows.
+      const down = t.prop === 'y' && t.to < t.from;
+      const e = down ? 1 - (1 - k) ** 3 : k < 0.5 ? 4 * k ** 3 : 1 - (-2 * k + 2) ** 3 / 2;
       set(o, t.prop, t.from + (t.to - t.from) * e);
       if (k >= 1) tweens.delete(o);
     }
@@ -384,6 +388,8 @@ export function createViewer(
     {
       lens: THREE.MeshStandardMaterial;
       die?: THREE.MeshStandardMaterial;
+      core?: THREE.SpriteMaterial;
+      coreObj?: THREE.Object3D;
       gain: number;
       /** Where its light comes from (the die), world space. */
       at: THREE.Vector3;
@@ -414,7 +420,7 @@ export function createViewer(
     }
     // The light pool (full tier): the brightest lit LEDs light their surroundings.
     const lit: { level: number; at: THREE.Vector3; color: string }[] = [];
-    for (const [id, { lens: mat, die, gain, at, color }] of lenses) {
+    for (const [id, { lens: mat, die, core, coreObj, gain, at, color }] of lenses) {
       const raw = liveLevels[id] ?? 0;
       if (typeof raw === 'object' && 'dots' in raw) continue;
       const live = raw;
@@ -424,6 +430,12 @@ export function createViewer(
       // so the hue reads, not white.
       mat.emissiveIntensity = level * (typeof live === 'number' ? gain : 0.9);
       if (die) die.emissiveIntensity = level * 6;
+      // The glow core round the die: where the light visibly starts.
+      if (core) {
+        core.opacity = Math.min(1, level * 1.1);
+        if (typeof live !== 'number') core.color.set(live.color);
+        if (coreObj) coreObj.visible = level > 0;
+      }
       const halo = halos.get(id);
       if (typeof live !== 'number') {
         mat.emissive.set(live.color);
@@ -778,6 +790,10 @@ export function createViewer(
           lenses.set(o.userData.component as string, {
             lens,
             die: o.userData.ledDie as THREE.MeshStandardMaterial | undefined,
+            core: o.userData.ledCore as THREE.SpriteMaterial | undefined,
+            coreObj: o.getObjectByProperty('isSprite', true)?.userData.ledCore
+              ? o.getObjectByProperty('isSprite', true)
+              : o.children.find((c) => c.userData.ledCore),
             gain: (o.userData.ledGain as number | undefined) ?? 2.2,
             at: o.localToWorld(new THREE.Vector3(0, (o.userData.ledTop as number) - 3.5, 0)),
             color: (o.userData.ledColor as string | undefined) ?? '#ffffff',

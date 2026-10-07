@@ -19,7 +19,6 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
-import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import type { OwnedResources } from './kit.js';
 import type { SceneDescription } from './scene.js';
 
@@ -86,7 +85,7 @@ export function createStage(
   // fall forward, where they read as contact with the bench), a cool fill from the front right,
   // a low rim for highlights on metal; full: the environment does most of the remaining fill.
   const hemi = new THREE.HemisphereLight('#ffffff', '#9aa1a8', full ? 0.1 : 1.35);
-  const key = new THREE.DirectionalLight('#fff6ea', full ? 3.2 : 2.1);
+  const key = new THREE.DirectionalLight('#fff6ea', full ? 2.7 : 2.1);
   key.castShadow = full;
   key.shadow.mapSize.set(2048, 2048);
   key.shadow.bias = -0.00025;
@@ -98,14 +97,16 @@ export function createStage(
   rim.position.set(-20, 15, 80);
   scene.add(hemi, key, key.target, fill, rim);
 
-  // Studio reflections: RoomEnvironment (a softbox-lit room, built from boxes: no image asset),
-  // prefiltered once per viewer.
+  // Studio reflections (high-fidelity pass 3): a product-shot studio built in code (no image
+  // asset, project-owned): a soft sky over a darker floor, a large overhead softbox, two tall
+  // strip lights and a low front card. Metal (leads, the USB shell, the RF can, pins) shows
+  // bright soft highlights and readable form instead of a dull grey; prefiltered once per viewer.
   let env: THREE.Texture | null = null;
   if (full) {
     const pmrem = new THREE.PMREMGenerator(renderer);
-    const room = new RoomEnvironment();
-    env = pmrem.fromScene(room, 0.035).texture;
-    room.traverse((o) => {
+    const studio = studioScene();
+    env = pmrem.fromScene(studio, 0.03).texture;
+    studio.traverse((o) => {
       const m = o as THREE.Mesh;
       if (m.isMesh) {
         m.geometry.dispose();
@@ -115,7 +116,7 @@ export function createStage(
     pmrem.dispose();
   }
   scene.environment = env;
-  scene.environmentIntensity = 0.4;
+  scene.environmentIntensity = full ? STUDIO_INTENSITY : 0.4;
 
   // Full: multisampled HDR frame -> GTAO (contact shading) -> tone mapping and sRGB output.
   let composer: EffectComposer | null = null;
@@ -370,4 +371,59 @@ function falloffTexture(): THREE.Texture {
   );
   t.colorSpace = THREE.SRGBColorSpace;
   return t;
+}
+
+/** How strongly the studio lights the scene's reflections (full tier). */
+const STUDIO_INTENSITY = 0.75;
+
+/**
+ * The studio the environment map is rendered from (scene units are arbitrary: only directions
+ * matter to an environment). HDR values above 1 make the softboxes read as light sources.
+ */
+function studioScene(): THREE.Scene {
+  const s = new THREE.Scene();
+  // Sky dome: light grey above, a soft horizon, a darker floor below (the bench's own tone).
+  const dome = new THREE.SphereGeometry(50, 48, 24);
+  const colors: number[] = [];
+  const top = new THREE.Color('#eceef0');
+  const horizon = new THREE.Color('#c4c8cc');
+  const floor = new THREE.Color('#7e8286');
+  const pos = dome.attributes.position!;
+  for (let i = 0; i < pos.count; i++) {
+    const y = pos.getY(i) / 50;
+    const c =
+      y >= 0
+        ? horizon.clone().lerp(top, Math.pow(y, 0.6))
+        : horizon.clone().lerp(floor, Math.min(1, -y * 3));
+    colors.push(c.r, c.g, c.b);
+  }
+  dome.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  s.add(
+    new THREE.Mesh(dome, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide })),
+  );
+  const panel = (
+    w: number,
+    h: number,
+    power: number,
+    at: [number, number, number],
+    look: [number, number, number],
+  ) => {
+    const m = new THREE.Mesh(
+      new THREE.PlaneGeometry(w, h),
+      new THREE.MeshBasicMaterial({
+        color: new THREE.Color(power, power, power),
+        side: THREE.DoubleSide,
+      }),
+    );
+    m.position.set(...at);
+    m.lookAt(...look);
+    s.add(m);
+  };
+  // The overhead softbox, slightly behind (the key light's side), and two tall strips.
+  panel(34, 20, 3.2, [-4, 40, -8], [0, 0, 0]);
+  panel(7, 30, 2.4, [-38, 16, -6], [0, 6, 0]);
+  panel(7, 30, 1.6, [34, 18, -22], [0, 6, 0]);
+  // A low front card: a gentle fill on faces turned to the viewer.
+  panel(40, 9, 0.7, [0, 8, 44], [0, 4, 0]);
+  return s;
 }

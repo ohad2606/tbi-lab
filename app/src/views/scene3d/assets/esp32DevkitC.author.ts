@@ -51,7 +51,8 @@ function materials() {
     ),
     // ENIG (gold) exposed copper, tinned solder, gold-flashed header pins.
     gold: phys({ color: '#e0b860', metalness: 1, roughness: 0.25 }, 'enig_gold'),
-    solder: phys({ color: '#d4d7da', metalness: 1, roughness: 0.18 }, 'solder'),
+    // Lead-free solder: satin grey-silver, not a mirror (high-fidelity pass 3).
+    solder: phys({ color: '#c3c7cb', metalness: 1, roughness: 0.34 }, 'solder'),
     pinGold: phys({ color: '#d9b25a', metalness: 1, roughness: 0.28 }, 'pin_gold'),
     // PBT header housing: matte black with a faint sheen.
     housing: phys({ color: '#121214', roughness: 0.62 }, 'header_pbt'),
@@ -225,18 +226,20 @@ export function authorEsp32DevkitC(): THREE.Group {
   const fillets: THREE.BufferGeometry[] = [];
   const pins: THREE.BufferGeometry[] = [];
   const segments: THREE.BufferGeometry[] = [];
-  // The top joint: a wetted solder cone from the pad (r 0.85) up the pin, slightly convex.
+  // The top joint (high-fidelity pass 3): a wetted solder MENISCUS from the pad (r 0.85) to the
+  // pin, low and concave (it climbs ~0.45 mm and hugs the pin's corners), not a tall cone.
   const fillet = new THREE.LatheGeometry(
     [
-      [0.86, 0],
-      [0.84, 0.05],
-      [0.74, 0.16],
-      [0.6, 0.32],
-      [0.48, 0.52],
-      [0.4, 0.72],
-      [0.36, 0.86],
+      [0.87, 0],
+      [0.8, 0.02],
+      [0.68, 0.06],
+      [0.57, 0.12],
+      [0.49, 0.2],
+      [0.44, 0.29],
+      [0.42, 0.37],
+      [0.41, 0.45],
     ].map(([r, y]) => new THREE.Vector2(r, y)),
-    16,
+    20,
   );
   // A square header pin with chamfered tips, full length from the bench to its cut stub.
   const pinLen = yt + D.pinStubAboveMm;

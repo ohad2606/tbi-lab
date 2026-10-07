@@ -37,22 +37,24 @@ export function buildDo35(own: OwnedResources, y: number, metal: THREE.Material)
   const glass = own.sharedMat(`do35:glass:${own.tier}`, () =>
     full
       ? new THREE.MeshPhysicalMaterial({
-          color: '#ffd9b0',
+          // Clear glass with a light orange-amber cast (high-fidelity pass 3): the slugs and the
+          // die read through it, as on the real part.
+          color: '#fff3e6',
           roughness: 0.03,
           transmission: 1,
-          thickness: 1.2,
+          thickness: 0.6,
           ior: 1.5,
-          attenuationColor: '#ff8a3a',
-          attenuationDistance: 2.2,
+          attenuationColor: '#ffb070',
+          attenuationDistance: 3.5,
           clearcoat: 1,
           clearcoatRoughness: 0.02,
           specularIntensity: 1,
         })
       : new THREE.MeshStandardMaterial({
-          color: '#e0893a',
+          color: '#f0b070',
           roughness: 0.1,
           transparent: true,
-          opacity: 0.55,
+          opacity: 0.4,
           depthWrite: false,
         }),
   );
@@ -71,18 +73,22 @@ export function buildDo35(own: OwnedResources, y: number, metal: THREE.Material)
   // Inside: the DUMET slugs (copper-clad wire, reddish), the die between them.
   const dumet = own.sharedMat(
     'do35:dumet',
-    () => new THREE.MeshStandardMaterial({ color: '#c06a48', metalness: 1, roughness: 0.32 }),
+    () => new THREE.MeshStandardMaterial({ color: '#c47a58', metalness: 1, roughness: 0.3 }),
   );
-  const slug = own.shared(`do35:slug:${R}`, () =>
-    new THREE.CylinderGeometry(R * 0.5, R * 0.5, L * 0.36, 20).rotateZ(Math.PI / 2),
+  // The slugs are ~0.55 mm across inside the 1.75 mm envelope, ending a little short of the
+  // middle where the die sits between them.
+  const slugR = Math.max(p.leadDiameterMm / 2 + 0.03, R * 0.32);
+  const slugL = L * 0.3;
+  const slug = own.shared(`do35:slug:${R}:${slugR}`, () =>
+    new THREE.CylinderGeometry(slugR, slugR, slugL, 20).rotateZ(Math.PI / 2),
   );
   for (const s of [-1, 1]) {
-    const m = mesh(slug, dumet, [s * L * 0.21, y, 0]);
+    const m = mesh(slug, dumet, [s * (slugL / 2 + 0.1), y, 0]);
     m.castShadow = false;
     g.add(m);
   }
   const die = mesh(
-    own.shared('do35:die', () => new THREE.BoxGeometry(0.16, 0.5, 0.5)),
+    own.shared('do35:die', () => new THREE.BoxGeometry(0.18, 0.42, 0.42)),
     own.sharedMat(
       'do35:die',
       () => new THREE.MeshStandardMaterial({ color: '#3a3d44', metalness: 0.4, roughness: 0.35 }),

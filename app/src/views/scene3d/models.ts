@@ -71,8 +71,8 @@ export function createMaterials() {
     new THREE.MeshStandardMaterial({ color, roughness: 0.6, metalness: 0, ...extra });
   const metal = (color: string, roughness: number) => std(color, { metalness: 1, roughness });
   return {
-    /** Tinned copper leads (hot-dip tin: bright, slightly soft reflections). */
-    lead: metal('#d3d6d9', 0.28),
+    /** Tinned copper leads: hot-dip tin is satin, not mirror chrome (high-fidelity pass 3). */
+    lead: metal('#c9cdd2', 0.4),
     /** Gold-flashed header pins. */
     gold: metal('#e0b65c', 0.26),
     /** Soldermask: the DevKitC's near-black board. */
@@ -85,7 +85,7 @@ export function createMaterials() {
     darkPlastic: std('#24262a', { roughness: 0.45 }),
     ic: std('#1b1c1f', { roughness: 0.55 }),
     /** Bright nickel/chrome plating (bushings, levers, binding-post studs). */
-    chrome: metal('#f0f2f4', 0.18),
+    chrome: metal('#eceef0', 0.22),
     /** Stainless and plated steel (switch covers, nuts, washers). */
     steel: metal('#c2c7cc', 0.3),
     resistorBody: std('#d8c29a', { roughness: 0.55 }),
@@ -127,6 +127,9 @@ function twoTerminals(c: SceneComponent) {
  */
 export const OPEN_LEAD_GAP = 1.0;
 
+/** Bend radius of a formed axial lead, to the lead's centre minus its radius (mm). */
+const FORMED_BEND = 0.8;
+
 /** Axial leads: out of the body ends, bent down to the bench at the terminals. */
 function axialLeads(c: SceneComponent, p: AxialPhysics, m: Materials, own: OwnedResources) {
   const { xa, xb, openA, openB } = twoTerminals(c);
@@ -145,6 +148,9 @@ function axialLeads(c: SceneComponent, p: AxialPhysics, m: Materials, own: Owned
       ],
       r,
       m.lead,
+      // A formed lead: bent round a ~2x lead-diameter radius, smooth (not a faceted elbow).
+      FORMED_BEND + r,
+      12,
     ),
   );
   g.add(
@@ -157,6 +163,8 @@ function axialLeads(c: SceneComponent, p: AxialPhysics, m: Materials, own: Owned
       ],
       r,
       m.lead,
+      FORMED_BEND + r,
+      12,
     ),
   );
   return g;
@@ -907,7 +915,7 @@ const BUILDERS: Record<ModelKey, Builder> = {
   // anchors (assets/led5mm.ts, scene.ts).
   'led.radial': (c, m, own) => {
     const look = c.visual.led ?? { color: '#e53935', package: 't1_34' as const, clear: false };
-    const { group, lens, die, top, gain } = buildLedHiFi(
+    const { group, lens, die, core, top, gain } = buildLedHiFi(
       own,
       look.package,
       LED_PACKAGES[look.package],
@@ -916,6 +924,7 @@ const BUILDERS: Record<ModelKey, Builder> = {
     );
     group.userData.lensMaterial = lens;
     group.userData.ledDie = die;
+    group.userData.ledCore = core;
     group.userData.ledGain = gain;
     group.userData.ledTop = top;
     group.userData.ledColor = look.color;

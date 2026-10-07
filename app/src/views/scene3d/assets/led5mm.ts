@@ -58,16 +58,21 @@ export interface LedLook {
  * in the dome, dimmer towards the flange.
  */
 function glowProfile(own: OwnedResources): THREE.Texture {
-  return own.lasting('led:glowProfile', () => {
+  return own.lasting('led:glowProfile:3', () => {
     const t = drawTexture(
       2,
       64,
       (ctx) => {
+        // High-fidelity pass 3: brightest round the die (just below the dome's start, ~v 0.12-
+        // 0.25 along the lathe), softer up the dome, dark towards the flange. The lens is lit BY
+        // the die, not uniformly emissive.
         const g = ctx.createLinearGradient(0, 64, 0, 0);
-        g.addColorStop(0, '#1a1a1a');
-        g.addColorStop(0.45, '#7a7a7a');
-        g.addColorStop(0.75, '#ffffff');
-        g.addColorStop(1, '#e8e8e8');
+        g.addColorStop(0, '#0a0a0a');
+        g.addColorStop(0.08, '#3a3a3a');
+        g.addColorStop(0.18, '#ffffff');
+        g.addColorStop(0.32, '#b0b0b0');
+        g.addColorStop(0.7, '#5c5c5c');
+        g.addColorStop(1, '#7a7a7a');
         ctx.fillStyle = g;
         ctx.fillRect(0, 0, 2, 64);
       },
@@ -75,6 +80,26 @@ function glowProfile(own: OwnedResources): THREE.Texture {
     );
     return t;
   });
+}
+
+/** A soft radial glow (white core falling off to transparent), shared. */
+function coreTexture(own: OwnedResources): THREE.Texture {
+  return own.lasting('led:core', () =>
+    drawTexture(
+      64,
+      64,
+      (ctx) => {
+        const g = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+        g.addColorStop(0, 'rgba(255,255,255,1)');
+        g.addColorStop(0.18, 'rgba(255,255,255,0.85)');
+        g.addColorStop(0.45, 'rgba(255,255,255,0.25)');
+        g.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.fillStyle = g;
+        ctx.fillRect(0, 0, 64, 64);
+      },
+      true,
+    ),
+  );
 }
 
 /** Build the LED in its local frame. Returns the group, its lens and die materials (live glow). */
@@ -88,6 +113,8 @@ export function buildLedHiFi(
   group: THREE.Group;
   lens: THREE.MeshStandardMaterial;
   die: THREE.MeshStandardMaterial;
+  /** The glow core's material (opacity follows the live level). */
+  core: THREE.SpriteMaterial;
   top: number;
   /** Lens emission per unit live level (diffused epoxy glows; a clear lens mostly shows the die). */
   gain: number;
@@ -106,17 +133,22 @@ export function buildLedHiFi(
           // Moulded epoxy, not glass (realism pass 2): tinted-diffused epoxy scatters most light
           // inside it (low transmission, rough: the frame shows only as a soft shape) under a
           // satin moulded skin; water-clear epoxy is clear but not optically perfect.
+          // High-fidelity pass 3: tinted-diffused epoxy is a frosted, TRANSLUCENT body (the lead
+          // frame shows inside as a soft dark shape, the colour deepens with depth), not an
+          // opaque plastic: high, rough transmission with the tint carried by absorption.
           color: look.clear
             ? tint.clone().lerp(new THREE.Color('#ffffff'), 0.6)
-            : tint.clone().multiplyScalar(0.82),
-          roughness: look.clear ? 0.1 : 0.62,
-          transmission: look.clear ? 0.92 : 0.32,
+            : tint.clone().lerp(new THREE.Color('#ffffff'), 0.18),
+          roughness: look.clear ? 0.1 : 0.4,
+          transmission: look.clear ? 0.92 : 0.82,
           thickness: p.bodyDiameterMm * 0.9,
           ior: 1.5,
-          attenuationColor: tint.clone().lerp(new THREE.Color('#ffffff'), look.clear ? 0.35 : 0),
-          attenuationDistance: look.clear ? 5 : 0.8,
-          clearcoat: look.clear ? 0.9 : 0.55,
-          clearcoatRoughness: look.clear ? 0.06 : 0.22,
+          // The absorption keeps the hue (a yellow stays yellow through the full depth, never
+          // darkening to orange): a light tint over a moderate distance.
+          attenuationColor: tint.clone().lerp(new THREE.Color('#ffffff'), look.clear ? 0.35 : 0.3),
+          attenuationDistance: look.clear ? 5 : 3.2,
+          clearcoat: look.clear ? 0.9 : 0.7,
+          clearcoatRoughness: look.clear ? 0.06 : 0.16,
           // Lit, the epoxy reads a little hotter (yellower) than its colour.
           emissive: tint.clone().lerp(new THREE.Color('#ffd27a'), 0.18),
           emissiveIntensity: 0,
@@ -125,10 +157,10 @@ export function buildLedHiFi(
       : new THREE.MeshStandardMaterial({
           color: look.clear
             ? tint.clone().lerp(new THREE.Color('#ffffff'), 0.72)
-            : tint.clone().lerp(new THREE.Color('#000000'), 0.18),
-          roughness: look.clear ? 0.05 : 0.4,
+            : tint.clone().lerp(new THREE.Color('#000000'), 0.1),
+          roughness: look.clear ? 0.05 : 0.35,
           transparent: true,
-          opacity: look.clear ? 0.38 : 0.9,
+          opacity: look.clear ? 0.38 : 0.8,
           emissive: look.color,
           emissiveIntensity: 0,
           // (reduced tier: no emissive map: one shader program fewer on software WebGL)
@@ -269,6 +301,28 @@ export function buildLedHiFi(
     ),
   );
 
+  // The light's origin when lit: a soft glow core round the die inside the lens (additive,
+  // hidden when off; renderer.ts drives its opacity from the solved current). The lit LED's
+  // light visibly starts at the die, not over the whole shell.
+  const coreMat = own.mat(
+    new THREE.SpriteMaterial({
+      map: coreTexture(own),
+      color: tint.clone().lerp(new THREE.Color('#ffffff'), 0.45),
+      transparent: true,
+      opacity: 0,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      depthTest: false,
+    }),
+  );
+  const core = new THREE.Sprite(coreMat);
+  core.position.set(cupX, frameTop + 0.25, 0);
+  core.scale.set(p.bodyDiameterMm * 0.75, p.bodyDiameterMm * 0.75, 1);
+  core.visible = false;
+  core.userData.ledCore = true;
+  core.renderOrder = 2;
+  g.add(core);
+
   // Legs: 0.5 mm square, straight down from inside the flange to the bench, at the real pitch.
   const legTop = inner + 0.4;
   const legLen = legTop - (LEAD_ATTACH_HEIGHT - 0.3);
@@ -281,5 +335,5 @@ export function buildLedHiFi(
     l.userData.leg = x < 0 ? 'anode' : 'cathode';
     g.add(l);
   }
-  return { group: g, lens, die: dieMat, top, gain: look.clear ? 0.9 : 2.2 };
+  return { group: g, lens, die: dieMat, core: coreMat, top, gain: look.clear ? 0.7 : 1.1 };
 }
