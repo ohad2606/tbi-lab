@@ -8,6 +8,7 @@
 import { useState } from 'preact/hooks';
 import { BUILD_INFO, versionLabel } from '../buildInfo.js';
 import { probeGpu } from '../gpuInfo.js';
+import { probeRuntime, type RuntimeIdentity } from '../runtimeInfo.js';
 import { useAppState, useT } from './context.js';
 import { ProductFooter } from './ProductFooter.js';
 
@@ -17,8 +18,15 @@ export function VersionStatus() {
   const [open, setOpen] = useState(false);
   // The 3D graphics this browser offers (probed once, when the details are first shown).
   const [gpu, setGpu] = useState<{ renderer: string; tier: string } | null>(null);
-  const showGpu = () =>
-    gpu ?? setGpu(probeGpu() ?? { renderer: t('version.noWebgl'), tier: 'reduced' });
+  // The ESP32 runtime's identity (its /health), fetched once when the details are first shown.
+  const [runtime, setRuntime] = useState<RuntimeIdentity | null | undefined>(undefined);
+  const showGpu = () => {
+    if (runtime === undefined) {
+      setRuntime(null);
+      void probeRuntime().then((r) => r && setRuntime(r));
+    }
+    return gpu ?? setGpu(probeGpu() ?? { renderer: t('version.noWebgl'), tier: 'reduced' });
+  };
   const info = BUILD_INFO;
   if (!info)
     return (
@@ -33,7 +41,9 @@ export function VersionStatus() {
     [t('version.environment'), info.environment, true],
     [t('version.commit'), info.commit + (info.dirty ? ' (+)' : ''), true],
     [t('version.builtAt'), info.builtAt, true],
-    [t('version.runtime'), t('version.runtimeUnknown'), false],
+    runtime
+      ? [t('version.runtime'), `v${runtime.version} · ${runtime.commit.slice(0, 7)}`, true]
+      : [t('version.runtime'), t('version.runtimeUnknown'), false],
     [
       t('version.graphics'),
       gpu
@@ -66,7 +76,12 @@ export function VersionStatus() {
         >
           <bdi dir="ltr">{label}</bdi>
         </button>
-        <dl class="version-details" data-testid="app-version-details" role="note">
+        <dl
+          class="version-details"
+          data-testid="app-version-details"
+          data-runtime-commit={runtime?.commit}
+          role="note"
+        >
           {rows.map(([k, v, technical]) => (
             <div key={k}>
               <dt>{k}</dt>

@@ -1,0 +1,402 @@
+{
+  "_comment": "Generated from app/src/examples/data/esp32-bench.json with app/src/runtime/snapshot.ts buildSessionRequest (the request the app sends for that example, minus artifact and ticket; app/tests/runtime-fixtures.test.ts keeps it in sync). Used by r2-led-bench.runtime.test.ts.",
+  "request": {
+    "protocol": "tbi-lab.session/2",
+    "board": "board.esp32_devkitc_wroom32",
+    "circuit": {
+      "format": "tbi-lab.snapshot",
+      "schemaVersion": 3,
+      "snapshotId": "snap_8889ab37438e1284",
+      "projectId": "prj_exampleesp32bench",
+      "projectRevision": 1,
+      "components": [
+        {
+          "id": "PSU1",
+          "type": "instrument.lab_psu",
+          "typeVersion": 1,
+          "params": {
+            "setpointVoltage": {
+              "value": 3.3,
+              "unit": "volt"
+            },
+            "currentLimit": {
+              "value": 0.1,
+              "unit": "ampere"
+            },
+            "outputEnabled": true
+          }
+        },
+        {
+          "id": "GND1",
+          "type": "component.ground",
+          "typeVersion": 1,
+          "params": {}
+        },
+        {
+          "id": "SW1",
+          "type": "component.toggle_switch",
+          "typeVersion": 1,
+          "params": {
+            "closed": false
+          }
+        },
+        {
+          "id": "SW2",
+          "type": "component.push_button",
+          "typeVersion": 1,
+          "params": {}
+        },
+        {
+          "id": "R1",
+          "type": "component.resistor",
+          "typeVersion": 1,
+          "params": {
+            "resistance": {
+              "value": 1000,
+              "unit": "ohm"
+            }
+          }
+        },
+        {
+          "id": "R2",
+          "type": "component.resistor",
+          "typeVersion": 1,
+          "params": {
+            "resistance": {
+              "value": 10000,
+              "unit": "ohm"
+            }
+          }
+        },
+        {
+          "id": "GND2",
+          "type": "component.ground",
+          "typeVersion": 1,
+          "params": {}
+        },
+        {
+          "id": "R3",
+          "type": "component.resistor",
+          "typeVersion": 1,
+          "params": {
+            "resistance": {
+              "value": 220,
+              "unit": "ohm"
+            }
+          }
+        },
+        {
+          "id": "D1",
+          "type": "component.led",
+          "typeVersion": 1,
+          "params": {
+            "model": "model.led.vishay_tlhr5400"
+          }
+        },
+        {
+          "id": "GND3",
+          "type": "component.ground",
+          "typeVersion": 1,
+          "params": {}
+        },
+        {
+          "id": "GND4",
+          "type": "component.ground",
+          "typeVersion": 1,
+          "params": {}
+        },
+        {
+          "id": "R4",
+          "type": "component.resistor",
+          "typeVersion": 1,
+          "params": {
+            "resistance": {
+              "value": 33,
+              "unit": "ohm"
+            }
+          }
+        },
+        {
+          "id": "D2",
+          "type": "component.diode",
+          "typeVersion": 1,
+          "params": {
+            "model": "model.diode.vishay_1n4148"
+          }
+        },
+        {
+          "id": "D3",
+          "type": "component.led",
+          "typeVersion": 1,
+          "params": {
+            "model": "model.led.vishay_tlhy5400"
+          }
+        },
+        {
+          "id": "GND5",
+          "type": "component.ground",
+          "typeVersion": 1,
+          "params": {}
+        },
+        {
+          "id": "R5",
+          "type": "component.resistor",
+          "typeVersion": 1,
+          "params": {
+            "resistance": {
+              "value": 68,
+              "unit": "ohm"
+            }
+          }
+        },
+        {
+          "id": "D4",
+          "type": "component.led",
+          "typeVersion": 1,
+          "params": {
+            "model": "model.led.vishay_tlhg4900"
+          }
+        },
+        {
+          "id": "GND6",
+          "type": "component.ground",
+          "typeVersion": 1,
+          "params": {}
+        },
+        {
+          "id": "U1_gnd",
+          "type": "component.ground",
+          "typeVersion": 1,
+          "params": {}
+        }
+      ],
+      "nets": [
+        {
+          "id": "N_1",
+          "role": "ground"
+        },
+        {
+          "id": "N_2",
+          "role": null
+        },
+        {
+          "id": "N_3",
+          "role": null
+        },
+        {
+          "id": "N_4",
+          "role": null
+        },
+        {
+          "id": "N_5",
+          "role": "ground"
+        },
+        {
+          "id": "N_6",
+          "role": null
+        },
+        {
+          "id": "N_7",
+          "role": null
+        },
+        {
+          "id": "N_8",
+          "role": "ground"
+        },
+        {
+          "id": "N_9",
+          "role": "ground"
+        },
+        {
+          "id": "N_10",
+          "role": null
+        },
+        {
+          "id": "N_11",
+          "role": null
+        },
+        {
+          "id": "N_12",
+          "role": "ground"
+        },
+        {
+          "id": "N_13",
+          "role": null
+        },
+        {
+          "id": "N_14",
+          "role": "ground"
+        }
+      ],
+      "connections": [
+        {
+          "component": "PSU1",
+          "terminal": "positive",
+          "net": "N_2"
+        },
+        {
+          "component": "PSU1",
+          "terminal": "negative",
+          "net": "N_1"
+        },
+        {
+          "component": "GND1",
+          "terminal": "ref",
+          "net": "N_1"
+        },
+        {
+          "component": "SW1",
+          "terminal": "a",
+          "net": "N_2"
+        },
+        {
+          "component": "SW1",
+          "terminal": "b",
+          "net": "N_3"
+        },
+        {
+          "component": "SW2",
+          "terminal": "a",
+          "net": "N_2"
+        },
+        {
+          "component": "SW2",
+          "terminal": "b",
+          "net": "N_3"
+        },
+        {
+          "component": "R1",
+          "terminal": "a",
+          "net": "N_3"
+        },
+        {
+          "component": "R1",
+          "terminal": "b",
+          "net": "N_4"
+        },
+        {
+          "component": "R2",
+          "terminal": "a",
+          "net": "N_4"
+        },
+        {
+          "component": "R2",
+          "terminal": "b",
+          "net": "N_5"
+        },
+        {
+          "component": "GND2",
+          "terminal": "ref",
+          "net": "N_5"
+        },
+        {
+          "component": "R3",
+          "terminal": "a",
+          "net": "N_6"
+        },
+        {
+          "component": "R3",
+          "terminal": "b",
+          "net": "N_7"
+        },
+        {
+          "component": "D1",
+          "terminal": "anode",
+          "net": "N_7"
+        },
+        {
+          "component": "D1",
+          "terminal": "cathode",
+          "net": "N_8"
+        },
+        {
+          "component": "GND3",
+          "terminal": "ref",
+          "net": "N_8"
+        },
+        {
+          "component": "GND4",
+          "terminal": "ref",
+          "net": "N_9"
+        },
+        {
+          "component": "R4",
+          "terminal": "a",
+          "net": "N_2"
+        },
+        {
+          "component": "R4",
+          "terminal": "b",
+          "net": "N_10"
+        },
+        {
+          "component": "D2",
+          "terminal": "anode",
+          "net": "N_10"
+        },
+        {
+          "component": "D2",
+          "terminal": "cathode",
+          "net": "N_11"
+        },
+        {
+          "component": "D3",
+          "terminal": "anode",
+          "net": "N_11"
+        },
+        {
+          "component": "D3",
+          "terminal": "cathode",
+          "net": "N_12"
+        },
+        {
+          "component": "GND5",
+          "terminal": "ref",
+          "net": "N_12"
+        },
+        {
+          "component": "R5",
+          "terminal": "a",
+          "net": "N_2"
+        },
+        {
+          "component": "R5",
+          "terminal": "b",
+          "net": "N_13"
+        },
+        {
+          "component": "D4",
+          "terminal": "anode",
+          "net": "N_13"
+        },
+        {
+          "component": "D4",
+          "terminal": "cathode",
+          "net": "N_14"
+        },
+        {
+          "component": "GND6",
+          "terminal": "ref",
+          "net": "N_14"
+        },
+        {
+          "component": "U1_gnd",
+          "terminal": "ref",
+          "net": "N_9"
+        }
+      ]
+    },
+    "attachments": [
+      {
+        "gpio": 4,
+        "component": "R3",
+        "terminal": "a"
+      },
+      {
+        "gpio": 34,
+        "component": "R1",
+        "terminal": "b"
+      }
+    ]
+  }
+}

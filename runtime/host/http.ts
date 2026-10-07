@@ -31,6 +31,7 @@ import type { SessionHost } from './host.js';
 import { PROTOCOL, type SessionEvent } from './protocol.js';
 import type { HostSession } from './session.js';
 import { isTerminal } from './stateMachine.js';
+import { runtimeIdentity } from './identity.js';
 
 /** Largest amount of unsent SSE data kept for a slow client before its stream is closed. */
 const STREAM_BACKLOG_BYTES = 1024 * 1024;
@@ -170,7 +171,13 @@ async function handle(
   const method = req.method ?? 'GET';
 
   if (method === 'GET' && url.pathname === '/health') {
-    return send(res, 200, { protocol: PROTOCOL, sessions: host.health() });
+    // Sprint 10: the runtime's build identity when the bundle was stamped (additive, read-only).
+    const runtime = runtimeIdentity();
+    return send(res, 200, {
+      protocol: PROTOCOL,
+      sessions: host.health(),
+      ...(runtime ? { runtime } : {}),
+    });
   }
   const principal = principalOf(req, identity);
   if (!principal) throw new HttpError(401, 'identity required');

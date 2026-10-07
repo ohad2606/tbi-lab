@@ -21,7 +21,7 @@ import {
   statSync,
 } from 'node:fs';
 import { join } from 'node:path';
-import { ESP32_DEVKITC_WROOM32, boardPinForGpio } from '@tbi-lab/domain';
+import { CATALOG, ESP32_DEVKITC_WROOM32, boardPinForGpio } from '@tbi-lab/domain';
 import {
   EngineSession,
   interpretDigitalInput,
@@ -252,6 +252,20 @@ export class HostSession {
     }
     if (fileSha(this.flash) !== sha) return this.fail('artifact_hash_mismatch', { sha256: sha });
     if (this.storageBytes() > this.config.maxSessionStorageBytes) return this.fail('storage_limit');
+
+    // Parts the ESP32 runtime does not simulate (catalog `mcuRuntime: false`, Sprint 10: the
+    // product's own rule, which the app applies before Run) are refused here too, exactly as the
+    // runtime refused them before it carried their models: `unsupported_component`, first in
+    // circuit order. In particular a capacitor is never solved at DC under a running board (its
+    // time-dependent behaviour is not part of the runtime).
+    const notModelled = this.request.circuit.components.find(
+      (c) => CATALOG[c.type]?.mcuRuntime === false,
+    );
+    if (notModelled)
+      return this.fail('electrical_error', {
+        code: 'unsupported_component',
+        components: [notModelled.id],
+      });
 
     // The production engine, with the board pads attached.
     this.engine = new EngineSession(this.request.circuit, { pins: this.request.attachments });
