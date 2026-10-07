@@ -113,6 +113,10 @@ export function ThreeView() {
   }, [levelKey, status, scene]);
 
   if (!doc) return null;
+  // Parts the visual-only separation could not pull apart within its cap (separation.ts).
+  const overlaps = scene?.separation.unresolved.length
+    ? [...new Set(scene.separation.unresolved.flat())].sort().join(', ')
+    : '';
   return (
     <div
       class="view3d-wrap"
@@ -146,6 +150,7 @@ export function ThreeView() {
         .filter((j) => j.kind === 'contact')
         .map((j) => j.terminals.join('+'))
         .join(' ')}
+      data-moved={scene?.separation.moved.map((m) => `${m.id}:${m.dx},${m.dz}`).join(' ')}
       data-open={scene?.joints
         .filter((j) => j.kind === 'open')
         .map((j) => j.terminals.join('+'))
@@ -327,6 +332,11 @@ export function ThreeView() {
           </div>
           <div class="view-note" dir={locale.dir}>
             {t('view3d.note')}
+            {overlaps && (
+              <div class="view-note-warning" role="status" data-testid="view3d-overlap">
+                {t('view3d.overlap', { parts: overlaps })}
+              </div>
+            )}
           </div>
         </>
       )}

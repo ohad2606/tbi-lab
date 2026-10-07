@@ -49,6 +49,7 @@ import {
   RGB_LED_5MM,
   TO92,
   PIR_HC_SR501,
+  capacitorPackage,
   LED_MATRIX_1088AS,
   matrixPinXZ,
   ESP32_ATTACH_HEIGHT,
@@ -65,6 +66,7 @@ import {
   WIRE,
 } from './physical.js';
 import { ledLook } from '../ledLooks.js';
+import { separateBodies, type Body, type Box } from './separation.js';
 
 /** Scene units (millimetres) per 2D layout unit (physical.ts). */
 export const SCALE = MM_PER_LAYOUT_UNIT;
@@ -207,6 +209,15 @@ export interface SceneDescription {
   base: { minX: number; maxX: number; minZ: number; maxZ: number };
   /** Bounding box of the content, for fitting the camera. */
   bounds: { min: Vec3; max: Vec3 };
+  /**
+   * The visual-only separation applied to physical bodies (separation.ts): each part moved from
+   * its 2D-derived position (plan offset, mm), and pairs still overlapping after the capped
+   * resolution. The project's own coordinates are never changed.
+   */
+  separation: {
+    moved: { id: string; dx: number; dz: number }[];
+    unresolved: [string, string][];
+  };
 }
 
 /** Tallest point of each model (mm), for bounds, labels and wires passing over it. */
@@ -421,6 +432,200 @@ function place(c: { x: number; z: number; rotation: Rotation }, p: Vec3): Vec3 {
 }
 
 export function deriveScene(doc: ProjectDocument): SceneDescription {
+  const scene = buildScene(doc, true);
+  if (!scene.separation.moved.length) return scene;
+  // The separation must never suggest a connection the project does not have: if a moved part's
+  // wires or terminals touch anything of another node, keep the 2D-derived placement for the
+  // whole scene and report the overlaps instead (the safe direction: the scene as before).
+  const moved = new Set(scene.separation.moved.map((m) => m.id));
+  const near = new Set(
+    doc.layout.wires
+      .filter((w) => [w.from, w.to].some((e) => e.kind === 'terminal' && moved.has(e.component)))
+      .map((w) => w.id),
+  );
+  const bad = touchingNodes(scene).some((v) => {
+    const [a, b] = v.slice(2).split('|') as [string, string];
+    return near.has(a) || (v[0] === 'w' ? near.has(b) : moved.has(b.split(':')[0]!));
+  });
+  return bad ? buildScene(doc, false) : scene;
+}
+
+/**
+ * Pairs of electrically different things that touch in a scene's geometry: two wires of
+ * different nodes closer than their diameters, or a wire passing a terminal of another node (not
+ * one of its ends) within a wire radius plus a lead's half-thickness. Plan bounding boxes first.
+ */
+export function touchingNodes(s: SceneDescription): string[] {
+  const out: string[] = [];
+  const r = WIRE_RADIUS;
+  const boxOf = (pts: Vec3[], pad: number) => ({
+    x0: Math.min(...pts.map((p) => p.x)) - pad,
+    x1: Math.max(...pts.map((p) => p.x)) + pad,
+    z0: Math.min(...pts.map((p) => p.z)) - pad,
+    z1: Math.max(...pts.map((p) => p.z)) + pad,
+  });
+  const meet = (a: ReturnType<typeof boxOf>, b: ReturnType<typeof boxOf>) =>
+    a.x0 <= b.x1 && b.x0 <= a.x1 && a.z0 <= b.z1 && b.z0 <= a.z1;
+  const boxes = s.wires.map((w) => boxOf(w.points, r + 0.5));
+  const segs = s.wires.map((w) => w.points.slice(1).map((b, i) => [w.points[i]!, b] as const));
+  for (let i = 0; i < s.wires.length; i++)
+    for (let j = i + 1; j < s.wires.length; j++) {
+      const a = s.wires[i]!;
+      const b = s.wires[j]!;
+      if ((a.node && a.node === b.node) || !meet(boxes[i]!, boxes[j]!)) continue;
+      if (
+        segs[i]!.some(([p, q]) => segs[j]!.some(([u, v]) => segDistance(p, q, u, v) < 2 * r + 0.05))
+      )
+        out.push(`w:${a.id}|${b.id}`);
+    }
+  for (const c of s.components)
+    for (const t of c.terminals) {
+      if (t.open) continue;
+      s.wires.forEach((w, i) => {
+        if (t.node && w.node === t.node) return;
+        const ends = [w.points[0]!, w.points.at(-1)!];
+        if (ends.some((e) => e.x === t.x && e.y === t.y && e.z === t.z)) return;
+        const bx = boxes[i]!;
+        if (t.x < bx.x0 || t.x > bx.x1 || t.z < bx.z0 || t.z > bx.z1) return;
+        if (segs[i]!.some(([p, q]) => segDistance(p, q, t, t) < r + 0.4))
+          out.push(`t:${w.id}|${c.id}:${t.id}`);
+      });
+    }
+  return out;
+}
+
+/** Shortest distance between segments ab and cd. */
+function segDistance(a: Vec3, b: Vec3, c: Vec3, d: Vec3): number {
+  const sub = (p: Vec3, q: Vec3) => ({ x: p.x - q.x, y: p.y - q.y, z: p.z - q.z });
+  const dot = (p: Vec3, q: Vec3) => p.x * q.x + p.y * q.y + p.z * q.z;
+  const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
+  const u = sub(b, a);
+  const v = sub(d, c);
+  const w = sub(a, c);
+  const A = dot(u, u);
+  const B = dot(u, v);
+  const C = dot(v, v);
+  const D = dot(u, w);
+  const E = dot(v, w);
+  const den = A * C - B * B;
+  let sc = A < 1e-12 || den < 1e-12 ? 0 : clamp01((B * E - C * D) / den);
+  let tc = C < 1e-12 ? 0 : clamp01((A < 1e-12 ? E : B * sc + E) / C);
+  if (A >= 1e-12) sc = clamp01((tc * B - D) / A);
+  if (C >= 1e-12) tc = clamp01((sc * B + E) / C);
+  const p = { x: a.x + u.x * sc, y: a.y + u.y * sc, z: a.z + u.z * sc };
+  const q = { x: c.x + v.x * tc, y: c.y + v.y * tc, z: c.z + v.z * tc };
+  return Math.sqrt(dot(sub(p, q), sub(p, q)));
+}
+
+/**
+ * A part's collision volumes (separation.ts), local frame: its physical footprint from the bench
+ * to its top; the PIR module as its board at its real height over its pin header; and for each
+ * wired pin under a body, the strip its wire leaves by at pin level, tagged with `wired(pin)`.
+ */
+export function collisionBoxes(
+  type: ComponentTypeId,
+  model: ModelKey,
+  farads: number | undefined,
+  wired: (terminal: string) => string | null,
+): Box[] {
+  const [x0, x1, z0, z1] = FOOTPRINT[model];
+  const top = MODEL_HEIGHT[model];
+  const boxes: Box[] = [];
+  if (model === 'capacitor.radial') {
+    // The leads reach the 2D terminals along x; the body is the disc's thickness or the can.
+    const p = capacitorPackage(farads ?? 100e-6);
+    const half = p.kind === 'disc' ? p.thicknessMm / 2 : p.diameterMm / 2;
+    boxes.push({ x0: -6.7, x1: 6.7, z0: -half, z1: half, y0: 0, y1: top });
+  } else if (model === 'sensor.pir') {
+    const P = PIR_HC_SR501;
+    const pins = Object.values(P.pins);
+    boxes.push({ x0, x1, z0, z1, y0: P.standoffMm, y1: top });
+    boxes.push({
+      x0: Math.min(...pins.map((q) => q[0])) - 1.5,
+      x1: Math.max(...pins.map((q) => q[0])) + 1.5,
+      z0: Math.min(...pins.map((q) => q[1])) - 1.5,
+      z1: Math.max(...pins.map((q) => q[1])) + 1.5,
+      y0: 0,
+      y1: P.standoffMm,
+    });
+  } else boxes.push({ x0, x1, z0, z1, y0: 0, y1: top });
+  if (UNDER_BODY.has(model))
+    for (const t of CATALOG[type].terminals) {
+      const node = wired(t.id);
+      if (!node) continue;
+      const at = localAttach(type, model, t.id, true);
+      const [side, drop] = pinExit(type, model, t.id, at);
+      const half = WIRE.radiusMm + 0.15;
+      const reach = FOOTPRINT[model][side] + (side % 2 === 0 ? -1 : 1) * (drop + WIRE.radiusMm);
+      const y1 = at.y + WIRE.radiusMm + 0.3;
+      boxes.push(
+        side < 2
+          ? {
+              x0: Math.min(at.x, reach),
+              x1: Math.max(at.x, reach),
+              z0: at.z - half,
+              z1: at.z + half,
+              y0: 0,
+              y1,
+              node,
+            }
+          : {
+              x0: at.x - half,
+              x1: at.x + half,
+              z0: Math.min(at.z, reach),
+              z1: Math.max(at.z, reach),
+              y0: 0,
+              y1,
+              node,
+            },
+      );
+    }
+  return boxes;
+}
+
+/** Every part's collision body at its 2D-derived (base) transform (separation.ts). */
+export function collisionBodies(
+  doc: ProjectDocument,
+  g = connectivity(doc),
+  wiredEnds = wiredTerminals(doc),
+): Body[] {
+  return doc.components.flatMap((c): Body[] => {
+    const placement = doc.layout.components[c.id];
+    if (!placement) return [];
+    const model = MODEL_FOR[c.type] ?? 'generic';
+    const farads =
+      c.type === 'component.capacitor'
+        ? ((c.params.capacitance as Quantity | undefined)?.value ?? 100e-6)
+        : undefined;
+    const nodeOf = (t: string) => g.nodeOf.get(`${c.id}:${t}`);
+    return [
+      {
+        id: c.id,
+        model,
+        x: placement.x * SCALE,
+        z: placement.y * SCALE,
+        rotation: placement.rotation,
+        boxes: collisionBoxes(c.type, model, farads, (t) =>
+          wiredEnds.has(`${c.id}:${t}`) ? (nodeOf(t) ?? `${c.id}:${t}`) : null,
+        ),
+        nodes: CATALOG[c.type].terminals.flatMap((t) => nodeOf(t.id) ?? []),
+      },
+    ];
+  });
+}
+
+/** `component:terminal` keys of the terminals a wire ends on. */
+function wiredTerminals(doc: ProjectDocument): Set<string> {
+  return new Set(
+    doc.layout.wires.flatMap((w) =>
+      [w.from, w.to].flatMap((e) =>
+        e.kind === 'terminal' ? [`${e.component}:${e.terminal}`] : [],
+      ),
+    ),
+  );
+}
+
+function buildScene(doc: ProjectDocument, separate: boolean): SceneDescription {
   const g = connectivity(doc);
   const nodeColor = new Map<string, string>();
   let signal = 0;
@@ -434,19 +639,33 @@ export function deriveScene(doc: ProjectDocument): SceneDescription {
           : SIGNAL_COLORS[signal++ % SIGNAL_COLORS.length]!,
     );
 
-  const wiredEnds = new Set(
-    doc.layout.wires.flatMap((w) =>
-      [w.from, w.to].flatMap((e) =>
-        e.kind === 'terminal' ? [`${e.component}:${e.terminal}`] : [],
-      ),
+  const wiredEnds = wiredTerminals(doc);
+  // Base transforms from the 2D layout, then the visual-only separation of physical bodies that
+  // the 2D symbols let overlap (separation.ts): parts joined by a direct contact or touching
+  // terminals move together and are never pushed apart.
+  const bodies = collisionBodies(doc, g, wiredEnds);
+  const touching = [
+    ...contacts(doc).flatMap((w) =>
+      w.from.kind === 'terminal' && w.to.kind === 'terminal'
+        ? [[w.from.component, w.to.component]]
+        : [],
     ),
-  );
+    ...touchingUnconnected(doc).map((t) => t.terminals.map((e) => e.component)),
+  ];
+  // Without separation: no move, every overlap reported (the fallback in deriveScene).
+  const separation = separateBodies(bodies, touching, separate ? undefined : 0);
+
   const components: SceneComponent[] = [];
   for (const c of doc.components) {
     const placement = doc.layout.components[c.id];
     if (!placement) continue;
     const model = MODEL_FOR[c.type] ?? 'generic';
-    const origin = { x: placement.x * SCALE, z: placement.y * SCALE, rotation: placement.rotation };
+    const shift = separation.offsets.get(c.id);
+    const origin = {
+      x: placement.x * SCALE + (shift?.dx ?? 0),
+      z: placement.y * SCALE + (shift?.dz ?? 0),
+      rotation: placement.rotation,
+    };
     const terminals = CATALOG[c.type].terminals.map((t) => ({
       id: t.id,
       ...place(origin, localAttach(c.type, model, t.id, wiredEnds.has(`${c.id}:${t.id}`))),
@@ -500,6 +719,18 @@ export function deriveScene(doc: ProjectDocument): SceneDescription {
     const route = wireRoute(doc, w);
     if (!route || route.length < 2) continue;
     let flat: Point[] = route.map((p) => ({ x: p.x * SCALE, y: p.y * SCALE }));
+    // A part moved by the visual separation drags its wire ends along, as a drag in 2D would:
+    // the whole route when both ends moved together, else the end runs (dragEnd).
+    const shiftOf = (e: WireEnd) =>
+      e.kind === 'terminal' ? separation.offsets.get(e.component) : undefined;
+    const sa = shiftOf(w.from);
+    const sb = shiftOf(w.to);
+    if (sa && sb && sa.dx === sb.dx && sa.dz === sb.dz)
+      flat = flat.map((p) => ({ x: p.x + sa.dx, y: p.y + sa.dz }));
+    else {
+      if (sa) flat = dragEnd(flat, sa, 'start');
+      if (sb) flat = dragEnd(flat, sb, 'end');
+    }
     const endAt = (e: WireEnd, p: Point): Vec3 => {
       const a = e.kind === 'terminal' ? attachOf(e.component, e.terminal) : undefined;
       return a ? { x: a.x, y: a.y, z: a.z } : { x: p.x, y: WIRE.baseHeightMm, z: p.y };
@@ -610,7 +841,16 @@ export function deriveScene(doc: ProjectDocument): SceneDescription {
   }
   for (const j of joints) j.terminals.sort();
 
-  return { components, wires, joints, ...extent(components, wires) };
+  return {
+    components,
+    wires,
+    joints,
+    ...extent(components, wires),
+    separation: {
+      moved: [...separation.offsets].map(([id, o]) => ({ id, ...o })),
+      unresolved: separation.unresolved,
+    },
+  };
 }
 
 interface Route {
@@ -651,29 +891,44 @@ function underBodyApproach(
   );
   const [x0, x1, z0, z1] = FOOTPRINT[c.model];
   const out = (k: number) => [
-    { d: back.x - x0, p: { x: x0 - k, y: back.y } },
-    { d: x1 - back.x, p: { x: x1 + k, y: back.y } },
-    { d: back.y - z0, p: { x: back.x, y: z0 - k } },
-    { d: z1 - back.y, p: { x: back.x, y: z1 + k } },
+    { p: { x: x0 - k, y: back.y } },
+    { p: { x: x1 + k, y: back.y } },
+    { p: { x: back.x, y: z0 - k } },
+    { p: { x: back.x, y: z1 + k } },
   ];
-  const side = out(0).reduce((m, g, i, all) => (g.d < all[m]!.d ? i : m), 0);
-  // The drop is at least CLEAR_OUT outside the body, and no nearer than the terminal's own 2D
-  // position (a package whose pins have stubs in 2D: the drop is at the stub's end, where 2D
-  // routing lets no other wire pass).
-  const off = CATALOG[c.type].terminals.find((t) => t.id === terminal)!.offset;
-  const tx = off.x * SCALE;
-  const tz = off.y * SCALE;
-  const beyond = [x0 - tx, tx - x1, z0 - tz, tz - z1][side]!;
-  // Stubs reaching well beyond the body: turn in at the stub row and drop just inside it.
-  const stub = beyond > CLEAR_OUT + STUB_IN;
-  const drop = stub ? beyond - STUB_IN : CLEAR_OUT;
-  const pre = stub ? beyond : CLEAR_OUT + PRE_OUT;
+  const [side, drop, pre] = pinExit(c.type, c.model, terminal, { x: back.x, y: 0, z: back.y });
   const world = (q: Point) => {
     const r = rotatePoint(q, c.rotation);
     return { x: c.x + r.x, y: c.z + r.y };
   };
   return [world(out(pre)[side]!.p), world(out(drop)[side]!.p)];
 }
+/**
+ * Where the wire of a pin under a body leaves it (local frame): the side it exits by (index into
+ * FOOTPRINT: 0 -x, 1 +x, 2 -z, 3 +z, the edge nearest the pin), how far outside that edge it drops
+ * (its riser) and where its run before the drop starts.
+ */
+function pinExit(
+  type: ComponentTypeId,
+  model: ModelKey,
+  terminal: string,
+  at: Vec3,
+): [0 | 1 | 2 | 3, number, number] {
+  const [x0, x1, z0, z1] = FOOTPRINT[model];
+  const d = [at.x - x0, x1 - at.x, at.z - z0, z1 - at.z];
+  const side = d.reduce((m, g, i) => (g < d[m]! ? i : m), 0) as 0 | 1 | 2 | 3;
+  // The drop is at least CLEAR_OUT outside the body, and no nearer than the terminal's own 2D
+  // position (a package whose pins have stubs in 2D: the drop is at the stub's end, where 2D
+  // routing lets no other wire pass).
+  const off = CATALOG[type].terminals.find((t) => t.id === terminal)!.offset;
+  const tx = off.x * SCALE;
+  const tz = off.y * SCALE;
+  const beyond = [x0 - tx, tx - x1, z0 - tz, tz - z1][side]!;
+  // Stubs reaching well beyond the body: turn in at the stub row and drop just inside it.
+  const stub = beyond > CLEAR_OUT + STUB_IN;
+  return [side, stub ? beyond - STUB_IN : CLEAR_OUT, stub ? beyond : CLEAR_OUT + PRE_OUT];
+}
+
 /** The run before the drop comes in along the pin's own line over this length (mm). */
 const PRE_OUT = 2.5;
 /** With 2D pin stubs: the drop is this far inside the stub row (mm). */
@@ -694,6 +949,35 @@ function moveEnd(flat: Point[], to: Point, which: 'start' | 'end'): Point[] {
   else if (prev && prev.x === last.x && to.x === last.x) pts[pts.length - 1] = { ...to };
   else if (last.y === to.y || last.x === to.x) pts.push({ ...to });
   else pts.push({ x: to.x, y: last.y }, { ...to });
+  return which === 'start' ? pts.reverse() : pts;
+}
+
+/**
+ * Drag one end of an orthogonal plan route by (dx, dz), keeping it orthogonal: along its last run
+ * the run stretches; across it the run moves with the end (the run before it stretches). A route
+ * that is a single run gets a jog in its middle.
+ */
+function dragEnd(flat: Point[], d: { dx: number; dz: number }, which: 'start' | 'end'): Point[] {
+  const pts = (which === 'start' ? [...flat].reverse() : [...flat]).map((p) => ({ ...p }));
+  const n = pts.length;
+  const last = pts[n - 1]!;
+  const prev = pts[n - 2]!;
+  const along = Math.abs(prev.y - last.y) < EPS ? 'x' : 'z';
+  if (n === 2 && (along === 'x' ? d.dz : d.dx) !== 0) {
+    // One straight run: split it, the far half stays, the near half moves across.
+    const mid = { x: (prev.x + last.x) / 2, y: (prev.y + last.y) / 2 };
+    const out =
+      along === 'x'
+        ? [prev, mid, { x: mid.x, y: mid.y + d.dz }, { x: last.x + d.dx, y: last.y + d.dz }]
+        : [prev, mid, { x: mid.x + d.dx, y: mid.y }, { x: last.x + d.dx, y: last.y + d.dz }];
+    return which === 'start' ? out.reverse() : out;
+  }
+  last.x += d.dx;
+  last.y += d.dz;
+  if (n > 2) {
+    if (along === 'x') prev.y += d.dz;
+    else prev.x += d.dx;
+  }
   return which === 'start' ? pts.reverse() : pts;
 }
 
@@ -796,6 +1080,14 @@ function wireHeights(
           Math.min(a.y, c.y) < b.maxZ,
     );
   const key = (p: Point) => `${round(p.x)},${round(p.y)}`;
+  // Where a wire's riser stands outside a body (the approach point of a pin under it): another
+  // wire passing there must clear that riser like a pin (assign: above the riser's own height).
+  for (const r of routes.values())
+    for (const k of [0, 1] as const)
+      if (r.under[k]) {
+        const m = main(r);
+        spots.push({ p: k === 0 ? m[0]! : m[m.length - 1]!, h: r.ends[k].y });
+      }
   // The pin-level runs under a body (deriveScene): other wires must clear them like a pin.
   const lowRuns: { wire: string; p: Point; h: number }[] = [];
   for (const [id, r] of routes)

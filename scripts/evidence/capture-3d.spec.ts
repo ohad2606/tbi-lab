@@ -183,3 +183,23 @@ test('component audit: the examples with the older parts', async ({ page }) => {
     await shot(page, `audit-${id}`);
   }
 });
+
+// Visual-only body separation (Sprint 10 owner review): projects and cameras written by the
+// generator (EVIDENCE_SEPARATION=<dir> with cameras.json); the same cameras before and after.
+const SEP = process.env.EVIDENCE_SEPARATION;
+test('body separation: PIR + matrix, ESP32 + module, dense mixed (top and angled)', async ({
+  page,
+}) => {
+  test.skip(!SEP, 'EVIDENCE_SEPARATION not set');
+  const { list, cams } = JSON.parse(readFileSync(join(SEP!, 'cameras.json'), 'utf8')) as {
+    list: Record<string, { file: string }>;
+    cams: Record<string, Record<'top' | 'angled', { target: V; from: V }>>;
+  };
+  for (const [id, e] of Object.entries(list)) {
+    await openDoc(page, readFileSync(join(SEP!, e.file), 'utf8'));
+    await open3d(page);
+    const view = page.getByTestId('view3d');
+    stats[`sep-${id}:moved`] = await view.getAttribute('data-moved');
+    for (const k of ['top', 'angled'] as const) await shot(page, `sep-${id}-${k}`, cams[id]![k]);
+  }
+});

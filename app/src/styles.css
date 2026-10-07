@@ -2665,6 +2665,11 @@ select {
   outline-offset: 1px;
 }
 
+.view-note-warning {
+  margin-block-start: 0.2rem;
+  color: var(--warning-ink);
+}
+
 .view-note {
   position: absolute;
   inset-block-end: 0.5rem;

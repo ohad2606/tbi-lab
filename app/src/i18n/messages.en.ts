@@ -544,6 +544,8 @@ export const en = {
   'view3d.loadFailed': 'The 3D view could not be loaded. The other views work as usual.',
   'view3d.note':
     'A visualization of the circuit: drag or ← → to rotate; right-drag, Shift-drag or Shift + arrows to pan; scroll or + − to zoom. Edit in the Circuit view.',
+  'view3d.overlap':
+    'Some parts are larger in 3D than their symbols and still touch here ({parts}). Move them further apart in the Circuit view.',
   'program.editor.label': 'Arduino source code of {board}',
   'program.position': 'Line {line}, column {column}',
   'program.size': '{used} of {max}',

@@ -16,6 +16,7 @@ import {
   addWire,
   boardPinPosition,
   checkCircuit,
+  connectivity,
   contacts,
   moveSelection,
   rotatePoint,
@@ -39,6 +40,13 @@ import {
 import { componentBoxes, moveRouted, rotateRouted } from '../src/ui/routing.js';
 import { expectFaithful } from './schematicReadback.js';
 import { sprint10Circuit } from './circuits10.js';
+import {
+  contactOverlapCircuit,
+  denseMixedCircuit,
+  esp32ModuleCircuit,
+  passivesCircuit,
+  pirMatrixCircuit,
+} from './separationFixtures.js';
 
 class UF {
   private p = new Map<string, string>();
@@ -354,6 +362,33 @@ describe('one electrical truth across Circuit, Schematic and 3D', () => {
     expectAllViewsAgree(junctionCircuit(), 'junction');
     expectAllViewsAgree(contactCircuit(), 'contact');
     expectAllViewsAgree(touchingCircuit(), 'touching');
+  });
+
+  it('holds when 3D bodies are separated visually (only the scene transforms differ)', () => {
+    for (const [label, make] of [
+      ['pir+matrix', pirMatrixCircuit],
+      ['esp32+module', esp32ModuleCircuit],
+      ['passives', passivesCircuit],
+      ['contact overlap', contactOverlapCircuit],
+      ['dense mixed', denseMixedCircuit],
+    ] as const) {
+      const doc = make();
+      const before = structuredClone(doc);
+      expectAllViewsAgree(doc, label);
+      expect(doc, `${label}: project untouched`).toEqual(before);
+      // 3D terminal identity: the same terminals of the same parts, on the same nodes, in the
+      // same order as the netlist; separation changes positions only.
+      const scene = deriveScene(doc);
+      const g = connectivity(doc);
+      for (const c of scene.components)
+        expect(
+          c.terminals.map((t) => [t.id, t.node]),
+          `${label}: ${c.id}`,
+        ).toEqual(
+          CATALOG[c.type].terminals.map((t) => [t.id, g.nodeOf.get(`${c.id}:${t.id}`) ?? null]),
+        );
+    }
+    expect(deriveScene(pirMatrixCircuit()).separation.moved).not.toEqual([]);
   });
 
   it('holds after parts are moved into each other and apart (with routing), and rotated', () => {

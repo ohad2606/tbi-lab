@@ -530,6 +530,8 @@ export const he: Record<MessageKey, string> = {
   'view3d.loadFailed': 'לא ניתן לטעון את תצוגת התלת־ממד. שאר התצוגות פועלות כרגיל.',
   'view3d.note':
     'הדמיה של המעגל: גרירה או ← → לסיבוב; גרירה בלחצן הימני, Shift+גרירה או Shift+חצים להזזה; גלילה או + − לזום. העריכה נעשית בתצוגת המעגל.',
+  'view3d.overlap':
+    'חלק מהרכיבים גדולים בתלת־ממד מהסמל שלהם ועדיין נוגעים זה בזה כאן ({parts}). אפשר להרחיק אותם בתצוגת המעגל.',
   'program.editor.label': 'קוד המקור (Arduino) של {board}',
   'program.position': 'שורה {line}, עמודה {column}',
   'program.size': '{used} מתוך {max}',

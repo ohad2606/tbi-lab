@@ -43,7 +43,12 @@ describe('3D scene description', () => {
     expect(scene.components.map((c) => c.id)).toEqual(doc.components.map((c) => c.id));
     for (const c of scene.components) {
       const p = doc.layout.components[c.id]!;
-      expect([c.x, c.z]).toEqual([p.x * SCALE, p.y * SCALE]);
+      // At the 2D position, plus the visual-only separation where the real bodies overlap
+      // (separation.ts; here the bench supply over R2 and two ground posts: a couple of mm).
+      const m = scene.separation.moved.find((x) => x.id === c.id) ?? { dx: 0, dz: 0 };
+      expect(c.x - m.dx).toBeCloseTo(p.x * SCALE, 9);
+      expect(c.z - m.dz).toBeCloseTo(p.y * SCALE, 9);
+      expect(Math.hypot(m.dx, m.dz)).toBeLessThan(3);
       expect(c.model).toBe(MODEL_FOR[c.type]);
       // Terminals attach where the circuit view has them (plan view, mm). An ESP32 pin attaches
       // on the 2D pin column (the real header row) at its REAL position along the header (2.54 mm
@@ -56,7 +61,7 @@ describe('3D scene description', () => {
               `gpio${p.gpio}` === t.id ||
               (t.id === 'gnd' && p.role === 'ground' && p.header === 'J3' && p.position === 1),
           )!;
-          expect(t.x).toBeCloseTo(at.x * SCALE, 9);
+          expect(t.x - m.dx).toBeCloseTo(at.x * SCALE, 9);
           expect(t.z - c.z).toBeCloseTo(realPinZ(pin.position), 9);
           expect(Math.abs(t.x - c.x)).toBeCloseTo(12.7, 9);
           expect([ESP32_ATTACH_HEIGHT, ESP32_PIN_TOP]).toContain(t.y);
@@ -70,8 +75,8 @@ describe('3D scene description', () => {
           expect(local.x).toBeCloseTo(t.id === 'anode' ? -1.27 : 1.27, 9);
           expect(local.y).toBeCloseTo(0, 9);
         } else {
-          expect(t.x).toBeCloseTo(at.x * SCALE, 9);
-          expect(t.z).toBeCloseTo(at.y * SCALE, 9);
+          expect(t.x - m.dx).toBeCloseTo(at.x * SCALE, 9);
+          expect(t.z - m.dz).toBeCloseTo(at.y * SCALE, 9);
         }
       }
     }
