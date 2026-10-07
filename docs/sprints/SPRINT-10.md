@@ -1,10 +1,10 @@
 # Sprint 10 — Physical 3D, engine time-domain core, the approved component families
 
 **Status (2026-10-07):** developed on `sprint-10` (worktree `~/projects/tbi-lab-s10`), from
-`7f09d74` = `main` = `sprint-9-complete`. **dev-lab.tbi-tech.net serves `eb30708`**
-(`v0.10-dev · eb30708`, verified from `/version.json` and the served `index.html`; rollback
-release `afe3605` kept). Part H: 3D realism pass + new-version banner. **Owner review PENDING**:
-the 3D benchmark set on a real GPU (full tier).
+`7f09d74` = `main` = `sprint-9-complete`. **dev-lab.tbi-tech.net serves `1fc122f`**
+(`v0.10-dev · 1fc122f`, verified from `/version.json` and the served `index.html`; rollback
+release `eb30708` kept). Part I: realism pass 2 + product footer. **Owner review PENDING**: the 3D
+view on a real GPU (checklist I.6).
 
 Not done: no PR, merge, tag, production deployment or backend deployment. The backends are unchanged
 (`c31d62e`, runtime `33e35e4ac5e798d7`). The isolated preview `/s10-preview/` stays.
@@ -126,6 +126,11 @@ runs) and 7–58 ms of CPU shaping per rebuild. Wire tubes stay adaptively sampl
 Evidence: `docs/sprints/s10-evidence/realism2/` — `compare-*.jpg` (eb30708 | this pass, same
 camera, full tier rendered on the software GPU), `after/*.jpg` (all views incl. the component
 audit `audit-*`, LED colours unlit/lit, labels off), `footer-*.png`, `stats-*.json`, `perf/`.
+
+Deployed: `publish-frontend.sh 1fc122f`, all checks passed. Regression on `1fc122f`: typecheck,
+lint, unit 779, e2e 154 passed / 3 skipped / 0 failed, legacy 4. Live through the gate's origin:
+3D checks 7/7, Sprint 10 demo 40/40 (GND routing case), Sprint 9 smoke 48/48 (Build → Run → Stop).
+Backends, Caddy and services unchanged (both services active, not restarted).
 
 ### I.9 What still reads as artificial
 
