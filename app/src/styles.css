@@ -61,7 +61,9 @@ body,
 /* Status line (Sprint 10): the build identity, always visible, never over content. */
 .statusbar {
   display: flex;
-  justify-content: flex-end;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.1rem 1rem;
   align-items: center;
   min-block-size: 1.35rem;
   padding-inline: 0.6rem;
@@ -2849,4 +2851,30 @@ select {
 }
 .update-banner .update-version {
   font-family: var(--mono, ui-monospace, monospace);
+}
+
+/* Product footer (Sprint 10): one muted line at the inline start of the status bar. */
+.product-footer {
+  margin: 0;
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+  color: var(--muted);
+}
+.product-footer-mail {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, currentColor 45%, transparent);
+  text-underline-offset: 2px;
+  border-radius: 2px;
+}
+.product-footer-mail:hover {
+  color: var(--text);
+}
+.product-footer-mail:focus-visible {
+  outline: 2px solid var(--accent, #1e6fd9);
+  outline-offset: 2px;
+  color: var(--text);
+}
+.statusbar .version-status {
+  margin-inline-start: auto;
 }
