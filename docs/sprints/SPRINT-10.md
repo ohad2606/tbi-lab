@@ -1,9 +1,9 @@
 # Sprint 10 — Physical 3D, engine time-domain core, the approved component families
 
 **Status (2026-10-07):** developed on `sprint-10` (worktree `~/projects/tbi-lab-s10`), from
-`7f09d74` = `main` = `sprint-9-complete`. **dev-lab.tbi-tech.net serves `1c5572b`**
-(`v0.10-dev · 1c5572b`, verified from `/version.json` and the served `index.html`; rollback
-release `2eb6d9b` kept). Part K: fresh 3D wire routes (owner review: PIR alarm, relay -> LED).
+`7f09d74` = `main` = `sprint-9-complete`. **dev-lab.tbi-tech.net serves `3921186`**
+(`v0.10-dev · 3921186`, verified from `/version.json` and the served `index.html`; rollback
+release `1c5572b` kept). Part L: false-hop fix, net wire colours, limited 3D picking. Part K: fresh 3D wire routes (owner review: PIR alarm, relay -> LED).
 Part J: visual-only 3D body separation (owner review). Part I: realism
 pass 2 + product footer. **Owner review PENDING**: the 3D view on a real GPU (checklist I.6) and
 the separation (J).
@@ -12,6 +12,169 @@ Not done: no PR, merge, tag, production deployment or backend deployment. The ba
 (`c31d62e`, runtime `33e35e4ac5e798d7`). The isolated preview `/s10-preview/` stays.
 
 Architecture and scope: [SPRINT-10-ARCHITECTURE.md](SPRINT-10-ARCHITECTURE.md).
+
+## Part L — false-hop fix, net wire colours, limited 3D interaction (owner review, 2026-10-07)
+
+The owner accepted the Part K routing and approved two things:
+- net-based wire colours, with a manual override;
+- limited 3D interaction: selecting parts and wires, and editing safe properties.
+
+Full 3D topology editing is not approved, and is not implemented: no moving parts, creating or
+deleting wires, connecting terminals, or 3D routing edits in 3D.
+
+### L.1 The false hop
+
+- **Observed:** a purple wire made a raised bridge near a transistor and the supply, although a low
+  route was clear.
+- **The owner's case:** the owner's own project lives in their browser and is not available here.
+  The case was reconstructed by searching transistor-beside-supply layouts with auto-routed wires.
+  In 8 of them the deployed router (`1c5572b`) lifted the purple base wire (R3 → Q1.base) to
+  8.9 mm.
+- **Root cause:** conservative routing volumes. The TO-92 was its whole ±6.7 mm footprint box up
+  to its full height, though its real body is 4.8 × 3.7 mm and its leads splay down to the bench.
+  The supply's binding posts were a solid strip across its whole front, though they are two 2.2 mm
+  posts 3.1–5.3 mm above the bench.
+- **Fix:**
+  - **Real routing volumes:**
+    - the TO-92 is its D-body plus each lead, high near the body and low near the terminal;
+    - the supply is its case plus two raised posts, which a wire may pass under;
+    - the RGB LED, photoresistor and capacitor are their body plus low leads (the capacitor by its
+      real package).
+  - **Final actual-clearance check:** before any rise for a body, the low candidate route (resting
+    on the bench, rising only to its ends) is tested against the body's volume by true 3D distance
+    (tube radius plus 0.3 mm, corners included). If it is clear, no rise is made (`route3d.ts
+    clearLow`).
+- **Regression fixture:** `transistorPsuCircuit` in `route3d.test.ts`.
+  - The base wire stays below 1.2 mm.
+  - It is checked against the *built* transistor model: the body's box and every lead vertex, at
+    least a wire radius away.
+  - Nothing touches; the result is deterministic; the save is byte-identical.
+  - A wire genuinely crossing a transistor still rises over it.
+
+### L.2 Routing preference order (documented in route3d.ts)
+
+1. valid connectivity;
+2. no physical collision (checked against real volumes);
+3. the shortest physically plausible path;
+4. the lowest reasonable height;
+5. the fewest bends;
+6. the least deviation from the 2D route.
+
+A conservative clearance never comes before the check that it is actually needed.
+
+### L.3 Net wire colours: one resolution for 2D and 3D
+
+`app/src/views/wireColors.ts`: `resolveWireColors(doc)` turns each wire plus the connectivity graph
+into its resolved colour. The Circuit view (SVG stroke) and the 3D view (jacket) both use it; no
+other colour logic exists.
+
+- **Automatic:** by electrical node, from topology only; never current flow or drawing order.
+  - **Red:** a node on one or more voltage-source positive terminals (the bench supply), and no
+    negative one.
+  - **Black:** a node on a source's negative terminal or the reference (ground), and no positive
+    one.
+  - **Neutral grey:** a node on both, such as a shorted supply. The circuit checks keep flagging it.
+  - **Signal palette:** every other node, in the graph's stable order (orange, blue, green, purple,
+    yellow, teal, brown).
+- **Component boundary:** the colour stops at every component. With PSU+ → R → LED, only the
+  PSU+ → R node is red.
+- **Manual:**
+  - a wire's `Wire color` property in the Inspector: Auto (shown with the colour it gives, e.g.
+    "Auto (red)") or one of 9 colours;
+  - it changes only that wire; the rest of its net stays automatic;
+  - Auto restores the net colour;
+  - it is saved in the project, round-trips through export and import, and survives a junction
+    split;
+  - it never changes a net.
+- **Circuit view:** wires now show their resolved colour. A selected wire keeps its colour, with a
+  soft halo behind it (so a blue wire is not confused with the selection).
+
+### L.4 Data model
+
+`Wire.color?: WireColor` (`red`, `black`, `orange`, `blue`, `green`, `purple`, `yellow`, `teal`,
+`brown`) is optional; absent means Auto.
+
+- No schema version change and no migration: older projects are Auto and electrically unchanged.
+- The validator refuses an unknown colour.
+- The package import allowlist now accepts `color`.
+- **Forward compatibility:** a project carrying a manual colour cannot be imported into a build
+  older than this one (its strict import refuses the unknown field).
+
+### L.5 3D interaction (`pick.ts`, renderer, ThreeView)
+
+- **Picking works on logical entities, not meshes.** Static meshes are merged across parts for
+  speed, so a mesh no longer knows its part. The click ray is intersected with:
+  - each part's routing volumes (body, leads, posts, jumper housings → the part);
+  - each wire's drawn tube (slightly generous radius → the wire).
+
+  The nearest hit wins. The bench, backdrop, labels and shadows are not in the set, so they never
+  select anything.
+- **Click vs drag:** a press moving less than 5 px is a click and selects; more is camera
+  navigation. Picking runs only on a click; there is no per-frame raycast.
+- **Selection:** it is the project's single selection, so the Inspector, Circuit and Schematic show
+  the same part. A click on the empty bench clears it. Wire colour (and any existing safe property)
+  is edited in the existing Inspector.
+- **Feedback:** a thin blue ring on the bench round a selected part; a faint translucent sleeve
+  round a selected wire.
+
+### L.6 Tests
+
+- **Colours** (`wire-colors.test.ts`, 7 tests):
+  - A: PSU+ through a junction → all red;
+  - B: PSU− and ground → black, and an ungrounded negative → black;
+  - C: the colour stops at the resistor;
+  - D/E: manual blue in 2D and 3D, only that wire, nets unchanged, Auto restores;
+  - F: export/import round trip, unknown colour refused;
+  - G: a conflict → neutral; two positives → red;
+  - every example the same in 2D and 3D, deterministic.
+- **Picking** (`pick.test.ts`, 5 tests): parts from above and at an angle; a lead or the PIR's pin
+  header → the part; every wire; the bench and labels → nothing; deterministic and cheap.
+- **False hop** (`route3d.test.ts`, +2): see L.1.
+- **Browser e2e** (`three-pick.spec.ts`, 2 tests):
+  - click the relay → selected, Inspector shows K1;
+  - a drag orbits without changing the selection;
+  - click a wire → selected; recolour it blue in the Inspector → 3D, the Circuit view and the stored
+    project all show blue; Auto restores it;
+  - a click on the bench clears;
+  - the Hebrew control reads "אוטומטי (אדום)".
+
+### L.7 Performance
+
+This host, software only:
+
+| Scene | Colour resolution | Pick (one click) | `deriveScene` |
+|---|---|---|---|
+| esp32-input-echo | 0.10 ms | 0.15 ms | 5.7 ms |
+| pir-alarm | 0.07 ms | 0.09 ms | 4.1 ms |
+| dense bench | 0.27 ms | 0.27 ms | 19.9 ms |
+| stress project (42 parts) | 0.49 ms | 1.0 ms | 64.9 ms |
+
+`deriveScene` is unchanged from `1c5572b`: 7.5, 3.4, 18.6 and 70.5 ms in the same run. The part
+volumes for picking are computed once per scene, on the first click.
+
+Regression on `3921186`:
+- CI: typecheck, lint, build pass; unit tests 817 passed; browser e2e 158 passed, 3 skipped;
+  legacy suite pass.
+- Live dev-lab: 3D 7/7, demo 40/40, Sprint 9 smoke 48/48.
+
+### L.8 Evidence
+
+`docs/sprints/s10-evidence/interaction/`:
+- the false-hop fixture before and after (top, angled);
+- three examples in the Circuit view before and after net colours;
+- 3D selection of a part and of a wire, with the Inspector.
+
+### L.9 Remaining
+
+- The owner's exact project was not available; the regression is a reconstruction. If the case
+  recurs, an exported `.tbilab` of it would let it be pinned exactly.
+- Parts not refined yet keep conservative volumes: the relay, buzzer, PIR, matrix and ESP32 are
+  their bounding boxes. A round body (buzzer) can still lift a wire grazing its box's corner region,
+  though the final 3D-distance check now catches most such corners.
+- Deeper 3D editing is deferred. The 3D view derives everything (separation, fresh routes, drape)
+  from the 2D project, so editing in 3D would need a second layout state with rules for writing it
+  back to 2D. Recommendation: keep it deferred until there is a product need beyond selecting and
+  editing properties.
 
 ## Part K — fresh 3D wire routes (owner review: PIR alarm, relay -> LED; 2026-10-07)
 
