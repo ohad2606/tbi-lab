@@ -1,0 +1,10 @@
+{
+  "release": "80448f9426d10cf7cf1f8f809ed44cf1a5096675",
+  "kind": "runtime-only (publish-runtime.sh)",
+  "replaces": "/srv/tbi-lab/services/c31d62e8fc2544e6583d91520c7b1f6c491a4f91",
+  "files": {
+    "session-host.mjs": { "sha256": "f01374d7f419671bc22729cf2d1ac903a1c062b572cdb43f071a13fdde2bc6e1", "from": "80448f9426d10cf7cf1f8f809ed44cf1a5096675", "version": "0.10-dev" },
+    "build-service.mjs": { "sha256": "31e0bc622288d9a3ffafabbf3f03eab454f0bac1fa886bf49c4b79b0f531b66e", "from": "/srv/tbi-lab/services/c31d62e8fc2544e6583d91520c7b1f6c491a4f91 (byte copy)" },
+    "build-job.mjs": { "sha256": "011f703c8ce87f472e5e4670d106dfe10cf3dbd4e1b4e01d7f017e4119c73f0f", "from": "/srv/tbi-lab/services/c31d62e8fc2544e6583d91520c7b1f6c491a4f91 (byte copy)" }
+  }
+}

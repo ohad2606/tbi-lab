@@ -1,0 +1,15 @@
+identical: 102 different: 37
+NOTE local led-colours: old {"ok":false,"snapshotId":"snap_67b61b28c3a21b21","snapshotRevision":1,"appliedRevision":1,"engineVersion":"0.1.0","error":{"code":"invalid_parameter","component | new {"ok":true,"snapshotId":"snap_67b61b28c3a21b21","snapshotRevision":1,"appliedRevision":1,"engineVersion":"0.1.0","netVoltages":{"N_1":0,"N_2":1.9912421095444583
+NOTE local rgb-mixer: old engine refuses (D1), new parts: skipped
+NOTE local light-sensor: old engine refuses (LDR1), new parts: skipped
+NOTE local night-light: old engine refuses (LDR1), new parts: skipped
+NOTE local pir-alarm: old engine refuses (U1), new parts: skipped
+NOTE local led-matrix: old engine refuses (DS1), new parts: skipped
+NOTE local rc-fade: old engine refuses (C1), new parts: skipped
+NOTE local relay-load: old engine refuses (K1), new parts: skipped
+NOTE esp32-bench pads=input,input sw=false btn=false: old {"ok":false,"snapshotId":"snap_8889ab37438e1284","snapshotRevision":1,"appliedRevision":999,"engineVersion":"0.1.0","error":{"code":"invalid_parameter","compone | new {"ok":true,"snapshotId":"snap_8889ab37438e1284","snapshotRevision":1,"appliedRevision":999,"engineVersion":"0.1.0","netVoltages":{"N_1":0,"N_2":3.3,"N_3":0,"N_4
+NOTE esp32-bench pads=input,input sw=false btn=true: old {"ok":false,"snapshotId":"snap_8889ab37438e1284","snapshotRevision":1,"appliedRevision":999,"engineVersion":"0.1.0","error":{"code":"invalid_parameter","compone | new {"ok":true,"snapshotId":"snap_8889ab37438e1284","snapshotRevision":1,"appliedRevision":999,"engineVersion":"0.1.0","netVoltages":{"N_1":0,"N_2":3.3,"N_3":3.3,"N
+NOTE esp32-bench pads=input,input sw=true btn=false: old {"ok":false,"snapshotId":"snap_8889ab37438e1284","snapshotRevision":1,"appliedRevision":999,"engineVersion":"0.1.0","error":{"code":"invalid_parameter","compone | new {"ok":true,"snapshotId":"snap_8889ab37438e1284","snapshotRevision":1,"appliedRevision":999,"engineVersion":"0.1.0","netVoltages":{"N_1":0,"N_2":3.3,"N_3":3.3,"N
+NOTE esp32-bench pads=input,input sw=true btn=true: old {"ok":false,"snapshotId":"snap_8889ab37438e1284","snapshotRevision":1,"appliedRevision":999,"engineVersion":"0.1.0","error":{"code":"invalid_parameter","compone | new {"ok":true,"snapshotId":"snap_8889ab37438e1284","snapshotRevision":1,"appliedRevision":999,"engineVersion":"0.1.0","netVoltages":{"N_1":0,"N_2":3.3,"N_3":3.3,"N
+NOTE ... 32 more
+unexpected differences: 0

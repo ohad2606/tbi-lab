@@ -1,20 +1,170 @@
 # Sprint 10 — Physical 3D, engine time-domain core, the approved component families
 
 **Status (2026-10-07):** developed on `sprint-10` (worktree `~/projects/tbi-lab-s10`), from
-`7f09d74` = `main` = `sprint-9-complete`. **dev-lab.tbi-tech.net serves `8611c9b`**
-(`v0.10-dev · 8611c9b`, verified from `/version.json` and the served `index.html`; rollback
-release `5fab982` kept). Part O: realism pass 4 (physical wires, workbench, grounding; the
-benchmark example cannot Run on the frozen backend, see O.9). Part N: realism pass 3
-(high-fidelity visuals). Part M: operating the toggle switch and push button in 3D during Run.
+`7f09d74` = `main` = `sprint-9-complete`. **dev-lab.tbi-tech.net serves frontend `80448f9` and
+runtime `80448f9`** (frontend `v0.10-dev · 80448f9` from `/version.json` and the served
+`index.html`; runtime `v0.10-dev · 80448f9` from the Session Host's `/health`, also shown in the
+version details as *Runtime ID*). Rollbacks kept: frontend `8611c9b`, runtime/services release
+`c31d62e`. Part P: runtime sync (the Session Host runs the Sprint 10 engine: yellow/green LED
+cards end to end). Part O: realism pass 4. Part N: realism pass 3. Part M: operating the toggle switch and push button in 3D during Run.
 Part L: false-hop fix, net wire colours, limited 3D picking. Part K: fresh 3D wire routes (owner review: PIR alarm, relay -> LED).
 Part J: visual-only 3D body separation (owner review). Part I: realism
 pass 2 + product footer. **Owner review PENDING**: the 3D view on a real GPU (checklist I.6) and
 the separation (J).
 
-Not done: no PR, merge, tag, production deployment or backend deployment. The backends are unchanged
-(`c31d62e`, runtime `33e35e4ac5e798d7`). The isolated preview `/s10-preview/` stays.
+Not done: no PR, merge, tag or production deployment. Backend: only the Session Host was updated
+(Part P, owner-approved); the build service runs byte-identical code (`c31d62e`), the QEMU runtime is
+unchanged (`33e35e4ac5e798d7`). The isolated preview `/s10-preview/` stays.
 
 Architecture and scope: [SPRINT-10-ARCHITECTURE.md](SPRINT-10-ARCHITECTURE.md).
+
+## Part P — runtime sync: the Session Host runs the Sprint 10 engine (owner-approved, 2026-10-07)
+
+Owner decision: update the dev-lab runtime so that the yellow (TLHY5400) and green (TLHG4900) LED
+cards work end to end (Project → Build → Session Host → Engine → Circuit → 3D/Schematic). The
+red-only workaround and a visual-only benchmark were both rejected.
+
+### P.1 The backend delta from `c31d62e`, classified
+
+Nothing changed in the Session Host's or the build service's own code between `c31d62e` and
+Sprint 10 HEAD:
+- `runtime/host`, `runtime/builder`, `runtime/identity`, `runtime/policy` and the harness are
+  identical;
+- the units are unchanged;
+- the only template diff, `tbi-qemu@` TasksMax 32 → 80, was already live since 2026-10-05.
+
+The delta is the two workspace packages the Session Host bundle carries (`@tbi-lab/engine`,
+`@tbi-lab/domain`):
+
+| Category | What | Status |
+|---|---|---|
+| 1. Required for the LED cards | `engine/models.ts` (TLHY5400, TLHG4900 cards and anchors), `engine/registry.ts` (two cards and their validity ranges), `engine/ratings.ts` (their datasheet ratings) | Carried |
+| 2. Engine, behaviour-compatible | `engine/circuit.ts`: an accept-by-residual path, reached only where Newton used to fail. `engine/session.ts`: the part-model registry and a discrete-state loop, which is one pass and unchanged without stateful parts; `advance()` is never called by the host. `engine/devices.ts`: optional time-step hooks and an internal `Capacitor`, an open circuit at DC. `esp32Gpio.ts`: two datasheet constants, used by browser diagnostics only. New part models: `bjt.ts`, `parts/*`, `pwl.ts`, `sources.ts` | Carried, but unreachable for the parts the runtime does not support (guard below) |
+| 3. Unrelated | `domain`: editing, routing, connectivity, contacts, schema, validation. Bundled but not on any host code path; the host imports only the ESP32 board data (byte-identical) and `CATALOG` (for the guard) | Bundled, inert |
+| 4. Security, admission, protocol | None | — |
+
+My Session Host changes (`runtime/host`, three files):
+
+| File | Change |
+|---|---|
+| `session.ts` | **Guard**: parts the ESP32 runtime does not simulate (catalog `mcuRuntime: false`, the app's own Run rule: capacitor, BJT, relay, RGB LED, LDR, buzzer, PIR, LED matrix) are refused exactly as `c31d62e` refused them: `failed / electrical_error` with `{ code: 'unsupported_component', components: [first in circuit order] }`, at the same point (after the private flash copy, before the first solve). So no capacitor is ever solved at DC under a running board, and no transient path is reachable. |
+| `http.ts`, `identity.ts` | `/health` gains an additive read-only `runtime: { version, commit }`, stamped by the bundler. Nothing about the host. Unstamped builds report nothing, as before. The build service reads only `.sessions` (verified). |
+
+One edge differs from `c31d62e`: a GPIO wired directly to one of those parts gets
+`unsupported_component` instead of `invalid_attachment`. The app never sends such a request (its
+Run guard refuses first).
+
+Protocol compatibility:
+- `tbi-lab.session/2`, request and response schemas, routes and command semantics are unchanged.
+- Artifact lookup, re-hash and private copy, the QEMU invocation (the same `tbi-qemu@` unit and
+  binary), Run/Stop, leases and session ownership are unchanged: the code paths are untouched.
+
+### P.2 Model-card synchronisation
+
+The browser and the runtime now execute the same `@tbi-lab/engine` (same commit): one
+`MODEL_CARDS`, `MODEL_VALID_CURRENT_A` and `MODEL_RATINGS`, with no runtime-only copy. Forward
+voltage, ratings and part numbers exist once (`packages/engine/src/models.ts`, `ratings.ts`).
+
+### P.3 Tests
+
+| Area | Result |
+|---|---|
+| DC A/B, `scripts/runtime-sync/engine-ab.ts` (`c31d62e` engine vs this engine, JSON byte for byte, on what the browser sends: every example, every ESP32 pad mode × switch × button, and the recorded Sprint 8 session request) | **102 identical**; 37 differ, all circuits with the yellow/green cards (old: `invalid_parameter`; new: solved); **0 unexpected**. Output in `s10-evidence/runtime-sync/engine-ab.txt` |
+| Historical DC references | `c31d62e`'s eight engine test files and the Gate A golden data are byte-identical to HEAD's and pass |
+| Host level (`runtime/host/tests/models.test.ts`, 9 tests, routine CI) | Red, yellow and green in one circuit: each within 1e-6 of an independent Shockley bisection. Reversed yellow/green block (< 1 nA). Over-driven red/yellow/green all raise `forward_current` under the app's rating rules. Capacitor, BJT, relay and RGB LED refused as before. `/health` identity stamped vs unstamped, malformed stamps dropped |
+| Real QEMU, `r2-led-bench` (pinned TbiBanks, the app's exact benchmark request, kept in sync by `app/tests/runtime-fixtures.test.ts`) | Yellow/green at the engine's operating point. SW1 mirror → GPIO4 high → D1 lit; open → low. SW2 press → high; release → low. Stop: QEMU gone, private directory gone. **Pass** |
+| Real QEMU, local R2 suite (Session Host from source) | 16/17. "Two concurrent sessions ×3" timed out waiting for the NVS firmware under load (60 s per wait); rerun alone: pass (57.7 s). Its circuit is one resistor, untouched by this change. Electrical equivalence vs the R1 loop (1e-9), determinism, failure injection and host-bundle shutdown/crash all pass |
+| CI on `80448f9` | Typecheck, lint, unit **842/842**, build, e2e **161 passed / 3 skipped**, browser: all PASS |
+
+### P.4 Deployment
+
+New scripts:
+- `deploy/dev-lab/publish-runtime.sh <ref>`: Session Host only. It builds `session-host.mjs` from a
+  clean worktree, stamped with `VERSION` and the commit. `build-service.mjs` and `build-job.mjs`
+  are sha256-checked byte copies of the release in use (the build service and its job sandboxes
+  bind the same `services/current`). It writes `MANIFEST.json` (hashes, origins, the replaced
+  release), switches `current` atomically and restarts **only `tbi-session-host`**. It then
+  verifies over the socket: protocol unchanged, `runtime.commit`, `tbi-build`'s start time
+  unchanged. Any failure rolls back automatically.
+- `deploy/dev-lab/rollback-runtime.sh`: re-points to MANIFEST `replaces` (or a given release) and
+  restarts only the Session Host.
+
+Pre-update backup: `/var/backups/tbi-lab/pre-s10-runtime-20261007T195615Z` (root, 0700). It holds
+the four units, the release symlinks, the sha256 of every `c31d62e` file, `policy.json` and the
+QEMU binary, and the service start times. The `c31d62e` release directory stays in place.
+
+Deployed:
+
+| Item | Value |
+|---|---|
+| Runtime | `80448f9426d10cf7cf1f8f809ed44cf1a5096675` (services release `/srv/tbi-lab/services/80448f9…`) |
+| `session-host.mjs` | sha256 `f01374d7…`, 180 KB (was 124 KB) |
+| `build-service.mjs` / `build-job.mjs` | `31e0bc62…` / `011f703c…`, identical to `c31d62e` |
+| Frontend | `80448f9` (`publish-frontend.sh`; adds the Runtime ID display) |
+
+Service start times:
+
+| Service | Start | Cause |
+|---|---|---|
+| `tbi-session-host` | 20:22:49 | The deploy (the only restart it made) |
+| `tbi-build` | 2026-10-07 20:24:03 | The containment gate's own "a restarted build service…" case (by design); it now runs the byte-identical `build-service.mjs` from the new release directory |
+| `tbi-session-host` | 2026-10-07 20:25:25 | The containment gate's "a restarted Session Host…" case |
+| `oauth2-proxy` | 2026-10-04 13:27:40 | Unchanged |
+| `caddy` | 2026-10-04 13:19:44 | Unchanged |
+| Staging `tbi-s8-*` | 2026-10-05 | Untouched |
+
+Policy, keys, units, Caddy routing, quotas, leases and the QEMU runtime were not changed.
+
+Rollback, which restores the exact pre-update backend (no runtime identity on `/health`) without
+touching the frontend:
+
+```sh
+deploy/dev-lab/rollback-runtime.sh        # -> /srv/tbi-lab/services/c31d62e8fc2544e6583d91520c7b1f6c491a4f91
+```
+
+### P.5 Post-deploy validation (dev-lab)
+
+Backend gates, run against the live `tbi` instance (`TBI_S8_INSTANCE=tbi`, fresh test principals):
+
+| Gate | Result |
+|---|---|
+| `s8-containment` | 9/9 (sandboxed bit-identical build, QEMU sandbox, crash and restart cleanup, cross-user isolation) |
+| `s8-deployed-policy` | 7/7 (quotas, Advanced .bin rate, live-session admission, stale-health hold) |
+| `s8-qemu-tasks` | 2/2 (real sessions with input bursts, nothing left behind) |
+| `s8-gate` | 5/5 (oauth2-proxy → Caddy → socket isolation) |
+
+Live checks through the gate's origin:
+
+| Check | Result |
+|---|---|
+| live 3D | 7/7 |
+| demo10 | 40/40 |
+| Sprint 9 smoke | all passed |
+| ESP32 3D controls on `esp32-input-echo` | 17/17 |
+| ESP32 3D controls on **`esp32-bench`** | **17/17** (Build, Run, SW1/SW2 → GPIO34 → GPIO4 → D1, Stop) |
+| `esp32-blink` | Build and Run |
+| `esp32-bench` running | D3 (yellow) and D4 (green) lit in 3D; probes I(D3) = 7.2 mA, I(D4) = 13.52 mA; TbiBanks running; Stop → stopped, no page errors (`s10-evidence/runtime-sync/bench-running-3d.png`) |
+| Version details | Runtime ID `v0.10-dev · 80448f9` |
+
+Cleanup after everything: no `tbi-qemu@` or `tbi-build-job@` units, no session directories,
+`/health` lists no live session.
+
+One live Run was refused with `runtime_capacity`: my blink check had left its session to the lease
+instead of pressing Stop. The preview plan's concurrency limit worked as designed, and the
+session was released by its lease within 35 s.
+
+### P.6 Endurance assessment
+
+No new 465-minute endurance run. The change touches no lifecycle, admission, lease, protocol or
+sandbox code. It touches the engine (per-solve numerics, covered by the A/B and the gates) and
+adds a guard before the first solve and a read-only `/health` field. The task-limit, containment
+and policy gates were rerun on the deployed instance.
+
+### P.7 Transient stays unexposed
+
+The runtime refuses every time-dependent part (`mcuRuntime: false`) and never calls `advance()`.
+The app's Run guard for ESP32 projects is unchanged. No capacitor, 555 or transient UI became
+available under the runtime.
 
 ## Part O — realism pass 4: physical wires, workbench, grounding (owner direction, 2026-10-07)
 
@@ -177,8 +327,8 @@ Projects → **ESP32 bench: inputs and indicators** → 3D:
 4. Wires: curves, a slight bow on the long feed, the hump over the crossing, jumpers arching
    out of their housings.
 5. Shadows soft under the board, the PSU, the switches and the LEDs; nothing floats.
-6. Glass diode clear with its internals; the LEDs translucent. To see an LED lit, use **ESP32:
-   switch input to LED output** and Run (the benchmark does not Run on dev-lab yet, see O.9).
+6. Glass diode clear with its internals; the LEDs translucent. Build and Run: yellow and green
+   glow at once, the red one when the switch is closed or the button held (since Part P).
 7. Metals: pins, USB shell and the RF can read as metal, not grey plastic.
 
 Screenshots of the whole scene, one close-up and the readout are enough.
@@ -216,7 +366,10 @@ sudo ln -sfn /srv/tbi-lab/dev-lab/5fab982f927524254e82660e1319ca333e35b69d /srv/
   sudo mv -T /srv/tbi-lab/dev-lab/current.tmp /srv/tbi-lab/dev-lab/current
 ```
 
-### O.9 Backend limitation found (STOP: a backend change would be needed)
+### O.9 Backend limitation found (STOP: a backend change would be needed) — RESOLVED in Part P
+
+**Resolved (Part P):** the owner approved the runtime sync; dev-lab's Session Host runs the Sprint
+10 engine, and `esp32-bench` builds and Runs end to end. The original finding follows.
 
 On dev-lab, `esp32-bench` builds but does not Run. It fails with "D3: the value of 'Model'
 cannot be simulated".
