@@ -1,6 +1,6 @@
 # ADR-010 — ESP32 part support and live part parameters in the session contract
 
-**Status:** Proposed · **Date:** 2026-10-08 · **Sprint:** 11 (R1)
+**Status:** Accepted with conditions (PM, 2026-10-08) · **Date:** 2026-10-08 · **Sprint:** 11 (R1)
 
 ## Context
 
@@ -28,13 +28,18 @@ Two contract questions arise:
    the host, so no time-dependent part may run there until a separate, approved host time-stepping
    phase.
 3. **The mirror command gains an optional, bounded `params` object** within `tbi-lab.session/2`
-   (no version bump; additive): 1–8 keys, finite numbers, booleans or short strings. The engine
-   accepts only the target part's declared `liveParams` within catalog range; any other key or
-   value fails the command (`mirror_failed`), never silently.
+   (no version bump; additive): 1–8 keys, finite numbers, booleans or short strings, ≤ 512 bytes.
+   The host checks part identity, allowed names (the catalog's live parameters for that type),
+   value kind and range **when the command arrives** (409 `unsupported_control` / `invalid_value`),
+   and the engine checks the same domain rule again when it applies; commands are limited per
+   session per second (409 `rate_limited`). Any refusal is explicit, never silent (PM conditions,
+   architecture §6.1).
 4. **No new bridge frames or emulator changes.** R1 uses the digital pad contract of ADR-007 only.
    ADC, PWM/LEDC, I2C and microsecond input timing remain refused (builder and host) until their own
    phases (R2–R4, ADC) are approved.
-5. **Deployment order is part of the contract:** host before frontend; rollback frontend before
+5. **Compatibility is a tested matrix, not an assumption** (architecture §6.2): an S10 frontend on
+   an S11 host is fully supported; an S11 frontend on an S10 host is not a supported state but fails
+   explicitly. **Deployment order is part of the contract:** host before frontend; rollback frontend before
    host. A new frontend never meets an old host in normal operation; if it does, the host refuses
    explicitly (`unsupported_component`, or a command refusal reported as such).
 

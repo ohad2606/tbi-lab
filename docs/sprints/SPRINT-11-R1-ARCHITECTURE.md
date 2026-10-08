@@ -1,6 +1,7 @@
 # Sprint 11 — R1 architecture: the Sprint 10 parts in ESP32 projects
 
-**Status:** PROPOSED (architecture only; nothing implemented). Awaiting PM approval.
+**Status:** **APPROVED WITH CONDITIONS** (PM, 2026-10-08): the conditions are binding design
+additions, §6. Implementation of slices 0–6 authorised; deployment (slice 7) is not.
 **Branch:** `sprint-11` (worktree `~/projects/tbi-lab-s11`), from `465b330` = `main` =
 `sprint-10-complete`. Sprint 10 is closed and is not reopened.
 **Companion documents:** [SPRINT-11-IMPLEMENTATION-PLAN.md](SPRINT-11-IMPLEMENTATION-PLAN.md) ·
@@ -294,4 +295,108 @@ Mechanics as in PHASE-R1 §4/§8, updated to Sprint 10 tooling (`publish-runtime
 
 ## 5. Questions for the PM
 
-See the implementation plan §4 (Q1–Q7).
+See the implementation plan §4 (Q1–Q7). **Answered 2026-10-08:** Q1 params mirror — yes;
+Q2 LDR digital threshold only, ADC tracked as separate V1 work; Q3 static matrix patterns,
+conditional on measured performance; Q5 two curated, tested ESP32 examples; Q6 pin warnings —
+yes; Q7 one controlled deployment sequence after implementation and validation (not yet
+authorised). Q4 (no `/health` capability field) is replaced by the compatibility matrix of §6.2.
+
+---
+
+## 6. PM conditions (2026-10-08) — binding design additions
+
+### 6.1 Protocol safety for live-parameter commands
+
+Every check is explicit: a refused command returns a named reason, never a silent no-op.
+
+| Check | Where | Rejection |
+|---|---|---|
+| Session ownership | `SessionHost.get` (principal + session token, constant-time) — unchanged | 404 (indistinguishable from "no such session") |
+| Structure: `params` is an object of 1–8 keys, key pattern, value is a finite number / boolean / string ≤ 32 chars | `validateCommand` | 400 `control.params` |
+| Payload size: serialised `params` ≤ 512 bytes; command body ≤ 8 KiB (was 64 KiB; existing commands are < 300 B) | `validateCommand`, `http.ts` | 400 / 413 |
+| Part identity: the component exists in the session's circuit | `submit` (existing) | 409 `unknown_component` |
+| Allowed names: each key is a **live** parameter the component's catalog type declares; `params` only on part models, `closed` only on toggles, PSU keys only on the PSU | `submit` (new, from the shared domain rule `liveControlError`) | 409 `unsupported_control` |
+| Type and range: the value's kind and the catalog's `min`/`max` (e.g. illuminance 1–10 000 lux; motion boolean) | `submit` and again in the engine's `applyControl` (same domain rule) | 409 `invalid_value` (new) / `mirror_failed` at apply |
+| Frequency: at most `maxCommandsPerSecond` (default 50) commands per session per wall-clock second, on top of the existing per-principal request rate (600/min preview) | `submit` (new) | 409 `rate_limited` (new) |
+| Ordering and revisions | `submit`, `apply` — unchanged | 409 `stale_revision`, `duplicate_revision`, `late`, `out_of_order`, `queue_full` |
+
+**Browser side:** mirrors are **coalesced per component** while one is in flight (latest values,
+latest revision; revision gaps are allowed by the protocol), so ordinary UI use never approaches the
+limits. A command refused by the host's validator (400) is reported as `command_refused` and a
+frequency rejection as `commands_rate_limited` — never as "the runtime service is not reachable".
+
+**Backward compatibility:** the protocol string stays `tbi-lab.session/2`; all additions are
+optional. Every message an older client sends is accepted unchanged (tested against recorded Sprint
+10 client fixtures). The new rejection reasons are additive values of `CommandRejection`; an older
+client treats any rejection as a failed mirror, as before.
+
+### 6.2 Frontend–host compatibility matrix
+
+| Frontend | Host | Status | Required behaviour | How it is tested |
+|---|---|---|---|---|
+| S10 `7da5c8b` | S10 `80448f9` | Current production of dev-lab | Unchanged | Existing live checks |
+| S10 `7da5c8b` | **S11** | **Supported** (the transition state during deployment, and after a frontend-only rollback) | Everything S10 offers works identically: S10 never sends new parts or `params` | Contract test: S10 client fixtures and command shapes accepted by the S11 validator; real-QEMU replay of the recorded S10 session fixtures on the S11 host; staging rehearsal |
+| **S11** | S10 `80448f9` | **Not a supported state** (avoided by order: host before frontend; on rollback, frontend before host) — must still fail **explicitly** | New parts → host refusal `unsupported_component` ("cannot be simulated yet"); a params mirror → 400 → `command_refused` (session stopped, project untouched); all S10 features keep working | Contract test against a frozen copy of the S10 validator (`runtime/host/tests/fixtures/protocol-s10.ts`, verbatim from `80448f9`); controller tests with recorded old-host answers; staging rehearsal |
+| **S11** | **S11** | Target | Full R1 | All suites |
+
+**Deployment** (slice 7, not yet authorised): staging host → full runtime suite → staging with the
+S10 frontend → dev-lab host → existing live checks against the S10 frontend (still deployed) →
+dev-lab frontend → full live checks. **Rollback:** frontend to `7da5c8b` first (S10 FE on S11 host:
+supported), then host to `80448f9` (S10/S10). Both directions are rehearsed on staging before
+dev-lab; the S11-FE/S10-host state is exercised there too, to prove its explicit failures.
+
+### 6.3 Electrical integrity of warnings
+
+- **Warnings never alter solver results.** Pin warnings are computed by `ratingWarnings()` from an
+  already solved outcome (a pure function, in the browser, for local and host runs alike). Tests
+  assert that the solved values are bit-identical with and without the warning pass, and that the
+  outcome object is not mutated.
+- **Two distinct categories, never mixed:**
+  - *electrical risk warnings* (`RatingWarning`: over-current, contention, shorts, and the new
+    `gpio_input_overvoltage`, `gpio_reverse_current`): the circuit is solved and the run continues;
+    the values shown are the engine's; the warning says a real part would be stressed;
+  - *unsupported simulation states* (refusals and session failures: `unsupported_component`,
+    `unsupported_feature`, `no_steady_state`, `command_refused`, …): nothing is solved or the run
+    stops; never presented as a warning.
+- **Limits from the datasheet, not invented:** ESP32 Series Datasheet v5.3 (Espressif), Table 5-3
+  "DC Characteristics (3.3 V, 25 °C)", PDF p. 52: V_IH max = VDD + 0.3 V = **3.6 V**, V_IL min =
+  **−0.3 V** (the specified input voltage range). Table 5-1 "Absolute Maximum Ratings", p. 51:
+  supply pins −0.3 … 3.6 V. Recorded in `docs/sprints/s11-evidence/datasheets/FACTS.md` with the
+  file's SHA-256. (The PDF does not render its minus signs; the −0.3 V lower limit is inferred, with
+  the reasoning recorded there. The 3.6 V upper limit, the one 5 V circuits hit, is unambiguous.)
+  - `gpio_input_overvoltage`: an **input** pad's solved voltage above 3.6 V or below −0.3 V.
+  - `gpio_reverse_current`: an **output** pad forced beyond its rail by the external circuit (an
+    output-HIGH pad above 3.6 V, or an output-LOW pad below −0.3 V): current is pushed into the
+    driver.
+- **Tested on every trigger:** at Run (first solve), after a firmware GPIO change, and after a live
+  parameter change, locally and on the host, with identical warnings.
+
+### 6.4 Matrix performance — measurement before enabling
+
+The 2 ms budget is a proposal to be **verified**, not assumed. Slice 6 enables the matrix in ESP32
+projects only if all of these hold on the dev-lab host (the same machine: 4 cores ARM64, 4 GB):
+
+| Metric | Method | Gate |
+|---|---|---|
+| Per-pad-event solve latency p50 / p95 / p99 / max | Real QEMU, a scanning test firmware (`TbiR1Scan`, built by the existing provisioning pipeline) and a static-pattern run; every host solve timed | p99 ≤ 2 ms (static and scanned) |
+| Solve frequency | Solves per simulated second and per wall second | Recorded |
+| CPU | Session Host process `cpuUsage` and the QEMU process (`/proc/<pid>/stat`), per wall second | Recorded; QEMU stays within its unit quota |
+| Impact on other sessions | A second concurrent session (TbiBanks echo) with and without the scanning session: its simulation-time rate and solve latency | Rate degradation ≤ 20 %; no bridge stall > 100 ms |
+| Admission | Both sessions admitted within the existing limits; a third refused as before | Unchanged |
+
+If any gate fails, the matrix **stays local-only** (catalog flag kept), with the measurements
+recorded, and the PM decides.
+
+### 6.5 GPIO32/33 — documentation reconciled with runtime evidence
+
+The scope document (§5, §7.2, §20, §21, §23.2, §24) and the Sprint 10 architecture record still
+call GPIO32/33 outputs (blocker B6) an open pre-release item. **Evidence that it is closed:**
+- `docs/runtime/R1-REPORT.md`: gates R1-A3 and R1-A4 "Met" (GPIO32/33 drive HIGH/LOW, read back,
+  light an LED with the same current as bank 0, echo GPIO35);
+- **re-verified 2026-10-08** on the deployed runtime id `33e35e4ac5e798d7`:
+  `runtime/tests/banks.runtime.test.ts` **10/10 passed** (outputs 4/16/25/27/32/33 driven HIGH then
+  LOW in firmware order; equal electrical result on both banks; two-way loops across banks);
+- the board profile marks IO32/33 as ordinary `io` (`esp32DevkitcWroom32.ts:140-141`).
+
+Correction: the **living** scope document is updated with a dated note (Sprint 11); the Sprint 10
+records (closed, tagged) are **not** edited. The correction is recorded in `SPRINT-11.md`.

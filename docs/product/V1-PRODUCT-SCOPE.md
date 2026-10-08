@@ -4,7 +4,7 @@
 (§21). · **Date:** 2026-09-22 · **Phase:** Product scope closure (after Sprint 1) ·
 **Revised:** 2026-10-06, PM-6 catalog revision (§6.0, Sprint 10) · 2026-10-08, PM-9 limited
 transient simulation, PM-10 the three views (Circuit / Schematic / 3D), PM-11 ESP32 I2C planned for
-V1 (§4.4, §6.0a, §21; Sprint 10 closure)
+V1 (§4.4, §6.0a, §21; Sprint 10 closure) · 2026-10-08, GPIO32/33 outputs recorded as closed (Sprint 11)
 
 **Release model:** V1 is a **controlled pilot**, not public general availability (§25).
 
@@ -238,7 +238,7 @@ Excluded means: **not built, not promised, and stated in the UI where a user mig
 | Deep/light sleep | The runtime's sleep timer uses the host clock, which breaks determinism |
 | `esp_restart()`, watchdog reset, in-place EN/reset button | Still asynchronous in QEMU; PM decision P10 keeps them unsupported until they pass R-MCU-1 |
 | GPIO 34-39 as outputs, or with internal pulls | **Hardware**: those pads are input-only and have no internal pulls |
-| GPIO 32/33 outputs, until the bridge gap is closed | **Simulator limitation**, not hardware: the bridge events bank-0 outputs only (blocker B6). Pre-release fix (§7.2) |
+| ~~GPIO 32/33 outputs, until the bridge gap is closed~~ | ~~**Simulator limitation**, not hardware: the bridge events bank-0 outputs only (blocker B6). Pre-release fix (§7.2)~~ *Closed (2026-10-08, Sprint 11): bank-1 outputs are evented since runtime R1 (gates R1-A3/R1-A4); re-verified on runtime `33e35e4ac5e798d7`, `banks.runtime.test.ts` 10/10. See `SPRINT-11.md` Part B.* |
 | Drive-strength, open-drain, firmware-controlled pulls | Not driven from firmware register state (blocker B5) |
 | MicroPython authoring | Sprint 0 used it as a test artifact only: "This is not MicroPython support" |
 | Arduino library ecosystem / dependency management | Out of scope; V1 builds a single sketch against the core only |
@@ -407,7 +407,7 @@ behaviour would teach the user something false.
 |---|---|---|
 | **GPIO 6-11** (`CLK`, `SD0`, `SD1`, `SD2`, `SD3`, `CMD`) | Broken out on the 38-pin header but connected to the module's SPI flash | **Reserved.** Never offered as ordinary user GPIO; wiring them is refused with the reason "used by the module's flash" |
 | **GPIO 34, 35, 36 (`SVP`), 39 (`SVN`)** | **Input-only in hardware, and no internal pull-up/pull-down** | Digital input only; the inspector offers **no** pull option and explains why (external pull required) |
-| **GPIO 32, 33** | Full digital input **and output**, with internal pulls | Input and output. **Runtime gap:** the Sprint 0/1 bridge events bank-0 outputs only (blocker B6). Either close that gap before release (preferred) or mark these as `simulatorSupport: limited` with the reason. **They are never described as input-only** |
+| **GPIO 32, 33** | Full digital input **and output**, with internal pulls | Input and output. **Runtime gap:** the Sprint 0/1 bridge events bank-0 outputs only (blocker B6). Either close that gap before release (preferred) or mark these as `simulatorSupport: limited` with the reason. **They are never described as input-only**. *Closed (2026-10-08, Sprint 11): bank-1 outputs are evented since runtime R1 (gates R1-A3/R1-A4); re-verified on runtime `33e35e4ac5e798d7`, `banks.runtime.test.ts` 10/10. See `SPRINT-11.md` Part B.* |
 | **GPIO 0, 2, 5, 12, 15** | Normal GPIO, but **strapping / boot-sensitive** | Usable, flagged in the editor: holding one at the wrong level at reset changes boot behaviour. The warning is informational, not a block |
 | **GPIO 1 (`TX0`), 3 (`RX0`)** | Normal GPIO, wired to the board's USB-serial console | Usable, flagged: using them conflicts with the serial monitor |
 | **GPIO 25, 26** | Normal GPIO; DAC-capable in hardware | Usable as digital I/O. DAC is **not simulated** in V1, and the pin says so |
@@ -936,7 +936,7 @@ unsupported (P10).
 | GPIO state on the board symbol | ● | | |
 | GPIO timeline / logic-analyser view | | ● | |
 | Classic ESP32: digital I/O, direction, pulls, deterministic loop | ● | | |
-| GPIO 32/33 outputs (close the bank-1 bridge gap) | ● *(pre-release fix)* | | |
+| GPIO 32/33 outputs (bank-1 bridge gap closed in runtime R1; re-verified 2026-10-08) | ● *(done)* | | |
 | ESP32 ADC | | ● | |
 | Potentiometer + ADC together | | ● | |
 | ESP32 PWM for the servo (runtime R4) | ● *(planned)* | | |
@@ -1006,7 +1006,7 @@ remain in the sections cited, so a later reversal is an informed one.
 | **ESP32 pin capability model** | Numeric range claims ("outputs 0-31, inputs 0-39") are replaced by a **board capability map** with explicit per-pin metadata, including a separate `simulatorSupport` field. Hardware capability and simulator gaps are never conflated | §7.1, §7.2 |
 | **GPIO 6-11** | Never exposed as ordinary user GPIO on a WROOM-style DevKit; they belong to the module's flash | §7.2 |
 | **GPIO 34-39** | Represented as input-only **without** internal pulls, because that is the hardware | §7.2 |
-| **GPIO 32/33** | Hardware output-capable. Our bridge's bank-0-only event limitation is labelled a **simulator limitation**, to be closed before release or stated as such | §7.2, §24 |
+| **GPIO 32/33** | Hardware output-capable. Our bridge's bank-0-only event limitation is labelled a **simulator limitation**, to be closed before release or stated as such. *Closed (2026-10-08, Sprint 11): bank-1 outputs are evented since runtime R1 (gates R1-A3/R1-A4); re-verified on runtime `33e35e4ac5e798d7`, `banks.runtime.test.ts` 10/10. See `SPRINT-11.md` Part B.* | §7.2, §24 |
 | **Unsupported peripherals** | The guarantee covers the documented subset only. Static preflight diagnostics are possible for source we build; **no perfect detection is claimed for uploaded `.bin`**; reliable runtime detection produces a diagnostic rather than fabricated behaviour | §7.5 |
 
 ## 22. Risks to product scope
@@ -1052,7 +1052,7 @@ V1's Definition of Done is **pilot readiness**, not public-scale readiness. It r
 | The acceptance journey (§19) passes end to end, in English and Hebrew | Including export/import and the offline path |
 | The catalog behaves per §6 (§6.0 since 2026-10-06), with model provenance recorded | No component added silently or outside the approved families |
 | The board capability map is implemented and datasheet-sourced (§7.2) | Including the `simulatorSupport` field |
-| The bank-1 output gap is closed, **or** GPIO 32/33 are labelled a simulator limitation | §7.2, §24 |
+| The bank-1 output gap is closed, **or** GPIO 32/33 are labelled a simulator limitation — **met: closed** (2026-10-08) | §7.2, §24 |
 | The runtime carries no fork-specific board devices on GPIO 4/16/27 | §7.2 |
 | The deterministic release gate R-MCU-1 still passes | Sprint 1 gate, with pinned fingerprints |
 | Authentication, authorization and per-user limits protect the build and simulation services | P6, at pilot scale |
@@ -1072,7 +1072,7 @@ proven evidence.
 |---|---|---|
 | 1 | A **capacitor** is a natural "basic component" expectation, but the engine is DC-only | Originally excluded (§6.1 deferral table). **Resolved 2026-10-08 (PM-9):** the capacitor ships for local circuits with honest fixed-step transient (§6.0a); refused in ESP32 projects until ESP32 transient integration |
 | 2 | A **multimeter with resistance** is a natural lab expectation, but Ω is not a solve of the live circuit | Probes in V1; Ω with the DMM in V1.1 (§9.3, PM-3) |
-| 3 | **GPIO 32/33 outputs** are not evented by the bridge (blocker B6), although the hardware supports them | Corrected per PM: this is a **simulator limitation**, never presented as hardware. Closing it is a pre-release item; until then the pins carry that reason. GPIO 34-39 are input-only **in hardware**, which is a different statement |
+| 3 | **GPIO 32/33 outputs** are not evented by the bridge (blocker B6), although the hardware supports them | Corrected per PM: this is a **simulator limitation**, never presented as hardware. Closing it is a pre-release item; until then the pins carry that reason. *Closed (2026-10-08, Sprint 11): bank-1 outputs are evented since runtime R1 (gates R1-A3/R1-A4); re-verified on runtime `33e35e4ac5e798d7`, `banks.runtime.test.ts` 10/10. See `SPRINT-11.md` Part B.* GPIO 34-39 are input-only **in hardware**, which is a different statement |
 | 4 | **Reset** is an obvious simulation control, but full-chip reset is not deterministic yet (P10) | No reset control in V1; Stop/Run is the restart path |
 | 5 | **MicroPython** technically boots, which invites "so it is supported" | Explicitly not supported as an authoring workflow (§8.3, PM-4) |
 | 6 | **Oscilloscope** is expected in anything called a lab | Excluded; requires transient analysis (§9.4) |
