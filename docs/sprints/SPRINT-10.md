@@ -5,7 +5,8 @@
 runtime `80448f9`** (frontend `v0.10-dev · 7da5c8b` from `/version.json` and the served
 `index.html`; runtime `v0.10-dev · 80448f9` from the Session Host's `/health`, also shown in the
 version details as *Runtime ID*). Rollbacks kept: frontend `0f2fd7b` (then `2d28ca7`), runtime/services
-release `c31d62e`. **Part V: closure readiness (authoritative delivered / deferred list, PM-9..PM-11,
+release `c31d62e`. **Part W: closure (final CI and live validation PASS; PR, fast-forward and tag
+`sprint-10-complete`).** **Part V: closure readiness (authoritative delivered / deferred list, PM-9..PM-11,
 technical debt).** Part U: jumper exit geometry (owner review: the wire out of the ESP32 header
 housings). Part T: realism pass 8 (Realistic / Engineering visual mode, deterministic material
 variation, IC / SMD finish). Part S: realism pass 7 (depth of field, header pins). Part R: realism pass 6 (wire jackets, shadow penumbra, studio room, Dupont). Part Q: realism pass 5 and the 3D layer model (Realistic / Engineering). Part P: runtime sync (the Session Host runs the Sprint 10 engine: yellow/green LED
@@ -20,6 +21,89 @@ Not done: no PR, merge, tag or production deployment. Backend: only the Session 
 unchanged (`33e35e4ac5e798d7`). The isolated preview `/s10-preview/` was retired (Part G).
 
 Architecture and scope: [SPRINT-10-ARCHITECTURE.md](SPRINT-10-ARCHITECTURE.md).
+
+## Part W — closure (PM approval, 2026-10-08)
+
+**Status: Sprint 10 closed** once the sequence below completes (PR to `main`, PR CI, fast-forward,
+`main` CI, tag `sprint-10-complete`); the commit carrying this part is the closure commit.
+
+### W.1 Owner acceptance (honest scope)
+
+**Accepted by the owner (explicitly, 2026-10-08):**
+- the overall 3D realism;
+- the Realistic / Engineering visual direction;
+- the routing improvements;
+- wire colours;
+- 3D picking;
+- the 3D physical-controls concept;
+- the jumper / housing fix;
+- the delivered / deferred structure of Part V.
+
+The owner reviewed the hardware-rendered 3D visually (Intel Iris Xe).
+
+**Technically validated, not manually re-tested by the owner** (automated and live evidence below):
+- the ESP32/QEMU control flows;
+- the yellow/green LED cards on the runtime;
+- the capacitor transient;
+- the new local-circuit parts;
+- the ESP32 refusal of unsupported parts;
+- Hebrew behaviour.
+
+### W.2 Final CI (local, on `bd29a43`; application code identical to the deployed `7da5c8b`)
+
+| Step | Result |
+|---|---|
+| typecheck | PASS |
+| lint (ESLint, Prettier, boundaries) | PASS |
+| unit | **867 / 867** (96 files) |
+| production build | PASS |
+| browser e2e | **166 passed, 3 skipped** (the usual opt-in real-QEMU specs), 0 failed |
+| legacy browser | **4 passed** |
+
+### W.3 Live dev-lab validation (frontend `7da5c8b`, runtime `80448f9`, via the root relay)
+
+| Check | Result |
+|---|---|
+| 3D checks | **7/7** |
+| Demo checks | **40/40**. Includes the capacitor (`rc-fade`): time advances with real time; the LED fades in to 4.005 mA; it discharges to 0.4502 mA through the LED; Stop removes time; Run restarts at t = 0. Also the RGB LED and relay/buzzer in local circuits, and the ESP32 palette refusal of the parts the runtime cannot simulate |
+| Sprint 9 smoke | **ALL PASSED** |
+| Real QEMU, `esp32-input-echo` (switch / button in 3D) | **17/17** |
+| Real QEMU, `esp32-bench` | **17/17**: D1 (red TLHR5400), D3 (yellow TLHY5400) and D4 (green TLHG4900) lit through runtime `80448f9` |
+| Runtime identity | Session Host `/health`: `tbi-lab.session/2`, runtime `0.10-dev` `80448f9` |
+| After the checks | Relay stopped; 0 QEMU units; no active session |
+
+### W.4 Identity
+
+| Item | Value |
+|---|---|
+| Tested code | `bd29a43`, docs-only on top of `7da5c8b` (no file outside `docs/` differs) |
+| Deployed frontend | `7da5c8b` (rollback `0f2fd7b`, earlier releases kept) |
+| Runtime / services | `80448f9` (Session Host); build service byte-identical to `c31d62e`; QEMU runtime `33e35e4ac5e798d7` unchanged |
+| Service restarts | Only the Part P runtime sync (2026-10-07 20:24–20:25 UTC); none since, none for closure |
+| Schema / migration | `SCHEMA_VERSION` 3, no migration; existing projects need none |
+
+### W.5 Delivered, deferred, risks
+
+- **Delivered:** Part V.2.
+- **Deferred:** Part V.3. The Sprint 11 primary target is **R1**: make the Sprint 10 local-only components usable in ESP32 projects where technically appropriate. Then:
+  - **Sprint 11 / immediate follow-up:** R2 (µs input timing).
+  - **Within V1:**
+    - R3 (ESP32 I2C + I2C LCD) and R4 (PWM / servo);
+    - the ultrasonic and temperature/humidity sensors;
+    - ESP32 transient integration;
+    - the 555 (after a pin-level model approval) and the multi-position switch;
+    - broader matrix support.
+  - **Later V1 polish:** realistic-scale supply, ESP32 pin labels in 3D, traffic-light example, capacitor non-ideal effects.
+  - **V1.1+:** the potentiometer.
+- **Pre-production technical debt** (should fix before production; Part V.4):
+  1. the new components are not usable in ESP32 projects;
+  2. no formal hardware-GPU benchmark (owner's visual review only; no numbers recorded);
+  3. **compatibility:** Sprint 10 files with new component types or wire-colour metadata may be rejected by older builds, because the schema version stays 3;
+  4. large-scene 3D / routing performance (monitor);
+  5. live-check scripts outside tracked paths;
+  6. the unexplained six-minute runtime session (capacity / security follow-up).
+- **Production:** still deferred, blocked on the carried-forward capacity / security / pre-production track.
+- **Sprint 11:** not started.
 
 ## Part V — closure readiness: delivered, deferred, technical debt (PM, 2026-10-08)
 
