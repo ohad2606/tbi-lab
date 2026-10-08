@@ -390,6 +390,19 @@ describe('simulation dispatch', () => {
 });
 
 describe('Sprint 11 (ADR-010): live commands — explicit failures and coalescing', () => {
+  it('a live part parameter (the motion of a PIR) is mirrored as control.params with its revision', async () => {
+    const f = fakeClient();
+    const sim = new McuSimulation({ client: f.client });
+    const s = await running(sim, f, example('esp32-input-echo'));
+    expect(sim.control('U2', { params: { motion: true } }, 9)).toBe(true);
+    expect(s.commands[0]).toEqual({
+      category: 'mirror',
+      projectRevision: 9,
+      component: 'U2',
+      control: { params: { motion: true } },
+    });
+  });
+
   it('a command the host refuses at validation (400, e.g. an older runtime) is command_refused, not "unreachable"', async () => {
     const f = fakeClient();
     const sim = new McuSimulation({ client: f.client });

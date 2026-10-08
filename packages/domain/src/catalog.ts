@@ -292,7 +292,6 @@ const SPRINT10_TYPES = {
     ],
     toggleParam: 'motion',
     aliases: ['pir', 'motion sensor', 'hc-sr501', 'חיישן תנועה'],
-    mcuRuntime: false,
   },
   'display.led_matrix_8x8': {
     type: 'display.led_matrix_8x8',
