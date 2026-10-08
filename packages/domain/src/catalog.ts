@@ -179,7 +179,6 @@ const SPRINT10_TYPES = {
     ],
     aliases: ['rgb', 'rgb led', 'full colour led'],
     optionalTerminals: ['red', 'green', 'blue'],
-    mcuRuntime: false,
   },
   'component.photoresistor': {
     type: 'component.photoresistor',

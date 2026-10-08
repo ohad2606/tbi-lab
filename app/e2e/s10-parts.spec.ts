@@ -218,9 +218,11 @@ test('ESP32 projects: parts the runtime cannot simulate are disabled in the pale
   page,
 }) => {
   await openExample(page, 'esp32-blink');
-  const rgb = page.getByTestId('palette-component.rgb_led');
-  await expect(rgb).toBeDisabled();
-  await expect(rgb).toHaveAttribute('data-unavailable', 'part_needs_runtime');
+  // Sprint 11 (R1): the RGB LED is offered with the board; parts not yet enabled stay disabled.
+  await expect(page.getByTestId('palette-component.rgb_led')).toBeEnabled();
+  const relay = page.getByTestId('palette-component.relay');
+  await expect(relay).toBeDisabled();
+  await expect(relay).toHaveAttribute('data-unavailable', 'part_needs_runtime');
   await expect(page.getByTestId('palette-note-part_needs_runtime')).toHaveText(
     'Requires runtime support not available for ESP32 yet.',
   );
@@ -245,8 +247,8 @@ test('ESP32 projects: parts the runtime cannot simulate are disabled in the pale
   );
   await page.getByTestId('language-select').selectOption('en');
   // A local circuit holding such a part does not offer the board.
-  await openExample(page, 'rgb-mixer');
-  await expect(page.getByTestId('palette-component.rgb_led')).toBeEnabled();
+  await openExample(page, 'relay-load');
+  await expect(page.getByTestId('palette-component.relay')).toBeEnabled();
   await expect(page.getByTestId('palette-board.esp32_devkitc_wroom32')).toBeDisabled();
   await expect(page.getByTestId('palette-board.esp32_devkitc_wroom32')).toHaveAttribute(
     'data-unavailable',

@@ -37,6 +37,9 @@ const NEW_TYPES: ComponentTypeId[] = [
   'component.capacitor',
 ];
 
+/** Sprint 11 (R1): Sprint 10 parts enabled for ESP32 projects so far. */
+const R1_ESP32: ComponentTypeId[] = ['component.rgb_led'];
+
 describe('Sprint 10 parts: catalog and serialization', () => {
   it('every new type has terminals on the grid inside its 2D symbol, a 3D model and a schematic symbol', () => {
     for (const type of NEW_TYPES) {
@@ -51,8 +54,9 @@ describe('Sprint 10 parts: catalog and serialization', () => {
       }
       expect(MODEL_FOR[type]).toBeDefined();
       expect(SCHEMATIC_SYMBOLS[type]).toBeDefined();
-      // Not yet known to the deployed ESP32 runtime: refused there by name.
-      expect(def.mcuRuntime).toBe(false);
+      // Sprint 11 (R1): enabled for ESP32 projects slice by slice; the capacitor stays refused
+      // (time-dependent). R1_ESP32 lists the parts enabled so far.
+      expect(def.mcuRuntime, type).toBe(R1_ESP32.includes(type) ? undefined : false);
     }
   });
 
@@ -100,7 +104,10 @@ describe('Sprint 10 parts: catalog and serialization', () => {
     expect(r.ok).toBe(false);
     if (!r.ok) {
       expect(r.error.code).toBe('mcu_component_unsupported');
-      expect(r.error.components.sort()).toEqual(['BZ1', 'D1', 'K1', 'LDR1']);
+      const flagged = doc.components
+        .filter((c) => CATALOG[c.type].mcuRuntime === false)
+        .map((c) => c.id);
+      expect(r.error.components.sort()).toEqual(flagged.sort());
     }
   });
 
