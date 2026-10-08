@@ -65,3 +65,27 @@ describe('workbench', () => {
     });
   });
 });
+
+describe('depth of field (realism pass 7)', () => {
+  it('is shallow close up, nearly absent over the whole bench, and capped', async () => {
+    const { circleOfConfusion, DOF_MAX } = await import('../src/views/scene3d/dof.js');
+    // In the focus plane: sharp.
+    expect(circleOfConfusion(40, 40)).toBe(0);
+    // A part twice as far as a 40 mm close-up focus: clearly soft (over 0.4 % of the frame).
+    expect(circleOfConfusion(80, 40)).toBeGreaterThan(0.004);
+    // The same relative depth over the whole bench (focus 250 mm): under a third of that.
+    expect(circleOfConfusion(500, 250)).toBeLessThan(circleOfConfusion(80, 40) / 3);
+    // Never more than the cap, however far.
+    expect(circleOfConfusion(1e6, 30)).toBeLessThanOrEqual(DOF_MAX);
+  });
+  it('autofocuses on what is at the centre, never beyond the orbit target', async () => {
+    const { autofocus, DOF_FOCUS_RANGE } = await import('../src/views/scene3d/dof.js');
+    // Something nearer than the target at the centre (zooming towards it): in focus.
+    expect(autofocus(70, 100)).toBe(70);
+    // Mat or backdrop behind the subject at the centre: the target stays in focus.
+    expect(autofocus(140, 100)).toBe(100);
+    expect(autofocus(5000, 100)).toBe(100);
+    // A lead passing close to the lens does not throw the bench out of focus.
+    expect(autofocus(2, 100)).toBe(100 / DOF_FOCUS_RANGE);
+  });
+});

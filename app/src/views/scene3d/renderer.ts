@@ -581,6 +581,7 @@ export function createViewer(
     // Count every pass of the frame (shadow, AO, beauty, output), not only the last one.
     renderer.info.autoReset = false;
     renderer.info.reset();
+    stage.setFocus(camera.position.distanceTo(controls.target));
     stage.render();
     if (layers.labels) tags.render(tagScene, camera);
     lastRenderMs = performance.now() - t0;

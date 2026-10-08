@@ -25,6 +25,7 @@ import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { VignetteShader } from 'three/examples/jsm/shaders/VignetteShader.js';
+import { createDofPass } from './dof.js';
 import { rotatePoint } from '@tbi-lab/domain';
 import type { OwnedResources } from './kit.js';
 import { FOOTPRINT, type ModelKey, type SceneDescription } from './scene.js';
@@ -53,6 +54,8 @@ const GRID_STEP_MM = 12.7;
 export interface Stage {
   /** Draw one frame. */
   render(): void;
+  /** The camera's distance to the orbit target (bounds the depth of field's autofocus; full tier). */
+  setFocus(distance: number): void;
   setSize(width: number, height: number): void;
   /** Aim the key light and fit its shadow to the circuit; called on every rebuild. */
   fit(desc: SceneDescription): void;
@@ -145,6 +148,7 @@ export function createStage(
   // Full: multisampled HDR frame -> GTAO (contact shading) -> tone mapping and sRGB output.
   let composer: EffectComposer | null = null;
   let gtao: GTAOPass | null = null;
+  let dof: ReturnType<typeof createDofPass> | null = null;
   if (full) {
     const target = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 });
     composer = new EffectComposer(renderer, target);
@@ -170,6 +174,10 @@ export function createStage(
     });
     excludeTransparentFromAo(gtao);
     composer.addPass(gtao);
+    // Depth of field (realism pass 7, dof.ts): centre autofocus, shallow only close up, from
+    // the depth the AO pass already has.
+    dof = createDofPass(gtao.depthTexture, camera);
+    composer.addPass(dof.pass);
     // A lens's natural light fall-off towards the frame's corners (realism pass 5): subtle, it
     // reads as a photograph rather than an evenly lit render. One cheap full-screen pass.
     const vignette = new ShaderPass(VignetteShader);
@@ -240,6 +248,9 @@ export function createStage(
     render() {
       if (composer) composer.render();
       else renderer.render(scene, camera);
+    },
+    setFocus(distance) {
+      dof?.update(distance, camera.aspect);
     },
     setSize(width, height) {
       composer?.setSize(width, height);
