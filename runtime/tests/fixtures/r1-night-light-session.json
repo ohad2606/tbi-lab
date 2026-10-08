@@ -1,0 +1,287 @@
+{
+  "_comment": "Sprint 11 (R1): exactly the session request the app sends for the esp32-night-light example (minus artifact and ticket; app/tests/runtime-fixtures.test.ts keeps them equal). Firmware: TbiBanks.",
+  "request": {
+    "protocol": "tbi-lab.session/2",
+    "board": "board.esp32_devkitc_wroom32",
+    "circuit": {
+      "format": "tbi-lab.snapshot",
+      "schemaVersion": 3,
+      "snapshotId": "snap_2f21a96e16d59280",
+      "projectId": "prj_exampleesp32nightlight",
+      "projectRevision": 1,
+      "components": [
+        {
+          "id": "PSU1",
+          "type": "instrument.lab_psu",
+          "typeVersion": 1,
+          "params": {
+            "setpointVoltage": {
+              "value": 3.3,
+              "unit": "volt"
+            },
+            "currentLimit": {
+              "value": 0.1,
+              "unit": "ampere"
+            },
+            "outputEnabled": true
+          }
+        },
+        {
+          "id": "GND1",
+          "type": "component.ground",
+          "typeVersion": 1,
+          "params": {}
+        },
+        {
+          "id": "R1",
+          "type": "component.resistor",
+          "typeVersion": 1,
+          "params": {
+            "resistance": {
+              "value": 10000,
+              "unit": "ohm"
+            }
+          }
+        },
+        {
+          "id": "LDR1",
+          "type": "component.photoresistor",
+          "typeVersion": 1,
+          "params": {
+            "model": "model.ldr.senba_gl5528",
+            "illuminance": {
+              "value": 300,
+              "unit": "lux"
+            }
+          }
+        },
+        {
+          "id": "GND2",
+          "type": "component.ground",
+          "typeVersion": 1,
+          "params": {}
+        },
+        {
+          "id": "R2",
+          "type": "component.resistor",
+          "typeVersion": 1,
+          "params": {
+            "resistance": {
+              "value": 220,
+              "unit": "ohm"
+            }
+          }
+        },
+        {
+          "id": "R3",
+          "type": "component.resistor",
+          "typeVersion": 1,
+          "params": {
+            "resistance": {
+              "value": 100,
+              "unit": "ohm"
+            }
+          }
+        },
+        {
+          "id": "R4",
+          "type": "component.resistor",
+          "typeVersion": 1,
+          "params": {
+            "resistance": {
+              "value": 100,
+              "unit": "ohm"
+            }
+          }
+        },
+        {
+          "id": "D1",
+          "type": "component.rgb_led",
+          "typeVersion": 1,
+          "params": {
+            "model": "model.rgb_led.kingbright_wp154a4sureqbfzgc"
+          }
+        },
+        {
+          "id": "GND3",
+          "type": "component.ground",
+          "typeVersion": 1,
+          "params": {}
+        },
+        {
+          "id": "GND4",
+          "type": "component.ground",
+          "typeVersion": 1,
+          "params": {}
+        },
+        {
+          "id": "U1_gnd",
+          "type": "component.ground",
+          "typeVersion": 1,
+          "params": {}
+        }
+      ],
+      "nets": [
+        {
+          "id": "N_1",
+          "role": "ground"
+        },
+        {
+          "id": "N_2",
+          "role": null
+        },
+        {
+          "id": "N_3",
+          "role": null
+        },
+        {
+          "id": "N_4",
+          "role": "ground"
+        },
+        {
+          "id": "N_5",
+          "role": "ground"
+        },
+        {
+          "id": "N_6",
+          "role": null
+        },
+        {
+          "id": "N_7",
+          "role": null
+        },
+        {
+          "id": "N_8",
+          "role": null
+        },
+        {
+          "id": "N_9",
+          "role": null
+        },
+        {
+          "id": "N_10",
+          "role": "ground"
+        }
+      ],
+      "connections": [
+        {
+          "component": "PSU1",
+          "terminal": "positive",
+          "net": "N_2"
+        },
+        {
+          "component": "PSU1",
+          "terminal": "negative",
+          "net": "N_1"
+        },
+        {
+          "component": "GND1",
+          "terminal": "ref",
+          "net": "N_1"
+        },
+        {
+          "component": "R1",
+          "terminal": "a",
+          "net": "N_2"
+        },
+        {
+          "component": "R1",
+          "terminal": "b",
+          "net": "N_3"
+        },
+        {
+          "component": "LDR1",
+          "terminal": "a",
+          "net": "N_3"
+        },
+        {
+          "component": "LDR1",
+          "terminal": "b",
+          "net": "N_4"
+        },
+        {
+          "component": "GND2",
+          "terminal": "ref",
+          "net": "N_4"
+        },
+        {
+          "component": "R2",
+          "terminal": "a",
+          "net": "N_6"
+        },
+        {
+          "component": "R2",
+          "terminal": "b",
+          "net": "N_7"
+        },
+        {
+          "component": "R3",
+          "terminal": "a",
+          "net": "N_6"
+        },
+        {
+          "component": "R3",
+          "terminal": "b",
+          "net": "N_8"
+        },
+        {
+          "component": "R4",
+          "terminal": "a",
+          "net": "N_6"
+        },
+        {
+          "component": "R4",
+          "terminal": "b",
+          "net": "N_9"
+        },
+        {
+          "component": "D1",
+          "terminal": "red",
+          "net": "N_7"
+        },
+        {
+          "component": "D1",
+          "terminal": "green",
+          "net": "N_8"
+        },
+        {
+          "component": "D1",
+          "terminal": "blue",
+          "net": "N_9"
+        },
+        {
+          "component": "D1",
+          "terminal": "cathode",
+          "net": "N_10"
+        },
+        {
+          "component": "GND3",
+          "terminal": "ref",
+          "net": "N_10"
+        },
+        {
+          "component": "GND4",
+          "terminal": "ref",
+          "net": "N_5"
+        },
+        {
+          "component": "U1_gnd",
+          "terminal": "ref",
+          "net": "N_5"
+        }
+      ]
+    },
+    "attachments": [
+      {
+        "gpio": 4,
+        "component": "R2",
+        "terminal": "a"
+      },
+      {
+        "gpio": 34,
+        "component": "R1",
+        "terminal": "b"
+      }
+    ]
+  }
+}

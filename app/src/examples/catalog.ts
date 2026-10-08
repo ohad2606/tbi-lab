@@ -136,6 +136,19 @@ export const EXAMPLES: readonly Example[] = [
     summaryKey: 'example.esp32-bench.summary',
     probes: [I('D1'), I('D3'), I('D4')],
   },
+  // Sprint 11 (R1): the Sprint 10 parts with the ESP32 (same firmware as the input echo).
+  {
+    id: 'esp32-motion-relay',
+    titleKey: 'example.esp32-motion-relay.title',
+    summaryKey: 'example.esp32-motion-relay.summary',
+    probes: [I('D2')],
+  },
+  {
+    id: 'esp32-night-light',
+    titleKey: 'example.esp32-night-light.title',
+    summaryKey: 'example.esp32-night-light.summary',
+    probes: [I('R1')],
+  },
 ];
 
 export function findExample(id: string): Example | undefined {

@@ -762,6 +762,12 @@ export const en = {
   'example.esp32-bench.title': 'ESP32 bench: inputs and indicators',
   'example.esp32-bench.summary':
     'The switch input to LED output circuit on a fuller bench: a red LED driven by GPIO4, and yellow (behind a 1N4148 diode) and green indicators fed straight from the 3.3 V supply. Runs on the ESP32 runtime service.',
+  'example.esp32-motion-relay.title': 'ESP32: motion alarm through a relay',
+  'example.esp32-motion-relay.summary':
+    'A PIR motion sensor on GPIO34; the firmware copies it to GPIO4, which switches a 2N3904 and a 5 V relay (with a flyback diode). The relay contact sounds the buzzer and lights the alarm LED. Click the sensor dome while running to put motion in front of it. Runs on the ESP32 runtime service.',
+  'example.esp32-night-light.title': 'ESP32: RGB night light with a light sensor',
+  'example.esp32-night-light.summary':
+    'A light-sensor divider on GPIO34 read as a digital level (no ADC): dark (below about 3 lx) reads HIGH and the firmware lights all three RGB channels through GPIO4: white. Bright (above about 110 lx) reads LOW; in between the input keeps its last level. Change the light in the Properties panel while running. Runs on the ESP32 runtime service.',
   'palette.group.mcu': 'Microcontroller',
   // Board pin silkscreen names (Sprint 6): technical tokens, verbatim in every locale.
   'pin.gpio36': 'VP',

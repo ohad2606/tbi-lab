@@ -740,6 +740,12 @@ export const he: Record<MessageKey, string> = {
   'example.esp32-bench.title': 'שולחן ESP32: כניסות ונוריות חיווי',
   'example.esp32-bench.summary':
     'המעגל של מתג בכניסה ו-LED ביציאה על שולחן עבודה מלא יותר: נורית LED אדומה המונעת מ-GPIO4, ונוריות חיווי צהובה (מאחורי דיודת 1N4148) וירוקה המוזנות ישירות מספק ה-‏3.3 V. רץ בשירות הריצה של ESP32.',
+  'example.esp32-motion-relay.title': 'ESP32: אזעקת תנועה דרך ממסר',
+  'example.esp32-motion-relay.summary':
+    'חיישן תנועה PIR על GPIO34; הקושחה מעתיקה אותו ל-GPIO4, שמפעיל טרנזיסטור 2N3904 וממסר ‏5 V (עם דיודת Flyback). מגע הממסר מפעיל את הזמזם ומדליק את נורית האזעקה. לחצו על כיפת החיישן בזמן ריצה כדי ליצור תנועה מולו. רץ בשירות הריצה של ESP32.',
+  'example.esp32-night-light.title': 'ESP32: מנורת לילה RGB עם חיישן אור',
+  'example.esp32-night-light.summary':
+    'מחלק מתח עם חיישן אור על GPIO34, הנקרא כרמה דיגיטלית (ללא ADC): בחושך (מתחת לכ-‏3 lx) הוא נקרא HIGH והקושחה מדליקה את שלושת ערוצי ה-RGB דרך GPIO4: אור לבן. באור (מעל כ-‏110 lx) הוא נקרא LOW; בין הספים הכניסה שומרת על הרמה האחרונה. שנו את עוצמת האור בחלונית המאפיינים בזמן ריצה. רץ בשירות הריצה של ESP32.',
   'palette.group.mcu': 'בקר (מיקרו-בקר)',
   // Board pin silkscreen names (Sprint 6): technical tokens, verbatim in every locale.
   'pin.gpio36': 'VP',

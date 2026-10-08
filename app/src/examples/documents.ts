@@ -9,6 +9,8 @@ import diodePolarity from './data/diode-polarity.json';
 import esp32Blink from './data/esp32-blink.json';
 import esp32InputEcho from './data/esp32-input-echo.json';
 import esp32Bench from './data/esp32-bench.json';
+import esp32MotionRelay from './data/esp32-motion-relay.json';
+import esp32NightLight from './data/esp32-night-light.json';
 import ledColours from './data/led-colours.json';
 import ledCurrent from './data/led-current.json';
 import ledMatrix from './data/led-matrix.json';
@@ -40,6 +42,8 @@ export const EXAMPLE_DOCUMENTS: Record<string, ProjectDocument> = {
   'esp32-blink': esp32Blink as unknown as ProjectDocument,
   'esp32-input-echo': esp32InputEcho as unknown as ProjectDocument,
   'esp32-bench': esp32Bench as unknown as ProjectDocument,
+  'esp32-motion-relay': esp32MotionRelay as unknown as ProjectDocument,
+  'esp32-night-light': esp32NightLight as unknown as ProjectDocument,
 };
 
 /** The examples with their documents (tests and tools; the app loads documents lazily). */

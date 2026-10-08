@@ -557,4 +557,103 @@ export const RECIPES: Record<string, () => ProjectDocument> = {
     r.wire(T(D3, 'cathode'), T(G6, 'ref'));
     return r.centre(-240);
   },
+  /**
+   * Sprint 11 (R1): a motion alarm through a relay — the Sprint 10 parts with the ESP32. Same
+   * firmware as esp32-input-echo (TbiBanks: GPIO34 copied to GPIO4), so the build is a shared,
+   * curated one. 5 V supply: the PIR (powered from >= 4.5 V) sends a 3.3 V level to GPIO34; GPIO4
+   * drives a 2N3904 through 1 kΩ, which switches the relay coil (with a 1N4148 flyback diode);
+   * the relay's contact switches an alarm LED (330 Ω) and the buzzer from 5 V. Click the sensor's
+   * dome while running to put motion in front of it.
+   */
+  'esp32-motion-relay': () => {
+    const r = new Recipe('esp32-motion-relay', 'ESP32: motion alarm through a relay');
+    r.supply(5, 0.5);
+    const U1 = r.place('board.esp32_devkitc_wroom32', 300, 0);
+    r.program(U1, 'TbiBanks');
+    const PIR = r.place('sensor.pir_hc_sr501', 100, -100, 2);
+    const G2 = r.place('component.ground', 160, -20);
+    const RB = r.place('component.resistor', 460, 60);
+    const Q1 = r.place('component.bjt_npn', 580, 60);
+    const G3 = r.place('component.ground', 600, 160);
+    const K1 = r.place('component.relay', 720, -60);
+    const DF = r.place('component.diode', 620, -60, 3);
+    const RL = r.place('component.resistor', 860, -60);
+    const D2 = r.place('component.led', 980, -60);
+    const G4 = r.place('component.ground', 1020, 0);
+    const BZ = r.place('component.buzzer', 860, 40);
+    const G5 = r.place('component.ground', 900, 100);
+    const G6 = r.place('component.ground', 440, -120);
+    r.set(RB, 'resistance', 1000, 'ohm');
+    r.set(RL, 'resistance', 330, 'ohm');
+    // Explicit bends: the supply runs clear of the sensor's own pins and of the board.
+    r.wire(T('PSU1', 'positive'), T(PIR, 'vcc'), [
+      { x: -40, y: -20 },
+      { x: -40, y: -160 },
+      { x: 180, y: -160 },
+      { x: 180, y: -120 },
+    ]);
+    r.wire(T(PIR, 'gnd'), T(G2, 'ref'));
+    r.wire(T(PIR, 'out'), T(U1, 'gpio34'));
+    r.wire(T(U1, 'gnd'), T(G6, 'ref'));
+    r.wire(T(U1, 'gpio4'), T(RB, 'a'));
+    r.wire(T(RB, 'b'), T(Q1, 'base'));
+    r.wire(T(Q1, 'emitter'), T(G3, 'ref'));
+    r.wire(T(Q1, 'collector'), T(K1, 'coil2'));
+    // The 5 V rail to the coil runs above the board.
+    r.wire(T('PSU1', 'positive'), T(K1, 'coil1'), [
+      { x: -60, y: -20 },
+      { x: -60, y: -240 },
+      { x: 640, y: -240 },
+      { x: 640, y: -80 },
+    ]);
+    r.wire(T(DF, 'cathode'), T(K1, 'coil1'));
+    r.wire(T(DF, 'anode'), T(K1, 'coil2'));
+    r.wire(T(K1, 'coil1'), T(K1, 'com'));
+    r.wire(T(K1, 'no'), T(RL, 'a'));
+    r.wire(T(RL, 'b'), T(D2, 'anode'));
+    r.wire(T(D2, 'cathode'), T(G4, 'ref'));
+    r.wire(T(K1, 'no'), T(BZ, 'positive'));
+    r.wire(T(BZ, 'negative'), T(G5, 'ref'));
+    return r.centre(-240);
+  },
+  /**
+   * Sprint 11 (R1): an RGB night light with a light sensor — a digital input only (no ADC).
+   * Same firmware as esp32-input-echo (TbiBanks: GPIO34 copied to GPIO4). 3.3 V supply: 10 kΩ
+   * from 3.3 V to GPIO34 with the photoresistor to GND, so darkness pulls GPIO34 HIGH (below about
+   * 3 lx; above about 110 lx it reads LOW; in between it keeps its previous level — the ESP32's
+   * own input thresholds). GPIO4 lights all three channels (220/100/100 Ω): white.
+   */
+  'esp32-night-light': () => {
+    const r = new Recipe('esp32-night-light', 'ESP32: RGB night light with a light sensor');
+    r.supply(3.3, 0.1);
+    const U1 = r.place('board.esp32_devkitc_wroom32', 300, 0);
+    r.program(U1, 'TbiBanks');
+    const R1 = r.place('component.resistor', 40, -100);
+    const LDR = r.place('component.photoresistor', 80, -40, 1);
+    const G2 = r.place('component.ground', 80, 60);
+    const RR = r.place('component.resistor', 500, 20);
+    const RG = r.place('component.resistor', 500, 80);
+    const RB = r.place('component.resistor', 500, 140);
+    const D1 = r.place('component.rgb_led', 640, 80);
+    const G3 = r.place('component.ground', 680, 140);
+    const G4 = r.place('component.ground', 440, -120);
+    r.set(R1, 'resistance', 10_000, 'ohm');
+    r.set(RR, 'resistance', 220, 'ohm');
+    r.set(RG, 'resistance', 100, 'ohm');
+    r.set(RB, 'resistance', 100, 'ohm');
+    r.set(LDR, 'illuminance', 300, 'lux');
+    r.wire(T('PSU1', 'positive'), T(R1, 'a'));
+    r.wire(T(R1, 'b'), T(U1, 'gpio34'));
+    r.wire(T(R1, 'b'), T(LDR, 'a'));
+    r.wire(T(LDR, 'b'), T(G2, 'ref'));
+    r.wire(T(U1, 'gnd'), T(G4, 'ref'));
+    r.wire(T(U1, 'gpio4'), T(RR, 'a'));
+    r.wire(T(U1, 'gpio4'), T(RG, 'a'));
+    r.wire(T(U1, 'gpio4'), T(RB, 'a'));
+    r.wire(T(RR, 'b'), T(D1, 'red'));
+    r.wire(T(RG, 'b'), T(D1, 'green'));
+    r.wire(T(RB, 'b'), T(D1, 'blue'));
+    r.wire(T(D1, 'cathode'), T(G3, 'ref'));
+    return r.centre(-240);
+  },
 };
