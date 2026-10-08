@@ -79,9 +79,10 @@ texture is visible only in close-ups.
 ### R.6 Open item
 
 The crashed screenshot script left one runtime session (`tbi-qemu@2f79fead…`, started 05:54:06
-UTC) running after its browser exited: it was not reclaimed within the 30 s lease while observed
-(more than 5 minutes). Not investigated further (no service access was taken); the host's
-30-minute maximum lifetime bounds it. Worth a look: the lease should have ended it.
+UTC) running after its browser exited. It ended on its own at 06:00:10 UTC (about 6 minutes),
+well before the 30-minute maximum lifetime, but much later than the 30 s lease. No service was
+touched and the host's logs were not read, so why the lease took about 6 minutes is not known.
+Worth a look.
 
 ### R.7 Self-critique
 
