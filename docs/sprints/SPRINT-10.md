@@ -2,7 +2,7 @@
 
 **Status (2026-10-08):** developed on `sprint-10` (worktree `~/projects/tbi-lab-s10`), from
 `7f09d74` = `main` = `sprint-9-complete`. **dev-lab.tbi-tech.net serves frontend `7da5c8b` and
-runtime `80448f9`** (frontend `v0.10-dev · 0f2fd7b` from `/version.json` and the served
+runtime `80448f9`** (frontend `v0.10-dev · 7da5c8b` from `/version.json` and the served
 `index.html`; runtime `v0.10-dev · 80448f9` from the Session Host's `/health`, also shown in the
 version details as *Runtime ID*). Rollbacks kept: frontend `0f2fd7b` (then `2d28ca7`), runtime/services
 release `c31d62e`. Part U: jumper exit geometry (owner review: the wire out of the ESP32 header
@@ -11,12 +11,12 @@ variation, IC / SMD finish). Part S: realism pass 7 (depth of field, header pins
 cards end to end). Part O: realism pass 4. Part N: realism pass 3. Part M: operating the toggle switch and push button in 3D during Run.
 Part L: false-hop fix, net wire colours, limited 3D picking. Part K: fresh 3D wire routes (owner review: PIR alarm, relay -> LED).
 Part J: visual-only 3D body separation (owner review). Part I: realism
-pass 2 + product footer. **Owner review PENDING**: the 3D view on a real GPU (checklist I.6) and
-the separation (J).
+pass 2 + product footer. **Owner (2026-10-08): 3D realism and the jumper fix accepted; no further
+realism work. Sprint 10 open for the readiness audit only.**
 
 Not done: no PR, merge, tag or production deployment. Backend: only the Session Host was updated
 (Part P, owner-approved); the build service runs byte-identical code (`c31d62e`), the QEMU runtime is
-unchanged (`33e35e4ac5e798d7`). The isolated preview `/s10-preview/` stays.
+unchanged (`33e35e4ac5e798d7`). The isolated preview `/s10-preview/` was retired (Part G).
 
 Architecture and scope: [SPRINT-10-ARCHITECTURE.md](SPRINT-10-ARCHITECTURE.md).
 
