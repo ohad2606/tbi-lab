@@ -1,0 +1,15 @@
+[{"example": "esp32-bench", "shots": [
+ {"name": "P1-header-plastic", "target": [-2.7, 3, -6], "from": [-22, 8, 8]},
+ {"name": "P2-ic-packages", "target": [10, 11, 8.5], "from": [22, 24, 24]},
+ {"name": "P3-smd-dense", "target": [3.5, 10.8, 10], "from": [-8, 20, 20]},
+ {"name": "P4-wroom", "target": [10, 12, -14], "from": [-10, 30, -2]},
+ {"name": "P5a-push-button", "target": [-38, 3, -25], "from": [-26, 16, -8]},
+ {"name": "P5b-en-boot", "target": [10, 11, 19], "from": [-6, 21, 33]},
+ {"name": "P6-closeup", "target": [-3, 18, -13], "from": [-16, 28, 2]},
+ {"name": "P8a-resistor", "target": [-38, 1.5, 44], "from": [-28, 10, 58]},
+ {"name": "P8b-chip-resistors", "target": [14.3, 10.8, 12], "from": [26, 18, 20]},
+ {"name": "P9-overview", "target": [0, 0, 15], "from": [-80, 95, 140]}
+]},
+{"example": "esp32-bench", "preset": "engineering", "shots": [
+ {"name": "P7-closeup", "target": [-3, 18, -13], "from": [-16, 28, 2]}
+]}]

@@ -1,0 +1,69 @@
+{
+  "quality": "auto",
+  "esp32": {
+    "first": 3412,
+    "reopen": 2335,
+    "orbitMsPerStep": 222,
+    "panMsPerStep": 210,
+    "fit": 37,
+    "reset": 417,
+    "scene": {
+      "quality": "reduced",
+      "geometries": 42,
+      "textures": 9,
+      "gpuBytes": 10308110,
+      "objects": 62,
+      "drawCalls": 44,
+      "triangles": 45814,
+      "materials": 41,
+      "renderMs": 8.9,
+      "programs": 5
+    },
+    "heap0": 10,
+    "heapOpen": 10,
+    "heapAfterCycles": 10,
+    "canvasesAfterLeave": 0
+  },
+  "dense": {
+    "first": 3748,
+    "orbitMsPerStep": 264,
+    "scene": {
+      "quality": "reduced",
+      "geometries": 60,
+      "textures": 21,
+      "gpuBytes": 20263815,
+      "objects": 271,
+      "drawCalls": 143,
+      "triangles": 243032,
+      "materials": 104,
+      "renderMs": 15.6,
+      "programs": 5
+    },
+    "heap": 39.6
+  },
+  "bench": {
+    "first": 3374,
+    "reopen": 2630,
+    "orbitMsPerStep": 228,
+    "panMsPerStep": 218,
+    "scene": {
+      "quality": "reduced",
+      "geometries": 67,
+      "textures": 16,
+      "gpuBytes": 15669419,
+      "objects": 148,
+      "drawCalls": 85,
+      "triangles": 121808,
+      "materials": 72,
+      "renderMs": 16.4,
+      "programs": 5
+    },
+    "heap0": 10,
+    "heapAfter20Cycles": 10,
+    "cycleOpenMs": {
+      "min": 2497,
+      "max": 3021
+    },
+    "canvasesAfterLeave": 0
+  }
+}

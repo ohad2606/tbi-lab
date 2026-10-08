@@ -1,11 +1,12 @@
 # Sprint 10 — Physical 3D, engine time-domain core, the approved component families
 
 **Status (2026-10-08):** developed on `sprint-10` (worktree `~/projects/tbi-lab-s10`), from
-`7f09d74` = `main` = `sprint-9-complete`. **dev-lab.tbi-tech.net serves frontend `2d28ca7` and
-runtime `80448f9`** (frontend `v0.10-dev · 2d28ca7` from `/version.json` and the served
+`7f09d74` = `main` = `sprint-9-complete`. **dev-lab.tbi-tech.net serves frontend `0f2fd7b` and
+runtime `80448f9`** (frontend `v0.10-dev · 0f2fd7b` from `/version.json` and the served
 `index.html`; runtime `v0.10-dev · 80448f9` from the Session Host's `/health`, also shown in the
-version details as *Runtime ID*). Rollbacks kept: frontend `db9eb20`, runtime/services release
-`c31d62e`. Part S: realism pass 7 (depth of field, header pins). Part R: realism pass 6 (wire jackets, shadow penumbra, studio room, Dupont). Part Q: realism pass 5 and the 3D layer model (Realistic / Engineering). Part P: runtime sync (the Session Host runs the Sprint 10 engine: yellow/green LED
+version details as *Runtime ID*). Rollbacks kept: frontend `2d28ca7`, runtime/services release
+`c31d62e`. Part T: realism pass 8 (Realistic / Engineering visual mode, deterministic material
+variation, IC / SMD finish). Part S: realism pass 7 (depth of field, header pins). Part R: realism pass 6 (wire jackets, shadow penumbra, studio room, Dupont). Part Q: realism pass 5 and the 3D layer model (Realistic / Engineering). Part P: runtime sync (the Session Host runs the Sprint 10 engine: yellow/green LED
 cards end to end). Part O: realism pass 4. Part N: realism pass 3. Part M: operating the toggle switch and push button in 3D during Run.
 Part L: false-hop fix, net wire colours, limited 3D picking. Part K: fresh 3D wire routes (owner review: PIR alarm, relay -> LED).
 Part J: visual-only 3D body separation (owner review). Part I: realism
@@ -17,6 +18,212 @@ Not done: no PR, merge, tag or production deployment. Backend: only the Session 
 unchanged (`33e35e4ac5e798d7`). The isolated preview `/s10-preview/` stays.
 
 Architecture and scope: [SPRINT-10-ARCHITECTURE.md](SPRINT-10-ARCHITECTURE.md).
+
+## Part T — realism pass 8: visual mode, material variation, IC / SMD finish (PM brief, 2026-10-08)
+
+A narrow final polish on three areas: depth-of-field control, deterministic material variation,
+and header plastic / IC package / SMD treatment. Nothing else changed: no routing, simulation,
+backend or UI beyond the one control. Images: full tier rendered in software at DPR 1; **no
+hardware-tier timings**.
+
+### T.1 Realistic / Engineering
+
+The established presets (Part Q: Realistic = the physical scene alone, Engineering = labels and
+grid) now also set the lens. **Realistic: depth of field on. Engineering: depth of field off**,
+with every depth plane exactly as the camera projects it (the pass is skipped, not weakened).
+
+- **Control**: a two-state segmented radio group in the 3D toolbar (`Realistic | Engineering`,
+  HE `מציאותית | הנדסית`, the terms Part Q already uses). It is a native radio group: arrow keys
+  switch, it has the accessible name *Visual mode* / *מצב תצוגה*, and the active mode is
+  highlighted and `checked`. A manual layer change shows *Custom* beside it. The preset radios
+  moved here from the Layers panel. The panel gained a *Camera → Depth of field* checkbox.
+- **No side effects**: switching changes no project data, camera, orbit, pan, zoom or
+  simulation (e2e: the screen positions of three scene points and the orbit target are identical
+  before and after; the stored project is byte-identical; LEDs stay lit while running).
+- **Per browser**: in the existing `tbi-lab.3d.layers` preference (`dof` key). Never in a project
+  or an export. A preference stored before this pass keeps its preset: stored Engineering stays
+  all sharp.
+- **Reduced (software) tier**: has no depth of field and does not pretend to. `data-dof` and the
+  `#diag3d` readout say `unavailable`; the checkbox is disabled with *Needs a hardware GPU*. The
+  default there stays Realistic (labels and grid off). Rendering is sharp anyway, so the
+  Engineering-like sharp default the brief asks for is met without turning the engineering
+  overlays on for every software user.
+- **Diagnostics** (`#diag3d`, local only, no telemetry): GPU, hardware/software class, quality
+  tier, **visual mode, depth of field state**, counts and memory: what the owner should note on
+  a normal PC.
+- **Focus behaviour**: unchanged from S.1 (centre autofocus, never beyond the orbit target).
+  It is a per-frame function of what is at the frame's centre, so it does not oscillate. The
+  focus can jump when an edge crosses the centre during an orbit; no temporal smoothing was
+  added, because that would need extra frames after the camera stops.
+
+### T.2 Deterministic material variation (`variation.ts`)
+
+- **What varies**: each physical piece gets a fixed offset of its finish:
+  - roughness ±0.03–0.05;
+  - brightness ±1–3 %, only where colour carries no meaning;
+  - the strength of a faint micro-surface: two octaves of value noise in the part's own space,
+    as a roughness mottle and a tiny normal relief. It fades out before its cells shrink below a
+    pixel, so it does not shimmer, and it is static, so it does not swim as the camera moves.
+- **Seed**: FNV-1a of `component id / mesh / ordinal # piece`. A piece is a connected part of a
+  mesh (vertices sharing a position, triangles, and touching bounds). For example, a header pin
+  is one piece with its chamfered tips, and a termination is one piece with its fillet. Header
+  housings vary per strip (one moulding), not per 2.54 mm segment. There is no runtime
+  randomness: the same project gives the same look on every reload and in every viewer.
+- **No material explosion**: the offsets are a per-vertex attribute (`aVar`) baked into the
+  existing static batches. Each varied family draws with one varied copy per viewer (the glTF
+  template is never modified). All copies share one shader program key. No new draw calls come
+  from variation.
+- **Never varied**:
+  - resistor colour bands, LED lenses and LED body colour, the PCB and module faces, silkscreen
+    and markings;
+  - net (wire) colours: roughness only;
+  - the resistor body colour and the red binding cap: roughness only;
+  - shapes, sizes, positions.
+- **Metals**: finish offset only, almost no relief. A relief on polished or plated metal mirrors
+  the studio and read as dents: seen on the toggle's bushing in the first draft and removed.
+- **Full tier only**: the reduced tier is unchanged.
+
+### T.3 Header plastic, IC packages, SMD
+
+- **Header PBT**: moulded satin roughness 0.58 (was 0.62), micro-surface, a per-strip finish.
+  The existing 0.2 mm rounded segment edges stay. Still black, never glossy; pitch, pins and
+  anchors unchanged.
+- **IC packages** (QFN bridge, SOT-223, SOT-23): the moulding is now an EDM-textured matte
+  (roughness 0.68, the strongest micro-surface, `#1d1e21`). It is now distinct from header PBT
+  (0.58), connector nylon (USB tongue, 0.42 semi-gloss) and the brushed RF can. The bevels and
+  markings already present stay; no new text.
+- **SMD**:
+  - **Chip resistors**: a white alumina substrate under a black glassy overcoat. Seen from the
+    side they are now two-tone, as real thick-film chips are. This is new geometry: one box per
+    resistor, one shared material.
+  - **MLCCs**: a warmer tan (`#a68e6e`).
+  - Both have tinned terminations and per-piece variation.
+  - GLB 779,056 → 785,792 bytes (budget 800,000).
+
+### T.4 Numbers
+
+**Full tier** (same cameras, `realism8/stats-*.json`):
+
+| | before `2d28ca7` | after |
+| --- | --- | --- |
+| Draw calls, bench overview | 234 | 237 |
+| Materials | 73 | 77 |
+| Triangles | 351,945 | 352,269 |
+| Textures | 39 | 39 |
+
+- **Draw calls**: +3, the new alumina batch drawn in its shadow, AO and beauty passes. Close-up
+  cameras show +0 to +3.
+- **Materials**: +4, the alumina material plus varied copies of families that also have
+  unbatched meshes (actuators). This is a fixed set, never per part (e2e budget: ≤ 85 and below
+  5 per part).
+- **Engineering**: one draw fewer than Realistic, the depth-of-field pass.
+
+**Software tier** (`perf-3d.spec.ts`, A/B back to back, `realism8/perf/`):
+
+- **Scene counts**: +1 draw call, +1 material, +108 triangles (the alumina substrates).
+  Programs are 5 in both.
+- **Timings, before → after**:
+
+  | | before | after |
+  | --- | --- | --- |
+  | Bench first open | 3.37 s | 3.27 s |
+  | Bench re-open | 2.63 s | 2.72 s |
+  | Bench orbit, per step | 228 ms | 260 ms |
+  | Bench pan, per step | 218 ms | 225 ms |
+  | ESP32 first open | 3.41 s | 3.45 s |
+  | ESP32 orbit, per step | 222 ms | 221 ms |
+  | Dense first open | 3.75 s | 3.69 s |
+
+  These are within this host's run-to-run noise (R.3, S.3).
+- **Memory and leaks**: heap 10 MB after 20 open/close cycles (cycle open 2.37–2.71 s, was
+  2.50–3.02 s); 0 canvases left after leaving.
+- **Mode switch**: one re-render of the current frame. Nothing is rebuilt and no shader is
+  compiled: the pass is enabled or disabled.
+- **Full-tier timings** were not measured: the full-tier perf spec exceeds its 10-minute limit on
+  this software-only host.
+
+**Bundle** (raw / gzip):
+
+| Asset | Change |
+| --- | --- |
+| renderer chunk (lazy) | +6.0 KB / +2.2 KB |
+| ThreeView chunk (lazy) | +1.0 KB / +0.2 KB |
+| entry chunk (strings) | +0.4 KB / +0.1 KB |
+| GLB | +6.7 KB / +0.4 KB |
+
+### T.5 Tests
+
+- `variation.test.ts` (new, 7):
+  - the same id gives the same offsets, and a reload reproduces them;
+  - different ids differ, within range;
+  - ranges are capped (roughness ≤ 0.08, brightness ≤ 3 %);
+  - meaning-carrying materials are never varied (the library and the asset: PCB, markings, LED
+    lens);
+  - pieces are found correctly (38 pins, 2 header strips);
+  - one varied copy per family, one program key, the original untouched.
+- `layers.test.ts` (+2):
+  - the presets set depth of field, and a manual change is *Custom*;
+  - per-browser persistence, with migration of a stored pre-pass preference;
+  - EN/HE names.
+- `three-layers.spec.ts` (+2 e2e):
+  - **keyboard switching**: arrows move between modes; the radio group is named; camera, target
+    and project are unchanged; the mode is remembered on re-entry; the software tier shows
+    *unavailable*;
+  - **full tier**: depth of field is on in Realistic and off in Engineering; draw calls are
+    identical after a round trip; the material budget holds.
+  - The Hebrew test now checks the mode group's names in RTL.
+- A first version of the full-tier test was racy (it read the render count after the rotation it
+  waited for). Fixed in ``0f2fd7b`` and passed on repeated runs.
+
+### T.6 Regression and deployment
+
+- `0f2fd7b`: typecheck, lint, unit **858/858** (was 849), build, e2e **165 passed / 3 skipped**
+  (was 163), browser PASS. The first full run, on `ff996b3`, had one failure: the racy new test
+  (T.5). It was fixed, and the whole run was repeated green before deploying.
+- `deploy/dev-lab/publish-frontend.sh 0f2fd7b` (all checks passed): **dev-lab serves `0f2fd7b`**
+  (`/version.json`, and the served `index.html` byte for byte). Rollback: re-point `current` to
+  `2d28ca7096ca65fb8523a1deea518cf0a202f153`. Runtime `80448f9` and the services are untouched.
+- Live:
+  - 3D 7/7, demo 40/40, Sprint 9 smoke ALL PASSED;
+  - real-QEMU control flows: input-echo 17/17, bench 17/17 (D1, D3, D4 lit in 3D);
+  - the relay was stopped afterwards and no runtime session was left.
+
+### T.7 Evidence (`s10-evidence/realism8/`)
+
+Same-camera before (`2d28ca7`) / after pairs:
+
+| Image | Shows |
+| --- | --- |
+| `compare-P1-header-plastic` | Header plastic |
+| `compare-P2-ic-packages` | Main IC packages |
+| `compare-P3-smd-dense` | Dense SMD region |
+| `compare-P4-wroom` | WROOM module |
+| `compare-P5a-push-button` | Push button |
+| `compare-P5b-en-boot` | EN/BOOT tact switches |
+| `compare-P8a-resistor` | Resistor close-up |
+| `compare-P8b-chip-resistors` | Chip resistors with surrounding SMD |
+| `compare-P9-overview` | Overview |
+| `mode-P6-P7-realistic-engineering` | One close-up in Realistic and in Engineering |
+
+Plus `cameras.json` and the stats.
+
+The visible changes are deliberately subtle. The clearest are:
+- two-tone chip resistors and warmer MLCCs (P3, P8b);
+- pins and housings no longer identical (P1);
+- a matte IC moulding against a smoother connector (P2);
+- a sharp background in Engineering (P6/P7).
+
+### T.8 Self-critique and what remains
+
+Closer up, the board now reads less like one material copied many times. It still reads as a
+very clean product render rather than a photograph. Remaining cues:
+- the bench supply and ground posts are miniatures (unchanged by brief);
+- the PCB mask itself has no variation (deliberately excluded);
+- passives on the bench (axial resistors, LEDs) vary only in finish;
+- lighting is studio-perfect.
+
+Recommendation: ready for owner visual acceptance of Sprint 10's 3D on a real GPU. A further
+pass should wait for that review rather than start automatically.
 
 ## Part S — realism pass 7: depth of field, header pins (owner: "continue", 2026-10-08)
 

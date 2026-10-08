@@ -1,0 +1,112 @@
+{
+  "esp32-bench-P1-header-plastic": {
+    "drawCalls": 68,
+    "triangles": 134861,
+    "materials": 73,
+    "geometries": 71,
+    "textures": 39,
+    "gpuBytes": 43502313,
+    "renderMs": 15.6,
+    "quality": "full"
+  },
+  "esp32-bench-P2-ic-packages": {
+    "drawCalls": 93,
+    "triangles": 163841,
+    "materials": 73,
+    "geometries": 71,
+    "textures": 39,
+    "gpuBytes": 43502313,
+    "renderMs": 7.5,
+    "quality": "full"
+  },
+  "esp32-bench-P3-smd-dense": {
+    "drawCalls": 75,
+    "triangles": 119553,
+    "materials": 73,
+    "geometries": 71,
+    "textures": 39,
+    "gpuBytes": 43502313,
+    "renderMs": 6,
+    "quality": "full"
+  },
+  "esp32-bench-P4-wroom": {
+    "drawCalls": 60,
+    "triangles": 111197,
+    "materials": 73,
+    "geometries": 71,
+    "textures": 39,
+    "gpuBytes": 43502313,
+    "renderMs": 5.2,
+    "quality": "full"
+  },
+  "esp32-bench-P5a-push-button": {
+    "drawCalls": 38,
+    "triangles": 70669,
+    "materials": 73,
+    "geometries": 71,
+    "textures": 39,
+    "gpuBytes": 43502313,
+    "renderMs": 2.3,
+    "quality": "full"
+  },
+  "esp32-bench-P5b-en-boot": {
+    "drawCalls": 128,
+    "triangles": 211851,
+    "materials": 73,
+    "geometries": 71,
+    "textures": 39,
+    "gpuBytes": 43502313,
+    "renderMs": 6.5,
+    "quality": "full"
+  },
+  "esp32-bench-P6-closeup": {
+    "drawCalls": 60,
+    "triangles": 111197,
+    "materials": 73,
+    "geometries": 71,
+    "textures": 39,
+    "gpuBytes": 43502313,
+    "renderMs": 3,
+    "quality": "full"
+  },
+  "esp32-bench-P8a-resistor": {
+    "drawCalls": 40,
+    "triangles": 87409,
+    "materials": 73,
+    "geometries": 71,
+    "textures": 39,
+    "gpuBytes": 43502313,
+    "renderMs": 1.8,
+    "quality": "full"
+  },
+  "esp32-bench-P8b-chip-resistors": {
+    "drawCalls": 101,
+    "triangles": 167141,
+    "materials": 73,
+    "geometries": 71,
+    "textures": 39,
+    "gpuBytes": 43502313,
+    "renderMs": 4.8,
+    "quality": "full"
+  },
+  "esp32-bench-P9-overview": {
+    "drawCalls": 234,
+    "triangles": 351945,
+    "materials": 73,
+    "geometries": 71,
+    "textures": 39,
+    "gpuBytes": 43502313,
+    "renderMs": 9.9,
+    "quality": "full"
+  },
+  "esp32-bench-P7-closeup-engineering": {
+    "drawCalls": 61,
+    "triangles": 111197,
+    "materials": 73,
+    "geometries": 72,
+    "textures": 39,
+    "gpuBytes": 43502313,
+    "renderMs": 23.3,
+    "quality": "full"
+  }
+}
