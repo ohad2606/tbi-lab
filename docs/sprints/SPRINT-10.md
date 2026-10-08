@@ -1,11 +1,12 @@
 # Sprint 10 — Physical 3D, engine time-domain core, the approved component families
 
 **Status (2026-10-08):** developed on `sprint-10` (worktree `~/projects/tbi-lab-s10`), from
-`7f09d74` = `main` = `sprint-9-complete`. **dev-lab.tbi-tech.net serves frontend `0f2fd7b` and
+`7f09d74` = `main` = `sprint-9-complete`. **dev-lab.tbi-tech.net serves frontend `7da5c8b` and
 runtime `80448f9`** (frontend `v0.10-dev · 0f2fd7b` from `/version.json` and the served
 `index.html`; runtime `v0.10-dev · 80448f9` from the Session Host's `/health`, also shown in the
-version details as *Runtime ID*). Rollbacks kept: frontend `2d28ca7`, runtime/services release
-`c31d62e`. Part T: realism pass 8 (Realistic / Engineering visual mode, deterministic material
+version details as *Runtime ID*). Rollbacks kept: frontend `0f2fd7b` (then `2d28ca7`), runtime/services
+release `c31d62e`. Part U: jumper exit geometry (owner review: the wire out of the ESP32 header
+housings). Part T: realism pass 8 (Realistic / Engineering visual mode, deterministic material
 variation, IC / SMD finish). Part S: realism pass 7 (depth of field, header pins). Part R: realism pass 6 (wire jackets, shadow penumbra, studio room, Dupont). Part Q: realism pass 5 and the 3D layer model (Realistic / Engineering). Part P: runtime sync (the Session Host runs the Sprint 10 engine: yellow/green LED
 cards end to end). Part O: realism pass 4. Part N: realism pass 3. Part M: operating the toggle switch and push button in 3D during Run.
 Part L: false-hop fix, net wire colours, limited 3D picking. Part K: fresh 3D wire routes (owner review: PIR alarm, relay -> LED).
@@ -18,6 +19,77 @@ Not done: no PR, merge, tag or production deployment. Backend: only the Session 
 unchanged (`33e35e4ac5e798d7`). The isolated preview `/s10-preview/` stays.
 
 Architecture and scope: [SPRINT-10-ARCHITECTURE.md](SPRINT-10-ARCHITECTURE.md).
+
+## Part U — jumper exit geometry: the wire out of an ESP32 header housing (owner review, 2026-10-08)
+
+Owner visual review accepted the 3D quality overall and asked for one narrow fix: in "ESP32: blink
+an LED" the jumper wires plugged on the ESP32 header looked forced: the wire folded sharply down
+right out of the housing and, close up, sank into the housing's plastic. No broad realism pass.
+
+**Root cause.** The 3D route (route3d.ts) leaves a jumper end through a 2.5 mm riser and then
+drops steeply beside its own housing: a wire's own end fitting is exempt from the router's
+obstacles. The orange wire (W1, IO2 -> R1): up 2.5 mm, then 7.8 mm down within 3.2 mm sideways,
+a ~158 degree turn whose bend could only be ~0.5 mm in radius; its centre line passed within 0
+mm of the housing box 5.5 mm along the route (inside the plastic). The physical cable pass
+(wireShape.ts) followed that route, and had no check against the housing it leaves.
+
+**Fix (wireShape.ts, presentation only).** Each jumper end gets a NECK that replaces the route
+up to where it joins it:
+- exit anchor: the centre of the housing's top face (its wire opening, where the crimp's
+  insulation wings hold the jacket), direction along the housing's axis; the jacket continues
+  1.2 mm into the opening as before (the only part of the wire inside the housing);
+- strain relief: 3 mm straight up out of the top face (`NECK_STRAIGHT`);
+- one circular bend in the vertical plane toward where the wire goes: radius 6 mm where there
+  is room, else 5 or 4 mm (`NECK_RADII`; 4 mm is still 3x the 1.3 mm wire diameter; the route's
+  own corners are 2-3 mm); it turns at most to straight down (never hooks back over the housing);
+- then straight to the nearest point of the route where all of this fits, joined there in an
+  ordinary soft cable corner (at most 100 degrees);
+- it must clear every jumper housing (its own included) and the board's top by the wire radius +
+  0.25 mm; where nothing fits, the route's riser is kept (never forced through anything).
+- A wire refused at every shaping level only because of a later wire's route (a neighbour's
+  route hopping over its housing, which that neighbour's own neck then leaves) gets one more try
+  against the final shapes, in scene order. Deterministic: no time, camera or randomness.
+
+Routes, wire ends, connectivity, project data, saved files and the 2D views are unchanged; the
+geometry does not depend on the visual mode (Realistic = Engineering, point for point).
+
+**Results (all jumper ends of the fixtures).** esp32-blink orange W1: 4 mm neck, black W4
+(GND): 5 mm (their landings are close to the board: a wider bend would hook back); dense bench
+(ten neighbouring pins on J3): all 6 mm; header bench (three neighbours on J2, three on J3, one
+header-to-header jumper): all 6 mm; esp32-input-echo / esp32-bench: 4-5 mm. Every jumper's
+surface stays >= 2.4 mm from its own housing past the relief and >= 0.6 mm from neighbouring
+housings. Before: ~0.5 mm folds and the wire inside its own housing (blink W1, W4; most bench
+jumpers).
+
+**Tests.** `app/tests/jumper-neck.test.ts` (9): exit anchor on the housing's top face; the
+straight relief; minimum bend radius over the first 25 mm >= 0.95 x the neck radius; no sharp
+immediate fold (< 30 degrees in the first 2 mm past the relief); no clipping into its own or any
+neighbouring housing; every fixture end necked (dense bench all 6 mm); deterministic; no neck
+where nothing fits. `app/e2e/three-jumpers.spec.ts`: blink in the app: both jumpers necked;
+Realistic and Engineering draw identical shapes; stored and exported project byte-identical
+(export timestamp aside) before and after viewing close up, and after a reload; identical shapes
+after the reload. Evidence bench `headerBench()` (scripts/evidence/benches.ts); capture-3d listed
+shots accept a `file`.
+
+**Regression on `7da5c8b`:** typecheck, lint, build, browser tests PASS; unit 867/867 (was
+858); e2e 166 passed / 3 skipped (was 165).
+
+**Deploy.** Frontend only: `deploy/dev-lab/publish-frontend.sh 7da5c8b` -> **dev-lab serves
+`7da5c8b`** (all publisher checks passed; rollback `0f2fd7b`). Runtime unchanged (`80448f9`), no
+service restarted. Live via the root relay: 3D 7/7, demo 40/40, Sprint 9 smoke ALL PASSED,
+real-QEMU controls input-echo 17/17 and bench 17/17 (D1, D3, D4 lit); relay stopped, no QEMU
+unit left.
+
+**Evidence** (`docs/sprints/s10-evidence/jumpers/`, cameras in `cameras.json`): same-camera
+before (dev-lab `0f2fd7b`) / after pairs: blink orange (3/4, side, Engineering), blink black (3/4,
+side), header bench (left header, right header, overview); `live/`: the same blink cameras
+captured from dev-lab after the deploy.
+
+**Remaining limitations.** The neck is a clean circular arc and a straight: a real jumper has a
+little memory and twist; tall loops (6 mm radius above a 14 mm housing) read as tidy rather than
+casual. Where the route lands close to the board the bend steps down to 4-5 mm. A route with no
+room at all keeps the old riser (no fixture does). The neck applies to ESP32 header jumpers (the
+only header housings in the catalogue); other parts' ends are unchanged.
 
 ## Part T — realism pass 8: visual mode, material variation, IC / SMD finish (PM brief, 2026-10-08)
 
