@@ -186,8 +186,8 @@ test('full tier: depth of field on in Realistic, off in Engineering; no material
   expect(materials).toBeLessThanOrEqual(85);
   expect(materials).toBeLessThan(parts * 5);
   // A frame without the scene's one-off shadow-map pass (drawn only when the scene is built).
-  await page.getByTestId('view3d-rotate-left').click();
   const renders = Number(await view.getAttribute('data-renders'));
+  await page.getByTestId('view3d-rotate-left').click();
   await expect
     .poll(async () => Number(await view.getAttribute('data-renders')), { timeout: 60_000 })
     .toBeGreaterThan(renders);
