@@ -4,6 +4,14 @@
 Sprint 8 backend (Session Host, build service, QEMU runtime) is unchanged; redeploying it is a
 separate approval.
 
+> **Phase names (PM, 2026-10-08).** The product roadmap names the runtime phases **R1–R4**; this
+> plan's sub-phases map to them: **R1 = R3a** (the Sprint 10 parts in ESP32 projects: Sprint 11
+> primary target), **R2 = R3b** (µs input timing: Sprint 11 follow-up), **R3 = R3c** (ESP32 I2C +
+> I2C LCD: V1 planned, PM-11), **R4 = R3d** (PWM / servo: V1 roadmap). The "R1/R2" runtime
+> milestones mentioned in the body are the earlier Sprint 6–8 runtime phases, not these. Part P of
+> Sprint 10 already moved the Session Host onto the Sprint 10 engine (LED cards only; every other new
+> part stays refused); see `docs/sprints/SPRINT-10.md` Parts P and V.
+
 **Why:** four parts have tested device models in the engine (`packages/engine/src/peripherals/`) but
 cannot be exposed for the ESP32, because the runtime cannot drive them honestly:
 

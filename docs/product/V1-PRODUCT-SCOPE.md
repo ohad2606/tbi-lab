@@ -2,7 +2,9 @@
 
 **Status:** **Approved in direction** by the PM. PM decisions PM-1..PM-8 are recorded as decided
 (§21). · **Date:** 2026-09-22 · **Phase:** Product scope closure (after Sprint 1) ·
-**Revised:** 2026-10-06, PM-6 catalog revision (§6.0, Sprint 10)
+**Revised:** 2026-10-06, PM-6 catalog revision (§6.0, Sprint 10) · 2026-10-08, PM-9 limited
+transient simulation, PM-10 the three views (Circuit / Schematic / 3D), PM-11 ESP32 I2C planned for
+V1 (§4.4, §6.0a, §21; Sprint 10 closure)
 
 **Release model:** V1 is a **controlled pilot**, not public general availability (§25).
 
@@ -181,7 +183,8 @@ notes.
 | Area | In V1 |
 |---|---|
 | **Editing** | Schematic canvas; place, move, rotate, select, multi-select, delete; wire; junctions; zoom/pan; grid snapping; undo/redo; property editing; invalid-connection feedback |
-| **Simulation (no MCU)** | DC operating point in a browser Worker, re-solved on every relevant change |
+| **Views** (PM-10, §4.4) | Circuit (the authoritative editing surface), Schematic (derived), 3D bench (derived physical view) |
+| **Simulation (no MCU)** | DC operating point in a browser Worker, re-solved on every relevant change; **limited transient** (PM-9, §6.0a): deterministic fixed-step time-domain simulation of capacitor circuits, local (non-ESP32) circuits only |
 | **Simulation (MCU)** | Server session: classic ESP32 + bridge + engine co-located; deterministic closed loop at a 1 ms `hostCommandQuantum` |
 | **ESP32** | Digital output, digital input, pin direction, internal pull configuration by the user, UART0 serial output, reset-on-start only (§7) |
 | **Firmware** | Arduino C++ single sketch, built by the service, content-addressed; `.bin` upload (§8, pending PM-2) |
@@ -193,19 +196,44 @@ notes.
 | **Examples** | 6 curated example projects (§14) |
 | **Platform** | Chromium-family desktop browsers (pending PM-5) |
 
+### 4.4 Views: Circuit, Schematic and 3D (PM-10, 2026-10-08)
+
+One project, three views of it. Only the first edits the circuit:
+
+| View | Role |
+|---|---|
+| **Circuit** | The **authoritative** construction and topology editing surface (§4.2): placement, layout, wiring, deletion |
+| **Schematic** | A **derived** professional electrical representation of the same nets; never a second source of truth |
+| **3D** | A **derived** physical representation: the parts at real scale on a bench, wires as physical cables |
+
+**3D supports:** inspection, camera navigation, selection, property access through the shared
+Inspector, and the physical operation of approved controls (toggle switch, push button) during Run.
+Operating a toggle switch changes its position parameter exactly as the Circuit view does (one
+shared, undoable action); 3D can interact with simulation state.
+
+**3D does not support:** topology editing, moving components as an authoritative layout, rewiring,
+or an independent saved layout. The 3D placement is derived from the Circuit layout on every view
+(a visual-only separation may move bodies apart in 3D; it is never saved). **Full 3D editing is
+deferred** (beyond V1). This is a bench visualisation, not 3D PCB design (which stays out of scope,
+§18).
+
+This refines PM-1: the Sprint 9 product turned the single schematic workspace into the Circuit
+editing view with a derived Schematic view; the net/project model is unchanged and language-neutral.
+
 ## 5. Exact excluded capabilities (V1)
 
 Excluded means: **not built, not promised, and stated in the UI where a user might expect it.**
 
 | Excluded | Why — evidence |
 |---|---|
-| AC analysis, transient analysis, waveforms over time | The engine is a DC operating-point solver. "DC only. No transient, no AC, no reactive components" (Gate A) |
-| Oscilloscope, signal generator, logic analyser | All require a time-domain engine that does not exist |
-| Capacitors, inductors | Meaningless in a DC-only engine: a capacitor is simply an open circuit. Including them would teach the wrong thing. *2026-10-06 (§6.0): the capacitor is approved once transient simulation is exposed honestly* |
+| AC analysis; waveform displays over time; transient analysis beyond the limited capacitor stepping of §6.0a | No AC engine. *2026-10-08 (PM-9): limited transient simulation IS in V1 (§6.0a: local circuits, capacitor, deterministic fixed step); general transient analysis and waveform displays are not* |
+| Oscilloscope, signal generator, logic analyser | No instrument shows signals over time; the limited transient of §6.0a does not make them honest |
+| Inductors | A DC operating point makes an inductor a short; no inductor model exists. *The capacitor, originally excluded here, ships for local circuits since Sprint 10 (§6.0a)* |
 | Transistors (BJT/MOSFET) | No model exists; a new nonlinear model plus validation is a sprint of its own. *2026-10-06 (§6.0): one identified transistor with a validated model is approved* |
 | ESP32 ADC, DAC, touch | The runtime's `analog` and `rtcio` peripherals are unimplemented (46 and 38 unimplemented accesses observed in one boot) |
-| ESP32 PWM/LEDC | Not in the emulated peripheral set, and a DC engine cannot represent a duty-cycled waveform honestly |
-| ESP32 I2C, SPI (user-level), external UART wiring | Not modelled in the electrical engine; no device models to talk to |
+| ESP32 PWM/LEDC | Not supported today: not in the emulated peripheral set. *2026-10-08: PWM for the servo is a **V1 planned capability**, runtime Phase R4 (§6.0a); until it ships, firmware PWM has no electrical effect* |
+| ESP32 I2C | Not supported today. *2026-10-08 (PM-11): ESP32 I2C with the I2C LCD is a **V1 planned capability**, runtime Phase R3 (§6.0a); until it ships, those pins behave as plain GPIO* |
+| ESP32 SPI (user-level), external UART wiring | Not modelled in the electrical engine; no device models to talk to |
 | Wi-Fi, Bluetooth | Not modelled; the session has no network by design (invariant 14) |
 | Deep/light sleep | The runtime's sleep timer uses the host clock, which breaks determinism |
 | `esp_restart()`, watchdog reset, in-place EN/reset button | Still asynchronous in QEMU; PM decision P10 keeps them unsupported until they pass R-MCU-1 |
@@ -265,6 +293,33 @@ components are preferred over placeholders.
 5. **Board and toolchain extensibility is unchanged:** boards and programming environments remain
    separate concepts. Arduino-family boards and MicroPython remain future work (§8.3).
 
+### 6.0a Revised 2026-10-08 (PM, Sprint 10 closure): transient, I2C and the delivery state
+
+**PM-9 — limited transient simulation is part of V1.** Shipped (Sprint 10): deterministic
+fixed-step (1 ms, backward Euler) time-domain simulation of **local (non-ESP32) circuits**
+containing the **capacitor**, integrated with Run/Stop (each Run starts at t = 0, discharged). The
+capacitor is ideal (no leakage, no ESR); non-ideal effects are a later V1 polish item. **ESP32
+transient integration is NOT supported:** the ESP32 runtime does not step time, and a capacitor in
+an ESP32 project is refused with a specific reason. ESP32 transient integration stays a V1 roadmap
+item. Rule 2 of §6.0 is thereby met for the capacitor in local circuits only.
+
+**PM-11 — ESP32 I2C is a V1 planned capability** (no longer generic "future"), because the I2C LCD
+remains a V1 target. Implementation is deferred to runtime Phase R3. LCD policy unchanged: **I2C
+only**; legacy parallel-wired LCDs are not implemented.
+
+**Delivery state after Sprint 10** (authoritative list: `docs/sprints/SPRINT-10.md`, Part V):
+
+| Item | State |
+|---|---|
+| RGB LED, LDR, buzzer, relay, NPN transistor (2N3904), capacitor, PIR, 8x8 LED matrix | Shipped for **local circuits**; refused in ESP32 projects until runtime Phase R1 (Sprint 11 primary target) |
+| LED colour cards (yellow, green) | Shipped, local and ESP32 |
+| Ultrasonic (HC-SR04), temperature/humidity (DHT22) | Engine models only; need runtime Phase R2 (µs input timing): V1 roadmap |
+| I2C LCD 16x2 | Engine model only; needs runtime Phase R3 (ESP32 I2C): V1 roadmap |
+| Servo | Engine model only; needs runtime Phase R4 (PWM): V1 roadmap |
+| 555 timer | Not started; V1 roadmap after an explicit pin-level model approval |
+| Multi-position switch; larger LED matrices | Not started / engine abstraction only; V1 roadmap |
+| Potentiometer | **V1.1+** (unchanged) |
+
 ### 6.1 The V1 catalog is CLOSED *(original PM-6 — superseded by §6.0 on 2026-10-06)*
 
 The eight components below are the complete V1 catalog (PM-6). **No component may be added during
@@ -306,9 +361,9 @@ open resistance is a **documented model parameter**, not a hidden fudge.
 | Component | Decision | Reason |
 |---|---|---|
 | **Potentiometer** | **V1.1 (PM-6)** | Electrically cheap (a wiper splitting one resistance), but its main teaching use is feeding an **ADC**, which V1 does not support. It belongs with ADC |
-| **Capacitor / inductor** | **Deferred until transient can be modelled honestly (PM-6)** | In a DC operating point a capacitor is an open circuit and an inductor a short. Showing them without transient analysis teaches something false |
+| **Capacitor / inductor** | **Deferred until transient can be modelled honestly (PM-6)** *(capacitor: shipped for local circuits, §6.0a)* | In a DC operating point a capacitor is an open circuit and an inductor a short. Showing them without transient analysis teaches something false |
 | **Transistor (BJT, MOSFET)** | **Future** | New nonlinear models plus validation against an independent reference; a dedicated sprint |
-| **Relay** | **Future** | Needs a coil/contact model and, realistically, transient behaviour |
+| **Relay** | **Future** *(superseded: shipped for local circuits, §6.0a)* | Needs a coil/contact model and, realistically, transient behaviour |
 | **Sensors (LDR, thermistor, DHT…)** | **Future** | Most are meaningful only with ADC or a digital protocol |
 | **555 timer, op-amps, logic ICs** | **Future** | Time-domain or multi-transistor models |
 | **Multiple/second MCU** | **Future** | One QEMU per active MCU session is a fixed architectural cost (§12 of the architecture) |
@@ -390,8 +445,9 @@ electrical models.
 | Capability | V1 behaviour |
 |---|---|
 | ADC, DAC, touch | Pin metadata marks the capability **not simulated**; firmware using it produces no electrical effect |
-| PWM / LEDC | Not simulated. A duty-cycled waveform cannot be represented honestly by a DC engine |
-| I2C, SPI, externally wired UART | No device models exist; those pins behave as plain GPIO |
+| PWM / LEDC | Not simulated today; firmware PWM has no electrical effect. PWM for the servo is **V1 planned** (runtime Phase R4, §6.0a) |
+| I2C | Not simulated today; those pins behave as plain GPIO. **V1 planned** with the I2C LCD (runtime Phase R3, PM-11) |
+| SPI, externally wired UART | No device models exist; those pins behave as plain GPIO |
 | Wi-Fi, Bluetooth, deep/light sleep | Unsupported; sessions have no network, and sleep breaks determinism |
 | `esp_restart()`, watchdog reset, EN/in-place reset | **Not exposed** (P10). Restart = Stop then Run, which is a fresh deterministic session |
 | Serial **input** (host -> firmware) | V1.1. The monitor is read-only in V1 |
@@ -520,7 +576,8 @@ Decided: probes in V1; the meter, including a correct Ω mode, in V1.1.
 
 ### 9.4 Oscilloscope — **deferred, explicitly**
 
-Excluded: the engine has no transient analysis. Displaying a "waveform" of a DC operating point
+Excluded: the engine has no general transient analysis (V1 has only the limited capacitor stepping
+of §6.0a, local circuits). Displaying a "waveform" without a time-domain model behind every part
 would be theatre. This is the clearest example of the physics rule in product form.
 
 ### 9.5 Serial monitor — **in V1 (read-only)**
@@ -793,11 +850,12 @@ V1 separates two categories, and the UI must look different for each.
 
 | Non-goal | Decision and reason |
 |---|---|
-| PCB design, Gerber, autorouting, 3D | **Excluded.** Different product; explicitly out of scope in CLAUDE.md |
+| PCB design, Gerber, autorouting, 3D PCB | **Excluded.** Different product; explicitly out of scope in CLAUDE.md. *The derived 3D bench view is in V1 (PM-10, §4.4); 3D editing is not* |
+| 3D editing (topology, layout, rewiring in 3D) | **Excluded from V1** (PM-10). 3D is a derived view; the Circuit view is the only editing surface |
 | SPICE netlist editor / import / export | **Excluded.** V1's audience does not need it; it would expose engine internals as a product surface |
 | AC analysis | **Excluded.** No AC engine |
-| Transient analysis | **Excluded from V1**, but the API was deliberately shaped so it can be added later |
-| Oscilloscope, signal generator, logic analyser | **Excluded.** Require transient |
+| General transient analysis | **Excluded from V1.** *Revised 2026-10-08 (PM-9): limited transient (local capacitor circuits, fixed step) IS in V1 (§6.0a); ESP32 transient integration is a V1 roadmap item* |
+| Oscilloscope, signal generator, logic analyser | **Excluded.** Require general transient analysis |
 | Full ESP32 peripheral coverage | **Excluded.** Each peripheral needs runtime support *and* an electrical story |
 | Wi-Fi / Bluetooth simulation | **Excluded.** Sessions have no network by design |
 | Additional MCU families | **Excluded.** CLAUDE.md fixes the classic ESP32 as the V1 target |
@@ -849,18 +907,25 @@ unsupported (P10).
 | Capability | V1 | V1.1 | Future |
 |---|---|---|---|
 | Schematic editor, wiring, nets, undo/redo | ● | | |
+| Circuit view (editing) + derived Schematic + derived 3D bench view (PM-10) | ● | | |
+| 3D editing (topology, layout, rewiring) | | | ● |
 | Breadboard view over the same net model | | | ● |
 | Lab PSU (CV/CC, enable, measured V/I) | ● | | |
 | Resistor, LED, diode, ground | ● | | |
 | Push button, toggle switch | ● | | |
 | Potentiometer | | ● | |
-| Capacitor (with honest transient, §6.0); inductor | ○ | | ● |
+| Capacitor, local circuits (limited transient, §6.0a) | ● | | |
+| Capacitor in ESP32 projects (ESP32 transient integration) | ● *(roadmap)* | | |
+| Capacitor non-ideal effects (leakage, ESR) | ● *(later)* | | |
+| Inductor | | | ● |
 | Transistor, relay (§6.0) | ● | | |
-| 555 (only when credible, §6.0); op-amps | ○ | | ● |
+| 555 (after an explicit pin-level model approval, §6.0); op-amps | ● *(roadmap)* | | ● *(op-amps)* |
+| Multi-position switch | ● *(roadmap)* | | |
 | RGB LED, buzzer, LED matrix, servo, I2C LCD (§6.0) | ● | | |
 | Sensors: LDR, PIR, ultrasonic, temperature/humidity (§6.0); thermistor | ● | | ○ |
 | DC operating-point simulation (browser-local) | ● | | |
-| Transient analysis | | | ● |
+| Limited transient: fixed step, local capacitor circuits (PM-9) | ● | | |
+| General transient analysis, waveforms | | | ● |
 | AC analysis | | | ● |
 | Probes / inspector measurements (V, I) | ● | | |
 | Multimeter instrument incl. resistance mode | | ● | |
@@ -874,8 +939,11 @@ unsupported (P10).
 | GPIO 32/33 outputs (close the bank-1 bridge gap) | ● *(pre-release fix)* | | |
 | ESP32 ADC | | ● | |
 | Potentiometer + ADC together | | ● | |
-| ESP32 PWM/LEDC, DAC, touch | | | ● |
-| ESP32 I2C / SPI with device models | | | ● |
+| ESP32 PWM for the servo (runtime R4) | ● *(planned)* | | |
+| ESP32 PWM/LEDC beyond the servo, DAC, touch | | | ● |
+| ESP32 µs input timing for sensors (runtime R2) | ● *(planned)* | | |
+| ESP32 I2C with device models, incl. the I2C LCD (runtime R3, PM-11) | ● *(planned)* | | |
+| ESP32 SPI with device models | | | ● |
 | Wi-Fi / Bluetooth | | | ● |
 | `esp_restart()` / WDT / EN reset (after R-MCU-1) | | ● | |
 | Deep / light sleep | | | ● |
@@ -899,10 +967,13 @@ unsupported (P10).
 
 ● = planned there · ○ = candidate, not committed
 
-*2026-10-06: the §6.0 revision moves the component families above into V1 development; the list below is otherwise unchanged.*
+*2026-10-06: the §6.0 revision moves the component families above into V1 development. 2026-10-08
+(PM-9..PM-11): limited transient, the 3D bench view, ESP32 I2C, µs input timing and servo PWM move
+into V1 as shown.*
 
-**Confirmed outside V1** (PM): potentiometer; full multimeter / resistance mode; capacitor and
-transient behaviour; oscilloscope; ADC/DAC; PWM/LEDC; externally wired UART; I2C/SPI; Wi-Fi/Bluetooth;
+**Confirmed outside V1** (PM): potentiometer; full multimeter / resistance mode; general transient
+analysis and waveforms; oscilloscope; ADC/DAC; PWM/LEDC beyond the servo; externally wired UART; SPI;
+3D editing; Wi-Fi/Bluetooth;
 MicroPython authoring; additional MCU families; breadboard view; cloud project sync; collaboration;
 mobile and native apps. Placement between V1.1 and Future is as shown above — nothing on that list is
 automatically V1.1.
@@ -911,7 +982,7 @@ automatically V1.1.
 
 ## 21. PM decisions — recorded as approved
 
-All eight decisions raised in the first draft are **decided**. The alternatives and their trade-offs
+All eight decisions raised in the first draft are **decided**; PM-9..PM-11 were added at the Sprint 10 closure (2026-10-08). The alternatives and their trade-offs
 remain in the sections cited, so a later reversal is an informed one.
 
 | # | Decision | Approved outcome | Where it is applied |
@@ -923,6 +994,9 @@ remain in the sections cited, so a later reversal is an informed one.
 | **PM-5** | Browser scope | **Chromium-family desktop** for the controlled pilot; **Firefox** next; **Safari** not committed; no mobile or native target | §13 |
 | **PM-6** | Component catalog | ~~Closed eight-item catalog (§6.1)~~ **Revised 2026-10-06 (§6.0):** the approved families (switching, lighting incl. RGB, transistor, LDR, buzzer, relay, sensors, LED matrix, servo, I2C-only LCD, 555 and capacitor once their time-domain behaviour is honest) may be added. Potentiometer remains V1.1 | §6 |
 | **PM-7** | Export / import | **In V1**, and **meaningfully portable**: schema data, user-authored source, firmware artifacts, hashes and compatibility metadata. Import validates; it never silently corrupts or reinterprets engineering values. Container format is a roadmap decision | §10.4 |
+| **PM-9** | Transient simulation (2026-10-08) | **Limited transient is in V1:** deterministic fixed-step time-domain simulation of local (non-ESP32) capacitor circuits, integrated with Run/Stop. ESP32 transient integration is not supported today and stays a V1 roadmap item | §4.3, §5, §6.0a, §18, §20 |
+| **PM-10** | Views (2026-10-08) | **Circuit** = the authoritative editing surface; **Schematic** = derived electrical representation; **3D** = derived physical representation (inspection, navigation, selection, shared Inspector, operating approved controls during Run). No topology editing, layout or rewiring in 3D; full 3D editing deferred | §4.4, §18, §20 |
+| **PM-11** | ESP32 I2C (2026-10-08) | **V1 planned capability** (with the I2C LCD), implemented in runtime Phase R3. I2C-only LCD policy unchanged | §5, §6.0a, §7.4, §20 |
 | **PM-8** | Release model | **V1 is a controlled pilot**, not public GA. Local work never requires an account; the build and simulation services require authentication and authorization. Auth, limits and abuse protection are mandatory before public exposure. Authentication does not bring cloud storage | §11.2, §25 |
 
 ### Additional PM corrections recorded
@@ -940,7 +1014,7 @@ remain in the sections cited, so a later reversal is an informed one.
 | # | Risk | Impact | Mitigation |
 |---|---|---|---|
 | S1 | **Scope leak through "just one more component"** (capacitor, transistor, sensor) | Physics claims weaken; V1 slips | Every component must state its model status here first; the matrix (§20) is the gate |
-| S2 | **Users expect waveforms** because the product looks like a lab | Disappointment, or pressure to fake a scope | State DC-only prominently in the product, not only in documents; ship the scope in a transient release |
+| S2 | **Users expect waveforms** because the product looks like a lab | Disappointment, or pressure to fake a scope | State the simulation scope prominently (DC, plus limited capacitor transient in local circuits, PM-9); ship the scope with general transient analysis |
 | S3 | **Build service cost and latency** (if PM-2 = B/C) | Poor first-run experience; hosting cost | Measure compile latency early; cache by source hash; show progress; capacity gate (P2) |
 | S4 | **The ESP32 journey needs the network**, and users will meet it offline | Perceived as broken | Explicit offline behaviour (§11); editing never blocked; message distinguishes offline from unavailable |
 | S5 | **Unsupported-peripheral detection is best-effort** | A user writes `analogRead()` and believes the result | Pin-level static marking in the editor, runtime notice where detectable, and honest documentation |
@@ -996,7 +1070,7 @@ proven evidence.
 
 | # | Tension | Resolution taken here |
 |---|---|---|
-| 1 | A **capacitor** is a natural "basic component" expectation, but the engine is DC-only | Excluded from V1 with the reason stated (§6.2). Including it would violate the physics rule |
+| 1 | A **capacitor** is a natural "basic component" expectation, but the engine is DC-only | Originally excluded (§6.1 deferral table). **Resolved 2026-10-08 (PM-9):** the capacitor ships for local circuits with honest fixed-step transient (§6.0a); refused in ESP32 projects until ESP32 transient integration |
 | 2 | A **multimeter with resistance** is a natural lab expectation, but Ω is not a solve of the live circuit | Probes in V1; Ω with the DMM in V1.1 (§9.3, PM-3) |
 | 3 | **GPIO 32/33 outputs** are not evented by the bridge (blocker B6), although the hardware supports them | Corrected per PM: this is a **simulator limitation**, never presented as hardware. Closing it is a pre-release item; until then the pins carry that reason. GPIO 34-39 are input-only **in hardware**, which is a different statement |
 | 4 | **Reset** is an obvious simulation control, but full-chip reset is not deterministic yet (P10) | No reset control in V1; Stop/Run is the restart path |

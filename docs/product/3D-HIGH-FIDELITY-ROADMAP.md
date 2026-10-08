@@ -1,9 +1,16 @@
 # 3D view: high-fidelity, model-driven visualization (roadmap)
 
-**Status:** approved product direction (owner, 2026-10-06). First proof set implemented in Sprint 10:
-the ESP32-DevKitC, the axial resistor and the 5 mm LED. Every other part keeps its current model
-until the owner approves the visual standard. The physical-behavior items (section 7 onward) are
-direction and architecture only; none is implemented.
+**Status (2026-10-08, Sprint 10 closure):** approved product direction (owner, 2026-10-06); the
+derived 3D bench view is part of V1 (PM-10, `V1-PRODUCT-SCOPE.md` §4.4). **Sprint 10 delivered and
+the owner accepted** (2026-10-08) the visual standard: the proof set (ESP32-DevKitC, axial
+resistor, 5 mm LED) and every other catalog part's model, physical wires (routing, drape, jumper
+exits), the Realistic / Engineering modes, selection and operating the toggle switch and push
+button during Run (SPRINT-10.md Parts F–U). **3D does not edit topology or layout**; full 3D editing
+is deferred. The physical-behavior items (section 7 onward) remain direction and architecture only;
+none is implemented. Further realism work is stopped (owner, 2026-10-08).
+
+*Original status (2026-10-06): first proof set implemented; every other part kept its model until
+the owner approved the visual standard.*
 
 ## 1. Product statement
 

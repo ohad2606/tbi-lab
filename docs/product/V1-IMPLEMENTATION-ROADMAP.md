@@ -11,8 +11,24 @@
 user-visible vertical slices, concrete sprints from Sprint 2, the dependency graph and critical path,
 and the gates that must be met before the pilot. **It is a plan. Nothing here is implemented.**
 
+> **Scope revisions after this plan (authoritative: `V1-PRODUCT-SCOPE.md`).** This roadmap is the
+> 2026-09-22 plan and keeps its original wording; where the scope has since changed, the scope wins:
+> - **PM-6 revised (2026-10-06, §6.0):** the catalog is open to the approved families (it is no
+>   longer "closed at eight types"); the potentiometer stays V1.1.
+> - **PM-9 (2026-10-08):** limited transient simulation is in V1: deterministic fixed-step
+>   simulation of local (non-ESP32) capacitor circuits, shipped in Sprint 10 (backward-Euler
+>   companion model, `EngineSession.advance()`). ESP32 transient integration is a V1 roadmap item.
+>   General transient analysis, waveforms and the oscilloscope stay out of V1.
+> - **PM-10 (2026-10-08):** the derived 3D bench view is in V1 (Circuit = editing surface,
+>   Schematic and 3D = derived views; no 3D editing).
+> - **PM-11 (2026-10-08):** ESP32 I2C with the I2C LCD is a V1 planned capability (runtime Phase
+>   R3); µs input timing (R2) and servo PWM (R4) are also V1 roadmap items. Runtime Phase R1
+>   (the Sprint 10 parts in ESP32 projects) is the Sprint 11 primary target.
+> - Sprint 10's delivered and deferred items: `docs/sprints/SPRINT-10.md`, Part V.
+
 **Scope guard.** This roadmap introduces nothing outside the approved scope. Capacitor, transient,
-potentiometer, multimeter, oscilloscope, PWM, ADC/DAC, I2C/SPI, Wi-Fi/Bluetooth, MicroPython
+potentiometer, multimeter, oscilloscope, PWM, ADC/DAC, I2C/SPI *(capacitor, limited transient, I2C
+and servo PWM revised since: see the note above)*, Wi-Fi/Bluetooth, MicroPython
 authoring, breadboard, cloud sync, collaboration, mobile and AI are **absent by construction**. Where
 a dependency looked like it needed one, it is flagged in §17 rather than quietly added. No such
 contradiction was found.
@@ -268,7 +284,7 @@ flowchart TB
   subgraph ELEC["Electrical (Sprints 3-5)"]
     ENGINE[Electrical Engine package<br/>promoted solver + models]
     WORKER[Worker host + transport]
-    CATALOG[Component catalog<br/>8 approved types]
+    CATALOG[Component catalog<br/>8 approved types (plan; revised §6.0)]
     VALIDATE[Connection validation]
     PROBES[Probes / inspector / PSU panel]
     UNDO[Undo/redo command stack]
@@ -545,7 +561,8 @@ The Gate A solver is already deterministic, self-verifying and covered by refere
 | **Production tests** | The seven reference cases, the PSU CV/CC crossover, LED sensitivity, determinism, and cross-host bit-identity |
 | **Performance regression test** | A solve-time budget on a representative circuit, asserted in CI so a regression is caught, not discovered |
 
-**Not in scope, ever, for V1:** AC, transient, companion models, sparse matrices (dense LU is ample
+**Not in scope, ever, for V1:** AC, transient, companion models *(revised 2026-10-08, PM-9: limited
+fixed-step transient with companion models for the capacitor is in V1)*, sparse matrices (dense LU is ample
 at tens of nodes), or a second engine implementation.
 
 ### 8.2 Per-component model work
@@ -586,7 +603,8 @@ In dependency order. Sprint R1 unless noted.
 | M12 | **Session lifecycle** *(R2)* | create/load/run/pause/resume/stop/close, failure paths, guaranteed cleanup | Scripted lifecycle test including crash cleanup |
 | M13 | **Reconnect and grace** *(R2 + Sprint 6)* | P5 values: pause on disconnect, 60 s grace, 10 min idle, 2 h max run, 1 active MCU session per user | Forced-disconnect test reattaches and restores state plus serial tail |
 
-**Not added:** ADC, DAC, PWM/LEDC, I2C, SPI, external UART, Wi-Fi, Bluetooth, sleep. **Every new MCU
+**Not added:** ADC, DAC, PWM/LEDC, I2C, SPI, external UART, Wi-Fi, Bluetooth, sleep *(revised
+2026-10-08: ESP32 I2C, µs input timing and servo PWM are V1 planned, runtime Phases R3, R2, R4)*. **Every new MCU
 capability must extend the deterministic release-gate suite before it can be claimed** — this is the
 standing rule from Sprint 1.
 
@@ -865,7 +883,7 @@ Ranked by probability × impact. "Retired by" names the sprint or gate that remo
 | 9 | Browser/editor performance disappoints on modest machines | Low | Med | Sprints 2 and 5 | SVG at tens of elements; performance gates from the first sprint; profiling before any library is added |
 | 10 | Engine promotion subtly changes numbers | Low | **High** | Sprint 3 | Bit-identity against the Gate A reference values is the acceptance criterion, not "close enough" |
 | 11 | RTL quality is poor because Hebrew is treated as translation | Med | Med | Every UI sprint | Both languages are acceptance criteria from Sprint 2; no English-only screens allowed to merge |
-| 12 | Component scope leakage during implementation | Med | Med | Standing, reviewed each sprint | The catalog is closed (PM-6); adding one requires a PM scope decision |
+| 12 | Component scope leakage during implementation | Med | Med | Standing, reviewed each sprint | The catalog is closed (PM-6); adding one requires a PM scope decision. *Revised 2026-10-06: open to the §6.0 families; each part still meets §6.0's definition of done* |
 | 13 | Unsupported full-chip reset frustrates users | Med | Low | Sprint 6 | No reset control; Stop/Run documented as the restart path; the limitation is stated in-product |
 | 14 | Runtime provisioning is un-scripted 9.8 GB of state | **High** | Med | **R1** | Pinned versions, checksums and a build recipe in `runtime/qemu/`; required for CI and for the pilot deployment |
 

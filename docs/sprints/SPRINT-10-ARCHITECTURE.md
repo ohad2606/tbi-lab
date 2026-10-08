@@ -11,9 +11,26 @@
 Ordering: electrical correctness first, then simulation behaviour, schematic semantics, realism,
 polish.
 
+> **Current state (2026-10-08, Sprint 10 closure).** This file is the architecture record written at
+> the start of the sprint; the sections below keep that record. Where it was overtaken:
+> - **Catalog:** PM-6 was revised on 2026-10-06 (`V1-PRODUCT-SCOPE.md` §6.0); the catalog is **open
+>   to the approved families**. Sprint 10 exposed eight new types for local circuits (refused in
+>   ESP32 projects until runtime Phase R1); §1's "closed at eight types" is the original record.
+> - **Transient:** limited transient simulation is **part of V1** (PM-9, scope §6.0a): the
+>   capacitor runs time-stepped in local circuits through `EngineSession.advance()`; ESP32 transient
+>   integration is not supported (V1 roadmap). §2's "not exposed" describes the first, internal step.
+> - **I2C:** ESP32 I2C with the I2C LCD is a **V1 planned capability** (PM-11), runtime Phase R3.
+> - **3D:** a derived physical view (PM-10, scope §4.4): inspection, navigation, selection, the
+>   shared Inspector and operating approved controls during Run; **no topology editing**.
+> - **Scale:** one grid step is **3.175 mm** (§3, corrected).
+> - Delivered / deferred items: `SPRINT-10.md` Part V.
+
 ---
 
 ## 1. Approved component-scope matrix (from the authoritative documents)
+
+*Original record (2026-10-05), superseded by the PM-6 revision (2026-10-06) and PM-9..PM-11
+(2026-10-08); see the current-state note above.*
 
 Sources:
 - `docs/product/V1-PRODUCT-SCOPE.md` §6 and §20, and the decision table PM-1…PM-8;
@@ -47,9 +64,9 @@ time."
 | 555 timer, op-amps, logic ICs | Explicitly deferred — Future | §6.1, §20 |
 | RGB LED | **Not yet decided** (not listed; under PM-6 a new type needs a scope decision) | PM-6 |
 | Buzzer, servo, LED matrix, multi-position switch | **Not yet decided** (not listed; servo/buzzer also need PWM/LEDC, which is Future) | PM-6, §20 |
-| I2C display (LCD via I2C) | **Explicitly deferred**: "ESP32 I2C/SPI with device models" is Future | §7, §20 |
+| I2C display (LCD via I2C) | **Explicitly deferred**: "ESP32 I2C/SPI with device models" is Future. *Now: V1 planned, runtime Phase R3 (PM-11, 2026-10-08)* | §7, §20 |
 | Parallel LCD wiring | Not pursued (owner direction: I2C is the display path) | owner |
-| Transient analysis (product feature) | **Explicitly deferred — Future**. The roadmap: "Not in scope, ever, for V1: AC, transient, companion models" | §20; roadmap §8 |
+| Transient analysis (product feature) | **Explicitly deferred — Future**. The roadmap: "Not in scope, ever, for V1: AC, transient, companion models". *Now: limited transient (local capacitor circuits) is in V1 (PM-9, 2026-10-08)* | §20; roadmap §8 |
 | MicroPython | Not in V1 (PM-4); the board and environment separation stays | PM-4 |
 | Arduino-family boards | Future ("additional MCU families") | §20 |
 
@@ -123,25 +140,33 @@ Implemented as a reusable primitive. It is **not** a product feature:
   - all existing DC tests unchanged.
 - **Not exposed:** no catalog type, no snapshot field, no UI, no session API change. Exposure
   needs the PM-6 revision and the product-level transient decision.
+- *Later in Sprint 10 (Part B):* the capacitor was exposed for local circuits through the session
+  path `EngineSession.advance()` (backward Euler, fixed 1 ms step, Run/Stop restart at t = 0);
+  `Circuit.transient()` above remains a test-only primitive. Product decision: PM-9 (2026-10-08).
 
 ---
 
 ## 3. 3D: physical-scale model (the dedicated 3D effort)
 
 **Rule (unchanged from Sprint 9):** the user places a part once, in the 2D Circuit view.
-"2D layout → position"; "physical metadata → dimensions, height, geometry". 3D is never editable,
-and no mesh or camera state is persisted.
+"2D layout → position"; "physical metadata → dimensions, height, geometry". 3D never edits the
+circuit's topology or layout, and no mesh or camera state is persisted. (Since Parts L and M, 3D
+can select parts and wires for the shared Inspector and operate the toggle switch and push button
+during Run; operating the toggle is the same undoable parameter change as in the Circuit view.
+PM-10.)
 
 **World scale (single convention, `physical.ts`):**
 - 1 scene unit = **1 mm**.
-- One 2D grid step (20 layout units) maps to **2.54 mm** (0.1 in, the breadboard/header pitch), so
-  `MM_PER_LAYOUT_UNIT = 0.127`.
+- One 2D grid step (20 layout units) maps to **3.175 mm** (1/8 in), so
+  `MM_PER_LAYOUT_UNIT = 0.15875`. *(Corrected: the first Sprint 10 version used 2.54 mm; it was
+  changed so the ESP32 symbol's pin columns land exactly on the real DevKitC header rows, 25.40 mm
+  apart, and parts beside the board in 2D stand beside it in 3D.)*
 
 Consequences:
-- a two-terminal part's terminals (80 units apart) are **10.16 mm** apart, the standard 0.4 in axial
-  footprint;
-- the ESP32's header positions (one grid step apart in 2D) fall exactly on its real **2.54 mm**
-  pitch.
+- a two-terminal part's terminals (80 units apart) are **12.7 mm** (0.5 in) apart, a standard axial
+  lead spacing;
+- along the ESP32 header the real pin pitch is **2.54 mm** while the grid is 3.175 mm: each pin's 3D
+  attach point is the real pin, and the wire's 3D end follows it (`scene.ts`).
 
 **Physical metadata** (per model, millimetres, documented sources or "representative"):
 - body dimensions;

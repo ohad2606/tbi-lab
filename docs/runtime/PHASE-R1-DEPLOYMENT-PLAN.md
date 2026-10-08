@@ -4,6 +4,13 @@
 1. the owner smoke of the Sprint 10 promotion to pass;
 2. a separate PM approval for R1.
 
+*Update 2026-10-08 (PM, Sprint 10 closure): R1 is the **Sprint 11 primary target** (enable the
+currently local-only Sprint 10 components in ESP32 projects where technically appropriate). Part P
+of Sprint 10 (runtime `80448f9`) already deployed the Session Host with the Sprint 10 engine, but
+narrowly: only the LED cards; its guard still refuses every `mcuRuntime: false` part. What remains
+of this plan is lifting that refusal part by part (with `control.params` for the LDR / PIR
+environment inputs), under its own Sprint 11 approval.*
+
 This is phase R3a of [R3-CAPABILITY-PLAN.md](R3-CAPABILITY-PLAN.md). R2 (microsecond inputs), R3
 (I2C) and R4 (PWM/servo) are later phases, each with its own approval.
 

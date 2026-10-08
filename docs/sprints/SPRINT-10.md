@@ -5,7 +5,8 @@
 runtime `80448f9`** (frontend `v0.10-dev · 7da5c8b` from `/version.json` and the served
 `index.html`; runtime `v0.10-dev · 80448f9` from the Session Host's `/health`, also shown in the
 version details as *Runtime ID*). Rollbacks kept: frontend `0f2fd7b` (then `2d28ca7`), runtime/services
-release `c31d62e`. Part U: jumper exit geometry (owner review: the wire out of the ESP32 header
+release `c31d62e`. **Part V: closure readiness (authoritative delivered / deferred list, PM-9..PM-11,
+technical debt).** Part U: jumper exit geometry (owner review: the wire out of the ESP32 header
 housings). Part T: realism pass 8 (Realistic / Engineering visual mode, deterministic material
 variation, IC / SMD finish). Part S: realism pass 7 (depth of field, header pins). Part R: realism pass 6 (wire jackets, shadow penumbra, studio room, Dupont). Part Q: realism pass 5 and the 3D layer model (Realistic / Engineering). Part P: runtime sync (the Session Host runs the Sprint 10 engine: yellow/green LED
 cards end to end). Part O: realism pass 4. Part N: realism pass 3. Part M: operating the toggle switch and push button in 3D during Run.
@@ -19,6 +20,93 @@ Not done: no PR, merge, tag or production deployment. Backend: only the Session 
 unchanged (`33e35e4ac5e798d7`). The isolated preview `/s10-preview/` was retired (Part G).
 
 Architecture and scope: [SPRINT-10-ARCHITECTURE.md](SPRINT-10-ARCHITECTURE.md).
+
+## Part V — closure readiness: delivered, deferred, technical debt (PM, 2026-10-08)
+
+**Authoritative.** This part is the single list of what Sprint 10 delivered and where every
+incomplete item goes. Where an earlier part (scope outcome, §9, §10, B.1, B.11) says otherwise, this
+part wins. Owner, 2026-10-08: 3D realism and the jumper fix accepted; realism development stopped.
+
+### V.1 PM decisions recorded (2026-10-08)
+
+| Decision | Outcome | Where |
+|---|---|---|
+| **PM-9 Transient** | Limited transient simulation **is part of V1**: deterministic fixed-step time-domain simulation of **local (non-ESP32)** circuits with the **capacitor**. ESP32 transient integration is **not** supported today; it stays a V1 roadmap item | `V1-PRODUCT-SCOPE.md` §6.0a, §4.3, §5, §18, §20, §21 |
+| **PM-10 Views** | Circuit = authoritative construction/topology editing; Schematic = derived electrical representation; 3D = derived physical representation (inspection, camera, selection, shared Inspector, operating approved controls during Run). No topology editing, authoritative layout, rewiring or saved layout in 3D; full 3D editing deferred | scope §4.4, §18, §20, §21 |
+| **PM-11 ESP32 I2C** | A **V1 planned capability** (with the I2C LCD), implemented in runtime Phase R3. LCD: I2C only, no parallel wiring | scope §5, §6.0a, §7.4, §20, §21 |
+
+### V.2 Delivered (on dev-lab, frontend `7da5c8b`, runtime `80448f9`)
+
+| Area | Delivered | Parts |
+|---|---|---|
+| Physical 3D | Real-scale models of every catalog part (ESP32 asset, passives, new parts), materials, lighting, shadows, depth of field, Realistic / Engineering modes, layers (labels, grid), standard views, body separation, adaptive quality tiers, diagnostics readout; accepted by the owner | F, H–J, N, O, Q–U |
+| 3D interaction | Selection of parts and wires (shared Inspector), operating the toggle switch and push button during Run (local and ESP32/QEMU), keyboard and screen-reader controls | L, M |
+| Wires and routing | Header keep-out and header band (2D), fresh post-separation 3D routes with local heights and fan-out, false-hop fix, physical cable drape, jumper exit geometry, net wire colours shared by 2D and 3D with a manual override | E, F, K, L, O, U |
+| Engine | Part-model framework, diagnostics, 2N3904 Gummel–Poon, accept-by-residual path, internal time-domain core, **limited transient (capacitor, local)** | §2, B |
+| Catalog | LED colour cards TLHY5400 / TLHG4900 (local and ESP32); RGB LED, LDR, buzzer, relay, NPN 2N3904, capacitor, PIR, 8x8 LED matrix (**local circuits**) | §3, B, P |
+| Runtime | Session Host on the Sprint 10 engine (LED cards end to end; guard refusing parts the runtime cannot simulate; `/health` runtime identity); QEMU and build service unchanged | P |
+| Product | Build identity (`/version.json`, status line, verified deploys), new-version banner, product footer, `esp32-bench` and `rc-fade` examples | G, H, I, O, B |
+
+### V.3 Every incomplete item and its destination
+
+Statuses: **delivered** · **deferred to Sprint 11** · **deferred within V1** · **deferred to V1.1+**.
+
+| Item | Sprint 10 state (audit) | Destination | Notes |
+|---|---|---|---|
+| RGB LED, LDR, buzzer, relay, NPN transistor, capacitor, PIR, 8x8 matrix **in ESP32 projects** | PARTIAL (local only; refused with ESP32) | **Deferred to Sprint 11** — runtime **Phase R1**, primary target | Where technically appropriate; the capacitor additionally needs ESP32 transient integration (below) |
+| Microsecond input timing (runtime R2) | NOT IMPLEMENTED | **Deferred to Sprint 11** (immediate follow-up) | Needed by the ultrasonic and temperature/humidity sensors and other timing-sensitive peripherals |
+| Ultrasonic sensor (HC-SR04) | INTERNAL ONLY (engine model) | **Deferred within V1** | After R2 |
+| Temperature/humidity sensor (DHT22) | INTERNAL ONLY (engine model) | **Deferred within V1** | After R2 |
+| ESP32 I2C bus + I2C LCD 16x2 (runtime R3) | INTERNAL ONLY (engine model) | **Deferred within V1** | PM-11; I2C only |
+| ESP32 PWM + servo SG90 (runtime R4) | INTERNAL ONLY (engine model) | **Deferred within V1** | |
+| ESP32 transient integration | NOT IMPLEMENTED | **Deferred within V1** | PM-9 |
+| 555 timer | NOT IMPLEMENTED | **Deferred within V1** | Only after an explicit pin-level model approval |
+| Multi-position switch | NOT IMPLEMENTED | **Deferred within V1** | |
+| Broader LED matrix support (other sizes) | INTERNAL ONLY (engine abstraction) | **Deferred within V1** | |
+| Realistic-scale bench supply | NOT IMPLEMENTED (miniature kept) | **Deferred within V1** (later / polish) | |
+| Fuller ESP32 pin-label presentation in 3D | NOT IMPLEMENTED | **Deferred within V1** (later / polish) | Labels layer names parts only |
+| ESP32 traffic-light example | NOT IMPLEMENTED | **Deferred within V1** (later / polish) | Needs a build-service example record |
+| Capacitor non-ideal effects (leakage, ESR) | NOT IMPLEMENTED (ideal capacitor) | **Deferred within V1** (later / polish) | |
+| Potentiometer | DEFERRED | **Deferred to V1.1+** | Unchanged (PM-6); not promoted |
+| Full 3D editing | NOT IMPLEMENTED | **Deferred** beyond V1 (PM-10) | |
+| Hardware-GPU performance record | NOT MEASURED | Technical debt, V.4 #2 | |
+| All other Sprint 10 goals and owner/PM-directed items (V.2) | — | **Delivered** | |
+
+### V.4 Technical debt — production notes
+
+**Should fix before production:**
+1. **The new Sprint 10 components are not usable in ESP32 projects** (refused by design until
+   runtime Phase R1).
+2. **Hardware-GPU performance lacks a formal benchmark record** (all recorded timings are the
+   software renderer; the owner's Intel Iris Xe was checked visually, not timed).
+3. **Forward compatibility:** project files using Sprint 10 additions (the optional wire `color`
+   field, the new part types, the `lux` / `farad` units) are rejected by older builds as invalid
+   files, because `SCHEMA_VERSION` stayed 3 (no migration was needed: old files load unchanged).
+4. **Large-scene 3D / routing performance** remains a monitoring item (42-part stress project:
+   scene derivation 16 -> ~74 ms after Part K; no CI stress test for 3D).
+5. **Live-check scripts are outside tracked paths** (`.tmp/s10/live3d.mjs`, `demo10.mjs`,
+   `smoke-s9.ts`, `live3dctl.mjs`, `live3dctl-bench.mjs`; `.tmp/` is git-ignored).
+6. **The unexplained six-minute runtime session** (R.6: a leftover session outlived its 30 s lease)
+   stays part of the capacity/security follow-up.
+
+None is fixed in this documentation step.
+
+### V.5 Documentation reconciled (docs only, no product code)
+
+- `docs/product/V1-PRODUCT-SCOPE.md`: PM-9..PM-11 (§21), §4.4 views, §6.0a delivery state;
+  transient, 3D, I2C / PWM / µs timing statements corrected in §4.3, §5, §6.1, §7.4, §9.4, §18, §20,
+  §22, §24.
+- `docs/sprints/SPRINT-10-ARCHITECTURE.md`: current-state note; §1 marked original; §2 exposure
+  note; §3 "never editable" -> no topology editing; grid scale 2.54 -> **3.175 mm** (code:
+  `physical.ts`).
+- `docs/product/V1-IMPLEMENTATION-ROADMAP.md`: revision note; closed catalog, transient and I2C
+  statements annotated.
+- `docs/product/3D-HIGH-FIDELITY-ROADMAP.md`: status line.
+- `docs/runtime/R3-CAPABILITY-PLAN.md`: phase-name mapping (R1–R4 = R3a–R3d);
+  `docs/runtime/PHASE-R1-DEPLOYMENT-PLAN.md`: status (Sprint 11 primary target; what Part P already
+  did).
+- This file: header, B.1 footnote, B.11, the original scope outcome, §2, §9, §10 marked
+  superseded; this Part V.
 
 ## Part U — jumper exit geometry: the wire out of an ESP32 header housing (owner review, 2026-10-08)
 
@@ -2604,6 +2692,9 @@ COMPLETE means every column is done and tested; anything else says what is missi
 
 "Local" = circuits without an ESP32. With an ESP32 every new part is refused at Run with a
 specific message (`mcu_component_unsupported`): the deployed Session Host predates the part models.
+*Update (Part P, 2026-10-07): the Session Host now runs the Sprint 10 engine, but the refusal is
+kept deliberately (its guard refuses every `mcuRuntime: false` part) until runtime Phase R1. Final
+destinations of every non-COMPLETE row: Part V.*
 
 ### B.2 Engine
 
@@ -2699,6 +2790,9 @@ and the deployed preview (`preview-s10-*`).
 
 ### B.11 Blockers and decisions still required
 
+*Superseded by Part V (2026-10-08): each item below now has an approved destination (R1 = Sprint 11
+primary target; R2 Sprint 11 follow-up; R3/R4, the 555 and the multi-position switch V1 roadmap).*
+
 1. **ESP32 + new parts**: the deployed Session Host predates the part models, so every new part is
    refused in ESP32 projects. Lifting it needs a backend redeploy from this branch (approval).
 2. **Servo, I2C LCD, HC-SR04, DHT22**: need runtime work (PWM/LEDC routed to pads with edge times;
@@ -2718,7 +2812,10 @@ same branch and preview, in the PM's tier order (RGB LED, LDR, buzzer, relay, se
 sensors, matrix, transistor, capacitor/555). The rest of this record is updated as that work lands;
 the section below records the first overnight outcome.
 
-## Scope outcome (read first)
+## Scope outcome (original, 2026-10-05; superseded)
+
+*Superseded by the PM-6 revision above (2026-10-06) and by Part V (2026-10-08). Kept as the record
+of the first overnight outcome; it no longer describes the product.*
 
 The authoritative product scope keeps the V1 catalog **closed at eight types** (PM-6). Transistors,
 capacitors, relays, sensors, 555s and I2C displays are deferred; RGB LED, buzzer and servo are
@@ -2792,7 +2889,9 @@ header in 3D. Two-terminal parts sit on a 12.7 mm (0.5 in) lead span. Along the 
 - No time base.
 
 **Added: an internal time-domain core** (`Circuit.transient`, `Capacitor`, `TimeStep`). It is
-not exposed.
+not exposed. *(Later, Part B: the capacitor became user-facing in local circuits through
+`EngineSession.advance()`; limited transient is part of V1, PM-9. `Circuit.transient()` itself stays
+a test-only primitive.)*
 - **Additive.** Without a time step every device and every DC result is untouched; the Gate A
   golden values stay bit-identical.
 - **Companion models.** Backward Euler or trapezoidal, solved with the same Newton, active-set
@@ -2947,6 +3046,10 @@ Three.js and the models stay lazy: nothing 3D enters the startup bundle.
 
 ## 9. Known limitations
 
+*Original list (2026-10-05). The first, second and last items were overtaken (new types in Part B;
+the capacitor runs time-stepped in local circuits; 3D picking in Part L and controls in Part M);
+current limitations and deferrals: Part V.*
+
 - **No new component types.** PM-6 keeps the catalog closed; see the scope outcome.
 - **The time-domain core is internal.** No user-facing capacitor or transient feature exists.
 - **The bench supply is at reduced, symbolic scale** (stated); the other parts are at real size.
@@ -2963,6 +3066,9 @@ Three.js and the models stay lazy: nothing 3D enters the startup bundle.
   PCB-class autorouter.
 
 ## 10. Deferred / for a PM decision
+
+*Original list (2026-10-05). Resolved: the PM-6 revision (2026-10-06), the transient decision
+(PM-9, 2026-10-08) and 3D picking (Part L). Every remaining item has a destination in Part V.*
 
 - **A PM-6 revision**, to choose which new component types to approve. Candidates and what each
   needs:
