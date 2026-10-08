@@ -26,6 +26,37 @@ import { ESP32_DEVKITC_WROOM32, boardPinPosition } from '@tbi-lab/domain';
 import { ESP32_DEVKITC as D, ESP32_PCB_BOTTOM, ESP32_PCB_TOP } from '../physical.js';
 import { CHIPS, CHIP_SIZE, LAYOUT, MARK_ATLAS } from './esp32Layout.js';
 
+/**
+ * A square prism (side `side`, corners chamfered by `c`) along +Y, centred on the origin, open
+ * ended (its ends are covered by the pin's tips); flat-shaded so each face keeps its own normal.
+ */
+function chamferedSquarePrism(side: number, c: number, length: number): THREE.BufferGeometry {
+  const h = side / 2;
+  const ring: [number, number][] = [
+    [h - c, -h],
+    [h, -h + c],
+    [h, h - c],
+    [h - c, h],
+    [-h + c, h],
+    [-h, h - c],
+    [-h, -h + c],
+    [-h + c, -h],
+  ];
+  const pos: number[] = [];
+  const y0 = -length / 2;
+  const y1 = length / 2;
+  for (let i = 0; i < ring.length; i++) {
+    const [ax, az] = ring[i]!;
+    const [bx, bz] = ring[(i + 1) % ring.length]!;
+    // Outward-facing (counter-clockwise seen from outside).
+    pos.push(ax, y0, az, bx, y1, bz, bx, y0, bz, ax, y0, az, ax, y1, az, bx, y1, bz);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.computeVertexNormals();
+  return g;
+}
+
 /** Along a header, the real pin centre (2.54 mm pitch, centred on the board origin). */
 const pinZ = (position: number) => (position - (D.headerPins + 1) / 2) * D.pinPitchMm;
 const ROW_X = D.headerRowSpacingMm / 2;
@@ -54,7 +85,7 @@ function materials() {
     gold: phys({ color: '#e0b860', metalness: 1, roughness: 0.25 }, 'enig_gold'),
     // Lead-free solder: satin grey-silver, not a mirror (high-fidelity pass 3).
     solder: phys({ color: '#c3c7cb', metalness: 1, roughness: 0.34 }, 'solder'),
-    pinGold: phys({ color: '#d9b25a', metalness: 1, roughness: 0.28 }, 'pin_gold'),
+    pinGold: phys({ color: '#e2bc68', metalness: 1, roughness: 0.22 }, 'pin_gold'),
     // PBT header housing: matte black with a faint sheen.
     housing: phys({ color: '#121214', roughness: 0.62 }, 'header_pbt'),
     // The module: black FR-4 substrate (glossy mask), its top drawn at runtime; a stamped
@@ -251,7 +282,10 @@ export function authorEsp32DevkitC(): THREE.Group {
   const pinLen = yt + D.pinStubAboveMm;
   const tip = 0.28;
   const s = D.pinSizeMm;
-  const shaft = new THREE.BoxGeometry(s, pinLen - 2 * tip, s);
+  // Realism pass 7: the square wire's corners are slightly broken (a chamfered square, eight
+  // flat faces): each narrow corner face catches a thin highlight. With sharp edges every face
+  // reflected one flat colour. (A rounded box costs about 50 KB of the asset budget.)
+  const shaft = chamferedSquarePrism(s, 0.07, pinLen - 2 * tip);
   const pyramid = new THREE.CylinderGeometry(s * 0.3, s / Math.SQRT2, tip, 4, 1).rotateY(
     Math.PI / 4,
   );
