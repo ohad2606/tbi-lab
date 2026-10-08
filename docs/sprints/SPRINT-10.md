@@ -1,11 +1,11 @@
 # Sprint 10 — Physical 3D, engine time-domain core, the approved component families
 
-**Status (2026-10-07):** developed on `sprint-10` (worktree `~/projects/tbi-lab-s10`), from
-`7f09d74` = `main` = `sprint-9-complete`. **dev-lab.tbi-tech.net serves frontend `c6e8f25` and
-runtime `80448f9`** (frontend `v0.10-dev · c6e8f25` from `/version.json` and the served
+**Status (2026-10-08):** developed on `sprint-10` (worktree `~/projects/tbi-lab-s10`), from
+`7f09d74` = `main` = `sprint-9-complete`. **dev-lab.tbi-tech.net serves frontend `db9eb20` and
+runtime `80448f9`** (frontend `v0.10-dev · db9eb20` from `/version.json` and the served
 `index.html`; runtime `v0.10-dev · 80448f9` from the Session Host's `/health`, also shown in the
-version details as *Runtime ID*). Rollbacks kept: frontend `80448f9`, runtime/services release
-`c31d62e`. Part Q: realism pass 5 and the 3D layer model (Realistic / Engineering). Part P: runtime sync (the Session Host runs the Sprint 10 engine: yellow/green LED
+version details as *Runtime ID*). Rollbacks kept: frontend `c6e8f25`, runtime/services release
+`c31d62e`. Part R: realism pass 6 (wire jackets, shadow penumbra, studio room, Dupont). Part Q: realism pass 5 and the 3D layer model (Realistic / Engineering). Part P: runtime sync (the Session Host runs the Sprint 10 engine: yellow/green LED
 cards end to end). Part O: realism pass 4. Part N: realism pass 3. Part M: operating the toggle switch and push button in 3D during Run.
 Part L: false-hop fix, net wire colours, limited 3D picking. Part K: fresh 3D wire routes (owner review: PIR alarm, relay -> LED).
 Part J: visual-only 3D body separation (owner review). Part I: realism
@@ -17,6 +17,79 @@ Not done: no PR, merge, tag or production deployment. Backend: only the Session 
 unchanged (`33e35e4ac5e798d7`). The isolated preview `/s10-preview/` stays.
 
 Architecture and scope: [SPRINT-10-ARCHITECTURE.md](SPRINT-10-ARCHITECTURE.md).
+
+## Part R — realism pass 6 (owner: "continue", 2026-10-08)
+
+Continues the realism run against the three CG cues of Q.10 E. Full tier only: the reduced
+(software) tier renders exactly as before (same draw calls, programs and textures, R.3).
+Images: full tier rendered in software at DPR 1, as before; **no hardware-tier timings**.
+
+### R.1 Changes
+
+- **Wire jackets**: an extruded PVC surface (faint die lines round the jacket, a slow handling
+  ripple, a few scuffs), one 256 x 64 texture used as bump + roughness. Mapped by arc length
+  (`wireSurfaceUv`: the tube's own rings, since its segments are not evenly spaced), each wire
+  starting at its own point of the tile (from its id), so no two wires repeat the same stretch.
+- **Shadows**: variance shadow maps with a blurred penumbra (radius 5, 12 samples). three.js'
+  PCF uses a per-pixel rotated five-tap kernel; without temporal accumulation it left a dithered,
+  saw-toothed edge along every wire's shadow.
+- **Studio environment** (reflections): a room, not a light tent. Darker walls and floor
+  (top `#c9ccd0`, horizon `#8c9095`, floor `#55595e`, were `#eceef0` / `#c4c8cc` / `#7e8286`), the
+  same softboxes, plus a black flag on the right; studio intensity 0.85 -> 1.1 so overall exposure
+  is unchanged (mat brightness within 1/255 of before). Chrome and steel now reflect contrast; the
+  toggle's bushing and nut read as plated metal instead of grey plastic.
+- **Dupont housing**: charcoal glass-filled nylon (`#18181b`, roughness 0.46; was near-void
+  `#101012`, 0.5). A larger edge radius was tried and reverted: the rounded body no longer met
+  the chamfered top cleanly.
+- **Batching fix** (`db9eb20`): the jacket maps made the static batcher skip every jacket (textured
+  materials were never merged): 233 -> 383 draw calls on the bench. A material flagged
+  `userData.batchUv` now batches with its UVs; back to 233.
+
+### R.2 Numbers (full tier, software, same cameras; `s10-evidence/realism6/stats-*.json`)
+
+Draw calls, triangles, materials: identical on every one of the 23 cameras (bench 3/4: 233 draw
+calls, 351k triangles, 73 materials). Textures 37 -> 39 (jacket surface, VSM blur target);
+geometries 70 -> 71; GPU memory estimate 43.2 -> 43.5 MB.
+
+### R.3 Software tier (`perf-3d.spec.ts`, A/B back to back)
+
+Scene counts identical (bench: 85 draw calls, 5 programs, 16 textures; ESP32: 44; dense: 143).
+Timings within noise (bench orbit 436 -> 431 ms/step, pan 422 -> 447, first open 6.29 -> 6.31 s,
+re-open 5.41 -> 5.39 s; heap 10 MB after 20 cycles, 0 canvases left). Absolute timings are about
+twice Part Q's: another session was running its own headless browser on this host (load ~3).
+
+### R.4 Evidence
+
+`s10-evidence/realism6/`: 23 same-camera before (dev-lab `c6e8f25`) / after (`db9eb20`) pairs,
+`cameras.json`, stats. The visible differences are modest: smoother wire shadows (10, 11, 18),
+metal with real reflection contrast (17 toggle, 12 PSU posts), charcoal housings (09). The jacket
+texture is visible only in close-ups.
+
+### R.5 Regression and deployment
+
+- `db9eb20`: typecheck, lint, unit **847/847**, build, e2e **163 passed / 3 skipped**, browser PASS.
+- Deployed with `deploy/dev-lab/publish-frontend.sh db9eb20` (all checks passed); dev-lab serves
+  `db9eb20`. Rollback: re-point `current` to `c6e8f2541eced72ce33a50b5b220084da15edce8`.
+  Backend untouched (Session Host runtime `80448f9`).
+- Live (via the gate's origin): 3D 7/7, demo 40/40, Sprint 9 smoke ALL PASSED, real-QEMU control
+  input-echo 17/17 and bench 17/17 (D1, D3 yellow and D4 green lit in 3D; Stop clean; no page
+  errors). The extra lit-bench screenshot script timed out *taking the screenshot* under host
+  load after Run; its session was left running (see R.6).
+
+### R.6 Open item
+
+The crashed screenshot script left one runtime session (`tbi-qemu@2f79fead…`, started 05:54:06
+UTC) running after its browser exited: it was not reclaimed within the 30 s lease while observed
+(more than 5 minutes). Not investigated further (no service access was taken); the host's
+30-minute maximum lifetime bounds it. Worth a look: the lease should have ended it.
+
+### R.7 Self-critique
+
+The bar (a photographed bench) is still **not met**. This pass removes one artefact (dithered
+shadow edges) and one material failure (metal reading as grey plastic); jackets and housings
+improve only up close. Remaining cues, unchanged in rank: uniform surfaces and identical parts;
+the miniature PSU and ground posts next to true-scale parts; missing edge highlights on small
+parts (chip bodies, header plastic, PCB edge).
 
 ## Part Q — realism pass 5 and the 3D layer model (owner direction, 2026-10-07)
 
