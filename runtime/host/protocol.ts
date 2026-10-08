@@ -98,6 +98,13 @@ export type MirrorControl = {
   currentLimit?: number;
   outputEnabled?: boolean;
   closed?: boolean;
+  /**
+   * Sprint 11 (ADR-010, additive within `/2`): a part model's declared LIVE parameters (a PIR's
+   * `motion`, a photoresistor's `illuminance`), in SI units. Bounded here; the host then checks
+   * them against the component's catalog type when the command arrives, and the engine again
+   * when it applies.
+   */
+  params?: Record<string, number | boolean | string>;
 };
 
 interface CommandBase {
@@ -181,7 +188,10 @@ export type CommandRejection =
   | 'unknown_component'
   | 'unsupported_control'
   | 'stale_revision' // mirror: projectRevision below the latest accepted mirror revision
-  | 'duplicate_revision'; // mirror: projectRevision equal to it (retry of an accepted edit)
+  | 'duplicate_revision' // mirror: projectRevision equal to it (retry of an accepted edit)
+  // Sprint 11 (ADR-010), additive:
+  | 'invalid_value' // mirror: a live parameter of the wrong kind or outside its catalog range
+  | 'rate_limited'; // more commands than the session accepts per second
 
 /**
  * Mirror revisions of a session (status `revisions`). `snapshot`: the revision the session was
@@ -211,6 +221,25 @@ const DEC = /^(0|[1-9][0-9]{0,19})$/;
 const isInt = (v: unknown, min: number, max: number): v is number =>
   typeof v === 'number' && Number.isInteger(v) && v >= min && v <= max;
 const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+
+/** Sprint 11 (ADR-010): bounds of a mirror's `params` (live part parameters). */
+export const MAX_LIVE_PARAMS = 8;
+export const MAX_LIVE_PARAMS_BYTES = 512;
+const PARAM_KEY = /^[a-z][a-zA-Z0-9]{0,31}$/;
+
+function validParams(p: unknown): string | null {
+  if (!isObj(p)) return 'control.params';
+  const keys = Object.keys(p);
+  if (keys.length === 0 || keys.length > MAX_LIVE_PARAMS) return 'control.params';
+  for (const k of keys) {
+    if (!PARAM_KEY.test(k)) return 'control.params';
+    const v = p[k];
+    const ok = typeof v === 'boolean' || finite(v) || (typeof v === 'string' && v.length <= 32);
+    if (!ok) return 'control.params';
+  }
+  if (Buffer.byteLength(JSON.stringify(p)) > MAX_LIVE_PARAMS_BYTES) return 'control.params';
+  return null;
+}
 
 /** Hard structural bounds on a snapshot (the engine validates semantics). */
 export const MAX_COMPONENTS = 500;
@@ -304,7 +333,7 @@ export function validateCommand(v: unknown): Validation<SessionCommand> {
     const c = v.control;
     if (
       !isObj(c) ||
-      !onlyKeys(c, ['setpointVoltage', 'currentLimit', 'outputEnabled', 'closed']) ||
+      !onlyKeys(c, ['setpointVoltage', 'currentLimit', 'outputEnabled', 'closed', 'params']) ||
       Object.keys(c).length === 0
     )
       return bad('control');
@@ -314,6 +343,10 @@ export function validateCommand(v: unknown): Validation<SessionCommand> {
     if (c.outputEnabled !== undefined && typeof c.outputEnabled !== 'boolean')
       return bad('control.outputEnabled');
     if (c.closed !== undefined && typeof c.closed !== 'boolean') return bad('control.closed');
+    if (c.params !== undefined) {
+      const p = validParams(c.params);
+      if (p) return bad(p);
+    }
     return { ok: true, value: v as unknown as MirrorCommand };
   }
   if (v.category === 'transient') {

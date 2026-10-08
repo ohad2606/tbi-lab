@@ -96,6 +96,13 @@ export class McuSimulation implements SimulationHost {
   private outcome: SolveOutcome | null = null;
   private solves = 0;
   private pressed = new Set<string>();
+  /**
+   * Sprint 11 (ADR-010): live mirrors are coalesced per component while one is in flight; the
+   * next one carries the latest values at the latest revision (the protocol allows revision
+   * gaps), so ordinary use never approaches the host's command limits.
+   */
+  private mirrorsInFlight = new Set<string>();
+  private pendingMirrors = new Map<string, { control: LiveControl; projectRevision: number }>();
   private stopRequested = false;
   private stopTimer: ReturnType<typeof setTimeout> | null = null;
   private startedAt = 0;
@@ -139,6 +146,8 @@ export class McuSimulation implements SimulationHost {
     this.outcome = null;
     this.solves = 0;
     this.pressed.clear();
+    this.mirrorsInFlight.clear();
+    this.pendingMirrors.clear();
     this.stopRequested = false;
     this.startedAt = this.now();
     const planned = buildSessionRequest(doc, (board) =>
@@ -220,14 +229,31 @@ export class McuSimulation implements SimulationHost {
   control(component: string, control: LiveControl, projectRevision: number): boolean {
     const session = this.session;
     if (this.stateValue.status !== 'running' || !session) return false;
+    if (this.mirrorsInFlight.has(component)) {
+      const prev = this.pendingMirrors.get(component);
+      this.pendingMirrors.set(component, {
+        control: mergeControls(prev?.control, control),
+        projectRevision: Math.max(prev?.projectRevision ?? 0, projectRevision),
+      });
+      return true;
+    }
+    this.mirrorsInFlight.add(component);
     const runId = this.runId;
+    const next = () => {
+      if (runId !== this.runId) return;
+      this.mirrorsInFlight.delete(component);
+      const pending = this.pendingMirrors.get(component);
+      this.pendingMirrors.delete(component);
+      if (pending) this.control(component, pending.control, pending.projectRevision);
+    };
     void session
       .command({ category: 'mirror', projectRevision, component, control })
       .then((r) => {
-        if (runId === this.runId && !r.accepted)
-          this.failAndRelease({ kind: 'runtime', code: 'mirror_failed', detail: r.reason });
+        if (runId !== this.runId) return;
+        if (!r.accepted) return this.failAndRelease(commandRejection(r.reason));
+        next();
       })
-      .catch((e) => runId === this.runId && this.failAndRelease(transportFailure(e)));
+      .catch((e) => runId === this.runId && this.failAndRelease(commandFailure(e)));
     return true;
   }
 
@@ -245,9 +271,11 @@ export class McuSimulation implements SimulationHost {
       .then((r) => {
         if (runId !== this.runId || r.accepted) return;
         if (pressed) this.pressed.delete(component);
+        if (r.reason === 'rate_limited')
+          return this.failAndRelease({ kind: 'runtime', code: 'commands_rate_limited' });
         this.warn('transient_rejected', { component, reason: r.reason });
       })
-      .catch((e) => runId === this.runId && this.failAndRelease(transportFailure(e)));
+      .catch((e) => runId === this.runId && this.failAndRelease(commandFailure(e)));
     return true;
   }
 
@@ -256,6 +284,8 @@ export class McuSimulation implements SimulationHost {
     const session = this.session;
     const s = this.stateValue.status;
     this.pressed.clear();
+    this.mirrorsInFlight.clear();
+    this.pendingMirrors.clear();
     if (s === 'stopped' || s === 'failed') {
       if (s === 'failed') this.set({ status: 'stopped' });
       return;
@@ -439,6 +469,32 @@ export class McuSimulation implements SimulationHost {
       }
     }
   }
+}
+
+/** Several persisted edits of one component in one mirror: later values win. */
+function mergeControls(a: LiveControl | undefined, b: LiveControl): LiveControl {
+  if (!a) return b;
+  const params = a.params || b.params ? { ...a.params, ...b.params } : undefined;
+  return { ...a, ...b, ...(params ? { params } : {}) };
+}
+
+/** A command the host answered with a rejection (409): its reason, as a product failure. */
+function commandRejection(reason: string | undefined): SimFailure {
+  if (reason === 'rate_limited') return { kind: 'runtime', code: 'commands_rate_limited' };
+  return { kind: 'runtime', code: 'mirror_failed', ...(reason ? { detail: reason } : {}) };
+}
+
+/**
+ * A command that failed at the transport (Sprint 11): a refusal by the host's validator (400, e.g.
+ * an older runtime without live part parameters) or the request rate is about the COMMAND, never
+ * "the runtime service is not reachable".
+ */
+function commandFailure(e: unknown): SimFailure {
+  if (e instanceof RuntimeTransportError) {
+    if (e.code === 'refused') return { kind: 'runtime', code: 'command_refused' };
+    if (e.code === 'rate_limited') return { kind: 'runtime', code: 'commands_rate_limited' };
+  }
+  return transportFailure(e);
 }
 
 function transportFailure(e: unknown): SimFailure {

@@ -45,6 +45,11 @@ export interface HostConfig {
   /** Wall window in which less than 1 ms of simulation progress fails the session. */
   stallTimeoutMs: number;
   maxQueuedCommands: number;
+  /**
+   * Sprint 11 (ADR-010): commands a session accepts per wall-clock second (mirrors and transient
+   * input together), on top of the per-principal request rate. Beyond it: `rate_limited`.
+   */
+  maxCommandsPerSecond: number;
   /** Events retained per session for ordered delivery and reconnect replay. */
   eventLogCapacity: number;
   /** Serial bytes buffered per publish window; the excess is counted as dropped. */
@@ -78,6 +83,7 @@ export function defaultConfig(
     startupTimeoutMs: 20_000,
     stallTimeoutMs: 10_000,
     maxQueuedCommands: 256,
+    maxCommandsPerSecond: 50,
     eventLogCapacity: 4096,
     serialWindowMaxBytes: 16 * 1024,
     maxSessionStorageBytes: 16 * 1024 * 1024,

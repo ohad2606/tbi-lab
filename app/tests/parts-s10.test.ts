@@ -7,6 +7,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   CATALOG,
+  defaultParams,
   createPackage,
   createSnapshot,
   parsePackage,
@@ -101,6 +102,46 @@ describe('Sprint 10 parts: catalog and serialization', () => {
       expect(r.error.code).toBe('mcu_component_unsupported');
       expect(r.error.components.sort()).toEqual(['BZ1', 'D1', 'K1', 'LDR1']);
     }
+  });
+
+  it('Sprint 11: a capacitor in an ESP32 project is refused as time-dependent, by name', () => {
+    let doc = sprint10Circuit().doc;
+    doc = { ...doc, components: doc.components.filter((c) => c.type === 'component.resistor') };
+    const withBoard = (d: typeof doc, extra: typeof doc.components) => ({
+      ...d,
+      components: [
+        ...d.components,
+        ...extra,
+        {
+          id: 'U1',
+          type: 'board.esp32_devkitc_wroom32' as const,
+          typeVersion: 1,
+          params: { firmware: 'program' },
+        },
+      ],
+      layout: {
+        ...d.layout,
+        components: {
+          ...d.layout.components,
+          U1: { x: 0, y: -600, rotation: 0 as const },
+          C1: { x: 400, y: -600, rotation: 0 as const },
+        },
+      },
+    });
+    const r = buildSessionRequest(
+      withBoard(doc, [
+        {
+          id: 'C1',
+          type: 'component.capacitor',
+          typeVersion: 1,
+          params: defaultParams(CATALOG['component.capacitor']),
+        },
+      ]),
+      () => ({ code: 'mcu_no_program', components: ['U1'] }),
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok)
+      expect(r.error).toEqual({ code: 'mcu_component_time_dependent', components: ['C1'] });
   });
 });
 

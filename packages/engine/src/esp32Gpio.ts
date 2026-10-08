@@ -34,6 +34,17 @@ export const V_IH_V = 0.75 * VDD_V;
 export const V_IL_V = 0.25 * VDD_V;
 
 /**
+ * The specified pad voltage range (Sprint 11, R1), ESP32 Series Datasheet v5.3, Table 5-3
+ * "DC Characteristics (3.3 V, 25 degC)", p. 52: V_IH max = VDD + 0.3 V, V_IL min = -0.3 V (the
+ * PDF does not render the minus sign; see docs/sprints/s11-evidence/datasheets/FACTS.md). Table
+ * 5-1 (absolute maximum, p. 51) bounds the supply pins to -0.3 ... 3.6 V. A pad outside this range
+ * is over-stressed: the pins are not 5 V tolerant. Used for warnings only (ratings.ts), never by
+ * the solver.
+ */
+export const V_PIN_MAX_V = VDD_V + 0.3;
+export const V_PIN_MIN_V = -0.3;
+
+/**
  * Output driver on-resistance, derived from the datasheet drive-current points.
  *
  *   High side: the datasheet guarantees V_OH >= 2.64 V while sourcing I_OH = 40 mA.

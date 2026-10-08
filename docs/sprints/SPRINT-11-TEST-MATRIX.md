@@ -34,7 +34,7 @@ silent no-op or a plausible-looking value.
 | ID | Layer | Case | Expected |
 |---|---|---|---|
 | T-D1 ✗ | E | Input pad held at 5 V through a divider | `gpio_input_overvoltage` (> 3.6 V) |
-| T-D2 ✗ | E | Output-HIGH pad with a 1 kΩ pull-up to 5 V | `gpio_reverse_current` |
+| T-D2 ✗ | E | Output-HIGH pad with a 1 kΩ pull-up to 5 V | `gpio_output_overvoltage` |
 | T-D3 | E | Every existing example and fixture | No new warning (engine A/B: identical outcomes except the new diagnostic field where applicable) |
 | T-D4 | E/Q | The same over-voltage circuit locally and on the host | Identical warnings |
 

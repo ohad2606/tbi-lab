@@ -218,7 +218,11 @@ describe('Sprint 10: parts offered only where the board runtime can simulate the
     doc = place(doc, 'board.esp32_devkitc_wroom32', 0, 0).doc;
     for (const t of CATALOG_ORDER)
       expect(placementBlock(doc, t), t).toBe(
-        CATALOG[t].mcuRuntime === false ? 'part_needs_runtime' : null,
+        CATALOG[t].mcuRuntime !== false
+          ? null
+          : CATALOG[t].mcuRuntimeReason === 'time_dependent'
+            ? 'part_time_dependent'
+            : 'part_needs_runtime',
       );
     // The original parts stay available with the board.
     expect(placementBlock(doc, 'component.led')).toBeNull();
@@ -226,5 +230,8 @@ describe('Sprint 10: parts offered only where the board runtime can simulate the
     expect(placementBlock(local, 'board.esp32_devkitc_wroom32')).toBe('board_needs_runtime');
     local = place(local, 'component.led', 200, 0).doc;
     expect(placementBlock(local, 'component.capacitor')).toBeNull();
+    // Sprint 11: a project whose only blocking parts are time-dependent says so.
+    const timed = place(newDoc(), 'component.capacitor', 0, 0).doc;
+    expect(placementBlock(timed, 'board.esp32_devkitc_wroom32')).toBe('board_time_dependent');
   });
 });

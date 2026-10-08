@@ -27,7 +27,7 @@
 | | |
 |---|---|
 | **Depends on** | PM approval (§4 Q1, Q6) |
-| **Changes** | (a) Host engine backstop: refuse `EngineSession.timeDependent` circuits at prepare (`unsupported_component`, reason `time_dependent`). (b) `MirrorControl.params` + bounded validation (ADR-010). (c) Client: a command 400 → `mirror_failed`, not "service not reachable". (d) Pad diagnostics `gpio_input_overvoltage`, `gpio_reverse_current` (if Q6 = yes), with ESP32 absolute maxima added to `datasheets/FACTS.md`. (e) Test harnesses: engine `mcu-parts.test.ts` (pads + parts, local vs pads-attached equivalence); runtime `r1-parts.runtime.test.ts` skeleton + fixture pairing (`runtime-fixtures.test.ts`). (f) Gate check: confirm the `gate.runtime.test.ts` fingerprints against runtime `33e35e4ac5e798d7` (the header names `979f09d739382157`) and record the result |
+| **Changes** | (a) Host engine backstop: refuse `EngineSession.timeDependent` circuits at prepare (`unsupported_component`, reason `time_dependent`). (b) `MirrorControl.params` + bounded validation (ADR-010). (c) Client: a command 400 → `mirror_failed`, not "service not reachable". (d) Pad diagnostics `gpio_input_overvoltage`, `gpio_output_overvoltage` (if Q6 = yes), with ESP32 absolute maxima added to `datasheets/FACTS.md`. (e) Test harnesses: engine `mcu-parts.test.ts` (pads + parts, local vs pads-attached equivalence); runtime `r1-parts.runtime.test.ts` skeleton + fixture pairing (`runtime-fixtures.test.ts`). (f) Gate check: confirm the `gate.runtime.test.ts` fingerprints against runtime `33e35e4ac5e798d7` (the header names `979f09d739382157`) and record the result |
 | **Tests** | T-C1…T-C9, T-D1…T-D4, T-X1…T-X3 (test matrix) |
 | **Acceptance** | All existing suites green and unchanged in value (engine A/B: original eight types bit-identical); the params validator refuses every malformed shape; the backstop refuses a capacitor even with the catalog flag removed in a test build; the stale message is gone |
 | **Risks** | The diagnostics surface warnings in existing local examples (expected none: no example exceeds 3.6 V on a pad) → checked by the A/B run |
@@ -153,7 +153,7 @@ Slices 0–6 ── Slice 7 (gate, examples, deploy)
    that reuse the existing input-echo/TbiBanks sketch, so the build service is not redeployed? Or no
    new curated examples in R1?
 6. **Q6 — Pad diagnostics.** Approve the two new engine warnings (`gpio_input_overvoltage`,
-   `gpio_reverse_current`)? They are warnings only, but they also appear in local circuits.
+   `gpio_output_overvoltage`)? They are warnings only, but they also appear in local circuits.
 7. **Q7 — Deployment.** Approve one host deployment at the end (staging, then dev-lab
    `tbi-session-host` restart only) after Slice 7, with the frontend after it — rather than per slice?
 

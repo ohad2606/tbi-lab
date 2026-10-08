@@ -82,4 +82,8 @@ export type RuntimeFailCode =
   | 'session_lost'
   | 'session_expired'
   | 'mirror_failed'
+  /** Sprint 11: the host's validator refused a live command (e.g. an older runtime). */
+  | 'command_refused'
+  /** Sprint 11: live commands exceeded the host's per-session rate. */
+  | 'commands_rate_limited'
   | 'protocol_error';

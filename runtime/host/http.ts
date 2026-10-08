@@ -35,6 +35,8 @@ import { runtimeIdentity } from './identity.js';
 
 /** Largest amount of unsent SSE data kept for a slow client before its stream is closed. */
 const STREAM_BACKLOG_BYTES = 1024 * 1024;
+/** Upper bound of one command request body (Sprint 11; commands are a few hundred bytes). */
+export const MAX_COMMAND_BYTES = 8 * 1024;
 const KEEPALIVE_MS = 15_000;
 
 class HttpError extends Error {
@@ -224,7 +226,8 @@ async function handle(
     return send(res, 202, s.status());
   }
   if (action === 'commands' && method === 'POST' && parts.length === 3) {
-    const body = await readBody(req, 64 * 1024);
+    // A command is a few hundred bytes (Sprint 11: bounded at 8 KiB, was 64 KiB).
+    const body = await readBody(req, MAX_COMMAND_BYTES);
     const r = host.command(s, body);
     if (!r.ok) throw new HttpError(r.status, r.error);
     return send(res, r.value.accepted ? 202 : 409, r.value);

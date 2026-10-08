@@ -226,11 +226,22 @@ test('ESP32 projects: parts the runtime cannot simulate are disabled in the pale
   );
   for (const t of ['component.capacitor', 'component.relay', 'sensor.pir_hc_sr501'])
     await expect(page.getByTestId(`palette-${t}`)).toBeDisabled();
+  // Sprint 11: the capacitor says why (time-dependent behaviour), in EN and HE.
+  await expect(page.getByTestId('palette-component.capacitor')).toHaveAttribute(
+    'data-unavailable',
+    'part_time_dependent',
+  );
+  await expect(page.getByTestId('palette-note-part_time_dependent')).toHaveText(
+    'Time-dependent parts are simulated only in circuits without an ESP32.',
+  );
   // The original parts stay available.
   await expect(page.getByTestId('palette-component.led')).toBeEnabled();
   await page.getByTestId('language-select').selectOption('he');
   await expect(page.getByTestId('palette-note-part_needs_runtime')).toHaveText(
     'דורש תמיכת Runtime שעדיין אינה זמינה ל־ESP32.',
+  );
+  await expect(page.getByTestId('palette-note-part_time_dependent')).toHaveText(
+    'רכיבים תלויי־זמן מדומים רק במעגלים ללא ESP32.',
   );
   await page.getByTestId('language-select').selectOption('en');
   // A local circuit holding such a part does not offer the board.

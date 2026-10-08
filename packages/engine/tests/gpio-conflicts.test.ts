@@ -22,7 +22,7 @@ import {
   type SolveOutcome,
   type SolveSuccess,
 } from '../src/index.js';
-import { Bench } from './build.js';
+import { Bench, boardBench as sharedBoardBench } from './build.js';
 
 const ok = (o: SolveOutcome): SolveSuccess => {
   if (!o.ok) throw new Error(`expected success, got ${o.error.code}`);
@@ -113,27 +113,7 @@ describe('ESP32 pads: contention and edge cases, solved as drawn', () => {
 describe('ESP32 pad diagnostics (ratingWarnings)', () => {
   /** A board wired by its terminals, plus the session over the board-less projection. */
   function boardBench(build: (b: Bench, u: string) => void) {
-    const b = new Bench();
-    const u = b.add('board.esp32_devkitc_wroom32');
-    b.wire(`${u}.gnd`, 'GND1.ref').wire('PSU1.negative', 'GND1.ref');
-    build(b, u);
-    const full = b.snapshot();
-    const projected = {
-      ...full,
-      components: full.components.filter((c) => c.id !== u),
-      connections: full.connections.filter((c) => c.component !== u),
-    };
-    // The pads attach to another terminal on their net (runtime/snapshot.ts does the same).
-    const pins = full.connections
-      .filter((c) => c.component === u && /^gpio\d+$/.test(c.terminal))
-      .map((c) => {
-        const at = projected.connections.find((x) => x.net === c.net)!;
-        return {
-          gpio: Number(c.terminal.slice(4)),
-          component: at.component,
-          terminal: at.terminal,
-        };
-      });
+    const { full, projected, pins, u } = sharedBoardBench(build);
     return { full, session: new EngineSession(projected, { pins }), u };
   }
 

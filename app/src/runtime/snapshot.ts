@@ -42,7 +42,9 @@ export type McuPlanError =
   | { code: 'mcu_ground_unconnected'; components: string[] }
   | { code: 'mcu_pin_without_circuit'; components: string[]; pins: number[] }
   /** Sprint 10: parts the deployed ESP32 runtime does not simulate yet (catalog `mcuRuntime`). */
-  | { code: 'mcu_component_unsupported'; components: string[] };
+  | { code: 'mcu_component_unsupported'; components: string[] }
+  /** Sprint 11: parts whose behaviour is defined over time, which the ESP32 runtime does not step. */
+  | { code: 'mcu_component_time_dependent'; components: string[] };
 
 /** The immutable image a session runs, and where it came from. */
 export interface ResolvedFirmware {
@@ -127,11 +129,17 @@ export function buildSessionRequest(
 
   // Parts the deployed runtime predates are refused before anything is sent (catalog flag).
   const unknown = doc.components.filter((c) => CATALOG[c.type].mcuRuntime === false);
-  if (unknown.length)
+  if (unknown.length) {
+    // The most specific reason the product can name (Sprint 11): time-dependent behaviour.
+    const timed = unknown.every((c) => CATALOG[c.type].mcuRuntimeReason === 'time_dependent');
     return {
       ok: false,
-      error: { code: 'mcu_component_unsupported', components: unknown.map((c) => c.id) },
+      error: {
+        code: timed ? 'mcu_component_time_dependent' : 'mcu_component_unsupported',
+        components: unknown.map((c) => c.id),
+      },
     };
+  }
 
   const own = doc.connections.filter((c) => c.component === board.id);
   // Circuit checks come before the firmware: they are the same whatever the board runs.

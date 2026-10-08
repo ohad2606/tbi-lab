@@ -219,6 +219,8 @@ export const he: Record<MessageKey, string> = {
     'למעגל אין מצב יציב: {components} ממשיך להדליק ולכבות את עצמו (ממסר שמנתק את הסליל של עצמו מרטט). סימולציית DC אינה יכולה להציג אחד ממצבי המעבר שלו.',
   'sim.error.mcu_component_unsupported':
     'סימולטור ה־ESP32 עדיין אינו תומך ב־{components}. רכיבים אלה מדומים במעגלים ללא ESP32; לשילובם עם הלוח נדרש עדכון של סביבת הריצה.',
+  'sim.error.mcu_component_time_dependent':
+    'ההתנהגות של {components} תלויה בזמן, וסימולטור ה־ESP32 אינו מקדם זמן מדומה. הם מדומים רק במעגלים ללא ESP32.',
   'sim.error.internal': 'אירעה שגיאה פנימית בסימולציה. הפרויקט לא נפגע.',
   'sim.error.worker_crashed':
     'הסימולציה נעצרה באופן בלתי צפוי. הפרויקט לא נפגע. לחצו על הרצה כדי לנסות שוב.',
@@ -450,6 +452,9 @@ export const he: Record<MessageKey, string> = {
   'palette.unavailable.part_needs_runtime': 'דורש תמיכת Runtime שעדיין אינה זמינה ל־ESP32.',
   'palette.unavailable.board_needs_runtime':
     'לא זמין כל עוד בפרויקט יש רכיבים שה־Runtime של ESP32 עדיין אינו תומך בהם.',
+  'palette.unavailable.part_time_dependent': 'רכיבים תלויי־זמן מדומים רק במעגלים ללא ESP32.',
+  'palette.unavailable.board_time_dependent':
+    'לא זמין כל עוד בפרויקט יש רכיבים תלויי־זמן (הם מדומים רק ללא ESP32).',
   'palette.group.sensors': 'חיישנים',
   'palette.group.output': 'צליל ואיתות',
   'palette.group.switches': 'מתגים',
@@ -472,6 +477,10 @@ export const he: Record<MessageKey, string> = {
     '{pin} ביציאה HIGH מחובר ישירות ל־GND: {value} (דירוג ההנעה {limit})',
   'rating.row.gpio_short_supply':
     '{pin} ביציאה LOW מחובר ישירות ל־+ של ספק: {value} (דירוג ההנעה {limit})',
+  'rating.row.gpio_input_overvoltage':
+    '{pin} בכניסה נמצא ב־{value}, מחוץ לטווח המותר של הפין (גבול {limit}); פיני ESP32 אינם עמידים ל־5 V',
+  'rating.row.gpio_output_overvoltage':
+    '{pin} ביציאה נדחף ל־{value} על ידי המעגל (גבול {limit}); זרם נדחף לתוך מעגל ההנעה של הפין',
   'rating.note': 'הסימולציה ממשיכה להציג את הערכים המחושבים ואינה מדמה נזק לרכיב.',
 
   // ---- Sprint 6: Classic ESP32 through the R2 Session Host ----
@@ -672,6 +681,10 @@ export const he: Record<MessageKey, string> = {
     'סשן ה-ESP32 הגיע למשך המרבי שלו והסתיים. לחצו על הרצה לסשן חדש.',
   'sim.error.runtime.mirror_failed':
     'סשן ה-ESP32 הפעיל לא הצליח להחיל את השינוי שלכם ולכן נעצר. הפרויקט שומר על השינוי.',
+  'sim.error.runtime.command_refused':
+    'סביבת הריצה של ESP32 דחתה שינוי חי שאינה תומכת בו (ייתכן שהיא ישנה מהאפליקציה), ולכן הסשן נעצר. הפרויקט שומר את השינוי.',
+  'sim.error.runtime.commands_rate_limited':
+    'שינויים חיים נשלחו מהר יותר ממה שסביבת הריצה של ESP32 מקבלת, ולכן הסשן נעצר. הפרויקט שומר את השינוי; לחצו Run כדי להמשיך.',
   'sim.error.runtime.protocol_error':
     'שירות הריצה שלח תשובה בלתי צפויה והסשן הסתיים. הפרויקט לא נפגע.',
   'mcu.heading': 'ריצת ESP32',

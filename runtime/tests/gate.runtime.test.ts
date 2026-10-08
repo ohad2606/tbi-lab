@@ -23,7 +23,8 @@ const UNPINNED = process.env.TBI_GATE_UNPINNED === '1';
  * Pinned fingerprints (sha256 prefixes) for runtimeId 979f09d739382157 (espressif/qemu 40edccac +
  * runtime/qemu/patches 0001-0005) and artifacts.lock.json TbiGpioProof (5f177cbe…). Established on
  * 2026-09-24 from 40 unpinned runs (10 per configuration) that converged to exactly one result each;
- * see docs/runtime/R1-REPORT.md.
+ * see docs/runtime/R1-REPORT.md. Reproduced unchanged on the deployed runtimeId 33e35e4ac5e798d7
+ * (Sprint 8 rebuild of the same upstream commit and patches) on 2026-10-08, 6/6 (Sprint 11, R1).
  *
  * The host command quantum is not an MCU execution timestep (patch 0005): the 1 ms and 10 ms
  * configurations must produce the SAME fingerprint, because every command in the workload falls on

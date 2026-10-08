@@ -11,7 +11,7 @@ import {
 } from '../../runtime/host/protocol.js';
 import { EXAMPLES_WITH_DOCUMENTS as EXAMPLES } from '../src/examples/documents.js';
 import { McuSimulation } from '../src/runtime/controller.js';
-import type { RuntimeClient } from '../src/runtime/client.js';
+import { RuntimeTransportError, type RuntimeClient } from '../src/runtime/client.js';
 import {
   buildSessionRequest,
   requiresMcuRuntime,
@@ -386,5 +386,94 @@ describe('simulation dispatch', () => {
     expect(d.engine).toBe('mcu');
     await d.run(example('led-current'));
     expect(calls).toEqual(['local.run', 'local.stop', 'mcu.run', 'mcu.stop', 'local.run']);
+  });
+});
+
+describe('Sprint 11 (ADR-010): live commands — explicit failures and coalescing', () => {
+  it('a command the host refuses at validation (400, e.g. an older runtime) is command_refused, not "unreachable"', async () => {
+    const f = fakeClient();
+    const sim = new McuSimulation({ client: f.client });
+    const s = await running(sim, f, example('esp32-input-echo'));
+    s.command = async () => {
+      throw new RuntimeTransportError('refused', 400, 'control');
+    };
+    sim.control('SW1', { closed: true }, 7);
+    await tick();
+    expect(sim.state).toMatchObject({
+      status: 'failed',
+      failure: { kind: 'runtime', code: 'command_refused' },
+    });
+    expect(s.terminated).toBe(1);
+  });
+
+  it('a rate refusal (409 rate_limited, or the request rate 429) is commands_rate_limited', async () => {
+    for (const fail of [
+      async () => ({ accepted: false, reason: 'rate_limited' }),
+      async () => {
+        throw new RuntimeTransportError('rate_limited', 429);
+      },
+    ]) {
+      const f = fakeClient();
+      const sim = new McuSimulation({ client: f.client });
+      const s = await running(sim, f, example('esp32-input-echo'));
+      s.command = fail as never;
+      sim.control('SW1', { closed: true }, 7);
+      await tick();
+      expect(sim.state).toMatchObject({
+        status: 'failed',
+        failure: { kind: 'runtime', code: 'commands_rate_limited' },
+      });
+    }
+  });
+
+  it('other rejections keep their reason as mirror_failed detail', async () => {
+    const f = fakeClient();
+    const sim = new McuSimulation({ client: f.client });
+    const s = await running(sim, f, example('esp32-input-echo'));
+    s.commandResult = { accepted: false, reason: 'invalid_value' };
+    sim.control('SW1', { closed: true }, 7);
+    await tick();
+    expect(sim.state).toMatchObject({
+      status: 'failed',
+      failure: { kind: 'runtime', code: 'mirror_failed', detail: 'invalid_value' },
+    });
+  });
+
+  it('mirrors of one component coalesce while one is in flight: latest values, latest revision, in order', async () => {
+    const f = fakeClient();
+    const sim = new McuSimulation({ client: f.client });
+    const s = await running(sim, f, example('esp32-input-echo'));
+    const releases: (() => void)[] = [];
+    s.command = (c: unknown) => {
+      s.commands.push(c);
+      return new Promise((r) => releases.push(() => r({ accepted: true })));
+    };
+    sim.control('SW1', { closed: true }, 7);
+    sim.control('SW1', { closed: false }, 8);
+    sim.control('SW1', { closed: true }, 9);
+    sim.control('PSU1', { setpointVoltage: 3 }, 10); // another component: not held back
+    expect(s.commands).toEqual([
+      { category: 'mirror', projectRevision: 7, component: 'SW1', control: { closed: true } },
+      {
+        category: 'mirror',
+        projectRevision: 10,
+        component: 'PSU1',
+        control: { setpointVoltage: 3 },
+      },
+    ]);
+    releases.shift()!();
+    await tick();
+    // One coalesced mirror for revisions 8 and 9: the latest value at the latest revision.
+    expect(s.commands.at(-1)).toEqual({
+      category: 'mirror',
+      projectRevision: 9,
+      component: 'SW1',
+      control: { closed: true },
+    });
+    expect(s.commands).toHaveLength(3);
+    for (const r of releases.splice(0)) r();
+    await tick();
+    expect(s.commands).toHaveLength(3);
+    expect(sim.state.status).toBe('running');
   });
 });

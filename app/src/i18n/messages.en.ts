@@ -220,6 +220,8 @@ export const en = {
     'This circuit has no steady state: {components} keeps switching itself on and off (a relay that interrupts its own coil chatters). A DC simulation cannot show one of its transitory states.',
   'sim.error.mcu_component_unsupported':
     'The ESP32 simulator does not support {components} yet. These parts simulate in circuits without an ESP32; with the board they need a runtime update.',
+  'sim.error.mcu_component_time_dependent':
+    '{components} behave over time, and the ESP32 simulator does not step time. They are simulated only in circuits without an ESP32.',
   'sim.error.internal': 'An internal simulation error occurred. The project is not affected.',
   'sim.error.worker_crashed':
     'The simulation stopped unexpectedly. The project is not affected. Press Run to try again.',
@@ -462,6 +464,10 @@ export const en = {
   'palette.unavailable.part_needs_runtime': 'Requires runtime support not available for ESP32 yet.',
   'palette.unavailable.board_needs_runtime':
     'Not available while the project has parts the ESP32 runtime does not support yet.',
+  'palette.unavailable.part_time_dependent':
+    'Time-dependent parts are simulated only in circuits without an ESP32.',
+  'palette.unavailable.board_time_dependent':
+    'Not available while the project has time-dependent parts (they are simulated only without an ESP32).',
   'palette.group.sensors': 'Sensors',
   'palette.group.output': 'Sound and signalling',
   'palette.group.switches': 'Switches',
@@ -485,6 +491,10 @@ export const en = {
     '{pin} output HIGH is wired straight to GND: {value} (drive rating {limit})',
   'rating.row.gpio_short_supply':
     '{pin} output LOW is wired straight to a supply +: {value} (drive rating {limit})',
+  'rating.row.gpio_input_overvoltage':
+    "{pin} input is at {value}, outside the pin's rated range (limit {limit}); ESP32 pins are not 5 V tolerant",
+  'rating.row.gpio_output_overvoltage':
+    '{pin} output is forced to {value} by the circuit (limit {limit}); current is pushed into the pin driver',
   'rating.note':
     'The simulation continues to show the calculated values and does not model physical damage.',
 
@@ -692,6 +702,10 @@ export const en = {
     'The ESP32 session reached its maximum duration and ended. Press Run for a fresh session.',
   'sim.error.runtime.mirror_failed':
     'The running ESP32 session could not apply your change, so it was stopped. The project keeps your change.',
+  'sim.error.runtime.command_refused':
+    'The ESP32 runtime refused a live change it does not support (it may be older than this app), so the session was stopped. The project keeps your change.',
+  'sim.error.runtime.commands_rate_limited':
+    'Live changes were sent faster than the ESP32 runtime accepts, so the session was stopped. The project keeps your change; press Run to continue.',
   'sim.error.runtime.protocol_error':
     'The runtime service sent an unexpected response and the session ended. The project is not affected.',
   'mcu.heading': 'ESP32 runtime',

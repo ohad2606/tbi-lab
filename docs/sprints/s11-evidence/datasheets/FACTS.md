@@ -28,5 +28,5 @@ The product's lower limit therefore uses −0.3 V. The **upper** limit used (VDD
 unambiguous on the page.
 
 **Use in the product (Sprint 11, R1):** `gpio_input_overvoltage` (an input pad's solved voltage
-outside −0.3 … 3.6 V) and `gpio_reverse_current` (an output pad forced beyond the same range by the
+outside −0.3 … 3.6 V) and `gpio_output_overvoltage` (an output pad forced beyond the same range by the
 external circuit). Warnings only: they never change a solved value.

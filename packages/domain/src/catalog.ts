@@ -91,6 +91,12 @@ export interface ComponentTypeDef {
    * before any session starts; local circuits simulate it normally. Absent means supported.
    */
   mcuRuntime?: false;
+  /**
+   * Sprint 11 (R1): why `mcuRuntime` is false, when the reason is known and permanent for the
+   * current runtime: `time_dependent` — the part's behaviour is defined over simulated time,
+   * which the ESP32 runtime does not step (a capacitor). The product names that reason.
+   */
+  mcuRuntimeReason?: 'time_dependent';
 }
 
 /**
@@ -360,6 +366,7 @@ const SPRINT10_TYPES = {
     ],
     aliases: ['capacitor', 'cap', 'קבל'],
     mcuRuntime: false,
+    mcuRuntimeReason: 'time_dependent',
   },
   'component.relay': {
     type: 'component.relay',
@@ -626,18 +633,25 @@ export function defaultParams(def: ComponentTypeDef): Record<string, ParamValue>
  * - `part_needs_runtime`: the project has a Classic ESP32 and the part is not supported by the
  *   ESP32 runtime yet (catalog `mcuRuntime: false`);
  * - `board_needs_runtime`: `type` is the ESP32 board and the project already holds such parts.
+ * Sprint 11: when the reason is the part's time-dependent behaviour (`mcuRuntimeReason`), the
+ * block says so (`part_time_dependent`, `board_time_dependent`).
  * Local circuits (no board) can use every part.
  */
-export type PlacementBlock = 'part_needs_runtime' | 'board_needs_runtime';
+export type PlacementBlock =
+  'part_needs_runtime' | 'board_needs_runtime' | 'part_time_dependent' | 'board_time_dependent';
 
 export function placementBlock(
   doc: { components: readonly { type: ComponentTypeId }[] },
   type: ComponentTypeId,
 ): PlacementBlock | null {
   const isBoard = (t: ComponentTypeId) => t === 'board.esp32_devkitc_wroom32';
+  const timed = (t: ComponentTypeId) => CATALOG[t].mcuRuntimeReason === 'time_dependent';
   if (CATALOG[type].mcuRuntime === false && doc.components.some((c) => isBoard(c.type)))
-    return 'part_needs_runtime';
-  if (isBoard(type) && doc.components.some((c) => CATALOG[c.type].mcuRuntime === false))
-    return 'board_needs_runtime';
+    return timed(type) ? 'part_time_dependent' : 'part_needs_runtime';
+  if (isBoard(type)) {
+    const held = doc.components.filter((c) => CATALOG[c.type].mcuRuntime === false);
+    if (held.length)
+      return held.every((c) => timed(c.type)) ? 'board_time_dependent' : 'board_needs_runtime';
+  }
   return null;
 }

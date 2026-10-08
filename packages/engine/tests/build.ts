@@ -85,3 +85,28 @@ export function ledLoop(volts: number, amps: number, ohms: number, enabled = tru
     .psu(volts, amps, enabled)
     .ohms(r, ohms);
 }
+
+/**
+ * A board wired by its terminals (the browser's snapshot, `full`), plus an engine session over the
+ * board-less projection with the pads attached to another terminal on each pad's net — exactly
+ * what `app/src/runtime/snapshot.ts` sends to the Session Host.
+ */
+export function boardBench(build: (b: Bench, u: string) => void) {
+  const b = new Bench();
+  const u = b.add('board.esp32_devkitc_wroom32');
+  b.wire(`${u}.gnd`, 'GND1.ref').wire('PSU1.negative', 'GND1.ref');
+  build(b, u);
+  const full = b.snapshot();
+  const projected = {
+    ...full,
+    components: full.components.filter((c) => c.id !== u),
+    connections: full.connections.filter((c) => c.component !== u),
+  };
+  const pins = full.connections
+    .filter((c) => c.component === u && /^gpio\d+$/.test(c.terminal))
+    .map((c) => {
+      const at = projected.connections.find((x) => x.net === c.net)!;
+      return { gpio: Number(c.terminal.slice(4)), component: at.component, terminal: at.terminal };
+    });
+  return { full, projected, pins, u };
+}

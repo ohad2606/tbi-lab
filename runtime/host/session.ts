@@ -21,7 +21,12 @@ import {
   statSync,
 } from 'node:fs';
 import { join } from 'node:path';
-import { CATALOG, ESP32_DEVKITC_WROOM32, boardPinForGpio } from '@tbi-lab/domain';
+import {
+  CATALOG,
+  ESP32_DEVKITC_WROOM32,
+  boardPinForGpio,
+  liveControlProblem,
+} from '@tbi-lab/domain';
 import {
   EngineSession,
   interpretDigitalInput,
@@ -269,6 +274,16 @@ export class HostSession {
 
     // The production engine, with the board pads attached.
     this.engine = new EngineSession(this.request.circuit, { pins: this.request.attachments });
+    // Sprint 11 (ADR-010) backstop, independent of the catalog: this host never advances
+    // simulated time, so a time-dependent part (a capacitor) would be solved as if at DC — false
+    // physics. Refused from the engine's own property, whatever the catalog says.
+    const timed = this.engine.timeDependentParts;
+    if (timed.length)
+      return this.fail('electrical_error', {
+        code: 'unsupported_component',
+        components: timed,
+        detail: { reason: 'time_dependent' },
+      });
     const first = this.engine.solve();
     if (!first.ok) {
       if (first.error.code === 'invalid_attachment')
@@ -578,6 +593,9 @@ export class HostSession {
   // -------------------------------------------------------------------------------------------
   // Commands from the client (validated structurally by protocol.ts before reaching here)
 
+  /** Sprint 11: wall-clock times of this session's recent commands (rate limit). */
+  private commandTimes: number[] = [];
+
   submit(c: SessionCommand): {
     accepted: boolean;
     reason?: CommandRejection;
@@ -599,8 +617,20 @@ export class HostSession {
     if (c.seq <= this.lastClientSeq) return reject('duplicate');
     this.lastClientSeq = c.seq;
     if (this.sm.state !== 'running' && this.sm.state !== 'ready') return reject('not_running');
-    if (!this.request.circuit.components.some((x) => x.id === c.component))
-      return reject('unknown_component');
+    // Sprint 11 (ADR-010): commands per wall-clock second, per session.
+    const now = performance.now();
+    this.commandTimes = this.commandTimes.filter((t) => now - t < 1000);
+    if (this.commandTimes.length >= this.config.maxCommandsPerSecond) return reject('rate_limited');
+    this.commandTimes.push(now);
+    const target = this.request.circuit.components.find((x) => x.id === c.component);
+    if (!target) return reject('unknown_component');
+    // Sprint 11 (ADR-010): the control must exist for this component's type (part identity,
+    // allowed names), and live part parameters must be of their kind and in range. The same
+    // domain rule the engine applies; refused here, explicitly, before anything is queued.
+    if (mirror && CATALOG[target.type as keyof typeof CATALOG]) {
+      const problem = liveControlProblem(target.type as keyof typeof CATALOG, c.control);
+      if (problem) return reject(problem.reason);
+    } else if (mirror) return reject('unsupported_control');
     if (mirror && c.projectRevision < this.acceptedRevision) return reject('stale_revision');
     if (mirror && c.projectRevision === this.acceptedRevision) return reject('duplicate_revision');
     const atNs = c.atSimNs === undefined ? null : BigInt(c.atSimNs);

@@ -169,13 +169,15 @@ MirrorControl = { setpointVoltage?, currentLimit?, outputEnabled?, closed?,
 
 Two warnings, computed in `ratings.ts` from the solved operating point, **never changing a value**
 (the §15.1 rule: physically valid but noteworthy):
-1. **`gpio_input_overvoltage`:** an attached pad's voltage above VDD + 0.3 V (3.6 V, ESP32 absolute
-   maximum) or below −0.3 V.
-2. **`gpio_reverse_current`:** current flowing *into* an output-HIGH pad (or out of an output-LOW
-   pad) beyond a small tolerance (an external source fighting the driver, e.g. a 5 V pull-up).
+1. **`gpio_input_overvoltage`:** an **input** pad's solved voltage above VDD + 0.3 V (3.6 V) or
+   below −0.3 V (datasheet v5.3 Table 5-3, the specified input range).
+2. **`gpio_output_overvoltage`:** an **output** pad forced beyond the same range by the external
+   circuit (e.g. a 5 V pull-up lifting an output-HIGH pad above 3.6 V: current is pushed into the
+   driver). *(Named `gpio_reverse_current` in the first draft; implemented as a pad-voltage check
+   against the same datasheet range, which is what the datasheet specifies.)*
 
-They apply to local and host runs alike (one engine). Values come from the ESP32 datasheet
-(absolute maximum ratings) with page references added to the datasheet facts file.
+They apply to local and host runs alike (one engine). Exact values and the reading of the PDF:
+§6.3 and `docs/sprints/s11-evidence/datasheets/FACTS.md`.
 
 ### 3.6 Electrical solver interaction
 
@@ -353,7 +355,7 @@ dev-lab; the S11-FE/S10-host state is exercised there too, to prove its explicit
   outcome object is not mutated.
 - **Two distinct categories, never mixed:**
   - *electrical risk warnings* (`RatingWarning`: over-current, contention, shorts, and the new
-    `gpio_input_overvoltage`, `gpio_reverse_current`): the circuit is solved and the run continues;
+    `gpio_input_overvoltage`, `gpio_output_overvoltage`): the circuit is solved and the run continues;
     the values shown are the engine's; the warning says a real part would be stressed;
   - *unsupported simulation states* (refusals and session failures: `unsupported_component`,
     `unsupported_feature`, `no_steady_state`, `command_refused`, …): nothing is solved or the run
@@ -365,7 +367,7 @@ dev-lab; the S11-FE/S10-host state is exercised there too, to prove its explicit
   file's SHA-256. (The PDF does not render its minus signs; the −0.3 V lower limit is inferred, with
   the reasoning recorded there. The 3.6 V upper limit, the one 5 V circuits hit, is unambiguous.)
   - `gpio_input_overvoltage`: an **input** pad's solved voltage above 3.6 V or below −0.3 V.
-  - `gpio_reverse_current`: an **output** pad forced beyond its rail by the external circuit (an
+  - `gpio_output_overvoltage`: an **output** pad forced beyond its rail by the external circuit (an
     output-HIGH pad above 3.6 V, or an output-LOW pad below −0.3 V): current is pushed into the
     driver.
 - **Tested on every trigger:** at Run (first solve), after a firmware GPIO change, and after a live

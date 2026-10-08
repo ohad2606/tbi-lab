@@ -46,6 +46,8 @@ export {
   R_PULL_OHM,
   V_IH_V,
   V_IL_V,
+  V_PIN_MAX_V,
+  V_PIN_MIN_V,
   VDD_V,
   interpretDigitalInput,
   type DigitalLevel,

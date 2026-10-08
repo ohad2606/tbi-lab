@@ -12,6 +12,7 @@
  */
 
 import type { ComponentInstance, SimulationSnapshot } from '@tbi-lab/domain';
+import { liveControlProblem } from '@tbi-lab/domain';
 import type { TimeStep } from './devices.js';
 import { Circuit, ConvergenceError } from './circuit.js';
 import { Diode, LabPsu, Resistor, VoltageSource, type Device } from './devices.js';
@@ -327,7 +328,14 @@ export class EngineSession {
 
   /** Whether the circuit holds a time-dependent part: then it runs time-stepped (advance). */
   get timeDependent(): boolean {
-    return this.snapshot.components.some((c) => partModel(c.type)?.timeDependent === true);
+    return this.timeDependentParts.length > 0;
+  }
+
+  /** The time-dependent parts of the circuit, in circuit order (component ids). */
+  get timeDependentParts(): string[] {
+    return this.snapshot.components
+      .filter((c) => partModel(c.type)?.timeDependent === true)
+      .map((c) => c.id);
   }
 
   /** Simulated time since the session started, seconds (time-stepped sessions). */
@@ -398,6 +406,12 @@ export class EngineSession {
         if (typeof value === 'number' && !Number.isFinite(value))
           return { code: 'invalid_parameter', components: [componentId], param: key };
       }
+      // Sprint 11 (ADR-010): the same domain rule the Session Host applies when the command
+      // arrives: only the catalog's live parameters, of their declared kind, within range.
+      const problem = liveControlProblem(c.type, { params });
+      if (problem?.reason === 'unsupported_control') return refuse;
+      if (problem)
+        return { code: 'invalid_parameter', components: [componentId], param: problem.key };
       const prev = this.overrides.get(componentId);
       this.overrides.set(componentId, { params: { ...prev?.params, ...params } });
       this.appliedRevision = Math.max(this.appliedRevision, projectRevision);

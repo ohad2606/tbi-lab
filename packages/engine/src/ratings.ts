@@ -11,7 +11,7 @@
  */
 
 import type { SimulationSnapshot } from '@tbi-lab/domain';
-import { I_OH_A, I_OL_A } from './esp32Gpio.js';
+import { I_OH_A, I_OL_A, V_PIN_MAX_V, V_PIN_MIN_V } from './esp32Gpio.js';
 import { partModel } from './parts.js';
 import type { SolveSuccess } from './session.js';
 
@@ -81,7 +81,12 @@ export type RatingCode =
   /** An output-HIGH pad is wired straight to GND. */
   | 'gpio_short_ground'
   /** An output-LOW pad is wired straight to a supply's + terminal. */
-  | 'gpio_short_supply';
+  | 'gpio_short_supply'
+  // Sprint 11 (R1): the pad's specified voltage range (datasheet Table 5-3, esp32Gpio.ts).
+  /** An input pad's solved voltage is above VDD + 0.3 V or below -0.3 V (not 5 V tolerant). */
+  | 'gpio_input_overvoltage'
+  /** An output pad is forced beyond that range by the external circuit (current into the driver). */
+  | 'gpio_output_overvoltage';
 
 /** The unit each warning's `value` and `limit` are in. */
 export const RATING_UNIT: Readonly<Record<RatingCode, 'ampere' | 'volt' | 'watt'>> = {
@@ -95,6 +100,8 @@ export const RATING_UNIT: Readonly<Record<RatingCode, 'ampere' | 'volt' | 'watt'
   gpio_contention: 'ampere',
   gpio_short_ground: 'ampere',
   gpio_short_supply: 'ampere',
+  gpio_input_overvoltage: 'volt',
+  gpio_output_overvoltage: 'volt',
 };
 
 export interface RatingWarning {
@@ -161,7 +168,12 @@ export function ratingWarnings(
  * the most specific that applies:
  * - two pads on one net driving opposite levels (contention);
  * - an output-HIGH pad on the GND net, or an output-LOW pad on a supply's + net (a short);
- * - otherwise a pad sourcing more than I_OH or sinking more than I_OL.
+ * - an output pad forced beyond the specified pad voltage range by the external circuit (Sprint 11);
+ * - otherwise a pad sourcing more than I_OH or sinking more than I_OL;
+ * - an INPUT pad outside the specified voltage range (Sprint 11: e.g. a 5 V divider into a pin).
+ * The range is the datasheet's (V_PIN_MIN_V ... V_PIN_MAX_V, esp32Gpio.ts). These are electrical
+ * RISK warnings on an operating point that was solved; they never alter a value, and they are not
+ * unsupported-simulation states (those refuse or stop the run instead).
  * Experimentation is not prevented: the circuit keeps running and showing what it solves.
  */
 function gpioWarnings(snapshot: SimulationSnapshot, outcome: SolveSuccess): RatingWarning[] {
@@ -194,8 +206,14 @@ function gpioWarnings(snapshot: SimulationSnapshot, outcome: SolveSuccess): Rati
       gpio,
       ...(other === undefined ? {} : { otherGpio: other }),
     });
+  const outside = (v: number) => v > V_PIN_MAX_V || v < V_PIN_MIN_V;
+  const limitFor = (v: number) => (v > V_PIN_MAX_V ? V_PIN_MAX_V : V_PIN_MIN_V);
   for (const pin of outcome.pins) {
-    if (pin.mode === 'input') continue;
+    if (pin.mode === 'input') {
+      if (outside(pin.voltage))
+        add('gpio_input_overvoltage', pin.gpio, pin.voltage, limitFor(pin.voltage));
+      continue;
+    }
     const high = pin.mode === 'output-high';
     const net = netOfGpio.get(pin.gpio);
     const limit = high ? I_OH_A : I_OL_A;
@@ -212,6 +230,8 @@ function gpioWarnings(snapshot: SimulationSnapshot, outcome: SolveSuccess): Rati
       add('gpio_short_ground', pin.gpio, magnitude, limit);
     else if (!high && net !== undefined && supplyPlus.has(net))
       add('gpio_short_supply', pin.gpio, magnitude, limit);
+    else if (outside(pin.voltage))
+      add('gpio_output_overvoltage', pin.gpio, pin.voltage, limitFor(pin.voltage));
     else if (high && pin.current > I_OH_A) add('gpio_source_current', pin.gpio, pin.current, limit);
     else if (!high && -pin.current > I_OL_A)
       add('gpio_sink_current', pin.gpio, -pin.current, limit);
