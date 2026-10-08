@@ -70,7 +70,7 @@ export function createMaterials() {
   const std = (color: string, extra: Partial<THREE.MeshStandardMaterialParameters> = {}) =>
     new THREE.MeshStandardMaterial({ color, roughness: 0.6, metalness: 0, ...extra });
   const metal = (color: string, roughness: number) => std(color, { metalness: 1, roughness });
-  return {
+  const library = {
     /** Tinned copper leads: hot-dip tin is satin, not mirror chrome (high-fidelity pass 3). */
     lead: metal('#c9cdd2', 0.4),
     /** Gold-flashed header pins. */
@@ -105,6 +105,9 @@ export function createMaterials() {
     rubber: std('#1c1c1e', { roughness: 0.9 }),
     generic: std('#8d97a3'),
   };
+  // Named by key: the deterministic finish variation (variation.ts) finds its family by name.
+  for (const [name, m] of Object.entries(library)) m.name = name;
+  return library;
 }
 
 type Builder = (c: SceneComponent, m: Materials, own: OwnedResources) => THREE.Object3D;

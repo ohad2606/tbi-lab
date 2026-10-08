@@ -10,18 +10,24 @@
  * are added here and register a hook; nothing else in the scene builder changes.
  *
  * Visibility is a VIEW preference (localStorage, per browser): never project data, never part of
- * the electrical schema; changing it rebuilds nothing and restarts nothing.
+ * the electrical schema; changing it rebuilds nothing and restarts nothing. The same holds for the
+ * one `lens` setting (depth of field), which the two presets also set: Realistic and Engineering.
  */
 import type { MessageKey } from '../../i18n/messages.en.js';
 import { MODEL_HEIGHT, type SceneDescription } from './scene.js';
 
-export type LayerId = 'labels' | 'grid';
+export type LayerId = 'labels' | 'grid' | 'dof';
 export type PresetId = 'realistic' | 'engineering';
 export type LayerVisibility = Record<LayerId, boolean>;
 
 export interface LayerDef {
   id: LayerId;
   titleKey: MessageKey;
+  /**
+   * `overlay`: engineering information shown over the physical scene. `lens`: how the camera
+   * renders the scene (depth of field), never content.
+   */
+  kind: 'overlay' | 'lens';
   /** Visible by default in each preset. */
   presets: Record<PresetId, boolean>;
 }
@@ -31,9 +37,27 @@ export const LAYERS: readonly LayerDef[] = [
   {
     id: 'labels',
     titleKey: 'view3d.layer.labels',
+    kind: 'overlay',
     presets: { realistic: false, engineering: true },
   },
-  { id: 'grid', titleKey: 'view3d.layer.grid', presets: { realistic: false, engineering: true } },
+  {
+    id: 'grid',
+    titleKey: 'view3d.layer.grid',
+    kind: 'overlay',
+    presets: { realistic: false, engineering: true },
+  },
+  /**
+   * Depth of field (realism pass 8): Realistic is a product photograph (the subject at the
+   * frame's centre sharp, the bench behind it soft in close-ups); Engineering keeps every depth
+   * plane sharp for technical inspection. Full tier only (stage.ts); elsewhere it has no effect
+   * and the view says so.
+   */
+  {
+    id: 'dof',
+    titleKey: 'view3d.layer.dof',
+    kind: 'lens',
+    presets: { realistic: true, engineering: false },
+  },
 ];
 
 export const PRESETS: readonly { id: PresetId; titleKey: MessageKey }[] = [
@@ -67,6 +91,13 @@ export function readLayers(storage: Pick<Storage, 'getItem'> | null): LayerVisib
     if (!raw) return base;
     const v = JSON.parse(raw) as Record<string, unknown>;
     for (const l of LAYERS) if (typeof v[l.id] === 'boolean') base[l.id] = v[l.id] as boolean;
+    // Stored before depth of field existed: the preset the stored layers match decides it (a
+    // browser that chose Engineering stays all sharp).
+    if (typeof v.dof !== 'boolean') {
+      const overlays = LAYERS.filter((l) => l.id !== 'dof');
+      const eng = presetVisibility('engineering');
+      base.dof = !overlays.every((l) => base[l.id] === eng[l.id]);
+    }
   } catch {
     /* unreadable: the default */
   }

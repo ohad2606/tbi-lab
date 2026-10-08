@@ -86,8 +86,9 @@ function materials() {
     // Lead-free solder: satin grey-silver, not a mirror (high-fidelity pass 3).
     solder: phys({ color: '#c3c7cb', metalness: 1, roughness: 0.34 }, 'solder'),
     pinGold: phys({ color: '#e2bc68', metalness: 1, roughness: 0.22 }, 'pin_gold'),
-    // PBT header housing: matte black with a faint sheen.
-    housing: phys({ color: '#121214', roughness: 0.62 }, 'header_pbt'),
+    // PBT header housing: matte black with a faint sheen. Realism pass 8: a moulded satin (0.58),
+    // its micro-surface and per-strip finish drawn at runtime (variation.ts).
+    housing: phys({ color: '#121214', roughness: 0.58 }, 'header_pbt'),
     // The module: black FR-4 substrate (glossy mask), its top drawn at runtime; a stamped
     // nickel-silver RF can.
     moduleBoard: phys(
@@ -105,14 +106,18 @@ function materials() {
       { color: '#d6d9dc', metalness: 1, roughness: 0.22, side: THREE.DoubleSide },
       'usb_shell',
     ),
-    tongue: phys({ color: '#101011', roughness: 0.55 }, 'usb_tongue'),
+    // Realism pass 8: connector nylon is smoother than the IC moulding (a semi-gloss 0.42).
+    tongue: phys({ color: '#101011', roughness: 0.42 }, 'usb_tongue'),
     shadowed: phys({ color: '#060607', roughness: 0.9, side: THREE.DoubleSide }, 'cavity'),
-    // IC moulding compound: dark grey, slightly textured matte.
-    epoxy: phys({ color: '#1b1c1f', roughness: 0.58 }, 'ic_mould'),
+    // IC moulding compound: dark grey, an EDM-textured matte (realism pass 8: rougher than the
+    // header and connector plastics; its fine stipple is drawn at runtime, variation.ts).
+    epoxy: phys({ color: '#1d1e21', roughness: 0.68 }, 'ic_mould'),
     tin: phys({ color: '#c6cacd', metalness: 1, roughness: 0.28 }, 'lead_tin'),
-    // Passives: MLCC ceramic (tan-grey), thick-film resistors (black top), the LED's body.
-    ceramic: phys({ color: '#9b8467', roughness: 0.6 }, 'mlcc_ceramic'),
-    resistor: phys({ color: '#141416', roughness: 0.45 }, 'chip_resistor'),
+    // Passives: MLCC ceramic (warm tan), thick-film resistors (realism pass 8: a white alumina
+    // substrate under a black glassy overcoat), the LED's body.
+    ceramic: phys({ color: '#a68e6e', roughness: 0.58 }, 'mlcc_ceramic'),
+    resistor: phys({ color: '#17181a', roughness: 0.36 }, 'chip_resistor'),
+    alumina: phys({ color: '#e2dfd7', roughness: 0.62 }, 'chip_substrate'),
     ledBody: phys({ color: '#efece2', roughness: 0.5 }, 'led_body'),
     ledLens: phys(
       {
@@ -659,6 +664,7 @@ export function authorEsp32DevkitC(): THREE.Group {
   {
     const caps: THREE.BufferGeometry[] = [];
     const res: THREE.BufferGeometry[] = [];
+    const substrates: THREE.BufferGeometry[] = [];
     const ends: THREE.BufferGeometry[] = [];
     const ledBodies: THREE.BufferGeometry[] = [];
     const ledLenses: THREE.BufferGeometry[] = [];
@@ -675,11 +681,14 @@ export function authorEsp32DevkitC(): THREE.Group {
         ledLenses.push(at(along(L * 0.62, W * 0.9, H * 0.55), c.x, yt + H * 0.45 + H * 0.275, c.z));
       } else if (c.kind === 'sod523') {
         diodes.push(at(along(L * 0.7, W, H), c.x, yt + H / 2, c.z));
+      } else if (c.kind.startsWith('c')) {
+        // Ceramic body between two tinned terminations.
+        caps.push(at(along(L - 2 * term, W * 0.98, H * 0.98), c.x, yt + H / 2, c.z));
       } else {
-        // Ceramic (or resistive film) body between two tinned terminations.
-        (c.kind.startsWith('c') ? caps : res).push(
-          at(along(L - 2 * term, W * 0.98, H * 0.98), c.x, yt + H / 2, c.z),
-        );
+        // Thick-film resistor: the white alumina substrate (its sides show) under the black
+        // overcoat on top, between the terminations.
+        substrates.push(at(along(L - 2 * term, W * 0.98, H * 0.72), c.x, yt + H * 0.36, c.z));
+        res.push(at(box((L - 2 * term) * 0.96, W * 0.9, H * 0.26), c.x, yt + H * 0.85, c.z));
       }
       for (const e of [-1, 1]) {
         const dz = c.alongZ ? e * (L / 2 - term / 2) : 0;
@@ -694,6 +703,7 @@ export function authorEsp32DevkitC(): THREE.Group {
     }
     root.add(merged('mlcc', caps, m.ceramic));
     root.add(merged('chip_resistors', res, m.resistor));
+    root.add(merged('chip_substrates', substrates, m.alumina));
     root.add(merged('chip_terminations', ends, m.tin));
     root.add(merged('diodes', diodes, m.epoxy));
     root.add(merged('power_led_body', ledBodies, m.ledBody));

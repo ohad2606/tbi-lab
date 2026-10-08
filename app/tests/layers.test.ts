@@ -32,8 +32,8 @@ const memory = () => {
 describe('visualization layers', () => {
   it('Realistic (the default) hides labels and grid; Engineering shows them', () => {
     expect(DEFAULT_PRESET).toBe('realistic');
-    expect(presetVisibility('realistic')).toEqual({ labels: false, grid: false });
-    expect(presetVisibility('engineering')).toEqual({ labels: true, grid: true });
+    expect(presetVisibility('realistic')).toEqual({ labels: false, grid: false, dof: true });
+    expect(presetVisibility('engineering')).toEqual({ labels: true, grid: true, dof: false });
     expect(matchPreset(presetVisibility('realistic'))).toBe('realistic');
     expect(matchPreset(presetVisibility('engineering'))).toBe('engineering');
   });
@@ -58,11 +58,44 @@ describe('visualization layers', () => {
   });
 
   it('every layer and preset is named in English and Hebrew', () => {
-    for (const k of [...LAYERS.map((l) => l.titleKey), ...PRESETS.map((p) => p.titleKey)]) {
+    for (const k of [
+      ...LAYERS.map((l) => l.titleKey),
+      ...PRESETS.map((p) => p.titleKey),
+      'view3d.mode' as const,
+      'view3d.layers.lens' as const,
+      'view3d.dof.unavailable' as const,
+    ]) {
       expect(en[k]).toBeTruthy();
       expect(he[k]).toBeTruthy();
       expect(he[k]).not.toBe(en[k]);
     }
+  });
+
+  it('visual mode (realism pass 8): Realistic draws depth of field, Engineering keeps all sharp', () => {
+    expect(PRESETS.map((p) => p.id)).toEqual(['realistic', 'engineering']);
+    expect(LAYERS.find((l) => l.id === 'dof')).toMatchObject({
+      kind: 'lens',
+      presets: { realistic: true, engineering: false },
+    });
+    // Turning depth of field off by hand from Realistic is "custom", not Engineering.
+    expect(matchPreset({ ...presetVisibility('realistic'), dof: false })).toBe('custom');
+    // Persisted per browser, in the view preference only.
+    const s = memory();
+    writeLayers(s, presetVisibility('engineering'));
+    expect(readLayers(s)).toEqual(presetVisibility('engineering'));
+    writeLayers(s, presetVisibility('realistic'));
+    expect(readLayers(s)).toEqual(presetVisibility('realistic'));
+    expect([...s.m.keys()]).toEqual([LAYERS_KEY]);
+  });
+
+  it('a preference stored before depth of field existed keeps its preset', () => {
+    const s = memory();
+    s.setItem(LAYERS_KEY, JSON.stringify({ labels: true, grid: true }));
+    expect(matchPreset(readLayers(s))).toBe('engineering');
+    s.setItem(LAYERS_KEY, JSON.stringify({ labels: false, grid: false }));
+    expect(matchPreset(readLayers(s))).toBe('realistic');
+    s.setItem(LAYERS_KEY, JSON.stringify({ labels: true, grid: false }));
+    expect(readLayers(s)).toEqual({ labels: true, grid: false, dof: true });
   });
 
   it('labels name the right parts: one per part, above it, ids unchanged in every locale', () => {

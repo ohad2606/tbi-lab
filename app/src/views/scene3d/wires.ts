@@ -84,6 +84,8 @@ export function wireMaterials(own: OwnedResources, conductor: THREE.Material): W
         // The surface maps need only the tubes' UVs: the jackets still merge into one batch per
         // colour (renderer.ts batchStatic).
         m.userData.batchUv = true;
+        // Finish variation per wire (variation.ts): roughness only, never the net's colour.
+        m.userData.varyFamily = 'wire_jacket';
         return m;
       }),
     conductor,

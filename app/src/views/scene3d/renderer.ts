@@ -20,6 +20,7 @@ import { createStage } from './stage.js';
 import { chooseQuality, probeGpu } from '../../gpuInfo.js';
 import { bentPath, buildJoint, buildSplice, buildWire, wireMaterials } from './wires.js';
 import { shapeWires, type WireShape } from './wireShape.js';
+import { familyOf, variationAttribute, variedMaterial } from './variation.js';
 
 export { assetLoadStats, loadAssets };
 import { MODEL_HEIGHT, type SceneDescription, type Vec3 } from './scene.js';
@@ -60,6 +61,11 @@ export interface ViewerStats {
   materials: number;
   /** Shader programs compiled in this viewer's context. */
   programs: number;
+  /**
+   * Depth of field: drawn (`on`), turned off by the view (`off`), or not available in this tier
+   * (`unavailable`: the reduced tier renders everything sharp).
+   */
+  dof: 'on' | 'off' | 'unavailable';
   /** This viewer's WebGL renderer (the GPU, or a software rasteriser) and its pixel ratio. */
   gpu: string;
   pixelRatio: number;
@@ -226,12 +232,16 @@ export function createViewer(
       if (id) o.visible = layers[id] ?? false;
     });
     tags.domElement.style.display = layers.labels ? '' : 'none';
+    // The lens (Realistic: depth of field; Engineering: all sharp). Camera and scene untouched.
+    dofActive = stage.setDepthOfField(layers.dof);
   }
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 2000);
   // Lights, environment, shadows, ambient occlusion, bench and backdrop: the stage (stage.ts).
   const stage = createStage(renderer, scene, camera, quality);
+  /** Whether depth of field is drawn (full tier and the view asks for it). */
+  let dofActive = stage.setDepthOfField(layers.dof);
   // The GPU this viewer actually renders on (development diagnostics; never sent anywhere).
   const gpu = (() => {
     try {
@@ -257,6 +267,8 @@ export function createViewer(
 
   /** `reduced` quality: standard stand-ins for physical materials, one per original (reused). */
   const simplified = new Map<THREE.Material, THREE.Material>();
+  /** Full tier: the varied copy of each varied family's material (variation.ts), per viewer. */
+  const varied = new Map<THREE.Material, THREE.Material>();
   const materials = createMaterials();
   const shared: THREE.Material[] = Object.values(materials);
   const soldermat = new THREE.MeshStandardMaterial({
@@ -565,6 +577,7 @@ export function createViewer(
       triangles: lastTriangles,
       materials: mats.size,
       programs: renderer.info.programs?.length ?? 0,
+      dof: quality !== 'full' ? 'unavailable' : dofActive ? 'on' : 'off',
       gpu,
       pixelRatio: stage.pixelRatio,
       target: controls.target.toArray().map((v) => Math.round(v * 100) / 100) as [
@@ -679,6 +692,8 @@ export function createViewer(
     const inverse = group.matrixWorld.clone().invert();
     const buckets = new Map<THREE.Material, { geo: THREE.BufferGeometry; cast: boolean }[]>();
     const merged: THREE.Mesh[] = [];
+    /** Meshes seen so far per part (a stable place for each mesh in its part). */
+    const ordinal = new Map<string, number>();
     group.traverse((o) => {
       const mesh = o as THREE.Mesh;
       if (!mesh.isMesh || (mesh as unknown as THREE.InstancedMesh).isInstancedMesh) return;
@@ -693,6 +708,20 @@ export function createViewer(
       const keep = mat.userData.batchUv ? ['position', 'normal', 'uv'] : ['position', 'normal'];
       for (const name of Object.keys(geo.attributes))
         if (!keep.includes(name)) geo.deleteAttribute(name);
+      // Full tier: each piece's deterministic finish offsets (variation.ts), seeded by its part
+      // and its place in it.
+      const family = quality === 'full' ? familyOf(mat) : null;
+      if (family) {
+        let owner: THREE.Object3D | null = mesh;
+        while (owner && !owner.userData.component && owner.parent !== group) owner = owner.parent;
+        const key = String(owner?.userData.component ?? owner?.name ?? '');
+        const n = (ordinal.get(key) ?? 0) + 1;
+        ordinal.set(key, n);
+        geo.setAttribute(
+          'aVar',
+          variationAttribute(family, mesh.geometry, geo, `${key}/${mesh.name}/${n}`),
+        );
+      }
       geo.applyMatrix4(mesh.matrixWorld.clone().premultiply(inverse));
       geo = own.geo(geo);
       const list = buckets.get(mat) ?? [];
@@ -708,7 +737,13 @@ export function createViewer(
       );
       if (!geo) continue;
       own.geo(geo);
-      const batch = new THREE.Mesh(geo, mat);
+      // A varied family draws with its one varied copy (made once per viewer).
+      let drawn = mat;
+      if (geo.attributes.aVar) {
+        drawn = varied.get(mat) ?? variedMaterial(mat);
+        varied.set(mat, drawn);
+      }
+      const batch = new THREE.Mesh(geo, drawn);
       batch.castShadow = list.some((x) => x.cast);
       batch.receiveShadow = true;
       batch.userData.batch = list.length;
@@ -957,6 +992,8 @@ export function createViewer(
       for (const m of shared) m.dispose();
       haloTexture.dispose();
       for (const m of simplified.values()) m.dispose();
+      for (const m of varied.values()) m.dispose();
+      varied.clear();
       stage.dispose();
       renderer.dispose();
       renderer.forceContextLoss();

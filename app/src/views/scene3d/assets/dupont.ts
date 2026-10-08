@@ -36,6 +36,8 @@ export function dupontMaterials(own: OwnedResources): DupontMaterials {
           sheen: 0.3,
           sheenRoughness: 0.6,
           sheenColor: new THREE.Color('#3a3d42'),
+          // Its finish varies a little from housing to housing (variation.ts).
+          name: 'dupont_housing',
         }),
     ),
     dark: own.lastingMat(

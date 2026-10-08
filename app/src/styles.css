@@ -2767,6 +2767,56 @@ select {
   cursor: pointer;
 }
 
+/* Realistic / Engineering (realism pass 8): a two-state segmented control of native radios. */
+.view3d-mode {
+  display: inline-flex;
+  align-items: stretch;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
+  font-size: 0.85rem;
+}
+
+.view3d-mode label {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-block-size: 1.9rem;
+  padding: 0.15rem 0.6rem;
+  color: var(--muted, var(--text));
+  cursor: pointer;
+}
+
+.view3d-mode label + label {
+  border-inline-start: 1px solid var(--border);
+}
+
+.view3d-mode label.active {
+  background: color-mix(in srgb, var(--selected) 16%, transparent);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.view3d-mode input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.view3d-mode label:has(input:focus-visible) {
+  outline: 2px solid var(--selected);
+  outline-offset: 1px;
+}
+
+.view3d-mode-custom {
+  align-self: center;
+  padding-inline: 0.5rem;
+  color: var(--muted, inherit);
+  font-size: 0.75rem;
+}
+
 .view3d-presets button:hover {
   border-color: var(--selected);
 }

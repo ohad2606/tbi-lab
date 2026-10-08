@@ -66,6 +66,7 @@ test('Realistic by default; Engineering shows labels on the right parts; manual 
   await page.getByTestId('view3d-preset-realistic').check();
   await expect(view).toHaveAttribute('data-layers', '');
   expect(JSON.stringify(await storedProject(page))).toBe(before);
+  await page.getByTestId('view3d-layer-labels').focus();
   await page.keyboard.press('Escape');
   await expect(page.getByTestId('view3d-layers-panel')).toBeHidden();
   await expect(page.getByTestId('view3d-layers')).toBeFocused();
@@ -90,8 +91,113 @@ test('layers do not affect the simulation or 3D controls; the panel is localized
   await page.getByTestId('language-select').selectOption('he');
   const panel = page.getByTestId('view3d-layers-panel');
   await expect(panel).toHaveAttribute('dir', 'rtl');
-  await expect(panel).toContainText('מציאותית');
-  await expect(panel).toContainText('הנדסית');
   await expect(panel).toContainText('תוויות');
+  await expect(panel).toContainText('עומק שדה');
   await expect(page.getByTestId('view3d-layers')).toHaveText('שכבות');
+  // The visual mode, named for assistive technology in the UI language.
+  const mode = page.getByRole('radiogroup', { name: 'מצב תצוגה' });
+  await expect(mode).toContainText('מציאותית');
+  await expect(mode).toContainText('הנדסית');
+  await expect(page.getByRole('radio', { name: 'מציאותית' })).toBeChecked();
+});
+
+/** The camera, as where three scene points appear on screen (any camera change moves them). */
+async function cameraProbe(page: Page) {
+  return page.evaluate(() => {
+    const host = document.querySelector('[data-testid="view3d-host"]') as unknown as {
+      tbiViewer: { screenOf(p: [number, number, number]): { x: number; y: number } };
+    };
+    return (
+      [
+        [0, 0, 0],
+        [20, 5, -10],
+        [-15, 10, 25],
+      ] as [number, number, number][]
+    ).map((p) => {
+      const s = host.tbiViewer.screenOf(p);
+      return [Math.round(s.x * 100) / 100, Math.round(s.y * 100) / 100];
+    });
+  });
+}
+
+test('visual mode (realism pass 8): Realistic / Engineering by keyboard, per browser, camera and project untouched', async ({
+  page,
+}) => {
+  test.setTimeout(150_000);
+  await page.addInitScript(() => localStorage.setItem('tbi-lab.3d.inspect', '1'));
+  const view = await open3d(page, 'led-colours');
+  const realistic = page.getByRole('radio', { name: 'Realistic' });
+  const engineering = page.getByRole('radio', { name: 'Engineering' });
+  await expect(page.getByRole('radiogroup', { name: 'Visual mode' })).toBeVisible();
+  await expect(realistic).toBeChecked();
+  // Software rendering here (the reduced tier): no depth of field, and the view says so.
+  await expect(view).toHaveAttribute('data-quality', 'reduced');
+  await expect(view).toHaveAttribute('data-dof', 'unavailable');
+  await page.getByTestId('view3d-layers').click();
+  await expect(page.getByTestId('view3d-layer-dof')).toBeDisabled();
+  await expect(page.getByTestId('view3d-layer-dof')).not.toBeChecked();
+  await expect(page.getByTestId('view3d-layers-panel')).toContainText('Needs a hardware GPU');
+  await page.getByTestId('view3d-layers').click();
+
+  await page.getByTestId('view3d-rotate-left').click();
+  await page.getByTestId('view3d-host').focus();
+  await page.keyboard.press('+');
+  const camera = await cameraProbe(page);
+  const target = await view.getAttribute('data-target');
+  const project = JSON.stringify(await storedProject(page));
+
+  // Keyboard: arrow keys move between the two modes.
+  await realistic.focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(engineering).toBeChecked();
+  await expect(view).toHaveAttribute('data-preset', 'engineering');
+  await expect(view).toHaveAttribute('data-layers', 'labels grid');
+  expect(await cameraProbe(page)).toEqual(camera);
+  await expect(view).toHaveAttribute('data-target', target!);
+
+  // Remembered by this browser (never in the project): leaving the 3D view and coming back
+  // starts a new viewer from the stored preference.
+  await page.getByTestId('view-circuit').click();
+  await expect(view).toBeHidden();
+  await page.getByTestId('view-3d').click();
+  await expect(view).toHaveAttribute('data-status', 'ready', { timeout: 120_000 });
+  await expect(page.getByRole('radio', { name: 'Engineering' })).toBeChecked();
+  expect(
+    JSON.parse((await page.evaluate(() => localStorage.getItem('tbi-lab.3d.layers')))!),
+  ).toMatchObject({ dof: false, labels: true, grid: true });
+  expect(JSON.stringify(await storedProject(page))).toBe(project);
+  await page.getByRole('radio', { name: 'Realistic' }).check();
+  await expect(view).toHaveAttribute('data-preset', 'realistic');
+});
+
+test('full tier: depth of field on in Realistic, off in Engineering; no material per part', async ({
+  page,
+}) => {
+  test.setTimeout(300_000);
+  // The full renderer on this software rasteriser (slow, but the same code a real GPU runs).
+  await page.addInitScript(() => localStorage.setItem('tbi-lab.3d.quality', 'full'));
+  const view = await open3d(page, 'esp32-bench');
+  await expect(view).toHaveAttribute('data-quality', 'full');
+  await expect(view).toHaveAttribute('data-dof', 'on', { timeout: 60_000 });
+  const materials = Number(await view.getAttribute('data-materials'));
+  const parts = (await view.getAttribute('data-components'))!.split(' ').length;
+  // A fixed family set, never one material per part or per pin (the varied finish is a
+  // per-vertex attribute in the existing batches: variation.ts).
+  expect(materials).toBeLessThanOrEqual(85);
+  expect(materials).toBeLessThan(parts * 5);
+  // A frame without the scene's one-off shadow-map pass (drawn only when the scene is built).
+  await page.getByTestId('view3d-rotate-left').click();
+  const renders = Number(await view.getAttribute('data-renders'));
+  await expect
+    .poll(async () => Number(await view.getAttribute('data-renders')), { timeout: 60_000 })
+    .toBeGreaterThan(renders);
+  const calls = Number(await view.getAttribute('data-draw-calls'));
+  await page.getByRole('radio', { name: 'Engineering' }).check();
+  await expect(view).toHaveAttribute('data-dof', 'off', { timeout: 60_000 });
+  await page.getByRole('radio', { name: 'Realistic' }).check();
+  await expect(view).toHaveAttribute('data-dof', 'on', { timeout: 60_000 });
+  await expect
+    .poll(async () => Number(await view.getAttribute('data-draw-calls')), { timeout: 60_000 })
+    .toBe(calls);
+  await expect(view).toHaveAttribute('data-materials', String(materials));
 });

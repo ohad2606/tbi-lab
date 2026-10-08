@@ -67,6 +67,8 @@ export function ThreeView() {
     writeLayers(storage(), next);
   };
   const preset = matchPreset(layers);
+  /** The reduced (software) tier draws no depth of field: the view says so, never pretends. */
+  const dofUnavailable = stats?.dof === 'unavailable';
   // Development diagnostics (hidden): open the app with #diag3d to see the renderer readout.
   const diagnostics = typeof location !== 'undefined' && /(^|[#&])diag3d\b/.test(location.hash);
   const scene = useMemo(() => (doc ? deriveScene(doc) : null), [doc]);
@@ -319,10 +321,11 @@ export function ThreeView() {
       data-assets-ms={assetMs ?? undefined}
       data-render-ms={stats?.renderMs}
       data-labels={layers.labels ? 'on' : 'off'}
-      data-layers={LAYERS.filter((l) => layers[l.id])
+      data-layers={LAYERS.filter((l) => l.kind === 'overlay' && layers[l.id])
         .map((l) => l.id)
         .join(' ')}
       data-preset={preset}
+      data-dof={stats?.dof}
       data-objects={stats?.objects}
       data-renders={stats?.renders}
       data-programs={stats?.programs}
@@ -551,6 +554,30 @@ export function ThreeView() {
             aria-label={t('view3d.presets')}
             dir={locale.dir}
           >
+            <div
+              class="view3d-mode"
+              role="radiogroup"
+              aria-label={t('view3d.mode')}
+              data-testid="view3d-mode"
+            >
+              {PRESETS.map((p) => (
+                <label key={p.id} class={preset === p.id ? 'active' : undefined}>
+                  <input
+                    type="radio"
+                    name="view3d-preset"
+                    data-testid={`view3d-preset-${p.id}`}
+                    checked={preset === p.id}
+                    onChange={() => changeLayers(presetVisibility(p.id))}
+                  />
+                  {t(p.titleKey)}
+                </label>
+              ))}
+              {preset === 'custom' && (
+                <span class="view3d-mode-custom" data-testid="view3d-mode-custom">
+                  {t('view3d.preset.custom')}
+                </span>
+              )}
+            </div>
             <div class="view3d-layers">
               <button
                 ref={layersButton}
@@ -580,26 +607,8 @@ export function ThreeView() {
                   }}
                 >
                   <fieldset>
-                    <legend>{t('view3d.layers.preset')}</legend>
-                    {PRESETS.map((p) => (
-                      <label key={p.id}>
-                        <input
-                          type="radio"
-                          name="view3d-preset"
-                          data-testid={`view3d-preset-${p.id}`}
-                          checked={preset === p.id}
-                          onChange={() => changeLayers(presetVisibility(p.id))}
-                        />
-                        {t(p.titleKey)}
-                      </label>
-                    ))}
-                    {preset === 'custom' && (
-                      <span class="view3d-layers-custom">{t('view3d.preset.custom')}</span>
-                    )}
-                  </fieldset>
-                  <fieldset>
                     <legend>{t('view3d.layers')}</legend>
-                    {LAYERS.map((l) => (
+                    {LAYERS.filter((l) => l.kind === 'overlay').map((l) => (
                       <label key={l.id}>
                         <input
                           type="checkbox"
@@ -610,6 +619,27 @@ export function ThreeView() {
                         {t(l.titleKey)}
                       </label>
                     ))}
+                  </fieldset>
+                  <fieldset>
+                    <legend>{t('view3d.layers.lens')}</legend>
+                    {LAYERS.filter((l) => l.kind === 'lens').map((l) => (
+                      <label key={l.id}>
+                        <input
+                          type="checkbox"
+                          data-testid={`view3d-layer-${l.id}`}
+                          checked={layers[l.id] && !dofUnavailable}
+                          disabled={dofUnavailable}
+                          aria-describedby={dofUnavailable ? 'view3d-dof-note' : undefined}
+                          onChange={() => changeLayers({ ...layers, [l.id]: !layers[l.id] })}
+                        />
+                        {t(l.titleKey)}
+                      </label>
+                    ))}
+                    {dofUnavailable && (
+                      <span id="view3d-dof-note" class="view3d-layers-custom">
+                        {t('view3d.dof.unavailable')}
+                      </span>
+                    )}
                   </fieldset>
                 </div>
               )}
@@ -640,6 +670,8 @@ export function ThreeView() {
                     ),
                   ],
                   ['view3d.diag.tier', stats.quality],
+                  ['view3d.diag.mode', preset],
+                  ['view3d.diag.dof', stats.dof],
                   ['view3d.diag.dpr', String(stats.pixelRatio)],
                   ['view3d.diag.drawCalls', String(stats.drawCalls)],
                   ['view3d.diag.triangles', String(stats.triangles)],

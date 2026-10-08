@@ -56,6 +56,12 @@ export interface Stage {
   render(): void;
   /** The camera's distance to the orbit target (bounds the depth of field's autofocus; full tier). */
   setFocus(distance: number): void;
+  /**
+   * Depth of field on or off (the Realistic / Engineering view, layers.ts). Off: the pass is
+   * skipped, every depth plane exactly as the camera projects it. Returns whether the effect is
+   * active (always false in the reduced tier, which has none).
+   */
+  setDepthOfField(on: boolean): boolean;
   setSize(width: number, height: number): void;
   /** Aim the key light and fit its shadow to the circuit; called on every rebuild. */
   fit(desc: SceneDescription): void;
@@ -251,6 +257,11 @@ export function createStage(
     },
     setFocus(distance) {
       dof?.update(distance, camera.aspect);
+    },
+    setDepthOfField(on) {
+      if (!dof) return false;
+      dof.pass.enabled = on;
+      return on;
     },
     setSize(width, height) {
       composer?.setSize(width, height);
