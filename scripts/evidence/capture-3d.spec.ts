@@ -31,12 +31,9 @@ async function openDoc(page: Page, text: string) {
 }
 
 async function open3d(page: Page) {
-  const t0 = Date.now();
-  page.once('close', () => {});
-  void (async () => { for (;;) { await new Promise((r) => setTimeout(r, 5000)); const st = await page.getByTestId('view3d').getAttribute('data-status').catch(() => 'gone'); console.log('T+', Date.now() - t0, st); if (st !== 'loading') break; } })();
   await page.getByTestId('view-3d').click();
   const view = page.getByTestId('view3d');
-  await expect(view).toHaveAttribute('data-status', 'ready', { timeout: 400_000 });
+  await expect(view).toHaveAttribute('data-status', 'ready', { timeout: 120_000 });
   await expect
     .poll(async () => Number(await view.getAttribute('data-draw-calls')), { timeout: 120_000 })
     .toBeGreaterThan(0);
@@ -79,8 +76,6 @@ test.beforeAll(() => mkdirSync(OUT, { recursive: true }));
 test.afterAll(() => writeFileSync(join(OUT, 'stats.json'), JSON.stringify(stats, null, 2)));
 
 test.beforeEach(async ({ page }) => {
-  page.on('pageerror', (e) => console.log('PAGEERROR', e.message));
-  page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') console.log('CONSOLE', m.type(), m.text().slice(0, 400)); });
   await page.addInitScript((q) => {
     localStorage.setItem('tbi-lab.3d.inspect', '1');
     localStorage.setItem('tbi-lab.3d.quality', q);
