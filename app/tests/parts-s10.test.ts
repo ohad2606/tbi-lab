@@ -42,6 +42,8 @@ const R1_ESP32: ComponentTypeId[] = [
   'component.rgb_led',
   'component.buzzer',
   'sensor.pir_hc_sr501',
+  'component.bjt_npn',
+  'component.relay',
 ];
 
 describe('Sprint 10 parts: catalog and serialization', () => {

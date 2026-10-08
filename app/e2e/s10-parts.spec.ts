@@ -218,16 +218,22 @@ test('ESP32 projects: parts the runtime cannot simulate are disabled in the pale
   page,
 }) => {
   await openExample(page, 'esp32-blink');
-  // Sprint 11 (R1): the RGB LED is offered with the board; parts not yet enabled stay disabled.
-  await expect(page.getByTestId('palette-component.rgb_led')).toBeEnabled();
-  const relay = page.getByTestId('palette-component.relay');
-  await expect(relay).toBeDisabled();
-  await expect(relay).toHaveAttribute('data-unavailable', 'part_needs_runtime');
+  // Sprint 11 (R1): enabled parts are offered with the board; parts not yet enabled stay disabled.
+  for (const t of [
+    'component.rgb_led',
+    'component.buzzer',
+    'sensor.pir_hc_sr501',
+    'component.bjt_npn',
+    'component.relay',
+  ])
+    await expect(page.getByTestId(`palette-${t}`)).toBeEnabled();
+  const matrix = page.getByTestId('palette-display.led_matrix_8x8');
+  await expect(matrix).toBeDisabled();
+  await expect(matrix).toHaveAttribute('data-unavailable', 'part_needs_runtime');
   await expect(page.getByTestId('palette-note-part_needs_runtime')).toHaveText(
     'Requires runtime support not available for ESP32 yet.',
   );
-  for (const t of ['component.capacitor', 'component.relay', 'sensor.pir_hc_sr501'])
-    await expect(page.getByTestId(`palette-${t}`)).toBeDisabled();
+  await expect(page.getByTestId('palette-component.capacitor')).toBeDisabled();
   // Sprint 11: the capacitor says why (time-dependent behaviour), in EN and HE.
   await expect(page.getByTestId('palette-component.capacitor')).toHaveAttribute(
     'data-unavailable',
@@ -247,8 +253,8 @@ test('ESP32 projects: parts the runtime cannot simulate are disabled in the pale
   );
   await page.getByTestId('language-select').selectOption('en');
   // A local circuit holding such a part does not offer the board.
-  await openExample(page, 'relay-load');
-  await expect(page.getByTestId('palette-component.relay')).toBeEnabled();
+  await openExample(page, 'led-matrix');
+  await expect(page.getByTestId('palette-display.led_matrix_8x8')).toBeEnabled();
   await expect(page.getByTestId('palette-board.esp32_devkitc_wroom32')).toBeDisabled();
   await expect(page.getByTestId('palette-board.esp32_devkitc_wroom32')).toHaveAttribute(
     'data-unavailable',

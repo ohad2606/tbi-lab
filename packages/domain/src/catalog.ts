@@ -258,7 +258,6 @@ const SPRINT10_TYPES = {
       },
     ],
     aliases: ['transistor', 'npn', 'bjt', '2n3904', 'טרנזיסטור'],
-    mcuRuntime: false,
   },
   'sensor.pir_hc_sr501': {
     type: 'sensor.pir_hc_sr501',
@@ -395,7 +394,6 @@ const SPRINT10_TYPES = {
     ],
     aliases: ['relay', 'spdt relay', 'srd-05vdc', 'ממסר', 'ריליי'],
     optionalTerminals: ['no', 'nc'],
-    mcuRuntime: false,
   },
 } satisfies Partial<Record<ComponentTypeId, ComponentTypeDef>>;
 
