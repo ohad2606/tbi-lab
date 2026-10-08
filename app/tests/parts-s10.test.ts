@@ -38,7 +38,7 @@ const NEW_TYPES: ComponentTypeId[] = [
 ];
 
 /** Sprint 11 (R1): Sprint 10 parts enabled for ESP32 projects so far. */
-const R1_ESP32: ComponentTypeId[] = ['component.rgb_led'];
+const R1_ESP32: ComponentTypeId[] = ['component.rgb_led', 'component.buzzer'];
 
 describe('Sprint 10 parts: catalog and serialization', () => {
   it('every new type has terminals on the grid inside its 2D symbol, a 3D model and a schematic symbol', () => {

@@ -236,7 +236,6 @@ const SPRINT10_TYPES = {
       },
     ],
     aliases: ['buzzer', 'beeper', 'sounder', 'active buzzer'],
-    mcuRuntime: false,
   },
   'component.bjt_npn': {
     type: 'component.bjt_npn',
