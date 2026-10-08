@@ -684,11 +684,14 @@ export function createViewer(
       // Actuators move (operated during a simulation): never merged into a static batch.
       if (o.name === 'base' || o.userData.noAo || o.userData.actuator || o.userData.layer) return;
       const mat = mesh.material;
-      if (Array.isArray(mat) || mat.transparent || textured(mat)) return;
+      // A textured material batches only when its maps need nothing but per-vertex UVs
+      // (`userData.batchUv`: the wire jackets, realism pass 6).
+      if (Array.isArray(mat) || mat.transparent || (textured(mat) && !mat.userData.batchUv)) return;
       if (o.userData.lens || o.parent?.userData.lensMaterial === mat) return;
       let geo = mesh.geometry.index ? mesh.geometry.toNonIndexed() : mesh.geometry.clone();
+      const keep = mat.userData.batchUv ? ['position', 'normal', 'uv'] : ['position', 'normal'];
       for (const name of Object.keys(geo.attributes))
-        if (name !== 'position' && name !== 'normal') geo.deleteAttribute(name);
+        if (!keep.includes(name)) geo.deleteAttribute(name);
       geo.applyMatrix4(mesh.matrixWorld.clone().premultiply(inverse));
       geo = own.geo(geo);
       const list = buckets.get(mat) ?? [];

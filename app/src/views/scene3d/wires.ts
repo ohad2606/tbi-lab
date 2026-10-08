@@ -65,7 +65,7 @@ export function wireMaterials(own: OwnedResources, conductor: THREE.Material): W
     jacket: (color) =>
       own.sharedMat(`jacket:${color}`, () => {
         const pigment = jacketPigment(color);
-        return full
+        const m = full
           ? new THREE.MeshPhysicalMaterial({
               color: pigment,
               // The map carries the roughness (about 0.58, scuffs rougher).
@@ -81,6 +81,10 @@ export function wireMaterials(own: OwnedResources, conductor: THREE.Material): W
               sheenColor: new THREE.Color(pigment).lerp(new THREE.Color('#ffffff'), 0.35),
             })
           : new THREE.MeshStandardMaterial({ color: pigment, roughness: 0.62 });
+        // The surface maps need only the tubes' UVs: the jackets still merge into one batch per
+        // colour (renderer.ts batchStatic).
+        m.userData.batchUv = true;
+        return m;
       }),
     conductor,
   };
