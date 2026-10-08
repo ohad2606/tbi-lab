@@ -1,6 +1,18 @@
 # Sprint 11 — R1 implementation plan
 
-**Status:** PROPOSED. Nothing is implemented until the PM approves this plan and answers §4.
+**Status:** approved with conditions (PM, 2026-10-08). Slices 0–6 **implemented** (2026-10-08):
+
+| Slice | Outcome | Commit |
+|---|---|---|
+| 0 Foundation | Done: bounded `params` mirrors with submit-time checks and rate limit, time-dependent backstop, pad over-voltage warnings, command error mapping, mirror coalescing | `747a6df` |
+| 1 RGB LED | Enabled | `439bee0` |
+| 2 Buzzer | Enabled; `tone()` / `analogRead()` refusals verified on built ELFs | `19f878a` |
+| 3 PIR | Enabled (motion mirrored live) | `f8d87ae` |
+| 4 NPN + relay | Enabled | `32ddc20` |
+| 5 Photoresistor | Enabled (digital threshold; light mirrored live) | `654a3ac` |
+| 6 8×8 matrix | **Measured; gates not met; stays local-only** | `c1f198d` |
+| (7, examples part) | Two curated ESP32 examples (approved) | `b5f198b` |
+| 7 Deployment | **Not authorised**; procedure proposed in `SPRINT-11.md` Part C | — |
 **Architecture:** [SPRINT-11-R1-ARCHITECTURE.md](SPRINT-11-R1-ARCHITECTURE.md) ·
 **Tests:** [SPRINT-11-TEST-MATRIX.md](SPRINT-11-TEST-MATRIX.md) ·
 **Contract:** [ADR-010](../architecture/adr/ADR-010-esp32-part-support-and-live-part-parameters.md).

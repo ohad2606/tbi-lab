@@ -1,7 +1,9 @@
 # Sprint 11 — R1 architecture: the Sprint 10 parts in ESP32 projects
 
 **Status:** **APPROVED WITH CONDITIONS** (PM, 2026-10-08): the conditions are binding design
-additions, §6. Implementation of slices 0–6 authorised; deployment (slice 7) is not.
+additions, §6. **Slices 0–6 implemented** (2026-10-08; record: `SPRINT-11.md` Part C): six parts
+enabled for ESP32 projects (RGB LED, buzzer, PIR, 2N3904, relay, photoresistor); the 8×8 matrix
+measured and kept local-only; the capacitor refused. Deployment (slice 7) not authorised.
 **Branch:** `sprint-11` (worktree `~/projects/tbi-lab-s11`), from `465b330` = `main` =
 `sprint-10-complete`. Sprint 10 is closed and is not reopened.
 **Companion documents:** [SPRINT-11-IMPLEMENTATION-PLAN.md](SPRINT-11-IMPLEMENTATION-PLAN.md) ·
@@ -101,7 +103,7 @@ Legend — **Supported** (works in an ESP32 project after R1, honestly) · **Fea
 | **Relay** (SRD-05VDC-SL-C) | 70 Ω coil, hysteresis 3.75 / 0.5 V, separate contact circuit | Coil from PSU 5 V through a 2N3904 driven by a GPIO. A GPIO directly on the coil solves 2.67 V / 38 mA: **does not pull in** (correct) | Coil = output; a contact into an input needs an external pull-up to 3.3 V | **Supported**. No operate/release time, no inductive kick (stated). A self-interrupting coil → `no_steady_state` → the run ends with that reason (honest; see §8) |
 | **PIR** (HC-SR501) | Discrete `powered` (VCC ≥ 4.5 V); 3.3 V output behind 1 kΩ when motion | VCC from PSU 5 V, GND common, OUT to an input (34/35/36/39 ideal) | **Input:** HIGH with motion, LOW without | **Supported** with the `control.params` mirror (motion toggled live). No retrigger/hold time (stated) |
 | **LDR** (GL5528) | R(E) power law, `illuminance` live | Divider (with a fixed resistor) from a **3.3 V** source to an input | **Input, digital threshold only**, with the pad's real hold band (e.g. 10 kΩ to GND, LDR to 3.3 V: HIGH above ≈ 111 lx, LOW below ≈ 2.9 lx, held in between) | **Feasible, bounded**: digital threshold. `analogRead` **blocked** (ADC: QEMU SENS unimplemented) |
-| **8×8 LED matrix** (1088AS) | 64 dice, `array` of currents | 16 lines from GPIO outputs through resistors; 20 output-capable pins exist (using strapping pins 0/2/5/12/15 for a full 16) | Output only. **Static patterns exact.** Multiplexed scanning: each edge is a fresh DC solve; the browser sees the last state per 10 ms window (no persistence of vision); each edge costs a 64-diode solve | **Feasible, bounded**: static patterns only, after a solve-cost measurement (stop condition: implementation plan, Slice 6). Scanned images **deferred** (needs edge timing, R4-class) |
+| **8×8 LED matrix** (1088AS) | 64 dice, `array` of currents | 16 lines from GPIO outputs through resistors; 20 output-capable pins exist (using strapping pins 0/2/5/12/15 for a full 16) | Output only. **Static patterns exact.** Multiplexed scanning: each edge is a fresh DC solve; the browser sees the last state per 10 ms window (no persistence of vision); each edge costs a 64-diode solve | **Measured, NOT enabled — stays local-only** (slice 6, 2026-10-08): the p99 per-event solve gate (2 ms) failed (static 5.9–8.1 ms, scanning 3.0–3.4 ms); scanning runs at ≈0.022× real time. Evidence `s11-evidence/r1-matrix-perf.md`. Scanned images **deferred** (edge timing, R4-class) |
 | **Capacitor** | Time-stepped (backward Euler) | — | — | **Blocked** in ESP32 projects (no host time stepping; ESP32 transient is a V1 roadmap item) |
 | Servo, I2C LCD, HC-SR04, DHT22 | Engine models only | — | — | **Blocked** (R4, R3, R2) — not in R1 |
 | 555, potentiometer, Wi-Fi, other boards | — | — | — | **Deferred** (PM scope) |

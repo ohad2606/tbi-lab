@@ -570,8 +570,8 @@ export const RECIPES: Record<string, () => ProjectDocument> = {
     r.supply(5, 0.5);
     const U1 = r.place('board.esp32_devkitc_wroom32', 300, 0);
     r.program(U1, 'TbiBanks');
-    const PIR = r.place('sensor.pir_hc_sr501', 100, -100, 2);
-    const G2 = r.place('component.ground', 160, -20);
+    const PIR = r.place('sensor.pir_hc_sr501', 60, -100, 2);
+    const G2 = r.place('component.ground', 120, -20);
     const RB = r.place('component.resistor', 460, 60);
     const Q1 = r.place('component.bjt_npn', 580, 60);
     const G3 = r.place('component.ground', 600, 160);
@@ -580,8 +580,8 @@ export const RECIPES: Record<string, () => ProjectDocument> = {
     const RL = r.place('component.resistor', 860, -60);
     const D2 = r.place('component.led', 980, -60);
     const G4 = r.place('component.ground', 1020, 0);
-    const BZ = r.place('component.buzzer', 860, 40);
-    const G5 = r.place('component.ground', 900, 100);
+    const BZ = r.place('component.buzzer', 860, 80);
+    const G5 = r.place('component.ground', 900, 200);
     const G6 = r.place('component.ground', 440, -120);
     r.set(RB, 'resistance', 1000, 'ohm');
     r.set(RL, 'resistance', 330, 'ohm');
@@ -589,8 +589,8 @@ export const RECIPES: Record<string, () => ProjectDocument> = {
     r.wire(T('PSU1', 'positive'), T(PIR, 'vcc'), [
       { x: -40, y: -20 },
       { x: -40, y: -160 },
-      { x: 180, y: -160 },
-      { x: 180, y: -120 },
+      { x: 140, y: -160 },
+      { x: 140, y: -120 },
     ]);
     r.wire(T(PIR, 'gnd'), T(G2, 'ref'));
     r.wire(T(PIR, 'out'), T(U1, 'gpio34'));

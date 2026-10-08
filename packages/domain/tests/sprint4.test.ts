@@ -226,7 +226,8 @@ describe('Sprint 10: parts offered only where the board runtime can simulate the
       );
     // The original parts stay available with the board.
     expect(placementBlock(doc, 'component.led')).toBeNull();
-    let local = place(newDoc(), 'component.relay', 0, 0).doc;
+    // Sprint 11 (R1): the relay runs with the board now; the matrix is still refused with it.
+    let local = place(newDoc(), 'display.led_matrix_8x8', 0, 0).doc;
     expect(placementBlock(local, 'board.esp32_devkitc_wroom32')).toBe('board_needs_runtime');
     local = place(local, 'component.led', 200, 0).doc;
     expect(placementBlock(local, 'component.capacitor')).toBeNull();

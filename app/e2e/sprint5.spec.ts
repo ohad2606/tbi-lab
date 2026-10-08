@@ -472,6 +472,7 @@ test('A13/A15: new Sprint 5 surfaces are Hebrew (technical tokens only), RTL chr
     /^tbilab$/,
     /^(ESP32|DevKitC|GPIO\d+)$/, // Classic ESP32 technical tokens: MCU, board, pin names (Sprint 6)
     /^(RGB|NPN|LDR|PIR|NC|NO|COM|RC|GL5528|N3904|HC|SR501|F)$/, // Sprint 10: part numbers and standard acronyms (technical tokens)
+    /^(HIGH|LOW|ADC|Flyback|lx)$/, // Sprint 11: logic levels, ADC, flyback (kept in English by the glossary rule, CLAUDE.md) and the lux symbol
     /^(PSU|R|GND|D|SW)\d+$/,
     /^(GND|LED|DC|CV|CC|OFF|MB)$/,
     /^N4148$/,

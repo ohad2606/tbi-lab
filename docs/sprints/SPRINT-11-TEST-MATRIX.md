@@ -104,3 +104,47 @@ silent no-op or a plausible-looking value.
 |---|---|---|
 | T-B1 | Roll the staging host back to the Sprint 10 bundle | `/health` shows the old commit; existing suite green |
 | T-B2 | Re-apply R1 on staging | Suite green again |
+
+## 7. Status after slices 0–6 (2026-10-08)
+
+Legend: ✓ implemented and passing · ◐ covered differently (stated) · ✗ not done (stated) ·
+— not applicable after the slice decision. Files: `E` = `packages/engine/tests/`, `D` =
+`packages/domain/tests/`, `H` = `runtime/host/tests/`, `Q` = `runtime/tests/*.runtime.test.ts`,
+`A` = `app/tests/`, `B` = `app/e2e/`.
+
+| ID | Status | Where |
+|---|---|---|
+| T-C1–T-C5 | ✓ | H `r1-contract` (structural bounds incl. nesting, NaN/Infinity/null, 33-char keys and strings, 9 keys, > 512 bytes) |
+| T-C6 | ✓ (stricter than planned) | Refused **at submit** with 409 `unsupported_control` (H `r1-contract`, `r1-pir`), and again by the engine (E `r1-pads`) |
+| T-C7 | ✓ (stricter than planned) | 409 `invalid_value` at submit (H `r1-ldr`, `r1-pir`); domain rule D `liveControl`; engine E `r1-pads` |
+| T-C8 | ◐ | Revision ordering is the existing generic mirror path (H `lifecycle`, `protocol`); no params-specific duplicate test |
+| T-C9 | ✓ | A `mcu-simulation` (`command_refused`, `commands_rate_limited`, `mirror_failed` detail; coalescing) |
+| Rate limit, body bound, ownership (§6.1) | ✓ | H `r1-contract` (rate 409 `rate_limited`; 8 KiB → 413; another principal → 404), H `ownership` (existing) |
+| Compatibility (§6.2) | ✓ (contract level) | H `r1-contract` against a frozen copy of the S10 validator (`fixtures/protocol-s10.ts`): every S10 message accepted unchanged; S10 refuses `params` with 400; real host-version combinations: staging rehearsal (slice 7) |
+| T-X1 | ✓ | H `models` (catalog-driven refusal: capacitor and matrix) |
+| T-X2 | ✓ | H `r1-contract` (flag removed in the test: refused, reason `time_dependent`) |
+| T-X3 | ✓ / ◐ | Palette and reasons EN/HE: B `s10-parts`, `s11-r1`; Run refusal: A `parts-s10`; the drop refusal uses the same `placementBlock` (D `sprint4`), not re-tested in a browser |
+| T-D1, T-D2 | ✓ | E `r1-pads` (input over/under, output forced above 3.6 V; named `gpio_output_overvoltage`) |
+| T-D3 | ✓ | A `r1-warnings`: every ESP32 example, every pad-mode combination, no over-voltage warning; engine A/B 231 identical / 0 different vs runtime `80448f9` |
+| T-D4 | ◐ | Warnings are computed in the browser from the outcome for local and host runs alike; host outcomes equal the engine (all host and QEMU tests), so warnings are identical by construction |
+| Warnings never alter values | ✓ | E `r1-pads` (no mutation; equal to a solve without the warning pass) |
+| Warnings on Run / GPIO change / live parameter | ✓ | E `r1-pads` (three tests) |
+| T-P1–T-P4 RGB | ✓ | E `r1-rgb`, H `r1-rgb`, Q `r1-rgb`, B (palette); colour rendering from outcomes is the existing generic path |
+| T-P5–T-P7 Buzzer | ✓ | E `r1-buzzer`, H `r1-buzzer`, Q `r1-buzzer`; `tone()` refusal on a built ELF (`s11-evidence/r1-feature-probes.md`) |
+| T-P8 bit-banged buzzer | ✗ | No test firmware toggles the buzzer; the window-aggregation behaviour is the generic one (`gpio` events) |
+| T-P9–T-P13 PIR | ✓ | E `r1-pir`, H `r1-pir`, Q `r1-pir`, A `mcu-simulation`, B `s11-r1` |
+| T-P14–T-P20 NPN, relay | ✓ | E `r1-relay` (incl. no_steady_state), H `r1-relay`, Q `r1-relay` (closed loop through the contact) |
+| T-P21–T-P25 LDR | ✓ | E `r1-ldr`, H `r1-ldr`, Q `r1-ldr`, B `s11-r1`; `analogRead` refusal on a built ELF |
+| T-P26, T-P27 matrix static | ✓ | E `r1-matrix`, H `r1-matrix` (capability, flag lifted in that test only) |
+| T-P28, T-P29 matrix load | ✓ | Q `r1-matrix-perf` (4 runs; `s11-evidence/r1-matrix-perf.md`) |
+| T-P30 matrix e2e | — | Matrix not enabled |
+| Examples | ✓ | A `examples`, `runtime-fixtures` (+ curated-source key), Q `r1-examples`, B `s11-r1` |
+| T-R1 | see `SPRINT-11.md` Part C | Full local CI |
+| T-R2 | ✓ | Engine A/B vs `80448f9`: 231 identical, 0 different |
+| T-R3 | ✓ | Q `gate` 6/6 and `banks` 10/10 on runtime `33e35e4ac5e798d7`; the other local runtime suites in the regression run |
+| T-R4 | ✓ | Q `r1-determinism` (both examples, live parameters at fixed simulation times, 3 runs each, one stream, pinned) |
+| T-R5 | ◐ | Local suites (`r2-failures`, `resources`) in the regression; `s8-*` suites run against a deployed instance: staging rehearsal (slice 7) |
+| T-I1, T-I2 | ◐ | Existing suites (H `failures`, `lifecycle`; Q `isolation`, `r2-failures`); admission unchanged |
+| T-PF1 | ✓ | Q `r1-matrix-perf` (and the solve timings of the part tests) |
+| T-PF2 | ✗ | `electrical` payload size with the matrix not measured (matrix not enabled) |
+| T-L1–T-L6, T-B1–T-B2 | not yet | Slice 7 (deployment not authorised) |
