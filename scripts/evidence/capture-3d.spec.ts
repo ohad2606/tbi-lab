@@ -215,13 +215,15 @@ test('body separation: PIR + matrix, ESP32 + module, dense mixed (top and angled
 });
 
 // Listed shots (Sprint 10 wire routing): EVIDENCE_SHOTS=<json> with
-// [{ example: '<id>', run?: true, preset?: 'engineering', shots: [{ name, target, from }] }].
+// [{ example: '<id>', run?: true, preset?: 'engineering', shots: [{ name, target, from }] }];
+// `file`: a project document's path instead of a curated example (an evidence bench).
 // `run`: start the (local) simulation first, so lit LEDs show (circuits without a board).
 const SHOTS = process.env.EVIDENCE_SHOTS;
 test('listed shots of curated examples', async ({ page }) => {
   test.skip(!SHOTS, 'EVIDENCE_SHOTS not set');
   const list = JSON.parse(readFileSync(SHOTS!, 'utf8')) as {
     example: string;
+    file?: string;
     run?: boolean;
     preset?: 'realistic' | 'engineering';
     /** Without target/from: the default (home) camera, as a user first sees the scene. */
@@ -230,7 +232,7 @@ test('listed shots of curated examples', async ({ page }) => {
   for (const e of list) {
     const doc = JSON.parse(
       readFileSync(
-        new URL(`../../app/src/examples/data/${e.example}.json`, import.meta.url),
+        e.file ?? new URL(`../../app/src/examples/data/${e.example}.json`, import.meta.url),
         'utf8',
       ),
     );

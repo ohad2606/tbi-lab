@@ -96,3 +96,29 @@ export function denseBench(): ProjectDocument {
   for (let i = 0; i < 4; i++) doc = place(doc, 'component.push_button', -460, -120 + i * 80).doc;
   return doc;
 }
+
+/**
+ * The header bench (jumper exit geometry, Sprint 10): neighbouring wired pins on both ESP32
+ * headers (three adjacent pins on J2 to resistors on the left, three on J3 to resistors on the
+ * right) and one jumper from header to header across the board.
+ */
+export function headerBench(): ProjectDocument {
+  let doc = newDoc();
+  doc.name = 'Realism bench: header jumpers';
+  // The new document's supply and ground, out of the board's way.
+  doc.layout.components.PSU1 = { x: -260, y: 220, rotation: 0 };
+  doc.layout.components.GND1 = { x: -140, y: 260, rotation: 0 };
+  const u = place(doc, 'board.esp32_devkitc_wroom32', 0, 0);
+  doc = u.doc;
+  for (const [side, pins] of [
+    [-1, [32, 33, 25]],
+    [1, [19, 18, 5]],
+  ] as const)
+    pins.forEach((gpio, i) => {
+      const r = place(doc, 'component.resistor', side * 260, -60 + i * 60);
+      doc = r.doc;
+      doc = wire(doc, [u.id, `gpio${gpio}`], [r.id, side < 0 ? 'b' : 'a']);
+    });
+  doc = wire(doc, [u.id, 'gpio26'], [u.id, 'gpio21']);
+  return doc;
+}

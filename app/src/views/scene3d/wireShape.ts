@@ -17,6 +17,15 @@
  *   way a wire relaxes when laid down. The low point and the bow's side are fixed per wire (a
  *   stable hash of its id): asymmetry without randomness.
  * - A wire leaving a jumper housing runs straight out of it before it bends (strain relief).
+ * - The NECK (owner review, Sprint 10): out of a jumper housing plugged on a header pin the wire
+ *   leaves the housing's top face along its axis (where the crimp's insulation wings hold it),
+ *   runs 3 mm straight (strain relief), then turns in ONE wide circular bend (6 mm radius where
+ *   there is room, else 5 or 4 mm: never below 3x the wire's diameter; the route's own corners
+ *   are 2-3 mm), never past straight down (no hook back over the housing), and runs straight on
+ *   to where it joins the route in an ordinary soft corner. The route's own steep drop right next
+ *   to the housing (which folded the wire back past, and into, the plastic) is replaced; the
+ *   neck is checked against every jumper housing and the board's top, and the route's riser is
+ *   kept when no such bend fits (jumperNeck).
  * Deterministic: everything is a function of the route and the wire id, never of time, camera or
  * randomness.
  *
@@ -27,9 +36,16 @@
  * change (tests: app/tests/wire-shape.test.ts).
  */
 import * as THREE from 'three';
-import { MODEL_HEIGHT, WIRE_RADIUS, type SceneDescription, type Vec3 } from './scene.js';
+import {
+  MODEL_HEIGHT,
+  WIRE_RADIUS,
+  type SceneDescription,
+  type SceneWire,
+  type Vec3,
+} from './scene.js';
 import { footprintRect, type Rect } from './labels.js';
 import { bentPath } from './wires.js';
+import { ESP32_DEVKITC, ESP32_PCB_TOP, ESP32_PIN_TOP } from './physical.js';
 
 /** A wire's shape: the control points and the bend at each interior point. */
 export interface WireShape {
@@ -40,6 +56,8 @@ export interface WireShape {
   arms?: [number, number][];
   /** How much of the natural shape was kept: 1 (full), 0.5 (half sag), 0 (the route as is). */
   drape: 0 | 0.5 | 1;
+  /** Per end: the bend radius of its neck out of a jumper housing (null: no neck there). */
+  necks?: [number | null, number | null];
 }
 
 /** One step of physical shaping (stepped down until the shape is clear of everything). */
@@ -86,6 +104,41 @@ const ARM_RATIO = 4;
 const MIN_SAG_SPAN = 14;
 /** Straight run out of a jumper housing before the first bend. */
 const HOUSING_EXIT = 2.5;
+/** The neck out of a jumper housing: straight strain relief, then the first bend's radius (mm). */
+export const NECK_STRAIGHT = 3.0;
+export const NECK_RADIUS = 6.0;
+/** Bend radii tried, widest first; the smallest is still 3x the wire's diameter (mm). */
+export const NECK_RADII = [NECK_RADIUS, 5, 4] as const;
+/** The neck's arc turns at most this far (down: hanging beside the housing, never hooking back). */
+const NECK_MAX_TURN = Math.PI;
+/** The corner where the neck joins the route turns at most this far. */
+const NECK_MAX_JOIN = (100 / 180) * Math.PI;
+/** Clearance of the neck's surface from a housing or the board top (mm). */
+const NECK_GAP = 0.25;
+
+/** A box a wire's neck must clear (plan rectangle and heights, mm). */
+export interface NeckBox {
+  x0: number;
+  x1: number;
+  z0: number;
+  z1: number;
+  y0: number;
+  y1: number;
+}
+/** What a jumper wire's neck must clear: every jumper housing, and each board's top. */
+export interface NeckContext {
+  housings: NeckBox[];
+  boards: NeckBox[];
+}
+
+/** Distance from a point to a box (0 inside). */
+export function boxDistance(p: Vec3, b: NeckBox): number {
+  const dx = Math.max(b.x0 - p.x, 0, p.x - b.x1);
+  const dy = Math.max(b.y0 - p.y, 0, p.y - b.y1);
+  const dz = Math.max(b.z0 - p.z, 0, p.z - b.z1);
+  return Math.hypot(dx, dy, dz);
+}
+
 /** Required clearance between the surfaces of two wires, and of a wire over a part (mm). */
 const WIRE_GAP = 0.12;
 const BODY_GAP = 0.2;
@@ -231,6 +284,108 @@ function restOn(chain: Vec3[], lift: number): (Vec3 & { soft: true; want: number
     }));
 }
 
+type V3 = THREE.Vector3;
+const v3 = (p: Vec3) => new THREE.Vector3(p.x, p.y, p.z);
+
+/**
+ * The neck of a jumper end (`pts[0]` the housing's top, `pts[1]` straight above it): the points
+ * that replace the route up to where the neck merges into it (a hard point on the route), or null
+ * when no wide bend fits (the route stays as it is). `limit`: how far along the route the merge
+ * may be (mm).
+ *
+ * In the vertical plane through the housing's axis and the merge point J: straight up
+ * NECK_STRAIGHT to S, a circular arc of radius R (the widest of NECK_RADII that fits) turning
+ * toward J, then the arc's tangent straight to J; J itself is an ordinary soft corner of the
+ * cable onto the route. The merge is the nearest point of the route for which the arc and the
+ * tangent clear every jumper housing (its own included) and the board's top, the arc turns at
+ * most NECK_MAX_TURN and the corner at J at most NECK_MAX_JOIN.
+ */
+export function jumperNeck(
+  pts: (Vec3 & { soft?: boolean })[],
+  ctx: NeckContext,
+  limit: number,
+  radii: readonly number[] = NECK_RADII,
+): { neck: (Vec3 & { soft?: boolean; want?: number })[]; rest: number; radius: number } | null {
+  if (pts.length < 3 || !vertical(pts[0]!, pts[1]!) || pts[1]!.y <= pts[0]!.y) return null;
+  const E = v3(pts[0]!);
+  const S = E.clone().setY(E.y + NECK_STRAIGHT);
+  const segs: { a: V3; b: V3; s0: number; len: number; i: number }[] = [];
+  let acc = 0;
+  for (let i = 1; i < pts.length; i++) {
+    const a = v3(pts[i - 1]!);
+    const b = v3(pts[i]!);
+    const len = a.distanceTo(b);
+    if (len > 1e-6) segs.push({ a, b, s0: acc, len, i });
+    acc += len;
+  }
+  const clearR = WIRE_RADIUS + NECK_GAP;
+  const fits = (p: V3) =>
+    ctx.housings.every((h) => boxDistance(p, h) >= clearR) &&
+    ctx.boards.every((b) => boxDistance(p, b) >= clearR);
+  for (const R of radii)
+    for (let L = NECK_STRAIGHT + 2; L <= Math.min(limit, acc - 1); L += 0.5) {
+      const seg = segs.find((g) => L >= g.s0 && L <= g.s0 + g.len - 0.1);
+      if (!seg) continue;
+      const J = seg.a.clone().addScaledVector(seg.b.clone().sub(seg.a).normalize(), L - seg.s0);
+      // The plane: h along the plan direction to J, v up; S at (0, 0), the arc's centre (R, 0).
+      const hj = Math.hypot(J.x - S.x, J.z - S.z);
+      if (hj < 1) continue;
+      const d = new THREE.Vector3((J.x - S.x) / hj, 0, (J.z - S.z) / hj);
+      const vj = J.y - S.y;
+      if (Math.hypot(hj - R, vj) <= R + 0.5) continue;
+      // The tangent point: the arc turned by phi (direction (sin, cos)) heads straight at J.
+      const cross = (a: number) =>
+        Math.sin(a) * (vj - R * Math.sin(a)) - Math.cos(a) * (hj - R + R * Math.cos(a));
+      const ahead = (a: number) =>
+        Math.sin(a) * (hj - R + R * Math.cos(a)) + Math.cos(a) * (vj - R * Math.sin(a)) > 0;
+      let phi = -1;
+      const step = Math.PI / 360;
+      for (let a = 0; a + step <= NECK_MAX_TURN && phi < 0; a += step) {
+        if (cross(a) * cross(a + step) > 0) continue;
+        let lo = a;
+        let hi = a + step;
+        for (let k = 0; k < 30; k++) {
+          const mid = (lo + hi) / 2;
+          if (cross(lo) * cross(mid) <= 0) hi = mid;
+          else lo = mid;
+        }
+        if (ahead(lo)) phi = lo;
+      }
+      if (phi < 0) continue;
+      const at = (h: number, v: number) =>
+        S.clone()
+          .addScaledVector(d, h)
+          .setY(S.y + v);
+      const T = at(R - R * Math.cos(phi), R * Math.sin(phi));
+      const lineDir = J.clone().sub(T).normalize();
+      const out = seg.b.clone().sub(seg.a).normalize();
+      if (lineDir.angleTo(out) > NECK_MAX_JOIN) continue;
+      // Arc points about 1 mm apart; all of it, and the straight on to J, clear.
+      const n = Math.max(2, Math.ceil((R * phi) / 1.0));
+      const arc = Array.from({ length: n }, (_, k) => {
+        const a = (phi * (k + 1)) / n;
+        return at(R - R * Math.cos(a), R * Math.sin(a));
+      });
+      const line = Math.ceil(T.distanceTo(J) / 0.5);
+      const probe = [
+        ...Array.from({ length: 4 * n }, (_, k) => {
+          const a = (phi * (k + 1)) / (4 * n);
+          return at(R - R * Math.cos(a), R * Math.sin(a));
+        }),
+        ...Array.from({ length: line }, (_, k) => T.clone().lerp(J, (k + 1) / line)),
+      ];
+      if (!probe.every(fits)) continue;
+      const f = (p: V3) => ({ x: p.x, y: p.y, z: p.z });
+      return {
+        // S: the end of the straight (its blend into the arc reaches back at most 0.5 mm).
+        neck: [pts[0]!, { ...f(S), want: 0.5 }, ...arc.map((p) => ({ ...f(p), soft: true })), f(J)],
+        rest: seg.i,
+        radius: R,
+      };
+    }
+  return null;
+}
+
 /**
  * The physical cable at one level of shaping: the cleaned control polygon, with a sag or hang
  * point on each long span (or a sideways bow on a long run resting on the bench), and each
@@ -241,6 +396,7 @@ export function cableShape(
   points: Vec3[],
   ends: readonly [string, string],
   level: Level = LEVELS[0]!,
+  ctx?: NeckContext,
 ): WireShape {
   type P = Vec3 & { soft?: boolean; want?: number };
   let pts: P[] = clean(points, ends);
@@ -282,6 +438,20 @@ export function cableShape(
   };
   if (ends[0] === 'jumper') pts = arch(pts);
   if (ends[1] === 'jumper') pts = arch([...pts].reverse()).reverse();
+  // Out of a jumper housing: the neck (strain relief, one wide bend, merging into the route).
+  const necks: [number | null, number | null] = [null, null];
+  if (ctx) {
+    const both = ends[0] === 'jumper' && ends[1] === 'jumper';
+    const total = pts.reduce((m, p, i) => (i ? m + dist(pts[i - 1]!, p) : 0), 0);
+    const limit = both ? total / 2 - 1 : total - 1;
+    const withNeck = (forward: P[], k: 0 | 1): P[] => {
+      const r = jumperNeck(forward, ctx, Math.min(40, limit));
+      necks[k] = r ? r.radius : null;
+      return r ? [...r.neck, ...forward.slice(r.rest)] : forward;
+    };
+    if (ends[0] === 'jumper') pts = withNeck(pts, 0);
+    if (ends[1] === 'jumper') pts = withNeck([...pts].reverse(), 1).reverse();
+  }
   // The height profile along each straight stretch of the plan (the route rising over a wire or
   // lead it crosses and settling back, following a row of leads): a cable does not trace every
   // step, it RESTS on what it passes over. The profile is dilated (each point raised to the
@@ -298,6 +468,12 @@ export function cableShape(
     let i = 1;
     while (i < pts.length - 1) {
       const a = out[out.length - 1]!;
+      // A curve already drawn (a jumper's neck or arch) is kept as it is.
+      if (pts[i]!.soft) {
+        out.push(pts[i]!);
+        i++;
+        continue;
+      }
       let j = i;
       while (j < pts.length - 1 && inLine(j === i ? a : pts[j - 1]!, pts[j]!, pts[j + 1]!)) j++;
       const chain = [a, ...pts.slice(i, j + 1)];
@@ -400,6 +576,7 @@ export function cableShape(
     radii: arms.map(([a, b]) => Math.min(a, b)),
     arms,
     drape: level.drape,
+    ...(ctx ? { necks } : {}),
   };
 }
 
@@ -470,6 +647,25 @@ export function shapeWires(
           ids.add(c.id);
     owners.set(w.id, ids);
   }
+  // What the necks out of jumper housings must clear: every housing, and each board's top (its
+  // module, up to which the router keeps wires off the board, and the bare pin stubs).
+  const half = ESP32_DEVKITC.dupontSizeMm / 2;
+  const neckCtx: NeckContext = {
+    housings: wires.flatMap((w) =>
+      ([0, 1] as const)
+        .filter((k) => w.ends[k] === 'jumper')
+        .map((k) => {
+          const e = k === 0 ? w.points[0]! : w.points[w.points.length - 1]!;
+          return { x0: e.x - half, x1: e.x + half, z0: e.z - half, z1: e.z + half, y0: 0, y1: e.y };
+        }),
+    ),
+    boards: desc.components
+      .filter((c) => c.model === 'board.esp32_devkitc')
+      .map((c) => {
+        const r = footprintRect(c);
+        return { ...r, y0: 0, y1: Math.max(ESP32_PCB_TOP + 3.3, ESP32_PIN_TOP) };
+      }),
+  };
   const endsOf = (i: number) => [
     wires[i]!.points[0]!,
     wires[i]!.points[wires[i]!.points.length - 1]!,
@@ -542,17 +738,20 @@ export function shapeWires(
     }
     return null;
   };
-  wires.forEach((w, i) => {
-    const original = samples[i]!;
+  const plainSamples = [...samples];
+  const shaped = new Set<number>();
+  const shapeOne = (w: SceneWire, i: number) => {
+    const original = plainSamples[i]!;
     grid.remove(i);
     const refused: string[] = [];
     for (const [k, level] of LEVELS.entries()) {
-      const s = cableShape(w.id, w.points, w.ends, level);
+      const s = cableShape(w.id, w.points, w.ends, level, neckCtx);
       const ss = sampleShape(s);
       const why = ok(i, ss, original);
       if (!why) {
         shapes[i] = s;
         samples[i] = ss;
+        shaped.add(i);
         refused.push(`level ${k}`);
         break;
       }
@@ -560,6 +759,13 @@ export function shapeWires(
     }
     report?.set(w.id, refused.join(', '));
     samples[i]!.forEach((p) => grid.add(p, i));
+  };
+  wires.forEach(shapeOne);
+  // A wire refused at every level only because of a wire shaped after it (whose route, not its
+  // final shape, was in the way: a jumper's route hopping over a neighbour's housing that its
+  // own neck then leaves) gets a second try against the final shapes, in scene order.
+  wires.forEach((w, i) => {
+    if (!shaped.has(i) && w.ends.includes('jumper')) shapeOne(w, i);
   });
   return new Map(wires.map((w, i) => [w.id, shapes[i]!]));
 }
