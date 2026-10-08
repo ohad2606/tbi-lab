@@ -29,8 +29,10 @@ export function dupontMaterials(own: OwnedResources): DupontMaterials {
       'dupont:housing',
       () =>
         new THREE.MeshPhysicalMaterial({
-          color: '#101012',
-          roughness: 0.5,
+          // Realism pass 6: glass-filled nylon is a charcoal black, not a void: its rounded
+          // edges catch the light the way a camera sees them.
+          color: '#18181b',
+          roughness: 0.46,
           sheen: 0.3,
           sheenRoughness: 0.6,
           sheenColor: new THREE.Color('#3a3d42'),

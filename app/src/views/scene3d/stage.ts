@@ -91,7 +91,9 @@ export function createStage(
   // The lights are fixed in the world: the shadow map depends only on the scene, so it is drawn
   // when the scene is (re)built, never on an orbit or pan frame.
   renderer.shadowMap.autoUpdate = false;
-  renderer.shadowMap.type = THREE.PCFShadowMap;
+  // Realism pass 6: variance shadow maps, blurred: a smooth penumbra. PCF's per-pixel rotated
+  // five-tap kernel left a dithered, saw-toothed edge along every wire's shadow.
+  renderer.shadowMap.type = THREE.VSMShadowMap;
 
   // Backdrop: a soft vertical gradient (lighter above), a 2 x 64 texture.
   // Reduced tier: a plain clear colour (a background texture is one more full-screen draw, and
@@ -112,8 +114,8 @@ export function createStage(
   key.shadow.bias = -0.00025;
   key.shadow.normalBias = 0.02;
   // A large source: soft-edged shadows.
-  key.shadow.radius = 4;
-  key.shadow.blurSamples = 20;
+  key.shadow.radius = 5;
+  key.shadow.blurSamples = 12;
   const fill = new THREE.DirectionalLight('#f3f6ff', full ? 0.6 : 0.6);
   const rim = new THREE.DirectionalLight('#ffffff', full ? 0.45 : 0.6);
   rim.position.set(-20, 15, 80);
@@ -668,7 +670,7 @@ function falloffTexture(): THREE.Texture {
 }
 
 /** How strongly the studio lights the scene's reflections (full tier). */
-const STUDIO_INTENSITY = 0.85;
+const STUDIO_INTENSITY = 1.1;
 
 /**
  * The studio the environment map is rendered from (scene units are arbitrary: only directions
@@ -676,12 +678,14 @@ const STUDIO_INTENSITY = 0.85;
  */
 function studioScene(): THREE.Scene {
   const s = new THREE.Scene();
-  // Sky dome: light grey above, a soft horizon, a darker floor below (the bench's own tone).
+  // Sky dome: grey above, a soft horizon, a darker floor below (the bench's own tone). Realism
+  // pass 6: a room, not a light tent; its walls are darker than the softboxes, so plated metal
+  // reflects real contrast (bright strips against a dim room) instead of a uniform grey.
   const dome = new THREE.SphereGeometry(50, 48, 24);
   const colors: number[] = [];
-  const top = new THREE.Color('#eceef0');
-  const horizon = new THREE.Color('#c4c8cc');
-  const floor = new THREE.Color('#7e8286');
+  const top = new THREE.Color('#c9ccd0');
+  const horizon = new THREE.Color('#8c9095');
+  const floor = new THREE.Color('#55595e');
   const pos = dome.attributes.position!;
   for (let i = 0; i < pos.count; i++) {
     const y = pos.getY(i) / 50;
@@ -719,5 +723,8 @@ function studioScene(): THREE.Scene {
   panel(7, 30, 1.6, [34, 18, -22], [0, 6, 0]);
   // A low front card: a gentle fill on faces turned to the viewer.
   panel(40, 9, 0.7, [0, 8, 44], [0, 4, 0]);
+  // A black flag on the right (realism pass 6): the dark band a photographer's flag puts into
+  // every chrome nut and steel shell.
+  panel(14, 26, 0.04, [44, 14, 10], [0, 6, 0]);
   return s;
 }

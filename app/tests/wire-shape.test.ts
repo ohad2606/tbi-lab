@@ -241,3 +241,36 @@ describe('physical cable (realism pass 4): route -> cable curve', () => {
     }
   });
 });
+
+describe('jacket surface mapping (realism pass 6)', () => {
+  it('runs the texture along the wire by arc length, so bends and straights get the same scale', async () => {
+    const { wireSurfaceUv } = await import('../src/views/scene3d/wires.js');
+    // A wire of two straights (20 mm and 40 mm) joined by a quarter bend of radius 5 mm.
+    const path = new THREE.CurvePath<THREE.Vector3>();
+    path.add(new THREE.LineCurve3(new THREE.Vector3(0, 0, 0), new THREE.Vector3(20, 0, 0)));
+    path.add(
+      new THREE.QuadraticBezierCurve3(
+        new THREE.Vector3(20, 0, 0),
+        new THREE.Vector3(25, 0, 0),
+        new THREE.Vector3(25, 0, 5),
+      ),
+    );
+    path.add(new THREE.LineCurve3(new THREE.Vector3(25, 0, 5), new THREE.Vector3(25, 0, 45)));
+    const tube = new THREE.TubeGeometry(path, 120, 0.9, 8, false);
+    wireSurfaceUv(tube, 0);
+    const uv = tube.attributes.uv!;
+    const ring = 9;
+    const u = (i: number) => uv.getX(i * ring);
+    // Monotonic, and every vertex of a ring shares its u.
+    for (let i = 1; i <= 120; i++) {
+      expect(u(i)).toBeGreaterThan(u(i - 1));
+      expect(uv.getX(i * ring + 4)).toBe(u(i));
+    }
+    // Total: the path's length in tiles (24 mm each), within the tessellation's chord error.
+    expect(u(120) * 24).toBeCloseTo(path.getLength(), 0);
+    // An offset only shifts the start.
+    const shifted = new THREE.TubeGeometry(path, 120, 0.9, 8, false);
+    wireSurfaceUv(shifted, 0.5);
+    expect(shifted.attributes.uv!.getX(120 * ring) - u(120)).toBeCloseTo(0.5, 6);
+  });
+});

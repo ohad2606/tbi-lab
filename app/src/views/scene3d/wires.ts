@@ -68,7 +68,12 @@ export function wireMaterials(own: OwnedResources, conductor: THREE.Material): W
         return full
           ? new THREE.MeshPhysicalMaterial({
               color: pigment,
-              roughness: 0.58,
+              // The map carries the roughness (about 0.58, scuffs rougher).
+              roughness: 1,
+              // Realism pass 6: the extruded jacket's surface (jacketSurface), not a perfect tube.
+              bumpMap: jacketSurface(own),
+              bumpScale: 0.6,
+              roughnessMap: jacketSurface(own),
               clearcoat: 0.08,
               clearcoatRoughness: 0.6,
               sheen: 0.3,
@@ -79,6 +84,109 @@ export function wireMaterials(own: OwnedResources, conductor: THREE.Material): W
       }),
     conductor,
   };
+}
+
+/** Jacket surface texture: one tile covers this length of wire (mm) and the full circumference. */
+const JACKET_TILE = 24;
+
+/**
+ * An extruded PVC jacket's surface (realism pass 6), full tier: faint die lines along the wire,
+ * a slow ripple where the soft jacket was drawn and handled, and a few scuffs; red channel the
+ * height (bump), green the roughness (around 0.58, the jacket's own). Tileable both ways; u runs
+ * along the wire (wireSurfaceUv), v round it. Deterministic.
+ */
+function jacketSurface(own: OwnedResources): THREE.Texture {
+  return own.lasting('wire:jacket-surface', () => {
+    const W = 256;
+    const H = 64;
+    const c = document.createElement('canvas');
+    c.width = W;
+    c.height = H;
+    const ctx = c.getContext('2d')!;
+    const img = ctx.createImageData(W, H);
+    let seed = 7654321;
+    const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    // Die lines: a fixed random profile round the circumference, constant along the wire.
+    const lines = Array.from({ length: H }, () => rnd() - 0.5);
+    const smooth = lines.map(
+      (_, y) => (lines[(y + H - 1) % H]! + 2 * lines[y]! + lines[(y + 1) % H]!) / 4,
+    );
+    // Ripple: a few low harmonics along the wire (whole periods, so the tile wraps).
+    const harm = Array.from({ length: 4 }, (_, k) => ({
+      f: 2 + k * 3,
+      p: rnd() * 6.283,
+      a: 0.5 / (k + 1),
+    }));
+    // Scuffs: short rough patches.
+    const scuffs = Array.from({ length: 7 }, () => ({
+      x: rnd() * W,
+      y: rnd() * H,
+      r: 3 + rnd() * 7,
+    }));
+    for (let y = 0; y < H; y++)
+      for (let x = 0; x < W; x++) {
+        let ripple = 0;
+        for (const h of harm)
+          ripple += h.a * Math.sin((x / W) * 6.283 * h.f + h.p + (y / H) * 6.283);
+        let scuff = 0;
+        for (const s of scuffs) {
+          const dx = Math.min(Math.abs(x - s.x), W - Math.abs(x - s.x));
+          const dy = Math.min(Math.abs(y - s.y), H - Math.abs(y - s.y)) * 3;
+          scuff = Math.max(scuff, 1 - Math.hypot(dx, dy) / s.r);
+        }
+        const height = 128 + 40 * smooth[y]! + 22 * ripple + 10 * (rnd() - 0.5);
+        const rough = 148 + 18 * smooth[y]! + 40 * Math.max(0, scuff) + 8 * (rnd() - 0.5);
+        const i = (y * W + x) * 4;
+        img.data[i] = Math.round(height);
+        img.data[i + 1] = Math.round(rough);
+        img.data[i + 2] = 0;
+        img.data[i + 3] = 255;
+      }
+    ctx.putImageData(img, 0, 0);
+    const t = new THREE.CanvasTexture(c);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.colorSpace = THREE.NoColorSpace;
+    t.anisotropy = 4;
+    return t;
+  });
+}
+
+/**
+ * Re-maps a tube's u to arc length (one jacket tile per JACKET_TILE mm, measured on the tube's
+ * own rings, since its segments are not evenly spaced), starting at `offset` tiles so no two
+ * wires show the same stretch of surface.
+ */
+export function wireSurfaceUv(geo: THREE.TubeGeometry, offset: number) {
+  const { tubularSegments, radialSegments } = geo.parameters;
+  const pos = geo.attributes.position!;
+  const uv = geo.attributes.uv!;
+  const ring = radialSegments + 1;
+  const a = new THREE.Vector3();
+  const b = new THREE.Vector3();
+  const c = new THREE.Vector3();
+  const centre = (i: number, v: THREE.Vector3) => {
+    v.set(0, 0, 0);
+    for (let j = 0; j < radialSegments; j++) v.add(b.fromBufferAttribute(pos, i * ring + j));
+    return v.divideScalar(radialSegments);
+  };
+  let s = offset * JACKET_TILE;
+  centre(0, a);
+  for (let i = 0; i <= tubularSegments; i++) {
+    if (i > 0) {
+      centre(i, c);
+      s += a.distanceTo(c);
+      a.copy(c);
+    }
+    for (let j = 0; j < ring; j++) uv.setX(i * ring + j, s / JACKET_TILE);
+  }
+  uv.needsUpdate = true;
+}
+
+/** A stable fraction in [0, 1) for a wire's id (its jacket texture's start). */
+function idFraction(id: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < id.length; i++) h = Math.imul(h ^ id.charCodeAt(i), 16777619);
+  return (h >>> 0) / 4294967296;
 }
 
 /**
@@ -254,18 +362,15 @@ export function buildWire(
     s0 || s1 ? new Portion(path, s0, 1 - s1) : path,
     pieces(path, s0, 1 - s1, step),
   );
-  const jacket = new THREE.Mesh(
-    own.geo(
-      new THREE.TubeGeometry(
-        jacketCurve,
-        jacketCurve.segments,
-        WIRE_RADIUS,
-        own.tier === 'full' ? 14 : 10,
-        false,
-      ),
-    ),
-    m.jacket(w.color),
+  const tube = new THREE.TubeGeometry(
+    jacketCurve,
+    jacketCurve.segments,
+    WIRE_RADIUS,
+    own.tier === 'full' ? 14 : 10,
+    false,
   );
+  if (own.tier === 'full') wireSurfaceUv(tube, idFraction(w.id) * 7);
+  const jacket = new THREE.Mesh(own.geo(tube), m.jacket(w.color));
   jacket.castShadow = true;
   jacket.receiveShadow = true;
   jacket.userData.wireJacket = w.id;
