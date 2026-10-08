@@ -1,11 +1,11 @@
 # Sprint 10 — Physical 3D, engine time-domain core, the approved component families
 
 **Status (2026-10-08):** developed on `sprint-10` (worktree `~/projects/tbi-lab-s10`), from
-`7f09d74` = `main` = `sprint-9-complete`. **dev-lab.tbi-tech.net serves frontend `db9eb20` and
-runtime `80448f9`** (frontend `v0.10-dev · db9eb20` from `/version.json` and the served
+`7f09d74` = `main` = `sprint-9-complete`. **dev-lab.tbi-tech.net serves frontend `2d28ca7` and
+runtime `80448f9`** (frontend `v0.10-dev · 2d28ca7` from `/version.json` and the served
 `index.html`; runtime `v0.10-dev · 80448f9` from the Session Host's `/health`, also shown in the
-version details as *Runtime ID*). Rollbacks kept: frontend `c6e8f25`, runtime/services release
-`c31d62e`. Part R: realism pass 6 (wire jackets, shadow penumbra, studio room, Dupont). Part Q: realism pass 5 and the 3D layer model (Realistic / Engineering). Part P: runtime sync (the Session Host runs the Sprint 10 engine: yellow/green LED
+version details as *Runtime ID*). Rollbacks kept: frontend `db9eb20`, runtime/services release
+`c31d62e`. Part S: realism pass 7 (depth of field, header pins). Part R: realism pass 6 (wire jackets, shadow penumbra, studio room, Dupont). Part Q: realism pass 5 and the 3D layer model (Realistic / Engineering). Part P: runtime sync (the Session Host runs the Sprint 10 engine: yellow/green LED
 cards end to end). Part O: realism pass 4. Part N: realism pass 3. Part M: operating the toggle switch and push button in 3D during Run.
 Part L: false-hop fix, net wire colours, limited 3D picking. Part K: fresh 3D wire routes (owner review: PIR alarm, relay -> LED).
 Part J: visual-only 3D body separation (owner review). Part I: realism
@@ -17,6 +17,77 @@ Not done: no PR, merge, tag or production deployment. Backend: only the Session 
 unchanged (`33e35e4ac5e798d7`). The isolated preview `/s10-preview/` stays.
 
 Architecture and scope: [SPRINT-10-ARCHITECTURE.md](SPRINT-10-ARCHITECTURE.md).
+
+## Part S — realism pass 7: depth of field, header pins (owner: "continue", 2026-10-08)
+
+Full tier only; the reduced (software) tier renders exactly as before. Images: full tier
+rendered in software at DPR 1; **no hardware-tier timings**.
+
+### S.1 Depth of field (`dof.ts`)
+
+What a camera does close to a small subject; the most photographic change since the labels left
+the mat. One full-screen pass reading the depth buffer the AO pass already renders (no extra
+scene render).
+
+- **Focus**: the orbit target or, nearer, what is at the middle of the frame (five taps, the
+  nearest wins): centre autofocus, so whatever the user zooms towards is sharp. Never beyond the
+  target: an earlier version focused on the mat behind the micro-USB in the USB front view and
+  blurred the subject. Never nearer than 1/1.5 of the target distance, so a lead passing close to
+  the lens cannot pull focus.
+- **Strength**: a fixed lens. Blur grows with |1 - focus/depth| and shrinks as the focus distance
+  grows (aperture 1.2 % of the frame's height at 60 mm, capped at 0.6 %). Close-ups get shallow
+  depth; the whole-bench views stay sharp (overview images are practically unchanged).
+- **Gather**: 16-tap golden-angle disk; each sample is weighted by how far its own blur reaches,
+  so a sharp subject does not bleed into a blurred background.
+- **Bug found and fixed on the way**: `ShaderPass` clones its uniforms, textures included, so the
+  pass first sampled an empty copy of the depth texture. The whole frame was blurred at the cap
+  (found by rendering the blur radius as colour). The real texture is now bound after
+  construction.
+- **Trade-off (owner decision)**: in a close-up, what is well behind the subject softens (e.g.
+  the RF can's marking behind a jumper housing, `compare-09`). Panning or zooming to it brings it
+  into focus. It could be switched off in the Engineering preset, or removed, if it hinders
+  inspection on real hardware.
+- Tests: `workbench.test.ts` checks the lens model (sharp in the focus plane, shallow close up,
+  nearly none over the bench, capped) and the autofocus bounds. The shader carries the same
+  formulas.
+
+### S.2 Header pins
+
+The square pins were sharp boxes: each face reflected one flat colour. Now they are a chamfered
+square (eight flat faces, 0.07 mm corner): the narrow corner faces catch thin highlights. Gold
+flash `#e2bc68`, roughness 0.22 (was `#d9b25a`, 0.28). A rounded box would have cost about 50 KB
+of the asset budget; the prism costs 8 KB (GLB 771 -> 779 KB, budget 800 KB). A small change.
+
+### S.3 Numbers
+
+- **Full tier** (23 cameras, `realism7/stats-*.json`): +1 draw call everywhere (the depth-of-field
+  pass), about +460 triangles (pins), textures and GPU memory estimate unchanged (39, 43.5 MB on
+  the bench).
+- **Software tier** (`realism7/perf/`, A/B back to back): scene counts identical. Bench 85 draw
+  calls, 5 programs; orbit 217 -> 219 ms/step, pan 209 -> 202, re-open 2.61 -> 2.56 s, 20
+  open/close cycles 2.37-2.64 -> 2.38-2.67 s, heap 10 MB, 0 canvases left. One first-open sample
+  was 5.4 s against 3.2 s; a re-run gave 3.6 vs 3.2 s (ESP32 3.5 vs 3.9 s): noise, both runs kept.
+
+### S.4 Regression and deployment
+
+- `2d28ca7`: typecheck, lint, unit **849/849**, build, e2e **163 passed / 3 skipped**, browser PASS.
+- `deploy/dev-lab/publish-frontend.sh 2d28ca7` (all checks passed): dev-lab serves `2d28ca7`.
+  Rollback: re-point `current` to `db9eb2063a84188128289ebb7cfe16f881c2a619`. Backend untouched.
+- Live: 3D 7/7, demo 40/40, Sprint 9 smoke ALL PASSED, real-QEMU control input-echo 17/17 and
+  bench 17/17 (D1, D3 yellow, D4 green lit in 3D; Stop clean). No runtime session left running.
+
+### S.5 Housekeeping
+
+`4c1c500` (a docs commit made with `commit -a`) also carried uncommitted debug instrumentation of
+the evidence capture spec (timing logs, console capture, a 400 s timeout). `d6dc23e` restores the
+spec; history is unchanged.
+
+### S.6 Self-critique
+
+Depth of field moves close-ups clearly towards a macro photograph (`compare-20`, `compare-09`,
+`compare-07`). The overview is unchanged and still reads as a clean render. **The photographed-
+bench bar is not met.** Remaining cues: uniform, identical surfaces; the miniature PSU and ground
+posts; plain header plastic and chip bodies; a studio-perfect bench with nothing else on it.
 
 ## Part R — realism pass 6 (owner: "continue", 2026-10-08)
 

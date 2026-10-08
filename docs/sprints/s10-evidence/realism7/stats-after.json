@@ -1,0 +1,232 @@
+{
+ "esp32-bench-01-scene-34": {
+  "drawCalls": 234,
+  "triangles": 351945,
+  "materials": 73,
+  "geometries": 71,
+  "textures": 39,
+  "gpuBytes": 43502313,
+  "renderMs": 42.8,
+  "quality": "full"
+ },
+ "esp32-bench-02-scene-opposite": {
+  "drawCalls": 234,
+  "triangles": 351945,
+  "materials": 73,
+  "geometries": 71,
+  "textures": 39,
+  "gpuBytes": 43502313,
+  "renderMs": 13,
+  "quality": "full"
+ },
+ "esp32-bench-03-scene-low": {
+  "drawCalls": 222,
+  "triangles": 350241,
+  "materials": 73,
+  "geometries": 71,
+  "textures": 39,
+  "gpuBytes": 43502313,
+  "renderMs": 9.4,
+  "quality": "full"
+ },
+ "esp32-bench-04-scene-top": {
+  "drawCalls": 237,
+  "triangles": 352269,
+  "materials": 73,
+  "geometries": 71,
+  "textures": 39,
+  "gpuBytes": 43502313,
+  "renderMs": 11.2,
+  "quality": "full"
+ },
+ "esp32-bench-05-esp32-front": {
+  "drawCalls": 91,
+  "triangles": 160065,
+  "materials": 73,
+  "geometries": 71,
+  "textures": 39,
+  "gpuBytes": 43502313,
+  "renderMs": 4.7,
+  "quality": "full"
+ },
+ "esp32-bench-06-esp32-rear": {
+  "drawCalls": 163,
+  "triangles": 249499,
+  "materials": 73,
+  "geometries": 71,
+  "textures": 39,
+  "gpuBytes": 43502313,
+  "renderMs": 10,
+  "quality": "full"
+ },
+ "esp32-bench-07-esp32-usb": {
+  "drawCalls": 99,
+  "triangles": 165129,
+  "materials": 73,
+  "geometries": 71,
+  "textures": 39,
+  "gpuBytes": 43502313,
+  "renderMs": 7.9,
+  "quality": "full"
+ },
+ "esp32-bench-08-esp32-wroom-header": {
+  "drawCalls": 153,
+  "triangles": 247003,
+  "materials": 73,
+  "geometries": 71,
+  "textures": 39,
+  "gpuBytes": 43502313,
+  "renderMs": 6.4,
+  "quality": "full"
+ },
+ "esp32-bench-09-wire-dupont": {
+  "drawCalls": 60,
+  "triangles": 111197,
+  "materials": 73,
+  "geometries": 71,
+  "textures": 39,
+  "gpuBytes": 43502313,
+  "renderMs": 4.2,
+  "quality": "full"
+ },
+ "esp32-bench-10-wire-long": {
+  "drawCalls": 189,
+  "triangles": 255855,
+  "materials": 73,
+  "geometries": 71,
+  "textures": 39,
+  "gpuBytes": 43502313,
+  "renderMs": 7.4,
+  "quality": "full"
+ },
+ "esp32-bench-11-wire-crossing": {
+  "drawCalls": 125,
+  "triangles": 236101,
+  "materials": 73,
+  "geometries": 71,
+  "textures": 39,
+  "gpuBytes": 43502313,
+  "renderMs": 31.1,
+  "quality": "full"
+ },
+ "esp32-bench-12-wire-supply": {
+  "drawCalls": 46,
+  "triangles": 71409,
+  "materials": 73,
+  "geometries": 71,
+  "textures": 39,
+  "gpuBytes": 43502313,
+  "renderMs": 5.2,
+  "quality": "full"
+ },
+ "esp32-bench-13-led": {
+  "drawCalls": 101,
+  "triangles": 199551,
+  "materials": 73,
+  "geometries": 71,
+  "textures": 39,
+  "gpuBytes": 43502313,
+  "renderMs": 7.5,
+  "quality": "full"
+ },
+ "esp32-bench-14-diode": {
+  "drawCalls": 71,
+  "triangles": 138987,
+  "materials": 73,
+  "geometries": 71,
+  "textures": 39,
+  "gpuBytes": 43502313,
+  "renderMs": 5.3,
+  "quality": "full"
+ },
+ "esp32-bench-15-resistor": {
+  "drawCalls": 40,
+  "triangles": 87409,
+  "materials": 73,
+  "geometries": 71,
+  "textures": 39,
+  "gpuBytes": 43502313,
+  "renderMs": 4,
+  "quality": "full"
+ },
+ "esp32-bench-16-push-button": {
+  "drawCalls": 38,
+  "triangles": 70669,
+  "materials": 73,
+  "geometries": 71,
+  "textures": 39,
+  "gpuBytes": 43502313,
+  "renderMs": 3.2,
+  "quality": "full"
+ },
+ "esp32-bench-17-toggle": {
+  "drawCalls": 52,
+  "triangles": 120509,
+  "materials": 73,
+  "geometries": 71,
+  "textures": 39,
+  "gpuBytes": 43502313,
+  "renderMs": 9.5,
+  "quality": "full"
+ },
+ "esp32-bench-18-junction": {
+  "drawCalls": 38,
+  "triangles": 87017,
+  "materials": 73,
+  "geometries": 71,
+  "textures": 39,
+  "gpuBytes": 43502313,
+  "renderMs": 4.3,
+  "quality": "full"
+ },
+ "esp32-bench-19-usb-front": {
+  "drawCalls": 89,
+  "triangles": 162041,
+  "materials": 73,
+  "geometries": 71,
+  "textures": 39,
+  "gpuBytes": 43502313,
+  "renderMs": 5.5,
+  "quality": "full"
+ },
+ "esp32-bench-20-buttons-smd": {
+  "drawCalls": 128,
+  "triangles": 211851,
+  "materials": 73,
+  "geometries": 71,
+  "textures": 39,
+  "gpuBytes": 43502313,
+  "renderMs": 8.3,
+  "quality": "full"
+ },
+ "esp32-bench-00-home": {
+  "drawCalls": 128,
+  "triangles": 211851,
+  "materials": 73,
+  "geometries": 71,
+  "textures": 39,
+  "gpuBytes": 43502313,
+  "renderMs": 8.3,
+  "quality": "full"
+ },
+ "led-colours-L1-leds": {
+  "drawCalls": 59,
+  "triangles": 116883,
+  "materials": 35,
+  "geometries": 33,
+  "textures": 29,
+  "gpuBytes": 6426523,
+  "renderMs": 13.8,
+  "quality": "full"
+ },
+ "led-colours-L2-led-close": {
+  "drawCalls": 50,
+  "triangles": 86643,
+  "materials": 35,
+  "geometries": 33,
+  "textures": 29,
+  "gpuBytes": 6426523,
+  "renderMs": 9.2,
+  "quality": "full"
+ }
+}
