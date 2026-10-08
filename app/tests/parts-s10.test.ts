@@ -44,6 +44,7 @@ const R1_ESP32: ComponentTypeId[] = [
   'sensor.pir_hc_sr501',
   'component.bjt_npn',
   'component.relay',
+  'component.photoresistor',
 ];
 
 describe('Sprint 10 parts: catalog and serialization', () => {
@@ -86,7 +87,7 @@ describe('Sprint 10 parts: catalog and serialization', () => {
     ]);
   });
 
-  it('an ESP32 project containing a new part is refused before any session request, by name', () => {
+  it('Sprint 11: an ESP32 project holding the enabled parts passes the parts rule (next: the circuit checks)', () => {
     const { doc } = sprint10Circuit();
     const r = buildSessionRequest(
       {
@@ -108,13 +109,10 @@ describe('Sprint 10 parts: catalog and serialization', () => {
       () => ({ code: 'mcu_no_program', components: ['U1'] }),
     );
     expect(r.ok).toBe(false);
-    if (!r.ok) {
-      expect(r.error.code).toBe('mcu_component_unsupported');
-      const flagged = doc.components
-        .filter((c) => CATALOG[c.type].mcuRuntime === false)
-        .map((c) => c.id);
-      expect(r.error.components.sort()).toEqual(flagged.sort());
-    }
+    // Relay, RGB LED, buzzer and photoresistor are all enabled for the ESP32 in R1: the request is
+    // not refused for them; it stops at the next check (this test board's GND is not wired).
+    expect(doc.components.every((c) => CATALOG[c.type].mcuRuntime !== false)).toBe(true);
+    if (!r.ok) expect(r.error.code).toBe('mcu_ground_unconnected');
   });
 
   it('Sprint 11: a capacitor in an ESP32 project is refused as time-dependent, by name', () => {

@@ -212,7 +212,6 @@ const SPRINT10_TYPES = {
       },
     ],
     aliases: ['ldr', 'photoresistor', 'light sensor', 'cds', 'gl5528'],
-    mcuRuntime: false,
   },
   'component.buzzer': {
     type: 'component.buzzer',
