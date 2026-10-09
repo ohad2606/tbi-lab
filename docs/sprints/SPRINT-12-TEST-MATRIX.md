@@ -1,6 +1,6 @@
 # Sprint 12 — test matrix (Runtime v2: bridge v2, R2, R3)
 
-**Status:** PROPOSED (2026-10-09). Companion to [SPRINT-12-ARCHITECTURE.md](SPRINT-12-ARCHITECTURE.md).
+**Status:** In use (2026-10-09; T-R3-5 corrected to the measured driver behaviour). Companion to [SPRINT-12-ARCHITECTURE.md](SPRINT-12-ARCHITECTURE.md).
 
 **Levels:**
 - **U**: unit, no QEMU (CI).
@@ -64,7 +64,7 @@ test.
 | T-R3-2 | RT | Peripheral-owned pads emit no `G`; idle lines solve as released | Solver shows the pull-up level |
 | T-R3-3 | RT | Bus scan 0x01–0x7E with one LCD at 0x27 | Only 0x27 ACKs; **0x48 NACKs (no phantom TMP105)** |
 | T-R3-4 | RT | Write, read, repeated START, 100-byte write | Correct phase order and bytes (probe P-2..P-7 promoted) |
-| T-R3-5 | RT | Address NACK / data NACK | `endTransmission` returns 2 / 3 |
+| T-R3-5 | RT | Address NACK / data NACK | `endTransmission` returns 4 / 4 (core 3.3.12: the IDF driver reports both as `ESP_ERR_INVALID_STATE`; measured in the R3 probe) |
 | T-R3-6 | RT | LCD init + "Hello" + `setCursor` + clear | Engine `hd44780` DDRAM equals the expected text |
 | T-R3-7 | RT | Backlight bit on and off | Part result `backlight` follows |
 | T-R3-8 | RT | Address jumpers 0x20 vs 0x27 | Device answers only at its configured address |

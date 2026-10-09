@@ -1,6 +1,6 @@
 # ADR-011 — Runtime bridge v2: capabilities, scheduled inputs, pad functions and I2C transactions
 
-**Status:** Proposed (awaiting PM architecture review) · **Date:** 2026-10-09 · **Sprint:** 12
+**Status:** Accepted (PM Sprint 12 authorization, 2026-10-09; implementation notes below) · **Date:** 2026-10-09 · **Sprint:** 12
 (Runtime v2: R2 + R3)
 
 **Related:**
@@ -162,9 +162,8 @@ required.)
 - Two devices declaring the same address on one bus refuse the session
   (`i2c_address_conflict`).
 
-**Timing abstraction.** Phases are stamped with exact virtual time. The bus duration (9 SCL clocks
-per byte) is not added in Sprint 12, as recorded in the capability plan. The probe measures
-whether `Wire` depends on that duration.
+**Timing.** Phases are stamped with the virtual time their command list starts. Superseded by PM
+decision D-9: the controller now takes its bus time (see implementation notes).
 
 ### 5. Build-service policy follows the runtime's capabilities
 
@@ -210,3 +209,36 @@ whether `Wire` depends on that duration.
 | Line-level I2C (bit-banged SDA/SCL as `G` frames) | The hardware controller does not produce pad edges in QEMU; it would require a cycle-level controller model |
 | Keep the upstream TMP105 | Invented hardware: a 25 °C sensor answers at 0x48 in every circuit |
 | A `C` prefix for I2C frames (draft) | Overloads the end-of-reply letter and makes the strict parser ambiguous to read |
+
+## Implementation notes (Sprint 12, as built)
+
+Recorded against the decision above; none changes the protocol or the responsibilities.
+
+1. **No catch-all proxy slave.** QEMU's I2C core does not pass the address to a target's
+   callbacks, and the upstream controller turns a repeated START into STOP + START. Patch 0008
+   therefore makes the ESP32 I2C controller call the bridge directly (`tbi_bridge_i2c`) instead
+   of adding a `tbi-i2c-proxy` device to the QEMU bus. Frames, replies and fail-closed rules are
+   exactly §4; there are no QEMU-internal I2C devices at all (TMP105 removed).
+2. **Bus timing (D-9).** The controller computes each command list's bus time from the timing
+   registers the driver programmed (80 MHz module clock; 9 × (SCL_LOW_PERIOD + SCL_HIGH_PERIOD) per
+   byte; RSTART_SETUP + START_HOLD per START; STOP_SETUP + STOP_HOLD per STOP) and raises
+   ACK_ERR / TRANS_COMPLETE / END_DETECT and the DONE bits when it has elapsed. Measured: a 4-byte
+   write at 100 kHz spans 360–450 µs (`s12-r3.runtime.test.ts`).
+3. **Pad functions need the output enable.** A routed peripheral signal owns a pad only if it can
+   drive it (the peripheral controls the enable, or `OEN_SEL` selects `GPIO_ENABLE` and that bit is
+   set). ESP-IDF configures `INPUT` pins as `OUT_SEL` 0 with `OEN_SEL` 1 and the enable clear; the
+   first 0007 build reported them as `periph:0` and the host refused ordinary sketches. An
+   open-drain pad that outputs 1 is reported released (the IDF I2C bus-clear bit-bangs SCL so).
+4. **Every boot routes the flash pads.** The bootloader routes pads 7–11 to the SPI controller, so
+   `F` frames occur in every session; the host ignores pads outside the circuit. These pads are no
+   longer reported as GPIO outputs, which changes the R1 gate timeline (not the guest): an
+   accepted re-pin (SPRINT-12-ARCHITECTURE §5.2).
+5. **Electrical gating detail.** The host distinguishes a missing pull-up (`i2c_no_pullup`) from a
+   level outside the PCF8574's specification (`i2c_logic_level`, V_IH = 0.7 VDD): a 5 V module
+   with 3.3 V pull-ups is refused; 4.5 V with 3.3 V pull-ups meets it.
+6. **`requires` and capabilities.** The ticket's `requires` sits in its `features`; the build
+   service reads the capabilities from the runtime's `runtime.json` (`TBI_RUNTIME_JSON`), which
+   `provision.sh` writes from `TBI_BRIDGE_CAPS` in the patched source.
+7. **Scheduled-input limits** are enforced by the host before QEMU sees them (`InputSchedule`),
+   plus a per-session budget of 4 096 `J` per simulated second and, for I2C, 50 000 phases per
+   simulated second (`input_schedule_full`, `i2c_rate_exceeded`).
