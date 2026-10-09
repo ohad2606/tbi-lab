@@ -13,8 +13,9 @@
  * time_backwards; drive_input_only (drives input-only GPIO34 HIGH at 20 ms).
  * Bridge v2 (Sprint 12, ADR-011): TBI_FAKE_HELLO replaces the handshake line's version and
  * capability fields (e.g. `2 i2c,pad-func,sched-input`, `2 -`, `3 -`); TBI_FAKE_FRAMES is a list
- * of extra frames, `;`-separated, sent at 10 ms (e.g. `B 10000000 0 S 27 0`); every reply line to
- * them is echoed on UART0 as `REPLY <frame> -> <commands>`.
+ * of extra frames, `;`-separated, sent before the tick at 10 ms, or before tick n with an `n@`
+ * prefix (e.g. `B 9500000 0 S 27 0`, `1300@G 1299000100 4 1 0`); every reply to them is echoed on
+ * UART0 as `REPLY <frame> -> <commands>`.
  */
 import { connect } from 'node:net';
 import { openSync, readSync, writeSync, closeSync } from 'node:fs';
@@ -111,12 +112,13 @@ async function main() {
       await setPad(2, 1, level, vns - tick + 1234n);
     }
     if (mode === 'drive_input_only' && n === 20) await setPad(34, 1, 1, vns - 500n);
-    if (n === 10)
-      for (const fr of extra) {
-        const r = await exchange(fr);
-        serial(BigInt(fr.split(' ')[1]), `REPLY ${fr} -> ${r.join('|')}\n`);
-        await apply(r);
-      }
+    for (const entry of extra) {
+      const [at, fr] = entry.includes('@') ? entry.split('@') : ['10', entry];
+      if (Number(at) !== n) continue;
+      const r = await exchange(fr);
+      serial(BigInt(fr.split(' ')[1]), `REPLY ${fr} -> ${r.join('|')}\n`);
+      await apply(r);
+    }
     if (mode === 'serial_flood') serial(vns, 'x'.repeat(200));
     if (mode === 'garbage' && n === 20) sock.write('Z this is not a frame\n');
     if (mode === 'time_backwards' && n === 20) {

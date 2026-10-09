@@ -53,6 +53,12 @@ export interface PartContext {
   readonly step?: TimeStep;
   /** Time-stepped sessions: the part's history from the last accepted step (undefined at t = 0). */
   history(): PartState | undefined;
+  /**
+   * Sprint 12 (R2/R3): a TRANSIENT runtime input the MCU runtime host sets for the part, e.g. the
+   * state of a sensor's output stage while it answers a measurement (`runtimeInputs`). Undefined
+   * outside a runtime session or before the host set it.
+   */
+  runtime(key: string): boolean | number | string | undefined;
 }
 
 /** The solved operating point, as a part model may read it. */
@@ -96,6 +102,11 @@ export interface PartModel {
   ratings?(params: Readonly<Record<string, unknown>>, result: ComponentResult): PartRatingExcess[];
   /** Live parameters a running session accepts (mirrored after the browser persisted them). */
   readonly liveParams?: readonly string[];
+  /**
+   * Sprint 12: transient runtime inputs (key -> allowed tokens) the MCU runtime host may set
+   * (EngineSession.setPartRuntime): never persisted, never a project value.
+   */
+  readonly runtimeInputs?: Readonly<Record<string, readonly string[]>>;
   /** Parameter validation; null when the parameters are usable. */
   validate(ctx: PartContext): EngineError | null;
   /** Discrete state at the start of a run (stateful parts only). */

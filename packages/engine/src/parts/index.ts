@@ -7,3 +7,5 @@ import './bjtNpn.js';
 import './pir.js';
 import './ledMatrix.js';
 import './capacitor.js';
+import './ultrasonic.js';
+import './dht22.js';

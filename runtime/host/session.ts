@@ -34,12 +34,18 @@ import {
   type RuntimePinMode,
   type SolveOutcome,
 } from '@tbi-lab/engine';
-import { InputSchedule, type Capability, type Command } from '../harness/protocol.js';
+import {
+  InputSchedule,
+  type Capability,
+  type Command,
+  type PadFunction,
+} from '../harness/protocol.js';
 import { runSession, type Outcome, type SessionResult } from '../harness/session.js';
 import type { Principal } from '../identity/principal.js';
 import type { TicketFeatures } from '../identity/ticket.js';
 import type { HostConfig } from './config.js';
 import { sessionDir } from './config.js';
+import { RUNTIME_DEVICE_TYPES, RuntimeDevices } from './devices.js';
 import { EventLog } from './eventLog.js';
 import {
   COMMAND_QUANTUM_US,
@@ -121,6 +127,7 @@ export class HostSession {
   /** Sprint 12: the runtime's bridge capabilities (from `H`) and the scheduled-input mirror. */
   private caps: readonly Capability[] = [];
   private readonly schedule = new InputSchedule();
+  private devices: RuntimeDevices | null = null;
 
   constructor(
     private readonly config: HostConfig,
@@ -287,6 +294,13 @@ export class HostSession {
         components: timed,
         detail: { reason: 'time_dependent' },
       });
+    this.devices = new RuntimeDevices(
+      this.request.circuit,
+      this.engine,
+      this.request.attachments.map((a) => a.gpio),
+      this.inputLevels,
+      this.schedule,
+    );
     const first = this.engine.solve();
     if (!first.ok) {
       if (first.error.code === 'invalid_attachment')
@@ -388,6 +402,7 @@ export class HostSession {
         {
           hello: (_tick, caps) => this.onHello(caps),
           pad: (e) => this.onPad(e.vns, e.pad, e.drive, e.level),
+          func: (e) => this.onFunc(e.vns, e.pad, e.func),
           tick: (vns) => this.onTick(vns),
           serial: (vns, bytes) => this.onSerial(vns, bytes),
         },
@@ -438,7 +453,8 @@ export class HostSession {
   // -------------------------------------------------------------------------------------------
   // The co-located loop (bridge handlers). Everything here is synchronous with QEMU.
 
-  private solveAndInject(): Command[] {
+  private solveAndInject(vns: bigint): Command[] {
+    this.devices?.advance(vns);
     const out = this.engine!.solve();
     this.latest = out;
     if (!out.ok) {
@@ -454,7 +470,21 @@ export class HostSession {
       this.inputLevels.set(p.gpio, next);
       cmds.push({ type: 'I', pad: p.gpio, level: next });
     }
+    // Sprint 12 (R2): what the sensors saw; their responses are scheduled edges.
+    if (this.devices && !this.devices.empty) cmds.push(...this.devices.observe(vns, out));
+    this.flushDeviceDiagnostics();
     return cmds;
+  }
+
+  private flushDeviceDiagnostics(): void {
+    for (const { simNs, d } of this.devices?.diagnostics.splice(0) ?? [])
+      this.log.append({
+        type: 'diagnostic',
+        simNs: simNs.toString(),
+        severity: d.severity,
+        code: d.code,
+        detail: d.detail,
+      });
   }
 
   private onHello(caps: readonly Capability[]): Command[] {
@@ -474,7 +504,23 @@ export class HostSession {
       this.pendingFailure = { reason: 'unsupported_feature', detail };
       return [{ type: 'Q' }];
     }
-    return this.solveAndInject();
+    // Parts that need a runtime capability (Sprint 12): refused, naming them, on a runtime
+    // without it (a v1 runtime, or a rolled-back one), before the first guest instruction.
+    const needs = this.request.circuit.components.filter((c) =>
+      (RUNTIME_DEVICE_TYPES[c.type] ?? []).some((cap) => !caps.includes(cap)),
+    );
+    if (needs.length) {
+      this.pendingFailure = {
+        reason: 'electrical_error',
+        detail: {
+          code: 'unsupported_component',
+          components: needs.map((c) => c.id),
+          detail: { reason: 'runtime_capability', runtimeCapabilities: [...caps] },
+        },
+      };
+      return [{ type: 'Q' }];
+    }
+    return this.solveAndInject(0n);
   }
 
   private onPad(vns: bigint, pad: number, drive: 0 | 1, level: 0 | 1): Command[] {
@@ -501,9 +547,40 @@ export class HostSession {
       this.gpioWindow.set(pad, { drive, level, transitions: (w?.transitions ?? 0) + 1 });
     }
     if (!this.request.attachments.some((a) => a.gpio === pad)) return [];
+    // Sprint 12: the firmware drives a pad that has sensor edges pending (ADR-011 §2).
+    this.devices?.advance(vns);
+    const cancel = drive ? (this.devices?.contention(vns, pad) ?? []) : [];
     const mode: RuntimePinMode = drive ? (level ? 'output-high' : 'output-low') : 'input';
     this.engine!.setPinMode(pad, mode);
-    return this.solveAndInject();
+    return [...cancel, ...this.solveAndInject(vns)];
+  }
+
+  /**
+   * Sprint 12 (ADR-011 §3, patch 0007): a pad's routed function changed. A pad routed to an I2C
+   * signal belongs to the I2C controller: it is open drain, so outside a transaction it is
+   * released and the circuit's pull-ups decide its level (bus phases arrive as `B` frames). Any
+   * other peripheral on a pad that joins the circuit is a facility V1 does not simulate: refused,
+   * never left running with dead behaviour. Pads outside the circuit (flash, UART) are ignored.
+   */
+  private onFunc(vns: bigint, pad: number, func: PadFunction): Command[] {
+    this.simNs = vns;
+    if (!this.request.attachments.some((a) => a.gpio === pad)) return [];
+    if (func.startsWith('periph:')) {
+      const detail = { gpio: pad, function: func };
+      this.log.append({
+        type: 'diagnostic',
+        simNs: vns.toString(),
+        severity: 'error',
+        code: 'unsupported_feature',
+        detail,
+      });
+      this.pendingFailure = { reason: 'unsupported_feature', detail };
+      return [{ type: 'Q' }];
+    }
+    if (func === 'gpio') return []; // its state follows as a G frame
+    this.devices?.advance(vns);
+    this.engine!.setPinMode(pad, 'input');
+    return this.solveAndInject(vns);
   }
 
   private onSerial(vns: bigint, bytes: Buffer): void {
@@ -532,7 +609,10 @@ export class HostSession {
       this.queue.shift();
       if (this.apply(head.command, vns)) applied = true;
     }
-    if (applied && !this.pendingFailure) cmds.push(...this.solveAndInject());
+    // Sensor output changes since the last frame are solved too, so the published operating point
+    // shows them (Sprint 12).
+    const sensed = this.devices?.dueBy(vns) ?? false;
+    if ((applied || sensed) && !this.pendingFailure) cmds.push(...this.solveAndInject(vns));
     if (this.pendingFailure && !cmds.some((c) => c.type === 'Q')) cmds.push({ type: 'Q' });
     if (vns % this.publishNs === 0n) this.flushWindow(vns);
     return cmds;

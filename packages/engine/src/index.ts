@@ -53,3 +53,17 @@ export {
   type DigitalLevel,
   type PinMode,
 } from './esp32Gpio.js';
+// Sprint 12 (R2/R3): sensor and display protocol semantics, and the R2 part models' DC constants.
+export { HC_SR04, hcsr04Echo, speedOfSound, type Echo } from './peripherals/hcsr04.js';
+export { dht22Frame, decodeDht22, dht22Waveform } from './peripherals/dht22.js';
+export { I2cBus, I2cBusError, type I2cTarget } from './peripherals/i2c.js';
+export {
+  BACKPACK_STANDARD,
+  Hd44780,
+  I2cLcd,
+  Pcf8574,
+  romA00,
+  type BackpackWiring,
+} from './peripherals/hd44780.js';
+export { HC_SR04_DC, hcsr04TrigLevel } from './parts/ultrasonic.js';
+export { DHT22_DC } from './parts/dht22.js';

@@ -295,3 +295,30 @@ describe('T-PROTO-7/8: capabilities are bound to the session at the handshake', 
     expect(text).toContain('REPLY B 9500003 0 P -> \n');
   });
 });
+
+describe('pad functions (patch 0007, ADR-011 §3)', () => {
+  const caps = '2 i2c,pad-func,sched-input';
+  it('another peripheral on a circuit pad refuses the session (unsupported_feature)', async () => {
+    const s = session({ TBI_FAKE_HELLO: caps, TBI_FAKE_FRAMES: 'F 9500000 18 periph:14 0' }, null);
+    s.run();
+    expect(await terminal(s)).toMatchObject({
+      state: 'failed',
+      reason: 'unsupported_feature',
+      detail: { gpio: 18, function: 'periph:14' },
+    });
+  });
+
+  it('peripheral routing on pads outside the circuit (flash, UART) is ignored', async () => {
+    const s = session(
+      { TBI_FAKE_HELLO: caps, TBI_FAKE_FRAMES: 'F 9500000 7 periph:1 0;F 9500001 1 periph:14 0' },
+      null,
+    );
+    expect(await runFor(s, 300)).toMatchObject({ state: 'ended', reason: 'stopped' });
+  });
+
+  it('an I2C function releases the pad (open drain idle) and the session runs on', async () => {
+    const s = session({ TBI_FAKE_HELLO: caps, TBI_FAKE_FRAMES: 'F 9500000 18 i2c0-scl 1' }, null);
+    expect(await runFor(s, 300)).toMatchObject({ state: 'ended', reason: 'stopped' });
+    expect(serialText(s)).toContain('REPLY F 9500000 18 i2c0-scl 1 ->');
+  });
+});

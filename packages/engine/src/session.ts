@@ -300,6 +300,8 @@ export class EngineSession {
    * A new session starts from each part's initial state.
    */
   private readonly discrete = new Map<string, PartState>();
+  /** TRANSIENT runtime inputs of parts (Sprint 12), set by the MCU runtime host. */
+  private readonly partRuntime = new Map<string, Record<string, string>>();
 
   constructor(
     private readonly snapshot: SimulationSnapshot,
@@ -445,6 +447,32 @@ export class EngineSession {
     return null;
   }
 
+  /**
+   * TRANSIENT runtime input (Sprint 12, R2/R3): a part's runtime-driven state, e.g. whether an
+   * HC-SR04 drives its ECHO output high. Only the keys and tokens the part model declares in
+   * `runtimeInputs` are accepted. Not a project value: no revision, nothing persisted.
+   */
+  setPartRuntime(componentId: string, key: string, token: string): EngineError | null {
+    const c = this.snapshot.components.find((x) => x.id === componentId);
+    const allowed = c ? partModel(c.type)?.runtimeInputs?.[key] : undefined;
+    if (!c || !allowed?.includes(token))
+      return { code: 'unsupported_component', components: [componentId] };
+    this.partRuntime.set(componentId, { ...this.partRuntime.get(componentId), [key]: token });
+    return null;
+  }
+
+  /**
+   * A part's quantity parameter with any live (mirrored) value applied, in SI units: what the
+   * part's environment is right now (Sprint 12: the runtime host reads a sensor's distance,
+   * temperature and humidity here, from the same values the solver uses).
+   */
+  liveQuantity(componentId: string, key: string): number | undefined {
+    const c = this.snapshot.components.find((x) => x.id === componentId);
+    if (!c) return undefined;
+    const v = this.overrides.get(componentId)?.params?.[key];
+    return typeof v === 'number' ? v : quantity(c.params, key);
+  }
+
   private switchClosed(c: ComponentInstance): boolean {
     if (c.type === 'component.push_button') return this.pressed.has(c.id);
     return this.overrides.get(c.id)?.closed ?? c.params.closed === true;
@@ -532,6 +560,7 @@ export class EngineSession {
       value: (key) => (key in live ? live[key] : c.params[key]),
       ...(this.step ? { step: this.step } : {}),
       history: () => this.history.get(c.id),
+      runtime: (key) => this.partRuntime.get(c.id)?.[key],
     };
   }
 
