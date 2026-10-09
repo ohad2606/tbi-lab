@@ -16,5 +16,6 @@ at the evidence.
 | [008](ADR-008-one-electrical-engine-two-hosts.md) | One electrical engine, two hosts | Proposed |
 | [009](ADR-009-browser-ui-stack.md) | Browser UI stack: Preact, Vite, inline SVG, in-house localization | Accepted (engineering, Sprint 2) |
 | [010](ADR-010-esp32-part-support-and-live-part-parameters.md) | ESP32 part support and live part parameters in the session contract | Accepted with conditions (PM, Sprint 11, R1) |
+| [011](ADR-011-runtime-bridge-v2.md) | Runtime bridge v2: capabilities, scheduled inputs, pad functions and I2C transactions | Proposed (Sprint 12) |
 
 Status values: **Proposed** (awaiting PM review), **Accepted**, **Superseded by ADR-NNN**.
