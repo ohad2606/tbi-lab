@@ -393,7 +393,12 @@ export function capacitorPackage(farads: number) {
 // silent the value is representative [REP] and stated as such.
 
 /** Header pin plan offsets along the header (2.54 mm pitch, centred on the module origin). */
-const headerZ = (i: number, n: number) => (i - (n - 1) / 2) * 2.54;
+/**
+ * The Sprint 12 modules' 2D header pins are at layout y = -40, -20, 0, 20: centred 10 layout units
+ * above the part origin. The physical header (and the body around it) is centred there too.
+ */
+const HEADER_CENTRE_Z = toMm(-10);
+const headerZ = (i: number, n: number) => HEADER_CENTRE_Z + (i - (n - 1) / 2) * 2.54;
 
 /**
  * HC-SR04: 45 x 20 x 15 mm overall [Elecfreaks p.2; Cytron]. The board stands upright on its
@@ -412,6 +417,8 @@ export const HC_SR04_MODULE = {
   backMm: 1.4,
   transducerDiameterMm: 16,
   transducerSpacingMm: 26,
+  /** The board's centre along z: the header's centre (2D pins centred above the origin). */
+  centreZMm: HEADER_CENTRE_Z,
   standoffMm: 8.5,
   attachHeightMm: 0.8,
   pins: {
@@ -436,6 +443,8 @@ export const DHT22_CASE = {
   attachHeightMm: 0.8,
   /** The grille area on the front face (20.0 mm tall [AM2302 p.2]). */
   grilleHeightMm: 20.0,
+  /** The case's centre along z: the pins' centre. */
+  centreZMm: HEADER_CENTRE_Z,
   pins: {
     vdd: [-2.35, headerZ(0, 4)],
     data: [-2.35, headerZ(1, 4)],
@@ -454,7 +463,7 @@ export const DHT22_CASE = {
  * (13.5 mm overall maximum [JHD p.15]).
  *
  * Local frame: the header pins' tips are at the 2D terminals' x (so the wires end where the circuit
- * view has them); the module extends to +x; the header is centred on z = 0.
+ * view has them); the module extends to +x; the header is centred on the 2D pins' centre.
  */
 export const LCD1602_MODULE = {
   pcbXMm: 80.0,
@@ -480,8 +489,10 @@ export const LCD1602_MODULE = {
   pinTipXMm: -12.7,
   pcbLeftXMm: -6.7,
   pinHeightMm: 4.65,
-  /** The PCB centre relative to the header (the header is under the top half) [REP]. */
-  pcbCentreZMm: 8.5,
+  /** The PCB centre: 8.5 mm below the header (the header is under the top half) [REP]. */
+  pcbCentreZMm: HEADER_CENTRE_Z + 8.5,
+  /** The header's (and the backpack's) centre along z. */
+  headerCentreZMm: HEADER_CENTRE_Z,
   pins: {
     gnd: [-12.7, headerZ(0, 4)],
     vcc: [-12.7, headerZ(1, 4)],

@@ -9,6 +9,7 @@ import { expect, test, type Page } from '@playwright/test';
 import {
   component,
   createProject,
+  goToProjects,
   place,
   storedProject,
   waitForStoredProject,
@@ -150,3 +151,21 @@ test('HC-SR04, DHT22, LCD: placed, named pins, bounded live environment, solved 
   await page.screenshot({ path: info.outputPath('s12-parts-3d.png') });
   await page.getByTestId('sim-stop').click();
 });
+
+for (const id of ['esp32-distance-alarm', 'esp32-thermo-hygrometer', 'esp32-lcd-hello'])
+  test(`example ${id}: opens with its program, draws in every view`, async ({ page }, info) => {
+    await page.goto('/');
+    const library = page.getByTestId('example-list');
+    await expect(library.or(page.getByTestId('canvas'))).toBeVisible();
+    if (!(await library.isVisible())) await goToProjects(page);
+    await page.getByTestId(`open-example-${id}`).click();
+    await expect(page.getByTestId('canvas')).toBeVisible();
+    await page.screenshot({ path: info.outputPath(`${id}-circuit.png`) });
+    await page.getByTestId('view-schematic').click();
+    await page.screenshot({ path: info.outputPath(`${id}-schematic.png`) });
+    await page.getByTestId('view-3d').click();
+    await expect(page.getByTestId('view3d')).toHaveAttribute('data-status', 'ready', {
+      timeout: 60_000,
+    });
+    await page.screenshot({ path: info.outputPath(`${id}-3d.png`) });
+  });

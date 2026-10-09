@@ -1,0 +1,242 @@
+{
+  "_comment": "Sprint 12: exactly the session request the app sends for the esp32-lcd-hello example (minus artifact and ticket; app/tests/runtime-fixtures.test.ts keeps them equal). Firmware: the example's own program, built by the build service.",
+  "request": {
+    "protocol": "tbi-lab.session/2",
+    "board": "board.esp32_devkitc_wroom32",
+    "circuit": {
+      "format": "tbi-lab.snapshot",
+      "schemaVersion": 3,
+      "snapshotId": "snap_3792b30cb97162f5",
+      "projectId": "prj_exampleesp32lcdhello",
+      "projectRevision": 1,
+      "components": [
+        {
+          "id": "PSU1",
+          "type": "instrument.lab_psu",
+          "typeVersion": 1,
+          "params": {
+            "setpointVoltage": {
+              "value": 4.5,
+              "unit": "volt"
+            },
+            "currentLimit": {
+              "value": 0.1,
+              "unit": "ampere"
+            },
+            "outputEnabled": true
+          }
+        },
+        {
+          "id": "GND1",
+          "type": "component.ground",
+          "typeVersion": 1,
+          "params": {}
+        },
+        {
+          "id": "DS1",
+          "type": "display.lcd1602_i2c",
+          "typeVersion": 1,
+          "params": {
+            "model": "model.lcd.lcd1602_pcf8574",
+            "address": "i2c.0x27"
+          }
+        },
+        {
+          "id": "PSU2",
+          "type": "instrument.lab_psu",
+          "typeVersion": 1,
+          "params": {
+            "setpointVoltage": {
+              "value": 3.3,
+              "unit": "volt"
+            },
+            "currentLimit": {
+              "value": 0.1,
+              "unit": "ampere"
+            },
+            "outputEnabled": true
+          }
+        },
+        {
+          "id": "R1",
+          "type": "component.resistor",
+          "typeVersion": 1,
+          "params": {
+            "resistance": {
+              "value": 4700,
+              "unit": "ohm"
+            }
+          }
+        },
+        {
+          "id": "R2",
+          "type": "component.resistor",
+          "typeVersion": 1,
+          "params": {
+            "resistance": {
+              "value": 4700,
+              "unit": "ohm"
+            }
+          }
+        },
+        {
+          "id": "GND2",
+          "type": "component.ground",
+          "typeVersion": 1,
+          "params": {}
+        },
+        {
+          "id": "GND3",
+          "type": "component.ground",
+          "typeVersion": 1,
+          "params": {}
+        },
+        {
+          "id": "GND4",
+          "type": "component.ground",
+          "typeVersion": 1,
+          "params": {}
+        },
+        {
+          "id": "U1_gnd",
+          "type": "component.ground",
+          "typeVersion": 1,
+          "params": {}
+        }
+      ],
+      "nets": [
+        {
+          "id": "N_1",
+          "role": "ground"
+        },
+        {
+          "id": "N_2",
+          "role": null
+        },
+        {
+          "id": "N_3",
+          "role": "ground"
+        },
+        {
+          "id": "N_4",
+          "role": "ground"
+        },
+        {
+          "id": "N_5",
+          "role": null
+        },
+        {
+          "id": "N_6",
+          "role": null
+        },
+        {
+          "id": "N_7",
+          "role": "ground"
+        },
+        {
+          "id": "N_8",
+          "role": null
+        }
+      ],
+      "connections": [
+        {
+          "component": "PSU1",
+          "terminal": "positive",
+          "net": "N_2"
+        },
+        {
+          "component": "PSU1",
+          "terminal": "negative",
+          "net": "N_1"
+        },
+        {
+          "component": "GND1",
+          "terminal": "ref",
+          "net": "N_1"
+        },
+        {
+          "component": "DS1",
+          "terminal": "gnd",
+          "net": "N_3"
+        },
+        {
+          "component": "DS1",
+          "terminal": "vcc",
+          "net": "N_2"
+        },
+        {
+          "component": "DS1",
+          "terminal": "sda",
+          "net": "N_5"
+        },
+        {
+          "component": "DS1",
+          "terminal": "scl",
+          "net": "N_6"
+        },
+        {
+          "component": "PSU2",
+          "terminal": "positive",
+          "net": "N_8"
+        },
+        {
+          "component": "PSU2",
+          "terminal": "negative",
+          "net": "N_7"
+        },
+        {
+          "component": "R1",
+          "terminal": "a",
+          "net": "N_8"
+        },
+        {
+          "component": "R1",
+          "terminal": "b",
+          "net": "N_5"
+        },
+        {
+          "component": "R2",
+          "terminal": "a",
+          "net": "N_8"
+        },
+        {
+          "component": "R2",
+          "terminal": "b",
+          "net": "N_6"
+        },
+        {
+          "component": "GND2",
+          "terminal": "ref",
+          "net": "N_3"
+        },
+        {
+          "component": "GND3",
+          "terminal": "ref",
+          "net": "N_4"
+        },
+        {
+          "component": "GND4",
+          "terminal": "ref",
+          "net": "N_7"
+        },
+        {
+          "component": "U1_gnd",
+          "terminal": "ref",
+          "net": "N_4"
+        }
+      ]
+    },
+    "attachments": [
+      {
+        "gpio": 21,
+        "component": "DS1",
+        "terminal": "sda"
+      },
+      {
+        "gpio": 22,
+        "component": "DS1",
+        "terminal": "scl"
+      }
+    ]
+  }
+}

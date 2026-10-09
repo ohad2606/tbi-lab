@@ -783,7 +783,8 @@ function headerDown(
   const xs = Object.values(pins).map((q) => q[0]);
   const zs = Object.values(pins).map((q) => q[1]);
   const span = Math.max(...zs) - Math.min(...zs) + 2.54;
-  g.add(box(own, 2.5, 2.5, span, m.blackPlastic, [xs[0]!, y0 - 1.25, 0]));
+  const zc = (Math.max(...zs) + Math.min(...zs)) / 2;
+  g.add(box(own, 2.5, 2.5, span, m.blackPlastic, [xs[0]!, y0 - 1.25, zc]));
   for (const [id, [x, z]] of Object.entries(pins)) {
     g.add(box(own, 0.64, y0, 0.64, m.gold, [x, y0 / 2, z]));
     const blob = cylinder(own, 0.55, 0.9, m.chrome, [x, attachY, z], 16, 0.75);
@@ -805,7 +806,7 @@ function buildUltrasonic(_c: SceneComponent, m: Materials, own: OwnedResources) 
     box(own, p.boardThicknessMm, p.boardYMm, p.boardZMm, blue, [
       p.boardXMm,
       y0 + p.boardYMm / 2,
-      0,
+      p.centreZMm,
     ]),
   );
   const front = p.boardXMm + p.boardThicknessMm / 2;
@@ -814,7 +815,9 @@ function buildUltrasonic(_c: SceneComponent, m: Materials, own: OwnedResources) 
     'usMesh',
     () => new THREE.MeshStandardMaterial({ color: '#2a2b2e', roughness: 0.9 }),
   );
-  for (const z of [-p.transducerSpacingMm / 2, p.transducerSpacingMm / 2]) {
+  for (const z of [-p.transducerSpacingMm / 2, p.transducerSpacingMm / 2].map(
+    (dz) => p.centreZMm + dz,
+  )) {
     const can = cylinder(
       own,
       R,
@@ -841,7 +844,7 @@ function buildUltrasonic(_c: SceneComponent, m: Materials, own: OwnedResources) 
     box(own, p.backMm, 4.5, 11, m.steel, [
       p.boardXMm - p.boardThicknessMm / 2 - p.backMm / 2,
       y0 + p.boardYMm - 4,
-      0,
+      p.centreZMm,
     ]),
   );
   headerDown(g, m, own, p.pins, y0, p.attachHeightMm);
@@ -864,7 +867,7 @@ function buildDht22(_c: SceneComponent, m: Materials, own: OwnedResources) {
         () => new RoundedBoxGeometry(p.depthXMm, p.heightMm, p.widthZMm, 2, 0.6),
       ),
       white,
-      [0, y0 + p.heightMm / 2, 0],
+      [0, y0 + p.heightMm / 2, p.centreZMm],
     ),
   );
   // The grille: rows of vent slots over the upper 20 mm of the front face.
@@ -891,7 +894,11 @@ function buildDht22(_c: SceneComponent, m: Materials, own: OwnedResources) {
     ),
   );
   grille.rotation.y = Math.PI / 2;
-  grille.position.set(p.depthXMm / 2 + 0.02, y0 + p.heightMm - 1.5 - p.grilleHeightMm / 2, 0);
+  grille.position.set(
+    p.depthXMm / 2 + 0.02,
+    y0 + p.heightMm - 1.5 - p.grilleHeightMm / 2,
+    p.centreZMm,
+  );
   g.add(grille);
   headerDown(g, m, own, p.pins, y0, p.attachHeightMm);
   return g;
@@ -1020,17 +1027,18 @@ function buildLcd1602(_c: SceneComponent, m: Materials, own: OwnedResources) {
   g.add(face);
   // The backpack under the connector: its board, the PCF8574 and the contrast trimmer.
   const backY = y0 - 2.5 - 0.8;
-  g.add(box(own, 41.5, 1.6, 19, m.pcb, [p.pcbLeftXMm + 20.75, backY, 0]));
-  g.add(box(own, 10, 1.5, 7.5, m.ic, [p.pcbLeftXMm + 24, backY - 1.55, 2]));
+  const hz = p.headerCentreZMm;
+  g.add(box(own, 41.5, 1.6, 19, m.pcb, [p.pcbLeftXMm + 20.75, backY, hz]));
+  g.add(box(own, 10, 1.5, 7.5, m.ic, [p.pcbLeftXMm + 24, backY - 1.55, hz + 2]));
   const pot = own.sharedMat(
     'lcdPot',
     () => new THREE.MeshStandardMaterial({ color: '#2c5fb8', roughness: 0.5 }),
   );
-  g.add(cylinder(own, 3.2, 4, pot, [p.pcbLeftXMm + 10, backY - 2.8, 3], 20));
+  g.add(cylinder(own, 3.2, 4, pot, [p.pcbLeftXMm + 10, backY - 2.8, hz + 3], 20));
   // The 4-pin header: its housing under the board's edge, the pins out to the left.
   const tip = p.pinTipXMm;
   const inner = p.pcbLeftXMm + 3;
-  g.add(box(own, 2.5, 2.5, 10.16, m.blackPlastic, [p.pcbLeftXMm + 1.75, p.pinHeightMm, 0]));
+  g.add(box(own, 2.5, 2.5, 10.16, m.blackPlastic, [p.pcbLeftXMm + 1.75, p.pinHeightMm, hz]));
   for (const [id, [, z]] of Object.entries(p.pins)) {
     g.add(box(own, inner - tip, 0.64, 0.64, m.gold, [(inner + tip) / 2, p.pinHeightMm, z]));
     const blob = cylinder(own, 0.55, 0.9, m.chrome, [tip, p.pinHeightMm, z], 16, 0.75);

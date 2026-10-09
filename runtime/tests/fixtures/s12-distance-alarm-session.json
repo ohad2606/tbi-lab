@@ -1,0 +1,290 @@
+{
+  "_comment": "Sprint 12: exactly the session request the app sends for the esp32-distance-alarm example (minus artifact and ticket; app/tests/runtime-fixtures.test.ts keeps them equal). Firmware: the example's own program, built by the build service.",
+  "request": {
+    "protocol": "tbi-lab.session/2",
+    "board": "board.esp32_devkitc_wroom32",
+    "circuit": {
+      "format": "tbi-lab.snapshot",
+      "schemaVersion": 3,
+      "snapshotId": "snap_f7a5bfee0e975d57",
+      "projectId": "prj_exampleesp32distancealarm",
+      "projectRevision": 1,
+      "components": [
+        {
+          "id": "PSU1",
+          "type": "instrument.lab_psu",
+          "typeVersion": 1,
+          "params": {
+            "setpointVoltage": {
+              "value": 5,
+              "unit": "volt"
+            },
+            "currentLimit": {
+              "value": 0.1,
+              "unit": "ampere"
+            },
+            "outputEnabled": true
+          }
+        },
+        {
+          "id": "GND1",
+          "type": "component.ground",
+          "typeVersion": 1,
+          "params": {}
+        },
+        {
+          "id": "U2",
+          "type": "sensor.hc_sr04",
+          "typeVersion": 1,
+          "params": {
+            "model": "model.ultrasonic.hc_sr04",
+            "distance": {
+              "value": 0.5,
+              "unit": "metre"
+            },
+            "airTemperature": {
+              "value": 20,
+              "unit": "celsius"
+            }
+          }
+        },
+        {
+          "id": "R1",
+          "type": "component.resistor",
+          "typeVersion": 1,
+          "params": {
+            "resistance": {
+              "value": 1000,
+              "unit": "ohm"
+            }
+          }
+        },
+        {
+          "id": "R2",
+          "type": "component.resistor",
+          "typeVersion": 1,
+          "params": {
+            "resistance": {
+              "value": 2000,
+              "unit": "ohm"
+            }
+          }
+        },
+        {
+          "id": "GND2",
+          "type": "component.ground",
+          "typeVersion": 1,
+          "params": {}
+        },
+        {
+          "id": "GND3",
+          "type": "component.ground",
+          "typeVersion": 1,
+          "params": {}
+        },
+        {
+          "id": "R3",
+          "type": "component.resistor",
+          "typeVersion": 1,
+          "params": {
+            "resistance": {
+              "value": 220,
+              "unit": "ohm"
+            }
+          }
+        },
+        {
+          "id": "D1",
+          "type": "component.led",
+          "typeVersion": 1,
+          "params": {
+            "model": "model.led.vishay_tlhr5400"
+          }
+        },
+        {
+          "id": "GND4",
+          "type": "component.ground",
+          "typeVersion": 1,
+          "params": {}
+        },
+        {
+          "id": "GND5",
+          "type": "component.ground",
+          "typeVersion": 1,
+          "params": {}
+        },
+        {
+          "id": "U1_gnd",
+          "type": "component.ground",
+          "typeVersion": 1,
+          "params": {}
+        }
+      ],
+      "nets": [
+        {
+          "id": "N_1",
+          "role": "ground"
+        },
+        {
+          "id": "N_2",
+          "role": null
+        },
+        {
+          "id": "N_3",
+          "role": "ground"
+        },
+        {
+          "id": "N_4",
+          "role": "ground"
+        },
+        {
+          "id": "N_5",
+          "role": null
+        },
+        {
+          "id": "N_6",
+          "role": null
+        },
+        {
+          "id": "N_7",
+          "role": null
+        },
+        {
+          "id": "N_8",
+          "role": "ground"
+        },
+        {
+          "id": "N_9",
+          "role": null
+        },
+        {
+          "id": "N_10",
+          "role": null
+        },
+        {
+          "id": "N_11",
+          "role": "ground"
+        }
+      ],
+      "connections": [
+        {
+          "component": "PSU1",
+          "terminal": "positive",
+          "net": "N_2"
+        },
+        {
+          "component": "PSU1",
+          "terminal": "negative",
+          "net": "N_1"
+        },
+        {
+          "component": "GND1",
+          "terminal": "ref",
+          "net": "N_1"
+        },
+        {
+          "component": "U2",
+          "terminal": "vcc",
+          "net": "N_2"
+        },
+        {
+          "component": "U2",
+          "terminal": "trig",
+          "net": "N_5"
+        },
+        {
+          "component": "U2",
+          "terminal": "echo",
+          "net": "N_6"
+        },
+        {
+          "component": "U2",
+          "terminal": "gnd",
+          "net": "N_3"
+        },
+        {
+          "component": "R1",
+          "terminal": "a",
+          "net": "N_7"
+        },
+        {
+          "component": "R1",
+          "terminal": "b",
+          "net": "N_6"
+        },
+        {
+          "component": "R2",
+          "terminal": "a",
+          "net": "N_7"
+        },
+        {
+          "component": "R2",
+          "terminal": "b",
+          "net": "N_8"
+        },
+        {
+          "component": "GND2",
+          "terminal": "ref",
+          "net": "N_8"
+        },
+        {
+          "component": "GND3",
+          "terminal": "ref",
+          "net": "N_3"
+        },
+        {
+          "component": "R3",
+          "terminal": "a",
+          "net": "N_9"
+        },
+        {
+          "component": "R3",
+          "terminal": "b",
+          "net": "N_10"
+        },
+        {
+          "component": "D1",
+          "terminal": "anode",
+          "net": "N_10"
+        },
+        {
+          "component": "D1",
+          "terminal": "cathode",
+          "net": "N_11"
+        },
+        {
+          "component": "GND4",
+          "terminal": "ref",
+          "net": "N_11"
+        },
+        {
+          "component": "GND5",
+          "terminal": "ref",
+          "net": "N_4"
+        },
+        {
+          "component": "U1_gnd",
+          "terminal": "ref",
+          "net": "N_4"
+        }
+      ]
+    },
+    "attachments": [
+      {
+        "gpio": 2,
+        "component": "R3",
+        "terminal": "a"
+      },
+      {
+        "gpio": 5,
+        "component": "U2",
+        "terminal": "trig"
+      },
+      {
+        "gpio": 18,
+        "component": "R1",
+        "terminal": "a"
+      }
+    ]
+  }
+}

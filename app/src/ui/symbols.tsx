@@ -59,8 +59,8 @@ export function lcdView(state: Record<string, unknown> | undefined): LcdView | u
 /** LCD 16x2 face (symbol units): the viewing window and the 5x8-dot character cells. */
 export const LCD_COLS = 16;
 export const LCD_CELL = { w: 9, h: 15, pitch: 10.5 } as const;
-export const LCD_WINDOW = { x: -24, y: -19, w: 172, h: 38 } as const;
-export const LCD_ROWS = [-8.5, 8.5] as const;
+export const LCD_WINDOW = { x: -24, y: -29, w: 172, h: 38 } as const;
+export const LCD_ROWS = [-18.5, -1.5] as const;
 export const lcdCellX = (i: number) =>
   LCD_WINDOW.x + (LCD_WINDOW.w - LCD_COLS * LCD_CELL.pitch) / 2 + LCD_CELL.pitch * (i + 0.5);
 
@@ -277,16 +277,16 @@ export const SYMBOLS: Record<ComponentTypeId, SymbolDef> = {
     ),
   },
   'sensor.hc_sr04': {
-    bbox: [-60, -40, 46, 40],
+    bbox: [-60, -50, 46, 30],
     // The module board, header on the left (VCC, TRIG, ECHO, GND as on the part; the canvas names
     // each pin), and its two transducers (transmitter, receiver). The ECHO lead is marked while
     // the solved output is high.
     draw: (state) => (
       <>
-        <rect x={-44} y={-40} width={90} height={80} rx={4} class="symbol-body" />
-        {leftLeads(-60, -44, [-30, -10, 30])}
-        <line x1={-60} y1={10} x2={-44} y2={10} class={state?.outputHigh ? 'pin-out-high' : ''} />
-        {[-19, 19].map((y) => (
+        <rect x={-44} y={-50} width={90} height={80} rx={4} class="symbol-body" />
+        {leftLeads(-60, -44, [-40, -20, 20])}
+        <line x1={-60} y1={0} x2={-44} y2={0} class={state?.outputHigh ? 'pin-out-high' : ''} />
+        {[-29, 9].map((y) => (
           <g key={y}>
             <circle cx={22} cy={y} r={17} class="us-can" />
             <circle cx={22} cy={y} r={11} class="us-mesh" />
@@ -296,13 +296,13 @@ export const SYMBOLS: Record<ComponentTypeId, SymbolDef> = {
     ),
   },
   'sensor.dht22': {
-    bbox: [-60, -40, 30, 40],
+    bbox: [-60, -50, 30, 30],
     // The white case, pins on the left (VDD, DATA, NC, GND as on the part), the vent grille.
     draw: () => (
       <>
-        <rect x={-44} y={-40} width={74} height={80} rx={3} class="symbol-body" />
-        {leftLeads(-60, -44, [-30, -10, 10, 30])}
-        {[-30, -20, -10, 0, 10, 20].flatMap((y) =>
+        <rect x={-44} y={-50} width={74} height={80} rx={3} class="symbol-body" />
+        {leftLeads(-60, -44, [-40, -20, 0, 20])}
+        {[-40, -30, -20, -10, 0, 10].flatMap((y) =>
           [-6, 6].map((x) => (
             <rect key={`${x},${y}`} x={x} y={y} width={10} height={6} rx={1} class="dht-vent" />
           )),
@@ -311,16 +311,16 @@ export const SYMBOLS: Record<ComponentTypeId, SymbolDef> = {
     ),
   },
   'display.lcd1602_i2c': {
-    bbox: [-80, -48, 152, 48],
+    bbox: [-80, -58, 152, 38],
     // The module: the I2C backpack's header on the left (GND, VCC, SDA, SCL; the canvas names each
     // pin), the bezel and the 16x2 character window. Lit and filled ONLY from the engine's result.
     draw: (state) => {
       const lcd = state?.lcd;
       return (
         <>
-          <rect x={-64} y={-48} width={216} height={96} rx={3} class="symbol-body" />
-          {leftLeads(-80, -64, [-30, -10, 10, 30])}
-          <rect x={-28} y={-27} width={178} height={54} rx={2} class="lcd-bezel" />
+          <rect x={-64} y={-58} width={216} height={96} rx={3} class="symbol-body" />
+          {leftLeads(-80, -64, [-40, -20, 0, 20])}
+          <rect x={-28} y={-37} width={178} height={54} rx={2} class="lcd-bezel" />
           <rect
             x={LCD_WINDOW.x}
             y={LCD_WINDOW.y}

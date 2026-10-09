@@ -68,11 +68,22 @@ describe('Sprint 12 parts: every view has them', () => {
     for (const type of S12) {
       const def = CATALOG[type];
       const [x0, y0, x1, y1] = SYMBOLS[type].bbox;
-      for (const t of def.terminals)
+      for (const t of def.terminals) {
+        // On the 20-unit layout grid, as every part's terminals (the board's pin rows included).
+        expect(Math.abs(t.offset.x % 20), `${type}.${t.id}`).toBe(0);
+        expect(Math.abs(t.offset.y % 20), `${type}.${t.id}`).toBe(0);
         expect(
           t.offset.x >= x0 && t.offset.x <= x1 && t.offset.y >= y0 && t.offset.y <= y1,
           `${type}.${t.id}`,
         ).toBe(true);
+        // The symbol's lead starts exactly on the terminal.
+        expect(
+          elements(SYMBOLS[type].draw()).some(
+            (e) => e.type === 'line' && e.props.x1 === t.offset.x && e.props.y1 === t.offset.y,
+          ),
+          `${type}.${t.id} lead`,
+        ).toBe(true);
+      }
       const sch = SCHEMATIC_SYMBOLS[type];
       expect(sch.kind).toBe('module');
       if (sch.kind === 'module')
@@ -228,11 +239,11 @@ describe('Sprint 12 parts: 3D', () => {
     let doc = fixture.doc;
     // A series resistor beside each signal pin (TRIG, ECHO, DATA, SDA, SCL).
     for (const [part, term, y] of [
-      [ids.us!, 'trig', -10],
-      [ids.us!, 'echo', 10],
-      [ids.dht!, 'data', 450],
-      [ids.lcd!, 'sda', 910],
-      [ids.lcd!, 'scl', 930],
+      [ids.us!, 'trig', -20],
+      [ids.us!, 'echo', 0],
+      [ids.dht!, 'data', 440],
+      [ids.lcd!, 'sda', 900],
+      [ids.lcd!, 'scl', 920],
     ] as const) {
       const r = place(doc, 'component.resistor', 220, y);
       doc = wire(r.doc, [part, term], [r.id, 'b']);
@@ -275,6 +286,18 @@ describe('Sprint 12 parts: 3D', () => {
     );
     const z = (id: string) => LCD1602_MODULE.pins[id]![1];
     expect(z('gnd') < z('vcc') && z('vcc') < z('sda') && z('sda') < z('scl')).toBe(true);
+    // Each physical header is centred where the 2D pins are (along z), at the real 2.54 mm pitch.
+    for (const [type, pins] of [
+      ['sensor.hc_sr04', HC_SR04_MODULE.pins],
+      ['sensor.dht22', DHT22_CASE.pins],
+      ['display.lcd1602_i2c', LCD1602_MODULE.pins],
+    ] as const) {
+      const ys = CATALOG[type].terminals.map((t) => t.offset.y * SCALE);
+      const zs = CATALOG[type].terminals.map((t) => pins[t.id]![1]);
+      const mean = (v: number[]) => v.reduce((a, b) => a + b, 0) / v.length;
+      expect(mean(zs)).toBeCloseTo(mean(ys), 9);
+      zs.slice(1).forEach((z, i) => expect(z - zs[i]!).toBeCloseTo(2.54, 9));
+    }
     // Physical envelopes from the documents.
     expect(FOOTPRINT['sensor.ultrasonic'][3] - FOOTPRINT['sensor.ultrasonic'][2]).toBeCloseTo(
       45,

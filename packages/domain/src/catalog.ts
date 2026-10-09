@@ -299,10 +299,10 @@ const SPRINT10_TYPES = {
     symbol: 'symbol.ultrasonic',
     // The module's header, in its pin order (Vcc, Trig, Echo, GND).
     terminals: [
-      { id: 'vcc', offset: { x: -60, y: -30 }, labelKey: 'terminal.vcc' },
-      { id: 'trig', offset: { x: -60, y: -10 }, labelKey: 'terminal.trig' },
-      { id: 'echo', offset: { x: -60, y: 10 }, labelKey: 'terminal.echo' },
-      { id: 'gnd', offset: { x: -60, y: 30 }, labelKey: 'terminal.moduleGnd' },
+      { id: 'vcc', offset: { x: -60, y: -40 }, labelKey: 'terminal.vcc' },
+      { id: 'trig', offset: { x: -60, y: -20 }, labelKey: 'terminal.trig' },
+      { id: 'echo', offset: { x: -60, y: 0 }, labelKey: 'terminal.echo' },
+      { id: 'gnd', offset: { x: -60, y: 20 }, labelKey: 'terminal.moduleGnd' },
     ],
     params: [
       {
@@ -347,10 +347,10 @@ const SPRINT10_TYPES = {
     symbol: 'symbol.dht22',
     // The sensor's four pins, front view, left to right (VDD, DATA, NC, GND).
     terminals: [
-      { id: 'vdd', offset: { x: -60, y: -30 }, labelKey: 'terminal.vdd' },
-      { id: 'data', offset: { x: -60, y: -10 }, labelKey: 'terminal.data' },
-      { id: 'nc', offset: { x: -60, y: 10 }, labelKey: 'terminal.notConnected' },
-      { id: 'gnd', offset: { x: -60, y: 30 }, labelKey: 'terminal.moduleGnd' },
+      { id: 'vdd', offset: { x: -60, y: -40 }, labelKey: 'terminal.vdd' },
+      { id: 'data', offset: { x: -60, y: -20 }, labelKey: 'terminal.data' },
+      { id: 'nc', offset: { x: -60, y: 0 }, labelKey: 'terminal.notConnected' },
+      { id: 'gnd', offset: { x: -60, y: 20 }, labelKey: 'terminal.moduleGnd' },
     ],
     optionalTerminals: ['nc'],
     params: [
@@ -394,10 +394,10 @@ const SPRINT10_TYPES = {
     symbol: 'symbol.lcd_i2c',
     // The PCF8574 backpack's header, in its pin order (GND, VCC, SDA, SCL).
     terminals: [
-      { id: 'gnd', offset: { x: -80, y: -30 }, labelKey: 'terminal.moduleGnd' },
-      { id: 'vcc', offset: { x: -80, y: -10 }, labelKey: 'terminal.vcc' },
-      { id: 'sda', offset: { x: -80, y: 10 }, labelKey: 'terminal.sda' },
-      { id: 'scl', offset: { x: -80, y: 30 }, labelKey: 'terminal.scl' },
+      { id: 'gnd', offset: { x: -80, y: -40 }, labelKey: 'terminal.moduleGnd' },
+      { id: 'vcc', offset: { x: -80, y: -20 }, labelKey: 'terminal.vcc' },
+      { id: 'sda', offset: { x: -80, y: 0 }, labelKey: 'terminal.sda' },
+      { id: 'scl', offset: { x: -80, y: 20 }, labelKey: 'terminal.scl' },
     ],
     params: [
       {

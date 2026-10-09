@@ -18,6 +18,7 @@ import { EXAMPLES_WITH_DOCUMENTS as EXAMPLES } from '../src/examples/documents.j
 import { en } from '../src/i18n/messages.en.js';
 import { he } from '../src/i18n/messages.he.js';
 import { RECIPES } from './exampleRecipes.js';
+import { buildSessionRequest } from '../src/runtime/snapshot.js';
 
 const REL = 1e-9;
 const solve = (doc: ProjectDocument): SolveSuccess => {
@@ -32,7 +33,7 @@ const near = (a: number | null | undefined, e: number, rel = REL) => {
 const example = (id: string) => EXAMPLES.find((e) => e.id === id)!.document;
 
 describe('the example set', () => {
-  it('has the fourteen local examples and the five ESP32 examples, each titled in English and Hebrew', () => {
+  it('has the fourteen local examples and the eight ESP32 examples, each titled in English and Hebrew', () => {
     expect(EXAMPLES.map((e) => e.id)).toEqual([
       'ohms-law',
       'voltage-divider',
@@ -53,6 +54,9 @@ describe('the example set', () => {
       'esp32-bench',
       'esp32-motion-relay',
       'esp32-night-light',
+      'esp32-distance-alarm',
+      'esp32-thermo-hygrometer',
+      'esp32-lcd-hello',
     ]);
     for (const e of EXAMPLES) {
       for (const key of [e.titleKey, e.summaryKey]) {
@@ -293,5 +297,109 @@ describe('expected engineering results (production engine)', () => {
     expect(closed.components.PSU1!.mode).toBe('cc');
     near(closed.components.PSU1!.current, 0.1);
     near(closed.components.PSU1!.voltage, 0.1 / (1 / 100 + 1 / 10));
+  });
+});
+
+/**
+ * Sprint 12 ESP32 examples: their circuits solved locally by the production engine with the board
+ * pads attached exactly as the runtime host attaches them (the session request the app builds),
+ * pads in the states the sketches set. The firmware itself runs only on the runtime service.
+ */
+describe('Sprint 12 ESP32 examples (local engine, board pads attached)', () => {
+  const session = (id: string) => {
+    const plan = buildSessionRequest(example(id), () => ({
+      sha256: '0'.repeat(64),
+      origin: 'program',
+    }));
+    if (!plan.ok) throw new Error(JSON.stringify(plan.error));
+    const { circuit, attachments } = plan.plan.request;
+    return new EngineSession(circuit, { pins: attachments });
+  };
+  const ok = (o: ReturnType<EngineSession['solve']>): SolveSuccess => {
+    if (!o.ok) throw new Error(JSON.stringify(o.error));
+    return o;
+  };
+  // ESP32 digital input thresholds (datasheet: V_IH 0.75 x VDD, V_IL 0.25 x VDD at 3.3 V).
+  const V_IH = 0.75 * 3.3;
+  const V_IL = 0.25 * 3.3;
+  const pad = (o: SolveSuccess, gpio: number) => o.pins!.find((p) => p.gpio === gpio)!;
+  const programOf = (id: string) => Object.values(example(id).programs)[0]!.text;
+
+  it('the sketches use no third-party library, no internal pull, and only Wire for I2C', () => {
+    for (const id of ['esp32-distance-alarm', 'esp32-thermo-hygrometer', 'esp32-lcd-hello']) {
+      const text = programOf(id);
+      expect(text, id).not.toMatch(/INPUT_PULL|gpio_pullup|gpio_pulldown|GPIO_PULL/);
+      const includes = [...text.matchAll(/#include\s*<([^>]+)>/g)].map((m) => m[1]);
+      expect(includes, id).toEqual(id === 'esp32-lcd-hello' ? ['Wire.h'] : []);
+    }
+    expect(programOf('esp32-distance-alarm')).toContain('pulseIn(18, HIGH, 30000)');
+    expect(programOf('esp32-lcd-hello')).toContain('Wire.begin(21, 22, 100000)');
+  });
+
+  it('distance alarm: 5 V module powered; the echo divider gives GPIO18 3.2 V; GPIO2 lights the LED', () => {
+    const doc = example('esp32-distance-alarm');
+    const us = doc.components.find((c) => c.type === 'sensor.hc_sr04')!;
+    expect(us.params.distance).toEqual({ value: 0.5, unit: 'metre' });
+    const s = session('esp32-distance-alarm');
+    expect(s.setPinMode(5, 'output-low')).toBeNull();
+    expect(s.setPinMode(2, 'output-low')).toBeNull();
+    let o = ok(s.solve());
+    expect(o.components[us.id]!.state).toEqual({ powered: true, output: 'low' });
+    expect(pad(o, 18).voltage).toBeLessThan(V_IL);
+    expect(Math.abs(o.components.D1!.current!)).toBeLessThan(1e-6);
+    // Echo HIGH (the module drives 5 V behind its output resistance): 5 V x 2k / (1k + 2k + R_out).
+    expect(s.setPartRuntime(us.id, 'echo', 'high')).toBeNull();
+    expect(s.setPinMode(5, 'output-high')).toBeNull();
+    expect(s.setPinMode(2, 'output-high')).toBeNull();
+    o = ok(s.solve());
+    expect(o.components[us.id]!.state!.output).toBe('high');
+    const v18 = o.components.R1!.terminals.a!;
+    expect(v18).toBeGreaterThan(3.0);
+    expect(v18).toBeLessThan(3.4);
+    expect(pad(o, 18).voltage).toBeGreaterThan(V_IH);
+    // TRIG is driven to 3.3 V: above the module's 2.0 V TTL threshold.
+    expect(o.components[us.id]!.terminals.trig!).toBeGreaterThan(2.0);
+    // The alarm LED: a few mA from the 3.3 V pad through 220 Ω.
+    expect(o.components.D1!.current!).toBeGreaterThan(2e-3);
+    expect(o.components.D1!.current!).toBeLessThan(10e-3);
+    expect(o.components.PSU1!.mode).toBe('cv');
+  });
+
+  it('thermo-hygrometer: 3.3 V sensor powered; DATA idles HIGH through the pull-up, LOW when the sensor pulls it', () => {
+    const doc = example('esp32-thermo-hygrometer');
+    const dht = doc.components.find((c) => c.type === 'sensor.dht22')!;
+    // Pin 3 (NC) is left unconnected.
+    expect(doc.connections.some((c) => c.component === dht.id && c.terminal === 'nc')).toBe(false);
+    const s = session('esp32-thermo-hygrometer');
+    let o = ok(s.solve());
+    expect(o.components[dht.id]!.state).toEqual({ powered: true, output: 'released' });
+    near(o.components[dht.id]!.terminals.data, 3.3, 1e-3);
+    expect(pad(o, 4).voltage).toBeGreaterThan(V_IH);
+    expect(s.setPartRuntime(dht.id, 'data', 'low')).toBeNull();
+    o = ok(s.solve());
+    expect(o.components[dht.id]!.terminals.data!).toBeLessThan(0.1);
+    expect(pad(o, 4).voltage).toBeLessThan(V_IL);
+    // The host's start pulse: GPIO4 driven LOW pulls the line down too.
+    expect(s.setPartRuntime(dht.id, 'data', 'released')).toBeNull();
+    expect(s.setPinMode(4, 'output-low')).toBeNull();
+    o = ok(s.solve());
+    expect(o.components[dht.id]!.terminals.data!).toBeLessThan(0.1);
+  });
+
+  it('LCD hello: the module powered at 4.5 V; SDA and SCL idle at 3.3 V (above V_IH = 0.7 x 4.5 V)', () => {
+    const doc = example('esp32-lcd-hello');
+    const lcd = doc.components.find((c) => c.type === 'display.lcd1602_i2c')!;
+    expect(lcd.params.address).toBe('i2c.0x27');
+    const o = ok(session('esp32-lcd-hello').solve());
+    expect(o.components[lcd.id]!.state!.powered).toBe(true);
+    for (const line of ['sda', 'scl'] as const) {
+      const v = o.components[lcd.id]!.terminals[line]!;
+      expect(v, line).toBeGreaterThan(0.7 * 4.5);
+      expect(v, line).toBeLessThanOrEqual(3.3 + 1e-9);
+    }
+    expect(pad(o, 21).voltage).toBeGreaterThan(V_IH);
+    expect(pad(o, 22).voltage).toBeGreaterThan(V_IH);
+    expect(o.components.PSU1!.voltage).toBeCloseTo(4.5, 9);
+    expect(o.components.PSU2!.voltage).toBeCloseTo(3.3, 9);
   });
 });

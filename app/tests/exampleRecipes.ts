@@ -80,6 +80,14 @@ class Recipe {
     const url = new URL(`../../runtime/firmware/arduino/${sketch}/${sketch}.ino`, import.meta.url);
     this.doc = this.ok(setProgramText(this.doc, id, readFileSync(url, 'utf8'))).doc;
   }
+  /**
+   * Sprint 12: the board's program from a sketch authored with the examples
+   * (app/tests/exampleSketches): library-free Arduino/C++, Wire only for I2C.
+   */
+  sketch(id: string, file: string) {
+    const url = new URL(`./exampleSketches/${file}`, import.meta.url);
+    this.doc = this.ok(setProgramText(this.doc, id, readFileSync(url, 'utf8'))).doc;
+  }
   /** Remove parts placed with every new project (an ESP32 example may not need the supply). */
   remove(...ids: string[]) {
     this.doc = this.ok(
@@ -92,6 +100,14 @@ class Recipe {
     this.set('PSU1', 'currentLimit', limit, 'ampere');
     this.set('PSU1', 'outputEnabled', true);
     this.wire(T('PSU1', 'negative'), T('GND1', 'ref'));
+  }
+  /** Sprint 12: one more bench supply (setpoint, limit, output ON); its own GND wiring is the caller's. */
+  extraSupply(x: number, y: number, volts: number, limit: number): string {
+    const id = this.place('instrument.lab_psu', x, y);
+    this.set(id, 'setpointVoltage', volts, 'volt');
+    this.set(id, 'currentLimit', limit, 'ampere');
+    this.set(id, 'outputEnabled', true);
+    return id;
   }
 }
 
@@ -655,5 +671,139 @@ export const RECIPES: Record<string, () => ProjectDocument> = {
     r.wire(T(RB, 'b'), T(D1, 'blue'));
     r.wire(T(D1, 'cathode'), T(G3, 'ref'));
     return r.centre(-240);
+  },
+
+  /**
+   * Sprint 12 (R2): an ESP32 distance alarm with the HC-SR04. 5 V supply (0.1 A limit) to the
+   * module; GPIO5 drives TRIG directly (3.3 V is above the module's 2.0 V TTL threshold); ECHO, a
+   * 5 V output, reaches GPIO18 through a 1 kΩ / 2 kΩ divider (5 V × 2/3 = 3.3 V open-circuit,
+   * within the pad's range); GPIO2 lights a red LED through 220 Ω when the target is nearer than
+   * 20 cm. The target distance is the module's simulated environment (default 0.5 m).
+   */
+  'esp32-distance-alarm': () => {
+    const r = new Recipe('esp32-distance-alarm', 'ESP32: ultrasonic distance alarm');
+    r.supply(5, 0.1);
+    const U1 = r.place('board.esp32_devkitc_wroom32', 300, 0);
+    r.sketch(U1, 'DistanceAlarm.ino');
+    const US = r.place('sensor.hc_sr04', 680, 20);
+    const R1 = r.place('component.resistor', 520, 20);
+    const R2 = r.place('component.resistor', 480, 100, 1);
+    const G2 = r.place('component.ground', 480, 200);
+    const G3 = r.place('component.ground', 600, 120);
+    const R3 = r.place('component.resistor', 520, 260);
+    const D1 = r.place('component.led', 640, 260);
+    const G4 = r.place('component.ground', 720, 340);
+    const G5 = r.place('component.ground', 440, -120);
+    r.set(R1, 'resistance', 1000, 'ohm');
+    r.set(R2, 'resistance', 2000, 'ohm');
+    r.set(R3, 'resistance', 220, 'ohm');
+    // The 5 V feed runs above the board to the module's VCC.
+    r.wire(T('PSU1', 'positive'), T(US, 'vcc'), [
+      { x: -40, y: -20 },
+      { x: -40, y: -240 },
+      { x: 580, y: -240 },
+      { x: 580, y: -20 },
+    ]);
+    r.wire(T(US, 'gnd'), T(G3, 'ref'), [
+      { x: 600, y: 40 },
+      { x: 600, y: 100 },
+    ]);
+    r.wire(T(U1, 'gnd'), T(G5, 'ref'));
+    r.wire(T(U1, 'gpio5'), T(US, 'trig'));
+    r.wire(T(US, 'echo'), T(R1, 'b'));
+    r.wire(T(R1, 'a'), T(R2, 'a'));
+    r.wire(T(R2, 'b'), T(G2, 'ref'));
+    r.wire(T(U1, 'gpio18'), T(R1, 'a'), [
+      { x: 430, y: -20 },
+      { x: 430, y: 20 },
+    ]);
+    r.wire(T(U1, 'gpio2'), T(R3, 'a'), [
+      { x: 410, y: 100 },
+      { x: 410, y: 260 },
+    ]);
+    r.wire(T(R3, 'b'), T(D1, 'anode'));
+    r.wire(T(D1, 'cathode'), T(G4, 'ref'));
+    return r.centre(-300);
+  },
+  /**
+   * Sprint 12 (R2): an ESP32 thermo-hygrometer with the DHT22 / AM2302, read without a library.
+   * 3.3 V supply (the sensor's minimum) to VDD; DATA to GPIO4 with the 10 kΩ pull-up to 3.3 V the
+   * single-wire bus needs (the ESP32's internal pulls are not used); pin 3 (NC) left open. The
+   * temperature and humidity are the sensor's simulated environment.
+   */
+  'esp32-thermo-hygrometer': () => {
+    const r = new Recipe('esp32-thermo-hygrometer', 'ESP32: temperature and humidity');
+    r.supply(3.3, 0.1);
+    const U1 = r.place('board.esp32_devkitc_wroom32', 300, 0);
+    r.sketch(U1, 'ThermoHygrometer.ino');
+    const DHT = r.place('sensor.dht22', 680, 80);
+    const R1 = r.place('component.resistor', 520, 0, 1);
+    const G2 = r.place('component.ground', 600, 200);
+    const G3 = r.place('component.ground', 440, -120);
+    r.set(R1, 'resistance', 10_000, 'ohm');
+    // The 3.3 V feed runs above the board to the sensor's VDD; the pull-up taps it.
+    const feed = r.wire(T('PSU1', 'positive'), T(DHT, 'vdd'), [
+      { x: -40, y: -20 },
+      { x: -40, y: -240 },
+      { x: 580, y: -240 },
+      { x: 580, y: 40 },
+    ]);
+    const data = r.wire(T(U1, 'gpio4'), T(DHT, 'data'));
+    r.wire(T(R1, 'a'), { kind: 'wire', wire: feed, at: { x: 580, y: -40 } });
+    r.wire(T(R1, 'b'), { kind: 'wire', wire: data, at: { x: 520, y: 60 } });
+    r.wire(T(DHT, 'gnd'), T(G2, 'ref'), [
+      { x: 600, y: 100 },
+      { x: 600, y: 180 },
+    ]);
+    r.wire(T(U1, 'gnd'), T(G3, 'ref'));
+    return r.centre(-300);
+  },
+  /**
+   * Sprint 12 (R3): "Hello" on the 16x2 I2C LCD, driven by raw Wire writes to its PCF8574
+   * backpack (no LCD library). PSU1 at 4.5 V powers the module (its datasheet minimum): the
+   * PCF8574 then reads SDA/SCL HIGH from 0.7 × 4.5 V = 3.15 V, which the 3.3 V pull-ups reach (at
+   * 5 V they would not, and the simulator refuses it). PSU2 at 3.3 V feeds the two 4.7 kΩ bus
+   * pull-ups (the backpack is modelled without its own). SDA = GPIO21, SCL = GPIO22; address 0x27.
+   */
+  'esp32-lcd-hello': () => {
+    const r = new Recipe('esp32-lcd-hello', 'ESP32: hello on an I2C LCD');
+    r.supply(4.5, 0.1);
+    const U1 = r.place('board.esp32_devkitc_wroom32', 300, 0);
+    r.sketch(U1, 'LcdHello.ino');
+    const LCD = r.place('display.lcd1602_i2c', 780, -80);
+    const PSU2 = r.extraSupply(440, -320, 3.3, 0.1);
+    const R1 = r.place('component.resistor', 540, -180, 1);
+    const R2 = r.place('component.resistor', 620, -180, 1);
+    const G2 = r.place('component.ground', 720, -200);
+    const G3 = r.place('component.ground', 440, -200);
+    const G4 = r.place('component.ground', 480, -220);
+    r.set(R1, 'resistance', 4700, 'ohm');
+    r.set(R2, 'resistance', 4700, 'ohm');
+    // The 4.5 V module supply runs above everything to the LCD's VCC.
+    r.wire(T('PSU1', 'positive'), T(LCD, 'vcc'), [
+      { x: -40, y: -20 },
+      { x: -40, y: -400 },
+      { x: 680, y: -400 },
+      { x: 680, y: -100 },
+    ]);
+    r.wire(T(LCD, 'gnd'), T(G2, 'ref'), [
+      { x: 690, y: -120 },
+      { x: 690, y: -240 },
+      { x: 720, y: -240 },
+    ]);
+    r.wire(T(U1, 'gnd'), T(G3, 'ref'));
+    // The bus: SDA and SCL swap order between the board and the backpack (one crossing).
+    const sda = r.wire(T(U1, 'gpio21'), T(LCD, 'sda'));
+    const scl = r.wire(T(U1, 'gpio22'), T(LCD, 'scl'), [
+      { x: 480, y: -140 },
+      { x: 480, y: -60 },
+    ]);
+    // The 3.3 V pull-ups from PSU2.
+    r.wire(T(PSU2, 'negative'), T(G4, 'ref'));
+    const rail = r.wire(T(PSU2, 'positive'), T(R2, 'a'), [{ x: 620, y: -340 }]);
+    r.wire(T(R1, 'a'), { kind: 'wire', wire: rail, at: { x: 540, y: -340 } });
+    r.wire(T(R1, 'b'), { kind: 'wire', wire: sda, at: { x: 540, y: -80 } });
+    r.wire(T(R2, 'b'), { kind: 'wire', wire: scl, at: { x: 620, y: -60 } });
+    return r.centre(-300);
   },
 };

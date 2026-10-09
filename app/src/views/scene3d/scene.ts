@@ -333,14 +333,14 @@ export const FOOTPRINT: Record<ModelKey, readonly [number, number, number, numbe
   'sensor.ultrasonic': [
     HC_SR04_MODULE.boardXMm - HC_SR04_MODULE.boardThicknessMm / 2 - HC_SR04_MODULE.backMm,
     HC_SR04_MODULE.boardXMm + HC_SR04_MODULE.boardThicknessMm / 2 + HC_SR04_MODULE.frontMm,
-    -HC_SR04_MODULE.boardZMm / 2,
-    HC_SR04_MODULE.boardZMm / 2,
+    HC_SR04_MODULE.centreZMm - HC_SR04_MODULE.boardZMm / 2,
+    HC_SR04_MODULE.centreZMm + HC_SR04_MODULE.boardZMm / 2,
   ],
   'sensor.dht22': [
     -DHT22_CASE.depthXMm / 2,
     DHT22_CASE.depthXMm / 2,
-    -DHT22_CASE.widthZMm / 2,
-    DHT22_CASE.widthZMm / 2,
+    DHT22_CASE.centreZMm - DHT22_CASE.widthZMm / 2,
+    DHT22_CASE.centreZMm + DHT22_CASE.widthZMm / 2,
   ],
   'display.lcd1602': [
     LCD1602_MODULE.pcbLeftXMm,

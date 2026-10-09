@@ -149,6 +149,26 @@ export const EXAMPLES: readonly Example[] = [
     summaryKey: 'example.esp32-night-light.summary',
     probes: [I('R1')],
   },
+  // Sprint 12 (R2/R3): the ultrasonic module, the DHT22 and the I2C LCD with the ESP32
+  // (library-free sketches).
+  {
+    id: 'esp32-distance-alarm',
+    titleKey: 'example.esp32-distance-alarm.title',
+    summaryKey: 'example.esp32-distance-alarm.summary',
+    probes: [V('R1', 'a'), I('D1')],
+  },
+  {
+    id: 'esp32-thermo-hygrometer',
+    titleKey: 'example.esp32-thermo-hygrometer.title',
+    summaryKey: 'example.esp32-thermo-hygrometer.summary',
+    probes: [V('R1', 'b')],
+  },
+  {
+    id: 'esp32-lcd-hello',
+    titleKey: 'example.esp32-lcd-hello.title',
+    summaryKey: 'example.esp32-lcd-hello.summary',
+    probes: [V('R1', 'b'), V('R2', 'b')],
+  },
 ];
 
 export function findExample(id: string): Example | undefined {

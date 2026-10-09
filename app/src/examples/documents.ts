@@ -11,6 +11,9 @@ import esp32InputEcho from './data/esp32-input-echo.json';
 import esp32Bench from './data/esp32-bench.json';
 import esp32MotionRelay from './data/esp32-motion-relay.json';
 import esp32NightLight from './data/esp32-night-light.json';
+import esp32DistanceAlarm from './data/esp32-distance-alarm.json';
+import esp32ThermoHygrometer from './data/esp32-thermo-hygrometer.json';
+import esp32LcdHello from './data/esp32-lcd-hello.json';
 import ledColours from './data/led-colours.json';
 import ledCurrent from './data/led-current.json';
 import ledMatrix from './data/led-matrix.json';
@@ -44,6 +47,9 @@ export const EXAMPLE_DOCUMENTS: Record<string, ProjectDocument> = {
   'esp32-bench': esp32Bench as unknown as ProjectDocument,
   'esp32-motion-relay': esp32MotionRelay as unknown as ProjectDocument,
   'esp32-night-light': esp32NightLight as unknown as ProjectDocument,
+  'esp32-distance-alarm': esp32DistanceAlarm as unknown as ProjectDocument,
+  'esp32-thermo-hygrometer': esp32ThermoHygrometer as unknown as ProjectDocument,
+  'esp32-lcd-hello': esp32LcdHello as unknown as ProjectDocument,
 };
 
 /** The examples with their documents (tests and tools; the app loads documents lazily). */

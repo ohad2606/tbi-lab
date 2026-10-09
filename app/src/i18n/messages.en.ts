@@ -813,6 +813,15 @@ export const en = {
   'example.esp32-night-light.title': 'ESP32: RGB night light with a light sensor',
   'example.esp32-night-light.summary':
     'A light-sensor divider on GPIO34 read as a digital level (no ADC): dark (below about 3 lx) reads HIGH and the firmware lights all three RGB channels through GPIO4: white. Bright (above about 110 lx) reads LOW; in between the input keeps its last level. Change the light in the Properties panel while running. Runs on the ESP32 runtime service.',
+  'example.esp32-distance-alarm.title': 'ESP32: ultrasonic distance alarm',
+  'example.esp32-distance-alarm.summary':
+    'An HC-SR04 measures the distance to a target: GPIO5 sends the 10 µs trigger pulse and the echo pulse returns to GPIO18 through a 1 kΩ / 2 kΩ divider (the module runs from 5 V). The sketch prints the distance (pulse width in µs / 58 = cm); closer than 20 cm, GPIO2 lights the red LED. Change the target distance in the Properties panel while running. Runs on the ESP32 runtime service.',
+  'example.esp32-thermo-hygrometer.title': 'ESP32: temperature and humidity (DHT22)',
+  'example.esp32-thermo-hygrometer.summary':
+    'A DHT22 / AM2302 on GPIO4, with the 10 kΩ pull-up its single-wire data line needs, read by a short library-free routine that follows the datasheet timing. The serial output shows the temperature and relative humidity every 2.5 s. Change both in the Properties panel while running. Runs on the ESP32 runtime service.',
+  'example.esp32-lcd-hello.title': 'ESP32: hello on a 16×2 I2C LCD',
+  'example.esp32-lcd-hello.summary':
+    'The sketch drives the LCD through its PCF8574 I2C backpack with plain Wire writes: line 1 says hello, line 2 counts the seconds. The module runs from 4.5 V so that the 3.3 V bus pull-ups (two 4.7 kΩ resistors to a second supply) read HIGH at its inputs (0.7 × 4.5 V = 3.15 V). Runs on the ESP32 runtime service.',
   'palette.group.mcu': 'Microcontroller',
   // Board pin silkscreen names (Sprint 6): technical tokens, verbatim in every locale.
   'pin.gpio36': 'VP',

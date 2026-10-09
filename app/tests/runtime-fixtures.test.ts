@@ -28,6 +28,10 @@ describe('runtime fixtures', () => {
   for (const [file, id] of [
     ['r1-motion-relay-session.json', 'esp32-motion-relay'],
     ['r1-night-light-session.json', 'esp32-night-light'],
+    // Sprint 12 (R2/R3): the three curated examples with the new parts.
+    ['s12-distance-alarm-session.json', 'esp32-distance-alarm'],
+    ['s12-thermo-hygrometer-session.json', 'esp32-thermo-hygrometer'],
+    ['s12-lcd-hello-session.json', 'esp32-lcd-hello'],
   ] as const)
     it(`${file} is the app request for ${id}`, () => {
       const fx = JSON.parse(
