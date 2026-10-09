@@ -16,9 +16,14 @@ import { QEMU, artifact, assertProvisioned, recordEvidence, runtimeInfo } from '
 import type { Command } from '../harness/protocol.js';
 import { runSession, type SessionResult } from '../harness/session.js';
 
-/** The R1 pins (gate.runtime.test.ts), unchanged by every Sprint 12 patch (architecture §5.2). */
+/**
+ * The boot-window pins of gate.runtime.test.ts: R1's on 0006 alone, Runtime v2's from 0007 on
+ * (flash pads 7-11 no longer reported as GPIO, pad 5's INPUT configuration re-published once;
+ * same guest, same serial and times: gate.runtime.test.ts).
+ */
+const v2 = () => runtimeInfo().patches.some((p) => p.file.startsWith('0007-'));
 const BOOT_PIN = {
-  timeline: '81aa9c4b7f0b1916',
+  timeline: v2() ? 'd7c5fa5d21119067' : '81aa9c4b7f0b1916',
   serialTimed: 'f6de86c978e38653',
   serial: '4cfdcad418d34960',
 };

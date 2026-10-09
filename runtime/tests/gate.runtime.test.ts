@@ -33,7 +33,7 @@ const UNPINNED = process.env.TBI_GATE_UNPINNED === '1';
  * A change to the runtime (patches, upstream commit, QEMU arguments) or the artifact is a new
  * runtime version and re-establishes these through a documented repeated-run baseline.
  */
-const PINNED: Record<string, { timeline: string; serialTimed: string; serial: string }> = {
+const PINNED_R1: Record<string, { timeline: string; serialTimed: string; serial: string }> = {
   full: {
     timeline: '0bf7b9df4df50bc0',
     serialTimed: 'f3c0ce4a6b1d9212',
@@ -45,6 +45,38 @@ const PINNED: Record<string, { timeline: string; serialTimed: string; serial: st
     serial: '4cfdcad418d34960',
   },
 };
+
+/**
+ * Runtime v2 (Sprint 12: patches 0006-0008). Same guest: serialTimed and serial are the R1 values.
+ * The timeline differs by construction (SPRINT-12-ARCHITECTURE §5.2, accepted re-pin), from
+ * patch 0007's pad functions, two mechanisms, every other event and timestamp unchanged:
+ * - the SPI flash pads 7-11 are no longer reported as GPIO outputs once the bootloader routes
+ *   them to the SPI controller (R1 reported five `G gpio7..11 drive=1 level=0` at 0.30 s);
+ * - pinMode(5, INPUT) routes pad 5 to signal 0 for a few instructions (OUT_SEL 0, then OEN_SEL
+ *   1); its return to simple GPIO re-publishes its state: one `G gpio5 drive=0 level=0`. Established from a repeated
+ * baseline on runtime b5b34b49cb7e4049; see docs/sprints/SPRINT-12.md.
+ */
+const PINNED_V2: Record<string, { timeline: string; serialTimed: string; serial: string }> = {
+  full: {
+    timeline: '95fd9c70c9c534a6',
+    serialTimed: PINNED_R1.full!.serialTimed,
+    serial: PINNED_R1.full!.serial,
+  },
+  boot: {
+    timeline: 'd7c5fa5d21119067',
+    serialTimed: PINNED_R1.boot!.serialTimed,
+    serial: PINNED_R1.boot!.serial,
+  },
+};
+/** Runtime v2 is the one carrying patch 0007 (pad functions). */
+function isRuntimeV2(): boolean {
+  try {
+    return runtimeInfo().patches.some((p) => p.file.startsWith('0007-'));
+  } catch {
+    return false; // not provisioned: assertProvisioned() reports it
+  }
+}
+const PINNED = isRuntimeV2() ? PINNED_V2 : PINNED_R1;
 
 interface Config {
   name: string;

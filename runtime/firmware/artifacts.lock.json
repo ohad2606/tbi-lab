@@ -38,6 +38,22 @@
     "TbiEdgeEcho": {
       "sha256": "8cf4804dc1ba37f5c1afc9acdb22498200c31b40a5e3a39715bafc6c625688de",
       "source": "runtime/firmware/arduino/TbiEdgeEcho (provision.sh firmware TbiEdgeEcho, 2026-10-09, TBI_RUNTIME_HOME=~/tbi-s12-rt, same pinned toolchain). Sprint 12 bridge v2 scheduled-input test firmware."
+    },
+    "TbiHcSr04": {
+      "sha256": "620e06276aeaa4512e79a9c65c7d3200fbd2aaaba333137e11ffcdac9b85efba",
+      "source": "runtime/firmware/arduino/TbiHcSr04 (provision.sh firmware, 2026-10-09, TBI_RUNTIME_HOME=~/tbi-s12-rt, same pinned toolchain). Sprint 12 R2 HC-SR04 (pulseIn) runtime test firmware."
+    },
+    "TbiDht22": {
+      "sha256": "a2e6b54c81ecc7c00cf31b372cbfd80936436dfa82cf62479eae40edc5c21820",
+      "source": "runtime/firmware/arduino/TbiDht22 (provision.sh firmware, 2026-10-09, TBI_RUNTIME_HOME=~/tbi-s12-rt, same pinned toolchain). Sprint 12 R2 DHT22 (library-free read) runtime test firmware."
+    },
+    "TbiLcd": {
+      "sha256": "2f70c09c14f7686bd6671c925adeabcb5564fb2de5ad8989b6c78c108e4bd4fd",
+      "source": "runtime/firmware/arduino/TbiLcd (provision.sh firmware, 2026-10-09, TBI_RUNTIME_HOME=~/tbi-s12-rt, same pinned toolchain). Sprint 12 R3 I2C LCD (raw Wire) runtime test firmware."
+    },
+    "TbiI2cProbe": {
+      "sha256": "6f75261c61a610e5bb6c30cda1c9b112cf26fe6df2c05de09a3eb7460bbc3777",
+      "source": "runtime/firmware/arduino/TbiI2cProbe (provision.sh firmware, 2026-10-09, TBI_RUNTIME_HOME=~/tbi-s12-rt, same pinned toolchain). Sprint 12 R3 Wire transfers (promoted from the feasibility probe) runtime test firmware."
     }
   }
 }

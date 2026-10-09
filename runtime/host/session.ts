@@ -146,6 +146,8 @@ export class HostSession {
   private handshakeWall: number | null = null;
   private pacedMs = 0;
   private devices: RuntimeDevices | null = null;
+  /** Circuit pads routed to a non-I2C peripheral (refused if still so at the next tick). */
+  private readonly periphPads = new Map<number, { func: PadFunction; vns: bigint }>();
   private i2c: I2cDevices | null = null;
   /** The backlight token each I2C display's engine model has. */
   private readonly backlights = new Map<string, string>();
@@ -613,18 +615,14 @@ export class HostSession {
     this.simNs = vns;
     this.i2c?.onFunc(pad, func);
     if (!this.request.attachments.some((a) => a.gpio === pad)) return [];
+    // A routing that lasts: ESP-IDF configures pins with two register writes, and between them a
+    // pad can be routed to signal 0 for a few instructions (pinMode(INPUT): OUT_SEL 0, then
+    // OEN_SEL 1). Only a routing still in place at the next command tick refuses the session.
     if (func.startsWith('periph:')) {
-      const detail = { gpio: pad, function: func };
-      this.log.append({
-        type: 'diagnostic',
-        simNs: vns.toString(),
-        severity: 'error',
-        code: 'unsupported_feature',
-        detail,
-      });
-      this.pendingFailure = { reason: 'unsupported_feature', detail };
-      return [{ type: 'Q' }];
+      this.periphPads.set(pad, { func, vns });
+      return [];
     }
+    this.periphPads.delete(pad);
     if (func === 'gpio') return []; // its state follows as a G frame
     this.devices?.advance(vns);
     this.engine!.setPinMode(pad, 'input');
@@ -681,6 +679,19 @@ export class HostSession {
     this.simNs = vns;
     this.lastTickNs = vns;
     const cmds: Command[] = [];
+    const [lasting] = this.periphPads;
+    if (lasting && !this.pendingFailure) {
+      const [gpio, { func, vns: since }] = lasting;
+      const detail = { gpio, function: func, since: since.toString() };
+      this.log.append({
+        type: 'diagnostic',
+        simNs: vns.toString(),
+        severity: 'error',
+        code: 'unsupported_feature',
+        detail,
+      });
+      this.pendingFailure = { reason: 'unsupported_feature', detail };
+    }
     if (this.quitRequested || this.pendingFailure) cmds.push({ type: 'Q' });
     // Apply due commands in client order.
     let applied = false;

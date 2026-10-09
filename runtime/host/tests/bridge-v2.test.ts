@@ -298,14 +298,22 @@ describe('T-PROTO-7/8: capabilities are bound to the session at the handshake', 
 
 describe('pad functions (patch 0007, ADR-011 §3)', () => {
   const caps = '2 i2c,pad-func,sched-input';
-  it('another peripheral on a circuit pad refuses the session (unsupported_feature)', async () => {
+  it('another peripheral on a circuit pad, still routed at the next tick, refuses the session', async () => {
     const s = session({ TBI_FAKE_HELLO: caps, TBI_FAKE_FRAMES: 'F 9500000 18 periph:14 0' }, null);
     s.run();
     expect(await terminal(s)).toMatchObject({
       state: 'failed',
       reason: 'unsupported_feature',
-      detail: { gpio: 18, function: 'periph:14' },
+      detail: { gpio: 18, function: 'periph:14', since: '9500000' },
     });
+  });
+
+  it('a transient routing undone before the next tick (pinMode INPUT) is not a feature', async () => {
+    const s = session(
+      { TBI_FAKE_HELLO: caps, TBI_FAKE_FRAMES: 'F 9500000 18 periph:0 0;F 9500056 18 gpio 0' },
+      null,
+    );
+    expect(await runFor(s, 300)).toMatchObject({ state: 'ended', reason: 'stopped' });
   });
 
   it('peripheral routing on pads outside the circuit (flash, UART) is ignored', async () => {
