@@ -105,14 +105,24 @@ export function formatNumber(locale: LocaleInfo, value: number): string {
   return numberFormat(locale.code, { maximumFractionDigits: 3, useGrouping: false }).format(value);
 }
 
+/**
+ * Units shown without SI prefixes (Sprint 12): a temperature in degrees Celsius and a relative
+ * humidity read as plain numbers (21.5 °C, 55 %RH), never as 500 m°C.
+ */
+const UNPREFIXED: ReadonlySet<UnitId> = new Set<UnitId>(['celsius', 'percent_rh']);
+export const isUnprefixed = (unit: UnitId): boolean => UNPREFIXED.has(unit);
+
 /** `4.7 kΩ`, formatted for the locale; always a single LTR run. */
 export function formatQuantity(locale: LocaleInfo, q: Quantity): string {
+  if (UNPREFIXED.has(q.unit))
+    return `${formatNumber(locale, q.value)} ${unitSymbol(locale, q.unit)}`;
   const { mantissa, prefix } = toEngineering(q.value);
   return `${formatNumber(locale, mantissa)} ${prefix}${unitSymbol(locale, q.unit)}`;
 }
 
 /** The compact, locale-independent input form of a value (`4.7k`), for editing fields. */
-export function inputForm(value: number): string {
+export function inputForm(value: number, unit?: UnitId): string {
+  if (unit && UNPREFIXED.has(unit)) return String(Number(value.toPrecision(12)));
   const { mantissa, prefix } = toEngineering(value);
   return `${mantissa}${prefix === 'µ' ? 'u' : prefix}`;
 }

@@ -1,3 +1,4 @@
+import { Fragment } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import {
   CATALOG,
@@ -270,7 +271,7 @@ function ParamField({
 
   const shown =
     def.kind === 'quantity' && current && typeof current === 'object'
-      ? inputForm(current.value)
+      ? inputForm(current.value, def.unit)
       : '';
   // The draft starts at the stored value, so the first render is complete by itself. The
   // effect below resets it ONLY when the stored value or component really changes: a passive
@@ -340,7 +341,7 @@ function ParamField({
    */
   const commit = (raw: string) => {
     if (!doc || raw === shown) return setError(null);
-    const parsed = parseQuantity(raw, def.unit);
+    const parsed = parseSigned(raw, def);
     if (!parsed.ok) return setError(t(`error.parse.${parsed.error}`));
     if (parsed.value < def.min || parsed.value > def.max) return setError(t('error.range', range));
     setError(null);
@@ -408,6 +409,19 @@ function ParamField({
       {lockedHint}
     </div>
   );
+}
+
+/**
+ * A quantity typed into a field. The domain parser reads magnitudes; a parameter whose range goes
+ * below zero (Sprint 12: a temperature in °C) also takes a leading minus sign (ASCII or U+2212).
+ */
+function parseSigned(raw: string, def: QuantityDef): ReturnType<typeof parseQuantity> {
+  const text = raw.trim();
+  if (def.min < 0 && /^[-−]/.test(text)) {
+    const r = parseQuantity(text.slice(1), def.unit);
+    return r.ok ? { ...r, value: -r.value } : r;
+  }
+  return parseQuantity(raw, def.unit);
 }
 
 /** Environment sliders: positions 0..SLIDER_STEPS over [min, max], linear or logarithmic. */
@@ -573,6 +587,9 @@ function ComponentResultView({
   );
 }
 
+/** Part states that carry text the part displays (Sprint 12: the LCD's two lines). */
+const TEXT_STATES: ReadonlySet<string> = new Set(['line1', 'line2']);
+
 /** Units of numeric part states (language-neutral keys). */
 const STATE_UNITS: Record<string, UnitId> = { resistance: 'ohm' };
 
@@ -599,6 +616,12 @@ function PartResultRows({ result: r }: { result: ComponentResult }) {
   const I = (v: number | null) =>
     v === null ? t('sim.results.undefined') : formatResult(locale, v, 'ampere');
   const label = (key: string) => (isMessageKey(key) ? t(key) : key);
+  // A part may word a state for its own type (Sprint 12: an HC-SR04 is powered from 4.5 V, a
+  // DHT22 from 3.3 V): `sim.part.state.<type>.<key>[.<value>]` before the shared wording.
+  const stateText = (suffix: string) => {
+    const own = `sim.part.state.${r.type}.${suffix}`;
+    return label(isMessageKey(own) ? own : `sim.part.state.${suffix}`);
+  };
   return (
     <>
       {r.voltage !== null && (
@@ -624,22 +647,33 @@ function PartResultRows({ result: r }: { result: ComponentResult }) {
           testId={`result-current-${k}`}
         />
       ))}
-      {Object.entries(r.state ?? {}).map(([k, v]) => (
-        <ResultRow
-          key={`s-${k}`}
-          label={label(`sim.part.state.${k}`)}
-          value={
-            typeof v === 'boolean'
-              ? t(v ? 'sim.part.yes' : 'sim.part.no')
-              : typeof v === 'number'
-                ? STATE_UNITS[k]
-                  ? formatResult(locale, v, STATE_UNITS[k])
-                  : formatNumber(locale, v)
-                : label(`sim.part.state.${k}.${v}`)
-          }
-          testId={`result-state-${k}`}
-        />
-      ))}
+      {Object.entries(r.state ?? {}).map(([k, v]) =>
+        TEXT_STATES.has(k) && typeof v === 'string' ? (
+          // Text the part itself shows (an LCD line, already mapped from its character ROM by
+          // the engine): verbatim, never translated or mirrored, LTR and monospaced.
+          <Fragment key={`s-${k}`}>
+            <dt>{stateText(k)}</dt>
+            <dd class="technical lcd-line" dir="ltr" data-testid={`result-state-${k}`}>
+              {v}
+            </dd>
+          </Fragment>
+        ) : (
+          <ResultRow
+            key={`s-${k}`}
+            label={stateText(k)}
+            value={
+              typeof v === 'boolean'
+                ? t(v ? 'sim.part.yes' : 'sim.part.no')
+                : typeof v === 'number'
+                  ? STATE_UNITS[k]
+                    ? formatResult(locale, v, STATE_UNITS[k])
+                    : formatNumber(locale, v)
+                  : stateText(`${k}.${v}`)
+            }
+            testId={`result-state-${k}`}
+          />
+        ),
+      )}
     </>
   );
 }

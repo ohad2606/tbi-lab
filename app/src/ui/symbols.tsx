@@ -1,7 +1,9 @@
 /**
  * Schematic symbols, drawn in component-local schematic units at rotation 0. Terminal
  * positions come from the domain catalog; the drawings here must end their leads exactly on
- * those points. Symbols contain no text at all, so they read correctly at every rotation.
+ * those points. Symbols contain no text at all, so they read correctly at every rotation; the one
+ * exception is a character display's own content (the LCD), which is part of the physical face
+ * and turns with it.
  */
 
 import {
@@ -23,9 +25,51 @@ export interface SymbolState {
   sounding?: boolean;
   /** PIR sensor: the simulated motion in front of it (persisted environment parameter). */
   motion?: boolean;
-  /** PIR sensor: its solved output level is high (runtime result). */
+  /** PIR sensor, ultrasonic module: its solved output level is high (runtime result). */
   outputHigh?: boolean;
+  /**
+   * Character LCD (Sprint 12): what the engine reports the display shows, verbatim (each line 16
+   * characters, already mapped from the controller's character ROM). Absent: a blank, unlit panel.
+   */
+  lcd?: LcdView;
 }
+
+export interface LcdView {
+  backlight: boolean;
+  displayOn: boolean;
+  lines: readonly [string, string];
+}
+
+/**
+ * The LCD state from a part's solved `state` (the engine contract: powered, backlight, displayOn,
+ * line1, line2), or undefined when there is none. Nothing is invented: an unpowered display, or
+ * one whose controller has its display off, shows no characters.
+ */
+export function lcdView(state: Record<string, unknown> | undefined): LcdView | undefined {
+  if (!state || typeof state.line1 !== 'string' || typeof state.line2 !== 'string')
+    return undefined;
+  const powered = state.powered === true;
+  return {
+    backlight: powered && state.backlight === true,
+    displayOn: powered && state.displayOn === true,
+    lines: [state.line1, state.line2],
+  };
+}
+
+/** LCD 16x2 face (symbol units): the viewing window and the 5x8-dot character cells. */
+export const LCD_COLS = 16;
+export const LCD_CELL = { w: 9, h: 15, pitch: 10.5 } as const;
+export const LCD_WINDOW = { x: -24, y: -19, w: 172, h: 38 } as const;
+export const LCD_ROWS = [-8.5, 8.5] as const;
+export const lcdCellX = (i: number) =>
+  LCD_WINDOW.x + (LCD_WINDOW.w - LCD_COLS * LCD_CELL.pitch) / 2 + LCD_CELL.pitch * (i + 0.5);
+
+/** The characters of one LCD line, one per cell (code points, never reordered). */
+export const lcdChars = (line: string): string[] => Array.from(line).slice(0, LCD_COLS);
+
+/** Module leads: from each left-side terminal (x0, y) in to the body edge at x1. */
+const leftLeads = (x0: number, x1: number, ys: number[]) =>
+  ys.map((y) => <line key={y} x1={x0} y1={y} x2={x1} y2={y} />);
 
 export interface SymbolDef {
   /** Local bounding box [minX, minY, maxX, maxY] at rotation 0, including leads. */
@@ -231,6 +275,94 @@ export const SYMBOLS: Record<ComponentTypeId, SymbolDef> = {
         )}
       </>
     ),
+  },
+  'sensor.hc_sr04': {
+    bbox: [-60, -40, 46, 40],
+    // The module board, header on the left (VCC, TRIG, ECHO, GND as on the part; the canvas names
+    // each pin), and its two transducers (transmitter, receiver). The ECHO lead is marked while
+    // the solved output is high.
+    draw: (state) => (
+      <>
+        <rect x={-44} y={-40} width={90} height={80} rx={4} class="symbol-body" />
+        {leftLeads(-60, -44, [-30, -10, 30])}
+        <line x1={-60} y1={10} x2={-44} y2={10} class={state?.outputHigh ? 'pin-out-high' : ''} />
+        {[-19, 19].map((y) => (
+          <g key={y}>
+            <circle cx={22} cy={y} r={17} class="us-can" />
+            <circle cx={22} cy={y} r={11} class="us-mesh" />
+          </g>
+        ))}
+      </>
+    ),
+  },
+  'sensor.dht22': {
+    bbox: [-60, -40, 30, 40],
+    // The white case, pins on the left (VDD, DATA, NC, GND as on the part), the vent grille.
+    draw: () => (
+      <>
+        <rect x={-44} y={-40} width={74} height={80} rx={3} class="symbol-body" />
+        {leftLeads(-60, -44, [-30, -10, 10, 30])}
+        {[-30, -20, -10, 0, 10, 20].flatMap((y) =>
+          [-6, 6].map((x) => (
+            <rect key={`${x},${y}`} x={x} y={y} width={10} height={6} rx={1} class="dht-vent" />
+          )),
+        )}
+      </>
+    ),
+  },
+  'display.lcd1602_i2c': {
+    bbox: [-80, -48, 152, 48],
+    // The module: the I2C backpack's header on the left (GND, VCC, SDA, SCL; the canvas names each
+    // pin), the bezel and the 16x2 character window. Lit and filled ONLY from the engine's result.
+    draw: (state) => {
+      const lcd = state?.lcd;
+      return (
+        <>
+          <rect x={-64} y={-48} width={216} height={96} rx={3} class="symbol-body" />
+          {leftLeads(-80, -64, [-30, -10, 10, 30])}
+          <rect x={-28} y={-27} width={178} height={54} rx={2} class="lcd-bezel" />
+          <rect
+            x={LCD_WINDOW.x}
+            y={LCD_WINDOW.y}
+            width={LCD_WINDOW.w}
+            height={LCD_WINDOW.h}
+            class={lcd?.backlight ? 'lcd-window lcd-lit' : 'lcd-window'}
+          />
+          {LCD_ROWS.flatMap((y) =>
+            Array.from({ length: LCD_COLS }, (_, i) => (
+              <rect
+                key={`${i},${y}`}
+                x={lcdCellX(i) - LCD_CELL.w / 2}
+                y={y - LCD_CELL.h / 2}
+                width={LCD_CELL.w}
+                height={LCD_CELL.h}
+                class="lcd-cell"
+              />
+            )),
+          )}
+          {lcd?.displayOn && (
+            // Verbatim, one character per cell, always left to right (dir is LTR in every locale).
+            <g class="lcd-text" direction="ltr" data-testid="lcd-text">
+              {lcd.lines.flatMap((line, row) =>
+                lcdChars(line).map((ch, i) =>
+                  ch === ' ' ? null : (
+                    <text
+                      key={`${row}.${i}`}
+                      x={lcdCellX(i)}
+                      y={LCD_ROWS[row]! + 5}
+                      text-anchor="middle"
+                      direction="ltr"
+                    >
+                      {ch}
+                    </text>
+                  ),
+                ),
+              )}
+            </g>
+          )}
+        </>
+      );
+    },
   },
   'component.relay': {
     bbox: [-60, -28, 60, 40],

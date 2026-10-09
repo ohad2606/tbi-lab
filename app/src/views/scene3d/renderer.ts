@@ -14,7 +14,14 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { buildComponent, createMaterials, OwnedResources, paintMatrixFace } from './models.js';
+import {
+  buildComponent,
+  createMaterials,
+  OwnedResources,
+  paintLcdFace,
+  paintMatrixFace,
+  type LcdFace,
+} from './models.js';
 import { assetLoadStats, loadAssets } from './assets/library.js';
 import { createStage } from './stage.js';
 import { chooseQuality, probeGpu } from '../../gpuInfo.js';
@@ -166,7 +173,9 @@ export type LiveLevel =
   | number
   | { level: number; color: string }
   /** An LED matrix: each dot's level (0..1), row-major. */
-  | { dots: number[] };
+  | { dots: number[] }
+  /** A character LCD (Sprint 12): what the engine reports it shows. */
+  | { lcd: LcdFace };
 /** Re-exported for the tests: the tier choice lives in gpuInfo.ts (no three.js there). */
 export { chooseQuality };
 
@@ -466,6 +475,11 @@ export function createViewer(
     string,
     { texture: THREE.CanvasTexture; material: THREE.MeshStandardMaterial }
   >();
+  /** Character LCD faces by component id (Sprint 12), repainted live from the engine's result. */
+  let lcds = new Map<
+    string,
+    { texture: THREE.CanvasTexture; material: THREE.MeshStandardMaterial }
+  >();
   let liveLevels: Record<string, LiveLevel> = {};
   /** Glow halos of the LEDs, by component id. */
   let halos = new Map<string, THREE.Sprite>();
@@ -482,11 +496,21 @@ export function createViewer(
       face.material.emissive.set(any ? '#ffffff' : '#000000');
       face.material.emissiveIntensity = any ? 0.9 : 0;
     }
+    // Character LCDs: blank and unlit unless the engine reports their content and backlight.
+    for (const [id, face] of lcds) {
+      const live = liveLevels[id];
+      const lcd = live && typeof live === 'object' && 'lcd' in live ? live.lcd : undefined;
+      const canvas = face.texture.image as HTMLCanvasElement;
+      paintLcdFace(canvas.getContext('2d')!, canvas.width, canvas.height, lcd);
+      face.texture.needsUpdate = true;
+      face.material.emissive.set(lcd?.backlight ? '#ffffff' : '#000000');
+      face.material.emissiveIntensity = lcd?.backlight ? 0.75 : 0;
+    }
     // The light pool (full tier): the brightest lit LEDs light their surroundings.
     const lit: { level: number; at: THREE.Vector3; color: string }[] = [];
     for (const [id, { lens: mat, die, core, coreObj, gain, at, color }] of lenses) {
       const raw = liveLevels[id] ?? 0;
-      if (typeof raw === 'object' && 'dots' in raw) continue;
+      if (typeof raw === 'object' && ('dots' in raw || 'lcd' in raw)) continue;
       const live = raw;
       const level = typeof live === 'number' ? live : live.level;
       // The die is the light source; the epoxy glows with the light it scatters (diffused lenses
@@ -834,6 +858,7 @@ export function createViewer(
       buildTags(desc);
       applyLayers();
       matrices = new Map();
+      lcds = new Map();
       content.traverse((o) => {
         const lens = o.userData.lensMaterial as THREE.MeshStandardMaterial | undefined;
         if (lens && o.userData.component)
@@ -850,6 +875,8 @@ export function createViewer(
           });
         if (o.userData.matrixFace && o.userData.component)
           matrices.set(o.userData.component as string, o.userData.matrixFace);
+        if (o.userData.lcdFace && o.userData.component)
+          lcds.set(o.userData.component as string, o.userData.lcdFace);
       });
       applyLive();
       drawSelection();

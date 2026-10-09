@@ -19,8 +19,14 @@ export const PALETTE_GROUPS: readonly { key: MessageKey; types: readonly Compone
     key: 'palette.group.switches',
     types: ['component.push_button', 'component.toggle_switch', 'component.relay'],
   },
-  { key: 'palette.group.sensors', types: ['component.photoresistor', 'sensor.pir_hc_sr501'] },
-  { key: 'palette.group.output', types: ['component.buzzer', 'display.led_matrix_8x8'] },
+  {
+    key: 'palette.group.sensors',
+    types: ['component.photoresistor', 'sensor.pir_hc_sr501', 'sensor.hc_sr04', 'sensor.dht22'],
+  },
+  {
+    key: 'palette.group.output',
+    types: ['component.buzzer', 'display.led_matrix_8x8', 'display.lcd1602_i2c'],
+  },
   { key: 'palette.group.mcu', types: ['board.esp32_devkitc_wroom32'] },
 ];
 const GROUPS = PALETTE_GROUPS;

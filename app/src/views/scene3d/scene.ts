@@ -48,6 +48,9 @@ import {
   RGB_LED_5MM,
   TO92,
   PIR_HC_SR501,
+  HC_SR04_MODULE,
+  DHT22_CASE,
+  LCD1602_MODULE,
   capacitorPackage,
   LED_MATRIX_1088AS,
   matrixPinXZ,
@@ -97,6 +100,9 @@ export type ModelKey =
   | 'sensor.pir'
   | 'display.matrix'
   | 'capacitor.radial'
+  | 'sensor.ultrasonic'
+  | 'sensor.dht22'
+  | 'display.lcd1602'
   | 'generic';
 
 /** Which model draws each component type. A type without an entry gets the generic box. */
@@ -117,6 +123,9 @@ export const MODEL_FOR: Partial<Record<ComponentTypeId, ModelKey>> = {
   'sensor.pir_hc_sr501': 'sensor.pir',
   'display.led_matrix_8x8': 'display.matrix',
   'component.capacitor': 'capacitor.radial',
+  'sensor.hc_sr04': 'sensor.ultrasonic',
+  'sensor.dht22': 'sensor.dht22',
+  'display.lcd1602_i2c': 'display.lcd1602',
 };
 
 export interface Vec3 {
@@ -251,6 +260,10 @@ export const MODEL_HEIGHT: Record<ModelKey, number> = {
   'display.matrix': LED_MATRIX_1088AS.standoffMm + LED_MATRIX_1088AS.heightMm,
   // The largest can (the body of a given value is in its visual).
   'capacitor.radial': 21,
+  'sensor.ultrasonic': HC_SR04_MODULE.standoffMm + HC_SR04_MODULE.boardYMm,
+  'sensor.dht22': DHT22_CASE.standoffMm + DHT22_CASE.heightMm,
+  'display.lcd1602':
+    LCD1602_MODULE.standoffMm + LCD1602_MODULE.pcbThicknessMm + LCD1602_MODULE.bezelHeightMm,
   generic: 3,
 };
 
@@ -315,6 +328,25 @@ export const FOOTPRINT: Record<ModelKey, readonly [number, number, number, numbe
     PIR_HC_SR501.boardXMm / 2,
     -PIR_HC_SR501.boardZMm / 2,
     PIR_HC_SR501.boardZMm / 2,
+  ],
+  // Sprint 12: the upright ultrasonic board with its transducers (+x) and crystal (-x).
+  'sensor.ultrasonic': [
+    HC_SR04_MODULE.boardXMm - HC_SR04_MODULE.boardThicknessMm / 2 - HC_SR04_MODULE.backMm,
+    HC_SR04_MODULE.boardXMm + HC_SR04_MODULE.boardThicknessMm / 2 + HC_SR04_MODULE.frontMm,
+    -HC_SR04_MODULE.boardZMm / 2,
+    HC_SR04_MODULE.boardZMm / 2,
+  ],
+  'sensor.dht22': [
+    -DHT22_CASE.depthXMm / 2,
+    DHT22_CASE.depthXMm / 2,
+    -DHT22_CASE.widthZMm / 2,
+    DHT22_CASE.widthZMm / 2,
+  ],
+  'display.lcd1602': [
+    LCD1602_MODULE.pcbLeftXMm,
+    LCD1602_MODULE.pcbLeftXMm + LCD1602_MODULE.pcbXMm,
+    LCD1602_MODULE.pcbCentreZMm - LCD1602_MODULE.pcbZMm / 2,
+    LCD1602_MODULE.pcbCentreZMm + LCD1602_MODULE.pcbZMm / 2,
   ],
   generic: [-6.35, 6.35, -1.5, 1.5],
 };
@@ -412,6 +444,20 @@ function localAttach(
     case 'sensor.pir': {
       const [px, pz] = PIR_HC_SR501.pins[terminal]!;
       return { x: px, y: PIR_HC_SR501.attachHeightMm, z: pz };
+    }
+    // Sprint 12: the real header pins (tips under the upright modules; the LCD backpack's pins
+    // pointing out of its left edge, their tips on the 2D terminal column).
+    case 'sensor.ultrasonic': {
+      const [px, pz] = HC_SR04_MODULE.pins[terminal]!;
+      return { x: px, y: HC_SR04_MODULE.attachHeightMm, z: pz };
+    }
+    case 'sensor.dht22': {
+      const [px, pz] = DHT22_CASE.pins[terminal]!;
+      return { x: px, y: DHT22_CASE.attachHeightMm, z: pz };
+    }
+    case 'display.lcd1602': {
+      const [px, pz] = LCD1602_MODULE.pins[terminal]!;
+      return { x: px, y: LCD1602_MODULE.pinHeightMm, z: pz };
     }
     case 'led.radial': {
       // The real leg tips (2.54 mm pitch under the body), not the 2D terminal spacing: the wire's
@@ -587,6 +633,32 @@ export function collisionBoxes(
       z1: Math.max(...pins.map((q) => q[1])) + 1.5,
       y0: 0,
       y1: P.standoffMm,
+    });
+  } else if (model === 'sensor.ultrasonic' || model === 'sensor.dht22') {
+    // Sprint 12: the upright body on its header, and the header pins below it.
+    const P = model === 'sensor.ultrasonic' ? HC_SR04_MODULE : DHT22_CASE;
+    const pins = Object.values(P.pins);
+    boxes.push({ x0, x1, z0, z1, y0: P.standoffMm, y1: top });
+    boxes.push({
+      x0: Math.min(...pins.map((q) => q[0])) - 1.5,
+      x1: Math.max(...pins.map((q) => q[0])) + 1.5,
+      z0: Math.min(...pins.map((q) => q[1])) - 1.5,
+      z1: Math.max(...pins.map((q) => q[1])) + 1.5,
+      y0: 0,
+      y1: P.standoffMm,
+    });
+  } else if (model === 'display.lcd1602') {
+    // The module (with the backpack under it), and the backpack's header pins beside it.
+    const P = LCD1602_MODULE;
+    const pins = Object.values(P.pins);
+    boxes.push({ x0, x1, z0, z1, y0: 0, y1: top });
+    boxes.push({
+      x0: P.pinTipXMm,
+      x1: x0,
+      z0: Math.min(...pins.map((q) => q[1])) - 1.5,
+      z1: Math.max(...pins.map((q) => q[1])) + 1.5,
+      y0: 0,
+      y1: P.pinHeightMm + 1.5,
     });
   } else boxes.push({ x0, x1, z0, z1, y0: 0, y1: top });
   if (UNDER_BODY.has(model)) {
@@ -941,6 +1013,8 @@ const UNDER_BODY: ReadonlySet<ModelKey> = new Set([
   'sensor.pir',
   'display.matrix',
   'led.radial',
+  'sensor.ultrasonic',
+  'sensor.dht22',
 ]);
 
 /**

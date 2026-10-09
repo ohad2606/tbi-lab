@@ -25,6 +25,9 @@ import {
   RGB_LED_5MM,
   TO92,
   PIR_HC_SR501,
+  HC_SR04_MODULE,
+  DHT22_CASE,
+  LCD1602_MODULE,
   LED_MATRIX_1088AS,
   matrixPinXZ,
   capacitorPackage,
@@ -41,6 +44,7 @@ import {
   box,
   canvasTexture,
   cylinder,
+  drawTexture,
   lathe,
   mesh,
   roundPath,
@@ -764,6 +768,279 @@ function buildLedMatrix(_c: SceneComponent, m: Materials, own: OwnedResources) {
   return g;
 }
 
+/**
+ * Header pins standing under an upright module (Sprint 12): the plastic spacer under the body, a
+ * gold pin per terminal down to the bench, its solder blob where the wire meets it.
+ */
+function headerDown(
+  g: THREE.Group,
+  m: Materials,
+  own: OwnedResources,
+  pins: Record<string, readonly [number, number]>,
+  y0: number,
+  attachY: number,
+) {
+  const xs = Object.values(pins).map((q) => q[0]);
+  const zs = Object.values(pins).map((q) => q[1]);
+  const span = Math.max(...zs) - Math.min(...zs) + 2.54;
+  g.add(box(own, 2.5, 2.5, span, m.blackPlastic, [xs[0]!, y0 - 1.25, 0]));
+  for (const [id, [x, z]] of Object.entries(pins)) {
+    g.add(box(own, 0.64, y0, 0.64, m.gold, [x, y0 / 2, z]));
+    const blob = cylinder(own, 0.55, 0.9, m.chrome, [x, attachY, z], 16, 0.75);
+    blob.userData.pin = id;
+    g.add(blob);
+  }
+}
+
+/** HC-SR04 (Sprint 12): the upright blue board, its two transducer cans facing +x, the crystal. */
+function buildUltrasonic(_c: SceneComponent, m: Materials, own: OwnedResources) {
+  const p = HC_SR04_MODULE;
+  const g = new THREE.Group();
+  const y0 = p.standoffMm;
+  const blue = own.sharedMat(
+    'usPcb',
+    () => new THREE.MeshStandardMaterial({ color: '#1f4e8c', roughness: 0.55 }),
+  );
+  g.add(
+    box(own, p.boardThicknessMm, p.boardYMm, p.boardZMm, blue, [
+      p.boardXMm,
+      y0 + p.boardYMm / 2,
+      0,
+    ]),
+  );
+  const front = p.boardXMm + p.boardThicknessMm / 2;
+  const R = p.transducerDiameterMm / 2;
+  const mesh_ = own.sharedMat(
+    'usMesh',
+    () => new THREE.MeshStandardMaterial({ color: '#2a2b2e', roughness: 0.9 }),
+  );
+  for (const z of [-p.transducerSpacingMm / 2, p.transducerSpacingMm / 2]) {
+    const can = cylinder(
+      own,
+      R,
+      p.frontMm,
+      m.shield,
+      [front + p.frontMm / 2, y0 + p.boardYMm / 2, z],
+      40,
+    );
+    can.rotation.z = Math.PI / 2;
+    g.add(can);
+    const face = cylinder(
+      own,
+      R * 0.82,
+      0.3,
+      mesh_,
+      [front + p.frontMm + 0.05, y0 + p.boardYMm / 2, z],
+      40,
+    );
+    face.rotation.z = Math.PI / 2;
+    g.add(face);
+  }
+  // The 40 MHz crystal behind the board, between the cans.
+  g.add(
+    box(own, p.backMm, 4.5, 11, m.steel, [
+      p.boardXMm - p.boardThicknessMm / 2 - p.backMm / 2,
+      y0 + p.boardYMm - 4,
+      0,
+    ]),
+  );
+  headerDown(g, m, own, p.pins, y0, p.attachHeightMm);
+  return g;
+}
+
+/** DHT22 / AM2302 (Sprint 12): the white case on its four pins, the vent grille facing +x. */
+function buildDht22(_c: SceneComponent, m: Materials, own: OwnedResources) {
+  const p = DHT22_CASE;
+  const g = new THREE.Group();
+  const y0 = p.standoffMm;
+  const white = own.sharedMat(
+    'dhtCase',
+    () => new THREE.MeshStandardMaterial({ color: '#f1f1ec', roughness: 0.6 }),
+  );
+  g.add(
+    mesh(
+      own.shared(
+        'dht:case',
+        () => new RoundedBoxGeometry(p.depthXMm, p.heightMm, p.widthZMm, 2, 0.6),
+      ),
+      white,
+      [0, y0 + p.heightMm / 2, 0],
+    ),
+  );
+  // The grille: rows of vent slots over the upper 20 mm of the front face.
+  const tex = own.lasting('dht:grille', () =>
+    drawTexture(128, 192, (ctx) => {
+      ctx.clearRect(0, 0, 128, 192);
+      ctx.fillStyle = '#3d3f43';
+      for (let r = 0; r < 9; r++)
+        for (let k = 0; k < 3; k++) {
+          ctx.beginPath();
+          ctx.roundRect(10 + k * 38, 8 + r * 20.5, 32, 12, 4);
+          ctx.fill();
+        }
+    }),
+  );
+  const grille = new THREE.Mesh(
+    own.shared(
+      'plane:dhtGrille',
+      () => new THREE.PlaneGeometry(p.widthZMm * 0.84, p.grilleHeightMm * 0.94),
+    ),
+    own.sharedMat(
+      'dhtGrille',
+      () => new THREE.MeshStandardMaterial({ map: tex, transparent: true, roughness: 0.7 }),
+    ),
+  );
+  grille.rotation.y = Math.PI / 2;
+  grille.position.set(p.depthXMm / 2 + 0.02, y0 + p.heightMm - 1.5 - p.grilleHeightMm / 2, 0);
+  g.add(grille);
+  headerDown(g, m, own, p.pins, y0, p.attachHeightMm);
+  return g;
+}
+
+/** What a character LCD shows (Sprint 12): the engine's result, verbatim. */
+export interface LcdFace {
+  backlight: boolean;
+  displayOn: boolean;
+  lines: readonly [string, string];
+}
+
+/** The LCD face texture size (px): the 64.5 x 14.5 mm viewing area. */
+export const LCD_FACE_PX: readonly [number, number] = [1024, 230];
+
+/**
+ * Paint the LCD's viewing area: the yellow-green STN panel (lit only by the backlight the engine
+ * reports), its 32 character cells, and, when the display is on, each character verbatim in its
+ * cell, left to right (never reordered, never translated). No state: blank and unlit.
+ */
+export function paintLcdFace(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  face: LcdFace | undefined,
+) {
+  const p = LCD1602_MODULE;
+  const sx = w / p.viewXMm;
+  const sz = h / p.viewZMm;
+  const x0 = (p.viewXMm - p.activeXMm) / 2;
+  const z0 = (p.viewZMm - p.activeZMm) / 2;
+  ctx.fillStyle = face?.backlight ? '#a9c94a' : '#3a4130';
+  ctx.fillRect(0, 0, w, h);
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.09)';
+  for (let row = 0; row < 2; row++)
+    for (let col = 0; col < 16; col++)
+      ctx.fillRect(
+        (x0 + col * p.charPitchXMm) * sx,
+        (z0 + row * p.charPitchZMm) * sz,
+        p.charXMm * sx,
+        p.charZMm * sz,
+      );
+  if (!face?.displayOn) return;
+  ctx.fillStyle = '#18200c';
+  ctx.font = `600 ${Math.round(p.charZMm * sz * 0.92)}px ui-monospace, Menlo, Consolas, monospace`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.direction = 'ltr';
+  face.lines.forEach((line, row) =>
+    Array.from(line)
+      .slice(0, 16)
+      .forEach((ch, col) => {
+        if (ch === ' ') return;
+        ctx.fillText(
+          ch,
+          (x0 + col * p.charPitchXMm + p.charXMm / 2) * sx,
+          (z0 + row * p.charPitchZMm + p.charZMm / 2) * sz,
+          p.charXMm * sx,
+        );
+      }),
+  );
+}
+
+/**
+ * 16x2 LCD with its I2C backpack (Sprint 12): green PCB, dark bezel, the viewing area (its own
+ * canvas, repainted live from the engine's result by the renderer), the backpack under the
+ * connector with its 4-pin header pointing out of the left edge.
+ */
+function buildLcd1602(_c: SceneComponent, m: Materials, own: OwnedResources) {
+  const p = LCD1602_MODULE;
+  const g = new THREE.Group();
+  const y0 = p.standoffMm;
+  const cx = p.pcbLeftXMm + p.pcbXMm / 2;
+  const cz = p.pcbCentreZMm;
+  const green = own.sharedMat(
+    'lcdPcb',
+    () => new THREE.MeshStandardMaterial({ color: '#1f6b3c', roughness: 0.6 }),
+  );
+  g.add(box(own, p.pcbXMm, p.pcbThicknessMm, p.pcbZMm, green, [cx, y0 + p.pcbThicknessMm / 2, cz]));
+  const top = y0 + p.pcbThicknessMm;
+  // Mounting holes (dark discs on the PCB), on their 75 x 31 mm grid.
+  for (const dx of [-1, 1])
+    for (const dz of [-1, 1])
+      g.add(
+        cylinder(own, p.holeDiameterMm / 2, 0.06, m.black, [
+          cx + (dx * p.holeGridXMm) / 2,
+          top + 0.03,
+          cz + (dz * p.holeGridZMm) / 2,
+        ]),
+      );
+  // The 16-pin connector's solder joints along the top edge (pin 1 8 mm from the left edge).
+  for (let i = 0; i < 16; i++)
+    g.add(
+      cylinder(
+        own,
+        0.7,
+        0.5,
+        m.lead,
+        [p.pcbLeftXMm + 8 + i * 2.54, top + 0.25, cz - p.pcbZMm / 2 + 2.5],
+        12,
+      ),
+    );
+  const bezel = own.sharedMat(
+    'lcdBezel',
+    () => new THREE.MeshStandardMaterial({ color: '#2b2e33', metalness: 0.5, roughness: 0.45 }),
+  );
+  g.add(
+    box(own, p.bezelXMm, p.bezelHeightMm, p.bezelZMm, bezel, [cx, top + p.bezelHeightMm / 2, cz]),
+  );
+  const [fw, fh] = LCD_FACE_PX;
+  const tex = canvasTexture(own, fw, fh, (ctx) => paintLcdFace(ctx, fw, fh, undefined));
+  const faceMat = own.mat(
+    new THREE.MeshStandardMaterial({
+      map: tex,
+      roughness: 0.3,
+      emissiveMap: tex,
+      emissive: '#000000',
+    }),
+  );
+  const face = new THREE.Mesh(
+    own.shared('plane:lcdFace', () => new THREE.PlaneGeometry(p.viewXMm, p.viewZMm)),
+    faceMat,
+  );
+  face.rotation.x = -Math.PI / 2;
+  face.position.set(cx, top + p.bezelHeightMm + 0.02, cz);
+  g.add(face);
+  // The backpack under the connector: its board, the PCF8574 and the contrast trimmer.
+  const backY = y0 - 2.5 - 0.8;
+  g.add(box(own, 41.5, 1.6, 19, m.pcb, [p.pcbLeftXMm + 20.75, backY, 0]));
+  g.add(box(own, 10, 1.5, 7.5, m.ic, [p.pcbLeftXMm + 24, backY - 1.55, 2]));
+  const pot = own.sharedMat(
+    'lcdPot',
+    () => new THREE.MeshStandardMaterial({ color: '#2c5fb8', roughness: 0.5 }),
+  );
+  g.add(cylinder(own, 3.2, 4, pot, [p.pcbLeftXMm + 10, backY - 2.8, 3], 20));
+  // The 4-pin header: its housing under the board's edge, the pins out to the left.
+  const tip = p.pinTipXMm;
+  const inner = p.pcbLeftXMm + 3;
+  g.add(box(own, 2.5, 2.5, 10.16, m.blackPlastic, [p.pcbLeftXMm + 1.75, p.pinHeightMm, 0]));
+  for (const [id, [, z]] of Object.entries(p.pins)) {
+    g.add(box(own, inner - tip, 0.64, 0.64, m.gold, [(inner + tip) / 2, p.pinHeightMm, z]));
+    const blob = cylinder(own, 0.55, 0.9, m.chrome, [tip, p.pinHeightMm, z], 16, 0.75);
+    blob.userData.pin = id;
+    g.add(blob);
+  }
+  g.userData.lcdFace = { texture: tex, material: faceMat };
+  return g;
+}
+
 function buildCapacitor(c: SceneComponent, m: Materials, own: OwnedResources) {
   const p = capacitorPackage(c.visual.farads ?? 100e-6);
   const g = new THREE.Group();
@@ -890,6 +1167,9 @@ const BUILDERS: Record<ModelKey, Builder> = {
   'capacitor.radial': buildCapacitor,
   'display.matrix': buildLedMatrix,
   'sensor.pir': buildPir,
+  'sensor.ultrasonic': buildUltrasonic,
+  'sensor.dht22': buildDht22,
+  'display.lcd1602': buildLcd1602,
   'transistor.to92': buildTo92,
   'led.rgb': buildRgbLed,
   'ldr.disc': buildPhotoresistor,

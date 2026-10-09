@@ -30,6 +30,9 @@ const UNIT_SUFFIXES: Record<UnitId, string[]> = {
   ampere: ['a', 'amps', 'amp', 'amperes', 'ampere'],
   lux: ['lx', 'lux'],
   farad: ['f', 'farads', 'farad'],
+  metre: ['m', 'metres', 'metre', 'meters', 'meter'],
+  celsius: ['°c', '℃', 'degc', 'celsius'],
+  percent_rh: ['%rh', '%', 'rh'],
 };
 
 export type ParseError = 'empty' | 'invalid' | 'decimal_comma' | 'wrong_unit';
@@ -47,6 +50,8 @@ function stripUnit(text: string, unit: UnitId): { rest: string; wrongUnit: boole
   for (const other of Object.keys(UNIT_SUFFIXES) as UnitId[]) {
     if (other === unit) continue;
     for (const suffix of UNIT_SUFFIXES[other]) {
+      // `m` is milli before it is metre: a one-letter prefix never names another unit.
+      if (PREFIX_EXPONENT[suffix] !== undefined) continue;
       // A bare `m`/`M` prefix is never mistaken for a unit: only letters that cannot be a
       // prefix are checked here.
       if (lower.endsWith(suffix.toLowerCase()) && /[a-zωΩ]$/i.test(text)) {

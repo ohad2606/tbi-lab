@@ -49,9 +49,13 @@ describe('locale bundles', () => {
     const technical = (k: string) => k.startsWith('pin.') || k.startsWith('mcu.level.');
     for (const k of same.filter(technical))
       expect(en[k as keyof typeof en], k).toMatch(/^[A-Z][A-Z0-9]*$/);
+    // Sprint 12: I2C addresses are hex tokens (0x27), the same in every locale.
+    const address = (k: string) => k.startsWith('i2c.');
+    for (const k of same.filter(address))
+      expect(en[k as keyof typeof en], k).toMatch(/^0x[0-9a-f]{2}$/);
     // Only language-neutral messages may be identical (unit symbols, the reference-and-type pattern).
     // CV and CC stay as professional technical terms in Hebrew (product scope §12).
-    expect(same.filter((k) => !technical(k)).sort()).toEqual([
+    expect(same.filter((k) => !technical(k) && !address(k)).sort()).toEqual([
       // Sprint 10: RGB channel letters (R, G, B) are technical tokens, like pin names.
       'canvas.componentLabel',
       'probe.currentLabel',
@@ -69,9 +73,12 @@ describe('locale bundles', () => {
       'sim.part.state.output.low',
       'sim.time',
       'unit.ampere.symbol',
+      'unit.celsius.symbol',
       'unit.farad.symbol',
       'unit.lux.symbol',
+      'unit.metre.symbol',
       'unit.ohm.symbol',
+      'unit.percent_rh.symbol',
       'unit.volt.symbol',
       'unit.watt.symbol',
       // Sprint 10: "Commit" is the professional term for the build identity (version details).
@@ -142,6 +149,28 @@ describe('formatting', () => {
     expect(inputForm(4700)).toBe('4.7k');
     expect(inputForm(220)).toBe('220');
     expect(inputForm(0.00025)).toBe('250u');
+  });
+  it('shows temperature and relative humidity without SI prefixes (Sprint 12)', () => {
+    for (const locale of LOCALES) {
+      expect(formatQuantity(locale, { value: 21.5, unit: 'celsius' })).toBe('21.5 °C');
+      expect(formatQuantity(locale, { value: 55, unit: 'percent_rh' })).toBe('55 %RH');
+      // A distance keeps its prefix: 0.5 m reads as 500 mm.
+      expect(formatQuantity(locale, { value: 0.5, unit: 'metre' })).toBe('500 mm');
+    }
+    expect(formatQuantity(getLocale('en'), { value: 0.5, unit: 'celsius' })).toBe('0.5 °C');
+    expect(inputForm(0.5, 'celsius')).toBe('0.5');
+    expect(inputForm(-12.5, 'celsius')).toBe('-12.5');
+    expect(inputForm(0.5, 'metre')).toBe('500m');
+  });
+  it('labels the I2C address options with the address itself in every locale', () => {
+    const lcd = CATALOG['display.lcd1602_i2c'].params.find((p) => p.key === 'address')!;
+    expect(lcd.kind).toBe('enum');
+    if (lcd.kind !== 'enum') return;
+    for (const locale of LOCALES)
+      for (const o of lcd.options) {
+        expect(isMessageKey(o.labelKey), o.labelKey).toBe(true);
+        expect(translate(locale, o.labelKey as keyof typeof en)).toBe(o.value.slice('i2c.'.length));
+      }
   });
   it('isolates LTR technical values inside translated sentences', () => {
     const s = translate(getLocale('he'), 'error.range', {

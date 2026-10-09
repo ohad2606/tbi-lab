@@ -53,7 +53,16 @@ export interface ModulePin {
  * pin names; the glyph shows what the part IS: a relay's coil and change-over contact, an RGB
  * LED's three emitters on a common cathode, ...).
  */
-export type ModuleGlyph = 'mcu' | 'rgb_led.cc' | 'relay.spdt' | 'bjt.npn' | 'pir' | 'led_matrix';
+export type ModuleGlyph =
+  | 'mcu'
+  | 'rgb_led.cc'
+  | 'relay.spdt'
+  | 'bjt.npn'
+  | 'pir'
+  | 'led_matrix'
+  | 'ultrasonic'
+  | 'dht22'
+  | 'lcd';
 
 export interface ModuleSymbol {
   kind: 'module';
@@ -176,6 +185,43 @@ export const SCHEMATIC_SYMBOLS: Record<ComponentTypeId, SchematicSymbol> = {
     ],
     partName: 'PIR',
     glyph: 'pir',
+  },
+  // Sprint 12: supply pins on the left, signal pins on the right (as the PIR module).
+  'sensor.hc_sr04': {
+    kind: 'module',
+    key: 'module',
+    pins: [
+      { terminal: 'vcc', name: 'VCC', side: 'left', order: 1 },
+      { terminal: 'gnd', name: 'GND', side: 'left', order: 2 },
+      { terminal: 'trig', name: 'TRIG', side: 'right', order: 1 },
+      { terminal: 'echo', name: 'ECHO', side: 'right', order: 2 },
+    ],
+    partName: 'Ultrasonic',
+    glyph: 'ultrasonic',
+  },
+  'sensor.dht22': {
+    kind: 'module',
+    key: 'module',
+    pins: [
+      { terminal: 'vdd', name: 'VDD', side: 'left', order: 1 },
+      { terminal: 'gnd', name: 'GND', side: 'left', order: 2 },
+      { terminal: 'data', name: 'DATA', side: 'right', order: 1 },
+      { terminal: 'nc', name: 'NC', side: 'right', order: 2 },
+    ],
+    partName: 'DHT22',
+    glyph: 'dht22',
+  },
+  'display.lcd1602_i2c': {
+    kind: 'module',
+    key: 'module',
+    pins: [
+      { terminal: 'vcc', name: 'VCC', side: 'left', order: 1 },
+      { terminal: 'gnd', name: 'GND', side: 'left', order: 2 },
+      { terminal: 'sda', name: 'SDA', side: 'right', order: 1 },
+      { terminal: 'scl', name: 'SCL', side: 'right', order: 2 },
+    ],
+    partName: 'LCD 16×2 I2C',
+    glyph: 'lcd',
   },
   'component.relay': {
     kind: 'module',

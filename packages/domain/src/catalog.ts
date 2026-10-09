@@ -291,6 +291,136 @@ const SPRINT10_TYPES = {
     toggleParam: 'motion',
     aliases: ['pir', 'motion sensor', 'hc-sr501', 'חיישן תנועה'],
   },
+  'sensor.hc_sr04': {
+    type: 'sensor.hc_sr04',
+    typeVersion: 1,
+    refPrefix: 'U',
+    nameKey: 'component.sensor.hc_sr04.name',
+    symbol: 'symbol.ultrasonic',
+    // The module's header, in its pin order (Vcc, Trig, Echo, GND).
+    terminals: [
+      { id: 'vcc', offset: { x: -60, y: -30 }, labelKey: 'terminal.vcc' },
+      { id: 'trig', offset: { x: -60, y: -10 }, labelKey: 'terminal.trig' },
+      { id: 'echo', offset: { x: -60, y: 10 }, labelKey: 'terminal.echo' },
+      { id: 'gnd', offset: { x: -60, y: 30 }, labelKey: 'terminal.moduleGnd' },
+    ],
+    params: [
+      {
+        kind: 'enum',
+        key: 'model',
+        options: [{ value: 'model.ultrasonic.hc_sr04', labelKey: 'model.ultrasonic.hc_sr04' }],
+        default: 'model.ultrasonic.hc_sr04',
+        labelKey: 'param.model',
+      },
+      {
+        // The distance to a flat target: the simulated environment, not a part property. The
+        // range goes past the module's 2 cm - 4 m so out-of-range targets can be tried (no echo).
+        kind: 'quantity',
+        key: 'distance',
+        unit: 'metre',
+        min: 0.01,
+        max: 5,
+        default: 0.5,
+        labelKey: 'param.distance',
+        live: true,
+        environment: { scale: 'linear' },
+      },
+      {
+        kind: 'quantity',
+        key: 'airTemperature',
+        unit: 'celsius',
+        min: -20,
+        max: 50,
+        default: 20,
+        labelKey: 'param.airTemperature',
+        live: true,
+        environment: { scale: 'linear' },
+      },
+    ],
+    aliases: ['hc-sr04', 'ultrasonic', 'distance sensor', 'sonar', 'חיישן מרחק', 'אולטרסוני'],
+  },
+  'sensor.dht22': {
+    type: 'sensor.dht22',
+    typeVersion: 1,
+    refPrefix: 'U',
+    nameKey: 'component.sensor.dht22.name',
+    symbol: 'symbol.dht22',
+    // The sensor's four pins, front view, left to right (VDD, DATA, NC, GND).
+    terminals: [
+      { id: 'vdd', offset: { x: -60, y: -30 }, labelKey: 'terminal.vdd' },
+      { id: 'data', offset: { x: -60, y: -10 }, labelKey: 'terminal.data' },
+      { id: 'nc', offset: { x: -60, y: 10 }, labelKey: 'terminal.notConnected' },
+      { id: 'gnd', offset: { x: -60, y: 30 }, labelKey: 'terminal.moduleGnd' },
+    ],
+    optionalTerminals: ['nc'],
+    params: [
+      {
+        kind: 'enum',
+        key: 'model',
+        options: [{ value: 'model.humidity.am2302', labelKey: 'model.humidity.am2302' }],
+        default: 'model.humidity.am2302',
+        labelKey: 'param.model',
+      },
+      {
+        kind: 'quantity',
+        key: 'temperature',
+        unit: 'celsius',
+        min: -40,
+        max: 80,
+        default: 21.5,
+        labelKey: 'param.temperature',
+        live: true,
+        environment: { scale: 'linear' },
+      },
+      {
+        kind: 'quantity',
+        key: 'humidity',
+        unit: 'percent_rh',
+        min: 0,
+        max: 100,
+        default: 55,
+        labelKey: 'param.humidity',
+        live: true,
+        environment: { scale: 'linear' },
+      },
+    ],
+    aliases: ['dht22', 'am2302', 'humidity', 'temperature sensor', 'לחות', 'חיישן טמפרטורה'],
+  },
+  'display.lcd1602_i2c': {
+    type: 'display.lcd1602_i2c',
+    typeVersion: 1,
+    refPrefix: 'DS',
+    nameKey: 'component.display.lcd1602_i2c.name',
+    symbol: 'symbol.lcd_i2c',
+    // The PCF8574 backpack's header, in its pin order (GND, VCC, SDA, SCL).
+    terminals: [
+      { id: 'gnd', offset: { x: -80, y: -30 }, labelKey: 'terminal.moduleGnd' },
+      { id: 'vcc', offset: { x: -80, y: -10 }, labelKey: 'terminal.vcc' },
+      { id: 'sda', offset: { x: -80, y: 10 }, labelKey: 'terminal.sda' },
+      { id: 'scl', offset: { x: -80, y: 30 }, labelKey: 'terminal.scl' },
+    ],
+    params: [
+      {
+        kind: 'enum',
+        key: 'model',
+        options: [{ value: 'model.lcd.lcd1602_pcf8574', labelKey: 'model.lcd.lcd1602_pcf8574' }],
+        default: 'model.lcd.lcd1602_pcf8574',
+        labelKey: 'param.model',
+      },
+      {
+        // PCF8574 A2..A0 jumpers: 7-bit address 0x20-0x27 (NXP PCF8574 p.5). Technical tokens.
+        kind: 'enum',
+        key: 'address',
+        options: [0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27].map((a) => ({
+          value: `i2c.0x${a.toString(16)}`,
+          labelKey: `i2c.0x${a.toString(16)}`,
+        })),
+        default: 'i2c.0x27',
+        labelKey: 'param.i2cAddress',
+      },
+    ],
+    aliases: ['lcd', 'lcd1602', '16x2', 'i2c lcd', 'pcf8574', 'hd44780', 'צג', 'מסך'],
+  },
   'display.led_matrix_8x8': {
     type: 'display.led_matrix_8x8',
     typeVersion: 1,
@@ -602,6 +732,9 @@ export const CATALOG_ORDER: readonly ComponentTypeId[] = [
   'sensor.pir_hc_sr501',
   'display.led_matrix_8x8',
   'component.capacitor',
+  'sensor.hc_sr04',
+  'sensor.dht22',
+  'display.lcd1602_i2c',
   'board.esp32_devkitc_wroom32',
 ];
 

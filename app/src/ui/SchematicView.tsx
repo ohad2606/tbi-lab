@@ -450,6 +450,37 @@ function moduleGlyph(glyph: SchModule['glyph']) {
           )}
         </>
       );
+    case 'ultrasonic':
+      // The two transducers (transmitter, receiver) on the module.
+      return (
+        <>
+          <rect x={-30} y={-14} width={60} height={28} />
+          <circle cx={-13} cy={0} r={10} />
+          <circle cx={13} cy={0} r={10} />
+        </>
+      );
+    case 'dht22':
+      // The sensor case and its vent grille.
+      return (
+        <>
+          <rect x={-14} y={-20} width={28} height={40} />
+          {[-12, -4, 4, 12].map((y) => (
+            <line key={y} x1={-8} y1={y} x2={8} y2={y} />
+          ))}
+        </>
+      );
+    case 'lcd':
+      // A two-line character display.
+      return (
+        <>
+          <rect x={-34} y={-14} width={68} height={28} />
+          {[-5, 5].flatMap((y) =>
+            [0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
+              <rect key={`${i}.${y}`} x={-28 + i * 7} y={y - 3} width={5} height={6} />
+            )),
+          )}
+        </>
+      );
     default:
       return null;
   }

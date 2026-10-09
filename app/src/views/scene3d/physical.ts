@@ -386,3 +386,106 @@ export function capacitorPackage(farads: number) {
     standoffMm: CAPACITOR_PACKAGES.canStandoffMm,
   };
 }
+
+// ---- Sprint 12 parts (R2 sensors, R3 display) -------------------------------------------------
+// Sources: docs/sprints/s10-evidence/datasheets/FACTS.md §7 (HC-SR04: Elecfreaks p.2, Cytron),
+// §8 (AM2302 sheet p.2 drawing), §10d (JHD 16x2 LCD specification p.5, p.15). Where a document is
+// silent the value is representative [REP] and stated as such.
+
+/** Header pin plan offsets along the header (2.54 mm pitch, centred on the module origin). */
+const headerZ = (i: number, n: number) => (i - (n - 1) / 2) * 2.54;
+
+/**
+ * HC-SR04: 45 x 20 x 15 mm overall [Elecfreaks p.2; Cytron]. The board stands upright on its
+ * 4-pin header (Vcc, Trig, Echo, GND [Elecfreaks p.2]), its plane across x, the header along z on
+ * its lower edge, the two transducers facing +x. Transducer diameter NOT FOUND in the three
+ * documents: 16 mm [REP], 26 mm apart [REP]; the 15 mm depth is the board, the cans in front and
+ * the crystal behind. Header pin length as the PIR module's [REP].
+ */
+export const HC_SR04_MODULE = {
+  boardZMm: 45,
+  boardYMm: 20,
+  boardThicknessMm: 1.6,
+  /** The board's centre plane (local x) and the depth in front of / behind it (15 mm in all). */
+  boardXMm: -2.0,
+  frontMm: 12.0,
+  backMm: 1.4,
+  transducerDiameterMm: 16,
+  transducerSpacingMm: 26,
+  standoffMm: 8.5,
+  attachHeightMm: 0.8,
+  pins: {
+    vcc: [-2.0, headerZ(0, 4)],
+    trig: [-2.0, headerZ(1, 4)],
+    echo: [-2.0, headerZ(2, 4)],
+    gnd: [-2.0, headerZ(3, 4)],
+  } as Record<string, readonly [number, number]>,
+};
+
+/**
+ * DHT22 / AM2302, standard 4-pin case: 15.1 (W) x 25.1 (H) x 7.7 (D) mm, 2.54 mm pitch, pins
+ * 0.5 mm, 8.5 mm long [AM2302 p.2 drawing]. It stands on its pins with the vent grille facing +x;
+ * pins 1-4 (VDD, DATA, NC, GND) along z, near the rear face [REP: the drawing shows no offset].
+ */
+export const DHT22_CASE = {
+  widthZMm: 15.1,
+  heightMm: 25.1,
+  depthXMm: 7.7,
+  pinXMm: -2.35,
+  standoffMm: 8.5,
+  attachHeightMm: 0.8,
+  /** The grille area on the front face (20.0 mm tall [AM2302 p.2]). */
+  grilleHeightMm: 20.0,
+  pins: {
+    vdd: [-2.35, headerZ(0, 4)],
+    data: [-2.35, headerZ(1, 4)],
+    nc: [-2.35, headerZ(2, 4)],
+    gnd: [-2.35, headerZ(3, 4)],
+  } as Record<string, readonly [number, number]>,
+};
+
+/**
+ * 16x2 character LCD module with a PCF8574 I2C backpack, lying face up. Module: PCB 80.0 x 36.0
+ * mm, viewing area 64.5 x 14.5 mm, active area 57.70 x 9.40 mm, bezel 70.70 x 23.80 mm, character
+ * 2.95 x 4.35 mm at a 3.65 x 5.05 mm pitch, 4 mounting holes Ø2.9 on a 75.0 x 31.0 mm grid, the
+ * 16-pin connector along the top edge [JHD p.5, p.15]. The backpack's own dimensions are NOT FOUND:
+ * it sits under the connector, its 4-pin header (GND, VCC, SDA, SCL) pointing out of the module's
+ * left edge [REP]. The module lies on the backpack; the bezel stack above the PCB is 8 mm [REP]
+ * (13.5 mm overall maximum [JHD p.15]).
+ *
+ * Local frame: the header pins' tips are at the 2D terminals' x (so the wires end where the circuit
+ * view has them); the module extends to +x; the header is centred on z = 0.
+ */
+export const LCD1602_MODULE = {
+  pcbXMm: 80.0,
+  pcbZMm: 36.0,
+  pcbThicknessMm: 1.6,
+  bezelXMm: 70.7,
+  bezelZMm: 23.8,
+  viewXMm: 64.5,
+  viewZMm: 14.5,
+  activeXMm: 57.7,
+  activeZMm: 9.4,
+  charXMm: 2.95,
+  charZMm: 4.35,
+  charPitchXMm: 3.65,
+  charPitchZMm: 5.05,
+  holeGridXMm: 75.0,
+  holeGridZMm: 31.0,
+  holeDiameterMm: 2.9,
+  bezelHeightMm: 8.0,
+  /** Underside of the LCD PCB above the bench: the backpack under it [REP]. */
+  standoffMm: 10.0,
+  /** The header pins: tips at the 2D terminal column, 6.0 mm out from the PCB edge [REP]. */
+  pinTipXMm: -12.7,
+  pcbLeftXMm: -6.7,
+  pinHeightMm: 4.65,
+  /** The PCB centre relative to the header (the header is under the top half) [REP]. */
+  pcbCentreZMm: 8.5,
+  pins: {
+    gnd: [-12.7, headerZ(0, 4)],
+    vcc: [-12.7, headerZ(1, 4)],
+    sda: [-12.7, headerZ(2, 4)],
+    scl: [-12.7, headerZ(3, 4)],
+  } as Record<string, readonly [number, number]>,
+};

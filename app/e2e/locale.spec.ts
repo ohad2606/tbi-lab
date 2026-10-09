@@ -32,6 +32,7 @@ async function untranslatedWords(page: Page): Promise<string[]> {
     /^(RGB|NPN|LDR|PIR|NC|NO|COM|RC|GL5528|N3904|HC|SR501|F)$/, // Sprint 10: part numbers and standard acronyms (technical tokens)
     /^(HIGH|LOW|ADC|Flyback|lx)$/, // Sprint 11: logic levels, ADC, flyback (kept in English by the glossary rule, CLAUDE.md) and the lux symbol
     /^N4148$/, // the 1N4148 diode model (tokenized after its leading digit)
+    /^(LCD|I2C)$/, // Sprint 12: the character display's technical names (palette)
     /^I$/, // the current symbol in formulas such as I = V / R (example summaries)
     /^N_\d+$/, // net ids
     /^(k|m|M|G|µ|u|n|p)?(Ω|V|A)$/,

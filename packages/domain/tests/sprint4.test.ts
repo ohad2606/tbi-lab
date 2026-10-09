@@ -56,6 +56,10 @@ describe('Sprint 4 catalog: the non-MCU V1 catalog is complete and closed (A16)'
         'display.led_matrix_8x8',
         // Capacitor: exposed with time-stepped simulation (§6.0).
         'component.capacitor',
+        // Sprint 12 (Runtime v2, PM authorization D-8): R2 sensors and the R3 I2C display.
+        'sensor.hc_sr04',
+        'sensor.dht22',
+        'display.lcd1602_i2c',
       ].sort(),
     );
   });

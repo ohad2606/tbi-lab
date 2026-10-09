@@ -2994,6 +2994,65 @@ select {
   font-size: 8px;
 }
 
+/* Sprint 12: ultrasonic module, DHT22, 16x2 character LCD (2D symbols). */
+.symbol .pin-out-high {
+  stroke: var(--runtime);
+  stroke-width: 3;
+}
+
+.symbol .us-can {
+  fill: #d7dade;
+}
+
+.symbol .us-mesh {
+  fill: #3b3f45;
+  stroke-width: 1;
+}
+
+.symbol .dht-vent {
+  fill: #e4e6ea;
+  stroke-width: 1;
+}
+
+.symbol .lcd-bezel {
+  fill: #2a2d31;
+  stroke-width: 1.5;
+}
+
+/* Yellow-green STN (the module's sheet): dark unlit, lit by the backlight the engine reports. */
+.symbol .lcd-window {
+  fill: #3a4130;
+  stroke: none;
+}
+
+.symbol .lcd-window.lcd-lit {
+  fill: #a9c94a;
+}
+
+.symbol .lcd-cell {
+  fill: rgba(0, 0, 0, 0.1);
+  stroke: none;
+}
+
+.symbol .lcd-text text {
+  fill: #18200c;
+  stroke: none;
+  font:
+    600 13px ui-monospace,
+    'SFMono-Regular',
+    Menlo,
+    Consolas,
+    monospace;
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+
+.sim-results .lcd-line {
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  white-space: pre;
+  unicode-bidi: isolate;
+}
+
 .sim-time {
   margin-inline-start: 0.6rem;
   font-size: 0.85rem;

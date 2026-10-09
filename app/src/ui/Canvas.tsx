@@ -45,6 +45,7 @@ import {
   catalogText,
   formatQuantity,
   isMessageKey,
+  isolateLtr,
   type LocaleInfo,
   type MessageKey,
 } from '../i18n/i18n.js';
@@ -57,6 +58,7 @@ import {
   MATRIX_ROWS,
   RGB_CHANNELS,
   SYMBOLS,
+  lcdView,
   rgbTriangle,
   type SymbolState,
 } from './symbols.js';
@@ -957,6 +959,11 @@ export function Canvas({
                   ? outcome.components[c.id]?.state?.energized === true
                   : false,
                 sounding: outcome?.ok ? outcome.components[c.id]?.state?.sounding === true : false,
+                // Sprint 12: the LCD shows exactly what the engine reports (blank without it).
+                lcd:
+                  c.type === 'display.lcd1602_i2c' && outcome?.ok
+                    ? lcdView(outcome.components[c.id]?.state)
+                    : undefined,
               }}
               overstressed={overstressed.has(c.id)}
               pinLevels={
@@ -1193,6 +1200,16 @@ function ComponentView({
     c.type !== 'component.ground';
   const side = upright ? { x: box.maxX + 10, anchor: 'start' } : { x: cx, anchor: 'middle' };
   const below = values || switchState;
+  // A character display's content, for assistive technology: verbatim, as an LTR run.
+  const screen =
+    c.type === 'display.lcd1602_i2c' && symbolState.lcd
+      ? symbolState.lcd.displayOn && symbolState.lcd.lines.some((l) => l.trim())
+        ? t('lcd.screen', {
+            line1: isolateLtr(symbolState.lcd.lines[0].trimEnd()),
+            line2: isolateLtr(symbolState.lcd.lines[1].trimEnd()),
+          })
+        : t('lcd.blank')
+      : '';
   return (
     <g
       data-hit="component"
@@ -1203,13 +1220,20 @@ function ComponentView({
       data-overstressed={overstressed ? 'true' : undefined}
       tabIndex={0}
       role="button"
-      aria-label={[label, values, switchState].filter(Boolean).join(', ')}
+      aria-label={[label, values, switchState, screen].filter(Boolean).join(', ')}
       data-closed={c.type === 'component.toggle_switch' ? String(symbolState.closed) : undefined}
       data-pressed={c.type === 'component.push_button' ? String(symbolState.pressed) : undefined}
       data-energized={c.type === 'component.relay' ? String(!!symbolState.energized) : undefined}
       data-motion={c.type === 'sensor.pir_hc_sr501' ? String(!!symbolState.motion) : undefined}
       data-output={
-        c.type === 'sensor.pir_hc_sr501' ? (symbolState.outputHigh ? 'high' : 'low') : undefined
+        c.type === 'sensor.pir_hc_sr501' || c.type === 'sensor.hc_sr04'
+          ? symbolState.outputHigh
+            ? 'high'
+            : 'low'
+          : undefined
+      }
+      data-backlight={
+        c.type === 'display.lcd1602_i2c' ? String(!!symbolState.lcd?.backlight) : undefined
       }
       data-sounding={c.type === 'component.buzzer' ? String(!!symbolState.sounding) : undefined}
       onFocus={onFocus}
@@ -1304,7 +1328,10 @@ function ComponentView({
         <BoardPins rotation={p.rotation} at={p} levels={pinLevels} />
       )}
       {c.type === 'display.led_matrix_8x8' && (
-        <LinePins type={c.type} rotation={p.rotation} at={p} />
+        <LinePins type={c.type} rotation={p.rotation} at={p} inward={matrixInward} />
+      )}
+      {SIDE_PIN_TYPES.has(c.type) && (
+        <LinePins type={c.type} rotation={p.rotation} at={p} inward={sideInward} />
       )}
       {c.type !== 'component.ground' && (
         <text
@@ -1431,28 +1458,41 @@ function probeLabelAt(p: Probe, at: Point, doc: ProjectDocument) {
   return { x: at.x + 14, y: out.y < 0 ? at.y - 4 : at.y + 16, 'text-anchor': start };
 }
 
+/** LED matrix pins (front and rear edges): the name sits 50 units in from the pin. */
+const matrixInward = (o: Point): Point => ({ x: o.x, y: o.y - Math.sign(o.y) * 50 });
+/** Module headers on the left edge (Sprint 12): the name sits just inside the body. */
+const sideInward = (o: Point): Point => ({ x: o.x + 34, y: o.y });
+/** Modules whose header pins are named on the canvas (their silkscreen tokens). */
+const SIDE_PIN_TYPES: ReadonlySet<ComponentTypeId> = new Set<ComponentTypeId>([
+  'sensor.hc_sr04',
+  'sensor.dht22',
+  'display.lcd1602_i2c',
+]);
+
 /**
- * A package's pin names as the lines they carry (Sprint 10, the LED matrix: R5, C2, ...): technical
- * tokens, drawn upright just inside each pin, always LTR. Presentation only.
+ * A package's pin names as the lines they carry (Sprint 10, the LED matrix: R5, C2, ...; Sprint
+ * 12, module headers: TRIG, ECHO, SDA, ...): technical tokens, drawn upright just inside each
+ * pin, always LTR. Presentation only.
  */
 function LinePins({
   type,
   rotation,
   at,
+  inward,
 }: {
   type: ComponentTypeId;
   rotation: Rotation;
   at: Point;
+  inward: (offset: Point) => Point;
 }) {
   return (
     <g class="board-pins" aria-hidden="true">
       {CATALOG[type].terminals.map((t) => {
-        const inward = { x: t.offset.x, y: t.offset.y - Math.sign(t.offset.y) * 50 };
-        const label = rotatePoint(inward, rotation);
+        const label = rotatePoint(inward(t.offset), rotation);
         return (
           <text
             key={t.id}
-            class="pin-label matrix-pin-label"
+            class={type === 'display.led_matrix_8x8' ? 'pin-label matrix-pin-label' : 'pin-label'}
             x={at.x + label.x}
             y={at.y + label.y + 3}
             text-anchor="middle"

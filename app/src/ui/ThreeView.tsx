@@ -15,6 +15,7 @@ import { controlKind, controlState, pressControl, toggleControl } from './contro
 import type { Obstacle } from '../views/scene3d/route3d.js';
 import type { LiveLevel, Viewer, ViewerStats } from '../views/scene3d/renderer.js';
 import { rgbMix } from '../views/ledLooks.js';
+import { lcdView } from './symbols.js';
 import { isSoftwareRenderer } from '../gpuInfo.js';
 import {
   LAYERS,
@@ -268,6 +269,10 @@ export function ThreeView() {
           levels[c.id] = {
             dots: arr.currents.map((i) => (i > 1e-6 ? Math.min(1, Math.max(0.15, i / 0.02)) : 0)),
           };
+      } else if (c.type === 'display.lcd1602_i2c') {
+        // Sprint 12: the LCD shows exactly what the engine reports (blank without it).
+        const lcd = lcdView(outcome.components[c.id]?.state);
+        if (lcd) levels[c.id] = { lcd };
       } else if (c.type === 'component.rgb_led') {
         // The emitted colour is the mix of the SOLVED channel currents (never a chosen colour).
         const mix = rgbMix(outcome.components[c.id]?.currents ?? {});
@@ -332,7 +337,10 @@ export function ThreeView() {
       data-draw-calls={stats?.drawCalls}
       data-triangles={stats?.triangles}
       data-materials={stats?.materials}
-      data-lit={Object.keys(levels).join(' ')}
+      data-lit={Object.entries(levels)
+        // An LCD is lit only by its reported backlight.
+        .flatMap(([id, l]) => (typeof l === 'object' && 'lcd' in l && !l.lcd.backlight ? [] : [id]))
+        .join(' ')}
       data-glow={Object.entries(levels)
         .flatMap(([id, l]) => (typeof l === 'object' && 'color' in l ? [`${id}:${l.color}`] : []))
         .join(' ')}
