@@ -9,7 +9,7 @@
 #   runtime/provision/provision.sh qemu         # fetch pinned Espressif QEMU, apply patches, build, install
 #   runtime/provision/provision.sh arduino      # pinned arduino-cli + arduino-esp32 core
 #   runtime/provision/provision.sh micropython  # pinned MicroPython image
-#   runtime/provision/provision.sh firmware     # build the runtime test firmware into the artifact store
+#   runtime/provision/provision.sh firmware [name...]  # build the runtime test firmware (all, or the named sketches)
 #   runtime/provision/provision.sh all          # all of the above, in order
 #   runtime/provision/provision.sh env          # print the environment the runtime tests use
 #
@@ -207,7 +207,15 @@ cmd_firmware() {
   esptool="$(find "$RT/arduino/data/packages/esp32/tools/esptool_py" -maxdepth 2 -name esptool -type f | head -1)"
   [[ -x "$esptool" ]] || die "esptool not found in the arduino-esp32 tools"
   local core="$RT/arduino/data/packages/esp32/hardware/esp32/$ARDUINO_ESP32_VERSION"
-  for dir in "$REPO"/runtime/firmware/arduino/*/; do
+  local dirs=("$REPO"/runtime/firmware/arduino/*/)
+  if (($#)); then
+    dirs=()
+    for n in "$@"; do
+      [[ -d "$REPO/runtime/firmware/arduino/$n" ]] || die "no firmware sketch $n"
+      dirs+=("$REPO/runtime/firmware/arduino/$n/")
+    done
+  fi
+  for dir in "${dirs[@]}"; do
     local name; name="$(basename "$dir")"
     local out="$RT/build/fw-$name"
     rm -rf "$out" && mkdir -p "$out"
@@ -243,7 +251,7 @@ case "${1:-}" in
   qemu) cmd_qemu ;;
   arduino) cmd_arduino ;;
   micropython) cmd_micropython ;;
-  firmware) cmd_firmware ;;
+  firmware) shift; cmd_firmware "$@" ;;
   all) cmd_qemu && cmd_arduino && cmd_micropython && cmd_firmware ;;
   env) cmd_env ;;
   *) sed -n '2,20p' "$0"; exit 2 ;;

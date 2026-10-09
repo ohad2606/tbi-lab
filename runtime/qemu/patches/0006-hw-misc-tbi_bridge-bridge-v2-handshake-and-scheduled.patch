@@ -1,0 +1,257 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: TBI Lab runtime <runtime@tbi-lab.local>
+Date: Fri, 9 Oct 2026 15:00:00 +0000
+Subject: [PATCH] hw/misc/tbi_bridge: bridge v2 handshake and scheduled inputs
+
+TBI Lab (Sprint 12, ADR-011). The handshake becomes
+"H tbi-bridge 2 <tick_ns> <caps>" with the capability list this build
+implements (here: sched-input).
+
+sched-input: inside any reply the host may send "J <vns> <pad> <level>"
+(apply level to pad at virtual time vns, strictly later than the frame
+being answered) and "X <pad>" (cancel every pending entry on pad).
+Entries wait in one time-ordered queue of at most 512, at least 1 us
+apart on a pad, served by one QEMU_TIMER_ATTR_HOST_SYNC timer: execution
+stops exactly at vns, the level is applied without a frame and the same
+vCPU resumes, so a scheduled edge does not reshape vCPU scheduling
+(patch 0005). Entries due at the same time apply in arrival order.
+Anything outside these limits terminates QEMU with exit status 3.
+
+Signed-off-by: TBI Lab <runtime@tbi-lab.local>
+---
+ hw/misc/tbi_bridge.c | 142 ++++++++++++++++++++++++++++++++++++++++---
+ 1 file changed, 132 insertions(+), 10 deletions(-)
+
+diff --git a/hw/misc/tbi_bridge.c b/hw/misc/tbi_bridge.c
+index d50c4e9..353eb1b 100644
+--- a/hw/misc/tbi_bridge.c
++++ b/hw/misc/tbi_bridge.c
+@@ -14,8 +14,9 @@
+  * before the next guest instruction, at zero elapsed virtual time (ADR-007). Board or circuit
+  * knowledge lives entirely in the host; this device only forwards.
+  *
+- * Wire protocol v1 (ASCII lines, '\n' terminated). QEMU -> host:
+- *   H tbi-bridge 1 <tick_ns>            once, at realize; host replies (commands...) C
++ * Wire protocol v2 (ASCII lines, '\n' terminated; ADR-011). QEMU -> host:
++ *   H tbi-bridge 2 <tick_ns> <caps>     once, at realize; host replies (commands...) C. <caps> is
++ *                                       the sorted, comma-separated TBI_BRIDGE_CAPS ('-': none)
+  *   G <vns> <pad> <drive> <level>       a pad's drive/level changed; host replies (commands...) C
+  *   T <vns>                             periodic virtual-time tick; host replies (commands...) C
+  *   S <vns> <hex>                       guest UART0 bytes (from chardev "tbi-serial"); no reply
+@@ -23,9 +24,18 @@
+  *   I <pad> <level>                     apply an external logic level to a pad (immediately)
+  *   R <hex>                             queue bytes for the guest UART0 receiver (tick replies)
+  *   Q                                   request an orderly shutdown
++ *   J <vns> <pad> <level>               (sched-input) apply <level> to <pad> at virtual time
++ *                                       <vns>, strictly later than the frame being answered
++ *   X <pad>                             (sched-input) cancel every pending J on <pad>
+  *   C                                   end of reply; the guest continues
+  * <vns> is QEMU_CLOCK_VIRTUAL in ns (simulation time under -icount shift=3,sleep=off).
+  *
++ * Scheduled inputs (sched-input) wait in one time-ordered queue of at most TBI_SCHED_MAX entries,
++ * at least TBI_SCHED_MIN_NS apart on one pad, served by a single host synchronisation timer
++ * (QEMU_TIMER_ATTR_HOST_SYNC): execution stops exactly at <vns>, the level is applied silently (the
++ * host knows its own schedule) and the same vCPU resumes, so a scheduled edge never reshapes vCPU
++ * scheduling. Entries due at the same time apply in the order they were received.
++ *
+  * Fail closed: a malformed or unexpected reply, or the loss of the host connection, terminates
+  * QEMU at once with a distinct exit status (EXIT_PROTOCOL / EXIT_PEER_LOST) and a diagnostic on
+  * stderr. There is no retry and no silent continuation. Guest serial output never goes to stderr;
+@@ -58,6 +68,11 @@
+ #define TBI_SERIAL_CHUNK 256
+ #define TBI_RX_PENDING_MAX 4096
+ 
++/* Capability tokens this build implements, sorted (ADR-011 §1). */
++#define TBI_BRIDGE_CAPS "sched-input"
++#define TBI_SCHED_MAX 512
++#define TBI_SCHED_MIN_NS 1000
++
+ #define EXIT_PROTOCOL 3
+ #define EXIT_PEER_LOST 4
+ 
+@@ -75,6 +90,17 @@ struct TbiBridge {
+     int64_t next_tick_ns;
+     uint8_t rx_pending[TBI_RX_PENDING_MAX];
+     size_t rx_len;
++
++    /* Virtual time of the frame being answered (0 for the handshake). */
++    int64_t frame_ns;
++    /* Scheduled inputs, sorted by (vns, arrival); sched[0] is the next one due. */
++    struct {
++        int64_t vns;
++        uint8_t pad;
++        uint8_t level;
++    } sched[TBI_SCHED_MAX];
++    unsigned sched_len;
++    QEMUTimer *sched_timer;
+ };
+ 
+ OBJECT_DECLARE_SIMPLE_TYPE(TbiBridge, TBI_BRIDGE)
+@@ -162,6 +188,68 @@ static void tbi_flush_rx(TbiBridge *s)
+     }
+ }
+ 
++static void tbi_sched_arm(TbiBridge *s)
++{
++    if (s->sched_len) {
++        timer_mod(s->sched_timer, s->sched[0].vns);
++    } else {
++        timer_del(s->sched_timer);
++    }
++}
++
++static void tbi_sched_add(TbiBridge *s, int64_t vns, unsigned pad, unsigned level)
++{
++    unsigned i;
++
++    if (vns <= s->frame_ns) {
++        tbi_fail(EXIT_PROTOCOL, "scheduled input not later than the frame it answers");
++    }
++    if (s->sched_len == TBI_SCHED_MAX) {
++        tbi_fail(EXIT_PROTOCOL, "scheduled input queue full");
++    }
++    for (i = 0; i < s->sched_len; i++) {
++        if (s->sched[i].pad == pad && llabs(s->sched[i].vns - vns) < TBI_SCHED_MIN_NS) {
++            tbi_fail(EXIT_PROTOCOL, "scheduled inputs on one pad closer than 1 us");
++        }
++    }
++    /* After every entry due at or before vns: equal times keep their arrival order. */
++    for (i = s->sched_len; i > 0 && s->sched[i - 1].vns > vns; i--) {
++        s->sched[i] = s->sched[i - 1];
++    }
++    s->sched[i].vns = vns;
++    s->sched[i].pad = (uint8_t)pad;
++    s->sched[i].level = (uint8_t)level;
++    s->sched_len++;
++}
++
++static void tbi_sched_cancel(TbiBridge *s, unsigned pad)
++{
++    unsigned j = 0;
++
++    for (unsigned i = 0; i < s->sched_len; i++) {
++        if (s->sched[i].pad != pad) {
++            s->sched[j++] = s->sched[i];
++        }
++    }
++    s->sched_len = j;
++}
++
++/* The scheduled-input timer: apply everything due, silently, then re-arm. */
++static void tbi_sched_fire(void *opaque)
++{
++    TbiBridge *s = TBI_BRIDGE(opaque);
++    int64_t now = tbi_now();
++    unsigned n = 0;
++
++    while (n < s->sched_len && s->sched[n].vns <= now) {
++        qemu_set_irq(s->pad_in[s->sched[n].pad], s->sched[n].level);
++        n++;
++    }
++    memmove(s->sched, s->sched + n, (s->sched_len - n) * sizeof(s->sched[0]));
++    s->sched_len -= n;
++    tbi_sched_arm(s);
++}
++
+ /* Process host commands until 'C'. Anything unexpected ends the session. */
+ static void tbi_reply(TbiBridge *s, bool allow_rx)
+ {
+@@ -186,6 +274,26 @@ static void tbi_reply(TbiBridge *s, bool allow_rx)
+             qemu_set_irq(s->pad_in[pad], (int)level);
+             continue;
+         }
++        if (line[0] == 'J' && line[1] == ' ') {
++            int64_t vns;
++            unsigned pad, level;
++            char tail;
++            if (sscanf(line + 2, "%" SCNd64 " %u %u%c", &vns, &pad, &level, &tail) != 3 ||
++                pad >= TBI_PADS || level > 1) {
++                tbi_fail(EXIT_PROTOCOL, "malformed scheduled input");
++            }
++            tbi_sched_add(s, vns, pad, level);
++            continue;
++        }
++        if (line[0] == 'X' && line[1] == ' ') {
++            unsigned pad;
++            char tail;
++            if (sscanf(line + 2, "%u%c", &pad, &tail) != 1 || pad >= TBI_PADS) {
++                tbi_fail(EXIT_PROTOCOL, "malformed schedule cancel");
++            }
++            tbi_sched_cancel(s, pad);
++            continue;
++        }
+         if (line[0] == 'R' && line[1] == ' ' && allow_rx) {
+             const char *h = line + 2;
+             size_t n = strlen(h);
+@@ -205,31 +313,40 @@ static void tbi_reply(TbiBridge *s, bool allow_rx)
+     }
+ }
+ 
+-static void tbi_exchange(TbiBridge *s, const char *frame, bool allow_rx)
++static void tbi_exchange(TbiBridge *s, int64_t frame_ns, const char *frame, bool allow_rx)
+ {
++    unsigned before = s->sched_len;
++    int64_t head = before ? s->sched[0].vns : 0;
++
++    s->frame_ns = frame_ns;
+     tbi_send(s, frame, strlen(frame));
+     tbi_reply(s, allow_rx);
+     tbi_flush_rx(s);
++    if (s->sched_len != before || (before && s->sched[0].vns != head)) {
++        tbi_sched_arm(s);
++    }
+ }
+ 
+ /* A pad changed: (drive << 1) | level, from hw/gpio/esp32_gpio.c. */
+ static void tbi_pad_changed(void *opaque, int pad, int state)
+ {
+     TbiBridge *s = TBI_BRIDGE(opaque);
++    int64_t now = tbi_now();
+     char frame[96];
+ 
+-    snprintf(frame, sizeof(frame), "G %" PRId64 " %d %d %d\n", tbi_now(), pad, (state >> 1) & 1,
++    snprintf(frame, sizeof(frame), "G %" PRId64 " %d %d %d\n", now, pad, (state >> 1) & 1,
+              state & 1);
+-    tbi_exchange(s, frame, false);
++    tbi_exchange(s, now, frame, false);
+ }
+ 
+ static void tbi_tick(void *opaque)
+ {
+     TbiBridge *s = TBI_BRIDGE(opaque);
++    int64_t now = tbi_now();
+     char frame[48];
+ 
+-    snprintf(frame, sizeof(frame), "T %" PRId64 "\n", tbi_now());
+-    tbi_exchange(s, frame, true);
++    snprintf(frame, sizeof(frame), "T %" PRId64 "\n", now);
++    tbi_exchange(s, now, frame, true);
+     /* Ticks sit on exact multiples of the quantum, independent of when this one ran. */
+     s->next_tick_ns += (int64_t)s->tick_us * 1000;
+     timer_mod(s->tick, s->next_tick_ns);
+@@ -284,7 +401,7 @@ static void tbi_bridge_realize(DeviceState *dev, Error **errp)
+     TbiBridge *s = TBI_BRIDGE(dev);
+     Object *obj;
+     DeviceState *gpio;
+-    char hello[64];
++    char hello[96];
+ 
+     if (tbi_bridge) {
+         error_setg(errp, TYPE_TBI_BRIDGE ": only one bridge per QEMU process");
+@@ -313,9 +430,14 @@ static void tbi_bridge_realize(DeviceState *dev, Error **errp)
+         s->pad_in[i] = qdev_get_gpio_in_named(gpio, TBI_PAD_IN, i);
+     }
+ 
++    /* Scheduled inputs: a host synchronisation point only, like the tick (see timer.h). */
++    s->sched_timer = timer_new_full(NULL, QEMU_CLOCK_VIRTUAL, SCALE_NS, QEMU_TIMER_ATTR_HOST_SYNC,
++                                    tbi_sched_fire, s);
++
+     /* Initial state: the host applies its initial pad levels before the first instruction. */
+-    snprintf(hello, sizeof(hello), "H tbi-bridge 1 %" PRIu64 "\n", (uint64_t)s->tick_us * 1000);
+-    tbi_exchange(s, hello, false);
++    snprintf(hello, sizeof(hello), "H tbi-bridge 2 %" PRIu64 " %s\n", (uint64_t)s->tick_us * 1000,
++             TBI_BRIDGE_CAPS);
++    tbi_exchange(s, 0, hello, false);
+ 
+     /* A host synchronisation point only: it must not shape vCPU scheduling (see timer.h). */
+     s->tick = timer_new_full(NULL, QEMU_CLOCK_VIRTUAL, SCALE_NS, QEMU_TIMER_ATTR_HOST_SYNC,

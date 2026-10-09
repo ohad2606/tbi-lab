@@ -122,7 +122,9 @@ export interface SessionOptions {
   /** Fault injection for failure-mode tests (never used in normal sessions). */
   fault?: {
     afterFrames: number;
-    kind: 'malformed_reply' | 'invalid_pad' | 'drop_connection' | 'stop_replying';
+    kind: 'malformed_reply' | 'invalid_pad' | 'drop_connection' | 'stop_replying' | 'raw_reply';
+    /** `raw_reply`: these exact reply lines (without the final `C`), bypassing the encoder. */
+    reply?: string[];
   };
   onSpawn?(pid: number): void;
   // ---- Runtime R2 (Session Host); all optional, defaults keep the R1 behaviour ----------------
@@ -245,6 +247,8 @@ export function runSession(opts: SessionOptions, handler: SessionHandler): Promi
             if (opts.fault && handled >= opts.fault.afterFrames && quitAt === null) {
               if (opts.fault.kind === 'malformed_reply') s.write('Z not-a-command\n');
               else if (opts.fault.kind === 'invalid_pad') s.write('I 40 1\nC\n');
+              else if (opts.fault.kind === 'raw_reply')
+                s.write(`${(opts.fault.reply ?? []).map((l) => `${l}\n`).join('')}C\n`);
               else if (opts.fault.kind === 'drop_connection') s.destroy();
               // 'stop_replying': send nothing; QEMU waits and the wall-clock limit ends it.
               hostHolding = true;

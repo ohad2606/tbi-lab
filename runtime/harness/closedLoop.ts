@@ -48,6 +48,13 @@ export interface ClosedLoopOptions {
   /** Observation only (measurements): never changes what the session does. */
   onSpawn?(pid: number): void;
   onTick?(vns: bigint): void;
+  /**
+   * Sprint 12 (T-DET-3): scheduled input edges on a pad the firmware never reads, sent in the
+   * handshake reply (needs sched-input). They must leave every fingerprint unchanged.
+   */
+  noise?: { pad: number; edges: number; periodNs: bigint };
+  /** Filled with the runtime's bridge capabilities at the handshake. */
+  capsOut?: string[];
 }
 
 export interface ClosedLoopRecord {
@@ -114,7 +121,20 @@ export async function runClosedLoop(opts: ClosedLoopOptions): Promise<ClosedLoop
         ...(opts.onSpawn ? { onSpawn: opts.onSpawn } : {}),
       },
       {
-        hello: () => solveAt(0n, 'initial'),
+        hello: (_tick, caps) => {
+          opts.capsOut?.push(...caps);
+          const cmds = solveAt(0n, 'initial');
+          const n = opts.noise;
+          if (n)
+            for (let i = 1; i <= n.edges; i++)
+              cmds.push({
+                type: 'J',
+                vns: BigInt(i) * n.periodNs,
+                pad: n.pad,
+                level: (i & 1) as 0 | 1,
+              });
+          return cmds;
+        },
         pad: (e) => {
           counts.padEvents++;
           timeline.push(`G ${e.vns} gpio${e.pad} drive=${e.drive} level=${e.level}`);

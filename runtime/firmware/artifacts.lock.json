@@ -34,6 +34,10 @@
     "TbiR1Scan": {
       "sha256": "5ddd712902b1ac514f095b319a685de7f5a2a5da5e47bba49b167dbcee8f60b3",
       "source": "runtime/firmware/arduino/TbiR1Scan (provision.sh firmware, 2026-10-08, TBI_RUNTIME_HOME=~/tbi-s8-rt, same pinned toolchain). Sprint 11 R1 slice 6 matrix load. Note: on this host a rebuild does not reproduce the earlier pins byte for byte (already recorded in Sprint 7, s7-reproducibility.json); tests always use the pinned bytes by sha256."
+    },
+    "TbiEdgeEcho": {
+      "sha256": "8cf4804dc1ba37f5c1afc9acdb22498200c31b40a5e3a39715bafc6c625688de",
+      "source": "runtime/firmware/arduino/TbiEdgeEcho (provision.sh firmware TbiEdgeEcho, 2026-10-09, TBI_RUNTIME_HOME=~/tbi-s12-rt, same pinned toolchain). Sprint 12 bridge v2 scheduled-input test firmware."
     }
   }
 }

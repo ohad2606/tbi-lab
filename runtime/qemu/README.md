@@ -24,7 +24,7 @@ repeated-run baseline (see `docs/runtime/R1-REPORT.md`).
 
 ## Patches (R1.1, R1.11)
 
-All five patches were written by TBI Lab. None contains code from a community fork
+All patches were written by TBI Lab (0001–0005 in R1, 0006 onward in Sprint 12). None contains code from a community fork
 (a159x36, lcgamboa/PICSimLab) or from any AGPL project (Velxio). Those were inspected as
 references in Sprint 0 (`docs/research/classic-esp32-gpio-implementations.md`). Nothing from
 them was copied.
@@ -36,6 +36,7 @@ them was copied.
 | 0003 | hw/gpio/esp32_gpio: classic ESP32 digital GPIO register model               | New in R1. Clean-room from the ESP32 TRM (IO_MUX and GPIO Matrix chapter) and the ESP-IDF `soc/gpio_reg.h` offsets. Property-gated (`classic-registers`), so the ESP32-S3/C3 subclasses keep the upstream stub                                                                                  | 3 files, +254 |
 | 0004 | hw/misc/tbi_bridge: TBI synchronous runtime bridge + `tbi-serial` chardev   | New in R1. Replaces the Sprint 0/1 `tbi-gpio-bridge`/`syncsock` design. No demo devices, no ignore-mask                                                                                                                                                                                         | 2 files, +385 |
 | 0005 | accel/tcg, util/qemu-timer: host sync timers must not shape vCPU scheduling | New in R1 (closure blocker). Adds `QEMU_TIMER_ATTR_HOST_SYNC`; icount round-robin slices ignore such timers, a vCPU stopped by one resumes its slice, kicks from servicing it are discarded, and they do not count when deciding whether a new guest timer is earliest. The bridge tick uses it | 6 files, +134 |
+| 0006 | hw/misc/tbi_bridge: bridge v2 handshake and scheduled inputs                | New in Sprint 12 (ADR-011 §1–2). `H tbi-bridge 2 <tick> <caps>`; `J`/`X` scheduled inputs in one queue (512 entries, ≥ 1 µs apart per pad) served by one `QEMU_TIMER_ATTR_HOST_SYNC` timer, applied silently at the exact virtual time; anything outside the limits exits 3                     | 1 file        |
 
 The patch SHA-256s are recorded in each build's `runtime.json` and in the R1 report.
 
