@@ -247,3 +247,18 @@ Rollback (documented, not needed): frontend first —
 - Unchanged from C.9: no per-solve wall budget; two sessions halve each other's rate; documented
   model limits; firmware rebuild reproducibility.
 
+
+## Part E — Gate D accepted; tracked follow-up items (2026-10-09)
+
+PM decision (2026-10-09): Engineering Gate D accepted. `6791df9` and `50849ad` pushed to
+`sprint-11` (remote HEAD `50849ad`). Deployed frontend and Session Host stay `0487ce6`. Not
+authorised: merge to `main`, completion tag, deploy or restart, production changes, closing
+Sprint 11. **Awaiting explicit Owner Smoke acceptance.**
+
+Tracked follow-up items (recorded only; no fix is part of this approval):
+
+| ID | Item | Evidence | Status |
+|---|---|---|---|
+| FU-11-1 | **Staging artifact store gap**: the staging store (`/var/lib/tbi-s8-artifacts`) lacks the R1 reference image `5f177cbe…`, so two `s8-deployed-policy` session cases cannot run on staging (lease `not_found` → `400 ticket`); they pass 7/7 on dev-lab | D.2 | Open — needs a decision on provisioning staging's system artifacts |
+| FU-11-2 | **`/tmp` deployment issue**: `/tmp` is a 2 GB RAM-backed tmpfs; an `npm ci` in a temporary worktree filled it and truncated packages. `publish-runtime.sh` / `publish-frontend.sh` use `mktemp -d` (default `/tmp`); Gate C ran them with `TMPDIR` on disk | D.4 | Open — script/default change not authorised yet |
+| FU-11-3 | **QEMU capacity limits**: two concurrent sessions halve each other's simulation rate on this host; no per-solve wall budget on the host (the 8×8 matrix stays local-only); the preview plan allows one runtime session globally | C.4, C.9, D.4 | Open — carried to the capacity track |
