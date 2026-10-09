@@ -29,6 +29,10 @@ LoadCredential=ticket.key:/etc/@N@/ticket.key
 # Phase 4: plans, quotas and global limits; the Session Host's live sessions defer new builds.
 LoadCredential=policy.json:/etc/@N@/policy.json
 Environment=TBI_POLICY_FILE=%d/policy.json
+# Sprint 12 (ADR-011 §5): the instance's runtime.json (install.sh / switch-runtime.sh copy it from
+# the runtime prefix the QEMU units bind): its `capabilities` decide `requires` vs `unsupported`.
+LoadCredential=runtime.json:/etc/@N@/runtime.json
+Environment=TBI_RUNTIME_JSON=%d/runtime.json
 Environment=TBI_RUNTIME_HEALTH=unix:/run/@N@-runtime/api.sock
 RuntimeDirectory=@N@-build
 RuntimeDirectoryMode=0755

@@ -37,6 +37,8 @@ export interface ArduinoProviderOptions {
   retainedOutputBytes: number;
   /** Where the tools run (Sprint 8): the per-job sandbox in deployment; local by default. */
   runner?: ToolRunner;
+  /** Sprint 12: bridge capabilities of the runtime tickets are issued for (runtime.json). */
+  runtimeCapabilities?: readonly string[];
 }
 
 /** Output the tools may produce before we stop reading (JSON wraps the compiler output). */
@@ -275,7 +277,12 @@ export class ArduinoEsp32Provider implements BuildProvider {
     return {
       ok: true,
       imagePath: d('image.bin'),
-      features: analyzeFeatures({ source, symbols, libraries }),
+      features: analyzeFeatures({
+        source,
+        symbols,
+        libraries,
+        ...(this.opts.runtimeCapabilities ? { capabilities: this.opts.runtimeCapabilities } : {}),
+      }),
       ...sizesOf(result.compiler_out ?? ''),
       diagnostics,
       log,

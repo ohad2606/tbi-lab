@@ -106,12 +106,18 @@ cmd_qemu() {
       die "build failed: $RT/logs/qemu-build-$id.log"
     log "built in $((SECONDS - t0)) s"
     ninja -C "$work/build" install >"$RT/logs/qemu-install-$id.log" 2>&1 || die "install failed"
+    # Sprint 12 (ADR-011 §5): the bridge capabilities this build implements, from the patched
+    # source itself (a v1 bridge has none). The build service reads them from runtime.json.
+    local caps
+    caps="$(sed -n 's/^#define TBI_BRIDGE_CAPS "\(.*\)"$/\1/p' "$work/hw/misc/tbi_bridge.c")"
+    caps="$(tr ',' '\n' <<<"$caps" | sed '/^$/d;/^-$/d' | sed 's/.*/"&"/' | paste -sd, -)"
     {
       echo "{"
       echo "  \"runtimeId\": \"$id\","
       echo "  \"upstream\": \"$QEMU_REPO\","
       echo "  \"tag\": \"$QEMU_TAG\","
       echo "  \"commit\": \"$QEMU_COMMIT\","
+      echo "  \"capabilities\": [${caps}],"
       echo "  \"patches\": ["
       local first=1
       for p in "$REPO"/runtime/qemu/patches/*.patch; do

@@ -8,6 +8,8 @@
  *   TBI_TICKET_KEY_FILE    run-ticket key shared with the Session Host (identity/ticket.ts)
  *   TBI_BUILD_STATE        private state directory (grants.db)
  *   TBI_POLICY_FILE        plans, quotas and global limits (runtime/policy; default: built-in)
+ *   TBI_RUNTIME_JSON       Sprint 12: the provisioned runtime.json of the runtime tickets are
+ *                          issued for; its `capabilities` turn e.g. Wire into `requires: [i2c]`
  *   TBI_RUNTIME_HEALTH     the Session Host's socket (`unix:/path`): its live sessions defer new
  *                          builds (sessions first); stale/unreachable: no new build starts
  *                          (fail closed); unset: no runtime on this host, never deferred
@@ -23,6 +25,7 @@
  * SIGTERM: stop accepting requests; job directories are removed by each job's cleanup and by the
  * sweep at the next start.
  */
+import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { ESP32_ARDUINO_PROFILE } from '@tbi-lab/domain';
@@ -40,6 +43,20 @@ import { createBuildHttpServer } from './http.js';
 import { BuildService, DEFAULT_LIMITS } from './service.js';
 import { ArtifactStore } from './store.js';
 import record from './profiles/esp32-arduino-3.3.12.json' with { type: 'json' };
+
+/** The `capabilities` of a provisioned runtime.json: known tokens only, sorted (fail closed). */
+function runtimeCapabilitiesFrom(file: string | undefined): string[] {
+  if (!file) return [];
+  const caps = (JSON.parse(readFileSync(file, 'utf8')) as { capabilities?: unknown }).capabilities;
+  // A runtime provisioned before Sprint 12 records no capabilities: a v1 bridge has none.
+  if (caps === undefined) return [];
+  if (
+    !Array.isArray(caps) ||
+    !caps.every((c) => typeof c === 'string' && ['i2c', 'pad-func', 'sched-input'].includes(c))
+  )
+    throw new Error(`${file}: no valid "capabilities" list`);
+  return [...caps].sort();
+}
 
 const RUNTIME_HOME =
   process.env.TBI_RUNTIME_HOME ??
@@ -62,12 +79,17 @@ const workRoot = process.env.TBI_BUILD_WORK ?? join(RUNTIME_HOME, 'build-jobs');
 const capBytes = Number(process.env.TBI_ARTIFACT_CAP_MB ?? 256) * 1024 * 1024;
 const leaseMs = Number(process.env.TBI_ARTIFACT_LEASE_MS ?? 600_000);
 
+// Sprint 12 (ADR-011 §5): the bridge capabilities of the runtime this service issues tickets
+// for, read from that runtime's provisioned runtime.json (TBI_RUNTIME_JSON). Without it: none,
+// and every facility a capability would provide stays `unsupported` (the Sprint 11 behaviour).
+const runtimeCapabilities = runtimeCapabilitiesFrom(process.env.TBI_RUNTIME_JSON);
 const jobUnit = process.env.TBI_BUILD_JOB_UNIT;
 const provider = new ArduinoEsp32Provider({
   profile: ESP32_ARDUINO_PROFILE,
   record: record as ArduinoProfileRecord,
   home: arduinoHome,
   retainedOutputBytes: 256 * 1024,
+  runtimeCapabilities,
   ...(jobUnit ? { runner: new SandboxToolRunner({ unit: jobUnit }) } : {}),
 });
 // Jobs of a previous process never outlive it (they would write into swept directories).

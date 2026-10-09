@@ -72,10 +72,22 @@ function literalPins(code: string, call: RegExp, any: RegExp): number[] {
   return INPUT_CAPABLE_GPIOS;
 }
 
+/**
+ * Facilities a runtime can provide (Sprint 12, ADR-011 §5): when the runtime the build service
+ * issues tickets for announces the bridge capability, the facility is no longer `unsupported` but
+ * `requires`d, and its core library is allowed. The capability set comes from the provisioned
+ * runtime.json, never typed by hand.
+ */
+const RUNTIME_FACILITIES: Record<string, { capability: string; libraries: string[] }> = {
+  i2c: { capability: 'i2c', libraries: ['Wire'] },
+};
+
 export function analyzeFeatures(input: {
   source: string;
   symbols: string[];
   libraries: string[];
+  /** Bridge capabilities of the runtime tickets are issued for (absent: none). */
+  capabilities?: readonly string[];
 }): FeatureReport {
   const code = codeOnly(input.source);
   const syms = new Set(input.symbols);
@@ -99,10 +111,17 @@ export function analyzeFeatures(input: {
   );
   const gpioInterrupt = !interruptUsed ? [] : callPins.length > 0 ? callPins : INPUT_CAPABLE_GPIOS;
   const restart = /\bESP\s*\.\s*restart\s*\(|\besp_restart\s*\(/.test(code);
+  const requires = new Set<string>();
+  for (const [facility, f] of Object.entries(RUNTIME_FACILITIES)) {
+    if (!input.capabilities?.includes(f.capability) || !unsupported.has(facility)) continue;
+    unsupported.delete(facility);
+    requires.add(f.capability);
+  }
   return {
     internalPull,
     gpioInterrupt,
     restart,
     unsupported: [...unsupported].sort(),
+    ...(requires.size ? { requires: [...requires].sort() } : {}),
   };
 }

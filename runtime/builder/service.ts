@@ -270,6 +270,7 @@ export class BuildService {
           gpioInterrupt: f.gpioInterrupt,
           restart: f.restart,
           unsupported: f.unsupported,
+          ...(f.requires?.length ? { requires: f.requires } : {}),
         }
       : null;
     const ticket = signTicket(this.access.ticketKey, {

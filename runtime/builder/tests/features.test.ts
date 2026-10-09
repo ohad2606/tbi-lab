@@ -89,3 +89,40 @@ describe('analyzeFeatures', () => {
     expect(codeOnly('a /* b */ c // d\n"e" \'f\'')).toBe('a   c  \n"" \'\'');
   });
 });
+
+describe('Sprint 12 (ADR-011 §5): facilities the runtime provides become `requires`', () => {
+  const wire = {
+    source: '#include <Wire.h>\nvoid setup(){ Wire.begin(21, 22); }\nvoid loop(){}',
+    symbols: ['i2c_master_bus_add_device', 'setup', 'loop'],
+    libraries: ['Wire'],
+  };
+  it('T-R3-14: Wire is unsupported without the i2c capability and required with it', () => {
+    expect(analyzeFeatures(wire)).toMatchObject({ unsupported: ['i2c'] });
+    expect(analyzeFeatures(wire).requires).toBeUndefined();
+    expect(analyzeFeatures({ ...wire, capabilities: ['sched-input'] })).toMatchObject({
+      unsupported: ['i2c'],
+    });
+    const v2 = analyzeFeatures({ ...wire, capabilities: ['i2c', 'pad-func', 'sched-input'] });
+    expect(v2.unsupported).toEqual([]);
+    expect(v2.requires).toEqual(['i2c']);
+  });
+  it('T-R3-15: internal pulls stay refused with Wire (PM D-4)', () => {
+    const f = analyzeFeatures({
+      ...wire,
+      source: `${wire.source}\nvoid x(){ pinMode(4, INPUT_PULLUP); }`,
+      capabilities: ['i2c', 'pad-func', 'sched-input'],
+    });
+    expect(f.internalPull).toEqual([4]);
+    expect(f.requires).toEqual(['i2c']);
+  });
+  it('other facilities are unaffected by the capabilities (SPI stays unsupported)', () => {
+    const f = analyzeFeatures({
+      source: '',
+      symbols: ['spi_bus_initialize', 'i2cInit'],
+      libraries: ['SPI', 'Wire'],
+      capabilities: ['i2c', 'pad-func', 'sched-input'],
+    });
+    expect(f.unsupported).toEqual(['spi']);
+    expect(f.requires).toEqual(['i2c']);
+  });
+});

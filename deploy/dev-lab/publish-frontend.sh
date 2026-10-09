@@ -32,7 +32,10 @@ ref="${1:?usage: publish-frontend.sh <git-ref>}"
 repo="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
 sha="$(git -C "$repo" rev-parse --verify "${ref}^{commit}")"
 root=/srv/tbi-lab/dev-lab
-work="$(mktemp -d)"
+# FU-11-2: disk-backed scratch space with a free-space check (deploy-tmp.sh).
+# shellcheck source=deploy-tmp.sh
+source "$(dirname "$0")/deploy-tmp.sh"
+work="$(deploy_tmp)"
 trap 'git -C "$repo" worktree remove --force "$work/src" >/dev/null 2>&1 || true; rm -rf "$work"' EXIT
 
 git -C "$repo" worktree add --detach "$work/src" "$sha" >/dev/null

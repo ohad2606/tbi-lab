@@ -52,6 +52,11 @@ export interface FeatureReport {
   restart: boolean;
   /** Core facilities the simulator does not model (for example `wifi`, `i2c`, `spi`). */
   unsupported: string[];
+  /**
+   * Sprint 12 (ADR-011 §5): runtime bridge capabilities the firmware needs (e.g. `i2c` for
+   * Wire), when the configured runtime provides them. Absent when none.
+   */
+  requires?: string[];
 }
 
 export interface ArtifactInfo {

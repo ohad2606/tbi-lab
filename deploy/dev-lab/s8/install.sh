@@ -74,6 +74,10 @@ done
 # Policy (Phase 4): plans, quotas, global limits — the values this instance enforces.
 sudo install -m 0400 "$here/policy.json" "/etc/$N/policy.json"
 
+# Sprint 12: the runtime's identity and bridge capabilities, for the build service (ADR-011 §5).
+test -f "$RUNTIME/runtime.json" || { echo "no runtime.json in $RUNTIME" >&2; exit 1; }
+sudo install -m 0400 "$RUNTIME/runtime.json" "/etc/$N/runtime.json"
+
 # Artifact store (staging has its own) and the empty sandbox roots with their mount points.
 sudo install -d -o tbi-build -g tbi-artifacts -m 2750 "$STORE"
 root() { # $1 root dir, rest: mount points
@@ -82,6 +86,21 @@ root() { # $1 root dir, rest: mount points
   for d in usr etc tmp proc sys dev run "$@"; do sudo install -d -m 0755 "$r/$d"; done
   for l in bin lib sbin; do sudo ln -sfn "usr/$l" "$r/$l"; done
 }
+# FU-11-1 (Sprint 12): the pinned system artifacts (runtime/firmware/artifacts.lock.json, e.g. the
+# R1 reference image TbiGpioProof 5f177cbe…) as reference images of this store: copied from the
+# runtime home's artifact directory, each verified against its pinned sha256, owned by the store
+# user, never overwriting a file the store already holds. The build service loads them at start.
+ARTIFACTS="${TBI_S8_ARTIFACTS:-$(dirname "$(readlink -f "$RUNTIME")")/artifacts}"
+for sha in $(python3 -c 'import json,sys; [print(a["sha256"]) for a in json.load(open(sys.argv[1]))["artifacts"].values()]' \
+  "$repo/runtime/firmware/artifacts.lock.json"); do
+  sudo test -e "$STORE/$sha.bin" && continue
+  src="$ARTIFACTS/$sha.bin"
+  test -f "$src" || { echo "pinned artifact $sha is not in $ARTIFACTS" >&2; exit 1; }
+  [ "$(sha256sum < "$src" | cut -d' ' -f1)" = "$sha" ] || { echo "sha256 mismatch: $src" >&2; exit 1; }
+  sudo install -o tbi-build -g tbi-artifacts -m 0440 "$src" "$STORE/$sha.bin"
+  echo "imported reference image $sha"
+done
+
 root "/var/lib/$N-build/sandbox-root" opt/tbi-arduino opt/tbi-node opt/tbi-build job
 root "/var/lib/$N-runtime/sandbox-root" opt/tbi-runtime session
 
