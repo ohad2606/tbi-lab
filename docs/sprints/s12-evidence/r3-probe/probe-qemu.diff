@@ -1,0 +1,103 @@
+diff --git a/hw/i2c/esp32_i2c.c b/hw/i2c/esp32_i2c.c
+index 5f4022f..62d9aa6 100644
+--- a/hw/i2c/esp32_i2c.c
++++ b/hw/i2c/esp32_i2c.c
+@@ -4,6 +4,11 @@
+ #include "qemu/error-report.h"
+ #include "hw/i2c/esp32_i2c.h"
+ #include "hw/irq.h"
++#include "qemu/timer.h"
++
++/* TBI R3 PROBE: controller trace into the probe log. */
++FILE *tbi_probe_log(void);
++#define PTRACE(...) do { FILE *pf_ = tbi_probe_log(); if (pf_) { fprintf(pf_, "%" PRId64 " ", qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL)); fprintf(pf_, __VA_ARGS__); fputc('\n', pf_); } } while (0)
+ 
+ static void esp32_i2c_do_transaction(Esp32I2CState * s);
+ static void esp32_i2c_update_irq(Esp32I2CState * s);
+@@ -45,10 +50,18 @@ static uint32_t esp32_i2c_get_status_reg(Esp32I2CState* s)
+ static void esp32_i2c_update_irq(Esp32I2CState * s)
+ {
+     int irq_state = !!(s->int_raw_reg & s->int_ena_reg);
++    PTRACE("C%p IRQ %d raw=%08x ena=%08x", (void *)s, irq_state, s->int_raw_reg, s->int_ena_reg);
+     qemu_set_irq(s->irq, irq_state);
+ }
+ 
++static uint64_t esp32_i2c_read_(void * opaque, hwaddr addr, unsigned int size);
+ static uint64_t esp32_i2c_read(void * opaque, hwaddr addr, unsigned int size)
++{
++    uint64_t v = esp32_i2c_read_(opaque, addr, size);
++    PTRACE("C%p R %03x %08" PRIx64, opaque, (unsigned)addr, v);
++    return v;
++}
++static uint64_t esp32_i2c_read_(void * opaque, hwaddr addr, unsigned int size)
+ {
+     Esp32I2CState * s = Esp32_I2C(opaque);
+ 
+@@ -98,6 +111,7 @@ static uint64_t esp32_i2c_read(void * opaque, hwaddr addr, unsigned int size)
+ 
+ static void esp32_i2c_write(void * opaque, hwaddr addr, uint64_t value, unsigned int size)
+ {
++    PTRACE("C%p W %03x %08" PRIx64, opaque, (unsigned)addr, value);
+     Esp32I2CState * s = Esp32_I2C(opaque);
+ 
+     switch(addr) {
+@@ -177,6 +191,7 @@ static void esp32_i2c_do_transaction(Esp32I2CState * s)
+     bool stop_or_end = false;
+     for (int i_cmd = 0; i_cmd < ESP32_I2C_CMD_COUNT && !stop_or_end; ++i_cmd) {
+         uint32_t cmd = s->cmd_reg[i_cmd];
++        PTRACE("C%p CMD %d %08x", (void *)s, i_cmd, cmd);
+         char opcode = FIELD_EX32(cmd, I2C_CMD, OPCODE);
+         switch (opcode) {
+             case I2C_OPCODE_RSTART:
+@@ -205,7 +220,15 @@ static void esp32_i2c_do_transaction(Esp32I2CState * s)
+                 }
+                 for (size_t nbytes = 0; nbytes < length; ++nbytes) {
+                     uint8_t data = fifo8_pop(&s->tx_fifo);
+-                    i2c_send(s->bus, data);
++                    /* TBI R3 PROBE: a target NACK of a data byte raises ACK_ERR and ends the
++                     * command list when ACK checking is enabled (TRM I2C: ack_check_en). */
++                    if (i2c_send(s->bus, data) != 0
++                        && FIELD_EX32(cmd, I2C_CMD, ACK_CHECK_EN)
++                        && FIELD_EX32(cmd, I2C_CMD, ACK_EXP) == 0) {
++                        s->int_raw_reg = FIELD_DP32(s->int_raw_reg, I2C_INT_RAW, ACK_ERR, 1);
++                        stop_or_end = true;
++                        break;
++                    }
+                 }
+                 break;
+             }
+diff --git a/hw/i2c/meson.build b/hw/i2c/meson.build
+index e72dca0..cfe3f7d 100644
+--- a/hw/i2c/meson.build
++++ b/hw/i2c/meson.build
+@@ -15,7 +15,7 @@ i2c_ss.add(when: 'CONFIG_SMBUS_EEPROM', if_true: files('smbus_eeprom.c'))
+ i2c_ss.add(when: 'CONFIG_ARM_SBCON_I2C', if_true: files('arm_sbcon_i2c.c'))
+ i2c_ss.add(when: 'CONFIG_OMAP', if_true: files('omap_i2c.c'))
+ i2c_ss.add(when: 'CONFIG_PPC4XX', if_true: files('ppc4xx_i2c.c'))
+-i2c_ss.add(when: 'CONFIG_XTENSA_ESP32', if_true: files('esp32_i2c.c'))
++i2c_ss.add(when: 'CONFIG_XTENSA_ESP32', if_true: files('esp32_i2c.c', 'tbi_i2c_probe.c'))
+ i2c_ss.add(when: 'CONFIG_XTENSA_ESP32S3', if_true: files('esp32_i2c.c'))
+ i2c_ss.add(when: 'CONFIG_PCA954X', if_true: files('i2c_mux_pca954x.c'))
+ i2c_ss.add(when: 'CONFIG_PMBUS', if_true: files('pmbus_device.c'))
+diff --git a/hw/xtensa/esp32.c b/hw/xtensa/esp32.c
+index e811927..3014142 100644
+--- a/hw/xtensa/esp32.c
++++ b/hw/xtensa/esp32.c
+@@ -769,8 +769,15 @@ static void esp32_machine_init_i2c(Esp32SocState *s)
+      */
+     DeviceState *i2c_master = DEVICE(&s->i2c[0]);
+     I2CBus* i2c_bus = I2C_BUS(qdev_get_child_bus(i2c_master, "i2c"));
+-    I2CSlave* tmp105 = i2c_slave_create_simple(i2c_bus, "tmp105", 0x48);
+-    object_property_set_int(OBJECT(tmp105), "temperature", 25 * 1000, &error_fatal);
++    /* TBI R3 PROBE: upstream's phantom TMP105 (0x48, 25 degC) removed; diagnostic targets. */
++    DeviceState *port = qdev_new("tbi-i2c-probe");
++    qdev_prop_set_uint8(port, "address", 0x27);
++    qdev_prop_set_string(port, "personality", "port");
++    i2c_slave_realize_and_unref(I2C_SLAVE(port), i2c_bus, &error_fatal);
++    DeviceState *regs = qdev_new("tbi-i2c-probe");
++    qdev_prop_set_uint8(regs, "address", 0x50);
++    qdev_prop_set_string(regs, "personality", "regs");
++    i2c_slave_realize_and_unref(I2C_SLAVE(regs), i2c_bus, &error_fatal);
+ }
+ 
+ static void esp32_machine_init_openeth(Esp32SocState *ss)

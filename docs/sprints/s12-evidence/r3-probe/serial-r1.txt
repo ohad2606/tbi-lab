@@ -1,0 +1,22 @@
+ets Jul 29 2019 12:21:46
+
+rst:0x1 (POWERON_RESET),boot:0x12 (SPI_FAST_FLASH_BOOT)
+configsip: 0, SPIWP:0xee
+clk_drv:0x00,q_drv:0x00,d_drv:0x00,cs0_drv:0x00,hd_drv:0x00,wp_drv:0x00
+mode:DIO, clock div:2
+load:0x3fff0030,len:4640
+load:0x40078000,len:15592
+load:0x40080400,len:3164
+entry 0x4008059c
+PROBE-BEGIN
+P-1 PASS begin=1
+P-2 PASS ret=0
+P-3 PASS ret=4
+P-4 PASS ret=4
+P-5 PASS setptr=0 n=4 bytes=4a,4b,48,49,
+P-6 PASS ret=0 n=2 5f,5c
+P-7 PASS wr=0 ptr=0 n=99 bad=0
+P-8 PASS acks=[27 50]
+P-9 PASS sent (decoded offline from the target log)
+PROBE-END
+
