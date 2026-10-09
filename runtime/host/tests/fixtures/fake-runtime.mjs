@@ -11,6 +11,10 @@
  *   - prints `IN5=<level>` whenever GPIO5's injected level changes.
  * Failure modes: no_hello, crash, stall, garbage, guest_reset, serial_flood, ignore_term,
  * time_backwards; drive_input_only (drives input-only GPIO34 HIGH at 20 ms).
+ * Bridge v2 (Sprint 12, ADR-011): TBI_FAKE_HELLO replaces the handshake line's version and
+ * capability fields (e.g. `2 i2c,pad-func,sched-input`, `2 -`, `3 -`); TBI_FAKE_FRAMES is a list
+ * of extra frames, `;`-separated, sent at 10 ms (e.g. `B 10000000 0 S 27 0`); every reply line to
+ * them is echoed on UART0 as `REPLY <frame> -> <commands>`.
  */
 import { connect } from 'node:net';
 import { openSync, readSync, writeSync, closeSync } from 'node:fs';
@@ -92,7 +96,9 @@ function bootCounter() {
 async function main() {
   await new Promise((r) => sock.on('connect', r));
   if (mode === 'no_hello') return new Promise(() => {});
-  const hello = await exchange(`H tbi-bridge 1 ${tick}`);
+  const [ver, caps] = (process.env.TBI_FAKE_HELLO ?? '1').split(' ');
+  const hello = await exchange(`H tbi-bridge ${ver} ${tick}${caps ? ` ${caps}` : ''}`);
+  const extra = (process.env.TBI_FAKE_FRAMES ?? '').split(';').filter(Boolean);
   // Boot first (at time 0), then act on the initial input levels the host injected.
   serial(0n, `BOOT ${bootCounter()}\n`);
   await apply(hello);
@@ -105,6 +111,12 @@ async function main() {
       await setPad(2, 1, level, vns - tick + 1234n);
     }
     if (mode === 'drive_input_only' && n === 20) await setPad(34, 1, 1, vns - 500n);
+    if (n === 10)
+      for (const fr of extra) {
+        const r = await exchange(fr);
+        serial(BigInt(fr.split(' ')[1]), `REPLY ${fr} -> ${r.join('|')}\n`);
+        await apply(r);
+      }
     if (mode === 'serial_flood') serial(vns, 'x'.repeat(200));
     if (mode === 'garbage' && n === 20) sock.write('Z this is not a frame\n');
     if (mode === 'time_backwards' && n === 20) {

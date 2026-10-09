@@ -13,7 +13,17 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { connect, createServer, type Socket } from 'node:net';
 import { join } from 'node:path';
-import { encodeReply, parseFrame, ProtocolError, type Command, type Level } from './protocol.js';
+import {
+  encodeReply,
+  parseFrame,
+  ProtocolError,
+  type Capability,
+  type Command,
+  type I2cPhase,
+  type InputSchedule,
+  type Level,
+  type PadFunction,
+} from './protocol.js';
 
 /** How a session ended. */
 export type Outcome =
@@ -58,10 +68,34 @@ export interface PadEvent {
   level: Level;
 }
 
+export interface PadFunctionEvent {
+  vns: bigint;
+  pad: number;
+  func: PadFunction;
+  openDrain: boolean;
+}
+
+export interface I2cEvent {
+  vns: bigint;
+  bus: 0 | 1;
+  phase: I2cPhase;
+}
+
 export interface SessionHandler {
-  /** Initial external pad levels, applied before the first guest instruction. */
-  hello?(tickNs: bigint): Command[];
+  /**
+   * Initial external pad levels, applied before the first guest instruction. `caps` are the
+   * runtime's bridge capabilities (empty for a v1 runtime, ADR-011 §1).
+   */
+  hello?(tickNs: bigint, caps: readonly Capability[]): Command[];
   pad?(e: PadEvent): Command[];
+  /** A pad's routed function changed (capability `pad-func`). */
+  func?(e: PadFunctionEvent): Command[];
+  /**
+   * One I2C bus phase (capability `i2c`). The reply must hold exactly one `K` (S, W) or `D` (R)
+   * and none for P. Without a handler no target exists: START and bytes are NACKed and a read
+   * sees the released bus (0xff).
+   */
+  i2c?(e: I2cEvent): Command[];
   /** Periodic virtual-time tick: the only point where runtime commands apply (ADR-007). */
   tick?(vns: bigint): Command[];
   serial?(vns: bigint, bytes: Buffer): void;
@@ -104,6 +138,12 @@ export interface SessionOptions {
   killGraceMs?: number;
   /** How QEMU is started (Sprint 8): directly (default) or as a sandboxed per-session unit. */
   launch?: RuntimeLauncher;
+  // ---- Sprint 12 (bridge v2) ------------------------------------------------------------------
+  /**
+   * The host's mirror of QEMU's scheduled-input queue. The session advances it on every frame and
+   * records every `J`/`X` it sends, so a handler can check `problem()` before scheduling.
+   */
+  schedule?: InputSchedule;
 }
 
 export interface ResourceSample {
@@ -123,7 +163,9 @@ export interface SessionResult {
   serial: Buffer;
   /** Bytes dropped because the serial buffer limit was reached. */
   serialOverflow: number;
-  frames: { H: number; G: number; T: number; S: number };
+  frames: { H: number; G: number; T: number; S: number; F: number; B: number };
+  /** Bridge capabilities the runtime announced (empty: v1 runtime or no handshake). */
+  caps: Capability[];
   lastVns: bigint;
   /** spawn -> bridge handshake (machine initialised, before the first guest instruction). */
   startupMs: number | null;
@@ -155,7 +197,9 @@ export function runSession(opts: SessionOptions, handler: SessionHandler): Promi
   const tickUs = opts.tickUs ?? 1000;
   const serialLimit = opts.serialLimitBytes ?? 1 << 20;
   const diagLimit = opts.diagnosticsLimitBytes ?? 64 << 10;
-  const frames = { H: 0, G: 0, T: 0, S: 0 };
+  const frames = { H: 0, G: 0, T: 0, S: 0, F: 0, B: 0 };
+  let caps: Capability[] = [];
+  let hello = false;
   const serialChunks: Buffer[] = [];
   let serialBytes = 0;
   let serialOverflow = 0;
@@ -199,7 +243,7 @@ export function runSession(opts: SessionOptions, handler: SessionHandler): Promi
             if (reply === null) continue;
             handled++;
             if (opts.fault && handled >= opts.fault.afterFrames && quitAt === null) {
-              if (opts.fault.kind === 'malformed_reply') s.write('X not-a-command\n');
+              if (opts.fault.kind === 'malformed_reply') s.write('Z not-a-command\n');
               else if (opts.fault.kind === 'invalid_pad') s.write('I 40 1\nC\n');
               else if (opts.fault.kind === 'drop_connection') s.destroy();
               // 'stop_replying': send nothing; QEMU waits and the wall-clock limit ends it.
@@ -220,10 +264,21 @@ export function runSession(opts: SessionOptions, handler: SessionHandler): Promi
     /** One frame from QEMU -> the reply to send (null: no reply expected). */
     function onLine(line: string): string | null {
       const f = parseFrame(line);
+      if (f.type === 'H') {
+        if (hello) throw new ProtocolError('second bridge handshake');
+        hello = true;
+      } else if (!hello) throw new ProtocolError(`${f.type} frame before the handshake`);
       if (f.type !== 'H' && f.vns < lastVns) {
         throw new ProtocolError(`simulation time went backwards: ${f.vns} < ${lastVns}`);
       }
-      if (f.type !== 'H') lastVns = f.vns;
+      if (f.type !== 'H') {
+        lastVns = f.vns;
+        opts.schedule?.advance(f.vns);
+      }
+      if (f.type === 'F' && !caps.includes('pad-func'))
+        throw new ProtocolError('F frame without the pad-func capability');
+      if (f.type === 'B' && !caps.includes('i2c'))
+        throw new ProtocolError('B frame without the i2c capability');
       frames[f.type]++;
       if (f.type === 'S') {
         const room = serialLimit - serialBytes;
@@ -233,23 +288,44 @@ export function runSession(opts: SessionOptions, handler: SessionHandler): Promi
         if (quitAt === null) handler.serial?.(f.vns, f.bytes);
         return null;
       }
-      if (quitAt !== null) return 'C\n'; // shutting down: let QEMU finish, change nothing
+      const ctx = { frame: f, caps };
+      // A bus phase always needs its K/D, also while shutting down (the target is gone: NACK).
+      const absent = (p: I2cPhase): Command[] =>
+        p.op === 'R'
+          ? [{ type: 'D', byte: 0xff }]
+          : p.op === 'P'
+            ? []
+            : [{ type: 'K', ack: false }];
+      if (quitAt !== null) return encodeReply(f.type === 'B' ? absent(f.phase) : [], ctx);
       let cmds: Command[];
       if (f.type === 'H') {
-        if (f.version !== 1) throw new ProtocolError(`unsupported bridge protocol ${f.version}`);
         if (f.tickNs !== BigInt(tickUs) * 1000n) throw new ProtocolError('tick mismatch');
+        caps = f.caps;
+        ctx.caps = caps;
         startupMs = performance.now() - started;
-        cmds = handler.hello?.(f.tickNs) ?? [];
+        cmds = handler.hello?.(f.tickNs, caps) ?? [];
       } else if (f.type === 'G') {
         cmds = handler.pad?.({ vns: f.vns, pad: f.pad, drive: f.drive, level: f.level }) ?? [];
+      } else if (f.type === 'F') {
+        cmds =
+          handler.func?.({ vns: f.vns, pad: f.pad, func: f.func, openDrain: f.openDrain }) ?? [];
+      } else if (f.type === 'B') {
+        cmds = handler.i2c
+          ? handler.i2c({ vns: f.vns, bus: f.bus, phase: f.phase })
+          : absent(f.phase);
       } else {
         cmds = handler.tick?.(f.vns) ?? [];
+      }
+      const reply = encodeReply(cmds, ctx);
+      for (const c of cmds) {
+        if (c.type === 'J') opts.schedule?.add(c.vns, c.pad);
+        else if (c.type === 'X') opts.schedule?.cancel(c.pad);
       }
       if (cmds.some((c) => c.type === 'Q')) {
         lastSample = sampleProc(child.pid!) ?? lastSample;
         quitAt = performance.now();
       }
-      return encodeReply(cmds);
+      return reply;
     }
 
     let killedBySession = false;
@@ -269,6 +345,7 @@ export function runSession(opts: SessionOptions, handler: SessionHandler): Promi
         serial: Buffer.alloc(0),
         serialOverflow: 0,
         frames,
+        caps,
         lastVns,
         startupMs: null,
         wallMs: performance.now() - started,
@@ -434,6 +511,7 @@ export function runSession(opts: SessionOptions, handler: SessionHandler): Promi
           serial,
           serialOverflow,
           frames,
+          caps,
           lastVns,
           startupMs,
           wallMs: ended - started,

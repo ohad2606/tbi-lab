@@ -21,6 +21,12 @@ export interface TicketFeatures {
   gpioInterrupt: number[];
   restart: boolean;
   unsupported: string[];
+  /**
+   * Sprint 12 (ADR-011 §5), additive: runtime bridge capabilities the firmware needs (for
+   * example `i2c` for `Wire`). Absent in tickets from earlier build services. The Session Host
+   * refuses the session at the bridge handshake if the runtime does not announce every one.
+   */
+  requires?: string[];
 }
 
 export interface RunTicket {
@@ -59,7 +65,11 @@ function validFeatures(f: unknown): f is TicketFeatures | null {
     typeof o.restart === 'boolean' &&
     Array.isArray(o.unsupported) &&
     o.unsupported.length <= 64 &&
-    o.unsupported.every((s) => typeof s === 'string' && s.length <= 64)
+    o.unsupported.every((s) => typeof s === 'string' && s.length <= 64) &&
+    (o.requires === undefined ||
+      (Array.isArray(o.requires) &&
+        o.requires.length <= 16 &&
+        o.requires.every((s) => typeof s === 'string' && /^[a-z0-9-]{1,32}$/.test(s))))
   );
 }
 

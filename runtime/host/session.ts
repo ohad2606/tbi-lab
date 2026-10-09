@@ -34,7 +34,7 @@ import {
   type RuntimePinMode,
   type SolveOutcome,
 } from '@tbi-lab/engine';
-import type { Command } from '../harness/protocol.js';
+import { InputSchedule, type Capability, type Command } from '../harness/protocol.js';
 import { runSession, type Outcome, type SessionResult } from '../harness/session.js';
 import type { Principal } from '../identity/principal.js';
 import type { TicketFeatures } from '../identity/ticket.js';
@@ -118,6 +118,9 @@ export class HostSession {
   private acceptedRevision: number;
   private appliedRevision: number;
   private latestPublished: string | null = null;
+  /** Sprint 12: the runtime's bridge capabilities (from `H`) and the scheduled-input mirror. */
+  private caps: readonly Capability[] = [];
+  private readonly schedule = new InputSchedule();
 
   constructor(
     private readonly config: HostConfig,
@@ -379,10 +382,11 @@ export class HostSession {
           quitGraceMs: this.config.quitGraceMs,
           killGraceMs: this.config.killGraceMs,
           onSpawn: (pid) => (this.pid = pid),
+          schedule: this.schedule,
           ...(this.config.launch ? { launch: this.config.launch } : {}),
         },
         {
-          hello: () => this.onHello(),
+          hello: (_tick, caps) => this.onHello(caps),
           pad: (e) => this.onPad(e.vns, e.pad, e.drive, e.level),
           tick: (vns) => this.onTick(vns),
           serial: (vns, bytes) => this.onSerial(vns, bytes),
@@ -453,7 +457,23 @@ export class HostSession {
     return cmds;
   }
 
-  private onHello(): Command[] {
+  private onHello(caps: readonly Capability[]): Command[] {
+    this.caps = caps;
+    // ADR-011 §1: capabilities are bound to the session. Firmware that needs a facility this
+    // runtime does not announce never executes an instruction: quit inside the handshake reply.
+    const missing = (this.features?.requires ?? []).filter((r) => !caps.includes(r as Capability));
+    if (missing.length) {
+      const detail = { requires: missing, runtimeCapabilities: [...caps] };
+      this.log.append({
+        type: 'diagnostic',
+        simNs: '0',
+        severity: 'error',
+        code: 'unsupported_feature',
+        detail,
+      });
+      this.pendingFailure = { reason: 'unsupported_feature', detail };
+      return [{ type: 'Q' }];
+    }
     return this.solveAndInject();
   }
 
