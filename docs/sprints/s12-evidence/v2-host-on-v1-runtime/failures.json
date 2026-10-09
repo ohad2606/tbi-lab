@@ -1,0 +1,211 @@
+{
+  "invalid_firmware": {
+    "outcome": "stalled",
+    "exitCode": null,
+    "signal": "SIGKILL",
+    "diagnostics": [
+      "Adding SPI flash device"
+    ],
+    "frames": {
+      "H": 1,
+      "G": 0,
+      "T": 300,
+      "S": 113,
+      "F": 0,
+      "B": 0
+    }
+  },
+  "qemu_crash": {
+    "outcome": "crashed",
+    "exitCode": null,
+    "signal": "SIGSEGV",
+    "diagnostics": [
+      "Adding SPI flash device"
+    ],
+    "frames": {
+      "H": 1,
+      "G": 8,
+      "T": 1000,
+      "S": 323,
+      "F": 0,
+      "B": 0
+    }
+  },
+  "bridge_crash": {
+    "outcome": "peer_lost",
+    "exitCode": 4,
+    "signal": null,
+    "diagnostics": [
+      "Adding SPI flash device",
+      "qemu-system-xtensa: tbi-bridge: host connection lost while waiting for a reply; terminating (fail closed)"
+    ],
+    "frames": {
+      "H": 1,
+      "G": 5,
+      "T": 494,
+      "S": 304,
+      "F": 0,
+      "B": 0
+    }
+  },
+  "malformed_reply": {
+    "outcome": "protocol_error_runtime",
+    "exitCode": 3,
+    "signal": null,
+    "diagnostics": [
+      "Adding SPI flash device",
+      "qemu-system-xtensa: tbi-bridge: unexpected reply from host; terminating (fail closed)"
+    ],
+    "frames": {
+      "H": 1,
+      "G": 5,
+      "T": 494,
+      "S": 304,
+      "F": 0,
+      "B": 0
+    }
+  },
+  "invalid_pad": {
+    "outcome": "protocol_error_runtime",
+    "exitCode": 3,
+    "signal": null,
+    "diagnostics": [
+      "Adding SPI flash device",
+      "qemu-system-xtensa: tbi-bridge: malformed input command; terminating (fail closed)"
+    ],
+    "frames": {
+      "H": 1,
+      "G": 5,
+      "T": 494,
+      "S": 304,
+      "F": 0,
+      "B": 0
+    }
+  },
+  "frame_malformed_frame": {
+    "outcome": "protocol_error_host",
+    "exitCode": null,
+    "signal": "SIGKILL",
+    "error": "pad out of range: G 5 99 1 1",
+    "diagnostics": [
+      ""
+    ],
+    "frames": {
+      "H": 1,
+      "G": 0,
+      "T": 0,
+      "S": 0,
+      "F": 0,
+      "B": 0
+    }
+  },
+  "frame_time_backwards": {
+    "outcome": "protocol_error_host",
+    "exitCode": null,
+    "signal": "SIGKILL",
+    "error": "simulation time went backwards: 1000000 < 2000000",
+    "diagnostics": [
+      ""
+    ],
+    "frames": {
+      "H": 1,
+      "G": 0,
+      "T": 1,
+      "S": 0,
+      "F": 0,
+      "B": 0
+    }
+  },
+  "frame_bad_version": {
+    "outcome": "protocol_error_host",
+    "exitCode": null,
+    "signal": "SIGKILL",
+    "error": "v2 hello lacks caps: H tbi-bridge 2 1000000",
+    "diagnostics": [
+      ""
+    ],
+    "frames": {
+      "H": 0,
+      "G": 0,
+      "T": 0,
+      "S": 0,
+      "F": 0,
+      "B": 0
+    }
+  },
+  "frame_garbage": {
+    "outcome": "protocol_error_host",
+    "exitCode": null,
+    "signal": "SIGKILL",
+    "error": "malformed frame: \"\\u0000\\u0001binary\"",
+    "diagnostics": [
+      ""
+    ],
+    "frames": {
+      "H": 1,
+      "G": 0,
+      "T": 0,
+      "S": 0,
+      "F": 0,
+      "B": 0
+    }
+  },
+  "timeout": {
+    "outcome": "timeout",
+    "exitCode": null,
+    "signal": "SIGKILL",
+    "diagnostics": [
+      "Adding SPI flash device"
+    ],
+    "frames": {
+      "H": 1,
+      "G": 0,
+      "T": 199,
+      "S": 0,
+      "F": 0,
+      "B": 0
+    }
+  },
+  "command_order": {
+    "outcome": "host_error",
+    "exitCode": null,
+    "signal": "SIGKILL",
+    "error": "command at 900000000 ns is in the past (now 1000000000 ns)",
+    "diagnostics": [
+      "Adding SPI flash device"
+    ],
+    "frames": {
+      "H": 1,
+      "G": 8,
+      "T": 1000,
+      "S": 323,
+      "F": 0,
+      "B": 0
+    }
+  },
+  "guest_reset": {
+    "outcome": "guest_exit",
+    "exitCode": 0,
+    "signal": null,
+    "diagnostics": [
+      "Adding SPI flash device"
+    ],
+    "frames": {
+      "H": 1,
+      "G": 7,
+      "T": 900,
+      "S": 325,
+      "F": 0,
+      "B": 0
+    }
+  },
+  "start_missing_binary": {
+    "outcome": "start_failed",
+    "error": "spawn /nonexistent/qemu-system-xtensa ENOENT"
+  },
+  "start_bad_flash": {
+    "outcome": "start_failed",
+    "exitCode": 1,
+    "diagnostics": "qemu-system-xtensa: -drive file=/tmp/tbi-session-GI3d7V/flash.bin.absent,if=mtd,format=raw: Could not open '/tmp/tbi-session-GI3d7V/flash.bin.absent': No such file or directory"
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "host": {
+    "cpus": 1,
+    "model": "Neoverse-N1",
+    "memTotalMb": 3895
+  },
+  "runtimeId": "33e35e4ac5e798d7",
+  "simulatedS": 15.5,
+  "startupMs": 170,
+  "qemuRssAfterBootMb": 62,
+  "qemuPeakRssMb": 109.8,
+  "qemuRssAtEndMb": 62,
+  "hostNodePeakRssMb": 92.4,
+  "qemuCpuS": 10.4,
+  "wallS": 12.8,
+  "cpuPerSimS": 0.671,
+  "wallPerSimS": 0.826,
+  "shutdownMs": 10,
+  "overlayPrepareMs": 7.1,
+  "overlayBytes": 4194304,
+  "frames": {
+    "H": 1,
+    "G": 81,
+    "T": 15500,
+    "S": 431,
+    "F": 0,
+    "B": 0
+  },
+  "disk": {
+    "runtimeHome": "164M",
+    "qemuInstall": "39M",
+    "artifacts": "101M",
+    "arduino": "20K",
+    "build": "26M",
+    "src": "0"
+  }
+}

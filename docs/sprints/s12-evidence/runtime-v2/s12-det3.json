@@ -1,0 +1,18 @@
+{
+  "runtimeId": "b5b34b49cb7e4049",
+  "caps": [
+    "i2c",
+    "pad-func",
+    "sched-input"
+  ],
+  "got": {
+    "timeline": "d7c5fa5d21119067",
+    "serialTimed": "f6de86c978e38653",
+    "serial": "4cfdcad418d34960"
+  },
+  "pinned": {
+    "timeline": "3609733803d65c28",
+    "serialTimed": "f6de86c978e38653",
+    "serial": "4cfdcad418d34960"
+  }
+}

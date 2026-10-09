@@ -1,0 +1,33 @@
+{
+  "runtimeId": "b5b34b49cb7e4049",
+  "esp32-distance-alarm": {
+    "sha256": "ef56bcd5de9a5b837a5b087d61b8218371b781f5ff79fa2b68951a12997ca0ce",
+    "features": {
+      "internalPull": [],
+      "gpioInterrupt": [],
+      "restart": false,
+      "unsupported": []
+    }
+  },
+  "esp32-thermo-hygrometer": {
+    "sha256": "ecf186ebc049b12c2011042248f418e18981eb780b464a5df08e0fe33c1f1df7",
+    "features": {
+      "internalPull": [],
+      "gpioInterrupt": [],
+      "restart": false,
+      "unsupported": []
+    }
+  },
+  "esp32-lcd-hello": {
+    "sha256": "7bb1a832516acf1969e8abac4ac656af3592275c95b6ff4bb89f8af2c8325590",
+    "features": {
+      "internalPull": [],
+      "gpioInterrupt": [],
+      "restart": false,
+      "unsupported": [],
+      "requires": [
+        "i2c"
+      ]
+    }
+  }
+}

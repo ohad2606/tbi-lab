@@ -1,0 +1,17 @@
+{
+  "text": [
+    "MicroPython v1.29.0 on 2026-08-24; Generic ESP32 module with ESP32",
+    "Type \"help()\" for more information.",
+    ">>> from machine import Pin",
+    ">>> a=Pin(35,Pin.IN)",
+    ">>> o=Pin(25,Pin.OUT)",
+    ">>> print(\"IN35\", a.value())",
+    "IN35 1",
+    ">>> o.value(a.value())"
+  ],
+  "ev25": [
+    "10",
+    "11"
+  ],
+  "io25": 3.2945639694504067
+}

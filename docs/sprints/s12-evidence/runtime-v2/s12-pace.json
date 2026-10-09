@@ -1,0 +1,18 @@
+{
+  "runtimeId": "b5b34b49cb7e4049",
+  "unpaced": {
+    "timeline": "6bdc37b6b70fe1f9d28c45b2d4ad454b380df56f5e68c8776cc1c386c0ad441a",
+    "serialTimed": "9176e2a9a41ed72cb79713d425c70a0903b20b7124ed8103aefbe1f68c0d41d8",
+    "serial": "eeba58f658f61e499d7f0a5d061009a17f1505f89ceca35537073678d1b97e77",
+    "wallMs": 10139.272149,
+    "pacedMs": 0
+  },
+  "paced": {
+    "timeline": "6bdc37b6b70fe1f9d28c45b2d4ad454b380df56f5e68c8776cc1c386c0ad441a",
+    "serialTimed": "9176e2a9a41ed72cb79713d425c70a0903b20b7124ed8103aefbe1f68c0d41d8",
+    "serial": "eeba58f658f61e499d7f0a5d061009a17f1505f89ceca35537073678d1b97e77",
+    "wallMs": 9951.503863999998,
+    "pacedMs": 0,
+    "maxAheadOfFirstTickMs": 0
+  }
+}

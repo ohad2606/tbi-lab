@@ -335,11 +335,125 @@ infeasibility).
 
 ---
 
+## Part F — Implementation (PM authorization "R3 GO, implementation approved", 2026-10-09)
+
+Decisions applied as approved: D-2..D-10. Commits on `sprint-12` after `b8ad8c4` (all local
+until a push is authorized; see the stop point):
+
+| Commit | Slice | Content |
+|---|---|---|
+| `04d66dc` | S12-2 | Bridge v2 host side: v1/v2 handshake, capabilities, `J`/`X`/`F`/`B`/`K`/`D` codecs with strict validation, `InputSchedule`, ticket `requires` |
+| `19539a4` | S12-3 | Patch 0006: v2 handshake, scheduled inputs on a host-sync timer |
+| `3609b46` | S12-5/9 UI | Catalog `sensor.hc_sr04`, `sensor.dht22`, `display.lcd1602_i2c`; EN/HE, palette, 2D, schematic, 3D, environment controls, LCD text |
+| `8ae1c05` | S12-4, S12-6 host | R2 engine models and Session Host devices; pad-function handling |
+| `e740d12` | S12-8 host | LCD engine model; I2C devices with electrical gating |
+| `7ba01fb` | S12-10a, S12-8 builder | Capabilities to the build service (`requires`), `switch-runtime.sh`, FU-11-1, FU-11-2 |
+| `58ad385` | D-10 | Real-time pacing by withholding tick replies |
+| `41197b1` | S12-6, S12-7 | Patches 0007 and 0008; R2/R3 on the real runtime |
+| `64cab5c` | docs | ADR-011 accepted with implementation notes; T-R3-5 corrected |
+| `5d33da6` | S12-5/9 | Three curated examples; new parts on the 20 grid |
+
+Product UI and examples were written by a delegated agent restricted to `app/`, then reviewed,
+corrected (two catalog issues it found were fixed in `packages/domain`) and tested here.
+
+### F.1 Runtime v2
+
+`40edccac` + patches 0001–0008. Dev-built runtime id **`b5b34b49cb7e4049`** in a private runtime
+home (`~/tbi-s12-rt`); the deployed runtime `33e35e4ac5e798d7` and `~/tbi-s8-rt` were never
+written to. All Runtime v2 evidence: `docs/sprints/s12-evidence/runtime-v2/`.
+
+| Check | Result |
+|---|---|
+| T-PROTO-1..8 (unit) | bridge-v2.test.ts 22/22 |
+| T-PROTO-9: v2 host on **v1** QEMU, local runtime suites (21 files) | 86/86 (one test, `r2-failures` erased flash, failed once under a concurrent firmware compile and passed alone; evidence `v2-host-on-v1-runtime/`) |
+| T-PROTO-10: malformed / out-of-limit `J`/`X` | 7/7 exit 3; the 1 µs pair accepted |
+| T-PROTO-12, edge timing, T-DET-8 | `X` cancels before due; edges 15 µs–23.3 ms at the scheduled spacing within the firmware's polling (−3..+4 µs); 1 ms vs 10 ms quanta identical |
+| T-DET-3 | 512 edges on an unread pad: boot fingerprint unchanged |
+| T-DET-1 continuity / re-pin | 0006 alone: bit-identical to the R1 pins. 0007–0008: guest output bit-identical (serial and serialTimed equal the R1 pins); the gate **timeline** changes by two explained mechanisms (below). **50/50 repeated runs** (10 per configuration) converge to one result per configuration: Runtime v2 pins full `95fd9c70c9c534a6`, boot `d7c5fa5d21119067` |
+| R2 (T-R2-2, -3, -7, -8) | pulseIn = oracle echo width truncated to 1 µs at 2 cm, 10 cm, 1 m, 4 m, and 1 m at 35 °C; out of range 0; DHT22 decodes (−10.0, 30.0), (21.5, 55.2), (60.0, 95.0) exactly; no pull-up → read failure |
+| R3 (T-R3-1, -3..-7, D-9) | Wire routes exactly pads 21/22 (open drain), no `G` while routed; probe P-1..P-9 promoted (scan 0x27/0x50 only, NACK 4/4, 100-byte transfers); a 4-byte write spans 360–450 µs at 100 kHz; LCD text and backlight through the Session Host; 5 V module with 3.3 V pull-ups → NACK + `i2c_logic_level` |
+| T-DET-4/5/6 (through the Session Host, events up to a fixed simulated time) | **70/70**: 10 runs × 7 scenarios (HC-SR04 at 0.1/1/4 m, DHT22 at 3 points, LCD) each give one fingerprint; pinned |
+| Pacing (D-10) | paced vs unpaced fingerprints identical; paced never ahead of real time |
+| Curated examples end to end (build service → ticket → app request → real QEMU) | 3/3: distance printed per the oracle and LED below 20 cm; exact T/RH; LCD "Hello, ESP32!" + uptime; Wire ticketed as `requires: ["i2c"]` |
+
+**Re-pin mechanisms (architecture §5.2, accepted by construction, never silent):**
+1. The bootloader routes the SPI flash pads 7–11 to the SPI controller; patch 0007 stops reporting
+   them as GPIO outputs (R1 reported five `G gpio7..11 drive=1 level=0` events at 0.30 s).
+2. `pinMode(INPUT)` writes `OUT_SEL = 0` and then `OEN_SEL = 1`: for a few instructions the pad is
+   routed to signal 0; its return to simple GPIO re-publishes `G gpio5 drive=0 level=0` once.
+
+Every other event and every timestamp is unchanged. The architecture's premise that v1 workloads
+never cause peripheral routing was wrong (every boot does); recorded in ADR-011 note 4.
+
+### F.2 Real test failures and their resolutions
+
+| Failure | Cause | Resolution |
+|---|---|---|
+| First 0007 build: every sketch with `pinMode(x, INPUT)` on a circuit pad refused (`periph:0`) | The pad-function rule ignored the output enable | QEMU: a peripheral owns a pad only when it can drive it; host: only routing still in place at the next tick refuses. Traced with a temporary register trace (dev build only) |
+| ESP-IDF I2C bus-clear produced 750 `G` frames | 0003 reported an open-drain 1 as driven | 0007: open-drain 1 is released |
+| Edge test tolerance 2 µs too tight | Firmware polling granularity, not edge placement | Bound set from the mechanism (one loop period + 1 µs), −3..+4 µs measured |
+| Edge test 1 ms vs 10 ms differed | Test design: `X` sent at a tick absent under a 10 ms quantum | Cancel moved to a tick common to both |
+| R2 runtime tests timed out | The `periph:0` refusal above | Same fix |
+| Fake-runtime fixture timings (3 cases) | Test frames earlier than the fake's own events | Frames moved later |
+| C-5 harness: lease expiry, vitest import, contaminated first run | Harness bugs; the first run overlapped an agent's test load | Fixed; re-run on a quiet host (F.4) |
+| `builder` temp-storage test once under load | Timing under a concurrent QEMU build | Passed alone (16/16); untouched code |
+
+### F.3 Physics: assumptions and limits recorded (for PM review)
+
+| Id | Item | Treatment |
+|---|---|---|
+| D-7 | DHT22 T_go | The AM2302 sheet (Aosong, Adafruit copy p.4) gives **"20–40 µs" with no typical value**. Used: 30 µs, the midpoint, documented. The firmware routine accepts the whole range |
+| A-R2-6 | HC-SR04 ECHO output impedance (not in any document) | 100 Ω; the level read is insensitive over 10 Ω–1 kΩ for the supported wirings (tested) |
+| A-R2-7 | DHT22 low-level output impedance | 100 Ω; low stays below V_IL with any pull-up ≥ 1 kΩ (tested) |
+| A-R2-8 | DHT22 input thresholds (not given) | CMOS 0.3/0.7 × VDD |
+| A-R3-1 | LCD backlight current (backpack schematic not found) | 20 mA (JHD659 p.7) while on, independent of supply in 4.5–5.5 V (real current is lower below 5.0 V) |
+| — | HC-SR04 re-trigger | Ignored while the previous echo is pending (module busy); the datasheet's "> 60 ms" is a recommendation, not enforced |
+| — | **LCD at 5 V with 3.3 V pull-ups** | Out of the PCF8574's input specification (V_IH = 0.7 VDD = 3.5 V): refused at the bus with `i2c_logic_level`. 5 V pull-ups over-stress the ESP32 pads (reported). In spec: module at 4.5 V with 3.3 V pull-ups (the curated example). Common hobby wiring therefore does not "work" in TBI Lab; a level-shifter part would be the in-spec 5 V solution (backlog) |
+| — | DC limits | Line levels during an I2C transaction and the sensors' transient currents are not in the DC result (transaction level) |
+
+### F.4 Pacing and C-5 on this host (local, in-process Session Host; no service touched)
+
+Mixed workload (HC-SR04 at 10 Hz, DHT22, TbiGpioProof), paced at real time, 150 s per run, first
+30 s (ROM and boot) excluded; evidence `runtime-v2/c5-n*-mix-paced.json`.
+
+| N | Host CPU | Per-session rate p5 (1 s windows) | Median | Tick gap p99 / max | Failures |
+|---|---|---|---|---|---|
+| 1 | 0.49 | 0.993 | 1.000 | 4 / 234 ms | 0 |
+| 2 | 0.82 | 0.989, 0.994 | 1.000, 1.001 | 3–7 / 514 ms | 0 |
+| 3 | 1.00 (saturated) | 0.82–1.06 | 0.91–1.17 | 4–11 / 886 ms | 0 |
+
+- One vCPU holds **two** paced sessions at real time; the third saturates it. Five sessions need
+  the D-1 hardware (≈ 2.5 vCPU at this mix, without headroom).
+- D-2 wording: "p5 ≥ 1.0×" over 1 s windows cannot be met exactly by a session paced at exactly
+  1.0× (window jitter ±1 %). **PM:** confirm the criterion as p5 ≥ 0.99× over 1 s windows, or
+  ≥ 1.0× over 5 s windows.
+- Tick-gap maxima (230–890 ms) occur in the first seconds after boot; p99 stays ≤ 11 ms.
+
+### F.5 Not done, and why
+
+| Item | Status |
+|---|---|
+| Staging Gate B (S12-10b), R2 staging checkpoint (S12-5c), C-5 on staging, T-OPS-1..5, T-SEC on a deployed instance, real-browser E2E against staging | Need a staging deployment: not authorized. Plan: [SPRINT-12-STAGING-PLAN.md](SPRINT-12-STAGING-PLAN.md) |
+| R-MCU-1 full size (62 + 30 runs) | Scheduled in the Gate B suites; the 50-run re-pin baseline is done |
+| Clean `provision.sh qemu` build of Runtime v2 (reproducing the id) | Gate B step B2 |
+| `switch-runtime.sh`, `install.sh` FU-11-1 changes | Written and syntax-checked; executed only in Gate B |
+| Wire1 (T-R3-9), MicroPython smoke on Runtime v2 (T-R3-16) | Not run yet; T-R3-16 is in the Gate B suites |
+| Negative-number input in the domain parser | Range-gated workaround in the inspector; domain fix is backlog |
+| Session Host `pacedMs` while running | Reported at the end of a session only |
+
+Process note: once, a `pkill -f` pattern matched its own helper shell (killed only that helper);
+processes are stopped by PID only.
+
+---
+
 ## Stop point
 
-Stopped before:
-- full Bridge v2 / R2 / R3 implementation (pending reconciliation of D-2..D-10);
-- any production change, deployment, merge or tag;
+*Earlier stop (Parts A–E): before implementation, pending D-2..D-10 (since approved).*
+
+Now stopped before:
+- any staging or dev-lab deployment, service restart or runtime switch (plan for PM review:
+  SPRINT-12-STAGING-PLAN.md);
+- any production change, merge or tag (Sprint 11 and Sprint 12 both stay open);
 - any infrastructure change.
 
 The probe tree and binary stay in `~/tbi-s12-probe` (scratch, not deployed). Deployments
