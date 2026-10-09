@@ -67,3 +67,4 @@ export {
 } from './peripherals/hd44780.js';
 export { HC_SR04_DC, hcsr04TrigLevel } from './parts/ultrasonic.js';
 export { DHT22_DC } from './parts/dht22.js';
+export { LCD1602_DC, PCF8574_VIH_FRACTION, PCF8574_VIL_FRACTION } from './parts/lcd.js';

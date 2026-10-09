@@ -38,6 +38,7 @@ import {
   InputSchedule,
   type Capability,
   type Command,
+  type I2cPhase,
   type PadFunction,
 } from '../harness/protocol.js';
 import { runSession, type Outcome, type SessionResult } from '../harness/session.js';
@@ -47,6 +48,7 @@ import type { HostConfig } from './config.js';
 import { sessionDir } from './config.js';
 import { RUNTIME_DEVICE_TYPES, RuntimeDevices } from './devices.js';
 import { EventLog } from './eventLog.js';
+import { I2cDevices, i2cAddressConflict } from './i2cDevices.js';
 import {
   COMMAND_QUANTUM_US,
   jsonSafe,
@@ -128,6 +130,9 @@ export class HostSession {
   private caps: readonly Capability[] = [];
   private readonly schedule = new InputSchedule();
   private devices: RuntimeDevices | null = null;
+  private i2c: I2cDevices | null = null;
+  /** The backlight token each I2C display's engine model has. */
+  private readonly backlights = new Map<string, string>();
 
   constructor(
     private readonly config: HostConfig,
@@ -294,6 +299,14 @@ export class HostSession {
         components: timed,
         detail: { reason: 'time_dependent' },
       });
+    // Two I2C parts at one address on one bus would both answer: refused before anything runs.
+    const conflict = i2cAddressConflict(this.request.circuit);
+    if (conflict)
+      return this.fail('electrical_error', {
+        code: 'i2c_address_conflict',
+        components: conflict,
+      });
+    this.i2c = new I2cDevices(this.request.circuit, this.request.attachments);
     this.devices = new RuntimeDevices(
       this.request.circuit,
       this.engine,
@@ -403,6 +416,7 @@ export class HostSession {
           hello: (_tick, caps) => this.onHello(caps),
           pad: (e) => this.onPad(e.vns, e.pad, e.drive, e.level),
           func: (e) => this.onFunc(e.vns, e.pad, e.func),
+          i2c: (e) => this.onI2c(e.vns, e.bus, e.phase),
           tick: (vns) => this.onTick(vns),
           serial: (vns, bytes) => this.onSerial(vns, bytes),
         },
@@ -455,7 +469,16 @@ export class HostSession {
 
   private solveAndInject(vns: bigint): Command[] {
     this.devices?.advance(vns);
-    const out = this.engine!.solve();
+    let out = this.engine!.solve();
+    // Sprint 12 (R3): a module's power decides its backlight load; follow it, then re-solve.
+    if (out.ok && this.i2c && !this.i2c.empty) {
+      const lit = this.i2c.power(out);
+      for (const ch of lit) {
+        this.engine!.setPartRuntime(ch.id, 'backlight', ch.backlight);
+        this.backlights.set(ch.id, ch.backlight);
+      }
+      if (lit.length) out = this.engine!.solve();
+    }
     this.latest = out;
     if (!out.ok) {
       // No defined operating point: the inputs cannot be derived honestly. Fail closed.
@@ -564,6 +587,7 @@ export class HostSession {
    */
   private onFunc(vns: bigint, pad: number, func: PadFunction): Command[] {
     this.simNs = vns;
+    this.i2c?.onFunc(pad, func);
     if (!this.request.attachments.some((a) => a.gpio === pad)) return [];
     if (func.startsWith('periph:')) {
       const detail = { gpio: pad, function: func };
@@ -581,6 +605,39 @@ export class HostSession {
     this.devices?.advance(vns);
     this.engine!.setPinMode(pad, 'input');
     return this.solveAndInject(vns);
+  }
+
+  /**
+   * Sprint 12 (ADR-011 §4, patch 0008): one I2C bus phase, answered by the circuit's I2C parts
+   * (electrically gated in I2cDevices). A write that switches a backlight changes the module's
+   * load: the circuit is solved again and any input it changes is injected in the same reply.
+   */
+  private onI2c(vns: bigint, bus: 0 | 1, phase: I2cPhase): Command[] {
+    this.simNs = vns;
+    this.devices?.advance(vns);
+    const latest = this.latest?.ok ? this.latest : null;
+    const r = this.i2c ? this.i2c.phase(vns, bus, phase, latest) : null;
+    const reply: Command[] =
+      phase.op === 'R'
+        ? [{ type: 'D', byte: typeof r === 'number' ? r : 0xff }]
+        : phase.op === 'P'
+          ? []
+          : [{ type: 'K', ack: r === true }];
+    const cmds: Command[] = [];
+    for (const { simNs, d } of this.i2c?.diagnostics.splice(0) ?? [])
+      this.log.append({ type: 'diagnostic', simNs: simNs.toString(), ...d });
+    if (phase.op === 'W' && this.i2c) {
+      let relit = false;
+      for (const id of this.i2c.changed) {
+        const token = this.i2c.backlight(id);
+        if (this.backlights.get(id) === token) continue;
+        this.backlights.set(id, token);
+        this.engine!.setPartRuntime(id, 'backlight', token);
+        relit = true;
+      }
+      if (relit) cmds.push(...this.solveAndInject(vns));
+    }
+    return [...cmds, ...reply];
   }
 
   private onSerial(vns: bigint, bytes: Buffer): void {
@@ -670,7 +727,18 @@ export class HostSession {
       this.log.append({ type: 'gpio', simNs: t, changes });
     }
     if (this.latest) {
-      const json = JSON.stringify(jsonSafe(this.latest));
+      // Sprint 12 (R3): an I2C display's content is part of its result.
+      let latest: unknown = this.latest;
+      if (this.latest.ok && this.i2c && !this.i2c.empty) {
+        const display = this.i2c.displayState();
+        const components = { ...this.latest.components };
+        for (const [id, st] of Object.entries(display))
+          if (components[id])
+            components[id] = { ...components[id]!, state: { ...components[id]!.state, ...st } };
+        latest = { ...this.latest, components };
+        this.i2c.changed.clear();
+      }
+      const json = JSON.stringify(jsonSafe(latest));
       if (json !== this.latestPublished) {
         this.latestPublished = json;
         this.log.append({ type: 'electrical', simNs: t, outcome: JSON.parse(json) });

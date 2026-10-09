@@ -54,6 +54,7 @@ const CMOS_HIGH = 0.7;
 export const RUNTIME_DEVICE_TYPES: Record<string, readonly Capability[]> = {
   'sensor.hc_sr04': ['sched-input'],
   'sensor.dht22': ['sched-input'],
+  'display.lcd1602_i2c': ['i2c', 'pad-func'],
 };
 
 export interface DeviceDiagnostic {
