@@ -81,6 +81,16 @@ export interface SessionStatus {
   endedAt: string | null;
   runtime: { pid: number | null; outcome: Outcome | null };
   revisions: MirrorRevisions;
+  /**
+   * Sprint 12 (D-10): simulation time per wall time since the handshake, the wall time tick
+   * replies were withheld to keep real time, and the wall-clock gaps between ticks (C-5).
+   */
+  pace: {
+    rate: number | null;
+    simPerWall: number | null;
+    pacedMs: number;
+    tickGapMs: { count: number; p99: number | null; max: number };
+  };
 }
 
 export class HostSession {
@@ -129,6 +139,12 @@ export class HostSession {
   /** Sprint 12: the runtime's bridge capabilities (from `H`) and the scheduled-input mirror. */
   private caps: readonly Capability[] = [];
   private readonly schedule = new InputSchedule();
+  /** Pacing and tick-gap statistics (D-10, C-5): 1 ms buckets up to 2 s, then the maximum. */
+  private readonly gapBuckets = new Uint32Array(2001);
+  private gapCount = 0;
+  private gapMax = 0;
+  private handshakeWall: number | null = null;
+  private pacedMs = 0;
   private devices: RuntimeDevices | null = null;
   private i2c: I2cDevices | null = null;
   /** The backlight token each I2C display's engine model has. */
@@ -410,6 +426,12 @@ export class HostSession {
           killGraceMs: this.config.killGraceMs,
           onSpawn: (pid) => (this.pid = pid),
           schedule: this.schedule,
+          ...(this.config.paceRate !== null ? { pace: { rate: this.config.paceRate } } : {}),
+          onTickGap: (gap) => {
+            this.gapBuckets[Math.min(2000, Math.max(0, Math.floor(gap)))]!++;
+            this.gapCount++;
+            this.gapMax = Math.max(this.gapMax, gap);
+          },
           ...(this.config.launch ? { launch: this.config.launch } : {}),
         },
         {
@@ -426,6 +448,7 @@ export class HostSession {
       return;
     }
     this.outcome = result.outcome;
+    this.pacedMs = result.pacedMs;
     this.flushWindow(this.simNs); // whatever the runtime produced before it ended
     this.finish(result);
   }
@@ -512,6 +535,7 @@ export class HostSession {
 
   private onHello(caps: readonly Capability[]): Command[] {
     this.caps = caps;
+    this.handshakeWall = performance.now();
     // ADR-011 §1: capabilities are bound to the session. Firmware that needs a facility this
     // runtime does not announce never executes an instruction: quit inside the handshake reply.
     const missing = (this.features?.requires ?? []).filter((r) => !caps.includes(r as Capability));
@@ -831,6 +855,36 @@ export class HostSession {
       endedAt: this.endedAt?.toISOString() ?? null,
       runtime: { pid: this.pid, outcome: this.outcome },
       revisions: this.revisions(),
+      pace: this.pace(),
+    };
+  }
+
+  private pace(): SessionStatus['pace'] {
+    let p99: number | null = null;
+    if (this.gapCount) {
+      const want = Math.ceil(this.gapCount * 0.99);
+      let seen = 0;
+      for (let ms = 0; ms < this.gapBuckets.length; ms++) {
+        seen += this.gapBuckets[ms]!;
+        if (seen >= want) {
+          p99 = ms + 1;
+          break;
+        }
+      }
+    }
+    const wall =
+      this.handshakeWall === null
+        ? null
+        : ((this.endedAt?.getTime() ?? Date.now()) -
+            Date.now() +
+            performance.now() -
+            this.handshakeWall) /
+          1000;
+    return {
+      rate: this.config.paceRate,
+      simPerWall: wall && wall > 0 ? Number(this.simNs) / 1e9 / wall : null,
+      pacedMs: Math.round(this.pacedMs),
+      tickGapMs: { count: this.gapCount, p99, max: Math.round(this.gapMax * 10) / 10 },
     };
   }
 

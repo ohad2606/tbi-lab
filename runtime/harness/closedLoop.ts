@@ -55,6 +55,8 @@ export interface ClosedLoopOptions {
   noise?: { pad: number; edges: number; periodNs: bigint };
   /** Filled with the runtime's bridge capabilities at the handshake. */
   capsOut?: string[];
+  /** Sprint 12 (D-10): pacing cap (session.ts); must not change any fingerprint. */
+  pace?: { rate: number };
 }
 
 export interface ClosedLoopRecord {
@@ -119,6 +121,7 @@ export async function runClosedLoop(opts: ClosedLoopOptions): Promise<ClosedLoop
         tickUs: opts.tickUs,
         ...(opts.stressMainLoop ? { stressMainLoop: true } : {}),
         ...(opts.onSpawn ? { onSpawn: opts.onSpawn } : {}),
+        ...(opts.pace ? { pace: opts.pace } : {}),
       },
       {
         hello: (_tick, caps) => {

@@ -146,6 +146,16 @@ export interface SessionOptions {
    * records every `J`/`X` it sends, so a handler can check `problem()` before scheduling.
    */
   schedule?: InputSchedule;
+  /**
+   * Sprint 12 (D-10, V1-ARCHITECTURE §7.8): real-time pacing. Simulation time may run at most
+   * `rate` x wall time after the handshake (1 = real time). The cap is applied ONLY by delaying
+   * the reply to a tick: QEMU waits for every reply, so simulation time does not advance while it
+   * is withheld and pacing cannot alter the simulated timeline. A session behind real time is
+   * never sped up. Absent: unpaced (as fast as the host allows).
+   */
+  pace?: { rate: number; slackMs?: number };
+  /** Observation only: called for every tick with the wall-clock gap since the previous one. */
+  onTickGap?(gapMs: number, vns: bigint): void;
 }
 
 export interface ResourceSample {
@@ -166,6 +176,8 @@ export interface SessionResult {
   /** Bytes dropped because the serial buffer limit was reached. */
   serialOverflow: number;
   frames: { H: number; G: number; T: number; S: number; F: number; B: number };
+  /** Sprint 12 (D-10): wall time the tick replies were withheld to keep real time (0: unpaced). */
+  pacedMs: number;
   /** Bridge capabilities the runtime announced (empty: v1 runtime or no handshake). */
   caps: Capability[];
   lastVns: bigint;
@@ -202,6 +214,9 @@ export function runSession(opts: SessionOptions, handler: SessionHandler): Promi
   const frames = { H: 0, G: 0, T: 0, S: 0, F: 0, B: 0 };
   let caps: Capability[] = [];
   let hello = false;
+  let pacedMs = 0;
+  let paceOrigin: number | null = null;
+  let lastTickWall: number | null = null;
   const serialChunks: Buffer[] = [];
   let serialBytes = 0;
   let serialOverflow = 0;
@@ -254,7 +269,11 @@ export function runSession(opts: SessionOptions, handler: SessionHandler): Promi
               hostHolding = true;
               return;
             }
-            s.write(reply);
+            const hold = paceHold(line);
+            if (hold > 0) {
+              pacedMs += hold;
+              setTimeout(() => !s.destroyed && s.write(reply), hold);
+            } else s.write(reply);
           } catch (e) {
             hostOutcome = e instanceof ProtocolError ? 'protocol_error_host' : 'host_error';
             hostError = (e as Error).message;
@@ -264,6 +283,23 @@ export function runSession(opts: SessionOptions, handler: SessionHandler): Promi
       });
       s.on('error', () => {});
     });
+
+    /**
+     * Pacing (D-10): how long to withhold the reply to `line` (a tick only). Simulation time
+     * `vns` may not run ahead of wall time since the handshake, by more than the slack.
+     */
+    function paceHold(line: string): number {
+      if (line[0] !== 'T') return 0;
+      const now = performance.now();
+      if (lastTickWall !== null) opts.onTickGap?.(now - lastTickWall, lastVns);
+      lastTickWall = now;
+      if (!opts.pace || paceOrigin === null || quitAt !== null) return 0;
+      const due = paceOrigin + Number(lastVns) / 1e6 / opts.pace.rate;
+      const ahead = due - now;
+      if (ahead <= (opts.pace.slackMs ?? 2)) return 0;
+      lastTickWall = due; // the gap is measured from when the reply is released
+      return ahead;
+    }
 
     /** One frame from QEMU -> the reply to send (null: no reply expected). */
     function onLine(line: string): string | null {
@@ -307,6 +343,7 @@ export function runSession(opts: SessionOptions, handler: SessionHandler): Promi
         caps = f.caps;
         ctx.caps = caps;
         startupMs = performance.now() - started;
+        paceOrigin = performance.now();
         cmds = handler.hello?.(f.tickNs, caps) ?? [];
       } else if (f.type === 'G') {
         cmds = handler.pad?.({ vns: f.vns, pad: f.pad, drive: f.drive, level: f.level }) ?? [];
@@ -350,6 +387,7 @@ export function runSession(opts: SessionOptions, handler: SessionHandler): Promi
         serialOverflow: 0,
         frames,
         caps,
+        pacedMs,
         lastVns,
         startupMs: null,
         wallMs: performance.now() - started,
@@ -516,6 +554,7 @@ export function runSession(opts: SessionOptions, handler: SessionHandler): Promi
           serialOverflow,
           frames,
           caps,
+          pacedMs,
           lastVns,
           startupMs,
           wallMs: ended - started,

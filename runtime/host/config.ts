@@ -70,6 +70,11 @@ export interface HostConfig {
   maxRequestBytes: number;
   /** Interval of the host's housekeeping (leases, storage, retention). */
   housekeepingMs: number;
+  /**
+   * Sprint 12 (D-10, V1-ARCHITECTURE §7.8): pacing cap, simulation time per wall time (1 = real
+   * time, for interactive sessions). Null: unpaced (tests and benchmarks of raw speed).
+   */
+  paceRate: number | null;
 }
 
 export function defaultConfig(
@@ -94,6 +99,7 @@ export function defaultConfig(
     publishIntervalUs: 10 * COMMAND_QUANTUM_US,
     maxRequestBytes: 1024 * 1024,
     housekeepingMs: 250,
+    paceRate: null,
   };
   return { ...base, ...overrides };
 }

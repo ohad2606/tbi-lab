@@ -76,6 +76,12 @@ const config = defaultConfig({
   artifactsDir: process.env.TBI_ARTIFACTS ?? join(RUNTIME_HOME, 'artifacts'),
   ...overrides,
 });
+// Sprint 12 (D-10): interactive sessions are capped at real time unless TBI_HOST_PACE says
+// otherwise (`off`, or a rate such as `2` for twice real time).
+const pace = process.env.TBI_HOST_PACE ?? '1';
+config.paceRate = pace === 'off' ? null : Number(pace);
+if (config.paceRate !== null && !(config.paceRate > 0))
+  throw new Error(`TBI_HOST_PACE must be 'off' or a positive rate, not ${pace}`);
 const host = new SessionHost(config);
 const server = createHttpServer(host, identity);
 
