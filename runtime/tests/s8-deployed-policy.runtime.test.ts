@@ -8,8 +8,10 @@
  * installed policy byte for byte.
  */
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { artifact } from '../harness/env.js';
 import { loadRequest } from './r2-support.js';
 
 const N = process.env.TBI_S8_INSTANCE ?? '';
@@ -90,8 +92,21 @@ const upload = (user: string, bytes: Buffer) =>
   fetch(`${BUILD}/v1/artifacts`, { method: 'POST', headers: as(user), body: bytes }).then(answer);
 const lease = (user: string, sha: string) =>
   fetch(`${BUILD}/v1/artifacts/${sha}/lease`, { method: 'POST', headers: as(user) }).then(answer);
+/**
+ * A session of `user` on the R1 image, set up through the normal API and the user's own grant:
+ * the user uploads the pinned bytes (Advanced .bin, allowed by the preview plan) and so owns the
+ * artifact, then leases it. Nothing relies on how the store happens to hold the image (a store can
+ * hold it as a managed artifact of another principal, which nobody else may lease).
+ */
+const r1Bytes = () => {
+  const bytes = readFileSync(artifact('TbiGpioProof').path);
+  expect(createHash('sha256').update(bytes).digest('hex')).toBe(R1_IMAGE);
+  return bytes;
+};
 async function session(user: string) {
-  const l = await lease(user, R1_IMAGE); // the R1 reference image is a global system artifact
+  expect((await upload(user, r1Bytes())).status).toBe(200);
+  const l = await lease(user, R1_IMAGE);
+  expect(l.status).toBe(200);
   return fetch(`${HOST}/sessions`, {
     method: 'POST',
     headers: as(user, { 'content-type': 'application/json' }),
