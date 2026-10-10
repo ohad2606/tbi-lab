@@ -88,6 +88,45 @@ Do not implement later capabilities unless they are part of the active sprint.
 
 ---
 
+## MCU Pin Capability and Connection Correctness — Architectural Requirement
+
+TBI Lab must model controller pins as structured capabilities and constraints, not as generic GPIO numbers.
+
+For every supported MCU/board, the product must eventually be able to distinguish:
+- hard invalid/unavailable pins;
+- reserved board/flash/PSRAM pins;
+- input/output capability;
+- voltage-domain limits;
+- current/loading limits where modeled;
+- boot/strapping implications;
+- USB/JTAG/debug conflicts;
+- ADC/DAC/PWM capability where applicable;
+- peripheral-routing capability;
+- valid-but-conditional assignments;
+- valid-but-not-recommended assignments;
+- recommended/default board assignments.
+
+Do not assume pin behavior is identical across ESP32 family members or across different boards that use the same SoC.
+
+ESP32-family peripheral routing can be flexible. Do not encode simplistic fixed-pin rules for I2C/SPI/UART when the silicon/board allows routing through the GPIO matrix.
+
+Warnings must be severity-accurate:
+- **Error** for a hard incompatibility or electrical violation.
+- **Warning** for a meaningful conditional/conflict/boot/debug risk.
+- **Recommendation** when a connection is valid but another assignment is preferred.
+
+Functional compatibility and electrical compatibility are separate checks. A connection can pass one and fail the other.
+
+When firmware exists, future diagnostics should compare physical wiring against configured firmware pins and peripheral roles.
+
+The AI Engineer must use the same canonical pin-capability database as the simulator. It must not invent pin mappings from model memory.
+
+Authoritative controller/board data must come from official datasheets, technical reference manuals, board schematics, official pinout documentation and vendor SDK/peripheral documentation.
+
+Start with the exact approved V1 controller/board. Do not build a universal MCU database before additional controllers enter approved scope.
+
+---
+
 ## Internationalization and Localization — Architectural Requirement
 
 TBI Lab is not a bilingual product architecture.
