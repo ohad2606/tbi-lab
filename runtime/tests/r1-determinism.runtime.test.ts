@@ -8,7 +8,7 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { afterAll, describe, expect, it } from 'vitest';
-import { artifact, assertProvisioned, recordEvidence } from '../harness/env.js';
+import { artifact, assertProvisioned, recordEvidence, runtimeInfo } from '../harness/env.js';
 import { ticketFor } from '../identity/test-gate.js';
 import { PROTOCOL, type CreateSessionRequest } from '../host/protocol.js';
 import type { HostSession } from '../host/session.js';
@@ -31,10 +31,31 @@ const END = 3_000_000_000n;
  * 2026-10-08 from three runs each that reproduced one result. A change to the runtime, the
  * firmware, the engine or these circuits is a new baseline, re-established the same way.
  */
-const PINNED: Record<string, string> = {
+const PINNED_R1: Record<string, string> = {
   motion: '88122085bf12750f',
   night: '1511138e44d4f5e4',
 };
+/**
+ * Runtime v2 (Sprint 12, patches 0006-0008), established 2026-10-10 from 10 runs each that
+ * reproduced one result. Against R1 exactly one event differs per workload: the 0.89 s GPIO window
+ * also carries the input-only pads 34, 35, 36 and 39 once (drive 0, level 0): `pinMode(INPUT)`
+ * routes the pad to signal 0 for a few instructions and its return to simple GPIO is published
+ * (re-pin mechanism 2, SPRINT-12.md F.1). Every electrical outcome and timestamp is unchanged.
+ */
+const PINNED_V2: Record<string, string> = {
+  motion: '5fdb6a1ad50a412a',
+  night: '5596d749c3ce4f8c',
+};
+/** Runtime v2 is the one carrying patch 0007 (pad functions). */
+function isRuntimeV2(): boolean {
+  try {
+    return runtimeInfo().patches.some((p) => p.file.startsWith('0007-'));
+  } catch {
+    return false; // not provisioned: assertProvisioned() reports it
+  }
+}
+const PINNED = isRuntimeV2() ? PINNED_V2 : PINNED_R1;
+const RUNS = Number(process.env.TBI_R1_DET_RUNS ?? 3);
 
 function fixture(name: string): CreateSessionRequest {
   const fx = JSON.parse(readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8')) as {
@@ -103,11 +124,11 @@ describe('R1 determinism: the Sprint 10 parts in Session Host sessions', () => {
       ],
     ],
   ] as const)
-    it(`${file}: three sessions with scheduled live parameters reproduce one runtime event stream`, async () => {
+    it(`${file}: ${RUNS} sessions with scheduled live parameters reproduce one runtime event stream`, async () => {
       assertProvisioned();
       const hashes: string[] = [];
       const streams: ReturnType<typeof runtimeEvents>[] = [];
-      for (let i = 0; i < 3; i++) {
+      for (let i = 0; i < RUNS; i++) {
         const s = await workload(fixture(file), component, schedule as never);
         const events = runtimeEvents(s, END);
         streams.push(events);
