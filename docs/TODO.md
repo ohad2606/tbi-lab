@@ -192,3 +192,204 @@ TBI Lab ultimately has three synchronized representations of one canonical Circu
 - **Schematic View** — professional schematic representation, initially primarily derived from the canonical model.
 
 All views, X-Ray overlays, instruments, AI explanations and measurements must refer to the same electrical truth.
+
+
+---
+
+## MCU Pin Capability & Connection Validation
+
+**Status:** Approved / Required Product Capability  
+**Priority:** High. This is part of professional simulator correctness and must be considered before broad MCU/component expansion.
+
+### Goal
+
+TBI Lab must understand the electrical and functional capabilities of every MCU/board pin and warn the user when a connection is invalid, unsafe, unavailable, reserved, unsupported, or technically possible but not recommended.
+
+This is not a cosmetic pinout overlay. It is a validation layer tied to the exact selected controller/board model.
+
+### Core principle
+
+**A pin is not just a GPIO number.**
+
+Validation must consider the exact:
+- MCU family and variant;
+- module/package;
+- development board;
+- board routing;
+- flash/PSRAM reservations;
+- power pins and voltage domains;
+- strapping/boot pins;
+- USB/JTAG/debug use;
+- input/output capability;
+- ADC/DAC capability where relevant;
+- hardware peripheral routing;
+- current/voltage limits;
+- protocol-specific constraints;
+- board-default or recommended pins.
+
+The simulator must never assume that pin capability is identical across different ESP32 variants or different boards built around the same SoC.
+
+### Important ESP32 design rule
+
+ESP32-family peripherals may support flexible GPIO routing, so TBI Lab must not reduce validation to a simplistic list of fixed I2C/SPI/UART pins.
+
+For each supported board, distinguish:
+
+1. **Required / fixed**
+   - Function cannot work on arbitrary GPIO because of silicon, package or board-level constraints.
+
+2. **Unavailable / reserved**
+   - Pin is consumed by flash, PSRAM, USB, board hardware, or another fixed function.
+
+3. **Valid**
+   - Pin supports the requested function correctly.
+
+4. **Valid but conflict-prone / conditional**
+   - Pin works only if another feature is disabled or avoided.
+
+5. **Valid but not recommended**
+   - Technically usable, but may conflict with boot behavior, debugging, board defaults or common peripheral use.
+
+6. **Recommended / default**
+   - Board/vendor/common-library default pins for the requested function.
+
+### Validation severity
+
+Use at least three user-facing severity levels:
+
+#### Error
+The requested connection cannot work correctly or violates a hard constraint.
+
+Examples:
+- output connected to an input-only pin;
+- peripheral assigned to a pin that the selected board does not expose;
+- use of a pin reserved by onboard flash/PSRAM;
+- voltage outside a pin's supported electrical range.
+
+#### Warning
+The connection may work but has a meaningful engineering risk or side effect.
+
+Examples:
+- boot/strapping pin usage;
+- conflict with USB/JTAG/debug functionality;
+- shared peripheral/resource conflict;
+- board-specific caveat.
+
+#### Recommendation
+The connection is valid, but another pin assignment is preferred.
+
+Examples:
+- preferred/default I2C pins;
+- pins commonly used by board libraries/examples;
+- cleaner routing or fewer conflicts.
+
+Warnings and recommendations must never be presented as hard errors unless the actual device/board documentation makes them hard constraints.
+
+### Pin Inspector
+
+Selecting an MCU pin should eventually show structured information such as:
+
+- GPIO number;
+- physical board pin;
+- current mode/direction;
+- supported functions;
+- digital input/output capability;
+- ADC/DAC/PWM capability where applicable;
+- supported peripheral routing;
+- electrical voltage domain;
+- current limitations where modeled;
+- boot/strapping role;
+- reserved/shared functions;
+- currently assigned function;
+- active conflicts;
+- recommended use.
+
+### Connection-time feedback
+
+When the user begins or completes a connection, TBI Lab should be able to provide immediate validation.
+
+Examples:
+
+- **Cannot connect:** GPIO X is not output-capable on this controller.
+- **Conflict:** This pin is currently used by USB/JTAG.
+- **Warning:** This is a boot-strapping pin; the attached circuit may affect startup.
+- **Recommendation:** I2C can be routed here, but this board's default SDA/SCL pins are X/Y.
+- **Electrical error:** The connected signal is 5 V while this MCU pin is limited to 3.3 V logic.
+
+### Protocol-aware validation
+
+Validation must understand the intended function, not only the wire.
+
+For protocols such as:
+- I2C;
+- SPI;
+- UART;
+- PWM;
+- ADC;
+- interrupts;
+- future buses/peripherals,
+
+the system must evaluate:
+- whether the pin supports the role;
+- whether the peripheral can be routed there;
+- whether pins conflict with each other or board resources;
+- whether required electrical support exists, such as pull-ups for I2C;
+- whether the selected board/library has preferred/default assignments.
+
+### Electrical + functional validation
+
+Pin validation must combine two layers:
+
+1. **Functional capability**
+   - Can this pin perform the requested MCU/peripheral function?
+
+2. **Electrical compatibility**
+   - Is the connected voltage/current/loading safe and valid?
+
+A connection may be functionally valid but electrically unsafe, or electrically safe but functionally invalid. TBI Lab must distinguish these cases.
+
+### Firmware correlation
+
+When firmware is available, TBI Lab should eventually compare code configuration against physical wiring.
+
+Examples:
+- firmware initializes I2C on GPIO 8/9 while the display is wired to GPIO 4/5;
+- code configures GPIO as input while the circuit expects it to drive a transistor;
+- ADC code targets a pin without ADC capability;
+- two firmware peripherals attempt to claim conflicting resources.
+
+This should feed the AI Engineer and diagnostics layer.
+
+### AI behavior
+
+The AI Engineer must use the same canonical pin-capability data as the simulator.
+
+It must not invent pin assignments from memory.
+
+When suggesting or generating a circuit, the AI must:
+- select compatible pins;
+- prefer recommended pins when appropriate;
+- explain meaningful caveats;
+- validate the proposed mapping before presenting it as correct.
+
+### Data source quality
+
+Pin capability information must come from authoritative technical sources such as:
+- MCU datasheets;
+- technical reference manuals;
+- official board schematics;
+- official pinout documentation;
+- vendor SDK/peripheral documentation.
+
+Do not encode unverified community pinout assumptions as engineering truth.
+
+Board/MCU definitions should be versioned so corrections can be made without silently changing historical project meaning.
+
+### Scope discipline
+
+Do not build a universal MCU database immediately.
+
+Start with the exact V1 controller/board and make the data model extensible.
+
+Additional ESP32 variants, Arduino boards and other controllers are added only when they enter the approved product scope.
+
