@@ -79,6 +79,9 @@ Later capabilities may include:
 - logic analyzer
 - AI circuit generation
 - AI troubleshooting
+- X-Ray electrical visualization driven strictly by simulation truth
+- PWM visualization driven by real simulated timing/state
+- synchronized Workbench / 3D / Schematic representations of one canonical circuit model
 - additional product languages such as German, Spanish and others
 
 Do not implement later capabilities unless they are part of the active sprint.
