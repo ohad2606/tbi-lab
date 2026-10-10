@@ -13,6 +13,7 @@
  * time_backwards; drive_input_only (drives input-only GPIO34 HIGH at 20 ms).
  * Bridge v2 (Sprint 12, ADR-011): TBI_FAKE_HELLO replaces the handshake line's version and
  * capability fields (e.g. `2 i2c,pad-func,sched-input`, `2 -`, `3 -`); TBI_FAKE_FRAMES is a list
+ * TBI_FAKE_TICK_LATE_NS=d[@n] reports ticks d ns after the grid (from tick n). TBI_FAKE_FRAMES is a list
  * of extra frames, `;`-separated, sent before the tick at 10 ms, or before tick n with an `n@`
  * prefix (e.g. `B 9500000 0 S 27 0`, `1300@G 1299000100 4 1 0`); every reply to them is echoed on
  * UART0 as `REPLY <frame> -> <commands>`.
@@ -128,7 +129,11 @@ async function main() {
     if (mode === 'crash' && n === 30) process.kill(process.pid, 'SIGSEGV');
     if (mode === 'guest_reset' && n === 30) process.exit(0);
     if (mode === 'stall' && n === 30) return new Promise(() => {});
-    await apply(await exchange(`T ${vns}`));
+    // TBI_FAKE_TICK_LATE_NS=d[@n]: from tick n on, the tick reports d ns after its grid time, as
+    // QEMU's does when the timer callback runs an instruction after the deadline (Gate B G-2).
+    const [lateNs, lateFrom] = (process.env.TBI_FAKE_TICK_LATE_NS ?? '0@1').split('@');
+    const late = n >= Number(lateFrom ?? 1) ? BigInt(lateNs) : 0n;
+    await apply(await exchange(`T ${vns + late}`));
     if (n % 256 === 0) await new Promise((r) => setImmediate(r)); // stay a polite process
   }
   sock.end();

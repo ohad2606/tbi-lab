@@ -330,3 +330,27 @@ describe('pad functions (patch 0007, ADR-011 §3)', () => {
     expect(serialText(s)).toContain('REPLY F 9500000 18 i2c0-scl 1 ->');
   });
 });
+
+describe('publication with ticks reported after their grid time (Gate B G-2)', () => {
+  // QEMU arms each tick on the quantum grid but reports the virtual clock when it ran, which can be
+  // an instruction (4 ns) late. Before the fix, the window flush required an exact multiple of the
+  // publish interval and the session silently stopped publishing.
+  for (const late of ['4@1', '4@25', '999@1'])
+    it(`windows keep publishing with ticks ${late.split('@')[0]} ns late (from tick ${late.split('@')[1]})`, async () => {
+      const s = session({ TBI_FAKE_TICK_LATE_NS: late }, null);
+      expect(await runFor(s, 300)).toMatchObject({ state: 'ended', reason: 'stopped' });
+      const gpio = s.log.since(0).filter((e) => e.type === 'gpio');
+      // GPIO2 toggles every 5 ms: every 10 ms window carries a change, and none is lost.
+      const windows = gpio.map((e) => BigInt(e.simNs!));
+      expect(windows.length).toBeGreaterThan(5);
+      // One window per 10 ms, none skipped (the end-of-session flush may add a final partial one).
+      const full = windows.slice(0, -1);
+      for (let i = 1; i < full.length; i++)
+        expect(full[i]! / 10_000_000n - full[i - 1]! / 10_000_000n, `${full[i]}`).toBe(1n);
+      const toggles = (e: (typeof gpio)[number]) =>
+        (e as unknown as { changes: { gpio: number; transitions: number }[] }).changes
+          .filter((c) => c.gpio === 2)
+          .reduce((a, c) => a + c.transitions, 0);
+      for (const e of gpio.slice(0, full.length)) expect(toggles(e), e.simNs!).toBe(2);
+    });
+});

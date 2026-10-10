@@ -110,6 +110,8 @@ export class HostSession {
   private engine: EngineSession | null = null;
   private readonly quantumNs: bigint;
   private readonly publishNs: bigint;
+  /** Index of the last published window (vns / publishNs at its flush). */
+  private publishedWindow = 0n;
   /** Effective lifetime: the host limit, a stricter client limit, and the plan (Phase 4). */
   readonly lifetimeMs: number;
   private readonly abort = new AbortController();
@@ -706,7 +708,15 @@ export class HostSession {
     const sensed = this.devices?.dueBy(vns) ?? false;
     if ((applied || sensed) && !this.pendingFailure) cmds.push(...this.solveAndInject(vns));
     if (this.pendingFailure && !cmds.some((c) => c.type === 'Q')) cmds.push({ type: 'Q' });
-    if (vns % this.publishNs === 0n) this.flushWindow(vns);
+    // A window is published by the first tick at or after its end. Ticks sit on the quantum grid,
+    // but QEMU reports the virtual clock when the tick ran, which can be an instruction past the
+    // deadline (observed: +4 ns); an exact-multiple test then never matched again and the session
+    // silently stopped publishing (Gate B G-2).
+    const window = vns / this.publishNs;
+    if (window > this.publishedWindow) {
+      this.publishedWindow = window;
+      this.flushWindow(vns);
+    }
     return cmds;
   }
 
