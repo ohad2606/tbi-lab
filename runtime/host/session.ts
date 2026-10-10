@@ -110,7 +110,7 @@ export class HostSession {
   private engine: EngineSession | null = null;
   private readonly quantumNs: bigint;
   private readonly publishNs: bigint;
-  /** Index of the last published window (vns / publishNs at its flush). */
+  /** Index of the last published window (its end is (index) x publishNs). */
   private publishedWindow = 0n;
   /** Effective lifetime: the host limit, a stricter client limit, and the plan (Phase 4). */
   readonly lifetimeMs: number;
@@ -575,6 +575,7 @@ export class HostSession {
   }
 
   private onPad(vns: bigint, pad: number, drive: 0 | 1, level: 0 | 1): Command[] {
+    this.closeWindowsBefore(vns);
     this.simNs = vns;
     const pin = boardPinForGpio(ESP32_DEVKITC_WROOM32, pad);
     if (pin?.simulatorSupport === 'digital-input' && drive) {
@@ -614,6 +615,7 @@ export class HostSession {
    * never left running with dead behaviour. Pads outside the circuit (flash, UART) are ignored.
    */
   private onFunc(vns: bigint, pad: number, func: PadFunction): Command[] {
+    this.closeWindowsBefore(vns);
     this.simNs = vns;
     this.i2c?.onFunc(pad, func);
     if (!this.request.attachments.some((a) => a.gpio === pad)) return [];
@@ -637,6 +639,7 @@ export class HostSession {
    * load: the circuit is solved again and any input it changes is injected in the same reply.
    */
   private onI2c(vns: bigint, bus: 0 | 1, phase: I2cPhase): Command[] {
+    this.closeWindowsBefore(vns);
     this.simNs = vns;
     this.devices?.advance(vns);
     const latest = this.latest?.ok ? this.latest : null;
@@ -665,6 +668,7 @@ export class HostSession {
   }
 
   private onSerial(vns: bigint, bytes: Buffer): void {
+    this.closeWindowsBefore(vns);
     this.simNs = vns;
     const room = this.config.serialWindowMaxBytes - this.serialWindowBytes;
     if (room <= 0) {
@@ -678,6 +682,7 @@ export class HostSession {
   }
 
   private onTick(vns: bigint): Command[] {
+    this.closeWindowsBefore(vns);
     this.simNs = vns;
     this.lastTickNs = vns;
     const cmds: Command[] = [];
@@ -708,15 +713,8 @@ export class HostSession {
     const sensed = this.devices?.dueBy(vns) ?? false;
     if ((applied || sensed) && !this.pendingFailure) cmds.push(...this.solveAndInject(vns));
     if (this.pendingFailure && !cmds.some((c) => c.type === 'Q')) cmds.push({ type: 'Q' });
-    // A window is published by the first tick at or after its end. Ticks sit on the quantum grid,
-    // but QEMU reports the virtual clock when the tick ran, which can be an instruction past the
-    // deadline (observed: +4 ns); an exact-multiple test then never matched again and the session
-    // silently stopped publishing (Gate B G-2).
-    const window = vns / this.publishNs;
-    if (window > this.publishedWindow) {
-      this.publishedWindow = window;
-      this.flushWindow(vns);
-    }
+    // A tick exactly on a window boundary closes that window after its own commands (V1 timing).
+    if (vns === (this.publishedWindow + 1n) * this.publishNs) this.closeWindowsBefore(vns + 1n);
     return cmds;
   }
 
@@ -759,6 +757,21 @@ export class HostSession {
     }
     ack('applied');
     return true;
+  }
+
+  /**
+   * Publish every window that ends strictly before `vns`, stamped with its boundary, before a frame
+   * at `vns` is handled. Windows are attributed by event time, not by when a tick ran: QEMU arms
+   * ticks on the quantum grid but reports the virtual clock at which the tick ran, which can be an
+   * instruction past the deadline (observed +4 ns). The V1 host flushed only on ticks at exact
+   * multiples, so after such a tick it silently stopped publishing, or skipped that window (Gate B
+   * G-2). With exact ticks the output is unchanged.
+   */
+  private closeWindowsBefore(vns: bigint): void {
+    for (let end = (this.publishedWindow + 1n) * this.publishNs; end < vns; end += this.publishNs) {
+      this.publishedWindow++;
+      this.flushWindow(end);
+    }
   }
 
   /** Publish the coalesced window: GPIO changes, then the latest operating point, then serial. */

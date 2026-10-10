@@ -345,6 +345,8 @@ describe('publication with ticks reported after their grid time (Gate B G-2)', (
       expect(windows.length).toBeGreaterThan(5);
       // One window per 10 ms, none skipped (the end-of-session flush may add a final partial one).
       const full = windows.slice(0, -1);
+      // Windows are attributed by event time and stamped with their boundary, as with exact ticks.
+      for (const w of full) expect(w % 10_000_000n, `${w}`).toBe(0n);
       for (let i = 1; i < full.length; i++)
         expect(full[i]! / 10_000_000n - full[i - 1]! / 10_000_000n, `${full[i]}`).toBe(1n);
       const toggles = (e: (typeof gpio)[number]) =>
