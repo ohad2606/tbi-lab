@@ -1,0 +1,53 @@
+ ❯ runtime/tests/s8-deployed-policy.runtime.test.ts (7 tests | 3 failed) 64123ms
+ ✓ runtime/tests/s12-determinism.runtime.test.ts (8 tests) 261398ms
+ ✓ runtime/tests/r2-failures.runtime.test.ts (11 tests) 267030ms
+ ✓ runtime/tests/s7-build.runtime.test.ts (6 tests) 246880ms
+ ✓ runtime/tests/r2-acceptance.runtime.test.ts (5 tests) 142044ms
+ ✓ runtime/tests/s12-examples.runtime.test.ts (3 tests) 103797ms
+ ✓ runtime/tests/s12-r3.runtime.test.ts (3 tests) 63293ms
+ ✓ runtime/tests/isolation.runtime.test.ts (5 tests) 77910ms
+ ✓ runtime/tests/s12-r2.runtime.test.ts (3 tests) 30703ms
+ ✓ runtime/tests/gate.runtime.test.ts (7 tests) 196872ms
+ ✓ runtime/tests/s8-containment.runtime.test.ts (9 tests) 56687ms
+ ✓ runtime/tests/failures.runtime.test.ts (15 tests) 58434ms
+ ✓ runtime/tests/quantum.runtime.test.ts (3 tests) 56547ms
+ ✓ runtime/tests/serial.runtime.test.ts (5 tests) 54792ms
+ ❯ runtime/tests/r1-determinism.runtime.test.ts (2 tests | 2 failed) 52062ms
+ ✓ runtime/tests/s8-qemu-tasks.runtime.test.ts (2 tests) 51932ms
+ ✓ runtime/tests/r1-matrix-perf.runtime.test.ts (1 test) 49126ms
+ ✓ runtime/tests/s8-policy.runtime.test.ts (7 tests) 44722ms
+ ✓ runtime/tests/s12-bridge.runtime.test.ts (10 tests) 32614ms
+ ✓ runtime/tests/s11-deployed.runtime.test.ts (8 tests | 2 skipped) 28477ms
+ ✓ runtime/tests/s12-pace.runtime.test.ts (1 test) 18253ms
+ ✓ runtime/tests/r1-examples.runtime.test.ts (2 tests) 16238ms
+ ✓ runtime/tests/resources.runtime.test.ts (1 test) 20102ms
+ ✓ runtime/tests/electrical.runtime.test.ts (7 tests) 11535ms
+ ✓ runtime/tests/r1-ldr.runtime.test.ts (1 test) 11087ms
+ ✓ runtime/tests/firmware.runtime.test.ts (2 tests) 11624ms
+ ✓ runtime/tests/timing.runtime.test.ts (5 tests) 8755ms
+ ✓ runtime/tests/banks.runtime.test.ts (10 tests) 8710ms
+ ✓ runtime/tests/r1-pir.runtime.test.ts (1 test) 8079ms
+ ✓ runtime/tests/r1-relay.runtime.test.ts (1 test) 8216ms
+ ✓ runtime/tests/r1-buzzer.runtime.test.ts (1 test) 7972ms
+ ✓ runtime/tests/r2-led-bench.runtime.test.ts (1 test) 7953ms
+ ✓ runtime/tests/r1-rgb.runtime.test.ts (1 test) 8086ms
+ ✓ runtime/tests/s8-gate.runtime.test.ts (5 tests) 507ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 5 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  runtime/tests/r1-determinism.runtime.test.ts > R1 determinism: the Sprint 10 parts in Session Host sessions > r1-motion-relay-session.json: three sessions with scheduled live parameters reproduce one runtime event stream
+AssertionError: expected '5fdb6a1ad50a412a' to be '88122085bf12750f' // Object.is equality
+ ❯ runtime/tests/r1-determinism.runtime.test.ts:128:25
+ FAIL  runtime/tests/r1-determinism.runtime.test.ts > R1 determinism: the Sprint 10 parts in Session Host sessions > r1-night-light-session.json: three sessions with scheduled live parameters reproduce one runtime event stream
+AssertionError: expected '5596d749c3ce4f8c' to be '1511138e44d4f5e4' // Object.is equality
+ ❯ runtime/tests/r1-determinism.runtime.test.ts:128:25
+ FAIL  runtime/tests/s8-deployed-policy.runtime.test.ts > Sprint 8 policy on the deployed instance (tbi-s8, real policy) > sessions: one per preview user, one globally on this 1-vCPU host; ownership enforced
+AssertionError: expected 400 to be 201 // Object.is equality
+ ❯ runtime/tests/s8-deployed-policy.runtime.test.ts:166:23
+ FAIL  runtime/tests/s8-deployed-policy.runtime.test.ts > Sprint 8 policy on the deployed instance (tbi-s8, real policy) > a live session holds a queued build (nothing stopped); it compiles once the session ends
+AssertionError: expected 400 to be 201 // Object.is equality
+ ❯ runtime/tests/s8-deployed-policy.runtime.test.ts:188:22
+ FAIL  runtime/tests/s8-deployed-policy.runtime.test.ts > Sprint 8 policy on the deployed instance (tbi-s8, real policy) > admission events are bounded: fixed keys, a 10-character reference, nothing else
+AssertionError: session_quota: expected [ 'admitted', 'build_quota', …(1) ] to include 'session_quota'
+ ❯ runtime/tests/s8-deployed-policy.runtime.test.ts:246:27
+ Test Files  2 failed | 32 passed (34)
+      Tests  5 failed | 152 passed | 2 skipped (159)
+exit=1
