@@ -44,12 +44,14 @@
       "source": "runtime/firmware/arduino/TbiHcSr04 (provision.sh firmware, 2026-10-09, TBI_RUNTIME_HOME=~/tbi-s12-rt, same pinned toolchain). Sprint 12 R2 HC-SR04 (pulseIn) runtime test firmware."
     },
     "TbiDht22": {
-      "sha256": "a2e6b54c81ecc7c00cf31b372cbfd80936436dfa82cf62479eae40edc5c21820",
-      "source": "runtime/firmware/arduino/TbiDht22 (provision.sh firmware, 2026-10-09, TBI_RUNTIME_HOME=~/tbi-s12-rt, same pinned toolchain). Sprint 12 R2 DHT22 (library-free read) runtime test firmware."
+      "sha256": "1c9a0e52d98cb433af249543f106c75b253c6232873717db90cc608a25dcfaf3",
+      "source": "runtime/firmware/arduino/TbiDht22 (provision.sh firmware, 2026-10-09, TBI_RUNTIME_HOME=~/tbi-s12-rt, same pinned toolchain). Sprint 12 R2 DHT22 (library-free read) runtime test firmware. Re-pinned 2026-10-10 (Sprint 12 Gate B, G-2, PM-accepted): the previous image embedded absolute host paths (symlinked arduino directory, fixed in provision.sh); these bytes are reproduced by five independent clean builds and reproduce the previous image's s12-determinism pins 10/10.",
+      "previousSha256": "a2e6b54c81ecc7c00cf31b372cbfd80936436dfa82cf62479eae40edc5c21820"
     },
     "TbiLcd": {
-      "sha256": "2f70c09c14f7686bd6671c925adeabcb5564fb2de5ad8989b6c78c108e4bd4fd",
-      "source": "runtime/firmware/arduino/TbiLcd (provision.sh firmware, 2026-10-09, TBI_RUNTIME_HOME=~/tbi-s12-rt, same pinned toolchain). Sprint 12 R3 I2C LCD (raw Wire) runtime test firmware."
+      "sha256": "d8819c06411561f952ca4a0ceaa09eb01d047ec7d9c831adff6f19f3b1e5e2e9",
+      "source": "runtime/firmware/arduino/TbiLcd (provision.sh firmware, 2026-10-09, TBI_RUNTIME_HOME=~/tbi-s12-rt, same pinned toolchain). Sprint 12 R3 I2C LCD (raw Wire) runtime test firmware. Re-pinned 2026-10-10 (Sprint 12 Gate B, G-2, PM-accepted): the previous image embedded absolute host paths (symlinked arduino directory, fixed in provision.sh); these bytes are reproduced by five independent clean builds and reproduce the previous image's s12-determinism pins 10/10.",
+      "previousSha256": "2f70c09c14f7686bd6671c925adeabcb5564fb2de5ad8989b6c78c108e4bd4fd"
     },
     "TbiI2cProbe": {
       "sha256": "6f75261c61a610e5bb6c30cda1c9b112cf26fe6df2c05de09a3eb7460bbc3777",
