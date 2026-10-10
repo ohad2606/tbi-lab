@@ -35,6 +35,10 @@ case "$target" in
 esac
 units=("$N-build.service" "$N-build-job@.service" "$N-session-host.service" "$N-qemu@.service")
 rule="/etc/polkit-1/rules.d/50-$N.rules"
+# A staging release is an exact commit: refuse a tree with uncommitted changes before any change.
+if [[ "$target" == staging && "$uninstall" != "--uninstall" ]]; then
+  test -z "$(git -C "$repo" status --porcelain)" || { echo "refused: $repo has uncommitted changes" >&2; exit 1; }
+fi
 
 if [[ "$uninstall" == "--uninstall" ]]; then
   sudo systemctl disable --now "$N-build.service" "$N-session-host.service" 2>/dev/null || true
@@ -87,12 +91,19 @@ root() { # $1 root dir, rest: mount points
   for l in bin lib sbin; do sudo ln -sfn "usr/$l" "$r/$l"; done
 }
 # FU-11-1 (Sprint 12): the pinned system artifacts (runtime/firmware/artifacts.lock.json, e.g. the
-# R1 reference image TbiGpioProof 5f177cbe…) as reference images of this store: copied from the
-# runtime home's artifact directory, each verified against its pinned sha256, owned by the store
-# user, never overwriting a file the store already holds. The build service loads them at start.
-ARTIFACTS="${TBI_S8_ARTIFACTS:-$(dirname "$(readlink -f "$RUNTIME")")/artifacts}"
+# R1 reference image TbiGpioProof 5f177cbe…) as reference images of this store, each verified
+# against its pinned sha256, owned by the store user, never overwriting a file the store already
+# holds. The build service loads them at start. G-3: the only source is the immutable release
+# artifact set of this checkout's lock (publish-release-artifacts.sh), never a runtime home.
+LOCK="$repo/runtime/firmware/artifacts.lock.json"
+ARTIFACTS="/srv/tbi-lab/release-artifacts/$(sha256sum < "$LOCK" | cut -c1-16)"
+test -d "$ARTIFACTS" && cmp -s "$LOCK" "$ARTIFACTS/artifacts.lock.json" || {
+  echo "release artifact set $ARTIFACTS missing or not for this lock" >&2
+  echo "(deploy/dev-lab/s8/publish-release-artifacts.sh <provisioned runtime home>)" >&2
+  exit 1
+}
 for sha in $(python3 -c 'import json,sys; [print(a["sha256"]) for a in json.load(open(sys.argv[1]))["artifacts"].values()]' \
-  "$repo/runtime/firmware/artifacts.lock.json"); do
+  "$LOCK"); do
   sudo test -e "$STORE/$sha.bin" && continue
   src="$ARTIFACTS/$sha.bin"
   test -f "$src" || { echo "pinned artifact $sha is not in $ARTIFACTS" >&2; exit 1; }
@@ -106,7 +117,15 @@ root "/var/lib/$N-runtime/sandbox-root" opt/tbi-runtime session
 
 # Service bundles (staging: from this worktree).
 if [[ "$target" == staging ]]; then
-  (cd "$repo" && npm run --silent buildsvc:build && npm run --silent host:build)
+  # The Session Host is stamped with the product version and the exact commit (reported on
+  # /health, as publish-runtime.sh does for dev-lab); only a clean tree is a commit.
+  sha="$(git -C "$repo" rev-parse HEAD)"
+  version="$(tr -d '[:space:]' < "$repo/VERSION")"
+  (cd "$repo" && npm run --silent buildsvc:build &&
+    npx esbuild runtime/host/main.ts --bundle --platform=node --format=esm --target=node22 \
+      --define:__TBI_RUNTIME_VERSION__="\"$version\"" --define:__TBI_RUNTIME_COMMIT__="\"$sha\"" \
+      --outfile=runtime/host/dist/session-host.mjs --log-level=warning)
+  grep -q "$sha" "$repo/runtime/host/dist/session-host.mjs" || { echo "host bundle not stamped" >&2; exit 1; }
   sudo install -d -m 0755 "$BUNDLES"
   sudo install -m 0644 "$repo/runtime/builder/dist/build-service.mjs" "$repo/runtime/builder/dist/build-job.mjs" \
     "$repo/runtime/host/dist/session-host.mjs" "$BUNDLES/"
