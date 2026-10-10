@@ -128,6 +128,15 @@ const CONFIGS: Config[] = [
     endNs: 3_000_000_000n,
     commands: false,
   },
+  {
+    // R-MCU-1's stressed boot-window runs (ADR-007): stress must not change the boot result.
+    name: '1 ms tick, early boot window (3 s), main-loop stress',
+    pin: 'boot',
+    tickUs: 1000,
+    stress: true,
+    endNs: 3_000_000_000n,
+    commands: false,
+  },
 ];
 
 function firstDivergence(a: string[], b: string[]): number | null {
