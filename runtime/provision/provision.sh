@@ -229,7 +229,12 @@ cmd_firmware() {
     # pins produce byte-identical firmware on any host (the release-gate hashes depend on it).
     local stage="/tmp/tbi-fw-build/$name"
     rm -rf "$stage" && mkdir -p "$stage" && cp -r "$dir"/. "$stage/"
-    local maps="-ffile-prefix-map=$RT/arduino/data=/arduino-data -ffile-prefix-map=$stage=/sketch -ffile-prefix-map=/tmp/tbi-fw-build=/build"
+    # Map the data directory the compiler actually sees: the one arduino-cli is configured with,
+    # symlinks resolved (a symlinked $RT/arduino left host paths in the core's assert strings,
+    # so those images did not reproduce elsewhere; found at the Sprint 12 clean build).
+    local data
+    data="$(readlink -f "$(arduino_cli config get directories.data 2>/dev/null || echo "$RT/arduino/data")")"
+    local maps="-ffile-prefix-map=$data=/arduino-data -ffile-prefix-map=$RT/arduino/data=/arduino-data -ffile-prefix-map=$stage=/sketch -ffile-prefix-map=/tmp/tbi-fw-build=/build"
     log "building firmware $name ($ARDUINO_FQBN)"
     # Compile from the staging directory: DWARF records the working directory (DW_AT_comp_dir).
     (cd "$stage" && SOURCE_DATE_EPOCH="$FIRMWARE_SOURCE_DATE_EPOCH" arduino_cli compile --fqbn "$ARDUINO_FQBN" --build-path "/tmp/tbi-fw-build/.build-$name" \
@@ -242,6 +247,10 @@ cmd_firmware() {
       0x1000 "$out/$ino.bootloader.bin" 0x8000 "$out/$ino.partitions.bin" \
       0xe000 "$core/tools/partitions/boot_app0.bin" 0x10000 "$out/$ino.bin" \
       >>"$RT/logs/fw-$name.log" 2>&1 || die "merge failed: $RT/logs/fw-$name.log"
+    # A host path in the image makes it host-specific: refuse to store it.
+    if grep -a -q -F -e "$data" -e "$RT" -e "$HOME/" "$out/$name-4mb.bin"; then
+      die "firmware $name embeds a host path; not reproducible"
+    fi
     store_artifact "$out/$name-4mb.bin" "$name"
   done
 }
