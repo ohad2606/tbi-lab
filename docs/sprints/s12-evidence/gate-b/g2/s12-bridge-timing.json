@@ -1,0 +1,21 @@
+{
+  "runtimeId": "b5b34b49cb7e4049",
+  "firmware": "b85bf69d17df101c06473d716b0b1e1c4457912e3870f14bed7d15ac0d086928",
+  "bridgeErrorsNs": [
+    0,
+    -50,
+    -33,
+    -25,
+    0,
+    -50,
+    -42,
+    -37
+  ],
+  "sweepEdges": 240,
+  "lateEdges": [
+    {
+      "phaseUs": 548,
+      "lateNs": 1120.8333333320916
+    }
+  ]
+}

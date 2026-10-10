@@ -1,0 +1,71 @@
+diff --git a/runtime/firmware/arduino/TbiEdgeTime/TbiEdgeTime.ino b/runtime/firmware/arduino/TbiEdgeTime/TbiEdgeTime.ino
+new file mode 100644
+index 0000000..1c92d72
+--- /dev/null
++++ b/runtime/firmware/arduino/TbiEdgeTime/TbiEdgeTime.ino
+@@ -0,0 +1,65 @@
++/*
++ * Sprint 12 runtime test firmware (Gate B, G-2): bridge scheduled-input timing, measured with the
++ * firmware's polling taken out as far as the CPU allows. Not a product artifact.
++ *
++ * With interrupts masked (no tick, UART or timer service in the loop), a few-instruction loop reads
++ * the GPIO input register and timestamps each change of GPIO4 with the CPU cycle counter
++ * (240 MHz: 4.17 ns per count). A capture starts at the first change and ends after 64 changes or
++ * 100 ms, whichever comes first (well inside the 300 ms interrupt watchdog); the changes are then
++ * printed as cycle counts relative to the first one, with interrupts enabled again.
++ *   "C <n>" then n lines "e <level> <cycles since the first change>"
++ * Waiting for the first change is also masked, for at most 200 ms at a time.
++ */
++#include "esp_cpu.h"
++#include "soc/gpio_reg.h"
++#include "soc/soc.h"
++
++const int PIN = 4;
++const int MAX_EDGES = 64;
++const uint32_t HZ = 240000000u;
++
++static inline uint32_t level() { return (REG_READ(GPIO_IN_REG) >> PIN) & 1u; }
++
++void setup() {
++  Serial.begin(115200);
++  pinMode(PIN, INPUT);
++  Serial.println("TBI-EDGETIME-READY");
++}
++
++void loop() {
++  static uint32_t t[MAX_EDGES];
++  static uint8_t v[MAX_EDGES];
++  int n = 0;
++  portDISABLE_INTERRUPTS();
++  uint32_t last = level();
++  uint32_t wait0 = esp_cpu_get_cycle_count();
++  for (;;) {
++    uint32_t now = level();
++    uint32_t c = esp_cpu_get_cycle_count();
++    if (now != last) {
++      t[0] = c;
++      v[0] = now;
++      last = now;
++      n = 1;
++      break;
++    }
++    if (c - wait0 > HZ / 5) break;
++  }
++  if (n == 1) {
++    for (;;) {
++      uint32_t now = level();
++      uint32_t c = esp_cpu_get_cycle_count();
++      if (now != last) {
++        t[n] = c;
++        v[n] = now;
++        last = now;
++        if (++n == MAX_EDGES) break;
++      }
++      if (c - t[0] > HZ / 10) break;
++    }
++  }
++  portENABLE_INTERRUPTS();
++  if (n == 0) return;
++  Serial.printf("C %d\n", n);
++  for (int i = 0; i < n; i++) Serial.printf("e %d %lu\n", v[i], (unsigned long)(t[i] - t[0]));
++}

@@ -1,5 +1,12 @@
 # Sprint 12 — Gate B (staging) evidence
 
+**Status (2026-10-10, G-2 round 2): STOPPED for PM acceptance.** See
+[G2-EVIDENCE.md](s12-evidence/gate-b/G2-EVIDENCE.md): reproducible builds proven for all six
+images; a pre-existing Session Host publication defect found (H-1, fix committed locally, not
+deployed) that also invalidates the seven `s12-determinism` pins; per-image evidence and proposed
+re-pins; two new R2 fidelity findings (F-R2-1, F-R2-2). Only TbiDht22 is re-pinned. Staging
+unchanged since B4a; B4b–B7 not run.
+
 **Status (2026-10-10, remediation round 1): STOPPED again for PM review at G-2.** The PM decision
 of 2026-10-10 approved remediating G-1/G-2/G-4 and resuming Gate B. G-1, G-3 and G-4 pass. G-2:
 the firmware builds are now reproducible (five independent builds, byte-identical), but the new

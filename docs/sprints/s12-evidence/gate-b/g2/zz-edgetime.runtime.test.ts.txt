@@ -1,0 +1,64 @@
+/** G-2 investigation: bridge scheduled-input timing measured with TbiEdgeTime (cycle counter). */
+import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { describe, expect, it } from 'vitest';
+import { QEMU, RUNTIME_HOME } from '../harness/env.js';
+import { createSessionOverlay } from '../harness/artifacts.js';
+import { runSession } from '../harness/session.js';
+
+const SHA = process.env.EDGETIME_SHA!;
+const OUT = process.env.DIAG_OUT!;
+type P = { rise: bigint; fall: bigint };
+const pulses: Record<string, P[]> = {};
+// The s12-bridge schedule: group A at 2.0 s, group C at 2.5 s (group B is cancelled there).
+pulses.bridge = [
+  [2_000_100_000n, 15_000n],
+  [2_000_300_000n, 150_000n],
+  [2_500_100_000n, 1_500_000n],
+  [2_503_000_000n, 23_295_091n],
+].map(([r, w]) => ({ rise: r!, fall: r! + w! }));
+// Sweep: 4 batches x 30 pulses at 1.137 ms (+31 us per batch), 200 us wide, 80 ms apart.
+pulses.sweep = [];
+for (let b = 0; b < 4; b++)
+  for (let k = 0; k < 30; k++) {
+    const rise = 3_000_000_000n + BigInt(b) * 250_000_000n + BigInt(k) * 1_137_000n + BigInt(b) * 31_000n;
+    pulses.sweep.push({ rise, fall: rise + 200_000n });
+  }
+
+describe('TbiEdgeTime', () => {
+  for (const tickUs of [1000, 10_000])
+    it(`bridge edges at ${tickUs} us quantum`, async () => {
+      const all = [...pulses.bridge!, ...pulses.sweep!];
+      const ov = createSessionOverlay(join(RUNTIME_HOME, 'artifacts', `${SHA}.bin`), SHA);
+      try {
+        const sent = new Set<number>();
+        const r = await runSession(
+          { qemu: QEMU, flash: ov.flash, dir: ov.dir, tickUs, wallTimeoutMs: 900_000 },
+          {
+            tick(vns) {
+              if (vns >= 4_100_000_000n) return [{ type: 'Q' }];
+              const out: { type: 'J'; vns: bigint; pad: number; level: 0 | 1 }[] = [];
+              all.forEach((p, i) => {
+                if (!sent.has(i) && p.rise - vns <= 20_000_000n && p.rise > vns) {
+                  sent.add(i);
+                  out.push({ type: 'J', vns: p.rise, pad: 4, level: 1 });
+                  out.push({ type: 'J', vns: p.fall, pad: 4, level: 0 });
+                }
+              });
+              return out;
+            },
+          },
+        );
+        expect(r.outcome, r.diagnostics).toBe('completed');
+        writeFileSync(
+          join(OUT, `edgetime-${tickUs}.json`),
+          JSON.stringify({
+            scheduled: all.flatMap((p) => [p.rise.toString(), p.fall.toString()]),
+            serial: r.serial.toString(),
+          }),
+        );
+      } finally {
+        ov.discard();
+      }
+    }, 900_000);
+});
