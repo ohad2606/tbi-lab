@@ -1,5 +1,14 @@
 # Sprint 12 — Gate B (staging) evidence
 
+**Status (2026-10-11, G-2 round 3): STOPPED for PM review.** See
+[G2-ROUND3.md](s12-evidence/gate-b/G2-ROUND3.md): H-1 fix pushed (`922e56b`) and its tests
+(`publication.test.ts`, 13 cases) added; Sprint 11/12 regression suites pass under the fixed host;
+seven replacement determinism baselines at 10 runs (old/new audited for electrical correctness,
+timing fidelity and reproducibility); F-R2-1 (other core's ≈ 10.1 µs, corrected from 6.2 µs) and
+F-R2-2 (pulseIn polling quantisation) investigated, with fix options. New TbiEdgeTime and
+first-reading tests added; each fails on its open finding. Only TbiDht22 re-pinned. Staging
+unchanged since B4a; B4b–B7 not run.
+
 **Status (2026-10-10, G-2 round 2): STOPPED for PM acceptance.** See
 [G2-EVIDENCE.md](s12-evidence/gate-b/G2-EVIDENCE.md): reproducible builds proven for all six
 images; a pre-existing Session Host publication defect found (H-1, fix committed locally, not

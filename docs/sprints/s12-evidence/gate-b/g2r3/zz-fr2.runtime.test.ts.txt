@@ -1,0 +1,206 @@
+/**
+ * G-2 round 3 investigation (not product code): F-R2-1 (the other core's frozen interval) and
+ * F-R2-2 (the first HC-SR04 reading). Output JSON in $DIAG_OUT; analysed by fr2-analyse.py.
+ *
+ * E1  gap map: TbiEdgeTime (capture on core 1) and TbiEdgeTime0 (capture on core 0), interrupts
+ *     masked, edges at phases swept over the simulated millisecond (4 us steps, 0.2 us steps over
+ *     535-557 us).
+ * E2  pulseIn: TbiPulseIn (core 1) and TbiPulseIn0 (core 0) measure single pulses of 15, 150,
+ *     582.377, 5823.773 and 23295.091 us whose rise (or fall) phase is swept, with repeats.
+ * E3  HC-SR04 through the Session Host: TbiHcSr04Trace (pulseIn inlined, detection cycle counts
+ *     printed) at 0.1, 1 and 4 m; even iterations tick-aligned, odd ones phase-swept. The bridge's
+ *     trigger frames and scheduled echo edges are recorded (runSession wrapped).
+ * E4  TbiDualLoad: core 1 times a fixed busy loop with core 0 idle, then with core 0 busy.
+ */
+import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { afterAll, describe, expect, it, vi } from 'vitest';
+import { hcsr04Echo } from '@tbi-lab/engine';
+import { QEMU, RUNTIME_HOME } from '../harness/env.js';
+import { createSessionOverlay } from '../harness/artifacts.js';
+import { ticketFor } from '../identity/test-gate.js';
+import { serialText, waitEvent } from '../host/tests/support.js';
+import { Circuit, open } from '../host/tests/r1-support.js';
+import { realHost } from './r2-support.js';
+
+type Rec = Record<string, unknown>;
+const G = globalThis as unknown as { __trace?: Rec[] };
+const j = (v: unknown) => JSON.stringify(v, (_k, x) => (typeof x === 'bigint' ? x.toString() : x));
+
+vi.mock('../harness/session.js', async (importOriginal) => {
+  const m = await importOriginal<typeof import('../harness/session.js')>();
+  const wrap = (h: Rec): Rec => {
+    const out: Rec = { ...h };
+    const rec = (r: Rec) => (globalThis as unknown as { __trace?: Rec[] }).__trace?.push(r);
+    for (const k of ['pad', 'tick'] as const) {
+      const f = h[k] as ((...a: unknown[]) => unknown[]) | undefined;
+      if (!f) continue;
+      out[k] = (...a: unknown[]) => {
+        const reply = (f.apply(h, a) ?? []) as Rec[];
+        const sched = reply.filter((c) => c.type === 'J' || c.type === 'X');
+        const e = a[0] as Rec | bigint;
+        if (k === 'pad' && (e as Rec).pad === 5) rec({ k, e, sched });
+        else if (sched.length) rec({ k, e, sched });
+        return reply;
+      };
+    }
+    return out;
+  };
+  return {
+    ...m,
+    runSession: (o: Parameters<typeof m.runSession>[0], h: Parameters<typeof m.runSession>[1]) =>
+      m.runSession(o, wrap(h as unknown as Rec) as unknown as typeof h),
+  };
+});
+const { runSession } = await import('../harness/session.js');
+
+const OUT = process.env.DIAG_OUT!;
+const SHA = {
+  edge1: 'b85bf69d17df101c06473d716b0b1e1c4457912e3870f14bed7d15ac0d086928',
+  edge0: '72f1fe263fcc51ceca79ddfe961130a1ed326799853de15c7baf91dfae4b3f2e',
+  pulse1: '9a7227970d4a8d07fc66b14e7d375c5f3a8b13fa2d20da530bd1757dc85469ff',
+  pulse0: '5dc6f102b3ba0d9d02c83331a68e32b793e91fdb8e8c286316dddf7d8c09debc',
+  dual: '14ebc11ee7d56f693e5d5a6462d98b2a699401e7553671b1bb2836859d41724c',
+  sonar: '18135e7929749244531a273395e180315e3fe24aed3204f6f5feb5b9bac24a6b',
+};
+const MS = 1_000_000n;
+const ns = (us: number) => BigInt(Math.round(us * 1000));
+type Pulse = { rise: bigint; fall: bigint };
+
+/** Run an image on the bare bridge, applying each pulse as scheduled inputs on GPIO4. */
+async function bare(sha: string, pulses: Pulse[], endNs: bigint) {
+  const ov = createSessionOverlay(join(RUNTIME_HOME, 'artifacts', `${sha}.bin`), sha);
+  try {
+    let next = 0;
+    const r = await runSession(
+      { qemu: QEMU, flash: ov.flash, dir: ov.dir, tickUs: 1000, wallTimeoutMs: 1_500_000 },
+      {
+        tick(vns) {
+          if (vns >= endNs) return [{ type: 'Q' }];
+          const out: { type: 'J'; vns: bigint; pad: number; level: 0 | 1 }[] = [];
+          while (next < pulses.length && pulses[next]!.rise - vns <= 20n * MS) {
+            const p = pulses[next++]!;
+            out.push({ type: 'J', vns: p.rise, pad: 4, level: 1 });
+            out.push({ type: 'J', vns: p.fall, pad: 4, level: 0 });
+          }
+          return out;
+        },
+      },
+    );
+    expect(r.outcome, r.diagnostics).toBe('completed');
+    return r.serial.toString();
+  } finally {
+    ov.discard();
+  }
+}
+
+// E1: groups of a reference pulse (rise at phase 100 us) and 31 test pulses 3 ms apart; 100 us
+// wide (the fall samples phase + 100 us); one group per 400 ms.
+function gapSchedule(): { pulses: Pulse[]; groups: number[][] } {
+  const phases: number[] = [];
+  for (let p = 0; p < 1000; p += 4) phases.push(p);
+  for (let p = 535; p <= 557.0001; p += 0.2) phases.push(Math.round(p * 10) / 10);
+  const pulses: Pulse[] = [];
+  const groups: number[][] = [];
+  for (let g = 0; g * 31 < phases.length; g++) {
+    const base = 3_000n * MS + BigInt(g) * 400n * MS;
+    const idx = [pulses.length];
+    pulses.push({ rise: base + ns(100), fall: base + ns(200) });
+    phases.slice(g * 31, g * 31 + 31).forEach((ph, i) => {
+      const rise = base + BigInt(i + 1) * 3n * MS + ns(ph);
+      idx.push(pulses.length);
+      pulses.push({ rise, fall: rise + ns(100) });
+    });
+    groups.push(idx);
+  }
+  return { pulses, groups };
+}
+
+// E2: one pulse per 40 ms; per width, rise phases every 13 us, rise in 538-552 us every 0.5 us,
+// fall in 538-552 us every 0.5 us, and the first HC-SR04 4 m reading's phase (418.84 us) x3.
+const WIDTHS = [15, 150, 582.377, 5823.773, 23295.091];
+function pulseSchedule(): { pulses: Pulse[]; meta: { w: number; phase: number; kind: string }[] } {
+  const pulses: Pulse[] = [];
+  const meta: { w: number; phase: number; kind: string }[] = [];
+  let k = 0;
+  const add = (w: number, phase: number, kind: string) => {
+    const rise = 2_000n * MS + BigInt(k++) * 40n * MS + ns(phase);
+    pulses.push({ rise, fall: rise + ns(w) });
+    meta.push({ w, phase, kind });
+  };
+  for (const w of WIDTHS) {
+    for (let p = 0; p < 1000; p += 13) add(w, p, 'sweep');
+    for (let p = 538; p <= 552; p += 0.5) add(w, p, 'rise-gap');
+    for (let p = 538; p <= 552; p += 0.5) {
+      const ph = (((p - w) % 1000) + 1000) % 1000;
+      add(w, Math.round(ph * 1000) / 1000, 'fall-gap');
+    }
+    for (let r = 0; r < 3; r++) add(w, 418.84, 'repeat');
+  }
+  return { pulses, meta };
+}
+
+describe('F-R2-1 / F-R2-2 investigation', () => {
+  for (const [name, sha] of [
+    ['edge1', SHA.edge1],
+    ['edge0', SHA.edge0],
+  ] as const)
+    it(`E1 gap map, ${name}`, async () => {
+      const { pulses, groups } = gapSchedule();
+      const end = pulses.at(-1)!.fall + 400n * MS;
+      const serial = await bare(sha, pulses, end);
+      writeFileSync(
+        join(OUT, `e1-${name}.json`),
+        j({ pulses, groups, serial }),
+      );
+    }, 1_500_000);
+
+  for (const [name, sha] of [
+    ['pulse1', SHA.pulse1],
+    ['pulse0', SHA.pulse0],
+  ] as const)
+    for (const run of [1, 2])
+      it(`E2 pulseIn sweep, ${name}, run ${run}`, async () => {
+        const { pulses, meta } = pulseSchedule();
+        const end = pulses.at(-1)!.fall + 100n * MS;
+        const serial = await bare(sha, pulses, end);
+        writeFileSync(join(OUT, `e2-${name}-${run}.json`), j({ pulses, meta, serial }));
+      }, 1_500_000);
+
+  it('E4 dual-core load: core 1 busy-loop cycles with core 0 idle, then busy', async () => {
+    const serial = await bare(SHA.dual, [], 2_500n * MS);
+    writeFileSync(join(OUT, 'e4-dual.json'), j({ serial }));
+  }, 900_000);
+
+  const host = realHost();
+  afterAll(() => host.shutdown());
+  for (const distance of [0.1, 1, 4])
+    it(`E3 HC-SR04 traced pulseIn at ${distance} m`, async () => {
+      G.__trace = [];
+      const c = new Circuit().psu(5);
+      const u = c.add('sensor.hc_sr04');
+      const r1 = c.add('component.resistor');
+      const r2 = c.add('component.resistor');
+      c.set(u, 'distance', { value: distance, unit: 'metre' });
+      c.wire('PSU1.positive', `${u}.vcc`).wire(`${u}.gnd`, 'GND1.ref').pad(5, `${u}.trig`);
+      c.ohms(r1, 1000).ohms(r2, 2000);
+      c.wire(`${u}.echo`, `${r1}.a`).wire(`${r1}.b`, `${r2}.a`).wire(`${r2}.b`, 'GND1.ref');
+      c.pad(18, `${r1}.b`);
+      const s = open(host, { ...c.request(SHA.sonar), ticket: ticketFor(SHA.sonar) });
+      expect(s.state, JSON.stringify(s.status().detail)).toBe('ready');
+      s.run();
+      await waitEvent(s, () => (serialText(s).match(/^T /gm) ?? []).length >= 41, 600_000);
+      s.stop();
+      await s.done();
+      writeFileSync(
+        join(OUT, `e3-${distance}m.json`),
+        j({
+          distance,
+          oracleUs: hcsr04Echo(0n, 10, distance, 20)!.widthUs,
+          serial: serialText(s),
+          trace: G.__trace,
+        }),
+      );
+      G.__trace = undefined;
+    }, 900_000);
+});
