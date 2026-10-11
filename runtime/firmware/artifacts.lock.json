@@ -55,6 +55,10 @@
     "TbiI2cProbe": {
       "sha256": "6f75261c61a610e5bb6c30cda1c9b112cf26fe6df2c05de09a3eb7460bbc3777",
       "source": "runtime/firmware/arduino/TbiI2cProbe (provision.sh firmware, 2026-10-09, TBI_RUNTIME_HOME=~/tbi-s12-rt, same pinned toolchain). Sprint 12 R3 Wire transfers (promoted from the feasibility probe) runtime test firmware."
+    },
+    "TbiEdgeTime": {
+      "sha256": "b85bf69d17df101c06473d716b0b1e1c4457912e3870f14bed7d15ac0d086928",
+      "source": "runtime/firmware/arduino/TbiEdgeTime (provision.sh firmware TbiEdgeTime, 2026-10-10, same pinned toolchain; reproduced byte-exact from plain and symlinked runtime homes). Sprint 12 Gate B G-2 (PM-approved 2026-10-11): bridge-edge accuracy test firmware for runtime/tests/s12-bridge-timing.runtime.test.ts; masked-interrupt capture timestamped with the cycle counter."
     }
   }
 }
