@@ -1,5 +1,13 @@
 # Sprint 12 — Gate B (staging) evidence
 
+**Status (2026-10-11, G-2 final package): STOPPED for PM acceptance.** See
+[G2-FINAL.md](s12-evidence/gate-b/G2-FINAL.md): `c608cf5` pushed. Patch B applied in a local commit:
+five lock re-pins (all 13 artifacts reproducible) and seven determinism pins (10/10). s12-bridge is split
+per proposal 4(i). The s12-bridge-timing sweep is now a mechanism-matched KNOWN FAILURE (F-R2-1). The
+EdgeEcho −9 µs is firmware polling (13.0 µs loop), not event loss. New sub-limitation: lock-holder
+preemption, a 272–278 µs freeze. F-R2-2 options (a)/(b) returned; s12-r2-timing 4 m is still red.
+Staging unchanged; B4b–B7 not run.
+
 **Status (2026-10-11, G-2 round 5): STOPPED for PM acceptance.** See
 [G2-ROUND5.md](s12-evidence/gate-b/G2-ROUND5.md): `630b313`, `54e9ad1`, `171fb3f` pushed
 (`origin/sprint-12` = `171fb3f`). Three decision packages: the V1 timing-fidelity contract and

@@ -22,15 +22,19 @@ const UNPINNED = process.env.TBI_S12_DET_UNPINNED === '1';
 const host = realHost();
 afterAll(() => host.shutdown());
 
-/** Pins for Runtime v2 b5b34b49cb7e4049 (10 converging runs each; docs/sprints/SPRINT-12.md). */
+/**
+ * Pins for Runtime v2 b5b34b49cb7e4049 (10 converging runs each), re-established under the fixed
+ * Session Host with the reproducible firmware images (Gate B G-2 Patch B, docs/sprints/s12-evidence/
+ * gate-b/G2-FINAL.md). The HC-SR04 pins encode the 4 m session's first reading 23294 (F-R2-2).
+ */
 const PINNED: Record<string, string> = {
-  'hcsr04-0.1m': '2371e2174c387d9c',
-  'hcsr04-1m': 'caa97d8064a84841',
-  'hcsr04-4m': '43dba895631b86e4',
-  'dht22--10C-30RH': '85e3e8d5cf6c46bb',
-  'dht22-21.5C-55.2RH': '838e065211c66629',
-  'dht22-60C-95RH': 'afcb868539a8f893',
-  'lcd1602-hello': '2ec207126b9067ba',
+  'hcsr04-0.1m': 'a6174faf18931c61',
+  'hcsr04-1m': 'f5c51475cc5dac18',
+  'hcsr04-4m': 'ce7868f0e5352722',
+  'dht22--10C-30RH': 'b87741773a4f3c7a',
+  'dht22-21.5C-55.2RH': '414a2379065bc425',
+  'dht22-60C-95RH': '10af087aa4803ee2',
+  'lcd1602-hello': '03d6e5f264ed9506',
 };
 
 interface Scenario {

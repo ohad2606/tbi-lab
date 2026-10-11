@@ -32,16 +32,19 @@
       "source": "MicroPython ESP32_GENERIC v1.29.0 (e67ad6015a0a504c1fec9aa9bbf589d0432ed28e62546f4f8dd8a147f8bd95f6) at 0x1000 of a 4 MiB 0xff-filled image (provision.sh micropython)"
     },
     "TbiR1Scan": {
-      "sha256": "5ddd712902b1ac514f095b319a685de7f5a2a5da5e47bba49b167dbcee8f60b3",
-      "source": "runtime/firmware/arduino/TbiR1Scan (provision.sh firmware, 2026-10-08, TBI_RUNTIME_HOME=~/tbi-s8-rt, same pinned toolchain). Sprint 11 R1 slice 6 matrix load. Note: on this host a rebuild does not reproduce the earlier pins byte for byte (already recorded in Sprint 7, s7-reproducibility.json); tests always use the pinned bytes by sha256."
+      "sha256": "b86f9c5e7d86d840fdaf31f0ac7531dc7e7c63456136dbcf9e7e84215ce98a17",
+      "source": "runtime/firmware/arduino/TbiR1Scan (provision.sh firmware, same pinned toolchain). Sprint 11 R1 slice 6 matrix load. Re-pinned 2026-10-11 (Sprint 12 Gate B, G-2 Patch B, conditionally approved by the PM in the round 5 decision): reproducible rebuild without embedded host paths (five independent clean builds byte-identical, docs/sprints/s12-evidence/gate-b/g2-builds.txt); code identical to the previous image (normalised disassembly, G2-ROUND4.md section 3); behavioural equivalence in G2-EVIDENCE.md, G2-ROUND5.md and G2-FINAL.md.",
+      "previousSha256": "5ddd712902b1ac514f095b319a685de7f5a2a5da5e47bba49b167dbcee8f60b3"
     },
     "TbiEdgeEcho": {
-      "sha256": "8cf4804dc1ba37f5c1afc9acdb22498200c31b40a5e3a39715bafc6c625688de",
-      "source": "runtime/firmware/arduino/TbiEdgeEcho (provision.sh firmware TbiEdgeEcho, 2026-10-09, TBI_RUNTIME_HOME=~/tbi-s12-rt, same pinned toolchain). Sprint 12 bridge v2 scheduled-input test firmware."
+      "sha256": "6ceb6ac3bb0d1e60306d7f86bb1cb3f622a0293a84ea1b8e735036c35dea0c12",
+      "source": "runtime/firmware/arduino/TbiEdgeEcho (provision.sh firmware TbiEdgeEcho, same pinned toolchain). Sprint 12 bridge v2 scheduled-input test firmware. Re-pinned 2026-10-11 (Sprint 12 Gate B, G-2 Patch B, conditionally approved by the PM in the round 5 decision): reproducible rebuild without embedded host paths (five independent clean builds byte-identical, docs/sprints/s12-evidence/gate-b/g2-builds.txt); code identical to the previous image (normalised disassembly, G2-ROUND4.md section 3); behavioural equivalence in G2-EVIDENCE.md, G2-ROUND5.md and G2-FINAL.md.",
+      "previousSha256": "8cf4804dc1ba37f5c1afc9acdb22498200c31b40a5e3a39715bafc6c625688de"
     },
     "TbiHcSr04": {
-      "sha256": "620e06276aeaa4512e79a9c65c7d3200fbd2aaaba333137e11ffcdac9b85efba",
-      "source": "runtime/firmware/arduino/TbiHcSr04 (provision.sh firmware, 2026-10-09, TBI_RUNTIME_HOME=~/tbi-s12-rt, same pinned toolchain). Sprint 12 R2 HC-SR04 (pulseIn) runtime test firmware."
+      "sha256": "9fd371b1ea77a60fc19c4ec2122e191ec498639df3afc5a887954fe05d9677d5",
+      "source": "runtime/firmware/arduino/TbiHcSr04 (provision.sh firmware, same pinned toolchain). Sprint 12 R2 HC-SR04 (pulseIn) runtime test firmware. Re-pinned 2026-10-11 (Sprint 12 Gate B, G-2 Patch B, conditionally approved by the PM in the round 5 decision): reproducible rebuild without embedded host paths (five independent clean builds byte-identical, docs/sprints/s12-evidence/gate-b/g2-builds.txt); code identical to the previous image (normalised disassembly, G2-ROUND4.md section 3); behavioural equivalence in G2-EVIDENCE.md, G2-ROUND5.md and G2-FINAL.md.",
+      "previousSha256": "620e06276aeaa4512e79a9c65c7d3200fbd2aaaba333137e11ffcdac9b85efba"
     },
     "TbiDht22": {
       "sha256": "1c9a0e52d98cb433af249543f106c75b253c6232873717db90cc608a25dcfaf3",
@@ -49,12 +52,14 @@
       "previousSha256": "a2e6b54c81ecc7c00cf31b372cbfd80936436dfa82cf62479eae40edc5c21820"
     },
     "TbiLcd": {
-      "sha256": "2f70c09c14f7686bd6671c925adeabcb5564fb2de5ad8989b6c78c108e4bd4fd",
-      "source": "runtime/firmware/arduino/TbiLcd (provision.sh firmware, 2026-10-09, TBI_RUNTIME_HOME=~/tbi-s12-rt, same pinned toolchain). Sprint 12 R3 I2C LCD (raw Wire) runtime test firmware. (G-2: the reproducible rebuild d8819c06… is NOT yet re-pinned. Its first equivalence result was taken under the Session Host publication defect (H-1); under the final host (1cc45ac) old and new images publish identical streams, see docs/sprints/s12-evidence/gate-b/G2-EVIDENCE.md. Re-pin awaits PM acceptance.)"
+      "sha256": "d8819c06411561f952ca4a0ceaa09eb01d047ec7d9c831adff6f19f3b1e5e2e9",
+      "source": "runtime/firmware/arduino/TbiLcd (provision.sh firmware, same pinned toolchain). Sprint 12 R3 I2C LCD (raw Wire) runtime test firmware. Re-pinned 2026-10-11 (Sprint 12 Gate B, G-2 Patch B, conditionally approved by the PM in the round 5 decision): reproducible rebuild without embedded host paths (five independent clean builds byte-identical, docs/sprints/s12-evidence/gate-b/g2-builds.txt); code identical to the previous image (normalised disassembly, G2-ROUND4.md section 3); behavioural equivalence in G2-EVIDENCE.md, G2-ROUND5.md and G2-FINAL.md.",
+      "previousSha256": "2f70c09c14f7686bd6671c925adeabcb5564fb2de5ad8989b6c78c108e4bd4fd"
     },
     "TbiI2cProbe": {
-      "sha256": "6f75261c61a610e5bb6c30cda1c9b112cf26fe6df2c05de09a3eb7460bbc3777",
-      "source": "runtime/firmware/arduino/TbiI2cProbe (provision.sh firmware, 2026-10-09, TBI_RUNTIME_HOME=~/tbi-s12-rt, same pinned toolchain). Sprint 12 R3 Wire transfers (promoted from the feasibility probe) runtime test firmware."
+      "sha256": "768f52b5cc6aaa0e42152c463e2e7215f56966b8b10e2e773604e9e3d8433e55",
+      "source": "runtime/firmware/arduino/TbiI2cProbe (provision.sh firmware, same pinned toolchain). Sprint 12 R3 Wire transfers (promoted from the feasibility probe) runtime test firmware. Re-pinned 2026-10-11 (Sprint 12 Gate B, G-2 Patch B, conditionally approved by the PM in the round 5 decision): reproducible rebuild without embedded host paths (five independent clean builds byte-identical, docs/sprints/s12-evidence/gate-b/g2-builds.txt); code identical to the previous image (normalised disassembly, G2-ROUND4.md section 3); behavioural equivalence in G2-EVIDENCE.md, G2-ROUND5.md and G2-FINAL.md.",
+      "previousSha256": "6f75261c61a610e5bb6c30cda1c9b112cf26fe6df2c05de09a3eb7460bbc3777"
     },
     "TbiEdgeTime": {
       "sha256": "b85bf69d17df101c06473d716b0b1e1c4457912e3870f14bed7d15ac0d086928",

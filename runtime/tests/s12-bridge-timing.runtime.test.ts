@@ -10,10 +10,17 @@
  *
  *   - The s12-bridge schedule (pulses of 15 us .. 23.3 ms): every observed spacing within 0.1 us of
  *     the scheduled spacing, at the 1 ms and the 10 ms quantum, identically.
- *   - A phase sweep (120 pulses at 1.137 ms steps): every edge seen within 0.1 us. This fails
- *     today for edges that fall while the other core runs (F-R2-1: QEMU executes the two cores in
- *     turn, so the capturing core is frozen for ~6.2 us of every simulated millisecond). The
- *     lateness is recorded; no tolerance is granted for it without a PM decision.
+ *   - A phase sweep (120 pulses at 1.137 ms steps): every edge seen within 0.1 us — except in the
+ *     other core's interval (F-R2-1: QEMU executes the two cores in turn, so the capturing core is
+ *     frozen while core 0 finishes its tick). This is a KNOWN FAILURE (PM, G-2 round 5: V1 timing
+ *     contract, known-failure regression tests kept). The case passes only while the failure
+ *     matches its documented mechanism exactly; anything else fails it:
+ *       - every edge outside the interval within 0.1 us (an unexpected failure fails the case);
+ *       - every sweep edge inside the interval is late, and is seen at the interval's end;
+ *       - at least one edge is late (an unexpected pass fails the case: investigate, then update
+ *         the contract; do not delete the case).
+ *     Interval on this image (G-2 round 3, E1, TbiEdgeTime b85bf69d, 734 edges, 0.2 us steps near
+ *     it): edges at 539.0..548.8 us into the simulated ms are seen at 549.05..549.15 us.
  */
 import { describe, expect, it } from 'vitest';
 import { createSessionOverlay } from '../harness/artifacts.js';
@@ -22,6 +29,8 @@ import type { Command } from '../harness/protocol.js';
 import { runSession } from '../harness/session.js';
 
 const STRICT_NS = 100;
+/** F-R2-1 on this image: edges from 539.0 to 548.8 us into the ms are seen at 549.05..549.15 us. */
+const F_R2_1 = { firstLateUs: 539.0, lastLateUs: 548.8, seenFromUs: 549.0, seenToUs: 549.2 };
 
 type Pulse = { rise: bigint; fall: bigint };
 const BRIDGE: Pulse[] = [
@@ -121,25 +130,49 @@ describe('R2: scheduled inputs are seen at their scheduled time (TbiEdgeTime)', 
       expect(Math.abs(r.errNs), `${r.schedNs}`).toBeLessThanOrEqual(STRICT_NS);
   }, 1_800_000);
 
-  it("a phase sweep: every edge within 0.1 us (F-R2-1 open: fails in the other core's interval)", async () => {
+  it("KNOWN FAILURE (F-R2-1), phase sweep: only edges in the other core's interval miss 0.1 us, each seen at its end", async () => {
     const { rows, captures } = await observeBoth();
     // Per capture, relative to its median (a late first edge would shift a whole capture).
-    const off: { phaseUs: number; lateNs: number }[] = [];
+    const edges: { phaseUs: number; lateNs: number }[] = [];
     for (let ci = 2; ci < captures; ci++) {
       const rs = rows.filter((r) => r.capture === ci);
       const med = [...rs.map((r) => r.errNs)].sort((a, b) => a - b)[rs.length >> 1]!;
-      for (const r of rs) {
-        const d = r.errNs - med;
-        if (Math.abs(d) > STRICT_NS)
-          off.push({ phaseUs: Number(r.schedNs % 1_000_000n) / 1000, lateNs: Math.round(d) });
-      }
+      for (const r of rs)
+        edges.push({
+          phaseUs: Number(r.schedNs % 1_000_000n) / 1000,
+          lateNs: Math.round(r.errNs - med),
+        });
     }
+    const off = edges.filter((e) => Math.abs(e.lateNs) > STRICT_NS);
+    const inInterval = (e: { phaseUs: number }) =>
+      e.phaseUs >= F_R2_1.firstLateUs - 0.2 && e.phaseUs < F_R2_1.seenToUs;
     recordEvidence('s12-bridge-timing-sweep', {
       runtimeId: runtimeInfo().runtimeId,
       firmware: artifact('TbiEdgeTime').sha256,
-      sweepEdges: rows.filter((r) => r.capture >= 2).length,
+      sweepEdges: edges.length,
       outsideStrict: off,
+      knownFailure: 'F-R2-1',
     });
-    expect(off, JSON.stringify(off)).toEqual([]);
+    // Unexpected failures: an edge outside the documented interval, or not seen at its end.
+    for (const e of off) {
+      expect(inInterval(e), `unexpected failure outside F-R2-1: ${JSON.stringify(e)}`).toBe(true);
+      const seenUs = e.phaseUs + e.lateNs / 1000;
+      expect(seenUs, `not seen at the interval's end: ${JSON.stringify(e)}`).toBeGreaterThanOrEqual(
+        F_R2_1.seenFromUs,
+      );
+      expect(seenUs, `not seen at the interval's end: ${JSON.stringify(e)}`).toBeLessThanOrEqual(
+        F_R2_1.seenToUs,
+      );
+    }
+    // The documented failure must still occur for every sweep edge well inside the interval.
+    const mustBeLate = edges.filter(
+      (e) => e.phaseUs >= F_R2_1.firstLateUs && e.phaseUs <= F_R2_1.lastLateUs,
+    );
+    for (const e of mustBeLate)
+      expect(Math.abs(e.lateNs), `edge at ${e.phaseUs} us`).toBeGreaterThan(STRICT_NS);
+    expect(
+      off.length,
+      'unexpected pass: F-R2-1 no longer reproduces; investigate before changing this case',
+    ).toBeGreaterThan(0);
   }, 1_800_000);
 });

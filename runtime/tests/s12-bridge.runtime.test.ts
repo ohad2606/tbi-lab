@@ -3,10 +3,13 @@
  *
  * - T-DET-3: 512 scheduled edges on a pad the firmware never reads leave the R-MCU-1 boot-window
  *   fingerprint bit-identical (the host-sync timer does not reshape vCPU scheduling).
- * - Edge timing: the firmware (TbiEdgeEcho, busy-polling micros()) sees each scheduled edge at
- *   the scheduled spacing, within its own polling granularity; widths from 15 us to 23.5 ms.
+ * - Event delivery: the firmware (TbiEdgeEcho) observes every scheduled edge, in order, none lost
+ *   or invented; widths from 15 us to 23.5 ms.
  * - T-PROTO-12: `X` cancels pending entries; the firmware never observes them.
  * - T-DET-8: the same schedule under a 1 ms and a 10 ms host quantum gives identical serial output.
+ * - Firmware-visible timing (a separate case): each edge is seen within one TbiEdgeEcho polling
+ *   period. The bridge's own edge accuracy (0.1 us) is s12-bridge-timing's (TbiEdgeTime) — Gate B
+ *   G-2 proposal 4(i), PM-approved 2026-10-11.
  * - T-PROTO-10: every malformed or out-of-limit J/X makes QEMU fail closed (exit 3).
  */
 import { describe, expect, it } from 'vitest';
@@ -32,10 +35,18 @@ const PAD = 4;
 /**
  * QEMU applies each edge at its exact virtual time; what the test sees is the firmware's own
  * sampling. TbiEdgeEcho records an edge on the first poll after it, and micros() truncates to
- * whole microseconds, so each observed spacing is off by at most one polling-loop period plus
- * 1 us. Measured on runtime ad68a556e4be25f7: spacing errors -3..+4 us (evidence s12-edges.json).
+ * whole microseconds, so the latency of every edge lies within one polling-loop period plus 1 us.
+ * The loop (digitalRead, micros() and two guarded function-local statics) takes 13.0 us under
+ * QEMU on Runtime v2 (1 922 iterations in 25 ms, tbiprof; latency 0..11.6 us over 196 edges of a
+ * phase sweep): docs/sprints/s12-evidence/gate-b/G2-FINAL.md. The old 5 us spacing bound held for
+ * the previous image only by the phase its edges fell at (identical code).
  */
-const TOLERANCE_US = 5;
+const POLL_US = 13;
+
+interface Run {
+  r: SessionResult;
+  edges: { level: number; us: number }[];
+}
 
 interface Pulse {
   /** Offset of the rising edge from the scheduling tick, ns. */
@@ -133,33 +144,44 @@ describe('Sprint 12 bridge v2: scheduled inputs (patch 0006)', () => {
     expect(got).toEqual(BOOT_PIN);
   });
 
-  it('edges arrive at the scheduled spacing; X cancels; 1 ms and 10 ms quanta agree', async () => {
-    const runs = [];
-    for (const tickUs of [1000, 10_000]) {
-      const { r, edges } = await edgeSession(tickUs, SCHEDULE, 2_700_000_000n);
-      expect(r.outcome, r.diagnostics).toBe('completed');
-      runs.push({ tickUs, r, edges });
-    }
-    const [one, ten] = runs;
-    // T-PROTO-12: group B (scheduled, then cancelled before due) never reaches the firmware.
-    const want = [...scheduledEdgesUs(T_A, GROUP_A), ...scheduledEdgesUs(T_C, GROUP_C)];
-    expect(one!.edges.map((e) => e.level)).toEqual(want.map((_, i) => (i % 2 ? 0 : 1)));
-    // Spacing of consecutive observed edges vs scheduled (micros() and virtual time differ by a
-    // constant boot offset, so only differences are compared).
-    const errors = want.slice(1).map((w, i) => {
-      const observed = one!.edges[i + 1]!.us - one!.edges[i]!.us;
-      return observed - (w - want[i]!);
-    });
+  let delivered: Promise<{ one: Run; ten: Run }> | undefined;
+  const both = () =>
+    (delivered ??= (async () => {
+      const runs: Run[] = [];
+      for (const tickUs of [1000, 10_000]) {
+        const { r, edges } = await edgeSession(tickUs, SCHEDULE, 2_700_000_000n);
+        expect(r.outcome, r.diagnostics).toBe('completed');
+        runs.push({ r, edges });
+      }
+      return { one: runs[0]!, ten: runs[1]! };
+    })());
+  // T-PROTO-12: group B (scheduled, then cancelled before due) never reaches the firmware.
+  const want = [...scheduledEdgesUs(T_A, GROUP_A), ...scheduledEdgesUs(T_C, GROUP_C)];
+
+  it('every scheduled edge is observed in order, none lost or invented; X cancels; 1 ms and 10 ms quanta agree', async () => {
+    const { one, ten } = await both();
+    expect(one.edges.map((e) => e.level)).toEqual(want.map((_, i) => (i % 2 ? 0 : 1)));
+    // T-DET-8 analogue: the host quantum is not an execution timestep, also with J.
+    expect(ten.r.serial.equals(one.r.serial)).toBe(true);
+  }, 600_000);
+
+  it('firmware-visible: every edge is seen within one TbiEdgeEcho polling period', async () => {
+    const { one } = await both();
+    expect(one.edges.length).toBe(want.length);
+    // Latency of each edge up to a constant (micros() and virtual time differ by the boot offset).
+    const lat = one.edges.map((e, i) => e.us - want[i]!);
+    const spread = Math.max(...lat) - Math.min(...lat);
     recordEvidence('s12-edges', {
       runtimeId: info.runtimeId,
+      firmware: artifact('TbiEdgeEcho').sha256,
       scheduledUs: want,
-      observedUs: one!.edges.map((e) => e.us),
-      spacingErrorUs: errors,
+      observedUs: one.edges.map((e) => e.us),
+      spacingErrorUs: want.slice(1).map((w, i) => lat[i + 1]! - lat[i]!),
+      latencySpreadUs: spread,
+      pollUs: POLL_US,
     });
-    for (const e of errors) expect(Math.abs(e)).toBeLessThanOrEqual(TOLERANCE_US);
-    // T-DET-8 analogue: the host quantum is not an execution timestep, also with J.
-    expect(ten!.r.serial.equals(one!.r.serial)).toBe(true);
-  });
+    expect(spread, JSON.stringify(lat)).toBeLessThanOrEqual(POLL_US + 1);
+  }, 600_000);
 
   const faults: [string, string[]][] = [
     ['J not later than the frame', ['J 5 4 1']],
