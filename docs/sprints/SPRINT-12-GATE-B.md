@@ -1,5 +1,13 @@
 # Sprint 12 — Gate B (staging) evidence
 
+**Status (2026-10-11, G-2 round 5): STOPPED for PM acceptance.** See
+[G2-ROUND5.md](s12-evidence/gate-b/G2-ROUND5.md): `630b313`, `54e9ad1`, `171fb3f` pushed
+(`origin/sprint-12` = `171fb3f`). Three decision packages: the V1 timing-fidelity contract and
+support matrix (F-R2-1); the +0.91 µs pulseIn exception explained (the other core's tick entry,
+≈ 1.5 µs; every out-of-bound reading now attributed) and a two-tier acceptance contract (F-R2-2);
+the complete Patch B (five lock re-pins, not two) against Patch A, with the release manifest.
+Nothing applied; staging unchanged; B4b–B7 not run.
+
 **Status (2026-10-11, G-2 round 4): STOPPED for PM review.** See
 [G2-ROUND4.md](s12-evidence/gate-b/G2-ROUND4.md): `bd26ec5`, `8073ccc`, `211ccff` pushed
 (`origin/sprint-12` = `211ccff`). F-R2-1 impact matrix measured (core 0 idle: ≈ 1–2 µs except the
