@@ -1,0 +1,9 @@
+ ✓ runtime/tests/s12-determinism.runtime.test.ts (8 tests) 260646ms
+   ✓ Sprint 12 determinism: R2/R3 through the Session Host (T-DET-4/5/6) > hcsr04-0.1m: 3 runs give one fingerprint  26400ms
+   ✓ Sprint 12 determinism: R2/R3 through the Session Host (T-DET-4/5/6) > hcsr04-1m: 3 runs give one fingerprint  27142ms
+   ✓ Sprint 12 determinism: R2/R3 through the Session Host (T-DET-4/5/6) > hcsr04-4m: 3 runs give one fingerprint  28067ms
+   ✓ Sprint 12 determinism: R2/R3 through the Session Host (T-DET-4/5/6) > dht22--10C-30RH: 3 runs give one fingerprint  28841ms
+   ✓ Sprint 12 determinism: R2/R3 through the Session Host (T-DET-4/5/6) > dht22-21.5C-55.2RH: 3 runs give one fingerprint  30906ms
+   ✓ Sprint 12 determinism: R2/R3 through the Session Host (T-DET-4/5/6) > dht22-60C-95RH: 3 runs give one fingerprint  28630ms
+   ✓ Sprint 12 determinism: R2/R3 through the Session Host (T-DET-4/5/6) > lcd1602-hello: 3 runs give one fingerprint  90651ms
+      Tests  8 passed (8)

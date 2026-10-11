@@ -1,5 +1,15 @@
 # Sprint 12 — Gate B (staging) evidence
 
+**Status (2026-10-11, G-2 round 4): STOPPED for PM review.** See
+[G2-ROUND4.md](s12-evidence/gate-b/G2-ROUND4.md): `bd26ec5`, `8073ccc`, `211ccff` pushed
+(`origin/sprint-12` = `211ccff`). F-R2-1 impact matrix measured (core 0 idle: ≈ 1–2 µs except the
+≈ 10–12 µs other-core interval per ms; core 0 busy: core 1 frozen up to 0.98 ms; inter-core tick
+offset delays `delay()` on core 1 by up to 477 µs). pulseIn bound derived and checked on 3 870
+readings (L = 0.4534 µs; F-R2-2 inside it). Canonical images: code identical, differences are data
+layout only; the +1 ms start is a tick-quantised cross-core race. Seven pins prepared as two
+verified patches, not applied. Bridge-edge and firmware-visible HC-SR04 checks split. No pin or
+tolerance changed; staging unchanged; B4b–B7 not run.
+
 **Status (2026-10-11, G-2 round 3): STOPPED for PM review.** See
 [G2-ROUND3.md](s12-evidence/gate-b/G2-ROUND3.md): H-1 fix pushed (`922e56b`) and its tests
 (`publication.test.ts`, 13 cases) added; Sprint 11/12 regression suites pass under the fixed host;

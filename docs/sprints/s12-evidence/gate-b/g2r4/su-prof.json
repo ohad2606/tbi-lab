@@ -1,0 +1,322 @@
+{
+ "TbiDht22": {
+  "insnsOld": {
+   "0": 61038852,
+   "1": 64651766
+  },
+  "insnsNew": {
+   "0": 61038326,
+   "1": 64652323
+  },
+  "functionsDiffering": 3,
+  "top": [
+   [
+    "ROM",
+    111023196,
+    111023695,
+    499
+   ],
+   [
+    "bootloader",
+    2510943,
+    2510474,
+    -469
+   ],
+   [
+    "esp_app_format_init_elf_sha256$part$0",
+    94,
+    95,
+    1
+   ]
+  ],
+  "padFrames": [
+   1,
+   1
+  ],
+  "padContentIdentical": true,
+  "padDtNs": {
+   "first": [
+    0
+   ],
+   "min": 0,
+   "max": 0
+  },
+  "serialIdentical": true
+ },
+ "TbiHcSr04": {
+  "insnsOld": {
+   "0": 61038665,
+   "1": 64652331
+  },
+  "insnsNew": {
+   "0": 61075164,
+   "1": 64740903
+  },
+  "functionsDiffering": 36,
+  "top": [
+   [
+    "esp_cpu_compare_and_set",
+    492804,
+    534452,
+    41648
+   ],
+   [
+    "spi_flash_op_block_func",
+    7090035,
+    7123787,
+    33752
+   ],
+   [
+    "spi_flash_disable_interrupts_caches_and_other_cpu",
+    2404096,
+    2436820,
+    32724
+   ],
+   [
+    "xPortEnterCriticalTimeout",
+    374128,
+    388092,
+    13964
+   ],
+   [
+    "ROM",
+    111024715,
+    111025603,
+    888
+   ],
+   [
+    "vPortExitCritical",
+    179782,
+    180560,
+    778
+   ],
+   [
+    "xTaskResumeAll",
+    72032,
+    72530,
+    498
+   ],
+   [
+    "bootloader",
+    2509869,
+    2509383,
+    -486
+   ],
+   [
+    "esp_ipc_call_nonblocking",
+    30496,
+    30706,
+    210
+   ],
+   [
+    "xTaskGetSchedulerState",
+    34891,
+    35081,
+    190
+   ],
+   [
+    "vTaskSuspendAll",
+    24537,
+    24707,
+    170
+   ],
+   [
+    "esp_vApplicationTickHook",
+    35231,
+    35329,
+    98
+   ]
+  ],
+  "padFrames": [
+   4,
+   4
+  ],
+  "padContentIdentical": true,
+  "padDtNs": {
+   "first": [
+    1000000,
+    1000000,
+    1000000
+   ],
+   "min": 1000000,
+   "max": 1000000
+  },
+  "serialIdentical": true
+ },
+ "TbiI2cProbe": {
+  "insnsOld": {
+   "0": 61253224,
+   "1": 64420804
+  },
+  "insnsNew": {
+   "0": 61290626,
+   "1": 64508489
+  },
+  "functionsDiffering": 37,
+  "top": [
+   [
+    "esp_cpu_compare_and_set",
+    493476,
+    534324,
+    40848
+   ],
+   [
+    "spi_flash_op_block_func",
+    7089739,
+    7123655,
+    33916
+   ],
+   [
+    "spi_flash_disable_interrupts_caches_and_other_cpu",
+    2403496,
+    2436764,
+    33268
+   ],
+   [
+    "xPortEnterCriticalTimeout",
+    374339,
+    388135,
+    13796
+   ],
+   [
+    "ROM",
+    110809656,
+    110810666,
+    1010
+   ],
+   [
+    "vPortExitCritical",
+    179782,
+    180628,
+    846
+   ],
+   [
+    "bootloader",
+    2707683,
+    2707131,
+    -552
+   ],
+   [
+    "xTaskResumeAll",
+    72032,
+    72579,
+    547
+   ],
+   [
+    "esp_ipc_call_nonblocking",
+    30496,
+    30727,
+    231
+   ],
+   [
+    "xTaskGetSchedulerState",
+    34932,
+    35142,
+    210
+   ],
+   [
+    "vTaskSuspendAll",
+    24537,
+    24724,
+    187
+   ],
+   [
+    "esp_vApplicationTickHook",
+    35231,
+    35329,
+    98
+   ]
+  ],
+  "padFrames": [
+   12,
+   12
+  ],
+  "padContentIdentical": true,
+  "padDtNs": {
+   "first": [
+    999904,
+    999904,
+    999904
+   ],
+   "min": 999904,
+   "max": 999984
+  },
+  "serialIdentical": true
+ },
+ "TbiR1Scan": {
+  "insnsOld": {
+   "0": 61039746,
+   "1": 64650966
+  },
+  "insnsNew": {
+   "0": 61039002,
+   "1": 64651774
+  },
+  "functionsDiffering": 8,
+  "top": [
+   [
+    "ROM",
+    111022702,
+    111023262,
+    560
+   ],
+   [
+    "bootloader",
+    2511527,
+    2510994,
+    -533
+   ],
+   [
+    "spi_flash_op_block_func",
+    7089639,
+    7089855,
+    216
+   ],
+   [
+    "spi_flash_disable_interrupts_caches_and_other_cpu",
+    2403584,
+    2403428,
+    -156
+   ],
+   [
+    "esp_cpu_compare_and_set",
+    493476,
+    493460,
+    -16
+   ],
+   [
+    "xPortEnterCriticalTimeout",
+    374339,
+    374334,
+    -5
+   ],
+   [
+    "esp_ipc_isr_waiting_for_finish_cmd",
+    249689,
+    249686,
+    -3
+   ],
+   [
+    "esp_app_format_init_elf_sha256$part$0",
+    95,
+    96,
+    1
+   ]
+  ],
+  "padFrames": [
+   31,
+   31
+  ],
+  "padContentIdentical": true,
+  "padDtNs": {
+   "first": [
+    200,
+    200,
+    200
+   ],
+   "min": 200,
+   "max": 200
+  },
+  "serialIdentical": true
+ }
+}
