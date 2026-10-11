@@ -13,10 +13,12 @@
  * time_backwards; drive_input_only (drives input-only GPIO34 HIGH at 20 ms).
  * Bridge v2 (Sprint 12, ADR-011): TBI_FAKE_HELLO replaces the handshake line's version and
  * capability fields (e.g. `2 i2c,pad-func,sched-input`, `2 -`, `3 -`); TBI_FAKE_FRAMES is a list
- * TBI_FAKE_TICK_LATE_NS=d[@n] reports ticks d ns after the grid (from tick n). TBI_FAKE_FRAMES is a list
  * of extra frames, `;`-separated, sent before the tick at 10 ms, or before tick n with an `n@`
  * prefix (e.g. `B 9500000 0 S 27 0`, `1300@G 1299000100 4 1 0`); every reply to them is echoed on
  * UART0 as `REPLY <frame> -> <commands>`.
+ * Gate B G-2 (H-1): TBI_FAKE_TICK_LATE_NS reports ticks after their grid time, as QEMU's do when the
+ * timer callback runs an instruction past the deadline: a `,`-separated list of `d@n` (d ns late
+ * from tick n on) or `d@n-m` (ticks n..m only); `d` alone means from tick 1.
  */
 import { connect } from 'node:net';
 import { openSync, readSync, writeSync, closeSync } from 'node:fs';
@@ -95,6 +97,17 @@ function bootCounter() {
   return n;
 }
 
+// TBI_FAKE_TICK_LATE_NS (see the header): how late tick n reports, the first matching entry wins.
+const lateSpec = (process.env.TBI_FAKE_TICK_LATE_NS ?? '')
+  .split(',')
+  .filter(Boolean)
+  .map((e) => {
+    const [d, range = '1'] = e.split('@');
+    const [from, to] = range.split('-');
+    return { late: BigInt(d), from: Number(from), to: to === undefined ? Infinity : Number(to) };
+  });
+const tickLate = (n) => lateSpec.find((e) => n >= e.from && n <= e.to)?.late ?? 0n;
+
 async function main() {
   await new Promise((r) => sock.on('connect', r));
   if (mode === 'no_hello') return new Promise(() => {});
@@ -129,11 +142,9 @@ async function main() {
     if (mode === 'crash' && n === 30) process.kill(process.pid, 'SIGSEGV');
     if (mode === 'guest_reset' && n === 30) process.exit(0);
     if (mode === 'stall' && n === 30) return new Promise(() => {});
-    // TBI_FAKE_TICK_LATE_NS=d[@n]: from tick n on, the tick reports d ns after its grid time, as
-    // QEMU's does when the timer callback runs an instruction after the deadline (Gate B G-2).
-    const [lateNs, lateFrom] = (process.env.TBI_FAKE_TICK_LATE_NS ?? '0@1').split('@');
-    const late = n >= Number(lateFrom ?? 1) ? BigInt(lateNs) : 0n;
-    await apply(await exchange(`T ${vns + late}`));
+    // A late tick ran at that later time: what the firmware does next follows it, as in QEMU.
+    vns += tickLate(n);
+    await apply(await exchange(`T ${vns}`));
     if (n % 256 === 0) await new Promise((r) => setImmediate(r)); // stay a polite process
   }
   sock.end();

@@ -50,7 +50,7 @@
     },
     "TbiLcd": {
       "sha256": "2f70c09c14f7686bd6671c925adeabcb5564fb2de5ad8989b6c78c108e4bd4fd",
-      "source": "runtime/firmware/arduino/TbiLcd (provision.sh firmware, 2026-10-09, TBI_RUNTIME_HOME=~/tbi-s12-rt, same pinned toolchain). Sprint 12 R3 I2C LCD (raw Wire) runtime test firmware. (G-2: the reproducible rebuild d8819c06… is NOT yet re-pinned: its equivalence held only under the Session Host publication defect fixed in 97de8e7; under the fixed host its stream differs and is under investigation.)"
+      "source": "runtime/firmware/arduino/TbiLcd (provision.sh firmware, 2026-10-09, TBI_RUNTIME_HOME=~/tbi-s12-rt, same pinned toolchain). Sprint 12 R3 I2C LCD (raw Wire) runtime test firmware. (G-2: the reproducible rebuild d8819c06… is NOT yet re-pinned. Its first equivalence result was taken under the Session Host publication defect (H-1); under the final host (1cc45ac) old and new images publish identical streams, see docs/sprints/s12-evidence/gate-b/G2-EVIDENCE.md. Re-pin awaits PM acceptance.)"
     },
     "TbiI2cProbe": {
       "sha256": "6f75261c61a610e5bb6c30cda1c9b112cf26fe6df2c05de09a3eb7460bbc3777",

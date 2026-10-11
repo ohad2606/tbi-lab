@@ -228,6 +228,33 @@ Mirrorable controls are exactly the ones the browser engine already supports liv
     the window was over `serialWindowMaxBytes`);
   - lifecycle `state` events carry `simNs: null`;
   - the same session inputs give the same event stream (§11).
+- **Sampled state publication, not a lossless event trace** (clarified 2026-10-11, Sprint 12
+  Gate B H-1; the wire format and `tbi-lab.session/1` are unchanged):
+  - Window `k` covers simulation time `((k-1)·P, k·P]`, `P = publishIntervalUs`. Runtime activity
+    is attributed to a window by **its own simulation time**, never by the time a bridge tick
+    reports (QEMU can report a tick an instruction past its grid time). The window is published
+    **once**, stamped `k·P`, as soon as a frame at a later time arrives (or the boundary tick
+    itself has been handled). A frame stamped exactly `k·P` that arrives after the boundary tick
+    goes into window `k+1`.
+  - **Every window with activity is published; none is skipped, merged, repeated or reordered.**
+    At the end of a session, the partial window is published once, stamped with the last frame's
+    time.
+  - What a window carries is **sampled state**:
+    - `gpio`: per changed pad, the final drive/level plus the exact number of transitions;
+      individual edges and their times are **not** published;
+    - `electrical`: the operating point at the end of the window, only if it changed;
+      intermediate operating points (e.g. an echo pulse that starts and ends inside one window)
+      are **not** published;
+    - `serial`: **lossless** up to `serialWindowMaxBytes` per window; any excess is counted in
+      `dropped`, never silently lost;
+    - `command` acks and `diagnostic`s are individual events, each stamped with its own time.
+  - **Lossless per-edge traces are not part of the client protocol.** The guest always sees every
+    edge at its own simulation time (above). Exact edge timing is verified at the bridge, and only
+    by test instrumentation (`runtime/tests/*.runtime.test.ts`). A client-visible lossless trace
+    (e.g. for a future logic analyser) needs its own protocol decision.
+  - Tests: `runtime/host/tests/publication.test.ts`, which checks exact, single, repeated and
+    persistent late ticks, events on and around a boundary, and stop/restart, all against the
+    exact-tick stream.
 - **Resume (SSE).** Events are held in a per-session ring (`eventLogCapacity`). The resume point
   is `Last-Event-ID` (sent by EventSource on reconnect) or `?after=`; the header wins; absent or
   empty means from the start. Validated before the stream opens:
