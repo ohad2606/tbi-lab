@@ -192,3 +192,12 @@ Remaining steps:
 Total ≈ 1 working day. With acceptance by about 13 Oct, Gate B completes about 14 Oct, inside the
 13–31 Oct window. The 30 November forecast is unchanged (≈ 60 %, bound by D-1 by about 30 Oct).
 The new lock-holder limitation adds one line to Sprint 14's in-product unsupported list.
+
+## 6. PM acceptance (G-2 final approval, 2026-10-11) — implemented
+
+F-R2-2 option (a) adopted. `s12-r2-timing`: each point's firmware case asserts
+⌊W − L⌋ ≤ R ≤ ⌊W + L⌋ (L = 0.4534 µs) for every reading. The former 1 µs bound is the case
+*KNOWN FAILURE (F-R2-2)*, mechanism-matched: it passes only while the single documented miss
+(4 m, first reading, 23294) occurs; any other miss fails it as unexpected, and its absence fails it
+as an unexpected pass. Result: 9/9 (4 bridge cases ns-exact, 4 contract cases, 1 known failure
+reproduced). Final manifest: 13/13 lock artifacts present and sha256-verified in the release store.

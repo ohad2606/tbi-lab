@@ -9,8 +9,16 @@
  *   - the echo the Session Host schedules (J on GPIO18) is exactly the engine oracle for the
  *     trigger the firmware actually produced (GPIO5 rise/fall, exact simulated ns): rise = trigger
  *     fall + 200 us burst, width = 2 d / c(T), to the nanosecond;
- *   - the firmware's pulseIn reading is that width within T-R2-2's 1 us bound, starting with the
- *     session's first reading (the reading s12-r2 never sees: it reads only after a live change).
+ *   - the firmware's pulseIn reading R of an echo of width W satisfies T-R2-2 as revised (PM, G-2
+ *     final, option (a)): floor(W - L) <= R <= floor(W + L), L = 0.4534 us (pulseIn's polling period
+ *     on Runtime v2, G2-ROUND4 section 2), for every reading including the session's first (the
+ *     reading s12-r2 never sees: it reads only after a live change). The contract's exception (an
+ *     edge inside a documented CPU-unavailable interval, |R - W| <= 13.5 us) is documented in
+ *     G2-FINAL.md; no interval is documented for TbiHcSr04, so none is granted here;
+ *   - KNOWN FAILURE (F-R2-2): the former 1 us bound, kept as a mechanism-specific regression. It
+ *     passes only while exactly the documented reading misses 1 us (the 4 m session's first
+ *     reading, 23294 vs 23 295.091); any other reading outside 1 us, or that reading inside it,
+ *     fails the case.
  * The two are separate test cases on one session per point (PM, G-2 round 3: strict bridge-edge
  * timing kept apart from firmware-visible timing), so a firmware-visible failure never hides the
  * bridge result. The firmware's startup (first trigger) is recorded, not asserted: it belongs to
@@ -55,6 +63,11 @@ vi.mock('../harness/session.js', async (importOriginal) => {
     runSession: (o: Parameters<typeof m.runSession>[0], h: H) => m.runSession(o, wrap(h)),
   };
 });
+
+/** pulseIn's polling period on Runtime v2 b5b34b49cb7e4049 (G2-ROUND4 section 2). */
+const L_US = 0.4534;
+/** The single documented 1 us miss (F-R2-2): point, reading index, value. */
+const F_R2_2 = { point: '4m-20C', index: 0, reading: 23294 };
 
 const host = realHost();
 afterAll(() => host.shutdown());
@@ -143,32 +156,62 @@ async function observe(distance: number, tempC: number): Promise<Observed> {
   return { rows, readings: readings.slice(0, rows.length) };
 }
 
+const POINTS = [
+  [0.1, 20],
+  [1, 20],
+  [4, 20],
+  [1, 35],
+] as const;
+/** One memoised session per point, shared by its cases and the known-failure case. */
+const observed = new Map<string, () => Promise<Observed>>();
+
 describe('R2: HC-SR04 device timing at the bridge (startup-independent)', () => {
-  for (const [distance, tempC] of [
-    [0.1, 20],
-    [1, 20],
-    [4, 20],
-    [1, 35],
-  ] as const) {
-    let observed: Promise<Observed> | undefined;
-    const once = () => (observed ??= observe(distance, tempC));
+  for (const [distance, tempC] of POINTS) {
+    let memo: Promise<Observed> | undefined;
+    const once = () => (memo ??= observe(distance, tempC));
+    observed.set(`${distance}m-${tempC}C`, once);
 
     it(`${distance} m at ${tempC} degC, bridge: every echo is the oracle for its trigger, to the ns`, async () => {
       const { rows } = await once();
       for (const r of rows) expect(r.echo).toEqual(r.want);
     }, 300_000);
 
-    // T-R2-2's bound, unchanged, for every reading, the session's first one included (PM, G-2:
-    // first-reading test; F-R2-2 found it 1.09 us short at 4 m — not widened).
-    it(`${distance} m at ${tempC} degC, firmware: every pulseIn reading within T-R2-2 (1 us)`, async () => {
+    it(`${distance} m at ${tempC} degC, firmware: every pulseIn reading within floor(W -/+ L) (T-R2-2)`, async () => {
       const { rows, readings } = await once();
-      for (const [i, r] of readings.entries())
-        expect(
-          Math.abs(r - rows[i]!.oracleUs),
-          `${i === 0 ? 'first reading' : `reading ${i}`}: ${r} us vs oracle ${rows[i]!.oracleUs} us`,
-        ).toBeLessThanOrEqual(1);
+      for (const [i, r] of readings.entries()) {
+        const w = rows[i]!.oracleUs;
+        const msg = `${i === 0 ? 'first reading' : `reading ${i}`}: ${r} us vs oracle ${w} us`;
+        expect(r, msg).toBeGreaterThanOrEqual(Math.floor(w - L_US));
+        expect(r, msg).toBeLessThanOrEqual(Math.floor(w + L_US));
+      }
     }, 300_000);
   }
+
+  it('KNOWN FAILURE (F-R2-2), former 1 us bound: only the 4 m first reading misses it', async () => {
+    const misses: { point: string; index: number; reading: number; oracleUs: number }[] = [];
+    for (const [distance, tempC] of POINTS) {
+      const { rows, readings } = await observed.get(`${distance}m-${tempC}C`)!();
+      readings.forEach((r, i) => {
+        if (Math.abs(r - rows[i]!.oracleUs) > 1)
+          misses.push({
+            point: `${distance}m-${tempC}C`,
+            index: i,
+            reading: r,
+            oracleUs: rows[i]!.oracleUs,
+          });
+      });
+    }
+    evidence.knownFailure = { id: 'F-R2-2', misses };
+    for (const m of misses)
+      expect(
+        m.point === F_R2_2.point && m.index === F_R2_2.index && m.reading === F_R2_2.reading,
+        `unexpected failure of the 1 us bound: ${JSON.stringify(m)}`,
+      ).toBe(true);
+    expect(
+      misses.length,
+      'unexpected pass: F-R2-2 no longer reproduces; investigate before changing this case',
+    ).toBe(1);
+  }, 900_000);
 
   afterAll(() =>
     recordEvidence('s12-r2-timing', {
