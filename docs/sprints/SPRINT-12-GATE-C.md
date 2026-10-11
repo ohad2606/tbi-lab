@@ -71,3 +71,12 @@ criterion (≥ 0.99, 1 s) and both proposed readings' intent: 0.9958 ≥ 0.99, a
 It does not meet the literal 1.0. N = 2 (Gate B: p5 0.87 / 0.94) fails every reading on this host.
 **Decision needed:** ratify the operational criterion (recommended: p5 ≥ 0.99 over 1 s windows,
 or ≥ 0.995 over 5 s windows).
+
+## PM acceptance (2026-10-11)
+
+Gate C engineering acceptance **APPROVED**. Decisions:
+- **D-2 ratified for the POC host:** p5 ≥ 0.995× over 5 s windows, plus the tick-gap, stability and cleanup requirements, for one active session. N = 1 measured 0.99952× (5 s, p5): **PASS**.
+- **Runtime v2 limitations accepted and recorded:** [runtime/RUNTIME-V2-LIMITATIONS.md](../runtime/RUNTIME-V2-LIMITATIONS.md).
+- **Dev-lab:** left unchanged pending owner acceptance.
+- **Sprints 11 and 12:** stay open until Owner Smoke and closure ([SPRINT-12-CLOSURE-CHECKLIST.md](SPRINT-12-CLOSURE-CHECKLIST.md)).
+- **Next:** [SPRINT-13-PLAN.md](SPRINT-13-PLAN.md) and [SPRINT-13-R4-ARCHITECTURE.md](SPRINT-13-R4-ARCHITECTURE.md), planning only.
