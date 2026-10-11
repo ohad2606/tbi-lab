@@ -1,0 +1,40 @@
+## B1 install
+imported reference image 768f52b5cc6aaa0e42152c463e2e7215f56966b8b10e2e773604e9e3d8433e55
+imported reference image b85bf69d17df101c06473d716b0b1e1c4457912e3870f14bed7d15ac0d086928
+installed tbi-s8 (build: /run/tbi-s8-build/api.sock, runtime: /run/tbi-s8-runtime/api.sock)
+## B0 backup
+/var/backups/tbi-lab/s12-staging-pre-gbfinal-20261011T122847Z
+36e91f549602143eb5ead8a7820f893f01bab4e8ff5e822c8f873559cad92ce3 ./50-tbi-s8.rules
+4fdc286570f062bf305339fb3f4282babb94f53139f217686f8d8b815dd53fa7 ./etc-tbi-s8/identity.key
+d43ab503249b4a5b34fae0b65494df1ccc7c00d999d442bbabce536b2fc29cd4 ./etc-tbi-s8/policy.json
+481d7aa42c6e7e6fc806cc5aa23d0968ba9a3be0277014a0feeae07f7f35071c ./etc-tbi-s8/runtime.json
+ea8f5d4e4b661c6a855131a05ce0a70c1149aca5876672bc9cc1557acb4fa966 ./etc-tbi-s8/ticket.key
+011f703c8ce87f472e5e4670d106dfe10cf3dbd4e1b4e01d7f017e4119c73f0f ./s8-staging/build-job.mjs
+fbdc0b13bcae6f29f99aae4da36827ad09519a0280c2742c4e387e630fe243fe ./s8-staging/build-service.mjs
+1cfa4f42b832e85696ed13041d3a0f2a5e300895a0c65d901df438311db2b96b ./s8-staging/session-host.mjs
+eb7ace0bcc8ad34a27b4f2b59dc4a60f049140823222162882c9ab994029d046 ./tbi-s8-build-job@.service
+77ecc3e4b08b237a8dc0e41c73959f815e042986edc987218100bc39c8780faa ./tbi-s8-build.service
+d338dbbbc57ab4bbb79238e0a1810a52021d6624e9ec48bd3205c3bb177bd41f ./tbi-s8-qemu@.service
+5e59e8074592eb2a57e0348526fb2388e2b3d90661b65c899e322b0d6acb36ce ./tbi-s8-session-host.service
+## dev-lab before == final
+identical
+services/current -> /srv/tbi-lab/services/0487ce6558640a4ce2dc54cb73acacf800617934
+69862a5341106554 /etc/systemd/system/tbi-build.service
+db2ac54986119925 /etc/systemd/system/tbi-build-job@.service
+317ab910c0dd3402 /etc/systemd/system/tbi-session-host.service
+a0c0f5f18c3c221d /etc/systemd/system/tbi-qemu@.service
+3b06b9de86d83316 /etc/polkit-1/rules.d/50-tbi.rules
+7afc97cbcb404569 /etc/tbi/identity.key
+d43ab503249b4a5b /etc/tbi/policy.json
+42b2069c85f9da36 /etc/tbi/ticket.key
+8d2cf84f247bb961 bundle/MANIFEST.json
+011f703c8ce87f47 bundle/build-job.mjs
+31e0bc622288d9a3 bundle/build-service.mjs
+db961404562329b9 bundle/session-host.mjs
+tbi-build pid=3739617 since=Fri 2026-10-09 05:45:38 UTC
+tbi-session-host pid=3739676 since=Fri 2026-10-09 05:45:40 UTC
+caddy pid=2213117 since=Sun 2026-10-04 13:19:44 UTC
+oauth2-proxy pid=2219933 since=Sun 2026-10-04 13:27:40 UTC
+tbi-qemu@ binds: /home/ubuntu/tbi-s8-rt/qemu-33e35e4ac5e798d7
+v1 runtime bin: 538af3d799e5bdeb
+dev-lab frontend -> /srv/tbi-lab/dev-lab/0487ce6558640a4ce2dc54cb73acacf800617934

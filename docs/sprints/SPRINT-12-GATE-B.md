@@ -1,5 +1,34 @@
 # Sprint 12 — Gate B (staging) evidence
 
+**Status (2026-10-11, Gate B final): COMPLETE: all steps pass; no release blocker.** PM "G-2 Final
+Approval" executed: F-R2-2 option (a) implemented (`ba0f4a6`), G-2 closed. Evidence:
+[final/](s12-evidence/gate-b/final/).
+
+| Item | Value |
+|---|---|
+| Release commit (staged) | `ba0f4a6893499b8728e8c902095b19b2be48404c` (`/health` runtime.commit), branch `sprint-12` |
+| Runtime | v2 `b5b34b49cb7e4049` (espressif/qemu `40edccac` + 0001–0008), capabilities `i2c,pad-func,sched-input` |
+| Release artifact set | `767d3715fdaaef10`: 13 images, all reproducible from source, sha-verified |
+| Staging bundles | build-job `011f703c…`, build-service `fbdc0b13…`, session-host `840bc8ae…` |
+| Backups | B0 `/var/backups/tbi-lab/s12-staging-pre-gbfinal-20261011T122847Z`; switch backups `…-20261011T122938Z`, `…T135046Z`, `…T135215Z` |
+| Rollback | `deploy/dev-lab/s8/switch-runtime.sh staging /home/ubuntu/tbi-s8-rt/qemu-33e35e4ac5e798d7` (rehearsed, 967 ms) |
+
+| Step | Result |
+|---|---|
+| B0 | backup taken; dev-lab snapshot (before = final, identical) |
+| B2 | release artifact set `767d3715fdaaef10` published (13 images); runtime v2 unchanged |
+| B1 | `install.sh staging` from a clean checkout of `ba0f4a6` on v1 QEMU: bundles stamped, 13 reference images imported, `/health` = `ba0f4a6` |
+| B3 | switch to Runtime v2 in **756 ms** (only `tbi-s8-build` restarted) |
+| B4a | full runtime suite on staging/v2: **36/37 files, 169 pass, 0 fail, 3 skipped** (C-5 opt-in; 2 `s11-deployed` cases need an S10 host, as before). The earlier B4a failures are resolved: G-1 `r1-determinism` 2/2, G-4 `s8-deployed-policy` 7/7. Known failures reproduced as documented: F-R2-1 (s12-bridge-timing), F-R2-2 (s12-r2-timing) |
+| B4b | R-MCU-1 release gate, 40 runs per configuration (6 configurations, 240 runs): **7/7**, every batch one result equal to the Runtime v2 pins |
+| B5 | rollback to v1 in **967 ms**, `s11-deployed` + `s8-qemu-tasks` 8 pass / 2 skipped; forward to v2 in **808 ms**, same 8/2 |
+| B6 | real-QEMU browser specs on staging (s12-real, s11-real, s6-real): **9 pass, 2 skipped** (old-host compatibility cases); product-level determinism 3/3 identical |
+| B7 | C-5 (in-process host, paced, mix, 120 s): N=1 **pass** (p5 0.996×, tick-gap p99 3 ms, CPU 45 %); N=2 p5 0.87/0.94× (median 1.00×, CPU 78 %); N=3 CPU 100 %, sonar 0.80× sim/wall; tick-gap p99 ≤ 10 ms and 0 failures at every N; QEMU RSS ≈ 85 MB |
+| Isolation | dev-lab units, bundles, keys, policy and processes identical before/after; staging policy byte-equal to B0; no session, relay or QEMU left |
+
+Capacity: this 1-vCPU host meets D-2 at N = 1 only (as forecast); N ≥ 2 needs the D-1 hardware
+decision. Accepted limitations: V1 timing contract (G2-FINAL.md §4).
+
 **Status (2026-10-11, G-2 final package): STOPPED for PM acceptance.** See
 [G2-FINAL.md](s12-evidence/gate-b/G2-FINAL.md): `c608cf5` pushed. Patch B applied in a local commit:
 five lock re-pins (all 13 artifacts reproducible) and seven determinism pins (10/10). s12-bridge is split
