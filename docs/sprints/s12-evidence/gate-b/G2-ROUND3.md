@@ -108,7 +108,32 @@ task-watchdog feed (`esp_task_wdt_reset`, `task_wdt_timer_feed`, `esp_timer_impl
 | E2 `pulseIn` on core 1 / core 0, widths 15 µs–23.3 ms, 690 pulses each | outside ~10 µs windows per ms: reading − width within −1.09..+0.23 µs at every width (polling + truncation, §F-R2-2); edges inside a window: rise late → reading up to **−8.8 µs**, fall late → up to **+9.9 µs**, **independent of width**; repeated runs identical |
 | E2 caveat | the windows combine the measuring core's own tick interrupt (physical; on silicon ~½ the duration) and the other core's tick (emulator); E2 does not separate them — E1 isolates the other core |
 | E4 TbiDualLoad: core 1 times a fixed loop | core 0 idle: 159 454 cycles; core 0 busy: 211 469–211 582 (**×1.33**; silicon ×1.0). Instruction-bound code on two busy cores runs slower in simulated time |
-| E5 GPIO write answered with a scheduled input (`J`) | in some iterations the **writing core loses 10.95 µs** right after the write (bare bridge, no Session Host; 0.58 µs without `J`). Deterministic; the echo itself stays exact. Same class (the other core runs while the writer is frozen); the exact core-0 work in that interval is not yet traced (a QEMU debug build is needed, §5) |
+| E5 GPIO write answered with a scheduled input (`J`) | in some iterations the **writing core loses 10.95 µs** right after the write (bare bridge, no Session Host; 0.58 µs without `J`). Deterministic; the echo itself stays exact. **Traced** (below): the lost interval is the rest of core 0's tick |
+
+**Mechanism, traced (E5, [e5-trace-excerpt.txt](g2r3/e5-trace-excerpt.txt), QEMU
+`-d exec,int,nochain` of TbiTrigClock `0259381b` streamed through
+[e5-filter.py](g2r3/e5-filter.py), collapsed with [e5-analyse.py](g2r3/e5-analyse.py)):**
+
+1. Core 0 takes its CCOMPARE0 tick while core 1 is busy, runs 35 TBs into `_frxt_timer_int` and
+   stops right after `wsr.ccompare0` (0x4008852b, rearming the next tick): the round robin switches
+   to core 1 there, with core 0's tick handler unfinished.
+2. Core 1 runs on (here: `digitalWrite(HIGH)`, `delayMicroseconds(10)`, `digitalWrite(LOW)`) until
+   its slice ends: at the next virtual-timer deadline, or earlier when something re-arms a virtual
+   timer. A pad frame answered with `J` does exactly that (the bridge arms the scheduled input),
+   so the slice ends right after the LOW write.
+3. Core 0 resumes at 0x4008852e and runs the rest of its tick, 427 TBs, while core 1 is frozen and
+   simulated time advances: tick hook (interrupt-WDT feed: MWDT write-protect, config_stage, feed),
+   `xTaskIncrementTick` (SMP spinlock), `vTaskSwitchContext` / `prvSelectHighestPriorityTaskSMP`,
+   IDLE0 `esp_vApplicationIdleHook`, task-WDT feed, `waiti`. Core 1 then continues in `loop()`
+   10.95 µs later than on silicon.
+
+Without `J` the slice ends at the next deadline instead, so the same frozen interval falls
+somewhere else (in TbiTrigClock, inside `delay(100)`, where nobody measures it). E1's fixed window
+(539–549 µs) is the same three steps with the slice ending at a fixed deadline. So E1, E2's windows
+and E5 are one effect: **core 0's tick work always runs while core 1 is frozen; where the ≈ 10 µs
+lands depends on when core 1's slice ends** (timer deadlines, timer re-arming by the bridge).
+Moving it cannot remove it: the ≈ 1 260 instructions must execute somewhere on the one virtual
+clock. Only per-core time (option A) removes it.
 
 Impact: any firmware measurement of µs timing (pulseIn, cycle-counter timestamps, software
 protocols) can be off by up to ≈ 10–11 µs when an edge or an instruction sequence coincides with
@@ -154,8 +179,8 @@ below the module's 10 µs minimum, and correctly got no echo: reading 0.)
 | E. Document and bound (no fix in V1) | limitation stated with measured bounds | 1 day | needs PM approval |
 
 Recommendation: **E for V1/Alpha, A as a post-Alpha runtime spike** (1 week to measure Q vs speed
-before any commitment). A first, small step: a QEMU debug counter (instructions per core per slice)
-to name the work in E5 (½ day + a ~1 h QEMU build).
+before any commitment). The E5 work is now named by an exec trace (above); no QEMU debug
+build was needed.
 
 **F-R2-2**
 

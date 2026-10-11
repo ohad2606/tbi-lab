@@ -1,0 +1,116 @@
+# E5 trace, TbiTrigClock 0259381b on the bare bridge, trigger fall answered with J (echo schedule).
+# QEMU -d exec,int,nochain streamed through e5-filter.py (digitalWrite entry 0x400d2168 hits);
+# collapsed with e5-analyse.py. Serial: ['W 0 138 2697 2837 2839', 'W 1 138 2697 2837 2839', 'W 2 139 2698 5467 5469']
+# pads: ['890150224 0', '890195216 1', '890206456 0', '990759162 1', '990770402 0', '1090796178 1', '1090807418 0']
+
+## Hit 6 (k2 HIGH write, 1090.796178 ms): 784 log lines before it, core 0 takes its tick (intset 0x40),
+## runs 35 TBs to the wsr.ccompare0 in _frxt_timer_int (0x4008852b) and the round robin switches to core 1:
+check_interrupts level = 1, cintlevel = 0, pc = 400857c6, a0 = 800f04b5, ps = 00060120, intset = 00000040, intenable = 8
+xtensa_cpu_do_interrupt(EXC_IRQ) level = 1, cintlevel = 0, pc = 400857c6, a0 = 800f04b5, ps = 00060120, intset = 0000004
+xtensa_cpu_do_interrupt(11) pc = 400857c6, a0 = 800f04b5, ps = 00060130, ccount = 16594253
+Trace 0: 0xff8261d0d100 [00000000/0000000040080340/00018014/ff002200] 
+Trace 0: 0xff8261d0d240 [00000000/00000000400834a4/00018014/ff002200] 
+Trace 0: 0xff8261d0d380 [00000000/00000000400834aa/00018014/ff002200] 
+Trace 0: 0xff8261d0d480 [00000000/0000000040083734/00018014/ff002200] 
+Trace 0: 0xff8261d0d7c0 [00000000/0000000040088474/00018014/ff002200] 
+Trace 0: 0xff8261d0d9c0 [00000000/000000004008f47c/00018014/ff002200] 
+Trace 0: 0xff8261d0e240 [00000000/000000004008f43c/00018014/ff002200] 
+Trace 0: 0xff8261d0e780 [00000000/000000004008f4c6/00018014/ff002200] 
+Trace 0: 0xff8261d0e8c0 [00000000/000000004008f4d1/00018014/ff002200] 
+Trace 0: 0xff8261d0ea80 [00000000/000000004008f4dd/00058010/ff002200] 
+Trace 0: 0xff8261d0ebc0 [00000000/000000004008f4ec/00058010/ff002200] 
+Trace 0: 0xff8261d0f240 [00000000/000000004008f4f2/00058010/ff002200] 
+Trace 0: 0xff8261d0f4c0 [00000000/000000004008f4f8/00050010/ff002200] 
+xtensa_cpu_do_interrupt(5) pc = 4008f4f8, a0 = 800880f0, ps = 00040c33, ccount = 16594253
+Trace 0: 0xff8261af42c0 [00000000/0000000040080080/00018014/ff002200] 
+Trace 0: 0xff8261d0f600 [00000000/000000004008f4f8/00058010/ff002200] 
+Trace 0: 0xff8261d0f740 [00000000/000000004008f4fe/00048010/ff002200] 
+xtensa_cpu_do_interrupt(5) pc = 4008f4fe, a0 = 800890de, ps = 00040f33, ccount = 16594253
+Trace 0: 0xff8261af42c0 [00000000/0000000040080080/00018014/ff002200] 
+Trace 0: 0xff8261d0f880 [00000000/000000004008f4fe/00058010/ff002200] 
+Trace 0: 0xff8261d0f9c0 [00000000/000000004008f504/00058010/ff002200] 
+Trace 0: 0xff8261d0fb00 [00000000/000000004008f50d/00018014/ff002200] 
+Trace 0: 0xff8261d0fd40 [00000000/000000004008847e/00018014/ff002200] 
+Trace 0: 0xff8261d0ff80 [00000000/0000000040088494/00018014/ff002200] 
+Trace 0: 0xff8261d10180 [00000000/000000004008849d/00018014/ff002200] 
+Trace 0: 0xff8261d10380 [00000000/00000000400884a7/00018014/ff002200] 
+Trace 0: 0xff8261d10600 [00000000/00000000400884c1/00018014/ff002200] 
+Trace 0: 0xff8261d10700 [00000000/000000004008375a/00018014/ff002200] 
+Trace 0: 0xff8261d10880 [00000000/0000000040083760/00058010/ff002200] 
+Trace 0: 0xff8261d109c0 [00000000/0000000040083769/00058010/ff002200] 
+Trace 0: 0xff8261d10b80 [00000000/0000000040083775/00058010/ff002200] 
+Trace 0: 0xff8261d10e80 [00000000/0000000040083796/00058010/ff002200] 
+Trace 0: 0xff8261d10fc0 [00000000/000000004008379d/00058010/ff002200] 
+Trace 0: 0xff8261d2ae80 [00000000/00000000400837c4/00058010/ff002200] 
+Trace 0: 0xff8261d2afc0 [00000000/000000004008851c/000d8010/ff002200] 
+Trace 0: 0xff8261d2b100 [00000000/000000004008851f/000d8010/ff002200] 
+Trace 0: 0xff8261d2b300 [00000000/000000004008852e/000f8010/ff002200] 
+Trace 1: 0xff8261c36940 [000800dd/00000000400830f4/00158010/ff002200] 
+Trace 1: 0xff8261c36a80 [000800dd/00000000400830f7/00158010/ff002200] 
+Trace 1: 0xff8261c36bc0 [000800dd/00000000400830b0/00158010/ff002200] 
+Trace 1: 0xff8261c36d00 [000800dd/00000000400830b3/00158010/ff002200] 
+cpu_io_recompile: rewound execution of TB to 00000000400830be
+
+## Hit 7 (k2 LOW write, 1090.807418 ms, answered with J): core 1 writes, core 0 resumes at 0x4008852e
+## (esync after wsr.ccompare0) and runs the rest of the tick (427 TBs) while core 1 is frozen:
+    2  cpu1  __digitalWrite
+    3  cpu1  perimanGetPinBus
+    3  cpu1  ??
+    4  cpu1  perimanGetPinBus
+    2  cpu1  __digitalWrite
+    3  cpu1  gpio_set_level
+    3  cpu1  ??
+    2  cpu1  gpio_set_level
+    2  cpu1  gpio_ll_set_level
+    1  cpux  cpu_io_recompile: rewound execution of TB to 00000000400d5543
+    1  cpu1  gpio_ll_set_level
+    1  cpu0  _frxt_timer_int
+    2  cpu0  xPortSysTickHandler
+    1  cpu0  esp_vApplicationTickHook
+    1  cpu0  xt_utils_get_core_id
+    1  cpu0  esp_vApplicationTickHook
+    1  cpu0  tick_hook
+    1  cpu0  xt_utils_get_core_id
+    2  cpu0  tick_hook
+    2  cpu0  wdt_hal_write_protect_disable
+    1  cpu0  mwdt_ll_write_protect_disable
+    1  cpux  cpu_io_recompile: rewound execution of TB to 000000004008bc8f
+    1  cpu0  mwdt_ll_write_protect_disable
+    2  cpu0  wdt_hal_write_protect_disable
+    1  cpu0  tick_hook
+    2  cpu0  wdt_hal_config_stage
+    4  cpu0  mwdt_ll_config_stage
+    1  cpux  cpu_io_recompile: rewound execution of TB to 000000004008bbda
+    2  cpu0  mwdt_ll_config_stage
+    1  cpux  cpu_io_recompile: rewound execution of TB to 000000004008bbec
+    2  cpu0  mwdt_ll_config_stage
+    1  cpux  cpu_io_recompile: rewound execution of TB to 000000004008bbf2
+    2  cpu0  mwdt_ll_config_stage
+    1  cpu0  wdt_hal_config_stage
+    1  cpu0  tick_hook
+    2  cpu0  wdt_hal_config_stage
+    4  cpu0  mwdt_ll_config_stage
+    1  cpux  cpu_io_recompile: rewound execution of TB to 000000004008bc10
+    2  cpu0  mwdt_ll_config_stage
+    1  cpux  cpu_io_recompile: rewound execution of TB to 000000004008bc22
+    2  cpu0  mwdt_ll_config_stage
+    1  cpux  cpu_io_recompile: rewound execution of TB to 000000004008bc28
+    2  cpu0  mwdt_ll_config_stage
+    1  cpu0  wdt_hal_config_stage
+    1  cpu0  tick_hook
+    2  cpu0  wdt_hal_feed
+    1  cpu0  mwdt_ll_feed
+    1  cpux  cpu_io_recompile: rewound execution of TB to 000000004008bdaf
+    1  cpu0  mwdt_ll_feed
+    2  cpu0  wdt_hal_feed
+    1  cpu0  tick_hook
+    2  cpu0  wdt_hal_write_protect_enable
+    1  cpu0  mwdt_ll_write_protect_enable
+    1  cpux  cpu_io_recompile: rewound execution of TB to 000000004008bcb1
+    1  cpu0  mwdt_ll_write_protect_enable
+    2  cpu0  wdt_hal_write_protect_enable
+    2  cpu0  tick_hook
+   16  cpu0  esp_vApplicationTickHook
+    1  cpu0  xt_utils_get_core_id
+    1  cpu0  xPortSysTickHandler
+   ...  (core 0, 427 TBs in all: the interrupt-WDT feed in tick_hook (MWDT write-protect, config_stage, feed), xTaskIncrementTick, vTaskSwitchContext / prvSelectHighestPriorityTaskSMP, IDLE0 esp_vApplicationIdleHook, task WDT feed (esp_task_wdt_reset, task_wdt_timer_feed), waiti; then core 1 resumes at 0x400d5545 in loop())
