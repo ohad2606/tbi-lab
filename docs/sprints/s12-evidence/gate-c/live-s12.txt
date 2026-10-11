@@ -1,0 +1,48 @@
+PASS  esp32-distance-alarm: Build -> current
+PASS  esp32-distance-alarm: Run -> running on the board (mcu)
+PASS  esp32-distance-alarm: 0.5 m printed (Distance: 50.x cm)
+PASS  esp32-distance-alarm: LED off at 0.5 m
+PASS  esp32-distance-alarm: 0.1 m -> LED on (GPIO2 high)
+PASS  esp32-distance-alarm: 10.x cm printed
+PASS  esp32-blink (user B): Build -> current
+PASS  limit: user B refused while A runs (failed, explicit message)  — runtime_busy: The ESP32 runtime service is busy. Try again in a moment. The project is not affected.
+PASS  limit: user A unaffected (still running)
+PASS  esp32-distance-alarm: 1 m -> LED off
+PASS  esp32-distance-alarm: Stop -> stopped
+PASS  esp32-thermo-hygrometer: Build -> current
+PASS  esp32-thermo-hygrometer: Run -> running on the board (mcu)
+PASS  esp32-thermo-hygrometer: prints 21.5 C / 55.0 %
+PASS  esp32-thermo-hygrometer: prints -7.3 C after the live change
+PASS  esp32-thermo-hygrometer: Stop -> stopped
+PASS  esp32-lcd-hello: Build -> current
+PASS  esp32-lcd-hello: Run -> running on the board (mcu)
+FAIL  esp32-lcd-hello: line 1 'Hello, ESP32!'
+PASS  esp32-lcd-hello: line 2 'Up: N s'
+PASS  esp32-lcd-hello: backlight on, text drawn
+PASS  esp32-lcd-hello: Stop -> stopped
+PASS  esp32-motion-relay: Build -> current
+PASS  esp32-motion-relay: Run -> running on the board (mcu)
+PASS  esp32-motion-relay: idle GPIO4 low
+PASS  esp32-motion-relay: motion -> relay energized, buzzer sounding
+PASS  esp32-motion-relay: no motion -> relay released
+PASS  esp32-motion-relay: Stop -> stopped
+PASS  esp32-night-light: Build -> current
+PASS  esp32-night-light: Run -> running on the board (mcu)
+PASS  esp32-night-light: dark -> GPIO4 high
+PASS  esp32-night-light: bright -> GPIO4 low
+PASS  esp32-night-light: Stop -> stopped
+PASS  capacitor refused next to the board
+PASS  matrix refused next to the board
+PASS  S12 parts offered next to the board (not refused)
+PASS  HE: RTL chrome
+PASS  HE: HC-SR04 palette name  — חיישן מרחק אולטרסוני
+PASS  HE: DHT22 palette name
+PASS  HE: LCD palette name
+PASS  esp32-distance-alarm (HE): Build -> current
+PASS  esp32-distance-alarm (HE): Run -> running on the board (mcu)
+PASS  HE: firmware output unchanged (Distance: 50.x cm)
+PASS  HE: serial monitor stays LTR  — ltr
+PASS  HE: same electrical result (0.1 m -> LED on)
+PASS  esp32-distance-alarm (HE): Stop -> stopped
+PASS  no page errors
+46/47 checks passed

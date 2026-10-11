@@ -1,0 +1,20 @@
+services/current -> /srv/tbi-lab/services/0487ce6558640a4ce2dc54cb73acacf800617934
+69862a5341106554 /etc/systemd/system/tbi-build.service
+db2ac54986119925 /etc/systemd/system/tbi-build-job@.service
+317ab910c0dd3402 /etc/systemd/system/tbi-session-host.service
+a0c0f5f18c3c221d /etc/systemd/system/tbi-qemu@.service
+3b06b9de86d83316 /etc/polkit-1/rules.d/50-tbi.rules
+7afc97cbcb404569 /etc/tbi/identity.key
+d43ab503249b4a5b /etc/tbi/policy.json
+42b2069c85f9da36 /etc/tbi/ticket.key
+8d2cf84f247bb961 bundle/MANIFEST.json
+011f703c8ce87f47 bundle/build-job.mjs
+31e0bc622288d9a3 bundle/build-service.mjs
+db961404562329b9 bundle/session-host.mjs
+tbi-build pid=3739617 since=Fri 2026-10-09 05:45:38 UTC
+tbi-session-host pid=3739676 since=Fri 2026-10-09 05:45:40 UTC
+caddy pid=2213117 since=Sun 2026-10-04 13:19:44 UTC
+oauth2-proxy pid=2219933 since=Sun 2026-10-04 13:27:40 UTC
+tbi-qemu@ binds: /home/ubuntu/tbi-s8-rt/qemu-33e35e4ac5e798d7
+v1 runtime bin: 538af3d799e5bdeb
+dev-lab frontend -> /srv/tbi-lab/dev-lab/0487ce6558640a4ce2dc54cb73acacf800617934

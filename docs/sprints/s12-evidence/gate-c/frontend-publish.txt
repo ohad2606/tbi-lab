@@ -1,0 +1,16 @@
+OK   version.json (served): short commit — ba0f4a6
+OK   version.json (served): environment dev-lab — dev-lab
+OK   version.json (served): built from a clean commit
+OK   served /version.json is the release file
+OK   served /version.json is not long-cached — no-store
+OK   served / is the release index.html (byte for byte)
+OK   served / is not long-cached — no-store
+OK   served /assets/tbi-logo-light-DRFbl6et.png — 200 private, max-age=31536000, immutable
+OK   served /assets/index-Bxn-7E4u.js — 200 private, max-age=31536000, immutable
+OK   served /assets/src-DNKoTQ8d.js — 200 private, max-age=31536000, immutable
+OK   served /assets/jsxRuntime.module-OJYr6kif.js — 200 private, max-age=31536000, immutable
+OK   served /assets/index-B0b2sJ_m.css — 200 private, max-age=31536000, immutable
+OK   public https://dev-lab.tbi-tech.net/version.json is up and behind the sign-in gate — 302 https://accounts.google.com/o/oauth2/auth?access_type=offline&client_id=…&prompt
+
+all checks passed: ba0f4a6893499b8728e8c902095b19b2be48404c
+dev-lab now serves ba0f4a6893499b8728e8c902095b19b2be48404c (verified from /version.json and index.html as served by the gate)

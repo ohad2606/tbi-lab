@@ -1,0 +1,8 @@
+PASS  esp32-lcd-hello: Build -> current
+PASS  esp32-lcd-hello: Run -> running on the board (mcu)
+PASS  esp32-lcd-hello: line 1 'Hello, ESP32!'
+PASS  esp32-lcd-hello: line 2 'Up: N s'
+PASS  esp32-lcd-hello: backlight on, text drawn
+PASS  esp32-lcd-hello: Stop -> stopped
+PASS  no page errors
+7/7 checks passed
