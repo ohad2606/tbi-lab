@@ -46,7 +46,8 @@ function vccSdaSwapped(): ProjectDocument {
   doc = del.doc;
   for (const [from, to] of [
     [at('PSU1', 'positive'), at('DS1', 'sda')],
-    [{ kind: 'junction', junction: 'J2' } as WireTarget, at('DS1', 'vcc')],
+    // The SDA line (GPIO21, its pull-up R1) to the module's VCC pin: R1.b is on that line.
+    [at('R1', 'b'), at('DS1', 'vcc')],
   ] as const) {
     const r = addWire(doc, from, to);
     if (!r.ok) throw new Error(r.error);
