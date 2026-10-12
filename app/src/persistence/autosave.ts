@@ -24,7 +24,11 @@ export interface AutosaveOptions {
 
 export class Autosave {
   private timer: unknown = null;
-  private pending: ProjectDocument | null = null;
+  /**
+   * Documents not yet confirmed on disk, ONE PER PROJECT (Sprint 13 Task D): a single slot for all
+   * projects let the first change to project B silently replace project A's failed write.
+   */
+  private readonly pending = new Map<string, ProjectDocument>();
   private inFlight: Promise<void> = Promise.resolve();
   private readonly debounceMs: number;
   private readonly schedule: ScheduleFn;
@@ -55,7 +59,7 @@ export class Autosave {
 
   /** True while a change exists that is not yet confirmed on disk. */
   get dirty(): boolean {
-    return this.pending !== null || this.stateValue !== 'saved';
+    return this.pending.size > 0 || this.stateValue !== 'saved';
   }
 
   onState(listener: (s: SaveState) => void): () => void {
@@ -71,7 +75,7 @@ export class Autosave {
 
   /** Queue a save. Returns immediately: editing is never blocked by persistence. */
   queue(doc: ProjectDocument): void {
-    this.pending = doc;
+    this.pending.set(doc.projectId, doc);
     this.setState('saving');
     if (this.timer !== null) this.cancel(this.timer);
     this.timer = this.schedule(() => void this.flush(), this.debounceMs);
@@ -83,15 +87,12 @@ export class Autosave {
    * deleted project back afterwards.
    */
   async discard(projectId: string): Promise<void> {
-    if (this.pending?.projectId === projectId) {
-      if (this.timer !== null) {
-        this.cancel(this.timer);
-        this.timer = null;
-      }
-      this.pending = null;
+    if (this.pending.delete(projectId) && this.pending.size === 0 && this.timer !== null) {
+      this.cancel(this.timer);
+      this.timer = null;
     }
     await this.inFlight;
-    if (!this.pending) this.setState('saved');
+    if (this.pending.size === 0 && this.lastError === null) this.setState('saved');
   }
 
   /** Re-attempt after a failure. */
@@ -105,23 +106,31 @@ export class Autosave {
       this.cancel(this.timer);
       this.timer = null;
     }
-    const doc = this.pending;
-    if (!doc) return this.inFlight;
-    this.pending = null;
+    if (this.pending.size === 0) return this.inFlight;
+    const docs = [...this.pending.values()];
+    this.pending.clear();
     this.inFlight = this.inFlight.then(async () => {
       this.setState('saving');
-      try {
-        await this.store.save(doc);
-        this.writeCount++;
-        this.lastError = null;
-        // A newer change may have been queued while this write was in flight.
-        this.setState(this.pending ? 'saving' : 'saved');
-      } catch (e) {
-        // Keep the newest document: a later queue() replaces it, retry() re-attempts it.
-        this.pending ??= doc;
-        this.lastError = isQuotaError(e) ? 'quota' : 'write';
-        this.setState('error');
+      let failed: unknown = null;
+      for (const doc of docs) {
+        try {
+          await this.store.save(doc);
+          this.writeCount++;
+        } catch (e) {
+          // Keep the newest document of THIS project: a later queue() of the same project
+          // replaces it, retry() or the next flush re-attempts it; other projects are unaffected.
+          if (!this.pending.has(doc.projectId)) this.pending.set(doc.projectId, doc);
+          failed ??= e;
+        }
       }
+      if (failed !== null) {
+        this.lastError = isQuotaError(failed) ? 'quota' : 'write';
+        this.setState('error');
+        return;
+      }
+      this.lastError = null;
+      // A newer change may have been queued while these writes were in flight.
+      this.setState(this.pending.size > 0 ? 'saving' : 'saved');
     });
     return this.inFlight;
   }

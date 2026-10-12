@@ -100,3 +100,56 @@ describe('Autosave', () => {
     expect(a.state).toBe('saved');
   });
 });
+
+// Sprint 13 Task D (overnight audit, H2): one pending slot for all projects meant a failed write
+// of project A was silently dropped by the first change to project B, and B's successful write
+// then cleared the error indicator.
+describe('Autosave across projects (no silent loss)', () => {
+  const docOf = (projectId: string, name: string) =>
+    createProject({ projectId, deviceId: 'd', name, appVersion: '0' });
+
+  it('a failed write of A survives a change to B; the error stays until A is written', async () => {
+    const storage = new MemoryStorage();
+    const a = new Autosave(storage, manualTimer());
+    storage.failNext = 1;
+    a.queue(docOf('prj_a', 'A edited'));
+    await a.flush();
+    expect(a.state).toBe('error');
+    a.queue(docOf('prj_b', 'B edited'));
+    await a.flush();
+    // B was written; A was retried in the same flush and written too (the store works again).
+    expect(storage.saved.map((d) => d.name).sort()).toEqual(['A edited', 'B edited']);
+    expect(a.state).toBe('saved');
+    expect(a.dirty).toBe(false);
+  });
+
+  it('while A keeps failing, a successful write of B does not report "saved"', async () => {
+    const storage = new MemoryStorage();
+    const a = new Autosave(storage, manualTimer());
+    storage.failNext = 2; // A's first write and its retry fail; B succeeds.
+    a.queue(docOf('prj_a', 'A edited'));
+    await a.flush();
+    a.queue(docOf('prj_b', 'B edited'));
+    await a.flush();
+    expect(storage.saved.map((d) => d.name)).toEqual(['B edited']);
+    expect(a.state).toBe('error');
+    expect(a.dirty).toBe(true);
+    await a.retry();
+    expect(storage.saved.map((d) => d.name)).toEqual(['B edited', 'A edited']);
+    expect(a.state).toBe('saved');
+  });
+
+  it('a newer change of the same project still supersedes its failed one; discard drops only that project', async () => {
+    const storage = new MemoryStorage();
+    const a = new Autosave(storage, manualTimer());
+    storage.failNext = 1;
+    a.queue(docOf('prj_a', 'A v1'));
+    await a.flush();
+    a.queue(docOf('prj_a', 'A v2'));
+    a.queue(docOf('prj_b', 'B v1'));
+    await a.discard('prj_b');
+    await a.flush();
+    expect(storage.saved.map((d) => d.name)).toEqual(['A v2']);
+    expect(a.state).toBe('saved');
+  });
+});
