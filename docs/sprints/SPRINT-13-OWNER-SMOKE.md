@@ -10,20 +10,22 @@ received. Each row records the PM summary verbatim. The "Owner observation / rep
 **requested** until the owner's notes arrive. Engineering's reproduction is recorded separately
 and is not a substitute for the owner's.
 
+**Status: all nine fixed on `sprint-13` (`2e9ab98`), verified by unit, e2e and (where relevant) real-QEMU tests; NOT accepted — each needs the owner's retest (OS-02 on the owner's GPU machine).**
+
 **Owner Smoke acceptance (Sprints 11/12): OPEN.** It is not claimed until the owner finishes the
 remaining tests.
 
 | ID | Pri | PM summary (verbatim) | Owner observation / repro | Slice | Status |
 |---|---|---|---|---|---|
-| OS-01 | P1 | Reusable engineering value control with numeric input and appropriate SI units. Preserve canonical physical values and support EN/HE. | requested | S-B controls | open |
-| OS-02 | P1 | Profile the reported 5–7 second 3D render on a minimal circuit; optimize the measured bottleneck. | requested ("5–7 s, minimal circuit") | S-D 3D | open |
-| OS-03 | P1 | LDR live visual and simulation updates during dragging, with bounded command frequency and guaranteed final value. | requested | S-B controls | open |
-| OS-04 | P0 | Prevent invalid component-body overlaps, consistently across Circuit and derived 3D views. | requested | S-C geometry | open |
-| OS-05 | P1 | Prevent wires from obscuring critical component displays where valid alternative routing exists. | requested | S-C geometry | open |
-| OS-06 | P1 | HC-SR04 slider units, range, monotonic interaction and live updates. | requested | S-B controls | open |
-| OS-07 | P1 | Remove horizontal overflow in the sensor property inspector without reducing the main workspace. | requested | S-B controls | open |
-| OS-08 | P0 | Correct Build/Run state management. Run must not be available while a build is in progress or when firmware is stale. | requested | S-A build/run | open |
-| OS-09 | P0 | Investigate reversed LCD VCC/SDA wiring, verify electrical diagnostics and provide an accurate actionable refusal or warning where supported. | requested | S-E diagnostics | open |
+| OS-01 | P1 | Reusable engineering value control with numeric input and appropriate SI units. Preserve canonical physical values and support EN/HE. | requested | S-B controls | fixed, owner retest |
+| OS-02 | P1 | Profile the reported 5–7 second 3D render on a minimal circuit; optimize the measured bottleneck. | requested ("5–7 s, minimal circuit") | S-D 3D | fixed, owner retest |
+| OS-03 | P1 | LDR live visual and simulation updates during dragging, with bounded command frequency and guaranteed final value. | requested | S-B controls | fixed, owner retest |
+| OS-04 | P0 | Prevent invalid component-body overlaps, consistently across Circuit and derived 3D views. | requested | S-C geometry | fixed, owner retest |
+| OS-05 | P1 | Prevent wires from obscuring critical component displays where valid alternative routing exists. | requested | S-C geometry | fixed, owner retest |
+| OS-06 | P1 | HC-SR04 slider units, range, monotonic interaction and live updates. | requested | S-B controls | fixed, owner retest |
+| OS-07 | P1 | Remove horizontal overflow in the sensor property inspector without reducing the main workspace. | requested | S-B controls | fixed, owner retest |
+| OS-08 | P0 | Correct Build/Run state management. Run must not be available while a build is in progress or when firmware is stale. | requested | S-A build/run | fixed, owner retest |
+| OS-09 | P0 | Investigate reversed LCD VCC/SDA wiring, verify electrical diagnostics and provide an accurate actionable refusal or warning where supported. | requested | S-E diagnostics | fixed, owner retest |
 
 ## Slices (each independently testable)
 
