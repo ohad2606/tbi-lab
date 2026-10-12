@@ -72,7 +72,23 @@ export function ThreeView() {
   const dofUnavailable = stats?.dof === 'unavailable';
   // Development diagnostics (hidden): open the app with #diag3d to see the renderer readout.
   const diagnostics = typeof location !== 'undefined' && /(^|[#&])diag3d\b/.test(location.hash);
-  const scene = useMemo(() => (doc ? deriveScene(doc) : null), [doc]);
+  // Sprint 13 OS-02: where the time of opening the 3D view goes (ms from opening): the renderer
+  // chunk, the glTF assets, the viewer (context, environment, passes), the scene derivation, the
+  // scene build, and the first rendered frame (shader compilation happens in it). Exposed as
+  // `data-open-ms` for measurement; never shown.
+  const opened = useRef(performance.now());
+  const openMs = useRef<Record<string, number>>({});
+  const mark = (k: string) => {
+    if (openMs.current[k] === undefined)
+      openMs.current[k] = Math.round(performance.now() - opened.current);
+  };
+  const scene = useMemo(() => {
+    if (!doc) return null;
+    const t = performance.now();
+    const s = deriveScene(doc);
+    openMs.current.derive ??= Math.round(performance.now() - t);
+    return s;
+  }, [doc]);
   const shownProject = useRef<string | null>(null);
 
   // Load the renderer once per opening; release everything on close.
@@ -81,16 +97,27 @@ export function ThreeView() {
     // The renderer chunk, then the bundled glTF assets (fetched once per page, never at start-up).
     import('../views/scene3d/renderer.js')
       .then(async (mod) => {
+        mark('chunk');
         await mod.loadAssets();
+        mark('assets');
         setAssetMs(mod.assetLoadStats()?.ms ?? null);
         return mod;
       })
       .then((mod) => {
         if (cancelled || !host.current) return;
         try {
-          viewer.current = mod.createViewer(host.current, (s) => setStats(s), {
-            layers: readLayers(storage()),
-          });
+          viewer.current = mod.createViewer(
+            host.current,
+            (s) => {
+              if (s.renders >= 1 && openMs.current.update !== undefined) {
+                mark('firstFrame');
+                openMs.current.firstRenderCallMs ??= Math.round(s.renderMs);
+              }
+              setStats(s);
+            },
+            { layers: readLayers(storage()) },
+          );
+          mark('viewer');
           // Evidence capture (screenshots at fixed close-up cameras): the viewer is reachable from
           // the page only when this browser opted in. Never used by the product.
           try {
@@ -123,7 +150,10 @@ export function ThreeView() {
     const key = structuralKey(scene);
     if (resetCamera || built.current !== key) {
       built.current = key;
+      const t = performance.now();
       viewer.current.update(scene, { resetCamera });
+      openMs.current.updateMs ??= Math.round(performance.now() - t);
+      mark('update');
     }
     // Evidence and browser tests (opted in, as tbiViewer): the scene the view shows.
     const h = host.current as unknown as {
@@ -325,6 +355,9 @@ export function ThreeView() {
       data-gpu-bytes={stats ? stats.gpuBytes.geometry + stats.gpuBytes.textures : undefined}
       data-assets-ms={assetMs ?? undefined}
       data-render-ms={stats?.renderMs}
+      data-open-ms={
+        openMs.current.firstFrame !== undefined ? JSON.stringify(openMs.current) : undefined
+      }
       data-labels={layers.labels ? 'on' : 'off'}
       data-layers={LAYERS.filter((l) => l.kind === 'overlay' && layers[l.id])
         .map((l) => l.id)

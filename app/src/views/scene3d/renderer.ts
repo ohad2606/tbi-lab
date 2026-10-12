@@ -202,6 +202,10 @@ export function createViewer(
   } catch (e) {
     throw new WebGLUnavailableError((e as Error).message);
   }
+  // Sprint 13 OS-02 (measured: opening the 3D view is dominated by shader-program compilation,
+  // with three.js waiting synchronously for each program's link status to check it for errors):
+  // production builds skip that synchronous check (three.js's own advice); development keeps it.
+  renderer.debug.checkShaderErrors = import.meta.env.DEV;
   live++;
   const canvas = renderer.domElement;
   canvas.classList.add('view3d-canvas');
@@ -637,7 +641,7 @@ export function createViewer(
     });
   }
 
-  function resize() {
+  function resize(draw = true) {
     const w = Math.max(1, container.clientWidth);
     const h = Math.max(1, container.clientHeight);
     renderer.setSize(w, h, false);
@@ -645,9 +649,9 @@ export function createViewer(
     tags.setSize(w, h);
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
-    render();
+    if (draw) render();
   }
-  const ro = new ResizeObserver(resize);
+  const ro = new ResizeObserver(() => resize());
   ro.observe(container);
 
   function build(desc: SceneDescription) {
@@ -894,8 +898,18 @@ export function createViewer(
       });
       applyControls(false);
       if (first || opts.resetCamera) {
-        resize();
+        resize(false);
         frame(desc);
+      }
+      if (first) {
+        // OS-02 (measured, docs/sprints/s13-evidence/os02): the first scene's programs compile in
+        // parallel without blocking the page (KHR_parallel_shader_compile where available), then
+        // the first frame is drawn once. A later update or input before then renders as usual.
+        void renderer
+          .compileAsync(scene, camera)
+          .catch(() => undefined)
+          .then(() => requestRender());
+        return;
       }
       render();
     },

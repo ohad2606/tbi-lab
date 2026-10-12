@@ -1,0 +1,4 @@
+{"example":"ohms-law","quality":"full","run":0,"wallMs":42245,"phases":{"derive":14,"chunk":91,"assets":140,"viewer":367,"updateMs":4127,"update":4671,"firstFrame":35665,"firstRenderCallMs":13},"tier":"full","programs":21,"drawCalls":64}
+{"example":"ohms-law","quality":"full","run":1,"wallMs":40064,"phases":{"derive":10,"chunk":70,"assets":112,"viewer":312,"updateMs":3913,"update":4370,"firstFrame":33519,"firstRenderCallMs":10},"tier":"full","programs":21,"drawCalls":64}
+{"example":"esp32-blink","quality":"full","run":0,"wallMs":63365,"phases":{"derive":22,"chunk":97,"assets":134,"viewer":333,"updateMs":17887,"update":18364,"firstFrame":54848,"firstRenderCallMs":24},"tier":"full","programs":30,"drawCalls":183}
+{"example":"esp32-blink","quality":"full","run":1,"wallMs":63527,"phases":{"derive":23,"chunk":99,"assets":157,"viewer":357,"updateMs":17405,"update":17914,"firstFrame":55178,"firstRenderCallMs":19},"tier":"full","programs":30,"drawCalls":183}

@@ -234,3 +234,31 @@ Enforcement:
 - The workspace columns are unchanged.
 
 **Tests.** e2e OS-07 checks six sensor cases, EN/HE, at 1400 and 1024 px, stopped and running. It requires no inspector overflow and an unchanged canvas width. It was red on the probe, and is green after the fix.
+
+### OS-02 — 3D render time on a minimal circuit (P1) — S-D, owner retest required
+
+**Profiled.** Evidence: `docs/sprints/s13-evidence/os02/OS02-3D-TIMING.md`. Each phase of the open is now instrumented (`data-open-ms`).
+
+- The chunk, assets, derivation and scene build take under 0.5 s.
+- The cost is **shader-program compilation**: 21 programs for a two-part circuit in the GPU tier, 30 with the ESP32. They were compiled synchronously on the main thread, and three.js waited for each program's link status.
+
+**Fix:**
+
+- The first scene compiles its programs in parallel without blocking the page (`compileAsync`, KHR_parallel_shader_compile), and is drawn once instead of twice.
+- Production builds skip the synchronous error query.
+
+**Measured on this host** (software WebGL only, so relative, not GPU seconds; cold medians):
+
+| Tier | Circuit | First frame before → after |
+|---|---|---|
+| Full | ohms-law | 37.9 → 15.8 s |
+| Full | esp32-blink | 56.9 → 22.4 s |
+| Reduced | ohms-law | 1.33 → 0.57 s |
+| Reduced | esp32-blink | 2.35 → 0.78 s |
+
+A variant without parallel compilation measured no better than baseline, so it was rejected.
+
+**Remaining:**
+
+- An owner retest on a GPU is required.
+- If the open still takes more than 2 s, the next step is to reduce the full tier's program count. That is a structural change and needs a PM decision.
