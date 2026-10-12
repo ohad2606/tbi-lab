@@ -10,7 +10,7 @@ received. Each row records the PM summary verbatim. The "Owner observation / rep
 **requested** until the owner's notes arrive. Engineering's reproduction is recorded separately
 and is not a substitute for the owner's.
 
-**Status: all nine fixed on `sprint-13` (`2e9ab98`), verified by unit, e2e and (where relevant) real-QEMU tests; NOT accepted — each needs the owner's retest (OS-02 on the owner's GPU machine).**
+**Status: OS-01..09 fixed on `sprint-13` (`2e9ab98`), OS-10 added and fixed later the same day, verified by unit, e2e and (where relevant) real-QEMU tests; NOT accepted — each needs the owner's retest (OS-02 on the owner's GPU machine).**
 
 **Owner Smoke acceptance (Sprints 11/12): OPEN.** It is not claimed until the owner finishes the
 remaining tests.
@@ -26,6 +26,7 @@ remaining tests.
 | OS-07 | P1 | Remove horizontal overflow in the sensor property inspector without reducing the main workspace. | requested | S-B controls | fixed, owner retest |
 | OS-08 | P0 | Correct Build/Run state management. Run must not be available while a build is in progress or when firmware is stale. | requested | S-A build/run | fixed, owner retest |
 | OS-09 | P0 | Investigate reversed LCD VCC/SDA wiring, verify electrical diagnostics and provide an accurate actionable refusal or warning where supported. | requested | S-E diagnostics | fixed, owner retest |
+| OS-10 | P1 | Improve selected-component visibility in the component palette (selected tile changes only its border; placement state insufficiently visible). Added by the PM 2026-10-12. | requested | S-B controls | fixed, owner retest |
 
 ## Slices (each independently testable)
 
@@ -264,3 +265,31 @@ A variant without parallel compilation measured no better than baseline, so it w
 
 - An owner retest on a GPU is required.
 - If the open still takes more than 2 s, the next step is to reduce the full tier's program count. That is a structural change and needs a PM decision.
+
+### OS-10 — palette selection visibility (P1, added 2026-10-12) — S-B
+
+**Root causes:**
+
+1. **Styling.** The armed ("selected for placement") tile used the **same rule as hover**: a pale tint and the accent border. Selected looked like hovered.
+2. **Escape after a click.** Escape cancels placement only in the canvas's key handler. After clicking a tile, the focus stays on the tile, so Escape never reached the canvas and the tile stayed armed.
+3. **Starting a run.** The palette is disabled while a simulation runs, but starting one did not disarm a tile.
+
+**Fix:**
+
+- **Armed style:**
+  - Its own fill token (`--palette-armed`), clearly stronger than hover.
+  - A double-weight border and a bold label.
+  - A **check mark** at the inline end, as a non-colour cue. It is decorative (`aria-hidden`); the state is already `aria-pressed`.
+  - Text and icon colours are unchanged. Contrast on the fill: text about 12.5:1, check mark 5.7:1.
+- **Hover** keeps the light tint. Disabled tiles keep their existing look. Selected-on-canvas is the canvas's own highlight.
+- **Escape** disarms from anywhere. Starting a run disarms.
+- **Placement preview.** The existing ghost now marks an **invalid** position: red, with a not-allowed cursor, wherever the OS-04 overlap rule would refuse the click. No new preview system.
+
+**Acceptance tests:** `app/e2e/s13-owner-smoke.spec.ts` OS-10, 4 tests:
+
+- The armed tile differs from resting and hover. Text colour is unchanged, the label is bold, and the check mark is at the inline end in EN and HE.
+- Escape works with the focus on the tile. The probe tool disarms.
+- The ghost is invalid over a part and valid on free space. A placement disarms.
+- Keyboard: focus is visible, and Enter places at the view centre without arming.
+
+**Screenshots:** `docs/sprints/s13-evidence/os10/` (EN, HE).

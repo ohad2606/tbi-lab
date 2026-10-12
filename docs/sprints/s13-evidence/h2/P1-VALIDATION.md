@@ -54,7 +54,11 @@ maximum-strength characteristic, and sketches run at the default.
 | B | Adopt the proposed inference with an explicit uncertainty statement and the P2 flag widened to the inferred region | **not validated**: the PM's condition is not met | about 2 days |
 | C | Keep the strength-3 model for the alpha (current state), with the limitation stated, and revisit after measurement | knowingly optimistic drive, disclosed | none |
 
-## Bench protocol (also settles R4 O-R4-1, the duty-0 level)
+## Bench protocol
+
+Superseded by `BENCH-PROTOCOL.md` (PM D-P1 = option A, 2026-10-12), which also covers GPIO17, uses no load below 150 Ω (never a short), and states the limits of a one-board measurement. The draft below is kept for history.
+
+### Draft (superseded)
 
 Equipment:
 

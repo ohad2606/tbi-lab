@@ -55,6 +55,23 @@ export function Editor() {
   const views: View[] = programBoard ? [...VIEWS, 'code'] : VIEWS;
   const active: View = views.includes(view) ? view : 'circuit';
   const [placing, setPlacing] = useState<ComponentTypeId | null>(null);
+  // Sprint 13 OS-10: the palette shows the ACTUAL placement state. Escape cancels an armed
+  // placement wherever the focus is (after a click the focus stays on the palette tile, where the
+  // canvas's own Escape never arrives), and a starting simulation disarms it (the palette is
+  // disabled while running; nothing could be placed).
+  useEffect(() => {
+    if (!placing) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setPlacing(null);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [placing]);
+  const simBusy =
+    sim.status === 'running' || sim.status === 'starting' || sim.status === 'stopping';
+  useEffect(() => {
+    if (simBusy) setPlacing(null);
+  }, [simBusy]);
   const [probeMode, setProbeMode] = useState(false);
   const [probes, setProbes] = useState<Probe[]>([]);
   const nextProbe = useRef(1);

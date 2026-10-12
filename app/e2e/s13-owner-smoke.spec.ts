@@ -182,3 +182,88 @@ test('OS-04: a part dropped onto another is refused with its reason; nothing mov
   await waitSaved(page);
   expect((await storedProject(page)).layout.components).toEqual(layoutBefore);
 });
+
+/** Computed background and text colour of a palette tile. */
+const tileLook = (page: Page, type: string) =>
+  page.getByTestId(`palette-${type}`).evaluate((el) => {
+    const s = getComputedStyle(el);
+    return { bg: s.backgroundColor, color: s.color, weight: s.fontWeight };
+  });
+
+for (const lang of ['en', 'he'])
+  test(`OS-10: the armed palette tile is distinct, has a check mark and follows the placement state (${lang})`, async ({
+    page,
+  }) => {
+    await openExample(page, 'voltage-divider');
+    if (lang !== 'en') await page.getByTestId('language-select').selectOption(lang);
+    const tile = page.getByTestId('palette-component.resistor');
+    const other = page.getByTestId('palette-component.led');
+    const resting = await tileLook(page, 'component.led');
+    await other.hover();
+    const hovered = await tileLook(page, 'component.led');
+    await tile.click();
+    await page.mouse.move(5, 5); // away from every tile: no hover on the armed one
+    const armed = await tileLook(page, 'component.resistor');
+    await expect(tile).toHaveAttribute('aria-pressed', 'true');
+    await expect(tile.getByTestId('palette-check')).toBeVisible();
+    // Distinct from resting and from hover; text unchanged in colour, bold.
+    expect(armed.bg).not.toBe(resting.bg);
+    expect(armed.bg).not.toBe(hovered.bg);
+    expect(armed.color).toBe(resting.color);
+    expect(Number(armed.weight)).toBeGreaterThanOrEqual(600);
+    // The check mark sits at the inline end (right in English, left in Hebrew).
+    const t = (await tile.boundingBox())!;
+    const c = (await tile.getByTestId('palette-check').boundingBox())!;
+    if (lang === 'en') expect(c.x).toBeGreaterThan(t.x + t.width / 2);
+    else expect(c.x + c.width).toBeLessThan(t.x + t.width / 2);
+    // Escape with the focus still on the tile disarms it.
+    await expect(tile).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(tile).toHaveAttribute('aria-pressed', 'false');
+    await expect(tile.getByTestId('palette-check')).toHaveCount(0);
+    // Switching to the probe tool disarms it too.
+    await tile.click();
+    await page.getByTestId('canvas-probe').click();
+    await expect(tile).toHaveAttribute('aria-pressed', 'false');
+    await page.getByTestId('canvas-probe').click();
+    if (lang !== 'en') await page.getByTestId('language-select').selectOption('en');
+  });
+
+test('OS-10: the placement preview shows invalid (overlap) and valid positions; a placement disarms the tile', async ({
+  page,
+}) => {
+  await openExample(page, 'voltage-divider');
+  const tile = page.getByTestId('palette-component.resistor');
+  await tile.click();
+  const ghost = page.getByTestId('placement-ghost');
+  // Over an existing resistor: the preview is marked invalid.
+  const r1 = (await component(page, 'R1').boundingBox())!;
+  await page.mouse.move(r1.x + r1.width / 2, r1.y + r1.height / 2);
+  await expect(ghost).toHaveAttribute('data-valid', 'false');
+  // Far from every part: valid; a click places it and the tile is disarmed.
+  const canvas = (await page.getByTestId('canvas').boundingBox())!;
+  await page.mouse.move(canvas.x + canvas.width - 80, canvas.y + 80);
+  await expect(ghost).toHaveAttribute('data-valid', 'true');
+  const before = await page.locator('[data-hit="component"]').count();
+  await page.mouse.click(canvas.x + canvas.width - 80, canvas.y + 80);
+  await expect(page.locator('[data-hit="component"]')).toHaveCount(before + 1);
+  await expect(tile).toHaveAttribute('aria-pressed', 'false');
+  await expect(ghost).toHaveCount(0);
+});
+
+test('OS-10: keyboard: focus is visible on a tile; Enter places at the view centre without arming', async ({
+  page,
+}) => {
+  await openExample(page, 'voltage-divider');
+  const tile = page.getByTestId('palette-component.led');
+  await tile.focus();
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Shift+Tab');
+  await expect(tile).toBeFocused();
+  const outline = await tile.evaluate((el) => getComputedStyle(el).outlineStyle);
+  expect(outline).not.toBe('none');
+  const before = await page.locator('[data-hit="component"]').count();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('[data-hit="component"]')).toHaveCount(before + 1);
+  await expect(tile).toHaveAttribute('aria-pressed', 'false');
+});

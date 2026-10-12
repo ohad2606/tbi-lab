@@ -253,6 +253,13 @@ export function Canvas({
   const [camera, setCamera] = useState<Camera>({ x: -400, y: -300, scale: 1 });
   const [mode, setMode] = useState<Mode>({ kind: 'idle' });
   const [cursor, setCursor] = useState<Point | null>(null);
+  // Sprint 13 OS-10: the placement preview says whether a click here would be accepted (the
+  // OS-04 overlap rule the edit applies); evaluated once per grid point, not per pointer event.
+  const ghostValid = useMemo(() => {
+    if (!placing || !cursor || !doc) return true;
+    const r = addComponent(doc, placing, cursor);
+    return r.ok && bodyOverlaps(r.doc, new Set([r.id])).length === 0;
+  }, [doc, placing, cursor?.x, cursor?.y]);
   const spaceHeld = useRef(false);
   const heldByKey = useRef<string | null>(null);
   const pointerDown = useRef(false);
@@ -1110,7 +1117,12 @@ export function Canvas({
           />
         )}
         {placing && cursor && (
-          <g class="ghost" transform={`translate(${cursor.x} ${cursor.y})`}>
+          <g
+            class={ghostValid ? 'ghost' : 'ghost ghost-invalid'}
+            data-testid="placement-ghost"
+            data-valid={ghostValid ? 'true' : 'false'}
+            transform={`translate(${cursor.x} ${cursor.y})`}
+          >
             {SYMBOLS[placing].draw()}
           </g>
         )}

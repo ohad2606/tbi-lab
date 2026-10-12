@@ -104,6 +104,17 @@ export function Palette({ placing, onPick }: Props) {
                       <g class="symbol">{SYMBOLS[type].draw()}</g>
                     </svg>
                     <span>{catalogText(locale, CATALOG[type].nameKey)}</span>
+                    {/* Sprint 13 OS-10: a non-colour indicator of the armed placement. */}
+                    {placing === type && (
+                      <svg
+                        class="palette-check"
+                        viewBox="0 0 16 16"
+                        aria-hidden="true"
+                        data-testid="palette-check"
+                      >
+                        <path d="M3 8.5 6.5 12 13 4.5" />
+                      </svg>
+                    )}
                   </button>
                 </li>
               );

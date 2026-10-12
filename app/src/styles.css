@@ -24,6 +24,8 @@
   --accent: #1565c0;
   --accent-strong: #0d4f9e;
   --accent-soft: #e3eefc;
+  /* Sprint 13 OS-10: a palette tile armed for placement. */
+  --palette-armed: #c6dbf7;
   --danger: #b3261e;
   --warning-bg: #fff3e0;
   --warning-ink: #9a4a00;
@@ -1737,6 +1739,43 @@ select {
 .palette-item:hover:not(:disabled) {
   border-color: var(--accent);
   background: var(--accent-soft);
+}
+
+/* Sprint 13 OS-10: armed for placement — a clearly stronger fill than hover, a double-weight
+   border, bold label and a check mark (a non-colour cue); hover stays the light tint. Text and
+   icon keep their colours (on the fill: text #14181f about 12.5:1, the check mark #0d4f9e 5.7:1). */
+.palette-item {
+  position: relative;
+}
+
+.palette-item.active,
+.palette-item.active:hover:not(:disabled) {
+  background: var(--palette-armed);
+  border-color: var(--accent-strong);
+  box-shadow: inset 0 0 0 1px var(--accent-strong);
+  font-weight: 600;
+}
+
+.palette-check {
+  margin-inline-start: auto;
+  inline-size: 1rem;
+  block-size: 1rem;
+  flex: none;
+  fill: none;
+  stroke: var(--accent-strong);
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* The placement preview where a click would be refused (it would overlap a part: OS-04). */
+.ghost-invalid {
+  stroke: var(--danger);
+  opacity: 0.7;
+}
+
+.canvas.mode-placing:has(.ghost-invalid) {
+  cursor: not-allowed;
 }
 
 .probes-section h3,
