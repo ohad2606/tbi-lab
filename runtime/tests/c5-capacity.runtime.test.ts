@@ -6,8 +6,10 @@
  *   - tick wall-gap p99 and maximum (the Session Host's own statistics);
  *   - host CPU busy/steal (/proc/stat), load average, QEMU RSS;
  *   - session failures and diagnostics.
- * The pass criteria (PM D-2): every session p5 rate >= 1.0x and tick-gap p99 <= 100 ms under
- * the defined workloads, no failures. Measurement only: it never changes a deployed instance
+ * The pass criteria (PM D-2, ratified for the POC host 2026-10-11, docs/runtime/
+ * RUNTIME-V2-LIMITATIONS.md): every session's p5 simulation rate >= 0.995x over 5 s wall-clock
+ * windows, tick-gap p99 <= 100 ms, no failures. The 1 s window statistics are reported for
+ * information only (a session paced at exactly 1.0x scatters about +-1 % over 1 s windows). Measurement only: it never changes a deployed instance
  * (an in-process Session Host with its own temporary root; no service, policy or unit is
  * touched). The first 30 s of each session (ROM and boot, slower than real time in QEMU,
  * V1-ARCHITECTURE §7.8) are excluded from the rate statistics and reported separately.
@@ -118,6 +120,9 @@ describe.skipIf(!process.env.TBI_C5)('C-5 capacity (opt-in measurement)', () => 
         workload: string;
         rates: number[];
         last: [number, number];
+        rates5: number[];
+        last5: [number, number];
+        ticks: number;
       }[] = [];
       for (let i = 0; i < N; i++) {
         const name = WORKLOAD === 'mix' ? MIX[i % MIX.length]! : WORKLOAD;
@@ -126,7 +131,15 @@ describe.skipIf(!process.env.TBI_C5)('C-5 capacity (opt-in measurement)', () => 
         const s = open(host, { ...w.c.request(a.sha256), ticket: ticketFor(a.sha256) });
         if (s.state !== 'ready') throw new Error(`session ${i}: ${JSON.stringify(s.status())}`);
         s.run();
-        sessions.push({ s, workload: name, rates: [], last: [performance.now(), 0] });
+        sessions.push({
+          s,
+          workload: name,
+          rates: [],
+          last: [performance.now(), 0],
+          rates5: [],
+          last5: [performance.now(), 0],
+          ticks: 0,
+        });
       }
       const host0 = cpu();
       const load: number[] = [];
@@ -142,6 +155,12 @@ describe.skipIf(!process.env.TBI_C5)('C-5 capacity (opt-in measurement)', () => 
           const rate = (sim - x.last[1]) / ((now - x.last[0]) / 1000);
           x.last = [now, sim];
           if ((now - t0) / 1000 > WARMUP_S) x.rates.push(rate);
+          // D-2: rate over 5 s windows (a window starting inside the warm-up is not counted).
+          if (++x.ticks % 5 === 0) {
+            const rate5 = (sim - x.last5[1]) / ((now - x.last5[0]) / 1000);
+            if ((x.last5[0] - t0) / 1000 >= WARMUP_S) x.rates5.push(rate5);
+            x.last5 = [now, sim];
+          }
           const m = rss(x.s.status().runtime.pid);
           if (m !== null) qemuRss.push(m);
         }
@@ -160,6 +179,9 @@ describe.skipIf(!process.env.TBI_C5)('C-5 capacity (opt-in measurement)', () => 
           rateP5: pct(x.rates, 5),
           rateMin: x.rates.length ? Math.min(...x.rates) : null,
           rateMedian: pct(x.rates, 50),
+          rate5sP5: pct(x.rates5, 5),
+          rate5sMin: x.rates5.length ? Math.min(...x.rates5) : null,
+          windows5s: x.rates5.length,
           pace: st.pace,
           diagnostics: x.s.log
             .since(0)
@@ -187,7 +209,7 @@ describe.skipIf(!process.env.TBI_C5)('C-5 capacity (opt-in measurement)', () => 
         },
         sessions: result,
         pass: {
-          rateP5AtLeast1: result.every((r) => (r.rateP5 ?? 0) >= 0.99),
+          rate5sP5AtLeast0995: result.every((r) => (r.rate5sP5 ?? 0) >= 0.995),
           tickGapP99AtMost100: result.every((r) => (r.pace.tickGapMs.p99 ?? Infinity) <= 100),
           noFailures: result.every((r) => r.state === 'running'),
         },
