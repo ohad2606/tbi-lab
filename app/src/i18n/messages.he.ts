@@ -656,6 +656,9 @@ export const he: Record<MessageKey, string> = {
   'save.error.conflictBanner':
     'הפרויקט שונה או נמחק בלשונית או בחלון אחרים, ולכן השינויים כאן לא נשמרו. כדי לשמור אותם, ייצאו עכשיו; לאחר מכן טענו מחדש כדי להמשיך עם הגרסה השמורה.',
   'save.reload': 'טעינה מחדש',
+  // Sprint 13 Task D: wire routes adjusted when a project opened (layout only).
+  'open.routesAdjusted':
+    'חלק מנתיבי החוטים שורטטו מחדש כדי שלא יעברו מעל פינים או צגים. החיבורים לא השתנו. ביטול הפעולה האחרונה מחזיר את הנתיבים הקודמים.',
   'build.blockedRunning': 'אפשר לבנות אחרי עצירה. הסשן שרץ ממשיך עם הקושחה שאיתה התחיל.',
   'build.unavailable': 'שירות הבנייה אינו זמין כאן.',
   'build.error.unreachable': 'לא ניתן היה להתחבר לשירות הבנייה. הקוד שלכם שמור; נסו שוב.',

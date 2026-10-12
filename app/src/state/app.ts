@@ -449,8 +449,15 @@ export class AppStore {
       const stored = raw as Partial<ProjectDocument>;
       if (stored.revision) this.autosave?.know({ projectId, revision: stored.revision });
       const repaired = this.deps.repairLayout?.(result.doc) ?? result.doc;
-      this.set({ ...base, screen: 'editor', doc: repaired, readOnly: null });
-      if (result.migratedFrom !== null || repaired !== result.doc) this.commit(repaired);
+      this.set({ ...base, screen: 'editor', doc: result.doc, readOnly: null });
+      if (result.migratedFrom !== null) this.commit(result.doc);
+      if (repaired !== result.doc) {
+        // Sprint 13 Task D (H3): re-routing stored wires on open (only their drawn routes; never an
+        // endpoint, connection or value) was a silent, permanent rewrite. It is now an ordinary
+        // recorded edit with a notice, so one Undo restores the routes as they were stored.
+        this.apply({ ok: true, doc: repaired }, undefined, { restore: true });
+        this.set({ notice: { key: 'open.routesAdjusted', tone: 'info' } });
+      }
     } else if (result.status === 'newer') {
       // Never guess at a newer schema. If its core still validates under this version's rules,
       // show it read-only; otherwise say plainly that it cannot be displayed.

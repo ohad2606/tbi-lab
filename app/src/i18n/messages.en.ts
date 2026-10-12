@@ -670,6 +670,9 @@ export const en = {
   'save.error.conflictBanner':
     'This project was changed or deleted in another tab or window, so the changes here were not saved. To keep them, use Export now; then reload to continue with the saved version.',
   'save.reload': 'Reload',
+  // Sprint 13 Task D: wire routes adjusted when a project opened (layout only).
+  'open.routesAdjusted':
+    'Some wire routes were redrawn so they no longer run over pins or displays. Connections are unchanged. Undo restores the previous routes.',
   'build.blockedRunning':
     'Build is available after Stop. The running session keeps the firmware it started with.',
   'build.unavailable': 'The build service is not available here.',
