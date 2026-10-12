@@ -34,15 +34,17 @@ function result(key: string, ok = true): BuildResult {
 }
 
 /** A build service whose builds finish only when the test says so. */
-function slowClient(ok = true) {
+function slowClient(ok = true, cached: Set<string> = new Set()) {
   const pending: (() => void)[] = [];
   const client = {
     async build(profile: string, files: { name: string; text: string }[]) {
       await new Promise<void>((r) => pending.push(r));
       return result(sourceKey(profile, files), ok);
     },
-    async lookup() {
-      return null;
+    // A build of exactly this source that already exists in the service (any earlier Build of the
+    // same text, e.g. by another session): the service returns it on lookup.
+    async lookup(key: string) {
+      return cached.has(key) ? result(key, ok) : null;
     },
     async lease() {
       return 'ticket';
@@ -72,8 +74,8 @@ const prefs = (): Preferences => {
   return { get: (k) => d[k] ?? null, set: (k, v) => void (d[k] = v) };
 };
 
-async function setup(ok = true) {
-  const f = slowClient(ok);
+async function setup(ok = true, cached: Set<string> = new Set()) {
+  const f = slowClient(ok, cached);
   const builds = new ProgramBuilds({ client: f.client, sessionActive: () => false });
   const { sim, runs } = recordingSim();
   const app = new AppStore({
@@ -187,5 +189,47 @@ describe('OS-08: an edit during a build', () => {
     f.finishOne();
     expect(await second).toBe(true);
     expect(builds.view(doc.projectId, 'U1', now).phase).toBe('current');
+  });
+});
+
+describe('OS-08: a valid cached build vs an active build vs stale firmware (DEV live finding)', () => {
+  // On DEV the live check expected "no build -> Run unavailable" for an example whose exact text
+  // had just been built by another run: the build service legitimately returned that build on
+  // lookup, so Run was available. That is correct; these cases pin the distinction.
+  it('an existing build of exactly this code (recovered by lookup) makes Run available', async () => {
+    const text = blink().programs.U1!;
+    const key = sourceKey(text.profile, [{ name: text.fileName, text: text.text }]);
+    const { app, builds, runs } = await setup(true, new Set([key]));
+    // As opening a project does (AppStore.lookupBuilds): recover an existing build, never build.
+    await builds.lookup(app.state.doc!.projectId, 'U1', app.state.doc!.programs.U1!);
+    expect(app.runBlocker()).toBeNull();
+    app.run();
+    expect(runs).toHaveLength(1);
+  });
+
+  it('a cached build of OTHER code is never used: an edit makes Run unavailable (stale)', async () => {
+    const text = blink().programs.U1!;
+    const key = sourceKey(text.profile, [{ name: text.fileName, text: text.text }]);
+    const { app, builds } = await setup(true, new Set([key]));
+    await builds.lookup(app.state.doc!.projectId, 'U1', app.state.doc!.programs.U1!);
+    expect(app.runBlocker()).toBeNull();
+    const edited = setProgramText(app.state.doc!, 'U1', `${text.text}// changed\n`);
+    if (!edited.ok) throw new Error(edited.error);
+    app.apply(edited);
+    expect(app.runBlocker()?.key).toBe('run.blocked.buildRequired');
+  });
+
+  it('rebuilding code that already has a cached build blocks Run while the build is active', async () => {
+    const text = blink().programs.U1!;
+    const key = sourceKey(text.profile, [{ name: text.fileName, text: text.text }]);
+    const { app, builds, finishOne } = await setup(true, new Set([key]));
+    await builds.lookup(app.state.doc!.projectId, 'U1', app.state.doc!.programs.U1!);
+    expect(app.runBlocker()).toBeNull();
+    const again = app.buildProgram('U1');
+    await flush();
+    expect(app.runBlocker()?.key).toBe('run.blocked.building');
+    finishOne();
+    await again;
+    expect(app.runBlocker()).toBeNull();
   });
 });
