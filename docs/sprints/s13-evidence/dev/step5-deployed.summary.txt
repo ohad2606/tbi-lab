@@ -1,0 +1,18 @@
+ ✓ runtime/tests/s8-deployed-policy.runtime.test.ts (7 tests | 1 skipped) 67516ms
+   ✓ Sprint 8 policy on the deployed instance (tbi, real policy) > preview build quota (1 active + 1 queued): a third is refused; another user still gets in  16842ms
+   ✓ Sprint 8 policy on the deployed instance (tbi, real policy) > Advanced .bin: allowed by the preview plan, private to the uploader, rate-limited at 10/h  36050ms
+   ✓ Sprint 8 policy on the deployed instance (tbi, real policy) > sessions: one per preview user, one globally on this 1-vCPU host; ownership enforced  343ms
+   ✓ Sprint 8 policy on the deployed instance (tbi, real policy) > a live session holds a queued build (nothing stopped); it compiles once the session ends  13798ms
+ ✓ runtime/tests/s8-containment.runtime.test.ts (9 tests | 2 skipped) 55429ms
+   ✓ Sprint 8 containment (staging instance, real toolchain and runtime) > a real build runs in per-step sandbox units and is bit-identical to Sprint 7  36268ms
+   ✓ Sprint 8 containment (staging instance, real toolchain and runtime) > a sketch cannot compile in anything from outside its sandbox view  11599ms
+   ✓ Sprint 8 containment (staging instance, real toolchain and runtime) > a session’s QEMU runs sandboxed: own user, no network, only its session directory, on disk  2412ms
+   ✓ Sprint 8 containment (staging instance, real toolchain and runtime) > a crashed runtime is cleaned up and reported, and the host keeps serving  4842ms
+ ✓ runtime/tests/s8-qemu-tasks.runtime.test.ts (2 tests) 52100ms
+   ✓ Sprint 8 runtime task limit (real QEMU under the deployed unit) > real sessions with input bursts never hit the limit and leave nothing behind  51897ms
+ ✓ runtime/tests/s11-deployed.runtime.test.ts (8 tests | 2 skipped) 30793ms
+   ✓ Sprint 11 R1 on the deployed instance (tbi) > esp32-motion-relay: motion pulls the relay in (LED + buzzer); no motion releases it; Stop cleans up  9595ms
+   ✓ Sprint 11 R1 on the deployed instance (tbi) > esp32-night-light: dark lights all three channels; bright turns them off; DELETE cleans up  9067ms
+   ✓ Sprint 11 R1 on the deployed instance (tbi) > command boundary: malformed, oversized, unknown, unsupported, out of range, rate-limited, foreign user  11562ms
+ Test Files  4 passed (4)
+      Tests  21 passed | 5 skipped (26)
