@@ -527,6 +527,8 @@ test('A15: new Sprint 4 surfaces are fully translated in Hebrew (technical token
   await run(page);
   await probe(page, () => select(page, 'SW1'));
   const allowed = [
+    // Sprint 12: part numbers and bus names kept verbatim in Hebrew (terminology rule).
+    /^(HC|SR04|DHT22|AM2302|LCD|I2C|PCF8574|HD44780|Wire)$/,
     /^TBI$/,
     /^Lab$/,
     /^English$/,
@@ -547,7 +549,9 @@ test('A15: new Sprint 4 surfaces are fully translated in Hebrew (technical token
     /^\d+k\d*$/,
   ];
   const words = async () => {
-    const text = (await scannedText(page)).replace(/[kmMGµunp]?[ΩVA](?![A-Za-z])/g, ' ');
+    const text = (await scannedText(page))
+      .replace(/Pull-up/g, ' ')
+      .replace(/[kmMGµunp]?[ΩVA](?![A-Za-z])/g, ' ');
     return [
       ...new Set(
         (text.match(/[A-Za-z_][A-Za-z0-9_]*/g) ?? []).filter(

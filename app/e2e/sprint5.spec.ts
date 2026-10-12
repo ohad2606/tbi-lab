@@ -466,6 +466,8 @@ test('A13/A15: new Sprint 5 surfaces are Hebrew (technical tokens only), RTL chr
   await goLibrary(page);
   expect(await page.evaluate(() => document.documentElement.dir)).toBe('rtl');
   const allowed = [
+    // Sprint 12: part numbers and bus names kept verbatim in Hebrew (terminology rule).
+    /^(HC|SR04|DHT22|AM2302|LCD|I2C|PCF8574|HD44780|Wire)$/,
     /^TBI$/,
     /^Lab$/,
     /^English$/,
@@ -480,10 +482,9 @@ test('A13/A15: new Sprint 5 surfaces are Hebrew (technical tokens only), RTL chr
     /^k$/,
   ];
   const words = async () => {
-    const text = (await scannedText(page)).replace(
-      /(?<![A-Za-z])[kmMGµunp]?[ΩVA](?![A-Za-z])/g,
-      ' ',
-    );
+    const text = (await scannedText(page))
+      .replace(/Pull-up/g, ' ')
+      .replace(/(?<![A-Za-z])[kmMGµunp]?[ΩVA](?![A-Za-z])/g, ' ');
     return [
       ...new Set(
         (text.match(/[A-Za-z_][A-Za-z0-9_]*/g) ?? []).filter(
