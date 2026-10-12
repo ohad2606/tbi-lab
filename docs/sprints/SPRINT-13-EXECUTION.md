@@ -207,3 +207,30 @@ only if a scenario misses the ≤ 120 s build or the ≤ 30 s start target.
 | 9–11 Nov | Internal dry run (H7) |
 | **12 Nov** | **Alpha go/no-go** |
 | **16 Nov** | Alpha; fallback **30 Nov** if R-1 triggers |
+
+
+## Schedule re-plan (PM, 2026-10-12): Alpha 1 Nov
+
+**Primary target: external alpha on 2026-11-01. The only planned fallback is 2026-11-15.** This supersedes 16 Nov / 30 Nov.
+
+No physics, security, isolation, data-integrity or five-session capacity gate is relaxed for these dates.
+
+| Date | Gate | Depends on | Status / owner |
+|---|---|---|---|
+| Oct 13–14 | Staging acceptance of `dc1bff8` | — | **Done Oct 12** (B0–B6, `s13-evidence/staging/`); PM review |
+| Oct 15–17 | DEV deployment (host, then frontend) and owner retest of OS-01…10 and P2–P4, incl. OS-02 GPU timing | PM DEV approval; owner time | PM, owner |
+| **Oct 16** | **Infrastructure decision** (O-1 console facts, O-2 VM and cost, O-3 DNS/OAuth) | owner | **owner: critical path** |
+| Oct 16–19 | Alpha VM provisioned and installed (staging pattern), runtime and artifact set published | Oct 16 decision | engineering, after approval |
+| ~Oct 20 | P1 bench measurement (`BENCH-PROTOCOL.md`), plus duty 0 | owner with a DevKitC and multimeter | owner |
+| Oct 20–22 | If the PM accepts a model change: implement + re-baseline (about 2 days) | Oct 20 measurement | engineering, PM decision |
+| **Oct 22** | **Five-session capacity acceptance** (C-5, ratified D-2 rule) on the alpha host | VM by Oct 19 | engineering |
+| **Oct 25** | **RC freeze** | owner retest closed; capacity accepted | PM |
+| Oct 26–29 | Final regression (unit, browser, real QEMU, pinned), security review, dry run with the owner | RC | engineering, owner |
+| **Oct 30** | Go / No-Go | — | PM |
+| **Nov 1** | External alpha, five independent simultaneous testers | O-5 tester emails, feedback form approval; O-6 Hebrew review | owner, PM |
+
+**Critical path:** infrastructure decision (Oct 16) → provisioning (3 days) → capacity acceptance (Oct 22) → RC freeze (Oct 25). There is no slack. A decision after Oct 16 moves capacity acceptance, and the alpha date with it.
+
+**Second chain:** owner retest (Oct 15–17) → RC freeze.
+
+**P1** fits only if measured by about Oct 20. Otherwise the alpha ships the current strength-3 model with its limitation stated; P2 already marks every extrapolated pad result. The PM decides.

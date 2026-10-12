@@ -1,0 +1,10 @@
+  ✓  1 [chromium] › app/e2e/s11-real.spec.ts:45:3 › R1 host › ESP32 motion alarm on real QEMU: motion pulls the relay in, LED and buzzer follow; no motion releases it (14.5s)
+  ✓  2 [chromium] › app/e2e/s11-real.spec.ts:69:3 › R1 host › ESP32 night light on real QEMU: darkness reads HIGH and lights the RGB LED; bright turns it off (13.3s)
+  ✓  3 [chromium] › app/e2e/s11-real.spec.ts:94:3 › R1 host › ESP32 projects: the matrix and the capacitor stay unavailable; the six R1 parts are offered (825ms)
+  -  4 [chromium] › app/e2e/s11-real.spec.ts:123:1 › against a Sprint 10 Session Host: Run of an R1 example fails explicitly, naming the parts
+  ✓  5 [chromium] › app/e2e/s6-real.spec.ts:48:1 › ESP32 blink: Run creates a session, GPIO2 drives the LED, serial arrives; Stop releases everything (14.2s)
+  ✓  6 [chromium] › app/e2e/s6-real.spec.ts:96:1 › ESP32 input echo: toggle mirrors browser-first, push button is transient, Stop/Run is a fresh session (15.3s)
+  ✓  7 [chromium] › app/e2e/s6-real.spec.ts:166:1 › product-level determinism: the same project + firmware gives the same canonical runtime sequence (39.4s)
+  1 skipped
+  6 passed (1.8m)
+playwright exit=0

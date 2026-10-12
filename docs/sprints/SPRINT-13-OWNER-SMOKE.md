@@ -10,6 +10,8 @@ received. Each row records the PM summary verbatim. The "Owner observation / rep
 **requested** until the owner's notes arrive. Engineering's reproduction is recorded separately
 and is not a substitute for the owner's.
 
+**Staging (2026-10-12): deployed on staging `dc1bff8` and accepted B0–B6 (`s13-evidence/staging/STAGING-ACCEPTANCE-dc1bff8.md`); per-item deployed evidence there.**
+
 **Status: OS-01..09 fixed on `sprint-13` (`2e9ab98`), OS-10 added and fixed later the same day, verified by unit, e2e and (where relevant) real-QEMU tests; NOT accepted — each needs the owner's retest (OS-02 on the owner's GPU machine).**
 
 **Owner Smoke acceptance (Sprints 11/12): OPEN.** It is not claimed until the owner finishes the

@@ -1,0 +1,11 @@
+  ✓  1 [chromium] › app/e2e/s13-journey-real.spec.ts:60:3 › journey in en, reopened in he: same project, same result (27.2s)
+  ✓  2 [chromium] › app/e2e/s13-journey-real.spec.ts:60:3 › journey in he, reopened in en: same project, same result (25.7s)
+  ✓  3 [chromium] › app/e2e/s13-live-real.spec.ts:66:1 › night light: dragging the light from bright to dark and back; the firmware follows the final value (26.6s)
+  ✓  4 [chromium] › app/e2e/s13-live-real.spec.ts:94:1 › distance alarm: dragging the HC-SR04 target near (0.10 m) lights the LED; the firmware measures it (15.2s)
+  ✓  5 [chromium] › app/e2e/s13-pad-short.spec.ts:52:3 › GPIO2 HIGH on GND: the short is named, its current is not shown as a value (en) (13.2s)
+  ✓  6 [chromium] › app/e2e/s13-pad-short.spec.ts:52:3 › GPIO2 HIGH on GND: the short is named, its current is not shown as a value (he) (11.8s)
+  ✘  7 [chromium] › app/e2e/s13-staging-real.spec.ts:66:1 › OS-09 on staging: LCD VCC and SDA swapped — dark, the miswiring named, SDA above its absolute maximum (133ms)
+  -  8 [chromium] › app/e2e/s13-staging-real.spec.ts:84:1 › P4 on staging: a sketch selecting the pad drive strength is reported unsupported; Run refused
+  1 failed
+  6 passed (2.2m)
+playwright exit=1

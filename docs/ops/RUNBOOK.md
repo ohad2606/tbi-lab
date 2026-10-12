@@ -86,6 +86,8 @@ for c in $(pgrep -P $r); do sudo -n kill $c; done
 |---|---|---|---|
 | Tester projects | the tester's browser (local-first) | **The user exports** (Projects → Export; the app menu → export the current project) `.tbilab` files | Import in any browser; verified end to end (`app/e2e/s13-export-real.spec.ts`) |
 | Server state | `/etc/tbi` (keys, policy, `runtime.json`), units, polkit rule, release links | `/var/backups/tbi-lab/<name>-<UTC>/` before every change *(new: also nightly while the alpha runs, copied to the other VM)* | copy back and `daemon-reload` / restart (the rollback scripts) |
+
+**Restoring from a backup.** Backups are root-only (0700). Expand file globs as root, e.g. `sudo sh -c "cp -p '$B'/bundles/* <target>/"`. A glob in the user's shell does not expand, and the copy silently misses files. That happened in the Sprint 13 staging rehearsal (B5 attempt 1). Then verify the restored state byte for byte against the backup (`cmp`) and check `/health`'s commit.
 | Releases | `/srv/tbi-lab/services/<sha>`, `/srv/tbi-lab/dev-lab/<sha>`, `/srv/tbi-lab/release-artifacts/<lock id>` | immutable; kept | re-point links |
 | Artifact store | `/var/lib/tbi-lab/artifacts` | rebuildable (builds are reproducible; reference images come from the release set) | `install.sh` imports the reference images; users rebuild |
 | Runtime | `~/tbi-s12-rt-release/qemu-<id>`, `~/tbi-s8-rt/qemu-<id>` | never deleted while referenced | `switch-runtime.sh` |
