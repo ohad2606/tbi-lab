@@ -76,7 +76,11 @@ for k in identity ticket; do
 done
 
 # Policy (Phase 4): plans, quotas, global limits — the values this instance enforces.
-sudo install -m 0400 "$here/policy.json" "/etc/$N/policy.json"
+# Sprint 13 (H5): TBI_S8_POLICY selects another repository policy file (e.g. policy.alpha.json:
+# five concurrent testers, shared build queue 10, two build workers). Default: policy.json.
+POLICY="${TBI_S8_POLICY:-$here/policy.json}"
+test -f "$POLICY" || { echo "no policy file $POLICY" >&2; exit 1; }
+sudo install -m 0400 "$POLICY" "/etc/$N/policy.json"
 
 # Sprint 12: the runtime's identity and bridge capabilities, for the build service (ADR-011 §5).
 test -f "$RUNTIME/runtime.json" || { echo "no runtime.json in $RUNTIME" >&2; exit 1; }

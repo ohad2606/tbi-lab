@@ -21,7 +21,10 @@ const HAVE =
   N !== '' &&
   sudo('test', '-f', `/etc/systemd/system/${N}-build.service`).status === 0 &&
   sudo('true').status === 0;
-const REAL_POLICY = new URL('../../deploy/dev-lab/s8/policy.json', import.meta.url).pathname;
+/** The repository policy the instance was installed with (install.sh TBI_S8_POLICY; default policy.json). */
+const REAL_POLICY =
+  process.env.TBI_S8_POLICY ??
+  new URL('../../deploy/dev-lab/s8/policy.json', import.meta.url).pathname;
 const R1_IMAGE = '5f177cbe95f490dce1f6efe7dda501e03762d523b79771968f967b297d3a44af';
 const run = Date.now().toString(36);
 const u = (name: string) => `post-${name}-${run}`;

@@ -1,0 +1,45 @@
+{
+  "runtimeId": "b5b34b49cb7e4049",
+  "n": 1,
+  "seconds": 120,
+  "workload": "sonar",
+  "pace": 1,
+  "warmupExcludedS": 30,
+  "host": {
+    "cpus": 1,
+    "cpuBusyMean": 0.40594684526149644,
+    "stealShare": 0.003872379829952016,
+    "loadMax": 0.9,
+    "qemuRssMaxMb": 85.25
+  },
+  "sessions": [
+    {
+      "workload": "sonar",
+      "state": "running",
+      "reason": null,
+      "simS": 119.8,
+      "rateP5": 0.9968901516772968,
+      "rateMin": 0.9950375708202968,
+      "rateMedian": 1.0000288108300435,
+      "rate5sP5": 0.9990100014770922,
+      "rate5sMin": 0.9990100014770922,
+      "windows5s": 18,
+      "pace": {
+        "rate": 1,
+        "simPerWall": 1.000017243026866,
+        "pacedMs": 0,
+        "tickGapMs": {
+          "count": 119799,
+          "p99": 3,
+          "max": 206.5
+        }
+      },
+      "diagnostics": []
+    }
+  ],
+  "pass": {
+    "rate5sP5AtLeast0995": true,
+    "tickGapP99AtMost100": true,
+    "noFailures": true
+  }
+}

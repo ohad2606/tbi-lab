@@ -94,7 +94,8 @@ export class BuildService {
   private readonly providers = new Map<string, BuildProvider>();
   private readonly records = new Map<string, BuildRecord>();
   private readonly queue: BuildRecord[] = [];
-  private active: BuildRecord | null = null;
+  /** Builds compiling now (at most the policy's `maxActiveBuilds`). */
+  private readonly active = new Set<BuildRecord>();
   private readonly idle = new Set<() => void>();
 
   constructor(
@@ -133,9 +134,7 @@ export class BuildService {
     if (hit) return { cached: hit };
     const owner: Owner = this.access.systemKeys.has(key) ? GLOBAL : principal;
     // Only the same owner's pending build is shared: joining someone else's would reveal it.
-    const pending = [...this.queue, ...(this.active ? [this.active] : [])].find(
-      (r) => r.key === key && r.owner === owner,
-    );
+    const pending = [...this.queue, ...this.active].find((r) => r.key === key && r.owner === owner);
     if (pending) return { buildId: pending.id, token: pending.token };
     this.admit(principal);
     this.prune();
@@ -153,7 +152,7 @@ export class BuildService {
     this.records.set(record.id, record);
     this.queue.push(record);
     admissionEvent('build', 'submit', 'admitted', principal);
-    void this.pump();
+    this.pump();
     return { buildId: record.id, token: record.token };
   }
 
@@ -166,7 +165,7 @@ export class BuildService {
     const plan = this.access.policy.plan(principal);
     const g = this.access.policy.config.global;
     const mine = (r: BuildRecord | null) => r?.submitter === principal;
-    const inFlight = this.queue.filter(mine).length + (mine(this.active) ? 1 : 0);
+    const inFlight = this.queue.filter(mine).length + [...this.active].filter(mine).length;
     if (inFlight >= plan.build.maxActive + plan.build.maxQueued) throw new Refusal('build_quota');
     const failures = this.access.rates.check(principal, 'build-failure', plan.build.failures);
     if (!failures.ok) {
@@ -308,7 +307,7 @@ export class BuildService {
 
   /** Resolves when no build is active or queued (tests, shutdown). */
   whenIdle(): Promise<void> {
-    if (!this.active && this.queue.length === 0) return Promise.resolve();
+    if (this.active.size === 0 && this.queue.length === 0) return Promise.resolve();
     return new Promise((resolve) => this.idle.add(resolve));
   }
 
@@ -348,8 +347,7 @@ export class BuildService {
    *   a compile never starts on top of a live session nobody can see. A wait that outlasts the
    *   policy ends as `capacity_timeout` above.
    */
-  private async pump(): Promise<void> {
-    if (this.active) return;
+  private pump(): void {
     const policy = this.access.policy;
     const now = Date.now();
     for (const r of [...this.queue])
@@ -361,23 +359,33 @@ export class BuildService {
         admissionEvent('build', 'start', 'builder_busy', r.submitter);
       }
     if (!this.queue.length) {
-      for (const done of this.idle) done();
-      this.idle.clear();
+      if (this.active.size === 0) {
+        for (const done of this.idle) done();
+        this.idle.clear();
+      }
       return;
     }
-    const watch = this.access.liveSessions;
-    const live = watch ? watch() : 0;
-    if (live === null || live >= policy.deferBuildsAtLiveSessions) {
-      if (!this.deferred)
-        this.deferred = setTimeout(() => {
-          this.deferred = null;
-          void this.pump();
-        }, 1000);
-      return;
+    // Start queued builds in order (fair: first come, first served) while workers are free.
+    while (this.queue.length && this.active.size < policy.maxActiveBuilds) {
+      const watch = this.access.liveSessions;
+      const live = watch ? watch() : 0;
+      if (live === null || live >= policy.deferBuildsAtLiveSessions) {
+        if (!this.deferred)
+          this.deferred = setTimeout(() => {
+            this.deferred = null;
+            this.pump();
+          }, 1000);
+        return;
+      }
+      const next = this.queue.shift()!;
+      this.active.add(next);
+      next.state = 'building';
+      void this.execute(next);
     }
-    const next = this.queue.shift()!;
-    this.active = next;
-    next.state = 'building';
+  }
+
+  /** Compile one build to completion, then free its worker and start the next. */
+  private async execute(next: BuildRecord): Promise<void> {
     try {
       next.result = await this.run(next);
     } catch (e) {
@@ -399,15 +407,15 @@ export class BuildService {
     }
     if (next.result.ok && next.owner === next.submitter)
       await this.enforceStorage(next.submitter).catch(() => undefined);
-    this.active = null;
-    void this.pump();
+    this.active.delete(next);
+    this.pump();
   }
 
   /** Builds of a principal currently queued or compiling (tests, operator summaries). */
   inFlight(principal: Principal): number {
     return (
       this.queue.filter((r) => r.submitter === principal).length +
-      (this.active?.submitter === principal ? 1 : 0)
+      [...this.active].filter((r) => r.submitter === principal).length
     );
   }
 

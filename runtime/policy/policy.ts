@@ -62,6 +62,12 @@ export interface GlobalPolicy {
   build: {
     /** Builds waiting in the shared queue (all principals). */
     maxQueued: number;
+    /**
+     * Builds compiling at the same time (all principals; Sprint 13 H5). Absent = 1, the Sprint 7
+     * behaviour. Each build runs in its own sandbox unit with its own job, cache and output
+     * directories, so parallel builds share nothing writable.
+     */
+    maxActive?: number;
     /** A queued build that cannot start within this time fails as `capacity_timeout`. */
     maxQueueWaitMs: number;
     /**
@@ -205,6 +211,7 @@ export function validatePolicy(p: unknown): PolicyConfig {
   if (
     !g ||
     !isInt(g.build?.maxQueued, 0, 1024) ||
+    (g.build?.maxActive !== undefined && !isInt(g.build.maxActive, 1, 64)) ||
     !isInt(g.build?.maxQueueWaitMs, 1000, DAY) ||
     !cpusOr(g.build?.deferWhileLiveSessionsAtLeast) ||
     !cpusOr(g.runtime?.maxLiveSessions) ||
@@ -245,6 +252,11 @@ export class Policy {
   get maxLiveSessions(): number {
     const v = this.config.global.runtime.maxLiveSessions;
     return v === 'cpus' ? this.cpus : v;
+  }
+
+  /** Builds that may compile at the same time (default 1). */
+  get maxActiveBuilds(): number {
+    return this.config.global.build.maxActive ?? 1;
   }
 
   get deferBuildsAtLiveSessions(): number {

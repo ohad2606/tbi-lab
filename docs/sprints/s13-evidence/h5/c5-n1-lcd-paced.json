@@ -1,0 +1,45 @@
+{
+  "runtimeId": "b5b34b49cb7e4049",
+  "n": 1,
+  "seconds": 120,
+  "workload": "lcd",
+  "pace": 1,
+  "warmupExcludedS": 30,
+  "host": {
+    "cpus": 1,
+    "cpuBusyMean": 0.3371875832557483,
+    "stealShare": 0.005303476723629935,
+    "loadMax": 0.95,
+    "qemuRssMaxMb": 84.2734375
+  },
+  "sessions": [
+    {
+      "workload": "lcd",
+      "state": "running",
+      "reason": null,
+      "simS": 119.855,
+      "rateP5": 0.998835480809125,
+      "rateMin": 0.9976591434194699,
+      "rateMedian": 1.0000548351745742,
+      "rate5sP5": 0.9996869499717865,
+      "rate5sMin": 0.9996869499717865,
+      "windows5s": 18,
+      "pace": {
+        "rate": 1,
+        "simPerWall": 1.0000101429755166,
+        "pacedMs": 0,
+        "tickGapMs": {
+          "count": 119854,
+          "p99": 2,
+          "max": 224.4
+        }
+      },
+      "diagnostics": []
+    }
+  ],
+  "pass": {
+    "rate5sP5AtLeast0995": true,
+    "tickGapP99AtMost100": true,
+    "noFailures": true
+  }
+}
