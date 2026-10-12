@@ -57,7 +57,7 @@ if i < 0: print('   NO REPORT'); sys.exit(0)
 d = json.loads(t[i:t.index('\n}\n', i) + 2]); json.dump(d, open(sys.argv[2], 'w'), indent=1)
 p = d['pass']; ok = all(p.values())
 print('   ' + ('PASS' if ok else 'FAIL') + '  ' + ' '.join(f"{k}={'y' if v else 'N'}" for k, v in p.items()))
-print(f"   admitted {sum(a['status'] == 201 for a in d['admission'])}/{d['n']}, worst build {d['worstBuildMs']} ms, "
+print(f"   admitted {sum(a['status'] == 201 and not a.get('recreate') for a in d['admission'])}/{d['n']}, worst build {d['worstBuildMs']} ms, "
       f"cpu mean {d['host']['cpuBusyMean']:.2f}, mem min {d['host']['memAvailableMinMb']} MiB, leftovers {d['leftovers']}")
 for s in d['sessions']:
     print(f"     {s['workload']:<6} p5(5s) {s['rate5sP5']} startup {s['startupMs']} ms  tick-gap p99 {((s.get('pace') or {}).get('tickGapMs') or {}).get('p99')} ms {s.get('fault', '')}")
@@ -81,6 +81,6 @@ for name in need:
     print(f"{name}: {'PASS' if good else 'FAIL ' + ','.join(k for k, v in p.items() if not v)}")
 f6 = os.path.join(out, 'ramp-n6.json')
 if os.path.exists(f6):
-    d = json.load(open(f6)); print(f"ramp-n6 (above target, informational): admitted {sum(a['status'] == 201 for a in d['admission'])}/6")
+    d = json.load(open(f6)); print(f"ramp-n6 (above target, informational): admitted {sum(a['status'] == 201 and not a.get('recreate') for a in d['admission'])}/6")
 print('OVERALL: ' + ('PASS (five-session capacity accepted on this host, subject to PM review)' if ok else 'FAIL'))
 PY

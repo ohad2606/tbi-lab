@@ -261,7 +261,8 @@ describe('C-5 deployed: N concurrent ESP32 sessions on a deployed instance', () 
 
       // 2. Sessions.
       const sessions: Live[] = [];
-      const admission: { user: string; status: number; error?: unknown }[] = [];
+      // `recreate`: a fault's re-admission (judged by faultsRecovered, never by sessionsAdmitted).
+      const admission: { user: string; status: number; error?: unknown; recreate?: true }[] = [];
       const start = async (i: number, replaces?: number) => {
         const user = users[i]!;
         const b = builds[i]!;
@@ -286,6 +287,7 @@ describe('C-5 deployed: N concurrent ESP32 sessions on a deployed instance', () 
           user,
           status: a.status,
           ...(a.status !== 201 ? { error: a.body.error } : {}),
+          ...(replaces !== undefined ? { recreate: true as const } : {}),
         });
         if (a.status !== 201) return a.status;
         const x: Live = {
@@ -529,7 +531,9 @@ describe('C-5 deployed: N concurrent ESP32 sessions on a deployed instance', () 
         ...(FAULTS ? { faults } : {}),
         leftovers,
         pass: {
-          sessionsAdmitted: admission.filter((a) => a.status === 201).length >= N,
+          // The N users' first admissions only (a fault's re-admission once counted here: the
+          // 2026-10-13 smoke's faults-n2 passed with one of two users refused).
+          sessionsAdmitted: admission.filter((a) => !a.recreate && a.status === 201).length >= N,
           rate5sP5AtLeast0995:
             measured.length > 0 && measured.every((r) => (r.rate5sP5 ?? 0) >= 0.995),
           tickGapP99AtMost100: measured.every(

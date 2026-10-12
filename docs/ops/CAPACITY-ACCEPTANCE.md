@@ -48,10 +48,26 @@ Also recorded, not gated: per-session startup latency (create → running), CPU 
 
 ## Validation of the procedure (staging, 1 vCPU, release `dc1bff8`, 2026-10-13)
 
-See `docs/sprints/s13-evidence/overnight/capacity-smoke/`.
+Evidence: `docs/sprints/s13-evidence/overnight/capacity-smoke/` (run1, run2, faults-n2-verify). The `smoke` mode was run on staging. That is a check of the procedure, **not** capacity evidence: staging admits one live session (`maxLiveSessions: "cpus"` = 1).
 
-- **N = 1:** **PASS** on every criterion. Build 37 s; p5 0.9998; tick-gap p99 5 ms; startup 1.06 s; isolation enforced; nothing left.
-- **N = 2:** staging's preview policy admits one session, so the second user is **refused and recorded** (as designed: staging is not the alpha configuration).
+**Run 1** found three **harness** defects, all fixed in `a606379` and the following commit:
+
+| Defect | Symptom | Fix |
+|---|---|---|
+| The soak build burst was awaited inside the per-second sampling loop | No request for 36–67 s; the host correctly ended the session `lease_expired` (30 s) | Bursts run alongside the sampling; each session also holds its event stream, as the real client does |
+| `faultsRecovered` required every admission to be 201 | The policy refusal of *another* user failed fault recovery | Judged on the faulted users' own re-admissions |
+| `sessionsAdmitted` counted a fault's re-admission | **False PASS:** faults-n2 passed with one of two users refused | Only the N users' first admissions count; verified on staging (`sessionsAdmitted=N`, `faultsRecovered=y`) |
+
+**Run 2** (harness fixed):
+
+| Stage | Result |
+|---|---|
+| ramp-n1 | **PASS** on every criterion. Build 36 s; p5 0.9995; tick-gap p99 5 ms; startup 1.05 s; isolation enforced; nothing left |
+| ramp-n2 | FAIL `sessionsAdmitted`, as expected: the second user is refused `runtime_capacity` |
+| faults-n2 | One session ended and re-created; the crash fault needs two live sessions, so it did not run |
+| soak-n1 | FAIL `buildsAllSucceeded`: the burst builds stayed queued. This is the policy's **designed** deferral: `deferWhileLiveSessionsAtLeast: "cpus"` holds builds while live sessions ≥ CPUs (1 ≥ 1). The session ran clean: p5 0.9994, tick-gap p99 4 ms |
+
+**Consequence for the alpha VM.** Under the alpha policy (`"cpus"`), five sessions plus builds during the soak need **≥ 6 vCPUs** (6 OCPU: 5 < 6). At 4 OCPU, `maxLiveSessions` = 4 refuses the fifth user, and builds are deferred at 4 live sessions. Benchmarking 4 OCPU therefore needs explicit policy numbers, which is a PM decision (SPRINT-13-EXECUTION §H5, option C). The preflight records the CPU count.
 
 The in-process harness (`c5-capacity.runtime.test.ts`) remains for comparison runs without the sandbox.
 

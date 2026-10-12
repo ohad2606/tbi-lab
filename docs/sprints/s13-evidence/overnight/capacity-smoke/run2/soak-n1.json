@@ -1,0 +1,114 @@
+{
+ "instance": "tbi-s8",
+ "n": 1,
+ "seconds": 180,
+ "warmupExcludedS": 30,
+ "host": {
+  "cpus": 1,
+  "memTotalMb": 3895,
+  "kernel": "7.0.0-1009-oracle",
+  "cpuBusyMean": 0.5280257849108626,
+  "cpuBusyP95": 1,
+  "stealShare": 0.006777175081237593,
+  "loadMax": 1.66,
+  "memAvailableMinMb": 1896,
+  "qemuUnitMemMaxMb": 96
+ },
+ "deployed": {
+  "health": {
+   "protocol": "tbi-lab.session/2",
+   "sessions": {
+    "ended": 1
+   },
+   "runtime": {
+    "version": "0.10-dev",
+    "commit": "dc1bff8c3f1480fd4063e1e77a2c3234b0592e6c"
+   }
+  },
+  "policySha256": "d43ab503249b4a5b34fae0b65494df1ccc7c00d999d442bbabce536b2fc29cd4",
+  "runtimeJsonSha256": "481d7aa42c6e7e6fc806cc5aa23d0968ba9a3be0277014a0feeae07f7f35071c",
+  "qemuUnitSha256": "d338dbbbc57ab4bbb79238e0a1810a52021d6624e9ec48bd3205c3bb177bd41f"
+ },
+ "builds": [
+  {
+   "user": "c5d-mv5v01gq-u0",
+   "workload": "sonar",
+   "status": 202,
+   "ok": true,
+   "refused": null,
+   "completionMs": 35363
+  },
+  {
+   "user": "c5d-mv5v01gq-u0",
+   "workload": "sonar",
+   "status": 202,
+   "ok": null,
+   "refused": "stuck queued",
+   "completionMs": null
+  },
+  {
+   "user": "c5d-mv5v01gq-u0",
+   "workload": "sonar",
+   "status": 202,
+   "ok": null,
+   "refused": "stuck queued",
+   "completionMs": null
+  }
+ ],
+ "worstBuildMs": 35363,
+ "admission": [
+  {
+   "user": "c5d-mv5v01gq-u0",
+   "status": 201
+  }
+ ],
+ "sessions": [
+  {
+   "user": "c5d-mv5v01gq-u0",
+   "workload": "sonar",
+   "state": "running",
+   "reason": null,
+   "startupMs": 1058,
+   "rate5sP5": 0.9994232471105666,
+   "rate5sMin": 0.9988390332453035,
+   "windows5s": 28,
+   "pace": {
+    "rate": 1,
+    "simPerWall": 1.0000035065916744,
+    "pacedMs": 0,
+    "tickGapMs": {
+     "count": 180715,
+     "p99": 4,
+     "max": 199.9
+    }
+   },
+   "streamBytes": 5789377
+  }
+ ],
+ "isolation": [
+  {
+   "statusForeignUser": 404,
+   "statusOtherUsersToken": -1,
+   "eventsForeignUser": 404,
+   "commandForeignUser": 404,
+   "endForeignUser": 404,
+   "ownerStillRunningAfter": 1
+  }
+ ],
+ "leftovers": {
+  "qemuUnits": 0,
+  "buildJobs": 0,
+  "sessionDirs": 0
+ },
+ "pass": {
+  "sessionsAdmitted": true,
+  "rate5sP5AtLeast0995": true,
+  "tickGapP99AtMost100": true,
+  "noFailures": true,
+  "buildsAllSucceeded": false,
+  "buildsNoneRefused": false,
+  "buildWorstAtMost120s": true,
+  "isolationEnforced": true,
+  "noLeftovers": true
+ }
+}
