@@ -19,8 +19,9 @@
  *     refused, all succeed.
  *  2. Sessions: each user leases its artifact and creates and runs a session (workload mix: sonar
  *     R2, dht R2, gpio R1, lcd R3, gpio); startup latency (create -> running with simulation time).
- *  3. Load, SECONDS: every second, each session's status (simulation time, the host's pacing and
- *     tick-gap statistics) and the host's CPU, load, memory and QEMU RSS. Criteria (PM D-2): every
+ *  3. Load, SECONDS: each session holds its event stream (as the real client does); every second,
+ *     each session's status (simulation time, the host's pacing and tick-gap statistics) and the
+ *     host's CPU, load, memory and QEMU RSS; build bursts run alongside. Criteria (PM D-2): every
  *     session p5 >= 0.995x over 5 s windows after a 30 s warm-up; tick-gap p99 <= 100 ms; no
  *     session fails.
  *  4. Isolation under load: another user, and another user's valid session token, can neither
@@ -181,6 +182,9 @@ interface Live {
   rates5: number[];
   fault?: string;
   status?: Record<string, unknown>;
+  /** The session's event stream, held open as the real client does (it also holds the lease). */
+  stream?: AbortController;
+  streamBytes: number;
 }
 
 describe('C-5 deployed: N concurrent ESP32 sessions on a deployed instance', () => {
@@ -261,7 +265,7 @@ describe('C-5 deployed: N concurrent ESP32 sessions on a deployed instance', () 
       const start = async (i: number, replaces?: number) => {
         const user = users[i]!;
         const b = builds[i]!;
-        if (!b.sha) return;
+        if (!b.sha) return 0;
         const l = await fetch(`${BUILD}/v1/artifacts/${b.sha}/lease`, {
           method: 'POST',
           headers: as(user),
@@ -283,7 +287,7 @@ describe('C-5 deployed: N concurrent ESP32 sessions on a deployed instance', () 
           status: a.status,
           ...(a.status !== 201 ? { error: a.body.error } : {}),
         });
-        if (a.status !== 201) return;
+        if (a.status !== 201) return a.status;
         const x: Live = {
           user,
           workload: workloads[i]!,
@@ -295,13 +299,29 @@ describe('C-5 deployed: N concurrent ESP32 sessions on a deployed instance', () 
           last5: [t0, 0],
           ticks: 0,
           rates5: [],
+          stream: new AbortController(),
+          streamBytes: 0,
         };
         await fetch(`${HOST}/sessions/${x.id}/run`, {
           method: 'POST',
           headers: as(user, { authorization: `Bearer ${x.token}` }),
         });
+        void fetch(`${HOST}/sessions/${x.id}/events?after=0`, {
+          headers: as(user, { authorization: `Bearer ${x.token}` }),
+          signal: x.stream!.signal,
+        })
+          .then(async (r) => {
+            const rd = r.body?.getReader();
+            for (;;) {
+              const c = await rd?.read();
+              if (!c || c.done) return;
+              x.streamBytes += c.value.byteLength;
+            }
+          })
+          .catch(() => undefined); // aborted at clean-up, or closed by the host at a terminal state
         if (replaces !== undefined) sessions[replaces] = x;
         else sessions.push(x);
+        return a.status;
       };
       for (let i = 0; i < N; i++) await start(i);
       const statusOf = (x: Live, user = x.user, token = x.token) =>
@@ -322,6 +342,9 @@ describe('C-5 deployed: N concurrent ESP32 sessions on a deployed instance', () 
       let nextBurst = BUILD_EVERY_S > 0 ? BUILD_EVERY_S : Infinity;
       let round = 0;
       const soakBuilds: BuildRec[] = [];
+      // Bursts run alongside the per-second sampling (awaiting one stalled sampling for a whole
+      // build: the 2026-10-13 smoke's soak session then ended by lease).
+      const bursts: Promise<void>[] = [];
       while (performance.now() - t0 < SECONDS * 1000) {
         await new Promise((r) => setTimeout(r, 1000));
         const now = performance.now();
@@ -389,8 +412,7 @@ describe('C-5 deployed: N concurrent ESP32 sessions on a deployed instance', () 
             method: 'DELETE',
             headers: as(x.user, { authorization: `Bearer ${x.token}` }),
           });
-          faults.stop = { status: e.status };
-          await start(users.indexOf(x.user), 0);
+          faults.stop = { status: e.status, recreated: await start(users.indexOf(x.user), 0) };
         }
         if (FAULTS && !faults.crash && elapsed >= WARMUP_S + 45 && sessions.length > 1) {
           const x = sessions[1]!;
@@ -408,10 +430,13 @@ describe('C-5 deployed: N concurrent ESP32 sessions on a deployed instance', () 
             reported,
             unitGone: sudo('systemctl', 'is-active', unit).stdout.trim() !== 'active',
           };
-          await start(users.indexOf(x.user), 1);
+          (faults.crash as { recreated?: number }).recreated = await start(
+            users.indexOf(x.user),
+            1,
+          );
         }
         if (elapsed >= nextBurst) {
-          soakBuilds.push(...(await burst(++round)));
+          bursts.push(burst(++round).then((r) => void soakBuilds.push(...r)));
           nextBurst += BUILD_EVERY_S;
         }
         const c = cpu();
@@ -421,6 +446,8 @@ describe('C-5 deployed: N concurrent ESP32 sessions on a deployed instance', () 
         const ma = /MemAvailable:\s+(\d+)/.exec(readFileSync('/proc/meminfo', 'utf8'));
         if (ma) memAvail.push(Number(ma[1]) / 1024);
       }
+
+      await Promise.all(bursts);
 
       // 6. Clean-up and leak check.
       const results = sessions.map((x) => ({
@@ -434,12 +461,15 @@ describe('C-5 deployed: N concurrent ESP32 sessions on a deployed instance', () 
         rate5sMin: x.rates5.length ? Math.min(...x.rates5) : null,
         windows5s: x.rates5.length,
         pace: x.status?.pace,
+        streamBytes: x.streamBytes,
       }));
-      for (const x of sessions)
+      for (const x of sessions) {
         await fetch(`${HOST}/sessions/${x.id}`, {
           method: 'DELETE',
           headers: as(x.user, { authorization: `Bearer ${x.token}` }),
         });
+        x.stream?.abort();
+      }
       let leftovers = { qemuUnits: -1, buildJobs: -1, sessionDirs: -1 };
       for (let k = 0; k < 60; k++) {
         const units = (p: string) =>
@@ -527,13 +557,16 @@ describe('C-5 deployed: N concurrent ESP32 sessions on a deployed instance', () 
           ...(FAULTS
             ? {
                 // Only the faults that ran (the crash needs two sessions): ended -> re-created;
-                // crashed -> reported, its unit gone, re-created.
+                // crashed -> reported, its unit gone, re-created. Judged on the faulted users' own
+                // re-admissions (a policy refusal of another user is `sessionsAdmitted`).
                 faultsRecovered:
-                  (!faults.stop || (faults.stop as { status: number }).status < 300) &&
+                  (!faults.stop ||
+                    ((faults.stop as { status: number }).status < 300 &&
+                      (faults.stop as { recreated?: number }).recreated === 201)) &&
                   (!faults.crash ||
                     ((faults.crash as { unitGone?: boolean }).unitGone === true &&
-                      !!(faults.crash as { reported?: unknown }).reported)) &&
-                  admission.every((a) => a.status === 201),
+                      !!(faults.crash as { reported?: unknown }).reported &&
+                      (faults.crash as { recreated?: number }).recreated === 201)),
               }
             : {}),
           noLeftovers:
