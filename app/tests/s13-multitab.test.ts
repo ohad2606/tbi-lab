@@ -5,10 +5,15 @@
  * succeeds only over exactly the version the tab opened or last wrote; otherwise nothing is
  * written, the tab says so, and Export keeps that tab's version.
  */
-import { IDBFactory } from 'fake-indexeddb';
+import { IDBFactory, IDBObjectStore } from 'fake-indexeddb';
 import { describe, expect, it } from 'vitest';
 import { createProject, parsePackage } from '@tbi-lab/domain';
-import { ProjectConflictError, ProjectStore, versionOf } from '../src/persistence/store.js';
+import {
+  isQuotaError,
+  ProjectConflictError,
+  ProjectStore,
+  versionOf,
+} from '../src/persistence/store.js';
 import { AppStore, type Preferences } from '../src/state/app.js';
 
 const prefs = (): Preferences => {
@@ -55,6 +60,37 @@ describe('ProjectStore.save with an expected version', () => {
     expect(await store.load('prj_mt1')).toBeUndefined();
     expect((await store.list()).map((e) => e.projectId)).toEqual([]);
   });
+});
+
+describe('ProjectStore.save: a failing write keeps its own error', () => {
+  // Final CI (e2e A12) found it: with an expected version the put runs in the version check's
+  // callback, where a thrown QuotaExceededError aborted the transaction as a generic error ("Could
+  // not save" instead of "storage is full") and escaped as an uncaught exception.
+  it.each([false, true])(
+    'quota error surfaces as itself (expected version: %s)',
+    async (checked) => {
+      const store = await ProjectStore.open(new IDBFactory());
+      const v1 = createProject({ projectId: 'prj_q1', deviceId: 'd', name: 'v1', appVersion: '0' });
+      await store.add(v1);
+      const v2 = {
+        ...v1,
+        name: 'v2',
+        revision: { ...v1.revision, localRevision: 2, updatedAt: '2026-10-13T00:00:02.000Z' },
+      };
+      const proto = IDBObjectStore.prototype as { put: (...a: unknown[]) => unknown };
+      const put = proto.put;
+      proto.put = () => {
+        throw new DOMException('The quota has been exceeded.', 'QuotaExceededError');
+      };
+      try {
+        const saving = store.save(v2, checked ? versionOf(v1) : undefined);
+        await expect(saving).rejects.toSatisfy(isQuotaError);
+      } finally {
+        proto.put = put;
+      }
+      expect(((await store.load('prj_q1')) as { name: string }).name).toBe('v1'); // nothing written
+    },
+  );
 });
 
 describe('two tabs on one project', () => {

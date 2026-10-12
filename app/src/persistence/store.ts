@@ -133,30 +133,39 @@ export class ProjectStore implements ProjectStorage {
   async save(doc: ProjectDocument, expected?: StoredVersion): Promise<void> {
     const tx = this.db.transaction([PROJECTS, INDEX], 'readwrite');
     const done = transactionDone(tx);
-    let conflict: ProjectConflictError | null = null;
+    // Why the transaction was aborted (a conflict, or a put that threw, e.g. QuotaExceededError
+    // inside the version check's callback); the caller sees that, not the generic AbortError.
+    let failure: unknown = null;
+    const abort = (e: unknown) => {
+      failure = e;
+      tx.abort();
+    };
     const write = () => {
-      tx.objectStore(PROJECTS).put(doc);
-      tx.objectStore(INDEX).put(indexEntry(doc));
+      try {
+        tx.objectStore(PROJECTS).put(doc);
+        tx.objectStore(INDEX).put(indexEntry(doc));
+      } catch (e) {
+        abort(e);
+      }
     };
     if (!expected) write();
     else {
       const get = tx.objectStore(PROJECTS).get(doc.projectId);
       get.onsuccess = () => {
         const stored = get.result as ProjectDocument | undefined;
-        if (!stored) conflict = new ProjectConflictError(doc.projectId, 'deleted');
+        if (!stored) abort(new ProjectConflictError(doc.projectId, 'deleted'));
         else if (
           stored.revision?.localRevision !== expected.localRevision ||
           stored.revision?.updatedAt !== expected.updatedAt
         )
-          conflict = new ProjectConflictError(doc.projectId, 'changed');
-        if (conflict) tx.abort();
+          abort(new ProjectConflictError(doc.projectId, 'changed'));
         else write();
       };
     }
     try {
       await done;
     } catch (e) {
-      throw conflict ?? e;
+      throw failure ?? e;
     }
   }
 
