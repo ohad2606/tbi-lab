@@ -113,7 +113,17 @@ export function NoticeBar() {
           {t('readonly.unreadable', { version: isolateLtr(String(unreadable.schemaVersion)) })}
         </div>
       )}
-      {screen === 'editor' && saveState === 'error' && (
+      {screen === 'editor' && saveState === 'error' && saveError === 'conflict' && (
+        // Sprint 13 Task D: another tab or window changed or deleted this project. Retrying cannot
+        // help (it would overwrite their change): keep this version by Export, then reload.
+        <div class="banner banner-warning" role="alert" data-testid="save-conflict">
+          <span>{t('save.error.conflictBanner')}</span>
+          <button type="button" class="link-button" onClick={() => location.reload()}>
+            {t('save.reload')}
+          </button>
+        </div>
+      )}
+      {screen === 'editor' && saveState === 'error' && saveError !== 'conflict' && (
         <div class="banner banner-warning" role="alert" data-testid="save-error">
           <span>{t(saveError === 'quota' ? 'save.error.quotaBanner' : 'save.error.banner')}</span>
           <button type="button" class="link-button" onClick={() => void store.retrySave()}>

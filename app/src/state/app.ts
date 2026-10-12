@@ -47,6 +47,7 @@ import { Autosave, type SaveState } from '../persistence/autosave.js';
 import {
   ProjectExistsError,
   isQuotaError,
+  versionOf,
   type ProjectIndexEntry,
   type ProjectStorage,
 } from '../persistence/store.js';
@@ -132,7 +133,7 @@ export interface AppState {
   /** Undo/redo depth (the history itself is session state, never persisted). */
   history: { undo: number; redo: number };
   /** Why saving failed, when saveState is 'error'. */
-  saveError: 'quota' | 'write' | null;
+  saveError: 'quota' | 'write' | 'conflict' | null;
   /** Probes an opened example suggests for its project (editor presentation state only). */
   suggestedProbes: { projectId: string; probes: ExampleProbe[] } | null;
   /**
@@ -444,6 +445,9 @@ export class AppStore {
     };
     if (result.status === 'ok') {
       this.deps.prefs.set(PREF_LAST_PROJECT, projectId);
+      // The version as stored now: this tab's writes are checked against it (Sprint 13 Task D).
+      const stored = raw as Partial<ProjectDocument>;
+      if (stored.revision) this.autosave?.know({ projectId, revision: stored.revision });
       const repaired = this.deps.repairLayout?.(result.doc) ?? result.doc;
       this.set({ ...base, screen: 'editor', doc: repaired, readOnly: null });
       if (result.migratedFrom !== null || repaired !== result.doc) this.commit(repaired);
@@ -535,7 +539,11 @@ export class AppStore {
         this.set({ nameConflict: { scope: 'rename', projectId, name: renamed.doc.name } });
         return false;
       }
-      await this.deps.storage!.save(stampRevision(renamed.doc, this.deviceId, this.deps.clock));
+      // Only over exactly the version just read: a concurrent change in another tab is a conflict.
+      await this.deps.storage!.save(
+        stampRevision(renamed.doc, this.deviceId, this.deps.clock),
+        versionOf(doc),
+      );
       await this.refreshProjects();
       this.clearNameConflict();
       return true;
@@ -619,7 +627,13 @@ export class AppStore {
 
   async exportProject(projectId: string): Promise<ExportedFile | null> {
     try {
-      const doc = await this.loadValid(projectId);
+      // Sprint 13 Task D: when this tab's changes could not be saved because another tab or
+      // window changed the project, Export keeps THIS tab's version (the only copy of it).
+      const current = this.stateValue.doc;
+      const doc =
+        this.stateValue.saveError === 'conflict' && current?.projectId === projectId
+          ? current
+          : await this.loadValid(projectId);
       if (!doc) return null;
       const exportedAt = (this.deps.clock ?? { now: () => new Date() }).now().toISOString();
       const text = serializePackage(createPackage(doc, { appVersion: APP_VERSION, exportedAt }));

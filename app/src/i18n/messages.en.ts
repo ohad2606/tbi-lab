@@ -666,6 +666,10 @@ export const en = {
   'edit.overlap.3d':
     '{a} would overlap {b} at their real size (as the 3D view shows them). Leave more room between them.',
   'edit.overlap.both': '{a} would overlap {b}. Place it where the parts do not cover each other.',
+  // Sprint 13 Task D: the project changed or was deleted in another tab or window.
+  'save.error.conflictBanner':
+    'This project was changed or deleted in another tab or window, so the changes here were not saved. To keep them, use Export now; then reload to continue with the saved version.',
+  'save.reload': 'Reload',
   'build.blockedRunning':
     'Build is available after Stop. The running session keeps the firmware it started with.',
   'build.unavailable': 'The build service is not available here.',

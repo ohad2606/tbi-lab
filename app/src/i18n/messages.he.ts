@@ -652,6 +652,10 @@ export const he: Record<MessageKey, string> = {
   'edit.overlap.3d':
     '{a} יחפוף את {b} בגודלם האמיתי (כפי שתצוגת ה־3D מציגה אותם). השאירו יותר מקום ביניהם.',
   'edit.overlap.both': '{a} יחפוף את {b}. מקמו אותו במקום שבו הרכיבים אינם מכסים זה את זה.',
+  // Sprint 13 Task D: the project changed or was deleted in another tab or window.
+  'save.error.conflictBanner':
+    'הפרויקט שונה או נמחק בלשונית או בחלון אחרים, ולכן השינויים כאן לא נשמרו. כדי לשמור אותם, ייצאו עכשיו; לאחר מכן טענו מחדש כדי להמשיך עם הגרסה השמורה.',
+  'save.reload': 'טעינה מחדש',
   'build.blockedRunning': 'אפשר לבנות אחרי עצירה. הסשן שרץ ממשיך עם הקושחה שאיתה התחיל.',
   'build.unavailable': 'שירות הבנייה אינו זמין כאן.',
   'build.error.unreachable': 'לא ניתן היה להתחבר לשירות הבנייה. הקוד שלכם שמור; נסו שוב.',

@@ -58,8 +58,23 @@ export function openDatabase(
   });
 }
 
+/** What identifies one stored version of a project (Sprint 13 Task D: multi-tab safety). */
+export interface StoredVersion {
+  localRevision: number;
+  updatedAt: string;
+}
+export const versionOf = (doc: Pick<ProjectDocument, 'revision'>): StoredVersion => ({
+  localRevision: doc.revision.localRevision,
+  updatedAt: doc.revision.updatedAt,
+});
+
 export interface ProjectStorage {
-  save(doc: ProjectDocument): Promise<void>;
+  /**
+   * Write a project. With `expected` (Sprint 13 Task D), only if the stored project is still
+   * exactly that version: if another tab or window changed or deleted it meanwhile, nothing is
+   * written and `ProjectConflictError` is thrown, never a silent overwrite or resurrection.
+   */
+  save(doc: ProjectDocument, expected?: StoredVersion): Promise<void>;
   /**
    * Insert a NEW project: fails with `ProjectExistsError` if the id is already stored, so an
    * import or duplicate can never overwrite an existing project, even under a race.
@@ -73,6 +88,17 @@ export interface ProjectStorage {
 }
 
 /** `add` found a project with the same id. Nothing was written. */
+export class ProjectConflictError extends Error {
+  constructor(
+    readonly projectId: string,
+    /** `changed`: a different version is stored; `deleted`: the project is gone. */
+    readonly kind: 'changed' | 'deleted',
+  ) {
+    super(`project ${kind} elsewhere`);
+    this.name = 'ProjectConflictError';
+  }
+}
+
 export class ProjectExistsError extends Error {
   constructor(readonly projectId: string) {
     super('project exists');
@@ -100,12 +126,38 @@ export class ProjectStore implements ProjectStorage {
     return new ProjectStore(await openDatabase(factory, name));
   }
 
-  /** Document and index entry are written in one transaction: both land or neither does. */
-  async save(doc: ProjectDocument): Promise<void> {
+  /**
+   * Document and index entry are written in one transaction: both land or neither does. With
+   * `expected`, the version check happens in the same transaction (no window for another tab).
+   */
+  async save(doc: ProjectDocument, expected?: StoredVersion): Promise<void> {
     const tx = this.db.transaction([PROJECTS, INDEX], 'readwrite');
-    tx.objectStore(PROJECTS).put(doc);
-    tx.objectStore(INDEX).put(indexEntry(doc));
-    await transactionDone(tx);
+    const done = transactionDone(tx);
+    let conflict: ProjectConflictError | null = null;
+    const write = () => {
+      tx.objectStore(PROJECTS).put(doc);
+      tx.objectStore(INDEX).put(indexEntry(doc));
+    };
+    if (!expected) write();
+    else {
+      const get = tx.objectStore(PROJECTS).get(doc.projectId);
+      get.onsuccess = () => {
+        const stored = get.result as ProjectDocument | undefined;
+        if (!stored) conflict = new ProjectConflictError(doc.projectId, 'deleted');
+        else if (
+          stored.revision?.localRevision !== expected.localRevision ||
+          stored.revision?.updatedAt !== expected.updatedAt
+        )
+          conflict = new ProjectConflictError(doc.projectId, 'changed');
+        if (conflict) tx.abort();
+        else write();
+      };
+    }
+    try {
+      await done;
+    } catch (e) {
+      throw conflict ?? e;
+    }
   }
 
   async add(doc: ProjectDocument): Promise<void> {

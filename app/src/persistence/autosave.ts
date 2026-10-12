@@ -8,7 +8,13 @@
  */
 
 import type { ProjectDocument } from '@tbi-lab/domain';
-import { isQuotaError, type ProjectStorage } from './store.js';
+import {
+  ProjectConflictError,
+  isQuotaError,
+  versionOf,
+  type ProjectStorage,
+  type StoredVersion,
+} from './store.js';
 
 /** Injectable timer so unit tests can drive the debounce deterministically. */
 export type ScheduleFn = (handler: () => void, delayMs: number) => unknown;
@@ -35,8 +41,18 @@ export class Autosave {
   private readonly cancel: CancelFn;
   private listeners = new Set<(s: SaveState) => void>();
   private stateValue: SaveState = 'saved';
-  /** Why the last write failed, so the UI can say something specific. */
-  lastError: 'quota' | 'write' | null = null;
+  /**
+   * Why the last write failed, so the UI can say something specific. `conflict`: another tab or
+   * window changed or deleted the project; this tab's version was NOT written (Sprint 13 Task D).
+   */
+  lastError: 'quota' | 'write' | 'conflict' | null = null;
+  /** The stored version each project is known to be at (what this tab opened or last wrote). */
+  private readonly known = new Map<string, StoredVersion>();
+
+  /** The project as it is stored now (just opened, created or imported in this tab). */
+  know(doc: Pick<ProjectDocument, 'projectId' | 'revision'>): void {
+    this.known.set(doc.projectId, versionOf(doc));
+  }
 
   /** Number of physical writes performed, so tests can assert debouncing actually happened. */
   writeCount = 0;
@@ -114,7 +130,8 @@ export class Autosave {
       let failed: unknown = null;
       for (const doc of docs) {
         try {
-          await this.store.save(doc);
+          await this.store.save(doc, this.known.get(doc.projectId));
+          this.known.set(doc.projectId, versionOf(doc));
           this.writeCount++;
         } catch (e) {
           // Keep the newest document of THIS project: a later queue() of the same project
@@ -124,7 +141,12 @@ export class Autosave {
         }
       }
       if (failed !== null) {
-        this.lastError = isQuotaError(failed) ? 'quota' : 'write';
+        this.lastError =
+          failed instanceof ProjectConflictError
+            ? 'conflict'
+            : isQuotaError(failed)
+              ? 'quota'
+              : 'write';
         this.setState('error');
         return;
       }
