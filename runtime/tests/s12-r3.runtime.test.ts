@@ -128,27 +128,35 @@ describe('R3: Wire on the real runtime (harness level)', () => {
 });
 
 /** PSU1 (lcdV) -> LCD VCC; PSU2 3.3 V -> 4.7 kΩ pull-ups on SDA/SCL; GPIO21/22. */
-function lcdCircuit(lcdV: number) {
+function lcdCircuit(lcdV: number, vccSdaSwapped = false) {
+  // Sprint 13 OS-09: optionally the module's VCC and SDA pins swapped.
+  const pin = (t: 'vcc' | 'sda' | 'scl') =>
+    vccSdaSwapped && t === 'vcc' ? 'sda' : vccSdaSwapped && t === 'sda' ? 'vcc' : t;
   const c = new Circuit().psu(lcdV);
   const lcd = c.add('display.lcd1602_i2c');
   const p2 = c.add('instrument.lab_psu');
   c.set(p2, 'setpointVoltage', { value: 3.3, unit: 'volt' }).set(p2, 'outputEnabled', true);
   c.wire(`${p2}.negative`, 'GND1.ref');
-  c.wire('PSU1.positive', `${lcd}.vcc`).wire(`${lcd}.gnd`, 'GND1.ref');
+  c.wire('PSU1.positive', `${lcd}.${pin('vcc')}`).wire(`${lcd}.gnd`, 'GND1.ref');
   for (const [line, gpio] of [
     ['sda', 21],
     ['scl', 22],
   ] as const) {
     const r = c.add('component.resistor');
-    c.ohms(r, 4700).wire(`${r}.a`, `${p2}.positive`).wire(`${r}.b`, `${lcd}.${line}`);
-    c.pad(gpio, `${lcd}.${line}`);
+    c.ohms(r, 4700)
+      .wire(`${r}.a`, `${p2}.positive`)
+      .wire(`${r}.b`, `${lcd}.${pin(line)}`);
+    c.pad(gpio, `${lcd}.${pin(line)}`);
   }
   return { c, lcd };
 }
 
-async function lcdSession(lcdV: number): Promise<{ s: HostSession; lcd: string }> {
+async function lcdSession(
+  lcdV: number,
+  vccSdaSwapped = false,
+): Promise<{ s: HostSession; lcd: string }> {
   assertProvisioned();
-  const { c, lcd } = lcdCircuit(lcdV);
+  const { c, lcd } = lcdCircuit(lcdV, vccSdaSwapped);
   const fw = artifact('TbiLcd');
   const s = open(host, { ...c.request(fw.sha256), ticket: ticketFor(fw.sha256) });
   expect(s.state).toBe('ready');
@@ -197,5 +205,23 @@ describe('R3: the I2C LCD through the Session Host', () => {
     await stopped(s);
     expect(serialText(s)).toMatch(/^LCD 4\r?$/m);
     expect(diags).toContain('i2c_logic_level');
+  });
+
+  it('Sprint 13 OS-09: VCC and SDA swapped: NACKs (4), i2c_wiring names SDA on the VCC pin; unpowered', async () => {
+    const { s, lcd } = await lcdSession(4.5, true);
+    const diags = s.log
+      .since(0)
+      .filter((e) => e.type === 'diagnostic')
+      .map((e) => e as unknown as { code: string; detail: Record<string, unknown> });
+    const states = lcdStates(s, lcd);
+    await stopped(s);
+    expect(serialText(s)).toMatch(/^LCD 4\r?$/m);
+    expect(diags).toContainEqual(
+      expect.objectContaining({
+        code: 'i2c_wiring',
+        detail: expect.objectContaining({ line: 'sda', terminal: 'vcc', reason: 'supply_pin' }),
+      }),
+    );
+    for (const st of states) expect(st.powered).toBe(false);
   });
 });

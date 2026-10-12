@@ -72,3 +72,39 @@ recorded below as the work lands.
 - `app/e2e/s7.spec.ts`: Build-required flow updated to the disabled Run with its reason, including during the build.
 
 **Design note:** previously, clicking Run with no build moved the focus to the Build button. A disabled control cannot do that, so the guidance is now the reason on the Run control plus the build status in the code view. The owner may want a visible hint in the toolbar too.
+
+### OS-09 — reversed LCD VCC/SDA (P0) — fixed in S-E
+
+**Engineering reproduction:** module VCC → the SDA pull-up net with GPIO21; module SDA → the PSU rail.
+
+- The engine solved the module as unpowered (VCC ≈ 3.3 V, below 4.5 V). The only flag was the generic "outside model range" note.
+- At runtime, Wire got NACKs. No diagnostic said why: `i2c_wiring` covered only SDA↔SCL swaps.
+- The rail on SDA had no rating check.
+- **Every** I2C diagnostic reached the user only as "Runtime warning: \<code\>".
+
+**Root causes:**
+
+1. No check of SDA/SCL against the PCF8574's published input limit.
+2. The I2C presence check did not name a line that lands on the module's supply pin.
+3. The UI had no text for the I2C diagnostic codes.
+
+**Fix (physics from the datasheet only):**
+
+- **Engine:** the LCD part checks SDA/SCL against the PCF8574 limiting value V_I ≤ V_DD + 0.5 V (NXP PCF8574 Rev. 5, Table 7; absolute). A breach is an `absolute` row on the `sda`/`scl` channel.
+  - The input clamp current is **not** modelled. That is stated as the new limitation `lcd_input_clamp`, and no damage or current is invented.
+- **Host:** `i2c_wiring` gets the reason `supply_pin`, with the line, the pad and the module pin (`vcc`/`gnd`).
+- **UI:** specific EN/HE texts for `i2c_wiring` (`supply_pin`, `swapped`), `i2c_no_pullup`, `i2c_logic_level` and `i2c_rate_exceeded`.
+
+**Acceptance criteria:**
+
+- (a) The swap is named: which pad, which line, which module pin.
+- (b) The module does not respond (NACK), as on a real bus.
+- (c) The supply on SDA is flagged against the published absolute maximum.
+- (d) No damage model and no invented current.
+- (e) The text is localized in EN and HE.
+
+**Tests:**
+
+- `runtime/host/tests/r3-i2c.test.ts`: VCC/SDA swap → `i2c_wiring supply_pin` plus an absolute SDA row with limit = V_DD + 0.5.
+- `runtime/tests/s12-r3.runtime.test.ts`: real QEMU, Wire NACK (4), the diagnostic, unpowered.
+- `app/tests/s13-i2c-warnings.test.ts`: EN/HE texts.

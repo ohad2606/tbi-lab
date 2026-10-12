@@ -26,6 +26,7 @@ import {
   supplyOutsideModel,
   validateCard,
   type PartModel,
+  type PartRatingExcess,
   type PartState,
 } from '../parts.js';
 
@@ -94,12 +95,35 @@ export const LCD1602_I2C: PartModel = {
     };
   },
   // Sprint 13 H2: 4.5-5.5 V operating; 7.0 V is the logic supply's absolute maximum (JHD659 p.6).
-  ratings: (_p, r) =>
-    supplyLimits(supplyAcross(r.terminals, 'vcc'), {
+  // Sprint 13 OS-09: SDA/SCL against the PCF8574's limiting value V_I <= V_DD + 0.5 V (NXP Rev. 5,
+  // Table 7, absolute). A supply rail on SDA or SCL (e.g. VCC and SDA swapped) exceeds it whenever
+  // the module's own supply is lower. The input clamp current that would then flow is not
+  // modelled (limitation `lcd_input_clamp`): only the published limit is checked.
+  ratings: (_p, r) => [
+    ...supplyLimits(supplyAcross(r.terminals, 'vcc'), {
       maxOperatingV: LCD1602_DC.maxSupplyV,
       absoluteMaxV: LCD1602_DC.absoluteMaxSupplyV,
     }),
+    ...pcf8574InputLimits(r.terminals),
+  ],
 };
+
+/** NXP PCF8574 Rev. 5, Table 7 (limiting values): V_I max = V_DD + 0.5 V. */
+export const PCF8574_INPUT_ABOVE_VDD_V = 0.5;
+
+export function pcf8574InputLimits(
+  terminals: Readonly<Record<string, number | null | undefined>>,
+): PartRatingExcess[] {
+  const vdd = Math.max(0, supplyAcross(terminals, 'vcc') ?? 0);
+  const out: PartRatingExcess[] = [];
+  for (const line of ['sda', 'scl'] as const) {
+    const v = supplyAcross(terminals, line);
+    const limit = vdd + PCF8574_INPUT_ABOVE_VDD_V;
+    if (v !== null && v > limit)
+      out.push({ kind: 'absolute', code: 'voltage', value: v, limit, channel: line });
+  }
+  return out;
+}
 
 /** PCF8574 input thresholds as fractions of its supply (NXP p.16: V_IH 0.7 VDD, V_IL 0.3 VDD). */
 export const PCF8574_VIH_FRACTION = 0.7;

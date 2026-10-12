@@ -126,7 +126,13 @@ export const MODEL_LIMITATIONS: Readonly<Partial<Record<ComponentTypeId, readonl
   'component.capacitor': ['capacitor_ideal', 'capacitor_no_esp32'],
   'sensor.hc_sr04': ['hcsr04_target', 'hcsr04_output', 'hcsr04_retrigger', 'supply_below_min'],
   'sensor.dht22': ['dht22_tgo', 'dht22_current', 'dht22_output', 'supply_below_min'],
-  'display.lcd1602_i2c': ['lcd_backlight', 'lcd_bus_timing', 'lcd_pullups', 'supply_below_min'],
+  'display.lcd1602_i2c': [
+    'lcd_backlight',
+    'lcd_bus_timing',
+    'lcd_pullups',
+    'lcd_input_clamp',
+    'supply_below_min',
+  ],
   'board.esp32_devkitc_wroom32': [
     'esp32_timing',
     'esp32_pulls',

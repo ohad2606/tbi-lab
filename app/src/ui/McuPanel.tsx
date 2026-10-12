@@ -226,5 +226,41 @@ function warningText(t: ReturnType<typeof useT>, w: RuntimeWarning): string {
     return t('mcu.warning.output_on_input_only_pad', { gpio: isolateLtr(String(gpio ?? '')) });
   }
   if (w.code === 'transient_rejected') return t('mcu.warning.transient_rejected');
+  const i2c = i2cWarningText(t, w);
+  if (i2c) return i2c;
   return t('mcu.warning.generic', { code: isolateLtr(w.code) });
+}
+
+/**
+ * Sprint 13 OS-09: the I2C diagnostics of the Session Host (runtime/host/i2cDevices.ts), each
+ * with what is wrong and where, instead of the bare code. Unknown shapes fall back to the code.
+ */
+export function i2cWarningText(t: ReturnType<typeof useT>, w: RuntimeWarning): string | null {
+  const d = (w.detail ?? {}) as {
+    component?: string;
+    reason?: string;
+    line?: string;
+    gpio?: number;
+    terminal?: string;
+    sda?: number;
+    scl?: number;
+    lines?: { line: string; gpio: number }[];
+  };
+  const component = isolateLtr(d.component ?? '');
+  const io = (g: number | undefined) => isolateLtr(g === undefined ? '' : `GPIO${g}`);
+  const lineName = (l: string | undefined) => isolateLtr((l ?? '').toUpperCase());
+  if (w.code === 'i2c_wiring' && d.reason === 'supply_pin')
+    return t('mcu.warning.i2c_wiring.supply_pin', {
+      component,
+      gpio: io(d.gpio),
+      line: lineName(d.line),
+      terminal: lineName(d.terminal),
+    });
+  if (w.code === 'i2c_wiring' && d.reason === 'swapped')
+    return t('mcu.warning.i2c_wiring.swapped', { component, sda: io(d.sda), scl: io(d.scl) });
+  const lines = isolateLtr((d.lines ?? []).map((l) => l.line.toUpperCase()).join(', '));
+  if (w.code === 'i2c_no_pullup') return t('mcu.warning.i2c_no_pullup', { component, lines });
+  if (w.code === 'i2c_logic_level') return t('mcu.warning.i2c_logic_level', { component, lines });
+  if (w.code === 'i2c_rate_exceeded') return t('mcu.warning.i2c_rate_exceeded');
+  return null;
 }

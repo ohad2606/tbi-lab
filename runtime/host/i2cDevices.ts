@@ -6,7 +6,8 @@
  * Electrical gating at every START, from the circuit and the solved operating point, never
  * assumed: a target can acknowledge only if
  * - the pads the firmware routed to this controller's SDA and SCL (`F` frames) are on the
- *   target's SDA and SCL nets (swapped lines: `i2c_wiring`);
+ *   target's SDA and SCL nets (swapped lines, or a line on the module's VCC/GND pin (Sprint 13
+ *   OS-09): `i2c_wiring` with the reason);
  * - both lines idle high through a pull-up the solver sees, at the target (PCF8574 V_IH = 0.7 VDD)
  *   and at the ESP32 pads (V_IH), with the pads released (no pull-up: `i2c_no_pullup`; internal
  *   pad pull-ups are not modelled and do not count, PM D-4);
@@ -44,6 +45,8 @@ interface Lcd {
   powered: boolean;
   sdaNet: string | null;
   sclNet: string | null;
+  vccNet: string | null;
+  gndNet: string | null;
 }
 
 const addressOf = (v: unknown): number | null => {
@@ -95,6 +98,8 @@ export class I2cDevices {
         powered: false,
         sdaNet: netOf(c.id, 'sda'),
         sclNet: netOf(c.id, 'scl'),
+        vccNet: netOf(c.id, 'vcc'),
+        gndNet: netOf(c.id, 'gnd'),
       });
     }
   }
@@ -143,6 +148,24 @@ export class I2cDevices {
           },
           `wiring:${t.id}`,
         );
+      // Sprint 13 OS-09: an I2C line on the module's supply pin (e.g. VCC and SDA swapped).
+      for (const [line, net, gpio] of [
+        ['sda', sdaNet, sdaPad],
+        ['scl', sclNet, sclPad],
+      ] as const) {
+        const terminal =
+          net === null ? null : net === t.vccNet ? 'vcc' : net === t.gndNet ? 'gnd' : null;
+        if (terminal)
+          this.note(
+            vns,
+            {
+              code: 'i2c_wiring',
+              severity: 'warning',
+              detail: { component: t.id, line, gpio, terminal, reason: 'supply_pin' },
+            },
+            `wiring:${t.id}:${line}`,
+          );
+      }
       return false;
     }
     const r = out.components[t.id];

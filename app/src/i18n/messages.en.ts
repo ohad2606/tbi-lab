@@ -656,7 +656,8 @@ export const en = {
   'run.blocked.building': 'Run is unavailable while a build is in progress.',
   'run.blocked.buildRequired':
     'Build the code for {components} first: it has not been built, or it changed since the last build.',
-  'run.blocked.buildFailed': 'The last build of the code for {components} failed. Fix it and Build.',
+  'run.blocked.buildFailed':
+    'The last build of the code for {components} failed. Fix it and Build.',
   'build.olderRunning':
     'A build of an earlier version of this code is still in progress. Build the current version when it finishes.',
   'build.blockedRunning':
@@ -799,6 +800,17 @@ export const en = {
   'mcu.warning.output_on_input_only_pad':
     'GPIO{gpio} is input-only: the firmware tried to drive it, and it stays an input.',
   'mcu.warning.transient_rejected': 'A button press could not be delivered to the running session.',
+  // Sprint 13 OS-09: I2C diagnostics, specific and actionable.
+  'mcu.warning.i2c_wiring.supply_pin':
+    "{component}: {gpio} ({line}) is wired to the module's {terminal} pin, not to {line}. Check the module's pins: VCC and {line} may be swapped. The module does not respond.",
+  'mcu.warning.i2c_wiring.swapped':
+    '{component}: SDA and SCL are swapped ({sda} is on SCL, {scl} on SDA). The module does not respond.',
+  'mcu.warning.i2c_no_pullup':
+    '{component}: {lines} has no pull-up resistor, so the bus cannot idle high. Add a pull-up to each line.',
+  'mcu.warning.i2c_logic_level':
+    "{component}: {lines} idles at a level the module or the ESP32 does not read as HIGH. Pull the lines up to a voltage both accept (the module's input threshold is 0.7 × its supply).",
+  'mcu.warning.i2c_rate_exceeded':
+    'The I2C traffic exceeds what the simulator processes per simulated second; further transfers are not acknowledged.',
   'mcu.warning.generic': 'Runtime warning: {code}',
   'mcu.connection.reconnecting': 'Reconnecting to the ESP32 session…',
   'mcu.resync':
@@ -1029,6 +1041,10 @@ export const en = {
   'limitation.esp32_pulls': 'Internal pull-up and pull-down resistors are not simulated.',
   'limitation.esp32_drive':
     "Every pin driver uses the datasheet's maximum-drive-strength characteristic (40 mA at 2.64 V); sketches run at the default, weaker drive strength, and the datasheet gives 20 mA for GPIO16 and GPIO17. Beyond that characteristic (an overloaded or shorted pin) the current is not known and is not shown as a value.",
+  'limitation.lcd_input_clamp':
+    "The backpack's input protection diodes are not modelled: SDA or SCL above the module's supply + 0.5 V is flagged (absolute maximum), and the current that would flow into the pin is not simulated.",
+  'sim.part.current.sda': 'SDA input',
+  'sim.part.current.scl': 'SCL input',
   'limitation.esp32_input_clamp':
     'Input protection diodes are not modelled: a pin outside its specified range is flagged, and the simulated current into it is not reliable.',
   'inspector.limitations': 'Model limitations',

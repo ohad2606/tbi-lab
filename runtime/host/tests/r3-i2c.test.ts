@@ -16,7 +16,7 @@ import {
   type ParamValue,
   type ProjectDocument,
 } from '@tbi-lab/domain';
-import { EngineSession, LCD1602_DC, type SolveSuccess } from '@tbi-lab/engine';
+import { EngineSession, LCD1602_DC, ratingWarnings, type SolveSuccess } from '@tbi-lab/engine';
 import { principalFor, ticketFor } from '../../identity/test-gate.js';
 import type { I2cPhase } from '../../harness/protocol.js';
 import type { SessionHost } from '../host.js';
@@ -28,6 +28,8 @@ interface Opts {
   lcdV?: number;
   pullUpV?: number | null;
   swapped?: boolean;
+  /** Sprint 13 OS-09: the module's VCC and SDA pins swapped (supply on SDA, SDA line on VCC). */
+  vccSdaSwapped?: boolean;
   address?: string;
   second?: string;
 }
@@ -68,7 +70,9 @@ function lcdCircuit(o: Opts = {}) {
   if (o.address) set(lcd, 'address', o.address);
   set('PSU1', 'setpointVoltage', { value: o.lcdV ?? 4.5, unit: 'volt' });
   set('PSU1', 'outputEnabled', true);
-  wire('PSU1.positive', `${lcd}.vcc`);
+  const pinOf = (t: 'vcc' | 'sda' | 'scl') =>
+    o.vccSdaSwapped && t === 'vcc' ? 'sda' : o.vccSdaSwapped && t === 'sda' ? 'vcc' : t;
+  wire('PSU1.positive', `${lcd}.${pinOf('vcc')}`);
   wire(`${lcd}.gnd`, 'GND1.ref');
   wire('PSU1.negative', 'GND1.ref');
   if (o.pullUpV !== null) {
@@ -80,7 +84,7 @@ function lcdCircuit(o: Opts = {}) {
       const r = add('component.resistor');
       set(r, 'resistance', { value: 4700, unit: 'ohm' });
       wire(`${r}.a`, `${p2}.positive`);
-      wire(`${r}.b`, `${lcd}.${line}`);
+      wire(`${r}.b`, `${lcd}.${pinOf(line as 'sda' | 'scl')}`);
     }
   }
   let lcd2: string | null = null;
@@ -93,7 +97,7 @@ function lcdCircuit(o: Opts = {}) {
     wire(`${lcd2}.scl`, `${lcd}.scl`);
   }
   const attachments = [
-    { gpio: 21, component: lcd, terminal: o.swapped ? 'scl' : 'sda' },
+    { gpio: 21, component: lcd, terminal: o.swapped ? 'scl' : pinOf('sda') },
     { gpio: 22, component: lcd, terminal: o.swapped ? 'sda' : 'scl' },
   ];
   return { doc, attachments, lcd, lcd2 };
@@ -189,6 +193,41 @@ describe('I2C LCD on the Session Host (engine-gated)', () => {
     const b = bench({ swapped: true });
     expect(b.write(0x27, [0x08])).toBe(false);
     expect(codes(b.dev)).toEqual(['i2c_wiring']);
+  });
+
+  // Sprint 13 OS-09 (Owner Smoke): VCC and SDA swapped on the module. The firmware's SDA pad is on
+  // the module's VCC pin: the wiring is named (which line, which pin), nothing acknowledges, and
+  // the supply on SDA exceeds the PCF8574 limiting value V_I <= V_DD + 0.5 V (absolute).
+  it('VCC and SDA swapped: NACK, i2c_wiring names SDA on the VCC pin, SDA input above its absolute maximum', () => {
+    const b = bench({ vccSdaSwapped: true });
+    expect(b.write(0x27, [0x08])).toBe(false);
+    const d = b.dev.diagnostics.map((x) => x.d);
+    expect(d).toEqual([
+      {
+        code: 'i2c_wiring',
+        severity: 'warning',
+        detail: {
+          component: b.c.lcd,
+          line: 'sda',
+          gpio: 21,
+          terminal: 'vcc',
+          reason: 'supply_pin',
+        },
+      },
+    ]);
+    const c = lcdCircuit({ vccSdaSwapped: true });
+    const snap = createSnapshot(c.doc);
+    const out = new EngineSession(snap, { pins: c.attachments }).solve();
+    if (!out.ok) throw new Error(out.error.code);
+    const lcd = out.components[c.lcd]!;
+    expect(lcd.state?.powered).toBe(false);
+    const rows = ratingWarnings(snap, out).filter((w) => w.component === c.lcd);
+    expect(rows).toEqual([
+      expect.objectContaining({ kind: 'absolute', code: 'voltage', channel: 'sda' }),
+    ]);
+    const vdd = lcd.terminals.vcc! - lcd.terminals.gnd!;
+    expect(rows[0]!.value).toBeCloseTo(4.5, 9);
+    expect(rows[0]!.limit).toBeCloseTo(vdd + 0.5, 9);
   });
 
   it('module under-voltage (3.3 V < 4.5 V): NACK, unpowered (T-R3-12)', () => {

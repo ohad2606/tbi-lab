@@ -780,6 +780,17 @@ export const he: Record<MessageKey, string> = {
   'mcu.warning.output_on_input_only_pad':
     'GPIO{gpio} הוא קלט בלבד: הקושחה ניסתה להפעיל אותו כיציאה, והוא נשאר קלט.',
   'mcu.warning.transient_rejected': 'לחיצה על לחצן לא נמסרה לסשן הפעיל.',
+  // Sprint 13 OS-09: I2C diagnostics, specific and actionable.
+  'mcu.warning.i2c_wiring.supply_pin':
+    '{component}: {gpio} ({line}) מחובר לפין {terminal} של המודול ולא ל־{line}. בדקו את פיני המודול: ייתכן ש־VCC ו־{line} הוחלפו. המודול אינו מגיב.',
+  'mcu.warning.i2c_wiring.swapped':
+    '{component}: ‏SDA ו־SCL הוחלפו ({sda} מחובר ל־SCL, {scl} ל־SDA). המודול אינו מגיב.',
+  'mcu.warning.i2c_no_pullup':
+    '{component}: ל־{lines} אין נגד Pull-up, ולכן הקו אינו נח במצב גבוה. הוסיפו Pull-up לכל קו.',
+  'mcu.warning.i2c_logic_level':
+    '{component}: {lines} נח ברמה שהמודול או ה־ESP32 אינם קוראים כגבוהה. משכו את הקווים למתח ששניהם מקבלים (סף הכניסה של המודול הוא 0.7 × מתח האספקה שלו).',
+  'mcu.warning.i2c_rate_exceeded':
+    'תעבורת ה־I2C חורגת ממה שהסימולטור מעבד בשנייה מדומה; העברות נוספות אינן מאושרות.',
   'mcu.warning.generic': 'אזהרת ריצה: {code}',
   'mcu.connection.reconnecting': 'מתחבר מחדש לסשן ה-ESP32…',
   'mcu.resync': '{count} עדכוני ריצה לא התקבלו בזמן ההתחברות מחדש. הערכים יתעדכנו בשינוי הבא.',
@@ -986,6 +997,10 @@ export const he: Record<MessageKey, string> = {
   'limitation.esp32_pulls': 'נגדי Pull-up ו־Pull-down פנימיים אינם מדומים.',
   'limitation.esp32_drive':
     'כל מניע פין משתמש במאפיין ההנעה בעוצמה המרבית מגיליון הנתונים (40 mA ב־2.64 V); קוד רץ בעוצמת ההנעה של ברירת המחדל, החלשה יותר, וגיליון הנתונים מציין 20 mA עבור GPIO16 ו־GPIO17. מעבר למאפיין זה (פין בעומס יתר או בקצר) הזרם אינו ידוע ואינו מוצג כערך.',
+  'limitation.lcd_input_clamp':
+    'דיודות ההגנה בכניסות של לוח המתאם אינן ממודלות: SDA או SCL מעל מתח האספקה של המודול + 0.5 V מסומנים (מקסימום מוחלט), והזרם שהיה זורם לתוך הפין אינו מדומה.',
+  'sim.part.current.sda': 'כניסת SDA',
+  'sim.part.current.scl': 'כניסת SCL',
   'limitation.esp32_input_clamp':
     'דיודות ההגנה בכניסה אינן ממודלות: פין מחוץ לטווח המוגדר שלו מסומן, והזרם המדומה לתוכו אינו אמין.',
   'inspector.limitations': 'מגבלות המודל',
