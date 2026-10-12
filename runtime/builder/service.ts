@@ -8,7 +8,7 @@
  * reference images); an identical private source of another user is compiled again (the bytes
  * are still stored once). A lease issues a run ticket for the Session Host.
  */
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { mkdtemp, readdir, readFile, rm, lstat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { sourceKey } from '@tbi-lab/domain';
@@ -238,7 +238,13 @@ export class BuildService {
    */
   status(id: string, token: string, principal: Principal): BuildStatus | null {
     const r = this.records.get(id);
-    if (!r || r.token !== token || (r.owner !== principal && r.owner !== GLOBAL)) return null;
+    // Constant-time token comparison (Sprint 13 audit #9; hashes give equal lengths).
+    const same = (a: string, b: string) =>
+      timingSafeEqual(
+        createHash('sha256').update(a).digest(),
+        createHash('sha256').update(b).digest(),
+      );
+    if (!r || !same(r.token, token) || (r.owner !== principal && r.owner !== GLOBAL)) return null;
     const position = r.state === 'queued' ? this.queue.indexOf(r) : undefined;
     return {
       buildId: r.id,
