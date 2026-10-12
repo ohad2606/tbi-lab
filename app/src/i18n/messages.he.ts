@@ -831,7 +831,7 @@ export const he: Record<MessageKey, string> = {
   'menu.capabilities': 'מה רץ על ה־ESP32',
   'capabilities.title': 'מה רץ על ה־ESP32 ב־TBI Lab',
   'capabilities.intro':
-    'TBI Lab מריץ את הסקיצ׳ שלך על ESP32 Classic מדומה (ESP32 DevKitC, ‏WROOM-32) ומדמה את המעגל סביבו. הרשימה מפרטת בדיוק מה מדומה, מה מוגבל ומה נדחה. יכולת שנדחית לעולם אינה רצה בשקט: המוצר מודיע על כך לפני הרצה.',
+    'TBI Lab מריץ את הסקיצ׳ שלכם על ESP32 קלאסי מדומה (ESP32 DevKitC, ‏WROOM-32) ומדמה את המעגל סביבו. הרשימה מפרטת בדיוק מה מדומה, מה מוגבל ומה נדחה. יכולת שנדחית לעולם אינה רצה בשקט: המוצר מודיע על כך לפני הרצה.',
   'capabilities.close': 'סגירה',
   'capabilities.learnMore': 'מה רץ על ה־ESP32?',
   'capabilities.section.firmware': 'יכולות קושחה',
@@ -976,4 +976,17 @@ export const he: Record<MessageKey, string> = {
   'limitation.esp32_input_clamp':
     'דיודות ההגנה בכניסה אינן ממודלות: פין מחוץ לטווח המוגדר שלו מסומן, והזרם המדומה לתוכו אינו אמין.',
   'inspector.limitations': 'מגבלות המודל',
+  // Sprint 13 H4: first-run guide.
+  'onboarding.heading': 'צעדים ראשונים',
+  'onboarding.intro': 'TBI Lab מדמה את ה־ESP32 הקלאסי ואת המעגל סביבו, כאן בדפדפן שלכם.',
+  'onboarding.step1': 'פתחו אחת מדוגמאות ה־ESP32 שלמטה, למשל אזעקת המרחק.',
+  'onboarding.step2': 'בלשונית הקוד, לחצו בנייה. הבנייה הראשונה עשויה להימשך כדקה.',
+  'onboarding.step3':
+    'לחצו הרצה. בזמן ההרצה, בחרו רכיב ושנו את מה שהוא חש (מרחק, טמפרטורה, אור, תנועה): הקושחה והמעגל מגיבים.',
+  'onboarding.note':
+    'הפרויקטים נשמרים בדפדפן הזה בלבד: השתמשו בייצוא כדי לשמור עותק. סימולטור ה־ESP32 משותף לבודקי האלפא; אם הוא תפוס, נסו שוב בעוד רגע.',
+  'onboarding.dismiss': 'הבנתי',
+  'onboarding.show': 'הצגת צעדים ראשונים',
+  // Sprint 13 H7 (shown only when a deployment configures the form).
+  'menu.feedback': 'שליחת משוב',
 };

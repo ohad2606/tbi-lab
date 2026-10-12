@@ -1018,6 +1018,20 @@ export const en = {
   'limitation.esp32_input_clamp':
     'Input protection diodes are not modelled: a pin outside its specified range is flagged, and the simulated current into it is not reliable.',
   'inspector.limitations': 'Model limitations',
+  // Sprint 13 H4: first-run guide.
+  'onboarding.heading': 'Getting started',
+  'onboarding.intro':
+    'TBI Lab simulates a Classic ESP32 and the circuit around it, here in your browser.',
+  'onboarding.step1': 'Open an ESP32 example below, for example the distance alarm.',
+  'onboarding.step2': 'In the Code tab, press Build. The first build can take about a minute.',
+  'onboarding.step3':
+    'Press Run. While it runs, select a part and change what it senses (distance, temperature, light, motion): the firmware and the circuit respond.',
+  'onboarding.note':
+    'Projects are saved in this browser only: use Export to keep a copy. The ESP32 simulator is shared by the alpha testers; if it is busy, try again in a moment.',
+  'onboarding.dismiss': 'Got it',
+  'onboarding.show': 'Show getting started',
+  // Sprint 13 H7 (shown only when a deployment configures the form).
+  'menu.feedback': 'Send feedback',
 } as const;
 
 export type MessageKey = keyof typeof en;

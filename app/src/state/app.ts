@@ -78,6 +78,8 @@ export interface Preferences {
 export const PREF_LOCALE = 'tbi-lab.locale';
 /** The most recently opened project (a per-device note; the app no longer reopens it on start). */
 export const PREF_LAST_PROJECT = 'tbi-lab.lastProject';
+/** Sprint 13 H4: the first-run guide was dismissed on this device (versioned: a new guide shows again). */
+export const PREF_ONBOARDING = 'tbi-lab.onboarding.v1';
 
 /**
  * One user-facing message. `tone` separates technical failures (`error`: something did not
@@ -584,6 +586,16 @@ export class AppStore {
    * and the in-memory document is exported, so an export right after an edit includes it (and
    * still works as a rescue copy if the browser storage is failing).
    */
+  /** Sprint 13 H4: whether this device has dismissed the first-run guide. */
+  onboardingDismissed(): boolean {
+    return this.deps.prefs.get(PREF_ONBOARDING) === 'dismissed';
+  }
+
+  /** Remember (per device) that the first-run guide was dismissed; `false` shows it again. */
+  setOnboardingDismissed(dismissed: boolean): void {
+    this.deps.prefs.set(PREF_ONBOARDING, dismissed ? 'dismissed' : '');
+  }
+
   async exportProject(projectId: string): Promise<ExportedFile | null> {
     try {
       const doc = await this.loadValid(projectId);

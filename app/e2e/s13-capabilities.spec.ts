@@ -76,6 +76,20 @@ test('Hebrew: right-to-left, translated, same entries', async ({ page }) => {
   await expect(dialog.locator('#capabilities-title')).toHaveText('מה רץ על ה־ESP32 ב־TBI Lab');
   await expect(dialog.getByTestId('capability-facility-pwm')).toContainText('לא נתמך');
   await expect(dialog.locator('[data-testid^="capability-facility-"]')).toHaveCount(18);
+  // No English prose left in the Hebrew panel: only technical tokens (acronyms and part numbers,
+  // Arduino API names, library and product names, units) — the terminology rule.
+  const technical = [
+    /^[A-Z0-9_]+$/, // GPIO, I2C, UART0, PWM, LEDC, ADC, HC, SR04, DHT22, INPUT_PULLUP
+    /^[a-z]+[A-Z][A-Za-z0-9_]*$/, // pinMode, digitalWrite, delayMicroseconds, ledcWrite
+    /^[A-Z][a-z]+[A-Z][A-Za-z0-9_]*$/, // DevKitC, FreeRTOS, LiquidCrystal_I2C
+    // Product and established terms ("Runtime" is the Hebrew UI's term since Sprint 10).
+    /^(TBI|Lab|Arduino|Runtime|Wire|Preferences|Bluetooth|Serial|ESP|Wi|Fi|Pull|up|down|millis|micros|delay|pulseIn|print|read|restart|ms|mm)$/,
+  ];
+  const text = (await dialog.innerText()).replace(/µs/g, ' ').replace(/[0-9]+(\.[0-9]+)?/g, ' ');
+  const english = [...new Set(text.match(/[A-Za-z_][A-Za-z0-9_]*/g) ?? [])].filter(
+    (w) => !technical.some((re) => re.test(w)),
+  );
+  expect(english).toEqual([]);
   await page.keyboard.press('Escape');
   await page.getByTestId('language-select').selectOption('en');
 });

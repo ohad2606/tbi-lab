@@ -43,3 +43,25 @@ describe('preview deployment (Sprint 9 preview)', () => {
     expect(storageName('tbi-lab', 's9-preview')).toBe('s9-preview/tbi-lab');
   });
 });
+
+describe('feedback form link (Sprint 13 H7: disabled unless configured)', () => {
+  it('only an https address enables it; anything else keeps it off', async () => {
+    const { parseFeedbackUrl, parseFeedbackParam, feedbackLink, FEEDBACK_URL } =
+      await import('../src/deployment.js');
+    // No build configures it today: external collection needs the owner's approval first.
+    expect(FEEDBACK_URL).toBeNull();
+    expect(parseFeedbackUrl(undefined)).toBeNull();
+    expect(parseFeedbackUrl('')).toBeNull();
+    expect(parseFeedbackUrl('http://forms.example/x')).toBeNull();
+    expect(parseFeedbackUrl('javascript:alert(1)')).toBeNull();
+    expect(parseFeedbackUrl('https://forms.example/f/abc')).toBe('https://forms.example/f/abc');
+    expect(parseFeedbackParam('entry.123456')).toBe('entry.123456');
+    expect(parseFeedbackParam('a b')).toBeNull();
+    expect(
+      feedbackLink('https://forms.example/f/abc?usp=pp_url', 'entry.1', 'v0.10-dev ba0f4a6'),
+    ).toBe('https://forms.example/f/abc?usp=pp_url&entry.1=v0.10-dev+ba0f4a6');
+    expect(feedbackLink('https://forms.example/f/abc', null, 'x')).toBe(
+      'https://forms.example/f/abc',
+    );
+  });
+});

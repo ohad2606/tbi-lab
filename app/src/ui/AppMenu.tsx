@@ -1,6 +1,7 @@
 import { openCapabilities } from './Capabilities.js';
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
-import { SIGN_OUT_URL } from '../deployment.js';
+import { FEEDBACK_URL, FEEDBACK_VERSION_PARAM, SIGN_OUT_URL, feedbackLink } from '../deployment.js';
+import { BUILD_INFO } from '../buildInfo.js';
 import { useAppState, useStore, useT } from './context.js';
 import { downloadProject } from './download.js';
 
@@ -209,6 +210,23 @@ export function AppMenu({ chooseImport }: { chooseImport: () => void }) {
             >
               {t('menu.export')}
             </button>
+          )}
+          {FEEDBACK_URL && (
+            <a
+              role="menuitem"
+              tabIndex={-1}
+              data-testid="menu-feedback"
+              href={feedbackLink(
+                FEEDBACK_URL,
+                FEEDBACK_VERSION_PARAM,
+                BUILD_INFO ? `v${BUILD_INFO.version} ${BUILD_INFO.commit}` : 'unknown',
+              )}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={() => setOpen(false)}
+            >
+              {t('menu.feedback')}
+            </a>
           )}
           {SIGN_OUT_URL && (
             <>

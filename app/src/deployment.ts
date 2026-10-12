@@ -45,3 +45,33 @@ export function storageName(name: string, namespace: string | null): string {
 }
 
 export const STORAGE_NAMESPACE = parseStorageNamespace(import.meta.env.VITE_STORAGE_NAMESPACE);
+
+/**
+ * Sprint 13 H7: the external feedback form, or null. DISABLED unless a deployment sets
+ * VITE_FEEDBACK_URL (an https form address) — external data collection needs the owner's approval
+ * first, and no build sets it today. VITE_FEEDBACK_VERSION_PARAM names the form's query parameter
+ * that is prefilled with the app version and commit (e.g. a form's prefill entry id).
+ */
+export function parseFeedbackUrl(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const url = value.trim();
+  return /^https:\/\/[^\s]+$/i.test(url) ? url : null;
+}
+
+export function parseFeedbackParam(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  return /^[A-Za-z0-9_.-]{1,64}$/.test(value.trim()) ? value.trim() : null;
+}
+
+export const FEEDBACK_URL = parseFeedbackUrl(import.meta.env.VITE_FEEDBACK_URL);
+export const FEEDBACK_VERSION_PARAM = parseFeedbackParam(
+  import.meta.env.VITE_FEEDBACK_VERSION_PARAM,
+);
+
+/** The form link with the version prefilled (when a parameter name is configured). */
+export function feedbackLink(base: string, param: string | null, version: string): string {
+  if (!param) return base;
+  const u = new URL(base);
+  u.searchParams.set(param, version);
+  return u.toString();
+}

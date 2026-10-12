@@ -1,3 +1,4 @@
+import { GettingStarted } from './GettingStarted.js';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { downloadProject } from './download.js';
 import { useImportPicker } from './importFile.js';
@@ -18,6 +19,8 @@ export function Home() {
   // Suggest the first free default name, so accepting the suggestion never conflicts.
   const value = name ?? store.defaultProjectName(state.projects.map((p) => p.name));
   const createConflict = state.nameConflict?.scope === 'create' ? state.nameConflict : null;
+  // Sprint 13 H4: the first-run guide, until dismissed on this device.
+  const [guide, setGuide] = useState(() => !store.onboardingDismissed());
   // Rows get the locale and translation as props and are rebuilt only when the list or the
   // language changes: 50+ rows each subscribed to the whole app state made every store update
   // re-render the entire library (Sprint 5 measurement).
@@ -51,6 +54,29 @@ export function Home() {
           <p>{t('home.subtitle')}</p>
         </div>
       </header>
+
+      {guide ? (
+        <GettingStarted
+          onDismiss={() => {
+            store.setOnboardingDismissed(true);
+            setGuide(false);
+          }}
+        />
+      ) : (
+        <p class="getting-started-reopen">
+          <button
+            type="button"
+            class="link-button"
+            data-testid="onboarding-show"
+            onClick={() => {
+              store.setOnboardingDismissed(false);
+              setGuide(true);
+            }}
+          >
+            {t('onboarding.show')}
+          </button>
+        </p>
+      )}
 
       {/* Three areas: create something, reopen your work, start from an example. */}
       <div class="home-grid">

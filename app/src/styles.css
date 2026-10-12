@@ -3170,3 +3170,24 @@ select {
   padding-inline-start: 1.1rem;
   margin: 0.25rem 0 0;
 }
+
+/* Sprint 13 H4: first-run guide. */
+.getting-started {
+  margin-block-end: 1rem;
+}
+.getting-started-steps {
+  padding-inline-start: 1.4rem;
+}
+.getting-started-steps li {
+  margin-block: 0.3rem;
+}
+.getting-started-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+.getting-started-reopen {
+  margin: 0 0 0.75rem;
+  text-align: end;
+}
