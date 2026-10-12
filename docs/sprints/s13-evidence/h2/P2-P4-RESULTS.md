@@ -2,7 +2,7 @@
 
 PM decision: approve P1–P4.
 
-- **P2–P4 are implemented** (`cc2f0e4`, `e8a56c0`-era follow-up, this record's commit).
+- **P2–P4 are implemented** (`cc2f0e4`, `7a0005e`).
 - **P1 is stopped.** Its parameters cannot be validated from published sources: `P1-VALIDATION.md`.
 - **The pad model is still the strength-3 chord.** No calculated value has changed except the defective 0 A short.
 

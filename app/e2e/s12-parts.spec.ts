@@ -36,9 +36,11 @@ test('HC-SR04, DHT22, LCD: placed, named pins, bounded live environment, solved 
   page,
 }, info) => {
   await createProject(page, 'Sprint 12 parts');
-  await place(page, 'sensor.hc_sr04', { x: 60, y: -40 });
-  await place(page, 'sensor.dht22', { x: 60, y: 100 });
-  await place(page, 'display.lcd1602_i2c', { x: 40, y: 220 });
+  // Sprint 13 OS-04: placed where the real bodies do not overlap (the HC-SR04 module is 45 mm
+  // long, the LCD module 80 x 36 mm; 20 layout units = 3.175 mm), each in the default view.
+  await place(page, 'sensor.hc_sr04', { x: -40, y: -100 });
+  await place(page, 'sensor.dht22', { x: 80, y: -120 });
+  await place(page, 'display.lcd1602_i2c', { x: 20, y: 140 });
   const doc = await waitForStoredProject(
     page,
     (d) => d.components.length === 5,

@@ -73,7 +73,7 @@ test.beforeEach(async ({ request }) => {
   await request.post(`${FAKE}/__test/end-all?reason=terminated`);
 });
 
-test('the board: only runtime-supported pins are connectable; Run without a build explains, offline', async ({
+test('the board: only runtime-supported pins are connectable; without a build Run is unavailable and says why, offline', async ({
   page,
 }) => {
   const calls = runtimeRequests(page);
@@ -93,12 +93,12 @@ test('the board: only runtime-supported pins are connectable; Run without a buil
   await expect(page.getByTestId('mcu-pin-9')).toHaveAttribute('data-support', 'none');
   await expect(page.getByTestId('mcu-pin-2')).toContainText('Strapping');
   await wire(page, ['U1', 'gnd'], ['GND1', 'ref']);
-  // The new board has its starter code but no build: Run explains (Build required), leads to the
-  // code and its Build action, and no runtime request is made.
-  await page.getByTestId('sim-run').click();
-  await expect(page.getByTestId('sim-error')).toHaveAttribute('data-code', 'mcu_build_required');
-  await expect(page.getByTestId('code-view')).toBeVisible();
-  await expect(page.getByTestId('build-button')).toBeFocused();
+  // The new board has its starter code but no build (Sprint 13 OS-08): Run is not available and
+  // says why, and no runtime request is made.
+  const run = page.getByTestId('sim-run');
+  await expect(run).toBeDisabled();
+  await expect(run).toHaveAttribute('data-blocked', 'run.blocked.buildRequired');
+  await expect(page.getByTestId('sim-run-blocked')).toContainText('Build the code for U1 first');
   expect(calls.count).toBe(0);
 });
 
