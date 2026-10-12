@@ -267,3 +267,45 @@ test('OS-10: keyboard: focus is visible on a tile; Enter places at the view cent
   await expect(page.locator('[data-hit="component"]')).toHaveCount(before + 1);
   await expect(tile).toHaveAttribute('aria-pressed', 'false');
 });
+
+// Sprint 13 overnight a11y audit (V1): a blocked Run was natively disabled, so keyboard and touch
+// users could not reach it and never saw why. Now it is focusable (aria-disabled) and activating
+// it shows the reason; no runtime request is made.
+test('a11y: a blocked Run is reachable by keyboard and explains itself', async ({ page }) => {
+  const runtime: string[] = [];
+  page.on('request', (r) => {
+    if (r.url().includes('/runtime/')) runtime.push(r.url());
+  });
+  await openExample(page, 'esp32-blink');
+  const run = page.getByTestId('sim-run');
+  await expect(run).toHaveAttribute('aria-disabled', 'true');
+  await expect(run).toBeDisabled(); // Playwright honours aria-disabled
+  await run.focus();
+  await expect(run).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(page.getByTestId('notice')).toContainText(
+    /Build the code for \u2066?U1\u2069? first/,
+  );
+  expect(runtime.filter((u) => u.includes('/sessions'))).toEqual([]);
+});
+
+// Sprint 13 overnight a11y audit (V7): Escape in a value field reverts the field; it no longer
+// also cancels an armed placement.
+test('a11y: Escape in a field belongs to the field, not to the armed placement', async ({
+  page,
+}) => {
+  await openExample(page, 'voltage-divider');
+  await component(page, 'R1').focus();
+  const field = page.getByTestId('param-R1-resistance');
+  const tile = page.getByTestId('palette-component.resistor');
+  await tile.click();
+  await expect(tile).toHaveAttribute('aria-pressed', 'true');
+  await field.fill('12345');
+  await field.press('Escape');
+  await expect(field).not.toHaveValue('12345'); // reverted
+  await expect(tile).toHaveAttribute('aria-pressed', 'true'); // still armed
+  await page.keyboard.press('Escape'); // focus on the field: still the field's
+  await tile.focus();
+  await page.keyboard.press('Escape');
+  await expect(tile).toHaveAttribute('aria-pressed', 'false');
+});

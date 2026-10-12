@@ -650,7 +650,7 @@ export const he: Record<MessageKey, string> = {
   // Sprint 13 OS-04: component bodies may not overlap (Circuit view and its 3D view).
   'edit.overlap.circuit': '{a} יחפוף את {b}. מקמו אותו במקום שבו הרכיבים אינם מכסים זה את זה.',
   'edit.overlap.3d':
-    '{a} יחפוף את {b} בגודלם האמיתי (כפי שתצוגת ה־3D מציגה אותם). השאירו יותר מקום ביניהם.',
+    '{a} יחפוף את {b} בגודלם האמיתי (כפי שתצוגת התלת־ממד מציגה אותם). השאירו יותר מקום ביניהם.',
   'edit.overlap.both': '{a} יחפוף את {b}. מקמו אותו במקום שבו הרכיבים אינם מכסים זה את זה.',
   // Sprint 13 Task D: the project changed or was deleted in another tab or window.
   'save.error.conflictBanner':
@@ -659,6 +659,8 @@ export const he: Record<MessageKey, string> = {
   // Sprint 13 Task D: wire routes adjusted when a project opened (layout only).
   'open.routesAdjusted':
     'חלק מנתיבי החוטים שורטטו מחדש כדי שלא יעברו מעל פינים או צגים. החיבורים לא השתנו. ביטול הפעולה האחרונה מחזיר את הנתיבים הקודמים.',
+  // Sprint 13 a11y: the slider's own accessible name (distinct from its value field).
+  'valueControl.slider': '{label}, מחוון',
   'build.blockedRunning': 'אפשר לבנות אחרי עצירה. הסשן שרץ ממשיך עם הקושחה שאיתה התחיל.',
   'build.unavailable': 'שירות הבנייה אינו זמין כאן.',
   'build.error.unreachable': 'לא ניתן היה להתחבר לשירות הבנייה. הקוד שלכם שמור; נסו שוב.',
@@ -800,7 +802,7 @@ export const he: Record<MessageKey, string> = {
   'mcu.warning.i2c_no_pullup':
     '{component}: ל־{lines} אין נגד Pull-up, ולכן הקו אינו נח במצב גבוה. הוסיפו Pull-up לכל קו.',
   'mcu.warning.i2c_logic_level':
-    '{component}: {lines} נח ברמה שהמודול או ה־ESP32 אינם קוראים כגבוהה. משכו את הקווים למתח ששניהם מקבלים (סף הכניסה של המודול הוא 0.7 × מתח האספקה שלו).',
+    '{component}: {lines} נח ברמה שהמודול או ה־ESP32 אינם קוראים כגבוהה. משכו את הקווים למתח ששניהם מקבלים (סף הכניסה של המודול הוא ⁦0.7 ×⁩ מתח האספקה שלו).',
   'mcu.warning.i2c_rate_exceeded':
     'תעבורת ה־I2C חורגת ממה שהסימולטור מעבד בשנייה מדומה; העברות נוספות אינן מאושרות.',
   'mcu.warning.generic': 'אזהרת ריצה: {code}',
@@ -1010,7 +1012,7 @@ export const he: Record<MessageKey, string> = {
   'limitation.esp32_drive':
     'כל מניע פין משתמש במאפיין ההנעה בעוצמה המרבית מגיליון הנתונים (40 mA ב־2.64 V); קוד רץ בעוצמת ההנעה של ברירת המחדל, החלשה יותר, וגיליון הנתונים מציין 20 mA עבור GPIO16 ו־GPIO17. מעבר למאפיין זה (פין בעומס יתר או בקצר) הזרם אינו ידוע ואינו מוצג כערך.',
   'limitation.lcd_input_clamp':
-    'דיודות ההגנה בכניסות של לוח המתאם אינן ממודלות: SDA או SCL מעל מתח האספקה של המודול + 0.5 V מסומנים (מקסימום מוחלט), והזרם שהיה זורם לתוך הפין אינו מדומה.',
+    'דיודות ההגנה בכניסות של לוח המתאם אינן ממודלות: SDA או SCL מעל מתח האספקה של המודול ⁦+ 0.5 V⁩ מסומנים (מקסימום מוחלט), והזרם שהיה זורם לתוך הפין אינו מדומה.',
   'sim.part.current.sda': 'כניסת SDA',
   'sim.part.current.scl': 'כניסת SCL',
   'limitation.esp32_input_clamp':

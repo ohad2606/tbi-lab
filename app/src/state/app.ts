@@ -38,6 +38,7 @@ import {
 import {
   negotiateLocale,
   getLocale,
+  isolateLtr,
   isolateUserText,
   translate,
   type LocaleInfo,
@@ -822,7 +823,7 @@ export class AppStore {
       this.set({
         notice: {
           key: `edit.overlap.${overlap.in}`,
-          params: { a: overlap.a, b: overlap.b },
+          params: { a: isolateLtr(overlap.a), b: isolateLtr(overlap.b) },
           tone: 'warning',
         },
       });
@@ -962,7 +963,7 @@ export class AppStore {
       if (phase !== 'current') notCurrent.push({ id: c.id, phase });
     }
     if (!notCurrent.length) return null;
-    const components = notCurrent.map((b) => b.id).join(', ');
+    const components = isolateLtr(notCurrent.map((b) => b.id).join(', '));
     return notCurrent.some((b) => b.phase === 'failed')
       ? { key: 'run.blocked.buildFailed', params: { components }, tone: 'warning' }
       : { key: 'run.blocked.buildRequired', params: { components }, tone: 'warning' };

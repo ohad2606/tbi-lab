@@ -52,7 +52,10 @@ export function SimControls() {
         data-testid={`sim-${action}`}
         data-action={action}
         data-engine={mcu ? 'mcu' : 'local'}
-        disabled={busy || !!blocked}
+        // Sprint 13 a11y (V1): a blocked Run is aria-disabled, not disabled, so keyboard, touch and
+        // screen-reader users can reach it; activating it shows the reason (store.run()).
+        disabled={busy}
+        aria-disabled={blocked ? 'true' : undefined}
         aria-busy={busy ? 'true' : undefined}
         aria-describedby={blocked ? 'sim-run-blocked' : undefined}
         title={blocked ? blockedText : undefined}

@@ -98,7 +98,9 @@ test('the board: only runtime-supported pins are connectable; without a build Ru
   const run = page.getByTestId('sim-run');
   await expect(run).toBeDisabled();
   await expect(run).toHaveAttribute('data-blocked', 'run.blocked.buildRequired');
-  await expect(page.getByTestId('sim-run-blocked')).toContainText('Build the code for U1 first');
+  await expect(page.getByTestId('sim-run-blocked')).toContainText(
+    /Build the code for \u2066?U1\u2069? first/,
+  );
   expect(calls.count).toBe(0);
 });
 

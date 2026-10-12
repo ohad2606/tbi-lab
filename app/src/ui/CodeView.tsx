@@ -178,7 +178,13 @@ export function CodeView({ boardId, focusBuild }: { boardId: string; focusBuild:
             !!view?.olderBuildRunning
           }
           aria-describedby={
-            active ? 'build-blocked-note' : view?.olderBuildRunning ? 'build-older-note' : undefined
+            !store.builds?.available
+              ? 'build-unavailable-note'
+              : active
+                ? 'build-blocked-note'
+                : view?.olderBuildRunning
+                  ? 'build-older-note'
+                  : undefined
           }
           onClick={() => void store.buildProgram(boardId)}
         >
@@ -191,14 +197,18 @@ export function CodeView({ boardId, focusBuild }: { boardId: string; focusBuild:
         )}
       </header>
       <div class="code-notes">
-        {!store.builds?.available && <p class="small">{t('build.unavailable')}</p>}
+        {!store.builds?.available && (
+          <p class="small" id="build-unavailable-note">
+            {t('build.unavailable')}
+          </p>
+        )}
         {active && (
           <p class="small" id="build-blocked-note" data-testid="build-blocked-note">
             {t('build.blockedRunning')}
           </p>
         )}
         {view?.olderBuildRunning && (
-          <p class="small" id="build-older-note" data-testid="build-older-running">
+          <p class="small" id="build-older-note" role="status" data-testid="build-older-running">
             {t('build.olderRunning')}
           </p>
         )}

@@ -62,7 +62,17 @@ export function Editor() {
   useEffect(() => {
     if (!placing) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setPlacing(null);
+      if (e.key !== 'Escape' || e.defaultPrevented) return;
+      // Escape inside a field, the code editor, a menu or a dialog belongs to that control (it
+      // reverts or closes it); it does not also cancel the placement (Sprint 13 a11y, V7).
+      const t = e.target as HTMLElement | null;
+      if (
+        t?.closest?.(
+          'input, textarea, select, [contenteditable="true"], [role="menu"], [role="dialog"]',
+        )
+      )
+        return;
+      setPlacing(null);
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);

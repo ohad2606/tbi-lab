@@ -114,7 +114,7 @@ export function ValueControl(p: ValueControlProps) {
           value={draft}
           disabled={p.disabled}
           aria-invalid={error ? 'true' : 'false'}
-          aria-describedby={`${p.id}-hint`}
+          aria-describedby={error ? `${p.id}-error` : `${p.id}-hint`}
           onInput={(e) => setDraft((e.target as HTMLInputElement).value)}
           onBlur={(e) => commit(e.currentTarget.value)}
           onKeyDown={(e) => {
@@ -132,7 +132,8 @@ export function ValueControl(p: ValueControlProps) {
           type="range"
           class="environment-slider"
           data-testid={`${p.id}-slider`}
-          aria-label={p.label}
+          aria-label={t('valueControl.slider', { label: p.label })}
+          aria-describedby={error ? `${p.id}-error` : `${p.id}-hint`}
           aria-valuetext={isolateLtr(
             formatQuantity(locale, {
               value: dragPos !== null ? scale.value(dragPos) : (p.value ?? p.min),
@@ -163,7 +164,7 @@ export function ValueControl(p: ValueControlProps) {
         />
       )}
       {error ? (
-        <p class="field-error" role="alert" data-testid={`${p.id}-error`}>
+        <p class="field-error" role="alert" id={`${p.id}-error`} data-testid={`${p.id}-error`}>
           {error}
         </p>
       ) : (
