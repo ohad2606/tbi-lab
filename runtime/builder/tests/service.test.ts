@@ -85,6 +85,15 @@ describe('request validation', () => {
 });
 
 describe('BuildService', () => {
+  it('an over-size source is refused before it is held in a build record (security audit #4)', () => {
+    const { service, provider } = setup();
+    const max = provider.profile.maxSourceBytes;
+    expect(() => service.submit(sketch('x'.repeat(max + 1)), A)).toThrow('source_too_large');
+    expect((service as unknown as { records: Map<string, unknown> }).records.size).toBe(0);
+    // Exactly at the limit is still accepted.
+    expect('buildId' in service.submit(sketch('x'.repeat(max)), A)).toBe(true);
+  });
+
   it('builds, publishes a server-hashed artifact, cleans its job directory, then serves cache hits', async () => {
     const { service, provider, storeDir, work } = setup();
     const req = sketch('void setup() {}\nvoid loop() {}\n');

@@ -7,7 +7,7 @@ import type { Server } from 'node:http';
 import { afterEach, describe, expect, it } from 'vitest';
 import { startTestGate, principalFor, TEST_IDENTITY } from '../../identity/test-gate.js';
 import type { SessionHost } from '../host.js';
-import { createHttpServer } from '../http.js';
+import { createHttpServer, MAX_STREAMS_PER_SESSION } from '../http.js';
 import type { SessionEvent } from '../protocol.js';
 import { createRequest, fakeHost } from './support.js';
 
@@ -183,6 +183,37 @@ describe('HTTP + SSE adapter', () => {
     expect(await status({}, '?after=x')).toBe(400);
     // The host and the session are unaffected.
     expect(host.get(sessionId, token, principalFor()).ok).toBe(true);
+  });
+
+  // Sprint 13 security audit (#1): unbounded streams per session could exhaust the shared host.
+  it('event streams per session are capped; a closed stream frees its slot', async () => {
+    const { art, base } = await serve();
+    const created = await fetch(`${base}/sessions`, json(createRequest(art.sha256)));
+    const { sessionId, token } = (await created.json()) as { sessionId: string; token: string };
+    const headers = { authorization: `Bearer ${token}` };
+    const url = `${base}/sessions/${sessionId}/events`;
+    const streams: AbortController[] = [];
+    for (let i = 0; i < MAX_STREAMS_PER_SESSION; i++) {
+      const ac = new AbortController();
+      const r = await fetch(url, { headers, signal: ac.signal });
+      expect(r.status).toBe(200);
+      streams.push(ac);
+    }
+    const over = await fetch(url, { headers });
+    expect(over.status).toBe(429);
+    streams.pop()!.abort();
+    // The host sees the close asynchronously; a slot becomes free.
+    let again = 0;
+    for (let i = 0; i < 50 && again !== 200; i++) {
+      await new Promise((r) => setTimeout(r, 20));
+      const ac = new AbortController();
+      const r = await fetch(url, { headers, signal: ac.signal });
+      again = r.status;
+      if (again === 200) streams.push(ac);
+      else void r.body?.cancel();
+    }
+    expect(again).toBe(200);
+    for (const ac of streams) ac.abort();
   });
 
   it('commands over HTTP are acknowledged; rejections are explicit', async () => {

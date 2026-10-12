@@ -433,16 +433,44 @@ export function runSession(opts: SessionOptions, handler: SessionHandler): Promi
         `tbi-bridge,syncpath=${path},tick-us=${tickUs}`,
         ...(opts.stressMainLoop ? ['-qmp', `unix:${qmp},server=on,wait=off`] : []),
       ];
-      child = (opts.launch ?? directLauncher)({
-        qemu: opts.qemu,
-        args,
-        ...(opts.env ? { env: opts.env } : {}),
-        dir: opts.dir,
-        flash: opts.flash,
-        bridgePath: path,
-        tickUs,
-        stressMainLoop: !!opts.stressMainLoop,
-      });
+      // Sprint 13 (overnight audit): a launcher that throws (the systemd launcher refuses a bad
+      // session layout, or chmod/env-file writes fail, e.g. on a full disk) used to escape here,
+      // inside the listen callback: the session never settled and, in the Session Host, the
+      // uncaught exception ended the process for every user. It is now a start failure.
+      try {
+        child = (opts.launch ?? directLauncher)({
+          qemu: opts.qemu,
+          args,
+          ...(opts.env ? { env: opts.env } : {}),
+          dir: opts.dir,
+          flash: opts.flash,
+          bridgePath: path,
+          tickUs,
+          stressMainLoop: !!opts.stressMainLoop,
+        });
+      } catch (e) {
+        settled = true;
+        server.close();
+        if (shortDir) rmSync(shortDir, { recursive: true, force: true });
+        resolve({
+          outcome: 'start_failed',
+          exitCode: null,
+          signal: null,
+          error: e instanceof Error ? e.message : String(e),
+          diagnostics: '',
+          serial: Buffer.alloc(0),
+          serialOverflow: 0,
+          frames,
+          caps,
+          pacedMs: 0,
+          lastVns: 0n,
+          startupMs: null,
+          wallMs: performance.now() - started,
+          shutdownMs: null,
+          qemu: null,
+        });
+        return;
+      }
       let spawnError: string | undefined;
       child.on('error', (e) => (spawnError = e.message));
       if (child.pid !== undefined) opts.onSpawn?.(child.pid);

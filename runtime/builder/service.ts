@@ -129,6 +129,10 @@ export class BuildService {
   ): { cached: BuildResult } | { buildId: string; token: string } {
     const provider = this.providers.get(request.profile);
     if (!provider) throw new RequestError(400, 'unknown_profile');
+    // Sprint 13 security audit (#4): refuse an over-size source BEFORE it is held in a build
+    // record (records live up to a day; the provider's own check came after the record).
+    const bytes = request.files.reduce((n, f) => n + Buffer.byteLength(f.text, 'utf8'), 0);
+    if (bytes > provider.profile.maxSourceBytes) throw new RequestError(413, 'source_too_large');
     const key = sourceKey(request.profile, request.files);
     const hit = this.cachedResult(principal, key);
     if (hit) return { cached: hit };

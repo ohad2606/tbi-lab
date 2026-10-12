@@ -35,6 +35,13 @@ import { runtimeIdentity } from './identity.js';
 
 /** Largest amount of unsent SSE data kept for a slow client before its stream is closed. */
 const STREAM_BACKLOG_BYTES = 1024 * 1024;
+/**
+ * Concurrent event streams per session (Sprint 13 security audit): the app holds one; a few more
+ * cover a reconnect racing the old connection's close. Without a cap, one user could open
+ * hundreds of non-reading streams, each buffering up to STREAM_BACKLOG_BYTES, and exhaust the
+ * shared Session Host's memory for every user. Bound: sessions x MAX_STREAMS x 1 MiB.
+ */
+export const MAX_STREAMS_PER_SESSION = 4;
 /** Upper bound of one command request body (Sprint 11; commands are a few hundred bytes). */
 export const MAX_COMMAND_BYTES = 8 * 1024;
 const KEEPALIVE_MS = 15_000;
@@ -109,6 +116,7 @@ function stream(req: IncomingMessage, res: ServerResponse, s: HostSession, url: 
   if (!/^\d{1,15}$/.test(raw)) throw new HttpError(400, 'malformed Last-Event-ID');
   const after = Number(raw);
   if (after > s.log.lastSeq) throw new HttpError(409, 'Last-Event-ID is ahead of the stream');
+  if (s.streams >= MAX_STREAMS_PER_SESSION) throw new HttpError(429, 'too many event streams');
   res.writeHead(200, {
     'content-type': 'text/event-stream; charset=utf-8',
     'cache-control': 'no-store',

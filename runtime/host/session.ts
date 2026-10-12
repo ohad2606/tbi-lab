@@ -448,7 +448,10 @@ export class HostSession {
         },
       );
     } catch (e) {
-      this.fail('internal', { message: e instanceof Error ? e.message : String(e) });
+      // Sprint 13 security audit (#6): the client gets the reason code only; the message (it can
+      // carry server paths) goes to the service's own log (journald), never to the event stream.
+      console.error(`session ${this.id}: internal: ${e instanceof Error ? e.message : String(e)}`);
+      this.fail('internal');
       return;
     }
     this.outcome = result.outcome;
@@ -460,7 +463,10 @@ export class HostSession {
   private finish(r: SessionResult): void {
     if (this.pendingFailure)
       return this.fail(this.pendingFailure.reason, this.pendingFailure.detail);
-    const detail = { outcome: r.outcome, exitCode: r.exitCode, signal: r.signal, error: r.error };
+    // The runtime's error text (spawn errors, handler exceptions: it can name server paths) goes to
+    // the service log, never to the client (Sprint 13 security audit #6).
+    if (r.error) console.error(`session ${this.id}: ${r.outcome}: ${r.error}`);
+    const detail = { outcome: r.outcome, exitCode: r.exitCode, signal: r.signal };
     switch (r.outcome) {
       case 'completed':
         return this.end(this.endRequest ?? 'stopped');
