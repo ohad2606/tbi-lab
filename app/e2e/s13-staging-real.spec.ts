@@ -8,6 +8,7 @@
  *   and Run is refused naming it.
  * Skipped unless TBI_S12_REAL=1.
  */
+import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 import {
   addWire,
@@ -17,7 +18,6 @@ import {
   type ProjectDocument,
   type WireTarget,
 } from '@tbi-lab/domain';
-import { EXAMPLES_WITH_DOCUMENTS as EXAMPLES } from '../src/examples/documents.js';
 import { buildProgram, openImported } from './helpers.js';
 
 test.skip(!process.env.TBI_S12_REAL, 'heavy: needs the real Session Host + QEMU (TBI_S12_REAL=1)');
@@ -25,7 +25,9 @@ test.describe.configure({ mode: 'serial' });
 
 const status = (page: Page) => page.getByTestId('sim-status');
 const lcdExample = () =>
-  structuredClone(EXAMPLES.find((e) => e.id === 'esp32-lcd-hello')!.document) as ProjectDocument;
+  JSON.parse(
+    readFileSync(new URL('../src/examples/data/esp32-lcd-hello.json', import.meta.url), 'utf8'),
+  ) as ProjectDocument;
 const at = (component: string, terminal: string): WireTarget => ({
   kind: 'terminal',
   component,
