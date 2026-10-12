@@ -92,4 +92,4 @@ for c in $(pgrep -P $r); do sudo -n kill $c; done
 
 **Restore rehearsal (H6 acceptance, staging):** back up `/etc/tbi-s8` and the units → delete the
 copy's `runtime.json` and swap the policy → restore from the backup → `systemctl restart` → the
-staging suites `s11-deployed`, `s8-qemu-tasks` pass *(to run)*.
+staging suites pass. **Rehearsed 2026-10-12:** restored in 1.9 s, all files byte-equal, 15/15 deployed checks pass ([record](../sprints/s13-evidence/h6/RESTORE-REHEARSAL.md)). Note: without `runtime.json` the build service starts with no capabilities (fail-closed: Wire refused), so always check the `runtime.json` id after a restore.
