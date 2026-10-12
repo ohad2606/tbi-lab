@@ -1,0 +1,173 @@
+{
+  "runtimeId": "b5b34b49cb7e4049",
+  "n": 2,
+  "seconds": 110,
+  "workload": "mix",
+  "pace": 1,
+  "warmupExcludedS": 30,
+  "hostConfig": {
+    "cpus": 1,
+    "model": "Architecture:                            aarch64\nCPU op-mode(s):                          32-bit, 64-bit\nByte Order:                              Little Endian\nCPU(s):                                  1\nOn-line CPU(s) list:                     0\nVendor ID:                               ARM\nModel name:                              Neoverse-N1\nModel:                                   1\nThread(s) per core:                      1\nCore(s) per socket:                      1\nSocket(s):                               1\nStepping:                                r3p1\nBogoMIPS:                                50.00\nFlags:                                   fp asimd evtstrm aes pmull sha1 sha2 crc32 atomics fphp asimdhp cpuid asimdrdm lrcpc dcpop asimddp\nNUMA node(s):                            1\nNUMA node0 CPU(s):                       0\nVulnerability Gather data sampling:      Not affected\nVulnerability Ghostwrite:                Not affected\nVulnerability Indirect target selection: Not affected\nVulnerability Itlb multihit:             Not affected\nVulnerability L1tf:                      Not affected\nVulnerability Mds:                       Not affected\nVulnerability Meltdown:                  Not affected\nVulnerability Mmio stale data:           Not affected\nVulnerability Old microcode:             Not affected\nVulnerability Reg file data sampling:    Not affected\nVulnerability Retbleed:                  Not affected\nVulnerability Spec rstack overflow:      Not affected\nVulnerability Spec store bypass:         Mitigation; Speculative Store Bypass disabled via prctl\nVulnerability Spectre v1:                Mitigation; __user pointer sanitization\nVulnerability Spectre v2:                Mitigation; CSV2, BHB\nVulnerability Srbds:                     Not affected\nVulnerability Tsa:                       Not affected\nVulnerability Tsx async abort:           Not affected\nVulnerability Vmscape:                   Not affected",
+    "memTotalMb": 3895,
+    "kernel": "7.0.0-1009-oracle",
+    "commit": "c1b4f3e8477515ee4b2f4686ceecd2e943a7ba25",
+    "runtimeId": "b5b34b49cb7e4049"
+  },
+  "host": {
+    "cpus": 1,
+    "cpuBusyMean": 0.9994606256742179,
+    "cpuBusyP95": 1,
+    "stealShare": 0.01762685138255336,
+    "loadMax": 3.91,
+    "qemuRssMaxMb": 98.03515625,
+    "memAvailableMinMb": 1425
+  },
+  "sessions": [
+    {
+      "workload": "sonar",
+      "fault": "stopped",
+      "state": "ended",
+      "reason": "stopped",
+      "simS": 37.012,
+      "rateP5": 0.670603178275288,
+      "rateMin": 0.6440531183378925,
+      "rateMedian": 1.3493658537026498,
+      "rate5sP5": 0.7073616868030692,
+      "rate5sMin": 0.7073616868030692,
+      "windows5s": 4,
+      "pace": {
+        "rate": 1,
+        "simPerWall": 0.7499950033295176,
+        "pacedMs": 0,
+        "tickGapMs": {
+          "count": 37011,
+          "p99": 20,
+          "max": 494.1
+        }
+      },
+      "diagnostics": []
+    },
+    {
+      "workload": "dht",
+      "fault": "crashed",
+      "state": "failed",
+      "reason": "runtime_crashed",
+      "simS": 65.381,
+      "rateP5": 0.7306072993072326,
+      "rateMin": 0.3736182413533475,
+      "rateMedian": 1.012555593362623,
+      "rate5sP5": 0.8814254543082654,
+      "rate5sMin": 0.8814254543082654,
+      "windows5s": 7,
+      "pace": {
+        "rate": 1,
+        "simPerWall": 0.9412571781469148,
+        "pacedMs": 0,
+        "tickGapMs": {
+          "count": 65380,
+          "p99": 9,
+          "max": 590.1
+        }
+      },
+      "diagnostics": []
+    },
+    {
+      "workload": "sonar",
+      "replaces": 0,
+      "state": "running",
+      "reason": null,
+      "simS": 61.766,
+      "rateP5": 0.04899569528720748,
+      "rateMin": 0.04497892022422697,
+      "rateMedian": 0.7178696324015634,
+      "rate5sP5": 0.06076353583860136,
+      "rate5sMin": 0.06076353583860136,
+      "windows5s": 5,
+      "pace": {
+        "rate": 1,
+        "simPerWall": 0.4970824100837581,
+        "pacedMs": 0,
+        "tickGapMs": {
+          "count": 61765,
+          "p99": 16,
+          "max": 1302
+        }
+      },
+      "diagnostics": []
+    },
+    {
+      "workload": "dht",
+      "replaces": 1,
+      "state": "running",
+      "reason": null,
+      "simS": 61.236,
+      "rateP5": 0.03886005158637981,
+      "rateMin": 0.03886005158637981,
+      "rateMedian": 0.0560065808292541,
+      "rate5sP5": 0.05778074313438795,
+      "rate5sMin": 0.05778074313438795,
+      "windows5s": 2,
+      "pace": {
+        "rate": 1,
+        "simPerWall": 0.5749649315782136,
+        "pacedMs": 0,
+        "tickGapMs": {
+          "count": 61235,
+          "p99": 19,
+          "max": 1124.6
+        }
+      },
+      "diagnostics": []
+    }
+  ],
+  "builds": {
+    "perBurst": 2,
+    "workers": 2,
+    "records": [
+      {
+        "burst": 0,
+        "user": 0,
+        "sketch": "TbiHcSr04",
+        "ok": true,
+        "queuedMs": 1,
+        "buildMs": 137102,
+        "completionMs": 137285
+      },
+      {
+        "burst": 0,
+        "user": 1,
+        "sketch": "TbiDht22",
+        "ok": true,
+        "queuedMs": 0,
+        "buildMs": 137073,
+        "completionMs": 137280
+      }
+    ],
+    "worstCompletionMs": 137285
+  },
+  "faults": {
+    "stop": {
+      "workload": "sonar",
+      "state": "ended",
+      "runtimeGone": true
+    },
+    "crash": {
+      "workload": "dht",
+      "state": "failed",
+      "reason": "runtime_crashed",
+      "runtimeGone": true,
+      "reportedAfterMs": 200
+    }
+  },
+  "leftoverRuntimes": 0,
+  "pass": {
+    "rate5sP5AtLeast0995": false,
+    "tickGapP99AtMost100": true,
+    "noFailures": true,
+    "noLeftoverRuntimes": true,
+    "buildsAllSucceeded": true,
+    "buildsNoneRefused": true,
+    "buildWorstAtMost120s": false,
+    "faultsCleanedUp": true
+  }
+}
