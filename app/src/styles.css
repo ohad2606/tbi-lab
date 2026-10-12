@@ -465,8 +465,19 @@ select {
 
 .field {
   display: grid;
+  /* Sprint 13 OS-07: one column that never grows past the panel (an implicit auto track sizes
+     to its widest child, e.g. a select with a long option). */
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.25rem;
   margin-block-end: 0.8rem;
+}
+
+/* A select fills its field: its width is the panel's, never its longest option's (OS-07). */
+.field select {
+  inline-size: 100%;
+  min-inline-size: 0;
+  max-inline-size: 100%;
+  text-overflow: ellipsis;
 }
 
 .field label {
@@ -493,8 +504,14 @@ select {
 
 .field-check {
   display: flex;
+  /* OS-07: the "stop to change" note goes on its own line instead of widening the row. */
+  flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem;
+}
+
+.field-check > p {
+  flex-basis: 100%;
 }
 
 .field-error {

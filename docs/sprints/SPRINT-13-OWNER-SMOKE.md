@@ -163,3 +163,74 @@ Enforcement:
 - (c) Wires to the display's own pins still route.
 
 **Tests:** `app/tests/s13-display-routing.test.ts` (4).
+
+### OS-01 — engineering value control (P1) — S-B
+
+**Root cause.** Value editing was inline in the inspector's `ParamField`, with no reusable control. Metre values were edited as `500m` beside the unit `m` ("500 m m"), because the metre's symbol is also the milli prefix.
+
+**Fix:**
+
+- **`ValueControl`** (`app/src/ui/ValueControl.tsx`) is the one control for every quantity.
+  - It has a numeric field in the quantity's SI unit, parsed by the domain's exact parser (prefixes, `4k7` forms, unit suffixes).
+  - It shows the unit symbol, the localized range, the error, and an optional slider.
+  - It reports **canonical** values only.
+- Metre fields are edited in plain metres (`0.5`). Displays stay `500 mm`.
+
+**Tests:**
+
+- The existing editor e2e (A5: unit-aware input stored as canonical SI).
+- `app/tests/i18n.test.ts`: metre input form.
+- The OS-06 e2e.
+
+### OS-03 — LDR live updates while dragging (P1) — S-B
+
+**Root cause.** The slider committed only on release (`onChange`), so nothing moved during a drag.
+
+**Fix:**
+
+- The slider follows the pointer. The field shows the value under the thumb. Values go out during the drag at **≤ 10 per second** (`liveThrottle`): the first at once, then at most one per 100 ms. The host allows 50 per second.
+- The release cancels any pending value and always commits the final one.
+- A drag is one undo step.
+- The canvas shows the illuminance (and the HC-SR04 distance and the DHT22 readings) beside the part, live.
+
+**Tests:**
+
+- `app/tests/s13-slider-scale.test.ts`: the throttle bound, and the final value always last and in order.
+- `app/e2e/s13-owner-smoke.spec.ts` OS-03: re-solves during the drag, ≤ 1 per 100 ms, final value stored.
+- `app/e2e/s13-live-real.spec.ts`: the same under a real ESP32 session (night light).
+
+### OS-06 — HC-SR04 slider (P1) — S-B
+
+**Root cause:**
+
+1. Display units: `500m` beside `m` (see OS-01).
+2. Value mapping: three-significant-digit rounding was not round-trip stable. Near 1 m, positions mapped to the same value and the thumb snapped back, so dragging felt non-monotonic.
+3. Not live (see OS-03).
+
+**Fix:**
+
+- Linear scales use a "nice" step: exact 5 mm for 0.01–5 m. Every position round-trips exactly, and the mapping is monotonic.
+- Plain-metre input, live updates, and the distance shown on the canvas.
+
+**Tests:**
+
+- `s13-slider-scale.test.ts`: every catalog environment parameter is monotonic, reaches both ends, and round-trips.
+- e2e OS-06: 5 mm keyboard steps, the label, plain metres.
+- Real-QEMU distance-alarm drag in `s13-live-real.spec.ts`.
+
+### OS-07 — sensor inspector horizontal overflow (P1) — S-B
+
+**Reproduced** with a probe (54 combinations: 9 sensors × EN/HE × 1400/1280/1024 px):
+
+- The model `<select>` sized itself to its longest option, 35–107 px past the panel (PIR, LCD, DHT22, at every width).
+- A running simulation's "stop to change" note did not wrap in a checkbox row (PIR motion, LED matrix).
+- The HC-SR04 and LDR did not overflow.
+
+**Fix (CSS, the causes, not hidden overflow):**
+
+- `.field` is a single `minmax(0, 1fr)` column.
+- A field's `select` fills the field.
+- A checkbox row wraps, and its note takes its own line.
+- The workspace columns are unchanged.
+
+**Tests.** e2e OS-07 checks six sensor cases, EN/HE, at 1400 and 1024 px, stopped and running. It requires no inspector overflow and an unchanged canvas width. It was red on the probe, and is green after the fix.

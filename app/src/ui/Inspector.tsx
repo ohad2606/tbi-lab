@@ -1,11 +1,9 @@
 import { Fragment } from 'preact';
-import { useEffect, useRef, useState } from 'preact/hooks';
 import {
   CATALOG,
   MODEL_LIMITATIONS,
   deleteSelection,
   emptySelection,
-  parseQuantity,
   setParam,
   setWireColor,
   WIRE_COLORS,
@@ -19,11 +17,8 @@ import {
 import {
   catalogText,
   formatNumber,
-  formatQuantity,
-  inputForm,
   isMessageKey,
   isolateLtr,
-  unitSymbol,
   type MessageKey,
 } from '../i18n/i18n.js';
 import type { ComponentResult, SolveSuccess } from '@tbi-lab/engine';
@@ -36,6 +31,7 @@ import { NEUTRAL_HEX, resolveWireColors } from '../views/wireColors.js';
 import { rotateRouted } from './routing.js';
 import { probeTargetName, readProbe, type Probe } from './probes.js';
 import { McuPanel } from './McuPanel.js';
+import { ValueControl } from './ValueControl.js';
 
 interface InspectorProps {
   probes: Probe[];
@@ -284,24 +280,6 @@ function ParamField({
   );
   const id = `param-${c.id}-${def.key}`;
 
-  const shown =
-    def.kind === 'quantity' && current && typeof current === 'object'
-      ? inputForm(current.value, def.unit)
-      : '';
-  // The draft starts at the stored value, so the first render is complete by itself. The
-  // effect below resets it ONLY when the stored value or component really changes: a passive
-  // effect runs after paint, and on mount it would otherwise wipe text typed (and the error
-  // it produced) in the meantime (CI run 35828605417).
-  const [draft, setDraft] = useState(shown);
-  const [error, setError] = useState<string | null>(null);
-  const synced = useRef({ shown, id: c.id });
-  useEffect(() => {
-    if (synced.current.shown === shown && synced.current.id === c.id) return;
-    synced.current = { shown, id: c.id };
-    setDraft(shown);
-    setError(null);
-  }, [shown, c.id]);
-
   if (def.kind === 'boolean') {
     return (
       <div class="field field-check">
@@ -345,118 +323,32 @@ function ParamField({
     );
   }
 
-  const range = {
-    min: isolateLtr(formatQuantity(locale, { value: def.min, unit: def.unit })),
-    max: isolateLtr(formatQuantity(locale, { value: def.max, unit: def.unit })),
-  };
-  /**
-   * Commit exactly the text being committed, taken from the input element itself. The draft
-   * state only drives rendering: a fast Enter or Blur can arrive before a pending state
-   * render has run, so correctness must not depend on it (CI run 35789744836).
-   */
-  const commit = (raw: string) => {
-    if (!doc || raw === shown) return setError(null);
-    const parsed = parseSigned(raw, def);
-    if (!parsed.ok) return setError(t(`error.parse.${parsed.error}`));
-    if (parsed.value < def.min || parsed.value > def.max) return setError(t('error.range', range));
-    setError(null);
-    // Committing the value already stored (e.g. Enter then Blur) is not a new revision.
-    if (typeof current === 'object' && current.value === parsed.value) return;
-    store.apply(setParam(doc, c.id, def.key, { value: parsed.value, unit: def.unit }));
-  };
-
   return (
-    <div class="field">
-      <label for={id}>{catalogText(locale, def.labelKey)}</label>
-      <div class="field-row" dir="ltr">
-        <input
-          id={id}
-          data-testid={id}
-          class="technical"
-          dir="ltr"
-          inputMode="decimal"
-          autocomplete="off"
-          spellcheck={false}
-          value={draft}
-          disabled={disabled}
-          aria-invalid={error ? 'true' : 'false'}
-          aria-describedby={`${id}-hint`}
-          onInput={(e) => setDraft((e.target as HTMLInputElement).value)}
-          onBlur={(e) => commit(e.currentTarget.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') commit(e.currentTarget.value);
-            if (e.key === 'Escape') {
-              setDraft(shown);
-              setError(null);
-            }
-          }}
-        />
-        <span class="unit">{unitSymbol(locale, def.unit)}</span>
-      </div>
-      {def.environment && (
-        <input
-          type="range"
-          class="environment-slider"
-          data-testid={`${id}-slider`}
-          aria-label={catalogText(locale, def.labelKey)}
-          min={0}
-          max={SLIDER_STEPS}
-          step={1}
-          value={sliderPosition(def, typeof current === 'object' ? current.value : def.default)}
-          disabled={disabled}
-          onChange={(e) => {
-            if (!doc) return;
-            const value = sliderValue(def, Number((e.target as HTMLInputElement).value));
-            if (typeof current === 'object' && current.value === value) return;
-            store.apply(setParam(doc, c.id, def.key, { value, unit: def.unit }));
-          }}
-        />
-      )}
-      {error ? (
-        <p class="field-error" role="alert" data-testid={`${id}-error`}>
-          {error}
-        </p>
-      ) : (
-        <p class="muted small" id={`${id}-hint`}>
-          {t('inspector.range', range)}
-        </p>
-      )}
+    <>
+      <ValueControl
+        key={id}
+        id={id}
+        label={catalogText(locale, def.labelKey)}
+        unit={def.unit}
+        min={def.min}
+        max={def.max}
+        value={current && typeof current === 'object' ? current.value : null}
+        disabled={disabled}
+        {...(def.environment ? { slider: def.environment.scale ?? 'linear' } : {})}
+        onCommit={(value, { slider }) => {
+          if (!doc) return;
+          if (typeof current === 'object' && current.value === value) return;
+          // A slider drag (its live steps and its release) is one edit for undo.
+          store.apply(
+            setParam(doc, c.id, def.key, { value, unit: def.unit }),
+            undefined,
+            slider ? { coalesce: `slider:${id}` } : {},
+          );
+        }}
+      />
       {lockedHint}
-    </div>
+    </>
   );
-}
-
-/**
- * A quantity typed into a field. The domain parser reads magnitudes; a parameter whose range goes
- * below zero (Sprint 12: a temperature in °C) also takes a leading minus sign (ASCII or U+2212).
- */
-function parseSigned(raw: string, def: QuantityDef): ReturnType<typeof parseQuantity> {
-  const text = raw.trim();
-  if (def.min < 0 && /^[-−]/.test(text)) {
-    const r = parseQuantity(text.slice(1), def.unit);
-    return r.ok ? { ...r, value: -r.value } : r;
-  }
-  return parseQuantity(raw, def.unit);
-}
-
-/** Environment sliders: positions 0..SLIDER_STEPS over [min, max], linear or logarithmic. */
-const SLIDER_STEPS = 1000;
-type QuantityDef = Extract<ParamDef, { kind: 'quantity' }>;
-function sliderPosition(def: QuantityDef, value: number): number {
-  const f =
-    def.environment?.scale === 'log'
-      ? Math.log(value / def.min) / Math.log(def.max / def.min)
-      : (value - def.min) / (def.max - def.min);
-  return Math.round(Math.min(1, Math.max(0, f)) * SLIDER_STEPS);
-}
-function sliderValue(def: QuantityDef, position: number): number {
-  const f = position / SLIDER_STEPS;
-  const raw =
-    def.environment?.scale === 'log'
-      ? def.min * (def.max / def.min) ** f
-      : def.min + f * (def.max - def.min);
-  // Three significant digits: a slider sets a round value; the field accepts any exact one.
-  return Math.min(def.max, Math.max(def.min, Number(raw.toPrecision(3))));
 }
 
 function ResultRow({ label, value, testId }: { label: string; value: string; testId: string }) {

@@ -1445,6 +1445,14 @@ function valueLabel(c: ComponentInstance, fmt: (q: Quantity) => string): string 
       return q('capacitance');
     case 'instrument.lab_psu':
       return `${q('setpointVoltage')} / ${q('currentLimit')}`;
+    // Sprint 13 OS-03/OS-06: the simulated environment a sensor is set to, visible on the
+    // circuit and updated live while its slider is dragged.
+    case 'component.photoresistor':
+      return q('illuminance');
+    case 'sensor.hc_sr04':
+      return q('distance');
+    case 'sensor.dht22':
+      return `${q('temperature')} · ${q('humidity')}`;
     default:
       return '';
   }

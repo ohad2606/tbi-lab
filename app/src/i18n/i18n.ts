@@ -120,9 +120,18 @@ export function formatQuantity(locale: LocaleInfo, q: Quantity): string {
   return `${formatNumber(locale, mantissa)} ${prefix}${unitSymbol(locale, q.unit)}`;
 }
 
+/**
+ * Units whose symbol is also an SI prefix letter (Sprint 13 OS-01/OS-06): the metre's `m` is the
+ * milli prefix, so the compact form of 0.5 m, `500m`, beside the unit `m` read as "500 m m". Their
+ * input form is the plain decimal in the base unit (`0.5`); displays keep the prefixed form with
+ * a space (`500 mm`), which is unambiguous.
+ */
+const PLAIN_INPUT: ReadonlySet<UnitId> = new Set<UnitId>(['metre']);
+
 /** The compact, locale-independent input form of a value (`4.7k`), for editing fields. */
 export function inputForm(value: number, unit?: UnitId): string {
-  if (unit && UNPREFIXED.has(unit)) return String(Number(value.toPrecision(12)));
+  if (unit && (UNPREFIXED.has(unit) || PLAIN_INPUT.has(unit)))
+    return String(Number(value.toPrecision(12)));
   const { mantissa, prefix } = toEngineering(value);
   return `${mantissa}${prefix === 'µ' ? 'u' : prefix}`;
 }

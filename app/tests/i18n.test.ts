@@ -162,7 +162,10 @@ describe('formatting', () => {
     expect(formatQuantity(getLocale('en'), { value: 0.5, unit: 'celsius' })).toBe('0.5 °C');
     expect(inputForm(0.5, 'celsius')).toBe('0.5');
     expect(inputForm(-12.5, 'celsius')).toBe('-12.5');
-    expect(inputForm(0.5, 'metre')).toBe('500m');
+    // Sprint 13 OS-06: `500m` beside the unit `m` read as "500 m m"; a metre field is edited as
+    // the plain decimal in metres (the display keeps `500 mm`).
+    expect(inputForm(0.5, 'metre')).toBe('0.5');
+    expect(inputForm(0.03, 'metre')).toBe('0.03');
   });
   it('labels the I2C address options with the address itself in every locale', () => {
     const lcd = CATALOG['display.lcd1602_i2c'].params.find((p) => p.key === 'address')!;
