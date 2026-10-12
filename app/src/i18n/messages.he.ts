@@ -677,6 +677,7 @@ export const he: Record<MessageKey, string> = {
   'build.feature.dac': 'יציאה אנלוגית (DAC)',
   'build.feature.touch': 'חישת מגע',
   'build.feature.sleep': 'מצבי שינה',
+  'build.feature.drive_strength': 'בחירת עוצמת ההנעה של פין (gpio_set_drive_capability)',
   'build.feature.i2c': 'אפיק I2C',
   'build.feature.spi': 'אפיק SPI',
   'build.feature.library': 'ספרייה {name}',
@@ -879,6 +880,9 @@ export const he: Record<MessageKey, string> = {
   'capabilities.facility.bluetooth.body': 'אינו מדומה.',
   'capabilities.facility.sleep.name': 'מצבי שינה',
   'capabilities.facility.sleep.body': 'אינם מדומים.',
+  'capabilities.facility.drive_strength.name': 'עוצמת ההנעה של פין (gpio_set_drive_capability)',
+  'capabilities.facility.drive_strength.body':
+    'אינה מדומה: הפינים פועלים בעוצמת ההנעה של ברירת המחדל. קוד שבוחר עוצמה אחרת נדחה בבנייה.',
   'capabilities.facility.restart.name': 'אתחול השבב (ESP.restart)',
   'capabilities.facility.restart.body': 'אינו מדומה. לחצו עצירה ואז הרצה כדי להתחיל מחדש.',
   'capabilities.facility.library.name': 'ספריות Arduino',
@@ -915,6 +919,8 @@ export const he: Record<MessageKey, string> = {
   'rating.operating.row.voltage': 'אספקה: {value} (מקסימום הפעלה מוגדר {limit})',
   'rating.operating.note':
     'מחוץ לטווח ההפעלה המומלץ אך בתוך הערך המקסימלי המוחלט שפורסם: האמינות והתוצאה המדומה אינן מובטחות. השאירו את הרכיב בתוך טווח ההפעלה שלו.',
+  // Sprint 13 P2: a value from a pad beyond its characterized point is not a physical value.
+  'rating.value.uncharacterized': 'זרם לא ידוע (מחוץ לתחום שהיצרן אפיין)',
   'rating.unrated.summary': '{component} מחוץ לטווח המוגדר שלו; לא פורסם סף נזק',
   'rating.unrated.note':
     'היצרן אינו מפרסם סף נזק למצב זה: הסיכון אינו ידוע, אך אינו אפס. התייחסו אליו כלא בטוח; התוצאה המדומה עשויה שלא להתאים לרכיב אמיתי.',
@@ -972,7 +978,7 @@ export const he: Record<MessageKey, string> = {
   'limitation.esp32_timing': 'התזמון כפוף לחוזה התזמון של V1 (ראו מה רץ על ה־ESP32).',
   'limitation.esp32_pulls': 'נגדי Pull-up ו־Pull-down פנימיים אינם מדומים.',
   'limitation.esp32_drive':
-    'כל מניע פין משתמש במאפיין ההנעה של 40 mA מגיליון הנתונים; גיליון הנתונים מציין 20 mA עבור GPIO16 ו־GPIO17.',
+    'כל מניע פין משתמש במאפיין ההנעה בעוצמה המרבית מגיליון הנתונים (40 mA ב־2.64 V); קוד רץ בעוצמת ההנעה של ברירת המחדל, החלשה יותר, וגיליון הנתונים מציין 20 mA עבור GPIO16 ו־GPIO17. מעבר למאפיין זה (פין בעומס יתר או בקצר) הזרם אינו ידוע ואינו מוצג כערך.',
   'limitation.esp32_input_clamp':
     'דיודות ההגנה בכניסה אינן ממודלות: פין מחוץ לטווח המוגדר שלו מסומן, והזרם המדומה לתוכו אינו אמין.',
   'inspector.limitations': 'מגבלות המודל',

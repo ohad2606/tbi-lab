@@ -695,6 +695,7 @@ export const en = {
   'build.feature.dac': 'analog output (DAC)',
   'build.feature.touch': 'touch sensing',
   'build.feature.sleep': 'sleep modes',
+  'build.feature.drive_strength': 'pin drive strength selection (gpio_set_drive_capability)',
   'build.feature.i2c': 'I2C bus',
   'build.feature.spi': 'SPI bus',
   'build.feature.library': 'library {name}',
@@ -904,6 +905,9 @@ export const en = {
   'capabilities.facility.bluetooth.body': 'Not simulated.',
   'capabilities.facility.sleep.name': 'Sleep modes',
   'capabilities.facility.sleep.body': 'Not simulated.',
+  'capabilities.facility.drive_strength.name': 'Pin drive strength (gpio_set_drive_capability)',
+  'capabilities.facility.drive_strength.body':
+    'Not simulated: pins use the default drive strength. Code that selects another strength is refused at Build.',
   'capabilities.facility.restart.name': 'Chip restart (ESP.restart)',
   'capabilities.facility.restart.body': 'Not simulated. Press Stop and Run to start again.',
   'capabilities.facility.library.name': 'Arduino libraries',
@@ -940,6 +944,9 @@ export const en = {
   'rating.operating.row.voltage': 'Supply: {value} (specified operating maximum {limit})',
   'rating.operating.note':
     'Outside the recommended operating range but within the published absolute maximum: reliability and the simulated result are not guaranteed. Keep the part inside its operating range.',
+  // Sprint 13 P2: a value from a pad beyond its characterized point is not a physical value.
+  'rating.value.uncharacterized':
+    'current not known (beyond the range the manufacturer characterizes)',
   'rating.unrated.summary':
     '{component} is outside its specified range; no damage threshold is published',
   'rating.unrated.note':
@@ -1014,7 +1021,7 @@ export const en = {
   'limitation.esp32_timing': 'Timing follows the V1 timing contract (see What runs on the ESP32).',
   'limitation.esp32_pulls': 'Internal pull-up and pull-down resistors are not simulated.',
   'limitation.esp32_drive':
-    "Every pin driver uses the datasheet's 40 mA drive characteristic; the datasheet gives 20 mA for GPIO16 and GPIO17.",
+    "Every pin driver uses the datasheet's maximum-drive-strength characteristic (40 mA at 2.64 V); sketches run at the default, weaker drive strength, and the datasheet gives 20 mA for GPIO16 and GPIO17. Beyond that characteristic (an overloaded or shorted pin) the current is not known and is not shown as a value.",
   'limitation.esp32_input_clamp':
     'Input protection diodes are not modelled: a pin outside its specified range is flagged, and the simulated current into it is not reliable.',
   'inspector.limitations': 'Model limitations',

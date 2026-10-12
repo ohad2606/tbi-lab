@@ -82,6 +82,25 @@ export const typicalSourceA = (gpio: number) =>
 export const I_OUTPUT_CUMULATIVE_MAX_A = 1.2;
 export const R_DRIVE_LOW_OHM = 0.495 / 0.028;
 
+/**
+ * The characterized output points (Table 5-3): HIGH holds V_OH >= 2.64 V while sourcing I_OH;
+ * LOW is characterized at V_OL = 0.495 V while sinking I_OL. The linear driver model is a chord
+ * from the rail to that point: between the rail and the point it is anchored by the datasheet;
+ * beyond it (an overloaded or shorted pad) it is an extrapolation, and the real current is
+ * limited by the transistors in a way Espressif does not publish (Table 5-1: no short-circuit
+ * current). Sprint 13 P2: such a pad result is reported as outside the model range (unreliable),
+ * never as a measured value.
+ */
+export const V_OH_CHAR_V = 0.8 * VDD_V;
+export const V_OL_CHAR_V = 0.495;
+
+/** Whether a driven pad operates beyond its characterized point (P2). Inputs: never. */
+export function outsideCharacterizedRegion(mode: PinMode, voltageV: number): boolean {
+  if (mode === 'output-high') return voltageV < V_OH_CHAR_V;
+  if (mode === 'output-low') return voltageV > V_OL_CHAR_V;
+  return false;
+}
+
 /** Internal pull-up / pull-down resistance, datasheet typical. */
 export const R_PULL_OHM = 45_000;
 
@@ -185,11 +204,15 @@ export class GpioPin implements Device {
     t.addZ(this.ip, injectedA);
   }
 
-  /** Current delivered by the pin into the external circuit, amperes. */
+  /**
+   * Current delivered by the pin into the external circuit, amperes. A pin wired straight to GND
+   * has no unknown (its node IS the reference, 0 V) but still a defined model current: the model
+   * evaluated at V = 0 (Sprint 13 P3; previously reported as 0 A). Whether that value is inside
+   * the characterized region is decided by `outsideCharacterizedRegion`.
+   */
   current(x: readonly number[]): number {
-    if (this.ip < 0) return 0;
     const { conductanceS, injectedA } = this.norton();
-    return injectedA - conductanceS * x[this.ip]!;
+    return injectedA - conductanceS * (this.ip < 0 ? 0 : x[this.ip]!);
   }
 
   exactTerminalCurrents(x: readonly number[]): TerminalCurrent[] {

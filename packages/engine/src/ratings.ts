@@ -131,6 +131,12 @@ export interface RatingWarning {
   otherGpio?: number;
   /** Sprint 10 parts: the element of the part the row is about (an RGB channel, a relay coil). */
   channel?: string;
+  /**
+   * Sprint 13 P2: present (true) when `value` comes from a pad operating beyond its characterized
+   * point (PinResult.outsideModelRange): the condition is real, the number is an extrapolation of
+   * the linear driver model and must not be presented as the physical value.
+   */
+  unreliable?: true;
 }
 
 /** Parts whose solved operating point exceeds their datasheet absolute maximum ratings. */
@@ -211,6 +217,9 @@ function gpioWarnings(snapshot: SimulationSnapshot, outcome: SolveSuccess): Rati
   const out: RatingWarning[] = [];
   // Sprint 13 H2: Table 5-3 values are characteristics with no per-pin absolute maximum
   // (Table 5-1): every per-pin row is `unrated` (damage threshold unknown, not safe).
+  const unreliableGpio = new Set(
+    outcome.pins.filter((p) => p.outsideModelRange).map((p) => p.gpio),
+  );
   const add = (code: RatingCode, gpio: number, value: number, limit: number, other?: number) =>
     out.push({
       component: board.id,
@@ -221,6 +230,9 @@ function gpioWarnings(snapshot: SimulationSnapshot, outcome: SolveSuccess): Rati
       limit,
       gpio,
       ...(other === undefined ? {} : { otherGpio: other }),
+      ...(unreliableGpio.has(gpio) || (other !== undefined && unreliableGpio.has(other))
+        ? { unreliable: true as const }
+        : {}),
     });
   const outside = (v: number) => v > V_PIN_MAX_V || v < V_PIN_MIN_V;
   const limitFor = (v: number) => (v > V_PIN_MAX_V ? V_PIN_MAX_V : V_PIN_MIN_V);
@@ -253,9 +265,8 @@ function gpioWarnings(snapshot: SimulationSnapshot, outcome: SolveSuccess): Rati
       add('gpio_sink_current', pin.gpio, -pin.current, limit);
   }
   // Table 5-1 (absolute maximum): the cumulative IO output current, 1200 mA.
-  const total = outcome.pins
-    .filter((p) => p.mode !== 'input')
-    .reduce((a, p) => a + Math.abs(p.current), 0);
+  const driven = outcome.pins.filter((p) => p.mode !== 'input');
+  const total = driven.reduce((a, p) => a + Math.abs(p.current), 0);
   if (total > I_OUTPUT_CUMULATIVE_MAX_A)
     out.push({
       component: board.id,
@@ -264,6 +275,8 @@ function gpioWarnings(snapshot: SimulationSnapshot, outcome: SolveSuccess): Rati
       code: 'gpio_cumulative_current',
       value: total,
       limit: I_OUTPUT_CUMULATIVE_MAX_A,
+      // A sum including an extrapolated pad current is not a physical total either (P2).
+      ...(driven.some((p) => p.outsideModelRange) ? { unreliable: true as const } : {}),
     });
   return out;
 }

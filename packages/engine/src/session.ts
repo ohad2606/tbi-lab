@@ -16,7 +16,7 @@ import { liveControlProblem } from '@tbi-lab/domain';
 import type { TimeStep } from './devices.js';
 import { Circuit, ConvergenceError } from './circuit.js';
 import { Diode, LabPsu, Resistor, VoltageSource, type Device } from './devices.js';
-import { GpioPin } from './esp32Gpio.js';
+import { GpioPin, outsideCharacterizedRegion } from './esp32Gpio.js';
 import { Npn } from './bjt.js';
 
 /** The solver's default junction gmin (circuit.ts DEFAULTS), for exact device readouts. */
@@ -65,6 +65,12 @@ export interface PinResult {
   voltage: number;
   /** Current delivered by the pad into the circuit, amperes. */
   current: number;
+  /**
+   * Sprint 13 P2: present (true) only when a driven pad operates beyond its characterized point
+   * (esp32Gpio.ts `outsideCharacterizedRegion`): `current` is then the linear model's
+   * extrapolation, not a physical value, and must not be presented as one.
+   */
+  outsideModelRange?: true;
 }
 
 export interface PsuControl {
@@ -254,6 +260,15 @@ const isSwitch = (type: string) =>
 /** Terminal ids of a type the engine can simulate (original types, then part models). */
 const terminalsOf = (type: string): readonly string[] | undefined =>
   TERMINALS[type] ?? partModel(type)?.terminals;
+
+/**
+ * Terminals an MCU pad may be attached at: every simulated terminal, and the ground symbol's `ref`
+ * (Sprint 13 P3). The browser attaches a pad at the first other terminal on its net, which for a
+ * pad wired straight to GND can be the ground symbol itself: that is the reference node, a valid
+ * electrical place for a pad (previously refused as `invalid_attachment`).
+ */
+const attachableTerminals = (type: string): readonly string[] | undefined =>
+  type === 'component.ground' ? ['ref'] : terminalsOf(type);
 
 /** Upper bound on the passes of the discrete-state fixed point (bounded work). */
 const MAX_STATE_PASSES = 32;
@@ -586,7 +601,7 @@ export class EngineSession {
     const pinNodes: { pin: McuPinAttachment; node: string }[] = [];
     for (const [i, p] of this.pins.entries()) {
       const c = snap.components.find((x) => x.id === p.component);
-      const terminals = c ? terminalsOf(c.type) : undefined;
+      const terminals = c ? attachableTerminals(c.type) : undefined;
       const ok =
         Number.isInteger(p.gpio) &&
         p.gpio >= 0 &&
@@ -927,12 +942,16 @@ export class EngineSession {
       stats,
     };
     if (pinDevices.length) {
-      outcome.pins = pinDevices.map(({ pin, node }) => ({
-        gpio: pin.gpio,
-        mode: this.pinModes.get(pin.gpio)!,
-        voltage: potential(node) ?? 0,
-        current: clean(currents.get(`GPIO${pin.gpio}`) ?? 0),
-      }));
+      outcome.pins = pinDevices.map(({ pin, node, device }) => {
+        const mode = this.pinModes.get(pin.gpio)!;
+        const voltage = potential(node) ?? 0;
+        // P3: a pad on GND has no unknown, and with no unknowns there is no solve: the pad
+        // device's own model current at its (0 V) potential is still defined.
+        const current = clean(currents.get(device.id) ?? device.current(xSolution));
+        const result: PinResult = { gpio: pin.gpio, mode, voltage, current };
+        if (outsideCharacterizedRegion(mode, voltage)) result.outsideModelRange = true;
+        return result;
+      });
     }
     return outcome;
   }

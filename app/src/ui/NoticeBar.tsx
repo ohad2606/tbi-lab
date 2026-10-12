@@ -181,7 +181,7 @@ export function RatingGroup({ component, rows }: { component: string; rows: Rati
       </span>
       <ul class="rating-list">
         {rows.map((w) => (
-          <li key={w.code} data-code={w.code}>
+          <li key={w.code} data-code={w.code} data-unreliable={w.unreliable ? 'true' : undefined}>
             {ratingRow(locale, w)}
           </li>
         ))}

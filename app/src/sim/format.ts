@@ -45,7 +45,7 @@ export function formatPower(locale: LocaleInfo, watts: number): string {
 }
 
 type RatingLike = Pick<RatingWarning, 'component' | 'code' | 'value' | 'limit'> &
-  Partial<Pick<RatingWarning, 'gpio' | 'otherGpio' | 'channel' | 'kind'>>;
+  Partial<Pick<RatingWarning, 'gpio' | 'otherGpio' | 'channel' | 'kind' | 'unreliable'>>;
 
 /**
  * One compact over-stress row: "Current: 62.64 mA (maximum 30 mA)", or for a board pad
@@ -63,7 +63,10 @@ export function ratingRow(locale: LocaleInfo, w: RatingLike): string {
       ? operatingKey
       : `rating.row.${w.code}`;
   const row = translate(locale, rowKey as MessageKey, {
-    value: isolateLtr(fmt(w.value)),
+    // Sprint 13 P2: an extrapolated pad current is never shown as a value.
+    value: w.unreliable
+      ? translate(locale, 'rating.value.uncharacterized')
+      : isolateLtr(fmt(w.value)),
     limit: isolateLtr(fmt(w.limit)),
     pin: isolateLtr(w.gpio === undefined ? '' : `IO${w.gpio}`),
     other: isolateLtr(w.otherGpio === undefined ? '' : `IO${w.otherGpio}`),

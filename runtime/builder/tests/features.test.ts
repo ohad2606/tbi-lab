@@ -85,6 +85,27 @@ describe('analyzeFeatures', () => {
     ).toEqual([]);
   });
 
+  // Sprint 13 P4 (PM 2026-10-12): the runtime cannot report a pad's drive strength, so a sketch
+  // selecting one is refused. Evidence (3.3.12, provision path): a sketch calling it links
+  // `gpio_set_drive_capability`; TbiLcd (Wire / IDF i2c_master) and the probe sketches do not.
+  it('P4: explicit drive strength is refused, on every runtime; Wire alone does not trigger it', () => {
+    const drive = analyzeFeatures({
+      source: 'gpio_set_drive_capability(GPIO_NUM_5, GPIO_DRIVE_CAP_3);',
+      symbols: ['gpio_set_drive_capability', 'pinMode'],
+      libraries: [],
+      capabilities: ['i2c', 'pad-func', 'sched-input'],
+    });
+    expect(drive.unsupported).toEqual(['drive_strength']);
+    expect(
+      analyzeFeatures({
+        source: '',
+        symbols: ['i2c_master_bus_add_device', 'gpio_set_level', 'gpio_config'],
+        libraries: ['Wire'],
+        capabilities: ['i2c', 'pad-func', 'sched-input'],
+      }).unsupported,
+    ).toEqual([]);
+  });
+
   it('codeOnly strips comments and literals', () => {
     expect(codeOnly('a /* b */ c // d\n"e" \'f\'')).toBe('a   c  \n"" \'\'');
   });

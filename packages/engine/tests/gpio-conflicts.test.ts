@@ -3,8 +3,9 @@
  * student can wire, solved exactly as drawn. The engine neither hides nor "fixes" them:
  * - two outputs fighting on one node (one HIGH, one LOW): the contention current through both
  *   drivers' datasheet-derived resistances, and the node between them;
- * - an output wired straight to GND (HIGH) or to the supply (LOW): the short-circuit current the
- *   driver model gives;
+ * - an output wired straight to GND (HIGH) or to the supply (LOW): the current the driver model
+ *   gives, which lies beyond the model's characterized region and is therefore marked
+ *   `outsideModelRange` / `unreliable` (Sprint 13 P2, s13-pad-validity.test.ts);
  * - an input with nothing driving it: its datasheet leakage holds it at 0 V, so it reads LOW,
  *   deterministically (no random floating input).
  * The numbers are the closed-form solutions of the documented driver model (Thevenin 3.3 V
@@ -149,6 +150,7 @@ describe('ESP32 pad diagnostics (ratingWarnings)', () => {
     const w = ratingWarnings(s.full, ok(s.session.solve()));
     expect(w.map((x) => x.code)).toEqual(['gpio_short_supply']);
     expect(w[0]!.value).toBeCloseTo(3.3 / R_DRIVE_LOW_OHM, 3);
+    expect(w[0]!.unreliable).toBe(true);
   });
 
   it('a pad loaded past its drive specification (but not shorted) is flagged; a normal LED load is not', () => {
@@ -160,6 +162,8 @@ describe('ESP32 pad diagnostics (ratingWarnings)', () => {
     const w = ratingWarnings(heavy.full, ok(heavy.session.solve()));
     expect(w.map((x) => [x.code, x.limit])).toEqual([['gpio_source_current', 0.04]]);
     expect(w[0]!.value).toBeCloseTo(VDD_V / (R_DRIVE_HIGH_OHM + 22), 6);
+    // 1.89 V at the pad: far below 2.64 V, so the 86 mA is the model's extrapolation (P2).
+    expect(w[0]!.unreliable).toBe(true);
 
     const normal = boardBench((b, u) => {
       const r = b.add('component.resistor');

@@ -33,6 +33,10 @@ const SYMBOLS: [RegExp, string][] = [
   [/^(esp_deep_sleep_start|esp_light_sleep_start)$/, 'sleep'],
   [/^(i2cInit|i2c_master_bus_add_device|i2c_driver_install)$/, 'i2c'],
   [/^(spiStartBus|spi_bus_initialize)$/, 'spi'],
+  // Sprint 13 P4: the runtime does not report a pad's drive strength (IO_MUX FUN_DRV), so the pad
+  // model assumes the reset default; a sketch that selects another strength cannot be simulated
+  // faithfully. Neither the 3.3.12 core nor its I2C driver links this symbol on the classic ESP32.
+  [/^gpio_set_drive_capability$/, 'drive_strength'],
 ];
 const INTERRUPT_SYMBOLS =
   /^(attachInterrupt|__attachInterrupt|__attachInterruptFunctionalArg|gpio_isr_handler_add)$/;

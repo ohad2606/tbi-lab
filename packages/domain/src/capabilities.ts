@@ -46,6 +46,7 @@ export const FIRMWARE_FACILITIES: readonly FirmwareFacility[] = [
   { id: 'wifi', status: 'unsupported', refusedByBuild: true },
   { id: 'bluetooth', status: 'unsupported', refusedByBuild: true },
   { id: 'sleep', status: 'unsupported', refusedByBuild: true },
+  { id: 'drive_strength', status: 'unsupported', refusedByBuild: true },
   { id: 'restart', status: 'unsupported', refusedByBuild: true },
   { id: 'library', status: 'unsupported', refusedByBuild: true },
 ];
