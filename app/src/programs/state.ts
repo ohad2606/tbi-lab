@@ -31,6 +31,12 @@ export interface BuildView {
   position?: number;
   /** Why the service could not be used (transport), when the last attempt failed that way. */
   error?: BuildTransportError['code'];
+  /**
+   * Sprint 13 OS-08: a build of an EARLIER version of this program is still in progress (the code
+   * was edited during the build). Build is not possible until it ends (one build per program),
+   * and its result will not be current for the edited code.
+   */
+  olderBuildRunning?: true;
 }
 
 /**
@@ -136,6 +142,7 @@ export class ProgramBuilds {
       phase: 'required',
       ...(e.result ? { previous: e.result } : {}),
       ...(e.error && same(e.error.input, program) ? { error: e.error.code } : {}),
+      ...(e.building ? { olderBuildRunning: true as const } : {}),
     };
   }
 

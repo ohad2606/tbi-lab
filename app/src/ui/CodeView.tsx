@@ -170,8 +170,16 @@ export function CodeView({ boardId, focusBuild }: { boardId: string; focusBuild:
           type="button"
           class="button build-button"
           data-testid="build-button"
-          disabled={!store.builds?.available || !!readOnly || active || phase === 'building'}
-          aria-describedby={active ? 'build-blocked-note' : undefined}
+          disabled={
+            !store.builds?.available ||
+            !!readOnly ||
+            active ||
+            phase === 'building' ||
+            !!view?.olderBuildRunning
+          }
+          aria-describedby={
+            active ? 'build-blocked-note' : view?.olderBuildRunning ? 'build-older-note' : undefined
+          }
           onClick={() => void store.buildProgram(boardId)}
         >
           {t('build.button')}
@@ -187,6 +195,11 @@ export function CodeView({ boardId, focusBuild }: { boardId: string; focusBuild:
         {active && (
           <p class="small" id="build-blocked-note" data-testid="build-blocked-note">
             {t('build.blockedRunning')}
+          </p>
+        )}
+        {view?.olderBuildRunning && (
+          <p class="small" id="build-older-note" data-testid="build-older-running">
+            {t('build.olderRunning')}
           </p>
         )}
         {view?.phase === 'required' && view.previous && (

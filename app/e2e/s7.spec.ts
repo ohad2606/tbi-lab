@@ -100,20 +100,25 @@ test('the source is exact project data: typing, Tab, locale switch, reload and e
   expect(JSON.stringify(pkg.project)).not.toMatch(/"(artifact|buildId|sha256)":/);
 });
 
-test('Build required → Run refused before any runtime request → Build → Run; an edit makes the build stale', async ({
+test('Build required → Run unavailable, no runtime request → Build (Run unavailable while building) → Run; an edit makes the build stale', async ({
   page,
 }) => {
   const runtime = requests(page, '/runtime');
   await openExample(page, 'esp32-blink');
-  // No build yet: Run explains, takes the user to the code and its Build action.
-  await page.getByTestId('sim-run').click();
-  await expect(page.getByTestId('sim-error')).toHaveAttribute('data-code', 'mcu_build_required');
-  await expect(page.getByTestId('build-button')).toBeFocused();
+  // No build yet (Sprint 13 OS-08): Run is not available, and says why.
+  const run = page.getByTestId('sim-run');
+  await expect(run).toBeDisabled();
+  await expect(run).toHaveAttribute('data-blocked', 'run.blocked.buildRequired');
+  await expect(page.getByTestId('sim-run-blocked')).toContainText('Build the code for U1 first');
   expect(runtime).toEqual([]);
-  // Build: building, then built (an immutable artifact of exactly this source).
+  // Build: building (Run still unavailable), then built (an immutable artifact of this source).
+  await page.getByTestId('view-code').click();
   await page.getByTestId('build-button').click();
   await expect(phase(page)).toHaveAttribute('data-phase', 'building');
+  await expect(run).toBeDisabled();
+  await expect(run).toHaveAttribute('data-blocked', 'run.blocked.building');
   await expect(phase(page)).toHaveAttribute('data-phase', 'current');
+  await expect(run).toBeEnabled();
   await page.getByTestId('build-details').locator('summary').click();
   await expect(page.getByTestId('build-artifact')).toContainText(/Firmware image [0-9a-f]{16}/);
   await page.getByTestId('view-circuit').click();
@@ -132,10 +137,13 @@ test('Build required → Run refused before any runtime request → Build → Ru
   await expect(status(page)).toHaveAttribute('data-status', 'running');
   await page.getByTestId('sim-stop').click();
   await expect(status(page)).toHaveAttribute('data-status', 'stopped');
-  // The previous artifact is never run for the edited source.
+  // The previous artifact is never run for the edited source: Run is unavailable (stale).
   const creates = runtime.filter((r) => r === 'POST /runtime/sessions').length;
-  await page.getByTestId('sim-run').click();
-  await expect(page.getByTestId('sim-error')).toHaveAttribute('data-code', 'mcu_build_required');
+  await expect(page.getByTestId('sim-run')).toBeDisabled();
+  await expect(page.getByTestId('sim-run')).toHaveAttribute(
+    'data-blocked',
+    'run.blocked.buildRequired',
+  );
   expect(runtime.filter((r) => r === 'POST /runtime/sessions').length).toBe(creates);
 });
 

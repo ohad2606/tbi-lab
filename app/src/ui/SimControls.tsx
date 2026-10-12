@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'preact/hooks';
 import { useAppState, useStore, useT } from './context.js';
 import { formatNumber } from '../i18n/i18n.js';
 import { BuzzerSound } from './BuzzerSound.js';
@@ -32,6 +33,13 @@ export function SimControls() {
   // An ESP32 session is ending: the control stays "Stop" but is busy until it has ended.
   const busy = sim.status === 'stopping';
   const mcu = 'runtime' in sim && sim.runtime !== undefined;
+  // Sprint 13 OS-08: Run is unavailable during a build or without a current build of the code
+  // (the store's rule; the build state lives outside the project store, so subscribe to it).
+  const [, force] = useState(0);
+  const builds = store.builds;
+  useEffect(() => builds?.subscribe(() => force((n) => n + 1)), [builds]);
+  const blocked = active ? null : store.runBlocker();
+  const blockedText = blocked ? t(blocked.key, blocked.params as Record<string, string>) : '';
   const label =
     sim.status === 'running' && mcu
       ? 'sim.status.runningMcu'
@@ -44,8 +52,11 @@ export function SimControls() {
         data-testid={`sim-${action}`}
         data-action={action}
         data-engine={mcu ? 'mcu' : 'local'}
-        disabled={busy}
+        disabled={busy || !!blocked}
         aria-busy={busy ? 'true' : undefined}
+        aria-describedby={blocked ? 'sim-run-blocked' : undefined}
+        title={blocked ? blockedText : undefined}
+        data-blocked={blocked?.key}
         onClick={() => (active ? store.stop() : store.run())}
       >
         <span class="sim-toggle-face" data-face="run" aria-hidden={active ? 'true' : undefined}>
@@ -61,6 +72,11 @@ export function SimControls() {
           {t('sim.stop')}
         </span>
       </button>
+      {blocked && (
+        <span id="sim-run-blocked" class="visually-hidden" data-testid="sim-run-blocked">
+          {blockedText}
+        </span>
+      )}
       <span
         class={`sim-status sim-${sim.status}`}
         role="status"

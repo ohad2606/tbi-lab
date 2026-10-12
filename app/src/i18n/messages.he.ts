@@ -640,6 +640,13 @@ export const he: Record<MessageKey, string> = {
   'build.phase.current': 'נבנה',
   'build.phase.failed': 'הבנייה נכשלה',
   'build.stale': 'הקוד השתנה מאז הבנייה האחרונה.',
+  // Sprint 13 OS-08: Run is not available during a build or without a current build.
+  'run.blocked.building': 'אי אפשר להריץ בזמן שבנייה מתבצעת.',
+  'run.blocked.buildRequired':
+    'יש לבנות קודם את הקוד של {components}: הוא לא נבנה, או שהשתנה מאז הבנייה האחרונה.',
+  'run.blocked.buildFailed': 'הבנייה האחרונה של הקוד של {components} נכשלה. תקנו אותו ובנו מחדש.',
+  'build.olderRunning':
+    'בנייה של גרסה קודמת של הקוד הזה עדיין מתבצעת. בנו את הגרסה הנוכחית כשהיא תסתיים.',
   'build.blockedRunning': 'אפשר לבנות אחרי עצירה. הסשן שרץ ממשיך עם הקושחה שאיתה התחיל.',
   'build.unavailable': 'שירות הבנייה אינו זמין כאן.',
   'build.error.unreachable': 'לא ניתן היה להתחבר לשירות הבנייה. הקוד שלכם שמור; נסו שוב.',

@@ -9,6 +9,7 @@
 
 import {
   CATALOG,
+  PROGRAM_FIRMWARE,
   SCHEMA_VERSION,
   copyAsNewProject,
   createPackage,
@@ -255,6 +256,10 @@ export class AppStore {
     if (!doc || !client || !this.deps.simulation) return false;
     if (this.deps.simulation.active) {
       this.set({ notice: { key: 'sim.stopToEdit' } });
+      return false;
+    }
+    if (this.deps.builds?.busy) {
+      this.set({ notice: { key: 'run.blocked.building', tone: 'warning' } });
       return false;
     }
     let artifact;
@@ -875,10 +880,41 @@ export class AppStore {
     }
   }
 
+  /**
+   * Why Run is not available now (Sprint 13 OS-08), or null. Run never starts while a build is in
+   * progress (the build/session exclusion, D-S7-9, in both directions), nor for a board that runs
+   * its code without a current successful build of exactly that code (never built, edited since,
+   * or failed). The Run button shows the reason; `run()` enforces the same rule for every caller.
+   * Without a build service the existing explanation at Run (mcu_build_required) still applies.
+   */
+  runBlocker(): Notice | null {
+    const doc = this.stateValue.doc;
+    const builds = this.deps.builds;
+    if (!doc || !builds?.available) return null;
+    if (builds.busy) return { key: 'run.blocked.building', tone: 'warning' };
+    const notCurrent: { id: string; phase: string }[] = [];
+    for (const c of doc.components) {
+      const program = doc.programs[c.id];
+      if (c.params.firmware !== PROGRAM_FIRMWARE || !program) continue;
+      const phase = builds.view(doc.projectId, c.id, program).phase;
+      if (phase !== 'current') notCurrent.push({ id: c.id, phase });
+    }
+    if (!notCurrent.length) return null;
+    const components = notCurrent.map((b) => b.id).join(', ');
+    return notCurrent.some((b) => b.phase === 'failed')
+      ? { key: 'run.blocked.buildFailed', params: { components }, tone: 'warning' }
+      : { key: 'run.blocked.buildRequired', params: { components }, tone: 'warning' };
+  }
+
   /** Run: simulate the current browser-owned project revision. */
   run(): void {
     const doc = this.stateValue.doc;
     if (!doc || !this.deps.simulation) return;
+    const blocked = this.runBlocker();
+    if (blocked) {
+      this.set({ notice: blocked });
+      return;
+    }
     this.set({ notice: null });
     void this.deps.simulation.run(doc);
   }

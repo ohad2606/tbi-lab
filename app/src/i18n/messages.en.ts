@@ -652,6 +652,13 @@ export const en = {
   'build.phase.current': 'Built',
   'build.phase.failed': 'Build failed',
   'build.stale': 'The code changed since the last build.',
+  // Sprint 13 OS-08: Run is not available during a build or without a current build.
+  'run.blocked.building': 'Run is unavailable while a build is in progress.',
+  'run.blocked.buildRequired':
+    'Build the code for {components} first: it has not been built, or it changed since the last build.',
+  'run.blocked.buildFailed': 'The last build of the code for {components} failed. Fix it and Build.',
+  'build.olderRunning':
+    'A build of an earlier version of this code is still in progress. Build the current version when it finishes.',
   'build.blockedRunning':
     'Build is available after Stop. The running session keeps the firmware it started with.',
   'build.unavailable': 'The build service is not available here.',
