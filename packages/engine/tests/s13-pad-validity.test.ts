@@ -94,6 +94,29 @@ describe('P3: a pad wired to GND, in every drive mode and topology', () => {
     expect(p.outsideModelRange).toBe(true);
   });
 
+  it('a board-only circuit (one pad wired to GND, nothing else) is solved, not "empty"', () => {
+    // The browser's projection of: board, ground symbol, board GND -> GND, GPIO5 -> GND.
+    const g = sharedBoardBench((b, u) => b.wire(`${u}.gpio5`, 'GND1.ref'));
+    const only = {
+      ...g.projected,
+      components: g.projected.components.filter((c) => c.type === 'component.ground'),
+      connections: g.projected.connections.filter((c) => c.component.startsWith('GND')),
+    };
+    expect(only.components.map((c) => c.type)).toEqual(['component.ground']);
+    // The only other terminal on the pad's net is the ground symbol: the pad attaches there.
+    const s = new EngineSession(only, { pins: [{ gpio: 5, component: 'GND1', terminal: 'ref' }] });
+    for (const [mode, flagged] of [
+      ['output-high', true],
+      ['output-low', false],
+      ['input', false],
+    ] as const) {
+      expect(s.setPinMode(5, mode)).toBeNull();
+      const p = pin5(ok(s.solve()));
+      expect(p.current).toBeCloseTo(mode === 'output-high' ? VDD_V / R_DRIVE_HIGH_OHM : 0, 12);
+      expect(p.outsideModelRange === true).toBe(flagged);
+    }
+  });
+
   it('the short-to-GND warning keeps the condition and marks its value unreliable', () => {
     const g = boardBench(TOPOLOGIES.direct!);
     g.session.setPinMode(5, 'output-high');

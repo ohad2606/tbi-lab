@@ -716,7 +716,9 @@ export class EngineSession {
       }
     }
 
-    if (elements.length === 0) return this.fail({ code: 'empty_circuit' });
+    // An attached MCU pad is a device too (Sprint 13 P3): a board whose pin is wired straight to
+    // GND, with nothing else in the circuit, is a circuit to solve, not an empty one.
+    if (elements.length === 0 && pinNodes.length === 0) return this.fail({ code: 'empty_circuit' });
 
     // Ideal conductors: nodes joined by closed switches are one electrical node. An enabled
     // supply whose terminals they join is shorted exactly as by a wire: refused, not guessed.
