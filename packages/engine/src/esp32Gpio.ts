@@ -62,12 +62,24 @@ export const V_PIN_MIN_V = -0.3;
 export const R_DRIVE_HIGH_OHM = (VDD_V - 2.64) / 0.04;
 
 /**
- * The datasheet drive specification itself (Table 5-3, maximum drive strength): a pad sourcing
- * more than I_OH or sinking more than I_OL is outside what the manufacturer specifies. Used only
- * by the diagnostics (ratings.ts), never by the electrical model.
+ * The datasheet drive characteristics (ESP32 Series Datasheet v5.3, Table 5-3 "DC
+ * Characteristics", maximum drive strength): TYPICAL values, not maximum ratings. I_OH 40 mA for
+ * the VDD3P3_CPU and VDD3P3_RTC power domains and 20 mA for the VDD_SDIO domain (on the DevKitC
+ * header: GPIO16 and GPIO17, chip pins 25 and 27); I_OL 28 mA. Table 5-1 publishes no per-pin
+ * absolute maximum. Used only by the diagnostics (ratings.ts), never by the electrical model.
+ * (Sprint 13 H2 finding, for a PM decision: the pad DRIVER model uses the 40 mA point for every
+ * pin, so GPIO16/17 are modelled stronger than their domain's 20 mA characteristic.)
  */
 export const I_OH_A = 0.04;
+export const I_OH_SDIO_A = 0.02;
 export const I_OL_A = 0.028;
+/** GPIOs on the header in the VDD_SDIO power domain (datasheet pin layout: pins 25, 27). */
+export const SDIO_DOMAIN_GPIOS: ReadonlySet<number> = new Set([16, 17]);
+/** Typical source capability of a pad (Table 5-3, by power domain). */
+export const typicalSourceA = (gpio: number) =>
+  SDIO_DOMAIN_GPIOS.has(gpio) ? I_OH_SDIO_A : I_OH_A;
+/** Table 5-1 absolute maximum: cumulative IO output current, 1200 mA. */
+export const I_OUTPUT_CUMULATIVE_MAX_A = 1.2;
 export const R_DRIVE_LOW_OHM = 0.495 / 0.028;
 
 /** Internal pull-up / pull-down resistance, datasheet typical. */

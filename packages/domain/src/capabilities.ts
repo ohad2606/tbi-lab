@@ -96,3 +96,40 @@ export function facilityForFeature(code: string): FirmwareFacility | undefined {
   const id = code.startsWith('library:') ? 'library' : code;
   return FIRMWARE_FACILITIES.find((f) => f.id === id);
 }
+
+/**
+ * Sprint 13 H2: each part's documented model limitations (what the simulation does not model, or
+ * models under a stated assumption), from the part models' own documentation. Text:
+ * `limitation.<id>` in the message catalogs. Every catalog part except the ground symbol has
+ * entries (a test checks it).
+ */
+export const MODEL_LIMITATIONS: Readonly<Partial<Record<ComponentTypeId, readonly string[]>>> = {
+  'instrument.lab_psu': ['psu_ideal'],
+  'component.resistor': ['resistor_ideal', 'resistor_no_power'],
+  'component.led': ['dc_25c', 'led_card_range', 'no_breakdown'],
+  'component.diode': ['dc_25c', 'no_breakdown'],
+  'component.push_button': ['switch_ideal'],
+  'component.toggle_switch': ['switch_ideal'],
+  'component.rgb_led': ['dc_25c', 'led_card_range', 'no_breakdown', 'rgb_onoff_esp32'],
+  'component.photoresistor': [
+    'ldr_typical',
+    'ldr_extrapolated',
+    'ldr_digital_esp32',
+    'ldr_no_dynamics',
+  ],
+  'component.buzzer': ['buzzer_curve', 'buzzer_dc'],
+  'component.relay': ['relay_thresholds', 'relay_no_inductance', 'relay_ideal_contacts'],
+  'component.bjt_npn': ['bjt_dc', 'bjt_no_breakdown'],
+  'sensor.pir_hc_sr501': ['pir_static'],
+  'display.led_matrix_8x8': ['matrix_window', 'matrix_no_esp32'],
+  'component.capacitor': ['capacitor_ideal', 'capacitor_no_esp32'],
+  'sensor.hc_sr04': ['hcsr04_target', 'hcsr04_output', 'hcsr04_retrigger', 'supply_below_min'],
+  'sensor.dht22': ['dht22_tgo', 'dht22_current', 'dht22_output', 'supply_below_min'],
+  'display.lcd1602_i2c': ['lcd_backlight', 'lcd_bus_timing', 'lcd_pullups', 'supply_below_min'],
+  'board.esp32_devkitc_wroom32': [
+    'esp32_timing',
+    'esp32_pulls',
+    'esp32_drive',
+    'esp32_input_clamp',
+  ],
+};

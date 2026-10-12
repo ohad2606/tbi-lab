@@ -2,6 +2,7 @@ import { Fragment } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import {
   CATALOG,
+  MODEL_LIMITATIONS,
   deleteSelection,
   emptySelection,
   parseQuantity,
@@ -23,6 +24,7 @@ import {
   isMessageKey,
   isolateLtr,
   unitSymbol,
+  type MessageKey,
 } from '../i18n/i18n.js';
 import type { ComponentResult, SolveSuccess } from '@tbi-lab/engine';
 import { formatPower, formatResult } from '../sim/format.js';
@@ -238,6 +240,19 @@ function ComponentProperties({
         <p class="muted small" data-testid="switch-hint">
           {t('switch.toggle.hint')}
         </p>
+      )}
+      {(MODEL_LIMITATIONS[c.type] ?? []).length > 0 && (
+        // Sprint 13 H2: what this part's model does not simulate, or simulates under an assumption.
+        <details class="model-limitations" data-testid={`limitations-${c.id}`}>
+          <summary>{t('inspector.limitations')}</summary>
+          <ul class="small">
+            {MODEL_LIMITATIONS[c.type]!.map((id) => (
+              <li key={id} data-testid={`limitation-${id}`}>
+                {t(`limitation.${id}` as MessageKey)}
+              </li>
+            ))}
+          </ul>
+        </details>
       )}
     </>
   );
@@ -571,7 +586,7 @@ function ComponentResultView({
       {doc &&
         (() => {
           const rows = warningsFor(doc, outcome).filter((w) => w.component === component.id);
-          const kinds = (['absolute', 'operating'] as const)
+          const kinds = (['absolute', 'operating', 'unrated'] as const)
             .map((k) => rows.filter((w) => w.kind === k))
             .filter((g) => g.length);
           return kinds.length ? (

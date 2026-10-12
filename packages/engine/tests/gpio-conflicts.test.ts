@@ -172,4 +172,50 @@ describe('ESP32 pad diagnostics (ratingWarnings)', () => {
     normal.session.setPinMode(5, 'output-high');
     expect(ratingWarnings(normal.full, ok(normal.session.solve()))).toEqual([]);
   });
+
+  // Sprint 13 H2: ESP32 Series Datasheet v5.3. Table 5-3 drive values are TYPICAL characteristics
+  // with no per-pin absolute maximum (Table 5-1): rows are `unrated`; the VDD_SDIO domain's
+  // GPIO16/17 typical source current is 20 mA. Table 5-1's cumulative IO output current (1200 mA)
+  // is an absolute maximum.
+  it("drive rows are unrated, against each power domain's typical source current", () => {
+    for (const [gpio, limit] of [
+      [5, 0.04],
+      [17, 0.02],
+    ] as const) {
+      const bench = boardBench((b, u) => {
+        const r = b.add('component.resistor');
+        b.ohms(r, 100).wire(`${u}.gpio${gpio}`, `${r}.a`).wire(`${r}.b`, 'GND1.ref');
+      });
+      bench.session.setPinMode(gpio, 'output-high');
+      const w = ratingWarnings(bench.full, ok(bench.session.solve()));
+      const i = VDD_V / (R_DRIVE_HIGH_OHM + 100); // about 28 mA: above 20 mA, below 40 mA
+      if (gpio === 17)
+        expect(w).toEqual([
+          expect.objectContaining({ kind: 'unrated', code: 'gpio_source_current', gpio, limit }),
+        ]);
+      else expect(w).toEqual([]);
+      expect(i).toBeGreaterThan(0.02);
+      expect(i).toBeLessThan(0.04);
+    }
+  });
+
+  it('cumulative output current above the 1200 mA absolute maximum is a damage risk', () => {
+    const gpios = [2, 4, 5, 13, 14, 16, 18, 19];
+    // 1 mOhm links (a wire is not a device: see the short-circuit test above).
+    const bench = boardBench((b, u) => {
+      for (const g of gpios) {
+        const r = b.add('component.resistor');
+        b.ohms(r, 1e-3).wire(`${u}.gpio${g}`, `${r}.a`).wire(`${r}.b`, 'GND1.ref');
+      }
+    });
+    for (const g of gpios) bench.session.setPinMode(g, 'output-high');
+    const w = ratingWarnings(bench.full, ok(bench.session.solve()));
+    const total = w.find((x) => x.code === 'gpio_cumulative_current');
+    expect(total).toEqual(expect.objectContaining({ kind: 'absolute', limit: 1.2 }));
+    expect(total!.value).toBeGreaterThan(1.2);
+    // Each overloaded pad is its own unrated row.
+    const rows = w.filter((x) => x.code !== 'gpio_cumulative_current');
+    expect(rows).toHaveLength(gpios.length);
+    for (const x of rows) expect(x.kind).toBe('unrated');
+  });
 });

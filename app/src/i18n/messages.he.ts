@@ -514,16 +514,16 @@ export const he: Record<MessageKey, string> = {
   'rating.row.forward_current': 'זרם: {value} (מקסימום {limit})',
   'rating.row.reverse_voltage': 'מתח הפוך: {value} (מקסימום {limit})',
   'rating.row.power': 'הספק: {value} (מקסימום {limit})',
-  'rating.row.gpio_source_current': '{pin} ביציאה HIGH מספק {value} (דירוג ההנעה {limit})',
-  'rating.row.gpio_sink_current': '{pin} ביציאה LOW בולע {value} (דירוג ההנעה {limit})',
+  'rating.row.gpio_source_current': '{pin} ביציאה HIGH מספק {value} (הנעה טיפוסית {limit})',
+  'rating.row.gpio_sink_current': '{pin} ביציאה LOW בולע {value} (הנעה טיפוסית {limit})',
   'rating.row.gpio_contention':
-    '{pin} ו־{other} מניעים רמות הפוכות על אותו נט: {value} זורם ביניהם (דירוג ההנעה {limit})',
+    '{pin} ו־{other} מניעים רמות הפוכות על אותו נט: {value} זורם ביניהם (הנעה טיפוסית {limit})',
   'rating.row.gpio_short_ground':
-    '{pin} ביציאה HIGH מחובר ישירות ל־GND: {value} (דירוג ההנעה {limit})',
+    '{pin} ביציאה HIGH מחובר ישירות ל־GND: {value} (הנעה טיפוסית {limit})',
   'rating.row.gpio_short_supply':
-    '{pin} ביציאה LOW מחובר ישירות ל־+ של ספק: {value} (דירוג ההנעה {limit})',
+    '{pin} ביציאה LOW מחובר ישירות ל־+ של ספק: {value} (הנעה טיפוסית {limit})',
   'rating.row.gpio_input_overvoltage':
-    '{pin} בכניסה נמצא ב־{value}, מחוץ לטווח המותר של הפין (גבול {limit}); פיני ESP32 אינם עמידים ל־5 V',
+    '{pin} בכניסה נמצא ב־{value}, מחוץ לטווח הכניסה המוגדר של הפין (גבול {limit}); פיני ESP32 אינם מוגדרים ל־5 V',
   'rating.row.gpio_output_overvoltage':
     '{pin} ביציאה נדחף ל־{value} על ידי המעגל (גבול {limit}); זרם נדחף לתוך מעגל ההנעה של הפין',
   'rating.note': 'הסימולציה ממשיכה להציג את הערכים המחושבים ואינה מדמה נזק לרכיב.',
@@ -909,10 +909,71 @@ export const he: Record<MessageKey, string> = {
   'capabilities.limit.commands_rate_limited':
     'פקדי הרכיבים שונו מהר מדי בזמן ההרצה; חלק מהשינויים נדחו. שנו אותם לאט יותר.',
   'capabilities.parts.supported': 'מדומה לצד ה־ESP32.',
-  // Sprint 13 H2: outside the specified operating range (no damage claim).
+  // Sprint 13 H2: outside the specified operating range; damage threshold unknown (not "safe").
   'rating.operating.heading': 'מחוץ לתנאי ההפעלה המוגדרים',
   'rating.operating.summary': '{component} מחוץ לטווח ההפעלה המוגדר שלו',
   'rating.operating.row.voltage': 'אספקה: {value} (מקסימום הפעלה מוגדר {limit})',
   'rating.operating.note':
-    'אין כאן טענה לנזק: גיליון הנתונים מגדיר טווח הפעלה בלבד. התוצאה המדומה עשויה שלא להתאים לרכיב אמיתי.',
+    'מחוץ לטווח ההפעלה המומלץ אך בתוך הערך המקסימלי המוחלט שפורסם: האמינות והתוצאה המדומה אינן מובטחות. השאירו את הרכיב בתוך טווח ההפעלה שלו.',
+  'rating.unrated.summary': '{component} מחוץ לטווח המוגדר שלו; לא פורסם סף נזק',
+  'rating.unrated.note':
+    'היצרן אינו מפרסם סף נזק למצב זה: הסיכון אינו ידוע, אך אינו אפס. התייחסו אליו כלא בטוח; התוצאה המדומה עשויה שלא להתאים לרכיב אמיתי.',
+  'rating.row.gpio_cumulative_current':
+    'כל פיני היציאה של ה־ESP32 יחד מספקים {value} (מקסימום מוחלט {limit})',
+  // Sprint 13 H2: model limitations (packages/domain/src/capabilities.ts MODEL_LIMITATIONS).
+  'limitation.psu_ideal':
+    'ספק מעבדה אידיאלי: ללא עכבת מוצא וללא דינמיקה של לולאת הבקרה, והוא אינו יכול לבלוע זרם.',
+  'limitation.resistor_ideal': 'ערך מדויק: סבולת ומקדם טמפרטורה אינם ממודלים.',
+  'limitation.resistor_no_power': 'דירוג הספק אינו ממודל: הפיזור מוצג אך אינו נבדק מול גבול.',
+  'limitation.dc_25c': 'נקודת עבודה DC ב־25 °C: ללא השפעות תרמיות או התחממות עצמית.',
+  'limitation.led_card_range':
+    'מדויק בטווח הזרמים של עקומות גיליון הנתונים; מחוץ לו התוצאה מסומנת כמחוץ למודל.',
+  'limitation.no_breakdown':
+    'פריצה בממתח הפוך אינה ממודלת; במקומה נבדק דירוג המתח ההפוך ומוצגת אזהרה.',
+  'limitation.switch_ideal': 'מגע אידיאלי: ללא התנגדות מגע וללא ריטוט.',
+  'limitation.rgb_onoff_esp32': 'לצד ESP32 כל ערוץ דולק או כבוי: ערבוב צבעים ב־PWM אינו נתמך.',
+  'limitation.ldr_typical': 'GL5528 טיפוסי (מרכז מחלקת ההתנגדות שלו), לא רכיב שנמדד.',
+  'limitation.ldr_extrapolated': 'מחוץ לטווח 1–100 lx חוק האור מוחצן, והתוצאה מציינת זאת.',
+  'limitation.ldr_digital_esp32': 'לצד ESP32 הוא נקרא כרמה דיגיטלית: כניסה אנלוגית אינה נתמכת.',
+  'limitation.ldr_no_dynamics': 'זמן התגובה ותלות הטמפרטורה אינם ממודלים.',
+  'limitation.buzzer_curve':
+    'הזרם עוקב אחר עקומת גיליון הנתונים בטווח 3–6 V; מחוץ לו התוצאה מסומנת כמחוץ למודל.',
+  'limitation.buzzer_dc': 'זמזם אקטיבי ב־DC: מדומה האם הוא מזמזם, אך לא הטון ועוצמת הקול.',
+  'limitation.relay_thresholds':
+    'משיכה ושחרור משתמשים בגבולות המובטחים של גיליון הנתונים (3.75 V / 0.5 V), לא ברכיב מסוים.',
+  'limitation.relay_no_inductance':
+    'השראות הסליל אינה ממודלת, ולכן קוץ המתח בכיבוי אינו מדומה: השתמשו בדיודת Flyback כמו בלוח אמיתי.',
+  'limitation.relay_ideal_contacts':
+    'מגעים אידיאליים: התנגדות מגע, ריטוט וזמני הפעלה ושחרור אינם ממודלים.',
+  'limitation.bjt_dc': 'מודל טרנזיסטור DC ב־25 °C: ללא קיבולים, זמני מעבר או התחממות עצמית.',
+  'limitation.bjt_no_breakdown': 'פריצה אינה ממודלת; במקומה נבדקים דירוגי המתח ומוצגת אזהרה.',
+  'limitation.pir_static':
+    'התנועה היא פקד שאתם קובעים. זמן ההשהיה, זמן החסימה, דקת החימום, הטווח, הזווית והרגישות אינם ממודלים.',
+  'limitation.matrix_window':
+    'כל נקודה נפתרת מהמעגל; תצוגה סורקת מוצגת לפי מצבה האחרון בכל חלון של 10 ms (ללא התמדת ראייה).',
+  'limitation.matrix_no_esp32': 'עדיין אינה זמינה לצד ESP32.',
+  'limitation.capacitor_ideal': 'קבל אידיאלי: ללא ESR, זליגה, בליעה דיאלקטרית או קוטביות.',
+  'limitation.capacitor_no_esp32': 'רכיבים תלויי־זמן רצים רק במעגלים ללא ESP32.',
+  'limitation.hcsr04_target':
+    'מטרה שטוחה אחת במרחק שנקבע, באוויר דומם בטמפרטורה שנקבעה; מחוץ לטווח המודול אין הד.',
+  'limitation.hcsr04_output': 'התנגדות המוצא של ECHO‏ (100 Ω) היא הנחה: אף מקור אינו מציין אותה.',
+  'limitation.hcsr04_retrigger': 'הפעלה חדשה מתעלמת כל עוד ממתין הד.',
+  'limitation.supply_below_min':
+    'מתחת למתח האספקה המינימלי המודול מוצג ככבוי; מודול אמיתי במצב זה עלול להתנהג באופן בלתי צפוי, והתוצאה מסומנת כמחוץ למודל.',
+  'limitation.dht22_tgo':
+    'השהיית התגובה של החיישן היא 30 µs, אמצע הטווח 20–40 µs שבגיליון הנתונים.',
+  'limitation.dht22_current': 'זרם המדידה של 1–1.5 mA (כ־5 ms לכל קריאה) אינו כלול בתוצאת ה־DC.',
+  'limitation.dht22_output':
+    'התנגדות מוצא ברמה נמוכה של DATA‏ (100 Ω) היא הנחה: גיליונות הנתונים אינם מציינים אותה.',
+  'limitation.lcd_backlight':
+    'התאורה האחורית ממודלת לפי 20 mA שבגיליון הנתונים: שרטוט כרטיס המתאם לא נמצא.',
+  'limitation.lcd_bus_timing': 'I2C מדומה ברמת העברה: משך ההעברה ורמות הקווים במהלכה אינם מדומים.',
+  'limitation.lcd_pullups': 'המודול ממודל ללא נגדי Pull-up על הכרטיס: המעגל חייב לספק אותם.',
+  'limitation.esp32_timing': 'התזמון כפוף לחוזה התזמון של V1 (ראו מה רץ על ה־ESP32).',
+  'limitation.esp32_pulls': 'נגדי Pull-up ו־Pull-down פנימיים אינם מדומים.',
+  'limitation.esp32_drive':
+    'כל מניע פין משתמש במאפיין ההנעה של 40 mA מגיליון הנתונים; גיליון הנתונים מציין 20 mA עבור GPIO16 ו־GPIO17.',
+  'limitation.esp32_input_clamp':
+    'דיודות ההגנה בכניסה אינן ממודלות: פין מחוץ לטווח המוגדר שלו מסומן, והזרם המדומה לתוכו אינו אמין.',
+  'inspector.limitations': 'מגבלות המודל',
 };

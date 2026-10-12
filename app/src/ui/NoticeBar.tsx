@@ -7,8 +7,15 @@ import { engineErrorParts, groupByComponent, ratingRow, simFailureMessage } from
 import { warningsFor } from '../sim/ratings.js';
 import { useAppState, useStore, useT } from './context.js';
 
-const damage = (w: RatingWarning[]) => w.filter((x) => x.kind !== 'operating');
-const operating = (w: RatingWarning[]) => w.filter((x) => x.kind === 'operating');
+const damage = (w: RatingWarning[]) => w.filter((x) => x.kind === 'absolute');
+const operating = (w: RatingWarning[]) => w.filter((x) => x.kind !== 'absolute');
+/** One group per component and kind (a part can be both `operating` and `unrated`). */
+const byComponentAndKind = (w: RatingWarning[]) =>
+  groupByComponent(w).flatMap(([id, rows]) =>
+    (['operating', 'unrated'] as const)
+      .map((k) => [id, rows.filter((r) => r.kind === k)] as const)
+      .filter(([, g]) => g.length),
+  );
 
 export function NoticeBar() {
   const { notice, readOnly, unreadable, sim, locale, doc, saveState, saveError, screen } =
@@ -68,14 +75,25 @@ export function NoticeBar() {
         </div>
       )}
       {running?.ok && doc && operating(warningsFor(doc, running)).length > 0 && (
-        // Sprint 13 H2: outside the specified OPERATING range only: no damage claim; the result
+        // Sprint 13 H2: outside the specified OPERATING range only, no absolute maximum published: the damage threshold is unknown (never presented as safe); the result
         // may not match a real part.
-        <div class="banner banner-info banner-rating" role="status" data-testid="operating-warning">
+        <div
+          class="banner banner-warning banner-rating banner-operating"
+          role="status"
+          data-testid="operating-warning"
+        >
           <strong class="rating-title">{t('rating.operating.heading')}</strong>
-          {groupByComponent(operating(warningsFor(doc, running))).map(([id, rows]) => (
-            <RatingGroup key={id} component={id} rows={rows} />
+          {byComponentAndKind(operating(warningsFor(doc, running))).map(([id, rows]) => (
+            <RatingGroup key={`${id}-${rows[0]!.kind}`} component={id} rows={rows} />
           ))}
-          <span class="rating-note small">{t('rating.operating.note')}</span>
+          {operating(warningsFor(doc, running)).some((w) => w.kind === 'operating') && (
+            <span class="rating-note small">{t('rating.operating.note')}</span>
+          )}
+          {operating(warningsFor(doc, running)).some((w) => w.kind === 'unrated') && (
+            <span class="rating-note small" data-testid="unrated-note">
+              {t('rating.unrated.note')}
+            </span>
+          )}
         </div>
       )}
       {running?.ok && running.notConnected.length > 0 && (
@@ -152,9 +170,14 @@ export function RatingGroup({ component, rows }: { component: string; rows: Rati
       data-kind={rows[0]?.kind}
     >
       <span class="rating-summary">
-        {t(rows[0]?.kind === 'operating' ? 'rating.operating.summary' : 'rating.atRisk', {
-          component: isolateLtr(component),
-        })}
+        {t(
+          rows[0]?.kind === 'operating'
+            ? 'rating.operating.summary'
+            : rows[0]?.kind === 'unrated'
+              ? 'rating.unrated.summary'
+              : 'rating.atRisk',
+          { component: isolateLtr(component) },
+        )}
       </span>
       <ul class="rating-list">
         {rows.map((w) => (

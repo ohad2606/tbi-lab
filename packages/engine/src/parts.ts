@@ -84,12 +84,14 @@ export interface PartCard {
 /** A documented limit the solved result exceeds (ratings.ts turns it into a RatingWarning). */
 /**
  * Sprint 13 H2 (Component Failure Framework): what kind of published limit was crossed.
- * - `absolute`: a datasheet ABSOLUTE MAXIMUM rating (or a maximum allowable value): a real part
- *   risks damage;
- * - `operating`: outside the datasheet's specified OPERATING range only (no absolute maximum is
- *   published for it): no damage claim; the simulated result may not match a real part.
+ * - `absolute`: a datasheet ABSOLUTE MAXIMUM rating (or maximum allowable value) is exceeded: a
+ *   real part risks damage;
+ * - `operating`: outside the recommended OPERATING range but within a published absolute maximum:
+ *   reliability and the simulated result are not guaranteed;
+ * - `unrated`: outside the operating range (or a typical characteristic), and the manufacturer
+ *   publishes NO damage threshold for it: the risk is unknown, never presented as safe.
  */
-export type LimitKind = 'absolute' | 'operating';
+export type LimitKind = 'absolute' | 'operating' | 'unrated';
 
 export interface PartRatingExcess {
   code: 'forward_current' | 'reverse_voltage' | 'power' | 'voltage' | 'current';
@@ -136,7 +138,8 @@ export function supplyLimits(
   if (supplyV > spec.maxOperatingV)
     return [
       {
-        kind: 'operating',
+        // Within a published absolute maximum: `operating`; none published: `unrated`.
+        kind: spec.absoluteMaxV !== undefined ? 'operating' : 'unrated',
         code: 'voltage',
         value: supplyV,
         limit: spec.maxOperatingV,

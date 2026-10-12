@@ -52,9 +52,10 @@ describe('supply limits: operating vs absolute', () => {
 
       const above = supplied(type, plus, spec.max + 0.5);
       expect(above.result.outsideModelRange).toBe(true);
+      // Published absolute maximum (LCD): `operating`; none published: `unrated` (risk unknown).
       expect(above.warnings).toEqual([
         expect.objectContaining({
-          kind: 'operating',
+          kind: spec.absMax !== undefined ? 'operating' : 'unrated',
           code: 'voltage',
           limit: spec.max,
           channel: 'supply',
@@ -70,7 +71,7 @@ describe('supply limits: operating vs absolute', () => {
     ]);
   });
 
-  it('buzzer CEM-1205: above its 3-6 V operating range is an operating row, not damage', () => {
+  it('buzzer CEM-1205: above its 3-6 V operating range, no absolute maximum published: unrated', () => {
     const b = new Bench();
     const z = b.add('component.buzzer');
     b.wire('PSU1.positive', `${z}.positive`)
@@ -80,7 +81,7 @@ describe('supply limits: operating vs absolute', () => {
     const snap = b.snapshot();
     const o = new EngineSession(snap).solve() as SolveSuccess;
     expect(ratingWarnings(snap, o)).toEqual([
-      expect.objectContaining({ component: z, kind: 'operating', code: 'voltage', limit: 6 }),
+      expect.objectContaining({ component: z, kind: 'unrated', code: 'voltage', limit: 6 }),
     ]);
     expect(o.components[z]!.outsideModelRange).toBe(true);
   });

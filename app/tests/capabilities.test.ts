@@ -5,7 +5,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   CATALOG,
+  CATALOG_ORDER,
   FIRMWARE_FACILITIES,
+  MODEL_LIMITATIONS,
   SESSION_LIMITS,
   TIMING_CONTRACT,
   partCapabilities,
@@ -48,5 +50,19 @@ describe('capability panel texts', () => {
     expect(sectionForFailure('unsupported_component')).toBe('parts');
     expect(sectionForFailure('no_ground')).toBeNull();
     expect(sectionForFailure('runtime_crashed')).toBeNull();
+  });
+});
+
+describe('model limitations (H2)', () => {
+  it('every part except the ground symbol documents its limitations, in English and Hebrew', () => {
+    for (const type of CATALOG_ORDER) {
+      const ids = MODEL_LIMITATIONS[type] ?? [];
+      if (type === 'component.ground') continue;
+      expect(ids.length, type).toBeGreaterThan(0);
+      for (const id of ids) {
+        expect((en as Record<string, string>)[`limitation.${id}`], `en ${id}`).toBeTruthy();
+        expect((he as Record<string, string>)[`limitation.${id}`], `he ${id}`).toBeTruthy();
+      }
+    }
   });
 });

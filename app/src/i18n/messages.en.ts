@@ -528,16 +528,14 @@ export const en = {
   'rating.row.forward_current': 'Current: {value} (maximum {limit})',
   'rating.row.reverse_voltage': 'Reverse voltage: {value} (maximum {limit})',
   'rating.row.power': 'Power: {value} (maximum {limit})',
-  'rating.row.gpio_source_current': '{pin} output HIGH sources {value} (drive rating {limit})',
-  'rating.row.gpio_sink_current': '{pin} output LOW sinks {value} (drive rating {limit})',
+  'rating.row.gpio_source_current': '{pin} output HIGH sources {value} (typical drive {limit})',
+  'rating.row.gpio_sink_current': '{pin} output LOW sinks {value} (typical drive {limit})',
   'rating.row.gpio_contention':
-    '{pin} and {other} drive opposite levels on the same net: {value} flows between them (drive rating {limit})',
+    '{pin} and {other} drive opposite levels on the same net: {value} flows between them (typical drive {limit})',
   'rating.row.gpio_short_ground':
-    '{pin} output HIGH is wired straight to GND: {value} (drive rating {limit})',
+    '{pin} output HIGH is wired straight to GND: {value} (typical drive {limit})',
   'rating.row.gpio_short_supply':
-    '{pin} output LOW is wired straight to a supply +: {value} (drive rating {limit})',
-  'rating.row.gpio_input_overvoltage':
-    "{pin} input is at {value}, outside the pin's rated range (limit {limit}); ESP32 pins are not 5 V tolerant",
+    '{pin} output LOW is wired straight to a supply +: {value} (typical drive {limit})',
   'rating.row.gpio_output_overvoltage':
     '{pin} output is forced to {value} by the circuit (limit {limit}); current is pushed into the pin driver',
   'rating.note':
@@ -936,12 +934,90 @@ export const en = {
   'capabilities.limit.commands_rate_limited':
     'Part controls changed too quickly while running; some changes were refused. Change them more slowly.',
   'capabilities.parts.supported': 'Simulated with the ESP32.',
-  // Sprint 13 H2: outside the specified operating range (no damage claim).
+  // Sprint 13 H2: outside the specified operating range; damage threshold unknown (not "safe").
   'rating.operating.heading': 'Outside specified operating conditions',
   'rating.operating.summary': '{component} is outside its specified operating range',
   'rating.operating.row.voltage': 'Supply: {value} (specified operating maximum {limit})',
   'rating.operating.note':
-    'No damage is implied: the datasheet specifies an operating range only. The simulated result may not match a real part.',
+    'Outside the recommended operating range but within the published absolute maximum: reliability and the simulated result are not guaranteed. Keep the part inside its operating range.',
+  'rating.unrated.summary':
+    '{component} is outside its specified range; no damage threshold is published',
+  'rating.unrated.note':
+    'The manufacturer publishes no damage threshold for this condition: the risk is unknown, not zero. Treat it as unsafe; the simulated result may not match a real part.',
+  'rating.row.gpio_input_overvoltage':
+    "{pin} input is at {value}, outside the pin's specified input range (limit {limit}); ESP32 pins are not specified for 5 V",
+  'rating.row.gpio_cumulative_current':
+    'All ESP32 output pins together deliver {value} (absolute maximum {limit})',
+  // Sprint 13 H2: model limitations (packages/domain/src/capabilities.ts MODEL_LIMITATIONS).
+  'limitation.psu_ideal':
+    'Ideal lab supply: no output impedance or control-loop dynamics, and it cannot sink current.',
+  'limitation.resistor_ideal':
+    'Exact value: tolerance and temperature coefficient are not modelled.',
+  'limitation.resistor_no_power':
+    'No power rating is modelled: dissipation is shown but not checked against a limit.',
+  'limitation.dc_25c': 'DC operating point at 25 °C: no thermal or self-heating effects.',
+  'limitation.led_card_range':
+    'Accurate within the current range of its datasheet curves; outside it the result is marked as outside the model.',
+  'limitation.no_breakdown':
+    'Reverse breakdown is not modelled; the reverse-voltage rating is checked and warned about instead.',
+  'limitation.switch_ideal': 'Ideal contact: no contact resistance or bounce.',
+  'limitation.rgb_onoff_esp32':
+    'Next to an ESP32 each channel is on or off: PWM colour mixing is not supported.',
+  'limitation.ldr_typical':
+    'A typical GL5528 (the centre of its resistance class), not a measured part.',
+  'limitation.ldr_extrapolated':
+    'Outside 1–100 lx the light law is extrapolated, and the result says so.',
+  'limitation.ldr_digital_esp32':
+    'Next to an ESP32 it is read as a digital level: analog input is not supported.',
+  'limitation.ldr_no_dynamics': 'Response time and temperature dependence are not modelled.',
+  'limitation.buzzer_curve':
+    'Current follows the datasheet curve within 3–6 V; outside it the result is marked as outside the model.',
+  'limitation.buzzer_dc':
+    'An active buzzer on DC: whether it sounds is simulated, its tone and loudness are not.',
+  'limitation.relay_thresholds':
+    'Pull-in and drop-out use the guaranteed datasheet limits (3.75 V / 0.5 V), not a particular part.',
+  'limitation.relay_no_inductance':
+    'Coil inductance is not modelled, so the switch-off voltage spike is not simulated: use a flyback diode as on a real board.',
+  'limitation.relay_ideal_contacts':
+    'Ideal contacts: contact resistance, bounce and operate/release times are not modelled.',
+  'limitation.bjt_dc':
+    'DC transistor model at 25 °C: no capacitances, transit times or self-heating.',
+  'limitation.bjt_no_breakdown':
+    'Breakdown is not modelled; the voltage ratings are checked and warned about instead.',
+  'limitation.pir_static':
+    'Motion is a control you set. Retrigger delay, blocking time, the warm-up minute, range, angle and sensitivity are not modelled.',
+  'limitation.matrix_window':
+    'Each dot is solved from the circuit; a scanned display is shown as its last state in each 10 ms window (no persistence of vision).',
+  'limitation.matrix_no_esp32': 'Not available next to an ESP32 yet.',
+  'limitation.capacitor_ideal':
+    'Ideal capacitor: no ESR, leakage, dielectric absorption or polarity.',
+  'limitation.capacitor_no_esp32': 'Time-dependent parts run only in circuits without an ESP32.',
+  'limitation.hcsr04_target':
+    "One flat target at the set distance, in still air at the set temperature; outside the module's range there is no echo.",
+  'limitation.hcsr04_output':
+    'The ECHO output resistance (100 Ω) is an assumption: none of the sources specifies it.',
+  'limitation.hcsr04_retrigger': 'A new trigger is ignored while an echo is pending.',
+  'limitation.supply_below_min':
+    'Below the minimum supply voltage the module is shown as switched off; a real module there may behave unpredictably, and the result is marked as outside the model.',
+  'limitation.dht22_tgo':
+    "The sensor's response delay is 30 µs, the middle of the datasheet's 20–40 µs.",
+  'limitation.dht22_current':
+    'The 1–1.5 mA measuring current (about 5 ms per reading) is not in the DC result.',
+  'limitation.dht22_output':
+    'The DATA low-level output resistance (100 Ω) is an assumption: the datasheets do not give it.',
+  'limitation.lcd_backlight':
+    'The backlight is modelled as its datasheet 20 mA: the backpack schematic was not found.',
+  'limitation.lcd_bus_timing':
+    'I2C is simulated per transfer: the duration of a transfer and the line levels during it are not simulated.',
+  'limitation.lcd_pullups':
+    'The module is modelled without on-board pull-ups: the circuit must provide them.',
+  'limitation.esp32_timing': 'Timing follows the V1 timing contract (see What runs on the ESP32).',
+  'limitation.esp32_pulls': 'Internal pull-up and pull-down resistors are not simulated.',
+  'limitation.esp32_drive':
+    "Every pin driver uses the datasheet's 40 mA drive characteristic; the datasheet gives 20 mA for GPIO16 and GPIO17.",
+  'limitation.esp32_input_clamp':
+    'Input protection diodes are not modelled: a pin outside its specified range is flagged, and the simulated current into it is not reliable.',
+  'inspector.limitations': 'Model limitations',
 } as const;
 
 export type MessageKey = keyof typeof en;

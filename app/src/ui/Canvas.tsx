@@ -815,7 +815,7 @@ export function Canvas({
   const overstressed = new Set(
     outcome?.ok
       ? warningsFor(doc, outcome)
-          .filter((w) => w.kind !== 'operating')
+          .filter((w) => w.kind === 'absolute')
           .map((w) => w.component)
       : [],
   );

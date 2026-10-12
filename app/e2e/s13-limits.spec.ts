@@ -69,11 +69,27 @@ test('above the operating range: an operating notice and an unreliable result, n
   const bz = component(page, 'BZ1');
   await expect(bz).not.toHaveAttribute('data-overstressed', 'true');
   await bz.locator('.component-hit').click({ force: true });
-  await expect(page.getByTestId('result-rating').locator('[data-kind="operating"]')).toBeVisible();
+  // No absolute maximum is published for the buzzer: `unrated` (risk unknown, not "safe").
+  await expect(page.getByTestId('result-rating').locator('[data-kind="unrated"]')).toBeVisible();
+  await expect(notice).toContainText('no damage threshold is published');
+  await expect(page.getByTestId('unrated-note')).toContainText('the risk is unknown, not zero');
   await expect(page.getByTestId('result-outside-model')).toBeVisible();
 
   await page.getByTestId('language-select').selectOption('he');
   await expect(notice).toContainText('מחוץ לתנאי ההפעלה המוגדרים');
+  await page.getByTestId('language-select').selectOption('en');
+});
+
+test("the inspector lists the part's documented model limitations (EN/HE)", async ({ page }) => {
+  await openImported(page, buzzerAt(5));
+  await component(page, 'BZ1').locator('.component-hit').click({ force: true });
+  const list = page.getByTestId('limitations-BZ1');
+  await expect(list).toBeVisible();
+  await list.locator('summary').click();
+  await expect(list.getByTestId('limitation-buzzer_curve')).toBeVisible();
+  await expect(list.getByTestId('limitation-buzzer_dc')).toBeVisible();
+  await page.getByTestId('language-select').selectOption('he');
+  await expect(list.locator('summary')).toHaveText('מגבלות המודל');
   await page.getByTestId('language-select').selectOption('en');
 });
 

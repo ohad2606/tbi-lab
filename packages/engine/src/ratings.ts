@@ -11,7 +11,13 @@
  */
 
 import type { SimulationSnapshot } from '@tbi-lab/domain';
-import { I_OH_A, I_OL_A, V_PIN_MAX_V, V_PIN_MIN_V } from './esp32Gpio.js';
+import {
+  I_OL_A,
+  I_OUTPUT_CUMULATIVE_MAX_A,
+  V_PIN_MAX_V,
+  V_PIN_MIN_V,
+  typicalSourceA,
+} from './esp32Gpio.js';
 import { partModel } from './parts.js';
 import type { SolveSuccess } from './session.js';
 import type { LimitKind } from './parts.js';
@@ -87,7 +93,9 @@ export type RatingCode =
   /** An input pad's solved voltage is above VDD + 0.3 V or below -0.3 V (not 5 V tolerant). */
   | 'gpio_input_overvoltage'
   /** An output pad is forced beyond that range by the external circuit (current into the driver). */
-  | 'gpio_output_overvoltage';
+  | 'gpio_output_overvoltage'
+  /** Sprint 13 H2: the pads' total output current is above the Table 5-1 absolute maximum. */
+  | 'gpio_cumulative_current';
 
 /** The unit each warning's `value` and `limit` are in. */
 export const RATING_UNIT: Readonly<Record<RatingCode, 'ampere' | 'volt' | 'watt'>> = {
@@ -103,6 +111,7 @@ export const RATING_UNIT: Readonly<Record<RatingCode, 'ampere' | 'volt' | 'watt'
   gpio_short_supply: 'ampere',
   gpio_input_overvoltage: 'volt',
   gpio_output_overvoltage: 'volt',
+  gpio_cumulative_current: 'ampere',
 };
 
 export interface RatingWarning {
@@ -200,10 +209,12 @@ function gpioWarnings(snapshot: SimulationSnapshot, outcome: SolveSuccess): Rati
       .map((conn) => conn.net),
   );
   const out: RatingWarning[] = [];
+  // Sprint 13 H2: Table 5-3 values are characteristics with no per-pin absolute maximum
+  // (Table 5-1): every per-pin row is `unrated` (damage threshold unknown, not safe).
   const add = (code: RatingCode, gpio: number, value: number, limit: number, other?: number) =>
     out.push({
       component: board.id,
-      kind: 'absolute',
+      kind: 'unrated',
       model: board.type,
       code,
       value,
@@ -221,7 +232,7 @@ function gpioWarnings(snapshot: SimulationSnapshot, outcome: SolveSuccess): Rati
     }
     const high = pin.mode === 'output-high';
     const net = netOfGpio.get(pin.gpio);
-    const limit = high ? I_OH_A : I_OL_A;
+    const limit = high ? typicalSourceA(pin.gpio) : I_OL_A;
     const magnitude = Math.abs(pin.current);
     const rival = outcome.pins.find(
       (q) =>
@@ -237,9 +248,22 @@ function gpioWarnings(snapshot: SimulationSnapshot, outcome: SolveSuccess): Rati
       add('gpio_short_supply', pin.gpio, magnitude, limit);
     else if (outside(pin.voltage))
       add('gpio_output_overvoltage', pin.gpio, pin.voltage, limitFor(pin.voltage));
-    else if (high && pin.current > I_OH_A) add('gpio_source_current', pin.gpio, pin.current, limit);
+    else if (high && pin.current > limit) add('gpio_source_current', pin.gpio, pin.current, limit);
     else if (!high && -pin.current > I_OL_A)
       add('gpio_sink_current', pin.gpio, -pin.current, limit);
   }
+  // Table 5-1 (absolute maximum): the cumulative IO output current, 1200 mA.
+  const total = outcome.pins
+    .filter((p) => p.mode !== 'input')
+    .reduce((a, p) => a + Math.abs(p.current), 0);
+  if (total > I_OUTPUT_CUMULATIVE_MAX_A)
+    out.push({
+      component: board.id,
+      kind: 'absolute',
+      model: board.type,
+      code: 'gpio_cumulative_current',
+      value: total,
+      limit: I_OUTPUT_CUMULATIVE_MAX_A,
+    });
   return out;
 }

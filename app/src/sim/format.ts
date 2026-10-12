@@ -59,7 +59,9 @@ export function ratingRow(locale: LocaleInfo, w: RatingLike): string {
   // Sprint 13 H2: an operating-range row names the limit as the specified operating maximum.
   const operatingKey = `rating.operating.row.${w.code}`;
   const rowKey =
-    w.kind === 'operating' && isMessageKey(operatingKey) ? operatingKey : `rating.row.${w.code}`;
+    w.kind !== undefined && w.kind !== 'absolute' && isMessageKey(operatingKey)
+      ? operatingKey
+      : `rating.row.${w.code}`;
   const row = translate(locale, rowKey as MessageKey, {
     value: isolateLtr(fmt(w.value)),
     limit: isolateLtr(fmt(w.limit)),

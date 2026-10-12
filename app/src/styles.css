@@ -3161,3 +3161,12 @@ select {
 .capabilities-link {
   font-size: inherit;
 }
+
+/* Sprint 13 H2: a part's documented model limitations (inspector). */
+.model-limitations {
+  margin-block-start: 0.75rem;
+}
+.model-limitations ul {
+  padding-inline-start: 1.1rem;
+  margin: 0.25rem 0 0;
+}
