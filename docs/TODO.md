@@ -393,3 +393,202 @@ Start with the exact V1 controller/board and make the data model extensible.
 
 Additional ESP32 variants, Arduino boards and other controllers are added only when they enter the approved product scope.
 
+
+
+---
+
+## IoT & Robotics — System-Level Project Simulation
+
+**Status:** Approved Product Direction / Backlog  
+**Priority:** Strategic expansion after the electrical/MCU core is stable.  
+**Scope rule:** Build on the same canonical circuit, firmware and simulation truth. Do not create a separate fake “robotics simulator” that bypasses electrical correctness.
+
+### Product vision
+
+TBI Lab should eventually support complete embedded-system projects, not only isolated circuits.
+
+Target experience:
+
+**Build → Wire → Code → Simulate/Test**
+
+Examples include:
+- robot car;
+- line follower;
+- sonar/radar demonstrator;
+- robot arm;
+- sumo robot;
+- weather station;
+- soil-moisture / irrigation system;
+- rain detector;
+- occupancy / presence system;
+- environmental monitoring;
+- macro pad / control panel;
+- other IoT and maker projects.
+
+### Layered architecture
+
+This direction must be implemented in layers.
+
+#### Layer 1 — Electrical / firmware truth
+
+Authoritative existing core:
+- controller;
+- wiring;
+- power;
+- GPIO;
+- buses;
+- sensors;
+- actuators;
+- firmware;
+- electrical limits and failures.
+
+No higher-level IoT/robotics visualization may contradict this layer.
+
+#### Layer 2 — Virtual environment inputs
+
+Allow supported sensors to receive physically meaningful environment inputs.
+
+Examples:
+- temperature;
+- humidity;
+- light level;
+- distance;
+- soil moisture;
+- rain/wet state;
+- presence/motion;
+- orientation/position where supported.
+
+Inputs must use documented sensor models and supported ranges.
+
+Do not invent measurements merely to animate a project.
+
+#### Layer 3 — Actuator behavior
+
+Translate validated electrical/firmware outputs into modeled actuator behavior.
+
+Examples:
+- servo angle;
+- DC motor speed/direction;
+- relay state;
+- LED/light output;
+- buzzer state;
+- stepper motion later.
+
+The actuator result must be derived from the electrical and firmware state.
+
+#### Layer 4 — Robotics / physical scene
+
+Later, support projects whose behavior depends on physical motion or geometry.
+
+Examples:
+- robot car test drive;
+- line-following track;
+- ultrasonic obstacle detection;
+- sonar sweep;
+- robot arm motion;
+- sumo arena.
+
+This requires a real scene/kinematics/physics model and must not be approximated as a decorative animation.
+
+### Important distinction: IoT vs Robotics
+
+IoT support can expand earlier because many projects require only:
+- realistic sensor inputs;
+- network/protocol behavior;
+- firmware;
+- actuator outputs;
+- dashboards or state visualization.
+
+Robotics is significantly harder because it adds:
+- geometry;
+- kinematics;
+- motion;
+- collision;
+- wheel/ground interaction;
+- sensor field-of-view;
+- timing;
+- potentially rigid-body physics.
+
+Therefore IoT environment simulation should precede full robotics scene simulation unless a narrow robotics vertical slice is explicitly approved.
+
+### Project templates
+
+TBI Lab should eventually offer complete project templates.
+
+A template may include:
+- canonical circuit;
+- controller definition;
+- firmware starter code;
+- virtual environment;
+- test scenarios;
+- measurement points;
+- expected/validated behavior.
+
+Templates are not canned animations. They are real TBI Lab projects using the same simulation engines as user-created projects.
+
+### Test / Drive / Simulate modes
+
+System-level projects may expose a context-specific test mode.
+
+Examples:
+- **Test Drive** for a robot car;
+- **Simulate Environment** for a weather station;
+- **Run Track** for a line follower;
+- **Sweep** for a sonar project;
+- **Exercise Arm** for a robot arm.
+
+These modes must remain views/controllers over the canonical model, not separate sources of truth.
+
+### IoT networking
+
+Future IoT support may include:
+- Wi-Fi/network state;
+- HTTP/MQTT;
+- local services/endpoints;
+- cloud integrations only when explicitly approved.
+
+Do not introduce production cloud dependencies merely to demonstrate IoT.
+
+Network simulation must distinguish between:
+- simulated local network behavior;
+- real external network access;
+- unsupported behavior.
+
+### AI integration
+
+The AI Engineer may eventually:
+- propose complete IoT/robotics projects;
+- select compatible sensors/actuators;
+- generate validated wiring;
+- generate firmware;
+- diagnose electrical vs firmware vs environment problems;
+- create test scenarios.
+
+AI-generated projects must pass the same electrical, pin-capability and simulation validation as manually built projects.
+
+### Professional quality rule
+
+The goal is not to make a visually impressive robot animation.
+
+The goal is to let a user answer engineering questions such as:
+- Is the motor driver wired correctly?
+- Does the power supply support stall current?
+- Are the GPIO assignments valid?
+- Does the ultrasonic sensor detect the obstacle at this geometry?
+- Does the line sensor see the track?
+- Is the servo commanded beyond its modeled range?
+- Does the firmware react correctly to sensor timing?
+- Does the IoT node behave correctly when a sensor value changes?
+
+If TBI Lab cannot model a requested physical behavior reliably, it must label it unsupported rather than fake it.
+
+### Phasing
+
+Recommended order:
+
+1. Sensor environment controls for IoT projects.
+2. Actuator-state visualization.
+3. Complete IoT project templates.
+4. Narrow robotics vertical slices with validated kinematics/geometry.
+5. Broader robotics scene/physics support only if justified by product demand.
+
