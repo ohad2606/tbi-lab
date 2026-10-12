@@ -26,15 +26,19 @@ afterAll(() => host.shutdown());
  * Pins for Runtime v2 b5b34b49cb7e4049 (10 converging runs each), re-established under the fixed
  * Session Host with the reproducible firmware images (Gate B G-2 Patch B, docs/sprints/s12-evidence/
  * gate-b/G2-FINAL.md). The HC-SR04 pins encode the 4 m session's first reading 23294 (F-R2-2).
+ * Sprint 13 re-pin (10 converging runs each, 2026-10-12): H2 (a23ffcd) adds the field
+ * `outsideModelRange` to every supply-limited part's outcome; it is the only difference in the
+ * event streams, and with it removed all seven fingerprints equal the Sprint 12 pins
+ * (docs/sprints/s13-evidence/ci/PIN-DRIFT-H2.md). Sprint 12 values in that record.
  */
 const PINNED: Record<string, string> = {
-  'hcsr04-0.1m': 'a6174faf18931c61',
-  'hcsr04-1m': 'f5c51475cc5dac18',
-  'hcsr04-4m': 'ce7868f0e5352722',
-  'dht22--10C-30RH': 'b87741773a4f3c7a',
-  'dht22-21.5C-55.2RH': '414a2379065bc425',
-  'dht22-60C-95RH': '10af087aa4803ee2',
-  'lcd1602-hello': '03d6e5f264ed9506',
+  'hcsr04-0.1m': '3dd25c5ae652c283',
+  'hcsr04-1m': '4d076533f2a86241',
+  'hcsr04-4m': '0307e9f722c52aa2',
+  'dht22--10C-30RH': '34cb128f5dbc7182',
+  'dht22-21.5C-55.2RH': '58966db12b113310',
+  'dht22-60C-95RH': '9c0249a9cfec605a',
+  'lcd1602-hello': '8b541851155780da',
 };
 
 interface Scenario {

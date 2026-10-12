@@ -41,9 +41,12 @@ const PINNED_R1: Record<string, string> = {
  * also carries the input-only pads 34, 35, 36 and 39 once (drive 0, level 0): `pinMode(INPUT)`
  * routes the pad to signal 0 for a few instructions and its return to simple GPIO is published
  * (re-pin mechanism 2, SPRINT-12.md F.1). Every electrical outcome and timestamp is unchanged.
+ * Sprint 13 (10 runs, 2026-10-12): `motion` re-pinned from 5fdb6a1ad50a412a — H2 adds the field
+ * `outsideModelRange: false` to the PIR sensor's (U2) outcome, the only difference (night has no
+ * supply-limited part): docs/sprints/s13-evidence/ci/PIN-DRIFT-H2.md.
  */
 const PINNED_V2: Record<string, string> = {
-  motion: '5fdb6a1ad50a412a',
+  motion: '261f54efe0dd9a9c',
   night: '5596d749c3ce4f8c',
 };
 /** Runtime v2 is the one carrying patch 0007 (pad functions). */
