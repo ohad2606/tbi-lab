@@ -660,6 +660,12 @@ export const en = {
     'The last build of the code for {components} failed. Fix it and Build.',
   'build.olderRunning':
     'A build of an earlier version of this code is still in progress. Build the current version when it finishes.',
+  // Sprint 13 OS-04: component bodies may not overlap (Circuit view and its 3D view).
+  'edit.overlap.circuit':
+    '{a} would overlap {b}. Place it where the parts do not cover each other.',
+  'edit.overlap.3d':
+    '{a} would overlap {b} at their real size (as the 3D view shows them). Leave more room between them.',
+  'edit.overlap.both': '{a} would overlap {b}. Place it where the parts do not cover each other.',
   'build.blockedRunning':
     'Build is available after Stop. The running session keeps the firmware it started with.',
   'build.unavailable': 'The build service is not available here.',

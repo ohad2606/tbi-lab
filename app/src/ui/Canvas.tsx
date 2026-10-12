@@ -62,6 +62,7 @@ import {
   rgbTriangle,
   type SymbolState,
 } from './symbols.js';
+import { bodyOverlaps } from '../geometry/overlap.js';
 import { componentBox, componentBoxes, moveRouted, rotateRouted } from './routing.js';
 import { RGB_LOOKS, ledLook } from '../views/ledLooks.js';
 import { resolveWireColors } from '../views/wireColors.js';
@@ -363,11 +364,23 @@ export function Canvas({
         x: camera.x + size.w / camera.scale / 2,
         y: camera.y + size.h / camera.scale / 2,
       });
+      // Sprint 13 OS-04: the nearest place to the centre where the new part overlaps nothing
+      // (the same rule the edit gate applies), searched ring by ring in a fixed order.
+      const free = (p: Point) => {
+        const r = addComponent(doc, type, p);
+        return r.ok && bodyOverlaps(r.doc, new Set([r.id])).length === 0;
+      };
       let at = center;
-      const taken = (p: Point) =>
-        Object.values(doc.layout.components).some((q) => q.x === p.x && q.y === p.y);
-      for (let i = 1; taken(at) && i < 50; i++)
-        at = { x: center.x + i * GRID * 2, y: center.y + i * GRID * 2 };
+      search: for (let ring = 1; !free(at) && ring <= 24; ring++)
+        for (let dy = -ring; dy <= ring; dy++)
+          for (let dx = -ring; dx <= ring; dx++) {
+            if (Math.max(Math.abs(dx), Math.abs(dy)) !== ring) continue;
+            const p = { x: center.x + dx * GRID * 2, y: center.y + dy * GRID * 2 };
+            if (free(p)) {
+              at = p;
+              break search;
+            }
+          }
       const id = place(type, at);
       if (id) focusComponent(id);
     },

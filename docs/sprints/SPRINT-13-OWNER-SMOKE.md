@@ -108,3 +108,58 @@ recorded below as the work lands.
 - `runtime/host/tests/r3-i2c.test.ts`: VCC/SDA swap → `i2c_wiring supply_pin` plus an absolute SDA row with limit = V_DD + 0.5.
 - `runtime/tests/s12-r3.runtime.test.ts`: real QEMU, Wire NACK (4), the diagnostic, unpowered.
 - `app/tests/s13-i2c-warnings.test.ts`: EN/HE texts.
+
+### OS-04 — component-body overlaps (P0) — fixed in S-C
+
+**Root cause:**
+
+- Nothing in the edit path checked bodies. `addComponent`, `moveSelection` and `rotateComponents` accepted any position. The palette's "place at centre" avoided only an identical origin.
+- The 3D view's visual-only separation (Sprint 10) pushed some colliding bodies apart in 3D. It is capped, and it leaves "unresolved" pairs. So 2D and 3D could disagree, and both could show overlapping parts.
+- The two views use different sizes. The LCD module is 80 × 36 mm in 3D, but its symbol is about 37 × 15 mm.
+
+**Fix:** one rule (`app/src/geometry/overlap.ts`) for both views. Two parts overlap if either of these holds:
+
+- Their symbols overlap by more than 2 layout units on both axes.
+- Their **physical** bodies collide at the transform the 3D view derives from the layout. This uses the 3D view's own collision volumes and test, so the real dimensions apply.
+
+Exemptions:
+
+- Parts joined terminal-to-terminal, or plugged together, are exempt from the physical test only, as in 3D.
+- They are not exempt from the symbol test. A part dropped onto another also has coinciding terminals, and must still count.
+
+Enforcement:
+
+- `AppStore.apply` refuses any edit that **creates** an overlap for a part it adds, moves or rotates. The layout is unchanged, and the reason is named (`edit.overlap.circuit|3d|both`, EN/HE).
+- Undo/redo and opening a project are restorations, not placements, and are not refused. Overlaps already present in a project are kept, and the 3D separation remains the safety net for them.
+- Palette "add" searches for the nearest free place, ring by ring.
+
+**Acceptance criteria:**
+
+- (a) A part dropped, added or rotated onto another is refused, and the layout is unchanged.
+- (b) A placement whose symbols are apart but whose real bodies collide is refused.
+- (c) Parts joined at terminals are not overlaps.
+- (d) Every layout the gate accepts needs **no** 3D separation (the views agree).
+- (e) Existing overlaps don't block unrelated edits, and undo always works.
+
+**Tests:** `app/tests/s13-overlap.test.ts` (9). All 22 curated examples are overlap-free.
+
+**Not done:** there is no live red highlight during a drag. The refusal is shown on drop, as a notice.
+
+### OS-05 — wires obscuring displays (P1) — fixed in S-C
+
+**Root cause:** in the router (domain `route.ts`), crossing a body was a soft cost ranked 4th. Display faces were not obstacles at all. Stored routes were repaired only for criteria 1–2. A wire could therefore run over an LCD's text in 2D, and the 3D view (which follows the 2D route) arched it over the real screen.
+
+**Fix:**
+
+- A display face is a protected region, priced with the header bands (criterion 2, behind only terminal keep-out). A route around it always wins when one exists.
+- The face is the union of the drawn face and the **physical** face as the 3D view shows it: the LCD bezel is 70.7 × 23.8 mm. The 8 × 8 matrix face is covered too.
+- New wires, wires re-routed on a move, and stored wires repaired on open all obey it.
+- Endpoints never change, so connectivity is unaffected.
+
+**Acceptance criteria:**
+
+- (a) A new wire whose shortest shape crosses a display goes around it.
+- (b) A stored crossing wire is re-routed on open, clear in 2D **and** in 3D. Plan samples along the 3D wire against the real bezel: before 43, after 0.
+- (c) Wires to the display's own pins still route.
+
+**Tests:** `app/tests/s13-display-routing.test.ts` (4).

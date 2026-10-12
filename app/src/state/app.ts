@@ -54,6 +54,7 @@ import { findExample, loadExampleDocument, type ExampleProbe } from '../examples
 import type { LiveControl } from '@tbi-lab/engine';
 import type { SimState, SimulationHost } from '../sim/controller.js';
 import type { ProgramBuilds } from '../programs/state.js';
+import { bodyOverlaps, type Overlap } from '../geometry/overlap.js';
 import { BuildTransportError, type BuildClient } from '../programs/client.js';
 
 interface HistoryEntry {
@@ -92,6 +93,21 @@ export type Notice = {
   params?: Record<string, string | number>;
   tone?: 'error' | 'warning' | 'info';
 };
+
+/**
+ * Sprint 13 OS-04: the first body overlap an edit would CREATE for a part whose placement it
+ * adds or changes (overlaps already in the document are not the edit's doing), or null.
+ */
+function newOverlap(before: ProjectDocument, after: ProjectDocument): Overlap | null {
+  const moved = new Set<string>();
+  for (const [id, p] of Object.entries(after.layout.components)) {
+    const q = before.layout.components[id];
+    if (!q || q.x !== p.x || q.y !== p.y || q.rotation !== p.rotation) moved.add(id);
+  }
+  if (!moved.size) return null;
+  const existing = new Set(bodyOverlaps(before).map((o) => `${o.a}|${o.b}`));
+  return bodyOverlaps(after, moved).find((o) => !existing.has(`${o.a}|${o.b}`)) ?? null;
+}
 
 /** A project file ready to be handed to the browser as a download. */
 export interface ExportedFile {
@@ -743,7 +759,15 @@ export class AppStore {
   apply(
     result: EditResult,
     selection?: Selection,
-    options: { record?: boolean; coalesce?: string } = {},
+    options: {
+      record?: boolean;
+      coalesce?: string;
+      /**
+       * Restoring a state the document already had (undo/redo): not a new placement, so the
+       * OS-04 overlap gate does not apply (an undo must always be able to go back).
+       */
+      restore?: boolean;
+    } = {},
   ): boolean {
     const current = this.stateValue.doc;
     if (this.stateValue.readOnly || !current) return false;
@@ -765,6 +789,19 @@ export class AppStore {
       const key = specific[result.error];
       this.set({
         notice: key ? { key } : { key: 'error.edit.generic', params: { code: result.error } },
+      });
+      return false;
+    }
+    const overlap = options.restore ? null : newOverlap(current, result.doc);
+    if (overlap) {
+      // Sprint 13 OS-04: a part added, moved or rotated onto another part's body is refused
+      // (one rule for the Circuit and 3D views, geometry/overlap.ts); the layout stays as it was.
+      this.set({
+        notice: {
+          key: `edit.overlap.${overlap.in}`,
+          params: { a: overlap.a, b: overlap.b },
+          tone: 'warning',
+        },
       });
       return false;
     }
@@ -808,6 +845,7 @@ export class AppStore {
     if (
       !this.apply({ ok: true, doc: historyTarget(current, entry.before) }, undefined, {
         record: false,
+        restore: true,
       })
     ) {
       return false;
@@ -823,7 +861,8 @@ export class AppStore {
     const current = this.stateValue.doc;
     if (!entry || !current) return false;
     const target = historyTarget(current, entry.after);
-    if (!this.apply({ ok: true, doc: target }, undefined, { record: false })) return false;
+    if (!this.apply({ ok: true, doc: target }, undefined, { record: false, restore: true }))
+      return false;
     this.future.pop();
     this.past.push(entry); // undo returns to entry.before again
     this.syncHistory();

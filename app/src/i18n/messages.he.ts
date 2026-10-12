@@ -647,6 +647,11 @@ export const he: Record<MessageKey, string> = {
   'run.blocked.buildFailed': 'הבנייה האחרונה של הקוד של {components} נכשלה. תקנו אותו ובנו מחדש.',
   'build.olderRunning':
     'בנייה של גרסה קודמת של הקוד הזה עדיין מתבצעת. בנו את הגרסה הנוכחית כשהיא תסתיים.',
+  // Sprint 13 OS-04: component bodies may not overlap (Circuit view and its 3D view).
+  'edit.overlap.circuit': '{a} יחפוף את {b}. מקמו אותו במקום שבו הרכיבים אינם מכסים זה את זה.',
+  'edit.overlap.3d':
+    '{a} יחפוף את {b} בגודלם האמיתי (כפי שתצוגת ה־3D מציגה אותם). השאירו יותר מקום ביניהם.',
+  'edit.overlap.both': '{a} יחפוף את {b}. מקמו אותו במקום שבו הרכיבים אינם מכסים זה את זה.',
   'build.blockedRunning': 'אפשר לבנות אחרי עצירה. הסשן שרץ ממשיך עם הקושחה שאיתה התחיל.',
   'build.unavailable': 'שירות הבנייה אינו זמין כאן.',
   'build.error.unreachable': 'לא ניתן היה להתחבר לשירות הבנייה. הקוד שלכם שמור; נסו שוב.',

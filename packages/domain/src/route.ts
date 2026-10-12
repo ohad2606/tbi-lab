@@ -20,7 +20,9 @@
  *      reads as connected to it, so this ranks above everything else: a longer route around
  *      the part always beats a short one along a header. Only the hop's own two endpoints are
  *      exempt.
- *   2. HEADER-ROW BAND: length inside the exclusion band of a board header row (its pins and
+ *   2. PROTECTED REGIONS: length over a display face (Sprint 13 OS-05: an LCD's text, a matrix's
+ *      dots; a box the caller marks `display`), plus
+ *      HEADER-ROW BAND: length inside the exclusion band of a board header row (its pins and
  *      their stubs, grown by `HEADER_CLEARANCE` on every side; Sprint 10 second owner blocker).
  *      A wire running along or beside a pin row, or along the row's line beyond its last pin,
  *      reads as attached to the row. Only a hop's own pin on that row may cross the band, and
@@ -60,6 +62,12 @@ export interface RouteBox {
   minY: number;
   maxX: number;
   maxY: number;
+  /**
+   * Sprint 13 OS-05: a display face (an LCD's text, a matrix's dots), not a body: a wire over it
+   * hides what the part shows. Priced with the header bands (criterion 2), ahead of everything
+   * but terminal keep-out, so a route around it always wins when one exists.
+   */
+  display?: boolean;
 }
 
 export interface RouteObstacles {
@@ -263,7 +271,7 @@ function cost(path: Point[], obs: RouteObstacles, ends: readonly Point[]): numbe
       else overlap += overlapLength(s, t);
       if (crosses(s, t)) crossings++;
     }
-    for (const box of obs.boxes) body += boxLength(s, box);
+    for (const box of obs.boxes) if (!box.display) body += boxLength(s, box);
   }
   const keepOut = keepOutHits(segs, obs, isEnd);
   const hug = hugs(segs, obs, ends);
@@ -363,9 +371,13 @@ function onExitLine(s: Seg, h: HeaderRow, ends: readonly Point[]): boolean {
   });
 }
 
-/** Criterion 2: route length inside header-row bands, outward exits of its own pins exempt. */
+/**
+ * Criterion 2: route length inside header-row bands (outward exits of its own pins exempt) and
+ * over display faces.
+ */
 function bandLength(segs: readonly Seg[], obs: RouteObstacles, ends: readonly Point[]): number {
   let n = 0;
+  for (const q of obs.boxes) if (q.display) for (const s of segs) n += lengthInside(s, q);
   for (const h of obs.headers ?? []) {
     const q = band(h);
     for (const s of segs) if (!outwardExit(s, h, ends)) n += lengthInside(s, q);
@@ -509,7 +521,8 @@ function searchRoute(a: Point, b: Point, obs: RouteObstacles, margin: number): P
       c += o * (sharesEnd(t, [a, b]) ? W_SHARED : W_OVERLAP);
       if (crosses(s, t)) c += W_BEND;
     }
-    for (const q of obs.boxes) c += (boxLength(s, q) / GRID) * W_BODY;
+    for (const q of obs.boxes)
+      c += q.display ? (lengthInside(s, q) / GRID) * W_BAND : (boxLength(s, q) / GRID) * W_BODY;
     steps[n * 4 + d] = c;
     return c;
   };
