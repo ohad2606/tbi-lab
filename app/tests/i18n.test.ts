@@ -58,6 +58,8 @@ describe('locale bundles', () => {
     expect(same.filter((k) => !technical(k) && !address(k)).sort()).toEqual([
       // Sprint 10: RGB channel letters (R, G, B) are technical tokens, like pin names.
       'canvas.componentLabel',
+      // Sprint 13: a product name, used as-is in Hebrew.
+      'capabilities.facility.bluetooth.name',
       'probe.currentLabel',
       'probe.noValue',
       'probe.voltageLabel',

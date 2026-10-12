@@ -294,6 +294,7 @@ test('the application menu: keyboard, Escape, click outside, Tab; contents; clos
     'Projects',
     'New project…',
     'Import project…',
+    'What runs on the ESP32',
     'Export project',
   ]);
   await expect(page.getByTestId('sign-out')).toHaveCount(0); // not configured in this build
@@ -311,7 +312,8 @@ test('the application menu: keyboard, Escape, click outside, Tab; contents; clos
   // Click outside closes; so does Tab; the button toggles.
   await button.click();
   await expect(menu(page)).toBeVisible();
-  await page.getByTestId('canvas').click({ position: { x: 20, y: 20 } });
+  // (The canvas centre: well clear of the open menu, which covers the canvas's top corner.)
+  await page.getByTestId('canvas').click();
   await expect(menu(page)).toHaveCount(0);
   await button.click();
   await page.keyboard.press('Tab');
@@ -338,6 +340,7 @@ test('the application menu: keyboard, Escape, click outside, Tab; contents; clos
         'פרויקטים',
         'פרויקט חדש…',
         'ייבוא פרויקט…',
+        'מה רץ על ה־ESP32',
         'ייצוא פרויקט',
       ]);
     await page.keyboard.press('Escape');

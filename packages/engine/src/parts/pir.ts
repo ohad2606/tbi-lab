@@ -21,7 +21,15 @@
  */
 import { Resistor, VoltageSource } from '../devices.js';
 import { ConstantSink, RegulatedOutput } from '../sources.js';
-import { registerPart, validateCard, type PartModel, type PartState } from '../parts.js';
+import {
+  registerPart,
+  supplyAcross,
+  supplyLimits,
+  supplyOutsideModel,
+  validateCard,
+  type PartModel,
+  type PartState,
+} from '../parts.js';
 
 export const HC_SR501 = {
   minSupplyV: 4.5,
@@ -100,15 +108,15 @@ export const PIR: PartModel = {
       terminals,
       currents: { supply, output: out },
       state: { powered: on, output: high ? 'high' : 'low' },
+      outsideModelRange: supplyOutsideModel(supplyAcross(terminals, 'vcc'), {
+        minV: HC_SR501.minSupplyV,
+        maxV: HC_SR501.maxSupplyV,
+      }),
     };
   },
-  ratings: (_p, r) => {
-    const v = r.terminals.vcc;
-    const g = r.terminals.gnd;
-    return v != null && g != null && v - g > HC_SR501.maxSupplyV
-      ? [{ code: 'voltage', value: v - g, limit: HC_SR501.maxSupplyV, channel: 'supply' }]
-      : [];
-  },
+  // Sprint 13 H2: 4.5-20 V is the specified operating range; no absolute maximum is published.
+  ratings: (_p, r) =>
+    supplyLimits(supplyAcross(r.terminals, 'vcc'), { maxOperatingV: HC_SR501.maxSupplyV }),
 };
 
 registerPart('sensor.pir_hc_sr501', PIR);

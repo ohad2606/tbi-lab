@@ -849,6 +849,99 @@ export const en = {
   'pin.gpio0': 'IO0',
   'pin.gpio2': 'IO2',
   'pin.gpio15': 'IO15',
+  // Sprint 13 H1: what runs on the ESP32 (packages/domain/src/capabilities.ts).
+  'menu.capabilities': 'What runs on the ESP32',
+  'capabilities.title': 'What runs on the ESP32 in TBI Lab',
+  'capabilities.intro':
+    'TBI Lab runs your sketch on an emulated Classic ESP32 (ESP32 DevKitC, WROOM-32) and simulates the circuit around it. This list says exactly what is simulated, what has limits, and what is refused. A refused feature never runs silently: the product tells you before Run.',
+  'capabilities.close': 'Close',
+  'capabilities.learnMore': 'What runs on the ESP32?',
+  'capabilities.section.firmware': 'Firmware features',
+  'capabilities.section.parts': 'Parts next to an ESP32',
+  'capabilities.section.timing': 'Timing',
+  'capabilities.section.limits': 'Shared service limits',
+  'capabilities.status.supported': 'Supported',
+  'capabilities.status.limited': 'Supported with limits',
+  'capabilities.status.unsupported': 'Not supported',
+  'capabilities.facility.digital_io.name': 'Digital input and output',
+  'capabilities.facility.digital_io.body':
+    'pinMode, digitalWrite and digitalRead on the pins the board diagram marks as available. Levels and currents come from the circuit simulation.',
+  'capabilities.facility.serial.name': 'Serial monitor (UART0)',
+  'capabilities.facility.serial.body':
+    'Serial.print and Serial.read through the ESP32 terminal. The text is exact; the bit timing of the line is not simulated.',
+  'capabilities.facility.preferences.name': 'Preferences (non-volatile storage)',
+  'capabilities.facility.preferences.body':
+    'The Preferences library works within one run. Nothing is kept after Stop.',
+  'capabilities.facility.i2c.name': 'I2C bus (Wire)',
+  'capabilities.facility.i2c.body':
+    'Wire as controller on the supported I2C parts, with real addresses, acknowledgements and pull-up levels. The duration of each bus transfer is not simulated.',
+  'capabilities.facility.timing.name': 'millis, micros, delay, delayMicroseconds, pulseIn',
+  'capabilities.facility.timing.body':
+    'Run in simulated time. See Timing below for the exact limits.',
+  'capabilities.facility.dual_core.name': 'Both CPU cores (FreeRTOS tasks)',
+  'capabilities.facility.dual_core.body':
+    'Tasks run on both cores. A sketch that keeps core 0 busy can delay code on core 1 by up to about 1 ms, so microsecond timing is not supported in such sketches.',
+  'capabilities.facility.pwm.name': 'PWM / LEDC output (analogWrite, ledcWrite)',
+  'capabilities.facility.pwm.body':
+    'Not simulated yet. A sketch that uses it is refused before Run.',
+  'capabilities.facility.interrupt.name': 'GPIO interrupts (attachInterrupt)',
+  'capabilities.facility.interrupt.body': 'Not simulated. Poll the pin with digitalRead instead.',
+  'capabilities.facility.internal_pull.name':
+    'Internal pull-up / pull-down (INPUT_PULLUP, INPUT_PULLDOWN)',
+  'capabilities.facility.internal_pull.body':
+    'Not simulated. Add an external resistor to the circuit.',
+  'capabilities.facility.adc.name': 'Analog input (analogRead, ADC)',
+  'capabilities.facility.adc.body':
+    'Not simulated. Light and other sensors are read as digital levels.',
+  'capabilities.facility.dac.name': 'Analog output (dacWrite)',
+  'capabilities.facility.dac.body': 'Not simulated.',
+  'capabilities.facility.touch.name': 'Touch sensing',
+  'capabilities.facility.touch.body': 'Not simulated.',
+  'capabilities.facility.spi.name': 'SPI bus',
+  'capabilities.facility.spi.body': 'Not simulated.',
+  'capabilities.facility.wifi.name': 'Wi-Fi networking',
+  'capabilities.facility.wifi.body':
+    'Not simulated. Sketches that use Wi-Fi are refused before Run.',
+  'capabilities.facility.bluetooth.name': 'Bluetooth',
+  'capabilities.facility.bluetooth.body': 'Not simulated.',
+  'capabilities.facility.sleep.name': 'Sleep modes',
+  'capabilities.facility.sleep.body': 'Not simulated.',
+  'capabilities.facility.restart.name': 'Chip restart (ESP.restart)',
+  'capabilities.facility.restart.body': 'Not simulated. Press Stop and Run to start again.',
+  'capabilities.facility.library.name': 'Arduino libraries',
+  'capabilities.facility.library.body':
+    'Only libraries built into the ESP32 core that are listed here run (Preferences; Wire on the I2C parts). Other libraries, such as DHT or LiquidCrystal_I2C, are refused; the curated examples show the same parts without them.',
+  'capabilities.timing.electrical_exact':
+    'Signals the simulated parts send (for example a sensor echo) and the pin levels your sketch writes are placed at their exact simulated time.',
+  'capabilities.timing.polling':
+    'Your sketch sees an input change when it next reads the pin. In each simulated millisecond there are short intervals, up to about 13 µs, when the emulated core cannot run, so a change can be seen that much later.',
+  'capabilities.timing.outputs_longer':
+    'Pulses your sketch times with delayMicroseconds can come out up to about 12 µs longer, never shorter.',
+  'capabilities.timing.busy_core0':
+    'If a task keeps core 0 busy, code on core 1 can be delayed by up to about 1 ms. Microsecond timing is not supported in such sketches.',
+  'capabilities.timing.delay_phase':
+    'delay() keeps its length exactly; the first wake-up can come up to about 0.5 ms later than on a real board.',
+  'capabilities.timing.pulsein':
+    'pulseIn readings are within one microsecond of the true width; when an edge falls into one of the short intervals above, a reading can be off by up to about 13.5 µs (about 2 mm for an HC-SR04).',
+  'capabilities.timing.no_us_claim':
+    'TBI Lab does not claim unrestricted microsecond timing. If exact timing matters for your project, check it on a real board.',
+  'capabilities.limit.runtime_busy':
+    'The shared ESP32 simulator is at capacity. Your project is not affected; try Run again in a moment.',
+  'capabilities.limit.session_quota':
+    'Each person runs one ESP32 simulation at a time. Stop the other one first.',
+  'capabilities.limit.rate_limited':
+    'Too many runs were started in a short time. Wait the time shown, then try again.',
+  'capabilities.limit.session_expired':
+    'A run ends after 30 minutes or when the page stops responding. Press Run to start a new one.',
+  'capabilities.limit.commands_rate_limited':
+    'Part controls changed too quickly while running; some changes were refused. Change them more slowly.',
+  'capabilities.parts.supported': 'Simulated with the ESP32.',
+  // Sprint 13 H2: outside the specified operating range (no damage claim).
+  'rating.operating.heading': 'Outside specified operating conditions',
+  'rating.operating.summary': '{component} is outside its specified operating range',
+  'rating.operating.row.voltage': 'Supply: {value} (specified operating maximum {limit})',
+  'rating.operating.note':
+    'No damage is implied: the datasheet specifies an operating range only. The simulated result may not match a real part.',
 } as const;
 
 export type MessageKey = keyof typeof en;

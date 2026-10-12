@@ -230,7 +230,7 @@ test('ESP32 projects: parts the runtime cannot simulate are disabled in the pale
   const matrix = page.getByTestId('palette-display.led_matrix_8x8');
   await expect(matrix).toBeDisabled();
   await expect(matrix).toHaveAttribute('data-unavailable', 'part_needs_runtime');
-  await expect(page.getByTestId('palette-note-part_needs_runtime')).toHaveText(
+  await expect(page.getByTestId('palette-note-text-part_needs_runtime')).toHaveText(
     'Requires runtime support not available for ESP32 yet.',
   );
   await expect(page.getByTestId('palette-component.capacitor')).toBeDisabled();
@@ -239,16 +239,16 @@ test('ESP32 projects: parts the runtime cannot simulate are disabled in the pale
     'data-unavailable',
     'part_time_dependent',
   );
-  await expect(page.getByTestId('palette-note-part_time_dependent')).toHaveText(
+  await expect(page.getByTestId('palette-note-text-part_time_dependent')).toHaveText(
     'Time-dependent parts are simulated only in circuits without an ESP32.',
   );
   // The original parts stay available.
   await expect(page.getByTestId('palette-component.led')).toBeEnabled();
   await page.getByTestId('language-select').selectOption('he');
-  await expect(page.getByTestId('palette-note-part_needs_runtime')).toHaveText(
+  await expect(page.getByTestId('palette-note-text-part_needs_runtime')).toHaveText(
     'דורש תמיכת Runtime שעדיין אינה זמינה ל־ESP32.',
   );
-  await expect(page.getByTestId('palette-note-part_time_dependent')).toHaveText(
+  await expect(page.getByTestId('palette-note-text-part_time_dependent')).toHaveText(
     'רכיבים תלויי־זמן מדומים רק במעגלים ללא ESP32.',
   );
   await page.getByTestId('language-select').selectOption('en');

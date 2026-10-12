@@ -126,3 +126,22 @@ describe('Sprint 12 (ADR-011 §5): facilities the runtime provides become `requi
     expect(f.requires).toEqual(['i2c']);
   });
 });
+
+describe('Sprint 13 H1: every reportable facility has a capability-panel entry', () => {
+  it('each feature code maps to a registry facility that is refused or runtime-gated', async () => {
+    const { FEATURE_CODES } = await import('../features.js');
+    const { facilityForFeature } = await import('@tbi-lab/domain');
+    for (const code of FEATURE_CODES) {
+      const f = facilityForFeature(code);
+      expect(f, code).toBeDefined();
+      expect(f!.refusedByBuild || f!.requiresRuntime !== undefined, code).toBe(true);
+    }
+  });
+
+  it('no stale entries: every refused registry facility is a code the build service can report', async () => {
+    const { FEATURE_CODES } = await import('../features.js');
+    const { FIRMWARE_FACILITIES } = await import('@tbi-lab/domain');
+    for (const f of FIRMWARE_FACILITIES.filter((x) => x.refusedByBuild))
+      expect(FEATURE_CODES, f.id).toContain(f.id);
+  });
+});

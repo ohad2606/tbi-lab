@@ -82,12 +82,80 @@ export interface PartCard {
 }
 
 /** A documented limit the solved result exceeds (ratings.ts turns it into a RatingWarning). */
+/**
+ * Sprint 13 H2 (Component Failure Framework): what kind of published limit was crossed.
+ * - `absolute`: a datasheet ABSOLUTE MAXIMUM rating (or a maximum allowable value): a real part
+ *   risks damage;
+ * - `operating`: outside the datasheet's specified OPERATING range only (no absolute maximum is
+ *   published for it): no damage claim; the simulated result may not match a real part.
+ */
+export type LimitKind = 'absolute' | 'operating';
+
 export interface PartRatingExcess {
   code: 'forward_current' | 'reverse_voltage' | 'power' | 'voltage' | 'current';
   value: number;
   limit: number;
+  /** Absent = `absolute` (every Sprint 5-12 check was an absolute or allowable maximum). */
+  kind?: LimitKind;
   /** Which element of the part (an RGB channel, a relay's coil or contact), if not the whole part. */
   channel?: string;
+}
+
+/** The supply across a part's terminals (`plus` - `minus`), or null when either is unknown. */
+export function supplyAcross(
+  terminals: Readonly<Record<string, number | null | undefined>>,
+  plus: string,
+  minus = 'gnd',
+): number | null {
+  const p = terminals[plus];
+  const m = terminals[minus];
+  return p != null && m != null ? p - m : null;
+}
+
+/**
+ * Sprint 13 H2: a module supply (VCC - GND) against its datasheet. Above the specified operating
+ * maximum: an `operating` row; above a PUBLISHED absolute maximum (when the datasheet gives one):
+ * an `absolute` row instead. Nothing is reported below the minimum: a part there is modelled as
+ * unpowered, which `supplyOutsideModel` marks as an unreliable result.
+ */
+export function supplyLimits(
+  supplyV: number | null,
+  spec: { maxOperatingV: number; absoluteMaxV?: number },
+): PartRatingExcess[] {
+  if (supplyV === null) return [];
+  if (spec.absoluteMaxV !== undefined && supplyV > spec.absoluteMaxV)
+    return [
+      {
+        kind: 'absolute',
+        code: 'voltage',
+        value: supplyV,
+        limit: spec.absoluteMaxV,
+        channel: 'supply',
+      },
+    ];
+  if (supplyV > spec.maxOperatingV)
+    return [
+      {
+        kind: 'operating',
+        code: 'voltage',
+        value: supplyV,
+        limit: spec.maxOperatingV,
+        channel: 'supply',
+      },
+    ];
+  return [];
+}
+
+/**
+ * Sprint 13 H2 (unreliable-result indicator): the module is supplied (at least 0.1 V, so a part
+ * that is simply switched off is not flagged) but outside its specified operating range. Below
+ * the minimum the model shows the part as unpowered; a real part there may behave unpredictably.
+ */
+export function supplyOutsideModel(
+  supplyV: number | null,
+  range: { minV: number; maxV: number },
+): boolean {
+  return supplyV !== null && supplyV >= 0.1 && (supplyV < range.minV || supplyV > range.maxV);
 }
 
 export interface PartModel {

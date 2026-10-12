@@ -20,7 +20,15 @@
  */
 import { Resistor } from '../devices.js';
 import { ConstantSink } from '../sources.js';
-import { registerPart, validateCard, type PartModel, type PartState } from '../parts.js';
+import {
+  registerPart,
+  supplyAcross,
+  supplyLimits,
+  supplyOutsideModel,
+  validateCard,
+  type PartModel,
+  type PartState,
+} from '../parts.js';
 
 export const DHT22_DC = {
   minSupplyV: 3.3,
@@ -92,15 +100,18 @@ export const DHT22: PartModel = {
         output: low ? sol.deviceCurrent(`${id}/rlow`) : 0,
       },
       state: { powered: on, output: on ? (low ? 'low' : 'released') : 'off' },
+      outsideModelRange: supplyOutsideModel(
+        supplyAcross({ vdd: sol.potential('vdd'), gnd: sol.potential('gnd') }, 'vdd'),
+        {
+          minV: DHT22_DC.minSupplyV - EPS_V,
+          maxV: DHT22_DC.maxSupplyV,
+        },
+      ),
     };
   },
-  ratings: (_p, r) => {
-    const v = r.terminals.vdd;
-    const g = r.terminals.gnd;
-    return v != null && g != null && v - g > DHT22_DC.maxSupplyV
-      ? [{ code: 'voltage', value: v - g, limit: DHT22_DC.maxSupplyV, channel: 'supply' }]
-      : [];
-  },
+  // Sprint 13 H2: 3.3-6 V is the specified supply range (min/typ/max); no absolute maximum.
+  ratings: (_p, r) =>
+    supplyLimits(supplyAcross(r.terminals, 'vdd'), { maxOperatingV: DHT22_DC.maxSupplyV }),
 };
 
 registerPart('sensor.dht22', DHT22);

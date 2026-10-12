@@ -571,9 +571,14 @@ function ComponentResultView({
       {doc &&
         (() => {
           const rows = warningsFor(doc, outcome).filter((w) => w.component === component.id);
-          return rows.length ? (
+          const kinds = (['absolute', 'operating'] as const)
+            .map((k) => rows.filter((w) => w.kind === k))
+            .filter((g) => g.length);
+          return kinds.length ? (
             <div class="sim-warning" data-testid="result-rating">
-              <RatingGroup component={component.id} rows={rows} />
+              {kinds.map((g) => (
+                <RatingGroup key={g[0]!.kind} component={component.id} rows={g} />
+              ))}
             </div>
           ) : null;
         })()}

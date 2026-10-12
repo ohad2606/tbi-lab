@@ -813,7 +813,11 @@ export function Canvas({
     probes.filter((p) => p.kind === 'current').map((p) => (p as { component: string }).component),
   );
   const overstressed = new Set(
-    outcome?.ok ? warningsFor(doc, outcome).map((w) => w.component) : [],
+    outcome?.ok
+      ? warningsFor(doc, outcome)
+          .filter((w) => w.kind !== 'operating')
+          .map((w) => w.component)
+      : [],
   );
   const issues = simActive ? [] : checksFor(doc);
   const markers = issues.flatMap((i) =>

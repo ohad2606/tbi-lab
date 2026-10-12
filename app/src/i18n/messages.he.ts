@@ -827,4 +827,92 @@ export const he: Record<MessageKey, string> = {
   'pin.gpio0': 'IO0',
   'pin.gpio2': 'IO2',
   'pin.gpio15': 'IO15',
+  // Sprint 13 H1: what runs on the ESP32 (packages/domain/src/capabilities.ts).
+  'menu.capabilities': 'מה רץ על ה־ESP32',
+  'capabilities.title': 'מה רץ על ה־ESP32 ב־TBI Lab',
+  'capabilities.intro':
+    'TBI Lab מריץ את הסקיצ׳ שלך על ESP32 Classic מדומה (ESP32 DevKitC, ‏WROOM-32) ומדמה את המעגל סביבו. הרשימה מפרטת בדיוק מה מדומה, מה מוגבל ומה נדחה. יכולת שנדחית לעולם אינה רצה בשקט: המוצר מודיע על כך לפני הרצה.',
+  'capabilities.close': 'סגירה',
+  'capabilities.learnMore': 'מה רץ על ה־ESP32?',
+  'capabilities.section.firmware': 'יכולות קושחה',
+  'capabilities.section.parts': 'רכיבים לצד ESP32',
+  'capabilities.section.timing': 'תזמון',
+  'capabilities.section.limits': 'מגבלות השירות המשותף',
+  'capabilities.status.supported': 'נתמך',
+  'capabilities.status.limited': 'נתמך עם מגבלות',
+  'capabilities.status.unsupported': 'לא נתמך',
+  'capabilities.facility.digital_io.name': 'כניסות ויציאות דיגיטליות',
+  'capabilities.facility.digital_io.body':
+    'pinMode,‏ digitalWrite ו־digitalRead על הפינים שתרשים הלוח מסמן כזמינים. הרמות והזרמים מגיעים מסימולציית המעגל.',
+  'capabilities.facility.serial.name': 'צג טורי (UART0)',
+  'capabilities.facility.serial.body':
+    'Serial.print ו־Serial.read דרך מסוף ה־ESP32. הטקסט מדויק; תזמון הביטים בקו אינו מדומה.',
+  'capabilities.facility.preferences.name': 'Preferences (זיכרון בלתי נדיף)',
+  'capabilities.facility.preferences.body':
+    'ספריית Preferences פועלת בתוך הרצה אחת. דבר אינו נשמר אחרי עצירה.',
+  'capabilities.facility.i2c.name': 'אפיק I2C ‏(Wire)',
+  'capabilities.facility.i2c.body':
+    'Wire כבקר מול רכיבי ה־I2C הנתמכים, עם כתובות, אישורים (ACK) ורמות Pull-up אמיתיים. משך כל העברה באפיק אינו מדומה.',
+  'capabilities.facility.timing.name': 'millis,‏ micros,‏ delay,‏ delayMicroseconds,‏ pulseIn',
+  'capabilities.facility.timing.body': 'רצים בזמן מדומה. המגבלות המדויקות מפורטות בסעיף תזמון.',
+  'capabilities.facility.dual_core.name': 'שתי ליבות המעבד (משימות FreeRTOS)',
+  'capabilities.facility.dual_core.body':
+    'משימות רצות על שתי הליבות. סקיצ׳ שמעסיק את ליבה 0 ברציפות עלול לעכב קוד בליבה 1 עד כ־1 ms, ולכן תזמון ברמת מיקרו־שניות אינו נתמך בסקיצ׳ים כאלה.',
+  'capabilities.facility.pwm.name': 'יציאת PWM / LEDC ‏(analogWrite,‏ ledcWrite)',
+  'capabilities.facility.pwm.body': 'עדיין אינו מדומה. סקיצ׳ שמשתמש בו נדחה לפני הרצה.',
+  'capabilities.facility.interrupt.name': 'פסיקות GPIO ‏(attachInterrupt)',
+  'capabilities.facility.interrupt.body': 'אינן מדומות. במקומן, קראו את הפין ב־digitalRead.',
+  'capabilities.facility.internal_pull.name':
+    'Pull-up / Pull-down פנימיים (INPUT_PULLUP,‏ INPUT_PULLDOWN)',
+  'capabilities.facility.internal_pull.body': 'אינם מדומים. הוסיפו נגד חיצוני למעגל.',
+  'capabilities.facility.adc.name': 'כניסה אנלוגית (analogRead,‏ ADC)',
+  'capabilities.facility.adc.body': 'אינה מדומה. חיישני אור וחיישנים אחרים נקראים כרמות דיגיטליות.',
+  'capabilities.facility.dac.name': 'יציאה אנלוגית (dacWrite)',
+  'capabilities.facility.dac.body': 'אינה מדומה.',
+  'capabilities.facility.touch.name': 'חישת מגע',
+  'capabilities.facility.touch.body': 'אינה מדומה.',
+  'capabilities.facility.spi.name': 'אפיק SPI',
+  'capabilities.facility.spi.body': 'אינו מדומה.',
+  'capabilities.facility.wifi.name': 'רשת Wi-Fi',
+  'capabilities.facility.wifi.body': 'אינה מדומה. סקיצ׳ים שמשתמשים ב־Wi-Fi נדחים לפני הרצה.',
+  'capabilities.facility.bluetooth.name': 'Bluetooth',
+  'capabilities.facility.bluetooth.body': 'אינו מדומה.',
+  'capabilities.facility.sleep.name': 'מצבי שינה',
+  'capabilities.facility.sleep.body': 'אינם מדומים.',
+  'capabilities.facility.restart.name': 'אתחול השבב (ESP.restart)',
+  'capabilities.facility.restart.body': 'אינו מדומה. לחצו עצירה ואז הרצה כדי להתחיל מחדש.',
+  'capabilities.facility.library.name': 'ספריות Arduino',
+  'capabilities.facility.library.body':
+    'רצות רק ספריות מובנות של ליבת ה־ESP32 שמופיעות כאן (Preferences; ‏Wire מול רכיבי ה־I2C). ספריות אחרות, כמו DHT או LiquidCrystal_I2C, נדחות; הדוגמאות המוכנות מראות את אותם רכיבים בלעדיהן.',
+  'capabilities.timing.electrical_exact':
+    'אותות שהרכיבים המדומים שולחים (למשל הד של חיישן) ורמות הפינים שהסקיצ׳ כותב ממוקמים בזמן המדומה המדויק שלהם.',
+  'capabilities.timing.polling':
+    'הסקיצ׳ מזהה שינוי בכניסה בקריאה הבאה של הפין. בכל מילי־שנייה מדומה יש מרווחים קצרים, עד כ־13 µs, שבהם הליבה המדומה אינה יכולה לרוץ, ולכן שינוי עלול להתגלות מאוחר בשיעור זה.',
+  'capabilities.timing.outputs_longer':
+    'פולסים שהסקיצ׳ מתזמן ב־delayMicroseconds עשויים לצאת ארוכים עד כ־12 µs, לעולם לא קצרים יותר.',
+  'capabilities.timing.busy_core0':
+    'אם משימה מעסיקה את ליבה 0 ברציפות, קוד בליבה 1 עלול להתעכב עד כ־1 ms. תזמון ברמת מיקרו־שניות אינו נתמך בסקיצ׳ים כאלה.',
+  'capabilities.timing.delay_phase':
+    'delay() שומר על אורכו במדויק; היקיצה הראשונה עשויה להגיע עד כ־0.5 ms מאוחר יותר מאשר בלוח אמיתי.',
+  'capabilities.timing.pulsein':
+    'קריאות pulseIn נמצאות בטווח של מיקרו־שנייה אחת מהרוחב האמיתי; כשקצה נופל לאחד המרווחים הקצרים שלמעלה, קריאה עשויה לסטות עד כ־13.5 µs (כ־2 מ״מ ב־HC-SR04).',
+  'capabilities.timing.no_us_claim':
+    'TBI Lab אינו מתחייב לתזמון בלתי מוגבל ברמת מיקרו־שניות. אם תזמון מדויק חשוב לפרויקט שלכם, בדקו אותו על לוח אמיתי.',
+  'capabilities.limit.runtime_busy':
+    'סימולטור ה־ESP32 המשותף מלא כרגע. הפרויקט שלכם לא נפגע; נסו להריץ שוב בעוד רגע.',
+  'capabilities.limit.session_quota':
+    'כל משתמש מריץ סימולציית ESP32 אחת בכל פעם. עצרו קודם את האחרת.',
+  'capabilities.limit.rate_limited':
+    'הופעלו יותר מדי הרצות בזמן קצר. המתינו את הזמן המוצג ונסו שוב.',
+  'capabilities.limit.session_expired':
+    'הרצה מסתיימת אחרי 30 דקות או כשהדף מפסיק להגיב. לחצו הרצה כדי להתחיל חדשה.',
+  'capabilities.limit.commands_rate_limited':
+    'פקדי הרכיבים שונו מהר מדי בזמן ההרצה; חלק מהשינויים נדחו. שנו אותם לאט יותר.',
+  'capabilities.parts.supported': 'מדומה לצד ה־ESP32.',
+  // Sprint 13 H2: outside the specified operating range (no damage claim).
+  'rating.operating.heading': 'מחוץ לתנאי ההפעלה המוגדרים',
+  'rating.operating.summary': '{component} מחוץ לטווח ההפעלה המוגדר שלו',
+  'rating.operating.row.voltage': 'אספקה: {value} (מקסימום הפעלה מוגדר {limit})',
+  'rating.operating.note':
+    'אין כאן טענה לנזק: גיליון הנתונים מגדיר טווח הפעלה בלבד. התוצאה המדומה עשויה שלא להתאים לרכיב אמיתי.',
 };

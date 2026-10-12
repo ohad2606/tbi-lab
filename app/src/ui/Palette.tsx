@@ -1,3 +1,4 @@
+import { LearnMore } from './Capabilities.js';
 import { CATALOG, CATALOG_ORDER, placementBlock, type ComponentTypeId } from '@tbi-lab/domain';
 import { catalogText } from '../i18n/i18n.js';
 import type { MessageKey } from '../i18n/messages.en.js';
@@ -59,7 +60,10 @@ export function Palette({ placing, onPick }: Props) {
           id={`palette-note-${block}`}
           data-testid={`palette-note-${block}`}
         >
-          {t(`palette.unavailable.${block}`)}
+          <span data-testid={`palette-note-text-${block}`}>
+            {t(`palette.unavailable.${block}`)}
+          </span>{' '}
+          <LearnMore section="parts" />
         </p>
       ))}
       {GROUPS.map((group) => (

@@ -19,11 +19,21 @@
  *   (a target pulling SDA low) are not part of the DC result: I2C is transaction-level.
  */
 import { ConstantSink } from '../sources.js';
-import { registerPart, validateCard, type PartModel, type PartState } from '../parts.js';
+import {
+  registerPart,
+  supplyAcross,
+  supplyLimits,
+  supplyOutsideModel,
+  validateCard,
+  type PartModel,
+  type PartState,
+} from '../parts.js';
 
 export const LCD1602_DC = {
   minSupplyV: 4.5,
   maxSupplyV: 5.5,
+  /** JHD659 p.6, absolute maximum ratings: logic supply 7.0 V. */
+  absoluteMaxSupplyV: 7.0,
   logicA: 0.35e-3 + 40e-6,
   backlightA: 0.02,
 };
@@ -74,15 +84,21 @@ export const LCD1602_I2C: PartModel = {
         supply: on ? LCD1602_DC.logicA + (light ? LCD1602_DC.backlightA : 0) : 0,
       },
       state: { powered: on, backlight: light },
+      outsideModelRange: supplyOutsideModel(
+        supplyAcross({ vcc: sol.potential('vcc'), gnd: sol.potential('gnd') }, 'vcc'),
+        {
+          minV: LCD1602_DC.minSupplyV,
+          maxV: LCD1602_DC.maxSupplyV,
+        },
+      ),
     };
   },
-  ratings: (_p, r) => {
-    const v = r.terminals.vcc;
-    const g = r.terminals.gnd;
-    return v != null && g != null && v - g > LCD1602_DC.maxSupplyV
-      ? [{ code: 'voltage', value: v - g, limit: LCD1602_DC.maxSupplyV, channel: 'supply' }]
-      : [];
-  },
+  // Sprint 13 H2: 4.5-5.5 V operating; 7.0 V is the logic supply's absolute maximum (JHD659 p.6).
+  ratings: (_p, r) =>
+    supplyLimits(supplyAcross(r.terminals, 'vcc'), {
+      maxOperatingV: LCD1602_DC.maxSupplyV,
+      absoluteMaxV: LCD1602_DC.absoluteMaxSupplyV,
+    }),
 };
 
 /** PCF8574 input thresholds as fractions of its supply (NXP p.16: V_IH 0.7 VDD, V_IL 0.3 VDD). */

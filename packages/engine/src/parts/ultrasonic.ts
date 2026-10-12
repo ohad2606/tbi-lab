@@ -19,7 +19,15 @@
  */
 import { Resistor } from '../devices.js';
 import { ConstantSink } from '../sources.js';
-import { registerPart, validateCard, type PartModel, type PartState } from '../parts.js';
+import {
+  registerPart,
+  supplyAcross,
+  supplyLimits,
+  supplyOutsideModel,
+  validateCard,
+  type PartModel,
+  type PartState,
+} from '../parts.js';
 
 export const HC_SR04_DC = {
   minSupplyV: 4.5,
@@ -92,15 +100,15 @@ export const ULTRASONIC: PartModel = {
         output: out,
       },
       state: { powered: on, output: on ? (high ? 'high' : 'low') : 'off' },
+      outsideModelRange: supplyOutsideModel(supplyAcross(terminals, 'vcc'), {
+        minV: HC_SR04_DC.minSupplyV,
+        maxV: HC_SR04_DC.maxSupplyV,
+      }),
     };
   },
-  ratings: (_p, r) => {
-    const v = r.terminals.vcc;
-    const g = r.terminals.gnd;
-    return v != null && g != null && v - g > HC_SR04_DC.maxSupplyV
-      ? [{ code: 'voltage', value: v - g, limit: HC_SR04_DC.maxSupplyV, channel: 'supply' }]
-      : [];
-  },
+  // Sprint 13 H2: the sources give a working range only (no absolute maximum): an operating row.
+  ratings: (_p, r) =>
+    supplyLimits(supplyAcross(r.terminals, 'vcc'), { maxOperatingV: HC_SR04_DC.maxSupplyV }),
 };
 
 /** TRIG as the module reads it (TTL thresholds, holding inside the band). */

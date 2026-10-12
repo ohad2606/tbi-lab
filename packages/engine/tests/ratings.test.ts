@@ -58,6 +58,7 @@ describe('ratingWarnings', () => {
     const w = ratingWarnings(snapshot, outcome);
     expect(w).toContainEqual({
       component: d,
+      kind: 'absolute',
       model: 'model.led.vishay_tlhr5400',
       code: 'forward_current',
       value: r.current,
@@ -65,6 +66,7 @@ describe('ratingWarnings', () => {
     });
     expect(w).toContainEqual({
       component: d,
+      kind: 'absolute',
       model: 'model.led.vishay_tlhr5400',
       code: 'power',
       value: Math.abs(r.current! * r.voltage!),

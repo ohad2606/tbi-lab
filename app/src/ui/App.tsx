@@ -1,3 +1,4 @@
+import { CapabilitiesHost } from './Capabilities.js';
 import { useEffect, useLayoutEffect } from 'preact/hooks';
 import { useAppState, useStore, useT } from './context.js';
 import { Editor } from './Editor.js';
@@ -82,6 +83,7 @@ export function App() {
       <NoticeBar />
       {state.screen === 'editor' && state.doc ? <Editor /> : <Home />}
       <VersionStatus />
+      <CapabilitiesHost />
     </div>
   );
 }

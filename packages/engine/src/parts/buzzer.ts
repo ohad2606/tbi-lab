@@ -64,9 +64,10 @@ export const BUZZER: PartModel = {
       outsideModelRange: v !== null && Math.abs(v) > 1e-3 && (v < lo || v > hi),
     };
   },
+  // Sprint 13 H2: 3.0-6.0 V is the specified operating range (no absolute maximum published).
   ratings: (_p, r) =>
     r.voltage !== null && r.voltage > CEM_1205_IC.maxVoltageV
-      ? [{ code: 'voltage', value: r.voltage, limit: CEM_1205_IC.maxVoltageV }]
+      ? [{ kind: 'operating', code: 'voltage', value: r.voltage, limit: CEM_1205_IC.maxVoltageV }]
       : [],
 };
 

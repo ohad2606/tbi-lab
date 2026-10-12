@@ -3126,3 +3126,38 @@ select {
   border-radius: 999px;
   flex: none;
 }
+
+/* Sprint 13 H1: what runs on the ESP32. */
+.capabilities-dialog {
+  max-inline-size: min(52rem, 92vw);
+  max-block-size: 85vh;
+  overflow-y: auto;
+}
+.capability-list {
+  list-style: none;
+  padding-inline-start: 0;
+  margin: 0.25rem 0 1rem;
+}
+.capability-list li {
+  padding: 0.35rem 0;
+  border-block-end: 1px solid var(--border, #ddd);
+}
+.capability-status {
+  font-size: 0.8em;
+  padding: 0 0.4em;
+  border-radius: 0.6em;
+  border: 1px solid currentColor;
+  white-space: nowrap;
+}
+.capability-status.status-supported {
+  color: var(--ok, #1b7a3a);
+}
+.capability-status.status-limited {
+  color: var(--warn, #8a5a00);
+}
+.capability-status.status-unsupported {
+  color: var(--error, #b42318);
+}
+.capabilities-link {
+  font-size: inherit;
+}

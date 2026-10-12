@@ -53,6 +53,21 @@ const LIBRARY_FACILITY: Record<string, string> = {
   SPI: 'spi',
 };
 
+/**
+ * Every facility code a feature report can name (Sprint 13 H1: the product's capability panel has
+ * an entry for each; `library:<Name>` is reported per library and listed as `library`).
+ */
+export const FEATURE_CODES: readonly string[] = [
+  ...new Set([
+    ...SYMBOLS.map(([, f]) => f),
+    ...Object.values(LIBRARY_FACILITY),
+    'interrupt',
+    'internal_pull',
+    'restart',
+    'library',
+  ]),
+];
+
 /** Strip comments and string/char literals so tokens in them do not count. */
 export function codeOnly(source: string): string {
   return source

@@ -1,3 +1,4 @@
+import { openCapabilities } from './Capabilities.js';
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { SIGN_OUT_URL } from '../deployment.js';
 import { useAppState, useStore, useT } from './context.js';
@@ -160,6 +161,15 @@ export function AppMenu({ chooseImport }: { chooseImport: () => void }) {
             onClick={run(chooseImport)}
           >
             {t('library.import.button')}
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            tabIndex={-1}
+            data-testid="menu-capabilities"
+            onClick={run(() => openCapabilities('firmware'))}
+          >
+            {t('menu.capabilities')}
           </button>
           {recent.length > 0 && (
             <>

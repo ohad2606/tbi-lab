@@ -1,3 +1,4 @@
+import { LearnMore, sectionForFailure } from './Capabilities.js';
 import { PREVIEW_NAME } from '../deployment.js';
 import { isolateLtr } from '../i18n/i18n.js';
 import type { SimFailure } from '../sim/controller.js';
@@ -5,6 +6,9 @@ import type { RatingWarning } from '@tbi-lab/engine';
 import { engineErrorParts, groupByComponent, ratingRow, simFailureMessage } from '../sim/format.js';
 import { warningsFor } from '../sim/ratings.js';
 import { useAppState, useStore, useT } from './context.js';
+
+const damage = (w: RatingWarning[]) => w.filter((x) => x.kind !== 'operating');
+const operating = (w: RatingWarning[]) => w.filter((x) => x.kind === 'operating');
 
 export function NoticeBar() {
   const { notice, readOnly, unreadable, sim, locale, doc, saveState, saveError, screen } =
@@ -34,6 +38,12 @@ export function NoticeBar() {
           ) : (
             simFailureMessage(locale, sim.failure, doc)
           )}
+          {sectionForFailure(failureCode(sim.failure)) && (
+            <>
+              {' '}
+              <LearnMore section={sectionForFailure(failureCode(sim.failure))!} />
+            </>
+          )}
         </div>
       )}
       {running && !running.ok && (
@@ -46,15 +56,26 @@ export function NoticeBar() {
           <EngineErrorText parts={engineErrorParts(locale, running.error, doc)} />
         </div>
       )}
-      {running?.ok && doc && warningsFor(doc, running).length > 0 && (
-        // A documented datasheet limit is exceeded: a WARNING (amber), distinct from the red
+      {running?.ok && doc && damage(warningsFor(doc, running)).length > 0 && (
+        // A documented ABSOLUTE MAXIMUM is exceeded: a WARNING (amber), distinct from the red
         // solver errors above. The solved values are unchanged.
         <div class="banner banner-warning banner-rating" role="status" data-testid="rating-warning">
           <strong class="rating-title">{t('rating.heading')}</strong>
-          {groupByComponent(warningsFor(doc, running)).map(([id, rows]) => (
+          {groupByComponent(damage(warningsFor(doc, running))).map(([id, rows]) => (
             <RatingGroup key={id} component={id} rows={rows} />
           ))}
           <span class="rating-note small">{t('rating.note')}</span>
+        </div>
+      )}
+      {running?.ok && doc && operating(warningsFor(doc, running)).length > 0 && (
+        // Sprint 13 H2: outside the specified OPERATING range only: no damage claim; the result
+        // may not match a real part.
+        <div class="banner banner-info banner-rating" role="status" data-testid="operating-warning">
+          <strong class="rating-title">{t('rating.operating.heading')}</strong>
+          {groupByComponent(operating(warningsFor(doc, running))).map(([id, rows]) => (
+            <RatingGroup key={id} component={id} rows={rows} />
+          ))}
+          <span class="rating-note small">{t('rating.operating.note')}</span>
         </div>
       )}
       {running?.ok && running.notConnected.length > 0 && (
@@ -124,8 +145,17 @@ export function RatingGroup({ component, rows }: { component: string; rows: Rati
   const { locale } = useAppState();
   const t = useT();
   return (
-    <div class="rating-group" data-testid={`rating-${component}`} data-model={rows[0]?.model}>
-      <span class="rating-summary">{t('rating.atRisk', { component: isolateLtr(component) })}</span>
+    <div
+      class="rating-group"
+      data-testid={`rating-${component}`}
+      data-model={rows[0]?.model}
+      data-kind={rows[0]?.kind}
+    >
+      <span class="rating-summary">
+        {t(rows[0]?.kind === 'operating' ? 'rating.operating.summary' : 'rating.atRisk', {
+          component: isolateLtr(component),
+        })}
+      </span>
       <ul class="rating-list">
         {rows.map((w) => (
           <li key={w.code} data-code={w.code}>

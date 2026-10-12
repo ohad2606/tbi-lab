@@ -14,6 +14,7 @@ import type { SimulationSnapshot } from '@tbi-lab/domain';
 import { I_OH_A, I_OL_A, V_PIN_MAX_V, V_PIN_MIN_V } from './esp32Gpio.js';
 import { partModel } from './parts.js';
 import type { SolveSuccess } from './session.js';
+import type { LimitKind } from './parts.js';
 
 export interface AbsoluteMaximumRatings {
   /** Maximum DC forward current, amperes. */
@@ -106,6 +107,8 @@ export const RATING_UNIT: Readonly<Record<RatingCode, 'ampere' | 'volt' | 'watt'
 
 export interface RatingWarning {
   component: string;
+  /** Sprint 13 H2: damage risk (`absolute`) or outside the specified operating range only. */
+  kind: LimitKind;
   /** The model card, or for a board pad the board type. */
   model: string;
   code: RatingCode;
@@ -137,6 +140,7 @@ export function ratingWarnings(
           out.push({
             component: c.id,
             model: String(c.params.model),
+            kind: x.kind ?? 'absolute',
             code: x.code,
             value: x.value,
             limit: x.limit,
@@ -150,7 +154,7 @@ export function ratingWarnings(
     const r = outcome.components[c.id];
     if (!rating || !r || r.current === null || r.voltage === null) continue;
     const add = (code: RatingCode, value: number, limit: number) =>
-      out.push({ component: c.id, model, code, value, limit });
+      out.push({ component: c.id, kind: 'absolute', model, code, value, limit });
     if (r.current > rating.forwardCurrentA)
       add('forward_current', r.current, rating.forwardCurrentA);
     if (-r.voltage > rating.reverseVoltageV)
@@ -199,6 +203,7 @@ function gpioWarnings(snapshot: SimulationSnapshot, outcome: SolveSuccess): Rati
   const add = (code: RatingCode, gpio: number, value: number, limit: number, other?: number) =>
     out.push({
       component: board.id,
+      kind: 'absolute',
       model: board.type,
       code,
       value,

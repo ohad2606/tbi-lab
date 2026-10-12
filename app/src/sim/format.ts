@@ -45,7 +45,7 @@ export function formatPower(locale: LocaleInfo, watts: number): string {
 }
 
 type RatingLike = Pick<RatingWarning, 'component' | 'code' | 'value' | 'limit'> &
-  Partial<Pick<RatingWarning, 'gpio' | 'otherGpio' | 'channel'>>;
+  Partial<Pick<RatingWarning, 'gpio' | 'otherGpio' | 'channel' | 'kind'>>;
 
 /**
  * One compact over-stress row: "Current: 62.64 mA (maximum 30 mA)", or for a board pad
@@ -56,7 +56,11 @@ export function ratingRow(locale: LocaleInfo, w: RatingLike): string {
   const unit = RATING_UNIT[w.code];
   const fmt = (v: number) =>
     unit === 'watt' ? formatPower(locale, v) : formatResult(locale, v, unit);
-  const row = translate(locale, `rating.row.${w.code}`, {
+  // Sprint 13 H2: an operating-range row names the limit as the specified operating maximum.
+  const operatingKey = `rating.operating.row.${w.code}`;
+  const rowKey =
+    w.kind === 'operating' && isMessageKey(operatingKey) ? operatingKey : `rating.row.${w.code}`;
+  const row = translate(locale, rowKey as MessageKey, {
     value: isolateLtr(fmt(w.value)),
     limit: isolateLtr(fmt(w.limit)),
     pin: isolateLtr(w.gpio === undefined ? '' : `IO${w.gpio}`),
