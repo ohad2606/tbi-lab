@@ -315,6 +315,22 @@ describe('error UX (A12)', () => {
     expect(await stored(storage, doc.projectId)).toEqual(doc);
   });
 
+  // Sprint 13 Task D (M2): the pending edits were discarded before the delete was attempted.
+  it('a delete that fails keeps the open project\'s pending edits (they are saved after all)', async () => {
+    const { app, storage } = await setup({
+      wrap: (s) =>
+        Object.assign(Object.create(Object.getPrototypeOf(s)), s, {
+          delete: () => Promise.reject(new Error('boom')),
+        }),
+    });
+    const doc = await buildCircuit(app);
+    expect(app.rename('Edited just before the delete')).toBe(true);
+    expect(await app.deleteProject(doc.projectId)).toBe(false);
+    await app.flush();
+    const kept = (await stored(storage, doc.projectId)) as { name: string };
+    expect(kept.name).toBe('Edited just before the delete');
+  });
+
   it('a stored project that is damaged opens with a notice and leaves others usable', async () => {
     const { app, storage } = await setup();
     const good = await buildCircuit(app, 'Good');

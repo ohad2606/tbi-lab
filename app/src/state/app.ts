@@ -589,10 +589,12 @@ export class AppStore {
       this.stateValue.doc?.name ??
       '';
     if (open) this.deps.simulation?.stop();
-    await this.autosave?.discard(projectId);
+    const dropped = (await this.autosave?.discard(projectId)) ?? null;
     try {
       await this.deps.storage!.delete(projectId);
     } catch (e) {
+      // The project stays: so do its unsaved edits (Sprint 13 Task D, M2).
+      if (dropped) this.autosave?.queue(dropped);
       this.storageFailure(e, 'library.error.delete');
       return false;
     }

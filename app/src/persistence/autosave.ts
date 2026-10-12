@@ -102,13 +102,16 @@ export class Autosave {
    * flight. Used before deleting a project, so that a pending autosave cannot write the
    * deleted project back afterwards.
    */
-  async discard(projectId: string): Promise<void> {
+  async discard(projectId: string): Promise<ProjectDocument | null> {
+    const dropped = this.pending.get(projectId) ?? null;
     if (this.pending.delete(projectId) && this.pending.size === 0 && this.timer !== null) {
       this.cancel(this.timer);
       this.timer = null;
     }
     await this.inFlight;
     if (this.pending.size === 0 && this.lastError === null) this.setState('saved');
+    // The dropped document, so a caller whose delete then fails can queue it again (Task D, M2).
+    return dropped;
   }
 
   /** Re-attempt after a failure. */
