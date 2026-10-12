@@ -119,7 +119,7 @@ describe('OS-04: the edit gate', () => {
     expect(app.state.doc!.layout).toEqual(before);
     expect(app.state.notice).toMatchObject({
       key: 'edit.overlap.circuit',
-      params: { a: ids[0], b: ids[1] },
+      params: { a: `\u2066${ids[0]}\u2069`, b: `\u2066${ids[1]}\u2069` }, // isolated LTR (Hebrew)
     });
     // A free place is accepted.
     const away = moveSelection(

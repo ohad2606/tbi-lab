@@ -101,7 +101,7 @@ describe('OS-08: Run availability follows the build state', () => {
     const { app, runs } = await setup();
     expect(app.runBlocker()).toMatchObject({
       key: 'run.blocked.buildRequired',
-      params: { components: 'U1' },
+      params: { components: '\u2066U1\u2069' }, // isolated LTR (Hebrew)
     });
     app.run();
     expect(runs).toHaveLength(0);

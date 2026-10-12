@@ -316,7 +316,7 @@ describe('error UX (A12)', () => {
   });
 
   // Sprint 13 Task D (M2): the pending edits were discarded before the delete was attempted.
-  it('a delete that fails keeps the open project\'s pending edits (they are saved after all)', async () => {
+  it("a delete that fails keeps the open project's pending edits (they are saved after all)", async () => {
     const { app, storage } = await setup({
       wrap: (s) =>
         Object.assign(Object.create(Object.getPrototypeOf(s)), s, {
