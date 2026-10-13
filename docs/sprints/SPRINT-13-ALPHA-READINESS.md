@@ -6,8 +6,8 @@
 
 | | Commit | Where |
 |---|---|---|
-| Deployed release (since 2026-10-13, PM conditional authorization) | **`c3b148b`** | DEV (dev-lab) and staging (`tbi-s8`), Runtime v2 `b5b34b49cb7e4049`, artifact set `767d3715fdaaef10`, default policies. Previous: `dc1bff8` (backups and rehearsed rollbacks: `s13-evidence/staging-c3b148b/`, `s13-evidence/dev-c3b148b/`) |
-| Candidate code (this package) | `c3b148b` | Deployed to staging and DEV after staging B0–B5 passed. Not frozen, tagged or merged |
+| Deployed release (2026-10-13, PM OS-11/OS-12 decision) | **`71b40fb`** | DEV and staging. OS-11 app fix + OS-12 example search on top of `c3b148b` (backend code identical; only the session-host commit stamp differs). Runtime v2 `b5b34b49cb7e4049`, artifact set `767d3715fdaaef10`, default policies. Record and rollbacks: `s13-evidence/dev-71b40fb/RELEASE-71b40fb.md`. Previous: `c3b148b` |
+| Candidate code | `71b40fb` (package `6aed0f18…`, reproducible) | Deployed to staging and DEV after staging B0–B5 passed. Not frozen, tagged or merged. Gate changes G1/G2 proposed only (`docs/ops/GATE-CHANGE-G1-G2.md`) |
 
 Between `dc1bff8` and the candidate (overnight run, Oct 12–13), there are no feature changes. The new commits are security, data-integrity and accessibility fixes from the audits, plus test and procedure work:
 

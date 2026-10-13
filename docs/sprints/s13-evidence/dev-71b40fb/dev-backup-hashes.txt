@@ -1,0 +1,11 @@
+OK 250f5c901a10050e tbi-build.service
+OK db2ac54986119925 tbi-build-job@.service
+OK 317ab910c0dd3402 tbi-session-host.service
+OK c34ea2d9fefb7839 tbi-qemu@.service
+OK 3b06b9de86d83316 50-tbi.rules
+OK 7afc97cbcb404569 etc/identity.key
+OK d43ab503249b4a5b etc/policy.json
+OK 481d7aa42c6e7e6f etc/runtime.json
+OK 42b2069c85f9da36 etc/ticket.key
+LINK services-current -> /srv/tbi-lab/services/c3b148b11b71c1cb01ff67caf1a8dc3150b279d0
+LINK frontend-current -> /srv/tbi-lab/dev-lab/c3b148b11b71c1cb01ff67caf1a8dc3150b279d0

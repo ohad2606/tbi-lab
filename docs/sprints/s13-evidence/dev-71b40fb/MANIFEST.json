@@ -1,0 +1,12 @@
+{
+  "release": "71b40fb033df99789350f6fe07e25934dc347f47",
+  "kind": "Sprint 13 DEV: byte copies of the staging-validated bundles (reproducible package 6aed0f18)",
+  "replaces": "/srv/tbi-lab/services/c3b148b11b71c1cb01ff67caf1a8dc3150b279d0",
+  "files": {
+    "session-host.mjs": { "sha256": "26137bd81e6d73717e83601a9400e780df545187c67b87d08902e2e3aeef305d", "from": "/srv/tbi-lab/s8-staging/session-host.mjs (71b40fb033df99789350f6fe07e25934dc347f47, staging B0-B5 passed)", "version": "0.10-dev" },
+    "build-service.mjs": { "sha256": "fe2a2c50c1eb26adca730c29c37606d794cafc6685c36c25ae058fce64b35129", "from": "/srv/tbi-lab/s8-staging/build-service.mjs (71b40fb033df99789350f6fe07e25934dc347f47, staging B0-B5 passed)" },
+    "build-job.mjs": { "sha256": "011f703c8ce87f472e5e4670d106dfe10cf3dbd4e1b4e01d7f017e4119c73f0f", "from": "/srv/tbi-lab/s8-staging/build-job.mjs (71b40fb033df99789350f6fe07e25934dc347f47, staging B0-B5 passed)" }
+  },
+  "runtime": "b5b34b49cb7e4049",
+  "releaseArtifacts": "767d3715fdaaef10"
+}

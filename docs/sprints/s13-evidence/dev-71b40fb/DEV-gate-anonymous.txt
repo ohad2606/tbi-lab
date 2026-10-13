@@ -1,0 +1,5 @@
+JSON  /version.json -> HTTP/2 401  | set-cookie: 0 | location: 0
+JSON  /runtime/health -> HTTP/2 401  | set-cookie: 0 | location: 0
+JSON  /build/v1/builds/x -> HTTP/2 401  | set-cookie: 0 | location: 0
+JSON  /assets/x.glb -> HTTP/2 401  | set-cookie: 0 | location: 0
+HTML  / -> HTTP/2 302  | location: location: https://accounts.google.com/o/oauth2/auth?<redacted> | csrf cookies set: 1
