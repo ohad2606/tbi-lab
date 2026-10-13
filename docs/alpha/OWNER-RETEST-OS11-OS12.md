@@ -37,17 +37,17 @@ OS-11 and OS-12 stay **open** until you sign below.
 - There is **no** request to `accounts.google.com`.
 - Under **Application → Cookies**, **no** new `__Host-tbi_dev_lab_csrf` cookie appears until you press **Sign in again**.
 
-### 3. Several tabs
+### 3. Several tabs (gate change G1, live since 2026-10-13 11:40 UTC)
 
 1. Open the app in **two tabs** and delete the session cookie (step 1.2). Both tabs show the banner once you switch to them.
-2. In tab A, press **Sign in again** and complete Google sign-in.
-3. Then, in tab B, press **Sign in again**.
+2. Press **Sign in again** in tab A, then **immediately** in tab B, **before** finishing Google in either.
+3. Finish Google in tab A, then in tab B.
 
 **Expected:**
-- Tab B reloads **already signed in**, without Google.
-- Both tabs work.
+- **Both** tabs end in the app, signed in. No 403 page.
+- Under **Application → Cookies** you may see cookies named `__Host-tbi_dev_lab_…_csrf` (one per sign-in in progress); they disappear when each sign-in finishes or after 15 minutes.
 
-**Known limitation, not part of this release:** pressing **Sign in again** in both tabs *before* finishing Google in either can still fail with the old 403. That needs gate change **G1**, proposed and awaiting approval. If you see it, the recovery is: open `https://dev-lab.tbi-tech.net/` in the tab and sign in once.
+If a 403 appears anyway, note the time (not the URL) and report it: that would be a G1 regression.
 
 ### 4. A stale callback
 
@@ -93,16 +93,25 @@ On **Projects → Start from an example**, check each query against what should 
 
 **Expected:** the example opens as a new project in the editor, exactly as before.
 
+## Gate G1 security checks (real Google accounts)
+
+### 8. The gate still refuses what it must
+
+1. **Not on the allowlist** (only if you have a second Google account that is NOT allowed): in a private window, open the app and choose that account. **Expected:** a 403 page, and the app never loads.
+2. **Replay:** after a successful sign-in, copy nothing; press **Back** until the browser revisits the Google step, then **Forward**. **Expected:** you are either still in the app or see a 403 whose **Sign in** link works; you are never signed in as anyone else.
+3. **Normal sign-in still works:** close all tabs, delete the session cookie, open the app once. **Expected:** one Google account chooser, then the app.
+
 ## Sign-off
 
 | Item | Result (pass / fail + note) |
 |---|---|
 | 1 Expired-session recovery | |
 | 2 Background requests | |
-| 3 Several tabs (sequential) | |
+| 3 Several tabs, at the same time (G1) | |
 | 4 Stale callback | |
 | 5 Search EN/HE | |
 | 6 Categories and keyboard | |
 | 7 Opening a filtered example | |
+| 8 Gate refusals (allowlist, replay, normal sign-in) | |
 
 Owner: ______________________ Date: ____________

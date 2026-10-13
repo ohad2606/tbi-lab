@@ -1,0 +1,201 @@
+{
+  "current": {
+    "csrfCookieName": "__Host-tbi_dev_lab_csrf",
+    "matrix": {
+      "normal": 302,
+      "replay": 403,
+      "twoTabs": [
+        403,
+        403
+      ],
+      "missingCsrf": 403,
+      "tamperedState": 403,
+      "foreignCsrfOnly": 403,
+      "otherBrowser": 403,
+      "unauthorized": 403
+    },
+    "expired": {
+      "background": 401,
+      "relogin": 302
+    },
+    "log": {
+      "raw": {
+        "codes": 1,
+        "states": 3,
+        "accessTokens": 0,
+        "idTokens": 0,
+        "cookieValues": 1,
+        "clientSecret": 0,
+        "cookieHeaderDumps": 2,
+        "callbackQueries": 7
+      },
+      "afterJournalDrop": {
+        "codes": 0,
+        "states": 0,
+        "accessTokens": 0,
+        "idTokens": 0,
+        "cookieValues": 0,
+        "clientSecret": 0,
+        "cookieHeaderDumps": 0,
+        "callbackQueries": 0
+      },
+      "diagnostics": {
+        "authSuccessWithRequestId": true,
+        "authFailureUnauthorized": true,
+        "tokenValidationLine": true,
+        "requestLogLines": 6
+      }
+    }
+  },
+  "installed file (G1)": {
+    "csrfCookieName": "__Host-tbi_dev_lab_<per-login hash>_csrf",
+    "matrix": {
+      "normal": 302,
+      "replay": 403,
+      "twoTabs": [
+        302,
+        302
+      ],
+      "missingCsrf": 403,
+      "tamperedState": 403,
+      "foreignCsrfOnly": 403,
+      "otherBrowser": 403,
+      "unauthorized": 403
+    },
+    "expired": {
+      "background": 401,
+      "relogin": 302
+    },
+    "log": {
+      "raw": {
+        "codes": 1,
+        "states": 3,
+        "accessTokens": 0,
+        "idTokens": 0,
+        "cookieValues": 1,
+        "clientSecret": 0,
+        "cookieHeaderDumps": 2,
+        "callbackQueries": 7
+      },
+      "afterJournalDrop": {
+        "codes": 0,
+        "states": 0,
+        "accessTokens": 0,
+        "idTokens": 0,
+        "cookieValues": 0,
+        "clientSecret": 0,
+        "cookieHeaderDumps": 0,
+        "callbackQueries": 0
+      },
+      "diagnostics": {
+        "authSuccessWithRequestId": true,
+        "authFailureUnauthorized": true,
+        "tokenValidationLine": true,
+        "requestLogLines": 5
+      }
+    }
+  },
+  "G1": {
+    "csrfCookieName": "__Host-tbi_dev_lab_<per-login hash>_csrf",
+    "matrix": {
+      "normal": 302,
+      "replay": 403,
+      "twoTabs": [
+        302,
+        302
+      ],
+      "missingCsrf": 403,
+      "tamperedState": 403,
+      "foreignCsrfOnly": 403,
+      "otherBrowser": 403,
+      "unauthorized": 403
+    },
+    "expired": {
+      "background": 401,
+      "relogin": 302
+    },
+    "log": {
+      "raw": {
+        "codes": 1,
+        "states": 3,
+        "accessTokens": 0,
+        "idTokens": 0,
+        "cookieValues": 1,
+        "clientSecret": 0,
+        "cookieHeaderDumps": 2,
+        "callbackQueries": 7
+      },
+      "afterJournalDrop": {
+        "codes": 0,
+        "states": 0,
+        "accessTokens": 0,
+        "idTokens": 0,
+        "cookieValues": 0,
+        "clientSecret": 0,
+        "cookieHeaderDumps": 0,
+        "callbackQueries": 0
+      },
+      "diagnostics": {
+        "authSuccessWithRequestId": true,
+        "authFailureUnauthorized": true,
+        "tokenValidationLine": true,
+        "requestLogLines": 5
+      }
+    }
+  },
+  "G1+G2a": {
+    "csrfCookieName": "__Host-tbi_dev_lab_<per-login hash>_csrf",
+    "matrix": {
+      "normal": 302,
+      "replay": 403,
+      "twoTabs": [
+        302,
+        302
+      ],
+      "missingCsrf": 403,
+      "tamperedState": 403,
+      "foreignCsrfOnly": 403,
+      "otherBrowser": 403,
+      "unauthorized": 403
+    },
+    "expired": {
+      "background": 401,
+      "relogin": 302
+    },
+    "log": {
+      "raw": {
+        "codes": 1,
+        "states": 1,
+        "accessTokens": 0,
+        "idTokens": 0,
+        "cookieValues": 1,
+        "clientSecret": 0,
+        "cookieHeaderDumps": 2,
+        "callbackQueries": 4
+      },
+      "afterJournalDrop": {
+        "codes": 0,
+        "states": 0,
+        "accessTokens": 0,
+        "idTokens": 0,
+        "cookieValues": 0,
+        "clientSecret": 0,
+        "cookieHeaderDumps": 0,
+        "callbackQueries": 0
+      },
+      "diagnostics": {
+        "authSuccessWithRequestId": true,
+        "authFailureUnauthorized": true,
+        "tokenValidationLine": true,
+        "requestLogLines": 5
+      }
+    }
+  },
+  "accumulation": {
+    "abandonedLogins": 20,
+    "csrfCookies": 20,
+    "cookieHeaderBytes": 4218,
+    "lastCompletes": 302,
+    "firstCompletes": 302
+  }
+}

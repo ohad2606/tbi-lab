@@ -1,0 +1,9 @@
+--- /etc/oauth2-proxy/oauth2-proxy.cfg	(G1, live since 2026-10-13 11:40 UTC)
++++ /etc/oauth2-proxy/oauth2-proxy.cfg	(G1 + G2a, PROPOSED)
+@@
+ auth_logging = true
+ standard_logging = true
++# Sprint 13 G2 (a): the request log does not record the OAuth callback (its URI carries the code
++# and state). The config-file key is PLURAL: the flag's singular name is rejected by v7.15.4 as an
++# invalid key and the proxy would not start.
++exclude_logging_paths = ["/oauth2/callback"]
