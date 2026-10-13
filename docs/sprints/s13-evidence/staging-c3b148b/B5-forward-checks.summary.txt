@@ -1,0 +1,12 @@
+stdout | runtime/tests/s11-deployed.runtime.test.ts > Sprint 11 R1 on the deployed instance (tbi-s8) > component.capacitor is refused for an ESP32 project before QEMU starts
+component.capacitor: 201 {"sessionId":"62fc2bc92d962f9ba0b05e9a847ba675","state":"failed","reason":"electrical_error","detail":{"code":"unsupported_component","components":["C1"]},"simNs":"0","lastEventSeq":2,"createdAt":"2026-10-13T05:52:03.030Z","endedAt":"2026-10-13T05:52:03.045Z","runtime":{"pid":null,"outcome":null},"revisions":{"snapshot":1,"accepted":1,"applied":1},"pace":{"rate":1,"simPerWall":null,"pacedMs":0,"tickGapMs":{"count":0,"p99":null,"max":0}}}
+stdout | runtime/tests/s11-deployed.runtime.test.ts > Sprint 11 R1 on the deployed instance (tbi-s8) > display.led_matrix_8x8 is refused for an ESP32 project before QEMU starts
+display.led_matrix_8x8: 201 {"sessionId":"0ded333be8f925a8476b3ae4b658628c","state":"failed","reason":"electrical_error","detail":{"code":"unsupported_component","components":["DS1"]},"simNs":"0","lastEventSeq":2,"createdAt":"2026-10-13T05:52:03.165Z","endedAt":"2026-10-13T05:52:03.180Z","runtime":{"pid":null,"outcome":null},"revisions":{"snapshot":1,"accepted":1,"applied":1},"pace":{"rate":1,"simPerWall":null,"pacedMs":0,"tickGapMs":{"count":0,"p99":null,"max":0}}}
+ ✓ runtime/tests/s11-deployed.runtime.test.ts (8 tests | 2 skipped) 30498ms
+   ✓ Sprint 11 R1 on the deployed instance (tbi-s8) > esp32-motion-relay: motion pulls the relay in (LED + buzzer); no motion releases it; Stop cleans up  9814ms
+   ✓ Sprint 11 R1 on the deployed instance (tbi-s8) > esp32-night-light: dark lights all three channels; bright turns them off; DELETE cleans up  8950ms
+   ✓ Sprint 11 R1 on the deployed instance (tbi-s8) > command boundary: malformed, oversized, unknown, unsupported, out of range, rate-limited, foreign user  11158ms
+ Test Files  2 passed (2)
+      Tests  8 passed | 2 skipped (10)
+   Start at  05:50:39
+   Duration  84.06s (transform 530ms, setup 0ms, collect 724ms, tests 82.66s, environment 0ms, prepare 219ms)

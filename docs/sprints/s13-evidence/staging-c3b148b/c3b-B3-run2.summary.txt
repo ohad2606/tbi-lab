@@ -1,0 +1,19 @@
+  ✓   1 [chromium] › app/e2e/s11-real.spec.ts:45:3 › R1 host › ESP32 motion alarm on real QEMU: motion pulls the relay in, LED and buzzer follow; no motion releases it (13.9s)
+  ✓   2 [chromium] › app/e2e/s11-real.spec.ts:69:3 › R1 host › ESP32 night light on real QEMU: darkness reads HIGH and lights the RGB LED; bright turns it off (12.8s)
+  ✓   3 [chromium] › app/e2e/s11-real.spec.ts:94:3 › R1 host › ESP32 projects: the matrix and the capacitor stay unavailable; the six R1 parts are offered (846ms)
+  -   4 [chromium] › app/e2e/s11-real.spec.ts:123:1 › against a Sprint 10 Session Host: Run of an R1 example fails explicitly, naming the parts
+  ✓   5 [chromium] › app/e2e/s12-real.spec.ts:51:3 › Runtime v2 host › ESP32 distance alarm on real QEMU: the measured distance follows the part; below 20 cm the LED lights (13.4s)
+  ✓   6 [chromium] › app/e2e/s12-real.spec.ts:81:3 › Runtime v2 host › ESP32 thermo-hygrometer on real QEMU: the firmware prints exactly the DHT22 environment (12.7s)
+  ✓   7 [chromium] › app/e2e/s12-real.spec.ts:104:3 › Runtime v2 host › ESP32 LCD hello on real QEMU: the module shows the text the firmware wrote over I2C (11.3s)
+  -   8 [chromium] › app/e2e/s12-real.spec.ts:126:1 › against a Sprint 11 Session Host: Run of an R2 example fails explicitly, naming the part
+  ✓   9 [chromium] › app/e2e/s6-real.spec.ts:48:1 › ESP32 blink: Run creates a session, GPIO2 drives the LED, serial arrives; Stop releases everything (12.3s)
+  ✓  10 [chromium] › app/e2e/s6-real.spec.ts:96:1 › ESP32 input echo: toggle mirrors browser-first, push button is transient, Stop/Run is a fresh session (16.1s)
+  ✘  11 [chromium] › app/e2e/s6-real.spec.ts:166:1 › product-level determinism: the same project + firmware gives the same canonical runtime sequence (1.4m)
+    Error: expect(locator).toHaveAttribute(expected) failed
+    Received: "failed"
+        122 × locator resolved to <span role="status" data-sim-ns="0" data-engine="mcu" aria-live="polite" data-trace-hash="" data-status="failed" data-trace-events="0" data-testid="sim-status" data-connection="connected" data-trace-checkpoints="[]" class="sim-status sim-failed" data-session-state="creating-request">…</span>
+            - unexpected value "failed"
+  1 failed
+  2 skipped
+  8 passed (3.2m)
+playwright exit=1

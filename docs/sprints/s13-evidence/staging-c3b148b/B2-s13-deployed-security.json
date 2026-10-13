@@ -1,0 +1,87 @@
+{
+  "instance": "tbi-s8",
+  "run": "mv68l60n",
+  "health": {
+    "protocol": "tbi-lab.session/2",
+    "sessions": {},
+    "runtime": {
+      "version": "0.10-dev",
+      "commit": "c3b148b11b71c1cb01ff67caf1a8dc3150b279d0"
+    }
+  },
+  "buildOwnership": {
+    "foreignUser": 404,
+    "wrongToken": 404
+  },
+  "sourceLimit": {
+    "over64KiB": {
+      "status": 413,
+      "error": "source_too_large",
+      "buildId": null
+    },
+    "over1MiB": {
+      "status": 413,
+      "error": "too_large"
+    }
+  },
+  "streamCap": {
+    "firstFive": [
+      200,
+      200,
+      200,
+      200,
+      429
+    ],
+    "afterFreeingOne": 200
+  },
+  "isolation": {
+    "status": 404,
+    "events": 404,
+    "command": 404,
+    "end": 404,
+    "ownerStillRunning": true
+  },
+  "shutdown": {
+    "deleteStatus": 200,
+    "deleteMs": 181,
+    "healthRequests": 2525,
+    "healthP50Ms": 1,
+    "healthMaxMs": 22
+  },
+  "crash": {
+    "reported": {
+      "state": "failed",
+      "reason": "guest_reset"
+    },
+    "lastStateEvent": {
+      "type": "state",
+      "simNs": null,
+      "state": "failed",
+      "reason": "guest_reset",
+      "detail": {
+        "outcome": "guest_exit",
+        "exitCode": null,
+        "signal": null
+      },
+      "seq": 5
+    },
+    "hostPidBefore": "715305",
+    "hostPidAfter": "715305",
+    "healthAfter": 200,
+    "restarted": true
+  },
+  "leftovers": {
+    "qemuUnits": 0,
+    "sessionDirs": 0
+  },
+  "pass": {
+    "buildOwnership": true,
+    "sourceLimitAtSubmit": true,
+    "streamCap": true,
+    "isolation": true,
+    "shutdownNonBlocking": true,
+    "crashContained": true,
+    "noServerTextToClients": true,
+    "noLeftovers": true
+  }
+}

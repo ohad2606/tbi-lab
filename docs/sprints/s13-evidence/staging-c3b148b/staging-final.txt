@@ -1,0 +1,16 @@
+77ecc3e4b08b237a /etc/systemd/system/tbi-s8-build.service
+eb7ace0bcc8ad34a /etc/systemd/system/tbi-s8-build-job@.service
+5e59e8074592eb2a /etc/systemd/system/tbi-s8-session-host.service
+d338dbbbc57ab4bb /etc/systemd/system/tbi-s8-qemu@.service
+36e91f549602143e /etc/polkit-1/rules.d/50-tbi-s8.rules
+4fdc286570f062bf /etc/tbi-s8/identity.key
+d43ab503249b4a5b /etc/tbi-s8/policy.json
+481d7aa42c6e7e6f /etc/tbi-s8/runtime.json
+ea8f5d4e4b661c6a /etc/tbi-s8/ticket.key
+011f703c8ce87f47 /srv/tbi-lab/s8-staging/build-job.mjs
+fe2a2c50c1eb26ad /srv/tbi-lab/s8-staging/build-service.mjs
+f9c1af47f0f53f4a /srv/tbi-lab/s8-staging/session-host.mjs
+tbi-s8-build pid=720975 since=Tue 2026-10-13 05:50:21 UTC
+tbi-s8-session-host pid=720976 since=Tue 2026-10-13 05:50:21 UTC
+health: {"protocol":"tbi-lab.session/2","sessions":{},"runtime":{"version":"0.10-dev","commit":"c3b148b11b71c1cb01ff67caf1a8dc3150b279d0"}}
+qemu units: 0
