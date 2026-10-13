@@ -15,6 +15,7 @@ import type {
   SourceFile,
 } from '../../../runtime/builder/protocol.js';
 import { BUILD_PROTOCOL } from '../../../runtime/builder/protocol.js';
+import { gateFetch } from '../gate.js';
 
 export type {
   ArtifactInfo,
@@ -84,7 +85,7 @@ export class BuildClient {
 
   constructor(opts: BuildClientOptions = {}) {
     this.base = (opts.base ?? '/build').replace(/\/$/, '');
-    this.fetchFn = opts.fetch ?? ((input, init) => fetch(input, init));
+    this.fetchFn = opts.fetch ?? ((input, init) => gateFetch(input, init));
     this.pollMs = opts.pollMs ?? 500;
     this.maxWaitMs = opts.maxWaitMs ?? 20 * 60 * 1000;
   }

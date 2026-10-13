@@ -21,6 +21,7 @@ import type {
   SessionEvent,
   SessionState,
 } from '../../../runtime/host/protocol.js';
+import { gateFetch } from '../gate.js';
 
 export type TransportErrorCode =
   | 'unreachable' // network failure or 5xx from the proxy/host
@@ -101,7 +102,7 @@ export class RuntimeClient {
 
   constructor(opts: ClientOptions = {}) {
     this.base = (opts.base ?? '/runtime').replace(/\/$/, '');
-    this.fetchFn = opts.fetch ?? ((...a) => fetch(...a));
+    this.fetchFn = opts.fetch ?? ((input, init) => gateFetch(input, init));
     this.reconnectForMs = opts.reconnectForMs ?? 25_000;
     this.idleTimeoutMs = opts.idleTimeoutMs ?? 20_000;
   }

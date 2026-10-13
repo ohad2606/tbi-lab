@@ -670,6 +670,10 @@ export const en = {
   'save.error.conflictBanner':
     'This project was changed or deleted in another tab or window, so the changes here were not saved. To keep them, use Export now; then reload to continue with the saved version.',
   'save.reload': 'Reload',
+  // OS-11: the gate's sign-in expired; background requests never start a login themselves.
+  'auth.expired':
+    'Your sign-in has expired. Your projects are saved in this browser. Sign in again to continue.',
+  'auth.signInAgain': 'Sign in again',
   // Sprint 13 Task D: wire routes adjusted when a project opened (layout only).
   'open.routesAdjusted':
     'Some wire routes were redrawn so they no longer run over pins or displays. Connections are unchanged. Undo restores the previous routes.',

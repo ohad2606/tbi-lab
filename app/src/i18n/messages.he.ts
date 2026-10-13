@@ -656,6 +656,8 @@ export const he: Record<MessageKey, string> = {
   'save.error.conflictBanner':
     'הפרויקט שונה או נמחק בלשונית או בחלון אחרים, ולכן השינויים כאן לא נשמרו. כדי לשמור אותם, ייצאו עכשיו; לאחר מכן טענו מחדש כדי להמשיך עם הגרסה השמורה.',
   'save.reload': 'טעינה מחדש',
+  'auth.expired': 'תוקף ההתחברות פג. הפרויקטים שלך שמורים בדפדפן הזה. יש להתחבר מחדש כדי להמשיך.',
+  'auth.signInAgain': 'התחברות מחדש',
   // Sprint 13 Task D: wire routes adjusted when a project opened (layout only).
   'open.routesAdjusted':
     'חלק מנתיבי החוטים שורטטו מחדש כדי שלא יעברו מעל פינים או צגים. החיבורים לא השתנו. ביטול הפעולה האחרונה מחזיר את הנתיבים הקודמים.',

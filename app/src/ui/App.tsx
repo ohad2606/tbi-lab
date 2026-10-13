@@ -5,6 +5,7 @@ import { Editor } from './Editor.js';
 import { Home } from './Home.js';
 import { NoticeBar } from './NoticeBar.js';
 import { TopBar } from './TopBar.js';
+import { SignInBanner } from './SignInBanner.js';
 import { UpdateBanner } from './UpdateBanner.js';
 import { VersionStatus } from './VersionStatus.js';
 
@@ -79,6 +80,7 @@ export function App() {
         {t('app.narrowScreen')}
       </div>
       <TopBar />
+      <SignInBanner />
       <UpdateBanner />
       <NoticeBar />
       {state.screen === 'editor' && state.doc ? <Editor /> : <Home />}
