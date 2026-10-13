@@ -43,11 +43,11 @@
         "authSuccessWithRequestId": true,
         "authFailureUnauthorized": true,
         "tokenValidationLine": true,
-        "requestLogLines": 6
+        "requestLogLines": 5
       }
     }
   },
-  "installed file (G1)": {
+  "installed file (G1+G2a)": {
     "csrfCookieName": "__Host-tbi_dev_lab_<per-login hash>_csrf",
     "matrix": {
       "normal": 302,
@@ -69,13 +69,13 @@
     "log": {
       "raw": {
         "codes": 1,
-        "states": 3,
+        "states": 1,
         "accessTokens": 0,
         "idTokens": 0,
         "cookieValues": 1,
         "clientSecret": 0,
         "cookieHeaderDumps": 2,
-        "callbackQueries": 7
+        "callbackQueries": 4
       },
       "afterJournalDrop": {
         "codes": 0,
@@ -139,7 +139,7 @@
         "authSuccessWithRequestId": true,
         "authFailureUnauthorized": true,
         "tokenValidationLine": true,
-        "requestLogLines": 5
+        "requestLogLines": 6
       }
     }
   },

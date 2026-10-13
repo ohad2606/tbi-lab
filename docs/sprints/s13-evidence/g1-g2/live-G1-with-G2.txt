@@ -1,0 +1,14 @@
+PASS  page load -> 302 to Google  — 302 accounts.google.com
+PASS  exactly one Set-Cookie, the CSRF cookie with the expected name  — __Host-tbi_dev_lab_<hash>_csrf
+PASS  CSRF cookie: Path=/, Secure, HttpOnly, SameSite=Lax, Max-Age=900, no Domain  — path=/ max-age=900 httponly secure samesite=lax
+PASS  Google request: prompt=select_account, state present, redirect to the gate callback
+PASS  second concurrent login gets its OWN cookie name (no overwrite)
+PASS  background /version.json -> 401, no Set-Cookie, no Location  — 401
+PASS  background /runtime/health -> 401, no Set-Cookie, no Location  — 401
+PASS  callback with a malformed fake state -> refused (500), no session  — 500
+PASS  callback with fake state, no CSRF cookie -> 403, no session  — 403
+PASS  callback with fake state, a fake CSRF cookie of the per-request form -> 403, no session  — 403
+PASS  callback with fake state, a fake fixed-name CSRF cookie -> 403, no session  — 403
+PASS  protected path, not signed in -> 302 to Google (never content)
+
+all passed

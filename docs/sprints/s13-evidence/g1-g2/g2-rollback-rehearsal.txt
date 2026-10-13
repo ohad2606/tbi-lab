@@ -1,0 +1,8 @@
+restored; LogFilterPatterns: []
+active
+active
+rollback: .805188555 s
+aac495428e2357db 47ce8f87048cb32d dropin: ls: cannot access '/etc/systemd/system/oauth2-proxy.service.d': No such file or directory
+G1 checks after rollback: all passed
+pre-G2 logging restored -> journal: secret-shaped marker values=40 | kept: KEEPJSON=1 KEEPPAGE=1 KEEPUA=9 
+pre-G2 logging restored -> syslog: secret-shaped marker values=40 | kept: KEEPJSON=1 KEEPPAGE=1 KEEPUA=9 

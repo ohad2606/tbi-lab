@@ -2,7 +2,7 @@
 
 **Status (2026-10-13):**
 - **G1: APPLIED live** at 11:40 UTC (PM decision "Sprint 13 Security Gate Decision": G1 GO).
-- **G2: PROPOSED, corrected, awaiting approval.** It needs configuration outside the reviewed G1 keys (oauth2-proxy, a systemd drop-in, Caddy), which the PM decision requires approval for.
+- **G2: APPLIED live** at 12:08 UTC (PM decision "G2 Security Remediation Authorization"), all three parts as reviewed below. Live record: `docs/sprints/s13-evidence/g1-g2/G2-DEPLOYMENT.md`. Rollback: `docs/sprints/s13-evidence/g1-g2/tools/rollback-g2.sh /var/backups/tbi-lab/g2-pre-20261013T120731Z`.
 
 All test evidence comes from the **same binaries as the gate** (oauth2-proxy v7.15.4 / go1.26.7, Caddy 2.6.2, systemd 259) and fake values only. **No real code, state, cookie, token or secret appears in this document, the tests or their evidence.**
 
@@ -106,7 +106,7 @@ sudo systemctl restart oauth2-proxy
 | S11 | Backends (session host, build service) | They receive the Cookie header from oauth2-proxy but do not log headers | 0 cookie values in their journals |
 | — | Client secret, cookie secret | — | **0** occurrences in the journal, syslog and auth.log (all rotations); matched without displaying them, with a positive control |
 
-### Remediation, three bounded parts (PROPOSED: approval required)
+### Remediation, three bounded parts (APPLIED 2026-10-13 12:08 UTC)
 
 Files: `deploy/dev-lab/g2/`.
 
@@ -162,7 +162,7 @@ LogFilterPatterns=~/oauth2/callback\?
 - All lines are JSON.
 - `caddy validate` passes on the full live candidate, preview imports included; `caddy fmt` is clean.
 
-### G2 activation plan (on approval)
+### G2 activation plan (executed 2026-10-13; see G2-DEPLOYMENT.md)
 
 - Prerequisites: an idle window, then a backup of the cfg and Caddyfile; the drop-in is new.
 - Steps, in order:

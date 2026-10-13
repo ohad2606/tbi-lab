@@ -1,5 +1,5 @@
 --- /etc/oauth2-proxy/oauth2-proxy.cfg	(G1, live since 2026-10-13 11:40 UTC)
-+++ /etc/oauth2-proxy/oauth2-proxy.cfg	(G1 + G2a, PROPOSED)
++++ /etc/oauth2-proxy/oauth2-proxy.cfg	(G1 + G2a, live since 2026-10-13 12:08 UTC; = deploy/dev-lab/oauth2-proxy.cfg)
 @@
  auth_logging = true
  standard_logging = true

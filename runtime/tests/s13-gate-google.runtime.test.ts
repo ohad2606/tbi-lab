@@ -36,7 +36,8 @@ const G2A_LINES = ['exclude_logging_paths = ["/oauth2/callback"]'];
 // G1 block removed. The test fails if the block is not exactly the approved two keys.
 const INSTALLED = existsSync(LIVE_CFG) ? readFileSync(LIVE_CFG, 'utf8') : '';
 const G1_BLOCK = /# Sprint 13 G1 [^\n]*\n(# [^\n]*\n)*cookie_csrf_per_request = true\ncookie_csrf_expire = "15m"\n/;
-const PRE_G1 = INSTALLED.replace(G1_BLOCK, '');
+const G2A_BLOCK = /# Sprint 13 G2 \(a\)[^\n]*\n(# [^\n]*\n)*exclude_logging_paths = \["\/oauth2\/callback"\]\n/;
+const PRE_G1 = INSTALLED.replace(G1_BLOCK, '').replace(G2A_BLOCK, '');
 const AS_INSTALLED: readonly string[] = [];
 // The proposed drop-in's LogFilterPatterns=~ (journald drops matching lines at ingestion).
 const JOURNAL_DROP = [/&\{(GET|POST|HEAD)/, /\/oauth2\/callback\?/];
@@ -223,7 +224,7 @@ afterAll(() => {
 
 const VARIANTS = [
   ['current', [] as string[]],
-  ['installed file (G1)', AS_INSTALLED],
+  ['installed file (G1+G2a)', AS_INSTALLED],
   ['G1', G1_LINES],
   ['G1+G2a', [...G1_LINES, ...G2A_LINES]],
 ] as const;
@@ -238,7 +239,8 @@ describe.skipIf(!HAVE)('Gate G1/G2 on the live configuration file, Google provid
       expect(names).toHaveLength(1);
       if (name === 'current') {
         expect(PRE_G1).not.toBe(INSTALLED); // the G1 block is present, exactly as approved
-        expect(PRE_G1).not.toMatch(/cookie_csrf/);
+        expect(PRE_G1).not.toMatch(/cookie_csrf|exclude_logging/);
+        expect(INSTALLED).toMatch(G2A_BLOCK);
         expect(names[0]).toBe(`${SESSION}_csrf`);
       }
       else expect(names[0]).toMatch(new RegExp(`^${SESSION}_[A-Za-z0-9_-]+_csrf$`));
@@ -368,11 +370,11 @@ describe.skipIf(!HAVE)('Gate G1/G2 on the live configuration file, Google provid
       expect([raw.accessTokens, raw.idTokens, raw.clientSecret]).toEqual([0, 0, 0]);
       expect(diagnostics.tokenValidationLine).toBe(true);
       // Today (and with G1 only): the callback query and the request dump with the cookie.
-      if (name !== 'G1+G2a') expect(raw.codes).toBeGreaterThan(0);
+      if (!name.includes('G2a')) expect(raw.codes).toBeGreaterThan(0);
       expect(raw.cookieHeaderDumps).toBeGreaterThan(0); // the failure path, in every variant
       expect(raw.cookieValues).toBeGreaterThan(0);
       // With G2a + the journald drop: nothing sensitive is stored; the audit lines stay.
-      if (name === 'G1+G2a') {
+      if (name.includes('G2a')) {
         expect(filtered).toEqual({ codes: 0, states: 0, accessTokens: 0, idTokens: 0, cookieValues: 0, clientSecret: 0, cookieHeaderDumps: 0, callbackQueries: 0 });
         expect(diagnostics.authSuccessWithRequestId && diagnostics.authFailureUnauthorized).toBe(true);
       }
