@@ -23,8 +23,12 @@ Between `dc1bff8` and the candidate (overnight run, Oct 12–13), there are no f
 | `75f38b6` | Data H3: route repair on open is a visible, undoable edit |
 | `8f2283e`, `72537e1` | A11y V1–V8: blocked Run reachable by keyboard; field/slider descriptions; LTR isolation in Hebrew; Escape scope; Build reasons announced |
 | `d43977f` | H5: one-command capacity acceptance procedure (`docs/ops/CAPACITY-ACCEPTANCE.md`) |
+| `a606379`, `d5c03a6` | H5 harness: three defects found by the procedure's own smoke run on staging, including a **false PASS** in admission counting; all fixed and re-verified |
+| `c3b148b` | Data: a regression from `7490778`, found by the final CI. A full storage showed "Could not save" instead of "storage is full" |
 
-**Process note.** `8f2283e` was committed before its unit tests and lint had finished. One unit expectation and formatting failed. Both were fixed in `72537e1` without rewriting history. Every later commit was tested before it was made.
+**Process notes.**
+- `8f2283e` was committed before its unit tests and lint had finished. One unit expectation and formatting failed. Both were fixed in `72537e1` without rewriting history.
+- The first full CI (`d5c03a6`) then caught a real regression from this run's own fix `7490778`, fixed in `c3b148b`. The full CI was repeated from the start on `c3b148b`.
 
 ## 2. Status by state
 
@@ -39,9 +43,10 @@ Columns: **I** = implemented · **L** = tested locally (unit, e2e, pinned runtim
 | H1 capabilities panel, H2 ratings, H3 journey, H4 onboarding, H6 runbook / backup | ✓ | ✓ | ✓ (H3 journey-real) | ✓ | — | H3 native Hebrew review = O-6 |
 | H7 feedback form | ✓ (disabled) | ✓ | — | disabled | — | Enabling needs PM approval of external data collection |
 | **H5 five-session capacity (P0)** | procedure ✓ | harness ✓ | **N = 1 PASS on staging only** | — | — | **Not accepted. No alpha host exists.** The single-core host has NOT passed five-session acceptance |
-| Overnight security fixes (#1, #2, #4, #6, #9, launcher crash) | ✓ | ✓ | pinned runtime suites | **no** | — | DEV/staging still carry them until an approved deployment |
-| Overnight data fixes (H1, H2, H3, M2) | ✓ | ✓ | — | **no** | — | |
-| Overnight a11y/l10n fixes (V1–V8) | ✓ | ✓ (unit + e2e) | real-browser runs on the candidate frontend | **no** | — | |
+| Overnight security fixes (#1, #2, #4, #6, #9, launcher crash) | ✓ | ✓ unit | host code under the 12 pinned real-QEMU suites, locally | **no** | — | DEV/staging still carry these issues until an approved deployment |
+| Overnight data fixes (H1, H2, H3, M2, A12 regression) | ✓ | ✓ unit + e2e | export/journey real runs (frontend) | **no** | — | |
+| Overnight a11y/l10n fixes (V1–V8) | ✓ | ✓ unit + e2e | candidate frontend in the real-browser runs | **no** | — | |
+| Capacity harness + procedure | ✓ | ✓ | smoke on staging N ≤ 2 (procedure check only) | — | — | |
 
 ## 3. Open P0 / P1
 
@@ -68,14 +73,22 @@ No open P0/P1 defect in the code itself was found by the audits that is not fixe
 | Suite | Why | When |
 |---|---|---|
 | Staging-instance suites (`s8-containment`, `s8-policy`, `s8-qemu-tasks`, `s8-deployed-policy`, `s11-deployed`) | They reconfigure or restart the deployed staging instance; staging is reserved for the owner | At the alpha host install |
-| e2e skipped cases (20) | Pre-existing conditional skips (real-QEMU or GPU-only paths, run separately) | Unchanged |
+| e2e skipped cases (22) | Env-gated: real-QEMU backends (`TBI_S6/S11/S12_REAL`) and the measurement-only `TBI_3D_TIMING`. The Sprint 13 real specs were run separately (§6) | — |
 | C-5 at N ≥ 2 (deployed) | Staging policy admits one session; the host has 1 vCPU | On the alpha VM |
 | OS-02 GPU timing | The host is headless | Owner |
 | Live dev-lab checks of the candidate | The candidate is not deployed (not authorized) | After deployment approval |
 
-## 6. Full CI on the candidate
+## 6. Full CI on the candidate (`c3b148b`; details in `s13-evidence/overnight/CI-FINAL.md`)
 
-(filled in after the final run)
+| Step | Result |
+|---|---|
+| Typecheck, lint | pass |
+| Unit | 1146 / 1146 |
+| e2e full | 196 pass / 0 fail / 22 env-gated skips |
+| Pinned runtime suites, release QEMU | 12 / 12 suites, 81 / 81; **no fingerprint changed** |
+| Real QEMU in a browser (candidate frontend → staging backends `dc1bff8`) | 9 / 9 |
+
+**RC preparation package** (`c3b148b`, built twice in clean worktrees; **not approval, not frozen, not tagged**): two independent builds are **byte-identical** (frontend and the three service bundles, 25 files). Manifest sha256 `84bec1760151b5b6…`; `verify-build` passed (the bundle carries `c3b148b`). Inputs: artifact set `767d3715fdaaef10`, alpha policy `f55d14d4f950fe24`, Node v24.21.0. Record: `s13-evidence/overnight/rc-c3b148b/`; local package `~/tbi-s13-rel/pkg-rc1a`. **Not frozen, not tagged and not deployed.** RC freeze (Oct 25) is the PM's decision; any later fix means a new candidate.
 
 ## 7. Rollback plan
 

@@ -26,5 +26,7 @@
 | M1 | Flush on `pagehide` is asynchronous; a torn-down page (mobile, or a hard close without the prompt) can lose up to the 300 ms debounce plus any write in flight | **Documented** (desktop-only product; graceful restart is covered by e2e A7) | — |
 | M3 | A newer-schema project can be deleted but not exported as a rescue copy | **Documented** (low) | — |
 
+**Regression caught by the final CI, fixed.** The H1 fix (`7490778`) moved the write into the version check's IndexedDB callback. There, a `QuotaExceededError` escaped as an uncaught exception, and the save failed as a generic abort: the user saw "Could not save" instead of "storage is full". The e2e `sprint5` A12 caught it in the full run on `d5c03a6`. Fixed in `c3b148b`: the failing write's own error is kept. The unit test fails before the fix (`AbortError`) and passes after.
+
 **No canonical project format change and no migration** were needed. All fixes are in the app's
 persistence layer and are additive.
