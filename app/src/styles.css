@@ -3247,3 +3247,77 @@ select {
   margin: 0 0 0.75rem;
   text-align: end;
 }
+
+/* OS-12: example search and category filters (logical properties: RTL-safe; wraps, no overflow). */
+.example-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-block-end: 0.75rem;
+}
+
+.example-search {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  max-inline-size: 32rem;
+}
+
+.example-search input {
+  font: inherit;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text);
+  inline-size: 100%;
+  box-sizing: border-box;
+}
+
+.example-categories {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.example-category {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  border-radius: 999px;
+}
+
+.example-category-check {
+  inline-size: 0.8em;
+  block-size: 0.8em;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.example-category[aria-pressed='true'] {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.example-result-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+}
+
+.example-result-row p {
+  margin: 0;
+}
+
+.example-empty {
+  margin-block: 0.5rem;
+  padding: 0.75rem;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+}

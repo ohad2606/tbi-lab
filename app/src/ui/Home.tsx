@@ -3,7 +3,12 @@ import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { downloadProject } from './download.js';
 import { useImportPicker } from './importFile.js';
 import logoUrl from '../assets/brand/tbi-logo.png';
-import { EXAMPLES } from '../examples/catalog.js';
+import {
+  availableCategories,
+  buildExampleIndex,
+  matchExamples,
+  type ExampleCategory,
+} from '../examples/discover.js';
 import { formatDateTime, isolateUserText, type LocaleInfo } from '../i18n/i18n.js';
 import type { ProjectIndexEntry } from '../persistence/store.js';
 import { useAppState, useStore, useT } from './context.js';
@@ -158,23 +163,7 @@ export function Home() {
         >
           <h2 id="examples-heading">{t('library.examples.heading')}</h2>
           <p class="muted small">{t('library.examples.intro')}</p>
-          <ul class="example-list" data-testid="example-list">
-            {EXAMPLES.map((ex) => (
-              <li key={ex.id} class="example" data-testid={`example-${ex.id}`}>
-                <h3>{t(ex.titleKey)}</h3>
-                <p class="muted small">{t(ex.summaryKey)}</p>
-                <button
-                  type="button"
-                  class="button"
-                  data-testid={`open-example-${ex.id}`}
-                  aria-label={t('library.examples.openNamed', { name: t(ex.titleKey) })}
-                  onClick={() => void store.openExample(ex.id)}
-                >
-                  {t('library.examples.open')}
-                </button>
-              </li>
-            ))}
-          </ul>
+          <ExampleFinder onOpen={(id) => void store.openExample(id)} />
         </section>
       </div>
 
@@ -383,5 +372,116 @@ function ConfirmDelete({
         </button>
       </div>
     </dialog>
+  );
+}
+
+/**
+ * OS-12: the example library with search and category filters (examples/discover.ts). Filtering
+ * is instant and local; opening an example is unchanged.
+ */
+function ExampleFinder({ onOpen }: { onOpen: (id: string) => void }) {
+  const t = useT();
+  const index = useMemo(() => buildExampleIndex(), []);
+  const categories = useMemo(() => availableCategories(index), [index]);
+  const [query, setQuery] = useState('');
+  const [selected, setSelected] = useState<ReadonlySet<ExampleCategory>>(new Set());
+  const shown = matchExamples(index, query, selected);
+  const active = query.trim() !== '' || selected.size > 0;
+  const searchRef = useRef<HTMLInputElement>(null);
+  const clear = () => {
+    setQuery('');
+    setSelected(new Set());
+    searchRef.current?.focus();
+  };
+  const toggle = (id: ExampleCategory) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  return (
+    <>
+      <div class="example-filters">
+        <label class="example-search">
+          <span>{t('library.examples.search')}</span>
+          <input
+            ref={searchRef}
+            type="search"
+            dir="auto"
+            data-testid="example-search"
+            value={query}
+            placeholder={t('library.examples.searchHint')}
+            aria-controls="example-list"
+            onInput={(e) => setQuery((e.target as HTMLInputElement).value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape' && query !== '') {
+                e.preventDefault();
+                setQuery('');
+              }
+            }}
+          />
+        </label>
+        <div
+          class="example-categories"
+          role="group"
+          aria-label={t('library.examples.categories')}
+          data-testid="example-categories"
+        >
+          {categories.map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              class="button example-category"
+              aria-pressed={selected.has(c.id) ? 'true' : 'false'}
+              aria-controls="example-list"
+              data-testid={`example-category-${c.id}`}
+              onClick={() => toggle(c.id)}
+            >
+              {selected.has(c.id) && (
+                // The selected state is not colour alone: a drawn check mark (the UI font has no
+                // reliable \u2713 glyph).
+                <svg class="example-category-check" viewBox="0 0 12 12" aria-hidden="true">
+                  <path d="M2 6.5 5 9.5 10 3" />
+                </svg>
+              )}
+              {t(c.labelKey)}
+            </button>
+          ))}
+        </div>
+        <div class="example-result-row">
+          <p class="muted small" role="status" aria-live="polite" data-testid="example-count">
+            {t('library.examples.count', { shown: shown.length, total: index.length })}
+          </p>
+          {active && (
+            <button type="button" class="link-button" data-testid="example-clear" onClick={clear}>
+              {t('library.examples.clear')}
+            </button>
+          )}
+        </div>
+      </div>
+      {shown.length === 0 ? (
+        <p class="example-empty" data-testid="example-empty">
+          {t('library.examples.empty')}
+        </p>
+      ) : null}
+      <ul class="example-list" id="example-list" data-testid="example-list">
+        {shown.map((ex) => (
+          <li key={ex.id} class="example" data-testid={`example-${ex.id}`}>
+            <h3>{t(ex.titleKey)}</h3>
+            <p class="muted small">{t(ex.summaryKey)}</p>
+            <button
+              type="button"
+              class="button"
+              data-testid={`open-example-${ex.id}`}
+              aria-label={t('library.examples.openNamed', { name: t(ex.titleKey) })}
+              onClick={() => onOpen(ex.id)}
+            >
+              {t('library.examples.open')}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </>
   );
 }
