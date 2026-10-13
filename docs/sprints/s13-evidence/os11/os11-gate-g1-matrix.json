@@ -1,0 +1,40 @@
+{
+  "current": {
+    "csrf": {
+      "normal": 302,
+      "replay": 403,
+      "missingCookie": 403,
+      "tamperedState": 403,
+      "foreignCookieOnly": 403,
+      "otherBrowser": 403
+    },
+    "twoTabs": [
+      403,
+      403
+    ],
+    "expired": {
+      "background": 401,
+      "relogin": 302
+    },
+    "unauthorized": 403
+  },
+  "G1": {
+    "csrf": {
+      "normal": 302,
+      "replay": 403,
+      "missingCookie": 403,
+      "tamperedState": 403,
+      "foreignCookieOnly": 403,
+      "otherBrowser": 403
+    },
+    "twoTabs": [
+      302,
+      302
+    ],
+    "expired": {
+      "background": 401,
+      "relogin": 302
+    },
+    "unauthorized": 403
+  }
+}

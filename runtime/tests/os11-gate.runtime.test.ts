@@ -25,7 +25,9 @@
  */
 import { spawn, type ChildProcess } from 'node:child_process';
 import { createSign, generateKeyPairSync, randomBytes } from 'node:crypto';
-import { existsSync } from 'node:fs';
+import { existsSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { createServer, type Server } from 'node:http';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { recordEvidence } from '../harness/env.js';
@@ -116,7 +118,17 @@ async function startIdp() {
 
 // ---- The real oauth2-proxy, configured like the gate (skip_provider_button, lax cookies).
 const procs: ChildProcess[] = [];
-async function startProxy(extra: string[] = []): Promise<string> {
+/**
+ * `allow`: an exact-email allowlist (as the gate's authenticated_emails_file, no domain); without
+ * it every email is accepted.
+ */
+async function startProxy(extra: readonly string[] = [], allow?: string[]): Promise<string> {
+  let access = ['--email-domain=*'];
+  if (allow) {
+    const dir = mkdtempSync(join(tmpdir(), 'os11-'));
+    writeFileSync(join(dir, 'allowed'), allow.join('\n') + '\n');
+    access = [`--authenticated-emails-file=${join(dir, 'allowed')}`];
+  }
   const port = 6100 + Math.floor(Math.random() * 400);
   const base = `http://127.0.0.1:${port}`;
   const p = spawn(
@@ -132,7 +144,7 @@ async function startProxy(extra: string[] = []): Promise<string> {
       '--cookie-secure=false',
       '--cookie-samesite=lax',
       '--cookie-expire=8h',
-      '--email-domain=*',
+      ...access,
       '--skip-provider-button=true',
       `--redirect-url=${base}/oauth2/callback`,
       '--upstream=static://200',
@@ -200,6 +212,11 @@ async function startLogin(b: Browser, base: string, path = '/') {
 }
 
 const evidence: Record<string, unknown> = {};
+// One provider and the proxies for the whole file; stopped once at the end.
+afterAll(() => {
+  for (const p of procs) p.kill();
+  idp?.close();
+});
 
 describe.skipIf(!HAVE)('OS-11: the gate CSRF failure, reproduced on the real oauth2-proxy', () => {
   let base = '';
@@ -213,11 +230,7 @@ describe.skipIf(!HAVE)('OS-11: the gate CSRF failure, reproduced on the real oau
       v.on('close', () => r(o.trim()));
     });
   });
-  afterAll(() => {
-    for (const p of procs) p.kill();
-    idp?.close();
-    recordEvidence('os11-gate', evidence);
-  });
+  afterAll(() => recordEvidence('os11-gate', evidence));
 
   it('1. root cause: a background request during a login in flight overwrites the CSRF cookie -> 403', async () => {
     const b = new Browser();
@@ -359,4 +372,183 @@ describe.skipIf(!HAVE)('OS-11: the gate CSRF failure, reproduced on the real oau
     (evidence.errorPage as Record<string, unknown>).recoveryViaSignIn =
       done.headers.get('location');
   });
+});
+
+/**
+ * PM decision (OS-11 G1/G2): the evidence for the gate changes, on the same binary. Every case
+ * runs with the CURRENT gate settings and with G1 (`cookie_csrf_per_request`): CSRF validation
+ * stays enforced, concurrent tabs, expired sessions, unauthorized users. Then G2: the request log
+ * no longer carries the callback's code and state, and the auth audit lines stay.
+ */
+const G1 = ['--cookie-csrf-per-request=true', '--cookie-csrf-expire=15m'];
+/** G2's proposed oauth2-proxy unit drop-in: LogFilterPatterns=~<each> (journald drops matches). */
+const JOURNAL_DROP = [/&\{(GET|POST|HEAD) /, /\/oauth2\/callback\?/];
+const matrix: Record<string, Record<string, unknown>> = {};
+
+describe.skipIf(!HAVE)(
+  'OS-11 G1: CSRF behaviour, current settings vs cookie_csrf_per_request',
+  () => {
+    beforeAll(async () => {
+      if (!IDP) await startIdp();
+    });
+    afterAll(() => recordEvidence('os11-gate-g1-matrix', matrix));
+
+    for (const [name, extra] of [
+      ['current', [] as string[]],
+      ['G1', G1],
+    ] as const) {
+      it(`${name}: CSRF state validation stays enforced`, async () => {
+        const base = await startProxy(extra);
+        const r: Record<string, unknown> = {};
+        // (a) a normal login succeeds and clears its CSRF cookie
+        const ok = new Browser();
+        const cb = await ok.approveAt(await startLogin(ok, base, '/x'));
+        const done = await ok.get(cb);
+        r.normal = done.status;
+        expect(done.status).toBe(302);
+        expect(done.headers.get('location')).toBe('/x');
+        expect(ok.csrfCookies()).toEqual([]);
+        // (b) the same callback replayed: refused, code redeemed once
+        const code = new URL(cb).searchParams.get('code')!;
+        r.replay = (await ok.get(cb)).status;
+        expect(r.replay).toBe(403);
+        expect(redeemed.get(code)).toBe(1);
+        // (c) no CSRF cookie at all
+        const none = new Browser();
+        const a1 = await startLogin(none, base);
+        for (const k of none.csrfCookies()) none.jar.delete(k);
+        r.missingCookie = (await none.get(await none.approveAt(a1))).status;
+        expect(r.missingCookie).toBe(403);
+        // (d) a tampered state
+        const tam = new Browser();
+        const back = new URL(await tam.approveAt(await startLogin(tam, base)));
+        const st = back.searchParams.get('state')!;
+        back.searchParams.set('state', (st[0] === 'A' ? 'B' : 'A') + st.slice(1));
+        r.tamperedState = (await tam.get(back.toString())).status;
+        expect(r.tamperedState).toBe(403);
+        // (e) only ANOTHER login's CSRF cookie present (a cookie never validates a foreign state)
+        const mix = new Browser();
+        const loginA = await startLogin(mix, base, '/a');
+        const cookiesA = mix.csrfCookies();
+        await startLogin(mix, base, '/b');
+        for (const k of cookiesA) if (name === 'G1') mix.jar.delete(k);
+        const resA = await mix.get(await mix.approveAt(loginA));
+        r.foreignCookieOnly = resA.status;
+        // current: A's cookie was overwritten by B's (same name); G1: A's own cookie removed.
+        expect(resA.status).toBe(403);
+        // (f) a cross-profile callback (another browser presents the callback URL)
+        const victim = new Browser();
+        const cross = await victim.approveAt(await startLogin(victim, base));
+        r.otherBrowser = (await new Browser().get(cross)).status;
+        expect(r.otherBrowser).toBe(403);
+        matrix[name] = { ...(matrix[name] ?? {}), csrf: r };
+      });
+
+      it(`${name}: two tabs signing in at once`, async () => {
+        const base = await startProxy(extra);
+        const b = new Browser();
+        const t1 = await startLogin(b, base, '/a');
+        const t2 = await startLogin(b, base, '/b');
+        const r1 = await b.get(await b.approveAt(t1));
+        const r2 = await b.get(await b.approveAt(t2));
+        const res = [r1.status, r2.status];
+        matrix[name] = { ...(matrix[name] ?? {}), twoTabs: res };
+        expect(res).toEqual(name === 'G1' ? [302, 302] : [403, 403]);
+      });
+
+      it(`${name}: an expired session: background 401 without a login, then one clean login`, async () => {
+        const base = await startProxy([...extra, '--cookie-expire=3s']);
+        const b = new Browser();
+        expect((await b.get(await b.approveAt(await startLogin(b, base)))).status).toBe(302);
+        await new Promise((r) => setTimeout(r, 4000));
+        const bg = await b.get(`${base}/version.json`, '*/*, application/json');
+        expect(bg.status).toBe(401);
+        // The only cookie written is the deletion of the expired session cookie: no CSRF cookie, no
+        // login started.
+        for (const c of bg.headers.getSetCookie()) expect(c).toMatch(/^os11=[^;]*;.*Max-Age=0/);
+        expect(b.csrfCookies()).toEqual([]);
+        const top = await b.get(`${base}/`);
+        expect(top.status).toBe(302);
+        const fin = await b.get(await b.approveAt(top.headers.get('location')!));
+        expect(fin.status).toBe(302);
+        expect((await b.get(`${base}/`)).status).toBe(200);
+        matrix[name] = {
+          ...(matrix[name] ?? {}),
+          expired: { background: bg.status, relogin: fin.status },
+        };
+      });
+
+      it(`${name}: an account not on the allowlist is refused (403, no session)`, async () => {
+        const base = await startProxy(extra, ['someone-else@example.test']);
+        const b = new Browser();
+        const r = await b.get(await b.approveAt(await startLogin(b, base)));
+        expect(r.status).toBe(403);
+        expect(b.jar.has('os11')).toBe(false);
+        expect((await b.get(`${base}/`)).status).toBe(302); // still not signed in
+        matrix[name] = { ...(matrix[name] ?? {}), unauthorized: r.status };
+      });
+    }
+  },
+);
+
+describe.skipIf(!HAVE)('OS-11 G2: the callback code and state stay out of the request log', () => {
+  const logs: Record<string, unknown> = {};
+  beforeAll(async () => {
+    if (!IDP) await startIdp();
+  });
+  afterAll(() => recordEvidence('os11-gate-g2-logging', logs));
+  const leaks = (log: string) => (log.match(/[?&](code|state)=/g) ?? []).length;
+
+  for (const [name, extra] of [
+    ['current', [] as string[]],
+    ['G2', ['--exclude-logging-path=/oauth2/callback']],
+    ['G1+G2', [...G1, '--exclude-logging-path=/oauth2/callback']],
+  ] as const) {
+    it(`${name}: success and failure paths`, async () => {
+      const base = await startProxy(extra);
+      const ok = new Browser();
+      expect((await ok.get(await ok.approveAt(await startLogin(ok, base)))).status).toBe(302);
+      expect((await ok.get(`${base}/`)).status).toBe(200);
+      await new Promise((r) => setTimeout(r, 200));
+      const success = proxyLog();
+      const bad = new Browser();
+      const a = await startLogin(bad, base);
+      for (const k of bad.csrfCookies()) bad.jar.delete(k);
+      expect((await bad.get(await bad.approveAt(a))).status).toBe(403);
+      await new Promise((r) => setTimeout(r, 200));
+      const all = proxyLog();
+      const failure = all.slice(success.length);
+      logs[name] = {
+        successLeaks: leaks(success),
+        failureLeaks: leaks(failure),
+        auditKept: /\[AuthSuccess\]/.test(success) && /\[AuthFailure\]/.test(failure),
+        requestIdsKept: /[0-9a-f]{8}-[0-9a-f]{4}-/.test(success),
+        failureLeakLines: failure
+          .split('\n')
+          .filter((l) => /[?&](code|state)=/.test(l))
+          .map((l) =>
+            l
+              .replace(/(code|state)=[^&\s"]*/g, '$1=<r>')
+              .replace(/^.*?\] /, '')
+              .slice(0, 160),
+          ),
+      };
+      // Success path: exclude_logging_path alone keeps code and state out (the request log).
+      if (name === 'current') expect(leaks(success)).toBeGreaterThan(0);
+      else expect(leaks(success)).toBe(0);
+      expect(/\[AuthSuccess\]/.test(success)).toBe(true); // the audit line stays
+      // Failure path (missing CSRF cookie): v7.15.4 writes the whole request, Cookie header
+      // included, to its standard log; only the journald filter of G2 removes those lines. The
+      // same patterns as the proposed LogFilterPatterns=, applied to the real output:
+      const kept = failure.split('\n').filter((l) => !JOURNAL_DROP.some((re) => re.test(l)));
+      expect(leaks(failure)).toBeGreaterThan(0);
+      expect(leaks(kept.join('\n'))).toBe(0);
+      expect(kept.some((l) => /Cookie:\[/.test(l))).toBe(false);
+      expect(kept.some((l) => /Initiating login/.test(l))).toBe(true);
+      (logs[name] as Record<string, unknown>).afterJournalFilter = {
+        leaks: leaks(kept.join('\n')),
+        cookieDumps: kept.filter((l) => /Cookie:\[/.test(l)).length,
+      };
+    });
+  }
 });
