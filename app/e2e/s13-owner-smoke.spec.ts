@@ -277,6 +277,12 @@ test('a11y: a blocked Run is reachable by keyboard and explains itself', async (
     if (r.url().includes('/runtime/')) runtime.push(r.url());
   });
   await openExample(page, 'esp32-blink');
+  // A unique source edit blocks Run in every mode: against a real build service the example's
+  // unchanged source has a valid cached build (OS-08), so Run would rightly be available.
+  await page.getByTestId('view-code').click();
+  await page.getByTestId('code-text').press('Control+End');
+  await page.getByTestId('code-text').pressSequentially(`\n// a11y ${Date.now()}`);
+  await page.getByTestId('view-circuit').click();
   const run = page.getByTestId('sim-run');
   await expect(run).toHaveAttribute('aria-disabled', 'true');
   await expect(run).toBeDisabled(); // Playwright honours aria-disabled
