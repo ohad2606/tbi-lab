@@ -8,7 +8,9 @@ Acceptance requirement (PM): five independent concurrent ESP32 sessions on the a
 
 1. The release installed by the standard procedure (`install.sh <instance>`, as on staging), with:
    - **the alpha policy:** `TBI_S8_POLICY=deploy/dev-lab/s8/policy.alpha.json`, which gives five concurrent testers, a shared build queue of 10 and two build workers;
-   - **an artifact store cap of at least 640 MiB:** `TBI_ARTIFACT_CAP_MB=640` (security audit #3: five users × 128 MiB quota; at the 256 MiB default, users evict each other's builds);
+   - **an artifact store cap of at least 640 MiB:** `TBI_S8_ARTIFACT_CAP_MB=640` (security audit #3: five users × 128 MiB quota; at the 256 MiB default, users evict each other's builds). `install.sh` renders it into the build unit; without it the default stays 256. (Until 2026-10-13 this doc named the unit variable, which `install.sh` did not take: an install following it would have kept 256 MiB.)
+   - the whole command, **on the alpha VM only** (its services use the dev-lab layout, `tbi-*`; never run it with these variables on the DEV or staging host):
+     `TBI_S8_POLICY=deploy/dev-lab/s8/policy.alpha.json TBI_S8_ARTIFACT_CAP_MB=640 TBI_S8_RUNTIME=<release runtime dir> deploy/dev-lab/s8/install.sh dev-lab`, then `capacity-acceptance.sh tbi <evidence dir>`;
    - Runtime v2 `b5b34b49cb7e4049` and the release artifact set `767d3715fdaaef10`.
 2. The instance is idle, with no live sessions.
 3. A clean checkout of the release commit on the VM; Node as provisioned; passwordless sudo for the operator.

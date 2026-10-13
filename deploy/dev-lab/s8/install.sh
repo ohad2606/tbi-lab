@@ -81,6 +81,10 @@ done
 POLICY="${TBI_S8_POLICY:-$here/policy.json}"
 test -f "$POLICY" || { echo "no policy file $POLICY" >&2; exit 1; }
 sudo install -m 0400 "$POLICY" "/etc/$N/policy.json"
+# Sprint 13 (security audit #3): the managed artifact store is shared by all users; the alpha needs
+# at least users x quota (5 x 128 MiB = 640). TBI_S8_ARTIFACT_CAP_MB sets it; default 256 (unchanged).
+CAP_MB="${TBI_S8_ARTIFACT_CAP_MB:-256}"
+[[ "$CAP_MB" =~ ^[1-9][0-9]{0,5}$ ]] || { echo "TBI_S8_ARTIFACT_CAP_MB must be a whole number of MiB" >&2; exit 1; }
 
 # Sprint 12: the runtime's identity and bridge capabilities, for the build service (ADR-011 §5).
 test -f "$RUNTIME/runtime.json" || { echo "no runtime.json in $RUNTIME" >&2; exit 1; }
@@ -138,7 +142,7 @@ fi
 render() {
   sed -e "s|@N@|$N|g" -e "s|@NRE@|${N//-/\\\\-}|g" -e "s|@STORE@|$STORE|g" -e "s|@BUNDLES@|$BUNDLES|g" \
     -e "s|@ARDUINO@|$ARDUINO|g" -e "s|@NODE@|$NODE|g" -e "s|@RUNTIME@|$RUNTIME|g" \
-    -e "s|@GATE_GID@|$GATE_GID|g" -e "s|@JOB_UID@|$JOB_UID|g" "$1"
+    -e "s|@GATE_GID@|$GATE_GID|g" -e "s|@JOB_UID@|$JOB_UID|g" -e "s|@ARTIFACT_CAP_MB@|$CAP_MB|g" "$1"
 }
 render "$here/tbi-build.service.in" | sudo tee "/etc/systemd/system/$N-build.service" >/dev/null
 render "$here/tbi-build-job@.service.in" | sudo tee "/etc/systemd/system/$N-build-job@.service" >/dev/null

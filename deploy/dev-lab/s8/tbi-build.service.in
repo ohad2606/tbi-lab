@@ -20,7 +20,7 @@ Environment=TBI_ARTIFACT_STORE=@STORE@
 Environment=TBI_BUILD_WORK=/var/lib/@N@-build/jobs
 Environment=TBI_BUILD_STATE=/var/lib/@N@-build/state
 Environment=TBI_BUILD_JOB_UNIT=@N@-build-job
-Environment=TBI_ARTIFACT_CAP_MB=256
+Environment=TBI_ARTIFACT_CAP_MB=@ARTIFACT_CAP_MB@
 Environment=TBI_ARTIFACT_LEASE_MS=600000
 Environment=TBI_IDENTITY_KEY_FILE=%d/identity.key
 Environment=TBI_TICKET_KEY_FILE=%d/ticket.key
