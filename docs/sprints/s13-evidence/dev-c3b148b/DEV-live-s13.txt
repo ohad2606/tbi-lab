@@ -1,0 +1,40 @@
+PASS  deployed frontend commit  — c3b148b11b71c1cb01ff67caf1a8dc3150b279d0
+PASS  OS-08: no build -> Run unavailable (build required)
+PASS  OS-08: during the build -> Run unavailable (building)
+PASS  OS-08: built -> Run available
+PASS  esp32-blink: Run -> running (mcu)
+PASS  esp32-blink: Stop -> stopped
+PASS  OS-08: an edit -> Run unavailable again (stale)
+PASS  OS-10 (en): armed tile pressed, check mark, fill distinct from resting and hover
+PASS  OS-10 (en): preview invalid over a part
+PASS  OS-10 (en): Escape disarms
+PASS  OS-10 (he): armed tile pressed, check mark, fill distinct from resting and hover
+PASS  OS-10 (he): preview invalid over a part
+PASS  OS-10 (he): Escape disarms
+PASS  OS-07 (en): PIR inspector without horizontal overflow  — 0px
+PASS  OS-07 (he): PIR inspector without horizontal overflow  — 0px
+PASS  OS-01: 4k7 -> 4.7 kΩ on the part
+PASS  OS-04: dropping a part onto another is refused with the reason
+PASS  OS-06: distance in plain metres
+PASS  esp32-distance-alarm: Build -> current
+PASS  esp32-distance-alarm: Run -> running (mcu)
+PASS  OS-06: 0.10 m reached by 5 mm steps
+PASS  OS-06/OS-03: under the live session the alarm LED lights
+PASS  OS-03: session still running after the drag (no rate refusal)
+PASS  esp32-distance-alarm: Stop -> stopped
+PASS  OS-09: Build -> current
+PASS  OS-09: Run -> running (mcu)
+PASS  OS-09: miswiring named (GPIO21, SDA, VCC)
+PASS  OS-09: SDA absolute-maximum row
+PASS  OS-09: Stop -> stopped
+PASS  P2/P3: Build -> current
+PASS  P2/P3: Run -> running (mcu)
+PASS  P2/P3: short named, current not known, no value
+PASS  P2/P3: Stop -> stopped
+PASS  P4: Build -> current
+PASS  P4: build lists drive_strength as unsupported
+PASS  P4: Run refused naming it
+PASS  OS-02: 3D first frame reached (timing informational: software rendering, no GPU)  — 1703 ms; tier reduced
+PASS  no page errors
+
+38/38 passed

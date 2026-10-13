@@ -6,8 +6,8 @@
 
 | | Commit | Where |
 |---|---|---|
-| Deployed release | `dc1bff8` | DEV (dev-lab) and staging (`tbi-s8`), Runtime v2 `b5b34b49cb7e4049`, artifact set `767d3715fdaaef10` |
-| Candidate code (this package) | `sprint-13` @ the commit in §6 | **branch only**: tested locally, not deployed |
+| Deployed release (since 2026-10-13, PM conditional authorization) | **`c3b148b`** | DEV (dev-lab) and staging (`tbi-s8`), Runtime v2 `b5b34b49cb7e4049`, artifact set `767d3715fdaaef10`, default policies. Previous: `dc1bff8` (backups and rehearsed rollbacks: `s13-evidence/staging-c3b148b/`, `s13-evidence/dev-c3b148b/`) |
+| Candidate code (this package) | `c3b148b` | Deployed to staging and DEV after staging B0–B5 passed. Not frozen, tagged or merged |
 
 Between `dc1bff8` and the candidate (overnight run, Oct 12–13), there are no feature changes. The new commits are security, data-integrity and accessibility fixes from the audits, plus test and procedure work:
 
@@ -43,9 +43,9 @@ Columns: **I** = implemented · **L** = tested locally (unit, e2e, pinned runtim
 | H1 capabilities panel, H2 ratings, H3 journey, H4 onboarding, H6 runbook / backup | ✓ | ✓ | ✓ (H3 journey-real) | ✓ | — | H3 native Hebrew review = O-6 |
 | H7 feedback form | ✓ (disabled) | ✓ | — | disabled | — | Enabling needs PM approval of external data collection |
 | **H5 five-session capacity (P0)** | procedure ✓ | harness ✓ | **N = 1 PASS on staging only** | — | — | **Not accepted. No alpha host exists.** The single-core host has NOT passed five-session acceptance |
-| Overnight security fixes (#1, #2, #4, #6, #9, launcher crash) | ✓ | ✓ unit | host code under the 12 pinned real-QEMU suites, locally | **no** | — | DEV/staging still carry these issues until an approved deployment |
-| Overnight data fixes (H1, H2, H3, M2, A12 regression) | ✓ | ✓ unit + e2e | export/journey real runs (frontend) | **no** | — | |
-| Overnight a11y/l10n fixes (V1–V8) | ✓ | ✓ unit + e2e | candidate frontend in the real-browser runs | **no** | — | |
+| Overnight security fixes (#1, #2, #4, #6, #9, launcher crash) | ✓ | ✓ unit | ✓ pinned suites; deployed security test on staging and DEV | **✓ staging + DEV** | — | Before/after on staging: #1 and #4 absent on `dc1bff8`, enforced on `c3b148b` |
+| Overnight data fixes (H1, H2, H3, M2, A12 regression) | ✓ | ✓ unit + e2e | export/journey real runs (frontend) | **✓ DEV** | — | |
+| Overnight a11y/l10n fixes (V1–V8) | ✓ | ✓ unit + e2e | Owner Smoke spec 13/13 real mode | **✓ DEV** | — | |
 | Capacity harness + procedure | ✓ | ✓ | smoke on staging N ≤ 2 (procedure check only) | — | — | |
 
 ## 3. Open P0 / P1
@@ -56,8 +56,8 @@ Columns: **I** = implemented · **L** = tested locally (unit, e2e, pinned runtim
 | B-2 | **P0** | Owner Smoke acceptance (Sprints 11/12 and OS-01…10, P2–P4) | RC freeze | Owner (Oct 15–17) |
 | B-3 | P1 | OS-02 first 3D frame ≤ 2 s on the owner's GPU | RC freeze (PM) | Owner measurement |
 | B-4 | P1 | P1 drive model: bench evidence or ship with the stated limitation | PM decision ~Oct 20 | Owner bench |
-| B-5 | P1 | Deploy the overnight fixes (the security fixes above are not on any deployed system) | Alpha host install | PM deployment approval |
-| B-6 | P1 | Alpha configuration: `policy.alpha.json` and `TBI_ARTIFACT_CAP_MB ≥ 640` (security #3) | Capacity acceptance | Part of the approved alpha install |
+| B-5 | — | ~~Deploy the overnight fixes~~ **Done 2026-10-13**: staging and DEV on `c3b148b` | — | — |
+| B-6 | P1 | Alpha configuration: `policy.alpha.json` and `TBI_S8_ARTIFACT_CAP_MB=640` via `install.sh dev-lab` on the alpha VM (security #3; `install.sh` input added in `6016792`). **Not active on DEV or staging** | Capacity acceptance | Part of the approved alpha install |
 
 No open P0/P1 defect in the code itself was found by the audits that is not fixed on the branch.
 

@@ -1,0 +1,3 @@
+   ✓ Sprint 11 R1 on the deployed instance (tbi) > esp32-night-light: dark lights all three channels; bright turns them off; DELETE cleans up  9557ms
+   ✓ Sprint 11 R1 on the deployed instance (tbi) > command boundary: malformed, oversized, unknown, unsupported, out of range, rate-limited, foreign user  11969ms
+      Tests  21 passed | 5 skipped (26)
