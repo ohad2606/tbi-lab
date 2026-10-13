@@ -29,6 +29,7 @@ import { existsSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createServer, type Server } from 'node:http';
+import { createServer as createNetServer } from 'node:net';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { recordEvidence } from '../harness/env.js';
 
@@ -129,7 +130,14 @@ async function startProxy(extra: readonly string[] = [], allow?: string[]): Prom
     writeFileSync(join(dir, 'allowed'), allow.join('\n') + '\n');
     access = [`--authenticated-emails-file=${join(dir, 'allowed')}`];
   }
-  const port = 6100 + Math.floor(Math.random() * 400);
+  // A port the OS reports free (random ports collided: a second proxy then failed to bind and
+  // the test talked to the FIRST one, with another configuration).
+  const port = await new Promise<number>((resolve) => {
+    const probe = createNetServer().listen(0, '127.0.0.1', () => {
+      const { port: free } = probe.address() as { port: number };
+      probe.close(() => resolve(free));
+    });
+  });
   const base = `http://127.0.0.1:${port}`;
   const p = spawn(
     BIN,
@@ -159,7 +167,9 @@ async function startProxy(extra: readonly string[] = [], allow?: string[]): Prom
   (p as unknown as { log: () => string }).log = () => log;
   for (let k = 0; k < 100; k++) {
     try {
-      if ((await fetch(`${base}/ping`)).ok) return base;
+      if (p.exitCode !== null) throw new Error(`oauth2-proxy exited: ${log}`);
+      // Answering, and it is this process (its own log names the port it listens on).
+      if ((await fetch(`${base}/ping`)).ok && log.includes(`127.0.0.1:${port}`)) return base;
     } catch {
       /* not yet */
     }
@@ -382,7 +392,7 @@ describe.skipIf(!HAVE)('OS-11: the gate CSRF failure, reproduced on the real oau
  */
 const G1 = ['--cookie-csrf-per-request=true', '--cookie-csrf-expire=15m'];
 /** G2's proposed oauth2-proxy unit drop-in: LogFilterPatterns=~<each> (journald drops matches). */
-const JOURNAL_DROP = [/&\{(GET|POST|HEAD) /, /\/oauth2\/callback\?/];
+const JOURNAL_DROP = [/&\{(GET|POST|HEAD)/, /\/oauth2\/callback\?/];
 const matrix: Record<string, Record<string, unknown>> = {};
 
 describe.skipIf(!HAVE)(
@@ -498,6 +508,14 @@ describe.skipIf(!HAVE)('OS-11 G2: the callback code and state stay out of the re
   });
   afterAll(() => recordEvidence('os11-gate-g2-logging', logs));
   const leaks = (log: string) => (log.match(/[?&](code|state)=/g) ?? []).length;
+  /** The proxy writes its log lines after answering: wait until the log stops growing. */
+  const logSettled = async () => {
+    let last = -1;
+    for (let k = 0; k < 40 && proxyLog().length !== last; k++) {
+      last = proxyLog().length;
+      await new Promise((r) => setTimeout(r, 150));
+    }
+  };
 
   for (const [name, extra] of [
     ['current', [] as string[]],
@@ -509,13 +527,13 @@ describe.skipIf(!HAVE)('OS-11 G2: the callback code and state stay out of the re
       const ok = new Browser();
       expect((await ok.get(await ok.approveAt(await startLogin(ok, base)))).status).toBe(302);
       expect((await ok.get(`${base}/`)).status).toBe(200);
-      await new Promise((r) => setTimeout(r, 200));
+      await logSettled();
       const success = proxyLog();
       const bad = new Browser();
       const a = await startLogin(bad, base);
       for (const k of bad.csrfCookies()) bad.jar.delete(k);
       expect((await bad.get(await bad.approveAt(a))).status).toBe(403);
-      await new Promise((r) => setTimeout(r, 200));
+      await logSettled();
       const all = proxyLog();
       const failure = all.slice(success.length);
       logs[name] = {
