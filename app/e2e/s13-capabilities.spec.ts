@@ -23,6 +23,8 @@ test('from the menu: firmware facilities, parts, timing and limits; Escape close
   const dialog = page.getByTestId('capabilities-dialog');
   await expect(dialog).toBeVisible();
   await expect(dialog).toHaveAttribute('data-section', 'firmware');
+  // The board's implicit 3.3 V supply is explained (its 3V3/5V pins cannot be wired).
+  await expect(dialog.getByTestId('capability-board-power')).toContainText('its own 3.3 V supply');
   await expect(dialog.getByTestId('capability-facility-digital_io')).toHaveAttribute(
     'data-status',
     'supported',
@@ -75,6 +77,7 @@ test('Hebrew: right-to-left, translated, same entries', async ({ page }) => {
   await expect(dialog).toHaveAttribute('dir', 'rtl');
   await expect(dialog.locator('#capabilities-title')).toHaveText('מה רץ על ה־ESP32 ב־TBI Lab');
   await expect(dialog.getByTestId('capability-facility-pwm')).toContainText('לא נתמך');
+  await expect(dialog.getByTestId('capability-board-power')).toContainText('3.3 V');
   await expect(dialog.locator('[data-testid^="capability-facility-"]')).toHaveCount(19);
   // No English prose left in the Hebrew panel: only technical tokens (acronyms and part numbers,
   // Arduino API names, library and product names, units) — the terminology rule.

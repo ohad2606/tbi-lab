@@ -995,6 +995,8 @@ export const en = {
   'capabilities.limit.commands_rate_limited':
     'Part controls changed too quickly while running; some changes were refused. Change them more slowly.',
   'capabilities.parts.supported': 'Simulated with the ESP32.',
+  'capabilities.board.power':
+    'How the board is powered: the ESP32 board runs from its own 3.3 V supply, as if powered through its USB connector. Its 3V3 and 5V pins are not part of the simulated circuit and cannot be wired; connect its GND to the circuit ground. Parts next to it take their power from the lab power supply.',
   // Sprint 13 H2: outside the specified operating range; damage threshold unknown (not "safe").
   'rating.operating.heading': 'Outside specified operating conditions',
   'rating.operating.summary': '{component} is outside its specified operating range',

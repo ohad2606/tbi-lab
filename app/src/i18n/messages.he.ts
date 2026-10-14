@@ -965,6 +965,8 @@ export const he: Record<MessageKey, string> = {
   'capabilities.limit.commands_rate_limited':
     'פקדי הרכיבים שונו מהר מדי בזמן ההרצה; חלק מהשינויים נדחו. שנו אותם לאט יותר.',
   'capabilities.parts.supported': 'מדומה לצד ה־ESP32.',
+  'capabilities.board.power':
+    'איך הלוח מוזן: לוח ה־ESP32 פועל מספק פנימי של 3.3 V, כאילו הוא מוזן דרך מחבר ה־USB שלו. הפינים 3V3 ו־5V שלו אינם חלק מהמעגל המדומה ואי אפשר לחבר אליהם חוטים; חברו את ה־GND שלו לאדמה של המעגל. הרכיבים לידו מקבלים מתח מספק הכוח המעבדתי.',
   // Sprint 13 H2: outside the specified operating range; damage threshold unknown (not "safe").
   'rating.operating.heading': 'מחוץ לתנאי ההפעלה המוגדרים',
   'rating.operating.summary': '{component} מחוץ לטווח ההפעלה המוגדר שלו',
