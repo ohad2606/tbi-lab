@@ -592,3 +592,115 @@ Recommended order:
 4. Narrow robotics vertical slices with validated kinematics/geometry.
 5. Broader robotics scene/physics support only if justified by product demand.
 
+
+
+---
+
+## Guided Learning & Circuit Advisor
+
+**Status:** Approved Product Direction / Backlog  
+**Priority:** High user-value feature after core circuit analysis is trustworthy.  
+**Audience:** Beginners, students, makers and any user who wants the simulator to explain correct engineering choices rather than merely report whether a circuit runs.
+
+### Goal
+
+TBI Lab should include a learning/advisory area that can analyze:
+- a natural-language question;
+- an incomplete circuit;
+- an unsafe circuit;
+- a working-but-suboptimal circuit;
+
+and explain the correct ways to implement the intended function.
+
+Unlike the educational TBI product, this advisor may provide direct solutions, calculations and recommended circuit changes.
+
+### Core rule
+
+Advice must be grounded in:
+- actual selected component models;
+- the electrical solver;
+- authoritative ratings;
+- the controller/pin capability model;
+- documented engineering practice.
+
+The AI must not invent a solution from memory and present it as electrically verified.
+
+### Example: LED from a bench supply
+
+If a user connects a bench supply directly to an LED or asks how to power an LED, TBI Lab should explain that an LED requires current limiting.
+
+It must NOT teach that setting the source equal to the LED's nominal forward voltage is a generally safe substitute for current limiting.
+
+LED forward voltage varies with current, temperature, part variation and device model.
+
+Preferred solutions:
+1. series resistor sized for the target current; or
+2. a suitable constant-current driver/source.
+
+For a 5 V source and an LED whose modeled forward voltage is approximately 3.0 V at the chosen operating current, a 10 mA design target gives:
+
+`R = (5 V - 3 V) / 0.01 A = 200 Ω`
+
+The product may recommend the next suitable standard value such as 220 Ω after validating the resulting current against the actual LED model and rating.
+
+The exact recommendation must be calculated from the selected LED model and target operating current, not hard-coded.
+
+### Advisor output
+
+A useful answer should be able to include:
+- what is wrong or risky;
+- why it is wrong;
+- one or more valid solutions;
+- calculated component values;
+- expected voltage/current/power after the fix;
+- component rating margins;
+- trade-offs between alternatives;
+- optional direct application of the fix after user approval.
+
+### Solution classes
+
+The advisor may propose multiple valid engineering approaches when appropriate.
+
+Examples:
+- resistor vs constant-current driver for an LED;
+- transistor vs MOSFET vs relay depending on isolation/load requirements;
+- voltage divider vs level shifter vs optocoupler depending on signal requirements;
+- pull-up/pull-down selection;
+- flyback protection for inductive loads;
+- decoupling/filtering where required;
+- appropriate power-supply voltage/current limits.
+
+The advisor should distinguish:
+- simplest valid solution;
+- recommended robust solution;
+- alternate valid solutions.
+
+### Learning behavior
+
+The learning area should explain the engineering reasoning, not only state the answer.
+
+When relevant it should show:
+- formulas;
+- substituted values;
+- expected simulation result;
+- why another approach is unsafe or less robust.
+
+The user should be able to move from explanation to the actual circuit and see the same numbers in X-Ray, instruments and the solver.
+
+### Apply / compare
+
+Future interaction may include:
+- **Explain only**
+- **Show recommended fix**
+- **Apply fix**
+- **Compare alternatives**
+
+Any applied fix must be validated through the same simulation and pin/electrical validation layers as a manually built circuit.
+
+### Scope discipline
+
+Do not build a separate educational simulator.
+
+This feature is an advisory layer over the same professional TBI Lab project, solver, component models and AI Engineer.
+
+The product must remain useful to experienced users while making correct engineering decisions accessible to beginners.
