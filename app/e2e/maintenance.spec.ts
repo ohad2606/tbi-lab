@@ -301,15 +301,15 @@ test('4. a new supply has its output on: the first Run of a simple circuit needs
   await expect(page.getByTestId('param-PSU2-outputEnabled')).toBeChecked();
 });
 
-test('5. Projects screen: the elongated TBI logo, transparent and prominent, in both locales', async ({
+test('5. Projects screen: the full TBI Lab logo, transparent and prominent, in both locales', async ({
   page,
 }) => {
   await createProject(page, 'Brand');
   await goLibrary(page);
   const logo = page.locator('.brand-hero-logo');
   for (const [locale, alt, title] of [
-    ['en', /^TBI: Think/, 'Projects'],
-    ['he', /^TBI: חושבים/, 'פרויקטים'],
+    ['en', /^TBI Lab: Think/, 'Projects'],
+    ['he', /^TBI Lab: חושבים/, 'פרויקטים'],
   ] as const) {
     await setLocale(page, locale);
     await expect(logo).toBeVisible();
@@ -332,8 +332,8 @@ test('5. Projects screen: the elongated TBI logo, transparent and prominent, in 
         cornerAlpha: corner,
       };
     });
-    expect(info.src).toMatch(/tbi-logo/);
-    expect(info.natural).toEqual([533, 300]);
+    expect(info.src).toMatch(/tbi-lab-logo/);
+    expect(info.natural).toEqual([520, 300]);
     expect(info.height).toBe(150); // was 100 px before this pass
     expect(info.width).toBeGreaterThan(info.height * 1.6); // the elongated logo, not the round mark
     expect(info.cornerAlpha).toBe(0); // real transparency over the navy band

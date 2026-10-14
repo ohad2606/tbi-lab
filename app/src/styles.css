@@ -1546,7 +1546,7 @@ select {
   flex-shrink: 0;
 }
 
-/* The regular TBI logo, light-surface version, at toolbar size; aspect ratio kept. */
+/* The TBI Lab infinity symbol at toolbar size, beside the product name; aspect ratio kept. */
 .brand-logo {
   display: block;
   block-size: 38px;
@@ -1585,7 +1585,7 @@ select {
   color: #fff;
 }
 
-/* The elongated TBI logo, transparent over the navy band (asset is 2x for sharp displays). */
+/* The full TBI Lab logo, transparent over the navy band (asset is 2x for sharp displays). */
 .brand-hero-logo {
   block-size: 150px;
   inline-size: auto;

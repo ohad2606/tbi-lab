@@ -1,16 +1,16 @@
 /**
- * Build the web brand assets from the PM-provided TBI logo files (not committed; 1.1-1.4 MB
- * each). Run from app/ (so Playwright resolves):  node ../scripts/build-brand-assets.mjs <dir>
- *   <dir>/logo_rounded.png -> src/assets/brand/tbi-mark.png   (circle, transparent outside, 128 px;
- *                             a profile asset, not used in the product UI)
- *   <dir>/logo_main.png    -> src/assets/brand/tbi-logo.png   (elongated logo: auto-cropped to the
- *                             artwork, its painted navy background turned into real transparency by
- *                             colour-to-alpha against the measured background colour; 300 px tall,
- *                             shown at 150 px on the Projects screen, i.e. 2x for sharp displays)
- *   <dir>/logo_no_bg.png   -> src/assets/brand/tbi-logo-light.png (the same logo for light surfaces:
- *                             no alpha channel, a light checkerboard painted in; cleared by
- *                             colour-to-alpha towards dark; 120 px tall, top bar at 38 px,
- *                             also the favicon)
+ * Build the web brand assets from the official TBI Lab logo package (the `logo_app` set provided
+ * by the owner, 2026-10-14; not committed, 1.3-1.9 MB each).
+ * Run from app/ (so Playwright resolves):  node ../scripts/build-brand-assets.mjs ~/logo/logo_app
+ *   app_logo_04.png -> src/assets/brand/tbi-lab-symbol.png  (the infinity symbol alone, transparent;
+ *                      76 px tall, top bar at 38 px, i.e. 2x for sharp displays)
+ *   app_logo_01.png -> src/assets/brand/tbi-lab-logo.png    (the full logo with the TBI LAB wordmark and
+ *                      tagline, transparent; 300 px tall, Projects band at 150 px)
+ *   app_logo_05.png -> src/assets/brand/tbi-lab-favicon.png (the dark app icon, 64 px; interim tab icon:
+ *                      the package has no dedicated small-size favicon)
+ * The artwork is used exactly as supplied: transparent files are only trimmed to their non-transparent
+ * pixels (fully transparent margins removed, nothing visible cut), then scaled with the aspect ratio
+ * kept. Nothing is recoloured, redrawn or made transparent.
  * An optional second argument builds only that output path.
  * Chromium's canvas does the resampling (high-quality smoothing, halving steps).
  */
@@ -30,47 +30,27 @@ async function render(file, job) {
       img.src = src;
       await img.decode();
       let crop = { x: 0, y: 0, w: img.width, h: img.height };
-      if (job.key === 'measure') {
-        // The background colour: the median of the four corner pixels' channels.
-        const c = document.createElement('canvas');
-        c.width = img.width;
-        c.height = img.height;
-        const g = c.getContext('2d');
-        g.drawImage(img, 0, 0);
-        const px = [
-          [0, 0],
-          [img.width - 1, 0],
-          [0, img.height - 1],
-          [img.width - 1, img.height - 1],
-        ].map(([x, y]) => [...g.getImageData(x, y, 1, 1).data.slice(0, 3)]);
-        job.key = [0, 1, 2].map((ch) => px.map((p) => p[ch]).sort((a, b) => a - b)[1]);
-      }
-      if (job.autocrop) {
+      if (job.trim) {
+        // The bounds of every pixel with any opacity: only fully transparent margins go.
         const c = document.createElement('canvas');
         c.width = img.width;
         c.height = img.height;
         const g = c.getContext('2d');
         g.drawImage(img, 0, 0);
         const d = g.getImageData(0, 0, img.width, img.height).data;
-        const [br, bg, bb] = [d[0], d[1], d[2]];
         let x0 = img.width,
           y0 = img.height,
-          x1 = 0,
-          y1 = 0;
+          x1 = -1,
+          y1 = -1;
         for (let y = 0; y < img.height; y++)
           for (let x = 0; x < img.width; x++) {
-            const i = (y * img.width + x) * 4;
-            if (Math.abs(d[i] - br) + Math.abs(d[i + 1] - bg) + Math.abs(d[i + 2] - bb) > 60) {
-              if (x < x0) x0 = x;
-              if (x > x1) x1 = x;
-              if (y < y0) y0 = y;
-              if (y > y1) y1 = y;
-            }
+            if (d[(y * img.width + x) * 4 + 3] === 0) continue;
+            if (x < x0) x0 = x;
+            if (x > x1) x1 = x;
+            if (y < y0) y0 = y;
+            if (y > y1) y1 = y;
           }
-        const pad = job.autocrop;
-        crop = { x: Math.max(0, x0 - pad), y: Math.max(0, y0 - pad), w: 0, h: 0 };
-        crop.w = Math.min(img.width, x1 + pad) - crop.x;
-        crop.h = Math.min(img.height, y1 + pad) - crop.y;
+        crop = { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
       }
       const outH = job.height;
       const outW = Math.round((crop.w / crop.h) * outH);
@@ -93,51 +73,7 @@ async function render(file, job) {
       out.height = outH;
       const g = out.getContext('2d');
       g.imageSmoothingQuality = 'high';
-      if (job.circle) {
-        g.beginPath();
-        g.arc(outW / 2, outH / 2, outW / 2 - 0.5, 0, Math.PI * 2);
-        g.clip();
-      }
       g.drawImage(cur, 0, 0, outW, outH);
-      if (job.key) {
-        // Colour-to-alpha (the classic un-blend): every pixel is treated as artwork colour A
-        // over the measured background B with opacity a, C = a*A + (1-a)*B. a is the smallest
-        // opacity that explains C with an in-gamut A; A is then recovered exactly. The painted
-        // background becomes transparent, glows become translucent, nothing is redrawn.
-        // The background's own texture (grain, faint glow) up to job.floor opacity is cleared.
-        const img2 = g.getImageData(0, 0, outW, outH);
-        const d = img2.data;
-        const B = job.key;
-        for (let i = 0; i < d.length; i += 4) {
-          let a = 0;
-          for (let c = 0; c < 3; c++) {
-            const v = d[i + c];
-            // Light-on-dark artwork: only brightness above the background is artwork.
-            // (Darker-than-background grain would otherwise become opaque dark speckles, since
-            // a near-zero channel turns a 2-level dip into a large ratio.) Dark-on-light artwork
-            // (job.light): only darkness below the background is artwork, towards black.
-            const ac = job.light
-              ? v < B[c]
-                ? (B[c] - v) / B[c]
-                : 0
-              : v > B[c]
-                ? (v - B[c]) / (255 - B[c])
-                : 0;
-            if (ac > a) a = ac;
-          }
-          if (a <= job.floor) {
-            d[i + 3] = 0;
-            continue;
-          }
-          for (let c = 0; c < 3; c++) {
-            d[i + c] = Math.max(0, Math.min(255, Math.round((d[i + c] - B[c]) / a + B[c])));
-          }
-          // Soft floor: opacities just above the painted background's texture fade in linearly
-          // instead of being cut, so glow edges stay smooth.
-          d[i + 3] = Math.round(((a - job.floor) / (1 - job.floor)) * 255);
-        }
-        g.putImageData(img2, 0, 0);
-      }
       return out.toDataURL('image/png');
     },
     { src, job },
@@ -147,19 +83,9 @@ async function render(file, job) {
 
 const only = process.argv[3]; // optional: build just this output path
 const outputs = [
-  ['logo_rounded.png', { height: 128, circle: true }, 'src/assets/brand/tbi-mark.png'],
-  [
-    'logo_main.png',
-    { height: 300, autocrop: 24, key: 'measure', floor: 0.03 },
-    'src/assets/brand/tbi-logo.png',
-  ],
-  // The same regular logo for light surfaces (the top bar): the PM's light-background version,
-  // whose painted checkerboard (~248/252 grey) is cleared by the floor.
-  [
-    'logo_no_bg.png',
-    { height: 120, autocrop: 12, key: 'measure', floor: 0.06, light: true },
-    'src/assets/brand/tbi-logo-light.png',
-  ],
+  ['app_logo_04.png', { height: 76, trim: true }, 'src/assets/brand/tbi-lab-symbol.png'],
+  ['app_logo_01.png', { height: 300, trim: true }, 'src/assets/brand/tbi-lab-logo.png'],
+  ['app_logo_05.png', { height: 64 }, 'src/assets/brand/tbi-lab-favicon.png'],
 ];
 for (const [file, job, out] of outputs.filter(([, , o]) => !only || o === only)) {
   const png = await render(file, job);

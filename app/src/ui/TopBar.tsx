@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import logoUrl from '../assets/brand/tbi-logo-light.png';
+import symbolUrl from '../assets/brand/tbi-lab-symbol.png';
 import { SIGN_OUT_URL } from '../deployment.js';
 import { LOCALES } from '../i18n/i18n.js';
 import { AppMenu } from './AppMenu.js';
@@ -35,7 +35,6 @@ const BRAND_LETTERS: readonly [string, string][] = [
  * header's trailing edge: right in English, left in Hebrew (DOM order follows the direction).
  */
 function Brand() {
-  const t = useT();
   return (
     <span class="brand" data-testid="brand">
       <span class="brand-word" dir="ltr">
@@ -46,13 +45,14 @@ function Brand() {
         ))}
         {BRAND_SUFFIX}
       </span>
+      {/* Decorative: the product name is the text just before it. */}
       <img
         class="brand-logo"
         data-testid="brand-logo"
-        src={logoUrl}
-        alt={t('brand.logoAlt')}
-        width={204}
-        height={120}
+        src={symbolUrl}
+        alt=""
+        width={135}
+        height={76}
         decoding="async"
       />
     </span>

@@ -2,7 +2,7 @@ import { GettingStarted } from './GettingStarted.js';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { downloadProject } from './download.js';
 import { useImportPicker } from './importFile.js';
-import logoUrl from '../assets/brand/tbi-logo.png';
+import logoUrl from '../assets/brand/tbi-lab-logo.png';
 import {
   availableCategories,
   buildExampleIndex,
@@ -50,7 +50,7 @@ export function Home() {
           class="brand-hero-logo"
           src={logoUrl}
           alt={t('brand.logoAlt')}
-          width={533}
+          width={520}
           height={300}
           decoding="async"
         />
