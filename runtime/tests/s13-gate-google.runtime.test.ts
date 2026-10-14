@@ -35,8 +35,10 @@ const G2A_LINES = ['exclude_logging_paths = ["/oauth2/callback"]'];
 // The configuration as it was before G1 (= what a rollback restores): the repository file with the
 // G1 block removed. The test fails if the block is not exactly the approved two keys.
 const INSTALLED = existsSync(LIVE_CFG) ? readFileSync(LIVE_CFG, 'utf8') : '';
-const G1_BLOCK = /# Sprint 13 G1 [^\n]*\n(# [^\n]*\n)*cookie_csrf_per_request = true\ncookie_csrf_expire = "15m"\n/;
-const G2A_BLOCK = /# Sprint 13 G2 \(a\)[^\n]*\n(# [^\n]*\n)*exclude_logging_paths = \["\/oauth2\/callback"\]\n/;
+const G1_BLOCK =
+  /# Sprint 13 G1 [^\n]*\n(# [^\n]*\n)*cookie_csrf_per_request = true\ncookie_csrf_expire = "15m"\n/;
+const G2A_BLOCK =
+  /# Sprint 13 G2 \(a\)[^\n]*\n(# [^\n]*\n)*exclude_logging_paths = \["\/oauth2\/callback"\]\n/;
 const PRE_G1 = INSTALLED.replace(G1_BLOCK, '').replace(G2A_BLOCK, '');
 const AS_INSTALLED: readonly string[] = [];
 // The proposed drop-in's LogFilterPatterns=~ (journald drops matching lines at ingestion).
@@ -49,7 +51,12 @@ let nextEmail = ALLOWED;
 const redeemed = new Map<string, number>();
 const emailOfCode = new Map<string, string>();
 /** Every secret value the mock or the proxy hands out, so the log scan can look for each one. */
-const secrets = { code: new Set<string>(), state: new Set<string>(), access: new Set<string>(), id: new Set<string>() };
+const secrets = {
+  code: new Set<string>(),
+  state: new Set<string>(),
+  access: new Set<string>(),
+  id: new Set<string>(),
+};
 const b64u = (s: string) => Buffer.from(s).toString('base64url');
 async function startIdp() {
   idp = createServer((req, res) => {
@@ -77,12 +84,20 @@ async function startIdp() {
       req.on('end', () => {
         const code = new URLSearchParams(body).get('code') ?? '';
         const n = redeemed.get(code);
-        if (n === undefined || n > 0) return json({ error: 'invalid_grant', error_description: 'Bad Request' }, 400);
+        if (n === undefined || n > 0)
+          return json({ error: 'invalid_grant', error_description: 'Bad Request' }, 400);
         redeemed.set(code, n + 1);
         const access = `ya29.FAKE-${randomBytes(16).toString('hex')}`;
         const now = Math.floor(Date.now() / 1000);
         const id = `${b64u('{"alg":"RS256","typ":"JWT"}')}.${b64u(
-          JSON.stringify({ iss: 'https://accounts.google.com', sub: '1000000001', email: emailOfCode.get(code), email_verified: true, iat: now, exp: now + 3600 }),
+          JSON.stringify({
+            iss: 'https://accounts.google.com',
+            sub: '1000000001',
+            email: emailOfCode.get(code),
+            email_verified: true,
+            iat: now,
+            exp: now + 3600,
+          }),
         )}.${b64u('fake-signature')}`;
         secrets.access.add(access);
         secrets.id.add(id);
@@ -91,7 +106,12 @@ async function startIdp() {
       return;
     }
     if (u.pathname === '/tokeninfo')
-      return json({ issued_to: 'fake-client.apps.example', email: 'redacted@example.test', expires_in: 3598, access_type: 'online' });
+      return json({
+        issued_to: 'fake-client.apps.example',
+        email: 'redacted@example.test',
+        expires_in: 3598,
+        access_type: 'online',
+      });
     res.writeHead(404).end();
   });
   await new Promise<void>((r) => idp.listen(0, '127.0.0.1', () => r()));
@@ -104,7 +124,13 @@ const procs: ChildProcess[] = [];
 async function startProxy(extraLines: readonly string[], flags: readonly string[] = []) {
   const dir = mkdtempSync(join(tmpdir(), 's13-gate-'));
   const cfg = join(dir, 'oauth2-proxy.cfg');
-  writeFileSync(cfg, (extraLines === AS_INSTALLED ? readFileSync(LIVE_CFG, 'utf8') : PRE_G1) + '\n' + extraLines.join('\n') + '\n');
+  writeFileSync(
+    cfg,
+    (extraLines === AS_INSTALLED ? readFileSync(LIVE_CFG, 'utf8') : PRE_G1) +
+      '\n' +
+      extraLines.join('\n') +
+      '\n',
+  );
   writeFileSync(join(dir, 'allowed-emails'), ALLOWED + '\n');
   const port = await new Promise<number>((resolve) => {
     const probe = createNetServer().listen(0, '127.0.0.1', () => {
@@ -163,7 +189,9 @@ class Browser {
       const name = nv!.slice(0, i).trim();
       const value = nv!.slice(i + 1);
       const gone = attrs.some(
-        (a) => /^\s*max-age=(-|0\b)/i.test(a) || (/^\s*expires=/i.test(a) && Date.parse(a.split('=')[1]!) < Date.now()),
+        (a) =>
+          /^\s*max-age=(-|0\b)/i.test(a) ||
+          (/^\s*expires=/i.test(a) && Date.parse(a.split('=')[1]!) < Date.now()),
       );
       if (gone || value === '') this.jar.delete(name);
       else this.jar.set(name, value);
@@ -171,7 +199,10 @@ class Browser {
   }
   csrfCookies = () => [...this.jar.keys()].filter((k) => k.endsWith('_csrf'));
   async get(url: string, accept = 'text/html,application/xhtml+xml') {
-    const res = await fetch(url, { redirect: 'manual', headers: { accept, cookie: this.cookieHeader() } });
+    const res = await fetch(url, {
+      redirect: 'manual',
+      headers: { accept, cookie: this.cookieHeader() },
+    });
     this.absorb(res);
     return res;
   }
@@ -242,14 +273,16 @@ describe.skipIf(!HAVE)('Gate G1/G2 on the live configuration file, Google provid
         expect(PRE_G1).not.toMatch(/cookie_csrf|exclude_logging/);
         expect(INSTALLED).toMatch(G2A_BLOCK);
         expect(names[0]).toBe(`${SESSION}_csrf`);
-      }
-      else expect(names[0]).toMatch(new RegExp(`^${SESSION}_[A-Za-z0-9_-]+_csrf$`));
+      } else expect(names[0]).toMatch(new RegExp(`^${SESSION}_[A-Za-z0-9_-]+_csrf$`));
       const attrs = b.setCookies.find((c) => c.startsWith(names[0]!))!;
       expect(attrs).toMatch(/HttpOnly/i);
       expect(attrs).toMatch(/SameSite=Lax/i);
       expect(attrs).toMatch(/Max-Age=900\b|Expires=/i);
       expect(px.log()).toMatch(new RegExp(`Cookie settings: name:${SESSION} `));
-      evidence[name] = { ...(evidence[name] as object), csrfCookieName: name === 'current' ? names[0] : `${SESSION}_<per-login hash>_csrf` };
+      evidence[name] = {
+        ...(evidence[name] as object),
+        csrfCookieName: name === 'current' ? names[0] : `${SESSION}_<per-login hash>_csrf`,
+      };
     });
 
     it(`${name}: login, two tabs, CSRF enforcement, replay, expiry, allowlist`, async () => {
@@ -302,12 +335,18 @@ describe.skipIf(!HAVE)('Gate G1/G2 on the live configuration file, Google provid
       r.foreignCsrfOnly = (await mix.get(await mix.approveAt(la))).status;
       // the callback URL presented by another browser
       const victim = new Browser();
-      r.otherBrowser = (await new Browser().get(await victim.approveAt(await startLogin(victim, px.base)))).status;
-      expect([r.missingCsrf, r.tamperedState, r.foreignCsrfOnly, r.otherBrowser]).toEqual([403, 403, 403, 403]);
+      r.otherBrowser = (
+        await new Browser().get(await victim.approveAt(await startLogin(victim, px.base)))
+      ).status;
+      expect([r.missingCsrf, r.tamperedState, r.foreignCsrfOnly, r.otherBrowser]).toEqual([
+        403, 403, 403, 403,
+      ]);
       // an account not on the allowlist: 403, no session
       nextEmail = 'intruder@example.test';
       const intr = new Browser();
-      r.unauthorized = (await intr.get(await intr.approveAt(await startLogin(intr, px.base)))).status;
+      r.unauthorized = (
+        await intr.get(await intr.approveAt(await startLogin(intr, px.base)))
+      ).status;
       nextEmail = ALLOWED;
       expect(r.unauthorized).toBe(403);
       expect(intr.jar.has(SESSION)).toBe(false);
@@ -323,7 +362,8 @@ describe.skipIf(!HAVE)('Gate G1/G2 on the live configuration file, Google provid
       const bg = await b.get(`${px.base}/version.json`, '*/*, application/json');
       expect(bg.status).toBe(401);
       expect(bg.headers.get('location')).toBeNull();
-      for (const c of bg.headers.getSetCookie()) expect(c).toMatch(new RegExp(`^${SESSION}=;.*Max-Age=0`, 'i'));
+      for (const c of bg.headers.getSetCookie())
+        expect(c).toMatch(new RegExp(`^${SESSION}=;.*Max-Age=0`, 'i'));
       expect(b.csrfCookies()).toEqual([]);
       const top = await b.get(`${px.base}/`);
       expect(top.status).toBe(302);
@@ -331,7 +371,10 @@ describe.skipIf(!HAVE)('Gate G1/G2 on the live configuration file, Google provid
       const fin = await b.get(await b.approveAt(top.headers.get('location')!));
       expect(fin.status).toBe(302);
       expect((await b.get(`${px.base}/`)).status).toBe(200);
-      evidence[name] = { ...(evidence[name] as object), expired: { background: 401, relogin: 302 } };
+      evidence[name] = {
+        ...(evidence[name] as object),
+        expired: { background: 401, relogin: 302 },
+      };
     });
 
     it(`${name}: what reaches the log (success, a signed-in browser's failed callback, unauthorized)`, async () => {
@@ -350,7 +393,9 @@ describe.skipIf(!HAVE)('Gate G1/G2 on the live configuration file, Google provid
       expect((await b.get(stale)).status).toBe(403);
       nextEmail = 'intruder@example.test';
       const intr = new Browser();
-      expect((await intr.get(await intr.approveAt(await startLogin(intr, px.base)))).status).toBe(403);
+      expect((await intr.get(await intr.approveAt(await startLogin(intr, px.base)))).status).toBe(
+        403,
+      );
       nextEmail = ALLOWED;
       await settle(px);
       const all = px.log();
@@ -360,12 +405,21 @@ describe.skipIf(!HAVE)('Gate G1/G2 on the live configuration file, Google provid
       const raw = leakCounts(all, cookieVals);
       const filtered = leakCounts(kept.join('\n'), cookieVals);
       const diagnostics = {
-        authSuccessWithRequestId: kept.some((l) => /[0-9a-f]{8}-[0-9a-f]{4}-.*\[AuthSuccess\]/.test(l)),
+        authSuccessWithRequestId: kept.some((l) =>
+          /[0-9a-f]{8}-[0-9a-f]{4}-.*\[AuthSuccess\]/.test(l),
+        ),
         authFailureUnauthorized: kept.some((l) => /\[AuthFailure\].*unauthorized/.test(l)),
-        tokenValidationLine: kept.some((l) => /internal_util\.go:\d+\] 200 GET .*tokeninfo\?access_token=[^&\s]{0,5}\.\.\./.test(l)),
-        requestLogLines: kept.filter((l) => /\] 127\.0\.0\.1:\d+ GET /.test(l) || / - \[\d{4}\/.*\] 127\.0\.0\.1/.test(l)).length,
+        tokenValidationLine: kept.some((l) =>
+          /internal_util\.go:\d+\] 200 GET .*tokeninfo\?access_token=[^&\s]{0,5}\.\.\./.test(l),
+        ),
+        requestLogLines: kept.filter(
+          (l) => /\] 127\.0\.0\.1:\d+ GET /.test(l) || / - \[\d{4}\/.*\] 127\.0\.0\.1/.test(l),
+        ).length,
       };
-      evidence[name] = { ...(evidence[name] as object), log: { raw, afterJournalDrop: filtered, diagnostics } };
+      evidence[name] = {
+        ...(evidence[name] as object),
+        log: { raw, afterJournalDrop: filtered, diagnostics },
+      };
       // Never in any variant: the full access token, the id token, the client secret.
       expect([raw.accessTokens, raw.idTokens, raw.clientSecret]).toEqual([0, 0, 0]);
       expect(diagnostics.tokenValidationLine).toBe(true);
@@ -375,8 +429,19 @@ describe.skipIf(!HAVE)('Gate G1/G2 on the live configuration file, Google provid
       expect(raw.cookieValues).toBeGreaterThan(0);
       // With G2a + the journald drop: nothing sensitive is stored; the audit lines stay.
       if (name.includes('G2a')) {
-        expect(filtered).toEqual({ codes: 0, states: 0, accessTokens: 0, idTokens: 0, cookieValues: 0, clientSecret: 0, cookieHeaderDumps: 0, callbackQueries: 0 });
-        expect(diagnostics.authSuccessWithRequestId && diagnostics.authFailureUnauthorized).toBe(true);
+        expect(filtered).toEqual({
+          codes: 0,
+          states: 0,
+          accessTokens: 0,
+          idTokens: 0,
+          cookieValues: 0,
+          clientSecret: 0,
+          cookieHeaderDumps: 0,
+          callbackQueries: 0,
+        });
+        expect(diagnostics.authSuccessWithRequestId && diagnostics.authFailureUnauthorized).toBe(
+          true,
+        );
       }
     });
   }
@@ -391,7 +456,13 @@ describe.skipIf(!HAVE)('Gate G1/G2 on the live configuration file, Google provid
     // the LAST and the FIRST of them still complete (each has its own cookie)
     const last = await b.get(await b.approveAt(starts.at(-1)!));
     const first = await b.get(await b.approveAt(starts[0]!));
-    evidence.accumulation = { abandonedLogins: 20, csrfCookies: n, cookieHeaderBytes: header, lastCompletes: last.status, firstCompletes: first.status };
+    evidence.accumulation = {
+      abandonedLogins: 20,
+      csrfCookies: n,
+      cookieHeaderBytes: header,
+      lastCompletes: last.status,
+      firstCompletes: first.status,
+    };
     expect(n).toBe(20);
     expect([last.status, first.status]).toEqual([302, 302]);
   });
