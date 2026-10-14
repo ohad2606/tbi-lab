@@ -12,6 +12,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { artifact } from '../harness/env.js';
+import { deployedLimits } from './deployed-limits.js';
 import { loadRequest } from './r2-support.js';
 
 const N = process.env.TBI_S8_INSTANCE ?? '';
@@ -25,6 +26,8 @@ const HAVE =
 const REAL_POLICY =
   process.env.TBI_S8_POLICY ??
   new URL('../../deploy/dev-lab/s8/policy.json', import.meta.url).pathname;
+/** Resolved on the host at run time (`cpus` = the services' CPUs); 1/1/1 on the 1-vCPU DEV host. */
+const LIMITS = HAVE ? deployedLimits(N, REAL_POLICY) : { perUser: 1, maxLive: 1, deferAt: 1 };
 const R1_IMAGE = '5f177cbe95f490dce1f6efe7dda501e03762d523b79771968f967b297d3a44af';
 const run = Date.now().toString(36);
 const u = (name: string) => `post-${name}-${run}`;
@@ -179,47 +182,94 @@ describe.skipIf(!HAVE)(`Sprint 8 policy on the deployed instance (${N}, real pol
     expect((await lease(u('h'), sha)).status).toBe(404); // still nobody else's
   }, 400_000);
 
-  it('sessions: one per preview user, one globally on this 1-vCPU host; ownership enforced', async () => {
-    const c1 = await session(u('c'));
-    expect(c1.status).toBe(201);
+  it('sessions: the per-user quota and the host-wide limit of the installed policy; ownership enforced', async () => {
+    console.log(`resolved limits: ${JSON.stringify(LIMITS)}`);
+    const live: [string, Awaited<ReturnType<typeof session>>][] = [];
     try {
+      // One user up to the plan quota; one more is refused with session_quota.
+      for (let i = 0; i < LIMITS.perUser; i++) {
+        const c = await session(u('c'));
+        expect(c.status, `c${i}`).toBe(201);
+        live.push([u('c'), c]);
+      }
       expect(await session(u('c'))).toMatchObject({
         status: 429,
         body: { error: 'session_quota' },
       });
-      const d1 = await session(u('d'));
-      expect(d1).toMatchObject({ status: 503, body: { error: 'runtime_capacity' } });
-      expect(Number(d1.retryAfter)).toBeGreaterThan(0);
+      // Other users fill the host to its limit; the next user is refused with runtime_capacity.
+      for (let i = 1; live.length < LIMITS.maxLive; i++) {
+        const d = await session(u(`d${i}`));
+        expect(d.status, `d${i}`).toBe(201);
+        live.push([u(`d${i}`), d]);
+      }
+      const over = await session(u('over'));
+      expect(over).toMatchObject({ status: 503, body: { error: 'runtime_capacity' } });
+      expect(Number(over.retryAfter)).toBeGreaterThan(0);
       // Another user cannot see, drive or end the session, even with its token.
+      const [, c1] = live[0]!;
       const path = `${HOST}/sessions/${c1.body.sessionId as string}`;
       const auth = { authorization: `Bearer ${c1.body.token as string}` };
-      expect((await fetch(path, { headers: as(u('d'), auth) })).status).toBe(404);
-      expect((await fetch(path, { method: 'DELETE', headers: as(u('d'), auth) })).status).toBe(404);
+      expect((await fetch(path, { headers: as(u('d1'), auth) })).status).toBe(404);
+      expect((await fetch(path, { method: 'DELETE', headers: as(u('d1'), auth) })).status).toBe(
+        404,
+      );
+      expect(
+        (await fetch(`${path}/run`, { method: 'POST', headers: as(u('d1'), auth) })).status,
+      ).toBe(404);
       expect((await fetch(path, { headers: as(u('c'), auth) })).status).toBe(200);
+      // A freed place is admitted again.
+      const [who, last] = live.pop()!;
+      await end(who, last);
+      const again = await session(u('over'));
+      expect(again.status).toBe(201);
+      live.push([u('over'), again]);
     } finally {
-      await end(u('c'), c1);
+      for (const [who, s] of live) await end(who, s);
     }
-  });
+  }, 300_000);
 
-  it('a live session holds a queued build (nothing stopped); it compiles once the session ends', async () => {
-    const s = await session(u('e'));
-    expect(s.status).toBe(201);
-    let b: Awaited<ReturnType<typeof submit>>;
-    try {
+  it('live sessions at the defer threshold hold a queued build (nothing stopped); below it a build runs', async () => {
+    const live: [string, Awaited<ReturnType<typeof session>>][] = [];
+    const start = async (who: string) => {
+      const s = await session(who);
+      expect(s.status, who).toBe(201);
+      live.push([who, s]);
       await fetch(`${HOST}/sessions/${s.body.sessionId as string}/run`, {
         method: 'POST',
-        headers: as(u('e'), { authorization: `Bearer ${s.body.token as string}` }),
+        headers: as(who, { authorization: `Bearer ${s.body.token as string}` }),
       });
+    };
+    let held: Awaited<ReturnType<typeof submit>>;
+    try {
+      for (let i = 0; i < LIMITS.deferAt - 1; i++) await start(u(`e${i}`));
       await new Promise((r) => setTimeout(r, 2500));
-      b = await submit(u('f'), broken('held'));
-      expect(b.status).toBe(202);
+      if (LIMITS.deferAt > 1) {
+        const below = await submit(u('f0'), broken('below'));
+        expect(below.status).toBe(202);
+        await new Promise((r) => setTimeout(r, 4000));
+        expect((await poll(u('f0'), below)).state).not.toBe('queued');
+        expect((await until(u('f0'), below)).result?.failure).toBe('compile_error');
+      }
+      await start(u(`e${LIMITS.deferAt - 1}`));
+      await new Promise((r) => setTimeout(r, 2500));
+      held = await submit(u('f'), broken('held'));
+      expect(held.status).toBe(202);
       await new Promise((r) => setTimeout(r, 4000));
-      expect((await poll(u('f'), b)).state).toBe('queued');
+      expect((await poll(u('f'), held)).state).toBe('queued');
+      // Nothing was stopped to make room: every session is still running.
+      for (const [who, s] of live) {
+        const st = (await (
+          await fetch(`${HOST}/sessions/${s.body.sessionId as string}`, {
+            headers: as(who, { authorization: `Bearer ${s.body.token as string}` }),
+          })
+        ).json()) as { state: string };
+        expect(st.state, who).toBe('running');
+      }
     } finally {
-      await end(u('e'), s);
+      for (const [who, s] of live) await end(who, s);
     }
-    expect((await until(u('f'), b)).result?.failure).toBe('compile_error');
-  });
+    expect((await until(u('f'), held)).result?.failure).toBe('compile_error');
+  }, 400_000);
 
   it('stale runtime health admits no new compile; the build compiles once health is fresh', async () => {
     sudo('systemctl', 'stop', `${N}-session-host.service`);
