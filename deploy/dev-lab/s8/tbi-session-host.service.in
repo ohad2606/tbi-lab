@@ -26,6 +26,8 @@ LoadCredential=ticket.key:/etc/@N@/ticket.key
 LoadCredential=policy.json:/etc/@N@/policy.json
 Environment=TBI_POLICY_FILE=%d/policy.json
 Environment=TBI_HOST_STATE=/var/lib/@N@-runtime/state
+# Live-session ceiling of this host (install.sh TBI_S8_HOST_MAX_SESSIONS, at least the policy's limit).
+Environment=TBI_HOST_MAX_SESSIONS=@HOST_MAX_SESSIONS@
 RuntimeDirectory=@N@-runtime
 RuntimeDirectoryMode=0755
 StateDirectory=@N@-runtime/sessions @N@-runtime/state

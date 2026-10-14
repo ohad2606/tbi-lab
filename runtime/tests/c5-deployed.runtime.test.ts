@@ -29,6 +29,14 @@
  *  5. Faults (optional): one session ended and re-created; one session's QEMU unit killed: the
  *     failure is reported, its unit and directory are gone, the user can start again.
  *  6. Clean-up: every session ended; no QEMU unit, build job unit or session directory left.
+ *  Rotation (TBI_C5_ROTATE=<s>, Phase C): a soak longer than the policy's session lifetime (30 min)
+ *     keeps N sessions live by deliberately replacing each one before its lifetime ends: the
+ *     user ends it, its unit and directory are verified gone, and the same user starts a new one.
+ *     Slots are staggered by 60 s, so at most one slot is being replaced at a time. Every
+ *     replacement is logged (old/new id, age, gap from end to the new session running, cleanup);
+ *     every session instance, retired or final, is judged on pacing and tick-gap. The report
+ *     separates host-level continuity (seconds with N sessions running) from per-session
+ *     lifetime (no session outlives the rotation interval).
  * The report (recordEvidence `c5-deployed-...`) records the host, the instance's policy, bundle and
  * runtime hashes, and every number.
  */
@@ -46,6 +54,20 @@ const SECONDS = Number(process.env.TBI_C5_SECONDS ?? 120);
 const FAULTS = process.env.TBI_C5_FAULTS === '1';
 const BUILD_EVERY_S = Number(process.env.TBI_C5_BUILD_EVERY ?? 0);
 const WARMUP_S = 30;
+/** Replace each session after this many seconds (0: never). Must stay below the policy lifetime. */
+const ROTATE_S = Number(process.env.TBI_C5_ROTATE ?? 0);
+const ROTATE_STAGGER_S = 60;
+/** A replacement (end -> new session running with simulation time) must complete within this. */
+const ROTATE_GAP_MAX_MS = 15_000;
+/** The Alpha/preview plan's maximum session lifetime (policy maxLifetimeMs), seconds. */
+const POLICY_LIFETIME_S = 1800;
+if (
+  ROTATE_S > 0 &&
+  (ROTATE_S >= POLICY_LIFETIME_S - 60 || ROTATE_S - 4 * ROTATE_STAGGER_S < WARMUP_S)
+)
+  throw new Error(
+    `TBI_C5_ROTATE=${ROTATE_S}: must leave the stagger and warm-up and stay below the lifetime`,
+  );
 const sudo = (...args: string[]) => spawnSync('sudo', ['-n', ...args], { encoding: 'utf8' });
 const HAVE =
   INSTANCE !== '' &&
@@ -185,6 +207,11 @@ interface Live {
   /** The session's event stream, held open as the real client does (it also holds the lease). */
   stream?: AbortController;
   streamBytes: number;
+  /** Rotation: when this instance is replaced (ms, performance clock). */
+  rotateAt?: number;
+  /** Rotation: the slot (user index) and the instance number within it (0 = first). */
+  slot: number;
+  instance: number;
 }
 
 describe('C-5 deployed: N concurrent ESP32 sessions on a deployed instance', () => {
@@ -262,8 +289,14 @@ describe('C-5 deployed: N concurrent ESP32 sessions on a deployed instance', () 
       // 2. Sessions.
       const sessions: Live[] = [];
       // `recreate`: a fault's re-admission (judged by faultsRecovered, never by sessionsAdmitted).
-      const admission: { user: string; status: number; error?: unknown; recreate?: true }[] = [];
-      const start = async (i: number, replaces?: number) => {
+      const admission: {
+        user: string;
+        status: number;
+        error?: unknown;
+        recreate?: true;
+        rotation?: true;
+      }[] = [];
+      const start = async (i: number, replaces?: number, rotation = false) => {
         const user = users[i]!;
         const b = builds[i]!;
         if (!b.sha) return 0;
@@ -287,7 +320,8 @@ describe('C-5 deployed: N concurrent ESP32 sessions on a deployed instance', () 
           user,
           status: a.status,
           ...(a.status !== 201 ? { error: a.body.error } : {}),
-          ...(replaces !== undefined ? { recreate: true as const } : {}),
+          ...(replaces !== undefined && !rotation ? { recreate: true as const } : {}),
+          ...(rotation ? { rotation: true as const } : {}),
         });
         if (a.status !== 201) return a.status;
         const x: Live = {
@@ -303,7 +337,11 @@ describe('C-5 deployed: N concurrent ESP32 sessions on a deployed instance', () 
           rates5: [],
           stream: new AbortController(),
           streamBytes: 0,
+          slot: i,
+          instance: replaces !== undefined ? sessions[replaces]!.instance + 1 : 0,
         };
+        if (ROTATE_S > 0)
+          x.rotateAt = t0 + 1000 * (x.instance === 0 ? ROTATE_S - i * ROTATE_STAGGER_S : ROTATE_S);
         await fetch(`${HOST}/sessions/${x.id}/run`, {
           method: 'POST',
           headers: as(user, { authorization: `Bearer ${x.token}` }),
@@ -347,6 +385,10 @@ describe('C-5 deployed: N concurrent ESP32 sessions on a deployed instance', () 
       // Bursts run alongside the per-second sampling (awaiting one stalled sampling for a whole
       // build: the 2026-10-13 smoke's soak session then ended by lease).
       const bursts: Promise<void>[] = [];
+      const retired: Live[] = [];
+      const rotations: Record<string, unknown>[] = [];
+      /** Per sampled second: sessions in state running (host-level continuity). */
+      const running: number[] = [];
       while (performance.now() - t0 < SECONDS * 1000) {
         await new Promise((r) => setTimeout(r, 1000));
         const now = performance.now();
@@ -437,6 +479,61 @@ describe('C-5 deployed: N concurrent ESP32 sessions on a deployed instance', () 
             1,
           );
         }
+        // Rotation: at most one replacement per second, the earliest due first.
+        const due = sessions
+          .filter((x) => !x.fault && x.rotateAt !== undefined && x.rotateAt <= now)
+          .sort((a, b) => a.rotateAt! - b.rotateAt!)[0];
+        if (due) {
+          const k = sessions.indexOf(due);
+          const before = await statusOf(due);
+          due.status = before.body;
+          const endAt = performance.now();
+          const e = await fetch(`${HOST}/sessions/${due.id}`, {
+            method: 'DELETE',
+            headers: as(due.user, { authorization: `Bearer ${due.token}` }),
+          });
+          due.stream?.abort();
+          const unit = `${INSTANCE}-qemu@${due.id}.service`;
+          let cleaned = false;
+          for (let w = 0; w < 60 && !cleaned; w++) {
+            cleaned =
+              sudo('systemctl', 'is-active', unit).stdout.trim() !== 'active' &&
+              sudo('test', '-e', `${SESSIONS_DIR}/s-${due.id}`).status !== 0;
+            if (!cleaned) await new Promise((r) => setTimeout(r, 250));
+          }
+          const status = await start(due.slot, k, true);
+          const fresh = sessions[k]!;
+          // Retired only when replaced. A refused re-admission keeps the ended instance in its
+          // slot (judged by noFailures: it is no longer running) and is never retried.
+          if (fresh !== due) retired.push(due);
+          else due.rotateAt = undefined;
+          let runningAt: number | null = null;
+          if (status === 201 && fresh !== due)
+            for (let w = 0; w < 80 && runningAt === null; w++) {
+              const st = await statusOf(fresh);
+              if (st.body.state === 'running' && Number(st.body.simNs ?? 0) > 0) {
+                runningAt = performance.now();
+                fresh.startupMs = Math.round(runningAt - fresh.startedAt);
+              } else await new Promise((r) => setTimeout(r, 250));
+            }
+          rotations.push({
+            slot: due.slot,
+            user: due.user,
+            oldId: due.id,
+            newId: fresh !== due ? fresh.id : null,
+            atS: Math.round((endAt - t0) / 1000),
+            ageS: Math.round((endAt - due.startedAt) / 1000),
+            stateBefore: before.body.state,
+            endStatus: e.status,
+            cleanedUp: cleaned,
+            admitted: status,
+            gapMs: runningAt !== null ? Math.round(runningAt - endAt) : null,
+          });
+          console.log(`rotation ${JSON.stringify(rotations[rotations.length - 1])}`);
+        }
+        running.push(
+          sessions.filter((x) => !x.fault && (x.status?.state as string) === 'running').length,
+        );
         if (elapsed >= nextBurst) {
           bursts.push(burst(++round).then((r) => void soakBuilds.push(...r)));
           nextBurst += BUILD_EVERY_S;
@@ -452,8 +549,11 @@ describe('C-5 deployed: N concurrent ESP32 sessions on a deployed instance', () 
       await Promise.all(bursts);
 
       // 6. Clean-up and leak check.
-      const results = sessions.map((x) => ({
+      const results = [...retired, ...sessions].map((x) => ({
         user: x.user,
+        ...(ROTATE_S > 0
+          ? { instance: x.instance, rotated: retired.includes(x), id: x.id.slice(0, 8) }
+          : {}),
         workload: x.workload,
         ...(x.fault ? { fault: x.fault } : {}),
         state: x.status?.state,
@@ -493,6 +593,18 @@ describe('C-5 deployed: N concurrent ESP32 sessions on a deployed instance', () 
       }
       const measured = results.filter((r) => !r.fault && r.windows5s > 0);
       const allBuilds = [...builds, ...soakBuilds];
+      // Every build is judged, the soak bursts' too (until Phase C only the first burst was).
+      const worstBuildAllMs = Math.max(
+        ...allBuilds.map((b) => (b.doneMs ?? Infinity) - b.submittedMs),
+      );
+      const maxAgeS = Math.max(
+        0,
+        ...[...retired, ...sessions].map((x) =>
+          (rotations.find((r) => r.oldId === x.id)?.atS as number | undefined) !== undefined
+            ? (rotations.find((r) => r.oldId === x.id)!.ageS as number)
+            : (performance.now() - x.startedAt) / 1000,
+        ),
+      );
       const end = cpu();
       const report = {
         instance: INSTANCE,
@@ -525,6 +637,24 @@ describe('C-5 deployed: N concurrent ESP32 sessions on a deployed instance', () 
           completionMs: b.doneMs !== undefined ? Math.round(b.doneMs - b.submittedMs) : null,
         })),
         worstBuildMs: Number.isFinite(worstBuildMs) ? Math.round(worstBuildMs) : null,
+        worstBuildAllMs: Number.isFinite(worstBuildAllMs) ? Math.round(worstBuildAllMs) : null,
+        ...(ROTATE_S > 0
+          ? {
+              rotation: {
+                everyS: ROTATE_S,
+                staggerS: ROTATE_STAGGER_S,
+                gapMaxMs: ROTATE_GAP_MAX_MS,
+                replacements: rotations,
+                // Host-level continuity: sampled seconds by the number of running sessions.
+                runningSeconds: running.reduce<Record<string, number>>((h, v) => {
+                  h[v] = (h[v] ?? 0) + 1;
+                  return h;
+                }, {}),
+                // Per-session lifetime: no instance lived longer than this (s).
+                maxSessionAgeS: Math.round(maxAgeS),
+              },
+            }
+          : {}),
         admission,
         sessions: results,
         isolation,
@@ -533,7 +663,8 @@ describe('C-5 deployed: N concurrent ESP32 sessions on a deployed instance', () 
         pass: {
           // The N users' first admissions only (a fault's re-admission once counted here: the
           // 2026-10-13 smoke's faults-n2 passed with one of two users refused).
-          sessionsAdmitted: admission.filter((a) => !a.recreate && a.status === 201).length >= N,
+          sessionsAdmitted:
+            admission.filter((a) => !a.recreate && !a.rotation && a.status === 201).length >= N,
           rate5sP5AtLeast0995:
             measured.length > 0 && measured.every((r) => (r.rate5sP5 ?? 0) >= 0.995),
           tickGapP99AtMost100: measured.every(
@@ -544,7 +675,7 @@ describe('C-5 deployed: N concurrent ESP32 sessions on a deployed instance', () 
           noFailures: results.filter((r) => !r.fault).every((r) => r.state === 'running'),
           buildsAllSucceeded: allBuilds.every((b) => b.ok === true),
           buildsNoneRefused: allBuilds.every((b) => !b.refused),
-          buildWorstAtMost120s: worstBuildMs <= 120_000,
+          buildWorstAtMost120s: worstBuildAllMs <= 120_000,
           isolationEnforced:
             isolation.length > 0 &&
             isolation.every(
@@ -573,11 +704,33 @@ describe('C-5 deployed: N concurrent ESP32 sessions on a deployed instance', () 
                       (faults.crash as { recreated?: number }).recreated === 201)),
               }
             : {}),
+          ...(ROTATE_S > 0
+            ? {
+                // Every replacement: the old session was running, ended by its user, its unit and
+                // directory gone; the same user admitted again and running within the bound.
+                rotationsClean:
+                  rotations.length > 0 &&
+                  rotations.every(
+                    (r) =>
+                      r.stateBefore === 'running' &&
+                      (r.endStatus as number) < 300 &&
+                      r.cleanedUp === true &&
+                      r.admitted === 201 &&
+                      r.gapMs !== null &&
+                      (r.gapMs as number) <= ROTATE_GAP_MAX_MS,
+                  ),
+                // No session reached the policy lifetime: every instance replaced in time.
+                lifetimeNeverReached: maxAgeS < POLICY_LIFETIME_S,
+              }
+            : {}),
           noLeftovers:
             leftovers.qemuUnits === 0 && leftovers.buildJobs === 0 && leftovers.sessionDirs === 0,
         },
       };
-      recordEvidence(`c5-deployed-${INSTANCE}-n${N}-${SECONDS}s${FAULTS ? '-faults' : ''}`, report);
+      recordEvidence(
+        `c5-deployed-${INSTANCE}-n${N}-${SECONDS}s${FAULTS ? '-faults' : ''}${ROTATE_S ? `-rotate${ROTATE_S}` : ''}`,
+        report,
+      );
       console.log(JSON.stringify(report, null, 2));
       // The harness reports; acceptance is the `pass` record (a policy that admits fewer than N
       // sessions is a finding, not a harness failure).

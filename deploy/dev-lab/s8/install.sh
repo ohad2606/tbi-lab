@@ -54,6 +54,22 @@ if [[ "$uninstall" == "--uninstall" ]]; then
   exit 0
 fi
 
+# Phase C (alpha): the Session Host's own ceiling on live sessions (engineering default 4). The
+# host-wide limit is min(policy global.runtime.maxLiveSessions, this ceiling), so a ceiling below the
+# policy's limit would silently override the policy (on the 6-CPU alpha: 4 instead of "cpus" = 6).
+# TBI_S8_HOST_MAX_SESSIONS sets it (default 4, unchanged); the install refuses, before any change,
+# a ceiling below the policy's limit on this host. A reinstall must therefore pass it again.
+HOST_MAX="${TBI_S8_HOST_MAX_SESSIONS:-4}"
+[[ "$HOST_MAX" =~ ^[1-9][0-9]{0,2}$ ]] || { echo "TBI_S8_HOST_MAX_SESSIONS must be a whole number" >&2; exit 1; }
+POLICY_LIVE="$(python3 -c 'import json,os,sys
+v=json.load(open(sys.argv[1])).get("global",{}).get("runtime",{}).get("maxLiveSessions","cpus")
+print(len(os.sched_getaffinity(0)) if v=="cpus" else v)' "${TBI_S8_POLICY:-$here/policy.json}")"
+if (( HOST_MAX < POLICY_LIVE )); then
+  echo "refused: the Session Host ceiling ($HOST_MAX) is below the policy's live-session limit on this host ($POLICY_LIVE);" >&2
+  echo "set TBI_S8_HOST_MAX_SESSIONS=$POLICY_LIVE so the policy governs" >&2
+  exit 1
+fi
+
 # Users and groups (system accounts, no home, no login).
 for g in tbi-buildio tbi-runtimeio tbi-gate tbi-artifacts; do
   getent group "$g" >/dev/null || sudo groupadd --system "$g"
@@ -142,7 +158,8 @@ fi
 render() {
   sed -e "s|@N@|$N|g" -e "s|@NRE@|${N//-/\\\\-}|g" -e "s|@STORE@|$STORE|g" -e "s|@BUNDLES@|$BUNDLES|g" \
     -e "s|@ARDUINO@|$ARDUINO|g" -e "s|@NODE@|$NODE|g" -e "s|@RUNTIME@|$RUNTIME|g" \
-    -e "s|@GATE_GID@|$GATE_GID|g" -e "s|@JOB_UID@|$JOB_UID|g" -e "s|@ARTIFACT_CAP_MB@|$CAP_MB|g" "$1"
+    -e "s|@GATE_GID@|$GATE_GID|g" -e "s|@JOB_UID@|$JOB_UID|g" -e "s|@ARTIFACT_CAP_MB@|$CAP_MB|g" \
+    -e "s|@HOST_MAX_SESSIONS@|$HOST_MAX|g" "$1"
 }
 render "$here/tbi-build.service.in" | sudo tee "/etc/systemd/system/$N-build.service" >/dev/null
 render "$here/tbi-build-job@.service.in" | sudo tee "/etc/systemd/system/$N-build-job@.service" >/dev/null
