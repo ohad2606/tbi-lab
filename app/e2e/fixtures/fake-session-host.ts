@@ -14,6 +14,9 @@
  *     POST /__test/capacity?n=N          event-log capacity for new sessions
  *     POST /__test/pause?ms=N            stop emitting for N ms (events pile up server-side)
  *     GET  /__test/sessions              live/terminal counts
+ *     POST /__test/lifetime?ms=N         maximum lifetime of new sessions once running (as the
+ *                                        real host: reported as `lifetimeMs`, then the session
+ *                                        ends `lifetime_exceeded`); without ms: unbounded
  *     POST /__test/reset-builds[?capImages=N]  fresh fake build service (empty store, no
  *                                        records); with N, a store of N images that evicts
  */
@@ -54,6 +57,8 @@ const SCRIPT: Record<string, 'gpio-proof' | 'banks'> = {
 let capacity = 4096;
 let failNextCreate: number | null = null;
 let pausedUntil = 0;
+/** Alpha (Phase D): the maximum lifetime of new sessions (ms), like the real host; null: none. */
+let lifetimeMs: number | null = null;
 
 class FakeSession {
   readonly id = randomBytes(16).toString('hex');
@@ -66,6 +71,8 @@ class FakeSession {
   reason: string | null = null;
   private simNs = 0n;
   private timer: ReturnType<typeof setInterval> | null = null;
+  private lifetimeTimer: ReturnType<typeof setTimeout> | null = null;
+  readonly lifetimeMs = lifetimeMs;
   private engine: EngineSession | null = null;
   private inputs = new Map<number, DigitalLevel>();
   private outputs = new Map<number, 0 | 1>();
@@ -113,6 +120,8 @@ class FakeSession {
   end(state: 'ended' | 'failed', reason: string, detail?: unknown) {
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
+    if (this.lifetimeTimer) clearTimeout(this.lifetimeTimer);
+    this.lifetimeTimer = null;
     if (this.state === 'running') this.to('stopping');
     this.state = state;
     this.reason = reason;
@@ -127,6 +136,7 @@ class FakeSession {
       lastEventSeq: this.log.lastSeq,
       createdAt: new Date().toISOString(),
       endedAt: null,
+      lifetimeMs: this.lifetimeMs,
       runtime: { pid: null, outcome: null },
       revisions: {
         snapshot: this.req.circuit.projectRevision,
@@ -140,6 +150,11 @@ class FakeSession {
     this.to('running');
     this.solveAndInject();
     this.timer = setInterval(() => this.tick(), 10);
+    if (this.lifetimeMs !== null)
+      this.lifetimeTimer = setTimeout(
+        () => this.end('ended', 'lifetime_exceeded'),
+        this.lifetimeMs,
+      );
     return { ok: true };
   }
   stop() {
@@ -357,6 +372,9 @@ const server = createServer((req: IncomingMessage, res: ServerResponse) => {
       return reply({ ok: true });
     case '/__test/sessions':
       return reply(host.health());
+    case '/__test/lifetime':
+      lifetimeMs = url.searchParams.has('ms') ? Number(url.searchParams.get('ms')) : null;
+      return reply({ ok: true });
     case '/__test/reset-builds':
       resetFakeBuildService(
         url.searchParams.has('capImages') ? Number(url.searchParams.get('capImages')) : undefined,

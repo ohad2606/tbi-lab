@@ -53,6 +53,11 @@ export interface SessionStatusBody {
   simNs: string;
   lastEventSeq: number;
   revisions: MirrorRevisions;
+  /**
+   * The session's enforced maximum wall time once running (ms); null when unbounded. Absent from
+   * hosts before Alpha Phase D: the app then shows no pre-expiry warning (it never guesses).
+   */
+  lifetimeMs?: number | null;
 }
 
 export interface CommandResult {

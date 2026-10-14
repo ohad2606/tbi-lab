@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import type { ComponentTypeId } from '@tbi-lab/domain';
 import { Canvas, type CanvasApi } from './Canvas.js';
 import { useAppState, useT } from './context.js';
+import { onCodeViewRequest, programBoardOf } from './buildAction.js';
 import { CodeView } from './CodeView.js';
 import { LazyView } from './LazyView.js';
 import { Inspector } from './Inspector.js';
@@ -37,12 +38,12 @@ export function Editor() {
   const { doc, suggestedProbes, sim } = useAppState();
   const t = useT();
   // The board whose program this project authors (V1: at most one), and which view shows.
-  const programBoard = doc
-    ? Object.keys(doc.programs).find((id) => doc.components.some((c) => c.id === id))
-    : undefined;
+  const programBoard = programBoardOf(doc);
   const [view, setView] = useState<View>('circuit');
   const [focusBuild, setFocusBuild] = useState(0);
   useEffect(() => setView('circuit'), [doc?.projectId]);
+  // Alpha UX-P1: the toolbar's "Show problems" opens the code view and its diagnostics.
+  useEffect(() => onCodeViewRequest(() => setView('code')), []);
   // Run refused for want of a current build: take the user to the code and its Build action.
   const refusal = sim.status === 'failed' && sim.failure.kind === 'mcu' ? sim.failure.code : null;
   useEffect(() => {

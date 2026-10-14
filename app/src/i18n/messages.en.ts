@@ -658,6 +658,11 @@ export const en = {
   'program.position': 'Line {line}, column {column}',
   'program.size': '{used} of {max}',
   'build.button': 'Build',
+  'toolbar.build': 'Build',
+  'toolbar.build.group': 'Build the code',
+  'toolbar.build.readOnly': 'This project is read-only: it cannot be built here.',
+  'toolbar.build.error': 'Build not completed',
+  'toolbar.build.showProblems': 'Show problems',
   'build.phase.required': 'Build required',
   'build.phase.building': 'Building…',
   'build.phase.queued': 'Waiting to build ({position} ahead)',
@@ -781,6 +786,8 @@ export const en = {
     'The ESP32 stopped making progress (for example, the firmware image does not boot). The session ended.',
   'sim.error.runtime.session_lost':
     'The ESP32 session was lost (connection lost or session expired). The project is safe; press Run for a fresh session.',
+  'sim.runtime.expiring':
+    'This ESP32 session will end within a minute (a session lasts at most {minutes} min). Your project is saved; afterwards, press Run for a fresh session.',
   'sim.error.runtime.session_expired':
     'The ESP32 session reached its maximum duration and ended. Press Run for a fresh session.',
   'sim.error.runtime.mirror_failed':
@@ -988,6 +995,8 @@ export const en = {
   'capabilities.limit.commands_rate_limited':
     'Part controls changed too quickly while running; some changes were refused. Change them more slowly.',
   'capabilities.parts.supported': 'Simulated with the ESP32.',
+  'capabilities.board.power':
+    'How the board is powered: the ESP32 board runs from its own 3.3 V supply, as if powered through its USB connector. Its 3V3 and 5V pins are not part of the simulated circuit and cannot be wired; connect its GND to the circuit ground. Parts next to it take their power from the lab power supply.',
   // Sprint 13 H2: outside the specified operating range; damage threshold unknown (not "safe").
   'rating.operating.heading': 'Outside specified operating conditions',
   'rating.operating.summary': '{component} is outside its specified operating range',

@@ -65,6 +65,13 @@ export interface McuDeps {
   stopTimeoutMs?: number;
 }
 
+/**
+ * Alpha (Phase D): warn this long before a running session reaches its maximum lifetime (the
+ * host's `lifetimeMs`, 30 minutes under the Alpha policy). The session is never extended: at the
+ * end the host ends it (`lifetime_exceeded` -> `session_expired`) and the next Run is a new one.
+ */
+export const EXPIRY_WARNING_MS = 60_000;
+
 /** Host failure reasons -> product error codes. */
 const FAIL: Record<FailReason, RuntimeFailCode> = {
   artifact_unknown: 'firmware_unavailable',
@@ -105,6 +112,7 @@ export class McuSimulation implements SimulationHost {
   private pendingMirrors = new Map<string, { control: LiveControl; projectRevision: number }>();
   private stopRequested = false;
   private stopTimer: ReturnType<typeof setTimeout> | null = null;
+  private expiryTimer: ReturnType<typeof setTimeout> | null = null;
   private startedAt = 0;
   private readonly now: () => number;
 
@@ -321,6 +329,8 @@ export class McuSimulation implements SimulationHost {
   private release(): void {
     if (this.stopTimer) clearTimeout(this.stopTimer);
     this.stopTimer = null;
+    if (this.expiryTimer) clearTimeout(this.expiryTimer);
+    this.expiryTimer = null;
     this.session?.close();
     this.session = null;
   }
@@ -341,6 +351,25 @@ export class McuSimulation implements SimulationHost {
     const session = this.session;
     this.fail(failure);
     if (session) void session.terminate().catch(() => undefined);
+  }
+
+  /**
+   * From the moment the session runs (when the host starts its lifetime clock), warn
+   * EXPIRY_WARNING_MS before the host's enforced lifetime; at once if the lifetime is shorter.
+   * Without a lifetime from the host (an older host, or unbounded) there is no warning.
+   */
+  private scheduleExpiryWarning(): void {
+    const lifetimeMs = this.session?.created.lifetimeMs;
+    if (this.expiryTimer || typeof lifetimeMs !== 'number' || lifetimeMs <= 0) return;
+    const runId = this.runId;
+    this.expiryTimer = setTimeout(
+      () => {
+        if (runId !== this.runId || !this.view || this.stateValue.status === 'stopping') return;
+        this.view.expiresSoon = { lifetimeMs };
+        this.publish();
+      },
+      Math.max(0, lifetimeMs - EXPIRY_WARNING_MS),
+    );
   }
 
   private warn(code: string, detail?: unknown): void {
@@ -391,6 +420,7 @@ export class McuSimulation implements SimulationHost {
           const code = e.reason === 'lifetime_exceeded' ? 'session_expired' : 'session_lost';
           return this.fail({ kind: 'runtime', code, detail: e.reason });
         }
+        if (e.state === 'running') this.scheduleExpiryWarning();
         if (e.state === 'failed') {
           const reason = e.reason as FailReason;
           if (reason === 'electrical_error' && isEngineError(e.detail))

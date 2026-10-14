@@ -120,6 +120,10 @@ function CapabilitiesDialog({
 
       <section id="capabilities-parts" aria-labelledby="capabilities-h-parts">
         <h3 id="capabilities-h-parts">{t('capabilities.section.parts')}</h3>
+        {/* Alpha: the board's power is implicit (an explanation only; the model is unchanged). */}
+        <p class="small" data-testid="capability-board-power">
+          {t('capabilities.board.power')}
+        </p>
         <ul class="capability-list">
           {partCapabilities().map((p) => (
             <li key={p.type} data-testid={`capability-part-${p.type}`} data-status={p.status}>

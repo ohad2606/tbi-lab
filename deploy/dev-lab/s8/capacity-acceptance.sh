@@ -11,7 +11,9 @@
 #   1. ramp:      N = 1 .. 6, 180 s each (N = 6 is above the alpha target: admitted or refused,
 #                 recorded either way)
 #   2. faults:    N = 5, 600 s, one session ended and one QEMU killed, both re-created
-#   3. soak:      N = 5, 7200 s, a five-user build burst every 600 s
+#   3. soak:      N = 5, 7200 s, a five-user build burst every 600 s; each session replaced by its
+#                 user every 1500 s (staggered 60 s), below the policy's 30-min session lifetime:
+#                 host-level continuity over 2 h, no single session lives longer than 25 min
 #   4. summary:   every criterion of every run; overall PASS only if stages 1 (N <= 5), 2, 3 pass
 # `quick` shortens the stages (60 s ramp, 180 s faults, 600 s soak); `smoke` runs only N = 1 and
 # 2 (60 s), faults at N = 2 (120 s) and a 180 s soak at N = 1: a check of the procedure itself
@@ -22,10 +24,10 @@ out="${2:?evidence dir}"
 quick="${3:-}"
 repo="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
 mkdir -p "$out"
-RAMP_S=180 FAULT_S=600 SOAK_S=7200 BURST_S=600
+RAMP_S=180 FAULT_S=600 SOAK_S=7200 BURST_S=600 ROTATE_S=1500
 RAMP_N="1 2 3 4 5 6" FAULT_N=5 SOAK_N=5
-if [ "$quick" = quick ]; then RAMP_S=60 FAULT_S=180 SOAK_S=600 BURST_S=300; fi
-if [ "$quick" = smoke ]; then RAMP_S=60 FAULT_S=120 SOAK_S=180 BURST_S=90 RAMP_N="1 2" FAULT_N=2 SOAK_N=1; fi
+if [ "$quick" = quick ]; then RAMP_S=60 FAULT_S=180 SOAK_S=600 BURST_S=300 ROTATE_S=300; fi
+if [ "$quick" = smoke ]; then RAMP_S=60 FAULT_S=120 SOAK_S=180 BURST_S=90 ROTATE_S=100 RAMP_N="1 2" FAULT_N=2 SOAK_N=1; fi
 
 health() { sudo -n curl -s -m 5 --unix-socket "/run/$inst-runtime/api.sock" http://x/health; }
 echo "== 0. preflight ($inst)" | tee "$out/summary.txt"
@@ -42,6 +44,21 @@ live="$(systemctl list-units --plain --no-legend --state=active "$inst-qemu@*" |
   echo "host: $(nproc) CPU, $(free -m | awk '/Mem:/{print $2}') MiB, $(uname -r), $(lscpu | sed -n 's/Model name:\s*//p')"
   echo "artifact cap: $(sudo -n systemctl show -p Environment "$inst-build.service" | grep -o 'TBI_ARTIFACT_CAP_MB=[0-9]*' || echo 'default (256 MiB)')"
 } | tee -a "$out/summary.txt"
+# Phase C: the live-session limits must agree. The Session Host admits min(policy limit, its own
+# ceiling TBI_HOST_MAX_SESSIONS, default 4); a ceiling below the policy would cap the run silently.
+ceiling="$(sudo -n systemctl show -p Environment "$inst-session-host.service" | { grep -o 'TBI_HOST_MAX_SESSIONS=[0-9]*' || true; } | cut -d= -f2)"
+ceiling="${ceiling:-4}" # an install before Phase C renders none: the engineering default
+hostpid="$(systemctl show -p MainPID --value "$inst-session-host.service")"
+[ -n "$hostpid" ] && [ "$hostpid" != 0 ] || { echo "refused: $inst-session-host is not running" | tee -a "$out/summary.txt" >&2; exit 1; }
+# "cpus" = the CPUs the Session Host may run on (its affinity), as the service resolves it.
+cpus="$(sudo -n cat "/proc/$hostpid/status" | python3 -c 'import re,sys
+l=re.search(r"Cpus_allowed_list:\s*(\S+)", sys.stdin.read()).group(1)
+print(sum(int(b)-int(a)+1 if b else 1 for a,_,b in (r.partition("-") for r in l.split(","))))')"
+policy_live="$(sudo -n cat "/etc/$inst/policy.json" | python3 -c 'import json,sys
+v=json.load(sys.stdin).get("global",{}).get("runtime",{}).get("maxLiveSessions","cpus")
+print(sys.argv[1] if v=="cpus" else v)' "$cpus")"
+echo "live sessions: policy $policy_live, host ceiling $ceiling, effective $(( ceiling < policy_live ? ceiling : policy_live ))" | tee -a "$out/summary.txt"
+(( ceiling >= policy_live )) || { echo "refused: host ceiling $ceiling below the policy's $policy_live (install.sh TBI_S8_HOST_MAX_SESSIONS)" | tee -a "$out/summary.txt" >&2; exit 1; }
 
 run() { # $1 name, then env assignments
   local name="$1"; shift
@@ -57,16 +74,25 @@ if i < 0: print('   NO REPORT'); sys.exit(0)
 d = json.loads(t[i:t.index('\n}\n', i) + 2]); json.dump(d, open(sys.argv[2], 'w'), indent=1)
 p = d['pass']; ok = all(p.values())
 print('   ' + ('PASS' if ok else 'FAIL') + '  ' + ' '.join(f"{k}={'y' if v else 'N'}" for k, v in p.items()))
-print(f"   admitted {sum(a['status'] == 201 and not a.get('recreate') for a in d['admission'])}/{d['n']}, worst build {d['worstBuildMs']} ms, "
+print(f"   admitted {sum(a['status'] == 201 and not a.get('recreate') and not a.get('rotation') for a in d['admission'])}/{d['n']}, worst build {d.get('worstBuildAllMs', d['worstBuildMs'])} ms (first burst {d['worstBuildMs']} ms), "
       f"cpu mean {d['host']['cpuBusyMean']:.2f}, mem min {d['host']['memAvailableMinMb']} MiB, leftovers {d['leftovers']}")
 for s in d['sessions']:
-    print(f"     {s['workload']:<6} p5(5s) {s['rate5sP5']} startup {s['startupMs']} ms  tick-gap p99 {((s.get('pace') or {}).get('tickGapMs') or {}).get('p99')} ms {s.get('fault', '')}")
+    print(f"     {s['workload']:<6} p5(5s) {s['rate5sP5']} startup {s['startupMs']} ms  tick-gap p99 {((s.get('pace') or {}).get('tickGapMs') or {}).get('p99')} ms {s.get('fault', '')}{' rotated' if s.get('rotated') else ''}")
+r = d.get('rotation')
+if r:
+    gaps = [x['gapMs'] for x in r['replacements'] if x['gapMs'] is not None]
+    print(f"   rotation: {len(r['replacements'])} replacements every {r['everyS']} s, gap max {max(gaps) if gaps else None} ms, "
+          f"all clean {d['pass'].get('rotationsClean')}, "
+          f"running-seconds {r['runningSeconds']}")
+    print(f"   host-level soak {d['seconds']} s; per-session lifetime: the longest single session lived "
+          f"{r['maxSessionAgeS']} s; rotationsClean={d['pass'].get('rotationsClean')} "
+          f"lifetimeNeverReached={d['pass'].get('lifetimeNeverReached')}")
 PY
 }
 
 for n in $RAMP_N; do run "ramp-n$n" TBI_C5_N="$n" TBI_C5_SECONDS=$RAMP_S; done
 run "faults-n$FAULT_N" TBI_C5_N=$FAULT_N TBI_C5_SECONDS=$FAULT_S TBI_C5_FAULTS=1
-run "soak-n$SOAK_N" TBI_C5_N=$SOAK_N TBI_C5_SECONDS=$SOAK_S TBI_C5_BUILD_EVERY=$BURST_S
+run "soak-n$SOAK_N" TBI_C5_N=$SOAK_N TBI_C5_SECONDS=$SOAK_S TBI_C5_BUILD_EVERY=$BURST_S TBI_C5_ROTATE=$ROTATE_S
 
 echo "== summary" | tee -a "$out/summary.txt"
 python3 - "$out" "$RAMP_N" "$FAULT_N" "$SOAK_N" <<'PY' | tee -a "$out/summary.txt"
@@ -81,6 +107,6 @@ for name in need:
     print(f"{name}: {'PASS' if good else 'FAIL ' + ','.join(k for k, v in p.items() if not v)}")
 f6 = os.path.join(out, 'ramp-n6.json')
 if os.path.exists(f6):
-    d = json.load(open(f6)); print(f"ramp-n6 (above target, informational): admitted {sum(a['status'] == 201 and not a.get('recreate') for a in d['admission'])}/6")
+    d = json.load(open(f6)); print(f"ramp-n6 (above target, informational): admitted {sum(a['status'] == 201 and not a.get('recreate') and not a.get('rotation') for a in d['admission'])}/6")
 print('OVERALL: ' + ('PASS (five-session capacity accepted on this host, subject to PM review)' if ok else 'FAIL'))
 PY

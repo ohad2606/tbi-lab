@@ -3321,3 +3321,117 @@ select {
   border: 1px dashed var(--border);
   border-radius: 6px;
 }
+
+/* ================================================================ Alpha UX-P1: toolbar Build */
+
+.build-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.toolbar-build {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* aria-disabled, not disabled: it keeps focus; it reads as unavailable. */
+.toolbar-build[aria-disabled='true'] {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.toolbar-build.is-building[aria-disabled='true'] {
+  cursor: progress;
+}
+
+.build-icon.spinning {
+  animation: build-spin 0.9s linear infinite;
+}
+
+@keyframes build-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .build-icon.spinning {
+    animation: none;
+  }
+}
+
+.toolbar-build-state {
+  white-space: nowrap;
+}
+
+/* Failed: "Show problems" says it and acts on it; the state text stays for screen readers. */
+.toolbar-build-phase.phase-failed .toolbar-build-state-value {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.toolbar-build-problems {
+  white-space: nowrap;
+}
+
+.notice-build {
+  margin-inline-start: 0.5rem;
+  font-weight: 600;
+}
+
+/* Alpha UX-P1: the toolbar keeps Build and Run labelled and visible down to the narrowest
+   supported desktop width (1024 px). Below 1536 px, room is made without any menu: the
+   save-state text, the Undo/Redo labels, the "Project name" label and the "Status:" prefix are
+   visually
+   hidden (they remain the accessible names / live text; the save state keeps its icon, Undo/Redo
+   their icons; all have a tooltip). The build state text stays visible down to 1200 px.
+   From 1536 px all labels show. */
+@media (max-width: 1535px) {
+  .history-label,
+  .save-label,
+  .project-name-label,
+  .sim-status-prefix {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}
+
+/* Alpha UX-P1 (found while fitting Build): the editor's navigation group may not shrink below its
+   content. Before, it could (min-width: 0) while the project name box keeps min-width 9rem, so the
+   box overflowed the group and covered the save state (visible at 1024 px in 71b40fb, and at
+   1400 px once the toolbar holds Build). Now the other groups give way instead. */
+.topbar-editor .topbar-nav {
+  min-width: min-content;
+}
+
+/* Alpha UX-P1, narrowest desktops (below 1200 px): the project name box may shrink further, the
+   brand keeps its logo only (the word "TBI Lab" is visually hidden; the logo's alt text names it)
+   and the build state is its coloured dot with a tooltip (the text stays the live region; a
+   failure still shows "Show problems"; building still spins the Build icon). */
+@media (max-width: 1199px) {
+  .project-name-box {
+    min-width: 6rem;
+  }
+
+  .toolbar-build-state-value,
+  .brand-word {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}

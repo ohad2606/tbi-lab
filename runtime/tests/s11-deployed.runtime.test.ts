@@ -23,6 +23,7 @@ import { readFileSync } from 'node:fs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { addComponent, addWire, createSnapshot, type ProjectDocument } from '@tbi-lab/domain';
 import { PROTOCOL, type CreateSessionRequest } from '../host/protocol.js';
+import { deployedLimits } from './deployed-limits.js';
 
 const N = process.env.TBI_S8_INSTANCE ?? '';
 const EXPECT = process.env.TBI_S11_EXPECT === 's10' ? 's10' : 'r1';
@@ -32,6 +33,11 @@ const HAVE =
   sudo('test', '-f', `/etc/systemd/system/${N}-session-host.service`).status === 0 &&
   sudo('true').status === 0;
 const SESSIONS = `/var/lib/${N}-runtime/sessions`;
+/** The installed policy (install.sh TBI_S8_POLICY; default policy.json), resolved on the host. */
+const REAL_POLICY =
+  process.env.TBI_S8_POLICY ??
+  new URL('../../deploy/dev-lab/s8/policy.json', import.meta.url).pathname;
+const LIMITS = HAVE ? deployedLimits(N, REAL_POLICY) : { perUser: 1, maxLive: 1, deferAt: 1 };
 const run = Date.now().toString(36);
 const u = (name: string) => `s11-${name}-${run}`;
 
@@ -468,25 +474,35 @@ describe.skipIf(!HAVE || EXPECT !== 'r1')(`Sprint 11 R1 on the deployed instance
     120_000,
   );
 
-  it('admission under the real policy: one session per preview user, one globally; ownership', async () => {
+  it('admission under the real policy: the per-user quota, the host-wide limit; ownership', async () => {
     const req = fixture('r1-night-light-session.json').request;
-    const { a, s } = await create(u('quota'), req, program);
-    expect(a.status).toBe(201);
+    const live: Session[] = [];
     try {
+      for (let i = 0; i < LIMITS.perUser; i++) {
+        const { a, s } = await create(u('quota'), req, program);
+        expect(a.status, `quota ${i}`).toBe(201);
+        live.push(s!);
+      }
       const again = await create(u('quota'), req, program);
       expect(again.a).toMatchObject({ status: 429, body: { error: 'session_quota' } });
+      for (let i = 1; live.length < LIMITS.maxLive; i++) {
+        const { a, s } = await create(u(`fill${i}`), req, program);
+        expect(a.status, `fill${i}`).toBe(201);
+        live.push(s!);
+      }
       const other = await create(u('quota2'), req, program);
       expect(other.a).toMatchObject({ status: 503, body: { error: 'runtime_capacity' } });
-      expect((await s!.status(u('quota2'))).status).toBe(404);
+      const s = live[0]!;
+      expect((await s.status(u('quota2'))).status).toBe(404);
       expect(
-        (await fetch(s!.path, { method: 'DELETE', headers: s!.headers(u('quota2')) })).status,
+        (await fetch(s.path, { method: 'DELETE', headers: s.headers(u('quota2')) })).status,
       ).toBe(404);
-      expect((await s!.status()).status).toBe(200);
+      expect((await s.status()).status).toBe(200);
     } finally {
-      await s?.end();
+      for (const s of live) await s.end();
     }
-    await cleanedUp(s!);
-  }, 120_000);
+    for (const s of live) await cleanedUp(s);
+  }, 300_000);
 });
 
 describe.skipIf(!HAVE || EXPECT !== 's10')(`a Sprint 10 host refuses R1 explicitly (${N})`, () => {
