@@ -757,6 +757,8 @@ export const he: Record<MessageKey, string> = {
   'sim.error.runtime.stalled': 'ה-ESP32 הפסיק להתקדם (למשל, קובץ הקושחה אינו עולה). הסשן הסתיים.',
   'sim.error.runtime.session_lost':
     'סשן ה-ESP32 אבד (החיבור נותק או שהסשן פג). הפרויקט בטוח; לחצו על הרצה לסשן חדש.',
+  'sim.runtime.expiring':
+    'סשן ה-ESP32 יסתיים בתוך דקה (סשן נמשך לכל היותר {minutes} דק׳). הפרויקט שמור; אחר כך לחצו על הרצה לסשן חדש.',
   'sim.error.runtime.session_expired':
     'סשן ה-ESP32 הגיע למשך המרבי שלו והסתיים. לחצו על הרצה לסשן חדש.',
   'sim.error.runtime.mirror_failed':

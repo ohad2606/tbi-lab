@@ -2,7 +2,7 @@
  * Sprint 6: ESP32 simulation host, dispatch and project -> session snapshot, with a scripted
  * fake R2 client (routine CI, no network, no QEMU).
  */
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { addComponent, addWire, deleteSelection, type ProjectDocument } from '@tbi-lab/domain';
 import {
   validateCreate,
@@ -10,7 +10,7 @@ import {
   type SessionEvent,
 } from '../../runtime/host/protocol.js';
 import { EXAMPLES_WITH_DOCUMENTS as EXAMPLES } from '../src/examples/documents.js';
-import { McuSimulation } from '../src/runtime/controller.js';
+import { EXPIRY_WARNING_MS, McuSimulation } from '../src/runtime/controller.js';
 import { RuntimeTransportError, type RuntimeClient } from '../src/runtime/client.js';
 import {
   buildSessionRequest,
@@ -59,7 +59,7 @@ const deepFreeze = <T>(o: T): T => {
 class FakeSession {
   static n = 0;
   readonly id = `s${++FakeSession.n}`;
-  created = { state: 'ready' as const };
+  created: { state: 'ready'; lifetimeMs?: number | null } = { state: 'ready' };
   commands: unknown[] = [];
   stops = 0;
   terminated = 0;
@@ -94,13 +94,15 @@ class FakeSession {
   }
 }
 
-function fakeClient() {
+function fakeClient(opts: { lifetimeMs?: number | null } = {}) {
   const sessions: FakeSession[] = [];
   let gate: Promise<void> | null = null;
   const client = {
     async create(req: CreateSessionRequest) {
       if (gate) await gate;
       const s = new FakeSession(req);
+      if (opts.lifetimeMs !== undefined)
+        s.created = { state: 'ready', lifetimeMs: opts.lifetimeMs };
       sessions.push(s);
       return s;
     },
@@ -488,5 +490,100 @@ describe('Sprint 11 (ADR-010): live commands — explicit failures and coalescin
     await tick();
     expect(s.commands).toHaveLength(3);
     expect(sim.state.status).toBe('running');
+  });
+});
+
+describe('Alpha: session lifetime (30 min under the Alpha policy) — warning, expiry, restart', () => {
+  afterEach(() => void vi.useRealTimers());
+  const MIN = 60_000;
+  const runtimeOf = (sim: McuSimulation) =>
+    (sim.state as { runtime?: { expiresSoon: unknown } }).runtime;
+
+  it('warns about a minute before the host lifetime, never extends it; then session_expired; Run again is fresh; the project is untouched', async () => {
+    vi.useFakeTimers();
+    expect(EXPIRY_WARNING_MS).toBe(MIN);
+    const f = fakeClient({ lifetimeMs: 30 * MIN });
+    const sim = new McuSimulation({ client: f.client });
+    const doc = deepFreeze(example('esp32-blink'));
+    const before = JSON.stringify(doc);
+    const s = await running(sim, f, doc);
+    // Timing: nothing until 29 minutes after the session runs; then the warning, once.
+    vi.advanceTimersByTime(29 * MIN - 1);
+    expect(runtimeOf(sim)?.expiresSoon).toBeNull();
+    vi.advanceTimersByTime(1);
+    expect(sim.state.status).toBe('running');
+    expect(runtimeOf(sim)?.expiresSoon).toEqual({ lifetimeMs: 30 * MIN });
+    // No silent extension: the warning sends nothing to the host and the session keeps its end.
+    expect([s.commands.length, s.stops, s.terminated, s.statusCalls]).toEqual([0, 0, 0, 0]);
+    // The actual expiry (the host ends it at 30 minutes): the existing final message.
+    vi.advanceTimersByTime(MIN);
+    s.emit({ type: 'state', simNs: null, state: 'ended', reason: 'lifetime_exceeded' });
+    expect(sim.state).toMatchObject({
+      status: 'failed',
+      failure: { kind: 'runtime', code: 'session_expired', detail: 'lifetime_exceeded' },
+    });
+    // Restart: a new session with an empty view, its own clock from its own start.
+    const s2 = await running(sim, f, doc);
+    expect(f.sessions).toHaveLength(2);
+    expect(s2).not.toBe(s);
+    expect(runtimeOf(sim)?.expiresSoon).toBeNull();
+    vi.advanceTimersByTime(29 * MIN - 1);
+    expect(runtimeOf(sim)?.expiresSoon).toBeNull();
+    vi.advanceTimersByTime(1);
+    expect(runtimeOf(sim)?.expiresSoon).toEqual({ lifetimeMs: 30 * MIN });
+    // The project is preserved through warning, expiry and restart (deep-frozen, unchanged).
+    expect(JSON.stringify(doc)).toBe(before);
+  });
+
+  it('the clock starts when the session runs, not when it is created', async () => {
+    vi.useFakeTimers();
+    const f = fakeClient({ lifetimeMs: 30 * MIN });
+    const sim = new McuSimulation({ client: f.client });
+    await sim.run(example('esp32-blink'));
+    vi.advanceTimersByTime(10 * MIN); // created, not yet running: no clock
+    const s = f.sessions.at(-1)!;
+    s.emit({ type: 'state', simNs: null, state: 'running' });
+    s.emit({ type: 'electrical', simNs: '10000000', outcome });
+    vi.advanceTimersByTime(29 * MIN - 1);
+    expect(runtimeOf(sim)?.expiresSoon).toBeNull();
+    vi.advanceTimersByTime(1);
+    expect(runtimeOf(sim)?.expiresSoon).not.toBeNull();
+  });
+
+  it('a lifetime under a minute warns at once; Stop or a new Run cancels a pending warning', async () => {
+    vi.useFakeTimers();
+    const short = fakeClient({ lifetimeMs: 20_000 });
+    const a = new McuSimulation({ client: short.client });
+    await running(a, short, example('esp32-blink'));
+    vi.advanceTimersByTime(0);
+    expect(runtimeOf(a)?.expiresSoon).toEqual({ lifetimeMs: 20_000 });
+
+    const f = fakeClient({ lifetimeMs: 30 * MIN });
+    const b = new McuSimulation({ client: f.client });
+    const s = await running(b, f, example('esp32-blink'));
+    b.stop();
+    s.emit({ type: 'state', simNs: null, state: 'ended', reason: 'stopped' });
+    expect(b.state.status).toBe('stopped');
+    vi.advanceTimersByTime(30 * MIN);
+    expect(b.state.status).toBe('stopped'); // no warning, no state change after Stop
+
+    const c = new McuSimulation({ client: f.client });
+    await running(c, f, example('esp32-blink'));
+    vi.advanceTimersByTime(20 * MIN);
+    await running(c, f, example('esp32-blink')); // a new Run: the old clock is gone
+    vi.advanceTimersByTime(10 * MIN);
+    expect(runtimeOf(c)?.expiresSoon).toBeNull();
+  });
+
+  it('without a lifetime from the host (older host, or unbounded) there is no warning: never a guess', async () => {
+    vi.useFakeTimers();
+    for (const lifetimeMs of [undefined, null]) {
+      const f = fakeClient(lifetimeMs === undefined ? {} : { lifetimeMs });
+      const sim = new McuSimulation({ client: f.client });
+      await running(sim, f, example('esp32-blink'));
+      vi.advanceTimersByTime(24 * 60 * MIN);
+      expect(sim.state.status).toBe('running');
+      expect(runtimeOf(sim)?.expiresSoon).toBeNull();
+    }
   });
 });

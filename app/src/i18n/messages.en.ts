@@ -781,6 +781,8 @@ export const en = {
     'The ESP32 stopped making progress (for example, the firmware image does not boot). The session ended.',
   'sim.error.runtime.session_lost':
     'The ESP32 session was lost (connection lost or session expired). The project is safe; press Run for a fresh session.',
+  'sim.runtime.expiring':
+    'This ESP32 session will end within a minute (a session lasts at most {minutes} min). Your project is saved; afterwards, press Run for a fresh session.',
   'sim.error.runtime.session_expired':
     'The ESP32 session reached its maximum duration and ended. Press Run for a fresh session.',
   'sim.error.runtime.mirror_failed':

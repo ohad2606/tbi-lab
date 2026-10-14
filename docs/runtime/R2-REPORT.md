@@ -117,7 +117,7 @@ run, stop, terminate, commands, event stream), eight routes in all.
 |---|---|
 | `GET /health` | protocol version and session counts by state (no identifiers) |
 | `POST /sessions` | 201 `{sessionId, token, status}`; 400 invalid; 429 session limit; 503 shutting down |
-| `GET /sessions/:id` | status: state, reason, detail, simNs, lastEventSeq, times, runtime pid/outcome, mirror `revisions` |
+| `GET /sessions/:id` | status: state, reason, detail, simNs, lastEventSeq, times, `lifetimeMs` (the enforced maximum wall time once running, or null; Alpha Phase D), runtime pid/outcome, mirror `revisions` |
 | `POST /sessions/:id/run` | 202; 409 if not `ready` |
 | `POST /sessions/:id/stop` | 202; idempotent |
 | `DELETE /sessions/:id` | terminate; answers once resources are released; idempotent |

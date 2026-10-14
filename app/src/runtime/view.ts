@@ -47,6 +47,11 @@ export interface RuntimeView {
    * every whole simulated second. Transport timing and event ids are excluded.
    */
   trace: { events: number; hash: string; checkpoints: [number, string][] };
+  /**
+   * Set about a minute before the session reaches its maximum lifetime (the host's value): the
+   * session will end then; nothing extends it. Null otherwise.
+   */
+  expiresSoon: { lifetimeMs: number } | null;
 }
 
 export function emptyView(board: string, firmware: string): RuntimeView {
@@ -63,6 +68,7 @@ export function emptyView(board: string, firmware: string): RuntimeView {
     missedEvents: 0,
     stale: false,
     trace: { events: 0, hash: '', checkpoints: [] },
+    expiresSoon: null,
   };
 }
 

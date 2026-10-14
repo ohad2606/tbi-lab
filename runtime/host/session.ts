@@ -79,6 +79,12 @@ export interface SessionStatus {
   lastEventSeq: number;
   createdAt: string;
   endedAt: string | null;
+  /**
+   * Alpha (Phase D): the session's maximum wall time once running (ms), as enforced: the host
+   * configuration, the plan and the client's own stricter limit, whichever is least. Null when
+   * unbounded. Clients use it to warn before the session ends; it is never extended.
+   */
+  lifetimeMs: number | null;
   runtime: { pid: number | null; outcome: Outcome | null };
   revisions: MirrorRevisions;
   /**
@@ -893,6 +899,7 @@ export class HostSession {
       lastEventSeq: this.log.lastSeq,
       createdAt: this.createdAt.toISOString(),
       endedAt: this.endedAt?.toISOString() ?? null,
+      lifetimeMs: Number.isFinite(this.lifetimeMs) ? this.lifetimeMs : null,
       runtime: { pid: this.pid, outcome: this.outcome },
       revisions: this.revisions(),
       pace: this.pace(),

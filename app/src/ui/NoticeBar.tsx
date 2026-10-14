@@ -53,6 +53,17 @@ export function NoticeBar() {
           )}
         </div>
       )}
+      {sim.status === 'running' && sim.runtime?.expiresSoon && (
+        // Alpha: about a minute before the host's maximum session lifetime. Informational; the
+        // session is never extended (the final `session_expired` message follows at the end).
+        <div class="banner banner-warning" role="status" data-testid="session-expiring">
+          {t('sim.runtime.expiring', {
+            minutes: isolateLtr(
+              String(Math.max(1, Math.ceil(sim.runtime.expiresSoon.lifetimeMs / 60_000))),
+            ),
+          })}
+        </div>
+      )}
       {running && !running.ok && (
         <div
           class="banner banner-error"

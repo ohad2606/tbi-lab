@@ -277,6 +277,17 @@ describe('leases, limits and shutdown', () => {
     expect(host.get(s.id, s.token, principalFor()).ok).toBe(false);
   });
 
+  it('the enforced lifetime is reported: the host maximum, or the client limit if stricter, never longer', async () => {
+    const { host, art } = start('normal', { maxLifetimeMs: 30 * 60_000 });
+    const plain = created(host, art.sha256);
+    expect(plain.status().lifetimeMs).toBe(30 * 60_000);
+    const stricter = created(host, art.sha256, { limits: { maxLifetimeMs: 60_000 } });
+    expect(stricter.status().lifetimeMs).toBe(60_000);
+    const longer = created(host, art.sha256, { limits: { maxLifetimeMs: 2 * 3600_000 } });
+    expect(longer.status().lifetimeMs).toBe(30 * 60_000);
+    for (const s of [plain, stricter, longer]) await s.terminate('terminated');
+  });
+
   it('limits: maximum sessions, lifetime, storage, event buffering (resync), serial flood', async () => {
     const { host, art } = start('serial_flood', {
       maxSessions: 1,
@@ -284,6 +295,8 @@ describe('leases, limits and shutdown', () => {
       serialWindowMaxBytes: 256,
     });
     const s = created(host, art.sha256, { limits: { maxLifetimeMs: 1500 } });
+    // Alpha (Phase D): the enforced lifetime is reported, so a client can warn before it ends.
+    expect(s.status().lifetimeMs).toBe(1500);
     expect(host.create(createRequest(art.sha256), principalFor())).toMatchObject({
       ok: false,
       status: 429,
