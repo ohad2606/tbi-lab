@@ -79,6 +79,7 @@ Later capabilities may include:
 - logic analyzer
 - AI circuit generation
 - AI troubleshooting
+- guided learning/circuit advisory grounded in simulation truth
 - X-Ray electrical visualization driven strictly by simulation truth
 - PWM visualization driven by real simulated timing/state
 - synchronized Workbench / 3D / Schematic representations of one canonical circuit model
