@@ -6,6 +6,7 @@ import type { RatingWarning } from '@tbi-lab/engine';
 import { engineErrorParts, groupByComponent, ratingRow, simFailureMessage } from '../sim/format.js';
 import { warningsFor } from '../sim/ratings.js';
 import { useAppState, useStore, useT } from './context.js';
+import { TOOLBAR_BUILD_ID, programBoardOf, requestCodeView } from './buildAction.js';
 
 const damage = (w: RatingWarning[]) => w.filter((x) => x.kind === 'absolute');
 const operating = (w: RatingWarning[]) => w.filter((x) => x.kind !== 'absolute');
@@ -151,6 +152,36 @@ export function NoticeBar() {
           data-tone={notice.tone ?? 'error'}
         >
           <span>{t(notice.key, notice.params)}</span>
+          {/* Alpha UX-P1: Run without a current build offers the Build itself (never automatic). */}
+          {notice.key === 'run.blocked.buildRequired' && programBoardOf(doc) && (
+            <button
+              type="button"
+              class="button notice-build"
+              data-testid="notice-build"
+              onClick={() => {
+                const board = programBoardOf(doc)!;
+                store.dismissNotice();
+                // Focus follows to the toolbar Build: its live state reports progress and result.
+                document.getElementById(TOOLBAR_BUILD_ID)?.focus();
+                void store.buildProgram(board);
+              }}
+            >
+              {t('toolbar.build')}
+            </button>
+          )}
+          {notice.key === 'run.blocked.buildFailed' && programBoardOf(doc) && (
+            <button
+              type="button"
+              class="link-button"
+              data-testid="notice-build-problems"
+              onClick={() => {
+                store.dismissNotice();
+                requestCodeView();
+              }}
+            >
+              {t('toolbar.build.showProblems')}
+            </button>
+          )}
           <button type="button" class="link-button" onClick={() => store.dismissNotice()}>
             {t('notice.dismiss')}
           </button>
