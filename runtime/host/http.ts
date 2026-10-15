@@ -13,6 +13,9 @@
  *                                           Last-Event-ID (or ?after=): 400 if malformed,
  *                                           409 if ahead of the stream, `resync` first if
  *                                           older than the retained window
+ *   POST   /reports                         Sprint 14 problem report (reportProtocol.ts)
+ *                                           -> 201 { id } once durably stored; 503 when the
+ *                                           deployment has not enabled reports
  *
  * Every session route needs the gate-asserted identity of the session's owner and the session's
  * token in `Authorization: Bearer <token>` (never in the URL). Unknown sessions, wrong tokens and
@@ -32,6 +35,8 @@ import { PROTOCOL, type SessionEvent } from './protocol.js';
 import type { HostSession } from './session.js';
 import { isTerminal } from './stateMachine.js';
 import { runtimeIdentity } from './identity.js';
+import { MAX_REPORT_BYTES } from './reportProtocol.js';
+import type { ReportStore } from './reports.js';
 
 /** Largest amount of unsent SSE data kept for a slow client before its stream is closed. */
 const STREAM_BACKLOG_BYTES = 1024 * 1024;
@@ -152,12 +157,17 @@ function stream(req: IncomingMessage, res: ServerResponse, s: HostSession, url: 
 
 /**
  * `identity`: the gate-asserted identity (Sprint 8, D-S8-1). Every route but `/health` requires
- * it; without one the answer is 401.
+ * it; without one the answer is 401. `reports`: the problem-report store, null when the
+ * deployment has not enabled reports (Sprint 14).
  */
-export function createHttpServer(host: SessionHost, identity: IdentityConfig): Server {
+export function createHttpServer(
+  host: SessionHost,
+  identity: IdentityConfig,
+  reports: ReportStore | null = null,
+): Server {
   const requests = new MemoryRate();
   return createServer((req, res) => {
-    void handle(host, identity, requests, req, res).catch((e: unknown) => {
+    void handle(host, identity, requests, reports, req, res).catch((e: unknown) => {
       const status = e instanceof HttpError ? e.status : 500;
       // Operator log for the unexpected: the error only (no request data, identities or bodies).
       if (status === 500)
@@ -173,6 +183,7 @@ async function handle(
   host: SessionHost,
   identity: IdentityConfig,
   requests: MemoryRate,
+  reports: ReportStore | null,
   req: IncomingMessage,
   res: ServerResponse,
 ): Promise<void> {
@@ -198,6 +209,12 @@ async function handle(
       admissionEvent('runtime', 'request', 'rate_limited', principal);
       return sendRefusal(res, new Refusal('rate_limited', r.retryAfterMs));
     }
+  }
+  if (parts[0] === 'reports' && parts.length === 1 && method === 'POST') {
+    if (!reports) throw new HttpError(503, 'reports_disabled');
+    const body = await readBody(req, MAX_REPORT_BYTES);
+    const r = await reports.submit(body, principal, req.headers['user-agent'], host);
+    return 'refusal' in r ? sendRefusal(res, r.refusal) : send(res, r.status, r.body);
   }
   if (parts[0] !== 'sessions') throw new HttpError(404, 'not found');
 
