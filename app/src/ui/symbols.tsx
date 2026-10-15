@@ -32,6 +32,11 @@ export interface SymbolState {
    * characters, already mapped from the controller's character ROM). Absent: a blank, unlit panel.
    */
   lcd?: LcdView;
+  /**
+   * Servo (Sprint 15): the output shaft's angle the engine or the runtime reports (0..180 deg).
+   * Absent: the rest position, 90 deg.
+   */
+  servoAngle?: number;
 }
 
 export interface LcdView {
@@ -145,6 +150,25 @@ export const RGB_CHANNELS = [
   { id: 'blue', y: 20 },
 ] as const;
 export const rgbTriangle = (y: number) => `-8,${y - 6} -8,${y + 6} 4,${y}`;
+
+/** Servo (top view): the output shaft near the case's right end. */
+export const SERVO_SHAFT = { x: 22, y: 0 } as const;
+/** The rest angle a servo is drawn at when nothing reports its position (deg). */
+export const SERVO_REST_DEG = 90;
+
+/** The servo's shaft angle from its solved `state` (engine contract: `angleDeg`), if reported. */
+export function servoAngle(state: Record<string, unknown> | undefined): number | undefined {
+  const a = state?.angleDeg;
+  return typeof a === 'number' && Number.isFinite(a) ? a : undefined;
+}
+
+/**
+ * The horn's drawing rotation (SVG degrees) for a shaft angle: 0 deg points along +x, increasing
+ * angles turn counter-clockwise as seen from above (the SG90 sheet: a longer pulse turns it
+ * "left"), clamped to the 0..180 deg travel the model reports.
+ */
+export const servoHornRotation = (angleDeg: number | undefined): number =>
+  -Math.min(180, Math.max(0, angleDeg ?? SERVO_REST_DEG));
 
 export const SYMBOLS: Record<ComponentTypeId, SymbolDef> = {
   'component.rgb_led': {
@@ -363,6 +387,28 @@ export const SYMBOLS: Record<ComponentTypeId, SymbolDef> = {
         </>
       );
     },
+  },
+  'component.servo_sg90': {
+    bbox: [-60, -28, 52, 28],
+    // Top view: the case with its two mounting tabs, the three-wire lead on the left (GND, +V,
+    // signal, in the connector's order), the gear tower and the horn on the output shaft. The horn
+    // shows the angle the engine reports (rest: 90 deg), never a commanded or invented one.
+    draw: (state) => (
+      <>
+        <rect x={-52} y={-12} width={104} height={24} rx={2} class="servo-tab" />
+        <rect x={-44} y={-28} width={88} height={56} rx={3} class="symbol-body servo-case" />
+        {leftLeads(-60, -44, [-20, 0, 20])}
+        <circle cx={SERVO_SHAFT.x} cy={SERVO_SHAFT.y} r={13} class="servo-tower" />
+        <g
+          class="servo-horn"
+          transform={`rotate(${servoHornRotation(state?.servoAngle)} ${SERVO_SHAFT.x} ${SERVO_SHAFT.y})`}
+        >
+          <rect x={SERVO_SHAFT.x - 6} y={SERVO_SHAFT.y - 4} width={32} height={8} rx={4} />
+          <circle cx={SERVO_SHAFT.x} cy={SERVO_SHAFT.y} r={6} />
+        </g>
+        <circle cx={SERVO_SHAFT.x} cy={SERVO_SHAFT.y} r={2} class="servo-screw" />
+      </>
+    ),
   },
   'component.relay': {
     bbox: [-60, -28, 60, 40],

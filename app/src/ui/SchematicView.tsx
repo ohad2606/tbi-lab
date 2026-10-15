@@ -481,6 +481,18 @@ function moduleGlyph(glyph: SchModule['glyph']) {
           )}
         </>
       );
+    case 'servo':
+      // Sprint 15: the motor (circle) driving the output shaft and its horn, with the arc of travel.
+      return (
+        <>
+          <circle cx={-14} cy={0} r={14} />
+          <line x1={0} y1={0} x2={18} y2={0} />
+          <circle cx={18} cy={0} r={3} />
+          <line x1={18} y1={0} x2={18} y2={-16} />
+          <path d="M 30 0 A 12 12 0 0 0 18 -12" />
+          <polyline points="22,-15 18,-12 22,-9" />
+        </>
+      );
     default:
       return null;
   }

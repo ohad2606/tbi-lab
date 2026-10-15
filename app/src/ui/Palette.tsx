@@ -26,7 +26,12 @@ export const PALETTE_GROUPS: readonly { key: MessageKey; types: readonly Compone
   },
   {
     key: 'palette.group.output',
-    types: ['component.buzzer', 'display.led_matrix_8x8', 'display.lcd1602_i2c'],
+    types: [
+      'component.buzzer',
+      'display.led_matrix_8x8',
+      'display.lcd1602_i2c',
+      'component.servo_sg90',
+    ],
   },
   { key: 'palette.group.mcu', types: ['board.esp32_devkitc_wroom32'] },
 ];

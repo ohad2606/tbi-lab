@@ -210,6 +210,39 @@ export const en = {
   'sim.part.state.line2': 'Line 2',
   'lcd.screen': 'Display contents, line 1: {line1}; line 2: {line2}',
   'lcd.blank': 'Display blank',
+  // ---- Sprint 15 (R4): the SG90 servo and PWM (LEDC) outputs ----
+  'component.component.servo_sg90.name': 'SG90 servo',
+  'terminal.servoSignal': 'Control signal (PWM)',
+  'model.servo.sg90': 'TowerPro SG90',
+  'sim.results.notModelled': 'not modelled',
+  'sim.part.state.component.servo_sg90.powered': 'Powered (supply 4.8–6.0 V)',
+  'sim.part.state.angleDeg': 'Shaft angle',
+  'sim.part.state.commandedDeg': 'Commanded angle',
+  'sim.part.state.signal': 'Control signal',
+  'sim.part.state.signal.none': 'no pulses',
+  'sim.part.state.signal.pulses': 'servo pulses',
+  'sim.part.state.signal.static': 'steady level (no pulses)',
+  'sim.part.state.signal.undefined': 'not a valid logic level (no valid pulse)',
+  'sim.part.state.pulseUs': 'Last pulse width',
+  'sim.results.outsideModel.component.servo_sg90':
+    'Supply outside the modelled 4.8–6.0 V range: the servo is shown holding still; a real one may behave differently.',
+  'sim.results.pwmAverage': '{label}, average (PWM)',
+  'sim.results.pwmPeak': '{label}, peak (PWM)',
+  'sim.results.pwmNote':
+    'Driven by PWM: the values above are time-averages over the waveform; the ratings check the peak current.',
+  'sim.results.pwmPower':
+    'not shown under PWM (the product of the average voltage and current is not the average power)',
+  'unit.hertz.symbol': 'Hz',
+  'unit.second.symbol': 's',
+  'unit.percent.symbol': '%',
+  'unit.degree.symbol': '°',
+  'mcu.pwm.wave': 'PWM {frequency} · {duty}',
+  'mcu.pwm.zero': 'PWM · duty 0 (its output level is not verified)',
+  'mcu.pwm.static': 'PWM · {level} (steady)',
+  'mcu.pwm.unsupported': 'PWM · unsupported',
+  'mcu.pwm.average': 'average {voltage}',
+  'mcu.warning.servo_signal_undefined':
+    '{component}: the control signal is not a valid logic level (or several PWM outputs act on it); the servo sees no valid pulse.',
   'sim.time': 't = {time}',
   'sim.timeNote':
     'Simulated time since Run (1 ms steps). Capacitors start discharged at every Run.',
@@ -295,7 +328,7 @@ export const en = {
   'sim.results.outsideModel':
     'Outside the LED model’s documented range (1–20 mA). The value follows the model but may differ from a real part.',
   'sim.results.ledLit':
-    'The LED symbol brightness is a visual cue derived from the solved current, not a light measurement.',
+    'The LED symbol brightness is a visual cue derived from the solved current, not a light measurement. Under PWM it follows the average current.',
   'sim.mode.cv': 'CV · constant voltage',
   'sim.mode.cc': 'CC · current limit',
   'sim.mode.off': 'Output off',
@@ -526,7 +559,7 @@ export const en = {
   'palette.unavailable.board_time_dependent':
     'Not available while the project has time-dependent parts (they are simulated only without an ESP32).',
   'palette.group.sensors': 'Sensors',
-  'palette.group.output': 'Sound and displays',
+  'palette.group.output': 'Sound, displays and motion',
   'palette.group.switches': 'Switches',
   'inspector.shortcutsHeading': 'Keyboard shortcuts',
   'unit.watt.symbol': 'W',
@@ -838,7 +871,7 @@ export const en = {
   'mcu.caveat.power': 'Supply pin',
   'mcu.caveat.enable': 'Chip enable: reset is not simulated',
   'mcu.note.unsupported':
-    'Not simulated in this version: internal pull-up/pull-down, GPIO interrupts, chip reset, analog, PWM, Wi-Fi.',
+    'Not simulated in this version: internal pull-up/pull-down, GPIO interrupts, chip reset, analog, Wi-Fi.',
   'mcu.level.high': 'HIGH',
   'mcu.level.low': 'LOW',
   'mcu.mode.output': 'output',
@@ -899,6 +932,12 @@ export const en = {
   'example.esp32-thermo-hygrometer.title': 'ESP32: temperature and humidity (DHT22)',
   'example.esp32-thermo-hygrometer.summary':
     'A DHT22 / AM2302 on GPIO4, with the 10 kΩ pull-up its single-wire data line needs, read by a short library-free routine that follows the datasheet timing. The serial output shows the temperature and relative humidity every 2.5 s. Change both in the Properties panel while running. Runs on the ESP32 runtime service.',
+  'example.esp32-led-fade.title': 'ESP32: fade an LED with PWM',
+  'example.esp32-led-fade.summary':
+    'analogWrite drives GPIO18 with a 1 kHz PWM signal; the LED’s average current, and its brightness, follow the duty. The fade stays between 1 and 255: duty 0 is not simulated yet.',
+  'example.esp32-servo-sweep.title': 'ESP32: sweep an SG90 servo with PWM',
+  'example.esp32-servo-sweep.summary':
+    'A 50 Hz LEDC signal on GPIO18 with 1.0, 2.0 and 1.5 ms pulses moves the servo to 0°, 180° and 90°. The servo runs from the 5 V bench supply.',
   'example.esp32-lcd-hello.title': 'ESP32: hello on a 16×2 I2C LCD',
   'example.esp32-lcd-hello.summary':
     'The sketch drives the LCD through its PCF8574 I2C backpack with plain Wire writes: line 1 says hello, line 2 counts the seconds. The module runs from 4.5 V so that the 3.3 V bus pull-ups (two 4.7 kΩ resistors to a second supply) read HIGH at its inputs (0.7 × 4.5 V = 3.15 V). Runs on the ESP32 runtime service.',
@@ -1055,8 +1094,6 @@ export const en = {
   'limitation.no_breakdown':
     'Reverse breakdown is not modelled; the reverse-voltage rating is checked and warned about instead.',
   'limitation.switch_ideal': 'Ideal contact: no contact resistance or bounce.',
-  'limitation.rgb_onoff_esp32':
-    'Next to an ESP32 each channel is on or off: PWM colour mixing is not supported.',
   'limitation.ldr_typical':
     'A typical GL5528 (the centre of its resistance class), not a measured part.',
   'limitation.ldr_extrapolated':
@@ -1115,6 +1152,21 @@ export const en = {
   'sim.part.current.scl': 'SCL input',
   'limitation.esp32_input_clamp':
     'Input protection diodes are not modelled: a pin outside its specified range is flagged, and the simulated current into it is not reliable.',
+  // Sprint 15 (R4): PWM averages, the SG90 servo and the ESP32's LEDC outputs.
+  'limitation.pwm_average':
+    'Driven by PWM, the values shown are time-averages over the waveform (exact for this part); ratings use the peak current. Perceived brightness is approximated by the average current.',
+  'limitation.servo_supply_current':
+    'Supply current is not modelled: a weak supply or a 3.3 V pin is not shown sagging under the servo’s load.',
+  'limitation.servo_thresholds':
+    'TowerPro does not specify the signal’s logic thresholds; the model assumes 2.0 V high and 0.8 V low.',
+  'limitation.servo_supply_range':
+    'Simulated only with a 4.8–6.0 V supply; outside that range the servo holds still.',
+  'limitation.servo_mapping':
+    '1.0–2.0 ms pulses map to 0–180°; real SG90 units vary (some travel about 150°). 10 µs deadband, 600°/s, no torque or load.',
+  'limitation.servo_frames':
+    'Pulses of 400–2600 µs are accepted with frames up to 50 ms apart; the response to frames much shorter than 20 ms is not specified by the manufacturer.',
+  'limitation.esp32_pwm':
+    'PWM (LEDC): duty 0 driving a load, more than 8 channels, hardware fade and output inversion are refused; high times are exact to one LEDC clock.',
   'inspector.limitations': 'Model limitations',
   // Sprint 13 H4: first-run guide.
   'onboarding.heading': 'Getting started',

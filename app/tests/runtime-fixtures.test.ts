@@ -32,6 +32,9 @@ describe('runtime fixtures', () => {
     ['s12-distance-alarm-session.json', 'esp32-distance-alarm'],
     ['s12-thermo-hygrometer-session.json', 'esp32-thermo-hygrometer'],
     ['s12-lcd-hello-session.json', 'esp32-lcd-hello'],
+    // Sprint 15 (R4): the two PWM examples.
+    ['s15-led-fade-session.json', 'esp32-led-fade'],
+    ['s15-servo-sweep-session.json', 'esp32-servo-sweep'],
   ] as const)
     it(`${file} is the app request for ${id}`, () => {
       const fx = JSON.parse(

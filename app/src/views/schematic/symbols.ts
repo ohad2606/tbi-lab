@@ -62,7 +62,8 @@ export type ModuleGlyph =
   | 'led_matrix'
   | 'ultrasonic'
   | 'dht22'
-  | 'lcd';
+  | 'lcd'
+  | 'servo';
 
 export interface ModuleSymbol {
   kind: 'module';
@@ -222,6 +223,18 @@ export const SCHEMATIC_SYMBOLS: Record<ComponentTypeId, SchematicSymbol> = {
     ],
     partName: 'LCD 16×2 I2C',
     glyph: 'lcd',
+  },
+  // Sprint 15: supply pins on the left, the control signal on the right (as the sensor modules).
+  'component.servo_sg90': {
+    kind: 'module',
+    key: 'module',
+    pins: [
+      { terminal: 'vcc', name: 'VCC', side: 'left', order: 1 },
+      { terminal: 'gnd', name: 'GND', side: 'left', order: 2 },
+      { terminal: 'signal', name: 'PWM', side: 'right', order: 1 },
+    ],
+    partName: 'Servo SG90',
+    glyph: 'servo',
   },
   'component.relay': {
     kind: 'module',

@@ -51,6 +51,8 @@ import {
   HC_SR04_MODULE,
   DHT22_CASE,
   LCD1602_MODULE,
+  SERVO_SG90,
+  SERVO_SHAFT_X_MM,
   capacitorPackage,
   LED_MATRIX_1088AS,
   matrixPinXZ,
@@ -103,6 +105,7 @@ export type ModelKey =
   | 'sensor.ultrasonic'
   | 'sensor.dht22'
   | 'display.lcd1602'
+  | 'servo.sg90'
   | 'generic';
 
 /** Which model draws each component type. A type without an entry gets the generic box. */
@@ -126,6 +129,7 @@ export const MODEL_FOR: Partial<Record<ComponentTypeId, ModelKey>> = {
   'sensor.hc_sr04': 'sensor.ultrasonic',
   'sensor.dht22': 'sensor.dht22',
   'display.lcd1602_i2c': 'display.lcd1602',
+  'component.servo_sg90': 'servo.sg90',
 };
 
 export interface Vec3 {
@@ -264,6 +268,7 @@ export const MODEL_HEIGHT: Record<ModelKey, number> = {
   'sensor.dht22': DHT22_CASE.standoffMm + DHT22_CASE.heightMm,
   'display.lcd1602':
     LCD1602_MODULE.standoffMm + LCD1602_MODULE.pcbThicknessMm + LCD1602_MODULE.bezelHeightMm,
+  'servo.sg90': SERVO_SG90.heightMm,
   generic: 3,
 };
 
@@ -347,6 +352,13 @@ export const FOOTPRINT: Record<ModelKey, readonly [number, number, number, numbe
     LCD1602_MODULE.pcbLeftXMm + LCD1602_MODULE.pcbXMm,
     LCD1602_MODULE.pcbCentreZMm - LCD1602_MODULE.pcbZMm / 2,
     LCD1602_MODULE.pcbCentreZMm + LCD1602_MODULE.pcbZMm / 2,
+  ],
+  // Sprint 15: from the plug's sockets to the case's tabs, and the horn's sweep round the shaft.
+  'servo.sg90': [
+    SERVO_SG90.plugTipXMm,
+    SERVO_SHAFT_X_MM + SERVO_SG90.hornReachMm + SERVO_SG90.hornTipWidthMm / 2,
+    -SERVO_SG90.hornReachMm - SERVO_SG90.hornTipWidthMm / 2,
+    SERVO_SG90.hornReachMm + SERVO_SG90.hornTipWidthMm / 2,
   ],
   generic: [-6.35, 6.35, -1.5, 1.5],
 };
@@ -458,6 +470,11 @@ function localAttach(
     case 'display.lcd1602': {
       const [px, pz] = LCD1602_MODULE.pins[terminal]!;
       return { x: px, y: LCD1602_MODULE.pinHeightMm, z: pz };
+    }
+    // Sprint 15: the servo plug's sockets (on the 2D terminal column, at the real 2.54 mm pitch).
+    case 'servo.sg90': {
+      const [px, pz] = SERVO_SG90.pins[terminal]!;
+      return { x: px, y: SERVO_SG90.attachHeightMm, z: pz };
     }
     case 'led.radial': {
       // The real leg tips (2.54 mm pitch under the body), not the 2D terminal spacing: the wire's
@@ -659,6 +676,34 @@ export function collisionBoxes(
       z1: Math.max(...pins.map((q) => q[1])) + 1.5,
       y0: 0,
       y1: P.pinHeightMm + 1.5,
+    });
+  } else if (model === 'servo.sg90') {
+    // The plug on the bench, the case with its tabs, the horn's sweep above the gear tower.
+    const P = SERVO_SG90;
+    const caseX0 = P.caseLeftXMm + P.caseXMm / 2 - P.tabSpanXMm / 2;
+    boxes.push({
+      x0: P.plugTipXMm,
+      x1: P.plugTipXMm + P.plugXMm,
+      z0: -P.plugZMm / 2,
+      z1: P.plugZMm / 2,
+      y0: 0,
+      y1: P.plugHeightMm,
+    });
+    boxes.push({
+      x0: caseX0,
+      x1: caseX0 + P.tabSpanXMm,
+      z0: -P.caseZMm / 2,
+      z1: P.caseZMm / 2,
+      y0: 0,
+      y1: P.towerTopMm,
+    });
+    boxes.push({
+      x0: SERVO_SHAFT_X_MM - (x1 - SERVO_SHAFT_X_MM),
+      x1,
+      z0,
+      z1,
+      y0: P.towerTopMm,
+      y1: top,
     });
   } else boxes.push({ x0, x1, z0, z1, y0: 0, y1: top });
   if (UNDER_BODY.has(model)) {

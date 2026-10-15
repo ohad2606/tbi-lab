@@ -497,7 +497,12 @@ export class McuSimulation implements SimulationHost {
       case 'gpio': {
         const gpio = { ...v.gpio };
         for (const c of e.changes)
-          gpio[c.gpio] = { drive: c.drive, level: c.level, transitions: c.transitions };
+          gpio[c.gpio] = {
+            drive: c.drive,
+            level: c.level,
+            transitions: c.transitions,
+            ...(c.pwm ? { pwm: c.pwm } : {}),
+          };
         v.gpio = gpio;
         return this.publish();
       }

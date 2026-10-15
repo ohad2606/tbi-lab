@@ -14,6 +14,8 @@ import esp32NightLight from './data/esp32-night-light.json';
 import esp32DistanceAlarm from './data/esp32-distance-alarm.json';
 import esp32ThermoHygrometer from './data/esp32-thermo-hygrometer.json';
 import esp32LcdHello from './data/esp32-lcd-hello.json';
+import esp32LedFade from './data/esp32-led-fade.json';
+import esp32ServoSweep from './data/esp32-servo-sweep.json';
 import ledColours from './data/led-colours.json';
 import ledCurrent from './data/led-current.json';
 import ledMatrix from './data/led-matrix.json';
@@ -50,6 +52,8 @@ export const EXAMPLE_DOCUMENTS: Record<string, ProjectDocument> = {
   'esp32-distance-alarm': esp32DistanceAlarm as unknown as ProjectDocument,
   'esp32-thermo-hygrometer': esp32ThermoHygrometer as unknown as ProjectDocument,
   'esp32-lcd-hello': esp32LcdHello as unknown as ProjectDocument,
+  'esp32-led-fade': esp32LedFade as unknown as ProjectDocument,
+  'esp32-servo-sweep': esp32ServoSweep as unknown as ProjectDocument,
 };
 
 /** The examples with their documents (tests and tools; the app loads documents lazily). */

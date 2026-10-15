@@ -60,6 +60,9 @@ describe('locale bundles', () => {
       'canvas.componentLabel',
       // Sprint 13: a product name, used as-is in Hebrew.
       'capabilities.facility.bluetooth.name',
+      // Sprint 15: a PWM pad's waveform (only placeholders and the PWM token) and a product name.
+      'mcu.pwm.wave',
+      'model.servo.sg90',
       'probe.currentLabel',
       'probe.noValue',
       'probe.voltageLabel',
@@ -76,11 +79,15 @@ describe('locale bundles', () => {
       'sim.time',
       'unit.ampere.symbol',
       'unit.celsius.symbol',
+      'unit.degree.symbol',
       'unit.farad.symbol',
+      'unit.hertz.symbol',
       'unit.lux.symbol',
       'unit.metre.symbol',
       'unit.ohm.symbol',
+      'unit.percent.symbol',
       'unit.percent_rh.symbol',
+      'unit.second.symbol',
       'unit.volt.symbol',
       'unit.watt.symbol',
       // Sprint 10: "Commit" is the professional term for the build identity (version details).

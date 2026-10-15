@@ -15,7 +15,7 @@ import { controlKind, controlState, pressControl, toggleControl } from './contro
 import type { Obstacle } from '../views/scene3d/route3d.js';
 import type { LiveLevel, Viewer, ViewerStats } from '../views/scene3d/renderer.js';
 import { rgbMix } from '../views/ledLooks.js';
-import { lcdView } from './symbols.js';
+import { lcdView, servoAngle } from './symbols.js';
 import { isSoftwareRenderer } from '../gpuInfo.js';
 import {
   LAYERS,
@@ -303,6 +303,10 @@ export function ThreeView() {
         // Sprint 12: the LCD shows exactly what the engine reports (blank without it).
         const lcd = lcdView(outcome.components[c.id]?.state);
         if (lcd) levels[c.id] = { lcd };
+      } else if (c.type === 'component.servo_sg90') {
+        // Sprint 15: the horn at the angle the engine or the runtime reports (rest without one).
+        const angle = servoAngle(outcome.components[c.id]?.state);
+        if (angle !== undefined) levels[c.id] = { servoDeg: angle };
       } else if (c.type === 'component.rgb_led') {
         // The emitted colour is the mix of the SOLVED channel currents (never a chosen colour).
         const mix = rgbMix(outcome.components[c.id]?.currents ?? {});

@@ -95,6 +95,7 @@ const CLASS: Partial<Record<ModelKey, number>> = {
   'sensor.ultrasonic': 2,
   'sensor.dht22': 2,
   'display.lcd1602': 2,
+  'servo.sg90': 2,
   'relay.cube': 2,
   'buzzer.can': 2,
 };

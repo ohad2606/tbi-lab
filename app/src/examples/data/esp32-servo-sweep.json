@@ -1,0 +1,303 @@
+{
+  "format": "tbi-lab.project",
+  "schemaVersion": 3,
+  "projectId": "prj_exampleesp32servosweep",
+  "createdWith": {
+    "app": "0.2.0",
+    "schemaVersion": 3
+  },
+  "createdAt": "2026-09-23T00:00:00.000Z",
+  "revision": {
+    "localRevision": 1,
+    "cloudRevision": null,
+    "baseRevision": null,
+    "updatedAt": "2026-09-23T00:00:00.000Z",
+    "deviceId": "dev_tbilab_examples"
+  },
+  "name": "ESP32: sweep a servo with PWM",
+  "components": [
+    {
+      "id": "PSU1",
+      "type": "instrument.lab_psu",
+      "typeVersion": 1,
+      "params": {
+        "setpointVoltage": {
+          "value": 5,
+          "unit": "volt"
+        },
+        "currentLimit": {
+          "value": 0.5,
+          "unit": "ampere"
+        },
+        "outputEnabled": true
+      }
+    },
+    {
+      "id": "GND1",
+      "type": "component.ground",
+      "typeVersion": 1,
+      "params": {}
+    },
+    {
+      "id": "U1",
+      "type": "board.esp32_devkitc_wroom32",
+      "typeVersion": 1,
+      "params": {
+        "firmware": "program"
+      }
+    },
+    {
+      "id": "M1",
+      "type": "component.servo_sg90",
+      "typeVersion": 1,
+      "params": {
+        "model": "model.servo.sg90"
+      }
+    },
+    {
+      "id": "GND2",
+      "type": "component.ground",
+      "typeVersion": 1,
+      "params": {}
+    },
+    {
+      "id": "GND3",
+      "type": "component.ground",
+      "typeVersion": 1,
+      "params": {}
+    }
+  ],
+  "nets": [
+    {
+      "id": "N_1",
+      "role": "ground",
+      "userName": null
+    },
+    {
+      "id": "N_2",
+      "role": null,
+      "userName": null
+    },
+    {
+      "id": "N_3",
+      "role": "ground",
+      "userName": null
+    },
+    {
+      "id": "N_4",
+      "role": null,
+      "userName": null
+    },
+    {
+      "id": "N_5",
+      "role": "ground",
+      "userName": null
+    }
+  ],
+  "connections": [
+    {
+      "component": "PSU1",
+      "terminal": "positive",
+      "net": "N_2"
+    },
+    {
+      "component": "PSU1",
+      "terminal": "negative",
+      "net": "N_1"
+    },
+    {
+      "component": "GND1",
+      "terminal": "ref",
+      "net": "N_1"
+    },
+    {
+      "component": "U1",
+      "terminal": "gnd",
+      "net": "N_5"
+    },
+    {
+      "component": "U1",
+      "terminal": "gpio18",
+      "net": "N_4"
+    },
+    {
+      "component": "M1",
+      "terminal": "gnd",
+      "net": "N_3"
+    },
+    {
+      "component": "M1",
+      "terminal": "vcc",
+      "net": "N_2"
+    },
+    {
+      "component": "M1",
+      "terminal": "signal",
+      "net": "N_4"
+    },
+    {
+      "component": "GND2",
+      "terminal": "ref",
+      "net": "N_3"
+    },
+    {
+      "component": "GND3",
+      "terminal": "ref",
+      "net": "N_5"
+    }
+  ],
+  "layout": {
+    "components": {
+      "PSU1": {
+        "x": -420,
+        "y": 0,
+        "rotation": 0
+      },
+      "GND1": {
+        "x": -380,
+        "y": 120,
+        "rotation": 0
+      },
+      "U1": {
+        "x": 0,
+        "y": 0,
+        "rotation": 0
+      },
+      "M1": {
+        "x": 340,
+        "y": 40,
+        "rotation": 0
+      },
+      "GND2": {
+        "x": 260,
+        "y": 140,
+        "rotation": 0
+      },
+      "GND3": {
+        "x": 140,
+        "y": -120,
+        "rotation": 0
+      }
+    },
+    "wires": [
+      {
+        "id": "W1",
+        "from": {
+          "kind": "terminal",
+          "component": "PSU1",
+          "terminal": "negative"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "GND1",
+          "terminal": "ref"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W2",
+        "from": {
+          "kind": "terminal",
+          "component": "PSU1",
+          "terminal": "positive"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "M1",
+          "terminal": "vcc"
+        },
+        "vertices": [
+          {
+            "x": -340,
+            "y": -20
+          },
+          {
+            "x": -340,
+            "y": -240
+          },
+          {
+            "x": 240,
+            "y": -240
+          },
+          {
+            "x": 240,
+            "y": 40
+          }
+        ]
+      },
+      {
+        "id": "W3",
+        "from": {
+          "kind": "terminal",
+          "component": "M1",
+          "terminal": "gnd"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "GND2",
+          "terminal": "ref"
+        },
+        "vertices": [
+          {
+            "x": 260,
+            "y": 20
+          }
+        ]
+      },
+      {
+        "id": "W4",
+        "from": {
+          "kind": "terminal",
+          "component": "U1",
+          "terminal": "gpio18"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "M1",
+          "terminal": "signal"
+        },
+        "vertices": [
+          {
+            "x": 140,
+            "y": -20
+          },
+          {
+            "x": 140,
+            "y": 60
+          }
+        ]
+      },
+      {
+        "id": "W5",
+        "from": {
+          "kind": "terminal",
+          "component": "U1",
+          "terminal": "gnd"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "GND3",
+          "terminal": "ref"
+        },
+        "vertices": []
+      }
+    ],
+    "junctions": []
+  },
+  "idCounters": {
+    "PSU": 1,
+    "GND": 3,
+    "W": 5,
+    "N": 5,
+    "U": 1,
+    "M": 1
+  },
+  "programs": {
+    "U1": {
+      "language": "arduino-cpp",
+      "profile": "esp32-arduino-3.3.12",
+      "fileName": "sketch.ino",
+      "text": "/*\n * TBI Lab example: sweep an SG90 servo with the ESP32's LEDC PWM.\n *\n * A servo reads the width of a pulse repeated every 20 ms (50 Hz): 1.0 ms is one end of its\n * travel (0 degrees), 2.0 ms the other (180 degrees), 1.5 ms the middle. ledcAttach() sets up a\n * 50 Hz signal with 16-bit resolution on GPIO18, so 65536 counts are one 20 ms period.\n * The servo runs from the 5 V bench supply; its ground is shared with the ESP32.\n */\nconst int SERVO_PIN = 18;\n\n/** Duty counts (16 bit, 20 ms period) for a pulse of `us` microseconds. */\nuint32_t dutyFor(uint32_t us) {\n  return (uint32_t)((uint64_t)us * 65536 / 20000);\n}\n\nvoid setup() {\n  ledcAttach(SERVO_PIN, 50, 16);\n  ledcWrite(SERVO_PIN, dutyFor(1500));\n}\n\nvoid loop() {\n  ledcWrite(SERVO_PIN, dutyFor(1000));\n  delay(1000);\n  ledcWrite(SERVO_PIN, dutyFor(2000));\n  delay(1000);\n  ledcWrite(SERVO_PIN, dutyFor(1500));\n  delay(1000);\n}\n"
+    }
+  }
+}

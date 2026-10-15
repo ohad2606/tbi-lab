@@ -1870,6 +1870,12 @@ select {
 .pin-low {
   fill: var(--canvas-bg);
 }
+/* Sprint 15 (R4): a switching PWM pad: half lit, neither HIGH nor LOW. */
+.pin-pwm {
+  fill: var(--brand-orange);
+  fill-opacity: 0.45;
+  stroke-dasharray: 2 1.5;
+}
 .mcu-panel h3 {
   margin: 0.75rem 0 0.25rem;
 }
@@ -3073,6 +3079,27 @@ select {
 .symbol .lcd-bezel {
   fill: #2a2d31;
   stroke-width: 1.5;
+}
+
+/* Sprint 15: SG90 servo (2D symbol): the blue case and tabs, the white horn on the shaft. */
+.symbol .servo-case,
+.symbol .servo-tab {
+  fill: #cfe0f5;
+}
+
+.symbol .servo-tower {
+  fill: #b5cdec;
+  stroke-width: 1.5;
+}
+
+.symbol .servo-horn {
+  fill: #ffffff;
+  stroke-width: 1.5;
+}
+
+.symbol .servo-screw {
+  fill: var(--ink);
+  stroke: none;
 }
 
 /* Yellow-green STN (the module's sheet): dark unlit, lit by the backlight the engine reports. */
