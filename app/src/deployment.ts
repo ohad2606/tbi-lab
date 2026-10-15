@@ -75,3 +75,14 @@ export function feedbackLink(base: string, param: string | null, version: string
   u.searchParams.set(param, version);
   return u.toString();
 }
+
+/**
+ * Sprint 14: the in-app "Report a problem" action. OFF unless a deployment builds with
+ * VITE_PROBLEM_REPORTS=1, and then only useful where its Session Host stores reports
+ * (TBI_REPORTS_DIR; without it every report is refused with a clear message, never lost silently).
+ */
+export function parseEnabled(value: unknown): boolean {
+  return typeof value === 'string' && value.trim() === '1';
+}
+
+export const PROBLEM_REPORTS = parseEnabled(import.meta.env.VITE_PROBLEM_REPORTS);

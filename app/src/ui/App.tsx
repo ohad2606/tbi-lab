@@ -1,4 +1,5 @@
 import { CapabilitiesHost } from './Capabilities.js';
+import { ProblemReportHost } from './ProblemReport.js';
 import { useEffect, useLayoutEffect } from 'preact/hooks';
 import { useAppState, useStore, useT } from './context.js';
 import { Editor } from './Editor.js';
@@ -86,6 +87,7 @@ export function App() {
       {state.screen === 'editor' && state.doc ? <Editor /> : <Home />}
       <VersionStatus />
       <CapabilitiesHost />
+      <ProblemReportHost />
     </div>
   );
 }
