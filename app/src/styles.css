@@ -3417,7 +3417,8 @@ select {
 }
 
 /* Alpha UX-P1, narrowest desktops (below 1200 px): the project name box may shrink further, the
-   brand keeps its logo only (the word "TBI Lab" is visually hidden; the logo's alt text names it)
+   brand keeps its symbol only (the word "TBI Lab" is visually hidden and still names the brand for
+   assistive technology; the symbol itself is decorative)
    and the build state is its coloured dot with a tooltip (the text stays the live region; a
    failure still shows "Show problems"; building still spins the Build icon). */
 @media (max-width: 1199px) {
