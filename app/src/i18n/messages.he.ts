@@ -517,7 +517,7 @@ export const he: Record<MessageKey, string> = {
   'inspector.shortcutsHeading': 'קיצורי מקלדת',
   'unit.watt.symbol': 'W',
   'sim.results.power': 'הספק',
-  'brand.logoAlt': 'TBI: חושבים, מפיחים חיים ברעיונות, ממציאים',
+  'brand.logoAlt': 'TBI Lab: חושבים, מפיחים חיים ברעיונות, ממציאים',
   'home.subtitle': 'המעגלים מדומים ונשמרים כאן, בדפדפן שלכם. התחילו מדוגמה, או צרו פרויקט משלכם.',
   'app.narrowScreen': 'TBI Lab מיועד למסכי מחשב ברוחב של 1024 פיקסלים לפחות.',
   'rating.heading': 'חריגה מדירוגי הרכיב',

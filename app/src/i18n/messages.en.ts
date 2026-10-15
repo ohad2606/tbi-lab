@@ -531,7 +531,7 @@ export const en = {
   'inspector.shortcutsHeading': 'Keyboard shortcuts',
   'unit.watt.symbol': 'W',
   'sim.results.power': 'Power',
-  'brand.logoAlt': 'TBI: Think, Bring ideas to life, Invent',
+  'brand.logoAlt': 'TBI Lab: Think, Bring ideas to life, Invent',
   'home.subtitle':
     'Circuits are simulated and saved right here in your browser. Start from an example, or create your own project.',
   'app.narrowScreen': 'TBI Lab is designed for desktop screens at least 1024 pixels wide.',

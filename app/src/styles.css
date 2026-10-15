@@ -1546,7 +1546,7 @@ select {
   flex-shrink: 0;
 }
 
-/* The regular TBI logo, light-surface version, at toolbar size; aspect ratio kept. */
+/* The TBI Lab infinity symbol at toolbar size, beside the product name; aspect ratio kept. */
 .brand-logo {
   display: block;
   block-size: 38px;
@@ -1585,7 +1585,7 @@ select {
   color: #fff;
 }
 
-/* The elongated TBI logo, transparent over the navy band (asset is 2x for sharp displays). */
+/* The full TBI Lab logo, transparent over the navy band (asset is 2x for sharp displays). */
 .brand-hero-logo {
   block-size: 150px;
   inline-size: auto;
@@ -3417,7 +3417,8 @@ select {
 }
 
 /* Alpha UX-P1, narrowest desktops (below 1200 px): the project name box may shrink further, the
-   brand keeps its logo only (the word "TBI Lab" is visually hidden; the logo's alt text names it)
+   brand keeps its symbol only (the word "TBI Lab" is visually hidden and still names the brand for
+   assistive technology; the symbol itself is decorative)
    and the build state is its coloured dot with a tooltip (the text stays the live region; a
    failure still shows "Show problems"; building still spins the Build icon). */
 @media (max-width: 1199px) {
