@@ -73,3 +73,6 @@ export {
 export { HC_SR04_DC, hcsr04TrigLevel } from './parts/ultrasonic.js';
 export { DHT22_DC } from './parts/dht22.js';
 export { LCD1602_DC, PCF8574_VIH_FRACTION, PCF8574_VIL_FRACTION } from './parts/lcd.js';
+// Sprint 15 (R4): the SG90's pulse semantics and its electrical side.
+export { Servo, SG90, type ServoSpec } from './peripherals/servo.js';
+export { SG90_ELECTRICAL, servoPowered, servoSignalLevel } from './parts/servo.js';

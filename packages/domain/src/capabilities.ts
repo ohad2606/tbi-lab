@@ -110,11 +110,11 @@ export function facilityForFeature(code: string): FirmwareFacility | undefined {
 export const MODEL_LIMITATIONS: Readonly<Partial<Record<ComponentTypeId, readonly string[]>>> = {
   'instrument.lab_psu': ['psu_ideal'],
   'component.resistor': ['resistor_ideal', 'resistor_no_power'],
-  'component.led': ['dc_25c', 'led_card_range', 'no_breakdown'],
+  'component.led': ['dc_25c', 'led_card_range', 'no_breakdown', 'pwm_average'],
   'component.diode': ['dc_25c', 'no_breakdown'],
   'component.push_button': ['switch_ideal'],
   'component.toggle_switch': ['switch_ideal'],
-  'component.rgb_led': ['dc_25c', 'led_card_range', 'no_breakdown', 'rgb_onoff_esp32'],
+  'component.rgb_led': ['dc_25c', 'led_card_range', 'no_breakdown', 'pwm_average'],
   'component.photoresistor': [
     'ldr_typical',
     'ldr_extrapolated',
@@ -136,10 +136,18 @@ export const MODEL_LIMITATIONS: Readonly<Partial<Record<ComponentTypeId, readonl
     'lcd_input_clamp',
     'supply_below_min',
   ],
+  'component.servo_sg90': [
+    'servo_supply_current',
+    'servo_thresholds',
+    'servo_supply_range',
+    'servo_mapping',
+    'servo_frames',
+  ],
   'board.esp32_devkitc_wroom32': [
     'esp32_timing',
     'esp32_pulls',
     'esp32_drive',
     'esp32_input_clamp',
+    'esp32_pwm',
   ],
 };

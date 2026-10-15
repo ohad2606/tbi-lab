@@ -11,6 +11,9 @@ import echo from '../../app/src/examples/data/esp32-input-echo.json' with { type
 import distance from '../../app/src/examples/data/esp32-distance-alarm.json' with { type: 'json' };
 import thermo from '../../app/src/examples/data/esp32-thermo-hygrometer.json' with { type: 'json' };
 import lcd from '../../app/src/examples/data/esp32-lcd-hello.json' with { type: 'json' };
+// Sprint 15 (R4 curated examples).
+import fade from '../../app/src/examples/data/esp32-led-fade.json' with { type: 'json' };
+import sweep from '../../app/src/examples/data/esp32-servo-sweep.json' with { type: 'json' };
 
 const programsOf = (doc: unknown): ProgramSource[] =>
   Object.values((doc as { programs?: Record<string, ProgramSource> }).programs ?? {});
@@ -22,6 +25,8 @@ export function systemSourceKeys(): Set<string> {
     ...programsOf(distance),
     ...programsOf(thermo),
     ...programsOf(lcd),
+    ...programsOf(fade),
+    ...programsOf(sweep),
     starterProgram('board.esp32_devkitc_wroom32'),
   ].filter((p): p is ProgramSource => !!p);
   return new Set(programs.map((p) => sourceKey(p.profile, [{ name: p.fileName, text: p.text }])));

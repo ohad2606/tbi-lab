@@ -11,7 +11,7 @@ import type { SolveSuccess } from '@tbi-lab/engine';
 import { principalFor, ticketFor } from '../../identity/test-gate.js';
 import type { SessionHost } from '../host.js';
 import type { HostSession } from '../session.js';
-import { reference } from './r1-support.js';
+import { Circuit, reference } from './r1-support.js';
 import { createRequest, fakeHost, waitState } from './support.js';
 
 const CAPS = '2 i2c,pad-func,pwm,sched-input';
@@ -20,7 +20,7 @@ afterEach(async () => {
   await Promise.all(hosts.splice(0).map((h) => h.shutdown()));
 });
 
-function session(frames: string[], hello = CAPS) {
+function session(frames: string[], hello = CAPS, circuit?: Circuit) {
   const r = fakeHost('normal', {
     runtimeEnv: {
       PATH: process.env.PATH,
@@ -30,9 +30,10 @@ function session(frames: string[], hello = CAPS) {
     },
   });
   hosts.push(r.host);
-  const req = createRequest(r.art.sha256, {
-    ticket: ticketFor(r.art.sha256, principalFor(), null),
-  });
+  const ticket = ticketFor(r.art.sha256, principalFor(), null);
+  const req = circuit
+    ? { ...circuit.request(r.art.sha256), ticket }
+    : createRequest(r.art.sha256, { ticket });
   const c = r.host.create(req, principalFor());
   if (!c.ok) throw new Error(c.error);
   return { s: c.value.session, req };
@@ -178,6 +179,27 @@ describe('R4: PWM outputs on the Session Host (A1)', () => {
     expect(await terminal(s)).toMatchObject({
       reason: 'unsupported_feature',
       detail: { gpio: 18, function: 'periph:71' },
+    });
+  });
+
+  it('an open-drain LEDC output is refused by name (review M10)', async () => {
+    const { s } = session(['F 9500000 18 periph:71 1', ...TIMER, duty(9500300, 64)]);
+    s.run();
+    expect(await terminal(s)).toMatchObject({
+      reason: 'pwm_unsupported',
+      detail: { code: 'pwm_unsupported_mode', gpio: 18, why: 'open-drain' },
+    });
+  });
+
+  it('a relay coil on a PWM pad is refused at session level, naming it (A1, review M10)', async () => {
+    const c = new Circuit();
+    const k = c.add('component.relay');
+    c.wire(`${k}.coil2`, 'GND1.ref').wire(`${k}.com`, 'GND1.ref').pad(18, `${k}.coil1`);
+    const { s } = session([ROUTE, ...TIMER, duty(9500300, 64)], CAPS, c);
+    s.run();
+    expect(await terminal(s)).toMatchObject({
+      reason: 'pwm_unsupported',
+      detail: { code: 'pwm_load_unsupported', components: [k], gpios: [18] },
     });
   });
 });

@@ -44,6 +44,7 @@ const rat = (n: bigint, d = 1n): Rat => {
 const add = (a: Rat, b: Rat) => rat(a.n * b.d + b.n * a.d, a.d * b.d);
 const sub = (a: Rat, b: Rat) => rat(a.n * b.d - b.n * a.d, a.d * b.d);
 const mul = (a: Rat, k: bigint) => rat(a.n * k, a.d);
+export const ratCmp = (a: Rat, b: Rat): number => cmp(a, b);
 const cmp = (a: Rat, b: Rat) => {
   const x = a.n * b.d - b.n * a.d;
   return x < 0n ? -1 : x > 0n ? 1 : 0;
@@ -58,6 +59,10 @@ const ceilSteps = (t: Rat, a: Rat, p: Rat) => {
 /** Floor to whole nanoseconds (event times handed to integer-time consumers). */
 export const ratFloorNs = (a: Rat): bigint => floorDiv(a.n, a.d);
 export const ratToNumber = (a: Rat): number => Number(a.n) / Number(a.d);
+/** Round up to whole nanoseconds (the first integer time at or after `a`). */
+export const ratCeilNs = (a: Rat): bigint => -floorDiv(-a.n, a.d);
+/** `a` minus one nanosecond. */
+export const ratMinus1Ns = (a: Rat): Rat => sub(a, rat(1n));
 export const ns = (v: bigint): Rat => rat(v);
 
 /** One LEDC tick, ns: div / 256 source clocks. */
@@ -85,6 +90,8 @@ export type Waveform =
 
 interface TimerTrack {
   state: LedcTimerState;
+  /** While paused: when it paused and the configuration it was running with. */
+  paused: { at: Rat; run: LedcTimerState & { kind: 'run' } } | null;
   /** Start of the current period sequence (the counter is 0 there). */
   origin: Rat;
   pending: { at: Rat; state: LedcTimerState & { kind: 'run' }; origin: Rat } | null;
@@ -109,6 +116,7 @@ export class LedcTracker {
     state: { kind: 'unsupported', why: 'resolution' },
     origin: rat(0n),
     pending: null,
+    paused: null,
   }));
   private readonly channels = new Map<number, ChannelTrack>();
   /** Virtual time everything has been applied up to. */
@@ -166,10 +174,26 @@ export class LedcTracker {
     const t = this.timers[timer]!;
     const at = rat(vns);
     if (state.kind !== 'run') {
+      // A pause freezes the counter where it is (TRM: the counter stops); remember for resume.
+      t.paused =
+        state.kind === 'paused' && t.state.kind === 'run'
+          ? { at, run: t.state }
+          : state.kind === 'paused'
+            ? t.paused
+            : null;
       t.state = state;
       t.pending = null;
       return;
     }
+    if (t.state.kind === 'paused' && t.paused && sameRun(t.paused.run, state)) {
+      // Resumed with the same configuration: the counter continues from where it stopped, so the
+      // period sequence is shifted by the time it was paused.
+      t.origin = add(t.origin, sub(at, t.paused.at));
+      t.state = state;
+      t.paused = null;
+      return;
+    }
+    t.paused = null;
     if (t.state.kind === 'run') {
       if (sameRun(t.state, state)) {
         t.pending = null; // a change back before the overflow: nothing changes
@@ -261,6 +285,11 @@ export function edgesIn(
   }
   if (w.kind !== 'wave') return [];
   const out: { at: Rat; level: Level }[] = [];
+  // Coming from a high level into a wave whose first period starts low (hpoint > 0): the output
+  // drops at the segment start.
+  const first = add(w.risingNs, mul(w.periodNs, ceilSteps(segStart, w.risingNs, w.periodNs)));
+  if (prev === 1 && cmp(first, segStart) > 0 && cmp(segStart, from) > 0 && cmp(segStart, to) <= 0)
+    out.push({ at: segStart, level: 0 });
   // First period whose rising edge is at or after the segment start.
   let k = ceilSteps(segStart, w.risingNs, w.periodNs);
   // Skip periods that end before `from`.

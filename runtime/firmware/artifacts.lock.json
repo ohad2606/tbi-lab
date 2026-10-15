@@ -64,6 +64,18 @@
     "TbiEdgeTime": {
       "sha256": "b85bf69d17df101c06473d716b0b1e1c4457912e3870f14bed7d15ac0d086928",
       "source": "runtime/firmware/arduino/TbiEdgeTime (provision.sh firmware TbiEdgeTime, 2026-10-10, same pinned toolchain; reproduced byte-exact from plain and symlinked runtime homes). Sprint 12 Gate B G-2 (PM-approved 2026-10-11): bridge-edge accuracy test firmware for runtime/tests/s12-bridge-timing.runtime.test.ts; masked-interrupt capture timestamped with the cycle counter."
+    },
+    "TbiPwm": {
+      "sha256": "ecd8d690f52afdedeaa1776a37452e6d088a30edc2a41cd9f0e45021c7e71510",
+      "source": "runtime/firmware/arduino/TbiPwm (provision.sh firmware, same pinned toolchain). Sprint 15 R4 runtime test firmware (LEDC: analogWrite, ledcAttach/Write/Detach, two channels). Built twice on 2026-10-15 in a fresh runtime home (Runtime v3 1a0867669eb0f01f): byte-identical; the 11 previously pinned images reproduced byte-identical in the same toolchain."
+    },
+    "TbiPwmLs": {
+      "sha256": "027b9a12917387a3d6c759fa7cbafdf62bad35fbe5ab61f5a4a5f839e96b6927",
+      "source": "runtime/firmware/arduino/TbiPwmLs (provision.sh firmware, same pinned toolchain). Sprint 15 R4 runtime test firmware (nine LEDC channels: the low-speed refusal). Built twice on 2026-10-15 in a fresh runtime home (Runtime v3 1a0867669eb0f01f): byte-identical; the 11 previously pinned images reproduced byte-identical in the same toolchain."
+    },
+    "TbiServo": {
+      "sha256": "5d4697acfa3fffdf829b212c855ab99a78bec324b238e2a1b80df5e2c4ea3d52",
+      "source": "runtime/firmware/arduino/TbiServo (provision.sh firmware, same pinned toolchain). Sprint 15 R4 runtime test firmware (SG90 50 Hz / 16-bit sweep). Built twice on 2026-10-15 in a fresh runtime home (Runtime v3 1a0867669eb0f01f): byte-identical; the 11 previously pinned images reproduced byte-identical in the same toolchain."
     }
   }
 }

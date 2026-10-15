@@ -421,6 +421,29 @@ const SPRINT10_TYPES = {
     ],
     aliases: ['lcd', 'lcd1602', '16x2', 'i2c lcd', 'pcf8574', 'hd44780', 'צג', 'מסך'],
   },
+  'component.servo_sg90': {
+    type: 'component.servo_sg90',
+    typeVersion: 1,
+    refPrefix: 'M',
+    nameKey: 'component.component.servo_sg90.name',
+    symbol: 'symbol.servo',
+    // The servo's three-wire lead, in its connector order (brown GND, red +V, orange signal).
+    terminals: [
+      { id: 'gnd', offset: { x: -60, y: -20 }, labelKey: 'terminal.moduleGnd' },
+      { id: 'vcc', offset: { x: -60, y: 0 }, labelKey: 'terminal.vcc' },
+      { id: 'signal', offset: { x: -60, y: 20 }, labelKey: 'terminal.servoSignal' },
+    ],
+    params: [
+      {
+        kind: 'enum',
+        key: 'model',
+        options: [{ value: 'model.servo.sg90', labelKey: 'model.servo.sg90' }],
+        default: 'model.servo.sg90',
+        labelKey: 'param.model',
+      },
+    ],
+    aliases: ['servo', 'sg90', 'micro servo', 'motor', 'סרוו', 'מנוע סרוו', 'מנוע'],
+  },
   'display.led_matrix_8x8': {
     type: 'display.led_matrix_8x8',
     typeVersion: 1,
@@ -735,6 +758,7 @@ export const CATALOG_ORDER: readonly ComponentTypeId[] = [
   'sensor.hc_sr04',
   'sensor.dht22',
   'display.lcd1602_i2c',
+  'component.servo_sg90',
   'board.esp32_devkitc_wroom32',
 ];
 

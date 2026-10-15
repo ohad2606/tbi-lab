@@ -4,7 +4,7 @@
  * the frame sequences patch 0009 produced for the three probe sketches.
  */
 import { describe, expect, it } from 'vitest';
-import { parseFrame, type Frame } from '../../harness/protocol.js';
+import { parseFrame, ProtocolError, type Frame } from '../../harness/protocol.js';
 import { edgesIn, LedcTracker, ns, ratFloorNs, ratToNumber, type Waveform } from '../pwm.js';
 
 /** Feed frames to a tracker; return the waveform of `signal` at `atNs`. */
@@ -183,5 +183,49 @@ describe('LEDC waveforms (T-R4-1, host)', () => {
       typeof v === 'bigint' ? v.toString() : v,
     );
     expect(a).toBe(b);
+  });
+
+  it('a pause freezes the counter: resuming with the same configuration shifts the phase (review M1)', () => {
+    const lines = [
+      'P 1000 0 reset',
+      'P 2000 0 run 1000000 1000 8', // 1 ms periods from 2000 ns
+      'W 3000 71 on 0 0 128',
+      'P 1500000 0 paused',
+      'P 1800000 0 run 1000000 1000 8', // paused for 300 us
+    ];
+    const w = run(lines, 71, 1_900_000n);
+    expect(wave(w).w.risingNs).toEqual(ns(2000n + 300_000n));
+  });
+
+  it('a wave whose first period starts low falls at its segment start after a high level (review M9)', () => {
+    const w = run(
+      ['P 1000 0 reset', 'P 2000 0 run 1000000 1000 8', 'W 3000 71 on 0 10 100'],
+      71,
+      1_100_000n,
+    );
+    if (w.kind !== 'wave') throw new Error('wave expected');
+    const seg = ns(1_002_000n);
+    const e = edgesIn(w, seg, ns(1_001_000n), ns(1_100_000n), 1);
+    expect(e[0]).toEqual({ at: seg, level: 0 });
+    expect(e[1]!.level).toBe(1);
+  });
+
+  it('P and W frames are parsed strictly (review M10)', () => {
+    const bad = (line: string) => expect(() => parseFrame(line), line).toThrow(ProtocolError);
+    bad('P 5 4 reset'); // timer 4 is low speed: never published
+    bad('P 5 0 run 1000000 255 8'); // divider below 1.0
+    bad('P 5 0 run 1000000 1000 21'); // resolution above 20
+    bad('P 5 0 run 1000000 1000 0');
+    bad('P 5 0 run 123 1000 8'); // unknown clock
+    bad('P 5 0 unsupported weird');
+    bad('W 5 70 idle 0'); // signal 70 is not LEDC
+    bad('W 5 87 idle 0');
+    bad('W 5 71 idle 2');
+    bad('W 5 71 on 4 0 1');
+    bad('W 5 71 on 0 0 1048577'); // duty above 2^20
+    bad('W 5 71 unsupported weird');
+    bad('W 5 71 on 0 01 1'); // leading zero
+    expect(parseFrame('W 5 86 unsupported low-speed')).toMatchObject({ type: 'W', signal: 86 });
+    expect(parseFrame('P 5 3 run 40000000 6250 16')).toMatchObject({ type: 'P', timer: 3 });
   });
 });

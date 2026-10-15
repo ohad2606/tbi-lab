@@ -60,6 +60,8 @@ describe('Sprint 4 catalog: the non-MCU V1 catalog is complete and closed (A16)'
         'sensor.hc_sr04',
         'sensor.dht22',
         'display.lcd1602_i2c',
+        // Sprint 15 (R4; servo is a PM-6 approved family, §6.0): exposed with LEDC PWM.
+        'component.servo_sg90',
       ].sort(),
     );
   });

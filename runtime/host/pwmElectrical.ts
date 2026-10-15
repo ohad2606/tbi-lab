@@ -120,6 +120,8 @@ export function combinePwm(
   allHigh: SolveSuccess | null,
   types: Readonly<Record<string, string>>,
   prevInputs: ReadonlyMap<number, 0 | 1>,
+  /** Three or more pads: every pair high together (`i < j`), for the pairwise check. */
+  pairs: readonly { i: number; j: number; o: SolveSuccess }[] = [],
 ): PwmCombination {
   const duties = pads.map((p) => p.duty);
   const gpios = pads.map((p) => p.gpio);
@@ -151,23 +153,32 @@ export function combinePwm(
 
   // 3. Several pads: superposition must hold for every averaged quantity.
   if (allHigh && pads.length > 1) {
+    // The response to a set of pads high together must be the sum of their single changes: for
+    // the all-high point and (three or more pads) every pair. Higher-order interactions that
+    // cancel in both are not detected (documented limitation).
+    const checks = [
+      { members: pads.map((_, i) => i), o: allHigh },
+      ...pairs.map((p) => ({ members: [p.i, p.j], o: p.o })),
+    ];
     const interacting = Object.keys(low.components).filter((id) => {
       const base = quantities(low.components[id]!);
-      const all = quantities(allHigh.components[id]!);
       const singles = single.map((s) => quantities(s.components[id]!));
-      for (const [k, { v: b, volts }] of base) {
-        const sum = lin(
-          b,
-          singles.map((s) => minus(s.get(k)?.v ?? null, b)),
-          pads.map(() => 1),
-        );
-        const a = all.get(k)?.v ?? null;
-        if (sum === null || a === null) {
-          if (sum !== a) return true;
-          continue;
+      for (const { members, o } of checks) {
+        const all = quantities(o.components[id]!);
+        for (const [k, { v: b, volts }] of base) {
+          const sum = lin(
+            b,
+            members.map((i) => minus(singles[i]!.get(k)?.v ?? null, b)),
+            members.map(() => 1),
+          );
+          const a = all.get(k)?.v ?? null;
+          if (sum === null || a === null) {
+            if (sum !== a) return true;
+            continue;
+          }
+          if (Number.isNaN(sum) || Number.isNaN(a)) continue;
+          if (!same(sum, a, volts ? ABS_V : ABS_A)) return true;
         }
-        if (Number.isNaN(sum) || Number.isNaN(a)) continue;
-        if (!same(sum, a, volts ? ABS_V : ABS_A)) return true;
       }
       return false;
     });
