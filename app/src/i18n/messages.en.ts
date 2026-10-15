@@ -736,6 +736,8 @@ export const en = {
   'build.feature.bluetooth': 'Bluetooth',
   'build.feature.adc': 'analog input (ADC)',
   'build.feature.pwm': 'PWM/LEDC output',
+  'build.feature.pwm_advanced':
+    'LEDC hardware fade or output inversion (ledcFade, ledcOutputInvert)',
   'build.feature.dac': 'analog output (DAC)',
   'build.feature.touch': 'touch sensing',
   'build.feature.sleep': 'sleep modes',
@@ -796,6 +798,28 @@ export const en = {
     'The ESP32 runtime refused a live change it does not support (it may be older than this app), so the session was stopped. The project keeps your change.',
   'sim.error.runtime.commands_rate_limited':
     'Live changes were sent faster than the ESP32 runtime accepts, so the session was stopped. The project keeps your change; press Run to continue.',
+  'sim.error.runtime.pwm_unsupported':
+    'A PWM output was used in a way the simulator cannot reproduce faithfully, and the session ended.',
+  'sim.error.pwm.pwm_duty_zero_unverified':
+    '{pins} outputs PWM at duty 0 while the circuit responds to that pin ({components}). The level a real ESP32 outputs at duty 0 is not verified yet, so the simulator stops instead of guessing. To switch the output off, use ledcDetach() and digitalWrite(pin, LOW).',
+  'sim.error.pwm.pwm_unsupported_mode':
+    '{pins} uses an LEDC mode the simulator does not support: {why}.',
+  'sim.error.pwm.pwm_load_unsupported':
+    'PWM on {pins} reaches {components}, which does not respond instantly to a switching signal. Only resistors, LEDs, diodes and switches can be averaged faithfully.',
+  'sim.error.pwm.pwm_input_unsupported':
+    'PWM on {pins} reaches the ESP32 input {inputs}. Reading a PWM signal is not simulated.',
+  'sim.error.pwm.pwm_outputs_interact':
+    'The PWM outputs {pins} share a load ({components}). Their combined effect depends on how the waveforms overlap, which is not simulated.',
+  'sim.pwm.why.open-drain': 'an open-drain PWM output',
+  'sim.pwm.why.low-speed': 'a low-speed channel (more than 8 PWM channels)',
+  'sim.pwm.why.interrupt': 'LEDC interrupts',
+  'sim.pwm.why.dither': 'fractional duty (dithering)',
+  'sim.pwm.why.fade': 'hardware fade',
+  'sim.pwm.why.hpoint': 'a phase offset that reaches the end of the period',
+  'sim.pwm.why.timer-reset': 'its timer is held in reset',
+  'sim.pwm.why.timer-paused': 'its timer is paused',
+  'sim.pwm.why.timer-resolution': 'a timer resolution outside 1 to 20 bits',
+  'sim.pwm.why.timer-divider': 'a timer divider below 1',
   'sim.error.runtime.protocol_error':
     'The runtime service sent an unexpected response and the session ended. The project is not affected.',
   'mcu.heading': 'ESP32 runtime',
@@ -939,7 +963,11 @@ export const en = {
     'Tasks run on both cores. A sketch that keeps core 0 busy can delay code on core 1 by up to about 1 ms, so microsecond timing is not supported in such sketches.',
   'capabilities.facility.pwm.name': 'PWM / LEDC output (analogWrite, ledcWrite)',
   'capabilities.facility.pwm.body':
-    'Not simulated yet. A sketch that uses it is refused before Run.',
+    'High-speed LEDC channels with exact frequency and duty. The circuit sees the time-average (LEDs dim; ratings use the peak current). Refused at Run with the reason named: duty 0 driving a load (its level on real hardware is not verified yet), loads that do not respond instantly (only resistors, LEDs, diodes and switches do), an ESP32 input reading the PWM signal, and more than 8 channels.',
+  'capabilities.facility.pwm_advanced.name':
+    'LEDC hardware fade and output inversion (ledcFade, ledcOutputInvert)',
+  'capabilities.facility.pwm_advanced.body':
+    'Not simulated. A sketch that uses them is refused at Build. Fade by calling ledcWrite in steps.',
   'capabilities.facility.interrupt.name': 'GPIO interrupts (attachInterrupt)',
   'capabilities.facility.interrupt.body': 'Not simulated. Poll the pin with digitalRead instead.',
   'capabilities.facility.internal_pull.name':

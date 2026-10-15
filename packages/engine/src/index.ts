@@ -7,6 +7,8 @@ export {
   type LiveControl,
   type McuPinAttachment,
   type PinResult,
+  type PwmComponentFigures,
+  type PwmPadFigures,
   type RuntimePinMode,
   type PsuControl,
   type SolveFailure,

@@ -88,6 +88,8 @@ export type RuntimeFailCode =
   | 'session_lost'
   | 'session_expired'
   | 'mirror_failed'
+  /** R4: a PWM output that cannot be simulated honestly (details: SimFailure kind 'pwm'). */
+  | 'pwm_unsupported'
   /** Sprint 11: the host's validator refused a live command (e.g. an older runtime). */
   | 'command_refused'
   /** Sprint 11: live commands exceeded the host's per-session rate. */

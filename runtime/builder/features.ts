@@ -28,6 +28,10 @@ const SYMBOLS: [RegExp, string][] = [
   [/^(esp_bt_controller_init|btStart)$/, 'bluetooth'],
   [/^(__analogRead|analogRead|adc_oneshot_read)$/, 'adc'],
   [/^(ledcAttach|ledcAttachChannel|ledcWrite|__analogWrite|analogWrite)$/, 'pwm'],
+  // R4: the LEDC hardware fade (the runtime refuses duty_scale, decision R4-D4) and output
+  // inversion (the GPIO-matrix OUT_INV bit is not published to the host, so an inverted output
+  // would be simulated non-inverted): refused on every runtime.
+  [/^(ledcFade|ledcFadeWithInterrupt|ledcFadeWithInterruptArg|ledcOutputInvert)$/, 'pwm_advanced'],
   [/^(dacWrite|__dacWrite)$/, 'dac'],
   [/^(__touchRead|touchRead)$/, 'touch'],
   [/^(esp_deep_sleep_start|esp_light_sleep_start)$/, 'sleep'],
@@ -99,6 +103,8 @@ function literalPins(code: string, call: RegExp, any: RegExp): number[] {
  */
 const RUNTIME_FACILITIES: Record<string, { capability: string; libraries: string[] }> = {
   i2c: { capability: 'i2c', libraries: ['Wire'] },
+  // R4 (patch 0009): LEDC waveforms on a runtime announcing `pwm` (Runtime v3).
+  pwm: { capability: 'pwm', libraries: [] },
 };
 
 export function analyzeFeatures(input: {

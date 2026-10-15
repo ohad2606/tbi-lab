@@ -103,6 +103,15 @@ export function simFailureMessage(
     });
   }
   if (failure.kind === 'runtime') return t(`sim.error.runtime.${failure.code}`);
+  if (failure.kind === 'pwm') {
+    const pins = (g: number[] | undefined) => list((g ?? []).map((p) => `GPIO${p}`));
+    return t(`sim.error.pwm.${failure.code}`, {
+      pins: pins(failure.gpios),
+      components: list(failure.components),
+      inputs: pins(failure.inputs),
+      why: failure.why ? t(`sim.pwm.why.${failure.why}` as MessageKey) : '',
+    });
+  }
   return engineErrorMessage(locale, failure.error, doc);
 }
 

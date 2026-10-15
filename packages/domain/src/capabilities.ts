@@ -36,7 +36,9 @@ export const FIRMWARE_FACILITIES: readonly FirmwareFacility[] = [
   { id: 'i2c', status: 'supported', refusedByBuild: false, requiresRuntime: 'i2c' },
   { id: 'timing', status: 'limited', refusedByBuild: false },
   { id: 'dual_core', status: 'limited', refusedByBuild: false },
-  { id: 'pwm', status: 'unsupported', refusedByBuild: true },
+  // R4: LEDC PWM on Runtime v3 (capability `pwm`); limited: duty 0 driving a load, loads that do not
+  // settle instantly and LEDC modes the runtime cannot represent are refused at Run time.
+  { id: 'pwm', status: 'limited', refusedByBuild: false, requiresRuntime: 'pwm' },
   { id: 'interrupt', status: 'unsupported', refusedByBuild: true },
   { id: 'internal_pull', status: 'unsupported', refusedByBuild: true },
   { id: 'adc', status: 'unsupported', refusedByBuild: true },
@@ -47,6 +49,7 @@ export const FIRMWARE_FACILITIES: readonly FirmwareFacility[] = [
   { id: 'bluetooth', status: 'unsupported', refusedByBuild: true },
   { id: 'sleep', status: 'unsupported', refusedByBuild: true },
   { id: 'drive_strength', status: 'unsupported', refusedByBuild: true },
+  { id: 'pwm_advanced', status: 'unsupported', refusedByBuild: true },
   { id: 'restart', status: 'unsupported', refusedByBuild: true },
   { id: 'library', status: 'unsupported', refusedByBuild: true },
 ];

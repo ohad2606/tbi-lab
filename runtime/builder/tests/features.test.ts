@@ -136,6 +136,50 @@ describe('Sprint 12 (ADR-011 §5): facilities the runtime provides become `requi
     expect(f.internalPull).toEqual([4]);
     expect(f.requires).toEqual(['i2c']);
   });
+  const V3 = ['i2c', 'pad-func', 'pwm', 'sched-input'];
+  const pwmSketch = {
+    source: 'void setup(){ ledcAttach(18, 50, 16); ledcWrite(18, 4915); }\nvoid loop(){}',
+    symbols: ['ledcAttach', 'ledcWrite', 'setup', 'loop'],
+    libraries: [],
+  };
+  it('T-R4-6: PWM is unsupported without the pwm capability and required with it', () => {
+    expect(analyzeFeatures(pwmSketch)).toMatchObject({ unsupported: ['pwm'] });
+    expect(
+      analyzeFeatures({ ...pwmSketch, capabilities: ['i2c', 'pad-func', 'sched-input'] }),
+    ).toMatchObject({ unsupported: ['pwm'] });
+    const v3 = analyzeFeatures({ ...pwmSketch, capabilities: V3 });
+    expect(v3.unsupported).toEqual([]);
+    expect(v3.requires).toEqual(['pwm']);
+    // analogWrite is the same facility.
+    expect(
+      analyzeFeatures({ source: '', symbols: ['__analogWrite'], libraries: [], capabilities: V3 }),
+    ).toMatchObject({ unsupported: [], requires: ['pwm'] });
+    // With Wire too, both are required.
+    expect(
+      analyzeFeatures({
+        ...pwmSketch,
+        symbols: [...pwmSketch.symbols, 'i2c_master_bus_add_device'],
+        libraries: ['Wire'],
+        capabilities: V3,
+      }).requires,
+    ).toEqual(['i2c', 'pwm']);
+  });
+  it('T-R4-6: the LEDC hardware fade and output inversion are refused on every runtime', () => {
+    for (const sym of [
+      'ledcFade',
+      'ledcFadeWithInterrupt',
+      'ledcFadeWithInterruptArg',
+      'ledcOutputInvert',
+    ]) {
+      const f = analyzeFeatures({
+        ...pwmSketch,
+        symbols: [...pwmSketch.symbols, sym],
+        capabilities: V3,
+      });
+      expect(f.unsupported, sym).toEqual(['pwm_advanced']);
+      expect(f.requires, sym).toEqual(['pwm']);
+    }
+  });
   it('other facilities are unaffected by the capabilities (SPI stays unsupported)', () => {
     const f = analyzeFeatures({
       source: '',

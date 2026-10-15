@@ -713,6 +713,8 @@ export const he: Record<MessageKey, string> = {
   'build.feature.bluetooth': "בלוטות'",
   'build.feature.adc': 'כניסה אנלוגית (ADC)',
   'build.feature.pwm': 'יציאת PWM/LEDC',
+  'build.feature.pwm_advanced':
+    'עמעום חומרתי של LEDC או היפוך היציאה (ledcFade,‏ ledcOutputInvert)',
   'build.feature.dac': 'יציאה אנלוגית (DAC)',
   'build.feature.touch': 'חישת מגע',
   'build.feature.sleep': 'מצבי שינה',
@@ -772,6 +774,27 @@ export const he: Record<MessageKey, string> = {
     'סביבת הריצה של ESP32 דחתה שינוי חי שאינה תומכת בו (ייתכן שהיא ישנה מהאפליקציה), ולכן הסשן נעצר. הפרויקט שומר את השינוי.',
   'sim.error.runtime.commands_rate_limited':
     'שינויים חיים נשלחו מהר יותר ממה שסביבת הריצה של ESP32 מקבלת, ולכן הסשן נעצר. הפרויקט שומר את השינוי; לחצו Run כדי להמשיך.',
+  'sim.error.runtime.pwm_unsupported':
+    'נעשה שימוש ביציאת PWM באופן שהסימולטור אינו יכול לשחזר נאמנה, והסשן הסתיים.',
+  'sim.error.pwm.pwm_duty_zero_unverified':
+    '{pins} מוציא PWM במחזור עבודה 0, והמעגל מגיב לפין הזה ({components}). הרמה ש־ESP32 אמיתי מוציא במחזור עבודה 0 עדיין לא אומתה, ולכן הסימולטור עוצר במקום לנחש. לכיבוי היציאה, השתמשו ב־ledcDetach()‎ ו־digitalWrite(pin, LOW)‎.',
+  'sim.error.pwm.pwm_unsupported_mode': '{pins} משתמש במצב LEDC שהסימולטור אינו תומך בו: {why}.',
+  'sim.error.pwm.pwm_load_unsupported':
+    'PWM ב־{pins} מגיע אל {components}, שאינו מגיב מיד לאות ממותג. רק נגדים, נורות LED, דיודות ומתגים ניתנים למיצוע נאמן.',
+  'sim.error.pwm.pwm_input_unsupported':
+    'PWM ב־{pins} מגיע אל כניסת ה־ESP32 ‏{inputs}. קריאת אות PWM אינה מדומה.',
+  'sim.error.pwm.pwm_outputs_interact':
+    'יציאות ה־PWM ‏{pins} חולקות עומס ({components}). ההשפעה המשולבת שלהן תלויה בחפיפה בין צורות הגל, וזו אינה מדומה.',
+  'sim.pwm.why.open-drain': 'יציאת PWM מסוג Open-drain',
+  'sim.pwm.why.low-speed': 'ערוץ איטי (יותר מ־8 ערוצי PWM)',
+  'sim.pwm.why.interrupt': 'פסיקות LEDC',
+  'sim.pwm.why.dither': 'מחזור עבודה שברי (Dithering)',
+  'sim.pwm.why.fade': 'עמעום חומרתי',
+  'sim.pwm.why.hpoint': 'היסט מופע שמגיע לסוף המחזור',
+  'sim.pwm.why.timer-reset': 'הטיימר שלו מוחזק באיפוס',
+  'sim.pwm.why.timer-paused': 'הטיימר שלו מושהה',
+  'sim.pwm.why.timer-resolution': 'רזולוציית טיימר מחוץ לטווח 1 עד 20 ביט',
+  'sim.pwm.why.timer-divider': 'מחלק טיימר קטן מ־1',
   'sim.error.runtime.protocol_error':
     'שירות הריצה שלח תשובה בלתי צפויה והסשן הסתיים. הפרויקט לא נפגע.',
   'mcu.heading': 'ריצת ESP32',
@@ -912,7 +935,12 @@ export const he: Record<MessageKey, string> = {
   'capabilities.facility.dual_core.body':
     'משימות רצות על שתי הליבות. סקיצ׳ שמעסיק את ליבה 0 ברציפות עלול לעכב קוד בליבה 1 עד כ־1 ms, ולכן תזמון ברמת מיקרו־שניות אינו נתמך בסקיצ׳ים כאלה.',
   'capabilities.facility.pwm.name': 'יציאת PWM / LEDC ‏(analogWrite,‏ ledcWrite)',
-  'capabilities.facility.pwm.body': 'עדיין אינו מדומה. סקיצ׳ שמשתמש בו נדחה לפני הרצה.',
+  'capabilities.facility.pwm.body':
+    'ערוצי LEDC מהירים, עם תדר ומחזור עבודה מדויקים. המעגל רואה את הממוצע בזמן (נורות LED מתעמעמות; בדיקת הדירוגים משתמשת בזרם השיא). נדחה בהרצה, עם הסיבה: מחזור עבודה 0 שמניע עומס (הרמה שלו בחומרה אמיתית עדיין לא אומתה), עומסים שאינם מגיבים מיד (רק נגדים, נורות LED, דיודות ומתגים מגיבים כך), כניסת ESP32 שקוראת את אות ה־PWM, ויותר מ־8 ערוצים.',
+  'capabilities.facility.pwm_advanced.name':
+    'עמעום חומרתי והיפוך יציאה של LEDC ‏(ledcFade,‏ ledcOutputInvert)',
+  'capabilities.facility.pwm_advanced.body':
+    'אינם מדומים. סקיצ׳ שמשתמש בהם נדחה בבנייה. לעמעום, קראו ל־ledcWrite בצעדים.',
   'capabilities.facility.interrupt.name': 'פסיקות GPIO ‏(attachInterrupt)',
   'capabilities.facility.interrupt.body': 'אינן מדומות. במקומן, קראו את הפין ב־digitalRead.',
   'capabilities.facility.internal_pull.name':

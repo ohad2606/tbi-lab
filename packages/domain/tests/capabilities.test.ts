@@ -23,7 +23,10 @@ describe('capabilities registry', () => {
     }
     expect(FIRMWARE_FACILITIES.find((f) => f.id === 'i2c')?.requiresRuntime).toBe('i2c');
     expect(facilityForFeature('library:DHT')?.id).toBe('library');
-    expect(facilityForFeature('pwm')?.status).toBe('unsupported');
+    // R4: PWM runs on a runtime announcing `pwm` (Runtime v3), with refusals (limited); the LEDC
+    // hardware fade and output inversion stay refused everywhere.
+    expect(facilityForFeature('pwm')).toMatchObject({ status: 'limited', requiresRuntime: 'pwm' });
+    expect(facilityForFeature('pwm_advanced')?.status).toBe('unsupported');
     expect(facilityForFeature('nonsense')).toBeUndefined();
   });
 

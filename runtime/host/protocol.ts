@@ -60,6 +60,12 @@ export type FailReason =
   | 'bridge_lost' // QEMU lost the bridge connection
   | 'guest_reset' // the firmware requested a reset: unsupported in V1, never repeated
   | 'storage_limit'
+  /**
+   * R4: a PWM (LEDC) output the session cannot simulate honestly, still in place a whole command
+   * tick later: an unrepresentable LEDC configuration, duty 0 driving a load (O-R4-1), or a load
+   * that does not settle instantly (architecture A1). `detail.code` names which.
+   */
+  | 'pwm_unsupported'
   | 'internal';
 
 // ---------------------------------------------------------------------------------------------
@@ -153,6 +159,14 @@ export interface EventBase {
   simNs: string | null;
 }
 
+/** R4: what an LEDC-driven pad does (gpio events). Times in ns (decimal, exact to 1e-3 ns). */
+export type PwmPadState =
+  | { kind: 'wave'; periodNs: number; highNs: number; duty: number; dutyTicks: number; res: number }
+  | { kind: 'static'; level: 0 | 1 }
+  /** Duty 0: the hardware's level is not established (O-R4-1). */
+  | { kind: 'zero'; periodNs: number }
+  | { kind: 'unsupported'; why: string };
+
 export type SessionEvent = EventBase &
   (
     | { type: 'state'; state: SessionState; reason?: EndReason | FailReason; detail?: unknown }
@@ -160,7 +174,17 @@ export type SessionEvent = EventBase &
     | {
         type: 'gpio';
         /** Pads whose (drive, level) changed in this publish window: final state + count. */
-        changes: { gpio: number; drive: 0 | 1; level: 0 | 1; transitions: number }[];
+        changes: {
+          gpio: number;
+          drive: 0 | 1;
+          level: 0 | 1;
+          transitions: number;
+          /**
+           * R4: the pad is driven by an LEDC channel with this waveform (absent for simple GPIO).
+           * `level` is then the static level, or 0 while it switches.
+           */
+          pwm?: PwmPadState;
+        }[];
       }
     | {
         type: 'electrical';
