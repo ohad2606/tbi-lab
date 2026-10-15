@@ -170,8 +170,7 @@ describe.skipIf(!RT)('Sprint 15 PWM examples on the real stack', () => {
       400_000,
     );
     // width (us) = counts x 6250 / 256 APB clocks / 80 per us; angle = (width - 1000 us) / 1000 us x 180, clamped.
-    const deg = (counts: number) =>
-      Math.max(0, (((counts * 6250) / 256 / 80 - 1000) / 1000) * 180);
+    const deg = (counts: number) => Math.max(0, (((counts * 6250) / 256 / 80 - 1000) / 1000) * 180);
     expect(deg(3276)).toBe(0);
     expect(Math.round(deg(6553) * 100) / 100).toBe(179.97);
     expect(Math.round(deg(4915) * 100) / 100).toBe(89.99);
