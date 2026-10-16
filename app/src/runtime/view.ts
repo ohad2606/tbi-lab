@@ -5,7 +5,7 @@
  * Session Host's ordered events, is cleared when a new session starts, and is NEVER written to
  * the project document: no session id or token, no serial output, no GPIO levels, no event ids.
  */
-import type { SessionState } from '../../../runtime/host/protocol.js';
+import type { PwmPadState, SessionState } from '../../../runtime/host/protocol.js';
 
 /** Bounds: the view never grows with session length. */
 export const SERIAL_MAX_CHARS = 16 * 1024;
@@ -14,8 +14,11 @@ export const TRACE_CHECKPOINTS_MAX = 120;
 
 export interface GpioLevel {
   drive: 0 | 1;
+  /** With `pwm`: the static level, or 0 while the pad switches. */
   level: 0 | 1;
   transitions: number;
+  /** Sprint 15 (R4): the pad is an LEDC (PWM) output with this waveform, as the host reports it. */
+  pwm?: PwmPadState;
 }
 
 export interface RuntimeWarning {
@@ -88,6 +91,8 @@ export type RuntimeFailCode =
   | 'session_lost'
   | 'session_expired'
   | 'mirror_failed'
+  /** R4: a PWM output that cannot be simulated honestly (details: SimFailure kind 'pwm'). */
+  | 'pwm_unsupported'
   /** Sprint 11: the host's validator refused a live command (e.g. an older runtime). */
   | 'command_refused'
   /** Sprint 11: live commands exceeded the host's per-session rate. */

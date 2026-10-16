@@ -54,6 +54,7 @@ const PART_RULES: Record<ComponentTypeId, { categories: ExampleCategory[]; basic
   'sensor.dht22': { categories: ['sensors'], basic: false },
   'display.lcd1602_i2c': { categories: ['lighting'], basic: false },
   'display.led_matrix_8x8': { categories: ['lighting'], basic: false },
+  'component.servo_sg90': { categories: [], basic: false },
   'board.esp32_devkitc_wroom32': { categories: ['controllers'], basic: false },
 };
 

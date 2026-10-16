@@ -14,9 +14,10 @@ import {
   type BoardPin,
   type ComponentInstance,
 } from '@tbi-lab/domain';
-import { formatQuantity, isolateLtr } from '../i18n/i18n.js';
+import { formatQuantity, isolateLtr, translate, type LocaleInfo } from '../i18n/i18n.js';
 import type { MessageKey } from '../i18n/messages.en.js';
-import type { RuntimeView, RuntimeWarning } from '../runtime/view.js';
+import type { GpioLevel, RuntimeView, RuntimeWarning } from '../runtime/view.js';
+import { formatDuty, formatFrequency } from '../sim/format.js';
 import { useRef } from 'preact/hooks';
 import { useAppState, useStore, useT } from './context.js';
 
@@ -113,14 +114,13 @@ export function McuPanel({ component: c }: { component: ComponentInstance }) {
                   key={gpio}
                   data-testid={`mcu-live-${gpio}`}
                   data-level={live ? String(live.level) : undefined}
+                  data-pwm={live?.pwm?.kind}
                 >
                   <td class="technical" dir="ltr">{`GPIO${gpio}`}</td>
                   <td class="technical" dir="ltr">
-                    {live
-                      ? `${t(live.level ? 'mcu.level.high' : 'mcu.level.low')} · ${t(live.drive ? 'mcu.mode.output' : 'mcu.mode.input')}`
-                      : ''}
+                    {live ? liveLevelText(locale, live) : ''}
                     {v !== undefined
-                      ? `${live ? ' · ' : ''}${formatQuantity(locale, { value: v, unit: 'volt' })}`
+                      ? `${live ? ' · ' : ''}${pinVoltageText(locale, live, v)}`
                       : ''}
                   </td>
                 </tr>
@@ -183,6 +183,7 @@ export function McuPanel({ component: c }: { component: ComponentInstance }) {
                   data-support={pin.simulatorSupport}
                   data-level={live ? String(live.level) : undefined}
                   data-drive={live ? String(live.drive) : undefined}
+                  data-pwm={live?.pwm?.kind}
                 >
                   <td class="technical" dir="ltr">
                     {pin.headerLabel}
@@ -193,12 +194,8 @@ export function McuPanel({ component: c }: { component: ComponentInstance }) {
                     {caveat && <span class="muted small block">{t(caveat)}</span>}
                   </td>
                   <td class="technical" dir="ltr">
-                    {live
-                      ? `${t(live.level ? 'mcu.level.high' : 'mcu.level.low')} · ${t(live.drive ? 'mcu.mode.output' : 'mcu.mode.input')}`
-                      : ''}
-                    {v !== undefined
-                      ? ` · ${formatQuantity(locale, { value: v, unit: 'volt' })}`
-                      : ''}
+                    {live ? liveLevelText(locale, live) : ''}
+                    {v !== undefined ? ` · ${pinVoltageText(locale, live, v)}` : ''}
                   </td>
                 </tr>
               );
@@ -209,6 +206,41 @@ export function McuPanel({ component: c }: { component: ComponentInstance }) {
       </details>
     </section>
   );
+}
+
+/**
+ * A pad's live state: "HIGH · output", or for an LEDC (PWM) output (Sprint 15, R4) its waveform as
+ * the host reports it: "PWM 1 kHz · 25 %"; duty 0 (its level is not established, O-R4-1); a
+ * steady level (0 % or 100 %); or a configuration the simulator does not support.
+ */
+export function liveLevelText(locale: LocaleInfo, live: GpioLevel): string {
+  const t = (key: MessageKey, params?: Record<string, string>) => translate(locale, key, params);
+  const level = (l: 0 | 1) => t(l ? 'mcu.level.high' : 'mcu.level.low');
+  const pwm = live.pwm;
+  if (!pwm) return `${level(live.level)} · ${t(live.drive ? 'mcu.mode.output' : 'mcu.mode.input')}`;
+  switch (pwm.kind) {
+    case 'wave':
+      return t('mcu.pwm.wave', {
+        frequency: isolateLtr(formatFrequency(locale, 1e9 / pwm.periodNs)),
+        duty: isolateLtr(formatDuty(locale, pwm.duty)),
+      });
+    case 'zero':
+      return t('mcu.pwm.zero');
+    case 'static':
+      return t('mcu.pwm.static', { level: level(pwm.level) });
+    case 'unsupported':
+      return t('mcu.pwm.unsupported');
+  }
+}
+
+/** A pad's solved voltage; a switching PWM pad's is its time-average over the waveform. */
+export function pinVoltageText(
+  locale: LocaleInfo,
+  live: GpioLevel | undefined,
+  volts: number,
+): string {
+  const v = formatQuantity(locale, { value: volts, unit: 'volt' });
+  return live?.pwm?.kind === 'wave' ? translate(locale, 'mcu.pwm.average', { voltage: v }) : v;
 }
 
 /** Pads with live activity or an electrical attachment, in GPIO order. */
@@ -226,6 +258,10 @@ function warningText(t: ReturnType<typeof useT>, w: RuntimeWarning): string {
     return t('mcu.warning.output_on_input_only_pad', { gpio: isolateLtr(String(gpio ?? '')) });
   }
   if (w.code === 'transient_rejected') return t('mcu.warning.transient_rejected');
+  if (w.code === 'servo_signal_undefined') {
+    const component = (w.detail as { component?: string } | undefined)?.component;
+    return t('mcu.warning.servo_signal_undefined', { component: isolateLtr(component ?? '') });
+  }
   const i2c = i2cWarningText(t, w);
   if (i2c) return i2c;
   return t('mcu.warning.generic', { code: isolateLtr(w.code) });

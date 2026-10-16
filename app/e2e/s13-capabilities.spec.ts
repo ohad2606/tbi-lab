@@ -33,7 +33,12 @@ test('from the menu: firmware facilities, parts, timing and limits; Escape close
     'data-status',
     'supported',
   );
+  // Sprint 15 (R4): PWM runs on Runtime v3 with named refusals (limited); fade/invert refused.
   await expect(dialog.getByTestId('capability-facility-pwm')).toHaveAttribute(
+    'data-status',
+    'limited',
+  );
+  await expect(dialog.getByTestId('capability-facility-pwm_advanced')).toHaveAttribute(
     'data-status',
     'unsupported',
   );
@@ -76,9 +81,11 @@ test('Hebrew: right-to-left, translated, same entries', async ({ page }) => {
   const dialog = page.getByTestId('capabilities-dialog');
   await expect(dialog).toHaveAttribute('dir', 'rtl');
   await expect(dialog.locator('#capabilities-title')).toHaveText('מה רץ על ה־ESP32 ב־TBI Lab');
-  await expect(dialog.getByTestId('capability-facility-pwm')).toContainText('לא נתמך');
+  await expect(dialog.getByTestId('capability-facility-pwm')).toContainText('נתמך עם מגבלות');
+  await expect(dialog.getByTestId('capability-facility-pwm_advanced')).toContainText('לא נתמך');
   await expect(dialog.getByTestId('capability-board-power')).toContainText('3.3 V');
-  await expect(dialog.locator('[data-testid^="capability-facility-"]')).toHaveCount(19);
+  // 20 since Sprint 15 (R4 adds pwm_advanced).
+  await expect(dialog.locator('[data-testid^="capability-facility-"]')).toHaveCount(20);
   // No English prose left in the Hebrew panel: only technical tokens (acronyms and part numbers,
   // Arduino API names, library and product names, units) — the terminology rule.
   const technical = [

@@ -1,0 +1,555 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: TBI Lab runtime <runtime@tbi-lab.local>
+Date: Thu, 15 Oct 2026 12:00:00 +0000
+Subject: [PATCH 9/9] hw/misc/esp32_ledc, hw/misc/tbi_bridge, hw/xtensa/esp32:
+ LEDC waveforms to the TBI host
+
+Replace the upstream duty-percentage stub with the LEDC register semantics (TRM v5.8 ch. 28,
+IDF ledc_ll): timers (clock source, 10.8 divider, resolution, reset, pause), channels (timer
+binding, output enable, idle level, hpoint and duty latched at duty_start), DUTY_R, the counter
+derived from virtual time. Publish each high-speed timer and channel state change to the bridge
+as P and W frames (capability pwm); the host computes the waveform. Dither, fade, interrupts,
+the low-speed group and wrapping hpoint/duty are reported unsupported. APB follows the SoC clock.
+---
+ hw/misc/esp32_ledc.c         | 373 ++++++++++++++++++++++++++---------
+ hw/misc/tbi_bridge.c         |  22 ++-
+ hw/xtensa/esp32.c            |   1 +
+ include/hw/misc/esp32_ledc.h |  21 +-
+ 4 files changed, 316 insertions(+), 101 deletions(-)
+
+diff --git a/hw/misc/esp32_ledc.c b/hw/misc/esp32_ledc.c
+index 9cebea9..e2b8481 100644
+--- a/hw/misc/esp32_ledc.c
++++ b/hw/misc/esp32_ledc.c
+@@ -1,149 +1,317 @@
++/*
++ * ESP32 LED PWM controller (LEDC): register model and waveform publication
++ *
++ * Copyright (c) Espressif Systems (upstream register map)
++ * Copyright (c) 2026 TBI Lab (register semantics and waveform publication, runtime R4)
++ *
++ * This program is free software; you can redistribute it and/or modify it under the terms of the
++ * GNU General Public License version 2 or (at your option) any later version.
++ *
++ * Clean-room from the ESP32 Technical Reference Manual v5.8, chapter 28 (LED_PWM) and the ESP-IDF
++ * register layout (soc/esp32/include/soc/ledc_reg.h, hal/esp32/include/hal/ledc_ll.h). The model
++ * produces no edges: each change of a high-speed timer or channel is published to the TBI bridge
++ * (capability "pwm") as a complete description, from which the host computes the waveform exactly:
++ *
++ *   timer   P <vns> <timer> run <clk_hz> <div> <res>   counter running: tick = div / 256 source
++ *                                                       clocks (10.8 fixed point), period 2^res ticks
++ *           P <vns> <timer> reset | paused              counter held
++ *           P <vns> <timer> unsupported <why>           a configuration this model cannot represent
++ *   channel W <vns> <sig> idle <level>                  output disabled: the idle level
++ *           W <vns> <sig> on <timer> <hpoint> <duty>    output high from counter = hpoint for duty
++ *                                                       ticks of every period (duty <= 2^res)
++ *           W <vns> <sig> unsupported <why>
++ *
++ * <sig> is the GPIO-matrix output signal (LEDC_HS_SIG_OUT0..7 = 71..78), as in the bridge's F
++ * frames, so the host joins waveforms to pads through the routing it already receives.
++ *
++ * Semantics (TRM ch. 28; IDF ledc.h): a channel's duty and hpoint take effect only with duty_start,
++ * and only at the next PWM cycle; a high-speed timer's new parameters take effect at its next
++ * overflow (glitch-free change-over); releasing a timer's reset restarts its counter at 0. The host
++ * applies those rules; this device reports the register state and the virtual time of each change.
++ *
++ * Refused, never approximated: duty dithering (DUTY[3:0] != 0: the TRM's "statistical" extra
++ * cycle has no documented generator), hardware fading (duty_scale != 0), LEDC interrupts, the
++ * low-speed group (separate para_up update rules and clock selection), an hpoint/duty pair that
++ * wraps past the counter's period, a divider below 1.0 and a resolution outside 1..20 bits.
++ * The source clocks are the modelled APB clock (property "apb-freq", kept current by the SoC) and
++ * REF_TICK, which ESP-IDF always configures to 1 MHz.
++ */
++
+ #include "qemu/osdep.h"
+ #include "hw/sysbus.h"
+ #include "qemu/log.h"
++#include "qemu/timer.h"
++#include "qemu/cutils.h"
+ #include "qapi/error.h"
++#include "hw/qdev-properties.h"
+ #include "hw/misc/esp32_ledc.h"
+ 
+ #define ESP32_LEDC_REGS_SIZE (A_LEDC_CONF_REG + 4)
++#define LEDC_HS_SIG_OUT0 71
++#define LEDC_LS_SIG_OUT0 79
++#define LEDC_REF_TICK_HZ 1000000u
+ 
+-static uint64_t esp32_ledc_read(void *opaque, hwaddr addr, unsigned int size)
++/* hw/misc/tbi_bridge.c (referenced by name, no header dependency): send one P or W frame. */
++void tbi_bridge_pwm(char kind, int64_t vns, const char *body);
++
++static int64_t ledc_now(void)
+ {
+-    Esp32LEDCState *s = ESP32_LEDC(opaque);
+-    uint64_t r = 0;
+-    switch (addr) {
+-    case A_LEDC_HSTIMER0_CONF_REG ... A_LEDC_LSTIMER3_CONF_REG:
+-        r = s->timer_conf_reg[(addr - A_LEDC_HSTIMER0_CONF_REG) / 0x8];
+-        break;
++    return qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
++}
+ 
+-    case A_LEDC_HSCH0_CONF0_REG:
+-    case A_LEDC_HSCH1_CONF0_REG:
+-    case A_LEDC_HSCH2_CONF0_REG:
+-    case A_LEDC_HSCH3_CONF0_REG:
+-    case A_LEDC_HSCH4_CONF0_REG:
+-    case A_LEDC_HSCH5_CONF0_REG:
+-    case A_LEDC_HSCH6_CONF0_REG:
+-    case A_LEDC_HSCH7_CONF0_REG:
+-    case A_LEDC_LSCH0_CONF0_REG:
+-    case A_LEDC_LSCH1_CONF0_REG:
+-    case A_LEDC_LSCH2_CONF0_REG:
+-    case A_LEDC_LSCH3_CONF0_REG:
+-    case A_LEDC_LSCH4_CONF0_REG:
+-    case A_LEDC_LSCH5_CONF0_REG:
+-    case A_LEDC_LSCH6_CONF0_REG:
+-    case A_LEDC_LSCH7_CONF0_REG:
+-        r = s->channel_conf0_reg[(addr - A_LEDC_HSCH0_CONF0_REG) / 0x14];
+-        break;
++/* Timer t (0-3 high speed, 4-7 low speed) in the published form. */
++static void ledc_timer_desc(Esp32LEDCState *s, int t, char *out, size_t len)
++{
++    uint32_t c = s->timer_conf_reg[t];
++    unsigned res = c & 0x1f;
++    uint32_t div = (c >> 5) & 0x3ffff;
++
++    if (c & (1u << 24)) {
++        snprintf(out, len, "reset");
++    } else if (c & (1u << 23)) {
++        snprintf(out, len, "paused");
++    } else if (res < 1 || res > 20) {
++        snprintf(out, len, "unsupported resolution");
++    } else if (div < 256) {
++        snprintf(out, len, "unsupported divider");
++    } else {
++        snprintf(out, len, "run %u %u %u", (c & (1u << 25)) ? s->apb_freq : LEDC_REF_TICK_HZ, div,
++                 res);
+     }
+-    return r;
+ }
+ 
+-static uint32_t esp32_ledc_get_percent(Esp32LEDCState *s, uint32_t value, hwaddr addr)
++/* Channel ch (0-7 high speed, 8-15 low speed) in the published form, from its latched state. */
++static void ledc_channel_desc(Esp32LEDCState *s, int ch, char *out, size_t len)
+ {
+-    uint32_t duty_val =  (value >> 4) & ((1 << 20) - 1);
+-    uint32_t duty_res;
+-    if (((addr - A_LEDC_HSCH0_DUTY_REG) / 0x14) < 8) {
+-        /* get duty res for the high speed channel from high speed timer */
+-        duty_res = s->duty_res[(s->channel_conf0_reg[(addr - A_LEDC_HSCH0_DUTY_REG) / 0x14] & ((1 << 2) - 1))];
++    uint32_t conf0 = s->channel_conf0_reg[ch];
++    int t = conf0 & 3;
++    unsigned res = s->timer_conf_reg[t] & 0x1f;
++    uint32_t duty = s->duty_latched[ch] >> 4;
++    uint32_t hpoint = s->hpoint_latched[ch];
++
++    if (!(conf0 & (1u << 2))) {
++        snprintf(out, len, "idle %u", (conf0 >> 3) & 1);
++    } else if (ch >= 8) {
++        snprintf(out, len, "unsupported low-speed");
++    } else if (s->int_ena) {
++        snprintf(out, len, "unsupported interrupt");
++    } else if (s->duty_latched[ch] & 0xf) {
++        snprintf(out, len, "unsupported dither");
++    } else if (s->conf1_latched[ch] & 0x3ff) {
++        snprintf(out, len, "unsupported fade");
++    } else if (res >= 1 && res <= 20 && (uint64_t)hpoint + duty > (1ull << res)) {
++        snprintf(out, len, "unsupported hpoint");
+     } else {
+-        /* get duty res for the low speed channel from low speed timer */
+-        duty_res = s->duty_res[((s->channel_conf0_reg[(addr - A_LEDC_HSCH0_DUTY_REG) / 0x14]) & ((1 << 2) - 1)) + 4];
++        snprintf(out, len, "on %d %u %u", t, hpoint, duty);
++    }
++}
++
++static void ledc_publish_timer(Esp32LEDCState *s, int t)
++{
++    char d[64];
++
++    if (t >= 4) {
++        return; /* the low-speed group is refused per channel */
++    }
++    ledc_timer_desc(s, t, d, sizeof(d));
++    if (strcmp(d, s->timer_pub[t]) != 0) {
++        char body[80];
++        pstrcpy(s->timer_pub[t], sizeof(s->timer_pub[t]), d);
++        snprintf(body, sizeof(body), "%d %s", t, d);
++        tbi_bridge_pwm('P', ledc_now(), body);
+     }
+-    return duty_res ? (100 * duty_val / ((2 << (duty_res - 1)) - 1)) : 0;
+ }
+ 
+-static void esp32_ledc_write(void *opaque, hwaddr addr,
+-                            uint64_t value, unsigned int size)
++static void ledc_publish_channel(Esp32LEDCState *s, int ch)
++{
++    char d[64];
++
++    ledc_channel_desc(s, ch, d, sizeof(d));
++    if (strcmp(d, s->channel_pub[ch]) != 0) {
++        char body[80];
++        pstrcpy(s->channel_pub[ch], sizeof(s->channel_pub[ch]), d);
++        snprintf(body, sizeof(body), "%d %s",
++                 ch < 8 ? LEDC_HS_SIG_OUT0 + ch : LEDC_LS_SIG_OUT0 + ch - 8, d);
++        tbi_bridge_pwm('W', ledc_now(), body);
++    }
++}
++
++static void ledc_publish_all(Esp32LEDCState *s)
++{
++    for (int ch = 0; ch < ESP32_LEDC_CHANNEL_CNT; ch++) {
++        ledc_publish_channel(s, ch);
++    }
++}
++
++/* The counter of timer t now (TIMER_VALUE): derived from virtual time, nothing is stepped. */
++static uint32_t ledc_counter(Esp32LEDCState *s, int t)
++{
++    uint32_t c = s->timer_conf_reg[t];
++    unsigned res = c & 0x1f;
++    uint32_t div = (c >> 5) & 0x3ffff;
++    uint32_t clk = (c & (1u << 25)) ? s->apb_freq : LEDC_REF_TICK_HZ;
++    int64_t dt = ledc_now() - s->timer_t0[t];
++
++    if ((c & (3u << 23)) || res < 1 || res > 20 || div < 256 || dt < 0) {
++        return 0;
++    }
++    uint64_t clocks = muldiv64((uint64_t)dt, clk, NANOSECONDS_PER_SECOND);
++    return (uint32_t)(muldiv64(clocks, 256, div) & ((1ull << res) - 1));
++}
++
++static uint64_t esp32_ledc_read(void *opaque, hwaddr addr, unsigned int size)
+ {
+     Esp32LEDCState *s = ESP32_LEDC(opaque);
+-    switch (addr) {
+-    case A_LEDC_HSTIMER0_CONF_REG ... A_LEDC_LSTIMER3_CONF_REG:
+-        /* get duty resolution from timer config */
+-        if (((uint32_t)value & ((1 << 4) - 1)) != 0) {
+-            s->duty_res[(addr - A_LEDC_HSTIMER0_CONF_REG) / 0x8] = (uint32_t)value & ((1 << 4) - 1);
++
++    if (addr >= A_LEDC_HSTIMER0_CONF_REG && addr <= A_LEDC_LSTIMER3_VALUE_REG) {
++        int t = (addr - A_LEDC_HSTIMER0_CONF_REG) / 8;
++        return (addr & 4) ? ledc_counter(s, t) : s->timer_conf_reg[t];
++    }
++    if (addr < A_LEDC_HSTIMER0_CONF_REG) {
++        int ch = addr / 0x14;
++        switch (addr % 0x14) {
++        case 0x0:
++            return s->channel_conf0_reg[ch];
++        case 0x4:
++            return s->hpoint_reg[ch];
++        case 0x8:
++            return s->duty_reg[ch];
++        case 0xc:
++            return s->conf1_reg[ch] & ~(1u << 31); /* duty_start clears once taken */
++        case 0x10:
++            return s->duty_latched[ch]; /* DUTY_R: the duty in effect */
+         }
+-        s->timer_conf_reg[(addr - A_LEDC_HSTIMER0_CONF_REG) / 0x8] = value;
+-        break;
++        return 0;
++    }
++    switch (addr) {
++    case A_LEDC_INT_ENA_REG:
++        return s->int_ena;
++    case A_LEDC_CONF_REG:
++        return s->conf_reg;
++    default:
++        return 0; /* INT_RAW / INT_ST: no interrupt is ever raised (refused when enabled) */
++    }
++}
+ 
+-    case A_LEDC_HSCH0_CONF0_REG:
+-    case A_LEDC_HSCH1_CONF0_REG:
+-    case A_LEDC_HSCH2_CONF0_REG:
+-    case A_LEDC_HSCH3_CONF0_REG:
+-    case A_LEDC_HSCH4_CONF0_REG:
+-    case A_LEDC_HSCH5_CONF0_REG:
+-    case A_LEDC_HSCH6_CONF0_REG:
+-    case A_LEDC_HSCH7_CONF0_REG:
+-    case A_LEDC_LSCH0_CONF0_REG:
+-    case A_LEDC_LSCH1_CONF0_REG:
+-    case A_LEDC_LSCH2_CONF0_REG:
+-    case A_LEDC_LSCH3_CONF0_REG:
+-    case A_LEDC_LSCH4_CONF0_REG:
+-    case A_LEDC_LSCH5_CONF0_REG:
+-    case A_LEDC_LSCH6_CONF0_REG:
+-    case A_LEDC_LSCH7_CONF0_REG:
+-        s->channel_conf0_reg[(addr - A_LEDC_HSCH0_CONF0_REG) / 0x14] = value;
+-        break;
++static void esp32_ledc_write(void *opaque, hwaddr addr, uint64_t value, unsigned int size)
++{
++    Esp32LEDCState *s = ESP32_LEDC(opaque);
++    uint32_t v = (uint32_t)value;
+ 
+-    case A_LEDC_HSCH0_DUTY_REG:
+-    case A_LEDC_HSCH1_DUTY_REG:
+-    case A_LEDC_HSCH2_DUTY_REG:
+-    case A_LEDC_HSCH3_DUTY_REG:
+-    case A_LEDC_HSCH4_DUTY_REG:
+-    case A_LEDC_HSCH5_DUTY_REG:
+-    case A_LEDC_HSCH6_DUTY_REG:
+-    case A_LEDC_HSCH7_DUTY_REG:
+-    case A_LEDC_LSCH0_DUTY_REG:
+-    case A_LEDC_LSCH1_DUTY_REG:
+-    case A_LEDC_LSCH2_DUTY_REG:
+-    case A_LEDC_LSCH3_DUTY_REG:
+-    case A_LEDC_LSCH4_DUTY_REG:
+-    case A_LEDC_LSCH5_DUTY_REG:
+-    case A_LEDC_LSCH6_DUTY_REG:
+-    case A_LEDC_LSCH7_DUTY_REG:
+-        led_set_intensity(&s->led[(addr - A_LEDC_HSCH0_DUTY_REG) / 0x14], esp32_ledc_get_percent(s, value, addr));
++    if (addr >= A_LEDC_HSTIMER0_CONF_REG && addr <= A_LEDC_LSTIMER3_VALUE_REG) {
++        int t = (addr - A_LEDC_HSTIMER0_CONF_REG) / 8;
++        if (addr & 4) {
++            return; /* TIMER_VALUE is read-only */
++        }
++        if ((s->timer_conf_reg[t] & (1u << 24)) && !(v & (1u << 24))) {
++            s->timer_t0[t] = ledc_now(); /* reset released: the counter restarts at 0 */
++        }
++        s->timer_conf_reg[t] = v;
++        ledc_publish_timer(s, t);
++        for (int ch = 0; ch < ESP32_LEDC_CHANNEL_CNT; ch++) {
++            if ((ch < 8) == (t < 4) && (int)(s->channel_conf0_reg[ch] & 3) == (t & 3)) {
++                ledc_publish_channel(s, ch); /* a resolution change can make hpoint+duty wrap */
++            }
++        }
++        return;
++    }
++    if (addr < A_LEDC_HSTIMER0_CONF_REG) {
++        int ch = addr / 0x14;
++        switch (addr % 0x14) {
++        case 0x0:
++            s->channel_conf0_reg[ch] = v;
++            ledc_publish_channel(s, ch);
++            break;
++        case 0x4:
++            s->hpoint_reg[ch] = v & 0xfffff;
++            break;
++        case 0x8:
++            s->duty_reg[ch] = v & 0x1ffffff;
++            break;
++        case 0xc:
++            s->conf1_reg[ch] = v;
++            if (v & (1u << 31)) {
++                /* duty_start: the written duty, hpoint and fade settings become the channel's */
++                s->duty_latched[ch] = s->duty_reg[ch];
++                s->hpoint_latched[ch] = s->hpoint_reg[ch];
++                s->conf1_latched[ch] = v & 0x7fffffff;
++                ledc_publish_channel(s, ch);
++            }
++            break;
++        }
++        return;
++    }
++    switch (addr) {
++    case A_LEDC_INT_ENA_REG:
++        s->int_ena = v;
++        ledc_publish_all(s);
+         break;
++    case A_LEDC_CONF_REG:
++        s->conf_reg = v;
++        break;
++    default:
++        break; /* INT_CLR: nothing is ever raised */
+     }
+-
+ }
+ 
+ static const MemoryRegionOps esp32_ledc_ops = {
+-        .read =  esp32_ledc_read,
+-        .write = esp32_ledc_write,
+-        .endianness = DEVICE_LITTLE_ENDIAN,
++    .read = esp32_ledc_read,
++    .write = esp32_ledc_write,
++    .endianness = DEVICE_LITTLE_ENDIAN,
+ };
+ 
+-static void esp32_ledc_realize(DeviceState *dev, Error **errp)
++static void esp32_ledc_reset(DeviceState *dev)
+ {
+     Esp32LEDCState *s = ESP32_LEDC(dev);
+-    for (int i = 0; i < ESP32_LEDC_CHANNEL_CNT; i++) {
+-        qdev_realize(DEVICE(&s->led[i]), NULL, &error_fatal);
++    uint32_t apb = s->apb_freq;
++
++    memset(&s->timer_conf_reg, 0, sizeof(*s) - offsetof(Esp32LEDCState, timer_conf_reg));
++    s->apb_freq = apb;
++    for (int t = 0; t < ESP32_LEDC_TIMER_CNT; t++) {
++        ledc_timer_desc(s, t, s->timer_pub[t], sizeof(s->timer_pub[t]));
++    }
++    for (int ch = 0; ch < ESP32_LEDC_CHANNEL_CNT; ch++) {
++        pstrcpy(s->channel_pub[ch], sizeof(s->channel_pub[ch]), "idle 0");
+     }
+ }
+ 
++/* The published baseline must exist before the guest runs, whether or not a reset is delivered. */
++static void esp32_ledc_realize(DeviceState *dev, Error **errp)
++{
++    esp32_ledc_reset(dev);
++}
++
+ static void esp32_ledc_init(Object *obj)
+ {
+     Esp32LEDCState *s = ESP32_LEDC(obj);
+     SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
+-    memory_region_init_io(&s->iomem, obj, &esp32_ledc_ops, s,
+-                          TYPE_ESP32_LEDC, ESP32_LEDC_REGS_SIZE);
++
++    memory_region_init_io(&s->iomem, obj, &esp32_ledc_ops, s, TYPE_ESP32_LEDC,
++                          ESP32_LEDC_REGS_SIZE);
+     sysbus_init_mmio(sbd, &s->iomem);
+-    for (int i = 0; i < ESP32_LEDC_CHANNEL_CNT; i++) {
+-        object_initialize_child(obj, g_strdup_printf("led%d", i + 1), &s->led[i], TYPE_LED);
+-        s->led[i].color = (char *)"blue";
+-    }
+ }
+ 
++static Property esp32_ledc_properties[] = {
++    /* The modelled APB clock; hw/xtensa/esp32.c keeps it current (PLL 80 MHz or XTAL 40 MHz). */
++    DEFINE_PROP_UINT32("apb-freq", Esp32LEDCState, apb_freq, 80000000),
++    DEFINE_PROP_END_OF_LIST(),
++};
++
+ static void esp32_ledc_class_init(ObjectClass *klass, void *data)
+ {
+     DeviceClass *dc = DEVICE_CLASS(klass);
++
+     dc->realize = esp32_ledc_realize;
++    device_class_set_legacy_reset(dc, esp32_ledc_reset);
++    device_class_set_props(dc, esp32_ledc_properties);
+ }
+ 
+ static const TypeInfo esp32_ledc_info = {
+-        .name = TYPE_ESP32_LEDC,
+-        .parent = TYPE_SYS_BUS_DEVICE,
+-        .instance_size = sizeof(Esp32LEDCState),
+-        .instance_init = esp32_ledc_init,
+-        .class_init = esp32_ledc_class_init
++    .name = TYPE_ESP32_LEDC,
++    .parent = TYPE_SYS_BUS_DEVICE,
++    .instance_size = sizeof(Esp32LEDCState),
++    .instance_init = esp32_ledc_init,
++    .class_init = esp32_ledc_class_init,
+ };
+ 
+ static void esp32_ledc_register_types(void)
+@@ -152,3 +320,14 @@ static void esp32_ledc_register_types(void)
+ }
+ 
+ type_init(esp32_ledc_register_types)
++
++void esp32_ledc_set_apb_freq(Esp32LEDCState *s, uint32_t hz)
++{
++    if (s->apb_freq == hz) {
++        return;
++    }
++    s->apb_freq = hz;
++    for (int t = 0; t < 4; t++) {
++        ledc_publish_timer(s, t);
++    }
++}
+diff --git a/hw/misc/tbi_bridge.c b/hw/misc/tbi_bridge.c
+index ed7b524..4251780 100644
+--- a/hw/misc/tbi_bridge.c
++++ b/hw/misc/tbi_bridge.c
+@@ -29,6 +29,9 @@
+  *   B <vns> <bus> P                     (i2c) STOP
+  *                                       host replies exactly one K <0|1> (S, W) or D <byte> (R),
+  *                                       none for P, among its commands, then C
++ *   P <vns> <timer> <state...>          (pwm) an LEDC high-speed timer changed (hw/misc/esp32_ledc.c)
++ *   W <vns> <signal> <state...>         (pwm) an LEDC channel's output changed; <signal> is its
++ *                                       GPIO-matrix output signal, as in F. Host replies (commands) C
+  * host -> QEMU, inside a reply:
+  *   I <pad> <level>                     apply an external logic level to a pad (immediately)
+  *   R <hex>                             queue bytes for the guest UART0 receiver (tick replies)
+@@ -80,7 +83,7 @@
+ #define TBI_RX_PENDING_MAX 4096
+ 
+ /* Capability tokens this build implements, sorted (ADR-011 §1). */
+-#define TBI_BRIDGE_CAPS "i2c,pad-func,sched-input"
++#define TBI_BRIDGE_CAPS "i2c,pad-func,pwm,sched-input"
+ #define TBI_SCHED_MAX 512
+ #define TBI_SCHED_MIN_NS 1000
+ 
+@@ -402,6 +405,23 @@ static void tbi_pad_func(void *opaque, int pad, int value)
+     tbi_exchange(s, now, frame, false);
+ }
+ 
++/*
++ * One LEDC timer (P) or channel (W) state change from hw/misc/esp32_ledc.c, stamped with the virtual
++ * time it happened. Without a bridge nothing is published (the controller still keeps its registers).
++ */
++void tbi_bridge_pwm(char kind, int64_t vns, const char *body);
++void tbi_bridge_pwm(char kind, int64_t vns, const char *body)
++{
++    TbiBridge *s = tbi_bridge;
++    char frame[128];
++
++    if (!s) {
++        return;
++    }
++    snprintf(frame, sizeof(frame), "%c %" PRId64 " %s\n", kind, vns, body);
++    tbi_exchange(s, vns, frame, false);
++}
++
+ /*
+  * One I2C bus phase from the ESP32 I2C controller (hw/i2c/esp32_i2c.c), answered synchronously by
+  * the host. op 'S': arg = address << 1 | R/W, returns 1 if acknowledged; 'W': arg = byte, returns
+diff --git a/hw/xtensa/esp32.c b/hw/xtensa/esp32.c
+index 1b2b2d8..d5eafa8 100644
+--- a/hw/xtensa/esp32.c
++++ b/hw/xtensa/esp32.c
+@@ -258,6 +258,7 @@ static void esp32_clk_update(void* opaque, int n, int level)
+     qdev_prop_set_int32(DEVICE(&s->frc_timer), "apb_freq", apb_clk_freq);
+     qdev_prop_set_int32(DEVICE(&s->timg[0]), "apb_freq", apb_clk_freq);
+     qdev_prop_set_int32(DEVICE(&s->timg[1]), "apb_freq", apb_clk_freq);
++    esp32_ledc_set_apb_freq(&s->ledc, apb_clk_freq);
+     clock_update_hz(s->cpu[0].clock, cpu_clk_freq );
+     clock_update_hz(s->cpu[1].clock, cpu_clk_freq );
+ }
+diff --git a/include/hw/misc/esp32_ledc.h b/include/hw/misc/esp32_ledc.h
+index 818b984..115e906 100644
+--- a/include/hw/misc/esp32_ledc.h
++++ b/include/hw/misc/esp32_ledc.h
+@@ -3,7 +3,6 @@
+ #include "hw/hw.h"
+ #include "hw/sysbus.h"
+ #include "hw/registerfields.h"
+-#include "hw/misc/led.h"
+ 
+ #define TYPE_ESP32_LEDC "misc.esp32.ledc"
+ #define ESP32_LEDC(obj) OBJECT_CHECK(Esp32LEDCState, (obj), TYPE_ESP32_LEDC)
+@@ -13,12 +12,28 @@
+ typedef struct Esp32LEDCState {
+     SysBusDevice parent_object;
+     MemoryRegion iomem;
+-    uint32_t duty_res[ESP32_LEDC_TIMER_CNT];
++    uint32_t apb_freq;
++    /* Everything from timer_conf_reg on is cleared at reset. */
+     uint32_t timer_conf_reg[ESP32_LEDC_TIMER_CNT];
++    int64_t timer_t0[ESP32_LEDC_TIMER_CNT];
+     uint32_t channel_conf0_reg[ESP32_LEDC_CHANNEL_CNT];
+-    LEDState led[ESP32_LEDC_CHANNEL_CNT];
++    uint32_t hpoint_reg[ESP32_LEDC_CHANNEL_CNT];
++    uint32_t duty_reg[ESP32_LEDC_CHANNEL_CNT];
++    uint32_t conf1_reg[ESP32_LEDC_CHANNEL_CNT];
++    /* Taken at duty_start: the values in effect. */
++    uint32_t duty_latched[ESP32_LEDC_CHANNEL_CNT];
++    uint32_t hpoint_latched[ESP32_LEDC_CHANNEL_CNT];
++    uint32_t conf1_latched[ESP32_LEDC_CHANNEL_CNT];
++    uint32_t int_ena;
++    uint32_t conf_reg;
++    /* Last state published to the TBI bridge, so only changes are sent. */
++    char timer_pub[ESP32_LEDC_TIMER_CNT][48];
++    char channel_pub[ESP32_LEDC_CHANNEL_CNT][48];
+ } Esp32LEDCState;
+ 
++/* The SoC's APB clock changed (hw/xtensa/esp32.c): timers on APB get a new period. */
++void esp32_ledc_set_apb_freq(Esp32LEDCState *s, uint32_t hz);
++
+ REG32(LEDC_CONF_REG, 0x190)
+ 
+ #define LEDC_REG_GROUP(name, base) \

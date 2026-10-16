@@ -806,4 +806,54 @@ export const RECIPES: Record<string, () => ProjectDocument> = {
     r.wire(T(R2, 'b'), { kind: 'wire', wire: scl, at: { x: 620, y: -60 } });
     return r.centre(-300);
   },
+  /**
+   * Sprint 15 (R4): an LED faded with PWM. analogWrite on GPIO18 (1 kHz LEDC), 220 Ω, red LED;
+   * the fade runs between duty 1 and 255 (duty 0 driving a load is refused until its hardware
+   * level is verified, O-R4-1). The board GND is the circuit reference.
+   */
+  'esp32-led-fade': () => {
+    const r = new Recipe('esp32-led-fade', 'ESP32: fade an LED with PWM');
+    r.remove('PSU1', 'GND1');
+    const U1 = r.place('board.esp32_devkitc_wroom32', 300, 0);
+    r.sketch(U1, 'LedFade.ino');
+    const R1 = r.place('component.resistor', 520, 20);
+    const D1 = r.place('component.led', 640, 20);
+    const G2 = r.place('component.ground', 720, 100);
+    const G3 = r.place('component.ground', 440, -120);
+    r.set(R1, 'resistance', 220, 'ohm');
+    r.wire(T(U1, 'gpio18'), T(R1, 'a'), [
+      { x: 430, y: -20 },
+      { x: 430, y: 20 },
+    ]);
+    r.wire(T(R1, 'b'), T(D1, 'anode'));
+    r.wire(T(D1, 'cathode'), T(G2, 'ref'));
+    r.wire(T(U1, 'gnd'), T(G3, 'ref'));
+    return r.centre(-300);
+  },
+  /**
+   * Sprint 15 (R4): an SG90 servo swept by LEDC PWM (50 Hz, 16 bit) on GPIO18: 1.0, 2.0 and 1.5 ms
+   * pulses, one second each. The servo runs from the 5 V bench supply; ground shared with the board.
+   */
+  'esp32-servo-sweep': () => {
+    const r = new Recipe('esp32-servo-sweep', 'ESP32: sweep a servo with PWM');
+    r.supply(5, 0.5);
+    const U1 = r.place('board.esp32_devkitc_wroom32', 300, 0);
+    r.sketch(U1, 'ServoSweep.ino');
+    const M1 = r.place('component.servo_sg90', 640, 40);
+    const G2 = r.place('component.ground', 560, 140);
+    const G3 = r.place('component.ground', 440, -120);
+    r.wire(T('PSU1', 'positive'), T(M1, 'vcc'), [
+      { x: -40, y: -20 },
+      { x: -40, y: -240 },
+      { x: 540, y: -240 },
+      { x: 540, y: 40 },
+    ]);
+    r.wire(T(M1, 'gnd'), T(G2, 'ref'), [{ x: 560, y: 20 }]);
+    r.wire(T(U1, 'gpio18'), T(M1, 'signal'), [
+      { x: 430, y: -20 },
+      { x: 430, y: 60 },
+    ]);
+    r.wire(T(U1, 'gnd'), T(G3, 'ref'));
+    return r.centre(-300);
+  },
 };

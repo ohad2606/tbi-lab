@@ -62,7 +62,9 @@ export type ComponentTypeId =
   /** Sprint 12 (Runtime v2, additive): R2 sensors and the R3 I2C display. */
   | 'sensor.hc_sr04'
   | 'sensor.dht22'
-  | 'display.lcd1602_i2c';
+  | 'display.lcd1602_i2c'
+  /** Sprint 15 (R4, additive): the SG90 servo, driven by an ESP32 PWM (LEDC) output. */
+  | 'component.servo_sg90';
 
 export interface ComponentInstance {
   /** Stable reference designator (`R1`, `PSU1`), unique per project, never reused. */

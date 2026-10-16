@@ -468,6 +468,8 @@ test('A13/A15: new Sprint 5 surfaces are Hebrew (technical tokens only), RTL chr
   const allowed = [
     // Sprint 12: part numbers and bus names kept verbatim in Hebrew (terminology rule).
     /^(HC|SR04|DHT22|AM2302|LCD|I2C|PCF8574|HD44780|Wire)$/,
+    // Sprint 15 (R4): PWM/LEDC, the SG90 part number, Arduino PWM API names and frequency/time units.
+    /^(PWM|LEDC|SG90|TowerPro|analogWrite|ledcWrite|ledcDetach|digitalWrite|Hz|kHz|ms|us)$/,
     /^TBI$/,
     /^Lab$/,
     /^English$/,

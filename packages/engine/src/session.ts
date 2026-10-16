@@ -71,6 +71,32 @@ export interface PinResult {
    * extrapolation, not a physical value, and must not be presented as one.
    */
   outsideModelRange?: true;
+  /**
+   * R4 (runtime host, architecture A1): the pad is a PWM output. `voltage` and `current` above are
+   * then time-averages; these are the waveform and the two operating points it alternates between.
+   */
+  pwm?: PwmPadFigures;
+  /** R4: the largest |current| over the PWM operating points, when it differs from the average. */
+  peakCurrent?: number;
+}
+
+/** R4: a PWM pad's waveform (ns, exact to float precision) and its high/low pad currents (A). */
+export interface PwmPadFigures {
+  duty: number;
+  periodNs: number;
+  highNs: number;
+  currentHigh: number;
+  currentLow: number;
+}
+
+/**
+ * R4: a component a PWM output switches. Its result is the time-average over the waveform; these
+ * are the peaks over the operating points (A), which the ratings check instead of the average.
+ */
+export interface PwmComponentFigures {
+  peakCurrent: number | null;
+  peakCurrents?: Record<string, number | null>;
+  peakArray?: number[];
 }
 
 export interface PsuControl {
@@ -159,6 +185,8 @@ export interface ComponentResult {
    * amperes (a dot's forward current).
    */
   array?: { rows: number; cols: number; currents: number[] };
+  /** R4: present when a PWM output switches this part: its values above are time-averages. */
+  pwm?: PwmComponentFigures;
 }
 
 export interface SolveStats {

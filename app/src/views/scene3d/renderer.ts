@@ -20,6 +20,7 @@ import {
   OwnedResources,
   paintLcdFace,
   paintMatrixFace,
+  servoHornYaw,
   type LcdFace,
 } from './models.js';
 import { assetLoadStats, loadAssets } from './assets/library.js';
@@ -175,7 +176,9 @@ export type LiveLevel =
   /** An LED matrix: each dot's level (0..1), row-major. */
   | { dots: number[] }
   /** A character LCD (Sprint 12): what the engine reports it shows. */
-  | { lcd: LcdFace };
+  | { lcd: LcdFace }
+  /** A servo (Sprint 15): the shaft angle the simulation reports, degrees. */
+  | { servoDeg: number };
 /** Re-exported for the tests: the tier choice lives in gpuInfo.ts (no three.js there). */
 export { chooseQuality };
 
@@ -484,6 +487,8 @@ export function createViewer(
     string,
     { texture: THREE.CanvasTexture; material: THREE.MeshStandardMaterial }
   >();
+  /** Servo horns by component id (Sprint 15), turned live to the reported shaft angle. */
+  let horns = new Map<string, THREE.Object3D>();
   let liveLevels: Record<string, LiveLevel> = {};
   /** Glow halos of the LEDs, by component id. */
   let halos = new Map<string, THREE.Sprite>();
@@ -510,11 +515,18 @@ export function createViewer(
       face.material.emissive.set(lcd?.backlight ? '#ffffff' : '#000000');
       face.material.emissiveIntensity = lcd?.backlight ? 0.75 : 0;
     }
+    // Servo horns: at the reported angle, at rest (90 deg) when nothing is reported.
+    for (const [id, horn] of horns) {
+      const live = liveLevels[id];
+      horn.rotation.y = servoHornYaw(
+        live && typeof live === 'object' && 'servoDeg' in live ? live.servoDeg : undefined,
+      );
+    }
     // The light pool (full tier): the brightest lit LEDs light their surroundings.
     const lit: { level: number; at: THREE.Vector3; color: string }[] = [];
     for (const [id, { lens: mat, die, core, coreObj, gain, at, color }] of lenses) {
       const raw = liveLevels[id] ?? 0;
-      if (typeof raw === 'object' && ('dots' in raw || 'lcd' in raw)) continue;
+      if (typeof raw === 'object' && ('dots' in raw || 'lcd' in raw || 'servoDeg' in raw)) continue;
       const live = raw;
       const level = typeof live === 'number' ? live : live.level;
       // The die is the light source; the epoxy glows with the light it scatters (diffused lenses
@@ -863,6 +875,7 @@ export function createViewer(
       applyLayers();
       matrices = new Map();
       lcds = new Map();
+      horns = new Map();
       content.traverse((o) => {
         const lens = o.userData.lensMaterial as THREE.MeshStandardMaterial | undefined;
         if (lens && o.userData.component)
@@ -881,6 +894,10 @@ export function createViewer(
           matrices.set(o.userData.component as string, o.userData.matrixFace);
         if (o.userData.lcdFace && o.userData.component)
           lcds.set(o.userData.component as string, o.userData.lcdFace);
+        if (o.userData.component && o.userData.model === 'servo.sg90') {
+          const horn = o.getObjectByProperty('name', 'servoHorn');
+          if (horn) horns.set(o.userData.component as string, horn);
+        }
       });
       applyLive();
       drawSelection();

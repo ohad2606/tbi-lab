@@ -35,7 +35,26 @@ export type SimFailure =
       features?: string[];
     }
   /** An ESP32 session could not start, or ended abnormally (Sprint 6). */
-  | { kind: 'runtime'; code: RuntimeFailCode; detail?: string };
+  | { kind: 'runtime'; code: RuntimeFailCode; detail?: string }
+  /**
+   * R4: a PWM output the session cannot simulate honestly (host `pwm_unsupported`), named: the
+   * pad(s), the affected parts or inputs, and for an unrepresentable LEDC mode which one.
+   */
+  | {
+      kind: 'pwm';
+      code: PwmFailCode;
+      gpios: number[];
+      components?: string[];
+      inputs?: number[];
+      why?: string;
+    };
+
+export type PwmFailCode =
+  | 'pwm_duty_zero_unverified'
+  | 'pwm_unsupported_mode'
+  | 'pwm_load_unsupported'
+  | 'pwm_input_unsupported'
+  | 'pwm_outputs_interact';
 
 export interface RunTimings {
   /** Worker construction to its first message; null when an existing worker was reused. */

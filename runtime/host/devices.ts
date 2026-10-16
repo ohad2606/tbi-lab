@@ -55,6 +55,8 @@ export const RUNTIME_DEVICE_TYPES: Record<string, readonly Capability[]> = {
   'sensor.hc_sr04': ['sched-input'],
   'sensor.dht22': ['sched-input'],
   'display.lcd1602_i2c': ['i2c', 'pad-func'],
+  // Sprint 15 (R4): a servo is driven by an LEDC waveform (Runtime v3).
+  'component.servo_sg90': ['pwm', 'pad-func'],
 };
 
 export interface DeviceDiagnostic {

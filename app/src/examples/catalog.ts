@@ -279,6 +279,21 @@ export const EXAMPLES: readonly Example[] = [
       'instrument.lab_psu',
     ],
   },
+  // Sprint 15 (R4): LEDC PWM — an LED dimmed by its duty, an SG90 swept by pulse width.
+  {
+    id: 'esp32-led-fade',
+    titleKey: 'example.esp32-led-fade.title',
+    summaryKey: 'example.esp32-led-fade.summary',
+    probes: [I('D1')],
+    parts: ['board.esp32_devkitc_wroom32', 'component.led', 'component.resistor'],
+  },
+  {
+    id: 'esp32-servo-sweep',
+    titleKey: 'example.esp32-servo-sweep.title',
+    summaryKey: 'example.esp32-servo-sweep.summary',
+    probes: [V('M1', 'vcc')],
+    parts: ['board.esp32_devkitc_wroom32', 'component.servo_sg90', 'instrument.lab_psu'],
+  },
 ];
 
 export function findExample(id: string): Example | undefined {

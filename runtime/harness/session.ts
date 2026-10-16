@@ -21,6 +21,8 @@ import {
   type Command,
   type I2cPhase,
   type InputSchedule,
+  type LedcChannelState,
+  type LedcTimerState,
   type Level,
   type PadFunction,
 } from './protocol.js';
@@ -81,6 +83,11 @@ export interface I2cEvent {
   phase: I2cPhase;
 }
 
+/** An LEDC timer or channel changed (capability `pwm`, patch 0009). */
+export type PwmEvent =
+  | { vns: bigint; timer: number; state: LedcTimerState }
+  | { vns: bigint; signal: number; state: LedcChannelState };
+
 export interface SessionHandler {
   /**
    * Initial external pad levels, applied before the first guest instruction. `caps` are the
@@ -96,6 +103,8 @@ export interface SessionHandler {
    * sees the released bus (0xff).
    */
   i2c?(e: I2cEvent): Command[];
+  /** An LEDC timer (`P`) or channel (`W`) state change (capability `pwm`). Reply `C` only. */
+  pwm?(e: PwmEvent): Command[];
   /** Periodic virtual-time tick: the only point where runtime commands apply (ADR-007). */
   tick?(vns: bigint): Command[];
   serial?(vns: bigint, bytes: Buffer): void;
@@ -175,7 +184,16 @@ export interface SessionResult {
   serial: Buffer;
   /** Bytes dropped because the serial buffer limit was reached. */
   serialOverflow: number;
-  frames: { H: number; G: number; T: number; S: number; F: number; B: number };
+  frames: {
+    H: number;
+    G: number;
+    T: number;
+    S: number;
+    F: number;
+    B: number;
+    P: number;
+    W: number;
+  };
   /** Sprint 12 (D-10): wall time the tick replies were withheld to keep real time (0: unpaced). */
   pacedMs: number;
   /** Bridge capabilities the runtime announced (empty: v1 runtime or no handshake). */
@@ -211,7 +229,7 @@ export function runSession(opts: SessionOptions, handler: SessionHandler): Promi
   const tickUs = opts.tickUs ?? 1000;
   const serialLimit = opts.serialLimitBytes ?? 1 << 20;
   const diagLimit = opts.diagnosticsLimitBytes ?? 64 << 10;
-  const frames = { H: 0, G: 0, T: 0, S: 0, F: 0, B: 0 };
+  const frames = { H: 0, G: 0, T: 0, S: 0, F: 0, B: 0, P: 0, W: 0 };
   let caps: Capability[] = [];
   let hello = false;
   let pacedMs = 0;
@@ -319,6 +337,8 @@ export function runSession(opts: SessionOptions, handler: SessionHandler): Promi
         throw new ProtocolError('F frame without the pad-func capability');
       if (f.type === 'B' && !caps.includes('i2c'))
         throw new ProtocolError('B frame without the i2c capability');
+      if ((f.type === 'P' || f.type === 'W') && !caps.includes('pwm'))
+        throw new ProtocolError(`${f.type} frame without the pwm capability`);
       frames[f.type]++;
       if (f.type === 'S') {
         const room = serialLimit - serialBytes;
@@ -354,6 +374,10 @@ export function runSession(opts: SessionOptions, handler: SessionHandler): Promi
         cmds = handler.i2c
           ? handler.i2c({ vns: f.vns, bus: f.bus, phase: f.phase })
           : absent(f.phase);
+      } else if (f.type === 'P') {
+        cmds = handler.pwm?.({ vns: f.vns, timer: f.timer, state: f.state }) ?? [];
+      } else if (f.type === 'W') {
+        cmds = handler.pwm?.({ vns: f.vns, signal: f.signal, state: f.state }) ?? [];
       } else {
         cmds = handler.tick?.(f.vns) ?? [];
       }

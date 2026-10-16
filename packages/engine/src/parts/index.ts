@@ -10,3 +10,4 @@ import './capacitor.js';
 import './ultrasonic.js';
 import './dht22.js';
 import './lcd.js';
+import './servo.js';
