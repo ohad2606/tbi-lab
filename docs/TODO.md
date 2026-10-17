@@ -937,3 +937,127 @@ Recommended phased order:
 6. Broader IC catalog based on real user demand.
 
 Quality and model correctness take priority over catalog size.
+
+
+---
+
+## Digital Logic & Integrated Circuits
+
+**Status:** Approved / Required Product Direction  
+**Priority:** Core professional capability after the base electrical engine is stable.
+
+### Goal
+
+TBI Lab must support digital logic and common integrated circuits as real engineering components.
+
+Approved direction includes:
+- NOT, AND, OR, NAND, NOR, XOR, XNOR and buffer elements;
+- combinational logic;
+- sequential logic;
+- digital clocks and stimulus sources;
+- truth-table inspection;
+- Boolean-expression display where useful;
+- selected packaged logic ICs;
+- 555 timer;
+- multiplexers, decoders, counters, registers and shift registers as later approved parts.
+
+### Engineering rules
+
+Logic must not be reduced to decorative 0/1 animation.
+
+For supported devices, the simulator should account for the real device/family characteristics that matter to correctness, including:
+- supply voltage;
+- input thresholds;
+- output levels;
+- undefined regions;
+- loading and drive capability;
+- pull-up / pull-down requirements;
+- high-impedance states;
+- propagation timing where modeled;
+- package pinout.
+
+Logic compatibility must be validated between connected devices.
+
+### Truth tables and analysis
+
+The product should eventually support:
+- generated truth tables;
+- manual input stepping;
+- active-path highlighting;
+- Boolean-expression display;
+- later simplification aids when justified.
+
+These are analysis aids over the same canonical circuit model.
+
+### Sequential logic
+
+Future support may include latches, flip-flops, counters, registers and shift registers.
+
+These must preserve real state and timing semantics where relevant.
+
+### 555 Timer
+
+The 555 timer is explicitly approved as an important early IC target.
+
+It must be modeled from documented device behavior, not as a pre-scripted oscillator.
+
+Support should eventually include at least:
+- monostable operation;
+- astable operation;
+- Trigger;
+- Threshold;
+- Discharge;
+- Output;
+- Reset;
+- Control Voltage;
+- supply pins.
+
+Timing must be derived from the connected RC network and the selected device model.
+
+### IC model requirements
+
+Each supported IC should have one canonical definition shared by Workbench, Schematic, 3D, simulation and AI.
+
+The definition should cover:
+- stable device ID;
+- package;
+- pin numbers and names;
+- pin roles;
+- supply requirements;
+- operating limits relevant to simulation;
+- functional model;
+- authoritative source/version.
+
+The simulator must detect incorrect pin use, incorrect supply connection and other modeled electrical incompatibilities.
+
+The AI Engineer must use the same canonical device/pin data and must not invent pin assignments from model memory.
+
+### Three-view integration
+
+The same device instance must map consistently across:
+- **Workbench** — package-oriented wiring;
+- **Schematic** — professional symbol;
+- **3D** — physical package visualization when available.
+
+### X-Ray / instruments
+
+Digital logic should integrate with:
+- X-Ray state display;
+- oscilloscope;
+- logic analyzer;
+- frequency/duty information;
+- electrical node measurements.
+
+### Scope discipline
+
+Do not add hundreds of ICs at once.
+
+Recommended order:
+1. basic logic primitives and digital stimulus;
+2. truth-table/state inspection;
+3. selected packaged logic devices;
+4. 555 timer;
+5. flip-flops, counters and shift registers;
+6. broader IC catalog according to real user demand.
+
+Model quality and correctness take priority over catalog size.
