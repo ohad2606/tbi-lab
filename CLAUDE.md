@@ -79,6 +79,7 @@ Later capabilities may include:
 - logic analyzer
 - AI circuit generation
 - AI troubleshooting
+- digital logic gates and integrated-circuit support, including the 555 timer
 - guided learning/circuit advisory grounded in simulation truth
 - X-Ray electrical visualization driven strictly by simulation truth
 - PWM visualization driven by real simulated timing/state
