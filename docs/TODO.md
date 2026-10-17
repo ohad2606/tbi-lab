@@ -704,3 +704,236 @@ Do not build a separate educational simulator.
 This feature is an advisory layer over the same professional TBI Lab project, solver, component models and AI Engineer.
 
 The product must remain useful to experienced users while making correct engineering decisions accessible to beginners.
+
+
+---
+
+## Digital Logic, Switching & Integrated Circuits
+
+**Status:** Approved / Required Product Direction  
+**Priority:** Core professional electronics capability after the base electrical engine and canonical component framework are stable.
+
+### Goal
+
+TBI Lab must support digital logic and common integrated circuits as first-class engineering objects, not as decorative symbols.
+
+This area includes two related but distinct domains:
+
+1. **Digital logic and switching**
+   - logic gates;
+   - combinational logic;
+   - sequential logic;
+   - digital signal sources and clocks;
+   - truth-table and Boolean behavior;
+   - logic-family electrical constraints.
+
+2. **Integrated circuits**
+   - timer/oscillator ICs such as the 555;
+   - logic-family ICs such as common 74xx/74HC devices;
+   - multiplexers, decoders, counters, shift registers and similar devices;
+   - additional ICs only when they enter approved product scope.
+
+Do not treat every IC as a black-box animation. Behavior must come from documented models.
+
+### Logic gates
+
+Initial gate primitives should eventually include:
+- NOT;
+- AND;
+- OR;
+- NAND;
+- NOR;
+- XOR;
+- XNOR;
+- buffer / tri-state buffer where supported.
+
+The simulator should support:
+- 2-input gates first;
+- multi-input variants where technically valid;
+- visible input/output state;
+- truth-table inspection;
+- Boolean-expression representation where useful;
+- propagation through connected logic networks.
+
+### Truth tables and learning/inspection
+
+Logic circuits should be inspectable in an engineering-friendly way.
+
+Future capabilities may include:
+- auto-generated truth tables;
+- manual input stepping;
+- highlight of active logical paths;
+- Boolean-expression display;
+- simplification guidance;
+- Karnaugh-map integration later if product demand justifies it.
+
+These are analysis/learning aids over the real circuit model, not separate simulated logic.
+
+### Digital electrical truth
+
+Digital states must not be represented as abstract 0/1 alone when electrical behavior matters.
+
+The engine must account for the selected logic family/device model, including where applicable:
+- supply voltage;
+- VIH / VIL thresholds;
+- VOH / VOL behavior;
+- undefined input region;
+- input leakage/load;
+- output-drive capability;
+- fan-out;
+- pull-up / pull-down requirements;
+- tri-state/high-impedance;
+- propagation delay;
+- rise/fall timing where modeled;
+- open-drain/open-collector behavior where applicable.
+
+A logic HIGH is not universally equal to 5 V, and logic compatibility must be checked across connected devices.
+
+### Logic families
+
+Do not build a universal logic-family catalog immediately.
+
+When integrated logic families enter scope, definitions should distinguish at least:
+- CMOS vs TTL-like behavior;
+- supply range;
+- threshold levels;
+- source/sink capability;
+- timing characteristics;
+- package pinout.
+
+Examples of future families/devices may include selected 74HC/74HCT/74LS components, but only approved parts should be implemented.
+
+### Sequential logic
+
+Future scope may include:
+- SR latch;
+- D latch;
+- D flip-flop;
+- JK flip-flop;
+- T flip-flop;
+- counters;
+- registers;
+- shift registers.
+
+Sequential elements require real timing/state semantics.
+
+Do not model them as static truth-table blocks when clock edges, setup/hold behavior or asynchronous inputs are part of the device semantics.
+
+### Clock and digital stimulus
+
+Provide or plan for suitable digital test sources:
+- manual toggle;
+- pulse/clock source;
+- configurable frequency;
+- duty cycle;
+- initial state;
+- optional one-shot pulse.
+
+Digital stimulus must integrate with oscilloscope, logic analyzer and X-Ray/PWM visualization.
+
+### 555 Timer
+
+The 555 timer is explicitly approved as an important early integrated-circuit target.
+
+It must be modeled as a real timing IC, not as a pre-scripted oscillator animation.
+
+The model should eventually represent the relevant functional behavior of:
+- VCC;
+- GND;
+- Trigger;
+- Threshold;
+- Discharge;
+- Output;
+- Reset;
+- Control Voltage.
+
+Required operating modes should include at minimum:
+- monostable;
+- astable.
+
+The simulator should derive timing from the connected RC network and device model.
+
+Where appropriate, behavior should reflect the 555's internal threshold relationships and discharge behavior rather than hard-coded output periods.
+
+Exact implementation must follow authoritative datasheet behavior for the specific selected 555 model/family.
+
+### IC component model
+
+Every supported integrated circuit should have a structured definition including:
+- canonical device ID;
+- manufacturer/family/model where relevant;
+- package;
+- pin numbers/names;
+- pin electrical roles;
+- supply requirements;
+- absolute maximum ratings;
+- recommended operating conditions where applicable;
+- logic thresholds / analog limits;
+- timing parameters;
+- functional model;
+- source documentation/version.
+
+The schematic symbol and physical package representation must map to the same canonical pin model.
+
+### Pin/package correctness
+
+IC pinout validation must be exact.
+
+The simulator must detect:
+- wrong power-pin connection;
+- swapped or invalid pins;
+- unconnected required pins where functionally relevant;
+- over-voltage;
+- illegal loading;
+- package-specific pin differences.
+
+The AI Engineer must use the same canonical IC pin definitions and must not invent pin numbers from memory.
+
+### Workbench / Schematic / 3D
+
+The same IC instance must have synchronized representations:
+
+- **Workbench:** physical/package-oriented wiring representation.
+- **Schematic:** professional logic/IC symbol representation.
+- **3D:** visual package/device representation when available.
+
+All views refer to the same circuit object and pin mapping.
+
+### AI integration
+
+The AI Engineer should eventually be able to:
+- build logic circuits from functional requirements;
+- explain gate-level operation;
+- produce validated truth tables;
+- diagnose wrong logic or wiring;
+- recommend suitable ICs;
+- calculate 555 RC values;
+- explain trade-offs between discrete gates and packaged ICs.
+
+All recommendations must be validated against real device/pin/electrical models before being presented as verified.
+
+### X-Ray integration
+
+For digital logic, X-Ray may display:
+- HIGH / LOW / undefined / high-impedance state;
+- transition activity;
+- direction where meaningful;
+- timing/frequency labels;
+- active logical path;
+- electrical voltage at the node.
+
+Do not portray abstract “logic flow” in a way that contradicts actual electrical state or timing.
+
+### Scope discipline
+
+Do not attempt to add hundreds of chips at once.
+
+Recommended phased order:
+1. Basic logic primitives and digital stimulus.
+2. Truth-table / state inspection.
+3. Selected packaged logic ICs.
+4. 555 timer.
+5. Flip-flops / counters / shift registers.
+6. Broader IC catalog based on real user demand.
+
+Quality and model correctness take priority over catalog size.
