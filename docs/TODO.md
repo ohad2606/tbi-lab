@@ -944,7 +944,7 @@ Quality and model correctness take priority over catalog size.
 ## Digital Logic & Integrated Circuits
 
 **Status:** Approved / Required Product Direction  
-**Priority:** Core professional capability after the base electrical engine is stable.
+**Priority:** Near-term core professional capability. Schedule basic digital logic and the 555 timer in one of the next development phases after the current core/Alpha stabilization work, before broad catalog expansion.
 
 ### Goal
 
@@ -1055,8 +1055,8 @@ Do not add hundreds of ICs at once.
 Recommended order:
 1. basic logic primitives and digital stimulus;
 2. truth-table/state inspection;
-3. selected packaged logic devices;
-4. 555 timer;
+3. 555 timer as an early concrete IC target;
+4. selected packaged logic devices;
 5. flip-flops, counters and shift registers;
 6. broader IC catalog according to real user demand.
 
