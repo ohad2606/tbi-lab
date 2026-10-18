@@ -164,9 +164,10 @@ messaging token; a broken alerter or journald can never turn an accepted report 
    `[Service]` / `Environment=TBI_REPORTS_DIR=/var/lib/tbi-runtime/state/reports`
    (optional `TBI_REPORTS_RETENTION_DAYS`, `TBI_REPORTS_MAX`), `daemon-reload`, restart in a quiet
    window (a restart ends live sessions).
-2. Frontend: build with `VITE_PROBLEM_REPORTS=1`, e.g.
-   `VITE_PROBLEM_REPORTS=1 deploy/dev-lab/publish-frontend.sh <ref>` (the variable is inherited by
-   the build), and check the menu item appears.
+2. Frontend: the release package built with the `rc4-reports` profile
+   (`deploy/release/build-package.sh deploy/release/rc4-reports.release.json <ref> …`, RC4
+   packaging gate: the switch is pinned in the profile, never inherited from the shell), and check
+   the menu item appears.
 3. Verify: send a report from the app; `list` shows it; `stat` shows `0700`/`0600` owned by
    `tbi-runtime`; journald shows one `problem_report` line.
 4. Point the ops alerter at `event == "problem_report"` lines.
