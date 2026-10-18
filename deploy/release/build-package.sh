@@ -10,7 +10,7 @@
 #   built (release-config.mjs: exactly the VITE_* settings the source reads, Active Minutes absent,
 #   Report a Problem switches explicit and consistent, pinned Node/npm). Nothing is inherited:
 #   npm ci and every build run under `env -i` with only PATH, HOME, LC_ALL and TZ added, and npm
-#   reads no user or global npmrc (NPM_CONFIG_USERCONFIG / GLOBALCONFIG = /dev/null).
+#   reads no user or global npmrc (NPM_CONFIG_USERCONFIG / GLOBALCONFIG: two empty files beside it).
 # - The profile and validator are read from the commit being built, not from this checkout.
 # - The source is built beside the package (<out-dir>.src); the output does not depend on that
 #   path (verified: two packages built at different paths are byte-identical, source maps included).
@@ -35,10 +35,11 @@ profile="$src/deploy/release/$(basename "$profile_arg")"
 
 # The pinned build environment (validates the profile against this source first).
 node deploy/release/release-config.mjs check "$profile" "$src" > "$out/build-config.json"
-mapfile -t ENV < <(node deploy/release/release-config.mjs env "$profile" "$src" "$R" "$T")
+npmrc="$out.npmrc"; rm -rf "$npmrc"; mkdir -p "$npmrc"; : > "$npmrc/user.npmrc"; : > "$npmrc/global.npmrc"
+mapfile -t ENV < <(node deploy/release/release-config.mjs env "$profile" "$src" "$R" "$T" "$npmrc")
 [ "${#ENV[@]}" -gt 0 ]
-base_env=("PATH=$PATH" "HOME=$HOME" "NPM_CONFIG_USERCONFIG=/dev/null" "NPM_CONFIG_GLOBALCONFIG=/dev/null"
-  "LC_ALL=C" "TZ=UTC")
+base_env=("PATH=$PATH" "HOME=$HOME" "NPM_CONFIG_USERCONFIG=$npmrc/user.npmrc"
+  "NPM_CONFIG_GLOBALCONFIG=$npmrc/global.npmrc" "LC_ALL=C" "TZ=UTC")
 
 env -i "${base_env[@]}" npm ci --no-audit --no-fund > "$out/npm-ci.log" 2>&1
 env -i "${ENV[@]}" npm run build --workspace @tbi-lab/app > "$out/frontend-build.log" 2>&1

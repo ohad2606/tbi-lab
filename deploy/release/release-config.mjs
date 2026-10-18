@@ -5,8 +5,9 @@
  * and handed to the build as its ENTIRE environment, so nothing comes from the machine.
  *
  *   release-config.mjs check  <profile> <srcdir>                  validate; print the effective config
- *   release-config.mjs env    <profile> <srcdir> <commit> <time>  validate; print the build environment
- *                                                                 (one KEY=VALUE per line, for env -i)
+ *   release-config.mjs env    <profile> <srcdir> <commit> <time> <npmrc-dir>
+ *                                         validate; print the build environment (one KEY=VALUE per
+ *                                         line, for env -i); <npmrc-dir> holds the empty npmrc files
  *
  * Rules (each one fails the build, none is a warning):
  * - The profile pins EXACTLY the VITE_* settings the app source reads: an unpinned setting (one a
@@ -163,16 +164,19 @@ export function currentTools() {
 }
 
 /** The complete environment of the frontend build: profile + identity, nothing inherited. */
-export function buildEnvironment(profile, { commit, time, path, home }) {
+export function buildEnvironment(profile, { commit, time, path, home, npmrcDir }) {
   if (!HEX40.test(commit)) throw new ConfigError(`commit must be 40 hex, not ${commit}`);
   if (!ISO_UTC.test(time))
     throw new ConfigError(`build time must be YYYY-MM-DDTHH:MM:SSZ, not ${time}`);
+  if (typeof npmrcDir !== 'string' || !npmrcDir.startsWith('/'))
+    throw new ConfigError('the npmrc directory must be an absolute path');
   const env = {
     PATH: path,
     HOME: home,
-    // npm reads no user or global configuration: only the lockfile and the project decide.
-    NPM_CONFIG_USERCONFIG: '/dev/null',
-    NPM_CONFIG_GLOBALCONFIG: '/dev/null',
+    // npm reads no user or global configuration: only the lockfile and the project decide. Two
+    // distinct empty files (npm refuses one file, e.g. /dev/null, loaded as both).
+    NPM_CONFIG_USERCONFIG: `${npmrcDir}/user.npmrc`,
+    NPM_CONFIG_GLOBALCONFIG: `${npmrcDir}/global.npmrc`,
     LC_ALL: 'C',
     TZ: profile.build.TZ,
     TBI_BUILD_COMMIT: commit,
@@ -202,7 +206,7 @@ export function effectiveConfig(profile, srcdir) {
 }
 
 function main(argv) {
-  const [cmd, profilePath, srcdir, commit, time] = argv;
+  const [cmd, profilePath, srcdir, commit, time, npmrcDir] = argv;
   if (!['check', 'env'].includes(cmd) || !profilePath || !srcdir) {
     console.error('usage: release-config.mjs check|env <profile> <srcdir> [<commit> <time>]');
     return 2;
@@ -222,6 +226,7 @@ function main(argv) {
     time,
     path: process.env.PATH,
     home: process.env.HOME,
+    npmrcDir,
   });
   for (const [k, v] of Object.entries(env)) process.stdout.write(`${k}=${v}\n`);
   return 0;

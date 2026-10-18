@@ -122,12 +122,13 @@ describe('release profile vs source', () => {
       time: '2026-10-18T12:00:00Z',
       path: '/usr/bin',
       home: '/home/x',
+      npmrcDir: '/out/p.npmrc',
     });
     expect(env).toEqual({
       PATH: '/usr/bin',
       HOME: '/home/x',
-      NPM_CONFIG_USERCONFIG: '/dev/null',
-      NPM_CONFIG_GLOBALCONFIG: '/dev/null',
+      NPM_CONFIG_USERCONFIG: '/out/p.npmrc/user.npmrc',
+      NPM_CONFIG_GLOBALCONFIG: '/out/p.npmrc/global.npmrc',
       LC_ALL: 'C',
       TZ: 'UTC',
       TBI_BUILD_COMMIT: 'a'.repeat(40),
