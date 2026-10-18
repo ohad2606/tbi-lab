@@ -84,6 +84,29 @@ Service hashes, identical in both profiles: `session-host.mjs a24338d6…`, `bui
 - **No exception is applied to source maps.** The RC3 exception does not carry over. `compare-packages.sh` has no exception list.
 - G2 closes only when the same two-build comparison passes on the Alpha packaging host, with this script, on the merged RC4 commit.
 
+### 4.1 Sprint 16A: the source-map nondeterminism found and fixed
+
+The `verify-on-packaging-host.sh` run on `88a8f51` **failed**: `rc4` was identical, but in
+`rc4-reports` the two clean builds differed in one file, `index-*.js.map`. The executable JS was
+identical. The cause is two `sourcesContent` entries, the brand PNG modules
+(`tbi-lab-logo.png`, `tbi-lab-symbol.png`). Their text is Rolldown's internal placeholder
+`import.meta.ROLLDOWN_FILE_URL_<ref>`, and the two reference ids were swapped between the builds.
+This is almost certainly the `.map` difference Alpha measured (*imported*), and it means the
+earlier identical DEV pairs (§4) were not proof of determinism.
+
+**Fix (`ea60028`, no exception):**
+- A build plugin (`app/vite.config.ts`) sets those placeholder entries to `null` after writing. That is allowed by the source map format: the module has no source anyone wrote, and `sources` and the mappings are unchanged.
+- `check-dist.mjs` refuses any map that still carries a placeholder (unit-tested).
+
+**Result on `ea60028`:** two complete `verify-on-packaging-host.sh` runs (8 clean builds) on DEV.
+- **PASS** both times.
+- `rc4` gave manifest `09dd9945fd3080a1` for all four builds.
+- `rc4-reports` gave `65f3e95106518529` for all four.
+- Each package is 26 files with 8 source maps, and `check-dist` is confirmed for every one.
+
+**Remaining nondeterministic files on DEV: none.** The packaging-host run (§8) is still required,
+because a multi-core host may exercise other orderings.
+
 ## 5. Quality gates (DEV)
 
 All of these ran on DEV on 2026-10-18, on the RC4 source (`92dac26` content plus `deploy/release/`).
@@ -176,7 +199,7 @@ source. G6 and G9 are not described in the manifest: their status is unknown her
 | Gate (manifest) | What the code now provides | Status on DEV |
 |---|---|---|
 | **G1 / D6**: RC4 SHA through PRs on `sprint-13`, without Active Minutes | #8 → #9 → #10, all draft, CI green; `92dac26`'s composition verified; Active Minutes absent (validator + `check-dist`) | **Open**: needs the merges (PM). The RC4 SHA exists only after them |
-| **G2 / D1**: reproducible package, no source-map exception | `compare-packages.sh` (manifest equality, no exception list), `verify-on-packaging-host.sh` | **PASS on DEV** (§4); **open on the Alpha packaging host** |
+| **G2 / D1**: reproducible package, no source-map exception | `compare-packages.sh` (manifest equality, no exception list), `verify-on-packaging-host.sh`, deterministic source maps (§4.1) | **PASS on DEV** after the §4.1 fix (8 builds); **open on the Alpha packaging host** |
 | **G3 / D2–D4**: every VITE setting pinned; build script fixed | profiles, `release-config.mjs`, `build-package.sh` (env -i, no npmrc), `check-dist.mjs` | **PASS** (tests 11/11, four DEV packages) |
 | **G4 / D5** | not described in the manifest beyond "not written" | **Unknown on DEV** |
 | **G5 / D7**: the QEMU-backed E2E specs for S14 | the `*-real` specs | **Local stack on DEV: 16/16 pass** (2 compatibility cases skipped, §5.1); **staging run still open** |
