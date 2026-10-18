@@ -77,6 +77,12 @@ describe('T-PROTO-4: F and B frames', () => {
     });
     expect(parseFrame('F 5 22 gpio 0')).toMatchObject({ func: 'gpio', openDrain: false });
     expect(parseFrame('F 5 4 periph:255 0')).toMatchObject({ func: 'periph:255' });
+    // Patch 0010 (R4 review M8): an inverted routing, including inverted simple GPIO (256).
+    expect(parseFrame('F 5 4 inverted:71 0')).toMatchObject({ func: 'inverted:71' });
+    expect(parseFrame('F 5 4 inverted:256 1')).toMatchObject({
+      func: 'inverted:256',
+      openDrain: true,
+    });
     expect(parseFrame('B 7 0 S 27 0')).toEqual({
       type: 'B',
       vns: 7n,
@@ -94,6 +100,9 @@ describe('T-PROTO-4: F and B frames', () => {
     bad('F 5 4 uart0-tx 0'); // unknown function
     bad('F 5 4 periph:256 0');
     bad('F 5 4 periph:01 0');
+    bad('F 5 4 inverted:257 0');
+    bad('F 5 4 inverted:071 0');
+    bad('F 5 4 inverted 0');
     bad('F 5 4 i2c2-sda 1');
     bad('F 5 4 gpio 2');
     bad('B 7 2 P'); // bus 2
@@ -218,10 +227,14 @@ const terminal = async (s: HostSession) => {
   await s.done();
   return s.status();
 };
-const runFor = async (s: HostSession, ms: number) => {
+/** Run for `ms` of wall time and, when `minSimMs` is given, at least until that simulated time. */
+const runFor = async (s: HostSession, ms: number, minSimMs = 0) => {
   s.run();
   await waitState(s, 'running');
   await new Promise((r) => setTimeout(r, ms));
+  const deadline = Date.now() + 20_000;
+  while (BigInt(s.status().simNs) < BigInt(minSimMs) * 1_000_000n && Date.now() < deadline)
+    await new Promise((r) => setTimeout(r, 20));
   s.stop();
   return terminal(s);
 };
@@ -338,7 +351,8 @@ describe('publication with ticks reported after their grid time (Gate B G-2)', (
   for (const late of ['4@1', '4@25', '999@1'])
     it(`windows keep publishing with ticks ${late.split('@')[0]} ns late (from tick ${late.split('@')[1]})`, async () => {
       const s = session({ TBI_FAKE_TICK_LATE_NS: late }, null);
-      expect(await runFor(s, 300)).toMatchObject({ state: 'ended', reason: 'stopped' });
+      // Simulated time, not wall time, decides how many windows exist (a loaded host is slower).
+      expect(await runFor(s, 300, 80)).toMatchObject({ state: 'ended', reason: 'stopped' });
       const gpio = s.log.since(0).filter((e) => e.type === 'gpio');
       // GPIO2 toggles every 5 ms: every 10 ms window carries a change, and none is lost.
       const windows = gpio.map((e) => BigInt(e.simNs!));
