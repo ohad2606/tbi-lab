@@ -129,7 +129,11 @@ export function newReportId(): string {
 export const REPORT_FILE_RE = /^[0-9A-Z]{4}-[0-9A-Z]{4}-[0-9A-Z]{4}\.json$/;
 const TMP_RE = /^\.[0-9A-Z-]{14}\.tmp$/;
 
-/** In-memory sliding windows (check every window, then record in all: no partial consumption). */
+/**
+ * In-memory sliding windows (check every window, then record in all: no partial consumption). A
+ * request refused later for a reason that is not the requester's (global limit, full or failing
+ * store) is refunded, so it never turns into a misleading per-user 429.
+ */
 class Windows {
   private readonly events = new Map<string, number[]>();
   constructor(private readonly now: () => number) {}
@@ -153,6 +157,11 @@ class Windows {
     this.events.set(key, list);
     if (this.events.size > 100_000) this.events.clear(); // bounded memory under abuse
     return { ok: true };
+  }
+
+  /** Give back one taken event (a refusal that is not the requester's doing costs nothing). */
+  refund(key: string): void {
+    this.events.get(key)?.pop();
   }
 }
 
@@ -203,7 +212,16 @@ export class ReportStore {
     const mine = this.windows.take(principal, this.config.perPrincipal);
     if (!mine.ok) return this.refuse(new Refusal('rate_limited', mine.retryAfterMs), principal);
     const all = this.windows.take('*', [this.config.global]);
-    if (!all.ok) return this.refuse(new Refusal('rate_limited', all.retryAfterMs), principal);
+    if (!all.ok) {
+      this.windows.refund(principal);
+      return this.refuse(new Refusal('rate_limited', all.retryAfterMs), principal);
+    }
+    // A store that is full or failing is the host's problem: the report is not counted.
+    const unstored = (r: Refusal) => {
+      this.windows.refund(principal);
+      this.windows.refund('*');
+      return this.refuse(r, principal);
+    };
 
     const id = newReportId();
     const at = new Date(this.now()).toISOString();
@@ -211,11 +229,11 @@ export class ReportStore {
     this.pending++;
     try {
       if ((await this.count()) + this.pending > this.config.maxReports)
-        return this.refuse(new Refusal('storage_pressure'), principal);
+        return unstored(new Refusal('storage_pressure'));
       await this.write(id, `${JSON.stringify(record, null, 2)}\n`);
     } catch (e) {
       this.line(`problem report storage error: ${(e as NodeJS.ErrnoException)?.code ?? 'error'}`);
-      return this.refuse(new Refusal('storage_pressure'), principal);
+      return unstored(new Refusal('storage_pressure'));
     } finally {
       this.pending--;
     }

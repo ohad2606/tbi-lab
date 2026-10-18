@@ -100,7 +100,14 @@ switch (command) {
     break;
   }
   case 'show':
-    process.stdout.write(readFileSync(find(arg), 'utf8'));
+    // Still valid JSON, but bidirectional controls and line separators in a tester's text are
+    // shown escaped, so they cannot reorder or hide what the operator's terminal displays.
+    process.stdout.write(
+      readFileSync(find(arg), 'utf8').replace(
+        /[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069\u2028\u2029]/g,
+        (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`,
+      ),
+    );
     break;
   case 'delete':
     unlinkSync(find(arg));
