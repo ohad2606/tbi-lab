@@ -67,7 +67,8 @@ esp32_gpio (patch 0007) ── F <vns> <pad> periph:<signal> ──► Session H
 | `d3d4082` | App: SG90 in every view, PWM readouts, peak ratings, limitations, examples `esp32-led-fade`, `esp32-servo-sweep` |
 | (this commit) | Test baselines updated for the R4 product (§5.3), this record |
 
-Runtime v3 = `1a0867669eb0f01f` (upstream `40edccac` + patches 0001–0009), built by `provision.sh`
+Runtime v3 = `1a0867669eb0f01f` (upstream `40edccac` + patches 0001–0009) in Sprint 15; **since Sprint 16A
+`c97c28365cdce379` (+ patch 0010, §10)**, built by `provision.sh`
 into a private DEV home (`~/tbi-s15-rt`). Not installed anywhere else.
 
 ## 5. Verification (Phase D) — all executed locally on DEV (`tbi-lab-srv`), 2026-10-15
@@ -129,12 +130,12 @@ the `s12-r3` assertion now requires the I2C capabilities (v3 adds `pwm`).
 | B1 | blocker | servo re-anchored on every unrelated solve (identity comparison) → past pulses replayed → host error, session hang | **fixed** (`0b20d41`): compared by value, no re-feeding; post-run flush guarded; regression test proven to fail without the fix |
 | M1 | minor | pause/resume restarted the phase | **fixed** (phase shifted by the pause) |
 | M2 | minor | APB change applied at next overflow (hardware: immediate); REF_TICK assumed 1 MHz | open, documented (§6); rare path (CPU < 80 MHz) |
-| M3 | minor | during the one-tick grace an unsupported pad is published solved low | open, documented (§6); ≤ 1–2 ms before the refusal |
+| M3 | minor | during the one-tick grace an unsupported pad is published solved low | **fixed in Sprint 16A** (§10): nothing is published while an unsupported state is pending |
 | M4 | minor | only the first problem's start tracked | **fixed** (per problem) |
 | M5 | minor | superposition only checked at all-high | **improved**: all pairs for ≥ 3 pads; higher-order cancellation documented |
 | M6 | minor | PSU mode / matrix `lit` from the low point | open, documented (§6) |
 | M7 | minor | QEMU can send duty > 2^20 with an invalid resolution → classified as protocol error | open (fails closed); fix needs a QEMU change (new runtime id) |
-| M8 | minor | IDF output inversion not detected | open, documented (§6) |
+| M8 | minor | IDF output inversion not detected | **fixed in Sprint 16A** (§10): patch 0010 publishes the inversion, the host refuses it by name |
 | M9 | minor | missing fall at a segment start after a high level (hpoint > 0) | **fixed** |
 | M10 | minor | missing tests | **added**: B1 regression, open drain, session-level load refusal, strict P/W parsing, duty 0 into a servo, undefined servo signal, SG90 part, pause/resume, segment fall |
 | N1–N6 | notes | res < 8 fractional-divider per-period jitter; LS idle immediacy; register read details; old host rejects every session on v3 (deploy together); RGB limitation text now assumes v3; aux-solve part state | documented (§6, §7) |
@@ -148,8 +149,9 @@ the `s12-r3` assertion now requires the I2C capabilities (v3 adds `pwm`).
 - **First partial cycle:** between enabling a channel and its first cycle boundary the pad keeps
   its previous state (≤ one period).
 - **High-speed channels only:** the 9th+ channel (low-speed group) is refused.
-- **Output inversion** (`ledcOutputInvert`, GPIO-matrix OUT_INV) is refused at Build; inversion
-  set through IDF APIs directly is not detected (the bit is not published by patch 0007).
+- **Output inversion** (`ledcOutputInvert`, GPIO-matrix OUT_INV) is refused at Build, and on the
+  runtime (patch 0010) however it is set: an inverted LEDC output is `pwm_unsupported_mode`
+  (`inverted`), any other inverted routing on a connected pin `unsupported_feature`.
 - **SG90:** supply current not modelled (D3); signal thresholds 2.0/0.8 V assumed (unspecified);
   4.8–6.0 V only; 1.0–2.0 ms → 0–180° nominal map; no torque, load or stall; frames far from
   20 ms are accepted as the model's pulse rules allow.
@@ -158,8 +160,8 @@ the `s12-r3` assertion now requires the I2C capabilities (v3 adds `pwm`).
   (exact only on average); all Arduino defaults (8–16 bit) are exact.
 - **APB clock change** (CPU below 80 MHz) takes effect at the next overflow in the model (real:
   immediately); REF_TICK assumed 1 MHz (ESP-IDF always configures it so).
-- **Grace tick:** an unsupported PWM state is published (solved low) for ≤ one command tick before
-  the session is refused.
+- **Grace tick:** an unsupported PWM state is refused after one command tick; meanwhile nothing new
+  is published (the previous truthful outcome stays on screen for ≤ one tick).
 - **Averaged parts' discrete fields** (PSU CV/CC mode, LED-matrix lit count) come from the low point;
   their currents are averaged and peaks shown.
 - **Superposition** is checked for all pairs and the all-high point; a higher-order interaction
@@ -172,13 +174,14 @@ the `s12-r3` assertion now requires the I2C capabilities (v3 adds `pwm`).
 1. **O-R4-1** — one bench measurement (`docs/sprints/s13-evidence/h2/BENCH-PROTOCOL.md` §4,
    GPIO2 → 10 kΩ → GND, sketches 4a–4d, a scope if available). Minimal validation plan in §9.
 2. **R4-B** (staging Gate B on Runtime v3) and **R4-C** — need PM authorization.
-3. PM ratification of R4-D1..D4 as applied (§1).
+3. PM ratification of R4-D1..D7 (§1 for D2, §8 for the others).
 
 ## 8. Decisions taken in implementation (for PM ratification)
 
 | # | Decision | Alternative |
 |---|---|---|
 | D1 | A1 two-point averaging, generalised with a superposition check | refuse all loads but the servo |
+| D2 | R4 is DEV only / post-alpha (not in the 16 Nov alpha: R4-B not passed by 5 Nov) | in the alpha if R4-B passes by 5 Nov |
 | D3 | SG90 supply current not modelled, reported as unknown | a vendor-sheet constant (no conditions given) |
 | D4 | hardware fade refused (builder + runtime) | — |
 | D5 | P/W frames instead of a single per-pad W | as proposed (loses exact phase across timer changes) |
@@ -192,3 +195,35 @@ the `s12-r3` assertion now requires the I2C capabilities (v3 adds `pwm`).
 2. If constant low (and, with a scope, no pulses): change the host's `zero` rule to a static low
    (one line in `pwm.ts`), add the measurement as evidence, re-run T-R4-1/-5.
 3. If anything else: keep the refusal; document the measured behaviour.
+
+## 10. Sprint 16A addendum (DEV, 2026-10-18)
+
+All on DEV (`tbi-lab-srv`); nothing merged or deployed.
+
+| Item | Change | Evidence |
+|---|---|---|
+| **M8** inversion | QEMU patch 0010: `FUNCn_OUT_SEL_CFG` OUT_INV_SEL / OEN_INV_SEL published as pad function `inverted:<sel>`; host: an inverted LEDC pad is refused as `pwm_unsupported_mode` (`why: inverted`, EN/HE), any other inverted routing on a connected pin as a lasting `unsupported_feature` (app message `inverted_output`, EN/HE) | Real QEMU (`TbiPwmInv`, pinned `cb4a6bfd…`, built twice byte-identical): `ledcOutputInvert(18, true/false)` → `inverted:71` then `periph:71`; `esp_rom_gpio_connect_out_signal` on GPIO19's LEDC signal → `inverted:72`; on simple GPIO21 → `inverted:256`, restored → `gpio`; frame stream identical over 2 runs. Session Host: an LED on GPIO18 is refused `pwm_unsupported_mode`/`inverted`; its last published current is the exact 25 % average (1.438496 mA) |
+| **M3** grace tick | No electrical outcome is published while a PWM problem is pending | host test fails without the fix; real QEMU above showed 0 mA in the grace window before the fix |
+| Runtime v3 | `c97c28365cdce379` = `40edccac` + 0001–0010 (was `1a0867669eb0f01f`) | `provision.sh qemu` clean (patches apply, built in 622 s) |
+| Test reliability | `bridge-v2` G-2 cases counted windows after 300 ms of wall time (flaky under load on the R4 host: 1 of 2 runs failed on unmodified `fb90e18`); now they wait for 80 ms of simulated time | 3 × 25/25 under load |
+
+**G6 repeated on `c97c28365cdce379`** (runtime behaviour changed): 22 files, **125 / 125** — gate 7,
+s12-determinism 8, r1-determinism 2, s12-bridge 11, s12-r2 3, s12-r3 4, s12-r2-timing 9,
+s12-bridge-timing 2, s12-examples 3, r1-examples 2, failures 15, r2-failures 11, r2-acceptance 5,
+electrical 7, s12-pace 1, s13-pad-short 1, s8-gate 5, s8-policy 7, s8-containment 9, isolation 5,
+s15-r4 6, s15-examples 2. Not hidden: `isolation` first failed (1 test) because the micropython
+image was not provisioned in this runtime home; after copying the hash-verified image it passed 5/5.
+
+**Still open (assessed, not changed):**
+- **M2** (APB change applied at the next overflow; REF_TICK assumed 1 MHz): affects only firmware
+  that lowers the CPU below 80 MHz while PWM runs; the error is ≤ one period at the switch; no
+  supported example does it. A fix belongs in patch 0009 (publish the APB change as a timer
+  event) — deferred, documented.
+- **M6** (discrete fields from the low point: PSU CV/CC mode, LED-matrix lit count): currents and
+  peaks are correct; a PSU that current-limits only during the high phase is shown in CV mode.
+  Showing one mode is not meaningful for a switching load; the honest display is "alternates"
+  (a UI/model decision) — listed for the PM, not changed.
+- **O-R4-1** duty 0: unchanged; no bench evidence exists (protocol §9). Still refused when a load
+  can tell.
+- **Browser → real-QEMU** acceptance of the R4 UI: not yet run (needs a local or staging real stack;
+  R4-B).
