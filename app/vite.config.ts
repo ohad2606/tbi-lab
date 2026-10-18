@@ -1,4 +1,6 @@
 import type { IncomingMessage } from 'node:http';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { defineConfig, type Plugin, type ProxyOptions } from 'vite';
 import { currentBuildInfo, versionJson } from './buildInfo.config.js';
 
@@ -55,9 +57,35 @@ const versionFile: Plugin = {
   },
 };
 
+/**
+ * RC4 packaging gate G2 (reproducible builds): an imported asset (e.g. a brand PNG) is a module
+ * whose source text is the bundler's internal placeholder `import.meta.ROLLDOWN_FILE_URL_<ref>`,
+ * and the reference ids are assigned in a nondeterministic order: two clean builds swapped them in
+ * the main bundle's source map (the executable code was identical). That placeholder is not
+ * source anyone wrote, so its `sourcesContent` entry becomes null (allowed by the source map
+ * format); `sources` and the mappings are unchanged.
+ */
+const PLACEHOLDER_SOURCE = /^export default import\.meta\.ROLLDOWN_FILE_URL_[A-Za-z0-9_-]+;?\s*$/;
+const deterministicSourceMaps: Plugin = {
+  name: 'tbi-deterministic-sourcemaps',
+  apply: 'build',
+  writeBundle(options, bundle) {
+    for (const fileName of Object.keys(bundle)) {
+      if (!fileName.endsWith('.map') || !options.dir) continue;
+      const path = join(options.dir, fileName);
+      const map = JSON.parse(readFileSync(path, 'utf8')) as { sourcesContent?: (string | null)[] };
+      if (!map.sourcesContent?.some((c) => c !== null && PLACEHOLDER_SOURCE.test(c))) continue;
+      map.sourcesContent = map.sourcesContent.map((c) =>
+        c !== null && PLACEHOLDER_SOURCE.test(c) ? null : c,
+      );
+      writeFileSync(path, JSON.stringify(map));
+    }
+  },
+};
+
 export default defineConfig({
   define: { __TBI_BUILD__: JSON.stringify(buildInfo) },
-  plugins: [versionFile],
+  plugins: [versionFile, deterministicSourceMaps],
   // Preact via the automatic JSX runtime; no framework preset or Babel needed.
   oxc: { jsx: { runtime: 'automatic', importSource: 'preact' } },
   build: { target: 'es2022', sourcemap: true },

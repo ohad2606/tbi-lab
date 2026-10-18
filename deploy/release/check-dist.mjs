@@ -11,6 +11,7 @@
  * - Report a Problem: the compiled switch is the profile's value (fails closed when it cannot be
  *   located, e.g. after a minifier change).
  * - Every pinned value is present in the bundle.
+ * - No source map carries a bundler asset placeholder (G2: assigned in a nondeterministic order).
  */
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -29,7 +30,12 @@ export function checkDist(profile, dist) {
   const all = code.join('\n');
 
   for (const m of maps) {
-    const { sources } = JSON.parse(readFileSync(join(dist, 'assets', m), 'utf8'));
+    const { sources, sourcesContent } = JSON.parse(readFileSync(join(dist, 'assets', m), 'utf8'));
+    // G2: bundler placeholders are assigned in a nondeterministic order (vite.config.ts).
+    if (
+      (sourcesContent ?? []).some((c) => typeof c === 'string' && c.includes('ROLLDOWN_FILE_URL_'))
+    )
+      errors.push(`${m}: carries a bundler asset placeholder (nondeterministic)`);
     for (const s of sources)
       for (const p of profile.excluded.paths)
         if (s.replace(/\\/g, '/').includes(`/${p.replace(/^app\//, '')}`) || s.includes(p))

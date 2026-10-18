@@ -171,6 +171,21 @@ describe('built frontend vs profile', () => {
     ).toEqual(['Report a Problem switch: found 0 compiled switches, expected 1']);
   });
 
+  it('refuses a source map carrying a bundler asset placeholder (G2, nondeterministic order)', () => {
+    const d = tree({
+      'assets/index-x.js': sw('`0`'),
+      'assets/index-x.js.map': JSON.stringify({
+        version: 3,
+        sources: ['../../src/assets/brand/logo.png'],
+        sourcesContent: ['export default import.meta.ROLLDOWN_FILE_URL_WPGYjwIlzWVNM1bYhOc83w'],
+        mappings: '',
+      }),
+    });
+    expect(checkDist(loadProfile(RC4), d).errors).toEqual([
+      'index-x.js.map: carries a bundler asset placeholder (nondeterministic)',
+    ]);
+  });
+
   it('refuses Active Minutes modules, excluded settings and uncompiled settings in the bundle', () => {
     const errors = checkDist(
       loadProfile(RC4),
