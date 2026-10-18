@@ -1,0 +1,158 @@
+# RC4 packaging gate and release preparation (DEV)
+
+**Status: PREPARED on DEV. Not merged, not deployed, nothing switched on.** Alpha stays on RC3
+(`802befe`) until the PM authorizes otherwise. All evidence in this record was produced on the DEV
+host (`tbi-lab-srv`) unless it is explicitly marked *imported from Alpha*.
+
+## 1. Source (handoff from Alpha, verified on DEV)
+
+| Check | Result |
+|---|---|
+| Incremental bundle sha256 | `67e8af9f…af95`: equals the value supplied independently in the PM directive, and `sha256sum -c` passes (both bundles) |
+| `git bundle verify` | OK. It requires `802befe` (RC3 = `origin/sprint-13`), which DEV has |
+| Refs (imported as `refs/remotes/alpha-s14/*`) | `s14-integration 2e8eb7c`, `s14-acceptance 43bd781`, `s14-diagnostics b2d7b1f`, `s14-report-problem 3155de7`, `s14-active-minutes 1e9edfb`. All five equal the manifest |
+| Ancestry | Every component branch has merge base `802befe`. First-parent chain `802befe → cb8a005 → 3299478 → 92dac26 → 2e8eb7c` |
+| `92dac26` composition | Re-merging `3299478` and `3155de7` gives tree `f981adc1`, identical to `92dac26`'s tree. Re-merging diagnostics gives `5c861e81` = `3299478^{tree}`. `cb8a005^{tree}` = `43bd781^{tree}` |
+| Active Minutes in `92dac26` | **none**: no file, setting or reference. `2e8eb7c` adds only the 11 Active Minutes files |
+
+**RC4 = `92dac26`'s content + this packaging work. `2e8eb7c` is not used.**
+
+## 2. Release-relevant build settings
+
+The RC4 source reads **8** `VITE_*` settings. The ninth `VITE_*` name in the handoff, `VITE_ACTIVITY_ENDPOINT`, belongs to the Active Minutes POC. It is absent from RC4 and is refused by the validator if it appears.
+
+| Setting | RC4 value | Before (RC3 `build-package.sh`) |
+|---|---|---|
+| `VITE_SIGN_OUT_URL` | `/oauth2/sign_out` | set |
+| `VITE_RUNTIME_BASE` | `/runtime` (pinned to the code default) | **inherited** |
+| `VITE_BUILD_BASE` | `/build` (pinned to the code default) | **inherited** |
+| `VITE_PREVIEW_NAME` | unset (guaranteed) | unset |
+| `VITE_STORAGE_NAMESPACE` | unset (guaranteed) | unset |
+| `VITE_FEEDBACK_URL` | unset (guaranteed; the external form needs owner approval) | unset |
+| `VITE_FEEDBACK_VERSION_PARAM` | unset (guaranteed) | **inherited** |
+| `VITE_PROBLEM_REPORTS` | `"0"` (`rc4`) or `"1"` (`rc4-reports`), explicit | **inherited** (did not exist in RC3) |
+| `TBI_BUILD_ENV` / `TZ` / `LC_ALL` | `dev-lab` / `UTC` / `C` | set / inherited / inherited |
+| `TBI_BUILD_COMMIT` / `TBI_BUILD_TIME` | arguments (commit, fixed time) | arguments |
+| Node / npm | `v24.21.0` / `11.19.0`, checked | recorded only |
+| Host switch `TBI_REPORTS_DIR` | null in `rc4`; the unit template's path in `rc4-reports` | — |
+
+Two of the previously inherited settings are not harmless defaults. `VITE_BUILD_BASE` and `VITE_RUNTIME_BASE` fall back with `??`, so an empty value inherited from a shell would have produced a build that calls `""` instead of `/build`. The validator therefore forbids empty strings: a setting is either a value or `null` (guaranteed unset).
+
+## 3. What changed in packaging (`deploy/release/`)
+
+- `rc4.release.json` and `rc4-reports.release.json`: the profiles. They are identical except for the two Report a Problem switches, which must agree.
+- `release-config.mjs`: validates a profile against the source being built. The build fails on:
+  - an unpinned setting, or a pinned setting the source no longer reads;
+  - an excluded setting or path (Active Minutes);
+  - switches that are not explicit or do not agree;
+  - a feedback URL being set;
+  - a wrong Node or npm version;
+  - a tracked `.env` file.
+
+  It prints the complete build environment and the recorded configuration.
+- `build-package.sh`: the successor of `s13-evidence/release/build-package.sh`. That script is kept unchanged as RC3 evidence.
+  - It uses the same package layout (`frontend/`, `services/`, `MANIFEST.sha256`, `inputs.sha256`, `COMMIT`, `VERSION`, `BUILD_TIME`, `node.version`). It adds `build-config.json`, `npm.version` and the profile's hash in `inputs.sha256`.
+  - `npm ci` and every build run under `env -i` with only `PATH`, `HOME`, `LC_ALL`, `TZ` and the profile.
+  - The profile and validator are read **from the commit being built**.
+  - There are no hard-coded worktree paths.
+- `check-dist.mjs`: checks the built frontend against the profile:
+  - no source map lists an Active Minutes module, and no bundle names an excluded setting;
+  - no uncompiled `VITE_*` reference remains;
+  - the compiled Report a Problem switch equals the profile's value. If the check cannot find the switch, it fails.
+- `compare-packages.sh`: the reproducibility gate. It compares two packages file by file, including executables, HTML, CSS, source maps and services, plus the recorded configuration. **There is no exception list.** Every differing file is named with its type, and the comparison fails.
+- `tests/release-config.test.mjs`: 10 tests in the default unit suite, so they run in CI.
+
+## 4. Reproducibility (DEV)
+
+Packages were built from commit `c2d1b9698695cdca90630cd8548e5bfbafdba7f4` (the packaging branch before this record), with `TBI_BUILD_TIME=2026-10-18T12:00:00Z`, Node v24.21.0, npm 11.19.0. Each was a fresh worktree with its own `npm ci`, built sequentially on DEV.
+
+| Comparison | Result |
+|---|---|
+| `rc4` (reports OFF), build 1 vs build 2 | **IDENTICAL**: 26 files, including 8 source maps; manifest `8a3046e407af87a7` |
+| `rc4-reports` (reports ON), build 1 vs build 2 | **IDENTICAL**: 26 files, including 8 source maps; manifest `cda57825c9cba0fc` |
+| Source path (an earlier commit `c38e021`, two different worktree paths) | IDENTICAL, manifest `332c50dc67e17cab`: the output does not depend on the build path |
+| `rc4` vs `rc4-reports` | only the frontend differs (the bundle with the compiled switch, its hash name, `index.html`). The services are identical |
+| `verify-build.mjs local`, `check-dist.mjs` | pass for all four packages, and each compiled switch matches its profile |
+
+Service hashes, identical in both profiles: `session-host.mjs a24338d6…`, `build-service.mjs fe2a2c50…`, `build-job.mjs 011f703c…`. The last equals RC3's.
+
+**Remaining nondeterministic files on DEV: none.**
+
+*Imported from Alpha:* the handoff reports 27/28 files identical on `2e8eb7c` with a `.map` differing.
+- **That difference was not reproduced on DEV, and its cause is not established.** It was a different commit (it includes Active Minutes) and the old script, which inherited settings.
+- DEV has 1 vCPU. A bundler's parallel work can order differently on a multi-core host, so DEV's result does not prove Alpha's.
+- **No exception is applied to source maps.** The RC3 exception does not carry over. `compare-packages.sh` has no exception list.
+- G2 closes only when the same two-build comparison passes on the Alpha packaging host, with this script, on the merged RC4 commit.
+
+## 5. Quality gates (DEV)
+
+All of these ran on DEV on 2026-10-18, on the RC4 source (`92dac26` content plus `deploy/release/`).
+
+| Gate | Result |
+|---|---|
+| Typecheck, lint (eslint, prettier, boundaries) | pass |
+| Unit (`npm test`) on `92dac26` | **1236 / 1236** (140 files). Alpha's 1275 on `2e8eb7c` *(imported)* includes the Active Minutes tests |
+| Release-config tests (new) | 10 / 10 |
+| Browser e2e (`test:e2e`, CI fakes) | **235 passed, 0 failed, 22 skipped** |
+| Real QEMU, Runtime v2 `b5b34b49cb7e4049` (Session Host of RC4) | **117 / 117 in 20 files**: gate 7, s12-determinism 8, r1-determinism 2, s12-bridge 11, s12-r2 3, s12-r3 4, s12-r2-timing 9, s12-bridge-timing 2, s12-examples 3, r1-examples 2, failures 15, r2-failures 11, r2-acceptance 5, electrical 7, s12-pace 1, s13-pad-short 1, s8-gate 5, s8-policy 7, s8-containment 9, isolation 5 |
+| Security | identity, gate and policy suites (unit plus s8 real). GitGuardian passes on #8/#9. `npm audit --omit=dev`: **0 vulnerabilities** |
+| CI on #8 and #9 | all three checks pass on each |
+
+**Not hidden:**
+- The first real-QEMU run reported **27 failed / 90 passed** (6 files). Every failure was `firmware artifact … is not provisioned`: the DEV runtime home `~/tbi-s12-rt` lacked the R2/R3 test firmware. I assembled a private home `~/tbi-rc4-rt`. It links the same Runtime v2 QEMU and copies all 13 pinned firmware images, each verified by its sha256 against `artifacts.lock.json` (identical to RC3's). The re-run of all 20 files gave 117/117.
+- **Skipped (22, not passed):**
+  - the `*-real` browser specs (`s6`, `s11`, `s12`, `s13-journey`, `s13-live`, `s13-staging`, `s13-export`), which need a real Session Host, build service and QEMU behind the test gate;
+  - `s13-3d-timing`, which is measurement only.
+
+  They belong to staging acceptance (§6 step 3). The deployed suites (`*-deployed*`, `s13-gate-google`) need a deployed host and were not run.
+- `npm audit` on dev tooling (not shipped) reports advisories in `tinypool` (critical), `source-map-js` (high) and `@vitest/mocker` (moderate). The lockfile is unchanged since RC3, so they were already present there; they are not fixed here.
+
+**Phase 5 validation, and what covers it:**
+
+| Item | Evidence |
+|---|---|
+| Authentication | `reports.test`: 401 without a gate identity, spoofed identity headers ignored. s8-gate (real); identity unit suites |
+| Report ownership and isolation | `reports.test`: only the owner's own session is associated, with an identical answer otherwise; body fields naming an identity, owner or diagnostics are refused; isolation (real) |
+| Durable storage | `reports.test`: 201 only after the 0600 file in a 0700 directory, fsync and rename; a failing file or directory fsync gives 503 and leaves nothing; a full store gives 503 and keeps existing reports |
+| Telegram failure | The host holds no messaging token. The alerter is ops tooling outside Git (not on DEV). `reports.test`: a failing log writer (alerter path) never prevents acceptance. **The alerter itself was not tested here** |
+| Release switches | host: `TBI_REPORTS_DIR` unset gives 503 and nothing written (`reports.test`). App: only an explicit `1` (`problem-report.test`); the item is absent when off (e2e). Package: `check-dist` confirms the compiled switch for each profile and refuses a mismatch |
+| RC3 rollback compatibility | No change to the lockfile, firmware lock, policies, Runtime or `VERSION` (`git diff 802befe 92dac26`). The package layout is RC3's. The host adds only an optional state subdirectory, which RC3 ignores. **A rollback drill on a host was not run (staging, §6)** |
+
+## 6. Deployment and rollback plan (NOT authorized: for review)
+
+The RC4 host is a drop-in for RC3:
+- same Runtime v2 `b5b34b49cb7e4049`;
+- same `package-lock.json`, firmware lock, policies and `VERSION`;
+- the only unit-template change is a commented-out line.
+
+The rollback target is the existing RC3 package, unchanged.
+
+1. **Merge** (PM approval): #8, then #9, then the packaging PR, into `sprint-13`, each with green required checks. The RC4 commit `R` is the resulting `sprint-13` head; record it.
+2. **Package** `R` twice: `build-package.sh rc4.release.json R …` with the same `T`, then `compare-packages.sh`. It must be IDENTICAL. Repeat on the Alpha packaging host, which has more cores than DEV (§4).
+3. **Staging (DEV-Lab / staging host)**, reports OFF (`rc4` profile, no drop-in):
+   - install the RC4 host and frontend;
+   - acceptance: R-MCU-1 gate, the real-QEMU browser specs (the `*-real` specs), one `session_end` line per session in journald, and `POST /runtime/reports` → 503;
+   - roll back to RC3 and confirm the RC3 `/version.json` and the RC3 package checksums;
+   - re-install RC4.
+4. **Staging, reports ON** (`rc4-reports` package + `reports.conf` drop-in): send a report and confirm the 201, the 0600 file in a 0700 directory and one `problem_report` line. Then take the alerter down and confirm a report is still accepted. Then roll back:
+   - switch reports off: the `rc4` frontend, remove the drop-in, restart; the endpoint answers 503 and stored reports are kept;
+   - then roll back fully to RC3: RC3 never reads the reports directory, so it is left in place.
+5. **Alpha** (separate PM authorization; quiet window, because a host restart ends live sessions):
+   - install RC4 with reports OFF;
+   - smoke test with the cohort accounts;
+   - enabling reports is a separate, later switch (step 4 on Alpha).
+6. **Rollback at any point:** reinstall the RC3 package (`802befe`) with the existing RC3 procedure: host bundle, frontend, `daemon-reload`, restart. Nothing in RC4 migrates state.
+
+## 7. Remaining blockers
+
+1. **Merge approval (PM):** #8 → #9 → the packaging PR into `sprint-13`. The RC4 SHA exists only after that, and the packages must be rebuilt from it.
+2. **G2 on the Alpha packaging host:** two builds plus `compare-packages.sh` on the merged commit (§4). The source-map difference seen on Alpha is unexplained.
+3. **Ops tooling outside Git:** `ops/build-package-alpha.sh` must call `deploy/release/build-package.sh` with a profile instead of the RC3 script. The Telegram alerter is untested here.
+4. **Profile decision (PM):** RC4 with reports OFF (`rc4`, recommended for the first install) or ON (`rc4-reports`).
+5. **Staging (PM authorization):**
+   - the 22 skipped real-stack browser specs;
+   - the deployed suites;
+   - the RC3 rollback drill;
+   - the reports ON/OFF switch drill (§6).
+6. `RC4-RELEASE-GATES.md` (on Alpha) was not transferred. G4, G7 and G8 (D5, D9, switch and rollback scripts) are covered here only as a plan (§6), not as scripts.
+7. Dev-tooling advisories (`npm audit`, not shipped). They were already in RC3 and are listed for a later dependency update.
