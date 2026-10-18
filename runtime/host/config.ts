@@ -9,6 +9,7 @@ import type { RuntimeLauncher } from '../harness/launcher.js';
 import type { Policy } from '../policy/policy.js';
 import type { RateLimiter } from '../policy/rate.js';
 import type { ResourceProbe } from '../policy/resources.js';
+import type { DiagnosticsSink } from './diagnostics.js';
 import { COMMAND_QUANTUM_US } from './protocol.js';
 
 export interface HostConfig {
@@ -75,6 +76,11 @@ export interface HostConfig {
    * time, for interactive sessions). Null: unpaced (tests and benchmarks of raw speed).
    */
   paceRate: number | null;
+  /**
+   * Sprint 14: where the one `session_end` line per terminal session goes (diagnostics.ts).
+   * Default: the service's stderr (journald). Tests substitute.
+   */
+  diagnostics?: DiagnosticsSink;
 }
 
 export function defaultConfig(
