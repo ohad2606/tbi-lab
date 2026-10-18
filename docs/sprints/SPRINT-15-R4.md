@@ -233,3 +233,26 @@ problem flapping faster than the 1 ms tick is never refused and withholds public
   peaks are correct; a PSU that current-limits only during the high phase is shown in CV mode. One
   mode is not meaningful for a switching load; an "alternates" display is a PM/UI decision.
 - **O-R4-1** duty 0: unchanged; no bench evidence exists (§9). Still refused when a load can tell.
+
+## 11. Sprint 16C/16D addendum (DEV, 2026-10-18)
+
+All on DEV (`tbi-lab-srv`); R4 is not merged and not deployed anywhere (no staging, no DEV-Lab).
+
+| Item | Result |
+|---|---|
+| Baseline | RC4 released on `sprint-13` at `7e04c4d` (#8, #9, #10). Merged into this branch with a normal merge (`a957c29`): no textual conflict |
+| Semantic conflict | RC4's `session_end` diagnostics classify every failure reason (typed table, pinned by a test); R4 adds `pwm_unsupported`. Classified `user_content`/`info` like `unsupported_feature` (`203fe7b`), row added to `docs/ops/SESSION-DIAGNOSTICS.md`. Found by typecheck; vitest alone passed |
+| Typecheck, lint, unit | pass; **1316 / 1316** |
+| PR #7 CI on `203fe7b` | 3/3 pass |
+| Real QEMU, Runtime v3 `2cb1406f94f52e4f`, full runtime suite | 46 files: **201 passed, 2 failed, 19 skipped** in one run. Both failures: the v3 runtime home lacked the pinned `TbiR1Scan` image (`b86f9c5e…`), an environment gap, not R4 code; after a hash-verified copy the two files pass (3/3). Skipped: the six deployed/capacity files (need an installed instance) |
+| G6 subset | inside the run above: `s15-r4` 6/6, `s15-examples` 2/2, and the 21 G6 files all pass |
+| Browser → real QEMU (local stack, R4 host + build service, Runtime v3) | **16 passed, 1 failed, 2 skipped, 1 not run** in the full real set; the failure (`s6` input echo, second Run) was a correct `storage_pressure` refusal: the local stack's session root was on the 1.9 GB `/tmp` tmpfs, ~1 GB free, under the host's 1 GiB floor. Stack moved to disk: `s6-real` 3/3 and `s15-r4-real` 2/2 (LED fade, SG90 0°/180°) pass |
+| Runtime v3 / host compatibility | unchanged: an R4 host needs Runtime v3 (capability `pwm`); deploy host and runtime together (R4-B) |
+| M2, M6 | assessed in §10, unchanged: deferred / PM-UI decision |
+| O-R4-1 preparation | bench sketch `s13-evidence/h2/bench/TbiBenchDuty0/` (protocol §4 steps 4a–4d from clean resets, serial markers, 30 s holds; compiles with the pinned toolchain, **not run on hardware**) and result sheet `s13-evidence/h2/bench/O-R4-1-RESULTS.md`. **O-R4-1 remains open**: no measurement exists |
+
+**R4-B readiness (staging Gate B on Runtime v3), not started:**
+1. O-R4-1 bench result (or a PM decision to keep the refusal as the documented behaviour) — open.
+2. PM ratification of D1–D7 and the M2/M6 decisions — open.
+3. Staging install of an R4 host + Runtime v3 on `tbi-s8` (`install.sh staging` with `TBI_S8_RUNTIME` = the v3 prefix), the deployed suites, `s15-r4-real` through staging, then rollback to RC4 (`7e04c4d` package, drill E of `RC4-RELEASE-HANDOFF.md`) — ready to run, needs PM authorization.
+4. The v3 runtime home on any host must hold every pinned image of `artifacts.lock.json` (the gap above).
