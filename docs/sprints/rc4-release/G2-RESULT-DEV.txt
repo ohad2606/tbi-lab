@@ -1,0 +1,11 @@
+RC4 G2 packaging-host verification
+host: tbi-lab-srv  cpus: 1  date: 2026-10-18T18:11:53Z
+commit: 7e04c4d4c3f91245dce9f7d54d5496c91d1bb3fb  build-time: 2026-10-18T18:05:32Z
+node: v24.21.0  npm: 11.19.0
+package pkg-rc4-1 done: 78ad69fc87de51af
+package pkg-rc4-2 done: 78ad69fc87de51af
+rc4: IDENTICAL: 26 files (8 source maps), manifest 78ad69fc87de51af
+package pkg-rc4-reports-1 done: 712379d248b429e1
+package pkg-rc4-reports-2 done: 712379d248b429e1
+rc4-reports: IDENTICAL: 26 files (8 source maps), manifest 712379d248b429e1
+verdict: PASS
