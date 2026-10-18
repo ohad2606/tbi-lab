@@ -4,11 +4,13 @@
  *   GPIO18: an LEDC output inverted with the Arduino API (ledcOutputInvert), then restored;
  *   GPIO19: an LEDC output inverted below the Arduino API (esp_rom_gpio_connect_out_signal, the
  *           path the build service cannot see);
- *   GPIO21: a simple GPIO output inverted through the matrix, then restored.
+ *   GPIO21: a simple GPIO output inverted through the matrix, then restored;
+ *   GPIO22: an INPUT pad with the output inversion bit set: it drives nothing, so nothing to refuse.
  * Prints a marker after each step: INV-READY, INV-ATTACHED, INV-API, INV-OFF, INV-MATRIX,
- * INV-GPIO, INV-DONE.
+ * INV-GPIO, INV-INPUT, INV-DONE.
  */
 #include "esp_rom_gpio.h"
+#include "soc/gpio_reg.h"
 #include "soc/gpio_sig_map.h"
 
 void setup() {
@@ -36,6 +38,12 @@ void setup() {
   delay(20);
   Serial.println("INV-GPIO");
   esp_rom_gpio_connect_out_signal(21, SIG_GPIO_OUT_IDX, false, false);
+  delay(20);
+  Serial.println("INV-INPUT");
+  pinMode(22, INPUT);
+  esp_rom_gpio_connect_out_signal(22, SIG_GPIO_OUT_IDX, true, false);
+  Serial.printf("INV-EN22 %u\n", (unsigned)((REG_READ(GPIO_ENABLE_REG) >> 22) & 1));
+  REG_WRITE(GPIO_ENABLE_W1TC_REG, BIT(22)); // an input pad again, OUT_INV still set
   delay(20);
   Serial.println("INV-DONE");
 }

@@ -234,6 +234,37 @@ describe('R4: PWM outputs on the Session Host (A1)', () => {
     });
   });
 
+  it('an inverted simple-GPIO pad publishes no uninverted operating point before its refusal', async () => {
+    // QEMU still reports the pad's GPIO level (G frames); the pin carries its inverse.
+    const { s } = session(['F 9500000 18 inverted:256 0', 'G 9500010 18 1 1']);
+    s.run();
+    expect(await terminal(s)).toMatchObject({ reason: 'unsupported_feature' });
+    const late = s.log
+      .since(0)
+      .filter((e) => e.type === 'electrical' && BigInt(e.simNs!) >= 9_500_000n);
+    expect(late).toEqual([]);
+  });
+
+  it('an inverted LEDC pad on a runtime without pwm is a lasting unsupported routing', async () => {
+    const { s } = session(['F 9500000 18 inverted:71 0'], '2 i2c,pad-func,sched-input');
+    s.run();
+    expect(await terminal(s)).toMatchObject({
+      reason: 'unsupported_feature',
+      detail: { gpio: 18, function: 'inverted:71' },
+    });
+  });
+
+  it('inversion set and cleared within one tick is not refused (a transient routing)', async () => {
+    const { s } = session([
+      ROUTE,
+      ...TIMER,
+      duty(9500300, 64),
+      '31@F 30000000 18 inverted:71 0',
+      '31@F 30000200 18 periph:71 0',
+    ]);
+    expect(await runFor(s, 400)).toMatchObject({ state: 'ended', reason: 'stopped' });
+  });
+
   it('a relay coil on a PWM pad is refused at session level, naming it (A1, review M10)', async () => {
     const c = new Circuit();
     const k = c.add('component.relay');

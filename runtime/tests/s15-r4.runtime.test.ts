@@ -198,7 +198,19 @@ describe('R4 on the real runtime (harness level)', () => {
     expect(funcs(19, 'INV-OFF', 'INV-MATRIX')).toEqual([sig19.replace('periph', 'inverted')]);
     // A simple GPIO output inverted through the matrix, then restored.
     expect(funcs(21, 'INV-MATRIX', 'INV-GPIO')).toEqual(['inverted:256']);
-    expect(funcs(21, 'INV-GPIO', 'INV-DONE')).toEqual(['gpio']);
+    expect(funcs(21, 'INV-GPIO', 'INV-INPUT')).toEqual(['gpio']);
+    // GPIO22: the ROM routine also enables the output (it reports INV-EN22 1), so the pad drives
+    // and its inversion is reported; once the firmware clears GPIO_ENABLE it is an input with
+    // OUT_INV still set, which drives nothing: the report is withdrawn (simple GPIO again).
+    const text = t.serial.map((x) => x.text).join('');
+    const en22 = /INV-EN22 (\d)/.exec(text)![1];
+    expect(en22).toBe('1');
+    // pinMode(INPUT) passes OUT_SEL 0 before OEN_SEL (the known two-write transient), then the ROM
+    // call leaves the pad driving, inverted; after GPIO_ENABLE is cleared, simple GPIO again.
+    const p22 = funcs(22, 'INV-INPUT', `INV-EN22 ${en22}`);
+    expect(p22.at(-1)).toBe('inverted:256');
+    expect(funcs(22, `INV-EN22 ${en22}`, 'INV-DONE')).toEqual(['gpio']);
+    recordEvidence('s15-r4-m8-gpio22', { en22, p22 });
     // Deterministic like every other frame stream.
     const again = await trace('TbiPwmInv', 1300);
     expect(again.frames).toEqual(t.frames);

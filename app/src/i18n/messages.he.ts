@@ -788,7 +788,7 @@ export const he: Record<MessageKey, string> = {
   'sim.error.runtime.unsupported_feature':
     'הקושחה משתמשת ביכולת שהסימולטור אינו תומך בה בגרסה זו (Pull-up/Pull-down פנימי או פסיקות GPIO).',
   'sim.error.runtime.inverted_output':
-    'הקושחה הופכת פין מחובר דרך מטריצת ה־GPIO. הסימולטור אינו ממדל יציאות הפוכות.',
+    'הקושחה הופכת את האות ביציאה של פין מחובר דרך מטריצת ה־GPIO. הסימולטור אינו מדמה יציאות הפוכות.',
   'sim.error.runtime.invalid_attachment': 'פין ESP32 מחובר אינו זמין לשימוש בסימולטור.',
   'sim.error.runtime.startup_failed':
     'לא ניתן היה להפעיל את ה-ESP32. הפרויקט לא נפגע. לחצו על הרצה כדי לנסות שוב.',

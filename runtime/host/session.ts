@@ -1102,7 +1102,12 @@ export class HostSession {
     // tick if it lasts), its operating point is a placeholder (the pad solved low), not a
     // result: nothing is published, and the last truthful outcome stays until the refusal or,
     // for a transient state, until the next window.
-    if (this.latest && this.pwmProblems.size === 0) {
+    // The same for an inverted simple-GPIO pad awaiting its refusal: QEMU still reports its
+    // uninverted level, so that operating point is not the pin's either (review of M8).
+    const invertedPending = [...this.periphPads.values()].some((p) =>
+      p.func.startsWith('inverted:'),
+    );
+    if (this.latest && this.pwmProblems.size === 0 && !invertedPending) {
       // Sprint 12 (R3): an I2C display's content is part of its result.
       let latest: unknown = this.latest;
       if (this.latest.ok && this.i2c && !this.i2c.empty) {

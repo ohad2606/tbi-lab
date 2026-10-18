@@ -68,7 +68,7 @@ esp32_gpio (patch 0007) ── F <vns> <pad> periph:<signal> ──► Session H
 | (this commit) | Test baselines updated for the R4 product (§5.3), this record |
 
 Runtime v3 = `1a0867669eb0f01f` (upstream `40edccac` + patches 0001–0009) in Sprint 15; **since Sprint 16A
-`c97c28365cdce379` (+ patch 0010, §10)**, built by `provision.sh`
+`2cb1406f94f52e4f` (+ patch 0010, §10)**, built by `provision.sh`
 into a private DEV home (`~/tbi-s15-rt`). Not installed anywhere else.
 
 ## 5. Verification (Phase D) — all executed locally on DEV (`tbi-lab-srv`), 2026-10-15
@@ -202,28 +202,34 @@ All on DEV (`tbi-lab-srv`); nothing merged or deployed.
 
 | Item | Change | Evidence |
 |---|---|---|
-| **M8** inversion | QEMU patch 0010: `FUNCn_OUT_SEL_CFG` OUT_INV_SEL / OEN_INV_SEL published as pad function `inverted:<sel>`; host: an inverted LEDC pad is refused as `pwm_unsupported_mode` (`why: inverted`, EN/HE), any other inverted routing on a connected pin as a lasting `unsupported_feature` (app message `inverted_output`, EN/HE) | Real QEMU (`TbiPwmInv`, pinned `cb4a6bfd…`, built twice byte-identical): `ledcOutputInvert(18, true/false)` → `inverted:71` then `periph:71`; `esp_rom_gpio_connect_out_signal` on GPIO19's LEDC signal → `inverted:72`; on simple GPIO21 → `inverted:256`, restored → `gpio`; frame stream identical over 2 runs. Session Host: an LED on GPIO18 is refused `pwm_unsupported_mode`/`inverted`; its last published current is the exact 25 % average (1.438496 mA) |
-| **M3** grace tick | No electrical outcome is published while a PWM problem is pending | host test fails without the fix; real QEMU above showed 0 mA in the grace window before the fix |
-| Runtime v3 | `c97c28365cdce379` = `40edccac` + 0001–0010 (was `1a0867669eb0f01f`) | `provision.sh qemu` clean (patches apply, built in 622 s) |
-| Test reliability | `bridge-v2` G-2 cases counted windows after 300 ms of wall time (flaky under load on the R4 host: 1 of 2 runs failed on unmodified `fb90e18`); now they wait for 80 ms of simulated time | 3 × 25/25 under load |
+| **M8** inversion | QEMU patch 0010: an inverted output (OUT_INV_SEL on a pad that drives) or an inverted output enable (OEN_INV_SEL) is published as pad function `inverted:<sel>` (sel kept when the inverted enable makes a routed pad drive). Host: an inverted LEDC pad is refused as `pwm_unsupported_mode` (`why: inverted`, EN/HE); any other inverted routing on a connected pin as a lasting `unsupported_feature`, named in the app as `inverted_output` (EN/HE); until that refusal nothing is published (QEMU still reports the uninverted GPIO level) | Real QEMU (`TbiPwmInv`, pinned `4b6de26f…`, built twice byte-identical): `ledcOutputInvert(18, true/false)` → `inverted:71`, then `periph:71`; `esp_rom_gpio_connect_out_signal` on GPIO19's LEDC signal → `inverted:72`; on simple GPIO21 → `inverted:256`, restored → `gpio`; GPIO22 (the ROM routine enables the output: `INV-EN22 1`) → `inverted:256`, and after GPIO_ENABLE is cleared (an input with OUT_INV still set) → `gpio`; frame stream identical over 2 runs. Session Host: an LED on GPIO18 is refused `pwm_unsupported_mode`/`inverted`; the last published current is the exact 25 % average (1.438496 mA) |
+| **M3** grace tick | No electrical outcome is published while a PWM problem or an inverted routing is pending | host tests fail without the fix; real QEMU showed 0 mA in the grace window before the fix |
+| Runtime v3 | `2cb1406f94f52e4f` = `40edccac` + 0001–0010 (Sprint 15: `1a0867669eb0f01f`; an intermediate `c97c28365cdce379` was superseded the same day by the review refinement) | `provision.sh qemu` clean twice |
+| Test reliability | `bridge-v2` G-2 cases counted windows after 300 ms of wall time (1 of 2 runs failed on unmodified `fb90e18` under load); now 80 ms of simulated time | 3 × 25/25 under load |
+| **Browser → real QEMU** | new `app/e2e/s15-r4-real.spec.ts` (`TBI_S15_REAL=1`): LED fade (GPIO18 `data-pwm=wave`, PWM note on the LED), servo sweep (angle shows `0°` and `180°`) | local stack on DEV (R4 Session Host + build service on loopback, Runtime v3 `2cb1406f94f52e4f`): **2/2**. With the previous real browser specs on the same R4 stack (on `c97c28365cdce379`): 17 passed, 2 skipped (old-host compatibility cases), **1 failed**: `s13-export-real`, its build exceeded the 300 s limit while unit tests ran beside it; re-run alone on the idle stack it passed (16 s) |
 
-**G6 repeated on `c97c28365cdce379`** (runtime behaviour changed): 22 files, **125 / 125** — gate 7,
-s12-determinism 8, r1-determinism 2, s12-bridge 11, s12-r2 3, s12-r3 4, s12-r2-timing 9,
-s12-bridge-timing 2, s12-examples 3, r1-examples 2, failures 15, r2-failures 11, r2-acceptance 5,
-electrical 7, s12-pace 1, s13-pad-short 1, s8-gate 5, s8-policy 7, s8-containment 9, isolation 5,
-s15-r4 6, s15-examples 2. Not hidden: `isolation` first failed (1 test) because the micropython
-image was not provisioned in this runtime home; after copying the hash-verified image it passed 5/5.
+**G6 on `2cb1406f94f52e4f`**: 21 files 119/119 in one run (gate 7, s12-determinism 8, r1-determinism 2,
+s12-bridge 11, s12-r2 3, s12-r3 4, s12-r2-timing 9, s12-bridge-timing 2, s12-examples 3,
+r1-examples 2, failures 15, r2-failures 11, r2-acceptance 5, electrical 7, s12-pace 1,
+s13-pad-short 1, s8-gate 5, s8-policy 7, s8-containment 9, isolation 5, s15-examples 2) and
+s15-r4 **6/6** after the GPIO22 test step was made explicit (its first version assumed the ROM
+routine leaves the pad an input; QEMU showed it enables the output, so the expectation, not the
+runtime, was wrong). On the superseded `c97c28365cdce379` the same 22 files gave 125/125 after
+provisioning the micropython image the `isolation` suite needs.
+
+**Independent review of these changes** (separate read-only agent): no blocking or security
+finding. Fixed: an inverted simple-GPIO pad could publish its uninverted level in the grace
+window; OUT_INV on an input pad was reported (refused) although it drives nothing; an inverted
+enable on a routed pad lost its signal number; Hebrew wording. Added tests: inverted LEDC on a
+runtime without `pwm`, inversion cleared within one tick (not refused). Noted, not changed: a
+problem flapping faster than the 1 ms tick is never refused and withholds publication meanwhile
+(needs sustained sub-tick flapping; every persisting problem is refused within ~2 ms).
 
 **Still open (assessed, not changed):**
-- **M2** (APB change applied at the next overflow; REF_TICK assumed 1 MHz): affects only firmware
-  that lowers the CPU below 80 MHz while PWM runs; the error is ≤ one period at the switch; no
-  supported example does it. A fix belongs in patch 0009 (publish the APB change as a timer
-  event) — deferred, documented.
+- **M2** (APB change applied at the next overflow; REF_TICK assumed 1 MHz): only firmware that
+  lowers the CPU below 80 MHz while PWM runs; the error is ≤ one period at the switch; no supported
+  example does it. Fix belongs in patch 0009 (publish the APB change as a timer event). Deferred.
 - **M6** (discrete fields from the low point: PSU CV/CC mode, LED-matrix lit count): currents and
-  peaks are correct; a PSU that current-limits only during the high phase is shown in CV mode.
-  Showing one mode is not meaningful for a switching load; the honest display is "alternates"
-  (a UI/model decision) — listed for the PM, not changed.
-- **O-R4-1** duty 0: unchanged; no bench evidence exists (protocol §9). Still refused when a load
-  can tell.
-- **Browser → real-QEMU** acceptance of the R4 UI: not yet run (needs a local or staging real stack;
-  R4-B).
+  peaks are correct; a PSU that current-limits only during the high phase is shown in CV mode. One
+  mode is not meaningful for a switching load; an "alternates" display is a PM/UI decision.
+- **O-R4-1** duty 0: unchanged; no bench evidence exists (§9). Still refused when a load can tell.

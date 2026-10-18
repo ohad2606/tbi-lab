@@ -11,12 +11,12 @@ uninverted waveform. The pad function now carries the inversion (bit 10 of the p
 and the bridge reports such a pad as inverted:<sel>, so the host can refuse it by name.
 TBI Lab R4 review finding M8.
 ---
- hw/gpio/esp32_gpio.c |  9 +++++++--
+ hw/gpio/esp32_gpio.c | 21 +++++++++++++++++----
  hw/misc/tbi_bridge.c | 10 +++++++++-
- 2 files changed, 16 insertions(+), 3 deletions(-)
+ 2 files changed, 26 insertions(+), 5 deletions(-)
 
 diff --git a/hw/gpio/esp32_gpio.c b/hw/gpio/esp32_gpio.c
-index 6d362fd..260524f 100644
+index 6d362fd..9730581 100644
 --- a/hw/gpio/esp32_gpio.c
 +++ b/hw/gpio/esp32_gpio.c
 @@ -67,7 +67,9 @@ static uint64_t esp32_gpio_drivers(Esp32GpioState *s)
@@ -30,17 +30,27 @@ index 6d362fd..260524f 100644
   * peripheral signal owns the pad only if it can drive it: with OEN_SEL set the output enable comes
   * from GPIO_ENABLE, and a pad whose GPIO_ENABLE bit is clear is an input whatever OUT_SEL holds
   * (ESP-IDF configures INPUT pins exactly so: OUT_SEL 0, OEN_SEL 1, enable clear).
-@@ -78,10 +80,13 @@ static uint16_t esp32_gpio_func(Esp32GpioState *s, int i)
+@@ -78,10 +80,21 @@ static uint16_t esp32_gpio_func(Esp32GpioState *s, int i)
          s->regs[(TBI_A_GPIO_FUNC0_OUT + 4 * i) / 4] : TBI_SIG_GPIO_OUT;
      uint32_t sel = cfg & 0x1ff;
      uint32_t od = (s->regs[(TBI_A_GPIO_PIN0 + 4 * i) / 4] >> 2) & 1;
-+    /* OUT_INV_SEL (bit 9) and OEN_INV_SEL (bit 11) invert the routed output and its enable. */
-+    uint32_t inv = ((cfg >> 9) & 1) | ((cfg >> 11) & 1);
-     if (sel != TBI_SIG_GPIO_OUT && (cfg >> 10) & 1 && !((esp32_gpio_drivers(s) >> i) & 1)) {
-         sel = TBI_SIG_GPIO_OUT;
-+        inv = (cfg >> 11) & 1; /* an input pad: only an inverted enable can still drive it */
+-    if (sel != TBI_SIG_GPIO_OUT && (cfg >> 10) & 1 && !((esp32_gpio_drivers(s) >> i) & 1)) {
+-        sel = TBI_SIG_GPIO_OUT;
++    /*
++     * OUT_INV_SEL (bit 9) inverts the routed output, OEN_INV_SEL (bit 11) its output enable. The
++     * enable comes from GPIO_ENABLE for simple GPIO and with OEN_SEL (bit 10), else from the
++     * peripheral. An inverted enable is never modelled; an inverted output matters only on a pad
++     * that drives.
++     */
++    uint32_t out_inv = (cfg >> 9) & 1;
++    uint32_t oen_inv = (cfg >> 11) & 1;
++    uint32_t gpio_en = (esp32_gpio_drivers(s) >> i) & 1;
++    uint32_t drives = (sel == TBI_SIG_GPIO_OUT || (cfg >> 10) & 1) ? gpio_en ^ oen_inv : 1;
++    if (sel != TBI_SIG_GPIO_OUT && (cfg >> 10) & 1 && !gpio_en && !oen_inv) {
++        sel = TBI_SIG_GPIO_OUT; /* an input pad */
      }
 -    return (uint16_t)(sel | od << 9);
++    uint32_t inv = oen_inv | (out_inv & drives);
 +    return (uint16_t)(sel | od << 9 | inv << 10);
  }
  
