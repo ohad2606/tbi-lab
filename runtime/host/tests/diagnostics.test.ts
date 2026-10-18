@@ -553,6 +553,7 @@ describe('sessionEndRecord (pure)', () => {
       invalid_attachment: 'user_content/info',
       electrical_error: 'user_content/info',
       mirror_failed: 'user_content/info',
+      pwm_unsupported: 'user_content/info',
       artifact_unknown: 'artifact_integrity/warning',
       artifact_hash_mismatch: 'artifact_integrity/error',
       artifact_missing: 'artifact_integrity/error',
