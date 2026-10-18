@@ -118,6 +118,30 @@ All of these ran on DEV on 2026-10-18, on the RC4 source (`92dac26` content plus
 | Release switches | host: `TBI_REPORTS_DIR` unset gives 503 and nothing written (`reports.test`). App: only an explicit `1` (`problem-report.test`); the item is absent when off (e2e). Package: `check-dist` confirms the compiled switch for each profile and refuses a mismatch |
 | RC3 rollback compatibility | No change to the lockfile, firmware lock, policies, Runtime or `VERSION` (`git diff 802befe 92dac26`). The package layout is RC3's. The host adds only an optional state subdirectory, which RC3 ignores. **A rollback drill on a host was not run (staging, §6)** |
 
+### 5.1 Sprint 16A re-verification (head `f218354`, with the PR #9 review fixes)
+
+| Gate | Result |
+|---|---|
+| Typecheck, lint | pass |
+| Unit | **1249 / 1249** (141 files) |
+| Browser e2e (CI fakes) | **235 passed, 0 failed, 22 skipped** |
+| **Real-stack browser specs, local stack on DEV** (RC4 Session Host + build service on loopback, Runtime v2 `b5b34b49cb7e4049`, throwaway keys; the preview plays the gate) | **16 passed, 0 failed, 2 skipped**: s6-real 3, s11-real 3, s12-real 3, s13-export 1, s13-journey 2 (EN→HE, HE→EN), s13-live 2, s13-staging (OS-09, P4) 2. Skipped: the two compatibility cases that need an older Session Host (`TBI_S11_EXPECT`/`TBI_S12_EXPECT`) |
+| Problem reports on the real host | 401 without a gate identity; 201 with one; file 0600 in a 0700 directory; a spoofed `x-tbi-principal` is ignored (principal derived from the gate subject); one `problem_report` line without description or identity; the CLI lists it |
+
+The local stack is **not staging**: no Caddy, oauth2-proxy, systemd sandbox or deployed policy.
+G5's staging run is still required; this shows the RC4 code passes the same specs.
+
+Local stack (DEV, development mode):
+```
+TBI_IDENTITY_KEY_FILE=k1 TBI_TICKET_KEY_FILE=k2 TBI_RUNTIME_HOME=<rt> TBI_BUILD_LISTEN=127.0.0.1:7420 \
+  TBI_BUILD_STATE=… TBI_RUNTIME_JSON=<rt>/qemu-current/runtime.json TBI_ARDUINO_HOME=<rt>/arduino \
+  TBI_ARTIFACT_STORE=<store> TBI_BUILD_WORK=… node runtime/builder/dist/build-service.mjs &
+TBI_IDENTITY_KEY_FILE=k1 TBI_TICKET_KEY_FILE=k2 TBI_RUNTIME_HOME=<rt> TBI_HOST_PORT=7410 \
+  TBI_HOST_STATE=… TBI_ARTIFACTS=<store> node runtime/host/dist/session-host.mjs &
+TBI_S6_REAL=1 TBI_S11_REAL=1 TBI_S12_REAL=1 TBI_RUNTIME_PROXY=http://127.0.0.1:7410 \
+  TBI_BUILD_PROXY=http://127.0.0.1:7420 npx playwright test -c playwright.app.config.ts app/e2e/*-real.spec.ts
+```
+
 ## 6. Deployment and rollback plan (NOT authorized: for review)
 
 The RC4 host is a drop-in for RC3:
@@ -155,7 +179,7 @@ source. G6 and G9 are not described in the manifest: their status is unknown her
 | **G2 / D1**: reproducible package, no source-map exception | `compare-packages.sh` (manifest equality, no exception list), `verify-on-packaging-host.sh` | **PASS on DEV** (§4); **open on the Alpha packaging host** |
 | **G3 / D2–D4**: every VITE setting pinned; build script fixed | profiles, `release-config.mjs`, `build-package.sh` (env -i, no npmrc), `check-dist.mjs` | **PASS** (tests 11/11, four DEV packages) |
 | **G4 / D5** | not described in the manifest beyond "not written" | **Unknown on DEV** |
-| **G5 / D7**: the QEMU-backed E2E specs for S14 | the 22 `*-real`/measurement specs exist; they need a real stack | **Open** (staging, §6 step 3) |
+| **G5 / D7**: the QEMU-backed E2E specs for S14 | the `*-real` specs | **Local stack on DEV: 16/16 pass** (2 compatibility cases skipped, §5.1); **staging run still open** |
 | **G6** | not in the manifest | **Unknown on DEV** |
 | **G7, G8 / D9**: RC4 switch and rollback scripts | procedures §6 and §9 (exact commands); no host-changing script was written (deployment scripts are out of DEV's mandate) | **Open**: procedures ready for review; scripts and drills need staging |
 | **G9** | not in the manifest | **Unknown on DEV** |
