@@ -1136,4 +1136,39 @@ export const he: Record<MessageKey, string> = {
   'onboarding.show': 'הצגת צעדים ראשונים',
   // Sprint 13 H7 (shown only when a deployment configures the form).
   'menu.feedback': 'שליחת משוב',
+  // Sprint 14: in-app problem reports (shown only when a deployment enables them).
+  'menu.reportProblem': 'דיווח על בעיה…',
+  'report.title': 'דיווח על בעיה',
+  'report.intro': 'ספרו לנו מה השתבש. תיאור קצר של מה שעשיתם ומה ציפיתם שיקרה עוזר יותר מכול.',
+  'report.description.label': 'מה קרה?',
+  'report.counter.label': '{count} מתוך {max} תווים',
+  'report.category.legend': 'תחום',
+  'report.category.simulation': 'סימולציה',
+  'report.category.build': 'בנייה',
+  'report.category.editor': 'עורך',
+  'report.category.other': 'משהו אחר',
+  'report.blocking': 'הבעיה מונעת ממני להמשיך',
+  'report.disclosure.heading': 'מה נשלח',
+  'report.disclosure.sent':
+    'התיאור שלכם, התחום והאם הבעיה חוסמת אתכם; גרסת האפליקציה ושפת הממשק; מצב הסימולציה הנוכחית, אם יש; שם הדפדפן, הגרסה שלו ומערכת ההפעלה. הדיווח מקושר לחשבון שאיתו נכנסתם.',
+  'report.disclosure.notSent':
+    'הפרויקט, המעגל, הקוד וצילומי מסך אינם נשלחים. נא לא לכלול מידע אישי.',
+  'report.disclosure.retention': 'הדיווחים נמחקים לאחר 90 יום לכל היותר.',
+  'report.problem.descriptionRequired': 'תארו את הבעיה.',
+  'report.problem.descriptionTooLong': 'קצרו את התיאור ל־{max} תווים לכל היותר.',
+  'report.problem.categoryRequired': 'בחרו תחום.',
+  'report.send': 'שליחת הדיווח',
+  'report.sending': 'בשליחה…',
+  'report.cancel': 'ביטול',
+  'report.close': 'סגירה',
+  'report.sent.heading': 'הדיווח התקבל',
+  'report.sent.body': 'תודה. הדיווח התקבל ונשמר. אם תפנו אלינו לגביו, ציינו את המזהה:',
+  'report.failed.rate_limited':
+    'שלחתם כמה דיווחים לאחרונה. הטקסט שלכם נשמר כאן: נסו שוב בעוד {minutes} דק׳.',
+  'report.failed.unavailable':
+    'לא ניתן לקבל דיווחים כרגע. הטקסט שלכם נשמר כאן: נסו שוב מאוחר יותר.',
+  'report.failed.signed_out': 'פג תוקף הכניסה שלכם. העתיקו את הטקסט, היכנסו שוב ושלחו אותו.',
+  'report.failed.rejected': 'לא ניתן היה לקבל את הדיווח. בדקו את הטקסט ונסו שוב.',
+  'report.failed.network':
+    'השרת לא אישר את הדיווח, ולכן ייתכן שלא התקבל. הטקסט שלכם נשמר כאן: אפשר לשלוח אותו שוב.',
 };

@@ -19,9 +19,18 @@
  *                                        ends `lifetime_exceeded`); without ms: unbounded
  *     POST /__test/reset-builds[?capImages=N]  fresh fake build service (empty store, no
  *                                        records); with N, a store of N images that evicts
+ *   Sprint 14 problem reports (the REAL report store, runtime/host/reports.ts, in a private
+ *   temporary directory):
+ *     POST /__test/reset-reports         delete every stored report; fresh rate windows
+ *     GET  /__test/reports               the stored reports (JSON files), oldest first
+ *     POST /__test/fail-next-report?status=N   answer the next report with HTTP N (429 with
+ *                                        Retry-After: 120)
+ *     POST /__test/hold-reports?ms=N     delay every report request by N ms (0: none)
  */
 import { randomBytes, createHash, timingSafeEqual } from 'node:crypto';
+import { readFileSync, readdirSync, rmSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import { join } from 'node:path';
 import { EngineSession, interpretDigitalInput, type DigitalLevel } from '@tbi-lab/engine';
 import { FIRMWARE_ARTIFACTS } from '@tbi-lab/domain';
 import { createHttpServer } from '../../../runtime/host/http.js';
@@ -38,6 +47,8 @@ import {
   type SessionState,
 } from '../../../runtime/host/protocol.js';
 import type { SessionHost } from '../../../runtime/host/host.js';
+import { DEFAULT_REPORTS, REPORT_FILE_RE, ReportStore } from '../../../runtime/host/reports.js';
+import { ownedTempDir } from './temp-dirs.js';
 
 const PORT = Number(process.env.PORT ?? 7499);
 const STEP_NS = 10_000_000n;
@@ -342,11 +353,52 @@ const host = {
     for (const s of sessions.values()) out[s.state] = (out[s.state] ?? 0) + 1;
     return out;
   },
+  // Sprint 14: a problem report is associated only with the reporter's own session.
+  statusFor(id: string, principal: Principal) {
+    const s = sessions.get(id);
+    return s && s.owner === principal ? s.status() : null;
+  },
 };
 
-const inner = createHttpServer(host as unknown as SessionHost, E2E_IDENTITY);
+// Sprint 14: problem reports go to the real store; a reset gives fresh rate windows.
+const reportsDir = join(ownedTempDir('tbi-e2e-reports-'), 'reports');
+const newInner = () =>
+  createHttpServer(
+    host as unknown as SessionHost,
+    E2E_IDENTITY,
+    new ReportStore({ ...DEFAULT_REPORTS, dir: reportsDir }),
+  );
+let inner = newInner();
+let failNextReport: number | null = null;
+let holdReportsMs = 0;
+const storedReports = () => {
+  let names: string[] = [];
+  try {
+    names = readdirSync(reportsDir).filter((n) => REPORT_FILE_RE.test(n));
+  } catch {
+    // none yet
+  }
+  return names
+    .map((n) => JSON.parse(readFileSync(join(reportsDir, n), 'utf8')) as { receivedAt: string })
+    .sort((a, b) => a.receivedAt.localeCompare(b.receivedAt));
+};
+
 const server = createServer((req: IncomingMessage, res: ServerResponse) => {
   const url = new URL(req.url ?? '/', 'http://fake.invalid');
+  if (url.pathname === '/reports' && failNextReport) {
+    const status = failNextReport;
+    failNextReport = null;
+    res.writeHead(status, {
+      'content-type': 'application/json',
+      ...(status === 429 ? { 'retry-after': '120' } : {}),
+    });
+    res.end(JSON.stringify({ error: 'injected' }));
+    return;
+  }
+  if (url.pathname === '/reports' && holdReportsMs > 0) {
+    setTimeout(() => inner.emit('request', req, res), holdReportsMs);
+    return;
+  }
   if (!url.pathname.startsWith('/__test/')) return inner.emit('request', req, res);
   const reply = (body: unknown) => {
     res.writeHead(200, { 'content-type': 'application/json' });
@@ -374,6 +426,20 @@ const server = createServer((req: IncomingMessage, res: ServerResponse) => {
       return reply(host.health());
     case '/__test/lifetime':
       lifetimeMs = url.searchParams.has('ms') ? Number(url.searchParams.get('ms')) : null;
+      return reply({ ok: true });
+    case '/__test/reset-reports':
+      rmSync(reportsDir, { recursive: true, force: true });
+      inner = newInner();
+      failNextReport = null;
+      holdReportsMs = 0;
+      return reply({ ok: true });
+    case '/__test/reports':
+      return reply(storedReports());
+    case '/__test/fail-next-report':
+      failNextReport = Number(url.searchParams.get('status') ?? 503);
+      return reply({ ok: true });
+    case '/__test/hold-reports':
+      holdReportsMs = Number(url.searchParams.get('ms') ?? 0);
       return reply({ ok: true });
     case '/__test/reset-builds':
       resetFakeBuildService(

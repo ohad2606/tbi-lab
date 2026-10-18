@@ -9,6 +9,7 @@
  *                      build service publishes to); default $TBI_RUNTIME_HOME/artifacts. Only
  *                      the location changes: lookup, re-hash and private copy are unchanged.
  *   TBI_HOST_*_MS etc. operator-tunable limits (see TUNABLE below)
+ *   TBI_REPORTS_DIR    Sprint 14 problem reports (reports.ts); unset: the feature is off
  *
  * SIGTERM / SIGINT: stop accepting requests, terminate every session (host_shutdown), release
  * every child process and temporary file, then exit.
@@ -25,6 +26,7 @@ import { stopTemplateInstances } from '../builder/runner.js';
 import { defaultConfig, type HostConfig } from './config.js';
 import { SessionHost } from './host.js';
 import { createHttpServer } from './http.js';
+import { ReportStore, reportsConfigFromEnv } from './reports.js';
 
 // Same locations as runtime/provision/provision.sh (and harness/env.ts).
 const RUNTIME_HOME =
@@ -83,7 +85,10 @@ config.paceRate = pace === 'off' ? null : Number(pace);
 if (config.paceRate !== null && !(config.paceRate > 0))
   throw new Error(`TBI_HOST_PACE must be 'off' or a positive rate, not ${pace}`);
 const host = new SessionHost(config);
-const server = createHttpServer(host, identity);
+const reportsConfig = reportsConfigFromEnv();
+const reports = reportsConfig ? new ReportStore(reportsConfig) : null;
+reports?.start();
+const server = createHttpServer(host, identity, reports);
 
 // Signal handlers first: a supervisor may stop the host the moment it reports "listening", and
 // an unhandled SIGTERM would skip the cleanup of its sessions and temporary root.

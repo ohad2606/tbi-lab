@@ -47,6 +47,8 @@ says why; it never fakes a result.
 
 ## Reporting what you find
 
-Use the feedback form linked in the app (it appears once the owner enables it) or the address you
-were given. Please include what you expected, what happened, how to reproduce it, and the version
+Where the editor's menu (☰) has **Report a problem…**, use it: it sends your description to the
+TBI Lab team (it says exactly what is sent; never your project) and gives you a report ID to quote.
+Otherwise use the feedback form linked in the app (it appears once the owner enables it) or the
+address you were given. Please include what you expected, what happened, how to reproduce it, and the version
 shown at the bottom right of the screen (for example `v0.10-dev · ba0f4a6`). Screenshots help.

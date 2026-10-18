@@ -247,6 +247,7 @@ export class McuSimulation implements SimulationHost {
       return;
     }
     this.session = session;
+    if (this.view) this.view.sessionId = session.id;
     session.stream(
       (e) => runId === this.runId && this.onEvent(e),
       (s) => runId === this.runId && this.onStream(s),

@@ -3463,3 +3463,103 @@ select {
     white-space: nowrap;
   }
 }
+
+/* Sprint 14: Report a problem. */
+.report-dialog {
+  inline-size: min(34rem, 92vw);
+  max-inline-size: none;
+  max-block-size: 90vh;
+  overflow-y: auto;
+}
+.report-dialog h3 {
+  font-size: 0.95rem;
+  margin-block: 0.75rem 0.25rem;
+}
+.report-label {
+  display: block;
+  font-weight: 600;
+  margin-block-end: 0.3rem;
+}
+.report-description {
+  display: block;
+  box-sizing: border-box;
+  inline-size: 100%;
+  min-block-size: 7rem;
+  resize: vertical;
+  font: inherit;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.report-description[aria-invalid='true'] {
+  border-color: var(--danger);
+}
+.report-counter {
+  text-align: end;
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin-block-start: 0.2rem;
+}
+.report-counter-over {
+  color: var(--danger);
+  font-weight: 600;
+}
+.report-problem,
+.report-error {
+  color: var(--danger);
+  margin-block: 0.3rem;
+}
+.report-error {
+  background: var(--error-bg);
+  padding: 0.45rem 0.6rem;
+  border-radius: 4px;
+}
+.report-categories {
+  border: 0;
+  padding: 0;
+  margin: 0.75rem 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1rem;
+}
+.report-categories legend {
+  font-weight: 600;
+  padding: 0;
+  margin-block-end: 0.3rem;
+}
+.report-choice {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+.report-blocking {
+  margin-block-start: 0.6rem;
+}
+.report-disclosure {
+  margin-block-start: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--panel-alt);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 0.85rem;
+}
+.report-disclosure h3 {
+  margin-block-start: 0;
+}
+.report-disclosure p {
+  margin-block: 0.3rem;
+}
+.report-id {
+  display: inline-block;
+  font-size: 1.15rem;
+  letter-spacing: 0.06em;
+  padding: 0.3rem 0.6rem;
+  background: var(--panel-alt);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  user-select: all;
+}
+.report-dialog .button[aria-disabled='true'] {
+  opacity: 0.6;
+  cursor: progress;
+}

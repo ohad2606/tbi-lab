@@ -49,6 +49,7 @@ import type { TicketFeatures } from '../identity/ticket.js';
 import type { HostConfig } from './config.js';
 import { sessionDir } from './config.js';
 import { RUNTIME_DEVICE_TYPES, RuntimeDevices } from './devices.js';
+import { emitSessionEnd, stderrSink } from './diagnostics.js';
 import { EventLog } from './eventLog.js';
 import { I2cDevices, i2cAddressConflict } from './i2cDevices.js';
 import {
@@ -129,6 +130,9 @@ export class HostSession {
   private readonly abort = new AbortController();
   private pid: number | null = null;
   private outcome: Outcome | null = null;
+  /** Sprint 14 diagnostics: the runtime's exit status and when `run` started (wall clock). */
+  private exit: { code: number | null; signal: string | null } | null = null;
+  private runStartedAt: number | null = null;
   private runPromise: Promise<void> | null = null;
 
   // ---- runtime loop state (touched only from the bridge handlers) ----
@@ -231,6 +235,7 @@ export class HostSession {
     this.endedAt = new Date();
     this.discardFiles();
     this.emitState(detail);
+    this.diagnoseEnd();
   }
 
   private end(reason: EndReason) {
@@ -244,6 +249,38 @@ export class HostSession {
     this.endedAt = new Date();
     this.discardFiles();
     this.emitState();
+    this.diagnoseEnd();
+  }
+
+  /**
+   * Sprint 14: the one `session_end` line for operators (diagnostics.ts), written after the
+   * terminal transition, its event and its cleanup. It never throws and changes nothing here.
+   */
+  private diagnoseEnd() {
+    emitSessionEnd(this.config.diagnostics ?? stderrSink, () => {
+      const h = this.sm.history;
+      const now = performance.now();
+      return {
+        sessionId: this.id,
+        owner: this.owner,
+        state: this.sm.state,
+        reason: this.sm.reason,
+        from: h[h.length - 2]?.state,
+        ran: this.runStartedAt !== null,
+        lifeMs: (this.endedAt ?? new Date()).getTime() - this.createdAt.getTime(),
+        runMs: this.runStartedAt === null ? null : now - this.runStartedAt,
+        simNs: this.simNs,
+        runtime:
+          this.outcome === null
+            ? null
+            : {
+                outcome: this.outcome,
+                exitCode: this.exit?.code ?? null,
+                signal: this.exit?.signal ?? null,
+              },
+        detail: this.sm.detail,
+      };
+    });
   }
 
   /** Remove the private directory. Idempotent. Guest writes are discarded here. */
@@ -387,6 +424,7 @@ export class HostSession {
   run(): { ok: true } | { ok: false; error: string } {
     if (this.sm.state !== 'ready') return { ok: false, error: `cannot run from ${this.sm.state}` };
     this.sm.to('running');
+    this.runStartedAt = performance.now();
     this.emitState();
     this.runPromise = this.execute();
     return { ok: true };
@@ -491,6 +529,7 @@ export class HostSession {
       return;
     }
     this.outcome = result.outcome;
+    this.exit = { code: result.exitCode, signal: result.signal };
     this.pacedMs = result.pacedMs;
     try {
       this.flushWindow(this.simNs); // whatever the runtime produced before it ended
