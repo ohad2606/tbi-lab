@@ -16,12 +16,14 @@ kind() {
     *.html) echo "html" ;; *.css) echo "css" ;; *.json) echo "json" ;; *) echo "asset" ;;
   esac
 }
-diff <(cut -c67- "$a/MANIFEST.sha256") <(cut -c67- "$b/MANIFEST.sha256") > /dev/null ||
-  { echo "DIFFERS: file lists"; diff <(cut -c67- "$a/MANIFEST.sha256") <(cut -c67- "$b/MANIFEST.sha256") || true; rc=1; }
-while read -r sum path; do
-  other="$(awk -v p="$path" '$2 == p { print $1 }' "$b/MANIFEST.sha256")"
-  [ -n "$other" ] && [ "$other" != "$sum" ] && { echo "DIFFERS ($(kind "$path")): $path"; rc=1; }
-done < "$a/MANIFEST.sha256"
+# The verdict: the two manifests are byte-identical (same paths, same hashes, same order).
+if ! cmp -s "$a/MANIFEST.sha256" "$b/MANIFEST.sha256"; then
+  rc=1
+  # Name each differing or missing file (paths are column 67 on: names with spaces are kept).
+  diff <(LC_ALL=C sort "$a/MANIFEST.sha256") <(LC_ALL=C sort "$b/MANIFEST.sha256") |
+    sed -n 's/^[<>] [0-9a-f]\{64\}  //p' | LC_ALL=C sort -u |
+    while IFS= read -r path; do echo "DIFFERS ($(kind "$path")): $path"; done
+fi
 # The manifests describe the files; check the files themselves match their manifests too.
 (cd "$a" && sha256sum --quiet -c MANIFEST.sha256) || rc=1
 (cd "$b" && sha256sum --quiet -c MANIFEST.sha256) || rc=1

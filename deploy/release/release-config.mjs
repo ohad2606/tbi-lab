@@ -133,18 +133,28 @@ export function validate(profile, srcdir, tools = currentTools()) {
     err('VITE_FEEDBACK_URL must stay null (external form needs owner approval, Sprint 13 H7)');
 
   // No tracked env file can add settings outside the profile.
-  for (const f of trackedEnvFiles(srcdir)) err(`tracked env file ${f} would add build settings`);
+  // No tracked env file can add settings outside the profile; not knowing the files is an error.
+  let tracked;
+  try {
+    tracked = (tools.trackedFiles ?? gitTrackedFiles)(srcdir);
+  } catch (e) {
+    err(`cannot list the tracked files of ${srcdir}: ${e.message.split('\n')[0]}`);
+    tracked = [];
+  }
+  for (const f of tracked.filter((f) => /(^|\/)\.env(\.|$)/.test(f) && !f.endsWith('.example')))
+    err(`tracked env file ${f} would add build settings`);
 
   return errors;
 }
 
-function trackedEnvFiles(srcdir) {
-  try {
-    const out = execFileSync('git', ['ls-files'], { cwd: srcdir, encoding: 'utf8' });
-    return out.split('\n').filter((f) => /(^|\/)\.env(\.|$)/.test(f) && !f.endsWith('.example'));
-  } catch {
-    return [];
-  }
+/** The files git tracks in `srcdir`; throws when git cannot say (the check then fails closed). */
+function gitTrackedFiles(srcdir) {
+  const out = execFileSync('git', ['ls-files', '-z'], {
+    cwd: srcdir,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  return out.split('\0').filter(Boolean);
 }
 
 export function currentTools() {
@@ -160,6 +170,9 @@ export function buildEnvironment(profile, { commit, time, path, home }) {
   const env = {
     PATH: path,
     HOME: home,
+    // npm reads no user or global configuration: only the lockfile and the project decide.
+    NPM_CONFIG_USERCONFIG: '/dev/null',
+    NPM_CONFIG_GLOBALCONFIG: '/dev/null',
     LC_ALL: 'C',
     TZ: profile.build.TZ,
     TBI_BUILD_COMMIT: commit,

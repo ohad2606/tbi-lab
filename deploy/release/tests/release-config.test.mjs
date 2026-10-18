@@ -13,7 +13,8 @@ import { checkDist } from '../check-dist.mjs';
 const ROOT = new URL('../../../', import.meta.url).pathname;
 const RC4 = join(ROOT, 'deploy/release/rc4.release.json');
 const RC4_REPORTS = join(ROOT, 'deploy/release/rc4-reports.release.json');
-const TOOLS = { node: 'v24.21.0', npm: '11.19.0' };
+const TOOLS = { node: 'v24.21.0', npm: '11.19.0', trackedFiles: () => [] };
+const GIT = { node: 'v24.21.0', npm: '11.19.0' }; // the real tracked-file listing (git)
 
 const dirs = [];
 afterEach(() => dirs.splice(0).forEach((d) => rmSync(d, { recursive: true, force: true })));
@@ -33,8 +34,8 @@ describe('release profile vs source', () => {
   it('the RC4 profile pins exactly the settings this source reads, Active Minutes absent', () => {
     expect([...sourceViteSettings(ROOT).keys()].sort()).toEqual([...RC4_SETTINGS].sort());
     expect(RC4_SETTINGS).toHaveLength(8);
-    expect(validate(loadProfile(RC4), ROOT, TOOLS)).toEqual([]);
-    expect(validate(loadProfile(RC4_REPORTS), ROOT, TOOLS)).toEqual([]);
+    expect(validate(loadProfile(RC4), ROOT, GIT)).toEqual([]);
+    expect(validate(loadProfile(RC4_REPORTS), ROOT, GIT)).toEqual([]);
   });
 
   it('a setting the source reads but the profile does not pin is refused', () => {
@@ -82,7 +83,7 @@ describe('release profile vs source', () => {
   it('unpinned tools, an empty string, the feedback form and a non-dev-lab build are refused', () => {
     const src = tree({ 'app/src/a.ts': reads(RC4_SETTINGS) });
     const p = loadProfile(RC4);
-    expect(validate(p, src, { node: 'v22.0.0', npm: '11.19.0' })).toEqual([
+    expect(validate(p, src, { ...TOOLS, node: 'v22.0.0' })).toEqual([
       'node: pinned v24.21.0, running v22.0.0',
     ]);
     expect(validate({ ...p, vite: { ...p.vite, VITE_PREVIEW_NAME: '' } }, src, TOOLS)).toEqual([
@@ -102,6 +103,19 @@ describe('release profile vs source', () => {
     ]);
   });
 
+  it('a tracked .env file, or a tree whose tracked files cannot be listed, is refused (review)', () => {
+    const src = tree({ 'app/src/a.ts': reads(RC4_SETTINGS) });
+    const p = loadProfile(RC4);
+    expect(validate(p, src, { ...TOOLS, trackedFiles: () => ['app/.env.production'] })).toEqual([
+      'tracked env file app/.env.production would add build settings',
+    ]);
+    expect(validate(p, src, { ...TOOLS, trackedFiles: () => ['app/.env.example'] })).toEqual([]);
+    // Not a git tree (or git missing / refusing it): fails closed instead of assuming "no files".
+    const errors = validate(p, src, GIT);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatch(/^cannot list the tracked files of /);
+  });
+
   it('the build environment is the profile and the identity only; null settings are absent', () => {
     const env = buildEnvironment(loadProfile(RC4), {
       commit: 'a'.repeat(40),
@@ -112,6 +126,8 @@ describe('release profile vs source', () => {
     expect(env).toEqual({
       PATH: '/usr/bin',
       HOME: '/home/x',
+      NPM_CONFIG_USERCONFIG: '/dev/null',
+      NPM_CONFIG_GLOBALCONFIG: '/dev/null',
       LC_ALL: 'C',
       TZ: 'UTC',
       TBI_BUILD_COMMIT: 'a'.repeat(40),

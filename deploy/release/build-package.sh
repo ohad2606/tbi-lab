@@ -9,7 +9,8 @@
 # - Every release-relevant setting comes from the profile, validated against the source being
 #   built (release-config.mjs: exactly the VITE_* settings the source reads, Active Minutes absent,
 #   Report a Problem switches explicit and consistent, pinned Node/npm). Nothing is inherited:
-#   npm ci and every build run under `env -i` with only PATH, HOME, LC_ALL and TZ added.
+#   npm ci and every build run under `env -i` with only PATH, HOME, LC_ALL and TZ added, and npm
+#   reads no user or global npmrc (NPM_CONFIG_USERCONFIG / GLOBALCONFIG = /dev/null).
 # - The profile and validator are read from the commit being built, not from this checkout.
 # - The source is built beside the package (<out-dir>.src); the output does not depend on that
 #   path (verified: two packages built at different paths are byte-identical, source maps included).
@@ -36,7 +37,8 @@ profile="$src/deploy/release/$(basename "$profile_arg")"
 node deploy/release/release-config.mjs check "$profile" "$src" > "$out/build-config.json"
 mapfile -t ENV < <(node deploy/release/release-config.mjs env "$profile" "$src" "$R" "$T")
 [ "${#ENV[@]}" -gt 0 ]
-base_env=("PATH=$PATH" "HOME=$HOME" "LC_ALL=C" "TZ=UTC")
+base_env=("PATH=$PATH" "HOME=$HOME" "NPM_CONFIG_USERCONFIG=/dev/null" "NPM_CONFIG_GLOBALCONFIG=/dev/null"
+  "LC_ALL=C" "TZ=UTC")
 
 env -i "${base_env[@]}" npm ci --no-audit --no-fund > "$out/npm-ci.log" 2>&1
 env -i "${ENV[@]}" npm run build --workspace @tbi-lab/app > "$out/frontend-build.log" 2>&1
@@ -53,7 +55,7 @@ grep -q "$R" runtime/host/dist/session-host.mjs
 cp -a app/dist "$out/frontend"
 mkdir -p "$out/services"
 cp runtime/host/dist/session-host.mjs runtime/builder/dist/build-service.mjs runtime/builder/dist/build-job.mjs "$out/services/"
-(cd "$out" && find frontend services -type f | LC_ALL=C sort | xargs sha256sum > MANIFEST.sha256)
+(cd "$out" && find frontend services -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum > MANIFEST.sha256)
 sha256sum package-lock.json runtime/firmware/artifacts.lock.json deploy/dev-lab/s8/policy.json \
   deploy/dev-lab/s8/policy.alpha.json "deploy/release/$(basename "$profile")" > "$out/inputs.sha256"
 echo "$R" > "$out/COMMIT"; echo "$version" > "$out/VERSION"; echo "$T" > "$out/BUILD_TIME"
