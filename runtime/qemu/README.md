@@ -24,7 +24,7 @@ repeated-run baseline (see `docs/runtime/R1-REPORT.md`).
 
 ## Patches (R1.1, R1.11)
 
-All patches were written by TBI Lab (0001–0005 in R1, 0006–0008 in Sprint 12, 0009 in Sprint 15). None contains code from a community fork
+All patches were written by TBI Lab (0001–0005 in R1, 0006–0008 in Sprint 12, 0009 in Sprint 15, 0010 in Sprint 16A). None contains code from a community fork
 (a159x36, lcgamboa/PICSimLab) or from any AGPL project (Velxio). Those were inspected as
 references in Sprint 0 (`docs/research/classic-esp32-gpio-implementations.md`). Nothing from
 them was copied.
@@ -40,6 +40,7 @@ them was copied.
 | 0007 | hw/gpio/esp32_gpio, hw/misc/tbi_bridge: publish pad functions                           | New in Sprint 12 (ADR-011 §3). `F` frames for each pad's routed output function and open-drain bit; a peripheral that can drive a pad (its output enable) owns it and its `G` frames stop; an open-drain 1 is released                                                                                                                                                                                                                                                             | 3 files       |
 | 0008 | hw/i2c/esp32_i2c, hw/misc/tbi_bridge, hw/xtensa/esp32: I2C to the TBI host              | New in Sprint 12 (ADR-011 §4, D-9). The controller's bus phases go to the host as `B` frames (K/D replies); the upstream TMP105 at 0x48 is removed; data-byte NACK raises ACK_ERR (probe P-4); RSTART is a repeated START; completion interrupts and DONE bits after the bus time computed from the programmed SCL timing                                                                                                                                                          | 5 files       |
 | 0009 | hw/misc/esp32_ledc, hw/misc/tbi_bridge, hw/xtensa/esp32: LEDC waveforms to the TBI host | New in Sprint 15 (R4, `docs/sprints/SPRINT-13-R4-ARCHITECTURE.md`). Clean-room from TRM v5.8 ch. 28 and IDF `ledc_ll`: the LEDC register semantics replace the upstream duty-percentage stub; each high-speed timer and channel state change goes to the host as a `P` / `W` frame (capability `pwm`), from which the host computes the exact waveform. Dither, fade, interrupts, the low-speed group and wrapping hpoint/duty are reported unsupported; APB follows the SoC clock | 4 files       |
+| 0010 | hw/gpio/esp32_gpio, hw/misc/tbi_bridge: publish GPIO-matrix output inversion            | New in Sprint 16A (R4 review M8). `FUNCn_OUT_SEL_CFG` OUT_INV_SEL / OEN_INV_SEL make a pad carry the inverse of its routed signal (set by `ledcOutputInvert`, `ledc_channel_config(.flags.output_invert)` or the GPIO matrix directly); the pad function is published as `inverted:<sel>` so the host refuses it by name instead of showing the uninverted waveform                                                                                                                | 2 files       |
 
 The patch SHA-256s are recorded in each build's `runtime.json` and in the R1 report.
 

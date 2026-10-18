@@ -108,6 +108,12 @@ const PWM_CODES: readonly PwmFailCode[] = [
   'pwm_outputs_interact',
 ];
 
+/** R4 (review M8): the host refused an attached pad because the GPIO matrix inverts it. */
+function invertedRouting(detail: unknown): boolean {
+  const f = (detail as { function?: unknown } | null)?.function;
+  return typeof f === 'string' && f.startsWith('inverted:');
+}
+
 /** R4: the host's `pwm_unsupported` detail as a named product failure (unknown shapes: generic). */
 function pwmFailure(detail: unknown): SimFailure {
   const d = (detail ?? {}) as Record<string, unknown>;
@@ -463,6 +469,8 @@ export class McuSimulation implements SimulationHost {
           if (reason === 'electrical_error' && isEngineError(e.detail))
             return this.fail({ kind: 'engine', error: e.detail });
           if (reason === 'pwm_unsupported') return this.fail(pwmFailure(e.detail));
+          if (reason === 'unsupported_feature' && invertedRouting(e.detail))
+            return this.fail({ kind: 'runtime', code: 'inverted_output', detail: reason });
           return this.fail({
             kind: 'runtime',
             code: FAIL[reason] ?? 'runtime_crashed',

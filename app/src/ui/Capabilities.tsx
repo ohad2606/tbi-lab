@@ -28,7 +28,12 @@ export function openCapabilities(section: CapabilitySection = 'firmware'): void 
 export function sectionForFailure(code: string | undefined): CapabilitySection | null {
   if (!code) return null;
   if (SESSION_LIMITS.includes(code)) return 'limits';
-  if (code === 'mcu_unsupported_features' || code === 'unsupported_feature') return 'firmware';
+  if (
+    code === 'mcu_unsupported_features' ||
+    code === 'unsupported_feature' ||
+    code === 'inverted_output'
+  )
+    return 'firmware';
   if (
     code === 'unsupported_component' ||
     code === 'mcu_component_unsupported' ||

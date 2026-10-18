@@ -191,6 +191,49 @@ describe('R4: PWM outputs on the Session Host (A1)', () => {
     });
   });
 
+  it('an inverted LEDC output (GPIO matrix, patch 0010) is refused by name (review M8)', async () => {
+    // ledc_channel_config(.flags.output_invert = 1) or gpio_matrix_out(18, 71, true, false): the
+    // pad carries the inverse of the waveform, which the host does not model.
+    const { s } = session(['F 9500000 18 inverted:71 0', ...TIMER, duty(9500300, 64)]);
+    s.run();
+    expect(await terminal(s)).toMatchObject({
+      reason: 'pwm_unsupported',
+      detail: { code: 'pwm_unsupported_mode', gpio: 18, why: 'inverted' },
+    });
+  });
+
+  it('inversion added to a running PWM output is refused too, also at 100 % (static high)', async () => {
+    const { s } = session([ROUTE, ...TIMER, duty(9500300, 256), '30@F 30000000 18 inverted:71 0']);
+    s.run();
+    expect(await terminal(s)).toMatchObject({
+      reason: 'pwm_unsupported',
+      detail: { code: 'pwm_unsupported_mode', gpio: 18, why: 'inverted' },
+    });
+  });
+
+  it('during the grace tick an unsupported state publishes no placeholder outcome (review M3)', async () => {
+    const { s } = session([ROUTE, ...TIMER, duty(9500300, 64), '30@F 30000000 18 inverted:71 0']);
+    s.run();
+    expect(await terminal(s)).toMatchObject({ reason: 'pwm_unsupported' });
+    const els = s.log.since(0).filter((e) => e.type === 'electrical');
+    // The last published outcome is the truthful 25 % one, from before the inversion.
+    expect(BigInt(els.at(-1)!.simNs!)).toBeLessThanOrEqual(30_000_000n);
+    const led = (e: (typeof els)[number]) =>
+      Object.values((e as unknown as { outcome: SolveSuccess }).outcome.components).find(
+        (c) => c.current !== null && c.current !== undefined && c.current > 0,
+      );
+    expect(led(els.at(-1)!)).toBeDefined();
+  });
+
+  it('an inverted simple-GPIO pad is a lasting unsupported routing (review M8)', async () => {
+    const { s } = session(['F 9500000 18 inverted:256 0']);
+    s.run();
+    expect(await terminal(s)).toMatchObject({
+      reason: 'unsupported_feature',
+      detail: { gpio: 18, function: 'inverted:256' },
+    });
+  });
+
   it('a relay coil on a PWM pad is refused at session level, naming it (A1, review M10)', async () => {
     const c = new Circuit();
     const k = c.add('component.relay');

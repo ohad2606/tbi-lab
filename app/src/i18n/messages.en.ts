@@ -810,6 +810,8 @@ export const en = {
     'The selected firmware is not available on the runtime service. The project is not affected.',
   'sim.error.runtime.unsupported_feature':
     'The firmware uses a feature the simulator does not support in this version (internal pull-up/pull-down or GPIO interrupts).',
+  'sim.error.runtime.inverted_output':
+    'The firmware inverts a connected pin through the GPIO matrix. The simulator does not model inverted outputs.',
   'sim.error.runtime.invalid_attachment': 'A connected ESP32 pin cannot be used in the simulator.',
   'sim.error.runtime.startup_failed':
     'The ESP32 could not start. The project is not affected. Press Run to try again.',
@@ -844,6 +846,7 @@ export const en = {
   'sim.error.pwm.pwm_outputs_interact':
     'The PWM outputs {pins} share a load ({components}). Their combined effect depends on how the waveforms overlap, which is not simulated.',
   'sim.pwm.why.open-drain': 'an open-drain PWM output',
+  'sim.pwm.why.inverted': 'an inverted PWM output (GPIO matrix inversion)',
   'sim.pwm.why.low-speed': 'a low-speed channel (more than 8 PWM channels)',
   'sim.pwm.why.interrupt': 'LEDC interrupts',
   'sim.pwm.why.dither': 'fractional duty (dithering)',

@@ -176,6 +176,38 @@ describe('R4 on the real runtime (harness level)', () => {
     for (const pad of [2, 4, 5, 12, 13, 14, 15, 16])
       expect(wave(t.waveAt(pad, t.marker('LS-DONE') + 5n * MS)).duty, `GPIO${pad}`).toBe(0.5);
   }, 900_000);
+
+  it('review M8: GPIO-matrix inversion is reported on its pad (patch 0010), set by API or below it', async () => {
+    const t = await trace('TbiPwmInv', 1300);
+    const funcs = (pad: number, from: string, to: string) =>
+      t.frames
+        .filter((f) => f.startsWith('F '))
+        .map((f) => f.split(' '))
+        .filter(
+          ([, vns, p]) =>
+            Number(p) === pad && BigInt(vns!) > t.marker(from) && BigInt(vns!) <= t.marker(to),
+        )
+        .map(([, , , func]) => func);
+    const sig18 = t.frames.find((f) => / 18 periph:\d+ /.test(f))!.split(' ')[3]!;
+    const sig19 = t.frames.find((f) => / 19 periph:\d+ /.test(f))!.split(' ')[3]!;
+    expect(sig18).toMatch(/^periph:(7[1-8])$/);
+    // ledcOutputInvert(18, true / false): inverted on the same LEDC signal, then back.
+    expect(funcs(18, 'INV-ATTACHED', 'INV-API')).toEqual([sig18.replace('periph', 'inverted')]);
+    expect(funcs(18, 'INV-API', 'INV-OFF')).toEqual([sig18]);
+    // Below the Arduino API (what the build service cannot see).
+    expect(funcs(19, 'INV-OFF', 'INV-MATRIX')).toEqual([sig19.replace('periph', 'inverted')]);
+    // A simple GPIO output inverted through the matrix, then restored.
+    expect(funcs(21, 'INV-MATRIX', 'INV-GPIO')).toEqual(['inverted:256']);
+    expect(funcs(21, 'INV-GPIO', 'INV-DONE')).toEqual(['gpio']);
+    // Deterministic like every other frame stream.
+    const again = await trace('TbiPwmInv', 1300);
+    expect(again.frames).toEqual(t.frames);
+    recordEvidence('s15-r4-m8-inversion', {
+      frames: t.frames.length,
+      fingerprint: createHash('sha256').update(t.frames.join('\n')).digest('hex'),
+      inverted: t.frames.filter((f) => f.includes(' inverted:')),
+    });
+  }, 900_000);
 });
 
 // ---------------------------------------------------------------------------------------------
@@ -196,7 +228,8 @@ async function runUntil(s: HostSession, marker: string) {
       .filter((e) => e.type === 'serial')
       .map((e) => Buffer.from((e as unknown as { data: string }).data, 'base64').toString('latin1'))
       .join('');
-    if (text.includes(marker) || Date.now() > deadline) break;
+    const st = s.status().state;
+    if (text.includes(marker) || st === 'failed' || st === 'ended' || Date.now() > deadline) break;
     await new Promise((r) => setTimeout(r, 100));
   }
   s.stop();
@@ -261,6 +294,34 @@ describe('R4 on the real runtime (Session Host)', () => {
       a128: led('PWM A128').current,
       a255: led('PWM A255').current,
     });
+  }, 900_000);
+
+  it('review M8: an LED on an LEDC output that the firmware inverts is refused by name', async () => {
+    const c = new Circuit();
+    const r1 = c.add('component.resistor');
+    const d1 = c.add('component.led');
+    c.ohms(r1, 220).wire(`${r1}.b`, `${d1}.anode`).wire(`${d1}.cathode`, 'GND1.ref');
+    c.pad(18, `${r1}.a`);
+    const fw = artifact('TbiPwmInv');
+    const req = c.request(fw.sha256);
+    req.ticket = ticketFor(fw.sha256, principalFor(), PWM_FEATURES);
+    const created = host.create(req, principalFor());
+    if (!created.ok) throw new Error(created.error);
+    const s = created.value.session;
+    expect(await runUntil(s, 'INV-DONE')).toMatchObject({
+      state: 'failed',
+      reason: 'pwm_unsupported',
+      detail: { code: 'pwm_unsupported_mode', gpio: 18, why: 'inverted' },
+    });
+    // Before the inversion the LED was simulated as usual (25 % average); after it, nothing
+    // else was published (review M3: no placeholder "solved low" during the grace tick).
+    const hiLed = reference(req, { 18: 'output-high' }).components[d1]!.current!;
+    const leds = s.log
+      .since(0)
+      .filter((e) => e.type === 'electrical')
+      .map((e) => (e as unknown as { outcome: SolveSuccess }).outcome.components[d1]!.current!);
+    expect(leds.at(-1)).toBeCloseTo(0.25 * hiLed, 12);
+    expect(leds.filter((i) => i > 0).length).toBeGreaterThan(0);
   }, 900_000);
 
   it('T-R4-4: an SG90 follows 1.0 / 2.0 / 1.5 ms pulses from ledcWrite (exact widths, 600 deg/s)', async () => {

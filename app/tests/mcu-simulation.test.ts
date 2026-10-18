@@ -302,6 +302,26 @@ describe('ESP32 simulation host (one-shot R2 sessions)', () => {
       status: 'failed',
       failure: { kind: 'engine', error: { code: 'psu_parallel' } },
     });
+    // R4 review M8: an inverted routing is named, a plain unsupported routing stays generic.
+    for (const [fn, code] of [
+      ['inverted:256', 'inverted_output'],
+      ['periph:14', 'unsupported_feature'],
+    ] as const) {
+      const h = fakeClient();
+      const sim3 = new McuSimulation({ client: h.client });
+      const s3 = await running(sim3, h, example('esp32-blink'));
+      s3.emit({
+        type: 'state',
+        simNs: null,
+        state: 'failed',
+        reason: 'unsupported_feature',
+        detail: { gpio: 2, function: fn, since: '1' },
+      });
+      expect(sim3.state, fn).toMatchObject({
+        status: 'failed',
+        failure: { kind: 'runtime', code },
+      });
+    }
     // An unexpected end (lease, lifetime) is a lost session, not a Stop.
     const g = fakeClient();
     const sim2 = new McuSimulation({ client: g.client });

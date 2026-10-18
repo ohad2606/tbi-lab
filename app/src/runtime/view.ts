@@ -93,6 +93,8 @@ export type RuntimeFailCode =
   | 'mirror_failed'
   /** R4: a PWM output that cannot be simulated honestly (details: SimFailure kind 'pwm'). */
   | 'pwm_unsupported'
+  /** R4 (review M8): the GPIO matrix inverts an attached pin's output, which is not modelled. */
+  | 'inverted_output'
   /** Sprint 11: the host's validator refused a live command (e.g. an older runtime). */
   | 'command_refused'
   /** Sprint 11: live commands exceeded the host's per-session rate. */

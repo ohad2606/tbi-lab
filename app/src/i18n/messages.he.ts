@@ -787,6 +787,8 @@ export const he: Record<MessageKey, string> = {
     'הקושחה שנבחרה אינה זמינה בשירות הריצה. הפרויקט לא נפגע.',
   'sim.error.runtime.unsupported_feature':
     'הקושחה משתמשת ביכולת שהסימולטור אינו תומך בה בגרסה זו (Pull-up/Pull-down פנימי או פסיקות GPIO).',
+  'sim.error.runtime.inverted_output':
+    'הקושחה הופכת פין מחובר דרך מטריצת ה־GPIO. הסימולטור אינו ממדל יציאות הפוכות.',
   'sim.error.runtime.invalid_attachment': 'פין ESP32 מחובר אינו זמין לשימוש בסימולטור.',
   'sim.error.runtime.startup_failed':
     'לא ניתן היה להפעיל את ה-ESP32. הפרויקט לא נפגע. לחצו על הרצה כדי לנסות שוב.',
@@ -819,6 +821,7 @@ export const he: Record<MessageKey, string> = {
   'sim.error.pwm.pwm_outputs_interact':
     'יציאות ה־PWM ‏{pins} חולקות עומס ({components}). ההשפעה המשולבת שלהן תלויה בחפיפה בין צורות הגל, וזו אינה מדומה.',
   'sim.pwm.why.open-drain': 'יציאת PWM מסוג Open-drain',
+  'sim.pwm.why.inverted': 'יציאת PWM הפוכה (היפוך במטריצת ה־GPIO)',
   'sim.pwm.why.low-speed': 'ערוץ איטי (יותר מ־8 ערוצי PWM)',
   'sim.pwm.why.interrupt': 'פסיקות LEDC',
   'sim.pwm.why.dither': 'מחזור עבודה שברי (Dithering)',

@@ -1,0 +1,82 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: TBI Lab runtime <runtime@tbi-lab.local>
+Date: Sun, 18 Oct 2026 12:00:00 +0000
+Subject: [PATCH 10/10] hw/gpio/esp32_gpio, hw/misc/tbi_bridge: publish GPIO-matrix
+ output inversion
+
+FUNCn_OUT_SEL_CFG OUT_INV_SEL (bit 9) and OEN_INV_SEL (bit 11) invert a pad's routed output or
+its enable. The TBI host does not model inversion; until now an inverted LEDC output (set
+through ESP-IDF or the GPIO matrix directly, below the Arduino API) was published as its
+uninverted waveform. The pad function now carries the inversion (bit 10 of the pad-func value)
+and the bridge reports such a pad as inverted:<sel>, so the host can refuse it by name.
+TBI Lab R4 review finding M8.
+---
+ hw/gpio/esp32_gpio.c |  9 +++++++--
+ hw/misc/tbi_bridge.c | 10 +++++++++-
+ 2 files changed, 16 insertions(+), 3 deletions(-)
+
+diff --git a/hw/gpio/esp32_gpio.c b/hw/gpio/esp32_gpio.c
+index 6d362fd..260524f 100644
+--- a/hw/gpio/esp32_gpio.c
++++ b/hw/gpio/esp32_gpio.c
+@@ -67,7 +67,9 @@ static uint64_t esp32_gpio_drivers(Esp32GpioState *s)
+ #define TBI_PAD_STATE_UNKNOWN   0xff
+ 
+ /*
+- * FUNCn_OUT_SEL | PAD_DRIVER << 9 of pad i (an unwritten OUT_SEL counts as simple GPIO). A routed
++ * FUNCn_OUT_SEL | PAD_DRIVER << 9 | inverted << 10 of pad i (an unwritten OUT_SEL counts as simple
++ * GPIO; TBI Lab R4: "inverted" is OUT_INV_SEL or OEN_INV_SEL, published so the host can refuse what
++ * it does not model instead of showing the uninverted signal). A routed
+  * peripheral signal owns the pad only if it can drive it: with OEN_SEL set the output enable comes
+  * from GPIO_ENABLE, and a pad whose GPIO_ENABLE bit is clear is an input whatever OUT_SEL holds
+  * (ESP-IDF configures INPUT pins exactly so: OUT_SEL 0, OEN_SEL 1, enable clear).
+@@ -78,10 +80,13 @@ static uint16_t esp32_gpio_func(Esp32GpioState *s, int i)
+         s->regs[(TBI_A_GPIO_FUNC0_OUT + 4 * i) / 4] : TBI_SIG_GPIO_OUT;
+     uint32_t sel = cfg & 0x1ff;
+     uint32_t od = (s->regs[(TBI_A_GPIO_PIN0 + 4 * i) / 4] >> 2) & 1;
++    /* OUT_INV_SEL (bit 9) and OEN_INV_SEL (bit 11) invert the routed output and its enable. */
++    uint32_t inv = ((cfg >> 9) & 1) | ((cfg >> 11) & 1);
+     if (sel != TBI_SIG_GPIO_OUT && (cfg >> 10) & 1 && !((esp32_gpio_drivers(s) >> i) & 1)) {
+         sel = TBI_SIG_GPIO_OUT;
++        inv = (cfg >> 11) & 1; /* an input pad: only an inverted enable can still drive it */
+     }
+-    return (uint16_t)(sel | od << 9);
++    return (uint16_t)(sel | od << 9 | inv << 10);
+ }
+ 
+ /* Publish every pad whose routed function changed, in ascending pad order. */
+diff --git a/hw/misc/tbi_bridge.c b/hw/misc/tbi_bridge.c
+index 4251780..c555377 100644
+--- a/hw/misc/tbi_bridge.c
++++ b/hw/misc/tbi_bridge.c
+@@ -22,6 +22,7 @@
+  *   S <vns> <hex>                       guest UART0 bytes (from chardev "tbi-serial"); no reply
+  *   F <vns> <pad> <func> <od>           (pad-func) a pad's routed function changed: gpio,
+  *                                       i2c0-scl, i2c0-sda, i2c1-scl, i2c1-sda or periph:<signal>;
++ *                                       inverted:<sel> (R4) when the routing is inverted;
+  *                                       <od> = open drain. Host replies (commands...) C
+  *   B <vns> <bus> S <addr> <rw>         (i2c) START or repeated START, 7-bit address (hex)
+  *   B <vns> <bus> W <byte>              (i2c) the controller writes a byte (hex)
+@@ -371,7 +372,10 @@ static void tbi_pad_changed(void *opaque, int pad, int state)
+     tbi_exchange(s, now, frame, false);
+ }
+ 
+-/* A pad's routed function changed: FUNCn_OUT_SEL | open drain << 9, from hw/gpio/esp32_gpio.c. */
++/*
++ * A pad's routed function changed: FUNCn_OUT_SEL | open drain << 9 | inverted << 10, from
++ * hw/gpio/esp32_gpio.c.
++ */
+ static void tbi_pad_func(void *opaque, int pad, int value)
+ {
+     TbiBridge *s = TBI_BRIDGE(opaque);
+@@ -401,6 +405,10 @@ static void tbi_pad_func(void *opaque, int pad, int value)
+         snprintf(func, sizeof(func), "periph:%d", sel);
+         break;
+     }
++    if ((value >> 10) & 1) {
++        /* R4: GPIO-matrix inversion of whatever is routed (the host refuses it by name). */
++        snprintf(func, sizeof(func), "inverted:%d", sel);
++    }
+     snprintf(frame, sizeof(frame), "F %" PRId64 " %d %s %d\n", now, pad, func, (value >> 9) & 1);
+     tbi_exchange(s, now, frame, false);
+ }

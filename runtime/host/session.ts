@@ -172,7 +172,10 @@ export class HostSession {
    * simulate honestly (refused only if still present a whole command tick later).
    */
   private readonly ledc = new LedcTracker();
-  private readonly ledcPads = new Map<number, { signal: number; openDrain: boolean }>();
+  private readonly ledcPads = new Map<
+    number,
+    { signal: number; openDrain: boolean; inverted: boolean }
+  >();
   private readonly pwmSolved = new Map<number, string>();
   private pwmProblems = new Map<string, { detail: Record<string, unknown>; since: bigint }>();
   /** When each LEDC pad's current waveform took effect (exact; for servo pulse expansion). */
@@ -588,12 +591,17 @@ export class HostSession {
   // R4: PWM (LEDC) outputs
 
   /** The waveform on each attached pad routed to an LEDC signal, in pad order. */
-  private pwmPads(): { gpio: number; w: Waveform; openDrain: boolean }[] {
+  private pwmPads(): { gpio: number; w: Waveform; openDrain: boolean; inverted: boolean }[] {
     const attached = new Set(this.request.attachments.map((a) => a.gpio));
     return [...this.ledcPads.entries()]
       .filter(([gpio]) => attached.has(gpio))
       .sort(([a], [b]) => a - b)
-      .map(([gpio, { signal, openDrain }]) => ({ gpio, w: this.ledc.waveform(signal), openDrain }));
+      .map(([gpio, { signal, openDrain, inverted }]) => ({
+        gpio,
+        w: this.ledc.waveform(signal),
+        openDrain,
+        inverted,
+      }));
   }
 
   /**
@@ -608,14 +616,14 @@ export class HostSession {
     const problems: { key: string; detail: Record<string, unknown> }[] = [];
     const waves: { gpio: number; w: Extract<Waveform, { kind: 'wave' }> }[] = [];
     const zeros: number[] = [];
-    for (const { gpio, w, openDrain } of pads) {
-      if (w.kind === 'static' && !openDrain) {
+    for (const { gpio, w, openDrain, inverted } of pads) {
+      if (w.kind === 'static' && !openDrain && !inverted) {
         engine.setPinMode(gpio, w.level ? 'output-high' : 'output-low');
         continue;
       }
       engine.setPinMode(gpio, 'output-low');
-      if (openDrain || w.kind === 'unsupported') {
-        const why = openDrain ? 'open-drain' : (w as { why: string }).why;
+      if (openDrain || inverted || w.kind === 'unsupported') {
+        const why = openDrain ? 'open-drain' : inverted ? 'inverted' : (w as { why: string }).why;
         problems.push({
           key: `u:${gpio}:${why}`,
           detail: { code: 'pwm_unsupported_mode', gpio, why },
@@ -752,9 +760,9 @@ export class HostSession {
   private pwmChanged(at: Rat): boolean {
     let changed = false;
     const seen = new Set<number>();
-    for (const { gpio, w, openDrain } of this.pwmPads()) {
+    for (const { gpio, w, openDrain, inverted } of this.pwmPads()) {
       seen.add(gpio);
-      const key = JSON.stringify([w, openDrain], (_k, v) =>
+      const key = JSON.stringify([w, openDrain, inverted], (_k, v) =>
         typeof v === 'bigint' ? v.toString() : v,
       );
       if (this.pwmSolved.get(gpio) === key) continue;
@@ -887,11 +895,17 @@ export class HostSession {
     this.simNs = vns;
     this.i2c?.onFunc(pad, func);
     if (!this.request.attachments.some((a) => a.gpio === pad)) return pwm;
-    // R4: a pad routed to an LEDC output is driven by its waveform (capability pwm).
-    const sig = func.startsWith('periph:') ? Number(func.slice(7)) : -1;
+    // R4: a pad routed to an LEDC output is driven by its waveform (capability pwm). An inverted
+    // one (patch 0010, review M8) is tracked too, and refused by name like open drain.
+    const inverted = func.startsWith('inverted:');
+    const sig = func.startsWith('periph:')
+      ? Number(func.slice(7))
+      : inverted
+        ? Number(func.slice(9))
+        : -1;
     if (this.caps.includes('pwm') && sig >= LEDC_SIGNALS.first && sig <= LEDC_SIGNALS.last) {
       this.periphPads.delete(pad);
-      this.ledcPads.set(pad, { signal: sig, openDrain });
+      this.ledcPads.set(pad, { signal: sig, openDrain, inverted });
       this.devices?.advance(vns);
       return this.pwmChanged(ns(vns)) ? [...pwm, ...this.solveAndInject(vns)] : pwm;
     }
@@ -903,7 +917,7 @@ export class HostSession {
     // A routing that lasts: ESP-IDF configures pins with two register writes, and between them a
     // pad can be routed to signal 0 for a few instructions (pinMode(INPUT): OUT_SEL 0, then
     // OEN_SEL 1). Only a routing still in place at the next command tick refuses the session.
-    if (func.startsWith('periph:')) {
+    if (func.startsWith('periph:') || inverted) {
       this.periphPads.set(pad, { func, vns });
       return [];
     }
@@ -1084,7 +1098,11 @@ export class HostSession {
       this.gpioWindow.clear();
       this.log.append({ type: 'gpio', simNs: t, changes });
     }
-    if (this.latest) {
+    // R4 (review M3): while a PWM state that cannot be simulated is pending (refused at the next
+    // tick if it lasts), its operating point is a placeholder (the pad solved low), not a
+    // result: nothing is published, and the last truthful outcome stays until the refusal or,
+    // for a transient state, until the next window.
+    if (this.latest && this.pwmProblems.size === 0) {
       // Sprint 12 (R3): an I2C display's content is part of its result.
       let latest: unknown = this.latest;
       if (this.latest.ok && this.i2c && !this.i2c.empty) {

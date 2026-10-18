@@ -19,9 +19,19 @@ export type Level = 0 | 1;
 export const CAPABILITIES = ['i2c', 'pad-func', 'pwm', 'sched-input'] as const;
 export type Capability = (typeof CAPABILITIES)[number];
 
-/** Routed function of a pad (patch 0007): simple GPIO, an I2C signal, or another peripheral. */
+/**
+ * Routed function of a pad (patch 0007): simple GPIO, an I2C signal, or another peripheral.
+ * `inverted:<sel>` (patch 0010, R4 review M8): the GPIO matrix inverts the routed output or its
+ * enable (sel 256 = simple GPIO); never modelled, so the host refuses it on an attached pad.
+ */
 export type PadFunction =
-  'gpio' | 'i2c0-scl' | 'i2c0-sda' | 'i2c1-scl' | 'i2c1-sda' | `periph:${number}`;
+  | 'gpio'
+  | 'i2c0-scl'
+  | 'i2c0-sda'
+  | 'i2c1-scl'
+  | 'i2c1-sda'
+  | `periph:${number}`
+  | `inverted:${number}`;
 
 /** One I2C bus phase (patch 0008). Addresses are 7-bit; `read` is the R/W bit. */
 export type I2cPhase =
@@ -107,6 +117,8 @@ function parsePadFunction(s: string, line: string): PadFunction {
   if (s === 'gpio' || /^i2c[01]-(scl|sda)$/.test(s)) return s as PadFunction;
   const m = /^periph:(0|[1-9]\d{0,2})$/.exec(s);
   if (m && Number(m[1]) < 256) return s as PadFunction;
+  const inv = /^inverted:(0|[1-9]\d{0,2})$/.exec(s);
+  if (inv && Number(inv[1]) <= 256) return s as PadFunction;
   throw new ProtocolError(`invalid pad function: ${line}`);
 }
 
