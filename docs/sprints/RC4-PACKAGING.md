@@ -143,7 +143,70 @@ The rollback target is the existing RC3 package, unchanged.
    - enabling reports is a separate, later switch (step 4 on Alpha).
 6. **Rollback at any point:** reinstall the RC3 package (`802befe`) with the existing RC3 procedure: host bundle, frontend, `daemon-reload`, restart. Nothing in RC4 migrates state.
 
-## 7. Remaining blockers
+## 7. Release gates G1–G9 reconciled with the code (DEV)
+
+The gate definitions live in `RC4-RELEASE-GATES.md` on Alpha, **which was not transferred**. Their
+names below come from the handoff manifest (*imported*); the status is what DEV can verify in this
+source. G6 and G9 are not described in the manifest: their status is unknown here, not passed.
+
+| Gate (manifest) | What the code now provides | Status on DEV |
+|---|---|---|
+| **G1 / D6**: RC4 SHA through PRs on `sprint-13`, without Active Minutes | #8 → #9 → #10, all draft, CI green; `92dac26`'s composition verified; Active Minutes absent (validator + `check-dist`) | **Open**: needs the merges (PM). The RC4 SHA exists only after them |
+| **G2 / D1**: reproducible package, no source-map exception | `compare-packages.sh` (manifest equality, no exception list), `verify-on-packaging-host.sh` | **PASS on DEV** (§4); **open on the Alpha packaging host** |
+| **G3 / D2–D4**: every VITE setting pinned; build script fixed | profiles, `release-config.mjs`, `build-package.sh` (env -i, no npmrc), `check-dist.mjs` | **PASS** (tests 11/11, four DEV packages) |
+| **G4 / D5** | not described in the manifest beyond "not written" | **Unknown on DEV** |
+| **G5 / D7**: the QEMU-backed E2E specs for S14 | the 22 `*-real`/measurement specs exist; they need a real stack | **Open** (staging, §6 step 3) |
+| **G6** | not in the manifest | **Unknown on DEV** |
+| **G7, G8 / D9**: RC4 switch and rollback scripts | procedures §6 and §9 (exact commands); no host-changing script was written (deployment scripts are out of DEV's mandate) | **Open**: procedures ready for review; scripts and drills need staging |
+| **G9** | not in the manifest | **Unknown on DEV** |
+
+## 8. Packaging-host verification (G2 on Alpha's packaging host)
+
+The DEV result does not prove that a multi-core host reproduces (§4). On the packaging host,
+after the merges, and with a clone that has the merged commit `R`:
+
+```
+git -C <clone> fetch origin && git -C <clone> status --porcelain        # must be empty
+node --version; npm --version                                          # v24.21.0 / 11.19.0
+deploy/release/verify-on-packaging-host.sh R /path/to/scratch/rc4-g2
+```
+
+It builds `rc4` and `rc4-reports` twice each, in fresh worktrees with their own `npm ci`, at the
+commit's own time (the same on every host), and writes `G2-RESULT.txt`: host, CPU count, tools,
+manifests, verdict. It installs, deploys and switches nothing. **PASS** requires both profiles
+IDENTICAL. On **FAIL** the differing files are named; the package is not released and the cause
+is investigated (no exception is granted by this procedure). Then compare the four manifests with
+DEV's build of the same `R`: equal manifests across hosts additionally show host independence.
+
+## 9. Drills (staging; commands for review, not executed)
+
+`<N>` is the deployment's instance name in `tbi-session-host.service.in`; `pkg` a package
+directory from §8. Each drill ends by checking `/version.json` and the service state.
+
+**A. Install RC4, reports OFF** (`rc4` package): install `services/*.mjs` and `frontend/` exactly as
+the RC3 procedure does; no reports drop-in. Check: `/version.json` names `R`; `POST /runtime/reports`
+→ 503; one `session_end` line per finished session in journald (`SESSION-DIAGNOSTICS.md`).
+
+**B. Reports ON** (`rc4-reports` frontend + host switch):
+```
+sudo install -d /etc/systemd/system/<N>-session-host.service.d
+printf '[Service]\nEnvironment=TBI_REPORTS_DIR=/var/lib/<N>-runtime/state/reports\n' |
+  sudo tee /etc/systemd/system/<N>-session-host.service.d/reports.conf
+sudo systemctl daemon-reload && sudo systemctl restart <N>-session-host   # quiet window
+```
+plus the `rc4-reports` frontend. Check: menu item present; a report → 201 and an id; `stat` 0700 /
+0600 owned by the runtime user; one `problem_report` line; with the alerter stopped, a report is
+still 201 (Telegram outage).
+
+**C. Reports OFF again**: `rc4` frontend; `sudo rm …/reports.conf && daemon-reload && restart`.
+Check: 503; stored reports intact; then purge or delete them (retention, PROBLEM-REPORTS.md).
+
+**D. Roll back to RC3**: reinstall the RC3 package (`802befe`) with the RC3 procedure. Check:
+`/version.json` names `802befe`; RC3 checksums; sessions run; the reports directory is ignored.
+
+**E. Forward again to RC4**: drill A. Record times and any session loss for each step.
+
+## 10. Remaining blockers
 
 1. **Merge approval (PM):** #8 → #9 → the packaging PR into `sprint-13`. The RC4 SHA exists only after that, and the packages must be rebuilt from it.
 2. **G2 on the Alpha packaging host:** two builds plus `compare-packages.sh` on the merged commit (§4). The source-map difference seen on Alpha is unexplained.
