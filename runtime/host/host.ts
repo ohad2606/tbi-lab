@@ -18,7 +18,7 @@ import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import type { HostConfig } from './config.js';
 import { validateCommand, validateCreate, type EndReason } from './protocol.js';
-import { HostSession } from './session.js';
+import { HostSession, type SessionStatus } from './session.js';
 import { isTerminal } from './stateMachine.js';
 
 export type HostResult<T> =
@@ -116,6 +116,16 @@ export class SessionHost {
       return { ok: false, status: 404, error: 'no such session' }; // never reveal existence
     s.lastActivity = performance.now();
     return { ok: true, value: s };
+  }
+
+  /**
+   * Sprint 14 problem reports: the status of `principal`'s OWN session, read-only (no token: the
+   * gate's principal alone may only see its own sessions; it renews no lease). Unknown ids and
+   * other principals' sessions are both null, so the caller cannot tell them apart.
+   */
+  statusFor(sessionId: string, principal: Principal): SessionStatus | null {
+    const s = /^[0-9a-f]{32}$/.test(sessionId) ? this.sessions.get(sessionId) : undefined;
+    return s && s.owner === principal ? s.status() : null;
   }
 
   command(s: HostSession, body: unknown): HostResult<{ accepted: boolean; reason?: string }> {

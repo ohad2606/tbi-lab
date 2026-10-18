@@ -52,6 +52,11 @@ export interface RuntimeView {
    * session will end then; nothing extends it. Null otherwise.
    */
   expiresSoon: { lifetimeMs: number } | null;
+  /**
+   * Sprint 14: the host's id of this session, once created. Only a problem report sends it; the
+   * host associates it only with the same user's own session.
+   */
+  sessionId?: string;
 }
 
 export function emptyView(board: string, firmware: string): RuntimeView {

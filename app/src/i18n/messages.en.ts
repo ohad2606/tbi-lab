@@ -1102,6 +1102,44 @@ export const en = {
   'onboarding.show': 'Show getting started',
   // Sprint 13 H7 (shown only when a deployment configures the form).
   'menu.feedback': 'Send feedback',
+  // Sprint 14: in-app problem reports (shown only when a deployment enables them).
+  'menu.reportProblem': 'Report a problem…',
+  'report.title': 'Report a problem',
+  'report.intro':
+    'Tell us what went wrong. A short description of what you did and what you expected helps most.',
+  'report.description.label': 'What happened?',
+  'report.counter.label': '{count} of {max} characters',
+  'report.category.legend': 'Area',
+  'report.category.simulation': 'Simulation',
+  'report.category.build': 'Build',
+  'report.category.editor': 'Editor',
+  'report.category.other': 'Something else',
+  'report.blocking': 'This stops me from continuing',
+  'report.disclosure.heading': 'What is sent',
+  'report.disclosure.sent':
+    'Your description, the area and whether it blocks you; the app version and interface language; the status of the current simulation, if any; your browser name, version and operating system. The report is linked to the account you signed in with.',
+  'report.disclosure.notSent':
+    'Your project, circuit, code and screenshots are not sent. Please do not include personal information.',
+  'report.disclosure.retention': 'Reports are deleted after at most 90 days.',
+  'report.problem.descriptionRequired': 'Describe the problem.',
+  'report.problem.descriptionTooLong': 'Shorten the description to {max} characters or fewer.',
+  'report.problem.categoryRequired': 'Choose an area.',
+  'report.send': 'Send report',
+  'report.sending': 'Sending…',
+  'report.cancel': 'Cancel',
+  'report.close': 'Close',
+  'report.sent.heading': 'Report received',
+  'report.sent.body':
+    'Thank you. Your report was received and stored. If you follow up about it, mention this ID:',
+  'report.failed.rate_limited':
+    'You have sent several reports recently. Your text is kept here: try again in {minutes} min.',
+  'report.failed.unavailable':
+    'Reports cannot be received right now. Your text is kept here: try again later.',
+  'report.failed.signed_out':
+    'Your sign-in has expired. Copy your text, sign in again, then send it.',
+  'report.failed.rejected': 'The report could not be accepted. Check the text and try again.',
+  'report.failed.network':
+    'The server did not confirm the report, so it may not have been received. Your text is kept here: you can send it again.',
 } as const;
 
 export type MessageKey = keyof typeof en;

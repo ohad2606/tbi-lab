@@ -1,9 +1,16 @@
 import { openCapabilities } from './Capabilities.js';
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
-import { FEEDBACK_URL, FEEDBACK_VERSION_PARAM, SIGN_OUT_URL, feedbackLink } from '../deployment.js';
+import {
+  FEEDBACK_URL,
+  FEEDBACK_VERSION_PARAM,
+  PROBLEM_REPORTS,
+  SIGN_OUT_URL,
+  feedbackLink,
+} from '../deployment.js';
 import { BUILD_INFO } from '../buildInfo.js';
 import { useAppState, useStore, useT } from './context.js';
 import { downloadProject } from './download.js';
+import { openProblemReport } from './ProblemReport.js';
 
 /**
  * The editor's application menu: navigation, project files and the account action, kept out
@@ -227,6 +234,17 @@ export function AppMenu({ chooseImport }: { chooseImport: () => void }) {
             >
               {t('menu.feedback')}
             </a>
+          )}
+          {PROBLEM_REPORTS && (
+            <button
+              type="button"
+              role="menuitem"
+              tabIndex={-1}
+              data-testid="menu-report-problem"
+              onClick={run(() => openProblemReport(button.current))}
+            >
+              {t('menu.reportProblem')}
+            </button>
           )}
           {SIGN_OUT_URL && (
             <>

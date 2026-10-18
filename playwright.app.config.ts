@@ -51,12 +51,14 @@ export default defineConfig({
     },
     {
       // The same source built as a protected preview is: with a sign-out destination
-      // (signout.spec.ts). Its own output directory; the routine build above has none.
+      // (signout.spec.ts) and, Sprint 14, the in-app problem reports (s14-report-problem.spec.ts).
+      // Its own output directory; the routine build above has neither.
       command:
         'npm run build --workspace @tbi-lab/app -- --outDir .tmp/dist-signout && npm run preview --workspace @tbi-lab/app -- --outDir .tmp/dist-signout --host 127.0.0.1 --port 4174 --strictPort',
       url: 'http://127.0.0.1:4174',
       env: {
         VITE_SIGN_OUT_URL: '/oauth2/sign_out',
+        VITE_PROBLEM_REPORTS: '1',
         TBI_RUNTIME_PROXY: process.env.TBI_RUNTIME_PROXY ?? 'http://127.0.0.1:7499',
         TBI_BUILD_PROXY: process.env.TBI_BUILD_PROXY ?? 'http://127.0.0.1:7498',
         TBI_TEST_GATE: '1', // the proxy plays the authenticating gate (vite.config.ts)
