@@ -113,7 +113,8 @@ disk). The per-request anti-hammering limit of the policy applies before all of 
 - Write path: `.<id>.tmp` opened `O_CREAT|O_EXCL` → write → `fsync` → `rename` to `<id>.json` →
   `fsync` the directory → only then 201. Any failure removes the temporary/final file and answers
   503, so a 503 never leaves a report behind and a retry never duplicates one.
-- Bounded: at most `TBI_REPORTS_MAX` (default 2000) files of at most ~10 KiB each.
+- Bounded: at most `TBI_REPORTS_MAX` (default 2000) files of at most ~10 KiB each. The cap is
+  soft: concurrent submissions can exceed it by a report or two, never more.
 - Proposed location: `/var/lib/tbi-runtime/state/reports` — inside the host's existing
   `StateDirectory` (`tbi-runtime/state`, already writable under `ProtectSystem=strict`), so the
   unit needs only the environment line (already in `deploy/dev-lab/s8/tbi-session-host.service.in`,
@@ -172,6 +173,12 @@ messaging token; a broken alerter or journald can never turn an accepted report 
 
 **Rollback:** rebuild the frontend without the flag (the item disappears) and/or remove the drop-in
 and restart the host (503, nothing written). Stored reports stay until deleted with the CLI.
+Housekeeping runs only while the host has `TBI_REPORTS_DIR`: after removing the drop-in (or rolling
+back to RC3) nothing purges the directory any more, so the testers' 90-day promise
+(`report.disclosure.retention`) is kept only by the operator. Either delete the directory once its
+reports have been read, or run `problem-reports.mjs purge-older 90` daily (e.g. a root cron entry)
+until it is empty. The same applies if `TBI_REPORTS_RETENTION_DAYS` is raised: the tester text
+says 90 days and must be changed with it.
 
 ## Tests
 
