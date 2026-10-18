@@ -48,8 +48,10 @@ export function checkDist(profile, dist) {
   else if (found[0] !== want)
     errors.push(`Report a Problem switch compiled as ${found[0]}, profile pins ${want}`);
 
+  // The switch is checked above, where it is compiled; every other value must appear verbatim.
   for (const [name, v] of Object.entries(profile.vite))
-    if (v !== null && !all.includes(`\`${v}\``) && !all.includes(`"${v}"`))
+    if (name === 'VITE_PROBLEM_REPORTS') continue;
+    else if (v !== null && !all.includes(`\`${v}\``) && !all.includes(`"${v}"`))
       errors.push(`${name}: pinned value ${v} not found in the bundle`);
   return { errors, files: assets.length };
 }

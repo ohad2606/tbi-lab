@@ -11,7 +11,8 @@
 #   Report a Problem switches explicit and consistent, pinned Node/npm). Nothing is inherited:
 #   npm ci and every build run under `env -i` with only PATH, HOME, LC_ALL and TZ added.
 # - The profile and validator are read from the commit being built, not from this checkout.
-# - The source is always built at the same path (<out-dir>.src), so two packages are comparable.
+# - The source is built beside the package (<out-dir>.src); the output does not depend on that
+#   path (verified: two packages built at different paths are byte-identical, source maps included).
 # - The effective configuration is recorded (build-config.json; configuration only, no secrets).
 set -euo pipefail
 [ $# -eq 4 ] || { echo "usage: $0 <profile> <commit> <out-dir> <build-time>" >&2; exit 2; }
