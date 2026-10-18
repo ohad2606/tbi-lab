@@ -1139,7 +1139,7 @@ export const en = {
     'Your sign-in has expired. Copy your text, sign in again, then send it.',
   'report.failed.rejected': 'The report could not be accepted. Check the text and try again.',
   'report.failed.network':
-    'The report was not sent: the server did not confirm it. Your text is kept here: try again.',
+    'The server did not confirm the report, so it may not have been received. Your text is kept here: you can send it again.',
 } as const;
 
 export type MessageKey = keyof typeof en;

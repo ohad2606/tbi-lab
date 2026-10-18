@@ -434,6 +434,25 @@ describe('storage', () => {
     expect(files(s.dir)).toHaveLength(2);
   });
 
+  it('refusals that are not the user’s doing cost no rate token (review)', async () => {
+    // A full store answers 503 every time; the tester retrying it must not end up with a 429.
+    const s = await serve({ config: { maxReports: 1 } });
+    const a = await s.gate('user-a');
+    expect((await report(a, valid())).status).toBe(201);
+    for (let i = 0; i < 6; i++) expect((await report(a, valid())).status).toBe(503);
+    rmSync(join(s.dir, files(s.dir)[0]!));
+    // 1 stored + 6 refused: only the stored one counts against the 5 per 10 minutes.
+    for (let i = 0; i < 4; i++) expect((await report(a, valid())).status).toBe(i === 0 ? 201 : 503);
+    // A failing disk likewise.
+    const io = {
+      syncFile: () => Promise.reject(Object.assign(new Error('EIO'), { code: 'EIO' })),
+      syncDir: () => Promise.resolve(),
+    } as ReportIo;
+    const f = await serve({ io });
+    const b = await f.gate('user-b');
+    for (let i = 0; i < 7; i++) expect((await report(b, valid())).status).toBe(503);
+  });
+
   it('a directory created looser is tightened to 0700', async () => {
     const s = await serve();
     rmSync(s.dir, { recursive: true, force: true });
@@ -466,6 +485,19 @@ describe('retention and the operator CLI', () => {
     expect(await s.store!.purge()).toBe(1);
     expect(files(s.dir).sort()).toEqual([`${fresh}.json`, `${mid}.json`, 'notes.txt'].sort());
     expect(files(s.dir)).not.toContain(`${old}.json`);
+  });
+
+  it('show escapes bidirectional controls in a tester’s text (still the same JSON; review)', async () => {
+    const { s } = await seeded();
+    const cli = (...args: string[]) =>
+      execFileSync(process.execPath, [CLI, '--dir', s.dir, ...args], { encoding: 'utf8' });
+    const bidi = 'abc \u202edcba\u202c \u2066x\u2069'; // RLO ... PDF, isolate
+    const tricky = (await report(await s.gate('user-c'), valid({ description: bidi }))).body
+      .id as string;
+    const shown = cli('show', tricky);
+    expect(shown).not.toMatch(/[\u202a-\u202e\u2066-\u2069]/);
+    expect(shown).toContain('\\u202e');
+    expect(JSON.parse(shown).description).toBe(bidi);
   });
 
   it('list, show, delete, delete-principal and purge-older work on the directory alone', async () => {
