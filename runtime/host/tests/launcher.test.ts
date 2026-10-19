@@ -18,7 +18,7 @@ afterEach(() => {
 
 /** A fake systemctl: `start --wait` returns at once; `is-active` is slow and reports the unit
  * deactivating `slowRounds` times before inactive; it records how the unit ended. */
-function fakeSystemctl(slowRounds: number) {
+function fakeSystemctl(slowRounds: number, show = 'ExecMainCode=0\nExecMainStatus=0') {
   const root = mkdtempSync(join(tmpdir(), 'fake-systemctl-'));
   dirs.push(root);
   const script = join(root, 'systemctl');
@@ -33,6 +33,7 @@ case "$1" in
     echo $((n + 1)) > "${root}/count"
     if [ "$n" -lt ${slowRounds} ]; then echo deactivating; exit 0; fi
     echo inactive; exit 3 ;;
+  show) printf '${show}\n' ;;
   *) exit 0 ;;
 esac
 `,
@@ -41,13 +42,13 @@ esac
   return script;
 }
 
-function sessionDir() {
+function sessionDir(exitRecord: string | null = 'exited 0\n') {
   const root = mkdtempSync(join(tmpdir(), 'launcher-'));
   dirs.push(root);
   const dir = join(root, `s-${'a'.repeat(32)}`);
   mkdirSync(dir);
   writeFileSync(join(dir, 'bridge.sock'), '');
-  writeFileSync(join(dir, 'runtime.exit'), 'exited 0\n');
+  if (exitRecord !== null) writeFileSync(join(dir, 'runtime.exit'), exitRecord);
   return dir;
 }
 
@@ -86,5 +87,39 @@ describe('systemd launcher', () => {
     // 4 is-active rounds x 200 ms: blocked synchronously, the heartbeat stalled >= ~800 ms.
     expect(worstGap).toBeLessThan(150);
     expect(ended).toEqual([0, null]);
+  });
+
+  // Sprint 16D (DEV acceptance): a control-group-wide kill also ends ExecStopPost, so no
+  // runtime.exit is written. The end then comes from systemd's record of the main process; before,
+  // it read as a clean guest exit and the user was told the firmware requested a chip reset.
+  const endWithoutRecord = async (show: string) => {
+    const launch = systemdLauncher({
+      unit: 'tbi-test-qemu',
+      systemctl: fakeSystemctl(0, show),
+      cgroupDir: () => '/nonexistent',
+    });
+    const dir = sessionDir(null);
+    const proc = launch({
+      qemu: '/unused',
+      args: [],
+      dir,
+      flash: join(dir, 'flash.bin'),
+      bridgePath: join(dir, 'bridge.sock'),
+      tickUs: 1000,
+      stressMainLoop: false,
+    });
+    return new Promise<[number | null, NodeJS.Signals | null]>((resolve) =>
+      proc.on('close', (code, signal) => resolve([code, signal])),
+    );
+  };
+
+  it('no exit record: a killed QEMU is reported as killed, from systemd (review: no fake reset)', async () => {
+    expect(await endWithoutRecord('ExecMainCode=2\nExecMainStatus=9')).toEqual([null, 'SIGKILL']);
+    expect(await endWithoutRecord('ExecMainCode=3\nExecMainStatus=6')).toEqual([null, 'SIGABRT']);
+  });
+
+  it('no exit record: an exit status from systemd, or nothing when QEMU never ran', async () => {
+    expect(await endWithoutRecord('ExecMainCode=1\nExecMainStatus=4')).toEqual([4, null]);
+    expect(await endWithoutRecord('ExecMainCode=0\nExecMainStatus=0')).toEqual([null, null]);
   });
 });
