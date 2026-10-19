@@ -256,3 +256,12 @@ All on DEV (`tbi-lab-srv`); R4 is not merged and not deployed anywhere (no stagi
 2. PM ratification of D1–D7 and the M2/M6 decisions — open.
 3. Staging install of an R4 host + Runtime v3 on `tbi-s8` (`install.sh staging` with `TBI_S8_RUNTIME` = the v3 prefix), the deployed suites, `s15-r4-real` through staging, then rollback to RC4 (`7e04c4d` package, drill E of `RC4-RELEASE-HANDOFF.md`) — ready to run, needs PM authorization.
 4. The v3 runtime home on any host must hold every pinned image of `artifacts.lock.json` (the gap above).
+
+## 12. Sprint 17C (DEV, 2026-10-19)
+
+See `docs/sprints/SPRINT-17C-R4.md`: RC4 final (`6c30385`) merged in; D6 tightened (duty 0 into a
+servo refused); M2 (APB clock change) and M6 (supply mode alternating) refused by name; eight
+findings of an independent review fixed (peaks/voltage extremes over every PWM combination,
+nothing fed back from a placeholder point, servo suspension, duty 0 into GND, late servo
+connection, host-side low-speed refusal, MCU panel direction). R4-B remains **blocked by
+O-R4-1**; nothing deployed. Next-sprint proposals: `docs/sprints/SPRINT-17C-NEXT-PROPOSALS.md`.
