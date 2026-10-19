@@ -1,0 +1,43 @@
+{
+  "release": "rc4",
+  "node": "v24.21.0",
+  "npm": "11.19.0",
+  "build": {
+    "TBI_BUILD_ENV": "dev-lab",
+    "TZ": "UTC"
+  },
+  "vite": {
+    "VITE_BUILD_BASE": "/build",
+    "VITE_FEEDBACK_URL": "(unset)",
+    "VITE_FEEDBACK_VERSION_PARAM": "(unset)",
+    "VITE_PREVIEW_NAME": "(unset)",
+    "VITE_PROBLEM_REPORTS": "0",
+    "VITE_RUNTIME_BASE": "/runtime",
+    "VITE_SIGN_OUT_URL": "/oauth2/sign_out",
+    "VITE_STORAGE_NAMESPACE": "(unset)"
+  },
+  "host": {
+    "TBI_REPORTS_DIR": "(unset)"
+  },
+  "excluded": {
+    "reason": "Active Minutes (Sprint 14 POC) is not part of RC4: absent from the source, not merely disabled",
+    "settings": [
+      "VITE_ACTIVITY_ENDPOINT"
+    ],
+    "paths": [
+      "app/src/usage",
+      "runtime/usage",
+      "docs/product/ACTIVE-MINUTES.md"
+    ]
+  },
+  "sourceSettings": [
+    "VITE_BUILD_BASE",
+    "VITE_FEEDBACK_URL",
+    "VITE_FEEDBACK_VERSION_PARAM",
+    "VITE_PREVIEW_NAME",
+    "VITE_PROBLEM_REPORTS",
+    "VITE_RUNTIME_BASE",
+    "VITE_SIGN_OUT_URL",
+    "VITE_STORAGE_NAMESPACE"
+  ]
+}
