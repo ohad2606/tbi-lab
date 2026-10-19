@@ -30,7 +30,12 @@
  * a real high time can differ from the nominal one here by up to one source clock (1 us on
  * REF_TICK, 12.5 ns on APB); periods are exact.
  */
-import type { LedcChannelState, LedcTimerState, Level } from '../harness/protocol.js';
+import {
+  LEDC_SIGNALS,
+  type LedcChannelState,
+  type LedcTimerState,
+  type Level,
+} from '../harness/protocol.js';
 
 /** A non-negative rational number of nanoseconds, n / d, d > 0, reduced. */
 export interface Rat {
@@ -70,6 +75,11 @@ export const ratCeilNs = (a: Rat): bigint => -floorDiv(-a.n, a.d);
 /** `a` minus one nanosecond. */
 export const ratMinus1Ns = (a: Rat): Rat => sub(a, rat(1n));
 export const ns = (v: bigint): Rat => rat(v);
+export const ratAdd = add;
+export const ratSub = sub;
+export const ratMul = mul;
+/** floor(a / b) for b > 0. */
+export const ratFloorDiv = (a: Rat, b: Rat): bigint => floorDiv(a.n * b.d, a.d * b.n);
 
 /** One LEDC tick, ns: div / 256 source clocks. */
 export const tickNs = (clockHz: number, div: number): Rat =>
@@ -229,6 +239,10 @@ export class LedcTracker {
 
   /** A `W` frame. Call `advance(vns)` first. */
   channel(vns: bigint, signal: number, state: LedcChannelState): void {
+    // Sprint 17C (review V10): only the high-speed group (signals 71-78) is modelled; QEMU
+    // reports the low-speed group unsupported itself, and the host does not rely on it.
+    if (state.kind === 'on' && signal > LEDC_SIGNALS.highSpeedLast)
+      state = { kind: 'unsupported', why: 'low-speed' };
     const c = this.channels.get(signal) ?? { state: { kind: 'idle', level: 0 }, pending: [] };
     this.channels.set(signal, c);
     if (state.kind !== 'on') {

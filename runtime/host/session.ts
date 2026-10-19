@@ -600,6 +600,13 @@ export class HostSession {
       this.pendingFailure = { reason: 'electrical_error', detail: jsonSafe(out.error) };
       return [{ type: 'Q' }];
     }
+    // Sprint 17C (review V3/V4): from a placeholder, the firmware gets no input change, the
+    // sensors observe nothing and the servos see no valid signal (the pulse in progress is
+    // discarded): the refusal follows within a tick if the state lasts.
+    if (this.placeholder) {
+      this.servos?.suspend(vns);
+      return [];
+    }
     // Sprint 15 (R4): what the servos' signal wires carry now, from the operating points.
     if (this.servos && this.lastLow?.ok) {
       this.servos.observe(vns, this.lastLow, this.lastPwmPoints);
@@ -688,11 +695,15 @@ export class HostSession {
         this.types,
         this.inputLevels,
       );
-      const loads = Object.keys(low.components).filter(
-        (id) => !ZERO_NEUTRAL.has(this.types[id] ?? '') && c.outcome.components[id]?.pwm,
-      );
+      const touched = Object.keys(low.components).filter((id) => c.outcome.components[id]?.pwm);
+      const loads = touched.filter((id) => !ZERO_NEUTRAL.has(this.types[id] ?? ''));
       const inputs = c.problems.find((p) => p.code === 'pwm_input_unsupported');
-      if (loads.length || inputs)
+      // Sprint 17C (review V5): the pad's own current also tells (a pad wired straight to GND
+      // or to another pad would short at a high level): the parts it reaches are named then.
+      const pin = (o: SolveSuccess) => o.pins?.find((p) => p.gpio === gpio)?.current ?? 0;
+      const shorted = Math.abs(pin(high) - pin(low)) > 1e-9;
+      if (!loads.length && shorted) loads.push(...touched);
+      if (loads.length || inputs || shorted)
         problems.push({
           key: `z:${gpio}`,
           detail: {
@@ -758,6 +769,19 @@ export class HostSession {
   }
 
   /** Record the PWM problems of this solve (keeping when an unchanged one started). */
+  /**
+   * R4 (review M3, and Sprint 17C review V3/V4): the current operating point is a placeholder, not
+   * a result, while a PWM state that cannot be simulated is pending (refused at the next tick if it
+   * lasts; the pad is solved low meanwhile) or an inverted simple-GPIO pad awaits its refusal
+   * (QEMU still reports its uninverted level). Nothing derived from it is published or fed back.
+   */
+  private get placeholder(): boolean {
+    return (
+      this.pwmProblems.size > 0 ||
+      [...this.periphPads.values()].some((p) => p.func.startsWith('inverted:'))
+    );
+  }
+
   private pwmDone<T>(
     vns: bigint,
     problems: { key: string; detail: Record<string, unknown> }[],
@@ -1143,10 +1167,7 @@ export class HostSession {
     // for a transient state, until the next window.
     // The same for an inverted simple-GPIO pad awaiting its refusal: QEMU still reports its
     // uninverted level, so that operating point is not the pin's either (review of M8).
-    const invertedPending = [...this.periphPads.values()].some((p) =>
-      p.func.startsWith('inverted:'),
-    );
-    if (this.latest && this.pwmProblems.size === 0 && !invertedPending) {
+    if (this.latest && !this.placeholder) {
       // Sprint 12 (R3): an I2C display's content is part of its result.
       let latest: unknown = this.latest;
       if (this.latest.ok && this.i2c && !this.i2c.empty) {

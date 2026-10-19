@@ -215,8 +215,8 @@ describe('servo and PWM figures, formatted', () => {
       'PWM · unsupported',
     );
     // A switching pad's solved voltage is its average over the waveform, and says so.
-    expect(pinVoltageText(en, wave, 0.825)).toBe('average 825 mV');
-    expect(pinVoltageText(en, plain, 3.3)).toBe('3.3 V');
+    expect(pinVoltageText(en, wave, 0.825)).toBe(`average ${LRI}825 mV${PDI}`);
+    expect(pinVoltageText(en, plain, 3.3)).toBe(`${LRI}3.3 V${PDI}`);
     // Sprint 17C: duty 0 (O-R4-1) and unsupported modes show no voltage as fact.
     expect(pinVoltageText(en, { ...plain, pwm: { kind: 'zero', periodNs: 1e6 } }, 0)).toBe(
       'voltage not established',
@@ -281,6 +281,35 @@ describe('ratings under PWM check the peak, not the average', () => {
     );
     // What is SHOWN stays the engine's average.
     expect(avg.components[led]!.current).toBeCloseTo(peak * 0.25, 15);
+  });
+
+  it('Sprint 17C (review V2): a reverse voltage over the rating only at one PWM extreme is flagged there', () => {
+    // An LED whose reverse voltage swings 5.0 V / 8.3 V with the PWM (10 % duty): the 5.33 V
+    // average is under the 6 V rating; the 8.3 V extreme is not.
+    const { doc, led, outcome } = ledLoop(220);
+    const r = outcome.components[led]!;
+    const avg: SolveSuccess = {
+      ...outcome,
+      components: {
+        ...outcome.components,
+        [led]: {
+          ...r,
+          current: 0,
+          voltage: -5.33,
+          pwm: { peakCurrent: 0, voltageRange: [-8.3, -5], terminalRanges: {} },
+        },
+      },
+    };
+    const { pwm: _range, ...averageOnly } = avg.components[led]!;
+    expect(
+      ratingWarnings(createSnapshot(doc), {
+        ...avg,
+        components: { ...avg.components, [led]: averageOnly },
+      }).filter((w) => w.code === 'reverse_voltage'),
+    ).toEqual([]);
+    expect(warningsFor(doc, avg).filter((w) => w.code === 'reverse_voltage')).toEqual([
+      expect.objectContaining({ component: led, value: 8.3, limit: 6 }),
+    ]);
   });
 
   it('within its rating at the peak, no warning', () => {

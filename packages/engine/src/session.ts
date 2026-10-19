@@ -78,6 +78,11 @@ export interface PinResult {
   pwm?: PwmPadFigures;
   /** R4: the largest |current| over the PWM operating points, when it differs from the average. */
   peakCurrent?: number;
+  /**
+   * Sprint 17C (review V2): the lowest and highest pad voltage over every combination of the PWM
+   * outputs (present when it changes), for the voltage ratings: they apply to the extremes.
+   */
+  voltageRange?: [number, number];
 }
 
 /** R4: a PWM pad's waveform (ns, exact to float precision) and its high/low pad currents (A). */
@@ -97,6 +102,12 @@ export interface PwmComponentFigures {
   peakCurrent: number | null;
   peakCurrents?: Record<string, number | null>;
   peakArray?: number[];
+  /**
+   * Sprint 17C (review V2): [lowest, highest] over every combination of the PWM outputs, of the
+   * voltage across the part and of each terminal potential (null where undefined).
+   */
+  voltageRange?: [number, number] | null;
+  terminalRanges?: Record<string, [number, number] | null>;
 }
 
 export interface PsuControl {

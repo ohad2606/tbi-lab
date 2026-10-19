@@ -120,6 +120,68 @@ describe('T-R4-5: A1 averages, peaks and refusals', () => {
     expect((problems[0] as { components: string[] }).components).toContain(d);
   });
 
+  /** All 8 combinations of three PWM pads, combined with the pair points (as the host does). */
+  function threePads(c: Circuit) {
+    const pads = [18, 19, 21].map((gpio) => ({ gpio, duty: 0.5 }));
+    const req = c.request('0'.repeat(64));
+    const e = new EngineSession(req.circuit, { pins: req.attachments });
+    const combos = [0, 1, 2, 3, 4, 5, 6, 7].map((m) => {
+      pads.forEach((p, i) => e.setPinMode(p.gpio, m & (1 << i) ? 'output-high' : 'output-low'));
+      return e.solve() as SolveSuccess;
+    });
+    const types = Object.fromEntries(req.circuit.components.map((x) => [x.id, x.type]));
+    const r = combinePwm(
+      pads.map((p) => ({ ...p, periodNs: 1e6, highNs: 5e5 })),
+      combos[0]!,
+      [combos[1]!, combos[2]!, combos[4]!],
+      combos[7]!,
+      types,
+      new Map(),
+      [
+        { i: 0, j: 1, o: combos[3]! },
+        { i: 0, j: 2, o: combos[5]! },
+        { i: 1, j: 2, o: combos[6]! },
+      ],
+    );
+    return { ...r, combos };
+  }
+
+  it('Sprint 17C (review V1): three pads into one shared node are refused (the pad drivers interact)', () => {
+    // The pad's high and low drivers differ, so a node shared by switching pads never obeys
+    // superposition: the combination a pair point would reveal is never averaged or rated.
+    const c = new Circuit();
+    const [a, b, d, load] = [0, 1, 2, 3].map(() => c.add('component.resistor'));
+    for (const r of [a, b, d, load]) c.ohms(r!, 1000);
+    c.wire(`${a}.b`, `${load}.a`).wire(`${b}.b`, `${load}.a`).wire(`${d}.b`, `${load}.a`);
+    c.wire(`${load}.b`, 'GND1.ref');
+    c.pad(18, `${a}.a`).pad(19, `${b}.a`).pad(21, `${d}.a`);
+    expect(threePads(c).problems).toEqual([
+      { code: 'pwm_outputs_interact', components: [a, b, d, load], gpios: [18, 19, 21] },
+    ]);
+  });
+
+  it('Sprint 17C (review V1/V2): peaks and voltage ranges equal the extremes over all 8 combinations', () => {
+    const c = new Circuit();
+    const loads = [220, 1000, 4700].map((ohms, i) => {
+      const r = c.add('component.resistor');
+      c.ohms(r, ohms).wire(`${r}.b`, 'GND1.ref').pad([18, 19, 21][i]!, `${r}.a`);
+      return r;
+    });
+    const { outcome, problems, combos } = threePads(c);
+    expect(problems).toEqual([]);
+    for (const [i, gpio] of [18, 19, 21].entries()) {
+      const pin = (o: SolveSuccess) => o.pins!.find((p) => p.gpio === gpio)!;
+      const cur = combos.map((o) => Math.abs(pin(o).current));
+      const v = combos.map((o) => pin(o).voltage);
+      expect(pin(outcome).peakCurrent).toBeCloseTo(Math.max(...cur), 12);
+      expect(pin(outcome).voltageRange![0]).toBeCloseTo(Math.min(...v), 9);
+      expect(pin(outcome).voltageRange![1]).toBeCloseTo(Math.max(...v), 9);
+      const lv = combos.map((o) => o.components[loads[i]!]!.voltage!);
+      expect(outcome.components[loads[i]!]!.pwm!.voltageRange![0]).toBeCloseTo(Math.min(...lv), 9);
+      expect(outcome.components[loads[i]!]!.pwm!.voltageRange![1]).toBeCloseTo(Math.max(...lv), 9);
+    }
+  });
+
   // Sprint 17C (review M6): PSU1+ (5 V) -> 1 kΩ -> GPIO18. Pad low: 5 V / 1016.5 Ω = 4.9 mA; pad
   // high: 1.7 V / 1016.5 Ω = 1.67 mA. With a 2 mA limit the supply current-limits only while the
   // pad is low: one mode cannot be shown and the average would be invented, so it is refused.

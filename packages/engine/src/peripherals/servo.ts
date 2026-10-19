@@ -79,6 +79,14 @@ export class Servo {
     this.targetDeg = Math.min(travelDeg, Math.max(0, f * travelDeg));
   }
 
+  /**
+   * Sprint 17C: the signal became unknown (the runtime host's placeholder interval): a pulse in
+   * progress is not measured, the next valid pulse starts timing afresh.
+   */
+  discardPulse(): void {
+    this.riseNs = null;
+  }
+
   /** Move the output toward the target until `tNs` at the slew rate. */
   advanceTo(tNs: bigint): void {
     if (tNs < this.atNs) throw new Error('servo time must not go backwards');

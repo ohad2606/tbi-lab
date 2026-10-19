@@ -117,7 +117,8 @@ export function McuPanel({ component: c }: { component: ComponentInstance }) {
                   data-pwm={live?.pwm?.kind}
                 >
                   <td class="technical" dir="ltr">{`GPIO${gpio}`}</td>
-                  <td class="technical" dir="ltr">
+                  {/* Sprint 17C: the state is localized words; its technical tokens are isolated. */}
+                  <td class="technical" dir={locale.dir}>
                     {live ? liveLevelText(locale, live) : ''}
                     {v !== undefined
                       ? `${live ? ' · ' : ''}${pinVoltageText(locale, live, v)}`
@@ -193,7 +194,7 @@ export function McuPanel({ component: c }: { component: ComponentInstance }) {
                     {t(`mcu.support.${pin.simulatorSupport}`)}
                     {caveat && <span class="muted small block">{t(caveat)}</span>}
                   </td>
-                  <td class="technical" dir="ltr">
+                  <td class="technical" dir={locale.dir}>
                     {live ? liveLevelText(locale, live) : ''}
                     {v !== undefined ? ` · ${pinVoltageText(locale, live, v)}` : ''}
                   </td>
@@ -244,7 +245,7 @@ export function pinVoltageText(
 ): string {
   if (live?.pwm?.kind === 'zero' || live?.pwm?.kind === 'unsupported')
     return translate(locale, 'mcu.pwm.levelUnknown');
-  const v = formatQuantity(locale, { value: volts, unit: 'volt' });
+  const v = isolateLtr(formatQuantity(locale, { value: volts, unit: 'volt' }));
   return live?.pwm?.kind === 'wave' ? translate(locale, 'mcu.pwm.average', { voltage: v }) : v;
 }
 

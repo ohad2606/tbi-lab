@@ -19,10 +19,74 @@ export function warningsFor(doc: ProjectDocument, outcome: SolveSuccess): Rating
   if (!w) {
     // Model parameters are structural (fixed while running), so the current document's
     // snapshot names the same models the outcome was solved with.
-    w = ratingWarnings(createSnapshot(doc), peakOutcome(outcome));
+    const snapshot = createSnapshot(doc);
+    // Sprint 17C (review V2): voltage limits apply to the extremes over the PWM combinations, so
+    // the check runs at the lowest and at the highest voltages (each with the peak currents) and
+    // keeps the worse row of each kind. Without PWM both corners are the outcome itself.
+    w = worst([
+      ...ratingWarnings(snapshot, peakOutcome(voltageCorner(outcome, 0))),
+      ...ratingWarnings(snapshot, peakOutcome(voltageCorner(outcome, 1))),
+    ]);
     cache.set(outcome, w);
   }
   return w;
+}
+
+/** One row per part, check, element and pad: the larger excess when both corners report it. */
+function worst(rows: RatingWarning[]): RatingWarning[] {
+  const out = new Map<string, RatingWarning>();
+  for (const r of rows) {
+    const key = [
+      r.component,
+      r.code,
+      r.kind,
+      r.channel ?? '',
+      r.gpio ?? '',
+      r.otherGpio ?? '',
+    ].join('|');
+    const prev = out.get(key);
+    if (!prev || Math.abs(r.value) > Math.abs(prev.value)) out.set(key, r);
+  }
+  return [...out.values()];
+}
+
+/**
+ * Sprint 17C (review V2): the outcome with every PWM-switched voltage at its lowest (`0`) or
+ * highest (`1`) value over the PWM combinations. Each quantity is taken at its own extreme, so a
+ * voltage formed from two terminals can be over-stated: the conservative side for a warning.
+ */
+export function voltageCorner(outcome: SolveSuccess, end: 0 | 1): SolveSuccess {
+  const switched = Object.values(outcome.components).some((r) => r.pwm);
+  const pinsSwitched = outcome.pins?.some((p) => p.voltageRange);
+  if (!switched && !pinsSwitched) return outcome;
+  const components: Record<string, ComponentResult> = {};
+  for (const [id, r] of Object.entries(outcome.components)) {
+    const p = r.pwm;
+    if (!p) {
+      components[id] = r;
+      continue;
+    }
+    const at = (v: number | null, span: [number, number] | null | undefined) =>
+      span === undefined ? v : span === null ? null : span[end];
+    components[id] = {
+      ...r,
+      voltage: at(r.voltage, p.voltageRange),
+      terminals: Object.fromEntries(
+        Object.entries(r.terminals).map(([k, v]) => [k, at(v, p.terminalRanges?.[k])]),
+      ),
+    };
+  }
+  return {
+    ...outcome,
+    components,
+    ...(outcome.pins
+      ? {
+          pins: outcome.pins.map((p) =>
+            p.voltageRange ? { ...p, voltage: p.voltageRange[end] } : p,
+          ),
+        }
+      : {}),
+  };
 }
 
 /**
@@ -34,7 +98,7 @@ export function warningsFor(doc: ProjectDocument, outcome: SolveSuccess): Rating
  *
  * - A peak is a magnitude: it takes the sign of the average it replaces (the current-rated parts
  *   are LEDs and diodes, whose current flows the same way at every operating point).
- * - Voltages stay the averages (the runtime reports no peak voltage).
+ * - Voltages: Sprint 17C (review V2) checks them at their extremes (voltageCorner, warningsFor).
  * - A PWM pad is checked at whichever of its two operating points carries the larger current, in
  *   that point's drive mode (sourcing while high, sinking while low: different limits). A pad whose
  *   current changes only because ANOTHER pad switches is checked at its peak, in its own mode.

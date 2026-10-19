@@ -230,6 +230,14 @@ describe('LEDC waveforms (T-R4-1, host)', () => {
     expect(wave(run(ANALOG, 71, 950_000_000n)).high).toBe(500_000);
   });
 
+  it('Sprint 17C (review V10): a low-speed signal reported "on" is still refused by the host', () => {
+    const ls = ['P 1 0 reset', 'P 2 0 run 80000000 6250 16', 'W 3 79 on 0 0 4915'];
+    expect(run(ls, 79, 100_000_000n)).toEqual({ kind: 'unsupported', why: 'low-speed' });
+    expect(wave(run([...ls.slice(0, 2), 'W 3 78 on 0 0 4915'], 78, 100_000_000n)).duty).toBe(
+      4915 / 65536,
+    );
+  });
+
   it('P and W frames are parsed strictly (review M10)', () => {
     const bad = (line: string) => expect(() => parseFrame(line), line).toThrow(ProtocolError);
     bad('P 5 4 reset'); // timer 4 is low speed: never published

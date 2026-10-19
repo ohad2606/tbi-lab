@@ -12,7 +12,7 @@ import { principalFor, ticketFor } from '../../identity/test-gate.js';
 import type { SessionHost } from '../host.js';
 import type { HostSession } from '../session.js';
 import { Circuit, reference } from './r1-support.js';
-import { createRequest, fakeHost, waitState } from './support.js';
+import { createRequest, fakeHost, serialText, waitState } from './support.js';
 
 const CAPS = '2 i2c,pad-func,pwm,sched-input';
 const hosts: SessionHost[] = [];
@@ -310,6 +310,39 @@ describe('Sprint 17C: M2 and M6 refusals through the whole Session Host', () => 
       state: 'failed',
       reason: 'pwm_unsupported',
       detail: { code: 'pwm_supply_limited', gpios: [18], components: ['PSU1'] },
+    });
+  });
+
+  it('review V3: while a PWM problem awaits its refusal, the firmware gets no input from the placeholder', async () => {
+    // GPIO19 at 90 % into input GPIO5 through 1 kΩ (10 kΩ to GND): the averaged pad voltage
+    // (~2.7 V) would read HIGH, a level the firmware never sees on hardware (it sees edges). The
+    // fake firmware prints IN5=<level> whenever an input is injected.
+    const c = new Circuit();
+    const r1 = c.add('component.resistor');
+    const r2 = c.add('component.resistor');
+    c.ohms(r1, 1000).ohms(r2, 10_000).wire(`${r1}.b`, `${r2}.a`).wire(`${r2}.b`, 'GND1.ref');
+    c.pad(19, `${r1}.a`).pad(5, `${r1}.b`);
+    const { s } = session(
+      ['F 9500000 19 periph:71 0', ...TIMER, 'W 9500300 71 on 0 0 230'],
+      CAPS,
+      c,
+    );
+    s.run();
+    expect(await terminal(s)).toMatchObject({
+      reason: 'pwm_unsupported',
+      detail: { code: 'pwm_input_unsupported', inputs: [5], gpios: [19] },
+    });
+    expect(serialText(s)).not.toContain('IN5=1');
+  });
+
+  it('review V5: duty 0 on a pad wired straight to GND is refused (its own current tells)', async () => {
+    // As the browser projects a pad whose only other terminal on its net is GND (s13-pad-short).
+    const c = new Circuit().psu(3.3).pad(18, 'GND1.ref');
+    const { s } = session([ROUTE, ...TIMER, duty(9500300, 0)], CAPS, c);
+    s.run();
+    expect(await terminal(s)).toMatchObject({
+      reason: 'pwm_unsupported',
+      detail: { code: 'pwm_duty_zero_unverified', gpio: 18 },
     });
   });
 });

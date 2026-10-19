@@ -19,6 +19,10 @@ import type { SimulationSnapshot } from '@tbi-lab/domain';
 import {
   edgesIn,
   ns,
+  ratAdd,
+  ratFloorDiv,
+  ratMul,
+  ratSub,
   ratCeilNs,
   ratCmp,
   ratMinus1Ns,
@@ -66,6 +70,13 @@ export interface ServoState {
 /** Pulses outside 400-2600 us are never valid: a waveform made only of them is not expanded. */
 const MIN_US = 400;
 const MAX_US = 2600;
+
+/** The latest cycle boundary of `w` (a counter overflow: segStart + k * period) at or before `t`. */
+function lastBoundary(w: Wave, segStart: Rat, t: Rat): Rat {
+  if (ratCmp(t, segStart) <= 0) return segStart;
+  const k = ratFloorDiv(ratSub(t, segStart), w.periodNs);
+  return ratAdd(segStart, ratMul(w.periodNs, k));
+}
 
 export class ServoBank {
   private readonly servos: Tracked[] = [];
@@ -175,9 +186,30 @@ export class ServoBank {
         s.timeNs = at;
       }
       // A new waveform is expanded from its own start (an LEDC cycle boundary): edges re-fed at
-      // the boundary are at the servo's current level and are ignored by the model.
-      if (next.kind === 'wave' && s.source !== next) s.cursor = ratMinus1Ns(next.segStart);
+      // the boundary are at the servo's current level and are ignored by the model. Sprint 17C
+      // (review V6): a waveform that started long before this servo saw it (connected later, or
+      // after a suspension) is expanded from its last cycle boundary at or before now, never
+      // replayed from its start.
+      if (next.kind === 'wave' && s.source !== next)
+        s.cursor = ratMinus1Ns(lastBoundary(next.w, next.segStart, ns(vns)));
       s.source = next;
+    }
+  }
+
+  /**
+   * Sprint 17C (review V3/V4): the signal is not known (a PWM state awaiting refusal): no pulse in
+   * progress is measured and nothing is fed until the next `observe` from a real operating point.
+   */
+  suspend(vns: bigint): void {
+    for (const s of this.servos) {
+      if (vns > s.timeNs) {
+        if (s.powered) s.model.advanceTo(vns);
+        else s.model.holdUntil(vns);
+        s.timeNs = vns;
+      }
+      s.model.discardPulse();
+      s.source = { kind: 'static', level: null };
+      s.cursor = ns(vns);
     }
   }
 

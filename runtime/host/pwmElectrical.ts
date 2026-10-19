@@ -82,8 +82,25 @@ const lin = (base: Num, deltas: Num[], duties: number[]): Num => {
   return deltas.reduce((acc: number, d, i) => acc + duties[i]! * (d as number), base);
 };
 const minus = (a: Num, b: Num): Num => (a === null || b === null ? null : a - b);
-const peak = (vals: Num[]): Num =>
-  vals.some((v) => v === null) ? null : Math.max(...vals.map((v) => Math.abs(v as number)));
+/**
+ * Sprint 17C (review V1/V2): the extremes of a quantity over EVERY combination of the PWM outputs
+ * high or low, not only the solved points. Superposition holds for every accepted combination
+ * (checked above: all pairs and all-high; refused otherwise), so a combination's value is the low
+ * point plus the changes of its high pads, and the extremes are the low point plus all negative,
+ * or all positive, changes. With one or two pads these are exactly solved points.
+ */
+const range = (base: Num, deltas: Num[]): [number, number] | null => {
+  if (base === null || deltas.some((d) => d === null)) return null;
+  let lo = base;
+  let hi = base;
+  for (const d of deltas as number[]) {
+    if (d < 0) lo += d;
+    else hi += d;
+  }
+  return [lo, hi];
+};
+const peakOf = (r: [number, number] | null): Num =>
+  r === null ? null : Math.max(Math.abs(r[0]), Math.abs(r[1]));
 
 /** Every numeric quantity of a component result, keyed, for comparison. */
 function quantities(r: ComponentResult): Map<string, { v: Num; volts: boolean }> {
@@ -245,19 +262,25 @@ export function combinePwm(
       };
     if (points.some((p) => p.components[id]!.outsideModelRange)) r.outsideModelRange = true;
     if (changed) {
+      const span = (pick: (r: ComponentResult) => Num) =>
+        range(
+          pick(base),
+          singles.map((s) => minus(pick(s), pick(base))),
+        );
       const fig: PwmComponentFigures = {
-        peakCurrent: peak(points.map((p) => p.components[id]!.current)),
+        peakCurrent: peakOf(span((x) => x.current)),
+        voltageRange: span((x) => x.voltage),
+        terminalRanges: Object.fromEntries(
+          Object.keys(base.terminals).map((k) => [k, span((x) => x.terminals[k] ?? null)]),
+        ),
       };
       if (base.currents)
         fig.peakCurrents = Object.fromEntries(
-          Object.keys(base.currents).map((k) => [
-            k,
-            peak(points.map((p) => p.components[id]!.currents?.[k] ?? null)),
-          ]),
+          Object.keys(base.currents).map((k) => [k, peakOf(span((x) => x.currents?.[k] ?? null))]),
         );
       if (base.array)
         fig.peakArray = base.array.currents.map(
-          (_, i) => peak(points.map((p) => p.components[id]!.array?.currents[i] ?? null)) ?? 0,
+          (_, i) => peakOf(span((x) => x.array?.currents[i] ?? null)) ?? 0,
         );
       r.pwm = fig;
     }
@@ -300,12 +323,22 @@ export function combinePwm(
         currentLow: p.current,
       };
     }
-    const pk = peak(points.map((o) => o.pins?.find((x) => x.gpio === p.gpio)?.current ?? null));
+    const pk = peakOf(
+      range(
+        p.current,
+        singles.map((s) => s.current - p.current),
+      ),
+    );
     if (
       pk !== null &&
       points.some((o) => o.pins?.find((x) => x.gpio === p.gpio)?.current !== p.current)
     )
       out.peakCurrent = pk;
+    const vr = range(
+      p.voltage,
+      singles.map((s) => s.voltage - p.voltage),
+    );
+    if (vr && vr[0] !== vr[1]) out.voltageRange = vr;
     return out;
   });
   return {
