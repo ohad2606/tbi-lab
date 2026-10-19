@@ -13,6 +13,7 @@
  */
 import { execFile, spawn, type ChildProcess } from 'node:child_process';
 import { EventEmitter } from 'node:events';
+import { constants } from 'node:os';
 import { chmodSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { PassThrough, type Readable } from 'node:stream';
@@ -56,6 +57,12 @@ export interface SystemdLauncherOptions {
 
 /** Session directories are `s-<session id>`; the unit instance is the id. */
 const SESSION = /^s-([0-9a-f]{32})$/;
+
+/** A signal number as its name (SIGKILL for an unknown one: the runtime was killed either way). */
+function signalName(n: number): NodeJS.Signals {
+  const name = Object.entries(constants.signals).find(([, v]) => v === n)?.[0];
+  return (name ?? 'SIGKILL') as NodeJS.Signals;
+}
 
 export function systemdLauncher(opts: SystemdLauncherOptions): RuntimeLauncher {
   const systemctl = opts.systemctl ?? '/usr/bin/systemctl';
@@ -133,7 +140,15 @@ export function systemdLauncher(opts: SystemdLauncherOptions): RuntimeLauncher {
               ? (`SIG${status}` as NodeJS.Signals)
               : 'SIGKILL';
         } catch {
-          signal = null;
+          // No record: ExecStopPost did not run to completion (a control-group-wide kill ends it
+          // too). systemd still holds how the main process ended (CLD_EXITED 1, CLD_KILLED 2,
+          // CLD_DUMPED 3); 0 means QEMU never ran. Without this an externally killed runtime
+          // read as a clean guest exit, reported to the user as a firmware reset (Sprint 16D).
+          const show = await run(['show', '-p', 'ExecMainCode', '-p', 'ExecMainStatus', unit]);
+          const how = Number(/^ExecMainCode=(\d+)$/m.exec(show)?.[1] ?? 0);
+          const status = Number(/^ExecMainStatus=(\d+)$/m.exec(show)?.[1] ?? 0);
+          if (how === 1) code = status;
+          else if (how === 2 || how === 3) signal = signalName(status);
         }
         await run(['reset-failed', unit]);
         try {
