@@ -26,6 +26,7 @@ import type { ComponentResult, SolveSuccess } from '@tbi-lab/engine';
 import { formatAngle, formatPower, formatPulseWidth, formatResult } from '../sim/format.js';
 import { RatingGroup } from './NoticeBar.js';
 import { warningsFor } from '../sim/ratings.js';
+import { servosOnSupply } from '../sim/servoSupply.js';
 import { useAppState, useStore, useT } from './context.js';
 import { checksFor } from './checks.js';
 import { NEUTRAL_HEX, resolveWireColors } from '../views/wireColors.js';
@@ -445,6 +446,7 @@ function ComponentResultView({
                 pwm={pwm}
                 testId="result-current"
               />
+              <ServoCurrentNote psuId={component.id} />
             </>
           )}
           {(r.type === 'component.led' || r.type === 'component.diode') && (
@@ -741,6 +743,11 @@ function PsuPanel({ component: c, readOnly }: { component: ComponentInstance; re
             <span class="psu-readout-value" data-testid="psu-measured-current">
               {r && r.current !== null ? formatResult(locale, r.current, 'ampere') : dash}
             </span>
+            {r?.pwm && (
+              <span class="psu-readout-label" data-testid="psu-current-average">
+                {t('psu.currentAverage')}
+              </span>
+            )}
           </div>
         </div>
         <div
@@ -754,6 +761,7 @@ function PsuPanel({ component: c, readOnly }: { component: ComponentInstance; re
           <span>{mode ? t(`sim.mode.${mode}`) : t('psu.notRunning')}</span>
         </div>
         {mode === 'cc' && <p class="small psu-cc-note">{t('psu.ccNote')}</p>}
+        {r && <ServoCurrentNote psuId={c.id} />}
       </div>
       <div class="psu-settings">
         <h4>{t('psu.settings')}</h4>
@@ -762,6 +770,19 @@ function PsuPanel({ component: c, readOnly }: { component: ComponentInstance; re
         ))}
       </div>
     </section>
+  );
+}
+
+/** Sprint 17C: a supply's current leaves out the servos on its output (R4-D3); say so, by name. */
+function ServoCurrentNote({ psuId }: { psuId: string }) {
+  const { doc } = useAppState();
+  const t = useT();
+  const servos = servosOnSupply(doc, psuId);
+  if (!servos.length) return null;
+  return (
+    <p class="small muted" data-testid="servo-current-excluded">
+      {t('sim.results.servoCurrentExcluded', { components: isolateLtr(servos.join(', ')) })}
+    </p>
   );
 }
 

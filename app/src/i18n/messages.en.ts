@@ -226,6 +226,8 @@ export const en = {
   'sim.part.state.pulseUs': 'Last pulse width',
   'sim.results.outsideModel.component.servo_sg90':
     'Supply outside the modelled 4.8–6.0 V range: the servo is shown holding still; a real one may behave differently.',
+  'sim.results.servoCurrentExcluded':
+    'Does not include the current drawn by {components}: the SG90 servo’s supply current is not modelled.',
   'sim.results.pwmAverage': '{label}, average (PWM)',
   'sim.results.pwmPeak': '{label}, peak (PWM)',
   'sim.results.pwmNote':
@@ -240,6 +242,7 @@ export const en = {
   'mcu.pwm.zero': 'PWM · duty 0 (its output level is not verified)',
   'mcu.pwm.static': 'PWM · {level} (steady)',
   'mcu.pwm.unsupported': 'PWM · unsupported',
+  'mcu.pwm.levelUnknown': 'voltage not established',
   'mcu.pwm.average': 'average {voltage}',
   'mcu.warning.servo_signal_undefined':
     '{component}: the control signal is not a valid logic level (or several PWM outputs act on it); the servo sees no valid pulse.',
@@ -362,6 +365,7 @@ export const en = {
   'psu.voltage': 'Voltage',
   'psu.current': 'Current',
   'psu.notRunning': 'Not running',
+  'psu.currentAverage': 'average (PWM)',
   'psu.ccNote': 'Current limiting is normal supply behaviour, not a fault.',
   'checks.heading': 'Circuit checks',
   'checks.none': 'No problems found.',
@@ -845,6 +849,8 @@ export const en = {
     'PWM on {pins} reaches the ESP32 input {inputs}. Reading a PWM signal is not simulated.',
   'sim.error.pwm.pwm_outputs_interact':
     'The PWM outputs {pins} share a load ({components}). Their combined effect depends on how the waveforms overlap, which is not simulated.',
+  'sim.error.pwm.pwm_supply_limited':
+    'PWM on {pins} makes {components} reach its current limit during part of each cycle. How a bench supply regulates a switching load at its limit is not simulated, so the session stopped. Raise the supply’s current limit or reduce the load.',
   'sim.pwm.why.open-drain': 'an open-drain PWM output',
   'sim.pwm.why.inverted': 'an inverted PWM output (GPIO matrix inversion)',
   'sim.pwm.why.low-speed': 'a low-speed channel (more than 8 PWM channels)',
@@ -855,6 +861,7 @@ export const en = {
   'sim.pwm.why.timer-reset': 'its timer is held in reset',
   'sim.pwm.why.timer-paused': 'its timer is paused',
   'sim.pwm.why.timer-resolution': 'a timer resolution outside 1 to 20 bits',
+  'sim.pwm.why.timer-apb-clock': 'a CPU clock below 80 MHz, which changes the PWM clock mid-period',
   'sim.pwm.why.timer-divider': 'a timer divider below 1',
   'sim.error.runtime.protocol_error':
     'The runtime service sent an unexpected response and the session ended. The project is not affected.',

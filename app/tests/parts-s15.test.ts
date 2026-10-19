@@ -217,6 +217,13 @@ describe('servo and PWM figures, formatted', () => {
     // A switching pad's solved voltage is its average over the waveform, and says so.
     expect(pinVoltageText(en, wave, 0.825)).toBe('average 825 mV');
     expect(pinVoltageText(en, plain, 3.3)).toBe('3.3 V');
+    // Sprint 17C: duty 0 (O-R4-1) and unsupported modes show no voltage as fact.
+    expect(pinVoltageText(en, { ...plain, pwm: { kind: 'zero', periodNs: 1e6 } }, 0)).toBe(
+      'voltage not established',
+    );
+    expect(pinVoltageText(he, { ...plain, pwm: { kind: 'unsupported', why: 'fade' } }, 0)).toBe(
+      'המתח לא ידוע',
+    );
   });
 });
 

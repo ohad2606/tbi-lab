@@ -15,6 +15,12 @@
  * of nanoseconds (the servo's 16-bit duty 3277 at 50 Hz is 1 000 061.035 156 25 ns). Nothing here
  * steps a counter or depends on wall time, so the result is a pure function of the frames.
  *
+ * - Sprint 17C (review item M2): an APB-clocked timer whose APB clock leaves 80 MHz (the CPU
+ *   below 80 MHz) is refused, from that instant until the timer is reset. On hardware the new
+ *   clock applies immediately, mid-period, at a counter value the frames do not carry; the model
+ *   would otherwise apply it at the next overflow (up to a period late). REF_TICK is taken as
+ *   1 MHz, which ESP-IDF always configures (a firmware that rewrites it is not detected).
+ *
  * Not represented, by decision (reported as `unsupported` or `zero`, never approximated):
  * duty 0 (open item O-R4-1: the hardware's output when hpoint and hpoint + 0 coincide is not
  * documented), a channel whose timer is held or misconfigured, hpoint + duty reaching the period
@@ -87,6 +93,11 @@ export type Waveform =
   /** Duty 0 on a running timer: the level is not established (O-R4-1). */
   | { kind: 'zero'; periodNs: Rat }
   | { kind: 'unsupported'; why: string };
+
+/** The APB clock the model's LEDC timing assumes (PLL; the CPU at 80 MHz or more). */
+export const APB_HZ = 80_000_000;
+/** REF_TICK as ESP-IDF configures it. */
+export const REF_TICK_HZ = 1_000_000;
 
 interface TimerTrack {
   state: LedcTimerState;
@@ -173,6 +184,13 @@ export class LedcTracker {
   timer(vns: bigint, timer: number, state: LedcTimerState): void {
     const t = this.timers[timer]!;
     const at = rat(vns);
+    // M2: a clock other than APB at 80 MHz or REF_TICK can only be APB after a CPU frequency
+    // change. Refused at once and until a reset (the counter position is lost); a paused timer
+    // keeps the refusal too, so a resume cannot revive a stale configuration.
+    if (state.kind === 'run' && state.clockHz !== APB_HZ && state.clockHz !== REF_TICK_HZ)
+      state = { kind: 'unsupported', why: 'apb-clock' };
+    if (t.state.kind === 'unsupported' && t.state.why === 'apb-clock' && state.kind !== 'reset')
+      return;
     if (state.kind !== 'run') {
       // A pause freezes the counter where it is (TRM: the counter stops); remember for resume.
       t.paused =

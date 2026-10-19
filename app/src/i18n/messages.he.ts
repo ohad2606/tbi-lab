@@ -228,6 +228,8 @@ export const he: Record<MessageKey, string> = {
   'sim.part.state.pulseUs': 'רוחב הפולס האחרון',
   'sim.results.outsideModel.component.servo_sg90':
     'ההזנה מחוץ לטווח הממודל של 4.8–6.0 V: הסרוו מוצג כנשאר במקומו; סרוו אמיתי עשוי להתנהג אחרת.',
+  'sim.results.servoCurrentExcluded':
+    'אינו כולל את הזרם ש־{components} צורך: זרם ההזנה של סרוו SG90 לא ממודל.',
   'sim.results.pwmAverage': '{label}, ממוצע (PWM)',
   'sim.results.pwmPeak': '{label}, שיא (PWM)',
   'sim.results.pwmNote':
@@ -241,6 +243,7 @@ export const he: Record<MessageKey, string> = {
   'mcu.pwm.zero': 'PWM · מחזור עבודה 0 (רמת היציאה לא אומתה)',
   'mcu.pwm.static': 'PWM · {level} (קבוע)',
   'mcu.pwm.unsupported': 'PWM · לא נתמך',
+  'mcu.pwm.levelUnknown': 'המתח לא ידוע',
   'mcu.pwm.average': 'ממוצע {voltage}',
   'mcu.warning.servo_signal_undefined':
     '{component}: אות הבקרה אינו ברמה לוגית תקינה (או שכמה יציאות PWM פועלות עליו); הסרוו אינו מקבל פולס תקין.',
@@ -360,6 +363,7 @@ export const he: Record<MessageKey, string> = {
   'psu.voltage': 'מתח',
   'psu.current': 'זרם',
   'psu.notRunning': 'לא פועל',
+  'psu.currentAverage': 'ממוצע (PWM)',
   'psu.ccNote': 'הגבלת זרם היא התנהגות תקינה של ספק, לא תקלה.',
   'checks.heading': 'בדיקות מעגל',
   'checks.none': 'לא נמצאו בעיות.',
@@ -820,6 +824,8 @@ export const he: Record<MessageKey, string> = {
     'PWM ב־{pins} מגיע אל כניסת ה־ESP32 ‏{inputs}. קריאת אות PWM אינה מדומה.',
   'sim.error.pwm.pwm_outputs_interact':
     'יציאות ה־PWM ‏{pins} חולקות עומס ({components}). ההשפעה המשולבת שלהן תלויה בחפיפה בין צורות הגל, וזו אינה מדומה.',
+  'sim.error.pwm.pwm_supply_limited':
+    'ה־PWM ב־{pins} מביא את {components} למגבלת הזרם שלו בחלק מכל מחזור. האופן שבו ספק מעבדה מווסת עומס ממותג בגבול הזרם אינו מדומה, ולכן הסשן נעצר. העלו את מגבלת הזרם של הספק או הקטינו את העומס.',
   'sim.pwm.why.open-drain': 'יציאת PWM מסוג Open-drain',
   'sim.pwm.why.inverted': 'יציאת PWM הפוכה (היפוך במטריצת ה־GPIO)',
   'sim.pwm.why.low-speed': 'ערוץ איטי (יותר מ־8 ערוצי PWM)',
@@ -830,6 +836,7 @@ export const he: Record<MessageKey, string> = {
   'sim.pwm.why.timer-reset': 'הטיימר שלו מוחזק באיפוס',
   'sim.pwm.why.timer-paused': 'הטיימר שלו מושהה',
   'sim.pwm.why.timer-resolution': 'רזולוציית טיימר מחוץ לטווח 1 עד 20 ביט',
+  'sim.pwm.why.timer-apb-clock': 'שעון מעבד מתחת ל־80 MHz, שמשנה את שעון ה־PWM באמצע מחזור',
   'sim.pwm.why.timer-divider': 'מחלק טיימר קטן מ־1',
   'sim.error.runtime.protocol_error':
     'שירות הריצה שלח תשובה בלתי צפויה והסשן הסתיים. הפרויקט לא נפגע.',

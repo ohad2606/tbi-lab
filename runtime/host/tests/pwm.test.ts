@@ -210,6 +210,26 @@ describe('LEDC waveforms (T-R4-1, host)', () => {
     expect(e[1]!.level).toBe(1);
   });
 
+  it('Sprint 17C (review M2): an APB clock below 80 MHz refuses the timer at once, until a reset', () => {
+    // setCpuFrequencyMhz(40) while the servo runs: QEMU republishes the APB timer at 40 MHz. On
+    // hardware the slower clock applies mid-period at once; the model refuses instead of applying
+    // it at the next overflow.
+    const slow = [...SERVO, 'P 1100000000 0 run 40000000 6250 16'];
+    expect(wave(run(slow, 71, 1_099_999_999n)).high).toBe(1_499_938.964_843_75); // 4915 still latched
+    expect(run(slow, 71, 1_100_000_000n)).toEqual({ kind: 'unsupported', why: 'timer-apb-clock' });
+    // Back at 80 MHz, paused and resumed, or reconfigured: still refused (the counter position is
+    // not known); a reset starts a well-defined sequence again.
+    const back = [...slow, 'P 1200000000 0 run 80000000 6250 16', 'P 1200000100 0 paused'];
+    expect(run([...back, 'P 1200000200 0 run 80000000 6250 16'], 71, 1_300_000_000n)).toEqual({
+      kind: 'unsupported',
+      why: 'timer-apb-clock',
+    });
+    const reset = [...back, 'P 1200000200 0 reset', 'P 1200000300 0 run 80000000 6250 16'];
+    expect(wave(run(reset, 71, 1_300_000_000n)).w.risingNs).toEqual(ns(1_200_000_300n));
+    // REF_TICK timers are not affected (ESP-IDF keeps REF_TICK at 1 MHz).
+    expect(wave(run(ANALOG, 71, 950_000_000n)).high).toBe(500_000);
+  });
+
   it('P and W frames are parsed strictly (review M10)', () => {
     const bad = (line: string) => expect(() => parseFrame(line), line).toThrow(ProtocolError);
     bad('P 5 4 reset'); // timer 4 is low speed: never published

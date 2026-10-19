@@ -49,7 +49,8 @@ export type LedcTimerState =
   | { kind: 'run'; clockHz: number; div: number; res: number }
   | { kind: 'reset' }
   | { kind: 'paused' }
-  | { kind: 'unsupported'; why: 'resolution' | 'divider' };
+  /** `apb-clock`: never on the wire; the host's verdict on an APB clock other than 80 MHz (M2). */
+  | { kind: 'unsupported'; why: 'resolution' | 'divider' | 'apb-clock' };
 
 /** An LEDC channel's output (patch 0009): its idle level, or high for `duty` ticks from `hpoint`. */
 export type LedcChannelState =

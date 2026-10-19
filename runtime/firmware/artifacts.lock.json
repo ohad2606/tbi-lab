@@ -80,6 +80,10 @@
     "TbiPwmInv": {
       "sha256": "4b6de26f27e3f9446cd71a9eceb7a71c8223ecb62b96f3d2eaabff1e7f194d26",
       "source": "runtime/firmware/arduino/TbiPwmInv (provision.sh firmware, same pinned toolchain). Sprint 16A R4 runtime test firmware (review M8: GPIO-matrix output inversion by ledcOutputInvert, by esp_rom_gpio_connect_out_signal on an LEDC signal and on simple GPIO; OUT_INV on an INPUT pad). Built twice on 2026-10-18 (Runtime v3 2cb1406f94f52e4f): byte-identical."
+    },
+    "TbiPwmApb": {
+      "sha256": "78bec973b0316b79d52de07445af52119e2229bde2f085a73fd8021f872d88b1",
+      "source": "runtime/firmware/arduino/TbiPwmApb (provision.sh firmware, same pinned toolchain). Sprint 17C R4 runtime test firmware (review M2: setCpuFrequencyMhz(40) while an APB LEDC timer runs). Built twice on 2026-10-19 (Runtime v3 2cb1406f94f52e4f): byte-identical."
     }
   }
 }

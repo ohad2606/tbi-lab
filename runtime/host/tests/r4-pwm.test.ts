@@ -277,3 +277,39 @@ describe('R4: PWM outputs on the Session Host (A1)', () => {
     });
   });
 });
+
+describe('Sprint 17C: M2 and M6 refusals through the whole Session Host', () => {
+  it('M2: an APB timer republished at 40 MHz (CPU below 80 MHz) is refused as pwm_unsupported_mode', async () => {
+    // 5 kHz on APB: 80 MHz / 62.5 (div 16000) / 256 ticks; then QEMU reports APB at 40 MHz.
+    const { s } = session([
+      ROUTE,
+      'P 9500100 0 reset',
+      'P 9500200 0 run 80000000 16000 8',
+      duty(9500300, 64),
+      '31@P 30000000 0 run 40000000 16000 8',
+    ]);
+    s.run();
+    expect(await terminal(s)).toMatchObject({
+      state: 'failed',
+      reason: 'pwm_unsupported',
+      detail: { code: 'pwm_unsupported_mode', gpio: 18, why: 'timer-apb-clock' },
+    });
+    // Before the change the 25 % average was published; nothing at 40 MHz ever was.
+    const pub = electrical(s);
+    expect(pub.some((e) => e.o.pins?.find((p) => p.gpio === 18)?.pwm?.duty === 0.25)).toBe(true);
+    expect(pub.every((e) => e.t < 30_000_000n)).toBe(true);
+  });
+
+  it('M6: a supply that current-limits only while the pad is low is refused as pwm_supply_limited', async () => {
+    const c = new Circuit().psu(5).set('PSU1', 'currentLimit', { value: 0.002, unit: 'ampere' });
+    const r = c.add('component.resistor');
+    c.ohms(r, 1000).wire('PSU1.positive', `${r}.a`).pad(18, `${r}.b`);
+    const { s } = session([ROUTE, ...TIMER, duty(9500300, 128)], CAPS, c);
+    s.run();
+    expect(await terminal(s)).toMatchObject({
+      state: 'failed',
+      reason: 'pwm_unsupported',
+      detail: { code: 'pwm_supply_limited', gpios: [18], components: ['PSU1'] },
+    });
+  });
+});

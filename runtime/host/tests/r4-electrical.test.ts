@@ -119,4 +119,28 @@ describe('T-R4-5: A1 averages, peaks and refusals', () => {
     expect(problems[0]).toMatchObject({ code: 'pwm_outputs_interact', gpios: [18, 19] });
     expect((problems[0] as { components: string[] }).components).toContain(d);
   });
+
+  // Sprint 17C (review M6): PSU1+ (5 V) -> 1 kΩ -> GPIO18. Pad low: 5 V / 1016.5 Ω = 4.9 mA; pad
+  // high: 1.7 V / 1016.5 Ω = 1.67 mA. With a 2 mA limit the supply current-limits only while the
+  // pad is low: one mode cannot be shown and the average would be invented, so it is refused.
+  const sink = (limitA: number) => {
+    const c = new Circuit().psu(5).set('PSU1', 'currentLimit', { value: limitA, unit: 'ampere' });
+    const r = c.add('component.resistor');
+    c.ohms(r, 1000).wire('PSU1.positive', `${r}.a`).pad(18, `${r}.b`);
+    return points(c, [{ gpio: 18, duty: 0.5 }]);
+  };
+
+  it('M6: a supply that current-limits during part of each cycle is refused, named', () => {
+    const { problems, low, single } = sink(0.002);
+    expect(low.components.PSU1!.mode).not.toBe(single[0]!.components.PSU1!.mode);
+    expect(problems).toEqual([{ code: 'pwm_supply_limited', components: ['PSU1'], gpios: [18] }]);
+  });
+
+  it('M6 control: the same circuit within the limit at both points is averaged (no problem)', () => {
+    const { problems, outcome, low, single } = sink(0.1);
+    expect(low.components.PSU1!.mode).toBe(single[0]!.components.PSU1!.mode);
+    expect(problems).toEqual([]);
+    const avg = 0.5 * (low.components.PSU1!.current! + single[0]!.components.PSU1!.current!);
+    expect(outcome.components.PSU1!.current).toBeCloseTo(avg, 12);
+  });
 });

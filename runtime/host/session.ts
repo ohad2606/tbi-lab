@@ -1313,12 +1313,15 @@ export class HostSession {
   }
 }
 
-/** Parts that a duty-0 pad (O-R4-1) may touch without the undocumented level mattering: the board
- * itself (its pad terminal), ground, and the servo's signal input (no valid pulse either way). */
+/**
+ * Parts that a duty-0 pad (O-R4-1) may touch without the undocumented level mattering: the board
+ * itself (its pad terminal) and ground. Sprint 17C: the servo's signal input is no longer exempt.
+ * If the real output at duty 0 were a steady high or a short pulse each period, how an SG90 reacts
+ * is not established either, so a duty-0 pad that reaches a servo is refused like any other load.
+ */
 const ZERO_NEUTRAL: ReadonlySet<string> = new Set([
   'board.esp32_devkitc_wroom32',
   'component.ground',
-  'component.servo_sg90',
 ]);
 
 function pwmProblemKey(p: PwmProblem): string {

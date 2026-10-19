@@ -145,15 +145,33 @@ describe('T-R4-4: SG90 on an LEDC output (Session Host)', () => {
     expect(last.angleDeg as number).toBeCloseTo(last.commandedDeg as number, 9);
   });
 
-  it('duty 0 on a pad that only feeds a servo signal runs (no load can tell its level)', async () => {
+  it('Sprint 17C: duty 0 on a pad that feeds a servo signal is refused, naming the servo (O-R4-1)', async () => {
+    // The level a real ESP32 outputs at duty 0 is not established, and neither is how an SG90
+    // treats a steady high or a one-clock pulse per period: fail closed, as for any other load.
     const { s, id } = servoSession([
       'F 9500000 18 periph:71 0',
       'P 9500100 0 reset',
       'P 9500200 0 run 80000000 6250 16',
       'W 9500300 71 on 0 0 0',
     ]);
+    s.run();
+    expect(await terminal(s)).toMatchObject({
+      state: 'failed',
+      reason: 'pwm_unsupported',
+      detail: { code: 'pwm_duty_zero_unverified', gpio: 18, components: [id] },
+    });
+  });
+
+  it('Sprint 17C: duty 0 replaced before its cycle starts never reaches the servo (attach, then write)', async () => {
+    const { s, id } = servoSession([
+      'F 9500000 18 periph:71 0',
+      'P 9500100 0 reset',
+      'P 9500200 0 run 80000000 6250 16',
+      'W 9500300 71 on 0 0 0',
+      'W 9500400 71 on 0 0 4915',
+    ]);
     expect(await runUntil(s, 200)).toMatchObject({ state: 'ended', reason: 'stopped' });
-    expect(servoStates(s, id).at(-1)!.st).toMatchObject({ angleDeg: 90, commandedDeg: 90 });
+    expect(servoStates(s, id).at(-1)!.st).toMatchObject({ signal: 'pulses' });
   });
 
   it('a signal between the thresholds is undefined: no pulse is read, a warning names it', async () => {

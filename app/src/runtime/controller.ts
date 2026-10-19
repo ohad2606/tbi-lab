@@ -100,12 +100,13 @@ const FAIL: Record<FailReason, RuntimeFailCode> = {
   internal: 'runtime_crashed',
 };
 
-const PWM_CODES: readonly PwmFailCode[] = [
+export const PWM_CODES: readonly PwmFailCode[] = [
   'pwm_duty_zero_unverified',
   'pwm_unsupported_mode',
   'pwm_load_unsupported',
   'pwm_input_unsupported',
   'pwm_outputs_interact',
+  'pwm_supply_limited',
 ];
 
 /** R4 (review M8): the host refused an attached pad because the GPIO matrix inverts it. */
@@ -115,7 +116,7 @@ function invertedRouting(detail: unknown): boolean {
 }
 
 /** R4: the host's `pwm_unsupported` detail as a named product failure (unknown shapes: generic). */
-function pwmFailure(detail: unknown): SimFailure {
+export function pwmFailure(detail: unknown): SimFailure {
   const d = (detail ?? {}) as Record<string, unknown>;
   const code = d.code as PwmFailCode;
   if (!PWM_CODES.includes(code)) return { kind: 'runtime', code: 'pwm_unsupported' };

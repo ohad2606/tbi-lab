@@ -1598,12 +1598,15 @@ function BoardPins({
             {live && (
               <circle
                 class={
-                  // Sprint 15 (R4): a switching PWM pad is neither HIGH nor LOW.
+                  // Sprint 15 (R4): a switching PWM pad is neither HIGH nor LOW. Sprint 17C: nor is
+                  // a duty-0 or unsupported one, whose level is not established (O-R4-1).
                   live.pwm?.kind === 'wave'
                     ? 'pin-level pin-pwm'
-                    : live.level
-                      ? 'pin-level pin-high'
-                      : 'pin-level pin-low'
+                    : live.pwm?.kind === 'zero' || live.pwm?.kind === 'unsupported'
+                      ? 'pin-level pin-unknown'
+                      : live.level
+                        ? 'pin-level pin-high'
+                        : 'pin-level pin-low'
                 }
                 data-testid={`pin-level-${pin.gpio}`}
                 data-level={String(live.level)}

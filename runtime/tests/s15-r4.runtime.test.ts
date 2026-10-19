@@ -7,6 +7,7 @@
  *   12 bit (APB) 25 %, 50 %, high; a second channel at 1 kHz; ledcDetach returns the pad to GPIO.
  * - T-R4-3: the frame stream (P, W, F with their virtual times) is identical across runs.
  * - A ninth channel lands in the low-speed group and is reported unsupported.
+ * - Sprint 17C (review M2): a CPU clock below 80 MHz republishes the APB timer; refused.
  * Session Host level:
  * - T-R4-5: LED and resistor loads on PWM pads: the published currents are the exact duty-weighted
  *   averages of the engine's own two operating points (the reference), peaks kept.
@@ -220,6 +221,36 @@ describe('R4 on the real runtime (harness level)', () => {
       inverted: t.frames.filter((f) => f.includes(' inverted:')),
     });
   }, 900_000);
+
+  it('Sprint 17C (review M2): setCpuFrequencyMhz(40) republishes the APB timer at 40 MHz; the tracker refuses it', async () => {
+    const t = await trace('TbiPwmApb', 1000);
+    const text = t.serial.map((x) => x.text).join('');
+    expect(text).toContain('APB 80 80000000');
+    expect(text).toContain('APB 40 40000000');
+    // 5 kHz / 8 bit on APB at 80 MHz, 25 %: exact.
+    expect(wave(t.waveAt(18, t.marker('APB 80 80000000') + 25n * MS))).toEqual({
+      periodNs: 200_000,
+      highNs: 50_000,
+      duty: 0.25,
+    });
+    // QEMU republishes the running timer with the new APB clock; the model refuses it at once.
+    const slow = t.frames.filter((f) => /^P \d+ 0 .*"clockHz":40000000/.test(f));
+    expect(slow).toHaveLength(1);
+    const at = BigInt(slow[0]!.split(' ')[1]!);
+    expect(at).toBeLessThan(t.marker('APB 40 40000000'));
+    expect(t.waveAt(18, at)).toEqual({ kind: 'unsupported', why: 'timer-apb-clock' });
+    expect(t.waveAt(18, t.marker('APB 40 40000000') + 1n * MS)).toEqual({
+      kind: 'unsupported',
+      why: 'timer-apb-clock',
+    });
+    const again = await trace('TbiPwmApb', 1000);
+    expect(again.frames).toEqual(t.frames);
+    recordEvidence('s17c-r4-m2-apb', {
+      frames: t.frames.length,
+      fingerprint: createHash('sha256').update(t.frames.join('\n')).digest('hex'),
+      slow: slow[0],
+    });
+  }, 900_000);
 });
 
 // ---------------------------------------------------------------------------------------------
@@ -334,6 +365,32 @@ describe('R4 on the real runtime (Session Host)', () => {
       .map((e) => (e as unknown as { outcome: SolveSuccess }).outcome.components[d1]!.current!);
     expect(leds.at(-1)).toBeCloseTo(0.25 * hiLed, 12);
     expect(leds.filter((i) => i > 0).length).toBeGreaterThan(0);
+  }, 900_000);
+
+  it('Sprint 17C (review M2): an LED on PWM is refused by name when the CPU drops below 80 MHz', async () => {
+    const c = new Circuit();
+    const r1 = c.add('component.resistor');
+    const d1 = c.add('component.led');
+    c.ohms(r1, 220).wire(`${r1}.b`, `${d1}.anode`).wire(`${d1}.cathode`, 'GND1.ref');
+    c.pad(18, `${r1}.a`);
+    const fw = artifact('TbiPwmApb');
+    const req = c.request(fw.sha256);
+    req.ticket = ticketFor(fw.sha256, principalFor(), PWM_FEATURES);
+    const created = host.create(req, principalFor());
+    if (!created.ok) throw new Error(created.error);
+    const s = created.value.session;
+    // The refusal comes within a tick of the change, before the emulator stalls (F-17C-1).
+    expect(await runUntil(s, 'APB 40 40000000')).toMatchObject({
+      state: 'failed',
+      reason: 'pwm_unsupported',
+      detail: { code: 'pwm_unsupported_mode', gpio: 18, why: 'timer-apb-clock' },
+    });
+    // At 80 MHz the LED was simulated (exact 25 % average); nothing was published at 40 MHz.
+    const hiLed = reference(req, { 18: 'output-high' }).components[d1]!.current!;
+    expect(outcomeAfter(s, 'APB 80 80000000', 25).components[d1]!.current).toBeCloseTo(
+      0.25 * hiLed,
+      12,
+    );
   }, 900_000);
 
   it('T-R4-4: an SG90 follows 1.0 / 2.0 / 1.5 ms pulses from ledcWrite (exact widths, 600 deg/s)', async () => {

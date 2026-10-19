@@ -1876,6 +1876,11 @@ select {
   fill-opacity: 0.45;
   stroke-dasharray: 2 1.5;
 }
+/* Sprint 17C: a PWM pad whose level is not established (duty 0, unsupported mode): hollow, dotted. */
+.pin-unknown {
+  fill: var(--canvas-bg);
+  stroke-dasharray: 1 1.5;
+}
 .mcu-panel h3 {
   margin: 0.75rem 0 0.25rem;
 }

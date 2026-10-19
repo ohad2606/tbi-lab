@@ -233,12 +233,17 @@ export function liveLevelText(locale: LocaleInfo, live: GpioLevel): string {
   }
 }
 
-/** A pad's solved voltage; a switching PWM pad's is its time-average over the waveform. */
+/**
+ * A pad's solved voltage; a switching PWM pad's is its time-average over the waveform. Sprint 17C:
+ * a duty-0 or unsupported PWM pad has no established level (O-R4-1), so no voltage is shown as fact.
+ */
 export function pinVoltageText(
   locale: LocaleInfo,
   live: GpioLevel | undefined,
   volts: number,
 ): string {
+  if (live?.pwm?.kind === 'zero' || live?.pwm?.kind === 'unsupported')
+    return translate(locale, 'mcu.pwm.levelUnknown');
   const v = formatQuantity(locale, { value: volts, unit: 'volt' });
   return live?.pwm?.kind === 'wave' ? translate(locale, 'mcu.pwm.average', { voltage: v }) : v;
 }

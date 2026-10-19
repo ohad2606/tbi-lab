@@ -54,7 +54,9 @@ export type PwmFailCode =
   | 'pwm_unsupported_mode'
   | 'pwm_load_unsupported'
   | 'pwm_input_unsupported'
-  | 'pwm_outputs_interact';
+  | 'pwm_outputs_interact'
+  /** Sprint 17C (M6): a bench supply current-limits during only part of each PWM cycle. */
+  | 'pwm_supply_limited';
 
 export interface RunTimings {
   /** Worker construction to its first message; null when an existing worker was reused. */

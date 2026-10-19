@@ -12,6 +12,14 @@
  * independent: then the circuit's response is the sum of each pad's own change (superposition).
  * That is checked, not assumed: the all-high point must equal the sum of the single-pad changes.
  * If it does not (the outputs interact through a shared load), the run is refused.
+ *
+ * Sprint 17C (review item M6): an averaged part's discrete state must also be the same at every
+ * point. A bench supply that is in constant-voltage mode at one point and current-limits at
+ * another switches regulation loops within each cycle; how fast a real supply's current limit
+ * responds is not modelled, so the average would be invented and the shown mode (taken from one
+ * point) wrong: refused as `pwm_supply_limited`. Any other averaged part whose discrete state
+ * differs between the points (none of the parts reachable in an ESP32 session has such a state;
+ * the LED matrix's lit count is the case in principle) is refused as `pwm_load_unsupported`.
  */
 import {
   interpretDigitalInput,
@@ -58,7 +66,9 @@ export type PwmProblem =
   /** An MCU input pad's logic level changes with a PWM output. */
   | { code: 'pwm_input_unsupported'; inputs: number[]; gpios: number[] }
   /** Two or more PWM outputs act on a shared load (superposition fails). */
-  | { code: 'pwm_outputs_interact'; components: string[]; gpios: number[] };
+  | { code: 'pwm_outputs_interact'; components: string[]; gpios: number[] }
+  /** A supply alternates between constant-voltage and current-limit operation (M6). */
+  | { code: 'pwm_supply_limited'; components: string[]; gpios: number[] };
 
 export interface PwmCombination {
   /** The time-averaged outcome, with `pwm` figures on each affected component and pad. */
@@ -89,6 +99,14 @@ function quantities(r: ComponentResult): Map<string, { v: Num; volts: boolean }>
       volts: false,
     });
   return q;
+}
+
+/** The discrete fields (supply mode, contact, part state) differ: never averaged (M6). */
+function discreteDiffers(a: ComponentResult, b: ComponentResult): boolean {
+  if (a.mode !== b.mode || a.closed !== b.closed) return true;
+  const keys = new Set([...Object.keys(a.state ?? {}), ...Object.keys(b.state ?? {})]);
+  for (const k of keys) if (a.state?.[k] !== b.state?.[k]) return true;
+  return false;
 }
 
 function differs(a: ComponentResult, b: ComponentResult): boolean {
@@ -129,12 +147,23 @@ export function combinePwm(
   const problems: PwmProblem[] = [];
 
   // 1. Parts outside the averaged set must not notice the PWM outputs at all.
+  // M6: an averaged part whose discrete state changes between the points is not averaged either.
+  const switching = Object.keys(low.components).filter(
+    (id) =>
+      PWM_AVERAGED_TYPES.has(types[id] ?? '') &&
+      points.some(
+        (p) => p.components[id] && discreteDiffers(low.components[id]!, p.components[id]!),
+      ),
+  );
+  const supplies = switching.filter((id) => types[id] === 'instrument.lab_psu');
   const affected = Object.keys(low.components).filter(
     (id) =>
-      !PWM_AVERAGED_TYPES.has(types[id] ?? '') &&
-      points.some((p) => p.components[id] && differs(low.components[id]!, p.components[id]!)),
+      (!PWM_AVERAGED_TYPES.has(types[id] ?? '') &&
+        points.some((p) => p.components[id] && differs(low.components[id]!, p.components[id]!))) ||
+      (switching.includes(id) && !supplies.includes(id)),
   );
   if (affected.length) problems.push({ code: 'pwm_load_unsupported', components: affected, gpios });
+  if (supplies.length) problems.push({ code: 'pwm_supply_limited', components: supplies, gpios });
 
   // 2. No MCU input may change level: reading a PWM signal needs edges, which A1 does not give.
   const pwmGpios = new Set(gpios);
