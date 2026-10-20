@@ -1,0 +1,258 @@
+From ee24c9247bf7be5917aadc7ce659f3e6d3686cce Mon Sep 17 00:00:00 2001
+From: TBI Lab <ohad2606@gmail.com>
+Date: Tue, 20 Oct 2026 15:16:11 +0000
+Subject: [PATCH] hw/misc/tbi_bridge, hw/gpio/esp32_gpio, hw/xtensa/esp32:
+ report unmodelled facilities (Runtime v4)
+
+A new bridge capability, unmodelled, and frame U <vns> <facility>, sent once per
+facility at the access that starts using it: adc (SENS_SAR_MEAS_START1/2), gpio-interrupt
+(GPIO_PINn with an interrupt type and enable), cpu-clock (the CPU clock settles below
+the highest it reached). The access itself behaves as before.
+---
+ hw/gpio/esp32_gpio.c |  8 +++++
+ hw/misc/tbi_bridge.c | 84 +++++++++++++++++++++++++++++++++++++++++++-
+ hw/xtensa/esp32.c    | 57 +++++++++++++++++++++++++++++-
+ 3 files changed, 147 insertions(+), 2 deletions(-)
+
+diff --git a/hw/gpio/esp32_gpio.c b/hw/gpio/esp32_gpio.c
+index 9730581..fe0a02e 100644
+--- a/hw/gpio/esp32_gpio.c
++++ b/hw/gpio/esp32_gpio.c
+@@ -190,6 +190,8 @@ static uint64_t esp32_gpio_classic_read(Esp32GpioState *s, hwaddr addr)
+     }
+ }
+ 
++void tbi_bridge_unmodelled(const char *facility);
++
+ static void esp32_gpio_classic_write(Esp32GpioState *s, hwaddr addr, uint32_t v)
+ {
+     switch (addr) {
+@@ -257,6 +259,12 @@ static void esp32_gpio_classic_write(Esp32GpioState *s, hwaddr addr, uint32_t v)
+             s->out_sel_written |= 1ULL << ((addr - TBI_A_GPIO_FUNC0_OUT) / 4);
+         } else if (!(addr >= TBI_A_GPIO_PIN0 && addr < TBI_A_GPIO_PIN0 + 4 * ESP32_GPIO_PADS)) {
+             return;
++        } else if (((v >> 7) & 7) && ((v >> 13) & 0x1f)) {
++            /*
++             * TBI Lab (Runtime v4): GPIO_PINn with an interrupt type AND an interrupt enable: the
++             * guest enables a GPIO interrupt, which this emulator does not deliver (`unmodelled`).
++             */
++            tbi_bridge_unmodelled("gpio-interrupt");
+         }
+         break; /* functions, then pads, are published below */
+     }
+diff --git a/hw/misc/tbi_bridge.c b/hw/misc/tbi_bridge.c
+index c555377..786403c 100644
+--- a/hw/misc/tbi_bridge.c
++++ b/hw/misc/tbi_bridge.c
+@@ -33,6 +33,12 @@
+  *   P <vns> <timer> <state...>          (pwm) an LEDC high-speed timer changed (hw/misc/esp32_ledc.c)
+  *   W <vns> <signal> <state...>         (pwm) an LEDC channel's output changed; <signal> is its
+  *                                       GPIO-matrix output signal, as in F. Host replies (commands) C
++ *   U <vns> <facility>                  (unmodelled, Runtime v4) the guest started USING a facility
++ *                                       this emulator does not model: adc (a SAR conversion),
++ *                                       gpio-interrupt (a GPIO interrupt enabled), cpu-clock (the
++ *                                       CPU clock settled below the highest it had reached). Sent
++ *                                       once per facility, at the access itself, before any dead or
++ *                                       crashed behaviour follows. Host replies (commands...) C
+  * host -> QEMU, inside a reply:
+  *   I <pad> <level>                     apply an external logic level to a pad (immediately)
+  *   R <hex>                             queue bytes for the guest UART0 receiver (tick replies)
+@@ -84,8 +90,10 @@
+ #define TBI_RX_PENDING_MAX 4096
+ 
+ /* Capability tokens this build implements, sorted (ADR-011 §1). */
+-#define TBI_BRIDGE_CAPS "i2c,pad-func,pwm,sched-input"
++#define TBI_BRIDGE_CAPS "i2c,pad-func,pwm,sched-input,unmodelled"
+ #define TBI_SCHED_MAX 512
++/* (unmodelled) How long a lowered CPU clock must hold before it counts as settled (1 ms). */
++#define TBI_CLOCK_SETTLE_NS 1000000
+ #define TBI_SCHED_MIN_NS 1000
+ 
+ #define EXIT_PROTOCOL 3
+@@ -121,6 +129,17 @@ struct TbiBridge {
+     char bus_expect;
+     int bus_got;
+     int bus_value;
++
++    /* (unmodelled) Facilities already reported (one U frame each). */
++    uint32_t unmodelled_sent;
++    /*
++     * (unmodelled) The CPU clock watchdog: the highest CPU clock reached so far and the current one
++     * (Hz). A clock that SETTLES below the highest (stays there TBI_CLOCK_SETTLE_NS) is reported:
++     * the boot raises the clock through brief crystal-clock steps, which never settle.
++     */
++    uint32_t cpu_hz_max;
++    uint32_t cpu_hz;
++    QEMUTimer *clock_timer;
+ };
+ 
+ OBJECT_DECLARE_SIMPLE_TYPE(TbiBridge, TBI_BRIDGE)
+@@ -430,6 +449,65 @@ void tbi_bridge_pwm(char kind, int64_t vns, const char *body)
+     tbi_exchange(s, vns, frame, false);
+ }
+ 
++/*
++ * (unmodelled, Runtime v4) The guest started using a facility this emulator does not model. One U
++ * frame per facility, at the access itself: the host ends the session naming it, so neither the
++ * dead behaviour (an interrupt that never fires) nor the crash (an ADC that never completes) ever
++ * reaches the user. Without a bridge nothing is reported (the access behaves as before).
++ */
++void tbi_bridge_unmodelled(const char *facility);
++void tbi_bridge_unmodelled(const char *facility)
++{
++    static const char *const known[] = { "adc", "gpio-interrupt", "cpu-clock" };
++    TbiBridge *s = tbi_bridge;
++    int64_t now;
++    char frame[96];
++    unsigned bit = 0;
++
++    if (!s) {
++        return;
++    }
++    for (unsigned i = 0; i < ARRAY_SIZE(known); i++) {
++        if (!strcmp(known[i], facility)) {
++            bit = 1u << i;
++        }
++    }
++    if (!bit || (s->unmodelled_sent & bit)) {
++        return;
++    }
++    s->unmodelled_sent |= bit;
++    now = tbi_now();
++    snprintf(frame, sizeof(frame), "U %" PRId64 " %s\n", now, facility);
++    tbi_exchange(s, now, frame, false);
++}
++
++static void tbi_clock_settled(void *opaque)
++{
++    TbiBridge *s = opaque;
++
++    if (s->cpu_hz < s->cpu_hz_max) {
++        tbi_bridge_unmodelled("cpu-clock");
++    }
++}
++
++/* (unmodelled) The SoC applied a CPU clock (hw/xtensa/esp32.c esp32_clk_update), in Hz. */
++void tbi_bridge_cpu_clock(uint32_t cpu_hz);
++void tbi_bridge_cpu_clock(uint32_t cpu_hz)
++{
++    TbiBridge *s = tbi_bridge;
++
++    if (!s) {
++        return;
++    }
++    s->cpu_hz = cpu_hz;
++    if (cpu_hz >= s->cpu_hz_max) {
++        s->cpu_hz_max = cpu_hz;
++        timer_del(s->clock_timer);
++    } else if (!timer_pending(s->clock_timer)) {
++        timer_mod(s->clock_timer, tbi_now() + TBI_CLOCK_SETTLE_NS);
++    }
++}
++
+ /*
+  * One I2C bus phase from the ESP32 I2C controller (hw/i2c/esp32_i2c.c), answered synchronously by
+  * the host. op 'S': arg = address << 1 | R/W, returns 1 if acknowledged; 'W': arg = byte, returns
+@@ -572,6 +650,10 @@ static void tbi_bridge_realize(DeviceState *dev, Error **errp)
+         s->pad_in[i] = qdev_get_gpio_in_named(gpio, TBI_PAD_IN, i);
+     }
+ 
++    /* (unmodelled) The CPU clock watchdog: a host synchronisation point only (see timer.h). */
++    s->clock_timer = timer_new_full(NULL, QEMU_CLOCK_VIRTUAL, SCALE_NS, QEMU_TIMER_ATTR_HOST_SYNC,
++                                    tbi_clock_settled, s);
++
+     /* Scheduled inputs: a host synchronisation point only, like the tick (see timer.h). */
+     s->sched_timer = timer_new_full(NULL, QEMU_CLOCK_VIRTUAL, SCALE_NS, QEMU_TIMER_ATTR_HOST_SYNC,
+                                     tbi_sched_fire, s);
+diff --git a/hw/xtensa/esp32.c b/hw/xtensa/esp32.c
+index d5eafa8..7bf2223 100644
+--- a/hw/xtensa/esp32.c
++++ b/hw/xtensa/esp32.c
+@@ -238,6 +238,10 @@ static void esp32_cpu_stall(void* opaque, int n, int level)
+     }
+ }
+ 
++/* TBI Lab (Runtime v4, hw/misc/tbi_bridge.c): unmodelled-facility reports. */
++void tbi_bridge_unmodelled(const char *facility);
++void tbi_bridge_cpu_clock(uint32_t cpu_hz);
++
+ static void esp32_clk_update(void* opaque, int n, int level)
+ {
+     Esp32SocState *s = ESP32_SOC(opaque);
+@@ -259,6 +263,8 @@ static void esp32_clk_update(void* opaque, int n, int level)
+     qdev_prop_set_int32(DEVICE(&s->timg[0]), "apb_freq", apb_clk_freq);
+     qdev_prop_set_int32(DEVICE(&s->timg[1]), "apb_freq", apb_clk_freq);
+     esp32_ledc_set_apb_freq(&s->ledc, apb_clk_freq);
++    /* TBI Lab (Runtime v4): the CPU clock watchdog (hw/misc/tbi_bridge.c, `cpu-clock`). */
++    tbi_bridge_cpu_clock(cpu_clk_freq);
+     clock_update_hz(s->cpu[0].clock, cpu_clk_freq );
+     clock_update_hz(s->cpu[1].clock, cpu_clk_freq );
+ }
+@@ -282,6 +288,50 @@ static void esp32_soc_add_unimp_device(MemoryRegion *dest, const char* name, hwa
+     g_free(name_apb);
+ }
+ 
++/* SENS_SAR_MEAS_START1_REG / START2_REG (ESP-IDF soc/esp32/include/soc/sens_reg.h). */
++#define TBI_SENS_SAR_MEAS_START1 0x54
++#define TBI_SENS_SAR_MEAS_START2 0x94
++
++static uint64_t esp32_sens_read(void *opaque, hwaddr addr, unsigned size)
++{
++    if (addr == TBI_SENS_SAR_MEAS_START1 || addr == TBI_SENS_SAR_MEAS_START2) {
++        tbi_bridge_unmodelled("adc");
++    }
++    qemu_log_mask(LOG_UNIMP, "esp32.sens: unimplemented device read (size %u, offset 0x%"
++                  HWADDR_PRIx ")\n", size, addr);
++    return 0;
++}
++
++static void esp32_sens_write(void *opaque, hwaddr addr, uint64_t value, unsigned size)
++{
++    if (addr == TBI_SENS_SAR_MEAS_START1 || addr == TBI_SENS_SAR_MEAS_START2) {
++        tbi_bridge_unmodelled("adc");
++    }
++    qemu_log_mask(LOG_UNIMP, "esp32.sens: unimplemented device write (size %u, offset 0x%"
++                  HWADDR_PRIx ", value 0x%" PRIx64 ")\n", size, addr, value);
++}
++
++static const MemoryRegionOps esp32_sens_ops = {
++    .read = esp32_sens_read,
++    .write = esp32_sens_write,
++    .endianness = DEVICE_LITTLE_ENDIAN,
++    .impl.min_access_size = 1,
++    .impl.max_access_size = 4,
++};
++
++static void esp32_soc_add_sens_device(MemoryRegion *dest, hwaddr base, size_t size)
++{
++    MemoryRegion *mr = g_new(MemoryRegion, 1);
++    MemoryRegion *apb = g_new(MemoryRegion, 1);
++
++    memory_region_init_io(mr, NULL, &esp32_sens_ops, NULL, "esp32.sens", size);
++    /* The same priority as an unimplemented device: real devices mapped over it win. */
++    memory_region_add_subregion_overlap(dest, base, mr, -1000);
++    memory_region_init_alias(apb, NULL, "esp32.sens-apb", mr, 0, size);
++    memory_region_add_subregion_overlap(dest, base - DR_REG_DPORT_APB_BASE + APB_REG_BASE, apb,
++                                        -1000);
++}
++
+ static void esp32_soc_realize(DeviceState *dev, Error **errp)
+ {
+     Esp32SocState *s = ESP32_SOC(dev);
+@@ -539,7 +589,12 @@ static void esp32_soc_realize(DeviceState *dev, Error **errp)
+ 
+     esp32_soc_add_unimp_device(sys_mem, "esp32.analog", DR_REG_ANA_BASE, 0x1000);
+     esp32_soc_add_unimp_device(sys_mem, "esp32.rtcio", DR_REG_RTCIO_BASE, 0x400);
+-    esp32_soc_add_unimp_device(sys_mem, "esp32.rtcio", DR_REG_SENS_BASE, 0x400);
++    /*
++     * TBI Lab (Runtime v4): the SENS block stays unimplemented (reads 0, writes ignored), except
++     * that a SAR ADC conversion (SENS_SAR_MEAS_START1/2) is reported as unmodelled (`adc`): the
++     * driver would otherwise poll a done bit that never sets until the guest panics.
++     */
++    esp32_soc_add_sens_device(sys_mem, DR_REG_SENS_BASE, 0x400);
+     esp32_soc_add_unimp_device(sys_mem, "esp32.iomux", DR_REG_IO_MUX_BASE, 0x2000);
+     esp32_soc_add_unimp_device(sys_mem, "esp32.hinf", DR_REG_HINF_BASE, 0x1000);
+     esp32_soc_add_unimp_device(sys_mem, "esp32.slc", DR_REG_SLC_BASE, 0x1000);
+-- 
+2.53.0
+

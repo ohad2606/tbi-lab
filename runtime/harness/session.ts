@@ -107,6 +107,8 @@ export interface SessionHandler {
   pwm?(e: PwmEvent): Command[];
   /** Periodic virtual-time tick: the only point where runtime commands apply (ADR-007). */
   tick?(vns: bigint): Command[];
+  /** (unmodelled, Runtime v4) the guest started using a facility the emulator does not model. */
+  unmodelled?(vns: bigint, facility: UnmodelledFacility): Command[];
   serial?(vns: bigint, bytes: Buffer): void;
 }
 
@@ -229,7 +231,7 @@ export function runSession(opts: SessionOptions, handler: SessionHandler): Promi
   const tickUs = opts.tickUs ?? 1000;
   const serialLimit = opts.serialLimitBytes ?? 1 << 20;
   const diagLimit = opts.diagnosticsLimitBytes ?? 64 << 10;
-  const frames = { H: 0, G: 0, T: 0, S: 0, F: 0, B: 0, P: 0, W: 0 };
+  const frames = { H: 0, G: 0, T: 0, S: 0, F: 0, B: 0, P: 0, W: 0, U: 0 };
   let caps: Capability[] = [];
   let hello = false;
   let pacedMs = 0;
@@ -339,6 +341,8 @@ export function runSession(opts: SessionOptions, handler: SessionHandler): Promi
         throw new ProtocolError('B frame without the i2c capability');
       if ((f.type === 'P' || f.type === 'W') && !caps.includes('pwm'))
         throw new ProtocolError(`${f.type} frame without the pwm capability`);
+      if (f.type === 'U' && !caps.includes('unmodelled'))
+        throw new ProtocolError('U frame without the unmodelled capability');
       frames[f.type]++;
       if (f.type === 'S') {
         const room = serialLimit - serialBytes;
@@ -378,6 +382,9 @@ export function runSession(opts: SessionOptions, handler: SessionHandler): Promi
         cmds = handler.pwm?.({ vns: f.vns, timer: f.timer, state: f.state }) ?? [];
       } else if (f.type === 'W') {
         cmds = handler.pwm?.({ vns: f.vns, signal: f.signal, state: f.state }) ?? [];
+      } else if (f.type === 'U') {
+        // Fail closed: a host that does not handle it ends the run at once.
+        cmds = handler.unmodelled ? handler.unmodelled(f.vns, f.facility) : [{ type: 'Q' }];
       } else {
         cmds = handler.tick?.(f.vns) ?? [];
       }

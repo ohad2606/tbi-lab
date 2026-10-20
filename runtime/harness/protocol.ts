@@ -11,12 +11,16 @@
  *   i2c          `B <vns> <bus> S|W|R|P ...`          (QEMU -> host, reply `K`/`D` then `C`)
  *   pwm          `P <vns> <timer> <state>`            (QEMU -> host, reply `C`; patch 0009)
  *                `W <vns> <signal> <state>`           LEDC high-speed timer / channel state
+ *   unmodelled   `U <vns> <facility>`                 (QEMU -> host, reply `C`; patch 0011, Runtime
+ *                                                     v4): the guest started using a facility the
+ *                                                     emulator does not model (adc, gpio-interrupt,
+ *                                                     cpu-clock); the host ends the session naming it
  */
 
 export type Level = 0 | 1;
 
 /** Capability tokens of bridge v2, in their canonical (sorted) order. */
-export const CAPABILITIES = ['i2c', 'pad-func', 'pwm', 'sched-input'] as const;
+export const CAPABILITIES = ['i2c', 'pad-func', 'pwm', 'sched-input', 'unmodelled'] as const;
 export type Capability = (typeof CAPABILITIES)[number];
 
 /**
@@ -61,6 +65,10 @@ export type LedcChannelState =
 /** GPIO-matrix output signals of the LEDC channels: high speed 71..78, low speed 79..86. */
 export const LEDC_SIGNALS = { first: 71, last: 86, highSpeedLast: 78 } as const;
 
+/** Facilities a Runtime v4 reports as used but not modelled (patch 0011). */
+export const UNMODELLED_FACILITIES = ['adc', 'gpio-interrupt', 'cpu-clock'] as const;
+export type UnmodelledFacility = (typeof UNMODELLED_FACILITIES)[number];
+
 export type Frame =
   | { type: 'H'; version: 1 | 2; tickNs: bigint; caps: Capability[] }
   | { type: 'G'; vns: bigint; pad: number; drive: Level; level: Level }
@@ -69,7 +77,8 @@ export type Frame =
   | { type: 'F'; vns: bigint; pad: number; func: PadFunction; openDrain: boolean }
   | { type: 'B'; vns: bigint; bus: 0 | 1; phase: I2cPhase }
   | { type: 'P'; vns: bigint; timer: number; state: LedcTimerState }
-  | { type: 'W'; vns: bigint; signal: number; state: LedcChannelState };
+  | { type: 'W'; vns: bigint; signal: number; state: LedcChannelState }
+  | { type: 'U'; vns: bigint; facility: UnmodelledFacility };
 
 export type Command =
   | { type: 'I'; pad: number; level: Level }
@@ -215,6 +224,8 @@ export function parseFrame(line: string): Frame {
       throw new ProtocolError(`malformed LEDC channel frame: ${JSON.stringify(line.slice(0, 80))}`);
     return { type: 'W', vns: BigInt(m[1]!), signal: Number(m[2]), state };
   }
+  if ((m = /^U (\d+) (adc|gpio-interrupt|cpu-clock)$/.exec(line)))
+    return { type: 'U', vns: BigInt(m[1]!), facility: m[2] as UnmodelledFacility };
   throw new ProtocolError(`malformed frame: ${JSON.stringify(line.slice(0, 80))}`);
 }
 
