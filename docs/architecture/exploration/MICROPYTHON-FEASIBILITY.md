@@ -122,8 +122,8 @@ hit the loss.
 | P1 run (2.5 s simulated) through the Session Host | 10.4 s wall, unpaced, 1 vCPU (boot dominates) |
 | QEMU memory | Sprint 17C: RSS about 77 MB, peak about 112 MB, within the 384 MiB unit cap |
 | Stop / Run | clean `ended/stopped`; each Run boots a fresh image (no state carried) |
-| `machine.reset()` / `esp_restart` | reaches QEMU as a guest reset → `guest_reset`, as for Arduino (`-no-reboot`) |
-| Exceptions | tracebacks arrive on serial; the session keeps running (REPL) |
+| `machine.reset()` | **not measured** in this probe. Expected, as for Arduino under `-no-reboot`: a guest reset → `guest_reset` (P2's panic reboot did end as `guest_exit`). To verify in the slice |
+| Python exceptions | **not measured** in this probe (expected: a traceback on serial, then the REPL). To verify in the slice |
 
 ## 4. Recommendation
 
