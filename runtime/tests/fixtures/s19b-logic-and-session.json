@@ -1,0 +1,273 @@
+{
+  "_comment": "Sprint 19B (Exploration Foundation X1): exactly the session request the app sends for the esp32-logic-and example (minus artifact and ticket; app/tests/runtime-fixtures.test.ts keeps them equal). Firmware: the example's own program, built by the build service.",
+  "request": {
+    "protocol": "tbi-lab.session/2",
+    "board": "board.esp32_devkitc_wroom32",
+    "circuit": {
+      "format": "tbi-lab.snapshot",
+      "schemaVersion": 3,
+      "snapshotId": "snap_991b9e338b73b1e8",
+      "projectId": "prj_exampleesp32logicand",
+      "projectRevision": 1,
+      "components": [
+        {
+          "id": "PSU1",
+          "type": "instrument.lab_psu",
+          "typeVersion": 1,
+          "params": {
+            "setpointVoltage": {
+              "value": 3,
+              "unit": "volt"
+            },
+            "currentLimit": {
+              "value": 0.1,
+              "unit": "ampere"
+            },
+            "outputEnabled": true
+          }
+        },
+        {
+          "id": "GND1",
+          "type": "component.ground",
+          "typeVersion": 1,
+          "params": {}
+        },
+        {
+          "id": "U2",
+          "type": "logic.gate_and",
+          "typeVersion": 1,
+          "params": {
+            "model": "model.logic.sn74lvc1g08"
+          }
+        },
+        {
+          "id": "R1",
+          "type": "component.resistor",
+          "typeVersion": 1,
+          "params": {
+            "resistance": {
+              "value": 220,
+              "unit": "ohm"
+            }
+          }
+        },
+        {
+          "id": "D1",
+          "type": "component.led",
+          "typeVersion": 1,
+          "params": {
+            "model": "model.led.vishay_tlhr5400"
+          }
+        },
+        {
+          "id": "SW1",
+          "type": "component.push_button",
+          "typeVersion": 1,
+          "params": {}
+        },
+        {
+          "id": "R2",
+          "type": "component.resistor",
+          "typeVersion": 1,
+          "params": {
+            "resistance": {
+              "value": 10000,
+              "unit": "ohm"
+            }
+          }
+        },
+        {
+          "id": "GND2",
+          "type": "component.ground",
+          "typeVersion": 1,
+          "params": {}
+        },
+        {
+          "id": "GND3",
+          "type": "component.ground",
+          "typeVersion": 1,
+          "params": {}
+        },
+        {
+          "id": "GND4",
+          "type": "component.ground",
+          "typeVersion": 1,
+          "params": {}
+        },
+        {
+          "id": "GND5",
+          "type": "component.ground",
+          "typeVersion": 1,
+          "params": {}
+        },
+        {
+          "id": "U1_gnd",
+          "type": "component.ground",
+          "typeVersion": 1,
+          "params": {}
+        }
+      ],
+      "nets": [
+        {
+          "id": "N_1",
+          "role": "ground"
+        },
+        {
+          "id": "N_2",
+          "role": "ground"
+        },
+        {
+          "id": "N_3",
+          "role": null
+        },
+        {
+          "id": "N_4",
+          "role": "ground"
+        },
+        {
+          "id": "N_5",
+          "role": null
+        },
+        {
+          "id": "N_6",
+          "role": null
+        },
+        {
+          "id": "N_7",
+          "role": "ground"
+        },
+        {
+          "id": "N_8",
+          "role": null
+        },
+        {
+          "id": "N_9",
+          "role": null
+        },
+        {
+          "id": "N_10",
+          "role": "ground"
+        }
+      ],
+      "connections": [
+        {
+          "component": "PSU1",
+          "terminal": "positive",
+          "net": "N_3"
+        },
+        {
+          "component": "PSU1",
+          "terminal": "negative",
+          "net": "N_1"
+        },
+        {
+          "component": "GND1",
+          "terminal": "ref",
+          "net": "N_1"
+        },
+        {
+          "component": "U2",
+          "terminal": "a",
+          "net": "N_5"
+        },
+        {
+          "component": "U2",
+          "terminal": "b",
+          "net": "N_6"
+        },
+        {
+          "component": "U2",
+          "terminal": "y",
+          "net": "N_8"
+        },
+        {
+          "component": "U2",
+          "terminal": "vcc",
+          "net": "N_3"
+        },
+        {
+          "component": "U2",
+          "terminal": "gnd",
+          "net": "N_4"
+        },
+        {
+          "component": "R1",
+          "terminal": "a",
+          "net": "N_8"
+        },
+        {
+          "component": "R1",
+          "terminal": "b",
+          "net": "N_9"
+        },
+        {
+          "component": "D1",
+          "terminal": "anode",
+          "net": "N_9"
+        },
+        {
+          "component": "D1",
+          "terminal": "cathode",
+          "net": "N_10"
+        },
+        {
+          "component": "SW1",
+          "terminal": "a",
+          "net": "N_3"
+        },
+        {
+          "component": "SW1",
+          "terminal": "b",
+          "net": "N_6"
+        },
+        {
+          "component": "R2",
+          "terminal": "a",
+          "net": "N_6"
+        },
+        {
+          "component": "R2",
+          "terminal": "b",
+          "net": "N_7"
+        },
+        {
+          "component": "GND2",
+          "terminal": "ref",
+          "net": "N_4"
+        },
+        {
+          "component": "GND3",
+          "terminal": "ref",
+          "net": "N_10"
+        },
+        {
+          "component": "GND4",
+          "terminal": "ref",
+          "net": "N_7"
+        },
+        {
+          "component": "GND5",
+          "terminal": "ref",
+          "net": "N_2"
+        },
+        {
+          "component": "U1_gnd",
+          "terminal": "ref",
+          "net": "N_2"
+        }
+      ]
+    },
+    "attachments": [
+      {
+        "gpio": 4,
+        "component": "U2",
+        "terminal": "y"
+      },
+      {
+        "gpio": 18,
+        "component": "U2",
+        "terminal": "a"
+      }
+    ]
+  }
+}

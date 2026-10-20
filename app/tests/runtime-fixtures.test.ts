@@ -35,6 +35,8 @@ describe('runtime fixtures', () => {
     // Sprint 15 (R4): the two PWM examples.
     ['s15-led-fade-session.json', 'esp32-led-fade'],
     ['s15-servo-sweep-session.json', 'esp32-servo-sweep'],
+    // Sprint 19B (Exploration Foundation X1): ESP32 + logic gate.
+    ['s19b-logic-and-session.json', 'esp32-logic-and'],
   ] as const)
     it(`${file} is the app request for ${id}`, () => {
       const fx = JSON.parse(
