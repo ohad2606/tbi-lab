@@ -22,8 +22,14 @@ afterEach(async () => {
   await Promise.all(hosts.splice(0).map((h) => h.shutdown()));
 });
 
-function bench(n: number) {
+function bench(n: number, gpio2 = false) {
   const c = new Circuit();
+  // The fake firmware toggles GPIO2 every 5 ms: optionally a plain digital LED load on it.
+  if (gpio2) {
+    const r = c.add('component.resistor');
+    const d = c.add('component.led');
+    c.ohms(r, 220).wire(`${r}.b`, `${d}.anode`).wire(`${d}.cathode`, 'GND1.ref').pad(2, `${r}.a`);
+  }
   for (const gpio of GPIOS.slice(0, n)) {
     const r = c.add('component.resistor');
     const d = c.add('component.led');
@@ -56,10 +62,25 @@ async function measure(
   n: number,
   cycles: number,
   pattern: (i: number, t: number) => number,
-  cacheEntries = HostSession.pwmPointsCacheEntries,
+  opts: { cache?: number; budget?: number; gpio2?: boolean } = {},
 ) {
-  const keep = HostSession.pwmPointsCacheEntries;
-  HostSession.pwmPointsCacheEntries = cacheEntries;
+  const keep = [HostSession.pwmPointsCacheEntries, HostSession.pwmSolveBudgetPerSimS] as const;
+  HostSession.pwmPointsCacheEntries = opts.cache ?? keep[0];
+  HostSession.pwmSolveBudgetPerSimS = opts.budget ?? keep[1];
+  try {
+    return await measureWith(n, cycles, pattern, opts.gpio2 ?? false);
+  } finally {
+    [HostSession.pwmPointsCacheEntries, HostSession.pwmSolveBudgetPerSimS] = keep;
+    vi.restoreAllMocks();
+  }
+}
+
+async function measureWith(
+  n: number,
+  cycles: number,
+  pattern: (i: number, t: number) => number,
+  gpio2: boolean,
+) {
   const r = fakeHost('normal', {
     runtimeEnv: {
       PATH: process.env.PATH,
@@ -107,7 +128,7 @@ async function measure(
     }
   });
   const ticket = ticketFor(r.art.sha256, principalFor(), null);
-  const c = r.host.create({ ...bench(n).request(r.art.sha256), ticket }, principalFor());
+  const c = r.host.create({ ...bench(n, gpio2).request(r.art.sha256), ticket }, principalFor());
   if (!c.ok) throw new Error(c.error);
   const s: HostSession = c.value.session;
   s.run();
@@ -122,8 +143,6 @@ async function measure(
   if (live()) s.stop();
   await Promise.race([waitState(s, 'ended', 15_000), waitState(s, 'failed', 15_000)]);
   await s.done();
-  HostSession.pwmPointsCacheEntries = keep;
-  vi.restoreAllMocks();
   // For the cached/uncached comparison: everything up to `until` (the run stops at a wall-clock
   // moment, so what follows differs between runs).
   const published = s.log
@@ -166,7 +185,8 @@ describe('R4 PWM scaling on the Session Host (F-17C-2)', () => {
 
   it('8 channels: the cached path publishes exactly what solving every change publishes', async () => {
     const cached = await measure(8, 20, fade);
-    const uncached = await measure(8, 20, fade, 0);
+    // Uncached: every change solved (the budget lifted: this arm compares, it does not police).
+    const uncached = await measure(8, 20, fade, { cache: 0, budget: 1e9 });
     expect(uncached.solves).toBeGreaterThan(20 * 38);
     expect(cached.latest.length).toBeGreaterThan(20);
     expect(cached.latest).toEqual(uncached.latest);
@@ -185,7 +205,7 @@ describe('R4 PWM scaling: configuration changes (F-17C-2)', () => {
   };
   it.each([16, 64])('staggered fade, cache %i', async (entries) => {
     const cycles = 1100;
-    const m = await measure(8, cycles, tri, entries);
+    const m = await measure(8, cycles, tri, { cache: entries });
     expect(m.status).toMatchObject({ state: 'ended', reason: 'stopped' });
     if (perf)
       console.log(
@@ -193,6 +213,24 @@ describe('R4 PWM scaling: configuration changes (F-17C-2)', () => {
           `solveMs=${m.ms.toFixed(1)} hostMs=${m.hostMs.toFixed(1)} reactions=${m.lateCalls} ` +
           `steadyPerReactionMs=${(m.lateMs / m.lateCalls).toFixed(3)}`,
       );
+    // Deterministic (fixed frames): the first configuration (10 solves at start, then 38), then
+    // the 8 configurations with one pad at 100 % (30 solves each) once each; the second 512 ms
+    // period is all cache hits.
+    expect(m.solves).toBe(288);
+    expect(m.lateSolves).toBe(8 * 30);
+  });
+});
+
+// Sprint 18 (independent review): only changes of the switching-pad configuration are charged.
+// Eight steady PWM pads and a digital LED that the firmware toggles every 5 ms, with the cache
+// disabled so that every edge is a full 38-solve miss (~7600 solves per simulated second): not a
+// PWM reconfiguration, so it is not refused (before the review it would have been).
+describe('R4 PWM scaling: the budget charges reconfigurations only (F-17C-2)', () => {
+  it('digital edges next to steady PWM pads are not charged', async () => {
+    const m = await measure(8, 600, () => 128, { cache: 0, gpio2: true });
+    expect(m.status).toMatchObject({ state: 'ended', reason: 'stopped' });
+    expect(m.pwmErrors).toEqual([]);
+    expect(m.solves).toBeGreaterThan(2000);
   });
 });
 

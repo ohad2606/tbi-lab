@@ -128,6 +128,11 @@ describe('analyzeFeatures', () => {
       'esp_pm_configure(&pm);',
     ])
       expect(f(src), src).toEqual(['cpu_frequency']);
+    // C++14 digit separators are not character literals (independent review, Sprint 18).
+    expect(f("int a = 1'000; setCpuFrequencyMhz(80); int b = 2'000;")).toEqual(['cpu_frequency']);
+    expect(f("switch (c) { case'a': setCpuFrequencyMhz(80); } char d = u8'x';")).toEqual([
+      'cpu_frequency',
+    ]);
     expect(f('/* setCpuFrequencyMhz(80); */ Serial.println("setCpuFrequencyMhz(80)");')).toEqual(
       [],
     );

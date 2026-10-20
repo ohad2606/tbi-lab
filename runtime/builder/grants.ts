@@ -21,7 +21,11 @@ import type { BuildResult } from './protocol.js';
 
 export const GLOBAL = 'global' as const;
 export type Owner = Principal | typeof GLOBAL;
-export type StoredBuild = Omit<BuildResult, 'timings'>;
+/**
+ * A build record as stored. `analyzer`: the FEATURES_ANALYZER version that produced its feature
+ * report (absent: before Sprint 18). A record from an older analyzer is not reused (service.ts).
+ */
+export type StoredBuild = Omit<BuildResult, 'timings'> & { analyzer?: number };
 
 export class Grants {
   private readonly db: DatabaseSync;

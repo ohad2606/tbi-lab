@@ -22,6 +22,7 @@ import {
 import type { Principal } from '../identity/principal.js';
 import { signTicket, type TicketFeatures } from '../identity/ticket.js';
 import { GLOBAL, type Grants, type Owner } from './grants.js';
+import { FEATURES_ANALYZER } from './features.js';
 import type { BuildProvider, ProviderOutput } from './provider.js';
 import type { ArtifactStore } from './store.js';
 import type { Policy } from '../policy/policy.js';
@@ -324,12 +325,15 @@ export class BuildService {
   private cachedResult(principal: Principal, key: string): BuildResult | null {
     const found = this.access.grants.findBuild(principal, key);
     if (!found?.artifact) return null;
+    // Analysed by an older rule set: build again (same image, an up-to-date feature report).
+    if ((found.analyzer ?? 1) < FEATURES_ANALYZER) return null;
     if (!this.store.exists(found.artifact.sha256)) {
       this.access.grants.dropArtifact(found.artifact.sha256);
       return null;
     }
     this.store.used(found.artifact.sha256);
-    return { ...found, timings: { queuedMs: 0, buildMs: 0 } };
+    const { analyzer: _analyzer, ...result } = found;
+    return { ...result, timings: { queuedMs: 0, buildMs: 0 } };
   }
 
   private prune() {
@@ -491,7 +495,7 @@ export class BuildService {
         if (!isMergedImage(bytes))
           return this.failed(r, 'internal', 'Build service: the build produced no valid image.', 0);
         const artifact = await this.store.publish(bytes, 'build');
-        this.access.grants.recordBuild(r.owner, { ...base, artifact });
+        this.access.grants.recordBuild(r.owner, { ...base, artifact, analyzer: FEATURES_ANALYZER });
         const result: BuildResult = {
           ...base,
           artifact,

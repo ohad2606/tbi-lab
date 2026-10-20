@@ -72,6 +72,20 @@ import { ServoBank, type PwmPoint } from './servos.js';
 const SHA = (buf: Buffer) => createHash('sha256').update(buf).digest('hex');
 const fileSha = (path: string) => SHA(readFileSync(path));
 
+/**
+ * Sprint 18 (F-17C-2): engine solves for CHANGES of the switching-pad configuration (which pads
+ * switch, which sit at duty 0) that the cache does not hold, per simulated second. A duty change
+ * needs none (the cache); a new configuration of N switching pads needs up to 2 + N + N(N-1)/2
+ * (38 for 8), ~0.3-0.45 ms each on the DEV host, so the budget bounds the host CPU one session
+ * spends on reconfiguring PWM to ~0.3-0.45 s per simulated second. A staggered 8-channel fade
+ * through 100 % needs ~480 in its first second, then none. Solves caused by other inputs while
+ * PWM runs (digital edges, live controls) are not charged: they cost what every solve cost before
+ * the cache (an independent review found charging them would refuse legitimate sketches). Exceeded: refused, named
+ * (`pwm_rate_exceeded`), deterministically (simulated time), never slowed or approximated. The
+ * app's EN/HE texts quote the number.
+ */
+export const PWM_SOLVE_BUDGET_PER_SIM_S = 1000;
+
 /** Sprint 18 (F-17C-2): the solved operating points of one PWM pad configuration. */
 interface PwmSolved {
   ok: true;
@@ -86,7 +100,14 @@ interface PwmSolved {
 }
 type PwmSolveResult =
   | PwmSolved
-  | { ok: false; low: SolveOutcome; failure: SolveOutcome }
+  /** A solve failed: what was solved before it (for the same handling as before the cache). */
+  | {
+      ok: false;
+      low: SolveOutcome;
+      zeroHigh: SolveSuccess[];
+      single: SolveSuccess[];
+      failure: SolveOutcome;
+    }
   | { ok: false; budget: { window: bigint; used: number; cost: number } };
 
 interface Queued {
@@ -213,9 +234,15 @@ export class HostSession {
   private readonly pwmPointsCache = new Map<string, PwmSolved>();
   /** Entries kept (tests set 0 to compare against the uncached path). */
   static pwmPointsCacheEntries = 16;
+  /** Set once a PWM budget refusal is pending: the session ends without further reactions. */
+  private pwmRefused = false;
   /** PWM solves spent in the current simulated second (PWM_SOLVE_BUDGET_PER_SIM_S). */
   private pwmBudgetWindow = -1n;
   private pwmBudgetUsed = 0;
+  /** The switching-pad configuration of the last PWM solve (the budget charges changes of it). */
+  private pwmLastConfig = '';
+  /** The budget (tests raise it to compare against the uncached path). */
+  static pwmSolveBudgetPerSimS = PWM_SOLVE_BUDGET_PER_SIM_S;
   /** The backlight token each I2C display's engine model has. */
   private readonly backlights = new Map<string, string>();
 
@@ -613,7 +640,9 @@ export class HostSession {
     this.devices?.advance(vns);
     this.servos?.sync(vns);
     let out = this.solvePoints(vns);
-    if (this.pendingFailure?.reason === 'pwm_unsupported') return [{ type: 'Q' }];
+    // Sprint 18: a PWM budget refusal (pwm_rate_exceeded) ends the reaction at once: nothing is
+    // derived from an operating point that was not solved.
+    if (this.pwmRefused) return [{ type: 'Q' }];
     // Sprint 12 (R3): a module's power decides its backlight load; follow it, then re-solve.
     if (out.ok && this.i2c && !this.i2c.empty) {
       const lit = this.i2c.power(out);
@@ -622,6 +651,7 @@ export class HostSession {
         this.backlights.set(ch.id, ch.backlight);
       }
       if (lit.length) out = this.solvePoints(vns);
+      if (this.pwmRefused) return [{ type: 'Q' }];
     }
     this.latest = out;
     if (!out.ok) {
@@ -723,29 +753,34 @@ export class HostSession {
       const detail = {
         code: 'pwm_rate_exceeded',
         gpios: [...waves.map((x) => x.gpio), ...zeros].sort((a, b) => a - b),
-        budget: PWM_SOLVE_BUDGET_PER_SIM_S,
+        budget: HostSession.pwmSolveBudgetPerSimS,
         used,
         needed: cost,
         window: window.toString(),
       };
-      this.log.append({
-        type: 'diagnostic',
-        simNs: vns.toString(),
-        severity: 'error',
-        code: 'pwm_rate_exceeded',
-        detail,
-      });
-      this.pendingFailure ??= { reason: 'pwm_unsupported', detail };
-      // Nothing new is solved: the last operating point stays (the session ends at once).
-      return this.pwmDone(vns, problems, this.latest ?? engine.solve());
+      if (!this.pendingFailure) {
+        this.log.append({
+          type: 'diagnostic',
+          simNs: vns.toString(),
+          severity: 'error',
+          code: 'pwm_rate_exceeded',
+          detail,
+        });
+        this.pendingFailure = { reason: 'pwm_unsupported', detail };
+      }
+      this.pwmRefused = true;
+      // Nothing new is solved: the last operating point stays (set at session start; the session
+      // ends at once, solveAndInject returns Q).
+      return this.pwmDone(vns, problems, this.latest!);
     }
-    this.lastLow = solved.low;
+    const low = solved.low;
+    this.lastLow = low;
     this.lastPwmPoints = [];
-    if (!solved.ok) return this.pwmDone(vns, problems, solved.failure);
-    const { low, zeroHigh, single, pairs, all } = solved;
-    // Duty 0 (O-R4-1): acceptable only where the pad's level changes nothing at all.
-    for (const [k, gpio] of zeros.entries()) {
-      const high = zeroHigh[k]!;
+    if (!low.ok) return this.pwmDone(vns, problems, low);
+    // Duty 0 (O-R4-1): acceptable only where the pad's level changes nothing at all. (On a later
+    // solve failure, the pads solved before it are checked first, as before the cache.)
+    for (const [k, high] of solved.zeroHigh.entries()) {
+      const gpio = zeros[k]!;
       const c = combinePwm(
         [{ gpio, duty: 0.5, periodNs: 0, highNs: 0 }],
         low,
@@ -773,13 +808,20 @@ export class HostSession {
           },
         });
     }
+    if (!solved.ok && solved.zeroHigh.length < zeros.length)
+      return this.pwmDone(vns, problems, solved.failure);
     if (!waves.length) return this.pwmDone(vns, problems, low);
+    const single = solved.single;
+    if (!solved.ok && single.length < waves.length)
+      return this.pwmDone(vns, problems, solved.failure);
     this.lastPwmPoints = waves.map(({ gpio, w }, i) => ({
       gpio,
       w,
       since: this.pwmSince.get(gpio) ?? ns(vns),
       high: single[i]!,
     }));
+    if (!solved.ok) return this.pwmDone(vns, problems, solved.failure);
+    const { pairs, all } = solved;
     const c = combinePwm(
       waves.map(({ gpio, w }) => ({
         gpio,
@@ -810,22 +852,29 @@ export class HostSession {
     const engine = this.engine!;
     const before = engine.stateKey;
     const key = before === null ? null : JSON.stringify([before, waves, zeros]);
+    const config = JSON.stringify([waves, zeros]);
+    const changed = config !== this.pwmLastConfig;
+    this.pwmLastConfig = config;
     const hit = key === null ? undefined : this.pwmPointsCache.get(key);
     if (hit) {
       this.pwmPointsCache.delete(key!);
       this.pwmPointsCache.set(key!, hit);
       return hit;
     }
-    const n = waves.length;
-    const cost = 1 + zeros.length + n + (n > 2 ? (n * (n - 1)) / 2 : 0) + (n > 1 ? 1 : 0);
-    const window = vns / 1_000_000_000n;
-    if (window !== this.pwmBudgetWindow) {
-      this.pwmBudgetWindow = window;
-      this.pwmBudgetUsed = 0;
+    // The budget is charged only when the set of switching pads changed (Sprint 18 review): a
+    // miss caused by another input (a digital edge, a live control) costs what it did before.
+    if (changed) {
+      const n = waves.length;
+      const cost = 1 + zeros.length + n + (n > 2 ? (n * (n - 1)) / 2 : 0) + (n > 1 ? 1 : 0);
+      const window = vns / 1_000_000_000n;
+      if (window !== this.pwmBudgetWindow) {
+        this.pwmBudgetWindow = window;
+        this.pwmBudgetUsed = 0;
+      }
+      if (this.pwmBudgetUsed + cost > HostSession.pwmSolveBudgetPerSimS)
+        return { ok: false, budget: { window, used: this.pwmBudgetUsed, cost } };
+      this.pwmBudgetUsed += cost;
     }
-    if (this.pwmBudgetUsed + cost > PWM_SOLVE_BUDGET_PER_SIM_S)
-      return { ok: false, budget: { window, used: this.pwmBudgetUsed, cost } };
-    this.pwmBudgetUsed += cost;
     const at = (high: number[]) => {
       for (const gpio of high) engine.setPinMode(gpio, 'output-high');
       const o = engine.solve();
@@ -833,17 +882,19 @@ export class HostSession {
       return o;
     };
     const low = engine.solve();
-    if (!low.ok) return { ok: false, low, failure: low };
     const zeroHigh: SolveSuccess[] = [];
+    const single: SolveSuccess[] = [];
+    const failed = (failure: SolveOutcome) =>
+      ({ ok: false, low, zeroHigh, single, failure }) as const;
+    if (!low.ok) return failed(low);
     for (const gpio of zeros) {
       const o = at([gpio]);
-      if (!o.ok) return { ok: false, low, failure: o };
+      if (!o.ok) return failed(o);
       zeroHigh.push(o);
     }
-    const single: SolveSuccess[] = [];
     for (const gpio of waves) {
       const o = at([gpio]);
-      if (!o.ok) return { ok: false, low, failure: o };
+      if (!o.ok) return failed(o);
       single.push(o);
     }
     const pairs: { i: number; j: number; o: SolveSuccess }[] = [];
@@ -851,13 +902,13 @@ export class HostSession {
       for (let i = 0; i < waves.length; i++)
         for (let j = i + 1; j < waves.length; j++) {
           const o = at([waves[i]!, waves[j]!]);
-          if (!o.ok) return { ok: false, low, failure: o };
+          if (!o.ok) return failed(o);
           pairs.push({ i, j, o });
         }
     let all: SolveSuccess | null = null;
     if (waves.length > 1) {
       const o = at(waves);
-      if (!o.ok) return { ok: false, low, failure: o };
+      if (!o.ok) return failed(o);
       all = o;
     }
     const solved: PwmSolved = { ok: true, low, zeroHigh, single, pairs, all };
@@ -1437,17 +1488,6 @@ export class HostSession {
     return this.dir;
   }
 }
-
-/**
- * Sprint 18 (F-17C-2): engine solves for PWM pad configurations not in the cache, per simulated
- * second. A duty change needs none (the cache); a new configuration of N switching pads needs up to
- * 2 + N + N(N-1)/2 (38 for 8), ~0.3-0.45 ms each on the DEV host, so the budget bounds one
- * session's host CPU for PWM to ~0.3-0.45 s per simulated second. A staggered 8-channel fade
- * through 100 % needs ~480 in its first second, then none. Exceeded: refused, named
- * (`pwm_rate_exceeded`), deterministically (simulated time), never slowed or approximated. The
- * app's EN/HE texts quote the number.
- */
-export const PWM_SOLVE_BUDGET_PER_SIM_S = 1000;
 
 /**
  * Parts that a duty-0 pad (O-R4-1) may touch without the undocumented level mattering: the board

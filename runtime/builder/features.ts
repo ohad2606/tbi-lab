@@ -17,6 +17,13 @@
 import { ESP32_DEVKITC_WROOM32 } from '@tbi-lab/domain';
 import type { FeatureReport } from './protocol.js';
 
+/**
+ * Version of this analysis. Raised whenever a rule is added or changed, so builds analysed by an
+ * older rule set are built (and analysed) again instead of being reused from the cache with a
+ * report that misses the new rule (Sprint 18: `cpu_frequency`).
+ */
+export const FEATURES_ANALYZER = 2;
+
 /** GPIOs the simulator can read (digital I/O and input-only pads). */
 export const INPUT_CAPABLE_GPIOS: number[] = ESP32_DEVKITC_WROOM32.pins
   .filter((p) => p.gpio !== null && p.simulatorSupport !== 'none')
@@ -100,11 +107,17 @@ function changesCpuFrequency(code: string): boolean {
 
 /** Strip comments and string/char literals so tokens in them do not count. */
 export function codeOnly(source: string): string {
-  return source
-    .replace(/\/\*[\s\S]*?\*\//g, ' ')
-    .replace(/\/\/[^\n]*/g, ' ')
-    .replace(/"(?:\\.|[^"\\\n])*"/g, '""')
-    .replace(/'(?:\\.|[^'\\\n])*'/g, "''");
+  return (
+    source
+      .replace(/\/\*[\s\S]*?\*\//g, ' ')
+      .replace(/\/\/[^\n]*/g, ' ')
+      .replace(/"(?:\\.|[^"\\\n])*"/g, '""')
+      // Sprint 18 (review): C++14 digit separators (1'000, 0xFF'FF) are not character literals;
+      // dropped first (inside a number token, one that starts with a digit), so a call between two
+      // of them is not mistaken for literal text. case'a' and u8'x' stay character literals.
+      .replace(/(?<=\b\d[\dA-Fa-fxXbB']*)'(?=[\dA-Fa-f])/g, '')
+      .replace(/'(?:\\.|[^'\\\n])*'/g, "''")
+  );
 }
 
 function literalPins(code: string, call: RegExp, any: RegExp): number[] {
