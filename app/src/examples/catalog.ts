@@ -294,6 +294,21 @@ export const EXAMPLES: readonly Example[] = [
     probes: [V('M1', 'vcc')],
     parts: ['board.esp32_devkitc_wroom32', 'component.servo_sg90', 'instrument.lab_psu'],
   },
+  // Sprint 19B (Exploration Foundation X1): ESP32 + logic gate + read-back.
+  {
+    id: 'esp32-logic-and',
+    titleKey: 'example.esp32-logic-and.title',
+    summaryKey: 'example.esp32-logic-and.summary',
+    probes: [V('U2', 'y'), I('D1')],
+    parts: [
+      'board.esp32_devkitc_wroom32',
+      'component.led',
+      'component.push_button',
+      'component.resistor',
+      'instrument.lab_psu',
+      'logic.gate_and',
+    ],
+  },
 ];
 
 export function findExample(id: string): Example | undefined {

@@ -201,6 +201,17 @@ export interface PartModel {
    */
   unknownDriven?(ctx: PartContext, state: PartState): readonly string[];
   /**
+   * Sprint 19B: terminals that carry an UNKNOWN current in this state (the supply pins of a gate
+   * with an unknown output). A supply output there reports an unknown current; a node there that
+   * no supply holds is itself unknown.
+   */
+  unknownSupply?(ctx: PartContext, state: PartState): readonly string[];
+  /**
+   * Sprint 19B: the most current the part's unknown output may carry (A): its absolute-maximum
+   * continuous output current (a datasheet bound), for the supply's current-limit margin.
+   */
+  unknownCurrentMaxA?(ctx: PartContext): number;
+  /**
    * Sprint 19B: the part's logic inputs and outputs (for the session's combinational-feedback
    * check: an output reaching an input of the same logic network through external elements).
    */

@@ -27,12 +27,13 @@
  * gates, PWM into a gate, clocks) are refused by the session and the host. The card carries t_pd
  * for display.
  */
-import { Resistor } from '../devices.js';
+import { PwlLoad } from '../pwl.js';
 import {
   evaluate,
   inputRowAt,
   LVC1G_CARDS,
   outputStageAt,
+  TABULATED_VCC_TOLERANCE_V,
   type LogicCard,
 } from '../logic/lvc1g.js';
 import {
@@ -48,6 +49,9 @@ import {
 /** Level of an input or output: HIGH, LOW, unknown (X) or, for an output, off (unpowered). */
 export type LogicLevel = 'high' | 'low' | 'x' | 'off';
 
+/** An output forced past its own rail by more than this (V) is outside every test point. */
+const WRONG_WAY_V = 1e-3;
+
 /** |V_CC| at or below this is "unpowered" (the I_off condition, V_CC = 0). */
 const UNPOWERED_V = 1e-3;
 
@@ -55,7 +59,7 @@ export function cardOf(ctx: PartContext): LogicCard {
   return LVC1G_CARDS[ctx.value('model') as string]!;
 }
 
-const levelOf = (s: PartState, key: string) => (s[key] ?? 'x') as LogicLevel;
+const levelOf = (s: PartState, key: string) => (s[key] ?? 'x') as LogicLevel | 'init';
 
 /** Kleene evaluation (static CMOS): a controlling input decides; otherwise X. */
 export function gateOutput(card: LogicCard, ins: readonly LogicLevel[]): 'high' | 'low' | 'x' {
@@ -85,9 +89,6 @@ function supplyOf(sol: PartSolution): number | null {
   return v === null || g === null ? null : v - g;
 }
 
-/** A refusal recorded in the state (enforced by the session once states have settled). */
-type Refusal = { refuse: string; at?: string; value?: number };
-
 function nextGateState(ctx: PartContext, sol: PartSolution, state: PartState): PartState {
   const card = cardOf(ctx);
   const unknown = (t: string) => sol.unknown?.(t) === true;
@@ -104,7 +105,6 @@ function nextGateState(ctx: PartContext, sol: PartSolution, state: PartState): P
     return { out: 'x', refuse: 'logic_supply_uncharacterized', value: vcc };
   const g = sol.potential('gnd')!;
   const levels: Record<string, LogicLevel> = {};
-  const extra: Refusal | Record<string, never> = {};
   let firstX: string | undefined;
   for (const t of card.inputs) {
     if (unknown(t)) {
@@ -129,22 +129,23 @@ function nextGateState(ctx: PartContext, sol: PartSolution, state: PartState): P
   const s: Record<string, string | number | boolean> = {
     out,
     vcc,
-    rHigh: stage.rHigh,
-    rLow: stage.rLow,
     validA: stage.validA,
     tabulated: stage.tabulated,
-    ...extra,
   };
   for (const t of card.inputs) s[`in_${t}`] = levels[t]!;
   if (firstX) s.firstX = firstX;
-  // The output current at the PREVIOUS stage (the solution of this pass): beyond a ranged-only
-  // characteristic it is refused (EF-D3 A).
+  // The output of the PREVIOUS stage, in this pass's solution: a current the datasheet does not
+  // guarantee (above the largest guaranteed test point, at every supply), or one flowing the
+  // wrong way (Y forced above V_CC while HIGH, below GND while LOW: no test point covers it), has
+  // no characteristic: refused, never extrapolated (EF-D3 A / EF-D4 A).
   const prev = levelOf(state, 'out');
-  if ((prev === 'high' || prev === 'low') && !stage.tabulated) {
-    const i = Math.abs(sol.deviceCurrent(`${ctx.component.id}/y`));
-    if (i > stage.validA) {
+  if ((prev === 'high' || prev === 'low') && prev === out) {
+    const i = sol.deviceCurrent(`${ctx.component.id}/y`);
+    const y = sol.potential('y');
+    const across = y === null ? 0 : prev === 'high' ? sol.potential('vcc')! - y : y - g;
+    if (Math.abs(i) > stage.validA + 1e-12 || across < -WRONG_WAY_V) {
       s.refuse = 'logic_output_uncharacterized';
-      s.value = i;
+      s.value = Math.abs(i);
     }
   }
   return s;
@@ -158,42 +159,33 @@ export function gateModel(fn: LogicCard['function']): PartModel {
     terminals: [...inputs, 'y', 'vcc', 'gnd'],
     cards: Object.fromEntries(own.map(([k, c]) => [k, { partNumber: c.partNumber }])),
     validate: (ctx) => validateCard(ctx, model.cards!),
-    // Unknown until the first solve has classified the inputs (the session settles it).
-    initialState: () => ({ out: 'x' }),
+    // Not yet evaluated: drives nothing and claims nothing (no unknown seeded); the first solve
+    // classifies the inputs and the session settles the levels from there.
+    initialState: () => ({ out: 'init' }),
     elements: (ctx, state) => {
       const id = ctx.component.id;
       const out = levelOf(state, 'out');
+      if ((out !== 'high' && out !== 'low') || typeof state.vcc !== 'number') return [];
+      // The guaranteed characteristic at the solved supply (logic/lvc1g.ts outputStageAt).
+      const stage = outputStageAt(cardOf(ctx), state.vcc);
       const y = ctx.node('y');
-      if (out === 'high') {
-        const r = state.rHigh as number;
-        const vcc = ctx.node('vcc');
-        return [
-          {
-            kind: 'device',
-            key: `${id}/y`,
-            nodes: [vcc, y],
-            make: () => new Resistor(`${id}/y`, vcc, y, r),
-          },
-        ];
-      }
-      if (out === 'low') {
-        const r = state.rLow as number;
-        const gnd = ctx.node('gnd');
-        return [
-          {
-            kind: 'device',
-            key: `${id}/y`,
-            nodes: [y, gnd],
-            make: () => new Resistor(`${id}/y`, y, gnd, r),
-          },
-        ];
-      }
-      return [];
+      const [a, b, pts] =
+        out === 'high' ? [ctx.node('vcc'), y, stage.high] : [y, ctx.node('gnd'), stage.low];
+      return [
+        {
+          kind: 'device',
+          key: `${id}/y`,
+          nodes: [a, b],
+          make: () => new PwlLoad(`${id}/y`, a, b, pts),
+        },
+      ];
     },
-    // An X output, and its supply pins: the current it would carry is unknown, so a supply
-    // feeding it reports an unknown current (a supply OUTPUT is a fixed node: the unknown stops
-    // there), and a supply node behind a resistor is itself unknown.
-    unknownDriven: (_ctx, state) => (levelOf(state, 'out') === 'x' ? ['y', 'vcc', 'gnd'] : []),
+    // An X output drives nothing: its node is unknown. Its supply pins carry an unknown current
+    // (`unknownSupply`): a supply output there reports an unknown current; a supply node behind
+    // a resistor is itself unknown.
+    unknownDriven: (_ctx, state) => (levelOf(state, 'out') === 'x' ? ['y'] : []),
+    unknownSupply: (_ctx, state) => (levelOf(state, 'out') === 'x' ? ['vcc', 'gnd'] : []),
+    unknownCurrentMaxA: (ctx) => cardOf(ctx).outputAbsA,
     logicPins: (ctx) => ({ inputs: cardOf(ctx).inputs, outputs: ['y'] }),
     nextState: (ctx, state, sol) => nextGateState(ctx, sol, state),
     refusal: (ctx, state) =>
@@ -214,8 +206,9 @@ export function gateModel(fn: LogicCard['function']): PartModel {
       const out = levelOf(state, 'out');
       const terminals: Record<string, number | null> = {};
       for (const t of [...card.inputs, 'y', 'vcc', 'gnd']) terminals[t] = sol.potential(t);
-      // Output current out of Y (positive = sourcing); it enters through V_CC when HIGH and
-      // leaves through GND when LOW, so the supply-pin currents follow from it.
+      // Signs: `y` out of the Y pin (positive = sourcing), `vcc` into the V_CC pin, `gnd` out of
+      // the GND pin. A HIGH output's current enters through V_CC, a LOW output's leaves through
+      // GND (the quiescent I_CC is a datasheet bound, reported separately).
       const iy =
         out === 'high'
           ? sol.deviceCurrent(`${id}/y`)
@@ -243,7 +236,6 @@ export function gateModel(fn: LogicCard['function']): PartModel {
           iccMaxA: card.iccMaxA,
           ...(typeof state.firstX === 'string' ? { firstUnknownInput: state.firstX } : {}),
         },
-        ...(known && Math.abs(iy) > validA ? { outsideModelRange: true } : {}),
       };
     },
     ratings: (p, r) => gateRatings(LVC1G_CARDS[p.model as string]!, r),
@@ -282,11 +274,22 @@ function gateRatings(
     else if (v < card.inputAbsolute[0])
       out.push({ code: 'voltage', value: v, limit: card.inputAbsolute[0], channel: t });
   }
+  // Output voltage: V_CC + 0.5 V while powered (high or low state); the high-impedance or
+  // power-off range otherwise (both absolute maxima, §5.1).
+  const yv = r.terminals.y;
+  if (yv != null && g != null) {
+    const v = yv - g;
+    const off = r.state?.gateOutput === 'off';
+    const max = off || vccV === null ? card.vccAbsMax : vccV + card.outputAbsAboveVcc;
+    if (v > max) out.push({ code: 'voltage', value: v, limit: max, channel: 'y' });
+    else if (v < card.inputAbsolute[0])
+      out.push({ code: 'voltage', value: v, limit: card.inputAbsolute[0], channel: 'y' });
+  }
   const iy = r.currents?.y;
   if (iy != null) {
     const a = Math.abs(iy);
     const recommended = card.outputRows
-      .filter((row) => vccV !== null && Math.abs(row.vcc - vccV) <= 1e-3)
+      .filter((row) => vccV !== null && Math.abs(row.vcc - vccV) <= TABULATED_VCC_TOLERANCE_V)
       .flatMap((row) => [...row.high, ...row.low].map((p) => p.amps));
     const opMax = recommended.length ? Math.max(...recommended) : card.rangedOutput.amps;
     if (a > card.outputAbsA)

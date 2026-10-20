@@ -1004,6 +1004,9 @@ export const en = {
   'example.esp32-led-fade.title': 'ESP32: fade an LED with PWM',
   'example.esp32-led-fade.summary':
     'analogWrite drives GPIO18 with a 1 kHz PWM signal; the LED’s average current, and its brightness, follow the duty. The fade stays between 1 and 255: duty 0 is not simulated yet.',
+  'example.esp32-logic-and.title': 'ESP32: an AND gate with read-back',
+  'example.esp32-logic-and.summary':
+    'An ESP32 output and a push button drive an SN74LVC1G08 AND gate powered at 3.0 V. The gate lights an LED and the ESP32 reads its output back. Hold the button and watch the serial monitor; release it and the LED stays dark.',
   'example.esp32-servo-sweep.title': 'ESP32: sweep an SG90 servo with PWM',
   'example.esp32-servo-sweep.summary':
     'A 50 Hz LEDC signal on GPIO18 with 1.0, 2.0 and 1.5 ms pulses moves the servo to 0°, 180° and 90°. The servo runs from the 5 V bench supply.',

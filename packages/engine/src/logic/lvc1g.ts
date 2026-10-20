@@ -199,31 +199,50 @@ export function inputRowAt(card: LogicCard, vcc: number): { vih: number; vil: nu
   return row ? { vih: level(row.vih, vcc), vil: level(row.vil, vcc) } : undefined;
 }
 
-/** Tolerance for "at a tabulated supply point" (V): a set-point equal to the row, not near it. */
-export const TABULATED_VCC_TOLERANCE_V = 1e-3;
+/**
+ * "At a tabulated supply point" (V): the solved supply equals the row's V_CC up to numerical
+ * resolution (an ideal supply set to that value), never "near" it (EF-D3 A).
+ */
+export const TABULATED_VCC_TOLERANCE_V = 1e-6;
 
 /**
- * The guaranteed output stage at this supply (EF-D4 A):
- * - at a tabulated point: a resistor from the part's own V_CC (high) or to its own GND (low)
- *   through the HIGHEST-current guaranteed point, valid up to that current;
- * - elsewhere in the operating range: the ranged ±100 µA row, valid up to 100 µA.
- * Returns the resistances and the current up to which each is the guaranteed characteristic.
+ * The guaranteed output stage at this supply (EF-D4 A), as I(V) points through (0, 0) for a
+ * piecewise-linear element: for HIGH, V is the drop from the part's own V_CC pin to Y; for LOW,
+ * the rise from its own GND pin to Y. Each point is a guaranteed test point (V_CC − V_OH min, or
+ * V_OL max, at its current), so the element passes EXACTLY through every guaranteed point: the
+ * worst-case characteristic, never better than the datasheet guarantees.
+ * - at a tabulated supply: the ranged ±100 µA point and every point of that row;
+ * - elsewhere in the operating range: only the ranged point (valid up to 100 µA).
+ * `validA`: the largest guaranteed current; beyond it there is no characteristic (refused).
  */
 export function outputStageAt(
   card: LogicCard,
   vcc: number,
-): { rHigh: number; rLow: number; validA: number; tabulated: boolean } {
-  const row = card.outputRows.find((r) => Math.abs(r.vcc - vcc) <= TABULATED_VCC_TOLERANCE_V);
-  if (row) {
-    const hi = row.high.reduce((a, b) => (b.amps > a.amps ? b : a));
-    const lo = row.low.reduce((a, b) => (b.amps > a.amps ? b : a));
-    return {
-      rHigh: (row.vcc - hi.volts) / hi.amps,
-      rLow: lo.volts / lo.amps,
-      validA: Math.min(hi.amps, lo.amps),
-      tabulated: true,
-    };
-  }
+): {
+  high: (readonly [number, number])[];
+  low: (readonly [number, number])[];
+  validA: number;
+  tabulated: boolean;
+} {
   const r = card.rangedOutput;
-  return { rHigh: r.drop / r.amps, rLow: r.low / r.amps, validA: r.amps, tabulated: false };
+  const ranged = [r.amps, r.drop, r.low] as const;
+  const row = card.outputRows.find((x) => Math.abs(x.vcc - vcc) <= TABULATED_VCC_TOLERANCE_V);
+  const sorted = (pts: (readonly [number, number])[]) => pts.sort((a, b) => a[1] - b[1]);
+  if (!row)
+    return {
+      high: [[ranged[1], ranged[0]]],
+      low: [[ranged[2], ranged[0]]],
+      validA: r.amps,
+      tabulated: false,
+    };
+  const high = sorted([
+    [ranged[1], ranged[0]],
+    ...row.high.map((p) => [row.vcc - p.volts, p.amps] as const),
+  ]);
+  const low = sorted([[ranged[2], ranged[0]], ...row.low.map((p) => [p.volts, p.amps] as const)]);
+  const validA = Math.min(
+    Math.max(...row.high.map((p) => p.amps)),
+    Math.max(...row.low.map((p) => p.amps)),
+  );
+  return { high, low, validA, tabulated: true };
 }

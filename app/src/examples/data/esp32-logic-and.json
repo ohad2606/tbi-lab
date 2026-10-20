@@ -1,0 +1,614 @@
+{
+  "format": "tbi-lab.project",
+  "schemaVersion": 3,
+  "projectId": "prj_exampleesp32logicand",
+  "createdWith": {
+    "app": "0.2.0",
+    "schemaVersion": 3
+  },
+  "createdAt": "2026-09-23T00:00:00.000Z",
+  "revision": {
+    "localRevision": 1,
+    "cloudRevision": null,
+    "baseRevision": null,
+    "updatedAt": "2026-09-23T00:00:00.000Z",
+    "deviceId": "dev_tbilab_examples"
+  },
+  "name": "ESP32: an AND gate with read-back",
+  "components": [
+    {
+      "id": "PSU1",
+      "type": "instrument.lab_psu",
+      "typeVersion": 1,
+      "params": {
+        "setpointVoltage": {
+          "value": 3,
+          "unit": "volt"
+        },
+        "currentLimit": {
+          "value": 0.1,
+          "unit": "ampere"
+        },
+        "outputEnabled": true
+      }
+    },
+    {
+      "id": "GND1",
+      "type": "component.ground",
+      "typeVersion": 1,
+      "params": {}
+    },
+    {
+      "id": "U1",
+      "type": "board.esp32_devkitc_wroom32",
+      "typeVersion": 1,
+      "params": {
+        "firmware": "program"
+      }
+    },
+    {
+      "id": "U2",
+      "type": "logic.gate_and",
+      "typeVersion": 1,
+      "params": {
+        "model": "model.logic.sn74lvc1g08"
+      }
+    },
+    {
+      "id": "R1",
+      "type": "component.resistor",
+      "typeVersion": 1,
+      "params": {
+        "resistance": {
+          "value": 220,
+          "unit": "ohm"
+        }
+      }
+    },
+    {
+      "id": "D1",
+      "type": "component.led",
+      "typeVersion": 1,
+      "params": {
+        "model": "model.led.vishay_tlhr5400"
+      }
+    },
+    {
+      "id": "SW1",
+      "type": "component.push_button",
+      "typeVersion": 1,
+      "params": {}
+    },
+    {
+      "id": "R2",
+      "type": "component.resistor",
+      "typeVersion": 1,
+      "params": {
+        "resistance": {
+          "value": 10000,
+          "unit": "ohm"
+        }
+      }
+    },
+    {
+      "id": "GND2",
+      "type": "component.ground",
+      "typeVersion": 1,
+      "params": {}
+    },
+    {
+      "id": "GND3",
+      "type": "component.ground",
+      "typeVersion": 1,
+      "params": {}
+    },
+    {
+      "id": "GND4",
+      "type": "component.ground",
+      "typeVersion": 1,
+      "params": {}
+    },
+    {
+      "id": "GND5",
+      "type": "component.ground",
+      "typeVersion": 1,
+      "params": {}
+    }
+  ],
+  "nets": [
+    {
+      "id": "N_1",
+      "role": "ground",
+      "userName": null
+    },
+    {
+      "id": "N_2",
+      "role": "ground",
+      "userName": null
+    },
+    {
+      "id": "N_3",
+      "role": null,
+      "userName": null
+    },
+    {
+      "id": "N_4",
+      "role": "ground",
+      "userName": null
+    },
+    {
+      "id": "N_5",
+      "role": null,
+      "userName": null
+    },
+    {
+      "id": "N_6",
+      "role": null,
+      "userName": null
+    },
+    {
+      "id": "N_7",
+      "role": "ground",
+      "userName": null
+    },
+    {
+      "id": "N_8",
+      "role": null,
+      "userName": null
+    },
+    {
+      "id": "N_9",
+      "role": null,
+      "userName": null
+    },
+    {
+      "id": "N_10",
+      "role": "ground",
+      "userName": null
+    }
+  ],
+  "connections": [
+    {
+      "component": "PSU1",
+      "terminal": "positive",
+      "net": "N_3"
+    },
+    {
+      "component": "PSU1",
+      "terminal": "negative",
+      "net": "N_1"
+    },
+    {
+      "component": "GND1",
+      "terminal": "ref",
+      "net": "N_1"
+    },
+    {
+      "component": "U1",
+      "terminal": "gnd",
+      "net": "N_2"
+    },
+    {
+      "component": "U1",
+      "terminal": "gpio18",
+      "net": "N_5"
+    },
+    {
+      "component": "U1",
+      "terminal": "gpio4",
+      "net": "N_8"
+    },
+    {
+      "component": "U2",
+      "terminal": "a",
+      "net": "N_5"
+    },
+    {
+      "component": "U2",
+      "terminal": "b",
+      "net": "N_6"
+    },
+    {
+      "component": "U2",
+      "terminal": "y",
+      "net": "N_8"
+    },
+    {
+      "component": "U2",
+      "terminal": "vcc",
+      "net": "N_3"
+    },
+    {
+      "component": "U2",
+      "terminal": "gnd",
+      "net": "N_4"
+    },
+    {
+      "component": "R1",
+      "terminal": "a",
+      "net": "N_8"
+    },
+    {
+      "component": "R1",
+      "terminal": "b",
+      "net": "N_9"
+    },
+    {
+      "component": "D1",
+      "terminal": "anode",
+      "net": "N_9"
+    },
+    {
+      "component": "D1",
+      "terminal": "cathode",
+      "net": "N_10"
+    },
+    {
+      "component": "SW1",
+      "terminal": "a",
+      "net": "N_3"
+    },
+    {
+      "component": "SW1",
+      "terminal": "b",
+      "net": "N_6"
+    },
+    {
+      "component": "R2",
+      "terminal": "a",
+      "net": "N_6"
+    },
+    {
+      "component": "R2",
+      "terminal": "b",
+      "net": "N_7"
+    },
+    {
+      "component": "GND2",
+      "terminal": "ref",
+      "net": "N_4"
+    },
+    {
+      "component": "GND3",
+      "terminal": "ref",
+      "net": "N_10"
+    },
+    {
+      "component": "GND4",
+      "terminal": "ref",
+      "net": "N_7"
+    },
+    {
+      "component": "GND5",
+      "terminal": "ref",
+      "net": "N_2"
+    }
+  ],
+  "layout": {
+    "components": {
+      "PSU1": {
+        "x": -420,
+        "y": 0,
+        "rotation": 0
+      },
+      "GND1": {
+        "x": -380,
+        "y": 120,
+        "rotation": 0
+      },
+      "U1": {
+        "x": 0,
+        "y": 0,
+        "rotation": 0
+      },
+      "U2": {
+        "x": 300,
+        "y": 0,
+        "rotation": 0
+      },
+      "R1": {
+        "x": 420,
+        "y": 0,
+        "rotation": 0
+      },
+      "D1": {
+        "x": 540,
+        "y": 0,
+        "rotation": 0
+      },
+      "SW1": {
+        "x": 200,
+        "y": 200,
+        "rotation": 0
+      },
+      "R2": {
+        "x": 260,
+        "y": 120,
+        "rotation": 90
+      },
+      "GND2": {
+        "x": 300,
+        "y": 100,
+        "rotation": 0
+      },
+      "GND3": {
+        "x": 620,
+        "y": 60,
+        "rotation": 0
+      },
+      "GND4": {
+        "x": 260,
+        "y": 200,
+        "rotation": 0
+      },
+      "GND5": {
+        "x": 140,
+        "y": -140,
+        "rotation": 0
+      }
+    },
+    "wires": [
+      {
+        "id": "W1",
+        "from": {
+          "kind": "terminal",
+          "component": "PSU1",
+          "terminal": "negative"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "GND1",
+          "terminal": "ref"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W2",
+        "from": {
+          "kind": "terminal",
+          "component": "U1",
+          "terminal": "gnd"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "GND5",
+          "terminal": "ref"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W3",
+        "from": {
+          "kind": "terminal",
+          "component": "PSU1",
+          "terminal": "positive"
+        },
+        "to": {
+          "kind": "junction",
+          "junction": "J1"
+        },
+        "vertices": [
+          {
+            "x": -340,
+            "y": -20
+          },
+          {
+            "x": -340,
+            "y": -260
+          }
+        ]
+      },
+      {
+        "id": "W4",
+        "from": {
+          "kind": "junction",
+          "junction": "J1"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "U2",
+          "terminal": "vcc"
+        },
+        "vertices": [
+          {
+            "x": 300,
+            "y": -260
+          }
+        ]
+      },
+      {
+        "id": "W5",
+        "from": {
+          "kind": "terminal",
+          "component": "SW1",
+          "terminal": "a"
+        },
+        "to": {
+          "kind": "junction",
+          "junction": "J1"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W6",
+        "from": {
+          "kind": "terminal",
+          "component": "U2",
+          "terminal": "gnd"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "GND2",
+          "terminal": "ref"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W7",
+        "from": {
+          "kind": "terminal",
+          "component": "U1",
+          "terminal": "gpio18"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "U2",
+          "terminal": "a"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W8",
+        "from": {
+          "kind": "terminal",
+          "component": "SW1",
+          "terminal": "b"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "R2",
+          "terminal": "a"
+        },
+        "vertices": [
+          {
+            "x": 240,
+            "y": 80
+          }
+        ]
+      },
+      {
+        "id": "W9",
+        "from": {
+          "kind": "terminal",
+          "component": "R2",
+          "terminal": "a"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "U2",
+          "terminal": "b"
+        },
+        "vertices": [
+          {
+            "x": 260,
+            "y": 20
+          }
+        ]
+      },
+      {
+        "id": "W10",
+        "from": {
+          "kind": "terminal",
+          "component": "R2",
+          "terminal": "b"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "GND4",
+          "terminal": "ref"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W11",
+        "from": {
+          "kind": "terminal",
+          "component": "U2",
+          "terminal": "y"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "R1",
+          "terminal": "a"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W12",
+        "from": {
+          "kind": "terminal",
+          "component": "R1",
+          "terminal": "b"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "D1",
+          "terminal": "anode"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W13",
+        "from": {
+          "kind": "terminal",
+          "component": "D1",
+          "terminal": "cathode"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "GND3",
+          "terminal": "ref"
+        },
+        "vertices": [
+          {
+            "x": 620,
+            "y": 0
+          }
+        ]
+      },
+      {
+        "id": "W14",
+        "from": {
+          "kind": "terminal",
+          "component": "U1",
+          "terminal": "gpio4"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "R1",
+          "terminal": "a"
+        },
+        "vertices": [
+          {
+            "x": 100,
+            "y": 60
+          },
+          {
+            "x": 100,
+            "y": 300
+          },
+          {
+            "x": 380,
+            "y": 300
+          }
+        ]
+      }
+    ],
+    "junctions": [
+      {
+        "id": "J1",
+        "x": 160,
+        "y": -260
+      }
+    ]
+  },
+  "idCounters": {
+    "PSU": 1,
+    "GND": 5,
+    "W": 14,
+    "N": 10,
+    "U": 2,
+    "R": 2,
+    "D": 1,
+    "SW": 1,
+    "J": 1
+  },
+  "programs": {
+    "U1": {
+      "language": "arduino-cpp",
+      "profile": "esp32-arduino-3.3.12",
+      "fileName": "sketch.ino",
+      "text": "/*\n * TBI Lab example: an ESP32 output and a push button through a logic AND gate.\n *\n * GPIO18 drives input A of an SN74LVC1G08 AND gate; the push button, with its 10 kOhm\n * pull-down, drives input B. The gate's output lights the LED through 220 Ohm and is read back\n * on GPIO4. The gate runs from the bench supply at 3.0 V, the supply where its datasheet\n * guarantees the output for real loads. Hold the button: the LED blinks with GPIO18, and the\n * serial monitor shows what GPIO4 reads right after each change of GPIO18.\n */\nconst int A_PIN = 18;\nconst int Y_PIN = 4;\n\nvoid setup() {\n  Serial.begin(115200);\n  pinMode(A_PIN, OUTPUT);\n  pinMode(Y_PIN, INPUT);\n}\n\nvoid loop() {\n  static bool a = false;\n  a = !a;\n  digitalWrite(A_PIN, a ? HIGH : LOW);\n  int y = digitalRead(Y_PIN);\n  Serial.print(\"A=\");\n  Serial.print(a ? 1 : 0);\n  Serial.print(\" Y=\");\n  Serial.println(y);\n  delay(500);\n}\n"
+    }
+  }
+}

@@ -31,6 +31,7 @@ describe('no shipped example raises a pad over-voltage warning (T-D3)', () => {
       const full = createSnapshot(e.document);
       const gpios = attachments.map((a) => a.gpio);
       let combos = 0;
+      let refused = 0;
       for (let n = 0; n < MODES.length ** gpios.length; n++) {
         const s = new EngineSession(circuit, { pins: attachments });
         let k = n;
@@ -39,12 +40,22 @@ describe('no shipped example raises a pad over-voltage warning (T-D3)', () => {
           k = Math.floor(k / MODES.length);
         }
         const out = s.solve();
+        // Sprint 19B: firmware driving a pad as an OUTPUT against a logic gate's output (X1's
+        // read-back pin): the contention current is beyond the gate's guaranteed output current,
+        // so that combination is refused by name, never shown as a number.
+        if (!out.ok && out.error.code === 'logic_output_uncharacterized') {
+          refused++;
+          continue;
+        }
         if (!out.ok) continue; // e.g. a relay chattering is not reachable from these examples
         combos++;
         const codes = ratingWarnings(full, out).map((w) => w.code);
         expect(codes, `${e.id} #${n}`).not.toContain('gpio_input_overvoltage');
         expect(codes, `${e.id} #${n}`).not.toContain('gpio_output_overvoltage');
       }
-      expect(combos).toBe(MODES.length ** gpios.length);
+      expect(combos + refused).toBe(MODES.length ** gpios.length);
+      // Only X1: with the button released the gate's output is LOW, so pad 4 driven HIGH against it
+      // contends (× the 3 modes of GPIO18); driven LOW it agrees with the gate and solves.
+      expect(refused, e.id).toBe(e.id === 'esp32-logic-and' ? 3 : 0);
     });
 });

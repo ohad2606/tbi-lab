@@ -41,29 +41,30 @@ describe('device cards (datasheet figures, EF-D3 A / EF-D4 A)', () => {
     for (const v of [2.0, 2.8, 2.99, 3.61, 4.0, 4.49]) expect(inputRowAt(AND, v)).toBeUndefined();
   });
 
-  it('the guaranteed output stage meets EVERY guaranteed point of its row, the highest exactly', () => {
+  it('the guaranteed output stage passes EXACTLY through every guaranteed point (never better)', () => {
     for (const card of Object.values(LVC1G_CARDS))
       for (const row of card.outputRows) {
         const st = outputStageAt(card, row.vcc);
         expect(st.tabulated).toBe(true);
-        for (const p of row.high)
-          expect(row.vcc - p.amps * st.rHigh).toBeGreaterThanOrEqual(p.volts - 1e-12);
-        for (const p of row.low) expect(p.amps * st.rLow).toBeLessThanOrEqual(p.volts + 1e-12);
-        const hi = row.high.reduce((a, b) => (b.amps > a.amps ? b : a));
-        expect(row.vcc - hi.amps * st.rHigh).toBeCloseTo(hi.volts, 12);
-        // And the ranged ±100 µA row (V_CC − 0.1 V, 0.1 V) at that supply.
-        expect(row.vcc - 100e-6 * st.rHigh).toBeGreaterThanOrEqual(row.vcc - 0.1);
-        expect(100e-6 * st.rLow).toBeLessThanOrEqual(0.1);
+        // [drop or V_OL, current] points: the ranged ±100 µA point, then each test point.
+        expect(st.high).toEqual(
+          [[0.1, 100e-6], ...row.high.map((p) => [row.vcc - p.volts, p.amps])].sort(
+            (a, b) => a[1]! - b[1]!,
+          ),
+        );
+        expect(st.low).toEqual(
+          [[0.1, 100e-6], ...row.low.map((p) => [p.volts, p.amps])].sort((a, b) => a[1]! - b[1]!),
+        );
+        expect(st.validA).toBe(Math.max(...row.high.map((p) => p.amps)));
       }
-    // V_CC = 3 V: (3 − 2.3) / 24 mA and 0.55 / 24 mA.
-    const s3 = outputStageAt(AND, 3.0);
-    expect(s3.rHigh).toBeCloseTo(0.7 / 0.024, 12);
-    expect(s3.rLow).toBeCloseTo(0.55 / 0.024, 12);
-    expect(s3.validA).toBe(0.024);
-    // 3.3 V is not a tabulated output point: only the ranged row, 0.1 V / 100 µA.
-    const s33 = outputStageAt(AND, 3.3);
-    expect(s33).toMatchObject({ tabulated: false, validA: 100e-6 });
-    expect(s33.rHigh).toBeCloseTo(1000, 9);
+    // 3.3 V is not a tabulated output point: only the ranged row.
+    expect(outputStageAt(AND, 3.3)).toMatchObject({
+      tabulated: false,
+      validA: 100e-6,
+      high: [[0.1, 100e-6]],
+    });
+    // The tolerance is numerical only: 3.001 V is not "at 3 V".
+    expect(outputStageAt(AND, 3.001).tabulated).toBe(false);
   });
 
   it('static CMOS evaluation: a controlling input decides; otherwise X', () => {
@@ -109,8 +110,11 @@ const load = (ohms: number) => (b: Bench, g: string) => {
 
 describe('SN74LVC1G gates in the solve', () => {
   it('truth tables at V_CC = 3.0 V into 10 kΩ: HIGH = 3 V·10k/(10k + R_OH), LOW = 0 V', () => {
-    const rh = 0.7 / 0.024;
-    const high = (3.0 * 10_000) / (10_000 + rh);
+    // HIGH into 10 kΩ: I ≈ 0.29 mA, on the segment (0.1 V, 100 µA) – (0.6 V, 16 mA) of the
+    // guaranteed envelope: drop = 0.1 + (I − 100 µA)·k, k = 0.5 V / 15.9 mA; I = (3 − drop) / 10k.
+    const k = 0.5 / 15.9e-3;
+    const I = (3.0 - 0.1 + 100e-6 * k) / (10_000 + k);
+    const high = 3.0 - (0.1 + (I - 100e-6) * k);
     const tables = {
       'logic.gate_and': [0, 0, 0, 1],
       'logic.gate_nand': [1, 1, 1, 0],
@@ -149,8 +153,9 @@ describe('SN74LVC1G gates in the solve', () => {
     expect(u.currents!.y).toBeCloseTo(led, 12);
     expect(u.currents!.vcc).toBeCloseTo(led, 12);
     expect(o.components.PSU1!.current!).toBeCloseTo(led, 12);
-    // V_Y = 3 − I·R_OH exactly.
-    expect(u.terminals.y!).toBeCloseTo(3.0 - led * (0.7 / 0.024), 9);
+    // V_Y on the guaranteed envelope at that current (a few mA: the (100 µA, 16 mA) segment).
+    expect(led).toBeLessThan(16e-3);
+    expect(u.terminals.y!).toBeCloseTo(3.0 - (0.1 + (led - 100e-6) * (0.5 / 15.9e-3)), 9);
     expect(ratingWarnings(b.snapshot(), o)).toEqual([]);
     expect(u.outsideModelRange).toBeUndefined();
   });
@@ -168,24 +173,22 @@ describe('SN74LVC1G gates in the solve', () => {
     });
     const o = ok(solve(many.b));
     expect(o.components[many.g]!.terminals.y!).toBeCloseTo(base, 12);
-    // 47 Ω: I = 3 / (47 + 29.17) ≈ 39 mA > 24 mA recommended (operating), < 50 mA (absolute).
-    const heavy = gate('logic.gate_and', 3.0, ['h', 'h'], load(47));
-    const h = ok(solve(heavy.b));
-    expect(h.components[heavy.g]!.outsideModelRange).toBe(true);
-    const w = ratingWarnings(heavy.b.snapshot(), h).filter((x) => x.component === heavy.g);
-    expect(w.map((x) => [x.code, x.kind ?? 'absolute'])).toEqual([['current', 'operating']]);
-    // 10 Ω: ≈ 77 mA > 50 mA output absolute maximum.
-    const short = gate('logic.gate_and', 3.0, ['h', 'h'], load(10));
-    const sw = ratingWarnings(short.b.snapshot(), ok(solve(short.b))).filter(
-      (x) => x.component === short.g,
-    );
-    expect(sw.map((x) => x.kind ?? 'absolute')).toContain('absolute');
+    // 47 Ω draws more than 24 mA, the largest guaranteed current at 3 V: no characteristic
+    // there, so refused (never an extrapolated number); 10 Ω likewise.
+    for (const ohms of [47, 10]) {
+      const heavy = gate('logic.gate_and', 3.0, ['h', 'h'], load(ohms));
+      expect(fails(solve(heavy.b))).toMatchObject({
+        code: 'logic_output_uncharacterized',
+        components: [heavy.g],
+      });
+    }
   });
 
   it('V_CC = 3.3 V (no tabulated output points): light loads by the ±100 µA row; an LED load is refused', () => {
     const light = gate('logic.gate_and', 3.3, ['h', 'h'], load(1_000_000));
     const y = ok(solve(light.b)).components[light.g]!;
     expect(y.state).toMatchObject({ gateOutput: 'high', outputModel: 'ranged' });
+    // Within ±100 µA the envelope is the ranged row's 0.1 V / 100 µA line (1 kΩ).
     expect(y.terminals.y!).toBeCloseTo((3.3 * 1e6) / (1e6 + 1000), 9);
     expect(y.terminals.y!).toBeGreaterThanOrEqual(3.3 - 0.1);
     const led = gate('logic.gate_and', 3.3, ['h', 'h'], load(220));
@@ -316,6 +319,137 @@ describe('SN74LVC1G gates in the solve', () => {
   });
 });
 
+describe('review fixes (Sprint 19B independent review)', () => {
+  it('a gate fed through a resistor works (no self-inflicted unknown supply)', () => {
+    const b = new Bench();
+    const g = b.add('logic.gate_and');
+    const r = b.add('component.resistor');
+    b.psu(3.0, 0.5).ohms(r, 1).wire('PSU1.negative', 'GND1.ref').wire('PSU1.positive', `${r}.a`);
+    b.wire(`${r}.b`, `${g}.vcc`)
+      .wire(`${g}.gnd`, 'GND1.ref')
+      .wire(`${g}.a`, 'GND1.ref')
+      .wire(`${g}.b`, 'GND1.ref');
+    load(10_000)(b, g);
+    // V_CC is 3.0 V exactly (no load current through the 1 Ω): LOW output.
+    expect(ok(solve(b)).components[g]!.state).toMatchObject({
+      gateOutput: 'low',
+      outputModel: 'tabulated',
+    });
+  });
+
+  it('an unknown level never decides another stateful part (a relay coil on an X output is refused)', () => {
+    const { b } = gate('logic.gate_not', 3.0, ['open'], (bb, gg) => {
+      const r1 = bb.add('component.resistor');
+      const r2 = bb.add('component.resistor');
+      bb.ohms(r1, 10_000).ohms(r2, 10_000);
+      bb.wire('PSU1.positive', `${r1}.a`)
+        .wire(`${r1}.b`, `${gg}.a`)
+        .wire(`${gg}.a`, `${r2}.a`)
+        .wire(`${r2}.b`, 'GND1.ref');
+      const k = bb.add('component.relay');
+      bb.wire(`${gg}.y`, `${k}.coil1`).wire(`${k}.coil2`, 'GND1.ref').wire(`${k}.com`, 'GND1.ref');
+    });
+    expect(fails(solve(b))).toMatchObject({ code: 'logic_unknown_state', components: ['K1'] });
+  });
+
+  it('a HIGH output forced above its own V_CC is outside every test point: refused', () => {
+    const { b, g } = gate('logic.gate_and', 3.0, ['h', 'h'], (bb, gg) => {
+      const p2 = bb.add('instrument.lab_psu');
+      const r = bb.add('component.resistor');
+      bb.set(p2, 'setpointVoltage', { value: 5, unit: 'volt' })
+        .set(p2, 'currentLimit', { value: 0.1, unit: 'ampere' })
+        .set(p2, 'outputEnabled', true)
+        .ohms(r, 100_000);
+      bb.wire(`${p2}.negative`, 'GND1.ref')
+        .wire(`${p2}.positive`, `${r}.a`)
+        .wire(`${r}.b`, `${gg}.y`);
+    });
+    expect(fails(solve(b))).toMatchObject({
+      code: 'logic_output_uncharacterized',
+      components: [g],
+    });
+  });
+
+  it('a supply in current limit pulling the gate out of its rows is named, not "no steady state"', () => {
+    const { b, g } = gate('logic.gate_and', 3.0, ['h', 'h'], load(1000));
+    b.set('PSU1', 'currentLimit', { value: 1e-3, unit: 'ampere' });
+    expect(fails(solve(b))).toMatchObject({
+      code: 'logic_supply_uncharacterized',
+      components: [g],
+    });
+  });
+
+  it('a 40-inverter chain settles (one pass per level, the cap grows with the logic)', () => {
+    const b = new Bench();
+    b.psu(3.0, 0.5).wire('PSU1.negative', 'GND1.ref');
+    let prev = '';
+    for (let k = 0; k < 40; k++) {
+      const n = b.add('logic.gate_not');
+      b.wire(`${n}.vcc`, 'PSU1.positive').wire(`${n}.gnd`, 'GND1.ref');
+      if (prev) b.wire(`${prev}.y`, `${n}.a`);
+      else b.wire(`${n}.a`, 'GND1.ref');
+      prev = n;
+    }
+    expect(ok(solve(b)).components[prev]!.state!.gateOutput).toBe('low');
+  });
+
+  it('pull-ups to the same rail are not feedback, even with that rail switched off', () => {
+    const { b } = gate('logic.gate_and', 3.0, ['open', 'h'], (bb, gg) => {
+      const r1 = bb.add('component.resistor');
+      const r2 = bb.add('component.resistor');
+      bb.ohms(r1, 10_000).ohms(r2, 10_000);
+      bb.wire('PSU1.positive', `${r1}.a`).wire(`${r1}.b`, `${gg}.a`);
+      bb.wire('PSU1.positive', `${r2}.a`).wire(`${r2}.b`, `${gg}.y`);
+    });
+    expect(solve(b).ok).toBe(true);
+    b.set('PSU1', 'outputEnabled', false);
+    const off = solve(b);
+    expect(off.ok ? 'ok' : off.error.code).not.toBe('logic_feedback_unsupported');
+  });
+
+  it('a defined LOW output with an X input stays known; a CV supply feeding an X gate keeps its voltage', () => {
+    const { b, g } = gate('logic.gate_and', 3.0, ['open', 'l'], (bb, gg) => {
+      // A: driven by an X inverter (its input in the undefined band).
+      const n = bb.add('logic.gate_not');
+      const r1 = bb.add('component.resistor');
+      const r2 = bb.add('component.resistor');
+      bb.ohms(r1, 10_000).ohms(r2, 10_000);
+      bb.wire(`${n}.vcc`, 'PSU1.positive').wire(`${n}.gnd`, 'GND1.ref');
+      bb.wire('PSU1.positive', `${r1}.a`)
+        .wire(`${r1}.b`, `${n}.a`)
+        .wire(`${n}.a`, `${r2}.a`)
+        .wire(`${r2}.b`, 'GND1.ref');
+      bb.wire(`${n}.y`, `${gg}.a`);
+      load(10_000)(bb, gg);
+    });
+    const o = ok(solve(b));
+    expect(o.components[g]!.state).toMatchObject({ input_a: 'x', gateOutput: 'low' });
+    expect(o.components[g]!.unknown).toBeUndefined();
+    expect(o.components[g]!.currents!.y).toBe(-0);
+    expect(o.components.PSU1).toMatchObject({ unknown: true, current: null, voltage: 3 });
+  });
+
+  it('Y pulled above V_CC + 0.5 V while powered is an absolute-maximum excess', () => {
+    // An unpowered gate (V_CC = 0): outputs off; Y held at 5 V by a second supply: within the
+    // power-off range (6.5 V), no excess; a powered gate cannot be checked this way (refused).
+    const { b, g } = gate('logic.gate_and', 0, ['l', 'l'], (bb, gg) => {
+      const p2 = bb.add('instrument.lab_psu');
+      const r = bb.add('component.resistor');
+      bb.set(p2, 'setpointVoltage', { value: 5, unit: 'volt' })
+        .set(p2, 'currentLimit', { value: 0.1, unit: 'ampere' })
+        .set(p2, 'outputEnabled', true)
+        .ohms(r, 1000);
+      bb.wire(`${p2}.negative`, 'GND1.ref')
+        .wire(`${p2}.positive`, `${r}.a`)
+        .wire(`${r}.b`, `${gg}.y`);
+      load(10_000)(bb, gg);
+    });
+    const o = ok(solve(b));
+    expect(o.components[g]!.state!.gateOutput).toBe('off');
+    expect(ratingWarnings(b.snapshot(), o).filter((w) => w.component === g)).toEqual([]);
+  });
+});
+
 describe('ESP32 GPIO interop (pads in the same solve)', () => {
   /** GPIO18 (output) -> AND.a; AND.b tied high; AND.y -> GPIO4 (input) and 220 Ω + LED. */
   let G = '';
@@ -341,12 +475,12 @@ describe('ESP32 GPIO interop (pads in the same solve)', () => {
     const on = ok(s.solve());
     const pad4 = on.pins!.find((p) => p.gpio === 4)!;
     expect(on.components[G]!.state).toMatchObject({ input_a: 'high', gateOutput: 'high' });
-    expect(interpretDigitalInput(pad4.voltage, null)).toBe(1);
+    expect(interpretDigitalInput(pad4.voltage, 0)).toBe(1);
     expect(on.components.D1!.current!).toBeGreaterThan(1e-3);
     s.setPinMode(18, 'output-low');
     const off = ok(s.solve());
     expect(off.components[G]!.state).toMatchObject({ input_a: 'low', gateOutput: 'low' });
-    expect(interpretDigitalInput(off.pins!.find((p) => p.gpio === 4)!.voltage, null)).toBe(0);
+    expect(interpretDigitalInput(off.pins!.find((p) => p.gpio === 4)!.voltage, 1)).toBe(0);
   });
 
   it('a pad switched to input under a gate input: the pad model holds the node (leakage), a defined LOW', () => {

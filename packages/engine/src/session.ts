@@ -375,6 +375,8 @@ export class EngineSession {
    */
   /** Sprint 19B: the refusal the states solved in the last pass imply (applied once settled). */
   private passRefusal: EngineError | null = null;
+  /** Sprint 19B: logic parts in the circuit (the settle loop allows one pass per level). */
+  private logicParts = 0;
   private time = 0;
   private step: TimeStep | undefined;
   private readonly history = new Map<string, PartState>();
@@ -631,10 +633,13 @@ export class EngineSession {
     this.pendingHistory = new Map();
     let states = new Map(this.discrete);
     const seen = new Set<string>();
+    // Sprint 19B: a logic part that left its datasheet rows in any pass of this settle.
+    let outOfRows: [string, PartState] | undefined;
     for (let pass = 1; ; pass++) {
       const next = new Map<string, PartState>();
       const outcome = this.solveOnce(states, next);
       if (!outcome.ok) return outcome;
+      outOfRows ??= [...next].find(([, st]) => st.refuse === 'logic_supply_uncharacterized');
       const changed = [...next].filter(([id, st]) => !sameState(st, states.get(id) ?? {}));
       if (changed.length === 0) {
         for (const [id, st] of next) this.discrete.set(id, st);
@@ -643,7 +648,21 @@ export class EngineSession {
         return outcome;
       }
       const key = JSON.stringify([...next].sort(([a], [b]) => (a < b ? -1 : 1)));
-      if (seen.has(key) || pass >= MAX_STATE_PASSES) {
+      // A chain of d logic gates settles in about d passes (each output needs a solve).
+      const cap = MAX_STATE_PASSES + this.logicParts;
+      if (seen.has(key) || pass >= cap) {
+        // Sprint 19B: a cycle through a logic part whose supply leaves the datasheet rows (a
+        // supply in current limit pulling it down, then recovering) is that, not a chatter.
+        const supply = outOfRows;
+        if (supply)
+          return this.fail({
+            code: 'logic_supply_uncharacterized',
+            components: [supply[0]],
+            detail: {
+              ...(typeof supply[1].value === 'number' ? { vcc: supply[1].value } : {}),
+              cycle: true,
+            },
+          });
         return this.fail({
           code: 'no_steady_state',
           components: changed.map(([id]) => id),
@@ -830,16 +849,33 @@ export class EngineSession {
           outputs: lp.outputs.map((t) => p.ctx.node(t)),
         };
       });
+    this.logicParts = logicParts.length;
     if (logicParts.length) {
-      const cycle = logicFeedback(topo, logicParts, fixed);
+      // A logic part's own supply pins are rails, not signal paths (an input pull-up and an
+      // output pull-up to the same rail are not feedback), powered or not.
+      const rails = new Set(fixed);
+      for (const p of parts)
+        if (p.model.logicPins) for (const t of ['vcc', 'gnd']) rails.add(p.ctx.node(t));
+      const cycle = logicFeedback(topo, logicParts, rails);
       if (cycle) return this.fail({ code: 'logic_feedback_unsupported', components: cycle });
     }
     const seeds: string[] = [];
     for (const p of parts)
-      for (const t of p.model.unknownDriven?.(p.ctx, p.state) ?? []) seeds.push(p.ctx.node(t));
+      for (const t of [
+        ...(p.model.unknownDriven?.(p.ctx, p.state) ?? []),
+        ...(p.model.unknownSupply?.(p.ctx, p.state) ?? []),
+      ])
+        seeds.push(p.ctx.node(t));
     const unknown = unknownClosure(topo, seeds, fixed);
     const unknownSupply = (e: Element) =>
       e.kind === 'psu' && e.nodes.some((n) => n !== REF && unknown.fixedReached.has(n));
+    // The most current the unknown outputs fed by a supply may carry: each part's absolute-
+    // maximum output current (a datasheet bound), summed over the parts on its non-reference node.
+    const unknownSupplyMaxA = (e: Element) =>
+      parts
+        .filter((p) => (p.model.unknownSupply?.(p.ctx, p.state) ?? []).length)
+        .filter((p) => e.nodes.some((n) => n !== REF && n === p.ctx.node('vcc')))
+        .reduce((sum, p) => sum + (p.model.unknownCurrentMaxA?.(p.ctx) ?? Infinity), 0);
     // The refusals these states imply, applied by solveUnchecked once they have settled.
     this.passRefusal = null;
     for (const p of parts) {
@@ -848,6 +884,17 @@ export class EngineSession {
         this.passRefusal = r;
         break;
       }
+    }
+    if (!this.passRefusal) {
+      // A stateful part whose state would be decided from an unknown level (a relay coil, a
+      // capacitor's history...): no state may be derived from it.
+      const reader = parts.find(
+        (p) =>
+          !p.model.logicPins &&
+          (p.model.nextState || p.model.history) &&
+          p.model.terminals.some((t) => unknown.nodes.has(p.ctx.node(t))),
+      );
+      if (reader) this.passRefusal = { code: 'logic_unknown_state', components: [reader.c.id] };
     }
     if (!this.passRefusal) {
       const pad = pinNodes.find(({ node }) => unknown.nodes.has(node));
@@ -1058,13 +1105,25 @@ export class EngineSession {
       }
       if (c.type === 'instrument.lab_psu') {
         result.mode = !e.active ? 'off' : modes.get(c.id) === 'CC' ? 'cc' : 'cv';
-        // An unknown current through a supply in current limit makes its voltage unknown too.
-        if (unknownSupply(e) && result.mode === 'cc' && !this.passRefusal)
-          this.passRefusal = { code: 'logic_unknown_state', components: [c.id] };
+        // An unknown current through a supply in current limit makes its voltage unknown too; in
+        // CV it is unknown whether the unknown current would reach the limit unless the margin
+        // covers the parts' own absolute-maximum supply-pin current (the most a part may draw).
+        if (unknownSupply(e) && !this.passRefusal) {
+          const s = this.psuSettings(c);
+          const fedMax = unknownSupplyMaxA(e);
+          if (result.mode === 'cc' || (s.limitA ?? 0) - Math.abs(result.current ?? 0) < fedMax)
+            this.passRefusal = { code: 'logic_unknown_state', components: [c.id] };
+        }
       }
       if (unknown.elements.has(e.key) || excluded.has(e.key) || unknownSupply(e)) {
         result.current = null;
-        result.voltage = null;
+        // A supply in CV holds its setpoint whatever the current: its voltage stays known.
+        if (!(
+          c.type === 'instrument.lab_psu' &&
+          result.mode === 'cv' &&
+          !unknown.elements.has(e.key)
+        ))
+          result.voltage = null;
         result.unknown = true;
         delete result.outsideModelRange;
       }
@@ -1098,7 +1157,10 @@ export class EngineSession {
       };
       // Sprint 19B: a part on an unknown node reports no current (its potentials there are
       // already null); never a number computed with the unknown driver left out.
-      if (p.model.terminals.some((t) => unknown.nodes.has(p.ctx.node(t)))) {
+      // A logic part's INPUTS draw no current: an unknown level there leaves its own results
+      // known (its output reports X by itself when the input decides it).
+      const inputs = new Set(p.model.logicPins?.(p.ctx).inputs ?? []);
+      if (p.model.terminals.some((t) => !inputs.has(t) && unknown.nodes.has(p.ctx.node(t)))) {
         reported.unknown = true;
         reported.current = null;
         reported.voltage = null;

@@ -51,6 +51,7 @@ describe('categories', () => {
       'lighting',
       'controllers',
       'switching',
+      'logic',
     ]);
   });
 

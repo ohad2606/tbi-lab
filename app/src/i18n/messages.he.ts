@@ -976,6 +976,9 @@ export const he: Record<MessageKey, string> = {
   'example.esp32-led-fade.title': 'ESP32: עמעום נורת LED ב־PWM',
   'example.esp32-led-fade.summary':
     'analogWrite מניע את GPIO18 באות PWM של 1 kHz; הזרם הממוצע של ה־LED, ואיתו הבהירות, עוקבים אחר מחזור העבודה. העמעום נשאר בין 1 ל־255: מחזור עבודה 0 עדיין אינו מדומה.',
+  'example.esp32-logic-and.title': 'ESP32: שער AND עם קריאה חוזרת',
+  'example.esp32-logic-and.summary':
+    'יציאה של ESP32 ולחצן מזינים שער AND מדגם SN74LVC1G08 שמוזן ב-3.0 V. השער מדליק נורית LED וה-ESP32 קורא בחזרה את היציאה שלו. לחצו לחיצה ממושכת על הלחצן ועקבו אחרי הפלט הטורי; כשמשחררים, הנורית נשארת כבויה.',
   'example.esp32-servo-sweep.title': 'ESP32: סריקה של סרוו SG90 ב־PWM',
   'example.esp32-servo-sweep.summary':
     'אות LEDC של 50 Hz ב־GPIO18 עם פולסים של 1.0,‏ 2.0 ו־1.5 ms מזיז את הסרוו ל־0°,‏ 180° ו־90°. הסרוו מוזן מספק המעבדה של 5 V.',

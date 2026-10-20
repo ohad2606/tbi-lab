@@ -831,6 +831,50 @@ export const RECIPES: Record<string, () => ProjectDocument> = {
     return r.centre(-300);
   },
   /**
+   * Sprint 19B (Exploration Foundation X1): ESP32 GPIO18 and a push button (10 kΩ pull-down)
+   * into an SN74LVC1G08 AND gate powered at 3.0 V from the bench supply (where its output is
+   * characterized for real loads); the gate drives an LED through 220 Ω and is read back on GPIO4.
+   */
+  'esp32-logic-and': () => {
+    const r = new Recipe('esp32-logic-and', 'ESP32: an AND gate with read-back');
+    r.supply(3, 0.1);
+    const U1 = r.place('board.esp32_devkitc_wroom32', 300, 0);
+    r.sketch(U1, 'LogicAndReadback.ino');
+    const U2 = r.place('logic.gate_and', 600, 0);
+    const R1 = r.place('component.resistor', 720, 0);
+    const D1 = r.place('component.led', 840, 0);
+    const S1 = r.place('component.push_button', 500, 200);
+    const R2 = r.place('component.resistor', 560, 120, 1);
+    const G2 = r.place('component.ground', 600, 100);
+    const G3 = r.place('component.ground', 920, 60);
+    const G4 = r.place('component.ground', 560, 200);
+    const G5 = r.place('component.ground', 440, -140);
+    r.set(R1, 'resistance', 220, 'ohm');
+    r.set(R2, 'resistance', 10_000, 'ohm');
+    r.wire(T(U1, 'gnd'), T(G5, 'ref'));
+    // The 3.0 V rail: over the board to the gate's V_CC, and down to the button.
+    const rail = r.wire(T('PSU1', 'positive'), T(U2, 'vcc'), [
+      { x: -40, y: -20 },
+      { x: -40, y: -260 },
+      { x: 600, y: -260 },
+    ]);
+    r.wire(T(S1, 'a'), { kind: 'wire', wire: rail, at: { x: 460, y: -260 } });
+    r.wire(T(U2, 'gnd'), T(G2, 'ref'));
+    r.wire(T(U1, 'gpio18'), T(U2, 'a'));
+    r.wire(T(S1, 'b'), T(R2, 'a'), [{ x: 540, y: 80 }]);
+    r.wire(T(R2, 'a'), T(U2, 'b'), [{ x: 560, y: 20 }]);
+    r.wire(T(R2, 'b'), T(G4, 'ref'));
+    r.wire(T(U2, 'y'), T(R1, 'a'));
+    r.wire(T(R1, 'b'), T(D1, 'anode'));
+    r.wire(T(D1, 'cathode'), T(G3, 'ref'), [{ x: 920, y: 0 }]);
+    r.wire(T(U1, 'gpio4'), T(R1, 'a'), [
+      { x: 400, y: 60 },
+      { x: 400, y: 300 },
+      { x: 680, y: 300 },
+    ]);
+    return r.centre(-300);
+  },
+  /**
    * Sprint 15 (R4): an SG90 servo swept by LEDC PWM (50 Hz, 16 bit) on GPIO18: 1.0, 2.0 and 1.5 ms
    * pulses, one second each. The servo runs from the 5 V bench supply; ground shared with the board.
    */
