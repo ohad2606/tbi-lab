@@ -154,12 +154,14 @@ Every step was correct up to the drawn mesh.
 
 | Suite | Result |
 |---|---|
-| Unit (all) | **1373 / 1373** (+11: builder `s18f-build-perf` 7, app `s18f-servo-3d` 3, …) |
+| Unit (all) | **1373 / 1373** on `9e93212`; builder suite 58 / 58 after the two staging-found fixes (`fe640a5`, `b59ee50`) |
 | Typecheck, lint, prettier, boundaries | pass |
 | Real toolchain `s18f-build-seed.runtime` | **1 / 1** (10 sources seeded = cold, byte for byte) |
-| Browser e2e (all) | see §4 |
-| Browser `s18f-servo-3d.spec` (software WebGL) | see §4 |
-| Real QEMU browser, staging, `s18-r4b-real.spec` (incl. 2 new 18F tests) | see §4 |
+| Browser e2e (all, `9e93212`) | **236 passed, 0 failed, 32 skipped** (the real-stack specs, run on staging below) |
+| Browser `s18f-servo-3d.spec` (software WebGL) | passed; **fails without the fix** (horn meshes: expected 4, received 0), shown by disabling the fix |
+| Real QEMU browser on staging (`b59ee50`): `s18-r4b-real` (incl. 2 new 18F tests, recovery on) + `s15-r4-real` + `s18f-servo-3d` | **11 / 11 passed** |
+| Real build service on staging: `s18f-build-real.spec` | **1 / 1 passed** |
+| Deployed suites on DEV-Lab (`TBI_S8_INSTANCE=tbi`) | **15 passed, 2 skipped** (same set as R4-C; restart tests not run on DEV-Lab) |
 
 New regressions by requirement:
 - **angle into the 3D view:** `liveLevels` unit test; `s18f-servo-3d.spec` (renderer); and
@@ -180,4 +182,98 @@ New regressions by requirement:
 
 ## 4. Deployment and final measurements
 
-(Completed in §4 below after the gates.)
+### Fixes found on staging (before DEV-Lab)
+
+- `fe640a5`: the harvested seed kept the job's group-writable modes (0770 / 0660).
+  - Jobs never see the seed directory: the sandbox binds only `/job`.
+  - The seed is now group read-only anyway (dirs 0750, files 0640); a job's copy stays 0770 / 0660.
+- `b59ee50`: a lost seed was never recreated.
+  - With the curated shared builds current, users only get cache hits, so no curated build would
+    ever run again to leave a seed.
+  - The provider now reports `hasCoreSeed`, and prewarm then rebuilds one curated source, at most
+    one per run.
+  - Exercised on staging: the seed was deleted, reinstall, one rebuild, seed back (same key, 118
+    objects, 0750 / 0640).
+
+### Release
+
+| Item | Value |
+|---|---|
+| Deployed commit | **`b59ee503ee38c940669eb4872be6cd80f64aa86c`** (branch HEAD `3c5a857` adds only the real build-latency spec) |
+| Package | `~/tbi-s18f/rel/r4f-b59ee50`, rc4 profile, manifest **`da3039a65992457b`**; a second build is byte-identical (26 files) |
+| Changed bundles vs R4 `b7da1c1` | `build-service.mjs`, the frontend; `session-host.mjs` differs **only** in its embedded commit id; `build-job.mjs` identical |
+| Runtime | v3 `2cb1406f94f52e4f` release build, **unchanged** (no unit change) |
+
+### Staging `tbi-s8`
+
+| Step | Result |
+|---|---|
+| Backup | `/var/backups/tbi-lab/s18-staging-pre-20261020T110341Z` (b7da1c1) |
+| Install | `install.sh staging` from the clean worktree `~/tbi-s18f/src`; bundles equal the package; health reports `b59ee50` |
+| DEV-Lab during staging | 0 live sessions; snapshot unchanged after every staging step |
+| Prewarm | seed missing → 1 curated rebuild, cold, 33.9 s (36.8 s on the first install); the other curated builds were current |
+| Browser gate | 11 / 11 (table above) |
+| Build latency (`s18f-build-real`, through the app) | Servo Sweep example **111 ms** (shared, cache hit); one-line edit **15.8 s** (service 13.8 s, seeded); unchanged rebuild **94 ms**; another user sketch **14.5 s** (seeded); elapsed seconds shown while building |
+| Sandbox breakdown of a seeded compile | 8.0 s CPU over 12.0–13.4 s wall (the job unit's `CPUQuota=80%`, plus the test browser and app server on the same single vCPU); before: 25.3 s CPU over 32 s |
+| Rollback rehearsal | back to the backup (`b7da1c1`) in **1.0 s**, live state byte-equal to it; forward in **2.9 s** |
+
+### DEV-Lab — DEPLOYED
+
+- **DEV-Lab serves `b59ee50`** (frontend, Session Host and build service) on Runtime v3, since
+  2026-10-20 11:16 UTC. Pre-check: 0 live sessions.
+- Backup: `~/tbi-s18f/deploy/devlab-backup-20261020T111559Z` (units, polkit rule, Caddyfile, tmpfiles,
+  policy, runtime.json, links; SHA256SUMS; the keys are not copied: unchanged by the install).
+- `install.sh dev-lab` from the clean worktree. Units, polkit rule, Caddyfile, runtime.json and
+  policy are **unchanged**; both services active; deploy 2.3 s.
+- Through the gate's internal origin, the 15 non-map files are byte-identical to the package;
+  `/version.json` reports `b59ee50` (not dirty). The public site stays gated (302).
+- Prewarm on DEV-Lab, quiet host:
+  - the 5 stale (analyzer 1) curated builds were rebuilt: the first cold, **34.7 s** (it left the
+    seed); then seeded **9.9 / 10.6 / 13.4 / 9.9 s**;
+  - all 8 curated sources now have current shared builds;
+  - the rebuilt images have **the same hashes** as the old cold sandbox builds (`03406419…`,
+    `efd795f9…`, `4a81f348…`, `7e877f84…`, `969a20ee…`).
+- Deployed suites: 15 passed, 2 skipped; the policy file is restored byte-equal.
+- **Rollback, rehearsed:** `~/tbi-s18f/deploy/rollback-devlab-18f.sh back|forward`.
+  - It moves both links as a pair and restarts the Session Host and the build service; the
+    runtime is the same.
+  - Back to `b7da1c1` in 256 ms (health `b7da1c1`); forward in 243 ms (health `b59ee50`). Units
+    unchanged.
+  - `b7da1c1` ignores the seed directory.
+
+### Before / after (DEV-Lab sandbox)
+
+| Case | Before (R4 `b7da1c1`) | After (`b59ee50`) |
+|---|---|---|
+| Open an official example and Build, first user after a deploy | 32.0–32.5 s (owner: LED fade, servo sweep) | cache hit (~0.1 s): prewarmed |
+| A user's own or edited sketch, first build | ~32 s (25.3 s CPU) | ~10–13 s on a quiet host, ~14–16 s with a browser on the same vCPU (8 s CPU) |
+| Unchanged rebuild | cache hit | cache hit |
+| Cold (no seed: first prewarm build after a toolchain or seed-format change) | — | 33.9–36.8 s, in the background |
+
+**Remaining cost, quantified:**
+- About 8 s of CPU per seeded build is fixed toolchain work: the link alone is 2.2 s, plus image
+  creation and merge, library detection, prototypes and the sketch compile (§1 table).
+- The sandbox's `CPUQuota=80%` stretches 8 s of CPU into at least 10 s of wall time. The quota
+  is a policy limit that keeps live sessions responsive; it is not changed here.
+- Libraries a sketch uses (e.g. `Wire` for the LCD) are still compiled per build (LCD example:
+  13.4 s seeded).
+- Going further would mean also seeding the commonly used libraries, or relaxing the job's CPU
+  quota when no session is live. Both are proposals only (Future / Backlog).
+
+## 5. Owner acceptance (repeat through the normal Google login)
+
+1. `/version.json` shows `b59ee50…`.
+2. Open **Servo Sweep** → Build: done at once (**Built**).
+3. Change one line (e.g. `delay(1000)` → `delay(900)`) → Build: "Building…" with a running
+   seconds count, done in about 10–15 s.
+4. Run, then open **3D**: the white horn on the servo turns to 0°, about 90° and 180° in turn, as
+   the inspector's angle shows (select M1).
+5. Switch to Circuit and back to 3D during the run: the horn keeps following.
+6. Stop: the horn returns to its rest position (90°) and stays still.
+7. Hebrew (עברית): step 3 shows the seconds as `12 שנ׳`.
+
+## 6. Future / Backlog (not implemented)
+
+- Seed the libraries the curated examples use (Wire etc.), keyed like the core.
+- A larger job CPU quota while no session is live.
+- QEMU build reproducibility (F-18-1), D10 isolation of staging and DEV-Lab users: unchanged, open.
