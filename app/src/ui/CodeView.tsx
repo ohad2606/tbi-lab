@@ -14,6 +14,7 @@ import { formatBytes } from './bytes.js';
 import { useAppState, useStore, useT } from './context.js';
 import { featureName } from '../sim/format.js';
 import type { BuildView } from '../programs/state.js';
+import { BuildElapsed } from './buildElapsed.js';
 import type { Diagnostic } from '../programs/client.js';
 import type { MessageKey } from '../i18n/messages.en.js';
 import { isolateLtr } from '../i18n/i18n.js';
@@ -165,6 +166,7 @@ export function CodeView({ boardId, focusBuild }: { boardId: string; focusBuild:
             ? t('build.phase.queued', { position: String(view.position + 1) })
             : t(phaseKey[phase])}
         </span>
+        <BuildElapsed since={view?.phase === 'building' ? view.since : undefined} />
         <button
           ref={buildButton}
           type="button"

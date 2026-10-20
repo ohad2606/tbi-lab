@@ -705,6 +705,8 @@ export const en = {
   'build.phase.queued': 'Waiting to build ({position} ahead)',
   'build.phase.current': 'Built',
   'build.phase.failed': 'Build failed',
+  // Sprint 18F: the time a running build has taken so far (a clock, not an estimate).
+  'build.elapsed': '{seconds} s',
   'build.stale': 'The code changed since the last build.',
   // Sprint 13 OS-08: Run is not available during a build or without a current build.
   'run.blocked.building': 'Run is unavailable while a build is in progress.',

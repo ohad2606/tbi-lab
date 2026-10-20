@@ -2,6 +2,7 @@ import { useEffect, useState } from 'preact/hooks';
 import { useAppState, useStore, useT } from './context.js';
 import { TOOLBAR_BUILD_ID, buildBlocker, programBoardOf, requestCodeView } from './buildAction.js';
 import type { MessageKey } from '../i18n/messages.en.js';
+import { BuildElapsed } from './buildElapsed.js';
 
 /**
  * Alpha UX-P1: the Build action in the main toolbar, next to Run, in every editor view (the top
@@ -105,6 +106,7 @@ export function BuildControl() {
             {t(stateKey)}
           </span>
         </span>
+        <BuildElapsed since={building ? view.since : undefined} />
       </span>
       {blocker && (
         <span

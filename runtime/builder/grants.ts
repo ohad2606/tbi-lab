@@ -170,7 +170,7 @@ export class Grants {
    * The build of exactly this source visible to the principal: their own record, else a shared
    * system record. Never another principal's.
    */
-  findBuild(principal: Principal, key: string): StoredBuild | null {
+  findBuild(principal: Owner, key: string): StoredBuild | null {
     const row = this.db
       .prepare(
         `SELECT owner, sha256, record FROM artifact_grant

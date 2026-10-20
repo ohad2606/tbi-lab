@@ -29,6 +29,8 @@ export interface BuildView {
   previous?: BuildResult;
   /** Queue position while waiting. */
   position?: number;
+  /** Sprint 18F: when this build was asked for (epoch ms), for the elapsed time shown. */
+  since?: number;
   /** Why the service could not be used (transport), when the last attempt failed that way. */
   error?: BuildTransportError['code'];
   /**
@@ -61,7 +63,7 @@ interface Entry {
   result?: BuildResult;
   /** The input `result` was built from. */
   resultInput?: Input;
-  building?: { input: Input; position?: number };
+  building?: { input: Input; position?: number; since: number };
   error?: { input: Input; code: BuildTransportError['code'] };
 }
 
@@ -134,6 +136,7 @@ export class ProgramBuilds {
     if (e.building && same(e.building.input, program))
       return {
         phase: 'building',
+        since: e.building.since,
         ...(e.building.position !== undefined ? { position: e.building.position } : {}),
       };
     if (e.result && same(e.resultInput, program))
@@ -159,7 +162,8 @@ export class ProgramBuilds {
     const input = inputOf(program);
     const e = this.entry(projectId, boardId);
     if (e.building) return false; // one build per program at a time
-    e.building = { input };
+    const since = Date.now();
+    e.building = { input, since };
     delete e.error;
     this.changed();
     try {
@@ -170,6 +174,7 @@ export class ProgramBuilds {
           if (e.building?.input !== input) return;
           e.building = {
             input,
+            since,
             ...(state === 'queued' && position !== undefined ? { position } : {}),
           };
           this.changed();

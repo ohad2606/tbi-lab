@@ -5,6 +5,7 @@
  * other source is private to the principal who built it.
  */
 import { sourceKey, starterProgram, type ProgramSource } from '@tbi-lab/domain';
+import { BUILD_PROTOCOL, type BuildRequest } from './protocol.js';
 import blink from '../../app/src/examples/data/esp32-blink.json' with { type: 'json' };
 import echo from '../../app/src/examples/data/esp32-input-echo.json' with { type: 'json' };
 // Sprint 12 (R2/R3 curated examples).
@@ -18,8 +19,8 @@ import sweep from '../../app/src/examples/data/esp32-servo-sweep.json' with { ty
 const programsOf = (doc: unknown): ProgramSource[] =>
   Object.values((doc as { programs?: Record<string, ProgramSource> }).programs ?? {});
 
-export function systemSourceKeys(): Set<string> {
-  const programs = [
+function systemPrograms(): ProgramSource[] {
+  return [
     ...programsOf(blink),
     ...programsOf(echo),
     ...programsOf(distance),
@@ -29,5 +30,25 @@ export function systemSourceKeys(): Set<string> {
     ...programsOf(sweep),
     starterProgram('board.esp32_devkitc_wroom32'),
   ].filter((p): p is ProgramSource => !!p);
-  return new Set(programs.map((p) => sourceKey(p.profile, [{ name: p.fileName, text: p.text }])));
+}
+
+export function systemSourceKeys(): Set<string> {
+  return new Set(
+    systemPrograms().map((p) => sourceKey(p.profile, [{ name: p.fileName, text: p.text }])),
+  );
+}
+
+/** Sprint 18F: the curated sources as build requests (the service prewarms their builds). */
+export function systemBuildRequests(): BuildRequest[] {
+  const seen = new Set<string>();
+  return systemPrograms()
+    .filter((p) => {
+      const key = sourceKey(p.profile, [{ name: p.fileName, text: p.text }]);
+      return !seen.has(key) && seen.add(key);
+    })
+    .map((p) => ({
+      protocol: BUILD_PROTOCOL,
+      profile: p.profile,
+      files: [{ name: p.fileName, text: p.text }],
+    }));
 }

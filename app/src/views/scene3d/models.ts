@@ -1051,6 +1051,16 @@ function buildLcd1602(_c: SceneComponent, m: Materials, own: OwnedResources) {
   return g;
 }
 
+/**
+ * Whether `o` is, or is inside, a part the simulation moves (`userData.moving`: a servo horn).
+ * Such meshes keep their own transform; the renderer's static batching (which bakes transforms
+ * into one merged draw) must leave them alone, or the part could never move (Sprint 18F).
+ */
+export function movingPart(o: THREE.Object3D): boolean {
+  for (let p: THREE.Object3D | null = o; p; p = p.parent) if (p.userData.moving) return true;
+  return false;
+}
+
 /** The rest angle the servo's horn shows when nothing reports its position (deg). */
 export const SERVO_REST_DEG = 90;
 
@@ -1112,6 +1122,9 @@ function buildServo(_c: SceneComponent, m: Materials, own: OwnedResources) {
   horn.position.set(SERVO_SHAFT_X_MM, P.hornBottomMm, 0);
   horn.rotation.y = servoHornYaw(undefined);
   horn.name = 'servoHorn';
+  // It turns at run time: kept out of the static batches (renderer.ts batchStatic), which bake
+  // each mesh's transform into one merged draw.
+  horn.userData.moving = true;
   g.add(horn);
   // The lead: brown (GND), red (+V), orange (signal), from the plug's back into the case.
   const plugEnd = P.plugTipXMm + P.plugXMm;

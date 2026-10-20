@@ -9,6 +9,9 @@
  * - the project persists: reloaded from the library, it runs again unchanged;
  * - refusals, named: duty 0 into an LED (O-R4-1) in English, then the same message in Hebrew; a CPU
  *   clock change refused at Build (F-17C-1, `cpu_frequency`);
+ * - Sprint 18F: the 3D view's SG90 horn follows the angle Runtime v3 reports (0 / 90 / 180, equal
+ *   to the inspector's), through a view switch during the run; at rest and still after Stop and
+ *   after a crash;
  * - recovery (only with TBI_S18_UNIT=<instance>, e.g. tbi-s8; it acts on that instance's units):
  *   the session's QEMU killed -> `runtime_crashed`, a new Run works; the Session Host restarted
  *   during a run -> the session ends with a named failure, a new Run works.
@@ -121,6 +124,59 @@ test('SG90 on the R4 pair: the sweep reaches 0, 90 and 180 deg', async ({ page }
   await stop(page);
 });
 
+/** The 3D view's servo horn (opt-in viewer hook): yaw in degrees and its own mesh count. */
+const horn3d = (page: Page) =>
+  page.evaluate(() => {
+    const host = document.querySelector('[data-testid="view3d-host"]') as unknown as {
+      tbiViewer: { horns(): Record<string, { yaw: number; meshes: number }> };
+    };
+    const h = host.tbiViewer.horns().M1!;
+    return { deg: (h.yaw * 180) / Math.PI, meshes: h.meshes };
+  });
+const shownAngle = async (page: Page) =>
+  Number(((await page.getByTestId('result-state-angleDeg').textContent()) ?? '').replace('°', ''));
+async function open3d(page: Page) {
+  await page.getByTestId('view-3d').click();
+  await expect(page.getByTestId('view3d')).toHaveAttribute('data-status', 'ready', {
+    timeout: 120_000,
+  });
+}
+/** The horn reaches `target` (deg) and agrees with the inspector's angle at that moment. */
+async function hornAt(page: Page, target: number) {
+  await expect(async () => {
+    const shown = await shownAngle(page);
+    const h = await horn3d(page);
+    expect(Math.abs(shown - target)).toBeLessThan(0.2);
+    expect(Math.abs(h.deg - shown)).toBeLessThan(0.1); // display rounding only
+  }).toPass({ timeout: 30_000, intervals: [100] });
+}
+
+test("Sprint 18F: the 3D horn follows Runtime v3's angle; view switch; Stop -> rest, still", async ({
+  page,
+}, info) => {
+  await page.addInitScript(() => localStorage.setItem('tbi-lab.3d.inspect', '1'));
+  await openExample(page, 'esp32-servo-sweep');
+  await select(page, 'M1');
+  await runOnBoard(page);
+  await open3d(page);
+  expect((await horn3d(page)).meshes).toBe(4);
+  await hornAt(page, 0);
+  await hornAt(page, 90);
+  await hornAt(page, 180);
+  await page.screenshot({ path: info.outputPath('s18f-horn-180.png') });
+  // Away and back during the run: the rebuilt view picks the angle up again.
+  await page.getByTestId('view-circuit').click();
+  await open3d(page);
+  await hornAt(page, 0);
+  await page.screenshot({ path: info.outputPath('s18f-horn-0.png') });
+  await hornAt(page, 90);
+  await stop(page);
+  // Stopped: the horn at rest and still (nothing reported, nothing moves).
+  await expect.poll(async () => (await horn3d(page)).deg, { timeout: 10_000 }).toBeCloseTo(90, 6);
+  await page.waitForTimeout(2000);
+  expect((await horn3d(page)).deg).toBeCloseTo(90, 6);
+});
+
 test('three PWM channels: every pad a waveform; LED currents 1 : 2 : 3; the project persists', async ({
   page,
 }, info) => {
@@ -201,6 +257,24 @@ test('a CPU clock change is refused at Build (cpu_frequency); Run is refused nam
 
 const unit = process.env.TBI_S18_UNIT;
 const sudo = (...args: string[]) => execFileSync('sudo', ['-n', ...args], { stdio: 'pipe' });
+
+test('Sprint 18F: QEMU killed during the sweep -> runtime_crashed; the 3D horn rests, still', async ({
+  page,
+}) => {
+  test.skip(!unit, 'acts on an installed instance: TBI_S18_UNIT=<instance>');
+  await page.addInitScript(() => localStorage.setItem('tbi-lab.3d.inspect', '1'));
+  await openExample(page, 'esp32-servo-sweep');
+  await runOnBoard(page);
+  await open3d(page);
+  await expect.poll(async () => (await horn3d(page)).deg, { timeout: 60_000 }).toBeLessThan(1);
+  sudo('systemctl', 'kill', '--signal=SIGKILL', '--kill-whom=all', `${unit}-qemu@*.service`);
+  await expect(page.getByTestId('sim-error')).toHaveAttribute('data-code', 'runtime_crashed', {
+    timeout: 60_000,
+  });
+  await expect.poll(async () => (await horn3d(page)).deg, { timeout: 10_000 }).toBeCloseTo(90, 6);
+  await page.waitForTimeout(2500); // the sketch would have moved it by now: it does not
+  expect((await horn3d(page)).deg).toBeCloseTo(90, 6);
+});
 
 test('recovery: QEMU killed during a fade -> runtime_crashed; a new Run works', async ({
   page,

@@ -26,12 +26,18 @@ export class FakeProvider implements BuildProvider {
   readonly profileHash = 'f'.repeat(64);
   builds = 0;
   dirs: string[] = [];
+  /** Sprint 18F: whether each job was a curated source's (may leave the core seed). */
+  curated: boolean[] = [];
+  /** Sprint 18F: hold every build until released (`release()`), to observe ordering. */
+  gate: Promise<void> | null = null;
 
   async verifyToolchain(): Promise<void> {}
 
   async build(job: JobContext): Promise<ProviderOutput> {
     this.builds++;
     this.dirs.push(job.dir);
+    this.curated.push(job.curated === true);
+    if (this.gate) await this.gate;
     const text = job.files[0]!.text;
     if (text.includes('#stall')) {
       await new Promise<void>((resolve) => job.signal.addEventListener('abort', () => resolve()));

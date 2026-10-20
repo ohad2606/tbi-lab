@@ -25,7 +25,7 @@
  * SIGTERM: stop accepting requests; job directories are removed by each job's cleanup and by the
  * sweep at the next start.
  */
-import { readFileSync } from 'node:fs';
+import { mkdirSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { ESP32_ARDUINO_PROFILE } from '@tbi-lab/domain';
@@ -37,7 +37,8 @@ import { RateLimiter } from '../policy/rate.js';
 import { Grants } from './grants.js';
 import { watchLiveSessions } from './live-sessions.js';
 import { SandboxToolRunner } from './runner.js';
-import { systemSourceKeys } from './system-sources.js';
+import { systemBuildRequests, systemSourceKeys } from './system-sources.js';
+import { pruneCoreSeeds } from './coreSeed.js';
 import { ArduinoEsp32Provider, type ArduinoProfileRecord } from './arduino.js';
 import { createBuildHttpServer } from './http.js';
 import { BuildService, DEFAULT_LIMITS } from './service.js';
@@ -86,6 +87,14 @@ const leaseMs = Number(process.env.TBI_ARTIFACT_LEASE_MS ?? 600_000);
 // and every facility a capability would provide stays `unsupported` (the Sprint 11 behaviour).
 const runtimeCapabilities = runtimeCapabilitiesFrom(process.env.TBI_RUNTIME_JSON);
 const jobUnit = process.env.TBI_BUILD_JOB_UNIT;
+// Sprint 18F: the Arduino core seed, where every job sees the same path (the sandbox's /job).
+const coreSeeds = jobUnit
+  ? (process.env.TBI_BUILD_CORE_SEEDS ?? join(stateDir, 'core-seeds'))
+  : null;
+if (coreSeeds) {
+  mkdirSync(coreSeeds, { recursive: true, mode: 0o750 });
+  await pruneCoreSeeds(coreSeeds, new Set(), true).catch(() => undefined);
+}
 const provider = new ArduinoEsp32Provider({
   profile: ESP32_ARDUINO_PROFILE,
   record: record as ArduinoProfileRecord,
@@ -93,6 +102,7 @@ const provider = new ArduinoEsp32Provider({
   retainedOutputBytes: 256 * 1024,
   runtimeCapabilities,
   ...(jobUnit ? { runner: new SandboxToolRunner({ unit: jobUnit }) } : {}),
+  ...(coreSeeds ? { coreSeeds } : {}),
 });
 // Jobs of a previous process never outlive it (they would write into swept directories).
 if (jobUnit) new SandboxToolRunner({ unit: jobUnit }).stopAll();
@@ -137,3 +147,10 @@ await listen(server, where, socketGid);
 process.stdout.write(
   `tbi-build listening on ${describeListen(where)} (profiles: ${service.profiles().join(', ')})\n`,
 );
+// Sprint 18F: in the background, the curated examples' shared builds (and the core seed), so
+// the first user after a deploy is not the one who waits. TBI_BUILD_PREWARM=0 turns it off.
+if (process.env.TBI_BUILD_PREWARM !== '0')
+  void service
+    .prewarm(systemBuildRequests())
+    .then((n) => process.stdout.write(`${JSON.stringify({ event: 'prewarm', built: n })}\n`))
+    .catch((e: Error) => process.stderr.write(`prewarm: ${e.message}\n`));

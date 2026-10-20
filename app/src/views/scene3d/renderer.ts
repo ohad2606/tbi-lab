@@ -20,6 +20,7 @@ import {
   OwnedResources,
   paintLcdFace,
   paintMatrixFace,
+  movingPart,
   servoHornYaw,
   type LcdFace,
 } from './models.js';
@@ -37,6 +38,7 @@ import { CSS2DObject, CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRe
 import { DEFAULT_PRESET, labelAnchors, presetVisibility, type LayerVisibility } from './layers.js';
 import type { Ray } from './pick.js';
 import { TOGGLE_TILT } from './assets/benchParts.js';
+import { SERVO_SG90 } from './physical.js';
 
 /** LED light pool size and the light's intensity per unit live level (mm scene, decay 2). */
 const LED_LIGHTS = 4;
@@ -133,6 +135,15 @@ export interface Viewer {
   }): void;
   /** Each actuator's current pose (lever tilt, rad; cap height, mm): tests and evidence. */
   poses(): Record<string, number>;
+  /**
+   * Each servo horn as drawn (tests and evidence): its yaw about the shaft (rad), the meshes it
+   * draws itself (0 would mean it was merged into a static batch and cannot turn), and the arm
+   * tip's world position (mm), which turns about the shaft centre.
+   */
+  horns(): Record<
+    string,
+    { yaw: number; meshes: number; tip: [number, number, number]; shaft: [number, number, number] }
+  >;
   stats(): ViewerStats;
   /**
    * Which visualization layers show (layers.ts: a view preference, never project data). Changing
@@ -515,12 +526,15 @@ export function createViewer(
       face.material.emissive.set(lcd?.backlight ? '#ffffff' : '#000000');
       face.material.emissiveIntensity = lcd?.backlight ? 0.75 : 0;
     }
-    // Servo horns: at the reported angle, at rest (90 deg) when nothing is reported.
+    // Servo horns: at the reported angle, at rest (90 deg) when nothing is reported. A turned
+    // horn moves its shadow too (the shadow map is redrawn only on demand).
     for (const [id, horn] of horns) {
       const live = liveLevels[id];
-      horn.rotation.y = servoHornYaw(
+      const yaw = servoHornYaw(
         live && typeof live === 'object' && 'servoDeg' in live ? live.servoDeg : undefined,
       );
+      if (horn.rotation.y !== yaw) renderer.shadowMap.needsUpdate = true;
+      horn.rotation.y = yaw;
     }
     // The light pool (full tier): the brightest lit LEDs light their surroundings.
     const lit: { level: number; at: THREE.Vector3; color: string }[] = [];
@@ -739,6 +753,8 @@ export function createViewer(
       if (!mesh.isMesh || (mesh as unknown as THREE.InstancedMesh).isInstancedMesh) return;
       // Actuators move (operated during a simulation): never merged into a static batch.
       if (o.name === 'base' || o.userData.noAo || o.userData.actuator || o.userData.layer) return;
+      // Parts the simulation moves (a servo horn): their meshes keep their own transform.
+      if (movingPart(o)) return;
       const mat = mesh.material;
       // A textured material batches only when its maps need nothing but per-vertex UVs
       // (`userData.batchUv`: the wire jackets, realism pass 6).
@@ -1014,6 +1030,23 @@ export function createViewer(
       const out: Record<string, number> = {};
       for (const [id, a] of actuatorsById)
         out[id] = a.kind === 'toggle' ? a.obj.rotation.z : a.obj.position.y;
+      return out;
+    },
+    horns() {
+      const out: ReturnType<Viewer['horns']> = {};
+      for (const [id, horn] of horns) {
+        let meshes = 0;
+        horn.traverse((o) => {
+          if ((o as THREE.Mesh).isMesh) meshes++;
+        });
+        horn.updateWorldMatrix(true, false);
+        out[id] = {
+          yaw: horn.rotation.y,
+          meshes,
+          tip: horn.localToWorld(new THREE.Vector3(SERVO_SG90.hornReachMm, 0, 0)).toArray(),
+          shaft: horn.localToWorld(new THREE.Vector3(0, 0, 0)).toArray(),
+        };
+      }
       return out;
     },
     setControls(state) {

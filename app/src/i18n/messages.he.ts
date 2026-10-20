@@ -692,6 +692,7 @@ export const he: Record<MessageKey, string> = {
   'build.phase.queued': 'ממתין לבנייה ({position} לפניך)',
   'build.phase.current': 'נבנה',
   'build.phase.failed': 'הבנייה נכשלה',
+  'build.elapsed': '{seconds} שנ׳',
   'build.stale': 'הקוד השתנה מאז הבנייה האחרונה.',
   // Sprint 13 OS-08: Run is not available during a build or without a current build.
   'run.blocked.building': 'אי אפשר להריץ בזמן שבנייה מתבצעת.',

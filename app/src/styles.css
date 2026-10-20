@@ -2370,6 +2370,14 @@ select {
   cursor: default;
 }
 
+/* Sprint 18F: a running build's elapsed seconds (fixed width: the text does not jitter). */
+.build-elapsed {
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+  margin-inline-start: 0.35rem;
+}
+
 .build-dot {
   inline-size: 0.55rem;
   block-size: 0.55rem;
