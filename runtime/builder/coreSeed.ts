@@ -55,15 +55,17 @@ async function complete(seeds: string, key: string): Promise<boolean> {
   }
 }
 
-/** Group read/write on everything copied (the sandboxed tools share only the job's group). */
-async function groupWritable(path: string): Promise<void> {
+/** Set the modes of a copied tree: directories `dir`, files `file` (symbolic links left alone). */
+async function modes(path: string, dir: number, file: number): Promise<void> {
   const st = await lstat(path);
   if (st.isSymbolicLink()) return;
   if (st.isDirectory()) {
-    await chmod(path, 0o770);
-    for (const name of await readdir(path)) await groupWritable(join(path, name));
-  } else await chmod(path, 0o660);
+    await chmod(path, dir);
+    for (const name of await readdir(path)) await modes(join(path, name), dir, file);
+  } else await chmod(path, file);
 }
+/** Group read/write on a job's copy (the sandboxed tools share only the job's group). */
+const groupWritable = (path: string) => modes(path, 0o770, 0o660);
 
 /**
  * Copy the seed for `key` into a new job's build directory (timestamps kept: arduino-cli's
@@ -109,6 +111,9 @@ export async function harvestCoreSeed(
       join(tmp, MARKER),
       JSON.stringify({ key, format: CORE_SEED_FORMAT, createdAt: new Date().toISOString() }),
     );
+    // The seed itself: the service's alone to change (it arrives with the job's group-writable
+    // modes); the group may read it, never write.
+    await modes(tmp, 0o750, 0o640);
     await rm(seedDir(seeds, key), { recursive: true, force: true });
     await rename(tmp, seedDir(seeds, key));
     return true;

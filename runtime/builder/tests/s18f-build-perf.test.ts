@@ -71,6 +71,10 @@ describe('core seed', () => {
     expect(await applyCoreSeed(seeds, key, from)).toBe(false); // none yet
     expect(await harvestCoreSeed(seeds, key, from)).toBe(true);
     expect(await harvestCoreSeed(seeds, key, from)).toBe(false); // exists: kept
+    // The kept seed is never group-writable (only the copies a job gets are).
+    expect(statSync(join(seeds, key)).mode & 0o777).toBe(0o750);
+    expect(statSync(join(seeds, key, 'core')).mode & 0o777).toBe(0o750);
+    expect(statSync(join(seeds, key, 'core', 'Print.cpp.o')).mode & 0o777).toBe(0o640);
     const to = join(dir('job-b-'), 'build');
     mkdirSync(to);
     expect(await applyCoreSeed(seeds, key, to)).toBe(true);
