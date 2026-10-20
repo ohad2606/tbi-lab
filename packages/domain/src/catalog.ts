@@ -187,7 +187,7 @@ const SPRINT10_TYPES = {
     nameKey: 'component.component.photoresistor.name',
     symbol: 'symbol.photoresistor',
     terminals: [
-      { id: 'a', offset: { x: -40, y: 0 }, labelKey: 'terminal.logic_a' },
+      { id: 'a', offset: { x: -40, y: 0 }, labelKey: 'terminal.a' },
       { id: 'b', offset: { x: 40, y: 0 }, labelKey: 'terminal.b' },
     ],
     params: [
@@ -487,7 +487,7 @@ const SPRINT10_TYPES = {
     nameKey: 'component.component.capacitor.name',
     symbol: 'symbol.capacitor',
     terminals: [
-      { id: 'a', offset: { x: -40, y: 0 }, labelKey: 'terminal.logic_a' },
+      { id: 'a', offset: { x: -40, y: 0 }, labelKey: 'terminal.a' },
       { id: 'b', offset: { x: 40, y: 0 }, labelKey: 'terminal.b' },
     ],
     // An ideal, non-polarised capacitor (engine: Capacitor). Its circuit runs time-stepped.
@@ -720,7 +720,7 @@ export const CATALOG: Record<ComponentTypeId, ComponentTypeDef> = {
     nameKey: 'component.component.resistor.name',
     symbol: 'symbol.resistor',
     terminals: [
-      { id: 'a', offset: { x: -40, y: 0 }, labelKey: 'terminal.logic_a' },
+      { id: 'a', offset: { x: -40, y: 0 }, labelKey: 'terminal.a' },
       { id: 'b', offset: { x: 40, y: 0 }, labelKey: 'terminal.b' },
     ],
     params: [
@@ -792,7 +792,7 @@ export const CATALOG: Record<ComponentTypeId, ComponentTypeDef> = {
     nameKey: 'component.component.push_button.name',
     symbol: 'symbol.push_button',
     terminals: [
-      { id: 'a', offset: { x: -40, y: 0 }, labelKey: 'terminal.logic_a' },
+      { id: 'a', offset: { x: -40, y: 0 }, labelKey: 'terminal.a' },
       { id: 'b', offset: { x: 40, y: 0 }, labelKey: 'terminal.b' },
     ],
     // Normally open, momentary SPST. Its pressed state is runtime input, not a parameter.
@@ -807,7 +807,7 @@ export const CATALOG: Record<ComponentTypeId, ComponentTypeDef> = {
     nameKey: 'component.component.toggle_switch.name',
     symbol: 'symbol.toggle_switch',
     terminals: [
-      { id: 'a', offset: { x: -40, y: 0 }, labelKey: 'terminal.logic_a' },
+      { id: 'a', offset: { x: -40, y: 0 }, labelKey: 'terminal.a' },
       { id: 'b', offset: { x: 40, y: 0 }, labelKey: 'terminal.b' },
     ],
     // SPST. Its position is persistent project state and a live control while running.

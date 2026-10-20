@@ -71,6 +71,16 @@ describe('Sprint 4 catalog: the non-MCU V1 catalog is complete and closed (A16)'
     );
   });
 
+  it('Sprint 19B: logic terminal wording is used by logic gates only (other parts unchanged)', () => {
+    for (const def of Object.values(CATALOG)) {
+      const logic = def.type.startsWith('logic.');
+      for (const t of def.terminals)
+        expect(t.labelKey.startsWith('terminal.logic_'), `${def.type}.${t.id}`).toBe(
+          logic && t.id !== 'vcc',
+        );
+    }
+  });
+
   it('diode: D reference, anode/cathode, curated datasheet model token', () => {
     const r = place(newDoc(), 'component.diode', 0, 0);
     expect(r.id).toBe('D1');
