@@ -1,0 +1,114 @@
+// Sprint 18 Workstream D probe (TEMPORARY, copied into runtime/tests to run; evidence only).
+// MicroPython v1.29.0 (pinned image 23b8b47f) on Runtime v3, the program delivered as main.py in
+// the interpreter's own LittleFS partition (tbi-mklfs, ~/tbi-s18/mpy). No serial typing.
+import { createHash } from 'node:crypto';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { it } from 'vitest';
+import { createSessionOverlay } from '../harness/artifacts.js';
+import { QEMU } from '../harness/env.js';
+import { runSession } from '../harness/session.js';
+
+const IMG = `${homedir()}/tbi-s18/mpy/img`;
+const OUT = `${homedir()}/tbi-s18/mpy/results`;
+
+async function run(
+  name: string,
+  o: { simMs: number; qemu?: string; tick?: (vns: bigint) => unknown[]; until?: string },
+) {
+  const path = `${IMG}/${name}.bin`;
+  const sha = createHash('sha256').update(readFileSync(path)).digest('hex');
+  const ov = createSessionOverlay(path, sha);
+  const frames: string[] = [];
+  let serial = '';
+  const t0 = Date.now();
+  try {
+    const r = await runSession(
+      { qemu: o.qemu ?? QEMU, flash: ov.flash, dir: ov.dir, wallTimeoutMs: 600_000, stallTimeoutMs: 20_000 },
+      {
+        serial: (_v, b) => void (serial += b.toString('latin1')),
+        pad: (e) => (frames.push(`G ${e.vns} ${e.pad} ${e.drive} ${e.level}`), []),
+        func: (e) => (frames.push(`F ${e.vns} ${e.pad} ${e.func}`), []),
+        pwm: (e) => (
+          frames.push(`${'timer' in e ? 'P' : 'W'} ${e.vns} ${'timer' in e ? e.timer : e.signal} ${JSON.stringify(e.state)}`),
+          []
+        ),
+        tick: (vns) => {
+          const extra = (o.tick?.(vns) ?? []) as never[];
+          if (vns >= BigInt(o.simMs) * 1_000_000n || (o.until && serial.includes(o.until)))
+            return [...extra, { type: 'Q' } as never];
+          return extra;
+        },
+      },
+    );
+    const res = {
+      name,
+      sha,
+      outcome: r.outcome,
+      wallMs: Date.now() - t0,
+      resources: (r as unknown as { resources?: unknown }).resources ?? null,
+      frames,
+      fingerprint: createHash('sha256').update(frames.join('\n')).digest('hex'),
+      serialSha: createHash('sha256').update(serial).digest('hex'),
+      serial,
+    };
+    writeFileSync(`${OUT}/${name}-${Date.now()}.json`, JSON.stringify(res, null, 1));
+    return res;
+  } finally {
+    ov.discard();
+  }
+}
+
+const show = (r: Awaited<ReturnType<typeof run>>) =>
+  console.log(
+    `== ${r.name} outcome=${r.outcome} wall=${r.wallMs}ms frames=${r.frames.length} fp=${r.fingerprint.slice(0, 12)} serial=${r.serialSha.slice(0, 12)}\n` +
+      r.serial.split('\n').filter((l) => /^(MP|ADC|IRQ|SER)-|Traceback|Error|Guru|abort|rst:/.test(l)).join('\n'),
+  );
+
+const which = (process.env.ZZ_P ?? 'p1,p2,p3,p4').split(',');
+
+it('Sprint 18 MicroPython probe', async () => {
+  if (which.includes('p1')) {
+    const a = await run('p1_blink_pwm', { simMs: 8000, until: 'MP-DONE' });
+    const b = await run('p1_again', { simMs: 8000, until: 'MP-DONE' });
+    show(a);
+    console.log(a.frames.filter((f) => !f.startsWith('F ')).join('\n'));
+    console.log('P1 deterministic:', a.fingerprint === b.fingerprint && a.serialSha === b.serialSha);
+  }
+  if (which.includes('p2')) show(await run('p2_adc', { simMs: 8000, until: 'ADC-DONE', qemu: process.env.ZZ_QEMU_DEBUG }));
+  if (which.includes('p3')) {
+    // GPIO4 driven high at 4.0 s and low at 4.2 s (after IRQ-ARMED).
+    const r = await run('p3_irq', {
+      simMs: 10000,
+      until: 'IRQ-COUNT',
+      tick: (vns) =>
+        vns === 4_000_000_000n ? [{ type: 'I', pad: 4, level: 1 }] : vns === 4_200_000_000n ? [{ type: 'I', pad: 4, level: 0 }] : [],
+    });
+    show(r);
+  }
+  if (which.includes('p4')) {
+    const data = Buffer.from(Array.from({ length: 1000 }, (_, i) => 0x41 + (i % 26)));
+    let crc = 0;
+    for (const c of data) crc = (Math.imul(crc, 31) + c) >>> 0;
+    console.log('P4 expected crc', crc);
+    const burst = await run('p4_serial', {
+      simMs: 12000,
+      until: 'SER-GOT',
+      tick: (vns) => (vns === 5_000_000_000n ? [{ type: 'R', bytes: data }] : []),
+    });
+    show(burst);
+    // Paced at the line rate of 115200 baud 8N1: 11.52 bytes per ms -> 11 bytes per 1 ms tick.
+    let sent = 0;
+    const paced = await run('p4_serial', {
+      simMs: 12000,
+      until: 'SER-GOT',
+      tick: (vns) => {
+        if (vns < 5_000_000_000n || sent >= data.length) return [];
+        const chunk = data.subarray(sent, sent + 11);
+        sent += chunk.length;
+        return [{ type: 'R', bytes: Buffer.from(chunk) }];
+      },
+    });
+    show(paced);
+  }
+}, 1_800_000);

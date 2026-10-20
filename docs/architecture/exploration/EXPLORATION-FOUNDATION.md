@@ -318,9 +318,7 @@ invents timing.
 
 ## 8. EF-6 — Genuine ESP32 Classic MicroPython
 
-To be covered by `docs/architecture/exploration/MICROPYTHON-FEASIBILITY.md` (Workstream D
-evidence; *rev 2*: written after this revision, in the same sprint; until it lands, the points
-below rest on the Sprint 17C probe in `docs/sprints/SPRINT-17C-NEXT-PROPOSALS.md`):
+Covered by `MICROPYTHON-FEASIBILITY.md` (Workstream D evidence, this sprint):
 - the real MicroPython firmware runs unmodified in the same QEMU runtime;
 - code is delivered to the interpreter itself, never translated;
 - unmodelled facilities are refused at run time by the emulator (EF-7), because Python has no
@@ -342,7 +340,8 @@ below rest on the Sprint 17C probe in `docs/sprints/SPRINT-17C-NEXT-PROPOSALS.md
    bridge parser fails closed on unknown frames, so `U` comes with a new capability token in the
    hello (ADR-011 §1), and hosts without it never receive it. The first
    blocks: SENS/ADC, GPIO interrupt enable, RMT, MCPWM, PCNT, RTC sleep, Wi-Fi/BT MAC. Today some of
-   these silently read zero, and the ADC crashes the guest (Sprint 17C probe).
+   these silently read zero, and the ADC crashes the guest. Root cause: SENS `SAR_MEAS_START1`
+   never reports done, polled 12.6 M times (MICROPYTHON-FEASIBILITY §1).
 4. **Model-validity contract**, unchanged in kind:
    - `outsideModelRange` for an operating point outside the model's fitted range;
    - rating kinds `absolute` / `operating` / `unrated`.

@@ -1,0 +1,29 @@
+From 82e0ff6abd781b461bf1bbefa81042f3e2668f3f Mon Sep 17 00:00:00 2001
+From: TBI Lab runtime <runtime@tbi-lab.local>
+Date: Tue, 20 Oct 2026 07:32:56 +0000
+Subject: [PATCH] PROBE (Sprint 18, not a product patch): log GPIO interrupt
+ enable as unmodelled
+
+---
+ hw/gpio/esp32_gpio.c | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/hw/gpio/esp32_gpio.c b/hw/gpio/esp32_gpio.c
+index 9730581..d7791c7 100644
+--- a/hw/gpio/esp32_gpio.c
++++ b/hw/gpio/esp32_gpio.c
+@@ -257,6 +257,11 @@ static void esp32_gpio_classic_write(Esp32GpioState *s, hwaddr addr, uint32_t v)
+             s->out_sel_written |= 1ULL << ((addr - TBI_A_GPIO_FUNC0_OUT) / 4);
+         } else if (!(addr >= TBI_A_GPIO_PIN0 && addr < TBI_A_GPIO_PIN0 + 4 * ESP32_GPIO_PADS)) {
+             return;
++        } else if (((v >> 7) & 7) && ((v >> 13) & 0x1f)) {
++            /* Sprint 18 probe (not a product patch): GPIO interrupts are not modelled. */
++            qemu_log_mask(LOG_UNIMP, "esp32_gpio: TBI-UNMODELLED gpio-interrupt pad %u type %u ena 0x%x\n",
++                          (unsigned)((addr - TBI_A_GPIO_PIN0) / 4), (unsigned)((v >> 7) & 7),
++                          (unsigned)((v >> 13) & 0x1f));
+         }
+         break; /* functions, then pads, are published below */
+     }
+-- 
+2.53.0
+

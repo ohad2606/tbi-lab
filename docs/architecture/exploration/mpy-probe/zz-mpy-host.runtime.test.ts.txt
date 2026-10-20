@@ -1,0 +1,46 @@
+// TEMPORARY Sprint 18 probe: MicroPython P1 (main.py in the LittleFS partition) through the real
+// Session Host: GPIO2 -> 220 R -> LED, GPIO18 -> 220 R -> LED (PWM). Evidence only.
+import { homedir } from 'node:os';
+import { it, expect } from 'vitest';
+import type { SolveSuccess } from '@tbi-lab/engine';
+import { principalFor, ticketFor } from '../identity/test-gate.js';
+import { Circuit, reference } from '../host/tests/r1-support.js';
+import { waitState } from '../host/tests/support.js';
+import { realHost } from './r2-support.js';
+
+it('MicroPython P1 through the Session Host', async () => {
+  const host = realHost({ artifactsDir: homedir() + '/tbi-s18/mpy/store' });
+  const sha = 'c79cf6e4b284e580af960bd91d5aea6b075f9aed46feecafd18e834bed44a24f';
+  const c = new Circuit();
+  const ids: string[] = [];
+  for (const gpio of [2, 18]) {
+    const r = c.add('component.resistor');
+    const d = c.add('component.led');
+    c.ohms(r, 220).wire(r + '.b', d + '.anode').wire(d + '.cathode', 'GND1.ref').pad(gpio, r + '.a');
+    ids.push(d);
+  }
+  const req = c.request(sha);
+  req.ticket = ticketFor(sha, principalFor(), { internalPull: [], gpioInterrupt: [], restart: false, unsupported: [], requires: ['pwm'] });
+  const cr = host.create(req, principalFor());
+  if (!cr.ok) throw new Error(cr.error);
+  const s = cr.value.session;
+  const t0 = Date.now();
+  s.run();
+  await waitState(s, 'running', 120_000);
+  let text = '';
+  while (!text.includes('MP-DONE') && Date.now() - t0 < 300_000 && !['failed', 'ended'].includes(s.status().state)) {
+    await new Promise((r) => setTimeout(r, 200));
+    text = s.log.since(0).filter((e) => e.type === 'serial').map((e) => Buffer.from((e as unknown as { data: string }).data, 'base64').toString('latin1')).join('');
+  }
+  s.stop();
+  await Promise.race([waitState(s, 'ended', 60_000), waitState(s, 'failed', 60_000)]);
+  await s.done();
+  const st = s.status();
+  const hi = reference(req, { 18: 'output-high' }).components[ids[1]!]!.current!;
+  const el = s.log.since(0).filter((e) => e.type === 'electrical').map((e) => (e as unknown as { outcome: SolveSuccess }).outcome);
+  const ratios = [...new Set(el.map((o) => (o.components[ids[1]!]!.current! / hi).toFixed(6)))];
+  const led2 = [...new Set(el.map((o) => (o.components[ids[0]!]!.current! > 1e-4 ? 'on' : 'off')))];
+  console.log(JSON.stringify({ state: st.state, reason: st.reason, simNs: st.simNs, wallMs: Date.now() - t0, ratios, led2, diagnostics: s.log.since(0).filter((e) => e.type === 'diagnostic') }));
+  await host.shutdown();
+  expect(st).toMatchObject({ state: 'ended', reason: 'stopped' });
+}, 600_000);
