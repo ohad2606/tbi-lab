@@ -1161,8 +1161,6 @@ export const en = {
     'Ideal lab supply: no output impedance or control-loop dynamics, and it cannot sink current.',
   'limitation.resistor_ideal':
     'Exact value: tolerance and temperature coefficient are not modelled.',
-  'limitation.resistor_no_power':
-    'No power rating is modelled: dissipation is shown but not checked against a limit.',
   'limitation.dc_25c': 'DC operating point at 25 °C: no thermal or self-heating effects.',
   'limitation.led_card_range':
     'Accurate within the current range of its datasheet curves; outside it the result is marked as outside the model.',
@@ -1240,6 +1238,12 @@ export const en = {
     'An input between V_IL and V_IH is unknown (X), and so is everything it determines; a floating input is refused. Input leakage (±5 µA) is not used as a level.',
   'limitation.logic_breakout':
     'The SOT-23-5 package is shown on a representative breakout board, so it fits a breadboard; the board’s layout is illustrative.',
+  // Sprint 19B (F2): resistor power ratings (KOA CF series).
+  'param.powerRating': 'Power rating',
+  'model.resistor.koa_cf_1_4': '¼ W carbon film (KOA CF1/4)',
+  'model.resistor.koa_cfs_1_2': '½ W carbon film (KOA CFS1/2)',
+  'limitation.resistor_rating':
+    'Power rating from the selected series’ datasheet (KOA CF1/4 ¼ W or CFS1/2 ½ W at 70 °C, derated to 0 W at 155 °C), at a 25 °C ambient. Above it the result is outside the specified conditions; no damage is inferred. Resistance stays constant: self-heating drift is not modelled.',
   'limitation.servo_supply_current':
     'Supply current is not modelled: a weak supply or a 3.3 V pin is not shown sagging under the servo’s load.',
   'limitation.servo_thresholds':

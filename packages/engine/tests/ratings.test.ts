@@ -91,15 +91,18 @@ describe('ratingWarnings', () => {
     expect(ratingWarnings(rev.snapshot, rev.outcome)).toEqual([]);
   });
 
-  it('never flags resistors (no documented rating in V1), however hard they are driven', () => {
+  it('Sprint 19B (F2): a resistor driven beyond its ¼ W series rating is flagged `unrated` (no damage claimed)', () => {
     const b = new Bench();
     const r = b.add('component.resistor');
     b.wire('PSU1.positive', `${r}.a`).wire(`${r}.b`, 'GND1.ref').wire('PSU1.negative', 'GND1.ref');
-    b.psu(30, 5).ohms(r, 10); // 3 A, 90 W: a real resistor this size would burn
+    b.psu(30, 5).ohms(r, 10); // 3 A, 90 W, far above KOA CF1/4's 0.25 W
     const snapshot = b.snapshot();
     const o = new EngineSession(snapshot).solve() as SolveSuccess;
     expect(o.components[r]!.current).toBeCloseTo(3, 12);
-    expect(ratingWarnings(snapshot, o)).toEqual([]);
+    const w = ratingWarnings(snapshot, o);
+    expect(w).toHaveLength(1);
+    expect(w[0]).toMatchObject({ component: r, kind: 'unrated', code: 'power', limit: 0.25 });
+    expect(w[0]!.value).toBeCloseTo(90, 9);
   });
 
   it('is a pure check: the solved outcome is unchanged', () => {

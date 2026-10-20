@@ -54,6 +54,12 @@ export type ParamDef =
       labelKey: string;
       live?: boolean;
       environment?: never;
+      /**
+       * Sprint 19B: absent from a stored component means `default`, and it is stored only when
+       * set to another value (so documents written before it existed, and documents that never
+       * change it, stay exactly as they were: no schema change, no rollback effect).
+       */
+      optional?: true;
     };
 
 export interface ComponentTypeDef {
@@ -733,6 +739,19 @@ export const CATALOG: Record<ComponentTypeId, ComponentTypeDef> = {
         default: 1000,
         labelKey: 'param.resistance',
       },
+      // Sprint 19B (F2): the power rating, from a verified datasheet series (engine
+      // resistorRating.ts); ¼ W by default. Optional: absent = the default.
+      {
+        kind: 'enum',
+        key: 'powerRating',
+        options: [
+          { value: 'model.resistor.koa_cf_1_4', labelKey: 'model.resistor.koa_cf_1_4' },
+          { value: 'model.resistor.koa_cfs_1_2', labelKey: 'model.resistor.koa_cfs_1_2' },
+        ],
+        default: 'model.resistor.koa_cf_1_4',
+        labelKey: 'param.powerRating',
+        optional: true,
+      },
     ],
     aliases: ['res'],
   },
@@ -885,6 +904,7 @@ export function getTypeDef(type: string): ComponentTypeDef | undefined {
 export function defaultParams(def: ComponentTypeDef): Record<string, ParamValue> {
   const params: Record<string, ParamValue> = {};
   for (const p of def.params) {
+    if (p.kind === 'enum' && p.optional) continue; // absent = default (Sprint 19B)
     params[p.key] = p.kind === 'quantity' ? { value: p.default, unit: p.unit } : p.default;
   }
   return params;
@@ -917,4 +937,13 @@ export function placementBlock(
       return held.every((c) => timed(c.type)) ? 'board_time_dependent' : 'board_needs_runtime';
   }
   return null;
+}
+
+/** Sprint 19B: a parameter's effective value (an optional parameter absent = its default). */
+export function paramValue(
+  params: Readonly<Record<string, ParamValue>>,
+  def: ParamDef,
+): ParamValue {
+  const v = params[def.key];
+  return v === undefined && def.kind === 'enum' && def.optional ? def.default : v!;
 }

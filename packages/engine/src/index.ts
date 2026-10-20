@@ -88,3 +88,12 @@ export {
 } from './logic/lvc1g.js';
 export { GATE_TYPES, gateOutput, type LogicLevel } from './parts/logicGate.js';
 export { logicFeedback, unknownClosure } from './logic/topology.js';
+// Sprint 19B (F2): resistor power ratings from a verified datasheet series.
+export {
+  DEFAULT_RESISTOR_SERIES,
+  RATING_AMBIENT_C,
+  RESISTOR_SERIES,
+  deratedPowerW,
+  resistorRating,
+  type ResistorSeries,
+} from './resistorRating.js';

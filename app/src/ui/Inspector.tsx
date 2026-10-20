@@ -4,6 +4,7 @@ import {
   MODEL_LIMITATIONS,
   deleteSelection,
   emptySelection,
+  paramValue,
   setParam,
   setWireColor,
   WIRE_COLORS,
@@ -268,7 +269,8 @@ function ParamField({
   const { doc, locale, sim } = useAppState();
   const store = useStore();
   const t = useT();
-  const current = c.params[def.key];
+  // An optional parameter absent from the document shows its default (Sprint 19B).
+  const current = paramValue(c.params, def);
   // While a simulation runs only live-capable parameters (PSU controls) may change; any other
   // value belongs to the loaded snapshot and needs a Stop first.
   const locked =

@@ -94,7 +94,11 @@ describe('pad over-voltage warnings, on every trigger', () => {
     expect(codes(bb.full, high)).toEqual([['gpio_output_overvoltage', 4]]);
     // Output LOW: an over-current sink (the existing rule), the pad itself in range.
     s.setPinMode(4, 'output-low');
-    expect(codes(bb.full, ok(s.solve()))).toEqual([['gpio_sink_current', 4]]);
+    // Sprint 19B (F2): the pull-up itself dissipates ≈ 5 V² / 47 Ω ≈ 0.5 W, above its ¼ W rating.
+    expect(codes(bb.full, ok(s.solve()))).toEqual([
+      ['power', undefined],
+      ['gpio_sink_current', 4],
+    ]);
   });
 
   it('live parameter changes: a photoresistor divider from 5 V into GPIO35 crosses 3.6 V with the light', () => {

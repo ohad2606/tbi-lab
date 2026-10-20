@@ -4,8 +4,8 @@
  * These are not physics: the solver never uses them and never changes a number because of
  * them. They let the product say, honestly, "the solved operating point exceeds what the
  * manufacturer allows for this part; a real part would likely be damaged". Only parts whose
- * model card has a documented rating table are checked. Resistors carry no power rating in V1,
- * so no resistor warning is produced (that would need an invented limit).
+ * model card has a documented rating table are checked. Sprint 19B (F2): resistors carry the
+ * rating of a verified datasheet series (resistorRating.ts), ¼ W by default.
  *
  * Every value is copied from the datasheet the model card already cites, at T_amb = 25 degC.
  */
@@ -19,6 +19,7 @@ import {
   typicalSourceA,
 } from './esp32Gpio.js';
 import { partModel } from './parts.js';
+import { resistorRating } from './resistorRating.js';
 import type { SolveSuccess } from './session.js';
 import type { LimitKind } from './parts.js';
 
@@ -161,6 +162,33 @@ export function ratingWarnings(
             limit: x.limit,
             ...(x.channel ? { channel: x.channel } : {}),
           });
+      continue;
+    }
+    if (c.type === 'component.resistor') {
+      // Sprint 19B (F2): power above the derated series rating is `unrated` (no damage threshold
+      // is published); above the absolute-maximum working voltage, `absolute`.
+      const rating = resistorRating(c.params);
+      const r = outcome.components[c.id];
+      if (!rating || !r || r.current === null || r.voltage === null) continue;
+      const power = Math.abs(r.voltage * r.current);
+      if (power > rating.ratedW)
+        out.push({
+          component: c.id,
+          kind: 'unrated',
+          model: rating.series,
+          code: 'power',
+          value: power,
+          limit: rating.ratedW,
+        });
+      if (Math.abs(r.voltage) > rating.card.maxWorkingV)
+        out.push({
+          component: c.id,
+          kind: 'absolute',
+          model: rating.series,
+          code: 'voltage',
+          value: Math.abs(r.voltage),
+          limit: rating.card.maxWorkingV,
+        });
       continue;
     }
     const model = c.params.model;

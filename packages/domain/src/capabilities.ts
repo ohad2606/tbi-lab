@@ -120,7 +120,7 @@ const LOGIC_LIMITATIONS = [
 
 export const MODEL_LIMITATIONS: Readonly<Partial<Record<ComponentTypeId, readonly string[]>>> = {
   'instrument.lab_psu': ['psu_ideal'],
-  'component.resistor': ['resistor_ideal', 'resistor_no_power'],
+  'component.resistor': ['resistor_ideal', 'resistor_rating'],
   'component.led': ['dc_25c', 'led_card_range', 'no_breakdown', 'pwm_average'],
   'component.diode': ['dc_25c', 'no_breakdown'],
   'component.push_button': ['switch_ideal'],

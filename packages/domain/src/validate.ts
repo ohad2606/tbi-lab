@@ -134,7 +134,7 @@ export function validateProject(input: unknown): ValidationIssue[] {
       const v = c.params[p.key];
       const pp = `${path}.params.${p.key}`;
       if (v === undefined) {
-        add('missing_param', pp);
+        if (!(p.kind === 'enum' && p.optional)) add('missing_param', pp);
       } else if (p.kind === 'boolean') {
         if (typeof v !== 'boolean') add('bad_param', pp);
       } else if (p.kind === 'enum') {

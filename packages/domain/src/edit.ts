@@ -175,7 +175,10 @@ export function setParam(
         return 'out_of_range';
       }
     }
-    c.params[key] = typeof value === 'object' ? { value: value.value, unit: value.unit } : value;
+    // An optional parameter set back to its default is removed (stored only when it differs).
+    if (def.kind === 'enum' && def.optional && value === def.default) delete c.params[key];
+    else
+      c.params[key] = typeof value === 'object' ? { value: value.value, unit: value.unit } : value;
   });
 }
 
