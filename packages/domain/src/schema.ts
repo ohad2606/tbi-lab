@@ -64,7 +64,15 @@ export type ComponentTypeId =
   | 'sensor.dht22'
   | 'display.lcd1602_i2c'
   /** Sprint 15 (R4, additive): the SG90 servo, driven by an ESP32 PWM (LEDC) output. */
-  | 'component.servo_sg90';
+  | 'component.servo_sg90'
+  /**
+   * Sprint 19B (Exploration Foundation L1, additive): single logic gates with real supply pins,
+   * one type per function; `model` names the device (TI SN74LVC1G series).
+   */
+  | 'logic.gate_and'
+  | 'logic.gate_nand'
+  | 'logic.gate_or'
+  | 'logic.gate_not';
 
 export interface ComponentInstance {
   /** Stable reference designator (`R1`, `PSU1`), unique per project, never reused. */

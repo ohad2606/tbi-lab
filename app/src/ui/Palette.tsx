@@ -33,6 +33,10 @@ export const PALETTE_GROUPS: readonly { key: MessageKey; types: readonly Compone
       'component.servo_sg90',
     ],
   },
+  {
+    key: 'palette.group.logic',
+    types: ['logic.gate_and', 'logic.gate_nand', 'logic.gate_or', 'logic.gate_not'],
+  },
   { key: 'palette.group.mcu', types: ['board.esp32_devkitc_wroom32'] },
 ];
 const GROUPS = PALETTE_GROUPS;

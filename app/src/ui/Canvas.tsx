@@ -990,6 +990,11 @@ export function Canvas({
                   c.type === 'display.lcd1602_i2c' && outcome?.ok
                     ? lcdView(outcome.components[c.id]?.state)
                     : undefined,
+                // Sprint 19B: a logic gate's solved output level (X marked on the symbol).
+                gateOutput:
+                  c.type.startsWith('logic.') && outcome?.ok
+                    ? (outcome.components[c.id]?.state?.gateOutput as string | undefined)
+                    : undefined,
                 // Sprint 15: the servo's horn at the angle the engine or the runtime reports.
                 servoAngle:
                   c.type === 'component.servo_sg90' && outcome?.ok

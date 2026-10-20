@@ -71,6 +71,8 @@ export interface PartSolution {
   contactCurrent(key: string): number | null;
   /** The device object of one of the part's elements (for model-specific readouts). */
   device(key: string): Device | undefined;
+  /** Sprint 19B: the terminal's node is unknown (reached from an unknown-driven output). */
+  unknown?(terminal: string): boolean;
   /** A multi-terminal device's exact terminal currents at the solution (into the device). */
   deviceTerminalCurrents?(key: string): { ic: number; ib: number; ie: number } | undefined;
 }
@@ -191,6 +193,23 @@ export interface PartModel {
    */
   readonly timeDependent?: boolean;
   history?(ctx: PartContext, sol: PartSolution): PartState;
+  /**
+   * Sprint 19B (logic L1): terminals whose node this part drives to an UNKNOWN level in this
+   * state (a gate output whose inputs leave it undetermined). The session marks that node, and
+   * everything electrically reachable from it without crossing GND or a supply output, unknown:
+   * no number is reported there, and parts reading it see `sol.unknown(terminal)`.
+   */
+  unknownDriven?(ctx: PartContext, state: PartState): readonly string[];
+  /**
+   * Sprint 19B: the part's logic inputs and outputs (for the session's combinational-feedback
+   * check: an output reaching an input of the same logic network through external elements).
+   */
+  logicPins?(ctx: PartContext): { inputs: readonly string[]; outputs: readonly string[] };
+  /**
+   * Sprint 19B: a refusal the SETTLED state implies (e.g. a floating logic input), or null. The
+   * session checks it only once every state has settled, never on an intermediate pass.
+   */
+  refusal?(ctx: PartContext, state: PartState): EngineError | null;
   report(
     ctx: PartContext,
     state: PartState,

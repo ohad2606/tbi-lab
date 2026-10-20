@@ -76,3 +76,15 @@ export { LCD1602_DC, PCF8574_VIH_FRACTION, PCF8574_VIL_FRACTION } from './parts/
 // Sprint 15 (R4): the SG90's pulse semantics and its electrical side.
 export { Servo, SG90, type ServoSpec } from './peripherals/servo.js';
 export { SG90_ELECTRICAL, servoPowered, servoSignalLevel } from './parts/servo.js';
+// Sprint 19B (Exploration Foundation L1): single logic gates.
+export {
+  LVC1G_CARDS,
+  evaluate,
+  inputRowAt,
+  outputStageAt,
+  TABULATED_VCC_TOLERANCE_V,
+  type LogicCard,
+  type LogicFunction,
+} from './logic/lvc1g.js';
+export { GATE_TYPES, gateOutput, type LogicLevel } from './parts/logicGate.js';
+export { logicFeedback, unknownClosure } from './logic/topology.js';

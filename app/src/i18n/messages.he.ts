@@ -103,6 +103,59 @@ export const he: Record<MessageKey, string> = {
   'model.ldr.senba_gl5528': 'תא CdS 5 מ"מ (GL5528)',
   'model.buzzer.cui_cem_1205_ic': 'אקטיבי 5 V, 12 מ"מ (CUI Devices CEM-1205-IC)',
   'model.relay.songle_srd_05vdc_sl_c': 'סליל 5 V, SPDT (Songle SRD-05VDC-SL-C)',
+  'component.logic.gate_and.name': 'שער AND',
+  'component.logic.gate_nand.name': 'שער NAND',
+  'component.logic.gate_or.name': 'שער OR',
+  'component.logic.gate_not.name': 'שער NOT (מהפך)',
+  'model.logic.sn74lvc1g08': 'TI SN74LVC1G08, SOT-23-5 על כרטיס מתאם',
+  'model.logic.sn74lvc1g00': 'TI SN74LVC1G00, SOT-23-5 על כרטיס מתאם',
+  'model.logic.sn74lvc1g32': 'TI SN74LVC1G32, SOT-23-5 על כרטיס מתאם',
+  'model.logic.sn74lvc1g04': 'TI SN74LVC1G04, SOT-23-5 על כרטיס מתאם',
+  'terminal.logic_a': 'כניסה A',
+  'terminal.logic_b': 'כניסה B',
+  'terminal.logic_y': 'יציאה Y',
+  'terminal.logic_gnd': '[[ground]]',
+  'palette.group.logic': 'לוגיקה',
+  'library.examples.category.logic': 'לוגיקה ספרתית',
+  'sim.part.state.gateOutput': 'יציאה',
+  'sim.part.state.gateOutput.high': 'HIGH',
+  'sim.part.state.gateOutput.low': 'LOW',
+  'sim.part.state.gateOutput.x': 'לא ידוע (X)',
+  'sim.part.state.gateOutput.off': 'כבוי (ללא הזנה)',
+  'sim.part.state.input_a': 'כניסה A',
+  'sim.part.state.input_a.high': 'HIGH',
+  'sim.part.state.input_a.low': 'LOW',
+  'sim.part.state.input_a.x': 'לא ידוע (X): בין V_IL ל-V_IH',
+  'sim.part.state.input_b': 'כניסה B',
+  'sim.part.state.input_b.high': 'HIGH',
+  'sim.part.state.input_b.low': 'LOW',
+  'sim.part.state.input_b.x': 'לא ידוע (X): בין V_IL ל-V_IH',
+  'sim.part.state.supplyV': 'מתח הזנה (V_CC − GND)',
+  'sim.part.state.outputModel': 'אופיין היציאה',
+  'sim.part.state.outputModel.tabulated': 'מובטח (נקודות הבדיקה של גיליון הנתונים במתח זה)',
+  'sim.part.state.outputModel.ranged': 'מובטח רק עד 100 µA במתח זה',
+  'sim.part.state.outputValidA': 'מאופיין עד',
+  'sim.part.state.iccMaxA': 'זרם הזנה במנוחה (מקסימום בגיליון הנתונים, לא כלול למעלה)',
+  'sim.part.state.firstUnknownInput': 'הכניסה הלא ידועה הראשונה',
+  'sim.part.state.firstUnknownInput.a': 'A',
+  'sim.part.state.firstUnknownInput.b': 'B',
+  'sim.part.current.y': 'זרם יציאה (Y)',
+  'sim.part.current.vcc': 'זרם בפין ההזנה (V_CC)',
+  'sim.part.current.gnd': 'זרם בפין האדמה (GND)',
+  'sim.results.unknown':
+    'לא ידוע: רמה לוגית לא מוגדרת מגיעה לרכיב הזה, ולכן לא מוצג ערך. בדקו את הכניסות הלוגיות המסומנות כלא ידועות (X).',
+  'sim.error.logic_input_floating':
+    '{components}: כניסה {pin} אינה מחוברת לשום דבר. לכניסת CMOS צפה אין רמה מוגדרת. חברו אותה לאות, ל-V_CC או ל-GND, או דרך נגד pull-up או pull-down.',
+  'sim.error.logic_supply_missing':
+    '{components}: ‏V_CC או GND אינם מחוברים. [[logicGate]] צריך שפיני ההזנה שלו יהיו מחוברים.',
+  'sim.error.logic_supply_uncharacterized':
+    '{components}: מתח ההזנה הוא {supply}, וגיליון הנתונים אינו מאפיין אותו (‎1.65–1.95 V, ‏2.3–2.7 V, ‏3.0–3.6 V או 4.5–5.5 V). הסימולטור אינו ממציא ספים בין שורות גיליון הנתונים.',
+  'sim.error.logic_output_uncharacterized':
+    '{components}: במתח {supply} גיליון הנתונים מבטיח את היציאה רק עד 100 µA, והעומס הזה צורך {current}. הזינו את השער ב-3.0 V או ב-4.5 V, שבהם היציאה מאופיינת לעומסים אמיתיים, או השתמשו בעומס קל יותר.',
+  'sim.error.logic_feedback_unsupported':
+    '{components}: יציאה לוגית מוזנת חזרה לרשת שלה (נעילה או מתנד). התנהגותה תלויה בהשהיית ההתפשטות, שגרסה זו אינה מדמה.',
+  'sim.error.logic_unknown_state':
+    '{components}: רמה לוגית לא מוגדרת מגיעה אל {pin}, שחייב להיות לו ערך מוגדר. בדקו את הכניסות הלוגיות המסומנות כלא ידועות (X).',
   'sim.part.current.red': 'זרם הערוץ האדום',
   'sim.part.current.green': 'זרם הערוץ הירוק',
   'sim.part.current.blue': 'זרם הערוץ הכחול',
@@ -1125,6 +1178,16 @@ export const he: Record<MessageKey, string> = {
   // Sprint 15 (R4): PWM averages, the SG90 servo and the ESP32's LEDC outputs.
   'limitation.pwm_average':
     'כשהרכיב מונע ב־PWM, הערכים המוצגים הם ממוצעים בזמן לאורך צורת הגל (מדויקים לרכיב הזה); בדיקת הדירוגים משתמשת בזרם השיא. הבהירות הנתפסת מקורבת לפי הזרם הממוצע.',
+  'limitation.logic_dc_no_delay':
+    'DC בלבד: השהיית ההתפשטות (0.7–4.5 ns ב-3.3 V לפי גיליון הנתונים) אינה מדומה. מעגלים שתלויים בה נדחים: משוב בין שערים (נעילות, מתנדים), PWM לתוך שער, שעונים.',
+  'limitation.logic_guaranteed_output':
+    'היציאה משתמשת באופיין המובטח (המקרה הגרוע) מגיליון הנתונים, לא בערכים טיפוסיים: יציאה של רכיב אמיתי קרובה בדרך כלל יותר לפסי ההזנה.',
+  'limitation.logic_supply_rows':
+    'ספים ורמות יציאה רק היכן שגיליון הנתונים מפרט אותם (‎1.65–1.95 V, ‏2.3–2.7 V, ‏3.0–3.6 V, ‏4.5–5.5 V). עומסים אמיתיים רק ב-3.0 V או ב-4.5 V, שבהם נקודות הבדיקה של היציאה; במתחים אחרים עד 100 µA.',
+  'limitation.logic_unknown':
+    'כניסה בין V_IL ל-V_IH אינה ידועה (X), וכך גם כל מה שהיא קובעת; כניסה צפה נדחית. זרם הזליגה בכניסה (±5 µA) אינו משמש כרמה.',
+  'limitation.logic_breakout':
+    'מארז ה-SOT-23-5 מוצג על כרטיס מתאם מייצג, כדי שיתאים למטריצה; פריסת הכרטיס להמחשה.',
   'limitation.servo_supply_current':
     'זרם ההזנה אינו ממודל: ספק חלש או פין 3.3 V אינם מוצגים כשוקעים תחת עומס הסרוו.',
   'limitation.servo_thresholds':

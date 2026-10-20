@@ -109,6 +109,15 @@ export function facilityForFeature(code: string): FirmwareFacility | undefined {
  * `limitation.<id>` in the message catalogs. Every catalog part except the ground symbol has
  * entries (a test checks it).
  */
+/** Sprint 19B: what the single-gate model does not do (each shown in EN/HE). */
+const LOGIC_LIMITATIONS = [
+  'logic_dc_no_delay',
+  'logic_guaranteed_output',
+  'logic_supply_rows',
+  'logic_unknown',
+  'logic_breakout',
+] as const;
+
 export const MODEL_LIMITATIONS: Readonly<Partial<Record<ComponentTypeId, readonly string[]>>> = {
   'instrument.lab_psu': ['psu_ideal'],
   'component.resistor': ['resistor_ideal', 'resistor_no_power'],
@@ -138,6 +147,11 @@ export const MODEL_LIMITATIONS: Readonly<Partial<Record<ComponentTypeId, readonl
     'lcd_input_clamp',
     'supply_below_min',
   ],
+  // Sprint 19B (logic L1): the SN74LVC1G gates.
+  'logic.gate_and': LOGIC_LIMITATIONS,
+  'logic.gate_nand': LOGIC_LIMITATIONS,
+  'logic.gate_or': LOGIC_LIMITATIONS,
+  'logic.gate_not': LOGIC_LIMITATIONS,
   'component.servo_sg90': [
     'servo_supply_current',
     'servo_thresholds',

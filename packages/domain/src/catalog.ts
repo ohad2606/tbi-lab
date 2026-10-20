@@ -187,7 +187,7 @@ const SPRINT10_TYPES = {
     nameKey: 'component.component.photoresistor.name',
     symbol: 'symbol.photoresistor',
     terminals: [
-      { id: 'a', offset: { x: -40, y: 0 }, labelKey: 'terminal.a' },
+      { id: 'a', offset: { x: -40, y: 0 }, labelKey: 'terminal.logic_a' },
       { id: 'b', offset: { x: 40, y: 0 }, labelKey: 'terminal.b' },
     ],
     params: [
@@ -487,7 +487,7 @@ const SPRINT10_TYPES = {
     nameKey: 'component.component.capacitor.name',
     symbol: 'symbol.capacitor',
     terminals: [
-      { id: 'a', offset: { x: -40, y: 0 }, labelKey: 'terminal.a' },
+      { id: 'a', offset: { x: -40, y: 0 }, labelKey: 'terminal.logic_a' },
       { id: 'b', offset: { x: 40, y: 0 }, labelKey: 'terminal.b' },
     ],
     // An ideal, non-polarised capacitor (engine: Capacitor). Its circuit runs time-stepped.
@@ -549,7 +549,115 @@ const SPRINT10_TYPES = {
   },
 } satisfies Partial<Record<ComponentTypeId, ComponentTypeDef>>;
 
+/**
+ * Sprint 19B (Exploration Foundation L1): single logic gates, TI SN74LVC1G series (SOT-23-5),
+ * with real V_CC and GND pins. Every electrical figure is in the engine's device card
+ * (packages/engine/src/logic/lvc1g.ts), cited to the datasheet revision.
+ */
+const LOGIC_TYPES = {
+  'logic.gate_and': {
+    type: 'logic.gate_and',
+    typeVersion: 1,
+    refPrefix: 'U',
+    nameKey: 'component.logic.gate_and.name',
+    symbol: 'symbol.gate_and',
+    // Inputs left, output right, the part's own supply pins top (V_CC) and bottom (GND).
+    terminals: [
+      { id: 'a', offset: { x: -40, y: -20 }, labelKey: 'terminal.logic_a' },
+      { id: 'b', offset: { x: -40, y: 20 }, labelKey: 'terminal.logic_b' },
+      { id: 'y', offset: { x: 40, y: 0 }, labelKey: 'terminal.logic_y' },
+      { id: 'vcc', offset: { x: 0, y: -40 }, labelKey: 'terminal.vcc' },
+      { id: 'gnd', offset: { x: 0, y: 40 }, labelKey: 'terminal.logic_gnd' },
+    ],
+    params: [
+      {
+        kind: 'enum',
+        key: 'model',
+        options: [{ value: 'model.logic.sn74lvc1g08', labelKey: 'model.logic.sn74lvc1g08' }],
+        default: 'model.logic.sn74lvc1g08',
+        labelKey: 'param.model',
+      },
+    ],
+    aliases: ['and gate', '2-input and', '74lvc1g08', 'שער and', 'שער וגם'],
+  },
+  'logic.gate_nand': {
+    type: 'logic.gate_nand',
+    typeVersion: 1,
+    refPrefix: 'U',
+    nameKey: 'component.logic.gate_nand.name',
+    symbol: 'symbol.gate_nand',
+    // Inputs left, output right, the part's own supply pins top (V_CC) and bottom (GND).
+    terminals: [
+      { id: 'a', offset: { x: -40, y: -20 }, labelKey: 'terminal.logic_a' },
+      { id: 'b', offset: { x: -40, y: 20 }, labelKey: 'terminal.logic_b' },
+      { id: 'y', offset: { x: 40, y: 0 }, labelKey: 'terminal.logic_y' },
+      { id: 'vcc', offset: { x: 0, y: -40 }, labelKey: 'terminal.vcc' },
+      { id: 'gnd', offset: { x: 0, y: 40 }, labelKey: 'terminal.logic_gnd' },
+    ],
+    params: [
+      {
+        kind: 'enum',
+        key: 'model',
+        options: [{ value: 'model.logic.sn74lvc1g00', labelKey: 'model.logic.sn74lvc1g00' }],
+        default: 'model.logic.sn74lvc1g00',
+        labelKey: 'param.model',
+      },
+    ],
+    aliases: ['nand gate', '74lvc1g00', 'שער nand'],
+  },
+  'logic.gate_or': {
+    type: 'logic.gate_or',
+    typeVersion: 1,
+    refPrefix: 'U',
+    nameKey: 'component.logic.gate_or.name',
+    symbol: 'symbol.gate_or',
+    // Inputs left, output right, the part's own supply pins top (V_CC) and bottom (GND).
+    terminals: [
+      { id: 'a', offset: { x: -40, y: -20 }, labelKey: 'terminal.logic_a' },
+      { id: 'b', offset: { x: -40, y: 20 }, labelKey: 'terminal.logic_b' },
+      { id: 'y', offset: { x: 40, y: 0 }, labelKey: 'terminal.logic_y' },
+      { id: 'vcc', offset: { x: 0, y: -40 }, labelKey: 'terminal.vcc' },
+      { id: 'gnd', offset: { x: 0, y: 40 }, labelKey: 'terminal.logic_gnd' },
+    ],
+    params: [
+      {
+        kind: 'enum',
+        key: 'model',
+        options: [{ value: 'model.logic.sn74lvc1g32', labelKey: 'model.logic.sn74lvc1g32' }],
+        default: 'model.logic.sn74lvc1g32',
+        labelKey: 'param.model',
+      },
+    ],
+    aliases: ['or gate', '74lvc1g32', 'שער or', 'שער או'],
+  },
+  'logic.gate_not': {
+    type: 'logic.gate_not',
+    typeVersion: 1,
+    refPrefix: 'U',
+    nameKey: 'component.logic.gate_not.name',
+    symbol: 'symbol.gate_not',
+    // Inputs left, output right, the part's own supply pins top (V_CC) and bottom (GND).
+    terminals: [
+      { id: 'a', offset: { x: -40, y: 0 }, labelKey: 'terminal.logic_a' },
+      { id: 'y', offset: { x: 40, y: 0 }, labelKey: 'terminal.logic_y' },
+      { id: 'vcc', offset: { x: 0, y: -40 }, labelKey: 'terminal.vcc' },
+      { id: 'gnd', offset: { x: 0, y: 40 }, labelKey: 'terminal.logic_gnd' },
+    ],
+    params: [
+      {
+        kind: 'enum',
+        key: 'model',
+        options: [{ value: 'model.logic.sn74lvc1g04', labelKey: 'model.logic.sn74lvc1g04' }],
+        default: 'model.logic.sn74lvc1g04',
+        labelKey: 'param.model',
+      },
+    ],
+    aliases: ['not gate', 'inverter', '74lvc1g04', 'מהפך', 'שער not'],
+  },
+} satisfies Partial<Record<ComponentTypeId, ComponentTypeDef>>;
+
 export const CATALOG: Record<ComponentTypeId, ComponentTypeDef> = {
+  ...LOGIC_TYPES,
   ...SPRINT10_TYPES,
   'instrument.lab_psu': {
     type: 'instrument.lab_psu',
@@ -612,7 +720,7 @@ export const CATALOG: Record<ComponentTypeId, ComponentTypeDef> = {
     nameKey: 'component.component.resistor.name',
     symbol: 'symbol.resistor',
     terminals: [
-      { id: 'a', offset: { x: -40, y: 0 }, labelKey: 'terminal.a' },
+      { id: 'a', offset: { x: -40, y: 0 }, labelKey: 'terminal.logic_a' },
       { id: 'b', offset: { x: 40, y: 0 }, labelKey: 'terminal.b' },
     ],
     params: [
@@ -684,7 +792,7 @@ export const CATALOG: Record<ComponentTypeId, ComponentTypeDef> = {
     nameKey: 'component.component.push_button.name',
     symbol: 'symbol.push_button',
     terminals: [
-      { id: 'a', offset: { x: -40, y: 0 }, labelKey: 'terminal.a' },
+      { id: 'a', offset: { x: -40, y: 0 }, labelKey: 'terminal.logic_a' },
       { id: 'b', offset: { x: 40, y: 0 }, labelKey: 'terminal.b' },
     ],
     // Normally open, momentary SPST. Its pressed state is runtime input, not a parameter.
@@ -699,7 +807,7 @@ export const CATALOG: Record<ComponentTypeId, ComponentTypeDef> = {
     nameKey: 'component.component.toggle_switch.name',
     symbol: 'symbol.toggle_switch',
     terminals: [
-      { id: 'a', offset: { x: -40, y: 0 }, labelKey: 'terminal.a' },
+      { id: 'a', offset: { x: -40, y: 0 }, labelKey: 'terminal.logic_a' },
       { id: 'b', offset: { x: 40, y: 0 }, labelKey: 'terminal.b' },
     ],
     // SPST. Its position is persistent project state and a live control while running.
@@ -759,6 +867,10 @@ export const CATALOG_ORDER: readonly ComponentTypeId[] = [
   'sensor.dht22',
   'display.lcd1602_i2c',
   'component.servo_sg90',
+  'logic.gate_and',
+  'logic.gate_nand',
+  'logic.gate_or',
+  'logic.gate_not',
   'board.esp32_devkitc_wroom32',
 ];
 

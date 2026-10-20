@@ -15,6 +15,8 @@ import {
 
 /** Visual state some symbols depict. Presentation only: never an electrical input. */
 export interface SymbolState {
+  /** Sprint 19B: a logic gate's solved output level (`high`, `low`, `x`, `off`). */
+  gateOutput?: string;
   /** Toggle switch: the persisted position. */
   closed?: boolean;
   /** Push button: held right now (transient runtime input). */
@@ -169,6 +171,35 @@ export function servoAngle(state: Record<string, unknown> | undefined): number |
  */
 export const servoHornRotation = (angleDeg: number | undefined): number =>
   -Math.min(180, Math.max(0, angleDeg ?? SERVO_REST_DEG));
+
+/**
+ * Sprint 19B: a gate's leads on the catalog grid: inputs from x = −40 (two at y = ∓20, one at
+ * 0) to the body at `inX`, the output from `outX` to x = 40, the supply pins from y = ∓40 to
+ * the body (`supply`: the body's half height at x = 0).
+ */
+function gateLeads(inputs: 1 | 2, outX: number, inX = -20, supply = 24) {
+  const ys = inputs === 2 ? [-20, 20] : [0];
+  return (
+    <>
+      {ys.map((y) => (
+        <line key={y} x1={-40} y1={y} x2={inX} y2={y} />
+      ))}
+      <line x1={outX} y1={0} x2={40} y2={0} />
+      <line x1={0} y1={-40} x2={0} y2={-supply} class="supply-pin" />
+      <line x1={0} y1={40} x2={0} y2={supply} class="supply-pin" />
+    </>
+  );
+}
+
+/** An unknown (X) output, marked on the output lead. */
+function unknownMark(state: SymbolState | undefined) {
+  return state?.gateOutput === 'x' ? (
+    <g class="logic-unknown">
+      <line x1={29} y1={-10} x2={37} y2={-2} />
+      <line x1={37} y1={-10} x2={29} y2={-2} />
+    </g>
+  ) : null;
+}
 
 export const SYMBOLS: Record<ComponentTypeId, SymbolDef> = {
   'component.rgb_led': {
@@ -441,6 +472,50 @@ export const SYMBOLS: Record<ComponentTypeId, SymbolDef> = {
         </>
       );
     },
+  },
+  // Sprint 19B (logic L1): distinctive-shape gates with their own supply pins (V_CC top, GND
+  // bottom). An output the solve leaves undetermined is marked X (never drawn as a level).
+  'logic.gate_and': {
+    bbox: [-40, -40, 40, 40],
+    draw: (state) => (
+      <>
+        <path d="M -20 -24 H 0 A 24 24 0 0 1 0 24 H -20 Z" class="symbol-body" />
+        {gateLeads(2, 24)}
+        {unknownMark(state)}
+      </>
+    ),
+  },
+  'logic.gate_nand': {
+    bbox: [-40, -40, 40, 40],
+    draw: (state) => (
+      <>
+        <path d="M -20 -24 H 0 A 24 24 0 0 1 0 24 H -20 Z" class="symbol-body" />
+        <circle cx={27} cy={0} r={3} class="symbol-body" />
+        {gateLeads(2, 30)}
+        {unknownMark(state)}
+      </>
+    ),
+  },
+  'logic.gate_or': {
+    bbox: [-40, -40, 40, 40],
+    draw: (state) => (
+      <>
+        <path d="M -20 -24 Q 6 -24 24 0 Q 6 24 -20 24 Q -10 0 -20 -24 Z" class="symbol-body" />
+        {gateLeads(2, 24, -15)}
+        {unknownMark(state)}
+      </>
+    ),
+  },
+  'logic.gate_not': {
+    bbox: [-40, -40, 40, 40],
+    draw: (state) => (
+      <>
+        <path d="M -20 -20 L -20 20 L 16 0 Z" class="symbol-body" />
+        <circle cx={20} cy={0} r={4} class="symbol-body" />
+        {gateLeads(1, 24, -20, 9)}
+        {unknownMark(state)}
+      </>
+    ),
   },
   'board.esp32_devkitc_wroom32': {
     bbox: [-80, -196, 80, 196],

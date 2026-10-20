@@ -200,6 +200,24 @@ export function engineErrorMessage(
       const p = engineErrorParts(locale, error, doc);
       return [p.title, p.body, p.hint].join(' ');
     }
+    // Sprint 19B (logic L1): the pin, supply and load the refusal is about, in the message.
+    case 'logic_input_floating':
+    case 'logic_supply_missing':
+    case 'logic_supply_uncharacterized':
+    case 'logic_output_uncharacterized':
+    case 'logic_feedback_unsupported':
+    case 'logic_unknown_state': {
+      const d = (error.detail ?? {}) as { vcc?: number; value?: number };
+      const pin = error.param?.startsWith('gpio')
+        ? isolateLtr(`GPIO${error.param.slice(4)}`)
+        : isolateLtr((error.param ?? '').toUpperCase());
+      return t(`sim.error.${error.code}`, {
+        components,
+        pin,
+        supply: typeof d.vcc === 'number' ? formatResult(locale, d.vcc, 'volt') : '',
+        current: typeof d.value === 'number' ? formatResult(locale, d.value, 'ampere') : '',
+      });
+    }
     default:
       return t(`sim.error.${error.code}`, { components });
   }

@@ -23,6 +23,7 @@ import { Npn } from './bjt.js';
 const DC_GMIN = 1e-12;
 import { SingularMatrixError } from './linalg.js';
 import { MODEL_CARDS, MODEL_VALID_CURRENT_A } from './registry.js';
+import { logicFeedback, unknownClosure, type TopoElement } from './logic/topology.js';
 import {
   partModel,
   sameState,
@@ -144,6 +145,24 @@ export type EngineErrorCode =
    * operating point it produces (a relay that switches off its own coil: it chatters/buzzes).
    */
   | 'no_steady_state'
+  /**
+   * Sprint 19B (logic L1, each named, never approximated):
+   * - `logic_input_floating`: a logic input with no DC path to anything (`param`: the pin);
+   * - `logic_supply_missing`: a logic part's V_CC or GND pin is not connected to anything;
+   * - `logic_supply_uncharacterized`: its supply is outside every datasheet row (EF-D3 A);
+   * - `logic_output_uncharacterized`: an output current the datasheet does not guarantee at
+   *   this supply (only the ±100 µA ranged row applies off the tabulated points);
+   * - `logic_feedback_unsupported`: a logic output reaches an input of the same network
+   *   (latches and oscillators need propagation delay, not simulated in DC sessions);
+   * - `logic_unknown_state`: an unknown level reaches something that must have a value (an MCU
+   *   input, a supply in current limit, a logic part's own supply).
+   */
+  | 'logic_input_floating'
+  | 'logic_supply_missing'
+  | 'logic_supply_uncharacterized'
+  | 'logic_output_uncharacterized'
+  | 'logic_feedback_unsupported'
+  | 'logic_unknown_state'
   | 'internal';
 
 export interface EngineError {
@@ -181,6 +200,11 @@ export interface ComponentResult {
    * outside the model card's documented validity range. A flag; it never alters numbers.
    */
   outsideModelRange?: boolean;
+  /**
+   * Sprint 19B: the result is UNKNOWN (the part is on a net an undetermined logic level reaches):
+   * its currents and the potentials of the affected terminals are null, never a number.
+   */
+  unknown?: true;
   /**
    * Parts with several elements (Sprint 10): named currents in amperes, e.g. the RGB LED's
    * `red`/`green`/`blue` channel currents or a relay's `coil` current. Language-neutral keys.
@@ -230,6 +254,11 @@ export interface SolveSuccess extends OutcomeBase {
   stats: SolveStats;
   /** Time-stepped sessions (Sprint 10): simulated time of this state since Run, seconds. */
   time?: number;
+  /**
+   * Sprint 19B (logic L1): nets whose potential is UNKNOWN (reached from an unknown-driven logic
+   * output). They are absent from `netVoltages`, and every component on them is `unknown`.
+   */
+  unknownNets?: string[];
 }
 
 export interface SolveFailure extends OutcomeBase {
@@ -344,6 +373,8 @@ export class EngineSession {
    * and each time-dependent part's history from the last accepted step. A new session starts at
    * t = 0 with every history empty (capacitors discharged): the deterministic reset.
    */
+  /** Sprint 19B: the refusal the states solved in the last pass imply (applied once settled). */
+  private passRefusal: EngineError | null = null;
   private time = 0;
   private step: TimeStep | undefined;
   private readonly history = new Map<string, PartState>();
@@ -607,6 +638,8 @@ export class EngineSession {
       const changed = [...next].filter(([id, st]) => !sameState(st, states.get(id) ?? {}));
       if (changed.length === 0) {
         for (const [id, st] of next) this.discrete.set(id, st);
+        // Sprint 19B: a refusal the settled states imply (a floating logic input...).
+        if (this.passRefusal) return this.fail(this.passRefusal);
         return outcome;
       }
       const key = JSON.stringify([...next].sort(([a], [b]) => (a < b ? -1 : 1)));
@@ -775,6 +808,57 @@ export class EngineSession {
       }
     }
 
+    // ---- Sprint 19B: logic topology (feedback) and unknown nodes ----------------------------
+    // Fixed nodes hold their potential whatever an unknown current does: GND and the outputs
+    // of enabled supplies.
+    const fixed = new Set<string>([REF]);
+    for (const e of elements)
+      if (e.kind === 'psu' && e.active) for (const n of e.nodes) fixed.add(n);
+    const topo: TopoElement[] = elements.map((e) => ({
+      key: e.key,
+      component: e.component.id,
+      nodes: e.nodes,
+      active: e.active,
+    }));
+    const logicParts = parts
+      .filter((p) => p.model.logicPins)
+      .map((p) => {
+        const lp = p.model.logicPins!(p.ctx);
+        return {
+          component: p.c.id,
+          inputs: lp.inputs.map((t) => p.ctx.node(t)),
+          outputs: lp.outputs.map((t) => p.ctx.node(t)),
+        };
+      });
+    if (logicParts.length) {
+      const cycle = logicFeedback(topo, logicParts, fixed);
+      if (cycle) return this.fail({ code: 'logic_feedback_unsupported', components: cycle });
+    }
+    const seeds: string[] = [];
+    for (const p of parts)
+      for (const t of p.model.unknownDriven?.(p.ctx, p.state) ?? []) seeds.push(p.ctx.node(t));
+    const unknown = unknownClosure(topo, seeds, fixed);
+    const unknownSupply = (e: Element) =>
+      e.kind === 'psu' && e.nodes.some((n) => n !== REF && unknown.fixedReached.has(n));
+    // The refusals these states imply, applied by solveUnchecked once they have settled.
+    this.passRefusal = null;
+    for (const p of parts) {
+      const r = p.model.refusal?.(p.ctx, p.state);
+      if (r) {
+        this.passRefusal = r;
+        break;
+      }
+    }
+    if (!this.passRefusal) {
+      const pad = pinNodes.find(({ node }) => unknown.nodes.has(node));
+      if (pad)
+        this.passRefusal = {
+          code: 'logic_unknown_state',
+          components: [pad.pin.component],
+          param: `gpio${pad.pin.gpio}`,
+        };
+    }
+
     // An attached MCU pad is a device too (Sprint 13 P3): a board whose pin is wired straight to
     // GND, with nothing else in the circuit, is a circuit to solve, not an empty one.
     if (elements.length === 0 && pinNodes.length === 0) return this.fail({ code: 'empty_circuit' });
@@ -823,7 +907,13 @@ export class EngineSession {
       const floating = used.filter((e) => uf.find(e.nodes[0]) !== referenced);
       return { floating, uf };
     };
-    const { floating } = islandsWithout(false);
+    const { floating: islandless } = islandsWithout(false);
+    // Sprint 19B: an island that floats only because the level driving it is unknown is not a
+    // wiring error: it is left out of the solve, and everything on it is reported unknown.
+    const excluded = new Set(
+      islandless.filter((e) => e.nodes.some((n) => unknown.nodes.has(n))).map((e) => e.key),
+    );
+    const floating = islandless.filter((e) => !excluded.has(e.key));
     if (floating.length) {
       const ids = floating.map((e) => e.component.id);
       const nets = [
@@ -846,7 +936,7 @@ export class EngineSession {
     const forest = new UnionFind();
     const redundantSwitches = new Set<string>();
     for (const e of elements) {
-      if (!e.active) continue;
+      if (!e.active || excluded.has(e.key)) continue;
       const c = e.component;
       let d: Device;
       const [n0, n1] = e.nodes;
@@ -930,6 +1020,7 @@ export class EngineSession {
     // IEEE -0 is normalised to 0 in everything reported (it is the same physical value).
     const clean = (v: number) => v + 0;
     const potential = (node: string): number | null => {
+      if (unknown.nodes.has(node)) return null;
       const v = nodeVoltages.get(node);
       return v === undefined ? null : clean(v);
     };
@@ -967,6 +1058,15 @@ export class EngineSession {
       }
       if (c.type === 'instrument.lab_psu') {
         result.mode = !e.active ? 'off' : modes.get(c.id) === 'CC' ? 'cc' : 'cv';
+        // An unknown current through a supply in current limit makes its voltage unknown too.
+        if (unknownSupply(e) && result.mode === 'cc' && !this.passRefusal)
+          this.passRefusal = { code: 'logic_unknown_state', components: [c.id] };
+      }
+      if (unknown.elements.has(e.key) || excluded.has(e.key) || unknownSupply(e)) {
+        result.current = null;
+        result.voltage = null;
+        result.unknown = true;
+        delete result.outsideModelRange;
       }
       components[c.id] = result;
     }
@@ -983,6 +1083,7 @@ export class EngineSession {
               ? null
               : clean(-(currents.get(key) ?? 0)), // 0 V branch: first node -> second
         device: (key) => devices.get(key),
+        unknown: (terminal) => unknown.nodes.has(p.ctx.node(terminal)),
         deviceTerminalCurrents: (key) => {
           const d = devices.get(key);
           if (!(d instanceof Npn) || !xSolution.length) return undefined;
@@ -990,7 +1091,24 @@ export class EngineSession {
           return { ic: clean(t.ic), ib: clean(t.ib), ie: clean(t.ie) };
         },
       };
-      components[p.c.id] = { id: p.c.id, type: p.c.type, ...p.model.report(p.ctx, p.state, sol) };
+      const reported: ComponentResult = {
+        id: p.c.id,
+        type: p.c.type,
+        ...p.model.report(p.ctx, p.state, sol),
+      };
+      // Sprint 19B: a part on an unknown node reports no current (its potentials there are
+      // already null); never a number computed with the unknown driver left out.
+      if (p.model.terminals.some((t) => unknown.nodes.has(p.ctx.node(t)))) {
+        reported.unknown = true;
+        reported.current = null;
+        reported.voltage = null;
+        if (reported.currents)
+          reported.currents = Object.fromEntries(
+            Object.keys(reported.currents).map((k) => [k, null]),
+          );
+        delete reported.outsideModelRange;
+      }
+      components[p.c.id] = reported;
       if (p.model.nextState) next.set(p.c.id, p.model.nextState(p.ctx, p.state, sol));
       if (p.model.history) this.pendingHistory.set(p.c.id, p.model.history(p.ctx, sol));
     }
@@ -1002,6 +1120,8 @@ export class EngineSession {
       notConnected,
       stats,
     };
+    const unknownNets = snap.nets.filter((n) => unknown.nodes.has(n.id)).map((n) => n.id);
+    if (unknownNets.length) outcome.unknownNets = unknownNets;
     if (pinDevices.length) {
       outcome.pins = pinDevices.map(({ pin, node, device }) => {
         const mode = this.pinModes.get(pin.gpio)!;

@@ -62,6 +62,11 @@ describe('Sprint 4 catalog: the non-MCU V1 catalog is complete and closed (A16)'
         'display.lcd1602_i2c',
         // Sprint 15 (R4; servo is a PM-6 approved family, §6.0): exposed with LEDC PWM.
         'component.servo_sg90',
+        // Sprint 19B (Exploration Foundation L1, owner-approved EF-D2 B): single logic gates.
+        'logic.gate_and',
+        'logic.gate_nand',
+        'logic.gate_or',
+        'logic.gate_not',
       ].sort(),
     );
   });

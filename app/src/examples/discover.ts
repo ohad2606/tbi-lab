@@ -20,7 +20,8 @@ import { catalogText, LOCALES, translate, type LocaleInfo } from '../i18n/i18n.j
 import type { MessageKey } from '../i18n/messages.en.js';
 import { EXAMPLES, type Example } from './catalog.js';
 
-export type ExampleCategory = 'basic' | 'sensors' | 'lighting' | 'controllers' | 'switching';
+export type ExampleCategory =
+  'basic' | 'sensors' | 'lighting' | 'controllers' | 'switching' | 'logic';
 
 /** In display order. */
 export const EXAMPLE_CATEGORIES: readonly { id: ExampleCategory; labelKey: MessageKey }[] = [
@@ -29,6 +30,7 @@ export const EXAMPLE_CATEGORIES: readonly { id: ExampleCategory; labelKey: Messa
   { id: 'lighting', labelKey: 'library.examples.category.lighting' },
   { id: 'controllers', labelKey: 'library.examples.category.controllers' },
   { id: 'switching', labelKey: 'library.examples.category.switching' },
+  { id: 'logic', labelKey: 'library.examples.category.logic' },
 ];
 
 /**
@@ -55,6 +57,10 @@ const PART_RULES: Record<ComponentTypeId, { categories: ExampleCategory[]; basic
   'display.lcd1602_i2c': { categories: ['lighting'], basic: false },
   'display.led_matrix_8x8': { categories: ['lighting'], basic: false },
   'component.servo_sg90': { categories: [], basic: false },
+  'logic.gate_and': { categories: ['logic'], basic: false },
+  'logic.gate_nand': { categories: ['logic'], basic: false },
+  'logic.gate_or': { categories: ['logic'], basic: false },
+  'logic.gate_not': { categories: ['logic'], basic: false },
   'board.esp32_devkitc_wroom32': { categories: ['controllers'], basic: false },
 };
 

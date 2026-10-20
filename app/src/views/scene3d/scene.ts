@@ -51,6 +51,7 @@ import {
   HC_SR04_MODULE,
   DHT22_CASE,
   LCD1602_MODULE,
+  LOGIC_SOT23_BREAKOUT,
   SERVO_SG90,
   SERVO_SHAFT_X_MM,
   capacitorPackage,
@@ -106,6 +107,7 @@ export type ModelKey =
   | 'sensor.dht22'
   | 'display.lcd1602'
   | 'servo.sg90'
+  | 'logic.sot23'
   | 'generic';
 
 /** Which model draws each component type. A type without an entry gets the generic box. */
@@ -130,6 +132,10 @@ export const MODEL_FOR: Partial<Record<ComponentTypeId, ModelKey>> = {
   'sensor.dht22': 'sensor.dht22',
   'display.lcd1602_i2c': 'display.lcd1602',
   'component.servo_sg90': 'servo.sg90',
+  'logic.gate_and': 'logic.sot23',
+  'logic.gate_nand': 'logic.sot23',
+  'logic.gate_or': 'logic.sot23',
+  'logic.gate_not': 'logic.sot23',
 };
 
 export interface Vec3 {
@@ -260,6 +266,10 @@ export const MODEL_HEIGHT: Record<ModelKey, number> = {
   'buzzer.can': BUZZER_CEM1205.standoffMm + BUZZER_CEM1205.heightMm,
   'relay.cube': RELAY_SRD.standoffMm + RELAY_SRD.heightMm,
   'transistor.to92': TO92.standoffMm + TO92.heightMm,
+  'logic.sot23':
+    LOGIC_SOT23_BREAKOUT.standoffMm +
+    LOGIC_SOT23_BREAKOUT.boardThicknessMm +
+    LOGIC_SOT23_BREAKOUT.bodyHeightMm,
   'sensor.pir': PIR_HC_SR501.standoffMm + PIR_HC_SR501.boardThicknessMm + PIR_HC_SR501.domeHeightMm,
   'display.matrix': LED_MATRIX_1088AS.standoffMm + LED_MATRIX_1088AS.heightMm,
   // The largest can (the body of a given value is in its visual).
@@ -321,6 +331,12 @@ export const FOOTPRINT: Record<ModelKey, readonly [number, number, number, numbe
     RELAY_SRD.widthMm / 2,
   ],
   'transistor.to92': [-6.7, 3.6, -6.7, 6.7],
+  'logic.sot23': [
+    -LOGIC_SOT23_BREAKOUT.boardSizeMm / 2,
+    LOGIC_SOT23_BREAKOUT.boardSizeMm / 2,
+    -LOGIC_SOT23_BREAKOUT.boardSizeMm / 2,
+    LOGIC_SOT23_BREAKOUT.boardSizeMm / 2,
+  ],
   'capacitor.radial': [-6.7, 6.7, -6.25, 6.25],
   'display.matrix': [
     -LED_MATRIX_1088AS.sizeMm / 2,
@@ -453,6 +469,9 @@ function localAttach(
       const [px, pz] = matrixPinXZ(n);
       return { x: px, y: LED_MATRIX_1088AS.attachHeightMm, z: pz };
     }
+    // Sprint 19B: the breakout's header pins stand at the gate's terminals.
+    case 'logic.sot23':
+      return { x, y: LOGIC_SOT23_BREAKOUT.attachHeightMm, z };
     case 'sensor.pir': {
       const [px, pz] = PIR_HC_SR501.pins[terminal]!;
       return { x: px, y: PIR_HC_SR501.attachHeightMm, z: pz };
@@ -1054,6 +1073,7 @@ const main = (r: Route): Point[] =>
 
 /** Models whose pins sit under their body. */
 const UNDER_BODY: ReadonlySet<ModelKey> = new Set([
+  'logic.sot23',
   'relay.cube',
   'sensor.pir',
   'display.matrix',

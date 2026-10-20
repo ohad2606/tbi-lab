@@ -11,3 +11,4 @@ import './ultrasonic.js';
 import './dht22.js';
 import './lcd.js';
 import './servo.js';
+import './logicGate.js';

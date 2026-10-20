@@ -184,6 +184,11 @@ export const ASSETS: Record<ModelKey, AssetRecord> = {
     'models.ts buildRelay',
     '[SRD] Songle SRD datasheet, dimension and drilling drawing p.1',
   ),
+  'logic.sot23': procedural(
+    'logic.sot23',
+    'models.ts buildLogicSot23',
+    '[DBV] TI DBV0005A (SOT-23-5) package drawing, in each SN74LVC1G datasheet; breakout [REP]',
+  ),
   'transistor.to92': procedural(
     'transistor.to92',
     'models.ts buildTo92',

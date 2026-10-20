@@ -63,7 +63,12 @@ export type ModuleGlyph =
   | 'ultrasonic'
   | 'dht22'
   | 'lcd'
-  | 'servo';
+  | 'servo'
+  /** Sprint 19B: single logic gates (distinctive shapes). */
+  | 'logic.and'
+  | 'logic.nand'
+  | 'logic.or'
+  | 'logic.not';
 
 export interface ModuleSymbol {
   kind: 'module';
@@ -248,6 +253,61 @@ export const SCHEMATIC_SYMBOLS: Record<ComponentTypeId, SchematicSymbol> = {
     ],
     partName: 'Relay SPDT',
     glyph: 'relay.spdt',
+  },
+  'logic.gate_and': {
+    kind: 'module',
+    key: 'module',
+    // Sprint 19B: the supply pins are real, connectable pins (never hidden), on the right.
+    pins: [
+      { terminal: 'a', name: 'A', side: 'left', order: 1 },
+      { terminal: 'b', name: 'B', side: 'left', order: 2 },
+      { terminal: 'y', name: 'Y', side: 'right', order: 1 },
+      { terminal: 'vcc', name: 'VCC', side: 'right', order: 2 },
+      { terminal: 'gnd', name: 'GND', side: 'right', order: 3 },
+    ],
+    partName: 'SN74LVC1G08',
+    glyph: 'logic.and',
+  },
+  'logic.gate_nand': {
+    kind: 'module',
+    key: 'module',
+    // Sprint 19B: the supply pins are real, connectable pins (never hidden), on the right.
+    pins: [
+      { terminal: 'a', name: 'A', side: 'left', order: 1 },
+      { terminal: 'b', name: 'B', side: 'left', order: 2 },
+      { terminal: 'y', name: 'Y', side: 'right', order: 1 },
+      { terminal: 'vcc', name: 'VCC', side: 'right', order: 2 },
+      { terminal: 'gnd', name: 'GND', side: 'right', order: 3 },
+    ],
+    partName: 'SN74LVC1G00',
+    glyph: 'logic.nand',
+  },
+  'logic.gate_or': {
+    kind: 'module',
+    key: 'module',
+    // Sprint 19B: the supply pins are real, connectable pins (never hidden), on the right.
+    pins: [
+      { terminal: 'a', name: 'A', side: 'left', order: 1 },
+      { terminal: 'b', name: 'B', side: 'left', order: 2 },
+      { terminal: 'y', name: 'Y', side: 'right', order: 1 },
+      { terminal: 'vcc', name: 'VCC', side: 'right', order: 2 },
+      { terminal: 'gnd', name: 'GND', side: 'right', order: 3 },
+    ],
+    partName: 'SN74LVC1G32',
+    glyph: 'logic.or',
+  },
+  'logic.gate_not': {
+    kind: 'module',
+    key: 'module',
+    // Sprint 19B: the supply pins are real, connectable pins (never hidden), on the right.
+    pins: [
+      { terminal: 'a', name: 'A', side: 'left', order: 1 },
+      { terminal: 'y', name: 'Y', side: 'right', order: 1 },
+      { terminal: 'vcc', name: 'VCC', side: 'right', order: 2 },
+      { terminal: 'gnd', name: 'GND', side: 'right', order: 3 },
+    ],
+    partName: 'SN74LVC1G04',
+    glyph: 'logic.not',
   },
   'board.esp32_devkitc_wroom32': {
     kind: 'module',

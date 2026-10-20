@@ -101,6 +101,60 @@ export const en = {
   'model.ldr.senba_gl5528': 'CdS cell 5 mm (GL5528)',
   'model.buzzer.cui_cem_1205_ic': 'Active 5 V, 12 mm (CUI Devices CEM-1205-IC)',
   'model.relay.songle_srd_05vdc_sl_c': '5 V coil, SPDT (Songle SRD-05VDC-SL-C)',
+  // Sprint 19B (Exploration Foundation L1): single logic gates, TI SN74LVC1G series.
+  'component.logic.gate_and.name': 'AND gate',
+  'component.logic.gate_nand.name': 'NAND gate',
+  'component.logic.gate_or.name': 'OR gate',
+  'component.logic.gate_not.name': 'NOT gate (inverter)',
+  'model.logic.sn74lvc1g08': 'TI SN74LVC1G08, SOT-23-5 on a breakout',
+  'model.logic.sn74lvc1g00': 'TI SN74LVC1G00, SOT-23-5 on a breakout',
+  'model.logic.sn74lvc1g32': 'TI SN74LVC1G32, SOT-23-5 on a breakout',
+  'model.logic.sn74lvc1g04': 'TI SN74LVC1G04, SOT-23-5 on a breakout',
+  'terminal.logic_a': 'Input A',
+  'terminal.logic_b': 'Input B',
+  'terminal.logic_y': 'Output Y',
+  'terminal.logic_gnd': 'Ground (GND)',
+  'palette.group.logic': 'Logic',
+  'library.examples.category.logic': 'Digital logic',
+  'sim.part.state.gateOutput': 'Output',
+  'sim.part.state.gateOutput.high': 'HIGH',
+  'sim.part.state.gateOutput.low': 'LOW',
+  'sim.part.state.gateOutput.x': 'unknown (X)',
+  'sim.part.state.gateOutput.off': 'off (unpowered)',
+  'sim.part.state.input_a': 'Input A',
+  'sim.part.state.input_a.high': 'HIGH',
+  'sim.part.state.input_a.low': 'LOW',
+  'sim.part.state.input_a.x': 'unknown (X): between V_IL and V_IH',
+  'sim.part.state.input_b': 'Input B',
+  'sim.part.state.input_b.high': 'HIGH',
+  'sim.part.state.input_b.low': 'LOW',
+  'sim.part.state.input_b.x': 'unknown (X): between V_IL and V_IH',
+  'sim.part.state.supplyV': 'Supply (V_CC − GND)',
+  'sim.part.state.outputModel': 'Output characteristic',
+  'sim.part.state.outputModel.tabulated': 'guaranteed (datasheet test points at this supply)',
+  'sim.part.state.outputModel.ranged': 'guaranteed only up to 100 µA at this supply',
+  'sim.part.state.outputValidA': 'Characterized up to',
+  'sim.part.state.iccMaxA': 'Quiescent supply current (datasheet max, not included above)',
+  'sim.part.state.firstUnknownInput': 'First unknown input',
+  'sim.part.state.firstUnknownInput.a': 'A',
+  'sim.part.state.firstUnknownInput.b': 'B',
+  'sim.part.current.y': 'Output current (Y)',
+  'sim.part.current.vcc': 'Supply pin current (V_CC)',
+  'sim.part.current.gnd': 'Ground pin current (GND)',
+  'sim.results.unknown':
+    'Unknown: an undetermined logic level reaches this part, so no value is shown. Check the logic inputs marked unknown (X).',
+  'sim.error.logic_input_floating':
+    '{components}: input {pin} is not connected to anything. A floating CMOS input has no defined level. Connect it to a signal, to V_CC or GND, or through a pull-up or pull-down resistor.',
+  'sim.error.logic_supply_missing':
+    '{components}: V_CC or GND is not connected. A [[logicGate]] needs its own supply pins connected.',
+  'sim.error.logic_supply_uncharacterized':
+    '{components}: the supply is {supply}, which the datasheet does not characterize (1.65–1.95 V, 2.3–2.7 V, 3.0–3.6 V or 4.5–5.5 V). The simulator does not invent thresholds between datasheet rows.',
+  'sim.error.logic_output_uncharacterized':
+    '{components}: at {supply} the datasheet guarantees the output only up to 100 µA, and this load draws {current}. Power the gate at 3.0 V or 4.5 V, where its output is characterized for real loads, or use a lighter load.',
+  'sim.error.logic_feedback_unsupported':
+    '{components}: a logic output feeds back into its own network (a latch or an oscillator). Its behaviour depends on propagation delay, which this version does not simulate.',
+  'sim.error.logic_unknown_state':
+    '{components}: an undetermined logic level reaches {pin}, which must have a defined value. Check the logic inputs marked unknown (X).',
   'sim.part.current.red': 'Red channel current',
   'sim.part.current.green': 'Green channel current',
   'sim.part.current.blue': 'Blue channel current',
@@ -1173,6 +1227,16 @@ export const en = {
   // Sprint 15 (R4): PWM averages, the SG90 servo and the ESP32's LEDC outputs.
   'limitation.pwm_average':
     'Driven by PWM, the values shown are time-averages over the waveform (exact for this part); ratings use the peak current. Perceived brightness is approximated by the average current.',
+  'limitation.logic_dc_no_delay':
+    'DC only: propagation delay (datasheet 0.7–4.5 ns at 3.3 V) is not simulated. Circuits that depend on it are refused: feedback between gates (latches, oscillators), PWM into a gate, clocks.',
+  'limitation.logic_guaranteed_output':
+    'The output uses the datasheet’s guaranteed (worst-case) characteristic, not typical values: a real part’s output is usually closer to the rails.',
+  'limitation.logic_supply_rows':
+    'Thresholds and output levels only where the datasheet tabulates them (1.65–1.95 V, 2.3–2.7 V, 3.0–3.6 V, 4.5–5.5 V). Real loads only at 3.0 V or 4.5 V, where the output test points are; elsewhere up to 100 µA.',
+  'limitation.logic_unknown':
+    'An input between V_IL and V_IH is unknown (X), and so is everything it determines; a floating input is refused. Input leakage (±5 µA) is not used as a level.',
+  'limitation.logic_breakout':
+    'The SOT-23-5 package is shown on a representative breakout board, so it fits a breadboard; the board’s layout is illustrative.',
   'limitation.servo_supply_current':
     'Supply current is not modelled: a weak supply or a 3.3 V pin is not shown sagging under the servo’s load.',
   'limitation.servo_thresholds':

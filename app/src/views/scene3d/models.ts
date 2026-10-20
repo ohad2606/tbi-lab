@@ -28,6 +28,7 @@ import {
   HC_SR04_MODULE,
   DHT22_CASE,
   LCD1602_MODULE,
+  LOGIC_SOT23_BREAKOUT,
   SERVO_SG90,
   SERVO_SHAFT_X_MM,
   LED_MATRIX_1088AS,
@@ -1299,6 +1300,7 @@ const BUILDERS: Record<ModelKey, Builder> = {
   'sensor.dht22': buildDht22,
   'display.lcd1602': buildLcd1602,
   'servo.sg90': buildServo,
+  'logic.sot23': buildLogicSot23,
   'transistor.to92': buildTo92,
   'led.rgb': buildRgbLed,
   'ldr.disc': buildPhotoresistor,
@@ -1597,6 +1599,56 @@ function buildEsp32(c: SceneComponent, m: Materials, own: OwnedResources): THREE
     h.position.set(Math.sign(local.x) * rowX, top + d.dupontSeatMm, realPinZ(pin.position));
     h.userData.jumper = id;
     g.add(h);
+  }
+  return g;
+}
+
+/**
+ * Sprint 19B: an SN74LVC1G gate, SOT-23-5 (DBV0005A) on a representative breakout board: the
+ * board on four header pins, the package with its five gull-wing leads (3 on one side, 2 on the
+ * other, 0.95 mm pitch), the header pins at the gate's terminals.
+ */
+function buildLogicSot23(c: SceneComponent, m: Materials, own: OwnedResources) {
+  const P = LOGIC_SOT23_BREAKOUT;
+  const g = new THREE.Group();
+  const y0 = P.standoffMm;
+  g.add(
+    box(own, P.boardSizeMm, P.boardThicknessMm, P.boardSizeMm, m.pcb, [
+      0,
+      y0 + P.boardThicknessMm / 2,
+      0,
+    ]),
+  );
+  const top = y0 + P.boardThicknessMm;
+  g.add(box(own, P.bodyXMm, P.bodyHeightMm, P.bodyZMm, m.ic, [0, top + P.bodyHeightMm / 2, 0]));
+  // Leads: pins 1–3 on one long side, 4–5 on the other.
+  const lead = (P.leadSpanMm - P.bodyZMm) / 2;
+  for (const [x, side] of [
+    [-P.leadPitchMm, -1],
+    [0, -1],
+    [P.leadPitchMm, -1],
+    [P.leadPitchMm, 1],
+    [-P.leadPitchMm, 1],
+  ] as const)
+    g.add(
+      box(own, P.leadWidthMm, 0.15, lead, m.lead, [
+        x,
+        top + 0.08,
+        side * (P.bodyZMm / 2 + lead / 2),
+      ]),
+    );
+  for (const t of c.terminals) {
+    const x = t.x - c.x;
+    const z = t.z - c.z;
+    // Terminals are placed in world coordinates; undo the part's rotation for the local frame.
+    const ca = Math.cos(-c.rotationY);
+    const sa = Math.sin(-c.rotationY);
+    const lx = x * ca + z * sa;
+    const lz = -x * sa + z * ca;
+    g.add(box(own, 0.64, y0, 0.64, m.gold, [lx, y0 / 2, lz]));
+    const blob = cylinder(own, 0.55, 0.9, m.chrome, [lx, P.attachHeightMm, lz], 16, 0.75);
+    blob.userData.pin = t.id;
+    g.add(blob);
   }
   return g;
 }

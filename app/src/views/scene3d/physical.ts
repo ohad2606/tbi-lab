@@ -547,3 +547,24 @@ export const SERVO_SG90 = {
 /** The servo's output shaft centre (local x; z = 0). */
 export const SERVO_SHAFT_X_MM =
   SERVO_SG90.caseLeftXMm + SERVO_SG90.caseXMm - SERVO_SG90.shaftFromEndMm;
+
+/**
+ * Sprint 19B: an SN74LVC1G single gate in TI's DBV0005A (SOT-23-5) package [DBV]: body
+ * 2.75–3.05 × 1.45–1.75 mm, 0.90–1.45 mm high, leads 0.3–0.5 mm wide at 0.95 mm pitch (1.9 mm
+ * between the outer leads), mid-tolerance values. A SOT-23 does not fit a breadboard: it sits on
+ * a representative 5-pin breakout board [REP] whose header pins stand at the part's terminals.
+ */
+export const LOGIC_SOT23_BREAKOUT = {
+  bodyXMm: 2.9,
+  bodyZMm: 1.6,
+  bodyHeightMm: 1.2,
+  leadPitchMm: 0.95,
+  leadWidthMm: 0.4,
+  /** Lead tip to lead tip across the body (DBV0005A: 2.6–3.0). */
+  leadSpanMm: 2.8,
+  boardSizeMm: 15.2,
+  boardThicknessMm: 1.6,
+  /** Header pin length under the board [REP]. */
+  standoffMm: 8.5,
+  attachHeightMm: 0.8,
+};

@@ -567,7 +567,13 @@ function ComponentResultView({
 const TEXT_STATES: ReadonlySet<string> = new Set(['line1', 'line2']);
 
 /** Units of numeric part states (language-neutral keys). */
-const STATE_UNITS: Record<string, UnitId> = { resistance: 'ohm' };
+const STATE_UNITS: Record<string, UnitId> = {
+  resistance: 'ohm',
+  // Sprint 19B: logic gates.
+  supplyV: 'volt',
+  outputValidA: 'ampere',
+  iccMaxA: 'ampere',
+};
 
 /**
  * Numeric part states in units that are not stored engineering units (Sprint 15, the servo): its

@@ -405,6 +405,24 @@ function moduleGlyph(glyph: SchModule['glyph']) {
           <line x1={14} y1={0} x2={30} y2={0} />
         </>
       );
+    // Sprint 19B: logic gates (distinctive shapes), inputs left, output right.
+    case 'logic.and':
+    case 'logic.nand':
+      return (
+        <>
+          <path d="M -18 -14 H -2 A 14 14 0 0 1 -2 14 H -18 Z" />
+          {glyph === 'logic.nand' && <circle cx={15} cy={0} r={3} />}
+        </>
+      );
+    case 'logic.or':
+      return <path d="M -18 -14 Q 2 -14 14 0 Q 2 14 -18 14 Q -10 0 -18 -14 Z" />;
+    case 'logic.not':
+      return (
+        <>
+          <path d="M -14 -12 L -14 12 L 8 0 Z" />
+          <circle cx={11} cy={0} r={3} />
+        </>
+      );
     case 'relay.spdt':
       // Coil (box) mechanically linked (dashed) to a change-over contact: COM, NC (rest), NO.
       return (
