@@ -144,24 +144,34 @@ function differs(a: ComponentResult, b: ComponentResult): boolean {
 }
 
 /**
- * Combine the operating points. `low`: every PWM pad low; `single[i]`: only pad i high; `allHigh`:
- * every PWM pad high (only needed with two or more pads). `prevInputs`: the input levels the MCU
- * currently sees (for the hysteresis of interpretDigitalInput).
+ * Sprint 18 (F-17C-2): everything about a set of operating points that does not depend on the
+ * duties: which parts are refused (steps 1 and 3 below), and each part's and pad's peaks, ranges
+ * and model-range flags. Computed once per pad configuration and reused while only duties change.
  */
-export function combinePwm(
-  pads: (PwmPad & { periodNs: number; highNs: number })[],
+export interface PwmAnalysis {
+  /** Steps 1 and 3, without the pads (added by `combinePwm`). */
+  load: string[];
+  supplies: string[];
+  interacting: string[];
+  components: Record<
+    string,
+    { changed: boolean; outsideModelRange: boolean; fig?: PwmComponentFigures }
+  >;
+  pins: Record<
+    number,
+    { outsideModelRange: boolean; peakCurrent?: number; voltageRange?: [number, number] }
+  >;
+}
+
+/** The duty-independent analysis of the operating points (see `combinePwm` for the arguments). */
+export function analysePwm(
   low: SolveSuccess,
   single: SolveSuccess[],
   allHigh: SolveSuccess | null,
   types: Readonly<Record<string, string>>,
-  prevInputs: ReadonlyMap<number, 0 | 1>,
-  /** Three or more pads: every pair high together (`i < j`), for the pairwise check. */
   pairs: readonly { i: number; j: number; o: SolveSuccess }[] = [],
-): PwmCombination {
-  const duties = pads.map((p) => p.duty);
-  const gpios = pads.map((p) => p.gpio);
+): PwmAnalysis {
   const points = [low, ...single, ...(allHigh ? [allHigh] : [])];
-  const problems: PwmProblem[] = [];
 
   // 1. Parts outside the averaged set must not notice the PWM outputs at all.
   // M6: an averaged part whose discrete state changes between the points is not averaged either.
@@ -173,40 +183,24 @@ export function combinePwm(
       ),
   );
   const supplies = switching.filter((id) => types[id] === 'instrument.lab_psu');
-  const affected = Object.keys(low.components).filter(
+  const load = Object.keys(low.components).filter(
     (id) =>
       (!PWM_AVERAGED_TYPES.has(types[id] ?? '') &&
         points.some((p) => p.components[id] && differs(low.components[id]!, p.components[id]!))) ||
       (switching.includes(id) && !supplies.includes(id)),
   );
-  if (affected.length) problems.push({ code: 'pwm_load_unsupported', components: affected, gpios });
-  if (supplies.length) problems.push({ code: 'pwm_supply_limited', components: supplies, gpios });
-
-  // 2. No MCU input may change level: reading a PWM signal needs edges, which A1 does not give.
-  const pwmGpios = new Set(gpios);
-  const inputs = (low.pins ?? [])
-    .filter((p) => p.mode === 'input' && !pwmGpios.has(p.gpio))
-    .filter((p) => {
-      const prev = prevInputs.get(p.gpio) ?? 0;
-      const at = (o: SolveSuccess) => {
-        const q = o.pins?.find((x) => x.gpio === p.gpio);
-        return q ? interpretDigitalInput(q.voltage, prev) : prev;
-      };
-      return points.some((o) => at(o) !== at(low));
-    })
-    .map((p) => p.gpio);
-  if (inputs.length) problems.push({ code: 'pwm_input_unsupported', inputs, gpios });
 
   // 3. Several pads: superposition must hold for every averaged quantity.
-  if (allHigh && pads.length > 1) {
+  let interacting: string[] = [];
+  if (allHigh && single.length > 1) {
     // The response to a set of pads high together must be the sum of their single changes: for
     // the all-high point and (three or more pads) every pair. Higher-order interactions that
     // cancel in both are not detected (documented limitation).
     const checks = [
-      { members: pads.map((_, i) => i), o: allHigh },
+      { members: single.map((_, i) => i), o: allHigh },
       ...pairs.map((p) => ({ members: [p.i, p.j], o: p.o })),
     ];
-    const interacting = Object.keys(low.components).filter((id) => {
+    interacting = Object.keys(low.components).filter((id) => {
       const base = quantities(low.components[id]!);
       const singles = single.map((s) => quantities(s.components[id]!));
       for (const { members, o } of checks) {
@@ -228,39 +222,17 @@ export function combinePwm(
       }
       return false;
     });
-    if (interacting.length)
-      problems.push({ code: 'pwm_outputs_interact', components: interacting, gpios });
   }
 
-  // 4. The average and the peaks.
-  const components: Record<string, ComponentResult> = {};
+  // 4 (duty-independent part). The peaks and ranges.
+  const components: PwmAnalysis['components'] = {};
   for (const [id, base] of Object.entries(low.components)) {
     const singles = single.map((s) => s.components[id]!);
-    const avg = (pick: (r: ComponentResult) => Num) =>
-      lin(
-        pick(base),
-        singles.map((s) => minus(pick(s), pick(base))),
-        duties,
-      );
     const changed = points.some((p) => differs(base, p.components[id]!));
-    const r: ComponentResult = {
-      ...base,
-      current: avg((x) => x.current),
-      voltage: avg((x) => x.voltage),
-      terminals: Object.fromEntries(
-        Object.keys(base.terminals).map((k) => [k, avg((x) => x.terminals[k] ?? null)]),
-      ),
+    const entry: PwmAnalysis['components'][string] = {
+      changed,
+      outsideModelRange: points.some((p) => p.components[id]!.outsideModelRange === true),
     };
-    if (base.currents)
-      r.currents = Object.fromEntries(
-        Object.keys(base.currents).map((k) => [k, avg((x) => x.currents?.[k] ?? null)]),
-      );
-    if (base.array)
-      r.array = {
-        ...base.array,
-        currents: base.array.currents.map((_, i) => avg((x) => x.array?.currents[i] ?? null) ?? 0),
-      };
-    if (points.some((p) => p.components[id]!.outsideModelRange)) r.outsideModelRange = true;
     if (changed) {
       const span = (pick: (r: ComponentResult) => Num) =>
         range(
@@ -282,20 +254,128 @@ export function combinePwm(
         fig.peakArray = base.array.currents.map(
           (_, i) => peakOf(span((x) => x.array?.currents[i] ?? null)) ?? 0,
         );
-      r.pwm = fig;
+      entry.fig = fig;
     }
+    components[id] = entry;
+  }
+  const pins: PwmAnalysis['pins'] = {};
+  for (const p of low.pins ?? []) {
+    const singles = single.map((s) => s.pins!.find((x) => x.gpio === p.gpio)!);
+    const entry: PwmAnalysis['pins'][number] = {
+      outsideModelRange: points.some(
+        (o) => o.pins?.find((x) => x.gpio === p.gpio)?.outsideModelRange === true,
+      ),
+    };
+    const pk = peakOf(
+      range(
+        p.current,
+        singles.map((s) => s.current - p.current),
+      ),
+    );
+    if (
+      pk !== null &&
+      points.some((o) => o.pins?.find((x) => x.gpio === p.gpio)?.current !== p.current)
+    )
+      entry.peakCurrent = pk;
+    const vr = range(
+      p.voltage,
+      singles.map((s) => s.voltage - p.voltage),
+    );
+    if (vr && vr[0] !== vr[1]) entry.voltageRange = vr;
+    pins[p.gpio] = entry;
+  }
+  return { load, supplies, interacting, components, pins };
+}
+
+/**
+ * Combine the operating points. `low`: every PWM pad low; `single[i]`: only pad i high; `allHigh`:
+ * every PWM pad high (only needed with two or more pads). `prevInputs`: the input levels the MCU
+ * currently sees (for the hysteresis of interpretDigitalInput). `analysis`: `analysePwm` of the
+ * same points, when the caller keeps it (Sprint 18); computed here otherwise.
+ */
+export function combinePwm(
+  pads: (PwmPad & { periodNs: number; highNs: number })[],
+  low: SolveSuccess,
+  single: SolveSuccess[],
+  allHigh: SolveSuccess | null,
+  types: Readonly<Record<string, string>>,
+  prevInputs: ReadonlyMap<number, 0 | 1>,
+  /** Three or more pads: every pair high together (`i < j`), for the pairwise check. */
+  pairs: readonly { i: number; j: number; o: SolveSuccess }[] = [],
+  analysis: PwmAnalysis = analysePwm(low, single, allHigh, types, pairs),
+): PwmCombination {
+  const duties = pads.map((p) => p.duty);
+  const gpios = pads.map((p) => p.gpio);
+  const points = [low, ...single, ...(allHigh ? [allHigh] : [])];
+  const problems: PwmProblem[] = [];
+  const a = analysis;
+
+  // 1. (analysePwm) Parts outside the averaged set, and averaged parts changing discrete state.
+  if (a.load.length) problems.push({ code: 'pwm_load_unsupported', components: a.load, gpios });
+  if (a.supplies.length)
+    problems.push({ code: 'pwm_supply_limited', components: a.supplies, gpios });
+
+  // 2. No MCU input may change level: reading a PWM signal needs edges, which A1 does not give.
+  const pwmGpios = new Set(gpios);
+  const inputs = (low.pins ?? [])
+    .filter((p) => p.mode === 'input' && !pwmGpios.has(p.gpio))
+    .filter((p) => {
+      const prev = prevInputs.get(p.gpio) ?? 0;
+      const at = (o: SolveSuccess) => {
+        const q = o.pins?.find((x) => x.gpio === p.gpio);
+        return q ? interpretDigitalInput(q.voltage, prev) : prev;
+      };
+      return points.some((o) => at(o) !== at(low));
+    })
+    .map((p) => p.gpio);
+  if (inputs.length) problems.push({ code: 'pwm_input_unsupported', inputs, gpios });
+
+  // 3. (analysePwm) Several pads: superposition.
+  if (a.interacting.length)
+    problems.push({ code: 'pwm_outputs_interact', components: a.interacting, gpios });
+
+  // 4. The average (here: it depends on the duties) and the peaks (analysePwm).
+  const components: Record<string, ComponentResult> = {};
+  for (const [id, base] of Object.entries(low.components)) {
+    const singles = single.map((s) => s.components[id]!);
+    const avg = (pick: (r: ComponentResult) => Num) =>
+      lin(
+        pick(base),
+        singles.map((s) => minus(pick(s), pick(base))),
+        duties,
+      );
+    const r: ComponentResult = {
+      ...base,
+      current: avg((x) => x.current),
+      voltage: avg((x) => x.voltage),
+      terminals: Object.fromEntries(
+        Object.keys(base.terminals).map((k) => [k, avg((x) => x.terminals[k] ?? null)]),
+      ),
+    };
+    if (base.currents)
+      r.currents = Object.fromEntries(
+        Object.keys(base.currents).map((k) => [k, avg((x) => x.currents?.[k] ?? null)]),
+      );
+    if (base.array)
+      r.array = {
+        ...base.array,
+        currents: base.array.currents.map((_, i) => avg((x) => x.array?.currents[i] ?? null) ?? 0),
+      };
+    const an = a.components[id]!;
+    if (an.outsideModelRange) r.outsideModelRange = true;
+    if (an.fig) r.pwm = an.fig;
     components[id] = r;
   }
   const netVoltages: Record<string, number> = {};
   for (const [net, v] of Object.entries(low.netVoltages)) {
-    const a = lin(
+    const av = lin(
       v,
       single.map((s) => minus(s.netVoltages[net] ?? null, v)),
       duties,
     );
-    if (a !== null) netVoltages[net] = a;
+    if (av !== null) netVoltages[net] = av;
   }
-  const pins = low.pins?.map((p, _i) => {
+  const pins = low.pins?.map((p) => {
     const singles = single.map((s) => s.pins!.find((x) => x.gpio === p.gpio)!);
     const i = gpios.indexOf(p.gpio);
     const out: PinResult = {
@@ -311,8 +391,8 @@ export function combinePwm(
         duties,
       )!,
     };
-    if (points.some((o) => o.pins?.find((x) => x.gpio === p.gpio)?.outsideModelRange))
-      out.outsideModelRange = true;
+    const an = a.pins[p.gpio]!;
+    if (an.outsideModelRange) out.outsideModelRange = true;
     if (i >= 0) {
       const hi = singles[i]!;
       out.pwm = {
@@ -323,22 +403,8 @@ export function combinePwm(
         currentLow: p.current,
       };
     }
-    const pk = peakOf(
-      range(
-        p.current,
-        singles.map((s) => s.current - p.current),
-      ),
-    );
-    if (
-      pk !== null &&
-      points.some((o) => o.pins?.find((x) => x.gpio === p.gpio)?.current !== p.current)
-    )
-      out.peakCurrent = pk;
-    const vr = range(
-      p.voltage,
-      singles.map((s) => s.voltage - p.voltage),
-    );
-    if (vr && vr[0] !== vr[1]) out.voltageRange = vr;
+    if (an.peakCurrent !== undefined) out.peakCurrent = an.peakCurrent;
+    if (an.voltageRange) out.voltageRange = an.voltageRange;
     return out;
   });
   return {

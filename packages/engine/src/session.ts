@@ -382,6 +382,26 @@ export class EngineSession {
     return this.snapshot.snapshotId;
   }
 
+  /**
+   * Sprint 18 (F-17C-2): a canonical key of every transient input the next `solve` depends on (pad
+   * modes, live controls, pressed buttons, part runtime inputs, stateful parts' discrete states,
+   * the applied revision). The solve is deterministic, so two solves from equal keys return equal
+   * outcomes and leave equal states. Null for time-stepped sessions (their history is not keyed).
+   */
+  get stateKey(): string | null {
+    if (this.timeDependent) return null;
+    const sorted = <K, V>(m: ReadonlyMap<K, V>) =>
+      [...m].sort(([a], [b]) => (String(a) < String(b) ? -1 : String(a) > String(b) ? 1 : 0));
+    return JSON.stringify([
+      this.appliedRevision,
+      sorted(this.pinModes),
+      sorted(this.overrides),
+      [...this.pressed].sort(),
+      sorted(this.partRuntime),
+      sorted(this.discrete),
+    ]);
+  }
+
   /** Whether the circuit holds a time-dependent part: then it runs time-stepped (advance). */
   get timeDependent(): boolean {
     return this.timeDependentParts.length > 0;

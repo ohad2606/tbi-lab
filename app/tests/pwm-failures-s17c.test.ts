@@ -48,7 +48,9 @@ describe('PWM refusals in the app (Sprint 17C)', () => {
         expect(text).not.toMatch(/[{}]|sim\.(error|pwm)\./);
         expect(text).toContain('GPIO18');
         if (code === 'pwm_input_unsupported') expect(text).toContain('GPIO5');
-        else if (code !== 'pwm_unsupported_mode') expect(text).toContain('PSU1');
+        // A mode refusal and the solve budget (Sprint 18) concern pads only, never parts.
+        else if (code !== 'pwm_unsupported_mode' && code !== 'pwm_rate_exceeded')
+          expect(text).toContain('PSU1');
       });
 
   it('a single-pad detail (`gpio`) is named too; an unknown code stays generic', () => {

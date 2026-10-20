@@ -106,6 +106,33 @@ describe('analyzeFeatures', () => {
     ).toEqual([]);
   });
 
+  // Sprint 18 (F-17C-1): any CPU clock change stalls the emulator (measured on Runtime v3 with
+  // setCpuFrequencyMhz 160/80/40/20: the next delay never returns; 240 runs on). The symbol is
+  // always linked (the core sets F_CPU at boot), so the source decides.
+  it('F-17C-1: a CPU clock change is refused from the source; the boot 240 MHz is not a change', () => {
+    const f = (source: string) =>
+      analyzeFeatures({ source, symbols: ['setCpuFrequencyMhz'], libraries: [] }).unsupported;
+    expect(f('void setup() {}')).toEqual([]);
+    expect(f('setCpuFrequencyMhz(240);')).toEqual([]);
+    expect(f('setCpuFrequencyMhz( 240 ); setCpuFrequencyMhz(240);')).toEqual([]);
+    for (const src of [
+      'setCpuFrequencyMhz(160);',
+      'setCpuFrequencyMhz(80);',
+      'setCpuFrequencyMhz(40);',
+      'const int MHZ = 240; setCpuFrequencyMhz(MHZ);',
+      'setCpuFrequencyMhz(240); setCpuFrequencyMhz(80);',
+      'bool (*f)(uint32_t) = setCpuFrequencyMhz;',
+      'rtc_clk_cpu_freq_set_config(&c);',
+      'rtc_clk_cpu_freq_set_config_fast(&c);',
+      'rtc_clk_cpu_freq_set_xtal();',
+      'esp_pm_configure(&pm);',
+    ])
+      expect(f(src), src).toEqual(['cpu_frequency']);
+    expect(f('/* setCpuFrequencyMhz(80); */ Serial.println("setCpuFrequencyMhz(80)");')).toEqual(
+      [],
+    );
+  });
+
   it('codeOnly strips comments and literals', () => {
     expect(codeOnly('a /* b */ c // d\n"e" \'f\'')).toBe('a   c  \n"" \'\'');
   });

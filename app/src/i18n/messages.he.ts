@@ -746,6 +746,7 @@ export const he: Record<MessageKey, string> = {
   'build.feature.internal_pull': 'נגד Pull-up/Pull-down פנימי',
   'build.feature.interrupt': 'פסיקות GPIO',
   'build.feature.restart': 'אתחול השבב',
+  'build.feature.cpu_frequency': 'שינוי תדר המעבד (setCpuFrequencyMhz)',
   'build.feature.wifi': 'תקשורת Wi-Fi',
   'build.feature.bluetooth': "בלוטות'",
   'build.feature.adc': 'כניסה אנלוגית (ADC)',
@@ -826,6 +827,8 @@ export const he: Record<MessageKey, string> = {
     'יציאות ה־PWM ‏{pins} חולקות עומס ({components}). ההשפעה המשולבת שלהן תלויה בחפיפה בין צורות הגל, וזו אינה מדומה.',
   'sim.error.pwm.pwm_supply_limited':
     'ה־PWM ב־{pins} מביא את {components} למגבלת הזרם שלו בחלק מכל מחזור. האופן שבו ספק מעבדה מווסת עומס ממותג בגבול הזרם אינו מדומה, ולכן הסשן נעצר. העלו את מגבלת הזרם של הספק או הקטינו את העומס.',
+  'sim.error.pwm.pwm_rate_exceeded':
+    'הסקיצה משנה לעיתים קרובות כל כך אילו מבין {pins} ממותגים (או נעצרים על 0% או 100%), שהסימולטור היה צריך יותר מ־1000 פתרונות מעגל לשנייה מדומה, שזו המגבלה שלו. הסשן נעצר במקום להאט או לקרב. שינוי מחזור העבודה בלבד של יציאת PWM פעילה אינו עולה דבר; העבירו יציאות בין PWM לרמה קבועה בתדירות נמוכה יותר.',
   'sim.pwm.why.open-drain': 'יציאת PWM מסוג Open-drain',
   'sim.pwm.why.inverted': 'יציאת PWM הפוכה (היפוך במטריצת ה־GPIO)',
   'sim.pwm.why.low-speed': 'ערוץ איטי (יותר מ־8 ערוצי PWM)',
@@ -1014,6 +1017,9 @@ export const he: Record<MessageKey, string> = {
     'אינה מדומה: הפינים פועלים בעוצמת ההנעה של ברירת המחדל. קוד שבוחר עוצמה אחרת נדחה בבנייה.',
   'capabilities.facility.restart.name': 'אתחול השבב (ESP.restart)',
   'capabilities.facility.restart.body': 'אינו מדומה. לחצו עצירה ואז הרצה כדי להתחיל מחדש.',
+  'capabilities.facility.cpu_frequency.name': 'שינויי תדר המעבד (setCpuFrequencyMhz)',
+  'capabilities.facility.cpu_frequency.body':
+    'אינם מדומים: ה־ESP32 פועל ב־240 MHz. קוד שמשנה את תדר המעבד נדחה בבנייה.',
   'capabilities.facility.library.name': 'ספריות Arduino',
   'capabilities.facility.library.body':
     'רצות רק ספריות מובנות של ליבת ה־ESP32 שמופיעות כאן (Preferences; ‏Wire מול רכיבי ה־I2C). ספריות אחרות, כמו DHT או LiquidCrystal_I2C, נדחות; הדוגמאות המוכנות מראות את אותם רכיבים בלעדיהן.',

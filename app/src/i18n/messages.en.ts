@@ -769,6 +769,7 @@ export const en = {
   'build.feature.internal_pull': 'internal pull-up/pull-down',
   'build.feature.interrupt': 'GPIO interrupts',
   'build.feature.restart': 'chip restart',
+  'build.feature.cpu_frequency': 'CPU clock change (setCpuFrequencyMhz)',
   'build.feature.wifi': 'Wi-Fi networking',
   'build.feature.bluetooth': 'Bluetooth',
   'build.feature.adc': 'analog input (ADC)',
@@ -851,6 +852,8 @@ export const en = {
     'The PWM outputs {pins} share a load ({components}). Their combined effect depends on how the waveforms overlap, which is not simulated.',
   'sim.error.pwm.pwm_supply_limited':
     'PWM on {pins} makes {components} reach its current limit during part of each cycle. How a bench supply regulates a switching load at its limit is not simulated, so the session stopped. Raise the supply’s current limit or reduce the load.',
+  'sim.error.pwm.pwm_rate_exceeded':
+    'The sketch changes which of {pins} are switching (or stop at 0 % or 100 %) so often that the simulator would need more than 1000 circuit solutions per simulated second, its limit. The session stopped instead of slowing down or approximating. Changing only the duty of a running PWM output costs nothing; switch outputs between PWM and steady levels less often.',
   'sim.pwm.why.open-drain': 'an open-drain PWM output',
   'sim.pwm.why.inverted': 'an inverted PWM output (GPIO matrix inversion)',
   'sim.pwm.why.low-speed': 'a low-speed channel (more than 8 PWM channels)',
@@ -1044,6 +1047,9 @@ export const en = {
     'Not simulated: pins use the default drive strength. Code that selects another strength is refused at Build.',
   'capabilities.facility.restart.name': 'Chip restart (ESP.restart)',
   'capabilities.facility.restart.body': 'Not simulated. Press Stop and Run to start again.',
+  'capabilities.facility.cpu_frequency.name': 'CPU clock changes (setCpuFrequencyMhz)',
+  'capabilities.facility.cpu_frequency.body':
+    'Not simulated: the ESP32 runs at 240 MHz. Code that changes the CPU clock is refused at Build.',
   'capabilities.facility.library.name': 'Arduino libraries',
   'capabilities.facility.library.body':
     'Only libraries built into the ESP32 core that are listed here run (Preferences; Wire on the I2C parts). Other libraries, such as DHT or LiquidCrystal_I2C, are refused; the curated examples show the same parts without them.',

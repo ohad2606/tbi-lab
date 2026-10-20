@@ -66,11 +66,28 @@ import {
 } from './protocol.js';
 import { SessionStateMachine, isTerminal } from './stateMachine.js';
 import { LedcTracker, ns, ratCeilNs, ratToNumber, type Rat, type Waveform } from './pwm.js';
-import { combinePwm, type PwmProblem } from './pwmElectrical.js';
+import { analysePwm, combinePwm, type PwmAnalysis, type PwmProblem } from './pwmElectrical.js';
 import { ServoBank, type PwmPoint } from './servos.js';
 
 const SHA = (buf: Buffer) => createHash('sha256').update(buf).digest('hex');
 const fileSha = (path: string) => SHA(readFileSync(path));
+
+/** Sprint 18 (F-17C-2): the solved operating points of one PWM pad configuration. */
+interface PwmSolved {
+  ok: true;
+  low: SolveSuccess;
+  /** Each duty-0 pad high on its own, in `zeros` order. */
+  zeroHigh: SolveSuccess[];
+  single: SolveSuccess[];
+  pairs: { i: number; j: number; o: SolveSuccess }[];
+  all: SolveSuccess | null;
+  /** The duty-independent part of the A1 combination, once computed. */
+  analysis?: PwmAnalysis;
+}
+type PwmSolveResult =
+  | PwmSolved
+  | { ok: false; low: SolveOutcome; failure: SolveOutcome }
+  | { ok: false; budget: { window: bigint; used: number; cost: number } };
 
 interface Queued {
   command: SessionCommand;
@@ -188,6 +205,17 @@ export class HostSession {
   private servos: ServoBank | null = null;
   private lastLow: SolveOutcome | null = null;
   private lastPwmPoints: PwmPoint[] = [];
+  /**
+   * Sprint 18 (F-17C-2): the operating points of recent PWM pad configurations, keyed by the
+   * engine's complete input state and which pads switch (most recent last). A duty change moves no
+   * operating point (A1: only the weights of the average change), so a fade needs no solve.
+   */
+  private readonly pwmPointsCache = new Map<string, PwmSolved>();
+  /** Entries kept (tests set 0 to compare against the uncached path). */
+  static pwmPointsCacheEntries = 16;
+  /** PWM solves spent in the current simulated second (PWM_SOLVE_BUDGET_PER_SIM_S). */
+  private pwmBudgetWindow = -1n;
+  private pwmBudgetUsed = 0;
   /** The backlight token each I2C display's engine model has. */
   private readonly backlights = new Map<string, string>();
 
@@ -585,6 +613,7 @@ export class HostSession {
     this.devices?.advance(vns);
     this.servos?.sync(vns);
     let out = this.solvePoints(vns);
+    if (this.pendingFailure?.reason === 'pwm_unsupported') return [{ type: 'Q' }];
     // Sprint 12 (R3): a module's power decides its backlight load; follow it, then re-solve.
     if (out.ok && this.i2c && !this.i2c.empty) {
       const lit = this.i2c.power(out);
@@ -677,16 +706,46 @@ export class HostSession {
       } else if (w.kind === 'zero') zeros.push(gpio);
       else if (w.kind === 'wave') waves.push({ gpio, w });
     }
-    const low = engine.solve();
-    this.lastLow = low;
+    if (!waves.length && !zeros.length) {
+      // No switching pad: the plain solve of the circuit, as before R4.
+      const low = engine.solve();
+      this.lastLow = low;
+      this.lastPwmPoints = [];
+      return this.pwmDone(vns, problems, low);
+    }
+    const solved = this.pwmSolve(
+      vns,
+      waves.map((x) => x.gpio),
+      zeros,
+    );
+    if ('budget' in solved) {
+      const { window, used, cost } = solved.budget;
+      const detail = {
+        code: 'pwm_rate_exceeded',
+        gpios: [...waves.map((x) => x.gpio), ...zeros].sort((a, b) => a - b),
+        budget: PWM_SOLVE_BUDGET_PER_SIM_S,
+        used,
+        needed: cost,
+        window: window.toString(),
+      };
+      this.log.append({
+        type: 'diagnostic',
+        simNs: vns.toString(),
+        severity: 'error',
+        code: 'pwm_rate_exceeded',
+        detail,
+      });
+      this.pendingFailure ??= { reason: 'pwm_unsupported', detail };
+      // Nothing new is solved: the last operating point stays (the session ends at once).
+      return this.pwmDone(vns, problems, this.latest ?? engine.solve());
+    }
+    this.lastLow = solved.low;
     this.lastPwmPoints = [];
-    if (!low.ok) return this.pwmDone(vns, problems, low);
+    if (!solved.ok) return this.pwmDone(vns, problems, solved.failure);
+    const { low, zeroHigh, single, pairs, all } = solved;
     // Duty 0 (O-R4-1): acceptable only where the pad's level changes nothing at all.
-    for (const gpio of zeros) {
-      engine.setPinMode(gpio, 'output-high');
-      const high = engine.solve();
-      engine.setPinMode(gpio, 'output-low');
-      if (!high.ok) return this.pwmDone(vns, problems, high);
+    for (const [k, gpio] of zeros.entries()) {
+      const high = zeroHigh[k]!;
       const c = combinePwm(
         [{ gpio, duty: 0.5, periodNs: 0, highNs: 0 }],
         low,
@@ -715,41 +774,12 @@ export class HostSession {
         });
     }
     if (!waves.length) return this.pwmDone(vns, problems, low);
-    const single: SolveSuccess[] = [];
-    for (const { gpio } of waves) {
-      engine.setPinMode(gpio, 'output-high');
-      const o = engine.solve();
-      engine.setPinMode(gpio, 'output-low');
-      if (!o.ok) return this.pwmDone(vns, problems, o);
-      single.push(o);
-    }
     this.lastPwmPoints = waves.map(({ gpio, w }, i) => ({
       gpio,
       w,
       since: this.pwmSince.get(gpio) ?? ns(vns),
       high: single[i]!,
     }));
-    // Three or more pads: each pair high together, for the pairwise superposition check.
-    const pairs: { i: number; j: number; o: SolveSuccess }[] = [];
-    if (waves.length > 2)
-      for (let i = 0; i < waves.length; i++)
-        for (let j = i + 1; j < waves.length; j++) {
-          engine.setPinMode(waves[i]!.gpio, 'output-high');
-          engine.setPinMode(waves[j]!.gpio, 'output-high');
-          const o = engine.solve();
-          engine.setPinMode(waves[i]!.gpio, 'output-low');
-          engine.setPinMode(waves[j]!.gpio, 'output-low');
-          if (!o.ok) return this.pwmDone(vns, problems, o);
-          pairs.push({ i, j, o });
-        }
-    let all = null;
-    if (waves.length > 1) {
-      for (const { gpio } of waves) engine.setPinMode(gpio, 'output-high');
-      const o = engine.solve();
-      for (const { gpio } of waves) engine.setPinMode(gpio, 'output-low');
-      if (!o.ok) return this.pwmDone(vns, problems, o);
-      all = o;
-    }
     const c = combinePwm(
       waves.map(({ gpio, w }) => ({
         gpio,
@@ -763,9 +793,83 @@ export class HostSession {
       this.types,
       this.inputLevels,
       pairs,
+      (solved.analysis ??= analysePwm(low, single, all, this.types, pairs)),
     );
     for (const p of c.problems) problems.push({ key: pwmProblemKey(p), detail: { ...p } });
     return this.pwmDone(vns, problems, c.outcome);
+  }
+
+  /**
+   * The operating points A1 combines, for the pads as set now (`waves` and `zeros` driven low,
+   * every other pad at its level): every PWM pad low; each duty-0 pad high on its own; each
+   * waveform pad high on its own; with three or more, each pair high together; with two or more,
+   * all high. Sprint 18 (F-17C-2): reused while the engine's inputs and the switching pads are
+   * unchanged (the solves are deterministic), unless solving moved a stateful part's state.
+   */
+  private pwmSolve(vns: bigint, waves: number[], zeros: number[]): PwmSolveResult {
+    const engine = this.engine!;
+    const before = engine.stateKey;
+    const key = before === null ? null : JSON.stringify([before, waves, zeros]);
+    const hit = key === null ? undefined : this.pwmPointsCache.get(key);
+    if (hit) {
+      this.pwmPointsCache.delete(key!);
+      this.pwmPointsCache.set(key!, hit);
+      return hit;
+    }
+    const n = waves.length;
+    const cost = 1 + zeros.length + n + (n > 2 ? (n * (n - 1)) / 2 : 0) + (n > 1 ? 1 : 0);
+    const window = vns / 1_000_000_000n;
+    if (window !== this.pwmBudgetWindow) {
+      this.pwmBudgetWindow = window;
+      this.pwmBudgetUsed = 0;
+    }
+    if (this.pwmBudgetUsed + cost > PWM_SOLVE_BUDGET_PER_SIM_S)
+      return { ok: false, budget: { window, used: this.pwmBudgetUsed, cost } };
+    this.pwmBudgetUsed += cost;
+    const at = (high: number[]) => {
+      for (const gpio of high) engine.setPinMode(gpio, 'output-high');
+      const o = engine.solve();
+      for (const gpio of high) engine.setPinMode(gpio, 'output-low');
+      return o;
+    };
+    const low = engine.solve();
+    if (!low.ok) return { ok: false, low, failure: low };
+    const zeroHigh: SolveSuccess[] = [];
+    for (const gpio of zeros) {
+      const o = at([gpio]);
+      if (!o.ok) return { ok: false, low, failure: o };
+      zeroHigh.push(o);
+    }
+    const single: SolveSuccess[] = [];
+    for (const gpio of waves) {
+      const o = at([gpio]);
+      if (!o.ok) return { ok: false, low, failure: o };
+      single.push(o);
+    }
+    const pairs: { i: number; j: number; o: SolveSuccess }[] = [];
+    if (waves.length > 2)
+      for (let i = 0; i < waves.length; i++)
+        for (let j = i + 1; j < waves.length; j++) {
+          const o = at([waves[i]!, waves[j]!]);
+          if (!o.ok) return { ok: false, low, failure: o };
+          pairs.push({ i, j, o });
+        }
+    let all: SolveSuccess | null = null;
+    if (waves.length > 1) {
+      const o = at(waves);
+      if (!o.ok) return { ok: false, low, failure: o };
+      all = o;
+    }
+    const solved: PwmSolved = { ok: true, low, zeroHigh, single, pairs, all };
+    // Only when solving left the engine where it started (no relay armature moved, say): a hit
+    // must leave the engine exactly as solving would have.
+    const limit = HostSession.pwmPointsCacheEntries;
+    if (key !== null && limit > 0 && engine.stateKey === before) {
+      this.pwmPointsCache.set(key, solved);
+      while (this.pwmPointsCache.size > limit)
+        this.pwmPointsCache.delete(this.pwmPointsCache.keys().next().value!);
+    }
+    return solved;
   }
 
   /** Record the PWM problems of this solve (keeping when an unchanged one started). */
@@ -1333,6 +1437,17 @@ export class HostSession {
     return this.dir;
   }
 }
+
+/**
+ * Sprint 18 (F-17C-2): engine solves for PWM pad configurations not in the cache, per simulated
+ * second. A duty change needs none (the cache); a new configuration of N switching pads needs up to
+ * 2 + N + N(N-1)/2 (38 for 8), ~0.3-0.45 ms each on the DEV host, so the budget bounds one
+ * session's host CPU for PWM to ~0.3-0.45 s per simulated second. A staggered 8-channel fade
+ * through 100 % needs ~480 in its first second, then none. Exceeded: refused, named
+ * (`pwm_rate_exceeded`), deterministically (simulated time), never slowed or approximated. The
+ * app's EN/HE texts quote the number.
+ */
+export const PWM_SOLVE_BUDGET_PER_SIM_S = 1000;
 
 /**
  * Parts that a duty-0 pad (O-R4-1) may touch without the undocumented level mattering: the board

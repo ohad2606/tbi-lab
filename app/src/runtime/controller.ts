@@ -107,6 +107,7 @@ export const PWM_CODES: readonly PwmFailCode[] = [
   'pwm_input_unsupported',
   'pwm_outputs_interact',
   'pwm_supply_limited',
+  'pwm_rate_exceeded',
 ];
 
 /** R4 (review M8): the host refused an attached pad because the GPIO matrix inverts it. */

@@ -51,6 +51,8 @@ export const FIRMWARE_FACILITIES: readonly FirmwareFacility[] = [
   { id: 'drive_strength', status: 'unsupported', refusedByBuild: true },
   { id: 'pwm_advanced', status: 'unsupported', refusedByBuild: true },
   { id: 'restart', status: 'unsupported', refusedByBuild: true },
+  // Sprint 18 (F-17C-1): CPU clock changes stall the emulator; refused at Build.
+  { id: 'cpu_frequency', status: 'unsupported', refusedByBuild: true },
   { id: 'library', status: 'unsupported', refusedByBuild: true },
 ];
 

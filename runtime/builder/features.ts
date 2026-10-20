@@ -7,6 +7,8 @@
  *   used): interrupts, Wi-Fi, Bluetooth, ADC, PWM/LEDC, DAC, touch, deep sleep;
  * - tokens in the sketch source: internal pulls and restart requests. (`esp_restart` is always
  *   linked by the core's panic handler, so a symbol cannot tell whether the sketch calls it.)
+ *   Sprint 18 (F-17C-1): CPU clock changes likewise (the core's main.cpp calls
+ *   `setCpuFrequencyMhz(F_CPU / 1000000)` at boot, so the symbol is always linked).
  *
  * Static analysis cannot prove absence through macros or wrappers; runtime diagnostics (for
  * example `guest_reset`) remain the backstop. Pins are taken from literal arguments when every
@@ -72,9 +74,29 @@ export const FEATURE_CODES: readonly string[] = [
     'interrupt',
     'internal_pull',
     'restart',
+    'cpu_frequency',
     'library',
   ]),
 ];
+
+/**
+ * Sprint 18 (F-17C-1): a sketch that changes the CPU clock. On Runtime v2 and v3 the emulator stops
+ * advancing simulated time about a second after any change (160, 80, 40 or 20 MHz alike: the next
+ * FreeRTOS delay never returns), so such a sketch is refused at Build instead of running into the
+ * `stalled` failure. The boot frequency, 240 MHz, is not a change (the core returns early) and is
+ * accepted when every call passes the literal 240. The IDF calls below it are refused outright.
+ */
+function changesCpuFrequency(code: string): boolean {
+  if (
+    /\b(?:rtc_clk_cpu_freq_set_config(?:_fast)?|rtc_clk_cpu_freq_set_xtal|esp_pm_configure)\b/.test(
+      code,
+    )
+  )
+    return true;
+  const all = code.match(/\bsetCpuFrequencyMhz\b/g)?.length ?? 0;
+  const boot = code.match(/\bsetCpuFrequencyMhz\s*\(\s*240\s*\)/g)?.length ?? 0;
+  return all > boot;
+}
 
 /** Strip comments and string/char literals so tokens in them do not count. */
 export function codeOnly(source: string): string {
@@ -136,6 +158,7 @@ export function analyzeFeatures(input: {
   );
   const gpioInterrupt = !interruptUsed ? [] : callPins.length > 0 ? callPins : INPUT_CAPABLE_GPIOS;
   const restart = /\bESP\s*\.\s*restart\s*\(|\besp_restart\s*\(/.test(code);
+  if (changesCpuFrequency(code)) unsupported.add('cpu_frequency');
   const requires = new Set<string>();
   for (const [facility, f] of Object.entries(RUNTIME_FACILITIES)) {
     if (!input.capabilities?.includes(f.capability) || !unsupported.has(facility)) continue;
