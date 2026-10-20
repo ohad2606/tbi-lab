@@ -43,6 +43,9 @@ export function coreSeedKey(input: {
 
 const seedDir = (seeds: string, key: string) => join(seeds, key);
 
+/** Whether a complete seed for `key` exists. */
+export const coreSeedPresent = (seeds: string, key: string) => complete(seeds, key);
+
 async function complete(seeds: string, key: string): Promise<boolean> {
   try {
     const marker = JSON.parse(await readFile(join(seedDir(seeds, key), MARKER), 'utf8')) as {

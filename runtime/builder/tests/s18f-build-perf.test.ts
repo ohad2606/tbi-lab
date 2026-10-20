@@ -187,6 +187,26 @@ describe('prewarm of the curated sources', () => {
       expect(service.status(joined.buildId, joined.token, A)?.result?.ok).toBe(true);
   });
 
+  it('no seed (lost, new format): one current curated source is built again, which leaves it', async () => {
+    const { service, provider } = setup(new Set([keyOf(curatedA), keyOf(curatedB)]));
+    expect(await service.prewarm([curatedA, curatedB], { pollMs: 5 })).toBe(2);
+    expect(provider.builds).toBe(2);
+    // The seed is gone while both shared builds are current: exactly one rebuild, seed back.
+    provider.seed = false;
+    expect(await service.prewarm([curatedA, curatedB], { pollMs: 5 })).toBe(1);
+    expect(provider.builds).toBe(3);
+    expect(provider.seed).toBe(true);
+    expect(await service.prewarm([curatedA, curatedB], { pollMs: 5 })).toBe(0);
+    // A harvest that keeps failing costs one rebuild per run, not one per source.
+    const failing = sketch('void setup() {}\nvoid loop() {} // #noseed\n');
+    const s2 = setup(new Set([keyOf(failing), keyOf(curatedB)]));
+    expect(await s2.service.prewarm([failing, curatedB], { pollMs: 5 })).toBe(2);
+    s2.provider.seed = false;
+    expect(await s2.service.prewarm([failing, curatedB], { pollMs: 5 })).toBe(1);
+    expect(s2.provider.seed).toBe(false);
+    expect(s2.provider.builds).toBe(3);
+  });
+
   it('stops when asked; the real curated list is all system sources, each once', async () => {
     const { service, provider } = setup(new Set([keyOf(curatedA)]));
     expect(await service.prewarm([curatedA], { stopped: () => true })).toBe(0);

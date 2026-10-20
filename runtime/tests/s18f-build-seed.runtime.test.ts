@@ -76,10 +76,14 @@ describe.skipIf(!RT)('S18F core seed on the real toolchain', () => {
     const userCold = await build(seeded, USER, false);
     expect(userCold.seed).toBe('cold');
     expect(readdirSync(seeds)).toEqual([]);
+    expect(await seeded.hasCoreSeed(join(root, 'job'))).toBe(false);
     // The first curated build: cold, leaves the seed.
     const first = await build(seeded, sweep, true);
     expect(first.seed).toBe('cold');
     expect(readdirSync(seeds).filter((n) => !n.startsWith('.'))).toHaveLength(1);
+    expect(await seeded.hasCoreSeed(join(root, 'job'))).toBe(true);
+    // The local runner's job path varies with the directory: another path has no seed.
+    expect(await seeded.hasCoreSeed(join(root, 'job-elsewhere'))).toBe(false);
     evidence.coldMs = [userCold.ms, first.ms];
 
     // Seeded, unchanged and after a one-line edit.

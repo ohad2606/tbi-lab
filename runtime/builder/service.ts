@@ -331,18 +331,28 @@ export class BuildService {
     opts: { pollMs?: number; stopped?: () => boolean } = {},
   ): Promise<number> {
     let built = 0;
+    // At most one rebuild for a missing seed per run (a harvest that keeps failing costs one).
+    let seedTried = false;
     for (const request of sources) {
       if (opts.stopped?.()) break;
       const provider = this.providers.get(request.profile);
       if (!provider) continue;
       const key = sourceKey(request.profile, request.files);
-      if (!this.access.systemKeys.has(key) || this.cachedResult(GLOBAL, key)) continue;
+      if (!this.access.systemKeys.has(key)) continue;
+      // Built again although shared and current when the provider has no seed (lost, or a new
+      // seed format): a curated build is the only thing that leaves one.
+      const seedless =
+        !seedTried &&
+        !!provider.hasCoreSeed &&
+        !(await provider.hasCoreSeed(join(this.workRoot, 'job-000000')).catch(() => true));
+      if (!seedless && this.cachedResult(GLOBAL, key)) continue;
       // Wait for an idle service: users first.
       while (this.queue.length || this.active.size) {
         if (opts.stopped?.()) return built;
         await new Promise((r) => setTimeout(r, opts.pollMs ?? 1000));
       }
-      if (this.cachedResult(GLOBAL, key)) continue;
+      if (!seedless && this.cachedResult(GLOBAL, key)) continue;
+      if (seedless) seedTried = true;
       const record: BuildRecord = {
         id: `b_${randomBytes(12).toString('hex')}`,
         token: randomBytes(24).toString('base64url'),

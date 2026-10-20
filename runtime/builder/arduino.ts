@@ -19,6 +19,7 @@ import { canonicalJson, type BuildProfile } from '@tbi-lab/domain';
 import {
   applyCoreSeed,
   coreSeedKey,
+  coreSeedPresent,
   harvestCoreSeed,
   pruneCoreSeeds,
   removeCoreSeed,
@@ -97,6 +98,70 @@ export class ArduinoEsp32Provider implements BuildProvider {
     };
   }
 
+  /**
+   * The compile step in the tools' view of job `J`: arduino-cli's configuration, environment and
+   * argv (fixed; only the job path varies, and not at all in the sandbox).
+   */
+  private compileSetup(J: string, t: ReturnType<ArduinoEsp32Provider['view']>) {
+    const v = (sub: string) => join(J, sub);
+    const config = [
+      'directories:',
+      `  data: ${t.data}`,
+      `  downloads: ${v('downloads')}`,
+      `  user: ${v('user')}`,
+      'build_cache:',
+      `  path: ${v('cache')}`,
+      'network:',
+      '  connection_timeout: 1s',
+      '',
+    ].join('\n');
+    const maps = [
+      `-ffile-prefix-map=${t.data}=/arduino-data`,
+      `-ffile-prefix-map=${v('sketch')}=/sketch`,
+      `-ffile-prefix-map=${J}=/build`,
+    ].join(' ');
+    const env = {
+      PATH: '/usr/bin:/bin',
+      HOME: J,
+      TMPDIR: J,
+      LANG: 'C.UTF-8',
+      SOURCE_DATE_EPOCH: String(this.opts.record.sourceDateEpoch),
+    };
+    const argv = [
+      '--config-file',
+      v('cli.yaml'),
+      'compile',
+      '--format',
+      'json',
+      '--fqbn',
+      this.opts.record.fqbn,
+      '--build-path',
+      v('build'),
+      '--output-dir',
+      v('out'),
+      '--build-property',
+      `compiler.c.extra_flags=${maps}`,
+      '--build-property',
+      `compiler.cpp.extra_flags=${maps}`,
+      v('sketch'),
+    ];
+    return { config, env, argv };
+  }
+
+  /**
+   * Sprint 18F: whether a job in `jobDir` would start from a core seed. False without a seed
+   * directory, and always where the tools' job path differs per job (the local runner).
+   */
+  async hasCoreSeed(jobDir: string): Promise<boolean> {
+    const seeds = this.opts.coreSeeds;
+    if (!seeds) return false;
+    const { config, env, argv } = this.compileSetup(this.runner.jobPath(jobDir), this.view());
+    return coreSeedPresent(
+      seeds,
+      coreSeedKey({ profileHash: this.profileHash, argv, config, env }),
+    );
+  }
+
   async verifyToolchain(): Promise<void> {
     const key = arch() === 'arm64' ? 'arm64' : arch() === 'x64' ? 'x64' : arch();
     const pins = this.opts.record.files[key];
@@ -137,50 +202,10 @@ export class ArduinoEsp32Provider implements BuildProvider {
     }
     await writeFile(join(d('sketch'), p.fileName), source);
     await chmod(join(d('sketch'), p.fileName), 0o660);
+    const { config, env, argv } = this.compileSetup(J, t);
     // Pinned read-only core; an empty user directory (no sketchbook libraries); per-job cache.
-    const config = [
-      'directories:',
-      `  data: ${t.data}`,
-      `  downloads: ${v('downloads')}`,
-      `  user: ${v('user')}`,
-      'build_cache:',
-      `  path: ${v('cache')}`,
-      'network:',
-      '  connection_timeout: 1s',
-      '',
-    ].join('\n');
     await writeFile(d('cli.yaml'), config);
     await chmod(d('cli.yaml'), 0o660);
-    const maps = [
-      `-ffile-prefix-map=${t.data}=/arduino-data`,
-      `-ffile-prefix-map=${v('sketch')}=/sketch`,
-      `-ffile-prefix-map=${J}=/build`,
-    ].join(' ');
-    const env = {
-      PATH: '/usr/bin:/bin',
-      HOME: J,
-      TMPDIR: J,
-      LANG: 'C.UTF-8',
-      SOURCE_DATE_EPOCH: String(this.opts.record.sourceDateEpoch),
-    };
-    const argv = [
-      '--config-file',
-      v('cli.yaml'),
-      'compile',
-      '--format',
-      'json',
-      '--fqbn',
-      this.opts.record.fqbn,
-      '--build-path',
-      v('build'),
-      '--output-dir',
-      v('out'),
-      '--build-property',
-      `compiler.c.extra_flags=${maps}`,
-      '--build-property',
-      `compiler.cpp.extra_flags=${maps}`,
-      v('sketch'),
-    ];
     // The core seed for exactly this configuration, when one exists (else a cold build).
     const seeds = this.opts.coreSeeds;
     const seedKey = coreSeedKey({ profileHash: this.profileHash, argv, config, env });

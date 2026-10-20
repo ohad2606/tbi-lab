@@ -41,4 +41,9 @@ export interface BuildProvider {
   /** Refuse to serve when the installed toolchain does not match the pins. */
   verifyToolchain(): Promise<void>;
   build(job: JobContext): Promise<ProviderOutput>;
+  /**
+   * Sprint 18F: whether a job in `jobDir` (a path under the service's work root) would start
+   * from reusable toolchain state (the core seed). Absent: the provider keeps none.
+   */
+  hasCoreSeed?(jobDir: string): Promise<boolean>;
 }
