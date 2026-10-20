@@ -33,15 +33,17 @@ import {
   type DigitalLevel,
   type RuntimePinMode,
   type SolveOutcome,
+  type SolveSuccess,
 } from '@tbi-lab/engine';
 import {
   InputSchedule,
+  LEDC_SIGNALS,
   type Capability,
   type Command,
   type I2cPhase,
   type PadFunction,
 } from '../harness/protocol.js';
-import { runSession, type Outcome, type SessionResult } from '../harness/session.js';
+import { runSession, type Outcome, type PwmEvent, type SessionResult } from '../harness/session.js';
 import type { Principal } from '../identity/principal.js';
 import type { TicketFeatures } from '../identity/ticket.js';
 import type { HostConfig } from './config.js';
@@ -58,13 +60,55 @@ import {
   type EndReason,
   type MirrorRevisions,
   type FailReason,
+  type PwmPadState,
   type SessionCommand,
   type SessionState,
 } from './protocol.js';
 import { SessionStateMachine, isTerminal } from './stateMachine.js';
+import { LedcTracker, ns, ratCeilNs, ratToNumber, type Rat, type Waveform } from './pwm.js';
+import { analysePwm, combinePwm, type PwmAnalysis, type PwmProblem } from './pwmElectrical.js';
+import { ServoBank, type PwmPoint } from './servos.js';
 
 const SHA = (buf: Buffer) => createHash('sha256').update(buf).digest('hex');
 const fileSha = (path: string) => SHA(readFileSync(path));
+
+/**
+ * Sprint 18 (F-17C-2): engine solves for CHANGES of the switching-pad configuration (which pads
+ * switch, which sit at duty 0) that the cache does not hold, per simulated second. A duty change
+ * needs none (the cache); a new configuration of N switching pads needs up to 2 + N + N(N-1)/2
+ * (38 for 8), ~0.3-0.45 ms each on the DEV host, so the budget bounds the host CPU one session
+ * spends on reconfiguring PWM to ~0.3-0.45 s per simulated second. A staggered 8-channel fade
+ * through 100 % needs ~480 in its first second, then none. Solves caused by other inputs while
+ * PWM runs (digital edges, live controls) are not charged: they cost what every solve cost before
+ * the cache (an independent review found charging them would refuse legitimate sketches). Exceeded: refused, named
+ * (`pwm_rate_exceeded`), deterministically (simulated time), never slowed or approximated. The
+ * app's EN/HE texts quote the number.
+ */
+export const PWM_SOLVE_BUDGET_PER_SIM_S = 1000;
+
+/** Sprint 18 (F-17C-2): the solved operating points of one PWM pad configuration. */
+interface PwmSolved {
+  ok: true;
+  low: SolveSuccess;
+  /** Each duty-0 pad high on its own, in `zeros` order. */
+  zeroHigh: SolveSuccess[];
+  single: SolveSuccess[];
+  pairs: { i: number; j: number; o: SolveSuccess }[];
+  all: SolveSuccess | null;
+  /** The duty-independent part of the A1 combination, once computed. */
+  analysis?: PwmAnalysis;
+}
+type PwmSolveResult =
+  | PwmSolved
+  /** A solve failed: what was solved before it (for the same handling as before the cache). */
+  | {
+      ok: false;
+      low: SolveOutcome;
+      zeroHigh: SolveSuccess[];
+      single: SolveSuccess[];
+      failure: SolveOutcome;
+    }
+  | { ok: false; budget: { window: bigint; used: number; cost: number } };
 
 interface Queued {
   command: SessionCommand;
@@ -138,7 +182,10 @@ export class HostSession {
   private pendingFailure: { reason: FailReason; detail?: unknown } | null = null;
   private endRequest: EndReason | null = null;
   private inputLevels = new Map<number, DigitalLevel>();
-  private gpioWindow = new Map<number, { drive: 0 | 1; level: 0 | 1; transitions: number }>();
+  private gpioWindow = new Map<
+    number,
+    { drive: 0 | 1; level: 0 | 1; transitions: number; pwm?: PwmPadState }
+  >();
   private serialWindow: Buffer[] = [];
   private serialWindowBytes = 0;
   private serialDropped = 0;
@@ -161,6 +208,41 @@ export class HostSession {
   /** Circuit pads routed to a non-I2C peripheral (refused if still so at the next tick). */
   private readonly periphPads = new Map<number, { func: PadFunction; vns: bigint }>();
   private i2c: I2cDevices | null = null;
+  /**
+   * R4 (patch 0009): LEDC timers and channels as QEMU reports them, the circuit pads routed to an
+   * LEDC signal, what each such pad was last solved as, and a PWM condition the session cannot
+   * simulate honestly (refused only if still present a whole command tick later).
+   */
+  private readonly ledc = new LedcTracker();
+  private readonly ledcPads = new Map<
+    number,
+    { signal: number; openDrain: boolean; inverted: boolean }
+  >();
+  private readonly pwmSolved = new Map<number, string>();
+  private pwmProblems = new Map<string, { detail: Record<string, unknown>; since: bigint }>();
+  /** When each LEDC pad's current waveform took effect (exact; for servo pulse expansion). */
+  private readonly pwmSince = new Map<number, Rat>();
+  /** Sprint 15 (R4): SG90 servos, and the operating points of the last solve they read. */
+  private servos: ServoBank | null = null;
+  private lastLow: SolveOutcome | null = null;
+  private lastPwmPoints: PwmPoint[] = [];
+  /**
+   * Sprint 18 (F-17C-2): the operating points of recent PWM pad configurations, keyed by the
+   * engine's complete input state and which pads switch (most recent last). A duty change moves no
+   * operating point (A1: only the weights of the average change), so a fade needs no solve.
+   */
+  private readonly pwmPointsCache = new Map<string, PwmSolved>();
+  /** Entries kept (tests set 0 to compare against the uncached path). */
+  static pwmPointsCacheEntries = 16;
+  /** Set once a PWM budget refusal is pending: the session ends without further reactions. */
+  private pwmRefused = false;
+  /** PWM solves spent in the current simulated second (PWM_SOLVE_BUDGET_PER_SIM_S). */
+  private pwmBudgetWindow = -1n;
+  private pwmBudgetUsed = 0;
+  /** The switching-pad configuration of the last PWM solve (the budget charges changes of it). */
+  private pwmLastConfig = '';
+  /** The budget (tests raise it to compare against the uncached path). */
+  static pwmSolveBudgetPerSimS = PWM_SOLVE_BUDGET_PER_SIM_S;
   /** The backlight token each I2C display's engine model has. */
   private readonly backlights = new Map<string, string>();
 
@@ -377,6 +459,8 @@ export class HostSession {
       this.inputLevels,
       this.schedule,
     );
+    const servos = new ServoBank(this.request.circuit);
+    this.servos = servos.empty ? null : servos;
     const first = this.engine.solve();
     if (!first.ok) {
       if (first.error.code === 'invalid_attachment')
@@ -485,7 +569,8 @@ export class HostSession {
         {
           hello: (_tick, caps) => this.onHello(caps),
           pad: (e) => this.onPad(e.vns, e.pad, e.drive, e.level),
-          func: (e) => this.onFunc(e.vns, e.pad, e.func),
+          func: (e) => this.onFunc(e.vns, e.pad, e.func, e.openDrain),
+          pwm: (e) => this.onPwm(e),
           i2c: (e) => this.onI2c(e.vns, e.bus, e.phase),
           tick: (vns) => this.onTick(vns),
           serial: (vns, bytes) => this.onSerial(vns, bytes),
@@ -501,7 +586,13 @@ export class HostSession {
     this.outcome = result.outcome;
     this.exit = { code: result.exitCode, signal: result.signal };
     this.pacedMs = result.pacedMs;
-    this.flushWindow(this.simNs); // whatever the runtime produced before it ended
+    try {
+      this.flushWindow(this.simNs); // whatever the runtime produced before it ended
+    } catch (e) {
+      console.error(`session ${this.id}: internal: ${e instanceof Error ? e.message : String(e)}`);
+      this.fail('internal');
+      return;
+    }
     this.finish(result);
   }
 
@@ -547,7 +638,11 @@ export class HostSession {
 
   private solveAndInject(vns: bigint): Command[] {
     this.devices?.advance(vns);
-    let out = this.engine!.solve();
+    this.servos?.sync(vns);
+    let out = this.solvePoints(vns);
+    // Sprint 18: a PWM budget refusal (pwm_rate_exceeded) ends the reaction at once: nothing is
+    // derived from an operating point that was not solved.
+    if (this.pwmRefused) return [{ type: 'Q' }];
     // Sprint 12 (R3): a module's power decides its backlight load; follow it, then re-solve.
     if (out.ok && this.i2c && !this.i2c.empty) {
       const lit = this.i2c.power(out);
@@ -555,13 +650,33 @@ export class HostSession {
         this.engine!.setPartRuntime(ch.id, 'backlight', ch.backlight);
         this.backlights.set(ch.id, ch.backlight);
       }
-      if (lit.length) out = this.engine!.solve();
+      if (lit.length) out = this.solvePoints(vns);
+      if (this.pwmRefused) return [{ type: 'Q' }];
     }
     this.latest = out;
     if (!out.ok) {
       // No defined operating point: the inputs cannot be derived honestly. Fail closed.
       this.pendingFailure = { reason: 'electrical_error', detail: jsonSafe(out.error) };
       return [{ type: 'Q' }];
+    }
+    // Sprint 17C (review V3/V4): from a placeholder, the firmware gets no input change, the
+    // sensors observe nothing and the servos see no valid signal (the pulse in progress is
+    // discarded): the refusal follows within a tick if the state lasts.
+    if (this.placeholder) {
+      this.servos?.suspend(vns);
+      return [];
+    }
+    // Sprint 15 (R4): what the servos' signal wires carry now, from the operating points.
+    if (this.servos && this.lastLow?.ok) {
+      this.servos.observe(vns, this.lastLow, this.lastPwmPoints);
+      for (const d of this.servos.diagnostics.splice(0))
+        this.log.append({
+          type: 'diagnostic',
+          simNs: d.simNs.toString(),
+          severity: 'warning',
+          code: d.code,
+          detail: d.detail,
+        });
     }
     const cmds: Command[] = [];
     for (const p of out.pins ?? []) {
@@ -574,6 +689,331 @@ export class HostSession {
     // Sprint 12 (R2): what the sensors saw; their responses are scheduled edges.
     if (this.devices && !this.devices.empty) cmds.push(...this.devices.observe(vns, out));
     this.flushDeviceDiagnostics();
+    return cmds;
+  }
+
+  // -------------------------------------------------------------------------------------------
+  // R4: PWM (LEDC) outputs
+
+  /** The waveform on each attached pad routed to an LEDC signal, in pad order. */
+  private pwmPads(): { gpio: number; w: Waveform; openDrain: boolean; inverted: boolean }[] {
+    const attached = new Set(this.request.attachments.map((a) => a.gpio));
+    return [...this.ledcPads.entries()]
+      .filter(([gpio]) => attached.has(gpio))
+      .sort(([a], [b]) => a - b)
+      .map(([gpio, { signal, openDrain, inverted }]) => ({
+        gpio,
+        w: this.ledc.waveform(signal),
+        openDrain,
+        inverted,
+      }));
+  }
+
+  /**
+   * One operating point for the circuit as it is now. Without switching PWM pads that is a plain
+   * solve. With them (architecture A1): every PWM pad low, each one high on its own, and all high,
+   * combined into the time-average (pwmElectrical.ts). A pad whose waveform cannot be simulated
+   * honestly records a problem; the tick refuses it if it lasts.
+   */
+  private solvePoints(vns: bigint) {
+    const engine = this.engine!;
+    const pads = this.pwmPads();
+    const problems: { key: string; detail: Record<string, unknown> }[] = [];
+    const waves: { gpio: number; w: Extract<Waveform, { kind: 'wave' }> }[] = [];
+    const zeros: number[] = [];
+    for (const { gpio, w, openDrain, inverted } of pads) {
+      if (w.kind === 'static' && !openDrain && !inverted) {
+        engine.setPinMode(gpio, w.level ? 'output-high' : 'output-low');
+        continue;
+      }
+      engine.setPinMode(gpio, 'output-low');
+      if (openDrain || inverted || w.kind === 'unsupported') {
+        const why = openDrain ? 'open-drain' : inverted ? 'inverted' : (w as { why: string }).why;
+        problems.push({
+          key: `u:${gpio}:${why}`,
+          detail: { code: 'pwm_unsupported_mode', gpio, why },
+        });
+      } else if (w.kind === 'zero') zeros.push(gpio);
+      else if (w.kind === 'wave') waves.push({ gpio, w });
+    }
+    if (!waves.length && !zeros.length) {
+      // No switching pad: the plain solve of the circuit, as before R4.
+      const low = engine.solve();
+      this.lastLow = low;
+      this.lastPwmPoints = [];
+      return this.pwmDone(vns, problems, low);
+    }
+    const solved = this.pwmSolve(
+      vns,
+      waves.map((x) => x.gpio),
+      zeros,
+    );
+    if ('budget' in solved) {
+      const { window, used, cost } = solved.budget;
+      const detail = {
+        code: 'pwm_rate_exceeded',
+        gpios: [...waves.map((x) => x.gpio), ...zeros].sort((a, b) => a - b),
+        budget: HostSession.pwmSolveBudgetPerSimS,
+        used,
+        needed: cost,
+        window: window.toString(),
+      };
+      if (!this.pendingFailure) {
+        this.log.append({
+          type: 'diagnostic',
+          simNs: vns.toString(),
+          severity: 'error',
+          code: 'pwm_rate_exceeded',
+          detail,
+        });
+        this.pendingFailure = { reason: 'pwm_unsupported', detail };
+      }
+      this.pwmRefused = true;
+      // Nothing new is solved: the last operating point stays (set at session start; the session
+      // ends at once, solveAndInject returns Q).
+      return this.pwmDone(vns, problems, this.latest!);
+    }
+    const low = solved.low;
+    this.lastLow = low;
+    this.lastPwmPoints = [];
+    if (!low.ok) return this.pwmDone(vns, problems, low);
+    // Duty 0 (O-R4-1): acceptable only where the pad's level changes nothing at all. (On a later
+    // solve failure, the pads solved before it are checked first, as before the cache.)
+    for (const [k, high] of solved.zeroHigh.entries()) {
+      const gpio = zeros[k]!;
+      const c = combinePwm(
+        [{ gpio, duty: 0.5, periodNs: 0, highNs: 0 }],
+        low,
+        [high],
+        null,
+        this.types,
+        this.inputLevels,
+      );
+      const touched = Object.keys(low.components).filter((id) => c.outcome.components[id]?.pwm);
+      const loads = touched.filter((id) => !ZERO_NEUTRAL.has(this.types[id] ?? ''));
+      const inputs = c.problems.find((p) => p.code === 'pwm_input_unsupported');
+      // Sprint 17C (review V5): the pad's own current also tells (a pad wired straight to GND
+      // or to another pad would short at a high level): the parts it reaches are named then.
+      const pin = (o: SolveSuccess) => o.pins?.find((p) => p.gpio === gpio)?.current ?? 0;
+      const shorted = Math.abs(pin(high) - pin(low)) > 1e-9;
+      if (!loads.length && shorted) loads.push(...touched);
+      if (loads.length || inputs || shorted)
+        problems.push({
+          key: `z:${gpio}`,
+          detail: {
+            code: 'pwm_duty_zero_unverified',
+            gpio,
+            components: loads,
+            ...(inputs && inputs.code === 'pwm_input_unsupported' ? { inputs: inputs.inputs } : {}),
+          },
+        });
+    }
+    if (!solved.ok && solved.zeroHigh.length < zeros.length)
+      return this.pwmDone(vns, problems, solved.failure);
+    if (!waves.length) return this.pwmDone(vns, problems, low);
+    const single = solved.single;
+    if (!solved.ok && single.length < waves.length)
+      return this.pwmDone(vns, problems, solved.failure);
+    this.lastPwmPoints = waves.map(({ gpio, w }, i) => ({
+      gpio,
+      w,
+      since: this.pwmSince.get(gpio) ?? ns(vns),
+      high: single[i]!,
+    }));
+    if (!solved.ok) return this.pwmDone(vns, problems, solved.failure);
+    const { pairs, all } = solved;
+    const c = combinePwm(
+      waves.map(({ gpio, w }) => ({
+        gpio,
+        duty: w.duty,
+        periodNs: ratToNumber(w.periodNs),
+        highNs: ratToNumber(w.highNs),
+      })),
+      low,
+      single,
+      all,
+      this.types,
+      this.inputLevels,
+      pairs,
+      (solved.analysis ??= analysePwm(low, single, all, this.types, pairs)),
+    );
+    for (const p of c.problems) problems.push({ key: pwmProblemKey(p), detail: { ...p } });
+    return this.pwmDone(vns, problems, c.outcome);
+  }
+
+  /**
+   * The operating points A1 combines, for the pads as set now (`waves` and `zeros` driven low,
+   * every other pad at its level): every PWM pad low; each duty-0 pad high on its own; each
+   * waveform pad high on its own; with three or more, each pair high together; with two or more,
+   * all high. Sprint 18 (F-17C-2): reused while the engine's inputs and the switching pads are
+   * unchanged (the solves are deterministic), unless solving moved a stateful part's state.
+   */
+  private pwmSolve(vns: bigint, waves: number[], zeros: number[]): PwmSolveResult {
+    const engine = this.engine!;
+    const before = engine.stateKey;
+    const key = before === null ? null : JSON.stringify([before, waves, zeros]);
+    const config = JSON.stringify([waves, zeros]);
+    const changed = config !== this.pwmLastConfig;
+    this.pwmLastConfig = config;
+    const hit = key === null ? undefined : this.pwmPointsCache.get(key);
+    if (hit) {
+      this.pwmPointsCache.delete(key!);
+      this.pwmPointsCache.set(key!, hit);
+      return hit;
+    }
+    // The budget is charged only when the set of switching pads changed (Sprint 18 review): a
+    // miss caused by another input (a digital edge, a live control) costs what it did before.
+    if (changed) {
+      const n = waves.length;
+      const cost = 1 + zeros.length + n + (n > 2 ? (n * (n - 1)) / 2 : 0) + (n > 1 ? 1 : 0);
+      const window = vns / 1_000_000_000n;
+      if (window !== this.pwmBudgetWindow) {
+        this.pwmBudgetWindow = window;
+        this.pwmBudgetUsed = 0;
+      }
+      if (this.pwmBudgetUsed + cost > HostSession.pwmSolveBudgetPerSimS)
+        return { ok: false, budget: { window, used: this.pwmBudgetUsed, cost } };
+      this.pwmBudgetUsed += cost;
+    }
+    const at = (high: number[]) => {
+      for (const gpio of high) engine.setPinMode(gpio, 'output-high');
+      const o = engine.solve();
+      for (const gpio of high) engine.setPinMode(gpio, 'output-low');
+      return o;
+    };
+    const low = engine.solve();
+    const zeroHigh: SolveSuccess[] = [];
+    const single: SolveSuccess[] = [];
+    const failed = (failure: SolveOutcome) =>
+      ({ ok: false, low, zeroHigh, single, failure }) as const;
+    if (!low.ok) return failed(low);
+    for (const gpio of zeros) {
+      const o = at([gpio]);
+      if (!o.ok) return failed(o);
+      zeroHigh.push(o);
+    }
+    for (const gpio of waves) {
+      const o = at([gpio]);
+      if (!o.ok) return failed(o);
+      single.push(o);
+    }
+    const pairs: { i: number; j: number; o: SolveSuccess }[] = [];
+    if (waves.length > 2)
+      for (let i = 0; i < waves.length; i++)
+        for (let j = i + 1; j < waves.length; j++) {
+          const o = at([waves[i]!, waves[j]!]);
+          if (!o.ok) return failed(o);
+          pairs.push({ i, j, o });
+        }
+    let all: SolveSuccess | null = null;
+    if (waves.length > 1) {
+      const o = at(waves);
+      if (!o.ok) return failed(o);
+      all = o;
+    }
+    const solved: PwmSolved = { ok: true, low, zeroHigh, single, pairs, all };
+    // Only when solving left the engine where it started (no relay armature moved, say): a hit
+    // must leave the engine exactly as solving would have.
+    const limit = HostSession.pwmPointsCacheEntries;
+    if (key !== null && limit > 0 && engine.stateKey === before) {
+      this.pwmPointsCache.set(key, solved);
+      while (this.pwmPointsCache.size > limit)
+        this.pwmPointsCache.delete(this.pwmPointsCache.keys().next().value!);
+    }
+    return solved;
+  }
+
+  /** Record the PWM problems of this solve (keeping when an unchanged one started). */
+  /**
+   * R4 (review M3, and Sprint 17C review V3/V4): the current operating point is a placeholder, not
+   * a result, while a PWM state that cannot be simulated is pending (refused at the next tick if it
+   * lasts; the pad is solved low meanwhile) or an inverted simple-GPIO pad awaits its refusal
+   * (QEMU still reports its uninverted level). Nothing derived from it is published or fed back.
+   */
+  private get placeholder(): boolean {
+    return (
+      this.pwmProblems.size > 0 ||
+      [...this.periphPads.values()].some((p) => p.func.startsWith('inverted:'))
+    );
+  }
+
+  private pwmDone<T>(
+    vns: bigint,
+    problems: { key: string; detail: Record<string, unknown> }[],
+    out: T,
+  ): T {
+    // Each problem keeps the time it first appeared while it persists (independently of others).
+    const next = new Map<string, { detail: Record<string, unknown>; since: bigint }>();
+    for (const p of problems)
+      if (!next.has(p.key))
+        next.set(p.key, { detail: p.detail, since: this.pwmProblems.get(p.key)?.since ?? vns });
+    this.pwmProblems = next;
+    return out;
+  }
+
+  private get types(): Record<string, string> {
+    return Object.fromEntries(this.request.circuit.components.map((c) => [c.id, c.type]));
+  }
+
+  /**
+   * Apply the LEDC changes due by `vns` (they take effect at counter overflows, between frames),
+   * publishing windows up to each instant first, and solve where an LEDC pad's waveform changed.
+   */
+  private advancePwm(vns: bigint): Command[] {
+    const cmds: Command[] = [];
+    this.ledc.advance(
+      vns,
+      (at) => {
+        this.closeWindowsBefore(ratCeilNs(at));
+        this.servos?.sync(at); // the old waveform's pulses, up to the change exactly
+      },
+      (at) => {
+        if (this.pwmChanged(at)) cmds.push(...this.solveAndInject(ratCeilNs(at)));
+      },
+    );
+    return cmds;
+  }
+
+  /** Whether any LEDC pad's waveform differs from what was last solved; records the new ones. */
+  private pwmChanged(at: Rat): boolean {
+    let changed = false;
+    const seen = new Set<number>();
+    for (const { gpio, w, openDrain, inverted } of this.pwmPads()) {
+      seen.add(gpio);
+      const key = JSON.stringify([w, openDrain, inverted], (_k, v) =>
+        typeof v === 'bigint' ? v.toString() : v,
+      );
+      if (this.pwmSolved.get(gpio) === key) continue;
+      this.pwmSolved.set(gpio, key);
+      this.pwmSince.set(gpio, at);
+      changed = true;
+      const prev = this.gpioWindow.get(gpio);
+      const pwm = pwmPadState(w);
+      this.gpioWindow.set(gpio, {
+        drive: openDrain ? 0 : 1,
+        level: pwm.kind === 'static' ? pwm.level : 0,
+        transitions: (prev?.transitions ?? 0) + 1,
+        pwm,
+      });
+    }
+    for (const gpio of [...this.pwmSolved.keys()])
+      if (!seen.has(gpio)) {
+        this.pwmSolved.delete(gpio);
+        this.pwmSince.delete(gpio);
+        changed = true;
+      }
+    return changed;
+  }
+
+  /** R4: an LEDC timer (P) or channel (W) state change. */
+  private onPwm(e: PwmEvent): Command[] {
+    const cmds = this.advancePwm(e.vns);
+    this.closeWindowsBefore(e.vns);
+    this.simNs = e.vns;
+    if ('timer' in e) this.ledc.timer(e.vns, e.timer, e.state);
+    else this.ledc.channel(e.vns, e.signal, e.state);
+    // Idle levels, held timers and refusals act at once; duty changes wait for the next cycle.
+    if (this.pwmChanged(ns(e.vns))) cmds.push(...this.solveAndInject(e.vns));
     return cmds;
   }
 
@@ -626,6 +1066,8 @@ export class HostSession {
   }
 
   private onPad(vns: bigint, pad: number, drive: 0 | 1, level: 0 | 1): Command[] {
+    const pwm = this.advancePwm(vns);
+    if (pwm.length) return [...pwm, ...this.onPad(vns, pad, drive, level)];
     this.closeWindowsBefore(vns);
     this.simNs = vns;
     const pin = boardPinForGpio(ESP32_DEVKITC_WROOM32, pad);
@@ -665,15 +1107,35 @@ export class HostSession {
    * other peripheral on a pad that joins the circuit is a facility V1 does not simulate: refused,
    * never left running with dead behaviour. Pads outside the circuit (flash, UART) are ignored.
    */
-  private onFunc(vns: bigint, pad: number, func: PadFunction): Command[] {
+  private onFunc(vns: bigint, pad: number, func: PadFunction, openDrain = false): Command[] {
+    const pwm = this.advancePwm(vns);
     this.closeWindowsBefore(vns);
     this.simNs = vns;
     this.i2c?.onFunc(pad, func);
-    if (!this.request.attachments.some((a) => a.gpio === pad)) return [];
+    if (!this.request.attachments.some((a) => a.gpio === pad)) return pwm;
+    // R4: a pad routed to an LEDC output is driven by its waveform (capability pwm). An inverted
+    // one (patch 0010, review M8) is tracked too, and refused by name like open drain.
+    const inverted = func.startsWith('inverted:');
+    const sig = func.startsWith('periph:')
+      ? Number(func.slice(7))
+      : inverted
+        ? Number(func.slice(9))
+        : -1;
+    if (this.caps.includes('pwm') && sig >= LEDC_SIGNALS.first && sig <= LEDC_SIGNALS.last) {
+      this.periphPads.delete(pad);
+      this.ledcPads.set(pad, { signal: sig, openDrain, inverted });
+      this.devices?.advance(vns);
+      return this.pwmChanged(ns(vns)) ? [...pwm, ...this.solveAndInject(vns)] : pwm;
+    }
+    if (this.ledcPads.delete(pad)) {
+      this.pwmChanged(ns(vns));
+      if (func === 'gpio') return pwm; // its state follows as a G frame
+    }
+    if (pwm.length) return [...pwm, ...this.onFunc(vns, pad, func, openDrain)];
     // A routing that lasts: ESP-IDF configures pins with two register writes, and between them a
     // pad can be routed to signal 0 for a few instructions (pinMode(INPUT): OUT_SEL 0, then
     // OEN_SEL 1). Only a routing still in place at the next command tick refuses the session.
-    if (func.startsWith('periph:')) {
+    if (func.startsWith('periph:') || inverted) {
       this.periphPads.set(pad, { func, vns });
       return [];
     }
@@ -690,6 +1152,8 @@ export class HostSession {
    * load: the circuit is solved again and any input it changes is injected in the same reply.
    */
   private onI2c(vns: bigint, bus: 0 | 1, phase: I2cPhase): Command[] {
+    const pwm = this.advancePwm(vns);
+    if (pwm.length) return [...pwm, ...this.onI2c(vns, bus, phase)];
     this.closeWindowsBefore(vns);
     this.simNs = vns;
     this.devices?.advance(vns);
@@ -733,10 +1197,27 @@ export class HostSession {
   }
 
   private onTick(vns: bigint): Command[] {
+    const cmds: Command[] = this.advancePwm(vns);
     this.closeWindowsBefore(vns);
     this.simNs = vns;
+    const previousTick = this.lastTickNs;
     this.lastTickNs = vns;
-    const cmds: Command[] = [];
+    // R4: a PWM condition that has lasted a whole command tick is refused, naming it.
+    const lastingPwm = [...this.pwmProblems.values()].find((p) => p.since <= previousTick);
+    if (lastingPwm && !this.pendingFailure) {
+      const detail: Record<string, unknown> = {
+        ...lastingPwm.detail,
+        since: lastingPwm.since.toString(),
+      };
+      this.log.append({
+        type: 'diagnostic',
+        simNs: vns.toString(),
+        severity: 'error',
+        code: String(detail.code),
+        detail,
+      });
+      this.pendingFailure = { reason: 'pwm_unsupported', detail };
+    }
     const [lasting] = this.periphPads;
     if (lasting && !this.pendingFailure) {
       const [gpio, { func, vns: since }] = lasting;
@@ -835,7 +1316,13 @@ export class HostSession {
       this.gpioWindow.clear();
       this.log.append({ type: 'gpio', simNs: t, changes });
     }
-    if (this.latest) {
+    // R4 (review M3): while a PWM state that cannot be simulated is pending (refused at the next
+    // tick if it lasts), its operating point is a placeholder (the pad solved low), not a
+    // result: nothing is published, and the last truthful outcome stays until the refusal or,
+    // for a transient state, until the next window.
+    // The same for an inverted simple-GPIO pad awaiting its refusal: QEMU still reports its
+    // uninverted level, so that operating point is not the pin's either (review of M8).
+    if (this.latest && !this.placeholder) {
       // Sprint 12 (R3): an I2C display's content is part of its result.
       let latest: unknown = this.latest;
       if (this.latest.ok && this.i2c && !this.i2c.empty) {
@@ -846,6 +1333,28 @@ export class HostSession {
             components[id] = { ...components[id]!, state: { ...components[id]!.state, ...st } };
         latest = { ...this.latest, components };
         this.i2c.changed.clear();
+      }
+      // Sprint 15 (R4): servo motion at the window's end (it moves between solves).
+      if (this.latest.ok && this.servos) {
+        this.servos.sync(vns);
+        const base = latest as SolveSuccess;
+        const components = { ...base.components };
+        for (const id of this.servos.ids) {
+          const st = this.servos.state(id);
+          if (st && components[id])
+            components[id] = {
+              ...components[id]!,
+              state: {
+                ...components[id]!.state,
+                powered: st.powered,
+                angleDeg: st.angleDeg,
+                commandedDeg: st.commandedDeg,
+                signal: st.signal,
+                ...(st.pulseUs !== null ? { pulseUs: st.pulseUs } : {}),
+              },
+            };
+        }
+        latest = { ...base, components };
       }
       const json = JSON.stringify(jsonSafe(latest));
       if (json !== this.latestPublished) {
@@ -977,5 +1486,41 @@ export class HostSession {
   /** For tests and housekeeping: the private directory (never exposed to clients). */
   get privateDir(): string {
     return this.dir;
+  }
+}
+
+/**
+ * Parts that a duty-0 pad (O-R4-1) may touch without the undocumented level mattering: the board
+ * itself (its pad terminal) and ground. Sprint 17C: the servo's signal input is no longer exempt.
+ * If the real output at duty 0 were a steady high or a short pulse each period, how an SG90 reacts
+ * is not established either, so a duty-0 pad that reaches a servo is refused like any other load.
+ */
+const ZERO_NEUTRAL: ReadonlySet<string> = new Set([
+  'board.esp32_devkitc_wroom32',
+  'component.ground',
+]);
+
+function pwmProblemKey(p: PwmProblem): string {
+  return `${p.code}:${p.gpios.join(',')}:${'components' in p ? p.components.join(',') : p.inputs.join(',')}`;
+}
+
+/** A waveform as published (gpio events): plain numbers, ns. */
+function pwmPadState(w: Waveform): PwmPadState {
+  switch (w.kind) {
+    case 'static':
+      return { kind: 'static', level: w.level };
+    case 'zero':
+      return { kind: 'zero', periodNs: ratToNumber(w.periodNs) };
+    case 'unsupported':
+      return { kind: 'unsupported', why: w.why };
+    default:
+      return {
+        kind: 'wave',
+        periodNs: ratToNumber(w.periodNs),
+        highNs: ratToNumber(w.highNs),
+        duty: w.duty,
+        dutyTicks: w.dutyTicks,
+        res: w.res,
+      };
   }
 }

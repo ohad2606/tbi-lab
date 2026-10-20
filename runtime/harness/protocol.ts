@@ -9,17 +9,29 @@
  *   sched-input  `J <vns> <pad> <level>` / `X <pad>` (host -> QEMU, any reply)
  *   pad-func     `F <vns> <pad> <func> <od>`         (QEMU -> host, reply `C`)
  *   i2c          `B <vns> <bus> S|W|R|P ...`          (QEMU -> host, reply `K`/`D` then `C`)
+ *   pwm          `P <vns> <timer> <state>`            (QEMU -> host, reply `C`; patch 0009)
+ *                `W <vns> <signal> <state>`           LEDC high-speed timer / channel state
  */
 
 export type Level = 0 | 1;
 
 /** Capability tokens of bridge v2, in their canonical (sorted) order. */
-export const CAPABILITIES = ['i2c', 'pad-func', 'sched-input'] as const;
+export const CAPABILITIES = ['i2c', 'pad-func', 'pwm', 'sched-input'] as const;
 export type Capability = (typeof CAPABILITIES)[number];
 
-/** Routed function of a pad (patch 0007): simple GPIO, an I2C signal, or another peripheral. */
+/**
+ * Routed function of a pad (patch 0007): simple GPIO, an I2C signal, or another peripheral.
+ * `inverted:<sel>` (patch 0010, R4 review M8): the GPIO matrix inverts the routed output or its
+ * enable (sel 256 = simple GPIO); never modelled, so the host refuses it on an attached pad.
+ */
 export type PadFunction =
-  'gpio' | 'i2c0-scl' | 'i2c0-sda' | 'i2c1-scl' | 'i2c1-sda' | `periph:${number}`;
+  | 'gpio'
+  | 'i2c0-scl'
+  | 'i2c0-sda'
+  | 'i2c1-scl'
+  | 'i2c1-sda'
+  | `periph:${number}`
+  | `inverted:${number}`;
 
 /** One I2C bus phase (patch 0008). Addresses are 7-bit; `read` is the R/W bit. */
 export type I2cPhase =
@@ -28,13 +40,36 @@ export type I2cPhase =
   | { op: 'R'; ack: boolean }
   | { op: 'P' };
 
+/**
+ * An LEDC high-speed timer (patch 0009): running with a source clock, a 10.8 fixed-point divider
+ * and a resolution (period = div / 256 * 2^res source clocks), held, or a configuration the
+ * runtime refuses to represent.
+ */
+export type LedcTimerState =
+  | { kind: 'run'; clockHz: number; div: number; res: number }
+  | { kind: 'reset' }
+  | { kind: 'paused' }
+  /** `apb-clock`: never on the wire; the host's verdict on an APB clock other than 80 MHz (M2). */
+  | { kind: 'unsupported'; why: 'resolution' | 'divider' | 'apb-clock' };
+
+/** An LEDC channel's output (patch 0009): its idle level, or high for `duty` ticks from `hpoint`. */
+export type LedcChannelState =
+  | { kind: 'idle'; level: Level }
+  | { kind: 'on'; timer: number; hpoint: number; duty: number }
+  | { kind: 'unsupported'; why: 'low-speed' | 'interrupt' | 'dither' | 'fade' | 'hpoint' };
+
+/** GPIO-matrix output signals of the LEDC channels: high speed 71..78, low speed 79..86. */
+export const LEDC_SIGNALS = { first: 71, last: 86, highSpeedLast: 78 } as const;
+
 export type Frame =
   | { type: 'H'; version: 1 | 2; tickNs: bigint; caps: Capability[] }
   | { type: 'G'; vns: bigint; pad: number; drive: Level; level: Level }
   | { type: 'T'; vns: bigint }
   | { type: 'S'; vns: bigint; bytes: Buffer }
   | { type: 'F'; vns: bigint; pad: number; func: PadFunction; openDrain: boolean }
-  | { type: 'B'; vns: bigint; bus: 0 | 1; phase: I2cPhase };
+  | { type: 'B'; vns: bigint; bus: 0 | 1; phase: I2cPhase }
+  | { type: 'P'; vns: bigint; timer: number; state: LedcTimerState }
+  | { type: 'W'; vns: bigint; signal: number; state: LedcChannelState };
 
 export type Command =
   | { type: 'I'; pad: number; level: Level }
@@ -83,6 +118,8 @@ function parsePadFunction(s: string, line: string): PadFunction {
   if (s === 'gpio' || /^i2c[01]-(scl|sda)$/.test(s)) return s as PadFunction;
   const m = /^periph:(0|[1-9]\d{0,2})$/.exec(s);
   if (m && Number(m[1]) < 256) return s as PadFunction;
+  const inv = /^inverted:(0|[1-9]\d{0,2})$/.exec(s);
+  if (inv && Number(inv[1]) <= 256) return s as PadFunction;
   throw new ProtocolError(`invalid pad function: ${line}`);
 }
 
@@ -145,6 +182,38 @@ export function parseFrame(line: string): Frame {
     else if (rest === 'P') phase = { op: 'P' };
     else throw new ProtocolError(`malformed i2c frame: ${JSON.stringify(line.slice(0, 80))}`);
     return { type: 'B', vns: BigInt(m[1]!), bus: Number(m[2]) as 0 | 1, phase };
+  }
+  if ((m = /^P (\d+) ([0-3]) (.*)$/.exec(line))) {
+    const rest = m[3]!;
+    let p: RegExpExecArray | null;
+    let state: LedcTimerState;
+    if ((p = /^run (1000000|[1-9]\d{6,7}) ([1-9]\d{2,5}) ([1-9]|1\d|20)$/.exec(rest))) {
+      const div = Number(p[2]);
+      if (div < 256 || div > 0x3ffff) throw new ProtocolError(`LEDC divider out of range: ${line}`);
+      state = { kind: 'run', clockHz: Number(p[1]), div, res: Number(p[3]) };
+    } else if (rest === 'reset' || rest === 'paused') state = { kind: rest };
+    else if ((p = /^unsupported (resolution|divider)$/.exec(rest)))
+      state = { kind: 'unsupported', why: p[1] as 'resolution' | 'divider' };
+    else
+      throw new ProtocolError(`malformed LEDC timer frame: ${JSON.stringify(line.slice(0, 80))}`);
+    return { type: 'P', vns: BigInt(m[1]!), timer: Number(m[2]), state };
+  }
+  if ((m = /^W (\d+) (7[1-9]|8[0-6]) (.*)$/.exec(line))) {
+    const rest = m[3]!;
+    let p: RegExpExecArray | null;
+    let state: LedcChannelState;
+    if ((p = /^idle ([01])$/.exec(rest))) state = { kind: 'idle', level: Number(p[1]) as Level };
+    else if ((p = /^on ([0-3]) (0|[1-9]\d{0,6}) (0|[1-9]\d{0,6})$/.exec(rest))) {
+      const hpoint = Number(p[2]);
+      const duty = Number(p[3]);
+      if (hpoint >= 1 << 20 || duty > 1 << 20)
+        throw new ProtocolError(`LEDC channel value out of range: ${line}`);
+      state = { kind: 'on', timer: Number(p[1]), hpoint, duty };
+    } else if ((p = /^unsupported (low-speed|interrupt|dither|fade|hpoint)$/.exec(rest)))
+      state = { kind: 'unsupported', why: p[1] as 'low-speed' };
+    else
+      throw new ProtocolError(`malformed LEDC channel frame: ${JSON.stringify(line.slice(0, 80))}`);
+    return { type: 'W', vns: BigInt(m[1]!), signal: Number(m[2]), state };
   }
   throw new ProtocolError(`malformed frame: ${JSON.stringify(line.slice(0, 80))}`);
 }

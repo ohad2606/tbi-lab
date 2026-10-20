@@ -20,7 +20,13 @@
 import { sha256Utf8, type ProjectDocument } from '@tbi-lab/domain';
 import type { LiveControl, SolveOutcome } from '@tbi-lab/engine';
 import type { FailReason, SessionEvent } from '../../../runtime/host/protocol.js';
-import type { RunOptions, SimFailure, SimState, SimulationHost } from '../sim/controller.js';
+import type {
+  PwmFailCode,
+  RunOptions,
+  SimFailure,
+  SimState,
+  SimulationHost,
+} from '../sim/controller.js';
 import {
   RuntimeTransportError,
   type RuntimeClient,
@@ -90,8 +96,47 @@ const FAIL: Record<FailReason, RuntimeFailCode> = {
   bridge_lost: 'runtime_crashed',
   guest_reset: 'guest_reset',
   storage_limit: 'session_lost',
+  pwm_unsupported: 'pwm_unsupported',
   internal: 'runtime_crashed',
 };
+
+export const PWM_CODES: readonly PwmFailCode[] = [
+  'pwm_duty_zero_unverified',
+  'pwm_unsupported_mode',
+  'pwm_load_unsupported',
+  'pwm_input_unsupported',
+  'pwm_outputs_interact',
+  'pwm_supply_limited',
+  'pwm_rate_exceeded',
+];
+
+/** R4 (review M8): the host refused an attached pad because the GPIO matrix inverts it. */
+function invertedRouting(detail: unknown): boolean {
+  const f = (detail as { function?: unknown } | null)?.function;
+  return typeof f === 'string' && f.startsWith('inverted:');
+}
+
+/** R4: the host's `pwm_unsupported` detail as a named product failure (unknown shapes: generic). */
+export function pwmFailure(detail: unknown): SimFailure {
+  const d = (detail ?? {}) as Record<string, unknown>;
+  const code = d.code as PwmFailCode;
+  if (!PWM_CODES.includes(code)) return { kind: 'runtime', code: 'pwm_unsupported' };
+  const nums = (v: unknown) =>
+    Array.isArray(v) ? v.filter((x): x is number => Number.isInteger(x)) : undefined;
+  const strs = (v: unknown) =>
+    Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : undefined;
+  const gpios = nums(d.gpios) ?? (Number.isInteger(d.gpio) ? [d.gpio as number] : []);
+  const components = strs(d.components);
+  const inputs = nums(d.inputs);
+  return {
+    kind: 'pwm',
+    code,
+    gpios,
+    ...(components?.length ? { components } : {}),
+    ...(inputs?.length ? { inputs } : {}),
+    ...(typeof d.why === 'string' ? { why: d.why } : {}),
+  };
+}
 
 export class McuSimulation implements SimulationHost {
   private stateValue: SimState = { status: 'stopped' };
@@ -426,6 +471,9 @@ export class McuSimulation implements SimulationHost {
           const reason = e.reason as FailReason;
           if (reason === 'electrical_error' && isEngineError(e.detail))
             return this.fail({ kind: 'engine', error: e.detail });
+          if (reason === 'pwm_unsupported') return this.fail(pwmFailure(e.detail));
+          if (reason === 'unsupported_feature' && invertedRouting(e.detail))
+            return this.fail({ kind: 'runtime', code: 'inverted_output', detail: reason });
           return this.fail({
             kind: 'runtime',
             code: FAIL[reason] ?? 'runtime_crashed',
@@ -460,7 +508,12 @@ export class McuSimulation implements SimulationHost {
       case 'gpio': {
         const gpio = { ...v.gpio };
         for (const c of e.changes)
-          gpio[c.gpio] = { drive: c.drive, level: c.level, transitions: c.transitions };
+          gpio[c.gpio] = {
+            drive: c.drive,
+            level: c.level,
+            transitions: c.transitions,
+            ...(c.pwm ? { pwm: c.pwm } : {}),
+          };
         v.gpio = gpio;
         return this.publish();
       }

@@ -210,6 +210,42 @@ export const en = {
   'sim.part.state.line2': 'Line 2',
   'lcd.screen': 'Display contents, line 1: {line1}; line 2: {line2}',
   'lcd.blank': 'Display blank',
+  // ---- Sprint 15 (R4): the SG90 servo and PWM (LEDC) outputs ----
+  'component.component.servo_sg90.name': 'SG90 servo',
+  'terminal.servoSignal': 'Control signal (PWM)',
+  'model.servo.sg90': 'TowerPro SG90',
+  'sim.results.notModelled': 'not modelled',
+  'sim.part.state.component.servo_sg90.powered': 'Powered (supply 4.8–6.0 V)',
+  'sim.part.state.angleDeg': 'Shaft angle',
+  'sim.part.state.commandedDeg': 'Commanded angle',
+  'sim.part.state.signal': 'Control signal',
+  'sim.part.state.signal.none': 'no pulses',
+  'sim.part.state.signal.pulses': 'servo pulses',
+  'sim.part.state.signal.static': 'steady level (no pulses)',
+  'sim.part.state.signal.undefined': 'not a valid logic level (no valid pulse)',
+  'sim.part.state.pulseUs': 'Last pulse width',
+  'sim.results.outsideModel.component.servo_sg90':
+    'Supply outside the modelled 4.8–6.0 V range: the servo is shown holding still; a real one may behave differently.',
+  'sim.results.servoCurrentExcluded':
+    'Does not include the current drawn by {components}: the SG90 servo’s supply current is not modelled.',
+  'sim.results.pwmAverage': '{label}, average (PWM)',
+  'sim.results.pwmPeak': '{label}, peak (PWM)',
+  'sim.results.pwmNote':
+    'Driven by PWM: the values above are time-averages over the waveform; the ratings check the peak current.',
+  'sim.results.pwmPower':
+    'not shown under PWM (the product of the average voltage and current is not the average power)',
+  'unit.hertz.symbol': 'Hz',
+  'unit.second.symbol': 's',
+  'unit.percent.symbol': '%',
+  'unit.degree.symbol': '°',
+  'mcu.pwm.wave': 'PWM {frequency} · {duty}',
+  'mcu.pwm.zero': 'PWM · duty 0 (its output level is not verified)',
+  'mcu.pwm.static': 'PWM · {level} (steady)',
+  'mcu.pwm.unsupported': 'PWM · unsupported',
+  'mcu.pwm.levelUnknown': 'voltage not established',
+  'mcu.pwm.average': 'average {voltage}',
+  'mcu.warning.servo_signal_undefined':
+    '{component}: the control signal is not a valid logic level (or several PWM outputs act on it); the servo sees no valid pulse.',
   'sim.time': 't = {time}',
   'sim.timeNote':
     'Simulated time since Run (1 ms steps). Capacitors start discharged at every Run.',
@@ -295,7 +331,7 @@ export const en = {
   'sim.results.outsideModel':
     'Outside the LED model’s documented range (1–20 mA). The value follows the model but may differ from a real part.',
   'sim.results.ledLit':
-    'The LED symbol brightness is a visual cue derived from the solved current, not a light measurement.',
+    'The LED symbol brightness is a visual cue derived from the solved current, not a light measurement. Under PWM it follows the average current.',
   'sim.mode.cv': 'CV · constant voltage',
   'sim.mode.cc': 'CC · current limit',
   'sim.mode.off': 'Output off',
@@ -329,6 +365,7 @@ export const en = {
   'psu.voltage': 'Voltage',
   'psu.current': 'Current',
   'psu.notRunning': 'Not running',
+  'psu.currentAverage': 'average (PWM)',
   'psu.ccNote': 'Current limiting is normal supply behaviour, not a fault.',
   'checks.heading': 'Circuit checks',
   'checks.none': 'No problems found.',
@@ -526,7 +563,7 @@ export const en = {
   'palette.unavailable.board_time_dependent':
     'Not available while the project has time-dependent parts (they are simulated only without an ESP32).',
   'palette.group.sensors': 'Sensors',
-  'palette.group.output': 'Sound and displays',
+  'palette.group.output': 'Sound, displays and motion',
   'palette.group.switches': 'Switches',
   'inspector.shortcutsHeading': 'Keyboard shortcuts',
   'unit.watt.symbol': 'W',
@@ -668,6 +705,8 @@ export const en = {
   'build.phase.queued': 'Waiting to build ({position} ahead)',
   'build.phase.current': 'Built',
   'build.phase.failed': 'Build failed',
+  // Sprint 18F: the time a running build has taken so far (a clock, not an estimate).
+  'build.elapsed': '{seconds} s',
   'build.stale': 'The code changed since the last build.',
   // Sprint 13 OS-08: Run is not available during a build or without a current build.
   'run.blocked.building': 'Run is unavailable while a build is in progress.',
@@ -732,10 +771,13 @@ export const en = {
   'build.feature.internal_pull': 'internal pull-up/pull-down',
   'build.feature.interrupt': 'GPIO interrupts',
   'build.feature.restart': 'chip restart',
+  'build.feature.cpu_frequency': 'CPU clock change (setCpuFrequencyMhz)',
   'build.feature.wifi': 'Wi-Fi networking',
   'build.feature.bluetooth': 'Bluetooth',
   'build.feature.adc': 'analog input (ADC)',
   'build.feature.pwm': 'PWM/LEDC output',
+  'build.feature.pwm_advanced':
+    'LEDC hardware fade or output inversion (ledcFade, ledcOutputInvert)',
   'build.feature.dac': 'analog output (DAC)',
   'build.feature.touch': 'touch sensing',
   'build.feature.sleep': 'sleep modes',
@@ -775,6 +817,8 @@ export const en = {
     'The selected firmware is not available on the runtime service. The project is not affected.',
   'sim.error.runtime.unsupported_feature':
     'The firmware uses a feature the simulator does not support in this version (internal pull-up/pull-down or GPIO interrupts).',
+  'sim.error.runtime.inverted_output':
+    'The firmware inverts a connected pin through the GPIO matrix. The simulator does not model inverted outputs.',
   'sim.error.runtime.invalid_attachment': 'A connected ESP32 pin cannot be used in the simulator.',
   'sim.error.runtime.startup_failed':
     'The ESP32 could not start. The project is not affected. Press Run to try again.',
@@ -796,6 +840,34 @@ export const en = {
     'The ESP32 runtime refused a live change it does not support (it may be older than this app), so the session was stopped. The project keeps your change.',
   'sim.error.runtime.commands_rate_limited':
     'Live changes were sent faster than the ESP32 runtime accepts, so the session was stopped. The project keeps your change; press Run to continue.',
+  'sim.error.runtime.pwm_unsupported':
+    'A PWM output was used in a way the simulator cannot reproduce faithfully, and the session ended.',
+  'sim.error.pwm.pwm_duty_zero_unverified':
+    '{pins} outputs PWM at duty 0 while the circuit responds to that pin ({components}). The level a real ESP32 outputs at duty 0 is not verified yet, so the simulator stops instead of guessing. To switch the output off, use ledcDetach() and digitalWrite(pin, LOW).',
+  'sim.error.pwm.pwm_unsupported_mode':
+    '{pins} uses an LEDC mode the simulator does not support: {why}.',
+  'sim.error.pwm.pwm_load_unsupported':
+    'PWM on {pins} reaches {components}, which does not respond instantly to a switching signal. Only resistors, LEDs, diodes and switches can be averaged faithfully.',
+  'sim.error.pwm.pwm_input_unsupported':
+    'PWM on {pins} reaches the ESP32 input {inputs}. Reading a PWM signal is not simulated.',
+  'sim.error.pwm.pwm_outputs_interact':
+    'The PWM outputs {pins} share a load ({components}). Their combined effect depends on how the waveforms overlap, which is not simulated.',
+  'sim.error.pwm.pwm_supply_limited':
+    'PWM on {pins} makes {components} reach its current limit during part of each cycle. How a bench supply regulates a switching load at its limit is not simulated, so the session stopped. Raise the supply’s current limit or reduce the load.',
+  'sim.error.pwm.pwm_rate_exceeded':
+    'The sketch changes which of {pins} are switching (or stop at 0 % or 100 %) so often that the simulator would need more than 1000 circuit solutions per simulated second, its limit. The session stopped instead of slowing down or approximating. Changing only the duty of a running PWM output costs nothing; switch outputs between PWM and steady levels less often.',
+  'sim.pwm.why.open-drain': 'an open-drain PWM output',
+  'sim.pwm.why.inverted': 'an inverted PWM output (GPIO matrix inversion)',
+  'sim.pwm.why.low-speed': 'a low-speed channel (more than 8 PWM channels)',
+  'sim.pwm.why.interrupt': 'LEDC interrupts',
+  'sim.pwm.why.dither': 'fractional duty (dithering)',
+  'sim.pwm.why.fade': 'hardware fade',
+  'sim.pwm.why.hpoint': 'a phase offset that reaches the end of the period',
+  'sim.pwm.why.timer-reset': 'its timer is held in reset',
+  'sim.pwm.why.timer-paused': 'its timer is paused',
+  'sim.pwm.why.timer-resolution': 'a timer resolution outside 1 to 20 bits',
+  'sim.pwm.why.timer-apb-clock': 'a CPU clock below 80 MHz, which changes the PWM clock mid-period',
+  'sim.pwm.why.timer-divider': 'a timer divider below 1',
   'sim.error.runtime.protocol_error':
     'The runtime service sent an unexpected response and the session ended. The project is not affected.',
   'mcu.heading': 'ESP32 runtime',
@@ -814,7 +886,7 @@ export const en = {
   'mcu.caveat.power': 'Supply pin',
   'mcu.caveat.enable': 'Chip enable: reset is not simulated',
   'mcu.note.unsupported':
-    'Not simulated in this version: internal pull-up/pull-down, GPIO interrupts, chip reset, analog, PWM, Wi-Fi.',
+    'Not simulated in this version: internal pull-up/pull-down, GPIO interrupts, chip reset, analog, Wi-Fi.',
   'mcu.level.high': 'HIGH',
   'mcu.level.low': 'LOW',
   'mcu.mode.output': 'output',
@@ -875,6 +947,12 @@ export const en = {
   'example.esp32-thermo-hygrometer.title': 'ESP32: temperature and humidity (DHT22)',
   'example.esp32-thermo-hygrometer.summary':
     'A DHT22 / AM2302 on GPIO4, with the 10 kΩ pull-up its single-wire data line needs, read by a short library-free routine that follows the datasheet timing. The serial output shows the temperature and relative humidity every 2.5 s. Change both in the Properties panel while running. Runs on the ESP32 runtime service.',
+  'example.esp32-led-fade.title': 'ESP32: fade an LED with PWM',
+  'example.esp32-led-fade.summary':
+    'analogWrite drives GPIO18 with a 1 kHz PWM signal; the LED’s average current, and its brightness, follow the duty. The fade stays between 1 and 255: duty 0 is not simulated yet.',
+  'example.esp32-servo-sweep.title': 'ESP32: sweep an SG90 servo with PWM',
+  'example.esp32-servo-sweep.summary':
+    'A 50 Hz LEDC signal on GPIO18 with 1.0, 2.0 and 1.5 ms pulses moves the servo to 0°, 180° and 90°. The servo runs from the 5 V bench supply.',
   'example.esp32-lcd-hello.title': 'ESP32: hello on a 16×2 I2C LCD',
   'example.esp32-lcd-hello.summary':
     'The sketch drives the LCD through its PCF8574 I2C backpack with plain Wire writes: line 1 says hello, line 2 counts the seconds. The module runs from 4.5 V so that the 3.3 V bus pull-ups (two 4.7 kΩ resistors to a second supply) read HIGH at its inputs (0.7 × 4.5 V = 3.15 V). Runs on the ESP32 runtime service.',
@@ -939,7 +1017,11 @@ export const en = {
     'Tasks run on both cores. A sketch that keeps core 0 busy can delay code on core 1 by up to about 1 ms, so microsecond timing is not supported in such sketches.',
   'capabilities.facility.pwm.name': 'PWM / LEDC output (analogWrite, ledcWrite)',
   'capabilities.facility.pwm.body':
-    'Not simulated yet. A sketch that uses it is refused before Run.',
+    'High-speed LEDC channels with exact frequency and duty. The circuit sees the time-average (LEDs dim; ratings use the peak current). Refused at Run with the reason named: duty 0 driving a load (its level on real hardware is not verified yet), loads that do not respond instantly (only resistors, LEDs, diodes and switches do), an ESP32 input reading the PWM signal, and more than 8 channels.',
+  'capabilities.facility.pwm_advanced.name':
+    'LEDC hardware fade and output inversion (ledcFade, ledcOutputInvert)',
+  'capabilities.facility.pwm_advanced.body':
+    'Not simulated. A sketch that uses them is refused at Build. Fade by calling ledcWrite in steps.',
   'capabilities.facility.interrupt.name': 'GPIO interrupts (attachInterrupt)',
   'capabilities.facility.interrupt.body': 'Not simulated. Poll the pin with digitalRead instead.',
   'capabilities.facility.internal_pull.name':
@@ -967,6 +1049,9 @@ export const en = {
     'Not simulated: pins use the default drive strength. Code that selects another strength is refused at Build.',
   'capabilities.facility.restart.name': 'Chip restart (ESP.restart)',
   'capabilities.facility.restart.body': 'Not simulated. Press Stop and Run to start again.',
+  'capabilities.facility.cpu_frequency.name': 'CPU clock changes (setCpuFrequencyMhz)',
+  'capabilities.facility.cpu_frequency.body':
+    'Not simulated: the ESP32 runs at 240 MHz. Code that changes the CPU clock is refused at Build.',
   'capabilities.facility.library.name': 'Arduino libraries',
   'capabilities.facility.library.body':
     'Only libraries built into the ESP32 core that are listed here run (Preferences; Wire on the I2C parts). Other libraries, such as DHT or LiquidCrystal_I2C, are refused; the curated examples show the same parts without them.',
@@ -1027,8 +1112,6 @@ export const en = {
   'limitation.no_breakdown':
     'Reverse breakdown is not modelled; the reverse-voltage rating is checked and warned about instead.',
   'limitation.switch_ideal': 'Ideal contact: no contact resistance or bounce.',
-  'limitation.rgb_onoff_esp32':
-    'Next to an ESP32 each channel is on or off: PWM colour mixing is not supported.',
   'limitation.ldr_typical':
     'A typical GL5528 (the centre of its resistance class), not a measured part.',
   'limitation.ldr_extrapolated':
@@ -1087,6 +1170,21 @@ export const en = {
   'sim.part.current.scl': 'SCL input',
   'limitation.esp32_input_clamp':
     'Input protection diodes are not modelled: a pin outside its specified range is flagged, and the simulated current into it is not reliable.',
+  // Sprint 15 (R4): PWM averages, the SG90 servo and the ESP32's LEDC outputs.
+  'limitation.pwm_average':
+    'Driven by PWM, the values shown are time-averages over the waveform (exact for this part); ratings use the peak current. Perceived brightness is approximated by the average current.',
+  'limitation.servo_supply_current':
+    'Supply current is not modelled: a weak supply or a 3.3 V pin is not shown sagging under the servo’s load.',
+  'limitation.servo_thresholds':
+    'TowerPro does not specify the signal’s logic thresholds; the model assumes 2.0 V high and 0.8 V low.',
+  'limitation.servo_supply_range':
+    'Simulated only with a 4.8–6.0 V supply; outside that range the servo holds still.',
+  'limitation.servo_mapping':
+    '1.0–2.0 ms pulses map to 0–180°; real SG90 units vary (some travel about 150°). 10 µs deadband, 600°/s, no torque or load.',
+  'limitation.servo_frames':
+    'Pulses of 400–2600 µs are accepted with frames up to 50 ms apart; the response to frames much shorter than 20 ms is not specified by the manufacturer.',
+  'limitation.esp32_pwm':
+    'PWM (LEDC): duty 0 driving a load, more than 8 channels, hardware fade and output inversion are refused; high times are exact to one LEDC clock.',
   'inspector.limitations': 'Model limitations',
   // Sprint 13 H4: first-run guide.
   'onboarding.heading': 'Getting started',

@@ -89,7 +89,8 @@ describe('R3: Wire on the real runtime (harness level)', () => {
         },
       );
       expect(r.outcome, r.diagnostics).toBe('completed');
-      expect(r.caps).toEqual(['i2c', 'pad-func', 'sched-input']);
+      // What R3 needs from the bridge (Runtime v2 and later; v3 adds `pwm`, Sprint 15).
+      expect(r.caps).toEqual(expect.arrayContaining(['i2c', 'pad-func', 'sched-input']));
     } finally {
       ov.discard();
     }

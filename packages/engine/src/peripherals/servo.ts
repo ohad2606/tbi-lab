@@ -36,7 +36,11 @@ export class Servo {
   private positionDeg: number;
   private targetDeg: number;
   private atNs = 0n;
+  /** The most recent pulses (bounded: a running session sends 50 per second). */
   readonly pulses: { atNs: bigint; widthUs: number; accepted: boolean }[] = [];
+  static readonly PULSE_HISTORY = 64;
+  /** Sprint 15: every pulse measured so far (the bounded history keeps only the latest). */
+  pulseCount = 0;
 
   constructor(
     readonly spec: ServoSpec = SG90,
@@ -66,11 +70,21 @@ export class Servo {
       this.acceptedUs === null || Math.abs(widthUs - this.acceptedUs) >= this.spec.deadbandUs;
     const accepted = valid && moved;
     this.pulses.push({ atNs: tNs, widthUs, accepted });
+    this.pulseCount++;
+    if (this.pulses.length > Servo.PULSE_HISTORY) this.pulses.shift();
     if (!accepted) return;
     this.acceptedUs = widthUs;
     const { minPulseUs: lo, maxPulseUs: hi, travelDeg } = this.spec;
     const f = (widthUs - lo) / (hi - lo);
     this.targetDeg = Math.min(travelDeg, Math.max(0, f * travelDeg));
+  }
+
+  /**
+   * Sprint 17C: the signal became unknown (the runtime host's placeholder interval): a pulse in
+   * progress is not measured, the next valid pulse starts timing afresh.
+   */
+  discardPulse(): void {
+    this.riseNs = null;
   }
 
   /** Move the output toward the target until `tNs` at the slew rate. */
@@ -82,6 +96,20 @@ export class Servo {
     const d = this.targetDeg - this.positionDeg;
     this.positionDeg =
       Math.abs(d) <= step ? this.targetDeg : this.positionDeg + Math.sign(d) * step;
+  }
+
+  /**
+   * Sprint 15: time passes without motion (the servo is unpowered): the output stays where it is
+   * and the signal is not read; the next `advanceTo` slews only from `tNs` on.
+   */
+  holdUntil(tNs: bigint): void {
+    if (tNs < this.atNs) throw new Error('servo time must not go backwards');
+    this.atNs = tNs;
+  }
+
+  /** The width of the last accepted pulse (us), or null before the first. */
+  get acceptedPulseUs(): number | null {
+    return this.acceptedUs;
   }
 
   get angleDeg(): number {

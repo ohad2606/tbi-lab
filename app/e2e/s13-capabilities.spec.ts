@@ -33,7 +33,12 @@ test('from the menu: firmware facilities, parts, timing and limits; Escape close
     'data-status',
     'supported',
   );
+  // Sprint 15 (R4): PWM runs on Runtime v3 with named refusals (limited); fade/invert refused.
   await expect(dialog.getByTestId('capability-facility-pwm')).toHaveAttribute(
+    'data-status',
+    'limited',
+  );
+  await expect(dialog.getByTestId('capability-facility-pwm_advanced')).toHaveAttribute(
     'data-status',
     'unsupported',
   );
@@ -76,9 +81,11 @@ test('Hebrew: right-to-left, translated, same entries', async ({ page }) => {
   const dialog = page.getByTestId('capabilities-dialog');
   await expect(dialog).toHaveAttribute('dir', 'rtl');
   await expect(dialog.locator('#capabilities-title')).toHaveText('מה רץ על ה־ESP32 ב־TBI Lab');
-  await expect(dialog.getByTestId('capability-facility-pwm')).toContainText('לא נתמך');
+  await expect(dialog.getByTestId('capability-facility-pwm')).toContainText('נתמך עם מגבלות');
+  await expect(dialog.getByTestId('capability-facility-pwm_advanced')).toContainText('לא נתמך');
   await expect(dialog.getByTestId('capability-board-power')).toContainText('3.3 V');
-  await expect(dialog.locator('[data-testid^="capability-facility-"]')).toHaveCount(19);
+  // 20 since Sprint 15 (R4 adds pwm_advanced), 21 since Sprint 18 (cpu_frequency, F-17C-1).
+  await expect(dialog.locator('[data-testid^="capability-facility-"]')).toHaveCount(21);
   // No English prose left in the Hebrew panel: only technical tokens (acronyms and part numbers,
   // Arduino API names, library and product names, units) — the terminology rule.
   const technical = [
@@ -87,7 +94,7 @@ test('Hebrew: right-to-left, translated, same entries', async ({ page }) => {
     /^[A-Z][a-z]+[A-Z][A-Za-z0-9_]*$/, // DevKitC, FreeRTOS, LiquidCrystal_I2C
     /^[a-z0-9]+(_[a-z0-9]+)+$/, // ESP-IDF API names: gpio_set_drive_capability
     // Product and established terms ("Runtime" is the Hebrew UI's term since Sprint 10).
-    /^(TBI|Lab|Arduino|Runtime|Wire|Preferences|Bluetooth|Serial|ESP|Wi|Fi|Pull|up|down|millis|micros|delay|pulseIn|print|read|restart|ms|mm)$/,
+    /^(TBI|Lab|Arduino|Runtime|Wire|Preferences|Bluetooth|Serial|ESP|Wi|Fi|Pull|up|down|millis|micros|delay|pulseIn|print|read|restart|ms|mm|MHz)$/,
   ];
   const text = (await dialog.innerText()).replace(/µs/g, ' ').replace(/[0-9]+(\.[0-9]+)?/g, ' ');
   const english = [...new Set(text.match(/[A-Za-z_][A-Za-z0-9_]*/g) ?? [])].filter(

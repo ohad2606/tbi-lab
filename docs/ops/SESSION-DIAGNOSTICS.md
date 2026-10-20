@@ -67,6 +67,7 @@ swallowed. A throwing sink is tested to leave state, events and cleanup identica
 | `invalid_attachment` | failed | `user_content` | info | A pad the board/simulator does not support, or the engine's `invalid_attachment`. |
 | `electrical_error` | failed | `user_content` | info | The engine found no valid operating point, or the circuit has parts the runtime does not simulate / an I2C address conflict. `code` is attached. |
 | `mirror_failed` | failed | `user_content` | info | The engine refused a live control value from the user's edit. (Should be rare since Sprint 11 validates at submit; see open question 2.) |
+| `pwm_unsupported` | failed | `user_content` | info | R4 (Runtime v3): a PWM (LEDC) output the session cannot simulate honestly, still in place a command tick later: an unrepresentable LEDC configuration, duty 0 driving a load (O-R4-1), an inverted output, or a load that does not settle instantly. The user's firmware, not a host fault. |
 | `artifact_unknown` | failed | `artifact_integrity` | warning | No `<sha256>.bin` in the store although a valid run ticket named it (e.g. swept by retention). |
 | `artifact_hash_mismatch` | failed | `artifact_integrity` | error | The stored file, or the session's private copy, does not hash to its name: corruption. |
 | `artifact_missing` | failed | `artifact_integrity` | error | The artifact exists but could not be read. |

@@ -13,6 +13,11 @@ export interface JobContext {
   files: { name: string; text: string }[];
   /** Aborted on timeout or resource limit: the provider must stop its processes promptly. */
   signal: AbortSignal;
+  /**
+   * Sprint 18F: the source is one of the product's curated sketches (never a user's own): its
+   * build may leave reusable toolchain state for later jobs (the Arduino core seed).
+   */
+  curated?: boolean;
 }
 
 export interface ProviderOutput {
@@ -22,6 +27,8 @@ export interface ProviderOutput {
   features?: FeatureReport;
   sizes?: { program: number; programMax: number; data: number; dataMax: number };
   diagnostics: Diagnostic[];
+  /** Sprint 18F: the core seed this build started from (`seeded`), or why it compiled cold. */
+  coreSeed?: 'seeded' | 'cold';
   /** Raw toolchain output, already bounded by the provider's output cap. */
   log: { text: string; truncated: boolean };
   failure?: 'compile_error' | 'unsupported_input' | 'internal';
@@ -34,4 +41,9 @@ export interface BuildProvider {
   /** Refuse to serve when the installed toolchain does not match the pins. */
   verifyToolchain(): Promise<void>;
   build(job: JobContext): Promise<ProviderOutput>;
+  /**
+   * Sprint 18F: whether a job in `jobDir` (a path under the service's work root) would start
+   * from reusable toolchain state (the core seed). Absent: the provider keeps none.
+   */
+  hasCoreSeed?(jobDir: string): Promise<boolean>;
 }

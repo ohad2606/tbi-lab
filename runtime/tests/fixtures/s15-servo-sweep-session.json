@@ -1,0 +1,140 @@
+{
+  "_comment": "Sprint 15 (R4): exactly the session request the app sends for the esp32-servo-sweep example (minus artifact and ticket; app/tests/runtime-fixtures.test.ts keeps them equal). Firmware: the example's own program, built by the build service.",
+  "request": {
+    "protocol": "tbi-lab.session/2",
+    "board": "board.esp32_devkitc_wroom32",
+    "circuit": {
+      "format": "tbi-lab.snapshot",
+      "schemaVersion": 3,
+      "snapshotId": "snap_9eb8078b341cf6a3",
+      "projectId": "prj_exampleesp32servosweep",
+      "projectRevision": 1,
+      "components": [
+        {
+          "id": "PSU1",
+          "type": "instrument.lab_psu",
+          "typeVersion": 1,
+          "params": {
+            "setpointVoltage": {
+              "value": 5,
+              "unit": "volt"
+            },
+            "currentLimit": {
+              "value": 0.5,
+              "unit": "ampere"
+            },
+            "outputEnabled": true
+          }
+        },
+        {
+          "id": "GND1",
+          "type": "component.ground",
+          "typeVersion": 1,
+          "params": {}
+        },
+        {
+          "id": "M1",
+          "type": "component.servo_sg90",
+          "typeVersion": 1,
+          "params": {
+            "model": "model.servo.sg90"
+          }
+        },
+        {
+          "id": "GND2",
+          "type": "component.ground",
+          "typeVersion": 1,
+          "params": {}
+        },
+        {
+          "id": "GND3",
+          "type": "component.ground",
+          "typeVersion": 1,
+          "params": {}
+        },
+        {
+          "id": "U1_gnd",
+          "type": "component.ground",
+          "typeVersion": 1,
+          "params": {}
+        }
+      ],
+      "nets": [
+        {
+          "id": "N_1",
+          "role": "ground"
+        },
+        {
+          "id": "N_2",
+          "role": null
+        },
+        {
+          "id": "N_3",
+          "role": "ground"
+        },
+        {
+          "id": "N_4",
+          "role": null
+        },
+        {
+          "id": "N_5",
+          "role": "ground"
+        }
+      ],
+      "connections": [
+        {
+          "component": "PSU1",
+          "terminal": "positive",
+          "net": "N_2"
+        },
+        {
+          "component": "PSU1",
+          "terminal": "negative",
+          "net": "N_1"
+        },
+        {
+          "component": "GND1",
+          "terminal": "ref",
+          "net": "N_1"
+        },
+        {
+          "component": "M1",
+          "terminal": "gnd",
+          "net": "N_3"
+        },
+        {
+          "component": "M1",
+          "terminal": "vcc",
+          "net": "N_2"
+        },
+        {
+          "component": "M1",
+          "terminal": "signal",
+          "net": "N_4"
+        },
+        {
+          "component": "GND2",
+          "terminal": "ref",
+          "net": "N_3"
+        },
+        {
+          "component": "GND3",
+          "terminal": "ref",
+          "net": "N_5"
+        },
+        {
+          "component": "U1_gnd",
+          "terminal": "ref",
+          "net": "N_5"
+        }
+      ]
+    },
+    "attachments": [
+      {
+        "gpio": 18,
+        "component": "M1",
+        "terminal": "signal"
+      }
+    ]
+  }
+}

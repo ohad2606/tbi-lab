@@ -7,6 +7,8 @@
  *   used): interrupts, Wi-Fi, Bluetooth, ADC, PWM/LEDC, DAC, touch, deep sleep;
  * - tokens in the sketch source: internal pulls and restart requests. (`esp_restart` is always
  *   linked by the core's panic handler, so a symbol cannot tell whether the sketch calls it.)
+ *   Sprint 18 (F-17C-1): CPU clock changes likewise (the core's main.cpp calls
+ *   `setCpuFrequencyMhz(F_CPU / 1000000)` at boot, so the symbol is always linked).
  *
  * Static analysis cannot prove absence through macros or wrappers; runtime diagnostics (for
  * example `guest_reset`) remain the backstop. Pins are taken from literal arguments when every
@@ -14,6 +16,13 @@
  */
 import { ESP32_DEVKITC_WROOM32 } from '@tbi-lab/domain';
 import type { FeatureReport } from './protocol.js';
+
+/**
+ * Version of this analysis. Raised whenever a rule is added or changed, so builds analysed by an
+ * older rule set are built (and analysed) again instead of being reused from the cache with a
+ * report that misses the new rule (Sprint 18: `cpu_frequency`).
+ */
+export const FEATURES_ANALYZER = 2;
 
 /** GPIOs the simulator can read (digital I/O and input-only pads). */
 export const INPUT_CAPABLE_GPIOS: number[] = ESP32_DEVKITC_WROOM32.pins
@@ -28,6 +37,10 @@ const SYMBOLS: [RegExp, string][] = [
   [/^(esp_bt_controller_init|btStart)$/, 'bluetooth'],
   [/^(__analogRead|analogRead|adc_oneshot_read)$/, 'adc'],
   [/^(ledcAttach|ledcAttachChannel|ledcWrite|__analogWrite|analogWrite)$/, 'pwm'],
+  // R4: the LEDC hardware fade (the runtime refuses duty_scale, decision R4-D4) and output
+  // inversion (the GPIO-matrix OUT_INV bit is not published to the host, so an inverted output
+  // would be simulated non-inverted): refused on every runtime.
+  [/^(ledcFade|ledcFadeWithInterrupt|ledcFadeWithInterruptArg|ledcOutputInvert)$/, 'pwm_advanced'],
   [/^(dacWrite|__dacWrite)$/, 'dac'],
   [/^(__touchRead|touchRead)$/, 'touch'],
   [/^(esp_deep_sleep_start|esp_light_sleep_start)$/, 'sleep'],
@@ -68,17 +81,43 @@ export const FEATURE_CODES: readonly string[] = [
     'interrupt',
     'internal_pull',
     'restart',
+    'cpu_frequency',
     'library',
   ]),
 ];
 
+/**
+ * Sprint 18 (F-17C-1): a sketch that changes the CPU clock. On Runtime v2 and v3 the emulator stops
+ * advancing simulated time about a second after any change (160, 80, 40 or 20 MHz alike: the next
+ * FreeRTOS delay never returns), so such a sketch is refused at Build instead of running into the
+ * `stalled` failure. The boot frequency, 240 MHz, is not a change (the core returns early) and is
+ * accepted when every call passes the literal 240. The IDF calls below it are refused outright.
+ */
+function changesCpuFrequency(code: string): boolean {
+  if (
+    /\b(?:rtc_clk_cpu_freq_set_config(?:_fast)?|rtc_clk_cpu_freq_set_xtal|esp_pm_configure)\b/.test(
+      code,
+    )
+  )
+    return true;
+  const all = code.match(/\bsetCpuFrequencyMhz\b/g)?.length ?? 0;
+  const boot = code.match(/\bsetCpuFrequencyMhz\s*\(\s*240\s*\)/g)?.length ?? 0;
+  return all > boot;
+}
+
 /** Strip comments and string/char literals so tokens in them do not count. */
 export function codeOnly(source: string): string {
-  return source
-    .replace(/\/\*[\s\S]*?\*\//g, ' ')
-    .replace(/\/\/[^\n]*/g, ' ')
-    .replace(/"(?:\\.|[^"\\\n])*"/g, '""')
-    .replace(/'(?:\\.|[^'\\\n])*'/g, "''");
+  return (
+    source
+      .replace(/\/\*[\s\S]*?\*\//g, ' ')
+      .replace(/\/\/[^\n]*/g, ' ')
+      .replace(/"(?:\\.|[^"\\\n])*"/g, '""')
+      // Sprint 18 (review): C++14 digit separators (1'000, 0xFF'FF) are not character literals;
+      // dropped first (inside a number token, one that starts with a digit), so a call between two
+      // of them is not mistaken for literal text. case'a' and u8'x' stay character literals.
+      .replace(/(?<=\b\d[\dA-Fa-fxXbB']*)'(?=[\dA-Fa-f])/g, '')
+      .replace(/'(?:\\.|[^'\\\n])*'/g, "''")
+  );
 }
 
 function literalPins(code: string, call: RegExp, any: RegExp): number[] {
@@ -99,6 +138,8 @@ function literalPins(code: string, call: RegExp, any: RegExp): number[] {
  */
 const RUNTIME_FACILITIES: Record<string, { capability: string; libraries: string[] }> = {
   i2c: { capability: 'i2c', libraries: ['Wire'] },
+  // R4 (patch 0009): LEDC waveforms on a runtime announcing `pwm` (Runtime v3).
+  pwm: { capability: 'pwm', libraries: [] },
 };
 
 export function analyzeFeatures(input: {
@@ -130,6 +171,7 @@ export function analyzeFeatures(input: {
   );
   const gpioInterrupt = !interruptUsed ? [] : callPins.length > 0 ? callPins : INPUT_CAPABLE_GPIOS;
   const restart = /\bESP\s*\.\s*restart\s*\(|\besp_restart\s*\(/.test(code);
+  if (changesCpuFrequency(code)) unsupported.add('cpu_frequency');
   const requires = new Set<string>();
   for (const [facility, f] of Object.entries(RUNTIME_FACILITIES)) {
     if (!input.capabilities?.includes(f.capability) || !unsupported.has(facility)) continue;

@@ -26,12 +26,29 @@ export class FakeProvider implements BuildProvider {
   readonly profileHash = 'f'.repeat(64);
   builds = 0;
   dirs: string[] = [];
+  /** Sprint 18F: whether each job was a curated source's (may leave the core seed). */
+  curated: boolean[] = [];
+  /** Sprint 18F: the core seed's presence as the provider reports it (undefined: no seeds). */
+  seed: boolean | undefined = undefined;
+  hasCoreSeed?: (jobDir: string) => Promise<boolean>;
+  /** Sprint 18F: hold every build until released (`release()`), to observe ordering. */
+  gate: Promise<void> | null = null;
+
+  constructor() {
+    this.hasCoreSeed = async () => {
+      if (this.seed === undefined) throw new Error('no seeds');
+      return this.seed;
+    };
+  }
 
   async verifyToolchain(): Promise<void> {}
 
   async build(job: JobContext): Promise<ProviderOutput> {
     this.builds++;
     this.dirs.push(job.dir);
+    this.curated.push(job.curated === true);
+    if (job.curated && this.seed === false && !text0(job).includes('#noseed')) this.seed = true;
+    if (this.gate) await this.gate;
     const text = job.files[0]!.text;
     if (text.includes('#stall')) {
       await new Promise<void>((resolve) => job.signal.addEventListener('abort', () => resolve()));
@@ -73,6 +90,8 @@ export class FakeProvider implements BuildProvider {
     };
   }
 }
+
+const text0 = (job: JobContext) => job.files[0]?.text ?? '';
 
 export function tempDir(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix));

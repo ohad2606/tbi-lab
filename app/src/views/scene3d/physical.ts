@@ -500,3 +500,50 @@ export const LCD1602_MODULE = {
     scl: [-12.7, headerZ(3, 4)],
   } as Record<string, readonly [number, number]>,
 };
+
+/**
+ * TowerPro SG90 micro servo (Sprint 15), standing on the bench with its output shaft up. Case
+ * 22.2 x 11.8 mm, 31 mm overall height [SG90: TowerPro SG90 data sheet drawing]; the mounting tabs
+ * (32.2 mm across, 2.5 mm thick, underside 15.9 mm up), the gear tower and the shaft position are
+ * [REP] (common SG90 drawings). The three-wire lead ends in a 3-pin 2.54 mm servo plug [REP]
+ * lying on the bench, its sockets at the 2D terminal column (GND, +V, signal along z, as the
+ * lead's brown, red and orange wires); the 25 cm lead is drawn shortened, plug to case. The horn
+ * (a single arm, white) turns with the shaft angle the simulation reports.
+ */
+export const SERVO_SG90 = {
+  caseXMm: 22.2,
+  caseZMm: 11.8,
+  caseHeightMm: 22.7,
+  /** The case's end nearest the plug (local x); the case extends to +x. */
+  caseLeftXMm: 10.5,
+  tabSpanXMm: 32.2,
+  tabThicknessMm: 2.5,
+  tabUndersideMm: 15.9,
+  /** The gear tower: its top, and the output shaft's centre from the case's far (+x) end. */
+  towerTopMm: 26.7,
+  shaftFromEndMm: 5.9,
+  shaftDiameterMm: 4.8,
+  /** The horn: its hub on top of the shaft, the arm's reach from the shaft centre. */
+  hornBottomMm: 28.6,
+  hornThicknessMm: 1.6,
+  hornHubDiameterMm: 7.0,
+  hornReachMm: 15.0,
+  hornTipWidthMm: 4.0,
+  /** Overall height, to the horn's top (28.6 + 1.6): within the 31 mm drawing envelope. */
+  heightMm: 30.2,
+  /** The plug: 14 x 7.6 x 4 mm, lying flat, sockets facing -x at the terminal column. */
+  plugXMm: 14.0,
+  plugZMm: 7.6,
+  plugHeightMm: 4.0,
+  plugTipXMm: toMm(-60),
+  attachHeightMm: 2.0,
+  pins: {
+    gnd: [toMm(-60), -2.54],
+    vcc: [toMm(-60), 0],
+    signal: [toMm(-60), 2.54],
+  } as Record<string, readonly [number, number]>,
+};
+
+/** The servo's output shaft centre (local x; z = 0). */
+export const SERVO_SHAFT_X_MM =
+  SERVO_SG90.caseLeftXMm + SERVO_SG90.caseXMm - SERVO_SG90.shaftFromEndMm;

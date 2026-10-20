@@ -46,6 +46,7 @@ describe('capability panel texts', () => {
 
   it('feature and part refusals link to their sections; other failures do not', () => {
     expect(sectionForFailure('mcu_unsupported_features')).toBe('firmware');
+    expect(sectionForFailure('inverted_output')).toBe('firmware');
     expect(sectionForFailure('mcu_component_time_dependent')).toBe('parts');
     expect(sectionForFailure('unsupported_component')).toBe('parts');
     expect(sectionForFailure('no_ground')).toBeNull();

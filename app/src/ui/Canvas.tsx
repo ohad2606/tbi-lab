@@ -50,16 +50,18 @@ import {
   type MessageKey,
 } from '../i18n/i18n.js';
 import type { ComponentResult } from '@tbi-lab/engine';
-import { formatResult } from '../sim/format.js';
+import { formatAngle, formatResult } from '../sim/format.js';
 import { useAppState, useStore, useT } from './context.js';
 import { checksFor } from './checks.js';
 import {
   MATRIX_COLS,
   MATRIX_ROWS,
   RGB_CHANNELS,
+  SERVO_REST_DEG,
   SYMBOLS,
   lcdView,
   rgbTriangle,
+  servoAngle,
   type SymbolState,
 } from './symbols.js';
 import { bodyOverlaps } from '../geometry/overlap.js';
@@ -988,6 +990,11 @@ export function Canvas({
                   c.type === 'display.lcd1602_i2c' && outcome?.ok
                     ? lcdView(outcome.components[c.id]?.state)
                     : undefined,
+                // Sprint 15: the servo's horn at the angle the engine or the runtime reports.
+                servoAngle:
+                  c.type === 'component.servo_sg90' && outcome?.ok
+                    ? servoAngle(outcome.components[c.id]?.state)
+                    : undefined,
               }}
               overstressed={overstressed.has(c.id)}
               pinLevels={
@@ -1265,6 +1272,11 @@ function ComponentView({
         c.type === 'display.lcd1602_i2c' ? String(!!symbolState.lcd?.backlight) : undefined
       }
       data-sounding={c.type === 'component.buzzer' ? String(!!symbolState.sounding) : undefined}
+      data-angle={
+        c.type === 'component.servo_sg90'
+          ? String(symbolState.servoAngle ?? SERVO_REST_DEG)
+          : undefined
+      }
       onFocus={onFocus}
     >
       <rect
@@ -1428,6 +1440,11 @@ function runtimeLabel(
       return `${v} · ${i}`;
     case 'instrument.lab_psu':
       return `${v} · ${i} · ${t(`sim.badge.${r.mode ?? 'off'}`)}`;
+    case 'component.servo_sg90': {
+      // Its position, not its supply current (not modelled, never shown as 0 A).
+      const angle = servoAngle(r.state);
+      return angle === undefined ? '' : formatAngle(locale, angle);
+    }
     default: {
       // Sprint 10 parts: their named currents ("R 12.1 mA · G 0 A · B 3.2 mA"), else V · I.
       if (r.currents) {
@@ -1504,6 +1521,7 @@ const SIDE_PIN_TYPES: ReadonlySet<ComponentTypeId> = new Set<ComponentTypeId>([
   'sensor.hc_sr04',
   'sensor.dht22',
   'display.lcd1602_i2c',
+  'component.servo_sg90',
 ]);
 
 /**
@@ -1579,9 +1597,20 @@ function BoardPins({
             </text>
             {live && (
               <circle
-                class={live.level ? 'pin-level pin-high' : 'pin-level pin-low'}
+                class={
+                  // Sprint 15 (R4): a switching PWM pad is neither HIGH nor LOW. Sprint 17C: nor is
+                  // a duty-0 or unsupported one, whose level is not established (O-R4-1).
+                  live.pwm?.kind === 'wave'
+                    ? 'pin-level pin-pwm'
+                    : live.pwm?.kind === 'zero' || live.pwm?.kind === 'unsupported'
+                      ? 'pin-level pin-unknown'
+                      : live.level
+                        ? 'pin-level pin-high'
+                        : 'pin-level pin-low'
+                }
                 data-testid={`pin-level-${pin.gpio}`}
                 data-level={String(live.level)}
+                data-pwm={live.pwm?.kind}
                 cx={at.x + dot.x}
                 cy={at.y + dot.y}
                 r={4}

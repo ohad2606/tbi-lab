@@ -106,6 +106,38 @@ describe('analyzeFeatures', () => {
     ).toEqual([]);
   });
 
+  // Sprint 18 (F-17C-1): any CPU clock change stalls the emulator (measured on Runtime v3 with
+  // setCpuFrequencyMhz 160/80/40/20: the next delay never returns; 240 runs on). The symbol is
+  // always linked (the core sets F_CPU at boot), so the source decides.
+  it('F-17C-1: a CPU clock change is refused from the source; the boot 240 MHz is not a change', () => {
+    const f = (source: string) =>
+      analyzeFeatures({ source, symbols: ['setCpuFrequencyMhz'], libraries: [] }).unsupported;
+    expect(f('void setup() {}')).toEqual([]);
+    expect(f('setCpuFrequencyMhz(240);')).toEqual([]);
+    expect(f('setCpuFrequencyMhz( 240 ); setCpuFrequencyMhz(240);')).toEqual([]);
+    for (const src of [
+      'setCpuFrequencyMhz(160);',
+      'setCpuFrequencyMhz(80);',
+      'setCpuFrequencyMhz(40);',
+      'const int MHZ = 240; setCpuFrequencyMhz(MHZ);',
+      'setCpuFrequencyMhz(240); setCpuFrequencyMhz(80);',
+      'bool (*f)(uint32_t) = setCpuFrequencyMhz;',
+      'rtc_clk_cpu_freq_set_config(&c);',
+      'rtc_clk_cpu_freq_set_config_fast(&c);',
+      'rtc_clk_cpu_freq_set_xtal();',
+      'esp_pm_configure(&pm);',
+    ])
+      expect(f(src), src).toEqual(['cpu_frequency']);
+    // C++14 digit separators are not character literals (independent review, Sprint 18).
+    expect(f("int a = 1'000; setCpuFrequencyMhz(80); int b = 2'000;")).toEqual(['cpu_frequency']);
+    expect(f("switch (c) { case'a': setCpuFrequencyMhz(80); } char d = u8'x';")).toEqual([
+      'cpu_frequency',
+    ]);
+    expect(f('/* setCpuFrequencyMhz(80); */ Serial.println("setCpuFrequencyMhz(80)");')).toEqual(
+      [],
+    );
+  });
+
   it('codeOnly strips comments and literals', () => {
     expect(codeOnly('a /* b */ c // d\n"e" \'f\'')).toBe('a   c  \n"" \'\'');
   });
@@ -135,6 +167,50 @@ describe('Sprint 12 (ADR-011 §5): facilities the runtime provides become `requi
     });
     expect(f.internalPull).toEqual([4]);
     expect(f.requires).toEqual(['i2c']);
+  });
+  const V3 = ['i2c', 'pad-func', 'pwm', 'sched-input'];
+  const pwmSketch = {
+    source: 'void setup(){ ledcAttach(18, 50, 16); ledcWrite(18, 4915); }\nvoid loop(){}',
+    symbols: ['ledcAttach', 'ledcWrite', 'setup', 'loop'],
+    libraries: [],
+  };
+  it('T-R4-6: PWM is unsupported without the pwm capability and required with it', () => {
+    expect(analyzeFeatures(pwmSketch)).toMatchObject({ unsupported: ['pwm'] });
+    expect(
+      analyzeFeatures({ ...pwmSketch, capabilities: ['i2c', 'pad-func', 'sched-input'] }),
+    ).toMatchObject({ unsupported: ['pwm'] });
+    const v3 = analyzeFeatures({ ...pwmSketch, capabilities: V3 });
+    expect(v3.unsupported).toEqual([]);
+    expect(v3.requires).toEqual(['pwm']);
+    // analogWrite is the same facility.
+    expect(
+      analyzeFeatures({ source: '', symbols: ['__analogWrite'], libraries: [], capabilities: V3 }),
+    ).toMatchObject({ unsupported: [], requires: ['pwm'] });
+    // With Wire too, both are required.
+    expect(
+      analyzeFeatures({
+        ...pwmSketch,
+        symbols: [...pwmSketch.symbols, 'i2c_master_bus_add_device'],
+        libraries: ['Wire'],
+        capabilities: V3,
+      }).requires,
+    ).toEqual(['i2c', 'pwm']);
+  });
+  it('T-R4-6: the LEDC hardware fade and output inversion are refused on every runtime', () => {
+    for (const sym of [
+      'ledcFade',
+      'ledcFadeWithInterrupt',
+      'ledcFadeWithInterruptArg',
+      'ledcOutputInvert',
+    ]) {
+      const f = analyzeFeatures({
+        ...pwmSketch,
+        symbols: [...pwmSketch.symbols, sym],
+        capabilities: V3,
+      });
+      expect(f.unsupported, sym).toEqual(['pwm_advanced']);
+      expect(f.requires, sym).toEqual(['pwm']);
+    }
   });
   it('other facilities are unaffected by the capabilities (SPI stays unsupported)', () => {
     const f = analyzeFeatures({

@@ -13,6 +13,7 @@ import { sourceKey } from '@tbi-lab/domain';
 import { createBuildHttpServer, PREBUILT_IMAGE_BYTES } from '../http.js';
 import { validateBuildRequest } from '../protocol.js';
 import { BuildService, DEFAULT_LIMITS, type ServiceLimits } from '../service.js';
+import { FEATURES_ANALYZER } from '../features.js';
 import { ArtifactStore } from '../store.js';
 import {
   TEST_TICKET_KEY,
@@ -110,6 +111,25 @@ describe('BuildService', () => {
     expect(provider.builds).toBe(1);
     expect(service.lookup(first.key, A)?.artifact?.sha256).toBe(sha);
     expect(service.lookup('0'.repeat(64), A)).toBeNull();
+  });
+
+  it('Sprint 18: a build analysed by an older feature analyzer is built again, not reused', async () => {
+    const { service, provider, grants } = setup();
+    const req = sketch('void setup() {}\nvoid loop() {}\n');
+    const first = await finish(service, service.submit(req, A));
+    expect('cached' in service.submit(req, A)).toBe(true);
+    // The record as a pre-Sprint-18 service stored it: no analyzer version.
+    const stored = grants.findBuild(A, first.key)!;
+    const { analyzer, ...old } = stored;
+    expect(analyzer).toBe(FEATURES_ANALYZER);
+    grants.recordBuild(A, old);
+    expect(service.lookup(first.key, A)).toBeNull();
+    const again = await finish(service, service.submit(req, A));
+    expect(provider.builds).toBe(2);
+    expect(again.artifact?.sha256).toBe(first.artifact?.sha256);
+    // Rebuilt: the record is current again, and is reused.
+    expect('cached' in service.submit(req, A)).toBe(true);
+    expect(provider.builds).toBe(2);
   });
 
   it('one compilation at a time, three queued, then busy; identical pending input is shared', async () => {

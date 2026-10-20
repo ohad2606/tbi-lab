@@ -13,9 +13,8 @@ import { deriveScene, sceneObstacles, type SceneDescription } from '../views/sce
 import { actuators, pick } from '../views/scene3d/pick.js';
 import { controlKind, controlState, pressControl, toggleControl } from './controls.js';
 import type { Obstacle } from '../views/scene3d/route3d.js';
-import type { LiveLevel, Viewer, ViewerStats } from '../views/scene3d/renderer.js';
-import { rgbMix } from '../views/ledLooks.js';
-import { lcdView } from './symbols.js';
+import type { Viewer, ViewerStats } from '../views/scene3d/renderer.js';
+import { liveLevels } from './liveLevels.js';
 import { isSoftwareRenderer } from '../gpuInfo.js';
 import {
   LAYERS,
@@ -283,31 +282,8 @@ export function ThreeView() {
     );
   };
 
-  // While running: LED glow from the solved forward current (visual cue only, as on the circuit
-  // canvas). Off when stopped.
-  const outcome = sim.status === 'running' && sim.outcome.ok ? sim.outcome : null;
-  const levels: Record<string, LiveLevel> = {};
-  if (outcome && doc)
-    for (const c of doc.components)
-      if (c.type === 'component.led') {
-        const i = outcome.components[c.id]?.current ?? 0;
-        if (i && i > 0) levels[c.id] = Math.min(1, Math.max(0.08, i / 0.02));
-      } else if (c.type === 'display.led_matrix_8x8') {
-        // Each dot's level from ITS solved current (full at 20 mA).
-        const arr = outcome.components[c.id]?.array;
-        if (arr && arr.currents.some((i) => i > 1e-6))
-          levels[c.id] = {
-            dots: arr.currents.map((i) => (i > 1e-6 ? Math.min(1, Math.max(0.15, i / 0.02)) : 0)),
-          };
-      } else if (c.type === 'display.lcd1602_i2c') {
-        // Sprint 12: the LCD shows exactly what the engine reports (blank without it).
-        const lcd = lcdView(outcome.components[c.id]?.state);
-        if (lcd) levels[c.id] = { lcd };
-      } else if (c.type === 'component.rgb_led') {
-        // The emitted colour is the mix of the SOLVED channel currents (never a chosen colour).
-        const mix = rgbMix(outcome.components[c.id]?.currents ?? {});
-        if (mix) levels[c.id] = { level: mix.intensity, color: mix.color };
-      }
+  // While running: what the simulation reports, shown live (liveLevels.ts). Off when stopped.
+  const levels = liveLevels(doc, sim);
   const levelKey = JSON.stringify(levels);
   useEffect(() => {
     if (status === 'ready') viewer.current?.setLive(levels);

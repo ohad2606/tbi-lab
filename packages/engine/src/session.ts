@@ -71,6 +71,43 @@ export interface PinResult {
    * extrapolation, not a physical value, and must not be presented as one.
    */
   outsideModelRange?: true;
+  /**
+   * R4 (runtime host, architecture A1): the pad is a PWM output. `voltage` and `current` above are
+   * then time-averages; these are the waveform and the two operating points it alternates between.
+   */
+  pwm?: PwmPadFigures;
+  /** R4: the largest |current| over the PWM operating points, when it differs from the average. */
+  peakCurrent?: number;
+  /**
+   * Sprint 17C (review V2): the lowest and highest pad voltage over every combination of the PWM
+   * outputs (present when it changes), for the voltage ratings: they apply to the extremes.
+   */
+  voltageRange?: [number, number];
+}
+
+/** R4: a PWM pad's waveform (ns, exact to float precision) and its high/low pad currents (A). */
+export interface PwmPadFigures {
+  duty: number;
+  periodNs: number;
+  highNs: number;
+  currentHigh: number;
+  currentLow: number;
+}
+
+/**
+ * R4: a component a PWM output switches. Its result is the time-average over the waveform; these
+ * are the peaks over the operating points (A), which the ratings check instead of the average.
+ */
+export interface PwmComponentFigures {
+  peakCurrent: number | null;
+  peakCurrents?: Record<string, number | null>;
+  peakArray?: number[];
+  /**
+   * Sprint 17C (review V2): [lowest, highest] over every combination of the PWM outputs, of the
+   * voltage across the part and of each terminal potential (null where undefined).
+   */
+  voltageRange?: [number, number] | null;
+  terminalRanges?: Record<string, [number, number] | null>;
 }
 
 export interface PsuControl {
@@ -159,6 +196,8 @@ export interface ComponentResult {
    * amperes (a dot's forward current).
    */
   array?: { rows: number; cols: number; currents: number[] };
+  /** R4: present when a PWM output switches this part: its values above are time-averages. */
+  pwm?: PwmComponentFigures;
 }
 
 export interface SolveStats {
@@ -341,6 +380,26 @@ export class EngineSession {
 
   get snapshotId(): string {
     return this.snapshot.snapshotId;
+  }
+
+  /**
+   * Sprint 18 (F-17C-2): a canonical key of every transient input the next `solve` depends on (pad
+   * modes, live controls, pressed buttons, part runtime inputs, stateful parts' discrete states,
+   * the applied revision). The solve is deterministic, so two solves from equal keys return equal
+   * outcomes and leave equal states. Null for time-stepped sessions (their history is not keyed).
+   */
+  get stateKey(): string | null {
+    if (this.timeDependent) return null;
+    const sorted = <K, V>(m: ReadonlyMap<K, V>) =>
+      [...m].sort(([a], [b]) => (String(a) < String(b) ? -1 : String(a) > String(b) ? 1 : 0));
+    return JSON.stringify([
+      this.appliedRevision,
+      sorted(this.pinModes),
+      sorted(this.overrides),
+      [...this.pressed].sort(),
+      sorted(this.partRuntime),
+      sorted(this.discrete),
+    ]);
   }
 
   /** Whether the circuit holds a time-dependent part: then it runs time-stepped (advance). */

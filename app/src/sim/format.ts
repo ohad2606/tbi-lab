@@ -36,12 +36,50 @@ export function formatResult(locale: LocaleInfo, value: number, unit: UnitId): s
  * the product only; they are not a stored engineering unit (UnitId stays unchanged).
  */
 export function formatPower(locale: LocaleInfo, watts: number): string {
-  const v = Math.abs(watts) < DISPLAY_FLOOR ? 0 : watts;
+  return formatDerived(locale, watts, 'unit.watt.symbol');
+}
+
+/** A derived quantity (not a stored UnitId), same presentation as `formatResult`. */
+function formatDerived(locale: LocaleInfo, value: number, symbol: MessageKey): string {
+  const v = Math.abs(value) < DISPLAY_FLOOR ? 0 : value;
   const { mantissa, prefix } = toEngineering(v);
   const n = numberFormat(locale.code, { maximumSignificantDigits: 4, useGrouping: false }).format(
     mantissa,
   );
-  return `${n} ${prefix}${translate(locale, 'unit.watt.symbol')}`;
+  return `${n} ${prefix}${translate(locale, symbol)}`;
+}
+
+/** A PWM frequency (Sprint 15, R4), from its period: `1 kHz`, `50 Hz`. */
+export function formatFrequency(locale: LocaleInfo, hertz: number): string {
+  return formatDerived(locale, hertz, 'unit.hertz.symbol');
+}
+
+/**
+ * A servo pulse width (Sprint 15), reported in microseconds and shown in them as servo pulses are
+ * specified (1000-2000 us): `1500 µs`, one decimal at most.
+ */
+export function formatPulseWidth(locale: LocaleInfo, microseconds: number): string {
+  const n = numberFormat(locale.code, { maximumFractionDigits: 1, useGrouping: false }).format(
+    microseconds,
+  );
+  return `${n} µ${translate(locale, 'unit.second.symbol')}`;
+}
+
+/** A PWM duty cycle (0..1) as a percentage, locale-formatted: `25 %`. */
+export function formatDuty(locale: LocaleInfo, duty: number): string {
+  const n = numberFormat(locale.code, { maximumFractionDigits: 1, useGrouping: false }).format(
+    duty * 100,
+  );
+  return `${n} ${translate(locale, 'unit.percent.symbol')}`;
+}
+
+/** A shaft angle in degrees (Sprint 15, the servo): `90°`, one decimal at most. */
+export function formatAngle(locale: LocaleInfo, degrees: number): string {
+  const d = Math.round(degrees * 10) / 10;
+  const n = numberFormat(locale.code, { maximumFractionDigits: 1, useGrouping: false }).format(
+    d === 0 ? 0 : d, // never "-0°"
+  );
+  return `${n}${translate(locale, 'unit.degree.symbol')}`;
 }
 
 type RatingLike = Pick<RatingWarning, 'component' | 'code' | 'value' | 'limit'> &
@@ -103,6 +141,15 @@ export function simFailureMessage(
     });
   }
   if (failure.kind === 'runtime') return t(`sim.error.runtime.${failure.code}`);
+  if (failure.kind === 'pwm') {
+    const pins = (g: number[] | undefined) => list((g ?? []).map((p) => `GPIO${p}`));
+    return t(`sim.error.pwm.${failure.code}`, {
+      pins: pins(failure.gpios),
+      components: list(failure.components),
+      inputs: pins(failure.inputs),
+      why: failure.why ? t(`sim.pwm.why.${failure.why}` as MessageKey) : '',
+    });
+  }
   return engineErrorMessage(locale, failure.error, doc);
 }
 

@@ -69,6 +69,8 @@ export const REASON_CLASS: Readonly<
   invalid_attachment: { category: 'user_content', severity: 'info' },
   electrical_error: { category: 'user_content', severity: 'info' },
   mirror_failed: { category: 'user_content', severity: 'info' },
+  // R4 (merged with RC4's diagnostics): firmware PWM the session cannot simulate honestly.
+  pwm_unsupported: { category: 'user_content', severity: 'info' },
   // failed: the artifact store
   artifact_unknown: { category: 'artifact_integrity', severity: 'warning' },
   artifact_hash_mismatch: { category: 'artifact_integrity', severity: 'error' },

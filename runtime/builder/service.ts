@@ -22,6 +22,7 @@ import {
 import type { Principal } from '../identity/principal.js';
 import { signTicket, type TicketFeatures } from '../identity/ticket.js';
 import { GLOBAL, type Grants, type Owner } from './grants.js';
+import { FEATURES_ANALYZER } from './features.js';
 import type { BuildProvider, ProviderOutput } from './provider.js';
 import type { ArtifactStore } from './store.js';
 import type { Policy } from '../policy/policy.js';
@@ -50,6 +51,9 @@ export interface ServiceAccess {
    */
   liveSessions?: () => number | null;
 }
+
+/** The service itself, as the submitter of its prewarm builds (never a signed-in user). */
+export const PREWARM = 'p_service-prewarm' as Principal;
 
 export interface ServiceLimits {
   /** Builds waiting behind the active one (D-S7-8: 3). */
@@ -315,21 +319,82 @@ export class BuildService {
     return artifact;
   }
 
+  /**
+   * Sprint 18F: build the curated system sources that have no current shared build (after a
+   * deploy, a toolchain or analyser change), one at a time and only while nobody else is
+   * building or queued, so the first user to open an example gets a cache hit. The first one
+   * also leaves the core seed. Shared builds follow the usual start rules (live sessions defer
+   * them); a user's build of the same source joins the pending one. Returns what it built.
+   */
+  async prewarm(
+    sources: readonly BuildRequest[],
+    opts: { pollMs?: number; stopped?: () => boolean } = {},
+  ): Promise<number> {
+    let built = 0;
+    // At most one rebuild for a missing seed per run (a harvest that keeps failing costs one).
+    let seedTried = false;
+    for (const request of sources) {
+      if (opts.stopped?.()) break;
+      const provider = this.providers.get(request.profile);
+      if (!provider) continue;
+      const key = sourceKey(request.profile, request.files);
+      if (!this.access.systemKeys.has(key)) continue;
+      // Built again although shared and current when the provider has no seed (lost, or a new
+      // seed format): a curated build is the only thing that leaves one.
+      const seedless =
+        !seedTried &&
+        !!provider.hasCoreSeed &&
+        !(await provider.hasCoreSeed(join(this.workRoot, 'job-000000')).catch(() => true));
+      if (!seedless && this.cachedResult(GLOBAL, key)) continue;
+      // Wait for an idle service: users first.
+      while (this.queue.length || this.active.size) {
+        if (opts.stopped?.()) return built;
+        await new Promise((r) => setTimeout(r, opts.pollMs ?? 1000));
+      }
+      if (!seedless && this.cachedResult(GLOBAL, key)) continue;
+      if (seedless) seedTried = true;
+      const record: BuildRecord = {
+        id: `b_${randomBytes(12).toString('hex')}`,
+        token: randomBytes(24).toString('base64url'),
+        key,
+        owner: GLOBAL,
+        submitter: PREWARM,
+        request,
+        provider,
+        state: 'queued',
+        submittedAt: Date.now(),
+      };
+      this.records.set(record.id, record);
+      this.queue.push(record);
+      this.pump();
+      await new Promise<void>((resolve) => {
+        const check = () =>
+          record.finishedAt !== undefined ? resolve() : setTimeout(check, opts.pollMs ?? 1000);
+        check();
+      });
+      if (record.result?.ok) built++;
+    }
+    return built;
+  }
+
   /** Resolves when no build is active or queued (tests, shutdown). */
   whenIdle(): Promise<void> {
     if (this.active.size === 0 && this.queue.length === 0) return Promise.resolve();
     return new Promise((resolve) => this.idle.add(resolve));
   }
 
-  private cachedResult(principal: Principal, key: string): BuildResult | null {
+  private cachedResult(principal: Owner, key: string): BuildResult | null {
     const found = this.access.grants.findBuild(principal, key);
     if (!found?.artifact) return null;
+    // Analysed by an older rule set: build again (same image, an up-to-date feature report).
+    if ((found.analyzer ?? 1) < FEATURES_ANALYZER) return null;
     if (!this.store.exists(found.artifact.sha256)) {
       this.access.grants.dropArtifact(found.artifact.sha256);
       return null;
     }
     this.store.used(found.artifact.sha256);
-    return { ...found, timings: { queuedMs: 0, buildMs: 0 } };
+    const { analyzer: _analyzer, ...result } = found;
+    return { ...result, timings: { queuedMs: 0, buildMs: 0 } };
   }
 
   private prune() {
@@ -408,7 +473,7 @@ export class BuildService {
     // Failed builds count toward the submitter's cool-down; they hold no capacity afterwards.
     // (Bookkeeping must never take the pump down: a failure here is logged, the queue goes on.)
     try {
-      if (!next.result.ok && next.result.failure !== 'internal')
+      if (!next.result.ok && next.result.failure !== 'internal' && next.submitter !== PREWARM)
         this.access.rates.record(next.submitter, 'build-failure');
     } catch (e) {
       process.stderr.write(
@@ -473,7 +538,17 @@ export class BuildService {
     }, this.limits.watchdogMs);
     let out: ProviderOutput;
     try {
-      out = await r.provider.build({ dir, files: r.request.files, signal: abort.signal });
+      out = await r.provider.build({
+        dir,
+        files: r.request.files,
+        signal: abort.signal,
+        curated: r.owner === GLOBAL,
+      });
+      // Operator log (Sprint 18F evidence): duration and whether the core seed applied; no
+      // source text or identifiers.
+      process.stdout.write(
+        `${JSON.stringify({ event: 'build', outcome: out.ok ? 'ok' : (out.failure ?? 'failed'), curated: r.owner === GLOBAL, coreSeed: out.coreSeed ?? 'none', queuedMs, buildMs: Date.now() - started })}\n`,
+      );
       if (!abort.signal.aborted && out.ok && out.imagePath) {
         const base: Omit<BuildResult, 'timings' | 'artifact'> = {
           key: r.key,
@@ -491,7 +566,7 @@ export class BuildService {
         if (!isMergedImage(bytes))
           return this.failed(r, 'internal', 'Build service: the build produced no valid image.', 0);
         const artifact = await this.store.publish(bytes, 'build');
-        this.access.grants.recordBuild(r.owner, { ...base, artifact });
+        this.access.grants.recordBuild(r.owner, { ...base, artifact, analyzer: FEATURES_ANALYZER });
         const result: BuildResult = {
           ...base,
           artifact,

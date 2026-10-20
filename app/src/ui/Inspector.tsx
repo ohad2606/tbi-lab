@@ -19,12 +19,14 @@ import {
   formatNumber,
   isMessageKey,
   isolateLtr,
+  type LocaleInfo,
   type MessageKey,
 } from '../i18n/i18n.js';
 import type { ComponentResult, SolveSuccess } from '@tbi-lab/engine';
-import { formatPower, formatResult } from '../sim/format.js';
+import { formatAngle, formatPower, formatPulseWidth, formatResult } from '../sim/format.js';
 import { RatingGroup } from './NoticeBar.js';
 import { warningsFor } from '../sim/ratings.js';
+import { servosOnSupply } from '../sim/servoSupply.js';
 import { useAppState, useStore, useT } from './context.js';
 import { checksFor } from './checks.js';
 import { NEUTRAL_HEX, resolveWireColors } from '../views/wireColors.js';
@@ -362,6 +364,41 @@ function ResultRow({ label, value, testId }: { label: string; value: string; tes
   );
 }
 
+/**
+ * A current row. Under PWM (Sprint 15, R4: `ComponentResult.pwm`) the value is the time-average
+ * over the waveform and says so, followed by the peak (what the ratings check).
+ */
+function CurrentRows({
+  label,
+  value,
+  peak,
+  pwm,
+  testId,
+}: {
+  label: string;
+  value: number | null;
+  /** The peak over the PWM operating points; ignored unless `pwm`. */
+  peak: number | null | undefined;
+  pwm: boolean;
+  testId: string;
+}) {
+  const { locale } = useAppState();
+  const t = useT();
+  const I = (v: number | null) =>
+    v === null ? t('sim.results.undefined') : formatResult(locale, v, 'ampere');
+  if (!pwm) return <ResultRow label={label} value={I(value)} testId={testId} />;
+  return (
+    <>
+      <ResultRow label={t('sim.results.pwmAverage', { label })} value={I(value)} testId={testId} />
+      <ResultRow
+        label={t('sim.results.pwmPeak', { label })}
+        value={I(peak ?? null)}
+        testId={`${testId}-peak`}
+      />
+    </>
+  );
+}
+
 /** Solved values for one component. Runtime only: visually and structurally apart from the
  *  editable, persisted properties above. */
 function ComponentResultView({
@@ -374,11 +411,12 @@ function ComponentResultView({
   const { locale, doc } = useAppState();
   const t = useT();
   const r = outcome.components[component.id];
-  const I = (v: number | null) =>
-    v === null ? t('sim.results.undefined') : formatResult(locale, v, 'ampere');
   const V = (v: number | null) =>
     v === null ? t('sim.results.undefined') : formatResult(locale, v, 'volt');
   const def = CATALOG[component.type];
+  // Sprint 15 (R4): a part a PWM output switches reports time-averages (and its peak currents).
+  const pwm = !!r?.pwm;
+  const avgLabel = (label: string) => (pwm ? t('sim.results.pwmAverage', { label }) : label);
   return (
     <section class="sim-results" aria-labelledby="sim-results-heading" data-testid="sim-results">
       <h3 id="sim-results-heading">{t('sim.results.heading')}</h3>
@@ -397,27 +435,32 @@ function ComponentResultView({
                 testId="result-mode"
               />
               <ResultRow
-                label={t('sim.results.outputVoltage')}
+                label={avgLabel(t('sim.results.outputVoltage'))}
                 value={V(r.voltage)}
                 testId="result-voltage"
               />
-              <ResultRow
+              <CurrentRows
                 label={t('sim.results.outputCurrent')}
-                value={I(r.current)}
+                value={r.current}
+                peak={r.pwm?.peakCurrent}
+                pwm={pwm}
                 testId="result-current"
               />
+              <ServoCurrentNote psuId={component.id} />
             </>
           )}
           {(r.type === 'component.led' || r.type === 'component.diode') && (
             <>
               <ResultRow
-                label={t('sim.results.forwardVoltage')}
+                label={avgLabel(t('sim.results.forwardVoltage'))}
                 value={V(r.voltage)}
                 testId="result-voltage"
               />
-              <ResultRow
+              <CurrentRows
                 label={t('sim.results.forwardCurrent')}
-                value={I(r.current)}
+                value={r.current}
+                peak={r.pwm?.peakCurrent}
+                pwm={pwm}
                 testId="result-current"
               />
             </>
@@ -429,22 +472,26 @@ function ComponentResultView({
                 value={t(r.closed ? 'switch.state.closed' : 'switch.state.open')}
                 testId="result-contact"
               />
-              <ResultRow
+              <CurrentRows
                 label={t('sim.results.current')}
-                value={I(r.current)}
+                value={r.current}
+                peak={r.pwm?.peakCurrent}
+                pwm={pwm}
                 testId="result-current"
               />
             </>
           )}
           {r.type === 'component.resistor' && (
             <>
-              <ResultRow
+              <CurrentRows
                 label={t('sim.results.current')}
-                value={I(r.current)}
+                value={r.current}
+                peak={r.pwm?.peakCurrent}
+                pwm={pwm}
                 testId="result-current"
               />
               <ResultRow
-                label={t('sim.results.voltage')}
+                label={avgLabel(t('sim.results.voltage'))}
                 value={V(r.voltage)}
                 testId="result-voltage"
               />
@@ -470,11 +517,21 @@ function ComponentResultView({
           <dl class="props">
             <ResultRow
               label={t('sim.results.power')}
-              value={formatPower(locale, Math.abs(r.voltage * r.current))}
+              value={
+                // Under PWM, |V_avg x I_avg| is not the average power: not shown as one.
+                pwm
+                  ? t('sim.results.pwmPower')
+                  : formatPower(locale, Math.abs(r.voltage * r.current))
+              }
               testId="result-power"
             />
           </dl>
         )}
+      {pwm && (
+        <p class="muted small" data-testid="result-pwm-note">
+          {t('sim.results.pwmNote')}
+        </p>
+      )}
       {doc &&
         (() => {
           const rows = warningsFor(doc, outcome).filter((w) => w.component === component.id);
@@ -491,7 +548,14 @@ function ComponentResultView({
         })()}
       {r?.outsideModelRange && (
         <p class="sim-note" data-testid="result-outside-model">
-          {t('sim.results.outsideModel')}
+          {
+            // A part may word it for its own model (Sprint 15: the servo's supply range).
+            t(
+              isMessageKey(`sim.results.outsideModel.${r.type}`)
+                ? (`sim.results.outsideModel.${r.type}` as MessageKey)
+                : 'sim.results.outsideModel',
+            )
+          }
         </p>
       )}
       {r?.type === 'component.led' && <p class="muted small">{t('sim.results.ledLit')}</p>}
@@ -504,6 +568,24 @@ const TEXT_STATES: ReadonlySet<string> = new Set(['line1', 'line2']);
 
 /** Units of numeric part states (language-neutral keys). */
 const STATE_UNITS: Record<string, UnitId> = { resistance: 'ohm' };
+
+/**
+ * Numeric part states in units that are not stored engineering units (Sprint 15, the servo): its
+ * shaft angles in degrees and its last accepted pulse width (reported in microseconds).
+ */
+const STATE_FORMATS: Record<string, (locale: LocaleInfo, v: number) => string> = {
+  angleDeg: formatAngle,
+  commandedDeg: formatAngle,
+  pulseUs: formatPulseWidth,
+};
+
+/**
+ * Named currents a part reports as unknown because they are NOT MODELLED (Sprint 15, decision
+ * R4-D3: the servo's supply current): shown as such, never as 0 A or "not defined".
+ */
+const NOT_MODELLED_CURRENTS: Partial<Record<string, ReadonlySet<string>>> = {
+  'component.servo_sg90': new Set(['supply']),
+};
 
 /** The eight original types have dedicated rows above; parts added since are described by data. */
 const ORIGINAL_TYPES = new Set<string>([
@@ -525,9 +607,8 @@ const ORIGINAL_TYPES = new Set<string>([
 function PartResultRows({ result: r }: { result: ComponentResult }) {
   const { locale } = useAppState();
   const t = useT();
-  const I = (v: number | null) =>
-    v === null ? t('sim.results.undefined') : formatResult(locale, v, 'ampere');
   const label = (key: string) => (isMessageKey(key) ? t(key) : key);
+  const pwm = !!r.pwm;
   // A part may word a state for its own type (Sprint 12: an HC-SR04 is powered from 4.5 V, a
   // DHT22 from 3.3 V): `sim.part.state.<type>.<key>[.<value>]` before the shared wording.
   const stateText = (suffix: string) => {
@@ -539,26 +620,43 @@ function PartResultRows({ result: r }: { result: ComponentResult }) {
       {r.voltage !== null && (
         <ResultRow
           // A part may name its voltage (a transistor's is V_CE): `sim.part.voltage.<type>`.
-          label={
+          label={((name: string) => (pwm ? t('sim.results.pwmAverage', { label: name }) : name))(
             label(`sim.part.voltage.${r.type}`) === `sim.part.voltage.${r.type}`
               ? t('sim.results.voltage')
-              : label(`sim.part.voltage.${r.type}`)
-          }
+              : label(`sim.part.voltage.${r.type}`),
+          )}
           value={formatResult(locale, r.voltage, 'volt')}
           testId="result-voltage"
         />
       )}
       {r.current !== null && !r.currents && (
-        <ResultRow label={t('sim.results.current')} value={I(r.current)} testId="result-current" />
-      )}
-      {Object.entries(r.currents ?? {}).map(([k, v]) => (
-        <ResultRow
-          key={`i-${k}`}
-          label={label(`sim.part.current.${k}`)}
-          value={I(v)}
-          testId={`result-current-${k}`}
+        <CurrentRows
+          label={t('sim.results.current')}
+          value={r.current}
+          peak={r.pwm?.peakCurrent}
+          pwm={pwm}
+          testId="result-current"
         />
-      ))}
+      )}
+      {Object.entries(r.currents ?? {}).map(([k, v]) =>
+        v === null && NOT_MODELLED_CURRENTS[r.type]?.has(k) ? (
+          <ResultRow
+            key={`i-${k}`}
+            label={label(`sim.part.current.${k}`)}
+            value={t('sim.results.notModelled')}
+            testId={`result-current-${k}`}
+          />
+        ) : (
+          <CurrentRows
+            key={`i-${k}`}
+            label={label(`sim.part.current.${k}`)}
+            value={v}
+            peak={r.pwm?.peakCurrents?.[k]}
+            pwm={pwm}
+            testId={`result-current-${k}`}
+          />
+        ),
+      )}
       {Object.entries(r.state ?? {}).map(([k, v]) =>
         TEXT_STATES.has(k) && typeof v === 'string' ? (
           // Text the part itself shows (an LCD line, already mapped from its character ROM by
@@ -579,7 +677,9 @@ function PartResultRows({ result: r }: { result: ComponentResult }) {
                 : typeof v === 'number'
                   ? STATE_UNITS[k]
                     ? formatResult(locale, v, STATE_UNITS[k])
-                    : formatNumber(locale, v)
+                    : STATE_FORMATS[k]
+                      ? STATE_FORMATS[k](locale, v)
+                      : formatNumber(locale, v)
                   : stateText(`${k}.${v}`)
             }
             testId={`result-state-${k}`}
@@ -643,6 +743,11 @@ function PsuPanel({ component: c, readOnly }: { component: ComponentInstance; re
             <span class="psu-readout-value" data-testid="psu-measured-current">
               {r && r.current !== null ? formatResult(locale, r.current, 'ampere') : dash}
             </span>
+            {r?.pwm && (
+              <span class="psu-readout-label" data-testid="psu-current-average">
+                {t('psu.currentAverage')}
+              </span>
+            )}
           </div>
         </div>
         <div
@@ -656,6 +761,7 @@ function PsuPanel({ component: c, readOnly }: { component: ComponentInstance; re
           <span>{mode ? t(`sim.mode.${mode}`) : t('psu.notRunning')}</span>
         </div>
         {mode === 'cc' && <p class="small psu-cc-note">{t('psu.ccNote')}</p>}
+        {r && <ServoCurrentNote psuId={c.id} />}
       </div>
       <div class="psu-settings">
         <h4>{t('psu.settings')}</h4>
@@ -664,6 +770,19 @@ function PsuPanel({ component: c, readOnly }: { component: ComponentInstance; re
         ))}
       </div>
     </section>
+  );
+}
+
+/** Sprint 17C: a supply's current leaves out the servos on its output (R4-D3); say so, by name. */
+function ServoCurrentNote({ psuId }: { psuId: string }) {
+  const { doc } = useAppState();
+  const t = useT();
+  const servos = servosOnSupply(doc, psuId);
+  if (!servos.length) return null;
+  return (
+    <p class="small muted" data-testid="servo-current-excluded">
+      {t('sim.results.servoCurrentExcluded', { components: isolateLtr(servos.join(', ')) })}
+    </p>
   );
 }
 

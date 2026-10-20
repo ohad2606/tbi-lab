@@ -28,6 +28,8 @@ import {
   HC_SR04_MODULE,
   DHT22_CASE,
   LCD1602_MODULE,
+  SERVO_SG90,
+  SERVO_SHAFT_X_MM,
   LED_MATRIX_1088AS,
   matrixPinXZ,
   capacitorPackage,
@@ -1049,6 +1051,124 @@ function buildLcd1602(_c: SceneComponent, m: Materials, own: OwnedResources) {
   return g;
 }
 
+/**
+ * Whether `o` is, or is inside, a part the simulation moves (`userData.moving`: a servo horn).
+ * Such meshes keep their own transform; the renderer's static batching (which bakes transforms
+ * into one merged draw) must leave them alone, or the part could never move (Sprint 18F).
+ */
+export function movingPart(o: THREE.Object3D): boolean {
+  for (let p: THREE.Object3D | null = o; p; p = p.parent) if (p.userData.moving) return true;
+  return false;
+}
+
+/** The rest angle the servo's horn shows when nothing reports its position (deg). */
+export const SERVO_REST_DEG = 90;
+
+/**
+ * The horn's rotation about the shaft (rad, +Y) for a reported angle: the arm points along +x at
+ * 0 deg and turns counter-clockwise seen from above as the angle grows (as the 2D symbol), clamped
+ * to the model's 0..180 deg travel.
+ */
+export const servoHornYaw = (angleDeg: number | undefined): number =>
+  (Math.min(180, Math.max(0, angleDeg ?? SERVO_REST_DEG)) * Math.PI) / 180;
+
+/**
+ * TowerPro SG90 (Sprint 15): the blue case with its mounting tabs and gear tower, the output shaft
+ * with a white single-arm horn (its own group, turned live by the renderer from the reported
+ * angle), and the three-wire lead (brown, red, orange) to the plug whose sockets are the terminals.
+ */
+function buildServo(_c: SceneComponent, m: Materials, own: OwnedResources) {
+  const P = SERVO_SG90;
+  const g = new THREE.Group();
+  const blue = own.sharedMat(
+    'servoCase',
+    () => new THREE.MeshStandardMaterial({ color: '#2a5db0', roughness: 0.4 }),
+  );
+  const cx = P.caseLeftXMm + P.caseXMm / 2;
+  g.add(box(own, P.caseXMm, P.caseHeightMm, P.caseZMm, blue, [cx, P.caseHeightMm / 2, 0]));
+  g.add(
+    box(own, P.tabSpanXMm, P.tabThicknessMm, P.caseZMm, blue, [
+      cx,
+      P.tabUndersideMm + P.tabThicknessMm / 2,
+      0,
+    ]),
+  );
+  // The tabs' mounting holes (dark discs on their top faces).
+  const tabTop = P.tabUndersideMm + P.tabThicknessMm;
+  for (const side of [-1, 1])
+    g.add(
+      cylinder(own, 1.0, 0.06, m.black, [cx + side * (P.tabSpanXMm / 2 - 2.4), tabTop + 0.03, 0]),
+    );
+  // The gear tower round the output shaft, and the shaft's spline under the horn.
+  const towerH = P.towerTopMm - P.caseHeightMm;
+  g.add(
+    cylinder(own, P.caseZMm / 2, towerH, blue, [SERVO_SHAFT_X_MM, P.caseHeightMm + towerH / 2, 0]),
+  );
+  const shaftH = P.hornBottomMm - P.towerTopMm;
+  g.add(
+    cylinder(own, P.shaftDiameterMm / 2, shaftH, m.white, [
+      SERVO_SHAFT_X_MM,
+      P.towerTopMm + shaftH / 2,
+      0,
+    ]),
+  );
+  // The horn: hub and arm (along +x at 0 deg), and its screw.
+  const horn = new THREE.Group();
+  const t = P.hornThicknessMm;
+  horn.add(cylinder(own, P.hornHubDiameterMm / 2, t, m.white, [0, t / 2, 0]));
+  horn.add(box(own, P.hornReachMm, t, P.hornTipWidthMm, m.white, [P.hornReachMm / 2, t / 2, 0]));
+  horn.add(cylinder(own, P.hornTipWidthMm / 2, t, m.white, [P.hornReachMm, t / 2, 0]));
+  horn.add(cylinder(own, 1.1, 0.4, m.steel, [0, t + 0.2, 0], 12));
+  horn.position.set(SERVO_SHAFT_X_MM, P.hornBottomMm, 0);
+  horn.rotation.y = servoHornYaw(undefined);
+  horn.name = 'servoHorn';
+  // It turns at run time: kept out of the static batches (renderer.ts batchStatic), which bake
+  // each mesh's transform into one merged draw.
+  horn.userData.moving = true;
+  g.add(horn);
+  // The lead: brown (GND), red (+V), orange (signal), from the plug's back into the case.
+  const plugEnd = P.plugTipXMm + P.plugXMm;
+  const wire = (color: string) =>
+    own.sharedMat(
+      `servoWire:${color}`,
+      () => new THREE.MeshStandardMaterial({ color, roughness: 0.5 }),
+    );
+  for (const [id, color] of [
+    ['gnd', '#6b3b1f'],
+    ['vcc', '#c4161c'],
+    ['signal', '#f08a1c'],
+  ] as const) {
+    const z = P.pins[id]![1];
+    g.add(
+      tube(
+        own,
+        [
+          [plugEnd - 1, P.attachHeightMm, z],
+          [plugEnd + 2.5, P.attachHeightMm, z],
+          [P.caseLeftXMm + 0.5, 3.0, z * 0.45],
+        ],
+        0.5,
+        wire(color),
+        1.2,
+      ),
+    );
+  }
+  // The plug, lying on the bench, its three sockets facing -x on the terminal column.
+  g.add(
+    box(own, P.plugXMm, P.plugHeightMm, P.plugZMm, m.blackPlastic, [
+      P.plugTipXMm + P.plugXMm / 2,
+      P.plugHeightMm / 2,
+      0,
+    ]),
+  );
+  for (const [id, [x, z]] of Object.entries(P.pins)) {
+    const socket = box(own, 0.2, 1.0, 1.0, m.ic, [x - 0.1, P.attachHeightMm, z]);
+    socket.userData.pin = id;
+    g.add(socket);
+  }
+  return g;
+}
+
 function buildCapacitor(c: SceneComponent, m: Materials, own: OwnedResources) {
   const p = capacitorPackage(c.visual.farads ?? 100e-6);
   const g = new THREE.Group();
@@ -1178,6 +1298,7 @@ const BUILDERS: Record<ModelKey, Builder> = {
   'sensor.ultrasonic': buildUltrasonic,
   'sensor.dht22': buildDht22,
   'display.lcd1602': buildLcd1602,
+  'servo.sg90': buildServo,
   'transistor.to92': buildTo92,
   'led.rgb': buildRgbLed,
   'ldr.disc': buildPhotoresistor,

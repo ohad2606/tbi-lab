@@ -7,6 +7,8 @@
  * the 4 MiB flash image R2 runs (same layout as runtime/provision/provision.sh), then analyse
  * features. Measured on the dev host: ~26-29 s cold per build, ~76 MB of temporary files, and
  * three clean builds of the same source are byte-identical (the prefix maps remove the job path).
+ * Sprint 18F: with `coreSeeds`, the compiled Arduino core of an earlier curated build is copied
+ * into the job first (coreSeed.ts): about 7 s instead of about 29 s, the same bytes.
  */
 import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync } from 'node:fs';
@@ -14,6 +16,14 @@ import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { arch } from 'node:os';
 import { join } from 'node:path';
 import { canonicalJson, type BuildProfile } from '@tbi-lab/domain';
+import {
+  applyCoreSeed,
+  coreSeedKey,
+  coreSeedPresent,
+  harvestCoreSeed,
+  pruneCoreSeeds,
+  removeCoreSeed,
+} from './coreSeed.js';
 import { analyzeFeatures } from './features.js';
 import type { Diagnostic, Severity } from './protocol.js';
 import type { BuildProvider, JobContext, ProviderOutput } from './provider.js';
@@ -39,6 +49,11 @@ export interface ArduinoProviderOptions {
   runner?: ToolRunner;
   /** Sprint 12: bridge capabilities of the runtime tickets are issued for (runtime.json). */
   runtimeCapabilities?: readonly string[];
+  /**
+   * Sprint 18F: a service-owned directory for the Arduino core seed (coreSeed.ts). Useful only
+   * where every job sees the same path (the sandbox's `/job`); absent: every build is cold.
+   */
+  coreSeeds?: string;
 }
 
 /** Output the tools may produce before we stop reading (JSON wraps the compiler output). */
@@ -83,6 +98,70 @@ export class ArduinoEsp32Provider implements BuildProvider {
     };
   }
 
+  /**
+   * The compile step in the tools' view of job `J`: arduino-cli's configuration, environment and
+   * argv (fixed; only the job path varies, and not at all in the sandbox).
+   */
+  private compileSetup(J: string, t: ReturnType<ArduinoEsp32Provider['view']>) {
+    const v = (sub: string) => join(J, sub);
+    const config = [
+      'directories:',
+      `  data: ${t.data}`,
+      `  downloads: ${v('downloads')}`,
+      `  user: ${v('user')}`,
+      'build_cache:',
+      `  path: ${v('cache')}`,
+      'network:',
+      '  connection_timeout: 1s',
+      '',
+    ].join('\n');
+    const maps = [
+      `-ffile-prefix-map=${t.data}=/arduino-data`,
+      `-ffile-prefix-map=${v('sketch')}=/sketch`,
+      `-ffile-prefix-map=${J}=/build`,
+    ].join(' ');
+    const env = {
+      PATH: '/usr/bin:/bin',
+      HOME: J,
+      TMPDIR: J,
+      LANG: 'C.UTF-8',
+      SOURCE_DATE_EPOCH: String(this.opts.record.sourceDateEpoch),
+    };
+    const argv = [
+      '--config-file',
+      v('cli.yaml'),
+      'compile',
+      '--format',
+      'json',
+      '--fqbn',
+      this.opts.record.fqbn,
+      '--build-path',
+      v('build'),
+      '--output-dir',
+      v('out'),
+      '--build-property',
+      `compiler.c.extra_flags=${maps}`,
+      '--build-property',
+      `compiler.cpp.extra_flags=${maps}`,
+      v('sketch'),
+    ];
+    return { config, env, argv };
+  }
+
+  /**
+   * Sprint 18F: whether a job in `jobDir` would start from a core seed. False without a seed
+   * directory, and always where the tools' job path differs per job (the local runner).
+   */
+  async hasCoreSeed(jobDir: string): Promise<boolean> {
+    const seeds = this.opts.coreSeeds;
+    if (!seeds) return false;
+    const { config, env, argv } = this.compileSetup(this.runner.jobPath(jobDir), this.view());
+    return coreSeedPresent(
+      seeds,
+      coreSeedKey({ profileHash: this.profileHash, argv, config, env }),
+    );
+  }
+
   async verifyToolchain(): Promise<void> {
     const key = arch() === 'arm64' ? 'arm64' : arch() === 'x64' ? 'x64' : arch();
     const pins = this.opts.record.files[key];
@@ -123,57 +202,21 @@ export class ArduinoEsp32Provider implements BuildProvider {
     }
     await writeFile(join(d('sketch'), p.fileName), source);
     await chmod(join(d('sketch'), p.fileName), 0o660);
+    const { config, env, argv } = this.compileSetup(J, t);
     // Pinned read-only core; an empty user directory (no sketchbook libraries); per-job cache.
-    await writeFile(
-      d('cli.yaml'),
-      [
-        'directories:',
-        `  data: ${t.data}`,
-        `  downloads: ${v('downloads')}`,
-        `  user: ${v('user')}`,
-        'build_cache:',
-        `  path: ${v('cache')}`,
-        'network:',
-        '  connection_timeout: 1s',
-        '',
-      ].join('\n'),
-    );
+    await writeFile(d('cli.yaml'), config);
     await chmod(d('cli.yaml'), 0o660);
-    const maps = [
-      `-ffile-prefix-map=${t.data}=/arduino-data`,
-      `-ffile-prefix-map=${v('sketch')}=/sketch`,
-      `-ffile-prefix-map=${J}=/build`,
-    ].join(' ');
-    const env = {
-      PATH: '/usr/bin:/bin',
-      HOME: J,
-      TMPDIR: J,
-      LANG: 'C.UTF-8',
-      SOURCE_DATE_EPOCH: String(this.opts.record.sourceDateEpoch),
-    };
-    const compile = await run(
-      t.cli,
-      [
-        '--config-file',
-        v('cli.yaml'),
-        'compile',
-        '--format',
-        'json',
-        '--fqbn',
-        this.opts.record.fqbn,
-        '--build-path',
-        v('build'),
-        '--output-dir',
-        v('out'),
-        '--build-property',
-        `compiler.c.extra_flags=${maps}`,
-        '--build-property',
-        `compiler.cpp.extra_flags=${maps}`,
-        v('sketch'),
-      ],
-      v('sketch'),
-      TOOL_OUTPUT_CAP,
-    );
+    // The core seed for exactly this configuration, when one exists (else a cold build).
+    const seeds = this.opts.coreSeeds;
+    const seedKey = coreSeedKey({ profileHash: this.profileHash, argv, config, env });
+    let coreSeed: 'seeded' | 'cold' = 'cold';
+    if (seeds)
+      try {
+        if (await applyCoreSeed(seeds, seedKey, d('build'))) coreSeed = 'seeded';
+      } catch {
+        await removeCoreSeed(d('build'));
+      }
+    const compile = await run(t.cli, argv, v('sketch'), TOOL_OUTPUT_CAP);
     if (compile.aborted) return this.internal('aborted', compile.stderr);
 
     let result: {
@@ -220,6 +263,15 @@ export class ArduinoEsp32Provider implements BuildProvider {
         message: scrub(firstLine(x.message ?? '')),
       };
     });
+    // A curated source's successful compile leaves the seed for later jobs (best effort: a
+    // failed harvest never fails the build).
+    if (seeds && job.curated && result.success)
+      try {
+        if (await harvestCoreSeed(seeds, seedKey, d('build')))
+          await pruneCoreSeeds(seeds, new Set([seedKey]));
+      } catch {
+        // the next curated build tries again
+      }
     if (!result.success) {
       if (diagnostics.length === 0)
         diagnostics.push({
@@ -285,6 +337,7 @@ export class ArduinoEsp32Provider implements BuildProvider {
       }),
       ...sizesOf(result.compiler_out ?? ''),
       diagnostics,
+      coreSeed,
       log,
     };
   }

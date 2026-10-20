@@ -42,7 +42,7 @@ export interface AssetRecord {
   materials: string;
   levelOfDetail: string;
   /** Live presentation hooks driven from solved results (never electrical inputs). */
-  live: ('ledGlow' | 'rgbGlow' | 'matrixDots' | 'lcdFace')[];
+  live: ('ledGlow' | 'rgbGlow' | 'matrixDots' | 'lcdFace' | 'servoHorn')[];
   /** Sources of the dimensions and of any reference used while modelling. */
   provenance: string;
   license: string;
@@ -224,6 +224,14 @@ export const ASSETS: Record<ModelKey, AssetRecord> = {
     'capacitor.radial',
     'models.ts buildCapacitor',
     '[REP] disc ceramic / radial electrolytic classes',
+  ),
+  'servo.sg90': procedural(
+    'servo.sg90',
+    'models.ts buildServo',
+    'TowerPro SG90 data sheet drawing (case 22.2 x 11.8 mm, 31 mm overall); tabs, gear tower, horn and plug [REP]',
+    {
+      live: ['servoHorn'],
+    },
   ),
   generic: procedural('generic', 'models.ts generic', 'a neutral block for types without a model'),
 };

@@ -212,6 +212,41 @@ export const he: Record<MessageKey, string> = {
   'sim.part.state.line2': 'שורה 2',
   'lcd.screen': 'תוכן התצוגה, שורה 1: {line1}; שורה 2: {line2}',
   'lcd.blank': 'התצוגה ריקה',
+  // ---- Sprint 15 (R4): the SG90 servo and PWM (LEDC) outputs ----
+  'component.component.servo_sg90.name': 'מנוע סרוו SG90',
+  'terminal.servoSignal': 'אות בקרה (PWM)',
+  'model.servo.sg90': 'TowerPro SG90',
+  'sim.results.notModelled': 'לא ממודל',
+  'sim.part.state.component.servo_sg90.powered': 'מוזן (הזנה של 4.8–6.0 V)',
+  'sim.part.state.angleDeg': 'זווית הציר',
+  'sim.part.state.commandedDeg': 'זווית מבוקשת',
+  'sim.part.state.signal': 'אות הבקרה',
+  'sim.part.state.signal.none': 'אין פולסים',
+  'sim.part.state.signal.pulses': 'פולסי סרוו',
+  'sim.part.state.signal.static': 'רמה קבועה (ללא פולסים)',
+  'sim.part.state.signal.undefined': 'לא רמה לוגית תקינה (אין פולס תקין)',
+  'sim.part.state.pulseUs': 'רוחב הפולס האחרון',
+  'sim.results.outsideModel.component.servo_sg90':
+    'ההזנה מחוץ לטווח הממודל של 4.8–6.0 V: הסרוו מוצג כנשאר במקומו; סרוו אמיתי עשוי להתנהג אחרת.',
+  'sim.results.servoCurrentExcluded':
+    'אינו כולל את הזרם ש־{components} צורך: זרם ההזנה של סרוו SG90 לא ממודל.',
+  'sim.results.pwmAverage': '{label}, ממוצע (PWM)',
+  'sim.results.pwmPeak': '{label}, שיא (PWM)',
+  'sim.results.pwmNote':
+    'מונע ב־PWM: הערכים שלמעלה הם ממוצעים בזמן לאורך צורת הגל; בדיקת הדירוגים משתמשת בזרם השיא.',
+  'sim.results.pwmPower': 'לא מוצג תחת PWM (מכפלת המתח הממוצע בזרם הממוצע אינה ההספק הממוצע)',
+  'unit.hertz.symbol': 'Hz',
+  'unit.second.symbol': 's',
+  'unit.percent.symbol': '%',
+  'unit.degree.symbol': '°',
+  'mcu.pwm.wave': 'PWM {frequency} · {duty}',
+  'mcu.pwm.zero': 'PWM · מחזור עבודה 0 (רמת היציאה לא אומתה)',
+  'mcu.pwm.static': 'PWM · {level} (קבוע)',
+  'mcu.pwm.unsupported': 'PWM · לא נתמך',
+  'mcu.pwm.levelUnknown': 'המתח לא ידוע',
+  'mcu.pwm.average': 'ממוצע {voltage}',
+  'mcu.warning.servo_signal_undefined':
+    '{component}: אות הבקרה אינו ברמה לוגית תקינה (או שכמה יציאות PWM פועלות עליו); הסרוו אינו מקבל פולס תקין.',
   'sim.time': 't = {time}',
   'sim.timeNote': 'זמן מדומה מאז ההרצה (צעדים של 1 ms). הקבלים מתחילים פרוקים בכל הרצה.',
   'sim.timeBehind': 'רץ לאט יותר מהזמן האמיתי',
@@ -293,7 +328,8 @@ export const he: Record<MessageKey, string> = {
   'sim.results.notSimulated': 'לא מחובר: לא מדומה.',
   'sim.results.outsideModel':
     'מחוץ לטווח המתועד של מודל ה-LED (‏1–20 mA). הערך נובע מהמודל אך עשוי להיות שונה מרכיב אמיתי.',
-  'sim.results.ledLit': 'בהירות סמל ה-LED היא רמז חזותי הנגזר מהזרם המחושב, לא מדידת אור.',
+  'sim.results.ledLit':
+    'בהירות סמל ה-LED היא רמז חזותי הנגזר מהזרם המחושב, לא מדידת אור. תחת PWM היא עוקבת אחר הזרם הממוצע.',
   'sim.mode.cv': 'CV · מתח קבוע',
   'sim.mode.cc': 'CC · הגבלת זרם',
   'sim.mode.off': 'היציאה כבויה',
@@ -327,6 +363,7 @@ export const he: Record<MessageKey, string> = {
   'psu.voltage': 'מתח',
   'psu.current': 'זרם',
   'psu.notRunning': 'לא פועל',
+  'psu.currentAverage': 'ממוצע (PWM)',
   'psu.ccNote': 'הגבלת זרם היא התנהגות תקינה של ספק, לא תקלה.',
   'checks.heading': 'בדיקות מעגל',
   'checks.none': 'לא נמצאו בעיות.',
@@ -512,7 +549,7 @@ export const he: Record<MessageKey, string> = {
   'palette.unavailable.board_time_dependent':
     'לא זמין כל עוד בפרויקט יש רכיבים תלויי־זמן (הם מדומים רק ללא ESP32).',
   'palette.group.sensors': 'חיישנים',
-  'palette.group.output': 'צליל ותצוגה',
+  'palette.group.output': 'צליל, תצוגה ותנועה',
   'palette.group.switches': 'מתגים',
   'inspector.shortcutsHeading': 'קיצורי מקלדת',
   'unit.watt.symbol': 'W',
@@ -655,6 +692,7 @@ export const he: Record<MessageKey, string> = {
   'build.phase.queued': 'ממתין לבנייה ({position} לפניך)',
   'build.phase.current': 'נבנה',
   'build.phase.failed': 'הבנייה נכשלה',
+  'build.elapsed': '{seconds} שנ׳',
   'build.stale': 'הקוד השתנה מאז הבנייה האחרונה.',
   // Sprint 13 OS-08: Run is not available during a build or without a current build.
   'run.blocked.building': 'אי אפשר להריץ בזמן שבנייה מתבצעת.',
@@ -709,10 +747,13 @@ export const he: Record<MessageKey, string> = {
   'build.feature.internal_pull': 'נגד Pull-up/Pull-down פנימי',
   'build.feature.interrupt': 'פסיקות GPIO',
   'build.feature.restart': 'אתחול השבב',
+  'build.feature.cpu_frequency': 'שינוי תדר המעבד (setCpuFrequencyMhz)',
   'build.feature.wifi': 'תקשורת Wi-Fi',
   'build.feature.bluetooth': "בלוטות'",
   'build.feature.adc': 'כניסה אנלוגית (ADC)',
   'build.feature.pwm': 'יציאת PWM/LEDC',
+  'build.feature.pwm_advanced':
+    'עמעום חומרתי של LEDC או היפוך היציאה (ledcFade,‏ ledcOutputInvert)',
   'build.feature.dac': 'יציאה אנלוגית (DAC)',
   'build.feature.touch': 'חישת מגע',
   'build.feature.sleep': 'מצבי שינה',
@@ -752,6 +793,8 @@ export const he: Record<MessageKey, string> = {
     'הקושחה שנבחרה אינה זמינה בשירות הריצה. הפרויקט לא נפגע.',
   'sim.error.runtime.unsupported_feature':
     'הקושחה משתמשת ביכולת שהסימולטור אינו תומך בה בגרסה זו (Pull-up/Pull-down פנימי או פסיקות GPIO).',
+  'sim.error.runtime.inverted_output':
+    'הקושחה הופכת את האות ביציאה של פין מחובר דרך מטריצת ה־GPIO. הסימולטור אינו מדמה יציאות הפוכות.',
   'sim.error.runtime.invalid_attachment': 'פין ESP32 מחובר אינו זמין לשימוש בסימולטור.',
   'sim.error.runtime.startup_failed':
     'לא ניתן היה להפעיל את ה-ESP32. הפרויקט לא נפגע. לחצו על הרצה כדי לנסות שוב.',
@@ -772,6 +815,33 @@ export const he: Record<MessageKey, string> = {
     'סביבת הריצה של ESP32 דחתה שינוי חי שאינה תומכת בו (ייתכן שהיא ישנה מהאפליקציה), ולכן הסשן נעצר. הפרויקט שומר את השינוי.',
   'sim.error.runtime.commands_rate_limited':
     'שינויים חיים נשלחו מהר יותר ממה שסביבת הריצה של ESP32 מקבלת, ולכן הסשן נעצר. הפרויקט שומר את השינוי; לחצו Run כדי להמשיך.',
+  'sim.error.runtime.pwm_unsupported':
+    'נעשה שימוש ביציאת PWM באופן שהסימולטור אינו יכול לשחזר נאמנה, והסשן הסתיים.',
+  'sim.error.pwm.pwm_duty_zero_unverified':
+    '{pins} מוציא PWM במחזור עבודה 0, והמעגל מגיב לפין הזה ({components}). הרמה ש־ESP32 אמיתי מוציא במחזור עבודה 0 עדיין לא אומתה, ולכן הסימולטור עוצר במקום לנחש. לכיבוי היציאה, השתמשו ב־ledcDetach()‎ ו־digitalWrite(pin, LOW)‎.',
+  'sim.error.pwm.pwm_unsupported_mode': '{pins} משתמש במצב LEDC שהסימולטור אינו תומך בו: {why}.',
+  'sim.error.pwm.pwm_load_unsupported':
+    'PWM ב־{pins} מגיע אל {components}, שאינו מגיב מיד לאות ממותג. רק נגדים, נורות LED, דיודות ומתגים ניתנים למיצוע נאמן.',
+  'sim.error.pwm.pwm_input_unsupported':
+    'PWM ב־{pins} מגיע אל כניסת ה־ESP32 ‏{inputs}. קריאת אות PWM אינה מדומה.',
+  'sim.error.pwm.pwm_outputs_interact':
+    'יציאות ה־PWM ‏{pins} חולקות עומס ({components}). ההשפעה המשולבת שלהן תלויה בחפיפה בין צורות הגל, וזו אינה מדומה.',
+  'sim.error.pwm.pwm_supply_limited':
+    'ה־PWM ב־{pins} מביא את {components} למגבלת הזרם שלו בחלק מכל מחזור. האופן שבו ספק מעבדה מווסת עומס ממותג בגבול הזרם אינו מדומה, ולכן הסשן נעצר. העלו את מגבלת הזרם של הספק או הקטינו את העומס.',
+  'sim.error.pwm.pwm_rate_exceeded':
+    'הסקיצה משנה לעיתים קרובות כל כך אילו מבין {pins} ממותגים (או נעצרים על 0% או 100%), שהסימולטור היה צריך יותר מ־1000 פתרונות מעגל לשנייה מדומה, שזו המגבלה שלו. הסשן נעצר במקום להאט או לקרב. שינוי מחזור העבודה בלבד של יציאת PWM פעילה אינו עולה דבר; העבירו יציאות בין PWM לרמה קבועה בתדירות נמוכה יותר.',
+  'sim.pwm.why.open-drain': 'יציאת PWM מסוג Open-drain',
+  'sim.pwm.why.inverted': 'יציאת PWM הפוכה (היפוך במטריצת ה־GPIO)',
+  'sim.pwm.why.low-speed': 'ערוץ איטי (יותר מ־8 ערוצי PWM)',
+  'sim.pwm.why.interrupt': 'פסיקות LEDC',
+  'sim.pwm.why.dither': 'מחזור עבודה שברי (Dithering)',
+  'sim.pwm.why.fade': 'עמעום חומרתי',
+  'sim.pwm.why.hpoint': 'היסט מופע שמגיע לסוף המחזור',
+  'sim.pwm.why.timer-reset': 'הטיימר שלו מוחזק באיפוס',
+  'sim.pwm.why.timer-paused': 'הטיימר שלו מושהה',
+  'sim.pwm.why.timer-resolution': 'רזולוציית טיימר מחוץ לטווח 1 עד 20 ביט',
+  'sim.pwm.why.timer-apb-clock': 'שעון מעבד מתחת ל־80 MHz, שמשנה את שעון ה־PWM באמצע מחזור',
+  'sim.pwm.why.timer-divider': 'מחלק טיימר קטן מ־1',
   'sim.error.runtime.protocol_error':
     'שירות הריצה שלח תשובה בלתי צפויה והסשן הסתיים. הפרויקט לא נפגע.',
   'mcu.heading': 'ריצת ESP32',
@@ -790,7 +860,7 @@ export const he: Record<MessageKey, string> = {
   'mcu.caveat.power': 'פין הזנה',
   'mcu.caveat.enable': 'הפעלת השבב: איפוס אינו מדומה',
   'mcu.note.unsupported':
-    'לא מדומה בגרסה זו: Pull-up/Pull-down פנימי, פסיקות GPIO, איפוס שבב, אנלוגי, PWM, Wi-Fi.',
+    'לא מדומה בגרסה זו: Pull-up/Pull-down פנימי, פסיקות GPIO, איפוס שבב, אנלוגי, Wi-Fi.',
   'mcu.level.high': 'HIGH',
   'mcu.level.low': 'LOW',
   'mcu.mode.output': 'יציאה',
@@ -850,6 +920,12 @@ export const he: Record<MessageKey, string> = {
   'example.esp32-thermo-hygrometer.title': 'ESP32: טמפרטורה ולחות (DHT22)',
   'example.esp32-thermo-hygrometer.summary':
     'חיישן DHT22 / AM2302 על GPIO4, עם נגד Pull-up של 10 kΩ שקו הנתונים היחיד שלו דורש, נקרא בשגרה קצרה ללא ספרייה לפי התזמון שבגיליון הנתונים. הפלט הטורי מציג את הטמפרטורה ואת הלחות היחסית כל 2.5 שניות. שנו את שתיהן בחלונית המאפיינים בזמן ריצה. רץ בשירות הריצה של ESP32.',
+  'example.esp32-led-fade.title': 'ESP32: עמעום נורת LED ב־PWM',
+  'example.esp32-led-fade.summary':
+    'analogWrite מניע את GPIO18 באות PWM של 1 kHz; הזרם הממוצע של ה־LED, ואיתו הבהירות, עוקבים אחר מחזור העבודה. העמעום נשאר בין 1 ל־255: מחזור עבודה 0 עדיין אינו מדומה.',
+  'example.esp32-servo-sweep.title': 'ESP32: סריקה של סרוו SG90 ב־PWM',
+  'example.esp32-servo-sweep.summary':
+    'אות LEDC של 50 Hz ב־GPIO18 עם פולסים של 1.0,‏ 2.0 ו־1.5 ms מזיז את הסרוו ל־0°,‏ 180° ו־90°. הסרוו מוזן מספק המעבדה של 5 V.',
   'example.esp32-lcd-hello.title': 'ESP32: שלום על צג LCD ‏16×2 ב-I2C',
   'example.esp32-lcd-hello.summary':
     'הסקיצה מפעילה את הצג דרך מתאם ה-I2C שלו (PCF8574) בכתיבות Wire פשוטות: שורה 1 אומרת שלום, ושורה 2 סופרת שניות. המודול מוזן מ-‏4.5 V כדי שנגדי ה-Pull-up של הקו (שני נגדים של 4.7 kΩ לספק שני של 3.3 V) ייקראו HIGH בכניסותיו (‏0.7 × 4.5 V = 3.15 V). רץ בשירות הריצה של ESP32.',
@@ -912,7 +988,12 @@ export const he: Record<MessageKey, string> = {
   'capabilities.facility.dual_core.body':
     'משימות רצות על שתי הליבות. סקיצ׳ שמעסיק את ליבה 0 ברציפות עלול לעכב קוד בליבה 1 עד כ־1 ms, ולכן תזמון ברמת מיקרו־שניות אינו נתמך בסקיצ׳ים כאלה.',
   'capabilities.facility.pwm.name': 'יציאת PWM / LEDC ‏(analogWrite,‏ ledcWrite)',
-  'capabilities.facility.pwm.body': 'עדיין אינו מדומה. סקיצ׳ שמשתמש בו נדחה לפני הרצה.',
+  'capabilities.facility.pwm.body':
+    'ערוצי LEDC מהירים, עם תדר ומחזור עבודה מדויקים. המעגל רואה את הממוצע בזמן (נורות LED מתעמעמות; בדיקת הדירוגים משתמשת בזרם השיא). נדחה בהרצה, עם הסיבה: מחזור עבודה 0 שמניע עומס (הרמה שלו בחומרה אמיתית עדיין לא אומתה), עומסים שאינם מגיבים מיד (רק נגדים, נורות LED, דיודות ומתגים מגיבים כך), כניסת ESP32 שקוראת את אות ה־PWM, ויותר מ־8 ערוצים.',
+  'capabilities.facility.pwm_advanced.name':
+    'עמעום חומרתי והיפוך יציאה של LEDC ‏(ledcFade,‏ ledcOutputInvert)',
+  'capabilities.facility.pwm_advanced.body':
+    'אינם מדומים. סקיצ׳ שמשתמש בהם נדחה בבנייה. לעמעום, קראו ל־ledcWrite בצעדים.',
   'capabilities.facility.interrupt.name': 'פסיקות GPIO ‏(attachInterrupt)',
   'capabilities.facility.interrupt.body': 'אינן מדומות. במקומן, קראו את הפין ב־digitalRead.',
   'capabilities.facility.internal_pull.name':
@@ -937,6 +1018,9 @@ export const he: Record<MessageKey, string> = {
     'אינה מדומה: הפינים פועלים בעוצמת ההנעה של ברירת המחדל. קוד שבוחר עוצמה אחרת נדחה בבנייה.',
   'capabilities.facility.restart.name': 'אתחול השבב (ESP.restart)',
   'capabilities.facility.restart.body': 'אינו מדומה. לחצו עצירה ואז הרצה כדי להתחיל מחדש.',
+  'capabilities.facility.cpu_frequency.name': 'שינויי תדר המעבד (setCpuFrequencyMhz)',
+  'capabilities.facility.cpu_frequency.body':
+    'אינם מדומים: ה־ESP32 פועל ב־240 MHz. קוד שמשנה את תדר המעבד נדחה בבנייה.',
   'capabilities.facility.library.name': 'ספריות Arduino',
   'capabilities.facility.library.body':
     'רצות רק ספריות מובנות של ליבת ה־ESP32 שמופיעות כאן (Preferences; ‏Wire מול רכיבי ה־I2C). ספריות אחרות, כמו DHT או LiquidCrystal_I2C, נדחות; הדוגמאות המוכנות מראות את אותם רכיבים בלעדיהן.',
@@ -991,7 +1075,6 @@ export const he: Record<MessageKey, string> = {
   'limitation.no_breakdown':
     'פריצה בממתח הפוך אינה ממודלת; במקומה נבדק דירוג המתח ההפוך ומוצגת אזהרה.',
   'limitation.switch_ideal': 'מגע אידיאלי: ללא התנגדות מגע וללא ריטוט.',
-  'limitation.rgb_onoff_esp32': 'לצד ESP32 כל ערוץ דולק או כבוי: ערבוב צבעים ב־PWM אינו נתמך.',
   'limitation.ldr_typical': 'GL5528 טיפוסי (מרכז מחלקת ההתנגדות שלו), לא רכיב שנמדד.',
   'limitation.ldr_extrapolated': 'מחוץ לטווח 1–100 lx חוק האור מוחצן, והתוצאה מציינת זאת.',
   'limitation.ldr_digital_esp32': 'לצד ESP32 הוא נקרא כרמה דיגיטלית: כניסה אנלוגית אינה נתמכת.',
@@ -1039,6 +1122,20 @@ export const he: Record<MessageKey, string> = {
   'sim.part.current.scl': 'כניסת SCL',
   'limitation.esp32_input_clamp':
     'דיודות ההגנה בכניסה אינן ממודלות: פין מחוץ לטווח המוגדר שלו מסומן, והזרם המדומה לתוכו אינו אמין.',
+  // Sprint 15 (R4): PWM averages, the SG90 servo and the ESP32's LEDC outputs.
+  'limitation.pwm_average':
+    'כשהרכיב מונע ב־PWM, הערכים המוצגים הם ממוצעים בזמן לאורך צורת הגל (מדויקים לרכיב הזה); בדיקת הדירוגים משתמשת בזרם השיא. הבהירות הנתפסת מקורבת לפי הזרם הממוצע.',
+  'limitation.servo_supply_current':
+    'זרם ההזנה אינו ממודל: ספק חלש או פין 3.3 V אינם מוצגים כשוקעים תחת עומס הסרוו.',
+  'limitation.servo_thresholds':
+    'TowerPro אינה מציינת את ספי הרמה הלוגית של האות; המודל מניח 2.0 V לרמה גבוהה ו־0.8 V לרמה נמוכה.',
+  'limitation.servo_supply_range': 'מדומה רק בהזנה של 4.8–6.0 V; מחוץ לטווח הזה הסרוו נשאר במקומו.',
+  'limitation.servo_mapping':
+    'פולסים של 1.0–2.0 ms ממופים ל־0–180°; יחידות SG90 אמיתיות שונות זו מזו (חלקן נעות כ־150°). אזור מת של 10 µs, ‏600°/s, ללא מומנט או עומס.',
+  'limitation.servo_frames':
+    'פולסים של 400–2600 µs מתקבלים כשהמרווח בין מסגרות הוא עד 50 ms; התגובה למסגרות קצרות בהרבה מ־20 ms אינה מוגדרת על ידי היצרן.',
+  'limitation.esp32_pwm':
+    'PWM ‏(LEDC): מחזור עבודה 0 שמניע עומס, יותר מ־8 ערוצים, עמעום חומרתי והיפוך יציאה נדחים; זמני הרמה הגבוהה מדויקים עד מחזור שעון LEDC אחד.',
   'inspector.limitations': 'מגבלות המודל',
   // Sprint 13 H4: first-run guide.
   'onboarding.heading': 'צעדים ראשונים',
