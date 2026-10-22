@@ -8,9 +8,9 @@ Description=TBI Lab Session Host (@N@)
 After=network-online.target
 
 [Service]
-User=tbi-runtime
-Group=tbi-runtimeio
-SupplementaryGroups=tbi-artifacts tbi-gate
+User=@U@runtime
+Group=@U@runtimeio
+SupplementaryGroups=@U@artifacts tbi-gate
 UMask=0007
 Environment=TBI_HOST_LISTEN=unix:/run/@N@-runtime/api.sock
 Environment=TBI_SOCKET_GID=@GATE_GID@

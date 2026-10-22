@@ -11,8 +11,8 @@ CollectMode=inactive-or-failed
 
 [Service]
 Type=oneshot
-User=tbi-buildjob
-Group=tbi-buildio
+User=@U@buildjob
+Group=@U@buildio
 UMask=0007
 RootDirectory=/var/lib/@N@-build/sandbox-root
 MountAPIVFS=yes

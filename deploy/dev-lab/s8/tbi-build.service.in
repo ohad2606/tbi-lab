@@ -9,9 +9,9 @@ Description=TBI Lab build service (@N@)
 After=network-online.target
 
 [Service]
-User=tbi-build
-Group=tbi-buildio
-SupplementaryGroups=tbi-artifacts tbi-gate
+User=@U@build
+Group=@U@buildio
+SupplementaryGroups=@U@artifacts tbi-gate
 UMask=0007
 Environment=TBI_BUILD_LISTEN=unix:/run/@N@-build/api.sock
 Environment=TBI_SOCKET_GID=@GATE_GID@

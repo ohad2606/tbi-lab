@@ -8,7 +8,10 @@
 #   deploy/dev-lab/s8/install.sh dev-lab   [--uninstall]   the dev-lab services themselves
 #                                                         (NOT run before the PM approves it)
 #
-# Needs sudo. Idempotent. Users and groups are shared by both instances and are never removed.
+# Needs sudo. Idempotent. Sprint 19B (O2): each instance runs as its OWN system users and groups
+# (dev-lab: tbi-build, tbi-buildjob, tbi-runtime, tbi-qemu, groups tbi-buildio, tbi-runtimeio,
+# tbi-artifacts, exactly as before; staging: tbi-s8-build, ...), so neither instance's services can
+# act on the other's units or files. Only the gate group (tbi-gate) is shared. Users are never removed.
 set -euo pipefail
 
 target="${1:?usage: install.sh staging|dev-lab [--uninstall]}"
@@ -23,12 +26,14 @@ NODE="${TBI_S8_NODE:-/home/ubuntu/.nvm/versions/node/v24.21.0}"
 case "$target" in
   staging)
     N=tbi-s8
+    U=tbi-s8-
     STORE=/var/lib/tbi-s8-artifacts
     BUNDLES=/srv/tbi-lab/s8-staging
     RUNTIME="${TBI_S8_RUNTIME:-/home/ubuntu/tbi-s8-rt/qemu-current}"
     ;;
   dev-lab)
     N=tbi
+    U=tbi-
     STORE=/var/lib/tbi-lab/artifacts
     BUNDLES=/srv/tbi-lab/services/current
     RUNTIME="${TBI_S8_RUNTIME:?set TBI_S8_RUNTIME to the provisioned runtime prefix}"
@@ -73,17 +78,17 @@ if (( HOST_MAX < POLICY_LIVE )); then
 fi
 
 # Users and groups (system accounts, no home, no login).
-for g in tbi-buildio tbi-runtimeio tbi-gate tbi-artifacts; do
+for g in "${U}buildio" "${U}runtimeio" tbi-gate "${U}artifacts"; do
   getent group "$g" >/dev/null || sudo groupadd --system "$g"
 done
 mkuser() { getent passwd "$1" >/dev/null ||
   sudo useradd --system --gid "$2" --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin "$1"; }
-mkuser tbi-build tbi-artifacts
-mkuser tbi-buildjob tbi-buildio
-mkuser tbi-runtime tbi-runtimeio
-mkuser tbi-qemu tbi-runtimeio
+mkuser "${U}build" "${U}artifacts"
+mkuser "${U}buildjob" "${U}buildio"
+mkuser "${U}runtime" "${U}runtimeio"
+mkuser "${U}qemu" "${U}runtimeio"
 GATE_GID="$(getent group tbi-gate | cut -d: -f3)"
-JOB_UID="$(id -u tbi-buildjob)"
+JOB_UID="$(id -u "${U}buildjob")"
 
 # Keys: root-only files, handed to the two services as systemd credentials.
 sudo install -d -m 0700 "/etc/$N"
@@ -109,7 +114,10 @@ test -f "$RUNTIME/runtime.json" || { echo "no runtime.json in $RUNTIME" >&2; exi
 sudo install -m 0400 "$RUNTIME/runtime.json" "/etc/$N/runtime.json"
 
 # Artifact store (staging has its own) and the empty sandbox roots with their mount points.
-sudo install -d -o tbi-build -g tbi-artifacts -m 2750 "$STORE"
+sudo install -d -o "${U}build" -g "${U}artifacts" -m 2750 "$STORE"
+# O2: a store created before the per-instance users (staging, owned by tbi-build) moves to this
+# instance's users; modes are kept. A no-op when the owners already match (dev-lab).
+sudo find "$STORE" \( ! -user "${U}build" -o ! -group "${U}artifacts" \) -exec chown -h "${U}build:${U}artifacts" {} +
 root() { # $1 root dir, rest: mount points
   local r="$1"; shift
   sudo install -d -m 0755 "$r"
@@ -134,11 +142,11 @@ for sha in $(python3 -c 'import json,sys; [print(a["sha256"]) for a in json.load
   src="$ARTIFACTS/$sha.bin"
   test -f "$src" || { echo "pinned artifact $sha is not in $ARTIFACTS" >&2; exit 1; }
   [ "$(sha256sum < "$src" | cut -d' ' -f1)" = "$sha" ] || { echo "sha256 mismatch: $src" >&2; exit 1; }
-  sudo install -o tbi-build -g tbi-artifacts -m 0440 "$src" "$STORE/$sha.bin"
+  sudo install -o "${U}build" -g "${U}artifacts" -m 0440 "$src" "$STORE/$sha.bin"
   echo "imported reference image $sha"
 done
 
-root "/var/lib/$N-build/sandbox-root" opt/tbi-arduino opt/tbi-node opt/tbi-build job
+root "/var/lib/$N-build/sandbox-root" opt/tbi-arduino opt/tbi-micropython opt/tbi-node opt/tbi-build job
 root "/var/lib/$N-runtime/sandbox-root" opt/tbi-runtime session
 
 # Service bundles (staging: from this worktree).
@@ -161,7 +169,7 @@ render() {
   sed -e "s|@N@|$N|g" -e "s|@NRE@|${N//-/\\\\-}|g" -e "s|@STORE@|$STORE|g" -e "s|@BUNDLES@|$BUNDLES|g" \
     -e "s|@ARDUINO@|$ARDUINO|g" -e "s|@MICROPYTHON@|$MICROPYTHON|g" -e "s|@NODE@|$NODE|g" -e "s|@RUNTIME@|$RUNTIME|g" \
     -e "s|@GATE_GID@|$GATE_GID|g" -e "s|@JOB_UID@|$JOB_UID|g" -e "s|@ARTIFACT_CAP_MB@|$CAP_MB|g" \
-    -e "s|@HOST_MAX_SESSIONS@|$HOST_MAX|g" "$1"
+    -e "s|@HOST_MAX_SESSIONS@|$HOST_MAX|g" -e "s|@U@|$U|g" "$1"
 }
 render "$here/tbi-build.service.in" | sudo tee "/etc/systemd/system/$N-build.service" >/dev/null
 render "$here/tbi-build-job@.service.in" | sudo tee "/etc/systemd/system/$N-build-job@.service" >/dev/null

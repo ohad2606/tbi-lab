@@ -23,8 +23,8 @@ target="${1:?usage: switch-runtime.sh staging|dev-lab <runtime prefix>}"
 prefix="$(readlink -f "${2:?usage: switch-runtime.sh staging|dev-lab <runtime prefix>}")"
 here="$(cd "$(dirname "$0")" && pwd)"
 case "$target" in
-  staging) N=tbi-s8 ;;
-  dev-lab) N=tbi ;;
+  staging) N=tbi-s8; U=tbi-s8- ;;
+  dev-lab) N=tbi; U=tbi- ;;
   *) echo "unknown target: $target" >&2; exit 2 ;;
 esac
 unit="/etc/systemd/system/$N-qemu@.service"
@@ -54,13 +54,14 @@ sudo test -f "/etc/$N/runtime.json" && sudo cp -p "/etc/$N/runtime.json" "$backu
 echo "$old" | sudo tee "$backup/previous-runtime" >/dev/null
 
 # Re-render exactly as install.sh does, changing only the runtime bind.
-sed -e "s|@N@|$N|g" -e "s|@RUNTIME@|$prefix|g" "$here/tbi-qemu@.service.in" |
+sed -e "s|@N@|$N|g" -e "s|@U@|$U|g" -e "s|@RUNTIME@|$prefix|g" "$here/tbi-qemu@.service.in" |
   sudo tee "$unit.tmp" >/dev/null
 sudo mv -f "$unit.tmp" "$unit"
 sudo install -m 0400 "$prefix/runtime.json" "/etc/$N/runtime.json"
 sudo systemctl daemon-reload
 sudo systemctl restart "$N-build.service"
 
+grep -q '@[A-Z_]*@' "$unit" && { echo "FAILED: unrendered placeholder in $unit" >&2; exit 1; }
 # Verify: the unit binds the new runtime, and the build service is back.
 bound="$(systemctl show -p BindReadOnlyPaths --value "$N-qemu@check.service" | tr ' ' '\n' |
   sed -n 's|^\(.*\):/opt/tbi-runtime.*|\1|p')"
