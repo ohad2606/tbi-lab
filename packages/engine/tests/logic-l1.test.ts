@@ -57,14 +57,24 @@ describe('device cards (datasheet figures, EF-D3 A / EF-D4 A)', () => {
         );
         expect(st.validA).toBe(Math.max(...row.high.map((p) => p.amps)));
       }
-    // 3.3 V is not a tabulated output point: only the ranged row.
-    expect(outputStageAt(AND, 3.3)).toMatchObject({
-      tabulated: false,
-      validA: 100e-6,
-      high: [[0.1, 100e-6]],
-    });
-    // The tolerance is numerical only: 3.001 V is not "at 3 V".
-    expect(outputStageAt(AND, 3.001).tabulated).toBe(false);
+    // 3.3 V is not a tabulated output point; PM-1: the 3 V points bound it (absolute V_OH minima,
+    // so the drops grow with the supply: never better than at 3 V).
+    const c33 = outputStageAt(AND, 3.3);
+    expect(c33).toMatchObject({ tabulated: false, model: 'class', validA: 24e-3 });
+    expect(c33.high.map(([v, a]) => [Number(v.toFixed(12)), a])).toEqual([
+      [0.1, 100e-6],
+      [0.9, 16e-3],
+      [1.0, 24e-3],
+    ]);
+    expect(c33.low).toEqual([
+      [0.1, 100e-6],
+      [0.4, 16e-3],
+      [0.55, 24e-3],
+    ]);
+    // The tolerance is numerical only: 3.001 V is not "at 3 V" (it is in the class).
+    expect(outputStageAt(AND, 3.001)).toMatchObject({ tabulated: false, model: 'class' });
+    // Outside every row and class (5 V): only the ranged row.
+    expect(outputStageAt(AND, 5.0)).toMatchObject({ model: 'ranged', validA: 100e-6 });
   });
 
   it('static CMOS evaluation: a controlling input decides; otherwise X', () => {
@@ -184,18 +194,81 @@ describe('SN74LVC1G gates in the solve', () => {
     }
   });
 
-  it('V_CC = 3.3 V (no tabulated output points): light loads by the ±100 µA row; an LED load is refused', () => {
-    const light = gate('logic.gate_and', 3.3, ['h', 'h'], load(1_000_000));
+  it('PM-1: over the 3.3 V ± 0.3 V class the 3 V points bound the output (each part, each load condition)', () => {
+    // Bound (logic/lvc1g.ts): V_OH >= V_CC - 0.1 at 100 uA; >= 2.4 V at 16 mA; >= 2.3 V at 24 mA;
+    // V_OL <= 0.1 / 0.4 / 0.55 V at 100 uA / 16 / 24 mA; above 24 mA refused. Expected values by
+    // hand: a resistor sized to land exactly on a test point gives exactly that point's voltage.
+    const highIn = {
+      'logic.gate_and': ['h', 'h'],
+      'logic.gate_nand': ['l', 'h'],
+      'logic.gate_or': ['h', 'l'],
+      'logic.gate_not': ['l'],
+    } as const;
+    const lowIn = {
+      'logic.gate_and': ['l', 'h'],
+      'logic.gate_nand': ['h', 'h'],
+      'logic.gate_or': ['l', 'l'],
+      'logic.gate_not': ['h'],
+    } as const;
+    for (const type of [
+      'logic.gate_and',
+      'logic.gate_nand',
+      'logic.gate_or',
+      'logic.gate_not',
+    ] as const)
+      for (const vcc of [3.3, 3.6]) {
+        const at = `${type} at ${vcc} V`;
+        // HIGH sourcing exactly 16 mA and 24 mA (R = V_OH / I): V_Y is the guaranteed minimum.
+        for (const [amps, voh] of [
+          [16e-3, 2.4],
+          [24e-3, 2.3],
+        ] as const) {
+          const t = gate(type, vcc, [...highIn[type]], load(voh / amps));
+          const u = ok(solve(t.b)).components[t.g]!;
+          expect(u.state, at).toMatchObject({ gateOutput: 'high', outputModel: 'class' });
+          expect(u.terminals.y!, `${at} ${amps}`).toBeCloseTo(voh, 9);
+          expect(u.currents!.y!, `${at} ${amps}`).toBeCloseTo(amps, 12);
+        }
+        // An LED-class load (220 ohm) lands on the (100 uA, 16 mA) segment of the bound:
+        // drop = 0.1 + (I - 100 uA) k, k = (V_CC - 2.4 - 0.1) / 15.9 mA; I = (V_CC - drop) / 220.
+        const k = (vcc - 2.4 - 0.1) / 15.9e-3;
+        const I = (vcc - 0.1 + 100e-6 * k) / (220 + k);
+        const led = gate(type, vcc, [...highIn[type]], load(220));
+        expect(ok(solve(led.b)).components[led.g]!.terminals.y!, at).toBeCloseTo(I * 220, 9);
+        // Above 24 mA: no guaranteed characteristic, refused (never extrapolated).
+        const over = gate(type, vcc, [...highIn[type]], load(80));
+        expect(fails(solve(over.b)), at).toMatchObject({ code: 'logic_output_uncharacterized' });
+        // LOW sinking exactly 16 mA and 24 mA from a resistor to V_CC: V_Y is the guaranteed maximum.
+        for (const [amps, vol] of [
+          [16e-3, 0.4],
+          [24e-3, 0.55],
+        ] as const) {
+          const t = gate(type, vcc, [...lowIn[type]], (bb, gg) => {
+            const r = bb.add('component.resistor');
+            bb.ohms(r, (vcc - vol) / amps)
+              .wire('PSU1.positive', `${r}.a`)
+              .wire(`${r}.b`, `${gg}.y`);
+          });
+          const u = ok(solve(t.b)).components[t.g]!;
+          expect(u.state, at).toMatchObject({ gateOutput: 'low', outputModel: 'class' });
+          expect(u.terminals.y!, `${at} low ${amps}`).toBeCloseTo(vol, 9);
+        }
+      }
+    // At exactly 3.0 V the tabulated row itself applies; above the class (3.7 V) the sheets give
+    // no input row: refused, as before.
+    const at3 = gate('logic.gate_and', 3.0, ['h', 'h'], load(220));
+    expect(ok(solve(at3.b)).components[at3.g]!.state).toMatchObject({ outputModel: 'tabulated' });
+    const above = gate('logic.gate_and', 3.7, ['h', 'h'], load(220));
+    expect(fails(solve(above.b))).toMatchObject({ code: 'logic_supply_uncharacterized' });
+  });
+
+  it('outside the class and the rows (e.g. 2.0 V) only the ±100 µA row holds: light loads only', () => {
+    const light = gate('logic.gate_and', 5.0, ['h', 'h'], load(1_000_000));
     const y = ok(solve(light.b)).components[light.g]!;
     expect(y.state).toMatchObject({ gateOutput: 'high', outputModel: 'ranged' });
-    // Within ±100 µA the envelope is the ranged row's 0.1 V / 100 µA line (1 kΩ).
-    expect(y.terminals.y!).toBeCloseTo((3.3 * 1e6) / (1e6 + 1000), 9);
-    expect(y.terminals.y!).toBeGreaterThanOrEqual(3.3 - 0.1);
-    const led = gate('logic.gate_and', 3.3, ['h', 'h'], load(220));
-    expect(fails(solve(led.b))).toMatchObject({
-      code: 'logic_output_uncharacterized',
-      components: [led.g],
-    });
+    expect(y.terminals.y!).toBeCloseTo((5.0 * 1e6) / (1e6 + 1000), 9);
+    const heavy = gate('logic.gate_and', 5.0, ['h', 'h'], load(220));
+    expect(fails(solve(heavy.b))).toMatchObject({ code: 'logic_output_uncharacterized' });
   });
 
   it('supplies outside every datasheet row are refused; V_CC = 0 is unpowered (outputs off)', () => {

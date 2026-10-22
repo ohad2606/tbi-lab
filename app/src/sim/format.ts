@@ -209,7 +209,7 @@ export function engineErrorMessage(
     case 'logic_output_uncharacterized':
     case 'logic_feedback_unsupported':
     case 'logic_unknown_state': {
-      const d = (error.detail ?? {}) as { vcc?: number; value?: number };
+      const d = (error.detail ?? {}) as { vcc?: number; value?: number; limit?: number };
       const pin = error.param?.startsWith('gpio')
         ? isolateLtr(`GPIO${error.param.slice(4)}`)
         : isolateLtr((error.param ?? '').toUpperCase());
@@ -218,6 +218,7 @@ export function engineErrorMessage(
         pin,
         supply: typeof d.vcc === 'number' ? formatResult(locale, d.vcc, 'volt') : '',
         current: typeof d.value === 'number' ? formatResult(locale, d.value, 'ampere') : '',
+        limit: typeof d.limit === 'number' ? formatResult(locale, d.limit, 'ampere') : '',
       });
     }
     default:
