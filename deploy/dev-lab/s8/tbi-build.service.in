@@ -1,6 +1,7 @@
 # Sprint 8: the build service (identity, ownership, sandboxed builds). Rendered by install.sh.
 #
-# Reached only through its unix socket (mode 0660, group tbi-gate: the internal reverse proxy).
+# Reached only through its unix socket (mode 0660, the instance's gate group: dev-lab tbi-gate, the
+# internal reverse proxy; staging tbi-s8-gate).
 # It never runs a compiler itself: each tool step is an instance of @N@-build-job@.service,
 # which it may only start/stop/kill (polkit). Keys come in as systemd credentials (root-only
 # files, never readable by the job sandboxes).
@@ -11,7 +12,7 @@ After=network-online.target
 [Service]
 User=@U@build
 Group=@U@buildio
-SupplementaryGroups=@U@artifacts tbi-gate
+SupplementaryGroups=@U@artifacts @G@
 UMask=0007
 Environment=TBI_BUILD_LISTEN=unix:/run/@N@-build/api.sock
 Environment=TBI_SOCKET_GID=@GATE_GID@
