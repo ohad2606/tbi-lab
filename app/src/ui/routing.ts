@@ -9,6 +9,7 @@ import {
   moveSelection,
   rerouteWires,
   routeAutoWires,
+  routeAutoWiresIncremental,
   rotateComponents,
   rotatePoint,
   type ComponentInstance,
@@ -16,6 +17,7 @@ import {
   type Point,
   type ProjectDocument,
   type RouteBox,
+  type RoutingMemo,
   type Selection,
 } from '@tbi-lab/domain';
 import { LCD_WINDOW, SYMBOLS } from './symbols.js';
@@ -106,8 +108,26 @@ export const componentBoxes = (doc: ProjectDocument): RouteBox[] => [
   ...displayBoxes(doc),
 ];
 
-/** Wire routing integrity: the canonical routes of every automatic wire (domain `routeAutoWires`). */
-export const routeAutomatic = (doc: ProjectDocument): ProjectDocument =>
+/**
+ * The memo of the last canonical routing (a private copy of its document, so no later mutation
+ * can make it stale): the reference for incremental routing.
+ */
+let lastRouting: RoutingMemo | null = null;
+
+/**
+ * Wire routing integrity: the canonical routes of every automatic wire. Rt2: computed
+ * incrementally (domain `routeAutoWiresIncremental`: only the wires whose route can change are
+ * re-routed; the result is identical to `routeAutoWires(doc, componentBoxes(doc))` bit for bit),
+ * against the last document this function routed, whatever project or history it came from.
+ */
+export function routeAutomatic(doc: ProjectDocument): ProjectDocument {
+  const r = routeAutoWiresIncremental(lastRouting, doc, componentBoxes(doc));
+  lastRouting = { ...r.memo, doc: structuredClone(r.doc) };
+  return r.doc;
+}
+
+/** The full (non-incremental) canonical routing: the reference the incremental one must equal. */
+export const routeAutomaticFull = (doc: ProjectDocument): ProjectDocument =>
   routeAutoWires(doc, componentBoxes(doc));
 
 function routed(r: EditResult, components: string[], rigidWires: string[]): EditResult {
