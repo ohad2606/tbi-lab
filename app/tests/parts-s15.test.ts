@@ -390,6 +390,45 @@ describe('ratings under PWM check the peak, not the average', () => {
   });
 });
 
+describe('PWM pad ratings at both operating points (RC5 review S1)', () => {
+  const pad = (gpio: number, currentHigh: number, currentLow: number) =>
+    ({
+      ok: true,
+      components: {},
+      netVoltages: {},
+      pins: [
+        {
+          gpio,
+          mode: 'output-high',
+          voltage: 1.65,
+          current: (currentHigh + currentLow) / 2,
+          pwm: { duty: 0.5, periodNs: 1e6, highNs: 5e5, currentHigh, currentLow },
+          peakCurrent: Math.max(Math.abs(currentHigh), Math.abs(currentLow)),
+        },
+      ],
+    }) as unknown as SolveSuccess;
+
+  it('a sink over I_OL at LOW is flagged although the source at HIGH is larger', () => {
+    const { doc } = mixedCircuit();
+    // Sources 35 mA (under I_OH 40 mA) when high, sinks 30 mA (over I_OL 28 mA) when low.
+    const w = warningsFor(doc, pad(4, 0.035, -0.03));
+    expect(w).toContainEqual(
+      expect.objectContaining({ code: 'gpio_sink_current', gpio: 4, value: 0.03 }),
+    );
+    expect(w.some((x) => x.code === 'gpio_source_current')).toBe(false);
+  });
+
+  it('a source over the 20 mA SDIO limit at HIGH is flagged although the sink at LOW is larger', () => {
+    const { doc } = mixedCircuit();
+    // GPIO16: sources 25 mA (over 20 mA) when high, sinks 26 mA (under 28 mA) when low.
+    const w = warningsFor(doc, pad(16, 0.025, -0.026));
+    expect(w).toContainEqual(
+      expect.objectContaining({ code: 'gpio_source_current', gpio: 16, value: 0.025 }),
+    );
+    expect(w.some((x) => x.code === 'gpio_sink_current')).toBe(false);
+  });
+});
+
 describe('LED brightness under PWM follows the average current', () => {
   it('a 25 % duty RGB channel glows a quarter as bright as the same channel at its peak', () => {
     const peak = rgbMix({ red: 0.02 })!;

@@ -14,6 +14,7 @@ import {
   harvestCoreSeed,
   pruneCoreSeeds,
   removeCoreSeed,
+  removeInterruptedHarvests,
 } from '../coreSeed.js';
 import { Grants } from '../grants.js';
 import { BuildService, DEFAULT_LIMITS } from '../service.js';
@@ -124,6 +125,15 @@ describe('core seed', () => {
     expect(readdirSync(seeds).sort()).toEqual(['.tmp-abc', k2]);
     await pruneCoreSeeds(seeds, new Set([k2]), true);
     expect(readdirSync(seeds)).toEqual([k2]);
+  });
+
+  it('service start removes only interrupted harvests: the kept seed survives a restart', async () => {
+    const seeds = dir('seeds-');
+    const k = coreSeedKey(base);
+    await harvestCoreSeed(seeds, k, fakeBuild(dir('a-')));
+    mkdirSync(join(seeds, '.tmp-xyz'));
+    await removeInterruptedHarvests(seeds);
+    expect(readdirSync(seeds)).toEqual([k]);
   });
 });
 

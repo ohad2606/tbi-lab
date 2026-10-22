@@ -245,6 +245,8 @@ export const he: Record<MessageKey, string> = {
   'mcu.pwm.unsupported': 'PWM · לא נתמך',
   'mcu.pwm.levelUnknown': 'המתח לא ידוע',
   'mcu.pwm.average': 'ממוצע {voltage}',
+  'mcu.warning.servo_frame_unsupported':
+    '{component}: האות חוזר כל {period}; ה-SG90 מוגדר למסגרת של 20 ms, ולכן תגובתו לאות כזה אינה מתועדת. הסרוו אינו מקבל פולס תקין ונשאר במקומו.',
   'mcu.warning.servo_signal_undefined':
     '{component}: אות הבקרה אינו ברמה לוגית תקינה (או שכמה יציאות PWM פועלות עליו); הסרוו אינו מקבל פולס תקין.',
   'sim.time': 't = {time}',

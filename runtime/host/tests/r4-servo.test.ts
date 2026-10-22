@@ -174,6 +174,26 @@ describe('T-R4-4: SG90 on an LEDC output (Session Host)', () => {
     expect(servoStates(s, id).at(-1)!.st).toMatchObject({ signal: 'pulses' });
   });
 
+  it('RC5 review S1: a 1 kHz PWM on the signal (no documented SG90 reaction) is not read as pulses; a warning names it', async () => {
+    const { s, id } = servoSession([
+      'F 9500000 18 periph:71 0',
+      'P 9500100 0 reset',
+      'P 9500200 0 run 80000000 313 16', // 65536 x 313/256/80 MHz = 1.0016 ms frame
+      'W 9500300 71 on 0 0 32768', // 50 %: 500 us high, a "valid" width at the wrong rate
+    ]);
+    expect(await runUntil(s, 300)).toMatchObject({ state: 'ended', reason: 'stopped' });
+    const last = servoStates(s, id).at(-1)!.st;
+    expect(last).toMatchObject({ signal: 'undefined', angleDeg: 90 });
+    const warn = s.log
+      .since(0)
+      .filter((e) => e.type === 'diagnostic')
+      .map((e) => e as { code?: string; detail?: unknown });
+    expect(warn.find((e) => e.code === 'servo_frame_unsupported')).toMatchObject({
+      detail: { component: id, gpio: 18, periodUs: 1002 },
+    });
+    expect(warn.some((e) => e.code === 'servo_signal_undefined')).toBe(false);
+  });
+
   it('a signal between the thresholds is undefined: no pulse is read, a warning names it', async () => {
     // Signal through 10 k / 10 k from the pad: 1.65 V when high, between 0.8 V and 2.0 V.
     const { s: s2, id: id2 } = servoSession(ATTACH, 5, CAPS, (c, m) => {

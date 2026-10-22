@@ -38,7 +38,7 @@ import { Grants } from './grants.js';
 import { watchLiveSessions } from './live-sessions.js';
 import { SandboxToolRunner } from './runner.js';
 import { systemBuildRequests, systemSourceKeys } from './system-sources.js';
-import { pruneCoreSeeds } from './coreSeed.js';
+import { removeInterruptedHarvests } from './coreSeed.js';
 import { ArduinoEsp32Provider, type ArduinoProfileRecord } from './arduino.js';
 import { createBuildHttpServer } from './http.js';
 import { BuildService, DEFAULT_LIMITS } from './service.js';
@@ -93,7 +93,7 @@ const coreSeeds = jobUnit
   : null;
 if (coreSeeds) {
   mkdirSync(coreSeeds, { recursive: true, mode: 0o750 });
-  await pruneCoreSeeds(coreSeeds, new Set(), true).catch(() => undefined);
+  await removeInterruptedHarvests(coreSeeds).catch(() => undefined);
 }
 const provider = new ArduinoEsp32Provider({
   profile: ESP32_ARDUINO_PROFILE,

@@ -31,6 +31,9 @@ import {
   type Waveform,
 } from './pwm.js';
 
+/** RC5 review (S1): the shortest servo frame read as pulses (ns): 20 ms nominal minus 10 %. */
+export const SERVO_MIN_FRAME_NS = 18_000_000n;
+
 type Wave = Extract<Waveform, { kind: 'wave' }>;
 
 type Source =
@@ -45,6 +48,8 @@ interface Tracked {
   level: 0 | 1;
   powered: boolean;
   warned: boolean;
+  /** RC5 review S1: the frame-rate warning was given. */
+  warnedFrame: boolean;
   /** The servo model's own time (ns): it never goes backwards. */
   timeNs: bigint;
 }
@@ -93,6 +98,7 @@ export class ServoBank {
           level: 0,
           powered: false,
           warned: false,
+          warnedFrame: false,
           timeNs: 0n,
         });
   }
@@ -169,7 +175,26 @@ export class ServoBank {
           s.source.kind === 'wave' &&
           s.source.gpio === p.gpio &&
           ratCmp(s.source.segStart, p.since) === 0;
-        next = same ? s.source : { kind: 'wave', gpio: p.gpio, w: p.w, segStart: p.since };
+        // RC5 review (S1): an SG90 is specified for a 20 ms frame (TowerPro: 50 Hz). A frame
+        // shorter than SERVO_MIN_FRAME_NS (the nominal minus 10 %: a conservative bound, no
+        // documented tolerance) has no documented reaction: no pulse is read, a warning names it,
+        // the servo holds. (Longer frames, up to 50 ms, are the model's own rule.)
+        if (p.w.kind === 'wave' && ratCmp(p.w.periodNs, ns(SERVO_MIN_FRAME_NS)) < 0) {
+          next = { kind: 'static', level: null };
+          if (!s.warnedFrame) {
+            s.warnedFrame = true;
+            this.diagnostics.push({
+              simNs: vns,
+              code: 'servo_frame_unsupported',
+              detail: {
+                component: s.id,
+                gpio: p.gpio,
+                periodUs: Math.round(ratToNumber(p.w.periodNs) / 1000),
+              },
+            });
+          }
+          s.warned = true; // not also the undefined-level warning
+        } else next = same ? s.source : { kind: 'wave', gpio: p.gpio, w: p.w, segStart: p.since };
       } else next = { kind: 'static', level: null };
       if (next.kind === 'static' && next.level === null && !s.warned) {
         s.warned = true;

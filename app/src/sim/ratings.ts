@@ -23,10 +23,18 @@ export function warningsFor(doc: ProjectDocument, outcome: SolveSuccess): Rating
     // Sprint 17C (review V2): voltage limits apply to the extremes over the PWM combinations, so
     // the check runs at the lowest and at the highest voltages (each with the peak currents) and
     // keeps the worse row of each kind. Without PWM both corners are the outcome itself.
-    w = worst([
-      ...ratingWarnings(snapshot, peakOutcome(voltageCorner(outcome, 0))),
-      ...ratingWarnings(snapshot, peakOutcome(voltageCorner(outcome, 1))),
-    ]);
+    // RC5 review (S1): a PWM pad has TWO operating points, sourcing at HIGH and sinking at LOW,
+    // each with its own datasheet limit (I_OH, I_OL); both are checked, never only the larger.
+    const points = outcome.pins?.some((p) => p.pwm)
+      ? (['high', 'low'] as const)
+      : ([undefined] as const);
+    w = worst(
+      ([0, 1] as const).flatMap((end) =>
+        points.flatMap((at) =>
+          ratingWarnings(snapshot, peakOutcome(voltageCorner(outcome, end), at)),
+        ),
+      ),
+    );
     cache.set(outcome, w);
   }
   return w;
@@ -105,7 +113,7 @@ export function voltageCorner(outcome: SolveSuccess, end: 0 | 1): SolveSuccess {
  * - The cumulative output current then sums each pad's peak: an upper bound (the peaks of
  *   different pads need not coincide), the conservative side for a safety warning.
  */
-export function peakOutcome(outcome: SolveSuccess): SolveSuccess {
+export function peakOutcome(outcome: SolveSuccess, pwmPoint?: 'high' | 'low'): SolveSuccess {
   const switched = Object.values(outcome.components).some((r) => r.pwm);
   const pinsSwitched = outcome.pins?.some((p) => p.pwm || p.peakCurrent !== undefined);
   if (!switched && !pinsSwitched) return outcome;
@@ -114,7 +122,7 @@ export function peakOutcome(outcome: SolveSuccess): SolveSuccess {
   return {
     ...outcome,
     components,
-    ...(outcome.pins ? { pins: outcome.pins.map(peakPin) } : {}),
+    ...(outcome.pins ? { pins: outcome.pins.map((p) => peakPin(p, pwmPoint)) } : {}),
   };
 }
 
@@ -141,17 +149,27 @@ function peakComponent(r: ComponentResult): ComponentResult {
   return out;
 }
 
-function peakPin(pin: PinResult): PinResult {
+/**
+ * A PWM pad at one of its two operating points (`at`), or, when not given, at the point with the
+ * larger current.
+ */
+function peakPin(pin: PinResult, at?: 'high' | 'low'): PinResult {
   if (pin.pwm) {
     // The two points of its own waveform: HIGH sources `currentHigh`, LOW sinks `currentLow`.
-    const high = Math.abs(pin.pwm.currentHigh) >= Math.abs(pin.pwm.currentLow);
-    const at = high ? pin.pwm.currentHigh : pin.pwm.currentLow;
+    const larger = Math.abs(pin.pwm.currentHigh) >= Math.abs(pin.pwm.currentLow);
+    const high = at === undefined ? larger : at === 'high';
+    if (high !== larger) {
+      // The smaller point: its own current (the combined-point peak belongs to the larger one).
+      const current = high ? pin.pwm.currentHigh : pin.pwm.currentLow;
+      return { ...pin, mode: high ? 'output-high' : 'output-low', current };
+    }
+    const point = high ? pin.pwm.currentHigh : pin.pwm.currentLow;
     // With several PWM pads its largest current may be at a combined point: never below that.
-    const magnitude = Math.max(Math.abs(at), pin.peakCurrent ?? 0);
+    const magnitude = Math.max(Math.abs(point), pin.peakCurrent ?? 0);
     return {
       ...pin,
       mode: high ? 'output-high' : 'output-low',
-      current: (Math.sign(at) || (high ? 1 : -1)) * magnitude,
+      current: (Math.sign(point) || (high ? 1 : -1)) * magnitude,
     };
   }
   if (pin.peakCurrent === undefined) return pin;

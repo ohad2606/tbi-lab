@@ -139,6 +139,16 @@ export async function pruneCoreSeeds(
       await rm(join(seeds, name), { recursive: true, force: true });
 }
 
+/**
+ * At service start (RC5 review M1): only interrupted harvests (`.tmp-*`) go. The kept seed stays: a
+ * seed whose key no longer matches is never applied, and the next harvest prunes it. Removing the
+ * current seed here made every restart pay a cold core compile.
+ */
+export async function removeInterruptedHarvests(seeds: string): Promise<void> {
+  for (const name of await readdir(seeds).catch(() => [] as string[]))
+    if (name.startsWith('.tmp-')) await rm(join(seeds, name), { recursive: true, force: true });
+}
+
 /** Undo a partly applied seed (the build then runs cold). */
 export async function removeCoreSeed(buildDir: string): Promise<void> {
   for (const entry of SEED_ENTRIES)

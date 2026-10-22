@@ -264,6 +264,13 @@ function warningText(t: ReturnType<typeof useT>, w: RuntimeWarning): string {
     return t('mcu.warning.output_on_input_only_pad', { gpio: isolateLtr(String(gpio ?? '')) });
   }
   if (w.code === 'transient_rejected') return t('mcu.warning.transient_rejected');
+  if (w.code === 'servo_frame_unsupported') {
+    const d = (w.detail ?? {}) as { component?: string; periodUs?: number };
+    return t('mcu.warning.servo_frame_unsupported', {
+      component: isolateLtr(d.component ?? ''),
+      period: isolateLtr(`${((d.periodUs ?? 0) / 1000).toFixed(3)} ms`),
+    });
+  }
   if (w.code === 'servo_signal_undefined') {
     const component = (w.detail as { component?: string } | undefined)?.component;
     return t('mcu.warning.servo_signal_undefined', { component: isolateLtr(component ?? '') });

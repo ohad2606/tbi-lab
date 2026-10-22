@@ -244,6 +244,8 @@ export const en = {
   'mcu.pwm.unsupported': 'PWM · unsupported',
   'mcu.pwm.levelUnknown': 'voltage not established',
   'mcu.pwm.average': 'average {voltage}',
+  'mcu.warning.servo_frame_unsupported':
+    '{component}: the signal repeats every {period}; an SG90 is specified for a 20 ms frame, so its reaction to this signal is not documented. The servo sees no valid pulse and holds its position.',
   'mcu.warning.servo_signal_undefined':
     '{component}: the control signal is not a valid logic level (or several PWM outputs act on it); the servo sees no valid pulse.',
   'sim.time': 't = {time}',
