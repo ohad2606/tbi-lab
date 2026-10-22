@@ -401,6 +401,8 @@ const W_BEND = 1e3; // a bend or a clean crossing; a grid step of length costs 1
 const SEARCH_MARGIN = 4 * GRID;
 const SEARCH_MARGIN_MAX = 32 * GRID;
 const SEARCH_MAX_NODES = 60_000;
+/** Cell key stride (rt2): cx * CELL_KEY + cy is unique for |cy| < 2^19 lattice steps. */
+const CELL_KEY = 1 << 20;
 const DIRS: readonly Point[] = [
   { x: GRID, y: 0 },
   { x: 0, y: GRID },
@@ -446,30 +448,33 @@ function searchRoute(a: Point, b: Point, obs: RouteObstacles, margin: number): P
   const isEnd = (p: Point) => eq(p, a) || eq(p, b);
   const ends = [a, b];
   // Spatial buckets (by nearest lattice node) of keep-out points and wire segments.
+  // (Rt2: numeric cell keys and in-place appends; the same buckets in the same order as the
+  // former string keys, so every lookup returns the same lists.)
+  const key = (cx: number, cy: number) => cx * CELL_KEY + cy;
   const cell = (x: number, y: number) =>
-    `${Math.round((x - x0) / GRID)},${Math.round((y - y0) / GRID)}`;
-  const pointsAt = new Map<string, Point[]>();
+    key(Math.round((x - x0) / GRID), Math.round((y - y0) / GRID));
+  const append = <T>(map: Map<number, T[]>, k: number, v: T) => {
+    const list = map.get(k);
+    if (list) list.push(v);
+    else map.set(k, [v]);
+  };
+  const pointsAt = new Map<number, Point[]>();
   for (const p of obs.points) {
     if (isEnd(p)) continue;
-    const k = cell(p.x, p.y);
-    pointsAt.set(k, [...(pointsAt.get(k) ?? []), p]);
+    append(pointsAt, cell(p.x, p.y), p);
   }
-  const fieldAt = new Map<string, Point[]>();
+  const fieldAt = new Map<number, Point[]>();
   for (const p of obs.field ?? []) {
     if (Math.hypot(p.x - a.x, p.y - a.y) <= GRID || Math.hypot(p.x - b.x, p.y - b.y) <= GRID)
       continue;
-    const k = cell(p.x, p.y);
-    fieldAt.set(k, [...(fieldAt.get(k) ?? []), p]);
+    append(fieldAt, cell(p.x, p.y), p);
   }
-  const leadsAt = new Map<string, Seg[]>();
+  const leadsAt = new Map<number, Seg[]>();
   for (const l of obs.leads ?? []) {
     if (isEnd(l[0])) continue;
-    for (const q of [l[0], l[1]]) {
-      const k = cell(q.x, q.y);
-      leadsAt.set(k, [...(leadsAt.get(k) ?? []), l]);
-    }
+    for (const q of [l[0], l[1]]) append(leadsAt, cell(q.x, q.y), l);
   }
-  const segsAt = new Map<string, Seg[]>();
+  const segsAt = new Map<number, Seg[]>();
   for (const t of obs.segments) {
     const len = Math.abs(t[1].x - t[0].x) + Math.abs(t[1].y - t[0].y);
     const n = Math.max(1, Math.ceil(len / GRID));
@@ -480,13 +485,15 @@ function searchRoute(a: Point, b: Point, obs: RouteObstacles, margin: number): P
       segsAt.set(k, list);
     }
   }
-  const near = <T>(map: Map<string, T[]>, p: Point): T[] => {
+  const near = <T>(map: Map<number, T[]>, p: Point): T[] => {
     const out = new Set<T>();
     const cx = Math.round((p.x - x0) / GRID);
     const cy = Math.round((p.y - y0) / GRID);
     for (let i = -1; i <= 1; i++)
-      for (let j = -1; j <= 1; j++)
-        for (const v of map.get(`${cx + i},${cy + j}`) ?? []) out.add(v);
+      for (let j = -1; j <= 1; j++) {
+        const list = map.get(key(cx + i, cy + j));
+        if (list) for (const v of list) out.add(v);
+      }
     return [...out];
   };
   /** What lies near each lattice node (points, leads, wire segments); memoized. */
@@ -499,6 +506,36 @@ function searchRoute(a: Point, b: Point, obs: RouteObstacles, margin: number): P
       f: near(fieldAt, at(n)),
     });
   const union = <T>(x: T[], y: T[]): T[] => (y.length ? [...new Set([...x, ...y])] : x);
+  // Rt2: only the bodies and header bands that reach the lattice can price a step on it; every
+  // other one adds an exact 0 (no closed overlap with any step), so dropping them, in order,
+  // changes no sum.
+  const lattice: RouteBox = {
+    minX: x0,
+    minY: y0,
+    maxX: x0 + (nx - 1) * GRID,
+    maxY: y0 + (ny - 1) * GRID,
+  };
+  const touches = (q: RouteBox) =>
+    q.maxX >= lattice.minX &&
+    q.minX <= lattice.maxX &&
+    q.maxY >= lattice.minY &&
+    q.minY <= lattice.maxY;
+  // Per lattice node, the bodies and header bands that can touch a step leaving it (closed
+  // overlap with the step's segment, which lies within one grid step of the node), in their
+  // original order: the same nonzero terms in the same order as iterating all of them.
+  const boxesAt = new Map<number, RouteBox[]>();
+  const headersAt = new Map<number, HeaderRow[]>();
+  const spread = <T>(map: Map<number, T[]>, q: RouteBox, v: T) => {
+    if (!touches(q)) return;
+    const i0 = Math.max(0, Math.floor((q.minX - x0) / GRID) - 1);
+    const i1 = Math.min(nx - 1, Math.ceil((q.maxX - x0) / GRID) + 1);
+    const j0 = Math.max(0, Math.floor((q.minY - y0) / GRID) - 1);
+    const j1 = Math.min(ny - 1, Math.ceil((q.maxY - y0) / GRID) + 1);
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) append(map, j * nx + i, v);
+  };
+  for (const q of obs.boxes) spread(boxesAt, q, q);
+  for (const h of obs.headers ?? []) spread(headersAt, band(h), h);
+  const NONE: never[] = [];
   const total = nx * ny * 4;
   /** Price of one grid step from lattice node n in direction d (without bends); memoized. */
   const steps = new Float64Array(total).fill(-1);
@@ -514,14 +551,14 @@ function searchRoute(a: Point, b: Point, obs: RouteObstacles, margin: number): P
     for (const p of union(nu.p, nv.p)) if (distance(p, s) < TERMINAL_KEEP_OUT) c += W_KEEP;
     for (const l of union(nu.l, nv.l)) if (segDistance(s, l) < TERMINAL_KEEP_OUT) c += W_KEEP;
     for (const p of union(nu.f, nv.f)) if (beside(p, s)) c += W_HUG;
-    for (const h of obs.headers ?? [])
+    for (const h of headersAt.get(n) ?? NONE)
       if (!onExitLine(s, h, ends)) c += (lengthInside(s, band(h)) / GRID) * W_BAND;
     for (const t of union(nu.t, nv.t)) {
       const o = overlapLength(s, t) / GRID;
       c += o * (sharesEnd(t, [a, b]) ? W_SHARED : W_OVERLAP);
       if (crosses(s, t)) c += W_BEND;
     }
-    for (const q of obs.boxes)
+    for (const q of boxesAt.get(n) ?? NONE)
       c += q.display ? (lengthInside(s, q) / GRID) * W_BAND : (boxLength(s, q) / GRID) * W_BODY;
     steps[n * 4 + d] = c;
     return c;
@@ -626,6 +663,38 @@ function searchRoute(a: Point, b: Point, obs: RouteObstacles, margin: number): P
   return orthogonalRoute(pts.reverse());
 }
 
+/**
+ * How far from a hop's short shapes an obstacle can still price one of them: the widest cost
+ * term is the header band (`HEADER_CLEARANCE` beyond the row's box); the pin-field hug reaches one
+ * grid step, the keep-out half a step; wire overlap, touches, crossings and bodies need contact.
+ */
+const SHAPE_REACH = HEADER_CLEARANCE + GRID;
+
+/** The obstacles that can price a short shape of hop a-b (`candidates`), in their order. */
+function nearShapes(obs: RouteObstacles, a: Point, b: Point): RouteObstacles {
+  const r = CHANNEL_REACH * GRID + SHAPE_REACH;
+  const minX = Math.min(a.x, b.x) - r;
+  const maxX = Math.max(a.x, b.x) + r;
+  const minY = Math.min(a.y, b.y) - r;
+  const maxY = Math.max(a.y, b.y) + r;
+  const hit = (x0: number, y0: number, x1: number, y1: number) =>
+    Math.max(x0, x1) >= minX &&
+    Math.min(x0, x1) <= maxX &&
+    Math.max(y0, y1) >= minY &&
+    Math.min(y0, y1) <= maxY;
+  const seg = (t: readonly [Point, Point]) => hit(t[0].x, t[0].y, t[1].x, t[1].y);
+  const pt = (p: Point) => hit(p.x, p.y, p.x, p.y);
+  const box = (q: RouteBox) => hit(q.minX, q.minY, q.maxX, q.maxY);
+  return {
+    segments: obs.segments.filter(seg),
+    boxes: obs.boxes.filter(box),
+    points: obs.points.filter(pt),
+    leads: (obs.leads ?? []).filter(seg),
+    field: (obs.field ?? []).filter(pt),
+    headers: (obs.headers ?? []).filter((h) => box(h.box)),
+  };
+}
+
 function better(p: number[], q: number[]): boolean {
   for (let i = 0; i < p.length; i++) if (p[i] !== q[i]) return p[i]! < q[i]!;
   return false;
@@ -651,8 +720,12 @@ export function autoRoute(
     const obs = { ...obstacles, segments };
     let best: Point[] | null = null;
     let bestCost: number[] = [];
+    // Rt2: the short shapes lie within the endpoints' box grown by the channel reach; an obstacle
+    // farther than SHAPE_REACH from it adds an exact 0 to every cost term of every shape, so the
+    // shapes are priced against the nearer ones only (in their order: the same sums).
+    const shapeObs = nearShapes(obs, a, b);
     for (const c of candidates(a, b)) {
-      const k = cost(c, obs, [a, b]);
+      const k = cost(c, shapeObs, [a, b]);
       if (!best || better(k, bestCost)) {
         best = c;
         bestCost = k;
