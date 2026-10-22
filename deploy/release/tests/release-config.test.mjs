@@ -13,6 +13,8 @@ import { checkDist } from '../check-dist.mjs';
 const ROOT = new URL('../../../', import.meta.url).pathname;
 const RC4 = join(ROOT, 'deploy/release/rc4.release.json');
 const RC4_REPORTS = join(ROOT, 'deploy/release/rc4-reports.release.json');
+const RC5 = join(ROOT, 'deploy/release/rc5.release.json');
+const RC5_REPORTS = join(ROOT, 'deploy/release/rc5-reports.release.json');
 const TOOLS = { node: 'v24.21.0', npm: '11.19.0', trackedFiles: () => [] };
 const GIT = { node: 'v24.21.0', npm: '11.19.0' }; // the real tracked-file listing (git)
 
@@ -36,6 +38,23 @@ describe('release profile vs source', () => {
     expect(RC4_SETTINGS).toHaveLength(8);
     expect(validate(loadProfile(RC4), ROOT, GIT)).toEqual([]);
     expect(validate(loadProfile(RC4_REPORTS), ROOT, GIT)).toEqual([]);
+  });
+
+  it("the RC5 profiles validate and equal RC4's except the release name and the exclusion note", () => {
+    for (const [rc5, rc4] of [
+      [RC5, RC4],
+      [RC5_REPORTS, RC4_REPORTS],
+    ]) {
+      expect(validate(loadProfile(rc5), ROOT, GIT)).toEqual([]);
+      const a = loadProfile(rc5);
+      const b = loadProfile(rc4);
+      expect(a.release).toBe('rc5');
+      expect({ ...a, release: 'x', excluded: { ...a.excluded, reason: '' } }).toEqual({
+        ...b,
+        release: 'x',
+        excluded: { ...b.excluded, reason: '' },
+      });
+    }
   });
 
   it('a setting the source reads but the profile does not pin is refused', () => {

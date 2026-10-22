@@ -25,7 +25,8 @@ result="$work/G2-RESULT.txt"
   echo "node: $(node --version)  npm: $(npm --version)"
 } > "$result"
 rc=0
-for profile in rc4 rc4-reports; do
+# RC5: the RC5 profiles by default; TBI_RELEASE_PROFILES selects others (e.g. "rc4 rc4-reports").
+for profile in ${TBI_RELEASE_PROFILES:-rc5 rc5-reports}; do
   for n in 1 2; do
     "$here/build-package.sh" "deploy/release/$profile.release.json" "$R" "$work/pkg-$profile-$n" "$T" >> "$result" 2>&1 ||
       { echo "BUILD FAILED: $profile #$n" | tee -a "$result"; exit 1; }

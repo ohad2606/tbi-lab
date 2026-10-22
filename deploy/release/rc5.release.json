@@ -1,0 +1,27 @@
+{
+  "release": "rc5",
+  "node": "v24.21.0",
+  "npm": "11.19.0",
+  "build": {
+    "TBI_BUILD_ENV": "dev-lab",
+    "TZ": "UTC"
+  },
+  "vite": {
+    "VITE_BUILD_BASE": "/build",
+    "VITE_FEEDBACK_URL": null,
+    "VITE_FEEDBACK_VERSION_PARAM": null,
+    "VITE_PREVIEW_NAME": null,
+    "VITE_PROBLEM_REPORTS": "0",
+    "VITE_RUNTIME_BASE": "/runtime",
+    "VITE_SIGN_OUT_URL": "/oauth2/sign_out",
+    "VITE_STORAGE_NAMESPACE": null
+  },
+  "host": {
+    "TBI_REPORTS_DIR": null
+  },
+  "excluded": {
+    "reason": "Active Minutes (Sprint 14 POC) is not part of RC5: absent from the source, not merely disabled. RC5 = RC4 + R4 (LEDC PWM, SG90, Runtime v3) + 18F; no Exploration Foundation feature (Sprint 19B) is in its source",
+    "settings": ["VITE_ACTIVITY_ENDPOINT"],
+    "paths": ["app/src/usage", "runtime/usage", "docs/product/ACTIVE-MINUTES.md"]
+  }
+}
