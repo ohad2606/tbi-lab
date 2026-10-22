@@ -25,10 +25,10 @@
  * SIGTERM: stop accepting requests; job directories are removed by each job's cleanup and by the
  * sweep at the next start.
  */
-import { mkdirSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { ESP32_ARDUINO_PROFILE } from '@tbi-lab/domain';
+import { ESP32_ARDUINO_PROFILE, ESP32_MICROPYTHON_PROFILE } from '@tbi-lab/domain';
 import { describeListen, listen, parseListen } from '../identity/listen.js';
 import { identityFromEnv } from '../identity/principal.js';
 import { loadTicketKey } from '../identity/ticket.js';
@@ -40,6 +40,8 @@ import { SandboxToolRunner } from './runner.js';
 import { systemBuildRequests, systemSourceKeys } from './system-sources.js';
 import { pruneCoreSeeds } from './coreSeed.js';
 import { ArduinoEsp32Provider, type ArduinoProfileRecord } from './arduino.js';
+import { MicroPythonProvider, type MicroPythonProfileRecord } from './micropython.js';
+import micropythonRecord from './profiles/esp32-micropython-1.29.json' with { type: 'json' };
 import { createBuildHttpServer } from './http.js';
 import { BuildService, DEFAULT_LIMITS } from './service.js';
 import { ArtifactStore } from './store.js';
@@ -106,6 +108,20 @@ const provider = new ArduinoEsp32Provider({
   ...(jobUnit ? { runner: new SandboxToolRunner({ unit: jobUnit }) } : {}),
   ...(coreSeeds ? { coreSeeds } : {}),
 });
+// Sprint 19B (MicroPython M1): the genuine interpreter's profile, offered only where its build
+// home is provisioned and matches its pins (provision.sh micropython-tools); otherwise absent.
+const micropythonHome = process.env.TBI_MICROPYTHON_HOME ?? join(RUNTIME_HOME, 'micropython');
+const micropython = existsSync(join(micropythonHome, 'micropython.json'))
+  ? new MicroPythonProvider({
+      profile: ESP32_MICROPYTHON_PROFILE,
+      record: micropythonRecord as MicroPythonProfileRecord,
+      home: micropythonHome,
+      ...(jobUnit
+        ? { runner: new SandboxToolRunner({ unit: jobUnit }), viewHome: '/opt/tbi-micropython' }
+        : {}),
+    })
+  : null;
+if (micropython) await micropython.verifyToolchain();
 // Jobs of a previous process never outlive it (they would write into swept directories).
 if (jobUnit) new SandboxToolRunner({ unit: jobUnit }).stopAll();
 await provider.verifyToolchain();
@@ -121,14 +137,20 @@ await store.load();
 grants.backfillBytes(
   (sha) => store.manifest(sha)?.bytes ?? (store.isReference(sha) ? 4 * 1024 * 1024 : undefined),
 );
-const service = new BuildService([provider], store, workRoot, DEFAULT_LIMITS, {
-  grants,
-  ticketKey,
-  systemKeys: systemSourceKeys(),
-  policy,
-  rates,
-  ...(liveSessions ? { liveSessions } : {}),
-});
+const service = new BuildService(
+  micropython ? [provider, micropython] : [provider],
+  store,
+  workRoot,
+  DEFAULT_LIMITS,
+  {
+    grants,
+    ticketKey,
+    systemKeys: systemSourceKeys(),
+    policy,
+    rates,
+    ...(liveSessions ? { liveSessions } : {}),
+  },
+);
 // Retention (policy): unused private grants and the artifacts nobody holds any more.
 setInterval(
   () => void service.sweepRetention().catch(() => undefined),

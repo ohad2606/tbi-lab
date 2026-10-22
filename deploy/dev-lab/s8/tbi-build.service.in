@@ -16,6 +16,7 @@ UMask=0007
 Environment=TBI_BUILD_LISTEN=unix:/run/@N@-build/api.sock
 Environment=TBI_SOCKET_GID=@GATE_GID@
 Environment=TBI_ARDUINO_HOME=/opt/tbi-arduino
+Environment=TBI_MICROPYTHON_HOME=/opt/tbi-micropython
 Environment=TBI_ARTIFACT_STORE=@STORE@
 Environment=TBI_BUILD_WORK=/var/lib/@N@-build/jobs
 Environment=TBI_BUILD_STATE=/var/lib/@N@-build/state
@@ -39,6 +40,8 @@ RuntimeDirectoryMode=0755
 StateDirectory=@N@-build/jobs @N@-build/state
 StateDirectoryMode=0750
 BindReadOnlyPaths=@ARDUINO@:/opt/tbi-arduino
+# Sprint 19B: the MicroPython build home (optional: absent, the profile is not offered).
+BindReadOnlyPaths=-@MICROPYTHON@:/opt/tbi-micropython
 BindReadOnlyPaths=@NODE@:/opt/tbi-node
 BindReadOnlyPaths=@BUNDLES@:/opt/tbi-build
 ReadWritePaths=@STORE@

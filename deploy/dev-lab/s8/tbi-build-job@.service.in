@@ -18,6 +18,8 @@ RootDirectory=/var/lib/@N@-build/sandbox-root
 MountAPIVFS=yes
 BindReadOnlyPaths=/usr
 BindReadOnlyPaths=@ARDUINO@:/opt/tbi-arduino
+# Sprint 19B: the MicroPython build home (optional: absent, the profile is not offered).
+BindReadOnlyPaths=-@MICROPYTHON@:/opt/tbi-micropython
 BindReadOnlyPaths=@NODE@:/opt/tbi-node
 BindReadOnlyPaths=@BUNDLES@:/opt/tbi-build
 BindPaths=/var/lib/@N@-build/jobs/%i:/job

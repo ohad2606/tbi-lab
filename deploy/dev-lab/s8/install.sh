@@ -17,6 +17,8 @@ here="$(cd "$(dirname "$0")" && pwd)"
 repo="$(git -C "$here" rev-parse --show-toplevel)"
 
 ARDUINO="${TBI_S8_ARDUINO:-/home/ubuntu/tbi-r1-clean/rt/arduino}"
+# Sprint 19B: the MicroPython build home (provision.sh micropython-tools); optional.
+MICROPYTHON="${TBI_S8_MICROPYTHON:-/home/ubuntu/tbi-r1-clean/rt/micropython}"
 NODE="${TBI_S8_NODE:-/home/ubuntu/.nvm/versions/node/v24.21.0}"
 case "$target" in
   staging)
@@ -157,7 +159,7 @@ fi
 
 render() {
   sed -e "s|@N@|$N|g" -e "s|@NRE@|${N//-/\\\\-}|g" -e "s|@STORE@|$STORE|g" -e "s|@BUNDLES@|$BUNDLES|g" \
-    -e "s|@ARDUINO@|$ARDUINO|g" -e "s|@NODE@|$NODE|g" -e "s|@RUNTIME@|$RUNTIME|g" \
+    -e "s|@ARDUINO@|$ARDUINO|g" -e "s|@MICROPYTHON@|$MICROPYTHON|g" -e "s|@NODE@|$NODE|g" -e "s|@RUNTIME@|$RUNTIME|g" \
     -e "s|@GATE_GID@|$GATE_GID|g" -e "s|@JOB_UID@|$JOB_UID|g" -e "s|@ARTIFACT_CAP_MB@|$CAP_MB|g" \
     -e "s|@HOST_MAX_SESSIONS@|$HOST_MAX|g" "$1"
 }

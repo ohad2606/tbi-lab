@@ -95,6 +95,13 @@ describe('T-PROTO-4: F and B frames', () => {
     expect(parseFrame('B 7 0 P')).toMatchObject({ phase: { op: 'P' } });
   });
 
+  it('Sprint 19B: parses U frames (unmodelled facilities) and nothing else', () => {
+    expect(parseFrame('U 42 adc')).toEqual({ type: 'U', vns: 42n, facility: 'adc' });
+    expect(parseFrame('U 42 gpio-interrupt')).toMatchObject({ facility: 'gpio-interrupt' });
+    expect(parseFrame('U 42 cpu-clock')).toMatchObject({ facility: 'cpu-clock' });
+    for (const l of ['U 42', 'U x adc', 'U 42 adc extra', 'U 42 ADC', 'U -1 adc']) bad(l);
+  });
+
   it('refuses every malformed variant', () => {
     bad('F 5 40 gpio 0'); // pad >= 40
     bad('F 5 4 uart0-tx 0'); // unknown function
@@ -289,6 +296,36 @@ describe('T-PROTO-7/8: capabilities are bound to the session at the handshake', 
   it('an F or B frame from a runtime that did not announce its capability fails closed', async () => {
     for (const fr of ['F 9500000 21 i2c0-sda 1', 'B 9500000 0 S 27 0']) {
       const s = session({ TBI_FAKE_HELLO: '2 sched-input', TBI_FAKE_FRAMES: fr }, null);
+      s.run();
+      expect(await terminal(s), fr).toMatchObject({ reason: 'host_protocol_error' });
+    }
+  });
+
+  it('Sprint 19B (Runtime v4): a U frame ends the session naming the facility, at its virtual time', async () => {
+    for (const [fr, id] of [
+      ['U 9500000 adc', 'adc'],
+      ['U 9500000 gpio-interrupt', 'interrupt'],
+      ['U 9500000 cpu-clock', 'cpu_frequency'],
+    ] as const) {
+      const s = session(
+        { TBI_FAKE_HELLO: '2 i2c,pad-func,sched-input,unmodelled', TBI_FAKE_FRAMES: fr },
+        null,
+      );
+      s.run();
+      expect(await terminal(s), fr).toMatchObject({
+        state: 'failed',
+        reason: 'unsupported_feature',
+        detail: { unmodelled: id, since: '9500000' },
+      });
+    }
+  });
+
+  it('a U frame without the unmodelled capability, or naming an unknown facility, fails closed', async () => {
+    for (const [hello, fr] of [
+      ['2 i2c,pad-func,sched-input', 'U 9500000 adc'],
+      ['2 i2c,pad-func,sched-input,unmodelled', 'U 9500000 wifi'],
+    ] as const) {
+      const s = session({ TBI_FAKE_HELLO: hello, TBI_FAKE_FRAMES: fr }, null);
       s.run();
       expect(await terminal(s), fr).toMatchObject({ reason: 'host_protocol_error' });
     }

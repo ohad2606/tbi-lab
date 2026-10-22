@@ -1,0 +1,16 @@
+{
+  "id": "esp32-micropython-1.29",
+  "board": "board.esp32_devkitc_wroom32",
+  "language": "micropython",
+  "fileName": "main.py",
+  "interpreter": "MicroPython ESP32_GENERIC v1.29.0 (release blob e67ad6015a0a504c1fec9aa9bbf589d0432ed28e62546f4f8dd8a147f8bd95f6 at 0x1000)",
+  "sourceSha256": "d925a7c664e79a2bdf3dfcb285ba5e2237041cc35a0bd4ee573b6c5711efeca0",
+  "filesystem": { "offset": 2097152, "blockSize": 4096, "blockCount": 512 },
+  "image": { "bytes": 4194304 },
+  "files": {
+    "arm64": {
+      "bin/tbi-mklfs": "754db23501450f8a6c0d7537086dbcc8e39cccb5ca15f69088317ff662cbb2d3",
+      "firmware/esp32-generic-1.29.0-4mb.bin": "23b8b47fdab856b33c44eb5911852e86c96dfeac2f1d2033dba8ddb6c681b0a1"
+    }
+  }
+}

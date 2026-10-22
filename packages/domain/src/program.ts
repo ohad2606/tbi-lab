@@ -15,8 +15,11 @@ import { canonicalJson } from './canonical.js';
 import type { ProgramSource } from './schema.js';
 import { sha256Utf8 } from './sha256.js';
 
-/** Programming environments. V1 ships only `arduino-cpp`. */
-export type ProgramLanguage = 'arduino-cpp';
+/**
+ * Programming environments. V1 ships `arduino-cpp`; Sprint 19B adds `micropython` (the genuine
+ * MicroPython interpreter for the classic ESP32: the program is delivered to it, never translated).
+ */
+export type ProgramLanguage = 'arduino-cpp' | 'micropython';
 
 export interface BuildProfile {
   /** Stable id; a change of any pinned input gets a new id (the id is part of the source key). */
@@ -42,7 +45,20 @@ export const ESP32_ARDUINO_PROFILE: BuildProfile = {
   toolchain: 'arduino-esp32 3.3.12 · arduino-cli 1.5.1',
 };
 
-export const BUILD_PROFILES: readonly BuildProfile[] = [ESP32_ARDUINO_PROFILE];
+/**
+ * Sprint 19B (MicroPython M1): the unmodified MicroPython ESP32_GENERIC v1.29.0 interpreter; "build"
+ * writes `main.py` into its own LittleFS partition (runtime/micropython/tbi-mklfs.c).
+ */
+export const ESP32_MICROPYTHON_PROFILE: BuildProfile = {
+  id: 'esp32-micropython-1.29',
+  board: 'board.esp32_devkitc_wroom32',
+  language: 'micropython',
+  fileName: 'main.py',
+  maxSourceBytes: 64 * 1024,
+  toolchain: 'MicroPython v1.29.0 (ESP32_GENERIC)',
+};
+
+export const BUILD_PROFILES: readonly BuildProfile[] = [ESP32_ARDUINO_PROFILE, ESP32_MICROPYTHON_PROFILE];
 
 export function profileById(id: string): BuildProfile | undefined {
   return BUILD_PROFILES.find((p) => p.id === id);
@@ -85,6 +101,8 @@ export function starterProgram(boardType: string): ProgramSource | undefined {
 
 const STARTER_SOURCE: Record<ProgramLanguage, string> = {
   'arduino-cpp': 'void setup() {\n  // runs once\n}\n\nvoid loop() {\n  // runs repeatedly\n}\n',
+  // Sprint 19B: main.py runs once when the board starts (a loop goes in the program itself).
+  micropython: '# main.py runs once when the board starts.\nimport time\n\nwhile True:\n    time.sleep(1)\n',
 };
 
 /** UTF-8 byte length of a string (source limits are in bytes). */

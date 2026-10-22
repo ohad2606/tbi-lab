@@ -9,6 +9,7 @@
 #   runtime/provision/provision.sh qemu         # fetch pinned Espressif QEMU, apply patches, build, install
 #   runtime/provision/provision.sh arduino      # pinned arduino-cli + arduino-esp32 core
 #   runtime/provision/provision.sh micropython  # pinned MicroPython image
+#   runtime/provision/provision.sh micropython-tools  # the MicroPython build home (tbi-mklfs + image)
 #   runtime/provision/provision.sh firmware [name...]  # build the runtime test firmware (all, or the named sketches)
 #   runtime/provision/provision.sh all          # all of the above, in order
 #   runtime/provision/provision.sh env          # print the environment the runtime tests use
@@ -195,6 +196,50 @@ PY
   store_artifact "$img" micropython
 }
 
+# Sprint 19B (MicroPython M1): the MicroPython build home, $RT/micropython (bound read-only into
+# the build sandbox as /opt/tbi-micropython): bin/tbi-mklfs, compiled from runtime/micropython/
+# against the interpreter's OWN littlefs (pinned source release), and the pinned interpreter image.
+cmd_micropython_tools() {
+  [[ -f "$RT/artifacts/micropython.bin" ]] || die "run 'provision.sh micropython' first"
+  local tar="$RT/downloads-micropython-src.tar.xz"
+  if [[ ! -f "$tar" || "$(sha256 "$tar")" != "$MICROPYTHON_SRC_SHA256" ]]; then
+    log "downloading the MicroPython source release"
+    curl -fsSL -o "$tar" "$MICROPYTHON_SRC_URL"
+  fi
+  [[ "$(sha256 "$tar")" == "$MICROPYTHON_SRC_SHA256" ]] || die "MicroPython source checksum mismatch"
+  local src="$RT/build/micropython-src"
+  rm -rf "$src" && mkdir -p "$src"
+  tar -xJf "$tar" -C "$src" --strip-components=1 micropython-1.29.0/lib/littlefs
+  local home="$RT/micropython"
+  rm -rf "$home.tmp" && mkdir -p "$home.tmp/bin" "$home.tmp/firmware"
+  gcc -O2 -std=c99 -Wall -Wextra -Werror -I "$src/lib/littlefs" \
+    -ffile-prefix-map="$src"=/micropython-src -ffile-prefix-map="$REPO"=/repo \
+    -o "$home.tmp/bin/tbi-mklfs" "$REPO/runtime/micropython/tbi-mklfs.c" \
+    "$src/lib/littlefs/lfs2.c" "$src/lib/littlefs/lfs2_util.c" || die "tbi-mklfs build failed"
+  cp "$(readlink -f "$RT/artifacts/micropython.bin")" "$home.tmp/firmware/esp32-generic-1.29.0-4mb.bin"
+  chmod 0444 "$home.tmp/firmware/esp32-generic-1.29.0-4mb.bin"
+  {
+    echo "{"
+    echo "  \"micropython\": \"v1.29.0\","
+    echo "  \"sourceSha256\": \"$MICROPYTHON_SRC_SHA256\","
+    echo "  \"littlefs\": {"
+    local first=1
+    for f in lfs2.c lfs2.h lfs2_util.c lfs2_util.h; do
+      ((first)) || echo ","
+      printf '    "%s": "%s"' "$f" "$(sha256 "$src/lib/littlefs/$f")"
+      first=0
+    done
+    echo ""
+    echo "  },"
+    echo "  \"tbiMklfsSource\": \"$(sha256 "$REPO/runtime/micropython/tbi-mklfs.c")\","
+    echo "  \"tbiMklfs\": \"$(sha256 "$home.tmp/bin/tbi-mklfs")\","
+    echo "  \"image\": \"$(sha256 "$home.tmp/firmware/esp32-generic-1.29.0-4mb.bin")\""
+    echo "}"
+  } >"$home.tmp/micropython.json"
+  rm -rf "$home" && mv "$home.tmp" "$home"
+  log "MicroPython build home at $home (tbi-mklfs $(sha256 "$home/bin/tbi-mklfs" | cut -c1-16))"
+}
+
 # Content-addressed, read-only firmware store: $RT/artifacts/<sha256>.bin (+ a name link).
 store_artifact() {
   local file="$1" name="$2" h
@@ -266,8 +311,9 @@ case "${1:-}" in
   qemu) cmd_qemu ;;
   arduino) cmd_arduino ;;
   micropython) cmd_micropython ;;
+  micropython-tools) cmd_micropython_tools ;;
   firmware) shift; cmd_firmware "$@" ;;
-  all) cmd_qemu && cmd_arduino && cmd_micropython && cmd_firmware ;;
+  all) cmd_qemu && cmd_arduino && cmd_micropython && cmd_micropython_tools && cmd_firmware ;;
   env) cmd_env ;;
   *) sed -n '2,20p' "$0"; exit 2 ;;
 esac

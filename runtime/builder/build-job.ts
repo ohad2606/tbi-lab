@@ -1,7 +1,8 @@
 /**
  * The driver inside one sandboxed build step (Sprint 8, D-S8-6), started by the fixed template
  * unit `tbi-build-job@<job>.service` (bundled as build-job.mjs). It sees only the read-only
- * toolchain (/opt/tbi-arduino), its job directory (/job) and system binaries.
+ * toolchains (/opt/tbi-arduino; Sprint 19B /opt/tbi-micropython), its job directory (/job) and
+ * system binaries.
  *
  * It runs exactly ONE allow-listed pinned tool with the step's arguments, a fixed set of
  * environment variables and a working directory inside the job, and reports the exit status and
@@ -20,9 +21,15 @@ import {
   type StepSpec,
 } from './runner.js';
 
-const TOOLCHAIN = '/opt/tbi-arduino/';
 const JOB = '/job';
-const TOOLS = new Set(['arduino-cli', 'esptool', 'xtensa-esp32-elf-nm']);
+/**
+ * Pinned tools by read-only toolchain home: the Arduino toolchain, and (Sprint 19B) the MicroPython
+ * build home with its one tool, tbi-mklfs (the interpreter's file system image).
+ */
+const TOOLCHAINS: ReadonlyMap<string, ReadonlySet<string>> = new Map([
+  ['/opt/tbi-arduino/', new Set(['arduino-cli', 'esptool', 'xtensa-esp32-elf-nm'])],
+  ['/opt/tbi-micropython/', new Set(['tbi-mklfs'])],
+]);
 const ENV_KEYS = new Set(['PATH', 'HOME', 'TMPDIR', 'LANG', 'SOURCE_DATE_EPOCH']);
 const MAX_OUTPUT = 16 * 1024 * 1024;
 
@@ -37,8 +44,10 @@ function refuse(why: string): never {
 
 const spec = JSON.parse(readFileSync(`${JOB}/${STEP_SPEC}`, 'utf8')) as StepSpec;
 const file = normalize(spec.file);
-if (file !== spec.file || !file.startsWith(TOOLCHAIN) || !TOOLS.has(basename(file)))
-  refuse('not a pinned tool');
+const allowed = [...TOOLCHAINS].some(
+  ([home, tools]) => file.startsWith(home) && tools.has(basename(file)),
+);
+if (file !== spec.file || !allowed) refuse('not a pinned tool');
 const cwd = normalize(spec.cwd);
 if (cwd !== JOB && !cwd.startsWith(`${JOB}/`)) refuse('working directory outside the job');
 if (!Array.isArray(spec.args) || !spec.args.every((a) => typeof a === 'string'))
