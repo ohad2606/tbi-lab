@@ -216,6 +216,16 @@ export function validateProject(input: unknown): ValidationIssue[] {
     ) {
       add('bad_field', `${path}.vertices`);
     }
+    if (
+      w.auto !== undefined &&
+      !(
+        isObj(w.auto) &&
+        Array.isArray(w.auto.waypoints) &&
+        w.auto.waypoints.every((v) => isObj(v) && isInt(v.x) && isInt(v.y))
+      )
+    ) {
+      add('bad_field', `${path}.auto`);
+    }
     if (w.color !== undefined && !(WIRE_COLORS as readonly unknown[]).includes(w.color)) {
       add('bad_field', `${path}.color`);
     }

@@ -14,6 +14,7 @@ import {
   locateOnWire,
   nextRotation,
   orthogonalRoute,
+  pointOnSegment,
   snap,
   snapPoint,
   wireRoute,
@@ -134,6 +135,9 @@ export function moveSelection(doc: ProjectDocument, sel: Selection, delta: Point
         const w = draft.layout.wires.find((x) => x.id === id);
         if (!w) return 'unknown_wire';
         w.vertices = w.vertices.map((v) => ({ x: v.x + d.x, y: v.y + d.y }));
+        // An automatic wire's constraints move with it (its route is recomputed from them).
+        if (w.auto)
+          w.auto.waypoints = w.auto.waypoints.map((v) => ({ x: v.x + d.x, y: v.y + d.y }));
       }
     },
     () => (d.x || d.y ? sel.components : []),
@@ -324,12 +328,16 @@ export type WireTarget = WireEnd | { kind: 'wire'; wire: string; at: Point };
 /**
  * Draw a wire between two targets through optional waypoints. Ending on an existing wire
  * splits it and creates a junction there; wires that merely cross are never connected.
+ *
+ * With `auto` the wire is AUTOMATIC (schema `Wire.auto`): `auto.waypoints` are the points the user
+ * placed while drawing it, and `vertices` the router's current route through them.
  */
 export function addWire(
   doc: ProjectDocument,
   from: WireTarget,
   to: WireTarget,
   vertices: Point[] = [],
+  auto?: { waypoints: Point[] },
 ): EditResult<{ id: string }> {
   let id = '';
   const r = transact(doc, (draft) => {
@@ -339,7 +347,13 @@ export function addWire(
     if (typeof b === 'string') return b;
     if (nodeKey(a) === nodeKey(b)) return 'same_endpoint';
     id = allocateId(draft, 'W');
-    draft.layout.wires.push({ id, from: a, to: b, vertices: vertices.map(snapPoint) });
+    draft.layout.wires.push({
+      id,
+      from: a,
+      to: b,
+      vertices: vertices.map(snapPoint),
+      ...(auto ? { auto: { waypoints: auto.waypoints.map(snapPoint) } } : {}),
+    });
   });
   return r.ok ? { ...r, id } : r;
 }
@@ -385,6 +399,8 @@ export function moveWireSegment(
     // Consecutive points are axis-aligned, so the orthogonal route through them is exactly
     // this polyline; the minimal form drops points made redundant by the move.
     wire.vertices = orthogonalRoute(pts).slice(1, -1);
+    // The user shaped this wire by hand: from now on it is MANUAL (its geometry is kept as drawn).
+    delete wire.auto;
   });
 }
 
@@ -416,6 +432,11 @@ function splitWire(doc: ProjectDocument, wireId: string, at: Point): WireEnd | E
   const junction = { id: allocateId(doc, 'J'), x: at.x, y: at.y };
   doc.layout.junctions.push(junction);
   const jEnd: WireEnd = { kind: 'junction', junction: junction.id };
+  // An automatic wire stays automatic on both sides; each side keeps the user's waypoints on its
+  // own part of the route (in order along it).
+  const route = wireRoute(doc, wire) ?? [];
+  const along = (p: Point) => routeDistance(route, p);
+  const cut = along(at);
   const tail: Wire = {
     id: allocateId(doc, 'W'),
     from: jEnd,
@@ -423,7 +444,11 @@ function splitWire(doc: ProjectDocument, wireId: string, at: Point): WireEnd | E
     vertices: wire.vertices.slice(loc.hop),
     // A wire the user coloured stays that colour on both sides of the new junction.
     ...(wire.color ? { color: wire.color } : {}),
+    ...(wire.auto
+      ? { auto: { waypoints: wire.auto.waypoints.filter((p) => along(p) > cut) } }
+      : {}),
   };
+  if (wire.auto) wire.auto = { waypoints: wire.auto.waypoints.filter((p) => along(p) < cut) };
   wire.to = jEnd;
   wire.vertices = wire.vertices.slice(0, loc.hop);
   doc.layout.wires.push(tail);
@@ -462,8 +487,10 @@ export function cleanupJunctions(doc: ProjectDocument): void {
       const ids = new Set(wires.map((w) => w.id));
       if (wires.length === 2) {
         doc.layout.wires = doc.layout.wires.filter((w) => !ids.has(w.id) || w === wires[0]);
-        if (joined) Object.assign(wires[0]!, joined);
-        else doc.layout.wires = doc.layout.wires.filter((w) => w !== wires[0]);
+        if (joined) {
+          if (!joined.auto) delete wires[0]!.auto;
+          Object.assign(wires[0]!, joined);
+        } else doc.layout.wires = doc.layout.wires.filter((w) => w !== wires[0]);
       } else {
         doc.layout.wires = doc.layout.wires.filter((w) => !ids.has(w.id));
       }
@@ -489,7 +516,44 @@ function joinAt(doc: ProjectDocument, a: Wire, b: Wire, jId: string): Wire | und
   if (!pa || !pb) return undefined;
   // Every corner of the original paths becomes a waypoint, so the drawing is unchanged.
   const vertices = [...pa.slice(1), ...pb.slice(1, -1)];
-  return { id: a.id, from: aFar, to: bFar, vertices };
+  // Two automatic wires join into one automatic wire through their waypoints and the former
+  // junction (a point the user connected at); otherwise the joined wire is manual.
+  if (a.auto && b.auto) {
+    const j = pa[pa.length - 1]!;
+    const wa = isJ(a.to) ? a.auto.waypoints : [...a.auto.waypoints].reverse();
+    const wb = isJ(b.from) ? b.auto.waypoints : [...b.auto.waypoints].reverse();
+    return { id: a.id, from: aFar, to: bFar, vertices, auto: { waypoints: [...wa, j, ...wb] } };
+  }
+  const joined: Wire = { id: a.id, from: aFar, to: bFar, vertices };
+  return joined;
+}
+
+/** Distance along a route (polyline) to point p on it; Infinity when p is not on it. */
+function routeDistance(route: readonly Point[], p: Point): number {
+  let d = 0;
+  for (let i = 0; i + 1 < route.length; i++) {
+    const a = route[i]!;
+    const b = route[i + 1]!;
+    if (pointOnSegment(p, a, b)) return d + Math.abs(p.x - a.x) + Math.abs(p.y - a.y);
+    d += Math.abs(b.x - a.x) + Math.abs(b.y - a.y);
+  }
+  return Infinity;
+}
+
+/**
+ * Wire routing integrity: make the given wires AUTOMATIC (an explicit user action, "Route
+ * automatically"): their bends are dropped and from now on the router draws them, recomputed after
+ * every layout change. Connectivity is unchanged. Contacts (no route) are skipped.
+ */
+export function makeWiresAutomatic(doc: ProjectDocument, wireIds: readonly string[]): EditResult {
+  return transact(doc, (draft) => {
+    for (const id of wireIds) {
+      const w = draft.layout.wires.find((x) => x.id === id);
+      if (!w) return 'unknown_wire';
+      w.auto = { waypoints: [] };
+      w.vertices = [];
+    }
+  });
 }
 
 export { GRID };

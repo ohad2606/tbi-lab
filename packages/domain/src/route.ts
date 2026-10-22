@@ -636,7 +636,12 @@ function better(p: number[], q: number[]): boolean {
  * Returns the full polyline; its interior points are the vertices to store. Hops are routed in
  * order, and each routed hop becomes an obstacle for the following ones.
  */
-export function autoRoute(waypoints: readonly Point[], obstacles: RouteObstacles): Point[] {
+export function autoRoute(
+  waypoints: readonly Point[],
+  obstacles: RouteObstacles,
+  options: { search?: boolean } = {},
+): Point[] {
+  const search = options.search ?? true;
   if (waypoints.length < 2) return waypoints.map((p) => ({ ...p }));
   const segments = [...obstacles.segments];
   const path: Point[] = [waypoints[0]!];
@@ -657,7 +662,7 @@ export function autoRoute(waypoints: readonly Point[], obstacles: RouteObstacles
     // Widening stops once keep-out and band are solved, or when a wider area no longer reduces
     // them (a pin boxed in by its neighbours cannot do better however far the search reaches).
     let previous: number[] | null = null;
-    for (let m = SEARCH_MARGIN; !clean(bestCost) && m <= SEARCH_MARGIN_MAX; m *= 2) {
+    for (let m = SEARCH_MARGIN; search && !clean(bestCost) && m <= SEARCH_MARGIN_MAX; m *= 2) {
       const found = searchRoute(a, b, obs, m);
       if (!found) break;
       const k = cost(found, obs, [a, b]);
@@ -678,8 +683,12 @@ export function autoRoute(waypoints: readonly Point[], obstacles: RouteObstacles
 }
 
 /** The vertices to store for `autoRoute(waypoints, obstacles)`. */
-export function autoRouteVertices(waypoints: readonly Point[], obstacles: RouteObstacles): Point[] {
-  return autoRoute(waypoints, obstacles).slice(1, -1);
+export function autoRouteVertices(
+  waypoints: readonly Point[],
+  obstacles: RouteObstacles,
+  options: { search?: boolean } = {},
+): Point[] {
+  return autoRoute(waypoints, obstacles, options).slice(1, -1);
 }
 
 /**
@@ -781,7 +790,8 @@ export function rerouteWires(
   let out = doc;
   for (const id of new Set(wireIds)) {
     const wire = out.layout.wires.find((w) => w.id === id);
-    if (!wire || isContact(out, wire)) continue;
+    // Automatic wires are routed canonically (`routeAutoWires`), never patched from their old route.
+    if (!wire || wire.auto || isContact(out, wire)) continue;
     const route = wireRoute(out, wire);
     if (!route || route.length < 2) continue;
     const obs = routeObstacles(out, boxes, new Set([id]));
@@ -811,6 +821,70 @@ export function rerouteWires(
   return out;
 }
 
+/** Wire ids in creation order (W1, W2, ..., W10): numeric, then textual. */
+const byCreation = (a: Wire, b: Wire) => {
+  const n = (w: Wire) => Number(/^W(\d+)$/.exec(w.id)?.[1] ?? NaN);
+  const d = n(a) - n(b);
+  return Number.isNaN(d) || d === 0 ? (a.id < b.id ? -1 : a.id > b.id ? 1 : 0) : d;
+};
+
+/**
+ * Wire routing integrity (2026-10-22): the CANONICAL route of every automatic wire (schema
+ * `Wire.auto`), recomputed from scratch from the current layout, never from its previous route.
+ *
+ * Root cause this replaces: a wire's route was chosen once, when it was drawn, and stored as
+ * ordinary vertices; a later move kept them (and `rerouteWires` reused them as if the user had
+ * placed them), so detours accumulated across drags and moving a part back did not restore the
+ * drawing. Now an automatic wire's drawing is a pure function of:
+ *   - the component bodies and terminals (the caller's `boxes`, the document's positions),
+ *   - every MANUAL wire (fixed geometry, an obstacle for all automatic wires),
+ *   - the automatic wires created BEFORE it (creation order, `W1` < `W2` < ...): each is routed
+ *     against the ones before it exactly as when it was drawn,
+ *   - its own ends and the user's waypoints (in order).
+ * So identical geometry and constraints give identical routes, and moving a part back restores
+ * the drawing it had there. Endpoints never change: connectivity and nets cannot either.
+ * Direct contacts (no route) are skipped. Returns the same document when nothing changes.
+ */
+export function routeAutoWires(
+  doc: ProjectDocument,
+  boxes: readonly RouteBox[],
+  preview?: { only: ReadonlySet<string> },
+): ProjectDocument {
+  // PREVIEW (a drag in progress, bounded for interactivity): only the given wires, by the short
+  // shapes alone (no grid search). Never committed: the drop routes canonically.
+  const autos = doc.layout.wires
+    .filter((w) => w.auto && !isContact(doc, w) && (!preview || preview.only.has(w.id)))
+    .sort(byCreation);
+  if (autos.length === 0) return doc;
+  const pending = new Set(autos.map((w) => w.id));
+  let out = doc;
+  for (const wire of autos) {
+    const ends = wireRoute(out, { ...wire, vertices: [] });
+    if (!ends || ends.length < 1) {
+      pending.delete(wire.id);
+      continue;
+    }
+    const a = ends[0]!;
+    const b = ends[ends.length - 1]!;
+    // Obstacles: everything but this wire and the automatic wires after it.
+    const obs = routeObstacles(out, boxes, pending);
+    const vertices = autoRouteVertices([a, ...wire.auto!.waypoints, b], obs, {
+      search: !preview,
+    });
+    pending.delete(wire.id);
+    const current = out.layout.wires.find((w) => w.id === wire.id)!;
+    if (JSON.stringify(current.vertices) === JSON.stringify(vertices)) continue;
+    out = {
+      ...out,
+      layout: {
+        ...out.layout,
+        wires: out.layout.wires.map((w): Wire => (w.id === wire.id ? { ...w, vertices } : w)),
+      },
+    };
+  }
+  return out;
+}
+
 /**
  * Repair stored wires that break the visual invariant (Sprint 10): a wire whose stored route
  * enters an unrelated terminal's keep-out or a header-row band (criteria 1 and 2) reads as
@@ -826,7 +900,7 @@ export function repairWireRoutes(
   boxes: readonly RouteBox[],
 ): ProjectDocument {
   const broken = doc.layout.wires.filter((w) => {
-    if (isContact(doc, w)) return false;
+    if (w.auto || isContact(doc, w)) return false;
     const route = wireRoute(doc, w);
     if (!route || route.length < 2) return false;
     const k = cost(route, routeObstacles(doc, boxes, new Set([w.id])), [

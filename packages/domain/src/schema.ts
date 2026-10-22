@@ -150,6 +150,15 @@ export interface Wire {
    */
   vertices: Point[];
   /**
+   * Wire routing integrity (2026-10-22): present = an AUTOMATIC wire. Its `vertices` are then the
+   * router's, recomputed from scratch after every layout change (route.ts `routeAutoWires`), so
+   * its drawing is a function of the current positions and these `waypoints`: the points the user
+   * placed while drawing it, which the route passes through in order (intentional constraints).
+   * Absent = a MANUAL wire: `vertices` are the user's own geometry (a dragged segment, or a wire
+   * drawn before automatic routing existed) and are kept as they are.
+   */
+  auto?: { waypoints: Point[] };
+  /**
    * The user's colour for this wire (Sprint 10, optional). Absent = automatic: derived from the
    * wire's electrical net (app/src/views/wireColors.ts). Older projects have none.
    */

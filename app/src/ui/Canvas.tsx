@@ -65,7 +65,7 @@ import {
   type SymbolState,
 } from './symbols.js';
 import { bodyOverlaps } from '../geometry/overlap.js';
-import { componentBox, componentBoxes, moveRouted, rotateRouted } from './routing.js';
+import { componentBox, componentBoxes, movePreview, moveRouted, rotateRouted } from './routing.js';
 import { RGB_LOOKS, ledLook } from '../views/ledLooks.js';
 import { resolveWireColors } from '../views/wireColors.js';
 import { pressControl, toggleControl } from './controls.js';
@@ -431,10 +431,11 @@ export function Canvas({
     if (!to) return false;
     const end = to.kind === 'wire' ? to.at : endPosition(doc, to);
     if (!end) return false;
-    // The wire gets a visually independent route: the router's corners are stored as its
-    // ordinary vertices (the points the user clicked stay waypoints of the route).
+    // Wire routing integrity: the new wire is AUTOMATIC. The points the user clicked are its
+    // waypoints (kept as constraints); the router's corners are its current route, recomputed
+    // canonically after every layout change (store `routeLayout`).
     const vertices = autoRouteVertices([m.fromPos, ...m.vertices, end], routeObs);
-    store.apply(addWire(doc, m.from, to, vertices), emptySelection());
+    store.apply(addWire(doc, m.from, to, vertices, { waypoints: m.vertices }), emptySelection());
     setMode({ kind: 'idle' });
     return true;
   };
@@ -780,12 +781,19 @@ export function Canvas({
   // ---------------------------------------------------------------------------------------------
   // Rendering
 
+  // Wire routing integrity: the drag preview is bounded (movePreview: the moved parts' automatic
+  // wires by the short shapes only) and recomputed only when the snapped offset changes; the drop
+  // commits the canonical routing.
+  const dragDx = mode.kind === 'drag' ? mode.delta.x : 0;
+  const dragDy = mode.kind === 'drag' ? mode.delta.y : 0;
+  const dragView = useMemo(() => {
+    if (!dragDx && !dragDy) return null;
+    const r = movePreview(doc, selection, { x: dragDx, y: dragDy });
+    return r.ok ? r.doc : doc;
+  }, [doc, selection, dragDx, dragDy]);
   const view =
-    mode.kind === 'drag' && (mode.delta.x || mode.delta.y)
-      ? (() => {
-          const r = moveRouted(doc, selection, mode.delta);
-          return r.ok ? r.doc : doc;
-        })()
+    mode.kind === 'drag' && dragView
+      ? dragView
       : mode.kind === 'segment' && (mode.delta.x || mode.delta.y)
         ? (() => {
             const r = moveWireSegment(doc, mode.wire, mode.segment, mode.delta);

@@ -165,6 +165,26 @@ export interface AppDeps {
    * the canvas symbol boxes). Presentation only: endpoints and nets never change.
    */
   repairLayout?: (doc: ProjectDocument) => ProjectDocument;
+  /**
+   * Wire routing integrity: the canonical routes of the automatic wires (domain `routeAutoWires`,
+   * given the canvas symbol boxes), applied after every edit that changes the layout's geometry
+   * (positions, rotations, parts, junctions, wire ends or constraints), never to an undo/redo
+   * (which restores a document exactly as it was). Presentation only: endpoints never change.
+   */
+  routeLayout?: (doc: ProjectDocument) => ProjectDocument;
+}
+
+/**
+ * What automatic routes depend on: the parts and their placements, the junctions, every wire's ends
+ * and, for a manual wire, its geometry; for an automatic wire its constraints (not its route).
+ */
+export function layoutGeometryKey(doc: ProjectDocument): string {
+  return JSON.stringify([
+    doc.components.map((c) => [c.id, c.type]),
+    doc.layout.components,
+    doc.layout.junctions,
+    doc.layout.wires.map((w) => [w.id, w.from, w.to, w.auto ?? w.vertices]),
+  ]);
 }
 
 export class AppStore {
@@ -816,6 +836,12 @@ export class AppStore {
       });
       return false;
     }
+    if (
+      !options.restore &&
+      this.deps.routeLayout &&
+      layoutGeometryKey(current) !== layoutGeometryKey(result.doc)
+    )
+      result = { ...result, doc: this.deps.routeLayout(result.doc) };
     const overlap = options.restore ? null : newOverlap(current, result.doc);
     if (overlap) {
       // Sprint 13 OS-04: a part added, moved or rotated onto another part's body is refused

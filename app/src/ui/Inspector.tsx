@@ -6,6 +6,7 @@ import {
   emptySelection,
   paramValue,
   setParam,
+  makeWiresAutomatic,
   setWireColor,
   WIRE_COLORS,
   type Wire,
@@ -90,6 +91,36 @@ function WireColorField({ wire, readOnly }: { wire: Wire; readOnly: boolean }) {
   );
 }
 
+/**
+ * Wire routing integrity: how a wire's route is drawn. Automatic: the router draws it from the
+ * current layout (through the points the user placed). Manual: its bends are the user's and stay
+ * as they are; "Route automatically" is the explicit way to hand it to the router (undoable).
+ */
+function WireRouteField({ wire, readOnly }: { wire: Wire; readOnly: boolean }) {
+  const { doc } = useAppState();
+  const store = useStore();
+  const t = useT();
+  if (!doc) return null;
+  return (
+    <>
+      <dt>{t('inspector.wireRoute')}</dt>
+      <dd data-testid="wire-route" data-route={wire.auto ? 'auto' : 'manual'}>
+        {wire.auto ? t('wireRoute.auto') : t('wireRoute.manual')}
+        {!wire.auto && !readOnly && (
+          <button
+            type="button"
+            class="small"
+            data-testid="wire-route-auto"
+            onClick={() => store.apply(makeWiresAutomatic(doc, [wire.id]))}
+          >
+            {t('wireRoute.makeAuto')}
+          </button>
+        )}
+      </dd>
+    </>
+  );
+}
+
 export function Inspector({ probes, onRemoveProbe, onClearProbes }: InspectorProps) {
   const { doc, selection, readOnly, sim } = useAppState();
   const simActive = sim.status === 'running' || sim.status === 'starting';
@@ -159,6 +190,7 @@ export function Inspector({ probes, onRemoveProbe, onClearProbes }: InspectorPro
           <dt>{t('inspector.type')}</dt>
           <dd>{t('inspector.wire')}</dd>
           <WireColorField wire={wire} readOnly={!!readOnly} />
+          <WireRouteField wire={wire} readOnly={!!readOnly} />
           {netOfWire() && (
             <>
               <dt>{t('inspector.net')}</dt>

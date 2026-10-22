@@ -8,6 +8,7 @@ import {
   attachedWires,
   moveSelection,
   rerouteWires,
+  routeAutoWires,
   rotateComponents,
   rotatePoint,
   type ComponentInstance,
@@ -105,14 +106,37 @@ export const componentBoxes = (doc: ProjectDocument): RouteBox[] => [
   ...displayBoxes(doc),
 ];
 
+/** Wire routing integrity: the canonical routes of every automatic wire (domain `routeAutoWires`). */
+export const routeAutomatic = (doc: ProjectDocument): ProjectDocument =>
+  routeAutoWires(doc, componentBoxes(doc));
+
 function routed(r: EditResult, components: string[], rigidWires: string[]): EditResult {
   if (!r.ok) return r;
+  // Manual wires keep the Sprint 9 repair (re-routed only when their route now breaks a rule).
+  // Automatic wires are routed canonically by the store when the edit is applied (routeLayout:
+  // one place, every edit), so not here.
   const wires = attachedWires(r.doc, components, rigidWires);
   return wires.length ? { ...r, doc: rerouteWires(r.doc, wires, componentBoxes(r.doc)) } : r;
 }
 
 export const moveRouted = (doc: ProjectDocument, sel: Selection, delta: Point): EditResult =>
   routed(moveSelection(doc, sel, delta), sel.components, sel.wires);
+
+/**
+ * Wire routing integrity: the drag PREVIEW, bounded for interactive dragging. The selection moves;
+ * only the automatic wires attached to it are re-routed, by the router's short shapes alone (no
+ * grid search); every other wire keeps its route. Never committed: the drop applies `moveRouted`
+ * and the canonical routing (store `routeLayout`).
+ */
+export function movePreview(source: ProjectDocument, sel: Selection, delta: Point): EditResult {
+  const r = moveSelection(source, sel, delta);
+  if (!r.ok) return r;
+  const attached = attachedWires(r.doc, sel.components, sel.wires);
+  // Manual wires: the same Sprint 9 repair as the drop (they are never recomputed canonically).
+  const doc = attached.length ? rerouteWires(r.doc, attached, componentBoxes(r.doc)) : r.doc;
+  const only = new Set([...attached, ...sel.wires]);
+  return { ...r, doc: routeAutoWires(doc, componentBoxes(doc), { only }) };
+}
 
 export const rotateRouted = (doc: ProjectDocument, ids: string[]): EditResult =>
   routed(rotateComponents(doc, ids), ids, []);
