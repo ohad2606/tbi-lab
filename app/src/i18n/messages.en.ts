@@ -661,6 +661,12 @@ export const en = {
     'Build required: build the code for {components}, then press Run.',
   'sim.error.mcu_unsupported_features':
     'The code for {components} uses features the simulator does not model: {features}. Run is refused.',
+  // Sprint 19B: the programming environment of a board's program.
+  'program.language': 'Programming language',
+  'program.language.arduino-cpp': 'Arduino C++',
+  'program.language.micropython': 'MicroPython',
+  'program.language.confirm':
+    'Switching the language starts a new program in that language; the current code is not translated. Replace it? (Undo restores it.)',
   'program.tab.circuit': 'Circuit',
   'program.tab.code': 'Code',
   // Sprint 9: generated views of the same circuit.

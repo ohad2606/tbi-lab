@@ -66,6 +66,9 @@ describe('locale bundles', () => {
       'probe.currentLabel',
       'probe.noValue',
       'probe.voltageLabel',
+      // Sprint 19B: programming-language names (product names, as in every locale).
+      'program.language.arduino-cpp',
+      'program.language.micropython',
       'rating.channel',
       'sim.badge.cc',
       'sim.badge.cv',

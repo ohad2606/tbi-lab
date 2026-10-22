@@ -1,4 +1,4 @@
-From ee24c9247bf7be5917aadc7ce659f3e6d3686cce Mon Sep 17 00:00:00 2001
+From 159194b98080365d606bd5545c6ef27f5566aa2a Mon Sep 17 00:00:00 2001
 From: TBI Lab <ohad2606@gmail.com>
 Date: Tue, 20 Oct 2026 15:16:11 +0000
 Subject: [PATCH] hw/misc/tbi_bridge, hw/gpio/esp32_gpio, hw/xtensa/esp32:
@@ -6,13 +6,14 @@ Subject: [PATCH] hw/misc/tbi_bridge, hw/gpio/esp32_gpio, hw/xtensa/esp32:
 
 A new bridge capability, unmodelled, and frame U <vns> <facility>, sent once per
 facility at the access that starts using it: adc (SENS_SAR_MEAS_START1/2), gpio-interrupt
-(GPIO_PINn with an interrupt type and enable), cpu-clock (the CPU clock settles below
-the highest it reached). The access itself behaves as before.
+(GPIO_PINn with an interrupt type and enable), cpu-clock (the CPU clock stayed below the
+highest it reached across two command ticks; checked at the existing tick, with no timer of
+its own, so the guest timeline is unchanged). The access itself behaves as before.
 ---
  hw/gpio/esp32_gpio.c |  8 +++++
- hw/misc/tbi_bridge.c | 84 +++++++++++++++++++++++++++++++++++++++++++-
+ hw/misc/tbi_bridge.c | 83 +++++++++++++++++++++++++++++++++++++++++++-
  hw/xtensa/esp32.c    | 57 +++++++++++++++++++++++++++++-
- 3 files changed, 147 insertions(+), 2 deletions(-)
+ 3 files changed, 146 insertions(+), 2 deletions(-)
 
 diff --git a/hw/gpio/esp32_gpio.c b/hw/gpio/esp32_gpio.c
 index 9730581..fe0a02e 100644
@@ -41,35 +42,41 @@ index 9730581..fe0a02e 100644
          break; /* functions, then pads, are published below */
      }
 diff --git a/hw/misc/tbi_bridge.c b/hw/misc/tbi_bridge.c
-index c555377..786403c 100644
+index c555377..21810f1 100644
 --- a/hw/misc/tbi_bridge.c
 +++ b/hw/misc/tbi_bridge.c
-@@ -33,6 +33,12 @@
+@@ -33,6 +33,13 @@
   *   P <vns> <timer> <state...>          (pwm) an LEDC high-speed timer changed (hw/misc/esp32_ledc.c)
   *   W <vns> <signal> <state...>         (pwm) an LEDC channel's output changed; <signal> is its
   *                                       GPIO-matrix output signal, as in F. Host replies (commands) C
 + *   U <vns> <facility>                  (unmodelled, Runtime v4) the guest started USING a facility
 + *                                       this emulator does not model: adc (a SAR conversion),
 + *                                       gpio-interrupt (a GPIO interrupt enabled), cpu-clock (the
-+ *                                       CPU clock settled below the highest it had reached). Sent
++ *                                       CPU clock stayed below the highest it had reached across
++ *                                       two command ticks: a settled lowering). Sent
 + *                                       once per facility, at the access itself, before any dead or
 + *                                       crashed behaviour follows. Host replies (commands...) C
   * host -> QEMU, inside a reply:
   *   I <pad> <level>                     apply an external logic level to a pad (immediately)
   *   R <hex>                             queue bytes for the guest UART0 receiver (tick replies)
-@@ -84,8 +90,10 @@
+@@ -84,8 +91,15 @@
  #define TBI_RX_PENDING_MAX 4096
  
  /* Capability tokens this build implements, sorted (ADR-011 §1). */
 -#define TBI_BRIDGE_CAPS "i2c,pad-func,pwm,sched-input"
 +#define TBI_BRIDGE_CAPS "i2c,pad-func,pwm,sched-input,unmodelled"
  #define TBI_SCHED_MAX 512
-+/* (unmodelled) How long a lowered CPU clock must hold before it counts as settled (1 ms). */
-+#define TBI_CLOCK_SETTLE_NS 1000000
++/*
++ * (unmodelled) Command ticks a lowered CPU clock must hold before it counts as settled. Checked at
++ * the existing tick: no timer of its own (a new deadline would perturb the guest's timeline under
++ * icount). The boot's own dips (to the crystal clock while switching the PLL, ~0.1 ms) never span
++ * two ticks.
++ */
++#define TBI_CLOCK_SETTLE_TICKS 2
  #define TBI_SCHED_MIN_NS 1000
  
  #define EXIT_PROTOCOL 3
-@@ -121,6 +129,17 @@ struct TbiBridge {
+@@ -121,6 +135,18 @@ struct TbiBridge {
      char bus_expect;
      int bus_got;
      int bus_value;
@@ -77,17 +84,18 @@ index c555377..786403c 100644
 +    /* (unmodelled) Facilities already reported (one U frame each). */
 +    uint32_t unmodelled_sent;
 +    /*
-+     * (unmodelled) The CPU clock watchdog: the highest CPU clock reached so far and the current one
-+     * (Hz). A clock that SETTLES below the highest (stays there TBI_CLOCK_SETTLE_NS) is reported:
-+     * the boot raises the clock through brief crystal-clock steps, which never settle.
++     * (unmodelled) The CPU clock watchdog: the highest CPU clock reached so far, the current one
++     * (Hz), and for how many consecutive command ticks it has been below the highest. A clock that
++     * SETTLES below the highest (TBI_CLOCK_SETTLE_TICKS ticks) is reported: the boot raises the
++     * clock through brief crystal-clock steps, which never settle.
 +     */
 +    uint32_t cpu_hz_max;
 +    uint32_t cpu_hz;
-+    QEMUTimer *clock_timer;
++    unsigned clock_low_ticks;
  };
  
  OBJECT_DECLARE_SIMPLE_TYPE(TbiBridge, TBI_BRIDGE)
-@@ -430,6 +449,65 @@ void tbi_bridge_pwm(char kind, int64_t vns, const char *body)
+@@ -430,6 +456,53 @@ void tbi_bridge_pwm(char kind, int64_t vns, const char *body)
      tbi_exchange(s, vns, frame, false);
  }
  
@@ -123,15 +131,6 @@ index c555377..786403c 100644
 +    tbi_exchange(s, now, frame, false);
 +}
 +
-+static void tbi_clock_settled(void *opaque)
-+{
-+    TbiBridge *s = opaque;
-+
-+    if (s->cpu_hz < s->cpu_hz_max) {
-+        tbi_bridge_unmodelled("cpu-clock");
-+    }
-+}
-+
 +/* (unmodelled) The SoC applied a CPU clock (hw/xtensa/esp32.c esp32_clk_update), in Hz. */
 +void tbi_bridge_cpu_clock(uint32_t cpu_hz);
 +void tbi_bridge_cpu_clock(uint32_t cpu_hz)
@@ -144,26 +143,27 @@ index c555377..786403c 100644
 +    s->cpu_hz = cpu_hz;
 +    if (cpu_hz >= s->cpu_hz_max) {
 +        s->cpu_hz_max = cpu_hz;
-+        timer_del(s->clock_timer);
-+    } else if (!timer_pending(s->clock_timer)) {
-+        timer_mod(s->clock_timer, tbi_now() + TBI_CLOCK_SETTLE_NS);
 +    }
 +}
 +
  /*
   * One I2C bus phase from the ESP32 I2C controller (hw/i2c/esp32_i2c.c), answered synchronously by
   * the host. op 'S': arg = address << 1 | R/W, returns 1 if acknowledged; 'W': arg = byte, returns
-@@ -572,6 +650,10 @@ static void tbi_bridge_realize(DeviceState *dev, Error **errp)
-         s->pad_in[i] = qdev_get_gpio_in_named(gpio, TBI_PAD_IN, i);
-     }
+@@ -484,6 +557,14 @@ static void tbi_tick(void *opaque)
+     int64_t now = tbi_now();
+     char frame[48];
  
-+    /* (unmodelled) The CPU clock watchdog: a host synchronisation point only (see timer.h). */
-+    s->clock_timer = timer_new_full(NULL, QEMU_CLOCK_VIRTUAL, SCALE_NS, QEMU_TIMER_ATTR_HOST_SYNC,
-+                                    tbi_clock_settled, s);
-+
-     /* Scheduled inputs: a host synchronisation point only, like the tick (see timer.h). */
-     s->sched_timer = timer_new_full(NULL, QEMU_CLOCK_VIRTUAL, SCALE_NS, QEMU_TIMER_ATTR_HOST_SYNC,
-                                     tbi_sched_fire, s);
++    /* (unmodelled) A CPU clock that stayed below its highest across ticks: settled, reported. */
++    if (s->cpu_hz < s->cpu_hz_max) {
++        if (++s->clock_low_ticks >= TBI_CLOCK_SETTLE_TICKS) {
++            tbi_bridge_unmodelled("cpu-clock");
++        }
++    } else {
++        s->clock_low_ticks = 0;
++    }
+     snprintf(frame, sizeof(frame), "T %" PRId64 "\n", now);
+     tbi_exchange(s, now, frame, true);
+     /* Ticks sit on exact multiples of the quantum, independent of when this one ran. */
 diff --git a/hw/xtensa/esp32.c b/hw/xtensa/esp32.c
 index d5eafa8..7bf2223 100644
 --- a/hw/xtensa/esp32.c

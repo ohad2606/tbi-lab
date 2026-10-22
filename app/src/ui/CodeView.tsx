@@ -9,7 +9,14 @@
  * (D-S7-9). Nothing builds automatically (D-S7-4).
  */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { profileById, utf8Length, type ProgramSource } from '@tbi-lab/domain';
+import {
+  BUILD_PROFILES,
+  profileById,
+  setProgramProfile,
+  starterSourceFor,
+  utf8Length,
+  type ProgramSource,
+} from '@tbi-lab/domain';
 import { formatBytes } from './bytes.js';
 import { useAppState, useStore, useT } from './context.js';
 import { featureName } from '../sim/format.js';
@@ -151,6 +158,36 @@ export function CodeView({ boardId, focusBuild }: { boardId: string; focusBuild:
   return (
     <section class="code-view" data-testid="code-view" aria-label={t('program.tab.code')}>
       <header class="code-bar">
+        {/* Sprint 19B: the programming environment (Arduino C++ or the genuine MicroPython
+            interpreter). Switching starts that environment's starter program: code is never
+            translated between languages; edited code is replaced only after confirmation. */}
+        <label class="code-language">
+          <span class="visually-hidden">{t('program.language')}</span>
+          <select
+            data-testid="program-language"
+            value={program.profile}
+            disabled={!!readOnly || active}
+            onChange={(e) => {
+              const next = (e.target as HTMLSelectElement).value;
+              const edited =
+                program.text !==
+                starterSourceFor(profileById(program.profile)?.language ?? 'arduino-cpp');
+              if (edited && !window.confirm(t('program.language.confirm'))) {
+                (e.target as HTMLSelectElement).value = program.profile;
+                return;
+              }
+              if (doc) store.apply(setProgramProfile(doc, boardId, next));
+            }}
+          >
+            {BUILD_PROFILES.filter(
+              (p) => p.board === doc!.components.find((c) => c.id === boardId)?.type,
+            ).map((p) => (
+              <option key={p.id} value={p.id}>
+                {t(`program.language.${p.language}` as MessageKey)}
+              </option>
+            ))}
+          </select>
+        </label>
         <span class="code-file technical" dir="ltr">
           {program.fileName}
         </span>

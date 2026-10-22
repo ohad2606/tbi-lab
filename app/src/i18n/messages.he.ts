@@ -645,6 +645,11 @@ export const he: Record<MessageKey, string> = {
   'sim.error.mcu_build_required': 'נדרשת בנייה: בנו את הקוד של {components} ואז לחצו על הרצה.',
   'sim.error.mcu_unsupported_features':
     'הקוד של {components} משתמש ביכולות שהסימולטור אינו מדמה: {features}. ההרצה נחסמה.',
+  'program.language': 'שפת תכנות',
+  'program.language.arduino-cpp': 'Arduino C++',
+  'program.language.micropython': 'MicroPython',
+  'program.language.confirm':
+    'החלפת השפה פותחת תוכנית חדשה בשפה הזו; הקוד הנוכחי אינו מתורגם. להחליף אותו? (ביטול פעולה משחזר אותו.)',
   'program.tab.circuit': 'מעגל',
   'program.tab.code': 'קוד',
   // Sprint 9: generated views of the same circuit.

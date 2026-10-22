@@ -102,6 +102,11 @@ export function starterProgram(boardType: string): ProgramSource | undefined {
   };
 }
 
+/** The starter source of a programming environment (a product template, not user content). */
+export function starterSourceFor(language: ProgramLanguage): string {
+  return STARTER_SOURCE[language];
+}
+
 const STARTER_SOURCE: Record<ProgramLanguage, string> = {
   'arduino-cpp': 'void setup() {\n  // runs once\n}\n\nvoid loop() {\n  // runs repeatedly\n}\n',
   // Sprint 19B: main.py runs once when the board starts (a loop goes in the program itself).

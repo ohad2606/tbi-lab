@@ -20,7 +20,7 @@ import {
 } from './layout.js';
 import { settleContacts } from './contacts.js';
 import { nodeKey, nodeNets, settleNets } from './nets.js';
-import { starterProgram, profileById, utf8Length } from './program.js';
+import { starterProgram, starterSourceFor, profileById, utf8Length } from './program.js';
 import { allocateId } from './project.js';
 import {
   cloneDocument,
@@ -49,7 +49,9 @@ export type EditError =
   | 'name_empty'
   | 'no_program'
   | 'source_too_large'
-  | 'source_invalid';
+  | 'source_invalid'
+  /** Sprint 19B: no programming environment of that id for the board. */
+  | 'unknown_profile';
 
 export type EditResult<T = object> =
   ({ ok: true; doc: ProjectDocument } & T) | { ok: false; error: EditError };
@@ -266,6 +268,33 @@ export function useBoardProgram(doc: ProjectDocument, boardId: string): EditResu
   return transact(doc, (d) => {
     d.components.find((c) => c.id === boardId)!.params.firmware = 'program';
     d.programs[boardId] = program;
+  });
+}
+
+/**
+ * Sprint 19B: switch a board's program to another programming environment of its board (Arduino
+ * C++ or MicroPython). The program becomes that environment's starter: source in one language is
+ * never translated into another. The caller confirms with the user before discarding edited code;
+ * the edit is undoable like any other.
+ */
+export function setProgramProfile(
+  doc: ProjectDocument,
+  boardId: string,
+  profileId: string,
+): EditResult {
+  const program = doc.programs[boardId];
+  const board = doc.components.find((c) => c.id === boardId);
+  if (!program || !board) return { ok: false, error: 'no_program' };
+  const profile = profileById(profileId);
+  if (!profile || profile.board !== board.type) return { ok: false, error: 'unknown_profile' };
+  if (program.profile === profileId) return { ok: true, doc };
+  return transact(doc, (d) => {
+    d.programs[boardId] = {
+      language: profile.language,
+      profile: profile.id,
+      fileName: profile.fileName,
+      text: starterSourceFor(profile.language),
+    };
   });
 }
 
