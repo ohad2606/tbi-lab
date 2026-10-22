@@ -225,6 +225,86 @@ describe('time kernel prototype (EF-1)', () => {
     expect(k.advanceTo(0.02)).toMatchObject({ ok: true, steps: 0 });
   });
 
+  // GATE NOT MET (2026-10-22): the controller bounds the LOCAL error per step; the global error
+  // accumulates over the steps, and at loose tolerances dtMax (not the tolerance) caps the step:
+  // 1e-3 and 1e-4 give the same 64 steps and 326 uV; 1e-5 gives 136 uV. Fix (next iteration):
+  // error-per-unit-step control or a global-error estimate. `it.fails` turns red once it passes.
+  it.fails('gate K3: tightening the tolerances x100 reduces the error at least x10', () => {
+    const worst = (tol: number) => {
+      const { b, c } = rc(5, 1000, 100e-6);
+      const { k } = kernelFor(b, { absTolV: tol, relTol: tol });
+      let w = 0;
+      for (let i = 1; i <= 50; i++) {
+        const t = i * 0.01;
+        const r = k.advanceTo(t);
+        if (!r.ok) throw new Error(r.code);
+        w = Math.max(w, Math.abs(vAcross(r.outcome, c) - 5 * (1 - Math.exp(-t / 0.1))));
+      }
+      return w;
+    };
+    const [loose, tight] = [worst(1e-3), worst(1e-5)];
+    expect(tight).toBeLessThan(loose / 10);
+    expect(tight).toBeLessThan(20e-6); // gate K1 at 1e-5
+  });
+
+  it('gate K4: charge conservation — the integral of the capacitor current equals C times its voltage change', () => {
+    const { b, c } = rc(5, 1000, 100e-6);
+    const { k } = kernelFor(b, { absTolV: 1e-5, relTol: 1e-5 });
+    // Trapezoidal integration of I_C over the kernel's own accepted steps.
+    let q = 0;
+    let tPrev = 0;
+    let iPrev = 5 / 1000; // at t = 0+, the full current flows into the empty capacitor
+    let v = 0;
+    for (let i = 1; i <= 200; i++) {
+      const t = i * 0.0025;
+      const r = k.advanceTo(t);
+      if (!r.ok) throw new Error(r.code);
+      const iNow = r.outcome.components[c]!.current!;
+      q += ((iPrev + iNow) / 2) * (t - tPrev);
+      tPrev = t;
+      iPrev = iNow;
+      v = vAcross(r.outcome, c);
+    }
+    expect(Math.abs(q - 100e-6 * v) / (100e-6 * v)).toBeLessThan(1e-3);
+  });
+
+  it('gate K7: one window or many windows reach the same state within the tolerances', () => {
+    const one = rc(5, 1000, 100e-6);
+    const k1 = kernelFor(one.b).k;
+    const r1 = k1.advanceTo(0.3);
+    const many = rc(5, 1000, 100e-6);
+    const kn = kernelFor(many.b).k;
+    let rn = kn.advanceTo(0.01);
+    for (let i = 2; i <= 30; i++) rn = kn.advanceTo(i * 0.01);
+    if (!r1.ok || !rn.ok) throw new Error('kernel');
+    const exact = 5 * (1 - Math.exp(-3));
+    expect(Math.abs(vAcross(r1.outcome, one.c) - exact)).toBeLessThan(1e-3);
+    expect(Math.abs(vAcross(rn.outcome, many.c) - exact)).toBeLessThan(1e-3);
+  });
+
+  it('gate P1/P2: RC over 5 tau within 300 solves and 200 ms; never more than budget + one trial per window', () => {
+    const { b } = rc(5, 1000, 100e-6);
+    const { k } = kernelFor(b);
+    const t0 = performance.now();
+    const r = k.advanceTo(0.5);
+    const ms = performance.now() - t0;
+    if (!r.ok) throw new Error(r.code);
+    expect(r.solves).toBeLessThanOrEqual(300);
+    expect(ms).toBeLessThan(200);
+    // A window with a budget of 200 solves: refused, but after at most budget + one trial
+    // (3 solves) + one bisection (log2(dtMax / eventTolS) + 1 = 21 solves).
+    const tight = rc(5, 1000, 100e-6);
+    const kt = kernelFor(tight.b, {
+      budgetSolvesPerSimS: 400,
+      minBudgetSolves: 0,
+      absTolV: 1e-7,
+      relTol: 1e-7,
+    }).k;
+    const res = kt.advanceTo(0.5);
+    expect(res).toMatchObject({ ok: false, code: 'transient_budget_exceeded' });
+    expect(kt.solves).toBeLessThanOrEqual(200 + 3 + 21);
+  });
+
   it('bounded and honest: an impossible budget or step floor is refused by name; logic is refused', () => {
     const { b } = rc(5, 1000, 100e-6);
     expect(
