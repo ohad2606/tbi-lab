@@ -4,6 +4,7 @@
  */
 import { expect } from 'vitest';
 import type { ProjectDocument } from '@tbi-lab/domain';
+import type { Obstacle } from '../../src/views/scene3d/route3d.js';
 import {
   sceneObstacles,
   WIRE_RADIUS,
@@ -35,8 +36,9 @@ export function expectNoWireThroughBodies(
   doc: ProjectDocument,
   s: SceneDescription,
   label: string,
+  only: (o: Obstacle) => boolean = () => true,
 ) {
-  const obstacles = sceneObstacles(doc, s);
+  const obstacles = sceneObstacles(doc, s).filter(only);
   const m = WIRE_RADIUS * 0.8;
   for (const w of s.wires) {
     const src = doc.layout.wires.find((x) => x.id === w.id)!;

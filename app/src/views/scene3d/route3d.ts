@@ -374,8 +374,14 @@ export function routeWires(
         // Final actual-clearance check: the low route (resting on the bench, rising only to its
         // ends) is tested against the body's real volume by true 3D distance (corners included);
         // where it is already clear by a wire radius plus the gap, no rise is made.
-        if (!own && clearLow(plan, st, s0, s1, o, low)) continue;
-        if (o.bottom > 2 * r + BODY_GAP + FLOOR)
+        // Only for a body standing on the bench (rt2, PSU-post collision): a RAISED body (a
+        // binding post, a module on its header) that the low route clears by passing under it is
+        // decided over/under against the FINAL profile below, because a later requirement (a
+        // terminal passed near) can lift the wire into it; deciding it on the low route alone
+        // left a supply wire running through the other binding post.
+        const isRaised = o.bottom > 2 * r + BODY_GAP + FLOOR;
+        if (!own && !isRaised && clearLow(plan, st, s0, s1, o, low)) continue;
+        if (isRaised)
           raised.push({
             s0,
             s1,

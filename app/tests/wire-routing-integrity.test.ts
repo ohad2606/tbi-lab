@@ -245,19 +245,43 @@ describe('wire routing integrity', () => {
     }
   });
 
-  // KNOWN LIMITATION (pre-existing; the deployed release 4676139 fails it identically): on this
-  // bench, after the moves, the 3D scene runs a supply wire past the PSU's other binding post with
-  // only ~0.5 mm (its 3D plan leaves the 2D route there). Recorded, not hidden: when the 3D router
-  // is fixed this test starts passing and `it.fails` turns red, prompting its promotion.
-  it.fails(
-    '7 (3D, known limitation): the complex bench after moves keeps every wire clear of the PSU posts',
-    () => {
+  // Formerly KNOWN LIMITATION (`it.fails`; the deployed release 4676139 failed it identically):
+  // after the moves the 3D scene ran the PSU1+ -> U2 wire across the tip of the PSU's OTHER
+  // binding post (~0.5 mm, inside it in height). Root cause (rt2, two parts, both needed):
+  //  - the two posts were one obstacle "PSU1", i.e. the wire's OWN end part, so the other post
+  //    (the other node) got no padding and no clearance check at all (route3d own-part rule);
+  //  - a raised body (bottom above the bench) that the LOW route clears by passing under was
+  //    skipped before the profile was final; the near-terminal requirement at that post then
+  //    lifted the wire into it.
+  // Fixed: each post is its own obstacle `PSU1:<terminal>`; a raised body is decided over/under
+  // on the final profile. Now a regression test.
+  it('7 (3D): the complex bench after moves keeps every wire clear of the PSU posts', () => {
+    const bench = complexCircuit();
+    let doc = bench.doc;
+    for (const g of bench.gates) doc = drag(doc, [g], { x: 40, y: 80 });
+    expectNoWireThroughBodies(doc, deriveScene(doc), 'complex bench after moves');
+  });
+
+  it('7 (3D, rt2): random gate moves never run a wire through a PSU binding post', () => {
+    // Seeds 7, 29, 30 collided with a post before the fix (rt2 sweep, evidence
+    // rt2-3d-sweep-*.txt); the others are clean controls. Only the PSU volumes are asserted here:
+    // the sweep also reaches layouts where two gates' 3D breakout bodies overlap each other (a
+    // separate, documented limitation of the body separation, unchanged by this fix).
+    let s = 0;
+    const rnd = () => (s = (s * 1664525 + 1013904223) >>> 0) / 2 ** 32;
+    for (const seed of [1, 2, 7, 26, 29, 30]) {
+      s = seed >>> 0;
       const bench = complexCircuit();
       let doc = bench.doc;
-      for (const g of bench.gates) doc = drag(doc, [g], { x: 40, y: 80 });
-      expectNoWireThroughBodies(doc, deriveScene(doc), 'complex bench after moves');
-    },
-  );
+      for (const g of bench.gates) {
+        const d = { x: 20 * Math.round(rnd() * 16 - 8), y: 20 * Math.round(rnd() * 16 - 8) };
+        const r = moveRouted(doc, { ...emptySelection(), components: [g] }, d);
+        if (r.ok) doc = normalize(r.doc);
+      }
+      const scene = deriveScene(doc);
+      expectNoWireThroughBodies(doc, scene, `seed ${seed}`, (o) => o.part.startsWith('PSU1'));
+    }
+  });
 
   it('8: save and reload give the identical drawing, and routing it again changes nothing', () => {
     const { doc } = complexCircuit();

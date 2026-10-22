@@ -20,7 +20,7 @@ import {
 } from '../src/views/scene3d/scene.js';
 import { bodiesCollide } from '../src/views/scene3d/separation.js';
 import { expectNoWireThroughBodies, samples } from './support/scene3dChecks.js';
-import { CLEARANCE, FLOOR } from '../src/views/scene3d/route3d.js';
+import { CLEARANCE, FLOOR, routeWires, type Obstacle } from '../src/views/scene3d/route3d.js';
 import { RELAY_SRD } from '../src/views/scene3d/physical.js';
 import { EXAMPLE_DOCUMENTS } from '../src/examples/documents.js';
 import { denseBench, partsBench } from '../../scripts/evidence/benches.js';
@@ -384,5 +384,67 @@ describe('3D wire routes: modules, fan-out, separation', () => {
   it('determinism across the fixtures', () => {
     for (const make of [pirMatrixCircuit, esp32ModuleCircuit, denseMixedCircuit])
       expect(deriveScene(make())).toEqual(deriveScene(make()));
+  });
+});
+
+describe('3D wire heights: a raised body is decided on the final profile (rt2, PSU post)', () => {
+  // A binding post sticking out at post height (bottom 3.1, top 5.3 mm), a wire running along the
+  // bench right beside its tip. On the bench the wire passes UNDER the post; a terminal it passes
+  // near lifts it to that terminal's clearance height, i.e. into the post's height band.
+  const post: Obstacle = {
+    part: 'P:other',
+    x0: -2,
+    x1: 0,
+    z0: -1.1,
+    z1: 1.1,
+    bottom: 3.1,
+    top: 5.3,
+  };
+  const input = {
+    id: 'W',
+    node: 'n1',
+    plan: [
+      { x: 0.45, y: -20 },
+      { x: 0.45, y: 20 },
+    ],
+    head: [],
+    tail: [],
+    startY: FLOOR,
+    endY: FLOOR,
+    parts: [null, null] as [null, null],
+    ownEnds: [
+      { x: 0.45, y: -20 },
+      { x: 0.45, y: 20 },
+    ],
+  };
+  const axisClear = (pts: { x: number; y: number; z: number }[], o: Obstacle) => {
+    let m = Infinity;
+    for (let i = 1; i < pts.length; i++)
+      for (let k = 0; k <= 40; k++) {
+        const a = pts[i - 1]!;
+        const b = pts[i]!;
+        const p = {
+          x: a.x + ((b.x - a.x) * k) / 40,
+          y: a.y + ((b.y - a.y) * k) / 40,
+          z: a.z + ((b.z - a.z) * k) / 40,
+        };
+        const dx = Math.max(o.x0 - p.x, 0, p.x - o.x1);
+        const dz = Math.max(o.z0 - p.z, 0, p.z - o.z1);
+        const dy = Math.max(o.bottom - p.y, 0, p.y - o.top);
+        m = Math.min(m, Math.hypot(dx, dy, dz));
+      }
+    return m;
+  };
+  it('alone, the wire stays on the bench and passes under the post (no needless rise)', () => {
+    const r = routeWires([input], [post], []).get('W')!;
+    expect(Math.max(...r.points.map((p) => p.y))).toBeCloseTo(FLOOR, 6);
+    expect(axisClear(r.points, post)).toBeGreaterThanOrEqual(WIRE_RADIUS + 0.3 - 1e-9);
+  });
+  it('lifted by a terminal beside the post, it goes OVER the post with clearance, never into it', () => {
+    const r = routeWires([input], [post], [{ x: 0.45, z: 0, h: 4.2 }]).get('W')!;
+    expect(axisClear(r.points, post)).toBeGreaterThanOrEqual(WIRE_RADIUS + 0.3 - 1e-9);
+    expect(Math.max(...r.points.map((p) => p.y))).toBeGreaterThanOrEqual(
+      post.top + CLEARANCE - 1e-6,
+    );
   });
 });

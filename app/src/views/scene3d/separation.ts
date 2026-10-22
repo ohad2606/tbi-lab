@@ -53,6 +53,12 @@ export interface Box {
   y0: number;
   y1: number;
   node?: string;
+  /**
+   * The terminal this box is the fitting of (a supply's binding post): a routing obstacle of its
+   * own (`<part>:<terminal>`), so a wire is exempt only from the post it is fastened to, never
+   * from the part's other post (another node). Routing volumes only (scene.ts routeBoxes).
+   */
+  terminal?: string;
 }
 
 /** A part as placed by the 2D layout (base transform), scene mm. */

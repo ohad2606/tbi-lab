@@ -1715,16 +1715,24 @@ function routeBoxes(model: ModelKey, farads?: number): Box[] | null {
     case 'instrument.psu': {
       // The case, and its two binding posts sticking out of the front at post height (a wire may
       // pass under them on the bench).
+      // Each post is tagged with its terminal (wire routing integrity, rt2): a wire fastened to
+      // one post is exempt from that post only; the other post (the other node) is an obstacle
+      // it must clear like any other body (route3d.ts pads and checks it), not "its own part".
       const r = PSU.postDiameterMm / 2;
-      const post = (zc: number): Box => ({
-        x0: PSU.frontXMm,
-        x1,
-        z0: zc - r,
-        z1: zc + r,
-        y0: PSU.attachHeightMm - r,
-        y1: PSU.attachHeightMm + r,
-      });
-      return [{ x0, x1: PSU.frontXMm, z0, z1, y0: 0, y1: top }, post(-3.175), post(3.175)];
+      const post = (terminal: string): Box => {
+        const zc =
+          CATALOG['instrument.lab_psu'].terminals.find((t) => t.id === terminal)!.offset.y * SCALE;
+        return {
+          x0: PSU.frontXMm,
+          x1,
+          z0: zc - r,
+          z1: zc + r,
+          y0: PSU.attachHeightMm - r,
+          y1: PSU.attachHeightMm + r,
+          terminal,
+        };
+      };
+      return [{ x0, x1: PSU.frontXMm, z0, z1, y0: 0, y1: top }, post('positive'), post('negative')];
     }
     case 'transistor.to92': {
       // The D-shaped body, and each lead from under it to its terminal: high near the body, low
@@ -1807,7 +1815,7 @@ function routingObstacles(
     return worldBoxes(lean ? { ...body, boxes: lean } : body, o.dx, o.dz)
       .filter((q) => !q.node)
       .map((q) => ({
-        part: body.id,
+        part: q.terminal ? `${body.id}:${q.terminal}` : body.id,
         x0: q.x0,
         x1: q.x1,
         z0: q.z0,
