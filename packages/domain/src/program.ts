@@ -58,7 +58,10 @@ export const ESP32_MICROPYTHON_PROFILE: BuildProfile = {
   toolchain: 'MicroPython v1.29.0 (ESP32_GENERIC)',
 };
 
-export const BUILD_PROFILES: readonly BuildProfile[] = [ESP32_ARDUINO_PROFILE, ESP32_MICROPYTHON_PROFILE];
+export const BUILD_PROFILES: readonly BuildProfile[] = [
+  ESP32_ARDUINO_PROFILE,
+  ESP32_MICROPYTHON_PROFILE,
+];
 
 export function profileById(id: string): BuildProfile | undefined {
   return BUILD_PROFILES.find((p) => p.id === id);
@@ -102,7 +105,8 @@ export function starterProgram(boardType: string): ProgramSource | undefined {
 const STARTER_SOURCE: Record<ProgramLanguage, string> = {
   'arduino-cpp': 'void setup() {\n  // runs once\n}\n\nvoid loop() {\n  // runs repeatedly\n}\n',
   // Sprint 19B: main.py runs once when the board starts (a loop goes in the program itself).
-  micropython: '# main.py runs once when the board starts.\nimport time\n\nwhile True:\n    time.sleep(1)\n',
+  micropython:
+    '# main.py runs once when the board starts.\nimport time\n\nwhile True:\n    time.sleep(1)\n',
 };
 
 /** UTF-8 byte length of a string (source limits are in bytes). */
