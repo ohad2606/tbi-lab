@@ -218,7 +218,9 @@ export function engineErrorMessage(
     case 'logic_output_uncharacterized':
     case 'logic_feedback_unsupported':
     case 'logic_unknown_state':
-    case 'logic_unpowered_uncharacterized': {
+    case 'logic_unpowered_uncharacterized':
+    case 'logic_input_undefined':
+    case 'logic_input_out_of_range': {
       const d = (error.detail ?? {}) as {
         vcc?: number;
         value?: number;
@@ -237,6 +239,12 @@ export function engineErrorMessage(
         supply: typeof d.vcc === 'number' ? formatResult(locale, d.vcc, 'volt') : '',
         current: typeof d.value === 'number' ? formatResult(locale, d.value, 'ampere') : '',
         limit: typeof d.limit === 'number' ? formatResult(locale, d.limit, 'ampere') : '',
+        // L3: an input voltage the refusal is about.
+        voltage:
+          typeof d.value === 'number' &&
+          (error.code === 'logic_input_undefined' || error.code === 'logic_input_out_of_range')
+            ? formatResult(locale, d.value, 'volt')
+            : '',
       });
     }
     default:

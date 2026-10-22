@@ -16,8 +16,12 @@
  * - V_CC = 0: refused (`logic_unpowered_uncharacterized`): this sheet has no I_off specification;
  * - supply outside the rows / operating range: `logic_supply_uncharacterized`.
  *
+ * - an input between V_IL and V_IH is refused (`logic_input_undefined`): the sheet gives neither a
+ *   level nor a supply current there; one outside the recommended V_I 0–5.5 V is refused
+ *   (`logic_input_out_of_range`); one on an undetermined net is refused (`logic_unknown_state`).
+ *
  * Ratings (§5.1): ±50 mA per output, ±100 mA continuous through V_CC or GND (all gates together),
- * input and output voltage ranges, V_CC absolute maximum.
+ * input and output voltage ranges, V_CC absolute maxima.
  */
 import { PwlLoad } from '../pwl.js';
 import { inputRowAt, outputStageAt, TABULATED_VCC_TOLERANCE_V } from '../logic/lvc1g.js';
@@ -35,6 +39,8 @@ import { gateOutput, type LogicLevel } from './logicGate.js';
 import type { LogicInspection } from './logicInspection.js';
 
 const WRONG_WAY_V = 1e-3;
+/** An input within this of V_CC or GND counts as "at the rail" (I_CC's test condition). */
+const RAIL_V = 1e-3;
 const UNPOWERED_V = 1e-3;
 
 export function packageCardOf(ctx: PartContext): LogicPackageCard {
@@ -80,14 +86,28 @@ function nextPackageState(ctx: PartContext, sol: PartSolution, state: PartState)
     const levels: LogicLevel[] = [];
     for (const t of u.inputs) {
       let l: LogicLevel;
-      if (unknown(t)) l = 'x';
-      else {
+      if (unknown(t)) {
+        // Driven from an undetermined level: neither its level nor the supply current it causes
+        // is known (the package's shared supply would carry an unknown current).
+        refusal ??= { refuse: 'logic_unknown_state', at: t };
+        l = 'x';
+      } else {
         const p = sol.potential(t);
         if (p === null) {
           // Floating: refused by name (datasheet: unused inputs held at V_CC or GND).
           refusal ??= { refuse: 'logic_input_floating', at: t };
           l = 'x';
-        } else l = p - g >= row.vih ? 'high' : p - g <= row.vil ? 'low' : 'x';
+        } else {
+          const vi = p - g;
+          l = vi >= row.vih ? 'high' : vi <= row.vil ? 'low' : 'x';
+          // §5.4 V_I 0–5.5 V: outside it "functional operation … is not implied" (§5.1 note 1).
+          if (vi < card.inputRecommended[0] - RAIL_V || vi > card.inputRecommended[1] + RAIL_V)
+            refusal ??= { refuse: 'logic_input_out_of_range', at: t, value: vi };
+          // Between V_IL and V_IH: no level, and no supply-current figure (I_CC is specified
+          // with inputs at V_CC or GND only, ΔI_CC at V_CC − 0.6 V): refused, never shown as a
+          // level and never solved with a supply current the sheet does not give.
+          else if (l === 'x') refusal ??= { refuse: 'logic_input_undefined', at: t, value: vi };
+        }
       }
       s[`in_${t}`] = l;
       levels.push(l);
@@ -142,12 +162,9 @@ export const logicPackageModel: PartModel = {
     xOutputs(packageCardOf(ctx), state).length && state.refuse !== 'logic_supply_missing'
       ? ['vcc', 'gnd']
       : [],
-  // The most current the unknown outputs may carry: each X output's absolute maximum (±50 mA,
-  // as for the single gates), together never above the ±100 mA V_CC/GND absolute maximum.
-  unknownCurrentMaxA: (ctx, state) => {
-    const c = packageCardOf(ctx);
-    return Math.min(xOutputs(c, state).length * c.outputAbsA, c.supplyPinAbsA);
-  },
+  // No `unknownCurrentMaxA`: the absolute maxima are stress ratings, not a bound on what an
+  // output carries (§5.1 note 1, §7.3.1 "capable of driving larger currents than the device can
+  // sustain"). A current-limited supply feeding an unknown output is therefore refused.
   logicPins: (ctx) => {
     const c = packageCardOf(ctx);
     return { inputs: c.inputs, outputs: c.units.map((u) => u.output) };
@@ -213,6 +230,12 @@ export const logicPackageModel: PartModel = {
     currents.vcc = allKnown ? vccI : null;
     currents.gnd = allKnown ? gndI : null;
     const supplyV = typeof state.vcc === 'number' ? state.vcc : null;
+    const atRails = () =>
+      supplyV !== null &&
+      card.inputs.every((t) => {
+        const vi = rel(t);
+        return vi !== null && (Math.abs(vi) <= RAIL_V || Math.abs(vi - supplyV) <= RAIL_V);
+      });
     return {
       current: null,
       voltage: null,
@@ -223,7 +246,11 @@ export const logicPackageModel: PartModel = {
         outputModel:
           state.model === 'class' ? 'class' : state.tabulated === true ? 'tabulated' : 'ranged',
         outputValidA: typeof state.validA === 'number' ? state.validA : card.rangedOutput.amps,
-        iccMaxA: card.iccMaxA,
+        // I_CC (≤ 10 µA) is specified only with every input at V_CC or GND (§5.7); otherwise the
+        // quiescent current is not characterized (ΔI_CC ≤ 500 µA per input at V_CC − 0.6 V).
+        ...(atRails()
+          ? { iccMaxA: card.iccMaxA }
+          : { iccCondition: 'notRails', deltaIccA: card.deltaIccA }),
       },
       logic: {
         partNumber: card.partNumber,
@@ -248,6 +275,9 @@ export function packageRatings(
   const vccV = r.terminals.vcc != null && g != null ? r.terminals.vcc - g : null;
   if (vccV !== null && vccV > card.vccAbsMax)
     out.push({ code: 'voltage', value: vccV, limit: card.vccAbsMax, channel: 'vcc' });
+  // §5.1 V_CC minimum −0.5 V (a reversed supply).
+  else if (vccV !== null && vccV < -0.5)
+    out.push({ code: 'voltage', value: vccV, limit: -0.5, channel: 'vcc' });
   for (const t of card.inputs) {
     const p = r.terminals[t];
     if (p == null || g == null) continue;
@@ -264,8 +294,17 @@ export function packageRatings(
       });
     else if (v < card.inputAbsolute[0])
       out.push({ code: 'voltage', value: v, limit: card.inputAbsolute[0], channel: t });
+    else if (v < card.inputRecommended[0] - RAIL_V)
+      out.push({
+        code: 'voltage',
+        value: v,
+        limit: card.inputRecommended[0],
+        channel: t,
+        kind: 'operating',
+      });
   }
-  // Tabulated recommended output current at this supply (§5.4 I_OH / I_OL), else the ranged row.
+  // At a tabulated supply the §5.4 I_OH / I_OL maximum; elsewhere the §5.7 ±100 µA test
+  // condition (the largest guaranteed current there; the model refuses above it first).
   const recommended = card.outputRows
     .filter((row) => vccV !== null && Math.abs(row.vcc - vccV) <= TABULATED_VCC_TOLERANCE_V)
     .flatMap((row) => [...row.high, ...row.low].map((p) => p.amps));

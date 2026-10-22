@@ -186,16 +186,20 @@ export const en = {
     '{components}: an undetermined logic level reaches {pin}, which must have a defined value. Check the logic inputs marked unknown (X).',
   'sim.error.logic_unpowered_uncharacterized':
     '{components}: V_CC is 0 V (unpowered). This device’s datasheet gives no power-off specification (no I_off), so an unpowered device is not simulated. Switch its supply on.',
+  'sim.error.logic_input_undefined':
+    '{components}: input {pin} is at {voltage}, between V_IL and V_IH at this supply. The datasheet gives no logic level and no supply current for an input there, so the circuit is not simulated. Drive the input to a valid level (V_IL or below, V_IH or above).',
+  'sim.error.logic_input_out_of_range':
+    '{components}: input {pin} is at {voltage}, outside the recommended input range 0–5.5 V, where the datasheet does not specify the device’s behaviour.',
   'sim.error.logic_input_floating.sn74lvc08a':
     '{components}: input {pin} is not connected to anything. The SN74LVC08A datasheet requires every unused input, including those of unused gates, to be held at V_CC or GND. Connect it to a signal, to V_CC or GND, or through a pull-up or pull-down resistor.',
   'sim.error.logic_supply_uncharacterized.sn74lvc08a':
     '{components}: the supply is {supply}, which the SN74LVC08A datasheet does not characterize (1.65–1.95 V or 2.3–3.6 V). The simulator does not invent thresholds between datasheet rows.',
   'sim.error.logic_output_uncharacterized.sn74lvc08a':
-    '{components}: at {supply} the SN74LVC08A datasheet guarantees output {pin} only up to {limit}, and this load draws {current}. Real loads are characterized only at 1.65 V, 2.3 V, 2.7 V or 3.0 V exactly.',
+    '{components}: at {supply} the SN74LVC08A datasheet guarantees output {pin} only up to {limit} flowing out of a HIGH output or into a LOW one; here it carries {current}, or is forced past its own rail. Real loads are characterized only at 1.65 V, 2.3 V, 2.7 V or 3.0 V exactly.',
   // L2: logic state / truth-table inspection.
   'logic.inspect.title': 'Logic state',
   'logic.inspect.thresholds':
-    '{part} at V_CC = {supply}: HIGH at or above V_IH = {vih}, LOW at or below V_IL = {vil} (datasheet). In between: undefined.',
+    '{part} at V_CC = {supply}: HIGH at or above V_IH = {vih}, LOW at or below V_IL = {vil} (datasheet; where two rows meet, the stricter). In between: undefined.',
   'logic.inspect.noRow': '{part}: no datasheet input thresholds at this supply.',
   'logic.inspect.gate': 'Gate',
   'logic.inspect.pin': 'Pin',
@@ -1308,6 +1312,14 @@ export const en = {
     'An input between V_IL and V_IH is unknown (X), and so is everything it determines; a floating input is refused. Input leakage (±5 µA) is not used as a level.',
   'limitation.logic_breakout':
     'The SOT-23-5 package is shown on a representative breakout board, so it fits a breadboard; the board’s layout is illustrative.',
+  'sim.part.state.iccCondition': 'Quiescent supply current',
+  'sim.part.state.iccCondition.notRails':
+    'not characterized: an input is not at V_CC or GND (not included above)',
+  'sim.part.state.deltaIccA': 'Datasheet ΔI_CC per input at V_CC − 0.6 V (max)',
+  'limitation.logic_package_dc_no_delay':
+    'DC only: propagation delay (datasheet 1–4.1 ns at 3.3 V) is not simulated. Circuits that depend on it are refused: feedback between gates (latches, oscillators), PWM into a gate, clocks.',
+  'limitation.logic_package_input_band':
+    'An input between V_IL and V_IH, or outside 0–5.5 V, is refused: the datasheet gives no level and no supply current there. The quiescent supply current (I_CC ≤ 10 µA) is not part of the solve and is specified only with every input at V_CC or GND.',
   'limitation.logic_package_supply_rows':
     'Thresholds and output levels only where the SN74LVC08A datasheet tabulates them (1.65–1.95 V, 2.3–3.6 V). Real loads only at exactly 1.65, 2.3, 2.7 or 3.0 V, where the output test points are; elsewhere (including 3.3 V) up to 100 µA. The 3.3 V class bound used for the single gates is not applied: this datasheet does not state a 3.3 V drive.',
   'limitation.logic_package_unused_inputs':

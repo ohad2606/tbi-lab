@@ -154,10 +154,10 @@ export const MODEL_LIMITATIONS: Readonly<Partial<Record<ComponentTypeId, readonl
   'logic.gate_not': LOGIC_LIMITATIONS,
   // L3: the SN74LVC08A package (its own supply rows, no class bound, no power-off spec).
   'logic.quad_and': [
-    'logic_dc_no_delay',
+    'logic_package_dc_no_delay',
     'logic_guaranteed_output',
     'logic_package_supply_rows',
-    'logic_unknown',
+    'logic_package_input_band',
     'logic_package_unused_inputs',
     'logic_package_unpowered',
     'logic_package_breakout',

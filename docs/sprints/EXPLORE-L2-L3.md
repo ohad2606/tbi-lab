@@ -43,9 +43,20 @@ between gates of one package is allowed and a loop (also inside one package) is 
   The ±100 mA supply-pin and ±50 mA output limits are checked.
 - Terminal ids are `a1, b1, y1 … y4` (the session protocol's identifiers start with a letter);
   every view shows the datasheet names `1A … 4Y`.
-- An X (unknown) output's current is bounded by its ±50 mA I_O absolute maximum (as for the
-  single gates), the package's X outputs together by the ±100 mA V_CC/GND maximum: a bench
-  supply feeding X outputs needs that margin below its current limit, else `logic_unknown_state`.
+- No bound is claimed for an unknown (X) output's current: the absolute maxima are stress ratings
+  (§5.1 note 1; §7.3.1 "capable of driving larger currents than the device can sustain"). A
+  current-limited supply feeding an X output is refused (`logic_unknown_state`).
+- An input between V_IL and V_IH is refused (`logic_input_undefined`): the sheet gives no level
+  and no supply current there (I_CC only with inputs at V_CC or GND, ΔI_CC at V_CC − 0.6 V). So the
+  static-CMOS inference "a controlling input decides when the other is undefined" (an inference
+  from CMOS structure, not in this sheet's Table 7-1) is never used for the package. An input on an
+  undetermined net is refused (`logic_unknown_state`), one outside V_I 0–5.5 V
+  (`logic_input_out_of_range`).
+- I_CC (≤ 10 µA) is reported only with every input within 1 mV of a rail; otherwise the quiescent
+  current is "not characterized", with ΔI_CC (500 µA per input at V_CC − 0.6 V) shown. The solve
+  never includes I_CC (as for L1).
+- The output envelope between guaranteed points is linear (the approved L1 method, EF-D4 A); it is
+  conservative only if the real V(I) is convex — device physics, not a datasheet statement.
 - Breadboard part: the D (SOIC-14) package (D0014A outline) on a representative breakout; the
   sheet has no through-hole package.
 
@@ -64,10 +75,34 @@ ESP32 GPIO18/GPIO19 → gate 1 → 220 Ω + LED; 1Y → 2A; push button (10 kΩ 
 characterized). Golden test `app/tests/l3-logic-quad.test.ts` checks the chain's truth table,
 the guaranteed-envelope operating point, KVL and the shared supply current on the solved numbers.
 
+## Independent review (read-only agent, datasheet vs. diff)
+
+All card figures, the pin map and the D0014A dimensions were verified against SCAS283W (−40…85 °C
+column alignment checked). Confirmed issues and disposition:
+1. Unknown-output current bound used the ±50/±100 mA absolute maxima as a physical limit →
+   **fixed** for the package (no bound; refused). L1 keeps 50 mA (pre-existing, see below).
+2. Supply current reported as known with inputs away from the rails / in the undefined band →
+   **fixed** (refusal in the band; I_CC only at the rails, else "not characterized" + ΔI_CC).
+3. The package showed the 1G sheets' delay figures → **fixed** (own limitation, 1–4.1 ns).
+4. Ratings gaps (V_CC < −0.5 V; inputs below 0 V; inputs above 5.5 V still classified) →
+   **fixed** (ratings rows; above/below the recommended V_I range refused).
+5. Comment cited §5.4 for the between-row 100 µA limit → **fixed** (§5.7).
+6. X-input inference not in this sheet → **moot** for the package (refused), documented above.
+7. Pin-map column citation listed W (CFP) → **fixed**.
+8. Pad-mode test accepted any `logic_*` code → **fixed** (exact levels asserted; all 9 solve).
+9. Missing coverage → **added**: 2.7 V, 1.65 V and 1.8 V (ranged) solves, the package's
+   `logic_unknown_state`, the wrong-way output refusal, `logic_input_out_of_range`.
+L2 notes: thresholds text now says "where two rows meet, the stricter"; the device's
+output-uncharacterized text covers the wrong-way case. Alias "7408" (TTL) removed.
+
 ## Found, not changed (pre-existing, for decision)
 
 - The ESP32 pad model in **input** mode is a linear leakage conductance to GND (esp32Gpio.ts).
   A gate input wired only to an ESP32 pad in input mode therefore solves at 0 V (LOW) instead of
   being refused as floating. Before the firmware's `setup()` runs, this is the state of the
   example's gate-1 inputs. It predates this work (L1/X1 behave the same).
+- L1 single gates: the unknown-output bound is still the 50 mA I_O absolute maximum, I_CC is
+  still reported with inputs away from the rails, an input in the undefined band still gives an X
+  (or a controlling-input) result instead of a refusal, and the delay text is shared. These are the
+  same points the review raised for the package; changing shipped L1 behaviour needs a PM decision.
 - L1 single gates reported a missing GND as `logic_unknown_state`; now `logic_supply_missing` (fix).

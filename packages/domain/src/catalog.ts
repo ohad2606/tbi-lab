@@ -698,7 +698,7 @@ const LOGIC_TYPES = {
         labelKey: 'param.model',
       },
     ],
-    aliases: ['quad and', '74lvc08', '74lvc08a', '7408', 'and ic', 'שער and', 'רכיב לוגי'],
+    aliases: ['quad and', '74lvc08', '74lvc08a', 'and ic', 'שער and', 'רכיב לוגי'],
   },
 } satisfies Partial<Record<ComponentTypeId, ComponentTypeDef>>;
 

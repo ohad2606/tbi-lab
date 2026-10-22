@@ -132,26 +132,22 @@ describe('ESP32 → SN74LVC08A → LEDs (golden)', () => {
     expect(o.components.U2!.terminals['y1']!).toBeCloseTo(3.0 - dropAt(i470), 9);
   });
 
-  it('every pad-mode combination solves or is refused BY NAME (never a guessed level)', () => {
+  it('every pad-mode combination solves, with the levels the pad model gives (input mode: 0 V, LOW)', () => {
+    // An ESP32 pad in input mode is the engine's leakage-to-GND model (esp32Gpio.ts, pre-existing):
+    // the gate input sits at 0 V. Output modes give 3.3 V (HIGH: 5.5 V-tolerant input) or 0 V.
     const MODES: RuntimePinMode[] = ['input', 'output-high', 'output-low'];
-    const seen = new Map<string, number>();
     for (const m18 of MODES)
       for (const m19 of MODES) {
         const { s } = session(DOC);
         s.setPinMode(18, m18);
         s.setPinMode(19, m19);
-        const o = s.solve();
-        const k = o.ok ? 'ok' : o.error.code;
-        seen.set(k, (seen.get(k) ?? 0) + 1);
-        if (o.ok) {
-          // A pad left as an input: whatever level the solve gives the gate input, it is one of
-          // the defined classifications with its measured voltage.
-          for (const p of o.components.U2!.logic!.gates[0]!.inputs)
-            expect(['high', 'low', 'x']).toContain(p.level);
-        }
+        const o = ok(s.solve());
+        const lv = (m: RuntimePinMode) => (m === 'output-high' ? 'high' : 'low');
+        expect(
+          o.components.U2!.logic!.gates[0]!.inputs.map((p) => p.level),
+          `${m18} ${m19}`,
+        ).toEqual([lv(m18), lv(m19)]);
       }
-    expect([...seen.keys()].every((k) => k === 'ok' || k.startsWith('logic_'))).toBe(true);
-    expect(seen.get('ok')).toBeGreaterThanOrEqual(4);
   });
 
   it('removing the pull-down leaves 2B floating with the button released: refused, naming 2B', () => {

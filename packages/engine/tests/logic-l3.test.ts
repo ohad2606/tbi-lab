@@ -30,7 +30,7 @@ const C = LVC08A_CARD;
 const solve = (b: Bench) => new EngineSession(b.snapshot()).solve();
 
 describe('SN74LVC08A card = SCAS283W figures', () => {
-  it('§4 Table 4-1: the 14-pin map (D, DB, NS, PW, J, W)', () => {
+  it('§4 Table 4-1: the 14-pin map (SOIC, SSOP, SOP, CDIP, TSSOP, VQFN, WQFN column)', () => {
     expect(C.pins).toEqual({
       a1: 1,
       b1: 2,
@@ -220,6 +220,32 @@ describe('SN74LVC08A in the solve: four gates, one shared supply', () => {
     expect(res.currents!.gnd).toBeCloseTo(I, 12);
   });
 
+  it('the other tabulated rows in the solve: 2.7 V and 1.65 V into 10 kΩ; 1.8 V (ranged only) into 100 kΩ', () => {
+    const ins = ['a1', 'b1'];
+    const rest = ['a2', 'b2', 'a3', 'b3', 'a4', 'b4'];
+    // 2.7 V: (0.2 V, 100 µA)–(0.5 V, 12 mA); 1.65 V: (0.2 V, 100 µA)–(0.45 V, 4 mA).
+    for (const [vcc, drop2, i2] of [
+      [2.7, 0.5, 12e-3],
+      [1.65, 0.45, 4e-3],
+    ] as const) {
+      const { b, u } = quad(vcc, ins, rest);
+      load(b, `${u}.y1`, 10_000);
+      const k = (drop2 - 0.2) / (i2 - 100e-6);
+      const I = (vcc - 0.2 + 100e-6 * k) / (10_000 + k);
+      const r = ok(solve(b)).components[u]!;
+      expect(r.state!.outputModel, String(vcc)).toBe('tabulated');
+      expect(r.terminals.y1!, String(vcc)).toBeCloseTo(vcc - (0.2 + (I - 100e-6) * k), 9);
+    }
+    // 1.8 V (0.65/0.35 × V_CC row; no output test point): only the ±100 µA point, through 0.
+    const { b, u } = quad(1.8, ins, rest);
+    load(b, `${u}.y1`, 100_000);
+    const r = ok(solve(b)).components[u]!;
+    expect(r.state!.outputModel).toBe('ranged');
+    // Drop = 0.2 V / 100 µA × I = 2 kΩ × I: V = 1.8 × 100k / 102k.
+    expect(r.terminals.y1!).toBeCloseTo((1.8 * 100_000) / 102_000, 9);
+    expect(r.logic).toMatchObject({ vih: expect.closeTo(1.17, 12), vil: expect.closeTo(0.63, 12) });
+  });
+
   it('a chain between gates of the SAME package settles (not feedback): 1Y → 2A', () => {
     const { b, u } = quad(3.0, ['a1', 'b1', 'b2', 'a3', 'b3', 'a4', 'b4'], []);
     b.wire(`${u}.y1`, `${u}.a2`);
@@ -318,7 +344,7 @@ describe('SN74LVC08A refusals, by name', () => {
   });
 });
 
-describe('L2 inspection: levels and measured voltages, "undefined" between V_IL and V_IH', () => {
+describe('L2 inspection and the input contract (levels, measured voltages, refusals)', () => {
   /** 1A from a divider 3.0 V · R2/(R1 + R2); 1B tied to `b1`; 1Y into 10 kΩ. */
   function divider(r1: number, r2: number, b1: 'hi' | 'lo') {
     const rest = ['a2', 'b2', 'a3', 'b3', 'a4', 'b4'];
@@ -333,37 +359,75 @@ describe('L2 inspection: levels and measured voltages, "undefined" between V_IL 
     return { b, u };
   }
 
-  it('1.5 V on 1A (between 0.8 V and 2.0 V): undefined; with 1B HIGH the output is unknown (X)', () => {
-    const { b, u } = divider(10_000, 10_000, 'hi');
-    const o = ok(solve(b));
-    const g = o.components[u]!.logic!;
-    expect(g).toMatchObject({ supplyV: 3, vih: 2, vil: 0.8 });
-    expect(g.gates[0]!.inputs[0]!.level).toBe('x');
-    expect(g.gates[0]!.inputs[0]!.volts!).toBeCloseTo(1.5, 9);
-    expect(g.gates[0]!.output.level).toBe('x');
-    // Its node is unknown: no number for it, never a guessed level.
-    expect(g.gates[0]!.output.volts).toBeNull();
-    expect(o.components[u]!.unknown).toBe(true);
+  it('logic_input_undefined: 1.5 V on 1A (between 0.8 V and 2.0 V) is refused by name, never a level', () => {
+    // The sheet gives no level and no supply current there (I_CC only with inputs at the rails).
+    for (const b1 of ['hi', 'lo'] as const) {
+      const { b } = divider(10_000, 10_000, b1);
+      expect(fails(solve(b)), b1).toMatchObject({
+        code: 'logic_input_undefined',
+        components: ['U1'],
+        param: 'a1',
+        detail: { part: 'SN74LVC08A', value: expect.closeTo(1.5, 9) },
+      });
+    }
   });
 
-  it('1.5 V on 1A with 1B LOW: the controlling LOW decides (static CMOS): output LOW, 1A still undefined', () => {
-    const { b, u } = divider(10_000, 10_000, 'lo');
-    const g = ok(solve(b)).components[u]!.logic!.gates[0]!;
-    expect(g.inputs.map((p) => p.level)).toEqual(['x', 'low']);
-    expect(g.output).toMatchObject({ level: 'low', volts: 0 });
-  });
-
-  it('the supply feeding an X output keeps a 50 mA margin per X output (the ±50 mA I_O maximum), else refused', () => {
-    // 1A undefined, 1B HIGH: one X output. PSU1 limit 0.1 A: margin ≥ 50 mA, solved; 0.05 A: not.
-    const wide = divider(10_000, 10_000, 'hi');
-    wide.b.psu(3.0, 0.1);
-    expect(ok(solve(wide.b)).components.U1!.logic!.gates[0]!.output.level).toBe('x');
-    const tight = divider(10_000, 10_000, 'hi');
-    tight.b.psu(3.0, 0.05);
-    expect(fails(solve(tight.b))).toMatchObject({
+  it('logic_unknown_state: a package input driven from an undetermined (X) single-gate output', () => {
+    // An L1 AND gate with A at 1.5 V and B HIGH has an X output; it drives the package's 1A.
+    const { b, u } = quad(3.0, ['b1', 'a2', 'b2', 'a3', 'b3', 'a4', 'b4'], []);
+    const g = b.add('logic.gate_and');
+    const top = b.add('component.resistor');
+    const bot = b.add('component.resistor');
+    b.ohms(top, 10_000).ohms(bot, 10_000);
+    b.wire('PSU1.positive', `${g}.vcc`)
+      .wire(`${g}.gnd`, 'GND1.ref')
+      .wire(`${g}.b`, 'PSU1.positive');
+    b.wire('PSU1.positive', `${top}.a`).wire(`${top}.b`, `${g}.a`).wire(`${g}.a`, `${bot}.a`);
+    b.wire(`${bot}.b`, 'GND1.ref').wire(`${g}.y`, `${u}.a1`);
+    expect(fails(solve(b))).toMatchObject({
       code: 'logic_unknown_state',
-      components: ['PSU1'],
+      components: [u],
+      param: 'a1',
     });
+  });
+
+  it('logic_input_out_of_range: an input above the recommended 5.5 V (from a 6 V supply)', () => {
+    const { b, u } = quad(3.0, ['a2', 'b2', 'a3', 'b3', 'a4', 'b4', 'b1'], []);
+    const p2 = b.add('instrument.lab_psu');
+    b.set(p2, 'setpointVoltage', { value: 6, unit: 'volt' })
+      .set(p2, 'currentLimit', { value: 0.1, unit: 'ampere' })
+      .set(p2, 'outputEnabled', true)
+      .wire(`${p2}.negative`, 'GND1.ref')
+      .wire(`${p2}.positive`, `${u}.a1`);
+    expect(fails(solve(b))).toMatchObject({
+      code: 'logic_input_out_of_range',
+      param: 'a1',
+      detail: { value: expect.closeTo(6, 9) },
+    });
+  });
+
+  it('logic_output_uncharacterized: a HIGH output forced above its own V_CC (wrong way)', () => {
+    const { b, u } = quad(3.0, ['a1', 'b1'], ['a2', 'b2', 'a3', 'b3', 'a4', 'b4']);
+    const p2 = b.add('instrument.lab_psu');
+    const r = b.add('component.resistor');
+    b.set(p2, 'setpointVoltage', { value: 3.6, unit: 'volt' })
+      .set(p2, 'currentLimit', { value: 0.1, unit: 'ampere' })
+      .set(p2, 'outputEnabled', true)
+      .wire(`${p2}.negative`, 'GND1.ref')
+      .ohms(r, 1000)
+      .wire(`${p2}.positive`, `${r}.a`)
+      .wire(`${r}.b`, `${u}.y1`);
+    expect(fails(solve(b))).toMatchObject({ code: 'logic_output_uncharacterized', param: 'y1' });
+  });
+
+  it('I_CC is reported only with every input at a rail; otherwise "not characterized" with ΔI_CC', () => {
+    const rails = quad(3.0, ['a1', 'b1'], ['a2', 'b2', 'a3', 'b3', 'a4', 'b4']);
+    expect(ok(solve(rails.b)).components.U1!.state).toMatchObject({ iccMaxA: 10e-6 });
+    // 1A at 3.0 · 20k/30k = 2.0 V: a defined HIGH, but not at a rail.
+    const mid = divider(10_000, 20_000, 'hi');
+    const st = ok(solve(mid.b)).components.U1!.state!;
+    expect(st).toMatchObject({ iccCondition: 'notRails', deltaIccA: 500e-6 });
+    expect(st.iccMaxA).toBeUndefined();
   });
 
   it('just inside the thresholds: 2.0 V is HIGH, 0.8 V is LOW (inclusive, as the sheet states)', () => {

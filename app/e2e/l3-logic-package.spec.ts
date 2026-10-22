@@ -2,9 +2,10 @@
  * Exploration Foundation L3 (packaged logic) and L2 (state inspection) in the browser.
  *
  * - local simulation: an SN74LVC08A at 3.0 V, gate 1 from two closed switches lighting an LED,
- *   gate 2 with 2A held in the undefined band by a divider; the Inspector's logic-state table
- *   shows each pin's level and measured voltage ("undefined" for 2A, never a guessed level) and
- *   marks the truth-table row gate 1 is in; in Hebrew the table follows RTL while pin names,
+ *   gate 2 LOW, and a single SN74LVC1G08 whose A is held in the undefined band by a divider; the
+ *   Inspector's logic-state table shows each pin's level and measured voltage ("undefined" for
+ *   the single gate's A, never a guessed level) and marks the truth-table rows the gates are in;
+ * - the package's own input in the undefined band refuses the Run by name; in Hebrew the table follows RTL while pin names,
  *   voltages and H/L stay LTR;
  * - an unused gate left open refuses the Run, naming the pin and the datasheet requirement;
  * - the `esp32-logic-quad-and` example through the real R2 client against the fake Session Host
@@ -31,8 +32,14 @@ test.beforeEach(async ({ page }) => {
   });
 });
 
-/** PSU1 3.0 V → U1 (SN74LVC08A); see the file comment. `openGate3`: leave 3A/3B unconnected. */
-function quadCircuit(id: string, openGate3 = false) {
+/**
+ * PSU1 3.0 V → U1 (SN74LVC08A). Gate 1 from two closed switches → LED; gate 2: 2A HIGH, 2B LOW;
+ * gates 3/4 to GND. A 10 kΩ / 10 kΩ divider (1.5 V: between V_IL 0.8 V and V_IH 2.0 V) drives
+ * input A of a single SN74LVC1G08 (B HIGH), or, with `undefinedA2`, the package's 2A instead.
+ * `openGate3` leaves 3A/3B unconnected.
+ */
+function quadCircuit(id: string, variant: 'ok' | 'openGate3' | 'undefinedA2' = 'ok') {
+  const openGate3 = variant === 'openGate3';
   let doc: ProjectDocument = createProject({
     projectId: id,
     deviceId: 'dev_l3',
@@ -84,16 +91,23 @@ function quadCircuit(id: string, openGate3 = false) {
     wire(`${u}.${pin}`, `${r}.a`);
     wire(`${r}.b`, 'GND1.ref');
   }
-  // Gate 2: 2A at 1.5 V (10 kΩ / 10 kΩ divider, between V_IL = 0.8 V and V_IH = 2.0 V); 2B HIGH.
+  // The 1.5 V divider: into the single gate's A (its B HIGH), or into the package's 2A.
+  const g = add('logic.gate_and', 0, 600);
+  wire('PSU1.positive', `${g}.vcc`);
+  wire(`${g}.gnd`, 'GND1.ref');
+  wire(`${g}.b`, 'PSU1.positive');
+  const target = variant === 'undefinedA2' ? `${u}.a2` : `${g}.a`;
   const top = add('component.resistor', 0, 300);
   const bottom = add('component.resistor', 160, 300);
   set(top, 'resistance', { value: 10_000, unit: 'ohm' });
   set(bottom, 'resistance', { value: 10_000, unit: 'ohm' });
   wire('PSU1.positive', `${top}.a`);
-  wire(`${top}.b`, `${u}.a2`);
-  wire(`${u}.a2`, `${bottom}.a`);
+  wire(`${top}.b`, target);
+  wire(target, `${bottom}.a`);
   wire(`${bottom}.b`, 'GND1.ref');
-  wire(`${u}.b2`, 'PSU1.positive');
+  if (variant === 'undefinedA2') wire(`${g}.a`, 'GND1.ref');
+  else wire(`${u}.a2`, 'PSU1.positive');
+  wire(`${u}.b2`, 'GND1.ref');
   // Gates 3 and 4: inputs to GND (unless the test leaves gate 3 open).
   for (const pin of [...(openGate3 ? [] : ['a3', 'b3']), 'a4', 'b4'])
     wire(`${u}.${pin}`, 'GND1.ref');
@@ -104,7 +118,7 @@ function quadCircuit(id: string, openGate3 = false) {
   wire(`${u}.y1`, `${r}.a`);
   wire(`${r}.b`, `${d}.anode`);
   wire(`${d}.cathode`, 'GND1.ref');
-  return { doc, u, led: d };
+  return { doc, u, led: d, gate: g };
 }
 
 const status = (page: Page) => page.getByTestId('sim-status');
@@ -134,18 +148,26 @@ test('L2 state inspection of a packaged gate IC: levels, measured voltages, unde
   await expect(page.getByTestId('logic-volts-a1')).toHaveText('3 V');
   await expect(page.getByTestId('logic-level-y1')).toHaveText('HIGH');
   await expect(page.getByTestId('logic-volts-y1')).toContainText('V');
-  // Gate 2: 2A at 1.5 V is undefined; its output is unknown and has no number.
-  await expect(page.getByTestId('logic-level-a2')).toHaveText('undefined (between V_IL and V_IH)');
-  await expect(page.getByTestId('logic-volts-a2')).toHaveText('1.5 V');
-  await expect(page.getByTestId('logic-level-y2')).toHaveText('unknown (X)');
-  await expect(page.getByTestId('logic-volts-y2')).toHaveText('—');
-  // Gates 3 and 4 LOW.
+  // Gate 2: 2A HIGH, 2B LOW → LOW. Gates 3 and 4 LOW.
+  await expect(page.getByTestId('logic-level-a2')).toHaveText('HIGH');
+  await expect(page.getByTestId('logic-level-b2')).toHaveText('LOW');
+  await expect(page.getByTestId('logic-level-y2')).toHaveText('LOW');
   await expect(page.getByTestId('logic-level-y4')).toHaveText('LOW');
-  // Truth table: gate 1 in HH, gates 3 and 4 in LL; gate 2 is in no row.
+  // Truth table: gate 1 in HH, gate 2 in HL, gates 3 and 4 in LL.
   await expect(page.getByTestId('logic-truth-gates-HH')).toHaveText('1');
+  await expect(page.getByTestId('logic-truth-gates-HL')).toHaveText('2');
   await expect(page.getByTestId('logic-truth-gates-LL')).toHaveText('3, 4');
   await expect(page.getByTestId('logic-truth-gates-LH')).toHaveText('');
   await expect(page.getByTestId('logic-truth-HH')).toHaveAttribute('aria-current', 'true');
+  // The single gate (L1): A at 1.5 V is undefined; its output is unknown and has no number;
+  // it is in no truth-table row.
+  await inspect(page, q.gate);
+  await expect(page.getByTestId('logic-level-a')).toHaveText('undefined (between V_IL and V_IH)');
+  await expect(page.getByTestId('logic-volts-a')).toHaveText('1.5 V');
+  await expect(page.getByTestId('logic-level-y')).toHaveText('unknown (X)');
+  await expect(page.getByTestId('logic-volts-y')).toHaveText('—');
+  for (const row of ['LL', 'LH', 'HL', 'HH'])
+    await expect(page.getByTestId(`logic-truth-gates-${row}`)).toHaveText('');
   // The LED really is lit by the solve.
   await inspect(page, q.led);
   await expect(page.getByTestId('result-current')).toContainText('mA');
@@ -155,9 +177,10 @@ test('L2 state inspection of a packaged gate IC: levels, measured voltages, unde
   await inspect(page, q.u);
   await expect(page.locator('html')).toHaveAttribute('dir', 'rtl');
   await expect(view).toContainText('מצב לוגי');
-  await expect(page.getByTestId('logic-level-a2')).toHaveText('לא מוגדר (בין V_IL ל-V_IH)');
   await expect(page.getByTestId('logic-level-a1')).toHaveText('HIGH');
-  await expect(page.getByTestId('logic-volts-a2')).toHaveAttribute('dir', 'ltr');
+  await expect(page.getByTestId('logic-volts-a1')).toHaveAttribute('dir', 'ltr');
+  await inspect(page, q.gate);
+  await expect(page.getByTestId('logic-level-a')).toHaveText('לא מוגדר (בין V_IL ל-V_IH)');
   await expect(page.getByTestId('logic-truth')).toHaveAttribute('dir', 'ltr');
   await page.getByTestId('language-select').selectOption('en');
   await page.getByTestId('sim-stop').click();
@@ -166,7 +189,7 @@ test('L2 state inspection of a packaged gate IC: levels, measured voltages, unde
 test('an unused gate left open refuses the Run, naming the pin and the datasheet rule (EN, HE)', async ({
   page,
 }) => {
-  const q = quadCircuit('prj_l3QuadFloat', true);
+  const q = quadCircuit('prj_l3QuadFloat', 'openGate3');
   await openImported(page, q.doc);
   await waitSaved(page);
   await page.getByTestId('sim-run').click();
@@ -176,6 +199,20 @@ test('an unused gate left open refuses the Run, naming the pin and the datasheet
   await page.getByTestId('language-select').selectOption('he');
   await expect(err).toContainText(/כניסה\W+3A/);
   await expect(err).toContainText('SN74LVC08A');
+  await page.getByTestId('language-select').selectOption('en');
+});
+
+test('a package input between V_IL and V_IH refuses the Run by name (no level, no supply current)', async ({
+  page,
+}) => {
+  const q = quadCircuit('prj_l3QuadUndef', 'undefinedA2');
+  await openImported(page, q.doc);
+  await waitSaved(page);
+  await page.getByTestId('sim-run').click();
+  const err = page.getByTestId('sim-error');
+  await expect(err).toContainText(/input\W+2A\W+is at\W+1\.5 V/);
+  await page.getByTestId('language-select').selectOption('he');
+  await expect(err).toContainText(/כניסה\W+2A/);
   await page.getByTestId('language-select').selectOption('en');
 });
 

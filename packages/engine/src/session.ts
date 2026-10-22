@@ -159,7 +159,10 @@ export type EngineErrorCode =
    *   input, a supply in current limit, a logic part's own supply).
    * L3 (packaged logic):
    * - `logic_unpowered_uncharacterized`: the device's V_CC is 0 V and its datasheet gives no
-   *   power-off (I_off) specification (SN74LVC08A): an unpowered device is not simulated.
+   *   power-off (I_off) specification (SN74LVC08A): an unpowered device is not simulated;
+   * - `logic_input_undefined`: an input between V_IL and V_IH of a device whose sheet gives no
+   *   supply current there (SN74LVC08A): neither level nor I_CC is characterized;
+   * - `logic_input_out_of_range`: an input outside the recommended V_I range.
    */
   | 'logic_input_floating'
   | 'logic_supply_missing'
@@ -168,6 +171,8 @@ export type EngineErrorCode =
   | 'logic_feedback_unsupported'
   | 'logic_unknown_state'
   | 'logic_unpowered_uncharacterized'
+  | 'logic_input_undefined'
+  | 'logic_input_out_of_range'
   | 'internal';
 
 export interface EngineError {

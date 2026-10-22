@@ -187,16 +187,20 @@ export const he: Record<MessageKey, string> = {
     '{components}: רמה לוגית לא מוגדרת מגיעה אל {pin}, שחייב להיות לו ערך מוגדר. בדקו את הכניסות הלוגיות המסומנות כלא ידועות (X).',
   'sim.error.logic_unpowered_uncharacterized':
     '{components}: ‏V_CC הוא 0 V (ללא הזנה). גיליון הנתונים של רכיב זה אינו נותן מפרט למצב ללא הזנה (אין I_off), ולכן רכיב ללא הזנה אינו מדומה. הפעילו את ההזנה שלו.',
+  'sim.error.logic_input_undefined':
+    '{components}: כניסה {pin} נמצאת ב-{voltage}, בין V_IL ל-V_IH במתח הזנה זה. גיליון הנתונים אינו נותן רמה לוגית ואינו נותן זרם הזנה לכניסה במצב זה, ולכן המעגל אינו מדומה. הביאו את הכניסה לרמה תקפה (V_IL ומטה, או V_IH ומעלה).',
+  'sim.error.logic_input_out_of_range':
+    '{components}: כניסה {pin} נמצאת ב-{voltage}, מחוץ לתחום הכניסה המומלץ 0–5.5 V, שבו גיליון הנתונים אינו מפרט את התנהגות הרכיב.',
   'sim.error.logic_input_floating.sn74lvc08a':
     '{components}: כניסה {pin} אינה מחוברת לשום דבר. גיליון הנתונים של SN74LVC08A דורש שכל כניסה שאינה בשימוש, כולל כניסות של שערים שאינם בשימוש, תוחזק ב-V_CC או ב-GND. חברו אותה לאות, ל-V_CC או ל-GND, או דרך נגד pull-up או pull-down.',
   'sim.error.logic_supply_uncharacterized.sn74lvc08a':
     '{components}: מתח ההזנה הוא {supply}, וגיליון הנתונים של SN74LVC08A אינו מאפיין אותו (‎1.65–1.95 V או 2.3–3.6 V). הסימולטור אינו ממציא ספים בין שורות גיליון הנתונים.',
   'sim.error.logic_output_uncharacterized.sn74lvc08a':
-    '{components}: במתח {supply} גיליון הנתונים של SN74LVC08A מבטיח את יציאה {pin} רק עד {limit}, והעומס הזה צורך {current}. עומסים אמיתיים מאופיינים רק ב-1.65 V, ‏2.3 V, ‏2.7 V או 3.0 V בדיוק.',
+    '{components}: במתח {supply} גיליון הנתונים של SN74LVC08A מבטיח את יציאה {pin} רק עד {limit}, היוצא מיציאה במצב HIGH או נכנס ליציאה במצב LOW; כאן עובר בה {current}, או שהיא נדחפת מעבר לפס ההזנה שלה. עומסים אמיתיים מאופיינים רק ב-1.65 V, ‏2.3 V, ‏2.7 V או 3.0 V בדיוק.',
   // L2: בדיקת מצב לוגי / טבלת אמת.
   'logic.inspect.title': 'מצב לוגי',
   'logic.inspect.thresholds':
-    '{part} ב-V_CC = {supply}: ‏HIGH מ-V_IH = {vih} ומעלה, ‏LOW עד V_IL = {vil} (גיליון הנתונים). ביניהם: לא מוגדר.',
+    '{part} ב-V_CC = {supply}: ‏HIGH מ-V_IH = {vih} ומעלה, ‏LOW עד V_IL = {vil} (גיליון הנתונים; היכן ששתי שורות נפגשות, המחמירה). ביניהם: לא מוגדר.',
   'logic.inspect.noRow': '{part}: אין בגיליון הנתונים ספי כניסה במתח הזנה זה.',
   'logic.inspect.gate': 'שער',
   'logic.inspect.pin': 'פין',
@@ -1258,6 +1262,13 @@ export const he: Record<MessageKey, string> = {
     'כניסה בין V_IL ל-V_IH אינה ידועה (X), וכך גם כל מה שהיא קובעת; כניסה צפה נדחית. זרם הזליגה בכניסה (±5 µA) אינו משמש כרמה.',
   'limitation.logic_breakout':
     'מארז ה-SOT-23-5 מוצג על כרטיס מתאם מייצג, כדי שיתאים למטריצה; פריסת הכרטיס להמחשה.',
+  'sim.part.state.iccCondition': 'זרם הזנה במנוחה',
+  'sim.part.state.iccCondition.notRails': 'לא מאופיין: כניסה אינה ב-V_CC או ב-GND (לא נכלל למעלה)',
+  'sim.part.state.deltaIccA': 'ΔI_CC מגיליון הנתונים לכל כניסה ב-V_CC − 0.6 V (מרבי)',
+  'limitation.logic_package_dc_no_delay':
+    'DC בלבד: השהיית ההתפשטות (בגיליון הנתונים 1–4.1 ns ב-3.3 V) אינה מדומה. מעגלים שתלויים בה נדחים: משוב בין שערים (נעילות, מתנדים), PWM לתוך שער, שעונים.',
+  'limitation.logic_package_input_band':
+    'כניסה בין V_IL ל-V_IH, או מחוץ ל-0–5.5 V, נדחית: גיליון הנתונים אינו נותן שם רמה ואינו נותן זרם הזנה. זרם ההזנה במנוחה (I_CC ≤ 10 µA) אינו חלק מהפתרון ומפורט רק כשכל הכניסות ב-V_CC או ב-GND.',
   'limitation.logic_package_supply_rows':
     'ספים ורמות יציאה רק היכן שגיליון הנתונים של SN74LVC08A מציג אותם (‎1.65–1.95 V, ‏2.3–3.6 V). עומסים אמיתיים רק ב-1.65, ‏2.3, ‏2.7 או 3.0 V בדיוק, היכן שנקודות הבדיקה של היציאה; בכל מתח אחר (כולל 3.3 V) עד 100 µA. החסם של מחלקת 3.3 V שמשמש לשערים הבודדים אינו מוחל: גיליון נתונים זה אינו מצהיר על הנעה ב-3.3 V.',
   'limitation.logic_package_unused_inputs':

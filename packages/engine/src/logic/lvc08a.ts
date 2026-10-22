@@ -51,7 +51,7 @@ export const LVC08A_CARD: LogicPackageCard = {
   partNumber: 'SN74LVC08A',
   function: 'and',
   source: SCAS283W,
-  // §4 Figure 4-1: D, DB, NS, PW (and J, W) share the 14-pin map. The breadboard part is the D
+  // §4 Table 4-1 column SOIC, SSOP, SOP, CDIP, TSSOP, VQFN, WQFN (D, DB, NS, J, PW, RGY, BQA) shares the 14-pin map. The breadboard part is the D
   // (SOIC-14) package on a breakout; the sheet has no through-hole (N, PDIP) package.
   pkg: 'SOIC-14 (D)',
   // Table 4-1, column "SOIC, SSOP, SOP, CDIP, TSSOP, VQFN, WQFN".

@@ -584,6 +584,7 @@ const STATE_UNITS: Record<string, UnitId> = {
   supplyV: 'volt',
   outputValidA: 'ampere',
   iccMaxA: 'ampere',
+  deltaIccA: 'ampere',
 };
 
 /**
