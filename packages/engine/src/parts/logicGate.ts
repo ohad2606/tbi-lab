@@ -20,8 +20,9 @@
  * - V_CC = 0 (unpowered): outputs off (the datasheet's I_off power-down specification);
  * - a supply the datasheet does not characterize (between input rows, below 1.65 V, above
  *   5.5 V, reversed) is refused (`logic_supply_uncharacterized`, EF-D3 A);
- * - at a supply without tabulated output points, only the ±100 µA ranged row is guaranteed: a
- *   larger output current is refused (`logic_output_uncharacterized`).
+ * - at a supply without tabulated output points: over the 3.3 V ± 0.3 V class the 3 V points as a
+ *   conservative bound (owner decision PM-1, logic/lvc1g.ts); elsewhere only the ±100 µA ranged
+ *   row is guaranteed. A larger output current is refused (`logic_output_uncharacterized`).
  *
  * Propagation delay is NOT simulated (DC sessions): circuits where it matters (feedback between
  * gates, PWM into a gate, clocks) are refused by the session and the host. The card carries t_pd
@@ -131,6 +132,7 @@ function nextGateState(ctx: PartContext, sol: PartSolution, state: PartState): P
     vcc,
     validA: stage.validA,
     tabulated: stage.tabulated,
+    model: stage.model,
   };
   for (const t of card.inputs) s[`in_${t}`] = levels[t]!;
   if (firstX) s.firstX = firstX;
@@ -197,6 +199,11 @@ export function gateModel(fn: LogicCard['function']): PartModel {
             detail: {
               ...(typeof state.value === 'number' ? { value: state.value } : {}),
               ...(typeof state.vcc === 'number' ? { vcc: state.vcc } : {}),
+              // The largest guaranteed output current at this supply (the limit exceeded).
+              ...(state.refuse === 'logic_output_uncharacterized' &&
+              typeof state.validA === 'number'
+                ? { limit: state.validA }
+                : {}),
             },
           }
         : null,
@@ -231,7 +238,7 @@ export function gateModel(fn: LogicCard['function']): PartModel {
           gateOutput: out,
           ...Object.fromEntries(Object.entries(inputs).map(([k, v]) => [`input_${k}`, v])),
           ...(typeof state.vcc === 'number' ? { supplyV: state.vcc } : {}),
-          outputModel: tabulated ? 'tabulated' : 'ranged',
+          outputModel: state.model === 'class' ? 'class' : tabulated ? 'tabulated' : 'ranged',
           outputValidA: validA,
           iccMaxA: card.iccMaxA,
           ...(typeof state.firstX === 'string' ? { firstUnknownInput: state.firstX } : {}),

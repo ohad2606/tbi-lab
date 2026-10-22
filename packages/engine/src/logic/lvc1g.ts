@@ -9,9 +9,19 @@
  * - EF-D4 A: GUARANTEED (worst-case) output characteristics, never typical values.
  *
  * The output test points (V_OH at −16/−24 mA, V_OL at 16/24 mA) are tabulated at V_CC = 3 V
- * exactly (and 1.65, 2.3, 4.5 V). At other supplies the only guaranteed output point is the ranged
- * ±100 µA row (V_OH ≥ V_CC − 0.1 V, V_OL ≤ 0.1 V over 1.65–5.5 V). Applying the 3 V points across
- * the 3.3 V ± 0.3 V class is an owner decision (Sprint 19B report); it is NOT done here.
+ * exactly (and 1.65, 2.3, 4.5 V). At other supplies the guaranteed output points are the ranged
+ * ±100 µA row (V_OH ≥ V_CC − 0.1 V, V_OL ≤ 0.1 V over 1.65–5.5 V) and, owner decision PM-1
+ * (2026-10-22: "only where the manufacturer's specifications or justified conservative bounds
+ * support it"), over the 3.3 V ± 0.3 V class the 3 V points as a CONSERVATIVE BOUND (`classVcc`).
+ * Proof, identical in each of the four sheets (SCES212AC, SCES214AF, SCES217AA, SCES219W):
+ *   - Features: "±24-mA output drive at 3.3 V" (the manufacturer's own drive claim at 3.3 V);
+ *   - the 3 V rows are that class's: V_IH/V_IL are specified for "V_CC = 3 V to 3.6 V" and Δt/Δv
+ *     for "V_CC = 3.3 V ± 0.3 V"; the output rows are stated at its lowest supply, 3 V;
+ *   - drive never decreases with supply (the rows' own trend: I_OH −4 / −8 / −24 / −32 mA at
+ *     1.65 / 2.3 / 3 / 4.5 V, with the same or higher V_OH at higher V_CC).
+ * The bound keeps the ABSOLUTE guaranteed V_OH minima (2.4 V at 16 mA, 2.3 V at 24 mA) and V_OL
+ * maxima (0.4 V, 0.55 V) for any V_CC in 3.0–3.6 V: never better than at 3 V (the most
+ * conservative reading; a real part at 3.3 V drives at least this well). Beyond 24 mA: refused.
  */
 
 /** A threshold as the datasheet states it: absolute volts, or a fraction of V_CC. */
@@ -35,6 +45,11 @@ export interface OutputPoint {
 export interface OutputRow {
   /** The supply the points are tabulated at (V). */
   vcc: number;
+  /**
+   * PM-1: the supply class over which these points hold as a conservative bound (absolute V_OH
+   * minima, V_OL maxima), when the sheet states the class (see the module comment).
+   */
+  classVcc?: readonly [number, number];
   high: readonly OutputPoint[];
   low: readonly OutputPoint[];
 }
@@ -97,6 +112,7 @@ const LVC1G_COMMON = {
     { vcc: 2.3, high: [{ amps: 8e-3, volts: 1.9 }], low: [{ amps: 8e-3, volts: 0.3 }] },
     {
       vcc: 3.0,
+      classVcc: [3.0, 3.6],
       high: [
         { amps: 16e-3, volts: 2.4 },
         { amps: 24e-3, volts: 2.3 },
@@ -223,10 +239,21 @@ export function outputStageAt(
   low: (readonly [number, number])[];
   validA: number;
   tabulated: boolean;
+  /** Which guarantee applies: the tabulated points, the class bound (PM-1), or the ranged row. */
+  model: 'tabulated' | 'class' | 'ranged';
 } {
   const r = card.rangedOutput;
   const ranged = [r.amps, r.drop, r.low] as const;
-  const row = card.outputRows.find((x) => Math.abs(x.vcc - vcc) <= TABULATED_VCC_TOLERANCE_V);
+  const exact = card.outputRows.find((x) => Math.abs(x.vcc - vcc) <= TABULATED_VCC_TOLERANCE_V);
+  const classRow = exact
+    ? undefined
+    : card.outputRows.find(
+        (x) =>
+          x.classVcc &&
+          vcc >= x.classVcc[0] - TABULATED_VCC_TOLERANCE_V &&
+          vcc <= x.classVcc[1] + TABULATED_VCC_TOLERANCE_V,
+      );
+  const row = exact ?? classRow;
   const sorted = (pts: (readonly [number, number])[]) => pts.sort((a, b) => a[1] - b[1]);
   if (!row)
     return {
@@ -234,15 +261,18 @@ export function outputStageAt(
       low: [[ranged[2], ranged[0]]],
       validA: r.amps,
       tabulated: false,
+      model: 'ranged',
     };
+  // HIGH as a drop from THIS supply to the guaranteed V_OH minimum (absolute volts: for the class
+  // bound, the 3 V minimum applies unchanged at every supply of the class).
   const high = sorted([
     [ranged[1], ranged[0]],
-    ...row.high.map((p) => [row.vcc - p.volts, p.amps] as const),
+    ...row.high.map((p) => [vcc - p.volts, p.amps] as const),
   ]);
   const low = sorted([[ranged[2], ranged[0]], ...row.low.map((p) => [p.volts, p.amps] as const)]);
   const validA = Math.min(
     Math.max(...row.high.map((p) => p.amps)),
     Math.max(...row.low.map((p) => p.amps)),
   );
-  return { high, low, validA, tabulated: true };
+  return { high, low, validA, tabulated: !!exact, model: exact ? 'tabulated' : 'class' };
 }

@@ -133,6 +133,8 @@ export const en = {
   'sim.part.state.outputModel': 'Output characteristic',
   'sim.part.state.outputModel.tabulated': 'guaranteed (datasheet test points at this supply)',
   'sim.part.state.outputModel.ranged': 'guaranteed only up to 100 µA at this supply',
+  'sim.part.state.outputModel.class':
+    'guaranteed lower bound: the 3 V datasheet points over the 3.3 V ± 0.3 V class (a real part drives at least this well)',
   'sim.part.state.outputValidA': 'Characterized up to',
   'sim.part.state.iccMaxA': 'Quiescent supply current (datasheet max, not included above)',
   'sim.part.state.firstUnknownInput': 'First unknown input',
@@ -150,7 +152,7 @@ export const en = {
   'sim.error.logic_supply_uncharacterized':
     '{components}: the supply is {supply}, which the datasheet does not characterize (1.65–1.95 V, 2.3–2.7 V, 3.0–3.6 V or 4.5–5.5 V). The simulator does not invent thresholds between datasheet rows.',
   'sim.error.logic_output_uncharacterized':
-    '{components}: at {supply} the datasheet guarantees the output only up to 100 µA, and this load draws {current}. Power the gate at 3.0 V or 4.5 V, where its output is characterized for real loads, or use a lighter load.',
+    '{components}: at {supply} the datasheet guarantees the output only up to {limit}, and this load draws {current}. Use a lighter load, or a supply where the output is characterized for real loads (3.0–3.6 V or 4.5 V).',
   'sim.error.logic_feedback_unsupported':
     '{components}: a logic output feeds back into its own network (a latch or an oscillator). Its behaviour depends on propagation delay, which this version does not simulate.',
   'sim.error.logic_unknown_state':
