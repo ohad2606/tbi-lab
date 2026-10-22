@@ -120,7 +120,7 @@ describe('X1: ESP32 + AND gate + read-back (golden)', () => {
     });
   });
 
-  it('the gate at 3.3 V instead: the LED load is beyond the guaranteed ±100 µA row -> refused by name', () => {
+  it('PM-1: the gate at 3.3 V instead runs on the 3.3 V-class bound; Y lies exactly on the guaranteed segment', () => {
     const d = structuredClone(X1);
     const psu = d.components.find((c) => c.id === 'PSU1')!;
     psu.params.setpointVoltage = { value: 3.3, unit: 'volt' };
@@ -128,6 +128,14 @@ describe('X1: ESP32 + AND gate + read-back (golden)', () => {
     s.setPinMode(18, 'output-high');
     s.setMomentary('SW1', true);
     const o = s.solve();
-    expect(o.ok ? null : o.error.code).toBe('logic_output_uncharacterized');
+    if (!o.ok) throw new Error(o.error.code);
+    const gate = Object.values(o.components).find((c) => c.type === 'logic.gate_and')!;
+    expect(gate.state).toMatchObject({ gateOutput: 'high', outputModel: 'class' });
+    const i = gate.currents!.y!;
+    expect(i).toBeGreaterThan(100e-6);
+    expect(i).toBeLessThan(16e-3);
+    // The (100 uA, 16 mA) segment of the bound at 3.3 V: drop 0.1 V -> 0.9 V (V_OH >= 2.4 V).
+    const drop = 0.1 + ((i - 100e-6) * (0.9 - 0.1)) / (16e-3 - 100e-6);
+    expect(gate.terminals.y!).toBeCloseTo(3.3 - drop, 9);
   });
 });

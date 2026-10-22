@@ -134,6 +134,8 @@ export const he: Record<MessageKey, string> = {
   'sim.part.state.outputModel': 'אופיין היציאה',
   'sim.part.state.outputModel.tabulated': 'מובטח (נקודות הבדיקה של גיליון הנתונים במתח זה)',
   'sim.part.state.outputModel.ranged': 'מובטח רק עד 100 µA במתח זה',
+  'sim.part.state.outputModel.class':
+    'חסם תחתון מובטח: נקודות גיליון הנתונים של 3 V על פני תחום 3.3 V ± 0.3 V (רכיב אמיתי מספק לפחות זאת)',
   'sim.part.state.outputValidA': 'מאופיין עד',
   'sim.part.state.iccMaxA': 'זרם הזנה במנוחה (מקסימום בגיליון הנתונים, לא כלול למעלה)',
   'sim.part.state.firstUnknownInput': 'הכניסה הלא ידועה הראשונה',
@@ -151,7 +153,7 @@ export const he: Record<MessageKey, string> = {
   'sim.error.logic_supply_uncharacterized':
     '{components}: מתח ההזנה הוא {supply}, וגיליון הנתונים אינו מאפיין אותו (‎1.65–1.95 V, ‏2.3–2.7 V, ‏3.0–3.6 V או 4.5–5.5 V). הסימולטור אינו ממציא ספים בין שורות גיליון הנתונים.',
   'sim.error.logic_output_uncharacterized':
-    '{components}: במתח {supply} גיליון הנתונים מבטיח את היציאה רק עד 100 µA, והעומס הזה צורך {current}. הזינו את השער ב-3.0 V או ב-4.5 V, שבהם היציאה מאופיינת לעומסים אמיתיים, או השתמשו בעומס קל יותר.',
+    '{components}: במתח {supply} גיליון הנתונים מבטיח את היציאה רק עד {limit}, והעומס הזה צורך {current}. השתמשו בעומס קל יותר, או במתח שבו היציאה מאופיינת לעומסים אמיתיים (3.0–3.6 V או 4.5 V).',
   'sim.error.logic_feedback_unsupported':
     '{components}: יציאה לוגית מוזנת חזרה לרשת שלה (נעילה או מתנד). התנהגותה תלויה בהשהיית ההתפשטות, שגרסה זו אינה מדמה.',
   'sim.error.logic_unknown_state':
