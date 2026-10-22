@@ -268,6 +268,13 @@ export interface SolveFailure extends OutcomeBase {
 
 export type SolveOutcome = SolveSuccess | SolveFailure;
 
+/** Sprint 19B: an exact snapshot of a session's evolving state (EngineSession.checkpoint). */
+export interface SessionCheckpoint {
+  readonly time: number;
+  readonly history: ReadonlyMap<string, PartState>;
+  readonly discrete: ReadonlyMap<string, PartState>;
+}
+
 type Params = Record<string, unknown>;
 
 const quantity = (params: Params, key: string): number | undefined => {
@@ -458,9 +465,11 @@ export class EngineSession {
    * Euler integrates without ringing). The outcome is the state at the new time; on failure the
    * time and history do not advance.
    */
-  advance(dt: number): SolveOutcome {
+  advance(dt: number, method: TimeStep['method'] = 'backward-euler'): SolveOutcome {
     if (!(dt > 0) || !Number.isFinite(dt)) throw new Error('advance: dt must be > 0');
-    this.step = { dt, method: 'backward-euler' };
+    // Sprint 19B: `method` for the time-kernel prototype (trapezoidal between discontinuities);
+    // every product path keeps the Sprint 10 backward-Euler default.
+    this.step = { dt, method };
     try {
       const outcome = this.solve();
       if (outcome.ok) {
@@ -472,6 +481,23 @@ export class EngineSession {
     } finally {
       this.step = undefined;
     }
+  }
+
+  /**
+   * Sprint 19B (time-kernel prototype, kernel/transient.ts): the session's evolving state (time,
+   * integration history, settled discrete states), so a trial step can be undone exactly.
+   */
+  checkpoint(): SessionCheckpoint {
+    return { time: this.time, history: new Map(this.history), discrete: new Map(this.discrete) };
+  }
+
+  /** Return to a checkpoint taken from this session (exactly: the same Maps' contents). */
+  restore(cp: SessionCheckpoint): void {
+    this.time = cp.time;
+    this.history.clear();
+    for (const [k, v] of cp.history) this.history.set(k, v);
+    this.discrete.clear();
+    for (const [k, v] of cp.discrete) this.discrete.set(k, v);
   }
 
   /**
