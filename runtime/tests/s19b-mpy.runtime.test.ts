@@ -187,8 +187,12 @@ describe.skipIf(!RT || !V4)(
         });
         const since = BigInt((st.detail as { since: string }).since);
         evidence[facility] = { since: since.toString(), serial: serialText(s).slice(-200) };
-        // Refused before any dead or crashed behaviour reached the user: no guest panic, no result.
-        expect(serialText(s)).not.toMatch(/Guru Meditation|IRQ-COUNT|ADC-VAL|F1/);
+        // Refused before any dead or crashed behaviour reached the user: no guest panic, no
+        // result of the unmodelled facility (no ADC value, no interrupt count). A lowered clock is
+        // reported once it has held for two command ticks (~2 ms), long before the emulator's
+        // stall (F-17C-1, ~1.2 s after the change): the program's next line may already print.
+        expect(serialText(s)).not.toMatch(/Guru Meditation|IRQ-COUNT|ADC-VAL/);
+        if (facility === 'cpu_frequency') expect(serialText(s)).toContain('F0 160000000');
       });
   },
 );
