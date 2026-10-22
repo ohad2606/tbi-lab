@@ -69,15 +69,21 @@ int main(int argc, char **argv)
         fprintf(stderr, "usage: %s out block-size block-count name=file...\n", argv[0]);
         return 2;
     }
+    /* Ranges checked on the full unsigned long, before narrowing (no truncation: "4294967424" is
+     * refused, not read as 128); the block size is a power of two, as the flash erase unit is. */
     char *end;
-    block_size = (lfs2_size_t)strtoul(argv[2], &end, 0);
-    if (*end || block_size < 128 || block_size > 65536) {
+    errno = 0;
+    unsigned long bs = strtoul(argv[2], &end, 10);
+    if (errno || end == argv[2] || *end || bs < 128 || bs > 65536 || (bs & (bs - 1))) {
         return fail("bad block size", argv[2]);
     }
-    lfs2_size_t count = (lfs2_size_t)strtoul(argv[3], &end, 0);
-    if (*end || count < 2 || count > 4096) {
+    block_size = (lfs2_size_t)bs;
+    errno = 0;
+    unsigned long bc = strtoul(argv[3], &end, 10);
+    if (errno || end == argv[3] || *end || bc < 2 || bc > 4096) {
         return fail("bad block count", argv[3]);
     }
+    lfs2_size_t count = (lfs2_size_t)bc;
     disk = malloc((size_t)block_size * count);
     if (!disk) {
         return fail("out of memory", NULL);

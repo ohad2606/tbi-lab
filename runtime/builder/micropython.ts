@@ -8,8 +8,10 @@
  * same build sandbox as the Arduino tools. The image is then the pinned interpreter image with that
  * partition spliced in: a pure function of the program text (byte-reproducible).
  *
- * Python has no link-time symbol analysis: facilities the emulator does not model are refused at
- * RUN time by Runtime v4 (`U` frames). Every MicroPython artifact therefore REQUIRES the runtime
+ * Python has no link-time symbol analysis. Facilities the emulator does not model are refused at
+ * BUILD time by a fail-closed source analysis (pyFeatures.ts: an import allowlist, `machine` names,
+ * pulls, drive strength, the CPU clock) and, for ADC, Pin.irq and a lowered clock, at RUN time by
+ * Runtime v4 (`U` frames), at the access. Every MicroPython artifact therefore REQUIRES the runtime
  * capability `unmodelled`: on a runtime without it (v3 and older) it never starts (ADR-011 §1).
  * Syntax and run-time errors appear as the interpreter's own traceback on the serial output, as on
  * a real board.
@@ -22,6 +24,7 @@ import { join } from 'node:path';
 import { canonicalJson, type BuildProfile } from '@tbi-lab/domain';
 import type { BuildProvider, JobContext, ProviderOutput } from './provider.js';
 import { LocalToolRunner, type ToolRunner } from './runner.js';
+import { analyzeMicroPython, PY_FEATURES_ANALYZER } from './pyFeatures.js';
 
 export interface MicroPythonProfileRecord {
   id: string;
@@ -55,7 +58,10 @@ export class MicroPythonProvider implements BuildProvider {
 
   constructor(private readonly opts: MicroPythonProviderOptions) {
     this.profile = opts.profile;
-    this.profileHash = createHash('sha256').update(canonicalJson(opts.record)).digest('hex');
+    // The analysis version is part of the cache key: a rule change rebuilds (and re-analyses).
+    this.profileHash = createHash('sha256')
+      .update(canonicalJson({ record: opts.record, analyzer: PY_FEATURES_ANALYZER }))
+      .digest('hex');
     this.runner = opts.runner ?? new LocalToolRunner(opts.home);
     this.viewHome = opts.viewHome ?? opts.home;
   }
@@ -132,13 +138,7 @@ export class MicroPythonProvider implements BuildProvider {
     return {
       ok: true,
       imagePath: join(job.dir, 'image.bin'),
-      features: {
-        internalPull: [],
-        gpioInterrupt: [],
-        restart: false,
-        unsupported: [],
-        requires: [...MICROPYTHON_REQUIRES],
-      },
+      features: { ...analyzeMicroPython(source), requires: [...MICROPYTHON_REQUIRES] },
       diagnostics: [],
       log: { text: '', truncated: false },
     };

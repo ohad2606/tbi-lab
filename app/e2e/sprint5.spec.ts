@@ -470,6 +470,8 @@ test('A13/A15: new Sprint 5 surfaces are Hebrew (technical tokens only), RTL chr
     /^(HC|SR04|DHT22|AM2302|LCD|I2C|PCF8574|HD44780|Wire)$/,
     // Sprint 15 (R4): PWM/LEDC, the SG90 part number, Arduino PWM API names and frequency/time units.
     /^(PWM|LEDC|SG90|TowerPro|analogWrite|ledcWrite|ledcDetach|digitalWrite|Hz|kHz|ms|us)$/,
+    // Sprint 19B: gate functions and pin names (datasheet tokens), part numbers, packages, MicroPython, resistor series, the watt.
+    /^(AND|NAND|OR|NOT|SN74LVC1G\d\d|TI|SOT|Y|MicroPython|KOA|CF1|CFS1|W)$/,
     /^TBI$/,
     /^Lab$/,
     /^English$/,

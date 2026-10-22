@@ -109,7 +109,7 @@ async function inspect(page: Page, id: string) {
 }
 
 test('AND gate at 3.0 V: both inputs HIGH light the LED; one LOW does not', async ({ page }) => {
-  const on = andCircuit('prj_s19b_and_on', 'closed', 'closed');
+  const on = andCircuit('prj_s19bAndOn', 'closed', 'closed');
   await openImported(page, on.doc);
   await waitSaved(page);
   await run(page);
@@ -120,7 +120,7 @@ test('AND gate at 3.0 V: both inputs HIGH light the LED; one LOW does not', asyn
   await expect(page.getByTestId('result-current')).toContainText('mA');
   await page.getByTestId('sim-stop').click();
 
-  const off = andCircuit('prj_s19b_and_off', 'closed', 'open');
+  const off = andCircuit('prj_s19bAndOff', 'closed', 'open');
   await openImported(page, off.doc);
   await waitSaved(page);
   await run(page);
@@ -131,7 +131,7 @@ test('AND gate at 3.0 V: both inputs HIGH light the LED; one LOW does not', asyn
 test('an input in the undefined band is unknown (X); what it decides is unknown, never a number', async ({
   page,
 }) => {
-  const x = andCircuit('prj_s19b_and_x', 'divider', 'closed');
+  const x = andCircuit('prj_s19bAndX', 'divider', 'closed');
   await openImported(page, x.doc);
   await waitSaved(page);
   await run(page);
@@ -146,7 +146,7 @@ test('an input in the undefined band is unknown (X); what it decides is unknown,
 test('a floating input refuses the Run, naming the pin, in English and Hebrew', async ({
   page,
 }) => {
-  const f = andCircuit('prj_s19b_and_float', 'floating', 'closed');
+  const f = andCircuit('prj_s19bAndFloat', 'floating', 'closed');
   await openImported(page, f.doc);
   await waitSaved(page);
   await page.getByTestId('sim-run').click();
@@ -161,11 +161,12 @@ test('a floating input refuses the Run, naming the pin, in English and Hebrew', 
 test('the gate in the schematic (supply pins named) and in 3D (SOT-23-5 on a breakout)', async ({
   page,
 }) => {
-  const on = andCircuit('prj_s19b_and_views', 'closed', 'closed');
+  const on = andCircuit('prj_s19bAndViews', 'closed', 'closed');
   await openImported(page, on.doc);
   await waitSaved(page);
   await page.getByTestId('view-schematic').click();
-  const sch = page.getByTestId('schematic');
+  const sch = page.getByTestId('schematic-view');
+  await expect(page.locator(`[data-part="${on.gate}"] [data-glyph="logic.and"]`)).toBeVisible();
   await expect(sch).toContainText('SN74LVC1G08');
   for (const pin of ['VCC', 'GND', 'Y']) await expect(sch).toContainText(pin);
   await page.getByTestId('view-3d').click();

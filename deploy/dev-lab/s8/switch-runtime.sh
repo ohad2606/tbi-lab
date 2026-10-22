@@ -56,12 +56,16 @@ echo "$old" | sudo tee "$backup/previous-runtime" >/dev/null
 # Re-render exactly as install.sh does, changing only the runtime bind.
 sed -e "s|@N@|$N|g" -e "s|@U@|$U|g" -e "s|@RUNTIME@|$prefix|g" "$here/tbi-qemu@.service.in" |
   sudo tee "$unit.tmp" >/dev/null
+if grep -q '@[A-Z_]*@' "$unit.tmp"; then
+  sudo rm -f "$unit.tmp"
+  echo "refused: unrendered placeholder in the new $unit (nothing changed)" >&2
+  exit 1
+fi
 sudo mv -f "$unit.tmp" "$unit"
 sudo install -m 0400 "$prefix/runtime.json" "/etc/$N/runtime.json"
 sudo systemctl daemon-reload
 sudo systemctl restart "$N-build.service"
 
-grep -q '@[A-Z_]*@' "$unit" && { echo "FAILED: unrendered placeholder in $unit" >&2; exit 1; }
 # Verify: the unit binds the new runtime, and the build service is back.
 bound="$(systemctl show -p BindReadOnlyPaths --value "$N-qemu@check.service" | tr ' ' '\n' |
   sed -n 's|^\(.*\):/opt/tbi-runtime.*|\1|p')"

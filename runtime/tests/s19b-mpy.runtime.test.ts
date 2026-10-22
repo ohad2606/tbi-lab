@@ -8,11 +8,15 @@
  * - GPIO and high-speed PWM: the LED on GPIO18 averages EXACTLY duty × its high-point current at
  *   each duty the program sets (8192 / 16384 / 32768 / 49152 of 65536);
  * - run-time refusals (Runtime v4 `U` frames), each at the access, named, before dead or crashed
- *   behaviour: ADC (`adc`), Pin.irq (`interrupt`), machine.freq lowered (`cpu_frequency`);
+ *   behaviour: ADC (`adc`), Pin.irq (`interrupt`), a lowered CPU clock (`cpu_frequency`; the
+ *   program reaches machine.freq through a name built at run time, which the Build analysis cannot
+ *   see: the run-time backstop);
+ * - Build refusals (pyFeatures.ts): a plain machine.freq(...) and an internal pull never start;
  * - no false refusal: the PWM program boots and runs to the end without any `U`;
  * - determinism: the same program, run twice, gives the same serial transcript and the same
  *   electrical sequence;
- * - the build is byte-reproducible and every artifact requires `unmodelled`.
+ * - the build is byte-reproducible (a second, independent build in a fresh store gives the same
+ *   bytes) and every artifact requires `unmodelled`.
  */
 import { createHash } from 'node:crypto';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
@@ -46,8 +50,9 @@ afterAll(async () => {
 
 const A = principalFor();
 let svc: BuildService | null = null;
-const service = () =>
-  (svc ??= new BuildService(
+const service = () => (svc ??= newService(store, work));
+const newService = (storeDir: string, workDir: string) =>
+  new BuildService(
     [
       new MicroPythonProvider({
         profile: ESP32_MICROPYTHON_PROFILE,
@@ -55,8 +60,8 @@ const service = () =>
         home: join(RT, 'micropython'),
       }),
     ],
-    new ArtifactStore({ dir: store, capBytes: 256 * 1024 * 1024, graceMs: 0 }),
-    work,
+    new ArtifactStore({ dir: storeDir, capBytes: 256 * 1024 * 1024, graceMs: 0 }),
+    workDir,
     DEFAULT_LIMITS,
     {
       grants: new Grants(':memory:'),
@@ -64,10 +69,9 @@ const service = () =>
       systemKeys: new Set(),
       ...openAccessPolicy(),
     },
-  ));
+  );
 
-async function build(text: string) {
-  const s = service();
+async function build(text: string, s = service()) {
   const out = s.submit(
     {
       protocol: 'tbi-lab.build/1',
@@ -112,8 +116,10 @@ const terminal = (s: HostSession, ms = 240_000) =>
 const PWM = readFileSync(new URL('./fixtures/mpy/p1_blink_pwm.py', import.meta.url), 'utf8');
 const ADC = readFileSync(new URL('./fixtures/mpy/p2_adc.py', import.meta.url), 'utf8');
 const IRQ = readFileSync(new URL('./fixtures/mpy/p3_irq.py', import.meta.url), 'utf8');
+// The run-time backstop: machine.freq reached through a name built at run time, which the Build
+// analysis cannot see (a plain machine.freq(80000000) is refused at Build, tested below).
 const FREQ =
-  "import machine, time\nprint('F0', machine.freq())\nmachine.freq(80000000)\nprint('F1')\nwhile True:\n    time.sleep_ms(100)\n";
+  "import machine, time\nprint('F0', machine.freq())\ngetattr(machine, 'fr' + 'eq')(80000000)\nprint('F1')\nwhile True:\n    time.sleep_ms(100)\n";
 
 describe.skipIf(!RT || !V4)(
   'MicroPython on the real stack (genuine interpreter, Runtime v4)',
@@ -124,9 +130,19 @@ describe.skipIf(!RT || !V4)(
     it('the build is byte-reproducible and requires the unmodelled capability', async () => {
       const a = await build(PWM);
       expect(a.features?.requires).toEqual(['unmodelled']);
-      // Same text again: the same artifact (the build cache would answer: check the bytes directly).
-      const img = readFileSync(join(store, `${a.artifact!.sha256}.bin`));
-      expect(createHash('sha256').update(img).digest('hex')).toBe(a.artifact!.sha256);
+      // A second, independent build (fresh store and work directory: no cache can answer): the
+      // same bytes.
+      const store2 = mkdtempSync(join('/var/tmp', 's19b-mpy-store2-'));
+      const work2 = mkdtempSync(join('/var/tmp', 's19b-mpy-work2-'));
+      try {
+        const b = await build(PWM, newService(store2, work2));
+        expect(b.artifact!.sha256).toBe(a.artifact!.sha256);
+        const img = readFileSync(join(store2, `${b.artifact!.sha256}.bin`));
+        expect(createHash('sha256').update(img).digest('hex')).toBe(a.artifact!.sha256);
+        expect(Buffer.compare(img, readFileSync(join(store, `${a.artifact!.sha256}.bin`)))).toBe(0);
+      } finally {
+        for (const d of [store2, work2]) rmSync(d, { recursive: true, force: true });
+      }
       // The Sprint 18 probe image of the same program (independently built): identical.
       expect(a.artifact!.sha256.slice(0, 8)).toBe('c79cf6e4');
       evidence.pwmImage = a.artifact!.sha256;
@@ -192,7 +208,37 @@ describe.skipIf(!RT || !V4)(
         // reported once it has held for two command ticks (~2 ms), long before the emulator's
         // stall (F-17C-1, ~1.2 s after the change): the program's next line may already print.
         expect(serialText(s)).not.toMatch(/Guru Meditation|IRQ-COUNT|ADC-VAL/);
+        // Pin.irq is refused at the INT_ENA write itself: the line right after it never prints.
+        if (facility === 'interrupt') expect(serialText(s)).not.toContain('IRQ-ARMED');
         if (facility === 'cpu_frequency') expect(serialText(s)).toContain('F0 160000000');
+      });
+
+    for (const [name, program, refused] of [
+      [
+        'a CPU clock change (machine.freq(240 MHz), a raise Runtime v4 cannot detect)',
+        'import machine\nmachine.freq(240000000)\n',
+        { unsupported: ['cpu_frequency'] },
+      ],
+      [
+        'an internal pull (Pin.PULL_UP)',
+        'from machine import Pin\nb = Pin(4, Pin.IN, Pin.PULL_UP)\n',
+        { internalPull: expect.arrayContaining([4]) },
+      ],
+    ] as const)
+      it(`${name} is refused at Build: the session never starts`, async () => {
+        const r = await build(program);
+        const lease = service().lease(A, r.artifact!.sha256, 600_000)!;
+        const s = open(host, {
+          ...fixture().request,
+          protocol: PROTOCOL,
+          artifact: { sha256: r.artifact!.sha256 },
+          ticket: lease.ticket,
+        });
+        expect(s.status()).toMatchObject({
+          state: 'failed',
+          reason: 'unsupported_feature',
+          detail: refused,
+        });
       });
   },
 );

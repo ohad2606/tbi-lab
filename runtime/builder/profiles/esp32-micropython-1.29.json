@@ -9,7 +9,7 @@
   "image": { "bytes": 4194304 },
   "files": {
     "arm64": {
-      "bin/tbi-mklfs": "754db23501450f8a6c0d7537086dbcc8e39cccb5ca15f69088317ff662cbb2d3",
+      "bin/tbi-mklfs": "818182342613b74a574551290fdc9018f2f1d2a1212122d0716edaff8ec8b7bb",
       "firmware/esp32-generic-1.29.0-4mb.bin": "23b8b47fdab856b33c44eb5911852e86c96dfeac2f1d2033dba8ddb6c681b0a1"
     }
   }

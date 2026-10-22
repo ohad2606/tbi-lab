@@ -34,6 +34,7 @@ async function untranslatedWords(page: Page): Promise<string[]> {
     /^N4148$/, // the 1N4148 diode model (tokenized after its leading digit)
     /^(LCD|I2C|SR04|DHT22|AM2302|PCF8574|Wire|Pull|up)$/, // Sprint 12: part numbers, I2C/LCD, the Wire library, Pull-up (glossary rule)
     /^(PWM|LEDC|SG90|TowerPro|analogWrite|ledcWrite|ledcDetach|digitalWrite|Hz|kHz|ms|us)$/, // Sprint 15 (R4): PWM/LEDC, the SG90, Arduino PWM API names, frequency/time units
+    /^(AND|NAND|OR|NOT|SN74LVC1G\d\d|TI|SOT|Y|MicroPython|KOA|CF1|CFS1|W)$/, // Sprint 19B: gate functions and pin names (datasheet tokens), part numbers, packages, MicroPython, resistor series, the watt
     /^I$/, // the current symbol in formulas such as I = V / R (example summaries)
     /^N_\d+$/, // net ids
     /^(k|m|M|G|µ|u|n|p)?(Ω|V|A)$/,

@@ -40,7 +40,11 @@ import { SandboxToolRunner } from './runner.js';
 import { systemBuildRequests, systemSourceKeys } from './system-sources.js';
 import { pruneCoreSeeds } from './coreSeed.js';
 import { ArduinoEsp32Provider, type ArduinoProfileRecord } from './arduino.js';
-import { MicroPythonProvider, type MicroPythonProfileRecord } from './micropython.js';
+import {
+  MICROPYTHON_REQUIRES,
+  MicroPythonProvider,
+  type MicroPythonProfileRecord,
+} from './micropython.js';
 import micropythonRecord from './profiles/esp32-micropython-1.29.json' with { type: 'json' };
 import { createBuildHttpServer } from './http.js';
 import { BuildService, DEFAULT_LIMITS } from './service.js';
@@ -109,19 +113,35 @@ const provider = new ArduinoEsp32Provider({
   ...(coreSeeds ? { coreSeeds } : {}),
 });
 // Sprint 19B (MicroPython M1): the genuine interpreter's profile, offered only where its build
-// home is provisioned and matches its pins (provision.sh micropython-tools); otherwise absent.
+// home is provisioned and matches its pins (provision.sh micropython-tools) AND the runtime this
+// service issues tickets for announces `unmodelled` (Runtime v4): on an older runtime every
+// MicroPython session would be refused at hello. Absent otherwise, with the reason logged; a
+// MicroPython problem never stops the Arduino profile (independent review, findings 3 and 4).
 const micropythonHome = process.env.TBI_MICROPYTHON_HOME ?? join(RUNTIME_HOME, 'micropython');
-const micropython = existsSync(join(micropythonHome, 'micropython.json'))
-  ? new MicroPythonProvider({
-      profile: ESP32_MICROPYTHON_PROFILE,
-      record: micropythonRecord as MicroPythonProfileRecord,
-      home: micropythonHome,
-      ...(jobUnit
-        ? { runner: new SandboxToolRunner({ unit: jobUnit }), viewHome: '/opt/tbi-micropython' }
-        : {}),
-    })
-  : null;
-if (micropython) await micropython.verifyToolchain();
+async function micropythonProvider(): Promise<MicroPythonProvider | null> {
+  if (!existsSync(join(micropythonHome, 'micropython.json'))) return null;
+  const missing = MICROPYTHON_REQUIRES.filter((c) => !runtimeCapabilities.includes(c));
+  if (missing.length) {
+    console.error(`MicroPython profile not offered: the runtime lacks ${missing.join(', ')}`);
+    return null;
+  }
+  const p = new MicroPythonProvider({
+    profile: ESP32_MICROPYTHON_PROFILE,
+    record: micropythonRecord as MicroPythonProfileRecord,
+    home: micropythonHome,
+    ...(jobUnit
+      ? { runner: new SandboxToolRunner({ unit: jobUnit }), viewHome: '/opt/tbi-micropython' }
+      : {}),
+  });
+  try {
+    await p.verifyToolchain();
+    return p;
+  } catch (e) {
+    console.error(`MicroPython profile not offered: ${(e as Error).message}`);
+    return null;
+  }
+}
+const micropython = await micropythonProvider();
 // Jobs of a previous process never outlive it (they would write into swept directories).
 if (jobUnit) new SandboxToolRunner({ unit: jobUnit }).stopAll();
 await provider.verifyToolchain();

@@ -11,7 +11,11 @@
 # Needs sudo. Idempotent. Sprint 19B (O2): each instance runs as its OWN system users and groups
 # (dev-lab: tbi-build, tbi-buildjob, tbi-runtime, tbi-qemu, groups tbi-buildio, tbi-runtimeio,
 # tbi-artifacts, exactly as before; staging: tbi-s8-build, ...), so neither instance's services can
-# act on the other's units or files. Only the gate group (tbi-gate) is shared. Users are never removed.
+# start or stop the other's units (polkit) or read the other's store, state or keys. NOT separated:
+# the gate group tbi-gate is shared, so a service of either instance can connect to the other
+# instance's API sockets (/run/<N>-*/api.sock, group tbi-gate), where the other's own access
+# checks (identity and ticket keys) apply. A per-instance gate group would close that and needs a
+# Caddy/oauth2-proxy change (future). Users are never removed.
 set -euo pipefail
 
 target="${1:?usage: install.sh staging|dev-lab [--uninstall]}"
@@ -165,17 +169,25 @@ if [[ "$target" == staging ]]; then
     "$repo/runtime/host/dist/session-host.mjs" "$BUNDLES/"
 fi
 
-render() {
+# Render a template and install it; a template with an unrendered placeholder is refused BEFORE
+# its target is touched (no truncated unit).
+render() { # $1 template, $2 target
+  local out
+  out="$(render_raw "$1")"
+  if grep -q '@[A-Z_]*@' <<<"$out"; then echo "refused: unrendered placeholder in $1" >&2; exit 1; fi
+  printf '%s\n' "$out" | sudo tee "$2" >/dev/null
+}
+render_raw() {
   sed -e "s|@N@|$N|g" -e "s|@NRE@|${N//-/\\\\-}|g" -e "s|@STORE@|$STORE|g" -e "s|@BUNDLES@|$BUNDLES|g" \
     -e "s|@ARDUINO@|$ARDUINO|g" -e "s|@MICROPYTHON@|$MICROPYTHON|g" -e "s|@NODE@|$NODE|g" -e "s|@RUNTIME@|$RUNTIME|g" \
     -e "s|@GATE_GID@|$GATE_GID|g" -e "s|@JOB_UID@|$JOB_UID|g" -e "s|@ARTIFACT_CAP_MB@|$CAP_MB|g" \
     -e "s|@HOST_MAX_SESSIONS@|$HOST_MAX|g" -e "s|@U@|$U|g" "$1"
 }
-render "$here/tbi-build.service.in" | sudo tee "/etc/systemd/system/$N-build.service" >/dev/null
-render "$here/tbi-build-job@.service.in" | sudo tee "/etc/systemd/system/$N-build-job@.service" >/dev/null
-render "$here/tbi-session-host.service.in" | sudo tee "/etc/systemd/system/$N-session-host.service" >/dev/null
-render "$here/tbi-qemu@.service.in" | sudo tee "/etc/systemd/system/$N-qemu@.service" >/dev/null
-render "$here/50-tbi-lab.rules.in" | sudo tee "$rule" >/dev/null
+render "$here/tbi-build.service.in" "/etc/systemd/system/$N-build.service"
+render "$here/tbi-build-job@.service.in" "/etc/systemd/system/$N-build-job@.service"
+render "$here/tbi-session-host.service.in" "/etc/systemd/system/$N-session-host.service"
+render "$here/tbi-qemu@.service.in" "/etc/systemd/system/$N-qemu@.service"
+render "$here/50-tbi-lab.rules.in" "$rule"
 if [[ "$target" == dev-lab ]]; then
   # The gate: Caddy and oauth2-proxy reach the sockets through the tbi-gate group; Caddy's
   # internal-origin socket lives in /run/tbi-gate (Caddyfile, oauth2-proxy.cfg in deploy/dev-lab).

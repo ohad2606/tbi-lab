@@ -8,6 +8,10 @@
  * last release: baud / bitsPerByte per second (115200 8N1: 10 bits, 11.52 bytes per ms), with an
  * exact rational accumulator (no drift, no rounding gain), the remainder queued. Deterministic:
  * a pure function of the bytes queued and the virtual times asked.
+ *
+ * NOT YET WIRED (independent review, finding 8): the Session Host has no serial INPUT path to the
+ * guest today (the serial monitor is output-only), so nothing sends `R` bytes to pace. This is the
+ * tested building block for when serial input (e.g. the MicroPython REPL) is approved.
  */
 export class SerialPacer {
   private queue: Buffer[] = [];

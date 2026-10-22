@@ -384,8 +384,11 @@ export function runSession(opts: SessionOptions, handler: SessionHandler): Promi
       } else if (f.type === 'W') {
         cmds = handler.pwm?.({ vns: f.vns, signal: f.signal, state: f.state }) ?? [];
       } else if (f.type === 'U') {
-        // Fail closed: a host that does not handle it ends the run at once.
-        cmds = handler.unmodelled ? handler.unmodelled(f.vns, f.facility) : [{ type: 'Q' }];
+        // Fail closed: a host that does not handle it ends the run at once, as a FAILURE
+        // (host_error), never as a normal completion (independent review, finding 6).
+        if (!handler.unmodelled)
+          throw new Error(`unmodelled facility ${f.facility} at ${f.vns} ns (no handler)`);
+        cmds = handler.unmodelled(f.vns, f.facility);
       } else {
         cmds = handler.tick?.(f.vns) ?? [];
       }
