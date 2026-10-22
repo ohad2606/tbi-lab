@@ -299,7 +299,7 @@ servo are likewise refused by RC4's import; the file itself is never changed.
 | G5 regression | §6, §7 | **open**: Alpha staging |
 | G6 security | staging security suite 1/1 | **open**: gate checks (93), preview checks (96), live Caddyfile hash, secret scan |
 | G7 privacy | unchanged since RC4 | no change |
-| G8 rollback | RC5 → RC4 → RC5 on DEV staging (§7); data compatibility §15.4 | **open**: RC5 switch/rollback scripts for Alpha do not exist yet. RC4's `rc4-switch.sh`/`rc4-rollback.sh` move services and frontend only; RC5 must also move the runtime (`switch-runtime.sh`, v2 ↔ v3) in the same window |
+| G8 rollback | RC5 → RC4 → RC5 on DEV staging (§7); data compatibility §15.4 | **open**: RC5 switch/rollback scripts for Alpha do not exist yet. RC4's `rc4-switch.sh`/`rc4-rollback.sh` were written for a release that did not change the runtime (gates A4: "unchanged for RC4"); RC5 must also move the runtime (`switch-runtime.sh`, v2 ↔ v3) in the same window |
 | G9 idle + window | — | **open**: at switch time |
 | A4 runtime | v3 provenance §4 | **open**: provision v3 on Alpha (id must be `2cb1406f94f52e4f`), record the binary sha256 |
 | A6 capacity / concurrency | 1-CPU staging smoke only (§10): N = 1 pass; N = 2 refused by policy; rotation clean | **open**: N = 1…6 ramp, faults at N = 5, 2 h soak on the 6-CPU host. Note: Alpha's policy defers builds at `cpus` = 6 live sessions, so at N = 6 builds wait by design |
