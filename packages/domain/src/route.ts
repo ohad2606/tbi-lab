@@ -416,25 +416,16 @@ const DIRS: readonly Point[] = [
  * grid lattice or the area is too large; the caller keeps the best short shape then.
  * The result is compared with the short shapes by `cost`, so it is used only when it is better.
  */
-/**
- * The grid search's area for a hop: the endpoints, grown by every body it reaches, plus a margin
- * to go around them (the least area closed under "a body it touches grows it"). Shared by the
- * search and by incremental routing (`routeAutoWiresIncremental`), which must know exactly what
- * a hop's routing can read.
- */
-function searchArea(
-  a: Point,
-  b: Point,
-  boxes: readonly RouteBox[],
-  margin: number,
-): { minX: number; maxX: number; minY: number; maxY: number } {
+function searchRoute(a: Point, b: Point, obs: RouteObstacles, margin: number): Point[] | null {
+  if ((b.x - a.x) % GRID !== 0 || (b.y - a.y) % GRID !== 0) return null;
+  // Area: the endpoints, grown by every body it reaches, plus a margin to go around them.
   let minX = Math.min(a.x, b.x) - margin;
   let maxX = Math.max(a.x, b.x) + margin;
   let minY = Math.min(a.y, b.y) - margin;
   let maxY = Math.max(a.y, b.y) + margin;
   for (let grown = true; grown;) {
     grown = false;
-    for (const q of boxes) {
+    for (const q of obs.boxes) {
       if (q.maxX < minX || q.minX > maxX || q.maxY < minY || q.minY > maxY) continue;
       const nx0 = Math.min(minX, q.minX - margin);
       const nx1 = Math.max(maxX, q.maxX + margin);
@@ -444,12 +435,6 @@ function searchArea(
       [minX, maxX, minY, maxY] = [nx0, nx1, ny0, ny1];
     }
   }
-  return { minX, maxX, minY, maxY };
-}
-
-function searchRoute(a: Point, b: Point, obs: RouteObstacles, margin: number): Point[] | null {
-  if ((b.x - a.x) % GRID !== 0 || (b.y - a.y) % GRID !== 0) return null;
-  const { minX, maxX, minY, maxY } = searchArea(a, b, obs.boxes, margin);
   // Lattice through `a`.
   const x0 = a.x - Math.ceil((a.x - minX) / GRID) * GRID;
   const y0 = a.y - Math.ceil((a.y - minY) / GRID) * GRID;
@@ -654,10 +639,9 @@ function better(p: number[], q: number[]): boolean {
 export function autoRoute(
   waypoints: readonly Point[],
   obstacles: RouteObstacles,
-  options: { search?: boolean; trace?: RouteRect[] } = {},
+  options: { search?: boolean } = {},
 ): Point[] {
   const search = options.search ?? true;
-  const trace = options.trace;
   if (waypoints.length < 2) return waypoints.map((p) => ({ ...p }));
   const segments = [...obstacles.segments];
   const path: Point[] = [waypoints[0]!];
@@ -667,13 +651,6 @@ export function autoRoute(
     const obs = { ...obstacles, segments };
     let best: Point[] | null = null;
     let bestCost: number[] = [];
-    // Rt2 read trace: every short shape lies within its endpoints' box grown by the channel reach.
-    trace?.push({
-      minX: Math.min(a.x, b.x) - CHANNEL_REACH * GRID,
-      maxX: Math.max(a.x, b.x) + CHANNEL_REACH * GRID,
-      minY: Math.min(a.y, b.y) - CHANNEL_REACH * GRID,
-      maxY: Math.max(a.y, b.y) + CHANNEL_REACH * GRID,
-    });
     for (const c of candidates(a, b)) {
       const k = cost(c, obs, [a, b]);
       if (!best || better(k, bestCost)) {
@@ -686,8 +663,6 @@ export function autoRoute(
     // them (a pin boxed in by its neighbours cannot do better however far the search reaches).
     let previous: number[] | null = null;
     for (let m = SEARCH_MARGIN; search && !clean(bestCost) && m <= SEARCH_MARGIN_MAX; m *= 2) {
-      // (Trace: the area this search reads; its path stays inside it.)
-      trace?.push(searchArea(a, b, obs.boxes, m));
       const found = searchRoute(a, b, obs, m);
       if (!found) break;
       const k = cost(found, obs, [a, b]);
@@ -711,7 +686,7 @@ export function autoRoute(
 export function autoRouteVertices(
   waypoints: readonly Point[],
   obstacles: RouteObstacles,
-  options: { search?: boolean; trace?: RouteRect[] } = {},
+  options: { search?: boolean } = {},
 ): Point[] {
   return autoRoute(waypoints, obstacles, options).slice(1, -1);
 }
@@ -911,147 +886,6 @@ export function routeAutoWires(
     };
   }
   return out;
-}
-
-/**
- * How far from the area a hop's routing reads an obstacle can still change that hop's route: the
- * header band (`HEADER_CLEARANCE`, 2.5 grid steps beyond a row) is the widest reach of any cost
- * term (pin-field hug: 1 step; keep-out: half a step; wire overlap, touch, crossing and bodies:
- * 0). Four grid steps, with margin.
- */
-const INFLUENCE = 4 * GRID;
-
-/** A plan rectangle (closed). */
-export interface RouteRect {
-  minX: number;
-  maxX: number;
-  minY: number;
-  maxY: number;
-}
-const hitsRect = (r: RouteRect, x0: number, y0: number, x1: number, y1: number) =>
-  Math.max(x0, x1) >= r.minX - INFLUENCE &&
-  Math.min(x0, x1) <= r.maxX + INFLUENCE &&
-  Math.max(y0, y1) >= r.minY - INFLUENCE &&
-  Math.min(y0, y1) <= r.maxY + INFLUENCE;
-
-/**
- * The obstacles a wire's routing READ with effect, in their original order: everything whose
- * extent comes within `INFLUENCE` of an area its routing read (`trace`: each hop's short-shape
- * box and the area of every grid search it ran). Anything else adds an exact zero to every cost
- * term the router evaluated (all candidate paths lie inside those areas).
- */
-function relevantObstacles(obs: RouteObstacles, trace: readonly RouteRect[]): string {
-  const near = (x0: number, y0: number, x1: number, y1: number) =>
-    trace.some((r) => hitsRect(r, x0, y0, x1, y1));
-  const seg = (t: readonly [Point, Point]) => near(t[0].x, t[0].y, t[1].x, t[1].y);
-  const pt = (p: Point) => near(p.x, p.y, p.x, p.y);
-  const box = (q: RouteBox) => near(q.minX, q.minY, q.maxX, q.maxY);
-  return JSON.stringify([
-    obs.segments.filter(seg),
-    obs.boxes.filter(box),
-    obs.points.filter(pt),
-    (obs.leads ?? []).filter(seg),
-    (obs.field ?? []).filter(pt),
-    (obs.headers ?? []).filter((h) => box(h.box)),
-  ]);
-}
-
-/**
- * A canonically routed document with what incremental routing needs to reuse its routes: the
- * boxes it was routed with and, per automatic wire, the areas its routing read.
- */
-export interface RoutingMemo {
-  doc: ProjectDocument;
-  boxes: readonly RouteBox[];
-  traces: ReadonlyMap<string, readonly RouteRect[]>;
-}
-
-/** Statistics of the last incremental routing (measurements and tests). */
-export const incrementalStats = { routed: 0, reused: 0 };
-
-/**
- * Rt2 incremental canonical routing: EXACTLY `routeAutoWires(doc, boxes)` (the same document, bit
- * for bit), computed by re-routing only the automatic wires whose route can change, given the memo
- * of a previous canonical routing (any document: only the reuse test below matters).
- *
- * Why it is identical (same document => same routes, regardless of edit history):
- * `routeAutoWires` routes wire i (creation order) by `autoRouteVertices([a, ...waypoints, b],
- * obs_i)`, a deterministic function of its ends, its waypoints and obs_i (manual wires, the
- * automatic wires before it, terminals, pins, leads, header rows, bodies). Each step of that
- * computation reads obstacles only inside the areas recorded in its trace (a hop's short shapes
- * lie in its endpoints' box grown by the channel reach; a grid search in its `searchArea`, which
- * depends only on the bodies that reach it), and every cost term is an exact zero for an obstacle
- * farther than `INFLUENCE` from them. So if wire i has the same ends and waypoints as in the memo
- * and the ordered sequence of obstacles relevant to the memo's trace is identical in the memo's
- * obs_i and in the new obs_i, the new computation reads the same values at every step, takes the
- * same branches (the same searches, so the same trace), and returns the same route: the memo's
- * stored vertices. Otherwise wire i is routed exactly as `routeAutoWires` does. Induction over the
- * creation order gives the whole document. Tests: wire-routing-incremental.test.ts (golden
- * routes of fae6a3c; random edit sequences against the full router).
- */
-export function routeAutoWiresIncremental(
-  prev: RoutingMemo | null,
-  doc: ProjectDocument,
-  boxes: readonly RouteBox[],
-): { doc: ProjectDocument; memo: RoutingMemo } {
-  incrementalStats.routed = 0;
-  incrementalStats.reused = 0;
-  const traces = new Map<string, readonly RouteRect[]>();
-  const autos = doc.layout.wires.filter((w) => w.auto && !isContact(doc, w)).sort(byCreation);
-  const prevAutos = prev
-    ? prev.doc.layout.wires.filter((w) => w.auto && !isContact(prev.doc, w)).sort(byCreation)
-    : [];
-  const prevById = new Map(prevAutos.map((w) => [w.id, w]));
-  const pending = new Set(autos.map((w) => w.id));
-  let out = doc;
-  for (const wire of autos) {
-    const ends = wireRoute(out, { ...wire, vertices: [] });
-    if (!ends || ends.length < 1) {
-      pending.delete(wire.id);
-      continue;
-    }
-    const a = ends[0]!;
-    const b = ends[ends.length - 1]!;
-    const waypoints = [a, ...wire.auto!.waypoints, b];
-    const obs = routeObstacles(out, boxes, pending);
-    let vertices: Point[] | null = null;
-    const before = prevById.get(wire.id);
-    const trace = before && prev!.traces.get(wire.id);
-    const prevEnds = trace && wireRoute(prev!.doc, { ...before, vertices: [] });
-    if (
-      prevEnds &&
-      prevEnds.length >= 1 &&
-      JSON.stringify([prevEnds[0], ...before!.auto!.waypoints, prevEnds[prevEnds.length - 1]]) ===
-        JSON.stringify(waypoints)
-    ) {
-      // The obstacles wire i saw in the memo: everything but itself and the automatic wires after it.
-      const later = new Set(prevAutos.filter((w) => byCreation(w, wire) >= 0).map((w) => w.id));
-      const was = relevantObstacles(routeObstacles(prev!.doc, prev!.boxes, later), trace);
-      if (was === relevantObstacles(obs, trace)) {
-        vertices = before!.vertices.map((p) => ({ ...p }));
-        traces.set(wire.id, trace);
-      }
-    }
-    if (vertices) incrementalStats.reused++;
-    else {
-      const read: RouteRect[] = [];
-      vertices = autoRouteVertices(waypoints, obs, { trace: read });
-      traces.set(wire.id, read);
-      incrementalStats.routed++;
-    }
-    pending.delete(wire.id);
-    const current = out.layout.wires.find((w) => w.id === wire.id)!;
-    if (JSON.stringify(current.vertices) === JSON.stringify(vertices)) continue;
-    const v = vertices;
-    out = {
-      ...out,
-      layout: {
-        ...out.layout,
-        wires: out.layout.wires.map((w): Wire => (w.id === wire.id ? { ...w, vertices: v } : w)),
-      },
-    };
-  }
-  return { doc: out, memo: { doc: out, boxes, traces } };
 }
 
 /**
