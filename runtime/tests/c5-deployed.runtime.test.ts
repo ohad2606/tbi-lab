@@ -17,8 +17,9 @@
  *  1. Builds: the N users submit their workload sketch AT ONCE (each made unique so it is really
  *     compiled, never a cache hit) to the deployed build service; worst completion <= 120 s, none
  *     refused, all succeed.
- *  2. Sessions: each user leases its artifact and creates and runs a session (workload mix: sonar
- *     R2, dht R2, gpio R1, lcd R3, gpio); startup latency (create -> running with simulation time).
+ *  2. Sessions: each user leases its artifact and creates and runs a session (workload mix, RC5:
+ *     sonar R2, LED fade R4 PWM, dht R2, servo R4, gpio R1, lcd R3; TBI_C5_MIX=rc4 for the RC4 mix);
+ *     startup latency (create -> running with simulation time).
  *  3. Load, SECONDS: each session holds its event stream (as the real client does); every second,
  *     each session's status (simulation time, the host's pacing and tick-gap statistics) and the
  *     host's CPU, load, memory and QEMU RSS; build bursts run alongside. Criteria (PM D-2): every
@@ -112,8 +113,34 @@ const SKETCH: Record<string, string> = {
   lcd: 'TbiLcd',
   gpio: 'TbiGpioProof',
 };
-const MIX = ['sonar', 'dht', 'gpio', 'lcd', 'gpio', 'sonar'];
+/**
+ * RC5: the R4 workloads, as Alpha users run them: the product's own curated sketches (LED fade:
+ * LEDC PWM on GPIO18 into an LED; servo sweep: an SG90 on GPIO18), the costliest R4 paths (PWM
+ * operating points, the servo model).
+ */
+const EXAMPLE: Record<string, string> = { fade: 'esp32-led-fade', servo: 'esp32-servo-sweep' };
+/**
+ * The workload mix. RC5 default: six slots, R4 included (a six-session run has one of each). The
+ * RC4 mix stays available (TBI_C5_MIX=rc4) for comparison with RC4 evidence.
+ */
+const MIX =
+  process.env.TBI_C5_MIX === 'rc4'
+    ? ['sonar', 'dht', 'gpio', 'lcd', 'gpio', 'sonar']
+    : ['sonar', 'fade', 'dht', 'servo', 'gpio', 'lcd'];
 function circuit(w: string): Circuit {
+  if (w === 'fade') {
+    const c = new Circuit().psu(3.3);
+    const r = c.add('component.resistor');
+    const d = c.add('component.led');
+    c.ohms(r, 220).wire(`${r}.b`, `${d}.anode`).wire(`${d}.cathode`, 'GND1.ref');
+    return c.pad(18, `${r}.a`);
+  }
+  if (w === 'servo') {
+    const c = new Circuit().psu(5);
+    const m = c.add('component.servo_sg90');
+    c.wire('PSU1.positive', `${m}.vcc`).wire(`${m}.gnd`, 'GND1.ref');
+    return c.pad(18, `${m}.signal`);
+  }
   if (w === 'sonar') {
     const c = new Circuit().psu(5);
     const u = c.add('sensor.hc_sr04');
@@ -157,8 +184,25 @@ function circuit(w: string): Circuit {
   c.ohms(r, 220).wire(`${r}.b`, `${d}.anode`).wire(`${d}.cathode`, 'GND1.ref');
   return c.pad(2, `${r}.a`);
 }
+const exampleSource = (id: string) =>
+  (
+    Object.values(
+      (
+        JSON.parse(
+          readFileSync(new URL(`../../app/src/examples/data/${id}.json`, import.meta.url), 'utf8'),
+        ) as { programs: Record<string, { text: string }> }
+      ).programs,
+    )[0] as { text: string }
+  ).text;
 const sketchText = (w: string, user: string) =>
-  `${readFileSync(new URL(`../firmware/arduino/${SKETCH[w]}/${SKETCH[w]}.ino`, import.meta.url), 'utf8')}\n// c5-deployed ${user}\n`;
+  `${
+    EXAMPLE[w]
+      ? exampleSource(EXAMPLE[w])
+      : readFileSync(
+          new URL(`../firmware/arduino/${SKETCH[w]}/${SKETCH[w]}.ino`, import.meta.url),
+          'utf8',
+        )
+  }\n// c5-deployed ${user}\n`;
 
 // ---- Host measurements.
 function cpu() {
