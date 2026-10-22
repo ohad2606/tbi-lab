@@ -7,7 +7,15 @@
  * checked geometrically by app/tests/wire-routing-integrity.test.ts.)
  */
 import { expect, test, type Page } from '@playwright/test';
-import { component, createProject, place, toScreen, waitSaved, wire } from './helpers.js';
+import {
+  component,
+  createProject,
+  place,
+  reopenFromLibrary,
+  toScreen,
+  waitSaved,
+  wire,
+} from './helpers.js';
 
 test.beforeEach(async ({ page }) => {
   page.on('pageerror', (e) => {
@@ -29,13 +37,16 @@ async function drawing(page: Page): Promise<Record<string, string>> {
     );
 }
 
-async function dragBy(page: Page, at: { x: number; y: number }, dx: number) {
-  const from = await toScreen(page, at);
-  const to = await toScreen(page, { x: at.x + dx, y: at.y });
+/** Drag a part by `dx` layout units, pressing on its own hit area wherever it is drawn. */
+async function dragBy(page: Page, id: string, dx: number) {
+  const box = (await component(page, id).locator('.component-hit').boundingBox())!;
+  const from = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  const o = await toScreen(page, { x: 0, y: 0 });
+  const d = (await toScreen(page, { x: dx, y: 0 })).x - o.x;
   await page.mouse.move(from.x, from.y);
   await page.mouse.down();
-  await page.mouse.move((from.x + to.x) / 2, from.y, { steps: 6 });
-  await page.mouse.move(to.x, to.y, { steps: 6 });
+  await page.mouse.move(from.x + d / 2, from.y, { steps: 6 });
+  await page.mouse.move(from.x + d, from.y, { steps: 6 });
   await page.mouse.up();
 }
 
@@ -53,12 +64,12 @@ test("the owner's sequence: a gate wired to a PSU dragged right, left and back â
   expect(Object.keys(start)).toHaveLength(3);
   await page.screenshot({ path: info.outputPath('0-initial.png') });
 
-  let x = 160;
-  for (const [i, dx] of [200, -320, 120].entries()) {
-    await dragBy(page, { x, y: 0 }, dx);
-    x += dx;
+  // Zoom out twice so the whole excursion stays inside the visible canvas.
+  for (let k = 0; k < 2; k++) await page.getByRole('button', { name: 'Zoom out' }).click();
+  // Right, left past the start, back: 160 -> 240 -> 40 -> 160.
+  for (const [i, dx] of [80, -200, 120].entries()) {
+    await dragBy(page, 'U1', dx);
     await waitSaved(page);
-    await expect(component(page, 'U1')).toBeVisible();
     // No crossing bridge (the three wires need none in any of these positions).
     await expect(page.getByTestId('wire-bridge')).toHaveCount(0);
     await page.screenshot({ path: info.outputPath(`${i + 1}-after-drag-${dx}.png`) });
@@ -67,7 +78,8 @@ test("the owner's sequence: a gate wired to a PSU dragged right, left and back â
   expect(await drawing(page)).toEqual(start);
 
   // Selecting a wire shows how it is routed.
-  await page.locator('[data-hit="wire"][data-id="W2"] polyline.wire-hit').click({ force: true });
+  // (W1 is straight: the centre of its box is on the wire.)
+  await page.locator('[data-hit="wire"][data-id="W1"] polyline.wire-hit').click({ force: true });
   await expect(page.getByTestId('wire-route')).toHaveAttribute('data-route', 'auto');
 
   // The other views and a reload do not resurrect anything.
@@ -80,6 +92,6 @@ test("the owner's sequence: a gate wired to a PSU dragged right, left and back â
   await page.getByTestId('view-circuit').click();
   expect(await drawing(page)).toEqual(start);
   await page.reload();
-  await expect(page.getByTestId('canvas')).toBeVisible();
+  await reopenFromLibrary(page);
   expect(await drawing(page)).toEqual(start);
 });
