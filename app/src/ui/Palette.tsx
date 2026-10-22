@@ -35,7 +35,13 @@ export const PALETTE_GROUPS: readonly { key: MessageKey; types: readonly Compone
   },
   {
     key: 'palette.group.logic',
-    types: ['logic.gate_and', 'logic.gate_nand', 'logic.gate_or', 'logic.gate_not'],
+    types: [
+      'logic.gate_and',
+      'logic.gate_nand',
+      'logic.gate_or',
+      'logic.gate_not',
+      'logic.quad_and',
+    ],
   },
   { key: 'palette.group.mcu', types: ['board.esp32_devkitc_wroom32'] },
 ];

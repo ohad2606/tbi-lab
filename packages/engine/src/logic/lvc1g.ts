@@ -87,9 +87,13 @@ export interface LogicCard {
   /** Absolute maximum continuous output current, and through V_CC or GND (A). */
   readonly outputAbsA: number;
   readonly supplyPinAbsA: number;
-  /** Input leakage I_I bound (A); power-off leakage I_off (A); quiescent I_CC max (A). */
+  /**
+   * Input leakage I_I bound (A); power-off leakage I_off (A); quiescent I_CC max (A). `ioffA` is
+   * absent when the datasheet gives no power-off specification (SN74LVC08A): an unpowered device
+   * is then refused, never assumed off.
+   */
   readonly inputLeakageA: number;
-  readonly ioffA: number;
+  readonly ioffA?: number;
   readonly iccMaxA: number;
   /** Input capacitance, typical (F): carried for the time kernel, not used at DC. */
   readonly ciF: number;
@@ -209,10 +213,18 @@ export function evaluate(fn: LogicFunction, ins: readonly boolean[]): boolean {
 
 const level = (t: Threshold, vcc: number) => ('v' in t ? t.v : t.k * vcc);
 
-/** The input row that covers this supply, or undefined (a gap between rows: EF-D3 A). */
+/**
+ * The input row that covers this supply, or undefined (a gap between rows: EF-D3 A). Where two
+ * rows share a boundary supply (SN74LVC08A: 2.3–2.7 V and 2.7–3.6 V both include 2.7 V), the
+ * stricter of the two applies: the higher V_IH and the lower V_IL (the narrower defined bands).
+ */
 export function inputRowAt(card: LogicCard, vcc: number): { vih: number; vil: number } | undefined {
-  const row = card.inputRows.find((r) => vcc >= r.vcc[0] - 1e-9 && vcc <= r.vcc[1] + 1e-9);
-  return row ? { vih: level(row.vih, vcc), vil: level(row.vil, vcc) } : undefined;
+  const rows = card.inputRows.filter((r) => vcc >= r.vcc[0] - 1e-9 && vcc <= r.vcc[1] + 1e-9);
+  if (!rows.length) return undefined;
+  return {
+    vih: Math.max(...rows.map((r) => level(r.vih, vcc))),
+    vil: Math.min(...rows.map((r) => level(r.vil, vcc))),
+  };
 }
 
 /**

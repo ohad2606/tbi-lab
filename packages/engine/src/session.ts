@@ -24,6 +24,7 @@ const DC_GMIN = 1e-12;
 import { SingularMatrixError } from './linalg.js';
 import { MODEL_CARDS, MODEL_VALID_CURRENT_A } from './registry.js';
 import { logicFeedback, unknownClosure, type TopoElement } from './logic/topology.js';
+import type { LogicInspection } from './parts/logicInspection.js';
 import {
   partModel,
   sameState,
@@ -156,6 +157,9 @@ export type EngineErrorCode =
    *   (latches and oscillators need propagation delay, not simulated in DC sessions);
    * - `logic_unknown_state`: an unknown level reaches something that must have a value (an MCU
    *   input, a supply in current limit, a logic part's own supply).
+   * L3 (packaged logic):
+   * - `logic_unpowered_uncharacterized`: the device's V_CC is 0 V and its datasheet gives no
+   *   power-off (I_off) specification (SN74LVC08A): an unpowered device is not simulated.
    */
   | 'logic_input_floating'
   | 'logic_supply_missing'
@@ -163,6 +167,7 @@ export type EngineErrorCode =
   | 'logic_output_uncharacterized'
   | 'logic_feedback_unsupported'
   | 'logic_unknown_state'
+  | 'logic_unpowered_uncharacterized'
   | 'internal';
 
 export interface EngineError {
@@ -222,6 +227,8 @@ export interface ComponentResult {
   array?: { rows: number; cols: number; currents: number[] };
   /** R4: present when a PWM output switches this part: its values above are time-averages. */
   pwm?: PwmComponentFigures;
+  /** L2: logic parts only: each gate's input/output levels and measured pin voltages. */
+  logic?: LogicInspection;
 }
 
 export interface SolveStats {
@@ -839,15 +846,18 @@ export class EngineSession {
       nodes: e.nodes,
       active: e.active,
     }));
+    // L3: a packaged device takes part gate by gate (`U1#2`), so a chain between its own gates
+    // is a chain, and only a real loop is feedback.
     const logicParts = parts
       .filter((p) => p.model.logicPins)
-      .map((p) => {
-        const lp = p.model.logicPins!(p.ctx);
-        return {
-          component: p.c.id,
-          inputs: lp.inputs.map((t) => p.ctx.node(t)),
-          outputs: lp.outputs.map((t) => p.ctx.node(t)),
-        };
+      .flatMap((p) => {
+        const units = p.model.logicUnits?.(p.ctx) ?? [{ unit: '', ...p.model.logicPins!(p.ctx) }];
+        return units.map((u) => ({
+          component: u.unit ? `${p.c.id}#${u.unit}` : p.c.id,
+          owner: p.c.id,
+          inputs: u.inputs.map((t) => p.ctx.node(t)),
+          outputs: u.outputs.map((t) => p.ctx.node(t)),
+        }));
       });
     this.logicParts = logicParts.length;
     if (logicParts.length) {
@@ -857,7 +867,16 @@ export class EngineSession {
       for (const p of parts)
         if (p.model.logicPins) for (const t of ['vcc', 'gnd']) rails.add(p.ctx.node(t));
       const cycle = logicFeedback(topo, logicParts, rails);
-      if (cycle) return this.fail({ code: 'logic_feedback_unsupported', components: cycle });
+      if (cycle) {
+        const owner = new Map(logicParts.map((l) => [l.component, l.owner]));
+        const components = [...new Set(cycle.map((u) => owner.get(u) ?? u))].sort();
+        const units = cycle.filter((u) => u.includes('#'));
+        return this.fail({
+          code: 'logic_feedback_unsupported',
+          components,
+          ...(units.length ? { detail: { units } } : {}),
+        });
+      }
     }
     const seeds: string[] = [];
     for (const p of parts)
@@ -875,7 +894,7 @@ export class EngineSession {
       parts
         .filter((p) => (p.model.unknownSupply?.(p.ctx, p.state) ?? []).length)
         .filter((p) => e.nodes.some((n) => n !== REF && n === p.ctx.node('vcc')))
-        .reduce((sum, p) => sum + (p.model.unknownCurrentMaxA?.(p.ctx) ?? Infinity), 0);
+        .reduce((sum, p) => sum + (p.model.unknownCurrentMaxA?.(p.ctx, p.state) ?? Infinity), 0);
     // The refusals these states imply, applied by solveUnchecked once they have settled.
     this.passRefusal = null;
     for (const p of parts) {

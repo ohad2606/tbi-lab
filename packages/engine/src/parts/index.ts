@@ -12,3 +12,4 @@ import './dht22.js';
 import './lcd.js';
 import './servo.js';
 import './logicGate.js';
+import './logicPackage.js';

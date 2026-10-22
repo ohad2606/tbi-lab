@@ -995,6 +995,16 @@ export function Canvas({
                   c.type.startsWith('logic.') && outcome?.ok
                     ? (outcome.components[c.id]?.state?.gateOutput as string | undefined)
                     : undefined,
+                // L3: a packaged device's output levels, by output terminal.
+                gateOutputs:
+                  c.type === 'logic.quad_and' && outcome?.ok
+                    ? Object.fromEntries(
+                        (outcome.components[c.id]?.logic?.gates ?? []).map((g) => [
+                          g.output.pin,
+                          g.output.level,
+                        ]),
+                      )
+                    : undefined,
                 // Sprint 15: the servo's horn at the angle the engine or the runtime reports.
                 servoAngle:
                   c.type === 'component.servo_sg90' && outcome?.ok

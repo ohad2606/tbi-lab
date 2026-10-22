@@ -52,6 +52,7 @@ import {
   DHT22_CASE,
   LCD1602_MODULE,
   LOGIC_SOT23_BREAKOUT,
+  LOGIC_SOIC14_BREAKOUT,
   SERVO_SG90,
   SERVO_SHAFT_X_MM,
   capacitorPackage,
@@ -108,6 +109,7 @@ export type ModelKey =
   | 'display.lcd1602'
   | 'servo.sg90'
   | 'logic.sot23'
+  | 'logic.soic14'
   | 'generic';
 
 /** Which model draws each component type. A type without an entry gets the generic box. */
@@ -136,6 +138,7 @@ export const MODEL_FOR: Partial<Record<ComponentTypeId, ModelKey>> = {
   'logic.gate_nand': 'logic.sot23',
   'logic.gate_or': 'logic.sot23',
   'logic.gate_not': 'logic.sot23',
+  'logic.quad_and': 'logic.soic14',
 };
 
 export interface Vec3 {
@@ -270,6 +273,10 @@ export const MODEL_HEIGHT: Record<ModelKey, number> = {
     LOGIC_SOT23_BREAKOUT.standoffMm +
     LOGIC_SOT23_BREAKOUT.boardThicknessMm +
     LOGIC_SOT23_BREAKOUT.bodyHeightMm,
+  'logic.soic14':
+    LOGIC_SOIC14_BREAKOUT.standoffMm +
+    LOGIC_SOIC14_BREAKOUT.boardThicknessMm +
+    LOGIC_SOIC14_BREAKOUT.bodyHeightMm,
   'sensor.pir': PIR_HC_SR501.standoffMm + PIR_HC_SR501.boardThicknessMm + PIR_HC_SR501.domeHeightMm,
   'display.matrix': LED_MATRIX_1088AS.standoffMm + LED_MATRIX_1088AS.heightMm,
   // The largest can (the body of a given value is in its visual).
@@ -336,6 +343,12 @@ export const FOOTPRINT: Record<ModelKey, readonly [number, number, number, numbe
     LOGIC_SOT23_BREAKOUT.boardSizeMm / 2,
     -LOGIC_SOT23_BREAKOUT.boardSizeMm / 2,
     LOGIC_SOT23_BREAKOUT.boardSizeMm / 2,
+  ],
+  'logic.soic14': [
+    -LOGIC_SOIC14_BREAKOUT.boardXMm / 2,
+    LOGIC_SOIC14_BREAKOUT.boardXMm / 2,
+    -LOGIC_SOIC14_BREAKOUT.boardZMm / 2,
+    LOGIC_SOIC14_BREAKOUT.boardZMm / 2,
   ],
   'capacitor.radial': [-6.7, 6.7, -6.25, 6.25],
   'display.matrix': [
@@ -472,6 +485,9 @@ function localAttach(
     // Sprint 19B: the breakout's header pins stand at the gate's terminals.
     case 'logic.sot23':
       return { x, y: LOGIC_SOT23_BREAKOUT.attachHeightMm, z };
+    // L3: the 14-pin breakout's header pins stand at the package's terminals.
+    case 'logic.soic14':
+      return { x, y: LOGIC_SOIC14_BREAKOUT.attachHeightMm, z };
     case 'sensor.pir': {
       const [px, pz] = PIR_HC_SR501.pins[terminal]!;
       return { x: px, y: PIR_HC_SR501.attachHeightMm, z: pz };
@@ -1074,6 +1090,7 @@ const main = (r: Route): Point[] =>
 /** Models whose pins sit under their body. */
 const UNDER_BODY: ReadonlySet<ModelKey> = new Set([
   'logic.sot23',
+  'logic.soic14',
   'relay.cube',
   'sensor.pir',
   'display.matrix',

@@ -88,6 +88,15 @@ export {
 } from './logic/lvc1g.js';
 export { GATE_TYPES, gateOutput, type LogicLevel } from './parts/logicGate.js';
 export { logicFeedback, unknownClosure } from './logic/topology.js';
+// Exploration Foundation L3 (packaged logic) and L2 (logic state inspection).
+export {
+  LOGIC_PACKAGE_CARDS,
+  LVC08A_CARD,
+  type LogicPackageCard,
+  type LogicUnit,
+} from './logic/lvc08a.js';
+export { packageRatings } from './parts/logicPackage.js';
+export type { LogicInspection, LogicPinState } from './parts/logicInspection.js';
 // Sprint 19B (F2): resistor power ratings from a verified datasheet series.
 export {
   DEFAULT_RESISTOR_SERIES,

@@ -568,3 +568,26 @@ export const LOGIC_SOT23_BREAKOUT = {
   standoffMm: 8.5,
   attachHeightMm: 0.8,
 };
+
+/**
+ * L3: an SN74LVC08A in TI's D0014A (SOIC-14) package [D14] (SCAS283W, package outline 4220718/A):
+ * body 8.55–8.75 × 3.8–4.0 mm, 1.75 mm max height, lead tip to tip 5.8–6.2 mm, 14 leads
+ * 0.31–0.51 mm wide at 1.27 mm pitch; mid-tolerance values, the stated maximum for the height.
+ * A SOIC does not fit a breadboard: it sits on a representative 14-pin breakout [REP] whose header
+ * pins stand at the part's terminals (two rows of seven, pins 1–7 and 8–14 as on the device).
+ */
+export const LOGIC_SOIC14_BREAKOUT = {
+  bodyLongMm: 8.65,
+  bodyWideMm: 3.9,
+  bodyHeightMm: 1.75,
+  leadPitchMm: 1.27,
+  leadWidthMm: 0.41,
+  /** Lead tip to lead tip across the body (D0014A: 5.8–6.2). */
+  leadSpanMm: 6.0,
+  /** Board edge: the header rows (±60 layout units) plus a margin [REP]. */
+  boardXMm: 24,
+  boardZMm: 24,
+  boardThicknessMm: 1.6,
+  standoffMm: 8.5,
+  attachHeightMm: 0.8,
+};

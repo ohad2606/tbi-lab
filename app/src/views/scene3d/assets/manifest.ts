@@ -189,6 +189,11 @@ export const ASSETS: Record<ModelKey, AssetRecord> = {
     'models.ts buildLogicSot23',
     '[DBV] TI DBV0005A (SOT-23-5) package drawing, in each SN74LVC1G datasheet; breakout [REP]',
   ),
+  'logic.soic14': procedural(
+    'logic.soic14',
+    'models.ts buildLogicSoic14',
+    '[D14] TI D0014A (SOIC-14) package outline 4220718/A, in the SN74LVC08A datasheet SCAS283W; breakout [REP]',
+  ),
   'transistor.to92': procedural(
     'transistor.to92',
     'models.ts buildTo92',

@@ -46,6 +46,7 @@ import {
   type PartSolution,
   type PartState,
 } from '../parts.js';
+import type { LogicInspection } from './logicInspection.js';
 
 /** Level of an input or output: HIGH, LOW, unknown (X) or, for an output, off (unpowered). */
 export type LogicLevel = 'high' | 'low' | 'x' | 'off';
@@ -186,7 +187,12 @@ export function gateModel(fn: LogicCard['function']): PartModel {
     // (`unknownSupply`): a supply output there reports an unknown current; a supply node behind
     // a resistor is itself unknown.
     unknownDriven: (_ctx, state) => (levelOf(state, 'out') === 'x' ? ['y'] : []),
-    unknownSupply: (_ctx, state) => (levelOf(state, 'out') === 'x' ? ['vcc', 'gnd'] : []),
+    // A part with a supply pin unconnected has no supply current to make unknown: it is refused
+    // as `logic_supply_missing` (seeding its floating pin would re-name it `logic_unknown_state`).
+    unknownSupply: (_ctx, state) =>
+      levelOf(state, 'out') === 'x' && state.refuse !== 'logic_supply_missing'
+        ? ['vcc', 'gnd']
+        : [],
     unknownCurrentMaxA: (ctx) => cardOf(ctx).outputAbsA,
     logicPins: (ctx) => ({ inputs: cardOf(ctx).inputs, outputs: ['y'] }),
     nextState: (ctx, state, sol) => nextGateState(ctx, sol, state),
@@ -226,6 +232,32 @@ export function gateModel(fn: LogicCard['function']): PartModel {
       const inputs: Record<string, string> = {};
       for (const t of card.inputs) inputs[t] = levelOf(state, `in_${t}`);
       const tabulated = state.tabulated === true;
+      // L2: the gate's state for inspection, voltages relative to its own GND pin.
+      const g = terminals.gnd ?? null;
+      const rel = (t: string) => {
+        const p = terminals[t];
+        return p == null || g === null ? null : p - g;
+      };
+      const supplyV = typeof state.vcc === 'number' ? state.vcc : null;
+      const row = supplyV !== null && supplyV > 0 ? inputRowAt(card, supplyV) : undefined;
+      const logic: LogicInspection = {
+        partNumber: card.partNumber,
+        function: card.function,
+        supplyV,
+        vih: row?.vih ?? null,
+        vil: row?.vil ?? null,
+        gates: [
+          {
+            unit: '',
+            inputs: card.inputs.map((t) => ({
+              pin: t,
+              level: (inputs[t] === 'init' ? 'x' : inputs[t]) as LogicLevel,
+              volts: rel(t),
+            })),
+            output: { pin: 'y', level: out === 'init' ? 'x' : out, volts: rel('y') },
+          },
+        ],
+      };
       const validA = typeof state.validA === 'number' ? state.validA : card.rangedOutput.amps;
       return {
         current: null,
@@ -243,6 +275,7 @@ export function gateModel(fn: LogicCard['function']): PartModel {
           iccMaxA: card.iccMaxA,
           ...(typeof state.firstX === 'string' ? { firstUnknownInput: state.firstX } : {}),
         },
+        logic,
       };
     },
     ratings: (p, r) => gateRatings(LVC1G_CARDS[p.model as string]!, r),

@@ -309,6 +309,21 @@ export const EXAMPLES: readonly Example[] = [
       'logic.gate_and',
     ],
   },
+  // Exploration Foundation L3 interop: ESP32 → packaged gate (SN74LVC08A) → LEDs.
+  {
+    id: 'esp32-logic-quad-and',
+    titleKey: 'example.esp32-logic-quad-and.title',
+    summaryKey: 'example.esp32-logic-quad-and.summary',
+    probes: [V('U2', 'y1'), I('D1'), I('D2')],
+    parts: [
+      'board.esp32_devkitc_wroom32',
+      'component.led',
+      'component.push_button',
+      'component.resistor',
+      'instrument.lab_psu',
+      'logic.quad_and',
+    ],
+  },
 ];
 
 export function findExample(id: string): Example | undefined {

@@ -22,6 +22,15 @@ import type { SimFailure } from './controller.js';
 const DISPLAY_FLOOR = 1e-12;
 
 /** A solved value, four significant digits, engineering prefix, always an LTR run. */
+/**
+ * A logic pin's datasheet name from its terminal id (L3): a package's `a1` is the datasheet's
+ * "1A" (terminal ids start with a letter: the session protocol's identifier rule), `vcc` "VCC".
+ */
+export function datasheetPinName(terminal: string): string {
+  const m = /^([a-z])(\d)$/.exec(terminal);
+  return (m ? `${m[2]}${m[1]}` : terminal).toUpperCase();
+}
+
 export function formatResult(locale: LocaleInfo, value: number, unit: UnitId): string {
   const v = Math.abs(value) < DISPLAY_FLOOR ? 0 : value;
   const { mantissa, prefix } = toEngineering(v);
@@ -208,12 +217,21 @@ export function engineErrorMessage(
     case 'logic_supply_uncharacterized':
     case 'logic_output_uncharacterized':
     case 'logic_feedback_unsupported':
-    case 'logic_unknown_state': {
-      const d = (error.detail ?? {}) as { vcc?: number; value?: number; limit?: number };
+    case 'logic_unknown_state':
+    case 'logic_unpowered_uncharacterized': {
+      const d = (error.detail ?? {}) as {
+        vcc?: number;
+        value?: number;
+        limit?: number;
+        part?: string;
+      };
       const pin = error.param?.startsWith('gpio')
         ? isolateLtr(`GPIO${error.param.slice(4)}`)
-        : isolateLtr((error.param ?? '').toUpperCase());
-      return t(`sim.error.${error.code}`, {
+        : isolateLtr(datasheetPinName(error.param ?? ''));
+      // L3: a device whose datasheet rows differ from the single gates' words them itself
+      // (`sim.error.<code>.<part>`), never with another device's figures.
+      const own = `sim.error.${error.code}.${(d.part ?? '').toLowerCase()}`;
+      return t(isMessageKey(own) ? own : `sim.error.${error.code}`, {
         components,
         pin,
         supply: typeof d.vcc === 'number' ? formatResult(locale, d.vcc, 'volt') : '',

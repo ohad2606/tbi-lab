@@ -58,11 +58,13 @@ const REF_BANKS = FIRMWARE_ARTIFACTS.find((f) => f.id === 'tbi-banks')!.sha256;
  * Scripted MCU behaviour by artifact identity: the pinned reference images, and (Sprint 7) the
  * fake build service's stand-in images of the same curated sketches.
  */
-const SCRIPT: Record<string, 'gpio-proof' | 'banks'> = {
+const SCRIPT: Record<string, 'gpio-proof' | 'banks' | 'logic-quad'> = {
   [REF_GPIO_PROOF]: 'gpio-proof',
   [STAND_IN.gpioProof]: 'gpio-proof',
   [REF_BANKS]: 'banks',
   [STAND_IN.banks]: 'banks',
+  // L3: the esp32-logic-quad-and sketch (GPIO18 and GPIO19 driven HIGH in setup()).
+  [STAND_IN.logicQuad]: 'logic-quad',
 };
 
 let capacity = 4096;
@@ -243,6 +245,13 @@ class FakeSession {
         this.drive(18, 0);
       }
       if (phase === 790) this.serial += `IN=${this.inputs.get(5) ?? 0}\r\n`;
+    } else if (SCRIPT[this.req.artifact.sha256] === 'logic-quad') {
+      // The sketch's setup(): GPIO18 and GPIO19 outputs, both HIGH; loop() only waits.
+      if (this.step === 0) {
+        this.drive(18, 1);
+        this.drive(19, 1);
+        this.serial += '1A=1 1B=1: D1 on; hold the button to light D2\r\n';
+      }
     } else {
       if (this.step === 0) this.serial += 'TBI-BANKS-READY\r\nTBI-BANKS-SWEEP-DONE\r\n';
       if (this.step === 0) this.drive(4, 0);
