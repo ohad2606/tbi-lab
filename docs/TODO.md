@@ -928,13 +928,8 @@ Do not portray abstract “logic flow” in a way that contradicts actual electr
 
 Do not attempt to add hundreds of chips at once.
 
-Recommended phased order:
-1. Basic logic primitives and digital stimulus.
-2. Truth-table / state inspection.
-3. Selected packaged logic ICs.
-4. 555 timer.
-5. Flip-flops / counters / shift registers.
-6. Broader IC catalog based on real user demand.
+Phased order: see **Authoritative order (EF-D9 C)** under "Digital Logic & Integrated Circuits"
+below. That is the single order for this direction; this section no longer carries its own list.
 
 Quality and model correctness take priority over catalog size.
 
@@ -1052,12 +1047,20 @@ Digital logic should integrate with:
 
 Do not add hundreds of ICs at once.
 
-Recommended order:
-1. basic logic primitives and digital stimulus;
-2. truth-table/state inspection;
-3. 555 timer as an early concrete IC target;
-4. selected packaged logic devices;
-5. flip-flops, counters and shift registers;
-6. broader IC catalog according to real user demand.
+**Authoritative order (EF-D9 C, approved for Sprint 19B; the only order for this direction):**
+
+Two parallel tracks; whichever finishes its gates first ships first.
+
+- **Logic track (DC sessions, no time kernel):**
+  1. basic logic primitives with manual stimulus (switches, push buttons, ESP32 GPIO);
+     *Sprint 19B L1: SN74LVC1G08/00/32/04, branch `sprint-19b-logic`*;
+  2. truth-table / state inspection;
+  3. selected packaged logic devices (the same gate model, package pin maps, shared supply pins).
+- **Time track (needs the time kernel EF-1):**
+  1. the time kernel itself (*Sprint 19B T: isolated prototype, branch `sprint-19b-kernel`*);
+  2. clocks and pulse stimulus sources with a frequency;
+  3. the 555 timer (LMC555 first, EF-D6 B) as the early concrete IC target.
+- **Then, on both tracks:** flip-flops, counters and shift registers (they need state and timing);
+  then a broader IC catalog according to real user demand.
 
 Model quality and correctness take priority over catalog size.
