@@ -30,8 +30,9 @@ const drawn = (d: ProjectDocument) =>
 
 describe('wire routing integrity in the store', () => {
   it('drags through the store stay canonical; moving back and undo both restore the drawing', async () => {
+    const storage = await ProjectStore.open(new IDBFactory());
     const app = new AppStore({
-      storage: await ProjectStore.open(new IDBFactory()),
+      storage,
       prefs: prefs(),
       languages: ['en'],
       newId: () => 'r1',
@@ -68,5 +69,19 @@ describe('wire routing integrity in the store', () => {
     expect(drawn(doc())).toBe(mid); // undo restores the exact earlier drawing
     app.redo();
     expect(drawn(doc())).toBe(start);
+
+    // Review 1: a stale automatic route stored by another build is routed on open (one undoable
+    // "routes adjusted" edit), never shown as it was stored.
+    const id = doc().projectId;
+    await new Promise((r) => setTimeout(r, 100)); // pending autosaves land first
+    const stale = JSON.parse(JSON.stringify(doc())) as ProjectDocument;
+    stale.layout.wires.find((w) => w.id === 'W2')!.vertices = [
+      { x: -80, y: -200 },
+      { x: 360, y: -200 },
+    ];
+    await storage.save(stale);
+    await app.openProject(id);
+    expect(drawn(doc())).toBe(start);
+    expect(app.state.notice?.key).toBe('open.routesAdjusted');
   });
 });

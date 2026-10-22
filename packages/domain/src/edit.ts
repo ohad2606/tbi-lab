@@ -19,7 +19,7 @@ import {
   snapPoint,
   wireRoute,
 } from './layout.js';
-import { settleContacts } from './contacts.js';
+import { isContact, settleContacts } from './contacts.js';
 import { nodeKey, nodeNets, settleNets } from './nets.js';
 import { starterProgram, starterSourceFor, profileById, utf8Length } from './program.js';
 import { allocateId } from './project.js';
@@ -516,13 +516,22 @@ function joinAt(doc: ProjectDocument, a: Wire, b: Wire, jId: string): Wire | und
   if (!pa || !pb) return undefined;
   // Every corner of the original paths becomes a waypoint, so the drawing is unchanged.
   const vertices = [...pa.slice(1), ...pb.slice(1, -1)];
-  // Two automatic wires join into one automatic wire through their waypoints and the former
-  // junction (a point the user connected at); otherwise the joined wire is manual.
-  if (a.auto && b.auto) {
-    const j = pa[pa.length - 1]!;
-    const wa = isJ(a.to) ? a.auto.waypoints : [...a.auto.waypoints].reverse();
-    const wb = isJ(b.from) ? b.auto.waypoints : [...b.auto.waypoints].reverse();
-    return { id: a.id, from: aFar, to: bFar, vertices, auto: { waypoints: [...wa, j, ...wb] } };
+  // A join with an automatic side stays automatic (review 3: never freeze router output as user
+  // geometry): an automatic side contributes its waypoints, a manual side its corners (the user's
+  // own geometry, kept as constraints). Two manual sides give a manual wire, unchanged.
+  if (a.auto || b.auto) {
+    const corners = (w: Wire, path: Point[]) => (w.auto ? null : path.slice(1, -1));
+    const wa = a.auto
+      ? isJ(a.to)
+        ? a.auto.waypoints
+        : [...a.auto.waypoints].reverse()
+      : corners(a, pa)!;
+    const wb = b.auto
+      ? isJ(b.from)
+        ? b.auto.waypoints
+        : [...b.auto.waypoints].reverse()
+      : corners(b, pb)!;
+    return { id: a.id, from: aFar, to: bFar, vertices, auto: { waypoints: [...wa, ...wb] } };
   }
   const joined: Wire = { id: a.id, from: aFar, to: bFar, vertices };
   return joined;
@@ -550,6 +559,8 @@ export function makeWiresAutomatic(doc: ProjectDocument, wireIds: readonly strin
     for (const id of wireIds) {
       const w = draft.layout.wires.find((x) => x.id === id);
       if (!w) return 'unknown_wire';
+      // A contact has no route; an automatic wire keeps its waypoints (review minor).
+      if (w.auto || isContact(draft, w)) continue;
       w.auto = { waypoints: [] };
       w.vertices = [];
     }

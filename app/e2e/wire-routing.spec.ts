@@ -1,9 +1,10 @@
 /**
  * Wire routing integrity (owner-reported defect, 2026-10-22), in the product UI: the owner's video.
  * A PSU, a ground and an AND gate; the gate's supply wired by clicks; the gate dragged with the
- * mouse right, left and back to where it was. After every drop no crossing bridge appears and no
- * wire runs through a body; back home the drawing is identical to the original; it stays identical
- * across the Schematic and 3D views and a reload. Screenshots of each step are attached.
+ * mouse right, left and back to where it was. After every drop no crossing bridge appears; back
+ * home the drawing is identical to the original; it stays identical across the Schematic and 3D
+ * views and a reload. Screenshots of each step are attached. (Body intrusion in 2D and 3D is
+ * checked geometrically by app/tests/wire-routing-integrity.test.ts.)
  */
 import { expect, test, type Page } from '@playwright/test';
 import { component, createProject, place, toScreen, waitSaved, wire } from './helpers.js';

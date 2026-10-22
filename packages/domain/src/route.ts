@@ -823,9 +823,12 @@ export function rerouteWires(
 
 /** Wire ids in creation order (W1, W2, ..., W10): numeric, then textual. */
 const byCreation = (a: Wire, b: Wire) => {
-  const n = (w: Wire) => Number(/^W(\d+)$/.exec(w.id)?.[1] ?? NaN);
-  const d = n(a) - n(b);
-  return Number.isNaN(d) || d === 0 ? (a.id < b.id ? -1 : a.id > b.id ? 1 : 0) : d;
+  // A total order (review minor): `W<n>` by n, any other id after them, then by id text.
+  const n = (w: Wire) => Number(/^W(\d+)$/.exec(w.id)?.[1] ?? Infinity);
+  const na = n(a);
+  const nb = n(b);
+  if (na !== nb) return na < nb ? -1 : 1;
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 };
 
 /**

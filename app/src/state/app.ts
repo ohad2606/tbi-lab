@@ -188,6 +188,11 @@ export function layoutGeometryKey(doc: ProjectDocument): string {
 }
 
 export class AppStore {
+  /** The repairs applied to a project as it is opened: manual wires' repair, automatic routes. */
+  private layoutOnOpen(doc: ProjectDocument): ProjectDocument {
+    const repaired = this.deps.repairLayout?.(doc) ?? doc;
+    return this.deps.routeLayout?.(repaired) ?? repaired;
+  }
   private stateValue: AppState;
   private listeners = new Set<() => void>();
   private autosave: Autosave | null = null;
@@ -469,7 +474,10 @@ export class AppStore {
       // The version as stored now: this tab's writes are checked against it (Sprint 13 Task D).
       const stored = raw as Partial<ProjectDocument>;
       if (stored.revision) this.autosave?.know({ projectId, revision: stored.revision });
-      const repaired = this.deps.repairLayout?.(result.doc) ?? result.doc;
+      // Wire routing integrity (review 1): the automatic wires are routed canonically on open too
+      // (after the manual-wire repair), so a route stored by another build or an older router
+      // never comes back; the change is the same undoable "routes adjusted" edit.
+      const repaired = this.layoutOnOpen(result.doc);
       this.set({ ...base, screen: 'editor', doc: result.doc, readOnly: null });
       if (result.migratedFrom !== null) this.commit(result.doc);
       if (repaired !== result.doc) {
@@ -757,7 +765,7 @@ export class AppStore {
       const title = translate(this.stateValue.locale, example.titleKey);
       const name = this.uniqueName(title, await this.libraryNames());
       const copy = copyAsNewProject(opened.doc, this.newIdentity(name));
-      doc = this.deps.repairLayout?.(copy) ?? copy;
+      doc = this.layoutOnOpen(copy);
       await this.deps.storage!.add(doc);
     } catch (e) {
       this.storageFailure(e, 'library.error.create');
