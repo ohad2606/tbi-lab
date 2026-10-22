@@ -19,7 +19,7 @@ import {
   typicalSourceA,
 } from './esp32Gpio.js';
 import { partModel } from './parts.js';
-import { resistorRating } from './resistorRating.js';
+import { resistorRating, resistorSeriesRange } from './resistorRating.js';
 import type { SolveSuccess } from './session.js';
 import type { LimitKind } from './parts.js';
 
@@ -96,10 +96,15 @@ export type RatingCode =
   /** An output pad is forced beyond that range by the external circuit (current into the driver). */
   | 'gpio_output_overvoltage'
   /** Sprint 13 H2: the pads' total output current is above the Table 5-1 absolute maximum. */
-  | 'gpio_cumulative_current';
+  | 'gpio_cumulative_current'
+  /**
+   * Sprint 19B (F2 review): a resistor value the selected series is not made in: NO power or
+   * voltage rating applies (value: the resistance; limit: the series bound it is beyond).
+   */
+  | 'resistance_outside_series';
 
 /** The unit each warning's `value` and `limit` are in. */
-export const RATING_UNIT: Readonly<Record<RatingCode, 'ampere' | 'volt' | 'watt'>> = {
+export const RATING_UNIT: Readonly<Record<RatingCode, 'ampere' | 'volt' | 'watt' | 'ohm'>> = {
   forward_current: 'ampere',
   reverse_voltage: 'volt',
   power: 'watt',
@@ -113,6 +118,7 @@ export const RATING_UNIT: Readonly<Record<RatingCode, 'ampere' | 'volt' | 'watt'
   gpio_input_overvoltage: 'volt',
   gpio_output_overvoltage: 'volt',
   gpio_cumulative_current: 'ampere',
+  resistance_outside_series: 'ohm',
 };
 
 export interface RatingWarning {
@@ -169,7 +175,22 @@ export function ratingWarnings(
       // is published); above the absolute-maximum working voltage, `absolute`.
       const rating = resistorRating(c.params);
       const r = outcome.components[c.id];
-      if (!rating || !r || r.current === null || r.voltage === null) continue;
+      if (!rating) {
+        // A value the series is not made in: said by name (no rating borrowed, none silently
+        // dropped), whatever the dissipation.
+        const range = resistorSeriesRange(c.params);
+        if (range)
+          out.push({
+            component: c.id,
+            kind: 'unrated',
+            model: range.series,
+            code: 'resistance_outside_series',
+            value: range.ohms,
+            limit: range.ohms < range.rangeOhm[0] ? range.rangeOhm[0] : range.rangeOhm[1],
+          });
+        continue;
+      }
+      if (!r || r.current === null || r.voltage === null) continue;
       const power = Math.abs(r.voltage * r.current);
       if (power > rating.ratedW)
         out.push({

@@ -631,6 +631,8 @@ export const en = {
   'rating.row.forward_current': 'Current: {value} (maximum {limit})',
   'rating.row.reverse_voltage': 'Reverse voltage: {value} (maximum {limit})',
   'rating.row.power': 'Power: {value} (maximum {limit})',
+  'rating.row.resistance_outside_series':
+    'No power rating: {value} is not made in the selected series (its range ends at {limit})',
   'rating.row.gpio_source_current': '{pin} output HIGH sources {value} (typical drive {limit})',
   'rating.row.gpio_sink_current': '{pin} output LOW sinks {value} (typical drive {limit})',
   'rating.row.gpio_contention':

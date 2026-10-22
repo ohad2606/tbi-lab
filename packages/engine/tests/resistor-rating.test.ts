@@ -21,6 +21,12 @@ const ok = (o: SolveOutcome): SolveSuccess => {
 };
 const CF14 = RESISTOR_SERIES['model.resistor.koa_cf_1_4']!;
 
+const at = (volts: number, ohms: number, powerRating?: string) => {
+  const b = resistorLoop(volts, 1, ohms);
+  if (powerRating) b.set('R1', 'powerRating', powerRating);
+  return ratingWarnings(b.snapshot(), ok(new EngineSession(b.snapshot()).solve()));
+};
+
 describe('resistor power rating (F2)', () => {
   it('derating: full rating to 70 °C, linear to 0 at 155 °C, none outside −55 … 155 °C', () => {
     expect(deratedPowerW(CF14, -55)).toBe(0.25);
@@ -42,12 +48,8 @@ describe('resistor power rating (F2)', () => {
     expect(r(1, { powerRating: 'model.resistor.koa_cfs_1_2' })).toMatchObject({ ratedW: 0.5 });
   });
 
-  it('100 Ω across 5 V (250 mW): exactly at the ¼ W rating, no excess; 4.7 V… no; 6 V (360 mW): unrated excess', () => {
-    const at = (volts: number, ohms: number) => {
-      const b = resistorLoop(volts, 1, ohms);
-      return ratingWarnings(b.snapshot(), ok(new EngineSession(b.snapshot()).solve()));
-    };
-    expect(at(5, 100)).toEqual([]);
+  it('100 Ω: 4.99 V (249 mW) within the ¼ W rating; 6 V (360 mW): unrated excess', () => {
+    expect(at(4.99, 100)).toEqual([]);
     const w = at(6, 100);
     expect(w).toHaveLength(1);
     expect(w[0]).toMatchObject({
@@ -73,5 +75,46 @@ describe('resistor power rating (F2)', () => {
     };
     const w = ratingWarnings(b.snapshot(), forced);
     expect(w.map((x) => [x.kind, x.code, x.limit])).toEqual([['absolute', 'voltage', 300]]);
+  });
+
+  it('the ½ W series: 7 V on 100 Ω (490 mW) within; 7.1 V (504 mW) unrated; 350 V its working limit', () => {
+    const half = 'model.resistor.koa_cfs_1_2';
+    expect(at(7, 100, half)).toEqual([]);
+    const w = at(7.1, 100, half);
+    expect(w.map((x) => [x.kind, x.code, x.model, x.limit])).toEqual([
+      ['unrated', 'power', half, 0.5],
+    ]);
+    expect(w[0]!.value).toBeCloseTo(0.5041, 12);
+    const b = resistorLoop(5, 1, 5_000_000);
+    b.set('R1', 'powerRating', half);
+    const o = ok(new EngineSession(b.snapshot()).solve());
+    const force = (v: number) =>
+      ratingWarnings(b.snapshot(), {
+        ...o,
+        components: { ...o.components, R1: { ...o.components.R1!, voltage: v, current: v / 5e6 } },
+      });
+    expect(force(340)).toEqual([]);
+    expect(force(360).map((x) => [x.kind, x.code, x.limit])).toEqual([
+      ['absolute', 'voltage', 350],
+    ]);
+  });
+
+  it('a value the series is not made in is said by name (no rating), at any dissipation', () => {
+    // CF1/4 is made from 2.2 Ω to 5.1 MΩ (J): 1 Ω and 5.2 MΩ have no rating; 5.1 MΩ has.
+    for (const [ohms, bound] of [
+      [1, 2.2],
+      [5.2e6, 5.1e6],
+    ] as const) {
+      const w = at(0.5, ohms);
+      expect(
+        w.map((x) => [x.kind, x.code, x.value, x.limit]),
+        String(ohms),
+      ).toEqual([['unrated', 'resistance_outside_series', ohms, bound]]);
+    }
+    expect(at(5, 5.1e6)).toEqual([]);
+    // 1 Ω carrying 1 A: still the out-of-series row, never a borrowed power rating.
+    expect(at(1, 1).map((x) => x.code)).toEqual(['resistance_outside_series']);
+    // The ½ W series is made from 1.0 Ω: rated there.
+    expect(at(0.5, 1, 'model.resistor.koa_cfs_1_2')).toEqual([]);
   });
 });

@@ -120,7 +120,10 @@ describe('2N3904 in the session: results, region, ratings', () => {
     const w = ratingWarnings(hot.snap, hot.o).filter((x) => x.component === 'Q1');
     expect(w.some((x) => x.code === 'current' && x.channel === 'collector')).toBe(true);
     const high = commonEmitter(30, 1e9, 10);
-    expect(ratingWarnings(high.snap, high.o)).toEqual([]);
+    // Nothing on Q1 (the 1 GΩ base resistor is beyond any resistor series: Sprint 19B F2 names it).
+    expect(ratingWarnings(high.snap, high.o).map((x) => [x.component, x.code])).toEqual([
+      ['R1', 'resistance_outside_series'],
+    ]);
   });
 });
 
