@@ -10,7 +10,7 @@ After=network-online.target
 [Service]
 User=@U@runtime
 Group=@U@runtimeio
-SupplementaryGroups=@U@artifacts tbi-gate
+SupplementaryGroups=@U@artifacts @G@
 UMask=0007
 Environment=TBI_HOST_LISTEN=unix:/run/@N@-runtime/api.sock
 Environment=TBI_SOCKET_GID=@GATE_GID@

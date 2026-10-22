@@ -11,11 +11,11 @@
 # Needs sudo. Idempotent. Sprint 19B (O2): each instance runs as its OWN system users and groups
 # (dev-lab: tbi-build, tbi-buildjob, tbi-runtime, tbi-qemu, groups tbi-buildio, tbi-runtimeio,
 # tbi-artifacts, exactly as before; staging: tbi-s8-build, ...), so neither instance's services can
-# start or stop the other's units (polkit) or read the other's store, state or keys. NOT separated:
-# the gate group tbi-gate is shared, so a service of either instance can connect to the other
-# instance's API sockets (/run/<N>-*/api.sock, group tbi-gate), where the other's own access
-# checks (identity and ticket keys) apply. A per-instance gate group would close that and needs a
-# Caddy/oauth2-proxy change (future). Users are never removed.
+# start or stop the other's units (polkit) or read the other's store, state or keys. PM decision 5
+# (2026-10-22): each instance also has its own GATE group (dev-lab tbi-gate, unchanged: Caddy and
+# oauth2-proxy reach dev-lab through it; staging tbi-s8-gate, which no web server joins: staging is
+# reached only by root relays), so neither instance's services can connect to the other's API
+# sockets (/run/<N>-*/api.sock, mode 0660, the instance's gate group). Users are never removed.
 set -euo pipefail
 
 target="${1:?usage: install.sh staging|dev-lab [--uninstall]}"
@@ -31,6 +31,7 @@ case "$target" in
   staging)
     N=tbi-s8
     U=tbi-s8-
+    G=tbi-s8-gate
     STORE=/var/lib/tbi-s8-artifacts
     BUNDLES=/srv/tbi-lab/s8-staging
     RUNTIME="${TBI_S8_RUNTIME:-/home/ubuntu/tbi-s8-rt/qemu-current}"
@@ -38,6 +39,7 @@ case "$target" in
   dev-lab)
     N=tbi
     U=tbi-
+    G=tbi-gate
     STORE=/var/lib/tbi-lab/artifacts
     BUNDLES=/srv/tbi-lab/services/current
     RUNTIME="${TBI_S8_RUNTIME:?set TBI_S8_RUNTIME to the provisioned runtime prefix}"
@@ -82,7 +84,7 @@ if (( HOST_MAX < POLICY_LIVE )); then
 fi
 
 # Users and groups (system accounts, no home, no login).
-for g in "${U}buildio" "${U}runtimeio" tbi-gate "${U}artifacts"; do
+for g in "${U}buildio" "${U}runtimeio" "$G" "${U}artifacts"; do
   getent group "$g" >/dev/null || sudo groupadd --system "$g"
 done
 mkuser() { getent passwd "$1" >/dev/null ||
@@ -91,7 +93,7 @@ mkuser "${U}build" "${U}artifacts"
 mkuser "${U}buildjob" "${U}buildio"
 mkuser "${U}runtime" "${U}runtimeio"
 mkuser "${U}qemu" "${U}runtimeio"
-GATE_GID="$(getent group tbi-gate | cut -d: -f3)"
+GATE_GID="$(getent group "$G" | cut -d: -f3)"
 JOB_UID="$(id -u "${U}buildjob")"
 
 # Keys: root-only files, handed to the two services as systemd credentials.
@@ -181,7 +183,7 @@ render_raw() {
   sed -e "s|@N@|$N|g" -e "s|@NRE@|${N//-/\\\\-}|g" -e "s|@STORE@|$STORE|g" -e "s|@BUNDLES@|$BUNDLES|g" \
     -e "s|@ARDUINO@|$ARDUINO|g" -e "s|@MICROPYTHON@|$MICROPYTHON|g" -e "s|@NODE@|$NODE|g" -e "s|@RUNTIME@|$RUNTIME|g" \
     -e "s|@GATE_GID@|$GATE_GID|g" -e "s|@JOB_UID@|$JOB_UID|g" -e "s|@ARTIFACT_CAP_MB@|$CAP_MB|g" \
-    -e "s|@HOST_MAX_SESSIONS@|$HOST_MAX|g" -e "s|@U@|$U|g" "$1"
+    -e "s|@HOST_MAX_SESSIONS@|$HOST_MAX|g" -e "s|@U@|$U|g" -e "s|@G@|$G|g" "$1"
 }
 render "$here/tbi-build.service.in" "/etc/systemd/system/$N-build.service"
 render "$here/tbi-build-job@.service.in" "/etc/systemd/system/$N-build-job@.service"
