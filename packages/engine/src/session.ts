@@ -411,6 +411,7 @@ export class EngineSession {
    * nothing is persisted and no revision is involved.
    */
   setPinMode(gpio: number, mode: RuntimePinMode): EngineError | null {
+    this.inputs++; // Sprint 19B: the time kernel restarts with backward Euler
     if (!this.pinModes.has(gpio)) {
       return { code: 'invalid_attachment', detail: { gpio } };
     }
@@ -487,6 +488,16 @@ export class EngineSession {
    * Sprint 19B (time-kernel prototype, kernel/transient.ts): the session's evolving state (time,
    * integration history, settled discrete states), so a trial step can be undone exactly.
    */
+  /**
+   * Sprint 19B (time kernel): counts calls that change an input (pin modes, live controls, the
+   * PSU, buttons, part runtime state), successful or not: a step change the kernel must not
+   * integrate with trapezoidal (which rings at a discontinuity).
+   */
+  get inputRevision(): number {
+    return this.inputs;
+  }
+  private inputs = 0;
+
   checkpoint(): SessionCheckpoint {
     return { time: this.time, history: new Map(this.history), discrete: new Map(this.discrete) };
   }
@@ -510,6 +521,7 @@ export class EngineSession {
     control: LiveControl,
     projectRevision: number,
   ): EngineError | null {
+    this.inputs++; // Sprint 19B: the time kernel restarts with backward Euler
     const c = this.snapshot.components.find((x) => x.id === componentId);
     const refuse = { code: 'unsupported_component' as const, components: [componentId] };
     if (!c) return refuse;
@@ -563,6 +575,7 @@ export class EngineSession {
     control: PsuControl,
     projectRevision: number,
   ): EngineError | null {
+    this.inputs++; // Sprint 19B: the time kernel restarts with backward Euler
     return this.applyControl(componentId, control, projectRevision);
   }
 
@@ -571,6 +584,7 @@ export class EngineSession {
    * no revision is involved and nothing is persisted.
    */
   setMomentary(componentId: string, pressed: boolean): EngineError | null {
+    this.inputs++; // Sprint 19B: the time kernel restarts with backward Euler
     const c = this.snapshot.components.find((x) => x.id === componentId);
     if (!c || c.type !== 'component.push_button') {
       return { code: 'unsupported_component', components: [componentId] };
@@ -586,6 +600,7 @@ export class EngineSession {
    * `runtimeInputs` are accepted. Not a project value: no revision, nothing persisted.
    */
   setPartRuntime(componentId: string, key: string, token: string): EngineError | null {
+    this.inputs++; // Sprint 19B: the time kernel restarts with backward Euler
     const c = this.snapshot.components.find((x) => x.id === componentId);
     const allowed = c ? partModel(c.type)?.runtimeInputs?.[key] : undefined;
     if (!c || !allowed?.includes(token))

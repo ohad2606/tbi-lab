@@ -51,8 +51,8 @@ describe('time kernel prototype (EF-1)', () => {
       worst = Math.max(worst, Math.abs(vAcross(r.outcome, c) - exact));
     }
     const wallMs = performance.now() - t0;
-    // Backward Euler with step-doubling control: the global error stays in the mV range.
-    expect(worst).toBeLessThan(5e-3);
+    // Trapezoidal with step-doubling control (measured 0.33 mV): the global error stays below 1 mV.
+    expect(worst).toBeLessThan(1e-3);
     // Bounded: far below the budget (200 000 solves / simulated s); recorded as a measurement.
     expect(k.solves).toBeLessThan(200_000 * 0.5);
     console.log(
@@ -93,6 +93,47 @@ describe('time kernel prototype (EF-1)', () => {
     expect(worst).toBeLessThan(5e-3);
   });
 
+  it('second order pays: backward Euler throughout needs many more solves for the same tolerance', () => {
+    const cost = (secondOrder: boolean) => {
+      const { b } = rc(5, 1000, 100e-6);
+      const { k } = kernelFor(b, { absTolV: 1e-5, relTol: 1e-5, secondOrder });
+      const r = k.advanceTo(0.5);
+      if (!r.ok) throw new Error(r.code);
+      return r.solves;
+    };
+    const [trap, be] = [cost(true), cost(false)];
+    // Local error h³ against h²: at a 10 µV tolerance BE needs several times the steps.
+    expect(be).toBeGreaterThan(3 * trap);
+    console.log(`kernel RC 0.5 s at 10 µV: trapezoidal ${trap} solves, backward Euler ${be}`);
+  });
+
+  it('a capacitor held by the ideal supply: no trapezoidal ringing in the reported currents', () => {
+    // C directly across the PSU: once in CV the node voltages never move, so only the currents
+    // can show trapezoidal ringing (i_n = −i_{n−1}); they must settle to zero.
+    const b = new Bench();
+    const c = b.add('component.capacitor');
+    const r = b.add('component.resistor');
+    b.psu(5, 1).ohms(r, 1000).set(c, 'capacitance', { value: 100e-6, unit: 'farad' });
+    b.set(c, 'ratedVoltage', { value: 50, unit: 'volt' });
+    b.wire('PSU1.negative', 'GND1.ref').wire('PSU1.positive', `${c}.a`).wire(`${c}.b`, 'GND1.ref');
+    b.wire('PSU1.positive', `${r}.a`).wire(`${r}.b`, 'GND1.ref');
+    const { k } = kernelFor(b);
+    // The 1 A limit charges C first (CC); C takes 1 A − v/1 kΩ, so the supply reaches 5 V and
+    // switches to CV at t* = −C·1 kΩ·ln(1 − 5 V / (1 A · 1 kΩ)) = 501.25 µs: an event.
+    const tStar = -100e-6 * 1000 * Math.log(1 - 5 / 1000);
+    for (const t of [0.001, 0.002, 0.005, 0.01, 0.02]) {
+      const res = k.advanceTo(t);
+      if (!res.ok) throw new Error(res.code);
+      if (t === 0.001) {
+        expect(res.events.map((e) => e.parts)).toEqual([['PSU1']]);
+        expect(Math.abs(res.events[0]!.time - tStar)).toBeLessThan(1e-7);
+        expect(res.outcome.components.PSU1!.mode).toBe('cv');
+      }
+      expect(Math.abs(res.outcome.components[c]!.current!), `t=${t}`).toBeLessThan(1e-5);
+      expect(res.outcome.components.PSU1!.current!).toBeCloseTo(5e-3, 6);
+    }
+  });
+
   it('event localization: a relay coil charged through RC pulls in at τ·ln 7, within the tolerance', () => {
     // 5 V → 10 Ω → node X; 10 mF from X to GND; relay coil (70 Ω) from X to GND.
     // Thevenin: V_th = 5·70/80 = 4.375 V, R_th = 10∥70 = 8.75 Ω, τ = 87.5 ms.
@@ -113,8 +154,32 @@ describe('time kernel prototype (EF-1)', () => {
     const res = k.advanceTo(0.3);
     if (!res.ok) throw new Error(res.code);
     expect(res.events.map((e) => e.parts)).toEqual([[kk]]);
-    // The event time: backward Euler's own (small) trajectory error plus the bisection tolerance.
-    expect(Math.abs(res.events[0]!.time - exact)).toBeLessThan(2e-4);
+    // eventTolS bounds the bracket on the COMPUTED trajectory; the event time's error against
+    // the circuit is the trajectory's voltage error over 170 ms (~0.15 mV) divided by the slope
+    // at the threshold (0.625 V / 87.5 ms = 7.14 V/s): ~21 µs measured.
+    const errAt = Math.abs(res.events[0]!.time - exact);
+    expect(errAt).toBeLessThan(5e-5);
+    // ... and it follows the trajectory's accuracy: 100× tighter tolerances, a much better time.
+    const tight = new Bench();
+    {
+      const r2 = tight.add('component.resistor');
+      const c2 = tight.add('component.capacitor');
+      const k2 = tight.add('component.relay');
+      tight.psu(5, 2).ohms(r2, 10).set(c2, 'capacitance', { value: 0.01, unit: 'farad' });
+      tight.set(c2, 'ratedVoltage', { value: 50, unit: 'volt' });
+      tight.wire('PSU1.negative', 'GND1.ref').wire('PSU1.positive', `${r2}.a`);
+      tight.wire(`${r2}.b`, `${c2}.a`).wire(`${c2}.b`, 'GND1.ref');
+      tight.wire(`${c2}.a`, `${k2}.coil1`).wire(`${k2}.coil2`, 'GND1.ref');
+      tight.wire(`${k2}.com`, 'GND1.ref');
+    }
+    const t2 = kernelFor(tight, {
+      absTolV: 1e-7,
+      relTol: 1e-7,
+      absTolA: 1e-8,
+      eventTolS: 1e-9,
+    }).k.advanceTo(0.3);
+    if (!t2.ok) throw new Error(t2.code);
+    expect(Math.abs(t2.events[0]!.time - exact)).toBeLessThan(errAt / 5);
     expect(res.outcome.components[kk]!.state).toMatchObject({ energized: true });
     console.log(
       `kernel relay pull-in: ${(res.events[0]!.time * 1e3).toFixed(4)} ms vs exact ${(exact * 1e3).toFixed(4)} ms`,
@@ -134,12 +199,37 @@ describe('time kernel prototype (EF-1)', () => {
       }
       return { vs, steps: k.steps, solves: k.solves };
     };
-    expect(run()).toEqual(run());
+    const once = run();
+    expect(once).toEqual(run());
+  });
+
+  it('breakpoints are step ends exactly; checkpoint/restore is exact; time cannot go back', () => {
+    const { b, c } = rc(5, 1000, 100e-6);
+    const { s, k } = kernelFor(b);
+    k.addBreakpoint(0.0123);
+    const r = k.advanceTo(0.02);
+    if (!r.ok) throw new Error(r.code);
+    expect(r.stepEnds).toContain(0.0123);
+    expect(r.stepEnds.at(-1)).toBe(0.02);
+    // The same step from the same checkpoint, twice: bit-identical.
+    const cp = s.checkpoint();
+    const a1 = s.advance(1e-3, 'trapezoidal');
+    s.restore(cp);
+    const a2 = s.advance(1e-3, 'trapezoidal');
+    if (!a1.ok || !a2.ok) throw new Error('solve');
+    expect(vAcross(a2, c)).toBe(vAcross(a1, c));
+    expect(a2.components[c]!.current).toBe(a1.components[c]!.current);
+    expect(k.advanceTo(0.01)).toMatchObject({ ok: false, code: 'transient_time_not_ahead' });
+    // The same time again: the state there, no step.
+    s.restore(cp);
+    expect(k.advanceTo(0.02)).toMatchObject({ ok: true, steps: 0 });
   });
 
   it('bounded and honest: an impossible budget or step floor is refused by name; logic is refused', () => {
     const { b } = rc(5, 1000, 100e-6);
-    expect(kernelFor(b, { budgetSolvesPerSimS: 10 }).k.advanceTo(0.1)).toMatchObject({
+    expect(
+      kernelFor(b, { budgetSolvesPerSimS: 10, minBudgetSolves: 0 }).k.advanceTo(0.1),
+    ).toMatchObject({
       ok: false,
       code: 'transient_budget_exceeded',
     });
