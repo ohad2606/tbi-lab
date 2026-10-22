@@ -64,7 +64,7 @@ const ROTATE_GAP_MAX_MS = 15_000;
 const POLICY_LIFETIME_S = 1800;
 if (
   ROTATE_S > 0 &&
-  (ROTATE_S >= POLICY_LIFETIME_S - 60 || ROTATE_S - 4 * ROTATE_STAGGER_S < WARMUP_S)
+  (ROTATE_S >= POLICY_LIFETIME_S - 60 || ROTATE_S - (N - 1) * ROTATE_STAGGER_S < WARMUP_S)
 )
   throw new Error(
     `TBI_C5_ROTATE=${ROTATE_S}: must leave the stagger and warm-up and stay below the lifetime`,
