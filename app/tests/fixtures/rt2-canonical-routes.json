@@ -1,0 +1,102 @@
+{
+  "5-1": {
+    "open": "617d67df6a9687de8bd714d1acc9490d0dd7795dd5fbc071c302011eec8d32ee",
+    "moved": "3ec570ed632b7f763e43bf4a7fb1010f38857f52299ebb383edc8992e5d7d691"
+  },
+  "5-1-dense": {
+    "open": "065f31fc26f59e7014d828b68928aa0d596c0fd2e3996aa61b7959863e39989a",
+    "moved": "d9de2da15e3baf10929a57ae5d0eb957d40fe7446d34d8e1a34335a2b7fa5018"
+  },
+  "5-1-dense-board": {
+    "open": "98fe55b89fe9b7e617b340c3f95c7bc29fe2995017168710a580afbb5db60b53",
+    "moved": "8b7b4aa884a7dac720335e42572173fa9b4722d5a760742b05fe9897c66841e7"
+  },
+  "5-2": {
+    "open": "043497e6dc61aaae06643a740e2b0956f3e4dd98be537bdeddc9216477f03522",
+    "moved": "a2ac1eddbf8fb5b917c90efaf6f64276df17e0d1e077c70e5b4a548065df765b"
+  },
+  "5-2-dense": {
+    "open": "39c607d68b5e212d76166cbc0acd48085fd67c0de0b2c203959fe4130e0dd5cd",
+    "moved": "04c7e1c4d01f12b2a8c4e6897660cf188e2ee6c559d41d2f8e8fa8d5c8d5cff1"
+  },
+  "5-2-dense-board": {
+    "open": "892f5d388d0d84c233ac68077bba082d2f96d5e505b410429d9ec8536b6d3efc",
+    "moved": "cd0f477d1550b7f6da1fe824d52a53e4e4add8d6c964ae3fea973c60eb8b40bc"
+  },
+  "10-1": {
+    "open": "d3302ad7e402d8ddce444d6c73a0148b88eca502a0d3a51d830cf2458270944a",
+    "moved": "db6e06657af5e64a2c1d7df7c0b051af4cdb1e6e7a543f37ff7a1b80cd08a2fc"
+  },
+  "10-1-dense": {
+    "open": "8dd9b766bdd44747aa1de8f3210db7fafdf83c9f9af1e078349dbb87d1cb3682",
+    "moved": "d0cd3e7743e136a57b2ba2db17028d8824d12361d4de76a46c5d76ff2e55ff79"
+  },
+  "10-1-dense-board": {
+    "open": "37b4edb6e0be7db8df5b958a7e4580e1ce2c90fdc21fb56168b858dd952f43f2",
+    "moved": "70ab3bab00444c77d6d1006ae822740a066af111eedd4dddbf630d51d2ba1649"
+  },
+  "10-2": {
+    "open": "204e27c0e566ef9db57e22ee10c8f28bc57ec82ba31fabfe701668f8c66dd53a",
+    "moved": "bfebe66d0ac9575a4c85503f6143bd1cd7f0879dea9c1655067fd633bbe711bc"
+  },
+  "10-2-dense": {
+    "open": "804ec0e46201c1123a06ed84e6b35f58fbebf81e7b05bb9a8fc89c8ec23df207",
+    "moved": "efa5703d637d29ddf9bdb203b74ffb2e9c16a7f28b7fe50dfd39d665797b8ef7"
+  },
+  "10-2-dense-board": {
+    "open": "418689a894f462483162228eef0c9b160956331d4e0b5d3bbf891c6ee6abbceb",
+    "moved": "e803cd063542ff4f069911faf201b65dad53c57714719bcd5e067581a49fe78d"
+  },
+  "20-1": {
+    "open": "3786fcce1c32ccfb82991136e0a6e635342c2ab05bee404e1bb45741e5133564",
+    "moved": "d32c2452052fc6c802f5d86a461402d9f10275d607fc2e3a8fbb95ef3ec19e2b"
+  },
+  "20-1-dense": {
+    "open": "7374cbe06b11e335f34056605abc60b9fa3a9e5833e75d4cf1d2bdd2111c4dd8",
+    "moved": "15649372f0713af48d892c280e7907b724322db54ab91bde623af51742770ae9"
+  },
+  "20-1-dense-board": {
+    "open": "728a2833ac8200e212998985cc2d9429d3ee3b64c52070ef114088788ffdcaba",
+    "moved": "b4cc0e902d1031a5da3c20a6ad99446c77481cc253facb9976840f2880d2525f"
+  },
+  "20-2": {
+    "open": "c6be5f14fef99d143ab4c42f7cb89858362e89637ad28a0a8a84d764a5bb00d1",
+    "moved": "06151f383b71880d48724259d4ab1bac8b5cad9c72ad3baabf86b8630e0b0147"
+  },
+  "20-2-dense": {
+    "open": "292c5739a5d6bab5134134e52433a89af1a47295a648f418dfe8a6ccb0cdf292",
+    "moved": "df6cfd9c2d8ddeca341b4ed25ddcc5c7aac19c91e823387ca92f7f71ca02ff19"
+  },
+  "20-2-dense-board": {
+    "open": "59f958d82b1f4ef19bcf8ab974c0fde83ac381ea2cb4cda63d36de43450e809b",
+    "moved": "032653f70658f23616326f14f1b4e26641353680a4887cdc1146bdf1b1f234fe"
+  },
+  "40-1": {
+    "open": "b8257f22e957cd0000a437662ac9ad2039831ce1a2d796f9bc2fa823fa09d356",
+    "moved": "dc2f0713d011a2d53bce1ed86c7c6a178ea0f2f534bff132019b3080f78f94b9"
+  },
+  "40-1-dense": {
+    "open": "e11705b7b8aafe4c6854442618f52949dda9781da6fd9a7f668ec064530a0453",
+    "moved": "aac0b1b451fe470c0d7a18af0b94000f535c6a26229b5312a78dcc9622218d1a"
+  },
+  "40-1-dense-board": {
+    "open": "b7bfa266bc070552268854cb7dab9484981599db43e1a7779212c80be04e848d",
+    "moved": "0579c4807f4b144cea1f116a2c40836f0ac73ef7db93c0f48c33b23ac84a992d"
+  },
+  "40-2": {
+    "open": "0fbe94bc34f79ecdcdfba7cecaa4bbabb577ad87e9eda346d387bb334c621382",
+    "moved": "7b636bdbba511915485e6f8f87b9c4ba96757ee8aa835e880a329a36e7af1c1d"
+  },
+  "40-2-dense": {
+    "open": "578f9d79f8ef8064df7d0bc016ae365b2aa664d94a6efb6bc0115e81fbae6aaf",
+    "moved": "ecfb5f07de9330f15debf3ed6b2ee341d64e22ef07a3a13a5ab07a40c87d3f3e"
+  },
+  "40-2-dense-board": {
+    "open": "8ba4058fd7aa8f1dc77c30c5bc2f281fe00feccc7bec2ea08557825ffc233831",
+    "moved": "aecc5d5d6501bf96435553ace1e41096c33448ae45d002879f47cc205d828817"
+  },
+  "80-1-dense-board": {
+    "open": "c4e03f2d77968d90643b866e474e404928a6e0a4d2ac2e334052bc75ec8122da",
+    "moved": "17b234185b20a42e0fccd4492c8c55d4f73356381cf0537e0d6b1c18a7bf4db9"
+  }
+}
