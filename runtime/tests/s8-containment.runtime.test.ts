@@ -22,6 +22,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { loadRequest } from './r2-support.js';
 
 const N = process.env.TBI_S8_INSTANCE ?? 'tbi-s8';
+/** Sprint 19B (O2): each instance's own system users (dev-lab `tbi-*`, staging `tbi-s8-*`). */
+const U = N === 'tbi' ? 'tbi-' : `${N}-`;
 const STORE = N === 'tbi' ? '/var/lib/tbi-lab/artifacts' : `/var/lib/${N}-artifacts`;
 const run = Date.now().toString(36); // fresh principals per run (the instance keeps its records)
 const BUILD_SOCK = `/run/${N}-build/api.sock`;
@@ -117,11 +119,11 @@ describe.skipIf(!HAVE)(
     it('no product service runs as a login user', () => {
       const who = (unit: string) =>
         sudo('systemctl', 'show', '-p', 'User', '--value', unit).stdout.trim();
-      expect(who(`${N}-build.service`)).toBe('tbi-build');
-      expect(who(`${N}-session-host.service`)).toBe('tbi-runtime');
-      expect(who(`${N}-build-job@job-aaaaaa.service`)).toBe('tbi-buildjob');
-      expect(who(`${N}-qemu@${'0'.repeat(32)}.service`)).toBe('tbi-qemu');
-      for (const u of ['tbi-build', 'tbi-buildjob', 'tbi-runtime', 'tbi-qemu'])
+      expect(who(`${N}-build.service`)).toBe(`${U}build`);
+      expect(who(`${N}-session-host.service`)).toBe(`${U}runtime`);
+      expect(who(`${N}-build-job@job-aaaaaa.service`)).toBe(`${U}buildjob`);
+      expect(who(`${N}-qemu@${'0'.repeat(32)}.service`)).toBe(`${U}qemu`);
+      for (const u of ['build', 'buildjob', 'runtime', 'qemu'].map((x) => `${U}${x}`))
         expect(spawnSync('getent', ['passwd', u], { encoding: 'utf8' }).stdout).toMatch(
           /:\/nonexistent:\/usr\/sbin\/nologin$/m,
         );
@@ -280,7 +282,7 @@ describe.skipIf(!HAVE)(
       }
       expect(status).toMatch(/^Name:\s+qemu-system-xte/m);
       const uid = /^Uid:\s+(\d+)/m.exec(status)![1];
-      expect(uid).toBe(spawnSync('id', ['-u', 'tbi-qemu'], { encoding: 'utf8' }).stdout.trim());
+      expect(uid).toBe(spawnSync('id', ['-u', `${U}qemu`], { encoding: 'utf8' }).stdout.trim());
       // Its own network namespace, loopback only; no route anywhere.
       expect(sudo('readlink', `/proc/${pid}/ns/net`).stdout).not.toBe(
         sudo('readlink', '/proc/1/ns/net').stdout,
@@ -388,11 +390,18 @@ describe.skipIf(!HAVE)(
           `${N}-build-job@*`,
         ).stdout.trim();
       for (let i = 0; i < 100 && !active(); i++) await new Promise((x) => setTimeout(x, 100));
-      expect(active()).not.toBe('');
+      // The predecessor's jobs, by name. (Since Sprint 18F the NEW service may start its own
+      // curated prewarm job at once: that one is not a leftover and is not counted.)
+      const jobs = (out: string) =>
+        [...out.matchAll(/@(job-[A-Za-z0-9]{6})\.service/g)].map((m) => m[1]!);
+      const before = jobs(active());
+      expect(before.length).toBeGreaterThan(0);
       sudo('systemctl', 'restart', `${N}-build.service`);
       await new Promise((x) => setTimeout(x, 2000));
-      expect(active()).toBe('');
-      expect(sudo('ls', `/var/lib/${N}-build/jobs`).stdout.trim()).toBe('');
+      const still = jobs(active());
+      expect(before.filter((j) => still.includes(j))).toEqual([]);
+      const dirs = sudo('ls', `/var/lib/${N}-build/jobs`).stdout.trim().split(/\s+/);
+      expect(before.filter((j) => dirs.includes(j))).toEqual([]);
     });
 
     it('a restarted Session Host ends its predecessor’s runtimes and clears their session files', async () => {
