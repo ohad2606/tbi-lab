@@ -10,7 +10,7 @@ this document was run on Alpha. Every result is DEV evidence. The gate procedure
 |---|---|
 | **RC5 source commit** | **see §3 (the final commit of branch `rc5-release`)** |
 | Base | `origin/sprint-15-r4` `c164cbe` = PR #7 head (R4 + 18F), which contains `origin/sprint-13` `6c30385` (RC4 `71c4ce7` + its docs) |
-| RC5 commits on top of PR #7 | `467698e` RC5 profiles; `e828324` independent-review fixes (PWM pad ratings at both points, SG90 frame rate, core seed kept across restarts); `8db77d7` capacity workload mix with the R4 paths (test only) |
+| RC5 commits on top of PR #7 | `467698e` RC5 profiles; `e828324` independent-review fixes (PWM pad ratings at both points, SG90 frame rate, core seed kept across restarts); `8db77d7` capacity workload mix with the R4 paths (test only); `d17cd21` s13-journey test timeout (test only); `04c8fbb` capacity harness: the rotation bound uses the run's N (test only); this handoff (docs) |
 | Composition | RC4 + R4 (ESP32 LEDC PWM, LED dimming, TowerPro SG90, Runtime v3) + 18F (SG90 3D motion; Arduino core seed and curated prewarm) + the review fixes above. **Active Minutes absent. No Exploration Foundation (Sprint 19B) feature**: no logic gates, MicroPython, Runtime v4, time kernel or resistor power series (verified by search of the tree and by the independent ancestry review, §11) |
 | Previous release (rollback target on Alpha) | RC4 `71c4ce773f765c107852fe1a222cc17f446779f7` on Runtime v2 `b5b34b49cb7e4049` |
 | Runtime | **v3 `2cb1406f94f52e4f`** (§4); release artifacts `ff0ea83b43e6c57d` (§5) |
@@ -75,9 +75,9 @@ counted as passes.
 | Install | `install.sh staging` from the clean RC5 worktree, `TBI_S8_RUNTIME` = the v3 release prefix; 5.9 s; `/health` reports the commit; build profiles: Arduino only |
 | DEV-Lab during staging | unit, rule, key, policy and link hashes identical before and after |
 | Deployed suites | **31 passed, 2 skipped** (s8-containment 9/9, s8-policy 7/7, s8-qemu-tasks 2/2, s11-deployed 6 + 2 old-host skips, s8-deployed-policy 7/7) and s13-deployed-security 1/1; staging policy restored byte-equal |
-| Browser → real QEMU (RC4 set + R4/18F set, 25 tests) | first run **19 passed, 4 failed, 2 skipped**: the 4 failures were admission refusals of the single test identity (`session-create` `rate_limited`: 20 creations per 10 min in the preview plan; then `session_quota`), not product faults; rerun in rate-respecting batches: *(pending)* |
-| Capacity (§10) | *(pending)* |
-| Rollback rehearsal RC5 → RC4 → RC5 | *(pending)* |
+| Browser → real QEMU (RC4 set + R4/18F set, 25 tests) | first run **19 passed, 4 failed, 2 skipped**: the 4 failures were admission refusals of the single test identity (`session-create` `rate_limited`: 20 creations per 10 min in the preview plan; then `session_quota`), not product faults; clean redo in six batches 11 min apart (14:36–15:41, `8db77d7`): **28 passed, 0 failed, 2 skipped** (s6, s11, s12, s13-export/journey/live/staging, s15-r4, s18-r4b incl. duty 0 EN/HE, crash and Session Host restart recovery, s18f servo 3D and build) |
+| Capacity (§10) | `capacity-acceptance.sh tbi-s8 … smoke` on `04c8fbb`: see §10 |
+| Rollback rehearsal RC5 → RC4 → RC5 | staging backed up first (tgz sha256 `7c90a94a…`). **RC5 → RC4** (`71c4ce7`, Runtime v2 `b5b34b49cb7e4049`): install 3.5 s, ready +1.2 s, `/health` = `71c4ce7`, `s8-qemu-tasks` + `s8-deployed-policy` 9/9. **RC4 → RC5** (`04c8fbb`, v3 `2cb1406f94f52e4f`): install 2.7 s, ready +1.1 s, `/health` = `04c8fbb`, 9/9. DEV-Lab hashes identical before and after (`~/tbi-s19c/rc5-drill/`) |
 
 ## 7a. R4 owner-acceptance evidence
 
@@ -128,9 +128,19 @@ counted as passes.
   released 60 s after its end; a build failure other than the harness's own invalid input; the
   host's Session Host or build service restarting; DEV-Lab/Alpha users affected. The procedure's
   preflight refuses a busy instance.
-- DEV measurement: *(pending: staging, 1 vCPU; the policy admits one preview session, so N ≥ 2 is
-  recorded as a refusal. Six concurrent sessions cannot be measured on DEV; that measurement is
-  Alpha's, on its 6-CPU host.)*
+- DEV measurement (staging, 1 vCPU, `smoke`, `04c8fbb`; the policy admits one live session here):
+  - ramp N = 1: **PASS** (worst build 10.2 s; pacing p5 0.9998; tick-gap p99 4 ms; nothing left).
+  - ramp N = 2 and faults N = 2: admitted 1/2, the second **refused by the policy** as designed;
+    every other criterion passed, faults recovered.
+  - soak N = 1 (180 s, one rotation): sessions, pacing, rotation (gap 457 ms, clean), isolation and
+    leftovers **pass**; the two mid-soak builds **fail by design**: with
+    `deferWhileLiveSessionsAtLeast = cpus` (= 1 here) no build starts while a session is live, and a
+    build that waits longer than `maxQueueWaitMs` (600 s) ends `capacity_timeout`
+    (`runtime/builder/service.ts` `pump`). On Alpha's 6-CPU host at N = 5 this condition does not
+    arise; the full soak there is what decides it.
+  - Found and fixed on the way (test only, `04c8fbb`): the harness's rotation bound assumed N = 5,
+    so `smoke` (N = 1) could never run its soak. First run kept as evidence.
+  - Six concurrent sessions cannot be measured on DEV; that measurement is Alpha's.
 
 ## 11. Installation, switch and rollback (Alpha operators)
 
