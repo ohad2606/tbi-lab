@@ -14,6 +14,9 @@ import { component, exportFromMenu, goToProjects, openAppMenu, storedProjects } 
 
 test.skip(!process.env.TBI_S12_REAL, 'heavy: needs the real Session Host + QEMU (TBI_S12_REAL=1)');
 test.describe.configure({ mode: 'serial' });
+// Each journey builds and runs on the real stack (its build step alone allows 300 s): the test's
+// own limit must cover that, as the other real-stack specs' does (RC5: was the 60 s default).
+test.setTimeout(420_000);
 
 const T = (p: Page, id: string) => p.getByTestId(id);
 const select = (p: Page, id: string) =>
