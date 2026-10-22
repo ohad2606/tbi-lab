@@ -423,6 +423,12 @@ function ComponentResultView({
     <section class="sim-results" aria-labelledby="sim-results-heading" data-testid="sim-results">
       <h3 id="sim-results-heading">{t('sim.results.heading')}</h3>
       <p class="muted small">{t('sim.results.note')}</p>
+      {/* Sprint 19B: an undetermined logic level reaches this part: no number is shown for it. */}
+      {r?.unknown && (
+        <p class="sim-unknown" role="note" data-testid="result-unknown">
+          {t('sim.results.unknown')}
+        </p>
+      )}
       {!r ? (
         <p data-testid="sim-results-none">
           {component.type === 'component.ground' ? V(0) : t('sim.results.notSimulated')}

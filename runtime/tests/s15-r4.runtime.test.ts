@@ -14,6 +14,8 @@
  * - T-R4-4: an SG90 follows 1.0 / 2.0 / 1.5 ms pulses: commanded 0, 180, ~90 deg; exact widths.
  */
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import type { SolveSuccess } from '@tbi-lab/engine';
 import { createSessionOverlay } from '../harness/artifacts.js';
@@ -367,6 +369,14 @@ describe('R4 on the real runtime (Session Host)', () => {
     expect(leds.filter((i) => i > 0).length).toBeGreaterThan(0);
   }, 900_000);
 
+  /** The bridge capabilities of the runtime under test (its runtime.json, next to bin/). */
+  const runtimeCaps = (): string[] =>
+    (
+      JSON.parse(readFileSync(join(dirname(dirname(QEMU)), 'runtime.json'), 'utf8')) as {
+        capabilities?: string[];
+      }
+    ).capabilities ?? [];
+
   it('Sprint 17C (review M2): an LED on PWM is refused by name when the CPU drops below 80 MHz', async () => {
     const c = new Circuit();
     const r1 = c.add('component.resistor');
@@ -379,8 +389,20 @@ describe('R4 on the real runtime (Session Host)', () => {
     const created = host.create(req, principalFor());
     if (!created.ok) throw new Error(created.error);
     const s = created.value.session;
+    // Sprint 19B: a Runtime v4 (capability `unmodelled`) refuses the lowered CPU clock ITSELF,
+    // by name, at the first settled lowering (two command ticks), before the PWM model can see
+    // the APB change and before the emulator stalls (F-17C-1). A v3 keeps the M2 refusal below.
+    const end = await runUntil(s, 'APB 40 40000000');
+    if (runtimeCaps().includes('unmodelled')) {
+      expect(end).toMatchObject({
+        state: 'failed',
+        reason: 'unsupported_feature',
+        detail: { unmodelled: 'cpu_frequency' },
+      });
+      return;
+    }
     // The refusal comes within a tick of the change, before the emulator stalls (F-17C-1).
-    expect(await runUntil(s, 'APB 40 40000000')).toMatchObject({
+    expect(end).toMatchObject({
       state: 'failed',
       reason: 'pwm_unsupported',
       detail: { code: 'pwm_unsupported_mode', gpio: 18, why: 'timer-apb-clock' },
