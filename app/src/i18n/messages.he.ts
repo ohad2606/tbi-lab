@@ -615,6 +615,8 @@ export const he: Record<MessageKey, string> = {
   'rating.row.forward_current': 'זרם: {value} (מקסימום {limit})',
   'rating.row.reverse_voltage': 'מתח הפוך: {value} (מקסימום {limit})',
   'rating.row.power': 'הספק: {value} (מקסימום {limit})',
+  'rating.row.resistance_outside_series':
+    'אין דירוג הספק: ערך של {value} אינו מיוצר בסדרה שנבחרה (הטווח שלה מסתיים ב-{limit})',
   'rating.row.gpio_source_current': '{pin} ביציאה HIGH מספק {value} (הנעה טיפוסית {limit})',
   'rating.row.gpio_sink_current': '{pin} ביציאה LOW בולע {value} (הנעה טיפוסית {limit})',
   'rating.row.gpio_contention':

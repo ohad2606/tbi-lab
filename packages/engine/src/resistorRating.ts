@@ -69,6 +69,26 @@ export function deratedPowerW(series: ResistorSeries, ambientC: number): number 
 }
 
 /**
+ * The selected series and the resistance when that value is OUTSIDE the series' range (a
+ * resistor that has no rating); null otherwise (in range, or no valid series/value).
+ */
+export function resistorSeriesRange(params: Readonly<Record<string, unknown>>): {
+  series: string;
+  ohms: number;
+  rangeOhm: readonly [number, number];
+} | null {
+  const series =
+    typeof params.powerRating === 'string' ? params.powerRating : DEFAULT_RESISTOR_SERIES;
+  const card = RESISTOR_SERIES[series];
+  const r = params.resistance as { value?: unknown } | undefined;
+  const ohms = typeof r?.value === 'number' ? r.value : NaN;
+  if (!card || !Number.isFinite(ohms)) return null;
+  return ohms < card.rangeOhm[0] || ohms > card.rangeOhm[1]
+    ? { series, ohms, rangeOhm: card.rangeOhm }
+    : null;
+}
+
+/**
  * The rating that applies to a resistor's parameters, or null when the selected series is not
  * made in that value (no rating is borrowed from a part that does not exist).
  */

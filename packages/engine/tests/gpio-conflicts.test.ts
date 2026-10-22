@@ -218,7 +218,11 @@ describe('ESP32 pad diagnostics (ratingWarnings)', () => {
     expect(total).toEqual(expect.objectContaining({ kind: 'absolute', limit: 1.2 }));
     expect(total!.value).toBeGreaterThan(1.2);
     // Each overloaded pad is its own unrated row.
-    const rows = w.filter((x) => x.code !== 'gpio_cumulative_current');
+    // (The 1 mΩ loads are below any resistor series: Sprint 19B F2 names them, one row each.)
+    expect(w.filter((x) => x.code === 'resistance_outside_series')).toHaveLength(gpios.length);
+    const rows = w.filter(
+      (x) => x.code !== 'gpio_cumulative_current' && x.code !== 'resistance_outside_series',
+    );
     expect(rows).toHaveLength(gpios.length);
     for (const x of rows) expect(x.kind).toBe('unrated');
   });
