@@ -195,4 +195,37 @@ refuses PWM and servos by name. Both directions are one maintenance window.
 
 ## 13. Final commit, package manifests
 
-*(pending)*
+| | |
+|---|---|
+| **Package source commit** | **`84f4691db1303623de06cea273e09adfef2a449e`** (the packages stamp this commit; build time = its committer time `2026-10-22T16:12:04Z`) |
+| Branch head | `rc5-release` = the commit that adds this section on top of `84f4691`: **docs only** (this file), so it changes no package. As for RC4 (`71c4ce7` packages, `6c30385` docs head) |
+| G2 on DEV | `verify-on-packaging-host.sh 84f4691`: **PASS**. `rc5` manifest **`187c609670782cd7`**, `rc5-reports` manifest **`043c035697dbb468`**: 26 files each (8 source maps), byte-identical across two clean builds per profile. Node `v24.21.0`, npm `11.19.0`, 1 CPU |
+| G4 on DEV | each package: `verify-build.log` "all checks passed: 84f4691…"; `check-dist.log` "21 assets, profile … confirmed" |
+| Manifests differ from `e828324`'s | expected: the commit and build time are stamped into the packages |
+| Staging | `04c8fbb` installed (the services are identical at `84f4691`: it adds docs only) |
+| Runtime / firmware | v3 `2cb1406f94f52e4f`, binary sha256 `c9610d73…` (§4); artifacts `ff0ea83b43e6c57d` (§5) |
+| DEV evidence | `~/tbi-s19c/rc5-g2-final/` (packages and `G2-RESULT.txt`; its header still reads "RC4 G2 packaging-host verification": a label in the script, cosmetic) |
+
+## 14. Independent review of PR #7 and its ancestry
+
+Two independent read-only reviews of `origin/sprint-13..rc5-release` (2026-10-22): one of the
+runtime path (QEMU patches 0009/0010, harness, host PWM/servo/session), one of the builder, app,
+packages, deploy and the ancestry. **No blockers in either.**
+
+| Item | Finding | Disposition |
+|---|---|---|
+| Ancestry | `origin/sprint-13` `6c30385` is the merge-base; `71c4ce7..6c30385` docs only; of the 53 files RC4 touched since R4 forked, the 11 changed by the delta are additive R4 integration; RC4's runtime-exit fix untouched; problem reports and packaging scripts unchanged; **no Exploration Foundation code** | clean |
+| Should-fix (app) | PWM pad rating checked only the higher-current point, so a sink (or GPIO16/17 source) over its limit at the other point was not reported | **fixed** `e828324` (both points, each in its own mode; tests) |
+| Should-fix (runtime) | an SG90 accepted any frame up to 50 ms, so it moved for non-servo PWM (e.g. 1 kHz `analogWrite`) | **fixed** `e828324`: frames under 18 ms → warning `servo_frame_unsupported` (EN/HE), the servo holds |
+| Builder M1 | every builder start deleted the current core seed (cold first build after each restart) | **fixed** `e828324` (only interrupted harvests removed) |
+| Runtime M1 | a LEDC timer reset/pause does not re-anchor already pending channel latches (a latch can land mid-period) | open, minor; documented |
+| Runtime M2 | `onSerial` closes windows without `advancePwm` (effect < 1 tick) | open, minor |
+| Runtime M3 | a timer resolution outside 1..20 can send a duty the harness rejects: fails closed as `host_protocol_error`, unnamed | open, minor (fail-closed) |
+| Runtime M4 | guest-visible LEDC registers (TIMER_VALUE, DUTY_R, reset value) not cycle-exact | open, minor (harmless with IDF/Arduino) |
+| Runtime M5–M7 | transitions at an overflow between frames applied up to one tick late; grace-tick refusal checked at tick instants only; LEDC firmware without `features` runs up to one tick before `unsupported_feature` | open, minor (all fail-closed or < 1 tick) |
+| Builder M2–M3 | concurrent curated harvests (needs > 1 active build); prewarm can precede a user in the FIFO | open, cost only |
+| Host M4 (cross-check) | R4's try/catch around the final `flushWindow` | covered by the recovery tests in §7 (QEMU killed, Session Host restarted) |
+
+**Request:** with this review, the RC5 gates on DEV (§12) and the PM's confirmation of the R4
+owner sign-off (§7a), PR #7 and `rc5-release` can be proposed for merge. **Nothing is merged and
+nothing is deployed to Alpha by this handoff.**
