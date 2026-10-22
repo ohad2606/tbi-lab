@@ -25,6 +25,7 @@ import {
   type LedcTimerState,
   type Level,
   type PadFunction,
+  type UnmodelledFacility,
 } from './protocol.js';
 
 /** How a session ended. */

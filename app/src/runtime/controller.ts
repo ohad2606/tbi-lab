@@ -472,6 +472,9 @@ export class McuSimulation implements SimulationHost {
           if (reason === 'electrical_error' && isEngineError(e.detail))
             return this.fail({ kind: 'engine', error: e.detail });
           if (reason === 'pwm_unsupported') return this.fail(pwmFailure(e.detail));
+          const unmodelled = (e.detail as { unmodelled?: unknown } | null)?.unmodelled;
+          if (reason === 'unsupported_feature' && typeof unmodelled === 'string')
+            return this.fail({ kind: 'unmodelled', code: 'unmodelled', facility: unmodelled });
           if (reason === 'unsupported_feature' && invertedRouting(e.detail))
             return this.fail({ kind: 'runtime', code: 'inverted_output', detail: reason });
           return this.fail({

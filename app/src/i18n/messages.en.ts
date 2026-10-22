@@ -869,6 +869,9 @@ export const en = {
     'Too many ESP32 sessions were started in a short time. Try again in a few minutes. The project is not affected.',
   'sim.error.runtime.firmware_unavailable':
     'The selected firmware is not available on the runtime service. The project is not affected.',
+  // Sprint 19B (Runtime v4): a facility the emulator does not model, refused when first used.
+  'sim.error.unmodelled':
+    'The program started using {feature}, which the simulator does not model. The simulation stopped at that moment instead of showing a dead or crashed result.',
   'sim.error.runtime.unsupported_feature':
     'The firmware uses a feature the simulator does not support in this version (internal pull-up/pull-down or GPIO interrupts).',
   'sim.error.runtime.inverted_output':

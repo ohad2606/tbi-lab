@@ -844,6 +844,8 @@ export const he: Record<MessageKey, string> = {
     'הופעלו יותר מדי ריצות ESP32 בזמן קצר. נסו שוב בעוד כמה דקות. הפרויקט לא נפגע.',
   'sim.error.runtime.firmware_unavailable':
     'הקושחה שנבחרה אינה זמינה בשירות הריצה. הפרויקט לא נפגע.',
+  'sim.error.unmodelled':
+    'התוכנית התחילה להשתמש ב{feature}, שהסימולטור אינו ממדל. הסימולציה נעצרה ברגע זה, במקום להציג תוצאה מתה או קריסה.',
   'sim.error.runtime.unsupported_feature':
     'הקושחה משתמשת ביכולת שהסימולטור אינו תומך בה בגרסה זו (Pull-up/Pull-down פנימי או פסיקות GPIO).',
   'sim.error.runtime.inverted_output':

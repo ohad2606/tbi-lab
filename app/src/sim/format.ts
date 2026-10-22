@@ -141,6 +141,8 @@ export function simFailureMessage(
     });
   }
   if (failure.kind === 'runtime') return t(`sim.error.runtime.${failure.code}`);
+  if (failure.kind === 'unmodelled')
+    return t('sim.error.unmodelled', { feature: featureName(locale, failure.facility) });
   if (failure.kind === 'pwm') {
     const pins = (g: number[] | undefined) => list((g ?? []).map((p) => `GPIO${p}`));
     return t(`sim.error.pwm.${failure.code}`, {

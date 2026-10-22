@@ -54,7 +54,9 @@ function runtimeCapabilitiesFrom(file: string | undefined): string[] {
   if (
     !Array.isArray(caps) ||
     !caps.every(
-      (c) => typeof c === 'string' && ['i2c', 'pad-func', 'pwm', 'sched-input'].includes(c),
+      (c) =>
+        typeof c === 'string' &&
+        ['i2c', 'pad-func', 'pwm', 'sched-input', 'unmodelled'].includes(c),
     )
   )
     throw new Error(`${file}: no valid "capabilities" list`);

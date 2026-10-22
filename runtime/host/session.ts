@@ -42,6 +42,7 @@ import {
   type Command,
   type I2cPhase,
   type PadFunction,
+  type UnmodelledFacility,
 } from '../harness/protocol.js';
 import { runSession, type Outcome, type PwmEvent, type SessionResult } from '../harness/session.js';
 import type { Principal } from '../identity/principal.js';
@@ -68,6 +69,13 @@ import { SessionStateMachine, isTerminal } from './stateMachine.js';
 import { LedcTracker, ns, ratCeilNs, ratToNumber, type Rat, type Waveform } from './pwm.js';
 import { analysePwm, combinePwm, type PwmAnalysis, type PwmProblem } from './pwmElectrical.js';
 import { ServoBank, type PwmPoint } from './servos.js';
+
+/** Runtime v4 `U` facilities as the capability registry names them (packages/domain capabilities). */
+const UNMODELLED_FACILITY_ID: Readonly<Record<UnmodelledFacility, string>> = {
+  adc: 'adc',
+  'gpio-interrupt': 'interrupt',
+  'cpu-clock': 'cpu_frequency',
+};
 
 const SHA = (buf: Buffer) => createHash('sha256').update(buf).digest('hex');
 const fileSha = (path: string) => SHA(readFileSync(path));
@@ -574,6 +582,7 @@ export class HostSession {
           i2c: (e) => this.onI2c(e.vns, e.bus, e.phase),
           tick: (vns) => this.onTick(vns),
           serial: (vns, bytes) => this.onSerial(vns, bytes),
+          unmodelled: (vns, facility) => this.onUnmodelled(vns, facility),
         },
       );
     } catch (e) {
@@ -1026,6 +1035,27 @@ export class HostSession {
         code: d.code,
         detail: d.detail,
       });
+  }
+
+  /**
+   * Sprint 19B (Runtime v4, capability `unmodelled`): the guest started USING a facility the
+   * emulator does not model, at this exact virtual time. The session ends at once, naming it
+   * (the capability registry's facility id), before the dead behaviour (an interrupt that never
+   * fires) or the crash (an ADC that never completes, a stalled clock) can reach the user.
+   */
+  private onUnmodelled(vns: bigint, facility: UnmodelledFacility): Command[] {
+    if (!this.pendingFailure) {
+      const detail = { unmodelled: UNMODELLED_FACILITY_ID[facility], since: vns.toString() };
+      this.log.append({
+        type: 'diagnostic',
+        simNs: vns.toString(),
+        severity: 'error',
+        code: 'unsupported_feature',
+        detail,
+      });
+      this.pendingFailure = { reason: 'unsupported_feature', detail };
+    }
+    return [{ type: 'Q' }];
   }
 
   private onHello(caps: readonly Capability[]): Command[] {

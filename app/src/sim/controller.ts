@@ -37,6 +37,11 @@ export type SimFailure =
   /** An ESP32 session could not start, or ended abnormally (Sprint 6). */
   | { kind: 'runtime'; code: RuntimeFailCode; detail?: string }
   /**
+   * Sprint 19B (Runtime v4): the program started USING a facility the emulator does not model
+   * (`facility`: the capability registry's id, e.g. adc); the session ended at that moment.
+   */
+  | { kind: 'unmodelled'; code: 'unmodelled'; facility: string }
+  /**
    * R4: a PWM output the session cannot simulate honestly (host `pwm_unsupported`), named: the
    * pad(s), the affected parts or inputs, and for an unrepresentable LEDC mode which one.
    */
