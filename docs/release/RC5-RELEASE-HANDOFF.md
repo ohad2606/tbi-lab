@@ -229,3 +229,121 @@ packages, deploy and the ancestry. **No blockers in either.**
 **Request:** with this review, the RC5 gates on DEV (§12) and the PM's confirmation of the R4
 owner sign-off (§7a), PR #7 and `rc5-release` can be proposed for merge. **Nothing is merged and
 nothing is deployed to Alpha by this handoff.**
+
+## 15. Release closure evidence (DEV, 2026-10-22 evening) and GO / NO-GO
+
+Evidence directory on DEV: `~/tbi-s19d/` (one file per check; not in the repository).
+
+### 15.1 Identity and lineage (re-verified)
+
+| Item | Value |
+|---|---|
+| Package source | `84f4691` (tree `66ae3d4f…`); packages `rc5` `187c609670782cd7`, `rc5-reports` `043c035697dbb468` |
+| Handoff head | `bb4e8ca` = `84f4691` + this document only (and this section's commit, docs only) |
+| `origin/rc5-release` | `bb4e8ca` before this section |
+| Separation from DEV-Lab | DEV-Lab serves the routing line `fae6a3c` (Runtime v4 `cd778dc17d8edcdd`). `fae6a3c` is not in RC5 and no RC5 commit is in `fae6a3c`. **No routing or Exploration evidence is used for RC5, and no RC5 evidence for the routing line** |
+| Runtimes | v3 `2cb1406f94f52e4f` binary `c9610d73…` (RC5); v2 `b5b34b49cb7e4049` binary `b3d1108b…` (RC4, rollback); v4 `cd778dc1…` binary `202a5537…` (DEV-Lab only) |
+
+### 15.2 Handoff artifacts (`~/rc5-release-handoff-20261022`)
+
+- `SHA256SUMS`: 81 files, all OK. Bundle verifies; applied to a clone holding only `sprint-13`
+  `6c30385`: `rc5-release` = `bb4e8ca`, `git fsck` clean, `84f4691` tree identical.
+- Both packages: every file matches its `MANIFEST.sha256`; `COMMIT` = `84f4691`; profiles `rc5`
+  (reports OFF) / `rc5-reports` (ON); profile test 13/13 (RC5 = RC4 settings except name and note).
+- Firmware: lock `ff0ea83b43e6c57d`; the 18 published images in
+  `/srv/tbi-lab/release-artifacts/ff0ea83b43e6c57d` all match their pinned sha256.
+- G2 reproducibility and G4 content: §13 (PASS on DEV).
+
+### 15.3 `s8-policy` cold-build scenario on the RC5 package (resolved on RC5)
+
+On the 19B/routing line the suite failed because every service start deleted the Arduino core seed
+and prewarm then ran a cold 34–60 s build on the single worker (review finding builder M1); the
+suite restarts the services and its builds were refused `builder_busy`. RC5 contains the fix
+(`e828324`). Reproduced against the **RC5 package bytes** on staging (bundles byte-equal to the
+package: session-host `c00a0108…`, build-service `93f05c8e…`, build-job `011f703c…`, Runtime v3):
+
+| Run | Result | Prewarm after each of the suite's restarts |
+|---|---|---|
+| 1 (21:18) | **7 / 7 passed** | `built: 0` ×4 (seed kept, no cold build) |
+| 2 (21:30, after the 10-min rate window) | **7 / 7 passed** | `built: 0` ×3 |
+
+Not a blocker for RC5. (On the routing line it stays a known, pre-existing issue until that line
+takes the fix.)
+
+### 15.4 Rollback compatibility of R4 projects (RC5 → RC4 → RC5), real browsers
+
+Three phases, the same IndexedDB records carried between real builds (spec and dumps in
+`~/tbi-s19d/a6/`):
+
+1. RC5 (`84f4691`) opens the Servo Sweep example; the stored record contains `component.servo_sg90`.
+2. RC4 (`71c4ce7`) with exactly those records: the library lists the project; **Open is refused**;
+   Duplicate is refused (no copy created); creating and saving another project and reloading leave
+   the servo record and its index entry **byte-identical**. Nothing is rewritten or discarded.
+3. RC5 with the records as RC4 left them: opens in the editor, no notice; components, connections
+   and revision unchanged.
+
+**Defect (rollback wording):** RC4 says *"This project is damaged and cannot be opened. Your other
+projects are not affected."* (HE: "הפרויקט פגום…"). The project is not damaged; the wording invites
+the user to delete it, and Delete remains available. RC4 is the frozen rollback target, so this is
+handled in the procedure (§15.6 step R3), not by changing RC4. Exported `.tbilab` files with a
+servo are likewise refused by RC4's import; the file itself is never changed.
+
+### 15.5 Alpha-only gates: exact status (none is passed by DEV evidence)
+
+| Gate | DEV evidence (does not pass the gate) | Alpha status |
+|---|---|---|
+| G1 source identity | `rc5-release` `bb4e8ca`, package `84f4691`, PR #7 + ancestry reviewed (§14) | **open**: release-branch merge after PM approval; required CI |
+| G2 reproducibility | PASS on DEV (§13) | **open**: run on the Alpha packaging host (A1/A2 copies) |
+| G3 switches | RC5 profiles = RC4's (test) | **open**: Alpha's `build-package-alpha.sh` must point at the RC5 profile |
+| G4 content | pass on DEV | **open**: repeat on Alpha's packages |
+| G5 regression | §6, §7 | **open**: Alpha staging |
+| G6 security | staging security suite 1/1 | **open**: gate checks (93), preview checks (96), live Caddyfile hash, secret scan |
+| G7 privacy | unchanged since RC4 | no change |
+| G8 rollback | RC5 → RC4 → RC5 on DEV staging (§7); data compatibility §15.4 | **open**: RC5 switch/rollback scripts for Alpha do not exist yet. RC4's `rc4-switch.sh`/`rc4-rollback.sh` move services and frontend only; RC5 must also move the runtime (`switch-runtime.sh`, v2 ↔ v3) in the same window |
+| G9 idle + window | — | **open**: at switch time |
+| A4 runtime | v3 provenance §4 | **open**: provision v3 on Alpha (id must be `2cb1406f94f52e4f`), record the binary sha256 |
+| A6 capacity / concurrency | 1-CPU staging smoke only (§10): N = 1 pass; N = 2 refused by policy; rotation clean | **open**: N = 1…6 ramp, faults at N = 5, 2 h soak on the 6-CPU host. Note: Alpha's policy defers builds at `cpus` = 6 live sessions, so at N = 6 builds wait by design |
+| A12 readiness check | — | **open**: Alpha's `rc4-readiness-check.sh` is RC4-specific; an RC5 version (runtime id, `pwm` capability) is needed |
+| A15 staging isolation | RC5 changes no deploy template, unit or polkit rule since RC4 (`git diff 71c4ce7 84f4691 -- deploy/dev-lab/s8` empty), so the overlay's shape preflight sees RC4's templates | **open**: real-polkit `pkcheck` matrix on Alpha before any smoke |
+| Session lifecycle | policy lifetime 30 min, QEMU `RuntimeMaxSec=1900`; rotation and crash/restart recovery pass on DEV (§7, §10) | **open**: soak on Alpha |
+| CPU / memory limits | per QEMU unit `MemoryMax=384M`, `CPUQuota=100%`, `TasksMax=80`; per build job `1G`, `80%`; services `512M` each; policy `minAvailableMemoryMb 256` | **open**: worst case on Alpha (6 × 384 MiB + 2 × 1 GiB + 2 × 512 MiB) against its memory, measured in the soak |
+| Concurrent builds | DEV runs `maxActive` 1, so builder finding M2 (two curated seed harvests at once) cannot occur on DEV | **open**: Alpha runs `maxActive: 2`; M2 is reachable there (outcome per review: cold-build fallback or incremental recompile, output correct). Watch for it in the Alpha burst/soak |
+| R4 owner acceptance | §7a | **open**: the PM confirms the owner's sign-off |
+
+### 15.6 Exact deployment and rollback procedure (Alpha; each step needs the PM's written go)
+
+Deployment:
+1. Transfer: bundle + packages + `SHA256SUMS` from `~/rc5-release-handoff-20261022`; verify
+   `sha256sum -c SHA256SUMS`; `git fetch <bundle> rc5-release:rc5-release`; `rev-parse` = `bb4e8ca`;
+   package `COMMIT` = `84f4691`.
+2. Runtime v3: `runtime/provision/provision.sh qemu` in a clean runtime home → id `2cb1406f94f52e4f`;
+   record the binary sha256. `publish-release-artifacts.sh <home>` → set `ff0ea83b43e6c57d`.
+3. G2/G4 on the Alpha packaging host for the chosen profile (`rc5-reports` = Alpha's current
+   reports-ON configuration, or `rc5`).
+4. Alpha staging with the A15 overlay: RC5 package + v3; `pkcheck` matrix; deployed suites; real-stack
+   browser gate (rate-respecting batches); capacity N = 1…6, faults, soak.
+5. Write and review the RC5 switch/rollback scripts (G8) and the RC5 readiness check (A12).
+6. Window (0 live sessions, G9): backup (units, polkit rule, policy, `runtime.json`, links, Caddyfile
+   hash) → services from the package → frontend → `switch-runtime.sh <instance> <v3 prefix>` →
+   restart the Session Host → `/health` and `/version.json` = `84f4691`; `runtime.json` capabilities
+   include `pwm` → deployed suites → R4 smoke (LED fade, servo sweep) → readiness check.
+
+Rollback (one window, 0 live sessions):
+- R1. RC4 package links (`71c4ce7`) + `switch-runtime.sh <instance> <v2 prefix b5b34b49cb7e4049>` +
+  Session Host and build service restart; `/health` = `71c4ce7`; `runtime.json` without `pwm`;
+  deployed suites; readiness check (RC4 version).
+- R2. Data: nothing to migrate. Projects stay in each tester's browser untouched (§15.4).
+- R3. **Before** the rollback window, tell testers: projects containing an SG90 servo will show
+  "damaged" in RC4 but are not damaged; **do not delete them**; they open again after RC5 returns.
+- R4. Forward again = deployment step 6 from the same backup set.
+
+### 15.7 Recommendation for PM review
+
+**GO for Alpha staging validation (deployment steps 1–5).** On DEV every RC5 gate that DEV can run
+has passed on the exact package, the cold-build blocker is resolved on RC5, artifacts and lineage
+verify, and rollback preserves data.
+
+**NO-GO for the Alpha production switch (step 6) today.** Open before it: the PM's confirmation of
+the R4 owner sign-off; the Alpha-only gates of §15.5 (G1 merge, G2/G4 on Alpha, G6, A4, A6 six-session
+capacity, A12, A15, G8 RC5 switch/rollback scripts that move the runtime with the host); the tester
+notice of R3. None of these can be passed with DEV evidence.
