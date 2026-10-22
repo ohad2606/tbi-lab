@@ -6,6 +6,44 @@ Items in this file are approved product direction, not automatic authorization t
 
 ---
 
+## Roadmap — order and dependencies
+
+**Status:** Proposed by engineering for owner approval (2026-10-22). The **digital-logic order in it is
+the approved EF-D9 C** (logic and time tracks in parallel); the cross-section dependencies are
+engineering's reading of the sections and become authoritative only when the owner approves them.
+
+How to read it:
+- Each section's own **Priority** line still applies (column "Section priority"); where a section
+  gives its own phased order, that order applies within the section.
+- "Depends on" lists what must exist first. A dependency marked *(EF-D9 C)* comes from that
+  decision; one marked *(engineering)* is an inference the owner should confirm; every other one is
+  stated in the section quoted under "Why".
+- "Status" cites its evidence (a commit, a sprint record or a PM decision).
+
+| ID | Item | Section priority | Depends on | Why | Status (2026-10-22, with evidence) |
+|---|---|---|---|---|---|
+| C0 | Core: electrical engine, canonical component framework, Workbench / Schematic / 3D views | — | — | foundation of every section *(engineering)* | in the product (V1; sprint records 1–13) |
+| C1 | MCU Pin Capability & Connection Validation | High | C0 | "must be considered before broad MCU/component expansion": before S2 | partly in the product: board pin capability map (Sprint 6), pad electrical checks (Sprints 10–13); Pin Inspector, connection-time and protocol-aware validation not started |
+| C2 | Real PWM on the MCU | — | C0 | named as PWM Visualization's prerequisite: "real PWM-capable MCU/simulation integration" | R4 (ESP32 LEDC on Runtime v3) on DEV-Lab since 2026-10-20 (`b7da1c1`, then 18F `b59ee50`); RC5 release preparation on branch `rc5-release` |
+| K1 | Time kernel (EF-1: transient engine with events) | — | C0 | needed by T1, T2 and S1 *(EF-D9 C: "Time track (needs the time kernel EF-1)")*; by V1's "timing/transient support" | isolated prototype, branch `sprint-19b-kernel` (`fa21917`); product exposure not approved (PM, 2026-10-22) |
+| L1 | Logic track 1: basic logic primitives with manual stimulus (switches, push buttons, ESP32 GPIO) | Near-term | C0 | EF-D9 C, logic track (DC sessions, no time kernel) | on DEV-Lab since 2026-10-22: SN74LVC1G08/00/32/04 (`4676139` on `sprint-19b-mpy`; docs/sprints/SPRINT-19B.md) |
+| L2 | Logic track 2: truth-table / state inspection | Near-term | L1 | EF-D9 C | not started |
+| L3 | Logic track 3: selected packaged logic devices (the same gate model, package pin maps, shared supply pins) | Near-term | L1 | EF-D9 C | not started |
+| T1 | Time track 1: clock and pulse stimulus sources with a frequency | Near-term | K1 | EF-D9 C | not started |
+| T2 | Time track 2: the 555 timer, LMC555 first (EF-D6 B), the early concrete IC target | Near-term | K1 | EF-D9 C; "Timing must be derived from the connected RC network and the selected device model" | isolated implementation and testing authorized, product exposure not approved (PM, 2026-10-22) |
+| S1 | Flip-flops, counters, shift registers | — | L1–L3 **and** K1, T1, T2 (both tracks) | EF-D9 C: "then, on both tracks"; both former owner lists put them at step 5; "Sequential elements require real timing/state semantics" | not started |
+| S2 | Broader IC catalog | — | S1 (and so everything above); C1 | "broader IC catalog according to real user demand"; C1's "before broad MCU/component expansion" | not started; only by real user demand |
+| V1 | PWM Visualization | — | C2, K1 | "Requires real PWM-capable MCU/simulation integration and timing/transient support" | not started |
+| V2 | X-Ray Electrical Visualization | High | C0 | "schedule after the core simulation and workbench foundations are stable"; for digital states and timing labels also L1 and K1 *(engineering)* | not started |
+| G1 | Guided Learning & Circuit Advisor | High user value | C0, trustworthy circuit analysis | "after core circuit analysis is trustworthy" | not started |
+| I1 | IoT & Robotics (its own phases 1–5) | Strategic expansion | C0, the MCU core (C1, C2 *(engineering)*) | "after the electrical/MCU core is stable" | not started |
+
+The logic track (L1–L3) and the time track (K1, T1, T2) run **in parallel**: whichever finishes its
+gates first ships first (EF-D9 C). Then, on both tracks, S1; then S2 by real user demand. Model
+quality and correctness take priority over catalog size.
+
+---
+
 ## X-Ray Electrical Visualization
 
 **Status:** Approved / Backlog  
@@ -711,7 +749,9 @@ The product must remain useful to experienced users while making correct enginee
 ## Digital Logic, Switching & Integrated Circuits
 
 **Status:** Approved / Required Product Direction  
-**Priority:** Core professional electronics capability after the base electrical engine and canonical component framework are stable.
+**Priority:** Near-term core professional capability. Schedule basic digital logic and the 555 timer in one of the next development phases after the current core/Alpha stabilization work, before broad catalog expansion.  
+**Prerequisites:** the base electrical engine and canonical component framework are stable.  
+*(This section merges the former separate section "Digital Logic & Integrated Circuits" (EF-D9 C, 2026-10-22); every requirement of both is kept here, the stricter wording where they differed; the order is the Roadmap at the top, items L1–L3, K1, T1, T2, S1, S2.)*
 
 ### Goal
 
@@ -730,7 +770,7 @@ This area includes two related but distinct domains:
 2. **Integrated circuits**
    - timer/oscillator ICs such as the 555;
    - logic-family ICs such as common 74xx/74HC devices;
-   - multiplexers, decoders, counters, shift registers and similar devices;
+   - multiplexers, decoders, counters, registers, shift registers and similar devices, as later approved parts;
    - additional ICs only when they enter approved product scope.
 
 Do not treat every IC as a black-box animation. Behavior must come from documented models.
@@ -767,9 +807,11 @@ Future capabilities may include:
 - simplification guidance;
 - Karnaugh-map integration later if product demand justifies it.
 
-These are analysis/learning aids over the real circuit model, not separate simulated logic.
+These are analysis/learning aids over the same canonical circuit model, not separate simulated logic.
 
 ### Digital electrical truth
+
+Logic must not be reduced to decorative 0/1 animation.
 
 Digital states must not be represented as abstract 0/1 alone when electrical behavior matters.
 
@@ -785,7 +827,8 @@ The engine must account for the selected logic family/device model, including wh
 - tri-state/high-impedance;
 - propagation delay;
 - rise/fall timing where modeled;
-- open-drain/open-collector behavior where applicable.
+- open-drain/open-collector behavior where applicable;
+- package pinout.
 
 A logic HIGH is not universally equal to 5 V, and logic compatibility must be checked across connected devices.
 
@@ -851,7 +894,7 @@ Required operating modes should include at minimum:
 - monostable;
 - astable.
 
-The simulator should derive timing from the connected RC network and device model.
+Timing must be derived from the connected RC network and the selected device model.
 
 Where appropriate, behavior should reflect the 555's internal threshold relationships and discharge behavior rather than hard-coded output periods.
 
@@ -860,7 +903,7 @@ Exact implementation must follow authoritative datasheet behavior for the specif
 ### IC component model
 
 Every supported integrated circuit should have a structured definition including:
-- canonical device ID;
+- stable, canonical device ID;
 - manufacturer/family/model where relevant;
 - package;
 - pin numbers/names;
@@ -871,9 +914,9 @@ Every supported integrated circuit should have a structured definition including
 - logic thresholds / analog limits;
 - timing parameters;
 - functional model;
-- source documentation/version.
+- authoritative source documentation/version.
 
-The schematic symbol and physical package representation must map to the same canonical pin model.
+Each supported IC has one canonical definition shared by Workbench, Schematic, 3D, simulation and AI. The schematic symbol and physical package representation must map to the same canonical pin model.
 
 ### Pin/package correctness
 
@@ -885,7 +928,8 @@ The simulator must detect:
 - unconnected required pins where functionally relevant;
 - over-voltage;
 - illegal loading;
-- package-specific pin differences.
+- package-specific pin differences;
+- other modeled electrical incompatibilities.
 
 The AI Engineer must use the same canonical IC pin definitions and must not invent pin numbers from memory.
 
@@ -924,116 +968,6 @@ For digital logic, X-Ray may display:
 
 Do not portray abstract “logic flow” in a way that contradicts actual electrical state or timing.
 
-### Scope discipline
-
-Do not attempt to add hundreds of chips at once.
-
-Phased order: see **Authoritative order (EF-D9 C)** under "Digital Logic & Integrated Circuits"
-below. That is the single order for this direction; this section no longer carries its own list.
-
-Quality and model correctness take priority over catalog size.
-
-
----
-
-## Digital Logic & Integrated Circuits
-
-**Status:** Approved / Required Product Direction  
-**Priority:** Near-term core professional capability. Schedule basic digital logic and the 555 timer in one of the next development phases after the current core/Alpha stabilization work, before broad catalog expansion.
-
-### Goal
-
-TBI Lab must support digital logic and common integrated circuits as real engineering components.
-
-Approved direction includes:
-- NOT, AND, OR, NAND, NOR, XOR, XNOR and buffer elements;
-- combinational logic;
-- sequential logic;
-- digital clocks and stimulus sources;
-- truth-table inspection;
-- Boolean-expression display where useful;
-- selected packaged logic ICs;
-- 555 timer;
-- multiplexers, decoders, counters, registers and shift registers as later approved parts.
-
-### Engineering rules
-
-Logic must not be reduced to decorative 0/1 animation.
-
-For supported devices, the simulator should account for the real device/family characteristics that matter to correctness, including:
-- supply voltage;
-- input thresholds;
-- output levels;
-- undefined regions;
-- loading and drive capability;
-- pull-up / pull-down requirements;
-- high-impedance states;
-- propagation timing where modeled;
-- package pinout.
-
-Logic compatibility must be validated between connected devices.
-
-### Truth tables and analysis
-
-The product should eventually support:
-- generated truth tables;
-- manual input stepping;
-- active-path highlighting;
-- Boolean-expression display;
-- later simplification aids when justified.
-
-These are analysis aids over the same canonical circuit model.
-
-### Sequential logic
-
-Future support may include latches, flip-flops, counters, registers and shift registers.
-
-These must preserve real state and timing semantics where relevant.
-
-### 555 Timer
-
-The 555 timer is explicitly approved as an important early IC target.
-
-It must be modeled from documented device behavior, not as a pre-scripted oscillator.
-
-Support should eventually include at least:
-- monostable operation;
-- astable operation;
-- Trigger;
-- Threshold;
-- Discharge;
-- Output;
-- Reset;
-- Control Voltage;
-- supply pins.
-
-Timing must be derived from the connected RC network and the selected device model.
-
-### IC model requirements
-
-Each supported IC should have one canonical definition shared by Workbench, Schematic, 3D, simulation and AI.
-
-The definition should cover:
-- stable device ID;
-- package;
-- pin numbers and names;
-- pin roles;
-- supply requirements;
-- operating limits relevant to simulation;
-- functional model;
-- authoritative source/version.
-
-The simulator must detect incorrect pin use, incorrect supply connection and other modeled electrical incompatibilities.
-
-The AI Engineer must use the same canonical device/pin data and must not invent pin assignments from model memory.
-
-### Three-view integration
-
-The same device instance must map consistently across:
-- **Workbench** — package-oriented wiring;
-- **Schematic** — professional symbol;
-- **3D** — physical package visualization when available.
-
 ### X-Ray / instruments
 
 Digital logic should integrate with:
@@ -1045,22 +979,11 @@ Digital logic should integrate with:
 
 ### Scope discipline
 
-Do not add hundreds of ICs at once.
+Do not attempt to add hundreds of chips at once.
 
-**Authoritative order (EF-D9 C, approved for Sprint 19B; the only order for this direction):**
+Phased order: the **Roadmap** at the top of this file (items L1–L3, K1, T1, T2, S1, S2): a logic
+track (DC sessions, no time kernel) and a time track (the time kernel, clocks, the 555) in parallel
+(EF-D9 C); then, on both tracks, flip-flops, counters and shift registers; then a broader IC catalog
+according to real user demand. That is the single order for this direction.
 
-Two parallel tracks; whichever finishes its gates first ships first.
-
-- **Logic track (DC sessions, no time kernel):**
-  1. basic logic primitives with manual stimulus (switches, push buttons, ESP32 GPIO);
-     *Sprint 19B L1: SN74LVC1G08/00/32/04, branch `sprint-19b-logic`*;
-  2. truth-table / state inspection;
-  3. selected packaged logic devices (the same gate model, package pin maps, shared supply pins).
-- **Time track (needs the time kernel EF-1):**
-  1. the time kernel itself (*Sprint 19B T: isolated prototype, branch `sprint-19b-kernel`*);
-  2. clocks and pulse stimulus sources with a frequency;
-  3. the 555 timer (LMC555 first, EF-D6 B) as the early concrete IC target.
-- **Then, on both tracks:** flip-flops, counters and shift registers (they need state and timing);
-  then a broader IC catalog according to real user demand.
-
-Model quality and correctness take priority over catalog size.
+Quality and model correctness take priority over catalog size.
