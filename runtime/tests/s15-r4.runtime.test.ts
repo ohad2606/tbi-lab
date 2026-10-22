@@ -46,7 +46,17 @@ interface Trace {
   /** The waveform on `pad` at `vns` (tracker fed with the frames up to then). */
   waveAt(pad: number, vns: bigint): Waveform | { kind: 'gpio' };
   marker(tag: string): bigint;
+  /** Runtime v4 `U` frames seen (`U <vns> <facility>`). */
+  unmodelled: string[];
 }
+
+/** The bridge capabilities of the runtime under test (its runtime.json, next to bin/). */
+const qemuCaps = (): string[] =>
+  (
+    JSON.parse(readFileSync(join(dirname(dirname(QEMU)), 'runtime.json'), 'utf8')) as {
+      capabilities?: string[];
+    }
+  ).capabilities ?? [];
 
 /** Run a firmware on the bare harness, recording the LEDC and routing frames. */
 async function trace(name: string, simMs: number): Promise<Trace> {
@@ -60,6 +70,7 @@ async function trace(name: string, simMs: number): Promise<Trace> {
     | { k: 'F'; pad: number; func: string }
   ))[] = [];
   const serial: { vns: bigint; text: string }[] = [];
+  const unmodelled: string[] = [];
   try {
     const r = await runSession(
       { qemu: QEMU, flash: ov.flash, dir: ov.dir, wallTimeoutMs: 600_000 },
@@ -81,6 +92,13 @@ async function trace(name: string, simMs: number): Promise<Trace> {
           }
           return [];
         },
+        // Runtime v4 (Sprint 19B) reports unmodelled facilities (a lowered CPU clock in
+        // TbiPwmApb); this harness-level trace keeps observing the frames, as on v3. The product
+        // host refuses it (Session Host level below; s19b-mpy).
+        unmodelled: (vns, facility) => {
+          unmodelled.push(`U ${vns} ${facility}`);
+          return [];
+        },
         tick: (vns) => (vns >= BigInt(simMs) * 1_000_000n ? [{ type: 'Q' }] : []),
       },
     );
@@ -92,6 +110,7 @@ async function trace(name: string, simMs: number): Promise<Trace> {
   return {
     frames,
     serial,
+    unmodelled,
     marker(tag) {
       let acc = '';
       for (const s of serial) {
@@ -245,8 +264,13 @@ describe('R4 on the real runtime (harness level)', () => {
       kind: 'unsupported',
       why: 'timer-apb-clock',
     });
+    // Runtime v4 also reports the lowered clock itself (once); v3 has no such frame.
+    expect(t.unmodelled.map((u) => u.split(' ')[2])).toEqual(
+      qemuCaps().includes('unmodelled') ? ['cpu-clock'] : [],
+    );
     const again = await trace('TbiPwmApb', 1000);
     expect(again.frames).toEqual(t.frames);
+    expect(again.unmodelled).toEqual(t.unmodelled);
     recordEvidence('s17c-r4-m2-apb', {
       frames: t.frames.length,
       fingerprint: createHash('sha256').update(t.frames.join('\n')).digest('hex'),
