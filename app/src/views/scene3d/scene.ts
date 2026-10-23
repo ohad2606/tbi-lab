@@ -548,8 +548,9 @@ export function deriveScene(doc: ProjectDocument): SceneDescription {
   // then the 2D-derived placement) and the one with the fewest such contacts is kept (the
   // earlier on a tie). Normally the first one is clean and nothing else is built.
   const first = buildScene(doc, true, 'fresh');
-  let bad = touchingNodes(first).length;
-  if (!bad) return withLimits(doc, first);
+  const touching = touchingNodes(first);
+  let bad = touching.length;
+  if (!bad) return withLimits(doc, first, touching);
   let best = first;
   const moved = first.separation.moved.length > 0;
   const options: [boolean, 'fresh' | 'legacy'][] = [
@@ -574,8 +575,12 @@ export function deriveScene(doc: ProjectDocument): SceneDescription {
 }
 
 /** The scene with its routing limitations (`routeLimits`) recorded. */
-function withLimits(doc: ProjectDocument, s: SceneDescription): SceneDescription {
-  return { ...s, routeLimits: routeLimits(doc, s) };
+function withLimits(
+  doc: ProjectDocument,
+  s: SceneDescription,
+  touching?: string[],
+): SceneDescription {
+  return { ...s, routeLimits: routeLimits(doc, s, touching) };
 }
 
 /**
@@ -585,9 +590,13 @@ function withLimits(doc: ProjectDocument, s: SceneDescription): SceneDescription
  * app/tests/support/scene3dChecks.ts). Checked on the route; the drawn cable never comes closer
  * to anything than its route (wireShape.ts).
  */
-export function routeLimits(doc: ProjectDocument, s: SceneDescription): string[] {
+export function routeLimits(
+  doc: ProjectDocument,
+  s: SceneDescription,
+  touching: string[] = touchingNodes(s),
+): string[] {
   const out = new Set<string>();
-  for (const k of touchingNodes(s)) {
+  for (const k of touching) {
     const [kind, rest] = [k.slice(0, 1), k.slice(2)];
     if (kind === 'w') for (const id of rest.split('|')) out.add(id);
     else out.add(rest.split('|')[0]!);
@@ -604,7 +613,18 @@ export function routeLimits(doc: ProjectDocument, s: SceneDescription): string[]
     const ends = [w.points[0]!, w.points[w.points.length - 1]!];
     const isOwn = (o: Obstacle) =>
       own.includes(o.part) || own.some((x) => o.part.startsWith(`${x}:`));
-    const near = obstacles.filter((o) => !(isOwn(o) && o.bottom < 2));
+    // Only the volumes the wire's plan extent reaches.
+    const xs = w.points.map((p) => p.x);
+    const zs = w.points.map((p) => p.z);
+    const [x0, x1, z0, z1] = [Math.min(...xs), Math.max(...xs), Math.min(...zs), Math.max(...zs)];
+    const near = obstacles.filter(
+      (o) =>
+        !(isOwn(o) && o.bottom < 2) &&
+        o.x1 + m > x0 &&
+        o.x0 - m < x1 &&
+        o.z1 + m > z0 &&
+        o.z0 - m < z1,
+    );
     let hit = false;
     for (let i = 1; i < w.points.length && !hit; i++) {
       const a = w.points[i - 1]!;
@@ -1619,8 +1639,43 @@ function pointToRun(q: Point, a: Point, b: Point): number {
       : Math.max(0, Math.min(1, ((q.x - a.x) * (b.x - a.x) + (q.y - a.y) * (b.y - a.y)) / l2));
   return plen(q, { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
 }
-/** Length (mm) of the axis-aligned runs of `path` that lie on runs of the `planned` paths. */
-function coincident(path: Point[], planned: readonly Point[][]): number {
+/** An axis-aligned plan run: horizontal (along x at y = lat) or vertical (along y at x = lat). */
+interface Run {
+  h: boolean;
+  lat: number;
+  lo: number;
+  hi: number;
+}
+/** The axis-aligned runs of some paths that reach a box (grown by COINCIDENT). */
+function runsNear(
+  paths: readonly Point[][],
+  box: { x0: number; x1: number; y0: number; y1: number },
+): Run[] {
+  const out: Run[] = [];
+  for (const q of paths)
+    for (let k = 1; k < q.length; k++) {
+      const c = q[k - 1]!;
+      const d = q[k]!;
+      if (
+        Math.max(c.x, d.x) < box.x0 - COINCIDENT ||
+        Math.min(c.x, d.x) > box.x1 + COINCIDENT ||
+        Math.max(c.y, d.y) < box.y0 - COINCIDENT ||
+        Math.min(c.y, d.y) > box.y1 + COINCIDENT
+      )
+        continue;
+      const h = Math.abs(c.y - d.y) < EPS;
+      const v = Math.abs(c.x - d.x) < EPS;
+      if (h === v) continue;
+      out.push(
+        h
+          ? { h, lat: c.y, lo: Math.min(c.x, d.x), hi: Math.max(c.x, d.x) }
+          : { h, lat: c.x, lo: Math.min(c.y, d.y), hi: Math.max(c.y, d.y) },
+      );
+    }
+  return out;
+}
+/** Length (mm) of the axis-aligned runs of `path` that lie on (within COINCIDENT of) `runs`. */
+function coincident(path: Point[], runs: readonly Run[]): number {
   let n = 0;
   for (let i = 1; i < path.length; i++) {
     const a = path[i - 1]!;
@@ -1628,33 +1683,39 @@ function coincident(path: Point[], planned: readonly Point[][]): number {
     const h = Math.abs(a.y - b.y) < EPS;
     const v = Math.abs(a.x - b.x) < EPS;
     if (h === v) continue;
-    for (const q of planned)
-      for (let k = 1; k < q.length; k++) {
-        const c = q[k - 1]!;
-        const d = q[k]!;
-        if (h && Math.abs(c.y - d.y) < EPS && Math.abs(c.y - a.y) < COINCIDENT)
-          n += Math.max(
-            0,
-            Math.min(Math.max(a.x, b.x), Math.max(c.x, d.x)) -
-              Math.max(Math.min(a.x, b.x), Math.min(c.x, d.x)),
-          );
-        else if (v && Math.abs(c.x - d.x) < EPS && Math.abs(c.x - a.x) < COINCIDENT)
-          n += Math.max(
-            0,
-            Math.min(Math.max(a.y, b.y), Math.max(c.y, d.y)) -
-              Math.max(Math.min(a.y, b.y), Math.min(c.y, d.y)),
-          );
-      }
+    const lat = h ? a.y : a.x;
+    const lo = h ? Math.min(a.x, b.x) : Math.min(a.y, b.y);
+    const hi = h ? Math.max(a.x, b.x) : Math.max(a.y, b.y);
+    for (const r of runs)
+      if (r.h === h && Math.abs(r.lat - lat) < COINCIDENT)
+        n += Math.max(0, Math.min(hi, r.hi) - Math.max(lo, r.lo));
   }
   return n;
 }
 
-/** Whether the straight run a-b passes through the interior of `r` (sampled every 0.25 mm). */
+/** Whether the straight run a-b passes through the interior of `r` (exact clipping). */
 function across(a: Point, b: Point, r: ReturnType<typeof footRect>): boolean {
-  const n = Math.max(1, Math.ceil(plen(a, b) / 0.25));
-  for (let k = 0; k <= n; k++)
-    if (inRect({ x: a.x + ((b.x - a.x) * k) / n, y: a.y + ((b.y - a.y) * k) / n }, r)) return true;
-  return false;
+  let t0 = 0;
+  let t1 = 1;
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  // Liang-Barsky against the open rectangle: p * t < q on every side.
+  for (const [p, q] of [
+    [-dx, a.x - r.x0],
+    [dx, r.x1 - a.x],
+    [-dy, a.y - r.z0],
+    [dy, r.z1 - a.y],
+  ] as const) {
+    if (Math.abs(p) < 1e-12) {
+      if (q <= 0) return false;
+      continue;
+    }
+    const t = q / p;
+    if (p < 0) t0 = Math.max(t0, t);
+    else t1 = Math.min(t1, t);
+    if (t0 >= t1) return false;
+  }
+  return true;
 }
 
 /** The route from its start, from where it first leaves `r` (null: it never does). */
@@ -1738,6 +1799,14 @@ function connect(
       }
       return false;
     });
+  // The other wires' runs near any join this can make (s20r: priced by `coincident`).
+  const reach = [E, ...rest.slice(0, 6)];
+  const runs = runsNear(planned, {
+    x0: Math.min(...reach.map((p) => p.x)),
+    x1: Math.max(...reach.map((p) => p.x)),
+    y0: Math.min(...reach.map((p) => p.y)),
+    y1: Math.max(...reach.map((p) => p.y)),
+  });
   let best: { cost: number; path: Point[] } | null = null;
   for (let j = 0; j < Math.min(6, rest.length); j++) {
     const R = rest[j]!;
@@ -1770,7 +1839,7 @@ function connect(
       // line another wire already runs on puts the two on top of each other for the whole run
       // (the height profile can then only stack them). Each mm of such a run costs as much as
       // 3 mm of detour, so the join keeps to the 2D route's own, separate line.
-      cost += COINCIDENT_COST * coincident(path, planned);
+      cost += COINCIDENT_COST * coincident(path, runs);
       // Through the point where another wire's lane ends and it rises from pin level.
       for (const q of risers)
         for (let i = 1; i < path.length; i++)
