@@ -903,7 +903,7 @@ export const deriveSceneVariant = (
   doc: ProjectDocument,
   separate: boolean,
   router: 'fresh' | 'legacy',
-): SceneDescription => buildScene(doc, separate, router);
+): SceneDescription => withLimits(doc, buildScene(doc, separate, router));
 
 function buildScene(
   doc: ProjectDocument,

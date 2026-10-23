@@ -24,6 +24,8 @@ import { deriveScene, WIRE_RADIUS } from '../src/views/scene3d/scene.js';
 import { awayAndBack, expectedNets, ownerBench, ownerVariants } from './support/ownerBench.js';
 import { measure3d } from './support/wire3dMetrics.js';
 import { expectNoWireThroughBodies } from './support/scene3dChecks.js';
+import { e2eFixtures } from './support/s20rFixtures.js';
+import { readFileSync } from 'node:fs';
 
 const nets = (doc: ProjectDocument): string[][] => {
   const g = connectivity(doc);
@@ -133,6 +135,16 @@ describe('owner report (s20r): one AND gate wired to a 5 V supply, in 3D', () =>
           8,
         );
       }
+    }
+  });
+
+  it('the browser fixtures are exactly these benches (app/e2e/fixtures/s20r)', () => {
+    for (const [name, doc] of Object.entries(e2eFixtures())) {
+      const file = readFileSync(
+        new URL(`../e2e/fixtures/s20r/${name}.json`, import.meta.url),
+        'utf8',
+      );
+      expect(file, name).toBe(`${JSON.stringify(doc, null, 2)}\n`);
     }
   });
 });

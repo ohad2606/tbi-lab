@@ -378,6 +378,7 @@ describe('3D wire routes: modules, fan-out, separation', () => {
       const s = deriveScene(d);
       expect(s, id).toEqual(deriveSceneVariant(d, true, 'fresh'));
       expect(touchingNodes(s), id).toEqual([]);
+      expect(s.routeLimits, id).toEqual([]); // s20r: nothing to flag
     }
   });
 
