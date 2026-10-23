@@ -5,7 +5,7 @@
     "board": "board.esp32_devkitc_wroom32",
     "circuit": {
       "format": "tbi-lab.snapshot",
-      "schemaVersion": 3,
+      "schemaVersion": 4,
       "snapshotId": "snap_f7a5bfee0e975d57",
       "projectId": "prj_exampleesp32distancealarm",
       "projectRevision": 1,

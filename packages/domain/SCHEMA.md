@@ -8,6 +8,13 @@ to persistence semantics needs an explicit migration (`src/migrate.ts`, `vN -> v
 Sprint 3 may **extend** the schema for the electrical engine (for example compile metadata). It may
 not replace the persisted Sprint 2 model.
 
+**Versions since:** v3 (Sprint 7: `programs`; migration v2 -> v3) and v4 (Sprint 20, owner-approved
+DP-rt2-1: no new field, migration v3 -> v4 is the identity). v4 marks documents that may carry
+automatic wires (`layout.wires[].auto`, added during v3): builds before v4 refuse such a file as
+"made by a newer version" and open such a stored project read-only. Opening a stored older project
+never writes it back; it is stored at the current version when it is next saved (its first edit).
+The example below still shows the v2 core fields, which are unchanged.
+
 Reference: roadmap §6.1, architecture §3 and ADR-005. Types: `src/schema.ts`. Validation:
 `src/validate.ts`.
 

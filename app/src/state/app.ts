@@ -479,7 +479,10 @@ export class AppStore {
       // never comes back; the change is the same undoable "routes adjusted" edit.
       const repaired = this.layoutOnOpen(result.doc);
       this.set({ ...base, screen: 'editor', doc: result.doc, readOnly: null });
-      if (result.migratedFrom !== null) this.commit(result.doc);
+      // Sprint 20 (schema v4): a migrated project is NOT written back on open. The stored record
+      // stays exactly as it was (an older build can still open it) until this project is saved
+      // in this build: the user's first edit (or the routes-adjusted edit below) commits it at the
+      // current schema. Formerly every opened older project was rewritten immediately.
       if (repaired !== result.doc) {
         // Sprint 13 Task D (H3): re-routing stored wires on open (only their drawn routes; never an
         // endpoint, connection or value) was a silent, permanent rewrite. It is now an ordinary
