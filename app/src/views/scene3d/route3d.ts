@@ -49,6 +49,11 @@ export const CLEARANCE = WIRE.radiusMm + BODY_GAP;
 const NEAR = WIRE.radiusMm + 0.6;
 /** How far a wire may run inside its own end part's footprint as it leaves it (mm). */
 const OWN_EXIT = 3;
+/**
+ * Around an end two wires of one node share (a post, a terminal, a junction) they converge by
+ * design: plan radius within which they are not obstacles to each other (mm).
+ */
+const SHARED_END = 4;
 /** Default corner radii: in plan, and where the height profile bends. */
 export const PLAN_BEND = 4;
 export const RAMP_BEND = 5;
@@ -303,6 +308,7 @@ function nearSegment(
   g: Seg3,
   reach: number,
   box: { x0: number; x1: number; z0: number; z1: number },
+  skip: readonly Point[] = [],
 ): { s0: number; s1: number; lo: number; hi: number } | null {
   const a = { x: g.a.x, y: g.a.z };
   const b = { x: g.b.x, y: g.b.z };
@@ -317,6 +323,7 @@ function nearSegment(
     const t = k / n;
     const p = { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
     if (p.x < box.x0 || p.x > box.x1 || p.y < box.z0 || p.y > box.z1) continue;
+    if (skip.some((q) => len(q, p) < SHARED_END)) continue;
     const y = g.a.y + (g.b.y - g.a.y) * t;
     const c = closest(plan, st, p);
     if (c.d >= reach) continue;
@@ -420,23 +427,25 @@ export function routeWires(
         Math.max(g.a.z, g.b.z) >= bz0 &&
         Math.min(g.a.z, g.b.z) <= bz1,
     );
+    // Wires meeting at a shared end (a junction, a shared terminal) touch there by design: a
+    // wire of the same node is exempt only near the end the two share (SHARED_END), and is an
+    // obstacle like any other wire everywhere else (s20r owner report: several wires of one node
+    // to one binding post ran into and through each other along their whole length, because a
+    // segment touching the shared end was exempted entirely, whatever its length).
     const near = others
-      .map((g) => ({
-        g,
-        n: nearSegment(plan, st, g, reach, { x0: bx0, x1: bx1, z0: bz0, z1: bz1 }),
-      }))
-      .filter((x): x is { g: Seg3; n: NonNullable<typeof x.n> } => !!x.n)
-      // Wires meeting at a shared end (a junction, a shared terminal) touch there by design.
-      .filter(
-        ({ g }) =>
-          !(
-            g.node === w.node &&
-            w.node !== null &&
-            w.ownEnds.some(
-              (e) => len(e, { x: g.a.x, y: g.a.z }) < 3 || len(e, { x: g.b.x, y: g.b.z }) < 3,
-            )
-          ),
-      );
+      .map((g) => {
+        const shared =
+          g.node === w.node && w.node !== null
+            ? w.ownEnds.filter(
+                (e) => len(e, { x: g.a.x, y: g.a.z }) < 3 || len(e, { x: g.b.x, y: g.b.z }) < 3,
+              )
+            : [];
+        return {
+          g,
+          n: nearSegment(plan, st, g, reach, { x0: bx0, x1: bx1, z0: bz0, z1: bz1 }, shared),
+        };
+      })
+      .filter((x): x is { g: Seg3; n: NonNullable<typeof x.n> } => !!x.n);
     near.push(...raised.map((n) => ({ g: null as unknown as Seg3, n })));
     const over = new Set<number>();
     const ceilings: { s0: number; s1: number; c: number }[] = [];
