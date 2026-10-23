@@ -17,6 +17,8 @@ import {
 export interface SymbolState {
   /** Sprint 19B: a logic gate's solved output level (`high`, `low`, `x`, `off`). */
   gateOutput?: string;
+  /** L3: a packaged device's solved output levels, by output terminal (`y1`…`y4`). */
+  gateOutputs?: Readonly<Record<string, string>>;
   /** Toggle switch: the persisted position. */
   closed?: boolean;
   /** Push button: held right now (transient runtime input). */
@@ -201,7 +203,74 @@ function unknownMark(state: SymbolState | undefined) {
   ) : null;
 }
 
+/**
+ * L3: a 14-pin logic package as on the catalog grid: pins 1–7 down the left side, 8–14 up the
+ * right (the device's top view, SCAS283W Figure 4-1), labelled with the datasheet pin names. An
+ * output the solve leaves undetermined is marked X on its lead.
+ */
+const DIP14_PINS: readonly (readonly [string, string, number])[] = [
+  ['a1', '1A', 1],
+  ['b1', '1B', 2],
+  ['y1', '1Y', 3],
+  ['a2', '2A', 4],
+  ['b2', '2B', 5],
+  ['y2', '2Y', 6],
+  ['gnd', 'GND', 7],
+  ['y3', '3Y', 8],
+  ['a3', '3A', 9],
+  ['b3', '3B', 10],
+  ['y4', '4Y', 11],
+  ['a4', '4A', 12],
+  ['b4', '4B', 13],
+  ['vcc', 'VCC', 14],
+];
+const dip14Pos = (n: number) =>
+  n <= 7 ? { x: -60, y: -60 + (n - 1) * 20, side: -1 } : { x: 60, y: 60 - (n - 8) * 20, side: 1 };
+
+function dip14(state: SymbolState | undefined) {
+  return (
+    <>
+      <rect x={-44} y={-74} width={88} height={148} rx={3} class="symbol-body" />
+      <path d="M -8 -74 A 8 8 0 0 0 8 -74" />
+      {DIP14_PINS.map(([t, name, n]) => {
+        const p = dip14Pos(n);
+        const x = state?.gateOutputs?.[t] === 'x';
+        return (
+          <g key={t}>
+            <line
+              x1={p.x}
+              y1={p.y}
+              x2={p.side * 44}
+              y2={p.y}
+              class={t === 'vcc' || t === 'gnd' ? 'supply-pin' : undefined}
+            />
+            <text
+              x={p.side * 40}
+              y={p.y + 3.5}
+              class="ic-pin-label"
+              text-anchor={p.side < 0 ? 'start' : 'end'}
+            >
+              {name}
+            </text>
+            {x && (
+              <g class="logic-unknown">
+                <line x1={p.side * 48} y1={p.y - 9} x2={p.side * 56} y2={p.y - 1} />
+                <line x1={p.side * 56} y1={p.y - 9} x2={p.side * 48} y2={p.y - 1} />
+              </g>
+            )}
+          </g>
+        );
+      })}
+      <path d="M -10 -10 H 0 A 10 10 0 0 1 0 10 H -10 Z" />
+    </>
+  );
+}
+
 export const SYMBOLS: Record<ComponentTypeId, SymbolDef> = {
+  'logic.quad_and': {
+    bbox: [-60, -74, 60, 74],
+    draw: (state) => dip14(state),
+  },
   'component.rgb_led': {
     bbox: [-40, -30, 40, 28],
     draw: () => (

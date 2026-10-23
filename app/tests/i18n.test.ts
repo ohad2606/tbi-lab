@@ -61,6 +61,9 @@ describe('locale bundles', () => {
       // Sprint 13: a product name, used as-is in Hebrew.
       'capabilities.facility.bluetooth.name',
       // Sprint 15: a PWM pad's waveform (only placeholders and the PWM token) and a product name.
+      // L2: the logic levels in the state inspection (technical tokens, as HIGH / LOW).
+      'logic.inspect.level.high',
+      'logic.inspect.level.low',
       'mcu.pwm.wave',
       'model.servo.sg90',
       'probe.currentLabel',

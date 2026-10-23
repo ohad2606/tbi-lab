@@ -61,6 +61,8 @@ describe('the example set', () => {
       'esp32-servo-sweep',
       // Sprint 19B (Exploration Foundation X1).
       'esp32-logic-and',
+      // Exploration Foundation L3 interop.
+      'esp32-logic-quad-and',
     ]);
     for (const e of EXAMPLES) {
       for (const key of [e.titleKey, e.summaryKey]) {

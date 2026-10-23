@@ -309,6 +309,30 @@ export const SCHEMATIC_SYMBOLS: Record<ComponentTypeId, SchematicSymbol> = {
     partName: 'SN74LVC1G04',
     glyph: 'logic.not',
   },
+  'logic.quad_and': {
+    kind: 'module',
+    key: 'module',
+    // L3: the package's pins as on the device (pins 1–7 left, 14–8 right, top view), names as
+    // in the datasheet (SCAS283W Table 4-1); the supply pins are real, connectable pins.
+    pins: [
+      { terminal: 'a1', name: '1A', side: 'left', order: 1 },
+      { terminal: 'b1', name: '1B', side: 'left', order: 2 },
+      { terminal: 'y1', name: '1Y', side: 'left', order: 3 },
+      { terminal: 'a2', name: '2A', side: 'left', order: 4 },
+      { terminal: 'b2', name: '2B', side: 'left', order: 5 },
+      { terminal: 'y2', name: '2Y', side: 'left', order: 6 },
+      { terminal: 'gnd', name: 'GND', side: 'left', order: 7 },
+      { terminal: 'vcc', name: 'VCC', side: 'right', order: 1 },
+      { terminal: 'b4', name: '4B', side: 'right', order: 2 },
+      { terminal: 'a4', name: '4A', side: 'right', order: 3 },
+      { terminal: 'y4', name: '4Y', side: 'right', order: 4 },
+      { terminal: 'b3', name: '3B', side: 'right', order: 5 },
+      { terminal: 'a3', name: '3A', side: 'right', order: 6 },
+      { terminal: 'y3', name: '3Y', side: 'right', order: 7 },
+    ],
+    partName: 'SN74LVC08A',
+    glyph: 'logic.and',
+  },
   'board.esp32_devkitc_wroom32': {
     kind: 'module',
     key: 'module',

@@ -61,6 +61,7 @@ const PART_RULES: Record<ComponentTypeId, { categories: ExampleCategory[]; basic
   'logic.gate_nand': { categories: ['logic'], basic: false },
   'logic.gate_or': { categories: ['logic'], basic: false },
   'logic.gate_not': { categories: ['logic'], basic: false },
+  'logic.quad_and': { categories: ['logic'], basic: false },
   'board.esp32_devkitc_wroom32': { categories: ['controllers'], basic: false },
 };
 

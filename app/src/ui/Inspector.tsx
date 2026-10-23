@@ -35,6 +35,7 @@ import { NEUTRAL_HEX, resolveWireColors } from '../views/wireColors.js';
 import { rotateRouted } from './routing.js';
 import { probeTargetName, readProbe, type Probe } from './probes.js';
 import { McuPanel } from './McuPanel.js';
+import { LogicStateView } from './LogicStateView.js';
 import { ValueControl } from './ValueControl.js';
 
 interface InspectorProps {
@@ -567,6 +568,8 @@ function ComponentResultView({
             />
           </dl>
         )}
+      {/* L2: a logic part's truth-table / state inspection (the engine's levels, never guessed). */}
+      {r?.logic && <LogicStateView logic={r.logic} />}
       {pwm && (
         <p class="muted small" data-testid="result-pwm-note">
           {t('sim.results.pwmNote')}
@@ -613,6 +616,7 @@ const STATE_UNITS: Record<string, UnitId> = {
   supplyV: 'volt',
   outputValidA: 'ampere',
   iccMaxA: 'ampere',
+  deltaIccA: 'ampere',
 };
 
 /**

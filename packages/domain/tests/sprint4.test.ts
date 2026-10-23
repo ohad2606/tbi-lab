@@ -67,6 +67,8 @@ describe('Sprint 4 catalog: the non-MCU V1 catalog is complete and closed (A16)'
         'logic.gate_nand',
         'logic.gate_or',
         'logic.gate_not',
+        // Exploration Foundation L3: one packaged logic device (TI SN74LVC08A).
+        'logic.quad_and',
       ].sort(),
     );
   });

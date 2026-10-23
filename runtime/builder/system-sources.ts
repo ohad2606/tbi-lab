@@ -17,6 +17,8 @@ import fade from '../../app/src/examples/data/esp32-led-fade.json' with { type: 
 import sweep from '../../app/src/examples/data/esp32-servo-sweep.json' with { type: 'json' };
 // Sprint 19B (Exploration Foundation X1).
 import logicAnd from '../../app/src/examples/data/esp32-logic-and.json' with { type: 'json' };
+// Exploration Foundation L3 interop.
+import logicQuadAnd from '../../app/src/examples/data/esp32-logic-quad-and.json' with { type: 'json' };
 
 const programsOf = (doc: unknown): ProgramSource[] =>
   Object.values((doc as { programs?: Record<string, ProgramSource> }).programs ?? {});
@@ -31,6 +33,7 @@ function systemPrograms(): ProgramSource[] {
     ...programsOf(fade),
     ...programsOf(sweep),
     ...programsOf(logicAnd),
+    ...programsOf(logicQuadAnd),
     starterProgram('board.esp32_devkitc_wroom32'),
   ].filter((p): p is ProgramSource => !!p);
 }

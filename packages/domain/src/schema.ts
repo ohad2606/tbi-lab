@@ -72,7 +72,12 @@ export type ComponentTypeId =
   | 'logic.gate_and'
   | 'logic.gate_nand'
   | 'logic.gate_or'
-  | 'logic.gate_not';
+  | 'logic.gate_not'
+  /**
+   * Exploration Foundation L3 (additive): a packaged multi-gate device with its datasheet pin map
+   * and one shared supply; `model` names the device (TI SN74LVC08A, quad 2-input AND).
+   */
+  | 'logic.quad_and';
 
 export interface ComponentInstance {
   /** Stable reference designator (`R1`, `PSU1`), unique per project, never reused. */

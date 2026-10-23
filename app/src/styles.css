@@ -597,6 +597,16 @@ select {
   fill: #f8f9fb;
 }
 
+/* L3: datasheet pin names on a logic package (technical labels: always LTR, never mirrored). */
+.symbol .ic-pin-label {
+  fill: var(--ink);
+  stroke: none;
+  font-family: ui-monospace, monospace;
+  font-size: 9px;
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+
 .component {
   cursor: move;
   outline: none;
@@ -3575,4 +3585,26 @@ select {
 .report-dialog .button[aria-disabled='true'] {
   opacity: 0.6;
   cursor: progress;
+}
+
+/* L2: logic state / truth-table inspection (logical properties: RTL-safe; technical cells LTR). */
+.logic-state table {
+  border-collapse: collapse;
+  width: 100%;
+  margin-block: 0.25rem 0.5rem;
+  font-size: 0.85rem;
+}
+.logic-state th,
+.logic-state td {
+  border-block-end: 1px solid var(--grid);
+  padding-block: 0.15rem;
+  padding-inline: 0.3rem;
+  text-align: start;
+}
+.logic-state .logic-level-x td {
+  color: var(--warning-ink);
+}
+.logic-state .logic-truth tr.active td {
+  background: rgba(11, 87, 208, 0.1);
+  font-weight: 600;
 }

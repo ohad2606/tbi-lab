@@ -875,6 +875,86 @@ export const RECIPES: Record<string, () => ProjectDocument> = {
     return r.centre(-300);
   },
   /**
+   * Exploration Foundation L3 interop: ESP32 GPIO18/GPIO19 into gate 1 of an SN74LVC08A (quad
+   * 2-input AND, one shared supply) at 3.0 V from the bench supply; 1Y lights D1 through 220 Ω and
+   * feeds 2A; the push button (10 kΩ pull-down) drives 2B, so D2 (220 Ω) lights only while it is
+   * held. The unused gates' inputs are tied to GND (SCAS283W: unused inputs at V_CC or GND).
+   */
+  'esp32-logic-quad-and': () => {
+    const r = new Recipe('esp32-logic-quad-and', 'ESP32: a quad AND gate IC driving LEDs');
+    r.supply(3, 0.1);
+    const U1 = r.place('board.esp32_devkitc_wroom32', 300, 0);
+    r.sketch(U1, 'LogicQuadAnd.ino');
+    // Pins 1–7 at x = 700 (y −60…60), 14–8 at x = 820. Bends stay ≥ 120 units from the pin
+    // columns: the breakout's header pins leave its board outward in 3D before they turn.
+    const U2 = r.place('logic.quad_and', 760, 0);
+    const R1 = r.place('component.resistor', 1100, -200);
+    const D1 = r.place('component.led', 1240, -200);
+    const R2 = r.place('component.resistor', 1100, 260);
+    const D2 = r.place('component.led', 1240, 260);
+    const S1 = r.place('component.push_button', 460, 320);
+    const R3 = r.place('component.resistor', 640, 420, 1);
+    const G2 = r.place('component.ground', 700, 140);
+    const G3 = r.place('component.ground', 1320, -120);
+    const G4 = r.place('component.ground', 640, 500);
+    const G5 = r.place('component.ground', 440, -140);
+    const G6 = r.place('component.ground', 1320, 340);
+    const G7 = r.place('component.ground', 980, 120);
+    r.set(R1, 'resistance', 220, 'ohm');
+    r.set(R2, 'resistance', 220, 'ohm');
+    r.set(R3, 'resistance', 10_000, 'ohm');
+    r.wire(T(U1, 'gnd'), T(G5, 'ref'));
+    // The 3.0 V rail: over the board to the IC's V_CC (pin 14), and down to the button.
+    const rail = r.wire(T('PSU1', 'positive'), T(U2, 'vcc'), [
+      { x: -40, y: -20 },
+      { x: -40, y: -280 },
+      { x: 940, y: -280 },
+      { x: 940, y: -60 },
+    ]);
+    r.wire(T(S1, 'a'), { kind: 'wire', wire: rail, at: { x: 420, y: -280 } }, [
+      { x: 420, y: -280 },
+    ]);
+    r.wire(T(U2, 'gnd'), T(G2, 'ref'));
+    // Gate 1 from the ESP32.
+    r.wire(T(U1, 'gpio18'), T(U2, 'a1'), [
+      { x: 480, y: -20 },
+      { x: 480, y: -60 },
+    ]);
+    r.wire(T(U1, 'gpio19'), T(U2, 'b1'));
+    // 1Y → R1 → D1, and 1Y → 2A (a chain inside the package).
+    const y1 = r.wire(T(U2, 'y1'), T(R1, 'a'), [
+      { x: 580, y: -20 },
+      { x: 580, y: -200 },
+    ]);
+    r.wire(T(U2, 'a2'), { kind: 'wire', wire: y1, at: { x: 580, y: -20 } }, [{ x: 580, y: 0 }]);
+    r.wire(T(R1, 'b'), T(D1, 'anode'));
+    r.wire(T(D1, 'cathode'), T(G3, 'ref'), [{ x: 1320, y: -200 }]);
+    // 2B from the button with its 10 kΩ pull-down (R3).
+    r.wire(T(S1, 'b'), T(R3, 'a'), [{ x: 640, y: 320 }]);
+    r.wire(T(R3, 'a'), T(U2, 'b2'), [
+      { x: 560, y: 380 },
+      { x: 560, y: 20 },
+    ]);
+    r.wire(T(R3, 'b'), T(G4, 'ref'));
+    // 2Y → R2 → D2.
+    r.wire(T(U2, 'y2'), T(R2, 'a'), [
+      { x: 540, y: 40 },
+      { x: 540, y: 260 },
+    ]);
+    r.wire(T(R2, 'b'), T(D2, 'anode'));
+    r.wire(T(D2, 'cathode'), T(G6, 'ref'), [{ x: 1320, y: 260 }]);
+    // Unused gates 3 and 4: inputs to GND (their outputs stay open).
+    const tie = r.wire(T(U2, 'b4'), T(G7, 'ref'), [{ x: 980, y: -40 }]);
+    // From the ground end back: each split leaves `tie` as the part towards 4B.
+    for (const [pin, y] of [
+      ['a3', 40],
+      ['b3', 20],
+      ['a4', -20],
+    ] as const)
+      r.wire(T(U2, pin), { kind: 'wire', wire: tie, at: { x: 980, y } });
+    return r.centre(-400);
+  },
+  /**
    * Sprint 15 (R4): an SG90 servo swept by LEDC PWM (50 Hz, 16 bit) on GPIO18: 1.0, 2.0 and 1.5 ms
    * pulses, one second each. The servo runs from the 5 V bench supply; ground shared with the board.
    */

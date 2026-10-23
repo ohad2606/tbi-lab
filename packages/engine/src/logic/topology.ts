@@ -22,7 +22,14 @@ export interface TopoElement {
 }
 
 export interface LogicPart {
+  /**
+   * The logic unit: a single gate's component id, or one gate of a package (`U1#2`). Cycles are
+   * found between units, so gate 1 of a package feeding gate 2 of the SAME package is a chain,
+   * not feedback (L3).
+   */
   component: string;
+  /** The component that owns the unit's internal output stage (default: `component`). */
+  owner?: string;
   /** Nodes of its logic inputs and outputs. */
   inputs: readonly string[];
   outputs: readonly string[];
@@ -78,9 +85,10 @@ export function logicFeedback(
   fixed: ReadonlySet<string>,
 ): string[] | null {
   const own = new Set(logic.map((l) => l.component));
+  const owners = new Set(logic.map((l) => l.owner ?? l.component));
   // External elements only: a logic part's own output stage joins its output to its supply,
   // which is not a signal path.
-  const byNode = adjacency(elements.filter((e) => !own.has(e.component)));
+  const byNode = adjacency(elements.filter((e) => !owners.has(e.component)));
   const inputsAt = new Map<string, string[]>();
   for (const l of logic)
     for (const n of l.inputs) inputsAt.set(n, [...(inputsAt.get(n) ?? []), l.component]);

@@ -29,6 +29,7 @@ import {
   DHT22_CASE,
   LCD1602_MODULE,
   LOGIC_SOT23_BREAKOUT,
+  LOGIC_SOIC14_BREAKOUT,
   SERVO_SG90,
   SERVO_SHAFT_X_MM,
   LED_MATRIX_1088AS,
@@ -1301,6 +1302,7 @@ const BUILDERS: Record<ModelKey, Builder> = {
   'display.lcd1602': buildLcd1602,
   'servo.sg90': buildServo,
   'logic.sot23': buildLogicSot23,
+  'logic.soic14': buildLogicSoic14,
   'transistor.to92': buildTo92,
   'led.rgb': buildRgbLed,
   'ldr.disc': buildPhotoresistor,
@@ -1641,6 +1643,54 @@ function buildLogicSot23(c: SceneComponent, m: Materials, own: OwnedResources) {
     const x = t.x - c.x;
     const z = t.z - c.z;
     // Terminals are placed in world coordinates; undo the part's rotation for the local frame.
+    const ca = Math.cos(-c.rotationY);
+    const sa = Math.sin(-c.rotationY);
+    const lx = x * ca + z * sa;
+    const lz = -x * sa + z * ca;
+    g.add(box(own, 0.64, y0, 0.64, m.gold, [lx, y0 / 2, lz]));
+    const blob = cylinder(own, 0.55, 0.9, m.chrome, [lx, P.attachHeightMm, lz], 16, 0.75);
+    blob.userData.pin = t.id;
+    g.add(blob);
+  }
+  return g;
+}
+
+/**
+ * L3: an SN74LVC08A, SOIC-14 (D0014A) on a representative 14-pin breakout: the board on its
+ * header pins, the package with seven gull-wing leads per long side at 1.27 mm pitch, the
+ * header pins at the part's terminals.
+ */
+function buildLogicSoic14(c: SceneComponent, m: Materials, own: OwnedResources) {
+  const P = LOGIC_SOIC14_BREAKOUT;
+  const g = new THREE.Group();
+  const y0 = P.standoffMm;
+  g.add(
+    box(own, P.boardXMm, P.boardThicknessMm, P.boardZMm, m.pcb, [
+      0,
+      y0 + P.boardThicknessMm / 2,
+      0,
+    ]),
+  );
+  const top = y0 + P.boardThicknessMm;
+  // The body's long side along z (pins 1–7 run down the left column as on the symbol).
+  g.add(
+    box(own, P.bodyWideMm, P.bodyHeightMm, P.bodyLongMm, m.ic, [0, top + P.bodyHeightMm / 2, 0]),
+  );
+  const lead = (P.leadSpanMm - P.bodyWideMm) / 2;
+  for (let i = 0; i < 7; i++) {
+    const z = (i - 3) * P.leadPitchMm;
+    for (const side of [-1, 1])
+      g.add(
+        box(own, lead, 0.2, P.leadWidthMm, m.lead, [
+          side * (P.bodyWideMm / 2 + lead / 2),
+          top + 0.1,
+          z,
+        ]),
+      );
+  }
+  for (const t of c.terminals) {
+    const x = t.x - c.x;
+    const z = t.z - c.z;
     const ca = Math.cos(-c.rotationY);
     const sa = Math.sin(-c.rotationY);
     const lx = x * ca + z * sa;

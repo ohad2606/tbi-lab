@@ -115,6 +115,33 @@ export const he: Record<MessageKey, string> = {
   'terminal.logic_b': 'כניסה B',
   'terminal.logic_y': 'יציאה Y',
   'terminal.logic_gnd': '[[ground]]',
+  // Exploration Foundation L3: רכיב לוגי במארז (TI SN74LVC08A, ארבעה שערי AND בעלי שתי כניסות).
+  'component.logic.quad_and.name': 'רכיב ארבעה שערי AND (‏4 × 2 כניסות)',
+  'model.logic.sn74lvc08a': 'TI SN74LVC08A, SOIC-14 על כרטיס מתאם',
+  'terminal.logic_a1': 'שער 1 כניסה A (1A)',
+  'terminal.logic_b1': 'שער 1 כניסה B (1B)',
+  'terminal.logic_y1': 'שער 1 יציאה Y (1Y)',
+  'terminal.logic_a2': 'שער 2 כניסה A (2A)',
+  'terminal.logic_b2': 'שער 2 כניסה B (2B)',
+  'terminal.logic_y2': 'שער 2 יציאה Y (2Y)',
+  'terminal.logic_a3': 'שער 3 כניסה A (3A)',
+  'terminal.logic_b3': 'שער 3 כניסה B (3B)',
+  'terminal.logic_y3': 'שער 3 יציאה Y (3Y)',
+  'terminal.logic_a4': 'שער 4 כניסה A (4A)',
+  'terminal.logic_b4': 'שער 4 כניסה B (4B)',
+  'terminal.logic_y4': 'שער 4 יציאה Y (4Y)',
+  'sim.part.current.a1': 'כניסה 1A',
+  'sim.part.current.b1': 'כניסה 1B',
+  'sim.part.current.y1': 'זרם יציאה (1Y)',
+  'sim.part.current.a2': 'כניסה 2A',
+  'sim.part.current.b2': 'כניסה 2B',
+  'sim.part.current.y2': 'זרם יציאה (2Y)',
+  'sim.part.current.a3': 'כניסה 3A',
+  'sim.part.current.b3': 'כניסה 3B',
+  'sim.part.current.y3': 'זרם יציאה (3Y)',
+  'sim.part.current.a4': 'כניסה 4A',
+  'sim.part.current.b4': 'כניסה 4B',
+  'sim.part.current.y4': 'זרם יציאה (4Y)',
   'palette.group.logic': 'לוגיקה',
   'library.examples.category.logic': 'לוגיקה ספרתית',
   'sim.part.state.gateOutput': 'יציאה',
@@ -158,6 +185,37 @@ export const he: Record<MessageKey, string> = {
     '{components}: יציאה לוגית מוזנת חזרה לרשת שלה (נעילה או מתנד). התנהגותה תלויה בהשהיית ההתפשטות, שגרסה זו אינה מדמה.',
   'sim.error.logic_unknown_state':
     '{components}: רמה לוגית לא מוגדרת מגיעה אל {pin}, שחייב להיות לו ערך מוגדר. בדקו את הכניסות הלוגיות המסומנות כלא ידועות (X).',
+  'sim.error.logic_unpowered_uncharacterized':
+    '{components}: ‏V_CC הוא 0 V (ללא הזנה). גיליון הנתונים של רכיב זה אינו נותן מפרט למצב ללא הזנה (אין I_off), ולכן רכיב ללא הזנה אינו מדומה. הפעילו את ההזנה שלו.',
+  'sim.error.logic_input_undefined':
+    '{components}: כניסה {pin} נמצאת ב-{voltage}, בין V_IL ל-V_IH במתח הזנה זה. גיליון הנתונים אינו נותן רמה לוגית ואינו נותן זרם הזנה לכניסה במצב זה, ולכן המעגל אינו מדומה. הביאו את הכניסה לרמה תקפה (V_IL ומטה, או V_IH ומעלה).',
+  'sim.error.logic_input_out_of_range':
+    '{components}: כניסה {pin} נמצאת ב-{voltage}, מחוץ לתחום הכניסה המומלץ 0–5.5 V, שבו גיליון הנתונים אינו מפרט את התנהגות הרכיב.',
+  'sim.error.logic_input_floating.sn74lvc08a':
+    '{components}: כניסה {pin} אינה מחוברת לשום דבר. גיליון הנתונים של SN74LVC08A דורש שכל כניסה שאינה בשימוש, כולל כניסות של שערים שאינם בשימוש, תוחזק ב-V_CC או ב-GND. חברו אותה לאות, ל-V_CC או ל-GND, או דרך נגד pull-up או pull-down.',
+  'sim.error.logic_supply_uncharacterized.sn74lvc08a':
+    '{components}: מתח ההזנה הוא {supply}, וגיליון הנתונים של SN74LVC08A אינו מאפיין אותו (‎1.65–1.95 V או 2.3–3.6 V). הסימולטור אינו ממציא ספים בין שורות גיליון הנתונים.',
+  'sim.error.logic_output_uncharacterized.sn74lvc08a':
+    '{components}: במתח {supply} גיליון הנתונים של SN74LVC08A מבטיח את יציאה {pin} רק עד {limit}, היוצא מיציאה במצב HIGH או נכנס ליציאה במצב LOW; כאן עובר בה {current}, או שהיא נדחפת מעבר לפס ההזנה שלה. עומסים אמיתיים מאופיינים רק ב-1.65 V, ‏2.3 V, ‏2.7 V או 3.0 V בדיוק.',
+  // L2: בדיקת מצב לוגי / טבלת אמת.
+  'logic.inspect.title': 'מצב לוגי',
+  'logic.inspect.thresholds':
+    '{part} ב-V_CC = {supply}: ‏HIGH מ-V_IH = {vih} ומעלה, ‏LOW עד V_IL = {vil} (גיליון הנתונים; היכן ששתי שורות נפגשות, המחמירה). ביניהם: לא מוגדר.',
+  'logic.inspect.noRow': '{part}: אין בגיליון הנתונים ספי כניסה במתח הזנה זה.',
+  'logic.inspect.gate': 'שער',
+  'logic.inspect.pin': 'פין',
+  'logic.inspect.level': 'רמה',
+  'logic.inspect.voltage': 'מתח ביחס לפין GND',
+  'logic.inspect.level.high': 'HIGH',
+  'logic.inspect.level.low': 'LOW',
+  'logic.inspect.level.off': 'כבוי (ללא הזנה)',
+  'logic.inspect.level.undefined': 'לא מוגדר (בין V_IL ל-V_IH)',
+  'logic.inspect.level.noThresholds': 'לא מוגדר (אין ספים במתח הזנה זה)',
+  'logic.inspect.level.unknown': 'לא ידוע (X)',
+  'logic.inspect.truthTable': 'טבלת אמת ({fn})',
+  'logic.inspect.gatesHere': 'שערים במצב זה',
+  'logic.inspect.note':
+    'הרמות והמתחים הם של הסימולציה, נמדדים ביחס לפין ה-GND של הרכיב עצמו. שער שיש לו כניסה לא מוגדרת אינו באף שורה של הטבלה.',
   'sim.part.current.red': 'זרם הערוץ האדום',
   'sim.part.current.green': 'זרם הערוץ הירוק',
   'sim.part.current.blue': 'זרם הערוץ הכחול',
@@ -994,6 +1052,9 @@ export const he: Record<MessageKey, string> = {
   'example.esp32-logic-and.title': 'ESP32: שער AND עם קריאה חוזרת',
   'example.esp32-logic-and.summary':
     'יציאה של ESP32 ולחצן מזינים שער AND מדגם SN74LVC1G08 שמוזן ב-3.0 V. השער מדליק נורית LED וה-ESP32 קורא בחזרה את היציאה שלו. לחצו לחיצה ממושכת על הלחצן ועקבו אחרי הפלט הטורי; כשמשחררים, הנורית נשארת כבויה.',
+  'example.esp32-logic-quad-and.title': 'ESP32: רכיב ארבעה שערי AND שמדליק נוריות',
+  'example.esp32-logic-quad-and.summary':
+    'שתי יציאות של ESP32 ולחצן מזינים SN74LVC08A (ארבעה שערי AND במארז אחד, הזנה משותפת אחת) שמוזן ב-3.0 V. שער 1 מדליק נורית LED, שער 2 משרשר את שער 1 עם הלחצן ומדליק נורית שנייה; כניסות השערים שאינם בשימוש מחוברות ל-GND. פתחו את הרכיב במפקח כדי לראות את מצב כל שער ואת טבלת האמת.',
   'example.esp32-servo-sweep.title': 'ESP32: סריקה של סרוו SG90 ב־PWM',
   'example.esp32-servo-sweep.summary':
     'אות LEDC של 50 Hz ב־GPIO18 עם פולסים של 1.0,‏ 2.0 ו־1.5 ms מזיז את הסרוו ל־0°,‏ 180° ו־90°. הסרוו מוזן מספק המעבדה של 5 V.',
@@ -1205,6 +1266,21 @@ export const he: Record<MessageKey, string> = {
     'כניסה בין V_IL ל-V_IH אינה ידועה (X), וכך גם כל מה שהיא קובעת; כניסה צפה נדחית. זרם הזליגה בכניסה (±5 µA) אינו משמש כרמה.',
   'limitation.logic_breakout':
     'מארז ה-SOT-23-5 מוצג על כרטיס מתאם מייצג, כדי שיתאים למטריצה; פריסת הכרטיס להמחשה.',
+  'sim.part.state.iccCondition': 'זרם הזנה במנוחה',
+  'sim.part.state.iccCondition.notRails': 'לא מאופיין: כניסה אינה ב-V_CC או ב-GND (לא נכלל למעלה)',
+  'sim.part.state.deltaIccA': 'ΔI_CC מגיליון הנתונים לכל כניסה ב-V_CC − 0.6 V (מרבי)',
+  'limitation.logic_package_dc_no_delay':
+    'DC בלבד: השהיית ההתפשטות (בגיליון הנתונים 1–4.1 ns ב-3.3 V) אינה מדומה. מעגלים שתלויים בה נדחים: משוב בין שערים (נעילות, מתנדים), PWM לתוך שער, שעונים.',
+  'limitation.logic_package_input_band':
+    'כניסה בין V_IL ל-V_IH, או מחוץ ל-0–5.5 V, נדחית: גיליון הנתונים אינו נותן שם רמה ואינו נותן זרם הזנה. זרם ההזנה במנוחה (I_CC ≤ 10 µA) אינו חלק מהפתרון ומפורט רק כשכל הכניסות ב-V_CC או ב-GND.',
+  'limitation.logic_package_supply_rows':
+    'ספים ורמות יציאה רק היכן שגיליון הנתונים של SN74LVC08A מציג אותם (‎1.65–1.95 V, ‏2.3–3.6 V). עומסים אמיתיים רק ב-1.65, ‏2.3, ‏2.7 או 3.0 V בדיוק, היכן שנקודות הבדיקה של היציאה; בכל מתח אחר (כולל 3.3 V) עד 100 µA. החסם של מחלקת 3.3 V שמשמש לשערים הבודדים אינו מוחל: גיליון נתונים זה אינו מצהיר על הנעה ב-3.3 V.',
+  'limitation.logic_package_unused_inputs':
+    'גיליון הנתונים דורש שכל כניסה שאינה בשימוש תוחזק ב-V_CC או ב-GND: כניסה צפה, גם של שער שאינו בשימוש, נדחית.',
+  'limitation.logic_package_unpowered':
+    'אין בגיליון הנתונים מפרט למצב ללא הזנה (I_off): כש-V_CC הוא 0 V הרכיב נדחה, ואינו מדומה ככבוי.',
+  'limitation.logic_package_breakout':
+    'מארז ה-SOIC-14 מוצג על כרטיס מתאם מייצג, כדי שיתאים למטריצה; פריסת הכרטיס להמחשה. הספק הפיזור (500 mW, תלוי טמפרטורה) אינו נבדק; מגבלת ‎±100 mA בפיני ההזנה נבדקת.',
   'param.powerRating': 'הספק נקוב',
   'model.resistor.koa_cf_1_4': 'פחם ¼ W (KOA CF1/4)',
   'model.resistor.koa_cfs_1_2': 'פחם ½ W (KOA CFS1/2)',

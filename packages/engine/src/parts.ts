@@ -210,12 +210,19 @@ export interface PartModel {
    * Sprint 19B: the most current the part's unknown output may carry (A): its absolute-maximum
    * continuous output current (a datasheet bound), for the supply's current-limit margin.
    */
-  unknownCurrentMaxA?(ctx: PartContext): number;
+  unknownCurrentMaxA?(ctx: PartContext, state: PartState): number;
   /**
    * Sprint 19B: the part's logic inputs and outputs (for the session's combinational-feedback
    * check: an output reaching an input of the same logic network through external elements).
    */
   logicPins?(ctx: PartContext): { inputs: readonly string[]; outputs: readonly string[] };
+  /**
+   * L3: a packaged device's gates, each with its own inputs and output (all sharing the part's
+   * supply pins). The feedback check runs between gates, not between parts.
+   */
+  logicUnits?(
+    ctx: PartContext,
+  ): readonly { unit: string; inputs: readonly string[]; outputs: readonly string[] }[];
   /**
    * Sprint 19B: a refusal the SETTLED state implies (e.g. a floating logic input), or null. The
    * session checks it only once every state has settled, never on an intermediate pass.
@@ -226,7 +233,7 @@ export interface PartModel {
     state: PartState,
     sol: PartSolution,
   ): Pick<ComponentResult, 'current' | 'voltage' | 'terminals'> &
-    Partial<Pick<ComponentResult, 'currents' | 'state' | 'outsideModelRange' | 'array'>>;
+    Partial<Pick<ComponentResult, 'currents' | 'state' | 'outsideModelRange' | 'array' | 'logic'>>;
 }
 
 const registry = new Map<string, PartModel>();

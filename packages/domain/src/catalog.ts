@@ -660,6 +660,46 @@ const LOGIC_TYPES = {
     ],
     aliases: ['not gate', 'inverter', '74lvc1g04', 'מהפך', 'שער not'],
   },
+  /**
+   * Exploration Foundation L3: TI SN74LVC08A, four 2-input AND gates sharing one supply. The
+   * terminals follow the datasheet pin map (SCAS283W Table 4-1, 14-pin D/PW): pins 1–7 down the
+   * left side, 8–14 up the right side (the package's top view), V_CC pin 14, GND pin 7.
+   */
+  'logic.quad_and': {
+    type: 'logic.quad_and',
+    typeVersion: 1,
+    refPrefix: 'U',
+    nameKey: 'component.logic.quad_and.name',
+    symbol: 'symbol.quad_and',
+    // An unused gate's OUTPUT may be left open; its inputs may not (the engine refuses them).
+    optionalTerminals: ['y1', 'y2', 'y3', 'y4'],
+    terminals: [
+      { id: 'a1', offset: { x: -60, y: -60 }, labelKey: 'terminal.logic_a1' },
+      { id: 'b1', offset: { x: -60, y: -40 }, labelKey: 'terminal.logic_b1' },
+      { id: 'y1', offset: { x: -60, y: -20 }, labelKey: 'terminal.logic_y1' },
+      { id: 'a2', offset: { x: -60, y: 0 }, labelKey: 'terminal.logic_a2' },
+      { id: 'b2', offset: { x: -60, y: 20 }, labelKey: 'terminal.logic_b2' },
+      { id: 'y2', offset: { x: -60, y: 40 }, labelKey: 'terminal.logic_y2' },
+      { id: 'gnd', offset: { x: -60, y: 60 }, labelKey: 'terminal.logic_gnd' },
+      { id: 'y3', offset: { x: 60, y: 60 }, labelKey: 'terminal.logic_y3' },
+      { id: 'a3', offset: { x: 60, y: 40 }, labelKey: 'terminal.logic_a3' },
+      { id: 'b3', offset: { x: 60, y: 20 }, labelKey: 'terminal.logic_b3' },
+      { id: 'y4', offset: { x: 60, y: 0 }, labelKey: 'terminal.logic_y4' },
+      { id: 'a4', offset: { x: 60, y: -20 }, labelKey: 'terminal.logic_a4' },
+      { id: 'b4', offset: { x: 60, y: -40 }, labelKey: 'terminal.logic_b4' },
+      { id: 'vcc', offset: { x: 60, y: -60 }, labelKey: 'terminal.vcc' },
+    ],
+    params: [
+      {
+        kind: 'enum',
+        key: 'model',
+        options: [{ value: 'model.logic.sn74lvc08a', labelKey: 'model.logic.sn74lvc08a' }],
+        default: 'model.logic.sn74lvc08a',
+        labelKey: 'param.model',
+      },
+    ],
+    aliases: ['quad and', '74lvc08', '74lvc08a', 'and ic', 'שער and', 'רכיב לוגי'],
+  },
 } satisfies Partial<Record<ComponentTypeId, ComponentTypeDef>>;
 
 export const CATALOG: Record<ComponentTypeId, ComponentTypeDef> = {
@@ -890,6 +930,7 @@ export const CATALOG_ORDER: readonly ComponentTypeId[] = [
   'logic.gate_nand',
   'logic.gate_or',
   'logic.gate_not',
+  'logic.quad_and',
   'board.esp32_devkitc_wroom32',
 ];
 

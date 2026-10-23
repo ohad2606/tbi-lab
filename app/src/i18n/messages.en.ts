@@ -114,6 +114,33 @@ export const en = {
   'terminal.logic_b': 'Input B',
   'terminal.logic_y': 'Output Y',
   'terminal.logic_gnd': 'Ground (GND)',
+  // Exploration Foundation L3: a packaged logic device (TI SN74LVC08A, four 2-input AND gates).
+  'component.logic.quad_and.name': 'Quad AND gate IC (4 × 2-input)',
+  'model.logic.sn74lvc08a': 'TI SN74LVC08A, SOIC-14 on a breakout',
+  'terminal.logic_a1': 'Gate 1 input A (1A)',
+  'terminal.logic_b1': 'Gate 1 input B (1B)',
+  'terminal.logic_y1': 'Gate 1 output Y (1Y)',
+  'terminal.logic_a2': 'Gate 2 input A (2A)',
+  'terminal.logic_b2': 'Gate 2 input B (2B)',
+  'terminal.logic_y2': 'Gate 2 output Y (2Y)',
+  'terminal.logic_a3': 'Gate 3 input A (3A)',
+  'terminal.logic_b3': 'Gate 3 input B (3B)',
+  'terminal.logic_y3': 'Gate 3 output Y (3Y)',
+  'terminal.logic_a4': 'Gate 4 input A (4A)',
+  'terminal.logic_b4': 'Gate 4 input B (4B)',
+  'terminal.logic_y4': 'Gate 4 output Y (4Y)',
+  'sim.part.current.a1': 'Input 1A',
+  'sim.part.current.b1': 'Input 1B',
+  'sim.part.current.y1': 'Output current (1Y)',
+  'sim.part.current.a2': 'Input 2A',
+  'sim.part.current.b2': 'Input 2B',
+  'sim.part.current.y2': 'Output current (2Y)',
+  'sim.part.current.a3': 'Input 3A',
+  'sim.part.current.b3': 'Input 3B',
+  'sim.part.current.y3': 'Output current (3Y)',
+  'sim.part.current.a4': 'Input 4A',
+  'sim.part.current.b4': 'Input 4B',
+  'sim.part.current.y4': 'Output current (4Y)',
   'palette.group.logic': 'Logic',
   'library.examples.category.logic': 'Digital logic',
   'sim.part.state.gateOutput': 'Output',
@@ -157,6 +184,37 @@ export const en = {
     '{components}: a logic output feeds back into its own network (a latch or an oscillator). Its behaviour depends on propagation delay, which this version does not simulate.',
   'sim.error.logic_unknown_state':
     '{components}: an undetermined logic level reaches {pin}, which must have a defined value. Check the logic inputs marked unknown (X).',
+  'sim.error.logic_unpowered_uncharacterized':
+    '{components}: V_CC is 0 V (unpowered). This device’s datasheet gives no power-off specification (no I_off), so an unpowered device is not simulated. Switch its supply on.',
+  'sim.error.logic_input_undefined':
+    '{components}: input {pin} is at {voltage}, between V_IL and V_IH at this supply. The datasheet gives no logic level and no supply current for an input there, so the circuit is not simulated. Drive the input to a valid level (V_IL or below, V_IH or above).',
+  'sim.error.logic_input_out_of_range':
+    '{components}: input {pin} is at {voltage}, outside the recommended input range 0–5.5 V, where the datasheet does not specify the device’s behaviour.',
+  'sim.error.logic_input_floating.sn74lvc08a':
+    '{components}: input {pin} is not connected to anything. The SN74LVC08A datasheet requires every unused input, including those of unused gates, to be held at V_CC or GND. Connect it to a signal, to V_CC or GND, or through a pull-up or pull-down resistor.',
+  'sim.error.logic_supply_uncharacterized.sn74lvc08a':
+    '{components}: the supply is {supply}, which the SN74LVC08A datasheet does not characterize (1.65–1.95 V or 2.3–3.6 V). The simulator does not invent thresholds between datasheet rows.',
+  'sim.error.logic_output_uncharacterized.sn74lvc08a':
+    '{components}: at {supply} the SN74LVC08A datasheet guarantees output {pin} only up to {limit} flowing out of a HIGH output or into a LOW one; here it carries {current}, or is forced past its own rail. Real loads are characterized only at 1.65 V, 2.3 V, 2.7 V or 3.0 V exactly.',
+  // L2: logic state / truth-table inspection.
+  'logic.inspect.title': 'Logic state',
+  'logic.inspect.thresholds':
+    '{part} at V_CC = {supply}: HIGH at or above V_IH = {vih}, LOW at or below V_IL = {vil} (datasheet; where two rows meet, the stricter). In between: undefined.',
+  'logic.inspect.noRow': '{part}: no datasheet input thresholds at this supply.',
+  'logic.inspect.gate': 'Gate',
+  'logic.inspect.pin': 'Pin',
+  'logic.inspect.level': 'Level',
+  'logic.inspect.voltage': 'Voltage to GND pin',
+  'logic.inspect.level.high': 'HIGH',
+  'logic.inspect.level.low': 'LOW',
+  'logic.inspect.level.off': 'off (unpowered)',
+  'logic.inspect.level.undefined': 'undefined (between V_IL and V_IH)',
+  'logic.inspect.level.noThresholds': 'undefined (no thresholds at this supply)',
+  'logic.inspect.level.unknown': 'unknown (X)',
+  'logic.inspect.truthTable': 'Truth table ({fn})',
+  'logic.inspect.gatesHere': 'Gates in this state',
+  'logic.inspect.note':
+    'Levels and voltages are the simulation’s, measured to the part’s own GND pin. A gate with an undefined input is in no row of the table.',
   'sim.part.current.red': 'Red channel current',
   'sim.part.current.green': 'Green channel current',
   'sim.part.current.blue': 'Blue channel current',
@@ -1024,6 +1082,9 @@ export const en = {
   'example.esp32-logic-and.title': 'ESP32: an AND gate with read-back',
   'example.esp32-logic-and.summary':
     'An ESP32 output and a push button drive an SN74LVC1G08 AND gate powered at 3.0 V. The gate lights an LED and the ESP32 reads its output back. Hold the button and watch the serial monitor; release it and the LED stays dark.',
+  'example.esp32-logic-quad-and.title': 'ESP32: a quad AND gate IC driving LEDs',
+  'example.esp32-logic-quad-and.summary':
+    'Two ESP32 outputs and a push button drive an SN74LVC08A (four AND gates in one package, one shared supply) powered at 3.0 V. Gate 1 lights a LED, gate 2 chains gate 1 with the button and lights a second LED; the unused gates’ inputs are tied to GND. Open the part in the Inspector to see each gate’s state and truth table.',
   'example.esp32-servo-sweep.title': 'ESP32: sweep an SG90 servo with PWM',
   'example.esp32-servo-sweep.summary':
     'A 50 Hz LEDC signal on GPIO18 with 1.0, 2.0 and 1.5 ms pulses moves the servo to 0°, 180° and 90°. The servo runs from the 5 V bench supply.',
@@ -1255,6 +1316,22 @@ export const en = {
     'An input between V_IL and V_IH is unknown (X), and so is everything it determines; a floating input is refused. Input leakage (±5 µA) is not used as a level.',
   'limitation.logic_breakout':
     'The SOT-23-5 package is shown on a representative breakout board, so it fits a breadboard; the board’s layout is illustrative.',
+  'sim.part.state.iccCondition': 'Quiescent supply current',
+  'sim.part.state.iccCondition.notRails':
+    'not characterized: an input is not at V_CC or GND (not included above)',
+  'sim.part.state.deltaIccA': 'Datasheet ΔI_CC per input at V_CC − 0.6 V (max)',
+  'limitation.logic_package_dc_no_delay':
+    'DC only: propagation delay (datasheet 1–4.1 ns at 3.3 V) is not simulated. Circuits that depend on it are refused: feedback between gates (latches, oscillators), PWM into a gate, clocks.',
+  'limitation.logic_package_input_band':
+    'An input between V_IL and V_IH, or outside 0–5.5 V, is refused: the datasheet gives no level and no supply current there. The quiescent supply current (I_CC ≤ 10 µA) is not part of the solve and is specified only with every input at V_CC or GND.',
+  'limitation.logic_package_supply_rows':
+    'Thresholds and output levels only where the SN74LVC08A datasheet tabulates them (1.65–1.95 V, 2.3–3.6 V). Real loads only at exactly 1.65, 2.3, 2.7 or 3.0 V, where the output test points are; elsewhere (including 3.3 V) up to 100 µA. The 3.3 V class bound used for the single gates is not applied: this datasheet does not state a 3.3 V drive.',
+  'limitation.logic_package_unused_inputs':
+    'The datasheet requires every unused input held at V_CC or GND: a floating input, even of an unused gate, is refused.',
+  'limitation.logic_package_unpowered':
+    'The datasheet has no power-off specification (I_off): with V_CC at 0 V the device is refused, not simulated as off.',
+  'limitation.logic_package_breakout':
+    'The SOIC-14 package is shown on a representative breakout board so it fits a breadboard; the board’s layout is illustrative. Power dissipation (500 mW, temperature-dependent) is not checked; the ±100 mA supply-pin limit is.',
   // Sprint 19B (F2): resistor power ratings (KOA CF series).
   'param.powerRating': 'Power rating',
   'model.resistor.koa_cf_1_4': '¼ W carbon film (KOA CF1/4)',

@@ -44,6 +44,8 @@ const sha = (b: Buffer) => createHash('sha256').update(b).digest('hex');
 export const STAND_IN = {
   gpioProof: sha(standInImage('TbiGpioProof')),
   banks: sha(standInImage('TbiBanks')),
+  // Exploration Foundation L3: the esp32-logic-quad-and example's sketch.
+  logicQuad: sha(standInImage('LogicQuadAnd')),
 };
 
 const SKETCHES: Record<string, string> = {
@@ -53,6 +55,10 @@ const SKETCHES: Record<string, string> = {
   ),
   TbiBanks: readFileSync(
     new URL('../../../runtime/firmware/arduino/TbiBanks/TbiBanks.ino', import.meta.url),
+    'utf8',
+  ),
+  LogicQuadAnd: readFileSync(
+    new URL('../../tests/exampleSketches/LogicQuadAnd.ino', import.meta.url),
     'utf8',
   ),
 };
