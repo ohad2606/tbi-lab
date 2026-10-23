@@ -164,9 +164,6 @@ export const en = {
     'guaranteed lower bound: the 3 V datasheet points over the 3.3 V ± 0.3 V class (a real part drives at least this well)',
   'sim.part.state.outputValidA': 'Characterized up to',
   'sim.part.state.iccMaxA': 'Quiescent supply current (datasheet max, not included above)',
-  'sim.part.state.firstUnknownInput': 'First unknown input',
-  'sim.part.state.firstUnknownInput.a': 'A',
-  'sim.part.state.firstUnknownInput.b': 'B',
   'sim.part.current.y': 'Output current (Y)',
   'sim.part.current.vcc': 'Supply pin current (V_CC)',
   'sim.part.current.gnd': 'Ground pin current (GND)',
@@ -179,7 +176,7 @@ export const en = {
   'sim.error.logic_supply_uncharacterized':
     '{components}: the supply is {supply}, which the datasheet does not characterize (1.65–1.95 V, 2.3–2.7 V, 3.0–3.6 V or 4.5–5.5 V). The simulator does not invent thresholds between datasheet rows.',
   'sim.error.logic_output_uncharacterized':
-    '{components}: at {supply} the datasheet guarantees the output only up to {limit}, and this load draws {current}. Use a lighter load, or a supply where the output is characterized for real loads (3.0–3.6 V or 4.5 V).',
+    '{components}: at {supply} the datasheet guarantees the output only up to {limit}, and this load draws {current}, or the output is forced past its own rail. Use a lighter load, or a supply where the output is characterized for real loads (exactly 1.65 V, 2.3 V or 4.5 V, or 3.0–3.6 V).',
   'sim.error.logic_feedback_unsupported':
     '{components}: a logic output feeds back into its own network (a latch or an oscillator). Its behaviour depends on propagation delay, which this version does not simulate.',
   'sim.error.logic_unknown_state':
@@ -187,7 +184,7 @@ export const en = {
   'sim.error.logic_unpowered_uncharacterized':
     '{components}: V_CC is 0 V (unpowered). This device’s datasheet gives no power-off specification (no I_off), so an unpowered device is not simulated. Switch its supply on.',
   'sim.error.logic_input_undefined':
-    '{components}: input {pin} is at {voltage}, between V_IL and V_IH at this supply. The datasheet gives no logic level and no supply current for an input there, so the circuit is not simulated. Drive the input to a valid level (V_IL or below, V_IH or above).',
+    '{components}: input {pin} is at {voltage}, between {vil} and {vih} ({vccEq}). The datasheet gives no logic level and no supply current for an input there, so the circuit is not simulated. Drive the input to a valid level (V_IL or below, V_IH or above).',
   'sim.error.logic_input_out_of_range':
     '{components}: input {pin} is at {voltage}, outside the recommended input range 0–5.5 V, where the datasheet does not specify the device’s behaviour.',
   'sim.error.logic_input_floating.sn74lvc08a':
@@ -197,11 +194,10 @@ export const en = {
   'sim.error.logic_output_uncharacterized.sn74lvc08a':
     '{components}: at {supply} the SN74LVC08A datasheet guarantees output {pin} only up to {limit} flowing out of a HIGH output or into a LOW one; here it carries {current}, or is forced past its own rail. Real loads are characterized only at 1.65 V, 2.3 V, 2.7 V or 3.0 V exactly.',
   // L2: logic state / truth-table inspection.
-  'logic.inspect.title': 'Logic state',
+  'logic.inspect.title': 'Logic: truth table and pin states',
   'logic.inspect.thresholds':
-    '{part} at V_CC = {supply}: HIGH at or above V_IH = {vih}, LOW at or below V_IL = {vil} (datasheet; where two rows meet, the stricter). In between: undefined.',
+    '{part} at {supply}: HIGH at or above {vih}, LOW at or below {vil} (datasheet; where two rows meet, the stricter). In between: undefined.',
   'logic.inspect.noRow': '{part}: no datasheet input thresholds at this supply.',
-  'logic.inspect.gate': 'Gate',
   'logic.inspect.pin': 'Pin',
   'logic.inspect.level': 'Level',
   'logic.inspect.voltage': 'Voltage to GND pin',
@@ -209,12 +205,47 @@ export const en = {
   'logic.inspect.level.low': 'LOW',
   'logic.inspect.level.off': 'off (unpowered)',
   'logic.inspect.level.undefined': 'undefined (between V_IL and V_IH)',
-  'logic.inspect.level.noThresholds': 'undefined (no thresholds at this supply)',
   'logic.inspect.level.unknown': 'unknown (X)',
   'logic.inspect.truthTable': 'Truth table ({fn})',
   'logic.inspect.gatesHere': 'Gates in this state',
   'logic.inspect.note':
-    'Levels and voltages are the simulation’s, measured to the part’s own GND pin. A gate with an undefined input is in no row of the table.',
+    'Levels and voltages are the simulation’s, measured to the part’s own GND pin. The highlighted row is the selected gate’s. An input outside the defined bands refuses the Run; it is never shown as a level.',
+  'logic.controls.hold': '{id} on {pin}: hold to press',
+  'logic.controls.toggleOpen': '{id} on {pin}: open (click to close)',
+  'logic.controls.toggleClosed': '{id} on {pin}: closed (click to open)',
+  'logic.controls.mcu': '{pin}: driven by the ESP32 ({gpio}) from the firmware.',
+  'logic.controls.heading': 'Operate the inputs',
+  'logic.why.idle': 'Run the simulation to see this pin’s level and voltage.',
+  'logic.why.waiting': 'Waiting for the first operating point.',
+  'logic.why.refusedElsewhere': 'Not simulated: the Run was refused (see the message above).',
+  'logic.why.outputUncharacterized':
+    'The load needs more than the guaranteed output current ({limit}, {vcc}), or forces the output past its rail: no characteristic, so the simulation is refused.',
+  'logic.why.outOfRange':
+    '{v}: outside the recommended input range 0–5.5 V, where the datasheet does not specify the device. The simulation is refused.',
+  'logic.why.floatingPads':
+    'Only {pads} is connected, and it is an input (high impedance): nothing drives this input, so the simulation is refused. Add a pull-down or pull-up (10 kΩ).',
+  'logic.why.floating':
+    'Nothing drives this input (no DC path to a source): a floating CMOS input has no defined level, so the simulation is refused.',
+  'logic.why.undefined':
+    '{v}: between {vil} and {vih} ({vcc}). The datasheet gives no level there, so the simulation is refused.',
+  'logic.why.unknown': 'An undetermined level reaches this pin: no level and no voltage are shown.',
+  'logic.why.off': 'V_CC is 0 V: the outputs are disabled (I_off).',
+  'logic.why.out': '{fn} of the inputs ({ins}) = {out}, from the datasheet function table.',
+  'logic.why.inLow': '{cmp} ({vcc}): LOW.',
+  'logic.why.inHigh': '{cmp} ({vcc}): HIGH.',
+  'logic.inspect.level.idle': '—',
+  'logic.inspect.level.notSimulated': 'not simulated',
+  'logic.inspect.level.unsupported': 'not characterized',
+  'logic.inspect.level.outOfRange': 'outside 0–5.5 V',
+  'logic.inspect.level.floating': 'floating (not driven)',
+  'logic.inspect.noteIdle':
+    'Not simulated yet: this is the datasheet’s function table. Voltages and levels appear while the simulation runs.',
+  'logic.inspect.rowsCaption':
+    'Datasheet input thresholds by supply (V_CC). Between rows the simulator refuses rather than invent a threshold.',
+  'logic.inspect.gateN': 'Gate {n}',
+  'logic.inspect.gates': 'Gates',
+  'logic.inspect.idle':
+    '{part}: the datasheet function table and input thresholds. Run the simulation to see each pin’s level and voltage.',
   'sim.part.current.red': 'Red channel current',
   'sim.part.current.green': 'Green channel current',
   'sim.part.current.blue': 'Blue channel current',
@@ -1085,6 +1116,16 @@ export const en = {
   'example.esp32-logic-quad-and.title': 'ESP32: a quad AND gate IC driving LEDs',
   'example.esp32-logic-quad-and.summary':
     'Two ESP32 outputs and a push button drive an SN74LVC08A (four AND gates in one package, one shared supply) powered at 3.0 V. Gate 1 lights a LED, gate 2 chains gate 1 with the button and lights a second LED; the unused gates’ inputs are tied to GND. Open the part in the Inspector to see each gate’s state and truth table.',
+  // Sprint 20 logic examples.
+  'example.logic-and-switches.title': 'Logic: an AND gate with two switches',
+  'example.logic-and-switches.summary':
+    'Two switches, each with a 10 kΩ pull-down, drive an SN74LVC1G08 AND gate powered at 3.0 V; the LED lights only when both are closed. Select the gate to see its truth table, each pin’s level and voltage, and toggle the inputs from the Inspector.',
+  'example.logic-cascade.title': 'Logic: cascaded gates, (A·B·C) + D',
+  'example.logic-cascade.summary':
+    'Four switches with pull-downs. Inside one SN74LVC08A, gate 1 forms A·B and feeds gate 2, which adds C; across packages, an SN74LVC1G32 OR gate combines that with switch D, an override, and lights the LED. All at 3.0 V; the unused gates’ inputs are tied to GND.',
+  'example.esp32-logic-override.title': 'ESP32: an OR gate with a manual override',
+  'example.esp32-logic-override.summary':
+    'An ESP32 output and a toggle switch drive an SN74LVC1G32 OR gate powered at 3.0 V; both inputs have 10 kΩ pull-downs. The LED blinks with the ESP32 until you close the switch, which keeps it on; the ESP32 reads the gate’s output back and reports the override on the serial monitor.',
   'example.esp32-servo-sweep.title': 'ESP32: sweep an SG90 servo with PWM',
   'example.esp32-servo-sweep.summary':
     'A 50 Hz LEDC signal on GPIO18 with 1.0, 2.0 and 1.5 ms pulses moves the servo to 0°, 180° and 90°. The servo runs from the 5 V bench supply.',
@@ -1306,24 +1347,33 @@ export const en = {
   // Sprint 15 (R4): PWM averages, the SG90 servo and the ESP32's LEDC outputs.
   'limitation.pwm_average':
     'Driven by PWM, the values shown are time-averages over the waveform (exact for this part); ratings use the peak current. Perceived brightness is approximated by the average current.',
-  'limitation.logic_dc_no_delay':
-    'DC only: propagation delay (datasheet 0.7–4.5 ns at 3.3 V) is not simulated. Circuits that depend on it are refused: feedback between gates (latches, oscillators), PWM into a gate, clocks.',
   'limitation.logic_guaranteed_output':
     'The output uses the datasheet’s guaranteed (worst-case) characteristic, not typical values: a real part’s output is usually closer to the rails.',
   'limitation.logic_supply_rows':
-    'Thresholds and output levels only where the datasheet tabulates them (1.65–1.95 V, 2.3–2.7 V, 3.0–3.6 V, 4.5–5.5 V). Real loads only at 3.0 V or 4.5 V, where the output test points are; elsewhere up to 100 µA.',
+    'Thresholds and output levels only where the datasheet tabulates them (1.65–1.95 V, 2.3–2.7 V, 3.0–3.6 V, 4.5–5.5 V). Real loads only at exactly 1.65, 2.3 or 4.5 V (the output test points) and over 3.0–3.6 V (the 3 V points as a bound, owner decision PM-1); elsewhere up to 100 µA.',
   'limitation.logic_unknown':
-    'An input between V_IL and V_IH is unknown (X), and so is everything it determines; a floating input is refused. Input leakage (±5 µA) is not used as a level.',
+    'An input between V_IL and V_IH, outside 0–5.5 V, floating, or driven only by an ESP32 pin in input mode is refused: no level is guessed, and no “controlling input” is assumed. The quiescent supply current (I_CC ≤ 10 µA) is not part of the solve and is specified only with every input at 5.5 V or GND.',
   'limitation.logic_breakout':
     'The SOT-23-5 package is shown on a representative breakout board, so it fits a breadboard; the board’s layout is illustrative.',
   'sim.part.state.iccCondition': 'Quiescent supply current',
-  'sim.part.state.iccCondition.notRails':
-    'not characterized: an input is not at V_CC or GND (not included above)',
   'sim.part.state.deltaIccA': 'Datasheet ΔI_CC per input at V_CC − 0.6 V (max)',
+  'limitation.logic_1g04_no_delay':
+    'DC only: propagation delay is not simulated (SN74LVC1G04 datasheet §5.6: t_pd 0.7–3.3 ns at V_CC 3.3 V ± 0.3 V, C_L = 15 pF, −40 °C to 85 °C). Circuits that depend on it are refused: feedback between gates (latches, oscillators), PWM into a gate, clocks.',
+  'limitation.logic_1g32_no_delay':
+    'DC only: propagation delay is not simulated (SN74LVC1G32 datasheet §5.6: t_pd 0.9–3.6 ns at V_CC 3.3 V ± 0.3 V, C_L = 15 pF, −40 °C to 85 °C). Circuits that depend on it are refused: feedback between gates (latches, oscillators), PWM into a gate, clocks.',
+  'limitation.logic_1g00_no_delay':
+    'DC only: propagation delay is not simulated (SN74LVC1G00 datasheet §5.6: t_pd 0.8–3.8 ns at V_CC 3.3 V ± 0.3 V, C_L = 15 pF, −40 °C to 85 °C). Circuits that depend on it are refused: feedback between gates (latches, oscillators), PWM into a gate, clocks.',
+  'limitation.logic_1g08_no_delay':
+    'DC only: propagation delay is not simulated (SN74LVC1G08 datasheet §5.6: t_pd 0.8–3.6 ns at V_CC 3.3 V ± 0.3 V, C_L = 15 pF, −40 °C to 85 °C). Circuits that depend on it are refused: feedback between gates (latches, oscillators), PWM into a gate, clocks.',
+  'sim.part.state.iccCondition.notSupply': 'not characterized at this supply (not included above)',
+  'sim.part.state.iccCondition.notInputs':
+    'not characterized: an input is not at the datasheet’s I_CC test voltage (not included above)',
+  'sim.error.logic_input_floating.mcu_input':
+    '{components}: input {pin} is driven only by {pads}, an ESP32 pin in input mode (high impedance), for example before the firmware’s setup() makes it an output. Nothing drives the input, so it has no defined level (the datasheet: do not leave CMOS inputs floating). Add a pull-down or pull-up resistor (TI recommends 10 kΩ) so the input is defined while the pin is not driving.',
   'limitation.logic_package_dc_no_delay':
     'DC only: propagation delay (datasheet 1–4.1 ns at 3.3 V) is not simulated. Circuits that depend on it are refused: feedback between gates (latches, oscillators), PWM into a gate, clocks.',
   'limitation.logic_package_input_band':
-    'An input between V_IL and V_IH, or outside 0–5.5 V, is refused: the datasheet gives no level and no supply current there. The quiescent supply current (I_CC ≤ 10 µA) is not part of the solve and is specified only with every input at V_CC or GND.',
+    'An input between V_IL and V_IH, outside 0–5.5 V, floating, or driven only by an ESP32 pin in input mode is refused: the datasheet gives no level and no supply current there. The quiescent supply current (I_CC ≤ 10 µA) is not part of the solve and is specified only at V_CC = 3.6 V with every input at V_CC or GND.',
   'limitation.logic_package_supply_rows':
     'Thresholds and output levels only where the SN74LVC08A datasheet tabulates them (1.65–1.95 V, 2.3–3.6 V). Real loads only at exactly 1.65, 2.3, 2.7 or 3.0 V, where the output test points are; elsewhere (including 3.3 V) up to 100 µA. The 3.3 V class bound used for the single gates is not applied: this datasheet does not state a 3.3 V drive.',
   'limitation.logic_package_unused_inputs':

@@ -1,0 +1,1292 @@
+{
+  "format": "tbi-lab.project",
+  "schemaVersion": 3,
+  "projectId": "prj_examplelogiccascade",
+  "createdWith": {
+    "app": "0.2.0",
+    "schemaVersion": 3
+  },
+  "createdAt": "2026-09-23T00:00:00.000Z",
+  "revision": {
+    "localRevision": 1,
+    "cloudRevision": null,
+    "baseRevision": null,
+    "updatedAt": "2026-09-23T00:00:00.000Z",
+    "deviceId": "dev_tbilab_examples"
+  },
+  "name": "Logic: cascaded gates (A·B·C) + D",
+  "components": [
+    {
+      "id": "PSU1",
+      "type": "instrument.lab_psu",
+      "typeVersion": 1,
+      "params": {
+        "setpointVoltage": {
+          "value": 3,
+          "unit": "volt"
+        },
+        "currentLimit": {
+          "value": 0.1,
+          "unit": "ampere"
+        },
+        "outputEnabled": true
+      }
+    },
+    {
+      "id": "GND1",
+      "type": "component.ground",
+      "typeVersion": 1,
+      "params": {}
+    },
+    {
+      "id": "SW1",
+      "type": "component.toggle_switch",
+      "typeVersion": 1,
+      "params": {
+        "closed": false
+      }
+    },
+    {
+      "id": "SW2",
+      "type": "component.toggle_switch",
+      "typeVersion": 1,
+      "params": {
+        "closed": false
+      }
+    },
+    {
+      "id": "SW3",
+      "type": "component.toggle_switch",
+      "typeVersion": 1,
+      "params": {
+        "closed": false
+      }
+    },
+    {
+      "id": "SW4",
+      "type": "component.toggle_switch",
+      "typeVersion": 1,
+      "params": {
+        "closed": false
+      }
+    },
+    {
+      "id": "R1",
+      "type": "component.resistor",
+      "typeVersion": 1,
+      "params": {
+        "resistance": {
+          "value": 10000,
+          "unit": "ohm"
+        }
+      }
+    },
+    {
+      "id": "R2",
+      "type": "component.resistor",
+      "typeVersion": 1,
+      "params": {
+        "resistance": {
+          "value": 10000,
+          "unit": "ohm"
+        }
+      }
+    },
+    {
+      "id": "R3",
+      "type": "component.resistor",
+      "typeVersion": 1,
+      "params": {
+        "resistance": {
+          "value": 10000,
+          "unit": "ohm"
+        }
+      }
+    },
+    {
+      "id": "R4",
+      "type": "component.resistor",
+      "typeVersion": 1,
+      "params": {
+        "resistance": {
+          "value": 10000,
+          "unit": "ohm"
+        }
+      }
+    },
+    {
+      "id": "GND2",
+      "type": "component.ground",
+      "typeVersion": 1,
+      "params": {}
+    },
+    {
+      "id": "GND3",
+      "type": "component.ground",
+      "typeVersion": 1,
+      "params": {}
+    },
+    {
+      "id": "GND4",
+      "type": "component.ground",
+      "typeVersion": 1,
+      "params": {}
+    },
+    {
+      "id": "GND5",
+      "type": "component.ground",
+      "typeVersion": 1,
+      "params": {}
+    },
+    {
+      "id": "U1",
+      "type": "logic.quad_and",
+      "typeVersion": 1,
+      "params": {
+        "model": "model.logic.sn74lvc08a"
+      }
+    },
+    {
+      "id": "GND6",
+      "type": "component.ground",
+      "typeVersion": 1,
+      "params": {}
+    },
+    {
+      "id": "GND7",
+      "type": "component.ground",
+      "typeVersion": 1,
+      "params": {}
+    },
+    {
+      "id": "U2",
+      "type": "logic.gate_or",
+      "typeVersion": 1,
+      "params": {
+        "model": "model.logic.sn74lvc1g32"
+      }
+    },
+    {
+      "id": "GND8",
+      "type": "component.ground",
+      "typeVersion": 1,
+      "params": {}
+    },
+    {
+      "id": "R5",
+      "type": "component.resistor",
+      "typeVersion": 1,
+      "params": {
+        "resistance": {
+          "value": 220,
+          "unit": "ohm"
+        }
+      }
+    },
+    {
+      "id": "D1",
+      "type": "component.led",
+      "typeVersion": 1,
+      "params": {
+        "model": "model.led.vishay_tlhr5400"
+      }
+    },
+    {
+      "id": "GND9",
+      "type": "component.ground",
+      "typeVersion": 1,
+      "params": {}
+    }
+  ],
+  "nets": [
+    {
+      "id": "N_1",
+      "role": "ground",
+      "userName": null
+    },
+    {
+      "id": "N_2",
+      "role": null,
+      "userName": null
+    },
+    {
+      "id": "N_3",
+      "role": null,
+      "userName": null
+    },
+    {
+      "id": "N_4",
+      "role": "ground",
+      "userName": null
+    },
+    {
+      "id": "N_5",
+      "role": null,
+      "userName": null
+    },
+    {
+      "id": "N_6",
+      "role": "ground",
+      "userName": null
+    },
+    {
+      "id": "N_7",
+      "role": null,
+      "userName": null
+    },
+    {
+      "id": "N_8",
+      "role": "ground",
+      "userName": null
+    },
+    {
+      "id": "N_9",
+      "role": null,
+      "userName": null
+    },
+    {
+      "id": "N_10",
+      "role": "ground",
+      "userName": null
+    },
+    {
+      "id": "N_11",
+      "role": null,
+      "userName": null
+    },
+    {
+      "id": "N_12",
+      "role": "ground",
+      "userName": null
+    },
+    {
+      "id": "N_13",
+      "role": "ground",
+      "userName": null
+    },
+    {
+      "id": "N_14",
+      "role": null,
+      "userName": null
+    },
+    {
+      "id": "N_15",
+      "role": "ground",
+      "userName": null
+    },
+    {
+      "id": "N_16",
+      "role": null,
+      "userName": null
+    },
+    {
+      "id": "N_17",
+      "role": null,
+      "userName": null
+    },
+    {
+      "id": "N_18",
+      "role": "ground",
+      "userName": null
+    }
+  ],
+  "connections": [
+    {
+      "component": "PSU1",
+      "terminal": "positive",
+      "net": "N_2"
+    },
+    {
+      "component": "PSU1",
+      "terminal": "negative",
+      "net": "N_1"
+    },
+    {
+      "component": "GND1",
+      "terminal": "ref",
+      "net": "N_1"
+    },
+    {
+      "component": "SW1",
+      "terminal": "a",
+      "net": "N_2"
+    },
+    {
+      "component": "SW1",
+      "terminal": "b",
+      "net": "N_3"
+    },
+    {
+      "component": "SW2",
+      "terminal": "a",
+      "net": "N_2"
+    },
+    {
+      "component": "SW2",
+      "terminal": "b",
+      "net": "N_5"
+    },
+    {
+      "component": "SW3",
+      "terminal": "a",
+      "net": "N_2"
+    },
+    {
+      "component": "SW3",
+      "terminal": "b",
+      "net": "N_7"
+    },
+    {
+      "component": "SW4",
+      "terminal": "a",
+      "net": "N_2"
+    },
+    {
+      "component": "SW4",
+      "terminal": "b",
+      "net": "N_9"
+    },
+    {
+      "component": "R1",
+      "terminal": "a",
+      "net": "N_3"
+    },
+    {
+      "component": "R1",
+      "terminal": "b",
+      "net": "N_4"
+    },
+    {
+      "component": "R2",
+      "terminal": "a",
+      "net": "N_5"
+    },
+    {
+      "component": "R2",
+      "terminal": "b",
+      "net": "N_6"
+    },
+    {
+      "component": "R3",
+      "terminal": "a",
+      "net": "N_7"
+    },
+    {
+      "component": "R3",
+      "terminal": "b",
+      "net": "N_8"
+    },
+    {
+      "component": "R4",
+      "terminal": "a",
+      "net": "N_9"
+    },
+    {
+      "component": "R4",
+      "terminal": "b",
+      "net": "N_10"
+    },
+    {
+      "component": "GND2",
+      "terminal": "ref",
+      "net": "N_4"
+    },
+    {
+      "component": "GND3",
+      "terminal": "ref",
+      "net": "N_6"
+    },
+    {
+      "component": "GND4",
+      "terminal": "ref",
+      "net": "N_8"
+    },
+    {
+      "component": "GND5",
+      "terminal": "ref",
+      "net": "N_10"
+    },
+    {
+      "component": "U1",
+      "terminal": "a1",
+      "net": "N_3"
+    },
+    {
+      "component": "U1",
+      "terminal": "b1",
+      "net": "N_5"
+    },
+    {
+      "component": "U1",
+      "terminal": "y1",
+      "net": "N_11"
+    },
+    {
+      "component": "U1",
+      "terminal": "a2",
+      "net": "N_11"
+    },
+    {
+      "component": "U1",
+      "terminal": "b2",
+      "net": "N_7"
+    },
+    {
+      "component": "U1",
+      "terminal": "y2",
+      "net": "N_14"
+    },
+    {
+      "component": "U1",
+      "terminal": "gnd",
+      "net": "N_12"
+    },
+    {
+      "component": "U1",
+      "terminal": "a3",
+      "net": "N_13"
+    },
+    {
+      "component": "U1",
+      "terminal": "b3",
+      "net": "N_13"
+    },
+    {
+      "component": "U1",
+      "terminal": "a4",
+      "net": "N_13"
+    },
+    {
+      "component": "U1",
+      "terminal": "b4",
+      "net": "N_13"
+    },
+    {
+      "component": "U1",
+      "terminal": "vcc",
+      "net": "N_2"
+    },
+    {
+      "component": "GND6",
+      "terminal": "ref",
+      "net": "N_12"
+    },
+    {
+      "component": "GND7",
+      "terminal": "ref",
+      "net": "N_13"
+    },
+    {
+      "component": "U2",
+      "terminal": "a",
+      "net": "N_14"
+    },
+    {
+      "component": "U2",
+      "terminal": "b",
+      "net": "N_9"
+    },
+    {
+      "component": "U2",
+      "terminal": "y",
+      "net": "N_16"
+    },
+    {
+      "component": "U2",
+      "terminal": "vcc",
+      "net": "N_2"
+    },
+    {
+      "component": "U2",
+      "terminal": "gnd",
+      "net": "N_15"
+    },
+    {
+      "component": "GND8",
+      "terminal": "ref",
+      "net": "N_15"
+    },
+    {
+      "component": "R5",
+      "terminal": "a",
+      "net": "N_16"
+    },
+    {
+      "component": "R5",
+      "terminal": "b",
+      "net": "N_17"
+    },
+    {
+      "component": "D1",
+      "terminal": "anode",
+      "net": "N_17"
+    },
+    {
+      "component": "D1",
+      "terminal": "cathode",
+      "net": "N_18"
+    },
+    {
+      "component": "GND9",
+      "terminal": "ref",
+      "net": "N_18"
+    }
+  ],
+  "layout": {
+    "components": {
+      "PSU1": {
+        "x": -440,
+        "y": 0,
+        "rotation": 0
+      },
+      "GND1": {
+        "x": -400,
+        "y": 120,
+        "rotation": 0
+      },
+      "SW1": {
+        "x": -280,
+        "y": -240,
+        "rotation": 0
+      },
+      "SW2": {
+        "x": -280,
+        "y": -80,
+        "rotation": 0
+      },
+      "SW3": {
+        "x": -280,
+        "y": 80,
+        "rotation": 0
+      },
+      "SW4": {
+        "x": -280,
+        "y": 240,
+        "rotation": 0
+      },
+      "R1": {
+        "x": -160,
+        "y": -200,
+        "rotation": 90
+      },
+      "R2": {
+        "x": -160,
+        "y": -40,
+        "rotation": 90
+      },
+      "R3": {
+        "x": -160,
+        "y": 120,
+        "rotation": 90
+      },
+      "R4": {
+        "x": -160,
+        "y": 280,
+        "rotation": 90
+      },
+      "GND2": {
+        "x": -160,
+        "y": -120,
+        "rotation": 0
+      },
+      "GND3": {
+        "x": -160,
+        "y": 40,
+        "rotation": 0
+      },
+      "GND4": {
+        "x": -160,
+        "y": 200,
+        "rotation": 0
+      },
+      "GND5": {
+        "x": -160,
+        "y": 360,
+        "rotation": 0
+      },
+      "U1": {
+        "x": 160,
+        "y": -80,
+        "rotation": 0
+      },
+      "GND6": {
+        "x": 100,
+        "y": 40,
+        "rotation": 0
+      },
+      "GND7": {
+        "x": 340,
+        "y": 20,
+        "rotation": 0
+      },
+      "U2": {
+        "x": 460,
+        "y": 120,
+        "rotation": 0
+      },
+      "GND8": {
+        "x": 460,
+        "y": 200,
+        "rotation": 0
+      },
+      "R5": {
+        "x": 580,
+        "y": 120,
+        "rotation": 0
+      },
+      "D1": {
+        "x": 660,
+        "y": 160,
+        "rotation": 90
+      },
+      "GND9": {
+        "x": 660,
+        "y": 240,
+        "rotation": 0
+      }
+    },
+    "wires": [
+      {
+        "id": "W1",
+        "from": {
+          "kind": "terminal",
+          "component": "PSU1",
+          "terminal": "negative"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "GND1",
+          "terminal": "ref"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W2",
+        "from": {
+          "kind": "terminal",
+          "component": "PSU1",
+          "terminal": "positive"
+        },
+        "to": {
+          "kind": "junction",
+          "junction": "J4"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W3",
+        "from": {
+          "kind": "junction",
+          "junction": "J1"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "U2",
+          "terminal": "vcc"
+        },
+        "vertices": [
+          {
+            "x": 460,
+            "y": -320
+          }
+        ]
+      },
+      {
+        "id": "W4",
+        "from": {
+          "kind": "terminal",
+          "component": "U1",
+          "terminal": "vcc"
+        },
+        "to": {
+          "kind": "junction",
+          "junction": "J1"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W5",
+        "from": {
+          "kind": "junction",
+          "junction": "J2"
+        },
+        "to": {
+          "kind": "junction",
+          "junction": "J1"
+        },
+        "vertices": [
+          {
+            "x": -360,
+            "y": -320
+          }
+        ]
+      },
+      {
+        "id": "W6",
+        "from": {
+          "kind": "terminal",
+          "component": "SW1",
+          "terminal": "a"
+        },
+        "to": {
+          "kind": "junction",
+          "junction": "J2"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W7",
+        "from": {
+          "kind": "junction",
+          "junction": "J3"
+        },
+        "to": {
+          "kind": "junction",
+          "junction": "J2"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W8",
+        "from": {
+          "kind": "terminal",
+          "component": "SW2",
+          "terminal": "a"
+        },
+        "to": {
+          "kind": "junction",
+          "junction": "J3"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W9",
+        "from": {
+          "kind": "junction",
+          "junction": "J4"
+        },
+        "to": {
+          "kind": "junction",
+          "junction": "J3"
+        },
+        "vertices": [
+          {
+            "x": -360,
+            "y": -20
+          }
+        ]
+      },
+      {
+        "id": "W10",
+        "from": {
+          "kind": "terminal",
+          "component": "SW4",
+          "terminal": "a"
+        },
+        "to": {
+          "kind": "junction",
+          "junction": "J5"
+        },
+        "vertices": [
+          {
+            "x": -360,
+            "y": 240
+          }
+        ]
+      },
+      {
+        "id": "W11",
+        "from": {
+          "kind": "junction",
+          "junction": "J5"
+        },
+        "to": {
+          "kind": "junction",
+          "junction": "J4"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W12",
+        "from": {
+          "kind": "terminal",
+          "component": "SW3",
+          "terminal": "a"
+        },
+        "to": {
+          "kind": "junction",
+          "junction": "J5"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W13",
+        "from": {
+          "kind": "terminal",
+          "component": "SW1",
+          "terminal": "b"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "R1",
+          "terminal": "a"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W14",
+        "from": {
+          "kind": "terminal",
+          "component": "R1",
+          "terminal": "b"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "GND2",
+          "terminal": "ref"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W15",
+        "from": {
+          "kind": "terminal",
+          "component": "SW2",
+          "terminal": "b"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "R2",
+          "terminal": "a"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W16",
+        "from": {
+          "kind": "terminal",
+          "component": "R2",
+          "terminal": "b"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "GND3",
+          "terminal": "ref"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W17",
+        "from": {
+          "kind": "terminal",
+          "component": "SW3",
+          "terminal": "b"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "R3",
+          "terminal": "a"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W18",
+        "from": {
+          "kind": "terminal",
+          "component": "R3",
+          "terminal": "b"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "GND4",
+          "terminal": "ref"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W19",
+        "from": {
+          "kind": "terminal",
+          "component": "SW4",
+          "terminal": "b"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "R4",
+          "terminal": "a"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W20",
+        "from": {
+          "kind": "terminal",
+          "component": "R4",
+          "terminal": "b"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "GND5",
+          "terminal": "ref"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W21",
+        "from": {
+          "kind": "terminal",
+          "component": "R1",
+          "terminal": "a"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "U1",
+          "terminal": "a1"
+        },
+        "vertices": [
+          {
+            "x": 60,
+            "y": -240
+          },
+          {
+            "x": 60,
+            "y": -140
+          }
+        ]
+      },
+      {
+        "id": "W22",
+        "from": {
+          "kind": "terminal",
+          "component": "R2",
+          "terminal": "a"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "U1",
+          "terminal": "b1"
+        },
+        "vertices": [
+          {
+            "x": 20,
+            "y": -80
+          },
+          {
+            "x": 20,
+            "y": -120
+          }
+        ]
+      },
+      {
+        "id": "W23",
+        "from": {
+          "kind": "terminal",
+          "component": "U1",
+          "terminal": "y1"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "U1",
+          "terminal": "a2"
+        },
+        "vertices": [
+          {
+            "x": 60,
+            "y": -100
+          },
+          {
+            "x": 60,
+            "y": -80
+          }
+        ]
+      },
+      {
+        "id": "W24",
+        "from": {
+          "kind": "terminal",
+          "component": "R3",
+          "terminal": "a"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "U1",
+          "terminal": "b2"
+        },
+        "vertices": [
+          {
+            "x": 40,
+            "y": 80
+          },
+          {
+            "x": 40,
+            "y": -60
+          }
+        ]
+      },
+      {
+        "id": "W25",
+        "from": {
+          "kind": "terminal",
+          "component": "U1",
+          "terminal": "gnd"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "GND6",
+          "terminal": "ref"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W26",
+        "from": {
+          "kind": "terminal",
+          "component": "U1",
+          "terminal": "b4"
+        },
+        "to": {
+          "kind": "junction",
+          "junction": "J8"
+        },
+        "vertices": [
+          {
+            "x": 340,
+            "y": -120
+          }
+        ]
+      },
+      {
+        "id": "W27",
+        "from": {
+          "kind": "junction",
+          "junction": "J6"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "GND7",
+          "terminal": "ref"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W28",
+        "from": {
+          "kind": "terminal",
+          "component": "U1",
+          "terminal": "a3"
+        },
+        "to": {
+          "kind": "junction",
+          "junction": "J6"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W29",
+        "from": {
+          "kind": "junction",
+          "junction": "J7"
+        },
+        "to": {
+          "kind": "junction",
+          "junction": "J6"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W30",
+        "from": {
+          "kind": "terminal",
+          "component": "U1",
+          "terminal": "b3"
+        },
+        "to": {
+          "kind": "junction",
+          "junction": "J7"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W31",
+        "from": {
+          "kind": "junction",
+          "junction": "J8"
+        },
+        "to": {
+          "kind": "junction",
+          "junction": "J7"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W32",
+        "from": {
+          "kind": "terminal",
+          "component": "U1",
+          "terminal": "a4"
+        },
+        "to": {
+          "kind": "junction",
+          "junction": "J8"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W33",
+        "from": {
+          "kind": "terminal",
+          "component": "U1",
+          "terminal": "y2"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "U2",
+          "terminal": "a"
+        },
+        "vertices": [
+          {
+            "x": 60,
+            "y": -40
+          },
+          {
+            "x": 60,
+            "y": 100
+          }
+        ]
+      },
+      {
+        "id": "W34",
+        "from": {
+          "kind": "terminal",
+          "component": "R4",
+          "terminal": "a"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "U2",
+          "terminal": "b"
+        },
+        "vertices": [
+          {
+            "x": 380,
+            "y": 240
+          },
+          {
+            "x": 380,
+            "y": 140
+          }
+        ]
+      },
+      {
+        "id": "W35",
+        "from": {
+          "kind": "terminal",
+          "component": "U2",
+          "terminal": "gnd"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "GND8",
+          "terminal": "ref"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W36",
+        "from": {
+          "kind": "terminal",
+          "component": "U2",
+          "terminal": "y"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "R5",
+          "terminal": "a"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W37",
+        "from": {
+          "kind": "terminal",
+          "component": "R5",
+          "terminal": "b"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "D1",
+          "terminal": "anode"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W38",
+        "from": {
+          "kind": "terminal",
+          "component": "D1",
+          "terminal": "cathode"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "GND9",
+          "terminal": "ref"
+        },
+        "vertices": []
+      }
+    ],
+    "junctions": [
+      {
+        "id": "J1",
+        "x": 220,
+        "y": -320
+      },
+      {
+        "id": "J2",
+        "x": -360,
+        "y": -240
+      },
+      {
+        "id": "J3",
+        "x": -360,
+        "y": -80
+      },
+      {
+        "id": "J4",
+        "x": -360,
+        "y": -20
+      },
+      {
+        "id": "J5",
+        "x": -360,
+        "y": 80
+      },
+      {
+        "id": "J6",
+        "x": 340,
+        "y": -40
+      },
+      {
+        "id": "J7",
+        "x": 340,
+        "y": -60
+      },
+      {
+        "id": "J8",
+        "x": 340,
+        "y": -100
+      }
+    ]
+  },
+  "idCounters": {
+    "PSU": 1,
+    "GND": 9,
+    "W": 38,
+    "N": 18,
+    "SW": 4,
+    "R": 5,
+    "U": 2,
+    "D": 1,
+    "J": 8
+  },
+  "programs": {}
+}

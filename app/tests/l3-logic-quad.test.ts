@@ -132,9 +132,11 @@ describe('ESP32 → SN74LVC08A → LEDs (golden)', () => {
     expect(o.components.U2!.terminals['y1']!).toBeCloseTo(3.0 - dropAt(i470), 9);
   });
 
-  it('every pad-mode combination solves, with the levels the pad model gives (input mode: 0 V, LOW)', () => {
-    // An ESP32 pad in input mode is the engine's leakage-to-GND model (esp32Gpio.ts, pre-existing):
-    // the gate input sits at 0 V. Output modes give 3.3 V (HIGH: 5.5 V-tolerant input) or 0 V.
+  it('every pad-mode combination solves: input mode is a real LOW through the 10 kΩ pull-downs (Sprint 20)', () => {
+    // Before Sprint 20 the pads had no pull-downs and an input-mode pad's leakage model put the
+    // gate input at 0 V (LOW). Now an input-mode pad does not drive: the example's own 10 kΩ
+    // pull-downs (R4, R5) hold 1A/1B LOW before setup() runs. Output modes give 3.3 V (HIGH:
+    // 5.5 V-tolerant input) or 0 V.
     const MODES: RuntimePinMode[] = ['input', 'output-high', 'output-low'];
     for (const m18 of MODES)
       for (const m19 of MODES) {

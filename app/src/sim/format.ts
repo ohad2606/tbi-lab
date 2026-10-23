@@ -226,17 +226,31 @@ export function engineErrorMessage(
         value?: number;
         limit?: number;
         part?: string;
+        vih?: number;
+        vil?: number;
+        pads?: number[];
       };
+      const V = (v: number | undefined) =>
+        typeof v === 'number' ? formatResult(locale, v, 'volt') : '';
       const pin = error.param?.startsWith('gpio')
         ? isolateLtr(`GPIO${error.param.slice(4)}`)
         : isolateLtr(datasheetPinName(error.param ?? ''));
       // L3: a device whose datasheet rows differ from the single gates' words them itself
       // (`sim.error.<code>.<part>`), never with another device's figures.
-      const own = `sim.error.${error.code}.${(d.part ?? '').toLowerCase()}`;
+      // Sprint 20: an input held only by ESP32 pads in input mode names them first.
+      const own =
+        error.code === 'logic_input_floating' && d.pads?.length
+          ? 'sim.error.logic_input_floating.mcu_input'
+          : `sim.error.${error.code}.${(d.part ?? '').toLowerCase()}`;
       return t(isMessageKey(own) ? own : `sim.error.${error.code}`, {
         components,
         pin,
-        supply: typeof d.vcc === 'number' ? formatResult(locale, d.vcc, 'volt') : '',
+        pads: list((d.pads ?? []).map((g) => `GPIO${g}`)),
+        // Each label with its value as ONE LTR run (never reordered or mirrored in RTL).
+        vih: typeof d.vih === 'number' ? isolateLtr(`V_IH ${V(d.vih)}`) : '',
+        vil: typeof d.vil === 'number' ? isolateLtr(`V_IL ${V(d.vil)}`) : '',
+        vccEq: typeof d.vcc === 'number' ? isolateLtr(`V_CC = ${V(d.vcc)}`) : '',
+        supply: V(d.vcc),
         current: typeof d.value === 'number' ? formatResult(locale, d.value, 'ampere') : '',
         limit: typeof d.limit === 'number' ? formatResult(locale, d.limit, 'ampere') : '',
         // L3: an input voltage the refusal is about.

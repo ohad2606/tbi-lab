@@ -6,7 +6,7 @@
     "circuit": {
       "format": "tbi-lab.snapshot",
       "schemaVersion": 3,
-      "snapshotId": "snap_991b9e338b73b1e8",
+      "snapshotId": "snap_f51e78c6da2e8712",
       "projectId": "prj_exampleesp32logicand",
       "projectRevision": 1,
       "components": [
@@ -101,6 +101,23 @@
           "params": {}
         },
         {
+          "id": "R3",
+          "type": "component.resistor",
+          "typeVersion": 1,
+          "params": {
+            "resistance": {
+              "value": 10000,
+              "unit": "ohm"
+            }
+          }
+        },
+        {
+          "id": "GND6",
+          "type": "component.ground",
+          "typeVersion": 1,
+          "params": {}
+        },
+        {
           "id": "U1_gnd",
           "type": "component.ground",
           "typeVersion": 1,
@@ -130,15 +147,15 @@
         },
         {
           "id": "N_6",
-          "role": null
-        },
-        {
-          "id": "N_7",
           "role": "ground"
         },
         {
-          "id": "N_8",
+          "id": "N_7",
           "role": null
+        },
+        {
+          "id": "N_8",
+          "role": "ground"
         },
         {
           "id": "N_9",
@@ -146,6 +163,10 @@
         },
         {
           "id": "N_10",
+          "role": null
+        },
+        {
+          "id": "N_11",
           "role": "ground"
         }
       ],
@@ -173,12 +194,12 @@
         {
           "component": "U2",
           "terminal": "b",
-          "net": "N_6"
+          "net": "N_7"
         },
         {
           "component": "U2",
           "terminal": "y",
-          "net": "N_8"
+          "net": "N_9"
         },
         {
           "component": "U2",
@@ -193,22 +214,22 @@
         {
           "component": "R1",
           "terminal": "a",
-          "net": "N_8"
+          "net": "N_9"
         },
         {
           "component": "R1",
           "terminal": "b",
-          "net": "N_9"
+          "net": "N_10"
         },
         {
           "component": "D1",
           "terminal": "anode",
-          "net": "N_9"
+          "net": "N_10"
         },
         {
           "component": "D1",
           "terminal": "cathode",
-          "net": "N_10"
+          "net": "N_11"
         },
         {
           "component": "SW1",
@@ -218,17 +239,17 @@
         {
           "component": "SW1",
           "terminal": "b",
-          "net": "N_6"
+          "net": "N_7"
         },
         {
           "component": "R2",
           "terminal": "a",
-          "net": "N_6"
+          "net": "N_7"
         },
         {
           "component": "R2",
           "terminal": "b",
-          "net": "N_7"
+          "net": "N_8"
         },
         {
           "component": "GND2",
@@ -238,17 +259,32 @@
         {
           "component": "GND3",
           "terminal": "ref",
-          "net": "N_10"
+          "net": "N_11"
         },
         {
           "component": "GND4",
           "terminal": "ref",
-          "net": "N_7"
+          "net": "N_8"
         },
         {
           "component": "GND5",
           "terminal": "ref",
           "net": "N_2"
+        },
+        {
+          "component": "R3",
+          "terminal": "a",
+          "net": "N_5"
+        },
+        {
+          "component": "R3",
+          "terminal": "b",
+          "net": "N_6"
+        },
+        {
+          "component": "GND6",
+          "terminal": "ref",
+          "net": "N_6"
         },
         {
           "component": "U1_gnd",

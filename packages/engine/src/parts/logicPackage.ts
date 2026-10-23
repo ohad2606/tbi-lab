@@ -24,7 +24,13 @@
  * input and output voltage ranges, V_CC absolute maxima.
  */
 import { PwlLoad } from '../pwl.js';
-import { inputRowAt, outputStageAt, TABULATED_VCC_TOLERANCE_V } from '../logic/lvc1g.js';
+import {
+  outputStageAt,
+  inputRowAt,
+  quiescentAt,
+  RAIL_V,
+  TABULATED_VCC_TOLERANCE_V,
+} from '../logic/lvc1g.js';
 import { LOGIC_PACKAGE_CARDS, type LogicPackageCard } from '../logic/lvc08a.js';
 import {
   registerPart,
@@ -35,12 +41,10 @@ import {
   type PartSolution,
   type PartState,
 } from '../parts.js';
-import { gateOutput, type LogicLevel } from './logicGate.js';
+import { classifyInput, gateOutput, logicRefusal, type LogicLevel } from './logicGate.js';
 import type { LogicInspection } from './logicInspection.js';
 
 const WRONG_WAY_V = 1e-3;
-/** An input within this of V_CC or GND counts as "at the rail" (I_CC's test condition). */
-const RAIL_V = 1e-3;
 const UNPOWERED_V = 1e-3;
 
 export function packageCardOf(ctx: PartContext): LogicPackageCard {
@@ -85,32 +89,12 @@ function nextPackageState(ctx: PartContext, sol: PartSolution, state: PartState)
   for (const u of card.units) {
     const levels: LogicLevel[] = [];
     for (const t of u.inputs) {
-      let l: LogicLevel;
-      if (unknown(t)) {
-        // Driven from an undetermined level: neither its level nor the supply current it causes
-        // is known (the package's shared supply would carry an unknown current).
-        refusal ??= { refuse: 'logic_unknown_state', at: t };
-        l = 'x';
-      } else {
-        const p = sol.potential(t);
-        if (p === null) {
-          // Floating: refused by name (datasheet: unused inputs held at V_CC or GND).
-          refusal ??= { refuse: 'logic_input_floating', at: t };
-          l = 'x';
-        } else {
-          const vi = p - g;
-          l = vi >= row.vih ? 'high' : vi <= row.vil ? 'low' : 'x';
-          // §5.4 V_I 0–5.5 V: outside it "functional operation … is not implied" (§5.1 note 1).
-          if (vi < card.inputRecommended[0] - RAIL_V || vi > card.inputRecommended[1] + RAIL_V)
-            refusal ??= { refuse: 'logic_input_out_of_range', at: t, value: vi };
-          // Between V_IL and V_IH: no level, and no supply-current figure (I_CC is specified
-          // with inputs at V_CC or GND only, ΔI_CC at V_CC − 0.6 V): refused, never shown as a
-          // level and never solved with a supply current the sheet does not give.
-          else if (l === 'x') refusal ??= { refuse: 'logic_input_undefined', at: t, value: vi };
-        }
-      }
-      s[`in_${t}`] = l;
-      levels.push(l);
+      // The single gates' contract (parts/logicGate.ts classifyInput): floating (also: held only
+      // by an ESP32 input pad's leakage), undetermined net, outside 0–5.5 V, between V_IL and V_IH.
+      const c = classifyInput(card, sol, t, row, g);
+      refusal ??= c.refusal;
+      s[`in_${t}`] = c.level;
+      levels.push(c.level);
     }
     const out = gateOutput(card, levels);
     s[outKey(u.unit)] = out;
@@ -172,25 +156,7 @@ export const logicPackageModel: PartModel = {
   logicUnits: (ctx) =>
     packageCardOf(ctx).units.map((u) => ({ unit: u.unit, inputs: u.inputs, outputs: [u.output] })),
   nextState: (ctx, state, sol) => nextPackageState(ctx, sol, state),
-  refusal: (ctx, state) =>
-    typeof state.refuse === 'string'
-      ? {
-          code: state.refuse as never,
-          components: [ctx.component.id],
-          ...(typeof state.at === 'string' ? { param: state.at } : {}),
-          detail: {
-            part: packageCardOf(ctx).partNumber,
-            ...(typeof state.value === 'number' ? { value: state.value } : {}),
-            ...(typeof state.vcc === 'number' ? { vcc: state.vcc } : {}),
-            ...(state.refuse === 'logic_supply_uncharacterized' && typeof state.value === 'number'
-              ? { vcc: state.value }
-              : {}),
-            ...(state.refuse === 'logic_output_uncharacterized' && typeof state.validA === 'number'
-              ? { limit: state.validA }
-              : {}),
-          },
-        }
-      : null,
+  refusal: (ctx, state) => logicRefusal(ctx, state, packageCardOf(ctx).partNumber),
   report: (ctx, state, sol) => {
     const id = ctx.component.id;
     const card = packageCardOf(ctx);
@@ -230,12 +196,6 @@ export const logicPackageModel: PartModel = {
     currents.vcc = allKnown ? vccI : null;
     currents.gnd = allKnown ? gndI : null;
     const supplyV = typeof state.vcc === 'number' ? state.vcc : null;
-    const atRails = () =>
-      supplyV !== null &&
-      card.inputs.every((t) => {
-        const vi = rel(t);
-        return vi !== null && (Math.abs(vi) <= RAIL_V || Math.abs(vi - supplyV) <= RAIL_V);
-      });
     return {
       current: null,
       voltage: null,
@@ -246,11 +206,14 @@ export const logicPackageModel: PartModel = {
         outputModel:
           state.model === 'class' ? 'class' : state.tabulated === true ? 'tabulated' : 'ranged',
         outputValidA: typeof state.validA === 'number' ? state.validA : card.rangedOutput.amps,
-        // I_CC (≤ 10 µA) is specified only with every input at V_CC or GND (§5.7); otherwise the
-        // quiescent current is not characterized (ΔI_CC ≤ 500 µA per input at V_CC − 0.6 V).
-        ...(atRails()
-          ? { iccMaxA: card.iccMaxA }
-          : { iccCondition: 'notRails', deltaIccA: card.deltaIccA }),
+        // I_CC (≤ 10 µA) is specified only at V_CC = 3.6 V with every input at V_CC or GND
+        // (§5.7); otherwise the quiescent current is not characterized (ΔI_CC ≤ 500 µA per
+        // input at V_CC − 0.6 V, 2.7–3.6 V).
+        ...quiescentAt(
+          card,
+          supplyV,
+          card.inputs.map((t) => rel(t)),
+        ),
       },
       logic: {
         partNumber: card.partNumber,

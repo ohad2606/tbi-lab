@@ -372,8 +372,10 @@ describe('L2 inspection and the input contract (levels, measured voltages, refus
     }
   });
 
-  it('logic_unknown_state: a package input driven from an undetermined (X) single-gate output', () => {
-    // An L1 AND gate with A at 1.5 V and B HIGH has an X output; it drives the package's 1A.
+  it('an undefined single-gate input upstream of the package: the ROOT cause is named (Sprint 20)', () => {
+    // An L1 AND gate with A at 1.5 V drives the package's 1A. Since Sprint 20 the single gate
+    // refuses its own undefined input (no controlling-input inference), and the session names
+    // that root cause rather than the package's consequential logic_unknown_state.
     const { b, u } = quad(3.0, ['b1', 'a2', 'b2', 'a3', 'b3', 'a4', 'b4'], []);
     const g = b.add('logic.gate_and');
     const top = b.add('component.resistor');
@@ -385,9 +387,10 @@ describe('L2 inspection and the input contract (levels, measured voltages, refus
     b.wire('PSU1.positive', `${top}.a`).wire(`${top}.b`, `${g}.a`).wire(`${g}.a`, `${bot}.a`);
     b.wire(`${bot}.b`, 'GND1.ref').wire(`${g}.y`, `${u}.a1`);
     expect(fails(solve(b))).toMatchObject({
-      code: 'logic_unknown_state',
-      components: [u],
-      param: 'a1',
+      code: 'logic_input_undefined',
+      components: [g],
+      param: 'a',
+      detail: { part: 'SN74LVC1G08', vcc: 3, vih: 2, vil: 0.8, value: expect.closeTo(1.5, 9) },
     });
   });
 
@@ -420,14 +423,25 @@ describe('L2 inspection and the input contract (levels, measured voltages, refus
     expect(fails(solve(b))).toMatchObject({ code: 'logic_output_uncharacterized', param: 'y1' });
   });
 
-  it('I_CC is reported only with every input at a rail; otherwise "not characterized" with ΔI_CC', () => {
+  it('I_CC only under its §5.7 test conditions (V_CC = 3.6 V, every input at V_CC or GND); else not characterized', () => {
+    // §5.7: "I_CC | V_I = V_CC or GND, I_O = 0 | 3.6V | 10 µA" — tabulated at 3.6 V only.
+    const at36 = quad(3.6, ['a1', 'b1'], ['a2', 'b2', 'a3', 'b3', 'a4', 'b4']);
+    expect(ok(solve(at36.b)).components.U1!.state).toMatchObject({ iccMaxA: 10e-6 });
+    // At 3.0 V with every input at a rail: the row's supply is not met (ΔI_CC applies 2.7–3.6 V).
     const rails = quad(3.0, ['a1', 'b1'], ['a2', 'b2', 'a3', 'b3', 'a4', 'b4']);
-    expect(ok(solve(rails.b)).components.U1!.state).toMatchObject({ iccMaxA: 10e-6 });
-    // 1A at 3.0 · 20k/30k = 2.0 V: a defined HIGH, but not at a rail.
+    const r30 = ok(solve(rails.b)).components.U1!.state!;
+    expect(r30).toMatchObject({ iccCondition: 'notSupply', deltaIccA: 500e-6 });
+    expect(r30.iccMaxA).toBeUndefined();
+    // 1A at 3.0 · 20k/30k = 2.0 V: a defined HIGH, but not at a rail either.
     const mid = divider(10_000, 20_000, 'hi');
     const st = ok(solve(mid.b)).components.U1!.state!;
-    expect(st).toMatchObject({ iccCondition: 'notRails', deltaIccA: 500e-6 });
+    expect(st).toMatchObject({ iccCondition: 'notSupply', deltaIccA: 500e-6 });
     expect(st.iccMaxA).toBeUndefined();
+    // At 1.8 V (rows 1.65–1.95 V): no I_CC, and no ΔI_CC row (2.7–3.6 V) either.
+    const low = quad(1.8, ['a1', 'b1'], ['a2', 'b2', 'a3', 'b3', 'a4', 'b4']);
+    const s18 = ok(solve(low.b)).components.U1!.state!;
+    expect(s18).toMatchObject({ iccCondition: 'notSupply' });
+    expect(s18.deltaIccA).toBeUndefined();
   });
 
   it('just inside the thresholds: 2.0 V is HIGH, 0.8 V is LOW (inclusive, as the sheet states)', () => {

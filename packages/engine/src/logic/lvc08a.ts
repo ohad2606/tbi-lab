@@ -38,8 +38,6 @@ export interface LogicUnit {
 export interface LogicPackageCard extends LogicCard {
   /** The gates, each with the electrical card above (one die, one shared supply). */
   readonly units: readonly LogicUnit[];
-  /** Supply-current increment per input at V_CC − 0.6 V, max (A): carried, not solved. */
-  readonly deltaIccA: number;
   /** Footnote (1) of the recommended operating conditions, verbatim. */
   readonly unusedInputs: string;
 }
@@ -118,11 +116,17 @@ export const LVC08A_CARD: LogicPackageCard = {
   // ΔI_CC 500 µA (one input at V_CC − 0.6 V). No I_off row.
   inputLeakageA: 5e-6,
   iccMaxA: 10e-6,
+  // Sprint 20 (independent validation): §5.7 tabulates I_CC only at V_CC = 3.6 V ("V_I = V_CC or
+  // GND, I_O = 0 | 3.6V | 10"), so it is a known bound only there; ΔI_CC over 2.7–3.6 V.
+  iccVcc: [3.6, 3.6],
+  iccInputHigh: 'vcc',
   deltaIccA: 500e-6,
+  deltaIccVcc: [2.7, 3.6],
   // §5.7: C_i 5 pF typical (V_I = V_CC or GND, 3.3 V, T_A = 25 °C). Carried, not used at DC.
   ciF: 5e-12,
   // §5.9: t_pd A or B → Y, 3.3 V ± 0.3 V, −40 °C to +85 °C: 1–4.1 ns. Not simulated.
   tpd33: [1e-9, 4.1e-9],
+  tpdTable: '§5.9',
   unusedInputs:
     'All unused inputs of the device must be held at VCC or GND to ensure proper device operation.',
 };

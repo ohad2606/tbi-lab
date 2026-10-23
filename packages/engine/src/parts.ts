@@ -73,6 +73,12 @@ export interface PartSolution {
   device(key: string): Device | undefined;
   /** Sprint 19B: the terminal's node is unknown (reached from an unknown-driven output). */
   unknown?(terminal: string): boolean;
+  /**
+   * Sprint 20: null when something drives the terminal's node (a conducting path to GND that is
+   * not only an ESP32 pad's input leakage); otherwise the input-mode pads (GPIO numbers) that sit
+   * on it. A logic input on an undriven node is floating, whatever potential the leakage gives it.
+   */
+  undriven?(terminal: string): { inputPads: number[] } | null;
   /** A multi-terminal device's exact terminal currents at the solution (into the device). */
   deviceTerminalCurrents?(key: string): { ic: number; ib: number; ie: number } | undefined;
 }

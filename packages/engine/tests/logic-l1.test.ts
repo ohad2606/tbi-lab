@@ -77,14 +77,17 @@ describe('device cards (datasheet figures, EF-D3 A / EF-D4 A)', () => {
     expect(outputStageAt(AND, 5.0)).toMatchObject({ model: 'ranged', validA: 100e-6 });
   });
 
-  it('static CMOS evaluation: a controlling input decides; otherwise X', () => {
-    expect(gateOutput(AND, ['low', 'x'])).toBe('low');
+  it('function table for defined inputs only; any undefined input gives X (no controlling-input inference)', () => {
+    // Sprint 20 (review #6): the sheets' function tables give outputs for VALID input levels
+    // ("X" there means either valid level); the static-CMOS inference is not used.
+    expect(gateOutput(AND, ['low', 'x'])).toBe('x');
     expect(gateOutput(AND, ['high', 'x'])).toBe('x');
+    expect(gateOutput(AND, ['low', 'high'])).toBe('low');
     const or = LVC1G_CARDS['model.logic.sn74lvc1g32']!;
-    expect(gateOutput(or, ['high', 'x'])).toBe('high');
-    expect(gateOutput(or, ['low', 'x'])).toBe('x');
+    expect(gateOutput(or, ['high', 'x'])).toBe('x');
+    expect(gateOutput(or, ['high', 'low'])).toBe('high');
     const nand = LVC1G_CARDS['model.logic.sn74lvc1g00']!;
-    expect(gateOutput(nand, ['low', 'x'])).toBe('high');
+    expect(gateOutput(nand, ['low', 'x'])).toBe('x');
     expect(gateOutput(LVC1G_CARDS['model.logic.sn74lvc1g04']!, ['x'])).toBe('x');
   });
 });
@@ -293,8 +296,9 @@ describe('SN74LVC1G gates in the solve', () => {
     });
   });
 
-  it('an input in the undefined band is X; X propagates; results it reaches are unknown, not numbers', () => {
+  it('an input in the undefined band is REFUSED by name (Sprint 20), naming the root cause, not a downstream part', () => {
     // A: divider 3.0 V -> 10k -> A -> 10k -> GND = 1.5 V, between V_IL 0.8 and V_IH 2.0.
+    // Y -> a second gate (NOT) -> 220 Ω + LED: the root cause (U1's A) is named.
     const { b, g } = gate('logic.gate_and', 3.0, ['open', 'h'], (bb, gg) => {
       const r1 = bb.add('component.resistor');
       const r2 = bb.add('component.resistor');
@@ -303,7 +307,6 @@ describe('SN74LVC1G gates in the solve', () => {
         .wire(`${r1}.b`, `${gg}.a`)
         .wire(`${gg}.a`, `${r2}.a`)
         .wire(`${r2}.b`, 'GND1.ref');
-      // Y -> a second gate (NOT) -> 220 Ω + LED.
       const n = bb.add('logic.gate_not');
       bb.wire(`${n}.vcc`, 'PSU1.positive').wire(`${n}.gnd`, 'GND1.ref').wire(`${gg}.y`, `${n}.a`);
       const r = bb.add('component.resistor');
@@ -313,25 +316,15 @@ describe('SN74LVC1G gates in the solve', () => {
         .wire(`${r}.b`, `${d}.anode`)
         .wire(`${d}.cathode`, 'GND1.ref');
     });
-    const o = ok(solve(b));
-    expect(o.components[g]!.state).toMatchObject({
-      input_a: 'x',
-      input_b: 'high',
-      gateOutput: 'x',
-      firstUnknownInput: 'a',
+    expect(fails(solve(b))).toEqual({
+      code: 'logic_input_undefined',
+      components: [g],
+      param: 'a',
+      detail: { part: 'SN74LVC1G08', value: expect.closeTo(1.5, 9), vcc: 3, vih: 2, vil: 0.8 },
     });
-    expect(o.components.U2!.state).toMatchObject({ input_a: 'x', gateOutput: 'x' });
-    expect(o.components.D1).toMatchObject({ unknown: true, current: null });
-    expect(o.components.R3).toMatchObject({ unknown: true, current: null });
-    // The PSU feeds two gates whose currents are unknown: its current is unknown.
-    expect(o.components.PSU1).toMatchObject({ unknown: true, current: null });
-    expect(o.unknownNets!.length).toBeGreaterThanOrEqual(2);
-    // The divider itself is known: its voltage is a number.
-    expect(o.components.R1!.unknown).toBeUndefined();
-    expect(o.components[g]!.terminals.a!).toBeCloseTo(1.5, 9);
   });
 
-  it('a controlling LOW input defines the output even with an X input (static CMOS)', () => {
+  it('a LOW input does NOT decide the output when the other input is undefined: refused (review #6)', () => {
     const { b, g } = gate('logic.gate_and', 3.0, ['open', 'l'], (bb, gg) => {
       const r1 = bb.add('component.resistor');
       const r2 = bb.add('component.resistor');
@@ -342,9 +335,11 @@ describe('SN74LVC1G gates in the solve', () => {
         .wire(`${r2}.b`, 'GND1.ref');
       load(10_000)(bb, gg);
     });
-    const o = ok(solve(b));
-    expect(o.components[g]!.state).toMatchObject({ input_a: 'x', gateOutput: 'low' });
-    expect(o.unknownNets).toBeUndefined();
+    expect(fails(solve(b))).toMatchObject({
+      code: 'logic_input_undefined',
+      components: [g],
+      param: 'a',
+    });
   });
 
   it('combinational feedback is refused (latches and oscillators need propagation delay)', () => {
@@ -410,8 +405,8 @@ describe('review fixes (Sprint 19B independent review)', () => {
     });
   });
 
-  it('an unknown level never decides another stateful part (a relay coil on an X output is refused)', () => {
-    const { b } = gate('logic.gate_not', 3.0, ['open'], (bb, gg) => {
+  it('a relay coil behind a gate with an undefined input: the gate input is named (root cause)', () => {
+    const { b, g } = gate('logic.gate_not', 3.0, ['open'], (bb, gg) => {
       const r1 = bb.add('component.resistor');
       const r2 = bb.add('component.resistor');
       bb.ohms(r1, 10_000).ohms(r2, 10_000);
@@ -422,7 +417,7 @@ describe('review fixes (Sprint 19B independent review)', () => {
       const k = bb.add('component.relay');
       bb.wire(`${gg}.y`, `${k}.coil1`).wire(`${k}.coil2`, 'GND1.ref').wire(`${k}.com`, 'GND1.ref');
     });
-    expect(fails(solve(b))).toMatchObject({ code: 'logic_unknown_state', components: ['K1'] });
+    expect(fails(solve(b))).toMatchObject({ code: 'logic_input_undefined', components: [g] });
   });
 
   it('a HIGH output forced above its own V_CC is outside every test point: refused', () => {
@@ -480,26 +475,13 @@ describe('review fixes (Sprint 19B independent review)', () => {
     expect(off.ok ? 'ok' : off.error.code).not.toBe('logic_feedback_unsupported');
   });
 
-  it('a defined LOW output with an X input stays known; a CV supply feeding an X gate keeps its voltage', () => {
-    const { b, g } = gate('logic.gate_and', 3.0, ['open', 'l'], (bb, gg) => {
-      // A: driven by an X inverter (its input in the undefined band).
-      const n = bb.add('logic.gate_not');
-      const r1 = bb.add('component.resistor');
-      const r2 = bb.add('component.resistor');
-      bb.ohms(r1, 10_000).ohms(r2, 10_000);
-      bb.wire(`${n}.vcc`, 'PSU1.positive').wire(`${n}.gnd`, 'GND1.ref');
-      bb.wire('PSU1.positive', `${r1}.a`)
-        .wire(`${r1}.b`, `${n}.a`)
-        .wire(`${n}.a`, `${r2}.a`)
-        .wire(`${r2}.b`, 'GND1.ref');
-      bb.wire(`${n}.y`, `${gg}.a`);
-      load(10_000)(bb, gg);
-    });
-    const o = ok(solve(b));
-    expect(o.components[g]!.state).toMatchObject({ input_a: 'x', gateOutput: 'low' });
-    expect(o.components[g]!.unknown).toBeUndefined();
-    expect(o.components[g]!.currents!.y).toBe(-0);
-    expect(o.components.PSU1).toMatchObject({ unknown: true, current: null, voltage: 3 });
+  it('no bound is claimed for an unknown output current (review #1): no gate type declares one', async () => {
+    // Before Sprint 20 the ±50 mA I_O absolute maximum was used as the most an X output could
+    // draw from a CV supply; it is a stress rating, not a bound (§5.1 note 1, §7.3.1).
+    const { partModel } = await import('../src/parts.js');
+    for (const type of ['logic.gate_and', 'logic.gate_nand', 'logic.gate_or', 'logic.gate_not'])
+      expect(partModel(type as never)!.unknownCurrentMaxA, type).toBeUndefined();
+    expect(partModel('logic.quad_and')!.unknownCurrentMaxA).toBeUndefined();
   });
 
   it('Y pulled above V_CC + 0.5 V while powered is an absolute-maximum excess', () => {
@@ -556,18 +538,25 @@ describe('ESP32 GPIO interop (pads in the same solve)', () => {
     expect(interpretDigitalInput(off.pins!.find((p) => p.gpio === 4)!.voltage, 1)).toBe(0);
   });
 
-  it('a pad switched to input under a gate input: the pad model holds the node (leakage), a defined LOW', () => {
+  it("a pad switched to input under a gate input: FLOATING (Sprint 20), never the leakage model's 0 V LOW", () => {
     const bb = x1();
     const s = new EngineSession(bb.projected, { pins: bb.pins });
     s.setPinMode(4, 'input');
     s.setPinMode(18, 'input');
-    // An attached pad is a DC path through the MCU (the approved pin model, esp32Gpio.ts): the
-    // gate input is not floating; the pad model puts it at its own (low) level.
-    const o = ok(s.solve());
-    expect(o.components[G]!.state).toMatchObject({ input_a: 'low', gateOutput: 'low' });
+    // The pad's input leakage (esp32Gpio.ts) is a numerical reference to GND, not a driver: the
+    // gate input has nothing driving it ("Do not leave standard CMOS inputs floating", §7.3.3).
+    expect(fails(s.solve())).toEqual({
+      code: 'logic_input_floating',
+      components: [G],
+      param: 'a',
+      detail: { part: 'SN74LVC1G08', vcc: 3, pads: [18] },
+    });
+    // Driven by the pad: defined again.
+    s.setPinMode(18, 'output-low');
+    expect(ok(s.solve()).components[G]!.state).toMatchObject({ input_a: 'low' });
   });
 
-  it('an unknown level reaching an ESP32 input is refused (logic_unknown_state)', () => {
+  it('an undefined gate input upstream of an ESP32 input: the gate input is named (root cause)', () => {
     const bb = boardBench((b, u) => {
       const g = b.add('logic.gate_and');
       const r1 = b.add('component.resistor');
@@ -584,6 +573,6 @@ describe('ESP32 GPIO interop (pads in the same solve)', () => {
     });
     const s = new EngineSession(bb.projected, { pins: bb.pins });
     s.setPinMode(4, 'input');
-    expect(fails(s.solve())).toMatchObject({ code: 'logic_unknown_state', param: 'gpio4' });
+    expect(fails(s.solve())).toMatchObject({ code: 'logic_input_undefined', param: 'a' });
   });
 });

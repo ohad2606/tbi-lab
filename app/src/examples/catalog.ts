@@ -324,6 +324,48 @@ export const EXAMPLES: readonly Example[] = [
       'logic.quad_and',
     ],
   },
+  // Sprint 20: logic examples (A basic, B cascaded, D ESP32 + manual input; C is the one above).
+  {
+    id: 'logic-and-switches',
+    titleKey: 'example.logic-and-switches.title',
+    summaryKey: 'example.logic-and-switches.summary',
+    probes: [V('U1', 'y'), I('D1')],
+    parts: [
+      'component.led',
+      'component.resistor',
+      'component.toggle_switch',
+      'instrument.lab_psu',
+      'logic.gate_and',
+    ],
+  },
+  {
+    id: 'logic-cascade',
+    titleKey: 'example.logic-cascade.title',
+    summaryKey: 'example.logic-cascade.summary',
+    probes: [V('U1', 'y2'), I('D1')],
+    parts: [
+      'component.led',
+      'component.resistor',
+      'component.toggle_switch',
+      'instrument.lab_psu',
+      'logic.gate_or',
+      'logic.quad_and',
+    ],
+  },
+  {
+    id: 'esp32-logic-override',
+    titleKey: 'example.esp32-logic-override.title',
+    summaryKey: 'example.esp32-logic-override.summary',
+    probes: [V('U2', 'y'), I('D1')],
+    parts: [
+      'board.esp32_devkitc_wroom32',
+      'component.led',
+      'component.resistor',
+      'component.toggle_switch',
+      'instrument.lab_psu',
+      'logic.gate_or',
+    ],
+  },
 ];
 
 export function findExample(id: string): Example | undefined {

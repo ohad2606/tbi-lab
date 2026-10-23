@@ -46,6 +46,8 @@ export const STAND_IN = {
   banks: sha(standInImage('TbiBanks')),
   // Exploration Foundation L3: the esp32-logic-quad-and example's sketch.
   logicQuad: sha(standInImage('LogicQuadAnd')),
+  // Sprint 20 logic example D: the esp32-logic-override example's sketch.
+  logicOverride: sha(standInImage('LogicOrOverride')),
 };
 
 const SKETCHES: Record<string, string> = {
@@ -59,6 +61,10 @@ const SKETCHES: Record<string, string> = {
   ),
   LogicQuadAnd: readFileSync(
     new URL('../../tests/exampleSketches/LogicQuadAnd.ino', import.meta.url),
+    'utf8',
+  ),
+  LogicOrOverride: readFileSync(
+    new URL('../../tests/exampleSketches/LogicOrOverride.ino', import.meta.url),
     'utf8',
   ),
 };

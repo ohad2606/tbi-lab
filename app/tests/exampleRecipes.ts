@@ -831,8 +831,8 @@ export const RECIPES: Record<string, () => ProjectDocument> = {
     return r.centre(-300);
   },
   /**
-   * Sprint 19B (Exploration Foundation X1): ESP32 GPIO18 and a push button (10 kΩ pull-down)
-   * into an SN74LVC1G08 AND gate powered at 3.0 V from the bench supply (where its output is
+   * Sprint 19B (Exploration Foundation X1): ESP32 GPIO18 (10 kΩ pull-down, Sprint 20) and a push
+   * button (10 kΩ pull-down) into an SN74LVC1G08 AND gate powered at 3.0 V from the bench supply (where its output is
    * characterized for real loads); the gate drives an LED through 220 Ω and is read back on GPIO4.
    */
   'esp32-logic-and': () => {
@@ -860,7 +860,15 @@ export const RECIPES: Record<string, () => ProjectDocument> = {
     ]);
     r.wire(T(S1, 'a'), { kind: 'wire', wire: rail, at: { x: 460, y: -260 } });
     r.wire(T(U2, 'gnd'), T(G2, 'ref'));
-    r.wire(T(U1, 'gpio18'), T(U2, 'a'));
+    const a = r.wire(T(U1, 'gpio18'), T(U2, 'a'));
+    // Sprint 20: a 10 kΩ pull-down on A (SCES217AA §7.3.3: "If a system does not always drive an
+    // input, consider adding a pull-up or pull-down resistor … a 10kΩ resistor … is recommended").
+    // Until setup() makes GPIO18 an output the pad is an input: without it A would float.
+    const R3 = r.place('component.resistor', 440, 60, 1);
+    const G6 = r.place('component.ground', 440, 140);
+    r.set(R3, 'resistance', 10_000, 'ohm');
+    r.wire(T(R3, 'a'), { kind: 'wire', wire: a, at: { x: 440, y: -20 } });
+    r.wire(T(R3, 'b'), T(G6, 'ref'));
     r.wire(T(S1, 'b'), T(R2, 'a'), [{ x: 540, y: 80 }]);
     r.wire(T(R2, 'a'), T(U2, 'b'), [{ x: 560, y: 20 }]);
     r.wire(T(R2, 'b'), T(G4, 'ref'));
@@ -876,7 +884,8 @@ export const RECIPES: Record<string, () => ProjectDocument> = {
   },
   /**
    * Exploration Foundation L3 interop: ESP32 GPIO18/GPIO19 into gate 1 of an SN74LVC08A (quad
-   * 2-input AND, one shared supply) at 3.0 V from the bench supply; 1Y lights D1 through 220 Ω and
+   * 2-input AND, one shared supply) at 3.0 V from the bench supply, each input with a 10 kΩ
+   * pull-down (Sprint 20: defined before setup() runs); 1Y lights D1 through 220 Ω and
    * feeds 2A; the push button (10 kΩ pull-down) drives 2B, so D2 (220 Ω) lights only while it is
    * held. The unused gates' inputs are tied to GND (SCAS283W: unused inputs at V_CC or GND).
    */
@@ -916,11 +925,25 @@ export const RECIPES: Record<string, () => ProjectDocument> = {
     ]);
     r.wire(T(U2, 'gnd'), T(G2, 'ref'));
     // Gate 1 from the ESP32.
-    r.wire(T(U1, 'gpio18'), T(U2, 'a1'), [
+    const a1 = r.wire(T(U1, 'gpio18'), T(U2, 'a1'), [
       { x: 480, y: -20 },
       { x: 480, y: -60 },
     ]);
-    r.wire(T(U1, 'gpio19'), T(U2, 'b1'));
+    const b1 = r.wire(T(U1, 'gpio19'), T(U2, 'b1'));
+    // Sprint 20: 10 kΩ pull-downs on 1A and 1B. Until setup() makes GPIO18/19 outputs the pads
+    // are inputs (high impedance): without them 1A/1B would float, which the datasheet forbids
+    // (SCAS283W §5.4 note 1) and the simulator refuses. The value is TI's recommendation for a
+    // not-always-driven CMOS input (SN74LVC1G08 sheet §7.3.3, "a 10kΩ resistor … is recommended").
+    const R4 = r.place('component.resistor', 460, 60, 1);
+    const R5 = r.place('component.resistor', 520, 60, 1);
+    const G8 = r.place('component.ground', 460, 140);
+    const G9 = r.place('component.ground', 520, 140);
+    r.set(R4, 'resistance', 10_000, 'ohm');
+    r.set(R5, 'resistance', 10_000, 'ohm');
+    r.wire(T(R4, 'a'), { kind: 'wire', wire: a1, at: { x: 460, y: -20 } });
+    r.wire(T(R5, 'a'), { kind: 'wire', wire: b1, at: { x: 520, y: -40 } });
+    r.wire(T(R4, 'b'), T(G8, 'ref'));
+    r.wire(T(R5, 'b'), T(G9, 'ref'));
     // 1Y → R1 → D1, and 1Y → 2A (a chain inside the package).
     const y1 = r.wire(T(U2, 'y1'), T(R1, 'a'), [
       { x: 580, y: -20 },
@@ -952,6 +975,202 @@ export const RECIPES: Record<string, () => ProjectDocument> = {
       ['a4', -20],
     ] as const)
       r.wire(T(U2, pin), { kind: 'wire', wire: tie, at: { x: 980, y } });
+    return r.centre(-400);
+  },
+  /**
+   * Sprint 20 example A (basic logic): two toggle switches, each with a 10 kΩ pull-down (TI's
+   * recommended value for a not-always-driven CMOS input, SCES217AA §7.3.3), into an SN74LVC1G08
+   * AND gate at 3.0 V from the bench supply (the supply where its outputs are characterized for
+   * real loads, §5.5); Y lights the LED through 220 Ω only when both switches are closed.
+   */
+  'logic-and-switches': () => {
+    const r = new Recipe('logic-and-switches', 'Logic: an AND gate with two switches');
+    r.supply(3, 0.1);
+    const SW1 = r.place('component.toggle_switch', 40, -120);
+    const SW2 = r.place('component.toggle_switch', 40, 80);
+    const R1 = r.place('component.resistor', 160, -80, 1);
+    const R2 = r.place('component.resistor', 160, 120, 1);
+    const G2 = r.place('component.ground', 160, 0);
+    const G3 = r.place('component.ground', 160, 200);
+    const U1 = r.place('logic.gate_and', 360, -20);
+    const G4 = r.place('component.ground', 360, 60);
+    const R3 = r.place('component.resistor', 480, -20);
+    const D1 = r.place('component.led', 560, 20, 1);
+    const G5 = r.place('component.ground', 560, 100);
+    r.set(R1, 'resistance', 10_000, 'ohm');
+    r.set(R2, 'resistance', 10_000, 'ohm');
+    r.set(R3, 'resistance', 220, 'ohm');
+    // A starts closed: toggling B alone switches the LED.
+    r.set(SW1, 'closed', true);
+    // The 3.0 V rail: up and over to the gate's V_CC; switch A taps it, switch B below the supply.
+    const rail = r.wire(T('PSU1', 'positive'), T(U1, 'vcc'), [
+      { x: -40, y: -20 },
+      { x: -40, y: -180 },
+      { x: 360, y: -180 },
+    ]);
+    r.wire(T(SW1, 'a'), { kind: 'wire', wire: rail, at: { x: -40, y: -120 } });
+    r.wire(T(SW2, 'a'), { kind: 'wire', wire: rail, at: { x: -40, y: -20 } }, [{ x: -40, y: 80 }]);
+    // Input A: SW1 → node (pull-down R1) → A.
+    r.wire(T(SW1, 'b'), T(R1, 'a'));
+    r.wire(T(R1, 'a'), T(U1, 'a'), [
+      { x: 240, y: -120 },
+      { x: 240, y: -40 },
+    ]);
+    r.wire(T(R1, 'b'), T(G2, 'ref'));
+    // Input B: SW2 → node (pull-down R2) → B.
+    r.wire(T(SW2, 'b'), T(R2, 'a'));
+    r.wire(T(R2, 'a'), T(U1, 'b'), [
+      { x: 280, y: 80 },
+      { x: 280, y: 0 },
+    ]);
+    r.wire(T(R2, 'b'), T(G3, 'ref'));
+    r.wire(T(U1, 'gnd'), T(G4, 'ref'));
+    // Y → 220 Ω → LED → GND.
+    r.wire(T(U1, 'y'), T(R3, 'a'));
+    r.wire(T(R3, 'b'), T(D1, 'anode'));
+    r.wire(T(D1, 'cathode'), T(G5, 'ref'));
+    return r.centre(-200);
+  },
+  /**
+   * Sprint 20 example B (cascaded gates): four switches with 10 kΩ pull-downs. Inside ONE
+   * SN74LVC08A package, gate 1 forms A·B and feeds gate 2 (1Y → 2A), which forms (A·B)·C; across
+   * packages, 2Y drives input A of an SN74LVC1G32 OR gate whose B is switch D (an override):
+   * LED = (A·B·C) + D. Everything at 3.0 V; the package's outputs drive only gate inputs (no DC
+   * load), the OR gate drives the LED. The unused gates 3 and 4 have their inputs tied to GND
+   * (SCAS283W §5.4 note 1).
+   */
+  'logic-cascade': () => {
+    const r = new Recipe('logic-cascade', 'Logic: cascaded gates (A·B·C) + D');
+    r.supply(3, 0.1);
+    const rows = [-240, -80, 80, 240];
+    const sw = rows.map((y) => r.place('component.toggle_switch', 40, y));
+    const pd = rows.map((y) => r.place('component.resistor', 160, y + 40, 1));
+    const pg = rows.map((y) => r.place('component.ground', 160, y + 120));
+    for (const R of pd) r.set(R, 'resistance', 10_000, 'ohm');
+    const U1 = r.place('logic.quad_and', 480, -80);
+    const G6 = r.place('component.ground', 420, 40);
+    const G7 = r.place('component.ground', 660, 20);
+    const U2 = r.place('logic.gate_or', 780, 120);
+    const G8 = r.place('component.ground', 780, 200);
+    const R5 = r.place('component.resistor', 900, 120);
+    const D1 = r.place('component.led', 980, 160, 1);
+    const G9 = r.place('component.ground', 980, 240);
+    r.set(R5, 'resistance', 220, 'ohm');
+    // The 3.0 V rail along the top to the OR gate's V_CC; the package's V_CC (pin 14) taps it.
+    const rail = r.wire(T('PSU1', 'positive'), T(U2, 'vcc'), [
+      { x: -40, y: -20 },
+      { x: -40, y: -320 },
+      { x: 780, y: -320 },
+    ]);
+    r.wire(T(U1, 'vcc'), { kind: 'wire', wire: rail, at: { x: 540, y: -320 } });
+    r.wire(T(sw[0]!, 'a'), { kind: 'wire', wire: rail, at: { x: -40, y: -240 } });
+    r.wire(T(sw[1]!, 'a'), { kind: 'wire', wire: rail, at: { x: -40, y: -80 } });
+    const low = r.wire(T(sw[3]!, 'a'), { kind: 'wire', wire: rail, at: { x: -40, y: -20 } }, [
+      { x: -40, y: 240 },
+    ]);
+    r.wire(T(sw[2]!, 'a'), { kind: 'wire', wire: low, at: { x: -40, y: 80 } });
+    for (let i = 0; i < 4; i++) {
+      r.wire(T(sw[i]!, 'b'), T(pd[i]!, 'a'));
+      r.wire(T(pd[i]!, 'b'), T(pg[i]!, 'ref'));
+    }
+    // A → 1A, B → 1B, C → 2B; 1Y → 2A inside the package.
+    r.wire(T(pd[0]!, 'a'), T(U1, 'a1'), [
+      { x: 380, y: -240 },
+      { x: 380, y: -140 },
+    ]);
+    r.wire(T(pd[1]!, 'a'), T(U1, 'b1'), [
+      { x: 340, y: -80 },
+      { x: 340, y: -120 },
+    ]);
+    r.wire(T(U1, 'y1'), T(U1, 'a2'), [
+      { x: 380, y: -100 },
+      { x: 380, y: -80 },
+    ]);
+    r.wire(T(pd[2]!, 'a'), T(U1, 'b2'), [
+      { x: 360, y: 80 },
+      { x: 360, y: -60 },
+    ]);
+    r.wire(T(U1, 'gnd'), T(G6, 'ref'));
+    // Gates 3 and 4 unused: inputs to GND, outputs open. The tie column stays ≥ 120 units from
+    // the pin column: the breakout's header pins leave its board outward in 3D before turning.
+    const tie = r.wire(T(U1, 'b4'), T(G7, 'ref'), [{ x: 660, y: -120 }]);
+    for (const [pin, y] of [
+      ['a3', -40],
+      ['b3', -60],
+      ['a4', -100],
+    ] as const)
+      r.wire(T(U1, pin), { kind: 'wire', wire: tie, at: { x: 660, y } });
+    // Across packages: 2Y → OR input A; switch D → OR input B.
+    r.wire(T(U1, 'y2'), T(U2, 'a'), [
+      { x: 380, y: -40 },
+      { x: 380, y: 100 },
+    ]);
+    r.wire(T(pd[3]!, 'a'), T(U2, 'b'), [
+      { x: 700, y: 240 },
+      { x: 700, y: 140 },
+    ]);
+    r.wire(T(U2, 'gnd'), T(G8, 'ref'));
+    r.wire(T(U2, 'y'), T(R5, 'a'));
+    r.wire(T(R5, 'b'), T(D1, 'anode'));
+    r.wire(T(D1, 'cathode'), T(G9, 'ref'));
+    return r.centre(-320);
+  },
+  /**
+   * Sprint 20 example D (ESP32, a manual input and logic together): an SN74LVC1G32 OR gate at
+   * 3.0 V. Input A: ESP32 GPIO18 (10 kΩ pull-down, so A is defined before setup() runs); input
+   * B: a toggle switch (10 kΩ pull-down), a manual override. Y lights the LED through 220 Ω and
+   * is read back on GPIO19: the firmware blinks GPIO18 and reports what the gate's output really
+   * is, including when the switch overrides it.
+   */
+  'esp32-logic-override': () => {
+    const r = new Recipe('esp32-logic-override', 'ESP32: an OR gate with a manual override');
+    r.supply(3, 0.1);
+    const U1 = r.place('board.esp32_devkitc_wroom32', 300, 0);
+    r.sketch(U1, 'LogicOrOverride.ino');
+    const U2 = r.place('logic.gate_or', 840, 0);
+    const R1 = r.place('component.resistor', 960, 0);
+    const D1 = r.place('component.led', 1080, 0);
+    const R2 = r.place('component.resistor', 640, 100, 1);
+    const R3 = r.place('component.resistor', 520, 40, 1);
+    const SW1 = r.place('component.toggle_switch', 720, 120, 1);
+    const G2 = r.place('component.ground', 840, 80);
+    const G3 = r.place('component.ground', 1160, 60);
+    const G4 = r.place('component.ground', 640, 180);
+    const G5 = r.place('component.ground', 520, 120);
+    const G6 = r.place('component.ground', 440, -140);
+    r.set(R1, 'resistance', 220, 'ohm');
+    r.set(R2, 'resistance', 10_000, 'ohm');
+    r.set(R3, 'resistance', 10_000, 'ohm');
+    r.wire(T(U1, 'gnd'), T(G6, 'ref'));
+    // The 3.0 V rail: over the board to the gate's V_CC; under the board to the switch.
+    r.wire(T('PSU1', 'positive'), T(U2, 'vcc'), [
+      { x: -40, y: -20 },
+      { x: -40, y: -260 },
+      { x: 840, y: -260 },
+    ]);
+    r.wire(T(SW1, 'b'), T('PSU1', 'positive'), [
+      { x: 720, y: 260 },
+      { x: -40, y: 260 },
+      { x: -40, y: -20 },
+    ]);
+    // Input A from GPIO18, with its pull-down R3.
+    const a = r.wire(T(U1, 'gpio18'), T(U2, 'a'));
+    r.wire(T(R3, 'a'), { kind: 'wire', wire: a, at: { x: 520, y: -20 } });
+    r.wire(T(R3, 'b'), T(G5, 'ref'));
+    // Input B from the switch, with its pull-down R2.
+    const b = r.wire(T(SW1, 'a'), T(U2, 'b'), [{ x: 720, y: 20 }]);
+    r.wire(T(R2, 'a'), { kind: 'wire', wire: b, at: { x: 720, y: 60 } }, [{ x: 640, y: 60 }]);
+    r.wire(T(R2, 'b'), T(G4, 'ref'));
+    r.wire(T(U2, 'gnd'), T(G2, 'ref'));
+    // Y → 220 Ω → LED → GND, and read back on GPIO19.
+    const y = r.wire(T(U2, 'y'), T(R1, 'a'));
+    r.wire(T(R1, 'b'), T(D1, 'anode'));
+    r.wire(T(D1, 'cathode'), T(G3, 'ref'), [{ x: 1160, y: 0 }]);
+    r.wire(T(U1, 'gpio19'), { kind: 'wire', wire: y, at: { x: 900, y: 0 } }, [
+      { x: 420, y: -40 },
+      { x: 420, y: -120 },
+      { x: 900, y: -120 },
+    ]);
     return r.centre(-400);
   },
   /**

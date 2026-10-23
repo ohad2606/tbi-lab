@@ -4,19 +4,24 @@
  * supply (V_CC pin − GND pin):
  *
  * - inputs draw no DC current (their leakage is a ± bound with no sign: never a conductance,
- *   which would invent a level). Each input is HIGH (≥ V_IH), LOW (≤ V_IL) or UNKNOWN (X, in
- *   between), with V_IH/V_IL from the datasheet row that covers the supply;
- * - an input on a node the session reports unknown (driven by an X output) is X;
- * - an input with no DC path to anything (nothing but gate inputs on its net, or nothing) is
- *   floating: the Run is refused (`logic_input_floating`), never assumed LOW or HIGH;
- * - the output follows the function with static-CMOS semantics: a controlling input decides the
- *   output even when another input is X (AND with a LOW input is LOW); otherwise X;
+ *   which would invent a level). Each input is HIGH (≥ V_IH) or LOW (≤ V_IL), with V_IH/V_IL
+ *   from the datasheet row that covers the supply. Anything else is REFUSED by name (Sprint 20,
+ *   owner policy, the same contract as the SN74LVC08A package):
+ *   - between V_IL and V_IH: `logic_input_undefined` (the sheet gives no level and no supply
+ *     current there; the static-CMOS "a controlling input decides" inference is NOT used: the
+ *     function table's X means "either valid level", not an invalid voltage);
+ *   - outside the recommended V_I 0–5.5 V: `logic_input_out_of_range`;
+ *   - on a net an undetermined level reaches: `logic_unknown_state`;
+ *   - with no DC path to anything, or driven by nothing but an ESP32 pad in input mode (whose
+ *     leakage model is a numerical reference, not a source): `logic_input_floating` ("Do not
+ *     leave standard CMOS inputs floating at any time during operation", §7.3.3);
+ * - the output follows the function table (defined inputs only);
  * - a HIGH output is a resistor from the part's V_CC pin to Y, a LOW output a resistor from Y to
  *   its GND pin (EF-D4 A, guaranteed characteristic, logic/lvc1g.ts `outputStageAt`). Output
  *   current therefore flows through the supply pins: fan-out, loading and supply current come
  *   out of the solve;
- * - an X output has NO element: the node it drives is unknown (the session marks it, and every
- *   result it reaches, as unknown);
+ * - an X output (only while the settle passes converge, or under a refusal) has NO element: the
+ *   node it drives is unknown (the session marks it, and every result it reaches, as unknown);
  * - V_CC = 0 (unpowered): outputs off (the datasheet's I_off power-down specification);
  * - a supply the datasheet does not characterize (between input rows, below 1.65 V, above
  *   5.5 V, reversed) is refused (`logic_supply_uncharacterized`, EF-D3 A);
@@ -24,9 +29,15 @@
  *   conservative bound (owner decision PM-1, logic/lvc1g.ts); elsewhere only the ±100 µA ranged
  *   row is guaranteed. A larger output current is refused (`logic_output_uncharacterized`).
  *
+ * - the quiescent I_CC (10 µA) is reported only under its own test conditions (logic/lvc1g.ts
+ *   `quiescentAt`: V_I = 5.5 V or GND for these sheets), otherwise "not characterized"; no bound
+ *   is claimed for an unknown output's current (the ±50 mA I_O is an absolute-maximum STRESS
+ *   rating, §5.1 note 1, and §7.3.1 "capable of driving larger currents than the device can
+ *   sustain"): a current-limited supply feeding an unknown output is refused.
+ *
  * Propagation delay is NOT simulated (DC sessions): circuits where it matters (feedback between
  * gates, PWM into a gate, clocks) are refused by the session and the host. The card carries t_pd
- * for display.
+ * (per device, with its table) for display.
  */
 import { PwlLoad } from '../pwl.js';
 import {
@@ -34,6 +45,8 @@ import {
   inputRowAt,
   LVC1G_CARDS,
   outputStageAt,
+  quiescentAt,
+  RAIL_V,
   TABULATED_VCC_TOLERANCE_V,
   type LogicCard,
 } from '../logic/lvc1g.js';
@@ -63,25 +76,62 @@ export function cardOf(ctx: PartContext): LogicCard {
 
 const levelOf = (s: PartState, key: string) => (s[key] ?? 'x') as LogicLevel | 'init';
 
-/** Kleene evaluation (static CMOS): a controlling input decides; otherwise X. */
+/**
+ * The function table for DEFINED inputs; X when any input is not HIGH or LOW. Sprint 20: no
+ * controlling-input inference (the datasheets' function tables give outputs for valid input
+ * levels only; an undefined input is refused before this is used for a result).
+ */
 export function gateOutput(card: LogicCard, ins: readonly LogicLevel[]): 'high' | 'low' | 'x' {
-  if (ins.every((l) => l === 'high' || l === 'low')) {
-    return evaluate(
-      card.function,
-      ins.map((l) => l === 'high'),
-    )
-      ? 'high'
-      : 'low';
-  }
-  // Some input is X: the output is defined only if every completion agrees.
-  const unknown = ins.map((l, i) => (l === 'high' || l === 'low' ? -1 : i)).filter((i) => i >= 0);
-  const results = new Set<boolean>();
-  for (let m = 0; m < 1 << unknown.length; m++) {
-    const v = ins.map((l) => l === 'high');
-    unknown.forEach((idx, bit) => (v[idx] = ((m >> bit) & 1) === 1));
-    results.add(evaluate(card.function, v));
-  }
-  return results.size === 1 ? ([...results][0] ? 'high' : 'low') : 'x';
+  if (!ins.every((l) => l === 'high' || l === 'low')) return 'x';
+  return evaluate(
+    card.function,
+    ins.map((l) => l === 'high'),
+  )
+    ? 'high'
+    : 'low';
+}
+
+/** A refusal recorded in a logic part's state (applied by the session once states settle). */
+export type InputRefusal = Record<string, string | number>;
+
+/**
+ * Sprint 20: classify one logic input at the solved supply, the SAME contract for single gates
+ * and packages. `g` is the part's own GND potential, `row` the datasheet input row.
+ */
+export function classifyInput(
+  card: LogicCard,
+  sol: PartSolution,
+  t: string,
+  row: { vih: number; vil: number },
+  g: number,
+): { level: LogicLevel; volts: number | null; refusal?: InputRefusal } {
+  if (sol.unknown?.(t))
+    return { level: 'x', volts: null, refusal: { refuse: 'logic_unknown_state', at: t } };
+  const p = sol.potential(t);
+  if (p === null)
+    return { level: 'x', volts: null, refusal: { refuse: 'logic_input_floating', at: t } };
+  const undriven = sol.undriven?.(t);
+  if (undriven)
+    // Only an ESP32 input pad's leakage holds the node: floating, whatever 0 V it solves to.
+    return {
+      level: 'x',
+      volts: null,
+      refusal: {
+        refuse: 'logic_input_floating',
+        at: t,
+        ...(undriven.inputPads.length ? { pads: undriven.inputPads.join(',') } : {}),
+      },
+    };
+  const vi = p - g;
+  const level: LogicLevel = vi >= row.vih ? 'high' : vi <= row.vil ? 'low' : 'x';
+  // Recommended V_I 0–5.5 V: outside it "functional operation … is not implied" (§5.1 note 1).
+  if (vi < card.inputRecommended[0] - RAIL_V || vi > card.inputRecommended[1] + RAIL_V)
+    return { level, volts: vi, refusal: { refuse: 'logic_input_out_of_range', at: t, value: vi } };
+  // Between V_IL and V_IH: no level, and no supply current (I_CC only at its test conditions,
+  // ΔI_CC at V_CC − 0.6 V): refused, never a level, never a guessed output.
+  if (level === 'x')
+    return { level, volts: vi, refusal: { refuse: 'logic_input_undefined', at: t, value: vi } };
+  return { level, volts: vi };
 }
 
 /** The supply across the part, or null when either supply pin's potential is undefined. */
@@ -107,36 +157,30 @@ function nextGateState(ctx: PartContext, sol: PartSolution, state: PartState): P
     return { out: 'x', refuse: 'logic_supply_uncharacterized', value: vcc };
   const g = sol.potential('gnd')!;
   const levels: Record<string, LogicLevel> = {};
-  let firstX: string | undefined;
+  let refusal: InputRefusal | undefined;
   for (const t of card.inputs) {
-    if (unknown(t)) {
-      levels[t] = 'x';
-      firstX ??= t;
-      continue;
-    }
-    const p = sol.potential(t);
-    if (p === null) {
-      levels[t] = 'x';
-      return { out: 'x', refuse: 'logic_input_floating', at: t, vcc };
-    }
-    const v = p - g;
-    levels[t] = v >= row.vih ? 'high' : v <= row.vil ? 'low' : 'x';
-    if (levels[t] === 'x') firstX ??= t;
+    const c = classifyInput(card, sol, t, row, g);
+    levels[t] = c.level;
+    refusal ??= c.refusal;
   }
-  const out = gateOutput(
-    card,
-    card.inputs.map((t) => levels[t]!),
-  );
+  const out = refusal
+    ? 'x'
+    : gateOutput(
+        card,
+        card.inputs.map((t) => levels[t]!),
+      );
   const stage = outputStageAt(card, vcc);
   const s: Record<string, string | number | boolean> = {
     out,
     vcc,
+    vih: row.vih,
+    vil: row.vil,
     validA: stage.validA,
     tabulated: stage.tabulated,
     model: stage.model,
   };
   for (const t of card.inputs) s[`in_${t}`] = levels[t]!;
-  if (firstX) s.firstX = firstX;
+  if (refusal) return { ...s, ...refusal };
   // The output of the PREVIOUS stage, in this pass's solution: a current the datasheet does not
   // guarantee (above the largest guaranteed test point, at every supply), or one flowing the
   // wrong way (Y forced above V_CC while HIGH, below GND while LOW: no test point covers it), has
@@ -152,6 +196,39 @@ function nextGateState(ctx: PartContext, sol: PartSolution, state: PartState): P
     }
   }
   return s;
+}
+
+/**
+ * The refusal a logic part's settled state carries, with what the Inspector needs to explain it:
+ * the pin (`param`), its voltage to the part's GND, the supply and that supply's V_IH/V_IL, the
+ * largest guaranteed output current, and the ESP32 input pads that alone sit on a floating input.
+ */
+export function logicRefusal(ctx: PartContext, state: PartState, part: string) {
+  if (typeof state.refuse !== 'string') return null;
+  const num = (k: string) => (typeof state[k] === 'number' ? { [k]: state[k] as number } : {});
+  const code = state.refuse;
+  return {
+    code: code as never,
+    components: [ctx.component.id],
+    ...(typeof state.at === 'string' ? { param: state.at } : {}),
+    detail: {
+      part,
+      ...num('value'),
+      ...num('vcc'),
+      ...(code === 'logic_supply_uncharacterized' && typeof state.value === 'number'
+        ? { vcc: state.value }
+        : {}),
+      ...(code === 'logic_input_undefined' || code === 'logic_input_out_of_range'
+        ? { ...num('vih'), ...num('vil') }
+        : {}),
+      ...(code === 'logic_output_uncharacterized' && typeof state.validA === 'number'
+        ? { limit: state.validA }
+        : {}),
+      ...(typeof state.pads === 'string'
+        ? { pads: state.pads.split(',').map((x) => Number(x)) }
+        : {}),
+    },
+  };
 }
 
 /** The gate model for one logic function: only that function's device cards are valid. */
@@ -193,26 +270,12 @@ export function gateModel(fn: LogicCard['function']): PartModel {
       levelOf(state, 'out') === 'x' && state.refuse !== 'logic_supply_missing'
         ? ['vcc', 'gnd']
         : [],
-    unknownCurrentMaxA: (ctx) => cardOf(ctx).outputAbsA,
+    // No `unknownCurrentMaxA` (Sprint 20, review #1): the ±50 mA I_O is an absolute-maximum
+    // stress rating (§5.1 note 1; §7.3.1 "capable of driving larger currents than the device can
+    // sustain"), not a bound on what an undetermined output carries.
     logicPins: (ctx) => ({ inputs: cardOf(ctx).inputs, outputs: ['y'] }),
     nextState: (ctx, state, sol) => nextGateState(ctx, sol, state),
-    refusal: (ctx, state) =>
-      typeof state.refuse === 'string'
-        ? {
-            code: state.refuse as never,
-            components: [ctx.component.id],
-            ...(typeof state.at === 'string' ? { param: state.at } : {}),
-            detail: {
-              ...(typeof state.value === 'number' ? { value: state.value } : {}),
-              ...(typeof state.vcc === 'number' ? { vcc: state.vcc } : {}),
-              // The largest guaranteed output current at this supply (the limit exceeded).
-              ...(state.refuse === 'logic_output_uncharacterized' &&
-              typeof state.validA === 'number'
-                ? { limit: state.validA }
-                : {}),
-            },
-          }
-        : null,
+    refusal: (ctx, state) => logicRefusal(ctx, state, cardOf(ctx).partNumber),
     report: (ctx, state, sol) => {
       const id = ctx.component.id;
       const card = cardOf(ctx);
@@ -272,8 +335,12 @@ export function gateModel(fn: LogicCard['function']): PartModel {
           ...(typeof state.vcc === 'number' ? { supplyV: state.vcc } : {}),
           outputModel: state.model === 'class' ? 'class' : tabulated ? 'tabulated' : 'ranged',
           outputValidA: validA,
-          iccMaxA: card.iccMaxA,
-          ...(typeof state.firstX === 'string' ? { firstUnknownInput: state.firstX } : {}),
+          // I_CC only under its own test conditions (review #2); otherwise not characterized.
+          ...quiescentAt(
+            card,
+            supplyV,
+            card.inputs.map((t) => rel(t)),
+          ),
         },
         logic,
       };
@@ -328,8 +395,18 @@ function gateRatings(
   const iy = r.currents?.y;
   if (iy != null) {
     const a = Math.abs(iy);
+    // At a tabulated supply its §5.3 I_OH/I_OL rows; over the PM-1 class (3.0–3.6 V) the same
+    // 3 V rows the output model uses as its bound (Sprint 20: the operating limit and the model
+    // agree; before, any load above 100 µA at 3.3 V was flagged though the bound covers 24 mA).
     const recommended = card.outputRows
-      .filter((row) => vccV !== null && Math.abs(row.vcc - vccV) <= TABULATED_VCC_TOLERANCE_V)
+      .filter(
+        (row) =>
+          vccV !== null &&
+          (Math.abs(row.vcc - vccV) <= TABULATED_VCC_TOLERANCE_V ||
+            (row.classVcc !== undefined &&
+              vccV >= row.classVcc[0] - TABULATED_VCC_TOLERANCE_V &&
+              vccV <= row.classVcc[1] + TABULATED_VCC_TOLERANCE_V)),
+      )
       .flatMap((row) => [...row.high, ...row.low].map((p) => p.amps));
     const opMax = recommended.length ? Math.max(...recommended) : card.rangedOutput.amps;
     if (a > card.outputAbsA)
