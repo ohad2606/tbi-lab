@@ -7,6 +7,7 @@
  * other views are unaffected.
  */
 
+import { isolateLtr } from '../i18n/i18n.js';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { emptySelection } from '@tbi-lab/domain';
 import { deriveScene, sceneObstacles, type SceneDescription } from '../views/scene3d/scene.js';
@@ -317,6 +318,8 @@ export function ThreeView() {
   const overlaps = scene?.separation.unresolved.length
     ? [...new Set(scene.separation.unresolved.flat())].sort().join(', ')
     : '';
+  // Wires the 3D router could not route safely (s20r): said plainly, never left unexplained.
+  const routeLimits = scene?.routeLimits?.length ? scene.routeLimits.join(', ') : '';
   return (
     <div
       class="view3d-wrap"
@@ -719,6 +722,11 @@ export function ThreeView() {
             {overlaps && (
               <div class="view-note-warning" role="status" data-testid="view3d-overlap">
                 {t('view3d.overlap', { parts: overlaps })}
+              </div>
+            )}
+            {routeLimits && (
+              <div class="view-note-warning" role="status" data-testid="view3d-route-limit">
+                {t('view3d.routeLimit', { wires: isolateLtr(routeLimits) })}
               </div>
             )}
           </div>

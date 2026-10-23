@@ -817,6 +817,8 @@ export const en = {
     'A visualization of the circuit: drag or ← → to rotate; right-drag, Shift-drag or Shift + arrows to pan; scroll or + − to zoom. Edit in the Circuit view.',
   'view3d.overlap':
     'Some parts are larger in 3D than their symbols and still touch here ({parts}). Move them further apart in the Circuit view.',
+  'view3d.routeLimit':
+    'Some wires could not be laid out cleanly in 3D ({wires}): there they may look as if they touch another wire or pass through a part. The connections are exactly as drawn in the Circuit view.',
   'program.editor.label': 'Arduino source code of {board}',
   'program.position': 'Line {line}, column {column}',
   'program.size': '{used} of {max}',

@@ -32,6 +32,7 @@ import { componentBoxes, movePreview, moveRouted } from '../src/ui/routing.js';
 import { deriveScene, SCALE } from '../src/views/scene3d/scene.js';
 import { draw, drag, measure, normalize, ownerCircuit } from './support/wireScenario.js';
 import { expectNoWireThroughBodies } from './support/scene3dChecks.js';
+import { complexBench } from './support/complexBench.js';
 
 const T = (component: string, terminal: string): WireTarget => ({
   kind: 'terminal',
@@ -51,29 +52,7 @@ const place = (doc: ProjectDocument, type: Parameters<typeof addComponent>[1], a
   return { doc: normalize(r.doc), id: r.id };
 };
 
-/** A complex bench: three gates, a resistor and an LED, nine wires (all automatic). */
-function complexCircuit() {
-  const owner = ownerCircuit();
-  let doc = owner.doc;
-  const gate = owner.gate;
-  const g2 = place(doc, 'logic.gate_nand', { x: 360, y: 0 });
-  doc = g2.doc;
-  const g3 = place(doc, 'logic.gate_or', { x: 360, y: 240 });
-  doc = g3.doc;
-  const r = place(doc, 'component.resistor', { x: 600, y: 0 });
-  doc = r.doc;
-  const d = place(doc, 'component.led', { x: 600, y: 240 });
-  doc = d.doc;
-  doc = draw(doc, T('PSU1', 'positive'), T(g2.id, 'vcc'));
-  doc = draw(doc, T(g2.id, 'gnd'), T('GND1', 'ref'));
-  doc = draw(doc, T('PSU1', 'positive'), T(g3.id, 'vcc'));
-  doc = draw(doc, T(g3.id, 'gnd'), T('GND1', 'ref'));
-  doc = draw(doc, T(gate, 'y'), T(g2.id, 'a'));
-  doc = draw(doc, T(g2.id, 'y'), T(r.id, 'a'));
-  doc = draw(doc, T(r.id, 'b'), T(d.id, 'anode'));
-  doc = draw(doc, T(d.id, 'cathode'), T('GND1', 'ref'));
-  return { doc, gates: [gate, g2.id, g3.id] };
-}
+const complexCircuit = complexBench;
 
 describe('wire routing integrity', () => {
   it("the owner's sequence: right, left, back — clean at every step, restored exactly", () => {

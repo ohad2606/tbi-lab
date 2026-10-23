@@ -251,6 +251,12 @@ export interface SceneDescription {
     moved: { id: string; dx: number; dz: number }[];
     unresolved: [string, string][];
   };
+  /**
+   * Sprint 20 (s20r): wires the 3D router could not route safely (a wire touching a wire or a
+   * terminal of another node, or passing through a part's body), sorted. The view says so plainly
+   * instead of letting misleading geometry stand unexplained. Set by deriveScene.
+   */
+  routeLimits?: string[];
 }
 
 /** Tallest point of each model (mm), for bounds, labels and wires passing over it. */
@@ -543,7 +549,7 @@ export function deriveScene(doc: ProjectDocument): SceneDescription {
   // earlier on a tie). Normally the first one is clean and nothing else is built.
   const first = buildScene(doc, true, 'fresh');
   let bad = touchingNodes(first).length;
-  if (!bad) return first;
+  if (!bad) return withLimits(doc, first);
   let best = first;
   const moved = first.separation.moved.length > 0;
   const options: [boolean, 'fresh' | 'legacy'][] = [
@@ -564,8 +570,74 @@ export function deriveScene(doc: ProjectDocument): SceneDescription {
       if (!n) break;
     }
   }
-  return best;
+  return withLimits(doc, best);
 }
+
+/** The scene with its routing limitations (`routeLimits`) recorded. */
+function withLimits(doc: ProjectDocument, s: SceneDescription): SceneDescription {
+  return { ...s, routeLimits: routeLimits(doc, s) };
+}
+
+/**
+ * Wires of a scene that are not routed safely (s20r): touching a wire or terminal of another
+ * node (touchingNodes), or passing through the routing volume of a part they do not end on, or
+ * through a raised volume of one they do (the same criterion as the 3D geometry tests:
+ * app/tests/support/scene3dChecks.ts). Checked on the route; the drawn cable never comes closer
+ * to anything than its route (wireShape.ts).
+ */
+export function routeLimits(doc: ProjectDocument, s: SceneDescription): string[] {
+  const out = new Set<string>();
+  for (const k of touchingNodes(s)) {
+    const [kind, rest] = [k.slice(0, 1), k.slice(2)];
+    if (kind === 'w') for (const id of rest.split('|')) out.add(id);
+    else out.add(rest.split('|')[0]!);
+  }
+  const obstacles = sceneObstacles(doc, s);
+  const m = WIRE.radiusMm * 0.8;
+  for (const w of s.wires) {
+    if (out.has(w.id)) continue;
+    const src = doc.layout.wires.find((x) => x.id === w.id);
+    if (!src) continue;
+    const own = [src.from, src.to].flatMap((e) =>
+      e.kind === 'terminal' ? [e.component, `${e.component}:${e.terminal}`] : [],
+    );
+    const ends = [w.points[0]!, w.points[w.points.length - 1]!];
+    const isOwn = (o: Obstacle) =>
+      own.includes(o.part) || own.some((x) => o.part.startsWith(`${x}:`));
+    const near = obstacles.filter((o) => !(isOwn(o) && o.bottom < 2));
+    let hit = false;
+    for (let i = 1; i < w.points.length && !hit; i++) {
+      const a = w.points[i - 1]!;
+      const b = w.points[i]!;
+      const n = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z) / 0.5));
+      for (let k = 0; k <= n && !hit; k++) {
+        const t = k / n;
+        const p = { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, z: a.z + (b.z - a.z) * t };
+        for (const o of near) {
+          if (isOwn(o) && ends.some((e) => Math.hypot(e.x - p.x, e.y - p.y, e.z - p.z) < 3))
+            continue;
+          if (
+            p.x > o.x0 - m &&
+            p.x < o.x1 + m &&
+            p.z > o.z0 - m &&
+            p.z < o.z1 + m &&
+            p.y > o.bottom - m &&
+            p.y < o.top + m
+          ) {
+            hit = true;
+            break;
+          }
+        }
+      }
+    }
+    if (hit) out.add(w.id);
+  }
+  return [...out].sort(byWireId);
+}
+const byWireId = (a: string, b: string) => {
+  const n = (x: string) => Number(/^W(\d+)$/.exec(x)?.[1] ?? Infinity);
+  return n(a) - n(b) || (a < b ? -1 : a > b ? 1 : 0);
+};
 
 /**
  * Pairs of electrically different things that touch in a scene's geometry: two wires of
