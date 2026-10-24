@@ -471,7 +471,7 @@ test('A13/A15: new Sprint 5 surfaces are Hebrew (technical tokens only), RTL chr
     // Sprint 15 (R4): PWM/LEDC, the SG90 part number, Arduino PWM API names and frequency/time units.
     /^(PWM|LEDC|SG90|TowerPro|analogWrite|ledcWrite|ledcDetach|digitalWrite|Hz|kHz|ms|us)$/,
     // Sprint 19B: gate functions and pin names (datasheet tokens), part numbers, packages, MicroPython, resistor series, the watt.
-    /^(AND|NAND|OR|NOT|SN74LVC1G\d\d|TI|SOT|Y|MicroPython|KOA|CF1|CFS1|W)$/,
+    /^(AND|NAND|OR|NOT|SN74LVC1G\d\d|SN74LVC08A?|TI|SOT|SOIC|Y|B|C|D|VCC|MicroPython|KOA|CF1|CFS1|W)$/,
     /^TBI$/,
     /^Lab$/,
     /^English$/,
@@ -487,7 +487,8 @@ test('A13/A15: new Sprint 5 surfaces are Hebrew (technical tokens only), RTL chr
   ];
   const words = async () => {
     const text = (await scannedText(page))
-      .replace(/Pull-up/g, ' ')
+      // Glossary terms (CLAUDE.md terminology rule): Pull-up / pull-down stay in English.
+      .replace(/[Pp]ull-(?:up|down)/g, ' ')
       .replace(/(?<![A-Za-z])[kmMGµunp]?[ΩVA](?![A-Za-z])/g, ' ');
     return [
       ...new Set(
