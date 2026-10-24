@@ -60,6 +60,9 @@ test('C on the real runtime: ESP32 → SN74LVC08A → LEDs; D2 only while the bu
   await expect(page.getByTestId('probe-reading-D2')).toContainText('0 A');
   await page.getByTestId('logic-gate-2').click();
   const hold = page.getByTestId('logic-control-SW1');
+  // In an ESP32 project the docked terminal covers the lower Inspector: scroll the control into
+  // view first, as a user would (a raw mouse press at an off-screen box lands on the terminal).
+  await hold.scrollIntoViewIfNeeded();
   const b = (await hold.boundingBox())!;
   await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
   await page.mouse.down();
