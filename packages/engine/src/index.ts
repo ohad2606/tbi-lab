@@ -82,6 +82,7 @@ export {
   evaluate,
   inputRowAt,
   outputStageAt,
+  quiescentAt,
   TABULATED_VCC_TOLERANCE_V,
   type LogicCard,
   type LogicFunction,

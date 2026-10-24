@@ -58,13 +58,15 @@ const REF_BANKS = FIRMWARE_ARTIFACTS.find((f) => f.id === 'tbi-banks')!.sha256;
  * Scripted MCU behaviour by artifact identity: the pinned reference images, and (Sprint 7) the
  * fake build service's stand-in images of the same curated sketches.
  */
-const SCRIPT: Record<string, 'gpio-proof' | 'banks' | 'logic-quad'> = {
+const SCRIPT: Record<string, 'gpio-proof' | 'banks' | 'logic-quad' | 'logic-override'> = {
   [REF_GPIO_PROOF]: 'gpio-proof',
   [STAND_IN.gpioProof]: 'gpio-proof',
   [REF_BANKS]: 'banks',
   [STAND_IN.banks]: 'banks',
   // L3: the esp32-logic-quad-and sketch (GPIO18 and GPIO19 driven HIGH in setup()).
   [STAND_IN.logicQuad]: 'logic-quad',
+  // Sprint 20 example D: LogicOrOverride.ino (GPIO18 toggled every second, GPIO19 read back).
+  [STAND_IN.logicOverride]: 'logic-override',
 };
 
 let capacity = 4096;
@@ -251,6 +253,15 @@ class FakeSession {
         this.drive(18, 1);
         this.drive(19, 1);
         this.serial += '1A=1 1B=1: D1 on; hold the button to light D2\r\n';
+      }
+    } else if (SCRIPT[this.req.artifact.sha256] === 'logic-override') {
+      // The sketch: setup() makes GPIO18 an output (GPIO19 stays an input); loop() toggles GPIO18,
+      // reads GPIO19 at once and prints it, then waits one second.
+      if (t % 1000 === 0) {
+        const a = ((t / 1000) % 2 === 0 ? 1 : 0) as 0 | 1;
+        this.drive(18, a);
+        const y = this.inputs.get(19) ?? 0;
+        this.serial += `A=${a} Y=${y}${!a && y ? ' (switch override)' : ''}\r\n`;
       }
     } else {
       if (this.step === 0) this.serial += 'TBI-BANKS-READY\r\nTBI-BANKS-SWEEP-DONE\r\n';

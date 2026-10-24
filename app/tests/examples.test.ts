@@ -33,7 +33,7 @@ const near = (a: number | null | undefined, e: number, rel = REL) => {
 const example = (id: string) => EXAMPLES.find((e) => e.id === id)!.document;
 
 describe('the example set', () => {
-  it('has the fourteen local examples and the eleven ESP32 examples, each titled in English and Hebrew', () => {
+  it('has the sixteen local examples and the thirteen ESP32 examples, each titled in English and Hebrew', () => {
     expect(EXAMPLES.map((e) => e.id)).toEqual([
       'ohms-law',
       'voltage-divider',
@@ -63,6 +63,10 @@ describe('the example set', () => {
       'esp32-logic-and',
       // Exploration Foundation L3 interop.
       'esp32-logic-quad-and',
+      // Sprint 20 logic examples.
+      'logic-and-switches',
+      'logic-cascade',
+      'esp32-logic-override',
     ]);
     for (const e of EXAMPLES) {
       for (const key of [e.titleKey, e.summaryKey]) {

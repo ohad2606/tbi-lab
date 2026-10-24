@@ -95,10 +95,25 @@ export interface LogicCard {
   readonly inputLeakageA: number;
   readonly ioffA?: number;
   readonly iccMaxA: number;
+  /**
+   * Sprint 20: the I_CC row's test conditions, exactly as tabulated. I_CC is a known bound ONLY
+   * there: the supply within `iccVcc`, and every input at GND or at `iccInputHigh` (volts, or
+   * `'vcc'` for "V_I = V_CC or GND"). Anywhere else the quiescent current is not characterized.
+   */
+  readonly iccVcc: readonly [number, number];
+  readonly iccInputHigh: number | 'vcc';
+  /** ΔI_CC: supply-current increment per input at V_CC − 0.6 V, max (A), over `deltaIccVcc`. */
+  readonly deltaIccA: number;
+  readonly deltaIccVcc: readonly [number, number];
   /** Input capacitance, typical (F): carried for the time kernel, not used at DC. */
   readonly ciF: number;
-  /** Propagation delay at V_CC = 3.3 V ± 0.3 V, C_L = 15 pF: [min, max] (s). Not simulated in L1. */
+  /**
+   * Propagation delay at V_CC = 3.3 V ± 0.3 V, −40 °C to 85 °C: [min, max] (s), from the table
+   * named by `tpdTable` (each sheet's own load condition). Carried for display, never simulated.
+   */
   readonly tpd33: readonly [number, number];
+  /** The switching table `tpd33` comes from (technical citation, language-neutral). */
+  readonly tpdTable: string;
 }
 
 /** The figures every SN74LVC1G push-pull gate of this set shares (identical in each sheet). */
@@ -137,6 +152,14 @@ const LVC1G_COMMON = {
   inputLeakageA: 5e-6,
   ioffA: 10e-6,
   iccMaxA: 10e-6,
+  // §5.5: I_CC "V_I = 5.5V or GND, I_O = 0, 1.65V to 5.5V" (NOT "V_CC or GND"); ΔI_CC "one input
+  // at V_CC − 0.6V, other inputs at V_CC or GND, 3V to 5.5V" (identical in the four sheets).
+  iccVcc: [1.65, 5.5] as const,
+  iccInputHigh: 5.5,
+  deltaIccA: 500e-6,
+  deltaIccVcc: [3.0, 5.5] as const,
+  // §5.6 "Switching Characteristics, C_L = 15pF", −40 °C to 85 °C, V_CC = 3.3V ± 0.3V.
+  tpdTable: '§5.6 C_L = 15 pF',
 };
 
 const TABLES =
@@ -287,4 +310,35 @@ export function outputStageAt(
     Math.max(...row.low.map((p) => p.amps)),
   );
   return { high, low, validA, tabulated: !!exact, model: exact ? 'tabulated' : 'class' };
+}
+
+/** An input within this of a rail (or of the I_CC test voltage) meets that test condition (V). */
+export const RAIL_V = 1e-3;
+
+/**
+ * Sprint 20: the quiescent supply current as the datasheet states it. I_CC is a known bound only
+ * under its own test conditions (the supply within `iccVcc`, every input at GND or at
+ * `iccInputHigh`); otherwise it is NOT characterized — never reported as known — and ΔI_CC is
+ * shown only where its row applies. The solve never includes I_CC.
+ */
+export function quiescentAt(
+  card: LogicCard,
+  vcc: number | null,
+  inputVolts: readonly (number | null)[],
+): { iccMaxA: number } | { iccCondition: 'notInputs' | 'notSupply'; deltaIccA?: number } {
+  if (vcc === null) return { iccCondition: 'notSupply' };
+  const inSupply =
+    vcc >= card.iccVcc[0] - TABULATED_VCC_TOLERANCE_V &&
+    vcc <= card.iccVcc[1] + TABULATED_VCC_TOLERANCE_V;
+  const high = card.iccInputHigh === 'vcc' ? vcc : card.iccInputHigh;
+  const atTest = inputVolts.every(
+    (v) => v !== null && (Math.abs(v) <= RAIL_V || Math.abs(v - high) <= RAIL_V),
+  );
+  if (inSupply && atTest) return { iccMaxA: card.iccMaxA };
+  const delta =
+    vcc >= card.deltaIccVcc[0] - TABULATED_VCC_TOLERANCE_V &&
+    vcc <= card.deltaIccVcc[1] + TABULATED_VCC_TOLERANCE_V
+      ? { deltaIccA: card.deltaIccA }
+      : {};
+  return { iccCondition: inSupply ? 'notInputs' : 'notSupply', ...delta };
 }

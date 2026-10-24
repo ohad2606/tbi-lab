@@ -1,0 +1,735 @@
+{
+  "format": "tbi-lab.project",
+  "schemaVersion": 3,
+  "projectId": "prj_exampleesp32logicoverride",
+  "createdWith": {
+    "app": "0.2.0",
+    "schemaVersion": 3
+  },
+  "createdAt": "2026-09-23T00:00:00.000Z",
+  "revision": {
+    "localRevision": 1,
+    "cloudRevision": null,
+    "baseRevision": null,
+    "updatedAt": "2026-09-23T00:00:00.000Z",
+    "deviceId": "dev_tbilab_examples"
+  },
+  "name": "ESP32: an OR gate with a manual override",
+  "components": [
+    {
+      "id": "PSU1",
+      "type": "instrument.lab_psu",
+      "typeVersion": 1,
+      "params": {
+        "setpointVoltage": {
+          "value": 3,
+          "unit": "volt"
+        },
+        "currentLimit": {
+          "value": 0.1,
+          "unit": "ampere"
+        },
+        "outputEnabled": true
+      }
+    },
+    {
+      "id": "GND1",
+      "type": "component.ground",
+      "typeVersion": 1,
+      "params": {}
+    },
+    {
+      "id": "U1",
+      "type": "board.esp32_devkitc_wroom32",
+      "typeVersion": 1,
+      "params": {
+        "firmware": "program"
+      }
+    },
+    {
+      "id": "U2",
+      "type": "logic.gate_or",
+      "typeVersion": 1,
+      "params": {
+        "model": "model.logic.sn74lvc1g32"
+      }
+    },
+    {
+      "id": "R1",
+      "type": "component.resistor",
+      "typeVersion": 1,
+      "params": {
+        "resistance": {
+          "value": 220,
+          "unit": "ohm"
+        }
+      }
+    },
+    {
+      "id": "D1",
+      "type": "component.led",
+      "typeVersion": 1,
+      "params": {
+        "model": "model.led.vishay_tlhr5400"
+      }
+    },
+    {
+      "id": "R2",
+      "type": "component.resistor",
+      "typeVersion": 1,
+      "params": {
+        "resistance": {
+          "value": 10000,
+          "unit": "ohm"
+        }
+      }
+    },
+    {
+      "id": "R3",
+      "type": "component.resistor",
+      "typeVersion": 1,
+      "params": {
+        "resistance": {
+          "value": 10000,
+          "unit": "ohm"
+        }
+      }
+    },
+    {
+      "id": "SW1",
+      "type": "component.toggle_switch",
+      "typeVersion": 1,
+      "params": {
+        "closed": false
+      }
+    },
+    {
+      "id": "GND2",
+      "type": "component.ground",
+      "typeVersion": 1,
+      "params": {}
+    },
+    {
+      "id": "GND3",
+      "type": "component.ground",
+      "typeVersion": 1,
+      "params": {}
+    },
+    {
+      "id": "GND4",
+      "type": "component.ground",
+      "typeVersion": 1,
+      "params": {}
+    },
+    {
+      "id": "GND5",
+      "type": "component.ground",
+      "typeVersion": 1,
+      "params": {}
+    },
+    {
+      "id": "GND6",
+      "type": "component.ground",
+      "typeVersion": 1,
+      "params": {}
+    }
+  ],
+  "nets": [
+    {
+      "id": "N_1",
+      "role": "ground",
+      "userName": null
+    },
+    {
+      "id": "N_2",
+      "role": "ground",
+      "userName": null
+    },
+    {
+      "id": "N_3",
+      "role": null,
+      "userName": null
+    },
+    {
+      "id": "N_4",
+      "role": null,
+      "userName": null
+    },
+    {
+      "id": "N_5",
+      "role": "ground",
+      "userName": null
+    },
+    {
+      "id": "N_6",
+      "role": null,
+      "userName": null
+    },
+    {
+      "id": "N_7",
+      "role": "ground",
+      "userName": null
+    },
+    {
+      "id": "N_8",
+      "role": "ground",
+      "userName": null
+    },
+    {
+      "id": "N_9",
+      "role": null,
+      "userName": null
+    },
+    {
+      "id": "N_10",
+      "role": null,
+      "userName": null
+    },
+    {
+      "id": "N_11",
+      "role": "ground",
+      "userName": null
+    }
+  ],
+  "connections": [
+    {
+      "component": "PSU1",
+      "terminal": "positive",
+      "net": "N_3"
+    },
+    {
+      "component": "PSU1",
+      "terminal": "negative",
+      "net": "N_1"
+    },
+    {
+      "component": "GND1",
+      "terminal": "ref",
+      "net": "N_1"
+    },
+    {
+      "component": "U1",
+      "terminal": "gnd",
+      "net": "N_2"
+    },
+    {
+      "component": "U1",
+      "terminal": "gpio19",
+      "net": "N_9"
+    },
+    {
+      "component": "U1",
+      "terminal": "gpio18",
+      "net": "N_4"
+    },
+    {
+      "component": "U2",
+      "terminal": "a",
+      "net": "N_4"
+    },
+    {
+      "component": "U2",
+      "terminal": "b",
+      "net": "N_6"
+    },
+    {
+      "component": "U2",
+      "terminal": "y",
+      "net": "N_9"
+    },
+    {
+      "component": "U2",
+      "terminal": "vcc",
+      "net": "N_3"
+    },
+    {
+      "component": "U2",
+      "terminal": "gnd",
+      "net": "N_8"
+    },
+    {
+      "component": "R1",
+      "terminal": "a",
+      "net": "N_9"
+    },
+    {
+      "component": "R1",
+      "terminal": "b",
+      "net": "N_10"
+    },
+    {
+      "component": "D1",
+      "terminal": "anode",
+      "net": "N_10"
+    },
+    {
+      "component": "D1",
+      "terminal": "cathode",
+      "net": "N_11"
+    },
+    {
+      "component": "R2",
+      "terminal": "a",
+      "net": "N_6"
+    },
+    {
+      "component": "R2",
+      "terminal": "b",
+      "net": "N_7"
+    },
+    {
+      "component": "R3",
+      "terminal": "a",
+      "net": "N_4"
+    },
+    {
+      "component": "R3",
+      "terminal": "b",
+      "net": "N_5"
+    },
+    {
+      "component": "SW1",
+      "terminal": "a",
+      "net": "N_6"
+    },
+    {
+      "component": "SW1",
+      "terminal": "b",
+      "net": "N_3"
+    },
+    {
+      "component": "GND2",
+      "terminal": "ref",
+      "net": "N_8"
+    },
+    {
+      "component": "GND3",
+      "terminal": "ref",
+      "net": "N_11"
+    },
+    {
+      "component": "GND4",
+      "terminal": "ref",
+      "net": "N_7"
+    },
+    {
+      "component": "GND5",
+      "terminal": "ref",
+      "net": "N_5"
+    },
+    {
+      "component": "GND6",
+      "terminal": "ref",
+      "net": "N_2"
+    }
+  ],
+  "layout": {
+    "components": {
+      "PSU1": {
+        "x": -520,
+        "y": 0,
+        "rotation": 0
+      },
+      "GND1": {
+        "x": -480,
+        "y": 120,
+        "rotation": 0
+      },
+      "U1": {
+        "x": -100,
+        "y": 0,
+        "rotation": 0
+      },
+      "U2": {
+        "x": 440,
+        "y": 0,
+        "rotation": 0
+      },
+      "R1": {
+        "x": 560,
+        "y": 0,
+        "rotation": 0
+      },
+      "D1": {
+        "x": 680,
+        "y": 0,
+        "rotation": 0
+      },
+      "R2": {
+        "x": 240,
+        "y": 100,
+        "rotation": 90
+      },
+      "R3": {
+        "x": 120,
+        "y": 40,
+        "rotation": 90
+      },
+      "SW1": {
+        "x": 320,
+        "y": 120,
+        "rotation": 90
+      },
+      "GND2": {
+        "x": 440,
+        "y": 80,
+        "rotation": 0
+      },
+      "GND3": {
+        "x": 760,
+        "y": 60,
+        "rotation": 0
+      },
+      "GND4": {
+        "x": 240,
+        "y": 180,
+        "rotation": 0
+      },
+      "GND5": {
+        "x": 120,
+        "y": 120,
+        "rotation": 0
+      },
+      "GND6": {
+        "x": 40,
+        "y": -140,
+        "rotation": 0
+      }
+    },
+    "wires": [
+      {
+        "id": "W1",
+        "from": {
+          "kind": "terminal",
+          "component": "PSU1",
+          "terminal": "negative"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "GND1",
+          "terminal": "ref"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W2",
+        "from": {
+          "kind": "terminal",
+          "component": "U1",
+          "terminal": "gnd"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "GND6",
+          "terminal": "ref"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W3",
+        "from": {
+          "kind": "terminal",
+          "component": "PSU1",
+          "terminal": "positive"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "U2",
+          "terminal": "vcc"
+        },
+        "vertices": [
+          {
+            "x": -440,
+            "y": -20
+          },
+          {
+            "x": -440,
+            "y": -260
+          },
+          {
+            "x": 440,
+            "y": -260
+          }
+        ]
+      },
+      {
+        "id": "W4",
+        "from": {
+          "kind": "terminal",
+          "component": "SW1",
+          "terminal": "b"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "PSU1",
+          "terminal": "positive"
+        },
+        "vertices": [
+          {
+            "x": 320,
+            "y": 260
+          },
+          {
+            "x": -440,
+            "y": 260
+          },
+          {
+            "x": -440,
+            "y": -20
+          }
+        ]
+      },
+      {
+        "id": "W5",
+        "from": {
+          "kind": "terminal",
+          "component": "U1",
+          "terminal": "gpio18"
+        },
+        "to": {
+          "kind": "junction",
+          "junction": "J1"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W6",
+        "from": {
+          "kind": "junction",
+          "junction": "J1"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "U2",
+          "terminal": "a"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W7",
+        "from": {
+          "kind": "terminal",
+          "component": "R3",
+          "terminal": "a"
+        },
+        "to": {
+          "kind": "junction",
+          "junction": "J1"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W8",
+        "from": {
+          "kind": "terminal",
+          "component": "R3",
+          "terminal": "b"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "GND5",
+          "terminal": "ref"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W9",
+        "from": {
+          "kind": "terminal",
+          "component": "SW1",
+          "terminal": "a"
+        },
+        "to": {
+          "kind": "junction",
+          "junction": "J2"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W10",
+        "from": {
+          "kind": "junction",
+          "junction": "J2"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "U2",
+          "terminal": "b"
+        },
+        "vertices": [
+          {
+            "x": 320,
+            "y": 20
+          }
+        ]
+      },
+      {
+        "id": "W11",
+        "from": {
+          "kind": "terminal",
+          "component": "R2",
+          "terminal": "a"
+        },
+        "to": {
+          "kind": "junction",
+          "junction": "J2"
+        },
+        "vertices": [
+          {
+            "x": 240,
+            "y": 60
+          }
+        ]
+      },
+      {
+        "id": "W12",
+        "from": {
+          "kind": "terminal",
+          "component": "R2",
+          "terminal": "b"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "GND4",
+          "terminal": "ref"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W13",
+        "from": {
+          "kind": "terminal",
+          "component": "U2",
+          "terminal": "gnd"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "GND2",
+          "terminal": "ref"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W14",
+        "from": {
+          "kind": "terminal",
+          "component": "U2",
+          "terminal": "y"
+        },
+        "to": {
+          "kind": "junction",
+          "junction": "J3"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W15",
+        "from": {
+          "kind": "terminal",
+          "component": "R1",
+          "terminal": "b"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "D1",
+          "terminal": "anode"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W16",
+        "from": {
+          "kind": "terminal",
+          "component": "D1",
+          "terminal": "cathode"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "GND3",
+          "terminal": "ref"
+        },
+        "vertices": [
+          {
+            "x": 760,
+            "y": 0
+          }
+        ]
+      },
+      {
+        "id": "W17",
+        "from": {
+          "kind": "junction",
+          "junction": "J3"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "R1",
+          "terminal": "a"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W18",
+        "from": {
+          "kind": "terminal",
+          "component": "U1",
+          "terminal": "gpio19"
+        },
+        "to": {
+          "kind": "junction",
+          "junction": "J3"
+        },
+        "vertices": [
+          {
+            "x": 20,
+            "y": -40
+          },
+          {
+            "x": 20,
+            "y": -120
+          },
+          {
+            "x": 500,
+            "y": -120
+          }
+        ]
+      }
+    ],
+    "junctions": [
+      {
+        "id": "J1",
+        "x": 120,
+        "y": -20
+      },
+      {
+        "id": "J2",
+        "x": 320,
+        "y": 60
+      },
+      {
+        "id": "J3",
+        "x": 500,
+        "y": 0
+      }
+    ]
+  },
+  "idCounters": {
+    "PSU": 1,
+    "GND": 6,
+    "W": 18,
+    "N": 11,
+    "U": 2,
+    "R": 3,
+    "D": 1,
+    "SW": 1,
+    "J": 3
+  },
+  "programs": {
+    "U1": {
+      "language": "arduino-cpp",
+      "profile": "esp32-arduino-3.3.12",
+      "fileName": "sketch.ino",
+      "text": "/*\n * TBI Lab example: an ESP32 output and a manual switch through a logic OR gate.\n *\n * GPIO18 drives input A of an SN74LVC1G32 OR gate; the toggle switch drives input B (a manual\n * override). Each input has a 10 kOhm pull-down, so it is defined before setup() runs. The gate's\n * output lights the LED through 220 Ohm and is read back on GPIO19. The gate runs from the bench\n * supply at 3.0 V, the supply where its datasheet guarantees the output for real loads.\n * The firmware blinks GPIO18 and prints what the gate's output really is: with the switch closed\n * the LED stays on whatever the ESP32 does.\n */\nconst int A_PIN = 18;\nconst int Y_PIN = 19;\n\nvoid setup() {\n  Serial.begin(115200);\n  pinMode(A_PIN, OUTPUT);\n  pinMode(Y_PIN, INPUT);\n}\n\nvoid loop() {\n  static bool a = false;\n  a = !a;\n  digitalWrite(A_PIN, a ? HIGH : LOW);\n  int y = digitalRead(Y_PIN);\n  Serial.print(\"A=\");\n  Serial.print(a ? 1 : 0);\n  Serial.print(\" Y=\");\n  Serial.print(y);\n  if (!a && y) Serial.print(\" (switch override)\");\n  Serial.println();\n  delay(1000);\n}\n"
+    }
+  }
+}

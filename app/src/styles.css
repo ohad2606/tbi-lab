@@ -3608,3 +3608,66 @@ select {
   background: rgba(11, 87, 208, 0.1);
   font-weight: 600;
 }
+
+/* Sprint 20 (Phase 5): the Inspector's logic panel — compact, RTL-safe (logical properties). */
+.logic-state h3 {
+  margin-block: 0.75rem 0.25rem;
+}
+.logic-state h4 {
+  margin-block: 0.5rem 0.25rem;
+  font-size: 0.9rem;
+}
+.logic-state .logic-gate-select {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-block: 0.25rem;
+}
+.logic-state .logic-gate-button {
+  padding-block: 0.15rem;
+  padding-inline: 0.4rem;
+  border: 1px solid var(--grid);
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+}
+.logic-state .logic-gate-button[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: rgba(11, 87, 208, 0.1);
+  font-weight: 600;
+}
+.logic-state tr.logic-why td {
+  border-block-end: 1px solid var(--grid);
+  padding-block-end: 0.3rem;
+}
+.logic-state tr[data-level] td {
+  border-block-end: none;
+}
+.logic-state .logic-level-undefined td,
+.logic-state .logic-level-floating td,
+.logic-state .logic-level-out_of_range td,
+.logic-state .logic-level-unsupported td,
+.logic-state .logic-level-unknown td {
+  color: var(--warning-ink);
+  font-weight: 600;
+}
+.logic-state .logic-truth tr.occupied td {
+  background: rgba(11, 87, 208, 0.04);
+}
+.logic-state .logic-controls ul {
+  list-style: none;
+  padding-inline-start: 0;
+  margin-block: 0.25rem;
+  display: grid;
+  gap: 0.25rem;
+}
+.logic-state .logic-controls .button[aria-pressed='true'] {
+  background: rgba(11, 87, 208, 0.12);
+}
+.logic-state .logic-rows caption {
+  caption-side: bottom;
+  text-align: start;
+}
+.logic-state .logic-gate-summary {
+  margin-inline-start: 0.35em;
+}

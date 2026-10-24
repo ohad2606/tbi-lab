@@ -63,6 +63,8 @@ describe('locale bundles', () => {
       // Sprint 15: a PWM pad's waveform (only placeholders and the PWM token) and a product name.
       // L2: the logic levels in the state inspection (technical tokens, as HIGH / LOW).
       'logic.inspect.level.high',
+      // Sprint 20: an idle pin's level placeholder (a dash, as probe.noValue).
+      'logic.inspect.level.idle',
       'logic.inspect.level.low',
       'mcu.pwm.wave',
       'model.servo.sg90',
@@ -82,8 +84,6 @@ describe('locale bundles', () => {
       'sim.part.short.green',
       'sim.part.short.red',
       // Sprint 19B: logic levels and gate input letters are technical tokens (as HIGH / LOW).
-      'sim.part.state.firstUnknownInput.a',
-      'sim.part.state.firstUnknownInput.b',
       'sim.part.state.gateOutput.high',
       'sim.part.state.gateOutput.low',
       'sim.part.state.input_a.high',

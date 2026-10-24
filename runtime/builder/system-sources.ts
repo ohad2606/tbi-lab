@@ -19,6 +19,8 @@ import sweep from '../../app/src/examples/data/esp32-servo-sweep.json' with { ty
 import logicAnd from '../../app/src/examples/data/esp32-logic-and.json' with { type: 'json' };
 // Exploration Foundation L3 interop.
 import logicQuadAnd from '../../app/src/examples/data/esp32-logic-quad-and.json' with { type: 'json' };
+// Sprint 20 logic example D (ESP32 + manual input + OR gate).
+import logicOverride from '../../app/src/examples/data/esp32-logic-override.json' with { type: 'json' };
 
 const programsOf = (doc: unknown): ProgramSource[] =>
   Object.values((doc as { programs?: Record<string, ProgramSource> }).programs ?? {});
@@ -34,6 +36,7 @@ function systemPrograms(): ProgramSource[] {
     ...programsOf(sweep),
     ...programsOf(logicAnd),
     ...programsOf(logicQuadAnd),
+    ...programsOf(logicOverride),
     starterProgram('board.esp32_devkitc_wroom32'),
   ].filter((p): p is ProgramSource => !!p);
 }

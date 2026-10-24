@@ -32,6 +32,7 @@ describe('no shipped example raises a pad over-voltage warning (T-D3)', () => {
       const gpios = attachments.map((a) => a.gpio);
       let combos = 0;
       let refused = 0;
+      const refusedAt: number[] = [];
       for (let n = 0; n < MODES.length ** gpios.length; n++) {
         const s = new EngineSession(circuit, { pins: attachments });
         let k = n;
@@ -45,6 +46,7 @@ describe('no shipped example raises a pad over-voltage warning (T-D3)', () => {
         // so that combination is refused by name, never shown as a number.
         if (!out.ok && out.error.code === 'logic_output_uncharacterized') {
           refused++;
+          refusedAt.push(n);
           continue;
         }
         if (!out.ok) continue; // e.g. a relay chattering is not reachable from these examples
@@ -56,6 +58,11 @@ describe('no shipped example raises a pad over-voltage warning (T-D3)', () => {
       expect(combos + refused).toBe(MODES.length ** gpios.length);
       // Only X1: with the button released the gate's output is LOW, so pad 4 driven HIGH against it
       // contends (× the 3 modes of GPIO18); driven LOW it agrees with the gate and solves.
-      expect(refused, e.id).toBe(e.id === 'esp32-logic-and' ? 3 : 0);
+      // Sprint 20, esp32-logic-override (switch open): read-back pad GPIO19 driven HIGH against
+      // the gate's LOW (GPIO18 input → pulled down, or LOW: 2), driven LOW against its HIGH (1),
+      // and driven HIGH (3.3 V) against its HIGH at 3.0 V: Y forced above the gate's own V_CC, a
+      // wrong-way current no test point covers (1).
+      const expected: Record<string, number> = { 'esp32-logic-and': 3, 'esp32-logic-override': 4 };
+      expect(refused, `${e.id} ${refusedAt}`).toBe(expected[e.id] ?? 0);
     });
 });

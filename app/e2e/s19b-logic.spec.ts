@@ -5,8 +5,8 @@
  * - an SN74LVC1G08 AND gate at 3.0 V from the bench supply, inputs from two toggle switches with
  *   10 kΩ pull-downs, the output lighting an LED through 220 Ω: both closed → HIGH and the LED
  *   current shown; one open → LOW, no current;
- * - an input held between V_IL and V_IH by a divider: the input and the output are UNKNOWN (X),
- *   and the LED's result is shown as unknown (never a number);
+ * - an input held between V_IL and V_IH by a divider: the Run is refused by name (Sprint 20), and
+ *   the Inspector explains the pin against V_IL / V_IH (never a level);
  * - a floating input refuses the Run, naming the pin (EN and HE);
  * - the schematic and 3D views draw the gate with its real supply pins.
  */
@@ -128,19 +128,24 @@ test('AND gate at 3.0 V: both inputs HIGH light the LED; one LOW does not', asyn
   await expect(page.getByTestId('result-state-gateOutput')).toHaveText('LOW');
 });
 
-test('an input in the undefined band is unknown (X); what it decides is unknown, never a number', async ({
+test('an input in the undefined band refuses the Run by name (Sprint 20: no level, no controlling-input guess)', async ({
   page,
 }) => {
   const x = andCircuit('prj_s19bAndX', 'divider', 'closed');
   await openImported(page, x.doc);
   await waitSaved(page);
-  await run(page);
+  await page.getByTestId('sim-run').click();
+  const err = page.getByTestId('sim-error');
+  await expect(err).toContainText(/input\W+A\W+is at\W+1\.5 V/);
+  await expect(err).toContainText('V_IL 800 mV');
+  await expect(err).toContainText('V_IH 2 V');
+  // The Inspector explains the pin: its voltage, the thresholds at this supply, never a level.
   await inspect(page, x.gate);
-  await expect(page.getByTestId('result-state-input_a')).toContainText('unknown (X)');
-  await expect(page.getByTestId('result-state-gateOutput')).toContainText('unknown (X)');
-  await inspect(page, x.led);
-  await expect(page.getByTestId('result-unknown')).toBeVisible();
-  await expect(page.getByTestId('result-current')).not.toContainText('mA');
+  await expect(page.getByTestId('logic-level-a')).toHaveText('undefined (between V_IL and V_IH)');
+  await expect(page.getByTestId('logic-volts-a')).toHaveText('1.5 V');
+  await expect(page.getByTestId('logic-why-a')).toContainText('V_IL 800 mV');
+  await expect(page.getByTestId('logic-level-y')).toHaveText('not simulated');
+  await expect(page.getByTestId('logic-truth')).not.toContainText('●');
 });
 
 test('a floating input refuses the Run, naming the pin, in English and Hebrew', async ({

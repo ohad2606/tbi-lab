@@ -18,6 +18,9 @@ import esp32LedFade from './data/esp32-led-fade.json';
 import esp32ServoSweep from './data/esp32-servo-sweep.json';
 import esp32LogicAnd from './data/esp32-logic-and.json';
 import esp32LogicQuadAnd from './data/esp32-logic-quad-and.json';
+import esp32LogicOverride from './data/esp32-logic-override.json';
+import logicAndSwitches from './data/logic-and-switches.json';
+import logicCascade from './data/logic-cascade.json';
 import ledColours from './data/led-colours.json';
 import ledCurrent from './data/led-current.json';
 import ledMatrix from './data/led-matrix.json';
@@ -58,6 +61,9 @@ export const EXAMPLE_DOCUMENTS: Record<string, ProjectDocument> = {
   'esp32-servo-sweep': esp32ServoSweep as unknown as ProjectDocument,
   'esp32-logic-and': esp32LogicAnd as unknown as ProjectDocument,
   'esp32-logic-quad-and': esp32LogicQuadAnd as unknown as ProjectDocument,
+  'logic-and-switches': logicAndSwitches as unknown as ProjectDocument,
+  'logic-cascade': logicCascade as unknown as ProjectDocument,
+  'esp32-logic-override': esp32LogicOverride as unknown as ProjectDocument,
 };
 
 /** The examples with their documents (tests and tools; the app loads documents lazily). */

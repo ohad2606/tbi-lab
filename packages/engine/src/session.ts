@@ -902,12 +902,14 @@ export class EngineSession {
         .reduce((sum, p) => sum + (p.model.unknownCurrentMaxA?.(p.ctx, p.state) ?? Infinity), 0);
     // The refusals these states imply, applied by solveUnchecked once they have settled.
     this.passRefusal = null;
+    // Sprint 20: the root cause first. A part refusing because an undetermined level reaches it
+    // (`logic_unknown_state`) is a consequence of another part's refusal when there is one.
     for (const p of parts) {
       const r = p.model.refusal?.(p.ctx, p.state);
-      if (r) {
+      if (!r) continue;
+      if (!this.passRefusal || this.passRefusal.code === 'logic_unknown_state')
         this.passRefusal = r;
-        break;
-      }
+      if (r.code !== 'logic_unknown_state') break;
     }
     if (!this.passRefusal) {
       // A stateful part whose state would be decided from an unknown level (a relay coil, a
@@ -985,6 +987,28 @@ export class EngineSession {
       islandless.filter((e) => e.nodes.some((n) => unknown.nodes.has(n))).map((e) => e.key),
     );
     const floating = islandless.filter((e) => !excluded.has(e.key));
+    // Sprint 20: which nodes something actually DRIVES. An ESP32 pad in plain input mode is a
+    // linear leakage to GND in the approved pin model (esp32Gpio.ts: "so a floating input node
+    // always has a DC path and the nodal matrix stays non-singular"): a numerical reference, not a
+    // source. A node whose only path to GND is that leakage is undriven: a logic input there is
+    // floating, never the 0 V the leakage gives it. Every conducting element, every driven pad
+    // (output, pull-up, pull-down) and the reference itself drive; input-mode pads do not.
+    const drivenUf = new UnionFind();
+    for (const e of elements)
+      if (e.active && !excluded.has(e.key))
+        for (const n of e.nodes.slice(1)) drivenUf.union(e.nodes[0], n);
+    for (const { pin, node } of pinNodes)
+      if (this.pinModes.get(pin.gpio) !== 'input') drivenUf.union(node, REF);
+    const undriven = (node: string): { inputPads: number[] } | null => {
+      if (node === REF || drivenUf.find(node) === drivenUf.find(REF)) return null;
+      const root = drivenUf.find(node);
+      return {
+        inputPads: pinNodes
+          .filter(({ node: n }) => drivenUf.find(n) === root)
+          .map(({ pin }) => pin.gpio)
+          .sort((a, b) => a - b),
+      };
+    };
     if (floating.length) {
       const ids = floating.map((e) => e.component.id);
       const nets = [
@@ -1167,6 +1191,7 @@ export class EngineSession {
               : clean(-(currents.get(key) ?? 0)), // 0 V branch: first node -> second
         device: (key) => devices.get(key),
         unknown: (terminal) => unknown.nodes.has(p.ctx.node(terminal)),
+        undriven: (terminal) => undriven(p.ctx.node(terminal)),
         deviceTerminalCurrents: (key) => {
           const d = devices.get(key);
           if (!(d instanceof Npn) || !xSolution.length) return undefined;

@@ -35,7 +35,7 @@ import { NEUTRAL_HEX, resolveWireColors } from '../views/wireColors.js';
 import { rotateRouted } from './routing.js';
 import { probeTargetName, readProbe, type Probe } from './probes.js';
 import { McuPanel } from './McuPanel.js';
-import { LogicStateView } from './LogicStateView.js';
+import { isLogicType, LogicStateView } from './LogicStateView.js';
 import { ValueControl } from './ValueControl.js';
 
 interface InspectorProps {
@@ -182,6 +182,23 @@ export function Inspector({ probes, onRemoveProbe, onClearProbes }: InspectorPro
         <PsuPanel component={single} readOnly={!!readOnly} />
       ) : (
         single && <ComponentProperties component={single} readOnly={!!readOnly} />
+      )}
+      {single && isLogicType(single.type) && (
+        // Sprint 20 (Phase 5): the truth table and pin states, discoverable before any Run;
+        // live while running; the refusal explained by pin when the Run was refused for it.
+        <LogicStateView
+          key={single.id}
+          component={single}
+          logic={outcome?.components[single.id]?.logic ?? null}
+          failure={
+            sim.status === 'failed' &&
+            sim.failure.kind === 'engine' &&
+            (sim.failure.error.components ?? []).includes(single.id)
+              ? sim.failure.error
+              : null
+          }
+          running={sim.status === 'running'}
+        />
       )}
       {single && single.type !== 'instrument.lab_psu' && outcome && (
         <ComponentResultView outcome={outcome} component={single} />
@@ -568,8 +585,6 @@ function ComponentResultView({
             />
           </dl>
         )}
-      {/* L2: a logic part's truth-table / state inspection (the engine's levels, never guessed). */}
-      {r?.logic && <LogicStateView logic={r.logic} />}
       {pwm && (
         <p class="muted small" data-testid="result-pwm-note">
           {t('sim.results.pwmNote')}
