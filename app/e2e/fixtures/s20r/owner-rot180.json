@@ -1,0 +1,385 @@
+{
+  "format": "tbi-lab.project",
+  "schemaVersion": 4,
+  "projectId": "prj_s20rowner",
+  "createdWith": {
+    "app": "0",
+    "schemaVersion": 4
+  },
+  "createdAt": "2026-10-23T00:00:00.000Z",
+  "revision": {
+    "localRevision": 1,
+    "cloudRevision": null,
+    "baseRevision": null,
+    "updatedAt": "2026-10-23T00:00:00.000Z",
+    "deviceId": "dev_s20"
+  },
+  "name": "Owner AND gate (rot 180)",
+  "components": [
+    {
+      "id": "PSU1",
+      "type": "instrument.lab_psu",
+      "typeVersion": 1,
+      "params": {
+        "setpointVoltage": {
+          "value": 5,
+          "unit": "volt"
+        },
+        "currentLimit": {
+          "value": 0.1,
+          "unit": "ampere"
+        },
+        "outputEnabled": true
+      }
+    },
+    {
+      "id": "GND1",
+      "type": "component.ground",
+      "typeVersion": 1,
+      "params": {}
+    },
+    {
+      "id": "U1",
+      "type": "logic.gate_and",
+      "typeVersion": 1,
+      "params": {
+        "model": "model.logic.sn74lvc1g08"
+      }
+    },
+    {
+      "id": "R1",
+      "type": "component.resistor",
+      "typeVersion": 1,
+      "params": {
+        "resistance": {
+          "value": 1000,
+          "unit": "ohm"
+        }
+      }
+    },
+    {
+      "id": "D1",
+      "type": "component.led",
+      "typeVersion": 1,
+      "params": {
+        "model": "model.led.vishay_tlhr5400"
+      }
+    }
+  ],
+  "nets": [
+    {
+      "id": "N_1",
+      "role": "ground",
+      "userName": null
+    },
+    {
+      "id": "N_2",
+      "role": null,
+      "userName": null
+    },
+    {
+      "id": "N_3",
+      "role": null,
+      "userName": null
+    },
+    {
+      "id": "N_4",
+      "role": null,
+      "userName": null
+    }
+  ],
+  "connections": [
+    {
+      "component": "PSU1",
+      "terminal": "positive",
+      "net": "N_2"
+    },
+    {
+      "component": "PSU1",
+      "terminal": "negative",
+      "net": "N_1"
+    },
+    {
+      "component": "GND1",
+      "terminal": "ref",
+      "net": "N_1"
+    },
+    {
+      "component": "U1",
+      "terminal": "a",
+      "net": "N_2"
+    },
+    {
+      "component": "U1",
+      "terminal": "b",
+      "net": "N_2"
+    },
+    {
+      "component": "U1",
+      "terminal": "y",
+      "net": "N_3"
+    },
+    {
+      "component": "U1",
+      "terminal": "vcc",
+      "net": "N_2"
+    },
+    {
+      "component": "U1",
+      "terminal": "gnd",
+      "net": "N_1"
+    },
+    {
+      "component": "R1",
+      "terminal": "a",
+      "net": "N_3"
+    },
+    {
+      "component": "R1",
+      "terminal": "b",
+      "net": "N_4"
+    },
+    {
+      "component": "D1",
+      "terminal": "anode",
+      "net": "N_4"
+    },
+    {
+      "component": "D1",
+      "terminal": "cathode",
+      "net": "N_1"
+    }
+  ],
+  "layout": {
+    "components": {
+      "PSU1": {
+        "x": -120,
+        "y": 0,
+        "rotation": 0
+      },
+      "GND1": {
+        "x": -80,
+        "y": 120,
+        "rotation": 0
+      },
+      "U1": {
+        "x": 160,
+        "y": 0,
+        "rotation": 180
+      },
+      "R1": {
+        "x": 360,
+        "y": 120,
+        "rotation": 0
+      },
+      "D1": {
+        "x": 520,
+        "y": 120,
+        "rotation": 0
+      }
+    },
+    "wires": [
+      {
+        "id": "W1",
+        "from": {
+          "kind": "terminal",
+          "component": "PSU1",
+          "terminal": "negative"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "GND1",
+          "terminal": "ref"
+        },
+        "vertices": [],
+        "auto": {
+          "waypoints": []
+        }
+      },
+      {
+        "id": "W2",
+        "from": {
+          "kind": "terminal",
+          "component": "PSU1",
+          "terminal": "positive"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "U1",
+          "terminal": "vcc"
+        },
+        "vertices": [
+          {
+            "x": -60,
+            "y": -20
+          },
+          {
+            "x": -60,
+            "y": 40
+          }
+        ],
+        "auto": {
+          "waypoints": []
+        }
+      },
+      {
+        "id": "W3",
+        "from": {
+          "kind": "terminal",
+          "component": "U1",
+          "terminal": "gnd"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "PSU1",
+          "terminal": "negative"
+        },
+        "vertices": [
+          {
+            "x": -40,
+            "y": -40
+          },
+          {
+            "x": -40,
+            "y": 20
+          }
+        ],
+        "auto": {
+          "waypoints": []
+        }
+      },
+      {
+        "id": "W4",
+        "from": {
+          "kind": "terminal",
+          "component": "U1",
+          "terminal": "a"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "PSU1",
+          "terminal": "positive"
+        },
+        "vertices": [
+          {
+            "x": 220,
+            "y": 20
+          },
+          {
+            "x": 220,
+            "y": -60
+          },
+          {
+            "x": -80,
+            "y": -60
+          }
+        ],
+        "auto": {
+          "waypoints": []
+        }
+      },
+      {
+        "id": "W5",
+        "from": {
+          "kind": "terminal",
+          "component": "U1",
+          "terminal": "b"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "PSU1",
+          "terminal": "positive"
+        },
+        "vertices": [
+          {
+            "x": 200,
+            "y": -60
+          },
+          {
+            "x": -80,
+            "y": -60
+          }
+        ],
+        "auto": {
+          "waypoints": []
+        }
+      },
+      {
+        "id": "W6",
+        "from": {
+          "kind": "terminal",
+          "component": "U1",
+          "terminal": "y"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "R1",
+          "terminal": "a"
+        },
+        "vertices": [
+          {
+            "x": 120,
+            "y": 120
+          }
+        ],
+        "auto": {
+          "waypoints": []
+        }
+      },
+      {
+        "id": "W7",
+        "from": {
+          "kind": "terminal",
+          "component": "R1",
+          "terminal": "b"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "D1",
+          "terminal": "anode"
+        },
+        "vertices": [],
+        "auto": {
+          "waypoints": []
+        }
+      },
+      {
+        "id": "W8",
+        "from": {
+          "kind": "terminal",
+          "component": "D1",
+          "terminal": "cathode"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "PSU1",
+          "terminal": "negative"
+        },
+        "vertices": [
+          {
+            "x": 560,
+            "y": 60
+          },
+          {
+            "x": -80,
+            "y": 60
+          }
+        ],
+        "auto": {
+          "waypoints": []
+        }
+      }
+    ],
+    "junctions": []
+  },
+  "idCounters": {
+    "PSU": 1,
+    "GND": 1,
+    "U": 1,
+    "R": 1,
+    "D": 1,
+    "W": 8,
+    "N": 4
+  },
+  "programs": {}
+}

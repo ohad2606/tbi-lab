@@ -695,6 +695,29 @@ export function shapeWires(
     }
     return g;
   };
+  const enteredMemo = new Map<THREE.Vector3[], Set<string>>();
+  /** Whether the route's samples come over a body's footprint anywhere (memoized per route). */
+  const entered = (original: THREE.Vector3[], b: (typeof bodies)[number]) => {
+    let set = enteredMemo.get(original);
+    if (!set) {
+      set = new Set(
+        bodies
+          .filter((q) =>
+            original.some(
+              (p) =>
+                p.x > q.r.x0 - WIRE_RADIUS &&
+                p.x < q.r.x1 + WIRE_RADIUS &&
+                p.z > q.r.z0 - WIRE_RADIUS &&
+                p.z < q.r.z1 + WIRE_RADIUS &&
+                p.y < q.h + WIRE_RADIUS + BODY_GAP,
+            ),
+          )
+          .map((q) => q.id),
+      );
+      enteredMemo.set(original, set);
+    }
+    return set.has(b.id);
+  };
   const ok = (i: number, ss: THREE.Vector3[], original: THREE.Vector3[]): string | null => {
     const w = wires[i]!;
     const mine = endsOf(i);
@@ -721,6 +744,9 @@ export function shapeWires(
           p.z < b.r.z1 + WIRE_RADIUS;
         if (inPlan && p.y < b.h + WIRE_RADIUS + BODY_GAP) {
           // Was the route itself this low here? Then the shape changed nothing that matters.
+          // (s20r: a body the route never came over at all is never entered: a bench-level
+          // route running just beside a ground plate was let bow sideways onto it.)
+          if (!entered(original, b)) return `body ${b.id}`;
           const before = original.reduce(
             (m, q) => (Math.hypot(q.x - p.x, q.z - p.z) < 1 ? Math.min(m, q.y) : m),
             Infinity,

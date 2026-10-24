@@ -251,6 +251,12 @@ export interface SceneDescription {
     moved: { id: string; dx: number; dz: number }[];
     unresolved: [string, string][];
   };
+  /**
+   * Sprint 20 (s20r): wires the 3D router could not route safely (a wire touching a wire or a
+   * terminal of another node, or passing through a part's body), sorted. The view says so plainly
+   * instead of letting misleading geometry stand unexplained. Set by deriveScene.
+   */
+  routeLimits?: string[];
 }
 
 /** Tallest point of each model (mm), for bounds, labels and wires passing over it. */
@@ -542,8 +548,9 @@ export function deriveScene(doc: ProjectDocument): SceneDescription {
   // then the 2D-derived placement) and the one with the fewest such contacts is kept (the
   // earlier on a tie). Normally the first one is clean and nothing else is built.
   const first = buildScene(doc, true, 'fresh');
-  let bad = touchingNodes(first).length;
-  if (!bad) return first;
+  const touching = touchingNodes(first);
+  let bad = touching.length;
+  if (!bad) return withLimits(doc, first, touching);
   let best = first;
   const moved = first.separation.moved.length > 0;
   const options: [boolean, 'fresh' | 'legacy'][] = [
@@ -564,8 +571,93 @@ export function deriveScene(doc: ProjectDocument): SceneDescription {
       if (!n) break;
     }
   }
-  return best;
+  return withLimits(doc, best);
 }
+
+/** The scene with its routing limitations (`routeLimits`) recorded. */
+function withLimits(
+  doc: ProjectDocument,
+  s: SceneDescription,
+  touching?: string[],
+): SceneDescription {
+  return { ...s, routeLimits: routeLimits(doc, s, touching) };
+}
+
+/**
+ * Wires of a scene that are not routed safely (s20r): touching a wire or terminal of another
+ * node (touchingNodes), or passing through the routing volume of a part they do not end on, or
+ * through a raised volume of one they do (the same criterion as the 3D geometry tests:
+ * app/tests/support/scene3dChecks.ts). Checked on the route; the drawn cable never comes closer
+ * to anything than its route (wireShape.ts).
+ */
+export function routeLimits(
+  doc: ProjectDocument,
+  s: SceneDescription,
+  touching: string[] = touchingNodes(s),
+): string[] {
+  const out = new Set<string>();
+  for (const k of touching) {
+    const [kind, rest] = [k.slice(0, 1), k.slice(2)];
+    if (kind === 'w') for (const id of rest.split('|')) out.add(id);
+    else out.add(rest.split('|')[0]!);
+  }
+  const obstacles = sceneObstacles(doc, s);
+  const m = WIRE.radiusMm * 0.8;
+  for (const w of s.wires) {
+    if (out.has(w.id)) continue;
+    const src = doc.layout.wires.find((x) => x.id === w.id);
+    if (!src) continue;
+    const own = [src.from, src.to].flatMap((e) =>
+      e.kind === 'terminal' ? [e.component, `${e.component}:${e.terminal}`] : [],
+    );
+    const ends = [w.points[0]!, w.points[w.points.length - 1]!];
+    const isOwn = (o: Obstacle) =>
+      own.includes(o.part) || own.some((x) => o.part.startsWith(`${x}:`));
+    // Only the volumes the wire's plan extent reaches.
+    const xs = w.points.map((p) => p.x);
+    const zs = w.points.map((p) => p.z);
+    const [x0, x1, z0, z1] = [Math.min(...xs), Math.max(...xs), Math.min(...zs), Math.max(...zs)];
+    const near = obstacles.filter(
+      (o) =>
+        !(isOwn(o) && o.bottom < 2) &&
+        o.x1 + m > x0 &&
+        o.x0 - m < x1 &&
+        o.z1 + m > z0 &&
+        o.z0 - m < z1,
+    );
+    let hit = false;
+    for (let i = 1; i < w.points.length && !hit; i++) {
+      const a = w.points[i - 1]!;
+      const b = w.points[i]!;
+      const n = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z) / 0.5));
+      for (let k = 0; k <= n && !hit; k++) {
+        const t = k / n;
+        const p = { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, z: a.z + (b.z - a.z) * t };
+        for (const o of near) {
+          if (isOwn(o) && ends.some((e) => Math.hypot(e.x - p.x, e.y - p.y, e.z - p.z) < 3))
+            continue;
+          if (
+            p.x > o.x0 - m &&
+            p.x < o.x1 + m &&
+            p.z > o.z0 - m &&
+            p.z < o.z1 + m &&
+            p.y > o.bottom - m &&
+            p.y < o.top + m
+          ) {
+            hit = true;
+            break;
+          }
+        }
+      }
+    }
+    if (hit) out.add(w.id);
+  }
+  return [...out].sort(byWireId);
+}
+const byWireId = (a: string, b: string) => {
+  const n = (x: string) => Number(/^W(\d+)$/.exec(x)?.[1] ?? Infinity);
+  return n(a) - n(b) || (a < b ? -1 : a > b ? 1 : 0);
+};
 
 /**
  * Pairs of electrically different things that touch in a scene's geometry: two wires of
@@ -831,7 +923,7 @@ export const deriveSceneVariant = (
   doc: ProjectDocument,
   separate: boolean,
   router: 'fresh' | 'legacy',
-): SceneDescription => buildScene(doc, separate, router);
+): SceneDescription => withLimits(doc, buildScene(doc, separate, router));
 
 function buildScene(
   doc: ProjectDocument,
@@ -1534,6 +1626,249 @@ function footRect(c: SceneComponent, pad: number) {
 const inRect = (p: Point, r: ReturnType<typeof footRect>) =>
   p.x > r.x0 && p.x < r.x1 && p.y > r.z0 && p.y < r.z1;
 
+/**
+ * A join running back across its own part (connect): lifted over the whole module, the arch of
+ * the s20r owner report. Dearer than any lane-side detour or run beside another wire.
+ */
+const OWN_ACROSS = 1000;
+/** A step aside shorter than this between two opposite runs makes a hook (connect, mm). */
+const HOOK = 8;
+/** Cost per mm of a 3D plan run lying on another wire's plan run (connect). */
+const COINCIDENT_COST = 3;
+/** Two parallel plan runs closer than a wire's diameter plus the gap lie on one another (mm). */
+const COINCIDENT = 2 * WIRE.radiusMm + 0.3;
+/** Plan distance from q to the run a-b. */
+function pointToRun(q: Point, a: Point, b: Point): number {
+  const l2 = (b.x - a.x) ** 2 + (b.y - a.y) ** 2;
+  const t =
+    l2 < 1e-12
+      ? 0
+      : Math.max(0, Math.min(1, ((q.x - a.x) * (b.x - a.x) + (q.y - a.y) * (b.y - a.y)) / l2));
+  return plen(q, { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
+}
+/** An axis-aligned plan run: horizontal (along x at y = lat) or vertical (along y at x = lat). */
+interface Run {
+  h: boolean;
+  lat: number;
+  lo: number;
+  hi: number;
+}
+/** The axis-aligned runs of some paths that reach a box (grown by COINCIDENT). */
+function runsNear(
+  paths: readonly Point[][],
+  box: { x0: number; x1: number; y0: number; y1: number },
+): Run[] {
+  const out: Run[] = [];
+  for (const q of paths)
+    for (let k = 1; k < q.length; k++) {
+      const c = q[k - 1]!;
+      const d = q[k]!;
+      if (
+        Math.max(c.x, d.x) < box.x0 - COINCIDENT ||
+        Math.min(c.x, d.x) > box.x1 + COINCIDENT ||
+        Math.max(c.y, d.y) < box.y0 - COINCIDENT ||
+        Math.min(c.y, d.y) > box.y1 + COINCIDENT
+      )
+        continue;
+      const h = Math.abs(c.y - d.y) < EPS;
+      const v = Math.abs(c.x - d.x) < EPS;
+      if (h === v) continue;
+      out.push(
+        h
+          ? { h, lat: c.y, lo: Math.min(c.x, d.x), hi: Math.max(c.x, d.x) }
+          : { h, lat: c.x, lo: Math.min(c.y, d.y), hi: Math.max(c.y, d.y) },
+      );
+    }
+  return out;
+}
+/** Length (mm) of the axis-aligned runs of `path` that lie on (within COINCIDENT of) `runs`. */
+function coincident(path: Point[], runs: readonly Run[]): number {
+  let n = 0;
+  for (let i = 1; i < path.length; i++) {
+    const a = path[i - 1]!;
+    const b = path[i]!;
+    const h = Math.abs(a.y - b.y) < EPS;
+    const v = Math.abs(a.x - b.x) < EPS;
+    if (h === v) continue;
+    const lat = h ? a.y : a.x;
+    const lo = h ? Math.min(a.x, b.x) : Math.min(a.y, b.y);
+    const hi = h ? Math.max(a.x, b.x) : Math.max(a.y, b.y);
+    for (const r of runs)
+      if (r.h === h && Math.abs(r.lat - lat) < COINCIDENT)
+        n += Math.max(0, Math.min(hi, r.hi) - Math.max(lo, r.lo));
+  }
+  return n;
+}
+
+/** How far apart (plan, axis to axis) runs of two wires laid side by side are (mm). */
+const SIDE_BY_SIDE = COINCIDENT + 0.3;
+
+/**
+ * Sprint 20 (s20r, owner report round 2): wires of one node may share a run in 2D (a trunk: the
+ * router lets them, route.ts criterion 8b). Physically they are separate wires: laid side by
+ * side, not through or on top of each other. Each plan run lying on a run of a wire planned
+ * before it (any node; in 2D only wires of one node share runs) is moved sideways by
+ * SIDE_BY_SIDE, in document order:
+ *  - an interior run (both ends are corners) moves as a whole; its neighbours lengthen or shorten
+ *    (never folding back);
+ *  - a run ending at the wire's own end keeps its first SHARED_JOG mm at the end (wires on one
+ *    terminal converge there by design), then steps aside.
+ * The side is the one that lies on no other run; nothing moves when neither side is free or the
+ * move would enter a part on the bench. Plan only: ends, heights and connectivity are untouched.
+ */
+function separatePlans(inputs: WireRouteInput[], obstacles: Obstacle[]): void {
+  const SHARED_JOG = 3;
+  const pad = WIRE.radiusMm + 0.3;
+  const ground = obstacles.filter((o) => o.bottom < 2);
+  // Any part, its own end parts included (the stretch kept at a fixed end is not tested).
+  const inPart = (a: Point, b: Point) =>
+    ground.some((o) =>
+      across(a, b, { x0: o.x0 - pad, x1: o.x1 + pad, z0: o.z0 - pad, z1: o.z1 + pad }),
+    );
+  const done: Point[][] = [];
+  for (const w of inputs) {
+    let plan = w.plan.map((p) => ({ ...p }));
+    const lastIndex = plan.length - 1;
+    for (let i = 1; i < plan.length; i++) {
+      const a = plan[i - 1]!;
+      const b = plan[i]!;
+      const h = Math.abs(a.y - b.y) < EPS;
+      const v = Math.abs(a.x - b.x) < EPS;
+      if (h === v || plen(a, b) < 1) continue;
+      const runs = runsNear(done, {
+        x0: Math.min(a.x, b.x),
+        x1: Math.max(a.x, b.x),
+        y0: Math.min(a.y, b.y),
+        y1: Math.max(a.y, b.y),
+      });
+      if (coincident([a, b], runs) < 1) continue;
+      const first = i === 1;
+      const last = i === plan.length - 1;
+      if (first && last) continue; // a single straight run between two fixed ends
+      const shift = (p: Point, d: number): Point =>
+        h ? { x: p.x, y: p.y + d } : { x: p.x + d, y: p.y };
+      const along = (p: Point, q: Point, k: number): Point => {
+        const l = plen(p, q);
+        return { x: p.x + ((q.x - p.x) * k) / l, y: p.y + ((q.y - p.y) * k) / l };
+      };
+      // A neighbour run may lengthen or shorten, never fold back (a hook).
+      const keeps = (q: Point, from: Point, to: Point) =>
+        Math.sign((h ? to.y - q.y : to.x - q.x) || 1) ===
+          Math.sign((h ? from.y - q.y : from.x - q.x) || 1) && plen(q, to) > 0.05;
+      // Of the sides that work, the one whose moved stretch crosses the fewest earlier wires (a
+      // run laid beside a wire that turns away on that side would cross it twice).
+      let chosen: { next: Point[]; crossings: number } | null = null;
+      for (const d of [SIDE_BY_SIDE, -SIDE_BY_SIDE]) {
+        let next: Point[];
+        if (!first && !last) {
+          // Interior: both corners move; the neighbours must not fold back.
+          const p0 = plan[i - 2]!;
+          const p1 = plan[i + 1]!;
+          const sa = shift(a, d);
+          const sb = shift(b, d);
+          if (!keeps(p0, a, sa) || !keeps(p1, b, sb)) continue;
+          next = [...plan.slice(0, i - 1), sa, sb, ...plan.slice(i + 1)];
+        } else if (first) {
+          if (plen(a, b) < SHARED_JOG + 1.5) continue;
+          const j = along(a, b, SHARED_JOG);
+          const p1 = plan[i + 1];
+          const sb = shift(b, d);
+          // Toward the next run only (stepping the other way and back is a hook).
+          if (p1 && (!keeps(p1, b, sb) || Math.sign(h ? p1.y - b.y : p1.x - b.x) !== Math.sign(d)))
+            continue;
+          next = [a, j, shift(j, d), sb, ...plan.slice(i + 1)];
+        } else {
+          if (plen(a, b) < SHARED_JOG + 1.5) continue;
+          const j = along(b, a, SHARED_JOG);
+          const p0 = plan[i - 2]!;
+          const sa = shift(a, d);
+          if (!keeps(p0, a, sa) || Math.sign(h ? p0.y - a.y : p0.x - a.x) !== Math.sign(d))
+            continue;
+          next = [...plan.slice(0, i - 1), sa, shift(j, d), j, b];
+        }
+        // The moved stretch lies on no other run and enters no part.
+        // The moved run itself lies on no other run (its neighbours only stretch: they keep their
+        // lines); the moved stretch, without what is kept at a fixed end, enters no part.
+        const run = first ? next.slice(2, 4) : last ? next.slice(-4, -2) : next.slice(i - 1, i + 1);
+        if (coincident(run, runsNear(done, bboxOf(run))) >= 1) continue;
+        const moved = first
+          ? next.slice(1, 5)
+          : last
+            ? next.slice(Math.max(0, next.length - 5), next.length - 1)
+            : next.slice(Math.max(0, i - 2), Math.min(next.length, i + 3));
+        if (moved.slice(1).some((q, k) => inPart(moved[k]!, q))) continue;
+        const crossings = planCrossings(moved, done);
+        if (!chosen || crossings < chosen.crossings) chosen = { next, crossings };
+      }
+      if (chosen) plan = chosen.next;
+    }
+    // A neighbour shortened to almost nothing leaves a tiny jog: collinear points merged.
+    const fixed = [plan[0]!, plan[plan.length - 1]!];
+    if (plan.length !== w.plan.length || plan.some((p, k) => plen(p, w.plan[k]!) > 1e-9))
+      plan = simplify(plan, (q) => fixed.some((f) => plen(f, q) < 1e-6));
+    // Corner radii are keyed by plan index: the last point's moves with it.
+    if (plan.length !== w.plan.length && w.radii?.has(lastIndex)) {
+      const r = w.radii.get(lastIndex)!;
+      w.radii.delete(lastIndex);
+      w.radii.set(plan.length - 1, r);
+    }
+    w.plan = plan;
+    done.push(plan);
+  }
+}
+/** Proper crossings (strictly inside both) of the runs of `path` with the runs of `paths`. */
+function planCrossings(path: Point[], paths: readonly Point[][]): number {
+  let n = 0;
+  const inside = (v: number, p: number, q: number) =>
+    v > Math.min(p, q) + EPS && v < Math.max(p, q) - EPS;
+  for (let i = 1; i < path.length; i++) {
+    const a = path[i - 1]!;
+    const b = path[i]!;
+    const ah = Math.abs(a.y - b.y) < EPS;
+    for (const q of paths)
+      for (let k = 1; k < q.length; k++) {
+        const c = q[k - 1]!;
+        const d = q[k]!;
+        const ch = Math.abs(c.y - d.y) < EPS;
+        if (ah === ch) continue;
+        const [h0, h1, v0, v1] = ah ? [a, b, c, d] : [c, d, a, b];
+        if (inside(v0.x, h0.x, h1.x) && inside(h0.y, v0.y, v1.y)) n++;
+      }
+  }
+  return n;
+}
+const bboxOf = (pts: Point[]) => ({
+  x0: Math.min(...pts.map((p) => p.x)),
+  x1: Math.max(...pts.map((p) => p.x)),
+  y0: Math.min(...pts.map((p) => p.y)),
+  y1: Math.max(...pts.map((p) => p.y)),
+});
+
+/** Whether the straight run a-b passes through the interior of `r` (exact clipping). */
+function across(a: Point, b: Point, r: ReturnType<typeof footRect>): boolean {
+  let t0 = 0;
+  let t1 = 1;
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  // Liang-Barsky against the open rectangle: p * t < q on every side.
+  for (const [p, q] of [
+    [-dx, a.x - r.x0],
+    [dx, r.x1 - a.x],
+    [-dy, a.y - r.z0],
+    [dy, r.z1 - a.y],
+  ] as const) {
+    if (Math.abs(p) < 1e-12) {
+      if (q <= 0) return false;
+      continue;
+    }
+    const t = q / p;
+    if (p < 0) t0 = Math.max(t0, t);
+    else t1 = Math.min(t1, t);
+    if (t0 >= t1) return false;
+  }
+  return true;
+}
+
 /** The route from its start, from where it first leaves `r` (null: it never does). */
 function leave(route: Point[], r: ReturnType<typeof footRect>): Point[] | null {
   if (!inRect(route[0]!, r)) return route;
@@ -1599,6 +1934,8 @@ function connect(
   rest: Point[],
   body: ReturnType<typeof footRect>,
   others: Obstacle[],
+  planned: readonly Point[][] = [],
+  risers: readonly Point[] = [],
 ) {
   // Crossing another part's body costs as much as a long detour: the connection keeps to the
   // 2D route's way around it rather than cutting across (and climbing over) it.
@@ -1613,6 +1950,14 @@ function connect(
       }
       return false;
     });
+  // The other wires' runs near any join this can make (s20r: priced by `coincident`).
+  const reach = [E, ...rest.slice(0, 6)];
+  const runs = runsNear(planned, {
+    x0: Math.min(...reach.map((p) => p.x)),
+    x1: Math.max(...reach.map((p) => p.x)),
+    y0: Math.min(...reach.map((p) => p.y)),
+    y1: Math.max(...reach.map((p) => p.y)),
+  });
   let best: { cost: number; path: Point[] } | null = null;
   for (let j = 0; j < Math.min(6, rest.length); j++) {
     const R = rest[j]!;
@@ -1632,13 +1977,42 @@ function connect(
         const l2 = Math.hypot(u2.x, u2.y);
         if (l1 > 1e-6 && l2 > 1e-6 && dotP(u1, u2) / (l1 * l2) < -0.99) cost += 60;
       }
+      // A hook (s20r): out one way, a short step aside, and back the other way.
+      const q = simplify(path, () => false);
+      for (let i = 3; i < q.length; i++) {
+        const u0 = sub2(q[i - 2]!, q[i - 3]!);
+        const u2 = sub2(q[i]!, q[i - 1]!);
+        if (
+          plen(q[i - 1]!, q[i - 2]!) < HOOK &&
+          dotP(u0, u2) / (Math.hypot(u0.x, u0.y) * Math.hypot(u2.x, u2.y)) < -0.99
+        )
+          cost += 60;
+      }
       if (dotP(sub2(corner, E), e.u) < -1e-6) cost += 60;
       for (let i = 1; i <= Math.min(2, path.length - 1); i++)
         if (crosses(path[i - 1]!, path[i]!)) cost += 120;
-      for (let i = 1; i < 3 && i < path.length; i++) {
-        const m = { x: (path[i - 1]!.x + path[i]!.x) / 2, y: (path[i - 1]!.y + path[i]!.y) / 2 };
-        if (inRect(m, body)) cost += 60;
-      }
+      // Runs back across the part itself (s20r owner report). Formerly only each run's MIDPOINT
+      // was tested: a long join straight across the part (its far end well beyond the part, the
+      // midpoint outside it) passed, and the height profile then lifted the wire over the whole
+      // module from the far side, an arch over its own part next to the pin (a loop). Every run
+      // of the join is tested along its length now.
+      for (let i = 1; i < path.length; i++)
+        if (across(path[i - 1]!, path[i]!, body)) cost += OWN_ACROSS;
+      // Running along another wire's plan path (s20r): a join that takes a short cut onto the
+      // line another wire already runs on puts the two on top of each other for the whole run
+      // (the height profile can then only stack them). Each mm of such a run costs as much as
+      // 3 mm of detour, so the join keeps to the 2D route's own, separate line. Only the join's
+      // own runs (to the point where it meets the 2D route): the 2D route itself may share a run
+      // with a wire of its node on purpose (route.ts trunk, s20r round 2), laid side by side
+      // below (separatePlans).
+      cost += COINCIDENT_COST * coincident(path.slice(0, 3), runs);
+      // Through the point where another wire's lane ends and it rises from pin level.
+      for (const q of risers)
+        for (let i = 1; i < path.length; i++)
+          if (pointToRun(q, path[i - 1]!, path[i]!) < COINCIDENT) {
+            cost += 60;
+            break;
+          }
       if (!best || cost < best.cost - 1e-9) best = { cost, path };
     }
   }
@@ -1882,6 +2256,8 @@ function freshWires(
   interface Prep {
     w: LayoutWire;
     route: Point[];
+    /** The 2D-derived plan route before the zone trim (s20r: where the wire will run). */
+    full: Point[];
     ends: [Vec3, Vec3];
     under: [UnderEnd | null, UnderEnd | null];
   }
@@ -1910,6 +2286,7 @@ function freshWires(
     }) as [Vec3, Vec3];
     if (!isUnder[0]) route = moveEnd(route, { x: at[0].x, y: at[0].z }, 'start');
     if (!isUnder[1]) route = moveEnd(route, { x: at[1].x, y: at[1].z }, 'end');
+    const full = route;
     // Trim the stretch inside a lane part's zone (both ends).
     for (const k of [0, 1] as const) {
       const e = ends[k];
@@ -1920,9 +2297,10 @@ function freshWires(
       const rest = leave(from, zone);
       route = rest ? (k === 0 ? rest : [...rest].reverse()) : [];
     }
-    preps.push({ w, route, ends: at, under: [null, null] });
+    preps.push({ w, route, full, ends: at, under: [null, null] });
   }
 
+  const obstacles = routingObstacles(components, bodies, offsets);
   // 2. Exit lanes: side, direction, turn.
   for (const p of preps) {
     for (const k of [0, 1] as const) {
@@ -1953,6 +2331,7 @@ function freshWires(
         .filter((t) => t.id !== e.terminal && (t.node === null || t.node !== node))
         .map((t) => back(t));
       let best: { cost: number; side: number } | null = null;
+      let inside: { cost: number; side: number } | null = null;
       for (let side = 0; side < 4; side++) {
         const d = dirs[side]!;
         const run = dist[side]! + CLEAR_OUT;
@@ -1964,10 +2343,34 @@ function freshWires(
         });
         if (blocked) continue;
         const exitW = rotatePoint({ x: local.x + d.x * run, y: local.y + d.y * run }, c.rotation);
+        // Nor end inside another part standing on the bench (s20r: two breakouts a millimetre
+        // apart; the lane's riser went straight up through the neighbour's board). Such a side
+        // is used only when every side is (the cut-back below then keeps the plain exit).
+        const pad = WIRE.radiusMm + 0.3;
+        const ex = c.x + exitW.x;
+        const ez = c.z + exitW.y;
+        const far = k === 0 ? p.w.to : p.w.from;
+        const mine = (o: Obstacle) =>
+          [c.id, far.kind === 'terminal' ? far.component : null].some(
+            (id) => id !== null && (o.part === id || o.part.startsWith(`${id}:`)),
+          );
+        const inOther = obstacles.some(
+          (o) =>
+            !mine(o) &&
+            o.bottom < 2 &&
+            ex > o.x0 - pad &&
+            ex < o.x1 + pad &&
+            ez > o.z0 - pad &&
+            ez < o.z1 + pad,
+        );
         const cost = dist[side]! + 0.5 * plen({ x: c.x + exitW.x, y: c.z + exitW.y }, target);
+        if (inOther) {
+          if (!inside || cost < inside.cost - 1e-9) inside = { cost, side };
+          continue;
+        }
         if (!best || cost < best.cost - 1e-9) best = { cost, side };
       }
-      const side = best?.side ?? dist.indexOf(Math.min(...dist));
+      const side = best?.side ?? inside?.side ?? dist.indexOf(Math.min(...dist));
       const u = rotatePoint(dirs[side]!, c.rotation);
       const v = { x: -u.y, y: u.x };
       const pin = { x: a.x, y: a.z };
@@ -2011,7 +2414,6 @@ function freshWires(
     });
   }
 
-  const obstacles = routingObstacles(components, bodies, offsets);
   // A lane never runs into another part (a module separated from a neighbour has room for its
   // lanes' exits, not always for the whole fan): cut back to the longest clear distance (at least
   // the plain exit); lanes then sharing a distance hop over each other locally (route3d.ts).
@@ -2035,10 +2437,54 @@ function freshWires(
       while (d > e.reach && blocked(d)) d = Math.max(e.reach, d - 0.5);
       e.lane = d;
     }
+  // A lane's end is where its wire rises from pin level (s20r owner report): when it falls on
+  // another wire's path, that riser goes straight up through the other wire. Such a lane runs on
+  // (up to one more lane pitch, never into another part) until its end is clear of the others'
+  // paths; the other wire then passes over the low lane like any crossing.
+  for (const p of preps)
+    for (const e of p.under) {
+      if (!e) continue;
+      const paths = preps.filter((q) => q !== p).map((q) => q.full);
+      const onPath = (d: number) => {
+        const q = add(e.pin, e.u, d);
+        return paths.some((r) =>
+          r.some((b, i) => i > 0 && pointToRun(q, r[i - 1]!, b) < COINCIDENT),
+        );
+      };
+      const pad = WIRE.radiusMm + 0.3;
+      const free = (d: number) => {
+        const q = add(e.pin, e.u, d);
+        return !obstacles.some(
+          (o) =>
+            o.part !== e.comp.id &&
+            o.bottom < 2 &&
+            q.x > o.x0 - pad &&
+            q.x < o.x1 + pad &&
+            q.y > o.z0 - pad &&
+            q.y < o.z1 + pad,
+        );
+      };
+      if (!onPath(e.lane)) continue;
+      // The fan-out's other lanes off the same side keep their own distances (no two lateral runs
+      // on one line).
+      const group = groups.get(`${e.comp.id}|${e.side}`) ?? [];
+      const own = (d: number) => group.every((o) => o === e || Math.abs(o.lane - d) >= COINCIDENT);
+      for (let d = e.lane + 0.5; d <= e.lane + LANE_PITCH + 1e-9 && free(d); d += 0.5)
+        if (!onPath(d) && own(d)) {
+          e.lane = d;
+          break;
+        }
+    }
   // 4. Plan paths, heads and tails, then heights (route3d.ts).
   const inputs: WireRouteInput[] = [];
+  // Where every lane ends: the wire rises there from pin level (s20r). Another wire's join must
+  // not run through that point, or the riser goes up through it.
+  const laneEnds = preps.flatMap((p) =>
+    p.under.flatMap((e) => (e ? [{ wire: p.w.id, at: add(e.pin, e.u, e.lane) }] : [])),
+  );
   for (const p of preps) {
     const [ua, ub] = p.under;
+    const risers = laneEnds.filter((l) => l.wire !== p.w.id).map((l) => l.at);
     const [a, b] = p.ends;
     const A = { x: a.x, y: a.z };
     const B = { x: b.x, y: b.z };
@@ -2069,6 +2515,8 @@ function freshWires(
           mid.length ? mid : [Eb],
           footRect(ua.comp, WIRE.radiusMm),
           ground(ua.comp.id),
+          inputs.map((i) => i.plan),
+          risers,
         );
       if (ub && plen(mid[mid.length - 1]!, Eb) > 1e-6)
         mid = [
@@ -2078,6 +2526,8 @@ function freshWires(
             [...mid].reverse(),
             footRect(ub.comp, WIRE.radiusMm),
             ground(ub.comp.id),
+            inputs.map((i) => i.plan),
+            risers,
           ),
         ].reverse();
       plan = mid;
@@ -2087,14 +2537,10 @@ function freshWires(
     }
     const fixedPts = [plan[0]!, plan[plan.length - 1]!];
     plan = simplify(plan, (q) => fixedPts.some((f) => plen(f, q) < 1e-6));
+    const ownBody = (e: WireEnd, o: Obstacle) => e.kind === 'terminal' && o.part === e.component;
     plan = dodge(
       plan,
-      obstacles.filter(
-        (o) =>
-          o.bottom <= 2 &&
-          !(p.w.from.kind === 'terminal' && o.part === p.w.from.component) &&
-          !(p.w.to.kind === 'terminal' && o.part === p.w.to.component),
-      ),
+      obstacles.filter((o) => o.bottom <= 2 && !ownBody(p.w.from, o) && !ownBody(p.w.to, o)),
     );
     const kind = (e: WireEnd) =>
       e.kind !== 'terminal'
@@ -2138,6 +2584,8 @@ function freshWires(
       radii,
     });
   }
+
+  separatePlans(inputs, obstacles);
 
   const spots: Spot[] = doc.layout.junctions.map((j) => ({
     x: j.x * SCALE,

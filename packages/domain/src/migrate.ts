@@ -2,8 +2,9 @@
  * Schema migration on open.
  *
  * Migrations are pure functions `vN -> vN+1`, run in the browser when a project is opened.
- * No migrations exist yet: v2 is the first production schema, and no v1 (Gate D feasibility)
- * user data exists. A document from a NEWER schema is never guessed at: it opens read-only.
+ * v2 is the first production schema (no v1 Gate D user data exists): v2 → v3 (Sprint 7, programs)
+ * and v3 → v4 (Sprint 20, the identity). A document from a NEWER schema is never guessed at: it
+ * opens read-only.
  */
 
 import { SCHEMA_VERSION, cloneDocument } from './schema.js';
@@ -33,6 +34,15 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = {
       : d.components;
     return { ...d, components, programs: {} };
   },
+  /**
+   * v3 → v4 (Sprint 20, DP-rt2-1): the IDENTITY. v4 adds no field; it marks documents that may
+   * carry automatic wires (`Wire.auto`) so that older builds treat them as newer. A v3 document
+   * with or without `auto` means exactly the same thing in v4 (a wire without `auto` is manual,
+   * as in v3), so nothing is added, removed or rewritten; only `schemaVersion` changes (set by
+   * openDocument). Opening never writes the result back: a stored v3 project becomes v4 only
+   * when that project is saved by a v4 build (app.ts openProject).
+   */
+  3: (doc) => ({ ...doc }),
 };
 
 export type OpenResult =

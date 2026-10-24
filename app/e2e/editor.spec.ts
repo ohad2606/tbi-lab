@@ -4,7 +4,7 @@
  * domain validator the product uses (A4: structurally valid after every operation).
  */
 import { expect, test, type Page } from '@playwright/test';
-import { validateProject, type ProjectDocument } from '@tbi-lab/domain';
+import { SCHEMA_VERSION, validateProject, type ProjectDocument } from '@tbi-lab/domain';
 import {
   clickWorld,
   component,
@@ -275,18 +275,20 @@ test('opening a project saved by a newer version is read-only and never written'
 }) => {
   await createProject(page, 'Future');
   const doc = await savedValid(page, (d) => d.name === 'Future', 'project stored');
+  // One schema newer than this build (Sprint 20: this build writes v4).
+  const next = SCHEMA_VERSION + 1;
   await page.evaluate(
-    (d) =>
+    ([d, v]) =>
       new Promise<void>((resolve, reject) => {
         const req = indexedDB.open('tbi-lab');
         req.onsuccess = () => {
           const tx = req.result.transaction('projects', 'readwrite');
-          tx.objectStore('projects').put({ ...d, schemaVersion: 4, futureField: { x: 1 } });
+          tx.objectStore('projects').put({ ...d, schemaVersion: v, futureField: { x: 1 } });
           tx.oncomplete = () => (req.result.close(), resolve());
           tx.onerror = () => reject(tx.error);
         };
       }),
-    doc,
+    [doc, next] as const,
   );
   await page.reload();
   await reopenFromLibrary(page);
@@ -297,6 +299,6 @@ test('opening a project saved by a newer version is read-only and never written'
   await page.keyboard.press('Delete');
   await page.waitForTimeout(600);
   const stored = await storedProject(page);
-  expect(stored.schemaVersion).toBe(4);
+  expect(stored.schemaVersion).toBe(next);
   expect(stored.components).toHaveLength(2);
 });

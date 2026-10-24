@@ -4,7 +4,13 @@
  * with no refresh, no stale topology and no write caused by viewing.
  */
 import { expect, test, type Page } from '@playwright/test';
-import { CANONICALIZATION, canonicalJson, sha256Utf8, type ProjectDocument } from '@tbi-lab/domain';
+import {
+  CANONICALIZATION,
+  SCHEMA_VERSION,
+  canonicalJson,
+  sha256Utf8,
+  type ProjectDocument,
+} from '@tbi-lab/domain';
 import {
   component,
   exportFromMenu,
@@ -147,7 +153,7 @@ test('an imported project and an old (schema v2, package v1) project open in eve
   const stored = (await storedProjects(page)).find(
     (d) => d.projectId === 'prj_b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2',
   )!;
-  expect(stored.schemaVersion).toBe(3);
+  expect(stored.schemaVersion).toBe(SCHEMA_VERSION); // migrated v2 -> current on import
 });
 
 test('viewing Schematic and 3D changes nothing that export carries; the export re-imports alike', async ({

@@ -6,8 +6,9 @@
  *  - this build round-trips `auto` exactly (same document, same hash);
  *  - those builds REFUSE such a file whole as `invalid_project` (`bad_field` at
  *    `layout.wires[i].auto`, their strict key check); nothing is imported or rewritten;
- *  - the schema version is still 3 (no bump: a PM decision point, see the rt2 report). These
- *    tests pin that state, so a bump (or an accidental change of the key check) is deliberate.
+ *  - Sprint 20 (owner-approved DP-rt2-1): the schema is now 4, so those builds refuse such a file
+ *    as NEWER ("made by a newer version"), by name (s20r evidence: s20r-compat-*.txt). These tests
+ *    pin that state, so a change of version (or of the key check) is deliberate.
  */
 import { describe, expect, it } from 'vitest';
 import {
@@ -65,9 +66,9 @@ describe('automatic wires in a .tbilab (rt2 compatibility)', () => {
     ]);
   });
 
-  it('the schema version is unchanged (3): `auto` is an optional field of schema 3', () => {
-    expect(SCHEMA_VERSION).toBe(3);
-    expect(createPackage(autoCircuit(), meta).project.schemaVersion).toBe(3);
+  it('the schema version is 4 (Sprint 20): a file with automatic wires is a v4 file', () => {
+    expect(SCHEMA_VERSION).toBe(4);
+    expect(createPackage(autoCircuit(), meta).project.schemaVersion).toBe(4);
   });
 
   it('an unknown key inside `auto`, or a malformed waypoint, is refused by its path', () => {

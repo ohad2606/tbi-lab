@@ -10,7 +10,10 @@ import {
   deleteSelection,
   emptySelection,
   moveWireSegment,
+  autoRoute,
+  sameNodeCrossings,
   wireCrossings,
+  wireNodes,
   type ProjectDocument,
 } from '../src/index.js';
 import { must, newDoc } from './helpers.js';
@@ -106,5 +109,74 @@ describe('wireCrossings', () => {
     const doc = crossing();
     const r = must(deleteSelection(doc, { ...emptySelection(), wires: ['W2'] })).doc;
     expect(wireCrossings(r)).toEqual([]);
+  });
+});
+
+describe('crossings of wires of ONE node (s20r round 2)', () => {
+  /** W1: PSU+ -> R3.a (horizontal at y=-20); W2: R1.b -> R2.b, vertical across it at x=40. */
+  const sameNode = () => {
+    // W2's ends joined to PSU+ by a third wire: W1 and W2 are on one node, crossing at (40,-20).
+    let doc = crossing();
+    doc = must(addWire(doc, t('R1', 'b'), t('PSU1', 'positive'), [{ x: 40, y: -140 }])).doc;
+    return doc;
+  };
+
+  it('no hop between wires of one node (a hop says "not connected"); they are listed apart', () => {
+    const doc = sameNode();
+    const nodes = wireNodes(doc);
+    expect(nodes.get('W1')).toBe(nodes.get('W2'));
+    expect(wireCrossings(doc).filter((c) => c.x === 40 && c.y === -20)).toEqual([]);
+    expect(sameNodeCrossings(doc)).toContainEqual({ x: 40, y: -20, over: 'W2', under: 'W1' });
+    // Different nodes: the hop stays (the Sprint 5 case).
+    expect(wireCrossings(crossing())).toEqual([{ x: 40, y: -20, over: 'W2', under: 'W1' }]);
+    expect(sameNodeCrossings(crossing())).toEqual([]);
+  });
+
+  it('every hop drawn is between different nodes', () => {
+    const doc = sameNode();
+    const nodes = wireNodes(doc);
+    for (const c of wireCrossings(doc)) expect(nodes.get(c.over)).not.toBe(nodes.get(c.under));
+  });
+
+  it('the router runs a wire along a wire of its own node instead of crossing it', () => {
+    // An obstacle wire of node N from (0,-100) down to (0,100); a hop from (-60,0) to (60,0).
+    const obs = {
+      segments: [
+        [
+          { x: 0, y: -100 },
+          { x: 0, y: 100 },
+        ],
+      ] as const,
+      boxes: [],
+      points: [],
+      segmentNodes: ['N'],
+    };
+    const foreign = autoRoute(
+      [
+        { x: -60, y: 0 },
+        { x: 60, y: 0 },
+      ],
+      { ...obs, segmentNodes: ['M'] },
+      {
+        node: 'N',
+      },
+    );
+    expect(foreign).toEqual([
+      { x: -60, y: 0 },
+      { x: 60, y: 0 },
+    ]); // a clean crossing (a hop)
+    const own = autoRoute(
+      [
+        { x: -60, y: 0 },
+        { x: 60, y: 0 },
+      ],
+      obs,
+      { node: 'N' },
+    );
+    // Crossing a wire of its own node would cost three bends: it goes round the end instead.
+    expect(own).not.toEqual([
+      { x: -60, y: 0 },
+      { x: 60, y: 0 },
+    ]);
   });
 });

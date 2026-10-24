@@ -116,3 +116,45 @@ export function connectivity(doc: ProjectDocument): Connectivity {
 
   return { nodes: [...nodes.values()].filter((n) => n.pins.length > 0), components, nodeOf };
 }
+
+/**
+ * Sprint 20 (s20r): the electrical node each wire belongs to, by wire id: the node of a terminal
+ * in its wire-graph group (wires joined at junctions or terminals), or, for a group that reaches
+ * no terminal, an id of its own (`wires:<first key>`). Presentation uses it to tell a crossing of
+ * two DIFFERENT nodes (drawn with a hop: not connected) from wires of one node, and the router to
+ * keep wires of one node from crossing each other. Derived; never stored.
+ */
+export function wireNodes(
+  doc: ProjectDocument,
+  g: Connectivity = connectivity(doc),
+): Map<string, string> {
+  const parent = new Map<string, string>();
+  const find = (k: string): string => {
+    let r = k;
+    while (parent.get(r) !== r) r = parent.get(r)!;
+    return r;
+  };
+  const key = (e: ProjectDocument['layout']['wires'][number]['from']) =>
+    e.kind === 'terminal' ? `t:${e.component}:${e.terminal}` : `j:${e.junction}`;
+  for (const w of doc.layout.wires)
+    for (const k of [key(w.from), key(w.to)]) if (!parent.has(k)) parent.set(k, k);
+  for (const w of doc.layout.wires) {
+    const a = find(key(w.from));
+    const b = find(key(w.to));
+    if (a !== b) parent.set(a < b ? b : a, a < b ? a : b);
+  }
+  const groupNode = new Map<string, string>();
+  for (const w of doc.layout.wires)
+    for (const e of [w.from, w.to]) {
+      if (e.kind !== 'terminal') continue;
+      const node = g.nodeOf.get(pinKey(e.component, e.terminal));
+      const root = find(key(e));
+      if (node && !groupNode.has(root)) groupNode.set(root, node);
+    }
+  const out = new Map<string, string>();
+  for (const w of doc.layout.wires) {
+    const root = find(key(w.from));
+    out.set(w.id, groupNode.get(root) ?? `wires:${root}`);
+  }
+  return out;
+}

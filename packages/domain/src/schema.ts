@@ -9,7 +9,13 @@
  * stored verbatim and never translated. Runtime/simulation values never appear in this model.
  */
 
-export const SCHEMA_VERSION = 3;
+/**
+ * v4 (Sprint 20, owner-approved DP-rt2-1): no new field. A v4 document is a v3 document that may
+ * carry automatic wires (`Wire.auto`, added during v3 by the wire routing integrity work); the
+ * bump makes builds before it refuse such a file BY NAME ("made by a newer version") and open
+ * such a stored project read-only, instead of calling the file invalid or editing it blindly.
+ */
+export const SCHEMA_VERSION = 4;
 export const DOCUMENT_FORMAT = 'tbi-lab.project';
 
 /**
