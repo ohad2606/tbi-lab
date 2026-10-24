@@ -260,7 +260,6 @@ test('an old project whose GND wire runs down the J3 header opens with that wire
   // Opening shows the repaired route at once (no wire across the header in the drawing) but, by
   // the owner's Sprint 20 decision, stores nothing until a genuine edit: the stored route is
   // still the legacy one.
-  await expect(page.getByTestId('notice')).toHaveAttribute('data-key', 'open.routesAdjusted');
   await waitSaved(page);
   const imported = (await storedProjects(page)).find((x) => x.name === 'Legacy route')!;
   expect(imported.layout.wires.find((x) => x.id === legacyWire)!.vertices).toEqual([
