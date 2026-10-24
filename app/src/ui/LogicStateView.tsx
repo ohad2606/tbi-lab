@@ -494,16 +494,27 @@ function InputControls({
   const t = useT();
   const store = useStore();
   type Row = { pin: string; kind: 'mcu' | 'toggle' | 'momentary'; id: string; gpio: number };
+  const seen = new Set<string>();
   const rows = inputs.flatMap((pin): Row[] => {
     const net = doc.connections.find(
       (c) => c.component === component.id && c.terminal === pin,
     )?.net;
     if (!net) return [];
     const on = doc.connections.filter((c) => c.net === net && c.component !== component.id);
-    const seen = new Set<string>();
+    // An input tied to a supply rail or GND cannot be changed by a switch on that rail (the
+    // switch changes another net): no control is offered for it (review round 2).
+    const railed =
+      doc.nets.find((n) => n.id === net)?.role === 'ground' ||
+      on.some(
+        (c) => doc.components.find((x) => x.id === c.component)?.type === 'instrument.lab_psu',
+      );
+    if (railed) return [];
     return on.flatMap((c): Row[] => {
-      if (seen.has(c.component)) return [];
-      seen.add(c.component);
+      // One control per part, under the first input it reaches.
+      // (A board appears once per GPIO: its pins are separate sources.)
+      const key = /^gpio\d+$/.test(c.terminal) ? `${c.component}.${c.terminal}` : c.component;
+      if (seen.has(key)) return [];
+      seen.add(key);
       const other = doc.components.find((x) => x.id === c.component);
       if (!other) return [];
       if (other.type === 'board.esp32_devkitc_wroom32' && /^gpio\d+$/.test(c.terminal))

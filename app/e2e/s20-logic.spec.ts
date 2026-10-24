@@ -154,18 +154,15 @@ test('A without a pull-down: the open switch leaves B floating — refused, and 
 test('review round 2: a refusal WHILE RUNNING (opening a switch floats an input) is explained by pin (local engine)', async ({
   page,
 }) => {
-  await openExample(page, 'logic-and-switches');
-  await inspect(page, 'R2');
-  await page.getByTestId('inspector-delete').click();
-  // B closed: driven HIGH through SW2, so the Run starts.
-  await inspect(page, 'U1');
-  await page.getByTestId('logic-control-SW2').click();
+  // A switch with NO pull-down on input B (A tied HIGH); closed, so the Run starts.
+  const doc = noPullDownCircuit('prj_s20l2Live');
+  await openImported(page, doc);
   await waitSaved(page);
   await run(page);
   await inspect(page, 'U1');
   await expect(page.getByTestId('logic-level-b')).toHaveText('HIGH');
-  // Open SW2 while running: the session stays running with a refused operating point.
-  await page.getByTestId('logic-control-SW2').click();
+  // Open SW1 while running: the session stays running with a refused operating point.
+  await page.getByTestId('logic-control-SW1').click();
   await expect(page.getByTestId('logic-level-b')).toHaveText('floating (not driven)');
   await expect(page.getByTestId('logic-why-b')).toContainText('Nothing drives this input');
   await expect(page.getByTestId('logic-level-a')).toHaveText('not simulated');
@@ -176,7 +173,7 @@ test('review round 2: a refusal WHILE RUNNING (opening a switch floats an input)
   await shot(page, 's20l2-A-refused-while-running-he');
   await page.getByTestId('language-select').selectOption('en');
   // Closing it again recovers.
-  await page.getByTestId('logic-control-SW2').click();
+  await page.getByTestId('logic-control-SW1').click();
   await expect(page.getByTestId('logic-level-b')).toHaveText('HIGH');
   await page.getByTestId('sim-stop').click();
 });
@@ -204,6 +201,55 @@ test('review round 2: the same refusal during an ESP32 session (runtime controll
   await expect(page.getByTestId('logic-why-b')).toContainText('Nothing drives this input');
   await shot(page, 's20l2-D-refused-while-running-en');
 });
+
+/** PSU1 3.0 V → SN74LVC1G08 U1 (A HIGH); B from toggle switch SW1 (closed) with NO pull-down. */
+function noPullDownCircuit(id: string) {
+  let doc: ProjectDocument = createProject({
+    projectId: id,
+    deviceId: 'dev_s20l',
+    name: id,
+    appVersion: '0',
+  });
+  const add = (type: ComponentTypeId, x: number, y: number) => {
+    const r = addComponent(doc, type, { x, y });
+    if (!r.ok) throw new Error(r.error);
+    doc = r.doc;
+    return r.id;
+  };
+  const wire = (p: string, q: string) => {
+    const [pc, pt] = p.split('.') as [string, string];
+    const [qc, qt] = q.split('.') as [string, string];
+    const r = addWire(
+      doc,
+      { kind: 'terminal', component: pc, terminal: pt },
+      { kind: 'terminal', component: qc, terminal: qt },
+    );
+    if (!r.ok) throw new Error(`${p}->${q}: ${r.error}`);
+    doc = r.doc;
+  };
+  const set = (c: string, k: string, v: Parameters<typeof setParam>[3]) => {
+    const r = setParam(doc, c, k, v);
+    if (!r.ok) throw new Error(r.error);
+    doc = r.doc;
+  };
+  set('PSU1', 'setpointVoltage', { value: 3, unit: 'volt' });
+  set('PSU1', 'currentLimit', { value: 0.1, unit: 'ampere' });
+  set('PSU1', 'outputEnabled', true);
+  wire('PSU1.negative', 'GND1.ref');
+  const g = add('logic.gate_and', 360, 0);
+  const sw = add('component.toggle_switch', 160, 120);
+  const r = add('component.resistor', 520, 0);
+  set(sw, 'closed', true);
+  set(r, 'resistance', { value: 10_000, unit: 'ohm' });
+  wire('PSU1.positive', `${g}.vcc`);
+  wire(`${g}.gnd`, 'GND1.ref');
+  wire(`${g}.a`, 'PSU1.positive');
+  wire('PSU1.positive', `${sw}.a`);
+  wire(`${sw}.b`, `${g}.b`);
+  wire(`${g}.y`, `${r}.a`);
+  wire(`${r}.b`, 'GND1.ref');
+  return doc;
+}
 
 /** PSU1 3.0 V → SN74LVC1G08, A from a 10 kΩ / 10 kΩ divider (1.5 V), B HIGH; Y → 220 Ω → LED. */
 function undefinedCircuit(id: string) {
