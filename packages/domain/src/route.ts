@@ -121,6 +121,44 @@ export interface RouteObstacles {
   segmentNodes?: readonly (string | null)[];
 }
 
+/**
+ * Sprint 20 (s20r4, review B1: a large project froze the tab while its wires were routed): the
+ * WORK a routing pass may spend on grid searches, in lattice cells (a search over an nx x ny area
+ * costs nx * ny), counted, never timed, so routes never depend on the machine's speed. Once spent,
+ * the hops that would need a search keep the best of the short shapes; `skipped` counts them.
+ */
+export interface SearchBudget {
+  cells: number;
+  /** Pricing work left: path segments x obstacles priced against (short shapes, results). */
+  ops: number;
+  skipped: number;
+}
+const EMPTY_OBSTACLES: RouteObstacles = { segments: [], boxes: [], points: [] };
+/** Number of obstacle elements (s20r4: the unit of the pricing budget). */
+const sizeOf = (o: RouteObstacles) =>
+  o.segments.length +
+  o.boxes.length +
+  o.points.length +
+  (o.leads?.length ?? 0) +
+  (o.field?.length ?? 0) +
+  (o.headers?.length ?? 0);
+/** Pricing work of one cost() call (s20r4). */
+const opsOf = (path: readonly Point[], o: RouteObstacles) => (path.length - 1) * sizeOf(o);
+/**
+ * The search budget of one canonical routing pass (routeAutoWires), shared by its reorder rounds:
+ * well under 1 s of searching on the 1-vCPU DEV host (~8 us per cell, s20r4-cells.txt). The first
+ * pass of an 80-wire dense ESP32 bench spends ~50 000 cells; beyond the budget the remaining
+ * wires that need a search keep their best short shape and are reported (`routeAutoWiresReport`).
+ */
+export const SEARCH_BUDGET_CELLS = 80_000;
+/**
+ * The pricing budget of one canonical routing pass (s20r4), in obstacle elements visited: the
+ * scans for a hop's nearby obstacles, a search's buckets, the wire list rebuilt per wire, and
+ * every shape and search result priced (path segments x obstacles). ~80 ns per unit on the DEV
+ * host (s20r4-large-*.txt); an 80-wire dense ESP32 bench spends ~3 M.
+ */
+export const PRICING_BUDGET_OPS = 6_000_000;
+
 export interface HeaderRow {
   box: RouteBox;
   outward: Point;
@@ -487,6 +525,7 @@ function searchRoute(
   obs: RouteObstacles,
   margin: number,
   wireNode: string | null = null,
+  budget?: SearchBudget,
 ): Point[] | null {
   if ((b.x - a.x) % GRID !== 0 || (b.y - a.y) % GRID !== 0) return null;
   // Area: the endpoints, grown by every body it reaches, plus a margin to go around them.
@@ -512,6 +551,15 @@ function searchRoute(
   const nx = Math.floor((maxX - x0) / GRID) + 1;
   const ny = Math.floor((maxY - y0) / GRID) + 1;
   if (nx * ny > SEARCH_MAX_NODES) return null;
+  // Sprint 20 (s20r4, review B1): a routing pass spends at most its budget of lattice cells.
+  if (budget) {
+    if (budget.cells < nx * ny || budget.ops <= 0) {
+      budget.skipped++;
+      return null;
+    }
+    budget.cells -= nx * ny;
+    budget.ops -= sizeOf(obs); // the search's buckets are built from every obstacle
+  }
   const node = (p: Point) => ((p.y - y0) / GRID) * nx + (p.x - x0) / GRID;
   const at = (n: number): Point => ({ x: x0 + (n % nx) * GRID, y: y0 + Math.floor(n / nx) * GRID });
   const isEnd = (p: Point) => eq(p, a) || eq(p, b);
@@ -747,11 +795,19 @@ const SHAPE_REACH = HEADER_CLEARANCE + GRID;
 
 /** The obstacles that can price a short shape of hop a-b (`candidates`), in their order. */
 function nearShapes(obs: RouteObstacles, a: Point, b: Point): RouteObstacles {
-  const r = CHANNEL_REACH * GRID + SHAPE_REACH;
-  const minX = Math.min(a.x, b.x) - r;
-  const maxX = Math.max(a.x, b.x) + r;
-  const minY = Math.min(a.y, b.y) - r;
-  const maxY = Math.max(a.y, b.y) + r;
+  return nearBox(obs, [a, b], CHANNEL_REACH * GRID + SHAPE_REACH);
+}
+
+/**
+ * The obstacles within `r` of the bounding box of `pts`, in their order (s20r4: a found search
+ * route is priced against these only; farther ones add an exact 0 to every cost term, as for
+ * the short shapes).
+ */
+function nearBox(obs: RouteObstacles, pts: readonly Point[], r: number): RouteObstacles {
+  const minX = Math.min(...pts.map((p) => p.x)) - r;
+  const maxX = Math.max(...pts.map((p) => p.x)) + r;
+  const minY = Math.min(...pts.map((p) => p.y)) - r;
+  const maxY = Math.max(...pts.map((p) => p.y)) + r;
   const hit = (x0: number, y0: number, x1: number, y1: number) =>
     Math.max(x0, x1) >= minX &&
     Math.min(x0, x1) <= maxX &&
@@ -785,7 +841,7 @@ function better(p: number[], q: number[]): boolean {
 export function autoRoute(
   waypoints: readonly Point[],
   obstacles: RouteObstacles,
-  options: { search?: boolean; node?: string | null } = {},
+  options: { search?: boolean; node?: string | null; budget?: SearchBudget } = {},
 ): Point[] {
   const search = options.search ?? true;
   const node = options.node ?? null;
@@ -805,22 +861,46 @@ export function autoRoute(
     // Rt2: the short shapes lie within the endpoints' box grown by the channel reach; an obstacle
     // farther than SHAPE_REACH from it adds an exact 0 to every cost term of every shape, so the
     // shapes are priced against the nearer ones only (in their order: the same sums).
+    const budget = options.budget;
+    let starved = false;
+    // The scan for the hop's nearby obstacles costs one unit per obstacle (s20r4).
+    if (budget) budget.ops -= sizeOf(obs);
     const shapeObs = nearShapes(obs, a, b);
     for (const c of candidates(a, b)) {
+      // s20r4 (review B1): with the pass's pricing budget spent, the first shape (an L) is taken
+      // as it is, unpriced: no further work for this hop.
+      if (budget) {
+        const ops = opsOf(c, shapeObs);
+        if (budget.ops < ops) {
+          starved = true;
+          break;
+        }
+        budget.ops -= ops;
+      }
       const k = cost(c, shapeObs, [a, b], node);
       if (!best || better(k, bestCost)) {
         best = c;
         bestCost = k;
       }
     }
+    if (starved) {
+      budget!.skipped++;
+      best ??= candidates(a, b)[0]!;
+    }
     // None of the short shapes is clean: search, widening the area while a keep-out remains.
     // Widening stops once keep-out and band are solved, or when a wider area no longer reduces
     // them (a pin boxed in by its neighbours cannot do better however far the search reaches).
     let previous: number[] | null = null;
-    for (let m = SEARCH_MARGIN; search && !clean(bestCost) && m <= SEARCH_MARGIN_MAX; m *= 2) {
-      const found = searchRoute(a, b, obs, m, node);
+    for (
+      let m = SEARCH_MARGIN;
+      search && !starved && !clean(bestCost) && m <= SEARCH_MARGIN_MAX;
+      m *= 2
+    ) {
+      const found = searchRoute(a, b, obs, m, node, options.budget);
       if (!found) break;
-      const k = cost(found, obs, [a, b], node);
+      const near = nearBox(obs, found, SHAPE_REACH);
+      if (budget) budget.ops = Math.max(0, budget.ops - opsOf(found, near));
+      const k = cost(found, near, [a, b], node);
       if (better(k, bestCost)) {
         best = found;
         bestCost = k;
@@ -845,7 +925,7 @@ export function autoRoute(
 export function autoRouteVertices(
   waypoints: readonly Point[],
   obstacles: RouteObstacles,
-  options: { search?: boolean; node?: string | null } = {},
+  options: { search?: boolean; node?: string | null; budget?: SearchBudget } = {},
 ): Point[] {
   return autoRoute(waypoints, obstacles, options).slice(1, -1);
 }
@@ -953,16 +1033,42 @@ export function rerouteWires(
   wireIds: Iterable<string>,
   boxes: readonly RouteBox[],
 ): ProjectDocument {
+  return rerouteWiresReport(doc, wireIds, boxes).doc;
+}
+
+/**
+ * `rerouteWires` with an optional work budget (s20r4, review B1: the open-time repair of a large
+ * project of manual wires was quadratic with a large constant and unbounded). Wires left
+ * unrepaired because the budget was spent are returned (`unrepaired`): they keep their stored
+ * route, and the app says so.
+ */
+export function rerouteWiresReport(
+  doc: ProjectDocument,
+  wireIds: Iterable<string>,
+  boxes: readonly RouteBox[],
+  budget?: SearchBudget,
+  wires?: WireSegments,
+): { doc: ProjectDocument; unrepaired: string[] } {
   let out = doc;
+  const unrepaired: string[] = [];
+  // Nodes never change while routes are patched (s20r4, review B8: was recomputed per wire).
+  const nodes = wireNodes(doc);
+  const segs = wires ?? new WireSegments(doc, boxes, nodes);
   for (const id of new Set(wireIds)) {
     const wire = out.layout.wires.find((w) => w.id === id);
     // Automatic wires are routed canonically (`routeAutoWires`), never patched from their old route.
     if (!wire || wire.auto || isContact(out, wire)) continue;
     const route = wireRoute(out, wire);
     if (!route || route.length < 2) continue;
-    const obs = routeObstacles(out, boxes, new Set([id]));
+    if (budget && budget.ops <= 0) {
+      budget.skipped++;
+      unrepaired.push(id);
+      continue;
+    }
+    if (budget) budget.ops -= segs.size;
+    const obs = segs.obstacles(id);
     const ends = [route[0]!, route[route.length - 1]!];
-    const node = wireNodes(out).get(id) ?? null;
+    const node = nodes.get(id) ?? null;
     const now = cost(route, obs, ends, node);
     if (clean(now)) continue;
     let best: Point[] | null = null;
@@ -987,16 +1093,16 @@ export function rerouteWires(
     if (kept.length > 0 && kept.length < wire.vertices.length)
       keeping.push([ends[0]!, ...kept, ends[1]!]);
     for (const waypoints of keeping) {
-      const candidate = autoRoute(waypoints, obs, { node });
+      const candidate = autoRoute(waypoints, obs, { node, budget });
       const k = cost(candidate, obs, ends, node);
-      if (k[0] === 0 && k[1] === 0 && k[2]! <= now[2]! && k[3]! <= now[3]!) {
+      if (keepsBends(k, now)) {
         best = candidate;
         bestCost = k;
         break;
       }
     }
     for (const waypoints of best ? [] : [[ends[0]!, ...wire.vertices, ends[1]!], ends]) {
-      const candidate = autoRoute(waypoints, obs, { node });
+      const candidate = autoRoute(waypoints, obs, { node, budget });
       const k = cost(candidate, obs, ends, node);
       if (better(k, bestCost)) {
         best = candidate;
@@ -1005,6 +1111,7 @@ export function rerouteWires(
     }
     if (!best) continue;
     const vertices = best.slice(1, -1);
+    segs.set(id, best);
     out = {
       ...out,
       layout: {
@@ -1013,7 +1120,60 @@ export function rerouteWires(
       },
     };
   }
-  return out;
+  return { doc: out, unrepaired };
+}
+
+/**
+ * Every wire's route segments, in document order, with their electrical nodes, kept up to date
+ * as wires are re-routed; `obstacles(except)` gives exactly what routeObstacles(doc, boxes,
+ * {except}) gives, without recomputing every wire's route (s20r4, review B1).
+ */
+export class WireSegments {
+  private readonly base: RouteObstacles;
+  private readonly segsOf = new Map<string, [Point, Point][]>();
+  private readonly order: string[];
+  size = 0;
+  constructor(
+    doc: ProjectDocument,
+    boxes: readonly RouteBox[],
+    private readonly nodes: ReadonlyMap<string, string>,
+  ) {
+    this.base = routeObstacles(doc, boxes, new Set(doc.layout.wires.map((w) => w.id)), nodes);
+    this.order = doc.layout.wires.map((w) => w.id);
+    for (const w of doc.layout.wires) this.set(w.id, wireRoute(doc, w));
+    this.size += sizeOf(this.base);
+  }
+  set(id: string, route: readonly Point[] | null | undefined): void {
+    const segs: [Point, Point][] = [];
+    if (route) for (let i = 0; i < route.length - 1; i++) segs.push([route[i]!, route[i + 1]!]);
+    this.size += segs.length - (this.segsOf.get(id)?.length ?? 0);
+    this.segsOf.set(id, segs);
+  }
+  obstacles(except: string): RouteObstacles {
+    const segments: [Point, Point][] = [];
+    const segmentNodes: string[] = [];
+    for (const id of this.order) {
+      if (id === except) continue;
+      for (const sg of this.segsOf.get(id) ?? []) {
+        segments.push(sg);
+        segmentNodes.push(this.nodes.get(id)!);
+      }
+    }
+    return { ...this.base, segments, segmentNodes };
+  }
+}
+
+/**
+ * Whether a route through the user's bends (cost `k`) may replace a stored manual route (cost
+ * `now`) in the repair (s20r round 3; s20r4, review B4): it enters no keep-out and no header band,
+ * and is no worse than the stored route on any of the misleading criteria: wire overlap, body,
+ * run along a wire on its own terminal, touches (a T or an end on another wire reads as a
+ * connection) and pin-field hugging. (Crossings and bends may grow: the bends are the user's.)
+ */
+export function keepsBends(k: readonly number[], now: readonly number[]): boolean {
+  if (k[0] !== 0 || k[1] !== 0) return false;
+  for (let i = 2; i <= 6; i++) if (k[i]! > now[i]!) return false;
+  return true;
 }
 
 /** Wire ids in creation order (W1, W2, ..., W10): numeric, then textual. */
@@ -1048,31 +1208,53 @@ export function routeAutoWires(
   boxes: readonly RouteBox[],
   preview?: { only: ReadonlySet<string> },
 ): ProjectDocument {
-  // PREVIEW (a drag in progress, bounded for interactivity): only the given wires, by the short
-  // shapes alone (no grid search). Never committed: the drop routes canonically.
+  return routeAutoWiresReport(doc, boxes, preview).doc;
+}
+
+/**
+ * `routeAutoWires`, with the automatic wires the pass could not route with a grid search because
+ * its search budget (SEARCH_BUDGET_CELLS) was spent (s20r4, review B1): they keep the best short
+ * shape; the app says so instead of leaving the drawing unexplained.
+ *
+ * Bound (s20r4): searches cost at most SEARCH_BUDGET_CELLS lattice cells per call in total (the
+ * first pass and every reorder round together); everything else is the short shapes, linear in
+ * the wires near each hop, and the obstacle list, kept incrementally (one pass over the wires per
+ * routed wire): O(n^2) in the number of wires with a small constant (s20r4-perf-*.txt: 1 280 dense
+ * wires on an ESP32 bench).
+ */
+export function routeAutoWiresReport(
+  doc: ProjectDocument,
+  boxes: readonly RouteBox[],
+  preview?: { only: ReadonlySet<string> },
+): { doc: ProjectDocument; degraded: string[] } {
   const autos = doc.layout.wires
     .filter((w) => w.auto && !isContact(doc, w) && (!preview || preview.only.has(w.id)))
     .sort(byCreation);
-  if (autos.length === 0) return doc;
+  if (autos.length === 0) return { doc, degraded: [] };
   // Electrical nodes never change while routing (routes are geometry only).
   const nodes = wireNodes(doc);
-  let best = routeInOrder(doc, autos, boxes, nodes, !preview);
-  if (preview) return best;
+  const budget: SearchBudget = {
+    cells: SEARCH_BUDGET_CELLS,
+    ops: PRICING_BUDGET_OPS,
+    skipped: 0,
+  };
+  let best = routeInOrder(doc, autos, boxes, nodes, !preview, 0, budget, new Set());
+  if (preview) return { doc: best.doc, degraded: [] };
   // Sprint 20 (s20r, owner report): wires of ONE node that still cross each other. Each is
   // routed against the wires before it, so an earlier wire can wall in a later one's pin (two
   // pins side by side on one node: the first wire goes round the second pin). The order is then
   // changed deterministically, as a function of the document only (never of history): the later
   // wire of each such pair is routed just before the earlier one; the result is kept when it has
-  // fewer same-node crossings, then fewer crossings, then fewer bends. Three rounds at most (one
-  // above 40 automatic wires, none above 60: s20r-perf-r2*.txt, the drop of an 80-wire bench).
+  // fewer same-node crossings, then fewer crossings, then fewer bends. Three rounds at most,
+  // whatever the number of wires (s20r4, review B3: a far-away wire no longer changes how many
+  // rounds the others get), sharing the pass's search budget.
   const ids = new Set(autos.map((w) => w.id));
   let order = autos;
-  let score = orderScore(best, ids);
-  // Bounded for interactivity: each round re-routes the wires from the first one it moves.
-  const rounds = autos.length <= 40 ? 3 : autos.length <= 60 ? 1 : 0;
-  for (let round = 0; round < rounds && score[0]! > 0; round++) {
+  // (The score is all-pairs over the wires: only computed when a round can run.)
+  let score = budget.skipped === 0 ? orderScore(best.doc, ids) : [0];
+  for (let round = 0; round < 3 && score[0]! > 0 && budget.skipped === 0; round++) {
     const next = [...order];
-    for (const c of sameNodeCrossings(best)) {
+    for (const c of sameNodeCrossings(best.doc)) {
       if (!ids.has(c.over) || !ids.has(c.under) || c.over === c.under) continue;
       const i = next.findIndex((w) => w.id === c.over);
       const j = next.findIndex((w) => w.id === c.under);
@@ -1083,14 +1265,26 @@ export function routeAutoWires(
     const from = next.findIndex((w, k) => w !== order[k]);
     if (from < 0) break;
     // The wires before the first change are routed against exactly what they were: kept.
-    const routed = routeInOrder(best, next, boxes, nodes, true, from);
-    const k = orderScore(routed, ids);
+    const prefix = new Set(next.slice(0, from).map((w) => w.id));
+    const routed = routeInOrder(
+      best.doc,
+      next,
+      boxes,
+      nodes,
+      true,
+      from,
+      budget,
+      new Set([...best.degraded].filter((id) => prefix.has(id))),
+    );
+    // A round that ran out of budget is not taken (its later wires would have lost their search).
+    if (budget.skipped > 0) break;
+    const k = orderScore(routed.doc, ids);
     if (!better(k, score)) break;
     best = routed;
     score = k;
     order = next;
   }
-  return best;
+  return { doc: best.doc, degraded: [...best.degraded].sort() };
 }
 
 /** Same-node crossings, crossings (hops) and bends of the automatic wires `ids` (s20r). */
@@ -1113,36 +1307,92 @@ function routeInOrder(
   nodes: ReadonlyMap<string, string>,
   search: boolean,
   /** The wires before this index are already routed in `doc` (in this order). */
-  from = 0,
-): ProjectDocument {
+  from: number,
+  budget: SearchBudget,
+  /** Wires before `from` routed without a search the budget did not allow (carried over). */
+  degraded: Set<string>,
+): { doc: ProjectDocument; degraded: Set<string> } {
   const pending = new Set(autos.slice(from).map((w) => w.id));
-  let out = doc;
+  // The obstacles as routeObstacles(out, boxes, pending) gives them, kept incrementally (s20r4,
+  // review B1: rebuilding every wire's route for every routed wire was quadratic with a large
+  // constant). Everything but the wires' segments is the same for every wire of the pass; the
+  // segments are listed in document order, each routed wire's replaced when it is routed: the same
+  // list, in the same order, as rebuilding it.
+  const base = routeObstacles(doc, boxes, new Set(doc.layout.wires.map((w) => w.id)), nodes);
+  const segsOf = new Map<string, [Point, Point][]>();
+  for (const w of doc.layout.wires) {
+    const r = wireRoute(doc, w);
+    if (!r) continue;
+    const segs: [Point, Point][] = [];
+    for (let i = 0; i < r.length - 1; i++) segs.push([r[i]!, r[i + 1]!]);
+    segsOf.set(w.id, segs);
+  }
+  const vertices = new Map(doc.layout.wires.map((w) => [w.id, w.vertices]));
+  let totalSegments = 0;
+  for (const segs of segsOf.values()) totalSegments += segs.length;
   for (const wire of autos.slice(from)) {
-    const ends = wireRoute(out, { ...wire, vertices: [] });
+    const ends = wireRoute(doc, { ...wire, vertices: [] });
     if (!ends || ends.length < 1) {
       pending.delete(wire.id);
       continue;
     }
     const a = ends[0]!;
     const b = ends[ends.length - 1]!;
-    // Obstacles: everything but this wire and the automatic wires after it.
-    const obs = routeObstacles(out, boxes, pending, nodes);
-    const vertices = autoRouteVertices([a, ...wire.auto!.waypoints, b], obs, {
-      search,
-      node: nodes.get(wire.id) ?? null,
-    });
+    // With the pass's pricing budget spent, the wire takes its first short shape (an L) as it is:
+    // no obstacles needed, no further work (s20r4, review B1).
+    if (budget.ops <= 0) {
+      budget.skipped++;
+      degraded.add(wire.id);
+      pending.delete(wire.id);
+      const v = autoRouteVertices([a, ...wire.auto!.waypoints, b], EMPTY_OBSTACLES, {
+        search: false,
+      });
+      vertices.set(wire.id, v);
+      continue;
+    }
+    // Obstacles: everything but this wire and the automatic wires after it (its cost counts).
+    const segments: [Point, Point][] = [];
+    const segmentNodes: string[] = [];
+    budget.ops -= doc.layout.wires.length + totalSegments;
+    for (const w of doc.layout.wires) {
+      if (pending.has(w.id)) continue;
+      for (const sg of segsOf.get(w.id) ?? []) {
+        segments.push(sg);
+        segmentNodes.push(nodes.get(w.id)!);
+      }
+    }
+    const skipped = budget.skipped;
+    const v = autoRouteVertices(
+      [a, ...wire.auto!.waypoints, b],
+      { ...base, segments, segmentNodes },
+      { search, node: nodes.get(wire.id) ?? null, budget },
+    );
+    if (budget.skipped > skipped) degraded.add(wire.id);
     pending.delete(wire.id);
-    const current = out.layout.wires.find((w) => w.id === wire.id)!;
-    if (JSON.stringify(current.vertices) === JSON.stringify(vertices)) continue;
-    out = {
-      ...out,
-      layout: {
-        ...out.layout,
-        wires: out.layout.wires.map((w): Wire => (w.id === wire.id ? { ...w, vertices } : w)),
-      },
-    };
+    vertices.set(wire.id, v);
+    const r = wireRoute(doc, { ...wire, vertices: v });
+    const segs: [Point, Point][] = [];
+    if (r) for (let i = 0; i < r.length - 1; i++) segs.push([r[i]!, r[i + 1]!]);
+    segsOf.set(wire.id, segs);
   }
-  return out;
+  // One new document at the end (only when a route changed).
+  const changed = doc.layout.wires.some(
+    (w) => JSON.stringify(w.vertices) !== JSON.stringify(vertices.get(w.id)),
+  );
+  const out = changed
+    ? {
+        ...doc,
+        layout: {
+          ...doc.layout,
+          wires: doc.layout.wires.map((w): Wire =>
+            JSON.stringify(w.vertices) === JSON.stringify(vertices.get(w.id))
+              ? w
+              : { ...w, vertices: vertices.get(w.id)! },
+          ),
+        },
+      }
+    : doc;
+  return { doc: out, degraded };
 }
 
 /**
@@ -1159,23 +1409,50 @@ export function repairWireRoutes(
   doc: ProjectDocument,
   boxes: readonly RouteBox[],
 ): ProjectDocument {
+  return repairWireRoutesReport(doc, boxes).doc;
+}
+
+/**
+ * `repairWireRoutes`, bounded (s20r4, review B1): the check and the repair share one work budget
+ * (SEARCH_BUDGET_CELLS cells, PRICING_BUDGET_OPS units); wires left unchecked or unrepaired when it
+ * is spent keep their stored route and are returned (`unrepaired`).
+ */
+export function repairWireRoutesReport(
+  doc: ProjectDocument,
+  boxes: readonly RouteBox[],
+): { doc: ProjectDocument; unrepaired: string[] } {
+  const budget: SearchBudget = {
+    cells: SEARCH_BUDGET_CELLS,
+    ops: PRICING_BUDGET_OPS,
+    skipped: 0,
+  };
+  const nodes = wireNodes(doc);
+  const segs = new WireSegments(doc, boxes, nodes);
+  const unchecked: string[] = [];
   const broken = doc.layout.wires.filter((w) => {
     if (w.auto || isContact(doc, w)) return false;
     const route = wireRoute(doc, w);
     if (!route || route.length < 2) return false;
-    const k = cost(route, routeObstacles(doc, boxes, new Set([w.id])), [
-      route[0]!,
-      route[route.length - 1]!,
-    ]);
+    if (budget.ops <= 0) {
+      unchecked.push(w.id);
+      return false;
+    }
+    const obs = segs.obstacles(w.id);
+    budget.ops -= segs.size;
+    const near = nearBox(obs, route, SHAPE_REACH);
+    budget.ops -= opsOf(route, near);
+    const k = cost(route, near, [route[0]!, route[route.length - 1]!]);
     return k[0]! > 0 || k[1]! > 0;
   });
-  return broken.length
-    ? rerouteWires(
-        doc,
-        broken.map((w) => w.id),
-        boxes,
-      )
-    : doc;
+  if (!broken.length) return { doc, unrepaired: unchecked };
+  const r = rerouteWiresReport(
+    doc,
+    broken.map((w) => w.id),
+    boxes,
+    budget,
+    segs,
+  );
+  return { doc: r.doc, unrepaired: [...unchecked, ...r.unrepaired].sort() };
 }
 
 /**

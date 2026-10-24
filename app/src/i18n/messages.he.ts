@@ -48,6 +48,8 @@ export const he: Record<MessageKey, string> = {
   'canvas.zoomFit': 'התאמה לתצוגה',
   'canvas.hint.wire':
     'גררו קטע ישר של החוט כדי להזיז אותו. הקצוות נשארים מחוברים. Delete מוחק אותו.',
+  'canvas.routeLimit':
+    'הפרויקט גדול מאוד: {count} חוטים משורטטים בצורה פשוטה (הם עשויים לעבור קרוב לפינים או לחוטים אחרים). החיבורים הם בדיוק כפי שהם משורטטים.',
   'canvas.hint.idle': 'לחצו על [[terminal]] כדי להתחיל חוט. גררו על שטח ריק כדי לבחור.',
   'canvas.hint.placing': 'לחצו על משטח השרטוט כדי למקם. Esc לביטול.',
   'canvas.hint.wiring':

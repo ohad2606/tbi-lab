@@ -9,6 +9,8 @@ import {
   moveSelection,
   rerouteWires,
   routeAutoWires,
+  routeAutoWiresReport,
+  repairWireRoutesReport,
   rotateComponents,
   rotatePoint,
   type ComponentInstance,
@@ -106,9 +108,36 @@ export const componentBoxes = (doc: ProjectDocument): RouteBox[] => [
   ...displayBoxes(doc),
 ];
 
+/**
+ * Sprint 20 (s20r4, review B1): the wires the bounded routing could not route with its full
+ * search (a very large project), by layout object: the layout is carried unchanged into the
+ * stored document (commit stamps only the revision), so the Circuit view can say so.
+ */
+const limitedByLayout = new WeakMap<object, string[]>();
+/** Wires drawn with a simpler shape than the router would give, or left unrepaired (s20r4). */
+export const routingLimited = (doc: ProjectDocument): readonly string[] =>
+  limitedByLayout.get(doc.layout) ?? [];
+const remember = (doc: ProjectDocument, ids: readonly string[], keep: readonly string[] = []) => {
+  const all = [...new Set([...keep, ...ids])].sort();
+  if (all.length) limitedByLayout.set(doc.layout, all);
+  return doc;
+};
+
 /** Wire routing integrity: the canonical routes of every automatic wire (domain `routeAutoWires`). */
-export const routeAutomatic = (doc: ProjectDocument): ProjectDocument =>
-  routeAutoWires(doc, componentBoxes(doc));
+export const routeAutomatic = (doc: ProjectDocument): ProjectDocument => {
+  const r = routeAutoWiresReport(doc, componentBoxes(doc));
+  // Manual wires left unrepaired at open keep their mark (their geometry is unchanged).
+  const manual = routingLimited(doc).filter((id) =>
+    r.doc.layout.wires.some((w) => w.id === id && !w.auto),
+  );
+  return remember(r.doc, r.degraded, manual);
+};
+
+/** The open-time repair of manual wires (domain `repairWireRoutes`), bounded (s20r4). */
+export const repairManual = (doc: ProjectDocument): ProjectDocument => {
+  const r = repairWireRoutesReport(doc, componentBoxes(doc));
+  return remember(r.doc, r.unrepaired);
+};
 
 function routed(r: EditResult, components: string[], rigidWires: string[]): EditResult {
   if (!r.ok) return r;

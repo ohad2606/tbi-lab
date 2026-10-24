@@ -11,6 +11,7 @@ import {
   emptySelection,
   moveWireSegment,
   autoRoute,
+  keepsBends,
   sameNodeBranches,
   sameNodeCrossings,
   wireCrossings,
@@ -196,6 +197,7 @@ describe('branch dots of wires of ONE node (s20r round 3)', () => {
       addWire(doc, t('R1', 'a'), t('GND1', 'ref'), [
         { x: 100, y: -100 },
         { x: 100, y: -20 },
+        { x: 100, y: 100 },
       ]),
     ).doc;
     expect(wireNodes(doc).get('W3')).not.toBe(wireNodes(doc).get('W1'));
@@ -209,5 +211,32 @@ describe('branch dots of wires of ONE node (s20r round 3)', () => {
     let doc = base();
     doc = must(addWire(doc, t('PSU1', 'positive'), t('R3', 'a'))).doc; // the same run twice
     expect(sameNodeBranches(doc)).toEqual([]);
+  });
+});
+
+describe('review round 2 (s20r4)', () => {
+  it('B2: no branch dot where a wire of another node passes through the point (a hop is there)', () => {
+    let doc = base();
+    doc = must(addWire(doc, t('PSU1', 'positive'), t('R2', 'b'), [{ x: 40, y: -20 }])).doc;
+    expect(sameNodeBranches(doc)).toEqual([{ x: 40, y: -20 }]);
+    // W3, another node (R1.b -> R2.a), manual, straight down through the branch point.
+    doc = must(
+      addWire(doc, t('R1', 'b'), t('R2', 'a'), [
+        { x: 40, y: 40 },
+        { x: -40, y: 40 },
+      ]),
+    ).doc;
+    expect(wireNodes(doc).get('W3')).not.toBe(wireNodes(doc).get('W1'));
+    expect(wireCrossings(doc)).toContainEqual({ x: 40, y: -20, over: 'W3', under: 'W1' });
+    expect(sameNodeBranches(doc)).toEqual([]); // never a dot and a hop at one point
+  });
+
+  it('B4: the kept-bends repair never accepts a route worse on shared, touches or hugging', () => {
+    const now = [1, 0, 0, 0, 0, 0, 0, 5, 0, 100];
+    expect(keepsBends([0, 0, 0, 0, 0, 0, 0, 9, 0, 300], now)).toBe(true); // more bends: allowed
+    expect(keepsBends([0, 0, 0, 0, 0, 1, 0, 1, 0, 50], now)).toBe(false); // a T-touch
+    expect(keepsBends([0, 0, 0, 0, 20, 0, 0, 1, 0, 50], now)).toBe(false); // along a wire on its end
+    expect(keepsBends([0, 0, 0, 0, 0, 0, 1, 1, 0, 50], now)).toBe(false); // hugging a pin field
+    expect(keepsBends([0, 1, 0, 0, 0, 0, 0, 1, 0, 50], now)).toBe(false); // header band
   });
 });
