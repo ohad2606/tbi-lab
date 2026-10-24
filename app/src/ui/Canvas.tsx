@@ -66,7 +66,14 @@ import {
   type SymbolState,
 } from './symbols.js';
 import { bodyOverlaps } from '../geometry/overlap.js';
-import { componentBox, componentBoxes, movePreview, moveRouted, rotateRouted } from './routing.js';
+import {
+  componentBox,
+  componentBoxes,
+  movePreview,
+  moveRouted,
+  rotateRouted,
+  routingLimited,
+} from './routing.js';
 import { RGB_LOOKS, ledLook } from '../views/ledLooks.js';
 import { resolveWireColors } from '../views/wireColors.js';
 import { pressControl, toggleControl } from './controls.js';
@@ -804,6 +811,8 @@ export function Canvas({
 
   // Unconnected crossings of the drawing being shown (including a live drag preview).
   const crossings = useMemo(() => wireCrossings(view), [view]);
+  // Wires the bounded routing drew with a simple shape (very large projects, s20r4).
+  const limited = routingLimited(doc);
   // Branch points of wires of one node (s20r): drawn with a junction-style dot.
   const branches = useMemo(() => sameNodeBranches(view), [view]);
   // The same resolved colours as the 3D view (wireColors.ts).
@@ -1225,6 +1234,11 @@ export function Canvas({
       {!readOnly && (
         <div class="canvas-hint" dir={state.locale.dir} data-testid="canvas-hint">
           {t(hint)}
+          {limited.length > 0 && (
+            <div class="view-note-warning" role="status" data-testid="canvas-route-limit">
+              {t('canvas.routeLimit', { count: limited.length })}
+            </div>
+          )}
         </div>
       )}
     </div>

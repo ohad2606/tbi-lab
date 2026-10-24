@@ -132,6 +132,12 @@ export function wireNodes(
   const find = (k: string): string => {
     let r = k;
     while (parent.get(r) !== r) r = parent.get(r)!;
+    // Path compression (s20r4, review B8).
+    for (let x = k; parent.get(x) !== r;) {
+      const next = parent.get(x)!;
+      parent.set(x, r);
+      x = next;
+    }
     return r;
   };
   const key = (e: ProjectDocument['layout']['wires'][number]['from']) =>

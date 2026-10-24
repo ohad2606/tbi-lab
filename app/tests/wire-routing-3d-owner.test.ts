@@ -19,7 +19,6 @@ import {
   sameNodeCrossings,
   wireRoute,
   wireCrossings,
-  wireNodes,
   createPackage,
   parsePackage,
   serializePackage,
@@ -27,6 +26,7 @@ import {
 } from '@tbi-lab/domain';
 import { deriveScene, WIRE_RADIUS } from '../src/views/scene3d/scene.js';
 import { awayAndBack, expectedNets, ownerBench, ownerVariants } from './support/ownerBench.js';
+import { independentWireNodes } from './support/independentNodes.js';
 import { measure3d } from './support/wire3dMetrics.js';
 import { expectNoWireThroughBodies } from './support/scene3dChecks.js';
 import { e2eFixtures } from './support/s20rFixtures.js';
@@ -50,8 +50,11 @@ const scene = (doc: ProjectDocument) => JSON.stringify(deriveScene(doc));
  * a second side for the second lane and a sideways-shifted lane end: both fixed this case but
  * raised loops / hairpins / arches on the random benches (s20r NOTES), so neither was kept.
  */
-const KNOWN: Record<string, { ownPenetrations?: string[] }> = {
+const KNOWN: Record<string, { ownPenetrations?: string[]; overOwnBody?: string[] }> = {
   'left-switched': { ownPenetrations: ['W5-W6'] },
+  // s20r4: with the stricter own-body check (review B6) this run was found to cut the edge of
+  // the supply's case on its way down; padded like any body, it now passes OVER the case, clear.
+  below: { overOwnBody: ['W4>PSU1'] },
 };
 
 describe('owner report (s20r): one AND gate wired to a 5 V supply, in 3D', () => {
@@ -71,13 +74,13 @@ describe('owner report (s20r): one AND gate wired to a 5 V supply, in 3D', () =>
       expect(m.loops).toEqual([]);
       expect(m.flatCrossings, 'every crossing passes over by a wire diameter').toEqual([]);
       for (const c of m.crossings) expect(c.dy).toBeGreaterThanOrEqual(2 * WIRE_RADIUS);
-      expect(m.overOwnBody).toEqual([]);
+      expect(m.overOwnBody).toEqual(KNOWN[v.name]?.overOwnBody ?? []);
       expect(m.hairpins).toEqual([]);
       // Round 2 (owner review of right-rot180): wires of one node never cross each other in 2D
       // (no hop is drawn for them: that would say "not connected"), and every hop drawn is
       // between two different nodes.
       expect(sameNodeCrossings(b.doc), 'same-node crossings (2D)').toEqual([]);
-      const nodes = wireNodes(b.doc);
+      const nodes = independentWireNodes(b.doc); // s20r4 B5: not the domain's own map
       for (const c of wireCrossings(b.doc)) expect(nodes.get(c.over)).not.toBe(nodes.get(c.under));
       // Round 3: a dot at every branch of one node's shared run, each on two or more wires of
       // one node, never at a hop (different nodes).

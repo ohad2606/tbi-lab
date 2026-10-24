@@ -41,13 +41,31 @@ export function nextRotation(rotation: Rotation): Rotation {
   return ROTATIONS[(ROTATIONS.indexOf(rotation) + 1) % ROTATIONS.length]!;
 }
 
+/**
+ * Components by id, per components array (s20r4, review B1: a linear search per terminal made
+ * routing a large project quadratic). Documents are immutable: an array is never changed in
+ * place, so the map of an array stays valid.
+ */
+const byIdCache = new WeakMap<
+  readonly ProjectDocument['components'][number][],
+  Map<string, ProjectDocument['components'][number]>
+>();
+function componentById(list: readonly ProjectDocument['components'][number][]) {
+  let m = byIdCache.get(list);
+  if (!m) {
+    m = new Map(list.map((c) => [c.id, c]));
+    byIdCache.set(list, m);
+  }
+  return m;
+}
+
 /** Absolute position of a component terminal, or undefined if it does not exist. */
 export function terminalPosition(
   doc: ProjectDocument,
   componentId: string,
   terminalId: string,
 ): Point | undefined {
-  const component = doc.components.find((c) => c.id === componentId);
+  const component = componentById(doc.components).get(componentId);
   const placement = doc.layout.components[componentId];
   if (!component || !placement) return undefined;
   const terminal = getTypeDef(component.type)?.terminals.find((t) => t.id === terminalId);
@@ -198,38 +216,68 @@ export function sameNodeBranches(doc: ProjectDocument): Point[] {
       const p = terminalPosition(doc, c.id, t.id);
       if (p) marked.add(`${p.x},${p.y}`);
     }
-  type Seg = { a: Point; b: Point };
-  const byNode = new Map<string, Seg[]>();
-  const corners = new Map<string, Point[]>();
+  // Every segment, bucketed by the grid cells it covers (s20r4, review B7: each point was
+  // tested against every segment of its node).
+  type Seg = { a: Point; b: Point; n: string };
+  const index = new SegmentIndex<Seg>();
+  const vertices: { p: Point; n: string }[] = [];
   for (const w of doc.layout.wires) {
     const r = wireRoute(doc, w);
     const n = node.get(w.id);
     if (!r || !n) continue;
-    const segs = byNode.get(n) ?? [];
-    for (let i = 1; i < r.length; i++) segs.push({ a: r[i - 1]!, b: r[i]! });
-    byNode.set(n, segs);
-    corners.set(n, [...(corners.get(n) ?? []), ...r]);
+    for (let i = 1; i < r.length; i++) index.add(r[i - 1]!, r[i]!, { a: r[i - 1]!, b: r[i]!, n });
+    for (const p of r) vertices.push({ p, n });
   }
   const out = new Map<string, Point>();
-  for (const [n, pts] of corners) {
-    const segs = byNode.get(n)!;
-    for (const p of pts) {
-      const k = `${p.x},${p.y}`;
-      if (marked.has(k) || out.has(k)) continue;
-      const dirs = new Set<string>();
-      for (const { a, b } of segs) {
-        const on =
-          (a.x === b.x && p.x === a.x && p.y >= Math.min(a.y, b.y) && p.y <= Math.max(a.y, b.y)) ||
-          (a.y === b.y && p.y === a.y && p.x >= Math.min(a.x, b.x) && p.x <= Math.max(a.x, b.x));
-        if (!on) continue;
-        for (const q of [a, b])
-          if (q.x !== p.x || q.y !== p.y)
-            dirs.add(`${Math.sign(q.x - p.x)},${Math.sign(q.y - p.y)}`);
+  const refused = new Set<string>();
+  for (const { p, n } of vertices) {
+    const k = `${p.x},${p.y}`;
+    if (marked.has(k) || out.has(k) || refused.has(k)) continue;
+    const dirs = new Set<string>();
+    let foreign = false;
+    for (const { a, b, n: m } of index.at(p)) {
+      if (!onSegment(p, a, b)) continue;
+      // s20r4 (review B2): a wire of ANOTHER node through or onto the point. A dot there would
+      // sit on a different-node crossing or T (where a hop or nothing is drawn): no dot.
+      if (m !== n) {
+        foreign = true;
+        break;
       }
-      if (dirs.size >= 3) out.set(k, { x: p.x, y: p.y });
+      for (const q of [a, b])
+        if (q.x !== p.x || q.y !== p.y) dirs.add(`${Math.sign(q.x - p.x)},${Math.sign(q.y - p.y)}`);
     }
+    if (foreign) refused.add(k);
+    else if (dirs.size >= 3) out.set(k, { x: p.x, y: p.y });
   }
   return [...out.values()].sort((p, q) => p.x - q.x || p.y - q.y);
+}
+
+const onSegment = (p: Point, a: Point, b: Point) =>
+  (a.x === b.x && p.x === a.x && p.y >= Math.min(a.y, b.y) && p.y <= Math.max(a.y, b.y)) ||
+  (a.y === b.y && p.y === a.y && p.x >= Math.min(a.x, b.x) && p.x <= Math.max(a.x, b.x));
+
+/** Axis-aligned segments bucketed by coarse cells (layout units), for point queries. */
+class SegmentIndex<T> {
+  private static readonly CELL = 200;
+  private readonly cells = new Map<string, T[]>();
+  add(a: Point, b: Point, v: T): void {
+    const c = SegmentIndex.CELL;
+    for (let x = Math.floor(Math.min(a.x, b.x) / c); x <= Math.floor(Math.max(a.x, b.x) / c); x++)
+      for (
+        let y = Math.floor(Math.min(a.y, b.y) / c);
+        y <= Math.floor(Math.max(a.y, b.y) / c);
+        y++
+      ) {
+        const k = `${x},${y}`;
+        const list = this.cells.get(k);
+        if (list) list.push(v);
+        else this.cells.set(k, [v]);
+      }
+  }
+  at(p: Point): readonly T[] {
+    const c = SegmentIndex.CELL;
+    return this.cells.get(`${Math.floor(p.x / c)},${Math.floor(p.y / c)}`) ?? [];
+  }
 }
 
 /** Crossings between wires of one node (`same`), or of different nodes (s20r). */
@@ -258,8 +306,27 @@ function allCrossings(doc: ProjectDocument, same: boolean): WireCrossing[] {
   }
   const inside = (v: number, p: number, q: number) => v > Math.min(p, q) && v < Math.max(p, q);
   const out: WireCrossing[] = [];
+  // Horizontal segments bucketed by cell (s20r4, review B7: every vertical was tested against
+  // every horizontal on every frame); per vertical, the buckets along it, each segment once, in
+  // document order as before.
+  const index = new SegmentIndex<Seg & { k: number }>();
+  horizontal.forEach((h, k) => index.add(h.a, h.b, { ...h, k }));
+  const c = 200;
   for (const v of vertical) {
-    for (const h of horizontal) {
+    const seen = new Set<number>();
+    const near: (Seg & { k: number })[] = [];
+    for (
+      let y = Math.floor(Math.min(v.a.y, v.b.y) / c);
+      y <= Math.floor(Math.max(v.a.y, v.b.y) / c);
+      y++
+    )
+      for (const h of index.at({ x: v.a.x, y: y * c }))
+        if (!seen.has(h.k)) {
+          seen.add(h.k);
+          near.push(h);
+        }
+    near.sort((p, q) => p.k - q.k);
+    for (const h of near) {
       const x = v.a.x;
       const y = h.a.y;
       if (!inside(x, h.a.x, h.b.x) || !inside(y, v.a.y, v.b.y)) continue;

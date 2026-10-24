@@ -14,8 +14,7 @@ import { StoreContext } from './ui/context.js';
 import './styles.css';
 import { randomId } from './ids.js';
 import { prefetchExamples } from './examples/catalog.js';
-import { repairWireRoutes } from '@tbi-lab/domain';
-import { componentBoxes, routeAutomatic } from './ui/routing.js';
+import { repairManual, routeAutomatic } from './ui/routing.js';
 
 /** Per-device preferences, kept apart from project data. Failure is never fatal. */
 const prefs: Preferences = {
@@ -91,7 +90,7 @@ async function main() {
     prefs,
     languages: navigator.languages,
     newId: randomId,
-    repairLayout: (doc) => repairWireRoutes(doc, componentBoxes(doc)),
+    repairLayout: repairManual,
     routeLayout: routeAutomatic,
   });
   render(
