@@ -256,27 +256,57 @@ const onSegment = (p: Point, a: Point, b: Point) =>
   (a.x === b.x && p.x === a.x && p.y >= Math.min(a.y, b.y) && p.y <= Math.max(a.y, b.y)) ||
   (a.y === b.y && p.y === a.y && p.x >= Math.min(a.x, b.x) && p.x <= Math.max(a.x, b.x));
 
-/** Axis-aligned segments bucketed by coarse cells (layout units), for point queries. */
+/**
+ * Axis-aligned segments bucketed by coarse cells (layout units), for point and run queries.
+ * s20r5 (review r3, BLOCKING 2): the work must not grow with coordinate size. A segment is put in
+ * at most MAX_CELLS cells; a longer one goes to a `long` list that every query scans instead (the
+ * pre-index behaviour, O(segments), for those only). Queries are capped the same way: a run
+ * covering more than MAX_CELLS cells scans every segment. So building costs at most
+ * O(segments x MAX_CELLS) and a query O(MAX_CELLS x bucket + long), whatever the coordinates.
+ */
 class SegmentIndex<T> {
-  private static readonly CELL = 200;
+  static readonly CELL = 200;
+  static readonly MAX_CELLS = 64;
   private readonly cells = new Map<string, T[]>();
-  add(a: Point, b: Point, v: T): void {
+  readonly long: T[] = [];
+  readonly all: T[] = [];
+  private static span(a: Point, b: Point) {
     const c = SegmentIndex.CELL;
-    for (let x = Math.floor(Math.min(a.x, b.x) / c); x <= Math.floor(Math.max(a.x, b.x) / c); x++)
-      for (
-        let y = Math.floor(Math.min(a.y, b.y) / c);
-        y <= Math.floor(Math.max(a.y, b.y) / c);
-        y++
-      ) {
+    const x0 = Math.floor(Math.min(a.x, b.x) / c);
+    const x1 = Math.floor(Math.max(a.x, b.x) / c);
+    const y0 = Math.floor(Math.min(a.y, b.y) / c);
+    const y1 = Math.floor(Math.max(a.y, b.y) / c);
+    return { x0, x1, y0, y1, count: (x1 - x0 + 1) * (y1 - y0 + 1) };
+  }
+  add(a: Point, b: Point, v: T): void {
+    this.all.push(v);
+    const sp = SegmentIndex.span(a, b);
+    if (!(sp.count <= SegmentIndex.MAX_CELLS)) {
+      this.long.push(v);
+      return;
+    }
+    for (let x = sp.x0; x <= sp.x1; x++)
+      for (let y = sp.y0; y <= sp.y1; y++) {
         const k = `${x},${y}`;
         const list = this.cells.get(k);
         if (list) list.push(v);
         else this.cells.set(k, [v]);
       }
   }
+  /** Every segment that may contain p (a superset; callers test exactly). */
   at(p: Point): readonly T[] {
     const c = SegmentIndex.CELL;
-    return this.cells.get(`${Math.floor(p.x / c)},${Math.floor(p.y / c)}`) ?? [];
+    const here = this.cells.get(`${Math.floor(p.x / c)},${Math.floor(p.y / c)}`) ?? [];
+    return this.long.length ? [...here, ...this.long] : here;
+  }
+  /** Every segment that may meet the run a-b (a superset, possibly with repeats). */
+  along(a: Point, b: Point): readonly T[] {
+    const sp = SegmentIndex.span(a, b);
+    if (!(sp.count <= SegmentIndex.MAX_CELLS)) return this.all;
+    const out: T[] = [...this.long];
+    for (let x = sp.x0; x <= sp.x1; x++)
+      for (let y = sp.y0; y <= sp.y1; y++) out.push(...(this.cells.get(`${x},${y}`) ?? []));
+    return out;
   }
 }
 
@@ -311,20 +341,14 @@ function allCrossings(doc: ProjectDocument, same: boolean): WireCrossing[] {
   // document order as before.
   const index = new SegmentIndex<Seg & { k: number }>();
   horizontal.forEach((h, k) => index.add(h.a, h.b, { ...h, k }));
-  const c = 200;
   for (const v of vertical) {
     const seen = new Set<number>();
     const near: (Seg & { k: number })[] = [];
-    for (
-      let y = Math.floor(Math.min(v.a.y, v.b.y) / c);
-      y <= Math.floor(Math.max(v.a.y, v.b.y) / c);
-      y++
-    )
-      for (const h of index.at({ x: v.a.x, y: y * c }))
-        if (!seen.has(h.k)) {
-          seen.add(h.k);
-          near.push(h);
-        }
+    for (const h of index.along(v.a, v.b))
+      if (!seen.has(h.k)) {
+        seen.add(h.k);
+        near.push(h);
+      }
     near.sort((p, q) => p.k - q.k);
     for (const h of near) {
       const x = v.a.x;

@@ -113,13 +113,32 @@ export const componentBoxes = (doc: ProjectDocument): RouteBox[] => [
  * search (a very large project), by layout object: the layout is carried unchanged into the
  * stored document (commit stamps only the revision), so the Circuit view can say so.
  */
-const limitedByLayout = new WeakMap<object, string[]>();
+// s20r5 (review r3, NOTE 6): keyed by the drawing's CONTENT (every wire's id, ends and bends),
+// not by the layout object: an edit that does not move a wire (a rename, a value) or an undo makes
+// a new layout object with the same drawing, and the note must stay. The key of a layout object
+// is computed once (WeakMap); the last 16 drawings are remembered.
+const keyOf = new WeakMap<object, string>();
+const drawingKey = (layout: ProjectDocument['layout']): string => {
+  let k = keyOf.get(layout);
+  if (k === undefined) {
+    k = JSON.stringify(layout.wires.map((w) => [w.id, w.from, w.to, w.vertices]));
+    keyOf.set(layout, k);
+  }
+  return k;
+};
+const limitedByDrawing = new Map<string, string[]>();
 /** Wires drawn with a simpler shape than the router would give, or left unrepaired (s20r4). */
 export const routingLimited = (doc: ProjectDocument): readonly string[] =>
-  limitedByLayout.get(doc.layout) ?? [];
+  limitedByDrawing.get(drawingKey(doc.layout)) ?? [];
 const remember = (doc: ProjectDocument, ids: readonly string[], keep: readonly string[] = []) => {
   const all = [...new Set([...keep, ...ids])].sort();
-  if (all.length) limitedByLayout.set(doc.layout, all);
+  const k = drawingKey(doc.layout);
+  limitedByDrawing.delete(k);
+  if (all.length) {
+    limitedByDrawing.set(k, all);
+    while (limitedByDrawing.size > 16)
+      limitedByDrawing.delete(limitedByDrawing.keys().next().value!);
+  }
   return doc;
 };
 

@@ -210,9 +210,30 @@ function normalize(pts: Point[]): Point[] | null {
   return minimal;
 }
 
+/**
+ * At most this many channel lines between a hop's endpoints (s20r5, review r3: a hop spanning
+ * 1e8 units made 5e6 candidate shapes). Spans up to this many grid steps (8 000 layout units,
+ * far beyond any layout drawn: examples < 2 000) keep every line; longer ones keep the lines
+ * nearest each endpoint.
+ */
+const MAX_CHANNELS = 400;
 function channels(lo: number, hi: number): number[] {
   const out: number[] = [];
-  for (let v = Math.ceil(lo / GRID) * GRID; v <= hi; v += GRID) if (v > lo && v < hi) out.push(v);
+  const first = Math.ceil(lo / GRID) * GRID;
+  const steps = (hi - first) / GRID;
+  if (steps <= MAX_CHANNELS) {
+    for (let v = first; v <= hi; v += GRID) if (v > lo && v < hi) out.push(v);
+  } else {
+    const last = Math.floor(hi / GRID) * GRID;
+    for (let k = 0; k < MAX_CHANNELS / 2; k++) {
+      const v = first + k * GRID;
+      if (v > lo && v < hi) out.push(v);
+    }
+    for (let k = MAX_CHANNELS / 2 - 1; k >= 0; k--) {
+      const v = last - k * GRID;
+      if (v > lo && v < hi) out.push(v);
+    }
+  }
   for (let k = 1; k <= CHANNEL_REACH; k++) out.push(hi + k * GRID, lo - k * GRID);
   return out;
 }
@@ -598,10 +619,35 @@ function searchRoute(
   if (wireNode !== null)
     obs.segments.forEach((t, i) => obs.segmentNodes?.[i] === wireNode && own.add(t));
   const trunks = own;
+  // Only the part of a segment near the lattice is bucketed (s20r5, review r3: a segment a 1e8
+  // units long was walked grid step by grid step; the buckets far outside are never read).
+  const bx0 = x0 - 2 * GRID;
+  const bx1 = x0 + (nx + 1) * GRID;
+  const by0 = y0 - 2 * GRID;
+  const by1 = y0 + (ny + 1) * GRID;
   for (const t of obs.segments) {
     const len = Math.abs(t[1].x - t[0].x) + Math.abs(t[1].y - t[0].y);
     const n = Math.max(1, Math.ceil(len / GRID));
-    for (let i = 0; i <= n; i++) {
+    // Parameter range of the segment inside the box (axis-aligned: one coordinate varies).
+    let t0 = 0;
+    let t1 = 1;
+    for (const [p, q, lo, hi] of [
+      [t[0].x, t[1].x, bx0, bx1],
+      [t[0].y, t[1].y, by0, by1],
+    ] as const) {
+      if (p === q) {
+        if (p < lo || p > hi) t1 = -1;
+        continue;
+      }
+      const a = (lo - p) / (q - p);
+      const b = (hi - p) / (q - p);
+      t0 = Math.max(t0, Math.min(a, b));
+      t1 = Math.min(t1, Math.max(a, b));
+    }
+    if (t1 < t0) continue;
+    const i0 = Math.max(0, Math.floor(t0 * n) - 1);
+    const i1 = Math.min(n, Math.ceil(t1 * n) + 1);
+    for (let i = i0; i <= i1; i++) {
       const k = cell(t[0].x + ((t[1].x - t[0].x) * i) / n, t[0].y + ((t[1].y - t[0].y) * i) / n);
       const list = segsAt.get(k) ?? [];
       if (!list.includes(t)) list.push(t);

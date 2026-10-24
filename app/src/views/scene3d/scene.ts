@@ -210,6 +210,12 @@ export interface SceneWire {
   ends: [WireEndKind, WireEndKind];
   /** Corner radius at each interior point (route3d.ts), when the router chose it. */
   radii?: number[];
+  /**
+   * s20r5 (review r3, MAJOR 3): drawn as a SIMPLE cable (its plan path just above the bench, no
+   * height profile, no drape) because the scene's work budget was spent or the wire is far longer
+   * than any bench (SCENE_WORK_BUDGET, MAX_WIRE_MM). Always listed in `routeLimits`.
+   */
+  simple?: true;
 }
 
 /**
@@ -550,7 +556,10 @@ export function deriveScene(doc: ProjectDocument): SceneDescription {
   const first = buildScene(doc, true, 'fresh');
   const touching = touchingNodes(first);
   let bad = touching.length;
-  if (!bad) return withLimits(doc, first, touching);
+  // (A scene past its work budget is not built again by the other routers: s20r5.)
+  // Nor once its first build spent a quarter of it (the other routers cost as much again).
+  if (!bad || first.wires.some((w) => w.simple) || sceneStats.work > SCENE_WORK_BUDGET / 4)
+    return withLimits(doc, first, touching);
   let best = first;
   const moved = first.separation.moved.length > 0;
   const options: [boolean, 'fresh' | 'legacy'][] = [
@@ -604,6 +613,8 @@ export function routeLimits(
   const obstacles = sceneObstacles(doc, s);
   const m = WIRE.radiusMm * 0.8;
   for (const w of s.wires) {
+    // A simple cable (the scene's work budget, s20r5) is a limitation by definition.
+    if (w.simple) out.add(w.id);
     if (out.has(w.id)) continue;
     const src = doc.layout.wires.find((x) => x.id === w.id);
     if (!src) continue;
@@ -624,7 +635,11 @@ export function routeLimits(
     for (let i = 1; i < w.points.length && !hit; i++) {
       const a = w.points[i - 1]!;
       const b = w.points[i]!;
-      const n = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z) / 0.5));
+      // Every 0.5 mm, at most MAX_SAMPLES per segment (s20r5: never per length unbounded).
+      const n = Math.min(
+        MAX_SAMPLES,
+        Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z) / 0.5)),
+      );
       for (let k = 0; k <= n && !hit; k++) {
         const t = k / n;
         const p = { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, z: a.z + (b.z - a.z) * t };
@@ -682,8 +697,38 @@ export function touchingNodes(s: SceneDescription): string[] {
     a.x0 <= b.x1 && b.x0 <= a.x1 && a.z0 <= b.z1 && b.z0 <= a.z1;
   const boxes = s.wires.map((w) => boxOf(w.points, r + 0.5));
   const segs = s.wires.map((w) => w.points.slice(1).map((b, i) => [w.points[i]!, b] as const));
+  // Wires bucketed by their plan boxes (s20r5: all pairs were tested); a box over more than 64
+  // cells goes to a list every query takes. Candidates in index order: the same output order.
+  const C = 20;
+  const cells = new Map<string, number[]>();
+  const long: number[] = [];
+  const span = (b: ReturnType<typeof boxOf>) => {
+    const x0 = Math.floor(b.x0 / C);
+    const x1 = Math.floor(b.x1 / C);
+    const z0 = Math.floor(b.z0 / C);
+    const z1 = Math.floor(b.z1 / C);
+    return { x0, x1, z0, z1, n: (x1 - x0 + 1) * (z1 - z0 + 1) };
+  };
+  boxes.forEach((b, i) => {
+    const sp = span(b);
+    if (!(sp.n <= 64)) return void long.push(i);
+    for (let x = sp.x0; x <= sp.x1; x++)
+      for (let z = sp.z0; z <= sp.z1; z++) {
+        const k = `${x},${z}`;
+        (cells.get(k) ?? cells.set(k, []).get(k)!).push(i);
+      }
+  });
+  const candidates = (b: ReturnType<typeof boxOf>): number[] => {
+    const sp = span(b);
+    if (!(sp.n <= 64)) return s.wires.map((_, i) => i);
+    const out = new Set<number>(long);
+    for (let x = sp.x0; x <= sp.x1; x++)
+      for (let z = sp.z0; z <= sp.z1; z++) for (const i of cells.get(`${x},${z}`) ?? []) out.add(i);
+    return [...out].sort((p, q) => p - q);
+  };
   for (let i = 0; i < s.wires.length; i++)
-    for (let j = i + 1; j < s.wires.length; j++) {
+    for (const j of candidates(boxes[i]!)) {
+      if (j <= i) continue;
       const a = s.wires[i]!;
       const b = s.wires[j]!;
       if ((a.node && a.node === b.node) || !meet(boxes[i]!, boxes[j]!)) continue;
@@ -699,15 +744,16 @@ export function touchingNodes(s: SceneDescription): string[] {
   for (const c of s.components)
     for (const t of c.terminals) {
       if (t.open) continue;
-      s.wires.forEach((w, i) => {
-        if (t.node && w.node === t.node) return;
+      for (const i of candidates({ x0: t.x, x1: t.x, z0: t.z, z1: t.z })) {
+        const w = s.wires[i]!;
+        if (t.node && w.node === t.node) continue;
         const ends = [w.points[0]!, w.points.at(-1)!];
-        if (ends.some((e) => e.x === t.x && e.y === t.y && e.z === t.z)) return;
+        if (ends.some((e) => e.x === t.x && e.y === t.y && e.z === t.z)) continue;
         const bx = boxes[i]!;
-        if (t.x < bx.x0 || t.x > bx.x1 || t.z < bx.z0 || t.z > bx.z1) return;
+        if (t.x < bx.x0 || t.x > bx.x1 || t.z < bx.z0 || t.z > bx.z1) continue;
         if (segs[i]!.some(([p, q]) => segDistance(p, q, t, t) < r + 0.4))
           out.push(`t:${w.id}|${c.id}:${t.id}`);
-      });
+      }
     }
   return out;
 }
@@ -953,7 +999,11 @@ function buildScene(
     ...touchingUnconnected(doc).map((t) => t.terminals.map((e) => e.component)),
   ];
   // Without separation: no move, every overlap reported (the fallback in deriveScene).
-  const separation = separateBodies(bodies, touching, separate ? undefined : 0);
+  // Rounds bounded by counted work (s20r5: each round tests every pair of parts; 1 500 parts
+  // took 17 s): 48 rounds up to ~200 parts, fewer beyond, none past ~1 400; overlaps left are
+  // reported (separation.unresolved, the 3D view's note).
+  const rounds = Math.min(48, Math.floor(SEPARATION_WORK / Math.max(1, bodies.length ** 2)));
+  const separation = separateBodies(bodies, touching, separate ? rounds : 0);
 
   const components: SceneComponent[] = [];
   for (const c of doc.components) {
@@ -1109,6 +1159,7 @@ function buildScene(
         points: w.points,
         radii: w.radii,
         ends: [endKind(src.from), endKind(src.to)],
+        ...(w.simple ? { simple: true as const } : {}),
       });
     }
 
@@ -1582,6 +1633,8 @@ function extent(components: SceneComponent[], wires: SceneWire[]) {
 
 type LayoutWire = ProjectDocument['layout']['wires'][number];
 
+/** Work the last fresh routing spent (s20r5: counted units of SCENE_WORK_BUDGET). */
+export const sceneStats = { work: 0 };
 /** Routing rounds the last scene needed (1 normally; diagnostics and measurements). */
 export const routeStats = { rounds: 0 };
 
@@ -2249,7 +2302,7 @@ function freshWires(
   bodies: Body[],
   offsets: Map<string, { dx: number; dz: number }>,
   nodeOf: (w: LayoutWire) => string | null,
-): { id: string; points: Vec3[]; radii: number[] }[] {
+): { id: string; points: Vec3[]; radii: number[]; simple?: true }[] {
   const comp = (id: string) => components.find((c) => c.id === id);
   const attach = (e: WireEnd) =>
     e.kind === 'terminal'
@@ -2304,6 +2357,35 @@ function freshWires(
     }
     preps.push({ w, route, full, ends: at, under: [null, null] });
   }
+
+  // s20r5 (review r3, MAJOR 3: the 3D scene ran unbounded on the UI thread; 640 wires 41 s, one
+  // wire 2e6 units long 25 s). A counted work budget, in document order: each wire costs its
+  // plan length in height-profile cells (0.25 mm) plus a share per wire already routed (its
+  // routing scans them). A wire past the budget, or longer than MAX_WIRE_MM, is drawn as a
+  // simple cable instead, and listed in routeLimits. Deterministic: counted, never timed.
+  const simple = new Map<string, Prep>();
+  {
+    let work = 0;
+    let routed = 0;
+    for (const p of preps) {
+      let len = 0;
+      for (let i = 1; i < p.full.length; i++) len += plen(p.full[i - 1]!, p.full[i]!);
+      const cost = len / 0.25 + SCENE_WORK_PER_WIRE * (1 + routed);
+      if (!(len <= MAX_WIRE_MM) || work + cost > SCENE_WORK_BUDGET) simple.set(p.w.id, p);
+      else {
+        work += cost;
+        routed++;
+      }
+    }
+    sceneStats.work = work;
+  }
+  const simpleOut = [...simple.values()].map((p) => ({
+    id: p.w.id,
+    points: simpleCable(p.full, p.ends),
+    radii: [] as number[],
+    simple: true as const,
+  }));
+  if (simple.size) preps.splice(0, preps.length, ...preps.filter((p) => !simple.has(p.w.id)));
 
   const obstacles = routingObstacles(components, bodies, offsets);
   // 2. Exit lanes: side, direction, turn.
@@ -2627,7 +2709,35 @@ function freshWires(
     const later = new Set(pairs.map(([a]) => a));
     order = [...order.filter((w) => !later.has(w.id)), ...order.filter((w) => later.has(w.id))];
   }
-  return inputs.map((i) => ({ id: i.id, ...best!.routed.get(i.id)! }));
+  const full = new Map(inputs.map((i) => [i.id, { id: i.id, ...best!.routed.get(i.id)! }]));
+  const simples = new Map(simpleOut.map((w) => [w.id, w]));
+  // In document order, as before.
+  return doc.layout.wires.flatMap((w) => {
+    const r = full.get(w.id) ?? simples.get(w.id);
+    return r ? [r] : [];
+  });
+}
+
+/** Pair tests the body separation may spend (rounds x parts^2, s20r5). */
+const SEPARATION_WORK = 2_000_000;
+/** Samples per wire segment at most, wherever sampling is per length (s20r5). */
+export const MAX_SAMPLES = 4000;
+/** The 3D scene's work budget (freshWires, s20r5): ~1-2 s of routing on the 1-vCPU DEV host. */
+export const SCENE_WORK_BUDGET = 200_000;
+/** Work charged per wire for each wire already routed (its routing scans their segments). */
+const SCENE_WORK_PER_WIRE = 40;
+/** Longer plan paths are drawn as simple cables (mm; 2 m: no bench is that large). */
+export const MAX_WIRE_MM = 2000;
+
+/** A simple cable: the plan path just above the bench, from end to end (s20r5). */
+function simpleCable(plan: Point[], ends: [Vec3, Vec3]): Vec3[] {
+  const pts: Vec3[] = [ends[0]];
+  for (const q of plan) pts.push({ x: q.x, y: FLOOR, z: q.y });
+  pts.push(ends[1]);
+  return pts.filter(
+    (p, i) =>
+      i === 0 || Math.hypot(p.x - pts[i - 1]!.x, p.y - pts[i - 1]!.y, p.z - pts[i - 1]!.z) > 1e-9,
+  );
 }
 
 /** Pairs of wires of different nodes whose routes touch, [earlier, later] in routing order. */

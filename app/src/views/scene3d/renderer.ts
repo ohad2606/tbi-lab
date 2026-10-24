@@ -458,7 +458,7 @@ export function createViewer(
       const path = bentPath(shape.points, shape.radii, shape.arms);
       const geo = new THREE.TubeGeometry(
         path,
-        Math.max(16, Math.ceil(path.getLength() / 1.5)),
+        Math.min(4000, Math.max(16, Math.ceil(path.getLength() / 1.5))),
         1.05,
         10,
         false,
