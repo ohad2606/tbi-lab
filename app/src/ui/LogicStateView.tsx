@@ -390,7 +390,11 @@ function pinViews({
           input,
           state: 'not_simulated' as const,
           volts: null,
-          why: t('logic.why.refusedElsewhere'),
+          // Review round 4: the part's own supply pin is undetermined: say so on every pin.
+          why:
+            failure.code === 'logic_supply_undriven'
+              ? t('logic.why.supplyUndriven', { pin: L(datasheetPinName(failure.param ?? '')) })
+              : t('logic.why.refusedElsewhere'),
         };
       const v = L(V(d.value));
       const vcc = L(`V_CC = ${V(d.vcc)}`);

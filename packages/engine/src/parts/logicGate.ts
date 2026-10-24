@@ -149,6 +149,10 @@ function nextGateState(ctx: PartContext, sol: PartSolution, state: PartState): P
     return { out: 'x', refuse: 'logic_unknown_state', at: unknown('vcc') ? 'vcc' : 'gnd' };
   const raw = supplyOf(sol);
   if (raw === null) return { out: 'x', refuse: 'logic_supply_missing' };
+  // Review round 4: a supply pin reached only through a junction or a capacitor has no defined
+  // voltage here (I_CC is not in the solve; gmin would give it the source voltage): refused.
+  for (const pin of ['vcc', 'gnd'] as const)
+    if (sol.undriven?.(pin)) return { out: 'x', refuse: 'logic_supply_undriven', at: pin };
   const vcc = settledVcc(raw, state.vcc);
   if (Math.abs(vcc) <= UNPOWERED_V) {
     // Unpowered: outputs off (I_off). Inputs may be driven within the absolute maximum.
