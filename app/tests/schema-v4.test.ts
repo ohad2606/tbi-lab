@@ -153,6 +153,39 @@ describe('schema v4 (s20r)', () => {
     expect(JSON.stringify(app.state.doc)).toBe(last);
   });
 
+  it('a stored v3 project whose routes need adjusting: shown adjusted, NOT stored, until a genuine edit', async () => {
+    // Owner decision (round 2): the open-time "routes adjusted" change is not persisted either.
+    const { storage, app } = await setup();
+    const fresh = ownerBench().doc;
+    const stale = asV3({ ...fresh, projectId: 'prj_v3stale' });
+    stale.layout.wires.find((w) => w.id === 'W2')!.vertices = [
+      { x: -80, y: -200 },
+      { x: 160, y: -200 },
+    ];
+    await storage.save(stale);
+    const stored = JSON.stringify(await storage.load('prj_v3stale'));
+    await app.openProject('prj_v3stale');
+    await settle();
+    expect(app.state.notice?.key).toBe('open.routesAdjusted');
+    // Shown: the canonical routes; netlist as stored.
+    expect(app.state.doc!.layout.wires).toEqual(fresh.layout.wires);
+    expect(nets(app.state.doc!)).toBe(nets(stale));
+    await app.flush();
+    expect(JSON.stringify(await storage.load('prj_v3stale'))).toBe(stored); // v3, untouched
+    // Leaving without an edit (another project opened) still writes nothing.
+    await app.newProject('Other');
+    await app.flush();
+    expect(JSON.stringify(await storage.load('prj_v3stale'))).toBe(stored);
+    // Reopened and edited: stored as v4 with the adjusted routes.
+    await app.openProject('prj_v3stale');
+    expect(app.rename('Edited')).toBe(true);
+    await app.flush();
+    const saved = (await storage.load('prj_v3stale')) as ProjectDocument;
+    expect(saved.schemaVersion).toBe(4);
+    expect(saved.layout.wires).toEqual(fresh.layout.wires);
+    expect(nets(saved)).toBe(nets(stale));
+  });
+
   it('duplicating or exporting a stored v3 project leaves it untouched; the copy and the file are v4', async () => {
     const { storage, app } = await setup();
     const v3 = asV3({ ...ownerBench().doc, projectId: 'prj_v3dup' });

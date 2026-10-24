@@ -65,6 +65,13 @@ interface HistoryEntry {
   /** Consecutive edits with the same tag (typing in the code editor) form one undo step. */
   tag?: string;
   at?: number;
+  /**
+   * Sprint 20 (owner decision, s20r round 2): the routes adjusted when the project was opened,
+   * shown but NOT stored. Undo/redo of it only changes what is shown while nothing has been
+   * stored since the project opened; the first genuine edit stores the document (adjusted routes
+   * and current schema) like any edit, and this flag is cleared.
+   */
+  unsaved?: boolean;
 }
 
 /** Typing pauses longer than this start a new undo step. */
@@ -485,10 +492,14 @@ export class AppStore {
       // current schema. Formerly every opened older project was rewritten immediately.
       if (repaired !== result.doc) {
         // Sprint 13 Task D (H3): re-routing stored wires on open (only their drawn routes; never an
-        // endpoint, connection or value) was a silent, permanent rewrite. It is now an ordinary
-        // recorded edit with a notice, so one Undo restores the routes as they were stored.
-        this.apply({ ok: true, doc: repaired }, undefined, { restore: true });
-        this.set({ notice: { key: 'open.routesAdjusted', tone: 'info' } });
+        // endpoint, connection or value) is shown with a notice, and one Undo restores the routes
+        // as they were stored.
+        // Sprint 20 (owner decision): it is NOT stored on open. The stored record stays exactly as
+        // it was (an older project is not upgraded to the current schema by merely opening it)
+        // until the user makes a genuine edit, which stores the document like any edit.
+        this.set({ doc: repaired, notice: { key: 'open.routesAdjusted', tone: 'info' } });
+        this.past.push({ before: result.doc, after: repaired, unsaved: true });
+        this.syncHistory();
       }
     } else if (result.status === 'newer') {
       // Never guess at a newer schema. If its core still validates under this version's rules,
@@ -903,6 +914,17 @@ export class AppStore {
     const entry = this.past.at(-1);
     const current = this.stateValue.doc;
     if (!entry || !current) return false;
+    if (entry.unsaved) {
+      // Nothing stored since the project opened: show the stored routes again, store nothing.
+      this.set({
+        doc: entry.before,
+        selection: pruneSelection(this.stateValue.selection, entry.before),
+      });
+      this.past.pop();
+      this.future.push(entry);
+      this.syncHistory();
+      return true;
+    }
     if (
       !this.apply({ ok: true, doc: historyTarget(current, entry.before) }, undefined, {
         record: false,
@@ -921,6 +943,16 @@ export class AppStore {
     const entry = this.future.at(-1);
     const current = this.stateValue.doc;
     if (!entry || !current) return false;
+    if (entry.unsaved) {
+      this.set({
+        doc: entry.after,
+        selection: pruneSelection(this.stateValue.selection, entry.after),
+      });
+      this.future.pop();
+      this.past.push(entry);
+      this.syncHistory();
+      return true;
+    }
     const target = historyTarget(current, entry.after);
     if (!this.apply({ ok: true, doc: target }, undefined, { record: false, restore: true }))
       return false;
@@ -1066,6 +1098,8 @@ export class AppStore {
       selection: selection ?? pruneSelection(this.stateValue.selection, stamped),
     });
     this.autosave?.queue(stamped);
+    // Stored now: an open-time adjustment in the history is an ordinary edit from here on.
+    for (const e of [...this.past, ...this.future]) delete e.unsaved;
   }
 
   /** Show a message from the UI layer (e.g. a file that could not be read). */
