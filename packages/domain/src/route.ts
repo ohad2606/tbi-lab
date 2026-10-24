@@ -967,7 +967,35 @@ export function rerouteWires(
     if (clean(now)) continue;
     let best: Point[] | null = null;
     let bestCost = now;
-    for (const waypoints of [[ends[0]!, ...wire.vertices, ends[1]!], ends]) {
+    // Sprint 20 (s20r round 3: the GPIO4 / GPIO19 wires of the logic examples): the user's bends
+    // are kept wherever the rules allow. First the route through ALL of them, then through the
+    // ones that are not themselves inside a header band, a terminal's keep-out or a body (a bend
+    // drawn one grid step beside a header pin can never be kept: any route through it runs along
+    // the header); the first of these that enters no keep-out and no header band, and runs along
+    // no more wire and through no more body than the stored route, is taken. Only when neither
+    // works, the best of all the router's shapes (the former rule, which could drop every bend).
+    const legal = (p: Point) =>
+      !(obs.headers ?? []).some((h) => inBox(p, band(h))) &&
+      !obs.points.some(
+        (q) => !ends.some((e) => eq(e, q)) && Math.hypot(q.x - p.x, q.y - p.y) < TERMINAL_KEEP_OUT,
+      ) &&
+      !obs.boxes.some(
+        (b) => !b.display && p.x > b.minX && p.x < b.maxX && p.y > b.minY && p.y < b.maxY,
+      );
+    const kept = wire.vertices.filter(legal);
+    const keeping = [[ends[0]!, ...wire.vertices, ends[1]!]];
+    if (kept.length > 0 && kept.length < wire.vertices.length)
+      keeping.push([ends[0]!, ...kept, ends[1]!]);
+    for (const waypoints of keeping) {
+      const candidate = autoRoute(waypoints, obs, { node });
+      const k = cost(candidate, obs, ends, node);
+      if (k[0] === 0 && k[1] === 0 && k[2]! <= now[2]! && k[3]! <= now[3]!) {
+        best = candidate;
+        bestCost = k;
+        break;
+      }
+    }
+    for (const waypoints of best ? [] : [[ends[0]!, ...wire.vertices, ends[1]!], ends]) {
       const candidate = autoRoute(waypoints, obs, { node });
       const k = cost(candidate, obs, ends, node);
       if (better(k, bestCost)) {
