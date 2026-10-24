@@ -866,10 +866,10 @@ export const RECIPES: Record<string, () => ProjectDocument> = {
     // Until setup() makes GPIO18 an output the pad is an input: without it A would float.
     // Drawn above the A wire (review round 2): below it, R3 sat on GPIO4's straight exit line.
     const R3 = r.place('component.resistor', 500, -80, 3);
-    const G6 = r.place('component.ground', 560, -60);
+    const G6 = r.place('component.ground', 580, -120);
     r.set(R3, 'resistance', 10_000, 'ohm');
     r.wire(T(R3, 'a'), { kind: 'wire', wire: a, at: { x: 500, y: -20 } });
-    r.wire(T(R3, 'b'), T(G6, 'ref'), [{ x: 560, y: -120 }]);
+    r.wire(T(R3, 'b'), T(G6, 'ref'), [{ x: 500, y: -140 }]);
     r.wire(T(S1, 'b'), T(R2, 'a'), [{ x: 540, y: 80 }]);
     r.wire(T(R2, 'a'), T(U2, 'b'), [{ x: 560, y: 20 }]);
     r.wire(T(R2, 'b'), T(G4, 'ref'));
