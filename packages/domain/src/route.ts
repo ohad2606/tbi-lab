@@ -861,10 +861,12 @@ export function routeObstacles(
   doc: ProjectDocument,
   boxes: readonly RouteBox[],
   except: ReadonlySet<string> = new Set(),
+  /** The wires' electrical nodes when the caller has them (`wireNodes(doc)`). */
+  wireNodeMap?: ReadonlyMap<string, string>,
 ): RouteObstacles {
   const segments: [Point, Point][] = [];
   const segmentNodes: string[] = [];
-  const nodes = wireNodes(doc);
+  const nodes = wireNodeMap ?? wireNodes(doc);
   for (const w of doc.layout.wires) {
     if (except.has(w.id)) continue;
     const r = wireRoute(doc, w);
@@ -1033,11 +1035,14 @@ export function routeAutoWires(
   // pins side by side on one node: the first wire goes round the second pin). The order is then
   // changed deterministically, as a function of the document only (never of history): the later
   // wire of each such pair is routed just before the earlier one; the result is kept when it has
-  // fewer same-node crossings, then fewer crossings, then fewer bends. A few rounds at most.
+  // fewer same-node crossings, then fewer crossings, then fewer bends. Three rounds at most (one
+  // above 40 automatic wires, none above 60: s20r-perf-r2*.txt, the drop of an 80-wire bench).
   const ids = new Set(autos.map((w) => w.id));
   let order = autos;
   let score = orderScore(best, ids);
-  for (let round = 0; round < 3 && score[0]! > 0; round++) {
+  // Bounded for interactivity: each round re-routes the wires from the first one it moves.
+  const rounds = autos.length <= 40 ? 3 : autos.length <= 60 ? 1 : 0;
+  for (let round = 0; round < rounds && score[0]! > 0; round++) {
     const next = [...order];
     for (const c of sameNodeCrossings(best)) {
       if (!ids.has(c.over) || !ids.has(c.under) || c.over === c.under) continue;
@@ -1047,8 +1052,10 @@ export function routeAutoWires(
       const [w] = next.splice(late, 1);
       next.splice(early, 0, w!);
     }
-    if (next.every((w, k) => w === order[k])) break;
-    const routed = routeInOrder(doc, next, boxes, nodes, true);
+    const from = next.findIndex((w, k) => w !== order[k]);
+    if (from < 0) break;
+    // The wires before the first change are routed against exactly what they were: kept.
+    const routed = routeInOrder(best, next, boxes, nodes, true, from);
     const k = orderScore(routed, ids);
     if (!better(k, score)) break;
     best = routed;
@@ -1077,10 +1084,12 @@ function routeInOrder(
   boxes: readonly RouteBox[],
   nodes: ReadonlyMap<string, string>,
   search: boolean,
+  /** The wires before this index are already routed in `doc` (in this order). */
+  from = 0,
 ): ProjectDocument {
-  const pending = new Set(autos.map((w) => w.id));
+  const pending = new Set(autos.slice(from).map((w) => w.id));
   let out = doc;
-  for (const wire of autos) {
+  for (const wire of autos.slice(from)) {
     const ends = wireRoute(out, { ...wire, vertices: [] });
     if (!ends || ends.length < 1) {
       pending.delete(wire.id);
@@ -1089,7 +1098,7 @@ function routeInOrder(
     const a = ends[0]!;
     const b = ends[ends.length - 1]!;
     // Obstacles: everything but this wire and the automatic wires after it.
-    const obs = routeObstacles(out, boxes, pending);
+    const obs = routeObstacles(out, boxes, pending, nodes);
     const vertices = autoRouteVertices([a, ...wire.auto!.waypoints, b], obs, {
       search,
       node: nodes.get(wire.id) ?? null,
