@@ -16,6 +16,8 @@ import { liveControlProblem } from '@tbi-lab/domain';
 import type { TimeStep } from './devices.js';
 import { Circuit, ConvergenceError } from './circuit.js';
 import { Diode, LabPsu, Resistor, VoltageSource, type Device } from './devices.js';
+import { PwlLoad } from './pwl.js';
+import { RegulatedOutput } from './sources.js';
 import { GpioPin, outsideCharacterizedRegion } from './esp32Gpio.js';
 import { Npn } from './bjt.js';
 
@@ -288,6 +290,9 @@ const quantity = (params: Params, key: string): number | undefined => {
     ? (v as { value: number }).value
     : undefined;
 };
+
+/** Logic part types (their PwlLoad elements are guaranteed output stages). */
+const LOGIC_TYPE = /^logic\./;
 
 class UnionFind {
   private parent = new Map<string, string>();
@@ -987,28 +992,6 @@ export class EngineSession {
       islandless.filter((e) => e.nodes.some((n) => unknown.nodes.has(n))).map((e) => e.key),
     );
     const floating = islandless.filter((e) => !excluded.has(e.key));
-    // Sprint 20: which nodes something actually DRIVES. An ESP32 pad in plain input mode is a
-    // linear leakage to GND in the approved pin model (esp32Gpio.ts: "so a floating input node
-    // always has a DC path and the nodal matrix stays non-singular"): a numerical reference, not a
-    // source. A node whose only path to GND is that leakage is undriven: a logic input there is
-    // floating, never the 0 V the leakage gives it. Every conducting element, every driven pad
-    // (output, pull-up, pull-down) and the reference itself drive; input-mode pads do not.
-    const drivenUf = new UnionFind();
-    for (const e of elements)
-      if (e.active && !excluded.has(e.key))
-        for (const n of e.nodes.slice(1)) drivenUf.union(e.nodes[0], n);
-    for (const { pin, node } of pinNodes)
-      if (this.pinModes.get(pin.gpio) !== 'input') drivenUf.union(node, REF);
-    const undriven = (node: string): { inputPads: number[] } | null => {
-      if (node === REF || drivenUf.find(node) === drivenUf.find(REF)) return null;
-      const root = drivenUf.find(node);
-      return {
-        inputPads: pinNodes
-          .filter(({ node: n }) => drivenUf.find(n) === root)
-          .map(({ pin }) => pin.gpio)
-          .sort((a, b) => a - b),
-      };
-    };
     if (floating.length) {
       const ids = floating.map((e) => e.component.id);
       const nets = [
@@ -1060,6 +1043,70 @@ export class EngineSession {
       device: circuit.add(new GpioPin(`GPIO${pin.gpio}`, node, this.pinModes.get(pin.gpio)!)),
     }));
 
+    // Sprint 20 (review round 2): which nodes something actually DRIVES, decided from the device
+    // models themselves, never from a constant added for it. A node is driven when it is joined
+    // to GND through elements that each fix a node voltage or conduct resistively:
+    //   - resistive devices (Resistor: resistors, LDR, relay coil, sensor output resistors);
+    //   - enabled supplies and regulated/ideal source outputs (LabPsu, VoltageSource incl. closed
+    //     switches and contacts, RegulatedOutput);
+    //   - a POWERED logic gate's output stage (its guaranteed I(V) element exists only then);
+    //   - ESP32 pads in an OUTPUT mode.
+    // NOT drivers: junctions (LED, diode, RGB LED, LED-matrix dot, BJT) — whether one conducts
+    // would need an on/off threshold no model here states, so they are treated as not driving
+    // (conservative: refused, never a level inferred through a junction); capacitors (open at DC);
+    // constant-current sinks; nonlinear loads (buzzer); an ESP32 pad in input mode (its leakage
+    // conductance is a numerical reference, esp32Gpio.ts). A logic input on an undriven node is
+    // floating (`logic_input_floating`), whatever potential gmin or the leakage give it.
+    const drivenUf = new UnionFind();
+    for (const e of elements) {
+      if (!e.active || excluded.has(e.key)) continue;
+      const d = devices.get(e.key);
+      const drives =
+        e.kind === 'switch' ||
+        e.kind === 'psu' ||
+        d instanceof Resistor ||
+        d instanceof VoltageSource ||
+        d instanceof RegulatedOutput ||
+        (d instanceof PwlLoad && LOGIC_TYPE.test(e.component.type));
+      if (drives) for (const n of e.nodes.slice(1)) drivenUf.union(e.nodes[0], n);
+    }
+    for (const { pin, node } of pinNodes)
+      if (this.pinModes.get(pin.gpio) !== 'input') drivenUf.union(node, REF);
+    const undriven = (node: string): { inputPads: number[] } | null => {
+      if (node === REF || drivenUf.find(node) === drivenUf.find(REF)) return null;
+      const root = drivenUf.find(node);
+      return {
+        inputPads: pinNodes
+          .filter(({ node: n }) => drivenUf.find(n) === root)
+          .map(({ pin }) => pin.gpio)
+          .sort((a, b) => a - b),
+      };
+    };
+    /** The first logic input on an undriven node, as a refusal (review note 4: before a
+     *  singular solve is reported, a capacitor-only input is named as floating). */
+    const firstUndrivenInput = (): EngineError | null => {
+      for (const p of parts) {
+        const pins = p.model.logicPins?.(p.ctx);
+        if (!pins) continue;
+        for (const t of pins.inputs) {
+          const n = p.ctx.node(t);
+          if (unknown.nodes.has(n)) continue;
+          const u = undriven(n);
+          if (u)
+            return {
+              code: 'logic_input_floating',
+              components: [p.c.id],
+              param: t,
+              detail: {
+                part: String(p.model.cards?.[String(p.ctx.value('model'))]?.partNumber ?? ''),
+                ...(u.inputPads.length ? { pads: u.inputPads } : {}),
+              },
+            };
+        }
+      }
+      return null;
+    };
+
     let nodeVoltages: ReadonlyMap<string, number> = new Map([[REF, 0]]);
     let currents: ReadonlyMap<string, number> = new Map();
     let modes: ReadonlyMap<string, string> = new Map();
@@ -1094,6 +1141,8 @@ export class EngineSession {
         };
       } catch (e) {
         if (e instanceof SingularMatrixError) {
+          const floatingInput = firstUndrivenInput();
+          if (floatingInput) return this.fail(floatingInput);
           return this.fail({
             code: 'singular_circuit',
             components: [...devices.keys()],

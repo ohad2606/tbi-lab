@@ -27,7 +27,7 @@ import {
   type LogicInspection,
   type LogicPinState,
 } from '@tbi-lab/engine';
-import { isolateLtr, type LocaleInfo } from '../i18n/i18n.js';
+import { formatNumber, isolateLtr, type LocaleInfo } from '../i18n/i18n.js';
 import type { MessageKey } from '../i18n/messages.en.js';
 import { datasheetPinName, formatResult } from '../sim/format.js';
 import { useAppState, useStore, useT } from './context.js';
@@ -107,7 +107,19 @@ export function LogicStateView({
   const rowKnown = !!logic && logic.vih !== null && logic.vil !== null;
   const liveGate = logic?.gates.find((g) => g.unit === gate.unit) ?? null;
 
-  const pins = pinViews({ t, V, card, gate, liveGate, logic, failure, running });
+  const A = (a: number) => formatResult(locale, a, 'ampere');
+  const pins = pinViews({
+    t,
+    V,
+    A,
+    card,
+    gate,
+    liveGate,
+    logic,
+    failure,
+    running,
+    id: component.id,
+  });
 
   // Truth table: every input combination of the device's function (the datasheet table).
   const n = gate.inputs.length;
@@ -270,7 +282,8 @@ function levelKey(state: PinView['state']): MessageKey {
 function ThresholdRows({ card, locale }: { card: LogicCard; locale: LocaleInfo }) {
   const t = useT();
   const v = (x: number) => formatResult(locale, x, 'volt');
-  const th = (x: { v: number } | { k: number }) => ('v' in x ? v(x.v) : `${x.k} × V_CC`);
+  const th = (x: { v: number } | { k: number }) =>
+    'v' in x ? v(x.v) : `${formatNumber(locale, x.k)} × V_CC`;
   return (
     <table class="logic-rows small" data-testid="logic-rows">
       <thead>
@@ -313,7 +326,11 @@ function pinViews({
   logic,
   failure,
   running,
+  id,
+  A,
 }: {
+  id: string;
+  A: (a: number) => string;
   t: (k: MessageKey, p?: Record<string, string>) => string;
   V: (v: number | null | undefined) => string;
   card: LogicCard;
@@ -331,7 +348,7 @@ function pinViews({
     return all.map(([pin, input]) => {
       const p = input ? liveGate.inputs.find((x) => x.pin === pin)! : liveGate.output;
       let why: string;
-      if (p.level === 'off') why = t('logic.why.off');
+      if (p.level === 'off') why = t(input ? 'logic.why.offInput' : 'logic.why.off');
       else if (input && p.level === 'high')
         why = t('logic.why.inHigh', { cmp: L(`${V(p.volts)} ≥ V_IH ${V(logic.vih)}`), vcc });
       else if (input && p.level === 'low')
@@ -348,6 +365,15 @@ function pinViews({
       return { pin, input, state, volts: p.volts, why };
     });
   }
+  if (failure && !(failure.components ?? []).includes(id))
+    // Refused because of another part: nothing here was solved.
+    return all.map(([pin, input]) => ({
+      pin,
+      input,
+      state: 'not_simulated' as const,
+      volts: null,
+      why: t('logic.why.refusedElsewhere'),
+    }));
   if (failure) {
     const d = (failure.detail ?? {}) as {
       value?: number;
@@ -389,9 +415,14 @@ function pinViews({
             state: 'floating' as const,
             volts: null,
             why: d.pads?.length
-              ? t('logic.why.floatingPads', {
-                  pads: L((d.pads ?? []).map((g) => `GPIO${g}`).join(', ')),
-                })
+              ? t(
+                  (d.pads ?? []).length > 1
+                    ? 'logic.why.floatingPadsMany'
+                    : 'logic.why.floatingPads',
+                  {
+                    pads: L((d.pads ?? []).map((g) => `GPIO${g}`).join(', ')),
+                  },
+                )
               : t('logic.why.floating'),
           };
         case 'logic_input_out_of_range':
@@ -417,7 +448,7 @@ function pinViews({
             state: 'unsupported' as const,
             volts: null,
             why: t('logic.why.outputUncharacterized', {
-              limit: L(d.limit === undefined ? '—' : `${(d.limit * 1e3).toPrecision(3)} mA`),
+              limit: L(d.limit === undefined ? '—' : A(d.limit)),
               vcc,
             }),
           };

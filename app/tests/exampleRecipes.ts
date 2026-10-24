@@ -986,50 +986,52 @@ export const RECIPES: Record<string, () => ProjectDocument> = {
   'logic-and-switches': () => {
     const r = new Recipe('logic-and-switches', 'Logic: an AND gate with two switches');
     r.supply(3, 0.1);
-    const SW1 = r.place('component.toggle_switch', 40, -120);
-    const SW2 = r.place('component.toggle_switch', 40, 80);
-    const R1 = r.place('component.resistor', 160, -80, 1);
-    const R2 = r.place('component.resistor', 160, 120, 1);
-    const G2 = r.place('component.ground', 160, 0);
-    const G3 = r.place('component.ground', 160, 200);
-    const U1 = r.place('logic.gate_and', 360, -20);
-    const G4 = r.place('component.ground', 360, 60);
-    const R3 = r.place('component.resistor', 480, -20);
-    const D1 = r.place('component.led', 560, 20, 1);
-    const G5 = r.place('component.ground', 560, 100);
+    // Review round 2: the gate sits BELOW the input rows, so the readout the canvas draws under
+    // a running part (its pin currents) crosses no other part or label.
+    const SW1 = r.place('component.toggle_switch', 40, -200);
+    const SW2 = r.place('component.toggle_switch', 40, -40);
+    const R1 = r.place('component.resistor', 160, -160, 1);
+    const R2 = r.place('component.resistor', 160, 0, 1);
+    const G2 = r.place('component.ground', 160, -80);
+    const G3 = r.place('component.ground', 160, 80);
+    const U1 = r.place('logic.gate_and', 360, 100);
+    const G4 = r.place('component.ground', 360, 220);
+    const R3 = r.place('component.resistor', 480, 100);
+    const D1 = r.place('component.led', 600, 100);
+    const G5 = r.place('component.ground', 800, 180);
     r.set(R1, 'resistance', 10_000, 'ohm');
     r.set(R2, 'resistance', 10_000, 'ohm');
     r.set(R3, 'resistance', 220, 'ohm');
     // A starts closed: toggling B alone switches the LED.
     r.set(SW1, 'closed', true);
-    // The 3.0 V rail: up and over to the gate's V_CC; switch A taps it, switch B below the supply.
+    // The 3.0 V rail: up and over to the gate's V_CC; both switches tap it.
     const rail = r.wire(T('PSU1', 'positive'), T(U1, 'vcc'), [
       { x: -40, y: -20 },
-      { x: -40, y: -180 },
-      { x: 360, y: -180 },
+      { x: -40, y: -260 },
+      { x: 360, y: -260 },
     ]);
-    r.wire(T(SW1, 'a'), { kind: 'wire', wire: rail, at: { x: -40, y: -120 } });
-    r.wire(T(SW2, 'a'), { kind: 'wire', wire: rail, at: { x: -40, y: -20 } }, [{ x: -40, y: 80 }]);
+    r.wire(T(SW1, 'a'), { kind: 'wire', wire: rail, at: { x: -40, y: -200 } });
+    r.wire(T(SW2, 'a'), { kind: 'wire', wire: rail, at: { x: -40, y: -40 } });
     // Input A: SW1 → node (pull-down R1) → A.
     r.wire(T(SW1, 'b'), T(R1, 'a'));
     r.wire(T(R1, 'a'), T(U1, 'a'), [
-      { x: 240, y: -120 },
-      { x: 240, y: -40 },
+      { x: 280, y: -200 },
+      { x: 280, y: 80 },
     ]);
     r.wire(T(R1, 'b'), T(G2, 'ref'));
     // Input B: SW2 → node (pull-down R2) → B.
     r.wire(T(SW2, 'b'), T(R2, 'a'));
     r.wire(T(R2, 'a'), T(U1, 'b'), [
-      { x: 280, y: 80 },
-      { x: 280, y: 0 },
+      { x: 240, y: -40 },
+      { x: 240, y: 120 },
     ]);
     r.wire(T(R2, 'b'), T(G3, 'ref'));
     r.wire(T(U1, 'gnd'), T(G4, 'ref'));
     // Y → 220 Ω → LED → GND.
     r.wire(T(U1, 'y'), T(R3, 'a'));
     r.wire(T(R3, 'b'), T(D1, 'anode'));
-    r.wire(T(D1, 'cathode'), T(G5, 'ref'));
-    return r.centre(-200);
+    r.wire(T(D1, 'cathode'), T(G5, 'ref'), [{ x: 800, y: 100 }]);
+    return r.centre(-240);
   },
   /**
    * Sprint 20 example B (cascaded gates): four switches with 10 kΩ pull-downs. Inside ONE

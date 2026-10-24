@@ -190,12 +190,15 @@ export function Inspector({ probes, onRemoveProbe, onClearProbes }: InspectorPro
           key={single.id}
           component={single}
           logic={outcome?.components[single.id]?.logic ?? null}
+          // The engine refusal in force: at Run start (status failed) or, review round 2, one
+          // that arrives while running (a toggle that floats an input keeps the session alive
+          // with a refused outcome). The panel explains it by pin when it names this part.
           failure={
-            sim.status === 'failed' &&
-            sim.failure.kind === 'engine' &&
-            (sim.failure.error.components ?? []).includes(single.id)
+            sim.status === 'failed' && sim.failure.kind === 'engine'
               ? sim.failure.error
-              : null
+              : sim.status === 'running' && !sim.outcome.ok
+                ? sim.outcome.error
+                : null
           }
           running={sim.status === 'running'}
         />

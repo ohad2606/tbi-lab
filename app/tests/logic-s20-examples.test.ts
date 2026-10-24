@@ -275,7 +275,8 @@ describe('C esp32-logic-quad-and (extended): the 1A/1B pull-downs make the pre-s
       detail: { pads: [18] },
     });
     const msgEn = plain(engineErrorMessage(en, o.error, d));
-    expect(msgEn).toContain('input 1A is driven only by GPIO18');
+    expect(msgEn).toContain('nothing drives input 1A');
+    expect(msgEn).toContain('is GPIO18, an ESP32 pin in input mode');
     expect(msgEn).toContain('10 kΩ');
     const msgHe = plain(engineErrorMessage(he, o.error, d));
     expect(msgHe).toContain('1A');
@@ -387,5 +388,24 @@ describe('Sprint 20 L1 diagnostics and limitations (EN/HE)', () => {
     );
     const h = plain(engineErrorMessage(he, error, null));
     for (const s of ['1.2 V', '800 mV', '2 V', '3 V', 'A']) expect(h).toContain(s);
+  });
+});
+
+describe('review round 2 (notes 6, 7): wording and locale formatting', () => {
+  it('several ESP32 input pads on a floating input: plural wording, EN and HE', () => {
+    const error = {
+      code: 'logic_input_floating' as const,
+      components: ['U1'],
+      param: 'a1',
+      detail: { part: 'SN74LVC08A', pads: [18, 19] },
+    };
+    const e = plain(engineErrorMessage(en, error, null));
+    expect(e).toContain('are GPIO18, GPIO19, ESP32 pins in input mode');
+    expect(e).toContain('directly or through resistors');
+    const h = plain(engineErrorMessage(he, error, null));
+    expect(h).toContain('GPIO18, GPIO19');
+    expect(h).toContain('פינים של ESP32');
+    const one = plain(engineErrorMessage(en, { ...error, detail: { pads: [18] } }, null));
+    expect(one).toContain('is GPIO18, an ESP32 pin in input mode');
   });
 });

@@ -240,7 +240,9 @@ export function engineErrorMessage(
       // Sprint 20: an input held only by ESP32 pads in input mode names them first.
       const own =
         error.code === 'logic_input_floating' && d.pads?.length
-          ? 'sim.error.logic_input_floating.mcu_input'
+          ? d.pads.length > 1
+            ? 'sim.error.logic_input_floating.mcu_inputs'
+            : 'sim.error.logic_input_floating.mcu_input'
           : `sim.error.${error.code}.${(d.part ?? '').toLowerCase()}`;
       return t(isMessageKey(own) ? own : `sim.error.${error.code}`, {
         components,

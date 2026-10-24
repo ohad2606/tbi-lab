@@ -223,13 +223,17 @@ export const en = {
   'logic.why.outOfRange':
     '{v}: outside the recommended input range 0–5.5 V, where the datasheet does not specify the device. The simulation is refused.',
   'logic.why.floatingPads':
-    'Only {pads} is connected, and it is an input (high impedance): nothing drives this input, so the simulation is refused. Add a pull-down or pull-up (10 kΩ).',
+    'Nothing drives this input: the only possible source on its net (directly or through resistors) is {pads}, an ESP32 pin in input mode (high impedance). The simulation is refused. Add a pull-down or pull-up (10 kΩ).',
+  'logic.why.floatingPadsMany':
+    'Nothing drives this input: the only possible sources on its net (directly or through resistors) are {pads}, ESP32 pins in input mode (high impedance). The simulation is refused. Add a pull-down or pull-up (10 kΩ).',
   'logic.why.floating':
     'Nothing drives this input (no DC path to a source): a floating CMOS input has no defined level, so the simulation is refused.',
   'logic.why.undefined':
     '{v}: between {vil} and {vih} ({vcc}). The datasheet gives no level there, so the simulation is refused.',
   'logic.why.unknown': 'An undetermined level reaches this pin: no level and no voltage are shown.',
   'logic.why.off': 'V_CC is 0 V: the outputs are disabled (I_off).',
+  'logic.why.offInput':
+    'The part is unpowered (V_CC = 0 V): its inputs have no datasheet thresholds, so no level is given; the voltage shown is the solved one.',
   'logic.why.out': '{fn} of the inputs ({ins}) = {out}, from the datasheet function table.',
   'logic.why.inLow': '{cmp} ({vcc}): LOW.',
   'logic.why.inHigh': '{cmp} ({vcc}): HIGH.',
@@ -1371,7 +1375,9 @@ export const en = {
   'sim.part.state.iccCondition.notInputs':
     'not characterized: an input is not at the datasheet’s I_CC test voltage (not included above)',
   'sim.error.logic_input_floating.mcu_input':
-    '{components}: input {pin} is driven only by {pads}, an ESP32 pin in input mode (high impedance), for example before the firmware’s setup() makes it an output. Nothing drives the input, so it has no defined level (the datasheet: do not leave CMOS inputs floating). Add a pull-down or pull-up resistor (TI recommends 10 kΩ) so the input is defined while the pin is not driving.',
+    '{components}: nothing drives input {pin}. The only possible source on its net (directly or through resistors) is {pads}, an ESP32 pin in input mode (high impedance), for example before the firmware’s setup() makes it an output. An undriven CMOS input has no defined level (the datasheet: do not leave CMOS inputs floating). Add a pull-down or pull-up resistor (TI recommends 10 kΩ) so the input is defined while the pin is not driving.',
+  'sim.error.logic_input_floating.mcu_inputs':
+    '{components}: nothing drives input {pin}. The only possible sources on its net (directly or through resistors) are {pads}, ESP32 pins in input mode (high impedance), for example before the firmware’s setup() makes them outputs. An undriven CMOS input has no defined level (the datasheet: do not leave CMOS inputs floating). Add a pull-down or pull-up resistor (TI recommends 10 kΩ) so the input is defined while the pins are not driving.',
   'limitation.logic_package_dc_no_delay':
     'DC only: propagation delay (datasheet 1–4.1 ns at 3.3 V) is not simulated. Circuits that depend on it are refused: feedback between gates (latches, oscillators), PWM into a gate, clocks.',
   'limitation.logic_package_input_band':

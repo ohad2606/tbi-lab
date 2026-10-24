@@ -151,6 +151,60 @@ test('A without a pull-down: the open switch leaves B floating — refused, and 
   await page.getByTestId('language-select').selectOption('en');
 });
 
+test('review round 2: a refusal WHILE RUNNING (opening a switch floats an input) is explained by pin (local engine)', async ({
+  page,
+}) => {
+  await openExample(page, 'logic-and-switches');
+  await inspect(page, 'R2');
+  await page.getByTestId('inspector-delete').click();
+  // B closed: driven HIGH through SW2, so the Run starts.
+  await inspect(page, 'U1');
+  await page.getByTestId('logic-control-SW2').click();
+  await waitSaved(page);
+  await run(page);
+  await inspect(page, 'U1');
+  await expect(page.getByTestId('logic-level-b')).toHaveText('HIGH');
+  // Open SW2 while running: the session stays running with a refused operating point.
+  await page.getByTestId('logic-control-SW2').click();
+  await expect(page.getByTestId('logic-level-b')).toHaveText('floating (not driven)');
+  await expect(page.getByTestId('logic-why-b')).toContainText('Nothing drives this input');
+  await expect(page.getByTestId('logic-level-a')).toHaveText('not simulated');
+  await expect(page.getByTestId('logic-why-a')).not.toContainText('Waiting');
+  await shot(page, 's20l2-A-refused-while-running-en');
+  await page.getByTestId('language-select').selectOption('he');
+  await expect(page.getByTestId('logic-level-b')).toHaveText('צפה (לא מוזנת)');
+  await shot(page, 's20l2-A-refused-while-running-he');
+  await page.getByTestId('language-select').selectOption('en');
+  // Closing it again recovers.
+  await page.getByTestId('logic-control-SW2').click();
+  await expect(page.getByTestId('logic-level-b')).toHaveText('HIGH');
+  await page.getByTestId('sim-stop').click();
+});
+
+test('review round 2: the same refusal during an ESP32 session (runtime controller) is explained by pin', async ({
+  page,
+  request,
+}) => {
+  await request.post(`${FAKE}/__test/capacity?n=4096`);
+  await openExample(page, 'esp32-logic-override');
+  await inspect(page, 'R2');
+  await page.getByTestId('inspector-delete').click();
+  await inspect(page, 'U2');
+  await page.getByTestId('logic-control-SW1').click();
+  await waitSaved(page);
+  await buildProgram(page);
+  await page.getByTestId('sim-run').click();
+  await expect(status(page)).toHaveAttribute('data-engine', 'mcu', { timeout: 20_000 });
+  await inspect(page, 'U2');
+  await expect(page.getByTestId('logic-level-b')).toHaveText('HIGH', { timeout: 15_000 });
+  await page.getByTestId('logic-control-SW1').click();
+  await expect(page.getByTestId('logic-level-b')).toHaveText('floating (not driven)', {
+    timeout: 15_000,
+  });
+  await expect(page.getByTestId('logic-why-b')).toContainText('Nothing drives this input');
+  await shot(page, 's20l2-D-refused-while-running-en');
+});
+
 /** PSU1 3.0 V → SN74LVC1G08, A from a 10 kΩ / 10 kΩ divider (1.5 V), B HIGH; Y → 220 Ω → LED. */
 function undefinedCircuit(id: string) {
   let doc: ProjectDocument = createProject({

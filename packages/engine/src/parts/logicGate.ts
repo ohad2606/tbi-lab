@@ -314,7 +314,9 @@ export function gateModel(fn: LogicCard['function']): PartModel {
             unit: '',
             inputs: card.inputs.map((t) => ({
               pin: t,
-              level: (inputs[t] === 'init' ? 'x' : inputs[t]) as LogicLevel,
+              // Review round 2 (minor 3): an unpowered part has no input thresholds; its inputs
+              // are reported as unpowered (`off`), with their measured voltage, never as X.
+              level: (out === 'off' ? 'off' : inputs[t] === 'init' ? 'x' : inputs[t]) as LogicLevel,
               volts: rel(t),
             })),
             output: { pin: 'y', level: out === 'init' ? 'x' : out, volts: rel('y') },
@@ -364,6 +366,9 @@ function gateRatings(
   const vccV = r.terminals.vcc != null && g != null ? r.terminals.vcc - g : null;
   if (vccV !== null && vccV > card.vccAbsMax)
     out.push({ code: 'voltage', value: vccV, limit: card.vccAbsMax, channel: 'vcc' });
+  // §5.1 V_CC minimum −0.5 V (a reversed supply), as for the package (review round 2, note 5).
+  else if (vccV !== null && vccV < -0.5)
+    out.push({ code: 'voltage', value: vccV, limit: -0.5, channel: 'vcc' });
   for (const t of card.inputs) {
     const p = r.terminals[t];
     if (p == null || g == null) continue;
