@@ -6,6 +6,7 @@
  */
 
 import { getTypeDef } from './catalog.js';
+import { wireNodes } from './connectivity.js';
 import type { Point, ProjectDocument, Rotation, Wire, WireEnd } from './schema.js';
 
 /** Editor grid pitch in schematic units. Placements and wire points snap to it. */
@@ -154,7 +155,18 @@ export interface WireCrossing {
 }
 
 /**
- * Every unconnected orthogonal crossing in the drawing, in a deterministic order.
+ * Sprint 20 (s20r): where two wires of the SAME electrical node are drawn across each other.
+ * Not drawn with a hop (a hop says "not connected", which would be false); the router avoids
+ * these (route.ts, criterion 6b). Presentation only.
+ */
+export function sameNodeCrossings(doc: ProjectDocument): WireCrossing[] {
+  return allCrossings(doc, true);
+}
+
+/**
+ * Every unconnected orthogonal crossing in the drawing, in a deterministic order: between wires
+ * of DIFFERENT electrical nodes only (Sprint 20: a hop between two wires of one node would say
+ * "not connected", which is false; those are `sameNodeCrossings`).
  *
  * A vertical segment of one wire and a horizontal segment of another (or of the same wire,
  * non-adjacent) cross when the point lies STRICTLY inside both segments. Not a crossing:
@@ -163,6 +175,12 @@ export interface WireCrossing {
  * single crossing point).
  */
 export function wireCrossings(doc: ProjectDocument): WireCrossing[] {
+  return allCrossings(doc, false);
+}
+
+/** Crossings between wires of one node (`same`), or of different nodes (s20r). */
+function allCrossings(doc: ProjectDocument, same: boolean): WireCrossing[] {
+  const node = wireNodes(doc);
   type Seg = { wire: string; a: Point; b: Point };
   const vertical: Seg[] = [];
   const horizontal: Seg[] = [];
@@ -192,6 +210,8 @@ export function wireCrossings(doc: ProjectDocument): WireCrossing[] {
       const y = h.a.y;
       if (!inside(x, h.a.x, h.b.x) || !inside(y, v.a.y, v.b.y)) continue;
       if (blocked.has(`${x},${y}`)) continue;
+      // A hop marks wires that are NOT connected: only between different nodes (s20r).
+      if ((node.get(v.wire) === node.get(h.wire)) !== same) continue;
       out.push({ x, y, over: v.wire, under: h.wire });
     }
   }

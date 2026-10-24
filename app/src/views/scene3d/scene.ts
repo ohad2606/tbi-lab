@@ -1626,6 +1626,13 @@ function footRect(c: SceneComponent, pad: number) {
 const inRect = (p: Point, r: ReturnType<typeof footRect>) =>
   p.x > r.x0 && p.x < r.x1 && p.y > r.z0 && p.y < r.z1;
 
+/**
+ * A join running back across its own part (connect): lifted over the whole module, the arch of
+ * the s20r owner report. Dearer than any lane-side detour or run beside another wire.
+ */
+const OWN_ACROSS = 1000;
+/** A step aside shorter than this between two opposite runs makes a hook (connect, mm). */
+const HOOK = 8;
 /** Cost per mm of a 3D plan run lying on another wire's plan run (connect). */
 const COINCIDENT_COST = 3;
 /** Two parallel plan runs closer than a wire's diameter plus the gap lie on one another (mm). */
@@ -1692,6 +1699,125 @@ function coincident(path: Point[], runs: readonly Run[]): number {
   }
   return n;
 }
+
+/** How far apart (plan, axis to axis) runs of two wires laid side by side are (mm). */
+const SIDE_BY_SIDE = COINCIDENT + 0.3;
+
+/**
+ * Sprint 20 (s20r, owner report round 2): wires of one node may share a run in 2D (a trunk: the
+ * router lets them, route.ts criterion 8b). Physically they are separate wires: laid side by
+ * side, not through or on top of each other. Each plan run lying on a run of a wire planned
+ * before it (any node; in 2D only wires of one node share runs) is moved sideways by
+ * SIDE_BY_SIDE, in document order:
+ *  - an interior run (both ends are corners) moves as a whole; its neighbours lengthen or shorten
+ *    (never folding back);
+ *  - a run ending at the wire's own end keeps its first SHARED_JOG mm at the end (wires on one
+ *    terminal converge there by design), then steps aside.
+ * The side is the one that lies on no other run; nothing moves when neither side is free or the
+ * move would enter a part on the bench. Plan only: ends, heights and connectivity are untouched.
+ */
+function separatePlans(inputs: WireRouteInput[], obstacles: Obstacle[]): void {
+  const SHARED_JOG = 3;
+  const pad = WIRE.radiusMm + 0.3;
+  const ground = obstacles.filter((o) => o.bottom < 2);
+  // Any part, its own end parts included (the stretch kept at a fixed end is not tested).
+  const inPart = (a: Point, b: Point) =>
+    ground.some((o) =>
+      across(a, b, { x0: o.x0 - pad, x1: o.x1 + pad, z0: o.z0 - pad, z1: o.z1 + pad }),
+    );
+  const done: Point[][] = [];
+  for (const w of inputs) {
+    let plan = w.plan.map((p) => ({ ...p }));
+    const lastIndex = plan.length - 1;
+    for (let i = 1; i < plan.length; i++) {
+      const a = plan[i - 1]!;
+      const b = plan[i]!;
+      const h = Math.abs(a.y - b.y) < EPS;
+      const v = Math.abs(a.x - b.x) < EPS;
+      if (h === v || plen(a, b) < 1) continue;
+      const runs = runsNear(done, {
+        x0: Math.min(a.x, b.x),
+        x1: Math.max(a.x, b.x),
+        y0: Math.min(a.y, b.y),
+        y1: Math.max(a.y, b.y),
+      });
+      if (coincident([a, b], runs) < 1) continue;
+      const first = i === 1;
+      const last = i === plan.length - 1;
+      if (first && last) continue; // a single straight run between two fixed ends
+      const shift = (p: Point, d: number): Point =>
+        h ? { x: p.x, y: p.y + d } : { x: p.x + d, y: p.y };
+      const along = (p: Point, q: Point, k: number): Point => {
+        const l = plen(p, q);
+        return { x: p.x + ((q.x - p.x) * k) / l, y: p.y + ((q.y - p.y) * k) / l };
+      };
+      // A neighbour run may lengthen or shorten, never fold back (a hook).
+      const keeps = (q: Point, from: Point, to: Point) =>
+        Math.sign((h ? to.y - q.y : to.x - q.x) || 1) ===
+          Math.sign((h ? from.y - q.y : from.x - q.x) || 1) && plen(q, to) > 0.05;
+      for (const d of [SIDE_BY_SIDE, -SIDE_BY_SIDE]) {
+        let next: Point[];
+        if (!first && !last) {
+          // Interior: both corners move; the neighbours must not fold back.
+          const p0 = plan[i - 2]!;
+          const p1 = plan[i + 1]!;
+          const sa = shift(a, d);
+          const sb = shift(b, d);
+          if (!keeps(p0, a, sa) || !keeps(p1, b, sb)) continue;
+          next = [...plan.slice(0, i - 1), sa, sb, ...plan.slice(i + 1)];
+        } else if (first) {
+          if (plen(a, b) < SHARED_JOG + 1.5) continue;
+          const j = along(a, b, SHARED_JOG);
+          const p1 = plan[i + 1];
+          const sb = shift(b, d);
+          // Toward the next run only (stepping the other way and back is a hook).
+          if (p1 && (!keeps(p1, b, sb) || Math.sign(h ? p1.y - b.y : p1.x - b.x) !== Math.sign(d)))
+            continue;
+          next = [a, j, shift(j, d), sb, ...plan.slice(i + 1)];
+        } else {
+          if (plen(a, b) < SHARED_JOG + 1.5) continue;
+          const j = along(b, a, SHARED_JOG);
+          const p0 = plan[i - 2]!;
+          const sa = shift(a, d);
+          if (!keeps(p0, a, sa) || Math.sign(h ? p0.y - a.y : p0.x - a.x) !== Math.sign(d))
+            continue;
+          next = [...plan.slice(0, i - 1), sa, shift(j, d), j, b];
+        }
+        // The moved stretch lies on no other run and enters no part.
+        // The moved run itself lies on no other run (its neighbours only stretch: they keep their
+        // lines); the moved stretch, without what is kept at a fixed end, enters no part.
+        const run = first ? next.slice(2, 4) : last ? next.slice(-4, -2) : next.slice(i - 1, i + 1);
+        if (coincident(run, runsNear(done, bboxOf(run))) >= 1) continue;
+        const moved = first
+          ? next.slice(1, 5)
+          : last
+            ? next.slice(Math.max(0, next.length - 5), next.length - 1)
+            : next.slice(Math.max(0, i - 2), Math.min(next.length, i + 3));
+        if (moved.slice(1).some((q, k) => inPart(moved[k]!, q))) continue;
+        plan = next;
+        break;
+      }
+    }
+    // A neighbour shortened to almost nothing leaves a tiny jog: collinear points merged.
+    const fixed = [plan[0]!, plan[plan.length - 1]!];
+    if (plan.length !== w.plan.length || plan.some((p, k) => plen(p, w.plan[k]!) > 1e-9))
+      plan = simplify(plan, (q) => fixed.some((f) => plen(f, q) < 1e-6));
+    // Corner radii are keyed by plan index: the last point's moves with it.
+    if (plan.length !== w.plan.length && w.radii?.has(lastIndex)) {
+      const r = w.radii.get(lastIndex)!;
+      w.radii.delete(lastIndex);
+      w.radii.set(plan.length - 1, r);
+    }
+    w.plan = plan;
+    done.push(plan);
+  }
+}
+const bboxOf = (pts: Point[]) => ({
+  x0: Math.min(...pts.map((p) => p.x)),
+  x1: Math.max(...pts.map((p) => p.x)),
+  y0: Math.min(...pts.map((p) => p.y)),
+  y1: Math.max(...pts.map((p) => p.y)),
+});
 
 /** Whether the straight run a-b passes through the interior of `r` (exact clipping). */
 function across(a: Point, b: Point, r: ReturnType<typeof footRect>): boolean {
@@ -1826,6 +1952,17 @@ function connect(
         const l2 = Math.hypot(u2.x, u2.y);
         if (l1 > 1e-6 && l2 > 1e-6 && dotP(u1, u2) / (l1 * l2) < -0.99) cost += 60;
       }
+      // A hook (s20r): out one way, a short step aside, and back the other way.
+      const q = simplify(path, () => false);
+      for (let i = 3; i < q.length; i++) {
+        const u0 = sub2(q[i - 2]!, q[i - 3]!);
+        const u2 = sub2(q[i]!, q[i - 1]!);
+        if (
+          plen(q[i - 1]!, q[i - 2]!) < HOOK &&
+          dotP(u0, u2) / (Math.hypot(u0.x, u0.y) * Math.hypot(u2.x, u2.y)) < -0.99
+        )
+          cost += 60;
+      }
       if (dotP(sub2(corner, E), e.u) < -1e-6) cost += 60;
       for (let i = 1; i <= Math.min(2, path.length - 1); i++)
         if (crosses(path[i - 1]!, path[i]!)) cost += 120;
@@ -1834,12 +1971,16 @@ function connect(
       // midpoint outside it) passed, and the height profile then lifted the wire over the whole
       // module from the far side, an arch over its own part next to the pin (a loop). Every run
       // of the join is tested along its length now.
-      for (let i = 1; i < path.length; i++) if (across(path[i - 1]!, path[i]!, body)) cost += 120;
+      for (let i = 1; i < path.length; i++)
+        if (across(path[i - 1]!, path[i]!, body)) cost += OWN_ACROSS;
       // Running along another wire's plan path (s20r): a join that takes a short cut onto the
       // line another wire already runs on puts the two on top of each other for the whole run
       // (the height profile can then only stack them). Each mm of such a run costs as much as
-      // 3 mm of detour, so the join keeps to the 2D route's own, separate line.
-      cost += COINCIDENT_COST * coincident(path, runs);
+      // 3 mm of detour, so the join keeps to the 2D route's own, separate line. Only the join's
+      // own runs (to the point where it meets the 2D route): the 2D route itself may share a run
+      // with a wire of its node on purpose (route.ts trunk, s20r round 2), laid side by side
+      // below (separatePlans).
+      cost += COINCIDENT_COST * coincident(path.slice(0, 3), runs);
       // Through the point where another wire's lane ends and it rises from pin level.
       for (const q of risers)
         for (let i = 1; i < path.length; i++)
@@ -2418,6 +2559,8 @@ function freshWires(
       radii,
     });
   }
+
+  separatePlans(inputs, obstacles);
 
   const spots: Spot[] = doc.layout.junctions.map((j) => ({
     x: j.x * SCALE,

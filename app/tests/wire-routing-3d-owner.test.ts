@@ -15,6 +15,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   connectivity,
+  sameNodeCrossings,
+  wireCrossings,
+  wireNodes,
   createPackage,
   parsePackage,
   serializePackage,
@@ -39,17 +42,14 @@ const nets = (doc: ProjectDocument): string[][] => {
 const scene = (doc: ProjectDocument) => JSON.stringify(deriveScene(doc));
 
 /**
- * Known, documented remainders (NOTES.md "open limitations"), asserted exactly so that a change
- * either way is noticed:
- *  - left / left-switched W3: the 2D route reaches the PSU's - post from outside the supply
- *    (along the front, back to the post): a hook of ~3 mm at the post;
- *  - below W4: its 2D route runs on the supply symbol's outline, 0.15 mm inside the deeper 3D
- *    case, so the 3D wire passes over the supply's case (clear of it) to reach the + post.
+ * Known, documented remainder (NOTES.md "open limitations"), asserted exactly so that a change
+ * either way is noticed: left-switched W5 and W6 both end on the gate's input A, a pin under the
+ * breakout board; their exit lanes leave that one pin on one line, so they touch at pin level
+ * just outside the shared-end zone. (Round 1's hook at the PSU's - post (left W3) and the run over
+ * the PSU case (below W4) are gone with the round-2 routes.)
  */
-const KNOWN: Record<string, { hairpins?: string[]; overOwnBody?: string[] }> = {
-  left: { hairpins: ['W3'] },
-  'left-switched': { hairpins: ['W3'] },
-  below: { overOwnBody: ['W4>PSU1'] },
+const KNOWN: Record<string, { ownPenetrations?: string[] }> = {
+  'left-switched': { ownPenetrations: ['W5-W6'] },
 };
 
 describe('owner report (s20r): one AND gate wired to a 5 V supply, in 3D', () => {
@@ -61,13 +61,22 @@ describe('owner report (s20r): one AND gate wired to a 5 V supply, in 3D', () =>
       const m = measure3d(b.doc, s, 'drawn');
       expect(m.badEnds, 'every wire ends at its own terminal').toEqual([]);
       expect(m.foreignPenetrations, 'different nodes never touch').toEqual([]);
-      expect(m.ownPenetrations, 'wires of one node never run into each other').toEqual([]);
+      expect(
+        m.ownPenetrations.map((p) => `${p.a}-${p.b}`),
+        'wires of one node never run into each other',
+      ).toEqual(KNOWN[v.name]?.ownPenetrations ?? []);
       expect(m.bodyHits).toEqual([]);
       expect(m.loops).toEqual([]);
       expect(m.flatCrossings, 'every crossing passes over by a wire diameter').toEqual([]);
       for (const c of m.crossings) expect(c.dy).toBeGreaterThanOrEqual(2 * WIRE_RADIUS);
-      expect(m.overOwnBody).toEqual(KNOWN[v.name]?.overOwnBody ?? []);
-      expect(m.hairpins).toEqual(KNOWN[v.name]?.hairpins ?? []);
+      expect(m.overOwnBody).toEqual([]);
+      expect(m.hairpins).toEqual([]);
+      // Round 2 (owner review of right-rot180): wires of one node never cross each other in 2D
+      // (no hop is drawn for them: that would say "not connected"), and every hop drawn is
+      // between two different nodes.
+      expect(sameNodeCrossings(b.doc), 'same-node crossings (2D)').toEqual([]);
+      const nodes = wireNodes(b.doc);
+      for (const c of wireCrossings(b.doc)) expect(nodes.get(c.over)).not.toBe(nodes.get(c.under));
       expectNoWireThroughBodies(b.doc, s, v.name);
       // Deterministic: the same document gives the same scene.
       expect(scene(b.doc)).toBe(JSON.stringify(s));

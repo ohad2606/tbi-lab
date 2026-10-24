@@ -12,7 +12,14 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { IDBFactory } from 'fake-indexeddb';
 import { describe, expect, it } from 'vitest';
-import { connectivity, emptySelection, type ProjectDocument } from '@tbi-lab/domain';
+import {
+  connectivity,
+  emptySelection,
+  sameNodeCrossings,
+  wireCrossings,
+  wireNodes,
+  type ProjectDocument,
+} from '@tbi-lab/domain';
 import { ProjectStore } from '../src/persistence/store.js';
 import { AppStore, type Preferences } from '../src/state/app.js';
 import { moveRouted, routeAutomatic } from '../src/ui/routing.js';
@@ -22,6 +29,7 @@ import { ownerBench } from './support/ownerBench.js';
 import { rng } from './support/routingBench.js';
 import { normalize } from './support/wireScenario.js';
 import { complexBench } from './support/complexBench.js';
+import { GOLDEN_CASES, goldenDocs } from './support/routingGolden.js';
 
 const examples = () => {
   const dir = new URL('../src/examples/data/', import.meta.url);
@@ -117,5 +125,26 @@ describe('3D routing invariants (s20r)', () => {
     await app.openProject(id);
     expect(nets(doc())).toBe(n0);
     expect(JSON.stringify(deriveScene(doc()))).toBe(s0);
+  });
+
+  it('hops are drawn only between different nodes; same-node crossings stay rare (s20r round 2)', () => {
+    const check = (doc: ProjectDocument, label: string) => {
+      const nodes = wireNodes(doc);
+      for (const c of wireCrossings(doc))
+        expect(nodes.get(c.over), label).not.toBe(nodes.get(c.under));
+      return sameNodeCrossings(doc).length;
+    };
+    // Curated examples: the two crossings left are between MANUAL wires, kept as authored.
+    let n = 0;
+    for (const [name, doc] of examples()) n += check(doc, name);
+    expect(n).toBe(2);
+    // The golden random benches (5..80 automatic wires): 609 same-node crossings before round 2
+    // (opened and moved), 33 after (s20r-golden-metrics.txt).
+    let g = 0;
+    for (const c of GOLDEN_CASES) {
+      const { open, moved } = goldenDocs(c, routeAutomatic);
+      g += check(open, JSON.stringify(c)) + check(moved, JSON.stringify(c));
+    }
+    expect(g).toBeLessThanOrEqual(33);
   });
 });

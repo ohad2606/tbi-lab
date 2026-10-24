@@ -26,8 +26,12 @@ import {
 import { sampleShape, shapeWires } from '../../src/views/scene3d/wireShape.js';
 import { samples as polySamples } from './scene3dChecks.js';
 
-/** Around an end two wires share, they meet by design (mm). */
-export const SHARED_END = 4;
+/**
+ * Around an end two wires share (one post, one pin), they converge by design: within this PLAN
+ * distance of it (mm). (s20r round 2: plan distance, 5 mm; was 4 mm in 3D, which counted two
+ * wires dropping onto one binding post from its own height as a tangle.)
+ */
+export const SHARED_END = 5;
 const r = WIRE_RADIUS;
 
 export interface PairReport {
@@ -137,7 +141,7 @@ export function measure3d(
       const sb = S.get(B.id)!;
       const sameNode = A.node !== null && A.node === B.node;
       const shared = ends(A.id).filter((e) => ends(B.id).some((f) => dist(e, f) < 1e-3));
-      const free = (p: P) => !shared.some((e) => dist(e, p) < SHARED_END);
+      const free = (p: P) => !shared.some((e) => Math.hypot(e.x - p.x, e.z - p.z) < SHARED_END);
       let gap = Infinity;
       let at: P = sa[0]!;
       for (const p of sa) {
