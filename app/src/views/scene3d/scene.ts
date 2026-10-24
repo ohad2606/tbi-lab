@@ -1755,6 +1755,9 @@ function separatePlans(inputs: WireRouteInput[], obstacles: Obstacle[]): void {
       const keeps = (q: Point, from: Point, to: Point) =>
         Math.sign((h ? to.y - q.y : to.x - q.x) || 1) ===
           Math.sign((h ? from.y - q.y : from.x - q.x) || 1) && plen(q, to) > 0.05;
+      // Of the sides that work, the one whose moved stretch crosses the fewest earlier wires (a
+      // run laid beside a wire that turns away on that side would cross it twice).
+      let chosen: { next: Point[]; crossings: number } | null = null;
       for (const d of [SIDE_BY_SIDE, -SIDE_BY_SIDE]) {
         let next: Point[];
         if (!first && !last) {
@@ -1794,9 +1797,10 @@ function separatePlans(inputs: WireRouteInput[], obstacles: Obstacle[]): void {
             ? next.slice(Math.max(0, next.length - 5), next.length - 1)
             : next.slice(Math.max(0, i - 2), Math.min(next.length, i + 3));
         if (moved.slice(1).some((q, k) => inPart(moved[k]!, q))) continue;
-        plan = next;
-        break;
+        const crossings = planCrossings(moved, done);
+        if (!chosen || crossings < chosen.crossings) chosen = { next, crossings };
       }
+      if (chosen) plan = chosen.next;
     }
     // A neighbour shortened to almost nothing leaves a tiny jog: collinear points merged.
     const fixed = [plan[0]!, plan[plan.length - 1]!];
@@ -1811,6 +1815,27 @@ function separatePlans(inputs: WireRouteInput[], obstacles: Obstacle[]): void {
     w.plan = plan;
     done.push(plan);
   }
+}
+/** Proper crossings (strictly inside both) of the runs of `path` with the runs of `paths`. */
+function planCrossings(path: Point[], paths: readonly Point[][]): number {
+  let n = 0;
+  const inside = (v: number, p: number, q: number) =>
+    v > Math.min(p, q) + EPS && v < Math.max(p, q) - EPS;
+  for (let i = 1; i < path.length; i++) {
+    const a = path[i - 1]!;
+    const b = path[i]!;
+    const ah = Math.abs(a.y - b.y) < EPS;
+    for (const q of paths)
+      for (let k = 1; k < q.length; k++) {
+        const c = q[k - 1]!;
+        const d = q[k]!;
+        const ch = Math.abs(c.y - d.y) < EPS;
+        if (ah === ch) continue;
+        const [h0, h1, v0, v1] = ah ? [a, b, c, d] : [c, d, a, b];
+        if (inside(v0.x, h0.x, h1.x) && inside(h0.y, v0.y, v1.y)) n++;
+      }
+  }
+  return n;
 }
 const bboxOf = (pts: Point[]) => ({
   x0: Math.min(...pts.map((p) => p.x)),
