@@ -29,6 +29,7 @@ import {
   inputRowAt,
   quiescentAt,
   RAIL_V,
+  settledVcc,
   TABULATED_VCC_TOLERANCE_V,
 } from '../logic/lvc1g.js';
 import { LOGIC_PACKAGE_CARDS, type LogicPackageCard } from '../logic/lvc08a.js';
@@ -66,7 +67,7 @@ function nextPackageState(ctx: PartContext, sol: PartSolution, state: PartState)
   const v = sol.potential('vcc');
   const g = sol.potential('gnd');
   if (v === null || g === null) return allX({ refuse: 'logic_supply_missing' });
-  const vcc = v - g;
+  const vcc = settledVcc(v - g, state.vcc);
   if (Math.abs(vcc) <= UNPOWERED_V) {
     // No I_off specification in this sheet: an unpowered device has no characterized behaviour.
     if (card.ioffA === undefined)
@@ -142,8 +143,9 @@ export const logicPackageModel: PartModel = {
   },
   unknownDriven: (ctx, state) => xOutputs(packageCardOf(ctx), state),
   // No supply current to make unknown when a supply pin is unconnected (refused by that name).
+  // Review round 3 (A1): no unknown supply seeded from a refused state (see parts/logicGate.ts).
   unknownSupply: (ctx, state) =>
-    xOutputs(packageCardOf(ctx), state).length && state.refuse !== 'logic_supply_missing'
+    xOutputs(packageCardOf(ctx), state).length && typeof state.refuse !== 'string'
       ? ['vcc', 'gnd']
       : [],
   // No `unknownCurrentMaxA`: the absolute maxima are stress ratings, not a bound on what an

@@ -148,7 +148,9 @@ describe('A logic-and-switches: two switches → SN74LVC1G08 → LED', () => {
     const o = local(d);
     if (o.ok) throw new Error('expected a refusal');
     expect(o.error).toMatchObject({ code: 'logic_input_floating', components: ['U1'], param: 'b' });
-    expect(plain(engineErrorMessage(en, o.error, d))).toContain('input B is not connected');
+    expect(plain(engineErrorMessage(en, o.error, d))).toContain(
+      'nothing drives input B: no resistive or source path',
+    );
     expect(plain(engineErrorMessage(he, o.error, d))).toContain('כניסה B');
   });
 
@@ -422,5 +424,30 @@ describe('review round 2: layout-only moves keep the netlists (esp32-logic-and R
     const D = doc('esp32-logic-override');
     expect(groundNet(D, 'U1', 'gnd')).toBe(true);
     expect(netOf(D, 'U1', 'gnd')).toContain('GND6.ref');
+  });
+});
+
+describe('review round 3 (A3): the generic floating message names junction/capacitor paths', () => {
+  it('EN and HE: "no resistive or source path", and the parts that set no level', () => {
+    const error = {
+      code: 'logic_input_floating' as const,
+      components: ['U1'],
+      param: 'a',
+      detail: { part: 'SN74LVC1G08' },
+    };
+    const e = plain(engineErrorMessage(en, error, null));
+    expect(e).toContain('nothing drives input A: no resistive or source path reaches it');
+    for (const w of ['an LED', 'a diode', 'a transistor junction', 'a buzzer', 'a capacitor'])
+      expect(e).toContain(w);
+    expect(e).not.toContain('not connected to anything');
+    const h = plain(engineErrorMessage(he, error, null));
+    for (const w of ['מסלול נגדי או מקור', 'דיודה', 'קבל', 'צומת של טרנזיסטור'])
+      expect(h).toContain(w);
+    // The package's own wording keeps the datasheet rule.
+    const p = plain(
+      engineErrorMessage(en, { ...error, param: 'a3', detail: { part: 'SN74LVC08A' } }, null),
+    );
+    expect(p).toContain('no resistive or source path');
+    expect(p).toContain('every unused input');
   });
 });

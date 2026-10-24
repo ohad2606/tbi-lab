@@ -138,7 +138,7 @@ test('A without a pull-down: the open switch leaves B floating — refused, and 
   await waitSaved(page);
   await page.getByTestId('sim-run').click();
   const err = page.getByTestId('sim-error');
-  await expect(err).toContainText(/input\W+B\W+is not connected/);
+  await expect(err).toContainText(/nothing drives input\W+B\W*: no resistive or source path/);
   await inspect(page, 'U1');
   await expect(page.getByTestId('logic-level-b')).toHaveText('floating (not driven)');
   await expect(page.getByTestId('logic-volts-b')).toHaveText('—');

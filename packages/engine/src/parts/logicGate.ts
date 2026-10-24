@@ -47,6 +47,7 @@ import {
   outputStageAt,
   quiescentAt,
   RAIL_V,
+  settledVcc,
   TABULATED_VCC_TOLERANCE_V,
   type LogicCard,
 } from '../logic/lvc1g.js';
@@ -146,8 +147,9 @@ function nextGateState(ctx: PartContext, sol: PartSolution, state: PartState): P
   const unknown = (t: string) => sol.unknown?.(t) === true;
   if (unknown('vcc') || unknown('gnd'))
     return { out: 'x', refuse: 'logic_unknown_state', at: unknown('vcc') ? 'vcc' : 'gnd' };
-  const vcc = supplyOf(sol);
-  if (vcc === null) return { out: 'x', refuse: 'logic_supply_missing' };
+  const raw = supplyOf(sol);
+  if (raw === null) return { out: 'x', refuse: 'logic_supply_missing' };
+  const vcc = settledVcc(raw, state.vcc);
   if (Math.abs(vcc) <= UNPOWERED_V) {
     // Unpowered: outputs off (I_off). Inputs may be driven within the absolute maximum.
     return { out: 'off', vcc: 0 };
@@ -264,12 +266,14 @@ export function gateModel(fn: LogicCard['function']): PartModel {
     // (`unknownSupply`): a supply output there reports an unknown current; a supply node behind
     // a resistor is itself unknown.
     unknownDriven: (_ctx, state) => (levelOf(state, 'out') === 'x' ? ['y'] : []),
-    // A part with a supply pin unconnected has no supply current to make unknown: it is refused
-    // as `logic_supply_missing` (seeding its floating pin would re-name it `logic_unknown_state`).
+    // Review round 3 (A1): a part whose state carries a REFUSAL seeds no unknown supply current.
+    // Such a state ends the Run if it persists, so the seed could only change which part is named;
+    // but while upstream gates are still `init` (first passes) a downstream input floats for a
+    // moment, and seeding the SHARED rail from that transient refusal made every gate on a rail
+    // behind a series element (switch, resistor, diode) unknown for good, a legitimate cascade
+    // refused. Unrefused X outputs (none arise today: every X input is refused) still seed.
     unknownSupply: (_ctx, state) =>
-      levelOf(state, 'out') === 'x' && state.refuse !== 'logic_supply_missing'
-        ? ['vcc', 'gnd']
-        : [],
+      levelOf(state, 'out') === 'x' && typeof state.refuse !== 'string' ? ['vcc', 'gnd'] : [],
     // No `unknownCurrentMaxA` (Sprint 20, review #1): the ±50 mA I_O is an absolute-maximum
     // stress rating (§5.1 note 1; §7.3.1 "capable of driving larger currents than the device can
     // sustain"), not a bound on what an undetermined output carries.

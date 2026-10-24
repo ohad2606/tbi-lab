@@ -199,7 +199,7 @@ test('an unused gate left open refuses the Run, naming the pin and the datasheet
   await waitSaved(page);
   await page.getByTestId('sim-run').click();
   const err = page.getByTestId('sim-error');
-  await expect(err).toContainText(/input\W+3A\W+is not connected/);
+  await expect(err).toContainText(/nothing drives input\W+3A\W*: no resistive or source path/);
   await expect(err).toContainText('every unused input');
   await page.getByTestId('language-select').selectOption('he');
   await expect(err).toContainText(/כניסה\W+3A/);

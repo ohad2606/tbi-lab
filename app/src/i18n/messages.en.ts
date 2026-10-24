@@ -170,7 +170,7 @@ export const en = {
   'sim.results.unknown':
     'Unknown: an undetermined logic level reaches this part, so no value is shown. Check the logic inputs marked unknown (X).',
   'sim.error.logic_input_floating':
-    '{components}: input {pin} is not connected to anything. A floating CMOS input has no defined level. Connect it to a signal, to V_CC or GND, or through a pull-up or pull-down resistor.',
+    '{components}: nothing drives input {pin}: no resistive or source path reaches it. It may be unconnected, or connected only through parts that do not set a level (an LED, a diode, a transistor junction, a buzzer or a capacitor). A floating CMOS input has no defined level. Connect it to a signal, to V_CC or GND, or through a pull-up or pull-down resistor.',
   'sim.error.logic_supply_missing':
     '{components}: V_CC or GND is not connected. A [[logicGate]] needs its own supply pins connected.',
   'sim.error.logic_supply_uncharacterized':
@@ -188,7 +188,7 @@ export const en = {
   'sim.error.logic_input_out_of_range':
     '{components}: input {pin} is at {voltage}, outside the recommended input range 0–5.5 V, where the datasheet does not specify the device’s behaviour.',
   'sim.error.logic_input_floating.sn74lvc08a':
-    '{components}: input {pin} is not connected to anything. The SN74LVC08A datasheet requires every unused input, including those of unused gates, to be held at V_CC or GND. Connect it to a signal, to V_CC or GND, or through a pull-up or pull-down resistor.',
+    '{components}: nothing drives input {pin}: no resistive or source path reaches it (it may be unconnected, or connected only through an LED, a diode, a transistor junction, a buzzer or a capacitor). The SN74LVC08A datasheet requires every unused input, including those of unused gates, to be held at V_CC or GND. Connect it to a signal, to V_CC or GND, or through a pull-up or pull-down resistor.',
   'sim.error.logic_supply_uncharacterized.sn74lvc08a':
     '{components}: the supply is {supply}, which the SN74LVC08A datasheet does not characterize (1.65–1.95 V or 2.3–3.6 V). The simulator does not invent thresholds between datasheet rows.',
   'sim.error.logic_output_uncharacterized.sn74lvc08a':
@@ -227,7 +227,7 @@ export const en = {
   'logic.why.floatingPadsMany':
     'Nothing drives this input: the only possible sources on its net (directly or through resistors) are {pads}, ESP32 pins in input mode (high impedance). The simulation is refused. Add a pull-down or pull-up (10 kΩ).',
   'logic.why.floating':
-    'Nothing drives this input (no DC path to a source): a floating CMOS input has no defined level, so the simulation is refused.',
+    'Nothing drives this input: no resistive or source path reaches it (unconnected, or only through an LED, diode, transistor junction, buzzer or capacitor, which set no level). A floating CMOS input has no defined level, so the simulation is refused.',
   'logic.why.undefined':
     '{v}: between {vil} and {vih} ({vcc}). The datasheet gives no level there, so the simulation is refused.',
   'logic.why.unknown': 'An undetermined level reaches this pin: no level and no voltage are shown.',

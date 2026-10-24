@@ -157,7 +157,7 @@ test('a floating input refuses the Run, naming the pin, in English and Hebrew', 
   await page.getByTestId('sim-run').click();
   const err = page.getByTestId('sim-error');
   // The pin name is a technical token, direction-isolated inside the sentence.
-  await expect(err).toContainText(/input\W+A\W+is not connected/);
+  await expect(err).toContainText(/nothing drives input\W+A\W*: no resistive or source path/);
   await page.getByTestId('language-select').selectOption('he');
   await expect(err).toContainText(/כניסה\W+A/);
   await page.getByTestId('language-select').selectOption('en');

@@ -1066,9 +1066,13 @@ export class EngineSession {
         e.kind === 'psu' ||
         d instanceof Resistor ||
         d instanceof VoltageSource ||
-        d instanceof RegulatedOutput ||
-        (d instanceof PwlLoad && LOGIC_TYPE.test(e.component.type));
+        d instanceof RegulatedOutput;
       if (drives) for (const n of e.nodes.slice(1)) drivenUf.union(e.nodes[0], n);
+      // Review round 3 (A1): a POWERED gate's output stage (its element exists only when the gate
+      // has classified its own supply inside a datasheet row) drives its Y node, whatever feeds
+      // its supply (a series diode included): Y, and the rail it is switched to, are driven.
+      else if (d instanceof PwlLoad && LOGIC_TYPE.test(e.component.type))
+        for (const n of e.nodes) drivenUf.union(n, REF);
     }
     for (const { pin, node } of pinNodes)
       if (this.pinModes.get(pin.gpio) !== 'input') drivenUf.union(node, REF);
@@ -1082,6 +1086,15 @@ export class EngineSession {
           .sort((a, b) => a - b),
       };
     };
+    /**
+     * Review round 3 (A1): a logic input on the same node as the part's OWN V_CC or GND pin is
+     * terminated at that rail ("held at V_CC or GND", SCAS283W §5.4 note 1): V_I − V_GND is then
+     * exactly 0 or V_CC, whatever feeds the rail. Such an input is never floating.
+     */
+    const ownRail = (ctx: PartContext, terminal: string) => {
+      const n = ctx.node(terminal);
+      return n === ctx.node('vcc') || n === ctx.node('gnd');
+    };
     /** The first logic input on an undriven node, as a refusal (review note 4: before a
      *  singular solve is reported, a capacitor-only input is named as floating). */
     const firstUndrivenInput = (): EngineError | null => {
@@ -1091,7 +1104,7 @@ export class EngineSession {
         for (const t of pins.inputs) {
           const n = p.ctx.node(t);
           if (unknown.nodes.has(n)) continue;
-          const u = undriven(n);
+          const u = ownRail(p.ctx, t) ? null : undriven(n);
           if (u)
             return {
               code: 'logic_input_floating',
@@ -1240,7 +1253,7 @@ export class EngineSession {
               : clean(-(currents.get(key) ?? 0)), // 0 V branch: first node -> second
         device: (key) => devices.get(key),
         unknown: (terminal) => unknown.nodes.has(p.ctx.node(terminal)),
-        undriven: (terminal) => undriven(p.ctx.node(terminal)),
+        undriven: (terminal) => (ownRail(p.ctx, terminal) ? null : undriven(p.ctx.node(terminal))),
         deviceTerminalCurrents: (key) => {
           const d = devices.get(key);
           if (!(d instanceof Npn) || !xSolution.length) return undefined;

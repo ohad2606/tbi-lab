@@ -342,3 +342,16 @@ export function quiescentAt(
       : {};
   return { iccCondition: inSupply ? 'notInputs' : 'notSupply', ...delta };
 }
+
+/**
+ * Review round 3 (A1): numerical resolution of the settle loop's supply value (V). The supply a
+ * logic part stores in its state sets its own output characteristic, which in turn sets the
+ * supply when the rail sits behind a series element; the fixed point then converges to within a
+ * few units in the last place and can alternate there. A new supply within this of the previous
+ * state's is the same supply (solver resolution, far below any datasheet figure).
+ */
+export const SETTLE_VCC_V = 1e-9;
+
+/** The supply to store: the previous one when the change is below the settle resolution. */
+export const settledVcc = (raw: number, prev: unknown): number =>
+  typeof prev === 'number' && Math.abs(raw - prev) <= SETTLE_VCC_V ? prev : raw;
