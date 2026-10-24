@@ -173,6 +173,8 @@ export const en = {
     'Unknown: an undetermined logic level reaches this part, so no value is shown. Check the logic inputs marked unknown (X).',
   'sim.error.logic_input_floating':
     '{components}: nothing drives input {pin}: no resistive or source path reaches it. It may be unconnected, or connected only through parts that do not set a level (an LED, a diode, a transistor junction, a buzzer or a capacitor). A floating CMOS input has no defined level. Connect it to a signal, to V_CC or GND, or through a pull-up or pull-down resistor.',
+  'sim.error.logic_supply_undriven':
+    '{components}: its {pin} pin is reached only through parts that do not set a voltage (an LED, a diode, a transistor junction or a capacitor). The device’s own supply current (I_CC) is not simulated, so the voltage across such a part, and therefore the supply, is undetermined: the circuit is not simulated. Feed {pin} from a supply through a wire, a closed switch or a resistor.',
   'sim.error.logic_supply_missing':
     '{components}: V_CC or GND is not connected. A [[logicGate]] needs its own supply pins connected.',
   'sim.error.logic_supply_uncharacterized':
@@ -220,6 +222,8 @@ export const en = {
   'logic.why.idle': 'Run the simulation to see this pin’s level and voltage.',
   'logic.why.waiting': 'Waiting for the first operating point.',
   'logic.why.refusedElsewhere': 'Not simulated: the Run was refused (see the message above).',
+  'logic.why.supplyUndriven':
+    'Not simulated: the part’s {pin} pin is fed only through a junction or a capacitor, so its supply is undetermined.',
   'logic.why.outputUncharacterized':
     'The load needs more than the guaranteed output current ({limit}, {vcc}), or forces the output past its rail: no characteristic, so the simulation is refused.',
   'logic.why.outOfRange':

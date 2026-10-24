@@ -451,3 +451,20 @@ describe('review round 3 (A3): the generic floating message names junction/capac
     expect(p).toContain('every unused input');
   });
 });
+
+describe('review round 4: an undetermined supply is refused by name (EN/HE)', () => {
+  it('logic_supply_undriven names the pin and why (I_CC not simulated)', () => {
+    const error = {
+      code: 'logic_supply_undriven' as const,
+      components: ['U1'],
+      param: 'vcc',
+      detail: { part: 'SN74LVC1G08' },
+    };
+    const e = plain(engineErrorMessage(en, error, null));
+    expect(e).toContain('U1: its VCC pin is reached only through parts that do not set a voltage');
+    expect(e).toContain('(I_CC) is not simulated');
+    const h = plain(engineErrorMessage(he, error, null));
+    expect(h).toContain('VCC');
+    expect(h).toContain('I_CC');
+  });
+});

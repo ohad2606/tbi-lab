@@ -220,7 +220,8 @@ export function engineErrorMessage(
     case 'logic_unknown_state':
     case 'logic_unpowered_uncharacterized':
     case 'logic_input_undefined':
-    case 'logic_input_out_of_range': {
+    case 'logic_input_out_of_range':
+    case 'logic_supply_undriven': {
       const d = (error.detail ?? {}) as {
         vcc?: number;
         value?: number;
