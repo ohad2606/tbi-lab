@@ -31,6 +31,7 @@ import {
   snapPoint,
   terminalPosition,
   wireCrossings,
+  sameNodeBranches,
   wireRoute,
   type ComponentInstance,
   type Quantity,
@@ -803,6 +804,8 @@ export function Canvas({
 
   // Unconnected crossings of the drawing being shown (including a live drag preview).
   const crossings = useMemo(() => wireCrossings(view), [view]);
+  // Branch points of wires of one node (s20r): drawn with a junction-style dot.
+  const branches = useMemo(() => sameNodeBranches(view), [view]);
   // The same resolved colours as the 3D view (wireColors.ts).
   const wireColors = useMemo(() => resolveWireColors(view), [view]);
   const hopR = hopRadius(camera.scale);
@@ -1060,6 +1063,24 @@ export function Canvas({
               );
             }),
           )}
+        </g>
+
+        {/* Sprint 20 (s20r): where wires of one node branch off a run they share. Drawn like
+            a junction (electrical junctions must be explicit), but presentation only: never a
+            junction object, never selectable, no effect on connectivity. */}
+        <g class="wire-branches">
+          {branches.map((p) => (
+            <circle
+              key={`${p.x},${p.y}`}
+              class="junction-dot wire-branch-dot"
+              data-testid="wire-branch"
+              data-x={p.x}
+              data-y={p.y}
+              cx={p.x}
+              cy={p.y}
+              r={4.5}
+            />
+          ))}
         </g>
 
         <g class="junctions">

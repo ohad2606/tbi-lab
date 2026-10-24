@@ -15,7 +15,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   connectivity,
+  sameNodeBranches,
   sameNodeCrossings,
+  wireRoute,
   wireCrossings,
   wireNodes,
   createPackage,
@@ -42,11 +44,11 @@ const nets = (doc: ProjectDocument): string[][] => {
 const scene = (doc: ProjectDocument) => JSON.stringify(deriveScene(doc));
 
 /**
- * Known, documented remainder (NOTES.md "open limitations"), asserted exactly so that a change
- * either way is noticed: left-switched W5 and W6 both end on the gate's input A, a pin under the
- * breakout board; their exit lanes leave that one pin on one line, so they touch at pin level
- * just outside the shared-end zone. (Round 1's hook at the PSU's - post (left W3) and the run over
- * the PSU case (below W4) are gone with the round-2 routes.)
+ * Known remainder, asserted exactly so that a change either way is noticed: left-switched W5 and
+ * W6 both end on the gate's input A, a pin under the breakout board; their exit lanes leave that
+ * one pin on one line, so they touch at pin level just outside the shared-end zone. Round 3 tried
+ * a second side for the second lane and a sideways-shifted lane end: both fixed this case but
+ * raised loops / hairpins / arches on the random benches (s20r NOTES), so neither was kept.
  */
 const KNOWN: Record<string, { ownPenetrations?: string[] }> = {
   'left-switched': { ownPenetrations: ['W5-W6'] },
@@ -77,6 +79,17 @@ describe('owner report (s20r): one AND gate wired to a 5 V supply, in 3D', () =>
       expect(sameNodeCrossings(b.doc), 'same-node crossings (2D)').toEqual([]);
       const nodes = wireNodes(b.doc);
       for (const c of wireCrossings(b.doc)) expect(nodes.get(c.over)).not.toBe(nodes.get(c.under));
+      // Round 3: a dot at every branch of one node's shared run, each on two or more wires of
+      // one node, never at a hop (different nodes).
+      for (const p of sameNodeBranches(b.doc)) {
+        const on = b.doc.layout.wires.filter((w) => {
+          const r = wireRoute(b.doc, w)!;
+          return r.some((q, i) => i > 0 && onRun(p, r[i - 1]!, q));
+        });
+        expect(new Set(on.map((w) => nodes.get(w.id))).size, JSON.stringify(p)).toBe(1);
+        expect(on.length).toBeGreaterThanOrEqual(2);
+        expect(wireCrossings(b.doc).some((c) => c.x === p.x && c.y === p.y)).toBe(false);
+      }
       expectNoWireThroughBodies(b.doc, s, v.name);
       // Deterministic: the same document gives the same scene.
       expect(scene(b.doc)).toBe(JSON.stringify(s));
@@ -157,3 +170,13 @@ describe('owner report (s20r): one AND gate wired to a 5 V supply, in 3D', () =>
     }
   });
 });
+
+function onRun(
+  p: { x: number; y: number },
+  a: { x: number; y: number },
+  b: { x: number; y: number },
+) {
+  return a.x === b.x
+    ? p.x === a.x && p.y >= Math.min(a.y, b.y) && p.y <= Math.max(a.y, b.y)
+    : p.y === a.y && p.x >= Math.min(a.x, b.x) && p.x <= Math.max(a.x, b.x);
+}
