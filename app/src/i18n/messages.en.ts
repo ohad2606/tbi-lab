@@ -174,7 +174,7 @@ export const en = {
   'sim.error.logic_input_floating':
     '{components}: nothing drives input {pin}: no resistive or source path reaches it. It may be unconnected, or connected only through parts that do not set a level (an LED, a diode, a transistor junction, a buzzer or a capacitor). A floating CMOS input has no defined level. Connect it to a signal, to V_CC or GND, or through a pull-up or pull-down resistor.',
   'sim.error.logic_supply_undriven':
-    '{components}: its {pin} pin is reached only through parts that do not set a voltage (an LED, a diode, a transistor junction or a capacitor). The device’s own supply current (I_CC) is not simulated, so the voltage across such a part, and therefore the supply, is undetermined: the circuit is not simulated. Feed {pin} from a supply through a wire, a closed switch or a resistor.',
+    '{components}: its {pin} pin is reached only through parts that do not set a voltage (an LED, a diode, a transistor junction or a capacitor). The device’s own supply current (I_CC) is not simulated, so the voltage across such a part, and therefore the supply, is undetermined: the circuit is not simulated. Feed {pin} directly from a supply, through a wire or a closed switch.',
   'sim.error.logic_supply_missing':
     '{components}: V_CC or GND is not connected. A [[logicGate]] needs its own supply pins connected.',
   'sim.error.logic_supply_uncharacterized':
