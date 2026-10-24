@@ -18,6 +18,7 @@ import type { Obstacle } from '../../src/views/scene3d/route3d.js';
 import { footprintRect } from '../../src/views/scene3d/labels.js';
 import {
   MODEL_HEIGHT,
+  SCALE,
   sceneObstacles,
   WIRE_RADIUS,
   type SceneDescription,
@@ -80,11 +81,14 @@ export interface Metrics3d {
 type P = { x: number; y: number; z: number };
 const dist = (p: P, q: P) => Math.hypot(p.x - q.x, p.y - q.y, p.z - q.z);
 
-/** The drawn curve of every wire (renderer shapes), sampled every ~0.6 mm. */
+/**
+ * The drawn curve of every wire (renderer shapes), sampled every ~0.3 mm (s20r4, review B6: at
+ * 0.6 mm a graze shorter than a sample step could pass between samples).
+ */
 export function drawnSamples(scene: SceneDescription): Map<string, P[]> {
   const shapes = shapeWires(scene);
   return new Map(
-    scene.wires.map((w) => [w.id, sampleShape(shapes.get(w.id)!).map((v) => ({ ...v }))]),
+    scene.wires.map((w) => [w.id, sampleShape(shapes.get(w.id)!, 0.3).map((v) => ({ ...v }))]),
   );
 }
 /** The route polylines (control points) sampled every 0.5 mm. */
@@ -191,6 +195,7 @@ export function measure3d(
           if (c.dy < 2 * r) out.flatCrossings.push(c);
         }
     }
+  const junctionPoint = new Map<string, P>();
   // Per wire: loops, hairpins, bends, length, ends.
   for (const w of ws) {
     const s = S.get(w.id)!;
@@ -237,6 +242,18 @@ export function measure3d(
     // Ends at their terminals' attach points.
     const src = doc.layout.wires.find((x) => x.id === w.id)!;
     ([src.from, src.to] as const).forEach((e, k) => {
+      if (e.kind === 'junction') {
+        // s20r4 (review B6): a junction end is at the junction (plan), at one point shared by
+        // every wire that meets there.
+        const j = doc.layout.junctions.find((x) => x.id === e.junction);
+        const p = k === 0 ? s[0]! : s[s.length - 1]!;
+        if (!j || Math.hypot(p.x - j.x * SCALE, p.z - j.y * SCALE) > 1e-6)
+          out.badEnds.push(`${w.id}:${k}`);
+        const seen = junctionPoint.get(e.junction);
+        if (!seen) junctionPoint.set(e.junction, p);
+        else if (dist(seen, p) > 1e-6) out.badEnds.push(`${w.id}:${k}`);
+        return;
+      }
       if (e.kind !== 'terminal') return;
       const t = scene.components
         .find((c) => c.id === e.component)
@@ -290,7 +307,16 @@ export function bodyHits(
     for (const p of s)
       for (const o of obstacles) {
         const isOwn = own.includes(o.part) || own.some((x) => o.part.startsWith(`${x}:`));
-        if (isOwn && o.bottom < 2) continue;
+        // s20r4 (review B6): a body standing on the bench of a part the wire ends on is exempt
+        // only where the wire is fastened (within 4 mm in plan of its end) or runs at pin level
+        // under it (an exit lane under a module); a pass through it anywhere else counts.
+        if (
+          isOwn &&
+          o.bottom < 2 &&
+          (ends.some((e) => Math.hypot(e.x - p.x, e.z - p.z) < 4) ||
+            ends.some((e) => p.y <= e.y + 2 * r))
+        )
+          continue;
         if (isOwn && ends.some((e) => dist(e, p) < 3)) continue;
         if (
           p.x > o.x0 - m &&

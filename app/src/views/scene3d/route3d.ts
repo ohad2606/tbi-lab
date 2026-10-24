@@ -367,7 +367,9 @@ export function routeWires(
     for (const o of obstacles) {
       // Its own end parts: only where it really runs over them (it meets them at their edge).
       const own = o.part === w.parts[0] || o.part === w.parts[1];
-      for (let [s0, s1] of rectIntervals(plan, st, o, own ? 0 : r + 0.3)) {
+      // (s20r4, review B6: its own end parts padded like any other too; unpadded, a run 0.05 mm
+      // outside its own supply's case got no requirement and its descent cut the case's edge.)
+      for (let [s0, s1] of rectIntervals(plan, st, o, r + 0.3)) {
         // Its own end part: only where it leaves it (the first few mm); a run back along or
         // across its own part clears it like any other.
         // Its own fitting (the housing it is plugged into) entirely; a part of its own no taller

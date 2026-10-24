@@ -736,7 +736,14 @@ export function shapeWires(
         if (!near && p.y < Math.min(WIRE_RADIUS, routeY(p)) - 1e-6) return 'bench';
       }
       for (const b of bodies) {
-        if (owners.get(w.id)!.has(b.id)) continue;
+        // A part the wire ends on: exempt near that end or at pin level under it (s20r4, review
+        // B6: the drape cut a corner through its own supply's case, far from the post).
+        if (
+          owners.get(w.id)!.has(b.id) &&
+          (mine.some((e) => Math.hypot(e.x - p.x, e.z - p.z) < 4) ||
+            mine.some((e) => p.y <= e.y + 2 * WIRE_RADIUS))
+        )
+          continue;
         const inPlan =
           p.x > b.r.x0 - WIRE_RADIUS &&
           p.x < b.r.x1 + WIRE_RADIUS &&

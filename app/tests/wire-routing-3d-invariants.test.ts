@@ -17,19 +17,19 @@ import {
   emptySelection,
   sameNodeCrossings,
   wireCrossings,
-  wireNodes,
   type ProjectDocument,
 } from '@tbi-lab/domain';
 import { ProjectStore } from '../src/persistence/store.js';
 import { AppStore, type Preferences } from '../src/state/app.js';
 import { moveRouted, routeAutomatic } from '../src/ui/routing.js';
 import { deriveScene, touchingNodes, WIRE_RADIUS } from '../src/views/scene3d/scene.js';
+import { independentWireNodes } from './support/independentNodes.js';
 import { bodyHits, measure3d, routeSamples } from './support/wire3dMetrics.js';
 import { ownerBench } from './support/ownerBench.js';
 import { rng } from './support/routingBench.js';
 import { normalize } from './support/wireScenario.js';
 import { complexBench } from './support/complexBench.js';
-import { GOLDEN_CASES, goldenDocs } from './support/routingGolden.js';
+import { GOLDEN_CASES, caseKey, goldenDocs } from './support/routingGolden.js';
 
 const examples = () => {
   const dir = new URL('../src/examples/data/', import.meta.url);
@@ -129,7 +129,7 @@ describe('3D routing invariants (s20r)', () => {
 
   it('hops are drawn only between different nodes; same-node crossings stay rare (s20r round 2)', () => {
     const check = (doc: ProjectDocument, label: string) => {
-      const nodes = wireNodes(doc);
+      const nodes = independentWireNodes(doc); // s20r4 B5: not the domain's own map
       for (const c of wireCrossings(doc))
         expect(nodes.get(c.over), label).not.toBe(nodes.get(c.under));
       return sameNodeCrossings(doc).length;
@@ -146,5 +146,27 @@ describe('3D routing invariants (s20r)', () => {
       g += check(open, JSON.stringify(c)) + check(moved, JSON.stringify(c));
     }
     expect(g).toBeLessThanOrEqual(37);
+  });
+
+  it('golden random benches up to 20 wires: 3D invariants, pinned (s20r4, review B6)', () => {
+    // Every exception is listed and must stay exactly as it is (a change either way is seen); a
+    // contact of two nodes is always flagged by the scene's routeLimits (the 3D view's note).
+    const known: Record<string, { foreign?: string[]; loops?: string[] }> = {
+      '20-2-dense': { foreign: ['W3-W10'] },
+      '20-2-dense-board': { loops: ['W20'] },
+    };
+    for (const c of GOLDEN_CASES.filter((g) => g.wires <= 20)) {
+      const { open } = goldenDocs(c, routeAutomatic);
+      const s = deriveScene(open);
+      const m = measure3d(open, s);
+      const k = caseKey(c);
+      const foreign = m.foreignPenetrations.map((p) => `${p.a}-${p.b}`);
+      expect(foreign, k).toEqual(known[k]?.foreign ?? []);
+      expect(m.bodyHits, k).toEqual([]);
+      expect(m.badEnds, k).toEqual([]);
+      expect(m.loops, k).toEqual(known[k]?.loops ?? []);
+      for (const f of foreign)
+        for (const id of f.split('-')) expect(s.routeLimits, k).toContain(id);
+    }
   });
 });

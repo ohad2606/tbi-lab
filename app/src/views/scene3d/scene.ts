@@ -618,12 +618,7 @@ export function routeLimits(
     const zs = w.points.map((p) => p.z);
     const [x0, x1, z0, z1] = [Math.min(...xs), Math.max(...xs), Math.min(...zs), Math.max(...zs)];
     const near = obstacles.filter(
-      (o) =>
-        !(isOwn(o) && o.bottom < 2) &&
-        o.x1 + m > x0 &&
-        o.x0 - m < x1 &&
-        o.z1 + m > z0 &&
-        o.z0 - m < z1,
+      (o) => o.x1 + m > x0 && o.x0 - m < x1 && o.z1 + m > z0 && o.z0 - m < z1,
     );
     let hit = false;
     for (let i = 1; i < w.points.length && !hit; i++) {
@@ -634,6 +629,16 @@ export function routeLimits(
         const t = k / n;
         const p = { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, z: a.z + (b.z - a.z) * t };
         for (const o of near) {
+          // A body on the bench of a part the wire ends on: exempt where the wire is fastened
+          // (within 4 mm in plan of its end) or runs at pin level under it (an exit lane); a
+          // pass through it anywhere else counts (s20r4, review B6; scene3dChecks the same).
+          if (
+            isOwn(o) &&
+            o.bottom < 2 &&
+            (ends.some((e) => Math.hypot(e.x - p.x, e.z - p.z) < 4) ||
+              ends.some((e) => p.y <= e.y + 2 * WIRE.radiusMm))
+          )
+            continue;
           if (isOwn(o) && ends.some((e) => Math.hypot(e.x - p.x, e.y - p.y, e.z - p.z) < 3))
             continue;
           if (
