@@ -11,6 +11,7 @@ import {
   emptySelection,
   moveWireSegment,
   autoRoute,
+  sameNodeBranches,
   sameNodeCrossings,
   wireCrossings,
   wireNodes,
@@ -178,5 +179,35 @@ describe('crossings of wires of ONE node (s20r round 2)', () => {
       { x: -60, y: 0 },
       { x: 60, y: 0 },
     ]);
+  });
+});
+
+describe('branch dots of wires of ONE node (s20r round 3)', () => {
+  // R1 (0,-100), R2 (0,100), R3 (200,-20); W1: PSU+ (-80,-20) -> R3.a (160,-20), horizontal.
+  it('a dot exactly where a wire of the node leaves a run it shares; none where nodes differ', () => {
+    let doc = base();
+    // W2: PSU+ -> R2.b (40,100), sharing W1's run to x=40, then down: a branch at (40,-20).
+    doc = must(addWire(doc, t('PSU1', 'positive'), t('R2', 'b'), [{ x: 40, y: -20 }])).doc;
+    expect(wireNodes(doc).get('W2')).toBe(wireNodes(doc).get('W1'));
+    expect(sameNodeBranches(doc)).toEqual([{ x: 40, y: -20 }]);
+    // W3 of ANOTHER node (R1.a -> R1.b's column... R1.b (40,-100) -> GND) meeting W1 in a T at
+    // (100,-20): a T of different nodes is no branch, and gets no dot.
+    doc = must(
+      addWire(doc, t('R1', 'a'), t('GND1', 'ref'), [
+        { x: 100, y: -100 },
+        { x: 100, y: -20 },
+      ]),
+    ).doc;
+    expect(wireNodes(doc).get('W3')).not.toBe(wireNodes(doc).get('W1'));
+    expect(sameNodeBranches(doc)).toEqual([{ x: 40, y: -20 }]);
+    // Presentation only: no junction object, the nets are those of the wire endpoints.
+    expect(doc.layout.junctions).toEqual([]);
+  });
+
+  it('two wires of one node merely crossing, or running one over the other, get no dot', () => {
+    expect(sameNodeBranches(crossing())).toEqual([]);
+    let doc = base();
+    doc = must(addWire(doc, t('PSU1', 'positive'), t('R3', 'a'))).doc; // the same run twice
+    expect(sameNodeBranches(doc)).toEqual([]);
   });
 });

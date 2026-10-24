@@ -178,6 +178,60 @@ export function wireCrossings(doc: ProjectDocument): WireCrossing[] {
   return allCrossings(doc, false);
 }
 
+/**
+ * Sprint 20 (s20r round 3, owner directive "Electrical junctions must be explicit"): the points
+ * where wires of ONE node branch off a run they share (the router lets them share runs: route.ts
+ * criterion 8b), drawn with a dot like a junction. PRESENTATION ONLY: never stored, never a
+ * junction object, no effect on connectivity (the wires' endpoints alone decide that).
+ *
+ * A point is a branch when it is not a terminal or a junction (those are marked already), a wire
+ * of the node bends or ends there, and the wires of that node leave it in at least three of the
+ * four directions. Two wires merely crossing (both straight through) are not a branch, and wires
+ * of different nodes never count together.
+ */
+export function sameNodeBranches(doc: ProjectDocument): Point[] {
+  const node = wireNodes(doc);
+  const marked = new Set<string>();
+  for (const j of doc.layout.junctions) marked.add(`${j.x},${j.y}`);
+  for (const c of doc.components)
+    for (const t of getTypeDef(c.type)?.terminals ?? []) {
+      const p = terminalPosition(doc, c.id, t.id);
+      if (p) marked.add(`${p.x},${p.y}`);
+    }
+  type Seg = { a: Point; b: Point };
+  const byNode = new Map<string, Seg[]>();
+  const corners = new Map<string, Point[]>();
+  for (const w of doc.layout.wires) {
+    const r = wireRoute(doc, w);
+    const n = node.get(w.id);
+    if (!r || !n) continue;
+    const segs = byNode.get(n) ?? [];
+    for (let i = 1; i < r.length; i++) segs.push({ a: r[i - 1]!, b: r[i]! });
+    byNode.set(n, segs);
+    corners.set(n, [...(corners.get(n) ?? []), ...r]);
+  }
+  const out = new Map<string, Point>();
+  for (const [n, pts] of corners) {
+    const segs = byNode.get(n)!;
+    for (const p of pts) {
+      const k = `${p.x},${p.y}`;
+      if (marked.has(k) || out.has(k)) continue;
+      const dirs = new Set<string>();
+      for (const { a, b } of segs) {
+        const on =
+          (a.x === b.x && p.x === a.x && p.y >= Math.min(a.y, b.y) && p.y <= Math.max(a.y, b.y)) ||
+          (a.y === b.y && p.y === a.y && p.x >= Math.min(a.x, b.x) && p.x <= Math.max(a.x, b.x));
+        if (!on) continue;
+        for (const q of [a, b])
+          if (q.x !== p.x || q.y !== p.y)
+            dirs.add(`${Math.sign(q.x - p.x)},${Math.sign(q.y - p.y)}`);
+      }
+      if (dirs.size >= 3) out.set(k, { x: p.x, y: p.y });
+    }
+  }
+  return [...out.values()].sort((p, q) => p.x - q.x || p.y - q.y);
+}
+
 /** Crossings between wires of one node (`same`), or of different nodes (s20r). */
 function allCrossings(doc: ProjectDocument, same: boolean): WireCrossing[] {
   const node = wireNodes(doc);
