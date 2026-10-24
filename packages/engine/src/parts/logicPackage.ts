@@ -67,6 +67,9 @@ function nextPackageState(ctx: PartContext, sol: PartSolution, state: PartState)
   const v = sol.potential('vcc');
   const g = sol.potential('gnd');
   if (v === null || g === null) return allX({ refuse: 'logic_supply_missing' });
+  // Review round 4: a supply pin reached only through a junction or a capacitor (see logicGate.ts).
+  for (const pin of ['vcc', 'gnd'] as const)
+    if (sol.undriven?.(pin)) return allX({ refuse: 'logic_supply_undriven', at: pin });
   const vcc = settledVcc(v - g, state.vcc);
   if (Math.abs(vcc) <= UNPOWERED_V) {
     // No I_off specification in this sheet: an unpowered device has no characterized behaviour.

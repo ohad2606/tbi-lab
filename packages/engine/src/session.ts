@@ -167,6 +167,8 @@ export type EngineErrorCode =
    * - `logic_input_out_of_range`: an input outside the recommended V_I range.
    */
   | 'logic_input_floating'
+  /** Review round 4: a logic part's own V_CC or GND pin is reached only through junctions or capacitors (`param`: the pin). */
+  | 'logic_supply_undriven'
   | 'logic_supply_missing'
   | 'logic_supply_uncharacterized'
   | 'logic_output_uncharacterized'
@@ -1068,14 +1070,35 @@ export class EngineSession {
         d instanceof VoltageSource ||
         d instanceof RegulatedOutput;
       if (drives) for (const n of e.nodes.slice(1)) drivenUf.union(e.nodes[0], n);
-      // Review round 3 (A1): a POWERED gate's output stage (its element exists only when the gate
-      // has classified its own supply inside a datasheet row) drives its Y node, whatever feeds
-      // its supply (a series diode included): Y, and the rail it is switched to, are driven.
-      else if (d instanceof PwlLoad && LOGIC_TYPE.test(e.component.type))
-        for (const n of e.nodes) drivenUf.union(n, REF);
     }
     for (const { pin, node } of pinNodes)
       if (this.pinModes.get(pin.gpio) !== 'input') drivenUf.union(node, REF);
+    // Review round 4: a logic part's output stage (it joins Y to the part's own V_CC or GND)
+    // drives only when BOTH of the part's own supply pins are driven by the rule above. A rail fed
+    // only through a junction or a capacitor is not: the device's I_CC is not in the solve, so
+    // gmin would hand such a rail the source voltage. Gates powered from other gates' outputs are
+    // decided in order (fixed point).
+    const isDriven = (n: string) => n === REF || drivenUf.find(n) === drivenUf.find(REF);
+    const ctxOf = new Map(parts.map((p) => [p.c.id, p.ctx]));
+    const stages = elements.filter(
+      (e) =>
+        e.active &&
+        !excluded.has(e.key) &&
+        devices.get(e.key) instanceof PwlLoad &&
+        LOGIC_TYPE.test(e.component.type),
+    );
+    for (let grew = true; grew;) {
+      grew = false;
+      for (const e of stages) {
+        const ctx = ctxOf.get(e.component.id);
+        if (!ctx || !isDriven(ctx.node('vcc')) || !isDriven(ctx.node('gnd'))) continue;
+        for (const n of e.nodes)
+          if (!isDriven(n)) {
+            drivenUf.union(n, REF);
+            grew = true;
+          }
+      }
+    }
     const undriven = (node: string): { inputPads: number[] } | null => {
       if (node === REF || drivenUf.find(node) === drivenUf.find(REF)) return null;
       const root = drivenUf.find(node);
@@ -1086,25 +1109,26 @@ export class EngineSession {
           .sort((a, b) => a - b),
       };
     };
-    /**
-     * Review round 3 (A1): a logic input on the same node as the part's OWN V_CC or GND pin is
-     * terminated at that rail ("held at V_CC or GND", SCAS283W §5.4 note 1): V_I − V_GND is then
-     * exactly 0 or V_CC, whatever feeds the rail. Such an input is never floating.
-     */
-    const ownRail = (ctx: PartContext, terminal: string) => {
-      const n = ctx.node(terminal);
-      return n === ctx.node('vcc') || n === ctx.node('gnd');
-    };
     /** The first logic input on an undriven node, as a refusal (review note 4: before a
      *  singular solve is reported, a capacitor-only input is named as floating). */
     const firstUndrivenInput = (): EngineError | null => {
       for (const p of parts) {
         const pins = p.model.logicPins?.(p.ctx);
         if (!pins) continue;
+        // Review round 4: an undetermined supply pin first (it is why its inputs float too).
+        const part = String(p.model.cards?.[String(p.ctx.value('model'))]?.partNumber ?? '');
+        for (const t of ['vcc', 'gnd'])
+          if (!unknown.nodes.has(p.ctx.node(t)) && undriven(p.ctx.node(t)))
+            return {
+              code: 'logic_supply_undriven',
+              components: [p.c.id],
+              param: t,
+              detail: { part },
+            };
         for (const t of pins.inputs) {
           const n = p.ctx.node(t);
           if (unknown.nodes.has(n)) continue;
-          const u = ownRail(p.ctx, t) ? null : undriven(n);
+          const u = undriven(n);
           if (u)
             return {
               code: 'logic_input_floating',
@@ -1253,7 +1277,7 @@ export class EngineSession {
               : clean(-(currents.get(key) ?? 0)), // 0 V branch: first node -> second
         device: (key) => devices.get(key),
         unknown: (terminal) => unknown.nodes.has(p.ctx.node(terminal)),
-        undriven: (terminal) => (ownRail(p.ctx, terminal) ? null : undriven(p.ctx.node(terminal))),
+        undriven: (terminal) => undriven(p.ctx.node(terminal)),
         deviceTerminalCurrents: (key) => {
           const d = devices.get(key);
           if (!(d instanceof Npn) || !xSolution.length) return undefined;
