@@ -864,11 +864,12 @@ export const RECIPES: Record<string, () => ProjectDocument> = {
     // Sprint 20: a 10 kΩ pull-down on A (SCES217AA §7.3.3: "If a system does not always drive an
     // input, consider adding a pull-up or pull-down resistor … a 10kΩ resistor … is recommended").
     // Until setup() makes GPIO18 an output the pad is an input: without it A would float.
-    const R3 = r.place('component.resistor', 440, 60, 1);
-    const G6 = r.place('component.ground', 440, 140);
+    // Drawn above the A wire (review round 2): below it, R3 sat on GPIO4's straight exit line.
+    const R3 = r.place('component.resistor', 500, -80, 3);
+    const G6 = r.place('component.ground', 560, -60);
     r.set(R3, 'resistance', 10_000, 'ohm');
-    r.wire(T(R3, 'a'), { kind: 'wire', wire: a, at: { x: 440, y: -20 } });
-    r.wire(T(R3, 'b'), T(G6, 'ref'));
+    r.wire(T(R3, 'a'), { kind: 'wire', wire: a, at: { x: 500, y: -20 } });
+    r.wire(T(R3, 'b'), T(G6, 'ref'), [{ x: 560, y: -120 }]);
     r.wire(T(S1, 'b'), T(R2, 'a'), [{ x: 540, y: 80 }]);
     r.wire(T(R2, 'a'), T(U2, 'b'), [{ x: 560, y: 20 }]);
     r.wire(T(R2, 'b'), T(G4, 'ref'));
@@ -1139,11 +1140,12 @@ export const RECIPES: Record<string, () => ProjectDocument> = {
     const G3 = r.place('component.ground', 1160, 60);
     const G4 = r.place('component.ground', 640, 180);
     const G5 = r.place('component.ground', 520, 120);
-    const G6 = r.place('component.ground', 440, -140);
+    // Well clear of the header (review round 2): the GND jumper drapes instead of necking up.
+    const G6 = r.place('component.ground', 500, -80);
     r.set(R1, 'resistance', 220, 'ohm');
     r.set(R2, 'resistance', 10_000, 'ohm');
     r.set(R3, 'resistance', 10_000, 'ohm');
-    r.wire(T(U1, 'gnd'), T(G6, 'ref'));
+    r.wire(T(U1, 'gnd'), T(G6, 'ref'), [{ x: 500, y: -180 }]);
     // The 3.0 V rail: over the board to the gate's V_CC; under the board to the switch.
     r.wire(T('PSU1', 'positive'), T(U2, 'vcc'), [
       { x: -40, y: -20 },

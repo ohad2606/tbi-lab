@@ -391,8 +391,8 @@
         "rotation": 0
       },
       "GND6": {
-        "x": 40,
-        "y": -140,
+        "x": 100,
+        "y": -80,
         "rotation": 0
       }
     },
@@ -423,7 +423,12 @@
           "component": "GND6",
           "terminal": "ref"
         },
-        "vertices": []
+        "vertices": [
+          {
+            "x": 100,
+            "y": -180
+          }
+        ]
       },
       {
         "id": "W3",

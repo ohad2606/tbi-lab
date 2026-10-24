@@ -409,3 +409,18 @@ describe('review round 2 (notes 6, 7): wording and locale formatting', () => {
     expect(one).toContain('is GPIO18, an ESP32 pin in input mode');
   });
 });
+
+describe('review round 2: layout-only moves keep the netlists (esp32-logic-and R3, esp32-logic-override GND6)', () => {
+  it('esp32-logic-and: R3 still pulls A down; GPIO4 still reads Y', () => {
+    const X1 = doc('esp32-logic-and');
+    expect(netOf(X1, 'U2', 'a')).toEqual(['R3.a', 'U1.gpio18', 'U2.a']);
+    expect(groundNet(X1, 'R3', 'b')).toBe(true);
+    expect(netOf(X1, 'U2', 'y')).toEqual(['R1.a', 'U1.gpio4', 'U2.y']);
+    expect(netOf(X1, 'U2', 'b')).toEqual(['R2.a', 'SW1.b', 'U2.b']);
+  });
+  it('esp32-logic-override: the board GND is on the ground net through GND6', () => {
+    const D = doc('esp32-logic-override');
+    expect(groundNet(D, 'U1', 'gnd')).toBe(true);
+    expect(netOf(D, 'U1', 'gnd')).toContain('GND6.ref');
+  });
+});
