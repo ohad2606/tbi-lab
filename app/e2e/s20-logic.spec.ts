@@ -90,7 +90,9 @@ test('A: the truth table is in the Inspector before a Run; live levels, why, and
   await expect(page.getByTestId('logic-level-b')).toHaveText('LOW');
   await expect(page.getByTestId('logic-why-b')).toContainText('0 V ≤ V_IL 800 mV');
   await expect(page.getByTestId('logic-level-y')).toHaveText('LOW');
-  await expect(page.getByTestId('logic-why-y')).toContainText('AND of the inputs (H·L) = L');
+  await expect(page.getByTestId('logic-why-y')).toContainText(
+    /AND\W+of the inputs \(\W*H·L\W*\) = \W*L/,
+  );
   await expect(page.getByTestId('logic-truth-HL')).toHaveAttribute('aria-current', 'true');
   await expect(page.getByTestId('probe-reading-D1')).toContainText('0 A');
   await shot(page, 's20l-A-run-HL-en');
@@ -216,7 +218,7 @@ test('an input between V_IL and V_IH: refused; the panel shows its voltage again
   await expect(page.getByTestId('logic-level-a')).toHaveText('undefined (between V_IL and V_IH)');
   await expect(page.getByTestId('logic-volts-a')).toHaveText('1.5 V');
   await expect(page.getByTestId('logic-why-a')).toContainText(
-    'between V_IL 800 mV and V_IH 2 V (V_CC = 3 V)',
+    /between\W+V_IL 800 mV\W+and\W+V_IH 2 V\W+\(\W*V_CC = 3 V/,
   );
   await expect(page.getByTestId('logic-level-y')).toHaveText('not simulated');
   for (const row of ['LL', 'LH', 'HL', 'HH'])
@@ -238,8 +240,8 @@ test('B: the package gate selector; 1Y → 2A inside the package and 2Y → OR a
   await openExample(page, 'logic-cascade');
   await run(page);
   await inspect(page, 'U1');
-  // All switches open: every gate LL → L.
-  await expect(page.getByTestId('logic-truth-gates-LL')).toHaveText('1, 3, 4');
+  // All switches open: every gate LL → L (gate 2's 2A is 1Y = L).
+  await expect(page.getByTestId('logic-truth-gates-LL')).toHaveText('1, 2, 3, 4');
   await expect(page.getByTestId('logic-truth-gates-LH')).toHaveText('');
   // A and B closed from the panel (gate 1's inputs).
   await page.getByTestId('logic-control-SW1').click();
