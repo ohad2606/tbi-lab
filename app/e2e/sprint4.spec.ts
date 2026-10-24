@@ -15,6 +15,7 @@ import {
 import { EngineSession, type SolveSuccess } from '@tbi-lab/engine';
 import { getLocale } from '../src/i18n/i18n.js';
 import { formatResult } from '../src/sim/format.js';
+import { repairManual, routeAutomatic } from '../src/ui/routing.js';
 import { link, run, setValue } from './circuits.js';
 import {
   component,
@@ -387,7 +388,12 @@ test('A12/A13: unwired notice, partial-wiring and wire-over-terminal checks; not
   // Sprint 10: opening repairs such stored geometry (presentation only): the wire is re-routed
   // clear of R1.a and the PSU terminal, with the same connections.
   await expect(checks.getByTestId('check-wire_over_terminal')).toHaveCount(0);
-  const repaired = await storedProject(page);
+  const stored = await storedProject(page);
+  expect(stored.connections).toEqual(fixture.connections);
+  // Sprint 20: the open-time repair is shown but stored only with the first real edit, so the
+  // drop target comes from the displayed geometry (the same deterministic functions the app runs
+  // on open), not from storage.
+  const repaired = routeAutomatic(repairManual(fixture));
   expect(repaired.connections).toEqual(fixture.connections);
   // The check still guards what routing cannot prevent: the user drops a part so that its
   // terminal lands on the straight middle of an existing wire. D1's anode (40 left of its centre)
@@ -396,14 +402,25 @@ test('A12/A13: unwired notice, partial-wiring and wire-over-terminal checks; not
   const spot = route
     .slice(1)
     .map((b, k) => [route[k]!, b] as const)
-    .filter(([a, b]) => a.y === b.y && Math.abs(b.x - a.x) >= 80)
-    .map(([a, b]) => ({ x: Math.min(a.x, b.x) + 40, y: a.y }))[0]!;
+    .filter(
+      ([a, b]) =>
+        (a.y === b.y && Math.abs(b.x - a.x) >= 80) || (a.x === b.x && Math.abs(b.y - a.y) >= 80),
+    )
+    // The anode's spot: 40 into a horizontal run, or the middle of a vertical one (on the grid).
+    .map(([a, b]) =>
+      a.y === b.y
+        ? { x: Math.min(a.x, b.x) + 40, y: a.y }
+        : { x: a.x, y: Math.round((a.y + b.y) / 40) * 20 },
+    )
+    // Sprint 20: the router keeps the repaired wire close to R1 (at 60,0); take the run whose
+    // drop position for D1 (anode spot + 40) is farthest from R1, so D1 cannot overlap it.
+    .sort((p, q) => Math.hypot(q.x + 40 - 60, q.y) - Math.hypot(p.x + 40 - 60, p.y))[0]!;
   expect(spot).toBeDefined();
   await dragWorld(page, { x: 60, y: 140 }, { x: spot.x + 40, y: spot.y });
   await expect
     .poll(async () => (await storedProject(page)).layout.components.D1)
     .toMatchObject({ x: spot.x + 40, y: spot.y });
-  // (Both of its leads lie on that straight run: each crossing is reported.)
+  // (Every lead on that straight run is reported; the anode always is.)
   await expect(
     checks.getByTestId('check-wire_over_terminal').filter({ hasText: 'D1' }).first(),
   ).toContainText('without connecting');
@@ -532,7 +549,7 @@ test('A15: new Sprint 4 surfaces are fully translated in Hebrew (technical token
     // Sprint 15 (R4): PWM/LEDC, the SG90 part number, Arduino PWM API names and frequency/time units.
     /^(PWM|LEDC|SG90|TowerPro|analogWrite|ledcWrite|ledcDetach|digitalWrite|Hz|kHz|ms|us)$/,
     // Sprint 19B: gate functions and pin names (datasheet tokens), part numbers, packages, MicroPython, resistor series, the watt.
-    /^(AND|NAND|OR|NOT|SN74LVC1G\d\d|TI|SOT|Y|MicroPython|KOA|CF1|CFS1|W)$/,
+    /^(AND|NAND|OR|NOT|SN74LVC1G\d\d|SN74LVC08A?|TI|SOT|SOIC|Y|B|C|D|VCC|MicroPython|KOA|CF1|CFS1|W)$/,
     /^TBI$/,
     /^Lab$/,
     /^English$/,
@@ -554,7 +571,8 @@ test('A15: new Sprint 4 surfaces are fully translated in Hebrew (technical token
   ];
   const words = async () => {
     const text = (await scannedText(page))
-      .replace(/Pull-up/g, ' ')
+      // Glossary terms (CLAUDE.md terminology rule): Pull-up / pull-down stay in English.
+      .replace(/[Pp]ull-(?:up|down)/g, ' ')
       .replace(/[kmMGµunp]?[ΩVA](?![A-Za-z])/g, ' ');
     return [
       ...new Set(
