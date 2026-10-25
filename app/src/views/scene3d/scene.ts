@@ -1715,6 +1715,14 @@ type LayoutWire = ProjectDocument['layout']['wires'][number];
 
 /** Work the last fresh routing spent (s20r5: counted units of SCENE_WORK_BUDGET). */
 export const sceneStats = { work: 0 };
+/**
+ * The last scene's exit-lane retry (s22r; diagnostics and tests): the score of every round's
+ * assignment, the round kept (the lowest, the first on a tie), the score of the assignment in
+ * place at the end (always the kept one's), lanes run on by the 2-pitch rule past another node's
+ * path, and lanes whose run-on was capped where their route leaves the lane's line. runOn and
+ * capped count over every assignment of the scene (the retry rounds included).
+ */
+export const laneStats = { scores: [] as number[], kept: 0, final: 0, runOn: 0, capped: 0 };
 /** Routing rounds the last scene needed (1 normally; diagnostics and measurements). */
 export const routeStats = { rounds: 0 };
 
@@ -2480,6 +2488,7 @@ function freshWires(
     under: [UnderEnd | null, UnderEnd | null];
   }
   const preps: Prep[] = [];
+  laneStats.runOn = laneStats.capped = 0;
   for (const w of doc.layout.wires) {
     const r2 = wireRoute(doc, w);
     if (!r2 || r2.length < 2) continue;
@@ -2754,8 +2763,15 @@ function freshWires(
         if (!onForeign(e.lane)) continue;
         // Never past where the wire's own route leaves the lane's line (it would turn back).
         const k = p.under[0] === e ? 0 : 1;
-        const joinAt = k === 0 ? p.route[0] : p.route[p.route.length - 1];
-        const limit = joinAt ? dotP(sub2(joinAt, e.pin), e.u) : Infinity;
+        // (No route left after the zone trim: the far end, s22r review.)
+        const farEnd = k === 0 ? p.ends[1] : p.ends[0];
+        const joinAt = (k === 0 ? p.route[0] : p.route[p.route.length - 1]) ?? {
+          x: farEnd.x,
+          y: farEnd.z,
+        };
+        const limit = dotP(sub2(joinAt, e.pin), e.u);
+        if (limit < e.lane + 2 * LANE_PITCH) laneStats.capped++;
+        const before = e.lane;
         for (
           let d = e.lane + 0.5;
           d <= Math.min(e.lane + 2 * LANE_PITCH, limit) + 1e-9 && free(d);
@@ -2765,6 +2781,7 @@ function freshWires(
             e.lane = d;
             break;
           }
+        if (e.lane > before) laneStats.runOn++;
       }
   };
   const laneContacts = (): { key: string; side: number }[] => {
@@ -2805,11 +2822,58 @@ function freshWires(
       }
     return out;
   };
+  /**
+   * The retry's score (s22r review): lane-against-lane contacts, plus lane ends inside another
+   * part (padded) and lane ends on the path of a wire of another node (its riser would go up
+   * through that wire). Only the first kind makes a lane change side; all three decide which
+   * assignment is kept, so a change that clears one contact by making another is not taken.
+   */
+  const laneScore = (contacts: number): number => {
+    let n = contacts;
+    const pad = WIRE.radiusMm + 0.3;
+    for (const p of preps)
+      for (const e of p.under) {
+        if (!e) continue;
+        const end = add(e.pin, e.u, e.lane);
+        const far = p.w.from.kind === 'terminal' && p.under[1] === e ? p.w.from : p.w.to;
+        const farPart = far.kind === 'terminal' ? far.component : null;
+        if (
+          obstacles.some(
+            (o) =>
+              o.part !== e.comp.id &&
+              !o.part.startsWith(`${e.comp.id}:`) &&
+              (farPart === null || (o.part !== farPart && !o.part.startsWith(`${farPart}:`))) &&
+              o.bottom < 2 &&
+              end.x > o.x0 - pad &&
+              end.x < o.x1 + pad &&
+              end.y > o.z0 - pad &&
+              end.y < o.z1 + pad,
+          )
+        )
+          n++;
+        const mine = nodeOf(p.w);
+        if (
+          preps.some(
+            (q) =>
+              q !== p &&
+              (mine === null || nodeOf(q.w) !== mine) &&
+              q.full.some((b, i) => i > 0 && pointToRun(end, q.full[i - 1]!, b) < COINCIDENT),
+          )
+        )
+          n++;
+      }
+    return n;
+  };
   {
     const forbid = new Map<string, Set<number>>();
     assignLanes(forbid);
     let contacts = laneContacts();
-    let best = { forbid: new Map(forbid), n: contacts.length };
+    // The kept assignment: the lowest score, the FIRST on a tie (s22r review: the last round was
+    // kept on a tie).
+    let best = { forbid: new Map<string, Set<number>>(), n: laneScore(contacts.length) };
+    let current = true; // whether the assignment in place is `best`
+    laneStats.scores = [best.n];
+    laneStats.kept = 0;
     for (let round = 0; round < 3 && contacts.length; round++) {
       let changed = false;
       for (const c of contacts) {
@@ -2822,13 +2886,16 @@ function freshWires(
       if (!changed) break;
       assignLanes(forbid);
       contacts = laneContacts();
-      if (contacts.length < best.n)
-        best = {
-          forbid: new Map([...forbid].map(([k, v]) => [k, new Set(v)])),
-          n: contacts.length,
-        };
+      const n = laneScore(contacts.length);
+      current = n < best.n;
+      laneStats.scores.push(n);
+      if (current) {
+        best = { forbid: new Map([...forbid].map(([k, v]) => [k, new Set(v)])), n };
+        laneStats.kept = laneStats.scores.length - 1;
+      }
     }
-    if (contacts.length > best.n) assignLanes(best.forbid);
+    if (!current) assignLanes(best.forbid);
+    laneStats.final = laneScore(laneContacts().length);
   }
   // 4. Plan paths, heads and tails, then heights (route3d.ts).
   const inputs: WireRouteInput[] = [];

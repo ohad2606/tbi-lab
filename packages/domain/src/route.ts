@@ -135,6 +135,19 @@ export interface SearchBudget {
   ops: number;
   skipped: number;
 }
+/**
+ * What the last canonical routing pass did about its extra conflict pass (s22r; diagnostics and
+ * tests): tried / kept (0 or 1), and why it was not started ('' when it was, or there was nothing
+ * to do: 'degraded' the pass already ran out of budget, 'budget' less budget left than the first
+ * pass used, 'unfixable' every conflict is a wire ending on another part's terminal).
+ */
+export const extraPassStats: { tried: number; kept: number; skipped: string } = {
+  tried: 0,
+  kept: 0,
+  skipped: '',
+};
+/** The search-cell budget a pass starts with (s22r). */
+const SEARCH_BUDGET_CELLS_OF = (limits?: RouteLimits) => limits?.cells ?? SEARCH_BUDGET_CELLS;
 const EMPTY_OBSTACLES: RouteObstacles = { segments: [], boxes: [], points: [] };
 /** Number of obstacle elements (s20r4: the unit of the pricing budget). */
 const sizeOf = (o: RouteObstacles) =>
@@ -1457,17 +1470,32 @@ export function routeAutoWiresReport(
   }
   // Sprint 22 (s22r): automatic wires still drawn where they read as connected to another node
   // (along / into its wire, over its pin, through a body: routeConflictsReport) get first pick:
-  // one more pass with them routed before the others; kept when it leaves fewer such wires
-  // (then fewer same-node crossings, crossings, bends). Deterministic; one pass at most, sharing
-  // the pass's budget, and only when there is a conflict.
-  if (budget.skipped === 0) {
-    const bad = (d: ProjectDocument) => {
+  // one more pass with them routed before the others. Kept only when (s22r review) no wire gains
+  // a kind of conflict it did not have, fewer wires are in conflict, and same-node crossings do
+  // not rise (then fewer crossings, bends). Deterministic; one pass at most, and only when there
+  // is a conflict routing can fix (not a wire ending on another part's terminal drawn on top of
+  // its own) and the pass's budget has at least what the first pass used left (an extra pass that
+  // would run out of budget is never started: it would be discarded).
+  extraPassStats.tried = extraPassStats.kept = 0;
+  extraPassStats.skipped = '';
+  const usedCells = SEARCH_BUDGET_CELLS_OF(limits) - budget.cells;
+  const usedOps = (limits?.ops ?? PRICING_BUDGET_OPS) - budget.ops;
+  if (budget.skipped !== 0) extraPassStats.skipped = 'degraded';
+  else if (budget.cells < usedCells || budget.ops < usedOps) extraPassStats.skipped = 'budget';
+  else {
+    const report = (d: ProjectDocument) => {
       const c = routeConflictsReport(d, boxes);
-      return c.limited ? null : c.wires.filter((id) => ids.has(id));
+      if (c.limited) return null;
+      const kinds = new Map<string, Set<RouteConflictKind>>();
+      for (const k of ['wire', 'pin', 'body'] as const)
+        for (const id of c.kinds[k]) kinds.set(id, new Set([...(kinds.get(id) ?? []), k]));
+      return { wires: c.wires, kinds, stacked: new Set(c.atStacked) };
     };
-    const now = bad(best.doc);
-    if (now && now.length) {
-      const first = new Set(now);
+    const now = report(best.doc);
+    const fixable = now ? now.wires.filter((id) => ids.has(id) && !now.stacked.has(id)) : [];
+    if (now && now.wires.length && !fixable.length) extraPassStats.skipped = 'unfixable';
+    if (now && fixable.length) {
+      const first = new Set(fixable);
       const next = [
         ...order.filter((w) => first.has(w.id)),
         ...order.filter((w) => !first.has(w.id)),
@@ -1485,9 +1513,21 @@ export function routeAutoWiresReport(
           budget,
           new Set([...best.degraded].filter((id) => prefix.has(id))),
         );
-        const after = budget.skipped === 0 ? bad(routed.doc) : null;
-        if (after && better([after.length, ...orderScore(routed.doc, ids)], [now.length, ...score]))
+        extraPassStats.tried = 1;
+        const after = budget.skipped === 0 ? report(routed.doc) : null;
+        const gains =
+          !after ||
+          [...after.kinds].some(([id, ks]) => [...ks].some((k) => !now.kinds.get(id)?.has(k)));
+        const k = after ? orderScore(routed.doc, ids) : [];
+        const accept =
+          after &&
+          !gains &&
+          k[0]! <= score[0]! &&
+          better([after.wires.length, ...k], [now.wires.length, ...score]);
+        if (accept) {
           best = routed;
+          extraPassStats.kept = 1;
+        }
       }
     }
   }
@@ -1703,6 +1743,8 @@ export interface RouteConflicts {
   stacked: { x: number; y: number; terminals: string[] }[];
   /** Wires not checked: the work cap was reached (`limited`). */
   unchecked: string[];
+  /** Wires with an end on a terminal of another part drawn on top of its own (s22r). */
+  atStacked: string[];
   limited: boolean;
 }
 
@@ -1730,6 +1772,7 @@ export function routeConflictsReport(
   const kinds: Record<RouteConflictKind, string[]> = { wire: [], pin: [], body: [] };
   const wires: string[] = [];
   const unchecked: string[] = [];
+  const atStacked: string[] = [];
   const stacked = touchingUnconnected(doc).map((t) => ({
     x: t.x,
     y: t.y,
@@ -1801,8 +1844,10 @@ export function routeConflictsReport(
     const endOnForeign = ends.some((e) =>
       [...(nodeAt.get(`${e.x},${e.y}`) ?? [])].some((n) => n !== own || n === null),
     );
-    if (endOnForeign) found.push('pin');
-    else if (k[0]! > 0) {
+    if (endOnForeign) {
+      found.push('pin');
+      atStacked.push(w.id);
+    } else if (k[0]! > 0) {
       // Which keep-outs: only those of another node (or none) count.
       const segments: Seg[] = route.slice(1).map((q, i) => [route[i]!, q]);
       const isEnd = (p: Point) => ends.some((e) => eq(e, p));
@@ -1837,5 +1882,5 @@ export function routeConflictsReport(
     for (const f of found) kinds[f].push(w.id);
     if (found.length) wires.push(w.id);
   }
-  return { wires, kinds, stacked, unchecked, limited };
+  return { wires, kinds, stacked, unchecked, atStacked, limited };
 }

@@ -101,6 +101,7 @@ describe('route conflicts are reported (s21r)', () => {
         kinds: { wire: [], pin: [], body: [] },
         stacked: [],
         unchecked: [],
+        atStacked: [],
         limited: false,
       });
     }
