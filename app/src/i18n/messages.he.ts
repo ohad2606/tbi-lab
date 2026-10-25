@@ -885,7 +885,7 @@ export const he: Record<MessageKey, string> = {
   'auth.signInAgain': 'התחברות מחדש',
   // Sprint 13 Task D: wire routes adjusted when a project opened (layout only).
   'open.routesAdjusted':
-    'חלק מנתיבי החוטים שורטטו מחדש כדי שלא יעברו מעל פינים או צגים. החיבורים לא השתנו. ביטול הפעולה האחרונה מחזיר את הנתיבים הקודמים.',
+    'חלק מנתיבי החוטים שורטטו מחדש כדי שלא יעברו מעל פינים, צגים או קווי המתאר של רכיבים. החיבורים לא השתנו. ביטול הפעולה האחרונה מחזיר את הנתיבים הקודמים.',
   // Sprint 13 a11y: the slider's own accessible name (distinct from its value field).
   'valueControl.slider': '{label}, מחוון',
   'build.blockedRunning': 'אפשר לבנות אחרי עצירה. הסשן שרץ ממשיך עם הקושחה שאיתה התחיל.',

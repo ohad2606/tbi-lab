@@ -905,7 +905,7 @@ export const en = {
   'auth.signInAgain': 'Sign in again',
   // Sprint 13 Task D: wire routes adjusted when a project opened (layout only).
   'open.routesAdjusted':
-    'Some wire routes were redrawn so they no longer run over pins or displays. Connections are unchanged. Undo restores the previous routes.',
+    'Some wire routes were redrawn so they no longer run over pins, displays or part outlines. Connections are unchanged. Undo restores the previous routes.',
   // Sprint 13 a11y: the slider's own accessible name (distinct from its value field).
   'valueControl.slider': '{label}, slider',
   'build.blockedRunning':
