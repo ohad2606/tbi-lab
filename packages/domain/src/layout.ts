@@ -178,7 +178,7 @@ export interface WireCrossing {
  * these (route.ts, criterion 6b). Presentation only.
  */
 export function sameNodeCrossings(doc: ProjectDocument): WireCrossing[] {
-  return allCrossings(doc, true);
+  return allCrossings(doc, true).crossings;
 }
 
 /**
@@ -193,6 +193,13 @@ export function sameNodeCrossings(doc: ProjectDocument): WireCrossing[] {
  * single crossing point).
  */
 export function wireCrossings(doc: ProjectDocument): WireCrossing[] {
+  return allCrossings(doc, false).crossings;
+}
+/** `wireCrossings` with whether its work cap (OVERLAY_WORK) cut it short (s20r6). */
+export function wireCrossingsReport(doc: ProjectDocument): {
+  crossings: WireCrossing[];
+  limited: boolean;
+} {
   return allCrossings(doc, false);
 }
 
@@ -208,6 +215,22 @@ export function wireCrossings(doc: ProjectDocument): WireCrossing[] {
  * of different nodes never count together.
  */
 export function sameNodeBranches(doc: ProjectDocument): Point[] {
+  return sameNodeBranchesReport(doc).points;
+}
+
+/**
+ * The 2D overlays' work cap (s20r6, review r4 MAJOR 1: crossings and branch dots are computed on
+ * every Canvas render, and their work can grow with the square of the wires, by output alone):
+ * at most this many candidate tests per overlay; past it the overlay is cut short (`limited`) and
+ * the Circuit view says so. Counted, never timed: the same drawing every time.
+ */
+export const OVERLAY_WORK = 2_000_000;
+
+/** `sameNodeBranches` with whether its work cap cut it short (s20r6). */
+export function sameNodeBranchesReport(doc: ProjectDocument): {
+  points: Point[];
+  limited: boolean;
+} {
   const node = wireNodes(doc);
   const marked = new Set<string>();
   for (const j of doc.layout.junctions) marked.add(`${j.x},${j.y}`);
@@ -230,12 +253,20 @@ export function sameNodeBranches(doc: ProjectDocument): Point[] {
   }
   const out = new Map<string, Point>();
   const refused = new Set<string>();
+  let work = 0;
+  let limited = false;
   for (const { p, n } of vertices) {
     const k = `${p.x},${p.y}`;
     if (marked.has(k) || out.has(k) || refused.has(k)) continue;
     const dirs = new Set<string>();
     let foreign = false;
-    for (const { a, b, n: m } of index.at(p)) {
+    const [here, long] = index.atParts(p);
+    work += here.length + long.length;
+    if (work > OVERLAY_WORK) {
+      limited = true;
+      break;
+    }
+    for (const { a, b, n: m } of [here, long].flat()) {
       if (!onSegment(p, a, b)) continue;
       // s20r4 (review B2): a wire of ANOTHER node through or onto the point. A dot there would
       // sit on a different-node crossing or T (where a hop or nothing is drawn): no dot.
@@ -249,7 +280,7 @@ export function sameNodeBranches(doc: ProjectDocument): Point[] {
     if (foreign) refused.add(k);
     else if (dirs.size >= 3) out.set(k, { x: p.x, y: p.y });
   }
-  return [...out.values()].sort((p, q) => p.x - q.x || p.y - q.y);
+  return { points: [...out.values()].sort((p, q) => p.x - q.x || p.y - q.y), limited };
 }
 
 const onSegment = (p: Point, a: Point, b: Point) =>
@@ -269,7 +300,6 @@ class SegmentIndex<T> {
   static readonly MAX_CELLS = 64;
   private readonly cells = new Map<string, T[]>();
   readonly long: T[] = [];
-  readonly all: T[] = [];
   private static span(a: Point, b: Point) {
     const c = SegmentIndex.CELL;
     const x0 = Math.floor(Math.min(a.x, b.x) / c);
@@ -279,7 +309,6 @@ class SegmentIndex<T> {
     return { x0, x1, y0, y1, count: (x1 - x0 + 1) * (y1 - y0 + 1) };
   }
   add(a: Point, b: Point, v: T): void {
-    this.all.push(v);
     const sp = SegmentIndex.span(a, b);
     if (!(sp.count <= SegmentIndex.MAX_CELLS)) {
       this.long.push(v);
@@ -293,16 +322,15 @@ class SegmentIndex<T> {
         else this.cells.set(k, [v]);
       }
   }
-  /** Every segment that may contain p (a superset; callers test exactly). */
-  at(p: Point): readonly T[] {
+  /** Every segment that may contain p, as two lists (a superset; callers test exactly). */
+  atParts(p: Point): [readonly T[], readonly T[]] {
     const c = SegmentIndex.CELL;
-    const here = this.cells.get(`${Math.floor(p.x / c)},${Math.floor(p.y / c)}`) ?? [];
-    return this.long.length ? [...here, ...this.long] : here;
+    return [this.cells.get(`${Math.floor(p.x / c)},${Math.floor(p.y / c)}`) ?? [], this.long];
   }
   /** Every segment that may meet the run a-b (a superset, possibly with repeats). */
-  along(a: Point, b: Point): readonly T[] {
+  along(a: Point, b: Point): readonly T[] | 'all' {
     const sp = SegmentIndex.span(a, b);
-    if (!(sp.count <= SegmentIndex.MAX_CELLS)) return this.all;
+    if (!(sp.count <= SegmentIndex.MAX_CELLS)) return 'all';
     const out: T[] = [...this.long];
     for (let x = sp.x0; x <= sp.x1; x++)
       for (let y = sp.y0; y <= sp.y1; y++) out.push(...(this.cells.get(`${x},${y}`) ?? []));
@@ -311,7 +339,10 @@ class SegmentIndex<T> {
 }
 
 /** Crossings between wires of one node (`same`), or of different nodes (s20r). */
-function allCrossings(doc: ProjectDocument, same: boolean): WireCrossing[] {
+function allCrossings(
+  doc: ProjectDocument,
+  same: boolean,
+): { crossings: WireCrossing[]; limited: boolean } {
   const node = wireNodes(doc);
   type Seg = { wire: string; a: Point; b: Point };
   const vertical: Seg[] = [];
@@ -341,15 +372,30 @@ function allCrossings(doc: ProjectDocument, same: boolean): WireCrossing[] {
   // document order as before.
   const index = new SegmentIndex<Seg & { k: number }>();
   horizontal.forEach((h, k) => index.add(h.a, h.b, { ...h, k }));
+  const all = horizontal.map((h, k) => ({ ...h, k }));
+  let work = 0;
+  let limited = false;
   for (const v of vertical) {
-    const seen = new Set<number>();
-    const near: (Seg & { k: number })[] = [];
-    for (const h of index.along(v.a, v.b))
-      if (!seen.has(h.k)) {
-        seen.add(h.k);
-        near.push(h);
-      }
-    near.sort((p, q) => p.k - q.k);
+    const found = index.along(v.a, v.b);
+    let near: readonly (Seg & { k: number })[];
+    if (found === 'all')
+      near = all; // in order, each once: no copy, no sort
+    else {
+      const seen = new Set<number>();
+      const list: (Seg & { k: number })[] = [];
+      for (const h of found)
+        if (!seen.has(h.k)) {
+          seen.add(h.k);
+          list.push(h);
+        }
+      list.sort((p, q) => p.k - q.k);
+      near = list;
+    }
+    work += near.length + 1;
+    if (work > OVERLAY_WORK) {
+      limited = true;
+      break;
+    }
     for (const h of near) {
       const x = v.a.x;
       const y = h.a.y;
@@ -360,7 +406,10 @@ function allCrossings(doc: ProjectDocument, same: boolean): WireCrossing[] {
       out.push({ x, y, over: v.wire, under: h.wire });
     }
   }
-  return out.sort(
-    (p, q) => p.x - q.x || p.y - q.y || (p.over < q.over ? -1 : p.over > q.over ? 1 : 0),
-  );
+  return {
+    crossings: out.sort(
+      (p, q) => p.x - q.x || p.y - q.y || (p.over < q.over ? -1 : p.over > q.over ? 1 : 0),
+    ),
+    limited,
+  };
 }

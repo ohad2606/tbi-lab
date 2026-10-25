@@ -30,8 +30,8 @@ import {
   snap,
   snapPoint,
   terminalPosition,
-  wireCrossings,
-  sameNodeBranches,
+  wireCrossingsReport,
+  sameNodeBranchesReport,
   wireRoute,
   type ComponentInstance,
   type Quantity,
@@ -810,11 +810,15 @@ export function Canvas({
         : doc;
 
   // Unconnected crossings of the drawing being shown (including a live drag preview).
-  const crossings = useMemo(() => wireCrossings(view), [view]);
+  // Bounded work (s20r6): past OVERLAY_WORK the overlays are cut short and the view says so.
+  const crossingsReport = useMemo(() => wireCrossingsReport(view), [view]);
+  const crossings = crossingsReport.crossings;
   // Wires the bounded routing drew with a simple shape (very large projects, s20r4).
   const limited = routingLimited(doc);
   // Branch points of wires of one node (s20r): drawn with a junction-style dot.
-  const branches = useMemo(() => sameNodeBranches(view), [view]);
+  const branchesReport = useMemo(() => sameNodeBranchesReport(view), [view]);
+  const branches = branchesReport.points;
+  const overlaysLimited = crossingsReport.limited || branchesReport.limited;
   // The same resolved colours as the 3D view (wireColors.ts).
   const wireColors = useMemo(() => resolveWireColors(view), [view]);
   const hopR = hopRadius(camera.scale);
@@ -1231,10 +1235,15 @@ export function Canvas({
           </svg>
         </button>
       </div>
-      {!readOnly && (
+      {(!readOnly || overlaysLimited) && (
         <div class="canvas-hint" dir={state.locale.dir} data-testid="canvas-hint">
-          {t(hint)}
-          {limited.length > 0 && (
+          {!readOnly && t(hint)}
+          {overlaysLimited && (
+            <div class="view-note-warning" role="status" data-testid="canvas-overlay-limit">
+              {t('canvas.overlayLimit')}
+            </div>
+          )}
+          {!readOnly && limited.length > 0 && (
             <div class="view-note-warning" role="status" data-testid="canvas-route-limit">
               {t('canvas.routeLimit', { count: limited.length })}
             </div>

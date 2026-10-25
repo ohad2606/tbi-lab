@@ -45,6 +45,8 @@ export const en = {
   'canvas.zoomFit': 'Fit to view',
   'canvas.hint.wire':
     'Drag a straight part of the wire to move it. Its ends stay connected. Delete removes it.',
+  'canvas.overlayLimit':
+    'This drawing is too large to mark every crossing and branch point: some line hops and junction dots are not drawn. The connections are exactly as drawn.',
   'canvas.routeLimit':
     'This project is very large: {count} wires are drawn with a simple shape (they may pass close to pins or other wires). The connections are exactly as drawn.',
   'canvas.hint.idle': 'Click a terminal to start a wire. Drag on empty space to select.',
