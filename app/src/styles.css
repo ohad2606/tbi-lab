@@ -3647,6 +3647,7 @@ select {
 .logic-state .logic-level-floating td,
 .logic-state .logic-level-out_of_range td,
 .logic-state .logic-level-unsupported td,
+.logic-state .logic-level-not_guaranteed td,
 .logic-state .logic-level-unknown td {
   color: var(--warning-ink);
   font-weight: 600;
@@ -3667,6 +3668,10 @@ select {
 .logic-state .logic-rows caption {
   caption-side: bottom;
   text-align: start;
+}
+.logic-state .logic-no-row {
+  color: var(--warning-ink);
+  margin-block: 0 0.5rem;
 }
 .logic-state .logic-gate-summary {
   margin-inline-start: 0.35em;

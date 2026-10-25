@@ -8,9 +8,9 @@
  * - the package's own input in the undefined band refuses the Run by name; in Hebrew the table follows RTL while pin names,
  *   voltages and H/L stay LTR;
  * - an unused gate left open refuses the Run, naming the pin and the datasheet requirement;
- * - the `esp32-logic-quad-and` example through the real R2 client against the fake Session Host
- *   (real engine; scripted MCU = the example sketch's setup(): GPIO18 and GPIO19 HIGH): D1 lit,
- *   D2 only while the button is held;
+ * - the `esp32-logic-quad-and` example through the real R2 client against the fake Session Host:
+ *   Sprint 21, refused at 3.0 V by name (the SN74LVC08A input leakage is specified only at
+ *   3.6 V, owner question S21-Q2), the panel marking 1A "not guaranteed";
  * - the package in the schematic (datasheet pin names, wired pins drawn) and in 3D.
  */
 import { expect, test, type Page } from '@playwright/test';
@@ -100,9 +100,10 @@ function quadCircuit(id: string, variant: 'ok' | 'openGate3' | 'undefinedA2' = '
   const top = add('component.resistor', 0, 300);
   const bottom = add('component.resistor', 160, 300);
   set(top, 'resistance', { value: 10_000, unit: 'ohm' });
-  // Sprint 20: into the single gate the divider gives exactly 2.0 V (= V_IH, a HIGH, inclusive);
-  // into the package's 2A, 1.5 V (between V_IL and V_IH: refused).
-  set(bottom, 'resistance', { value: variant === 'undefinedA2' ? 10_000 : 20_000, unit: 'ohm' });
+  // Into the package's 2A, 1.5 V (between V_IL and V_IH: refused). Into the single gate,
+  // Sprint 21: 3.0 · 30k/40k = 2.25 V, a HIGH that stays above V_IH 2.0 V within the input
+  // leakage bound (±5 µA × 7.5 kΩ = ±37.5 mV); exactly 2.0 V from a divider is not guaranteed.
+  set(bottom, 'resistance', { value: variant === 'undefinedA2' ? 10_000 : 30_000, unit: 'ohm' });
   wire('PSU1.positive', `${top}.a`);
   wire(`${top}.b`, target);
   wire(target, `${bottom}.a`);
@@ -166,11 +167,11 @@ test('L2 state inspection of a packaged gate IC: levels, measured voltages, unde
   await page.getByTestId('logic-gate-4').click();
   await expect(page.getByTestId('logic-level-y4')).toHaveText('LOW');
   await page.getByTestId('logic-gate-1').click();
-  // The single gate (L1): A at exactly 2.0 V = V_IH is HIGH (the bound is inclusive).
+  // The single gate (L1): A at 2.25 V from the divider, HIGH (guaranteed within the I_I bound).
   await inspect(page, q.gate);
   await expect(page.getByTestId('logic-level-a')).toHaveText('HIGH');
-  await expect(page.getByTestId('logic-volts-a')).toHaveText('2 V');
-  await expect(page.getByTestId('logic-why-a')).toContainText('2 V ≥ V_IH 2 V');
+  await expect(page.getByTestId('logic-volts-a')).toHaveText('2.25 V');
+  await expect(page.getByTestId('logic-why-a')).toContainText('2.25 V ≥ V_IH 2 V');
   await expect(page.getByTestId('logic-level-y')).toHaveText('HIGH');
   await expect(page.getByTestId('logic-truth-HH')).toHaveAttribute('aria-current', 'true');
   // The LED really is lit by the solve.
@@ -221,7 +222,7 @@ test('a package input between V_IL and V_IH refuses the Run by name (no level, n
   await page.getByTestId('language-select').selectOption('en');
 });
 
-test('example esp32-logic-quad-and on the board: ESP32 → SN74LVC08A → LEDs; D2 only while the button is held', async ({
+test('example esp32-logic-quad-and on the board (Sprint 21): refused at 3.0 V by name — the SN74LVC08A input leakage is specified only at 3.6 V (EN, HE)', async ({
   page,
   request,
 }) => {
@@ -235,33 +236,18 @@ test('example esp32-logic-quad-and on the board: ESP32 → SN74LVC08A → LEDs; 
   await waitSaved(page);
   await buildProgram(page);
   await page.getByTestId('sim-run').click();
-  await expect(status(page)).toHaveAttribute('data-status', 'running', { timeout: 20_000 });
-  await expect(status(page)).toHaveAttribute('data-engine', 'mcu');
+  // Every 08A input of the example is held through a resistance (10 kΩ pull-downs, the pads'
+  // driver, gate 1's output stage): no guaranteed level at 3.0 V (owner question S21-Q2).
+  const err = page.getByTestId('sim-error');
+  await expect(err).toContainText(/input\W+1A\W+is held through a resistance/, { timeout: 30_000 });
+  await expect(err).toContainText('V_CC = 3.6 V');
   await inspect(page, 'U2');
-  await expect(page.getByTestId('logic-level-a1')).toHaveText('HIGH', { timeout: 15_000 });
-  await expect(page.getByTestId('logic-level-b1')).toHaveText('HIGH');
-  await expect(page.getByTestId('logic-level-y1')).toHaveText('HIGH');
-  // Sprint 20: 1A/1B are driven by the ESP32 (named in the panel), each with its pull-down.
-  await expect(page.getByTestId('logic-mcu-a1')).toContainText('GPIO18');
-  await expect(page.getByTestId('logic-mcu-b1')).toContainText('GPIO19');
-  await page.getByTestId('logic-gate-2').click();
-  await expect(page.getByTestId('logic-level-a2')).toHaveText('HIGH');
-  await expect(page.getByTestId('logic-level-b2')).toHaveText('LOW');
-  await expect(page.getByTestId('logic-level-y2')).toHaveText('LOW');
-  await expect(page.getByTestId('logic-truth-gates-HH')).toHaveText('1');
-  await expect(page.getByTestId('logic-truth-gates-HL')).toHaveText('2');
-  await expect(page.getByTestId('probe-reading-D1')).toContainText('mA');
-  await expect(page.getByTestId('probe-reading-D2')).toContainText('0 A');
-  const act = page.getByTestId('actuator-SW1');
-  const b = (await act.boundingBox())!;
-  await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
-  await page.mouse.down();
-  await expect(page.getByTestId('logic-level-y2')).toHaveText('HIGH');
-  await expect(page.getByTestId('probe-reading-D2')).toContainText('mA');
-  await page.mouse.up();
-  await expect(page.getByTestId('logic-level-y2')).toHaveText('LOW');
-  await page.getByTestId('sim-stop').click();
-  await expect(status(page)).toHaveAttribute('data-status', 'stopped', { timeout: 20_000 });
+  await expect(page.getByTestId('logic-level-a1')).toHaveText('not guaranteed');
+  await expect(page.getByTestId('logic-why-a1')).toContainText('no input-leakage bound');
+  await page.getByTestId('language-select').selectOption('he');
+  await expect(err).toContainText(/כניסה\W+1A\W+מוחזקת דרך התנגדות/);
+  await expect(page.getByTestId('logic-level-a1')).toHaveText('לא מובטח');
+  await page.getByTestId('language-select').selectOption('en');
 });
 
 test('the package in the schematic (datasheet pin names, wired pins drawn) and in 3D (SOIC-14 on a breakout)', async ({

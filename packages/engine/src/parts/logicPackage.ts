@@ -42,7 +42,13 @@ import {
   type PartSolution,
   type PartState,
 } from '../parts.js';
-import { classifyInput, gateOutput, logicRefusal, type LogicLevel } from './logicGate.js';
+import {
+  classifyInput,
+  gateOutput,
+  guaranteeOf,
+  logicRefusal,
+  type LogicLevel,
+} from './logicGate.js';
 import type { LogicInspection } from './logicInspection.js';
 
 const WRONG_WAY_V = 1e-3;
@@ -162,6 +168,35 @@ export const logicPackageModel: PartModel = {
     packageCardOf(ctx).units.map((u) => ({ unit: u.unit, inputs: u.inputs, outputs: [u.output] })),
   nextState: (ctx, state, sol) => nextPackageState(ctx, sol, state),
   refusal: (ctx, state) => logicRefusal(ctx, state, packageCardOf(ctx).partNumber),
+  logicBounds: (ctx, state) => {
+    const card = packageCardOf(ctx);
+    if (typeof state.refuse === 'string' || typeof state.vcc !== 'number' || state.vcc <= 0)
+      return null;
+    const inputs = card.inputs.map((pin) => ({
+      pin,
+      node: ctx.node(pin),
+      level: lvl(state, `in_${pin}`) as 'high' | 'low',
+    }));
+    const outputs = card.units.map((u) => ({
+      pin: u.output,
+      node: ctx.node(u.output),
+      key: `${ctx.component.id}/${u.output}`,
+      level: lvl(state, outKey(u.unit)) as 'high' | 'low',
+    }));
+    const ok = (l: string) => l === 'high' || l === 'low';
+    if (!inputs.every((i) => ok(i.level)) || !outputs.every((o) => ok(o.level))) return null;
+    return {
+      component: ctx.component.id,
+      part: card.partNumber,
+      card,
+      vccNode: ctx.node('vcc'),
+      gndNode: ctx.node('gnd'),
+      vcc: state.vcc,
+      powered: true,
+      inputs,
+      outputs,
+    };
+  },
   report: (ctx, state, sol) => {
     const id = ctx.component.id;
     const card = packageCardOf(ctx);
@@ -193,7 +228,12 @@ export const logicPackageModel: PartModel = {
           level: (state[`in_${t}`] ?? 'x') as LogicLevel,
           volts: rel(t),
         })),
-        output: { pin: u.output, level: out === 'init' ? 'x' : out, volts: rel(u.output) },
+        output: {
+          pin: u.output,
+          level: out === 'init' ? 'x' : out,
+          volts: rel(u.output),
+          ...guaranteeOf(card, typeof state.vcc === 'number' ? state.vcc : null, out, iy ?? 0),
+        },
       });
     }
     // Into V_CC: the sum of the HIGH outputs' source currents; out of GND: the LOW outputs' sink

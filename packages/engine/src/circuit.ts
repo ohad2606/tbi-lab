@@ -16,7 +16,7 @@
  * assigned in device insertion order).
  */
 
-import { solveLinearSystem, zeroMatrix } from './linalg.js';
+import { SingularMatrixError, solveLinearSystem, zeroMatrix } from './linalg.js';
 import {
   GROUND_NAMES,
   LabPsu,
@@ -148,6 +148,16 @@ export class Circuit {
     return device;
   }
 
+  /**
+   * Sprint 21: a new circuit with the same devices, in the same order (so the same node and branch
+   * indices), plus `extra` devices that use only existing nodes (the logic bound corner solves).
+   */
+  withExtra(extra: readonly Device[]): Circuit {
+    const c = new Circuit();
+    for (const d of [...this.devices, ...extra]) c.add(d);
+    return c;
+  }
+
   getDevice(id: string): Device {
     const d = this.devices.find((x) => x.id === id);
     if (!d) throw new Error(`Unknown device: ${id}`);
@@ -211,6 +221,64 @@ export class Circuit {
    */
   solveStep(step: TimeStep, options: SolveOptions = {}): SolveResult {
     return this.solveAt(options, step);
+  }
+
+  /**
+   * Sprint 21 (logic guarantee bounds): the LINEARISED response of a solved operating point to
+   * small current injections. `x` must be this circuit's solution (same devices, same order, the
+   * PSU modes it settled in). Each injection drives 1 A out of node `from` into node `to` (the
+   * `ConstantSink` convention; ground names allowed); the result is dx = J⁻¹·b per injection, with
+   * J the Newton matrix at x (the exact Jacobian of the device equations there). Purely additive:
+   * no solve path uses it, and it changes no device state.
+   */
+  sensitivity(
+    x: readonly number[],
+    injections: readonly { from: string; to: string }[],
+    options: SolveOptions = {},
+    step?: TimeStep,
+  ): { dx: number[][]; nodeIndex: ReadonlyMap<string, number> } {
+    const o = { ...DEFAULTS, ...options };
+    const stampOpts: StampOptions = step ? { gmin: o.gmin, step } : { gmin: o.gmin };
+    this.buildIndex();
+    const { A } = this.assemble(x, stampOpts);
+    const n = this.size;
+    // One LU factorisation (partial pivoting), many right-hand sides.
+    const m = A.map((row) => [...row]);
+    const perm = Array.from({ length: n }, (_, i) => i);
+    for (let col = 0; col < n; col++) {
+      let p = col;
+      for (let r = col + 1; r < n; r++) if (Math.abs(m[r]![col]!) > Math.abs(m[p]![col]!)) p = r;
+      if (m[p]![col] === 0) throw new SingularMatrixError(col);
+      if (p !== col) {
+        [m[p], m[col]] = [m[col]!, m[p]!];
+        [perm[p], perm[col]] = [perm[col]!, perm[p]!];
+      }
+      const piv = m[col]![col]!;
+      for (let r = col + 1; r < n; r++) {
+        const f = m[r]![col]! / piv;
+        if (f === 0) continue;
+        m[r]![col] = f;
+        for (let c = col + 1; c < n; c++) m[r]![c] = m[r]![c]! - f * m[col]![c]!;
+      }
+    }
+    const idx = (name: string) =>
+      GROUND_NAMES.has(name) ? -1 : (this.nodeIndices.get(name) ?? -2);
+    const dx = injections.map(({ from, to }) => {
+      const b = new Array<number>(n).fill(0);
+      const a = idx(from);
+      const c = idx(to);
+      if (a === -2 || c === -2) throw new Error(`sensitivity: unknown node ${from} or ${to}`);
+      if (a >= 0) b[a] = b[a]! - 1;
+      if (c >= 0) b[c] = b[c]! + 1;
+      const y = perm.map((k) => b[k]!);
+      for (let r = 0; r < n; r++) for (let k = 0; k < r; k++) y[r] = y[r]! - m[r]![k]! * y[k]!;
+      for (let r = n - 1; r >= 0; r--) {
+        for (let k = r + 1; k < n; k++) y[r] = y[r]! - m[r]![k]! * y[k]!;
+        y[r] = y[r]! / m[r]![r]!;
+      }
+      return y;
+    });
+    return { dx, nodeIndex: new Map(this.nodeIndices) };
   }
 
   /**

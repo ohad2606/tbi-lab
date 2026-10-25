@@ -212,6 +212,7 @@ export function engineErrorMessage(
       return [p.title, p.body, p.hint].join(' ');
     }
     // Sprint 19B (logic L1): the pin, supply and load the refusal is about, in the message.
+    // Sprint 21 adds the four guarantee-bound refusals (the last four labels).
     case 'logic_input_floating':
     case 'logic_supply_missing':
     case 'logic_supply_uncharacterized':
@@ -221,7 +222,11 @@ export function engineErrorMessage(
     case 'logic_unpowered_uncharacterized':
     case 'logic_input_undefined':
     case 'logic_input_out_of_range':
-    case 'logic_supply_undriven': {
+    case 'logic_supply_undriven':
+    case 'logic_supply_current_uncharacterized':
+    case 'logic_input_leakage_uncharacterized':
+    case 'logic_input_not_guaranteed':
+    case 'logic_supply_not_guaranteed': {
       const d = (error.detail ?? {}) as {
         vcc?: number;
         value?: number;
@@ -230,6 +235,12 @@ export function engineErrorMessage(
         vih?: number;
         vil?: number;
         pads?: number[];
+        worst?: number;
+        causes?: string[];
+        condition?: string;
+        range?: [number, number];
+        iiVcc?: [number, number];
+        level?: string;
       };
       const V = (v: number | undefined) =>
         typeof v === 'number' ? formatResult(locale, v, 'volt') : '';
@@ -239,12 +250,26 @@ export function engineErrorMessage(
       // L3: a device whose datasheet rows differ from the single gates' words them itself
       // (`sim.error.<code>.<part>`), never with another device's figures.
       // Sprint 20: an input held only by ESP32 pads in input mode names them first.
+      // Sprint 21: an ESP32 output whose guaranteed V_OH does not reach the gate's V_IH, and a
+      // supply's current limit, have their own wording.
       const own =
         error.code === 'logic_input_floating' && d.pads?.length
           ? d.pads.length > 1
             ? 'sim.error.logic_input_floating.mcu_inputs'
             : 'sim.error.logic_input_floating.mcu_input'
-          : `sim.error.${error.code}.${(d.part ?? '').toLowerCase()}`;
+          : (error.code === 'logic_input_undefined' && d.pads?.length) ||
+              (error.code === 'logic_input_not_guaranteed' && d.causes?.includes('esp32_voh'))
+            ? `sim.error.${error.code}.mcu_high`
+            : error.code === 'logic_supply_not_guaranteed' && error.param === 'limit'
+              ? 'sim.error.logic_supply_not_guaranteed.limit'
+              : `sim.error.${error.code}.${(d.part ?? '').toLowerCase()}`;
+      const causes = (d.causes ?? [])
+        .map((c) => `sim.bound.cause.${c}`)
+        .filter(isMessageKey)
+        .map((k) => t(k));
+      const reason = `sim.bound.reason.${d.condition ?? ''}`;
+      const range = (r: [number, number] | undefined) =>
+        r ? isolateLtr(r[0] === r[1] ? `V_CC = ${V(r[0])}` : `${V(r[0])} – ${V(r[1])}`) : '';
       return t(isMessageKey(own) ? own : `sim.error.${error.code}`, {
         components,
         pin,
@@ -259,9 +284,24 @@ export function engineErrorMessage(
         // L3: an input voltage the refusal is about.
         voltage:
           typeof d.value === 'number' &&
-          (error.code === 'logic_input_undefined' || error.code === 'logic_input_out_of_range')
+          (error.code === 'logic_input_undefined' ||
+            error.code === 'logic_input_out_of_range' ||
+            error.code === 'logic_input_not_guaranteed')
             ? formatResult(locale, d.value, 'volt')
             : '',
+        // Sprint 21: the bounds' worst value, causes, the row and the comparison.
+        worst: V(d.worst),
+        causes: new Intl.ListFormat(locale.code, { type: 'conjunction' }).format(causes),
+        reason: isMessageKey(reason) ? t(reason) : '',
+        range: range(d.range),
+        iiVcc: range(d.iiVcc),
+        level: d.level === 'high' ? 'HIGH' : d.level === 'low' ? 'LOW' : '',
+        cmp:
+          d.level === 'high' && typeof d.vih === 'number'
+            ? t('sim.bound.cmp.high', { th: isolateLtr(`V_IH ${V(d.vih)}`) })
+            : d.level === 'low' && typeof d.vil === 'number'
+              ? t('sim.bound.cmp.low', { th: isolateLtr(`V_IL ${V(d.vil)}`) })
+              : '',
       });
     }
     default:

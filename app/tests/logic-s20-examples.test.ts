@@ -184,7 +184,39 @@ describe('B logic-cascade: (A·B·C) + D across an SN74LVC08A and an SN74LVC1G32
     expect(netOf(B, 'U1', 'vcc')).toContain('PSU1.positive');
   });
 
-  it('all 16 switch combinations: LED = (A·B·C) + D; every gate on its truth-table row; no warning', () => {
+  // Sprint 21 (guarantee bounds): SCAS283W §5.7 specifies the SN74LVC08A input leakage I_I only at
+  // V_CC = 3.6 V. At the example's 3.0 V every package input that is held through a resistance
+  // (a 10 kΩ pull-down; 2A held by gate 1's output stage) has no bounded level: refused by name,
+  // EN and HE (owner question S21-Q2). At 3.6 V the same circuit runs (the 1G32 on PM-1 there).
+  const at = (d: ProjectDocument, volts: number) => {
+    const r = setParam(d, 'PSU1', 'setpointVoltage', { value: volts, unit: 'volt' });
+    if (!r.ok) throw new Error(r.error);
+    return r.doc;
+  };
+
+  it('as shipped (3.0 V): every switch combination is refused, input leakage not characterized (EN/HE)', () => {
+    for (let m = 0; m < 16; m++) {
+      const [a, b, c, dd] = [8, 4, 2, 1].map((bit) => (m & bit) !== 0);
+      const d = withSwitches(B, { SW1: a!, SW2: b!, SW3: c!, SW4: dd! });
+      const o = local(d);
+      if (o.ok) throw new Error(`expected a refusal at m=${m}`);
+      expect(o.error).toMatchObject({
+        code: 'logic_input_leakage_uncharacterized',
+        components: ['U1'],
+        detail: { part: 'SN74LVC08A', iiVcc: [3.6, 3.6] },
+      });
+      if (m === 0) {
+        const msg = plain(engineErrorMessage(en, o.error, d));
+        expect(msg).toContain('held through a resistance');
+        expect(msg).toContain('V_CC = 3.6 V');
+        const msgHe = plain(engineErrorMessage(he, o.error, d));
+        expect(msgHe).toContain('V_CC = 3.6 V');
+        expect(msgHe).toContain('מוחזקת דרך התנגדות');
+      }
+    }
+  });
+
+  it('at 3.6 V: all 16 switch combinations: LED = (A·B·C) + D; every gate on its truth-table row; no warning', () => {
     for (let m = 0; m < 16; m++) {
       const [a, b, c, dd] = [8, 4, 2, 1].map((bit) => (m & bit) !== 0) as [
         boolean,
@@ -192,52 +224,47 @@ describe('B logic-cascade: (A·B·C) + D across an SN74LVC08A and an SN74LVC1G32
         boolean,
         boolean,
       ];
-      const d = withSwitches(B, { SW1: a, SW2: b, SW3: c, SW4: dd });
+      const d = at(withSwitches(B, { SW1: a, SW2: b, SW3: c, SW4: dd }), 3.6);
       const o = ok(local(d));
-      const at = `A=${+a} B=${+b} C=${+c} D=${+dd}`;
+      const where = `A=${+a} B=${+b} C=${+c} D=${+dd}`;
       const q = o.components.U1!.logic!.gates;
       const lv = (v: boolean) => (v ? 'high' : 'low');
-      expect(q[0]!.output.level, at).toBe(lv(a && b));
+      expect(q[0]!.output.level, where).toBe(lv(a && b));
       expect(
         q[1]!.inputs.map((p) => p.level),
-        at,
+        where,
       ).toEqual([lv(a && b), lv(c)]);
-      expect(q[1]!.output.level, at).toBe(lv(a && b && c));
-      expect(q[2]!.output.level, at).toBe('low');
-      expect(q[3]!.output.level, at).toBe('low');
+      expect(q[1]!.output.level, where).toBe(lv(a && b && c));
+      expect(q[2]!.output.level, where).toBe('low');
+      expect(q[3]!.output.level, where).toBe('low');
       const or = o.components.U2!.logic!.gates[0]!;
       expect(
         or.inputs.map((p) => p.level),
-        at,
+        where,
       ).toEqual([lv(a && b && c), lv(dd)]);
       const on = (a && b && c) || dd;
-      expect(or.output.level, at).toBe(lv(on));
+      expect(or.output.level, where).toBe(lv(on));
       const i = o.components.D1!.current!;
       if (on) {
-        expect(i, at).toBeGreaterThan(3e-3);
-        expect(i, at).toBeLessThan(16e-3);
-      } else expect(i, at).toBeLessThan(1e-9);
+        expect(i, where).toBeGreaterThan(3e-3);
+        expect(i, where).toBeLessThan(24e-3);
+      } else expect(i, where).toBeLessThan(1e-9);
       // The package drives only a gate input: no DC current out of 2Y, so it sits at its rail.
-      expect(o.components.U1!.currents!.y2!, at).toBeCloseTo(0, 12);
-      expect(q[1]!.output.volts!, at).toBeCloseTo(a && b && c ? 3 : 0, 9);
-      expect(ratingWarnings(createSnapshot(d), o), at).toEqual([]);
+      expect(o.components.U1!.currents!.y2!, where).toBeCloseTo(0, 12);
+      expect(q[1]!.output.volts!, where).toBeCloseTo(a && b && c ? 3.6 : 0, 9);
+      // ...but what is GUARANTEED there is the §5.7 ranged row: V_OH ≥ V_CC − 0.2 V, V_OL ≤ 0.2 V.
+      expect(q[1]!.output.guarantee, where).toEqual({
+        volts: expect.closeTo(a && b && c ? 3.4 : 0.2, 12),
+        atA: 100e-6,
+      });
+      expect(ratingWarnings(createSnapshot(d), o), where).toEqual([]);
     }
   });
 
-  it('at 3.3 V the package is still fine (no load) but the single OR gate runs on the PM-1 class bound', () => {
-    const r = setParam(withSwitches(B, { SW4: true }), 'PSU1', 'setpointVoltage', {
-      value: 3.3,
-      unit: 'volt',
-    });
-    if (!r.ok) throw new Error(r.error);
-    const o = ok(local(r.doc));
+  it('at 3.6 V the package is on its ±100 µA row (no PM-1 bound) and the single OR gate on the PM-1 class bound', () => {
+    const o = ok(local(at(withSwitches(B, { SW4: true }), 3.6)));
     expect(o.components.U2!.state).toMatchObject({ gateOutput: 'high', outputModel: 'class' });
-    expect(o.components.U1!.state).toMatchObject({ outputModel: 'ranged' });
-  });
-
-  it('a load on 2Y at 3.0 V beyond the package guarantee would be refused by pin (not the case here)', () => {
-    const o = ok(local(withSwitches(B, { SW1: true, SW2: true, SW3: true })));
-    expect(o.components.U1!.state).toMatchObject({ outputModel: 'tabulated', outputValidA: 24e-3 });
+    expect(o.components.U1!.state).toMatchObject({ outputModel: 'ranged', outputValidA: 100e-6 });
   });
 });
 
@@ -251,11 +278,20 @@ describe('C esp32-logic-quad-and (extended): the 1A/1B pull-downs make the pre-s
     expect(groundNet(C, 'R5', 'b')).toBe(true);
   });
 
-  it('before setup() (every pad an input) the session starts: 1A/1B LOW, both LEDs off', () => {
+  it('before setup() (every pad an input): 1A is held by its 10 kΩ pull-down, and at 3.0 V the SN74LVC08A input leakage has no bound: refused (Sprint 21, S21-Q2)', () => {
     const { s } = hosted(C);
-    const o = ok(s.solve());
-    expect(o.components.U2!.logic!.gates[0]!.inputs.map((p) => p.level)).toEqual(['low', 'low']);
-    expect(o.components.D1!.current!).toBeLessThan(1e-9);
+    const o = s.solve();
+    if (o.ok) throw new Error('expected a refusal');
+    expect(o.error).toMatchObject({
+      code: 'logic_input_leakage_uncharacterized',
+      components: ['U2'],
+      param: 'a1',
+      detail: { part: 'SN74LVC08A', vcc: 3, iiVcc: [3.6, 3.6] },
+    });
+    expect(plain(engineErrorMessage(en, o.error, C))).toContain(
+      'input 1A is held through a resistance',
+    );
+    expect(plain(engineErrorMessage(he, o.error, C))).toContain('1A');
   });
 
   it('WITHOUT the pull-downs the pre-setup state is refused (1A floating, held only by GPIO18 in input mode), EN and HE', () => {
@@ -283,10 +319,16 @@ describe('C esp32-logic-quad-and (extended): the 1A/1B pull-downs make the pre-s
     const msgHe = plain(engineErrorMessage(he, o.error, d));
     expect(msgHe).toContain('1A');
     expect(msgHe).toContain('GPIO18');
-    // Once the firmware drives the pads, it solves.
+    // Once the firmware drives the pads the inputs are driven, but through the pads' 16.5 Ω, and
+    // at 3.0 V the package's input leakage has no bound (Sprint 21): refused by name.
     s.setPinMode(18, 'output-high');
     s.setPinMode(19, 'output-high');
-    expect(ok(s.solve()).components.U2!.logic!.gates[0]!.output.level).toBe('high');
+    const o2 = s.solve();
+    if (o2.ok) throw new Error('expected a refusal');
+    expect(o2.error).toMatchObject({
+      code: 'logic_input_leakage_uncharacterized',
+      components: ['U2'],
+    });
   });
 });
 

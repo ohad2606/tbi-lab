@@ -27,7 +27,7 @@ import {
   type LogicInspection,
   type LogicPinState,
 } from '@tbi-lab/engine';
-import { formatNumber, isolateLtr, type LocaleInfo } from '../i18n/i18n.js';
+import { formatNumber, isMessageKey, isolateLtr, type LocaleInfo } from '../i18n/i18n.js';
 import type { MessageKey } from '../i18n/messages.en.js';
 import { datasheetPinName, formatResult } from '../sim/format.js';
 import { useAppState, useStore, useT } from './context.js';
@@ -72,6 +72,7 @@ interface PinView {
     | 'floating'
     | 'out_of_range'
     | 'unsupported'
+    | 'not_guaranteed'
     | 'unknown'
     | 'not_simulated'
     | 'idle';
@@ -179,38 +180,6 @@ export function LogicStateView({
           })}
         </div>
       )}
-      <table class="logic-pins" data-testid="logic-pins">
-        <thead>
-          <tr>
-            <th scope="col">{t('logic.inspect.pin')}</th>
-            <th scope="col">{t('logic.inspect.level')}</th>
-            <th scope="col">{t('logic.inspect.voltage')}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {pins.flatMap((p) => [
-            <tr
-              key={p.pin}
-              data-testid={`logic-pin-${p.pin}`}
-              data-level={p.state}
-              class={`logic-level-${p.state}`}
-            >
-              <td class="technical" dir="ltr">
-                {pinName(p.pin)}
-              </td>
-              <td data-testid={`logic-level-${p.pin}`}>{t(levelKey(p.state))}</td>
-              <td class="technical" dir="ltr" data-testid={`logic-volts-${p.pin}`}>
-                {V(p.volts)}
-              </td>
-            </tr>,
-            <tr key={`${p.pin}-why`} class="logic-why">
-              <td colSpan={3} class="small muted" data-testid={`logic-why-${p.pin}`}>
-                {p.why}
-              </td>
-            </tr>,
-          ])}
-        </tbody>
-      </table>
       <InputControls
         doc={doc}
         component={component}
@@ -219,8 +188,15 @@ export function LogicStateView({
         pressed={pressed}
         readOnly={!!readOnly}
       />
-      <h4>{t('logic.inspect.truthTable', { fn: isolateLtr(fn) })}</h4>
-      <table class="logic-truth" data-testid="logic-truth" dir="ltr">
+      <h4 id={`logic-truth-heading-${component.id}`}>
+        {t('logic.inspect.truthTable', { fn: isolateLtr(fn) })}
+      </h4>
+      <table
+        class="logic-truth"
+        data-testid="logic-truth"
+        dir="ltr"
+        aria-labelledby={`logic-truth-heading-${component.id}`}
+      >
         <thead>
           <tr>
             {letters.map((l) => (
@@ -266,6 +242,60 @@ export function LogicStateView({
           })}
         </tbody>
       </table>
+      {/* Sprint 21 (Phase 4): why no row is highlighted (never a guessed row). */}
+      {(running || failure) && !selectedRow && (
+        <p class="small logic-no-row" role="status" data-testid="logic-no-row">
+          {t(
+            pins.some((p) => p.input && p.state === 'off')
+              ? 'logic.inspect.noRowOff'
+              : pins.every((p) => p.state === 'not_simulated')
+                ? 'logic.inspect.noRowNotSimulated'
+                : pins.some(
+                      (p) =>
+                        p.input && p.state !== 'high' && p.state !== 'low' && p.state !== 'idle',
+                    )
+                  ? 'logic.inspect.noRowInvalid'
+                  : 'logic.inspect.noRowWaiting',
+          )}
+        </p>
+      )}
+      <h4 id={`logic-pins-heading-${component.id}`}>{t('logic.inspect.pinsHeading')}</h4>
+      <table
+        class="logic-pins"
+        data-testid="logic-pins"
+        aria-labelledby={`logic-pins-heading-${component.id}`}
+      >
+        <thead>
+          <tr>
+            <th scope="col">{t('logic.inspect.pin')}</th>
+            <th scope="col">{t('logic.inspect.level')}</th>
+            <th scope="col">{t('logic.inspect.voltage')}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {pins.flatMap((p) => [
+            <tr
+              key={p.pin}
+              data-testid={`logic-pin-${p.pin}`}
+              data-level={p.state}
+              class={`logic-level-${p.state}`}
+            >
+              <td class="technical" dir="ltr">
+                {pinName(p.pin)}
+              </td>
+              <td data-testid={`logic-level-${p.pin}`}>{t(levelKey(p.state))}</td>
+              <td class="technical" dir="ltr" data-testid={`logic-volts-${p.pin}`}>
+                {V(p.volts)}
+              </td>
+            </tr>,
+            <tr key={`${p.pin}-why`} class="logic-why">
+              <td colSpan={3} class="small muted" data-testid={`logic-why-${p.pin}`}>
+                {p.why}
+              </td>
+            </tr>,
+          ])}
+        </tbody>
+      </table>
       <p class="muted small">{running ? t('logic.inspect.note') : t('logic.inspect.noteIdle')}</p>
     </section>
   );
@@ -275,7 +305,7 @@ const levelLetter = (l: string) =>
   l === 'high' ? 'H' : l === 'low' ? 'L' : l === 'off' ? '–' : '?';
 
 function levelKey(state: PinView['state']): MessageKey {
-  return `logic.inspect.level.${state === 'out_of_range' ? 'outOfRange' : state === 'not_simulated' ? 'notSimulated' : state}` as MessageKey;
+  return `logic.inspect.level.${state === 'out_of_range' ? 'outOfRange' : state === 'not_simulated' ? 'notSimulated' : state === 'not_guaranteed' ? 'notGuaranteed' : state}` as MessageKey;
 }
 
 /** The datasheet's input rows (V_CC range → V_IH / V_IL), shown before a run. */
@@ -353,13 +383,19 @@ function pinViews({
         why = t('logic.why.inHigh', { cmp: L(`${V(p.volts)} ≥ V_IH ${V(logic.vih)}`), vcc });
       else if (input && p.level === 'low')
         why = t('logic.why.inLow', { cmp: L(`${V(p.volts)} ≤ V_IL ${V(logic.vil)}`), vcc });
-      else if (!input && (p.level === 'high' || p.level === 'low'))
+      else if (!input && (p.level === 'high' || p.level === 'low')) {
         why = t('logic.why.out', {
           fn: L(card.function.toUpperCase()),
           ins: L(ins),
           out: L(levelLetter(p.level)),
         });
-      else why = t('logic.why.unknown');
+        // Sprint 21: the datasheet guarantee at this current, distinct from the model's voltage.
+        if (p.guarantee)
+          why += ` ${t(p.level === 'high' ? 'logic.why.outBoundHigh' : 'logic.why.outBoundLow', {
+            v: L(V(p.guarantee.volts)),
+            a: L(A(p.guarantee.atA)),
+          })}`;
+      } else why = t('logic.why.unknown');
       const state: PinView['state'] =
         p.level === 'high' || p.level === 'low' || p.level === 'off' ? p.level : 'unknown';
       return { pin, input, state, volts: p.volts, why };
@@ -382,7 +418,10 @@ function pinViews({
       vil?: number;
       limit?: number;
       pads?: number[];
+      worst?: number;
+      causes?: string[];
     };
+    const supplyCodes = ['logic_supply_current_uncharacterized', 'logic_supply_not_guaranteed'];
     return all.map(([pin, input]) => {
       if (failure.param !== pin)
         return {
@@ -394,7 +433,9 @@ function pinViews({
           why:
             failure.code === 'logic_supply_undriven'
               ? t('logic.why.supplyUndriven', { pin: L(datasheetPinName(failure.param ?? '')) })
-              : t('logic.why.refusedElsewhere'),
+              : supplyCodes.includes(failure.code)
+                ? t('logic.why.supplyNotGuaranteed')
+                : t('logic.why.refusedElsewhere'),
         };
       const v = L(V(d.value));
       const vcc = L(`V_CC = ${V(d.vcc)}`);
@@ -436,6 +477,31 @@ function pinViews({
             state: 'out_of_range' as const,
             volts: d.value ?? null,
             why: t('logic.why.outOfRange', { v }),
+          };
+        // Sprint 21: guarantee bounds.
+        case 'logic_input_not_guaranteed':
+          return {
+            pin,
+            input,
+            state: 'not_guaranteed' as const,
+            volts: d.value ?? null,
+            why: t('logic.why.notGuaranteed', {
+              v,
+              worst: L(V(d.worst)),
+              causes: (d.causes ?? [])
+                .map((c) => `sim.bound.cause.${c}`)
+                .filter(isMessageKey)
+                .map((k) => t(k))
+                .join(', '),
+            }),
+          };
+        case 'logic_input_leakage_uncharacterized':
+          return {
+            pin,
+            input,
+            state: 'not_guaranteed' as const,
+            volts: null,
+            why: t('logic.why.leakageUncharacterized', { vcc }),
           };
         case 'logic_unknown_state':
           return {

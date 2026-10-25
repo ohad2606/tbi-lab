@@ -1,0 +1,492 @@
+/**
+ * Sprint 21 Phase 5 (logic, unit level): integrated circuits through the production path
+ * (project document → snapshot → engine session, and the package export/import of schema v4),
+ * validating SEPARATELY: the netlist, the logic states, the solved voltages and the physical
+ * limits/guarantees. Figures: SN74LVC1G08 SCES217AA / SN74LVC1G32 SCES219W §5.3, §5.5 (−40 to
+ * 85 °C); ESP32 Series Datasheet v5.3 Table 5-3 (V_OH ≥ 0.8 × VDD).
+ */
+import { describe, expect, it } from 'vitest';
+import {
+  addComponent,
+  addWire,
+  createPackage,
+  createProject,
+  createSnapshot,
+  parsePackage,
+  SCHEMA_VERSION,
+  serializePackage,
+  setParam,
+  type ComponentTypeId,
+  type ParamValue,
+  type ProjectDocument,
+} from '@tbi-lab/domain';
+import {
+  EngineSession,
+  ratingWarnings,
+  type EngineError,
+  type SolveOutcome,
+  type SolveSuccess,
+} from '@tbi-lab/engine';
+import { EXAMPLES_WITH_DOCUMENTS as EXAMPLES } from '../src/examples/documents.js';
+import { buildSessionRequest } from '../src/runtime/snapshot.js';
+import { getLocale } from '../src/i18n/i18n.js';
+import { engineErrorMessage } from '../src/sim/format.js';
+
+const en = getLocale('en');
+const he = getLocale('he');
+const plain = (s: string) => s.replace(/[⁦-⁩‎‏]/g, '');
+const ok = (o: SolveOutcome): SolveSuccess => {
+  if (!o.ok) throw new Error(`expected success, got ${JSON.stringify(o.error)}`);
+  return o;
+};
+const refused = (o: SolveOutcome): EngineError => {
+  if (o.ok) throw new Error('expected a refusal');
+  return o.error;
+};
+const solve = (d: ProjectDocument) => new EngineSession(createSnapshot(d)).solve();
+const example = (id: string) => EXAMPLES.find((e) => e.id === id)!.document;
+
+/** A tiny document builder over the domain editing operations (as the editor applies them). */
+class Doc {
+  doc = createProject({ projectId: 'prj_s21l', deviceId: 'd', name: 'S21 logic', appVersion: '0' });
+  private x = 0;
+  add(type: ComponentTypeId): string {
+    this.x += 160;
+    const r = addComponent(this.doc, type, { x: this.x, y: 300 });
+    if (!r.ok) throw new Error(r.error);
+    this.doc = r.doc;
+    return r.id;
+  }
+  wire(a: string, b: string): this {
+    const [ac, at] = a.split('.') as [string, string];
+    const [bc, bt] = b.split('.') as [string, string];
+    const r = addWire(
+      this.doc,
+      { kind: 'terminal', component: ac, terminal: at },
+      { kind: 'terminal', component: bc, terminal: bt },
+    );
+    if (!r.ok) throw new Error(`${a}->${b}: ${r.error}`);
+    this.doc = r.doc;
+    return this;
+  }
+  set(id: string, key: string, value: ParamValue): this {
+    const r = setParam(this.doc, id, key, value);
+    if (!r.ok) throw new Error(`${id}.${key}: ${r.error}`);
+    this.doc = r.doc;
+    return this;
+  }
+  psu(v: number, a = 0.1): this {
+    return this.set('PSU1', 'setpointVoltage', { value: v, unit: 'volt' })
+      .set('PSU1', 'currentLimit', { value: a, unit: 'ampere' })
+      .set('PSU1', 'outputEnabled', true);
+  }
+  ohms(id: string, v: number): this {
+    return this.set(id, 'resistance', { value: v, unit: 'ohm' });
+  }
+}
+
+/** Export as a .tbilab package and import it back (schema v4, hash-checked). */
+function roundTrip(d: ProjectDocument): ProjectDocument {
+  const text = serializePackage(
+    createPackage(d, { appVersion: 'test', exportedAt: '2026-10-25T00:00:00Z' }),
+  );
+  const back = parsePackage(text);
+  if (!back.ok) throw new Error(JSON.stringify(back.error));
+  return back.doc;
+}
+
+const netOf = (d: ProjectDocument, ref: string) => {
+  const [c, t] = ref.split('.') as [string, string];
+  const snap = createSnapshot(d);
+  const net = snap.connections.find((x) => x.component === c && x.terminal === t)?.net;
+  return snap.connections
+    .filter((x) => x.net === net)
+    .map((x) => `${x.component}.${x.terminal}`)
+    .sort();
+};
+
+describe("PSU + gate: the owner's circuit (screenshot d855acf4), built as drawn and corrected", () => {
+  /** PSU1 5 V / 100 mA; U1 SN74LVC1G08 V_CC, A, B on PSU+; GND on `gnd`. */
+  const owner = (gnd: string) => {
+    const b = new Doc();
+    const u = b.add('logic.gate_and');
+    b.psu(5, 0.1).wire('PSU1.negative', 'GND1.ref');
+    b.wire(`${u}.vcc`, 'PSU1.positive').wire(`${u}.a`, 'PSU1.positive');
+    b.wire(`${u}.b`, 'PSU1.positive').wire(`${u}.gnd`, gnd);
+    return { d: b.doc, u };
+  };
+
+  it('as drawn (GND on PSU+): netlist, then V_CC − GND = 0 V: unpowered, output off, no level, no guarantee', () => {
+    const { d, u } = owner('PSU1.positive');
+    expect(netOf(d, `${u}.gnd`)).toEqual(
+      ['PSU1.positive', `${u}.a`, `${u}.b`, `${u}.gnd`, `${u}.vcc`].sort(),
+    );
+    const r = ok(solve(d)).components[u]!;
+    // Logic state.
+    expect(r.state).toMatchObject({ gateOutput: 'off', supplyV: 0 });
+    expect(r.logic!.gates[0]!.inputs.map((p) => p.level)).toEqual(['off', 'off']);
+    expect(r.logic!.gates[0]!.output.level).toBe('off');
+    // Voltages: every pin of U1 at the same potential (5 V to the circuit's GND, 0 V to its own).
+    expect(r.terminals.vcc).toBeCloseTo(5, 12);
+    expect(r.terminals.gnd).toBeCloseTo(5, 12);
+    expect(r.logic!.gates[0]!.inputs.map((p) => p.volts)).toEqual([0, 0]);
+    // Guarantees: none claimed.
+    expect(r.logic!.gates[0]!.output.guarantee).toBeUndefined();
+    expect(r.logic!.vih).toBeNull();
+  });
+
+  it('corrected (GND on PSU−): Y HIGH; V_CC 5 V; V_IH 3.5 V; guarantee V_OH ≥ 4.9 V (|I_OH| ≤ 100 µA, §5.5); limits clean', () => {
+    const { d, u } = owner('PSU1.negative');
+    const o = ok(solve(d));
+    const r = o.components[u]!;
+    expect(r.state).toMatchObject({
+      gateOutput: 'high',
+      outputModel: 'ranged',
+      outputValidA: 100e-6,
+    });
+    expect(r.logic!.gates[0]!.output.volts).toBeCloseTo(5, 9); // the model's zero-load value
+    expect(r.logic!.gates[0]!.output.guarantee!.volts).toBeCloseTo(4.9, 12);
+    expect(r.logic!.gates[0]!.output.guarantee!.atA).toBe(100e-6);
+    expect(r.logic!.vih).toBeCloseTo(3.5, 12);
+    expect(r.logic!.vil).toBeCloseTo(1.5, 12);
+    expect(ratingWarnings(createSnapshot(d), o)).toEqual([]);
+  });
+
+  it('save → export (.tbilab, schema v4) → import → the same results, both wirings', () => {
+    for (const gnd of ['PSU1.positive', 'PSU1.negative']) {
+      const { d, u } = owner(gnd);
+      const back = roundTrip(d);
+      expect(back.schemaVersion).toBe(SCHEMA_VERSION);
+      expect(SCHEMA_VERSION).toBe(4);
+      expect(createSnapshot(back).connections).toEqual(createSnapshot(d).connections);
+      expect(ok(solve(back)).components[u]!.state).toEqual(ok(solve(d)).components[u]!.state);
+    }
+  });
+});
+
+describe('Example A (two switches → SN74LVC1G08 → LED): netlist, logic, voltages, limits — separately', () => {
+  const A = example('logic-and-switches');
+  const closed = (a: boolean, b: boolean) => {
+    let d = A;
+    for (const [id, v] of [
+      ['SW1', a],
+      ['SW2', b],
+    ] as const) {
+      const r = setParam(d, id, 'closed', v);
+      if (!r.ok) throw new Error(r.error);
+      d = r.doc;
+    }
+    return d;
+  };
+
+  it('logic: the four rows; voltages: inputs at 0 V or 3.0 V exactly; limits: Y current within 16 mA, guarantee stated', () => {
+    for (const [a, b] of [
+      [false, false],
+      [false, true],
+      [true, false],
+      [true, true],
+    ] as const) {
+      const d = closed(a, b);
+      const o = ok(solve(d));
+      const g = o.components.U1!.logic!.gates[0]!;
+      const where = `A=${+a} B=${+b}`;
+      expect(
+        g.inputs.map((p) => p.level),
+        where,
+      ).toEqual([a ? 'high' : 'low', b ? 'high' : 'low']);
+      expect(g.output.level, where).toBe(a && b ? 'high' : 'low');
+      expect(g.inputs[0]!.volts!, where).toBeCloseTo(a ? 3 : 0, 9);
+      const iy = o.components.U1!.currents!.y!;
+      if (a && b) {
+        expect(iy, where).toBeGreaterThan(1e-3);
+        expect(iy, where).toBeLessThanOrEqual(16e-3);
+        // §5.5 at 3.0 V: V_OH ≥ 2.4 V up to 16 mA.
+        expect(g.output.guarantee, where).toEqual({ volts: 2.4, atA: 16e-3 });
+        expect(g.output.volts!, where).toBeGreaterThanOrEqual(2.4);
+      } else expect(g.output.guarantee!.volts, where).toBeCloseTo(0.1, 12); // V_OL ≤ 0.1 V
+      expect(ratingWarnings(createSnapshot(d), o), where).toEqual([]);
+    }
+  });
+
+  it('save → export → import keeps the switch states and the result', () => {
+    const d = closed(true, true);
+    const back = roundTrip(d);
+    expect(back.components.find((c) => c.id === 'SW1')!.params.closed).toBe(true);
+    expect(ok(solve(back)).components.U1!.logic).toEqual(ok(solve(d)).components.U1!.logic);
+  });
+
+  it('high-value pull-down: R1 = 220 kΩ, SW1 open: 5 µA × 220 kΩ = 1.1 V > V_IL 0.8 V → refused (EN/HE)', () => {
+    let d = closed(false, true);
+    const r = setParam(d, 'R1', 'resistance', { value: 220_000, unit: 'ohm' });
+    if (!r.ok) throw new Error(r.error);
+    d = r.doc;
+    const e = refused(solve(d));
+    expect(e).toMatchObject({
+      code: 'logic_input_not_guaranteed',
+      components: ['U1'],
+      param: 'a',
+      detail: { level: 'low', causes: ['leakage'] },
+    });
+    expect((e.detail as { worst: number }).worst).toBeCloseTo(1.1, 6);
+    const msg = plain(engineErrorMessage(en, e, d));
+    expect(msg).toContain('input A is LOW in the simulation (0 V)');
+    expect(msg).toContain('input leakage I_I');
+    expect(msg).toContain('above V_IL 800 mV');
+    const msgHe = plain(engineErrorMessage(he, e, d));
+    expect(msgHe).toContain('זרם זליגה בכניסה I_I');
+    expect(msgHe).toContain('V_IL 800 mV');
+  });
+
+  it('series supply resistance: 10 Ω between PSU+ and V_CC with switch inputs on PSU+: I_CC not characterized → refused (EN/HE)', () => {
+    // Re-feed U1.vcc through a new 10 Ω resistor (the switches stay on PSU+). At 3.3 V with A
+    // closed and B open, Y is LOW (no LED current through the 10 Ω), V_CC = 3.3 V in the solve,
+    // but A sits at 3.3 V: not the I_CC test voltage (5.5 V or GND).
+    const b = new Doc();
+    b.doc = closed(true, false);
+    b.psu(3.3);
+    const r = b.add('component.resistor');
+    b.ohms(r, 10);
+    // Move U1.vcc: delete its wire and rewire through the resistor.
+    const w = b.doc.layout.wires.find((x) =>
+      [x.from, x.to].some(
+        (e) => e.kind === 'terminal' && e.component === 'U1' && e.terminal === 'vcc',
+      ),
+    )!;
+    b.doc = {
+      ...b.doc,
+      layout: { ...b.doc.layout, wires: b.doc.layout.wires.filter((x) => x !== w) },
+    };
+    b.wire('PSU1.positive', `${r}.a`).wire(`${r}.b`, 'U1.vcc');
+    const e = refused(solve(b.doc));
+    expect(e).toMatchObject({
+      code: 'logic_supply_current_uncharacterized',
+      components: ['U1'],
+      param: 'vcc',
+      detail: { condition: 'notInputs' },
+    });
+    expect(plain(engineErrorMessage(en, e, b.doc))).toContain('every input at 5.5 V or GND');
+    expect(plain(engineErrorMessage(he, e, b.doc))).toContain('I_CC');
+  });
+});
+
+describe('cascaded gates: SN74LVC1G08 → SN74LVC1G32 → LED at 3.3 V (PM-1 class)', () => {
+  it('logic through the cascade; downstream input checked against the upstream guarantee (V_OH ≥ 2.9 V)', () => {
+    for (const [a, b, c] of [
+      [true, true, false],
+      [true, false, false],
+      [false, false, true],
+    ] as const) {
+      const d = new Doc();
+      const g1 = d.add('logic.gate_and');
+      const g2 = d.add('logic.gate_or');
+      const r = d.add('component.resistor');
+      const led = d.add('component.led');
+      d.psu(3.3).wire('PSU1.negative', 'GND1.ref').ohms(r, 220);
+      for (const g of [g1, g2]) d.wire(`${g}.vcc`, 'PSU1.positive').wire(`${g}.gnd`, 'GND1.ref');
+      const lv = (on: boolean) => (on ? 'PSU1.positive' : 'GND1.ref');
+      d.wire(`${g1}.a`, lv(a)).wire(`${g1}.b`, lv(b)).wire(`${g1}.y`, `${g2}.a`);
+      d.wire(`${g2}.b`, lv(c)).wire(`${g2}.y`, `${r}.a`).wire(`${r}.b`, `${led}.anode`);
+      d.wire(`${led}.cathode`, 'GND1.ref');
+      const o = ok(solve(d.doc));
+      const where = `${+a}${+b}${+c}`;
+      expect(o.components[g1]!.logic!.gates[0]!.output.level, where).toBe(a && b ? 'high' : 'low');
+      expect(o.components[g2]!.logic!.gates[0]!.output.level, where).toBe(
+        (a && b) || c ? 'high' : 'low',
+      );
+      // The upstream output drives only a CMOS input: guaranteed at its 100 µA point.
+      expect(o.components[g1]!.logic!.gates[0]!.output.guarantee!.atA, where).toBe(100e-6);
+      expect(ratingWarnings(createSnapshot(d.doc), o), where).toEqual([]);
+    }
+  });
+});
+
+describe('ESP32 driving logic (pads as the app attaches them)', () => {
+  const hosted = (d: ProjectDocument) => {
+    const plan = buildSessionRequest(d, () => ({ sha256: '0'.repeat(64), origin: 'program' }));
+    if (!plan.ok) throw new Error(JSON.stringify(plan.error));
+    return new EngineSession(plan.plan.request.circuit, { pins: plan.plan.request.attachments });
+  };
+
+  it('example D at 3.0 V: GPIO18 HIGH is guaranteed (2.64 V ≥ V_IH 2.0 V); at 4.5 V it is not → refused, naming GPIO18 (EN/HE)', () => {
+    const D = example('esp32-logic-override');
+    const s = hosted(D);
+    s.setPinMode(18, 'output-high');
+    s.setPinMode(19, 'input');
+    expect(ok(s.solve()).components.U2!.logic!.gates[0]!.inputs[0]!.level).toBe('high');
+    const r = setParam(D, 'PSU1', 'setpointVoltage', { value: 4.5, unit: 'volt' });
+    if (!r.ok) throw new Error(r.error);
+    const s2 = hosted(r.doc);
+    s2.setPinMode(18, 'output-high');
+    const e = refused(s2.solve());
+    expect(e).toMatchObject({
+      code: 'logic_input_not_guaranteed',
+      components: ['U2'],
+      param: 'a',
+      detail: { pads: [18] },
+    });
+    const msg = plain(engineErrorMessage(en, e, r.doc));
+    expect(msg).toContain('driven HIGH by GPIO18');
+    expect(msg).toContain('V_OH ≥ 2.64 V');
+    expect(msg).toContain('V_IH 3.15 V');
+    const msgHe = plain(engineErrorMessage(he, e, r.doc));
+    expect(msgHe).toContain('GPIO18');
+    expect(msgHe).toContain('2.64 V');
+  });
+
+  it('at 5.0 V the model level itself is undefined: the message explains the 3.3 V logic level (EN/HE)', () => {
+    const r = setParam(example('esp32-logic-override'), 'PSU1', 'setpointVoltage', {
+      value: 5,
+      unit: 'volt',
+    });
+    if (!r.ok) throw new Error(r.error);
+    const s = hosted(r.doc);
+    s.setPinMode(18, 'output-high');
+    const e = refused(s.solve());
+    expect(e).toMatchObject({ code: 'logic_input_undefined', detail: { pads: [18] } });
+    expect(plain(engineErrorMessage(en, e, r.doc))).toContain(
+      '3.3 V logic, guaranteed only V_OH ≥ 2.64 V',
+    );
+    expect(plain(engineErrorMessage(he, e, r.doc))).toContain('3.3 V');
+  });
+});
+
+describe('dense mixed circuit: 8 single gates in chains + switches + pulls + LEDs, one solve', () => {
+  it('every gate on its truth-table row, guarantees stated, bounded solve time', () => {
+    const d = new Doc();
+    d.psu(3.3, 0.5).wire('PSU1.negative', 'GND1.ref');
+    const types = ['logic.gate_and', 'logic.gate_or', 'logic.gate_nand', 'logic.gate_not'] as const;
+    const gates: string[] = [];
+    const sw = d.add('component.toggle_switch');
+    const pd = d.add('component.resistor');
+    d.ohms(pd, 10_000).set(sw, 'closed', true);
+    d.wire('PSU1.positive', `${sw}.a`).wire(`${sw}.b`, `${pd}.a`).wire(`${pd}.b`, 'GND1.ref');
+    let prev = `${sw}.b`;
+    for (let k = 0; k < 8; k++) {
+      const t = types[k % 4]!;
+      const g = d.add(t);
+      gates.push(g);
+      d.wire(`${g}.vcc`, 'PSU1.positive').wire(`${g}.gnd`, 'GND1.ref').wire(`${g}.a`, prev);
+      if (t !== 'logic.gate_not') d.wire(`${g}.b`, k % 3 === 0 ? 'PSU1.positive' : 'GND1.ref');
+      prev = `${g}.y`;
+    }
+    const r = d.add('component.resistor');
+    const led = d.add('component.led');
+    d.ohms(r, 330)
+      .wire(prev, `${r}.a`)
+      .wire(`${r}.b`, `${led}.anode`)
+      .wire(`${led}.cathode`, 'GND1.ref');
+    const t0 = performance.now();
+    const o = ok(solve(d.doc));
+    const ms = performance.now() - t0;
+    // Expected chain: k=0 AND(1,b=1)=1; k=1 OR(1,0)=1; k=2 NAND(1,0)=1; k=3 NOT(1)=0;
+    // k=4 AND(0,0)=0; k=5 OR(0,0)=0; k=6 NAND(0,1)=1; k=7 NOT(1)=0.
+    expect(gates.map((g) => o.components[g]!.logic!.gates[0]!.output.level)).toEqual([
+      'high',
+      'high',
+      'high',
+      'low',
+      'low',
+      'low',
+      'high',
+      'low',
+    ]);
+    for (const g of gates) expect(o.components[g]!.logic!.gates[0]!.output.guarantee).toBeDefined();
+    expect(ms).toBeLessThan(10_000);
+  });
+});
+
+describe('Sprint 21 refusal messages: every new code and variant renders fully in EN and HE', () => {
+  const cases: EngineError[] = [
+    {
+      code: 'logic_supply_current_uncharacterized',
+      components: ['U1'],
+      param: 'vcc',
+      detail: { part: 'SN74LVC1G08', vcc: 3.3, condition: 'notInputs' },
+    },
+    {
+      code: 'logic_supply_current_uncharacterized',
+      components: ['U1'],
+      param: 'vcc',
+      detail: { part: 'SN74LVC08A', vcc: 3.3, condition: 'notSupply' },
+    },
+    {
+      code: 'logic_supply_not_guaranteed',
+      components: ['U1'],
+      param: 'vcc',
+      detail: {
+        part: 'SN74LVC1G08',
+        vcc: 3.3,
+        worst: 1.3,
+        range: [3, 3.6],
+        causes: ['supply_current'],
+      },
+    },
+    {
+      code: 'logic_supply_not_guaranteed',
+      components: ['PSU1'],
+      param: 'limit',
+      detail: { limit: 0.001, worst: 0.0011, causes: ['supply_current'] },
+    },
+    {
+      code: 'logic_input_leakage_uncharacterized',
+      components: ['U1'],
+      param: 'a1',
+      detail: { part: 'SN74LVC08A', vcc: 3, iiVcc: [3.6, 3.6] },
+    },
+    {
+      code: 'logic_input_not_guaranteed',
+      components: ['U1'],
+      param: 'a',
+      detail: {
+        part: 'SN74LVC1G08',
+        level: 'high',
+        value: 3.3,
+        worst: 1.8,
+        vih: 2,
+        vcc: 3.3,
+        causes: ['leakage', 'output_guarantee'],
+      },
+    },
+    {
+      code: 'logic_input_not_guaranteed',
+      components: ['U2'],
+      param: 'a',
+      detail: {
+        part: 'SN74LVC1G08',
+        level: 'high',
+        value: 3.3,
+        worst: 2.64,
+        vih: 3.15,
+        vcc: 4.5,
+        causes: ['esp32_voh'],
+        pads: [18],
+      },
+    },
+    {
+      code: 'logic_input_undefined',
+      components: ['U2'],
+      param: 'a',
+      detail: {
+        part: 'SN74LVC1G08',
+        value: 3.3,
+        vcc: 5,
+        vih: 3.5,
+        vil: 1.5,
+        pads: [18],
+        padVoh: 2.64,
+      },
+    },
+  ];
+  it('no placeholder left, the part and pin named, technical runs LTR-isolated', () => {
+    for (const e of cases)
+      for (const lc of [en, he]) {
+        const m = engineErrorMessage(lc, e, null);
+        expect(m, `${e.code} ${lc.code}`).not.toMatch(/[{}]/);
+        expect(plain(m), `${e.code} ${lc.code}`).toContain(e.components![0]!);
+        if (e.param && e.param !== 'vcc' && e.param !== 'limit')
+          expect(plain(m), `${e.code} ${lc.code}`).toContain(
+            e.param.replace(/^([a-z])(\d)$/, '$2$1').toUpperCase(),
+          );
+      }
+  });
+});

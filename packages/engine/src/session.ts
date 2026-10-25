@@ -17,8 +17,9 @@ import type { TimeStep } from './devices.js';
 import { Circuit, ConvergenceError } from './circuit.js';
 import { Diode, LabPsu, Resistor, VoltageSource, type Device } from './devices.js';
 import { PwlLoad } from './pwl.js';
-import { RegulatedOutput } from './sources.js';
-import { GpioPin, outsideCharacterizedRegion } from './esp32Gpio.js';
+import { ConstantSink, RegulatedOutput } from './sources.js';
+import { GpioPin, outsideCharacterizedRegion, V_OH_CHAR_V } from './esp32Gpio.js';
+import { buildBounds, evaluateBounds } from './logic/bounds.js';
 import { Npn } from './bjt.js';
 
 /** The solver's default junction gmin (circuit.ts DEFAULTS), for exact device readouts. */
@@ -177,6 +178,22 @@ export type EngineErrorCode =
   | 'logic_unpowered_uncharacterized'
   | 'logic_input_undefined'
   | 'logic_input_out_of_range'
+  /**
+   * Sprint 21 (guarantee bounds, logic/bounds.ts), each naming the part and the pin:
+   * - `logic_supply_current_uncharacterized`: the part's supply path has resistance, so its
+   *   quiescent current I_CC moves its supply, but I_CC has no datasheet bound here (inputs not at
+   *   the I_CC test voltages, or a supply outside the I_CC row);
+   * - `logic_input_leakage_uncharacterized`: an input is held through a resistance and the
+   *   datasheet gives no input-leakage bound at this supply (SN74LVC08A: only at 3.6 V);
+   * - `logic_input_not_guaranteed`: within the datasheet bounds (input leakage, I_CC, ESP32
+   *   V_OH/V_OL, a driving gate's guaranteed output) the input can leave its level;
+   * - `logic_supply_not_guaranteed`: within those bounds the supply can leave its datasheet row
+   *   (or a supply can reach its current limit).
+   */
+  | 'logic_supply_current_uncharacterized'
+  | 'logic_input_leakage_uncharacterized'
+  | 'logic_input_not_guaranteed'
+  | 'logic_supply_not_guaranteed'
   | 'internal';
 
 export interface EngineError {
@@ -394,6 +411,11 @@ export class EngineSession {
    */
   /** Sprint 19B: the refusal the states solved in the last pass imply (applied once settled). */
   private passRefusal: EngineError | null = null;
+  /** Sprint 21: the guarantee-bound check of the latest pass (run once the states settle). */
+  private boundsCheck: (() => EngineError | null) | null = null;
+  /** Sprint 21: ESP32 output pads on an input's signal net (for the undefined-input message). */
+  private padsOnNet:
+    ((component: string, terminal: string) => { gpio: number; mode: string }[]) | null = null;
   /** Sprint 19B: logic parts in the circuit (the settle loop allows one pass per level). */
   private logicParts = 0;
   private time = 0;
@@ -613,6 +635,22 @@ export class EngineSession {
     };
   }
 
+  /**
+   * Sprint 21: an undefined logic input driven HIGH by an ESP32 output names the pads: the
+   * explanation is the 3.3 V logic level against the gate's V_IH (Task 4).
+   */
+  private annotate(error: EngineError): EngineError {
+    if (error.code !== 'logic_input_undefined' || !error.param || !this.padsOnNet) return error;
+    const pads = this.padsOnNet(error.components?.[0] ?? '', error.param).filter(
+      (p) => p.mode === 'output-high',
+    );
+    if (!pads.length) return error;
+    return {
+      ...error,
+      detail: { ...error.detail, pads: pads.map((p) => p.gpio), padVoh: V_OH_CHAR_V },
+    };
+  }
+
   private fail(error: EngineError): SolveFailure {
     return { ok: false, ...this.base(), error };
   }
@@ -663,7 +701,10 @@ export class EngineSession {
       if (changed.length === 0) {
         for (const [id, st] of next) this.discrete.set(id, st);
         // Sprint 19B: a refusal the settled states imply (a floating logic input...).
-        if (this.passRefusal) return this.fail(this.passRefusal);
+        if (this.passRefusal) return this.fail(this.annotate(this.passRefusal));
+        // Sprint 21: every logic conclusion must hold within the datasheet bounds.
+        const bound = this.boundsCheck?.() ?? null;
+        if (bound) return this.fail(bound);
         return outcome;
       }
       const key = JSON.stringify([...next].sort(([a], [b]) => (a < b ? -1 : 1)));
@@ -1309,6 +1350,97 @@ export class EngineSession {
       if (p.model.nextState) next.set(p.c.id, p.model.nextState(p.ctx, p.state, sol));
       if (p.model.history) this.pendingHistory.set(p.c.id, p.model.history(p.ctx, sol));
     }
+    // ---- Sprint 21: guarantee bounds of the logic conclusions (logic/bounds.ts) --------------
+    // Built here (this pass's circuit and solution), run by solveUnchecked once states settle.
+    const signalUf = new UnionFind();
+    for (const e of elements)
+      if (
+        e.active &&
+        !excluded.has(e.key) &&
+        (e.kind === 'switch' || devices.get(e.key) instanceof Resistor) &&
+        !e.nodes.some((n) => fixed.has(n))
+      )
+        for (const n of e.nodes.slice(1)) signalUf.union(e.nodes[0], n);
+    this.padsOnNet = (component, terminal) => {
+      const p = parts.find((x) => x.c.id === component);
+      if (!p) return [];
+      const root = signalUf.find(p.ctx.node(terminal));
+      return pinNodes
+        .filter(({ node }) => signalUf.find(node) === root)
+        .map(({ pin }) => ({ gpio: pin.gpio, mode: this.pinModes.get(pin.gpio)! }));
+    };
+    const step = this.step;
+    this.boundsCheck =
+      logicParts.length && xSolution.length
+        ? () => {
+            const specs = parts.flatMap((p) => {
+              const b = p.model.logicBounds?.(p.ctx, p.state);
+              return b ? [b] : [];
+            });
+            if (!specs.length) return null;
+            const index = new Map(circuit.nodes().map((n, i) => [n, i]));
+            const has = (n: string) => n === REF || index.has(n);
+            const opts = step ? { gmin: DC_GMIN, step } : { gmin: DC_GMIN };
+            const access = {
+              v: (x: readonly number[], n: string) => (n === REF ? 0 : x[index.get(n)!]!),
+              device: (x: readonly number[], key: string) => devices.get(key)!.current(x, opts),
+            };
+            const usable = specs.filter(
+              (s) =>
+                [s.vccNode, s.gndNode, ...s.inputs.map((i) => i.node)].every(has) &&
+                s.outputs.every((o) => has(o.node) && devices.has(o.key)) &&
+                (s.offPins ?? []).every((o) => has(o.node)),
+            );
+            const psus = elements
+              .filter((e) => e.kind === 'psu' && e.active && devices.has(e.key))
+              .map((e) => ({
+                id: e.component.id,
+                key: e.key,
+                limitA: this.psuSettings(e.component).limitA!,
+                cv: modes.get(e.key) === 'CV',
+              }));
+            const pads = pinNodes
+              .filter(({ node }) => has(node))
+              .map(({ pin, node }) => ({
+                gpio: pin.gpio,
+                node,
+                mode: this.pinModes.get(pin.gpio)!,
+              }));
+            const { perts, checks, extra } = buildBounds(
+              usable,
+              pads,
+              psus,
+              access,
+              xSolution,
+              REF,
+            );
+            const live = perts.filter((p) => has(p.from) && has(p.to));
+            let n = 0;
+            const failure = evaluateBounds(
+              {
+                x0: xSolution,
+                sensitivity: (inj) => circuit.sensitivity(xSolution, inj, {}, step).dx,
+                solveWith: (sinks) => {
+                  try {
+                    const c = circuit.withExtra(
+                      sinks.map((k) => new ConstantSink(`~bound${n++}`, k.from, k.to, k.amps)),
+                    );
+                    return (step ? c.solveStep(step) : c.solve()).x;
+                  } catch (e) {
+                    if (e instanceof SingularMatrixError || e instanceof ConvergenceError)
+                      return null;
+                    throw e;
+                  }
+                },
+              },
+              live,
+              checks,
+              extra,
+            );
+            return failure ? (failure as EngineError) : null;
+          }
+        : null;
+
     const outcome: SolveSuccess = {
       ok: true,
       ...this.base(),

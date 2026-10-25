@@ -81,6 +81,7 @@ export {
   LVC1G_CARDS,
   evaluate,
   inputRowAt,
+  outputGuaranteeAt,
   outputStageAt,
   quiescentAt,
   TABULATED_VCC_TOLERANCE_V,
@@ -89,6 +90,12 @@ export {
 } from './logic/lvc1g.js';
 export { GATE_TYPES, gateOutput, type LogicLevel } from './parts/logicGate.js';
 export { logicFeedback, unknownClosure } from './logic/topology.js';
+export {
+  buildBounds,
+  evaluateBounds,
+  ESP32_V_OL_MAX_V,
+  type LogicBoundSpec,
+} from './logic/bounds.js';
 // Exploration Foundation L3 (packaged logic) and L2 (logic state inspection).
 export {
   LOGIC_PACKAGE_CARDS,

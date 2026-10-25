@@ -247,13 +247,26 @@ describe('SN74LVC08A in the solve: four gates, one shared supply', () => {
   });
 
   it('a chain between gates of the SAME package settles (not feedback): 1Y → 2A', () => {
-    const { b, u } = quad(3.0, ['a1', 'b1', 'b2', 'a3', 'b3', 'a4', 'b4'], []);
+    // Sprint 21: 2A is held by gate 1's output stage (a non-zero resistance), so its level needs
+    // the input leakage bound, which SCAS283W §5.7 gives only at V_CC = 3.6 V (S21-Q2).
+    const at30 = quad(3.0, ['a1', 'b1', 'b2', 'a3', 'b3', 'a4', 'b4'], []);
+    at30.b.wire(`${at30.u}.y1`, `${at30.u}.a2`);
+    load(at30.b, `${at30.u}.y2`, 10_000);
+    expect(fails(solve(at30.b))).toMatchObject({
+      code: 'logic_input_leakage_uncharacterized',
+      param: 'a2',
+    });
+    // At 3.6 V (±100 µA row only: a 100 kΩ load) the chain settles.
+    const { b, u } = quad(3.6, ['a1', 'b1', 'b2', 'a3', 'b3', 'a4', 'b4'], []);
     b.wire(`${u}.y1`, `${u}.a2`);
-    load(b, `${u}.y2`, 10_000);
+    load(b, `${u}.y2`, 100_000);
     const r = ok(solve(b)).components[u]!;
     expect(r.logic!.gates[1]!.inputs[0]).toMatchObject({ pin: 'a2', level: 'high' });
     expect(r.logic!.gates[1]!.output.level).toBe('high');
-    expect(r.terminals['y2']!).toBeCloseTo(highInto(10_000).V, 9);
+    expect(r.logic!.gates[1]!.output.guarantee).toEqual({
+      volts: expect.closeTo(3.4, 12),
+      atA: 100e-6,
+    });
   });
 });
 
@@ -432,11 +445,10 @@ describe('L2 inspection and the input contract (levels, measured voltages, refus
     const r30 = ok(solve(rails.b)).components.U1!.state!;
     expect(r30).toMatchObject({ iccCondition: 'notSupply', deltaIccA: 500e-6 });
     expect(r30.iccMaxA).toBeUndefined();
-    // 1A at 3.0 · 20k/30k = 2.0 V: a defined HIGH, but not at a rail either.
+    // 1A at 3.0 · 20k/30k = 2.0 V from a divider: Sprint 21, held through a resistance at 3.0 V
+    // where the input leakage has no bound: refused before anything is reported.
     const mid = divider(10_000, 20_000, 'hi');
-    const st = ok(solve(mid.b)).components.U1!.state!;
-    expect(st).toMatchObject({ iccCondition: 'notSupply', deltaIccA: 500e-6 });
-    expect(st.iccMaxA).toBeUndefined();
+    expect(fails(solve(mid.b)).code).toBe('logic_input_leakage_uncharacterized');
     // At 1.8 V (rows 1.65–1.95 V): no I_CC, and no ΔI_CC row (2.7–3.6 V) either.
     const low = quad(1.8, ['a1', 'b1'], ['a2', 'b2', 'a3', 'b3', 'a4', 'b4']);
     const s18 = ok(solve(low.b)).components.U1!.state!;
@@ -445,11 +457,22 @@ describe('L2 inspection and the input contract (levels, measured voltages, refus
   });
 
   it('just inside the thresholds: 2.0 V is HIGH, 0.8 V is LOW (inclusive, as the sheet states)', () => {
-    // 3.0 · 20k/(10k + 20k) = 2.0 V; 3.0 · 4k/(11k + 4k) = 0.8 V.
-    const hi = divider(10_000, 20_000, 'hi');
-    expect(ok(solve(hi.b)).components.U1!.logic!.gates[0]!.inputs[0]!.level).toBe('high');
-    const lo = divider(11_000, 4_000, 'hi');
-    expect(ok(solve(lo.b)).components.U1!.logic!.gates[0]!.inputs[0]!.level).toBe('low');
+    // Sprint 21: from a second supply wired straight to 1A (no resistance, so no leakage error:
+    // exactly 2.0 V / 0.8 V). A divider would put a resistance there, and at exactly the
+    // threshold the ±5 µA leakage bound would make the level not guaranteed.
+    for (const [v, level] of [
+      [2.0, 'high'],
+      [0.8, 'low'],
+    ] as const) {
+      const { b, u } = quad(3.0, ['b1'], ['a2', 'b2', 'a3', 'b3', 'a4', 'b4']);
+      const p2 = b.add('instrument.lab_psu');
+      b.set(p2, 'setpointVoltage', { value: v, unit: 'volt' })
+        .set(p2, 'currentLimit', { value: 0.1, unit: 'ampere' })
+        .set(p2, 'outputEnabled', true)
+        .wire(`${p2}.negative`, 'GND1.ref')
+        .wire(`${p2}.positive`, `${u}.a1`);
+      expect(ok(solve(b)).components[u]!.logic!.gates[0]!.inputs[0]!.level).toBe(level);
+    }
   });
 
   it('single gates (L1) report the same inspection', () => {
@@ -475,7 +498,8 @@ describe('L2 inspection and the input contract (levels, measured voltages, refus
             { pin: 'a', level: 'high', volts: 3 },
             { pin: 'b', level: 'low', volts: 0 },
           ],
-          output: { pin: 'y', level: 'low', volts: 0 },
+          // Sprint 21: the datasheet guarantee at its (zero) current: V_OL ≤ 0.1 V up to 100 µA.
+          output: { pin: 'y', level: 'low', volts: 0, guarantee: { volts: 0.1, atA: 100e-6 } },
         },
       ],
     });

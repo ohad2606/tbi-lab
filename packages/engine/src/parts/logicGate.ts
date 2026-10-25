@@ -44,6 +44,7 @@ import {
   evaluate,
   inputRowAt,
   LVC1G_CARDS,
+  outputGuaranteeAt,
   outputStageAt,
   quiescentAt,
   RAIL_V,
@@ -284,6 +285,40 @@ export function gateModel(fn: LogicCard['function']): PartModel {
     logicPins: (ctx) => ({ inputs: cardOf(ctx).inputs, outputs: ['y'] }),
     nextState: (ctx, state, sol) => nextGateState(ctx, sol, state),
     refusal: (ctx, state) => logicRefusal(ctx, state, cardOf(ctx).partNumber),
+    logicBounds: (ctx, state) => {
+      const card = cardOf(ctx);
+      const out = levelOf(state, 'out');
+      if (typeof state.refuse === 'string' || typeof state.vcc !== 'number') return null;
+      const base = {
+        component: ctx.component.id,
+        part: card.partNumber,
+        card,
+        vccNode: ctx.node('vcc'),
+        gndNode: ctx.node('gnd'),
+        vcc: state.vcc,
+      };
+      if (out === 'off')
+        return {
+          ...base,
+          powered: false,
+          inputs: [],
+          outputs: [],
+          offPins: [...card.inputs, 'y'].map((pin) => ({ pin, node: ctx.node(pin) })),
+        };
+      if (out !== 'high' && out !== 'low') return null;
+      const inputs = card.inputs.map((pin) => ({
+        pin,
+        node: ctx.node(pin),
+        level: levelOf(state, `in_${pin}`) as 'high' | 'low',
+      }));
+      if (inputs.some((i) => i.level !== 'high' && i.level !== 'low')) return null;
+      return {
+        ...base,
+        powered: true,
+        inputs,
+        outputs: [{ pin: 'y', node: ctx.node('y'), key: `${ctx.component.id}/y`, level: out }],
+      };
+    },
     report: (ctx, state, sol) => {
       const id = ctx.component.id;
       const card = cardOf(ctx);
@@ -327,7 +362,12 @@ export function gateModel(fn: LogicCard['function']): PartModel {
               level: (out === 'off' ? 'off' : inputs[t] === 'init' ? 'x' : inputs[t]) as LogicLevel,
               volts: rel(t),
             })),
-            output: { pin: 'y', level: out === 'init' ? 'x' : out, volts: rel('y') },
+            output: {
+              pin: 'y',
+              level: out === 'init' ? 'x' : out,
+              volts: rel('y'),
+              ...guaranteeOf(card, supplyV, out, iy),
+            },
           },
         ],
       };
@@ -358,6 +398,18 @@ export function gateModel(fn: LogicCard['function']): PartModel {
     ratings: (p, r) => gateRatings(LVC1G_CARDS[p.model as string]!, r),
   };
   return model;
+}
+
+/** Sprint 21: the datasheet guarantee for an output at its solved current (inspection). */
+export function guaranteeOf(
+  card: LogicCard,
+  vcc: number | null,
+  level: string,
+  amps: number,
+): { guarantee?: { volts: number; atA: number } } {
+  if (vcc === null || (level !== 'high' && level !== 'low')) return {};
+  const g = outputGuaranteeAt(card, vcc, level, amps);
+  return g ? { guarantee: g } : {};
 }
 
 /** Datasheet limits (card): absolute maxima and recommended operating conditions. */

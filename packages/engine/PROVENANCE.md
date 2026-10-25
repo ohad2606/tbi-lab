@@ -197,3 +197,13 @@ angle, deadband, slew; pulse map an assumption: TowerPro gives about 150° trave
 1–2 ms for ±90°), `peripherals/hcsr04.ts` (echo width 2d/c, c = 331.3 + 0.606 T; echo start after
 the 8-cycle burst is an assumption), `peripherals/dht22.ts` (40-bit frame reproducing the AM2302
 worked example; bit timing 27/70 µs).
+
+## Added in Sprint 21 (logic guarantee bounds)
+
+`src/circuit.ts` gained two ADDITIVE methods; no existing solve path changed:
+
+- `sensitivity(x, injections)`: the linearised response J⁻¹·b of a solved operating point to unit
+  current injections (one LU factorisation of the Newton matrix at the solution).
+- `withExtra(devices)`: a new circuit with the same devices in the same order (same indices) plus
+  extra devices on existing nodes, for the exact corner solves.
+  Both are used only by `src/logic/bounds.ts` through `session.ts` (see that file's header).

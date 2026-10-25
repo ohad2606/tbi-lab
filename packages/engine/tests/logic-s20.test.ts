@@ -93,7 +93,8 @@ describe('undriven inputs are floating, never a valid LOW (owner policy)', () =>
       const q = b.add('logic.quad_and');
       Q = q;
       const r = b.add('component.resistor');
-      b.psu(3.0, 0.5).ohms(r, 1000).wire('PSU1.positive', `${q}.vcc`).wire(`${q}.gnd`, 'GND1.ref');
+      // Sprint 21: 3.6 V, where SCAS283W §5.7 specifies I_I (needed for the 1 kΩ + pad path).
+      b.psu(3.6, 0.5).ohms(r, 1000).wire('PSU1.positive', `${q}.vcc`).wire(`${q}.gnd`, 'GND1.ref');
       for (const t of LVC08A_CARD.inputs.filter((t) => t !== 'a1')) b.wire(`${q}.${t}`, 'GND1.ref');
       b.wire(`${u}.gpio18`, `${r}.a`).wire(`${u}.gpio19`, `${r}.a`).wire(`${r}.b`, `${q}.a1`);
     });
@@ -226,6 +227,9 @@ describe("mixed 3.3 V / 5 V: decided by V_IH at the gate's own supply (§5.3)", 
         vcc: 5,
         vih: expect.closeTo(3.5, 12),
         vil: expect.closeTo(1.5, 12),
+        // Sprint 21: the ESP32 output that drives it, and its guaranteed V_OH (0.8 × VDD).
+        pads: [18],
+        padVoh: expect.closeTo(2.64, 12),
       },
     });
     // The pad's LOW (0 V) is a valid LOW at 5 V (V_IL = 1.5 V): only HIGH is refused.
@@ -233,9 +237,14 @@ describe("mixed 3.3 V / 5 V: decided by V_IH at the gate's own supply (§5.3)", 
     expect(ok(s.solve()).components[G]!.state).toMatchObject({ input_a: 'low' });
   });
 
-  it("at 4.5 V, V_IH = 3.15 V: the pad model's unloaded 3.3 V passes (a 150 mV margin from the ideal VDD)", () => {
+  it("at 4.5 V, V_IH = 3.15 V: the pad model's 3.3 V passes, but the ESP32 guarantees only V_OH ≥ 2.64 V: refused (Sprint 21)", () => {
     const { s, G } = esp(4.5);
-    expect(ok(s.solve()).components[G]!.state).toMatchObject({ input_a: 'high' });
+    expect(fails(s.solve())).toMatchObject({
+      code: 'logic_input_not_guaranteed',
+      components: [G],
+      param: 'a',
+      detail: { level: 'high', pads: [18] },
+    });
     expect(inputThreshold(4.5)).toBeCloseTo(3.15, 12);
   });
 
@@ -294,7 +303,9 @@ describe('cascades: inside a package and between packages', () => {
       const u1 = b.add('logic.quad_and');
       const u2 = b.add('logic.quad_and');
       const g = b.add('logic.gate_and');
-      b.psu(3.0, 0.5).wire('PSU1.negative', 'GND1.ref');
+      // Sprint 21: 3.6 V, where SCAS283W §5.7 specifies I_I (each chained input is held by an
+      // output stage, a non-zero resistance; at 3.0 V that is refused, owner question S21-Q2).
+      b.psu(3.6, 0.5).wire('PSU1.negative', 'GND1.ref');
       for (const p of [u1, u2, g]) b.wire('PSU1.positive', `${p}.vcc`).wire(`${p}.gnd`, 'GND1.ref');
       const lv = (on: boolean) => (on ? 'PSU1.positive' : 'GND1.ref');
       // Y = (x·y) [U1 gate 1] · z [U2 gate 1]; U2 gate 2 = Y · (single gate: x·z).

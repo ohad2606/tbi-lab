@@ -9,10 +9,11 @@
  * the device card's guaranteed characteristic (SCAS283W §5.7 at V_CC = 3.0 V) and Kirchhoff's
  * laws, checked on the solved numbers: nothing about the chain is assumed.
  */
-import { describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createSnapshot, setParam, type ProjectDocument } from '@tbi-lab/domain';
 import {
   EngineSession,
+  LVC08A_CARD,
   ratingWarnings,
   type RuntimePinMode,
   type SolveOutcome,
@@ -49,7 +50,41 @@ function session(d: ProjectDocument) {
  */
 const dropAt = (i: number) => 0.2 + (i - 100e-6) * (0.4 / 11.9e-3);
 
-describe('ESP32 → SN74LVC08A → LEDs (golden)', () => {
+/**
+ * Sprint 21 (guarantee bounds): as shipped (3.0 V) every 08A input of this example is held through
+ * a resistance (a 10 kΩ pull-down, an ESP32 pad's 16.5 Ω, gate 1's output stage) and SCAS283W §5.7
+ * specifies the input leakage only at V_CC = 3.6 V: the example is refused by name in every pad
+ * state. The golden numbers below are kept as the PREVIEW of owner option S21-Q2(b) (accept the
+ * 3.6 V I_I row over 1.65–3.6 V): the card's I_I supply range is widened for that block only.
+ */
+describe('as shipped (Sprint 21): refused, input leakage not characterized at 3.0 V', () => {
+  it('every pad-mode combination is refused by name (no level is shown)', () => {
+    const modes: RuntimePinMode[] = ['input', 'output-high', 'output-low'];
+    for (const m18 of modes)
+      for (const m19 of modes) {
+        const { s } = session(DOC);
+        s.setPinMode(18, m18);
+        s.setPinMode(19, m19);
+        const o = s.solve();
+        if (o.ok) throw new Error(`expected a refusal ${m18}/${m19}`);
+        expect(o.error).toMatchObject({
+          code: 'logic_input_leakage_uncharacterized',
+          components: ['U2'],
+          detail: { part: 'SN74LVC08A', iiVcc: [3.6, 3.6] },
+        });
+      }
+  });
+});
+
+describe('ESP32 → SN74LVC08A → LEDs (golden; preview of owner option S21-Q2(b))', () => {
+  const shipped = LVC08A_CARD.iiVcc;
+  beforeAll(() => {
+    (LVC08A_CARD as { iiVcc: readonly [number, number] }).iiVcc = [1.65, 3.6];
+  });
+  afterAll(() => {
+    (LVC08A_CARD as { iiVcc: readonly [number, number] }).iiVcc = shipped;
+  });
+
   it('the attachments are the two gate-1 inputs', () => {
     const { pins } = session(DOC);
     expect(pins.map((p) => [p.gpio, p.component, p.terminal]).sort()).toEqual([

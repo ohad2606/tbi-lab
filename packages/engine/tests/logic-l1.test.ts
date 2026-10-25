@@ -392,16 +392,18 @@ describe('review fixes (Sprint 19B independent review)', () => {
     const b = new Bench();
     const g = b.add('logic.gate_and');
     const r = b.add('component.resistor');
-    b.psu(3.0, 0.5).ohms(r, 1).wire('PSU1.negative', 'GND1.ref').wire('PSU1.positive', `${r}.a`);
+    // Sprint 21: the supply now has to be guaranteed within the I_CC bound through the 1 Ω (inputs
+    // at GND: the I_CC test condition). At exactly 3.0 V any drop leaves the tabulated point (and
+    // the 3.0 V row), so 3.3 V (the PM-1 class): (10 + 2 × 5) µA × 1 Ω = 20 µV.
+    b.psu(3.3, 0.5).ohms(r, 1).wire('PSU1.negative', 'GND1.ref').wire('PSU1.positive', `${r}.a`);
     b.wire(`${r}.b`, `${g}.vcc`)
       .wire(`${g}.gnd`, 'GND1.ref')
       .wire(`${g}.a`, 'GND1.ref')
       .wire(`${g}.b`, 'GND1.ref');
     load(10_000)(b, g);
-    // V_CC is 3.0 V exactly (no load current through the 1 Ω): LOW output.
     expect(ok(solve(b)).components[g]!.state).toMatchObject({
       gateOutput: 'low',
-      outputModel: 'tabulated',
+      outputModel: 'class',
     });
   });
 
