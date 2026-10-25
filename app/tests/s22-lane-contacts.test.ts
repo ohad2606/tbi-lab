@@ -8,7 +8,8 @@
  * before -> after: 2001 4 -> 0, 2002 5 -> 1, 2011 4 -> 1 (s22r sweeps).
  */
 import { describe, expect, it } from 'vitest';
-import { routeAutomatic } from '../src/ui/routing.js';
+import { routeConflictsReport } from '@tbi-lab/domain';
+import { componentBoxes, routeAutomatic } from '../src/ui/routing.js';
 import { deriveScene } from '../src/views/scene3d/scene.js';
 import { measure3d } from './support/wire3dMetrics.js';
 import { randomBench } from './support/routingBench.js';
@@ -24,6 +25,25 @@ describe('exit lanes of different nodes do not touch (s22r)', () => {
       for (const p of m.foreignPenetrations) expect(s.routeLimits, seed).toContain(p.a);
       for (const w of s.wires)
         expect(Math.max(...w.points.map((p) => p.y)), `${seed} ${w.id}`).toBeLessThan(30);
+    }
+  });
+
+  // 2D (route.ts): automatic wires left reading as connected to another node get first pick in
+  // one more pass, kept when fewer such wires remain. randomBench(40, 7103, dense, board): W35 and
+  // W36 ran along another node's wire through a gate; randomBench(40, 2005, ...) W8 / W24 met
+  // another node's wire.
+  it('2D: a wire drawn along another node is routed first and clears it', () => {
+    for (const seed of [7103]) {
+      const doc = randomBench(40, seed, { dense: true, board: true }).doc;
+      const d = routeAutomatic(doc);
+      const r = routeConflictsReport(d, componentBoxes(d));
+      expect(r.kinds.wire, `${seed}`).toEqual([]);
+      expect(r.kinds.body, `${seed}`).toEqual([]);
+      expect(JSON.stringify(routeAutomatic(doc).layout)).toBe(JSON.stringify(d.layout));
+      // Endpoints (and so the netlist) untouched.
+      expect(d.layout.wires.map((w) => [w.id, w.from, w.to])).toEqual(
+        doc.layout.wires.map((w) => [w.id, w.from, w.to]),
+      );
     }
   });
 });

@@ -2730,8 +2730,38 @@ function freshWires(
         const group = groups.get(`${e.comp.id}|${e.side}`) ?? [];
         const own = (d: number) =>
           group.every((o) => o === e || Math.abs(o.lane - d) >= COINCIDENT);
+        let ran = false;
         for (let d = e.lane + 0.5; d <= e.lane + LANE_PITCH + 1e-9 && free(d); d += 0.5)
           if (!onPath(d) && own(d)) {
+            e.lane = d;
+            ran = true;
+            break;
+          }
+        // Sprint 22 (s22r): still on the path of a wire of ANOTHER node (its riser would go up
+        // through that wire: a contact of two nets), it runs on up to two more pitches to clear
+        // that wire's path (wires of its own node may pass over its riser).
+        if (ran) continue;
+        const mine = nodeOf(p.w);
+        const foreign = preps
+          .filter((q) => q !== p && (mine === null || nodeOf(q.w) !== mine))
+          .map((q) => q.full);
+        const onForeign = (d: number) => {
+          const q = add(e.pin, e.u, d);
+          return foreign.some((r) =>
+            r.some((b, i) => i > 0 && pointToRun(q, r[i - 1]!, b) < COINCIDENT),
+          );
+        };
+        if (!onForeign(e.lane)) continue;
+        // Never past where the wire's own route leaves the lane's line (it would turn back).
+        const k = p.under[0] === e ? 0 : 1;
+        const joinAt = k === 0 ? p.route[0] : p.route[p.route.length - 1];
+        const limit = joinAt ? dotP(sub2(joinAt, e.pin), e.u) : Infinity;
+        for (
+          let d = e.lane + 0.5;
+          d <= Math.min(e.lane + 2 * LANE_PITCH, limit) + 1e-9 && free(d);
+          d += 0.5
+        )
+          if (!onForeign(d) && own(d)) {
             e.lane = d;
             break;
           }

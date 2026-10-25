@@ -1455,6 +1455,42 @@ export function routeAutoWiresReport(
     score = k;
     order = next;
   }
+  // Sprint 22 (s22r): automatic wires still drawn where they read as connected to another node
+  // (along / into its wire, over its pin, through a body: routeConflictsReport) get first pick:
+  // one more pass with them routed before the others; kept when it leaves fewer such wires
+  // (then fewer same-node crossings, crossings, bends). Deterministic; one pass at most, sharing
+  // the pass's budget, and only when there is a conflict.
+  if (budget.skipped === 0) {
+    const bad = (d: ProjectDocument) => {
+      const c = routeConflictsReport(d, boxes);
+      return c.limited ? null : c.wires.filter((id) => ids.has(id));
+    };
+    const now = bad(best.doc);
+    if (now && now.length) {
+      const first = new Set(now);
+      const next = [
+        ...order.filter((w) => first.has(w.id)),
+        ...order.filter((w) => !first.has(w.id)),
+      ];
+      const from = next.findIndex((w, k) => w !== order[k]);
+      if (from >= 0) {
+        const prefix = new Set(next.slice(0, from).map((w) => w.id));
+        const routed = routeInOrder(
+          best.doc,
+          next,
+          boxes,
+          nodes,
+          true,
+          from,
+          budget,
+          new Set([...best.degraded].filter((id) => prefix.has(id))),
+        );
+        const after = budget.skipped === 0 ? bad(routed.doc) : null;
+        if (after && better([after.length, ...orderScore(routed.doc, ids)], [now.length, ...score]))
+          best = routed;
+      }
+    }
+  }
   return { doc: best.doc, degraded: [...best.degraded].sort() };
 }
 
