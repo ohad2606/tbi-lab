@@ -149,12 +149,15 @@ export class Circuit {
   }
 
   /**
-   * Sprint 21: a new circuit with the same devices, in the same order (so the same node and branch
-   * indices), plus `extra` devices that use only existing nodes (the logic bound corner solves).
+   * Sprint 21: a new circuit with the same devices, in the same order (so the same NODE indices),
+   * plus `extra` devices that use only existing nodes, and devices replaced by id (`replace`: a
+   * replacement with a branch shifts the branch indices). For the logic bound corner solves. The
+   * devices are SHARED: solving the new circuit re-prepares them (indices, PSU modes, limiting
+   * state); the caller re-prepares this circuit (`nodes()`) before reading its own solution again.
    */
-  withExtra(extra: readonly Device[]): Circuit {
+  withExtra(extra: readonly Device[], replace: ReadonlyMap<string, Device> = new Map()): Circuit {
     const c = new Circuit();
-    for (const d of [...this.devices, ...extra]) c.add(d);
+    for (const d of [...this.devices.map((x) => replace.get(x.id) ?? x), ...extra]) c.add(d);
     return c;
   }
 
@@ -233,7 +236,7 @@ export class Circuit {
    */
   sensitivity(
     x: readonly number[],
-    injections: readonly { from: string; to: string }[],
+    injections: readonly ({ from: string; to: string } | { branch: string })[],
     options: SolveOptions = {},
     step?: TimeStep,
   ): { dx: number[][]; nodeIndex: ReadonlyMap<string, number> } {
@@ -263,13 +266,21 @@ export class Circuit {
     }
     const idx = (name: string) =>
       GROUND_NAMES.has(name) ? -1 : (this.nodeIndices.get(name) ?? -2);
-    const dx = injections.map(({ from, to }) => {
+    const dx = injections.map((inj) => {
       const b = new Array<number>(n).fill(0);
-      const a = idx(from);
-      const c = idx(to);
-      if (a === -2 || c === -2) throw new Error(`sensitivity: unknown node ${from} or ${to}`);
-      if (a >= 0) b[a] = b[a]! - 1;
-      if (c >= 0) b[c] = b[c]! + 1;
+      if ('branch' in inj) {
+        // A unit change of a voltage source's value (its branch equation's right-hand side).
+        const k = this.branchIndices.get(inj.branch);
+        if (k === undefined) throw new Error(`sensitivity: unknown branch ${inj.branch}`);
+        b[k] = 1;
+      } else {
+        const { from, to } = inj;
+        const a = idx(from);
+        const c = idx(to);
+        if (a === -2 || c === -2) throw new Error(`sensitivity: unknown node ${from} or ${to}`);
+        if (a >= 0) b[a] = b[a]! - 1;
+        if (c >= 0) b[c] = b[c]! + 1;
+      }
       const y = perm.map((k) => b[k]!);
       for (let r = 0; r < n; r++) for (let k = 0; k < r; k++) y[r] = y[r]! - m[r]![k]! * y[k]!;
       for (let r = n - 1; r >= 0; r--) {

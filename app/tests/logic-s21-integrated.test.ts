@@ -307,12 +307,17 @@ describe('ESP32 driving logic (pads as the app attaches them)', () => {
     return new EngineSession(plan.plan.request.circuit, { pins: plan.plan.request.attachments });
   };
 
-  it('example D at 3.0 V: GPIO18 HIGH is guaranteed (2.64 V ≥ V_IH 2.0 V); at 4.5 V it is not → refused, naming GPIO18 (EN/HE)', () => {
+  it('example D: Y HIGH into the LED and GPIO19 is refused (2.4 V guaranteed < ESP32 V_IH 2.475 V); at 4.5 V GPIO18 HIGH is refused for the gate (EN/HE)', () => {
     const D = example('esp32-logic-override');
     const s = hosted(D);
     s.setPinMode(18, 'output-high');
     s.setPinMode(19, 'input');
-    expect(ok(s.solve()).components.U2!.logic!.gates[0]!.inputs[0]!.level).toBe('high');
+    // Review item 3: the read-back pad reads the gate output against its own thresholds.
+    const e0 = refused(s.solve());
+    expect(e0).toMatchObject({ code: 'logic_mcu_input_not_guaranteed', param: 'gpio19' });
+    expect(plain(engineErrorMessage(en, e0, D))).toContain('GPIO19');
+    expect(plain(engineErrorMessage(en, e0, D))).toContain('V_IH 2.475 V');
+    expect(plain(engineErrorMessage(he, e0, D))).toContain('GPIO19');
     const r = setParam(D, 'PSU1', 'setpointVoltage', { value: 4.5, unit: 'volt' });
     if (!r.ok) throw new Error(r.error);
     const s2 = hosted(r.doc);
@@ -477,6 +482,63 @@ describe('Sprint 21 refusal messages: every new code and variant renders fully i
       },
     },
   ];
+  // Sprint 21 review: the new codes, and item 14 (the ESP32-HIGH wording only for a HIGH input).
+  cases.push(
+    {
+      code: 'logic_bound_not_established',
+      components: ['U1'],
+      detail: { reason: 'corner_unsolved' },
+    },
+    {
+      code: 'logic_mcu_input_not_guaranteed',
+      components: ['U2'],
+      param: 'gpio4',
+      detail: {
+        gpio: 4,
+        level: 'high',
+        value: 2.78,
+        worst: 2.4,
+        vih: 2.475,
+        causes: ['output_guarantee'],
+      },
+    },
+    {
+      code: 'logic_mcu_input_not_guaranteed',
+      components: ['U2'],
+      param: 'gpio4',
+      detail: { gpio: 4, level: 'undefined', value: 1.5, vih: 2.475, vil: 0.825 },
+    },
+    {
+      code: 'logic_mcu_output_uncharacterized',
+      components: ['U2'],
+      param: 'gpio18',
+      detail: { gpio: 18, level: 'high', value: 3.3e-4, limit: 1e-5 },
+    },
+    {
+      code: 'logic_mcu_pull_uncharacterized',
+      components: ['U2'],
+      param: 'gpio4',
+      detail: { gpio: 4, mode: 'input-pullup' },
+    },
+  );
+  it('item 14: a LOW input whose causes include the ESP32 V_OH band is not worded as "driven HIGH"', () => {
+    const e: EngineError = {
+      code: 'logic_input_not_guaranteed',
+      components: ['U1'],
+      param: 'a',
+      detail: {
+        part: 'SN74LVC1G08',
+        level: 'low',
+        value: 0.1,
+        worst: 0.9,
+        vil: 0.8,
+        vcc: 3,
+        causes: ['esp32_voh', 'leakage'],
+      },
+    };
+    expect(plain(engineErrorMessage(en, e, null))).not.toContain('driven HIGH');
+    expect(plain(engineErrorMessage(en, e, null))).toContain('above V_IL 800 mV');
+  });
   it('no placeholder left, the part and pin named, technical runs LTR-isolated', () => {
     for (const e of cases)
       for (const lc of [en, he]) {
@@ -485,7 +547,9 @@ describe('Sprint 21 refusal messages: every new code and variant renders fully i
         expect(plain(m), `${e.code} ${lc.code}`).toContain(e.components![0]!);
         if (e.param && e.param !== 'vcc' && e.param !== 'limit')
           expect(plain(m), `${e.code} ${lc.code}`).toContain(
-            e.param.replace(/^([a-z])(\d)$/, '$2$1').toUpperCase(),
+            e.param.startsWith('gpio')
+              ? `GPIO${e.param.slice(4)}`
+              : e.param.replace(/^([a-z])(\d)$/, '$2$1').toUpperCase(),
           );
       }
   });

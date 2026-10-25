@@ -10,21 +10,10 @@
  * laws, checked on the solved numbers: nothing about the chain is assumed.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createSnapshot, setParam, type ProjectDocument } from '@tbi-lab/domain';
-import {
-  EngineSession,
-  LVC08A_CARD,
-  ratingWarnings,
-  type RuntimePinMode,
-  type SolveOutcome,
-  type SolveSuccess,
-} from '@tbi-lab/engine';
+import { createSnapshot, type ProjectDocument } from '@tbi-lab/domain';
+import { EngineSession, LVC08A_CARD, ratingWarnings, type RuntimePinMode } from '@tbi-lab/engine';
 import doc from '../src/examples/data/esp32-logic-quad-and.json';
 
-const ok = (o: SolveOutcome): SolveSuccess => {
-  if (!o.ok) throw new Error(`expected success, got ${JSON.stringify(o.error)}`);
-  return o;
-};
 const DOC = doc as unknown as ProjectDocument;
 
 function session(d: ProjectDocument) {
@@ -43,12 +32,6 @@ function session(d: ProjectDocument) {
     });
   return { s: new EngineSession(projected, { pins }), full, pins };
 }
-
-/**
- * SN74LVC08A at V_CC = 3.0 V, guaranteed HIGH envelope: the drop V_CC − V_OH through
- * (0.2 V, 100 µA), (0.6 V, 12 mA), (0.8 V, 24 mA). A few-mA LED load is on the first segment.
- */
-const dropAt = (i: number) => 0.2 + (i - 100e-6) * (0.4 / 11.9e-3);
 
 /**
  * Sprint 21 (guarantee bounds): as shipped (3.0 V) every 08A input of this example is held through
@@ -93,97 +76,26 @@ describe('ESP32 → SN74LVC08A → LEDs (golden; preview of owner option S21-Q2(
     ]);
   });
 
-  it('the truth table of the chain (1Y = A·B, 2Y = 1Y·button) through the solve; LED currents on the guaranteed envelope', () => {
-    const { s, full } = session(DOC);
-    const lv = (b: boolean) => (b ? 'high' : 'low');
-    for (const a of [false, true])
-      for (const b of [false, true])
-        for (const btn of [false, true]) {
-          const at = `A=${+a} B=${+b} btn=${+btn}`;
-          s.setPinMode(18, a ? 'output-high' : 'output-low');
-          s.setPinMode(19, b ? 'output-high' : 'output-low');
-          s.setMomentary('SW1', btn);
-          const o = ok(s.solve());
-          const u = o.components.U2!;
-          const g = u.logic!.gates;
-          const y1 = a && b;
-          const y2 = y1 && btn;
-          expect(
-            g.map((x) => x.output.level),
-            at,
-          ).toEqual([lv(y1), lv(y2), 'low', 'low']);
-          expect(
-            g[0]!.inputs.map((p) => p.level),
-            at,
-          ).toEqual([lv(a), lv(b)]);
-          expect(
-            g[1]!.inputs.map((p) => p.level),
-            at,
-          ).toEqual([lv(y1), lv(btn)]);
-          const d1 = o.components.D1!.current!;
-          const d2 = o.components.D2!.current!;
-          for (const [on, i, y, led, r] of [
-            [y1, d1, 'y1', 'D1', 'R1'],
-            [y2, d2, 'y2', 'D2', 'R2'],
-          ] as const) {
-            if (on) {
-              expect(i, at).toBeGreaterThan(3e-3);
-              expect(i, at).toBeLessThan(6e-3);
-              // The output sources exactly the LED's current (2A draws none), on the envelope.
-              expect(u.currents![y]!, at).toBeCloseTo(i, 12);
-              expect(u.terminals[y]!, at).toBeCloseTo(3.0 - dropAt(i), 9);
-              // KVL along Y → 220 Ω → LED → GND.
-              expect(o.components[r]!.voltage!, at).toBeCloseTo(220 * i, 9);
-              expect(u.terminals[y]! - 220 * i - o.components[led]!.voltage!, at).toBeCloseTo(0, 9);
-            } else {
-              expect(i, at).toBeLessThan(1e-9);
-              expect(u.terminals[y]!, at).toBeCloseTo(0, 9);
-            }
-          }
-          // The SHARED V_CC pin carries both gates' source currents; PSU1 also feeds the pressed
-          // button's 10 kΩ pull-down (3 V / 10 kΩ).
-          expect(u.currents!.vcc!, at).toBeCloseTo((y1 ? d1 : 0) + (y2 ? d2 : 0), 12);
-          expect(o.components.PSU1!.current!, at).toBeCloseTo(
-            u.currents!.vcc! + (btn ? 3.0 / 10_000 : 0),
-            12,
-          );
-          expect(ratingWarnings(full, o), at).toEqual([]);
-        }
-  });
-
-  it('a heavier LED resistor moves the operating point along the same envelope (not a fixed answer)', () => {
-    const r = setParam(DOC, 'R1', 'resistance', { value: 470, unit: 'ohm' });
-    if (!r.ok) throw new Error(r.error);
-    const base = session(DOC);
-    const heavy = session(r.doc);
-    for (const { s } of [base, heavy]) {
-      s.setPinMode(18, 'output-high');
-      s.setPinMode(19, 'output-high');
-    }
-    const i220 = ok(base.s.solve()).components.D1!.current!;
-    const o = ok(heavy.s.solve());
-    const i470 = o.components.D1!.current!;
-    expect(i470).toBeLessThan(i220);
-    expect(o.components.U2!.terminals['y1']!).toBeCloseTo(3.0 - dropAt(i470), 9);
-  });
-
-  it('every pad-mode combination solves: input mode is a real LOW through the 10 kΩ pull-downs (Sprint 20)', () => {
-    // Before Sprint 20 the pads had no pull-downs and an input-mode pad's leakage model put the
-    // gate input at 0 V (LOW). Now an input-mode pad does not drive: the example's own 10 kΩ
-    // pull-downs (R4, R5) hold 1A/1B LOW before setup() runs. Output modes give 3.3 V (HIGH:
-    // 5.5 V-tolerant input) or 0 V.
-    const MODES: RuntimePinMode[] = ['input', 'output-high', 'output-low'];
-    for (const m18 of MODES)
-      for (const m19 of MODES) {
-        const { s } = session(DOC);
+  it('even with Q2(b): a pad driven HIGH into its 10 kΩ pull-down is refused (ESP32 V_OH has no load current, review item 5); pads as inputs or LOW run, every output LOW', () => {
+    const modes: RuntimePinMode[] = ['input', 'output-low', 'output-high'];
+    for (const m18 of modes)
+      for (const m19 of modes) {
+        const { s, full } = session(DOC);
         s.setPinMode(18, m18);
         s.setPinMode(19, m19);
-        const o = ok(s.solve());
-        const lv = (m: RuntimePinMode) => (m === 'output-high' ? 'high' : 'low');
+        const o = s.solve();
+        const at = `${m18}/${m19}`;
+        if (m18 === 'output-high' || m19 === 'output-high') {
+          expect(o.ok ? null : o.error.code, at).toBe('logic_mcu_output_uncharacterized');
+          continue;
+        }
+        if (!o.ok) throw new Error(`${at}: ${JSON.stringify(o.error)}`);
         expect(
-          o.components.U2!.logic!.gates[0]!.inputs.map((p) => p.level),
-          `${m18} ${m19}`,
-        ).toEqual([lv(m18), lv(m19)]);
+          o.components.U2!.logic!.gates.map((g) => g.output.level),
+          at,
+        ).toEqual(['low', 'low', 'low', 'low']);
+        expect(o.components.D1!.current!, at).toBeLessThan(1e-9);
+        expect(ratingWarnings(full, o), at).toEqual([]);
       }
   });
 

@@ -49,7 +49,11 @@ describe('no shipped example raises a pad over-voltage warning (T-D3)', () => {
         if (
           !out.ok &&
           (out.error.code === 'logic_output_uncharacterized' ||
-            out.error.code === 'logic_input_leakage_uncharacterized')
+            out.error.code === 'logic_input_leakage_uncharacterized' ||
+            // Sprint 21 review (items 3, 5): an ESP32 pad reading a gate HIGH that is not
+            // guaranteed above its V_IH; a pad relied on for a level while it carries a load.
+            out.error.code === 'logic_mcu_input_not_guaranteed' ||
+            out.error.code === 'logic_mcu_output_uncharacterized')
         ) {
           refused++;
           refusedAt.push(n);
@@ -69,8 +73,8 @@ describe('no shipped example raises a pad over-voltage warning (T-D3)', () => {
       // and driven HIGH (3.3 V) against its HIGH at 3.0 V: Y forced above the gate's own V_CC, a
       // wrong-way current no test point covers (1).
       const expected: Record<string, number> = {
-        'esp32-logic-and': 3,
-        'esp32-logic-override': 4,
+        'esp32-logic-and': 5,
+        'esp32-logic-override': 5,
         'esp32-logic-quad-and': 9,
       };
       expect(refused, `${e.id} ${refusedAt}`).toBe(expected[e.id] ?? 0);
