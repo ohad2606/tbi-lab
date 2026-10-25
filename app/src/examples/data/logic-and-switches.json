@@ -464,13 +464,13 @@
         "rotation": 0
       },
       "R4": {
-        "x": 80,
-        "y": -260,
-        "rotation": 90
+        "x": 200,
+        "y": -300,
+        "rotation": 0
       },
       "GND7": {
-        "x": 80,
-        "y": -160,
+        "x": 280,
+        "y": -200,
         "rotation": 0
       }
     },
@@ -549,7 +549,12 @@
           "kind": "junction",
           "junction": "J2"
         },
-        "vertices": []
+        "vertices": [
+          {
+            "x": 120,
+            "y": -340
+          }
+        ]
       },
       {
         "id": "W6",
@@ -581,12 +586,7 @@
           "component": "U1",
           "terminal": "vcc"
         },
-        "vertices": [
-          {
-            "x": 120,
-            "y": -340
-          }
-        ]
+        "vertices": []
       },
       {
         "id": "W8",
@@ -613,7 +613,12 @@
           "component": "GND7",
           "terminal": "ref"
         },
-        "vertices": []
+        "vertices": [
+          {
+            "x": 280,
+            "y": -300
+          }
+        ]
       },
       {
         "id": "W10",
@@ -787,8 +792,8 @@
       },
       {
         "id": "J2",
-        "x": 80,
-        "y": -340
+        "x": 120,
+        "y": -300
       }
     ]
   },

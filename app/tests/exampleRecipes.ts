@@ -1035,11 +1035,12 @@ export const RECIPES: Record<string, () => ProjectDocument> = {
     // cannot absorb current, and with Y LOW the inputs' leakage (±5 µA each, possibly returning
     // through the V_CC pin) could otherwise flow back into PSU2; the bleeder keeps PSU2 delivering
     // 3.0 V / 10 kΩ = 300 µA ≫ 10 µA (0.9 mW).
-    const R4 = r.place('component.resistor', 320, -260, 1);
-    const G7 = r.place('component.ground', 320, -160);
+    // Right of the V_CC drop, clear of PSU2's running readout.
+    const R4 = r.place('component.resistor', 440, -300);
+    const G7 = r.place('component.ground', 520, -200);
     r.set(R4, 'resistance', 10_000, 'ohm');
-    r.wire(T(R4, 'a'), { kind: 'wire', wire: vcc, at: { x: 320, y: -340 } });
-    r.wire(T(R4, 'b'), T(G7, 'ref'));
+    r.wire(T(R4, 'a'), { kind: 'wire', wire: vcc, at: { x: 360, y: -300 } });
+    r.wire(T(R4, 'b'), T(G7, 'ref'), [{ x: 520, y: -300 }]);
     // Input A: SW1 → node (pull-down R1) → A.
     r.wire(T(SW1, 'b'), T(R1, 'a'));
     r.wire(T(R1, 'a'), T(U1, 'a'), [
