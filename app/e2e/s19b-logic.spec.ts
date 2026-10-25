@@ -70,10 +70,18 @@ function andCircuit(
   const g = add('logic.gate_and', 400, 0);
   wire('PSU1.positive', `${g}.vcc`);
   wire(`${g}.gnd`, 'GND1.ref');
+  // Sprint 22 Q1 (strict): a switch takes its HIGH from PSU2 at 5.5 V and its pull-down is 150 Ω,
+  // so the input is at 5.5 V or within 1 mV of GND (I_I 5 µA × 150 Ω = 0.75 mV): the I_CC test
+  // condition (SCES217AA §5.5), without which the supply's current limit is refused.
+  const hi = add('instrument.lab_psu', 0, -480);
+  set(hi, 'setpointVoltage', { value: 5.5, unit: 'volt' });
+  set(hi, 'currentLimit', { value: 0.1, unit: 'ampere' });
+  set(hi, 'outputEnabled', true);
+  wire(`${hi}.negative`, 'GND1.ref');
   const input = (pin: 'a' | 'b', how: 'closed' | 'open' | 'divider' | 'floating', y: number) => {
     if (how === 'floating') return;
     const r1 = add('component.resistor', 0, y);
-    set(r1, 'resistance', { value: 10_000, unit: 'ohm' });
+    set(r1, 'resistance', { value: how === 'divider' ? 10_000 : 150, unit: 'ohm' });
     if (how === 'divider') {
       const r2 = add('component.resistor', 160, y);
       set(r2, 'resistance', { value: 10_000, unit: 'ohm' });
@@ -82,7 +90,7 @@ function andCircuit(
     } else {
       const s = add('component.toggle_switch', 160, y);
       set(s, 'closed', how === 'closed');
-      wire('PSU1.positive', `${s}.a`);
+      wire(`${hi}.positive`, `${s}.a`);
       wire(`${s}.b`, `${g}.${pin}`);
     }
     wire(`${g}.${pin}`, `${r1}.a`);

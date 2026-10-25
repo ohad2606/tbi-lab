@@ -41,10 +41,12 @@
  * - inputs: HIGH stays ≥ V_IH(V_CC); LOW stays ≤ V_IL(V_CC) (the 0–5.5 V range is checked on the
  *   solved value, decision S21-D4);
  * - outputs: the current stays within the largest guaranteed point and never flows the wrong way;
- * - I_CC conditions: when a part's I_CC bound is relied on (its supply path has resistance), its
- *   inputs must stay at the I_CC test voltages and its supply in the I_CC row;
- * - supplies in CV stay below their current limit (bounded perturbations only: owner question
- *   S21-Q1 for an uncharacterized I_CC on a stiff supply).
+ * - I_CC conditions: when a part's I_CC bound is relied on (its supply path has resistance, or a
+ *   supply's current limit carries it), its inputs must stay at the I_CC test voltages and its
+ *   supply in the I_CC row;
+ * - supplies in CV stay below their current limit, counting every perturbation (Sprint 22, owner
+ *   decision Q1, strict: an I_CC outside its test condition is unbounded, so such a limit is
+ *   refused by name — after every other check has held).
  *
  * Method: the response to each perturbation is linear to first order (J⁻¹·b at the solution,
  * Circuit.sensitivity); for each check the ADVERSE end of every relevant range is chosen, and that
@@ -247,7 +249,7 @@ export function evaluateBounds(
   solver: BoundsSolver,
   perts: readonly Perturbation[],
   baseChecks: readonly Check[],
-  extraChecks: (relied: ReadonlySet<string>) => Check[],
+  extraChecks: (relied: ReadonlySet<string>, limitOnly: ReadonlySet<string>) => Check[],
 ): BoundFailure | null {
   if (!perts.length || !baseChecks.length) return null;
   const inj = perts.map((p) => ({ from: p.from, to: p.to }));
@@ -279,35 +281,64 @@ export function evaluateBounds(
       : p.range
         ? Math.max(Math.abs(p.range[0]), Math.abs(p.range[1]))
         : PROBE_A;
-  const isRelevant = (c: Check, p: Perturbation, s: number) =>
-    // A supply's current-limit check leaves out only the UNBOUNDED quiescent currents (owner
-    // question S21-Q1, recorded fail-open); a gate output's band is bounded and counts (Q5).
-    !(c.kind === 'psu' && !p.range && p.kind !== 'ogap') && Math.abs(s) * scale(p) > EPS[c.unit];
+  // Sprint 22 Q1 (owner decision, strict): every check counts every perturbation it responds to,
+  // the supply's current-limit check included. An I_CC outside its datasheet test condition is
+  // unbounded, so a current limit that the gate's own supply current flows through is refused by
+  // name (never left out, never bounded by I_CC + n·ΔI_CC or the §8.2.1.1 guideline).
+  const isRelevant = (c: Check, p: Perturbation, s: number) => Math.abs(s) * scale(p) > EPS[c.unit];
 
   let checks = [...baseChecks];
   const sensOf = new Map<string, number[]>();
   for (const c of checks) sensOf.set(c.id, sens0(c, yNodeGain));
-  // Relied-on perturbations (any non-supply-limit check depends on them).
+  // Relied-on perturbations (any check depends on them; Q1 strict: the supply's current-limit
+  // check too, so an I_CC bound it relies on brings its own test conditions as checks).
   const relied = new Set<string>();
+  const reliedElsewhere = new Set<string>();
   for (const c of checks)
-    if (c.kind !== 'psu')
-      perts.forEach((p, j) => {
-        if (p.range && isRelevant(c, p, sensOf.get(c.id)![j]!)) relied.add(p.id);
-      });
-  const extra = extraChecks(relied);
+    perts.forEach((p, j) => {
+      if (p.range && isRelevant(c, p, sensOf.get(c.id)![j]!)) {
+        relied.add(p.id);
+        if (c.kind !== 'psu') reliedElsewhere.add(p.id);
+      }
+    });
+  // Relied on by a supply's current limit only (its refusal names that limit).
+  const limitOnly = new Set([...relied].filter((id) => !reliedElsewhere.has(id)));
+  const extra = extraChecks(relied, limitOnly);
   for (const c of extra) sensOf.set(c.id, sens0(c, yNodeGain));
   checks = [...checks, ...extra];
 
   // 1. An unbounded quantity that a conclusion depends on: refused by name (first in order).
+  // Q1: an unbounded I_CC that only a supply's current limit depends on is refused AFTER every
+  // other check (step 2) has held: a level that is itself not guaranteed is the more specific
+  // reason, and is reported first. Those limit checks are not evaluated (their corner would
+  // leave the unbounded current out).
+  let deferred: BoundFailure | null = null;
+  const deferredChecks = new Set<string>();
   for (const [j, p] of perts.entries()) {
     if (p.range || p.kind === 'ogap') continue;
-    if (checks.some((c) => isRelevant(c, p, sensOf.get(c.id)![j]!)))
-      return {
-        code: p.refusal!.code,
-        components: p.component ? [p.component] : [],
-        ...(p.refusal!.param ? { param: p.refusal!.param } : {}),
-        detail: p.refusal!.detail,
-      };
+    const dependent = checks.filter((c) => isRelevant(c, p, sensOf.get(c.id)![j]!));
+    if (!dependent.length) continue;
+    // Q1: when only a supply's current limit depends on it, the refusal says so (that supply is
+    // named too): the levels themselves would be guaranteed, the supply current is not.
+    const limitCheck =
+      (p.kind === 'icc' || p.kind === 'ii') && dependent.every((c) => c.kind === 'psu')
+        ? dependent[0]!
+        : null;
+    const refusal: BoundFailure = {
+      code: p.refusal!.code,
+      components: [
+        ...(p.component ? [p.component] : []),
+        ...(limitCheck ? [limitCheck.component] : []),
+      ],
+      ...(p.refusal!.param ? { param: p.refusal!.param } : {}),
+      detail: {
+        ...p.refusal!.detail,
+        ...(limitCheck ? { check: 'limit', psu: limitCheck.component } : {}),
+      },
+    };
+    if (!limitCheck) return refusal;
+    deferred ??= refusal;
+    for (const c of dependent) deferredChecks.add(c.id);
   }
 
   // 2. Each check at its adverse corner (exact solve, re-linearised until the corner is stable).
@@ -375,6 +406,7 @@ export function evaluateBounds(
     }
   >();
   for (const c of checks) {
+    if (deferredChecks.has(c.id)) continue;
     const s0 = sensOf.get(c.id)!;
     let choice = choose(c, s0);
     // Sprint 22 (Q5): an output's OWN band in its current check. A unit injection at Y measures
@@ -469,7 +501,7 @@ export function evaluateBounds(
     }
     if (!accepted) return notEstablished('not_monotone', c);
   }
-  return null;
+  return deferred;
 }
 
 type CornerOutcome =
@@ -597,7 +629,11 @@ export function buildBounds(
   access: BoundsAccess,
   x0: readonly number[],
   ref: string,
-): { perts: Perturbation[]; checks: Check[]; extra: (relied: ReadonlySet<string>) => Check[] } {
+): {
+  perts: Perturbation[];
+  checks: Check[];
+  extra: (relied: ReadonlySet<string>, limitOnly: ReadonlySet<string>) => Check[];
+} {
   const perts: Perturbation[] = [];
   const checks: Check[] = [];
   const V = access.v;
@@ -898,12 +934,16 @@ export function buildBounds(
         detail: { gpio: p.gpio, limit: leakage, level: p.mode === 'output-high' ? 'high' : 'low' },
       }));
   // When a part's I_CC bound is relied on, its own test conditions must hold at every corner.
-  const extra = (relied: ReadonlySet<string>): Check[] => [
+  const extra = (relied: ReadonlySet<string>, limitOnly: ReadonlySet<string>): Check[] => [
     ...padLoad(relied),
     ...specs
       .filter((s) => s.powered && relied.has(`icc:${s.component}`))
       .flatMap((s) => {
         const card = s.card;
+        // Q1: an I_CC bound that only a supply's current limit relies on is refused as that
+        // limit's (the levels do not depend on it).
+        const limitOf = (sp: LogicBoundSpec) =>
+          limitOnly.has(`icc:${sp.component}`) ? { check: 'limit' } : {};
         const high = card.iccInputHigh === 'vcc' ? null : card.iccInputHigh;
         const out: Check[] = [
           {
@@ -921,23 +961,29 @@ export function buildBounds(
               );
             },
             value: (x) => vccAt(s, x),
-            detail: { vcc: s.vcc, condition: 'notSupply' },
+            detail: { vcc: s.vcc, condition: 'notSupply', ...limitOf(s) },
           },
         ];
         for (const i of s.inputs) {
-          const target = (x: readonly number[]) =>
-            Math.abs(vin(s, i.node, x0)) <= RAIL_V ? 0 : (high ?? vccAt(s, x));
-          out.push({
-            id: `icc-input:${s.component}:${i.pin}`,
-            kind: 'iccCondition',
-            unit: 'V',
-            component: s.component,
-            part: s.part,
-            pin: i.pin,
-            margin: (x) => RAIL_V - Math.abs(vin(s, i.node, x) - target(x)),
-            value: (x) => vin(s, i.node, x),
-            detail: { vcc: s.vcc, condition: 'notInputs' },
-          });
+          const low = Math.abs(vin(s, i.node, x0)) <= RAIL_V;
+          const target = (x: readonly number[]) => (low ? 0 : (high ?? vccAt(s, x)));
+          // Two one-sided checks (each monotone; |V_I − target| is not, and its corner could pick
+          // the side a driving output cannot reach): first the side INTO the input range (a LOW
+          // input rising, a HIGH input falling — where a driving gate's band lies), then the side
+          // beyond the rail (only a resistance with leakage moves it there).
+          const sides = low ? [1, -1] : [-1, 1];
+          for (const side of sides)
+            out.push({
+              id: `icc-input:${s.component}:${i.pin}:${side > 0 ? 'up' : 'down'}`,
+              kind: 'iccCondition',
+              unit: 'V',
+              component: s.component,
+              part: s.part,
+              pin: i.pin,
+              margin: (x) => RAIL_V - side * (vin(s, i.node, x) - target(x)),
+              value: (x) => vin(s, i.node, x),
+              detail: { vcc: s.vcc, condition: 'notInputs', ...limitOf(s) },
+            });
         }
         return out;
       }),

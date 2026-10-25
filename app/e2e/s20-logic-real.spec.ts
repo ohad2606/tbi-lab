@@ -7,11 +7,10 @@
  *
  * - C `esp32-logic-quad-and`: Sprint 21, refused by name at 3.0 V (the SN74LVC08A input leakage
  *   is specified only at 3.6 V; owner question S21-Q2); the panel marks 1A "not guaranteed";
- * - D `esp32-logic-override`: Sprint 21 review — refused by name as soon as the sketch drives
- *   GPIO18 HIGH (Y HIGH into the LED is guaranteed only ≥ 2.4 V, below the read-back GPIO19's
- *   V_IH 2.475 V);
- * - Sprint 21: D with the gate supply at 4.5 V: once the firmware drives GPIO18 HIGH the Run is
- *   refused, naming GPIO18 (ESP32 V_OH ≥ 2.64 V < the gate's V_IH 3.15 V).
+ * - D `esp32-logic-override`: Sprint 22 (owner decision Q1, strict) — refused by name at once: input
+ *   A is never at 5.5 V or exactly GND (the I_CC test condition, SCES217AA §5.5), so the supply's
+ *   current limit is not guaranteed (logic_supply_current_uncharacterized);
+ * - D with the gate supply at 4.5 V: likewise refused at once (before setup() A is ≈ 50 mV off GND).
  */
 import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
@@ -51,19 +50,22 @@ test('C on the real runtime (Sprint 21): refused by name at 3.0 V — SN74LVC08A
   await page.screenshot({ path: info.outputPath('s21l-real-c-refused.png') });
 });
 
-test('D on the real runtime (Sprint 21 review): Y HIGH into the LED and GPIO19 is not a guaranteed ESP32 HIGH — refused by name', async ({
+test('D on the real runtime (Sprint 22 Q1 strict): refused by name at once — input A is never at 5.5 V or exactly GND, so the supply current limit is not guaranteed', async ({
   page,
 }, info) => {
   await openExample(page, 'esp32-logic-override');
   await buildProgram(page, 300_000);
   await page.getByTestId('sim-run').click();
+  // Before setup() GPIO18 is an input: A sits on its 10 kΩ pull-down, ≈ 50 mV off GND (I_I × R);
+  // afterwards GPIO18's LOW is guaranteed only ≤ 0.33 V and its HIGH never reaches 5.5 V.
   const err = page.getByTestId('sim-error');
-  await expect(err).toHaveAttribute('data-code', 'logic_mcu_input_not_guaranteed', {
+  await expect(err).toHaveAttribute('data-code', 'logic_supply_current_uncharacterized', {
     timeout: 120_000,
   });
-  await expect(err).toContainText('GPIO19');
+  await expect(err).toContainText('current limit');
+  await expect(err).toContainText('V_I = 5.5 V or GND');
   await select(page, 'U2');
-  await expect(page.getByTestId('logic-why-y')).toContainText('ESP32 pin reading this output');
+  await expect(page.getByTestId('logic-level-y')).toHaveText('not simulated');
   await page.screenshot({ path: info.outputPath('s21l-real-d-refused.png') });
 });
 
@@ -85,7 +87,7 @@ function overrideAt45(): ProjectDocument {
   return r.doc;
 }
 
-test('Sprint 21, D with the gate at 4.5 V on the real runtime: once GPIO18 drives HIGH, refused — ESP32 V_OH ≥ 2.64 V < V_IH 3.15 V', async ({
+test('D with the gate at 4.5 V on the real runtime (Sprint 22 Q1 strict): refused at once by the supply current limit (input A ≈ 50 mV off GND before setup())', async ({
   page,
 }, info) => {
   await openImported(page, overrideAt45());
@@ -93,10 +95,9 @@ test('Sprint 21, D with the gate at 4.5 V on the real runtime: once GPIO18 drive
   await buildProgram(page, 300_000);
   await page.getByTestId('sim-run').click();
   const err = page.getByTestId('sim-error');
-  await expect(err).toContainText(/driven HIGH by\W+GPIO18/, { timeout: 120_000 });
-  await expect(err).toContainText('V_OH ≥ 2.64 V');
-  await expect(err).toContainText('V_IH 3.15 V');
-  await select(page, 'U2');
-  await expect(page.getByTestId('logic-level-a')).toHaveText('not guaranteed');
+  await expect(err).toHaveAttribute('data-code', 'logic_supply_current_uncharacterized', {
+    timeout: 120_000,
+  });
+  await expect(err).toContainText('current limit');
   await page.screenshot({ path: info.outputPath('s21l-real-d45-refused.png') });
 });

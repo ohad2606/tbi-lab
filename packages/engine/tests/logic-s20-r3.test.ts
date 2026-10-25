@@ -86,25 +86,26 @@ describe('A1: a cascade on a rail behind a series supply element settles (was lo
   // stage) is specified only there (SCAS283W §5.7, owner question S21-Q2).
   const cases: Series[] = ['direct', 'switch'];
   for (const series of cases) {
-    it(`two SN74LVC1G08, U1.Y → U2.A, rail via ${series}`, () => {
-      const { b, u1, u2 } = singles(series, 3.3);
-      const o = ok(solve(b));
-      expect(o.components[u1]!.logic!.gates[0]!.output.level).toBe('high');
-      expect(o.components[u2]!.logic!.gates[0]!.inputs.map((p) => p.level)).toEqual([
-        'high',
-        'high',
-      ]);
-      expect(o.components[u2]!.logic!.gates[0]!.output.level).toBe('high');
+    // Sprint 22 Q1 strict: a cascaded input sits at a gate output (guaranteed only within its
+    // V_OH/V_OL band, never within 1 mV of a rail), so the downstream I_CC leaves its test
+    // condition and PSU1's current limit is refused by name. That refusal comes from the
+    // guarantee bounds, which run only after the settle converged: the cascade settles (no
+    // logic_unknown_state / supply undriven), and every level check held first.
+    it(`two SN74LVC1G08, U1.Y → U2.A, rail via ${series}: settles; refused by the current limit (Q1)`, () => {
+      const { b } = singles(series, 3.3);
+      expect(fails(solve(b))).toMatchObject({
+        code: 'logic_supply_current_uncharacterized',
+        detail: { check: 'limit' },
+      });
     });
-    it(`SN74LVC08A, 1Y → 2A, rail via ${series} (3.6 V)`, () => {
+    it(`SN74LVC08A, 1Y → 2A, rail via ${series} (3.6 V): settles; refused by the current limit at 2A (Q1)`, () => {
       const { b, u } = pkg(series, 3.6);
-      const o = ok(solve(b));
-      expect(o.components[u]!.logic!.gates.map((g) => g.output.level)).toEqual([
-        'high',
-        'high',
-        'low',
-        'low',
-      ]);
+      expect(fails(solve(b))).toMatchObject({
+        code: 'logic_supply_current_uncharacterized',
+        components: [u],
+        param: 'a2',
+        detail: { check: 'limit', condition: 'notInputs' },
+      });
     });
   }
   it('two SN74LVC1G08 via 10 Ω, inputs on the rail: I_CC has no bound there → refused (Sprint 21)', () => {
@@ -185,17 +186,19 @@ describe('A1: a cascade on a rail behind a series supply element settles (was lo
   });
 });
 
-/** SN74LVC1G08 at `vcc`, B HIGH, Y into 10 kΩ; A from the caller (probe3 base). */
+/**
+ * SN74LVC1G08 at `vcc`, B HIGH, Y into 10 kΩ; A from the caller (probe3 base). Sprint 22 Q1
+ * strict: B HIGH is 5.5 V from a second supply (the I_CC test voltage, SCES217AA §5.5).
+ */
 function base(vcc: number) {
   const b = new Bench();
   const g = b.add('logic.gate_and');
   const r = b.add('component.resistor');
-  b.psu(vcc, 0.5)
-    .ohms(r, 10_000)
-    .wire('PSU1.negative', 'GND1.ref')
-    .wire('PSU1.positive', `${g}.vcc`)
+  b.psu(vcc, 0.5).ohms(r, 10_000).wire('PSU1.negative', 'GND1.ref');
+  const hi = b.rail(5.5);
+  b.wire('PSU1.positive', `${g}.vcc`)
     .wire(`${g}.gnd`, 'GND1.ref')
-    .wire(`${g}.b`, 'PSU1.positive')
+    .wire(`${g}.b`, `${hi}.positive`)
     .wire(`${g}.y`, `${r}.a`)
     .wire(`${r}.b`, 'GND1.ref');
   return { b, g };
@@ -362,17 +365,30 @@ describe('A2: unpowered output-capable parts drive nothing (owner policy: unpowe
       .set(p2, 'currentLimit', { value: 0.1, unit: 'ampere' })
       .set(p2, 'outputEnabled', true)
       .wire(`${p2}.negative`, 'GND1.ref');
+    // Sprint 22 Q1 strict: B at 5.5 V (the I_CC test voltage).
+    const hi = b.rail(5.5);
     b.wire(`${p2}.positive`, `${g}.vcc`)
       .wire(`${g}.gnd`, 'GND1.ref')
-      .wire(`${g}.b`, `${p2}.positive`);
+      .wire(`${g}.b`, `${hi}.positive`);
     b.wire('PSU1.positive', `${p}.vcc`).wire(`${p}.gnd`, 'GND1.ref').wire(`${p}.out`, `${g}.a`);
     b.set(p, 'motion', true);
-    const o = ok(solve(b));
-    expect(o.components[g]!.logic!.gates[0]!.inputs[0]).toMatchObject({ level: 'high' });
-    expect(o.components[g]!.logic!.gates[0]!.inputs[0]!.volts!).toBeCloseTo(3.3, 9);
-    // Without motion: LOW through R14 to the module's GND.
+    // Driven (never floating): a guaranteed HIGH. Sprint 22 Q1 strict: 3.3 V through R14 is not
+    // the I_CC test voltage (5.5 V), so PSU2's current limit (the gate's supply) is refused by
+    // name — deferred, i.e. after A's level check held.
+    expect(fails(solve(b))).toMatchObject({
+      code: 'logic_supply_current_uncharacterized',
+      components: [g, p2],
+      detail: { check: 'limit', condition: 'notInputs' },
+    });
+    // Without motion: LOW through R14 to the module's GND — driven, a real LOW, but the input
+    // leakage × 1 kΩ (≤ 5 mV) is not within 1 mV of GND: refused by the same name, naming A.
     b.set(p, 'motion', false);
-    expect(ok(solve(b)).components[g]!.logic!.gates[0]!.inputs[0]!.level).toBe('low');
+    expect(fails(solve(b))).toMatchObject({
+      code: 'logic_supply_current_uncharacterized',
+      components: [g],
+      param: 'a',
+      detail: { check: 'limit', condition: 'notInputs' },
+    });
   });
 
   it('HC-SR04 unpowered: ECHO drives nothing (already so), the input floats', () => {
@@ -405,11 +421,19 @@ describe('A2: unpowered output-capable parts drive nothing (owner policy: unpowe
     expect(['logic_input_floating', 'floating_circuit']).toContain(fails(solve(b)).code);
   });
 
-  it('a photoresistor to GND is resistive: a real LOW', () => {
+  it('a photoresistor to GND is resistive: a real LOW (driven, never floating)', () => {
     const { b, g } = base(3.3);
     const z = b.add('component.photoresistor');
     b.wire(`${z}.a`, `${g}.a`).wire(`${z}.b`, 'GND1.ref');
-    expect(ok(solve(b)).components[g]!.logic!.gates[0]!.inputs[0]!.level).toBe('low');
+    // Sprint 22 Q1 strict: the input leakage × the photoresistor's resistance moves A more than
+    // 1 mV off GND, so I_CC leaves its test condition: refused by the current limit, naming A
+    // (a resistive driver, not floating; the LOW level check held first).
+    expect(fails(solve(b))).toMatchObject({
+      code: 'logic_supply_current_uncharacterized',
+      components: [g],
+      param: 'a',
+      detail: { check: 'limit' },
+    });
   });
 
   it('a buzzer to GND is a nonlinear load, not a driver: floats', () => {

@@ -18,6 +18,24 @@ import { Bench, boardBench } from './build.js';
 
 const solve = (b: Bench) => new EngineSession(b.snapshot()).solve();
 const err = (o: SolveOutcome) => (o.ok ? null : o.error);
+/**
+ * Sprint 22 Q1 strict: an SN74LVC1G's I_CC is bounded only with every input at 5.5 V or GND
+ * (SCES217AA §5.5), and the bench supply's current-limit check depends on it. A gate input tied
+ * HIGH therefore takes its 5.5 V from a second supply (one per bench, `hi`).
+ */
+const rails = new WeakMap<Bench, string>();
+const hi = (b: Bench) => {
+  let id = rails.get(b);
+  if (!id) rails.set(b, (id = b.rail(5.5)));
+  return `${id}.positive`;
+};
+/**
+ * Sprint 22 Q1 strict: where a gate input is NOT at 5.5 V or GND (a divider, a pull-up, an ESP32
+ * pad, another gate's output) its I_CC is unbounded. Every level and output check is evaluated
+ * first; only when all of them hold is the circuit refused by the supply's current limit — so
+ * this refusal also asserts "every level guaranteed".
+ */
+const limitOnly = { code: 'logic_supply_current_uncharacterized', detail: { check: 'limit' } };
 
 describe('review item 1 (BLOCKING): a downstream level against the upstream output band', () => {
   /** U1 (A, B HIGH) Y → 300 Ω to GND and 1708 Ω + Rb divider into U2.A (U2.B HIGH), 3.0 V. */
@@ -32,10 +50,8 @@ describe('review item 1 (BLOCKING): a downstream level against the upstream outp
     ];
     b.psu(3.0, 0.5).wire('PSU1.negative', 'GND1.ref');
     for (const g of [g1, g2])
-      b.wire('PSU1.positive', `${g}.vcc`)
-        .wire(`${g}.gnd`, 'GND1.ref')
-        .wire(`${g}.b`, 'PSU1.positive');
-    b.wire(`${g1}.a`, 'PSU1.positive');
+      b.wire('PSU1.positive', `${g}.vcc`).wire(`${g}.gnd`, 'GND1.ref').wire(`${g}.b`, hi(b));
+    b.wire(`${g1}.a`, hi(b));
     b.ohms(R[0]!, 300).wire(`${g1}.y`, `${R[0]}.a`).wire(`${R[0]}.b`, 'GND1.ref');
     b.ohms(R[1]!, 1708).wire(`${g1}.y`, `${R[1]}.a`).wire(`${R[1]}.b`, `${g2}.a`);
     b.ohms(R[2]!, rb).wire(`${g2}.a`, `${R[2]}.a`).wire(`${R[2]}.b`, 'GND1.ref');
@@ -57,10 +73,10 @@ describe('review item 1 (BLOCKING): a downstream level against the upstream outp
       expect((e!.detail as { worst: number }).worst).toBeCloseTo(trueWorst(rb), 6);
     });
 
-  it('Rb 9500 Ω: worst 2.027 V ≥ 2.0 V → runs (the bound is not over-pessimistic)', () => {
+  it('Rb 9500 Ω: worst 2.027 V ≥ 2.0 V → the level holds (the bound is not over-pessimistic); Q1: U2.A is off the I_CC condition → refused by the current limit only', () => {
     expect(trueWorst(9500)).toBeGreaterThan(2.0);
-    const o = solve(probe(9500).b);
-    expect(err(o)).toBeNull();
+    const { b, g2 } = probe(9500);
+    expect(err(solve(b))).toMatchObject({ ...limitOnly, components: [g2, 'PSU1'] });
   });
 });
 
@@ -107,8 +123,8 @@ describe('review item 3: an ESP32 input reading a gate output (probe padin)', ()
         .ohms(res, r)
         .wire('PSU1.positive', `${G}.vcc`)
         .wire(`${G}.gnd`, 'GND1.ref')
-        .wire(`${G}.a`, 'PSU1.positive')
-        .wire(`${G}.b`, 'PSU1.positive')
+        .wire(`${G}.a`, hi(b))
+        .wire(`${G}.b`, hi(b))
         .wire(`${G}.y`, `${u}.gpio4`)
         .wire(`${G}.y`, `${res}.a`)
         .wire(`${res}.b`, 'GND1.ref');
@@ -143,7 +159,7 @@ describe('review item 4: ESP32 internal pulls are typical only (probe pull)', ()
       b.psu(3.3, 0.5)
         .wire('PSU1.positive', `${G}.vcc`)
         .wire(`${G}.gnd`, 'GND1.ref')
-        .wire(`${G}.b`, 'PSU1.positive')
+        .wire(`${G}.b`, hi(b))
         .wire(`${G}.a`, `${u}.gpio4`);
     });
     const s = new EngineSession(bb.projected, { pins: bb.pins });
@@ -164,7 +180,7 @@ describe('review item 4: ESP32 internal pulls are typical only (probe pull)', ()
 });
 
 describe('review item 5: the ESP32 V_OH has no stated load current', () => {
-  it('GPIO18 HIGH straight into a gate input (leakage only): runs; with a 10 kΩ pull-down (≈ 330 µA): refused', () => {
+  it('GPIO18 HIGH straight into a gate input (leakage only): the pad level holds (Q1: A at 3.3 V is off the I_CC condition → refused by the current limit only); with a 10 kΩ pull-down (≈ 330 µA): refused by the pad', () => {
     const build = (pd: boolean) => {
       let G = '';
       const bb = boardBench((b, u) => {
@@ -172,7 +188,7 @@ describe('review item 5: the ESP32 V_OH has no stated load current', () => {
         b.psu(3.3, 0.5)
           .wire('PSU1.positive', `${G}.vcc`)
           .wire(`${G}.gnd`, 'GND1.ref')
-          .wire(`${G}.b`, 'PSU1.positive')
+          .wire(`${G}.b`, hi(b))
           .wire(`${u}.gpio18`, `${G}.a`);
         if (pd) {
           const r = b.add('component.resistor');
@@ -183,7 +199,7 @@ describe('review item 5: the ESP32 V_OH has no stated load current', () => {
       s.setPinMode(18, 'output-high');
       return s.solve();
     };
-    expect(err(build(false))).toBeNull();
+    expect(err(build(false))).toMatchObject(limitOnly);
     expect(err(build(true))).toMatchObject({
       code: 'logic_mcu_output_uncharacterized',
       param: 'gpio18',
@@ -211,10 +227,8 @@ describe('review item 7: the output bracket follows the corner current', () => {
     ];
     b.psu(3.0, 0.5).wire('PSU1.negative', 'GND1.ref');
     for (const g of [g1, g2])
-      b.wire('PSU1.positive', `${g}.vcc`)
-        .wire(`${g}.gnd`, 'GND1.ref')
-        .wire(`${g}.b`, 'PSU1.positive');
-    b.wire(`${g1}.a`, 'PSU1.positive');
+      b.wire('PSU1.positive', `${g}.vcc`).wire(`${g}.gnd`, 'GND1.ref').wire(`${g}.b`, hi(b));
+    b.wire(`${g1}.a`, hi(b));
     b.ohms(r0, rl).wire(`${g1}.y`, `${r0}.a`).wire(`${r0}.b`, 'GND1.ref');
     b.ohms(ra, 1000).wire(`${g1}.y`, `${ra}.a`).wire(`${ra}.b`, `${g2}.a`);
     b.ohms(rb, 6000).wire(`${g2}.a`, `${rb}.a`).wire(`${rb}.b`, 'GND1.ref');
@@ -229,8 +243,8 @@ describe('review item 7: the output bracket follows the corner current', () => {
       4,
     );
   });
-  it('a lighter load (12 mA at 2.4 V) stays on the 16 mA point: 2.4·6/7 ≥ 2.0 V → runs', () => {
-    expect(err(solve(build(2.4 / (12e-3 - 2.4 / 7000)).b))).toBeNull();
+  it('a lighter load (12 mA at 2.4 V) stays on the 16 mA point: 2.4·6/7 ≥ 2.0 V → the level holds (Q1: refused by the current limit only)', () => {
+    expect(err(solve(build(2.4 / (12e-3 - 2.4 / 7000)).b))).toMatchObject(limitOnly);
   });
 });
 
@@ -318,9 +332,7 @@ describe('final review B1: the LOW side of a gate output band (mirrors of items 
     const [r1, r2] = [b.add('component.resistor'), b.add('component.resistor')];
     b.psu(3.0, 0.5).wire('PSU1.negative', 'GND1.ref');
     for (const g of [g1, g2])
-      b.wire('PSU1.positive', `${g}.vcc`)
-        .wire(`${g}.gnd`, 'GND1.ref')
-        .wire(`${g}.b`, 'PSU1.positive');
+      b.wire('PSU1.positive', `${g}.vcc`).wire(`${g}.gnd`, 'GND1.ref').wire(`${g}.b`, hi(b));
     b.wire(`${g1}.a`, 'GND1.ref');
     b.ohms(r1, ra).wire(`${g1}.y`, `${r1}.a`).wire(`${r1}.b`, `${g2}.a`);
     b.ohms(r2, rb).wire(`${g2}.a`, `${r2}.a`).wire(`${r2}.b`, 'PSU1.positive');
@@ -345,9 +357,9 @@ describe('final review B1: the LOW side of a gate output band (mirrors of items 
       });
       expect((e!.detail as { worst: number }).worst).toBeCloseTo(worstLow(ra, rb), 6);
     });
-  it('probe ogaplow 1000/9000: worst 0.664 V ≤ 0.8 V → runs', () => {
+  it('probe ogaplow 1000/9000: worst 0.664 V ≤ 0.8 V → the level holds (Q1: refused by the current limit only)', () => {
     expect(worstLow(1000, 9000)).toBeLessThan(0.8);
-    expect(err(solve(ogapLow(1000, 9000).b))).toBeNull();
+    expect(err(solve(ogapLow(1000, 9000).b))).toMatchObject(limitOnly);
   });
 
   /** U1 Y LOW → Ra → GPIO4; GPIO4 → Rb → V_CC (probe padinlow). */
@@ -361,7 +373,7 @@ describe('final review B1: the LOW side of a gate output band (mirrors of items 
         .wire('PSU1.positive', `${G}.vcc`)
         .wire(`${G}.gnd`, 'GND1.ref')
         .wire(`${G}.a`, 'GND1.ref')
-        .wire(`${G}.b`, 'PSU1.positive')
+        .wire(`${G}.b`, hi(b))
         .wire(`${G}.y`, `${r1}.a`)
         .wire(`${r1}.b`, `${u}.gpio4`)
         .wire(`${u}.gpio4`, `${r2}.a`)
@@ -400,9 +412,7 @@ describe('final review B1: the LOW side of a gate output band (mirrors of items 
     ];
     b.psu(3.0, 0.5).wire('PSU1.negative', 'GND1.ref');
     for (const g of [g1, g2])
-      b.wire('PSU1.positive', `${g}.vcc`)
-        .wire(`${g}.gnd`, 'GND1.ref')
-        .wire(`${g}.b`, 'PSU1.positive');
+      b.wire('PSU1.positive', `${g}.vcc`).wire(`${g}.gnd`, 'GND1.ref').wire(`${g}.b`, hi(b));
     b.wire(`${g1}.a`, 'GND1.ref');
     b.ohms(r0, rl).wire('PSU1.positive', `${r0}.a`).wire(`${r0}.b`, `${g1}.y`);
     b.ohms(ra, 1000).wire(`${g1}.y`, `${ra}.a`).wire(`${ra}.b`, `${g2}.a`);
@@ -418,8 +428,8 @@ describe('final review B1: the LOW side of a gate output band (mirrors of items 
       4,
     );
   });
-  it('12 mA sunk at 0.4 V stays on the 16 mA point: 0.4 + 2.6/7 + 4 mV ≤ 0.8 V → runs', () => {
-    expect(err(solve(bracketLow(2.6 / (12e-3 - 2.6 / 7000)).b))).toBeNull();
+  it('12 mA sunk at 0.4 V stays on the 16 mA point: 0.4 + 2.6/7 + 4 mV ≤ 0.8 V → the level holds (Q1: refused by the current limit only)', () => {
+    expect(err(solve(bracketLow(2.6 / (12e-3 - 2.6 / 7000)).b))).toMatchObject(limitOnly);
   });
 });
 
@@ -433,8 +443,8 @@ describe('final review S1: an ESP32 input that READS a gate output with its inte
           .ohms(r, 100_000)
           .wire('PSU1.positive', `${G}.vcc`)
           .wire(`${G}.gnd`, 'GND1.ref')
-          .wire(`${G}.a`, 'PSU1.positive')
-          .wire(`${G}.b`, 'PSU1.positive')
+          .wire(`${G}.a`, hi(b))
+          .wire(`${G}.b`, hi(b))
           .wire(`${G}.y`, `${u}.gpio4`)
           .wire(`${G}.y`, `${r}.a`)
           .wire(`${r}.b`, 'GND1.ref');
@@ -457,8 +467,8 @@ describe('final review B1 follow-up (revised in Sprint 22): drivers tied onto an
       b.psu(3.0, 0.5)
         .wire('PSU1.positive', `${G}.vcc`)
         .wire(`${G}.gnd`, 'GND1.ref')
-        .wire(`${G}.a`, gateLevel === 'high' ? 'PSU1.positive' : 'GND1.ref')
-        .wire(`${G}.b`, 'PSU1.positive')
+        .wire(`${G}.a`, gateLevel === 'high' ? hi(b) : 'GND1.ref')
+        .wire(`${G}.b`, hi(b))
         .wire(`${G}.y`, `${u}.gpio4`);
     });
     const s = new EngineSession(bb.projected, { pins: bb.pins });
@@ -478,13 +488,11 @@ describe('final review B1 follow-up (revised in Sprint 22): drivers tied onto an
 });
 
 describe('verification of ab8cbca (probes vprobe/undef, esp, outcur)', () => {
-  /** A gate powered from PSU1: HIGH (A, B at V_CC), LOW (A at GND). */
+  /** A gate powered from PSU1: HIGH (A, B at 5.5 V, Q1 strict), LOW (A at GND). */
   const gate = (b: Bench, kind: 'high' | 'low') => {
     const g = b.add('logic.gate_and');
-    b.wire('PSU1.positive', `${g}.vcc`)
-      .wire(`${g}.gnd`, 'GND1.ref')
-      .wire(`${g}.b`, 'PSU1.positive');
-    b.wire(`${g}.a`, kind === 'high' ? 'PSU1.positive' : 'GND1.ref');
+    b.wire('PSU1.positive', `${g}.vcc`).wire(`${g}.gnd`, 'GND1.ref').wire(`${g}.b`, hi(b));
+    b.wire(`${g}.a`, kind === 'high' ? hi(b) : 'GND1.ref');
     return g;
   };
   const res = (b: Bench, ohm: number, p: string, q: string) => {
@@ -643,9 +651,7 @@ describe('verification of ab8cbca (probes vprobe/undef, esp, outcur)', () => {
       res(b, 1e7, `${A}.y`, 'GND1.ref');
       if (reader) {
         const C = b.add('logic.gate_and');
-        b.wire('PSU1.positive', `${C}.vcc`)
-          .wire(`${C}.gnd`, 'GND1.ref')
-          .wire(`${C}.b`, 'PSU1.positive');
+        b.wire('PSU1.positive', `${C}.vcc`).wire(`${C}.gnd`, 'GND1.ref').wire(`${C}.b`, hi(b));
         b.wire(`${A}.y`, `${C}.a`);
       }
       return { b, A, B };
@@ -665,8 +671,10 @@ describe('verification of ab8cbca (probes vprobe/undef, esp, outcur)', () => {
         // (+ the 10 MΩ bleed's 0.3 µA, + the reader's 5 µA leakage)
         expect((e!.detail as { value: number }).value).toBeCloseTo(3.0 / 80, 4);
       });
-      it(`R = 130 Ω${reader ? ' (+reader)' : ''}: at most 23.08 mA ≤ 24 mA → runs`, () => {
-        expect(err(solve(tied(130, reader).b))).toBeNull();
+      it(`R = 130 Ω${reader ? ' (+reader)' : ''}: at most 23.08 mA ≤ 24 mA → ${reader ? 'holds (Q1: the reader input on Y_A is off the I_CC condition → refused by the current limit only)' : 'runs'}`, () => {
+        const e = err(solve(tied(130, reader).b));
+        if (reader) expect(e).toMatchObject(limitOnly);
+        else expect(e).toBeNull();
       });
     }
   });

@@ -52,6 +52,19 @@ export class Bench {
       .set('PSU1', 'currentLimit', { value: amps, unit: 'ampere' })
       .set('PSU1', 'outputEnabled', enabled);
   }
+  /**
+   * Sprint 22 (Q1 strict): one more bench supply, its negative to GND1 — e.g. the 5.5 V rail an
+   * SN74LVC1G input needs for its I_CC test condition ("V_I = 5.5V or GND", SCES217AA §5.5).
+   * Returns the supply's id.
+   */
+  rail(volts = 5.5, amps = 0.1): string {
+    const id = this.add('instrument.lab_psu');
+    this.set(id, 'setpointVoltage', { value: volts, unit: 'volt' })
+      .set(id, 'currentLimit', { value: amps, unit: 'ampere' })
+      .set(id, 'outputEnabled', true)
+      .wire(`${id}.negative`, 'GND1.ref');
+    return id;
+  }
   ohms(id: string, value: number): this {
     return this.set(id, 'resistance', { value, unit: 'ohm' });
   }

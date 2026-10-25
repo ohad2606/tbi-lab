@@ -248,6 +248,7 @@ export function engineErrorMessage(
         reason?: string;
         role?: string;
         reverse?: boolean;
+        check?: string;
       };
       const V = (v: number | undefined) =>
         typeof v === 'number' ? formatResult(locale, v, 'volt') : '';
@@ -279,7 +280,13 @@ export function engineErrorMessage(
                   ? 'sim.error.logic_output_uncharacterized.reverse'
                   : error.code === 'logic_supply_not_guaranteed' && error.param === 'limit'
                     ? 'sim.error.logic_supply_not_guaranteed.limit'
-                    : `sim.error.${error.code}.${(d.part ?? '').toLowerCase()}`;
+                    : error.code === 'logic_input_leakage_uncharacterized' && d.check === 'limit'
+                      ? 'sim.error.logic_input_leakage_uncharacterized.limit'
+                      : error.code === 'logic_supply_current_uncharacterized' && d.check === 'limit'
+                        ? `sim.error.logic_supply_current_uncharacterized.${
+                            error.param && error.param !== 'vcc' ? 'limit_input' : 'limit'
+                          }${d.part === 'SN74LVC08A' ? '.sn74lvc08a' : ''}`
+                        : `sim.error.${error.code}.${(d.part ?? '').toLowerCase()}`;
       const why = `sim.bound.notEstablished.${d.reason ?? ''}`;
       const causes = (d.causes ?? [])
         .map((c) => `sim.bound.cause.${c}`)

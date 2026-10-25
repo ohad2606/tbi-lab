@@ -11,7 +11,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createSnapshot, type ProjectDocument } from '@tbi-lab/domain';
-import { EngineSession, LVC08A_CARD, ratingWarnings, type RuntimePinMode } from '@tbi-lab/engine';
+import { EngineSession, LVC08A_CARD, type RuntimePinMode } from '@tbi-lab/engine';
 import doc from '../src/examples/data/esp32-logic-quad-and.json';
 
 const DOC = doc as unknown as ProjectDocument;
@@ -76,11 +76,11 @@ describe('ESP32 → SN74LVC08A → LEDs (golden; preview of owner option S21-Q2(
     ]);
   });
 
-  it('even with Q2(b): a pad driven HIGH into its 10 kΩ pull-down is refused (ESP32 V_OH has no load current, review item 5); pads as inputs or LOW run, every output LOW', () => {
+  it('even with Q2(b): a pad driven HIGH into its 10 kΩ pull-down is refused (ESP32 V_OH has no load current, review item 5); pads as inputs or LOW: levels hold, then refused by the current limit (Q1, I_CC only at 3.6 V)', () => {
     const modes: RuntimePinMode[] = ['input', 'output-low', 'output-high'];
     for (const m18 of modes)
       for (const m19 of modes) {
-        const { s, full } = session(DOC);
+        const { s } = session(DOC);
         s.setPinMode(18, m18);
         s.setPinMode(19, m19);
         const o = s.solve();
@@ -89,13 +89,13 @@ describe('ESP32 → SN74LVC08A → LEDs (golden; preview of owner option S21-Q2(
           expect(o.ok ? null : o.error.code, at).toBe('logic_mcu_output_uncharacterized');
           continue;
         }
-        if (!o.ok) throw new Error(`${at}: ${JSON.stringify(o.error)}`);
-        expect(
-          o.components.U2!.logic!.gates.map((g) => g.output.level),
-          at,
-        ).toEqual(['low', 'low', 'low', 'low']);
-        expect(o.components.D1!.current!, at).toBeLessThan(1e-9);
-        expect(ratingWarnings(full, o), at).toEqual([]);
+        // Sprint 22 Q1 (strict): every level holds even here, but the SN74LVC08A's I_CC is
+        // bounded only at V_CC = 3.6 V (SCAS283W §5.7): the supply's current limit is refused.
+        expect(o.ok ? null : o.error, at).toMatchObject({
+          code: 'logic_supply_current_uncharacterized',
+          components: ['U2', 'PSU1'],
+          detail: { part: 'SN74LVC08A', condition: 'notSupply', check: 'limit' },
+        });
       }
   });
 
