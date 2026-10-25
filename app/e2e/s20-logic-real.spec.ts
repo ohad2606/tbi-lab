@@ -7,9 +7,9 @@
  *
  * - C `esp32-logic-quad-and`: Sprint 21, refused by name at 3.0 V (the SN74LVC08A input leakage
  *   is specified only at 3.6 V; owner question S21-Q2); the panel marks 1A "not guaranteed";
- * - D `esp32-logic-override`: the sketch toggles GPIO18 every second and prints the gate's output
- *   read back on GPIO19; closing the switch from the Inspector's logic panel keeps Y HIGH and the
- *   sketch reports the override;
+ * - D `esp32-logic-override`: Sprint 21 review — refused by name as soon as the sketch drives
+ *   GPIO18 HIGH (Y HIGH into the LED is guaranteed only ≥ 2.4 V, below the read-back GPIO19's
+ *   V_IH 2.475 V);
  * - Sprint 21: D with the gate supply at 4.5 V: once the firmware drives GPIO18 HIGH the Run is
  *   refused, naming GPIO18 (ESP32 V_OH ≥ 2.64 V < the gate's V_IH 3.15 V).
  */
@@ -22,7 +22,6 @@ test.setTimeout(420_000);
 test.skip(!process.env.TBI_S20L_REAL, 'heavy: needs the real stack (TBI_S20L_REAL=1)');
 test.describe.configure({ mode: 'serial' });
 
-const status = (page: Page) => page.getByTestId('sim-status');
 const select = (page: Page, id: string) =>
   component(page, id).locator('.component-hit').click({ force: true });
 
@@ -34,15 +33,6 @@ async function openExample(page: Page, id: string) {
   await page.getByTestId(`open-example-${id}`).click();
   await expect(page.getByTestId('canvas')).toBeVisible();
   await waitSaved(page);
-}
-async function runOnBoard(page: Page) {
-  await page.getByTestId('sim-run').click();
-  await expect(status(page)).toHaveAttribute('data-status', 'running', { timeout: 90_000 });
-  await expect(status(page)).toHaveAttribute('data-engine', 'mcu');
-}
-async function stop(page: Page) {
-  await page.getByTestId('sim-stop').click();
-  await expect(status(page)).toHaveAttribute('data-status', 'stopped', { timeout: 60_000 });
 }
 
 test('C on the real runtime (Sprint 21): refused by name at 3.0 V — SN74LVC08A input leakage specified only at 3.6 V', async ({
@@ -61,24 +51,20 @@ test('C on the real runtime (Sprint 21): refused by name at 3.0 V — SN74LVC08A
   await page.screenshot({ path: info.outputPath('s21l-real-c-refused.png') });
 });
 
-test('D on the real runtime: GPIO18 blinks the OR gate, GPIO19 reads it back; the switch overrides', async ({
+test('D on the real runtime (Sprint 21 review): Y HIGH into the LED and GPIO19 is not a guaranteed ESP32 HIGH — refused by name', async ({
   page,
 }, info) => {
   await openExample(page, 'esp32-logic-override');
   await buildProgram(page, 300_000);
-  await runOnBoard(page);
-  const serial = page.getByTestId('mcu-serial-output');
-  await expect(serial).toContainText('A=1 Y=1', { timeout: 90_000 });
-  await expect(serial).toContainText('A=0 Y=0', { timeout: 30_000 });
-  await expect(serial).not.toContainText('A=1 Y=0');
+  await page.getByTestId('sim-run').click();
+  const err = page.getByTestId('sim-error');
+  await expect(err).toHaveAttribute('data-code', 'logic_mcu_input_not_guaranteed', {
+    timeout: 120_000,
+  });
+  await expect(err).toContainText('GPIO19');
   await select(page, 'U2');
-  await expect(page.getByTestId('logic-mcu-a')).toContainText('GPIO18');
-  await page.getByTestId('logic-control-SW1').click();
-  await expect(page.getByTestId('logic-level-b')).toHaveText('HIGH', { timeout: 30_000 });
-  await expect(serial).toContainText('A=0 Y=1 (switch override)', { timeout: 30_000 });
-  await expect(page.getByTestId('logic-level-y')).toHaveText('HIGH');
-  await page.screenshot({ path: info.outputPath('s20l-real-d.png') });
-  await stop(page);
+  await expect(page.getByTestId('logic-why-y')).toContainText('ESP32 pin reading this output');
+  await page.screenshot({ path: info.outputPath('s21l-real-d-refused.png') });
 });
 
 /** Example D with the gate supply at 4.5 V (V_IH = 0.7 × 4.5 = 3.15 V > the ESP32's 2.64 V). */

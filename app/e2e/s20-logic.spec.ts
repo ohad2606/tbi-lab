@@ -179,28 +179,26 @@ test('review round 2: a refusal WHILE RUNNING (opening a switch floats an input)
   await page.getByTestId('sim-stop').click();
 });
 
-test('review round 2: the same refusal during an ESP32 session (runtime controller) is explained by pin', async ({
+test('a refusal in an ESP32 session (runtime controller) is explained by pin (Sprint 21: the read-back pad)', async ({
   page,
   request,
 }) => {
+  // Sprint 21 review: every state of example D in which the sketch drives GPIO18 HIGH is refused
+  // (the read-back pad, or GPIO18 into its pull-down), so the round-2 "float B while running"
+  // scenario no longer reaches a running state; the refusal is explained by pin instead.
   await request.post(`${FAKE}/__test/capacity?n=4096`);
   await openExample(page, 'esp32-logic-override');
-  await inspect(page, 'R2');
-  await page.getByTestId('inspector-delete').click();
-  await inspect(page, 'U2');
-  await page.getByTestId('logic-control-SW1').click();
-  await waitSaved(page);
   await buildProgram(page);
   await page.getByTestId('sim-run').click();
-  await expect(status(page)).toHaveAttribute('data-engine', 'mcu', { timeout: 20_000 });
+  await expect(page.getByTestId('sim-error')).toHaveAttribute(
+    'data-code',
+    'logic_mcu_input_not_guaranteed',
+    { timeout: 20_000 },
+  );
   await inspect(page, 'U2');
-  await expect(page.getByTestId('logic-level-b')).toHaveText('HIGH', { timeout: 15_000 });
-  await page.getByTestId('logic-control-SW1').click();
-  await expect(page.getByTestId('logic-level-b')).toHaveText('floating (not driven)', {
-    timeout: 15_000,
-  });
-  await expect(page.getByTestId('logic-why-b')).toContainText('Nothing drives this input');
-  await shot(page, 's20l2-D-refused-while-running-en');
+  await expect(page.getByTestId('logic-level-y')).toHaveText('not simulated');
+  await expect(page.getByTestId('logic-why-y')).toContainText('ESP32 pin reading this output');
+  await shot(page, 's21l-D-refused-by-pin-en');
 });
 
 /** PSU1 3.0 V → SN74LVC1G08 U1 (A HIGH); B from toggle switch SW1 (closed) with NO pull-down. */
@@ -421,44 +419,33 @@ test('B at 3.6 V: the package gate selector; 1Y → 2A inside the package and 2Y
   await page.getByTestId('sim-stop').click();
 });
 
-test('D: ESP32 + manual switch + OR gate; the firmware blinks A and reads Y back; the switch overrides it; save/reopen', async ({
+test('D: ESP32 + manual switch + OR gate (Sprint 21 review): Y HIGH into the LED and the read-back GPIO19 is not a guaranteed ESP32 HIGH — refused by name; the switch persists (save/reopen)', async ({
   page,
   request,
 }) => {
   await request.post(`${FAKE}/__test/capacity?n=4096`);
   await openExample(page, 'esp32-logic-override');
-  await buildProgram(page);
-  await page.getByTestId('sim-run').click();
-  await expect(status(page)).toHaveAttribute('data-status', 'running', { timeout: 20_000 });
-  await expect(status(page)).toHaveAttribute('data-engine', 'mcu');
   await inspect(page, 'U2');
   await expect(page.getByTestId('logic-mcu-a')).toContainText('GPIO18');
-  // The firmware toggles GPIO18 every second: both rows LL and HL are visited.
-  await expect(page.getByTestId('logic-truth-HL')).toHaveAttribute('aria-current', 'true', {
-    timeout: 15_000,
+  await buildProgram(page);
+  await page.getByTestId('sim-run').click();
+  // setup() drives GPIO18 HIGH: Y HIGH sources the LED (several mA) and GPIO19 reads it; the
+  // SN74LVC1G32 guarantees V_OH ≥ 2.4 V there (16 mA point), below the ESP32's V_IH 2.475 V.
+  const err = page.getByTestId('sim-error');
+  await expect(err).toHaveAttribute('data-code', 'logic_mcu_input_not_guaranteed', {
+    timeout: 20_000,
   });
-  await expect(page.getByTestId('logic-truth-LL')).toHaveAttribute('aria-current', 'true', {
-    timeout: 15_000,
-  });
-  await expect(page.getByTestId('mcu-serial-output')).toContainText('A=1 Y=1');
-  await expect(page.getByTestId('mcu-serial-output')).toContainText('A=0 Y=0');
-  await shot(page, 's20l-D-blink-en');
-  // Close the switch from the panel (a live mirror into the session): Y stays HIGH.
-  await page.getByTestId('logic-control-SW1').click();
-  await expect(page.getByTestId('logic-level-b')).toHaveText('HIGH');
-  await expect(page.getByTestId('logic-truth-LH')).toHaveAttribute('aria-current', 'true', {
-    timeout: 15_000,
-  });
-  await expect(page.getByTestId('mcu-serial-output')).toContainText('A=0 Y=1 (switch override)', {
-    timeout: 15_000,
-  });
-  await expect(page.getByTestId('logic-level-y')).toHaveText('HIGH');
-  await shot(page, 's20l-D-override-en');
+  await expect(err).toContainText('GPIO19');
+  await expect(err).toContainText('V_IH 2.475 V');
+  await shot(page, 's21l-D-refused-en');
   await page.getByTestId('language-select').selectOption('he');
-  await shot(page, 's20l-D-override-he');
+  await expect(err).toContainText('GPIO19');
+  await shot(page, 's21l-D-refused-he');
   await page.getByTestId('language-select').selectOption('en');
-  await page.getByTestId('sim-stop').click();
-  await expect(status(page)).toHaveAttribute('data-status', 'stopped', { timeout: 20_000 });
+  // Close the switch from the panel (a persistent edit) and reopen: it is kept.
+  await inspect(page, 'U2');
+  await page.getByTestId('logic-control-SW1').click();
+  await expect(page.getByTestId('logic-control-SW1')).toContainText('closed');
   await waitSaved(page);
   await goToProjects(page);
   await reopenFromLibrary(page);
