@@ -946,6 +946,11 @@ function ChecksSection({ hidden }: { hidden: boolean }) {
         });
       case 'psu_shorted_by_wire':
         return t('checks.psu_shorted_by_wire', { component });
+      // Sprint 21: the owner's as-drawn circuit (GND on V_CC's net; nothing across the supply).
+      case 'supply_pins_shorted':
+        return t('checks.supply_pins_shorted', { component });
+      case 'psu_no_load':
+        return t('checks.psu_no_load', { component });
       case 'no_ground':
         return t('checks.no_ground');
       default:

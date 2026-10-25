@@ -21,7 +21,11 @@ export type CheckCode =
   | 'terminals_touching'
   | 'floating_island'
   | 'no_ground'
-  | 'psu_shorted_by_wire';
+  | 'psu_shorted_by_wire'
+  /** Sprint 21: a part's own V_CC and GND pins are on one net: it can never be powered. */
+  | 'supply_pins_shorted'
+  /** Sprint 21: nothing connects a supply's + to its −: it can deliver no current to any part. */
+  | 'psu_no_load';
 
 export interface CheckIssue {
   code: CheckCode;
@@ -72,6 +76,66 @@ export function checkCircuit(doc: ProjectDocument): CheckIssue[] {
     const p = netOf.get(`${c.id}\u0000positive`);
     if (p !== undefined && p === netOf.get(`${c.id}\u0000negative`)) {
       issues.push({ code: 'psu_shorted_by_wire', severity: 'warning', components: [c.id] });
+    }
+  }
+
+  // Sprint 21 (DEV-Lab acceptance, the owner's as-drawn circuit): a part whose own supply pins
+  // (`vcc` and `gnd`) share one net. Its supply voltage is 0 V whatever the source: it can never
+  // be powered (the engine then reports it unpowered, never a level).
+  for (const c of doc.components) {
+    const ids = CATALOG[c.type].terminals.map((t) => t.id);
+    if (!ids.includes('vcc') || !ids.includes('gnd')) continue;
+    const v = netOf.get(`${c.id}\u0000vcc`);
+    if (v !== undefined && v === netOf.get(`${c.id}\u0000gnd`))
+      issues.push({
+        code: 'supply_pins_shorted',
+        severity: 'warning',
+        components: [c.id],
+        terminals: ['vcc', 'gnd'],
+      });
+  }
+
+  // Sprint 21: a supply whose + and − no part connects, even counting every terminal of every
+  // part as joined (the most generous reading: a switch closed, a gate conducting): no current
+  // can leave it. Only when both terminals are wired (an unwired supply is `not_connected` or
+  // `partially_wired` above), and never for a shorted one (above). Conservative, so a normal
+  // circuit with any load across the supply never shows it.
+  {
+    const parent = new Map<string, string>();
+    const find = (k: string): string => {
+      if (!parent.has(k)) parent.set(k, k);
+      const q = parent.get(k)!;
+      if (q === k) return k;
+      const r = find(q);
+      parent.set(k, r);
+      return r;
+    };
+    const supplies = doc.components.filter((c) => c.type === 'instrument.lab_psu');
+    for (const c of doc.components) {
+      if (c.type === 'instrument.lab_psu' || c.type === 'component.ground') continue;
+      const nets = CATALOG[c.type].terminals
+        .map((t) => netOf.get(`${c.id}\u0000${t.id}`))
+        .filter((n): n is string => n !== undefined)
+        .map((n) => (groundNets.has(n) ? REF : n));
+      for (const n of nets.slice(1)) parent.set(find(nets[0]!), find(n));
+    }
+    // Other supplies conduct too (in series with this one).
+    for (const s of supplies) {
+      const nets = ['positive', 'negative']
+        .map((t) => netOf.get(`${s.id}\u0000${t}`))
+        .filter((n): n is string => n !== undefined)
+        .map((n) => (groundNets.has(n) ? REF : n));
+      for (const o of supplies)
+        if (o !== s) {
+          const on = ['positive', 'negative']
+            .map((t) => netOf.get(`${o.id}\u0000${t}`))
+            .filter((n): n is string => n !== undefined)
+            .map((n) => (groundNets.has(n) ? REF : n));
+          if (on.length === 2) parent.set(find(on[0]!), find(on[1]!));
+        }
+      if (nets.length !== 2 || nets[0] === nets[1]) continue;
+      if (find(nets[0]!) !== find(nets[1]!))
+        issues.push({ code: 'psu_no_load', severity: 'warning', components: [s.id] });
     }
   }
 

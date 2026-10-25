@@ -14,6 +14,7 @@
  *
  * Screenshots go to TBI_S20L_SHOTS (a directory) when set.
  */
+import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 import {
   addComponent,
@@ -334,10 +335,44 @@ test('an input between V_IL and V_IH: refused; the panel shows its voltage again
   await page.getByTestId('language-select').selectOption('en');
 });
 
-test('B: the package gate selector; 1Y → 2A inside the package and 2Y → OR across packages; save/reopen', async ({
+test('B as shipped (3.0 V), Sprint 21: refused by name — the SN74LVC08A input leakage is specified only at 3.6 V (EN, HE)', async ({
   page,
 }) => {
   await openExample(page, 'logic-cascade');
+  await page.getByTestId('sim-run').click();
+  const err = page.getByTestId('sim-error');
+  await expect(err).toContainText(/input\W+1A\W+is held through a resistance/);
+  await expect(err).toContainText('V_CC = 3.6 V');
+  await inspect(page, 'U1');
+  await expect(page.getByTestId('logic-level-a1')).toHaveText('not guaranteed');
+  await expect(page.getByTestId('logic-no-row')).toContainText('No row');
+  await shot(page, 's21l-B-refused-en');
+  await page.getByTestId('language-select').selectOption('he');
+  await expect(err).toContainText(/כניסה\W+1A\W+מוחזקת דרך התנגדות/);
+  await shot(page, 's21l-B-refused-he');
+  await page.getByTestId('language-select').selectOption('en');
+});
+
+/** Example B with its supply at 3.6 V (where SCAS283W §5.7 specifies I_I and I_CC). */
+function cascadeAt36(): ProjectDocument {
+  const d = JSON.parse(
+    readFileSync(new URL('../src/examples/data/logic-cascade.json', import.meta.url), 'utf8'),
+  ) as ProjectDocument;
+  const r = setParam(
+    { ...d, projectId: 'prj_s21lCascade36', name: 'Cascade 3.6 V' },
+    'PSU1',
+    'setpointVoltage',
+    { value: 3.6, unit: 'volt' },
+  );
+  if (!r.ok) throw new Error(r.error);
+  return r.doc;
+}
+
+test('B at 3.6 V: the package gate selector; 1Y → 2A inside the package and 2Y → OR across packages; save/reopen', async ({
+  page,
+}) => {
+  await openImported(page, cascadeAt36());
+  await waitSaved(page);
   await run(page);
   await inspect(page, 'U1');
   // All switches open: every gate LL → L (gate 2's 2A is 1Y = L).
@@ -362,7 +397,8 @@ test('B: the package gate selector; 1Y → 2A inside the package and 2Y → OR a
   await expect(page.getByTestId('logic-level-a')).toHaveText('HIGH');
   await expect(page.getByTestId('logic-level-b')).toHaveText('LOW');
   await expect(page.getByTestId('logic-level-y')).toHaveText('HIGH');
-  await expect(page.getByTestId('probe-reading-D1')).toContainText('mA');
+  await inspect(page, 'D1');
+  await expect(page.getByTestId('result-current')).toContainText('mA');
   // D (override) alone: open A again, close D.
   await inspect(page, 'U1');
   await page.getByTestId('logic-control-SW1').click();

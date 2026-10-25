@@ -115,6 +115,9 @@ export const LVC08A_CARD: LogicPackageCard = {
   // §5.7: I_I ±5 µA (V_I = 5.5 V or GND, 3.6 V); I_CC 10 µA (V_I = V_CC or GND, I_O = 0, 3.6 V);
   // ΔI_CC 500 µA (one input at V_CC − 0.6 V). No I_off row.
   inputLeakageA: 5e-6,
+  // Sprint 21: §5.7 tabulates I_I ONLY at V_CC = 3.6 V ("V_I = 5.5 V or GND | 3.6V | ±5"). At
+  // any other supply the input leakage is not characterized (owner question S21-Q2).
+  iiVcc: [3.6, 3.6],
   iccMaxA: 10e-6,
   // Sprint 20 (independent validation): §5.7 tabulates I_CC only at V_CC = 3.6 V ("V_I = V_CC or
   // GND, I_O = 0 | 3.6V | 10"), so it is a known bound only there; ΔI_CC over 2.7–3.6 V.

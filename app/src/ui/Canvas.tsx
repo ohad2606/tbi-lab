@@ -869,7 +869,10 @@ export function Canvas({
   const markers = issues.flatMap((i) =>
     i.code === 'terminals_touching'
       ? [{ code: i.code, component: i.components[0]!, terminal: i.terminals![0]! }]
-      : i.code === 'partially_wired' || i.code === 'wire_over_terminal'
+      : i.code === 'partially_wired' ||
+          i.code === 'wire_over_terminal' ||
+          // Sprint 21: both supply pins of a part on one net.
+          i.code === 'supply_pins_shorted'
         ? (i.terminals ?? []).map((term) => ({
             code: i.code,
             component: i.components[0]!,
@@ -1511,6 +1514,20 @@ function runtimeLabel(
       // Its position, not its supply current (not modelled, never shown as 0 A).
       const angle = servoAngle(r.state);
       return angle === undefined ? '' : formatAngle(locale, angle);
+    }
+    case 'logic.gate_and':
+    case 'logic.gate_nand':
+    case 'logic.gate_or':
+    case 'logic.gate_not':
+    case 'logic.quad_and': {
+      // Sprint 21 (Phase 4): a logic part shows its output LEVELS on the canvas (compact, never
+      // over its neighbours); its currents and voltages are in the Inspector's logic panel.
+      const L = (l: string) => (l === 'high' ? 'H' : l === 'low' ? 'L' : l === 'off' ? '–' : '?');
+      const gates = r.logic?.gates ?? [];
+      if (!gates.length) return '';
+      return gates.length === 1
+        ? `Y = ${L(gates[0]!.output.level)}`
+        : `Y ${gates.map((g) => `${g.unit}${L(g.output.level)}`).join(' ')}`;
     }
     default: {
       // Sprint 10 parts: their named currents ("R 12.1 mA · G 0 A · B 3.2 mA"), else V · I.

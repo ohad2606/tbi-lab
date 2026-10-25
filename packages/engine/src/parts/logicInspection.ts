@@ -14,6 +14,13 @@ export interface LogicPinState {
   level: LogicLevel;
   /** Pin voltage relative to the part's GND pin (V), or null where it is unknown. */
   volts: number | null;
+  /**
+   * Sprint 21, outputs only: what the datasheet GUARANTEES at the solved output current — V_OH ≥
+   * `volts` (HIGH) or V_OL ≤ `volts` (LOW), from the test point at `atA` (logic/lvc1g.ts
+   * `outputGuaranteeAt`). `volts` above is the model's value (the characteristic through the
+   * guaranteed points), which is not itself a guarantee.
+   */
+  guarantee?: { volts: number; atA: number };
 }
 
 export interface LogicInspection {

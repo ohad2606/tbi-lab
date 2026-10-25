@@ -93,6 +93,12 @@ export interface LogicCard {
    * is then refused, never assumed off.
    */
   readonly inputLeakageA: number;
+  /**
+   * Sprint 21: the supply range the I_I row is tabulated over (V). Outside it the input leakage is
+   * NOT characterized (SN74LVC08A: only V_CC = 3.6 V); the session then refuses an input whose
+   * level depends on it (held through a non-zero resistance).
+   */
+  readonly iiVcc: readonly [number, number];
   readonly ioffA?: number;
   readonly iccMaxA: number;
   /**
@@ -149,7 +155,10 @@ const LVC1G_COMMON = {
   outputAbsAboveVcc: 0.5,
   outputAbsA: 50e-3,
   supplyPinAbsA: 100e-3,
+  // §5.5: I_I ±5 µA, "V_I = 5.5V or GND", V_CC "0 to 5.5V" (identical in the four sheets).
   inputLeakageA: 5e-6,
+  iiVcc: [0, 5.5] as const,
+  // §5.5: I_off ±10 µA, "V_I or V_O = 5.5V", V_CC = 0.
   ioffA: 10e-6,
   iccMaxA: 10e-6,
   // §5.5: I_CC "V_I = 5.5V or GND, I_O = 0, 1.65V to 5.5V" (NOT "V_CC or GND"); ΔI_CC "one input
@@ -355,3 +364,32 @@ export const SETTLE_VCC_V = 1e-9;
 /** The supply to store: the previous one when the change is below the settle resolution. */
 export const settledVcc = (raw: number, prev: unknown): number =>
   typeof prev === 'number' && Math.abs(raw - prev) <= SETTLE_VCC_V ? prev : raw;
+
+/**
+ * Sprint 21: what the datasheet GUARANTEES about an output carrying `amps` (|I_OH| or I_OL) at
+ * this supply, as opposed to the model's characteristic, which interpolates linearly between the
+ * guaranteed test points (EF-D4 A) and passes through (0, 0). The guarantee is the bound of the
+ * smallest guaranteed test point at or above this current: V_OH ≥ V_CC − drop (HIGH), V_OL ≤ low
+ * (LOW). Basis: §5.5 (SN74LVC08A §5.7) test points, read with the sheets' own statement that
+ * "drawing current from the output decreases the output voltage as specified by the V_OH
+ * specification" / "sinking current into the output increases the output voltage" (1G sheets
+ * §8.2.1.3 Output Considerations): a smaller current can only meet the bound of a larger
+ * guaranteed one. Beyond the largest guaranteed current: null (no guarantee; refused upstream).
+ */
+export function outputGuaranteeAt(
+  card: LogicCard,
+  vcc: number,
+  level: 'high' | 'low',
+  amps: number,
+): { volts: number; atA: number } | null {
+  const stage = outputStageAt(card, vcc);
+  const pts = level === 'high' ? stage.high : stage.low;
+  const a = Math.abs(amps);
+  const ok = pts.filter(([, i]) => i >= a - 1e-15).sort((p, q) => p[1] - q[1]);
+  const first = ok[0];
+  if (!first) return null;
+  // Several points can share a current (none do today); the weakest bound applies.
+  const same = ok.filter(([, i]) => i === first[1]).map(([v]) => v);
+  const v = Math.max(...same);
+  return level === 'high' ? { volts: vcc - v, atA: first[1] } : { volts: v, atA: first[1] };
+}

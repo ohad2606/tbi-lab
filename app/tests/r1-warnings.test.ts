@@ -44,7 +44,13 @@ describe('no shipped example raises a pad over-voltage warning (T-D3)', () => {
         // Sprint 19B: firmware driving a pad as an OUTPUT against a logic gate's output (X1's
         // read-back pin): the contention current is beyond the gate's guaranteed output current,
         // so that combination is refused by name, never shown as a number.
-        if (!out.ok && out.error.code === 'logic_output_uncharacterized') {
+        // Sprint 21: the SN74LVC08A example at 3.0 V is refused in every combination (its input
+        // leakage is specified only at 3.6 V, owner question S21-Q2).
+        if (
+          !out.ok &&
+          (out.error.code === 'logic_output_uncharacterized' ||
+            out.error.code === 'logic_input_leakage_uncharacterized')
+        ) {
           refused++;
           refusedAt.push(n);
           continue;
@@ -62,7 +68,11 @@ describe('no shipped example raises a pad over-voltage warning (T-D3)', () => {
       // the gate's LOW (GPIO18 input → pulled down, or LOW: 2), driven LOW against its HIGH (1),
       // and driven HIGH (3.3 V) against its HIGH at 3.0 V: Y forced above the gate's own V_CC, a
       // wrong-way current no test point covers (1).
-      const expected: Record<string, number> = { 'esp32-logic-and': 3, 'esp32-logic-override': 4 };
+      const expected: Record<string, number> = {
+        'esp32-logic-and': 3,
+        'esp32-logic-override': 4,
+        'esp32-logic-quad-and': 9,
+      };
       expect(refused, `${e.id} ${refusedAt}`).toBe(expected[e.id] ?? 0);
     });
 });

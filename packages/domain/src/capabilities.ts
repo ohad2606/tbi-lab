@@ -116,6 +116,8 @@ const LOGIC_LIMITATIONS = (part: '1g08' | '1g00' | '1g32' | '1g04') => [
   'logic_guaranteed_output',
   'logic_supply_rows',
   'logic_unknown',
+  'logic_guarantee_bounds',
+  'logic_power',
   'logic_breakout',
 ];
 
@@ -159,6 +161,7 @@ export const MODEL_LIMITATIONS: Readonly<Partial<Record<ComponentTypeId, readonl
     'logic_guaranteed_output',
     'logic_package_supply_rows',
     'logic_package_input_band',
+    'logic_package_guarantee_bounds',
     'logic_package_unused_inputs',
     'logic_package_unpowered',
     'logic_package_breakout',

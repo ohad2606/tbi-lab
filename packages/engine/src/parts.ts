@@ -17,6 +17,7 @@
  * relay's coil and contacts stay galvanically isolated, exactly as in the real part.
  */
 
+import type { LogicBoundSpec } from './logic/bounds.js';
 import type { ComponentInstance } from '@tbi-lab/domain';
 import type { Device, TimeStep } from './devices.js';
 import type { ComponentResult, EngineError } from './session.js';
@@ -234,6 +235,12 @@ export interface PartModel {
    * session checks it only once every state has settled, never on an intermediate pass.
    */
   refusal?(ctx: PartContext, state: PartState): EngineError | null;
+  /**
+   * Sprint 21: what the session's guarantee-bound check needs from a SETTLED logic part
+   * (logic/bounds.ts): its card, supply nodes, the levels it concluded. Null when there is
+   * nothing to bound (refused, not yet evaluated).
+   */
+  logicBounds?(ctx: PartContext, state: PartState): LogicBoundSpec | null;
   report(
     ctx: PartContext,
     state: PartState,

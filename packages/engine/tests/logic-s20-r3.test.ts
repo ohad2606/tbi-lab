@@ -78,14 +78,16 @@ function pkg(series: Series, volts: number) {
 describe('A1: a cascade on a rail behind a series supply element settles (was logic_unknown_state)', () => {
   // Review round 4: a supply through a series DIODE is a junction path and is refused
   // (logic_supply_undriven, below); switch and resistor feeds are resistive/source paths.
-  const cases: [Series, number][] = [
-    ['direct', 3.3],
-    ['switch', 3.3],
-    ['resistor', 3.3],
-  ];
-  for (const [series, volts] of cases) {
+  // Sprint 21 (guarantee bounds): a feed through a RESISTOR now also needs the gate's quiescent
+  // current bounded (I_CC only with every input at 5.5 V or GND for the 1G sheets, at 3.6 V with
+  // inputs at V_CC or GND for the 08A): inputs tied to the 3.3 V rail are not that condition, so
+  // the resistor feed is refused by name; direct and switch feeds are stiff and still settle.
+  // The package runs at 3.6 V: its input leakage (needed for 1Y → 2A, held by gate 1's output
+  // stage) is specified only there (SCAS283W §5.7, owner question S21-Q2).
+  const cases: Series[] = ['direct', 'switch'];
+  for (const series of cases) {
     it(`two SN74LVC1G08, U1.Y → U2.A, rail via ${series}`, () => {
-      const { b, u1, u2 } = singles(series, volts);
+      const { b, u1, u2 } = singles(series, 3.3);
       const o = ok(solve(b));
       expect(o.components[u1]!.logic!.gates[0]!.output.level).toBe('high');
       expect(o.components[u2]!.logic!.gates[0]!.inputs.map((p) => p.level)).toEqual([
@@ -94,8 +96,8 @@ describe('A1: a cascade on a rail behind a series supply element settles (was lo
       ]);
       expect(o.components[u2]!.logic!.gates[0]!.output.level).toBe('high');
     });
-    it(`SN74LVC08A, 1Y → 2A, rail via ${series}`, () => {
-      const { b, u } = pkg(series, volts);
+    it(`SN74LVC08A, 1Y → 2A, rail via ${series} (3.6 V)`, () => {
+      const { b, u } = pkg(series, 3.6);
       const o = ok(solve(b));
       expect(o.components[u]!.logic!.gates.map((g) => g.output.level)).toEqual([
         'high',
@@ -105,8 +107,24 @@ describe('A1: a cascade on a rail behind a series supply element settles (was lo
       ]);
     });
   }
+  it('two SN74LVC1G08 via 10 Ω, inputs on the rail: I_CC has no bound there → refused (Sprint 21)', () => {
+    const { b, u1 } = singles('resistor', 3.3);
+    expect(fails(solve(b))).toMatchObject({
+      code: 'logic_supply_current_uncharacterized',
+      components: [u1],
+      param: 'vcc',
+      detail: { condition: 'notInputs' },
+    });
+  });
+  it('SN74LVC08A via 10 Ω at 3.6 V: the I_CC row is 3.6 V exactly, any drop leaves it → refused (Sprint 21)', () => {
+    const { b, u } = pkg('resistor', 3.6);
+    expect(fails(solve(b))).toMatchObject({
+      code: 'logic_supply_current_uncharacterized',
+      components: [u],
+    });
+  });
 
-  it('U1 behind 10 Ω and U2 on PSU+ directly (probe7): settles', () => {
+  it('U1 behind 10 Ω and U2 on PSU+ directly (probe7): U1 refused, its I_CC has no bound (Sprint 21)', () => {
     const { b, rail } = railBench('resistor', 3.3);
     const u1 = b.add('logic.gate_and');
     const u2 = b.add('logic.gate_and');
@@ -118,7 +136,10 @@ describe('A1: a cascade on a rail behind a series supply element settles (was lo
       .wire(`${u2}.gnd`, 'GND1.ref')
       .wire(`${u2}.b`, 'PSU1.positive');
     b.wire(`${u1}.y`, `${u2}.a`).wire(`${u2}.y`, `${rl}.a`).wire(`${rl}.b`, 'GND1.ref');
-    expect(ok(solve(b)).components[u2]!.logic!.gates[0]!.inputs[0]!.level).toBe('high');
+    expect(fails(solve(b))).toMatchObject({
+      code: 'logic_supply_current_uncharacterized',
+      components: [u1],
+    });
   });
 
   it('a GENUINELY unknown supply is still refused: a gate powered from another gate whose input is undefined', () => {

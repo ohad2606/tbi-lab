@@ -199,14 +199,59 @@ export const en = {
     '{components}: the supply is {supply}, which the SN74LVC08A datasheet does not characterize (1.65–1.95 V or 2.3–3.6 V). The simulator does not invent thresholds between datasheet rows.',
   'sim.error.logic_output_uncharacterized.sn74lvc08a':
     '{components}: at {supply} the SN74LVC08A datasheet guarantees output {pin} only up to {limit} flowing out of a HIGH output or into a LOW one; here it carries {current}, or is forced past its own rail. Real loads are characterized only at 1.65 V, 2.3 V, 2.7 V or 3.0 V exactly.',
+  // Sprint 21 (Phase 3): logic guarantee bounds.
+  'sim.error.logic_supply_current_uncharacterized':
+    '{components}: its supply path has resistance, so the device’s own quiescent supply current (I_CC, not part of the solve) moves its supply. The datasheet bounds I_CC only with every input at 5.5 V or GND (V_CC 1.65–5.5 V); {reason} Without a bound the supply, and every level that depends on it, is not guaranteed: the circuit is not simulated. Feed V_CC straight from the supply (a wire or a closed switch), or hold every input at GND (or 5.5 V).',
+  'sim.error.logic_supply_current_uncharacterized.sn74lvc08a':
+    '{components}: its supply path has resistance, so the device’s own quiescent supply current (I_CC, not part of the solve) moves its supply. The SN74LVC08A datasheet bounds I_CC only at V_CC = 3.6 V with every input at V_CC or GND; {reason} Without a bound the supply, and every level that depends on it, is not guaranteed: the circuit is not simulated. Feed V_CC straight from the supply (a wire or a closed switch).',
+  'sim.bound.reason.notInputs': 'here an input is not at those voltages.',
+  'sim.bound.reason.notSupply': 'here the supply is outside that row.',
+  'sim.bound.reason.notLeakage':
+    'here the input leakage that returns through the supply pins has no bound at this supply.',
+  'sim.error.logic_supply_not_guaranteed':
+    '{components}: within the datasheet bounds ({causes}) the supply can reach {worst} (simulated: {supply}), outside the datasheet row the result is computed for ({range}). The levels it implies are not guaranteed, so the circuit is not simulated. Lower the resistance in the supply path, or feed V_CC straight from the supply.',
+  'sim.error.logic_supply_not_guaranteed.limit':
+    '{components}: within the datasheet bounds of the logic parts’ supply current, this supply can reach its current limit ({limit}); its voltage, and the levels that depend on it, are not guaranteed, so the circuit is not simulated. Raise the current limit.',
+  'sim.error.logic_input_leakage_uncharacterized':
+    '{components}: input {pin} is held through a resistance, and at {supply} the datasheet gives no bound for the input leakage current (I_I is specified only at {iiVcc}). The voltage across that resistance, and so the input level, is not guaranteed: the circuit is not simulated. Tie the input straight to V_CC or GND (a wire or a closed switch), or run the device at a supply where I_I is specified.',
+  'sim.error.logic_input_not_guaranteed':
+    '{components}: input {pin} is {level} in the simulation ({voltage}), but within the datasheet bounds ({causes}) it can reach {worst}, {cmp} ({vccEq}). The level is not guaranteed, so the circuit is not simulated. Use a smaller pull resistor or a stronger driver.',
+  'sim.error.logic_input_not_guaranteed.mcu_high':
+    '{components}: input {pin} is driven HIGH by {pads}. The ESP32 datasheet guarantees only V_OH ≥ 2.64 V (0.8 × VDD); with that the input can be as low as {worst}, below {vih} ({vccEq}). A HIGH is not guaranteed, so the circuit is not simulated. Power the gate where the ESP32 meets its V_IH (for example 3.0–3.6 V, V_IH = 2.0 V).',
+  'sim.error.logic_input_undefined.mcu_high':
+    '{components}: input {pin} is at {voltage}, driven by {pads}: an ESP32 output is 3.3 V logic, guaranteed only V_OH ≥ 2.64 V. That is between {vil} and {vih} ({vccEq}): the ESP32 cannot drive a guaranteed HIGH into this gate at this supply, so the circuit is not simulated. Power the gate where the ESP32 meets its V_IH (for example 3.0–3.6 V, V_IH = 2.0 V).',
+  'sim.bound.cause.leakage': 'input leakage I_I',
+  'sim.bound.cause.supply_current': 'quiescent supply current I_CC',
+  'sim.bound.cause.esp32_voh': 'ESP32 V_OH ≥ 2.64 V',
+  'sim.bound.cause.esp32_vol': 'ESP32 V_OL ≤ 0.33 V',
+  'sim.bound.cause.output_guarantee': 'the driving output’s guaranteed level',
+  'sim.bound.cmp.high': 'below {th}',
+  'sim.bound.cmp.low': 'above {th}',
+  'logic.why.notGuaranteed':
+    '{v} in the simulation, but within the datasheet bounds ({causes}) it can reach {worst}: the level is not guaranteed. The simulation is refused.',
+  'logic.why.leakageUncharacterized':
+    'Held through a resistance, and the datasheet gives no input-leakage bound at {vcc}: the level is not guaranteed. The simulation is refused.',
+  'logic.why.supplyNotGuaranteed':
+    'Not simulated: the part’s supply is not guaranteed within the datasheet bounds (see the message above).',
+  'logic.why.outBoundHigh':
+    'Guaranteed: {cmp} up to {a} (datasheet test point). The voltage shown is the model’s value between the guaranteed points, not a guarantee.',
+  'logic.why.outBoundLow':
+    'Guaranteed: {cmp} up to {a} (datasheet test point). The voltage shown is the model’s value between the guaranteed points, not a guarantee.',
+  'logic.inspect.level.notGuaranteed': 'not guaranteed',
+  'limitation.logic_guarantee_bounds':
+    'Every level is re-checked within the datasheet bounds: input leakage (±5 µA), the quiescent supply current through any resistance in the supply path (I_CC ≤ 10 µA, only with the inputs at 5.5 V or GND), an ESP32 pin’s guaranteed V_OH ≥ 2.64 V / V_OL ≤ 0.33 V, and a driving gate’s guaranteed output level. A level that is not guaranteed, or that depends on a current with no datasheet bound, refuses the Run.',
+  'limitation.logic_power':
+    'Power dissipation is not simulated or checked; the ±50 mA output and ±100 mA supply-pin figures are absolute-maximum stress ratings (flagged, never used as load limits). The switching (dynamic) supply current is not simulated: DC only.',
+  'limitation.logic_package_guarantee_bounds':
+    'Every level is re-checked within the datasheet bounds. This datasheet specifies the input leakage (±5 µA) and the quiescent supply current (10 µA) only at V_CC = 3.6 V: at any other supply an input held through a resistance (a pull resistor, an ESP32 pin, another gate’s output) is refused, because its voltage error has no bound.',
   // L2: logic state / truth-table inspection.
   'logic.inspect.title': 'Logic: truth table and pin states',
   'logic.inspect.thresholds':
     '{part} at {supply}: HIGH at or above {vih}, LOW at or below {vil} (datasheet; where two rows meet, the stricter). In between: undefined.',
   'logic.inspect.noRow': '{part}: no datasheet input thresholds at this supply.',
   'logic.inspect.pin': 'Pin',
-  'logic.inspect.level': 'Level',
-  'logic.inspect.voltage': 'Voltage to GND pin',
+  'logic.inspect.level': 'Logic level',
+  'logic.inspect.voltage': 'Simulated voltage (to GND pin)',
   'logic.inspect.level.high': 'HIGH',
   'logic.inspect.level.low': 'LOW',
   'logic.inspect.level.off': 'off (unpowered)',
@@ -254,6 +299,13 @@ export const en = {
     'Not simulated yet: this is the datasheet’s function table. Voltages and levels appear while the simulation runs.',
   'logic.inspect.rowsCaption':
     'Datasheet input thresholds by supply (V_CC). Between rows the simulator refuses rather than invent a threshold.',
+  'logic.inspect.noRowOff': 'No row: the part is unpowered (V_CC = 0 V), its output is off.',
+  'logic.inspect.noRowInvalid':
+    'No row: an input has no guaranteed level (see the pins below). No output is shown.',
+  'logic.inspect.noRowNotSimulated':
+    'No row: the circuit was not simulated (see the message above).',
+  'logic.inspect.noRowWaiting': 'No row yet: waiting for the operating point.',
+  'logic.inspect.pinsHeading': 'Pins: logic level and simulated voltage',
   'logic.inspect.gateN': 'Gate {n}',
   'logic.inspect.gates': 'Gates',
   'logic.inspect.idle':
@@ -534,6 +586,10 @@ export const en = {
     '{component} {terminal} touches {other} {otherTerminal} but is not connected to it. Move one part away and back to join them, or draw a wire.',
   'checks.floating_island': 'No path to GND: {components}.',
   'checks.no_ground': 'The circuit has no GND. Add [[ground]] and wire it to the circuit.',
+  'checks.supply_pins_shorted':
+    '{component}: V_CC and GND are wired to the same net, so its supply is always 0 V: it can never be powered. Wire GND to the supply’s − (or to GND).',
+  'checks.psu_no_load':
+    '{component}: nothing is connected between + and −, so it supplies no current to any part. Wire the circuit’s return (e.g. a part’s GND) to −.',
   'checks.psu_shorted_by_wire': '{component}: the output terminals are joined by a wire.',
   'history.undo': 'Undo',
   'history.redo': 'Redo',
@@ -1387,7 +1443,7 @@ export const en = {
   'sim.error.logic_input_floating.mcu_inputs':
     '{components}: nothing drives input {pin}. The only possible sources on its net (directly or through resistors) are {pads}, ESP32 pins in input mode (high impedance), for example before the firmware’s setup() makes them outputs. An undriven CMOS input has no defined level (the datasheet: do not leave CMOS inputs floating). Add a pull-down or pull-up resistor (TI recommends 10 kΩ) so the input is defined while the pins are not driving.',
   'limitation.logic_package_dc_no_delay':
-    'DC only: propagation delay (datasheet 1–4.1 ns at 3.3 V) is not simulated. Circuits that depend on it are refused: feedback between gates (latches, oscillators), PWM into a gate, clocks.',
+    'DC only: propagation delay is not simulated (SN74LVC08A datasheet §5.9, −40 °C to 85 °C: t_pd 1–4.1 ns at V_CC 3.3 V ± 0.3 V; 1–4.8 ns at 2.7 V; 1–6.9 ns at 2.5 V ± 0.2 V; 1–9.8 ns at 1.8 V ± 0.15 V). Circuits that depend on it are refused: feedback between gates (latches, oscillators), PWM into a gate, clocks.',
   'limitation.logic_package_input_band':
     'An input between V_IL and V_IH, outside 0–5.5 V, floating, or driven only by an ESP32 pin in input mode is refused: the datasheet gives no level and no supply current there. The quiescent supply current (I_CC ≤ 10 µA) is not part of the solve and is specified only at V_CC = 3.6 V with every input at V_CC or GND.',
   'limitation.logic_package_supply_rows':
@@ -1397,7 +1453,7 @@ export const en = {
   'limitation.logic_package_unpowered':
     'The datasheet has no power-off specification (I_off): with V_CC at 0 V the device is refused, not simulated as off.',
   'limitation.logic_package_breakout':
-    'The SOIC-14 package is shown on a representative breakout board so it fits a breadboard; the board’s layout is illustrative. Power dissipation (500 mW, temperature-dependent) is not checked; the ±100 mA supply-pin limit is.',
+    'The SOIC-14 package is shown on a representative breakout board so it fits a breadboard; the board’s layout is illustrative. Power dissipation is not simulated or checked: the datasheet’s 500 mW (§5.1, derated above 70 °C for the D package) is an absolute-maximum stress rating, not an operating limit. The ±50 mA per output and ±100 mA supply-pin figures are absolute maxima too: flagged, never used as load limits.',
   // Sprint 19B (F2): resistor power ratings (KOA CF series).
   'param.powerRating': 'Power rating',
   'model.resistor.koa_cf_1_4': '¼ W carbon film (KOA CF1/4)',
