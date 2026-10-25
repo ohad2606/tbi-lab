@@ -90,9 +90,10 @@ describe('review item 2: a 1 mA supply limit (probes psu3/psu4)', () => {
       code: 'logic_supply_not_guaranteed',
       components: ['PSU1'],
       param: 'limit',
-      detail: { limit: 0.001, causes: ['supply_current'] },
+      detail: { limit: 0.001, causes: expect.arrayContaining(['supply_current']) },
     });
-    expect((e!.detail as { worst: number }).worst).toBeGreaterThan(0.001);
+    // The exact corner puts the supply into current limit: the worst current IS the limit.
+    expect((e!.detail as { worst: number }).worst).toBeGreaterThanOrEqual(0.001 - 1e-12);
   });
 });
 
@@ -448,28 +449,31 @@ describe('final review S1: an ESP32 input that READS a gate output with its inte
     });
 });
 
-describe('final review B1 follow-up: a driver tied onto a LOW output', () => {
-  it('GPIO4 driven LOW onto the gate output that is LOW: with Y at V_OL max the pad pulls current OUT of the LOW output — refused, naming the gate output (reverse)', () => {
+describe('final review B1 follow-up (revised in Sprint 22): drivers tied onto an output', () => {
+  const tie = (gateLevel: 'low' | 'high', pad: 'output-low' | 'output-high' | 'input') => {
     let G = '';
     const bb = boardBench((b, u) => {
       G = b.add('logic.gate_and');
       b.psu(3.0, 0.5)
         .wire('PSU1.positive', `${G}.vcc`)
         .wire(`${G}.gnd`, 'GND1.ref')
-        .wire(`${G}.a`, 'GND1.ref')
+        .wire(`${G}.a`, gateLevel === 'high' ? 'PSU1.positive' : 'GND1.ref')
         .wire(`${G}.b`, 'PSU1.positive')
         .wire(`${G}.y`, `${u}.gpio4`);
     });
     const s = new EngineSession(bb.projected, { pins: bb.pins });
-    s.setPinMode(4, 'output-low');
-    expect(err(s.solve())).toMatchObject({
-      code: 'logic_output_uncharacterized',
-      components: [G],
-      param: 'y',
-      detail: { reverse: true, causes: expect.arrayContaining(['output_guarantee']) },
-    });
-    s.setPinMode(4, 'input');
-    expect(err(s.solve())).toBeNull();
+    s.setPinMode(4, pad);
+    return { o: s.solve(), G };
+  };
+  it('GPIO4 driven LOW onto the gate output that is LOW: no current would have to flow backwards once the stage drops nothing at zero current — runs (Sprint 22: the reverse was an artifact of holding the stage at its bound)', () => {
+    expect(err(tie('low', 'output-low').o)).toBeNull();
+  });
+  it('GPIO4 driven HIGH onto the gate output that is LOW (opposite states): far beyond the guaranteed current → refused naming the gate output', () => {
+    const { o, G } = tie('low', 'output-high');
+    expect(err(o)).toMatchObject({ code: 'logic_output_uncharacterized', components: [G] });
+  });
+  it('GPIO4 as an input on the LOW output: runs', () => {
+    expect(err(tie('low', 'input').o)).toBeNull();
   });
 });
 
@@ -646,8 +650,10 @@ describe('verification of ab8cbca (probes vprobe/undef, esp, outcur)', () => {
       }
       return { b, A, B };
     };
+    // Sprint 22 (Q5): A's OWN stronger side counts too — with both outputs at their rails the
+    // resistor carries V_CC / R: 37.5 mA at 80 Ω (was 28.108 mA with A on its weakest curve).
     for (const reader of [false, true]) {
-      it(`R = 80 Ω${reader ? ' (+reader)' : ''}: A on its guaranteed characteristic with Y_B = 0 carries 28.108 mA > 24 mA → refused`, () => {
+      it(`R = 80 Ω${reader ? ' (+reader)' : ''}: both outputs at their rails: 3.0 V / 80 Ω = 37.5 mA > 24 mA → refused`, () => {
         const { b, A } = tied(80, reader);
         const e = err(solve(b));
         expect(e).toMatchObject({
@@ -656,10 +662,11 @@ describe('verification of ab8cbca (probes vprobe/undef, esp, outcur)', () => {
           param: 'y',
           detail: { limit: 0.024 },
         });
-        expect((e!.detail as { value: number }).value).toBeCloseTo(0.028108, 5);
+        // (+ the 10 MΩ bleed's 0.3 µA, + the reader's 5 µA leakage)
+        expect((e!.detail as { value: number }).value).toBeCloseTo(3.0 / 80, 4);
       });
-      it(`R = 105 Ω${reader ? ' (+reader)' : ''}: 22.13 mA / 23.43 mA ≤ 24 mA → runs`, () => {
-        expect(err(solve(tied(105, reader).b))).toBeNull();
+      it(`R = 130 Ω${reader ? ' (+reader)' : ''}: at most 23.08 mA ≤ 24 mA → runs`, () => {
+        expect(err(solve(tied(130, reader).b))).toBeNull();
       });
     }
   });

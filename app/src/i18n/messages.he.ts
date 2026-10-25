@@ -262,7 +262,7 @@ export const he: Record<MessageKey, string> = {
   'sim.bound.cause.supply_current': 'זרם הזנה במנוחה I_CC',
   'sim.bound.cause.esp32_voh': 'V_OH של ESP32 ≥ 2.64 V',
   'sim.bound.cause.esp32_vol': 'V_OL של ESP32 ≤ 0.33 V',
-  'sim.bound.cause.output_guarantee': 'הרמה המובטחת של היציאה המזינה',
+  'sim.bound.cause.output_guarantee': 'יציאת שער בכל מקום בין הרמה המובטחת שלה לפס ההזנה שלה',
   'sim.bound.cmp.high': 'מתחת ל-{th}',
   'sim.bound.cmp.low': 'מעל {th}',
   'logic.why.notGuaranteed':

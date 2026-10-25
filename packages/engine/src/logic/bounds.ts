@@ -156,6 +156,8 @@ export interface Check {
   detail: Record<string, unknown>;
   /** The refusal code when this check fails (default by kind). */
   code?: string;
+  /** Output checks: the device key of the check's own output stage. */
+  ownStage?: string;
 }
 
 /** Numerical resolution of a margin (a change below it is zero): 1 nV, 1 pA. */
@@ -278,7 +280,9 @@ export function evaluateBounds(
         ? Math.max(Math.abs(p.range[0]), Math.abs(p.range[1]))
         : PROBE_A;
   const isRelevant = (c: Check, p: Perturbation, s: number) =>
-    !(c.kind === 'psu' && !p.range) && Math.abs(s) * scale(p) > EPS[c.unit];
+    // A supply's current-limit check leaves out only the UNBOUNDED quiescent currents (owner
+    // question S21-Q1, recorded fail-open); a gate output's band is bounded and counts (Q5).
+    !(c.kind === 'psu' && !p.range && p.kind !== 'ogap') && Math.abs(s) * scale(p) > EPS[c.unit];
 
   let checks = [...baseChecks];
   const sensOf = new Map<string, number[]>();
@@ -373,28 +377,23 @@ export function evaluateBounds(
   for (const c of checks) {
     const s0 = sensOf.get(c.id)!;
     let choice = choose(c, s0);
+    // Sprint 22 (Q5): an output's OWN band in its current check. A unit injection at Y measures
+    // the network, not the stage: it lowers the stage's own current. The stronger side of the
+    // stage itself (less drop: Y toward its rail) is the adverse one; the corner's
+    // re-linearisation (through the replaced stage's source value) confirms or corrects it.
+    if (c.ownStage !== undefined) {
+      const j = perts.findIndex((p) => p.kind === 'ogap' && p.stage?.key === c.ownStage);
+      if (j >= 0) choice.set(j, 'rail');
+    }
     const m0 = c.margin(x0);
     // Verification B1: a conclusion that does not hold at the operating point itself (e.g. an
     // ESP32 input reading a gate output at an UNDEFINED level, a pad carrying more than leakage)
     // is refused whether or not any perturbation moves it — never skipped (every check kind).
     if (!(m0 >= 0)) return failure(c, c.value(x0), []);
     if (!choice.size) continue;
-    const currents = [...choice].filter(([j]) => perts[j]!.kind !== 'ogap');
-    const linear = m0 + currents.reduce((sum, [j, a]) => sum + s0[j]! * (a as number), 0);
     const adverseOf = (ch: Choice) => [...ch.keys()].map((j) => perts[j]!);
-    if (linear < 0)
-      return failure(
-        c,
-        c.value(x0) +
-          currents.reduce(
-            (sum, [j, a]) =>
-              sum + ((c.value(add(x0, dx0[j]!, H)) - c.value(x0)) / H) * (a as number),
-            0,
-          ),
-        adverseOf(choice),
-      );
-    // Final review N3: no linear shortcut; every check with a relevant perturbation is solved at
-    // its corner (a linear estimate is not a proof).
+    // No linear shortcut in either direction: every check with a relevant perturbation is solved
+    // at its corner, so the refusal reports the exact worst value (N3; Sprint 22).
 
     let accepted = false;
     // Item 15: a check that reads only node voltages reuses a corner another check already
@@ -523,10 +522,24 @@ function solveCorner(
     if (!corner) return { kind: 'unsolved' };
     let moved = false;
     for (const s of stages.values()) {
-      if (s.mode !== 'bound') continue;
       const i = corner.stageCurrent(s.st.key);
-      if (i > s.atA + 1e-15 || i < -1e-12) {
-        const g = i < 0 ? null : outputGuaranteeAt(s.st.card, s.st.vcc, s.st.level, i);
+      if (i < -1e-12) {
+        // Current the wrong way. Held at its guaranteed bound, the stage would have to push
+        // current backwards: it does not sit there — with no forward current it has no drop (the
+        // approved characteristic passes through the origin, EF-D4 A), so it falls back to its
+        // own rail. Wrong way even there: something forces Y past the rail (another driver, a
+        // higher supply) — no characteristic covers that: refused naming this output.
+        if (s.volts !== 0) {
+          s.volts = 0;
+          moved = true;
+          continue;
+        }
+        corner.release();
+        return { kind: 'beyond', output: s.st.key, current: i };
+      }
+      if (s.mode !== 'bound' || s.volts === 0) continue;
+      if (i > s.atA + 1e-15) {
+        const g = outputGuaranteeAt(s.st.card, s.st.vcc, s.st.level, i);
         if (!g) {
           corner.release();
           return { kind: 'beyond', output: s.st.key, current: i };
@@ -803,12 +816,16 @@ export function buildBounds(
         // point. The wrong-way case is refused on the solved value (nextState); in the bounds the
         // adverse side of every perturbation is the one that raises the forward current, so an
         // output stage is never driven backwards here (its reverse side has no characteristic).
+        ownStage: o.key,
         margin: (x) => stage.validA + 1e-12 - access.device(x, o.key),
         value: (x) => Math.abs(access.device(x, o.key)),
-        // Verification S3: only this output's OWN band is not counted (its stronger side has no
-        // bound, owner question S21-Q5); every other driver's band is (e.g. another output tied
-        // to this one through a resistor).
-        excludes: (p) => p.kind === 'ogap' && p.stage?.key === o.key,
+        // Sprint 22 (Q5): every output band counts, this output's OWN included. Its stronger side
+        // is bounded by its own rail: the HIGH level is produced from V_CC and the LOW level from
+        // GND (1G sheets §8.2.1.3 "The positive supply voltage is used to produce the output HIGH
+        // voltage … The ground voltage is used to produce the output LOW voltage"; §5.3 V_O 0 to
+        // V_CC), so a real output — however strong — puts at most its rail on Y. The current a
+        // load draws with Y at that rail must stay within the largest guaranteed point.
+
         detail: { vcc: vcc0, limit: stage.validA },
       });
     }

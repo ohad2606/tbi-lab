@@ -262,7 +262,8 @@ export const en = {
   'sim.bound.cause.supply_current': 'quiescent supply current I_CC',
   'sim.bound.cause.esp32_voh': 'ESP32 V_OH ≥ 2.64 V',
   'sim.bound.cause.esp32_vol': 'ESP32 V_OL ≤ 0.33 V',
-  'sim.bound.cause.output_guarantee': 'the driving output’s guaranteed level',
+  'sim.bound.cause.output_guarantee':
+    'a gate output anywhere between its guaranteed level and its own rail',
   'sim.bound.cmp.high': 'below {th}',
   'sim.bound.cmp.low': 'above {th}',
   'logic.why.notGuaranteed':

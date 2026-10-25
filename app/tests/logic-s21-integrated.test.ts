@@ -611,7 +611,7 @@ describe('Sprint 21 refusal messages: every new code and variant renders fully i
     const rev = cases.find((c) => (c.detail as { reverse?: boolean }).reverse)!;
     const m = plain(engineErrorMessage(en, rev, null));
     expect(m).toContain('the wrong way');
-    expect(m).toContain('the driving output’s guaranteed level');
+    expect(m).toContain('between its guaranteed level and its own rail');
     expect(m).toContain('5.66 mA');
     expect(plain(engineErrorMessage(he, rev, null))).toContain('בכיוון ההפוך');
   });

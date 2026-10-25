@@ -221,16 +221,21 @@ describe('SN74LVC1G gates in the solve', () => {
     ] as const)
       for (const vcc of [3.3, 3.6]) {
         const at = `${type} at ${vcc} V`;
-        // HIGH sourcing exactly 16 mA and 24 mA (R = V_OH / I): V_Y is the guaranteed minimum.
-        for (const [amps, voh] of [
-          [16e-3, 2.4],
-          [24e-3, 2.3],
-        ] as const) {
-          const t = gate(type, vcc, [...highIn[type]], load(voh / amps));
+        // HIGH sourcing exactly 16 mA (R = V_OH / I): V_Y is the guaranteed minimum. Sprint 22
+        // (Q5): a real output can be stronger, up to its rail; into that resistor it then draws
+        // V_CC / R: 22 mA (3.3 V) / 24 mA (3.6 V) ≤ 24 mA — runs. Sized for exactly 24 mA at
+        // 2.3 V (R = 95.8 Ω), the rail gives 34 / 38 mA > 24 mA: refused (not guaranteed).
+        {
+          const t = gate(type, vcc, [...highIn[type]], load(2.4 / 16e-3));
           const u = ok(solve(t.b)).components[t.g]!;
           expect(u.state, at).toMatchObject({ gateOutput: 'high', outputModel: 'class' });
-          expect(u.terminals.y!, `${at} ${amps}`).toBeCloseTo(voh, 9);
-          expect(u.currents!.y!, `${at} ${amps}`).toBeCloseTo(amps, 12);
+          expect(u.terminals.y!, `${at} 16 mA`).toBeCloseTo(2.4, 9);
+          expect(u.currents!.y!, `${at} 16 mA`).toBeCloseTo(16e-3, 12);
+          const t24 = gate(type, vcc, [...highIn[type]], load(2.3 / 24e-3));
+          expect(fails(solve(t24.b)), `${at} 24 mA`).toMatchObject({
+            code: 'logic_output_uncharacterized',
+            param: 'y',
+          });
         }
         // An LED-class load (220 ohm) lands on the (100 uA, 16 mA) segment of the bound:
         // drop = 0.1 + (I - 100 uA) k, k = (V_CC - 2.4 - 0.1) / 15.9 mA; I = (V_CC - drop) / 220.
@@ -241,10 +246,12 @@ describe('SN74LVC1G gates in the solve', () => {
         // Above 24 mA: no guaranteed characteristic, refused (never extrapolated).
         const over = gate(type, vcc, [...highIn[type]], load(80));
         expect(fails(solve(over.b)), at).toMatchObject({ code: 'logic_output_uncharacterized' });
-        // LOW sinking exactly 16 mA and 24 mA from a resistor to V_CC: V_Y is the guaranteed maximum.
-        for (const [amps, vol] of [
-          [16e-3, 0.4],
-          [24e-3, 0.55],
+        // LOW sinking exactly 16 mA from a resistor to V_CC: V_Y is the guaranteed maximum
+        // (with Y at GND the resistor draws V_CC / R ≤ 24 mA). At exactly 24 mA (0.55 V) the GND
+        // side draws more than 24 mA: refused (Sprint 22, Q5).
+        for (const [amps, vol, runs] of [
+          [16e-3, 0.4, true],
+          [24e-3, 0.55, false],
         ] as const) {
           const t = gate(type, vcc, [...lowIn[type]], (bb, gg) => {
             const r = bb.add('component.resistor');
@@ -252,6 +259,12 @@ describe('SN74LVC1G gates in the solve', () => {
               .wire('PSU1.positive', `${r}.a`)
               .wire(`${r}.b`, `${gg}.y`);
           });
+          if (!runs) {
+            expect(fails(solve(t.b)), `${at} low ${amps}`).toMatchObject({
+              code: 'logic_output_uncharacterized',
+            });
+            continue;
+          }
           const u = ok(solve(t.b)).components[t.g]!;
           expect(u.state, at).toMatchObject({ gateOutput: 'low', outputModel: 'class' });
           expect(u.terminals.y!, `${at} low ${amps}`).toBeCloseTo(vol, 9);

@@ -1402,9 +1402,16 @@ export class EngineSession {
             const has = (n: string) => n === REF || index.has(n);
             const opts = step ? { gmin: DC_GMIN, step } : { gmin: DC_GMIN };
             const padDevice = new Map(pinDevices.map(({ pin, device }) => [pin.gpio, device]));
+            let replaced: Map<string, Device> | null = null;
             const access = {
               v: (x: readonly number[], n: string) => (n === REF ? 0 : x[index.get(n)!]!),
-              device: (x: readonly number[], key: string) => devices.get(key)!.current(x, opts),
+              // In a corner a stage is replaced by an ideal source (logic/bounds.ts): its current
+              // is the source's (its branch current flows out of + : the forward current of a
+              // HIGH stage, + = V_CC, or of a LOW stage, + = Y, is minus that).
+              device: (x: readonly number[], key: string) => {
+                const r = replaced?.get(key);
+                return r ? -r.current(x, opts) : devices.get(key)!.current(x, opts);
+              },
               pad: (x: readonly number[], gpio: number) => padDevice.get(gpio)!.current(x),
             };
             for (const s of specs)
@@ -1464,7 +1471,11 @@ export class EngineSession {
                     spec.sinks.map((k) => new ConstantSink(`~bound${n++}`, k.from, k.to, k.amps)),
                     replace,
                   );
-                  const release = () => void circuit.nodes();
+                  replaced = replace;
+                  const release = () => {
+                    replaced = null;
+                    void circuit.nodes();
+                  };
                   try {
                     const x = (step ? c.solveStep(step) : c.solve()).x;
                     return {
