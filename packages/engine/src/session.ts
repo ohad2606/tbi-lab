@@ -1412,7 +1412,11 @@ export class EngineSession {
                 const r = replaced?.get(key);
                 return r ? -r.current(x, opts) : devices.get(key)!.current(x, opts);
               },
-              pad: (x: readonly number[], gpio: number) => padDevice.get(gpio)!.current(x),
+              // Sprint 22 review F2: a pad replaced by its guaranteed level (an ideal source).
+              pad: (x: readonly number[], gpio: number) => {
+                const r = replaced?.get(`GPIO${gpio}`);
+                return r ? -r.current(x, opts) : padDevice.get(gpio)!.current(x);
+              },
             };
             for (const s of specs)
               if (
@@ -1425,12 +1429,18 @@ export class EngineSession {
             for (const s of specs) if (s.offPins) s.offPins = s.offPins.filter((o) => has(o.node));
             const psus = elements
               .filter((e) => e.kind === 'psu' && e.active && devices.has(e.key))
-              .map((e) => ({
-                id: e.component.id,
-                key: e.key,
-                limitA: this.psuSettings(e.component).limitA!,
-                cv: modes.get(e.key) === 'CV',
-              }));
+              .map((e) => {
+                const [plus, minus] = devices.get(e.key)!.nodeNames() as [string, string];
+                return {
+                  id: e.component.id,
+                  key: e.key,
+                  limitA: this.psuSettings(e.component).limitA!,
+                  cv: modes.get(e.key) === 'CV',
+                  plus,
+                  minus,
+                  setpointV: this.psuSettings(e.component).setpointV!,
+                };
+              });
             const outputRoots = new Set(
               specs.flatMap((s) => s.outputs.map((o) => signalUf.find(o.node))),
             );
@@ -1442,6 +1452,7 @@ export class EngineSession {
                 mode: this.pinModes.get(pin.gpio)! as string,
                 component: pin.component,
                 readsLogic: outputRoots.has(signalUf.find(node)),
+                key: padDevice.get(pin.gpio)!.id,
               }));
             const { perts, checks, extra } = buildBounds(specs, pads, psus, access, xSolution, REF);
             const live = perts.filter((p) => has(p.from) && has(p.to));
@@ -1458,6 +1469,7 @@ export class EngineSession {
             const failure = evaluateBounds(
               {
                 x0: xSolution,
+                x0Modes: modes,
                 nodeIndex: index,
                 sensitivity: (inj) => sens(circuit, xSolution, inj),
                 corner: (spec) => {
@@ -1477,9 +1489,11 @@ export class EngineSession {
                     void circuit.nodes();
                   };
                   try {
-                    const x = (step ? c.solveStep(step) : c.solve()).x;
+                    const r = step ? c.solveStep(step) : c.solve();
+                    const x = r.x;
                     return {
                       x,
+                      modes: r.supplyModes,
                       sensitivity: (inj) => sens(c, x, inj),
                       // The source's branch current flows out of its + terminal: for a HIGH stage
                       // (+ = V_CC) that is −(current out of Y); for a LOW stage (+ = Y), −(into Y).

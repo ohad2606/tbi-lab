@@ -475,8 +475,13 @@ describe('final review B1 follow-up (revised in Sprint 22): drivers tied onto an
     s.setPinMode(4, pad);
     return { o: s.solve(), G };
   };
-  it('GPIO4 driven LOW onto the gate output that is LOW: no current would have to flow backwards once the stage drops nothing at zero current — runs (Sprint 22: the reverse was an artifact of holding the stage at its bound)', () => {
-    expect(err(tie('low', 'output-low').o)).toBeNull();
+  it('GPIO4 driven LOW onto the gate output that is LOW: two drivers on one net with nothing between them — refused by name (Sprint 22 review F2/F7: the pad is an ideal-source interval, no datasheet characterizes the current sharing)', () => {
+    const { o, G } = tie('low', 'output-low');
+    expect(err(o)).toMatchObject({
+      code: 'logic_bound_not_established',
+      components: [G],
+      detail: { reason: 'parallel_outputs', pads: [4] },
+    });
   });
   it('GPIO4 driven HIGH onto the gate output that is LOW (opposite states): far beyond the guaranteed current → refused naming the gate output', () => {
     const { o, G } = tie('low', 'output-high');

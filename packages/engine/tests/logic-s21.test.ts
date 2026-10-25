@@ -113,7 +113,8 @@ describe('Task 1: supply current through a series resistance', () => {
       code: 'logic_supply_not_guaranteed',
       components: [g],
       param: 'vcc',
-      detail: { part: 'SN74LVC1G08', vcc: 3.3, causes: ['supply_current'] },
+      // Sprint 22 review F5/F6: I_CC 10 µA, and each input's I_I 5 µA through the V_CC pin.
+      detail: { part: 'SN74LVC1G08', vcc: 3.3, causes: ['leakage', 'supply_current'] },
     });
     expect((e.detail as { worst: number }).worst).toBeCloseTo(3.3 - 20e-6 * 100_000, 6);
   });
@@ -126,8 +127,10 @@ describe('Task 1: supply current through a series resistance', () => {
   });
 
   it('the output load current flows through the series element in the solve (LOW sinking from a pull-up)', () => {
-    // 3.6 V through 1 Ω; Y LOW sinks (3.6 − V_Y)/36 kΩ ≈ 100 µA from PSU+: V_CC unaffected (GND side).
-    const { b, g } = gate(3.6, 1, (b, g) => {
+    // 3.5 V through 1 Ω; Y LOW sinks (3.5 − V_Y)/360 kΩ ≈ 9.7 µA from PSU+: V_CC unaffected (GND
+    // side). Sprint 22 review F5: not at 3.6 V — the inputs' leakage may leave through the V_CC pin
+    // (±10 µA × 1 Ω = 10 µV), which at the very top of the 3.0–3.6 V row is refused.
+    const { b, g } = gate(3.5, 1, (b, g) => {
       const r = b.add('component.resistor');
       b.ohms(r, 360_000).wire(`${g}.a`, 'GND1.ref').wire(`${g}.b`, 'GND1.ref');
       b.wire('PSU1.positive', `${r}.a`).wire(`${r}.b`, `${g}.y`);
@@ -156,7 +159,7 @@ describe('Task 2: input leakage and pull resistors (I_I ±5 µA)', () => {
     const e = fails(solve(b));
     expect(e).toMatchObject({
       ...limitOnly,
-      components: [g],
+      components: [g, 'PSU1'],
       param: 'a',
       detail: { condition: 'notInputs', causes: ['leakage'] },
     });
@@ -228,7 +231,7 @@ describe('Task 2: input leakage and pull resistors (I_I ±5 µA)', () => {
     const { b, u } = quad(3.6, true);
     expect(fails(solve(b))).toMatchObject({
       ...limitOnly,
-      components: [u],
+      components: [u, 'PSU1'],
       param: 'a1',
       detail: { part: 'SN74LVC08A', condition: 'notInputs', causes: ['leakage'] },
     });
@@ -265,7 +268,7 @@ describe('Task 4: ESP32 output into a gate: guaranteed V_OH 2.64 V / V_OL 0.33 V
     s.setPinMode(18, 'output-low');
     expect(fails(s.solve())).toMatchObject({
       ...limitOnly,
-      components: [G],
+      components: [G, 'PSU1'],
       param: 'a',
       detail: { condition: 'notInputs', causes: expect.arrayContaining(['esp32_vol']) },
     });
@@ -289,7 +292,7 @@ describe('Task 4: ESP32 output into a gate: guaranteed V_OH 2.64 V / V_OL 0.33 V
     expect((e.detail as { vih: number }).vih).toBeCloseTo(3.15, 12);
     // LOW stays guaranteed (V_OL 0.33 V ≤ V_IL 1.35 V) — Q1: refused by the current limit only.
     s.setPinMode(18, 'output-low');
-    expect(fails(s.solve())).toMatchObject({ ...limitOnly, components: [G], param: 'a' });
+    expect(fails(s.solve())).toMatchObject({ ...limitOnly, components: [G, 'PSU1'], param: 'a' });
   });
 
   it('gate at 5.0 V: undefined already in the model (3.3 V < 3.5 V); the refusal names the pad and 2.64 V', () => {

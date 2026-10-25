@@ -102,7 +102,7 @@ describe('A1: a cascade on a rail behind a series supply element settles (was lo
       const { b, u } = pkg(series, 3.6);
       expect(fails(solve(b))).toMatchObject({
         code: 'logic_supply_current_uncharacterized',
-        components: [u],
+        components: [u, 'PSU1'],
         param: 'a2',
         detail: { check: 'limit', condition: 'notInputs' },
       });
@@ -385,7 +385,7 @@ describe('A2: unpowered output-capable parts drive nothing (owner policy: unpowe
     b.set(p, 'motion', false);
     expect(fails(solve(b))).toMatchObject({
       code: 'logic_supply_current_uncharacterized',
-      components: [g],
+      components: [g, 'PSU2'],
       param: 'a',
       detail: { check: 'limit', condition: 'notInputs' },
     });
@@ -430,7 +430,7 @@ describe('A2: unpowered output-capable parts drive nothing (owner policy: unpowe
     // (a resistive driver, not floating; the LOW level check held first).
     expect(fails(solve(b))).toMatchObject({
       code: 'logic_supply_current_uncharacterized',
-      components: [g],
+      components: [g, 'PSU1'],
       param: 'a',
       detail: { check: 'limit' },
     });

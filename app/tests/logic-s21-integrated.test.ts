@@ -422,7 +422,7 @@ describe('dense mixed circuit: 8 single gates in chains + switches + pulls + LED
     // guaranteed V_OL 0.1 V (100 µA row, §5.5), 0.1 V > 1 mV.
     expect(e).toMatchObject({
       code: 'logic_supply_current_uncharacterized',
-      components: [gates[4]],
+      components: [gates[4], 'PSU1'],
       param: 'a',
       detail: { condition: 'notInputs', check: 'limit', worst: expect.closeTo(0.1, 9) },
     });
@@ -460,7 +460,7 @@ describe('Sprint 21 refusal messages: every new code and variant renders fully i
       code: 'logic_supply_not_guaranteed',
       components: ['PSU1'],
       param: 'limit',
-      detail: { limit: 0.001, worst: 0.0011, causes: ['supply_current'] },
+      detail: { limit: 0.001, worst: 0.0011, value: 0.0011, causes: ['supply_current'] },
     },
     {
       code: 'logic_input_leakage_uncharacterized',
@@ -512,6 +512,52 @@ describe('Sprint 21 refusal messages: every new code and variant renders fully i
       },
     },
   ];
+  // Sprint 22 review: two drivers on one net; a supply changing mode inside the bounds.
+  cases.push(
+    {
+      code: 'logic_bound_not_established',
+      components: ['U1', 'U2'],
+      detail: { reason: 'parallel_outputs' },
+    },
+    {
+      code: 'logic_bound_not_established',
+      components: ['U1', 'PSU1'],
+      detail: { reason: 'supply_mode', psu: 'PSU1', causes: ['output_guarantee'] },
+    },
+  );
+  it('review F7: the limit refusal states its causes and the worst demanded current (EN/HE)', () => {
+    const e: EngineError = {
+      code: 'logic_supply_not_guaranteed',
+      components: ['PSU1'],
+      param: 'limit',
+      detail: {
+        limit: 0.01,
+        value: 0.01102,
+        worst: 0.01102,
+        causes: ['output_guarantee', 'supply_current'],
+      },
+    };
+    const m = plain(engineErrorMessage(en, e, null));
+    expect(m).toContain('11.02 mA');
+    expect(m).toContain('10 mA');
+    expect(m).toContain('quiescent supply current I_CC');
+    expect(m).toContain('its own rail');
+    const h = plain(engineErrorMessage(he, e, null));
+    expect(h).toContain('11.02 mA');
+    expect(
+      plain(
+        engineErrorMessage(
+          en,
+          {
+            code: 'logic_bound_not_established',
+            components: ['U1', 'U2'],
+            detail: { reason: 'parallel_outputs' },
+          },
+          null,
+        ),
+      ),
+    ).toContain('two outputs drive the same net');
+  });
   // Sprint 22 Q1 (strict): a supply's current limit that needs an unbounded I_CC.
   cases.push(
     {

@@ -51,30 +51,18 @@ describe('X1: ESP32 + AND gate + read-back (golden)', () => {
       s.setPinMode(18, 'output-low');
       s.setMomentary('SW1', b);
       const o = s.solve();
-      // Button held: B at the 3.0 V rail (not 5.5 V) — I_CC unbounded at the operating point
-      // itself (U2 and PSU1 named). Released: B is on its pull-down, and A (GPIO18 LOW) can be
-      // ≈ 0.33 V (the pad's V_OL bound through its output resistance into the 10 kΩ, ± I_I).
-      expect(o.ok ? null : o.error, `${b}`).toMatchObject(
-        b
-          ? {
-              code: 'logic_supply_current_uncharacterized',
-              components: ['U2', 'PSU1'],
-              param: 'vcc',
-              detail: { part: 'SN74LVC1G08', condition: 'notInputs', check: 'limit', psu: 'PSU1' },
-            }
-          : {
-              code: 'logic_supply_current_uncharacterized',
-              components: ['U2'],
-              param: 'a',
-              detail: {
-                part: 'SN74LVC1G08',
-                condition: 'notInputs',
-                check: 'limit',
-                worst: expect.closeTo(0.33, 2),
-                pads: [18],
-              },
-            },
-      );
+      // Sprint 22 review F2: GPIO18's LOW is an ideal-source interval [0, 0.33 V]; at 0.33 V it
+      // feeds R3 (10 kΩ) and A's leakage: 0.33 V / 10 kΩ + 5 µA = 38 µA > the leakage on its
+      // node (5.05 µA) — the load-less V_OL guarantee is not relied on (Q7), refused by name.
+      expect(o.ok ? null : o.error, `${b}`).toMatchObject({
+        code: 'logic_mcu_output_uncharacterized',
+        param: 'gpio18',
+        detail: {
+          level: 'low',
+          limit: expect.closeTo(5.05e-6, 12),
+          value: expect.closeTo(38e-6, 9),
+        },
+      });
     }
     for (const b of [false, true]) {
       s.setPinMode(18, 'output-high');
@@ -119,11 +107,11 @@ describe('X1: ESP32 + AND gate + read-back (golden)', () => {
     const { s } = session(d);
     s.setPinMode(18, 'output-low');
     s.setMomentary('SW1', true);
-    // Sprint 22 Q1 strict: GPIO18 LOW is not exactly GND → refused by the current limit.
+    // Sprint 22 review F2: GPIO18 LOW into its 10 kΩ pull-down → refused (Q7), as at 3.0 V.
     const o = s.solve();
     expect(o.ok ? null : o.error).toMatchObject({
-      code: 'logic_supply_current_uncharacterized',
-      detail: { vcc: 3.3, check: 'limit' },
+      code: 'logic_mcu_output_uncharacterized',
+      param: 'gpio18',
     });
     // Y HIGH would source the LED: guaranteed only V_OH ≥ 2.4 V (the class bound's 16 mA point),
     // below the read-back pad's V_IH 2.475 V — refused as at 3.0 V.

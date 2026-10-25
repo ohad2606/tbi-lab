@@ -11,29 +11,35 @@
  *
  * Bounded quantities ("perturbations"), each a current injection with a datasheet range:
  * - `icc`: a logic part's quiescent supply current, from its V_CC pin to its GND pin, 0 … I_CC
- *   max — ONLY under the I_CC row's own test conditions (logic/lvc1g.ts `quiescentAt`), plus the
- *   inputs' leakage returning through the rails (n × I_I). Elsewhere it has no bound
- *   (`range: null`). 1G sheets §5.5 I_CC; SN74LVC08A SCAS283W §5.7 I_CC; the sheets' own power
- *   rule (1G §8.2.1.1 "Power Considerations": the supply must source all output current PLUS the
- *   maximum static supply current I_CC; the output current is already in the solve).
- * - `ii`: each input's leakage, ±I_I, between the input node and the part's GND pin, where the
- *   I_I row's supply condition holds (1G §5.5: V_CC 0–5.5 V; 08A §5.7: V_CC = 3.6 V only).
- *   Applied over the whole 0–5.5 V input range as the manufacturer's own pull-resistor design
- *   method does (1G §8.2.1.2: "leakage current into the device (as specified in the Electrical
- *   Characteristics) ... limits the resistor size"; 1G §7.3.3 / 08A §7.3.2 worst-case input
- *   resistance from the maximum input leakage) — owner confirmation S21-Q3.
+ *   max — ONLY with its inputs under the I_CC row's test condition (logic/lvc1g.ts `quiescentAt`;
+ *   1G sheets §5.5 I_CC "V_I = 5.5V or GND, I_O = 0"; SN74LVC08A SCAS283W §5.7 "V_I = V_CC or
+ *   GND, I_O = 0", 3.6 V). Elsewhere it has no bound (`range: null`). A LOADED output (I_O ≠ 0)
+ *   adds its output current, which is in the solve: owner decision S22-F4, derived from the
+ *   sheets' power rule (1G §8.2.1.1 "Power Considerations": the supply must source all output
+ *   current plus the maximum static supply current I_CC). §8.2.1.1 is used only for that
+ *   combination; it is NEVER a bound for inputs off the test voltages (owner decision S22-Q1).
+ *   "At" a test voltage means within RAIL_V = 1 mV: an engineering assumption (S22-F3), not a
+ *   datasheet figure.
+ * - `ii`: each input's leakage, ±I_I, entering at the input pin and returning through the part's
+ *   GND pin OR its V_CC pin (the sheets do not say which: both paths are alternatives of ONE
+ *   current, the adverse one applied — Sprint 22 review F5/F6), where the I_I row's supply
+ *   condition holds (1G §5.5: V_CC 0–5.5 V; 08A §5.7: V_CC = 3.6 V only). Applied over the whole
+ *   0–5.5 V input range as the manufacturer's own pull-resistor design method does (1G §8.2.1.2:
+ *   "leakage current into the device (as specified in the Electrical Characteristics) ... limits
+ *   the resistor size"; 1G §7.3.3 / 08A §7.3.2 worst-case input resistance from the maximum input
+ *   leakage) — owner confirmation S21-Q3.
  * - `ioff`: an UNPOWERED single gate's pins, ±I_off (1G §5.5, V_CC = 0).
- * - `pad`: an ESP32 output pad's level within its guarantee: HIGH ≥ V_OH min = 0.8 × VDD,
- *   LOW ≤ V_OL max = 0.1 × VDD (ESP32 Series Datasheet v5.3, Table 5-3, as pinned in
- *   esp32Gpio.ts), as a shift of the pad's Thevenin source (its Norton current change).
+ * - `pad`: an ESP32 output pad's level within its guarantee: HIGH in [V_OH min = 0.8 × VDD, VDD],
+ *   LOW in [0, V_OL max = 0.1 × VDD] (ESP32 Series Datasheet v5.3, Table 5-3, as pinned in
+ *   esp32Gpio.ts) — the pad replaced in a corner by an IDEAL SOURCE at either end (never a shift
+ *   through the typical drive resistance; Sprint 22 review F2). Relied on only while the pad
+ *   carries leakage-level current (padLoad, owner decision Q7); two drivers on one node with
+ *   nothing between them are refused (`parallel_outputs`).
  * - `padleak`: an ESP32 input pad's leakage, ±50 nA (Table 5-3 I_IH/I_IL), on top of the model's
  *   leakage conductance.
  * - `ogap`: a gate output's voltage within its guarantee at the solved current: between the
- *   guaranteed bound of the next test point (logic/lvc1g.ts `outputGuaranteeAt`) and its own rail,
- *   as a series-voltage shift of its output stage (a parallel current g·δ, g the stage's
- *   incremental conductance). Applies to the checks of OTHER parts' pins (downstream levels);
- *   never to the output's own current check (the stronger-than-guaranteed side of an output is not
- *   bounded by the datasheet: owner question S21-Q5).
+ *   guaranteed bound of the next test point (logic/lvc1g.ts `outputGuaranteeAt`) and its own rail
+ *   (Q5), the stage replaced in a corner by an ideal source at either end.
  *
  * Checks (margins that must stay ≥ 0 over every perturbation in its range):
  * - supply: V_CC stays inside the input row(s) it is in, and inside the output model's domain
@@ -49,10 +55,13 @@
  *   refused by name — after every other check has held).
  *
  * Method: the response to each perturbation is linear to first order (J⁻¹·b at the solution,
- * Circuit.sensitivity); for each check the ADVERSE end of every relevant range is chosen, and that
- * corner is then SOLVED exactly (the full nonlinear solve with the injections added). The network
- * is resistors, ideal sources, junctions and monotone piecewise-linear stages: its response to
- * each injection is monotone, so the adverse corner is the worst case. A perturbation with NO
+ * Circuit.sensitivity; an output band's response per volt of its source, read with every band
+ * replaced by an ideal source at its operating value — Sprint 22 review F1); for each check the
+ * ADVERSE end of every relevant range is chosen, that corner is SOLVED exactly, re-linearised and
+ * re-chosen until stable (else `not_monotone`). Every check is one-sided. A supply's current limit
+ * is checked first, with the supply held at its setpoint (the worst DEMANDED current). A corner
+ * whose supplies are in another mode (constant voltage ↔ current limit) than at the operating point
+ * is not one linear piece with it: refused (`supply_mode`), never assumed. A perturbation with NO
  * range that any check depends on (sensitivity above the numerical resolution) is refused by name.
  */
 import type { LogicCard } from './lvc1g.js';
@@ -64,14 +73,7 @@ import {
   RAIL_V,
   TABULATED_VCC_TOLERANCE_V,
 } from './lvc1g.js';
-import {
-  R_DRIVE_HIGH_OHM,
-  R_DRIVE_LOW_OHM,
-  VDD_V,
-  V_IH_V,
-  V_IL_V,
-  V_OH_CHAR_V,
-} from '../esp32Gpio.js';
+import { VDD_V, V_IH_V, V_IL_V, V_OH_CHAR_V } from '../esp32Gpio.js';
 
 /** What a logic part exposes for the bounds (from its settled state). */
 export interface LogicBoundSpec {
@@ -133,6 +135,12 @@ export interface Perturbation {
   pin?: string;
   gpio?: number;
   padLevel?: 'high' | 'low';
+  /** `pad` (an output pad's level band): the pad replaced by an ideal source plus → minus at its
+   *  guaranteed level (`bound`) or its rail (`rail`), volts. */
+  band?: { key: string; plus: string; minus: string; bound: number; rail: number };
+  /** Leakage alternatives of ONE current (an input's I_I through its GND or its V_CC pin): only
+   *  one member of a group is applied at a corner (Sprint 22 review F6). */
+  group?: string;
   /** For `null` ranges: the refusal when anything depends on it. */
   refusal?: { code: string; param?: string; detail: Record<string, unknown> };
 }
@@ -160,6 +168,10 @@ export interface Check {
   code?: string;
   /** Output checks: the device key of the check's own output stage. */
   ownStage?: string;
+  /** A source held at every corner of this check (a supply at its setpoint, Sprint 22 F1). */
+  forced?: { key: string; plus: string; minus: string; volts: number };
+  /** Further components the refusal names (e.g. the supply whose limit needs the bound). */
+  alsoNames?: string[];
 }
 
 /** Numerical resolution of a margin (a change below it is zero): 1 nV, 1 pA. */
@@ -193,10 +205,14 @@ export interface CornerResult {
   stageCurrent(key: string): number;
   /** Re-prepare the main circuit (call after every evaluation at this corner). */
   release(): void;
+  /** The supplies' modes at this corner (device key → 'CV' | 'CC'). */
+  modes?: ReadonlyMap<string, string>;
 }
 
 export interface BoundsSolver {
   x0: readonly number[];
+  /** The supplies' modes at x0 (device key → 'CV' | 'CC'). */
+  x0Modes?: ReadonlyMap<string, string>;
   /** Node name → index in x (ground has no entry). */
   nodeIndex: ReadonlyMap<string, number>;
   /** dx per unit injection (linearised at x0), or null when the matrix is singular. */
@@ -240,43 +256,131 @@ const notEstablished = (reason: string, c?: Check): BoundFailure => ({
 type Choice = Map<number, number | 'bound' | 'rail'>;
 const keyOf = (c: Choice) => JSON.stringify([...c].sort((a, b) => a[0] - b[0]));
 
+/** Output-band perturbations: a gate output (`ogap`) or an ESP32 output pad (`pad`). */
+const isBand = (p: Perturbation) => p.kind === 'ogap' || (p.kind === 'pad' && !!p.band);
+const bandLevel = (p: Perturbation) => (p.kind === 'ogap' ? p.stage!.level : p.padLevel!);
+const bandKey = (p: Perturbation) => (p.kind === 'ogap' ? p.stage!.key : p.band!.key);
+/** The node a band moves (Y, or the pad's node). */
+const bandNode = (p: Perturbation) => (p.kind === 'ogap' ? p.stage!.yNode : p.band!.plus);
+/** d(node voltage) / d(source volts) of a band replaced by its source: HIGH stage −1 (the source
+ *  is the drop V_CC − Y), LOW stage +1 (Y − GND), pad +1 (the pad's own voltage). */
+const bandSign = (p: Perturbation) => (p.kind === 'ogap' && p.stage!.level === 'high' ? -1 : 1);
+
 /**
  * Evaluate the checks under the perturbations. Returns the first failure (in check order, after
  * any unbounded perturbation something depends on), or null when every conclusion is guaranteed.
- * `extraChecks(relied)` adds checks once it is known which perturbations are relied on.
+ * `extraChecks(relied, limitOnly)` adds checks once it is known which perturbations are relied on
+ * (`limitOnly`: relied on only by a supply's current limit → that supply's id).
  */
 export function evaluateBounds(
   solver: BoundsSolver,
   perts: readonly Perturbation[],
   baseChecks: readonly Check[],
-  extraChecks: (relied: ReadonlySet<string>, limitOnly: ReadonlySet<string>) => Check[],
+  extraChecks: (relied: ReadonlySet<string>, limitOnly: ReadonlyMap<string, string>) => Check[],
 ): BoundFailure | null {
   if (!perts.length || !baseChecks.length) return null;
   const inj = perts.map((p) => ({ from: p.from, to: p.to }));
   const dx0 = solver.sensitivity(inj);
   if (!dx0) return notEstablished('singular');
   const x0 = solver.x0;
+  const vAt = (x: readonly number[], n: string) => {
+    const k = solver.nodeIndex.get(n);
+    return k === undefined ? 0 : (x[k] ?? 0);
+  };
 
-  // Per-perturbation response of a check's margin, at x0: per A for currents; for a stage, per
-  // VOLT of Y (the injection's response divided by Y's own response to it).
-  const yGain = (st: StageRef, dx: readonly number[]) => {
-    const k = solver.nodeIndex.get(st.yNode);
-    return k === undefined ? 0 : (dx[k] ?? 0);
+  // Sprint 22 review F1: the response of a check to an output band is read PER VOLT OF THE
+  // BAND'S SOURCE, with every band replaced by an ideal source at its x0 value (the same operating
+  // point). A unit current injection at Y divided by Y's own response vanishes when Y is pinned
+  // (a supply in current limit feeding the stage): the band's effect was then never explored.
+  const bandIdx = perts.flatMap((p, j) => (isBand(p) ? [j] : []));
+  const sourceAt = (p: Perturbation, x: readonly number[]) => {
+    if (p.kind === 'pad')
+      return {
+        key: p.band!.key,
+        plus: p.band!.plus,
+        minus: p.band!.minus,
+        volts: vAt(x, p.band!.plus) - vAt(x, p.band!.minus),
+      };
+    const st = p.stage!;
+    return st.level === 'high'
+      ? {
+          key: st.key,
+          plus: st.vccNode,
+          minus: st.yNode,
+          volts: vAt(x, st.vccNode) - vAt(x, st.yNode),
+        }
+      : {
+          key: st.key,
+          plus: st.yNode,
+          minus: st.gndNode,
+          volts: vAt(x, st.yNode) - vAt(x, st.gndNode),
+        };
   };
-  const sens0 = (c: Check, gains: readonly number[]) => {
-    const m0 = c.margin(x0);
-    return perts.map((p, j) => {
-      if (c.excludes?.(p)) return 0;
-      const d = (c.margin(add(x0, dx0[j]!, H)) - m0) / H;
-      return p.kind === 'ogap' ? (gains[j]! > 0 ? d / gains[j]! : 0) : d;
+  const parallelRefusal = (keys: readonly string[], c?: Check): BoundFailure => {
+    const named = keys.map((k) => {
+      const q = perts.find((p) => isBand(p) && bandKey(p) === k)!;
+      return q.kind === 'pad' ? q.component! : q.component!;
     });
+    const pads = keys.flatMap((k) => {
+      const q = perts.find((p) => isBand(p) && bandKey(p) === k)!;
+      return q.kind === 'pad' && q.gpio !== undefined ? [q.gpio] : [];
+    });
+    return {
+      code: 'logic_bound_not_established',
+      components: [...new Set(named)],
+      detail: {
+        reason: 'parallel_outputs',
+        ...(c?.part ? { part: c.part } : {}),
+        ...(pads.length ? { pads } : {}),
+      },
+    };
   };
-  // Y's own response (V per A) to each stage's raising injection, at x0.
-  const yNodeGain = perts.map((p, j) =>
-    p.kind === 'ogap' && p.stage ? yGain(p.stage, dx0[j]!) : 0,
-  );
+  const sensOf = new Map<string, number[]>();
+  const sensFor = (cs: readonly Check[]): BoundFailure | null => {
+    for (const c of cs) {
+      const m0 = c.margin(x0);
+      sensOf.set(
+        c.id,
+        perts.map((p, j) =>
+          isBand(p) || c.excludes?.(p) ? 0 : (c.margin(add(x0, dx0[j]!, H)) - m0) / H,
+        ),
+      );
+    }
+    if (!bandIdx.length || !cs.length) return null;
+    // Two drivers (gate outputs, ESP32 output pads) on one node, nothing between them: how they
+    // share the current is characterized by no datasheet (Sprint 22 review F2/F7).
+    const byNode = new Map<string, number>();
+    for (const j of bandIdx) {
+      const n = bandNode(perts[j]!);
+      const k = byNode.get(n);
+      if (k !== undefined) return parallelRefusal([bandKey(perts[k]!), bandKey(perts[j]!)]);
+      byNode.set(n, j);
+    }
+    const corner = solver.corner({
+      sinks: [],
+      stages: bandIdx.map((j) => sourceAt(perts[j]!, x0)),
+    });
+    if (!corner) return notEstablished('corner_unsolved');
+    try {
+      const d = corner.sensitivity(bandIdx.map((j) => ({ branch: bandKey(perts[j]!) })));
+      if (!d) return notEstablished('singular');
+      for (const c of cs) {
+        const m = c.margin(corner.x);
+        const row = sensOf.get(c.id)!;
+        bandIdx.forEach((j, k) => {
+          if (c.excludes?.(perts[j]!)) return;
+          row[j] = (bandSign(perts[j]!) * (c.margin(add(corner.x, d[k]!, H)) - m)) / H;
+        });
+      }
+    } finally {
+      corner.release();
+    }
+    return null;
+  };
+  // For a band NOT replaced at a corner: its response per volt of its node (injection / gain).
+  const nodeGain = (p: Perturbation, dx: readonly number[]) => vAt(dx, bandNode(p));
   const scale = (p: Perturbation) =>
-    p.kind === 'ogap'
+    isBand(p)
       ? (p.swingV ?? 0)
       : p.range
         ? Math.max(Math.abs(p.range[0]), Math.abs(p.range[1]))
@@ -284,27 +388,30 @@ export function evaluateBounds(
   // Sprint 22 Q1 (owner decision, strict): every check counts every perturbation it responds to,
   // the supply's current-limit check included. An I_CC outside its datasheet test condition is
   // unbounded, so a current limit that the gate's own supply current flows through is refused by
-  // name (never left out, never bounded by I_CC + n·ΔI_CC or the §8.2.1.1 guideline).
+  // name (never left out; off its test condition never bounded by ΔI_CC or by §8.2.1.1).
   const isRelevant = (c: Check, p: Perturbation, s: number) => Math.abs(s) * scale(p) > EPS[c.unit];
 
   let checks = [...baseChecks];
-  const sensOf = new Map<string, number[]>();
-  for (const c of checks) sensOf.set(c.id, sens0(c, yNodeGain));
+  const f0 = sensFor(checks);
+  if (f0) return f0;
   // Relied-on perturbations (any check depends on them; Q1 strict: the supply's current-limit
   // check too, so an I_CC bound it relies on brings its own test conditions as checks).
   const relied = new Set<string>();
   const reliedElsewhere = new Set<string>();
+  const reliedByLimit = new Map<string, string>();
   for (const c of checks)
     perts.forEach((p, j) => {
-      if (p.range && isRelevant(c, p, sensOf.get(c.id)![j]!)) {
+      if ((p.range || isBand(p)) && isRelevant(c, p, sensOf.get(c.id)![j]!)) {
         relied.add(p.id);
         if (c.kind !== 'psu') reliedElsewhere.add(p.id);
+        else if (!reliedByLimit.has(p.id)) reliedByLimit.set(p.id, c.component);
       }
     });
   // Relied on by a supply's current limit only (its refusal names that limit).
-  const limitOnly = new Set([...relied].filter((id) => !reliedElsewhere.has(id)));
+  const limitOnly = new Map([...reliedByLimit].filter(([id]) => !reliedElsewhere.has(id)));
   const extra = extraChecks(relied, limitOnly);
-  for (const c of extra) sensOf.set(c.id, sens0(c, yNodeGain));
+  const f1 = sensFor(extra);
+  if (f1) return f1;
   checks = [...checks, ...extra];
 
   // 1. An unbounded quantity that a conclusion depends on: refused by name (first in order).
@@ -315,7 +422,7 @@ export function evaluateBounds(
   let deferred: BoundFailure | null = null;
   const deferredChecks = new Set<string>();
   for (const [j, p] of perts.entries()) {
-    if (p.range || p.kind === 'ogap') continue;
+    if (p.range || isBand(p)) continue;
     const dependent = checks.filter((c) => isRelevant(c, p, sensOf.get(c.id)![j]!));
     if (!dependent.length) continue;
     // Q1: when only a supply's current limit depends on it, the refusal says so (that supply is
@@ -344,8 +451,9 @@ export function evaluateBounds(
   // 2. Each check at its adverse corner (exact solve, re-linearised until the corner is stable).
   const choose = (c: Check, s: readonly number[], prev?: Choice): Choice => {
     const out: Choice = new Map();
+    const weight = new Map<number, number>();
     perts.forEach((p, j) => {
-      if (!(p.range || p.kind === 'ogap')) return;
+      if (!(p.range || isBand(p))) return;
       if (!isRelevant(c, p, s[j]!)) {
         // No (numerically) resolvable response here — e.g. a leakage current into a node the
         // corner holds with a source: a side chosen before stays chosen (its sign cannot be
@@ -354,14 +462,31 @@ export function evaluateBounds(
         if (prev?.has(j)) out.set(j, prev.get(j)!);
         return;
       }
-      // Final review B1: `s` is dMargin / dV(Y rising). The adverse side lowers Y when s > 0.
-      // A HIGH stage lowers Y toward its guaranteed V_OH minimum ('bound') and raises it to V_CC
-      // ('rail'); a LOW stage raises Y toward its guaranteed V_OL maximum ('bound') and lowers it
-      // to GND ('rail').
-      if (p.kind === 'ogap') {
-        const lowerY = s[j]! > 0;
-        out.set(j, lowerY === (p.stage!.level === 'high') ? 'bound' : 'rail');
+      weight.set(j, Math.abs(s[j]!) * scale(p));
+      // Final review B1: `s` is dMargin / dV(band node rising). The adverse side lowers the node
+      // when s > 0. A HIGH band lowers it toward its guaranteed minimum ('bound') and raises it
+      // to its rail; a LOW band raises it toward its guaranteed maximum ('bound') and lowers it to
+      // its rail.
+      if (isBand(p)) {
+        const lower = s[j]! > 0;
+        out.set(j, lower === (bandLevel(p) === 'high') ? 'bound' : 'rail');
       } else out.set(j, s[j]! > 0 ? p.range![0] : p.range![1]);
+    });
+    // Sprint 22 review F6: ONE leakage current per input, whichever pin it returns through (its
+    // GND or its V_CC pin): of a group, only the member with the larger effect is applied.
+    const best = new Map<string, number>();
+    perts.forEach((p, j) => {
+      if (!p.group || !weight.has(j)) return;
+      const b = best.get(p.group);
+      if (b === undefined || weight.get(j)! > weight.get(b)!) best.set(p.group, j);
+    });
+    perts.forEach((p, j) => {
+      if (!p.group || !out.has(j)) return;
+      const b = best.get(p.group);
+      if (
+        b !== undefined ? b !== j : perts.some((q, k) => k < j && q.group === p.group && out.has(k))
+      )
+        out.delete(j);
     });
     return out;
   };
@@ -383,17 +508,27 @@ export function evaluateBounds(
             : 'logic_supply_not_guaranteed');
     return {
       code,
-      components: [c.component],
+      components: [c.component, ...(c.alsoNames ?? [])],
       ...(c.pin ? { param: c.pin } : {}),
       detail: {
         ...(c.part ? { part: c.part } : {}),
         ...c.detail,
-        ...(c.kind === 'output' || c.kind === 'padLoad' ? { value: worst } : { worst }),
+        ...(c.kind === 'output' || c.kind === 'padLoad'
+          ? { value: worst }
+          : c.kind === 'psu'
+            ? { value: worst, worst }
+            : { worst }),
         causes,
         ...(pads.length ? { pads } : {}),
         ...extraDetail,
       },
     };
+  };
+  const modeChange = (modes: ReadonlyMap<string, string> | undefined, forced?: string) => {
+    if (!modes || !solver.x0Modes) return null;
+    for (const [k, m] of solver.x0Modes)
+      if (k !== forced && modes.has(k) && modes.get(k) !== m) return k;
+    return null;
   };
 
   const cache = new Map<
@@ -401,11 +536,19 @@ export function evaluateBounds(
     {
       x: readonly number[];
       dxc: number[][];
-      stageOf: Map<number, { level: 'high' | 'low' }>;
+      stageOf: Map<number, number>;
       deviceMargins: { m: number; at: number[]; v: number } | null;
+      modes?: ReadonlyMap<string, string>;
     }
   >();
-  for (const c of checks) {
+  // Sprint 22 review F1: the supplies' current limits first. Each is checked with its supply held
+  // at its setpoint (constant voltage), so the worst DEMANDED current is what is compared with the
+  // limit (and reported). Once they hold, no corner can take a supply into its current limit.
+  const ordered = [
+    ...checks.filter((c) => c.kind === 'psu'),
+    ...checks.filter((c) => c.kind !== 'psu'),
+  ];
+  for (const c of ordered) {
     if (deferredChecks.has(c.id)) continue;
     const s0 = sensOf.get(c.id)!;
     let choice = choose(c, s0);
@@ -422,7 +565,7 @@ export function evaluateBounds(
     // ESP32 input reading a gate output at an UNDEFINED level, a pad carrying more than leakage)
     // is refused whether or not any perturbation moves it — never skipped (every check kind).
     if (!(m0 >= 0)) return failure(c, c.value(x0), []);
-    if (!choice.size) continue;
+    if (!choice.size && !c.forced) continue;
     const adverseOf = (ch: Choice) => [...ch.keys()].map((j) => perts[j]!);
     // No linear shortcut in either direction: every check with a relevant perturbation is solved
     // at its corner, so the refusal reports the exact worst value (N3; Sprint 22).
@@ -435,8 +578,9 @@ export function evaluateBounds(
       const key = keyOf(choice);
       let solved = nodeOnly ? cache.get(key) : undefined;
       if (!solved) {
-        const r = solveCorner(solver, perts, choice);
+        const r = solveCorner(solver, perts, choice, c.forced);
         if (r.kind === 'unsolved') return notEstablished('corner_unsolved', c);
+        if (r.kind === 'parallel') return parallelRefusal(r.keys, c);
         if (r.kind === 'beyond') {
           // The driving output itself would leave its guarantee at this corner (past its largest
           // test point, or a current the wrong way — e.g. another driver tied onto it): that
@@ -463,7 +607,7 @@ export function evaluateBounds(
           // Item 8: re-linearise at the corner; every chosen side must still be adverse, and no
           // perturbation idle at x0 may have become active.
           const injections: Injection[] = perts.map((p, j) =>
-            stageOf.has(j) ? { branch: perts[j]!.stage!.key } : { from: p.from, to: p.to },
+            stageOf.has(j) ? { branch: bandKey(p) } : { from: p.from, to: p.to },
           );
           const dxc = corner.sensitivity(injections);
           if (!dxc) return notEstablished('singular', c);
@@ -475,27 +619,51 @@ export function evaluateBounds(
                 at: dxc.map((d) => c.margin(add(corner.x, d, H))),
                 v: c.value(corner.x),
               };
-          solved = { x: [...corner.x], dxc, stageOf, deviceMargins };
+          solved = { x: [...corner.x], dxc, stageOf, deviceMargins, modes: corner.modes };
           if (nodeOnly) cache.set(key, solved);
         } finally {
           corner.release();
         }
       }
-      const { x, dxc, stageOf, deviceMargins } = solved;
+      const { x, dxc, stageOf, deviceMargins, modes } = solved;
       const m = deviceMargins ? deviceMargins.m : c.margin(x);
       if (!(m >= 0))
         return failure(c, deviceMargins ? deviceMargins.v : c.value(x), adverseOf(choice));
+      // Sprint 22 review F1: the corner's supplies in another mode (constant voltage ↔ current
+      // limit) than at the operating point: the response is not one linear piece across that
+      // change, so the worst case is not established — refused by name, never assumed.
+      const flipped = modeChange(modes, c.forced?.key);
+      // A refusal already due (an unbounded current a limit needs) is the more specific one.
+      if (flipped && deferred) return deferred;
+      if (flipped) {
+        const { causes, pads } = causesOf(adverseOf(choice));
+        return {
+          code: 'logic_bound_not_established',
+          components: [c.component, flipped],
+          detail: {
+            reason: 'supply_mode',
+            psu: flipped,
+            ...(c.part ? { part: c.part } : {}),
+            causes,
+            ...(pads.length ? { pads } : {}),
+          },
+        };
+      }
       const sc = perts.map((p, j) => {
         if (c.excludes?.(p)) return 0;
         const d = ((deviceMargins ? deviceMargins.at[j]! : c.margin(add(x, dxc[j]!, H))) - m) / H;
-        if (p.kind !== 'ogap') return d;
-        const st = stageOf.get(j);
-        // A replaced stage: dm per volt of its source; raising Y is −drop (HIGH), +rise (LOW).
-        if (st) return st.level === 'high' ? -d : d;
-        const g = yGain(p.stage!, dxc[j]!);
+        if (!isBand(p)) return d;
+        const sign = stageOf.get(j);
+        // A replaced band: dm per volt of its source, as a rise of its node.
+        if (sign !== undefined) return sign * d;
+        const g = nodeGain(p, dxc[j]!);
         return g > 0 ? d / g : 0;
       });
       const next = choose(c, sc, choice);
+      if (c.ownStage !== undefined) {
+        const j = perts.findIndex((p) => p.kind === 'ogap' && p.stage?.key === c.ownStage);
+        if (j >= 0 && !next.has(j)) next.set(j, choice.get(j) ?? 'rail');
+      }
       if (keyOf(next) === keyOf(choice)) accepted = true;
       else choice = next;
     }
@@ -505,29 +673,44 @@ export function evaluateBounds(
 }
 
 type CornerOutcome =
-  | { kind: 'ok'; corner: CornerResult; stageOf: Map<number, { level: 'high' | 'low' }> }
+  | { kind: 'ok'; corner: CornerResult; stageOf: Map<number, number> }
   | { kind: 'unsolved' }
+  | { kind: 'parallel'; keys: string[] }
   | { kind: 'beyond'; output: string; current: number };
 
 /**
  * Solve one corner. A stage at its guarantee starts at the bound of its NOMINAL current's test
  * point; when the corner current passes that point the next point's bound applies (item 7), and
- * beyond the largest guaranteed point there is no bound at all.
+ * beyond the largest guaranteed point there is no bound at all. An ESP32 pad at its band is an
+ * ideal source at its guaranteed level or its rail (Sprint 22 review F2: never a typical drive
+ * resistance). `forced`: a source held for this check (a supply at its setpoint).
  */
 function solveCorner(
   solver: BoundsSolver,
   perts: readonly Perturbation[],
   choice: Choice,
+  forced?: CornerSpec['stages'][number],
 ): CornerOutcome {
   const sinks: CornerSpec['sinks'] = [];
   const stages = new Map<
     number,
     { st: StageRef; mode: 'bound' | 'rail'; atA: number; volts: number }
   >();
+  const padSources: CornerSpec['stages'] = [];
+  const stageOf = new Map<number, number>();
+  const outNode = new Map<string, string>();
+  const parallel: string[] = [];
+  const claim = (node: string, key: string) => {
+    const other = outNode.get(node);
+    if (other !== undefined && parallel.length === 0) parallel.push(other, key);
+    outNode.set(node, key);
+  };
   for (const [j, v] of choice) {
     const p = perts[j]!;
     if (p.kind === 'ogap') {
       const st = p.stage!;
+      claim(st.yNode, st.key);
+      stageOf.set(j, bandSign(p));
       if (v === 'rail') stages.set(j, { st, mode: 'rail', atA: Infinity, volts: 0 });
       else {
         const g = outputGuaranteeAt(st.card, st.vcc, st.level, st.i0);
@@ -539,16 +722,31 @@ function solveCorner(
           volts: st.level === 'high' ? st.vcc - g.volts : g.volts,
         });
       }
+    } else if (isBand(p)) {
+      const b = p.band!;
+      claim(b.plus, b.key);
+      stageOf.set(j, 1);
+      padSources.push({
+        key: b.key,
+        plus: b.plus,
+        minus: b.minus,
+        volts: v === 'bound' ? b.bound : b.rail,
+      });
     } else if (v !== 0) sinks.push({ from: p.from, to: p.to, amps: v as number });
   }
+  if (parallel.length) return { kind: 'parallel', keys: parallel };
   for (let step = 0; step < MAX_BRACKETS; step++) {
     const spec: CornerSpec = {
       sinks,
-      stages: [...stages.values()].map(({ st, volts }) =>
-        st.level === 'high'
-          ? { key: st.key, plus: st.vccNode, minus: st.yNode, volts }
-          : { key: st.key, plus: st.yNode, minus: st.gndNode, volts },
-      ),
+      stages: [
+        ...[...stages.values()].map(({ st, volts }) =>
+          st.level === 'high'
+            ? { key: st.key, plus: st.vccNode, minus: st.yNode, volts }
+            : { key: st.key, plus: st.yNode, minus: st.gndNode, volts },
+        ),
+        ...padSources,
+        ...(forced ? [forced] : []),
+      ],
     };
     const corner = solver.corner(spec);
     if (!corner) return { kind: 'unsolved' };
@@ -581,12 +779,7 @@ function solveCorner(
         moved = true;
       }
     }
-    if (!moved)
-      return {
-        kind: 'ok',
-        corner,
-        stageOf: new Map([...stages].map(([j, s]) => [j, { level: s.st.level }])),
-      };
+    if (!moved) return { kind: 'ok', corner, stageOf };
     corner.release();
   }
   return { kind: 'unsolved' };
@@ -624,15 +817,25 @@ export function buildBounds(
     component: string;
     /** A logic output reaches the pad's net (through wires, switches, resistors). */
     readsLogic: boolean;
+    /** The pad's device key in the circuit (replaced by a source in a corner). */
+    key: string;
   }[],
-  psus: readonly { id: string; key: string; limitA: number; cv: boolean }[],
+  psus: readonly {
+    id: string;
+    key: string;
+    limitA: number;
+    cv: boolean;
+    plus: string;
+    minus: string;
+    setpointV: number;
+  }[],
   access: BoundsAccess,
   x0: readonly number[],
   ref: string,
 ): {
   perts: Perturbation[];
   checks: Check[];
-  extra: (relied: ReadonlySet<string>, limitOnly: ReadonlySet<string>) => Check[];
+  extra: (relied: ReadonlySet<string>, limitOnly: ReadonlyMap<string, string>) => Check[];
 } {
   const perts: Perturbation[] = [];
   const checks: Check[] = [];
@@ -671,8 +874,9 @@ export function buildBounds(
       kind: 'icc',
       from: s.vccNode,
       to: s.gndNode,
-      range:
-        'iccMaxA' in q && leakIn ? [0, q.iccMaxA + card.inputs.length * card.inputLeakageA] : null,
+      // Sprint 22 review F5/F6: I_CC alone; each input's leakage is its own perturbation below,
+      // returning through either supply pin (never counted twice).
+      range: 'iccMaxA' in q && leakIn ? [0, q.iccMaxA] : null,
       component: s.component,
       refusal: {
         code: 'logic_supply_current_uncharacterized',
@@ -684,21 +888,26 @@ export function buildBounds(
         },
       },
     });
+    // Sprint 22 review F5/F6: an input's leakage ±I_I enters (or leaves) at the input pin and
+    // returns through the part's GND pin or its V_CC pin — the sheets do not say which, so both
+    // paths are alternatives of ONE current (a group): the adverse one is applied, never both.
     for (const i of s.inputs)
-      perts.push({
-        id: `ii:${s.component}:${i.pin}`,
-        kind: 'ii',
-        from: i.node,
-        to: s.gndNode,
-        range: leakIn ? [-card.inputLeakageA, card.inputLeakageA] : null,
-        component: s.component,
-        pin: i.pin,
-        refusal: {
-          code: 'logic_input_leakage_uncharacterized',
-          param: i.pin,
-          detail: { part: s.part, vcc: s.vcc, iiVcc: [...card.iiVcc] },
-        },
-      });
+      for (const via of ['gnd', 'vcc'] as const)
+        perts.push({
+          id: via === 'gnd' ? `ii:${s.component}:${i.pin}` : `iiv:${s.component}:${i.pin}`,
+          kind: 'ii',
+          from: i.node,
+          to: via === 'gnd' ? s.gndNode : s.vccNode,
+          range: leakIn ? [-card.inputLeakageA, card.inputLeakageA] : null,
+          component: s.component,
+          pin: i.pin,
+          group: `ii:${s.component}:${i.pin}`,
+          refusal: {
+            code: 'logic_input_leakage_uncharacterized',
+            param: i.pin,
+            detail: { part: s.part, vcc: s.vcc, iiVcc: [...card.iiVcc] },
+          },
+        });
     // The output's guarantee band (downstream checks only): Y between the guaranteed bound at its
     // current (logic/lvc1g.ts `outputGuaranteeAt`) and its own rail. Review item 1: the corner holds
     // Y ITSELF at that bound (an ideal source replacing the stage), never a Norton shift whose
@@ -725,28 +934,32 @@ export function buildBounds(
         pin: o.pin,
       });
   }
+  // Sprint 22 review F2: an output pad's level band as an IDEAL-SOURCE interval — HIGH anywhere in
+  // [V_OH min, VDD], LOW in [0, V_OL max] (Table 5-3) — never a shift through the typical drive
+  // resistance (R_DRIVE from the typical 40 mA / 28 mA). Its own current is then bounded only by
+  // the leakage-level trust of Q7 (padLoad below).
   for (const p of pads) {
-    if (p.mode === 'output-high')
-      perts.push({
-        id: `pad:${p.gpio}`,
-        kind: 'pad',
-        from: p.node,
-        to: ref,
-        range: [0, (VDD_V - V_OH_CHAR_V) / R_DRIVE_HIGH_OHM],
-        gpio: p.gpio,
-        padLevel: 'high',
-      });
-    else if (p.mode === 'output-low')
+    if (p.mode === 'output-high' || p.mode === 'output-low') {
+      const high = p.mode === 'output-high';
       perts.push({
         id: `pad:${p.gpio}`,
         kind: 'pad',
         from: ref,
         to: p.node,
-        range: [0, ESP32_V_OL_MAX_V / R_DRIVE_LOW_OHM],
+        range: null,
+        band: {
+          key: p.key,
+          plus: p.node,
+          minus: ref,
+          bound: high ? V_OH_CHAR_V : ESP32_V_OL_MAX_V,
+          rail: high ? VDD_V : 0,
+        },
+        swingV: high ? VDD_V - V_OH_CHAR_V : ESP32_V_OL_MAX_V,
         gpio: p.gpio,
-        padLevel: 'low',
+        padLevel: high ? 'high' : 'low',
+        component: p.component,
       });
-    else {
+    } else {
       perts.push({
         id: `padleak:${p.gpio}`,
         kind: 'padleak',
@@ -796,20 +1009,23 @@ export function buildBounds(
           : [card.rangedOutput.vcc[0], card.rangedOutput.vcc[1]];
     const sLo = s.outputs.length ? Math.max(lo, mlo) : lo;
     const sHi = s.outputs.length ? Math.min(hi, mhi) : hi;
-    checks.push({
-      id: `supply:${s.component}`,
-      kind: 'supply',
-      unit: 'V',
-      component: s.component,
-      part: s.part,
-      pin: 'vcc',
-      margin: (x) => {
-        const v = vccAt(s, x);
-        return Math.min(v - sLo, sHi - v);
-      },
-      value: (x) => vccAt(s, x),
-      detail: { vcc: vcc0, model: stage.model, range: [sLo, sHi] },
-    });
+    // Sprint 22 review: two ONE-SIDED checks (min(V − lo, hi − V) is not monotone: its corner
+    // could pick the side away from the nearer limit).
+    for (const side of ['low', 'high'] as const)
+      checks.push({
+        id: `supply:${s.component}${side === 'high' ? ':high' : ''}`,
+        kind: 'supply',
+        unit: 'V',
+        component: s.component,
+        part: s.part,
+        pin: 'vcc',
+        margin: (x) => {
+          const v = vccAt(s, x);
+          return side === 'low' ? v - sLo : sHi - v;
+        },
+        value: (x) => vccAt(s, x),
+        detail: { vcc: vcc0, model: stage.model, range: [sLo, sHi] },
+      });
     for (const i of s.inputs) {
       const th = (x: readonly number[]) => inputRowAt(card, vccAt(s, x));
       checks.push({
@@ -876,6 +1092,9 @@ export function buildBounds(
         pin: 'limit',
         margin: (x) => p.limitA - Math.abs(access.device(x, p.key)) - 1e-12,
         value: (x) => Math.abs(access.device(x, p.key)),
+        // Sprint 22 review F1/F7: held at its setpoint at every corner of this check, so the
+        // current compared (and reported) is the worst DEMANDED current, not the limit itself.
+        forced: { key: p.key, plus: p.plus, minus: p.minus, volts: p.setpointV },
         detail: { limit: p.limitA },
       });
 
@@ -914,9 +1133,23 @@ export function buildBounds(
   // load current (Table 5-3; the 40 mA / 28 mA figures are TYPICAL, at 25 °C). It is relied on only
   // while the pad carries no more than leakage-level current: the guaranteed leakage of every
   // input in the circuit (Σ I_I, I_off, 50 nA per pad), never a resistive load.
-  const leakage = perts
-    .filter((p) => p.range && (p.kind === 'ii' || p.kind === 'ioff' || p.kind === 'padleak'))
-    .reduce((sum, p) => sum + Math.max(Math.abs(p.range![0]), Math.abs(p.range![1])), 0);
+  // Sprint 22 review F8: the leakage that can flow on the pad's OWN node (each input's I_I once,
+  // whichever pin it returns through; I_off; the pads' 50 nA).
+  const leakageAt = (node: string) => {
+    const seen = new Set<string>();
+    let sum = 0;
+    for (const p of perts) {
+      if (!p.range || p.from !== node) continue;
+      if (!(p.kind === 'ii' || p.kind === 'ioff' || p.kind === 'padleak')) continue;
+      if (p.group) {
+        if (seen.has(p.group)) continue;
+        seen.add(p.group);
+      }
+      sum += Math.max(Math.abs(p.range[0]), Math.abs(p.range[1]));
+    }
+    // An output pad's own input leakage (Table 5-3 I_IH/I_IL).
+    return sum + ESP32_INPUT_LEAKAGE_A;
+  };
   const padLoad = (relied: ReadonlySet<string>): Check[] =>
     pads
       .filter((p) => p.mode.startsWith('output') && relied.has(`pad:${p.gpio}`))
@@ -927,14 +1160,19 @@ export function buildBounds(
         component: p.component,
         pin: `gpio${p.gpio}`,
         code: 'logic_mcu_output_uncharacterized',
-        margin: (x: readonly number[]) => leakage + 1e-15 - Math.abs(access.pad(x, p.gpio)),
+        margin: (x: readonly number[]) =>
+          leakageAt(p.node) + 1e-15 - Math.abs(access.pad(x, p.gpio)),
         value: (x: readonly number[]) => Math.abs(access.pad(x, p.gpio)),
-        // Its own level band is a shift of the driver's source, not a load: not counted here.
-        excludes: (q: Perturbation) => q.id === `pad:${p.gpio}`,
-        detail: { gpio: p.gpio, limit: leakage, level: p.mode === 'output-high' ? 'high' : 'low' },
+        // Sprint 22 review F2: its own level band counts too (the pad's guaranteed level is an
+        // ideal-source interval; the current it then carries must stay leakage-level, Q7).
+        detail: {
+          gpio: p.gpio,
+          limit: leakageAt(p.node),
+          level: p.mode === 'output-high' ? 'high' : 'low',
+        },
       }));
   // When a part's I_CC bound is relied on, its own test conditions must hold at every corner.
-  const extra = (relied: ReadonlySet<string>, limitOnly: ReadonlySet<string>): Check[] => [
+  const extra = (relied: ReadonlySet<string>, limitOnly: ReadonlyMap<string, string>): Check[] => [
     ...padLoad(relied),
     ...specs
       .filter((s) => s.powered && relied.has(`icc:${s.component}`))
@@ -942,28 +1180,27 @@ export function buildBounds(
         const card = s.card;
         // Q1: an I_CC bound that only a supply's current limit relies on is refused as that
         // limit's (the levels do not depend on it).
-        const limitOf = (sp: LogicBoundSpec) =>
-          limitOnly.has(`icc:${sp.component}`) ? { check: 'limit' } : {};
+        const psu = limitOnly.get(`icc:${s.component}`);
+        const limitOf = (_sp: LogicBoundSpec) => (psu ? { check: 'limit', psu } : {});
+        const names = psu ? { alsoNames: [psu] } : {};
         const high = card.iccInputHigh === 'vcc' ? null : card.iccInputHigh;
-        const out: Check[] = [
-          {
-            id: `icc-supply:${s.component}`,
-            kind: 'iccCondition',
-            unit: 'V',
-            component: s.component,
-            part: s.part,
-            pin: 'vcc',
-            margin: (x) => {
-              const v = vccAt(s, x);
-              return Math.min(
-                v - (card.iccVcc[0] - TABULATED_VCC_TOLERANCE_V),
-                card.iccVcc[1] + TABULATED_VCC_TOLERANCE_V - v,
-              );
-            },
-            value: (x) => vccAt(s, x),
-            detail: { vcc: s.vcc, condition: 'notSupply', ...limitOf(s) },
+        const out: Check[] = (['low', 'high'] as const).map((side) => ({
+          id: `icc-supply:${s.component}${side === 'high' ? ':high' : ''}`,
+          kind: 'iccCondition' as const,
+          unit: 'V' as const,
+          component: s.component,
+          ...names,
+          part: s.part,
+          pin: 'vcc',
+          margin: (x: readonly number[]) => {
+            const v = vccAt(s, x);
+            return side === 'low'
+              ? v - (card.iccVcc[0] - TABULATED_VCC_TOLERANCE_V)
+              : card.iccVcc[1] + TABULATED_VCC_TOLERANCE_V - v;
           },
-        ];
+          value: (x: readonly number[]) => vccAt(s, x),
+          detail: { vcc: s.vcc, condition: 'notSupply', ...limitOf(s) },
+        }));
         for (const i of s.inputs) {
           const low = Math.abs(vin(s, i.node, x0)) <= RAIL_V;
           const target = (x: readonly number[]) => (low ? 0 : (high ?? vccAt(s, x)));
@@ -978,6 +1215,7 @@ export function buildBounds(
               kind: 'iccCondition',
               unit: 'V',
               component: s.component,
+              ...names,
               part: s.part,
               pin: i.pin,
               margin: (x) => RAIL_V - side * (vin(s, i.node, x) - target(x)),

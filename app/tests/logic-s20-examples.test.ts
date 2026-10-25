@@ -151,7 +151,7 @@ describe('A logic-and-switches: two switches → SN74LVC1G08 → LED', () => {
     if (o.ok) throw new Error('expected a refusal');
     expect(o.error).toMatchObject({
       code: 'logic_supply_current_uncharacterized',
-      components: ['U1'],
+      components: ['U1', 'PSU2'],
       param: 'b',
       detail: { condition: 'notInputs', check: 'limit', worst: expect.closeTo(0.05, 9) },
     });
@@ -384,11 +384,21 @@ describe('D esp32-logic-override: ESP32 + manual switch → SN74LVC1G32 → LED,
         }
         // Sprint 22 Q1 strict: Y LOW is guaranteed (every level check holds), but input A is
         // never at 5.5 V or exactly GND (GPIO18 LOW: V_OL ≤ 0.33 V; as an input: 5 µA × 10 kΩ
-        // ≈ 50 mV), so I_CC is unbounded and the supply's current limit is refused.
+        // ≈ 50 mV), so I_CC is unbounded and the supply's current limit is refused. Review F2:
+        // GPIO18 LOW at its band end carries 0.33 V / 10 kΩ + I_I 5 µA = 38 µA into R3 — more than
+        // leakage, so its V_OL guarantee is not relied on (Q7), refused first.
         if (o.ok) throw new Error(`expected a refusal: ${at}`);
+        if (mode === 'output-low') {
+          expect(o.error, at).toMatchObject({
+            code: 'logic_mcu_output_uncharacterized',
+            param: 'gpio18',
+            detail: { level: 'low', value: expect.closeTo(38e-6, 9) },
+          });
+          continue;
+        }
         expect(o.error, at).toMatchObject({
           code: 'logic_supply_current_uncharacterized',
-          components: ['U2'],
+          components: ['U2', 'PSU1'],
           param: 'a',
           detail: { part: 'SN74LVC1G32', condition: 'notInputs', check: 'limit' },
         });

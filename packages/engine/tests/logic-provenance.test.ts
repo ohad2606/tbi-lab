@@ -15,6 +15,7 @@ import {
   V_OH_CHAR_V,
 } from '../src/esp32Gpio.js';
 import { ESP32_INPUT_LEAKAGE_A, ESP32_V_OL_MAX_V } from '../src/logic/bounds.js';
+import { RAIL_V, TABULATED_VCC_TOLERANCE_V } from '../src/logic/lvc1g.js';
 
 const row = (id: string) => {
   const r = LOGIC_PROVENANCE.find((x) => x.id === id);
@@ -70,7 +71,8 @@ describe('logic bound provenance (P2)', () => {
         expect(r.document).toMatch(/SCES|SCAS/);
         expect(r.where.length).toBeGreaterThan(5);
       }
-      expect(row(`${card.partNumber}.outputRail`).kind).toBe('guaranteed-range');
+      expect(row(`${card.partNumber}.outputRail`).kind).toBe('recommended');
+      expect(row(`${card.partNumber}.iccLoaded`).kind).toBe('derived');
     });
 
   it('ESP32 pad figures: the same values, and the drive figures marked typical', () => {
@@ -86,6 +88,15 @@ describe('logic bound provenance (P2)', () => {
     for (const id of ['ESP32.I_OH_A', 'ESP32.I_OL_A', 'ESP32.R_PULL_OHM'])
       expect(row(id).kind).toBe('typical');
     expect(row('ESP32.V_OH_FRACTION').where).toContain('NO test current');
+    expect(row('ESP32.VDD_V').kind).toBe('test-condition');
+  });
+
+  it('Sprint 22 F3: the engine tolerances are rows of kind assumption, with the engine values', () => {
+    close(row('ENGINE.RAIL_V').value, RAIL_V);
+    close(row('ENGINE.TABULATED_VCC_TOLERANCE_V').value, TABULATED_VCC_TOLERANCE_V);
+    close(row('ENGINE.UNPOWERED_V').value, 1e-3);
+    for (const id of ['ENGINE.RAIL_V', 'ENGINE.UNPOWERED_V', 'ENGINE.TABULATED_VCC_TOLERANCE_V'])
+      expect(row(id).kind).toBe('assumption');
   });
 
   it('every row is complete (manufacturer, part, document, where, applies, kind, use)', () => {

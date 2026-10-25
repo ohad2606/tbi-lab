@@ -261,7 +261,7 @@ describe('SN74LVC08A in the solve: four gates, one shared supply', () => {
     load(b, `${u}.y2`, 100_000);
     expect(fails(solve(b))).toMatchObject({
       code: 'logic_supply_current_uncharacterized',
-      components: [u],
+      components: [u, 'PSU1'],
       param: 'a2',
       detail: { part: 'SN74LVC08A', condition: 'notInputs', check: 'limit' },
     });

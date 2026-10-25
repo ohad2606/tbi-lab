@@ -416,7 +416,7 @@ describe('SN74LVC1G gates in the solve', () => {
     // U3.a sits at U2's LOW output, guaranteed only ≤ V_OL 0.1 V (±100 µA): worst 0.1 V.
     expect(a).toMatchObject({
       code: 'logic_supply_current_uncharacterized',
-      components: ['U3'],
+      components: ['U3', 'PSU1'],
       param: 'a',
       detail: {
         condition: 'notInputs',
@@ -604,7 +604,7 @@ describe('ESP32 GPIO interop (pads in the same solve)', () => {
     s.setPinMode(18, 'output-low');
     expect(fails(s.solve())).toMatchObject({
       code: 'logic_supply_current_uncharacterized',
-      components: [G],
+      components: [G, 'PSU1'],
       param: 'a',
       detail: {
         condition: 'notInputs',

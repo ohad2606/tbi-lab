@@ -89,6 +89,16 @@ describe('ESP32 → SN74LVC08A → LEDs (golden; preview of owner option S21-Q2(
           expect(o.ok ? null : o.error.code, at).toBe('logic_mcu_output_uncharacterized');
           continue;
         }
+        // Sprint 22 review F2: a pad driven LOW into its 10 kΩ pull-down: at its V_OL band end
+        // (0.33 V) it carries 0.33 V / 10 kΩ + 1A/1B's I_I 5 µA = 38 µA, more than the leakage on its
+        // node (5 µA + its own 50 nA): the load-less V_OL guarantee is not relied on (Q7).
+        if (m18 === 'output-low' || m19 === 'output-low') {
+          expect(o.ok ? null : o.error, at).toMatchObject({
+            code: 'logic_mcu_output_uncharacterized',
+            detail: { level: 'low', value: expect.closeTo(38e-6, 9) },
+          });
+          continue;
+        }
         // Sprint 22 Q1 (strict): every level holds even here, but the SN74LVC08A's I_CC is
         // bounded only at V_CC = 3.6 V (SCAS283W §5.7): the supply's current limit is refused.
         expect(o.ok ? null : o.error, at).toMatchObject({

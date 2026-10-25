@@ -141,7 +141,7 @@ describe('BLOCKING 1: high-impedance parts do not drive a logic input', () => {
     // GND, so I_CC leaves its test condition: refused by the current limit, naming A (worst 5 mV).
     expect(fails(solve(pd.b))).toMatchObject({
       code: 'logic_supply_current_uncharacterized',
-      components: [pd.g],
+      components: [pd.g, 'PSU1'],
       param: 'a',
       detail: { check: 'limit', worst: expect.closeTo(0.005, 9) },
     });

@@ -12,14 +12,26 @@
  */
 
 export type BoundKind =
-  'guaranteed-max' | 'guaranteed-min' | 'guaranteed-range' | 'typical' | 'absolute-max' | 'derived';
+  | 'guaranteed-max'
+  | 'guaranteed-min'
+  | 'guaranteed-range'
+  | 'typical'
+  | 'absolute-max'
+  | 'derived'
+  /** A recommended operating condition (§5.3): the range in which the part is specified to
+   *  operate, not a measured limit (Sprint 22 review). */
+  | 'recommended'
+  /** The condition a table's figures are measured at (e.g. "3.3 V, 25 °C"). */
+  | 'test-condition'
+  /** An engineering assumption of the engine, NOT a datasheet figure (owner decision S22-F3). */
+  | 'assumption';
 
 export interface ProvenanceRow {
   /** `<part>.<field>` (cards) or `ESP32.<constant>`. */
   id: string;
   value: number | string | readonly (number | string)[];
   unit: string;
-  manufacturer: 'Texas Instruments' | 'Espressif Systems';
+  manufacturer: 'Texas Instruments' | 'Espressif Systems' | 'TBI LAB engine';
   /** Exact part / variant the figure is stated for. */
   part: string;
   /** Document number and revision. */
@@ -111,6 +123,15 @@ function lvc1gRows(part: keyof typeof TI_1G): ProvenanceRow[] {
       'icc perturbation where its condition holds',
     ),
     r(
+      'iccLoaded',
+      'I_CC + I_O',
+      'A',
+      '§8.2.1.1 Power Considerations ("the supply must source all output current plus the maximum static supply current, I_CC")',
+      `${TA}; ONLY with every input at the I_CC test voltages (5.5 V or GND)`,
+      'derived',
+      'owner decision S22-F4: a LOADED output keeps the I_CC bound (I_O is in the solve); never a bound for inputs off the test voltages (S22-Q1)',
+    ),
+    r(
       'iccVcc',
       [1.65, 5.5],
       'V',
@@ -189,15 +210,55 @@ function lvc1gRows(part: keyof typeof TI_1G): ProvenanceRow[] {
       'outputRail',
       [0, 'V_CC'],
       'V',
-      '§5.3 V_O 0 to V_CC; §8.2.1.3 "The positive supply voltage is used to produce the output HIGH voltage … The ground voltage is used to produce the output LOW voltage"',
+      '§5.3 Recommended Operating Conditions V_O 0 to V_CC (a recommended condition, not a measured limit); §8.2.1.3 "The positive supply voltage is used to produce the output HIGH voltage … The ground voltage is used to produce the output LOW voltage"',
       TA,
-      'guaranteed-range',
+      'recommended',
       'the stronger side of an output: Y at most at its own rail (Q5)',
     ),
   ];
 }
 
+/** Engine tolerances: engineering assumptions, not datasheet figures (owner decision S22-F3). */
+const ENGINE_ROWS: ProvenanceRow[] = [
+  [
+    'RAIL_V',
+    1e-3,
+    'V',
+    'an input counts as "at" an I_CC test voltage (5.5 V, V_CC or GND) within ±1 mV; also the 0–5.5 V input-range check tolerance',
+    'assumption',
+    'I_CC condition (logic/lvc1g.ts quiescentAt, bounds.ts icc-input checks); shown to users as "engine tolerance 1 mV"',
+  ],
+  [
+    'UNPOWERED_V',
+    1e-3,
+    'V',
+    '|V_CC − GND| ≤ 1 mV is treated as unpowered (V_CC = 0, the I_off row)',
+    'assumption',
+    'parts/logicGate.ts, parts/logicPackage.ts: unpowered gates (outputs off, I_off)',
+  ],
+  [
+    'TABULATED_VCC_TOLERANCE_V',
+    1e-6,
+    'V',
+    'a supply within ±1 µV of a tabulated V_CC (e.g. 3.0 V, 3.6 V) counts as that row',
+    'assumption',
+    'row selection (lvc1g.ts); numerical resolution of a setpoint, not a physical tolerance',
+  ],
+].map(([name, value, unit, where, kind, use]) => ({
+  id: `ENGINE.${name as string}`,
+  value: value as number,
+  unit: unit as string,
+  manufacturer: 'TBI LAB engine' as const,
+  part: 'logic guarantee checks (all logic parts)',
+  document: 'TBI LAB engine (packages/engine/src/logic), Sprint 22 owner decision F3',
+  where: where as string,
+  applies: 'every logic part, every supply',
+  kind: kind as BoundKind,
+  use: use as string,
+}));
+
 export const LOGIC_PROVENANCE: readonly ProvenanceRow[] = [
+  ...ENGINE_ROWS,
   ...(['SN74LVC1G08', 'SN74LVC1G00', 'SN74LVC1G32', 'SN74LVC1G04'] as const).flatMap(lvc1gRows),
   // SN74LVC08A, SCAS283W (January 1993, revised July 2024), SN74LVC08A −40 to +85 °C column.
   ...((): ProvenanceRow[] => {
@@ -258,6 +319,15 @@ export const LOGIC_PROVENANCE: readonly ProvenanceRow[] = [
         `${A}; ONLY at V_CC = 3.6 V with inputs at V_CC or GND`,
         'guaranteed-max',
         'icc perturbation where its condition holds',
+      ),
+      r(
+        'iccLoaded',
+        'I_CC + I_O',
+        'A',
+        '§8.2.1 power rule as for the single gates (the supply sources the output current plus the maximum static supply current I_CC)',
+        `${A}; ONLY at V_CC = 3.6 V with every input at V_CC or GND`,
+        'derived',
+        'owner decision S22-F4 (as for SN74LVC1G): a loaded output keeps the I_CC bound; never for inputs off the test voltages',
       ),
       r(
         'iccVcc',
@@ -338,9 +408,9 @@ export const LOGIC_PROVENANCE: readonly ProvenanceRow[] = [
         'outputRail',
         [0, 'V_CC'],
         'V',
-        '§5.4 V_O 0 to V_CC',
+        '§5.4 Recommended Operating Conditions V_O 0 to V_CC (a recommended condition)',
         A,
-        'guaranteed-range',
+        'recommended',
         'the stronger side of an output (Q5)',
       ),
     ];
@@ -373,9 +443,9 @@ export const LOGIC_PROVENANCE: readonly ProvenanceRow[] = [
         'VDD_V',
         3.3,
         'V',
-        'Table 5-3 title condition "3.3 V"',
-        'guaranteed-range',
-        'pad supply in the approved pad model',
+        'Table 5-3 title condition "DC Characteristics (3.3 V, 25 °C)" — the condition the figures are measured at',
+        'test-condition',
+        'pad supply in the approved pad model (every ESP32 figure valid at VDD = 3.3 V, 25 °C only)',
       ),
       e(
         'V_IH_FRACTION',

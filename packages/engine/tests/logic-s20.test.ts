@@ -95,7 +95,7 @@ describe('undriven inputs are floating, never a valid LOW (owner policy)', () =>
     s.setPinMode(18, 'output-low');
     expect(fails(s.solve())).toMatchObject({
       ...limitOnly,
-      components: [G],
+      components: [G, 'PSU1'],
       param: 'a',
       detail: { check: 'limit', causes: expect.arrayContaining(['esp32_vol']) },
     });
@@ -122,8 +122,15 @@ describe('undriven inputs are floating, never a valid LOW (owner policy)', () =>
     // One pad driving: the node is driven (no longer floating). Sprint 22 Q1 strict: 1A at the
     // pad's ≤ 3.3 V is not V_CC = 3.6 V, so the package's I_CC (§5.7) is unbounded: PSU1's
     // current limit is refused by name, after 1A's HIGH level held (V_OH 2.64 V ≥ V_IH 2.0 V).
+    // Sprint 22 review F2/F8: GPIO19's HIGH band is an ideal-source interval; through R the pad
+    // carries 1A's leakage (5 µA) + GPIO18's 50 nA, more than the leakage on its OWN node (its own
+    // and GPIO18's 50 nA): the load-less V_OH guarantee is not relied on (Q7) — refused by name.
     s.setPinMode(19, 'output-high');
-    expect(fails(s.solve())).toMatchObject({ ...limitOnly, components: [Q, 'PSU1'] });
+    expect(fails(s.solve())).toMatchObject({
+      code: 'logic_mcu_output_uncharacterized',
+      param: 'gpio19',
+      detail: { level: 'high', limit: expect.closeTo(1e-7, 15), value: expect.closeTo(5.1e-6, 12) },
+    });
   });
 
   it('an input-mode pad WITH an external 10 kΩ pull-down (§7.3.3: "a 10kΩ resistor … is recommended"): a real LOW', () => {
@@ -146,7 +153,7 @@ describe('undriven inputs are floating, never a valid LOW (owner policy)', () =>
     // and PSU1's current limit is refused by name (naming A, worst ≈ 50.5 mV).
     expect(fails(s.solve())).toMatchObject({
       ...limitOnly,
-      components: [G],
+      components: [G, 'PSU1'],
       param: 'a',
       detail: { check: 'limit', condition: 'notInputs', worst: expect.closeTo(0.0505, 3) },
     });
@@ -265,7 +272,7 @@ describe("mixed 3.3 V / 5 V: decided by V_IH at the gate's own supply (§5.3)", 
     // The pad's LOW (≤ 0.33 V) is a valid LOW at 5 V (V_IL = 1.5 V): not refused as undefined.
     // Sprint 22 Q1 strict: but not exactly GND, so I_CC is unbounded: refused by the limit.
     s.setPinMode(18, 'output-low');
-    expect(fails(s.solve())).toMatchObject({ ...limitOnly, components: [G], param: 'a' });
+    expect(fails(s.solve())).toMatchObject({ ...limitOnly, components: [G, 'PSU1'], param: 'a' });
   });
 
   it("at 4.5 V, V_IH = 3.15 V: the pad model's 3.3 V passes, but the ESP32 guarantees only V_OH ≥ 2.64 V: refused (Sprint 21)", () => {

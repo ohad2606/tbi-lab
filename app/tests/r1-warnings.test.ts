@@ -57,7 +57,10 @@ describe('no shipped example raises a pad over-voltage warning (T-D3)', () => {
             // Sprint 22 Q1 (strict): a gate input that is never at 5.5 V or exactly GND (an
             // ESP32 pad's level, a pull-down's leakage drop): I_CC unbounded, the supply's current
             // limit refused by name.
-            out.error.code === 'logic_supply_current_uncharacterized')
+            out.error.code === 'logic_supply_current_uncharacterized' ||
+            // Sprint 22 review F2/F7: the read-back pad driven onto the gate output (two drivers
+            // on one net).
+            out.error.code === 'logic_bound_not_established')
         ) {
           refused++;
           refusedAt.push(n);
