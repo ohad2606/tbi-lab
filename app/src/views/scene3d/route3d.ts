@@ -99,6 +99,18 @@ export interface WireRouteInput {
 export interface WireRoute {
   points: Vec3[];
   radii: number[];
+  /** Routed without a height profile: the work budget was spent (s20r6). */
+  simple?: true;
+}
+
+/**
+ * Counted work left for routeWires (s20r6, review r4 MAJOR 2: stacked wires each saw every
+ * other wire nearby and their profiles were recomputed for each). A wire is charged its profile
+ * cells times the work its decisions take (the profile rounds and the wires near it); past the
+ * budget it is a simple cable (its plan path just above the bench), and reported.
+ */
+export interface Route3dBudget {
+  work: number;
 }
 
 interface Req {
@@ -345,6 +357,7 @@ export function routeWires(
   inputs: readonly WireRouteInput[],
   obstacles: readonly Obstacle[],
   spots: readonly Spot[],
+  budget?: Route3dBudget,
 ): Map<string, WireRoute> {
   const r = WIRE.radiusMm;
   const out = new Map<string, WireRoute>();
@@ -449,6 +462,24 @@ export function routeWires(
       })
       .filter((x): x is { g: Seg3; n: NonNullable<typeof x.n> } => !!x.n);
     near.push(...raised.map((n) => ({ g: null as unknown as Seg3, n })));
+    if (budget) {
+      const cells = Math.ceil(L / GRID) + 1;
+      budget.work -= others.length + cells * (10 + near.length);
+      if (budget.work < 0) {
+        // Simple cable: the plan just above the bench between its fixed ends.
+        const pts: Vec3[] = [...w.head];
+        const push = (p: Vec3) => {
+          const last = pts[pts.length - 1];
+          if (!last || Math.hypot(last.x - p.x, last.y - p.y, last.z - p.z) > 1e-9) pts.push(p);
+        };
+        push({ x: plan[0]!.x, y: w.startY, z: plan[0]!.y });
+        for (const q of plan) push({ x: q.x, y: FLOOR, z: q.y });
+        push({ x: plan[plan.length - 1]!.x, y: w.endY, z: plan[plan.length - 1]!.y });
+        for (const p of w.tail) push(p);
+        out.set(w.id, { points: pts, radii: [], simple: true });
+        continue;
+      }
+    }
     const over = new Set<number>();
     const ceilings: { s0: number; s1: number; c: number }[] = [];
     let h = profile(L, w.startY, w.endY, reqs);

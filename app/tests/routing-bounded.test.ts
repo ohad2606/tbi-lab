@@ -11,7 +11,9 @@ import { describe, expect, it } from 'vitest';
 import {
   addComponent,
   sameNodeBranches,
+  sameNodeBranchesReport,
   wireCrossings,
+  wireCrossingsReport,
   addWire,
   connectivity,
   repairWireRoutesReport,
@@ -20,8 +22,10 @@ import {
   type ProjectDocument,
 } from '@tbi-lab/domain';
 import { componentBoxes, repairManual, routeAutomatic, routingLimited } from '../src/ui/routing.js';
-import { deriveScene } from '../src/views/scene3d/scene.js';
+import { deriveScene, touchingNodesReport } from '../src/views/scene3d/scene.js';
 import { shapeWires } from '../src/views/scene3d/wireShape.js';
+import { en } from '../src/i18n/messages.en.js';
+import { he } from '../src/i18n/messages.he.js';
 import { newDoc } from '../../packages/domain/tests/helpers.js';
 import { largeBench } from './support/largeBench.js';
 import { randomBench } from './support/routingBench.js';
@@ -184,5 +188,116 @@ describe('bounded routing of a very large project (s20r4)', () => {
     expect(performance.now() - t0).toBeLessThan(5_000);
     expect(s.routeLimits).toEqual([w.id]);
     expect(s.wires.find((x) => x.id === w.id)!.simple).toBe(true);
+  });
+});
+
+/**
+ * s20r6 (review r4): crafted documents of a few hundred kB to 1.5 MB, every wire a plain manual
+ * PSU+ -> R1.a wire (one node; valid). `long`: N wires 80 mm tall side by side far off the bench
+ * (the 2D overlays tested every pair: 45 + 116 s at N = 8 000). `stacked`: N wires over a 90 x 50
+ * grid of 20 mm pitch, many on top of each other (the 3D cables: 77 s at 1 000, 154 s at 3 000).
+ */
+function crafted(N: number, at: (i: number) => { x: number; y: number }): ProjectDocument {
+  let doc = newDoc();
+  const r1 = addComponent(doc, 'component.resistor', { x: 0, y: -100 });
+  if (!r1.ok) throw new Error(r1.error);
+  doc = r1.doc;
+  const one = addWire(
+    doc,
+    { kind: 'terminal', component: 'PSU1', terminal: 'positive' },
+    { kind: 'terminal', component: r1.id, terminal: 'a' },
+    [
+      { x: 2000, y: -20 },
+      { x: 2000, y: -100 },
+    ],
+  );
+  if (!one.ok) throw new Error(one.error);
+  const w0 = one.doc.layout.wires[0]!;
+  const wires = Array.from({ length: N }, (_, i) => {
+    const p = at(i);
+    return {
+      ...w0,
+      id: `W${i + 1}`,
+      vertices: [
+        { x: p.x, y: p.y },
+        { x: p.x, y: p.y - 80 },
+      ],
+    };
+  });
+  return {
+    ...one.doc,
+    layout: { ...one.doc.layout, wires },
+    idCounters: { ...one.doc.idCounters, W: N },
+  };
+}
+const long = (N: number) => crafted(N, (i) => ({ x: 20000 + 20 * i, y: -20 - 20 * (i % 50) }));
+const stacked = (N: number) =>
+  crafted(N, (i) => ({ x: 200 + 20 * (i % 90), y: -20 - 20 * (i % 50) }));
+
+describe('bounded 2D overlays and 3D cables of crafted documents (s20r6, review r4)', () => {
+  it('MAJOR 1: the crossings and branch dots of 2 000 / 8 000 long wires are counted and bounded', () => {
+    for (const N of [2000, 8000]) {
+      const doc = long(N);
+      expect(validateProject(doc)).toEqual([]);
+      const t0 = performance.now();
+      const c = wireCrossingsReport(doc);
+      const b = sameNodeBranchesReport(doc);
+      const ms = performance.now() - t0;
+      console.log(
+        `${N} long wires: overlays in ${ms.toFixed(0)} ms, crossings limited ${c.limited}, ` +
+          `branches limited ${b.limited}`,
+      );
+      expect(ms, `${N}`).toBeLessThan(30_000);
+      // Past the work cap the overlays are cut short and say so (the Circuit view's note).
+      if (N === 8000) expect(c.limited || b.limited).toBe(true);
+      // The plain functions are the reports' results; counted, not timed: the same every time.
+      expect(wireCrossings(doc)).toEqual(c.crossings);
+      expect(sameNodeBranches(doc)).toEqual(b.points);
+      expect(JSON.stringify(wireCrossingsReport(doc))).toBe(JSON.stringify(c));
+      expect(JSON.stringify(sameNodeBranchesReport(doc))).toBe(JSON.stringify(b));
+    }
+  });
+
+  it('MAJOR 1: a normal drawing is not limited, and the note exists in English and Hebrew', () => {
+    const doc = routeAutomatic(largeBench(40, 1));
+    expect(wireCrossingsReport(doc).limited).toBe(false);
+    expect(sameNodeBranchesReport(doc).limited).toBe(false);
+    expect(en['canvas.overlayLimit']).toMatch(/connections are exactly as drawn/);
+    expect(he['canvas.overlayLimit']).toMatch(/החיבורים הם בדיוק/);
+  });
+
+  it('MAJOR 2: the 3D scene and cables of 1 000 / 3 000 stacked manual wires are bounded and say so', () => {
+    for (const N of [1000, 3000]) {
+      const doc = stacked(N);
+      expect(validateProject(doc)).toEqual([]);
+      const t0 = performance.now();
+      const s = deriveScene(doc);
+      const shapes = shapeWires(s);
+      const ms = performance.now() - t0;
+      const simple = s.wires.filter((w) => w.simple).map((w) => w.id);
+      console.log(
+        `${N} stacked wires: 3D scene and cables in ${ms.toFixed(0)} ms, ${simple.length} simple`,
+      );
+      expect(ms, `${N}`).toBeLessThan(30_000);
+      expect(simple.length).toBeGreaterThan(0);
+      for (const id of simple) expect(s.routeLimits).toContain(id);
+      expect(shapes.size).toBe(N);
+      // Counted, never timed: the same scene and cables every time.
+      expect(JSON.stringify(deriveScene(doc))).toBe(JSON.stringify(s));
+      expect(JSON.stringify([...shapeWires(s)])).toBe(JSON.stringify([...shapes]));
+    }
+  });
+
+  it('MAJOR 2: a contact check past its work cap lists the wires it did not check', () => {
+    const s = deriveScene(stacked(3000));
+    const r = touchingNodesReport(s);
+    // Whatever was not checked is a routing limitation, never a claimed absence of contact.
+    for (const id of r.unchecked) expect(s.routeLimits).toContain(id);
+    for (const k of r.pairs)
+      for (const id of k
+        .slice(2)
+        .split('|')
+        .slice(0, k.startsWith('w') ? 2 : 1))
+        expect(s.routeLimits).toContain(id);
   });
 });

@@ -80,6 +80,7 @@ import {
   routeWires,
   type Obstacle,
   type Spot,
+  type Route3dBudget,
   type WireRoute,
   type WireRouteInput,
 } from './route3d.js';
@@ -554,11 +555,17 @@ export function deriveScene(doc: ProjectDocument): SceneDescription {
   // then the 2D-derived placement) and the one with the fewest such contacts is kept (the
   // earlier on a tie). Normally the first one is clean and nothing else is built.
   const first = buildScene(doc, true, 'fresh');
-  const touching = touchingNodes(first);
-  let bad = touching.length;
+  const touching = touchingNodesReport(first);
+  let bad = touching.pairs.length;
   // (A scene past its work budget is not built again by the other routers: s20r5.)
   // Nor once its first build spent a quarter of it (the other routers cost as much again).
-  if (!bad || first.wires.some((w) => w.simple) || sceneStats.work > SCENE_WORK_BUDGET / 4)
+  // Nor when the contact check itself ran out of work (s20r6: as costly to repeat).
+  if (
+    !bad ||
+    touching.unchecked.length ||
+    first.wires.some((w) => w.simple) ||
+    sceneStats.work > SCENE_WORK_BUDGET / 4
+  )
     return withLimits(doc, first, touching);
   let best = first;
   const moved = first.separation.moved.length > 0;
@@ -573,7 +580,7 @@ export function deriveScene(doc: ProjectDocument): SceneDescription {
   ];
   for (const [separate, router] of options) {
     const s = buildScene(doc, separate, router);
-    const n = touchingNodes(s).length;
+    const n = touchingNodesReport(s).pairs.length;
     if (n < bad) {
       best = s;
       bad = n;
@@ -587,7 +594,7 @@ export function deriveScene(doc: ProjectDocument): SceneDescription {
 function withLimits(
   doc: ProjectDocument,
   s: SceneDescription,
-  touching?: string[],
+  touching?: ReturnType<typeof touchingNodesReport>,
 ): SceneDescription {
   return { ...s, routeLimits: routeLimits(doc, s, touching) };
 }
@@ -602,21 +609,23 @@ function withLimits(
 export function routeLimits(
   doc: ProjectDocument,
   s: SceneDescription,
-  touching: string[] = touchingNodes(s),
+  touching: ReturnType<typeof touchingNodesReport> = touchingNodesReport(s),
 ): string[] {
-  const out = new Set<string>();
-  for (const k of touching) {
+  const out = new Set<string>(touching.unchecked);
+  for (const k of touching.pairs) {
     const [kind, rest] = [k.slice(0, 1), k.slice(2)];
     if (kind === 'w') for (const id of rest.split('|')) out.add(id);
     else out.add(rest.split('|')[0]!);
   }
   const obstacles = sceneObstacles(doc, s);
+  // (The first wire of an id, as a find would give.)
+  const sources = new Map([...doc.layout.wires].reverse().map((x) => [x.id, x]));
   const m = WIRE.radiusMm * 0.8;
   for (const w of s.wires) {
     // A simple cable (the scene's work budget, s20r5) is a limitation by definition.
     if (w.simple) out.add(w.id);
     if (out.has(w.id)) continue;
-    const src = doc.layout.wires.find((x) => x.id === w.id);
+    const src = sources.get(w.id);
     if (!src) continue;
     const own = [src.from, src.to].flatMap((e) =>
       e.kind === 'terminal' ? [e.component, `${e.component}:${e.terminal}`] : [],
@@ -685,7 +694,25 @@ const byWireId = (a: string, b: string) => {
  * one of its ends) within a wire radius plus a lead's half-thickness. Plan bounding boxes first.
  */
 export function touchingNodes(s: SceneDescription): string[] {
+  return touchingNodesReport(s).pairs;
+}
+
+/**
+ * touchingNodes with its work counted (s20r6: stacked wires made it all pairs): candidates
+ * visited and segment pairs tested, at most TOUCH_WORK. Past it the check stops and `unchecked`
+ * lists the wires (by id) whose pairs or terminals were not all checked: they are listed in
+ * `routeLimits` (a contact that was not checked is not claimed absent). Deterministic.
+ */
+export function touchingNodesReport(s: SceneDescription): {
+  pairs: string[];
+  unchecked: string[];
+} {
   const out: string[] = [];
+  let work = 0;
+  const unchecked = (from: number) => ({
+    pairs: out,
+    unchecked: s.wires.slice(from).map((w) => w.id),
+  });
   const r = WIRE_RADIUS;
   const boxOf = (pts: Vec3[], pad: number) => ({
     x0: Math.min(...pts.map((p) => p.x)) - pad,
@@ -718,20 +745,39 @@ export function touchingNodes(s: SceneDescription): string[] {
         (cells.get(k) ?? cells.set(k, []).get(k)!).push(i);
       }
   });
-  const candidates = (b: ReturnType<typeof boxOf>): number[] => {
+  // Candidates in index order, those `keep` refuses not collected (no copy of every long wire
+  // per query: s20r6); each one visited is counted.
+  const all = s.wires.map((_, i) => i);
+  const candidates = (b: ReturnType<typeof boxOf>, keep: (i: number) => boolean): number[] => {
     const sp = span(b);
-    if (!(sp.n <= 64)) return s.wires.map((_, i) => i);
-    const out = new Set<number>(long);
+    const out: number[] = [];
+    const take = (i: number) => {
+      work++;
+      if (keep(i)) out.push(i);
+    };
+    if (!(sp.n <= 64)) {
+      all.forEach(take);
+      return out;
+    }
+    long.forEach(take);
+    const seen = new Set<number>(long);
     for (let x = sp.x0; x <= sp.x1; x++)
-      for (let z = sp.z0; z <= sp.z1; z++) for (const i of cells.get(`${x},${z}`) ?? []) out.add(i);
-    return [...out].sort((p, q) => p - q);
+      for (let z = sp.z0; z <= sp.z1; z++)
+        for (const i of cells.get(`${x},${z}`) ?? []) {
+          if (seen.has(i)) continue;
+          seen.add(i);
+          take(i);
+        }
+    return out.sort((p, q) => p - q);
   };
-  for (let i = 0; i < s.wires.length; i++)
-    for (const j of candidates(boxes[i]!)) {
-      if (j <= i) continue;
-      const a = s.wires[i]!;
+  for (let i = 0; i < s.wires.length; i++) {
+    if (work > TOUCH_WORK) return unchecked(i);
+    const a = s.wires[i]!;
+    const others = (j: number) =>
+      j > i && !(a.node && a.node === s.wires[j]!.node) && meet(boxes[i]!, boxes[j]!);
+    for (const j of candidates(boxes[i]!, others)) {
       const b = s.wires[j]!;
-      if ((a.node && a.node === b.node) || !meet(boxes[i]!, boxes[j]!)) continue;
+      work += segs[i]!.length * segs[j]!.length;
       if (
         segs[i]!.some(([p, q]) =>
           segs[j]!.some(
@@ -741,12 +787,15 @@ export function touchingNodes(s: SceneDescription): string[] {
       )
         out.push(`w:${a.id}|${b.id}`);
     }
+  }
   for (const c of s.components)
     for (const t of c.terminals) {
       if (t.open) continue;
-      for (const i of candidates({ x0: t.x, x1: t.x, z0: t.z, z1: t.z })) {
+      if (work > TOUCH_WORK) return unchecked(0);
+      const other = (i: number) => !(t.node && s.wires[i]!.node === t.node);
+      for (const i of candidates({ x0: t.x, x1: t.x, z0: t.z, z1: t.z }, other)) {
         const w = s.wires[i]!;
-        if (t.node && w.node === t.node) continue;
+        work += segs[i]!.length;
         const ends = [w.points[0]!, w.points.at(-1)!];
         if (ends.some((e) => e.x === t.x && e.y === t.y && e.z === t.z)) continue;
         const bx = boxes[i]!;
@@ -755,7 +804,7 @@ export function touchingNodes(s: SceneDescription): string[] {
           out.push(`t:${w.id}|${c.id}:${t.id}`);
       }
     }
-  return out;
+  return { pairs: out, unchecked: [] };
 }
 
 /** Whether the bounding boxes of segments ab and cd, padded, overlap (a cheap first test). */
@@ -2700,9 +2749,13 @@ function freshWires(
   // most, deterministic; the order with the fewest contacts wins (the document order on a tie).
   let order = [...inputs];
   let best: { routed: Map<string, WireRoute>; bad: number } | null = null;
+  // The height profiles share one counted budget (s20r6); a later round that runs out of it is
+  // not taken (its wires would be simple cables).
+  const budget: Route3dBudget = { work: ROUTE3D_WORK };
   for (let round = 0; round < 4; round++) {
     routeStats.rounds = round + 1;
-    const routed = routeWires(order, obstacles, spots);
+    const routed = routeWires(order, obstacles, spots, budget);
+    if (round > 0 && [...routed.values()].some((r) => r.simple)) break;
     const pairs = touchingWires(order, routed);
     if (!best || pairs.length < best.bad) best = { routed, bad: pairs.length };
     if (!pairs.length) break;
@@ -2720,6 +2773,10 @@ function freshWires(
 
 /** Pair tests the body separation may spend (rounds x parts^2, s20r5). */
 const SEPARATION_WORK = 2_000_000;
+/** touchingNodesReport's work: candidates visited and segment pairs tested (s20r6). */
+const TOUCH_WORK = 3_000_000;
+/** Work the height profiles of one scene may spend (route3d.ts Route3dBudget, s20r6). */
+const ROUTE3D_WORK = 8_000_000;
 /** Samples per wire segment at most, wherever sampling is per length (s20r5). */
 export const MAX_SAMPLES = 4000;
 /** The 3D scene's work budget (freshWires, s20r5): ~1-2 s of routing on the 1-vCPU DEV host. */

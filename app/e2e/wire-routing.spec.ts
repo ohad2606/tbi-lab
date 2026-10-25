@@ -7,9 +7,11 @@
  * checked geometrically by app/tests/wire-routing-integrity.test.ts.)
  */
 import { expect, test, type Page } from '@playwright/test';
+import { addComponent, addWire, createProject, type ProjectDocument } from '@tbi-lab/domain';
 import {
   component,
-  createProject,
+  createProject as createProjectInUi,
+  openImported,
   place,
   reopenFromLibrary,
   toScreen,
@@ -53,7 +55,7 @@ async function dragBy(page: Page, id: string, dx: number) {
 test("the owner's sequence: a gate wired to a PSU dragged right, left and back — clean, restored", async ({
   page,
 }, info) => {
-  await createProject(page, 'Routing integrity');
+  await createProjectInUi(page, 'Routing integrity');
   await place(page, 'logic.gate_and', { x: 160, y: 0 });
   await wire(page, ['PSU1', 'negative'], ['GND1', 'ref']);
   await wire(page, ['PSU1', 'positive'], ['U1', 'vcc']);
@@ -94,4 +96,56 @@ test("the owner's sequence: a gate wired to a PSU dragged right, left and back �
   await page.reload();
   await reopenFromLibrary(page);
   expect(await drawing(page)).toEqual(start);
+});
+
+/**
+ * s20r6 (review r4 MAJOR 1): a crafted project of 2 500 manual wires of one node, 80 mm tall side
+ * by side far off the bench (half a megabyte). Marking its crossings and branch points tested
+ * every pair; now the work is counted and capped, and the Circuit view says some line hops and
+ * junction dots are not drawn (the connections are unchanged), in English and Hebrew.
+ */
+test('a drawing too large to mark every crossing says so (EN, HE)', async ({ page }, info) => {
+  let doc: ProjectDocument = createProject({
+    projectId: 'prj_s20r6long',
+    deviceId: 'device-test',
+    name: 'Long wires',
+    appVersion: '0.1.0',
+    clock: { now: () => new Date('2026-10-25T00:00:00.000Z') },
+  });
+  const r1 = addComponent(doc, 'component.resistor', { x: 0, y: -100 });
+  if (!r1.ok) throw new Error(r1.error);
+  const one = addWire(
+    r1.doc,
+    { kind: 'terminal', component: 'PSU1', terminal: 'positive' },
+    { kind: 'terminal', component: r1.id, terminal: 'a' },
+    [
+      { x: 20000, y: -20 },
+      { x: 20000, y: -100 },
+    ],
+  );
+  if (!one.ok) throw new Error(one.error);
+  const w0 = one.doc.layout.wires[0]!;
+  const N = 2500;
+  const wires = Array.from({ length: N }, (_, i) => ({
+    ...w0,
+    id: `W${i + 1}`,
+    vertices: [
+      { x: 20000 + 20 * i, y: -20 - 20 * (i % 50) },
+      { x: 20000 + 20 * i, y: -100 - 20 * (i % 50) },
+    ],
+  }));
+  doc = {
+    ...one.doc,
+    layout: { ...one.doc.layout, wires },
+    idCounters: { ...one.doc.idCounters, W: N },
+  };
+  await openImported(page, doc);
+  const note = page.getByTestId('canvas-overlay-limit');
+  await expect(note).toBeVisible({ timeout: 60_000 });
+  await expect(note).toContainText('some line hops and junction dots are not drawn');
+  await expect(page.locator('[data-hit="wire"]')).toHaveCount(N);
+  await page.screenshot({ path: info.outputPath('overlay-limit-en.png') });
+  await page.getByTestId('language-select').selectOption('he');
+  await expect(note).toContainText('חלק מגשרי הקווים ומנקודות הצומת אינם משורטטים');
+  await page.screenshot({ path: info.outputPath('overlay-limit-he.png') });
 });

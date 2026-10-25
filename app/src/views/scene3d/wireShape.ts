@@ -64,6 +64,26 @@ export interface WireShape {
 /** Drape work per scene, in samples checked (s20r5; ~1 s on the 1-vCPU DEV host). */
 export const DRAPE_WORK_BUDGET = 150_000;
 
+/** Sample pairs the route gaps between wires may compare per scene (s20r6; ~0.3 s). */
+export const GAP_WORK_BUDGET = 20_000_000;
+
+/** Route samples a scene may take for draping at all (s20r6; plainSampleCount). */
+export const PLAIN_SAMPLE_BUDGET = 400_000;
+
+/**
+ * At most how many samples sampleShape takes of the scene's routes: per wire its polyline length
+ * (never shorter than the bent path) every 0.6 mm, capped at MAX_SAMPLES.
+ */
+export function plainSampleCount(wires: readonly { points: Vec3[] }[]): number {
+  let n = 0;
+  for (const w of wires) {
+    let len = 0;
+    for (let i = 1; i < w.points.length; i++) len += dist(w.points[i - 1]!, w.points[i]!);
+    n += Math.min(MAX_SAMPLES, Math.max(2, Math.ceil(len / 0.6))) + 1;
+  }
+  return n;
+}
+
 /** One step of physical shaping (stepped down until the shape is clear of everything). */
 interface Level {
   /** Bend arm wanted at a plan corner, and where the height profile bends (mm). */
@@ -640,6 +660,14 @@ export function shapeWires(
 ): Map<string, WireShape> {
   const wires = desc.wires;
   const shapes = wires.map((w) => plainShape(w.points, w.radii));
+  // s20r6 (review r4 MAJOR 2): every route is sampled for the neighbour grid before any drape is
+  // tried, simple cables too (thousands of stacked wires: millions of samples). Counted first,
+  // from the routes' lengths (a bend is never longer than its corner); past PLAIN_SAMPLE_BUDGET
+  // no wire is draped: each keeps its plain shape, the route as drawn (every guarantee holds).
+  if (plainSampleCount(wires) > PLAIN_SAMPLE_BUDGET) {
+    for (const w of wires) report?.set(w.id, w.simple ? 'simple' : 'budget');
+    return new Map(wires.map((w, i) => [w.id, shapes[i]!]));
+  }
   const samples = shapes.map((s) => sampleShape(s));
   const grid = new Grid();
   samples.forEach((ss, i) => ss.forEach((p) => grid.add(p, i)));
@@ -688,10 +716,19 @@ export function shapeWires(
   const pairs = new Map<string, number>();
   const sharedEnds = (i: number, j: number) =>
     endsOf(i).filter((e) => endsOf(j).some((f) => same(e, f)));
+  // Drape work spent (DRAPE_WORK_BUDGET, s20r5/s20r6): shapes sampled, pairs and neighbours
+  // checked.
+  let work = 0;
+  // The pairs' gaps have their own count (sample pairs; a pair of long wires is millions).
+  let gapWork = 0;
   const routeGap = (i: number, j: number) => {
     const key = i < j ? `${i}:${j}` : `${j}:${i}`;
     let g = pairs.get(key);
     if (g === undefined) {
+      // s20r6 (review r4 MAJOR 2): all pairs of the two wires' samples, counted (GAP_WORK_BUDGET);
+      // past it the gap counts as none (the shape is refused: the plain route stays).
+      gapWork += 2 * plain[i]!.length * plain[j]!.length;
+      if (gapWork > GAP_WORK_BUDGET) return 0;
       const sh = sharedEnds(i, j);
       const one = (a: number, b: number) => {
         let m = Infinity;
@@ -774,6 +811,8 @@ export function shapeWires(
       }
       // Other wires: keep the route's separation, except near an end both wires share.
       const clear = grid.near(p, minGap, (q, j) => {
+        // Every neighbour visited is counted too (stacked wires: thousands per sample).
+        if (++work > DRAPE_WORK_BUDGET) return false;
         if (j === i) return true;
         const shared = endsOf(j).some((e) => mine.some((m) => same(m, e)) && dist(e, p) < 4);
         return shared || q.distanceTo(p) >= Math.min(minGap, routeGap(i, j)) - 1e-6;
@@ -783,7 +822,6 @@ export function shapeWires(
     return null;
   };
   const plainSamples = [...samples];
-  let work = 0;
   const shaped = new Set<number>();
   const shapeOne = (w: SceneWire, i: number) => {
     // A simple cable (s20r5) keeps its plain shape: no drape is tried.
