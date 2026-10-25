@@ -392,7 +392,8 @@ function pinViews({
         // Sprint 21: the datasheet guarantee at this current, distinct from the model's voltage.
         if (p.guarantee)
           why += ` ${t(p.level === 'high' ? 'logic.why.outBoundHigh' : 'logic.why.outBoundLow', {
-            v: L(V(p.guarantee.volts)),
+            // The comparison as ONE LTR run (never mirrored in RTL).
+            cmp: L(`${p.level === 'high' ? 'V_OH ≥' : 'V_OL ≤'} ${V(p.guarantee.volts)}`),
             a: L(A(p.guarantee.atA)),
           })}`;
       } else why = t('logic.why.unknown');

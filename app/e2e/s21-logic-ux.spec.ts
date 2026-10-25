@@ -144,8 +144,8 @@ for (const size of SIZES)
         await expect(page.getByTestId('logic-why-y')).toContainText(/16 mA/);
         await page.getByTestId('logic-truth').scrollIntoViewIfNeeded();
         await onScreenIn(page, page.getByTestId('logic-truth'));
-        await readoutsClear(page, ['U1', 'SW1', 'SW2', 'R1', 'R2', 'R3', 'D1', 'PSU1']);
         await shot(page, `s21l-${size.name}-${lc}-A-run-HH`);
+        await readoutsClear(page, ['U1', 'SW1', 'SW2', 'R1', 'R2', 'R3', 'D1', 'PSU1']);
         // Back to the shipped state for the next locale.
         await sw2.focus();
         await page.keyboard.press('Space');
@@ -213,8 +213,8 @@ for (const size of SIZES)
           overlap(await box(controls), await box(terminal)),
           'running: controls vs terminal',
         ).toBe(false);
-        await readoutsClear(page, ['U1', 'U2', 'R1', 'R2', 'R3', 'D1', 'SW1', 'PSU1']);
         await shot(page, `s21l-${size.name}-${lc}-D-run`);
+        await readoutsClear(page, ['U1', 'U2', 'R1', 'R2', 'R3', 'D1', 'SW1', 'PSU1']);
         await page.getByTestId('sim-stop').click();
         await expect(status(page)).toHaveAttribute('data-status', 'stopped', { timeout: 20_000 });
       }

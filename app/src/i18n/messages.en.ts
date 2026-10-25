@@ -234,9 +234,9 @@ export const en = {
   'logic.why.supplyNotGuaranteed':
     'Not simulated: the part’s supply is not guaranteed within the datasheet bounds (see the message above).',
   'logic.why.outBoundHigh':
-    'Guaranteed: V_OH ≥ {v} up to {a} (datasheet test point). The voltage shown is the model’s value between the guaranteed points, not a guarantee.',
+    'Guaranteed: {cmp} up to {a} (datasheet test point). The voltage shown is the model’s value between the guaranteed points, not a guarantee.',
   'logic.why.outBoundLow':
-    'Guaranteed: V_OL ≤ {v} up to {a} (datasheet test point). The voltage shown is the model’s value between the guaranteed points, not a guarantee.',
+    'Guaranteed: {cmp} up to {a} (datasheet test point). The voltage shown is the model’s value between the guaranteed points, not a guarantee.',
   'logic.inspect.level.notGuaranteed': 'not guaranteed',
   'limitation.logic_guarantee_bounds':
     'Every level is re-checked within the datasheet bounds: input leakage (±5 µA), the quiescent supply current through any resistance in the supply path (I_CC ≤ 10 µA, only with the inputs at 5.5 V or GND), an ESP32 pin’s guaranteed V_OH ≥ 2.64 V / V_OL ≤ 0.33 V, and a driving gate’s guaranteed output level. A level that is not guaranteed, or that depends on a current with no datasheet bound, refuses the Run.',

@@ -397,7 +397,7 @@ test('B at 3.6 V: the package gate selector; 1Y → 2A inside the package and 2Y
   await expect(page.getByTestId('logic-level-a')).toHaveText('HIGH');
   await expect(page.getByTestId('logic-level-b')).toHaveText('LOW');
   await expect(page.getByTestId('logic-level-y')).toHaveText('HIGH');
-  await expect(page.getByTestId('probe-reading-D1')).toContainText('mA');
+  await expect(page.getByTestId('result-D1')).toContainText('mA');
   // D (override) alone: open A again, close D.
   await inspect(page, 'U1');
   await page.getByTestId('logic-control-SW1').click();
