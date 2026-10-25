@@ -1784,6 +1784,22 @@ function pointToRun(q: Point, a: Point, b: Point): number {
       : Math.max(0, Math.min(1, ((q.x - a.x) * (b.x - a.x) + (q.y - a.y) * (b.y - a.y)) / l2));
   return plen(q, { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
 }
+/** Plan distance between the segments a-b and c-d (0 where they cross). */
+function segDist2(a: Point, b: Point, c: Point, d: Point): number {
+  const o = (p: Point, q: Point, r: Point) => (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x);
+  const d1 = o(a, b, c);
+  const d2 = o(a, b, d);
+  const d3 = o(c, d, a);
+  const d4 = o(c, d, b);
+  if (((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0)))
+    return 0;
+  return Math.min(
+    pointToRun(a, c, d),
+    pointToRun(b, c, d),
+    pointToRun(c, a, b),
+    pointToRun(d, a, b),
+  );
+}
 /** An axis-aligned plan run: horizontal (along x at y = lat) or vertical (along y at x = lat). */
 interface Run {
   h: boolean;
@@ -2536,180 +2552,254 @@ function freshWires(
   if (simple.size) preps.splice(0, preps.length, ...preps.filter((p) => !simple.has(p.w.id)));
 
   const obstacles = routingObstacles(components, bodies, offsets);
-  // 2. Exit lanes: side, direction, turn.
-  for (const p of preps) {
-    for (const k of [0, 1] as const) {
-      const e = k === 0 ? p.w.from : p.w.to;
-      if (e.kind !== 'terminal') continue;
-      const c = comp(e.component);
-      if (!c || !UNDER_BODY.has(c.model)) continue;
-      const a = p.ends[k];
-      const node = c.terminals.find((t) => t.id === e.terminal)?.node ?? null;
-      const back = (q: { x: number; z: number }) =>
-        rotatePoint({ x: q.x - c.x, y: q.z - c.z }, ((360 - c.rotation) % 360) as Rotation);
-      const local = back(a);
-      const [x0, x1, z0, z1] = FOOTPRINT[c.model];
-      const dirs: Point[] = [
-        { x: -1, y: 0 },
-        { x: 1, y: 0 },
-        { x: 0, y: -1 },
-        { x: 0, y: 1 },
-      ];
-      const dist = [local.x - x0, x1 - local.x, local.y - z0, z1 - local.y];
-      // Where the wire is going: the first point of its route outside the zone, else the other end.
-      const other = k === 0 ? p.ends[1] : p.ends[0];
-      const target = (k === 0 ? p.route[0] : p.route[p.route.length - 1]) ?? {
-        x: other.x,
-        y: other.z,
-      };
-      const pins = c.terminals
-        .filter((t) => t.id !== e.terminal && (t.node === null || t.node !== node))
-        .map((t) => back(t));
-      let best: { cost: number; side: number } | null = null;
-      let inside: { cost: number; side: number } | null = null;
-      for (let side = 0; side < 4; side++) {
-        const d = dirs[side]!;
-        const run = dist[side]! + CLEAR_OUT;
-        // The lane must not pass another pin of the part (at pin level it would touch it).
-        const blocked = pins.some((q) => {
-          const along = (q.x - local.x) * d.x + (q.y - local.y) * d.y;
-          const lateral = Math.abs((q.x - local.x) * d.y - (q.y - local.y) * d.x);
-          return along > 0 && along < run + 1 && lateral < 1.6;
-        });
-        if (blocked) continue;
-        const exitW = rotatePoint({ x: local.x + d.x * run, y: local.y + d.y * run }, c.rotation);
-        // Nor end inside another part standing on the bench (s20r: two breakouts a millimetre
-        // apart; the lane's riser went straight up through the neighbour's board). Such a side
-        // is used only when every side is (the cut-back below then keeps the plain exit).
-        const pad = WIRE.radiusMm + 0.3;
-        const ex = c.x + exitW.x;
-        const ez = c.z + exitW.y;
-        const far = k === 0 ? p.w.to : p.w.from;
-        const mine = (o: Obstacle) =>
-          [c.id, far.kind === 'terminal' ? far.component : null].some(
-            (id) => id !== null && (o.part === id || o.part.startsWith(`${id}:`)),
+  // Sprint 22 (s22r): lanes are assigned, then checked against each other: two lanes of
+  // DIFFERENT nodes whose corridors (pin to lane end, at pin level, where no wire can hop) come
+  // closer than a cable diameter touch (two parts' facing pins in the narrow gap between them,
+  // a lane crossing a neighbour's lane). The later wire's lane then takes its next side, a few
+  // rounds at most; the assignment with the fewest such contacts is kept (the first on a tie).
+  const assignLanes = (forbid: Map<string, Set<number>>) => {
+    for (const p of preps) p.under = [null, null];
+    // 2. Exit lanes: side, direction, turn.
+    for (const p of preps) {
+      for (const k of [0, 1] as const) {
+        const e = k === 0 ? p.w.from : p.w.to;
+        if (e.kind !== 'terminal') continue;
+        const c = comp(e.component);
+        if (!c || !UNDER_BODY.has(c.model)) continue;
+        const a = p.ends[k];
+        const node = c.terminals.find((t) => t.id === e.terminal)?.node ?? null;
+        const back = (q: { x: number; z: number }) =>
+          rotatePoint({ x: q.x - c.x, y: q.z - c.z }, ((360 - c.rotation) % 360) as Rotation);
+        const local = back(a);
+        const [x0, x1, z0, z1] = FOOTPRINT[c.model];
+        const dirs: Point[] = [
+          { x: -1, y: 0 },
+          { x: 1, y: 0 },
+          { x: 0, y: -1 },
+          { x: 0, y: 1 },
+        ];
+        const dist = [local.x - x0, x1 - local.x, local.y - z0, z1 - local.y];
+        // Where the wire is going: the first point of its route outside the zone, else the other end.
+        const other = k === 0 ? p.ends[1] : p.ends[0];
+        const target = (k === 0 ? p.route[0] : p.route[p.route.length - 1]) ?? {
+          x: other.x,
+          y: other.z,
+        };
+        const pins = c.terminals
+          .filter((t) => t.id !== e.terminal && (t.node === null || t.node !== node))
+          .map((t) => back(t));
+        let best: { cost: number; side: number } | null = null;
+        let inside: { cost: number; side: number } | null = null;
+        const banned = forbid.get(`${p.w.id}|${k}`);
+        for (let side = 0; side < 4; side++) {
+          if (banned?.has(side)) continue;
+          const d = dirs[side]!;
+          const run = dist[side]! + CLEAR_OUT;
+          // The lane must not pass another pin of the part (at pin level it would touch it).
+          const blocked = pins.some((q) => {
+            const along = (q.x - local.x) * d.x + (q.y - local.y) * d.y;
+            const lateral = Math.abs((q.x - local.x) * d.y - (q.y - local.y) * d.x);
+            return along > 0 && along < run + 1 && lateral < 1.6;
+          });
+          if (blocked) continue;
+          const exitW = rotatePoint({ x: local.x + d.x * run, y: local.y + d.y * run }, c.rotation);
+          // Nor end inside another part standing on the bench (s20r: two breakouts a millimetre
+          // apart; the lane's riser went straight up through the neighbour's board). Such a side
+          // is used only when every side is (the cut-back below then keeps the plain exit).
+          const pad = WIRE.radiusMm + 0.3;
+          const ex = c.x + exitW.x;
+          const ez = c.z + exitW.y;
+          const far = k === 0 ? p.w.to : p.w.from;
+          const mine = (o: Obstacle) =>
+            [c.id, far.kind === 'terminal' ? far.component : null].some(
+              (id) => id !== null && (o.part === id || o.part.startsWith(`${id}:`)),
+            );
+          const inOther = obstacles.some(
+            (o) =>
+              !mine(o) &&
+              o.bottom < 2 &&
+              ex > o.x0 - pad &&
+              ex < o.x1 + pad &&
+              ez > o.z0 - pad &&
+              ez < o.z1 + pad,
           );
-        const inOther = obstacles.some(
-          (o) =>
-            !mine(o) &&
-            o.bottom < 2 &&
-            ex > o.x0 - pad &&
-            ex < o.x1 + pad &&
-            ez > o.z0 - pad &&
-            ez < o.z1 + pad,
-        );
-        const cost = dist[side]! + 0.5 * plen({ x: c.x + exitW.x, y: c.z + exitW.y }, target);
-        if (inOther) {
-          if (!inside || cost < inside.cost - 1e-9) inside = { cost, side };
-          continue;
+          const cost = dist[side]! + 0.5 * plen({ x: c.x + exitW.x, y: c.z + exitW.y }, target);
+          if (inOther) {
+            if (!inside || cost < inside.cost - 1e-9) inside = { cost, side };
+            continue;
+          }
+          if (!best || cost < best.cost - 1e-9) best = { cost, side };
         }
-        if (!best || cost < best.cost - 1e-9) best = { cost, side };
+        const side = best?.side ?? inside?.side ?? dist.indexOf(Math.min(...dist));
+        const u = rotatePoint(dirs[side]!, c.rotation);
+        const v = { x: -u.y, y: u.x };
+        const pin = { x: a.x, y: a.z };
+        const reach = dist[side]! + CLEAR_OUT;
+        const lat = dotP(sub2(target, add(pin, u, reach)), v);
+        p.under[k] = {
+          comp: c,
+          pin,
+          u,
+          v,
+          side,
+          reach,
+          turn: Math.abs(lat) < 1 ? 0 : lat > 0 ? 1 : -1,
+          lane: reach,
+          radius: LANE_BEND,
+        };
       }
-      const side = best?.side ?? inside?.side ?? dist.indexOf(Math.min(...dist));
-      const u = rotatePoint(dirs[side]!, c.rotation);
-      const v = { x: -u.y, y: u.x };
-      const pin = { x: a.x, y: a.z };
-      const reach = dist[side]! + CLEAR_OUT;
-      const lat = dotP(sub2(target, add(pin, u, reach)), v);
-      p.under[k] = {
-        comp: c,
-        pin,
-        u,
-        v,
-        side,
-        reach,
-        turn: Math.abs(lat) < 1 ? 0 : lat > 0 ? 1 : -1,
-        lane: reach,
-        radius: LANE_BEND,
-      };
     }
-  }
-  // 3. Fan-out: per part and side, every lane at its own distance (no two lateral runs on one
-  //    line, a near-straight wire's jog included). Lanes turning the same way: the one nearest
-  //    that way turns first, with concentric bends; straight lanes next; lanes turning the other
-  //    way further out.
-  const groups = new Map<string, UnderEnd[]>();
-  for (const p of preps)
-    for (const e of p.under)
-      if (e) {
-        const key = `${e.comp.id}|${e.side}`;
-        groups.set(key, [...(groups.get(key) ?? []), e]);
-      }
-  for (const g of groups.values()) {
-    const way = (t: number) =>
-      g
-        .filter((e) => e.turn === t)
-        .sort((a, b) => (dotP(b.pin, b.v) - dotP(a.pin, a.v)) * (t || 1));
-    const ordered = [...way(1), ...way(0), ...way(-1)];
-    const within = new Map<UnderEnd, number>();
-    for (const t of [1, 0, -1]) way(t).forEach((e, i) => within.set(e, t === 0 ? 0 : i));
-    ordered.forEach((e, k) => {
-      e.lane = e.reach + k * LANE_PITCH;
-      e.radius = LANE_BEND + within.get(e)! * LANE_PITCH;
-    });
-  }
+    // 3. Fan-out: per part and side, every lane at its own distance (no two lateral runs on one
+    //    line, a near-straight wire's jog included). Lanes turning the same way: the one nearest
+    //    that way turns first, with concentric bends; straight lanes next; lanes turning the other
+    //    way further out.
+    const groups = new Map<string, UnderEnd[]>();
+    for (const p of preps)
+      for (const e of p.under)
+        if (e) {
+          const key = `${e.comp.id}|${e.side}`;
+          groups.set(key, [...(groups.get(key) ?? []), e]);
+        }
+    for (const g of groups.values()) {
+      const way = (t: number) =>
+        g
+          .filter((e) => e.turn === t)
+          .sort((a, b) => (dotP(b.pin, b.v) - dotP(a.pin, a.v)) * (t || 1));
+      const ordered = [...way(1), ...way(0), ...way(-1)];
+      const within = new Map<UnderEnd, number>();
+      for (const t of [1, 0, -1]) way(t).forEach((e, i) => within.set(e, t === 0 ? 0 : i));
+      ordered.forEach((e, k) => {
+        e.lane = e.reach + k * LANE_PITCH;
+        e.radius = LANE_BEND + within.get(e)! * LANE_PITCH;
+      });
+    }
 
-  // A lane never runs into another part (a module separated from a neighbour has room for its
-  // lanes' exits, not always for the whole fan): cut back to the longest clear distance (at least
-  // the plain exit); lanes then sharing a distance hop over each other locally (route3d.ts).
-  for (const p of preps)
-    for (const e of p.under) {
-      if (!e || e.lane <= e.reach) continue;
-      const pad = WIRE.radiusMm + 0.3;
-      const blocked = (d: number) => {
-        const q = add(e.pin, e.u, d);
-        return obstacles.some(
-          (o) =>
-            o.part !== e.comp.id &&
-            o.bottom < 2 &&
-            q.x > o.x0 - pad &&
-            q.x < o.x1 + pad &&
-            q.y > o.z0 - pad &&
-            q.y < o.z1 + pad,
-        );
-      };
-      let d = e.lane;
-      while (d > e.reach && blocked(d)) d = Math.max(e.reach, d - 0.5);
-      e.lane = d;
+    // A lane never runs into another part (a module separated from a neighbour has room for its
+    // lanes' exits, not always for the whole fan): cut back to the longest clear distance (at least
+    // the plain exit); lanes then sharing a distance hop over each other locally (route3d.ts).
+    for (const p of preps)
+      for (const e of p.under) {
+        if (!e || e.lane <= e.reach) continue;
+        const pad = WIRE.radiusMm + 0.3;
+        const blocked = (d: number) => {
+          const q = add(e.pin, e.u, d);
+          return obstacles.some(
+            (o) =>
+              o.part !== e.comp.id &&
+              o.bottom < 2 &&
+              q.x > o.x0 - pad &&
+              q.x < o.x1 + pad &&
+              q.y > o.z0 - pad &&
+              q.y < o.z1 + pad,
+          );
+        };
+        let d = e.lane;
+        while (d > e.reach && blocked(d)) d = Math.max(e.reach, d - 0.5);
+        e.lane = d;
+      }
+    // A lane's end is where its wire rises from pin level (s20r owner report): when it falls on
+    // another wire's path, that riser goes straight up through the other wire. Such a lane runs on
+    // (up to one more lane pitch, never into another part) until its end is clear of the others'
+    // paths; the other wire then passes over the low lane like any crossing.
+    for (const p of preps)
+      for (const e of p.under) {
+        if (!e) continue;
+        const paths = preps.filter((q) => q !== p).map((q) => q.full);
+        const onPath = (d: number) => {
+          const q = add(e.pin, e.u, d);
+          return paths.some((r) =>
+            r.some((b, i) => i > 0 && pointToRun(q, r[i - 1]!, b) < COINCIDENT),
+          );
+        };
+        const pad = WIRE.radiusMm + 0.3;
+        const free = (d: number) => {
+          const q = add(e.pin, e.u, d);
+          return !obstacles.some(
+            (o) =>
+              o.part !== e.comp.id &&
+              o.bottom < 2 &&
+              q.x > o.x0 - pad &&
+              q.x < o.x1 + pad &&
+              q.y > o.z0 - pad &&
+              q.y < o.z1 + pad,
+          );
+        };
+        if (!onPath(e.lane)) continue;
+        // The fan-out's other lanes off the same side keep their own distances (no two lateral runs
+        // on one line).
+        const group = groups.get(`${e.comp.id}|${e.side}`) ?? [];
+        const own = (d: number) =>
+          group.every((o) => o === e || Math.abs(o.lane - d) >= COINCIDENT);
+        for (let d = e.lane + 0.5; d <= e.lane + LANE_PITCH + 1e-9 && free(d); d += 0.5)
+          if (!onPath(d) && own(d)) {
+            e.lane = d;
+            break;
+          }
+      }
+  };
+  const laneContacts = (): { key: string; side: number }[] => {
+    const lanes: {
+      key: string;
+      idx: number;
+      node: string | null;
+      side: number;
+      a: Point;
+      b: Point;
+      pin: Point;
+    }[] = [];
+    preps.forEach((p, idx) =>
+      p.under.forEach((e, k) => {
+        if (e)
+          lanes.push({
+            key: `${p.w.id}|${k}`,
+            idx: idx * 2 + k,
+            node: nodeOf(p.w),
+            side: e.side,
+            a: e.pin,
+            b: add(e.pin, e.u, e.lane),
+            pin: e.pin,
+          });
+      }),
+    );
+    const out: { key: string; side: number }[] = [];
+    const lim = 2 * WIRE.radiusMm + 0.3;
+    for (let i = 0; i < lanes.length; i++)
+      for (let j = i + 1; j < lanes.length; j++) {
+        const A = lanes[i]!;
+        const B = lanes[j]!;
+        if (A.node !== null && A.node === B.node) continue;
+        if (plen(A.pin, B.pin) < 1e-6) continue;
+        if (segDist2(A.a, A.b, B.a, B.b) >= lim) continue;
+        const later = A.idx > B.idx ? A : B;
+        out.push({ key: later.key, side: later.side });
+      }
+    return out;
+  };
+  {
+    const forbid = new Map<string, Set<number>>();
+    assignLanes(forbid);
+    let contacts = laneContacts();
+    let best = { forbid: new Map(forbid), n: contacts.length };
+    for (let round = 0; round < 3 && contacts.length; round++) {
+      let changed = false;
+      for (const c of contacts) {
+        const set = forbid.get(c.key) ?? new Set<number>();
+        if (set.has(c.side) || set.size >= 3) continue;
+        set.add(c.side);
+        forbid.set(c.key, set);
+        changed = true;
+      }
+      if (!changed) break;
+      assignLanes(forbid);
+      contacts = laneContacts();
+      if (contacts.length < best.n)
+        best = {
+          forbid: new Map([...forbid].map(([k, v]) => [k, new Set(v)])),
+          n: contacts.length,
+        };
     }
-  // A lane's end is where its wire rises from pin level (s20r owner report): when it falls on
-  // another wire's path, that riser goes straight up through the other wire. Such a lane runs on
-  // (up to one more lane pitch, never into another part) until its end is clear of the others'
-  // paths; the other wire then passes over the low lane like any crossing.
-  for (const p of preps)
-    for (const e of p.under) {
-      if (!e) continue;
-      const paths = preps.filter((q) => q !== p).map((q) => q.full);
-      const onPath = (d: number) => {
-        const q = add(e.pin, e.u, d);
-        return paths.some((r) =>
-          r.some((b, i) => i > 0 && pointToRun(q, r[i - 1]!, b) < COINCIDENT),
-        );
-      };
-      const pad = WIRE.radiusMm + 0.3;
-      const free = (d: number) => {
-        const q = add(e.pin, e.u, d);
-        return !obstacles.some(
-          (o) =>
-            o.part !== e.comp.id &&
-            o.bottom < 2 &&
-            q.x > o.x0 - pad &&
-            q.x < o.x1 + pad &&
-            q.y > o.z0 - pad &&
-            q.y < o.z1 + pad,
-        );
-      };
-      if (!onPath(e.lane)) continue;
-      // The fan-out's other lanes off the same side keep their own distances (no two lateral runs
-      // on one line).
-      const group = groups.get(`${e.comp.id}|${e.side}`) ?? [];
-      const own = (d: number) => group.every((o) => o === e || Math.abs(o.lane - d) >= COINCIDENT);
-      for (let d = e.lane + 0.5; d <= e.lane + LANE_PITCH + 1e-9 && free(d); d += 0.5)
-        if (!onPath(d) && own(d)) {
-          e.lane = d;
-          break;
-        }
-    }
+    if (contacts.length > best.n) assignLanes(best.forbid);
+  }
   // 4. Plan paths, heads and tails, then heights (route3d.ts).
   const inputs: WireRouteInput[] = [];
   // Where every lane ends: the wire rises there from pin level (s20r). Another wire's join must
