@@ -1364,7 +1364,9 @@ const CLEAR_OUT = 2.0;
  * Move one end of an orthogonal plan route onto `to`, keeping it orthogonal: the final straight
  * run is extended or shortened when it already lines up, otherwise a short jog is added.
  */
-function moveEnd(flat: Point[], to: Point, which: 'start' | 'end'): Point[] {
+/** Below this sideways offset (mm) an end keeps the former short jog (s21r: a jumper's neck). */
+const SHIFT_MIN = 1;
+function moveEnd(flat: Point[], to: Point, which: 'start' | 'end', shift = true): Point[] {
   const pts = which === 'start' ? [...flat].reverse() : [...flat];
   const last = pts[pts.length - 1]!;
   if (last.x === to.x && last.y === to.y) return flat;
@@ -1373,6 +1375,7 @@ function moveEnd(flat: Point[], to: Point, which: 'start' | 'end'): Point[] {
   if (prev && prev.y === last.y && to.y === last.y) pts[pts.length - 1] = { ...to };
   else if (prev && prev.x === last.x && to.x === last.x) pts[pts.length - 1] = { ...to };
   else if (
+    shift &&
     // Sprint 21 (s21r): the attach point lies beside the last run (a part's 3D lead end is not
     // where its symbol's terminal is). The last run moves over with the end and the run before it
     // stretches or shortens, instead of a jog at the very end: that jog turned back across the
@@ -1383,11 +1386,13 @@ function moveEnd(flat: Point[], to: Point, which: 'start' | 'end'): Point[] {
       before.y === prev.y &&
       before.x !== prev.x &&
       Math.sign(prev.x - before.x) === Math.sign(to.x - before.x) &&
+      Math.abs(to.x - last.x) > SHIFT_MIN &&
       Math.abs(to.y - prev.y) > EPS) ||
       (prev.y === last.y &&
         before.x === prev.x &&
         before.y !== prev.y &&
         Math.sign(prev.y - before.y) === Math.sign(to.y - before.y) &&
+        Math.abs(to.y - last.y) > SHIFT_MIN &&
         Math.abs(to.x - prev.x) > EPS))
   ) {
     pts[pts.length - 2] = prev.x === last.x ? { x: to.x, y: prev.y } : { x: prev.x, y: to.y };
@@ -2476,8 +2481,12 @@ function freshWires(
       const p = k === 0 ? route[0]! : route[route.length - 1]!;
       return t ? { x: t.x, y: t.y, z: t.z } : { x: p.x, y: FLOOR, z: p.y };
     }) as [Vec3, Vec3];
-    if (!isUnder[0]) route = moveEnd(route, { x: at[0].x, y: at[0].z }, 'start');
-    if (!isUnder[1]) route = moveEnd(route, { x: at[1].x, y: at[1].z }, 'end');
+    // (A jumper's end keeps the short jog: its neck rises straight from the housing, s21r.)
+    const jumper = ends.map(
+      (e) => e.kind === 'terminal' && comp(e.component)?.model === 'board.esp32_devkitc',
+    );
+    if (!isUnder[0]) route = moveEnd(route, { x: at[0].x, y: at[0].z }, 'start', !jumper[0]);
+    if (!isUnder[1]) route = moveEnd(route, { x: at[1].x, y: at[1].z }, 'end', !jumper[1]);
     const full = route;
     // Trim the stretch inside a lane part's zone (both ends).
     for (const k of [0, 1] as const) {

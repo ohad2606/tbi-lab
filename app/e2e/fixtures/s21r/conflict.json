@@ -1,0 +1,187 @@
+{
+  "format": "tbi-lab.project",
+  "schemaVersion": 4,
+  "projectId": "prj_test0001",
+  "createdWith": {
+    "app": "0.1.0",
+    "schemaVersion": 4
+  },
+  "createdAt": "2026-09-22T12:00:00.000Z",
+  "revision": {
+    "localRevision": 1,
+    "cloudRevision": null,
+    "baseRevision": null,
+    "updatedAt": "2026-09-22T12:00:00.000Z",
+    "deviceId": "device-test"
+  },
+  "name": "route conflict",
+  "components": [
+    {
+      "id": "PSU1",
+      "type": "instrument.lab_psu",
+      "typeVersion": 1,
+      "params": {
+        "setpointVoltage": {
+          "value": 5,
+          "unit": "volt"
+        },
+        "currentLimit": {
+          "value": 0.1,
+          "unit": "ampere"
+        },
+        "outputEnabled": true
+      }
+    },
+    {
+      "id": "GND1",
+      "type": "component.ground",
+      "typeVersion": 1,
+      "params": {}
+    },
+    {
+      "id": "R1",
+      "type": "component.resistor",
+      "typeVersion": 1,
+      "params": {
+        "resistance": {
+          "value": 1000,
+          "unit": "ohm"
+        }
+      }
+    },
+    {
+      "id": "R2",
+      "type": "component.resistor",
+      "typeVersion": 1,
+      "params": {
+        "resistance": {
+          "value": 1000,
+          "unit": "ohm"
+        }
+      }
+    }
+  ],
+  "nets": [
+    {
+      "id": "N_1",
+      "role": null,
+      "userName": null
+    },
+    {
+      "id": "N_2",
+      "role": null,
+      "userName": null
+    }
+  ],
+  "connections": [
+    {
+      "component": "PSU1",
+      "terminal": "positive",
+      "net": "N_1"
+    },
+    {
+      "component": "PSU1",
+      "terminal": "negative",
+      "net": "N_2"
+    },
+    {
+      "component": "R1",
+      "terminal": "a",
+      "net": "N_1"
+    },
+    {
+      "component": "R2",
+      "terminal": "a",
+      "net": "N_2"
+    }
+  ],
+  "layout": {
+    "components": {
+      "PSU1": {
+        "x": -120,
+        "y": 0,
+        "rotation": 0
+      },
+      "GND1": {
+        "x": -80,
+        "y": 120,
+        "rotation": 0
+      },
+      "R1": {
+        "x": 200,
+        "y": -200,
+        "rotation": 0
+      },
+      "R2": {
+        "x": 200,
+        "y": 200,
+        "rotation": 0
+      }
+    },
+    "wires": [
+      {
+        "id": "W1",
+        "from": {
+          "kind": "terminal",
+          "component": "PSU1",
+          "terminal": "positive"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "R1",
+          "terminal": "a"
+        },
+        "vertices": [
+          {
+            "x": 60,
+            "y": -20
+          },
+          {
+            "x": 60,
+            "y": -200
+          }
+        ]
+      },
+      {
+        "id": "W2",
+        "from": {
+          "kind": "terminal",
+          "component": "PSU1",
+          "terminal": "negative"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "R2",
+          "terminal": "a"
+        },
+        "vertices": [
+          {
+            "x": 60,
+            "y": 20
+          },
+          {
+            "x": 60,
+            "y": -100
+          },
+          {
+            "x": 100,
+            "y": -100
+          },
+          {
+            "x": 100,
+            "y": 200
+          }
+        ]
+      }
+    ],
+    "junctions": []
+  },
+  "idCounters": {
+    "PSU": 1,
+    "GND": 1,
+    "R": 2,
+    "W": 2,
+    "N": 2
+  },
+  "programs": {}
+}
