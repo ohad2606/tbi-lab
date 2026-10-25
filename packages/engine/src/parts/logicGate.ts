@@ -197,7 +197,13 @@ function nextGateState(ctx: PartContext, sol: PartSolution, state: PartState): P
     const i = sol.deviceCurrent(`${ctx.component.id}/y`);
     const y = sol.potential('y');
     const across = y === null ? 0 : prev === 'high' ? sol.potential('vcc')! - y : y - g;
-    if (Math.abs(i) > stage.validA + 1e-12 || across < -WRONG_WAY_V) {
+    if (across < -WRONG_WAY_V) {
+      // Sprint 22 review 3: forced past its own rail — the model has no reverse characteristic,
+      // so its (pA) current is not a reverse current: the overdrive voltage is reported instead.
+      s.refuse = 'logic_output_uncharacterized';
+      s.at = 'y';
+      s.forcedV = -across;
+    } else if (Math.abs(i) > stage.validA + 1e-12) {
       s.refuse = 'logic_output_uncharacterized';
       s.value = Math.abs(i);
     }
@@ -221,6 +227,7 @@ export function logicRefusal(ctx: PartContext, state: PartState, part: string) {
     detail: {
       part,
       ...num('value'),
+      ...num('forcedV'),
       ...num('vcc'),
       ...(code === 'logic_supply_uncharacterized' && typeof state.value === 'number'
         ? { vcc: state.value }

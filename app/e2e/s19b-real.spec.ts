@@ -4,8 +4,8 @@
  * TBI_RUNTIME_PROXY / TBI_BUILD_PROXY pointing at the real backends (setup as s15-r4-real.spec.ts).
  * Skipped unless TBI_S19B_REAL=1 (routine CI has no QEMU).
  *
- * - X1: the `esp32-logic-and` example (AND gate at 3.0 V, read back by the ESP32) runs on Runtime
- *   v4: the gate output is shown and the sketch reports Y = A AND B on its serial output;
+ * - X1: the `esp32-logic-and` example (AND gate at 3.0 V, read back by the ESP32): Sprint 22 (Q1
+ *   strict) refused by name on Runtime v4 (the gate's I_CC test condition cannot be met);
  * - MicroPython: the genuine interpreter builds a main.py on the LED-fade circuit; PWM at 50 % gives
  *   the LED's time-average with the PWM note;
  * - refused by name: an ADC read stops the run at the access (Runtime v4), naming analog input;
@@ -55,19 +55,20 @@ async function micropython(page: Page, program: string) {
   await waitSaved(page);
 }
 
-test('X1 on Runtime v4 (Sprint 21 review): GPIO18 driven HIGH into its 10 kΩ pull-down has no guaranteed ESP32 V_OH — refused by name', async ({
+test("X1 on Runtime v4 (Sprint 22 Q1 strict): refused by name at once — the AND gate's input A is never at 5.5 V or exactly GND, so the supply current limit is not guaranteed", async ({
   page,
 }, info) => {
   await openExample(page, 'esp32-logic-and');
   await buildProgram(page, 300_000);
   await page.getByTestId('sim-run').click();
-  // ESP32 Table 5-3 states V_OH ≥ 0.8 × VDD with no load current (40 mA is typical): relied on
-  // only at leakage-level current; GPIO18 HIGH feeds the 10 kΩ pull-down (≈ 330 µA).
+  // SN74LVC1G08 §5.5 bounds I_CC only with every input at 5.5 V or GND. Before setup() A sits on
+  // its 10 kΩ pull-down (≈ 50 mV off GND); GPIO18's LOW is guaranteed only ≤ 0.33 V and its HIGH
+  // never reaches 5.5 V: logic_supply_current_uncharacterized (the supply's current limit).
   const err = page.getByTestId('sim-error');
-  await expect(err).toHaveAttribute('data-code', 'logic_mcu_output_uncharacterized', {
+  await expect(err).toHaveAttribute('data-code', 'logic_supply_current_uncharacterized', {
     timeout: 120_000,
   });
-  await expect(err).toContainText('GPIO18');
+  await expect(err).toContainText('current limit');
   await page.screenshot({ path: info.outputPath('s21l-real-x1-refused.png') });
 });
 

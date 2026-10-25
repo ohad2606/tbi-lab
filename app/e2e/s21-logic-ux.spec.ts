@@ -168,7 +168,7 @@ for (const size of SIZES)
         await expect(page.getByTestId('logic-truth-HL')).toHaveAttribute('aria-current', 'true');
         // Level and simulated voltage are separate columns; the output states its guarantee.
         await expect(page.getByTestId('logic-level-a')).toHaveText('HIGH');
-        await expect(page.getByTestId('logic-volts-a')).toHaveText('3 V');
+        await expect(page.getByTestId('logic-volts-a')).toHaveText('5.5 V');
         await expect(page.getByTestId('logic-volts-a')).toHaveAttribute('dir', 'ltr');
         await expect(page.getByTestId('logic-why-y')).toContainText(/V_OL ≤ \W*100 mV/);
         // Keyboard: focus SW2's control and press Space: the row follows (HH), the LED lights.
@@ -187,7 +187,18 @@ for (const size of SIZES)
         await page.getByTestId('logic-truth').scrollIntoViewIfNeeded();
         await onScreenIn(page, page.getByTestId('logic-truth'));
         await shot(page, `s21l-${size.name}-${lc}-A-run-HH`);
-        await readoutsClear(page, ['U1', 'SW1', 'SW2', 'R1', 'R2', 'R3', 'D1', 'PSU1']);
+        await readoutsClear(page, [
+          'U1',
+          'SW1',
+          'SW2',
+          'R1',
+          'R2',
+          'R3',
+          'D1',
+          'PSU1',
+          'PSU2',
+          'R4',
+        ]);
         // Back to the shipped state for the next locale.
         await sw2.focus();
         await page.keyboard.press('Space');
@@ -244,23 +255,22 @@ for (const size of SIZES)
           'aria-pressed',
           'false',
         );
-        // Run: the sketch drives A HIGH at once; Y HIGH sources the LED and GPIO19 reads it, where
-        // only V_OH ≥ 2.4 V is guaranteed (< the ESP32's V_IH 2.475 V): the session is refused by
-        // name (review item 3). Deterministic: the first HIGH comes from setup().
+        // Run (Sprint 22 Q1 strict): before setup() GPIO18 is an input and A sits on its 10 kΩ
+        // pull-down, ≈ 50 mV off GND (I_I × R) — not the I_CC test condition (5.5 V or GND), so the
+        // supply's current limit is refused by name at once (deterministic: the first solve).
         await page.getByTestId('sim-run').click();
         await expect(page.getByTestId('sim-error')).toHaveAttribute(
           'data-code',
-          'logic_mcu_input_not_guaranteed',
+          'logic_supply_current_uncharacterized',
           { timeout: 20_000 },
         );
-        await expect(page.getByTestId('sim-error')).toContainText('GPIO19');
+        await expect(page.getByTestId('sim-error')).toContainText(
+          lc === 'en' ? 'current limit' : 'מגבלת הזרם',
+        );
         await inspect(page, 'U2');
         await expect(page.getByTestId('logic-pin-y')).toHaveAttribute(
           'data-level',
           'not_simulated',
-        );
-        await expect(page.getByTestId('logic-why-y')).toContainText(
-          lc === 'en' ? 'ESP32 pin reading this output' : 'ESP32',
         );
         await controls.scrollIntoViewIfNeeded();
         expect(
@@ -274,7 +284,7 @@ for (const size of SIZES)
       await locale(page, 'en');
     });
 
-    test(`the owner's circuit: as drawn no reference / unpowered gate; corrected HIGH with V_OH ≥ 4.9 V (${size.name})`, async ({
+    test(`the owner's circuit: as drawn no reference / unpowered gate; corrected at 5 V refused by Q1, at 5.5 V HIGH with V_OH ≥ 5.4 V (${size.name})`, async ({
       page,
     }) => {
       // Exactly as drawn: PSU− unconnected → no ground reference at all: refused, nothing shown.
@@ -317,6 +327,8 @@ for (const size of SIZES)
         await shot(page, `s21l-${size.name}-${lc}-owner-unpowered`);
         await page.getByTestId('sim-stop').click();
       }
+      // Corrected (GND on PSU−) at 5 V: A and B at 5 V are not the I_CC test voltage (V_I = 5.5 V
+      // or GND, §5.5): Sprint 22 Q1 (strict) refuses the supply's current limit by name.
       const fixed = ownerCircuit('PSU1.negative', true, 'prj_s21lOwnerFixed');
       await openImported(page, fixed.doc);
       await waitSaved(page);
@@ -325,11 +337,25 @@ for (const size of SIZES)
       for (const lc of LOCALES) {
         await locale(page, lc);
         await page.getByTestId('sim-run').click();
+        const err = page.getByTestId('sim-error');
+        await expect(err).toHaveAttribute('data-code', 'logic_supply_current_uncharacterized');
+        await expect(err).toContainText(lc === 'en' ? 'current limit' : 'מגבלת הזרם');
+        await expect(err).toContainText('5.5');
+        await shot(page, `s21l-${size.name}-${lc}-owner-fixed-5v`);
+      }
+      // The same circuit at 5.5 V (V_CC and both inputs at 5.5 V: the test condition): runs.
+      // (With a 10 kΩ bleeder: unloaded, PSU1 could otherwise have to sink the inputs' leakage.)
+      const fixed55 = ownerCircuit('PSU1.negative', true, 'prj_s21lOwnerFixed55', 5.5, true);
+      await openImported(page, fixed55.doc);
+      await waitSaved(page);
+      for (const lc of LOCALES) {
+        await locale(page, lc);
+        await page.getByTestId('sim-run').click();
         await expect(status(page)).toHaveAttribute('data-status', 'running', { timeout: 30_000 });
-        await inspect(page, fixed.u);
+        await inspect(page, fixed55.u);
         await expect(page.getByTestId('logic-level-y')).toHaveText('HIGH');
-        await expect(page.getByTestId('logic-volts-y')).toHaveText('5 V');
-        await expect(page.getByTestId('logic-why-y')).toContainText(/V_OH ≥ \W*4\.9 V/);
+        await expect(page.getByTestId('logic-volts-y')).toHaveText('5.5 V');
+        await expect(page.getByTestId('logic-why-y')).toContainText(/V_OH ≥ \W*5\.4 V/);
         await expect(page.getByTestId('logic-why-y')).toContainText(/100 µA/);
         await expect(page.getByTestId('logic-truth-HH')).toHaveAttribute('aria-current', 'true');
         await shot(page, `s21l-${size.name}-${lc}-owner-fixed`);
@@ -344,7 +370,13 @@ for (const size of SIZES)
  * with V_CC, A and B on PSU+; its GND wire on `gnd`. `ground`: GND1 wired to PSU− (as drawn it is
  * not: PSU− is unconnected, so the circuit has no reference at all).
  */
-function ownerCircuit(gnd: string, ground = true, id = 'prj_s21lOwner') {
+function ownerCircuit(
+  gnd: string,
+  ground = true,
+  id = 'prj_s21lOwner',
+  volts = 5,
+  bleeder = false,
+) {
   let doc: ProjectDocument = createProject({
     projectId: id,
     deviceId: 'dev_s21l',
@@ -371,7 +403,7 @@ function ownerCircuit(gnd: string, ground = true, id = 'prj_s21lOwner') {
     if (!x.ok) throw new Error(x.error);
     doc = x.doc;
   };
-  set('PSU1', 'setpointVoltage', { value: 5, unit: 'volt' });
+  set('PSU1', 'setpointVoltage', { value: volts, unit: 'volt' });
   set('PSU1', 'currentLimit', { value: 0.1, unit: 'ampere' });
   set('PSU1', 'outputEnabled', true);
   if (ground) wire('PSU1.negative', 'GND1.ref');
@@ -379,5 +411,69 @@ function ownerCircuit(gnd: string, ground = true, id = 'prj_s21lOwner') {
   wire(`${u}.a`, 'PSU1.positive');
   wire(`${u}.b`, 'PSU1.positive');
   wire(`${u}.gnd`, gnd);
+  if (bleeder) {
+    // Sprint 22 review 3: keeps PSU1 delivering (no sinking model; input leakage could return).
+    const r = addComponent(doc, 'component.resistor', { x: -280, y: 240 });
+    if (!r.ok) throw new Error(r.error);
+    doc = r.doc;
+    set(r.id, 'resistance', { value: 10_000, unit: 'ohm' });
+    wire('PSU1.positive', `${r.id}.a`);
+    wire(`${r.id}.b`, ground ? 'GND1.ref' : 'PSU1.negative');
+  }
   return { doc, u };
 }
+
+/**
+ * Sprint 22 (P5): the examples' probe labels ("V(U2.y) = …", "I(D1) = …") never sit on a part's
+ * reference or value label, nor on another part's body — measured in one in-page snapshot.
+ */
+async function probeLabelsClear(page: Page) {
+  const found = await page.evaluate(() => {
+    const r = (e: Element) => {
+      const b = e.getBoundingClientRect();
+      return { x: b.x, y: b.y, width: b.width, height: b.height };
+    };
+    const canvas = document.querySelector('[data-testid="canvas"]')!;
+    const probes = [...canvas.querySelectorAll('text.probe-label')].map((e) => ({
+      text: e.textContent ?? '',
+      box: r(e),
+    }));
+    const labels = [...canvas.querySelectorAll('text.ref-label, text.value-label')].map((e) => ({
+      text: e.textContent ?? '',
+      box: r(e),
+    }));
+    return { probes, labels };
+  });
+  const hit = (a: Box, b: Box) =>
+    a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+  expect(found.probes.length, 'probe labels').toBeGreaterThan(0);
+  for (const p of found.probes)
+    for (const l of found.labels)
+      expect(hit(p.box, l.box), `probe "${p.text}" vs label "${l.text}"`).toBe(false);
+}
+
+for (const size of SIZES.slice(0, 2))
+  test.describe(`${size.name} probe labels`, () => {
+    test.use({ viewport: { width: size.width, height: size.height } });
+    for (const id of ['logic-and-switches', 'esp32-logic-override'])
+      test(`${id}: probe labels clear of the reference and value labels, idle and running (${size.name})`, async ({
+        page,
+      }) => {
+        await openExample(page, id);
+        for (const lc of LOCALES) {
+          await locale(page, lc);
+          await probeLabelsClear(page);
+          if (id === 'logic-and-switches') {
+            await page.getByTestId('sim-run').click();
+            await expect(status(page)).toHaveAttribute('data-status', 'running', {
+              timeout: 30_000,
+            });
+            await probeLabelsClear(page);
+            if (SHOTS)
+              await page.screenshot({ path: `${SHOTS}/s22l-${size.name}-${lc}-${id}-probes.png` });
+            await page.getByTestId('sim-stop').click();
+          } else if (SHOTS)
+            await page.screenshot({ path: `${SHOTS}/s22l-${size.name}-${lc}-${id}-probes.png` });
+        }
+      });
+  });

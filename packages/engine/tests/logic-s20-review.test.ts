@@ -12,23 +12,42 @@ import { describe, expect, it } from 'vitest';
 import { EngineSession, type SolveOutcome } from '../src/index.js';
 import { Bench } from './build.js';
 
-const solve = (b: Bench) => new EngineSession(b.snapshot()).solve();
+/**
+ * Sprint 22 review 3: the bench-supply model cannot SINK current, and input leakage (±I_I, either
+ * return pin) may flow back into a lightly loaded supply. Every ENABLED supply of these benches
+ * gets a 10 kΩ bleeder (+ → GND, Bench.bleed) so it always delivers; the subjects are unchanged
+ * (a supply's current then includes V/10 kΩ).
+ */
+const bled = new WeakMap<Bench, Set<string>>();
+const bleedAll = (b: Bench) => {
+  const done = bled.get(b) ?? new Set<string>();
+  bled.set(b, done);
+  for (const c of b.doc.components)
+    if (c.type === 'instrument.lab_psu' && c.params.outputEnabled === true && !done.has(c.id)) {
+      done.add(c.id);
+      b.bleed(c.id);
+    }
+  return b;
+};
+const solve = (b: Bench) => new EngineSession(bleedAll(b).snapshot()).solve();
 const fails = (o: SolveOutcome) => {
   if (o.ok) throw new Error(`expected a refusal, got ${JSON.stringify(Object.keys(o.components))}`);
   return o.error;
 };
 
-/** SN74LVC1G08 (U1) at `vcc`, B HIGH, Y into 10 kΩ; A left to the caller (probe.test.ts base). */
+/**
+ * SN74LVC1G08 (U1) at `vcc`, B HIGH, Y into 10 kΩ; A left to the caller (probe.test.ts base).
+ * Sprint 22 Q1 strict: B HIGH is 5.5 V from a second supply (the I_CC test voltage, §5.5).
+ */
 function base(vcc: number) {
   const b = new Bench();
   const g = b.add('logic.gate_and');
   const r = b.add('component.resistor');
-  b.psu(vcc, 0.5)
-    .ohms(r, 10_000)
-    .wire('PSU1.negative', 'GND1.ref')
-    .wire('PSU1.positive', `${g}.vcc`)
+  b.psu(vcc, 0.5).ohms(r, 10_000).wire('PSU1.negative', 'GND1.ref');
+  const hi = b.rail(5.5);
+  b.wire('PSU1.positive', `${g}.vcc`)
     .wire(`${g}.gnd`, 'GND1.ref')
-    .wire(`${g}.b`, 'PSU1.positive')
+    .wire(`${g}.b`, `${hi}.positive`)
     .wire(`${g}.y`, `${r}.a`)
     .wire(`${r}.b`, 'GND1.ref');
   return { b, g };
@@ -76,9 +95,14 @@ describe('BLOCKING 1: high-impedance parts do not drive a logic input', () => {
       .wire(`${q}.base`, 'GND1.ref')
       .wire('PSU1.positive', `${rp}.a`)
       .wire(`${rp}.b`, `${g}.a`);
-    const o = solve(b);
-    if (!o.ok) throw new Error(JSON.stringify(o.error));
-    expect(o.components[g]!.state).toMatchObject({ input_a: 'high' });
+    // Driven HIGH through the resistor (never floating; the HIGH level check held). Sprint 22 Q1
+    // strict: A at ≈ 3.3 V (not 5.5 V) leaves the I_CC test condition, so PSU1's current limit is
+    // refused by that name — deferred until every level check held.
+    expect(fails(solve(b))).toMatchObject({
+      code: 'logic_supply_current_uncharacterized',
+      components: [g, 'PSU1'],
+      detail: { check: 'limit', condition: 'notInputs' },
+    });
   });
 
   it("an unpowered SN74LVC1G08 (I_off: outputs off) whose Y feeds 220 Ω + LED and a second gate: the second gate's input floats (was LOW)", () => {
@@ -130,9 +154,14 @@ describe('BLOCKING 1: high-impedance parts do not drive a logic input', () => {
     const pd = base(3.3);
     const r2 = pd.b.add('component.resistor');
     pd.b.ohms(r2, 1000).wire(`${pd.g}.a`, `${r2}.a`).wire(`${r2}.b`, 'GND1.ref');
-    const o1 = solve(pd.b);
-    if (!o1.ok) throw new Error(JSON.stringify(o1.error));
-    expect(o1.components[pd.g]!.state).toMatchObject({ input_a: 'low' });
+    // Driven LOW (5 µA × 1 kΩ = 5 mV ≤ V_IL). Sprint 22 Q1 strict: 5 mV is not within 1 mV of
+    // GND, so I_CC leaves its test condition: refused by the current limit, naming A (worst 5 mV).
+    expect(fails(solve(pd.b))).toMatchObject({
+      code: 'logic_supply_current_uncharacterized',
+      components: [pd.g, 'PSU1'],
+      param: 'a',
+      detail: { check: 'limit', worst: expect.closeTo(0.005, 9) },
+    });
     // V_CC → 220 Ω → node A → LED → GND: the node is driven through the resistor.
     const ind = base(3.0);
     const r3 = ind.b.add('component.resistor');

@@ -123,6 +123,9 @@ export const LVC08A_CARD: LogicPackageCard = {
   // GND, I_O = 0 | 3.6V | 10"), so it is a known bound only there; ΔI_CC over 2.7–3.6 V.
   iccVcc: [3.6, 3.6],
   iccInputHigh: 'vcc',
+  // SCAS283W gives I_CC only at I_O = 0 and contains no power rule like the 1G §8.2.1.1: a loaded
+  // output leaves the I_CC test condition (S22 review 3; owner question Q9).
+  iccLoadedRule: false,
   deltaIccA: 500e-6,
   deltaIccVcc: [2.7, 3.6],
   // §5.7: C_i 5 pF typical (V_I = V_CC or GND, 3.3 V, T_A = 25 °C). Carried, not used at DC.

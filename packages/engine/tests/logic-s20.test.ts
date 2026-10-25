@@ -29,25 +29,52 @@ const fails = (o: SolveOutcome) => {
   if (o.ok) throw new Error('expected a refusal');
   return o.error;
 };
-const solve = (b: Bench) => new EngineSession(b.snapshot()).solve();
+/**
+ * Sprint 22 review 3: the bench-supply model cannot SINK current, and input leakage (±I_I, either
+ * return pin) may flow back into a lightly loaded supply. Every ENABLED supply of these benches
+ * gets a 10 kΩ bleeder (+ → GND, Bench.bleed) so it always delivers; the subjects are unchanged
+ * (a supply's current then includes V/10 kΩ).
+ */
+const bled = new WeakMap<Bench, Set<string>>();
+const bleedAll = (b: Bench) => {
+  const done = bled.get(b) ?? new Set<string>();
+  bled.set(b, done);
+  for (const c of b.doc.components)
+    if (c.type === 'instrument.lab_psu' && c.params.outputEnabled === true && !done.has(c.id)) {
+      done.add(c.id);
+      b.bleed(c.id);
+    }
+  return b;
+};
+const boardB = (build: (b: Bench, u: string) => void) =>
+  boardBench((b, u) => {
+    build(b, u);
+    bleedAll(b);
+  });
+const solve = (b: Bench) => new EngineSession(bleedAll(b).snapshot()).solve();
 const AND = LVC1G_CARDS['model.logic.sn74lvc1g08']!;
 
-/** PSU1 at `vcc` → an SN74LVC1G08 (U1) with B tied HIGH and Y into 10 kΩ; A left to `build`. */
-function andGate(vcc: number, build: (b: Bench, g: string) => void) {
+/**
+ * PSU1 at `vcc` → an SN74LVC1G08 (U1) with B tied HIGH and Y into 10 kΩ; A left to `build`.
+ * Sprint 22 Q1 strict: HIGH is 5.5 V from a second supply (`hi`), the I_CC test voltage
+ * "V_I = 5.5V or GND" (SCES217AA §5.5), so PSU1's current-limit check has a bounded I_CC.
+ */
+function andGate(vcc: number, build: (b: Bench, g: string, hi: string) => void) {
   const b = new Bench();
   const g = b.add('logic.gate_and');
   const r = b.add('component.resistor');
-  b.psu(vcc, 0.5)
-    .ohms(r, 10_000)
-    .wire('PSU1.negative', 'GND1.ref')
-    .wire('PSU1.positive', `${g}.vcc`)
+  b.psu(vcc, 0.5).ohms(r, 10_000).wire('PSU1.negative', 'GND1.ref');
+  const hi = b.rail(5.5);
+  b.wire('PSU1.positive', `${g}.vcc`)
     .wire(`${g}.gnd`, 'GND1.ref')
-    .wire(`${g}.b`, 'PSU1.positive')
+    .wire(`${g}.b`, `${hi}.positive`)
     .wire(`${g}.y`, `${r}.a`)
     .wire(`${r}.b`, 'GND1.ref');
-  build(b, g);
+  build(b, g, hi);
   return { b, g };
 }
+/** Sprint 22 Q1 strict: the deferred refusal — every level/output check held, I_CC unbounded. */
+const limitOnly = { code: 'logic_supply_current_uncharacterized', detail: { check: 'limit' } };
 
 /** PSU1 at `vcc` → SN74LVC08A U1, every input tied to GND except those `build` wires. */
 function quad(vcc: number, free: string[], build: (b: Bench, u: string) => void, extra?: string) {
@@ -66,12 +93,13 @@ function quad(vcc: number, free: string[], build: (b: Bench, u: string) => void,
 describe('undriven inputs are floating, never a valid LOW (owner policy)', () => {
   it('ESP32 pad in INPUT mode alone on a gate input: refused, naming the pad (L1 and package)', () => {
     let G = '';
-    const bb = boardBench((b, u) => {
+    const bb = boardB((b, u) => {
       G = b.add('logic.gate_and');
-      b.psu(3.0, 0.5)
-        .wire('PSU1.positive', `${G}.vcc`)
+      b.psu(3.0, 0.5);
+      const hi = b.rail(5.5);
+      b.wire('PSU1.positive', `${G}.vcc`)
         .wire(`${G}.gnd`, 'GND1.ref')
-        .wire(`${G}.b`, 'PSU1.positive')
+        .wire(`${G}.b`, `${hi}.positive`)
         .wire(`${u}.gpio18`, `${G}.a`);
     });
     const s = new EngineSession(bb.projected, { pins: bb.pins });
@@ -81,15 +109,23 @@ describe('undriven inputs are floating, never a valid LOW (owner policy)', () =>
       param: 'a',
       detail: { pads: [18] },
     });
+    // Driven, A is no longer floating. Sprint 22 Q1 strict: an ESP32 HIGH (≤ 3.3 V) is not 5.5 V,
+    // its LOW (≤ 0.33 V guaranteed) not GND: I_CC is unbounded and PSU1's current limit is
+    // refused by name — after the level checks held (HIGH: V_OH 2.64 V ≥ V_IH 2.0 V).
     s.setPinMode(18, 'output-high');
-    expect(ok(s.solve()).components[G]!.state).toMatchObject({ input_a: 'high' });
+    expect(fails(s.solve())).toMatchObject({ ...limitOnly, components: [G, 'PSU1'] });
     s.setPinMode(18, 'output-low');
-    expect(ok(s.solve()).components[G]!.state).toMatchObject({ input_a: 'low' });
+    expect(fails(s.solve())).toMatchObject({
+      ...limitOnly,
+      components: [G, 'PSU1'],
+      param: 'a',
+      detail: { check: 'limit', causes: expect.arrayContaining(['esp32_vol']) },
+    });
   });
 
   it('two input-mode pads and a resistor between them and the gate: still floating (no driver anywhere)', () => {
     let Q = '';
-    const bb = boardBench((b, u) => {
+    const bb = boardB((b, u) => {
       const q = b.add('logic.quad_and');
       Q = q;
       const r = b.add('component.resistor');
@@ -105,30 +141,44 @@ describe('undriven inputs are floating, never a valid LOW (owner policy)', () =>
       param: 'a1',
       detail: { part: 'SN74LVC08A', pads: [18, 19] },
     });
-    // One pad driving: the node is driven (3.3 V less the other pad's 66 MΩ leakage-model load).
+    // One pad driving: the node is driven (no longer floating). Sprint 22 Q1 strict: 1A at the
+    // pad's ≤ 3.3 V is not V_CC = 3.6 V, so the package's I_CC (§5.7) is unbounded: PSU1's
+    // current limit is refused by name, after 1A's HIGH level held (V_OH 2.64 V ≥ V_IH 2.0 V).
+    // Sprint 22 review F2/F8: GPIO19's HIGH band is an ideal-source interval; through R the pad
+    // carries 1A's leakage (5 µA) + GPIO18's 50 nA, more than the leakage on its OWN node (its own
+    // and GPIO18's 50 nA): the load-less V_OH guarantee is not relied on (Q7) — refused by name.
     s.setPinMode(19, 'output-high');
-    const o = ok(s.solve());
-    expect(o.components[Q]!.logic!.gates[0]!.inputs[0]).toMatchObject({ level: 'high' });
-    expect(o.components[Q]!.logic!.gates[0]!.inputs[0]!.volts!).toBeCloseTo(3.3, 5);
+    expect(fails(s.solve())).toMatchObject({
+      code: 'logic_mcu_output_uncharacterized',
+      param: 'gpio19',
+      detail: { level: 'high', limit: expect.closeTo(1e-7, 15), value: expect.closeTo(5.1e-6, 12) },
+    });
   });
 
   it('an input-mode pad WITH an external 10 kΩ pull-down (§7.3.3: "a 10kΩ resistor … is recommended"): a real LOW', () => {
     let G = '';
-    const bb = boardBench((b, u) => {
+    const bb = boardB((b, u) => {
       G = b.add('logic.gate_and');
       const pd = b.add('component.resistor');
-      b.psu(3.0, 0.5)
-        .ohms(pd, 10_000)
-        .wire('PSU1.positive', `${G}.vcc`)
+      b.psu(3.0, 0.5).ohms(pd, 10_000);
+      const hi = b.rail(5.5);
+      b.wire('PSU1.positive', `${G}.vcc`)
         .wire(`${G}.gnd`, 'GND1.ref')
-        .wire(`${G}.b`, 'PSU1.positive')
+        .wire(`${G}.b`, `${hi}.positive`)
         .wire(`${u}.gpio18`, `${G}.a`)
         .wire(`${G}.a`, `${pd}.a`)
         .wire(`${pd}.b`, 'GND1.ref');
     });
     const s = new EngineSession(bb.projected, { pins: bb.pins });
-    const o = ok(s.solve());
-    expect(o.components[G]!.state).toMatchObject({ input_a: 'low', gateOutput: 'low' });
+    // A real LOW (the input check held: 5 µA × 10 kΩ + the pad's leakage ≈ 50 mV ≤ V_IL 0.8 V).
+    // Sprint 22 Q1 strict: ~50 mV is not within 1 mV of GND, so I_CC leaves its test condition
+    // and PSU1's current limit is refused by name (naming A, worst ≈ 50.5 mV).
+    expect(fails(s.solve())).toMatchObject({
+      ...limitOnly,
+      components: [G, 'PSU1'],
+      param: 'a',
+      detail: { check: 'limit', condition: 'notInputs', worst: expect.closeTo(0.0505, 3) },
+    });
     // Driven HIGH, the pad also feeds the pull-down (≈ 330 µA). Sprint 21 review (item 5): the
     // ESP32's V_OH ≥ 0.8 × VDD is stated with no load current (Table 5-3; 40 mA is typical), so it
     // is relied on only at leakage-level current: refused by name, never a HIGH under that load.
@@ -141,9 +191,10 @@ describe('undriven inputs are floating, never a valid LOW (owner policy)', () =>
   });
 
   it('an open switch is not a driver: the input it would connect floats (refused, never LOW)', () => {
-    const { b, g } = andGate(3.0, (bb, gg) => {
+    const { b, g } = andGate(3.0, (bb, gg, hi) => {
       const sw = bb.add('component.toggle_switch');
-      bb.set(sw, 'closed', false).wire('PSU1.positive', `${sw}.a`).wire(`${sw}.b`, `${gg}.a`);
+      // Sprint 22 Q1 strict: the switch takes HIGH from the 5.5 V rail.
+      bb.set(sw, 'closed', false).wire(`${hi}.positive`, `${sw}.a`).wire(`${sw}.b`, `${gg}.a`);
     });
     expect(fails(solve(b))).toMatchObject({
       code: 'logic_input_floating',
@@ -155,16 +206,19 @@ describe('undriven inputs are floating, never a valid LOW (owner policy)', () =>
   });
 
   it('a supply switched off is not a driver: the input on its output floats', () => {
+    let P = '';
     const { b, g } = andGate(3.0, (bb, gg) => {
       const p2 = bb.add('instrument.lab_psu');
-      bb.set(p2, 'setpointVoltage', { value: 3, unit: 'volt' })
+      P = p2;
+      // Sprint 22 Q1 strict: 5.5 V when on (the I_CC test voltage).
+      bb.set(p2, 'setpointVoltage', { value: 5.5, unit: 'volt' })
         .set(p2, 'currentLimit', { value: 0.1, unit: 'ampere' })
         .set(p2, 'outputEnabled', false)
         .wire(`${p2}.negative`, 'GND1.ref')
         .wire(`${p2}.positive`, `${gg}.a`);
     });
     expect(fails(solve(b))).toMatchObject({ code: 'logic_input_floating', param: 'a' });
-    b.set('PSU2', 'outputEnabled', true);
+    b.set(P, 'outputEnabled', true);
     expect(ok(solve(b)).components[g]!.state).toMatchObject({ input_a: 'high' });
   });
 
@@ -202,14 +256,15 @@ describe("mixed 3.3 V / 5 V: decided by V_IH at the gate's own supply (§5.3)", 
   /** ESP32 GPIO18 → SN74LVC1G08 A at `vcc` (B tied HIGH, Y into 10 kΩ). */
   const esp = (vcc: number) => {
     let G = '';
-    const bb = boardBench((b, u) => {
+    const bb = boardB((b, u) => {
       G = b.add('logic.gate_and');
       const r = b.add('component.resistor');
-      b.psu(vcc, 0.5)
-        .ohms(r, 10_000)
-        .wire('PSU1.positive', `${G}.vcc`)
+      b.psu(vcc, 0.5).ohms(r, 10_000);
+      // Sprint 22 Q1 strict: B at 5.5 V, the I_CC test voltage (§5.5).
+      const hi = b.rail(5.5);
+      b.wire('PSU1.positive', `${G}.vcc`)
         .wire(`${G}.gnd`, 'GND1.ref')
-        .wire(`${G}.b`, 'PSU1.positive')
+        .wire(`${G}.b`, `${hi}.positive`)
         .wire(`${u}.gpio18`, `${G}.a`)
         .wire(`${G}.y`, `${r}.a`)
         .wire(`${r}.b`, 'GND1.ref');
@@ -236,9 +291,10 @@ describe("mixed 3.3 V / 5 V: decided by V_IH at the gate's own supply (§5.3)", 
         padVoh: expect.closeTo(2.64, 12),
       },
     });
-    // The pad's LOW (0 V) is a valid LOW at 5 V (V_IL = 1.5 V): only HIGH is refused.
+    // The pad's LOW (≤ 0.33 V) is a valid LOW at 5 V (V_IL = 1.5 V): not refused as undefined.
+    // Sprint 22 Q1 strict: but not exactly GND, so I_CC is unbounded: refused by the limit.
     s.setPinMode(18, 'output-low');
-    expect(ok(s.solve()).components[G]!.state).toMatchObject({ input_a: 'low' });
+    expect(fails(s.solve())).toMatchObject({ ...limitOnly, components: [G, 'PSU1'], param: 'a' });
   });
 
   it("at 4.5 V, V_IH = 3.15 V: the pad model's 3.3 V passes, but the ESP32 guarantees only V_OH ≥ 2.64 V: refused (Sprint 21)", () => {
@@ -270,20 +326,27 @@ describe("mixed 3.3 V / 5 V: decided by V_IH at the gate's own supply (§5.3)", 
         .wire(`${p2}.positive`, `${uu}.a1`)
         .wire(`${uu}.b1`, `${p2}.positive`);
     });
-    const o = ok(solve(b));
-    expect(o.components[u]!.logic!.gates[0]!.output.level).toBe('high');
-    expect(ratingWarnings(b.snapshot(), o).filter((w) => w.component === u)).toEqual([]);
+    // 5 V is inside V_I 0–5.5 V (no logic_input_out_of_range) and a valid HIGH. Sprint 22 Q1
+    // strict: at 3.0 V the package's I_CC (3.6 V only, §5.7) has no bound, so PSU1's current
+    // limit is refused by name — deferred, i.e. after every level check held.
+    expect(fails(solve(b))).toMatchObject({
+      ...limitOnly,
+      components: [u, 'PSU1'],
+      detail: { check: 'limit', condition: 'notSupply' },
+    });
   });
 
   it('a gate at 5 V driving an ESP32 input: the pad is over its specified range (warning, absolute)', () => {
     let G = '';
-    const bb = boardBench((b, u) => {
+    const bb = boardB((b, u) => {
       G = b.add('logic.gate_and');
-      b.psu(5.0, 0.5)
-        .wire('PSU1.positive', `${G}.vcc`)
+      b.psu(5.0, 0.5);
+      // Sprint 22 Q1 strict: A and B at 5.5 V (the I_CC test voltage, §5.5).
+      const hi = b.rail(5.5);
+      b.wire('PSU1.positive', `${G}.vcc`)
         .wire(`${G}.gnd`, 'GND1.ref')
-        .wire(`${G}.a`, 'PSU1.positive')
-        .wire(`${G}.b`, 'PSU1.positive')
+        .wire(`${G}.a`, `${hi}.positive`)
+        .wire(`${G}.b`, `${hi}.positive`)
         .wire(`${G}.y`, `${u}.gpio4`);
     });
     const s = new EngineSession(bb.projected, { pins: bb.pins });
@@ -319,13 +382,11 @@ describe('cascades: inside a package and between packages', () => {
       b.wire(`${u2}.y1`, `${u2}.a2`);
       for (const t of ['a2', 'b2', 'a3', 'b3', 'a4', 'b4']) b.wire(`${u1}.${t}`, 'GND1.ref');
       for (const t of ['a3', 'b3', 'a4', 'b4']) b.wire(`${u2}.${t}`, 'GND1.ref');
-      const o = ok(solve(b));
-      const out = o.components[u2]!.logic!.gates.map((q) => q.output.level);
-      const y1 = x && y && z;
-      expect(out.slice(0, 2), `x=${x} y=${y} z=${z}`).toEqual([
-        y1 ? 'high' : 'low',
-        y1 && x && z ? 'high' : 'low',
-      ]);
+      // Sprint 22 Q1 strict: each chained input sits at a gate output (guaranteed only within
+      // V_OH/V_OL's band, never within 1 mV of V_CC or GND), and the single gate's inputs are at
+      // 3.6 V, not 5.5 V: I_CC leaves its test conditions. Every combination settles and its
+      // level checks hold, then PSU1's current limit is refused by name (never feedback).
+      expect(fails(solve(b)), `x=${x} y=${y} z=${z}`).toMatchObject(limitOnly);
     }
   });
 
@@ -361,13 +422,26 @@ describe('quiescent current: only under the datasheet I_CC test conditions', () 
     expect(quiescentAt(AND, null, [0, 0])).toEqual({ iccCondition: 'notSupply' });
   });
 
-  it('in the solve: inputs at GND → I_CC ≤ 10 µA reported; an input at V_CC → not characterized', () => {
+  it('in the solve: inputs at GND or 5.5 V → I_CC ≤ 10 µA reported; an input at V_CC → refused (Q1)', () => {
+    // andGate ties B to 5.5 V (Sprint 22): the test condition holds.
     const lowIn = andGate(3.0, (bb, gg) => bb.wire(`${gg}.a`, 'GND1.ref'));
-    lowIn.b.set('PSU1', 'setpointVoltage', { value: 3, unit: 'volt' });
-    // B is tied HIGH (at 3.0 V) by andGate: not the test condition.
-    const st = ok(solve(lowIn.b)).components[lowIn.g]!.state!;
-    expect(st).toMatchObject({ iccCondition: 'notInputs', deltaIccA: 500e-6 });
-    expect(st.iccMaxA).toBeUndefined();
+    expect(ok(solve(lowIn.b)).components[lowIn.g]!.state).toMatchObject({ iccMaxA: 10e-6 });
+    // B at V_CC = 3.0 V instead: not the test condition; Sprint 22 Q1 strict: PSU1's current limit
+    // depends on that unbounded I_CC → refused by name (never ΔI_CC as a bound).
+    const atVcc = new Bench();
+    const h = atVcc.add('logic.gate_and');
+    atVcc
+      .psu(3.0, 0.5)
+      .wire('PSU1.negative', 'GND1.ref')
+      .wire('PSU1.positive', `${h}.vcc`)
+      .wire(`${h}.gnd`, 'GND1.ref')
+      .wire(`${h}.a`, 'GND1.ref')
+      .wire(`${h}.b`, 'PSU1.positive');
+    expect(fails(solve(atVcc))).toMatchObject({
+      ...limitOnly,
+      components: [h, 'PSU1'],
+      detail: { check: 'limit', condition: 'notInputs' },
+    });
     const b = new Bench();
     const g = b.add('logic.gate_and');
     b.psu(3.0, 0.5)
@@ -403,13 +477,13 @@ describe('single gates: the input contract matches the package', () => {
     const g = b.add('logic.gate_and');
     const r = b.add('component.resistor');
     const d = b.add('component.led');
-    b.psu(3.3, 0.5)
-      .ohms(r, 220)
-      .wire('PSU1.negative', 'GND1.ref')
-      .wire('PSU1.positive', `${g}.vcc`)
+    b.psu(3.3, 0.5).ohms(r, 220).wire('PSU1.negative', 'GND1.ref');
+    // Sprint 22 Q1 strict: A and B at 5.5 V (the I_CC test voltage, §5.5).
+    const hi = b.rail(5.5);
+    b.wire('PSU1.positive', `${g}.vcc`)
       .wire(`${g}.gnd`, 'GND1.ref')
-      .wire(`${g}.a`, 'PSU1.positive')
-      .wire(`${g}.b`, 'PSU1.positive')
+      .wire(`${g}.a`, `${hi}.positive`)
+      .wire(`${g}.b`, `${hi}.positive`)
       .wire(`${g}.y`, `${r}.a`)
       .wire(`${r}.b`, `${d}.anode`)
       .wire(`${d}.cathode`, 'GND1.ref');

@@ -207,6 +207,14 @@ export function engineErrorMessage(
       const param = def ? catalogText(locale, def.labelKey) : (error.param ?? '');
       return t('sim.error.invalid_parameter', { components, param });
     }
+    // Sprint 22 review 3: a constant-voltage supply the circuit would push current back into.
+    case 'psu_sinking': {
+      const v = (error.detail as { value?: number } | undefined)?.value;
+      return t('sim.error.psu_sinking', {
+        components,
+        current: typeof v === 'number' ? formatResult(locale, v, 'ampere') : '',
+      });
+    }
     case 'psu_parallel': {
       const p = engineErrorParts(locale, error, doc);
       return [p.title, p.body, p.hint].join(' ');
@@ -248,6 +256,8 @@ export function engineErrorMessage(
         reason?: string;
         role?: string;
         reverse?: boolean;
+        check?: string;
+        forcedV?: number;
       };
       const V = (v: number | undefined) =>
         typeof v === 'number' ? formatResult(locale, v, 'volt') : '';
@@ -275,11 +285,25 @@ export function engineErrorMessage(
               ? `sim.error.logic_mcu_input_not_guaranteed.${d.level}`
               : error.code === 'logic_mcu_pull_uncharacterized' && d.role === 'reads'
                 ? 'sim.error.logic_mcu_pull_uncharacterized.reads'
-                : error.code === 'logic_output_uncharacterized' && d.reverse
-                  ? 'sim.error.logic_output_uncharacterized.reverse'
-                  : error.code === 'logic_supply_not_guaranteed' && error.param === 'limit'
-                    ? 'sim.error.logic_supply_not_guaranteed.limit'
-                    : `sim.error.${error.code}.${(d.part ?? '').toLowerCase()}`;
+                : error.code === 'logic_output_uncharacterized' && typeof d.forcedV === 'number'
+                  ? 'sim.error.logic_output_uncharacterized.forced'
+                  : error.code === 'logic_output_uncharacterized' && d.reverse
+                    ? 'sim.error.logic_output_uncharacterized.reverse'
+                    : error.code === 'logic_supply_not_guaranteed' &&
+                        (error.param === 'limit' || error.param === 'sink')
+                      ? `sim.error.logic_supply_not_guaranteed.${error.param}`
+                      : error.code === 'logic_supply_current_uncharacterized' &&
+                          d.condition === 'loaded'
+                        ? 'sim.error.logic_supply_current_uncharacterized.loaded'
+                        : error.code === 'logic_input_leakage_uncharacterized' &&
+                            d.check === 'limit'
+                          ? 'sim.error.logic_input_leakage_uncharacterized.limit'
+                          : error.code === 'logic_supply_current_uncharacterized' &&
+                              d.check === 'limit'
+                            ? `sim.error.logic_supply_current_uncharacterized.${
+                                error.param && error.param !== 'vcc' ? 'limit_input' : 'limit'
+                              }${d.part === 'SN74LVC08A' ? '.sn74lvc08a' : ''}`
+                            : `sim.error.${error.code}.${(d.part ?? '').toLowerCase()}`;
       const why = `sim.bound.notEstablished.${d.reason ?? ''}`;
       const causes = (d.causes ?? [])
         .map((c) => `sim.bound.cause.${c}`)
@@ -310,6 +334,7 @@ export function engineErrorMessage(
             : '',
         // Sprint 21: the bounds' worst value, causes, the row and the comparison.
         worst: V(d.worst),
+        forced: V(d.forcedV),
         causes: new Intl.ListFormat(locale.code, { type: 'conjunction' }).format(causes),
         reason: isMessageKey(reason) ? t(reason) : isMessageKey(why) ? t(why) : '',
         range: range(d.range),

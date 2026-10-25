@@ -152,7 +152,7 @@ describe('MCU pads in the production EngineSession', () => {
         ],
       });
       s.setPinMode(2, mode);
-      const out = ok(s.solve());
+      const o = s.solve();
       const ref = new Circuit();
       ref.add(new GpioPin('IO2', 'io2', mode));
       ref.add(new Resistor('R1', 'io2', 'led_a', 220));
@@ -162,6 +162,13 @@ describe('MCU pads in the production EngineSession', () => {
       ref.add(new LabPsu('VEXT', 'ext', '0', vext, 0.1));
       ref.add(new Resistor('R3', 'ext', 'io5', 10_000));
       const r = ref.solve();
+      // Sprint 22 review 3: where the pad would push current back into the external supply (it
+      // would have to SINK), the product refuses by name: the bench-supply model cannot sink.
+      if (r.deviceCurrents.get('VEXT')! < -1e-9) {
+        expect(o.ok ? null : o.error.code, `${vext} ${mode}`).toBe('psu_sinking');
+        continue;
+      }
+      const out = ok(o);
       close(out.pins![0]!.voltage, r.nodeVoltages.get('io2')!);
       close(out.pins![1]!.voltage, r.nodeVoltages.get('io5')!);
       close(out.components.D1!.current!, r.deviceCurrents.get('D1')!);

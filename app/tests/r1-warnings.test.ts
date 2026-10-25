@@ -53,7 +53,14 @@ describe('no shipped example raises a pad over-voltage warning (T-D3)', () => {
             // Sprint 21 review (items 3, 5): an ESP32 pad reading a gate HIGH that is not
             // guaranteed above its V_IH; a pad relied on for a level while it carries a load.
             out.error.code === 'logic_mcu_input_not_guaranteed' ||
-            out.error.code === 'logic_mcu_output_uncharacterized')
+            out.error.code === 'logic_mcu_output_uncharacterized' ||
+            // Sprint 22 Q1 (strict): a gate input that is never at 5.5 V or exactly GND (an
+            // ESP32 pad's level, a pull-down's leakage drop): I_CC unbounded, the supply's current
+            // limit refused by name.
+            out.error.code === 'logic_supply_current_uncharacterized' ||
+            // Sprint 22 review F2/F7: the read-back pad driven onto the gate output (two drivers
+            // on one net).
+            out.error.code === 'logic_bound_not_established')
         ) {
           refused++;
           refusedAt.push(n);
@@ -73,11 +80,9 @@ describe('no shipped example raises a pad over-voltage warning (T-D3)', () => {
       // and driven HIGH (3.3 V) against its HIGH at 3.0 V: Y forced above the gate's own V_CC, a
       // wrong-way current no test point covers (1).
       const expected: Record<string, number> = {
-        // Final review B1: a pad driven as an OUTPUT onto the gate's LOW output (both LOW) is
-        // refused too now: with Y at its guaranteed V_OL bound the pad would pull current OUT of a
-        // LOW output — no characteristic, and outputs must never be tied together (§8.2.1.3).
-        'esp32-logic-and': 7,
-        'esp32-logic-override': 7,
+        // Sprint 22 Q1 (strict): every combination of the three ESP32 logic examples is refused.
+        'esp32-logic-and': 9,
+        'esp32-logic-override': 9,
         'esp32-logic-quad-and': 9,
       };
       expect(refused, `${e.id} ${refusedAt}`).toBe(expected[e.id] ?? 0);

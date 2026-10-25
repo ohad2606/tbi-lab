@@ -108,6 +108,13 @@ export interface LogicCard {
    */
   readonly iccVcc: readonly [number, number];
   readonly iccInputHigh: number | 'vcc';
+  /**
+   * Owner decision S22-F4: I_CC (tested at I_O = 0) still bounds the quiescent current of a
+   * LOADED output (the output current is in the solve), derived from the sheet's own power rule
+   * (1G §8.2.1.1). Only where the sheet states that rule; elsewhere a loaded output leaves the I_CC
+   * test condition (S22 review 3, owner question Q9 for the SN74LVC08A).
+   */
+  readonly iccLoadedRule: boolean;
   /** ΔI_CC: supply-current increment per input at V_CC − 0.6 V, max (A), over `deltaIccVcc`. */
   readonly deltaIccA: number;
   readonly deltaIccVcc: readonly [number, number];
@@ -165,6 +172,8 @@ const LVC1G_COMMON = {
   // at V_CC − 0.6V, other inputs at V_CC or GND, 3V to 5.5V" (identical in the four sheets).
   iccVcc: [1.65, 5.5] as const,
   iccInputHigh: 5.5,
+  // 1G §8.2.1.1 "Power Considerations" (owner decision S22-F4).
+  iccLoadedRule: true,
   deltaIccA: 500e-6,
   deltaIccVcc: [3.0, 5.5] as const,
   // §5.6 "Switching Characteristics, C_L = 15pF", −40 °C to 85 °C, V_CC = 3.3V ± 0.3V.

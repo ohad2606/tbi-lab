@@ -1198,7 +1198,7 @@ export function Canvas({
                 {/* A current probe sits on the part's centre: its label goes above the part's
                     reference label, or, for an upright part (whose labels are on its right),
                     to its left. A voltage label sits up and to the left of its pin. */}
-                <text class="probe-label" {...probeLabelAt(p, at, view)}>
+                <text class="probe-label" {...placeProbeLabel(p, at, view, label)}>
                   {label}
                 </text>
               </g>
@@ -1637,6 +1637,59 @@ function valueLabel(c: ComponentInstance, fmt: (q: Quantity) => string): string 
     default:
       return '';
   }
+}
+
+/**
+ * Sprint 22 (P5): a probe label is placed at its preferred spot (probeLabelAt) unless that would
+ * overlap a part's body or its reference/value label; then the first free alternative among the
+ * mirrored and the above/below positions is used. Text extents are estimated from the CSS sizes
+ * (probe 12 px bold ≈ 7.2 px per character; reference/value 14 px ≈ 8.4 px per character).
+ */
+function placeProbeLabel(p: Probe, at: Point, doc: ProjectDocument, text: string) {
+  const first = probeLabelAt(p, at, doc);
+  const w = text.length * 7.2;
+  type Rect = { x0: number; y0: number; x1: number; y1: number };
+  const rectOf = (c: { x: number; y: number; 'text-anchor': string }): Rect => {
+    const x0 =
+      c['text-anchor'] === 'end' ? c.x - w : c['text-anchor'] === 'middle' ? c.x - w / 2 : c.x;
+    return { x0, y0: c.y - 12, x1: x0 + w, y1: c.y + 3 };
+  };
+  const obstacles: Rect[] = [];
+  for (const c of doc.components) {
+    const b = componentBox(doc, c);
+    obstacles.push({ x0: b.minX, y0: b.minY, x1: b.maxX, y1: b.maxY });
+    if (c.type === 'component.ground') continue;
+    // Reference label above the body (or beside an upright two-terminal part), value label below.
+    const pl = doc.layout.components[c.id];
+    const upright =
+      !!pl && (pl.rotation === 90 || pl.rotation === 270) && CATALOG[c.type].terminals.length === 2;
+    const cx = (b.minX + b.maxX) / 2;
+    const lw = Math.max(c.id.length * 8.4, 40);
+    if (upright)
+      obstacles.push({
+        x0: b.maxX + 8,
+        y0: (b.minY + b.maxY) / 2 - 22,
+        x1: b.maxX + 10 + 80,
+        y1: (b.minY + b.maxY) / 2 + 20,
+      });
+    else {
+      obstacles.push({ x0: cx - lw / 2, y0: b.minY - 22, x1: cx + lw / 2, y1: b.minY - 4 });
+      obstacles.push({ x0: cx - 40, y0: b.maxY + 6, x1: cx + 40, y1: b.maxY + 24 });
+    }
+  }
+  const free = (r: Rect) =>
+    !obstacles.some((o) => r.x0 < o.x1 && o.x0 < r.x1 && r.y0 < o.y1 && o.y0 < r.y1);
+  const end = 'end' as const;
+  const start = 'start' as const;
+  const candidates: { x: number; y: number; 'text-anchor': 'start' | 'end' | 'middle' }[] = [first];
+  // Then right/left of the pin, stepping away above and below it.
+  for (const dy of [-10, 18, -26, 34, -42, 50, -58, 66])
+    for (const [dx, anchor] of [
+      [4, start],
+      [-4, end],
+    ] as const)
+      candidates.push({ x: at.x + dx, y: at.y + dy, 'text-anchor': anchor });
+  return candidates.find((c) => free(rectOf(c))) ?? first;
 }
 
 function probeLabelAt(p: Probe, at: Point, doc: ProjectDocument) {

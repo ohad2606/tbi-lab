@@ -834,6 +834,10 @@ export const RECIPES: Record<string, () => ProjectDocument> = {
    * Sprint 19B (Exploration Foundation X1): ESP32 GPIO18 (10 kΩ pull-down, Sprint 20) and a push
    * button (10 kΩ pull-down) into an SN74LVC1G08 AND gate powered at 3.0 V from the bench supply (where its output is
    * characterized for real loads); the gate drives an LED through 220 Ω and is read back on GPIO4.
+   * Sprint 22 (owner decision Q1, strict): REFUSED in every state, by name
+   * (logic_supply_current_uncharacterized, the supply's current limit): an ESP32 output is never at 5.5 V or exactly GND,
+   * and the 10 kΩ pull-down leaves A ~50 mV off GND before setup() (SCES217AA §5.5 I_CC condition).
+   * Kept unchanged as a documented limit (its text says so); no truth table is claimed.
    */
   'esp32-logic-and': () => {
     const r = new Recipe('esp32-logic-and', 'ESP32: an AND gate with read-back');
@@ -889,6 +893,10 @@ export const RECIPES: Record<string, () => ProjectDocument> = {
    * pull-down (Sprint 20: defined before setup() runs); 1Y lights D1 through 220 Ω and
    * feeds 2A; the push button (10 kΩ pull-down) drives 2B, so D2 (220 Ω) lights only while it is
    * held. The unused gates' inputs are tied to GND (SCAS283W: unused inputs at V_CC or GND).
+   * Sprint 22 (owner decision Q1, strict): REFUSED in every state, by name
+   * (logic_supply_current_uncharacterized, the supply's current limit): the SN74LVC08A bounds I_CC (and I_I) only at
+   * V_CC = 3.6 V with every input at V_CC or GND (SCAS283W §5.7); here V_CC = 3.0 V.
+   * Kept unchanged as a documented limit (its text says so); no truth table is claimed.
    */
   'esp32-logic-quad-and': () => {
     const r = new Recipe('esp32-logic-quad-and', 'ESP32: a quad AND gate IC driving LEDs');
@@ -979,14 +987,20 @@ export const RECIPES: Record<string, () => ProjectDocument> = {
     return r.centre(-400);
   },
   /**
-   * Sprint 20 example A (basic logic): two toggle switches, each with a 10 kΩ pull-down (TI's
-   * recommended value for a not-always-driven CMOS input, SCES217AA §7.3.3), into an SN74LVC1G08
-   * AND gate at 3.0 V from the bench supply (the supply where its outputs are characterized for
-   * real loads, §5.5); Y lights the LED through 220 Ω only when both switches are closed.
+   * Sprint 20 example A (basic logic), redesigned in Sprint 22 (owner decision Q1, strict): an
+   * SN74LVC1G08 AND gate at 3.0 V from PSU2 (the supply where its outputs are characterized for
+   * real loads, SCES217AA §5.5); Y lights the LED through 220 Ω only when both switches are closed.
+   * The gate's quiescent current I_CC is bounded only with every input at 5.5 V or GND (§5.5 I_CC,
+   * "V_I = 5.5V or GND", V_CC 1.65–5.5 V), and the bench supply's current-limit check needs that
+   * bound. So the switches take their HIGH from PSU1 set to 5.5 V (within the recommended V_I
+   * 0–5.5 V, §5.3, at any V_CC), and each input's pull-down is 150 Ω: the input leakage
+   * (I_I ±5 µA, §5.5) then moves an open input at most 0.75 mV from GND, inside the 1 mV the
+   * simulator accepts as "at GND" (a 10 kΩ pull-down would move it 50 mV, off the I_CC condition).
+   * A closed switch puts 5.5 V across its pull-down: 36.7 mA, 0.20 W (under the ¼ W rating).
    */
   'logic-and-switches': () => {
     const r = new Recipe('logic-and-switches', 'Logic: an AND gate with two switches');
-    r.supply(3, 0.1);
+    r.supply(5.5, 0.1);
     // Review round 2: the gate sits BELOW the input rows, so the readout the canvas draws under
     // a running part (its pin currents) crosses no other part or label.
     const SW1 = r.place('component.toggle_switch', 40, -200);
@@ -1000,19 +1014,33 @@ export const RECIPES: Record<string, () => ProjectDocument> = {
     const R3 = r.place('component.resistor', 480, 100);
     const D1 = r.place('component.led', 600, 100);
     const G5 = r.place('component.ground', 800, 180);
-    r.set(R1, 'resistance', 10_000, 'ohm');
-    r.set(R2, 'resistance', 10_000, 'ohm');
+    // The gate's own 3.0 V supply, above the gate.
+    const PSU2 = r.extraSupply(240, -320, 3, 0.1);
+    const G6 = r.place('component.ground', 200, -240);
+    r.set(R1, 'resistance', 150, 'ohm');
+    r.set(R2, 'resistance', 150, 'ohm');
     r.set(R3, 'resistance', 220, 'ohm');
     // A starts closed: toggling B alone switches the LED.
     r.set(SW1, 'closed', true);
-    // The 3.0 V rail: up and over to the gate's V_CC; both switches tap it.
-    const rail = r.wire(T('PSU1', 'positive'), T(U1, 'vcc'), [
+    // The 5.5 V input rail (PSU1): up to switch A; switch B taps it.
+    const rail = r.wire(T('PSU1', 'positive'), T(SW1, 'a'), [
       { x: -40, y: -20 },
-      { x: -40, y: -260 },
-      { x: 360, y: -260 },
+      { x: -40, y: -200 },
     ]);
-    r.wire(T(SW1, 'a'), { kind: 'wire', wire: rail, at: { x: -40, y: -200 } });
     r.wire(T(SW2, 'a'), { kind: 'wire', wire: rail, at: { x: -40, y: -40 } });
+    // The 3.0 V gate supply (PSU2) to V_CC; its negative to GND.
+    const vcc = r.wire(T(PSU2, 'positive'), T(U1, 'vcc'), [{ x: 360, y: -340 }]);
+    r.wire(T(PSU2, 'negative'), T(G6, 'ref'), [{ x: 200, y: -300 }]);
+    // Sprint 22 (owner decision Q10 (a)): a 10 kΩ bleeder across PSU2. The bench-supply model
+    // cannot absorb current, and with Y LOW the inputs' leakage (±5 µA each, possibly returning
+    // through the V_CC pin) could otherwise flow back into PSU2; the bleeder keeps PSU2 delivering
+    // 3.0 V / 10 kΩ = 300 µA ≫ 10 µA (0.9 mW).
+    // Right of the V_CC drop, clear of PSU2's running readout.
+    const R4 = r.place('component.resistor', 440, -300);
+    const G7 = r.place('component.ground', 520, -200);
+    r.set(R4, 'resistance', 10_000, 'ohm');
+    r.wire(T(R4, 'a'), { kind: 'wire', wire: vcc, at: { x: 360, y: -300 } });
+    r.wire(T(R4, 'b'), T(G7, 'ref'), [{ x: 520, y: -300 }]);
     // Input A: SW1 → node (pull-down R1) → A.
     r.wire(T(SW1, 'b'), T(R1, 'a'));
     r.wire(T(R1, 'a'), T(U1, 'a'), [
@@ -1041,6 +1069,11 @@ export const RECIPES: Record<string, () => ProjectDocument> = {
    * LED = (A·B·C) + D. Everything at 3.0 V; the package's outputs drive only gate inputs (no DC
    * load), the OR gate drives the LED. The unused gates 3 and 4 have their inputs tied to GND
    * (SCAS283W §5.4 note 1).
+   * Sprint 22 (owner decision Q1, strict): REFUSED in every state, by name
+   * (logic_supply_current_uncharacterized, the supply's current limit): at 3.0 V the SN74LVC08A's I_CC is unbounded
+   * (SCAS283W §5.7: 3.6 V only), and the OR gate's input A is a gate output, never exactly at 5.5 V
+   * or GND (SCES217AA §5.5) — a cascade cannot meet an I_CC test condition.
+   * Kept unchanged as a documented limit (its text says so); no truth table is claimed.
    */
   'logic-cascade': () => {
     const r = new Recipe('logic-cascade', 'Logic: cascaded gates (A·B·C) + D');
@@ -1124,6 +1157,10 @@ export const RECIPES: Record<string, () => ProjectDocument> = {
    * B: a toggle switch (10 kΩ pull-down), a manual override. Y lights the LED through 220 Ω and
    * is read back on GPIO19: the firmware blinks GPIO18 and reports what the gate's output really
    * is, including when the switch overrides it.
+   * Sprint 22 (owner decision Q1, strict): REFUSED in every state, by name
+   * (logic_supply_current_uncharacterized, the supply's current limit): an ESP32 output is never at 5.5 V or exactly GND,
+   * and the 10 kΩ pull-downs leave an open input ~50 mV off GND (SCES217AA §5.5 I_CC condition).
+   * Kept unchanged as a documented limit (its text says so); no truth table is claimed.
    */
   'esp32-logic-override': () => {
     const r = new Recipe('esp32-logic-override', 'ESP32: an OR gate with a manual override');

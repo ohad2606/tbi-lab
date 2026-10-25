@@ -52,6 +52,29 @@ export class Bench {
       .set('PSU1', 'currentLimit', { value: amps, unit: 'ampere' })
       .set('PSU1', 'outputEnabled', enabled);
   }
+  /**
+   * Sprint 22 (Q1 strict): one more bench supply, its negative to GND1 — e.g. the 5.5 V rail an
+   * SN74LVC1G input needs for its I_CC test condition ("V_I = 5.5V or GND", SCES217AA §5.5).
+   * Returns the supply's id.
+   */
+  rail(volts = 5.5, amps = 0.1): string {
+    const id = this.add('instrument.lab_psu');
+    this.set(id, 'setpointVoltage', { value: volts, unit: 'volt' })
+      .set(id, 'currentLimit', { value: amps, unit: 'ampere' })
+      .set(id, 'outputEnabled', true)
+      .wire(`${id}.negative`, 'GND1.ref');
+    return id;
+  }
+  /**
+   * Sprint 22 review 3: a bleeder resistor across a supply's output (+ to GND1), so that the
+   * supply always DELIVERS current: the bench-supply model cannot sink, and input leakage (±I_I,
+   * either return pin) could otherwise flow back into a lightly loaded supply. Returns its id.
+   */
+  bleed(psu = 'PSU1', ohms = 10_000): string {
+    const r = this.add('component.resistor');
+    this.ohms(r, ohms).wire(`${psu}.positive`, `${r}.a`).wire(`${r}.b`, 'GND1.ref');
+    return r;
+  }
   ohms(id: string, value: number): this {
     return this.set(id, 'resistance', { value, unit: 'ohm' });
   }

@@ -212,3 +212,19 @@ worked example; bit timing 27/70 µs).
   session re-prepares the solved circuit (`nodes()`) after every corner and reads nothing of a
   corner after that.
   Both are used only by `src/logic/bounds.ts` through `session.ts` (see that file's header).
+
+## Added in Sprint 22 (logic bound provenance)
+
+`src/logic/provenance.ts` lists every numerical bound the logic guarantee checks use — manufacturer,
+exact part, document and revision, table/row/test conditions, the supply/temperature/load range it
+applies to and its kind (guaranteed / typical / absolute maximum / derived). The documents were
+downloaded from ti.com and espressif.com and pinned with SHA-256 in the sprint evidence
+(`~/tbi-s22/logic/datasheets/SOURCES.txt`). `tests/logic-provenance.test.ts` requires a row with
+the same value for every card bound and ESP32 pad figure.
+
+Sprint 22 review round: further kinds `recommended` (a recommended operating condition, e.g. §5.3
+V_O 0 to V_CC), `test-condition` (the condition a table is measured at, e.g. ESP32 Table 5-3
+"3.3 V, 25 °C") and `assumption` (engine tolerances that are NOT datasheet figures: RAIL_V 1 mV,
+UNPOWERED_V 1 mV, TABULATED_VCC_TOLERANCE_V 1 µV — owner decision F3). `iccLoaded` (I_CC + I_O
+for a loaded output, only with the inputs at the I_CC test voltages) is `derived` from 1G §8.2.1.1
+(owner decision F4). The bounds never use the typical ESP32 drive figures (I_OH 40 mA, I_OL 28 mA).

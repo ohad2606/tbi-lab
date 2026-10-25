@@ -1,8 +1,8 @@
 /**
  * Exploration Foundation L3 (packaged logic) and L2 (state inspection) in the browser.
  *
- * - local simulation: an SN74LVC08A at 3.0 V, gate 1 from two closed switches lighting an LED,
- *   gate 2 LOW, and a single SN74LVC1G08 whose A is held at exactly V_IH (2.0 V) by a divider; the
+ * - local simulation (Sprint 22, inside the I_CC test conditions): an SN74LVC08A at 3.6 V, gate 1
+ *   from two closed switches, gate 2 LOW, and a single SN74LVC1G08 with A, B at 5.5 V; the
  *   Inspector's logic panel shows each pin's level, measured voltage and why, a gate selector, and
  *   marks the truth-table rows the gates are in;
  * - the package's own input in the undefined band refuses the Run by name; in Hebrew the table follows RTL while pin names,
@@ -33,10 +33,13 @@ test.beforeEach(async ({ page }) => {
 });
 
 /**
- * PSU1 3.0 V → U1 (SN74LVC08A). Gate 1 from two closed switches → LED; gate 2: 2A HIGH, 2B LOW;
- * gates 3/4 to GND. A 10 kΩ / 20 kΩ divider (2.0 V = V_IH) drives input A of a single
- * SN74LVC1G08 (B HIGH), or, with `undefinedA2`, a 10 kΩ / 10 kΩ one (1.5 V) the package's 2A.
- * `openGate3` leaves 3A/3B unconnected.
+ * Sprint 22 (Q1 strict: I_CC is bounded only under its test condition, SN74LVC08A at V_CC = 3.6 V
+ * with every input at V_CC or GND, SCAS283W §5.7; SN74LVC1G08 with every input at 5.5 V or GND,
+ * SCES217AA §5.5): PSU1 3.6 V → U1 (SN74LVC08A). Gate 1 from two closed switches (inputs at V_CC)
+ * → 1Y open (I_CC only at I_O = 0, SCAS283W §5.7); gate 2: 2A HIGH, 2B LOW;
+ * gates 3/4 to GND. A single SN74LVC1G08 at 3.6 V with A and B at 5.5 V from PSU2 lights the LED.
+ * With `undefinedA2` a 10 kΩ / 10 kΩ divider puts the package's 2A at 1.8 V (undefined) and the
+ * single gate's A is at GND. `openGate3` leaves 3A/3B unconnected.
  */
 function quadCircuit(id: string, variant: 'ok' | 'openGate3' | 'undefinedA2' = 'ok') {
   const openGate3 = variant === 'openGate3';
@@ -70,10 +73,21 @@ function quadCircuit(id: string, variant: 'ok' | 'openGate3' | 'undefinedA2' = '
     if (!r.ok) throw new Error(r.error);
     doc = r.doc;
   };
-  set('PSU1', 'setpointVoltage', { value: 3, unit: 'volt' });
+  set('PSU1', 'setpointVoltage', { value: 3.6, unit: 'volt' });
   set('PSU1', 'currentLimit', { value: 0.1, unit: 'ampere' });
   set('PSU1', 'outputEnabled', true);
   wire('PSU1.negative', 'GND1.ref');
+  const hi = add('instrument.lab_psu', 0, -800);
+  set(hi, 'setpointVoltage', { value: 5.5, unit: 'volt' });
+  set(hi, 'currentLimit', { value: 0.1, unit: 'ampere' });
+  set(hi, 'outputEnabled', true);
+  wire(`${hi}.negative`, 'GND1.ref');
+  // Sprint 22 review 3: a bleeder keeps PSU2 delivering (the bench-supply model cannot sink, and
+  // the single gate's input leakage may flow back into a rail that feeds only inputs).
+  const bleed = add('component.resistor', 160, -800);
+  set(bleed, 'resistance', { value: 10_000, unit: 'ohm' });
+  wire(`${hi}.positive`, `${bleed}.a`);
+  wire(`${bleed}.b`, 'GND1.ref');
   const u = add('logic.quad_and', 400, 0);
   wire('PSU1.positive', `${u}.vcc`);
   wire(`${u}.gnd`, 'GND1.ref');
@@ -91,34 +105,35 @@ function quadCircuit(id: string, variant: 'ok' | 'openGate3' | 'undefinedA2' = '
     wire(`${u}.${pin}`, `${r}.a`);
     wire(`${r}.b`, 'GND1.ref');
   }
-  // The 1.5 V divider: into the single gate's A (its B HIGH), or into the package's 2A.
+  // The single gate: B at 5.5 V; A at 5.5 V, or at GND with `undefinedA2`.
   const g = add('logic.gate_and', 0, 600);
   wire('PSU1.positive', `${g}.vcc`);
   wire(`${g}.gnd`, 'GND1.ref');
-  wire(`${g}.b`, 'PSU1.positive');
-  const target = variant === 'undefinedA2' ? `${u}.a2` : `${g}.a`;
-  const top = add('component.resistor', 0, 300);
-  const bottom = add('component.resistor', 160, 300);
-  set(top, 'resistance', { value: 10_000, unit: 'ohm' });
-  // Into the package's 2A, 1.5 V (between V_IL and V_IH: refused). Into the single gate,
-  // Sprint 21: 3.0 · 30k/40k = 2.25 V, a HIGH that stays above V_IH 2.0 V within the input
-  // leakage bound (±5 µA × 7.5 kΩ = ±37.5 mV); exactly 2.0 V from a divider is not guaranteed.
-  set(bottom, 'resistance', { value: variant === 'undefinedA2' ? 10_000 : 30_000, unit: 'ohm' });
-  wire('PSU1.positive', `${top}.a`);
-  wire(`${top}.b`, target);
-  wire(target, `${bottom}.a`);
-  wire(`${bottom}.b`, 'GND1.ref');
-  if (variant === 'undefinedA2') wire(`${g}.a`, 'GND1.ref');
-  else wire(`${u}.a2`, 'PSU1.positive');
+  wire(`${g}.b`, `${hi}.positive`);
+  if (variant === 'undefinedA2') {
+    wire(`${g}.a`, 'GND1.ref');
+    const top = add('component.resistor', 0, 300);
+    const bottom = add('component.resistor', 160, 300);
+    set(top, 'resistance', { value: 10_000, unit: 'ohm' });
+    set(bottom, 'resistance', { value: 10_000, unit: 'ohm' });
+    wire('PSU1.positive', `${top}.a`);
+    wire(`${top}.b`, `${u}.a2`);
+    wire(`${u}.a2`, `${bottom}.a`);
+    wire(`${bottom}.b`, 'GND1.ref');
+  } else {
+    wire(`${g}.a`, `${hi}.positive`);
+    wire(`${u}.a2`, 'PSU1.positive');
+  }
   wire(`${u}.b2`, 'GND1.ref');
   // Gates 3 and 4: inputs to GND (unless the test leaves gate 3 open).
   for (const pin of [...(openGate3 ? [] : ['a3', 'b3']), 'a4', 'b4'])
     wire(`${u}.${pin}`, 'GND1.ref');
-  // 1Y → 220 Ω → LED → GND.
-  const r = add('component.resistor', 200, 0);
-  const d = add('component.led', 160, 0);
+  // 1Y open: SCAS283W gives I_CC only at I_O = 0 (a loaded 08A output is refused, owner question
+  // Q9). The single gate's Y → 220 Ω → LED → GND.
+  const r = add('component.resistor', 200, 600);
+  const d = add('component.led', 160, 600);
   set(r, 'resistance', { value: 220, unit: 'ohm' });
-  wire(`${u}.y1`, `${r}.a`);
+  wire(`${g}.y`, `${r}.a`);
   wire(`${r}.b`, `${d}.anode`);
   wire(`${d}.cathode`, 'GND1.ref');
   return { doc, u, led: d, gate: g };
@@ -146,9 +161,9 @@ test('L2 state inspection of a packaged gate IC: levels, measured voltages, unde
   await expect(page.getByTestId('logic-thresholds')).toContainText('SN74LVC08A');
   await expect(page.getByTestId('logic-thresholds')).toContainText('2 V');
   await expect(page.getByTestId('logic-thresholds')).toContainText('800 mV');
-  // Gate 1: both inputs HIGH at 3 V, the output HIGH below 3 V (it sources the LED).
+  // Gate 1: both inputs HIGH at 3.6 V (V_CC), the output HIGH (unloaded).
   await expect(page.getByTestId('logic-level-a1')).toHaveText('HIGH');
-  await expect(page.getByTestId('logic-volts-a1')).toHaveText('3 V');
+  await expect(page.getByTestId('logic-volts-a1')).toHaveText('3.6 V');
   await expect(page.getByTestId('logic-level-y1')).toHaveText('HIGH');
   await expect(page.getByTestId('logic-volts-y1')).toContainText('V');
   // Truth table: gate 1 (selected) in HH, gate 2 in HL, gates 3 and 4 in LL.
@@ -167,11 +182,11 @@ test('L2 state inspection of a packaged gate IC: levels, measured voltages, unde
   await page.getByTestId('logic-gate-4').click();
   await expect(page.getByTestId('logic-level-y4')).toHaveText('LOW');
   await page.getByTestId('logic-gate-1').click();
-  // The single gate (L1): A at 2.25 V from the divider, HIGH (guaranteed within the I_I bound).
+  // The single gate (L1): A at 5.5 V from PSU2, HIGH.
   await inspect(page, q.gate);
   await expect(page.getByTestId('logic-level-a')).toHaveText('HIGH');
-  await expect(page.getByTestId('logic-volts-a')).toHaveText('2.25 V');
-  await expect(page.getByTestId('logic-why-a')).toContainText('2.25 V ≥ V_IH 2 V');
+  await expect(page.getByTestId('logic-volts-a')).toHaveText('5.5 V');
+  await expect(page.getByTestId('logic-why-a')).toContainText('5.5 V ≥ V_IH 2 V');
   await expect(page.getByTestId('logic-level-y')).toHaveText('HIGH');
   await expect(page.getByTestId('logic-truth-HH')).toHaveAttribute('aria-current', 'true');
   // The LED really is lit by the solve.
@@ -216,7 +231,7 @@ test('a package input between V_IL and V_IH refuses the Run by name (no level, n
   await waitSaved(page);
   await page.getByTestId('sim-run').click();
   const err = page.getByTestId('sim-error');
-  await expect(err).toContainText(/input\W+2A\W+is at\W+1\.5 V/);
+  await expect(err).toContainText(/input\W+2A\W+is at\W+1\.8 V/);
   await page.getByTestId('language-select').selectOption('he');
   await expect(err).toContainText(/כניסה\W+2A/);
   await page.getByTestId('language-select').selectOption('en');
@@ -259,7 +274,7 @@ test('the package in the schematic (datasheet pin names, wired pins drawn) and i
   await page.getByTestId('view-schematic').click();
   const sch = page.getByTestId('schematic-view');
   await expect(sch).toContainText('SN74LVC08A');
-  for (const pin of ['a1', 'y1', 'a2', 'b2', 'a3', 'b4', 'vcc', 'gnd'])
+  for (const pin of ['a1', 'a2', 'b2', 'a3', 'b4', 'vcc', 'gnd'])
     await expect(page.locator(`[data-part="${q.u}"] [data-pin="${pin}"]`)).toBeVisible();
   await page.getByTestId('view-3d').click();
   await expect(page.getByTestId('view3d')).toHaveAttribute('data-status', 'ready', {

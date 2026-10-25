@@ -22,7 +22,7 @@
       "typeVersion": 1,
       "params": {
         "setpointVoltage": {
-          "value": 3,
+          "value": 5.5,
           "unit": "volt"
         },
         "currentLimit": {
@@ -60,7 +60,7 @@
       "typeVersion": 1,
       "params": {
         "resistance": {
-          "value": 10000,
+          "value": 150,
           "unit": "ohm"
         }
       }
@@ -71,7 +71,7 @@
       "typeVersion": 1,
       "params": {
         "resistance": {
-          "value": 10000,
+          "value": 150,
           "unit": "ohm"
         }
       }
@@ -126,6 +126,45 @@
       "type": "component.ground",
       "typeVersion": 1,
       "params": {}
+    },
+    {
+      "id": "PSU2",
+      "type": "instrument.lab_psu",
+      "typeVersion": 1,
+      "params": {
+        "setpointVoltage": {
+          "value": 3,
+          "unit": "volt"
+        },
+        "currentLimit": {
+          "value": 0.1,
+          "unit": "ampere"
+        },
+        "outputEnabled": true
+      }
+    },
+    {
+      "id": "GND6",
+      "type": "component.ground",
+      "typeVersion": 1,
+      "params": {}
+    },
+    {
+      "id": "R4",
+      "type": "component.resistor",
+      "typeVersion": 1,
+      "params": {
+        "resistance": {
+          "value": 10000,
+          "unit": "ohm"
+        }
+      }
+    },
+    {
+      "id": "GND7",
+      "type": "component.ground",
+      "typeVersion": 1,
+      "params": {}
     }
   ],
   "nets": [
@@ -151,12 +190,12 @@
     },
     {
       "id": "N_5",
-      "role": null,
+      "role": "ground",
       "userName": null
     },
     {
       "id": "N_6",
-      "role": "ground",
+      "role": null,
       "userName": null
     },
     {
@@ -171,11 +210,26 @@
     },
     {
       "id": "N_9",
-      "role": null,
+      "role": "ground",
       "userName": null
     },
     {
       "id": "N_10",
+      "role": "ground",
+      "userName": null
+    },
+    {
+      "id": "N_11",
+      "role": null,
+      "userName": null
+    },
+    {
+      "id": "N_12",
+      "role": null,
+      "userName": null
+    },
+    {
+      "id": "N_13",
       "role": "ground",
       "userName": null
     }
@@ -204,7 +258,7 @@
     {
       "component": "SW1",
       "terminal": "b",
-      "net": "N_3"
+      "net": "N_6"
     },
     {
       "component": "SW2",
@@ -214,92 +268,122 @@
     {
       "component": "SW2",
       "terminal": "b",
-      "net": "N_5"
+      "net": "N_8"
     },
     {
       "component": "R1",
       "terminal": "a",
-      "net": "N_3"
-    },
-    {
-      "component": "R1",
-      "terminal": "b",
-      "net": "N_4"
-    },
-    {
-      "component": "R2",
-      "terminal": "a",
-      "net": "N_5"
-    },
-    {
-      "component": "R2",
-      "terminal": "b",
       "net": "N_6"
+    },
+    {
+      "component": "R1",
+      "terminal": "b",
+      "net": "N_7"
+    },
+    {
+      "component": "R2",
+      "terminal": "a",
+      "net": "N_8"
+    },
+    {
+      "component": "R2",
+      "terminal": "b",
+      "net": "N_9"
     },
     {
       "component": "GND2",
       "terminal": "ref",
-      "net": "N_4"
+      "net": "N_7"
     },
     {
       "component": "GND3",
       "terminal": "ref",
+      "net": "N_9"
+    },
+    {
+      "component": "U1",
+      "terminal": "a",
       "net": "N_6"
     },
     {
       "component": "U1",
-      "terminal": "a",
-      "net": "N_3"
-    },
-    {
-      "component": "U1",
       "terminal": "b",
-      "net": "N_5"
+      "net": "N_8"
     },
     {
       "component": "U1",
       "terminal": "y",
-      "net": "N_8"
+      "net": "N_11"
     },
     {
       "component": "U1",
       "terminal": "vcc",
-      "net": "N_2"
+      "net": "N_3"
     },
     {
       "component": "U1",
       "terminal": "gnd",
-      "net": "N_7"
+      "net": "N_10"
     },
     {
       "component": "GND4",
       "terminal": "ref",
-      "net": "N_7"
+      "net": "N_10"
     },
     {
       "component": "R3",
       "terminal": "a",
-      "net": "N_8"
+      "net": "N_11"
     },
     {
       "component": "R3",
       "terminal": "b",
-      "net": "N_9"
+      "net": "N_12"
     },
     {
       "component": "D1",
       "terminal": "anode",
-      "net": "N_9"
+      "net": "N_12"
     },
     {
       "component": "D1",
       "terminal": "cathode",
-      "net": "N_10"
+      "net": "N_13"
     },
     {
       "component": "GND5",
       "terminal": "ref",
-      "net": "N_10"
+      "net": "N_13"
+    },
+    {
+      "component": "PSU2",
+      "terminal": "positive",
+      "net": "N_3"
+    },
+    {
+      "component": "PSU2",
+      "terminal": "negative",
+      "net": "N_4"
+    },
+    {
+      "component": "GND6",
+      "terminal": "ref",
+      "net": "N_4"
+    },
+    {
+      "component": "R4",
+      "terminal": "a",
+      "net": "N_3"
+    },
+    {
+      "component": "R4",
+      "terminal": "b",
+      "net": "N_5"
+    },
+    {
+      "component": "GND7",
+      "terminal": "ref",
+      "net": "N_5"
     }
   ],
   "layout": {
@@ -368,6 +452,26 @@
         "x": 560,
         "y": 180,
         "rotation": 0
+      },
+      "PSU2": {
+        "x": 0,
+        "y": -320,
+        "rotation": 0
+      },
+      "GND6": {
+        "x": -40,
+        "y": -240,
+        "rotation": 0
+      },
+      "R4": {
+        "x": 200,
+        "y": -300,
+        "rotation": 0
+      },
+      "GND7": {
+        "x": 280,
+        "y": -200,
+        "rotation": 0
       }
     },
     "wires": [
@@ -394,7 +498,7 @@
         },
         "to": {
           "kind": "junction",
-          "junction": "J2"
+          "junction": "J1"
         },
         "vertices": [
           {
@@ -411,17 +515,13 @@
         },
         "to": {
           "kind": "terminal",
-          "component": "U1",
-          "terminal": "vcc"
+          "component": "SW1",
+          "terminal": "a"
         },
         "vertices": [
           {
             "x": -280,
-            "y": -260
-          },
-          {
-            "x": 120,
-            "y": -260
+            "y": -200
           }
         ]
       },
@@ -429,7 +529,7 @@
         "id": "W4",
         "from": {
           "kind": "terminal",
-          "component": "SW1",
+          "component": "SW2",
           "terminal": "a"
         },
         "to": {
@@ -441,20 +541,58 @@
       {
         "id": "W5",
         "from": {
-          "kind": "junction",
-          "junction": "J2"
+          "kind": "terminal",
+          "component": "PSU2",
+          "terminal": "positive"
         },
         "to": {
           "kind": "junction",
-          "junction": "J1"
+          "junction": "J2"
         },
-        "vertices": []
+        "vertices": [
+          {
+            "x": 120,
+            "y": -340
+          }
+        ]
       },
       {
         "id": "W6",
         "from": {
           "kind": "terminal",
-          "component": "SW2",
+          "component": "PSU2",
+          "terminal": "negative"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "GND6",
+          "terminal": "ref"
+        },
+        "vertices": [
+          {
+            "x": -40,
+            "y": -300
+          }
+        ]
+      },
+      {
+        "id": "W7",
+        "from": {
+          "kind": "junction",
+          "junction": "J2"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "U1",
+          "terminal": "vcc"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W8",
+        "from": {
+          "kind": "terminal",
+          "component": "R4",
           "terminal": "a"
         },
         "to": {
@@ -464,7 +602,26 @@
         "vertices": []
       },
       {
-        "id": "W7",
+        "id": "W9",
+        "from": {
+          "kind": "terminal",
+          "component": "R4",
+          "terminal": "b"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "GND7",
+          "terminal": "ref"
+        },
+        "vertices": [
+          {
+            "x": 280,
+            "y": -300
+          }
+        ]
+      },
+      {
+        "id": "W10",
         "from": {
           "kind": "terminal",
           "component": "SW1",
@@ -478,7 +635,7 @@
         "vertices": []
       },
       {
-        "id": "W8",
+        "id": "W11",
         "from": {
           "kind": "terminal",
           "component": "R1",
@@ -501,7 +658,7 @@
         ]
       },
       {
-        "id": "W9",
+        "id": "W12",
         "from": {
           "kind": "terminal",
           "component": "R1",
@@ -515,7 +672,7 @@
         "vertices": []
       },
       {
-        "id": "W10",
+        "id": "W13",
         "from": {
           "kind": "terminal",
           "component": "SW2",
@@ -529,7 +686,7 @@
         "vertices": []
       },
       {
-        "id": "W11",
+        "id": "W14",
         "from": {
           "kind": "terminal",
           "component": "R2",
@@ -552,7 +709,7 @@
         ]
       },
       {
-        "id": "W12",
+        "id": "W15",
         "from": {
           "kind": "terminal",
           "component": "R2",
@@ -566,7 +723,7 @@
         "vertices": []
       },
       {
-        "id": "W13",
+        "id": "W16",
         "from": {
           "kind": "terminal",
           "component": "U1",
@@ -580,7 +737,7 @@
         "vertices": []
       },
       {
-        "id": "W14",
+        "id": "W17",
         "from": {
           "kind": "terminal",
           "component": "U1",
@@ -594,7 +751,7 @@
         "vertices": []
       },
       {
-        "id": "W15",
+        "id": "W18",
         "from": {
           "kind": "terminal",
           "component": "R3",
@@ -608,7 +765,7 @@
         "vertices": []
       },
       {
-        "id": "W16",
+        "id": "W19",
         "from": {
           "kind": "terminal",
           "component": "D1",
@@ -631,22 +788,22 @@
       {
         "id": "J1",
         "x": -280,
-        "y": -200
+        "y": -40
       },
       {
         "id": "J2",
-        "x": -280,
-        "y": -40
+        "x": 120,
+        "y": -300
       }
     ]
   },
   "idCounters": {
-    "PSU": 1,
-    "GND": 5,
-    "W": 16,
-    "N": 10,
+    "PSU": 2,
+    "GND": 7,
+    "W": 19,
+    "N": 13,
     "SW": 2,
-    "R": 3,
+    "R": 4,
     "U": 1,
     "D": 1,
     "J": 2

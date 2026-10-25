@@ -138,6 +138,7 @@ export type EngineErrorCode =
   | 'no_ground'
   | 'floating_circuit'
   | 'psu_shorted'
+  | 'psu_sinking'
   | 'psu_parallel'
   | 'invalid_parameter'
   | 'unsupported_component'
@@ -323,6 +324,9 @@ const quantity = (params: Params, key: string): number | undefined => {
 
 /** Logic part types (their PwlLoad elements are guaranteed output stages). */
 const LOGIC_TYPE = /^logic\./;
+
+/** Numerical resolution of a supply's delivered current (A) for the no-sinking rule. */
+const PSU_SINK_RESOLUTION_A = 1e-9;
 
 class UnionFind {
   private parent = new Map<string, string>();
@@ -1402,10 +1406,28 @@ export class EngineSession {
             const has = (n: string) => n === REF || index.has(n);
             const opts = step ? { gmin: DC_GMIN, step } : { gmin: DC_GMIN };
             const padDevice = new Map(pinDevices.map(({ pin, device }) => [pin.gpio, device]));
+            let replaced: Map<string, Device> | null = null;
             const access = {
               v: (x: readonly number[], n: string) => (n === REF ? 0 : x[index.get(n)!]!),
-              device: (x: readonly number[], key: string) => devices.get(key)!.current(x, opts),
-              pad: (x: readonly number[], gpio: number) => padDevice.get(gpio)!.current(x),
+              // In a corner a stage is replaced by an ideal source (logic/bounds.ts): its current
+              // is the source's (its branch current flows out of + : the forward current of a
+              // HIGH stage, + = V_CC, or of a LOW stage, + = Y, is minus that).
+              device: (x: readonly number[], key: string) => {
+                const r = replaced?.get(key);
+                return r ? -r.current(x, opts) : devices.get(key)!.current(x, opts);
+              },
+              // A bench supply's DELIVERED current (out of its + terminal into the circuit), also
+              // while a corner holds it at its setpoint by an ideal source (whose branch current
+              // flows out of + : the same sign).
+              supply: (x: readonly number[], key: string) => {
+                const r = replaced?.get(key);
+                return r ? r.current(x, opts) : devices.get(key)!.current(x, opts);
+              },
+              // Sprint 22 review F2: a pad replaced by its guaranteed level (an ideal source).
+              pad: (x: readonly number[], gpio: number) => {
+                const r = replaced?.get(`GPIO${gpio}`);
+                return r ? -r.current(x, opts) : padDevice.get(gpio)!.current(x);
+              },
             };
             for (const s of specs)
               if (
@@ -1418,12 +1440,18 @@ export class EngineSession {
             for (const s of specs) if (s.offPins) s.offPins = s.offPins.filter((o) => has(o.node));
             const psus = elements
               .filter((e) => e.kind === 'psu' && e.active && devices.has(e.key))
-              .map((e) => ({
-                id: e.component.id,
-                key: e.key,
-                limitA: this.psuSettings(e.component).limitA!,
-                cv: modes.get(e.key) === 'CV',
-              }));
+              .map((e) => {
+                const [plus, minus] = devices.get(e.key)!.nodeNames() as [string, string];
+                return {
+                  id: e.component.id,
+                  key: e.key,
+                  limitA: this.psuSettings(e.component).limitA!,
+                  cv: modes.get(e.key) === 'CV',
+                  plus,
+                  minus,
+                  setpointV: this.psuSettings(e.component).setpointV!,
+                };
+              });
             const outputRoots = new Set(
               specs.flatMap((s) => s.outputs.map((o) => signalUf.find(o.node))),
             );
@@ -1435,6 +1463,7 @@ export class EngineSession {
                 mode: this.pinModes.get(pin.gpio)! as string,
                 component: pin.component,
                 readsLogic: outputRoots.has(signalUf.find(node)),
+                key: padDevice.get(pin.gpio)!.id,
               }));
             const { perts, checks, extra } = buildBounds(specs, pads, psus, access, xSolution, REF);
             const live = perts.filter((p) => has(p.from) && has(p.to));
@@ -1451,6 +1480,8 @@ export class EngineSession {
             const failure = evaluateBounds(
               {
                 x0: xSolution,
+                x0Modes: modes,
+                nodeRoot: (n: string) => shorts.find(n),
                 nodeIndex: index,
                 sensitivity: (inj) => sens(circuit, xSolution, inj),
                 corner: (spec) => {
@@ -1464,11 +1495,17 @@ export class EngineSession {
                     spec.sinks.map((k) => new ConstantSink(`~bound${n++}`, k.from, k.to, k.amps)),
                     replace,
                   );
-                  const release = () => void circuit.nodes();
+                  replaced = replace;
+                  const release = () => {
+                    replaced = null;
+                    void circuit.nodes();
+                  };
                   try {
-                    const x = (step ? c.solveStep(step) : c.solve()).x;
+                    const r = step ? c.solveStep(step) : c.solve();
+                    const x = r.x;
                     return {
                       x,
+                      modes: r.supplyModes,
                       sensitivity: (inj) => sens(c, x, inj),
                       // The source's branch current flows out of its + terminal: for a HIGH stage
                       // (+ = V_CC) that is −(current out of Y); for a LOW stage (+ = Y), −(into Y).
@@ -1491,6 +1528,20 @@ export class EngineSession {
           }
         : null;
 
+    // Sprint 22 review 3: the bench-supply model has no current SINKING (devices.ts LabPsu, a
+    // documented idealisation): a supply in constant voltage that the circuit would push current
+    // back into is outside the model — refused by name, never shown as a negative current.
+    // (Numerical resolution 1 nA; the logic bounds check a µA-level sink exactly.)
+    for (const e of elements) {
+      if (e.kind !== 'psu' || !e.active || modes.get(e.key) !== 'CV') continue;
+      const i = currents.get(e.key);
+      if (i !== undefined && i < -PSU_SINK_RESOLUTION_A)
+        return this.fail({
+          code: 'psu_sinking',
+          components: [e.component.id],
+          detail: { value: -i },
+        });
+    }
     const outcome: SolveSuccess = {
       ok: true,
       ...this.base(),

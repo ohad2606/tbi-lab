@@ -216,6 +216,16 @@ export const en = {
     '{components}: its supply path has resistance, so the device’s own quiescent supply current (I_CC, not part of the solve) moves its supply. The datasheet bounds I_CC only with every input at 5.5 V or GND (V_CC 1.65–5.5 V); {reason} Without a bound the supply, and every level that depends on it, is not guaranteed: the circuit is not simulated. Feed V_CC straight from the supply (a wire or a closed switch), or hold every input at GND (or 5.5 V).',
   'sim.error.logic_supply_current_uncharacterized.sn74lvc08a':
     '{components}: its supply path has resistance, so the device’s own quiescent supply current (I_CC, not part of the solve) moves its supply. The SN74LVC08A datasheet bounds I_CC only at V_CC = 3.6 V with every input at V_CC or GND; {reason} Without a bound the supply, and every level that depends on it, is not guaranteed: the circuit is not simulated. Feed V_CC straight from the supply (a wire or a closed switch).',
+  // Sprint 22 Q1 (owner decision): a supply's current limit that the gate's own I_CC flows
+  // through is refused unless I_CC is bounded (its datasheet test condition holds).
+  'sim.error.logic_supply_current_uncharacterized.limit':
+    '{components}: whether the supply stays inside its current limit depends on the current it delivers, and that current includes the gate’s own quiescent supply current (I_CC, not part of the solve). The datasheet bounds I_CC only with every input at 5.5 V or GND (Electrical Characteristics §5.5, I_CC: V_I = 5.5 V or GND, I_O = 0, V_CC 1.65–5.5 V); {reason} Without that bound the supply current is not known, so the current limit is not guaranteed: the circuit is not simulated. Hold every input of the gate at GND or exactly 5.5 V (for example from a second supply set to 5.5 V).',
+  'sim.error.logic_supply_current_uncharacterized.limit_input':
+    '{components}: whether the supply stays inside its current limit depends on the current it delivers, and that current includes the gate’s own quiescent supply current (I_CC, not part of the solve). The datasheet bounds I_CC only with every input at 5.5 V or GND (Electrical Characteristics §5.5, I_CC: V_I = 5.5 V or GND, I_O = 0, V_CC 1.65–5.5 V); here input {pin} is not held at exactly those voltages (engine tolerance 1 mV, an engineering assumption, not a datasheet figure). Without that bound the supply current is not known, so the current limit is not guaranteed: the circuit is not simulated. Hold every input of the gate at GND or exactly 5.5 V (for example from a second supply set to 5.5 V).',
+  'sim.error.logic_supply_current_uncharacterized.limit.sn74lvc08a':
+    '{components}: whether the supply stays inside its current limit depends on the current it delivers, and that current includes the device’s own quiescent supply current (I_CC, not part of the solve). The SN74LVC08A datasheet bounds I_CC only at V_CC = 3.6 V with every input at V_CC or GND (Electrical Characteristics §5.7, I_CC: V_I = V_CC or GND, I_O = 0); {reason} Without that bound the supply current is not known, so the current limit is not guaranteed: the circuit is not simulated. Set the supply to 3.6 V and hold every input, including those of unused gates, at V_CC or GND.',
+  'sim.error.logic_supply_current_uncharacterized.limit_input.sn74lvc08a':
+    '{components}: whether the supply stays inside its current limit depends on the current it delivers, and that current includes the device’s own quiescent supply current (I_CC, not part of the solve). The SN74LVC08A datasheet bounds I_CC only at V_CC = 3.6 V with every input at V_CC or GND (Electrical Characteristics §5.7, I_CC: V_I = V_CC or GND, I_O = 0); here input {pin} is not held at exactly those voltages (engine tolerance 1 mV, an engineering assumption, not a datasheet figure). Without that bound the supply current is not known, so the current limit is not guaranteed: the circuit is not simulated. Set the supply to 3.6 V and hold every input, including those of unused gates, at V_CC or GND.',
   'sim.bound.reason.notInputs': 'here an input is not at those voltages.',
   'sim.bound.reason.notSupply': 'here the supply is outside that row.',
   'sim.bound.reason.notLeakage':
@@ -223,7 +233,13 @@ export const en = {
   'sim.error.logic_supply_not_guaranteed':
     '{components}: within the datasheet bounds ({causes}) the supply can reach {worst} (simulated: {supply}), outside the datasheet row the result is computed for ({range}). The levels it implies are not guaranteed, so the circuit is not simulated. Lower the resistance in the supply path, or feed V_CC straight from the supply.',
   'sim.error.logic_supply_not_guaranteed.limit':
-    '{components}: within the datasheet bounds of the logic parts’ supply current, this supply can reach its current limit ({limit}); its voltage, and the levels that depend on it, are not guaranteed, so the circuit is not simulated. Raise the current limit.',
+    '{components}: within the datasheet bounds ({causes}) this supply can have to deliver up to {current}, more than its current limit ({limit}); its voltage, and the levels that depend on it, are then not guaranteed, so the circuit is not simulated. Raise the current limit, or reduce the load.',
+  'sim.error.logic_supply_not_guaranteed.sink':
+    '{components}: within the datasheet bounds ({causes}) this supply, set to constant voltage, could have to absorb up to {current} (for example input leakage returning into it). The bench-supply model cannot sink current, so the circuit is not simulated. Give the supply a load that always draws more than that, for example a bleeder resistor across its output.',
+  'sim.error.logic_supply_current_uncharacterized.loaded':
+    '{components}: output {pin} carries current here, and the SN74LVC08A datasheet gives the quiescent supply current I_CC only at I_O = 0 (Electrical Characteristics §5.7: V_I = V_CC or GND, I_O = 0, V_CC = 3.6 V); it has no rule for I_CC with a loaded output. The supply current, and so the supply’s current limit, is not guaranteed: the circuit is not simulated. Leave the package’s outputs unloaded, or use single gates (SN74LVC1G…), whose datasheets state the supply rule for loaded outputs (§8.2.1.1).',
+  'sim.error.logic_input_leakage_uncharacterized.limit':
+    '{components}: input {pin} draws its leakage current I_I from the supply, and at {supply} the datasheet gives no bound for it (I_I is specified only at {iiVcc}). The supply current, and so whether the supply stays inside its current limit, is not guaranteed: the circuit is not simulated. Run the device at a supply where I_I is specified.',
   'sim.error.logic_input_leakage_uncharacterized':
     '{components}: input {pin} is held through a resistance, and at {supply} the datasheet gives no bound for the input leakage current (I_I is specified only at {iiVcc}). The voltage across that resistance, and so the input level, is not guaranteed: the circuit is not simulated. Tie the input straight to V_CC or GND (a wire or a closed switch), or run the device at a supply where I_I is specified.',
   'sim.error.logic_input_not_guaranteed':
@@ -236,6 +252,10 @@ export const en = {
     '{components}: the worst case within the datasheet bounds could not be established ({reason}), so no level is guaranteed and the circuit is not simulated.',
   'sim.bound.notEstablished.corner_unsolved':
     'the worst-case operating point could not be solved and verified',
+  'sim.bound.notEstablished.parallel_outputs':
+    'two outputs drive the same net with nothing between them; no datasheet characterizes how they share the current',
+  'sim.bound.notEstablished.supply_mode':
+    'within those bounds a supply would switch between constant voltage and its current limit, and the worst case across that change is not established',
   'sim.bound.notEstablished.singular': 'the circuit’s linearisation is singular',
   'sim.bound.notEstablished.not_monotone': 'the worst case moves with the operating point',
   'sim.bound.notEstablished.part_not_bounded': 'this part’s state could not be bounded',
@@ -256,13 +276,16 @@ export const en = {
     '{components}: {pin}, an ESP32 input, reads this logic output at {voltage} in the simulation, but within the datasheet bounds ({causes}) it can be at {worst}, {cmp}. The ESP32 would not read a guaranteed LOW, so the circuit is not simulated. A gate output LOW is guaranteed close to GND only at light load (the datasheet row V_OL ≤ 0.1 V at up to 100 µA): lighten what the output sinks (e.g. a larger pull-up) or what lies between it and the pin.',
   'sim.error.logic_mcu_pull_uncharacterized.reads':
     '{components}: {pin}, an ESP32 input that reads this logic output, has its internal pull resistor enabled. The ESP32 datasheet gives that resistor only as typical (45 kΩ, no minimum or maximum), so the load it puts on the output, and the level the pin reads, are not guaranteed: the circuit is not simulated. Turn the internal pull off (a plain input).',
+  'sim.error.logic_output_uncharacterized.forced':
+    '{components}: output {pin} is forced {forced} past its own rail (above V_CC while HIGH, or below GND while LOW), for example by another driver tied to it. The datasheet characterizes no output current in that direction and the simulator does not invent one, so the circuit is not simulated. Never tie an output to another driver (datasheet §8.2.1.3).',
   'sim.error.logic_output_uncharacterized.reverse':
     '{components}: within the datasheet bounds ({causes}), output {pin} would carry {current} the wrong way — into a HIGH output or out of a LOW one, for example from another driver tied to it. The datasheet characterizes no output current in that direction, so the circuit is not simulated. Never tie an output to another driver (datasheet §8.2.1.3).',
   'sim.bound.cause.leakage': 'input leakage I_I',
   'sim.bound.cause.supply_current': 'quiescent supply current I_CC',
   'sim.bound.cause.esp32_voh': 'ESP32 V_OH ≥ 2.64 V',
   'sim.bound.cause.esp32_vol': 'ESP32 V_OL ≤ 0.33 V',
-  'sim.bound.cause.output_guarantee': 'the driving output’s guaranteed level',
+  'sim.bound.cause.output_guarantee':
+    'a gate output anywhere between its guaranteed level and its own rail',
   'sim.bound.cmp.high': 'below {th}',
   'sim.bound.cmp.low': 'above {th}',
   'logic.why.notGuaranteed':
@@ -530,6 +553,8 @@ export const en = {
     'These parts form a floating circuit with no connection to GND: {components}. Connect them to the circuit or remove them.',
   'sim.error.floating_output_off':
     'These parts reach GND only through {supplies}, whose output is off: {components}. Turn the output on or connect them to GND.',
+  'sim.error.psu_sinking':
+    '{components}: the circuit would push {current} back into this supply, which is set to constant voltage. The bench-supply model cannot sink current (an idealisation of the simulator), so the circuit is not simulated. Make sure no other source drives this supply’s output above its setpoint.',
   'sim.error.psu_shorted':
     '{components}: the output terminals are joined by a wire (a short circuit). Remove that wire to run.',
   'sim.error.psu_parallel.title': 'Parallel power supplies are not yet supported',
@@ -1220,20 +1245,20 @@ export const en = {
     'analogWrite drives GPIO18 with a 1 kHz PWM signal; the LED’s average current, and its brightness, follow the duty. The fade stays between 1 and 255: duty 0 is not simulated yet.',
   'example.esp32-logic-and.title': 'ESP32: an AND gate with read-back',
   'example.esp32-logic-and.summary':
-    'An ESP32 output and a push button drive an SN74LVC1G08 AND gate powered at 3.0 V. The gate lights an LED and the ESP32 reads its output back. Hold the button and watch the serial monitor; release it and the LED stays dark.',
+    'Not simulated: this example shows a limit of the datasheets. An ESP32 output and a push button drive an SN74LVC1G08 AND gate powered at 3.0 V, which lights an LED and is read back by the ESP32. The datasheet bounds the gate’s supply current I_CC only with every input at 5.5 V or GND (§5.5). An ESP32 output never reaches 5.5 V, its guaranteed LOW (at most 0.33 V) is not GND, and before the sketch starts the input leakage through the 10 kΩ pull-down moves the input about 50 mV off GND. Without that bound the bench supply’s current limit is not guaranteed, so the simulator refuses the circuit by name in every state and shows no truth table.',
   'example.esp32-logic-quad-and.title': 'ESP32: a quad AND gate IC driving LEDs',
   'example.esp32-logic-quad-and.summary':
-    'Two ESP32 outputs and a push button drive an SN74LVC08A (four AND gates in one package, one shared supply) powered at 3.0 V. Gate 1 lights a LED, gate 2 chains gate 1 with the button and lights a second LED; the unused gates’ inputs are tied to GND. Open the part in the Inspector to see each gate’s state and truth table.',
+    'Not simulated: this example shows a limit of the datasheets. Two ESP32 outputs and a push button drive an SN74LVC08A (four AND gates in one package, one shared supply) powered at 3.0 V; gate 1 would light a LED and gate 2 would chain it with the button. The SN74LVC08A datasheet bounds its supply current I_CC only at V_CC = 3.6 V with every input at V_CC or GND (§5.7), and its input leakage only at 3.6 V. Neither holds here (and an ESP32 output is never exactly at a rail), so the levels of the inputs held through the pull-downs and the bench supply’s current limit are not guaranteed: the simulator refuses the circuit by name in every state and shows no truth table.',
   // Sprint 20 logic examples.
   'example.logic-and-switches.title': 'Logic: an AND gate with two switches',
   'example.logic-and-switches.summary':
-    'Two switches, each with a 10 kΩ pull-down, drive an SN74LVC1G08 AND gate powered at 3.0 V; the LED lights only when both are closed. Select the gate to see its truth table, each pin’s level and voltage, and toggle the inputs from the Inspector.',
+    'Two switches drive an SN74LVC1G08 AND gate powered at 3.0 V by PSU2; the LED lights only when both are closed. The switches take their HIGH from PSU1 set to 5.5 V, and each input has a 150 Ω pull-down, so every input is at exactly 5.5 V or GND (engine tolerance 1 mV, an engineering assumption; the input leakage moves an open input at most 0.75 mV): the only input voltages at which the datasheet bounds the gate’s supply current I_CC (§5.5). Caveats: a real switch’s contact resistance at 36.7 mA can move a closed input by more than 1 mV, and 5.5 V is the recommended maximum input voltage V_I (§5.3), with no margin above it. A 10 kΩ bleeder across PSU2 keeps it delivering at least 300 µA: a bench supply cannot absorb current, and with Y LOW the inputs’ leakage could otherwise flow back into it. Select the gate to see its truth table, each pin’s level and voltage, and toggle the inputs from the Inspector.',
   'example.logic-cascade.title': 'Logic: cascaded gates, (A·B·C) + D',
   'example.logic-cascade.summary':
-    'Four switches with pull-downs. Inside one SN74LVC08A, gate 1 forms A·B and feeds gate 2, which adds C; across packages, an SN74LVC1G32 OR gate combines that with switch D, an override, and lights the LED. All at 3.0 V; the unused gates’ inputs are tied to GND.',
+    'Not simulated: this example shows why a cascade cannot be guaranteed here. Four switches with pull-downs; inside one SN74LVC08A, gate 1 forms A·B and feeds gate 2, which adds C; an SN74LVC1G32 OR gate combines that with switch D and drives the LED, all at 3.0 V. The datasheets bound each part’s supply current I_CC only with every input at its test voltages (SN74LVC08A: V_CC = 3.6 V, inputs at V_CC or GND, and its input leakage only at 3.6 V; SN74LVC1G32: inputs at 5.5 V or GND). At 3.0 V, and with inputs driven by another gate’s output (guaranteed only within a band, never exactly at a rail), neither holds: the levels of the inputs held through pull-downs, and the bench supply’s current limit, are not guaranteed, so the simulator refuses the circuit by name in every switch position and shows no truth table.',
   'example.esp32-logic-override.title': 'ESP32: an OR gate with a manual override',
   'example.esp32-logic-override.summary':
-    'An ESP32 output and a toggle switch drive an SN74LVC1G32 OR gate powered at 3.0 V; both inputs have 10 kΩ pull-downs. The LED blinks with the ESP32 until you close the switch, which keeps it on; the ESP32 reads the gate’s output back and reports the override on the serial monitor.',
+    'Not simulated: this example shows a limit of the datasheets. An ESP32 output and a toggle switch drive an SN74LVC1G32 OR gate powered at 3.0 V (both inputs with 10 kΩ pull-downs), which lights an LED and is read back by the ESP32. The datasheet bounds the gate’s supply current I_CC only with every input at 5.5 V or GND (§5.5). An ESP32 output never reaches 5.5 V, its guaranteed LOW (at most 0.33 V) is not GND, and the switch and the pull-downs give 3.0 V or about 50 mV off GND. Without that bound the bench supply’s current limit is not guaranteed, so the simulator refuses the circuit by name in every state and shows no truth table.',
   'example.esp32-servo-sweep.title': 'ESP32: sweep an SG90 servo with PWM',
   'example.esp32-servo-sweep.summary':
     'A 50 Hz LEDC signal on GPIO18 with 1.0, 2.0 and 1.5 ms pulses moves the servo to 0°, 180° and 90°. The servo runs from the 5 V bench supply.',

@@ -83,10 +83,11 @@ test('A: the truth table is in the Inspector before a Run; live levels, why, and
 
   await run(page);
   await inspect(page, 'U1');
-  // SW1 closed, SW2 open: A HIGH at 3 V, B LOW at 0 V, Y LOW; row HL.
+  // SW1 closed, SW2 open: A HIGH at 5.5 V (Sprint 22: the 5.5 V input rail), B LOW at 0 V, Y LOW;
+  // row HL.
   await expect(page.getByTestId('logic-level-a')).toHaveText('HIGH');
-  await expect(page.getByTestId('logic-volts-a')).toHaveText('3 V');
-  await expect(page.getByTestId('logic-why-a')).toContainText('3 V ≥ V_IH 2 V');
+  await expect(page.getByTestId('logic-volts-a')).toHaveText('5.5 V');
+  await expect(page.getByTestId('logic-why-a')).toContainText('5.5 V ≥ V_IH 2 V');
   await expect(page.getByTestId('logic-why-a')).toContainText('V_CC = 3 V');
   await expect(page.getByTestId('logic-level-b')).toHaveText('LOW');
   await expect(page.getByTestId('logic-why-b')).toContainText('0 V ≤ V_IL 800 mV');
@@ -114,7 +115,7 @@ test('A: the truth table is in the Inspector before a Run; live levels, why, and
   await expect(page.getByTestId('logic-level-y')).toHaveText('HIGH');
   await expect(page.getByTestId('logic-volts-a')).toHaveAttribute('dir', 'ltr');
   await expect(page.getByTestId('logic-truth')).toHaveAttribute('dir', 'ltr');
-  await expect(page.getByTestId('logic-why-a')).toContainText('3 V ≥ V_IH 2 V');
+  await expect(page.getByTestId('logic-why-a')).toContainText('5.5 V ≥ V_IH 2 V');
   await shot(page, 's20l-A-run-HH-he');
   await page.getByTestId('language-select').selectOption('en');
   await page.getByTestId('sim-stop').click();
@@ -190,18 +191,21 @@ test('a refusal in an ESP32 session (runtime controller) is explained by pin (Sp
   await openExample(page, 'esp32-logic-override');
   await buildProgram(page);
   await page.getByTestId('sim-run').click();
+  // Sprint 22 Q1 (strict): input A (GPIO18's level or its pull-down's leakage drop) is never at
+  // 5.5 V or exactly GND: the gate's I_CC is unbounded and the supply's current limit is refused,
+  // naming input A.
   await expect(page.getByTestId('sim-error')).toHaveAttribute(
     'data-code',
-    'logic_mcu_input_not_guaranteed',
+    'logic_supply_current_uncharacterized',
     { timeout: 20_000 },
   );
+  await expect(page.getByTestId('sim-error')).toContainText('current limit');
   await inspect(page, 'U2');
   await expect(page.getByTestId('logic-level-y')).toHaveText('not simulated');
-  await expect(page.getByTestId('logic-why-y')).toContainText('ESP32 pin reading this output');
   await shot(page, 's21l-D-refused-by-pin-en');
 });
 
-/** PSU1 3.0 V → SN74LVC1G08 U1 (A HIGH); B from toggle switch SW1 (closed) with NO pull-down. */
+/** PSU1 3.0 V → SN74LVC1G08 U1 (A HIGH at 5.5 V from PSU2); B from toggle switch SW1 (closed, to 5.5 V) with NO pull-down. */
 function noPullDownCircuit(id: string) {
   let doc: ProjectDocument = createProject({
     projectId: id,
@@ -242,8 +246,19 @@ function noPullDownCircuit(id: string) {
   set(r, 'resistance', { value: 10_000, unit: 'ohm' });
   wire('PSU1.positive', `${g}.vcc`);
   wire(`${g}.gnd`, 'GND1.ref');
-  wire(`${g}.a`, 'PSU1.positive');
-  wire('PSU1.positive', `${sw}.a`);
+  // Sprint 22 Q1 (strict): the inputs' HIGH from a second supply at 5.5 V (the I_CC test voltage).
+  const hi = add('instrument.lab_psu', 0, -200);
+  set(hi, 'setpointVoltage', { value: 5.5, unit: 'volt' });
+  set(hi, 'currentLimit', { value: 0.1, unit: 'ampere' });
+  set(hi, 'outputEnabled', true);
+  wire(`${hi}.negative`, 'GND1.ref');
+  // Sprint 22 review 3: a bleeder keeps PSU2 delivering (it feeds only inputs; no sinking model).
+  const bl = add('component.resistor', 0, -320);
+  set(bl, 'resistance', { value: 10_000, unit: 'ohm' });
+  wire(`${hi}.positive`, `${bl}.a`);
+  wire(`${bl}.b`, 'GND1.ref');
+  wire(`${g}.a`, `${hi}.positive`);
+  wire(`${hi}.positive`, `${sw}.a`);
   wire(`${sw}.b`, `${g}.b`);
   wire(`${g}.y`, `${r}.a`);
   wire(`${r}.b`, 'GND1.ref');
@@ -366,60 +381,27 @@ function cascadeAt36(): ProjectDocument {
   return r.doc;
 }
 
-test('B at 3.6 V: the package gate selector; 1Y → 2A inside the package and 2Y → OR across packages; save/reopen', async ({
+test("B at 3.6 V (Sprint 22 Q1 strict): the cascade is refused by name — a gate output is never exactly at a rail, so the next gate's I_CC is unbounded; the package gate selector still works (EN, HE)", async ({
   page,
 }) => {
   await openImported(page, cascadeAt36());
   await waitSaved(page);
-  await run(page);
   await inspect(page, 'U1');
-  // All switches open: every gate LL → L (gate 2's 2A is 1Y = L).
-  await expect(page.getByTestId('logic-truth-gates-LL')).toHaveText('1, 2, 3, 4');
-  await expect(page.getByTestId('logic-truth-gates-LH')).toHaveText('');
-  // A and B closed from the panel (gate 1's inputs).
-  await page.getByTestId('logic-control-SW1').click();
-  await page.getByTestId('logic-control-SW2').click();
-  await expect(page.getByTestId('logic-level-y1')).toHaveText('HIGH');
-  await expect(page.getByTestId('logic-gate-2')).toContainText('H·L→L');
-  // Gate 2: 2A = 1Y (inside the package), 2B = switch C.
+  // Not running: the package's gates are selectable and their truth table is shown.
   await page.getByTestId('logic-gate-2').click();
-  await expect(page.getByTestId('logic-level-a2')).toHaveText('HIGH');
-  await expect(page.getByTestId('logic-level-b2')).toHaveText('LOW');
-  await page.getByTestId('logic-control-SW3').click();
-  await expect(page.getByTestId('logic-level-y2')).toHaveText('HIGH');
-  await expect(page.getByTestId('logic-truth-HH')).toHaveAttribute('aria-current', 'true');
-  await expect(page.getByTestId('logic-truth-gates-HH')).toHaveText('1, 2');
-  await shot(page, 's20l-B-package-en');
-  // Across packages: the OR gate sees 2Y on A; the LED is lit.
-  await inspect(page, 'U2');
-  await expect(page.getByTestId('logic-level-a')).toHaveText('HIGH');
-  await expect(page.getByTestId('logic-level-b')).toHaveText('LOW');
-  await expect(page.getByTestId('logic-level-y')).toHaveText('HIGH');
-  await inspect(page, 'D1');
-  await expect(page.getByTestId('result-current')).toContainText('mA');
-  // D (override) alone: open A again, close D.
-  await inspect(page, 'U1');
-  await page.getByTestId('logic-control-SW1').click();
-  await inspect(page, 'U2');
-  await expect(page.getByTestId('logic-level-y')).toHaveText('LOW');
-  await page.getByTestId('logic-control-SW4').click();
-  await expect(page.getByTestId('logic-level-y')).toHaveText('HIGH');
-  await expect(page.getByTestId('logic-truth-LH')).toHaveAttribute('aria-current', 'true');
-  await shot(page, 's20l-B-or-en');
+  await expect(page.getByTestId('logic-truth-HH')).toContainText('H');
+  await page.getByTestId('sim-run').click();
+  const err = page.getByTestId('sim-error');
+  await expect(err).toHaveAttribute('data-code', 'logic_supply_current_uncharacterized');
+  await expect(err).toContainText('current limit');
+  await shot(page, 's22l-B36-refused-en');
   await page.getByTestId('language-select').selectOption('he');
-  await shot(page, 's20l-B-or-he');
+  await expect(err).toContainText('מגבלת הזרם');
+  await shot(page, 's22l-B36-refused-he');
   await page.getByTestId('language-select').selectOption('en');
-  await page.getByTestId('sim-stop').click();
-  await waitSaved(page);
-  await goToProjects(page);
-  await reopenFromLibrary(page);
-  await run(page);
-  await inspect(page, 'U2');
-  await expect(page.getByTestId('logic-truth-LH')).toHaveAttribute('aria-current', 'true');
-  await page.getByTestId('sim-stop').click();
 });
 
-test('D: ESP32 + manual switch + OR gate (Sprint 21 review): Y HIGH into the LED and the read-back GPIO19 is not a guaranteed ESP32 HIGH — refused by name; the switch persists (save/reopen)', async ({
+test('D: ESP32 + manual switch + OR gate (Sprint 22 Q1 strict): refused by name, the supply current limit (I_CC unbounded); the switch persists (save/reopen)', async ({
   page,
   request,
 }) => {
@@ -429,17 +411,17 @@ test('D: ESP32 + manual switch + OR gate (Sprint 21 review): Y HIGH into the LED
   await expect(page.getByTestId('logic-mcu-a')).toContainText('GPIO18');
   await buildProgram(page);
   await page.getByTestId('sim-run').click();
-  // setup() drives GPIO18 HIGH: Y HIGH sources the LED (several mA) and GPIO19 reads it; the
-  // SN74LVC1G32 guarantees V_OH ≥ 2.4 V there (16 mA point), below the ESP32's V_IH 2.475 V.
+  // Sprint 22 Q1 (strict): input A is never at 5.5 V or exactly GND (GPIO18's level, or its
+  // pull-down's leakage drop): the gate's I_CC is unbounded, the supply's current limit refused.
   const err = page.getByTestId('sim-error');
-  await expect(err).toHaveAttribute('data-code', 'logic_mcu_input_not_guaranteed', {
+  await expect(err).toHaveAttribute('data-code', 'logic_supply_current_uncharacterized', {
     timeout: 20_000,
   });
-  await expect(err).toContainText('GPIO19');
-  await expect(err).toContainText('V_IH 2.475 V');
+  await expect(err).toContainText('current limit');
+  await expect(err).toContainText('V_I = 5.5 V or GND');
   await shot(page, 's21l-D-refused-en');
   await page.getByTestId('language-select').selectOption('he');
-  await expect(err).toContainText('GPIO19');
+  await expect(err).toContainText('מגבלת הזרם');
   await shot(page, 's21l-D-refused-he');
   await page.getByTestId('language-select').selectOption('en');
   // Close the switch from the panel (a persistent edit) and reopen: it is kept.

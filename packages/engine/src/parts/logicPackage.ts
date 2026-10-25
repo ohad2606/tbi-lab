@@ -115,7 +115,11 @@ function nextPackageState(ctx: PartContext, sol: PartSolution, state: PartState)
       const i = sol.deviceCurrent(`${ctx.component.id}/${u.output}`);
       const y = sol.potential(u.output);
       const across = y === null ? 0 : prev === 'high' ? v - y : y - g;
-      if (Math.abs(i) > stage.validA + 1e-12 || across < -WRONG_WAY_V)
+      // Sprint 22 review 3: forced past its own rail → the overdrive voltage (no reverse
+      // characteristic exists, so the model's current there is not a reverse current).
+      if (across < -WRONG_WAY_V)
+        refusal = { refuse: 'logic_output_uncharacterized', at: u.output, forcedV: -across };
+      else if (Math.abs(i) > stage.validA + 1e-12)
         refusal = { refuse: 'logic_output_uncharacterized', at: u.output, value: Math.abs(i) };
     }
   }
