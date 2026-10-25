@@ -47,6 +47,8 @@ export const en = {
     'Drag a straight part of the wire to move it. Its ends stay connected. Delete removes it.',
   'canvas.overlayLimit':
     'This drawing is too large to mark every crossing and branch point: some line hops and junction dots are not drawn. The connections are exactly as drawn.',
+  'canvas.routeConflict':
+    '{count} wires could not be drawn clear of other wires or pins: where a wire touches or runs along another wire or passes over a pin, they are NOT connected. Only wire ends at [[terminal]]s and [[junction]] dots connect.',
   'canvas.routeLimit':
     'This project is very large: {count} wires are drawn with a simple shape (they may pass close to pins or other wires). The connections are exactly as drawn.',
   'canvas.hint.idle': 'Click a terminal to start a wire. Drag on empty space to select.',
@@ -959,7 +961,7 @@ export const en = {
   'auth.signInAgain': 'Sign in again',
   // Sprint 13 Task D: wire routes adjusted when a project opened (layout only).
   'open.routesAdjusted':
-    'Some wire routes were redrawn so they no longer run over pins or displays. Connections are unchanged. Undo restores the previous routes.',
+    'Some wire routes were redrawn so they no longer run over pins, displays or part outlines. Connections are unchanged. Undo restores the previous routes.',
   // Sprint 13 a11y: the slider's own accessible name (distinct from its value field).
   'valueControl.slider': '{label}, slider',
   'build.blockedRunning':

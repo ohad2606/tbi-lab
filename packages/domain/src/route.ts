@@ -41,7 +41,9 @@
  *   8. crossings + bends (a clean crossing is allowed and drawn with a bridge; it costs the
  *      same as one extra bend). Sprint 20 (s20r owner report): crossing a wire of the hop's OWN
  *      electrical node costs SAME_CROSS (3) bends: no hop is drawn there (a hop says "not
- *      connected", which would be false), and a plain crossing of one node's wires is ambiguous
+ *      connected", which would be false), and a plain crossing of one node's wires is ambiguous.
+ *      Sprint 21 (s21r): each grid step run along a body's OUTLINE costs OUTLINE_BENDS bends (half
+ *      hidden under the symbol's knock-out, it reads as the symbol's edge)
  *   8b. TRUNK (s20r): length run along, and points where the route meets or leaves, a wire of the
  *      hop's own node (only when the caller says which node the wire is on, `node`). Wires of one
  *      node may share a run and branch where they part (a T on a wire of the same node reads as
@@ -158,6 +160,12 @@ export const SEARCH_BUDGET_CELLS = 80_000;
  * host (s20r4-large-*.txt); an 80-wire dense ESP32 bench spends ~3 M.
  */
 export const PRICING_BUDGET_OPS = 6_000_000;
+
+/** Work limits of one routing or repair pass (defaults: SEARCH_BUDGET_CELLS, PRICING_BUDGET_OPS). */
+export interface RouteLimits {
+  cells?: number;
+  ops?: number;
+}
 
 export interface HeaderRow {
   box: RouteBox;
@@ -291,6 +299,58 @@ function boxLength(s: Seg, box: RouteBox): number {
   return 0;
 }
 
+/**
+ * Sprint 21 (s21r, owner screenshot): length of a segment running ALONG a body's outline (on its
+ * boundary line, within its extent). The Circuit view draws parts over wires with an opaque
+ * knock-out of the symbol box, so such a run is half hidden and reads as the symbol's own edge
+ * (the owner's V_CC and GND wires along the gate's and the supply's edges). Leaving a terminal on
+ * the edge straight outward, or crossing a corner, has zero length on it.
+ */
+function outlineLength(s: Seg, box: RouteBox, ends: readonly Point[] = []): number {
+  const n = outlineRun(s, box);
+  if (n <= 0) return 0;
+  // The first grid step out of (or into) a hop's own end on this box is exempt: a terminal at a
+  // corner of its part leaving along the edge for one step reads as its lead, not as the outline
+  // (s21r: 98 % of the outline length of the golden benches was such end runs).
+  const onBox = (e: Point) =>
+    e.x >= box.minX && e.x <= box.maxX && e.y >= box.minY && e.y <= box.maxY;
+  const atEnd = ends.some((e) => onBox(e) && (eq(e, s[0]) || eq(e, s[1])));
+  return atEnd ? Math.max(0, n - GRID) : n;
+}
+/** Length of a segment on a box's boundary line, within the box's extent. */
+function outlineRun(s: Seg, box: RouteBox): number {
+  if (horizontal(s)) {
+    if (s[0].y !== box.minY && s[0].y !== box.maxY) return 0;
+    const lo = Math.max(Math.min(s[0].x, s[1].x), box.minX);
+    const hi = Math.min(Math.max(s[0].x, s[1].x), box.maxX);
+    return Math.max(0, hi - lo);
+  }
+  if (vertical(s)) {
+    if (s[0].x !== box.minX && s[0].x !== box.maxX) return 0;
+    const lo = Math.max(Math.min(s[0].y, s[1].y), box.minY);
+    const hi = Math.min(Math.max(s[0].y, s[1].y), box.maxY);
+    return Math.max(0, hi - lo);
+  }
+  return 0;
+}
+const pathLength = (p: readonly Point[]) =>
+  p.slice(1).reduce((n, q, i) => n + Math.abs(q.x - p[i]!.x) + Math.abs(q.y - p[i]!.y), 0);
+/** Outline length of a path over the obstacles' bodies (s21r), the ends' first steps exempt. */
+function outlineOf(path: readonly Point[], obs: RouteObstacles, ends: readonly Point[]): number {
+  let n = 0;
+  for (let i = 1; i < path.length; i++)
+    for (const q of obs.boxes)
+      if (!q.display) n += outlineLength([path[i - 1]!, path[i]!], q, ends);
+  return n;
+}
+/**
+ * A grid step along a body's outline costs this many bends (criterion 8, s21r): a route leaves
+ * the outline when that takes at most this many extra bends per step; a short run along it (a wire
+ * leaving a corner terminal along the edge for one step) is kept rather than bought off with a
+ * detour.
+ */
+const OUTLINE_BENDS = 0.75;
+
 const inside = (v: number, p: number, q: number) => v > Math.min(p, q) && v < Math.max(p, q);
 const onSeg = (p: Point, s: Seg) =>
   (vertical(s) &&
@@ -354,6 +414,7 @@ function cost(
   let crossings = 0;
   let sameCross = 0;
   let trunk = 0;
+  let outline = 0;
   const isEnd = (p: Point) => ends.some((e) => eq(e, p));
   // A TRUNK segment (s20r): a segment of a wire of the hop's own node (criterion 8b).
   const isTrunk = (i: number) => node !== null && obs.segmentNodes?.[i] === node;
@@ -367,7 +428,11 @@ function cost(
         else crossings++;
       }
     });
-    for (const box of obs.boxes) if (!box.display) body += boxLength(s, box);
+    for (const box of obs.boxes)
+      if (!box.display) {
+        body += boxLength(s, box);
+        outline += outlineLength(s, box, ends);
+      }
   }
   const keepOut = keepOutHits(segs, obs, isEnd);
   const hug = hugs(segs, obs, ends);
@@ -400,7 +465,7 @@ function cost(
     shared,
     touches,
     hug,
-    crossings + bends + SAME_CROSS * sameCross,
+    crossings + bends + SAME_CROSS * sameCross + (OUTLINE_BENDS * outline) / GRID,
     trunk,
     length,
   ];
@@ -728,7 +793,10 @@ function searchRoute(
       if (crosses(s, t)) c += own.has(t) ? W_SAME : W_BEND;
     }
     for (const q of boxesAt.get(n) ?? NONE)
-      c += q.display ? (lengthInside(s, q) / GRID) * W_BAND : (boxLength(s, q) / GRID) * W_BODY;
+      c += q.display
+        ? (lengthInside(s, q) / GRID) * W_BAND
+        : (boxLength(s, q) / GRID) * W_BODY +
+          (outlineLength(s, q, ends) / GRID) * OUTLINE_BENDS * W_BEND;
     steps[n * 4 + d] = c;
     return c;
   };
@@ -927,6 +995,58 @@ export function autoRoute(
       if (!best || better(k, bestCost)) {
         best = c;
         bestCost = k;
+      }
+    }
+    // Sprint 21 (s21r, owner screenshot): every short shape the hop took runs along a body's
+    // outline (a V_CC pin on the top edge of its gate leaving sideways along it, then along the
+    // supply's edge). The shapes are tried once more from one grid step straight out of each end
+    // that sits on a body's edge (as a person leaves a pin), priced like any shape.
+    if (!starved && best && outlineOf(best, shapeObs, [a, b]) > 0) {
+      const stubs = (p: Point) =>
+        shapeObs.boxes
+          .filter((q) => !q.display)
+          .flatMap((q) => {
+            const d =
+              p.y === q.minY && p.x > q.minX && p.x < q.maxX
+                ? { x: 0, y: -GRID }
+                : p.y === q.maxY && p.x > q.minX && p.x < q.maxX
+                  ? { x: 0, y: GRID }
+                  : p.x === q.minX && p.y > q.minY && p.y < q.maxY
+                    ? { x: -GRID, y: 0 }
+                    : p.x === q.maxX && p.y > q.minY && p.y < q.maxY
+                      ? { x: GRID, y: 0 }
+                      : null;
+            return d ? [{ x: p.x + d.x, y: p.y + d.y }] : [];
+          });
+      const sa = stubs(a);
+      const sb = stubs(b);
+      const more: Point[][] = [];
+      for (const p of [a, ...sa])
+        for (const q of [b, ...sb]) {
+          if (p === a && q === b) continue;
+          for (const c of candidates(p, q)) {
+            const n = normalize([...(p === a ? [] : [a]), ...c, ...(q === b ? [] : [b])]);
+            if (n) more.push(n);
+          }
+        }
+      const wide = more.length
+        ? nearBox(obs, [a, b, ...sa, ...sb], CHANNEL_REACH * GRID + SHAPE_REACH)
+        : shapeObs;
+      // Leaving straight out is worth a few bends, never a detour: a shape from a step out may be
+      // at most four grid steps longer than the shape it replaces.
+      const plain = pathLength(best);
+      for (const c of more) {
+        if (pathLength(c) > plain + 4 * GRID) continue;
+        if (budget) {
+          const ops = opsOf(c, wide);
+          if (budget.ops < ops) break;
+          budget.ops -= ops;
+        }
+        const k = cost(c, wide, [a, b], node);
+        if (better(k, bestCost)) {
+          best = c;
+          bestCost = k;
+        }
       }
     }
     if (starved) {
@@ -1272,6 +1392,8 @@ export function routeAutoWiresReport(
   doc: ProjectDocument,
   boxes: readonly RouteBox[],
   preview?: { only: ReadonlySet<string> },
+  /** Work limits other than the defaults (s21r: tests compare a limited and an unlimited pass). */
+  limits?: RouteLimits,
 ): { doc: ProjectDocument; degraded: string[] } {
   const autos = doc.layout.wires
     .filter((w) => w.auto && !isContact(doc, w) && (!preview || preview.only.has(w.id)))
@@ -1280,8 +1402,8 @@ export function routeAutoWiresReport(
   // Electrical nodes never change while routing (routes are geometry only).
   const nodes = wireNodes(doc);
   const budget: SearchBudget = {
-    cells: SEARCH_BUDGET_CELLS,
-    ops: PRICING_BUDGET_OPS,
+    cells: limits?.cells ?? SEARCH_BUDGET_CELLS,
+    ops: limits?.ops ?? PRICING_BUDGET_OPS,
     skipped: 0,
   };
   let best = routeInOrder(doc, autos, boxes, nodes, !preview, 0, budget, new Set());
@@ -1466,10 +1588,11 @@ export function repairWireRoutes(
 export function repairWireRoutesReport(
   doc: ProjectDocument,
   boxes: readonly RouteBox[],
+  limits?: RouteLimits,
 ): { doc: ProjectDocument; unrepaired: string[] } {
   const budget: SearchBudget = {
-    cells: SEARCH_BUDGET_CELLS,
-    ops: PRICING_BUDGET_OPS,
+    cells: limits?.cells ?? SEARCH_BUDGET_CELLS,
+    ops: limits?.ops ?? PRICING_BUDGET_OPS,
     skipped: 0,
   };
   const nodes = wireNodes(doc);
@@ -1516,4 +1639,42 @@ export function attachedWires(
   return doc.layout.wires
     .filter((w) => !rigid.has(w.id) && (on(w.from) || on(w.to)))
     .map((w) => w.id);
+}
+
+/**
+ * Sprint 21 (s21r): how much work `routeConflictsReport` may spend (obstacle elements scanned and
+ * priced, counted, never timed). Past it the report stops and says so (`limited`).
+ */
+export const CONFLICT_WORK = 4_000_000;
+
+/**
+ * Sprint 21 (s21r, owner directive "ambiguity between electrically distinct nets must never
+ * occur"): the wires whose DRAWN route reads as a connection it is not: it enters the keep-out of
+ * a terminal, pin or junction that is not one of its ends (criterion 1), runs along a wire of
+ * another node (criterion 3), or meets one with a T or a corner instead of a clean crossing
+ * (criterion 6). The router avoids all three; it keeps one only when nothing better exists (a
+ * congested layout, a manual wire, a hop past the work budget). Such wires are reported so the
+ * Circuit view says so instead of leaving a misleading picture unexplained. Presentation only:
+ * connectivity is the wires' end references, never their geometry. Deterministic and bounded.
+ */
+export function routeConflictsReport(
+  doc: ProjectDocument,
+  boxes: readonly RouteBox[],
+): { wires: string[]; limited: boolean } {
+  const nodes = wireNodes(doc);
+  const segs = new WireSegments(doc, boxes, nodes);
+  const wires: string[] = [];
+  let work = 0;
+  for (const w of doc.layout.wires) {
+    if (isContact(doc, w)) continue;
+    const route = wireRoute(doc, w);
+    if (!route || route.length < 2) continue;
+    work += segs.size;
+    if (work > CONFLICT_WORK) return { wires, limited: true };
+    const near = nearBox(segs.obstacles(w.id), route, SHAPE_REACH);
+    work += opsOf(route, near);
+    const k = cost(route, near, [route[0]!, route[route.length - 1]!], nodes.get(w.id) ?? null);
+    if (k[0]! > 0 || k[2]! > 0 || k[5]! > 0) wires.push(w.id);
+  }
+  return { wires, limited: false };
 }

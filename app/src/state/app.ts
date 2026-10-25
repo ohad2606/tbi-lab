@@ -101,6 +101,12 @@ export type Notice = {
   key: MessageKey;
   params?: Record<string, string | number>;
   tone?: 'error' | 'warning' | 'info';
+  /**
+   * Sprint 21 (s21r): further messages shown in the same banner after the main one, so a notice
+   * that follows another (an import's "Imported ..." after the open's "routes adjusted") does
+   * not hide it.
+   */
+  also?: readonly MessageKey[];
 };
 
 /**
@@ -744,9 +750,13 @@ export class AppStore {
     // Open first, then refresh the list: re-rendering the whole library just before leaving it
     // was the largest part of the import time with 50+ projects (Sprint 5 measurement).
     await this.openProject(doc.projectId);
+    // Sprint 21 (s21r, Sprint 20 UX defect): the open's "routes adjusted" notice stays visible
+    // with the import's own confirmation (it was replaced by it).
+    const adjusted = this.stateValue.notice?.key === 'open.routesAdjusted';
     await this.refreshProjects().catch(() => undefined);
     this.set({
       notice: {
+        ...(adjusted ? { also: ['open.routesAdjusted' as const] } : {}),
         key: renamed
           ? copied
             ? 'import.doneCopyRenamed'

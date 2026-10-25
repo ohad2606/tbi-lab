@@ -1364,14 +1364,40 @@ const CLEAR_OUT = 2.0;
  * Move one end of an orthogonal plan route onto `to`, keeping it orthogonal: the final straight
  * run is extended or shortened when it already lines up, otherwise a short jog is added.
  */
-function moveEnd(flat: Point[], to: Point, which: 'start' | 'end'): Point[] {
+/** Below this sideways offset (mm) an end keeps the former short jog (s21r: a jumper's neck). */
+const SHIFT_MIN = 1;
+function moveEnd(flat: Point[], to: Point, which: 'start' | 'end', shift = true): Point[] {
   const pts = which === 'start' ? [...flat].reverse() : [...flat];
   const last = pts[pts.length - 1]!;
   if (last.x === to.x && last.y === to.y) return flat;
   const prev = pts[pts.length - 2];
+  const before = pts[pts.length - 3];
   if (prev && prev.y === last.y && to.y === last.y) pts[pts.length - 1] = { ...to };
   else if (prev && prev.x === last.x && to.x === last.x) pts[pts.length - 1] = { ...to };
-  else if (last.y === to.y || last.x === to.x) pts.push({ ...to });
+  else if (
+    shift &&
+    // Sprint 21 (s21r): the attach point lies beside the last run (a part's 3D lead end is not
+    // where its symbol's terminal is). The last run moves over with the end and the run before it
+    // stretches or shortens, instead of a jog at the very end: that jog turned back across the
+    // last run's approach (a hook at the terminal, e.g. an LED cathode reached from above).
+    before &&
+    prev &&
+    ((prev.x === last.x &&
+      before.y === prev.y &&
+      before.x !== prev.x &&
+      Math.sign(prev.x - before.x) === Math.sign(to.x - before.x) &&
+      Math.abs(to.x - last.x) > SHIFT_MIN &&
+      Math.abs(to.y - prev.y) > EPS) ||
+      (prev.y === last.y &&
+        before.x === prev.x &&
+        before.y !== prev.y &&
+        Math.sign(prev.y - before.y) === Math.sign(to.y - before.y) &&
+        Math.abs(to.y - last.y) > SHIFT_MIN &&
+        Math.abs(to.x - prev.x) > EPS))
+  ) {
+    pts[pts.length - 2] = prev.x === last.x ? { x: to.x, y: prev.y } : { x: prev.x, y: to.y };
+    pts[pts.length - 1] = { ...to };
+  } else if (last.y === to.y || last.x === to.x) pts.push({ ...to });
   else pts.push({ x: to.x, y: last.y }, { ...to });
   return which === 'start' ? pts.reverse() : pts;
 }
@@ -2112,7 +2138,20 @@ function connect(
       // own runs (to the point where it meets the 2D route): the 2D route itself may share a run
       // with a wire of its node on purpose (route.ts trunk, s20r round 2), laid side by side
       // below (separatePlans).
-      cost += COINCIDENT_COST * coincident(path.slice(0, 3), runs);
+      // Sprint 21 (s21r): the join's own runs are E -> corner and, from the corner, only what is
+      // not already the 2D route's own run (a corner ON the route's run rest[j-1] -> rest[j] joins
+      // it there: the rest of that run is the route itself, priced for every join alike).
+      // Formerly the whole corner -> rest[j] run was priced, so a join straight onto a long trunk
+      // run looked dear and a short hook around it (out, a step aside, back) was taken instead.
+      const prevR = j > 0 ? rest[j - 1]! : null;
+      const onRoute =
+        prevR !== null &&
+        ((Math.abs(prevR.y - R.y) < EPS && Math.abs(corner.y - R.y) < EPS) ||
+          (Math.abs(prevR.x - R.x) < EPS && Math.abs(corner.x - R.x) < EPS));
+      const within = onRoute && pointToRun(corner, prevR, R) < EPS;
+      const tail = !onRoute ? [corner, R] : within ? null : [corner, prevR];
+      cost +=
+        COINCIDENT_COST * (coincident([E, corner], runs) + (tail ? coincident(tail, runs) : 0));
       // Through the point where another wire's lane ends and it rises from pin level.
       for (const q of risers)
         for (let i = 1; i < path.length; i++)
@@ -2183,6 +2222,57 @@ function dodge(plan: Point[], obstacles: Obstacle[]): Point[] {
       if (pts.slice(1).some((q, k) => hit(pts[k]!, q, null))) continue;
       out = [...out.slice(0, i), ...side, ...out.slice(i)];
       i += side.length;
+      break;
+    }
+  }
+  return out;
+}
+
+/**
+ * Sprint 21 (s21r): an INTERIOR run (both ends are corners) that runs along the side of one of
+ * `own` (the wire's own end parts' bodies) within DODGE_MAX moves sideways as a whole to just
+ * outside it; its neighbouring runs stretch or shorten (never fold back). Only when the moved run
+ * and its stretched neighbours hit none of `all`. Plan only.
+ */
+function shiftOffOwn(plan: Point[], own: Obstacle[], all: Obstacle[]): Point[] {
+  if (!own.length || plan.length < 4) return plan;
+  const pad = WIRE.radiusMm + 0.3;
+  const hit = (a: Point, b: Point) =>
+    all.some((o) =>
+      across(a, b, { x0: o.x0 - pad, x1: o.x1 + pad, z0: o.z0 - pad, z1: o.z1 + pad }),
+    );
+  const out = plan.map((p) => ({ ...p }));
+  for (let i = 2; i < out.length - 1; i++) {
+    const a = out[i - 1]!;
+    const b = out[i]!;
+    const h = Math.abs(a.y - b.y) < EPS;
+    const v = Math.abs(a.x - b.x) < EPS;
+    if (h === v) continue;
+    for (const o of own) {
+      const [lo, hi, rlo, rhi] = h
+        ? [o.x0 - pad, o.x1 + pad, o.z0 - pad, o.z1 + pad]
+        : [o.z0 - pad, o.z1 + pad, o.x0 - pad, o.x1 + pad];
+      const lat = h ? a.y : a.x;
+      if (lat <= rlo || lat >= rhi) continue;
+      const s0 = Math.max(Math.min(h ? a.x : a.y, h ? b.x : b.y), lo);
+      const s1 = Math.min(Math.max(h ? a.x : a.y, h ? b.x : b.y), hi);
+      if (s1 - s0 < 1) continue;
+      const depth = Math.min(lat - rlo, rhi - lat);
+      if (depth > DODGE_MAX) continue;
+      const off = lat - rlo < rhi - lat ? rlo - 0.05 : rhi + 0.05;
+      const mv = (p: Point): Point => (h ? { x: p.x, y: off } : { x: off, y: p.y });
+      const p0 = out[i - 2]!;
+      const p1 = out[i + 1]!;
+      const sa = mv(a);
+      const sb = mv(b);
+      // Neighbours keep their direction (no fold back) and a little length.
+      const keeps = (q: Point, from: Point, to: Point) =>
+        Math.sign((h ? to.y - q.y : to.x - q.x) || 1) ===
+          Math.sign((h ? from.y - q.y : from.x - q.x) || 1) && plen(q, to) > 0.5;
+      if (!keeps(p0, a, sa) || !keeps(p1, b, sb)) continue;
+      if (hit(p0, sa) || hit(sa, sb) || hit(sb, p1)) continue;
+      out[i - 1] = sa;
+      out[i] = sb;
       break;
     }
   }
@@ -2391,8 +2481,12 @@ function freshWires(
       const p = k === 0 ? route[0]! : route[route.length - 1]!;
       return t ? { x: t.x, y: t.y, z: t.z } : { x: p.x, y: FLOOR, z: p.y };
     }) as [Vec3, Vec3];
-    if (!isUnder[0]) route = moveEnd(route, { x: at[0].x, y: at[0].z }, 'start');
-    if (!isUnder[1]) route = moveEnd(route, { x: at[1].x, y: at[1].z }, 'end');
+    // (A jumper's end keeps the short jog: its neck rises straight from the housing, s21r.)
+    const jumper = ends.map(
+      (e) => e.kind === 'terminal' && comp(e.component)?.model === 'board.esp32_devkitc',
+    );
+    if (!isUnder[0]) route = moveEnd(route, { x: at[0].x, y: at[0].z }, 'start', !jumper[0]);
+    if (!isUnder[1]) route = moveEnd(route, { x: at[1].x, y: at[1].z }, 'end', !jumper[1]);
     const full = route;
     // Trim the stretch inside a lane part's zone (both ends).
     for (const k of [0, 1] as const) {
@@ -2677,6 +2771,14 @@ function freshWires(
     plan = dodge(
       plan,
       obstacles.filter((o) => o.bottom <= 2 && !ownBody(p.w.from, o) && !ownBody(p.w.to, o)),
+    );
+    // Sprint 21 (s21r, owner screenshot): an interior run along the side of the wire's OWN end
+    // part (a 2D route on the supply symbol's outline, which is the 3D case wall) steps off it
+    // as a whole, instead of the height profile lifting the wire over the whole case.
+    plan = shiftOffOwn(
+      plan,
+      obstacles.filter((o) => o.bottom <= 2 && (ownBody(p.w.from, o) || ownBody(p.w.to, o))),
+      obstacles.filter((o) => o.bottom <= 2),
     );
     const kind = (e: WireEnd) =>
       e.kind !== 'terminal'
