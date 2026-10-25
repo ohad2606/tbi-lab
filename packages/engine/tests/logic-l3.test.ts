@@ -27,7 +27,24 @@ const fails = (o: SolveOutcome) => {
   return o.error;
 };
 const C = LVC08A_CARD;
-const solve = (b: Bench) => new EngineSession(b.snapshot()).solve();
+/**
+ * Sprint 22 review 3: the bench-supply model cannot SINK current, and input leakage (±I_I, either
+ * return pin) may flow back into a lightly loaded supply. Every ENABLED supply of these benches
+ * gets a 10 kΩ bleeder (+ → GND, Bench.bleed) so it always delivers; the subjects are unchanged
+ * (a supply's current then includes V/10 kΩ).
+ */
+const bled = new WeakMap<Bench, Set<string>>();
+const bleedAll = (b: Bench) => {
+  const done = bled.get(b) ?? new Set<string>();
+  bled.set(b, done);
+  for (const c of b.doc.components)
+    if (c.type === 'instrument.lab_psu' && c.params.outputEnabled === true && !done.has(c.id)) {
+      done.add(c.id);
+      b.bleed(c.id);
+    }
+  return b;
+};
+const solve = (b: Bench) => new EngineSession(bleedAll(b).snapshot()).solve();
 
 describe('SN74LVC08A card = SCAS283W figures', () => {
   it('§4 Table 4-1: the 14-pin map (SOIC, SSOP, SOP, CDIP, TSSOP, VQFN, WQFN column)', () => {
@@ -177,47 +194,55 @@ describe('SN74LVC08A in the solve: four gates, one shared supply', () => {
   // at V_CC or GND (SCAS283W §5.7), and the supply's current-limit check needs it: the solve
   // tests run there. At 3.6 V only the ±100 µA point is guaranteed (§5.7: V_OH ≥ V_CC − 0.2 V,
   // V_OL ≤ 0.2 V), so the loads are 100 kΩ: drop = 0.2 V / 100 µA × I = 2 kΩ × I.
-  it('each gate its own truth-table row at once (LL, LH, HL, HH) into 100 kΩ at 3.6 V', () => {
+  // Sprint 22 review 3: SCAS283W gives I_CC only at I_O = 0 and has no rule for a loaded output
+  // (unlike the 1G §8.2.1.1): an output carrying current takes the package off its I_CC test
+  // condition, so PSU1's current limit is refused by name (condition 'loaded', owner question
+  // Q9) — after every level and output check held. The loaded-output solve values can therefore
+  // no longer be shown; the output segments are checked on the card (outputStageAt above).
+  const loaded = (o: SolveOutcome, u: string, pin: string, amps: number) =>
+    expect(fails(o)).toMatchObject({
+      code: 'logic_supply_current_uncharacterized',
+      components: [u, 'PSU1'],
+      param: pin,
+      detail: {
+        part: 'SN74LVC08A',
+        condition: 'loaded',
+        check: 'limit',
+        psu: 'PSU1',
+        worst: expect.closeTo(amps, 12),
+      },
+    });
+  it('each gate its own row (LL, LH, HL, HH) into 100 kΩ at 3.6 V: 4Y HIGH sources 3.6 V / 102 kΩ ≈ 35.3 µA → loaded, refused naming 4Y', () => {
     const { b, u } = quad(3.6, ['b2', 'a3', 'a4', 'b4'], ['a1', 'b1', 'a2', 'b3']);
     for (const y of ['y1', 'y2', 'y3', 'y4']) load(b, `${u}.${y}`, 100_000);
-    const r = ok(solve(b)).components[u]!;
-    // V = 3.6 × 100k / 102k, I = 3.6 / 102 kΩ ≈ 35.3 µA (≤ 100 µA).
-    const h = { I: 3.6 / 102_000, V: (3.6 * 100_000) / 102_000 };
-    expect(r.logic!.gates.map((g) => g.output.level)).toEqual(['low', 'low', 'low', 'high']);
-    expect(r.terminals['y4']!).toBeCloseTo(h.V, 9);
-    for (const y of ['y1', 'y2', 'y3']) expect(r.terminals[y]!).toBeCloseTo(0, 9);
-    // The shared V_CC pin carries exactly gate 4's source current; PSU1 delivers it.
-    expect(r.currents!['y4']).toBeCloseTo(h.I, 12);
-    expect(r.currents!.vcc).toBeCloseTo(h.I, 12);
-    expect(ok(solve(b)).components.PSU1!.current!).toBeCloseTo(h.I, 12);
+    // V = 3.6 × 100k / 102k, I = 3.6 / 102 kΩ (the 2 kΩ drop of the ±100 µA point); the LOW
+    // outputs into 100 kΩ to GND carry nothing.
+    loaded(solve(b), u, 'y4', 3.6 / 102_000);
   });
 
-  it('all four HIGH into 100 kΩ at 3.6 V: the supply pin carries the SUM (4 × I), out of the solve', () => {
+  it('all four HIGH into 100 kΩ at 3.6 V: 1Y sources 3.6 V / 102 kΩ → loaded, refused naming 1Y', () => {
     const ins = ['a1', 'b1', 'a2', 'b2', 'a3', 'b3', 'a4', 'b4'];
     const { b, u } = quad(3.6, ins, []);
     for (const y of ['y1', 'y2', 'y3', 'y4']) load(b, `${u}.${y}`, 100_000);
-    const o = ok(solve(b));
-    const r = o.components[u]!;
-    // Sprint 22 Q1 strict (see above): I = 3.6 / 102 kΩ each, V = 3.6 × 100k / 102k.
-    const h = { I: 3.6 / 102_000, V: (3.6 * 100_000) / 102_000 };
-    for (const y of ['y1', 'y2', 'y3', 'y4']) expect(r.terminals[y]!).toBeCloseTo(h.V, 9);
-    expect(r.currents!.vcc).toBeCloseTo(4 * h.I, 12);
-    expect(r.currents!.gnd).toBe(0);
-    expect(o.components.PSU1!.current!).toBeCloseTo(4 * h.I, 12);
+    loaded(solve(b), u, 'y1', 3.6 / 102_000);
   });
 
-  it('a LOW output sinks through the shared GND pin: V_OL on the (0, 0)–(0.2 V, 100 µA) point at 3.6 V', () => {
-    // Sprint 22 Q1 strict: at 3.6 V (the only I_CC row) only the ±100 µA point is guaranteed.
+  it('the same package with its outputs unloaded runs: each gate on its row, V_CC pin current 0 (I_O = 0)', () => {
+    const { b, u } = quad(3.6, ['b2', 'a3', 'a4', 'b4'], ['a1', 'b1', 'a2', 'b3']);
+    const o = ok(solve(b));
+    const r = o.components[u]!;
+    expect(r.logic!.gates.map((g) => g.output.level)).toEqual(['low', 'low', 'low', 'high']);
+    expect(r.currents!.vcc).toBeCloseTo(0, 12);
+    // PSU1 delivers only its 10 kΩ bleeder: 3.6 V / 10 kΩ = 360 µA (I_CC is outside the solve).
+    expect(o.components.PSU1!.current!).toBeCloseTo(3.6 / 10_000, 12);
+  });
+
+  it('a LOW output sinking from a 100 kΩ pull-up at 3.6 V: I = 3.6 / 102 kΩ into 1Y → loaded, refused naming 1Y', () => {
     // 3.6 V → 100 kΩ → 1Y (LOW: 1A tied low): V = 2 kΩ × I, I = 3.6 / 102 kΩ ≈ 35.3 µA.
-    // (The 3.0 V segments are checked on the card: outputStageAt above.)
     const { b, u } = quad(3.6, ['a2', 'b2', 'a3', 'b3', 'a4', 'b4'], ['a1', 'b1']);
     const r = b.add('component.resistor');
     b.ohms(r, 100_000).wire('PSU1.positive', `${r}.a`).wire(`${r}.b`, `${u}.y1`);
-    const I = 3.6 / 102_000;
-    const res = ok(solve(b)).components[u]!;
-    expect(res.terminals['y1']!).toBeCloseTo(2000 * I, 9);
-    expect(res.currents!['y1']).toBeCloseTo(-I, 12);
-    expect(res.currents!.gnd).toBeCloseTo(I, 12);
+    loaded(solve(b), u, 'y1', 3.6 / 102_000);
   });
 
   it('the other rows (2.7 V, 1.65 V, 1.8 V): I_CC has no bound off 3.6 V → refused by the current limit (Q1)', () => {

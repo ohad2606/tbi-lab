@@ -72,7 +72,14 @@ describe('logic bound provenance (P2)', () => {
         expect(r.where.length).toBeGreaterThan(5);
       }
       expect(row(`${card.partNumber}.outputRail`).kind).toBe('recommended');
-      expect(row(`${card.partNumber}.iccLoaded`).kind).toBe('derived');
+      // Sprint 22 review 3: the 1G power rule (§8.2.1.1, owner F4) is derived; the 08A has none.
+      expect(row(`${card.partNumber}.iccLoaded`).kind).toBe(
+        card.iccLoadedRule ? 'derived' : 'test-condition',
+      );
+      expect(row(`${card.partNumber}.vccOperating`).kind).toBe('recommended');
+      expect(row(`${card.partNumber}.inputRecommended`).kind).toBe('recommended');
+      for (const f of ['iiVcc', 'iccVcc', 'iccInputHigh', 'deltaIccVcc'])
+        expect(row(`${card.partNumber}.${f}`).kind, f).toBe('test-condition');
     });
 
   it('ESP32 pad figures: the same values, and the drive figures marked typical', () => {
@@ -95,7 +102,12 @@ describe('logic bound provenance (P2)', () => {
     close(row('ENGINE.RAIL_V').value, RAIL_V);
     close(row('ENGINE.TABULATED_VCC_TOLERANCE_V').value, TABULATED_VCC_TOLERANCE_V);
     close(row('ENGINE.UNPOWERED_V').value, 1e-3);
-    for (const id of ['ENGINE.RAIL_V', 'ENGINE.UNPOWERED_V', 'ENGINE.TABULATED_VCC_TOLERANCE_V'])
+    for (const id of [
+      'ENGINE.RAIL_V',
+      'ENGINE.UNPOWERED_V',
+      'ENGINE.TABULATED_VCC_TOLERANCE_V',
+      'ENGINE.ICC_READING',
+    ])
       expect(row(id).kind).toBe('assumption');
   });
 

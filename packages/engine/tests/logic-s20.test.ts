@@ -29,7 +29,29 @@ const fails = (o: SolveOutcome) => {
   if (o.ok) throw new Error('expected a refusal');
   return o.error;
 };
-const solve = (b: Bench) => new EngineSession(b.snapshot()).solve();
+/**
+ * Sprint 22 review 3: the bench-supply model cannot SINK current, and input leakage (±I_I, either
+ * return pin) may flow back into a lightly loaded supply. Every ENABLED supply of these benches
+ * gets a 10 kΩ bleeder (+ → GND, Bench.bleed) so it always delivers; the subjects are unchanged
+ * (a supply's current then includes V/10 kΩ).
+ */
+const bled = new WeakMap<Bench, Set<string>>();
+const bleedAll = (b: Bench) => {
+  const done = bled.get(b) ?? new Set<string>();
+  bled.set(b, done);
+  for (const c of b.doc.components)
+    if (c.type === 'instrument.lab_psu' && c.params.outputEnabled === true && !done.has(c.id)) {
+      done.add(c.id);
+      b.bleed(c.id);
+    }
+  return b;
+};
+const boardB = (build: (b: Bench, u: string) => void) =>
+  boardBench((b, u) => {
+    build(b, u);
+    bleedAll(b);
+  });
+const solve = (b: Bench) => new EngineSession(bleedAll(b).snapshot()).solve();
 const AND = LVC1G_CARDS['model.logic.sn74lvc1g08']!;
 
 /**
@@ -71,7 +93,7 @@ function quad(vcc: number, free: string[], build: (b: Bench, u: string) => void,
 describe('undriven inputs are floating, never a valid LOW (owner policy)', () => {
   it('ESP32 pad in INPUT mode alone on a gate input: refused, naming the pad (L1 and package)', () => {
     let G = '';
-    const bb = boardBench((b, u) => {
+    const bb = boardB((b, u) => {
       G = b.add('logic.gate_and');
       b.psu(3.0, 0.5);
       const hi = b.rail(5.5);
@@ -103,7 +125,7 @@ describe('undriven inputs are floating, never a valid LOW (owner policy)', () =>
 
   it('two input-mode pads and a resistor between them and the gate: still floating (no driver anywhere)', () => {
     let Q = '';
-    const bb = boardBench((b, u) => {
+    const bb = boardB((b, u) => {
       const q = b.add('logic.quad_and');
       Q = q;
       const r = b.add('component.resistor');
@@ -135,7 +157,7 @@ describe('undriven inputs are floating, never a valid LOW (owner policy)', () =>
 
   it('an input-mode pad WITH an external 10 kΩ pull-down (§7.3.3: "a 10kΩ resistor … is recommended"): a real LOW', () => {
     let G = '';
-    const bb = boardBench((b, u) => {
+    const bb = boardB((b, u) => {
       G = b.add('logic.gate_and');
       const pd = b.add('component.resistor');
       b.psu(3.0, 0.5).ohms(pd, 10_000);
@@ -234,7 +256,7 @@ describe("mixed 3.3 V / 5 V: decided by V_IH at the gate's own supply (§5.3)", 
   /** ESP32 GPIO18 → SN74LVC1G08 A at `vcc` (B tied HIGH, Y into 10 kΩ). */
   const esp = (vcc: number) => {
     let G = '';
-    const bb = boardBench((b, u) => {
+    const bb = boardB((b, u) => {
       G = b.add('logic.gate_and');
       const r = b.add('component.resistor');
       b.psu(vcc, 0.5).ohms(r, 10_000);
@@ -316,7 +338,7 @@ describe("mixed 3.3 V / 5 V: decided by V_IH at the gate's own supply (§5.3)", 
 
   it('a gate at 5 V driving an ESP32 input: the pad is over its specified range (warning, absolute)', () => {
     let G = '';
-    const bb = boardBench((b, u) => {
+    const bb = boardB((b, u) => {
       G = b.add('logic.gate_and');
       b.psu(5.0, 0.5);
       // Sprint 22 Q1 strict: A and B at 5.5 V (the I_CC test voltage, §5.5).

@@ -83,7 +83,7 @@ function lvc1gRows(part: keyof typeof TI_1G): ProvenanceRow[] {
       'V',
       '§5.3 V_CC "Operating" min/max',
       TA,
-      'guaranteed-range',
+      'recommended',
       'supply rows',
     ),
     r(
@@ -101,7 +101,7 @@ function lvc1gRows(part: keyof typeof TI_1G): ProvenanceRow[] {
       'V',
       '§5.5 I_I row, V_CC column "0 to 5.5V"',
       TA,
-      'guaranteed-range',
+      'test-condition',
       'where the I_I bound holds',
     ),
     r(
@@ -126,7 +126,7 @@ function lvc1gRows(part: keyof typeof TI_1G): ProvenanceRow[] {
       'iccLoaded',
       'I_CC + I_O',
       'A',
-      '§8.2.1.1 Power Considerations ("the supply must source all output current plus the maximum static supply current, I_CC")',
+      '§8.2.1.1 Power Considerations: "The positive voltage supply must be capable of sourcing current equal to the total current to be sourced by all outputs of the SN74LVC1G08 plus the maximum static supply current, ICC, listed in the Electrical Characteristics, and any transient current required for switching." (the same sentence in the 1G00/1G04/1G32 sheets, each naming its own part)',
       `${TA}; ONLY with every input at the I_CC test voltages (5.5 V or GND)`,
       'derived',
       'owner decision S22-F4: a LOADED output keeps the I_CC bound (I_O is in the solve); never a bound for inputs off the test voltages (S22-Q1)',
@@ -137,7 +137,7 @@ function lvc1gRows(part: keyof typeof TI_1G): ProvenanceRow[] {
       'V',
       '§5.5 I_CC row, V_CC column "1.65V to 5.5V"',
       TA,
-      'guaranteed-range',
+      'test-condition',
       'I_CC supply condition',
     ),
     r(
@@ -146,7 +146,7 @@ function lvc1gRows(part: keyof typeof TI_1G): ProvenanceRow[] {
       'V',
       '§5.5 I_CC test condition "V_I = 5.5V or GND"',
       TA,
-      'guaranteed-range',
+      'test-condition',
       'I_CC input condition',
     ),
     r(
@@ -164,7 +164,7 @@ function lvc1gRows(part: keyof typeof TI_1G): ProvenanceRow[] {
       'V',
       '§5.5 ΔI_CC row, V_CC "3V to 5.5V"',
       TA,
-      'guaranteed-range',
+      'test-condition',
       'ΔI_CC supply condition',
     ),
     r(
@@ -203,7 +203,7 @@ function lvc1gRows(part: keyof typeof TI_1G): ProvenanceRow[] {
       'V',
       '§5.3 V_I min/max',
       TA,
-      'guaranteed-range',
+      'recommended',
       'recommended input range (refused outside)',
     ),
     r(
@@ -235,6 +235,14 @@ const ENGINE_ROWS: ProvenanceRow[] = [
     '|V_CC − GND| ≤ 1 mV is treated as unpowered (V_CC = 0, the I_off row)',
     'assumption',
     'parts/logicGate.ts, parts/logicPackage.ts: unpowered gates (outputs off, I_off)',
+  ],
+  [
+    'ICC_READING',
+    0,
+    'A',
+    'I_CC is read as a current INTO the V_CC pin, 0 … I_CC max (never negative); each input’s I_I is counted separately, returning through the GND or the V_CC pin (either sign). If I_CC as measured already contains the inputs’ leakage, that leakage is counted twice: a deliberate over-count that fails closed (review 3)',
+    'assumption',
+    'bounds.ts icc and ii/iiv perturbations',
   ],
   [
     'TABULATED_VCC_TOLERANCE_V',
@@ -290,7 +298,7 @@ export const LOGIC_PROVENANCE: readonly ProvenanceRow[] = [
         'V',
         '§5.4 V_CC "Operating" 1.65–3.6 V',
         A,
-        'guaranteed-range',
+        'recommended',
         'supply rows',
       ),
       r(
@@ -308,7 +316,7 @@ export const LOGIC_PROVENANCE: readonly ProvenanceRow[] = [
         'V',
         '§5.7 I_I row, V_CC column "3.6V"',
         A,
-        'guaranteed-range',
+        'test-condition',
         'where the I_I bound holds',
       ),
       r(
@@ -322,12 +330,12 @@ export const LOGIC_PROVENANCE: readonly ProvenanceRow[] = [
       ),
       r(
         'iccLoaded',
-        'I_CC + I_O',
+        'I_O = 0 only',
         'A',
-        '§8.2.1 power rule as for the single gates (the supply sources the output current plus the maximum static supply current I_CC)',
-        `${A}; ONLY at V_CC = 3.6 V with every input at V_CC or GND`,
-        'derived',
-        'owner decision S22-F4 (as for SN74LVC1G): a loaded output keeps the I_CC bound; never for inputs off the test voltages',
+        '§5.7 I_CC test condition "V_I = V_CC or GND, I_O = 0" — SCAS283W contains no power-considerations rule for a loaded output (unlike the 1G §8.2.1.1)',
+        `${A}; at V_CC = 3.6 V`,
+        'test-condition',
+        'Sprint 22 review 3: a loaded output (or a downstream input leakage) leaves the I_CC test condition → refused by name; owner question Q9 (may the 1G §8.2.1.1 I_CC + I_O rule be applied to the 08A?)',
       ),
       r(
         'iccVcc',
@@ -335,7 +343,7 @@ export const LOGIC_PROVENANCE: readonly ProvenanceRow[] = [
         'V',
         '§5.7 I_CC row, V_CC "3.6V"',
         A,
-        'guaranteed-range',
+        'test-condition',
         'I_CC supply condition',
       ),
       r(
@@ -344,7 +352,7 @@ export const LOGIC_PROVENANCE: readonly ProvenanceRow[] = [
         'V',
         '§5.7 I_CC test condition "V_I = V_CC or GND"',
         A,
-        'guaranteed-range',
+        'test-condition',
         'I_CC input condition',
       ),
       r(
@@ -362,7 +370,7 @@ export const LOGIC_PROVENANCE: readonly ProvenanceRow[] = [
         'V',
         '§5.7 ΔI_CC row, V_CC "2.7V to 3.6V"',
         A,
-        'guaranteed-range',
+        'test-condition',
         'ΔI_CC supply condition',
       ),
       r(
@@ -401,7 +409,7 @@ export const LOGIC_PROVENANCE: readonly ProvenanceRow[] = [
         'V',
         '§5.4 V_I 0–5.5 V',
         A,
-        'guaranteed-range',
+        'recommended',
         'recommended input range',
       ),
       r(

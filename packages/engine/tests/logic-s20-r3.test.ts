@@ -10,7 +10,24 @@ import { describe, expect, it } from 'vitest';
 import { EngineSession, type SolveOutcome, type SolveSuccess } from '../src/index.js';
 import { Bench } from './build.js';
 
-const solve = (b: Bench) => new EngineSession(b.snapshot()).solve();
+/**
+ * Sprint 22 review 3: the bench-supply model cannot SINK current, and input leakage (±I_I, either
+ * return pin) may flow back into a lightly loaded supply. Every ENABLED supply of these benches
+ * gets a 10 kΩ bleeder (+ → GND, Bench.bleed) so it always delivers; the subjects are unchanged
+ * (a supply's current then includes V/10 kΩ).
+ */
+const bled = new WeakMap<Bench, Set<string>>();
+const bleedAll = (b: Bench) => {
+  const done = bled.get(b) ?? new Set<string>();
+  bled.set(b, done);
+  for (const c of b.doc.components)
+    if (c.type === 'instrument.lab_psu' && c.params.outputEnabled === true && !done.has(c.id)) {
+      done.add(c.id);
+      b.bleed(c.id);
+    }
+  return b;
+};
+const solve = (b: Bench) => new EngineSession(bleedAll(b).snapshot()).solve();
 const ok = (o: SolveOutcome): SolveSuccess => {
   if (!o.ok) throw new Error(`expected success, got ${JSON.stringify(o.error)}`);
   return o;

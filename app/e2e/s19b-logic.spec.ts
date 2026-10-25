@@ -78,6 +78,14 @@ function andCircuit(
   set(hi, 'currentLimit', { value: 0.1, unit: 'ampere' });
   set(hi, 'outputEnabled', true);
   wire(`${hi}.negative`, 'GND1.ref');
+  // Sprint 22 review 3: bleeders keep both supplies delivering (the bench-supply model cannot sink;
+  // with Y LOW the gate's supply could otherwise absorb its inputs' leakage).
+  for (const [k, p] of (['PSU1', hi] as const).entries()) {
+    const bl = add('component.resistor', 160, -640 - 160 * k);
+    set(bl, 'resistance', { value: 10_000, unit: 'ohm' });
+    wire(`${p}.positive`, `${bl}.a`);
+    wire(`${bl}.b`, 'GND1.ref');
+  }
   const input = (pin: 'a' | 'b', how: 'closed' | 'open' | 'divider' | 'floating', y: number) => {
     if (how === 'floating') return;
     const r1 = add('component.resistor', 0, y);

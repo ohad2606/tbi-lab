@@ -161,37 +161,43 @@ for (const size of SIZES)
         await page.getByTestId('logic-truth').scrollIntoViewIfNeeded();
         await onScreenIn(page, page.getByTestId('logic-truth'));
         await shot(page, `s21l-${size.name}-${lc}-A-idle`);
-        await page.getByTestId('sim-run').click();
-        await expect(status(page)).toHaveAttribute('data-status', 'running', { timeout: 30_000 });
-        await inspect(page, 'U1');
-        // SW1 closed, SW2 open (as shipped): row HL.
-        await expect(page.getByTestId('logic-truth-HL')).toHaveAttribute('aria-current', 'true');
-        // Level and simulated voltage are separate columns; the output states its guarantee.
-        await expect(page.getByTestId('logic-level-a')).toHaveText('HIGH');
-        await expect(page.getByTestId('logic-volts-a')).toHaveText('5.5 V');
-        await expect(page.getByTestId('logic-volts-a')).toHaveAttribute('dir', 'ltr');
-        await expect(page.getByTestId('logic-why-y')).toContainText(/V_OL ≤ \W*100 mV/);
-        // Keyboard: focus SW2's control and press Space: the row follows (HH), the LED lights.
+        // Sprint 22 review 3: as shipped (HL) PSU2 may have to sink the inputs' leakage (the
+        // bench-supply model cannot sink): only HH runs. Keyboard first: focus SW2's control and
+        // press Space (a persistent edit), then Run in HH.
         const sw2 = page.getByTestId('logic-control-SW2');
         await sw2.focus();
         await expect(sw2).toBeFocused();
         await page.keyboard.press('Space');
         await expect(sw2).toHaveAttribute('aria-pressed', 'true');
+        await page.getByTestId('sim-run').click();
+        await expect(status(page)).toHaveAttribute('data-status', 'running', { timeout: 30_000 });
+        await inspect(page, 'U1');
         await expect(page.getByTestId('logic-truth-HH')).toHaveAttribute('aria-current', 'true');
-        await expect(page.getByTestId('logic-truth-HL')).not.toHaveAttribute(
-          'aria-current',
-          'true',
-        );
+        // Level and simulated voltage are separate columns; the output states its guarantee.
+        await expect(page.getByTestId('logic-level-a')).toHaveText('HIGH');
+        await expect(page.getByTestId('logic-volts-a')).toHaveText('5.5 V');
+        await expect(page.getByTestId('logic-volts-a')).toHaveAttribute('dir', 'ltr');
         await expect(page.getByTestId('logic-why-y')).toContainText(/V_OH ≥ \W*2\.4 V/);
         await expect(page.getByTestId('logic-why-y')).toContainText(/16 mA/);
         await page.getByTestId('logic-truth').scrollIntoViewIfNeeded();
         await onScreenIn(page, page.getByTestId('logic-truth'));
         await shot(page, `s21l-${size.name}-${lc}-A-run-HH`);
         await readoutsClear(page, ['U1', 'SW1', 'SW2', 'R1', 'R2', 'R3', 'D1', 'PSU1', 'PSU2']);
-        // Back to the shipped state for the next locale.
+        // Open SW2 while running: HL is refused by name (PSU2 could have to absorb 10 µA).
         await sw2.focus();
         await page.keyboard.press('Space');
-        await expect(page.getByTestId('logic-truth-HL')).toHaveAttribute('aria-current', 'true');
+        await expect(page.getByTestId('sim-error')).toHaveAttribute(
+          'data-code',
+          'logic_supply_not_guaranteed',
+        );
+        await expect(page.getByTestId('sim-error')).toContainText(
+          lc === 'en' ? 'cannot sink current' : 'אינו יכול לבלוע זרם',
+        );
+        await expect(page.getByTestId('logic-truth-HH')).not.toHaveAttribute(
+          'aria-current',
+          'true',
+        );
+        await shot(page, `s21l-${size.name}-${lc}-A-run-HL-refused`);
         await page.getByTestId('sim-stop').click();
         await expect(status(page)).toHaveAttribute('data-status', 'stopped');
       }
@@ -333,7 +339,8 @@ for (const size of SIZES)
         await shot(page, `s21l-${size.name}-${lc}-owner-fixed-5v`);
       }
       // The same circuit at 5.5 V (V_CC and both inputs at 5.5 V: the test condition): runs.
-      const fixed55 = ownerCircuit('PSU1.negative', true, 'prj_s21lOwnerFixed55', 5.5);
+      // (With a 10 kΩ bleeder: unloaded, PSU1 could otherwise have to sink the inputs' leakage.)
+      const fixed55 = ownerCircuit('PSU1.negative', true, 'prj_s21lOwnerFixed55', 5.5, true);
       await openImported(page, fixed55.doc);
       await waitSaved(page);
       for (const lc of LOCALES) {
@@ -358,7 +365,13 @@ for (const size of SIZES)
  * with V_CC, A and B on PSU+; its GND wire on `gnd`. `ground`: GND1 wired to PSU− (as drawn it is
  * not: PSU− is unconnected, so the circuit has no reference at all).
  */
-function ownerCircuit(gnd: string, ground = true, id = 'prj_s21lOwner', volts = 5) {
+function ownerCircuit(
+  gnd: string,
+  ground = true,
+  id = 'prj_s21lOwner',
+  volts = 5,
+  bleeder = false,
+) {
   let doc: ProjectDocument = createProject({
     projectId: id,
     deviceId: 'dev_s21l',
@@ -393,6 +406,15 @@ function ownerCircuit(gnd: string, ground = true, id = 'prj_s21lOwner', volts = 
   wire(`${u}.a`, 'PSU1.positive');
   wire(`${u}.b`, 'PSU1.positive');
   wire(`${u}.gnd`, gnd);
+  if (bleeder) {
+    // Sprint 22 review 3: keeps PSU1 delivering (no sinking model; input leakage could return).
+    const r = addComponent(doc, 'component.resistor', { x: -280, y: 240 });
+    if (!r.ok) throw new Error(r.error);
+    doc = r.doc;
+    set(r.id, 'resistance', { value: 10_000, unit: 'ohm' });
+    wire('PSU1.positive', `${r.id}.a`);
+    wire(`${r.id}.b`, ground ? 'GND1.ref' : 'PSU1.negative');
+  }
   return { doc, u };
 }
 
@@ -437,6 +459,15 @@ for (const size of SIZES.slice(0, 2))
           await locale(page, lc);
           await probeLabelsClear(page);
           if (id === 'logic-and-switches') {
+            // Sprint 22 review 3: only HH runs (HL: PSU2 could have to sink input leakage).
+            if (lc === LOCALES[0]) {
+              await inspect(page, 'U1');
+              await page.getByTestId('logic-control-SW2').click();
+              await expect(page.getByTestId('logic-control-SW2')).toHaveAttribute(
+                'aria-pressed',
+                'true',
+              );
+            }
             await page.getByTestId('sim-run').click();
             await expect(status(page)).toHaveAttribute('data-status', 'running', {
               timeout: 30_000,

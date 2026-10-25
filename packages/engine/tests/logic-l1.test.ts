@@ -117,7 +117,29 @@ function gate(
   build?.(b, g);
   return { b, g };
 }
-const solve = (b: Bench) => new EngineSession(b.snapshot()).solve();
+/**
+ * Sprint 22 review 3: the bench-supply model cannot SINK current, and input leakage (±I_I, either
+ * return pin) may flow back into a lightly loaded supply. Every ENABLED supply of these benches
+ * gets a 10 kΩ bleeder (+ → GND, Bench.bleed) so it always delivers; the subjects are unchanged
+ * (a supply's current then includes V/10 kΩ).
+ */
+const bled = new WeakMap<Bench, Set<string>>();
+const bleedAll = (b: Bench) => {
+  const done = bled.get(b) ?? new Set<string>();
+  bled.set(b, done);
+  for (const c of b.doc.components)
+    if (c.type === 'instrument.lab_psu' && c.params.outputEnabled === true && !done.has(c.id)) {
+      done.add(c.id);
+      b.bleed(c.id);
+    }
+  return b;
+};
+const boardB = (build: (b: Bench, u: string) => void) =>
+  boardBench((b, u) => {
+    build(b, u);
+    bleedAll(b);
+  });
+const solve = (b: Bench) => new EngineSession(bleedAll(b).snapshot()).solve();
 const load = (ohms: number) => (b: Bench, g: string) => {
   const r = b.add('component.resistor');
   b.ohms(r, ohms).wire(`${g}.y`, `${r}.a`).wire(`${r}.b`, 'GND1.ref');
@@ -167,7 +189,8 @@ describe('SN74LVC1G gates in the solve', () => {
     expect(led).toBeGreaterThan(1e-3);
     expect(u.currents!.y).toBeCloseTo(led, 12);
     expect(u.currents!.vcc).toBeCloseTo(led, 12);
-    expect(o.components.PSU1!.current!).toBeCloseTo(led, 12);
+    // PSU1 delivers the LED current plus its 10 kΩ bleeder's 3.0 V / 10 kΩ = 300 µA.
+    expect(o.components.PSU1!.current!).toBeCloseTo(led + 3.0 / 10_000, 12);
     // V_Y on the guaranteed envelope at that current (a few mA: the (100 µA, 16 mA) segment).
     expect(led).toBeLessThan(16e-3);
     expect(u.terminals.y!).toBeCloseTo(3.0 - (0.1 + (led - 100e-6) * (0.5 / 15.9e-3)), 9);
@@ -564,7 +587,7 @@ describe('ESP32 GPIO interop (pads in the same solve)', () => {
   /** GPIO18 (output) -> AND.a; AND.b tied high; AND.y -> GPIO4 (input) and 220 Ω + LED. */
   let G = '';
   const x1 = (vcc = 3.0) =>
-    boardBench((b, u) => {
+    boardB((b, u) => {
       const g = b.add('logic.gate_and');
       G = g;
       const r = b.add('component.resistor');
@@ -638,7 +661,7 @@ describe('ESP32 GPIO interop (pads in the same solve)', () => {
   });
 
   it('an undefined gate input upstream of an ESP32 input: the gate input is named (root cause)', () => {
-    const bb = boardBench((b, u) => {
+    const bb = boardB((b, u) => {
       const g = b.add('logic.gate_and');
       const r1 = b.add('component.resistor');
       const r2 = b.add('component.resistor');

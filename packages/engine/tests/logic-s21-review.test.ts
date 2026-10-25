@@ -26,7 +26,15 @@ const err = (o: SolveOutcome) => (o.ok ? null : o.error);
 const rails = new WeakMap<Bench, string>();
 const hi = (b: Bench) => {
   let id = rails.get(b);
-  if (!id) rails.set(b, (id = b.rail(5.5)));
+  if (!id) {
+    rails.set(b, (id = b.rail(5.5)));
+    // Sprint 22 review 3: the bench-supply model cannot sink, and the inputs' leakage (±5 µA,
+    // either return pin) could flow back into a rail that feeds only inputs, or into a lightly
+    // loaded V_CC supply: a 10 kΩ bleeder on each keeps them delivering (5.5 V / 10 kΩ = 550 µA,
+    // 3.0 V / 10 kΩ = 300 µA, 3.3 V / 10 kΩ = 330 µA). None of these tests is about sinking.
+    b.bleed(id);
+    b.bleed('PSU1');
+  }
   return `${id}.positive`;
 };
 /**

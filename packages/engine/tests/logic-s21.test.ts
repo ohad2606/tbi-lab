@@ -35,6 +35,18 @@ const G08 = LVC1G_CARDS['model.logic.sn74lvc1g08']!;
 const limitOnly = { code: 'logic_supply_current_uncharacterized', detail: { check: 'limit' } };
 
 /** SN74LVC1G08 with its V_CC through `rSeries` Ω (0 = straight to PSU+); inputs wired by `wire`. */
+/**
+ * Sprint 22 review 3: the bench-supply model cannot sink, and input leakage (±5 µA, either return
+ * pin) could flow back into a rail that feeds only inputs or into a lightly loaded V_CC supply.
+ * Every bench here therefore has a 10 kΩ bleeder on each supply (PSU1 at its + terminal, upstream
+ * of any series element, so V_CC is unaffected): none of these tests is about sinking.
+ */
+const bledRail = (b: Bench) => {
+  const id = b.rail(5.5);
+  b.bleed(id);
+  return id;
+};
+
 function gate(
   vcc: number,
   rSeries: number,
@@ -43,6 +55,7 @@ function gate(
   const b = new Bench();
   const g = b.add('logic.gate_and');
   b.psu(vcc, 0.1).wire('PSU1.negative', 'GND1.ref');
+  b.bleed('PSU1');
   let rail = 'PSU1.positive';
   if (rSeries > 0) {
     const r = b.add('component.resistor');
@@ -75,7 +88,7 @@ describe('Task 1: supply current through a series resistance', () => {
 
   it('straight from the PSU (CV) with the inputs at 5.5 V from a second supply (the I_CC condition): runs', () => {
     const { b, g } = gate(3.3, 0, (b, g) => {
-      const hi = `${b.rail(5.5)}.positive`;
+      const hi = `${bledRail(b)}.positive`;
       b.wire(`${g}.a`, hi).wire(`${g}.b`, hi);
     });
     const o = ok(solve(b));
@@ -151,7 +164,7 @@ describe('Task 2: input leakage and pull resistors (I_I ±5 µA)', () => {
       b.ohms(p, r)
         .wire(`${g}.a`, `${p}.a`)
         .wire(`${p}.b`, up ? 'PSU1.positive' : 'GND1.ref')
-        .wire(`${g}.b`, `${b.rail(5.5)}.positive`);
+        .wire(`${g}.b`, `${bledRail(b)}.positive`);
     });
 
   it('10 kΩ pull-down: 5 µA × 10 kΩ = 50 mV ≤ V_IL 0.8 V: LOW is guaranteed; Q1: 50 mV > the 1 mV "at GND" of the I_CC condition → refused by the current limit, naming A', () => {
@@ -197,6 +210,7 @@ describe('Task 2: input leakage and pull resistors (I_I ±5 µA)', () => {
     const b = new Bench();
     const u = b.add('logic.quad_and');
     b.psu(vcc, 0.1).wire('PSU1.negative', 'GND1.ref').wire('PSU1.positive', `${u}.vcc`);
+    b.bleed('PSU1');
     b.wire(`${u}.gnd`, 'GND1.ref');
     for (const t of LVC08A_CARD.inputs) if (t !== 'a1') b.wire(`${u}.${t}`, 'GND1.ref');
     if (viaR) {
@@ -249,10 +263,11 @@ describe('Task 4: ESP32 output into a gate: guaranteed V_OH 2.64 V / V_OL 0.33 V
         .wire('PSU1.positive', `${G}.vcc`)
         .wire(`${G}.gnd`, 'GND1.ref')
         // Sprint 22 Q1: B at 5.5 V (the I_CC condition); A is the pad (never at 5.5 V or GND).
-        .wire(`${G}.b`, `${b.rail(5.5)}.positive`)
+        .wire(`${G}.b`, `${bledRail(b)}.positive`)
         .wire(`${u}.gpio18`, `${G}.a`)
         .wire(`${G}.y`, `${r}.a`)
         .wire(`${r}.b`, 'GND1.ref');
+      b.bleed('PSU1');
     });
     const s = new EngineSession(bb.projected, { pins: bb.pins });
     s.setPinMode(18, 'output-high');
@@ -390,7 +405,8 @@ describe("the owner's circuit (screenshot d855acf4): PSU1 5 V / 100 mA, U1 SN74L
     const b = new Bench();
     const g = b.add('logic.gate_and');
     b.psu(5, 0.1).wire('PSU1.negative', 'GND1.ref');
-    const hi = `${b.rail(5.5)}.positive`;
+    b.bleed('PSU1');
+    const hi = `${bledRail(b)}.positive`;
     b.wire(`${g}.vcc`, 'PSU1.positive')
       .wire(`${g}.a`, hi)
       .wire(`${g}.b`, hi)

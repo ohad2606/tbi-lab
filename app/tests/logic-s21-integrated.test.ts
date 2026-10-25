@@ -151,11 +151,25 @@ describe("PSU + gate: the owner's circuit (screenshot d855acf4), built as drawn 
     expect(plain(engineErrorMessage(he, e, d))).toContain('מגבלת הזרם');
   });
 
-  it('corrected at 5.5 V (V_CC and inputs at 5.5 V, the test condition): Y HIGH; V_IH 3.85 V; guarantee V_OH ≥ 5.4 V (|I_OH| ≤ 100 µA, §5.5); limits clean', () => {
+  it("corrected at 5.5 V (V_CC and inputs at 5.5 V, the test condition): unloaded, PSU1 may have to sink the inputs' leakage (2 × 5 µA, I_CC ≥ 0) → refused; with a 10 kΩ bleeder (0.55 mA): Y HIGH; V_IH 3.85 V; V_OH ≥ 5.4 V (|I_OH| ≤ 100 µA, §5.5); limits clean", () => {
     const { d: d0, u } = owner('PSU1.negative');
     const r0 = setParam(d0, 'PSU1', 'setpointVoltage', { value: 5.5, unit: 'volt' });
     if (!r0.ok) throw new Error(r0.error);
-    const d = r0.doc;
+    expect(refused(solve(r0.doc))).toMatchObject({
+      code: 'logic_supply_not_guaranteed',
+      components: ['PSU1'],
+      param: 'sink',
+      detail: { value: expect.closeTo(10e-6, 12) },
+    });
+    // The bleeder, placed well clear of every other part.
+    const added = addComponent(r0.doc, 'component.resistor', { x: 2000, y: 2000 });
+    if (!added.ok) throw new Error(added.error);
+    const b = new Doc();
+    b.doc = added.doc;
+    b.ohms(added.id, 10_000)
+      .wire('PSU1.positive', `${added.id}.a`)
+      .wire(`${added.id}.b`, 'GND1.ref');
+    const d = b.doc;
     const o = ok(solve(d));
     const r = o.components[u]!;
     expect(r.state).toMatchObject({
@@ -208,9 +222,20 @@ describe('Example A (two switches → SN74LVC1G08 → LED): netlist, logic, volt
       [true, true],
     ] as const) {
       const d = closed(a, b);
+      const where = `A=${+a} B=${+b}`;
+      // Sprint 22 review 3: with Y LOW, PSU2 may have to sink the inputs' leakage (2 × 5 µA):
+      // refused by name (the bench-supply model cannot sink). Only HH runs.
+      if (!(a && b)) {
+        expect(refused(solve(d)), where).toMatchObject({
+          code: 'logic_supply_not_guaranteed',
+          components: ['PSU2'],
+          param: 'sink',
+          detail: { value: expect.closeTo(10e-6, 12) },
+        });
+        continue;
+      }
       const o = ok(solve(d));
       const g = o.components.U1!.logic!.gates[0]!;
-      const where = `A=${+a} B=${+b}`;
       expect(
         g.inputs.map((p) => p.level),
         where,
@@ -512,6 +537,67 @@ describe('Sprint 21 refusal messages: every new code and variant renders fully i
       },
     },
   ];
+  // Sprint 22 review 3: a supply that would have to sink; a loaded SN74LVC08A output; an output
+  // forced past its rail (the overdrive voltage, not a pA current).
+  cases.push(
+    {
+      code: 'logic_supply_not_guaranteed',
+      components: ['PSU2'],
+      param: 'sink',
+      detail: { value: 10e-6, worst: 10e-6, causes: ['leakage', 'supply_current'] },
+    },
+    {
+      code: 'logic_supply_current_uncharacterized',
+      components: ['U1', 'PSU1'],
+      param: 'y1',
+      detail: {
+        part: 'SN74LVC08A',
+        vcc: 3.6,
+        condition: 'loaded',
+        check: 'limit',
+        psu: 'PSU1',
+        worst: 3.6e-5,
+        causes: ['output_guarantee'],
+      },
+    },
+    {
+      code: 'logic_output_uncharacterized',
+      components: ['U2'],
+      param: 'y',
+      detail: { part: 'SN74LVC1G08', vcc: 3, forcedV: 0.3, limit: 0.024 },
+    },
+  );
+  it('review 3: sink / loaded-08A / forced-output / psu_sinking wording (EN/HE)', () => {
+    const sink: EngineError = {
+      code: 'logic_supply_not_guaranteed',
+      components: ['PSU2'],
+      param: 'sink',
+      detail: { value: 10e-6, worst: 10e-6, causes: ['leakage'] },
+    };
+    expect(plain(engineErrorMessage(en, sink, null))).toContain('10 µA');
+    expect(plain(engineErrorMessage(en, sink, null))).toContain('cannot sink current');
+    expect(plain(engineErrorMessage(he, sink, null))).toContain('לבלוע');
+    const loaded: EngineError = {
+      code: 'logic_supply_current_uncharacterized',
+      components: ['U1', 'PSU1'],
+      param: 'y1',
+      detail: { part: 'SN74LVC08A', vcc: 3.6, condition: 'loaded', check: 'limit' },
+    };
+    expect(plain(engineErrorMessage(en, loaded, null))).toContain('I_O = 0');
+    expect(plain(engineErrorMessage(en, loaded, null))).toContain('1Y');
+    const forced: EngineError = {
+      code: 'logic_output_uncharacterized',
+      components: ['U2'],
+      param: 'y',
+      detail: { part: 'SN74LVC1G08', vcc: 3, forcedV: 0.3, limit: 0.024 },
+    };
+    expect(plain(engineErrorMessage(en, forced, null))).toContain(
+      'forced 300 mV past its own rail',
+    );
+    const ps: EngineError = { code: 'psu_sinking', components: ['PSU1'], detail: { value: 0.02 } };
+    expect(plain(engineErrorMessage(en, ps, null))).toContain('20 mA');
+    expect(plain(engineErrorMessage(he, ps, null))).toContain('20 mA');
+  });
   // Sprint 22 review: two drivers on one net; a supply changing mode inside the bounds.
   cases.push(
     {
@@ -745,7 +831,7 @@ describe('Sprint 21 refusal messages: every new code and variant renders fully i
         const m = engineErrorMessage(lc, e, null);
         expect(m, `${e.code} ${lc.code}`).not.toMatch(/[{}]/);
         expect(plain(m), `${e.code} ${lc.code}`).toContain(e.components![0]!);
-        if (e.param && e.param !== 'vcc' && e.param !== 'limit')
+        if (e.param && e.param !== 'vcc' && e.param !== 'limit' && e.param !== 'sink')
           expect(plain(m), `${e.code} ${lc.code}`).toContain(
             e.param.startsWith('gpio')
               ? `GPIO${e.param.slice(4)}`

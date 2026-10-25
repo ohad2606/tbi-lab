@@ -146,7 +146,7 @@ export interface Perturbation {
 }
 
 export type CheckKind =
-  'supply' | 'iccCondition' | 'input' | 'output' | 'psu' | 'padInput' | 'padLoad';
+  'supply' | 'iccCondition' | 'iccLoad' | 'input' | 'output' | 'psu' | 'padInput' | 'padLoad';
 
 export interface Check {
   id: string;
@@ -213,6 +213,8 @@ export interface BoundsSolver {
   x0: readonly number[];
   /** The supplies' modes at x0 (device key → 'CV' | 'CC'). */
   x0Modes?: ReadonlyMap<string, string>;
+  /** The electrical node a circuit node belongs to (nodes joined by closed switches are one). */
+  nodeRoot?: (node: string) => string;
   /** Node name → index in x (ground has no entry). */
   nodeIndex: ReadonlyMap<string, number>;
   /** dx per unit injection (linearised at x0), or null when the matrix is singular. */
@@ -281,7 +283,8 @@ export function evaluateBounds(
   if (!perts.length || !baseChecks.length) return null;
   const inj = perts.map((p) => ({ from: p.from, to: p.to }));
   const dx0 = solver.sensitivity(inj);
-  if (!dx0) return notEstablished('singular');
+  const allParts = () => [...new Set(perts.map((p) => p.component!).filter(Boolean))];
+  if (!dx0) return { ...notEstablished('singular'), components: allParts() };
   const x0 = solver.x0;
   const vAt = (x: readonly number[], n: string) => {
     const k = solver.nodeIndex.get(n);
@@ -351,7 +354,8 @@ export function evaluateBounds(
     // share the current is characterized by no datasheet (Sprint 22 review F2/F7).
     const byNode = new Map<string, number>();
     for (const j of bandIdx) {
-      const n = bandNode(perts[j]!);
+      // One electrical node: the same node, or nodes joined by a closed switch (a 0 V branch).
+      const n = solver.nodeRoot?.(bandNode(perts[j]!)) ?? bandNode(perts[j]!);
       const k = byNode.get(n);
       if (k !== undefined) return parallelRefusal([bandKey(perts[k]!), bandKey(perts[j]!)]);
       byNode.set(n, j);
@@ -360,10 +364,14 @@ export function evaluateBounds(
       sinks: [],
       stages: bandIdx.map((j) => sourceAt(perts[j]!, x0)),
     });
-    if (!corner) return notEstablished('corner_unsolved');
+    if (!corner)
+      return {
+        ...notEstablished('corner_unsolved'),
+        components: [...new Set(bandIdx.map((j) => perts[j]!.component!).filter(Boolean))],
+      };
     try {
       const d = corner.sensitivity(bandIdx.map((j) => ({ branch: bandKey(perts[j]!) })));
-      if (!d) return notEstablished('singular');
+      if (!d) return { ...notEstablished('singular'), components: allParts() };
       for (const c of cs) {
         const m = c.margin(corner.x);
         const row = sensOf.get(c.id)!;
@@ -544,12 +552,19 @@ export function evaluateBounds(
   // Sprint 22 review F1: the supplies' current limits first. Each is checked with its supply held
   // at its setpoint (constant voltage), so the worst DEMANDED current is what is compared with the
   // limit (and reported). Once they hold, no corner can take a supply into its current limit.
+  // The no-sinking checks last (review 3): a corner with a supply absorbing current changes no
+  // supply mode (the solve keeps it in constant voltage), so the level checks may come first and
+  // a level that is not guaranteed is reported as such.
+  const isSink = (c: Check) => c.kind === 'psu' && c.pin === 'sink';
   const ordered = [
-    ...checks.filter((c) => c.kind === 'psu'),
+    ...checks.filter((c) => c.kind === 'psu' && !isSink(c)),
     ...checks.filter((c) => c.kind !== 'psu'),
+    ...checks.filter(isSink),
   ];
   for (const c of ordered) {
     if (deferredChecks.has(c.id)) continue;
+    // A deferred Q1 refusal (an unbounded I_CC a limit needs) precedes the no-sinking checks.
+    if (isSink(c) && deferred) return deferred;
     const s0 = sensOf.get(c.id)!;
     let choice = choose(c, s0);
     // Sprint 22 (Q5): an output's OWN band in its current check. A unit injection at Y measures
@@ -571,6 +586,9 @@ export function evaluateBounds(
     // at its corner, so the refusal reports the exact worst value (N3; Sprint 22).
 
     let accepted = false;
+    // Sprint 22 review 3: a failing corner is followed to the stable (worst) corner; the most
+    // adverse failure seen is reported (never the first one met on the way).
+    let worstFail: { m: number; f: BoundFailure } | null = null;
     // Item 15: a check that reads only node voltages reuses a corner another check already
     // solved with the same choice (its x and its re-linearisation are plain numbers).
     const nodeOnly = NODE_ONLY.has(c.kind);
@@ -627,12 +645,17 @@ export function evaluateBounds(
       }
       const { x, dxc, stageOf, deviceMargins, modes } = solved;
       const m = deviceMargins ? deviceMargins.m : c.margin(x);
-      if (!(m >= 0))
-        return failure(c, deviceMargins ? deviceMargins.v : c.value(x), adverseOf(choice));
+      if (!(m >= 0)) {
+        if (!worstFail || m < worstFail.m)
+          worstFail = {
+            m,
+            f: failure(c, deviceMargins ? deviceMargins.v : c.value(x), adverseOf(choice)),
+          };
+      }
       // Sprint 22 review F1: the corner's supplies in another mode (constant voltage ↔ current
       // limit) than at the operating point: the response is not one linear piece across that
       // change, so the worst case is not established — refused by name, never assumed.
-      const flipped = modeChange(modes, c.forced?.key);
+      const flipped = worstFail ? null : modeChange(modes, c.forced?.key);
       // A refusal already due (an unbounded current a limit needs) is the more specific one.
       if (flipped && deferred) return deferred;
       if (flipped) {
@@ -667,6 +690,7 @@ export function evaluateBounds(
       if (keyOf(next) === keyOf(choice)) accepted = true;
       else choice = next;
     }
+    if (worstFail) return worstFail.f;
     if (!accepted) return notEstablished('not_monotone', c);
   }
   return deferred;
@@ -700,7 +724,8 @@ function solveCorner(
   const stageOf = new Map<number, number>();
   const outNode = new Map<string, string>();
   const parallel: string[] = [];
-  const claim = (node: string, key: string) => {
+  const claim = (raw: string, key: string) => {
+    const node = solver.nodeRoot?.(raw) ?? raw;
     const other = outNode.get(node);
     if (other !== undefined && parallel.length === 0) parallel.push(other, key);
     outNode.set(node, key);
@@ -713,7 +738,10 @@ function solveCorner(
       stageOf.set(j, bandSign(p));
       if (v === 'rail') stages.set(j, { st, mode: 'rail', atA: Infinity, volts: 0 });
       else {
-        const g = outputGuaranteeAt(st.card, st.vcc, st.level, st.i0);
+        // A nominal current at (numerical) zero or the wrong way starts from the first test point:
+        // the corner itself then shows the real current (Sprint 22 review 3: a wrong-way refusal
+        // reports that current, never a picoampere of numerical noise).
+        const g = outputGuaranteeAt(st.card, st.vcc, st.level, Math.max(st.i0, 0));
         if (!g) return { kind: 'beyond', output: st.key, current: st.i0 };
         stages.set(j, {
           st,
@@ -801,6 +829,8 @@ export interface BoundsAccess {
   device(x: readonly number[], key: string): number;
   /** An ESP32 pad's current at x (its device convention; the magnitude is what is used). */
   pad(x: readonly number[], gpio: number): number;
+  /** A bench supply's delivered current at x (A, positive out of its + terminal). */
+  supply(x: readonly number[], key: string): number;
 }
 
 /** ESP32 Table 5-3 input thresholds as the approved pad model pins them (esp32Gpio.ts). */
@@ -1090,12 +1120,28 @@ export function buildBounds(
         unit: 'A',
         component: p.id,
         pin: 'limit',
-        margin: (x) => p.limitA - Math.abs(access.device(x, p.key)) - 1e-12,
-        value: (x) => Math.abs(access.device(x, p.key)),
+        margin: (x) => p.limitA - Math.abs(access.supply(x, p.key)) - 1e-12,
+        value: (x) => Math.abs(access.supply(x, p.key)),
         // Sprint 22 review F1/F7: held at its setpoint at every corner of this check, so the
         // current compared (and reported) is the worst DEMANDED current, not the limit itself.
         forced: { key: p.key, plus: p.plus, minus: p.minus, volts: p.setpointV },
         detail: { limit: p.limitA },
+      });
+  // Sprint 22 review 3: the bench-supply model cannot SINK current (devices.ts LabPsu: "no
+  // current sinking"). A CV supply that would have to absorb current at any corner — a µA of
+  // leakage returning into it included — is refused by name. Signed: the delivered current.
+  for (const p of psus)
+    if (p.cv)
+      checks.push({
+        id: `psu-sink:${p.id}`,
+        kind: 'psu',
+        unit: 'A',
+        component: p.id,
+        pin: 'sink',
+        margin: (x) => access.supply(x, p.key) + 1e-12,
+        value: (x) => -access.supply(x, p.key),
+        forced: { key: p.key, plus: p.plus, minus: p.minus, volts: p.setpointV },
+        detail: {},
       });
 
   // Review item 3: an ESP32 input that reads a logic output must read a GUARANTEED level against
@@ -1223,6 +1269,25 @@ export function buildBounds(
               detail: { vcc: s.vcc, condition: 'notInputs', ...limitOf(s) },
             });
         }
+        // Sprint 22 review 3: where the sheet has no power rule for a loaded output (the
+        // SN74LVC08A: I_CC only at I_O = 0), every output must carry no current at every corner
+        // (a downstream input's leakage is a load too); otherwise the I_CC bound is not
+        // established — refused by name (owner question Q9).
+        if (!card.iccLoadedRule)
+          for (const o of s.outputs)
+            out.push({
+              id: `icc-load:${s.component}:${o.pin}`,
+              kind: 'iccLoad',
+              unit: 'A',
+              component: s.component,
+              ...names,
+              part: s.part,
+              pin: o.pin,
+              code: 'logic_supply_current_uncharacterized',
+              margin: (x) => 1e-12 - Math.abs(access.device(x, o.key)),
+              value: (x) => Math.abs(access.device(x, o.key)),
+              detail: { vcc: s.vcc, condition: 'loaded', ...limitOf(s) },
+            });
         return out;
       }),
   ];

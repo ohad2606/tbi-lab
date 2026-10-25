@@ -138,6 +138,7 @@ export type EngineErrorCode =
   | 'no_ground'
   | 'floating_circuit'
   | 'psu_shorted'
+  | 'psu_sinking'
   | 'psu_parallel'
   | 'invalid_parameter'
   | 'unsupported_component'
@@ -323,6 +324,9 @@ const quantity = (params: Params, key: string): number | undefined => {
 
 /** Logic part types (their PwlLoad elements are guaranteed output stages). */
 const LOGIC_TYPE = /^logic\./;
+
+/** Numerical resolution of a supply's delivered current (A) for the no-sinking rule. */
+const PSU_SINK_RESOLUTION_A = 1e-9;
 
 class UnionFind {
   private parent = new Map<string, string>();
@@ -1412,6 +1416,13 @@ export class EngineSession {
                 const r = replaced?.get(key);
                 return r ? -r.current(x, opts) : devices.get(key)!.current(x, opts);
               },
+              // A bench supply's DELIVERED current (out of its + terminal into the circuit), also
+              // while a corner holds it at its setpoint by an ideal source (whose branch current
+              // flows out of + : the same sign).
+              supply: (x: readonly number[], key: string) => {
+                const r = replaced?.get(key);
+                return r ? r.current(x, opts) : devices.get(key)!.current(x, opts);
+              },
               // Sprint 22 review F2: a pad replaced by its guaranteed level (an ideal source).
               pad: (x: readonly number[], gpio: number) => {
                 const r = replaced?.get(`GPIO${gpio}`);
@@ -1470,6 +1481,7 @@ export class EngineSession {
               {
                 x0: xSolution,
                 x0Modes: modes,
+                nodeRoot: (n: string) => shorts.find(n),
                 nodeIndex: index,
                 sensitivity: (inj) => sens(circuit, xSolution, inj),
                 corner: (spec) => {
@@ -1516,6 +1528,20 @@ export class EngineSession {
           }
         : null;
 
+    // Sprint 22 review 3: the bench-supply model has no current SINKING (devices.ts LabPsu, a
+    // documented idealisation): a supply in constant voltage that the circuit would push current
+    // back into is outside the model — refused by name, never shown as a negative current.
+    // (Numerical resolution 1 nA; the logic bounds check a µA-level sink exactly.)
+    for (const e of elements) {
+      if (e.kind !== 'psu' || !e.active || modes.get(e.key) !== 'CV') continue;
+      const i = currents.get(e.key);
+      if (i !== undefined && i < -PSU_SINK_RESOLUTION_A)
+        return this.fail({
+          code: 'psu_sinking',
+          components: [e.component.id],
+          detail: { value: -i },
+        });
+    }
     const outcome: SolveSuccess = {
       ok: true,
       ...this.base(),

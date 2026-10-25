@@ -102,7 +102,7 @@ describe('A logic-and-switches: two switches → SN74LVC1G08 → LED', () => {
     expect(params('SW2').closed).toBe(false);
   });
 
-  it('truth table through the solve, every input at 5.5 V or GND (the I_CC test condition); LED on the guaranteed envelope; supply currents; no rating warning', () => {
+  it('the truth table: HH runs (LED on the guaranteed envelope, supply currents, no rating warning); LL/LH/HL refused — PSU2 may have to sink 10 µA of input leakage (review 3)', () => {
     for (const [a, b] of [
       [false, false],
       [false, true],
@@ -110,9 +110,23 @@ describe('A logic-and-switches: two switches → SN74LVC1G08 → LED', () => {
       [true, true],
     ] as const) {
       const d = withSwitches(A, { SW1: a, SW2: b });
+      const at = `A=${+a} B=${+b}`;
+      // Sprint 22 review 3: the bench-supply model cannot sink. With Y LOW PSU2 delivers only
+      // I_CC (≥ 0) while each input's I_I (±5 µA, returning through GND or the V_CC pin) may flow
+      // back into it: PSU2 may have to absorb 2 × 5 µA = 10 µA → refused by name (owner question
+      // Q10; a bleeder across PSU2 would keep it delivering). Only HH (the LED load) runs.
+      if (!(a && b)) {
+        const r = local(d);
+        expect(r.ok ? null : r.error, at).toMatchObject({
+          code: 'logic_supply_not_guaranteed',
+          components: ['PSU2'],
+          param: 'sink',
+          detail: { value: expect.closeTo(10e-6, 12) },
+        });
+        continue;
+      }
       const o = ok(local(d));
       const u = o.components.U1!;
-      const at = `A=${+a} B=${+b}`;
       expect(
         u.logic!.gates[0]!.inputs.map((p) => p.level),
         at,
