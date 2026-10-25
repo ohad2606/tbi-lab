@@ -73,8 +73,11 @@ describe('no shipped example raises a pad over-voltage warning (T-D3)', () => {
       // and driven HIGH (3.3 V) against its HIGH at 3.0 V: Y forced above the gate's own V_CC, a
       // wrong-way current no test point covers (1).
       const expected: Record<string, number> = {
-        'esp32-logic-and': 5,
-        'esp32-logic-override': 5,
+        // Final review B1: a pad driven as an OUTPUT onto the gate's LOW output (both LOW) is
+        // refused too now: with Y at its guaranteed V_OL bound the pad would pull current OUT of a
+        // LOW output — no characteristic, and outputs must never be tied together (§8.2.1.3).
+        'esp32-logic-and': 7,
+        'esp32-logic-override': 7,
         'esp32-logic-quad-and': 9,
       };
       expect(refused, `${e.id} ${refusedAt}`).toBe(expected[e.id] ?? 0);

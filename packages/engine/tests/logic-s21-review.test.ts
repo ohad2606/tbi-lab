@@ -154,7 +154,7 @@ describe('review item 4: ESP32 internal pulls are typical only (probe pull)', ()
       expect(err(probe(mode))).toMatchObject({
         code: 'logic_mcu_pull_uncharacterized',
         param: 'gpio4',
-        detail: { gpio: 4, mode },
+        detail: { gpio: 4, mode, role: 'holds' },
       });
     });
   it('plain input: floating, as before', () => {
@@ -305,5 +305,170 @@ describe('review item 8: the corner is re-linearised (a mock network)', () => {
     expect(
       evaluateBounds({ ...solver, corner: () => null }, perts, [check], () => []),
     ).toMatchObject({ code: 'logic_bound_not_established', detail: { reason: 'corner_unsolved' } });
+  });
+});
+
+describe('final review B1: the LOW side of a gate output band (mirrors of items 1, 3, 7)', () => {
+  /** U1 Y LOW (A at GND); Y → Ra → U2.A; U2.A → Rb → V_CC (pull-up); 3.0 V. */
+  const ogapLow = (ra: number, rb: number) => {
+    const b = new Bench();
+    const g1 = b.add('logic.gate_and');
+    const g2 = b.add('logic.gate_and');
+    const [r1, r2] = [b.add('component.resistor'), b.add('component.resistor')];
+    b.psu(3.0, 0.5).wire('PSU1.negative', 'GND1.ref');
+    for (const g of [g1, g2])
+      b.wire('PSU1.positive', `${g}.vcc`)
+        .wire(`${g}.gnd`, 'GND1.ref')
+        .wire(`${g}.b`, 'PSU1.positive');
+    b.wire(`${g1}.a`, 'GND1.ref');
+    b.ohms(r1, ra).wire(`${g1}.y`, `${r1}.a`).wire(`${r1}.b`, `${g2}.a`);
+    b.ohms(r2, rb).wire(`${g2}.a`, `${r2}.a`).wire(`${r2}.b`, 'PSU1.positive');
+    return { b, g2 };
+  };
+  /** True worst: Y at V_OL max 0.4 V (the 16 mA point at 3.0 V), 5 µA into the node. */
+  const worstLow = (ra: number, rb: number) =>
+    0.4 + (2.6 * ra) / (ra + rb) + 5e-6 * ((ra * rb) / (ra + rb));
+
+  for (const [ra, rb] of [
+    [2000, 8000],
+    [2000, 9000],
+  ] as const)
+    it(`probe ogaplow ${ra}/${rb}: worst ${worstLow(ra, rb).toFixed(3)} V > V_IL 0.8 V → refused, worst exact`, () => {
+      const { b, g2 } = ogapLow(ra, rb);
+      const e = err(solve(b));
+      expect(e).toMatchObject({
+        code: 'logic_input_not_guaranteed',
+        components: [g2],
+        param: 'a',
+        detail: { level: 'low', vil: 0.8, causes: expect.arrayContaining(['output_guarantee']) },
+      });
+      expect((e!.detail as { worst: number }).worst).toBeCloseTo(worstLow(ra, rb), 6);
+    });
+  it('probe ogaplow 1000/9000: worst 0.664 V ≤ 0.8 V → runs', () => {
+    expect(worstLow(1000, 9000)).toBeLessThan(0.8);
+    expect(err(solve(ogapLow(1000, 9000).b))).toBeNull();
+  });
+
+  /** U1 Y LOW → Ra → GPIO4; GPIO4 → Rb → V_CC (probe padinlow). */
+  const padLow = (ra: number, rb: number) => {
+    const bb = boardBench((b, u) => {
+      const G = b.add('logic.gate_and');
+      const [r1, r2] = [b.add('component.resistor'), b.add('component.resistor')];
+      b.psu(3.0, 0.5)
+        .ohms(r1, ra)
+        .ohms(r2, rb)
+        .wire('PSU1.positive', `${G}.vcc`)
+        .wire(`${G}.gnd`, 'GND1.ref')
+        .wire(`${G}.a`, 'GND1.ref')
+        .wire(`${G}.b`, 'PSU1.positive')
+        .wire(`${G}.y`, `${r1}.a`)
+        .wire(`${r1}.b`, `${u}.gpio4`)
+        .wire(`${u}.gpio4`, `${r2}.a`)
+        .wire(`${r2}.b`, 'PSU1.positive');
+    });
+    const s = new EngineSession(bb.projected, { pins: bb.pins });
+    s.setPinMode(4, 'input');
+    return s.solve();
+  };
+  for (const [ra, rb] of [
+    [2000, 8000],
+    [2400, 7600],
+  ] as const)
+    it(`probe padinlow ${ra}/${rb}: GPIO4 can be at ${(0.4 + (2.6 * ra) / (ra + rb)).toFixed(3)} V > ESP32 V_IL 0.825 V → refused`, () => {
+      const e = err(padLow(ra, rb));
+      expect(e).toMatchObject({
+        code: 'logic_mcu_input_not_guaranteed',
+        param: 'gpio4',
+        detail: { gpio: 4, level: 'low', vil: expect.closeTo(0.825, 12) },
+      });
+      expect((e!.detail as { worst: number }).worst).toBeCloseTo(0.4 + (2.6 * ra) / (ra + rb), 3);
+    });
+  it('probe padinlow 1000/9000: 0.66 V ≤ 0.825 V → runs', () => {
+    expect(err(padLow(1000, 9000))).toBeNull();
+  });
+
+  /** Item 7 mirror: Y LOW sinks RL (to V_CC) + a 1 k / 6 k divider to U2.A (pull-up). */
+  const bracketLow = (rl: number) => {
+    const b = new Bench();
+    const g1 = b.add('logic.gate_and');
+    const g2 = b.add('logic.gate_and');
+    const [r0, ra, rb] = [
+      b.add('component.resistor'),
+      b.add('component.resistor'),
+      b.add('component.resistor'),
+    ];
+    b.psu(3.0, 0.5).wire('PSU1.negative', 'GND1.ref');
+    for (const g of [g1, g2])
+      b.wire('PSU1.positive', `${g}.vcc`)
+        .wire(`${g}.gnd`, 'GND1.ref')
+        .wire(`${g}.b`, 'PSU1.positive');
+    b.wire(`${g1}.a`, 'GND1.ref');
+    b.ohms(r0, rl).wire('PSU1.positive', `${r0}.a`).wire(`${r0}.b`, `${g1}.y`);
+    b.ohms(ra, 1000).wire(`${g1}.y`, `${ra}.a`).wire(`${ra}.b`, `${g2}.a`);
+    b.ohms(rb, 6000).wire(`${g2}.a`, `${rb}.a`).wire(`${rb}.b`, 'PSU1.positive');
+    return { b, g2 };
+  };
+  it('15.998 mA sunk at 0.4 V: the corner crosses 16 mA → V_OL ≤ 0.55 V (24 mA point) applies → refused', () => {
+    const { b, g2 } = bracketLow(2.6 / (15.998e-3 - 2.6 / 7000));
+    const e = err(solve(b));
+    expect(e).toMatchObject({ code: 'logic_input_not_guaranteed', components: [g2], param: 'a' });
+    expect((e!.detail as { worst: number }).worst).toBeCloseTo(
+      0.55 + 2.45 / 7 + 5e-6 * ((1000 * 6000) / 7000),
+      4,
+    );
+  });
+  it('12 mA sunk at 0.4 V stays on the 16 mA point: 0.4 + 2.6/7 + 4 mV ≤ 0.8 V → runs', () => {
+    expect(err(solve(bracketLow(2.6 / (12e-3 - 2.6 / 7000)).b))).toBeNull();
+  });
+});
+
+describe('final review S1: an ESP32 input that READS a gate output with its internal pull on (probe pullgate)', () => {
+  for (const mode of ['input-pullup', 'input-pulldown'] as const)
+    it(`${mode}: refused with role "reads" (remedy: turn the pull off)`, () => {
+      const bb = boardBench((b, u) => {
+        const G = b.add('logic.gate_and');
+        const r = b.add('component.resistor');
+        b.psu(3.0, 0.5)
+          .ohms(r, 100_000)
+          .wire('PSU1.positive', `${G}.vcc`)
+          .wire(`${G}.gnd`, 'GND1.ref')
+          .wire(`${G}.a`, 'PSU1.positive')
+          .wire(`${G}.b`, 'PSU1.positive')
+          .wire(`${G}.y`, `${u}.gpio4`)
+          .wire(`${G}.y`, `${r}.a`)
+          .wire(`${r}.b`, 'GND1.ref');
+      });
+      const s = new EngineSession(bb.projected, { pins: bb.pins });
+      s.setPinMode(4, mode as RuntimePinMode);
+      expect(err(s.solve())).toMatchObject({
+        code: 'logic_mcu_pull_uncharacterized',
+        param: 'gpio4',
+        detail: { gpio: 4, mode, role: 'reads' },
+      });
+    });
+});
+
+describe('final review B1 follow-up: a driver tied onto a LOW output', () => {
+  it('GPIO4 driven LOW onto the gate output that is LOW: with Y at V_OL max the pad pulls current OUT of the LOW output — refused, naming the gate output (reverse)', () => {
+    let G = '';
+    const bb = boardBench((b, u) => {
+      G = b.add('logic.gate_and');
+      b.psu(3.0, 0.5)
+        .wire('PSU1.positive', `${G}.vcc`)
+        .wire(`${G}.gnd`, 'GND1.ref')
+        .wire(`${G}.a`, 'GND1.ref')
+        .wire(`${G}.b`, 'PSU1.positive')
+        .wire(`${G}.y`, `${u}.gpio4`);
+    });
+    const s = new EngineSession(bb.projected, { pins: bb.pins });
+    s.setPinMode(4, 'output-low');
+    expect(err(s.solve())).toMatchObject({
+      code: 'logic_output_uncharacterized',
+      components: [G],
+      param: 'y',
+      detail: { reverse: true, causes: expect.arrayContaining(['output_guarantee']) },
+    });
+    s.setPinMode(4, 'input');
+    expect(err(s.solve())).toBeNull();
   });
 });

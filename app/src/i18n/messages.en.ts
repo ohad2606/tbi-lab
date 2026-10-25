@@ -241,7 +241,7 @@ export const en = {
   'sim.bound.notEstablished.part_not_bounded': 'this part’s state could not be bounded',
   'sim.bound.notEstablished.part_not_in_solve': 'a pin of this part is not in the solved circuit',
   'sim.error.logic_mcu_input_not_guaranteed':
-    '{components}: {pin}, an ESP32 input, reads this logic output at {voltage} in the simulation, but within the datasheet bounds ({causes}) it can be at {worst}, {cmp}. The ESP32 would not read a guaranteed level, so the circuit is not simulated. A gate output is guaranteed close to its rail only at light load (V_CC − 0.1 V up to 100 µA): lighten the load on that output.',
+    '{components}: {pin}, an ESP32 input, reads this logic output at {voltage} in the simulation, but within the datasheet bounds ({causes}) it can be at {worst}, {cmp}. The ESP32 would not read a guaranteed HIGH, so the circuit is not simulated. A gate output HIGH is guaranteed close to its rail only at light load (the datasheet row V_OH ≥ V_CC − 0.1 V at up to 100 µA): lighten the load on that output.',
   'sim.error.logic_mcu_input_not_guaranteed.undefined':
     '{components}: {pin}, an ESP32 input, reads this logic output at {voltage}, between the ESP32’s {vil} and {vih}: no defined level, so the circuit is not simulated.',
   'sim.error.logic_mcu_output_uncharacterized':
@@ -252,6 +252,10 @@ export const en = {
     'Not simulated: the ESP32 pin reading this output would not read a guaranteed level (see the message above).',
   'logic.why.mcuDrive':
     'Not simulated: the ESP32 pin driving this part’s input has no guaranteed level here (see the message above).',
+  'sim.error.logic_mcu_input_not_guaranteed.low':
+    '{components}: {pin}, an ESP32 input, reads this logic output at {voltage} in the simulation, but within the datasheet bounds ({causes}) it can be at {worst}, {cmp}. The ESP32 would not read a guaranteed LOW, so the circuit is not simulated. A gate output LOW is guaranteed close to GND only at light load (the datasheet row V_OL ≤ 0.1 V at up to 100 µA): lighten what the output sinks (e.g. a larger pull-up) or what lies between it and the pin.',
+  'sim.error.logic_mcu_pull_uncharacterized.reads':
+    '{components}: {pin}, an ESP32 input that reads this logic output, has its internal pull resistor enabled. The ESP32 datasheet gives that resistor only as typical (45 kΩ, no minimum or maximum), so the load it puts on the output, and the level the pin reads, are not guaranteed: the circuit is not simulated. Turn the internal pull off (a plain input).',
   'sim.bound.cause.leakage': 'input leakage I_I',
   'sim.bound.cause.supply_current': 'quiescent supply current I_CC',
   'sim.bound.cause.esp32_voh': 'ESP32 V_OH ≥ 2.64 V',
