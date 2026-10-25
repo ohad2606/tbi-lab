@@ -72,13 +72,6 @@ function hosted(d: ProjectDocument) {
   return { s: new EngineSession(circuit, { pins: attachments }), attachments };
 }
 
-/** HIGH into a light load at 3.0 V on the SN74LVC1G (100 µA, 16 mA) segment. */
-const lvc1gHighInto = (ohms: number) => {
-  const k = (3.0 - 2.4 - 0.1) / (16e-3 - 100e-6);
-  const I = (3.0 - 0.1 + 100e-6 * k) / (ohms + k);
-  return { I, V: I * ohms };
-};
-
 describe('A logic-and-switches: two switches → SN74LVC1G08 → LED', () => {
   const A = doc('logic-and-switches');
 
@@ -346,32 +339,38 @@ describe('D esp32-logic-override: ESP32 + manual switch → SN74LVC1G32 → LED,
   });
 
   it("the firmware's cases: GPIO18 HIGH/LOW × switch open/closed; GPIO19 (input) reads the gate", () => {
+    // Sprint 21 review (item 3): whenever Y is HIGH it sources the LED (several mA), so at 3.0 V
+    // only V_OH ≥ 2.4 V (the 16 mA test point) is guaranteed — below the ESP32's V_IH
+    // 0.75 × 3.3 = 2.475 V: the read-back on GPIO19 is not guaranteed and the state is refused by
+    // name. Y LOW (sinking only the pad's leakage) is guaranteed ≤ 0.1 V and runs.
     for (const sw of [false, true])
       for (const mode of ['output-low', 'output-high', 'input'] as RuntimePinMode[]) {
         const { s } = hosted(withSwitches(D, { SW1: sw }));
         s.setPinMode(18, mode);
         s.setPinMode(19, 'input');
-        const o = ok(s.solve());
+        const o = s.solve();
         const a = mode === 'output-high';
         const at = `GPIO18 ${mode}, switch ${sw ? 'closed' : 'open'}`;
-        const g = o.components.U2!.logic!.gates[0]!;
+        const on = a || sw;
+        if (on) {
+          if (o.ok) throw new Error(`expected a refusal: ${at}`);
+          expect(o.error, at).toMatchObject({
+            code: 'logic_mcu_input_not_guaranteed',
+            param: 'gpio19',
+            detail: { gpio: 19, level: 'high', worst: expect.closeTo(2.4, 9) },
+          });
+          continue;
+        }
+        const ok1 = ok(o);
+        const g = ok1.components.U2!.logic!.gates[0]!;
         expect(
           g.inputs.map((p) => p.level),
           at,
-        ).toEqual([a ? 'high' : 'low', sw ? 'high' : 'low']);
-        const on = a || sw;
-        expect(g.output.level, at).toBe(on ? 'high' : 'low');
-        // GPIO19 sees the gate's output: above the ESP32 V_IH 2.475 V when HIGH, ~0 V when LOW.
-        const pad = o.pins!.find((p) => p.gpio === 19)!;
-        if (on) expect(pad.voltage, at).toBeGreaterThan(2.475);
-        else expect(pad.voltage, at).toBeLessThan(0.825);
-        const i = o.components.D1!.current!;
-        if (on) {
-          const exp = lvc1gHighInto(220);
-          expect(i, at).toBeGreaterThan(3e-3);
-          expect(i, at).toBeLessThan(exp.I);
-        } else expect(i, at).toBeLessThan(1e-9);
-        expect(ratingWarnings(createSnapshot(withSwitches(D, { SW1: sw })), o), at).toEqual([]);
+        ).toEqual(['low', 'low']);
+        expect(g.output.level, at).toBe('low');
+        expect(ok1.pins!.find((p) => p.gpio === 19)!.voltage, at).toBeLessThan(0.825);
+        expect(ok1.components.D1!.current!, at).toBeLessThan(1e-9);
+        expect(ratingWarnings(createSnapshot(withSwitches(D, { SW1: sw })), ok1), at).toEqual([]);
       }
   });
 

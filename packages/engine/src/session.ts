@@ -19,7 +19,7 @@ import { Diode, LabPsu, Resistor, VoltageSource, type Device } from './devices.j
 import { PwlLoad } from './pwl.js';
 import { ConstantSink, RegulatedOutput } from './sources.js';
 import { GpioPin, outsideCharacterizedRegion, V_OH_CHAR_V } from './esp32Gpio.js';
-import { buildBounds, evaluateBounds } from './logic/bounds.js';
+import { buildBounds, evaluateBounds, type Injection } from './logic/bounds.js';
 import { Npn } from './bjt.js';
 
 /** The solver's default junction gmin (circuit.ts DEFAULTS), for exact device readouts. */
@@ -194,6 +194,17 @@ export type EngineErrorCode =
   | 'logic_input_leakage_uncharacterized'
   | 'logic_input_not_guaranteed'
   | 'logic_supply_not_guaranteed'
+  /**
+   * Sprint 21 review: the bounds could not be established at all (a corner that cannot be solved
+   * and verified, a singular linearisation, a worst case that is not stable under re-linearisation,
+   * a logic part that cannot be bounded): refused, never skipped.
+   */
+  | 'logic_bound_not_established'
+  /** ESP32 pads (review items 3–5): an input reading a logic output at a non-guaranteed level; an
+   *  output relied on for a level while carrying more than leakage; an internal pull relied on. */
+  | 'logic_mcu_input_not_guaranteed'
+  | 'logic_mcu_output_uncharacterized'
+  | 'logic_mcu_pull_uncharacterized'
   | 'internal';
 
 export interface EngineError {
@@ -1373,24 +1384,38 @@ export class EngineSession {
     this.boundsCheck =
       logicParts.length && xSolution.length
         ? () => {
-            const specs = parts.flatMap((p) => {
-              const b = p.model.logicBounds?.(p.ctx, p.state);
-              return b ? [b] : [];
+            const refused = (reason: string, component: string): EngineError => ({
+              code: 'logic_bound_not_established',
+              components: [component],
+              detail: { reason },
             });
+            // Review item 11: a logic part that cannot be bounded is refused, never skipped.
+            const specs: NonNullable<ReturnType<NonNullable<PartModel['logicBounds']>>>[] = [];
+            for (const p of parts) {
+              if (!p.model.logicPins) continue;
+              const b = p.model.logicBounds?.(p.ctx, p.state);
+              if (!b) return refused('part_not_bounded', p.c.id);
+              specs.push(b);
+            }
             if (!specs.length) return null;
             const index = new Map(circuit.nodes().map((n, i) => [n, i]));
             const has = (n: string) => n === REF || index.has(n);
             const opts = step ? { gmin: DC_GMIN, step } : { gmin: DC_GMIN };
+            const padDevice = new Map(pinDevices.map(({ pin, device }) => [pin.gpio, device]));
             const access = {
               v: (x: readonly number[], n: string) => (n === REF ? 0 : x[index.get(n)!]!),
               device: (x: readonly number[], key: string) => devices.get(key)!.current(x, opts),
+              pad: (x: readonly number[], gpio: number) => padDevice.get(gpio)!.current(x),
             };
-            const usable = specs.filter(
-              (s) =>
-                [s.vccNode, s.gndNode, ...s.inputs.map((i) => i.node)].every(has) &&
-                s.outputs.every((o) => has(o.node) && devices.has(o.key)) &&
-                (s.offPins ?? []).every((o) => has(o.node)),
-            );
+            for (const s of specs)
+              if (
+                ![s.vccNode, s.gndNode, ...s.inputs.map((i) => i.node)].every(has) ||
+                !s.outputs.every((o) => has(o.node) && devices.has(o.key))
+              )
+                return refused('part_not_in_solve', s.component);
+            // An unpowered gate's pin that is wired to nothing has no node: its I_off has nowhere
+            // to flow (nothing to bound); every connected pin is kept.
+            for (const s of specs) if (s.offPins) s.offPins = s.offPins.filter((o) => has(o.node));
             const psus = elements
               .filter((e) => e.kind === 'psu' && e.active && devices.has(e.key))
               .map((e) => ({
@@ -1399,34 +1424,59 @@ export class EngineSession {
                 limitA: this.psuSettings(e.component).limitA!,
                 cv: modes.get(e.key) === 'CV',
               }));
+            const outputRoots = new Set(
+              specs.flatMap((s) => s.outputs.map((o) => signalUf.find(o.node))),
+            );
             const pads = pinNodes
               .filter(({ node }) => has(node))
               .map(({ pin, node }) => ({
                 gpio: pin.gpio,
                 node,
-                mode: this.pinModes.get(pin.gpio)!,
+                mode: this.pinModes.get(pin.gpio)! as string,
+                component: pin.component,
+                readsLogic: outputRoots.has(signalUf.find(node)),
               }));
-            const { perts, checks, extra } = buildBounds(
-              usable,
-              pads,
-              psus,
-              access,
-              xSolution,
-              REF,
-            );
+            const { perts, checks, extra } = buildBounds(specs, pads, psus, access, xSolution, REF);
             const live = perts.filter((p) => has(p.from) && has(p.to));
             let n = 0;
+            const sens = (c: Circuit, x: readonly number[], inj: readonly Injection[]) => {
+              try {
+                return c.sensitivity(x, inj, {}, step).dx;
+              } catch (e) {
+                // Review item 12: a singular linearisation is refused explicitly.
+                if (e instanceof SingularMatrixError) return null;
+                throw e;
+              }
+            };
             const failure = evaluateBounds(
               {
                 x0: xSolution,
-                sensitivity: (inj) => circuit.sensitivity(xSolution, inj, {}, step).dx,
-                solveWith: (sinks) => {
+                nodeIndex: index,
+                sensitivity: (inj) => sens(circuit, xSolution, inj),
+                corner: (spec) => {
+                  const replace = new Map<string, Device>(
+                    spec.stages.map((st) => [
+                      st.key,
+                      new VoltageSource(st.key, st.plus, st.minus, st.volts),
+                    ]),
+                  );
+                  const c = circuit.withExtra(
+                    spec.sinks.map((k) => new ConstantSink(`~bound${n++}`, k.from, k.to, k.amps)),
+                    replace,
+                  );
+                  const release = () => void circuit.nodes();
                   try {
-                    const c = circuit.withExtra(
-                      sinks.map((k) => new ConstantSink(`~bound${n++}`, k.from, k.to, k.amps)),
-                    );
-                    return (step ? c.solveStep(step) : c.solve()).x;
+                    const x = (step ? c.solveStep(step) : c.solve()).x;
+                    return {
+                      x,
+                      sensitivity: (inj) => sens(c, x, inj),
+                      // The source's branch current flows out of its + terminal: for a HIGH stage
+                      // (+ = V_CC) that is −(current out of Y); for a LOW stage (+ = Y), −(into Y).
+                      stageCurrent: (key) => -replace.get(key)!.current(x, opts),
+                      release,
+                    };
                   } catch (e) {
+                    release();
                     if (e instanceof SingularMatrixError || e instanceof ConvergenceError)
                       return null;
                     throw e;

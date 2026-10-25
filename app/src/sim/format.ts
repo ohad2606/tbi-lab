@@ -226,7 +226,11 @@ export function engineErrorMessage(
     case 'logic_supply_current_uncharacterized':
     case 'logic_input_leakage_uncharacterized':
     case 'logic_input_not_guaranteed':
-    case 'logic_supply_not_guaranteed': {
+    case 'logic_supply_not_guaranteed':
+    case 'logic_bound_not_established':
+    case 'logic_mcu_input_not_guaranteed':
+    case 'logic_mcu_output_uncharacterized':
+    case 'logic_mcu_pull_uncharacterized': {
       const d = (error.detail ?? {}) as {
         vcc?: number;
         value?: number;
@@ -241,6 +245,7 @@ export function engineErrorMessage(
         range?: [number, number];
         iiVcc?: [number, number];
         level?: string;
+        reason?: string;
       };
       const V = (v: number | undefined) =>
         typeof v === 'number' ? formatResult(locale, v, 'volt') : '';
@@ -258,11 +263,17 @@ export function engineErrorMessage(
             ? 'sim.error.logic_input_floating.mcu_inputs'
             : 'sim.error.logic_input_floating.mcu_input'
           : (error.code === 'logic_input_undefined' && d.pads?.length) ||
-              (error.code === 'logic_input_not_guaranteed' && d.causes?.includes('esp32_voh'))
+              // Review item 14: the ESP32-HIGH wording only for a HIGH input.
+              (error.code === 'logic_input_not_guaranteed' &&
+                d.level === 'high' &&
+                d.causes?.includes('esp32_voh'))
             ? `sim.error.${error.code}.mcu_high`
-            : error.code === 'logic_supply_not_guaranteed' && error.param === 'limit'
-              ? 'sim.error.logic_supply_not_guaranteed.limit'
-              : `sim.error.${error.code}.${(d.part ?? '').toLowerCase()}`;
+            : error.code === 'logic_mcu_input_not_guaranteed' && d.level === 'undefined'
+              ? 'sim.error.logic_mcu_input_not_guaranteed.undefined'
+              : error.code === 'logic_supply_not_guaranteed' && error.param === 'limit'
+                ? 'sim.error.logic_supply_not_guaranteed.limit'
+                : `sim.error.${error.code}.${(d.part ?? '').toLowerCase()}`;
+      const why = `sim.bound.notEstablished.${d.reason ?? ''}`;
       const causes = (d.causes ?? [])
         .map((c) => `sim.bound.cause.${c}`)
         .filter(isMessageKey)
@@ -286,13 +297,14 @@ export function engineErrorMessage(
           typeof d.value === 'number' &&
           (error.code === 'logic_input_undefined' ||
             error.code === 'logic_input_out_of_range' ||
-            error.code === 'logic_input_not_guaranteed')
+            error.code === 'logic_input_not_guaranteed' ||
+            error.code === 'logic_mcu_input_not_guaranteed')
             ? formatResult(locale, d.value, 'volt')
             : '',
         // Sprint 21: the bounds' worst value, causes, the row and the comparison.
         worst: V(d.worst),
         causes: new Intl.ListFormat(locale.code, { type: 'conjunction' }).format(causes),
-        reason: isMessageKey(reason) ? t(reason) : '',
+        reason: isMessageKey(reason) ? t(reason) : isMessageKey(why) ? t(why) : '',
         range: range(d.range),
         iiVcc: range(d.iiVcc),
         level: d.level === 'high' ? 'HIGH' : d.level === 'low' ? 'LOW' : '',

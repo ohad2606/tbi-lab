@@ -529,11 +529,19 @@ describe('ESP32 GPIO interop (pads in the same solve)', () => {
     const s = new EngineSession(bb.projected, { pins: bb.pins });
     s.setPinMode(4, 'input');
     s.setPinMode(18, 'output-high');
-    const on = ok(s.solve());
-    const pad4 = on.pins!.find((p) => p.gpio === 4)!;
-    expect(on.components[G]!.state).toMatchObject({ input_a: 'high', gateOutput: 'high' });
-    expect(interpretDigitalInput(pad4.voltage, 0)).toBe(1);
-    expect(on.components.D1!.current!).toBeGreaterThan(1e-3);
+    // Sprint 21 review (item 3): Y HIGH sources the LED (> 100 µA), so at 3.0 V only V_OH ≥ 2.4 V
+    // (16 mA test point) is guaranteed — below the ESP32's V_IH 0.75 × 3.3 = 2.475 V: GPIO4 would
+    // read a HIGH that is not guaranteed. Refused by name (the model alone says 2.78 V → HIGH).
+    expect(fails(s.solve())).toMatchObject({
+      code: 'logic_mcu_input_not_guaranteed',
+      param: 'gpio4',
+      detail: {
+        gpio: 4,
+        level: 'high',
+        worst: expect.closeTo(2.4, 9),
+        causes: expect.arrayContaining(['output_guarantee']),
+      },
+    });
     s.setPinMode(18, 'output-low');
     const off = ok(s.solve());
     expect(off.components[G]!.state).toMatchObject({ input_a: 'low', gateOutput: 'low' });

@@ -85,8 +85,13 @@ export function checkCircuit(doc: ProjectDocument): CheckIssue[] {
   for (const c of doc.components) {
     const ids = CATALOG[c.type].terminals.map((t) => t.id);
     if (!ids.includes('vcc') || !ids.includes('gnd')) continue;
-    const v = netOf.get(`${c.id}\u0000vcc`);
-    if (v !== undefined && v === netOf.get(`${c.id}\u0000gnd`))
+    // Review item 10: every GND symbol is the one reference (two ground nets are one node).
+    const at = (t: string) => {
+      const n = netOf.get(`${c.id}\u0000${t}`);
+      return n === undefined ? undefined : groundNets.has(n) ? REF : n;
+    };
+    const v = at('vcc');
+    if (v !== undefined && v === at('gnd'))
       issues.push({
         code: 'supply_pins_shorted',
         severity: 'warning',
@@ -101,39 +106,40 @@ export function checkCircuit(doc: ProjectDocument): CheckIssue[] {
   // `partially_wired` above), and never for a shorted one (above). Conservative, so a normal
   // circuit with any load across the supply never shows it.
   {
-    const parent = new Map<string, string>();
-    const find = (k: string): string => {
-      if (!parent.has(k)) parent.set(k, k);
-      const q = parent.get(k)!;
-      if (q === k) return k;
-      const r = find(q);
-      parent.set(k, r);
-      return r;
+    const netAt = (c: string, t: string) => {
+      const n = netOf.get(`${c}\u0000${t}`);
+      return n === undefined ? undefined : groundNets.has(n) ? REF : n;
     };
     const supplies = doc.components.filter((c) => c.type === 'instrument.lab_psu');
-    for (const c of doc.components) {
-      if (c.type === 'instrument.lab_psu' || c.type === 'component.ground') continue;
-      const nets = CATALOG[c.type].terminals
-        .map((t) => netOf.get(`${c.id}\u0000${t.id}`))
-        .filter((n): n is string => n !== undefined)
-        .map((n) => (groundNets.has(n) ? REF : n));
-      for (const n of nets.slice(1)) parent.set(find(nets[0]!), find(n));
-    }
-    // Other supplies conduct too (in series with this one).
+    const supplyNets = (id: string) =>
+      ['positive', 'negative'].map((t) => netAt(id, t)).filter((n): n is string => n !== undefined);
+    // Review item 9: a fresh union per supply (parts, plus the OTHER supplies conducting), so one
+    // supply's own terminals never count as a load for another.
     for (const s of supplies) {
-      const nets = ['positive', 'negative']
-        .map((t) => netOf.get(`${s.id}\u0000${t}`))
-        .filter((n): n is string => n !== undefined)
-        .map((n) => (groundNets.has(n) ? REF : n));
-      for (const o of supplies)
-        if (o !== s) {
-          const on = ['positive', 'negative']
-            .map((t) => netOf.get(`${o.id}\u0000${t}`))
-            .filter((n): n is string => n !== undefined)
-            .map((n) => (groundNets.has(n) ? REF : n));
-          if (on.length === 2) parent.set(find(on[0]!), find(on[1]!));
-        }
+      const nets = supplyNets(s.id);
       if (nets.length !== 2 || nets[0] === nets[1]) continue;
+      const parent = new Map<string, string>();
+      const find = (k: string): string => {
+        if (!parent.has(k)) parent.set(k, k);
+        const q = parent.get(k)!;
+        if (q === k) return k;
+        const r = find(q);
+        parent.set(k, r);
+        return r;
+      };
+      const join = (ns: string[]) => {
+        for (const n of ns.slice(1)) parent.set(find(ns[0]!), find(n));
+      };
+      for (const c of doc.components) {
+        if (c.type === 'instrument.lab_psu' || c.type === 'component.ground') continue;
+        join(
+          CATALOG[c.type].terminals
+            .map((t) => netAt(c.id, t.id))
+            .filter((n): n is string => n !== undefined),
+        );
+      }
+      for (const o of supplies)
+        if (o !== s && supplyNets(o.id).length === 2) join(supplyNets(o.id));
       if (find(nets[0]!) !== find(nets[1]!))
         issues.push({ code: 'psu_no_load', severity: 'warning', components: [s.id] });
     }

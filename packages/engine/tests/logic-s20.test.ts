@@ -129,11 +129,15 @@ describe('undriven inputs are floating, never a valid LOW (owner policy)', () =>
     const s = new EngineSession(bb.projected, { pins: bb.pins });
     const o = ok(s.solve());
     expect(o.components[G]!.state).toMatchObject({ input_a: 'low', gateOutput: 'low' });
-    // Driven HIGH, the pad also feeds the pull-down: 3.3 V·10k/(10k + 16.5 Ω) at the gate input.
+    // Driven HIGH, the pad also feeds the pull-down (≈ 330 µA). Sprint 21 review (item 5): the
+    // ESP32's V_OH ≥ 0.8 × VDD is stated with no load current (Table 5-3; 40 mA is typical), so it
+    // is relied on only at leakage-level current: refused by name, never a HIGH under that load.
     s.setPinMode(18, 'output-high');
-    const h = ok(s.solve());
-    expect(h.components[G]!.terminals.a!).toBeCloseTo((3.3 * 10_000) / (10_000 + 16.5), 9);
-    expect(h.components[G]!.state).toMatchObject({ input_a: 'high', gateOutput: 'high' });
+    expect(fails(s.solve())).toMatchObject({
+      code: 'logic_mcu_output_uncharacterized',
+      param: 'gpio18',
+      detail: { gpio: 18, level: 'high' },
+    });
   });
 
   it('an open switch is not a driver: the input it would connect floats (refused, never LOW)', () => {

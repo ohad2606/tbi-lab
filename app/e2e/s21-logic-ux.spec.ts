@@ -80,22 +80,64 @@ async function onScreenIn(page: Page, l: Locator) {
   expect(b.y + b.height, 'bottom inside the Inspector').toBeLessThanOrEqual(i.y + i.height + 1);
 }
 
-/** Every canvas readout (result-*) clear of the OTHER parts' bodies and of the Inspector. */
+/**
+ * Every canvas readout clear of the OTHER parts' bodies and of the Inspector. Measured in ONE
+ * snapshot inside the page (review of the 768×1024 failure): while an ESP32 sketch runs, the
+ * readouts re-render every time the firmware changes a pin, so locating them one by one could
+ * catch a label between two renders (no box). Only the canvas's runtime labels are readouts (the
+ * Inspector's own `result-*` rows are not); at least one must be present (the selected part's).
+ */
 async function readoutsClear(page: Page, parts: string[]) {
-  const inspector = await box(page.getByTestId('inspector'));
-  const readouts = page.locator('[data-testid^="result-"]');
-  const n = await readouts.count();
-  for (let k = 0; k < n; k++) {
-    const r = readouts.nth(k);
-    if (!(await r.isVisible())) continue;
-    const id = (await r.getAttribute('data-testid'))!.slice('result-'.length);
-    const rb = await box(r);
-    expect(overlap(rb, inspector), `readout of ${id} vs the Inspector`).toBe(false);
-    for (const p of parts) {
-      if (p === id) continue;
-      const pb = await box(component(page, p).locator('.component-hit'));
-      expect(overlap(rb, pb), `readout of ${id} vs ${p}`).toBe(false);
-    }
+  // While a sketch runs the operating point changes (an ESP32 example may also pass through a
+  // refused state, where no readout is shown): the check is polled until one snapshot has the
+  // readouts (at least one: the selected part's) and then must find no overlap in it.
+  const snapshot = () =>
+    page.evaluate((ids) => {
+      const r = (e: Element) => {
+        const b = e.getBoundingClientRect();
+        return { x: b.x, y: b.y, width: b.width, height: b.height };
+      };
+      const inspector = document.querySelector('[data-testid="inspector"]');
+      // Only what the canvas shows counts: a label scrolled past its edge is clipped there.
+      const canvas = document.querySelector('[data-testid="canvas"]')!.getBoundingClientRect();
+      const clip = (b: { x: number; y: number; width: number; height: number }) => {
+        const x = Math.max(b.x, canvas.x);
+        const y = Math.max(b.y, canvas.y);
+        const w = Math.min(b.x + b.width, canvas.x + canvas.width) - x;
+        const h = Math.min(b.y + b.height, canvas.y + canvas.height) - y;
+        return { x, y, width: Math.max(0, w), height: Math.max(0, h) };
+      };
+      const labels = [
+        ...document.querySelectorAll(
+          '[data-testid="canvas"] text.runtime-label[data-testid^="result-"]',
+        ),
+      ]
+        .map((e) => ({ id: e.getAttribute('data-testid')!.slice(7), box: clip(r(e)) }))
+        .filter((l) => l.box.width > 0 && l.box.height > 0);
+      const partBoxes = ids.map((id) => {
+        const e = document.querySelector(`[data-hit="component"][data-id="${id}"] .component-hit`);
+        return { id, box: e ? r(e) : null };
+      });
+      return { inspector: inspector ? r(inspector) : null, labels, partBoxes };
+    }, parts);
+  let last: Awaited<ReturnType<typeof snapshot>> | null = null;
+  await expect
+    .poll(
+      async () => {
+        last = await snapshot();
+        return last.labels.length;
+      },
+      { message: 'canvas readouts while running', timeout: 15_000 },
+    )
+    .toBeGreaterThan(0);
+  const found = last!;
+  expect(found.inspector, 'the Inspector').not.toBeNull();
+  for (const p of found.partBoxes) expect(p.box, `${p.id} is drawn`).not.toBeNull();
+  for (const l of found.labels) {
+    expect(overlap(l.box, found.inspector!), `readout of ${l.id} vs the Inspector`).toBe(false);
+    for (const p of found.partBoxes)
+      if (p.id !== l.id)
+        expect(overlap(l.box, p.box!), `readout of ${l.id} vs ${p.id}`).toBe(false);
   }
 }
 
@@ -175,7 +217,7 @@ for (const size of SIZES)
       await locale(page, 'en');
     });
 
-    test(`D (ESP32): the logic controls are never under the ESP32 terminal; readouts clear (${size.name})`, async ({
+    test(`D (ESP32): the logic controls are never under the ESP32 terminal; the refusal is explained (${size.name})`, async ({
       page,
       request,
     }) => {
@@ -202,21 +244,32 @@ for (const size of SIZES)
           'aria-pressed',
           'false',
         );
+        // Run: the sketch drives A HIGH at once; Y HIGH sources the LED and GPIO19 reads it, where
+        // only V_OH ≥ 2.4 V is guaranteed (< the ESP32's V_IH 2.475 V): the session is refused by
+        // name (review item 3). Deterministic: the first HIGH comes from setup().
         await page.getByTestId('sim-run').click();
-        await expect(status(page)).toHaveAttribute('data-status', 'running', { timeout: 20_000 });
+        await expect(page.getByTestId('sim-error')).toHaveAttribute(
+          'data-code',
+          'logic_mcu_input_not_guaranteed',
+          { timeout: 20_000 },
+        );
+        await expect(page.getByTestId('sim-error')).toContainText('GPIO19');
         await inspect(page, 'U2');
-        await expect(page.getByTestId('logic-truth-HL')).toHaveAttribute('aria-current', 'true', {
-          timeout: 15_000,
-        });
+        await expect(page.getByTestId('logic-pin-y')).toHaveAttribute(
+          'data-level',
+          'not_simulated',
+        );
+        await expect(page.getByTestId('logic-why-y')).toContainText(
+          lc === 'en' ? 'ESP32 pin reading this output' : 'ESP32',
+        );
         await controls.scrollIntoViewIfNeeded();
         expect(
           overlap(await box(controls), await box(terminal)),
-          'running: controls vs terminal',
+          'after Run: controls vs terminal',
         ).toBe(false);
-        await shot(page, `s21l-${size.name}-${lc}-D-run`);
-        await readoutsClear(page, ['U1', 'U2', 'R1', 'R2', 'R3', 'D1', 'SW1', 'PSU1']);
-        await page.getByTestId('sim-stop').click();
-        await expect(status(page)).toHaveAttribute('data-status', 'stopped', { timeout: 20_000 });
+        await shot(page, `s21l-${size.name}-${lc}-D-refused`);
+        // A refused session shows no canvas readout at all (nothing to overlap).
+        await expect(page.locator('[data-testid="canvas"] text.runtime-label')).toHaveCount(0);
       }
       await locale(page, 'en');
     });

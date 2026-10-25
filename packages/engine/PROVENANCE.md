@@ -203,7 +203,12 @@ worked example; bit timing 27/70 µs).
 `src/circuit.ts` gained two ADDITIVE methods; no existing solve path changed:
 
 - `sensitivity(x, injections)`: the linearised response J⁻¹·b of a solved operating point to unit
-  current injections (one LU factorisation of the Newton matrix at the solution).
-- `withExtra(devices)`: a new circuit with the same devices in the same order (same indices) plus
-  extra devices on existing nodes, for the exact corner solves.
+  current injections or unit source-value changes (one LU factorisation of the Newton matrix at the
+  solution). It re-prepares this circuit's own devices (same indices) and changes no device state;
+  a singular matrix throws `SingularMatrixError` (the session refuses: `logic_bound_not_established`).
+- `withExtra(devices, replace)`: a new circuit with the same devices in the same order plus extra
+  devices on existing nodes and devices replaced by id, for the exact corner solves. The devices are
+  SHARED, so solving a corner DOES change their state (indices, PSU modes, junction limiting); the
+  session re-prepares the solved circuit (`nodes()`) after every corner and reads nothing of a
+  corner after that.
   Both are used only by `src/logic/bounds.ts` through `session.ts` (see that file's header).

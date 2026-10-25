@@ -72,3 +72,39 @@ describe('pre-run checks for the owner circuit', () => {
     expect(codes(s)).not.toContain('psu_no_load');
   });
 });
+
+describe('review items 9 and 10 (probe noload)', () => {
+  it('two unloaded supplies: BOTH are flagged (a fresh union per supply)', () => {
+    let doc = newDoc();
+    const p2 = must(addComponent(doc, 'instrument.lab_psu', { x: 400, y: 0 }));
+    doc = p2.doc;
+    const R: string[] = [];
+    for (let k = 0; k < 4; k++) {
+      const r = must(addComponent(doc, 'component.resistor', { x: 600 + 160 * k, y: 300 }));
+      doc = r.doc;
+      R.push(r.id);
+    }
+    doc = wire(doc, 'PSU1.positive', `${R[0]}.a`);
+    doc = wire(doc, 'PSU1.negative', `${R[1]}.a`);
+    doc = wire(doc, `${p2.id}.positive`, `${R[2]}.a`);
+    doc = wire(doc, `${p2.id}.negative`, `${R[3]}.a`);
+    const flagged = checkCircuit(doc)
+      .filter((i) => i.code === 'psu_no_load')
+      .map((i) => i.components[0])
+      .sort();
+    expect(flagged).toEqual(['PSU1', p2.id].sort());
+  });
+
+  it('a gate with V_CC on GND1 and GND on a second GND symbol: supply pins shorted (one reference)', () => {
+    let doc = newDoc();
+    const g = must(addComponent(doc, 'logic.gate_and', { x: -280, y: 0 }));
+    doc = g.doc;
+    const gnd2 = must(addComponent(doc, 'component.ground', { x: -280, y: 300 }));
+    doc = gnd2.doc;
+    doc = wire(doc, `${g.id}.vcc`, 'GND1.ref');
+    doc = wire(doc, `${g.id}.gnd`, `${gnd2.id}.ref`);
+    doc = wire(doc, 'PSU1.negative', 'GND1.ref');
+    doc = wire(doc, 'PSU1.positive', `${g.id}.a`);
+    expect(codes(doc)).toContain('supply_pins_shorted');
+  });
+});

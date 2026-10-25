@@ -110,6 +110,7 @@ export function LogicStateView({
 
   const A = (a: number) => formatResult(locale, a, 'ampere');
   const pins = pinViews({
+    locale,
     t,
     V,
     A,
@@ -348,6 +349,7 @@ function ThresholdRows({ card, locale }: { card: LogicCard; locale: LocaleInfo }
 
 /** The per-pin views of one gate: the live result, else the refusal, else idle. */
 function pinViews({
+  locale,
   t,
   V,
   card,
@@ -359,6 +361,7 @@ function pinViews({
   id,
   A,
 }: {
+  locale: LocaleInfo;
   id: string;
   A: (a: number) => string;
   t: (k: MessageKey, p?: Record<string, string>) => string;
@@ -436,7 +439,12 @@ function pinViews({
               ? t('logic.why.supplyUndriven', { pin: L(datasheetPinName(failure.param ?? '')) })
               : supplyCodes.includes(failure.code)
                 ? t('logic.why.supplyNotGuaranteed')
-                : t('logic.why.refusedElsewhere'),
+                : failure.code === 'logic_mcu_input_not_guaranteed'
+                  ? t('logic.why.mcuInput')
+                  : failure.code === 'logic_mcu_output_uncharacterized' ||
+                      failure.code === 'logic_mcu_pull_uncharacterized'
+                    ? t('logic.why.mcuDrive')
+                    : t('logic.why.refusedElsewhere'),
         };
       const v = L(V(d.value));
       const vcc = L(`V_CC = ${V(d.vcc)}`);
@@ -489,11 +497,13 @@ function pinViews({
             why: t('logic.why.notGuaranteed', {
               v,
               worst: L(V(d.worst)),
-              causes: (d.causes ?? [])
-                .map((c) => `sim.bound.cause.${c}`)
-                .filter(isMessageKey)
-                .map((k) => t(k))
-                .join(', '),
+              // Review item 14: the locale's own list formatting (as format.ts).
+              causes: new Intl.ListFormat(locale.code, { type: 'conjunction' }).format(
+                (d.causes ?? [])
+                  .map((c) => `sim.bound.cause.${c}`)
+                  .filter(isMessageKey)
+                  .map((k) => t(k)),
+              ),
             }),
           };
         case 'logic_input_leakage_uncharacterized':

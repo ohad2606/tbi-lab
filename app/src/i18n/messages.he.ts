@@ -223,6 +223,26 @@ export const he: Record<MessageKey, string> = {
     '{components}: כניסה {pin} מוזנת HIGH מ-{pads}. גיליון הנתונים של ESP32 מבטיח רק V_OH ≥ 2.64 V ‏(0.8 × VDD); עם זה הכניסה יכולה לרדת עד {worst}, מתחת ל-{vih} ‏({vccEq}). רמת HIGH אינה מובטחת, ולכן המעגל אינו מדומה. הזינו את השער במתח שבו ה-ESP32 עומד ב-V_IH שלו (למשל 3.0–3.6 V, ‏V_IH = 2.0 V).',
   'sim.error.logic_input_undefined.mcu_high':
     '{components}: כניסה {pin} נמצאת ב-{voltage}, מוזנת מ-{pads}: יציאה של ESP32 היא לוגיקת 3.3 V, ומובטח בה רק V_OH ≥ 2.64 V. זה בין {vil} ל-{vih} ‏({vccEq}): ה-ESP32 אינו יכול להזין HIGH מובטח לשער הזה במתח הזנה זה, ולכן המעגל אינו מדומה. הזינו את השער במתח שבו ה-ESP32 עומד ב-V_IH שלו (למשל 3.0–3.6 V, ‏V_IH = 2.0 V).',
+  'sim.error.logic_bound_not_established':
+    '{components}: לא ניתן היה לקבוע את המקרה הגרוע בתוך החסמים של גיליון הנתונים ({reason}), ולכן אף רמה אינה מובטחת והמעגל אינו מדומה.',
+  'sim.bound.notEstablished.corner_unsolved':
+    'לא ניתן היה לפתור ולאמת את נקודת העבודה של המקרה הגרוע',
+  'sim.bound.notEstablished.singular': 'הליניאריזציה של המעגל סינגולרית',
+  'sim.bound.notEstablished.not_monotone': 'המקרה הגרוע משתנה עם נקודת העבודה',
+  'sim.bound.notEstablished.part_not_bounded': 'לא ניתן היה לחסום את מצב הרכיב הזה',
+  'sim.bound.notEstablished.part_not_in_solve': 'פין של הרכיב הזה אינו במעגל שנפתר',
+  'sim.error.logic_mcu_input_not_guaranteed':
+    '{components}: ‏{pin}, כניסה של ESP32, קורא את היציאה הלוגית הזו ב-{voltage} בסימולציה, אבל בתוך החסמים של גיליון הנתונים ({causes}) היא יכולה להיות ב-{worst}, {cmp}. ה-ESP32 לא יקרא רמה מובטחת, ולכן המעגל אינו מדומה. יציאה של שער מובטחת קרוב לפס ההזנה רק בעומס קל (V_CC − 0.1 V עד 100 µA): הקטינו את העומס על היציאה.',
+  'sim.error.logic_mcu_input_not_guaranteed.undefined':
+    '{components}: ‏{pin}, כניסה של ESP32, קורא את היציאה הלוגית הזו ב-{voltage}, בין {vil} ל-{vih} של ה-ESP32: אין רמה מוגדרת, ולכן המעגל אינו מדומה.',
+  'sim.error.logic_mcu_output_uncharacterized':
+    '{components}: ‏{pin} מזין כניסה לוגית כשעובר בו {current}, יותר מזרם הזליגה של הכניסות ({limit}). גיליון הנתונים של ESP32 מצהיר על V_OH ≥ 0.8 × VDD ו-V_OL ≤ 0.1 × VDD ללא זרם עומס (טבלה 5-3, ‏25 °C; ערכי ההנעה 40 mA / 28 mA טיפוסיים), ולכן הרמה בעומס הזה אינה מובטחת והמעגל אינו מדומה.',
+  'sim.error.logic_mcu_pull_uncharacterized':
+    '{components}: ‏{pin} מחזיק כניסה לוגית דרך נגד ה-pull הפנימי שלו, שגיליון הנתונים של ESP32 נותן רק כערך טיפוסי (45 kΩ, ללא מינימום או מקסימום). הרמה אינה מובטחת, ולכן המעגל אינו מדומה. השתמשו בנגד pull חיצוני.',
+  'logic.why.mcuInput':
+    'לא מדומה: פין ה-ESP32 שקורא את היציאה הזו לא יקרא רמה מובטחת (ראו את ההודעה למעלה).',
+  'logic.why.mcuDrive':
+    'לא מדומה: לפין ה-ESP32 שמזין את הכניסה של הרכיב הזה אין כאן רמה מובטחת (ראו את ההודעה למעלה).',
   'sim.bound.cause.leakage': 'זרם זליגה בכניסה I_I',
   'sim.bound.cause.supply_current': 'זרם הזנה במנוחה I_CC',
   'sim.bound.cause.esp32_voh': 'V_OH של ESP32 ≥ 2.64 V',
