@@ -80,7 +80,9 @@ describe('A logic-and-switches: two switches → SN74LVC1G08 → LED', () => {
     expect(netOf(A, 'U1', 'b')).toEqual(['R2.a', 'SW2.b', 'U1.b']);
     expect(netOf(A, 'U1', 'y')).toEqual(['R3.a', 'U1.y']);
     expect(netOf(A, 'D1', 'anode')).toEqual(['D1.anode', 'R3.b']);
-    expect(netOf(A, 'U1', 'vcc')).toEqual(['PSU2.positive', 'U1.vcc']);
+    expect(netOf(A, 'U1', 'vcc')).toEqual(['PSU2.positive', 'R4.a', 'U1.vcc']);
+    // Q10 (a): the 10 kΩ bleeder R4 across PSU2.
+    expect(groundNet(A, 'R4', 'b')).toBe(true);
     expect(netOf(A, 'SW1', 'a')).toEqual(['PSU1.positive', 'SW1.a', 'SW2.a']);
     for (const [c, t] of [
       ['R1', 'b'],
@@ -97,12 +99,13 @@ describe('A logic-and-switches: two switches → SN74LVC1G08 → LED', () => {
     expect(params('R1').resistance).toEqual({ value: 150, unit: 'ohm' });
     expect(params('R2').resistance).toEqual({ value: 150, unit: 'ohm' });
     expect(params('R3').resistance).toEqual({ value: 220, unit: 'ohm' });
+    expect(params('R4').resistance).toEqual({ value: 10_000, unit: 'ohm' });
     // As shipped: A closed, B open (the LED is off; toggling B lights it).
     expect(params('SW1').closed).toBe(true);
     expect(params('SW2').closed).toBe(false);
   });
 
-  it('the truth table: HH runs (LED on the guaranteed envelope, supply currents, no rating warning); LL/LH/HL refused — PSU2 may have to sink 10 µA of input leakage (review 3)', () => {
+  it('truth table through the solve, every input at 5.5 V or GND (the I_CC test condition); LED on the guaranteed envelope; supply currents incl. the 10 kΩ bleeder (Q10 (a)); no rating warning', () => {
     for (const [a, b] of [
       [false, false],
       [false, true],
@@ -111,20 +114,6 @@ describe('A logic-and-switches: two switches → SN74LVC1G08 → LED', () => {
     ] as const) {
       const d = withSwitches(A, { SW1: a, SW2: b });
       const at = `A=${+a} B=${+b}`;
-      // Sprint 22 review 3: the bench-supply model cannot sink. With Y LOW PSU2 delivers only
-      // I_CC (≥ 0) while each input's I_I (±5 µA, returning through GND or the V_CC pin) may flow
-      // back into it: PSU2 may have to absorb 2 × 5 µA = 10 µA → refused by name (owner question
-      // Q10; a bleeder across PSU2 would keep it delivering). Only HH (the LED load) runs.
-      if (!(a && b)) {
-        const r = local(d);
-        expect(r.ok ? null : r.error, at).toMatchObject({
-          code: 'logic_supply_not_guaranteed',
-          components: ['PSU2'],
-          param: 'sink',
-          detail: { value: expect.closeTo(10e-6, 12) },
-        });
-        continue;
-      }
       const o = ok(local(d));
       const u = o.components.U1!;
       expect(
@@ -149,9 +138,15 @@ describe('A logic-and-switches: two switches → SN74LVC1G08 → LED', () => {
         const k = (3.0 - 2.4 - 0.1) / (16e-3 - 100e-6);
         expect(u.terminals.y!, at).toBeCloseTo(3.0 - (0.1 + (i - 100e-6) * k), 9);
         expect(u.currents!.y!, at).toBeCloseTo(i, 12);
-        // PSU2 (3.0 V) carries the LED current (I_CC is outside the solve).
-        expect(o.components.PSU2!.current!, at).toBeCloseTo(i, 12);
-      } else expect(i, at).toBeLessThan(1e-9);
+        // PSU2 (3.0 V) carries the LED current plus the bleeder's 3.0 V / 10 kΩ = 300 µA (I_CC is
+        // outside the solve).
+        expect(o.components.PSU2!.current!, at).toBeCloseTo(i + 3.0 / 10_000, 12);
+      } else {
+        expect(i, at).toBeLessThan(1e-9);
+        // Y LOW: PSU2 delivers the bleeder's 300 µA (≫ the 10 µA of leakage it could see back).
+        expect(o.components.PSU2!.current!, at).toBeCloseTo(3.0 / 10_000, 12);
+      }
+      expect(o.components.R4!.current!, at).toBeCloseTo(3.0 / 10_000, 12);
       expect(ratingWarnings(createSnapshot(d), o), at).toEqual([]);
     }
   });

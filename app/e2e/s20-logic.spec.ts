@@ -81,33 +81,30 @@ test('A: the truth table is in the Inspector before a Run; live levels, why, and
   await expect(page.getByTestId('logic-control-SW2')).toContainText('open');
   await shot(page, 's20l-A-idle-en');
 
-  // Sprint 22 review 3: as shipped (HL) the Run is refused by name — with Y LOW, PSU2 could have
-  // to sink the inputs' leakage (10 µA) and the bench-supply model cannot sink. The panel still
-  // shows each pin's level and why.
-  await page.getByTestId('sim-run').click();
-  await expect(page.getByTestId('sim-error')).toHaveAttribute(
-    'data-code',
-    'logic_supply_not_guaranteed',
-    { timeout: 30_000 },
-  );
-  await expect(page.getByTestId('sim-error')).toContainText('cannot sink current');
-  await inspect(page, 'U1');
-  await shot(page, 's20l-A-run-HL-refused-en');
-
-  // Close B from the panel (a persistent edit), then Run: HH runs, the LED lights.
-  await page.getByTestId('logic-control-SW2').click();
   await run(page);
   await inspect(page, 'U1');
+  // SW1 closed, SW2 open: A HIGH at 5.5 V (Sprint 22: the 5.5 V input rail), B LOW at 0 V, Y LOW;
+  // row HL.
   await expect(page.getByTestId('logic-level-a')).toHaveText('HIGH');
   await expect(page.getByTestId('logic-volts-a')).toHaveText('5.5 V');
   await expect(page.getByTestId('logic-why-a')).toContainText('5.5 V ≥ V_IH 2 V');
   await expect(page.getByTestId('logic-why-a')).toContainText('V_CC = 3 V');
+  await expect(page.getByTestId('logic-level-b')).toHaveText('LOW');
+  await expect(page.getByTestId('logic-why-b')).toContainText('0 V ≤ V_IL 800 mV');
+  await expect(page.getByTestId('logic-level-y')).toHaveText('LOW');
+  await expect(page.getByTestId('logic-why-y')).toContainText(
+    /AND\W+of the inputs \(\W*H·L\W*\) = \W*L/,
+  );
+  await expect(page.getByTestId('logic-truth-HL')).toHaveAttribute('aria-current', 'true');
+  await expect(page.getByTestId('probe-reading-D1')).toContainText('0 A');
+  await shot(page, 's20l-A-run-HL-en');
+
+  // Toggle B from the panel: the row moves to HH and the LED lights, the gate stays selected.
+  await page.getByTestId('logic-control-SW2').click();
   await expect(page.getByTestId('logic-level-b')).toHaveText('HIGH');
   await expect(page.getByTestId('logic-level-y')).toHaveText('HIGH');
-  await expect(page.getByTestId('logic-why-y')).toContainText(
-    /AND\W+of the inputs \(\W*H·H\W*\) = \W*H/,
-  );
   await expect(page.getByTestId('logic-truth-HH')).toHaveAttribute('aria-current', 'true');
+  await expect(page.getByTestId('logic-truth-HL')).not.toHaveAttribute('aria-current', 'true');
   await expect(page.getByTestId('probe-reading-D1')).toContainText('mA');
   await expect(page.getByTestId('inspector-ref')).toHaveText('U1');
   await shot(page, 's20l-A-run-HH-en');

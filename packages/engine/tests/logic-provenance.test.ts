@@ -102,11 +102,17 @@ describe('logic bound provenance (P2)', () => {
     close(row('ENGINE.RAIL_V').value, RAIL_V);
     close(row('ENGINE.TABULATED_VCC_TOLERANCE_V').value, TABULATED_VCC_TOLERANCE_V);
     close(row('ENGINE.UNPOWERED_V').value, 1e-3);
+    close(row('ENGINE.PSU_SINK_RESOLUTION_A').value, 1e-9);
+    close(row('ENGINE.BOUNDS_CURRENT_RESOLUTION_A').value, 1e-12);
+    close(row('ENGINE.WRONG_WAY_V').value, 1e-3);
     for (const id of [
       'ENGINE.RAIL_V',
       'ENGINE.UNPOWERED_V',
       'ENGINE.TABULATED_VCC_TOLERANCE_V',
       'ENGINE.ICC_READING',
+      'ENGINE.PSU_SINK_RESOLUTION_A',
+      'ENGINE.BOUNDS_CURRENT_RESOLUTION_A',
+      'ENGINE.WRONG_WAY_V',
     ])
       expect(row(id).kind).toBe('assumption');
   });

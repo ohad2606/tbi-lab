@@ -223,17 +223,6 @@ describe('Example A (two switches → SN74LVC1G08 → LED): netlist, logic, volt
     ] as const) {
       const d = closed(a, b);
       const where = `A=${+a} B=${+b}`;
-      // Sprint 22 review 3: with Y LOW, PSU2 may have to sink the inputs' leakage (2 × 5 µA):
-      // refused by name (the bench-supply model cannot sink). Only HH runs.
-      if (!(a && b)) {
-        expect(refused(solve(d)), where).toMatchObject({
-          code: 'logic_supply_not_guaranteed',
-          components: ['PSU2'],
-          param: 'sink',
-          detail: { value: expect.closeTo(10e-6, 12) },
-        });
-        continue;
-      }
       const o = ok(solve(d));
       const g = o.components.U1!.logic!.gates[0]!;
       expect(

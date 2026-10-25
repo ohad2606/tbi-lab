@@ -1029,8 +1029,17 @@ export const RECIPES: Record<string, () => ProjectDocument> = {
     ]);
     r.wire(T(SW2, 'a'), { kind: 'wire', wire: rail, at: { x: -40, y: -40 } });
     // The 3.0 V gate supply (PSU2) to V_CC; its negative to GND.
-    r.wire(T(PSU2, 'positive'), T(U1, 'vcc'), [{ x: 360, y: -340 }]);
+    const vcc = r.wire(T(PSU2, 'positive'), T(U1, 'vcc'), [{ x: 360, y: -340 }]);
     r.wire(T(PSU2, 'negative'), T(G6, 'ref'), [{ x: 200, y: -300 }]);
+    // Sprint 22 (owner decision Q10 (a)): a 10 kΩ bleeder across PSU2. The bench-supply model
+    // cannot absorb current, and with Y LOW the inputs' leakage (±5 µA each, possibly returning
+    // through the V_CC pin) could otherwise flow back into PSU2; the bleeder keeps PSU2 delivering
+    // 3.0 V / 10 kΩ = 300 µA ≫ 10 µA (0.9 mW).
+    const R4 = r.place('component.resistor', 320, -260, 1);
+    const G7 = r.place('component.ground', 320, -160);
+    r.set(R4, 'resistance', 10_000, 'ohm');
+    r.wire(T(R4, 'a'), { kind: 'wire', wire: vcc, at: { x: 320, y: -340 } });
+    r.wire(T(R4, 'b'), T(G7, 'ref'));
     // Input A: SW1 → node (pull-down R1) → A.
     r.wire(T(SW1, 'b'), T(R1, 'a'));
     r.wire(T(R1, 'a'), T(U1, 'a'), [
