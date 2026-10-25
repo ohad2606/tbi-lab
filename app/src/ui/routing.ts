@@ -11,6 +11,7 @@ import {
   routeAutoWires,
   routeAutoWiresReport,
   routeConflictsReport,
+  type RouteConflicts,
   repairWireRoutesReport,
   rotateComponents,
   rotatePoint,
@@ -195,8 +196,8 @@ export const rotateRouted = (doc: ProjectDocument, ids: string[]): EditResult =>
  * `routeConflictsReport`: through another terminal's keep-out, along or into a wire of another
  * node), with whether the bounded check was cut short. Computed once per drawing (WeakMap).
  */
-const conflictsOf = new WeakMap<object, { wires: string[]; limited: boolean }>();
-export function routeConflicts(doc: ProjectDocument): { wires: string[]; limited: boolean } {
+const conflictsOf = new WeakMap<object, RouteConflicts>();
+export function routeConflicts(doc: ProjectDocument): RouteConflicts {
   let r = conflictsOf.get(doc.layout);
   if (!r) {
     r = routeConflictsReport(doc, componentBoxes(doc));

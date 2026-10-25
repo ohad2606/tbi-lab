@@ -10,7 +10,8 @@
 import { isolateLtr } from '../i18n/i18n.js';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { emptySelection } from '@tbi-lab/domain';
-import { deriveScene, sceneObstacles, type SceneDescription } from '../views/scene3d/scene.js';
+import { sceneObstacles, type SceneDescription } from '../views/scene3d/scene.js';
+import { deriveCheckedScene } from '../views/scene3d/checked.js';
 import { actuators, pick } from '../views/scene3d/pick.js';
 import { controlKind, controlState, pressControl, toggleControl } from './controls.js';
 import type { Obstacle } from '../views/scene3d/route3d.js';
@@ -85,7 +86,8 @@ export function ThreeView() {
   const scene = useMemo(() => {
     if (!doc) return null;
     const t = performance.now();
-    const s = deriveScene(doc);
+    // s21r (review r5): the drawn cables are checked too (checked.ts).
+    const s = deriveCheckedScene(doc);
     openMs.current.derive ??= Math.round(performance.now() - t);
     return s;
   }, [doc]);

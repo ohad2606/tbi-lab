@@ -63,7 +63,7 @@ import { BOARD_HALF_WIDTH, boardPinPosition, boardTerminalId, getTypeDef } from 
 /** Length of the stub drawn for a board pin that cannot be wired (app symbol). */
 const BOARD_STUB = 8;
 import { ESP32_DEVKITC_WROOM32 } from './boards/esp32DevkitcWroom32.js';
-import { isContact } from './contacts.js';
+import { isContact, touchingUnconnected } from './contacts.js';
 import { wireNodes } from './connectivity.js';
 import {
   GRID,
@@ -1001,6 +1001,8 @@ export function autoRoute(
     // outline (a V_CC pin on the top edge of its gate leaving sideways along it, then along the
     // supply's edge). The shapes are tried once more from one grid step straight out of each end
     // that sits on a body's edge (as a person leaves a pin), priced like any shape.
+    // (s21r review r5, finding 9: the outline test and the wider obstacle scan are counted work.)
+    if (budget && !starved && best) budget.ops -= (best.length - 1) * shapeObs.boxes.length;
     if (!starved && best && outlineOf(best, shapeObs, [a, b]) > 0) {
       const stubs = (p: Point) =>
         shapeObs.boxes
@@ -1029,6 +1031,7 @@ export function autoRoute(
             if (n) more.push(n);
           }
         }
+      if (budget && more.length) budget.ops -= sizeOf(obs);
       const wide = more.length
         ? nearBox(obs, [a, b, ...sa, ...sb], CHANNEL_REACH * GRID + SHAPE_REACH)
         : shapeObs;
@@ -1643,38 +1646,160 @@ export function attachedWires(
 
 /**
  * Sprint 21 (s21r): how much work `routeConflictsReport` may spend (obstacle elements scanned and
- * priced, counted, never timed). Past it the report stops and says so (`limited`).
+ * priced, counted, never timed): about as much as one 2D overlay (OVERLAY_WORK). A wire whose
+ * check would take it past this is not checked; it and every wire after it are listed as
+ * `unchecked` (review r5: the check runs on every Circuit view render of a new drawing).
  */
-export const CONFLICT_WORK = 4_000_000;
+export const CONFLICT_WORK = 2_000_000;
+
+/** What a drawn route can wrongly suggest (s21r): see `routeConflictsReport`. */
+export type RouteConflictKind = 'wire' | 'pin' | 'body';
+
+export interface RouteConflicts {
+  /** Every wire with at least one conflict, in document order. */
+  wires: string[];
+  /** The wires of each kind, in document order. */
+  kinds: Record<RouteConflictKind, string[]>;
+  /**
+   * Terminals of different parts drawn exactly on top of each other without a connection
+   * between them (contacts.ts `touchingUnconnected`): they look joined and are not.
+   */
+  stacked: { x: number; y: number; terminals: string[] }[];
+  /** Wires not checked: the work cap was reached (`limited`). */
+  unchecked: string[];
+  limited: boolean;
+}
 
 /**
  * Sprint 21 (s21r, owner directive "ambiguity between electrically distinct nets must never
- * occur"): the wires whose DRAWN route reads as a connection it is not: it enters the keep-out of
- * a terminal, pin or junction that is not one of its ends (criterion 1), runs along a wire of
- * another node (criterion 3), or meets one with a T or a corner instead of a clean crossing
- * (criterion 6). The router avoids all three; it keeps one only when nothing better exists (a
- * congested layout, a manual wire, a hop past the work budget). Such wires are reported so the
- * Circuit view says so instead of leaving a misleading picture unexplained. Presentation only:
- * connectivity is the wires' end references, never their geometry. Deterministic and bounded.
+ * occur"): the wires whose DRAWN route reads as something it is not:
+ *  - `wire`: it runs along a wire of ANOTHER node, or meets one with a T or a corner instead of
+ *    a clean crossing (criteria 3 and 6);
+ *  - `pin`: it passes over (within the keep-out of) a terminal, header pin or junction that is
+ *    not one of its ends and not on its own node (criterion 1; a pin of its own node is
+ *    connected already, so nothing false is suggested; review r5);
+ *  - `body`: it runs through the body of a part it does not end on (criterion 4: drawn behind
+ *    the symbol, it can read as a lead of that part; review r5).
+ * The router avoids all of these; it keeps one only when nothing better exists (a congested
+ * layout, a manual wire, a hop past the work budget). Plus the terminals of different parts drawn
+ * on top of each other without a connection. Reported so the Circuit view says so instead of
+ * leaving a misleading picture unexplained. Presentation only: connectivity is the wires' end
+ * references, never their geometry. Deterministic and bounded (CONFLICT_WORK, `unchecked`).
  */
 export function routeConflictsReport(
   doc: ProjectDocument,
   boxes: readonly RouteBox[],
-): { wires: string[]; limited: boolean } {
+): RouteConflicts {
   const nodes = wireNodes(doc);
-  const segs = new WireSegments(doc, boxes, nodes);
+  const kinds: Record<RouteConflictKind, string[]> = { wire: [], pin: [], body: [] };
   const wires: string[] = [];
+  const unchecked: string[] = [];
+  const stacked = touchingUnconnected(doc).map((t) => ({
+    x: t.x,
+    y: t.y,
+    terminals: t.terminals.map((e) => `${e.component}.${e.terminal}`),
+  }));
+  // The node at each terminal / junction position (s21r review r5: a pin of the wire's own node
+  // is no conflict). Unwired terminals have none.
+  const nodeAt = new Map<string, Set<string | null>>();
+  const put = (p: Point | undefined, n: string | null) => {
+    if (!p) return;
+    const k = `${p.x},${p.y}`;
+    const set = nodeAt.get(k) ?? new Set();
+    set.add(n);
+    nodeAt.set(k, set);
+  };
+  const endNode = new Map<string, string>();
+  for (const w of doc.layout.wires) {
+    const n = nodes.get(w.id);
+    if (!n) continue;
+    for (const e of [w.from, w.to])
+      endNode.set(e.kind === 'terminal' ? `t:${e.component}:${e.terminal}` : `j:${e.junction}`, n);
+  }
+  for (const c of doc.components)
+    for (const t of getTypeDef(c.type)?.terminals ?? [])
+      put(terminalPosition(doc, c.id, t.id), endNode.get(`t:${c.id}:${t.id}`) ?? null);
+  for (const j of doc.layout.junctions) put(j, endNode.get(`j:${j.id}`) ?? null);
+  const segs = new WireSegments(doc, boxes, nodes);
   let work = 0;
+  let limited = false;
   for (const w of doc.layout.wires) {
     if (isContact(doc, w)) continue;
     const route = wireRoute(doc, w);
     if (!route || route.length < 2) continue;
-    work += segs.size;
-    if (work > CONFLICT_WORK) return { wires, limited: true };
+    if (limited) {
+      unchecked.push(w.id);
+      continue;
+    }
+    // Its obstacle list (one pass over every segment), then its pricing: both counted BEFORE
+    // they are done, so one huge wire cannot run past the cap either.
+    work += segs.size + route.length;
+    if (work > CONFLICT_WORK) {
+      limited = true;
+      unchecked.push(w.id);
+      continue;
+    }
     const near = nearBox(segs.obstacles(w.id), route, SHAPE_REACH);
-    work += opsOf(route, near);
-    const k = cost(route, near, [route[0]!, route[route.length - 1]!], nodes.get(w.id) ?? null);
-    if (k[0]! > 0 || k[2]! > 0 || k[5]! > 0) wires.push(w.id);
+    const ops = opsOf(route, near) * 2;
+    if (work + ops > CONFLICT_WORK) {
+      limited = true;
+      unchecked.push(w.id);
+      continue;
+    }
+    work += ops;
+    const ends = [route[0]!, route[route.length - 1]!];
+    const own = nodes.get(w.id) ?? null;
+    const k = cost(route, near, ends, own);
+    const found: RouteConflictKind[] = [];
+    // Along or touching a wire of another node: criteria 3 and 6, plus what those exempt at the
+    // wire's own ends (a run along, or a wire of another node ending, at its end point: two
+    // parts' terminals drawn on top of each other, review r5).
+    const all: Seg[] = route.slice(1).map((q, i) => [route[i]!, q]);
+    const foreignSeg = (i: number) => (near.segmentNodes?.[i] ?? null) !== own || own === null;
+    const atEnds =
+      near.segments.some((t, i) => foreignSeg(i) && all.some((sg) => overlapLength(sg, t) > 0)) ||
+      near.segments.some((t, i) => foreignSeg(i) && ends.some((e) => onSeg(e, t)));
+    if (k[2]! > 0 || k[5]! > 0 || atEnds) found.push('wire');
+    // An end drawn on a terminal of another part that is not on its node (the two parts'
+    // terminals on top of each other: it looks attached to both).
+    const endOnForeign = ends.some((e) =>
+      [...(nodeAt.get(`${e.x},${e.y}`) ?? [])].some((n) => n !== own || n === null),
+    );
+    if (endOnForeign) found.push('pin');
+    else if (k[0]! > 0) {
+      // Which keep-outs: only those of another node (or none) count.
+      const segments: Seg[] = route.slice(1).map((q, i) => [route[i]!, q]);
+      const isEnd = (p: Point) => ends.some((e) => eq(e, p));
+      const foreign = (p: Point) => {
+        const at = nodeAt.get(`${p.x},${p.y}`);
+        return !at || own === null || [...at].some((n) => n !== own);
+      };
+      const hit =
+        near.points.some(
+          (p) =>
+            !isEnd(p) && foreign(p) && segments.some((sg) => distance(p, sg) < TERMINAL_KEEP_OUT),
+        ) ||
+        (near.leads ?? []).some(
+          (l) =>
+            !isEnd(l[0]) &&
+            foreign(l[0]) &&
+            segments.some((sg) => segDistance(sg, l) < TERMINAL_KEEP_OUT),
+        );
+      if (hit) found.push('pin');
+    }
+    if (k[3]! > 0) {
+      // Only a part it does not end on (its own part's box holds one of its ends).
+      const segments: Seg[] = route.slice(1).map((q, i) => [route[i]!, q]);
+      const mine = (q: RouteBox) => ends.some((e) => inBox(e, q));
+      if (
+        near.boxes.some(
+          (q) => !q.display && !mine(q) && segments.some((sg) => boxLength(sg, q) > 0),
+        )
+      )
+        found.push('body');
+    }
+    for (const f of found) kinds[f].push(w.id);
+    if (found.length) wires.push(w.id);
   }
-  return { wires, limited: false };
+  return { wires, kinds, stacked, unchecked, limited };
 }

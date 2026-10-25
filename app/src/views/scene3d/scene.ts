@@ -652,38 +652,43 @@ export function routeLimits(
       for (let k = 0; k <= n && !hit; k++) {
         const t = k / n;
         const p = { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, z: a.z + (b.z - a.z) * t };
-        for (const o of near) {
-          // A body on the bench of a part the wire ends on: exempt where the wire is fastened
-          // (within 4 mm in plan of its end) or runs at pin level under it (an exit lane); a
-          // pass through it anywhere else counts (s20r4, review B6; scene3dChecks the same).
-          if (
-            isOwn(o) &&
-            o.bottom < 2 &&
-            (ends.some((e) => Math.hypot(e.x - p.x, e.z - p.z) < 4) ||
-              ends.some((e) => p.y <= e.y + 2 * WIRE.radiusMm))
-          )
-            continue;
-          if (isOwn(o) && ends.some((e) => Math.hypot(e.x - p.x, e.y - p.y, e.z - p.z) < 3))
-            continue;
-          if (
-            p.x > o.x0 - m &&
-            p.x < o.x1 + m &&
-            p.z > o.z0 - m &&
-            p.z < o.z1 + m &&
-            p.y > o.bottom - m &&
-            p.y < o.top + m
-          ) {
+        for (const o of near)
+          if (bodyHit(o, p, isOwn(o), ends)) {
             hit = true;
             break;
           }
-        }
       }
     }
     if (hit) out.add(w.id);
   }
   return [...out].sort(byWireId);
 }
-const byWireId = (a: string, b: string) => {
+/**
+ * Whether a point of a wire lies in a part's volume (routeLimits; s21r: the drawn-cable check
+ * uses the same test). A body on the bench of a part the wire ends on (`own`) is exempt where the
+ * wire is fastened (within 4 mm in plan of its end) or runs at pin level under it (an exit lane);
+ * a pass through it anywhere else counts (s20r4, review B6; scene3dChecks the same).
+ */
+export function bodyHit(o: Obstacle, p: Vec3, own: boolean, ends: readonly Vec3[]): boolean {
+  const m = WIRE.radiusMm * 0.8;
+  if (
+    own &&
+    o.bottom < 2 &&
+    (ends.some((e) => Math.hypot(e.x - p.x, e.z - p.z) < 4) ||
+      ends.some((e) => p.y <= e.y + 2 * WIRE.radiusMm))
+  )
+    return false;
+  if (own && ends.some((e) => Math.hypot(e.x - p.x, e.y - p.y, e.z - p.z) < 3)) return false;
+  return (
+    p.x > o.x0 - m &&
+    p.x < o.x1 + m &&
+    p.z > o.z0 - m &&
+    p.z < o.z1 + m &&
+    p.y > o.bottom - m &&
+    p.y < o.top + m
+  );
+}
+export const byWireId = (a: string, b: string) => {
   const n = (x: string) => Number(/^W(\d+)$/.exec(x)?.[1] ?? Infinity);
   return n(a) - n(b) || (a < b ? -1 : a > b ? 1 : 0);
 };

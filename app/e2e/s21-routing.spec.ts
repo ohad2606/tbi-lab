@@ -72,6 +72,12 @@ test('a wire laid along a wire of another node is named by the Circuit view (EN,
   await expect(note).toBeVisible();
   await expect(note).toContainText('NOT connected');
   await expect(page.locator('[data-hit="wire"][data-conflict="true"]')).not.toHaveCount(0);
+  // Review r5: the wires are named (per case) and marked by a dashed halo with a title.
+  await expect(note.locator('li[data-kind="wire"]')).toContainText('W2');
+  await expect(page.getByTestId('wire-conflict-halo')).not.toHaveCount(0);
+  await expect(page.locator('[data-conflict="true"] > title').first()).toHaveText(
+    /may look connected/,
+  );
   await page.screenshot({ path: info.outputPath('conflict-en.png') });
   await page.getByTestId('language-select').selectOption('he');
   await expect(note).toContainText('אינם מחוברים');

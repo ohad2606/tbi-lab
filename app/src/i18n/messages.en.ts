@@ -48,7 +48,17 @@ export const en = {
   'canvas.overlayLimit':
     'This drawing is too large to mark every crossing and branch point: some line hops and junction dots are not drawn. The connections are exactly as drawn.',
   'canvas.routeConflict':
-    '{count} wires could not be drawn clear of other wires or pins: where a wire touches or runs along another wire or passes over a pin, they are NOT connected. Only wire ends at [[terminal]]s and [[junction]] dots connect.',
+    'Some wires are drawn where they may look connected. They are NOT connected there: only wire ends at [[terminal]]s and [[junction]] dots connect. The marked wires (dashed outline):',
+  'canvas.routeConflict.wire': 'along or into a wire of another net: {ids}',
+  'canvas.routeConflict.pin': 'over a [[pin]] of another net: {ids}',
+  'canvas.routeConflict.body':
+    'through the body of a part they are not wired to (drawn behind it): {ids}',
+  'canvas.routeConflict.stacked':
+    '[[terminal]]s of different parts drawn on top of each other, not connected: {ids}',
+  'canvas.routeConflict.unchecked':
+    'This drawing is too large to check every wire for routes that may look like connections. Not checked: {ids}. Only wire ends at [[terminal]]s and [[junction]] dots connect.',
+  'canvas.routeConflict.wireTitle':
+    'Wire {id}: drawn where it may look connected; it is not connected there',
   'canvas.routeLimit':
     'This project is very large: {count} wires are drawn with a simple shape (they may pass close to pins or other wires). The connections are exactly as drawn.',
   'canvas.hint.idle': 'Click a terminal to start a wire. Drag on empty space to select.',

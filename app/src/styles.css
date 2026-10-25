@@ -2920,6 +2920,24 @@ select {
   color: var(--warning-ink);
 }
 
+.view-note-list {
+  margin: 0.1rem 0 0;
+  padding-inline-start: 1.1rem;
+}
+
+/* s21r review r5: a wire drawn where it may look connected (route.ts routeConflictsReport). A
+   wide dashed halo under the wire: a shape cue, readable without colour vision. */
+.wire-conflict-halo {
+  fill: none;
+  stroke: var(--warning-ink);
+  stroke-width: 9;
+  stroke-dasharray: 3 4;
+  stroke-linecap: butt;
+  stroke-linejoin: round;
+  opacity: 0.55;
+  pointer-events: none;
+}
+
 .view-note {
   position: absolute;
   inset-block-end: 0.5rem;
