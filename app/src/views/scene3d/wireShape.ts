@@ -559,7 +559,7 @@ export function cableShape(
     const p = pts[i]!;
     const b = pts[i + 1]!;
     if (p.want !== undefined) return p.want;
-    if (p.soft) return 0;
+    if (p.soft) return Infinity;
     const flat = Math.abs(a.y - p.y) < 0.3 && Math.abs(b.y - p.y) < 0.3;
     return flat ? level.plan : level.ramp;
   };
