@@ -381,3 +381,58 @@ function ownerCircuit(gnd: string, ground = true, id = 'prj_s21lOwner') {
   wire(`${u}.gnd`, gnd);
   return { doc, u };
 }
+
+/**
+ * Sprint 22 (P5): the examples' probe labels ("V(U2.y) = …", "I(D1) = …") never sit on a part's
+ * reference or value label, nor on another part's body — measured in one in-page snapshot.
+ */
+async function probeLabelsClear(page: Page) {
+  const found = await page.evaluate(() => {
+    const r = (e: Element) => {
+      const b = e.getBoundingClientRect();
+      return { x: b.x, y: b.y, width: b.width, height: b.height };
+    };
+    const canvas = document.querySelector('[data-testid="canvas"]')!;
+    const probes = [...canvas.querySelectorAll('text.probe-label')].map((e) => ({
+      text: e.textContent ?? '',
+      box: r(e),
+    }));
+    const labels = [...canvas.querySelectorAll('text.ref-label, text.value-label')].map((e) => ({
+      text: e.textContent ?? '',
+      box: r(e),
+    }));
+    return { probes, labels };
+  });
+  const hit = (a: Box, b: Box) =>
+    a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+  expect(found.probes.length, 'probe labels').toBeGreaterThan(0);
+  for (const p of found.probes)
+    for (const l of found.labels)
+      expect(hit(p.box, l.box), `probe "${p.text}" vs label "${l.text}"`).toBe(false);
+}
+
+for (const size of SIZES.slice(0, 2))
+  test.describe(`${size.name} probe labels`, () => {
+    test.use({ viewport: { width: size.width, height: size.height } });
+    for (const id of ['logic-and-switches', 'esp32-logic-override'])
+      test(`${id}: probe labels clear of the reference and value labels, idle and running (${size.name})`, async ({
+        page,
+      }) => {
+        await openExample(page, id);
+        for (const lc of LOCALES) {
+          await locale(page, lc);
+          await probeLabelsClear(page);
+          if (id === 'logic-and-switches') {
+            await page.getByTestId('sim-run').click();
+            await expect(status(page)).toHaveAttribute('data-status', 'running', {
+              timeout: 30_000,
+            });
+            await probeLabelsClear(page);
+            if (SHOTS)
+              await page.screenshot({ path: `${SHOTS}/s22l-${size.name}-${lc}-${id}-probes.png` });
+            await page.getByTestId('sim-stop').click();
+          } else if (SHOTS)
+            await page.screenshot({ path: `${SHOTS}/s22l-${size.name}-${lc}-${id}-probes.png` });
+        }
+      });
+  });
