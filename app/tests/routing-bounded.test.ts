@@ -301,3 +301,42 @@ describe('bounded 2D overlays and 3D cables of crafted documents (s20r6, review 
         expect(s.routeLimits).toContain(id);
   });
 });
+
+describe('s21: a drape past the gap work cap never comes closer to another wire', () => {
+  it('dense bench with no gap work: every pair at least as far apart as its plain routes allow', async () => {
+    const THREE = await import('three');
+    const { sampleShape, plainShape } = await import('../src/views/scene3d/wireShape.js');
+    const { WIRE_RADIUS } = await import('../src/views/scene3d/scene.js');
+    const { denseBench } = await import('../../scripts/evidence/benches.js');
+    const desc = deriveScene(denseBench());
+    const report = new Map<string, string>();
+    const shapes = shapeWires(desc, report, { gapWork: 0 });
+    // Same separation rule as wire-shape.test.ts: never closer than the plain routes are (capped
+    // at the minimum gap), except near an end two wires share.
+    const pts = (p: { x: number; y: number; z: number }) => new THREE.Vector3(p.x, p.y, p.z);
+    const ends = (i: number) => [desc.wires[i]!.points[0]!, desc.wires[i]!.points.at(-1)!].map(pts);
+    const now = desc.wires.map((w) => sampleShape(shapes.get(w.id)!));
+    const plain = desc.wires.map((w) => sampleShape(plainShape(w.points, w.radii)));
+    const minDist = (a: InstanceType<typeof THREE.Vector3>[], b: typeof a, skip: typeof a) => {
+      let m = Infinity;
+      for (const p of a) {
+        if (skip.some((e) => e.distanceTo(p) < 4)) continue;
+        for (const q of b) m = Math.min(m, p.distanceTo(q));
+      }
+      return m;
+    };
+    let draped = 0;
+    for (let i = 0; i < desc.wires.length; i++) {
+      if (JSON.stringify(now[i]) !== JSON.stringify(plain[i])) draped++;
+      for (let j = i + 1; j < desc.wires.length; j++) {
+        const shared = ends(i).filter((e) => ends(j).some((f) => f.distanceTo(e) < 1e-6));
+        const after = minDist(now[i]!, now[j]!, shared);
+        const before = minDist(plain[i]!, plain[j]!, shared);
+        expect(after, `${desc.wires[i]!.id}/${desc.wires[j]!.id}`).toBeGreaterThanOrEqual(
+          Math.min(before, 2 * WIRE_RADIUS + 0.12) - 1e-6,
+        );
+      }
+    }
+    console.log(`gapWork 0: ${draped}/${desc.wires.length} wires draped`);
+  });
+});

@@ -559,7 +559,7 @@ export function cableShape(
     const p = pts[i]!;
     const b = pts[i + 1]!;
     if (p.want !== undefined) return p.want;
-    if (p.soft) return Infinity;
+    if (p.soft) return 0;
     const flat = Math.abs(a.y - p.y) < 0.3 && Math.abs(b.y - p.y) < 0.3;
     return flat ? level.plan : level.ramp;
   };
@@ -657,7 +657,10 @@ export function shapeWires(
   desc: SceneDescription,
   /** Diagnostics: per wire, the level kept and why the wider ones were refused. */
   report?: Map<string, string>,
+  /** Work caps (tests only; the defaults are the product's). */
+  limits: { gapWork?: number } = {},
 ): Map<string, WireShape> {
+  const gapBudget = limits.gapWork ?? GAP_WORK_BUDGET;
   const wires = desc.wires;
   const shapes = wires.map((w) => plainShape(w.points, w.radii));
   // s20r6 (review r4 MAJOR 2): every route is sampled for the neighbour grid before any drape is
@@ -726,9 +729,10 @@ export function shapeWires(
     let g = pairs.get(key);
     if (g === undefined) {
       // s20r6 (review r4 MAJOR 2): all pairs of the two wires' samples, counted (GAP_WORK_BUDGET);
-      // past it the gap counts as none (the shape is refused: the plain route stays).
+      // past it the pair's gap is not measured and the drape must keep the full minimum gap
+      // (s21: it returned 0, which let a drape come as close as touching a wire of another node).
       gapWork += 2 * plain[i]!.length * plain[j]!.length;
-      if (gapWork > GAP_WORK_BUDGET) return 0;
+      if (gapWork > gapBudget) return Infinity;
       const sh = sharedEnds(i, j);
       const one = (a: number, b: number) => {
         let m = Infinity;
