@@ -6,6 +6,13 @@
  * documents, old -> new: bends 2569 -> 1774, hops 703 -> 419, same-node crossings 609 -> 37,
  * length 384820 -> 295660, length through bodies 752 -> 0, near-body length 53290 -> 55338,
  * terminal keep-out entries 0 -> 0).
+ * REGENERATED again in Sprint 21 (s21r, owner screenshot: wires on a part's outline, half hidden
+ * under its symbol): a step along a body's outline costs 0.75 bend (the first step out of the
+ * wire's own terminal exempt), and a hop whose short shapes all run along an outline also tries
+ * them from one grid step straight out of its ends. Over the 50 documents (s21r-golden-*.txt),
+ * old -> new: outline length 32988 -> 30974, same-node crossings 37 -> 30, hops 419 -> 410,
+ * bridges 456 -> 440, bends 1774 -> 1815, length 295660 -> 299620, body 0 -> 0, different-node
+ * touches / overlaps 0 -> 0.
  * The guard for every performance change: determinism means the same document always gives the
  * same routes, so a faster router must give exactly the old ones.
  */

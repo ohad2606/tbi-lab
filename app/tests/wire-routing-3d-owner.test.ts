@@ -52,9 +52,8 @@ const scene = (doc: ProjectDocument) => JSON.stringify(deriveScene(doc));
  */
 const KNOWN: Record<string, { ownPenetrations?: string[]; overOwnBody?: string[] }> = {
   'left-switched': { ownPenetrations: ['W5-W6'] },
-  // s20r4: with the stricter own-body check (review B6) this run was found to cut the edge of
-  // the supply's case on its way down; padded like any body, it now passes OVER the case, clear.
-  below: { overOwnBody: ['W4>PSU1'] },
+  // (below: W4 over PSU1's case, s20r4. Gone in Sprint 21: the 2D route no longer runs on the
+  // supply's outline, which is its 3D case wall.)
 };
 
 describe('owner report (s20r): one AND gate wired to a 5 V supply, in 3D', () => {

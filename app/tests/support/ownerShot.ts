@@ -146,11 +146,33 @@ export function ownerShotIntent(): ProjectDocument {
   return doc;
 }
 
+/**
+ * The lead's DEV-Lab acceptance bench of the same circuit (tbi-s21/deploy/devlab-accept, 4211aa1):
+ * the ground symbol KEPT and wired to PSU1 -, then the gate's wires drawn vcc, b, a, gnd with no
+ * waypoints; the gate's gnd on PSU1 + ('as drawn') or on PSU1 - ('intended').
+ */
+export function ownerShotDevlab(gndTo: 'positive' | 'negative'): ProjectDocument {
+  let doc = createProject({
+    projectId: 'prj_s21devlab',
+    deviceId: 'dev_s21',
+    name: 'owner screenshot devlab',
+    appVersion: '0',
+  });
+  const g = addComponent(doc, 'logic.gate_and', OWNER_SHOT_GATE);
+  if (!g.ok) throw new Error(g.error);
+  doc = normalize(g.doc);
+  doc = draw(doc, T('PSU1', 'negative'), T('GND1', 'ref'));
+  for (const t of ['vcc', 'b', 'a', 'gnd']) doc = draw(doc, T('U1', t), target(t, gndTo));
+  return doc;
+}
+
 export const OWNER_SHOT_FIXTURES: Readonly<Record<string, () => ProjectDocument>> = {
   'shot-exact': ownerShotExact,
   'shot-drawn': ownerShotDrawn,
   'shot-dragged': ownerShotDragged,
   'shot-intent': ownerShotIntent,
+  'devlab-as-drawn': () => ownerShotDevlab('positive'),
+  'devlab-intended': () => ownerShotDevlab('negative'),
 };
 
 /**
@@ -158,6 +180,20 @@ export const OWNER_SHOT_FIXTURES: Readonly<Record<string, () => ProjectDocument>
  * from the screenshot / the intent, not from any wire geometry.
  */
 export function ownerShotExpectedNets(name: string): string[][] {
+  if (name.startsWith('devlab-'))
+    return (
+      name === 'devlab-intended'
+        ? [
+            ['PSU1:positive', 'U1:a', 'U1:b', 'U1:vcc'],
+            ['GND1:ref', 'PSU1:negative', 'U1:gnd'],
+          ]
+        : [
+            ['PSU1:positive', 'U1:a', 'U1:b', 'U1:gnd', 'U1:vcc'],
+            ['GND1:ref', 'PSU1:negative'],
+          ]
+    )
+      .map((n) => [...n].sort())
+      .sort((x, y) => (x[0]! < y[0]! ? -1 : 1));
   const nets =
     name === 'shot-intent'
       ? [

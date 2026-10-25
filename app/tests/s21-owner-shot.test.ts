@@ -23,7 +23,15 @@ import {
 } from '@tbi-lab/domain';
 import { ProjectStore } from '../src/persistence/store.js';
 import { AppStore, type Preferences } from '../src/state/app.js';
-import { moveRouted, repairManual, rotateRouted, routeAutomatic } from '../src/ui/routing.js';
+import {
+  componentBoxes,
+  moveRouted,
+  repairManual,
+  rotateRouted,
+  routeAutomatic,
+} from '../src/ui/routing.js';
+import { deriveScene } from '../src/views/scene3d/scene.js';
+import { measure3d } from './support/wire3dMetrics.js';
 import {
   OWNER_SHOT_FIXTURES,
   OWNER_SHOT_ROUTES,
@@ -235,5 +243,61 @@ describe('owner screenshot fixture (s21r)', () => {
     // And a plain draw to PSU1 - stays on PSU1 - after every routing pass.
     const again = draw(OWNER_SHOT_FIXTURES['shot-intent']!(), T('U1', 'y'), T('PSU1', 'negative'));
     expect(key(gateEnd(again, 'y').to)).toBe('PSU1:negative');
+  });
+
+  it('2D: no automatic wire runs along a part outline (beyond its first step); 3D: no arch, loop or collision', () => {
+    // Known 3D remainder, pinned: the gate's V_CC lane ends right under the b / a wire's run one
+    // grid step outside the gate (the 3D board is larger than its symbol): the two touch where
+    // V_CC rises from its pin. Same node; no other contact.
+    const KNOWN_OWN: Record<string, string[]> = {
+      'shot-exact': ['W1-W4'],
+      'shot-drawn': ['W1-W4'],
+      'shot-intent': ['W2-W4'],
+    };
+    for (const [name, make] of Object.entries(OWNER_SHOT_FIXTURES)) {
+      const d = routeAutomatic(repairManual(make()));
+      const boxes = componentBoxes(d).filter((b) => !b.display);
+      for (const w of d.layout.wires) {
+        if (!w.auto || w.auto.waypoints.length) continue; // the user's own geometry or clicks
+        const r = wireRoute(d, w)!;
+        let along = 0;
+        for (let i = 1; i < r.length; i++) {
+          const [a, b] = [r[i - 1]!, r[i]!];
+          for (const q of boxes) {
+            const h = a.y === b.y;
+            const on = h ? a.y === q.minY || a.y === q.maxY : a.x === q.minX || a.x === q.maxX;
+            if (!on) continue;
+            const [lo, hi] = h ? [q.minX, q.maxX] : [q.minY, q.maxY];
+            const [p0, p1] = h ? [a.x, b.x] : [a.y, b.y];
+            let n = Math.max(0, Math.min(Math.max(p0, p1), hi) - Math.max(Math.min(p0, p1), lo));
+            // The first grid step out of its own terminal on that part is its lead.
+            const end = [r[0]!, r[r.length - 1]!].some((e) =>
+              (e.x === a.x && e.y === a.y) || (e.x === b.x && e.y === b.y)
+                ? e.x >= q.minX && e.x <= q.maxX && e.y >= q.minY && e.y <= q.maxY
+                : false,
+            );
+            if (end) n = Math.max(0, n - 20);
+            along += n;
+          }
+        }
+        expect(along, `${name} ${w.id} along an outline`).toBe(0);
+      }
+      const s = deriveScene(d);
+      const m = measure3d(d, s);
+      expect(m.foreignPenetrations, name).toEqual([]);
+      expect(m.bodyHits, name).toEqual([]);
+      expect(m.loops, name).toEqual([]);
+      expect(m.hairpins, name).toEqual([]);
+      expect(m.overOwnBody, name).toEqual([]);
+      expect(m.badEnds, name).toEqual([]);
+      expect(
+        m.ownPenetrations.map((p) => `${p.a}-${p.b}`),
+        name,
+      ).toEqual(KNOWN_OWN[name] ?? []);
+      // No wire climbs over the supply's case (11 mm) or the gate's board (it was 12.2 mm).
+      for (const w of s.wires)
+        expect(Math.max(...w.points.map((p) => p.y)), `${name} ${w.id}`).toBeLessThan(8);
+      expect(s.routeLimits, name).toEqual([]);
+    }
   });
 });

@@ -73,6 +73,7 @@ import {
   moveRouted,
   rotateRouted,
   routingLimited,
+  routeConflicts,
 } from './routing.js';
 import { RGB_LOOKS, ledLook } from '../views/ledLooks.js';
 import { resolveWireColors } from '../views/wireColors.js';
@@ -815,10 +816,13 @@ export function Canvas({
   const crossings = crossingsReport.crossings;
   // Wires the bounded routing drew with a simple shape (very large projects, s20r4).
   const limited = routingLimited(doc);
+  // Wires drawn where they read as a connection they are not (s21r): said, never hidden.
+  const conflicts = useMemo(() => routeConflicts(doc), [doc]);
+  const conflicted = useMemo(() => new Set(conflicts.wires), [conflicts]);
   // Branch points of wires of one node (s20r): drawn with a junction-style dot.
   const branchesReport = useMemo(() => sameNodeBranchesReport(view), [view]);
   const branches = branchesReport.points;
-  const overlaysLimited = crossingsReport.limited || branchesReport.limited;
+  const overlaysLimited = crossingsReport.limited || branchesReport.limited || conflicts.limited;
   // The same resolved colours as the 3D view (wireColors.ts).
   const wireColors = useMemo(() => resolveWireColors(view), [view]);
   const hopR = hopRadius(camera.scale);
@@ -943,6 +947,7 @@ export function Canvas({
                 data-id={w.id}
                 data-color={wireColors.get(w.id)?.color ?? 'neutral'}
                 data-color-source={wireColors.get(w.id)?.source}
+                data-conflict={conflicted.has(w.id) ? 'true' : undefined}
                 class={selected.wires.has(w.id) ? 'wire-group selected' : 'wire-group'}
                 style={{ '--wire-color': wireColors.get(w.id)?.hex }}
               >
@@ -1235,12 +1240,17 @@ export function Canvas({
           </svg>
         </button>
       </div>
-      {(!readOnly || overlaysLimited) && (
+      {(!readOnly || overlaysLimited || conflicts.wires.length > 0) && (
         <div class="canvas-hint" dir={state.locale.dir} data-testid="canvas-hint">
           {!readOnly && t(hint)}
           {overlaysLimited && (
             <div class="view-note-warning" role="status" data-testid="canvas-overlay-limit">
               {t('canvas.overlayLimit')}
+            </div>
+          )}
+          {conflicts.wires.length > 0 && (
+            <div class="view-note-warning" role="status" data-testid="canvas-route-conflict">
+              {t('canvas.routeConflict', { count: conflicts.wires.length })}
             </div>
           )}
           {!readOnly && limited.length > 0 && (

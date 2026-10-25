@@ -10,6 +10,7 @@ import {
   rerouteWires,
   routeAutoWires,
   routeAutoWiresReport,
+  routeConflictsReport,
   repairWireRoutesReport,
   rotateComponents,
   rotatePoint,
@@ -188,3 +189,18 @@ export function movePreview(source: ProjectDocument, sel: Selection, delta: Poin
 
 export const rotateRouted = (doc: ProjectDocument, ids: string[]): EditResult =>
   routed(rotateComponents(doc, ids), ids, []);
+
+/**
+ * Sprint 21 (s21r): the wires whose drawn route reads as a connection it is not (domain
+ * `routeConflictsReport`: through another terminal's keep-out, along or into a wire of another
+ * node), with whether the bounded check was cut short. Computed once per drawing (WeakMap).
+ */
+const conflictsOf = new WeakMap<object, { wires: string[]; limited: boolean }>();
+export function routeConflicts(doc: ProjectDocument): { wires: string[]; limited: boolean } {
+  let r = conflictsOf.get(doc.layout);
+  if (!r) {
+    r = routeConflictsReport(doc, componentBoxes(doc));
+    conflictsOf.set(doc.layout, r);
+  }
+  return r;
+}
