@@ -373,8 +373,12 @@ export function evaluateBounds(
   for (const c of checks) {
     const s0 = sensOf.get(c.id)!;
     let choice = choose(c, s0);
-    if (!choice.size) continue;
     const m0 = c.margin(x0);
+    // Verification B1: a conclusion that does not hold at the operating point itself (e.g. an
+    // ESP32 input reading a gate output at an UNDEFINED level, a pad carrying more than leakage)
+    // is refused whether or not any perturbation moves it — never skipped (every check kind).
+    if (!(m0 >= 0)) return failure(c, c.value(x0), []);
+    if (!choice.size) continue;
     const currents = [...choice].filter(([j]) => perts[j]!.kind !== 'ogap');
     const linear = m0 + currents.reduce((sum, [j, a]) => sum + s0[j]! * (a as number), 0);
     const adverseOf = (ch: Choice) => [...ch.keys()].map((j) => perts[j]!);
@@ -801,7 +805,10 @@ export function buildBounds(
         // output stage is never driven backwards here (its reverse side has no characteristic).
         margin: (x) => stage.validA + 1e-12 - access.device(x, o.key),
         value: (x) => Math.abs(access.device(x, o.key)),
-        excludes: (p) => p.kind === 'ogap',
+        // Verification S3: only this output's OWN band is not counted (its stronger side has no
+        // bound, owner question S21-Q5); every other driver's band is (e.g. another output tied
+        // to this one through a resistor).
+        excludes: (p) => p.kind === 'ogap' && p.stage?.key === o.key,
         detail: { vcc: vcc0, limit: stage.validA },
       });
     }

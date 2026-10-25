@@ -256,6 +256,8 @@ export const en = {
     '{components}: {pin}, an ESP32 input, reads this logic output at {voltage} in the simulation, but within the datasheet bounds ({causes}) it can be at {worst}, {cmp}. The ESP32 would not read a guaranteed LOW, so the circuit is not simulated. A gate output LOW is guaranteed close to GND only at light load (the datasheet row V_OL ≤ 0.1 V at up to 100 µA): lighten what the output sinks (e.g. a larger pull-up) or what lies between it and the pin.',
   'sim.error.logic_mcu_pull_uncharacterized.reads':
     '{components}: {pin}, an ESP32 input that reads this logic output, has its internal pull resistor enabled. The ESP32 datasheet gives that resistor only as typical (45 kΩ, no minimum or maximum), so the load it puts on the output, and the level the pin reads, are not guaranteed: the circuit is not simulated. Turn the internal pull off (a plain input).',
+  'sim.error.logic_output_uncharacterized.reverse':
+    '{components}: within the datasheet bounds ({causes}), output {pin} would carry {current} the wrong way — into a HIGH output or out of a LOW one, for example from another driver tied to it. The datasheet characterizes no output current in that direction, so the circuit is not simulated. Never tie an output to another driver (datasheet §8.2.1.3).',
   'sim.bound.cause.leakage': 'input leakage I_I',
   'sim.bound.cause.supply_current': 'quiescent supply current I_CC',
   'sim.bound.cause.esp32_voh': 'ESP32 V_OH ≥ 2.64 V',

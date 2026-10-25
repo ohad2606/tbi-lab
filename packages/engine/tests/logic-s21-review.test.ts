@@ -472,3 +472,195 @@ describe('final review B1 follow-up: a driver tied onto a LOW output', () => {
     expect(err(s.solve())).toBeNull();
   });
 });
+
+describe('verification of ab8cbca (probes vprobe/undef, esp, outcur)', () => {
+  /** A gate powered from PSU1: HIGH (A, B at V_CC), LOW (A at GND). */
+  const gate = (b: Bench, kind: 'high' | 'low') => {
+    const g = b.add('logic.gate_and');
+    b.wire('PSU1.positive', `${g}.vcc`)
+      .wire(`${g}.gnd`, 'GND1.ref')
+      .wire(`${g}.b`, 'PSU1.positive');
+    b.wire(`${g}.a`, kind === 'high' ? 'PSU1.positive' : 'GND1.ref');
+    return g;
+  };
+  const res = (b: Bench, ohm: number, p: string, q: string) => {
+    const r = b.add('component.resistor');
+    b.ohms(r, ohm).wire(p, `${r}.a`).wire(`${r}.b`, q);
+  };
+  const esp = (vcc: number, build: (b: Bench, u: string) => void) => {
+    const bb = boardBench((b, u) => {
+      b.psu(vcc, 0.5);
+      build(b, u);
+    });
+    const s = new EngineSession(bb.projected, { pins: bb.pins });
+    s.setPinMode(4, 'input');
+    return s.solve();
+  };
+
+  describe('B1: an ESP32 input at a nominally UNDEFINED level is refused (never skipped)', () => {
+    for (const [r1, r2] of [
+      [1000, 1000],
+      [200, 800],
+      [10_000, 10_000],
+    ] as const)
+      it(`gate HIGH → ${r1} Ω → GPIO4 → ${r2} Ω → GND: between V_IL and V_IH → refused`, () => {
+        const e = err(
+          esp(3.0, (b, u) => {
+            const A = gate(b, 'high');
+            res(b, r1, `${A}.y`, `${u}.gpio4`);
+            res(b, r2, `${u}.gpio4`, 'GND1.ref');
+          }),
+        );
+        expect(e).toMatchObject({
+          code: 'logic_mcu_input_not_guaranteed',
+          param: 'gpio4',
+          detail: { gpio: 4, level: 'undefined' },
+        });
+      });
+    it('monotone now: 1000/9000 and the worse 200/800 are both refused', () => {
+      for (const [r1, r2] of [
+        [1000, 9000],
+        [200, 800],
+      ] as const)
+        expect(
+          err(
+            esp(3.0, (b, u) => {
+              const A = gate(b, 'high');
+              res(b, r1, `${A}.y`, `${u}.gpio4`);
+              res(b, r2, `${u}.gpio4`, 'GND1.ref');
+            }),
+          )?.code,
+        ).toBe('logic_mcu_input_not_guaranteed');
+    });
+  });
+
+  describe('probe esp: refused exactly where the hand worst case leaves the ESP32 band', () => {
+    const cases: [string, number, (b: Bench, u: string) => void, boolean][] = [
+      [
+        'E1 3.3 V 100k/327k (hand 2.444 V < 2.475)',
+        3.3,
+        (b, u) => {
+          const A = gate(b, 'high');
+          res(b, 100e3, `${A}.y`, `${u}.gpio4`);
+          res(b, 327e3, `${u}.gpio4`, 'GND1.ref');
+        },
+        false,
+      ],
+      [
+        'E1 3.3 V 100k/400k (hand 2.553 V)',
+        3.3,
+        (b, u) => {
+          const A = gate(b, 'high');
+          res(b, 100e3, `${A}.y`, `${u}.gpio4`);
+          res(b, 400e3, `${u}.gpio4`, 'GND1.ref');
+        },
+        true,
+      ],
+      [
+        'E1 3.0 V 150/850 (undefined at x0)',
+        3.0,
+        (b, u) => {
+          const A = gate(b, 'high');
+          res(b, 150, `${A}.y`, `${u}.gpio4`);
+          res(b, 850, `${u}.gpio4`, 'GND1.ref');
+        },
+        false,
+      ],
+      [
+        'E2 3.3 V 100k/290k (undefined at x0)',
+        3.3,
+        (b, u) => {
+          const A = gate(b, 'low');
+          res(b, 100e3, `${A}.y`, `${u}.gpio4`);
+          res(b, 290e3, `${u}.gpio4`, 'PSU1.positive');
+        },
+        false,
+      ],
+      [
+        'E2 3.0 V 1500/8500 (hand 0.790 V ≤ 0.825)',
+        3.0,
+        (b, u) => {
+          const A = gate(b, 'low');
+          res(b, 1500, `${A}.y`, `${u}.gpio4`);
+          res(b, 8500, `${u}.gpio4`, 'PSU1.positive');
+        },
+        true,
+      ],
+      [
+        'E3 3.3 V 30k/10.5k (undefined at x0)',
+        3.3,
+        (b, u) => {
+          const A = gate(b, 'high');
+          const B = gate(b, 'low');
+          res(b, 30e3, `${A}.y`, `${u}.gpio4`);
+          res(b, 10.5e3, `${B}.y`, `${u}.gpio4`);
+        },
+        false,
+      ],
+      [
+        'E3 3.0 V 50/250 (undefined at x0)',
+        3.0,
+        (b, u) => {
+          const A = gate(b, 'high');
+          const B = gate(b, 'low');
+          res(b, 50, `${A}.y`, `${u}.gpio4`);
+          res(b, 250, `${B}.y`, `${u}.gpio4`);
+        },
+        false,
+      ],
+      [
+        'E3 3.3 V 5k/30k (hand HIGH 2.743 V)',
+        3.3,
+        (b, u) => {
+          const A = gate(b, 'high');
+          const B = gate(b, 'low');
+          res(b, 5e3, `${A}.y`, `${u}.gpio4`);
+          res(b, 30e3, `${B}.y`, `${u}.gpio4`);
+        },
+        true,
+      ],
+    ];
+    for (const [name, vcc, build, runs] of cases)
+      it(`${name} → ${runs ? 'runs' : 'refused'}`, () => {
+        const e = err(esp(vcc, build));
+        if (runs) expect(e).toBeNull();
+        else expect(e?.code).toBe('logic_mcu_input_not_guaranteed');
+      });
+  });
+
+  describe('S3: an output current check counts the OTHER outputs bands (probe outcur)', () => {
+    /** A HIGH –R– B LOW, 10 MΩ bleed on Y_A; optionally a reader input on Y_A. */
+    const tied = (r: number, reader: boolean) => {
+      const b = new Bench();
+      b.psu(3.0, 0.5).wire('PSU1.negative', 'GND1.ref');
+      const A = gate(b, 'high');
+      const B = gate(b, 'low');
+      res(b, r, `${A}.y`, `${B}.y`);
+      res(b, 1e7, `${A}.y`, 'GND1.ref');
+      if (reader) {
+        const C = b.add('logic.gate_and');
+        b.wire('PSU1.positive', `${C}.vcc`)
+          .wire(`${C}.gnd`, 'GND1.ref')
+          .wire(`${C}.b`, 'PSU1.positive');
+        b.wire(`${A}.y`, `${C}.a`);
+      }
+      return { b, A, B };
+    };
+    for (const reader of [false, true]) {
+      it(`R = 80 Ω${reader ? ' (+reader)' : ''}: A on its guaranteed characteristic with Y_B = 0 carries 28.108 mA > 24 mA → refused`, () => {
+        const { b, A } = tied(80, reader);
+        const e = err(solve(b));
+        expect(e).toMatchObject({
+          code: 'logic_output_uncharacterized',
+          components: [A],
+          param: 'y',
+          detail: { limit: 0.024 },
+        });
+        expect((e!.detail as { value: number }).value).toBeCloseTo(0.028108, 5);
+      });
+      it(`R = 105 Ω${reader ? ' (+reader)' : ''}: 22.13 mA / 23.43 mA ≤ 24 mA → runs`, () => {
+        expect(err(solve(tied(105, reader).b))).toBeNull();
+      });
+    }
+  });
+});

@@ -594,6 +594,27 @@ describe('Sprint 21 refusal messages: every new code and variant renders fully i
     };
     expect(plain(engineErrorMessage(en, holds, null))).toContain('Use an external pull resistor');
   });
+  cases.push({
+    code: 'logic_output_uncharacterized',
+    components: ['U2'],
+    param: 'y',
+    detail: {
+      part: 'SN74LVC1G08',
+      vcc: 3,
+      value: 5.66e-3,
+      limit: 0.024,
+      reverse: true,
+      causes: ['output_guarantee', 'esp32_vol'],
+    },
+  });
+  it('verification N5: a reverse output current has its own wording and names the causes (EN/HE)', () => {
+    const rev = cases.find((c) => (c.detail as { reverse?: boolean }).reverse)!;
+    const m = plain(engineErrorMessage(en, rev, null));
+    expect(m).toContain('the wrong way');
+    expect(m).toContain('the driving output’s guaranteed level');
+    expect(m).toContain('5.66 mA');
+    expect(plain(engineErrorMessage(he, rev, null))).toContain('בכיוון ההפוך');
+  });
   it('no placeholder left, the part and pin named, technical runs LTR-isolated', () => {
     for (const e of cases)
       for (const lc of [en, he]) {
