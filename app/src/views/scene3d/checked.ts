@@ -56,7 +56,13 @@ export function drawnLimits(
   workCap = DRAWN_CHECK_WORK,
 ): string[] {
   const out = new Set<string>();
-  const wires = desc.wires.filter((w) => !w.simple && shapes.has(w.id));
+  // Simple cables (past the scene's work budget) are in routeLimits already, but a cable that
+  // touches one must be named too (s21r final review N2): they take part in the contact check,
+  // after the others (so the work cap reaches the others first); not in the body test.
+  const wires = [
+    ...desc.wires.filter((w) => !w.simple && shapes.has(w.id)),
+    ...desc.wires.filter((w) => w.simple && shapes.has(w.id)),
+  ];
   let work = 0;
   const samples = new Map<string, Vec3[]>();
   let reached = wires.length;
@@ -127,7 +133,7 @@ export function drawnLimits(
   const obstacles = sceneObstacles(doc, desc);
   const sources = new Map([...doc.layout.wires].reverse().map((x) => [x.id, x]));
   for (const w of limited >= 0 ? checked.slice(0, limited) : checked) {
-    if (out.has(w.id)) continue;
+    if (out.has(w.id) || w.simple) continue;
     const src = sources.get(w.id);
     if (!src) continue;
     const own = [src.from, src.to].flatMap((e) =>

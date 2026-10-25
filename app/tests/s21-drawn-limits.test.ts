@@ -37,4 +37,20 @@ describe('3D routeLimits cover the drawn cables (s21r review r5)', () => {
     const all = s.wires.filter((w) => !w.simple).map((w) => w.id);
     expect(drawnLimits(d, s, sceneShapes(s), 0).sort()).toEqual([...all].sort());
   });
+
+  // Final review N2: a cable touching a SIMPLE cable (one drawn past the scene's work budget,
+  // listed on its own) is named too: both wires of the pair.
+  it('a cable touching a simple cable is named with it', () => {
+    const d = routeAutomatic(randomBench(40, 2007, { dense: true, board: true }).doc);
+    const s = deriveScene(d);
+    for (const simple of ['W3', 'W12']) {
+      const desc = {
+        ...s,
+        wires: s.wires.map((w) => (w.id === simple ? { ...w, simple: true as const } : w)),
+      };
+      const out = drawnLimits(d, desc, sceneShapes(desc));
+      expect(out, simple).toContain('W3');
+      expect(out, simple).toContain('W12');
+    }
+  });
 });
