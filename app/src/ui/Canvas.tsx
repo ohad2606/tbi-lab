@@ -869,7 +869,10 @@ export function Canvas({
   const markers = issues.flatMap((i) =>
     i.code === 'terminals_touching'
       ? [{ code: i.code, component: i.components[0]!, terminal: i.terminals![0]! }]
-      : i.code === 'partially_wired' || i.code === 'wire_over_terminal'
+      : i.code === 'partially_wired' ||
+          i.code === 'wire_over_terminal' ||
+          // Sprint 21: both supply pins of a part on one net.
+          i.code === 'supply_pins_shorted'
         ? (i.terminals ?? []).map((term) => ({
             code: i.code,
             component: i.components[0]!,

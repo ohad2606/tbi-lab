@@ -586,6 +586,10 @@ export const en = {
     '{component} {terminal} touches {other} {otherTerminal} but is not connected to it. Move one part away and back to join them, or draw a wire.',
   'checks.floating_island': 'No path to GND: {components}.',
   'checks.no_ground': 'The circuit has no GND. Add [[ground]] and wire it to the circuit.',
+  'checks.supply_pins_shorted':
+    '{component}: V_CC and GND are wired to the same net, so its supply is always 0 V: it can never be powered. Wire GND to the supply’s − (or to GND).',
+  'checks.psu_no_load':
+    '{component}: nothing is connected between + and −, so it supplies no current to any part. Wire the circuit’s return (e.g. a part’s GND) to −.',
   'checks.psu_shorted_by_wire': '{component}: the output terminals are joined by a wire.',
   'history.undo': 'Undo',
   'history.redo': 'Redo',

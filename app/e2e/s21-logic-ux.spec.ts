@@ -239,12 +239,22 @@ for (const size of SIZES)
         );
         await shot(page, `s21l-${size.name}-${lc}-owner-as-drawn`);
       }
-      // GND wire still on PSU+, but a reference on PSU−: V_CC − GND = 0 V → unpowered.
+      // GND wire still on PSU+, but a reference on PSU−: V_CC − GND = 0 V → unpowered. This is
+      // the DEV-Lab acceptance fixture (owner-shot-as-drawn.json): before Run, the circuit
+      // checks say the gate's supply pins share a net and nothing is across the supply.
       const off = ownerCircuit('PSU1.positive', true, 'prj_s21lOwnerOff');
       await openImported(page, off.doc);
       await waitSaved(page);
       for (const lc of LOCALES) {
         await locale(page, lc);
+        const checks = page.getByTestId('circuit-checks');
+        await expect(checks.getByTestId('check-supply_pins_shorted')).toContainText(off.u);
+        await expect(checks.getByTestId('check-supply_pins_shorted')).toContainText(
+          lc === 'en' ? 'V_CC and GND are wired to the same net' : 'מחוברים לאותה רשת',
+        );
+        await expect(checks.getByTestId('check-psu_no_load')).toContainText('PSU1');
+        await expect(page.getByTestId(`check-marker-${off.u}.gnd`)).toBeVisible();
+        await shot(page, `s21l-${size.name}-${lc}-owner-checks`);
         await page.getByTestId('sim-run').click();
         await expect(status(page)).toHaveAttribute('data-status', 'running', { timeout: 30_000 });
         await inspect(page, off.u);
@@ -257,6 +267,8 @@ for (const size of SIZES)
       const fixed = ownerCircuit('PSU1.negative', true, 'prj_s21lOwnerFixed');
       await openImported(page, fixed.doc);
       await waitSaved(page);
+      await expect(page.getByTestId('check-supply_pins_shorted')).toHaveCount(0);
+      await expect(page.getByTestId('check-psu_no_load')).toHaveCount(0);
       for (const lc of LOCALES) {
         await locale(page, lc);
         await page.getByTestId('sim-run').click();

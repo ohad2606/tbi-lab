@@ -582,6 +582,10 @@ export const he: Record<MessageKey, string> = {
     '{component} {terminal} נוגע ב-{other} {otherTerminal} אבל אינו מחובר אליו. הזיזו אחד הרכיבים והחזירו אותו כדי לחבר, או ציירו חוט.',
   'checks.floating_island': 'אין מסלול ל-GND: {components}.',
   'checks.no_ground': 'למעגל אין GND. הוסיפו [[ground]] וחברו אותה למעגל.',
+  'checks.supply_pins_shorted':
+    '{component}: ‏V_CC ו-GND מחוברים לאותה רשת, ולכן מתח ההזנה שלו תמיד 0 V: הוא לעולם לא יקבל הזנה. חברו את GND להדק ה-− של הספק (או ל-GND).',
+  'checks.psu_no_load':
+    '{component}: שום רכיב אינו מחובר בין + ל-−, ולכן הוא אינו מספק זרם לאף רכיב. חברו את מסלול החזרה של המעגל (למשל GND של רכיב) להדק ה-−.',
   'checks.psu_shorted_by_wire': '{component}: הדקי היציאה מחוברים זה לזה בחוט.',
   'history.undo': 'ביטול',
   'history.redo': 'ביצוע מחדש',
