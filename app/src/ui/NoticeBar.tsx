@@ -152,6 +152,12 @@ export function NoticeBar() {
           data-tone={notice.tone ?? 'error'}
         >
           <span>{t(notice.key, notice.params)}</span>
+          {notice.also?.map((k) => (
+            <span key={k} data-testid="notice-also" data-key={k}>
+              {' '}
+              {t(k)}
+            </span>
+          ))}
           {/* Alpha UX-P1: Run without a current build offers the Build itself (never automatic). */}
           {notice.key === 'run.blocked.buildRequired' && programBoardOf(doc) && (
             <button

@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 import {
   addComponent,
   emptySelection,
+  projectHash,
   setParam,
   wireRoute,
   type ProjectDocument,
@@ -83,5 +84,31 @@ describe('wire routing integrity in the store', () => {
     await app.openProject(id);
     expect(drawn(doc())).toBe(start);
     expect(app.state.notice?.key).toBe('open.routesAdjusted');
+
+    // Sprint 21 (s21r): the same stale project IMPORTED from a file: the import's confirmation
+    // no longer replaces the "routes adjusted" notice (Sprint 20 UX defect); both are shown.
+    const file = (await app.exportProject(id))!;
+    const pkg = JSON.parse(file.text) as {
+      project: ProjectDocument;
+      integrity: { project: string };
+    };
+    pkg.project.layout.wires.find((w) => w.id === 'W2')!.vertices = [
+      { x: -80, y: -200 },
+      { x: 360, y: -200 },
+    ];
+    pkg.integrity.project = projectHash(pkg.project);
+    await app.deleteProject(id);
+    expect(await app.importPackage(JSON.stringify(pkg))).toBe(true);
+    expect(drawn(doc())).toBe(start);
+    expect(app.state.notice).toMatchObject({
+      key: 'import.done',
+      tone: 'info',
+      also: ['open.routesAdjusted'],
+    });
+    // A package that needs no adjustment says only "Imported".
+    const clean = (await app.exportProject(doc().projectId))!;
+    await app.deleteProject(doc().projectId);
+    expect(await app.importPackage(clean.text)).toBe(true);
+    expect(app.state.notice?.also).toBeUndefined();
   });
 });
