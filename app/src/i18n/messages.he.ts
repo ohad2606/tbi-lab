@@ -241,7 +241,7 @@ export const he: Record<MessageKey, string> = {
   'sim.bound.notEstablished.part_not_bounded': 'לא ניתן היה לחסום את מצב הרכיב הזה',
   'sim.bound.notEstablished.part_not_in_solve': 'פין של הרכיב הזה אינו במעגל שנפתר',
   'sim.error.logic_mcu_input_not_guaranteed':
-    '{components}: ‏{pin}, כניסה של ESP32, קורא את היציאה הלוגית הזו ב-{voltage} בסימולציה, אבל בתוך החסמים של גיליון הנתונים ({causes}) היא יכולה להיות ב-{worst}, {cmp}. ה-ESP32 לא יקרא רמה מובטחת, ולכן המעגל אינו מדומה. יציאה של שער מובטחת קרוב לפס ההזנה רק בעומס קל (V_CC − 0.1 V עד 100 µA): הקטינו את העומס על היציאה.',
+    '{components}: ‏{pin}, כניסה של ESP32, קורא את היציאה הלוגית הזו ב-{voltage} בסימולציה, אבל בתוך החסמים של גיליון הנתונים ({causes}) היא יכולה להיות ב-{worst}, {cmp}. ה-ESP32 לא יקרא HIGH מובטח, ולכן המעגל אינו מדומה. יציאת HIGH של שער מובטחת קרוב לפס ההזנה רק בעומס קל (שורת גיליון הנתונים V_OH ≥ V_CC − 0.1 V עד 100 µA): הקטינו את העומס על היציאה.',
   'sim.error.logic_mcu_input_not_guaranteed.undefined':
     '{components}: ‏{pin}, כניסה של ESP32, קורא את היציאה הלוגית הזו ב-{voltage}, בין {vil} ל-{vih} של ה-ESP32: אין רמה מוגדרת, ולכן המעגל אינו מדומה.',
   'sim.error.logic_mcu_output_uncharacterized':
@@ -252,6 +252,10 @@ export const he: Record<MessageKey, string> = {
     'לא מדומה: פין ה-ESP32 שקורא את היציאה הזו לא יקרא רמה מובטחת (ראו את ההודעה למעלה).',
   'logic.why.mcuDrive':
     'לא מדומה: לפין ה-ESP32 שמזין את הכניסה של הרכיב הזה אין כאן רמה מובטחת (ראו את ההודעה למעלה).',
+  'sim.error.logic_mcu_input_not_guaranteed.low':
+    '{components}: ‏{pin}, כניסה של ESP32, קורא את היציאה הלוגית הזו ב-{voltage} בסימולציה, אבל בתוך החסמים של גיליון הנתונים ({causes}) היא יכולה להיות ב-{worst}, {cmp}. ה-ESP32 לא יקרא LOW מובטח, ולכן המעגל אינו מדומה. יציאת LOW של שער מובטחת קרוב ל-GND רק בעומס קל (שורת גיליון הנתונים V_OL ≤ 0.1 V עד 100 µA): הקטינו את מה שהיציאה סופגת (למשל נגד pull-up גדול יותר) או את מה שבינה לבין הפין.',
+  'sim.error.logic_mcu_pull_uncharacterized.reads':
+    '{components}: ‏{pin}, כניסה של ESP32 שקוראת את היציאה הלוגית הזו, מפעילה את נגד ה-pull הפנימי שלה. גיליון הנתונים של ESP32 נותן את הנגד הזה רק כערך טיפוסי (45 kΩ, ללא מינימום או מקסימום), ולכן העומס שהוא מטיל על היציאה והרמה שהפין קורא אינם מובטחים: המעגל אינו מדומה. כבו את ה-pull הפנימי (כניסה רגילה).',
   'sim.bound.cause.leakage': 'זרם זליגה בכניסה I_I',
   'sim.bound.cause.supply_current': 'זרם הזנה במנוחה I_CC',
   'sim.bound.cause.esp32_voh': 'V_OH של ESP32 ≥ 2.64 V',

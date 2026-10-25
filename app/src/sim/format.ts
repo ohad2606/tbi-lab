@@ -246,6 +246,7 @@ export function engineErrorMessage(
         iiVcc?: [number, number];
         level?: string;
         reason?: string;
+        role?: string;
       };
       const V = (v: number | undefined) =>
         typeof v === 'number' ? formatResult(locale, v, 'volt') : '';
@@ -268,11 +269,14 @@ export function engineErrorMessage(
                 d.level === 'high' &&
                 d.causes?.includes('esp32_voh'))
             ? `sim.error.${error.code}.mcu_high`
-            : error.code === 'logic_mcu_input_not_guaranteed' && d.level === 'undefined'
-              ? 'sim.error.logic_mcu_input_not_guaranteed.undefined'
-              : error.code === 'logic_supply_not_guaranteed' && error.param === 'limit'
-                ? 'sim.error.logic_supply_not_guaranteed.limit'
-                : `sim.error.${error.code}.${(d.part ?? '').toLowerCase()}`;
+            : error.code === 'logic_mcu_input_not_guaranteed' &&
+                (d.level === 'undefined' || d.level === 'low')
+              ? `sim.error.logic_mcu_input_not_guaranteed.${d.level}`
+              : error.code === 'logic_mcu_pull_uncharacterized' && d.role === 'reads'
+                ? 'sim.error.logic_mcu_pull_uncharacterized.reads'
+                : error.code === 'logic_supply_not_guaranteed' && error.param === 'limit'
+                  ? 'sim.error.logic_supply_not_guaranteed.limit'
+                  : `sim.error.${error.code}.${(d.part ?? '').toLowerCase()}`;
       const why = `sim.bound.notEstablished.${d.reason ?? ''}`;
       const causes = (d.causes ?? [])
         .map((c) => `sim.bound.cause.${c}`)

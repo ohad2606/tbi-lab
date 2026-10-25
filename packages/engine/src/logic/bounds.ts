@@ -168,13 +168,6 @@ const H = 1e-6;
 const MAX_ROUNDS = 4;
 /** Bracket steps of a stage held at its guarantee (its current may move to the next point). */
 const MAX_BRACKETS = 6;
-/**
- * Performance (review item 15): a check whose total linear change is below this fraction of its
- * nominal margin, with no gate output band involved, is accepted without an exact corner solve.
- * µA-level perturbations moving a margin by < 1 % cannot reverse its sign through second-order
- * terms of the resistive/junction network (the exact solve is kept for everything closer).
- */
-const LINEAR_ACCEPT = 0.01;
 
 /** Checks whose margin reads only node voltages (a solved corner's x is enough to evaluate). */
 const NODE_ONLY: ReadonlySet<CheckKind> = new Set(['supply', 'iccCondition', 'input', 'padInput']);
@@ -318,10 +311,22 @@ export function evaluateBounds(
     const out: Choice = new Map();
     perts.forEach((p, j) => {
       if (!(p.range || p.kind === 'ogap')) return;
-      const relevant = isRelevant(c, p, s[j]!) || prev?.has(j);
-      if (!relevant) return;
-      if (p.kind === 'ogap') out.set(j, s[j]! > 0 ? 'bound' : 'rail');
-      else out.set(j, s[j]! > 0 ? p.range![0] : p.range![1]);
+      if (!isRelevant(c, p, s[j]!)) {
+        // No (numerically) resolvable response here — e.g. a leakage current into a node the
+        // corner holds with a source: a side chosen before stays chosen (its sign cannot be
+        // re-read here, and flipping it on a zero would be arbitrary — it pushed a LOW stage's
+        // current backwards before this fix).
+        if (prev?.has(j)) out.set(j, prev.get(j)!);
+        return;
+      }
+      // Final review B1: `s` is dMargin / dV(Y rising). The adverse side lowers Y when s > 0.
+      // A HIGH stage lowers Y toward its guaranteed V_OH minimum ('bound') and raises it to V_CC
+      // ('rail'); a LOW stage raises Y toward its guaranteed V_OL maximum ('bound') and lowers it
+      // to GND ('rail').
+      if (p.kind === 'ogap') {
+        const lowerY = s[j]! > 0;
+        out.set(j, lowerY === (p.stage!.level === 'high') ? 'bound' : 'rail');
+      } else out.set(j, s[j]! > 0 ? p.range![0] : p.range![1]);
     });
     return out;
   };
@@ -384,8 +389,8 @@ export function evaluateBounds(
           ),
         adverseOf(choice),
       );
-    // Item 15: far from its limit and no output band involved: the linear answer stands.
-    if (currents.length === choice.size && m0 > 0 && m0 - linear <= LINEAR_ACCEPT * m0) continue;
+    // Final review N3: no linear shortcut; every check with a relevant perturbation is solved at
+    // its corner (a linear estimate is not a proof).
 
     let accepted = false;
     // Item 15: a check that reads only node voltages reuses a corner another check already
@@ -397,8 +402,27 @@ export function evaluateBounds(
       if (!solved) {
         const r = solveCorner(solver, perts, choice);
         if (r.kind === 'unsolved') return notEstablished('corner_unsolved', c);
-        if (r.kind === 'beyond')
-          return failure(c, NaN, adverseOf(choice), { output: r.output, current: r.current });
+        if (r.kind === 'beyond') {
+          // The driving output itself would leave its guarantee at this corner (past its largest
+          // test point, or a current the wrong way — e.g. another driver tied onto it): that
+          // output is the root cause, refused by name with the current it would carry.
+          const st = perts.find((p) => p.stage?.key === r.output)!;
+          const { causes, pads } = causesOf(adverseOf(choice));
+          return {
+            code: 'logic_output_uncharacterized',
+            components: [st.component!],
+            param: st.pin!,
+            detail: {
+              part: st.stage!.card.partNumber,
+              vcc: st.stage!.vcc,
+              value: Math.abs(r.current),
+              limit: outputStageAt(st.stage!.card, st.stage!.vcc).validA,
+              ...(r.current < 0 ? { reverse: true } : {}),
+              causes,
+              ...(pads.length ? { pads } : {}),
+            },
+          };
+        }
         const { corner, stageOf } = r;
         try {
           // Item 8: re-linearise at the corner; every chosen side must still be adverse, and no
@@ -692,7 +716,10 @@ export function buildBounds(
           refusal: {
             code: 'logic_mcu_pull_uncharacterized',
             param: `gpio${p.gpio}`,
-            detail: { gpio: p.gpio, mode: p.mode },
+            // Final review S1: the remedy differs — an ESP32 input READING a logic output is
+            // loaded by its own pull (turn it off); a pull HOLDING a logic input needs an
+            // external resistor.
+            detail: { gpio: p.gpio, mode: p.mode, role: p.readsLogic ? 'reads' : 'holds' },
           },
         });
     }

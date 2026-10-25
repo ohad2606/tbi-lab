@@ -539,6 +539,61 @@ describe('Sprint 21 refusal messages: every new code and variant renders fully i
     expect(plain(engineErrorMessage(en, e, null))).not.toContain('driven HIGH');
     expect(plain(engineErrorMessage(en, e, null))).toContain('above V_IL 800 mV');
   });
+  cases.push(
+    {
+      code: 'logic_mcu_input_not_guaranteed',
+      components: ['R1'],
+      param: 'gpio4',
+      detail: {
+        gpio: 4,
+        level: 'low',
+        value: 0.68,
+        worst: 0.92,
+        vil: 0.825,
+        causes: ['output_guarantee'],
+      },
+    },
+    {
+      code: 'logic_mcu_pull_uncharacterized',
+      components: ['U2'],
+      param: 'gpio4',
+      detail: { gpio: 4, mode: 'input-pullup', role: 'reads' },
+    },
+  );
+  it('final review N1 / S1: level-specific and trigger-specific remedies (EN/HE)', () => {
+    const low: EngineError = cases.find(
+      (c) =>
+        c.code === 'logic_mcu_input_not_guaranteed' &&
+        (c.detail as { level: string }).level === 'low',
+    )!;
+    expect(plain(engineErrorMessage(en, low, null))).toContain('V_OL ≤ 0.1 V at up to 100 µA');
+    expect(plain(engineErrorMessage(en, low, null))).toContain('above V_IL 825 mV');
+    expect(plain(engineErrorMessage(en, low, null))).not.toContain('V_OH');
+    expect(plain(engineErrorMessage(he, low, null))).toContain('V_OL ≤ 0.1 V');
+    const high: EngineError = cases.find(
+      (c) =>
+        c.code === 'logic_mcu_input_not_guaranteed' &&
+        (c.detail as { level: string }).level === 'high',
+    )!;
+    expect(plain(engineErrorMessage(en, high, null))).toContain(
+      'V_OH ≥ V_CC − 0.1 V at up to 100 µA',
+    );
+    const reads: EngineError = cases.find(
+      (c) =>
+        c.code === 'logic_mcu_pull_uncharacterized' &&
+        (c.detail as { role?: string }).role === 'reads',
+    )!;
+    expect(plain(engineErrorMessage(en, reads, null))).toContain('Turn the internal pull off');
+    expect(plain(engineErrorMessage(en, reads, null))).not.toContain('external pull');
+    expect(plain(engineErrorMessage(he, reads, null))).toContain('כבו את ה-pull הפנימי');
+    const holds: EngineError = {
+      code: 'logic_mcu_pull_uncharacterized',
+      components: ['U2'],
+      param: 'gpio4',
+      detail: { gpio: 4, mode: 'input-pullup', role: 'holds' },
+    };
+    expect(plain(engineErrorMessage(en, holds, null))).toContain('Use an external pull resistor');
+  });
   it('no placeholder left, the part and pin named, technical runs LTR-isolated', () => {
     for (const e of cases)
       for (const lc of [en, he]) {
