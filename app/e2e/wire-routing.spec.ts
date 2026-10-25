@@ -139,7 +139,8 @@ test('a drawing too large to mark every crossing says so (EN, HE)', async ({ pag
     layout: { ...one.doc.layout, wires },
     idCounters: { ...one.doc.idCounters, W: N },
   };
-  await openImported(page, doc);
+  // 2500 wires: opening (and repairing) them takes 4–8 s on the 1-vCPU DEV host.
+  await openImported(page, doc, { timeout: 60_000 });
   const note = page.getByTestId('canvas-overlay-limit');
   await expect(note).toBeVisible({ timeout: 60_000 });
   await expect(note).toContainText('some line hops and junction dots are not drawn');

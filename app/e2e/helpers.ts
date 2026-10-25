@@ -140,7 +140,11 @@ export function component(page: Page, id: string) {
  * for fixtures whose wires carry explicit stored geometry, e.g. a project drawn before new wires
  * were auto-routed around terminals and bodies: its stored geometry is kept as is.
  */
-export async function openImported(page: Page, doc: ProjectDocument): Promise<void> {
+export async function openImported(
+  page: Page,
+  doc: ProjectDocument,
+  opts: { timeout?: number } = {},
+): Promise<void> {
   const text = serializePackage(
     createPackage(doc, { appVersion: '0.1.0', exportedAt: '2026-09-26T00:00:00.000Z' }),
   );
@@ -155,7 +159,7 @@ export async function openImported(page: Page, doc: ProjectDocument): Promise<vo
     mimeType: 'application/json',
     buffer: Buffer.from(text, 'utf8'),
   });
-  await expect(page.getByTestId('canvas')).toBeVisible();
+  await expect(page.getByTestId('canvas')).toBeVisible({ timeout: opts.timeout });
 }
 
 /** Open the editor's application menu (projects, files, account). */
