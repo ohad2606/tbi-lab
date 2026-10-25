@@ -212,3 +212,12 @@ worked example; bit timing 27/70 µs).
   session re-prepares the solved circuit (`nodes()`) after every corner and reads nothing of a
   corner after that.
   Both are used only by `src/logic/bounds.ts` through `session.ts` (see that file's header).
+
+## Added in Sprint 22 (logic bound provenance)
+
+`src/logic/provenance.ts` lists every numerical bound the logic guarantee checks use — manufacturer,
+exact part, document and revision, table/row/test conditions, the supply/temperature/load range it
+applies to and its kind (guaranteed / typical / absolute maximum / derived). The documents were
+downloaded from ti.com and espressif.com and pinned with SHA-256 in the sprint evidence
+(`~/tbi-s22/logic/datasheets/SOURCES.txt`). `tests/logic-provenance.test.ts` requires a row with
+the same value for every card bound and ESP32 pad figure.
