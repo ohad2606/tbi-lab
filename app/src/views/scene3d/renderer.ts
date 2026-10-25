@@ -28,7 +28,8 @@ import { assetLoadStats, loadAssets } from './assets/library.js';
 import { createStage } from './stage.js';
 import { chooseQuality, probeGpu } from '../../gpuInfo.js';
 import { bentPath, buildJoint, buildSplice, buildWire, wireMaterials } from './wires.js';
-import { shapeWires, type WireShape } from './wireShape.js';
+import { type WireShape } from './wireShape.js';
+import { sceneShapes } from './checked.js';
 import { familyOf, variationAttribute, variedMaterial } from './variation.js';
 
 export { assetLoadStats, loadAssets };
@@ -689,7 +690,7 @@ export function createViewer(
     // Wires (coloured by electrical node) and direct contacts: wires.ts.
     const wm = wireMaterials(own, materials.lead);
     // Their natural shape (sag, hand-formed bends), checked clear of every part and wire.
-    const shapes = shapeWires(desc);
+    const shapes = sceneShapes(desc); // computed once per scene (checked.ts)
     currentShapes = shapes;
     for (const w of desc.wires) group.add(buildWire(w, own, wm, shapes.get(w.id)));
     // One twisted splice per junction (where the wires' stripped conductors meet).

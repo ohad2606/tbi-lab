@@ -822,7 +822,28 @@ export function Canvas({
   // Branch points of wires of one node (s20r): drawn with a junction-style dot.
   const branchesReport = useMemo(() => sameNodeBranchesReport(view), [view]);
   const branches = branchesReport.points;
-  const overlaysLimited = crossingsReport.limited || branchesReport.limited || conflicts.limited;
+  const overlaysLimited = crossingsReport.limited || branchesReport.limited;
+  // The conflict note's lines: per kind, the wires (named, so they can be found), terminals drawn
+  // on top of each other, and what the bounded check could not reach (s21r review r5).
+  const conflictLines = useMemo(() => {
+    const lines: { key: MessageKey; ids: string; kind: string }[] = [];
+    const list = (ids: readonly string[]) =>
+      ids.length > 12 ? `${ids.slice(0, 12).join(', ')}, … (+${ids.length - 12})` : ids.join(', ');
+    for (const kind of ['wire', 'pin', 'body'] as const)
+      if (conflicts.kinds[kind].length)
+        lines.push({
+          key: `canvas.routeConflict.${kind}`,
+          ids: list(conflicts.kinds[kind]),
+          kind,
+        });
+    if (conflicts.stacked.length)
+      lines.push({
+        key: 'canvas.routeConflict.stacked',
+        ids: list(conflicts.stacked.map((t) => t.terminals.join(' / '))),
+        kind: 'stacked',
+      });
+    return lines;
+  }, [conflicts]);
   // The same resolved colours as the 3D view (wireColors.ts).
   const wireColors = useMemo(() => resolveWireColors(view), [view]);
   const hopR = hopRadius(camera.scale);
@@ -954,6 +975,18 @@ export function Canvas({
                 class={selected.wires.has(w.id) ? 'wire-group selected' : 'wire-group'}
                 style={{ '--wire-color': wireColors.get(w.id)?.hex }}
               >
+                {conflicted.has(w.id) && (
+                  <>
+                    {/* s21r review r5: a dashed halo (a shape, not only a colour) marks a wire
+                        drawn where it may look connected; its title names the case. */}
+                    <title>{t('canvas.routeConflict.wireTitle', { id: w.id })}</title>
+                    <polyline
+                      class="wire-conflict-halo"
+                      data-testid="wire-conflict-halo"
+                      points={points(route)}
+                    />
+                  </>
+                )}
                 <polyline class="wire-hit" points={points(route)} />
                 <path class="wire" d={wirePath(route, hopsOver.get(w.id), hopR)} />
               </g>
@@ -1243,7 +1276,10 @@ export function Canvas({
           </svg>
         </button>
       </div>
-      {(!readOnly || overlaysLimited || conflicts.wires.length > 0) && (
+      {(!readOnly ||
+        overlaysLimited ||
+        conflictLines.length > 0 ||
+        conflicts.unchecked.length > 0) && (
         <div class="canvas-hint" dir={state.locale.dir} data-testid="canvas-hint">
           {!readOnly && t(hint)}
           {overlaysLimited && (
@@ -1251,9 +1287,31 @@ export function Canvas({
               {t('canvas.overlayLimit')}
             </div>
           )}
-          {conflicts.wires.length > 0 && (
+          {conflictLines.length > 0 && (
             <div class="view-note-warning" role="status" data-testid="canvas-route-conflict">
-              {t('canvas.routeConflict', { count: conflicts.wires.length })}
+              {t('canvas.routeConflict')}
+              <ul class="view-note-list">
+                {conflictLines.map((l) => (
+                  <li key={l.kind} data-kind={l.kind}>
+                    {t(l.key, { ids: isolateLtr(l.ids) })}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {conflicts.unchecked.length > 0 && (
+            <div
+              class="view-note-warning"
+              role="status"
+              data-testid="canvas-route-conflict-unchecked"
+            >
+              {t('canvas.routeConflict.unchecked', {
+                ids: isolateLtr(
+                  conflicts.unchecked.length > 12
+                    ? `${conflicts.unchecked.slice(0, 12).join(', ')}, … (+${conflicts.unchecked.length - 12})`
+                    : conflicts.unchecked.join(', '),
+                ),
+              })}
             </div>
           )}
           {!readOnly && limited.length > 0 && (
