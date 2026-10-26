@@ -37,6 +37,7 @@ async function untranslatedWords(page: Page): Promise<string[]> {
     /^(AND|NAND|OR|NOT|SN74LVC1G\d\d|SN74LVC08A?|TI|SOT|SOIC|Y|B|C|D|VCC|MicroPython|KOA|CF1|CFS1|W)$/, // Sprint 19B: gate functions and pin names (datasheet tokens), part numbers, packages, MicroPython, resistor series, the watt
     /^I$/, // the current symbol in formulas such as I = V / R (example summaries)
     /^N_\d+$/, // net ids
+    /^[IV]?_(CC|DD|I|IH|IL|O|OH|OL)$/, // Sprint 22: datasheet symbols (I_CC, V_I; the V is removed with the units above)
     /^(k|m|M|G|µ|u|n|p)?(Ω|V|A)$/,
     /^m(Ω|V|A)$/, // units
     /^Esc$/,

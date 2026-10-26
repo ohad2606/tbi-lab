@@ -484,6 +484,7 @@ test('A13/A15: new Sprint 5 surfaces are Hebrew (technical tokens only), RTL chr
     /^N4148$/,
     /^[VIRa]$/,
     /^k$/,
+    /^[IV]?_(CC|DD|I|IH|IL|O|OH|OL)$/, // Sprint 22: datasheet symbols (I_CC, V_I; the V is removed with the units above)
   ];
   const words = async () => {
     const text = (await scannedText(page))
