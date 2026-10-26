@@ -564,7 +564,7 @@ describe('Sprint 21 refusal messages: every new code and variant renders fully i
       detail: { value: 10e-6, worst: 10e-6, causes: ['leakage'] },
     };
     expect(plain(engineErrorMessage(en, sink, null))).toContain('10 µA');
-    expect(plain(engineErrorMessage(en, sink, null))).toContain('cannot sink current');
+    expect(plain(engineErrorMessage(en, sink, null))).toContain('cannot absorb current');
     expect(plain(engineErrorMessage(he, sink, null))).toContain('לבלוע');
     const loaded: EngineError = {
       code: 'logic_supply_current_uncharacterized',
@@ -581,11 +581,21 @@ describe('Sprint 21 refusal messages: every new code and variant renders fully i
       detail: { part: 'SN74LVC1G08', vcc: 3, forcedV: 0.3, limit: 0.024 },
     };
     expect(plain(engineErrorMessage(en, forced, null))).toContain(
-      'forced 300 mV past its own rail',
+      'would be pulled 300 mV past its own rail',
     );
     const ps: EngineError = { code: 'psu_sinking', components: ['PSU1'], detail: { value: 0.02 } };
     expect(plain(engineErrorMessage(en, ps, null))).toContain('20 mA');
     expect(plain(engineErrorMessage(he, ps, null))).toContain('20 mA');
+    // Review 4 (owner R2/R3): leakage (even nA) and a discharging capacitor named; a small load
+    // suggested; the forced-output text never claims the overdrive is a real voltage.
+    expect(plain(engineErrorMessage(en, ps, null))).toContain('diode or other leakage');
+    expect(plain(engineErrorMessage(en, ps, null))).toContain('add a small load');
+    expect(plain(engineErrorMessage(en, ps, null))).toContain('capacitor discharging');
+    expect(plain(engineErrorMessage(he, ps, null))).toContain('עומס קטן');
+    expect(plain(engineErrorMessage(en, forced, null))).not.toContain(
+      'for example by another driver',
+    );
+    expect(plain(engineErrorMessage(en, forced, null))).toContain('no current into a HIGH output');
   });
   // Sprint 22 review: two drivers on one net; a supply changing mode inside the bounds.
   cases.push(

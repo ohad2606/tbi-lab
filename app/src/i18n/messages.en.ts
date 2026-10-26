@@ -235,7 +235,7 @@ export const en = {
   'sim.error.logic_supply_not_guaranteed.limit':
     '{components}: within the datasheet bounds ({causes}) this supply can have to deliver up to {current}, more than its current limit ({limit}); its voltage, and the levels that depend on it, are then not guaranteed, so the circuit is not simulated. Raise the current limit, or reduce the load.',
   'sim.error.logic_supply_not_guaranteed.sink':
-    '{components}: within the datasheet bounds ({causes}) this supply, set to constant voltage, could have to absorb up to {current} (for example input leakage returning into it). The bench-supply model cannot sink current, so the circuit is not simulated. Give the supply a load that always draws more than that, for example a bleeder resistor across its output.',
+    '{components}: within the datasheet bounds ({causes}) this supply, set to constant voltage, could have to absorb up to {current} — for example input or other leakage current returning into it. The bench-supply model cannot absorb current, so the circuit is not simulated. Add a small load across the supply’s output (for example a bleeder resistor) so that it always delivers more than that.',
   'sim.error.logic_supply_current_uncharacterized.loaded':
     '{components}: output {pin} carries current here, and the SN74LVC08A datasheet gives the quiescent supply current I_CC only at I_O = 0 (Electrical Characteristics §5.7: V_I = V_CC or GND, I_O = 0, V_CC = 3.6 V); it has no rule for I_CC with a loaded output. The supply current, and so the supply’s current limit, is not guaranteed: the circuit is not simulated. Leave the package’s outputs unloaded, or use single gates (SN74LVC1G…), whose datasheets state the supply rule for loaded outputs (§8.2.1.1).',
   'sim.error.logic_input_leakage_uncharacterized.limit':
@@ -277,7 +277,7 @@ export const en = {
   'sim.error.logic_mcu_pull_uncharacterized.reads':
     '{components}: {pin}, an ESP32 input that reads this logic output, has its internal pull resistor enabled. The ESP32 datasheet gives that resistor only as typical (45 kΩ, no minimum or maximum), so the load it puts on the output, and the level the pin reads, are not guaranteed: the circuit is not simulated. Turn the internal pull off (a plain input).',
   'sim.error.logic_output_uncharacterized.forced':
-    '{components}: output {pin} is forced {forced} past its own rail (above V_CC while HIGH, or below GND while LOW), for example by another driver tied to it. The datasheet characterizes no output current in that direction and the simulator does not invent one, so the circuit is not simulated. Never tie an output to another driver (datasheet §8.2.1.3).',
+    '{components}: output {pin} would be pulled {forced} past its own rail (above V_CC while HIGH, or below GND while LOW; that is the overdrive with the output modelled as blocking, not a voltage the real part reaches). The datasheet characterizes no current into a HIGH output (or out of a LOW one) and the simulator does not invent one, so the circuit is not simulated. Remove whatever pulls the output past its rail — another driver, or a resistor to a higher (lower) voltage.',
   'sim.error.logic_output_uncharacterized.reverse':
     '{components}: within the datasheet bounds ({causes}), output {pin} would carry {current} the wrong way — into a HIGH output or out of a LOW one, for example from another driver tied to it. The datasheet characterizes no output current in that direction, so the circuit is not simulated. Never tie an output to another driver (datasheet §8.2.1.3).',
   'sim.bound.cause.leakage': 'input leakage I_I',
@@ -554,7 +554,7 @@ export const en = {
   'sim.error.floating_output_off':
     'These parts reach GND only through {supplies}, whose output is off: {components}. Turn the output on or connect them to GND.',
   'sim.error.psu_sinking':
-    '{components}: the circuit would push {current} back into this supply, which is set to constant voltage. The bench-supply model cannot sink current (an idealisation of the simulator), so the circuit is not simulated. Make sure no other source drives this supply’s output above its setpoint.',
+    '{components}: this supply is set to constant voltage, and the circuit would push {current} back into it — for example from another source, from a capacitor discharging into it after its setpoint was lowered, or from diode or other leakage current (even nanoamperes count). The bench-supply model cannot absorb current (an idealisation of the simulator), so the circuit is not simulated. Make sure nothing drives this supply’s output above its setpoint, or add a small load across its output (for example a resistor) so that it always delivers current.',
   'sim.error.psu_shorted':
     '{components}: the output terminals are joined by a wire (a short circuit). Remove that wire to run.',
   'sim.error.psu_parallel.title': 'Parallel power supplies are not yet supported',

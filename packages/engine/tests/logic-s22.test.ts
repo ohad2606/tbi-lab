@@ -365,3 +365,41 @@ describe('review 3: the bench-supply model cannot sink; the SN74LVC08A I_CC only
     expect(err(pkg(null).o)).toBeNull();
   });
 });
+
+/**
+ * Sprint 22 review 4 (R1): the no-sinking rule applies to the SETTLED operating point only, never
+ * to an intermediate settle pass. Probe s22rev4/q1.ts S1.
+ */
+describe('review 4: psu_sinking only on the settled state', () => {
+  const relay = (gate: boolean) => {
+    const b = new Bench();
+    b.psu(5.0, 0.5).wire('PSU1.negative', 'GND1.ref');
+    const p2 = b.rail(3.0, 0.1);
+    const k = b.add('component.relay');
+    b.wire('PSU1.positive', `${k}.coil1`).wire(`${k}.coil2`, 'GND1.ref');
+    b.wire('PSU1.positive', `${k}.com`);
+    const rnc = b.add('component.resistor');
+    b.ohms(rnc, 100).wire(`${k}.nc`, `${rnc}.a`).wire(`${rnc}.b`, `${p2}.positive`);
+    const rl = b.add('component.resistor');
+    b.ohms(rl, 1000).wire(`${p2}.positive`, `${rl}.a`).wire(`${rl}.b`, 'GND1.ref');
+    if (gate) {
+      // A gate on PSU2 too (inputs at GND, Y open): the bounds' sink check sees the settled state,
+      // where PSU2 delivers 3 mA ≫ the 10 µA of input leakage that could return.
+      const g = b.add('logic.gate_and');
+      b.wire(`${p2}.positive`, `${g}.vcc`).wire(`${g}.gnd`, 'GND1.ref');
+      b.wire(`${g}.a`, 'GND1.ref').wire(`${g}.b`, 'GND1.ref');
+    }
+    return { o: new EngineSession(b.snapshot()).solve(), p2, k };
+  };
+  it('relay operated by PSU1 (5 V): released, NC would push (5 − 3) V / 100 Ω − 3 mA = 17 mA into PSU2 — but the settled state has NC open and PSU2 sources 3.0 V / 1 kΩ = 3 mA → runs', () => {
+    const { o, p2, k } = relay(false);
+    if (!o.ok) throw new Error(JSON.stringify(o.error));
+    expect(o.components[k]!.state).toMatchObject({ energized: true, contact: 'no' });
+    expect(o.components[p2]!.current!).toBeCloseTo(3e-3, 12);
+  });
+  it('the same with a logic gate on PSU2: the bounds sink check also sees only the settled state → runs', () => {
+    const { o, p2 } = relay(true);
+    if (!o.ok) throw new Error(JSON.stringify(o.error));
+    expect(o.components[p2]!.current!).toBeCloseTo(3e-3, 12);
+  });
+});
