@@ -426,6 +426,9 @@ export class EngineSession {
    */
   /** Sprint 19B: the refusal the states solved in the last pass imply (applied once settled). */
   private passRefusal: EngineError | null = null;
+  /** Sprint 22 review 4: a supply sinking in THIS pass; applied only once the states settle (an
+   *  intermediate pass — e.g. a relay not yet operated — is not the circuit's operating point). */
+  private sinkRefusal: EngineError | null = null;
   /** Sprint 21: the guarantee-bound check of the latest pass (run once the states settle). */
   private boundsCheck: (() => EngineError | null) | null = null;
   /** Sprint 21: ESP32 output pads on an input's signal net (for the undefined-input message). */
@@ -717,6 +720,7 @@ export class EngineSession {
         for (const [id, st] of next) this.discrete.set(id, st);
         // Sprint 19B: a refusal the settled states imply (a floating logic input...).
         if (this.passRefusal) return this.fail(this.annotate(this.passRefusal));
+        if (this.sinkRefusal) return this.fail(this.sinkRefusal);
         // Sprint 21: every logic conclusion must hold within the datasheet bounds.
         const bound = this.boundsCheck?.() ?? null;
         if (bound) return this.fail(bound);
@@ -769,6 +773,7 @@ export class EngineSession {
     states: ReadonlyMap<string, PartState>,
     next: Map<string, PartState>,
   ): SolveOutcome {
+    this.sinkRefusal = null;
     const snap = this.snapshot;
     const groundNets = new Set(snap.nets.filter((n) => n.role === 'ground').map((n) => n.id));
     const netOf = new Map<string, string>();
@@ -1532,15 +1537,19 @@ export class EngineSession {
     // documented idealisation): a supply in constant voltage that the circuit would push current
     // back into is outside the model — refused by name, never shown as a negative current.
     // (Numerical resolution 1 nA; the logic bounds check a µA-level sink exactly.)
+    // Review 4: recorded per pass, applied by solveUnchecked to the SETTLED pass only.
+    this.sinkRefusal = null;
     for (const e of elements) {
       if (e.kind !== 'psu' || !e.active || modes.get(e.key) !== 'CV') continue;
       const i = currents.get(e.key);
-      if (i !== undefined && i < -PSU_SINK_RESOLUTION_A)
-        return this.fail({
+      if (i !== undefined && i < -PSU_SINK_RESOLUTION_A) {
+        this.sinkRefusal = {
           code: 'psu_sinking',
           components: [e.component.id],
           detail: { value: -i },
-        });
+        };
+        break;
+      }
     }
     const outcome: SolveSuccess = {
       ok: true,
