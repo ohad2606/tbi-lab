@@ -198,6 +198,14 @@ for (const size of SIZES)
           'PSU1',
           'PSU2',
           'R4',
+          // Sprint 22 DEV-Lab acceptance: PSU2's readout sat on GND6 (the ground symbols count too).
+          'GND1',
+          'GND2',
+          'GND3',
+          'GND4',
+          'GND5',
+          'GND6',
+          'GND7',
         ]);
         // Back to the shipped state for the next locale.
         await sw2.focus();
