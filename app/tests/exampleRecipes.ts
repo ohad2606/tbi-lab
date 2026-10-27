@@ -1016,7 +1016,8 @@ export const RECIPES: Record<string, () => ProjectDocument> = {
     const G5 = r.place('component.ground', 800, 180);
     // The gate's own 3.0 V supply, above the gate.
     const PSU2 = r.extraSupply(240, -320, 3, 0.1);
-    const G6 = r.place('component.ground', 200, -240);
+    // Right of PSU2's negative terminal, clear of its running readout (Sprint 22 acceptance).
+    const G6 = r.place('component.ground', 300, -280);
     r.set(R1, 'resistance', 150, 'ohm');
     r.set(R2, 'resistance', 150, 'ohm');
     r.set(R3, 'resistance', 220, 'ohm');
@@ -1030,7 +1031,7 @@ export const RECIPES: Record<string, () => ProjectDocument> = {
     r.wire(T(SW2, 'a'), { kind: 'wire', wire: rail, at: { x: -40, y: -40 } });
     // The 3.0 V gate supply (PSU2) to V_CC; its negative to GND.
     const vcc = r.wire(T(PSU2, 'positive'), T(U1, 'vcc'), [{ x: 360, y: -340 }]);
-    r.wire(T(PSU2, 'negative'), T(G6, 'ref'), [{ x: 200, y: -300 }]);
+    r.wire(T(PSU2, 'negative'), T(G6, 'ref'));
     // Sprint 22 (owner decision Q10 (a)): a 10 kΩ bleeder across PSU2. The bench-supply model
     // cannot absorb current, and with Y LOW the inputs' leakage (±5 µA each, possibly returning
     // through the V_CC pin) could otherwise flow back into PSU2; the bleeder keeps PSU2 delivering
