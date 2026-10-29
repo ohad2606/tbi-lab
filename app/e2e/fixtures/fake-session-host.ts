@@ -26,9 +26,11 @@
  *     POST /__test/fail-next-report?status=N   answer the next report with HTTP N (429 with
  *                                        Retry-After: 120)
  *     POST /__test/hold-reports?ms=N     delay every report request by N ms (0: none)
- *   Sprint 23B owner administration: `/admin/...` is served by the REAL admin API (access view,
- *   owner check, CSRF, spool, results) with a fake helper (fake-admin.ts); every other route is
- *   unchanged (no access enforcement for the routine tests).
+ *   Sprint 23B/23C owner administration: `/admin/...` (the owner check and the reports) is served
+ *   by the REAL Session Host routes in `full` mode (access view); the account administration by
+ *   the REAL admin service on ADMIN_PORT (default 7496; the preview proxies `/admin-api` there),
+ *   with a fake helper (fake-admin.ts). Every other route is unchanged (no access enforcement for
+ *   the routine tests).
  *     POST /__test/reset-admin           fresh registry, helper answering
  *     POST /__test/admin-hold?on=1|0     keep requests unanswered (the 202 path), or release them
  *     POST /__test/admin-owner-unrecorded   the owner's Google id not recorded yet
@@ -391,11 +393,11 @@ const newInner = () => {
 };
 let inner = newInner();
 // Sprint 23B: the owner's administration, on its own server instance (with the access view).
-const fakeAdmin = startFakeAdmin();
+const fakeAdmin = startFakeAdmin(() => host.capacity());
 const newAdminInner = () =>
   createHttpServer(host as unknown as SessionHost, E2E_IDENTITY, reportStore, {
+    adminMode: 'full',
     access: fakeAdmin.access,
-    admin: fakeAdmin.spool,
   });
 let adminInner = newAdminInner();
 // Sprint 23C: the feedback-only mode, owner from a reference file laid out as the operator makes
@@ -506,6 +508,11 @@ const server = createServer((req: IncomingMessage, res: ServerResponse) => {
   }
 });
 server.listen(PORT, '127.0.0.1', () => process.stdout.write(`fake session host on ${PORT}\n`));
+// Sprint 23C: the dedicated admin service (its gate route /admin-api/*, prefix stripped).
+const ADMIN_PORT = Number(process.env.ADMIN_PORT ?? 7496);
+createServer((req, res) => fakeAdmin.handle(req, res)).listen(ADMIN_PORT, '127.0.0.1', () =>
+  process.stdout.write(`fake admin service on ${ADMIN_PORT}\n`),
+);
 // Sprint 23C: the feedback-only release's Session Host (its `/admin` in reports mode).
 const REPORTS_PORT = Number(process.env.REPORTS_PORT ?? 7497);
 createServer((req, res) => {

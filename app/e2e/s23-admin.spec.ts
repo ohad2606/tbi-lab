@@ -1,7 +1,8 @@
 /**
  * Sprint 23B: the owner's administration, EN and HE, desktop and tablet. The :4174 build enables
- * it (VITE_ADMIN_UI=full). The fake Session Host serves `/admin/...` with the REAL admin API and a
- * fake root helper (fixtures/fake-admin.ts). The test gate asserts the `tbi_test_user` cookie's
+ * it (VITE_ADMIN_UI=full). Sprint 23C: the accounts come from the REAL admin service
+ * (`/admin-api/...`), the owner check and the reports from the REAL Session Host routes
+ * (`/runtime/admin/...`), with a fake root helper (fixtures/fake-admin.ts). The test gate asserts the `tbi_test_user` cookie's
  * subject (`e2e-owner` is the owner; the default `e2e-user` is a tester) and, when set, the
  * `tbi_test_email` cookie's address. Screenshots: set TBI_SHOTS to a directory.
  */
@@ -49,17 +50,42 @@ test('a tester sees no administration, and the API refuses them directly', async
   await page.goto(`${ENABLED}/`);
   await expect(page.getByTestId('feedback-button')).toBeVisible();
   await expect(page.getByTestId('admin-button')).toHaveCount(0);
-  // Straight to the API (the page's own origin, through the gate): 403, nothing listed.
-  for (const path of ['me', 'accounts', 'sessions', 'reports']) {
-    const r = await page.request.get(`${ENABLED}/runtime/admin/${path}`);
+  // Straight to the APIs (the page's own origin, through the gate): 403, nothing listed.
+  for (const path of [
+    'runtime/admin/me',
+    'runtime/admin/reports',
+    'admin-api/accounts',
+    'admin-api/sessions',
+  ]) {
+    const r = await page.request.get(`${ENABLED}/${path}`);
     expect(r.status(), path).toBe(403);
     expect(await r.text()).not.toContain('example.invalid');
   }
   // A forged identity header changes nothing (the gate replaces it).
-  const forged = await page.request.get(`${ENABLED}/runtime/admin/accounts`, {
+  const forged = await page.request.get(`${ENABLED}/admin-api/accounts`, {
     headers: { 'x-forwarded-user': 'e2e-owner', 'x-forwarded-email': 'owner@example.invalid' },
   });
   expect(forged.status()).toBe(403);
+});
+
+test('Sprint 23C: accounts are the admin service’s; the Session Host has no account route', async ({
+  page,
+  context,
+}) => {
+  await asOwner(context);
+  const calls: string[] = [];
+  page.on('request', (r) => {
+    const path = new URL(r.url()).pathname;
+    if (/admin/.test(path)) calls.push(`${r.method()} ${path}`);
+  });
+  await openAdmin(page);
+  for (const path of ['accounts', 'sessions', `requests/${'0'.repeat(26)}`])
+    expect((await page.request.get(`${ENABLED}/runtime/admin/${path}`)).status(), path).toBe(404);
+  expect((await page.request.get(`${ENABLED}/admin-api/accounts`)).status()).toBe(200);
+  expect(calls).toContain('GET /admin-api/accounts');
+  expect(calls).toContain('GET /admin-api/sessions');
+  expect(calls).toContain('GET /runtime/admin/reports');
+  expect(calls.filter((c) => /\/runtime\/admin\/(accounts|sessions|requests)/.test(c))).toEqual([]);
 });
 
 for (const [size, viewport] of Object.entries(SIZES))

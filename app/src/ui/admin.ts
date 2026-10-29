@@ -1,11 +1,19 @@
 /**
  * Sprint 23B: the owner's administration, the client side without the DOM (unit-tested). The
- * Session Host decides who the owner is on every call (runtime/host/admin.ts); this module only
- * talks to it and turns its answers into what the dialog shows. Nothing about testers is
- * compiled in: every list comes from the authenticated API, addresses masked by the server.
+ * servers decide who the owner is on every call; this module only talks to them and turns their
+ * answers into what the dialog shows. Nothing about testers is compiled in: every list comes from
+ * the authenticated API, addresses masked by the server.
+ *
+ * Sprint 23C: two servers. The owner check and the feedback reports are the Session Host's
+ * (`/runtime/admin/me`, `/runtime/admin/reports…`, runtime/host/admin.ts); the account
+ * administration (accounts, add, disable, reactivate, request status, capacity) is the dedicated
+ * admin service's (`/admin-api/…`, runtime/admin/accounts.ts), called only in the full mode.
  */
 
+/** The Session Host's owner routes: the owner check and the reports. */
 export const ADMIN_BASE = '/runtime/admin';
+/** The admin service: account administration only. */
+export const ACCOUNTS_BASE = '/admin-api';
 
 export interface AccountRow {
   target: string;
@@ -110,13 +118,17 @@ function loadError(status: number | null): LoadError {
 
 type Fetch = (input: string, init?: RequestInit) => Promise<Response>;
 
+/** Paths of the account administration (the admin service); every other one is the host's. */
+const ACCOUNT_PATH = /^\/(accounts|requests|sessions)(\/|$)/;
+
 async function request(
   fetchFn: Fetch,
   path: string,
   init: RequestInit = {},
 ): Promise<{ status: number | null; body: unknown }> {
   try {
-    const res = await fetchFn(`${ADMIN_BASE}${path}`, {
+    const base = ACCOUNT_PATH.test(path) ? ACCOUNTS_BASE : ADMIN_BASE;
+    const res = await fetchFn(`${base}${path}`, {
       cache: 'no-store',
       credentials: 'same-origin',
       ...init,

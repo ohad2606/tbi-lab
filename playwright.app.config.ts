@@ -62,6 +62,8 @@ export default defineConfig({
         VITE_PROBLEM_REPORTS: '1',
         VITE_ADMIN_UI: 'full',
         TBI_RUNTIME_PROXY: process.env.TBI_RUNTIME_PROXY ?? 'http://127.0.0.1:7499',
+        // Sprint 23C: the admin service (the real one, with a fake helper; fake-admin.ts).
+        TBI_ADMIN_PROXY: 'http://127.0.0.1:7496',
         TBI_BUILD_PROXY: process.env.TBI_BUILD_PROXY ?? 'http://127.0.0.1:7498',
         TBI_TEST_GATE: '1', // the proxy plays the authenticating gate (vite.config.ts)
       },

@@ -15,9 +15,10 @@ Based on the RC4 line (protocol `tbi-lab.session/2`, Runtime v2). No RC5 or Runt
 | `VITE_ADMIN_UI=off\|reports\|full` | app build | Sprint 23C: the Administration entry, shown only after the server confirms the owner; `reports` shows the Feedback tab only, `full` testers and feedback (`off`, unset or any other value: no entry; the s23b value `1` is now `off`) |
 | `TBI_REPORTS_DIR` | Session Host | report storage (unchanged from Sprint 14, `PROBLEM-REPORTS.md`) |
 | `TBI_ACCESS_VIEW` | Session Host and build service | access enforcement from the authorization view |
-| `TBI_ADMIN_DIR` | Session Host | owner administration API and identity observations (needs `TBI_ACCESS_VIEW`; `full` mode only) |
+| `TBI_ADMIN_DIR` | Session Host, admin service | Session Host: identity observations (`full` mode only; needs `TBI_ACCESS_VIEW`). Admin service (Sprint 23C): the spool, results and accounts view |
 | `TBI_ADMIN_MODE=off\|reports\|full` | Session Host | Sprint 23C: what `/admin` serves (below). Unset: the s23b rule, `full` when `TBI_ACCESS_VIEW` (or `TBI_ADMIN_DIR`) is set, `off` otherwise |
 | `TBI_OWNER_PRINCIPAL_FILE` | Session Host | Sprint 23C, `reports` mode only: the owner reference file |
+| `TBI_OBSERVATIONS_DIR` | Session Host | Sprint 23C, `full` mode only: where identity observations are written (`/var/lib/tbi-admin/observations`); replaces `TBI_ADMIN_DIR` for the host (still accepted, meaning `<dir>/observations`; never both) |
 
 Release profiles (`deploy/release/`):
 
@@ -30,31 +31,47 @@ Release profiles (`deploy/release/`):
   host switches are unpinned).
 - `rc4-s23-feedback.release.json` (`"release": "rc4-s23-feedback"`, Sprint 23C): the feedback-only
   release, below.
+- `rc4-s23-admin.release.json` (`"release": "rc4-s23-admin"`, Sprint 23C Phase C): the full
+  administration with the dedicated admin service. **Not used for any release yet** (OFF in every
+  release until the owner approves D1 under the new boundary). Validated: `full` app and host, the
+  access view and the admin directory, and an `admin` section that pins the admin service
+  (`TBI_ADMIN_LISTEN` a unix socket, `TBI_RUNTIME_HEALTH` the host's health socket, the same
+  `TBI_ACCESS_VIEW` as the host, and `TBI_ADMIN_DIR` whose `observations/` is the host's
+  `TBI_OBSERVATIONS_DIR`; the host's own `TBI_ADMIN_DIR` is `null`). The `admin` section is refused in any other mode.
 
 From Sprint 23C, when the source reads `VITE_ADMIN_UI` the validator requires every admin host
 switch to be pinned (a value or `null`: `TBI_ACCESS_VIEW`, `TBI_ADMIN_DIR`, `TBI_ADMIN_MODE`,
-`TBI_OWNER_PRINCIPAL_FILE`), and `VITE_ADMIN_UI` to equal `TBI_ADMIN_MODE`. It refuses every other
-combination: `reports` with an admin directory or an access view, or without an owner file or
-without reports; `full` without the access view and the admin directory, or with an owner file;
+`TBI_OWNER_PRINCIPAL_FILE`, and from Phase C `TBI_OBSERVATIONS_DIR`), and `VITE_ADMIN_UI` to equal `TBI_ADMIN_MODE`. It refuses every other
+combination: `reports` with an admin directory, an access view or an observations directory, or without an
+owner file or without reports; `full` without the access view and the observations directory, with a host admin directory
+(Sprint 23C: the spool is the admin service's) or with an owner file;
 `off` with an admin directory or an owner file; a `full` app with a host in another mode, and the
 reverse. G2 on a packaging host: `TBI_PROFILES=rc4-s23-feedback deploy/release/verify-on-packaging-host.sh …`.
 
 Units: `deploy/dev-lab/s8/tbi-session-host.service.in` and `tbi-build.service.in` carry the
-Sprint 23B lines commented out; `install.sh` uncomments them with `TBI_S23_ADMIN=1`, and refuses,
-before any change, unless the groups `tbi-admin-view` and `tbi-admin-spool` and the helper's
-directories exist (the helper's installer creates them; this script never does).
+administration lines commented out; `install.sh` uncomments them with `TBI_S23_ADMIN=1` (or
+`TBI_S23_ADMIN=service`, the same) and, from
+Sprint 23C, renders and starts `tbi-admin.service.in` as `<N>-admin.service`. It refuses, before
+any change, unless the groups `tbi-admin-view`, `tbi-admin-spool` and `tbi-admin-observe` and the
+helper's directories exist (the helper's installer creates them; this script never does). It
+creates the admin service's own user `tbi-admin` (primary group `tbi-adminio`) and its socket group
+`tbi-sock-admin`, and on dev-lab adds caddy to `tbi-sock-admin` (restart caddy, not reload). Without
+`TBI_S23_ADMIN=1` no admin service is installed, and a previous one is stopped and removed.
 
-| Unit | Added when enabled |
+| Unit | Added when enabled (Sprint 23C) |
 |---|---|
-| Session Host | `SupplementaryGroups=tbi-admin-view tbi-admin-spool`, `TBI_ACCESS_VIEW`, `TBI_ADMIN_DIR`, `ReadOnlyPaths=-/var/lib/tbi-admin/view -/var/lib/tbi-admin/results`, `ReadWritePaths=-/var/lib/tbi-admin/spool -/var/lib/tbi-admin/observations` |
-| build service | `SupplementaryGroups=tbi-admin-view`, `TBI_ACCESS_VIEW`, `ReadOnlyPaths=-/var/lib/tbi-admin/view` |
+| Session Host | `SupplementaryGroups=tbi-admin-view tbi-admin-observe`, `TBI_ADMIN_MODE=full`, `TBI_ACCESS_VIEW`, `TBI_OBSERVATIONS_DIR=/var/lib/tbi-admin/observations`, `ReadOnlyPaths=-/var/lib/tbi-admin/view`, `ReadWritePaths=-/var/lib/tbi-admin/observations`, `InaccessiblePaths=-/var/lib/tbi-admin/spool -/var/lib/tbi-admin/results` |
+| build service | `SupplementaryGroups=tbi-admin-view`, `TBI_ACCESS_VIEW`, `ReadOnlyPaths=-/var/lib/tbi-admin/view` (unchanged) |
+| admin service (new) | user `tbi-admin`, `SupplementaryGroups=tbi-sock-admin tbi-admin-spool tbi-admin-view tbi-artifacts`, socket `/run/<N>-admin/api.sock` (`tbi-admin:tbi-sock-admin 0660`), `ReadWritePaths=/var/lib/tbi-admin/spool`, `ReadOnlyPaths=/var/lib/tbi-admin/results /var/lib/tbi-admin/view`, every other helper path and the artifact store inaccessible |
 
 `SupplementaryGroups=` is a list setting: the extra line extends the unit's existing groups; the
-service users keep their primary groups. Group roles: `tbi-admin-view` (both services) reads
-`view/` (`root:tbi-admin-view 0750`) and `view/access.json` (`0640`); `tbi-admin-spool` (Session
-Host only) writes `spool/` and `observations/` (`2730`, setgid; files `0640`), reads `results/` (`0750`) and
-`view/accounts.json` (`root:tbi-admin-spool 0640`). The services never gain write access to the
-gate's allowlist or the tester registry.
+service users keep their primary groups. Group roles (Sprint 23C, amending s23b):
+`tbi-admin-view` (all three services) reads `view/` (`root:tbi-admin-view 0750`) and
+`view/access.json` (`0640`); `tbi-admin-spool` (**the admin service only**) writes `spool/`
+(`2730`, setgid; files `0640`), reads `results/` (`0750`) and `view/accounts.json`
+(`root:tbi-admin-spool 0640`); `tbi-admin-observe` (the Session Host only) writes
+`observations/` (`root:tbi-admin-observe 2730`; files `0640`). The services never gain write
+access to the gate's allowlist or the tester registry.
 
 ## Sprint 23C: the feedback-only release (`rc4-s23-feedback`)
 
@@ -130,7 +147,11 @@ entry appears (`GET /runtime/admin/me` is 200); a tester gets 403 there.
 else: no helper groups, no access view, no spool or observation paths, no build-service change.
 It creates `/etc/<N>-owner` (`root:tbi-runtimeio 0750`), refuses before any change an existing
 owner file that is not exactly as above, warns when it is missing, and refuses `TBI_S23_FEEDBACK=1`
-together with `TBI_S23_ADMIN=1`.
+together with `TBI_S23_ADMIN=1`. Without `TBI_S23_FEEDBACK=1` (and with `TBI_S23_ADMIN=0`) the
+three lines stay commented: a deployment may set the same three variables in its own systemd
+drop-in instead. The Session Host's sandbox does not hide `/etc/<N>-owner` (`ProtectSystem=strict`
+makes `/etc` read-only, not invisible), and the QEMU runtime units cannot see it at all (their own
+`RootDirectory` holds only `/usr` and the runtime).
 
 **The app, `VITE_ADMIN_UI=reports`.** The Administration entry (owner only, after
 `GET /runtime/admin/me`) opens a dialog with one tab, Feedback: the list, the detail and the
@@ -138,6 +159,95 @@ confirmed deletions. No tester management is rendered and the page calls no acco
 `/runtime/admin/me` and `/runtime/admin/reports…`; asserted in `app/e2e/s23c-feedback-only.spec.ts`).
 The release check (`deploy/release/check-dist.mjs`) locates the compiled admin switch by its own
 parser's form, exactly once, and requires the profile's value.
+
+## Sprint 23C: the dedicated admin service (D1)
+
+**Why.** In s23b the Session Host served the owner's account API, wrote the root helper's spool and
+held the identity key, while the helper's only check was `actor == owner principal`, a value the
+host can read or derive. A compromised Session Host (the largest attack surface: every user
+request, QEMU supervision, event streams, reports) could therefore write a request the helper
+accepts as the owner's. The fix moves the account administration into its own small process, the
+only spool writer, and the helper accepts only spool files owned by that process's user.
+
+**What it is.** `runtime/admin/main.ts` (bundle `npm run admin:build` →
+`runtime/admin/dist/admin-service.mjs`), running as `tbi-admin`. The account code is the s23b code,
+moved (`runtime/admin/accounts.ts`; the shared CSRF, body, error and atomic-file helpers in
+`runtime/admin/common.ts`), not rewritten. It serves only:
+
+| Route (gate prefix `/admin-api`, stripped) | Answer |
+|---|---|
+| `GET /admin-api/accounts` | the masked accounts view |
+| `POST /admin-api/accounts` `{"email"}` | spools `add`; `200`/`409` result or `202` pending |
+| `POST /admin-api/accounts/disable` / `reactivate` `{"target"}` | the same for `disable` / `reactivate` |
+| `GET /admin-api/requests/<id>` | `200` result, `202` pending, `404` unknown |
+| `GET /admin-api/sessions` | `{"live":N,"max":M}` from the Session Host's health-only socket (counts only); `503` when unknown |
+| `GET /admin-api/health` (socket: `GET /health`) | no identity: `{"service":"tbi-admin","runtime":{"version","commit"}}` (the `runtime` part when the bundle is stamped, as the Session Host's) |
+
+Every request: the gate identity (`X-Forwarded-User` / `X-Forwarded-Email`, the same identity
+configuration and key as the backends), then the access view's rule (deny wins; no view: 503),
+then a per-caller rate limit (120/min; before the owner check, so a non-owner hammering it is
+limited too), then the owner (the view's owner principal, or its email tag while none is
+recorded): other accounts get 403. Mutations: the CSRF rule and 20/min. Any other path is 404 (for
+the owner). Its environment: `TBI_ADMIN_LISTEN` (`unix:/run/<N>-admin/api.sock`), `TBI_SOCKET_GID`
+(`tbi-sock-admin`), `TBI_IDENTITY_KEY_FILE` (systemd credential), `TBI_ACCESS_VIEW`,
+`TBI_ADMIN_DIR`, `TBI_RUNTIME_HEALTH` (`unix:/run/<N>-runtime/health.sock`). The socket is bound
+owner-only (the N5 umask bind), then `0660` group `tbi-sock-admin`.
+
+**Hardening** (`tbi-admin.service.in`): `RestrictAddressFamilies=AF_UNIX`, `IPAddressDeny=any`,
+`ProtectSystem=strict`, `ProtectHome`, `PrivateTmp`, `PrivateDevices`, `PrivateIPC`,
+`ProtectProc=invisible`, `NoNewPrivileges`, an empty capability set, `SystemCallFilter=@system-service`,
+`MemoryMax=192M`, `TasksMax=32`. No QEMU, no polkit rule, no build tools, no user content. It reaches
+the Session Host only through the health-only socket, whose group (`tbi-artifacts`) also reads the
+artifact store, so the store is `InaccessiblePaths=` for this unit.
+
+**The Session Host in `full` mode** keeps `GET /admin/me` and the report routes (owner from the
+access view) and the identity observations (`TBI_OBSERVATIONS_DIR`). It has no account route in any mode (404 for
+everyone), no spool or results access (`InaccessiblePaths=`) and no code that writes a request.
+Its health-only socket now also answers `capacity: {"live":N,"max":M}` (counts only) for the admin
+service; the API `/health` is unchanged.
+
+**The app, `VITE_ADMIN_UI=full`** calls `/admin-api/accounts`, `/admin-api/sessions` and
+`/admin-api/requests/<id>` for the testers tab, and `/runtime/admin/me` and
+`/runtime/admin/reports…` for the owner check and the feedback.
+
+**Gate route** (Caddy's internal origin, beside `/runtime/*` and `/build/*`; generic form):
+
+```caddyfile
+	# Sprint 23C: the dedicated admin service (account administration). Behind the same login
+	# as the site; identity only from oauth2-proxy; a client's X-Tbi-* never reaches it.
+	handle_path /admin-api/* {
+		request_body {
+			max_size 4KB
+		}
+		header Cache-Control "no-store"
+		reverse_proxy unix//run/<N>-admin/api.sock {
+			header_up -X-Tbi-*
+		}
+	}
+```
+
+Caddy must be in `tbi-sock-admin` (install.sh adds it on dev-lab) and be restarted, not reloaded.
+Verify the separation as the Session Host's user: connecting to `/run/<N>-admin/api.sock` must
+fail with `EACCES`, and the Session Host's user must not be able to create a file in
+`/var/lib/tbi-admin/spool`.
+
+**Interface changes for the root helper** (amend the s23b interface):
+
+- the spool's group is `tbi-admin-spool` with the single member `tbi-admin`; requests are owned by
+  the `tbi-admin` user (no longer `tbi-runtime`), and the helper rejects any other owner;
+- `observations/` has its own group `tbi-admin-observe` (`root:tbi-admin-observe 2730`, files
+  `0640` owned by `tbi-runtime`);
+- `results/` and `view/accounts.json` stay group `tbi-admin-spool` (now read by the admin service
+  only); `view/access.json` stays `tbi-admin-view` (members: the Session Host, the build service
+  and the admin service);
+- the admin service's runtime directory is `/run/<N>-admin` (owned by `tbi-admin`); a helper lock
+  must not live in it (see the open question in the sprint report).
+
+**Profile** `rc4-s23-admin`: see "Switches". Tests: `runtime/admin/tests/admin-service.test.ts`
+(the boundary tests moved from the Session Host), `runtime/admin/tests/admin-socket.test.ts`
+(socket group and mode, owner-only bind, the health capacity), `runtime/host/tests/host-no-accounts.test.ts`
+(no account route in any mode, never a spool write), and `app/e2e/s23-admin.spec.ts` against the
+real admin service with a fake helper.
 
 ## Trust model and access control policy
 
@@ -280,16 +390,18 @@ specified. A deployment that sets `skip_auth_strip_headers = false`, or that ena
 
 ```
 /var/lib/tbi-admin/                                root:root 0755
-  spool/<id>.json          Session Host -> helper   root:tbi-admin-spool 2730   requests
-  results/<id>.json        helper -> Session Host   root:tbi-admin-spool 0750   results
-  view/access.json         helper -> both services  root:tbi-admin-view  0640   authorization view
-  view/accounts.json       helper -> Session Host   root:tbi-admin-spool 0640   the owner's masked list
-  observations/<id>.json   Session Host -> helper   root:tbi-admin-spool 2730   gate identities
+  spool/<id>.json          admin service -> helper  root:tbi-admin-spool   2730  requests
+  results/<id>.json        helper -> admin service  root:tbi-admin-spool   0750  results
+  view/access.json         helper -> all services   root:tbi-admin-view    0640  authorization view
+  view/accounts.json       helper -> admin service  root:tbi-admin-spool   0640  the owner's masked list
+  observations/<id>.json   Session Host -> helper   root:tbi-admin-observe 2730  gate identities
 ```
 
-Ids: 26 Crockford base32 characters (48-bit milliseconds, then 80 random bits). Every file the
-Session Host writes is created as `<id>.tmp` with `O_CREAT|O_EXCL` and mode `0640` (set with fchmod too; the setgid
-directory gives it group `tbi-admin-spool`, by which the helper reads it), written,
+(Sprint 23C: the spool, results and accounts view were the Session Host's in s23b.)
+
+Ids: 26 Crockford base32 characters (48-bit milliseconds, then 80 random bits). Every request (admin
+service) and observation (Session Host) is created as `<id>.tmp` with `O_CREAT|O_EXCL` and mode
+`0640` (set with fchmod too; the setgid directory gives it its group, by which the helper reads it), written,
 fsynced, then renamed to `<id>.json` (the directory is not readable by the host, so it is not
 fsynced). A failure leaves nothing; an existing `.tmp` of the same name is never touched.
 
@@ -330,8 +442,10 @@ detached from the request, at most 4 in flight, every failure dropped silently.
 
 ## Admin API
 
-Same origin, under the existing `/runtime/` route (the proxy's prefix strip and header rules
-apply; no proxy change). `GET` unless stated.
+Sprint 23C: the account rows below (`accounts`, `sessions`, `requests`) are now the admin
+service's, at `/admin-api/…` (above); the Session Host answers 404 for them in every mode. The
+owner check and the report routes stay under `/runtime/admin/`. Below, the s23b table for reference.
+`GET` unless stated.
 
 | Route | Answer |
 |---|---|

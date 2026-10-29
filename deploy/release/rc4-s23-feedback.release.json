@@ -22,7 +22,8 @@
     "TBI_ACCESS_VIEW": null,
     "TBI_ADMIN_DIR": null,
     "TBI_ADMIN_MODE": "reports",
-    "TBI_OWNER_PRINCIPAL_FILE": "/etc/@N@-owner/owner.principal"
+    "TBI_OWNER_PRINCIPAL_FILE": "/etc/@N@-owner/owner.principal",
+    "TBI_OBSERVATIONS_DIR": null
   },
   "excluded": {
     "reason": "Active Minutes (Sprint 14 POC) is not part of RC4: absent from the source, not merely disabled",

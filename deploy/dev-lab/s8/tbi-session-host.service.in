@@ -36,18 +36,21 @@ Environment=TBI_HOST_STATE=/var/lib/@N@-runtime/state
 # already writable; no other sandbox change is needed. Enable together with an app build made
 # with VITE_PROBLEM_REPORTS=1.
 #Environment=TBI_REPORTS_DIR=/var/lib/@N@-runtime/state/reports
-# Sprint 23B access enforcement, revocation and owner administration (docs/alpha/
-# ADMIN-AND-FEEDBACK.md): OFF while unset (RC4 behaviour). The root helper's installer creates
-# /var/lib/tbi-admin; the host only writes requests and identity observations there and reads
-# the views and results. Enabled by install.sh TBI_S23_ADMIN=1 (or uncomment all three).
-# Groups (the helper's installer creates them): tbi-admin-view reads the views, tbi-admin-spool
-# writes requests and observations and reads results. Added to the user's own groups (a list
-# setting: this line extends SupplementaryGroups above).
-#SupplementaryGroups=tbi-admin-view tbi-admin-spool
+# Sprint 23B access enforcement and revocation, Sprint 23C full administration (docs/alpha/
+# ADMIN-AND-FEEDBACK.md): OFF while unset (RC4 behaviour). Enabled by install.sh TBI_S23_ADMIN=1.
+# The root helper's installer creates /var/lib/tbi-admin and the groups. Sprint 23C (D1): the
+# account administration and the spool are the dedicated admin service's (@N@-admin.service);
+# this host keeps the owner check and the feedback reports, reads view/access.json (group
+# tbi-admin-view) and writes identity observations (group tbi-admin-observe, its own). It has no
+# access to the spool or the results at all. (A list setting: this SupplementaryGroups line
+# extends the one above.)
+#SupplementaryGroups=tbi-admin-view tbi-admin-observe
+#Environment=TBI_ADMIN_MODE=full
 #Environment=TBI_ACCESS_VIEW=/var/lib/tbi-admin/view/access.json
-#Environment=TBI_ADMIN_DIR=/var/lib/tbi-admin
-#ReadOnlyPaths=-/var/lib/tbi-admin/view -/var/lib/tbi-admin/results
-#ReadWritePaths=-/var/lib/tbi-admin/spool -/var/lib/tbi-admin/observations
+#Environment=TBI_OBSERVATIONS_DIR=/var/lib/tbi-admin/observations
+#ReadOnlyPaths=-/var/lib/tbi-admin/view
+#ReadWritePaths=-/var/lib/tbi-admin/observations
+#InaccessiblePaths=-/var/lib/tbi-admin/spool -/var/lib/tbi-admin/results
 # Sprint 23C feedback-only release (rc4-s23-feedback; docs/alpha/ADMIN-AND-FEEDBACK.md): the
 # owner reads and deletes feedback reports, nothing else. OFF while commented; install.sh
 # TBI_S23_FEEDBACK=1 uncomments these two lines and TBI_REPORTS_DIR above, and nothing else: no

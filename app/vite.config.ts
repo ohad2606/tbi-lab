@@ -12,6 +12,9 @@ import { currentBuildInfo, versionJson } from './buildInfo.config.js';
  *
  * `/build` is the build service (Sprint 7), likewise same-origin: TBI_BUILD_PROXY, default
  * http://127.0.0.1:7420.
+ *
+ * `/admin-api` is the admin service (Sprint 23C, account administration): TBI_ADMIN_PROXY, default
+ * http://127.0.0.1:7410.
  */
 /**
  * TEST ONLY (TBI_TEST_GATE=1, set by the Playwright configuration): the proxy plays the
@@ -49,6 +52,13 @@ const runtimeProxy = {
     target: process.env.TBI_BUILD_PROXY ?? 'http://127.0.0.1:7420',
     changeOrigin: false,
     rewrite: (path: string) => path.replace(/^\/build/, ''),
+    configure: gate,
+  },
+  // Sprint 23C: the dedicated admin service (account administration), behind the same gate.
+  '/admin-api': {
+    target: process.env.TBI_ADMIN_PROXY ?? 'http://127.0.0.1:7410',
+    changeOrigin: false,
+    rewrite: (path: string) => path.replace(/^\/admin-api/, ''),
     configure: gate,
   },
 };

@@ -23,7 +23,7 @@ import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { AccessView, deriveEmailTag } from '../../identity/access.js';
 import { TEST_IDENTITY, principalFor, startTestGate } from '../../identity/test-gate.js';
-import { AdminSpool, DEFAULT_ADMIN, IdentityObserver, adminEnvFromEnv } from '../admin.js';
+import { IdentityObserver, adminEnvFromEnv } from '../admin.js';
 import type { SessionHost } from '../host.js';
 import { createHttpServer } from '../http.js';
 import { OwnerReference } from '../owner.js';
@@ -69,8 +69,8 @@ interface Setup {
 }
 
 /**
- * A Session Host in reports mode. It is also HANDED a spool and an observer (as if a deployment
- * left TBI_ADMIN_DIR's objects in place): reports mode must use neither.
+ * A Session Host in reports mode. It is also HANDED an observer (as if a deployment left
+ * TBI_ADMIN_DIR's objects in place): reports mode must not use it.
  */
 async function serve(
   opts: { ownerExpect?: { uid?: number; gid?: number }; withAccess?: boolean } = {},
@@ -97,7 +97,6 @@ async function serve(
     adminMode: 'reports',
     owner,
     access,
-    admin: new AdminSpool({ ...DEFAULT_ADMIN, dir: adminDir, resultWaitMs: 50, pollMs: 10 }),
     observer: new IdentityObserver(join(adminDir, 'observations')),
   });
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
@@ -492,7 +491,7 @@ describe('reports mode: the environment', () => {
     expect(env({ TBI_ACCESS_VIEW: '/v/access.json' }).mode).toBe('full');
     expect(env({ TBI_ACCESS_VIEW: '/v/access.json', TBI_ADMIN_DIR: '/a' })).toMatchObject({
       mode: 'full',
-      config: { dir: '/a' },
+      observationsDir: '/a/observations',
       ownerFile: null,
     });
     expect(() => env({ TBI_ADMIN_DIR: '/a' })).toThrow('TBI_ADMIN_DIR needs TBI_ACCESS_VIEW');
@@ -501,7 +500,7 @@ describe('reports mode: the environment', () => {
   it('reports: needs an absolute owner file; refuses TBI_ADMIN_DIR; never a spool', () => {
     expect(env({ TBI_ADMIN_MODE: 'reports', TBI_OWNER_PRINCIPAL_FILE: '/etc/x' })).toEqual({
       mode: 'reports',
-      config: null,
+      observationsDir: null,
       ownerFile: '/etc/x',
     });
     expect(() => env({ TBI_ADMIN_MODE: 'reports' })).toThrow(/needs TBI_OWNER_PRINCIPAL_FILE/);
@@ -516,6 +515,32 @@ describe('reports mode: the environment', () => {
         TBI_ACCESS_VIEW: '/v',
       }),
     ).toThrow(/TBI_ADMIN_DIR is for TBI_ADMIN_MODE=full only/);
+  });
+
+  it('Sprint 23C: TBI_OBSERVATIONS_DIR, full mode only; never with TBI_ADMIN_DIR', () => {
+    expect(
+      env({ TBI_ADMIN_MODE: 'full', TBI_ACCESS_VIEW: '/v', TBI_OBSERVATIONS_DIR: '/o' }),
+    ).toEqual({ mode: 'full', observationsDir: '/o', ownerFile: null });
+    expect(env({ TBI_ACCESS_VIEW: '/v', TBI_OBSERVATIONS_DIR: '/o' }).mode).toBe('full');
+    expect(() =>
+      env({
+        TBI_ADMIN_MODE: 'reports',
+        TBI_OWNER_PRINCIPAL_FILE: '/x',
+        TBI_ACCESS_VIEW: '/v',
+        TBI_OBSERVATIONS_DIR: '/o',
+      }),
+    ).toThrow(/TBI_OBSERVATIONS_DIR is for TBI_ADMIN_MODE=full only/);
+    expect(() =>
+      env({ TBI_ACCESS_VIEW: '/v', TBI_OBSERVATIONS_DIR: '/o', TBI_ADMIN_DIR: '/a' }),
+    ).toThrow(/not both/);
+    expect(() => env({ TBI_OBSERVATIONS_DIR: '/o' })).toThrow(/needs TBI_ACCESS_VIEW/);
+    expect(() =>
+      env({ TBI_ADMIN_MODE: 'full', TBI_ACCESS_VIEW: '/v', TBI_OBSERVATIONS_DIR: 'o' }),
+    ).toThrow(/absolute/);
+    // The feedback-only mode with an access view (enforcement) is allowed, without observations.
+    expect(
+      env({ TBI_ADMIN_MODE: 'reports', TBI_OWNER_PRINCIPAL_FILE: '/x', TBI_ACCESS_VIEW: '/v' }),
+    ).toEqual({ mode: 'reports', observationsDir: null, ownerFile: '/x' });
   });
 
   it('off and full refuse what they do not use; unknown modes refuse to start', () => {

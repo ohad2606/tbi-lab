@@ -15,6 +15,7 @@ const RC4 = join(ROOT, 'deploy/release/rc4.release.json');
 const RC4_REPORTS = join(ROOT, 'deploy/release/rc4-reports.release.json');
 const RC4_S23 = join(ROOT, 'deploy/release/rc4-s23.release.json');
 const RC4_S23_FEEDBACK = join(ROOT, 'deploy/release/rc4-s23-feedback.release.json');
+const RC4_S23_ADMIN = join(ROOT, 'deploy/release/rc4-s23-admin.release.json');
 const TOOLS = { node: 'v24.21.0', npm: '11.19.0', trackedFiles: () => [] };
 const GIT = { node: 'v24.21.0', npm: '11.19.0' }; // the real tracked-file listing (git)
 
@@ -50,7 +51,44 @@ describe('release profile vs source', () => {
       TBI_ADMIN_DIR: null,
       TBI_ADMIN_MODE: 'reports',
       TBI_OWNER_PRINCIPAL_FILE: '/etc/@N@-owner/owner.principal',
+      TBI_OBSERVATIONS_DIR: null,
     });
+  });
+
+  it('Sprint 23C: the rc4-s23-admin profile (no release yet) is valid on this source and pins the admin service', () => {
+    const p = loadProfile(RC4_S23_ADMIN);
+    expect(validate(p, ROOT, GIT)).toEqual([]);
+    expect(p.vite.VITE_ADMIN_UI).toBe('full');
+    expect(p.host.TBI_ADMIN_MODE).toBe('full');
+    expect(p.admin).toEqual({
+      TBI_ADMIN_LISTEN: 'unix:/run/@N@-admin/api.sock',
+      TBI_ACCESS_VIEW: '/var/lib/tbi-admin/view/access.json',
+      TBI_ADMIN_DIR: '/var/lib/tbi-admin',
+      TBI_RUNTIME_HEALTH: 'unix:/run/@N@-runtime/health.sock',
+    });
+    const src = tree({ 'app/src/a.ts': reads([...RC4_SETTINGS, 'VITE_ADMIN_UI']) });
+    expect(validate(p, src, TOOLS)).toEqual([]);
+    const { admin: _a, ...noAdmin } = p;
+    expect(validate(noAdmin, src, TOOLS)).toContain(
+      'admin: the admin service must be pinned when host.TBI_ADMIN_MODE is full',
+    );
+    expect(
+      validate({ ...p, admin: { ...p.admin, TBI_ADMIN_DIR: '/elsewhere' } }, src, TOOLS),
+    ).toContain('host.TBI_OBSERVATIONS_DIR must be admin.TBI_ADMIN_DIR/observations');
+    expect(
+      validate({ ...p, admin: { ...p.admin, TBI_ACCESS_VIEW: '/other/access.json' } }, src, TOOLS),
+    ).toContain('admin.TBI_ACCESS_VIEW must equal host.TBI_ACCESS_VIEW');
+    expect(
+      validate({ ...p, admin: { ...p.admin, TBI_ADMIN_LISTEN: '127.0.0.1:7410' } }, src, TOOLS),
+    ).toContain('admin.TBI_ADMIN_LISTEN must be a unix socket (unix:/...)');
+    expect(validate({ ...p, admin: { ...p.admin, EXTRA: 'x' } }, src, TOOLS)).toContain(
+      'admin: must pin exactly TBI_ADMIN_LISTEN, TBI_ACCESS_VIEW, TBI_ADMIN_DIR, TBI_RUNTIME_HEALTH',
+    );
+    // The admin service exists only with the full administration.
+    const f = loadProfile(RC4_S23_FEEDBACK);
+    expect(validate({ ...f, admin: p.admin }, src, TOOLS)).toContain(
+      'admin: the admin service is for host.TBI_ADMIN_MODE full only',
+    );
   });
 
   it('release names: rcN or a named variant, nothing else', () => {
@@ -71,6 +109,7 @@ describe('release profile vs source', () => {
       'TBI_ADMIN_DIR',
       'TBI_ADMIN_MODE',
       'TBI_OWNER_PRINCIPAL_FILE',
+      'TBI_OBSERVATIONS_DIR',
     ].map((k) => `host.${k} must be pinned (a value or null) with the admin switch`);
     for (const p of [RC4, RC4_REPORTS])
       expect(validate(loadProfile(p), ROOT, GIT)).toEqual([
@@ -130,7 +169,7 @@ describe('release profile vs source', () => {
       'host.TBI_ACCESS_VIEW must be pinned (a value or null) with the admin switch',
     );
     expect(v({}, { TBI_OTHER: '/x' })).toContain(
-      'host: must pin TBI_REPORTS_DIR, and optionally TBI_ACCESS_VIEW, TBI_ADMIN_DIR, TBI_ADMIN_MODE, TBI_OWNER_PRINCIPAL_FILE only',
+      'host: must pin TBI_REPORTS_DIR, and optionally TBI_ACCESS_VIEW, TBI_ADMIN_DIR, TBI_ADMIN_MODE, TBI_OWNER_PRINCIPAL_FILE, TBI_OBSERVATIONS_DIR only',
     );
     // off: nothing of the administration on the host.
     const off = { TBI_ADMIN_MODE: 'off', TBI_OWNER_PRINCIPAL_FILE: null };
@@ -146,14 +185,25 @@ describe('release profile vs source', () => {
       TBI_ADMIN_MODE: 'full',
       TBI_OWNER_PRINCIPAL_FILE: null,
       TBI_ACCESS_VIEW: '/var/lib/tbi-admin/view/access.json',
-      TBI_ADMIN_DIR: '/var/lib/tbi-admin',
+      TBI_ADMIN_DIR: null,
+      TBI_OBSERVATIONS_DIR: '/var/lib/tbi-admin/observations',
     };
-    expect(v({ VITE_ADMIN_UI: 'full' }, full)).toEqual([]);
-    expect(v({ VITE_ADMIN_UI: 'full' }, { ...full, TBI_ADMIN_DIR: null })).toContain(
-      'host.TBI_ADMIN_MODE full needs host.TBI_ACCESS_VIEW and host.TBI_ADMIN_DIR',
+    expect(v({ VITE_ADMIN_UI: 'full' }, full)).toEqual([
+      'admin: the admin service must be pinned when host.TBI_ADMIN_MODE is full',
+    ]);
+    expect(v({ VITE_ADMIN_UI: 'full' }, { ...full, TBI_OBSERVATIONS_DIR: null })).toContain(
+      'host.TBI_ADMIN_MODE full needs host.TBI_ACCESS_VIEW and host.TBI_OBSERVATIONS_DIR',
     );
     expect(v({ VITE_ADMIN_UI: 'full' }, { ...full, TBI_ACCESS_VIEW: null })).toContain(
-      'host.TBI_ADMIN_DIR needs host.TBI_ACCESS_VIEW',
+      'host.TBI_ADMIN_MODE full needs host.TBI_ACCESS_VIEW and host.TBI_OBSERVATIONS_DIR',
+    );
+    // The host never names the helper's base directory (spool, results) any more.
+    expect(
+      v({ VITE_ADMIN_UI: 'full' }, { ...full, TBI_ADMIN_DIR: '/var/lib/tbi-admin' }),
+    ).toContain('host.TBI_ADMIN_DIR must be null: the spool and results are the admin service’s');
+    // Observations: full mode only.
+    expect(v({}, { TBI_OBSERVATIONS_DIR: '/var/lib/tbi-admin/observations' })).toContain(
+      'host.TBI_OBSERVATIONS_DIR is for host.TBI_ADMIN_MODE full only',
     );
     expect(v({ VITE_ADMIN_UI: 'full' }, { ...full, TBI_OWNER_PRINCIPAL_FILE: '/etc/x' })).toContain(
       'host.TBI_OWNER_PRINCIPAL_FILE is for host.TBI_ADMIN_MODE reports only',

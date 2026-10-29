@@ -1,0 +1,75 @@
+# Sprint 23C: the dedicated admin service (docs/alpha/ADMIN-AND-FEEDBACK.md). Rendered by install.sh
+# with TBI_S23_ADMIN=1 only.
+#
+# The only writer of the root helper's spool: the owner's account administration (list, add,
+# disable, reactivate, request status, capacity) moved out of the Session Host, so that a
+# compromised Session Host can no longer write a request the helper accepts as the owner's (D1).
+# Its own user (tbi-admin) and primary group (tbi-adminio). Reached only through its unix socket,
+# group tbi-sock-admin (this service and the internal reverse proxy, caddy, only), at the gate
+# route /admin-api/*. No QEMU, no build, no user content, no network (AF_UNIX only).
+#
+# Groups (the helper's installer creates the three tbi-admin-* groups and the directories):
+#   tbi-admin-spool  writes spool/ (2730, files 0640), reads results/ and view/accounts.json
+#   tbi-admin-view   reads view/access.json (authorization and the owner)
+#   tbi-sock-admin   its socket's group
+# The Session Host's health-only socket (counts only) is group tbi-artifacts; the artifact store,
+# which that group can read, is made inaccessible to this service below.
+[Unit]
+Description=TBI Lab admin service (@N@)
+After=network-online.target
+
+[Service]
+User=tbi-admin
+Group=tbi-adminio
+SupplementaryGroups=tbi-sock-admin tbi-admin-spool tbi-admin-view tbi-artifacts
+UMask=0007
+Environment=TBI_ADMIN_LISTEN=unix:/run/@N@-admin/api.sock
+Environment=TBI_SOCKET_GID=@SOCK_ADMIN_GID@
+Environment=TBI_IDENTITY_KEY_FILE=%d/identity.key
+LoadCredential=identity.key:/etc/@N@/identity.key
+Environment=TBI_ACCESS_VIEW=/var/lib/tbi-admin/view/access.json
+Environment=TBI_ADMIN_DIR=/var/lib/tbi-admin
+Environment=TBI_RUNTIME_HEALTH=unix:/run/@N@-runtime/health.sock
+RuntimeDirectory=@N@-admin
+RuntimeDirectoryMode=0755
+BindReadOnlyPaths=@NODE@:/opt/tbi-node
+BindReadOnlyPaths=@BUNDLES@:/opt/tbi-build
+# Only what it needs of the helper's tree: the spool (write), the results and views (read).
+ReadWritePaths=/var/lib/tbi-admin/spool
+ReadOnlyPaths=/var/lib/tbi-admin/results /var/lib/tbi-admin/view
+InaccessiblePaths=-/var/lib/tbi-admin/observations -/var/lib/tbi-admin/state -/var/log/tbi-admin
+InaccessiblePaths=-@STORE@ -/var/lib/@N@-runtime -/var/lib/@N@-build -/var/lib/private
+ExecStart=/opt/tbi-node/bin/node /opt/tbi-build/admin-service.mjs
+Restart=on-failure
+RestartSec=2
+
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+PrivateTmp=yes
+PrivateDevices=yes
+PrivateIPC=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectProc=invisible
+ProcSubset=pid
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+SystemCallFilter=@system-service
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_UNIX
+IPAddressDeny=any
+DevicePolicy=closed
+MemoryMax=192M
+TasksMax=32
+
+[Install]
+WantedBy=multi-user.target

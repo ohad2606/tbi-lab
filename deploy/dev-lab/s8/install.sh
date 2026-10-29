@@ -33,7 +33,7 @@ case "$target" in
     ;;
   *) echo "unknown target: $target" >&2; exit 2 ;;
 esac
-units=("$N-build.service" "$N-build-job@.service" "$N-session-host.service" "$N-qemu@.service")
+units=("$N-build.service" "$N-build-job@.service" "$N-session-host.service" "$N-qemu@.service" "$N-admin.service")
 rule="/etc/polkit-1/rules.d/50-$N.rules"
 # A staging release is an exact commit: refuse a tree with uncommitted changes before any change.
 if [[ "$target" == staging && "$uninstall" != "--uninstall" ]]; then
@@ -41,7 +41,7 @@ if [[ "$target" == staging && "$uninstall" != "--uninstall" ]]; then
 fi
 
 if [[ "$uninstall" == "--uninstall" ]]; then
-  sudo systemctl disable --now "$N-build.service" "$N-session-host.service" 2>/dev/null || true
+  sudo systemctl disable --now "$N-build.service" "$N-session-host.service" "$N-admin.service" 2>/dev/null || true
   sudo systemctl stop "$N-build-job@*.service" "$N-qemu@*.service" 2>/dev/null || true
   for u in "${units[@]}"; do sudo rm -f "/etc/systemd/system/$u"; done
   sudo rm -f "$rule"
@@ -54,14 +54,20 @@ if [[ "$uninstall" == "--uninstall" ]]; then
   exit 0
 fi
 
-# Sprint 23B (docs/alpha/ADMIN-AND-FEEDBACK.md): TBI_S23_ADMIN=1 turns on access enforcement in
-# both services and the owner administration in the Session Host (the commented unit lines). OFF
-# by default: the units are rendered exactly as before. Refused, before any change, unless the
-# helper's directories exist (its own installer creates them; this script never does).
+# Sprint 23B/23C (docs/alpha/ADMIN-AND-FEEDBACK.md): TBI_S23_ADMIN=1 turns on access enforcement in
+# both services, the owner's feedback routes and identity observations in the Session Host
+# (TBI_ADMIN_MODE=full), and (Sprint 23C, D1) the dedicated admin service $N-admin.service, user
+# tbi-admin, the only writer of the helper's spool. OFF by default: the units are rendered exactly
+# as before and no admin service is installed. Refused, before any change, unless the helper's
+# groups and directories exist (its own installer creates them; this script never does). This
+# script creates the admin service's own user and groups: tbi-admin (primary group tbi-adminio)
+# and its socket group tbi-sock-admin (caddy is added to it on dev-lab).
 S23_ADMIN="${TBI_S23_ADMIN:-0}"
-[[ "$S23_ADMIN" =~ ^[01]$ ]] || { echo "TBI_S23_ADMIN must be 0 or 1" >&2; exit 1; }
+# `service` is accepted as a name for 1 (the ops tooling's spelling).
+[[ "$S23_ADMIN" == service ]] && S23_ADMIN=1
+[[ "$S23_ADMIN" =~ ^[01]$ ]] || { echo "TBI_S23_ADMIN must be 0, 1 or service" >&2; exit 1; }
 if [[ "$S23_ADMIN" == 1 && "$uninstall" != "--uninstall" ]]; then
-  for g in tbi-admin-view tbi-admin-spool; do
+  for g in tbi-admin-view tbi-admin-spool tbi-admin-observe; do
     getent group "$g" >/dev/null || { echo "refused: group $g is missing (install the admin helper first)" >&2; exit 1; }
   done
   for d in /var/lib/tbi-admin/view /var/lib/tbi-admin/spool /var/lib/tbi-admin/results /var/lib/tbi-admin/observations; do
@@ -113,12 +119,20 @@ fi
 for g in tbi-buildio tbi-runtimeio tbi-gate tbi-artifacts tbi-sock-runtime tbi-sock-build; do
   getent group "$g" >/dev/null || sudo groupadd --system "$g"
 done
+if [[ "$S23_ADMIN" == 1 ]]; then
+  for g in tbi-adminio tbi-sock-admin; do
+    getent group "$g" >/dev/null || sudo groupadd --system "$g"
+  done
+fi
 mkuser() { getent passwd "$1" >/dev/null ||
   sudo useradd --system --gid "$2" --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin "$1"; }
 mkuser tbi-build tbi-artifacts
 mkuser tbi-buildjob tbi-buildio
 mkuser tbi-runtime tbi-runtimeio
 mkuser tbi-qemu tbi-runtimeio
+# Sprint 23C: the admin service's user; its other groups come from its unit (SupplementaryGroups).
+if [[ "$S23_ADMIN" == 1 ]]; then mkuser tbi-admin tbi-adminio; fi
+SOCK_ADMIN_GID="$(getent group tbi-sock-admin | cut -d: -f3 || true)"
 SOCK_RUNTIME_GID="$(getent group tbi-sock-runtime | cut -d: -f3)"
 SOCK_BUILD_GID="$(getent group tbi-sock-build | cut -d: -f3)"
 ARTIFACTS_GID="$(getent group tbi-artifacts | cut -d: -f3)"
@@ -187,13 +201,16 @@ if [[ "$target" == staging ]]; then
   sha="$(git -C "$repo" rev-parse HEAD)"
   version="$(tr -d '[:space:]' < "$repo/VERSION")"
   (cd "$repo" && npm run --silent buildsvc:build &&
+    npx esbuild runtime/admin/main.ts --bundle --platform=node --format=esm --target=node22 \
+      --define:__TBI_RUNTIME_VERSION__="\"$version\"" --define:__TBI_RUNTIME_COMMIT__="\"$sha\"" \
+      --outfile=runtime/admin/dist/admin-service.mjs --log-level=warning &&
     npx esbuild runtime/host/main.ts --bundle --platform=node --format=esm --target=node22 \
       --define:__TBI_RUNTIME_VERSION__="\"$version\"" --define:__TBI_RUNTIME_COMMIT__="\"$sha\"" \
       --outfile=runtime/host/dist/session-host.mjs --log-level=warning)
   grep -q "$sha" "$repo/runtime/host/dist/session-host.mjs" || { echo "host bundle not stamped" >&2; exit 1; }
   sudo install -d -m 0755 "$BUNDLES"
   sudo install -m 0644 "$repo/runtime/builder/dist/build-service.mjs" "$repo/runtime/builder/dist/build-job.mjs" \
-    "$repo/runtime/host/dist/session-host.mjs" "$BUNDLES/"
+    "$repo/runtime/host/dist/session-host.mjs" "$repo/runtime/admin/dist/admin-service.mjs" "$BUNDLES/"
 fi
 
 render() {
@@ -201,11 +218,13 @@ render() {
     -e "s|@ARDUINO@|$ARDUINO|g" -e "s|@NODE@|$NODE|g" -e "s|@RUNTIME@|$RUNTIME|g" \
     -e "s|@SOCK_RUNTIME_GID@|$SOCK_RUNTIME_GID|g" -e "s|@SOCK_BUILD_GID@|$SOCK_BUILD_GID|g" \
     -e "s|@ARTIFACTS_GID@|$ARTIFACTS_GID|g" -e "s|@JOB_UID@|$JOB_UID|g" -e "s|@ARTIFACT_CAP_MB@|$CAP_MB|g" \
-    -e "s|@HOST_MAX_SESSIONS@|$HOST_MAX|g" "$1" |
+    -e "s|@HOST_MAX_SESSIONS@|$HOST_MAX|g" -e "s|@SOCK_ADMIN_GID@|$SOCK_ADMIN_GID|g" "$1" |
     if [[ "$S23_ADMIN" == 1 ]]; then
       sed -e 's|^#\(Environment=TBI_ACCESS_VIEW=\)|\1|' -e 's|^#\(Environment=TBI_ADMIN_DIR=\)|\1|' \
         -e 's|^#\(ReadWritePaths=-/var/lib/tbi-admin/\)|\1|' -e 's|^#\(ReadOnlyPaths=-/var/lib/tbi-admin/\)|\1|' \
-        -e 's|^#\(SupplementaryGroups=tbi-admin-\)|\1|'
+        -e 's|^#\(SupplementaryGroups=tbi-admin-\)|\1|' -e 's|^#\(Environment=TBI_ADMIN_MODE=full\)$|\1|' \
+        -e 's|^#\(Environment=TBI_OBSERVATIONS_DIR=\)|\1|' \
+        -e 's|^#\(InaccessiblePaths=-/var/lib/tbi-admin/\)|\1|'
     elif [[ "$S23_FEEDBACK" == 1 ]]; then
       sed -e 's|^#\(Environment=TBI_REPORTS_DIR=\)|\1|' -e 's|^#\(Environment=TBI_ADMIN_MODE=reports\)$|\1|' \
         -e 's|^#\(Environment=TBI_OWNER_PRINCIPAL_FILE=\)|\1|'
@@ -221,6 +240,14 @@ render "$here/tbi-build-job@.service.in" | sudo tee "/etc/systemd/system/$N-buil
 render "$here/tbi-session-host.service.in" | sudo tee "/etc/systemd/system/$N-session-host.service" >/dev/null
 render "$here/tbi-qemu@.service.in" | sudo tee "/etc/systemd/system/$N-qemu@.service" >/dev/null
 render "$here/50-tbi-lab.rules.in" | sudo tee "$rule" >/dev/null
+if [[ "$S23_ADMIN" == 1 ]]; then
+  [[ -n "$SOCK_ADMIN_GID" ]] || { echo "group tbi-sock-admin is missing" >&2; exit 1; }
+  render "$here/tbi-admin.service.in" | sudo tee "/etc/systemd/system/$N-admin.service" >/dev/null
+else
+  # Any other mode: no admin service (a previous TBI_S23_ADMIN=1 install is removed).
+  sudo systemctl disable --now "$N-admin.service" 2>/dev/null || true
+  sudo rm -f "/etc/systemd/system/$N-admin.service"
+fi
 if [[ "$target" == dev-lab ]]; then
   # The gate: Caddy and oauth2-proxy reach the sockets through the tbi-gate group; Caddy's
   # internal-origin socket lives in /run/tbi-gate (Caddyfile, oauth2-proxy.cfg in deploy/dev-lab).
@@ -228,6 +255,8 @@ if [[ "$target" == dev-lab ]]; then
   sudo usermod -aG tbi-gate oauth2-proxy
   # Sprint 23B (H1): caddy reaches each backend through that backend's own socket group.
   sudo usermod -aG tbi-sock-runtime,tbi-sock-build caddy
+  # Sprint 23C: and the admin service's socket (the gate route /admin-api/*).
+  if [[ "$S23_ADMIN" == 1 ]]; then sudo usermod -aG tbi-sock-admin caddy; fi
   sudo install -m 0644 "$here/tbi-gate.conf" /etc/tmpfiles.d/tbi-gate.conf
   sudo systemd-tmpfiles --create /etc/tmpfiles.d/tbi-gate.conf
   sudo install -d -m 0755 /etc/systemd/system/caddy.service.d
@@ -240,4 +269,9 @@ sudo systemctl daemon-reload
 sudo systemctl enable "$N-build.service" "$N-session-host.service"
 # Both together: they must hold the same keys and matching code.
 sudo systemctl restart "$N-build.service" "$N-session-host.service"
+if [[ "$S23_ADMIN" == 1 ]]; then
+  # After the Session Host: the admin service reads its health-only socket.
+  sudo systemctl enable "$N-admin.service"
+  sudo systemctl restart "$N-admin.service"
+fi
 echo "installed $N (build: /run/$N-build/api.sock, runtime: /run/$N-runtime/api.sock)"

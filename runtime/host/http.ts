@@ -16,8 +16,9 @@
  *   POST   /reports                         Sprint 14 problem report (reportProtocol.ts)
  *                                           -> 201 { id } once durably stored; 503 when the
  *                                           deployment has not enabled reports
- *   /admin/...                              Sprint 23B/23C owner routes (admin.ts), per
- *                                           TBI_ADMIN_MODE: off (404), reports, full
+ *   /admin/me, /admin/reports...            Sprint 23B/23C owner routes (admin.ts), per
+ *                                           TBI_ADMIN_MODE: off (404), reports, full. No
+ *                                           account route in any mode (runtime/admin serves those)
  *
  * Every session route needs the gate-asserted identity of the session's owner and the session's
  * token in `Authorization: Bearer <token>` (never in the URL). Unknown sessions, wrong tokens and
@@ -31,13 +32,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { decideAccess, emailOf, type AccessView } from '../identity/access.js';
 import type { IdentityConfig, Principal } from '../identity/principal.js';
-import {
-  handleAdmin,
-  type AdminLimits,
-  type AdminMode,
-  type AdminSpool,
-  type IdentityObserver,
-} from './admin.js';
+import { handleAdmin, type AdminLimits, type AdminMode, type IdentityObserver } from './admin.js';
 import type { OwnerReference } from './owner.js';
 import { MemoryRate } from '../policy/rate.js';
 import { Refusal, admissionEvent, sendRefusal } from '../policy/refusal.js';
@@ -177,13 +172,16 @@ function healthBody(host: SessionHost) {
 
 /**
  * Sprint 23B (review H1): a server that answers `GET /health` only (the same body as the API's),
- * for the build service's admission check on its own socket. Every other request is 404: no
+ * for the build service's admission check on its own socket, and (Sprint 23C) the admin
+ * service's live-session count (`capacity: {live, max}`). Every other request is 404: no
  * identity is read, no session or admin route exists here.
  */
 export function createHealthServer(host: SessionHost): Server {
   return createServer((req, res) => {
     const path = new URL(req.url ?? '/', 'http://host.invalid').pathname;
-    if (req.method === 'GET' && path === '/health') return send(res, 200, healthBody(host));
+    // Sprint 23C: plus the live-session capacity, counts only, for the admin service's owner view.
+    if (req.method === 'GET' && path === '/health')
+      return send(res, 200, { ...healthBody(host), capacity: host.capacity() });
     send(res, 404, { error: 'not found' });
   });
 }
@@ -192,9 +190,7 @@ export function createHealthServer(host: SessionHost): Server {
 export interface HttpOptions {
   /** Access enforcement (TBI_ACCESS_VIEW): every route but /health needs an authorized account. */
   access?: AccessView | null;
-  /** The owner's administration (TBI_ADMIN_DIR; needs `access`): `/admin/...`. */
-  admin?: AdminSpool | null;
-  /** Identity observations for the helper (TBI_ADMIN_DIR/observations). */
+  /** Identity observations for the helper (TBI_ADMIN_DIR/observations; `full` mode only). */
   observer?: IdentityObserver | null;
   /** Admin rate limits (tests; default ADMIN_RATE / ADMIN_WRITE_RATE). */
   adminLimits?: AdminLimits;
@@ -223,8 +219,8 @@ export function createHttpServer(
   const adminRate = new MemoryRate();
   const adminMode: AdminMode = opts.adminMode ?? (opts.access ? 'full' : 'off');
   // Sprint 23C: the feedback-only mode writes nothing outside the report store, whatever it is
-  // handed: no spool, no identity observations.
-  if (adminMode !== 'full') opts = { ...opts, admin: null, observer: null };
+  // handed: no identity observations. (No mode writes the helper's spool: the admin service does.)
+  if (adminMode !== 'full') opts = { ...opts, observer: null };
   opts = { ...opts, adminMode };
   return createServer((req, res) => {
     void handle(host, identity, requests, adminRate, reports, opts, req, res).catch(
@@ -302,9 +298,7 @@ async function handle(
         mode: adminMode,
         access,
         owner: opts.owner ?? null,
-        spool: opts.admin ?? null,
         reports,
-        capacity: () => host.capacity(),
         rate: adminRate,
         ...(opts.adminLimits ? { limits: opts.adminLimits } : {}),
       },

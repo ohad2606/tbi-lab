@@ -11,6 +11,7 @@
     "tests/**/*.ts",
     "soak/**/*.ts",
     "builder/**/*.ts",
-    "identity/**/*.ts"
+    "identity/**/*.ts",
+    "admin/**/*.ts"
   ]
 }

@@ -2,11 +2,14 @@
 import { describe, expect, it } from 'vitest';
 import {
   addTester,
+  deleteReport,
   deleteTesterReports,
   interpretMutation,
   isOwner,
   loadAccounts,
+  loadCapacity,
   loadReport,
+  loadReports,
   maskAddress,
   plausibleAddress,
   requestResult,
@@ -40,18 +43,40 @@ describe('admin client', () => {
   it('mutations are JSON POSTs to the same origin, with only the needed field', async () => {
     const f = fake(200, { id: 'x', ok: true, code: 'done', masked: 'ne***@example.invalid' });
     await addTester(f.fn, ' New@example.invalid ');
-    expect(f.calls[0]!.url).toBe('/runtime/admin/accounts');
+    expect(f.calls[0]!.url).toBe('/admin-api/accounts');
     expect(f.calls[0]!.init?.method).toBe('POST');
     expect(new Headers(f.calls[0]!.init?.headers).get('content-type')).toBe('application/json');
     expect(JSON.parse(f.calls[0]!.init?.body as string)).toEqual({ email: 'New@example.invalid' });
     await setAccess(f.fn, 'disable', 't_AAAAAAAAAAAAAAAA');
-    expect(f.calls[1]!.url).toBe('/runtime/admin/accounts/disable');
+    expect(f.calls[1]!.url).toBe('/admin-api/accounts/disable');
     expect(JSON.parse(f.calls[1]!.init?.body as string)).toEqual({ target: 't_AAAAAAAAAAAAAAAA' });
     expect(await deleteTesterReports(f.fn, 'not a principal')).toBeNull();
     expect(f.calls).toHaveLength(2);
     expect(await requestResult(f.fn, '../etc')).toEqual({ kind: 'refused', error: 'invalid' });
     expect(await loadReport(f.fn, '../../x')).toEqual({ ok: false, error: 'network' });
     expect(f.calls).toHaveLength(2);
+  });
+
+  it('Sprint 23C: accounts go to the admin service, the owner check and reports to the Session Host', async () => {
+    const f = fake(200, {});
+    await isOwner(f.fn);
+    await loadAccounts(f.fn);
+    await loadCapacity(f.fn);
+    await requestResult(f.fn, 'Z'.repeat(26));
+    await loadReports(f.fn);
+    await loadReport(f.fn, 'AAAA-BBBB-CCCC');
+    await deleteReport(f.fn, 'AAAA-BBBB-CCCC');
+    await deleteTesterReports(f.fn, `p_${'A'.repeat(26)}`);
+    expect(f.calls.map((c) => c.url)).toEqual([
+      '/runtime/admin/me',
+      '/admin-api/accounts',
+      '/admin-api/sessions',
+      `/admin-api/requests/${'Z'.repeat(26)}`,
+      '/runtime/admin/reports',
+      '/runtime/admin/reports/AAAA-BBBB-CCCC',
+      '/runtime/admin/reports/AAAA-BBBB-CCCC',
+      `/runtime/admin/reports?principal=p_${'A'.repeat(26)}`,
+    ]);
   });
 
   it('interprets results, pending requests and refusals', () => {

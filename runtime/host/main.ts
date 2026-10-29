@@ -15,8 +15,12 @@
  *   TBI_ACCESS_VIEW    Sprint 23B access enforcement: the helper's view/access.json; unset: off
  *                      (RC4). Set: unauthorized accounts get 403, a bad view 503 (fail closed),
  *                      and the live sessions of accounts no longer authorized are ended.
- *   TBI_ADMIN_DIR      Sprint 23B owner administration and identity observations (admin.ts):
- *                      the helper's base directory; needs TBI_ACCESS_VIEW. Unset: off.
+ *   TBI_ADMIN_DIR      Sprint 23B identity observations (admin.ts): the helper's base directory,
+ *                      of which the host writes observations/ only (Sprint 23C: account
+ *                      administration is the admin service's, runtime/admin). Needs
+ *                      TBI_ACCESS_VIEW. Unset: off.
+ *   TBI_OBSERVATIONS_DIR   Sprint 23C, `full` mode: the helper's observations/ directory (group
+ *                      tbi-admin-observe). Replaces TBI_ADMIN_DIR (still accepted: +/observations).
  *   TBI_ADMIN_MODE     Sprint 23C: off | reports | full (admin.ts AdminMode). Unset: the Sprint
  *                      23B rule (full with TBI_ACCESS_VIEW, off without). `reports`: the owner's
  *                      feedback only, owner from TBI_OWNER_PRINCIPAL_FILE (owner.ts); refuses
@@ -40,7 +44,7 @@ import { SessionHost, revokeOnReload } from './host.js';
 import { createHealthServer, createHttpServer } from './http.js';
 import { ReportStore, reportsConfigFromEnv } from './reports.js';
 import { accessViewFromEnv } from '../identity/access.js';
-import { AdminSpool, IdentityObserver, adminEnvFromEnv } from './admin.js';
+import { IdentityObserver, adminEnvFromEnv } from './admin.js';
 import { OwnerReference } from './owner.js';
 
 // Same locations as runtime/provision/provision.sh (and harness/env.ts).
@@ -114,7 +118,6 @@ reports?.start();
 // Sprint 23B: access enforcement, revocation of live sessions, administration, observations.
 // Checked first: an inconsistent combination of the admin switches refuses to start.
 const adminEnv = adminEnvFromEnv();
-const adminConfig = adminEnv.config;
 const access = accessViewFromEnv();
 if (access) {
   revokeOnReload(host, access);
@@ -124,8 +127,8 @@ const server = createHttpServer(host, identity, reports, {
   access,
   adminMode: adminEnv.mode,
   owner: adminEnv.ownerFile ? new OwnerReference(adminEnv.ownerFile) : null,
-  admin: adminConfig ? new AdminSpool(adminConfig) : null,
-  observer: adminConfig ? new IdentityObserver(join(adminConfig.dir, 'observations')) : null,
+  // Sprint 23C: the host never writes the helper's spool; in `full` mode, observations only.
+  observer: adminEnv.observationsDir ? new IdentityObserver(adminEnv.observationsDir) : null,
 });
 
 // Signal handlers first: a supervisor may stop the host the moment it reports "listening", and

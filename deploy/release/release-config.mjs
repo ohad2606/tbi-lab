@@ -20,7 +20,8 @@
  * - Sprint 23C administration: when the source reads VITE_ADMIN_UI, it is "off", "reports" or "full"
  *   and equals the host's TBI_ADMIN_MODE; every admin host switch is pinned (a value or null).
  *   `reports` (feedback only): an owner principal file, reports on, and no access view or admin
- *   directory. `full`: the access view and the admin directory, no owner file.
+ *   directory. `full`: the access view and the admin directory, no owner file, and the dedicated
+ *   admin service pinned in the profile's `admin` section (Sprint 23C, on the same helper files).
  * - The external feedback form stays off (Sprint 13 H7: no build sets it without owner approval).
  * - Node and npm are the pinned versions; no tracked .env file can add settings behind the
  *   profile's back.
@@ -31,6 +32,14 @@ import { execFileSync } from 'node:child_process';
 import { join, relative } from 'node:path';
 
 const PROFILE_KEYS = ['release', 'node', 'npm', 'build', 'vite', 'host', 'excluded'];
+/** Sprint 23C: the dedicated admin service's settings, with the full administration only. */
+const OPTIONAL_KEYS = ['admin'];
+const ADMIN_SERVICE_KEYS = [
+  'TBI_ADMIN_LISTEN',
+  'TBI_ACCESS_VIEW',
+  'TBI_ADMIN_DIR',
+  'TBI_RUNTIME_HEALTH',
+];
 const SCAN_ROOTS = [
   'app/src',
   'app/index.html',
@@ -45,6 +54,7 @@ const HOST_KEYS = [
   'TBI_ADMIN_DIR',
   'TBI_ADMIN_MODE',
   'TBI_OWNER_PRINCIPAL_FILE',
+  'TBI_OBSERVATIONS_DIR',
 ];
 const ADMIN_MODES = ['off', 'reports', 'full'];
 const SCAN_EXT = /\.(ts|tsx|mts|js|mjs|html)$/;
@@ -58,10 +68,12 @@ class ConfigError extends Error {}
 
 export function loadProfile(path) {
   const p = JSON.parse(readFileSync(path, 'utf8'));
-  const keys = Object.keys(p).sort();
+  const keys = Object.keys(p)
+    .filter((k) => !OPTIONAL_KEYS.includes(k))
+    .sort();
   if (keys.join() !== [...PROFILE_KEYS].sort().join())
     throw new ConfigError(
-      `profile keys must be exactly ${PROFILE_KEYS.join(', ')}; got ${keys.join(', ')}`,
+      `profile keys must be exactly ${PROFILE_KEYS.join(', ')} (and optionally ${OPTIONAL_KEYS.join(', ')}); got ${Object.keys(p).sort().join(', ')}`,
     );
   return p;
 }
@@ -150,11 +162,14 @@ export function validate(profile, srcdir, tools = currentTools()) {
     err('host.TBI_REPORTS_DIR must be an absolute path when the app switch is on');
 
   const abs = (v) => typeof v === 'string' && v.startsWith('/');
-  for (const k of ['TBI_ACCESS_VIEW', 'TBI_ADMIN_DIR', 'TBI_OWNER_PRINCIPAL_FILE'])
+  for (const k of [
+    'TBI_ACCESS_VIEW',
+    'TBI_ADMIN_DIR',
+    'TBI_OWNER_PRINCIPAL_FILE',
+    'TBI_OBSERVATIONS_DIR',
+  ])
     if (k in host && host[k] !== null && !abs(host[k]))
       err(`host.${k} must be null or an absolute path`);
-  if (abs(host.TBI_ADMIN_DIR) && !abs(host.TBI_ACCESS_VIEW))
-    err('host.TBI_ADMIN_DIR needs host.TBI_ACCESS_VIEW');
   if (inSource.has('VITE_ADMIN_UI')) {
     // Sprint 23C: the app's and the host's admin modes are pinned, explicitly and together; every
     // admin host switch is pinned (a value or null), and only the combinations below exist.
@@ -186,8 +201,38 @@ export function validate(profile, srcdir, tools = currentTools()) {
         );
       if (reports !== '1') err('host.TBI_ADMIN_MODE reports needs VITE_PROBLEM_REPORTS "1"');
     }
-    if (mode === 'full' && !(abs(host.TBI_ACCESS_VIEW) && abs(host.TBI_ADMIN_DIR)))
-      err('host.TBI_ADMIN_MODE full needs host.TBI_ACCESS_VIEW and host.TBI_ADMIN_DIR');
+    // Sprint 23C: the full host reads the access view and writes observations only; the helper's
+    // base directory (spool, results) is the admin service's, never the host's.
+    if (mode !== 'full' && 'TBI_OBSERVATIONS_DIR' in host && host.TBI_OBSERVATIONS_DIR !== null)
+      err('host.TBI_OBSERVATIONS_DIR is for host.TBI_ADMIN_MODE full only');
+    if (mode === 'full') {
+      if (!(abs(host.TBI_ACCESS_VIEW) && abs(host.TBI_OBSERVATIONS_DIR)))
+        err('host.TBI_ADMIN_MODE full needs host.TBI_ACCESS_VIEW and host.TBI_OBSERVATIONS_DIR');
+      if (host.TBI_ADMIN_DIR !== null)
+        err('host.TBI_ADMIN_DIR must be null: the spool and results are the admin service’s');
+    }
+    // Sprint 23C (D1): the account administration is the dedicated admin service's, so the full
+    // mode needs it, pinned, on the same helper files; no other mode has it.
+    const svc = profile.admin;
+    if (mode === 'full') {
+      if (svc === null || typeof svc !== 'object' || Array.isArray(svc))
+        err('admin: the admin service must be pinned when host.TBI_ADMIN_MODE is full');
+      else {
+        if (Object.keys(svc).sort().join() !== [...ADMIN_SERVICE_KEYS].sort().join())
+          err(`admin: must pin exactly ${ADMIN_SERVICE_KEYS.join(', ')}`);
+        const unixAbs = (v) => typeof v === 'string' && /^unix:\/[\x21-\x7e]+$/.test(v);
+        if (!unixAbs(svc.TBI_ADMIN_LISTEN))
+          err('admin.TBI_ADMIN_LISTEN must be a unix socket (unix:/...)');
+        if (!unixAbs(svc.TBI_RUNTIME_HEALTH))
+          err('admin.TBI_RUNTIME_HEALTH must be the Session Host health socket (unix:/...)');
+        if (svc.TBI_ACCESS_VIEW !== host.TBI_ACCESS_VIEW)
+          err('admin.TBI_ACCESS_VIEW must equal host.TBI_ACCESS_VIEW');
+        if (!abs(svc.TBI_ADMIN_DIR)) err('admin.TBI_ADMIN_DIR must be an absolute path');
+        else if (host.TBI_OBSERVATIONS_DIR !== `${svc.TBI_ADMIN_DIR}/observations`)
+          err('host.TBI_OBSERVATIONS_DIR must be admin.TBI_ADMIN_DIR/observations');
+      }
+    } else if ('admin' in profile && svc !== null)
+      err('admin: the admin service is for host.TBI_ADMIN_MODE full only');
   }
 
   if ('VITE_FEEDBACK_URL' in pinned && pinned.VITE_FEEDBACK_URL !== null)
@@ -260,6 +305,7 @@ export function effectiveConfig(profile, srcdir) {
         .map((k) => [k, profile.vite[k] ?? '(unset)']),
     ),
     host: Object.fromEntries(Object.entries(profile.host).map(([k, v]) => [k, v ?? '(unset)'])),
+    ...(profile.admin ? { admin: profile.admin } : {}),
     excluded: profile.excluded,
     sourceSettings: [...sourceViteSettings(srcdir).keys()].sort(),
   };

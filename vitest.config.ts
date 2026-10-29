@@ -15,6 +15,8 @@ export default defineConfig({
       'runtime/builder/tests/**/*.test.ts',
       // Sprint 8 identity boundary (principal derivation, listening, the test gate).
       'runtime/identity/tests/**/*.test.ts',
+      // Sprint 23C: the dedicated admin service (account administration, the spool's only writer).
+      'runtime/admin/tests/**/*.test.ts',
       // Sprint 8 Phase 4 policy, quotas, rate limits and admission.
       'runtime/policy/tests/**/*.test.ts',
       // RC4 packaging gate: release profile and built-frontend validation.

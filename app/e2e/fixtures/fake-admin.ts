@@ -1,18 +1,22 @@
 /**
- * TEST ONLY (Sprint 23B): a stand-in for the root administration helper, for the browser tests of
- * the owner's administration. The Session Host side is REAL (runtime/host/admin.ts: the owner
- * check, CSRF, limits, validation, the spool, results and views); this module plays the helper:
- * it answers spooled requests from an in-memory registry and regenerates the two views.
+ * TEST ONLY (Sprint 23B/23C): a stand-in for the root administration helper, for the browser
+ * tests of the owner's administration. The services are REAL: the admin service
+ * (runtime/admin/accounts.ts: the owner check, CSRF, limits, validation, the spool, results and
+ * views), served here on its own port (the preview proxies `/admin-api` to it), and the Session
+ * Host's report routes. This module plays the helper: it answers spooled requests from an
+ * in-memory registry and regenerates the two views. The admin service's live-session count
+ * comes from the fake Session Host (`capacity`).
  *
  * Registry addresses use example.invalid only. Subjects: the owner is `e2e-owner`; `e2e-user`
  * (the default test identity) is an ordinary tester, so the routine tests never see the entry.
  */
 import { createHash } from 'node:crypto';
+import type { IncomingMessage, ServerResponse } from 'node:http';
 import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { AccessView, deriveEmailTag } from '../../../runtime/identity/access.js';
 import { derivePrincipal } from '../../../runtime/identity/principal.js';
-import { AdminSpool, DEFAULT_ADMIN } from '../../../runtime/host/admin.js';
+import { AdminSpool, DEFAULT_ADMIN, createAdminServer } from '../../../runtime/admin/accounts.js';
 import { E2E_IDENTITY } from './identity.js';
 import { ownedTempDir } from './temp-dirs.js';
 
@@ -73,7 +77,7 @@ function seed(): Rec[] {
   ];
 }
 
-export function startFakeAdmin() {
+export function startFakeAdmin(capacity: () => { live: number; max: number }) {
   const dir = ownedTempDir('tbi-e2e-admin-');
   for (const d of ['spool', 'results', 'view', 'observations']) mkdirSync(join(dir, d));
   let registry = seed();
@@ -209,12 +213,17 @@ export function startFakeAdmin() {
   const access = new AccessView(join(dir, 'view', 'access.json'), { pollMs: 1000 }).start();
   const spool = new AdminSpool({ ...DEFAULT_ADMIN, dir, resultWaitMs: 2000, pollMs: 50 });
   setInterval(processSpool, 100).unref();
+  const newService = () =>
+    createAdminServer(E2E_IDENTITY, { access, spool, capacity: async () => capacity() });
+  let service = newService();
 
   return {
     dir,
     access,
-    spool,
+    /** The admin service's request handler (a fresh one after each reset: fresh rate windows). */
+    handle: (req: IncomingMessage, res: ServerResponse) => service.emit('request', req, res),
     reset() {
+      service = newService();
       registry = seed();
       hold = false;
       ownerRecorded = true;
