@@ -195,7 +195,7 @@ describe('revocation after the compile (review N4)', () => {
     return { s, A };
   };
 
-  it('landing during publish: no grant, the unheld artifact is dropped, the build fails account_disabled', async () => {
+  it('landing during publish: no grant, the build fails account_disabled, the blob is left to eviction', async () => {
     const { s, A } = await setup();
     const store = s.service.store;
     const publish = store.publish.bind(store);
@@ -215,7 +215,9 @@ describe('revocation after the compile (review N4)', () => {
     expect(published).not.toBeNull();
     expect(s.service.lookup(st.result!.key, A)).toBeNull(); // no cached build for A
     expect(s.service.lease(A, published!, 60_000)).toBeNull(); // no grant
-    expect(store.manifest(published!)).toBeUndefined(); // nobody holds it: dropped
+    // Final review N7: not removed here (that raced an identical build of another account);
+    // the ungranted blob is unreachable to A and is left to the store's normal eviction.
+    expect(store.manifest(published!)).toBeDefined();
   });
 
   it('landing between the compile and publish: nothing is published', async () => {

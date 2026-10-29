@@ -553,12 +553,11 @@ export class BuildService {
         // revoked account gets neither an artifact nor a grant.
         if (abort.signal.aborted) return this.cancelled(r, started);
         const artifact = await this.store.publish(bytes, 'build');
-        if (abort.signal.aborted) {
-          // Published but never granted: drop it unless someone else already holds it.
-          if (this.access.grants.holders(artifact.sha256) === 0)
-            await this.store.remove(artifact.sha256).catch(() => undefined);
-          return this.cancelled(r, started);
-        }
+        // Published but never granted: the blob is left to the store's normal eviction. Removing
+        // it here could race an identical build of another account that publishes and is
+        // granted in between (final review N7); an ungranted blob is unreachable to the revoked
+        // account in any case.
+        if (abort.signal.aborted) return this.cancelled(r, started);
         this.access.grants.recordBuild(r.owner, { ...base, artifact });
         const result: BuildResult = {
           ...base,

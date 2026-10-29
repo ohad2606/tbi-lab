@@ -118,7 +118,7 @@ gate's allowlist or the tester registry.
 - **N4, revocation after the compile.** A build whose account is revoked after the compile has
   finished is checked again right before its image is published and right before its grant is
   recorded. It ends `failed` with `account_disabled`, and the account gets neither a grant nor a
-  cached result. An image published in that window that nobody else holds is removed again.
+  cached result. An image published in that window gets no grant and is left to the store's normal eviction (it is not removed on the spot: that raced an identical build of another account, final review N7).
 - **N5, socket creation window.** The API sockets and the health socket are bound with umask
   `0077`, restored before `listen()` returns. They are therefore owner-only from the moment they
   exist until their group and mode `0660` are set. Before this fix, they were briefly `0770` with the
