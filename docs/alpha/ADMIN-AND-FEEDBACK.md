@@ -12,21 +12,32 @@ Based on the RC4 line (protocol `tbi-lab.session/2`, Runtime v2). No RC5 or Runt
 | Switch | Where | Effect |
 |---|---|---|
 | `VITE_PROBLEM_REPORTS=1` | app build | the Feedback button (status bar) and the menu item; the extended form |
-| `VITE_ADMIN_UI=1` | app build | the Administration entry, shown only after the server confirms the owner |
+| `VITE_ADMIN_UI=off\|reports\|full` | app build | Sprint 23C: the Administration entry, shown only after the server confirms the owner; `reports` shows the Feedback tab only, `full` testers and feedback (`off`, unset or any other value: no entry; the s23b value `1` is now `off`) |
 | `TBI_REPORTS_DIR` | Session Host | report storage (unchanged from Sprint 14, `PROBLEM-REPORTS.md`) |
 | `TBI_ACCESS_VIEW` | Session Host and build service | access enforcement from the authorization view |
-| `TBI_ADMIN_DIR` | Session Host | owner administration API and identity observations (needs `TBI_ACCESS_VIEW`) |
+| `TBI_ADMIN_DIR` | Session Host | owner administration API and identity observations (needs `TBI_ACCESS_VIEW`; `full` mode only) |
+| `TBI_ADMIN_MODE=off\|reports\|full` | Session Host | Sprint 23C: what `/admin` serves (below). Unset: the s23b rule, `full` when `TBI_ACCESS_VIEW` (or `TBI_ADMIN_DIR`) is set, `off` otherwise |
+| `TBI_OWNER_PRINCIPAL_FILE` | Session Host | Sprint 23C, `reports` mode only: the owner reference file |
 
 Release profiles (`deploy/release/`):
 
 - `rc4.release.json`, `rc4-reports.release.json`: **unchanged** RC4 profiles. They build the RC4
   commit. On this tree they fail closed (`unpinned setting VITE_ADMIN_UI`), by design: a profile
   pins every setting its source reads.
-- `rc4-s23.release.json` (`"release": "rc4-s23"`): feedback and administration ON, with the host switches
-  `TBI_REPORTS_DIR`, `TBI_ACCESS_VIEW=/var/lib/tbi-admin/view/access.json` and
-  `TBI_ADMIN_DIR=/var/lib/tbi-admin`. The validator refuses `VITE_ADMIN_UI=1` without
-  `TBI_ADMIN_DIR`, and `TBI_ADMIN_DIR` without `TBI_ACCESS_VIEW`.
-  G2 on a packaging host: `TBI_PROFILES=rc4-s23 deploy/release/verify-on-packaging-host.sh …`.
+- `rc4-s23.release.json` (`"release": "rc4-s23"`): the s23b profile (feedback and administration
+  ON, `VITE_ADMIN_UI=1`). **Unchanged; it builds the s23b commit.** On the s23c tree it fails
+  closed, by design (`VITE_ADMIN_UI must be pinned to "off", "reports" or "full"`, and the two new
+  host switches are unpinned).
+- `rc4-s23-feedback.release.json` (`"release": "rc4-s23-feedback"`, Sprint 23C): the feedback-only
+  release, below.
+
+From Sprint 23C, when the source reads `VITE_ADMIN_UI` the validator requires every admin host
+switch to be pinned (a value or `null`: `TBI_ACCESS_VIEW`, `TBI_ADMIN_DIR`, `TBI_ADMIN_MODE`,
+`TBI_OWNER_PRINCIPAL_FILE`), and `VITE_ADMIN_UI` to equal `TBI_ADMIN_MODE`. It refuses every other
+combination: `reports` with an admin directory or an access view, or without an owner file or
+without reports; `full` without the access view and the admin directory, or with an owner file;
+`off` with an admin directory or an owner file; a `full` app with a host in another mode, and the
+reverse. G2 on a packaging host: `TBI_PROFILES=rc4-s23-feedback deploy/release/verify-on-packaging-host.sh …`.
 
 Units: `deploy/dev-lab/s8/tbi-session-host.service.in` and `tbi-build.service.in` carry the
 Sprint 23B lines commented out; `install.sh` uncomments them with `TBI_S23_ADMIN=1`, and refuses,
@@ -44,6 +55,89 @@ service users keep their primary groups. Group roles: `tbi-admin-view` (both ser
 Host only) writes `spool/` and `observations/` (`2730`, setgid; files `0640`), reads `results/` (`0750`) and
 `view/accounts.json` (`root:tbi-admin-spool 0640`). The services never gain write access to the
 gate's allowlist or the tester registry.
+
+## Sprint 23C: the feedback-only release (`rc4-s23-feedback`)
+
+The owner reads and deletes the testers' feedback in the app. Nothing else of the administration
+exists: no tester management, no account change anywhere, no helper, no access view. Access is
+gate-only, as in RC4.
+
+| | `rc4-s23-feedback` |
+|---|---|
+| app | `VITE_PROBLEM_REPORTS=1`, `VITE_ADMIN_UI=reports` |
+| Session Host | `TBI_REPORTS_DIR`, `TBI_ADMIN_MODE=reports`, `TBI_OWNER_PRINCIPAL_FILE=/etc/<N>-owner/owner.principal` |
+| not set | `TBI_ACCESS_VIEW`, `TBI_ADMIN_DIR` (refused with `reports`, at start and by the validator) |
+
+**Session Host, `TBI_ADMIN_MODE=reports`** (`runtime/host/admin.ts`, the s23b code reused):
+
+| Route (under `/runtime`) | No identity | Tester | Owner | Owner file invalid |
+|---|---|---|---|---|
+| `GET /admin/me` | 401 | 403 | 200 `{"owner":true}` | 503 `owner_unavailable` |
+| `GET /admin/reports`, `GET /admin/reports/<id>` | 401 | 403 | 200 | 503 |
+| `DELETE /admin/reports/<id>`, `DELETE /admin/reports?principal=p_…` | 401 | 403 | 200 (CSRF rule applies: 403 `csrf`) | 503 |
+| any other `/admin…` path or method: accounts, requests, sessions, unknown, `HEAD`, `OPTIONS`, `PUT`, `PATCH`, trailing slashes, encoded names | 401 | **404** | **404** | **404** |
+
+The 404 is decided first, from the path and the method only, for every identity, the owner
+included, and whatever the state of the owner file: there is no 403 or 503 oracle for the account
+routes. The rate limits and the policy's request backstop apply as before. In this mode the host
+never writes outside its report store: no spool, no identity observations (even if a spool or an
+observer is configured, `reports` mode does not use them; asserted on the file system in
+`runtime/host/tests/admin-reports-mode.test.ts`).
+
+`TBI_ADMIN_MODE=off`: `/admin` answers 404, as RC4. `full`: the s23b administration. Unset: the
+s23b behaviour (`full` when `TBI_ACCESS_VIEW` is set, which an s23b unit always pairs with
+`TBI_ADMIN_DIR`; `off` otherwise), so an s23b unit keeps working unchanged. The host refuses to
+start on an unknown mode, `reports` without `TBI_OWNER_PRINCIPAL_FILE` or with `TBI_ADMIN_DIR`,
+`TBI_OWNER_PRINCIPAL_FILE` outside `reports`, and `full` without `TBI_ACCESS_VIEW`.
+
+**The owner reference file** (`runtime/host/owner.ts`). Read on every owner check, so a replaced
+file takes effect at once. It must be:
+
+- owned by `root`, group the Session Host's primary group (`tbi-runtimeio`), mode exactly `0640`;
+- a regular file with one link, opened with `O_NOFOLLOW` (never a symlink);
+- exactly one principal `p_` + 26 base64url characters, optionally followed by one newline.
+
+Anything else (missing, unreadable, wrongly owned, a wrong mode, two lines, an address, CRLF) means
+`/admin` answers 503 and the rest of the app works normally (fail closed).
+
+**Creating the owner file** (operator, once; again only if the identity key or the owner changes).
+The input is the owner's Google subject (`sub`) as recorded in the tester registry (operator
+tooling). The principal is the Session Host's own derivation,
+`p_` + base64url(HMAC-SHA256(identity key, `google|<sub>`))[0..26), computed by
+`scripts/owner-principal.mjs` from the instance's identity key. The sub is read from standard input
+only, never from the command line (arguments are visible in the process list and kept in shell
+history):
+
+```sh
+# The directory: install.sh TBI_S23_FEEDBACK=1 creates it (root:tbi-runtimeio 0750).
+sudo install -d -o root -g tbi-runtimeio -m 0750 /etc/<N>-owner
+# Type the sub, then Enter and Ctrl-D (it is not echoed anywhere else):
+sudo node scripts/owner-principal.mjs /etc/<N>/identity.key | sudo tee /etc/<N>-owner/owner.principal.new >/dev/null
+# Or from a root-only file holding the sub:
+#   sudo sh -c 'node scripts/owner-principal.mjs /etc/<N>/identity.key < /root/owner.sub > /etc/<N>-owner/owner.principal.new'
+sudo chown root:tbi-runtimeio /etc/<N>-owner/owner.principal.new
+sudo chmod 0640 /etc/<N>-owner/owner.principal.new
+sudo mv /etc/<N>-owner/owner.principal.new /etc/<N>-owner/owner.principal
+sudo stat -c '%U:%G %a %h' /etc/<N>-owner/owner.principal   # root:tbi-runtimeio 640 1
+```
+
+`--issuer LABEL` matches a deployment whose `TBI_IDENTITY_ISSUER` is not `google`. The principal is
+an HMAC, not the sub, and the file holds nothing else. Check: the owner signs in and the Feedback
+entry appears (`GET /runtime/admin/me` is 200); a tester gets 403 there.
+
+**Units and install.** `tbi-session-host.service.in` carries the two lines commented out;
+`install.sh` with `TBI_S23_FEEDBACK=1` uncomments them and `TBI_REPORTS_DIR`, and changes nothing
+else: no helper groups, no access view, no spool or observation paths, no build-service change.
+It creates `/etc/<N>-owner` (`root:tbi-runtimeio 0750`), refuses before any change an existing
+owner file that is not exactly as above, warns when it is missing, and refuses `TBI_S23_FEEDBACK=1`
+together with `TBI_S23_ADMIN=1`.
+
+**The app, `VITE_ADMIN_UI=reports`.** The Administration entry (owner only, after
+`GET /runtime/admin/me`) opens a dialog with one tab, Feedback: the list, the detail and the
+confirmed deletions. No tester management is rendered and the page calls no account endpoint (only
+`/runtime/admin/me` and `/runtime/admin/reports…`; asserted in `app/e2e/s23c-feedback-only.spec.ts`).
+The release check (`deploy/release/check-dist.mjs`) locates the compiled admin switch by its own
+parser's form, exactly once, and requires the profile's value.
 
 ## Trust model and access control policy
 

@@ -48,7 +48,7 @@ if [[ "$uninstall" == "--uninstall" ]]; then
   sudo systemctl daemon-reload
   if [[ "$target" == staging ]]; then
     sudo rm -rf "/var/lib/$N-build" "/var/lib/$N-runtime" "/var/lib/private/$N-build" \
-      "/var/lib/private/$N-runtime" "$STORE" "/etc/$N" "$BUNDLES"
+      "/var/lib/private/$N-runtime" "$STORE" "/etc/$N" "/etc/$N-owner" "$BUNDLES"
   fi
   echo "removed $N"
   exit 0
@@ -67,6 +67,28 @@ if [[ "$S23_ADMIN" == 1 && "$uninstall" != "--uninstall" ]]; then
   for d in /var/lib/tbi-admin/view /var/lib/tbi-admin/spool /var/lib/tbi-admin/results /var/lib/tbi-admin/observations; do
     sudo test -d "$d" || { echo "refused: $d is missing (install the admin helper first)" >&2; exit 1; }
   done
+fi
+
+# Sprint 23C (docs/alpha/ADMIN-AND-FEEDBACK.md): TBI_S23_FEEDBACK=1 is the feedback-only release
+# (rc4-s23-feedback): the Session Host stores reports and its owner reads them
+# (TBI_ADMIN_MODE=reports). It sets only that: TBI_REPORTS_DIR, TBI_ADMIN_MODE and
+# TBI_OWNER_PRINCIPAL_FILE. No helper groups, no access view, no admin directory, no spool paths.
+# Exclusive with TBI_S23_ADMIN. The owner reference file is the operator's (created once,
+# scripts/owner-principal.mjs); this script creates its directory and checks the file when it
+# exists (refusing a wrong one before any change). A missing file only warns: the Session Host
+# then answers 503 on /admin and serves everything else.
+S23_FEEDBACK="${TBI_S23_FEEDBACK:-0}"
+[[ "$S23_FEEDBACK" =~ ^[01]$ ]] || { echo "TBI_S23_FEEDBACK must be 0 or 1" >&2; exit 1; }
+if [[ "$S23_FEEDBACK" == 1 && "$S23_ADMIN" == 1 ]]; then
+  echo "refused: TBI_S23_FEEDBACK and TBI_S23_ADMIN are exclusive" >&2; exit 1
+fi
+OWNER_FILE="/etc/$N-owner/owner.principal"
+if [[ "$S23_FEEDBACK" == 1 && "$uninstall" != "--uninstall" ]] && sudo test -e "$OWNER_FILE"; then
+  meta="$(sudo stat -c '%U:%G %a %F %h' "$OWNER_FILE")"
+  [[ "$meta" == "root:tbi-runtimeio 640 regular file 1" ]] ||
+    { echo "refused: $OWNER_FILE is '$meta', expected 'root:tbi-runtimeio 640 regular file 1'" >&2; exit 1; }
+  sudo grep -qxE 'p_[A-Za-z0-9_-]{26}' "$OWNER_FILE" && [[ "$(sudo wc -l < "$OWNER_FILE")" -le 1 ]] ||
+    { echo "refused: $OWNER_FILE must hold exactly one principal p_..." >&2; exit 1; }
 fi
 
 # Phase C (alpha): the Session Host's own ceiling on live sessions (engineering default 4). The
@@ -184,8 +206,16 @@ render() {
       sed -e 's|^#\(Environment=TBI_ACCESS_VIEW=\)|\1|' -e 's|^#\(Environment=TBI_ADMIN_DIR=\)|\1|' \
         -e 's|^#\(ReadWritePaths=-/var/lib/tbi-admin/\)|\1|' -e 's|^#\(ReadOnlyPaths=-/var/lib/tbi-admin/\)|\1|' \
         -e 's|^#\(SupplementaryGroups=tbi-admin-\)|\1|'
+    elif [[ "$S23_FEEDBACK" == 1 ]]; then
+      sed -e 's|^#\(Environment=TBI_REPORTS_DIR=\)|\1|' -e 's|^#\(Environment=TBI_ADMIN_MODE=reports\)$|\1|' \
+        -e 's|^#\(Environment=TBI_OWNER_PRINCIPAL_FILE=\)|\1|'
     else cat; fi
 }
+if [[ "$S23_FEEDBACK" == 1 ]]; then
+  # The owner reference's directory: readable by the Session Host's group only.
+  sudo install -d -o root -g tbi-runtimeio -m 0750 "/etc/$N-owner"
+  sudo test -e "$OWNER_FILE" || echo "warning: $OWNER_FILE is missing: /admin answers 503 until the operator creates it" >&2
+fi
 render "$here/tbi-build.service.in" | sudo tee "/etc/systemd/system/$N-build.service" >/dev/null
 render "$here/tbi-build-job@.service.in" | sudo tee "/etc/systemd/system/$N-build-job@.service" >/dev/null
 render "$here/tbi-session-host.service.in" | sudo tee "/etc/systemd/system/$N-session-host.service" >/dev/null

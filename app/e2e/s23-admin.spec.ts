@@ -1,6 +1,6 @@
 /**
  * Sprint 23B: the owner's administration, EN and HE, desktop and tablet. The :4174 build enables
- * it (VITE_ADMIN_UI=1). The fake Session Host serves `/admin/...` with the REAL admin API and a
+ * it (VITE_ADMIN_UI=full). The fake Session Host serves `/admin/...` with the REAL admin API and a
  * fake root helper (fixtures/fake-admin.ts). The test gate asserts the `tbi_test_user` cookie's
  * subject (`e2e-owner` is the owner; the default `e2e-user` is a tester) and, when set, the
  * `tbi_test_email` cookie's address. Screenshots: set TBI_SHOTS to a directory.

@@ -17,6 +17,11 @@
  *                      and the live sessions of accounts no longer authorized are ended.
  *   TBI_ADMIN_DIR      Sprint 23B owner administration and identity observations (admin.ts):
  *                      the helper's base directory; needs TBI_ACCESS_VIEW. Unset: off.
+ *   TBI_ADMIN_MODE     Sprint 23C: off | reports | full (admin.ts AdminMode). Unset: the Sprint
+ *                      23B rule (full with TBI_ACCESS_VIEW, off without). `reports`: the owner's
+ *                      feedback only, owner from TBI_OWNER_PRINCIPAL_FILE (owner.ts); refuses
+ *                      TBI_ADMIN_DIR. Inconsistent combinations refuse to start.
+ *   TBI_OWNER_PRINCIPAL_FILE   `reports` mode: root:<host group> 0640, exactly one principal
  *
  * SIGTERM / SIGINT: stop accepting requests, terminate every session (host_shutdown), release
  * every child process and temporary file, then exit.
@@ -35,7 +40,8 @@ import { SessionHost, revokeOnReload } from './host.js';
 import { createHealthServer, createHttpServer } from './http.js';
 import { ReportStore, reportsConfigFromEnv } from './reports.js';
 import { accessViewFromEnv } from '../identity/access.js';
-import { AdminSpool, IdentityObserver, adminConfigFromEnv } from './admin.js';
+import { AdminSpool, IdentityObserver, adminEnvFromEnv } from './admin.js';
+import { OwnerReference } from './owner.js';
 
 // Same locations as runtime/provision/provision.sh (and harness/env.ts).
 const RUNTIME_HOME =
@@ -106,15 +112,18 @@ const reportsConfig = reportsConfigFromEnv();
 const reports = reportsConfig ? new ReportStore(reportsConfig) : null;
 reports?.start();
 // Sprint 23B: access enforcement, revocation of live sessions, administration, observations.
+// Checked first: an inconsistent combination of the admin switches refuses to start.
+const adminEnv = adminEnvFromEnv();
+const adminConfig = adminEnv.config;
 const access = accessViewFromEnv();
-const adminConfig = adminConfigFromEnv();
-if (adminConfig && !access) throw new Error('TBI_ADMIN_DIR needs TBI_ACCESS_VIEW');
 if (access) {
   revokeOnReload(host, access);
   access.start();
 }
 const server = createHttpServer(host, identity, reports, {
   access,
+  adminMode: adminEnv.mode,
+  owner: adminEnv.ownerFile ? new OwnerReference(adminEnv.ownerFile) : null,
   admin: adminConfig ? new AdminSpool(adminConfig) : null,
   observer: adminConfig ? new IdentityObserver(join(adminConfig.dir, 'observations')) : null,
 });

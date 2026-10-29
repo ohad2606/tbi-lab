@@ -48,6 +48,14 @@ Environment=TBI_HOST_STATE=/var/lib/@N@-runtime/state
 #Environment=TBI_ADMIN_DIR=/var/lib/tbi-admin
 #ReadOnlyPaths=-/var/lib/tbi-admin/view -/var/lib/tbi-admin/results
 #ReadWritePaths=-/var/lib/tbi-admin/spool -/var/lib/tbi-admin/observations
+# Sprint 23C feedback-only release (rc4-s23-feedback; docs/alpha/ADMIN-AND-FEEDBACK.md): the
+# owner reads and deletes feedback reports, nothing else. OFF while commented; install.sh
+# TBI_S23_FEEDBACK=1 uncomments these two lines and TBI_REPORTS_DIR above, and nothing else: no
+# helper groups, no access view, no admin directory, no spool or observation paths. The owner
+# reference is a root:tbi-runtimeio 0640 file holding exactly one principal (made by the operator
+# with scripts/owner-principal.mjs); missing or invalid: /admin answers 503, the rest works.
+#Environment=TBI_ADMIN_MODE=reports
+#Environment=TBI_OWNER_PRINCIPAL_FILE=/etc/@N@-owner/owner.principal
 # Live-session ceiling of this host (install.sh TBI_S8_HOST_MAX_SESSIONS, at least the policy's limit).
 Environment=TBI_HOST_MAX_SESSIONS=@HOST_MAX_SESSIONS@
 RuntimeDirectory=@N@-runtime

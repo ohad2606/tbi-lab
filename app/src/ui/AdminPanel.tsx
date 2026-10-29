@@ -4,6 +4,9 @@
  * that the signed-in account is the owner; every call is authorized again by the server, so this
  * UI only hides. The logic lives in admin.ts.
  *
+ * Sprint 23C: with ADMIN_UI `reports` (the feedback-only release) the dialog has the Feedback tab
+ * only: the tester management is not rendered and no account endpoint is called.
+ *
  * Addresses are masked by the server; the one the owner types to add a tester stays in this
  * dialog only, masked by default (a "show" toggle reveals it to the owner). Actions that end
  * someone's access say exactly what happens and need a confirmation.
@@ -53,9 +56,13 @@ export function AdminHost() {
     listeners.add(open);
     return () => void listeners.delete(open);
   }, []);
-  if (!ADMIN_UI || !trigger) return null;
+  if (ADMIN_UI === 'off' || !trigger) return null;
   return <AdminDialog trigger={trigger.el} onClose={() => setTrigger(null)} />;
 }
+
+type Tab = 'testers' | 'reports';
+/** The tabs this build shows: tester management only in the full administration. */
+const TABS: readonly Tab[] = ADMIN_UI === 'full' ? ['testers', 'reports'] : ['reports'];
 
 const FOCUSABLE =
   'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])';
@@ -69,7 +76,7 @@ function AdminDialog({ trigger, onClose }: { trigger: HTMLElement | null; onClos
   const t = useT();
   const { locale } = useAppState();
   const dialog = useRef<HTMLDialogElement>(null);
-  const [tab, setTab] = useState<'testers' | 'reports'>('testers');
+  const [tab, setTab] = useState<Tab>(TABS[0]!);
   const [confirm, setConfirm] = useState<Confirm | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [accounts, setAccounts] = useState<Loaded<AccountsView> | null>(null);
@@ -90,7 +97,7 @@ function AdminDialog({ trigger, onClose }: { trigger: HTMLElement | null; onClos
     const d = dialog.current;
     if (d && !d.open) d.showModal();
     d?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.focus();
-    void refreshTesters();
+    if (TABS.includes('testers')) void refreshTesters();
     void refreshReports();
     return () => {
       unmounting.current = true;
@@ -181,6 +188,7 @@ function AdminDialog({ trigger, onClose }: { trigger: HTMLElement | null; onClos
     if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight' && e.key !== 'Home' && e.key !== 'End')
       return;
     e.preventDefault();
+    if (TABS.length < 2) return;
     const next = tab === 'testers' ? 'reports' : 'testers';
     setTab(next);
     requestAnimationFrame(() =>
@@ -230,7 +238,7 @@ function AdminDialog({ trigger, onClose }: { trigger: HTMLElement | null; onClos
       ) : (
         <>
           <div role="tablist" class="admin-tabs" aria-label={t('admin.title')}>
-            {(['testers', 'reports'] as const).map((k) => (
+            {TABS.map((k) => (
               <button
                 key={k}
                 type="button"
@@ -248,7 +256,7 @@ function AdminDialog({ trigger, onClose }: { trigger: HTMLElement | null; onClos
               </button>
             ))}
           </div>
-          {tab === 'testers' ? (
+          {tab === 'testers' && TABS.includes('testers') ? (
             <section
               role="tabpanel"
               id="admin-panel-testers"

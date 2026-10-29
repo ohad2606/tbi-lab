@@ -88,10 +88,20 @@ export function parseEnabled(value: unknown): boolean {
 export const PROBLEM_REPORTS = parseEnabled(import.meta.env.VITE_PROBLEM_REPORTS);
 
 /**
- * Sprint 23B: the owner's administration (testers and feedback). OFF unless a deployment builds
- * with VITE_ADMIN_UI=1. Even then it only HIDES or shows: the Session Host decides on every call
- * who the owner is, and the entry appears only after it confirmed (GET /runtime/admin/me). No
- * tester data is compiled into the app. (Not parsed with parseEnabled: the release check locates
- * the Report a Problem switch by that function's compiled form, which must stay unique.)
+ * Sprint 23B/23C: the owner's administration, VITE_ADMIN_UI = `off` | `reports` | `full`.
+ * - `off` (also anything else, or unset): no administration entry.
+ * - `reports` (the feedback-only release): the entry shows the Feedback tab only; no tester
+ *   management, and no account endpoint is ever called.
+ * - `full`: testers and feedback.
+ * Even then it only HIDES or shows: the server decides on every call who the owner is, and the
+ * entry appears only after it confirmed (GET /runtime/admin/me). No tester data is compiled into
+ * the app. (Its own parser, not parseEnabled: the release check locates each switch by its
+ * function's compiled form, and each form must stay unique; deploy/release/check-dist.mjs.)
  */
-export const ADMIN_UI = String(import.meta.env.VITE_ADMIN_UI ?? '').trim() === '1';
+export type AdminUiMode = 'off' | 'reports' | 'full';
+export function parseAdminUi(value: unknown): AdminUiMode {
+  const v = typeof value === 'string' ? value.trim() : '';
+  return v === 'full' ? 'full' : v === 'reports' ? 'reports' : 'off';
+}
+
+export const ADMIN_UI: AdminUiMode = parseAdminUi(import.meta.env.VITE_ADMIN_UI);

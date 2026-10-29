@@ -32,9 +32,13 @@
  *     POST /__test/reset-admin           fresh registry, helper answering
  *     POST /__test/admin-hold?on=1|0     keep requests unanswered (the 202 path), or release them
  *     POST /__test/admin-owner-unrecorded   the owner's Google id not recorded yet
+ *   Sprint 23C feedback-only release: the same host on REPORTS_PORT (default 7497), whose
+ *   `/admin` is the REAL reports mode (TBI_ADMIN_MODE=reports: report routes only, the owner
+ *   `e2e-owner` from an owner reference file, every account path 404). The :4175 preview
+ *   (VITE_ADMIN_UI=reports) proxies there. Reports are the same store as above.
  */
 import { randomBytes, createHash, timingSafeEqual } from 'node:crypto';
-import { readFileSync, readdirSync, rmSync } from 'node:fs';
+import { chmodSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { join } from 'node:path';
 import { EngineSession, interpretDigitalInput, type DigitalLevel } from '@tbi-lab/engine';
@@ -55,7 +59,9 @@ import {
 import type { SessionHost } from '../../../runtime/host/host.js';
 import { DEFAULT_REPORTS, REPORT_FILE_RE, ReportStore } from '../../../runtime/host/reports.js';
 import { ownedTempDir } from './temp-dirs.js';
-import { startFakeAdmin } from './fake-admin.js';
+import { OWNER_SUBJECT, startFakeAdmin } from './fake-admin.js';
+import { OwnerReference } from '../../../runtime/host/owner.js';
+import { derivePrincipal } from '../../../runtime/identity/principal.js';
 
 const PORT = Number(process.env.PORT ?? 7499);
 const STEP_NS = 10_000_000n;
@@ -392,6 +398,18 @@ const newAdminInner = () =>
     admin: fakeAdmin.spool,
   });
 let adminInner = newAdminInner();
+// Sprint 23C: the feedback-only mode, owner from a reference file laid out as the operator makes
+// it (one principal, mode 0640; owned by this test process instead of root).
+const ownerFile = join(ownedTempDir('tbi-e2e-owner-'), 'owner.principal');
+writeFileSync(ownerFile, `${derivePrincipal(E2E_IDENTITY, OWNER_SUBJECT)}\n`, { mode: 0o640 });
+chmodSync(ownerFile, 0o640);
+const ownerRef = new OwnerReference(ownerFile, { uid: process.getuid!(), gid: process.getgid!() });
+const newReportsInner = () =>
+  createHttpServer(host as unknown as SessionHost, E2E_IDENTITY, reportStore, {
+    adminMode: 'reports',
+    owner: ownerRef,
+  });
+let reportsInner = newReportsInner();
 let failNextReport: number | null = null;
 let holdReportsMs = 0;
 const storedReports = () => {
@@ -455,6 +473,7 @@ const server = createServer((req: IncomingMessage, res: ServerResponse) => {
       rmSync(reportsDir, { recursive: true, force: true });
       inner = newInner();
       adminInner = newAdminInner();
+      reportsInner = newReportsInner();
       failNextReport = null;
       holdReportsMs = 0;
       return reply({ ok: true });
@@ -469,6 +488,7 @@ const server = createServer((req: IncomingMessage, res: ServerResponse) => {
     case '/__test/reset-admin':
       fakeAdmin.reset();
       adminInner = newAdminInner(); // fresh rate windows
+      reportsInner = newReportsInner();
       return reply({ ok: true });
     case '/__test/admin-hold':
       fakeAdmin.hold(url.searchParams.get('on') === '1');
@@ -486,6 +506,16 @@ const server = createServer((req: IncomingMessage, res: ServerResponse) => {
   }
 });
 server.listen(PORT, '127.0.0.1', () => process.stdout.write(`fake session host on ${PORT}\n`));
+// Sprint 23C: the feedback-only release's Session Host (its `/admin` in reports mode).
+const REPORTS_PORT = Number(process.env.REPORTS_PORT ?? 7497);
+createServer((req, res) => {
+  const path = new URL(req.url ?? '/', 'http://fake.invalid').pathname;
+  if (path === '/admin' || path.startsWith('/admin/'))
+    return reportsInner.emit('request', req, res);
+  server.emit('request', req, res);
+}).listen(REPORTS_PORT, '127.0.0.1', () =>
+  process.stdout.write(`fake session host (reports mode) on ${REPORTS_PORT}\n`),
+);
 // Sprint 7: the fake build service beside it (the preview proxies /build there).
 const BUILD_PORT = Number(process.env.BUILD_PORT ?? 7498);
 void startFakeBuildService(BUILD_PORT).then(() =>

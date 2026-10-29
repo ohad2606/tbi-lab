@@ -60,13 +60,31 @@ export default defineConfig({
       env: {
         VITE_SIGN_OUT_URL: '/oauth2/sign_out',
         VITE_PROBLEM_REPORTS: '1',
-        VITE_ADMIN_UI: '1',
+        VITE_ADMIN_UI: 'full',
         TBI_RUNTIME_PROXY: process.env.TBI_RUNTIME_PROXY ?? 'http://127.0.0.1:7499',
         TBI_BUILD_PROXY: process.env.TBI_BUILD_PROXY ?? 'http://127.0.0.1:7498',
         TBI_TEST_GATE: '1', // the proxy plays the authenticating gate (vite.config.ts)
       },
       reuseExistingServer: !process.env.CI,
       timeout: 240_000,
+    },
+    {
+      // Sprint 23C: the feedback-only release (rc4-s23-feedback): feedback on, the
+      // administration with the Feedback tab only (VITE_ADMIN_UI=reports), against the fake
+      // Session Host's reports-mode listener (s23c-feedback-only.spec.ts).
+      command:
+        'npm run build --workspace @tbi-lab/app -- --outDir .tmp/dist-feedback && npm run preview --workspace @tbi-lab/app -- --outDir .tmp/dist-feedback --host 127.0.0.1 --port 4175 --strictPort',
+      url: 'http://127.0.0.1:4175',
+      env: {
+        VITE_SIGN_OUT_URL: '/oauth2/sign_out',
+        VITE_PROBLEM_REPORTS: '1',
+        VITE_ADMIN_UI: 'reports',
+        TBI_RUNTIME_PROXY: 'http://127.0.0.1:7497',
+        TBI_BUILD_PROXY: process.env.TBI_BUILD_PROXY ?? 'http://127.0.0.1:7498',
+        TBI_TEST_GATE: '1',
+      },
+      reuseExistingServer: !process.env.CI,
+      timeout: 360_000,
     },
   ],
 });

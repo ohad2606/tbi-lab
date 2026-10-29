@@ -18,6 +18,10 @@
  * the owner is the view's owner principal (or, while none is recorded yet, the owner's email
  * tag). No identity: 401. Any other identity: 403. Mutations also need a JSON content type and a
  * same-origin request (CSRF), and every call is rate limited per caller.
+ *
+ * Sprint 23C: `TBI_ADMIN_MODE` (AdminMode below). In `reports` mode (the feedback-only release)
+ * only `GET /admin/me` and the report routes exist, the owner comes from a root-provided owner
+ * reference (owner.ts), and none of the spool, results, views or observations above is used.
  */
 import { randomBytes } from 'node:crypto';
 import { open, readFile, rename, unlink } from 'node:fs/promises';
@@ -27,6 +31,7 @@ import { isOwner, type AccessView, type EmailTag } from '../identity/access.js';
 import { isPrincipal, type Principal } from '../identity/principal.js';
 import { MemoryRate } from '../policy/rate.js';
 import { Refusal, sendRefusal } from '../policy/refusal.js';
+import type { OwnerReference } from './owner.js';
 import type { ReportStore } from './reports.js';
 
 // ---------------------------------------------------------------- ids and atomic files
@@ -305,6 +310,62 @@ export interface AdminConfig {
 
 export const DEFAULT_ADMIN: Omit<AdminConfig, 'dir'> = { resultWaitMs: 15_000, pollMs: 200 };
 
+/**
+ * Sprint 23C: what the Session Host serves under `/admin` (`TBI_ADMIN_MODE`).
+ *
+ * - `off`: no `/admin` route at all (404, as RC4).
+ * - `reports`: the feedback-only release. Owner-only `GET /admin/me` and the report routes; every
+ *   other `/admin` path (accounts, requests, sessions, anything unknown) is 404 for everyone, the
+ *   owner included, so it is not a 403 oracle. The owner comes from `TBI_OWNER_PRINCIPAL_FILE`
+ *   (owner.ts); no spool, no observations, no access view.
+ * - `full`: the Sprint 23B administration (the owner from the access view).
+ *
+ * Unset: exactly the Sprint 23B behaviour, `full` when `TBI_ACCESS_VIEW` (or `TBI_ADMIN_DIR`) is
+ * set (the condition under which s23b served `/admin`), `off` otherwise. So an s23b unit, which
+ * sets both and no mode, keeps its behaviour.
+ */
+export type AdminMode = 'off' | 'reports' | 'full';
+
+export interface AdminEnv {
+  mode: AdminMode;
+  /** `full` only: the helper's directory (spool, results, views, observations), or null. */
+  config: AdminConfig | null;
+  /** `reports` only: the owner reference file. */
+  ownerFile: string | null;
+}
+
+/** The admin switches, checked together; an inconsistent combination refuses to start. */
+export function adminEnvFromEnv(env: NodeJS.ProcessEnv = process.env): AdminEnv {
+  const raw = env.TBI_ADMIN_MODE;
+  const mode: AdminMode =
+    raw === undefined || raw === ''
+      ? env.TBI_ACCESS_VIEW || env.TBI_ADMIN_DIR
+        ? 'full'
+        : 'off'
+      : raw === 'off' || raw === 'reports' || raw === 'full'
+        ? raw
+        : (() => {
+            throw new Error(`TBI_ADMIN_MODE must be off, reports or full, not ${raw}`);
+          })();
+  const ownerFile = env.TBI_OWNER_PRINCIPAL_FILE || null;
+  if (mode !== 'reports' && ownerFile)
+    throw new Error('TBI_OWNER_PRINCIPAL_FILE is for TBI_ADMIN_MODE=reports only');
+  if (mode !== 'full' && env.TBI_ADMIN_DIR)
+    throw new Error(`TBI_ADMIN_DIR is for TBI_ADMIN_MODE=full only (mode ${mode})`);
+  if (mode === 'reports') {
+    if (!ownerFile) throw new Error('TBI_ADMIN_MODE=reports needs TBI_OWNER_PRINCIPAL_FILE');
+    if (!ownerFile.startsWith('/'))
+      throw new Error('TBI_OWNER_PRINCIPAL_FILE must be an absolute path');
+  }
+  if (mode === 'full' && !env.TBI_ACCESS_VIEW)
+    throw new Error(
+      env.TBI_ADMIN_DIR
+        ? 'TBI_ADMIN_DIR needs TBI_ACCESS_VIEW'
+        : 'TBI_ADMIN_MODE=full needs TBI_ACCESS_VIEW',
+    );
+  return { mode, config: mode === 'full' ? adminConfigFromEnv(env) : null, ownerFile };
+}
+
 /** From the environment: `TBI_ADMIN_DIR` (absolute), or null (no admin API, no observations). */
 export function adminConfigFromEnv(env: NodeJS.ProcessEnv = process.env): AdminConfig | null {
   const dir = env.TBI_ADMIN_DIR;
@@ -399,7 +460,10 @@ export interface AdminLimits {
 }
 
 export interface AdminDeps {
-  access: AccessView;
+  /** `full` (default): the owner from the access view. `reports`: from the owner reference. */
+  mode?: 'reports' | 'full';
+  access: AccessView | null;
+  owner?: OwnerReference | null;
   limits?: AdminLimits;
   spool: AdminSpool | null;
   reports: ReportStore | null;
@@ -487,8 +551,8 @@ function readJson(req: IncomingMessage): Promise<Record<string, unknown>> {
 }
 
 /** A `forbidden` caused by the owner's Google id not being recorded yet says so. */
-function withHint(r: AdminResult, access: AccessView): AdminResult {
-  return r.code === 'forbidden' && access.current?.owner.principal === null
+function withHint(r: AdminResult, access: AccessView | null): AdminResult {
+  return r.code === 'forbidden' && access?.current?.owner.principal === null
     ? { ...r, ownerIdentityPending: true }
     : r;
 }
@@ -526,9 +590,24 @@ async function route(
 ): Promise<void> {
   const method = req.method ?? 'GET';
   if (!caller.principal && !caller.emailTag) throw new AdminError(401, 'identity_required');
-  const view = deps.access.current;
-  if (!view) throw new AdminError(503, 'access_view_unavailable');
-  if (!isOwner(view, caller.principal, caller.emailTag)) throw new AdminError(403, 'forbidden');
+  const [a, b] = parts;
+  const n = parts.length;
+  if (deps.mode === 'reports') {
+    // Sprint 23C: only the owner's own data exists here. Every other path is 404 for every
+    // identity, the owner included, decided before anything else (no 403/503 oracle), and no
+    // file outside the report store is touched.
+    const known =
+      (method === 'GET' && a === 'me' && n === 1) ||
+      ((method === 'GET' || method === 'DELETE') && a === 'reports' && n <= 2);
+    if (!known) throw new AdminError(404, 'not_found');
+    const owner = (await deps.owner?.principal()) ?? null;
+    if (!owner) throw new AdminError(503, 'owner_unavailable');
+    if (caller.principal !== owner) throw new AdminError(403, 'forbidden');
+  } else {
+    const view = deps.access?.current;
+    if (!view) throw new AdminError(503, 'access_view_unavailable');
+    if (!isOwner(view, caller.principal, caller.emailTag)) throw new AdminError(403, 'forbidden');
+  }
   const who = (caller.principal ?? caller.emailTag)!;
   const r = deps.rate.take(who as Principal, 'admin', deps.limits?.all ?? ADMIN_RATE);
   if (!r.ok) throw new Refusal('rate_limited', r.retryAfterMs);
@@ -542,8 +621,6 @@ async function route(
     );
     if (!w.ok) throw new Refusal('rate_limited', w.retryAfterMs);
   }
-  const [a, b] = parts;
-  const n = parts.length;
 
   // GET /admin/me: the UI asks whether to show the administration (the server decides).
   if (method === 'GET' && a === 'me' && n === 1) return send(res, 200, { owner: true });

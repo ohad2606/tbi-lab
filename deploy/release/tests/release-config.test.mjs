@@ -14,6 +14,7 @@ const ROOT = new URL('../../../', import.meta.url).pathname;
 const RC4 = join(ROOT, 'deploy/release/rc4.release.json');
 const RC4_REPORTS = join(ROOT, 'deploy/release/rc4-reports.release.json');
 const RC4_S23 = join(ROOT, 'deploy/release/rc4-s23.release.json');
+const RC4_S23_FEEDBACK = join(ROOT, 'deploy/release/rc4-s23-feedback.release.json');
 const TOOLS = { node: 'v24.21.0', npm: '11.19.0', trackedFiles: () => [] };
 const GIT = { node: 'v24.21.0', npm: '11.19.0' }; // the real tracked-file listing (git)
 
@@ -32,14 +33,24 @@ const reads = (names) => names.map((n) => `import.meta.env.${n};`).join('\n');
 const RC4_SETTINGS = Object.keys(loadProfile(RC4).vite);
 
 describe('release profile vs source', () => {
-  it('the rc4-s23 profile pins exactly the settings this source reads, Active Minutes absent', () => {
-    const s23 = Object.keys(loadProfile(RC4_S23).vite);
-    expect([...sourceViteSettings(ROOT).keys()].sort()).toEqual([...s23].sort());
-    expect(s23).toHaveLength(9);
-    expect(validate(loadProfile(RC4_S23), ROOT, GIT)).toEqual([]);
-    // Its own release name, within alertd v4's RELEASE pattern.
-    expect(loadProfile(RC4_S23).release).toBe('rc4-s23');
-    expect(loadProfile(RC4_S23).release).toMatch(/^[A-Za-z0-9][A-Za-z0-9._+~-]{0,63}$/);
+  it('the rc4-s23-feedback profile pins exactly the settings this source reads, Active Minutes absent', () => {
+    const p = loadProfile(RC4_S23_FEEDBACK);
+    const settings = Object.keys(p.vite);
+    expect([...sourceViteSettings(ROOT).keys()].sort()).toEqual([...settings].sort());
+    expect(settings).toHaveLength(9);
+    expect(validate(p, ROOT, GIT)).toEqual([]);
+    expect(p.release).toBe('rc4-s23-feedback');
+    expect(p.release).toMatch(/^[A-Za-z0-9][A-Za-z0-9._+~-]{0,63}$/);
+    // Feedback on, the administration reduced to the reports, no helper anywhere.
+    expect(p.vite.VITE_PROBLEM_REPORTS).toBe('1');
+    expect(p.vite.VITE_ADMIN_UI).toBe('reports');
+    expect(p.host).toEqual({
+      TBI_REPORTS_DIR: '/var/lib/@N@-runtime/state/reports',
+      TBI_ACCESS_VIEW: null,
+      TBI_ADMIN_DIR: null,
+      TBI_ADMIN_MODE: 'reports',
+      TBI_OWNER_PRINCIPAL_FILE: '/etc/@N@-owner/owner.principal',
+    });
   });
 
   it('release names: rcN or a named variant, nothing else', () => {
@@ -51,40 +62,102 @@ describe('release profile vs source', () => {
       expect(validate({ ...p, release: bad }, src, TOOLS)).toEqual([`release: bad name ${bad}`]);
   });
 
-  it('Sprint 23B: the RC4 profiles are unchanged; this source (one more setting) cannot be built with them', () => {
-    // rc4 and rc4-reports build the RC4 commit; on this tree they fail closed on the new switch.
+  it('Sprint 23B/23C: the RC4 and rc4-s23 profiles are unchanged and fail closed on this source', () => {
+    // rc4 and rc4-reports build the RC4 commit, rc4-s23 the s23b commit; on this tree each fails
+    // closed on the admin switches it does not pin.
     expect(RC4_SETTINGS).toHaveLength(8);
+    const pins = [
+      'TBI_ACCESS_VIEW',
+      'TBI_ADMIN_DIR',
+      'TBI_ADMIN_MODE',
+      'TBI_OWNER_PRINCIPAL_FILE',
+    ].map((k) => `host.${k} must be pinned (a value or null) with the admin switch`);
     for (const p of [RC4, RC4_REPORTS])
       expect(validate(loadProfile(p), ROOT, GIT)).toEqual([
         'unpinned setting VITE_ADMIN_UI (read by app/src/deployment.ts)',
-        'VITE_ADMIN_UI must be pinned to "0" or "1"',
+        'VITE_ADMIN_UI must be pinned to "off", "reports" or "full"',
+        ...pins,
       ]);
+    expect(validate(loadProfile(RC4_S23), ROOT, GIT)).toEqual([
+      'VITE_ADMIN_UI must be pinned to "off", "reports" or "full"',
+      ...pins.slice(2),
+    ]);
   });
 
-  it('Sprint 23B: the admin switch is explicit and needs the host directories', () => {
+  it('Sprint 23C: the app and host admin modes are pinned together; inconsistent combinations are refused', () => {
     const src = tree({ 'app/src/a.ts': reads([...RC4_SETTINGS, 'VITE_ADMIN_UI']) });
-    const p = loadProfile(RC4_S23);
-    expect(validate(p, src, TOOLS)).toEqual([]);
-    expect(validate({ ...p, vite: { ...p.vite, VITE_ADMIN_UI: null } }, src, TOOLS)).toContain(
-      'VITE_ADMIN_UI must be pinned to "0" or "1"',
+    const p = loadProfile(RC4_S23_FEEDBACK);
+    const v = (vite, host) =>
+      validate({ ...p, vite: { ...p.vite, ...vite }, host: { ...p.host, ...host } }, src, TOOLS);
+    expect(v({}, {})).toEqual([]);
+    // Every value of the app switch is spelled out.
+    for (const bad of [null, '1', '0', 'Reports', 'on'])
+      expect(v({ VITE_ADMIN_UI: bad }, {})).toContain(
+        'VITE_ADMIN_UI must be pinned to "off", "reports" or "full"',
+      );
+    // reports mode: never with the helper's directory or view; needs the owner file and reports.
+    expect(v({}, { TBI_ADMIN_DIR: '/var/lib/tbi-admin' })).toContain(
+      'host.TBI_ADMIN_DIR must be null when host.TBI_ADMIN_MODE is reports',
     );
-    const { TBI_ADMIN_DIR: _dir, ...noDir } = p.host;
-    expect(validate({ ...p, host: noDir }, src, TOOLS)).toContain(
-      'host.TBI_ADMIN_DIR must be an absolute path when the admin switch is on',
+    expect(v({}, { TBI_ACCESS_VIEW: '/var/lib/tbi-admin/view/access.json' })).toContain(
+      'host.TBI_ACCESS_VIEW must be null when host.TBI_ADMIN_MODE is reports (no helper)',
     );
-    expect(validate({ ...p, host: { ...p.host, TBI_ACCESS_VIEW: null } }, src, TOOLS)).toContain(
+    expect(v({}, { TBI_OWNER_PRINCIPAL_FILE: null })).toContain(
+      'host.TBI_OWNER_PRINCIPAL_FILE must be an absolute path when host.TBI_ADMIN_MODE is reports',
+    );
+    expect(v({}, { TBI_OWNER_PRINCIPAL_FILE: 'owner.principal' })).toContain(
+      'host.TBI_OWNER_PRINCIPAL_FILE must be null or an absolute path',
+    );
+    expect(v({ VITE_PROBLEM_REPORTS: '0' }, { TBI_REPORTS_DIR: null })).toContain(
+      'host.TBI_ADMIN_MODE reports needs VITE_PROBLEM_REPORTS "1"',
+    );
+    // The app's mode is the host's mode, both ways.
+    expect(v({ VITE_ADMIN_UI: 'full' }, {})).toContain(
+      'VITE_ADMIN_UI full needs host.TBI_ADMIN_MODE full, not reports',
+    );
+    expect(v({ VITE_ADMIN_UI: 'off' }, {})).toContain(
+      'VITE_ADMIN_UI off needs host.TBI_ADMIN_MODE off, not reports',
+    );
+    expect(v({}, { TBI_ADMIN_MODE: 'full' })).toContain(
+      'VITE_ADMIN_UI reports needs host.TBI_ADMIN_MODE reports, not full',
+    );
+    expect(v({}, { TBI_ADMIN_MODE: null })).toContain(
+      'host.TBI_ADMIN_MODE must be "off", "reports" or "full"',
+    );
+    // Every admin host switch pinned (a value or null), none other.
+    const { TBI_ACCESS_VIEW: _a, ...noView } = p.host;
+    expect(validate({ ...p, host: noView }, src, TOOLS)).toContain(
+      'host.TBI_ACCESS_VIEW must be pinned (a value or null) with the admin switch',
+    );
+    expect(v({}, { TBI_OTHER: '/x' })).toContain(
+      'host: must pin TBI_REPORTS_DIR, and optionally TBI_ACCESS_VIEW, TBI_ADMIN_DIR, TBI_ADMIN_MODE, TBI_OWNER_PRINCIPAL_FILE only',
+    );
+    // off: nothing of the administration on the host.
+    const off = { TBI_ADMIN_MODE: 'off', TBI_OWNER_PRINCIPAL_FILE: null };
+    expect(v({ VITE_ADMIN_UI: 'off' }, off)).toEqual([]);
+    expect(
+      v({ VITE_ADMIN_UI: 'off' }, { ...off, TBI_ADMIN_DIR: '/a', TBI_ACCESS_VIEW: '/v' }),
+    ).toContain('host.TBI_ADMIN_DIR must be null when host.TBI_ADMIN_MODE is off');
+    expect(v({ VITE_ADMIN_UI: 'off' }, { TBI_ADMIN_MODE: 'off' })).toContain(
+      'host.TBI_OWNER_PRINCIPAL_FILE is for host.TBI_ADMIN_MODE reports only',
+    );
+    // full: the access view and the admin directory, no owner file.
+    const full = {
+      TBI_ADMIN_MODE: 'full',
+      TBI_OWNER_PRINCIPAL_FILE: null,
+      TBI_ACCESS_VIEW: '/var/lib/tbi-admin/view/access.json',
+      TBI_ADMIN_DIR: '/var/lib/tbi-admin',
+    };
+    expect(v({ VITE_ADMIN_UI: 'full' }, full)).toEqual([]);
+    expect(v({ VITE_ADMIN_UI: 'full' }, { ...full, TBI_ADMIN_DIR: null })).toContain(
+      'host.TBI_ADMIN_MODE full needs host.TBI_ACCESS_VIEW and host.TBI_ADMIN_DIR',
+    );
+    expect(v({ VITE_ADMIN_UI: 'full' }, { ...full, TBI_ACCESS_VIEW: null })).toContain(
       'host.TBI_ADMIN_DIR needs host.TBI_ACCESS_VIEW',
     );
-    expect(
-      validate({ ...p, host: { ...p.host, TBI_ACCESS_VIEW: 'view/access.json' } }, src, TOOLS),
-    ).toContain('host.TBI_ACCESS_VIEW must be null or an absolute path');
-    expect(validate({ ...p, host: { ...p.host, TBI_OTHER: '/x' } }, src, TOOLS)).toContain(
-      'host: must pin TBI_REPORTS_DIR, and optionally TBI_ACCESS_VIEW and TBI_ADMIN_DIR only',
+    expect(v({ VITE_ADMIN_UI: 'full' }, { ...full, TBI_OWNER_PRINCIPAL_FILE: '/etc/x' })).toContain(
+      'host.TBI_OWNER_PRINCIPAL_FILE is for host.TBI_ADMIN_MODE reports only',
     );
-    // Off: no host directory needed.
-    expect(
-      validate({ ...p, vite: { ...p.vite, VITE_ADMIN_UI: '0' }, host: noDir }, src, TOOLS),
-    ).toEqual([]);
   });
 
   it('a setting the source reads but the profile does not pin is refused', () => {
@@ -233,6 +306,29 @@ describe('built frontend vs profile', () => {
     expect(checkDist(loadProfile(RC4), d).errors).toEqual([
       'index-x.js.map: carries a bundler asset placeholder (nondeterministic)',
     ]);
+  });
+
+  it('Sprint 23C: the administration switch is located exactly once and must be the pinned value', () => {
+    const admin = (v, name = 'Xt') =>
+      `function ${name}(e){let t=typeof e==\`string\`?e.trim():\`\`;return t===\`full\`?\`full\`:t===\`reports\`?\`reports\`:\`off\`}var Zt=${name}(${v});`;
+    const p = loadProfile(RC4_S23_FEEDBACK);
+    expect(checkDist(p, dist(sw('`1`') + admin('`reports`'))).errors).toEqual([]);
+    expect(checkDist(p, dist(sw('`1`') + admin('`full`'))).errors).toEqual([
+      'administration switch compiled as `full`, profile pins `reports`',
+    ]);
+    expect(checkDist(p, dist(sw('`1`') + admin('void 0'))).errors).toEqual([
+      'administration switch compiled as void 0, profile pins `reports`',
+    ]);
+    expect(checkDist(p, dist(sw('`1`'))).errors).toEqual([
+      'administration switch: found 0 compiled switches, expected 1',
+    ]);
+    expect(
+      checkDist(p, dist(sw('`1`') + admin('`reports`') + admin('`full`', 'Yt'))).errors,
+    ).toEqual(['administration switch: found 2 compiled switches, expected 1']);
+    // Neither switch is taken for the other.
+    const only = checkDist(p, dist(admin('`reports`'))).errors;
+    expect(only).toContain('Report a Problem switch: found 0 compiled switches, expected 1');
+    expect(only.filter((e) => e.startsWith('administration'))).toEqual([]);
   });
 
   it('refuses Active Minutes modules, excluded settings and uncompiled settings in the bundle', () => {

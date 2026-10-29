@@ -18,14 +18,15 @@ export function StatusActions() {
   const admin = useRef<HTMLButtonElement>(null);
   const [owner, setOwner] = useState(false);
   useEffect(() => {
-    if (!ADMIN_UI) return;
+    if (ADMIN_UI === 'off') return;
     let live = true;
     void isOwner((input, init) => gateFetch(input, init)).then((o) => live && setOwner(o));
     return () => {
       live = false;
     };
   }, []);
-  if (!PROBLEM_REPORTS && !(ADMIN_UI && owner)) return null;
+  const adminEntry = ADMIN_UI !== 'off' && owner;
+  if (!PROBLEM_REPORTS && !adminEntry) return null;
   return (
     <div class="statusbar-actions">
       {PROBLEM_REPORTS && (
@@ -43,7 +44,7 @@ export function StatusActions() {
           <span>{t('status.feedback')}</span>
         </button>
       )}
-      {ADMIN_UI && owner && (
+      {adminEntry && (
         <button
           ref={admin}
           type="button"

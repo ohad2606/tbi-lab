@@ -16,6 +16,8 @@
  *   POST   /reports                         Sprint 14 problem report (reportProtocol.ts)
  *                                           -> 201 { id } once durably stored; 503 when the
  *                                           deployment has not enabled reports
+ *   /admin/...                              Sprint 23B/23C owner routes (admin.ts), per
+ *                                           TBI_ADMIN_MODE: off (404), reports, full
  *
  * Every session route needs the gate-asserted identity of the session's owner and the session's
  * token in `Authorization: Bearer <token>` (never in the URL). Unknown sessions, wrong tokens and
@@ -29,7 +31,14 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { decideAccess, emailOf, type AccessView } from '../identity/access.js';
 import type { IdentityConfig, Principal } from '../identity/principal.js';
-import { handleAdmin, type AdminLimits, type AdminSpool, type IdentityObserver } from './admin.js';
+import {
+  handleAdmin,
+  type AdminLimits,
+  type AdminMode,
+  type AdminSpool,
+  type IdentityObserver,
+} from './admin.js';
+import type { OwnerReference } from './owner.js';
 import { MemoryRate } from '../policy/rate.js';
 import { Refusal, admissionEvent, sendRefusal } from '../policy/refusal.js';
 import type { SessionHost } from './host.js';
@@ -189,6 +198,13 @@ export interface HttpOptions {
   observer?: IdentityObserver | null;
   /** Admin rate limits (tests; default ADMIN_RATE / ADMIN_WRITE_RATE). */
   adminLimits?: AdminLimits;
+  /**
+   * Sprint 23C (TBI_ADMIN_MODE): what `/admin` serves. Default: `full` with an access view, `off`
+   * without one (the Sprint 23B rule). `reports` uses `owner`, and never the spool or observer.
+   */
+  adminMode?: AdminMode;
+  /** `reports` mode: the owner reference (TBI_OWNER_PRINCIPAL_FILE). */
+  owner?: OwnerReference | null;
 }
 
 /**
@@ -205,6 +221,11 @@ export function createHttpServer(
 ): Server {
   const requests = new MemoryRate();
   const adminRate = new MemoryRate();
+  const adminMode: AdminMode = opts.adminMode ?? (opts.access ? 'full' : 'off');
+  // Sprint 23C: the feedback-only mode writes nothing outside the report store, whatever it is
+  // handed: no spool, no identity observations.
+  if (adminMode !== 'full') opts = { ...opts, admin: null, observer: null };
+  opts = { ...opts, adminMode };
   return createServer((req, res) => {
     void handle(host, identity, requests, adminRate, reports, opts, req, res).catch(
       (e: unknown) => {
@@ -269,7 +290,8 @@ async function handle(
       return sendRefusal(res, new Refusal('rate_limited', r.retryAfterMs));
     }
   }
-  if (access && parts[0] === 'admin')
+  const adminMode = opts.adminMode ?? 'off';
+  if (adminMode !== 'off' && parts[0] === 'admin')
     return handleAdmin(
       req,
       res,
@@ -277,7 +299,9 @@ async function handle(
       parts.slice(1),
       { principal: decision.principal, emailTag: decision.emailTag },
       {
+        mode: adminMode,
         access,
+        owner: opts.owner ?? null,
         spool: opts.admin ?? null,
         reports,
         capacity: () => host.capacity(),

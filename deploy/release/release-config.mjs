@@ -17,8 +17,10 @@
  * - Excluded features (Active Minutes for RC4) must be absent from the source, not merely off.
  * - Report a Problem: VITE_PROBLEM_REPORTS is "0" or "1", and the host switch (TBI_REPORTS_DIR)
  *   is null exactly when the app switch is "0".
- * - Sprint 23B administration: VITE_ADMIN_UI is "0" or "1" when the source reads it; "1" needs the
- *   host's TBI_ADMIN_DIR, which needs TBI_ACCESS_VIEW (both optional host switches otherwise).
+ * - Sprint 23C administration: when the source reads VITE_ADMIN_UI, it is "off", "reports" or "full"
+ *   and equals the host's TBI_ADMIN_MODE; every admin host switch is pinned (a value or null).
+ *   `reports` (feedback only): an owner principal file, reports on, and no access view or admin
+ *   directory. `full`: the access view and the admin directory, no owner file.
  * - The external feedback form stays off (Sprint 13 H7: no build sets it without owner approval).
  * - Node and npm are the pinned versions; no tracked .env file can add settings behind the
  *   profile's back.
@@ -36,6 +38,15 @@ const SCAN_ROOTS = [
   'app/buildInfo.config.ts',
   'packages',
 ];
+/** Host switches a profile may pin; TBI_REPORTS_DIR first (always pinned). */
+const HOST_KEYS = [
+  'TBI_REPORTS_DIR',
+  'TBI_ACCESS_VIEW',
+  'TBI_ADMIN_DIR',
+  'TBI_ADMIN_MODE',
+  'TBI_OWNER_PRINCIPAL_FILE',
+];
+const ADMIN_MODES = ['off', 'reports', 'full'];
 const SCAN_EXT = /\.(ts|tsx|mts|js|mjs|html)$/;
 const VITE_NAME = /\bVITE_[A-Z0-9_]+\b/g;
 const HEX40 = /^[0-9a-f]{40}$/;
@@ -125,14 +136,11 @@ export function validate(profile, srcdir, tools = currentTools()) {
   const reports = pinned.VITE_PROBLEM_REPORTS;
   if (reports !== '0' && reports !== '1') err('VITE_PROBLEM_REPORTS must be pinned to "0" or "1"');
   const host = profile.host ?? {};
-  // Sprint 23B: the access view and the admin directory are optional host switches (RC4 profiles
-  // name neither); TBI_REPORTS_DIR is always pinned.
+  // Sprint 23B/23C: the admin host switches are optional for a source without the admin UI (the
+  // RC4 profiles name none of them); TBI_REPORTS_DIR is always pinned.
   const hostKeys = Object.keys(host);
-  if (
-    !hostKeys.includes('TBI_REPORTS_DIR') ||
-    hostKeys.some((k) => !['TBI_REPORTS_DIR', 'TBI_ACCESS_VIEW', 'TBI_ADMIN_DIR'].includes(k))
-  )
-    err('host: must pin TBI_REPORTS_DIR, and optionally TBI_ACCESS_VIEW and TBI_ADMIN_DIR only');
+  if (!hostKeys.includes('TBI_REPORTS_DIR') || hostKeys.some((k) => !HOST_KEYS.includes(k)))
+    err(`host: must pin TBI_REPORTS_DIR, and optionally ${HOST_KEYS.slice(1).join(', ')} only`);
   if (reports === '0' && host.TBI_REPORTS_DIR !== null)
     err('host.TBI_REPORTS_DIR must be null when the app switch is off');
   if (
@@ -141,19 +149,45 @@ export function validate(profile, srcdir, tools = currentTools()) {
   )
     err('host.TBI_REPORTS_DIR must be an absolute path when the app switch is on');
 
-  // Sprint 23B administration: the app switch is explicit, and when on, the host serves it
-  // (the admin directory needs the access view: the owner is decided from it).
   const abs = (v) => typeof v === 'string' && v.startsWith('/');
-  for (const k of ['TBI_ACCESS_VIEW', 'TBI_ADMIN_DIR'])
+  for (const k of ['TBI_ACCESS_VIEW', 'TBI_ADMIN_DIR', 'TBI_OWNER_PRINCIPAL_FILE'])
     if (k in host && host[k] !== null && !abs(host[k]))
       err(`host.${k} must be null or an absolute path`);
   if (abs(host.TBI_ADMIN_DIR) && !abs(host.TBI_ACCESS_VIEW))
     err('host.TBI_ADMIN_DIR needs host.TBI_ACCESS_VIEW');
   if (inSource.has('VITE_ADMIN_UI')) {
-    const admin = pinned.VITE_ADMIN_UI;
-    if (admin !== '0' && admin !== '1') err('VITE_ADMIN_UI must be pinned to "0" or "1"');
-    if (admin === '1' && !abs(host.TBI_ADMIN_DIR))
-      err('host.TBI_ADMIN_DIR must be an absolute path when the admin switch is on');
+    // Sprint 23C: the app's and the host's admin modes are pinned, explicitly and together; every
+    // admin host switch is pinned (a value or null), and only the combinations below exist.
+    const ui = pinned.VITE_ADMIN_UI;
+    const mode = host.TBI_ADMIN_MODE;
+    if (!ADMIN_MODES.includes(ui))
+      err('VITE_ADMIN_UI must be pinned to "off", "reports" or "full"');
+    for (const k of HOST_KEYS)
+      if (!(k in host)) err(`host.${k} must be pinned (a value or null) with the admin switch`);
+    if ('TBI_ADMIN_MODE' in host && !ADMIN_MODES.includes(mode))
+      err('host.TBI_ADMIN_MODE must be "off", "reports" or "full"');
+    if (ADMIN_MODES.includes(ui) && ADMIN_MODES.includes(mode) && ui !== mode)
+      err(`VITE_ADMIN_UI ${ui} needs host.TBI_ADMIN_MODE ${ui}, not ${mode}`);
+    if (mode === 'off' || mode === 'reports')
+      for (const k of ['TBI_ADMIN_DIR'])
+        if (host[k] !== null) err(`host.${k} must be null when host.TBI_ADMIN_MODE is ${mode}`);
+    if (
+      mode !== 'reports' &&
+      'TBI_OWNER_PRINCIPAL_FILE' in host &&
+      host.TBI_OWNER_PRINCIPAL_FILE !== null
+    )
+      err('host.TBI_OWNER_PRINCIPAL_FILE is for host.TBI_ADMIN_MODE reports only');
+    if (mode === 'reports') {
+      if (host.TBI_ACCESS_VIEW !== null)
+        err('host.TBI_ACCESS_VIEW must be null when host.TBI_ADMIN_MODE is reports (no helper)');
+      if (!abs(host.TBI_OWNER_PRINCIPAL_FILE))
+        err(
+          'host.TBI_OWNER_PRINCIPAL_FILE must be an absolute path when host.TBI_ADMIN_MODE is reports',
+        );
+      if (reports !== '1') err('host.TBI_ADMIN_MODE reports needs VITE_PROBLEM_REPORTS "1"');
+    }
+    if (mode === 'full' && !(abs(host.TBI_ACCESS_VIEW) && abs(host.TBI_ADMIN_DIR)))
+      err('host.TBI_ADMIN_MODE full needs host.TBI_ACCESS_VIEW and host.TBI_ADMIN_DIR');
   }
 
   if ('VITE_FEEDBACK_URL' in pinned && pinned.VITE_FEEDBACK_URL !== null)

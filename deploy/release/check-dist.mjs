@@ -10,6 +10,8 @@
  * - Every VITE_* reference was compiled to its pinned value: none survives in the output.
  * - Report a Problem: the compiled switch is the profile's value (fails closed when it cannot be
  *   located, e.g. after a minifier change).
+ * - Sprint 23C, the administration switch (VITE_ADMIN_UI): likewise, by its own parser's form,
+ *   found exactly once and compiled to the profile's value.
  * - Every pinned value is present in the bundle.
  * - No source map carries a bundler asset placeholder (G2: assigned in a nondeterministic order).
  */
@@ -20,6 +22,13 @@ import { loadProfile } from './release-config.mjs';
 /** parseEnabled (app/src/deployment.ts) applied to the build-time value, as the minifier emits it. */
 const SWITCH =
   /function (\w+)\((\w+)\)\{return typeof \2==`string`&&\2\.trim\(\)===`1`\}var \w+=\1\((`[^`]*`|void 0)\)/g;
+
+/**
+ * Sprint 23C: parseAdminUi (app/src/deployment.ts) applied to VITE_ADMIN_UI, as the minifier emits
+ * it. Its own form, distinct from the Report a Problem switch: each is located exactly once.
+ */
+const ADMIN_SWITCH =
+  /function (\w+)\((\w+)\)\{let (\w+)=typeof \2==`string`\?\2\.trim\(\):``;return \3===`full`\?`full`:\3===`reports`\?`reports`:`off`\}var \w+=\1\((`[^`]*`|void 0)\)/g;
 
 export function checkDist(profile, dist) {
   const errors = [];
@@ -54,9 +63,20 @@ export function checkDist(profile, dist) {
   else if (found[0] !== want)
     errors.push(`Report a Problem switch compiled as ${found[0]}, profile pins ${want}`);
 
-  // The switch is checked above, where it is compiled; every other value must appear verbatim.
+  // Sprint 23C: the administration switch, where the profile pins it (every s23c profile does).
+  if ('VITE_ADMIN_UI' in profile.vite) {
+    const admin = [...all.matchAll(ADMIN_SWITCH)].map((m) => m[4]);
+    const pinned = profile.vite.VITE_ADMIN_UI;
+    const wantAdmin = pinned === null ? 'void 0' : `\`${pinned}\``;
+    if (admin.length !== 1)
+      errors.push(`administration switch: found ${admin.length} compiled switches, expected 1`);
+    else if (admin[0] !== wantAdmin)
+      errors.push(`administration switch compiled as ${admin[0]}, profile pins ${wantAdmin}`);
+  }
+
+  // The switches are checked above, where they are compiled; every other value must appear verbatim.
   for (const [name, v] of Object.entries(profile.vite))
-    if (name === 'VITE_PROBLEM_REPORTS') continue;
+    if (name === 'VITE_PROBLEM_REPORTS' || name === 'VITE_ADMIN_UI') continue;
     else if (v !== null && !all.includes(`\`${v}\``) && !all.includes(`"${v}"`))
       errors.push(`${name}: pinned value ${v} not found in the bundle`);
   return { errors, files: assets.length };
