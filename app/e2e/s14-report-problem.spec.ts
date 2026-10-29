@@ -83,9 +83,14 @@ test('keyboard: focus on open, Tab stays inside, Escape closes and returns focus
     'Your project, circuit, code and screenshots are not sent',
   );
 
-  // Focus trap: Shift+Tab from the first control wraps to the last, Tab wraps back.
+  // Focus trap: Shift+Tab from the first control wraps to the last, Tab wraps back. Sprint 23B:
+  // the kind selector (a radio group, focused on its checked kind) now comes before the text.
+  await page.keyboard.press('Shift+Tab');
+  await expect(page.getByTestId('report-kind-bug')).toBeFocused();
   await page.keyboard.press('Shift+Tab');
   await expect(page.getByTestId('report-send')).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(page.getByTestId('report-kind-bug')).toBeFocused();
   await page.keyboard.press('Tab');
   await expect(field).toBeFocused();
   for (let i = 0; i < 12; i++) {
@@ -180,8 +185,12 @@ test('the confirmation and its id appear only after the server stored the report
       'blocking',
       'browser',
       'category',
+      // Sprint 23B: the kind, a component name (none) and the optional technical context.
+      'component',
+      'context',
       'description',
       'id',
+      'kind',
       'locale',
       'principal',
       'receivedAt',
@@ -191,6 +200,11 @@ test('the confirmation and its id appear only after the server stored the report
       'view',
     ].sort(),
   );
+
+  // The context names the project by id only (no contents).
+  const ctx = (r as unknown as { context: Record<string, unknown> }).context;
+  expect(Object.keys(ctx).every((k) => ['runtime', 'device', 'projectId'].includes(k))).toBe(true);
+  expect(ctx.projectId).toMatch(/^prj_[A-Za-z0-9]+$/);
 
   await page.getByTestId('report-close').click();
   await expect(page.getByTestId('report-dialog')).toHaveCount(0);

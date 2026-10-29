@@ -84,6 +84,9 @@ class FakeSession {
   readonly tokenHash = createHash('sha256').update(this.token).digest('hex');
   readonly log = new EventLog(capacity);
   streams = 0;
+  /** Sprint 23B: closers of the attached event streams (the real HostSession has them too). */
+  readonly streamClosers = new Set<() => void>();
+  emailTag: string | null = null;
   lastActivity = performance.now();
   state: SessionState = 'creating';
   reason: string | null = null;
