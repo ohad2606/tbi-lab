@@ -57,6 +57,7 @@ interface ViewSpec {
   principals?: Principal[];
   emailTags?: string[];
   revoked?: Principal[];
+  revokedTags?: string[];
 }
 const accessJson = (s: ViewSpec = {}) =>
   JSON.stringify({
@@ -71,7 +72,10 @@ const accessJson = (s: ViewSpec = {}) =>
       principals: s.principals ?? [P(OWNER), P(TESTER), P(OTHER)],
       emailTags: s.emailTags ?? [tag(OWNER.email), tag(TESTER.email), tag(PENDING.email)],
     },
-    revoked: { principals: s.revoked ?? [P(REVOKED)], emailTags: [tag(REVOKED.email)] },
+    revoked: {
+      principals: s.revoked ?? [P(REVOKED)],
+      emailTags: s.revokedTags ?? [tag(REVOKED.email)],
+    },
   });
 
 const accountsJson = () =>
@@ -322,6 +326,22 @@ describe('access enforcement (TBI_ACCESS_VIEW)', () => {
     expect(n.status).toBe(401);
   });
 
+  it('deny wins, both ways: a revoked principal with an authorized address, an authorized principal with a revoked address', async () => {
+    const s = await serve();
+    // REVOKED's principal is revoked; its gate sends an authorized address (TESTER's).
+    const r1 = await call(await s.gate(REVOKED, TESTER.email), `/sessions/${'0'.repeat(32)}`);
+    expect(r1.status).toBe(403);
+    expect(r1.body).toEqual({ error: 'account_disabled' });
+    // TESTER's principal is authorized; its gate sends a revoked address.
+    const r2 = await call(await s.gate(TESTER, REVOKED.email), `/sessions/${'0'.repeat(32)}`);
+    expect(r2.status).toBe(403);
+    // The owner is not an exception either.
+    s.writeView({ revokedTags: [tag(OWNER.email)] });
+    s.access.reload();
+    expect((await call(await s.gate(OWNER), '/admin/me')).status).toBe(403);
+    expect((await call(await s.gate(OWNER, null), '/admin/me')).status).toBe(200);
+  });
+
   it('reloads: an account removed from the view is refused at once (no restart)', async () => {
     const s = await serve();
     const base = await s.gate(TESTER);
@@ -431,6 +451,41 @@ describe('revocation of live sessions', () => {
     expect(other.session.state).toBe('running');
     expect(lines).toHaveLength(2);
     await host.terminate(other.session);
+  });
+});
+
+describe('revocation follows deny-wins', () => {
+  it('a live session ends when its principal is revoked (address still authorized) or its address is revoked (principal still authorized)', async () => {
+    const { host, art } = fakeHost('normal');
+    cleanup.push(() => host.shutdown());
+    const s = await serve({ host });
+    revokeOnReload(host, s.access, () => undefined);
+    const start = async (u: { sub: string; email: string }) => {
+      const base = await s.gate(u);
+      const created = await call(
+        base,
+        '/sessions',
+        mutation(base, 'POST', createRequest(art.sha256, { ticket: ticketFor(art.sha256, P(u)) })),
+      );
+      expect(created.status).toBe(201);
+      const { sessionId, token } = created.body as { sessionId: string; token: string };
+      const found = host.get(sessionId, token, P(u));
+      if (!found.ok) throw new Error('no session');
+      return found.value;
+    };
+    const tester = await start(TESTER);
+    const other = await start(OTHER);
+    // TESTER: principal revoked, its address still in the authorized tags.
+    s.writeView({ revoked: [P(TESTER)] });
+    s.access.reload();
+    await waitState(tester, 'ended');
+    expect(tester.status().reason).toBe('account_disabled');
+    expect(other.state).toBe('ready');
+    // OTHER: principal still authorized, its address now revoked.
+    s.writeView({ revoked: [P(TESTER)], revokedTags: [tag(OTHER.email)] });
+    s.access.reload();
+    await waitState(other, 'ended');
+    expect(other.status().reason).toBe('account_disabled');
   });
 });
 

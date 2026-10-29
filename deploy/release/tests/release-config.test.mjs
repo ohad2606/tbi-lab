@@ -37,6 +37,18 @@ describe('release profile vs source', () => {
     expect([...sourceViteSettings(ROOT).keys()].sort()).toEqual([...s23].sort());
     expect(s23).toHaveLength(9);
     expect(validate(loadProfile(RC4_S23), ROOT, GIT)).toEqual([]);
+    // Its own release name, within alertd v4's RELEASE pattern.
+    expect(loadProfile(RC4_S23).release).toBe('rc4-s23');
+    expect(loadProfile(RC4_S23).release).toMatch(/^[A-Za-z0-9][A-Za-z0-9._+~-]{0,63}$/);
+  });
+
+  it('release names: rcN or a named variant, nothing else', () => {
+    const src = tree({ 'app/src/a.ts': reads(RC4_SETTINGS) });
+    const p = loadProfile(RC4);
+    for (const ok of ['rc4', 'rc4-s23', 'rc5-a-b'])
+      expect(validate({ ...p, release: ok }, src, TOOLS)).toEqual([]);
+    for (const bad of ['RC4', 'rc4_s23', 'rc4-', 'release', 'rc4-S23', `rc4-${'a'.repeat(70)}`])
+      expect(validate({ ...p, release: bad }, src, TOOLS)).toEqual([`release: bad name ${bad}`]);
   });
 
   it('Sprint 23B: the RC4 profiles are unchanged; this source (one more setting) cannot be built with them', () => {
@@ -60,9 +72,9 @@ describe('release profile vs source', () => {
     expect(validate({ ...p, host: noDir }, src, TOOLS)).toContain(
       'host.TBI_ADMIN_DIR must be an absolute path when the admin switch is on',
     );
-    expect(
-      validate({ ...p, host: { ...p.host, TBI_ACCESS_VIEW: null } }, src, TOOLS),
-    ).toContain('host.TBI_ADMIN_DIR needs host.TBI_ACCESS_VIEW');
+    expect(validate({ ...p, host: { ...p.host, TBI_ACCESS_VIEW: null } }, src, TOOLS)).toContain(
+      'host.TBI_ADMIN_DIR needs host.TBI_ACCESS_VIEW',
+    );
     expect(
       validate({ ...p, host: { ...p.host, TBI_ACCESS_VIEW: 'view/access.json' } }, src, TOOLS),
     ).toContain('host.TBI_ACCESS_VIEW must be null or an absolute path');

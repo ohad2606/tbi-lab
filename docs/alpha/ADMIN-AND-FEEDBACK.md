@@ -22,18 +22,28 @@ Release profiles (`deploy/release/`):
 - `rc4.release.json`, `rc4-reports.release.json`: **unchanged** RC4 profiles. They build the RC4
   commit. On this tree they fail closed (`unpinned setting VITE_ADMIN_UI`), by design: a profile
   pins every setting its source reads.
-- `rc4-s23.release.json`: feedback and administration ON, with the host switches
+- `rc4-s23.release.json` (`"release": "rc4-s23"`): feedback and administration ON, with the host switches
   `TBI_REPORTS_DIR`, `TBI_ACCESS_VIEW=/var/lib/tbi-admin/view/access.json` and
   `TBI_ADMIN_DIR=/var/lib/tbi-admin`. The validator refuses `VITE_ADMIN_UI=1` without
   `TBI_ADMIN_DIR`, and `TBI_ADMIN_DIR` without `TBI_ACCESS_VIEW`.
   G2 on a packaging host: `TBI_PROFILES=rc4-s23 deploy/release/verify-on-packaging-host.sh …`.
 
 Units: `deploy/dev-lab/s8/tbi-session-host.service.in` and `tbi-build.service.in` carry the
-variables commented out; `install.sh` uncomments them with `TBI_S23_ADMIN=1` (and refuses unless
-the helper's directories exist). The only sandbox change is
-`ReadWritePaths=-/var/lib/tbi-admin/spool -/var/lib/tbi-admin/observations` for the Session Host.
-The build service only reads the view. The services never gain write access to the gate's
-allowlist or the tester registry.
+Sprint 23B lines commented out; `install.sh` uncomments them with `TBI_S23_ADMIN=1`, and refuses,
+before any change, unless the groups `tbi-admin-view` and `tbi-admin-spool` and the helper's
+directories exist (the helper's installer creates them; this script never does).
+
+| Unit | Added when enabled |
+|---|---|
+| Session Host | `SupplementaryGroups=tbi-admin-view tbi-admin-spool`, `TBI_ACCESS_VIEW`, `TBI_ADMIN_DIR`, `ReadOnlyPaths=-/var/lib/tbi-admin/view -/var/lib/tbi-admin/results`, `ReadWritePaths=-/var/lib/tbi-admin/spool -/var/lib/tbi-admin/observations` |
+| build service | `SupplementaryGroups=tbi-admin-view`, `TBI_ACCESS_VIEW`, `ReadOnlyPaths=-/var/lib/tbi-admin/view` |
+
+`SupplementaryGroups=` is a list setting: the extra line extends the unit's existing groups; the
+service users keep their primary groups. Group roles: `tbi-admin-view` (both services) reads
+`view/` (`root:tbi-admin-view 0750`) and `view/access.json` (`0640`); `tbi-admin-spool` (Session
+Host only) writes `spool/` and `observations/` (`0730`), reads `results/` (`0750`) and
+`view/accounts.json` (`root:tbi-admin-spool 0640`). The services never gain write access to the
+gate's allowlist or the tester registry.
 
 ## Trust model and access control policy
 
@@ -45,15 +55,17 @@ allowlist or the tester registry.
 - **Email tag**: `e_` + base64url(HMAC-SHA256(identity key, `email|` + lower(trim(address))))[0..26),
   from `X-Forwarded-Email`. Only tags are compared; the address itself is never logged, stored or
   returned by the services. A header that is not exactly one plain address counts as none.
-- **Rule** (when `TBI_ACCESS_VIEW` is set): every request except the health checks needs its
-  principal in `authorized.principals` or its email tag in `authorized.emailTags`. Otherwise
+- **Rule** (when `TBI_ACCESS_VIEW` is set), for every request except the health checks:
+  **deny wins**: a principal in `revoked.principals`, or an email tag in `revoked.emailTags`, is
+  refused even if the other identifier is authorized; otherwise the principal must be in
+  `authorized.principals` or the email tag in `authorized.emailTags`. Refusal:
   `403 {"error":"account_disabled"}`. No identity at all: `401`. A missing, unreadable or invalid
   view: `503 {"error":"access_view_unavailable"}` (fail closed). The view is re-read on every
   change of its file (a directory watch, so an atomic rename is seen) and at least every 10 s
   (default 5 s).
 - **Revocation of live work**: on every successful re-read, the Session Host ends each live
-  session whose creator is no longer authorized (by principal, or by the email tag recorded when
-  the session was created) with end reason `account_disabled`, and closes its event streams.
+  session whose creator is no longer authorized by the same rule (deny wins; principal, and the
+  email tag recorded when the session was created) with end reason `account_disabled`, and closes its event streams.
   Other accounts' sessions are never touched. One journal line with the count only:
   `{"event":"access_revoked","sessions":N}`. The app tells the tester the session was stopped
   because access ended. A view that becomes unreadable refuses new requests but does not end
@@ -103,12 +115,12 @@ specified. A deployment that sets `skip_auth_strip_headers = false`, or that ena
 ## Files (generic layout `/var/lib/tbi-admin`)
 
 ```
-/var/lib/tbi-admin/
-  spool/<id>.json          Session Host -> helper   requests
-  results/<id>.json        helper -> Session Host   results
-  view/access.json         helper -> both services  authorization view
-  view/accounts.json       helper -> Session Host   the owner's masked list
-  observations/<id>.json   Session Host -> helper   gate identities
+/var/lib/tbi-admin/                                root:root 0755
+  spool/<id>.json          Session Host -> helper   root:tbi-admin-spool 0730   requests
+  results/<id>.json        helper -> Session Host   root:tbi-admin-spool 0750   results
+  view/access.json         helper -> both services  root:tbi-admin-view  0640   authorization view
+  view/accounts.json       helper -> Session Host   root:tbi-admin-spool 0640   the owner's masked list
+  observations/<id>.json   Session Host -> helper   root:tbi-admin-spool 0730   gate identities
 ```
 
 Ids: 26 Crockford base32 characters (48-bit milliseconds, then 80 random bits). Every file the

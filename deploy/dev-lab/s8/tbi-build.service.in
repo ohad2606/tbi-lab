@@ -34,9 +34,12 @@ Environment=TBI_POLICY_FILE=%d/policy.json
 LoadCredential=runtime.json:/etc/@N@/runtime.json
 Environment=TBI_RUNTIME_JSON=%d/runtime.json
 Environment=TBI_RUNTIME_HEALTH=unix:/run/@N@-runtime/api.sock
-# Sprint 23B access enforcement (the same view as the Session Host; read only, so no sandbox
-# change). OFF while unset. Enabled by install.sh TBI_S23_ADMIN=1.
+# Sprint 23B access enforcement (the same view as the Session Host, read only: the view
+# directory is root:tbi-admin-view 0750, nothing else of /var/lib/tbi-admin is readable).
+# OFF while unset. Enabled by install.sh TBI_S23_ADMIN=1.
+#SupplementaryGroups=tbi-admin-view
 #Environment=TBI_ACCESS_VIEW=/var/lib/tbi-admin/view/access.json
+#ReadOnlyPaths=-/var/lib/tbi-admin/view
 RuntimeDirectory=@N@-build
 RuntimeDirectoryMode=0755
 StateDirectory=@N@-build/jobs @N@-build/state

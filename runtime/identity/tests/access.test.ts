@@ -105,6 +105,27 @@ describe('the view', () => {
     expect(nullOwner?.owner.principal).toBeNull();
   });
 
+  it('deny wins: a revoked principal or a revoked email tag is refused whatever the other says', () => {
+    const v = parseAccessView(
+      viewJson({
+        authorized: {
+          principals: [A, B],
+          emailTags: [tag('a@example.invalid'), tag('b@example.invalid')],
+        },
+        revoked: { principals: [A], emailTags: [tag('b@example.invalid')] },
+      }),
+    ) as AccessViewData;
+    // Revoked principal, authorized tag.
+    expect(isAuthorized(v, A, tag('a@example.invalid'))).toBe(false);
+    expect(isAuthorized(v, A, null)).toBe(false);
+    // Authorized principal, revoked tag.
+    expect(isAuthorized(v, B, tag('b@example.invalid'))).toBe(false);
+    expect(isAuthorized(v, null, tag('b@example.invalid'))).toBe(false);
+    // Neither revoked: allowed.
+    expect(isAuthorized(v, B, null)).toBe(true);
+    expect(isAuthorized(v, B, tag('a@example.invalid'))).toBe(true);
+  });
+
   it('authorizes by principal or by email tag; the owner by principal, by tag only while none is recorded', () => {
     const v = parseAccessView(
       viewJson({ authorized: { principals: [A], emailTags: [tag('pending@example.invalid')] } }),

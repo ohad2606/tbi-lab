@@ -35,8 +35,13 @@ Environment=TBI_HOST_STATE=/var/lib/@N@-runtime/state
 # ADMIN-AND-FEEDBACK.md): OFF while unset (RC4 behaviour). The root helper's installer creates
 # /var/lib/tbi-admin; the host only writes requests and identity observations there and reads
 # the views and results. Enabled by install.sh TBI_S23_ADMIN=1 (or uncomment all three).
+# Groups (the helper's installer creates them): tbi-admin-view reads the views, tbi-admin-spool
+# writes requests and observations and reads results. Added to the user's own groups (a list
+# setting: this line extends SupplementaryGroups above).
+#SupplementaryGroups=tbi-admin-view tbi-admin-spool
 #Environment=TBI_ACCESS_VIEW=/var/lib/tbi-admin/view/access.json
 #Environment=TBI_ADMIN_DIR=/var/lib/tbi-admin
+#ReadOnlyPaths=-/var/lib/tbi-admin/view -/var/lib/tbi-admin/results
 #ReadWritePaths=-/var/lib/tbi-admin/spool -/var/lib/tbi-admin/observations
 # Live-session ceiling of this host (install.sh TBI_S8_HOST_MAX_SESSIONS, at least the policy's limit).
 Environment=TBI_HOST_MAX_SESSIONS=@HOST_MAX_SESSIONS@

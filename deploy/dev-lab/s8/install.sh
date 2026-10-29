@@ -61,6 +61,9 @@ fi
 S23_ADMIN="${TBI_S23_ADMIN:-0}"
 [[ "$S23_ADMIN" =~ ^[01]$ ]] || { echo "TBI_S23_ADMIN must be 0 or 1" >&2; exit 1; }
 if [[ "$S23_ADMIN" == 1 && "$uninstall" != "--uninstall" ]]; then
+  for g in tbi-admin-view tbi-admin-spool; do
+    getent group "$g" >/dev/null || { echo "refused: group $g is missing (install the admin helper first)" >&2; exit 1; }
+  done
   for d in /var/lib/tbi-admin/view /var/lib/tbi-admin/spool /var/lib/tbi-admin/results /var/lib/tbi-admin/observations; do
     sudo test -d "$d" || { echo "refused: $d is missing (install the admin helper first)" >&2; exit 1; }
   done
@@ -174,7 +177,8 @@ render() {
     -e "s|@HOST_MAX_SESSIONS@|$HOST_MAX|g" "$1" |
     if [[ "$S23_ADMIN" == 1 ]]; then
       sed -e 's|^#\(Environment=TBI_ACCESS_VIEW=\)|\1|' -e 's|^#\(Environment=TBI_ADMIN_DIR=\)|\1|' \
-        -e 's|^#\(ReadWritePaths=-/var/lib/tbi-admin/\)|\1|'
+        -e 's|^#\(ReadWritePaths=-/var/lib/tbi-admin/\)|\1|' -e 's|^#\(ReadOnlyPaths=-/var/lib/tbi-admin/\)|\1|' \
+        -e 's|^#\(SupplementaryGroups=tbi-admin-\)|\1|'
     else cat; fi
 }
 render "$here/tbi-build.service.in" | sudo tee "/etc/systemd/system/$N-build.service" >/dev/null

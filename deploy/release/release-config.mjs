@@ -87,7 +87,9 @@ export function validate(profile, srcdir, tools = currentTools()) {
   const errors = [];
   const err = (m) => errors.push(m);
 
-  if (!/^rc\d+$/.test(profile.release)) err(`release: bad name ${profile.release}`);
+  // `rc4`, or a named variant such as `rc4-s23` (within alertd v4's RELEASE pattern).
+  if (!/^rc\d+(-[a-z0-9]+)*$/.test(profile.release) || profile.release.length > 64)
+    err(`release: bad name ${profile.release}`);
   if (tools.node !== profile.node) err(`node: pinned ${profile.node}, running ${tools.node}`);
   if (tools.npm !== profile.npm) err(`npm: pinned ${profile.npm}, running ${tools.npm}`);
 

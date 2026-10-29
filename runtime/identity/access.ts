@@ -116,12 +116,21 @@ export function parseAccessView(text: string): AccessViewData | null {
   };
 }
 
-/** The host rule: the principal, or the email tag, is in the authorized lists. */
+/**
+ * The host rule. Deny wins: a principal in `revoked.principals` or an email tag in
+ * `revoked.emailTags` is refused even if the other identifier is authorized. Otherwise the
+ * principal, or the email tag, must be in the authorized lists.
+ */
 export function isAuthorized(
   view: AccessViewData,
   principal: Principal | null,
   emailTag: EmailTag | null,
 ): boolean {
+  if (
+    (principal !== null && view.revoked.principals.has(principal)) ||
+    (emailTag !== null && view.revoked.emailTags.has(emailTag))
+  )
+    return false;
   return (
     (principal !== null && view.authorized.principals.has(principal)) ||
     (emailTag !== null && view.authorized.emailTags.has(emailTag))
