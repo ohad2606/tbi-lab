@@ -16,6 +16,21 @@
 export const REPORT_CATEGORIES = ['simulation', 'build', 'editor', 'other'] as const;
 export type ReportCategory = (typeof REPORT_CATEGORIES)[number];
 
+/**
+ * Sprint 23B: what kind of feedback this is. `bug` is the RC4 problem report (its `category` is
+ * the area); for every other kind the category is `other`. A request without `kind` is a bug
+ * report, exactly as an RC4 client sends it.
+ */
+export const REPORT_KINDS = ['bug', 'component', 'feature', 'general'] as const;
+export type ReportKind = (typeof REPORT_KINDS)[number];
+
+/** Device class of the tester's screen (from the app; never a model or a fingerprint). */
+export const REPORT_DEVICES = ['desktop', 'tablet', 'other'] as const;
+export type ReportDevice = (typeof REPORT_DEVICES)[number];
+
+/** A requested component's name, in code points (kind `component` only; optional). */
+export const MAX_COMPONENT_NAME_CHARS = 80;
+
 /** Where the tester was (the app's screens; no project or view content). */
 export const REPORT_VIEWS = ['home', 'editor'] as const;
 export type ReportView = (typeof REPORT_VIEWS)[number];
@@ -51,6 +66,16 @@ export interface ProblemReportRequest {
   sessionId?: string;
   /** The simulation status the app shows, and its failure code if any. */
   sim?: { status: ReportSimStatus; code?: string };
+  /** Sprint 23B: the kind of feedback (absent: `bug`, as RC4). */
+  kind?: ReportKind;
+  /** Sprint 23B: the name of a requested component (kind `component` only). */
+  component?: string;
+  /**
+   * Sprint 23B: optional technical context the tester agreed to include. Data minimization: the
+   * runtime version the app talks to, the device class and the open project's id; never the
+   * project's contents, names or logs.
+   */
+  context?: { runtime?: string; device?: ReportDevice; projectId?: string };
 }
 
 type Validation<T> = { ok: true; value: T } | { ok: false; error: string };
@@ -67,6 +92,7 @@ const VERSION_RE = /^[0-9A-Za-z.+-]{1,32}$/;
 const COMMIT_RE = /^[0-9a-f]{40}$/;
 const SESSION_RE = /^[0-9a-f]{32}$/;
 const CODE_RE = /^[a-z0-9_]{1,48}$/;
+const PROJECT_RE = /^prj_[A-Za-z0-9]{1,64}$/;
 
 // C0 and C1 controls except tab and line feed (a carriage return becomes a line feed first).
 // eslint-disable-next-line no-control-regex
@@ -87,6 +113,11 @@ export function cleanDescription(text: string): string {
     .trim();
 }
 
+/** A component name as stored: the description's cleaning, on one line, spaces collapsed. */
+export function cleanComponentName(text: string): string {
+  return cleanDescription(text).replace(/\s+/g, ' ');
+}
+
 /** Length in Unicode code points (what the app's counter shows and the limit counts). */
 export const codePoints = (text: string): number => [...text].length;
 
@@ -103,6 +134,9 @@ export function validateReport(v: unknown): Validation<ProblemReportRequest> {
       'app',
       'sessionId',
       'sim',
+      'kind',
+      'component',
+      'context',
     ])
   )
     return bad('unknown field');
@@ -139,6 +173,38 @@ export function validateReport(v: unknown): Validation<ProblemReportRequest> {
     if (s.code !== undefined && (typeof s.code !== 'string' || !CODE_RE.test(s.code)))
       return bad('sim.code');
     out.sim = { status: s.status, ...(s.code !== undefined ? { code: s.code } : {}) };
+  }
+  if (v.kind !== undefined) {
+    if (!oneOf(v.kind, REPORT_KINDS)) return bad('kind');
+    out.kind = v.kind;
+  }
+  // Only a bug report names an area; every other kind is filed under `other`.
+  if ((out.kind ?? 'bug') !== 'bug' && out.category !== 'other') return bad('category');
+  if (v.component !== undefined) {
+    if (out.kind !== 'component' || typeof v.component !== 'string') return bad('component');
+    const name = cleanComponentName(v.component);
+    if (codePoints(name) > MAX_COMPONENT_NAME_CHARS) return bad('component too long');
+    if (name !== '') out.component = name;
+  }
+  if (v.context !== undefined) {
+    const c = v.context;
+    if (!isObj(c) || !onlyKeys(c, ['runtime', 'device', 'projectId'])) return bad('context');
+    const ctx: NonNullable<ProblemReportRequest['context']> = {};
+    if (c.runtime !== undefined) {
+      if (typeof c.runtime !== 'string' || !VERSION_RE.test(c.runtime))
+        return bad('context.runtime');
+      ctx.runtime = c.runtime;
+    }
+    if (c.device !== undefined) {
+      if (!oneOf(c.device, REPORT_DEVICES)) return bad('context.device');
+      ctx.device = c.device;
+    }
+    if (c.projectId !== undefined) {
+      if (typeof c.projectId !== 'string' || !PROJECT_RE.test(c.projectId))
+        return bad('context.projectId');
+      ctx.projectId = c.projectId;
+    }
+    out.context = ctx;
   }
   return { ok: true, value: out };
 }

@@ -10,6 +10,11 @@
  *                      the location changes: lookup, re-hash and private copy are unchanged.
  *   TBI_HOST_*_MS etc. operator-tunable limits (see TUNABLE below)
  *   TBI_REPORTS_DIR    Sprint 14 problem reports (reports.ts); unset: the feature is off
+ *   TBI_ACCESS_VIEW    Sprint 23B access enforcement: the helper's view/access.json; unset: off
+ *                      (RC4). Set: unauthorized accounts get 403, a bad view 503 (fail closed),
+ *                      and the live sessions of accounts no longer authorized are ended.
+ *   TBI_ADMIN_DIR      Sprint 23B owner administration and identity observations (admin.ts):
+ *                      the helper's base directory; needs TBI_ACCESS_VIEW. Unset: off.
  *
  * SIGTERM / SIGINT: stop accepting requests, terminate every session (host_shutdown), release
  * every child process and temporary file, then exit.
@@ -24,9 +29,11 @@ import { Policy } from '../policy/policy.js';
 import { RateLimiter } from '../policy/rate.js';
 import { stopTemplateInstances } from '../builder/runner.js';
 import { defaultConfig, type HostConfig } from './config.js';
-import { SessionHost } from './host.js';
+import { SessionHost, revokeOnReload } from './host.js';
 import { createHttpServer } from './http.js';
 import { ReportStore, reportsConfigFromEnv } from './reports.js';
+import { accessViewFromEnv } from '../identity/access.js';
+import { AdminSpool, IdentityObserver, adminConfigFromEnv } from './admin.js';
 
 // Same locations as runtime/provision/provision.sh (and harness/env.ts).
 const RUNTIME_HOME =
@@ -88,7 +95,19 @@ const host = new SessionHost(config);
 const reportsConfig = reportsConfigFromEnv();
 const reports = reportsConfig ? new ReportStore(reportsConfig) : null;
 reports?.start();
-const server = createHttpServer(host, identity, reports);
+// Sprint 23B: access enforcement, revocation of live sessions, administration, observations.
+const access = accessViewFromEnv();
+const adminConfig = adminConfigFromEnv();
+if (adminConfig && !access) throw new Error('TBI_ADMIN_DIR needs TBI_ACCESS_VIEW');
+if (access) {
+  revokeOnReload(host, access);
+  access.start();
+}
+const server = createHttpServer(host, identity, reports, {
+  access,
+  admin: adminConfig ? new AdminSpool(adminConfig) : null,
+  observer: adminConfig ? new IdentityObserver(join(adminConfig.dir, 'observations')) : null,
+});
 
 // Signal handlers first: a supervisor may stop the host the moment it reports "listening", and
 // an unhandled SIGTERM would skip the cleanup of its sessions and temporary root.
@@ -98,6 +117,7 @@ const stop = () => {
   stopping = true;
   server.close();
   server.closeAllConnections();
+  access?.stop();
   void host.shutdown().then(() => process.exit(0));
 };
 process.on('SIGTERM', stop);

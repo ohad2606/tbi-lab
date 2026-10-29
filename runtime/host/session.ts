@@ -111,6 +111,13 @@ export class HostSession {
   endedAt: Date | null = null;
   lastActivity = performance.now();
   streams = 0;
+  /**
+   * Sprint 23B: the email tag of the gate identity that created the session (null when access
+   * enforcement is off or the gate sent no address). Revocation matches on it as on the owner.
+   */
+  emailTag: string | null = null;
+  /** Sprint 23B: closers of the attached event streams (revocation ends them). */
+  readonly streamClosers = new Set<() => void>();
 
   private readonly dir: string;
   private readonly flash: string;
@@ -449,6 +456,11 @@ export class HostSession {
     this.pendingFailure = { reason, detail };
     this.abort.abort();
     return this.runPromise ?? Promise.resolve();
+  }
+
+  /** Close every attached event stream now (Sprint 23B revocation). */
+  closeStreams(): void {
+    for (const close of [...this.streamClosers]) close();
   }
 
   /** Resolves once the runtime process has exited and the session is terminal. */

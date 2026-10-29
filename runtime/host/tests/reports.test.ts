@@ -208,12 +208,26 @@ describe('POST /reports: identity and acceptance', () => {
     const n = JSON.parse(notes[0]!) as Record<string, unknown>;
     expect(n).toMatchObject({
       event: 'problem_report',
-      v: 1,
+      // Sprint 23B: v2 adds `kind` and `component` (a boolean; never the name).
+      v: 2,
       id: r.body.id,
       category: 'simulation',
+      kind: 'bug',
+      component: false,
     });
     expect(Object.keys(n).sort()).toEqual(
-      ['app', 'at', 'blocking', 'category', 'event', 'id', 'release', 'v'].sort(),
+      [
+        'app',
+        'at',
+        'blocking',
+        'category',
+        'component',
+        'event',
+        'id',
+        'kind',
+        'release',
+        'v',
+      ].sort(),
     );
     expect(notes[0]).not.toContain('secret');
     expect(notes[0]).not.toContain(A.slice(0, 10));

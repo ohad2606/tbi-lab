@@ -27,7 +27,9 @@
  * A failing request never takes the host down.
  */
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
-import { principalOf, type IdentityConfig } from '../identity/principal.js';
+import { decideAccess, emailOf, type AccessView } from '../identity/access.js';
+import type { IdentityConfig } from '../identity/principal.js';
+import { handleAdmin, type AdminLimits, type AdminSpool, type IdentityObserver } from './admin.js';
 import { MemoryRate } from '../policy/rate.js';
 import { Refusal, admissionEvent, sendRefusal } from '../policy/refusal.js';
 import type { SessionHost } from './host.js';
@@ -136,10 +138,13 @@ function stream(req: IncomingMessage, res: ServerResponse, s: HostSession, url: 
     closed = true;
     s.streams--;
     s.lastActivity = performance.now(); // the lease counts from the moment the client left
+    s.streamClosers.delete(closer);
     unsubscribe();
     clearInterval(keepalive);
     res.end();
   };
+  const closer = () => close();
+  s.streamClosers.add(closer);
   const write = (e: SessionEvent) => {
     if (closed) return;
     // A client that cannot keep up is disconnected; it resumes from its Last-Event-ID
@@ -155,27 +160,46 @@ function stream(req: IncomingMessage, res: ServerResponse, s: HostSession, url: 
   req.on('close', close);
 }
 
+/** Sprint 23B options; all absent: exactly the RC4 behaviour. */
+export interface HttpOptions {
+  /** Access enforcement (TBI_ACCESS_VIEW): every route but /health needs an authorized account. */
+  access?: AccessView | null;
+  /** The owner's administration (TBI_ADMIN_DIR; needs `access`): `/admin/...`. */
+  admin?: AdminSpool | null;
+  /** Identity observations for the helper (TBI_ADMIN_DIR/observations). */
+  observer?: IdentityObserver | null;
+  /** Admin rate limits (tests; default ADMIN_RATE / ADMIN_WRITE_RATE). */
+  adminLimits?: AdminLimits;
+}
+
 /**
  * `identity`: the gate-asserted identity (Sprint 8, D-S8-1). Every route but `/health` requires
  * it; without one the answer is 401. `reports`: the problem-report store, null when the
- * deployment has not enabled reports (Sprint 14).
+ * deployment has not enabled reports (Sprint 14). `opts`: Sprint 23B access enforcement and
+ * administration (off when absent).
  */
 export function createHttpServer(
   host: SessionHost,
   identity: IdentityConfig,
   reports: ReportStore | null = null,
+  opts: HttpOptions = {},
 ): Server {
   const requests = new MemoryRate();
+  const adminRate = new MemoryRate();
   return createServer((req, res) => {
-    void handle(host, identity, requests, reports, req, res).catch((e: unknown) => {
-      const status = e instanceof HttpError ? e.status : 500;
-      // Operator log for the unexpected: the error only (no request data, identities or bodies).
-      if (status === 500)
-        process.stderr.write(`session host http: internal error: ${(e as Error)?.message ?? e}\n`);
-      if (!res.headersSent)
-        send(res, status, { error: e instanceof HttpError ? e.message : 'internal error' });
-      else res.destroy();
-    });
+    void handle(host, identity, requests, adminRate, reports, opts, req, res).catch(
+      (e: unknown) => {
+        const status = e instanceof HttpError ? e.status : 500;
+        // Operator log for the unexpected: the error only (no request data, identities or bodies).
+        if (status === 500)
+          process.stderr.write(
+            `session host http: internal error: ${(e as Error)?.message ?? e}\n`,
+          );
+        if (!res.headersSent)
+          send(res, status, { error: e instanceof HttpError ? e.message : 'internal error' });
+        else res.destroy();
+      },
+    );
   });
 }
 
@@ -183,7 +207,9 @@ async function handle(
   host: SessionHost,
   identity: IdentityConfig,
   requests: MemoryRate,
+  adminRate: MemoryRate,
   reports: ReportStore | null,
+  opts: HttpOptions,
   req: IncomingMessage,
   res: ServerResponse,
 ): Promise<void> {
@@ -200,7 +226,42 @@ async function handle(
       ...(runtime ? { runtime } : {}),
     });
   }
-  const principal = principalOf(req, identity);
+  const access = opts.access ?? null;
+  const decision = decideAccess(req, identity, access);
+  // Sprint 23B: the helper learns which Google account signs in with which address (best
+  // effort, detached: never fails or delays this request).
+  if (opts.observer && decision.ok && decision.principal) {
+    const subject = req.headers[identity.subjectHeader];
+    const email = emailOf(req);
+    if (typeof subject === 'string' && email) {
+      try {
+        void opts.observer.observe(decision.principal, subject, email);
+      } catch {
+        // never the request's problem
+      }
+    }
+  }
+  if (!decision.ok) {
+    if (decision.status === 401) throw new HttpError(401, 'identity required');
+    return send(res, decision.status, { error: decision.error });
+  }
+  if (access && parts[0] === 'admin')
+    return handleAdmin(
+      req,
+      res,
+      url,
+      parts.slice(1),
+      { principal: decision.principal, emailTag: decision.emailTag },
+      {
+        access,
+        spool: opts.admin ?? null,
+        reports,
+        capacity: () => host.capacity(),
+        rate: adminRate,
+        ...(opts.adminLimits ? { limits: opts.adminLimits } : {}),
+      },
+    );
+  const principal = decision.principal;
   if (!principal) throw new HttpError(401, 'identity required');
   // Anti-hammering backstop over every route of this principal (Phase 4).
   if (host.config.policy) {
@@ -220,7 +281,7 @@ async function handle(
 
   if (parts.length === 1 && method === 'POST') {
     const body = await readBody(req, host.config.maxRequestBytes);
-    const r = host.create(body, principal);
+    const r = host.create(body, principal, decision.emailTag);
     if (!r.ok && r.refusal) {
       admissionEvent('runtime', 'session-create', r.refusal.code, principal);
       return sendRefusal(res, r.refusal);

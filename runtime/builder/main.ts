@@ -20,6 +20,8 @@
  *   TBI_BUILD_WORK         private root for per-build job directories
  *   TBI_ARTIFACT_CAP_MB    managed artifact cache size (default 256)
  *   TBI_ARTIFACT_LEASE_MS  lease length before a Run (default 600000)
+ *   TBI_ACCESS_VIEW        Sprint 23B: the helper's view/access.json; every request but health
+ *                          needs an authorized account (fail closed). Unset: off (RC4).
  *
  * The toolchain is verified against its pins at start; the service refuses to run otherwise.
  * SIGTERM: stop accepting requests; job directories are removed by each job's cleanup and by the
@@ -31,6 +33,7 @@ import { join } from 'node:path';
 import { ESP32_ARDUINO_PROFILE } from '@tbi-lab/domain';
 import { describeListen, listen, parseListen } from '../identity/listen.js';
 import { identityFromEnv } from '../identity/principal.js';
+import { accessViewFromEnv } from '../identity/access.js';
 import { loadTicketKey } from '../identity/ticket.js';
 import { Policy } from '../policy/policy.js';
 import { RateLimiter } from '../policy/rate.js';
@@ -121,7 +124,8 @@ setInterval(
   policy.config.global.retention.sweepIntervalMs,
 ).unref();
 await service.sweep();
-const server = createBuildHttpServer(service, { leaseMs, identity });
+const access = accessViewFromEnv()?.start() ?? null;
+const server = createBuildHttpServer(service, { leaseMs, identity, access });
 // Signal handlers first (see the Session Host): stop cleanly even right after start.
 const stop = () => {
   server.close();
