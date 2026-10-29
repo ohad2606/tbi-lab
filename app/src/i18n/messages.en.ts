@@ -720,6 +720,8 @@ export const en = {
   'build.failure.internal': 'The build service had an internal problem. Try again.',
   'build.failure.capacity_timeout':
     'The build waited too long for the build service and did not start. Try again.',
+  'build.failure.account_disabled':
+    'The build was stopped because access to TBI Lab was ended for this account.',
   'build.diagnostics.heading': 'Problems',
   'build.severity.error': 'Error',
   'build.severity.warning': 'Warning',

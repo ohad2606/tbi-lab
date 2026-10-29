@@ -88,7 +88,9 @@ export interface BuildResult {
     | 'unsupported_input'
     | 'internal'
     /** Sprint 8: waited in the queue longer than the policy allows (capacity was busy). */
-    | 'capacity_timeout';
+    | 'capacity_timeout'
+    /** Sprint 23B: the owner disabled the submitter's account (access view); the build stopped. */
+    | 'account_disabled';
   timings: { queuedMs: number; buildMs: number };
 }
 

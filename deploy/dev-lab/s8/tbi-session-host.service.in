@@ -2,7 +2,10 @@
 #
 # It never runs QEMU itself: each session's runtime is an instance of @N@-qemu@.service, which it
 # may only start/stop/kill (polkit). Sessions live on disk under /var/lib/@N@-runtime/sessions
-# (not the RAM-backed /tmp). Reached only through its unix socket (group tbi-gate).
+# (not the RAM-backed /tmp). Reached only through its unix socket, group tbi-sock-runtime: only this
+# service and the internal reverse proxy (caddy) are in it (Sprint 23B, security review H1: the
+# backends no longer share tbi-gate, so the build service cannot reach this socket). The build
+# service's admission check reads a separate GET /health-only socket (group tbi-artifacts).
 [Unit]
 Description=TBI Lab Session Host (@N@)
 After=network-online.target
@@ -10,10 +13,12 @@ After=network-online.target
 [Service]
 User=tbi-runtime
 Group=tbi-runtimeio
-SupplementaryGroups=tbi-artifacts tbi-gate
+SupplementaryGroups=tbi-artifacts tbi-sock-runtime
 UMask=0007
 Environment=TBI_HOST_LISTEN=unix:/run/@N@-runtime/api.sock
-Environment=TBI_SOCKET_GID=@GATE_GID@
+Environment=TBI_SOCKET_GID=@SOCK_RUNTIME_GID@
+Environment=TBI_HOST_HEALTH_LISTEN=unix:/run/@N@-runtime/health.sock
+Environment=TBI_HOST_HEALTH_SOCKET_GID=@ARTIFACTS_GID@
 Environment=TBI_ARTIFACTS=@STORE@
 Environment=TBI_QEMU=/opt/tbi-runtime/bin/qemu-system-xtensa
 Environment=TBI_HOST_SESSION_ROOT=/var/lib/@N@-runtime/sessions

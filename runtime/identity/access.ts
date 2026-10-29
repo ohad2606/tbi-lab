@@ -38,8 +38,13 @@ export const EMAIL_HEADER = 'x-forwarded-email';
 const GATE_EMAIL_RE = /^[^\s@",;<>()[\]\\]{1,64}@[^\s@",;<>()[\]\\]{1,253}$/;
 export function gateEmail(raw: unknown): string | null {
   if (typeof raw !== 'string') return null;
-  const e = raw.trim().toLowerCase();
-  if (e.length > 254 || !/^[\x21-\x7e]+$/.test(e) || !GATE_EMAIL_RE.test(e)) return null;
+  const t = raw.trim();
+  // ASCII is checked BEFORE lower-casing: Unicode case folding maps some non-ASCII characters to
+  // ASCII ones (U+212A KELVIN SIGN to `k`, U+0130 to `i` + a combining dot), which would turn a
+  // different address into an authorized one.
+  if (t.length > 254 || !/^[\x21-\x7e]+$/.test(t)) return null;
+  const e = t.toLowerCase();
+  if (!GATE_EMAIL_RE.test(e)) return null;
   return e;
 }
 

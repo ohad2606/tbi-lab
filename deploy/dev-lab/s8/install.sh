@@ -86,7 +86,9 @@ if (( HOST_MAX < POLICY_LIVE )); then
 fi
 
 # Users and groups (system accounts, no home, no login).
-for g in tbi-buildio tbi-runtimeio tbi-gate tbi-artifacts; do
+# Sprint 23B (security review H1): one socket group per backend (the backend and caddy only);
+# tbi-gate stays for Caddy's internal origin (caddy and oauth2-proxy), never for a backend.
+for g in tbi-buildio tbi-runtimeio tbi-gate tbi-artifacts tbi-sock-runtime tbi-sock-build; do
   getent group "$g" >/dev/null || sudo groupadd --system "$g"
 done
 mkuser() { getent passwd "$1" >/dev/null ||
@@ -95,7 +97,9 @@ mkuser tbi-build tbi-artifacts
 mkuser tbi-buildjob tbi-buildio
 mkuser tbi-runtime tbi-runtimeio
 mkuser tbi-qemu tbi-runtimeio
-GATE_GID="$(getent group tbi-gate | cut -d: -f3)"
+SOCK_RUNTIME_GID="$(getent group tbi-sock-runtime | cut -d: -f3)"
+SOCK_BUILD_GID="$(getent group tbi-sock-build | cut -d: -f3)"
+ARTIFACTS_GID="$(getent group tbi-artifacts | cut -d: -f3)"
 JOB_UID="$(id -u tbi-buildjob)"
 
 # Keys: root-only files, handed to the two services as systemd credentials.
@@ -173,7 +177,8 @@ fi
 render() {
   sed -e "s|@N@|$N|g" -e "s|@NRE@|${N//-/\\\\-}|g" -e "s|@STORE@|$STORE|g" -e "s|@BUNDLES@|$BUNDLES|g" \
     -e "s|@ARDUINO@|$ARDUINO|g" -e "s|@NODE@|$NODE|g" -e "s|@RUNTIME@|$RUNTIME|g" \
-    -e "s|@GATE_GID@|$GATE_GID|g" -e "s|@JOB_UID@|$JOB_UID|g" -e "s|@ARTIFACT_CAP_MB@|$CAP_MB|g" \
+    -e "s|@SOCK_RUNTIME_GID@|$SOCK_RUNTIME_GID|g" -e "s|@SOCK_BUILD_GID@|$SOCK_BUILD_GID|g" \
+    -e "s|@ARTIFACTS_GID@|$ARTIFACTS_GID|g" -e "s|@JOB_UID@|$JOB_UID|g" -e "s|@ARTIFACT_CAP_MB@|$CAP_MB|g" \
     -e "s|@HOST_MAX_SESSIONS@|$HOST_MAX|g" "$1" |
     if [[ "$S23_ADMIN" == 1 ]]; then
       sed -e 's|^#\(Environment=TBI_ACCESS_VIEW=\)|\1|' -e 's|^#\(Environment=TBI_ADMIN_DIR=\)|\1|' \
@@ -191,11 +196,14 @@ if [[ "$target" == dev-lab ]]; then
   # internal-origin socket lives in /run/tbi-gate (Caddyfile, oauth2-proxy.cfg in deploy/dev-lab).
   sudo usermod -aG tbi-gate caddy
   sudo usermod -aG tbi-gate oauth2-proxy
+  # Sprint 23B (H1): caddy reaches each backend through that backend's own socket group.
+  sudo usermod -aG tbi-sock-runtime,tbi-sock-build caddy
   sudo install -m 0644 "$here/tbi-gate.conf" /etc/tmpfiles.d/tbi-gate.conf
   sudo systemd-tmpfiles --create /etc/tmpfiles.d/tbi-gate.conf
   sudo install -d -m 0755 /etc/systemd/system/caddy.service.d
   sudo install -m 0644 "$here/caddy-gate.conf" /etc/systemd/system/caddy.service.d/tbi-gate.conf
-  # (Caddy and oauth2-proxy must restart, not reload, for the group and umask to apply; the
+  # (Caddy and oauth2-proxy must restart, not reload, for the groups and umask to apply, the
+  # Sprint 23B socket groups included; the
   # Caddyfile and oauth2-proxy.cfg are installed by hand, deploy/dev-lab/README.md.)
 fi
 sudo systemctl daemon-reload

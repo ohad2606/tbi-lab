@@ -45,5 +45,22 @@ export function listen(server: Server, spec: ListenSpec, socketGroupGid?: number
   });
 }
 
+/**
+ * The group id a service gives its unix socket, from the environment (`TBI_SOCKET_GID` unless
+ * named otherwise). Sprint 23B (review H1): each backend has its OWN socket group shared only
+ * with the internal reverse proxy (`tbi-sock-runtime`, `tbi-sock-build`), so one backend cannot
+ * reach the other's socket and replay gate identities there. Unset: the process's own group.
+ */
+export function socketGidFromEnv(
+  name = 'TBI_SOCKET_GID',
+  env: NodeJS.ProcessEnv = process.env,
+): number | undefined {
+  const v = env[name];
+  if (v === undefined || v === '') return undefined;
+  if (!/^\d{1,10}$/.test(v) || Number(v) > 0xfffffffe)
+    throw new Error(`${name} must be a group id`);
+  return Number(v);
+}
+
 export const describeListen = (spec: ListenSpec): string =>
   'unix' in spec ? `unix:${spec.unix}` : `${spec.host}:${spec.port}`;

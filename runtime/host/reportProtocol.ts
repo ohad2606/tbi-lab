@@ -97,17 +97,24 @@ const PROJECT_RE = /^prj_[A-Za-z0-9]{1,64}$/;
 // C0 and C1 controls except tab and line feed (a carriage return becomes a line feed first).
 // eslint-disable-next-line no-control-regex
 const CONTROLS = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g;
+/**
+ * Sprint 23B (review I3): bidirectional embedding, override and isolate controls (U+202A–U+202E,
+ * U+2066–U+2069). They are invisible and can reorder what an owner or operator reads (a report's
+ * text, a component name); they are removed. Ordinary right-to-left text needs none of them.
+ */
+const BIDI_CONTROLS = /[\u202a-\u202e\u2066-\u2069]/g;
 const LONE_SURROGATE = /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/g;
 
 /**
- * The description as stored: NFC, line breaks as `\n`, control characters removed (tab and line
- * feed kept), malformed UTF-16 replaced, surrounding whitespace trimmed. The words themselves are
+ * The description as stored: NFC, line breaks as `\n`, control characters and bidi embedding /
+ * override / isolate controls removed (tab and line feed kept), malformed UTF-16 replaced, surrounding whitespace trimmed. The words themselves are
  * never changed: user-authored text is kept as written, in any language and direction.
  */
 export function cleanDescription(text: string): string {
   return text
     .replace(/\r\n?/g, '\n')
     .replace(CONTROLS, '')
+    .replace(BIDI_CONTROLS, '')
     .replace(LONE_SURROGATE, '�')
     .normalize('NFC')
     .trim();

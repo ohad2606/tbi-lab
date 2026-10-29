@@ -79,6 +79,13 @@ describe('email tags', () => {
     expect(gateEmail('ä@example.invalid')).toBeNull();
     expect(gateEmail(['a@example.invalid'])).toBeNull();
     expect(gateEmail(`${'a'.repeat(65)}@example.invalid`)).toBeNull();
+    // Review I2: non-ASCII is refused before lower-casing (U+212A KELVIN SIGN folds to `k`,
+    // U+0130 to `i` + a combining dot).
+    expect('\u212a'.toLowerCase()).toBe('k');
+    expect(gateEmail('\u212aate@example.invalid')).toBeNull();
+    expect(gateEmail('kate@example.invalid')).toBe('kate@example.invalid');
+    expect(gateEmail('\u0130t@example.invalid')).toBeNull();
+    expect(gateEmail('a@\u212aexample.invalid')).toBeNull();
   });
 });
 

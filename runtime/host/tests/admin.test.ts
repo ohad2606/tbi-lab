@@ -36,10 +36,12 @@ import {
   type SpoolIo,
 } from '../admin.js';
 import { revokeOnReload, type SessionHost } from '../host.js';
-import { createHttpServer } from '../http.js';
+import { createHealthServer, createHttpServer } from '../http.js';
 import { MAX_COMPONENT_NAME_CHARS, validateReport } from '../reportProtocol.js';
 import { DEFAULT_REPORTS, ReportStore } from '../reports.js';
 import { createRequest, fakeHost, waitState } from './support.js';
+import { Policy } from '../../policy/policy.js';
+import { openPolicyConfig } from '../../policy/testing.js';
 
 // Gate subjects (Google subjects are decimal) and addresses (example.invalid only).
 const OWNER = { sub: '1000000001', email: 'owner@example.invalid' };
@@ -601,6 +603,21 @@ describe('admin API: CSRF, rate limit, input', () => {
     expect(ls(join(s.dir, 'spool'))).toEqual([]);
   });
 
+  it('the policy request backstop also covers /admin, before the owner check (review I5)', async () => {
+    const config = openPolicyConfig();
+    for (const plan of Object.values(config.plans)) plan.requests = { count: 3, windowMs: 60_000 };
+    const { host } = fakeHost('normal', { policy: new Policy(config, 1) });
+    cleanup.push(() => host.shutdown());
+    const s = await serve({ host });
+    const t = await s.gate(TESTER);
+    for (let i = 0; i < 3; i++) expect((await call(t, '/admin/accounts')).status).toBe(403);
+    const r = await call(t, '/admin/accounts');
+    expect(r.status).toBe(429);
+    expect(r.body.error).toBe('rate_limited');
+    // Per caller: the owner has its own budget.
+    expect((await call(await s.gate(OWNER), '/admin/me')).status).toBe(200);
+  });
+
   it('malformed and injection inputs are refused and never reach the spool', async () => {
     const s = await serve({ roomyLimits: true });
     const o = await s.gate(OWNER);
@@ -657,6 +674,11 @@ describe('admin API: CSRF, rate limit, input', () => {
     expect((await call(o, '/admin/reports?principal=../x', mutation(o, 'DELETE'))).status).toBe(
       400,
     );
+    expect(ls(join(s.dir, 'spool'))).toEqual([]);
+    // Review I2: ASCII before lower-casing (U+212A KELVIN SIGN would fold to `k`).
+    expect((await add({ email: '\u212aate@example.invalid' })).status).toBe(400);
+    expect(normalizeAddEmail('\u212aate@example.invalid')).toBeNull();
+    expect(normalizeAddEmail('a@ex\u212aample.invalid')).toBeNull();
     expect(ls(join(s.dir, 'spool'))).toEqual([]);
     expect(normalizeAddEmail(' New.Tester+x@example.invalid ')).toBe(
       'new.tester+x@example.invalid',
@@ -995,6 +1017,19 @@ describe('feedback (problem_report v2)', () => {
       device: 'tablet',
       projectId: 'prj_abc123',
     });
+    // Review I3: bidi embedding / override / isolate controls are removed from both texts.
+    const bidi = validateReport(
+      body({
+        kind: 'component',
+        component: 'A\u202eB\u2066C\u2069D\u202a\u202b\u202c\u202d\u2067\u2068',
+        description: 'x\u202ey\u2069z',
+      }),
+    );
+    expect(bidi.ok && bidi.value.component).toBe('ABCD');
+    expect(bidi.ok && bidi.value.description).toBe('xyz');
+    // Hebrew text itself is untouched.
+    const he = validateReport(body({ kind: 'component', component: 'חיישן DHT22' }));
+    expect(he.ok && he.value.component).toBe('חיישן DHT22');
     // Multi-line names are kept on one line.
     const v = validateReport(body({ kind: 'component', component: ' Rotary\n\tencoder ' }));
     expect(v.ok && v.value.component).toBe('Rotary encoder');
@@ -1069,5 +1104,34 @@ describe('admin API: reports', () => {
     const byTester = await call(o, `/admin/reports?principal=${P(TESTER)}`, mutation(o, 'DELETE'));
     expect(byTester.body).toEqual({ deleted: 2 });
     expect(await s.store.list()).toEqual([]);
+  });
+});
+
+describe('health-only socket for the build service (review H1)', () => {
+  it('answers GET /health only; no identity is read, no other route exists', async () => {
+    const server = createHealthServer(shared.host);
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+    cleanup.push(async () => {
+      server.closeAllConnections();
+      await new Promise((r) => server.close(r));
+    });
+    const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    const h = await call(base, '/health');
+    expect(h.status).toBe(200);
+    expect(Object.keys(h.body)).toContain('sessions');
+    for (const [method, path] of [
+      ['GET', '/admin/me'],
+      ['GET', '/admin/accounts'],
+      ['POST', '/sessions'],
+      ['POST', '/reports'],
+      ['GET', `/sessions/${'0'.repeat(32)}`],
+      ['POST', '/health'],
+    ] as const) {
+      const r = await call(base, path, {
+        method,
+        headers: { 'x-forwarded-user': OWNER.sub, 'x-forwarded-email': OWNER.email },
+      });
+      expect(r.status, `${method} ${path}`).toBe(404);
+    }
   });
 });

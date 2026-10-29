@@ -698,6 +698,7 @@ export const he: Record<MessageKey, string> = {
   'build.failure.unsupported_input': 'אי אפשר לבנות את הקוד הזה בסביבה הזו.',
   'build.failure.internal': 'בשירות הבנייה אירעה תקלה פנימית. נסו שוב.',
   'build.failure.capacity_timeout': 'הבנייה המתינה יותר מדי לשירות הבנייה ולא התחילה. נסו שוב.',
+  'build.failure.account_disabled': 'הבנייה הופסקה כי הגישה ל-TBI Lab הסתיימה עבור החשבון הזה.',
   'build.diagnostics.heading': 'בעיות',
   'build.severity.error': 'שגיאה',
   'build.severity.warning': 'אזהרה',

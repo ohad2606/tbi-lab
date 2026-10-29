@@ -20,6 +20,7 @@ import {
   type BuildStatus,
 } from './protocol.js';
 import type { Principal } from '../identity/principal.js';
+import { isAuthorized, type AccessView, type EmailTag } from '../identity/access.js';
 import { signTicket, type TicketFeatures } from '../identity/ticket.js';
 import { GLOBAL, type Grants, type Owner } from './grants.js';
 import type { BuildProvider, ProviderOutput } from './provider.js';
@@ -82,6 +83,11 @@ interface BuildRecord {
   owner: Owner;
   /** Who asked for it: their quota and limits apply (also for a shared system source). */
   submitter: Principal;
+  /** Sprint 23B: the email tag of the submitter's gate identity (revocation matches on it). */
+  emailTag: string | null;
+  /** Sprint 23B: stops the compile of a running build (revocation). */
+  cancel?: () => void;
+  revoked?: boolean;
   request: BuildRequest;
   provider: BuildProvider;
   state: BuildState;
@@ -126,6 +132,7 @@ export class BuildService {
   submit(
     request: BuildRequest,
     principal: Principal,
+    emailTag: string | null = null,
   ): { cached: BuildResult } | { buildId: string; token: string } {
     const provider = this.providers.get(request.profile);
     if (!provider) throw new RequestError(400, 'unknown_profile');
@@ -148,6 +155,7 @@ export class BuildService {
       key,
       owner,
       submitter: principal,
+      emailTag,
       request,
       provider,
       state: 'queued',
@@ -408,7 +416,11 @@ export class BuildService {
     // Failed builds count toward the submitter's cool-down; they hold no capacity afterwards.
     // (Bookkeeping must never take the pump down: a failure here is logged, the queue goes on.)
     try {
-      if (!next.result.ok && next.result.failure !== 'internal')
+      if (
+        !next.result.ok &&
+        next.result.failure !== 'internal' &&
+        next.result.failure !== 'account_disabled'
+      )
         this.access.rates.record(next.submitter, 'build-failure');
     } catch (e) {
       process.stderr.write(
@@ -419,6 +431,34 @@ export class BuildService {
       await this.enforceStorage(next.submitter).catch(() => undefined);
     this.active.delete(next);
     this.pump();
+  }
+
+  /**
+   * Sprint 23B: cancel the queued and running builds of every submitter the access view no longer
+   * authorizes (`allowed` applies the host rule, deny wins). They end `failed` with
+   * `account_disabled`; other accounts' builds are untouched. Builds of curated system sources
+   * (owner `global`) may be shared with other accounts and only produce curated images: they are
+   * left to finish. Returns how many were cancelled.
+   */
+  revokeUnauthorized(allowed: (submitter: Principal, emailTag: string | null) => boolean): number {
+    let n = 0;
+    const now = Date.now();
+    for (const r of [...this.queue]) {
+      if (r.owner === GLOBAL || allowed(r.submitter, r.emailTag)) continue;
+      this.queue.splice(this.queue.indexOf(r), 1);
+      r.result = this.failed(r, 'account_disabled', 'Access to TBI Lab ended for this account.', 0);
+      r.state = 'failed';
+      r.finishedAt = now;
+      n++;
+    }
+    for (const r of this.active) {
+      if (r.owner === GLOBAL || r.revoked || allowed(r.submitter, r.emailTag)) continue;
+      r.revoked = true;
+      r.cancel?.();
+      n++;
+    }
+    if (n) this.pump();
+    return n;
   }
 
   /** Builds of a principal currently queued or compiling (tests, operator summaries). */
@@ -456,9 +496,14 @@ export class BuildService {
   private async run(r: BuildRecord): Promise<BuildResult> {
     const started = Date.now();
     const queuedMs = started - r.submittedAt;
-    const dir = await mkdtemp(join(this.workRoot, 'job-'));
     const abort = new AbortController();
-    let reason: 'timeout' | 'storage_limit' | null = null;
+    let reason: 'timeout' | 'storage_limit' | 'account_disabled' | null = null;
+    r.cancel = () => {
+      reason = 'account_disabled';
+      abort.abort();
+    };
+    if (r.revoked) r.cancel();
+    const dir = await mkdtemp(join(this.workRoot, 'job-'));
     const timer = setTimeout(() => {
       reason = 'timeout';
       abort.abort();
@@ -473,7 +518,10 @@ export class BuildService {
     }, this.limits.watchdogMs);
     let out: ProviderOutput;
     try {
-      out = await r.provider.build({ dir, files: r.request.files, signal: abort.signal });
+      // Revoked before the compile started: no compile at all.
+      out = abort.signal.aborted
+        ? { ok: false, diagnostics: [], log: { text: '', truncated: false } }
+        : await r.provider.build({ dir, files: r.request.files, signal: abort.signal });
       if (!abort.signal.aborted && out.ok && out.imagePath) {
         const base: Omit<BuildResult, 'timings' | 'artifact'> = {
           key: r.key,
@@ -505,6 +553,13 @@ export class BuildService {
       await rm(dir, { recursive: true, force: true });
     }
     const buildMs = Date.now() - started;
+    if (reason === 'account_disabled')
+      return this.failed(
+        r,
+        'account_disabled',
+        'Access to TBI Lab ended for this account.',
+        buildMs,
+      );
     if (reason === 'timeout')
       return this.failed(
         r,
@@ -561,4 +616,25 @@ export async function treeBytes(dir: string): Promise<number> {
     }
   }
   return total;
+}
+
+/**
+ * Sprint 23B: on every reload of the access view, cancel the builds of accounts it no longer
+ * authorizes (deny wins, the Session Host's rule). One line with the count only.
+ */
+export function revokeBuildsOnReload(
+  service: BuildService,
+  access: AccessView,
+  log: (line: string) => void = (l) => void process.stderr.write(`${l}\n`),
+): () => void {
+  return access.onReload((view) => {
+    const n = service.revokeUnauthorized((p, tag) => isAuthorized(view, p, tag as EmailTag | null));
+    if (n > 0) {
+      try {
+        log(JSON.stringify({ event: 'builds_revoked', builds: n }));
+      } catch {
+        // logging never changes the outcome
+      }
+    }
+  });
 }

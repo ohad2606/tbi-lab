@@ -279,7 +279,10 @@ const ADD_EMAIL_RE =
   /^[a-z0-9_%+-]+(?:\.[a-z0-9_%+-]+)*@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*\.[a-z]{2,63}$/;
 export function normalizeAddEmail(v: unknown): string | null {
   if (typeof v !== 'string' || v.length > 320) return null;
-  const e = v.trim().toLowerCase();
+  // ASCII only, checked before lower-casing (case folding maps e.g. U+212A KELVIN SIGN to `k`).
+  const t = v.trim();
+  if (!/^[\x21-\x7e]+$/.test(t)) return null;
+  const e = t.toLowerCase();
   if (e.length > 254 || e.split('@')[0]!.length > 64 || !ADD_EMAIL_RE.test(e)) return null;
   return e;
 }

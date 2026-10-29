@@ -16,9 +16,9 @@ import {
 import { openAccessPolicy } from '../../policy/testing.js';
 import { Grants } from '../grants.js';
 import { createBuildHttpServer } from '../http.js';
-import { BuildService, DEFAULT_LIMITS } from '../service.js';
+import { BuildService, DEFAULT_LIMITS, revokeBuildsOnReload } from '../service.js';
 import { ArtifactStore } from '../store.js';
-import { FakeProvider, tempDir } from './support.js';
+import { FakeProvider, sketch, tempDir } from './support.js';
 
 const dirs: string[] = [];
 const closers: (() => void)[] = [];
@@ -75,7 +75,7 @@ async function serve(withAccess: boolean) {
     );
     access?.reload();
   };
-  return { gate, writeView };
+  return { gate, writeView, service, access, file };
 }
 
 const lookup = async (base: string) =>
@@ -112,5 +112,77 @@ describe('build service access view', () => {
   it('without TBI_ACCESS_VIEW any gate identity is served (RC4)', async () => {
     const s = await serve(false);
     expect(await lookup(await s.gate('user-z'))).toBe(404);
+  });
+});
+
+describe('revocation stops build work (deny wins)', () => {
+  it('queued and running builds of a disabled account fail account_disabled; other accounts go on', async () => {
+    const s = await serve(true);
+    const A = principalFor('user-a');
+    const B = principalFor('user-b');
+    const tagB = deriveEmailTag(TEST_IDENTITY, 'b@example.invalid');
+    s.writeView([A, B], [tagB]);
+    const lines: string[] = [];
+    revokeBuildsOnReload(s.service, s.access!, (l) => void lines.push(l));
+    const go = (text: string, who: typeof A, tag: string | null = null) => {
+      const out = s.service.submit(sketch(text), who, tag);
+      if ('cached' in out) throw new Error('unexpected cache hit');
+      return out;
+    };
+    const status = (o: { buildId: string; token: string }, who: typeof A) =>
+      s.service.status(o.buildId, o.token, who)!;
+    const a1 = go('void setup() {} // #stall a1', A); // running (one worker)
+    const a2 = go('void setup() {} // #stall a2', A); // queued
+    const b1 = go('void setup() {} // #stall b1', B, tagB); // queued
+    expect(status(a1, A).state).toBe('building');
+    expect(status(b1, B).state).toBe('queued');
+
+    // A's principal is revoked (deny wins), B untouched.
+    writeFileSync(
+      s.file,
+      JSON.stringify({
+        v: 1,
+        generated: 'x',
+        seq: 2,
+        owner: {
+          principal: null,
+          emailTag: deriveEmailTag(TEST_IDENTITY, 'owner@example.invalid'),
+        },
+        authorized: { principals: [A, B], emailTags: [tagB] },
+        revoked: { principals: [A], emailTags: [] },
+      }),
+    );
+    s.access!.reload();
+    const until = async (ok: () => boolean) => {
+      for (let i = 0; i < 200 && !ok(); i++) await new Promise((r) => setTimeout(r, 10));
+    };
+    await until(() => status(a1, A).state === 'failed' && status(b1, B).state === 'building');
+    expect(status(a1, A).result?.failure).toBe('account_disabled');
+    expect(status(a2, A).state).toBe('failed');
+    expect(status(a2, A).result?.failure).toBe('account_disabled');
+    expect(status(b1, B).state).toBe('building'); // B's build took the free worker
+    expect(lines).toEqual([JSON.stringify({ event: 'builds_revoked', builds: 2 })]);
+    expect(s.service.inFlight(A)).toBe(0);
+
+    // B: principal still authorized, but the address it built with is revoked: stopped too.
+    writeFileSync(
+      s.file,
+      JSON.stringify({
+        v: 1,
+        generated: 'x',
+        seq: 3,
+        owner: {
+          principal: null,
+          emailTag: deriveEmailTag(TEST_IDENTITY, 'owner@example.invalid'),
+        },
+        authorized: { principals: [B], emailTags: [] },
+        revoked: { principals: [], emailTags: [tagB] },
+      }),
+    );
+    s.access!.reload();
+    await until(() => status(b1, B).state === 'failed');
+    expect(status(b1, B).result?.failure).toBe('account_disabled');
+    // A disabled account's failures do not count toward its build cool-down.
+    s.service.close();
   });
 });

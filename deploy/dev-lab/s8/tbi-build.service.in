@@ -1,6 +1,8 @@
 # Sprint 8: the build service (identity, ownership, sandboxed builds). Rendered by install.sh.
 #
-# Reached only through its unix socket (mode 0660, group tbi-gate: the internal reverse proxy).
+# Reached only through its unix socket (mode 0660, group tbi-sock-build: only this service and the
+# internal reverse proxy; Sprint 23B, security review H1: it is no longer in tbi-gate and cannot
+# reach the Session Host's API socket).
 # It never runs a compiler itself: each tool step is an instance of @N@-build-job@.service,
 # which it may only start/stop/kill (polkit). Keys come in as systemd credentials (root-only
 # files, never readable by the job sandboxes).
@@ -11,10 +13,10 @@ After=network-online.target
 [Service]
 User=tbi-build
 Group=tbi-buildio
-SupplementaryGroups=tbi-artifacts tbi-gate
+SupplementaryGroups=tbi-artifacts tbi-sock-build
 UMask=0007
 Environment=TBI_BUILD_LISTEN=unix:/run/@N@-build/api.sock
-Environment=TBI_SOCKET_GID=@GATE_GID@
+Environment=TBI_SOCKET_GID=@SOCK_BUILD_GID@
 Environment=TBI_ARDUINO_HOME=/opt/tbi-arduino
 Environment=TBI_ARTIFACT_STORE=@STORE@
 Environment=TBI_BUILD_WORK=/var/lib/@N@-build/jobs
@@ -33,7 +35,8 @@ Environment=TBI_POLICY_FILE=%d/policy.json
 # the runtime prefix the QEMU units bind): its `capabilities` decide `requires` vs `unsupported`.
 LoadCredential=runtime.json:/etc/@N@/runtime.json
 Environment=TBI_RUNTIME_JSON=%d/runtime.json
-Environment=TBI_RUNTIME_HEALTH=unix:/run/@N@-runtime/api.sock
+# Sprint 23B (H1): the Session Host's health-only socket (group tbi-artifacts), not its API socket.
+Environment=TBI_RUNTIME_HEALTH=unix:/run/@N@-runtime/health.sock
 # Sprint 23B access enforcement (the same view as the Session Host, read only: the view
 # directory is root:tbi-admin-view 0750, nothing else of /var/lib/tbi-admin is readable).
 # OFF while unset. Enabled by install.sh TBI_S23_ADMIN=1.

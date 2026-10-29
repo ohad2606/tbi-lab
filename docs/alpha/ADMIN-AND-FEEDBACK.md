@@ -83,6 +83,41 @@ gate's allowlist or the tester registry.
   1 KiB bodies (`413`), strict validation (only known fields; target and id formats; an address
   in the registry's character set, at most 254 characters, normalized to lower case).
 
+### Hardening from the security review (Sprint 23B)
+
+- **H1, backend socket groups.** Each backend socket has its own group, shared only with the
+  internal reverse proxy: `tbi-sock-runtime` (Session Host, `/run/tbi-runtime/api.sock`) and
+  `tbi-sock-build` (build service, `/run/tbi-build/api.sock`), mode 0660 (`TBI_SOCKET_GID`).
+  Neither service is in `tbi-gate` any more; that group is only Caddy's internal origin (caddy and
+  oauth2-proxy). Without this, a compromised build service could connect to the Session Host's
+  socket and replay the owner's gate headers (it sees them on `/build/*` requests) against
+  `/admin`. The build service's admission check now reads a separate health-only socket
+  (`TBI_HOST_HEALTH_LISTEN=unix:/run/tbi-runtime/health.sock`, group `tbi-artifacts`, answering
+  `GET /health` only). `install.sh` creates both groups and adds caddy to them; **caddy must be
+  restarted** (not reloaded) to pick up the new groups. **Alpha's own install path must make the
+  same group, unit and health-socket change.**
+- **L3, build work.** On every reload of the access view, the build service cancels the queued and
+  running builds of accounts the view no longer authorizes (same rule, deny wins; the email tag is
+  recorded per build). They end `failed` with `account_disabled` and do not count toward the build
+  cool-down. Builds of curated system sources (shared, curated images only) are left to finish.
+  One journal line with the count only: `{"event":"builds_revoked","builds":N}`.
+- **I2.** Addresses (the gate's header and the owner's input) must be ASCII, checked before
+  lower-casing: Unicode case folding turns e.g. U+212A KELVIN SIGN into `k`.
+- **I3.** Bidi embedding, override and isolate controls (U+202A–U+202E, U+2066–U+2069) are removed
+  from feedback descriptions and component names.
+- **I5.** The policy's per-caller request backstop applies to `/admin` calls too, before the
+  owner check.
+
+### What the gate itself does on revocation (oauth2-proxy v7.15.4)
+
+oauth2-proxy re-validates the session's address against `authenticated_emails_file` on **every**
+request: an address no longer in the file gets its cookie cleared and a 403, so a disabled tester
+loses access at the gate without waiting for the 8-hour cookie to expire. Caveats: the file
+watcher reloads the list when the file is removed or replaced (an atomic rename is seen); a file
+that fails to parse keeps the previous list in force. This is being verified empirically on DEV
+(work package D). The services' own enforcement above does not depend on it, and it also covers
+what the gate cannot: event streams already open and simulations already running.
+
 ### Gate header verification (oauth2-proxy v7.15.4)
 
 The rule relies on oauth2-proxy replacing any client value of `X-Forwarded-User` and
@@ -233,7 +268,9 @@ reports keep `v: 1` and add `kind`, `component` and `context`.
   malformed and injection input; spool format, mode and atomicity; result timeout; view reload;
   revocation ending only that account's sessions and streams; fail closed; observation dedupe;
   feedback kinds, the v2 line, limits and ownership; reports owner-only.
-- `runtime/builder/tests/access.test.ts`: the build service's enforcement.
+- `runtime/builder/tests/access.test.ts`: the build service's enforcement and build revocation
+  (deny wins, both directions).
+- `runtime/identity/tests/socket-groups.test.ts`: the socket's configured group and mode 0660.
 - `app/tests/admin.test.ts`, `app/tests/problem-report.test.ts`: the client logic.
 - `app/e2e/s23-feedback.spec.ts`, `app/e2e/s23-admin.spec.ts`: EN and HE, desktop (1400×860) and
   tablet (1024×768), against the real admin API with a fake helper.

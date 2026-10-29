@@ -28,7 +28,7 @@
  */
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { decideAccess, emailOf, type AccessView } from '../identity/access.js';
-import type { IdentityConfig } from '../identity/principal.js';
+import type { IdentityConfig, Principal } from '../identity/principal.js';
 import { handleAdmin, type AdminLimits, type AdminSpool, type IdentityObserver } from './admin.js';
 import { MemoryRate } from '../policy/rate.js';
 import { Refusal, admissionEvent, sendRefusal } from '../policy/refusal.js';
@@ -160,6 +160,25 @@ function stream(req: IncomingMessage, res: ServerResponse, s: HostSession, url: 
   req.on('close', close);
 }
 
+function healthBody(host: SessionHost) {
+  // Sprint 10: the runtime's build identity when the bundle was stamped (additive, read-only).
+  const runtime = runtimeIdentity();
+  return { protocol: PROTOCOL, sessions: host.health(), ...(runtime ? { runtime } : {}) };
+}
+
+/**
+ * Sprint 23B (review H1): a server that answers `GET /health` only (the same body as the API's),
+ * for the build service's admission check on its own socket. Every other request is 404: no
+ * identity is read, no session or admin route exists here.
+ */
+export function createHealthServer(host: SessionHost): Server {
+  return createServer((req, res) => {
+    const path = new URL(req.url ?? '/', 'http://host.invalid').pathname;
+    if (req.method === 'GET' && path === '/health') return send(res, 200, healthBody(host));
+    send(res, 404, { error: 'not found' });
+  });
+}
+
 /** Sprint 23B options; all absent: exactly the RC4 behaviour. */
 export interface HttpOptions {
   /** Access enforcement (TBI_ACCESS_VIEW): every route but /health needs an authorized account. */
@@ -217,15 +236,7 @@ async function handle(
   const parts = url.pathname.split('/').filter(Boolean);
   const method = req.method ?? 'GET';
 
-  if (method === 'GET' && url.pathname === '/health') {
-    // Sprint 10: the runtime's build identity when the bundle was stamped (additive, read-only).
-    const runtime = runtimeIdentity();
-    return send(res, 200, {
-      protocol: PROTOCOL,
-      sessions: host.health(),
-      ...(runtime ? { runtime } : {}),
-    });
-  }
+  if (method === 'GET' && url.pathname === '/health') return send(res, 200, healthBody(host));
   const access = opts.access ?? null;
   const decision = decideAccess(req, identity, access);
   // Sprint 23B: the helper learns which Google account signs in with which address (best
@@ -245,6 +256,19 @@ async function handle(
     if (decision.status === 401) throw new HttpError(401, 'identity required');
     return send(res, decision.status, { error: decision.error });
   }
+  // Anti-hammering backstop over every route of this caller (Phase 4), the admin routes included
+  // (Sprint 23B review I5: before the owner check, so a non-owner hammering /admin is limited too).
+  // Keyed by principal; an address-only caller (no subject) by its email tag.
+  const caller = (decision.principal ?? decision.emailTag) as Principal | null;
+  if (host.config.policy && caller) {
+    const plan = host.config.policy.plan(caller);
+    const r = requests.take(caller, 'request', plan.requests);
+    if (!r.ok) {
+      if (decision.principal)
+        admissionEvent('runtime', 'request', 'rate_limited', decision.principal);
+      return sendRefusal(res, new Refusal('rate_limited', r.retryAfterMs));
+    }
+  }
   if (access && parts[0] === 'admin')
     return handleAdmin(
       req,
@@ -263,14 +287,6 @@ async function handle(
     );
   const principal = decision.principal;
   if (!principal) throw new HttpError(401, 'identity required');
-  // Anti-hammering backstop over every route of this principal (Phase 4).
-  if (host.config.policy) {
-    const r = requests.take(principal, 'request', host.config.policy.plan(principal).requests);
-    if (!r.ok) {
-      admissionEvent('runtime', 'request', 'rate_limited', principal);
-      return sendRefusal(res, new Refusal('rate_limited', r.retryAfterMs));
-    }
-  }
   if (parts[0] === 'reports' && parts.length === 1 && method === 'POST') {
     if (!reports) throw new HttpError(503, 'reports_disabled');
     const body = await readBody(req, MAX_REPORT_BYTES);
