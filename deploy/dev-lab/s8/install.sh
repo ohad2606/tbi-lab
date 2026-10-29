@@ -93,8 +93,12 @@ if [[ "$S23_FEEDBACK" == 1 && "$uninstall" != "--uninstall" ]] && sudo test -e "
   meta="$(sudo stat -c '%U:%G %a %F %h' "$OWNER_FILE")"
   [[ "$meta" == "root:tbi-runtimeio 640 regular file 1" ]] ||
     { echo "refused: $OWNER_FILE is '$meta', expected 'root:tbi-runtimeio 640 regular file 1'" >&2; exit 1; }
-  sudo grep -qxE 'p_[A-Za-z0-9_-]{26}' "$OWNER_FILE" && [[ "$(sudo wc -l < "$OWNER_FILE")" -le 1 ]] ||
+  # The whole content, as the Session Host reads it: one principal, at most one newline.
+  owner="$(sudo head -c 64 "$OWNER_FILE"; echo .)"; owner="${owner%.}"
+  owner_re=$'^p_[A-Za-z0-9_-]{26}\n?$'
+  [[ "$owner" =~ $owner_re ]] ||
     { echo "refused: $OWNER_FILE must hold exactly one principal p_..." >&2; exit 1; }
+  unset owner
 fi
 
 # Phase C (alpha): the Session Host's own ceiling on live sessions (engineering default 4). The

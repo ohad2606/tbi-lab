@@ -67,6 +67,8 @@ SystemCallFilter=@system-service
 SystemCallArchitectures=native
 RestrictAddressFamilies=AF_UNIX
 IPAddressDeny=any
+# Its own network namespace: filesystem sockets (Caddy's, the host health socket) still work.
+PrivateNetwork=yes
 DevicePolicy=closed
 MemoryMax=192M
 TasksMax=32
