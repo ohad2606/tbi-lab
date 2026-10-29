@@ -34,6 +34,8 @@ export function useScreenSupport(): ScreenSupport {
 function useVisibleBox<T extends HTMLElement>() {
   const ref = useRef<T>(null);
   useLayoutEffect(() => {
+    // Nothing rendered (production branding on a supported screen): nothing to follow.
+    if (!ref.current) return;
     const vv = typeof visualViewport === 'object' ? visualViewport : null;
     let frame = 0;
     const update = () => {
