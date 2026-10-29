@@ -85,7 +85,7 @@ export function validate(profile, srcdir, tools = currentTools()) {
   const errors = [];
   const err = (m) => errors.push(m);
 
-  if (!/^rc\d+$/.test(profile.release)) err(`release: bad name ${profile.release}`);
+  if (!/^rc\d+(-dev-lab)?$/.test(profile.release)) err(`release: bad name ${profile.release}`);
   if (tools.node !== profile.node) err(`node: pinned ${profile.node}, running ${tools.node}`);
   if (tools.npm !== profile.npm) err(`npm: pinned ${profile.npm}, running ${tools.npm}`);
 
@@ -129,6 +129,16 @@ export function validate(profile, srcdir, tools = currentTools()) {
     !(typeof host.TBI_REPORTS_DIR === 'string' && host.TBI_REPORTS_DIR.startsWith('/'))
   )
     err('host.TBI_REPORTS_DIR must be an absolute path when the app switch is on');
+
+  // The DEV branding (VITE_TBI_ENV=dev, app/src/environment.ts) is for DEV-Lab only: exactly the
+  // profiles named <release>-dev-lab carry it, and every other profile pins it unset, so no
+  // production or Alpha package can show the DEV strip, title or icons.
+  const devLab = /-dev-lab$/.test(profile.release ?? '');
+  if (!('VITE_TBI_ENV' in pinned)) err('VITE_TBI_ENV must be pinned (null, or "dev" for DEV-Lab)');
+  else if (devLab && pinned.VITE_TBI_ENV !== 'dev')
+    err('VITE_TBI_ENV must be "dev" in a DEV-Lab profile');
+  else if (!devLab && pinned.VITE_TBI_ENV !== null)
+    err(`VITE_TBI_ENV must be null outside a DEV-Lab profile (release ${profile.release})`);
 
   if ('VITE_FEEDBACK_URL' in pinned && pinned.VITE_FEEDBACK_URL !== null)
     err('VITE_FEEDBACK_URL must stay null (external form needs owner approval, Sprint 13 H7)');

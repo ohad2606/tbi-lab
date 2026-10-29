@@ -66,5 +66,20 @@ export default defineConfig({
       reuseExistingServer: !process.env.CI,
       timeout: 240_000,
     },
+    {
+      // 2026-10-29: the same source built as DEV-Lab is (VITE_TBI_ENV=dev, the dev-lab release
+      // profile): DEV strip, title, top-bar label, icons and manifest (dev-brand-tablet.spec.ts).
+      command:
+        'npm run build --workspace @tbi-lab/app -- --outDir .tmp/dist-dev && npm run preview --workspace @tbi-lab/app -- --outDir .tmp/dist-dev --host 127.0.0.1 --port 4175 --strictPort',
+      url: 'http://127.0.0.1:4175',
+      env: {
+        VITE_TBI_ENV: 'dev',
+        TBI_RUNTIME_PROXY: process.env.TBI_RUNTIME_PROXY ?? 'http://127.0.0.1:7499',
+        TBI_BUILD_PROXY: process.env.TBI_BUILD_PROXY ?? 'http://127.0.0.1:7498',
+        TBI_TEST_GATE: '1', // the proxy plays the authenticating gate (vite.config.ts)
+      },
+      reuseExistingServer: !process.env.CI,
+      timeout: 240_000,
+    },
   ],
 });

@@ -22,6 +22,9 @@ export const en = {
   'topbar.projectName': 'Project name',
   'topbar.language': 'Language',
   'topbar.signOut': 'Sign out',
+  'deployment.devBadge': 'DEV',
+  'deployment.devBadgeTitle': 'Development environment',
+  'deployment.devStrip': 'Development environment, not production. For testing only.',
   'deployment.preview': '{name} preview · experimental',
   'deployment.previewNote':
     'An experimental preview, separate from the validated deployment. Its projects are stored apart.',
@@ -851,7 +854,11 @@ export const en = {
   'brand.logoAlt': 'TBI Lab: Think, Bring ideas to life, Invent',
   'home.subtitle':
     'Circuits are simulated and saved right here in your browser. Start from an example, or create your own project.',
-  'app.narrowScreen': 'TBI Lab is designed for desktop screens at least 1024 pixels wide.',
+  // Screen support (2026-10-29): computers and tablets; tablets best in landscape; no phones.
+  'app.screen.phone':
+    'TBI Lab does not support phones or screens this small. Use a computer or a tablet (landscape recommended).',
+  'app.screen.rotate': 'For the best experience, rotate your tablet to landscape.',
+  'app.screen.narrow': 'For the best experience, use a window at least 1024 pixels wide.',
   'rating.heading': 'Component rating exceeded',
   'rating.atRisk': '{component} may be damaged',
   'rating.row.forward_current': 'Current: {value} (maximum {limit})',

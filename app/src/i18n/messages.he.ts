@@ -25,6 +25,9 @@ export const he: Record<MessageKey, string> = {
   'topbar.projectName': 'שם הפרויקט',
   'topbar.language': 'שפה',
   'topbar.signOut': 'יציאה',
+  'deployment.devBadge': 'DEV',
+  'deployment.devBadgeTitle': 'סביבת פיתוח',
+  'deployment.devStrip': 'סביבת פיתוח, לא סביבת הייצור. לבדיקות בלבד.',
   'deployment.preview': 'תצוגה מקדימה {name} · ניסיונית',
   'deployment.previewNote':
     'תצוגה מקדימה ניסיונית, נפרדת מהסביבה המאומתת. הפרויקטים שלה נשמרים בנפרד.',
@@ -831,7 +834,10 @@ export const he: Record<MessageKey, string> = {
   'sim.results.power': 'הספק',
   'brand.logoAlt': 'TBI Lab: חושבים, מפיחים חיים ברעיונות, ממציאים',
   'home.subtitle': 'המעגלים מדומים ונשמרים כאן, בדפדפן שלכם. התחילו מדוגמה, או צרו פרויקט משלכם.',
-  'app.narrowScreen': 'TBI Lab מיועד למסכי מחשב ברוחב של 1024 פיקסלים לפחות.',
+  'app.screen.phone':
+    'TBI Lab אינו תומך בטלפונים או במסכים קטנים כאלה. השתמשו במחשב או בטאבלט (מומלץ במצב לרוחב).',
+  'app.screen.rotate': 'לחוויה הטובה ביותר, סובבו את הטאבלט למצב לרוחב.',
+  'app.screen.narrow': 'לחוויה הטובה ביותר, השתמשו בחלון ברוחב של 1024 פיקסלים לפחות.',
   'rating.heading': 'חריגה מדירוגי הרכיב',
   'rating.atRisk': '{component} עלול להינזק',
   'rating.row.forward_current': 'זרם: {value} (מקסימום {limit})',

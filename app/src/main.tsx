@@ -1,5 +1,6 @@
 import { render } from 'preact';
-import { PREVIEW_NAME, STORAGE_NAMESPACE, storageName } from './deployment.js';
+import { PREVIEW_NAME, STORAGE_NAMESPACE, TBI_ENV, storageName } from './deployment.js';
+import { documentTitle } from './environment.js';
 import { DB_NAME, ProjectStore } from './persistence/store.js';
 import { McuSimulation } from './runtime/controller.js';
 import { RuntimeClient } from './runtime/client.js';
@@ -39,7 +40,8 @@ async function main() {
   const storage = await ProjectStore.open(indexedDB, storageName(DB_NAME, STORAGE_NAMESPACE)).catch(
     () => null,
   );
-  if (PREVIEW_NAME) document.title = `${PREVIEW_NAME} preview · ${document.title}`;
+  // DEV-Lab and previews say so in the window title (the HTML already carries the DEV prefix).
+  document.title = documentTitle(TBI_ENV, PREVIEW_NAME);
   // The electrical engine runs only in this module Worker, never on the UI thread.
   const local = new SimulationController({
     createWorker: () =>

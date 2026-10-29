@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import symbolUrl from '../assets/brand/tbi-lab-symbol.png';
-import { SIGN_OUT_URL } from '../deployment.js';
+import { IS_DEV_ENV, SIGN_OUT_URL } from '../deployment.js';
 import { LOCALES } from '../i18n/i18n.js';
 import { AppMenu } from './AppMenu.js';
 import { useAppState, useStore, useT } from './context.js';
@@ -35,6 +35,7 @@ const BRAND_LETTERS: readonly [string, string][] = [
  * header's trailing edge: right in English, left in Hebrew (DOM order follows the direction).
  */
 function Brand() {
+  const t = useT();
   return (
     <span class="brand" data-testid="brand">
       <span class="brand-word" dir="ltr">
@@ -45,6 +46,15 @@ function Brand() {
         ))}
         {BRAND_SUFFIX}
       </span>
+      {/* DEV-Lab builds only: always visible, also where the narrowest layout hides the word. */}
+      {IS_DEV_ENV && (
+        <span class="env-badge" data-testid="env-badge" title={t('deployment.devBadgeTitle')}>
+          <span aria-hidden="true" dir="ltr">
+            {t('deployment.devBadge')}
+          </span>
+          <span class="visually-hidden">{t('deployment.devBadgeTitle')}</span>
+        </span>
+      )}
       {/* Decorative: the product name is the text just before it. */}
       <img
         class="brand-logo"

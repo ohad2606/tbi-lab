@@ -14,7 +14,8 @@
     "VITE_PROBLEM_REPORTS": "1",
     "VITE_RUNTIME_BASE": "/runtime",
     "VITE_SIGN_OUT_URL": "/oauth2/sign_out",
-    "VITE_STORAGE_NAMESPACE": null
+    "VITE_STORAGE_NAMESPACE": null,
+    "VITE_TBI_ENV": null
   },
   "host": {
     "TBI_REPORTS_DIR": "/var/lib/@N@-runtime/state/reports"
