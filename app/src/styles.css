@@ -1715,31 +1715,42 @@ select {
   grid-template-rows: auto auto auto 1fr auto;
 }
 
-/* On a screen narrower than the layout (the page then pans sideways, and a mobile browser widens its
-   layout viewport to the 1024 px content) the notes follow the VISIBLE area: EnvironmentNotes sets
-   their physical offset and width from the visual viewport, in both directions (RTL included).
-   Without script values they span the layout. */
+/* The bands span the whole layout, like the top bar. On a screen narrower than the layout (the page
+   then pans sideways, and a mobile browser widens its layout viewport to the 1024 px content) their
+   TEXT follows the visible area: EnvironmentNotes sets its physical offset and width from the
+   visual viewport, in both directions (RTL included). Without script values it spans the band. */
 .app-notes {
   position: relative;
-  justify-self: left;
+  z-index: 5;
+}
+
+.note-body {
+  box-sizing: border-box;
+  position: relative;
+  /* Physically left-anchored in LTR and RTL alike (the auto margin takes the rest). */
+  margin-left: 0;
+  margin-right: auto;
   inline-size: var(--notes-width, 100%);
   left: var(--notes-left, 0);
-  z-index: 5;
+  padding-inline: 1rem;
 }
 
 /* DEV-Lab builds only (environment.ts): unmistakable, high contrast (#111 on #ffcc00, 12.6:1). */
 .dev-strip {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.25rem 0.625rem;
-  padding: 0.25rem 1rem;
+  padding-block: 0.25rem;
   background: #ffcc00;
   color: #111111;
   border-block-end: 1px solid #b38f00;
   font-size: 0.875rem;
   line-height: 1.25rem;
   font-weight: 600;
+}
+
+.dev-strip > .note-body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.625rem;
 }
 
 .dev-strip-label {
@@ -1754,7 +1765,7 @@ select {
 /* The metrics of the earlier narrow-screen note (1rem text, 0.5rem padding, no border): the
    layout below it, which the 768 px tablet layout tests measure to the pixel, is unchanged. */
 .screen-note {
-  padding: 0.5rem 1rem;
+  padding-block: 0.5rem;
 }
 
 /* Phone-size: not supported (warning colours, 5.9:1). */

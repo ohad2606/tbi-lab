@@ -68,19 +68,30 @@ async function onScreen(page: Page, selector: string) {
       y: r.top - vv.offsetTop,
       right: r.right - vv.offsetLeft,
       bottom: r.bottom - vv.offsetTop,
+      width: r.width,
       visibleWidth: vv.width,
     };
   }, selector);
 }
 
-/** The note lies inside the visible width and above the top bar (it pushes, never covers). */
-async function expectNoteLayout(page: Page) {
-  const note = await onScreen(page, '[data-testid="screen-note"]');
+/**
+ * A note band (the DEV strip or the screen note): as wide as the top bar and aligned with it (never
+ * a partial-width band), above it (it pushes, never covers), and its text inside the visible width
+ * wherever the visible part of a wider-than-screen layout is (phones, Hebrew).
+ */
+async function expectBand(page: Page, selector: string) {
+  const band = await onScreen(page, selector);
+  const text = await onScreen(page, `${selector} > .note-body`);
   const bar = await onScreen(page, 'header.topbar');
-  expect(note.x).toBeGreaterThanOrEqual(-0.5);
-  expect(note.right).toBeLessThanOrEqual(note.visibleWidth + 0.5);
-  expect(bar.y).toBeGreaterThanOrEqual(note.bottom - 0.5);
+  expect(Math.abs(band.width - bar.width), 'band width = top bar width').toBeLessThanOrEqual(0.5);
+  expect(Math.abs(band.x - bar.x), 'band aligned with the top bar').toBeLessThanOrEqual(0.5);
+  expect(bar.y).toBeGreaterThanOrEqual(band.bottom - 0.5);
+  expect(text.x, 'text inside the visible width').toBeGreaterThanOrEqual(-0.5);
+  expect(text.right, 'text inside the visible width').toBeLessThanOrEqual(text.visibleWidth + 0.5);
+  return { band, bar };
 }
+
+const expectNoteLayout = (page: Page) => expectBand(page, '[data-testid="screen-note"]');
 
 const MESSAGES = {
   phone: {
@@ -181,19 +192,17 @@ test.describe('DEV-Lab build (VITE_TBI_ENV=dev)', () => {
             locale === 'en' ? 'Development environment' : 'סביבת פיתוח',
           );
           // The strip is above the top bar: the page moves down, nothing is covered.
-          const s = await onScreen(page, '[data-testid="dev-strip"]');
-          const bar = await onScreen(page, 'header.topbar');
+          // It spans the layout exactly like the top bar (every device, orientation, locale).
+          const { band: s, bar } = await expectBand(page, '[data-testid="dev-strip"]');
           expect(s.y).toBeLessThanOrEqual(1);
-          expect(bar.y).toBeGreaterThanOrEqual(s.bottom - 0.5);
-          expect(s.x).toBeGreaterThanOrEqual(-0.5);
-          expect(s.right).toBeLessThanOrEqual(s.visibleWidth + 0.5);
           // The badge sits inside the top bar.
           const b = await onScreen(page, '[data-testid="env-badge"]');
           expect(b.y).toBeGreaterThanOrEqual(bar.y);
           expect(b.bottom).toBeLessThanOrEqual(bar.bottom);
-          if (want)
+          if (want) {
             await expect(page.getByTestId('screen-note')).toHaveText(MESSAGES[want][locale]);
-          else await expect(page.getByTestId('screen-note')).toHaveCount(0);
+            await expectNoteLayout(page);
+          } else await expect(page.getByTestId('screen-note')).toHaveCount(0);
           await shot(page, `dev-${name}-${screen}-${locale}`);
         }
       }
