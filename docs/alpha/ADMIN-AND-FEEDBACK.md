@@ -108,6 +108,41 @@ gate's allowlist or the tester registry.
 - **I5.** The policy's per-caller request backstop applies to `/admin` calls too, before the
   owner check.
 
+### Hardening from the second security review (Sprint 23B)
+
+- **N1, spool read without chown.** `spool/` and `observations/` are setgid (`root:tbi-admin-spool
+  2730`). The Session Host writes requests and observations with mode `0640` (also set with
+  `fchmod`, so the process umask cannot narrow it). The file is owned by the host's user, and its
+  group `tbi-admin-spool` comes from the directory. The helper reads it through that group and
+  never chowns it.
+- **N4, revocation after the compile.** A build whose account is revoked after the compile has
+  finished is checked again right before its image is published and right before its grant is
+  recorded. It ends `failed` with `account_disabled`, and the account gets neither a grant nor a
+  cached result. An image published in that window that nobody else holds is removed again.
+- **N5, socket creation window.** The API sockets and the health socket are bound with umask
+  `0077`, restored before `listen()` returns. They are therefore owner-only from the moment they
+  exist until their group and mode `0660` are set. Before this fix, they were briefly `0770` with the
+  service's primary group (`tbi-runtimeio`, `tbi-buildio`).
+
+### Deploying on Alpha (the switch)
+
+The Alpha switch (`rc4-switch.sh`, which runs `install.sh dev-lab`) must:
+
+1. **Create the socket groups** `tbi-sock-runtime` and `tbi-sock-build`, and add caddy to both
+   (`install.sh` does this; an install path that skips it leaves the backends unreachable).
+2. **Restart Caddy, not reload it.** A reload keeps the old process and its old supplementary
+   groups, so Caddy could not connect to the new socket groups.
+3. **Then verify the separation** as the build service's user:
+   `sudo -u tbi-build python3 -c 'import socket; socket.socket(socket.AF_UNIX).connect("/run/tbi-runtime/api.sock")'`
+   must fail with `PermissionError: [Errno 13]` (EACCES). If it connects, stop and roll back.
+   Caddy must still reach both sockets through the gate.
+
+**The new unit files and the new bundles ship and roll back together.** The units set
+`TBI_SOCKET_GID` and the socket groups. The new services expect them, and the old bundles do
+not. Rolling back only one half leaves a socket that Caddy cannot reach, or a backend in
+`tbi-gate` again. A rollback restores the previous units and bundles in one step, then restarts
+both services and Caddy.
+
 ### What the gate itself does on revocation (oauth2-proxy v7.15.4)
 
 oauth2-proxy re-validates the session's address against `authenticated_emails_file` on **every**
@@ -159,7 +194,8 @@ specified. A deployment that sets `skip_auth_strip_headers = false`, or that ena
 ```
 
 Ids: 26 Crockford base32 characters (48-bit milliseconds, then 80 random bits). Every file the
-Session Host writes is created as `<id>.tmp` with `O_CREAT|O_EXCL` and mode `0600`, written,
+Session Host writes is created as `<id>.tmp` with `O_CREAT|O_EXCL` and mode `0640` (set with fchmod too; the setgid
+directory gives it group `tbi-admin-spool`, by which the helper reads it), written,
 fsynced, then renamed to `<id>.json` (the directory is not readable by the host, so it is not
 fsynced). A failure leaves nothing; an existing `.tmp` of the same name is never touched.
 
@@ -269,8 +305,9 @@ reports keep `v: 1` and add `kind`, `component` and `context`.
   revocation ending only that account's sessions and streams; fail closed; observation dedupe;
   feedback kinds, the v2 line, limits and ownership; reports owner-only.
 - `runtime/builder/tests/access.test.ts`: the build service's enforcement and build revocation
-  (deny wins, both directions).
-- `runtime/identity/tests/socket-groups.test.ts`: the socket's configured group and mode 0660.
+  (deny wins, both directions), including a revocation after the compile (N4).
+- `runtime/identity/tests/socket-groups.test.ts`: the socket's configured group and mode 0660;
+  owner-only from the moment it is bound (N5), and the process umask restored.
 - `app/tests/admin.test.ts`, `app/tests/problem-report.test.ts`: the client logic.
 - `app/e2e/s23-feedback.spec.ts`, `app/e2e/s23-admin.spec.ts`: EN and HE, desktop (1400×860) and
   tablet (1024×768), against the real admin API with a fake helper.

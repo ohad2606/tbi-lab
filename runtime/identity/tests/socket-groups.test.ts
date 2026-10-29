@@ -44,6 +44,53 @@ describe('backend socket groups', () => {
     expect(body).toBe('ok');
   });
 
+  it('the socket is owner-only from the moment it exists, until its group and mode are set (N5)', async () => {
+    const d = mkdtempSync(join(tmpdir(), 'tbi-sock-'));
+    dirs.push(d);
+    const path = join(d, 'api.sock');
+    const umaskNow = () => {
+      const u = process.umask(0);
+      process.umask(u);
+      return u;
+    };
+    const before = umaskNow();
+    const server = createServer((_req, res) => res.end('ok'));
+    closers.push(() => server.close());
+    // Runs before listen()'s own callback (listeners run in order): the socket as first bound.
+    let first = -1;
+    server.on('listening', () => {
+      first = statSync(path).mode & 0o777;
+    });
+    await listen(server, parseListen(`unix:${path}`), process.getgid!());
+    expect(first & 0o077).toBe(0); // no group or other access in the window
+    expect(statSync(path).mode & 0o777).toBe(0o660);
+    expect(umaskNow()).toBe(before); // restored
+  });
+
+  it('the umask is restored before listen() returns, and when binding fails (N5)', async () => {
+    const d = mkdtempSync(join(tmpdir(), 'tbi-sock-'));
+    dirs.push(d);
+    const umaskNow = () => {
+      const u = process.umask(0);
+      process.umask(u);
+      return u;
+    };
+    const before = umaskNow();
+    const ok = createServer();
+    closers.push(() => ok.close());
+    const pending = listen(ok, parseListen(`unix:${join(d, 'a.sock')}`));
+    // Synchronously after the call: bound already, owner-only, and the umask is the old one.
+    expect(statSync(join(d, 'a.sock')).mode & 0o077).toBe(0);
+    expect(umaskNow()).toBe(before);
+    await pending;
+    // A bind that fails (no such directory) leaves the umask as it was too.
+    const bad = createServer();
+    await expect(
+      listen(bad, parseListen(`unix:${join(d, 'missing', 'b.sock')}`)),
+    ).rejects.toThrow();
+    expect(umaskNow()).toBe(before);
+  });
+
   it('the group comes from the environment, strictly', () => {
     expect(socketGidFromEnv('TBI_SOCKET_GID', {})).toBeUndefined();
     expect(socketGidFromEnv('TBI_SOCKET_GID', { TBI_SOCKET_GID: '' })).toBeUndefined();

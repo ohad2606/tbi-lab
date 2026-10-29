@@ -493,6 +493,16 @@ export class BuildService {
     } satisfies BuildResult;
   }
 
+  /** A build stopped by revocation (Sprint 23B): failed, `account_disabled`. */
+  private cancelled(r: BuildRecord, started: number): BuildResult {
+    return this.failed(
+      r,
+      'account_disabled',
+      'Access to TBI Lab ended for this account.',
+      Date.now() - started,
+    );
+  }
+
   private async run(r: BuildRecord): Promise<BuildResult> {
     const started = Date.now();
     const queuedMs = started - r.submittedAt;
@@ -538,7 +548,17 @@ export class BuildService {
         const bytes = await readFile(out.imagePath);
         if (!isMergedImage(bytes))
           return this.failed(r, 'internal', 'Build service: the build produced no valid image.', 0);
+        // Review N4: a revocation can land after the compile finished (during the reads and
+        // writes below). Checked again right before publishing and right before the grant: a
+        // revoked account gets neither an artifact nor a grant.
+        if (abort.signal.aborted) return this.cancelled(r, started);
         const artifact = await this.store.publish(bytes, 'build');
+        if (abort.signal.aborted) {
+          // Published but never granted: drop it unless someone else already holds it.
+          if (this.access.grants.holders(artifact.sha256) === 0)
+            await this.store.remove(artifact.sha256).catch(() => undefined);
+          return this.cancelled(r, started);
+        }
         this.access.grants.recordBuild(r.owner, { ...base, artifact });
         const result: BuildResult = {
           ...base,
@@ -553,13 +573,7 @@ export class BuildService {
       await rm(dir, { recursive: true, force: true });
     }
     const buildMs = Date.now() - started;
-    if (reason === 'account_disabled')
-      return this.failed(
-        r,
-        'account_disabled',
-        'Access to TBI Lab ended for this account.',
-        buildMs,
-      );
+    if (reason === 'account_disabled') return this.cancelled(r, started);
     if (reason === 'timeout')
       return this.failed(
         r,

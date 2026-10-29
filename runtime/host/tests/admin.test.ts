@@ -6,11 +6,14 @@
  * results and views into a temporary directory laid out as /var/lib/tbi-admin.
  */
 import {
+  chmodSync,
+  chownSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
   readdirSync,
+  renameSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -256,13 +259,17 @@ async function call(base: string, path: string, init: RequestInit = {}) {
 }
 
 const ls = (d: string) => (existsSync(d) ? readdirSync(d).sort() : []);
+/** Finished entries only: the helper ignores `*.tmp` (a write in progress). */
+const done = (d: string) => ls(d).filter((n) => n.endsWith('.json'));
 
 /** The helper's part: answer every spooled request (or leave them, for the timeout case). */
 function helperAnswers(dir: string, code = 'done', ok = true) {
   for (const name of ls(join(dir, 'spool')).filter((n) => n.endsWith('.json'))) {
     const req = JSON.parse(readFileSync(join(dir, 'spool', name), 'utf8')) as { id: string };
+    // Atomic, as the helper writes it: the host never reads a half-written result.
+    const tmp = join(dir, 'results', `.${req.id}.tmp`);
     writeFileSync(
-      join(dir, 'results', `${req.id}.json`),
+      tmp,
       JSON.stringify({
         v: 1,
         id: req.id,
@@ -274,6 +281,7 @@ function helperAnswers(dir: string, code = 'done', ok = true) {
         at: new Date().toISOString(),
       }),
     );
+    renameSync(tmp, join(dir, 'results', `${req.id}.json`));
     rmSync(join(dir, 'spool', name));
   }
 }
@@ -717,24 +725,24 @@ describe('admin API: accounts, spool and results', () => {
     ).not.toBeNull();
   });
 
-  it('add: an atomic 0600 spool file in the exact format, then the helper’s result (200)', async () => {
-    const s = await serve({ admin: { resultWaitMs: 3000 } });
+  it('add: an atomic 0640 spool file in the exact format, then the helper’s result (200)', async () => {
+    const s = await serve({ admin: { resultWaitMs: 60_000 } });
     const o = await s.gate(OWNER);
     const pendingCall = call(
       o,
       '/admin/accounts',
       mutation(o, 'POST', { email: ' NEW@example.invalid ' }),
     );
-    // The helper sees exactly one finished request (no temporary file), owned by the host, 0600.
+    // The helper sees exactly one finished request (no temporary file), owned by the host, 0640 (group-readable by the helper, interface N1).
     let names: string[] = [];
     for (let i = 0; i < 100 && !names.length; i++) {
-      names = ls(join(s.dir, 'spool'));
+      names = done(join(s.dir, 'spool'));
       await new Promise((r) => setTimeout(r, 10));
     }
     expect(names).toHaveLength(1);
     expect(names[0]).toMatch(/^[0-9A-HJKMNP-TV-Z]{26}\.json$/);
     const path = join(s.dir, 'spool', names[0]!);
-    expect(statSync(path).mode & 0o777).toBe(0o600);
+    expect(statSync(path).mode & 0o777).toBe(0o640);
     expect(statSync(path).size).toBeLessThan(4096);
     const req = JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>;
     expect(Object.keys(req)).toEqual(['v', 'id', 'at', 'actor', 'action', 'email']);
@@ -760,13 +768,13 @@ describe('admin API: accounts, spool and results', () => {
   });
 
   it('disable / reactivate carry the target and never an address; a refusal is 409 with its code', async () => {
-    const s = await serve({ admin: { resultWaitMs: 3000 } });
+    const s = await serve({ admin: { resultWaitMs: 60_000 } });
     const o = await s.gate(OWNER);
     for (const action of ['disable', 'reactivate'] as const) {
       const p = call(o, `/admin/accounts/${action}`, mutation(o, 'POST', { target: TARGET }));
       let names: string[] = [];
       while (!names.length) {
-        names = ls(join(s.dir, 'spool'));
+        names = done(join(s.dir, 'spool'));
         await new Promise((r) => setTimeout(r, 10));
       }
       const req = JSON.parse(readFileSync(join(s.dir, 'spool', names[0]!), 'utf8')) as Record<
@@ -809,6 +817,27 @@ describe('admin API: accounts, spool and results', () => {
     expect((await call(o, `/admin/requests/${id}`)).status).toBe(404);
   });
 
+  it('a setgid spool directory gives the file its group; the mode is 0640 whatever the umask (N1)', async () => {
+    const groups = process.getgroups?.() ?? [];
+    const gid = groups.find((g) => g !== process.getgid?.()) ?? process.getgid!();
+    const d = adminDir();
+    const spool = join(d, 'spool');
+    chownSync(spool, -1, gid);
+    chmodSync(spool, 0o2730);
+    const old = process.umask(0o077);
+    try {
+      const id = newRequestId();
+      await writeSpoolFile(spool, id, '{}\n');
+      const st = statSync(join(spool, `${id}.json`));
+      expect(st.mode & 0o777).toBe(0o640);
+      expect(st.gid).toBe(gid);
+      expect(st.uid).toBe(process.getuid!());
+    } finally {
+      process.umask(old);
+      chmodSync(spool, 0o700);
+    }
+  });
+
   it('spool failures are 503 and leave nothing; the spool file is never half-written', async () => {
     const failing: SpoolIo = { syncFile: () => Promise.reject(new Error('EIO')) };
     const s = await serve({ io: failing });
@@ -831,10 +860,10 @@ describe('admin API: accounts, spool and results', () => {
   });
 
   it('a forbidden while the owner’s Google id is unrecorded says so (ownerIdentityPending)', async () => {
-    const s = await serve({ view: { ownerPrincipal: null }, admin: { resultWaitMs: 3000 } });
+    const s = await serve({ view: { ownerPrincipal: null }, admin: { resultWaitMs: 60_000 } });
     const o = await s.gate(OWNER); // recognised by the owner email tag
     const p = call(o, '/admin/accounts/disable', mutation(o, 'POST', { target: TARGET }));
-    while (!ls(join(s.dir, 'spool')).length) await new Promise((r) => setTimeout(r, 10));
+    while (!done(join(s.dir, 'spool')).length) await new Promise((r) => setTimeout(r, 10));
     helperAnswers(s.dir, 'forbidden', false);
     const r = await p;
     expect(r.status).toBe(409);
@@ -843,7 +872,7 @@ describe('admin API: accounts, spool and results', () => {
     s.writeView({ ownerPrincipal: P(OWNER) });
     s.access.reload();
     const p2 = call(o, '/admin/accounts/disable', mutation(o, 'POST', { target: TARGET }));
-    while (!ls(join(s.dir, 'spool')).length) await new Promise((r) => setTimeout(r, 10));
+    while (!done(join(s.dir, 'spool')).length) await new Promise((r) => setTimeout(r, 10));
     helperAnswers(s.dir, 'forbidden', false);
     expect((await p2).body.ownerIdentityPending).toBeUndefined();
   });
@@ -869,14 +898,14 @@ describe('admin API: accounts, spool and results', () => {
 });
 
 describe('identity observations', () => {
-  it('one atomic 0600 file per principal per hour, only with both headers; never slows or fails a request', async () => {
+  it('one atomic 0640 file per principal per hour, only with both headers; never slows or fails a request', async () => {
     let now = Date.parse('2026-10-29T10:00:00Z');
     const s = await serve({ observerNow: () => now });
     const obs = join(s.dir, 'observations');
     const waitFiles = async (n: number) => {
-      for (let i = 0; i < 100 && ls(obs).length < n; i++)
+      for (let i = 0; i < 100 && done(obs).length < n; i++)
         await new Promise((r) => setTimeout(r, 10));
-      return ls(obs);
+      return done(obs);
     };
     const t = await s.gate(TESTER);
     await call(t, '/health'); // health: no identity processing
@@ -885,7 +914,7 @@ describe('identity observations', () => {
     const files = await waitFiles(1);
     expect(files).toHaveLength(1);
     expect(files[0]).toMatch(/^[0-9A-HJKMNP-TV-Z]{26}\.json$/);
-    expect(statSync(join(obs, files[0]!)).mode & 0o777).toBe(0o600);
+    expect(statSync(join(obs, files[0]!)).mode & 0o777).toBe(0o640);
     expect(JSON.parse(readFileSync(join(obs, files[0]!), 'utf8'))).toEqual({
       v: 1,
       at: '2026-10-29T10:00:00.000Z',

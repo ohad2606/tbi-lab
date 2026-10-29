@@ -6,10 +6,10 @@
  * the tester registry: it writes a REQUEST into a spool directory and reads the RESULT the root
  * helper writes back. Its only other inputs are two views the helper generates (`view/access.json`
  * for authorization, `view/accounts.json` for the owner's masked list). None of these files holds
- * an address, except a pending `add` request (the address the owner just typed, 0600, deleted by
+ * an address, except a pending `add` request (the address the owner just typed, 0640 group tbi-admin-spool, deleted by
  * the helper once processed).
  *
- *   <TBI_ADMIN_DIR>/spool/<id>.json          host -> helper (atomic: <id>.tmp O_EXCL 0600, fsync, rename)
+ *   <TBI_ADMIN_DIR>/spool/<id>.json          host -> helper (atomic: <id>.tmp O_EXCL 0640, fsync, rename)
  *   <TBI_ADMIN_DIR>/results/<id>.json        helper -> host
  *   <TBI_ADMIN_DIR>/view/accounts.json       helper -> host (masked list)
  *   <TBI_ADMIN_DIR>/observations/<id>.json   host -> helper (gate identity, once per principal per hour)
@@ -53,7 +53,10 @@ export interface SpoolIo {
 const defaultIo: SpoolIo = { syncFile: (fh) => fh.sync() };
 
 /**
- * `<dir>/<id>.tmp` created exclusively (0600) -> written -> fsynced -> renamed to `<id>.json`.
+ * `<dir>/<id>.tmp` created exclusively (0640) -> written -> fsynced -> renamed to `<id>.json`.
+ * Interface N1: the directories are setgid `tbi-admin-spool` (2730), so the file inherits that
+ * group, and the root helper reads it by group (it never chowns it). The mode is set with fchmod
+ * as well, so a stricter process umask cannot leave the helper unable to read it.
  * The directory itself is not fsynced: the host may create files in it but not read it (0730).
  * On any failure nothing is left behind.
  */
@@ -66,9 +69,10 @@ export async function writeSpoolFile(
   if (!REQUEST_ID_RE.test(id)) throw new Error('bad id');
   const tmp = join(dir, `${id}.tmp`);
   // Exclusive: an existing file of that name is never written to or removed by us.
-  const fh = await open(tmp, 'wx', 0o600);
+  const fh = await open(tmp, 'wx', 0o640);
   try {
     try {
+      await fh.chmod(0o640);
       await fh.writeFile(text, 'utf8');
       await io.syncFile(fh);
     } finally {

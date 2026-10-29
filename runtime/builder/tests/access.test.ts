@@ -186,3 +186,62 @@ describe('revocation stops build work (deny wins)', () => {
     s.service.close();
   });
 });
+
+describe('revocation after the compile (review N4)', () => {
+  const setup = async () => {
+    const s = await serve(true);
+    const A = principalFor('user-a');
+    s.writeView([A]);
+    return { s, A };
+  };
+
+  it('landing during publish: no grant, the unheld artifact is dropped, the build fails account_disabled', async () => {
+    const { s, A } = await setup();
+    const store = s.service.store;
+    const publish = store.publish.bind(store);
+    let published: string | null = null;
+    store.publish = async (...args: Parameters<typeof publish>) => {
+      const artifact = await publish(...args);
+      published = artifact.sha256;
+      s.service.revokeUnauthorized(() => false); // the owner disables A right now
+      return artifact;
+    };
+    const out = s.service.submit(sketch('void setup() {} // n4 publish'), A);
+    if ('cached' in out) throw new Error('unexpected cache hit');
+    await s.service.whenIdle();
+    const st = s.service.status(out.buildId, out.token, A)!;
+    expect(st.state).toBe('failed');
+    expect(st.result?.failure).toBe('account_disabled');
+    expect(published).not.toBeNull();
+    expect(s.service.lookup(st.result!.key, A)).toBeNull(); // no cached build for A
+    expect(s.service.lease(A, published!, 60_000)).toBeNull(); // no grant
+    expect(store.manifest(published!)).toBeUndefined(); // nobody holds it: dropped
+  });
+
+  it('landing between the compile and publish: nothing is published', async () => {
+    const { s, A } = await setup();
+    const provider = (s.service as unknown as { providers: Map<string, FakeProvider> }).providers
+      .values()
+      .next().value!;
+    const build = provider.build.bind(provider);
+    provider.build = async (job) => {
+      const out = await build(job);
+      // Fires after the compile's own check, while the image is being read.
+      setImmediate(() => s.service.revokeUnauthorized(() => false));
+      return out;
+    };
+    const store = s.service.store;
+    let publishes = 0;
+    const publish = store.publish.bind(store);
+    store.publish = async (...args: Parameters<typeof publish>) => {
+      publishes++;
+      return publish(...args);
+    };
+    const out = s.service.submit(sketch('void setup() {} // n4 read'), A);
+    if ('cached' in out) throw new Error('unexpected cache hit');
+    await s.service.whenIdle();
+    const st = s.service.status(out.buildId, out.token, A)!;
+    expect(st.result?.failure).toBe('account_disabled');
+    expect(publishes).toBe(0);
+  });
+});
