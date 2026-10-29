@@ -41,7 +41,7 @@ directories exist (the helper's installer creates them; this script never does).
 `SupplementaryGroups=` is a list setting: the extra line extends the unit's existing groups; the
 service users keep their primary groups. Group roles: `tbi-admin-view` (both services) reads
 `view/` (`root:tbi-admin-view 0750`) and `view/access.json` (`0640`); `tbi-admin-spool` (Session
-Host only) writes `spool/` and `observations/` (`0730`), reads `results/` (`0750`) and
+Host only) writes `spool/` and `observations/` (`2730`, setgid; files `0640`), reads `results/` (`0750`) and
 `view/accounts.json` (`root:tbi-admin-spool 0640`). The services never gain write access to the
 gate's allowlist or the tester registry.
 
@@ -186,11 +186,11 @@ specified. A deployment that sets `skip_auth_strip_headers = false`, or that ena
 
 ```
 /var/lib/tbi-admin/                                root:root 0755
-  spool/<id>.json          Session Host -> helper   root:tbi-admin-spool 0730   requests
+  spool/<id>.json          Session Host -> helper   root:tbi-admin-spool 2730   requests
   results/<id>.json        helper -> Session Host   root:tbi-admin-spool 0750   results
   view/access.json         helper -> both services  root:tbi-admin-view  0640   authorization view
   view/accounts.json       helper -> Session Host   root:tbi-admin-spool 0640   the owner's masked list
-  observations/<id>.json   Session Host -> helper   root:tbi-admin-spool 0730   gate identities
+  observations/<id>.json   Session Host -> helper   root:tbi-admin-spool 2730   gate identities
 ```
 
 Ids: 26 Crockford base32 characters (48-bit milliseconds, then 80 random bits). Every file the
