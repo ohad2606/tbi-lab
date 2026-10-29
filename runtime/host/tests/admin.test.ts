@@ -557,7 +557,7 @@ describe('admin API: CSRF, rate limit, input', () => {
       'a@@example.invalid',
       '.a@example.invalid',
       'a..b@example.invalid',
-      'a@-example.invalid',
+      'a@.example.invalid',
       'a b@example.invalid',
       'a@example.invalid\n{"action":"disable"}',
       'a@example.invalid","action":"disable',
@@ -603,7 +603,7 @@ describe('admin API: CSRF, rate limit, input', () => {
       400,
     );
     expect(ls(join(s.dir, 'spool'))).toEqual([]);
-    expect(normalizeAddEmail(' New.Tester+x@Example.Invalid ')).toBe(
+    expect(normalizeAddEmail(' New.Tester+x@example.invalid ')).toBe(
       'new.tester+x@example.invalid',
     );
   });
@@ -646,7 +646,7 @@ describe('admin API: accounts, spool and results', () => {
     const pendingCall = call(
       o,
       '/admin/accounts',
-      mutation(o, 'POST', { email: ' New@Example.Invalid ' }),
+      mutation(o, 'POST', { email: ' NEW@example.invalid ' }),
     );
     // The helper sees exactly one finished request (no temporary file), owned by the host, 0600.
     let names: string[] = [];

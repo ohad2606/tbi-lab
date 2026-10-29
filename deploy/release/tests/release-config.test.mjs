@@ -13,6 +13,7 @@ import { checkDist } from '../check-dist.mjs';
 const ROOT = new URL('../../../', import.meta.url).pathname;
 const RC4 = join(ROOT, 'deploy/release/rc4.release.json');
 const RC4_REPORTS = join(ROOT, 'deploy/release/rc4-reports.release.json');
+const RC4_S23 = join(ROOT, 'deploy/release/rc4-s23.release.json');
 const TOOLS = { node: 'v24.21.0', npm: '11.19.0', trackedFiles: () => [] };
 const GIT = { node: 'v24.21.0', npm: '11.19.0' }; // the real tracked-file listing (git)
 
@@ -31,11 +32,47 @@ const reads = (names) => names.map((n) => `import.meta.env.${n};`).join('\n');
 const RC4_SETTINGS = Object.keys(loadProfile(RC4).vite);
 
 describe('release profile vs source', () => {
-  it('the RC4 profile pins exactly the settings this source reads, Active Minutes absent', () => {
-    expect([...sourceViteSettings(ROOT).keys()].sort()).toEqual([...RC4_SETTINGS].sort());
+  it('the rc4-s23 profile pins exactly the settings this source reads, Active Minutes absent', () => {
+    const s23 = Object.keys(loadProfile(RC4_S23).vite);
+    expect([...sourceViteSettings(ROOT).keys()].sort()).toEqual([...s23].sort());
+    expect(s23).toHaveLength(9);
+    expect(validate(loadProfile(RC4_S23), ROOT, GIT)).toEqual([]);
+  });
+
+  it('Sprint 23B: the RC4 profiles are unchanged; this source (one more setting) cannot be built with them', () => {
+    // rc4 and rc4-reports build the RC4 commit; on this tree they fail closed on the new switch.
     expect(RC4_SETTINGS).toHaveLength(8);
-    expect(validate(loadProfile(RC4), ROOT, GIT)).toEqual([]);
-    expect(validate(loadProfile(RC4_REPORTS), ROOT, GIT)).toEqual([]);
+    for (const p of [RC4, RC4_REPORTS])
+      expect(validate(loadProfile(p), ROOT, GIT)).toEqual([
+        'unpinned setting VITE_ADMIN_UI (read by app/src/deployment.ts)',
+        'VITE_ADMIN_UI must be pinned to "0" or "1"',
+      ]);
+  });
+
+  it('Sprint 23B: the admin switch is explicit and needs the host directories', () => {
+    const src = tree({ 'app/src/a.ts': reads([...RC4_SETTINGS, 'VITE_ADMIN_UI']) });
+    const p = loadProfile(RC4_S23);
+    expect(validate(p, src, TOOLS)).toEqual([]);
+    expect(validate({ ...p, vite: { ...p.vite, VITE_ADMIN_UI: null } }, src, TOOLS)).toContain(
+      'VITE_ADMIN_UI must be pinned to "0" or "1"',
+    );
+    const { TBI_ADMIN_DIR: _dir, ...noDir } = p.host;
+    expect(validate({ ...p, host: noDir }, src, TOOLS)).toContain(
+      'host.TBI_ADMIN_DIR must be an absolute path when the admin switch is on',
+    );
+    expect(
+      validate({ ...p, host: { ...p.host, TBI_ACCESS_VIEW: null } }, src, TOOLS),
+    ).toContain('host.TBI_ADMIN_DIR needs host.TBI_ACCESS_VIEW');
+    expect(
+      validate({ ...p, host: { ...p.host, TBI_ACCESS_VIEW: 'view/access.json' } }, src, TOOLS),
+    ).toContain('host.TBI_ACCESS_VIEW must be null or an absolute path');
+    expect(validate({ ...p, host: { ...p.host, TBI_OTHER: '/x' } }, src, TOOLS)).toContain(
+      'host: must pin TBI_REPORTS_DIR, and optionally TBI_ACCESS_VIEW and TBI_ADMIN_DIR only',
+    );
+    // Off: no host directory needed.
+    expect(
+      validate({ ...p, vite: { ...p.vite, VITE_ADMIN_UI: '0' }, host: noDir }, src, TOOLS),
+    ).toEqual([]);
   });
 
   it('a setting the source reads but the profile does not pin is refused', () => {

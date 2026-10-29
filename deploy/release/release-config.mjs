@@ -17,6 +17,8 @@
  * - Excluded features (Active Minutes for RC4) must be absent from the source, not merely off.
  * - Report a Problem: VITE_PROBLEM_REPORTS is "0" or "1", and the host switch (TBI_REPORTS_DIR)
  *   is null exactly when the app switch is "0".
+ * - Sprint 23B administration: VITE_ADMIN_UI is "0" or "1" when the source reads it; "1" needs the
+ *   host's TBI_ADMIN_DIR, which needs TBI_ACCESS_VIEW (both optional host switches otherwise).
  * - The external feedback form stays off (Sprint 13 H7: no build sets it without owner approval).
  * - Node and npm are the pinned versions; no tracked .env file can add settings behind the
  *   profile's back.
@@ -121,7 +123,14 @@ export function validate(profile, srcdir, tools = currentTools()) {
   const reports = pinned.VITE_PROBLEM_REPORTS;
   if (reports !== '0' && reports !== '1') err('VITE_PROBLEM_REPORTS must be pinned to "0" or "1"');
   const host = profile.host ?? {};
-  if (Object.keys(host).join() !== 'TBI_REPORTS_DIR') err('host: must pin exactly TBI_REPORTS_DIR');
+  // Sprint 23B: the access view and the admin directory are optional host switches (RC4 profiles
+  // name neither); TBI_REPORTS_DIR is always pinned.
+  const hostKeys = Object.keys(host);
+  if (
+    !hostKeys.includes('TBI_REPORTS_DIR') ||
+    hostKeys.some((k) => !['TBI_REPORTS_DIR', 'TBI_ACCESS_VIEW', 'TBI_ADMIN_DIR'].includes(k))
+  )
+    err('host: must pin TBI_REPORTS_DIR, and optionally TBI_ACCESS_VIEW and TBI_ADMIN_DIR only');
   if (reports === '0' && host.TBI_REPORTS_DIR !== null)
     err('host.TBI_REPORTS_DIR must be null when the app switch is off');
   if (
@@ -129,6 +138,21 @@ export function validate(profile, srcdir, tools = currentTools()) {
     !(typeof host.TBI_REPORTS_DIR === 'string' && host.TBI_REPORTS_DIR.startsWith('/'))
   )
     err('host.TBI_REPORTS_DIR must be an absolute path when the app switch is on');
+
+  // Sprint 23B administration: the app switch is explicit, and when on, the host serves it
+  // (the admin directory needs the access view: the owner is decided from it).
+  const abs = (v) => typeof v === 'string' && v.startsWith('/');
+  for (const k of ['TBI_ACCESS_VIEW', 'TBI_ADMIN_DIR'])
+    if (k in host && host[k] !== null && !abs(host[k]))
+      err(`host.${k} must be null or an absolute path`);
+  if (abs(host.TBI_ADMIN_DIR) && !abs(host.TBI_ACCESS_VIEW))
+    err('host.TBI_ADMIN_DIR needs host.TBI_ACCESS_VIEW');
+  if (inSource.has('VITE_ADMIN_UI')) {
+    const admin = pinned.VITE_ADMIN_UI;
+    if (admin !== '0' && admin !== '1') err('VITE_ADMIN_UI must be pinned to "0" or "1"');
+    if (admin === '1' && !abs(host.TBI_ADMIN_DIR))
+      err('host.TBI_ADMIN_DIR must be an absolute path when the admin switch is on');
+  }
 
   if ('VITE_FEEDBACK_URL' in pinned && pinned.VITE_FEEDBACK_URL !== null)
     err('VITE_FEEDBACK_URL must stay null (external form needs owner approval, Sprint 13 H7)');

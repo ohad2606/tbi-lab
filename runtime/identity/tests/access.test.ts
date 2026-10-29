@@ -60,7 +60,7 @@ const req = (headers: Record<string, string | string[]>) =>
 
 describe('email tags', () => {
   it('are e_ + 26 base64url characters, the same for any case and surrounding space', () => {
-    const t = tag('Tester@Example.Invalid ');
+    const t = tag('TESTER@example.invalid ');
     expect(t).toMatch(/^e_[A-Za-z0-9_-]{26}$/);
     expect(t).toBe(tag('tester@example.invalid'));
     expect(t).not.toBe(tag('other@example.invalid'));

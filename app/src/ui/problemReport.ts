@@ -7,28 +7,52 @@
  * report id: the server has then durably stored the report. Anything else is an error.
  */
 import {
+  MAX_COMPONENT_NAME_CHARS,
   MAX_DESCRIPTION_CHARS,
   REPORT_ID_RE,
+  cleanComponentName,
   cleanDescription,
   codePoints,
   type ProblemReportRequest,
   type ReportCategory,
+  type ReportDevice,
+  type ReportKind,
   type ReportView,
 } from '../../../runtime/host/reportProtocol.js';
 import type { BuildInfo } from '../buildInfo.js';
 import type { SimState } from '../sim/controller.js';
 
-export { MAX_DESCRIPTION_CHARS, REPORT_CATEGORIES } from '../../../runtime/host/reportProtocol.js';
-export type { ReportCategory } from '../../../runtime/host/reportProtocol.js';
+export {
+  MAX_COMPONENT_NAME_CHARS,
+  MAX_DESCRIPTION_CHARS,
+  REPORT_CATEGORIES,
+  REPORT_KINDS,
+} from '../../../runtime/host/reportProtocol.js';
+export type { ReportCategory, ReportKind } from '../../../runtime/host/reportProtocol.js';
 
 /** What the tester has written and chosen (kept while the dialog is closed, until it is sent). */
 export interface ReportDraft {
+  /** Sprint 23B: the kind of feedback (default: a bug report, as RC4). */
+  kind: ReportKind;
   description: string;
+  /** The area (bug reports only). */
   category: ReportCategory | null;
+  /** Bug reports only. */
   blocking: boolean;
+  /** The requested component's name (component requests only; optional). */
+  component: string;
+  /** Sprint 23B: include the optional technical context (runtime version, device, project id). */
+  includeContext: boolean;
 }
 
-export const emptyDraft = (): ReportDraft => ({ description: '', category: null, blocking: false });
+export const emptyDraft = (): ReportDraft => ({
+  kind: 'bug',
+  description: '',
+  category: null,
+  blocking: false,
+  component: '',
+  includeContext: true,
+});
 
 export type SendError =
   | { code: 'rate_limited'; retryAfterS: number | null }
@@ -43,6 +67,7 @@ export type ReportPhase =
 export interface DraftProblems {
   description?: 'required' | 'too_long';
   category?: 'required';
+  component?: 'too_long';
 }
 
 /** The counter's value: code points of the text as it will be sent. */
@@ -53,15 +78,35 @@ export function validateDraft(d: ReportDraft): DraftProblems {
   const n = descriptionLength(d.description);
   if (n === 0) out.description = 'required';
   else if (n > MAX_DESCRIPTION_CHARS) out.description = 'too_long';
-  if (!d.category) out.category = 'required';
+  // Only a bug report asks for an area.
+  if (d.kind === 'bug' && !d.category) out.category = 'required';
+  if (d.kind === 'component' && componentLength(d.component) > MAX_COMPONENT_NAME_CHARS)
+    out.component = 'too_long';
   return out;
 }
+
+/** The component name counter's value (code points as sent). */
+export const componentLength = (text: string): number => codePoints(cleanComponentName(text));
 
 export interface ReportContext {
   locale: string;
   view: ReportView;
   build: BuildInfo | null;
   sim: SimState;
+  /** Sprint 23B optional context, sent only when the tester keeps it included. */
+  runtimeVersion?: string | null;
+  device?: ReportDevice;
+  projectId?: string | null;
+}
+
+/**
+ * The device class from the screen alone (no model, no fingerprint): a coarse pointer without a
+ * fine one is a tablet; a fine pointer a desktop; anything else `other`.
+ */
+export function deviceClass(match: (query: string) => boolean): ReportDevice {
+  if (match('(any-pointer: fine)')) return 'desktop';
+  if (match('(pointer: coarse)')) return 'tablet';
+  return 'other';
 }
 
 /**
@@ -79,15 +124,30 @@ export function buildRequest(d: ReportDraft, ctx: ReportContext): ProblemReportR
   const sessionId = 'runtime' in sim ? sim.runtime?.sessionId : undefined;
   // Product failure codes are snake_case; anything else is left out rather than refused.
   if (code !== undefined && !/^[a-z0-9_]{1,48}$/.test(code)) code = undefined;
+  const bug = d.kind === 'bug';
+  const name = d.kind === 'component' ? cleanComponentName(d.component) : '';
+  const context: NonNullable<ProblemReportRequest['context']> = {};
+  if (d.includeContext) {
+    if (ctx.runtimeVersion && /^[0-9A-Za-z.+-]{1,32}$/.test(ctx.runtimeVersion))
+      context.runtime = ctx.runtimeVersion;
+    if (ctx.device) context.device = ctx.device;
+    if (ctx.projectId && /^prj_[A-Za-z0-9]{1,64}$/.test(ctx.projectId))
+      context.projectId = ctx.projectId;
+  }
   return {
     description: cleanDescription(d.description),
-    category: d.category!,
-    blocking: d.blocking,
+    // Only a bug report has an area; every other kind is filed under `other`.
+    category: bug ? d.category! : 'other',
+    blocking: bug ? d.blocking : false,
     locale: ctx.locale,
     view: ctx.view,
     ...(ctx.build ? { app: { version: ctx.build.version, commit: ctx.build.commit } } : {}),
     ...(sessionId ? { sessionId } : {}),
     sim: { status: sim.status, ...(code ? { code } : {}) },
+    // An RC4-shaped request for a plain bug report without context; the new fields otherwise.
+    ...(bug ? {} : { kind: d.kind }),
+    ...(name ? { component: name } : {}),
+    ...(Object.keys(context).length ? { context } : {}),
   };
 }
 

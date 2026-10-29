@@ -26,6 +26,12 @@
  *     POST /__test/fail-next-report?status=N   answer the next report with HTTP N (429 with
  *                                        Retry-After: 120)
  *     POST /__test/hold-reports?ms=N     delay every report request by N ms (0: none)
+ *   Sprint 23B owner administration: `/admin/...` is served by the REAL admin API (access view,
+ *   owner check, CSRF, spool, results) with a fake helper (fake-admin.ts); every other route is
+ *   unchanged (no access enforcement for the routine tests).
+ *     POST /__test/reset-admin           fresh registry, helper answering
+ *     POST /__test/admin-hold?on=1|0     keep requests unanswered (the 202 path), or release them
+ *     POST /__test/admin-owner-unrecorded   the owner's Google id not recorded yet
  */
 import { randomBytes, createHash, timingSafeEqual } from 'node:crypto';
 import { readFileSync, readdirSync, rmSync } from 'node:fs';
@@ -49,6 +55,7 @@ import {
 import type { SessionHost } from '../../../runtime/host/host.js';
 import { DEFAULT_REPORTS, REPORT_FILE_RE, ReportStore } from '../../../runtime/host/reports.js';
 import { ownedTempDir } from './temp-dirs.js';
+import { startFakeAdmin } from './fake-admin.js';
 
 const PORT = Number(process.env.PORT ?? 7499);
 const STEP_NS = 10_000_000n;
@@ -348,6 +355,12 @@ const host = {
   async terminate(s: FakeSession) {
     s.terminate();
   },
+  // Sprint 23B: live sessions vs the ceiling, for the owner's administration.
+  capacity() {
+    let live = 0;
+    for (const s of sessions.values()) if (s.state !== 'ended' && s.state !== 'failed') live++;
+    return { live, max: 6 };
+  },
   health() {
     const out: Record<string, number> = {};
     for (const s of sessions.values()) out[s.state] = (out[s.state] ?? 0) + 1;
@@ -362,13 +375,20 @@ const host = {
 
 // Sprint 14: problem reports go to the real store; a reset gives fresh rate windows.
 const reportsDir = join(ownedTempDir('tbi-e2e-reports-'), 'reports');
-const newInner = () =>
-  createHttpServer(
-    host as unknown as SessionHost,
-    E2E_IDENTITY,
-    new ReportStore({ ...DEFAULT_REPORTS, dir: reportsDir }),
-  );
+let reportStore = new ReportStore({ ...DEFAULT_REPORTS, dir: reportsDir });
+const newInner = () => {
+  reportStore = new ReportStore({ ...DEFAULT_REPORTS, dir: reportsDir });
+  return createHttpServer(host as unknown as SessionHost, E2E_IDENTITY, reportStore);
+};
 let inner = newInner();
+// Sprint 23B: the owner's administration, on its own server instance (with the access view).
+const fakeAdmin = startFakeAdmin();
+const newAdminInner = () =>
+  createHttpServer(host as unknown as SessionHost, E2E_IDENTITY, reportStore, {
+    access: fakeAdmin.access,
+    admin: fakeAdmin.spool,
+  });
+let adminInner = newAdminInner();
 let failNextReport: number | null = null;
 let holdReportsMs = 0;
 const storedReports = () => {
@@ -399,6 +419,7 @@ const server = createServer((req: IncomingMessage, res: ServerResponse) => {
     setTimeout(() => inner.emit('request', req, res), holdReportsMs);
     return;
   }
+  if (url.pathname.startsWith('/admin/')) return adminInner.emit('request', req, res);
   if (!url.pathname.startsWith('/__test/')) return inner.emit('request', req, res);
   const reply = (body: unknown) => {
     res.writeHead(200, { 'content-type': 'application/json' });
@@ -430,6 +451,7 @@ const server = createServer((req: IncomingMessage, res: ServerResponse) => {
     case '/__test/reset-reports':
       rmSync(reportsDir, { recursive: true, force: true });
       inner = newInner();
+      adminInner = newAdminInner();
       failNextReport = null;
       holdReportsMs = 0;
       return reply({ ok: true });
@@ -440,6 +462,16 @@ const server = createServer((req: IncomingMessage, res: ServerResponse) => {
       return reply({ ok: true });
     case '/__test/hold-reports':
       holdReportsMs = Number(url.searchParams.get('ms') ?? 0);
+      return reply({ ok: true });
+    case '/__test/reset-admin':
+      fakeAdmin.reset();
+      adminInner = newAdminInner(); // fresh rate windows
+      return reply({ ok: true });
+    case '/__test/admin-hold':
+      fakeAdmin.hold(url.searchParams.get('on') === '1');
+      return reply({ ok: true });
+    case '/__test/admin-owner-unrecorded':
+      fakeAdmin.ownerUnrecorded();
       return reply({ ok: true });
     case '/__test/reset-builds':
       resetFakeBuildService(

@@ -92,6 +92,8 @@ export type RuntimeFailCode =
   | 'stalled'
   | 'session_lost'
   | 'session_expired'
+  /** Sprint 23B: the owner disabled the account; the host ended the session. */
+  | 'account_disabled'
   | 'mirror_failed'
   /** Sprint 11: the host's validator refused a live command (e.g. an older runtime). */
   | 'command_refused'

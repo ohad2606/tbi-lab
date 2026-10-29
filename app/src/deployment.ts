@@ -86,3 +86,12 @@ export function parseEnabled(value: unknown): boolean {
 }
 
 export const PROBLEM_REPORTS = parseEnabled(import.meta.env.VITE_PROBLEM_REPORTS);
+
+/**
+ * Sprint 23B: the owner's administration (testers and feedback). OFF unless a deployment builds
+ * with VITE_ADMIN_UI=1. Even then it only HIDES or shows: the Session Host decides on every call
+ * who the owner is, and the entry appears only after it confirmed (GET /runtime/admin/me). No
+ * tester data is compiled into the app. (Not parsed with parseEnabled: the release check locates
+ * the Report a Problem switch by that function's compiled form, which must stay unique.)
+ */
+export const ADMIN_UI = String(import.meta.env.VITE_ADMIN_UI ?? '').trim() === '1';

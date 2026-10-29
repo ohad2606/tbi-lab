@@ -1,5 +1,6 @@
 import { CapabilitiesHost } from './Capabilities.js';
 import { ProblemReportHost } from './ProblemReport.js';
+import { AdminHost } from './AdminPanel.js';
 import { useEffect, useLayoutEffect } from 'preact/hooks';
 import { useAppState, useStore, useT } from './context.js';
 import { Editor } from './Editor.js';
@@ -88,6 +89,7 @@ export function App() {
       <VersionStatus />
       <CapabilitiesHost />
       <ProblemReportHost />
+      <AdminHost />
     </div>
   );
 }

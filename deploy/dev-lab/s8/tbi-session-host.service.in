@@ -31,6 +31,13 @@ Environment=TBI_HOST_STATE=/var/lib/@N@-runtime/state
 # already writable; no other sandbox change is needed. Enable together with an app build made
 # with VITE_PROBLEM_REPORTS=1.
 #Environment=TBI_REPORTS_DIR=/var/lib/@N@-runtime/state/reports
+# Sprint 23B access enforcement, revocation and owner administration (docs/alpha/
+# ADMIN-AND-FEEDBACK.md): OFF while unset (RC4 behaviour). The root helper's installer creates
+# /var/lib/tbi-admin; the host only writes requests and identity observations there and reads
+# the views and results. Enabled by install.sh TBI_S23_ADMIN=1 (or uncomment all three).
+#Environment=TBI_ACCESS_VIEW=/var/lib/tbi-admin/view/access.json
+#Environment=TBI_ADMIN_DIR=/var/lib/tbi-admin
+#ReadWritePaths=-/var/lib/tbi-admin/spool -/var/lib/tbi-admin/observations
 # Live-session ceiling of this host (install.sh TBI_S8_HOST_MAX_SESSIONS, at least the policy's limit).
 Environment=TBI_HOST_MAX_SESSIONS=@HOST_MAX_SESSIONS@
 RuntimeDirectory=@N@-runtime

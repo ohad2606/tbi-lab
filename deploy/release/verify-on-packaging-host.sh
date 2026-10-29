@@ -8,6 +8,8 @@
 # <commit> must be the merged RC4 commit (the reviewed tree), present in this clone. The build time
 # defaults to the commit's committer time (UTC), so every host derives the same value.
 # Output: <work-dir>/pkg-<profile>-{1,2}, <work-dir>/G2-RESULT.txt (host, tools, hashes, verdict).
+# Sprint 23B: TBI_PROFILES names the profiles (default "rc4 rc4-reports", the RC4 commit). A
+# Sprint 23B commit builds only with its own profile: TBI_PROFILES=rc4-s23.
 set -euo pipefail
 [ $# -ge 2 ] || { echo "usage: $0 <commit> <work-dir> [build-time]" >&2; exit 2; }
 here="$(cd "$(dirname "$0")" && pwd)"
@@ -25,7 +27,8 @@ result="$work/G2-RESULT.txt"
   echo "node: $(node --version)  npm: $(npm --version)"
 } > "$result"
 rc=0
-for profile in rc4 rc4-reports; do
+for profile in ${TBI_PROFILES:-rc4 rc4-reports}; do
+  [[ "$profile" =~ ^rc[0-9]+(-[a-z0-9]+)?$ ]] || { echo "bad profile name: $profile" >&2; exit 2; }
   for n in 1 2; do
     "$here/build-package.sh" "deploy/release/$profile.release.json" "$R" "$work/pkg-$profile-$n" "$T" >> "$result" 2>&1 ||
       { echo "BUILD FAILED: $profile #$n" | tee -a "$result"; exit 1; }

@@ -30,6 +30,11 @@ function gate(proxy: ProxyServer): void {
         proxyReq.removeHeader(name);
     const cookie = /(?:^|;\s*)tbi_test_user=([A-Za-z0-9._-]{1,64})/.exec(req.headers.cookie ?? '');
     proxyReq.setHeader('x-forwarded-user', cookie?.[1] ?? 'e2e-user');
+    // Sprint 23B: oauth2-proxy also passes the session's address (tests: `tbi_test_email`).
+    const email = /(?:^|;\s*)tbi_test_email=([A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9.-]{1,64})/.exec(
+      req.headers.cookie ?? '',
+    );
+    if (email) proxyReq.setHeader('x-forwarded-email', email[1]!);
   });
 }
 

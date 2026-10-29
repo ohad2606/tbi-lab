@@ -13,6 +13,8 @@ import {
   waitMinutes,
   type ReportDraft,
   type ReportPhase,
+  MAX_COMPONENT_NAME_CHARS,
+  deviceClass,
 } from '../src/ui/problemReport.js';
 import { validateReport } from '../../runtime/host/reportProtocol.js';
 import type { BuildInfo } from '../src/buildInfo.js';
@@ -20,6 +22,7 @@ import type { SimState } from '../src/sim/controller.js';
 import { emptyView } from '../src/runtime/view.js';
 
 const draft = (over: Partial<ReportDraft> = {}): ReportDraft => ({
+  ...emptyDraft(),
   description: 'The LED never lights.',
   category: 'simulation',
   blocking: false,
@@ -219,5 +222,73 @@ describe('dialog transitions', () => {
     expect(phase).toEqual({ kind: 'editing', error: { code: 'network' } });
     expect(nextPhase(phase, { type: 'send', draft: d })).toEqual({ kind: 'sending' });
     expect(d.description).toBe('keep me');
+  });
+});
+
+describe('Sprint 23B: kinds, component name and technical context', () => {
+  it('only a bug report asks for an area; a component name has its own limit', () => {
+    for (const kind of ['component', 'feature', 'general'] as const)
+      expect(validateDraft(draft({ kind, category: null }))).toEqual({});
+    expect(validateDraft(draft({ kind: 'bug', category: null }))).toEqual({ category: 'required' });
+    expect(
+      validateDraft(
+        draft({ kind: 'component', component: 'x'.repeat(MAX_COMPONENT_NAME_CHARS + 1) }),
+      ),
+    ).toEqual({ component: 'too_long' });
+    // The name of another kind is never checked (nor sent).
+    expect(validateDraft(draft({ kind: 'feature', component: 'x'.repeat(500) }))).toEqual({});
+  });
+
+  it('builds requests the host accepts: other kinds file under `other`, without blocking', () => {
+    const r = buildRequest(
+      draft({ kind: 'component', category: 'build', blocking: true, component: ' KY-040\n ' }),
+      ctx(),
+    );
+    expect(r).toMatchObject({
+      kind: 'component',
+      category: 'other',
+      blocking: false,
+      component: 'KY-040',
+    });
+    expect(validateReport(r).ok).toBe(true);
+    const f = buildRequest(draft({ kind: 'feature', component: 'ignored' }), ctx());
+    expect(f.component).toBeUndefined();
+    expect(validateReport(f).ok).toBe(true);
+    // A plain bug report without context is exactly the RC4 request.
+    const bug = buildRequest(draft({ includeContext: false }), {
+      ...ctx(),
+      runtimeVersion: '0.23.0',
+      device: 'desktop',
+      projectId: 'prj_abc',
+    });
+    expect(Object.keys(bug).sort()).toEqual(
+      ['app', 'blocking', 'category', 'description', 'locale', 'sim', 'view'].sort(),
+    );
+  });
+
+  it('technical context: only when included, only validated values, never project content', () => {
+    const r = buildRequest(draft({ kind: 'general' }), {
+      ...ctx(),
+      runtimeVersion: '0.23.0',
+      device: 'tablet',
+      projectId: 'prj_abc123',
+    });
+    expect(r.context).toEqual({ runtime: '0.23.0', device: 'tablet', projectId: 'prj_abc123' });
+    expect(validateReport(r).ok).toBe(true);
+    const odd = buildRequest(draft(), {
+      ...ctx(),
+      runtimeVersion: 'v 1; drop',
+      projectId: 'My Project',
+    });
+    expect(odd.context).toBeUndefined();
+    expect(JSON.stringify(r)).not.toMatch(/circuit|components|firmware/);
+  });
+
+  it('device class from the pointer only', () => {
+    const m = (fine: boolean, coarse: boolean) => (q: string) =>
+      q.includes('fine') ? fine : q.includes('coarse') ? coarse : false;
+    expect(deviceClass(m(true, false))).toBe('desktop');
+    expect(deviceClass(m(false, true))).toBe('tablet');
+    expect(deviceClass(m(false, false))).toBe('other');
   });
 });

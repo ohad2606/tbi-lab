@@ -418,7 +418,12 @@ export class McuSimulation implements SimulationHost {
         v.sessionState = e.state;
         if (e.state === 'ended') {
           if (this.stopRequested) return this.finishStopped();
-          const code = e.reason === 'lifetime_exceeded' ? 'session_expired' : 'session_lost';
+          const code =
+            e.reason === 'lifetime_exceeded'
+              ? 'session_expired'
+              : e.reason === 'account_disabled'
+                ? 'account_disabled'
+                : 'session_lost';
           return this.fail({ kind: 'runtime', code, detail: e.reason });
         }
         if (e.state === 'running') this.scheduleExpiryWarning();
