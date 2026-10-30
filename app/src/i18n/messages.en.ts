@@ -796,6 +796,12 @@ export const en = {
   'example.voltage-divider.title': 'Voltage divider',
   'example.voltage-divider.summary':
     'Two resistors split 9 V. The midpoint is 9 V × 20 kΩ / (10 kΩ + 20 kΩ) = 6 V; a probe at R2.a reads it.',
+  'example.pot-divider.title': 'Potentiometer divider',
+  'example.pot-divider.summary':
+    'A 10 kΩ potentiometer across 5 V: the [[wiper]] reads 5 V × (1 − p), 2.5 V at 50 %. Run it and drag the position slider: the [[probe]] at the [[wiper]] follows.',
+  'example.pot-led-dimmer.title': 'LED dimmer (potentiometer)',
+  'example.pot-led-dimmer.summary':
+    'The potentiometer as a variable resistor in series with 220 Ω and a red LED on 5 V. Turning it up lowers the series resistance and the LED current rises; at 100 % the 220 Ω resistor alone limits it to about 13.7 mA.',
   'example.led-current.title': 'LED current limiting',
   'example.led-current.summary':
     'A 220 Ω resistor sets the current of a red LED from 5 V. The LED is nonlinear: it settles near 2 V and about 14 mA.',
@@ -1589,6 +1595,34 @@ export const en = {
   'report.failed.rejected': 'The report could not be accepted. Check the text and try again.',
   'report.failed.network':
     'The server did not confirm the report, so it may not have been received. Your text is kept here: you can send it again.',
+  // Sprint POT-UNITS: the potentiometer.
+  'component.component.potentiometer.name': '[[potentiometer]]',
+  'terminal.potEndA': 'End A (pin 1)',
+  'terminal.wiper': 'Wiper W (pin 2)',
+  'terminal.potEndB': 'End B (pin 3)',
+  'model.potentiometer.bourns_ptv09a_linear': '9 mm rotary, linear taper (Bourns PTV09A)',
+  'param.totalResistance': 'Total resistance (A–B)',
+  'param.wiperPosition': 'Wiper position (from A)',
+  'sim.part.current.aw': 'Current A → W',
+  'sim.part.current.wb': 'Current W → B',
+  'sim.part.current.wiper': 'Current into the [[wiper]]',
+  'sim.part.voltage.component.potentiometer': 'Voltage A–B',
+  'sim.part.state.component.potentiometer.resistanceAW': 'Resistance A–W',
+  'sim.part.state.component.potentiometer.resistanceWB': 'Resistance W–B',
+  'sim.part.state.component.potentiometer.power': 'Dissipation (whole track)',
+  'sim.part.state.component.potentiometer.wiperVoltage': 'Wiper voltage to GND',
+  'limitation.potentiometer_linear':
+    'Linear taper only: two ideal track segments, R·p and R·(1 − p). The position is the share of the track between A and the [[wiper]], not the shaft angle; audio tapers are not offered.',
+  'limitation.potentiometer_end_resistance':
+    'End resistance idealised to 0 Ω: at 0 % and 100 % the [[wiper]] touches the end directly. The datasheet only bounds it (500 Ω or 1 % max).',
+  'limitation.potentiometer_tolerance':
+    'Nominal value: the ±20 % resistance tolerance is not sampled.',
+  'limitation.potentiometer_power':
+    'Power rating 0.05 W for the whole track (PTV09A datasheet), at a 25 °C ambient. The datasheet gives no rating for part of the track: a short segment (rheostat use) may be over-stressed below 0.05 W, and this is not characterised.',
+  'limitation.potentiometer_wiper_current':
+    'Wiper contact resistance and maximum wiper current are not in the datasheet: not modelled, and no limit is checked.',
+  'limitation.potentiometer_no_adc':
+    'Next to an ESP32 the [[wiper]] is read as a digital level: analog input (analogRead) is not supported.',
 } as const;
 
 export type MessageKey = keyof typeof en;

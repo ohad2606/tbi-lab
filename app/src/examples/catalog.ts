@@ -172,6 +172,21 @@ export const EXAMPLES: readonly Example[] = [
     probes: [I('R2'), V('R2', 'a')],
     parts: ['component.resistor', 'component.toggle_switch', 'instrument.lab_psu'],
   },
+  // Sprint POT-UNITS: the potentiometer, as a divider and as a rheostat (LED dimmer).
+  {
+    id: 'pot-divider',
+    titleKey: 'example.pot-divider.title',
+    summaryKey: 'example.pot-divider.summary',
+    probes: [V('RV1', 'wiper')],
+    parts: ['component.potentiometer', 'instrument.lab_psu'],
+  },
+  {
+    id: 'pot-led-dimmer',
+    titleKey: 'example.pot-led-dimmer.title',
+    summaryKey: 'example.pot-led-dimmer.summary',
+    probes: [I('D1')],
+    parts: ['component.led', 'component.potentiometer', 'component.resistor', 'instrument.lab_psu'],
+  },
   {
     id: 'esp32-blink',
     titleKey: 'example.esp32-blink.title',

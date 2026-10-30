@@ -13,7 +13,7 @@ import {
   validateProject,
   type ProjectDocument,
 } from '@tbi-lab/domain';
-import { EngineSession, type SolveSuccess } from '@tbi-lab/engine';
+import { EngineSession, ratingWarnings, type SolveSuccess } from '@tbi-lab/engine';
 import { EXAMPLES_WITH_DOCUMENTS as EXAMPLES } from '../src/examples/documents.js';
 import { en } from '../src/i18n/messages.en.js';
 import { he } from '../src/i18n/messages.he.js';
@@ -33,7 +33,7 @@ const near = (a: number | null | undefined, e: number, rel = REL) => {
 const example = (id: string) => EXAMPLES.find((e) => e.id === id)!.document;
 
 describe('the example set', () => {
-  it('has the sixteen local examples and the thirteen ESP32 examples, each titled in English and Hebrew', () => {
+  it('has the eighteen local examples and the thirteen ESP32 examples, each titled in English and Hebrew', () => {
     expect(EXAMPLES.map((e) => e.id)).toEqual([
       'ohms-law',
       'voltage-divider',
@@ -49,6 +49,9 @@ describe('the example set', () => {
       'diode-polarity',
       'push-button',
       'cc-mode',
+      // Sprint POT-UNITS: the potentiometer.
+      'pot-divider',
+      'pot-led-dimmer',
       'esp32-blink',
       'esp32-input-echo',
       'esp32-bench',
@@ -307,6 +310,42 @@ describe('expected engineering results (production engine)', () => {
     expect(closed.components.PSU1!.mode).toBe('cc');
     near(closed.components.PSU1!.current, 0.1);
     near(closed.components.PSU1!.voltage, 0.1 / (1 / 100 + 1 / 10));
+  });
+
+  // Sprint POT-UNITS.
+  const atPosition = (id: string, position: number) => {
+    const r = setParam(example(id), 'RV1', 'position', { value: position, unit: 'percent' });
+    if (!r.ok) throw new Error('edit');
+    return r.doc;
+  };
+  it('potentiometer divider: V_W = 5 V × (1 − p) at 0, 25, 50 and 100 %; I = 0.5 mA', () => {
+    expect(example('pot-divider').components.find((c) => c.id === 'RV1')!.params.position).toEqual({
+      value: 50,
+      unit: 'percent',
+    });
+    for (const p of [0, 25, 50, 100]) {
+      const r = solve(atPosition('pot-divider', p));
+      near(r.components.RV1!.terminals.wiper, 5 * (1 - p / 100));
+      near(r.components.PSU1!.current, 5 / 10_000);
+      expect(ratingWarnings(createSnapshot(atPosition('pot-divider', p)), r)).toEqual([]);
+    }
+  });
+  it('LED dimmer: the LED current rises with the position and stays safe at every position', () => {
+    let last = 0;
+    for (let p = 0; p <= 100; p += 10) {
+      const doc = atPosition('pot-led-dimmer', p);
+      const r = solve(doc);
+      const i = r.components.D1!.current!;
+      expect(i, `${p} %`).toBeGreaterThan(last);
+      last = i;
+      // KVL around the loop: 5 V = I × (10 kΩ × (1 − p) + 220 Ω) + V_LED.
+      near(i * (10_000 * (1 - p / 100) + 220) + r.components.D1!.voltage!, 5);
+      // No rating row anywhere (LED, resistor, potentiometer, supply).
+      expect(ratingWarnings(createSnapshot(doc), r), `${p} %`).toEqual([]);
+      expect(r.components.PSU1!.mode).toBe('cv');
+    }
+    // At 100 % only the 220 Ω limits it: the LED-current example's operating point.
+    near(last, 13.72e-3, 1e-3);
   });
 });
 

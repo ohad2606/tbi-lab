@@ -141,6 +141,15 @@ export const MODEL_LIMITATIONS: Readonly<Partial<Record<ComponentTypeId, readonl
   'sensor.pir_hc_sr501': ['pir_static'],
   'display.led_matrix_8x8': ['matrix_window', 'matrix_no_esp32'],
   'component.capacitor': ['capacitor_ideal', 'capacitor_no_esp32'],
+  // Sprint POT-UNITS: the Bourns PTV09A linear potentiometer (two ideal track segments).
+  'component.potentiometer': [
+    'potentiometer_linear',
+    'potentiometer_end_resistance',
+    'potentiometer_tolerance',
+    'potentiometer_power',
+    'potentiometer_wiper_current',
+    'potentiometer_no_adc',
+  ],
   'sensor.hc_sr04': ['hcsr04_target', 'hcsr04_output', 'hcsr04_retrigger', 'supply_below_min'],
   'sensor.dht22': ['dht22_tgo', 'dht22_current', 'dht22_output', 'supply_below_min'],
   'display.lcd1602_i2c': [

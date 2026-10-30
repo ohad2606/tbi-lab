@@ -68,7 +68,9 @@ export type ModuleGlyph =
   | 'logic.and'
   | 'logic.nand'
   | 'logic.or'
-  | 'logic.not';
+  | 'logic.not'
+  /** Sprint POT-UNITS: a resistor with the wiper's arrow. */
+  | 'potentiometer';
 
 export interface ModuleSymbol {
   kind: 'module';
@@ -160,6 +162,18 @@ export const SCHEMATIC_SYMBOLS: Record<ComponentTypeId, SchematicSymbol> = {
     ],
     partName: 'NPN',
     glyph: 'bjt.npn',
+  },
+  // Sprint POT-UNITS: the potentiometer's track ends on the left, the wiper on the right.
+  'component.potentiometer': {
+    kind: 'module',
+    key: 'module',
+    pins: [
+      { terminal: 'a', name: '1 (A)', side: 'left', order: 1 },
+      { terminal: 'b', name: '3 (B)', side: 'left', order: 2 },
+      { terminal: 'wiper', name: '2 (W)', side: 'right', order: 1 },
+    ],
+    partName: 'POT',
+    glyph: 'potentiometer',
   },
   'display.led_matrix_8x8': {
     kind: 'module',

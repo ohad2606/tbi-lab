@@ -13,6 +13,10 @@ DP-rt2-1: no new field, migration v3 -> v4 is the identity). v4 marks documents 
 automatic wires (`layout.wires[].auto`, added during v3): builds before v4 refuse such a file as
 "made by a newer version" and open such a stored project read-only. Opening a stored older project
 never writes it back; it is stored at the current version when it is next saved (its first edit).
+v5 (Sprint POT-UNITS, 2026-10-30: no new field, migration v4 -> v5 is the identity) adds the component
+type `component.potentiometer` and the unit id `percent`; builds before v5 refuse a v5 file as "made
+by a newer version" instead of calling it invalid. Stored values stay canonical SI numbers: the
+editor's unit dropdown (Phase 1 of that sprint) is display state only and is never stored.
 The example below still shows the v2 core fields, which are unchanged.
 
 Reference: roadmap §6.1, architecture §3 and ADR-005. Types: `src/schema.ts`. Validation:

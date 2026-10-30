@@ -778,6 +778,12 @@ export const he: Record<MessageKey, string> = {
   'example.voltage-divider.title': 'מחלק מתח',
   'example.voltage-divider.summary':
     'שני נגדים מחלקים ⁦9 V⁩. נקודת האמצע היא ⁦9 V × 20 kΩ / (10 kΩ + 20 kΩ) = 6 V⁩; [[probe]] ב־⁦R2.a⁩ מודדת אותה.',
+  'example.pot-divider.title': 'מחלק מתח עם פוטנציומטר',
+  'example.pot-divider.summary':
+    '[[potentiometer]] של ⁦10 kΩ⁩ על ⁦5 V⁩: המתח ב[[wiper]] יורד מ־⁦5 V⁩ ל־⁦0 V⁩ ככל שהמיקום עולה, ⁦2.5 V⁩ ב־⁦50 %⁩. הריצו והזיזו את מחוון המיקום: [[probe]] ב[[wiper]] עוקבת.',
+  'example.pot-led-dimmer.title': 'עמעם LED עם פוטנציומטר',
+  'example.pot-led-dimmer.summary':
+    'ה[[potentiometer]] כנגד משתנה בטור עם ⁦220 Ω⁩ ונורית LED אדומה על ⁦5 V⁩. הגדלת המיקום מקטינה את ההתנגדות בטור והזרם ב־LED עולה; ב־⁦100 %⁩ הנגד של ⁦220 Ω⁩ לבדו מגביל אותו לכ־⁦13.7 mA⁩.',
   'example.led-current.title': 'הגבלת זרם לנורית LED',
   'example.led-current.summary':
     'נגד של ⁦220 Ω⁩ קובע את הזרם של נורית LED אדומה מ־⁦5 V⁩. הנורית אינה ליניארית: היא מתייצבת סביב ⁦2 V⁩ ובערך ⁦14 mA⁩.',
@@ -1529,4 +1535,31 @@ export const he: Record<MessageKey, string> = {
   'report.failed.rejected': 'לא ניתן היה לקבל את הדיווח. בדקו את הטקסט ונסו שוב.',
   'report.failed.network':
     'השרת לא אישר את הדיווח, ולכן ייתכן שלא התקבל. הטקסט שלכם נשמר כאן: אפשר לשלוח אותו שוב.',
+  // Sprint POT-UNITS: the potentiometer.
+  'component.component.potentiometer.name': '[[potentiometer]]',
+  'terminal.potEndA': 'קצה A (פין 1)',
+  'terminal.wiper': '[[wiper]] W (פין 2)',
+  'terminal.potEndB': 'קצה B (פין 3)',
+  'model.potentiometer.bourns_ptv09a_linear': 'סיבובי 9 מ"מ, ליניארי (Bourns PTV09A)',
+  'param.totalResistance': 'התנגדות כוללת (A–B)',
+  'param.wiperPosition': 'מיקום ה[[wiper]] (מ-A)',
+  'sim.part.current.aw': 'זרם A → W',
+  'sim.part.current.wb': 'זרם W → B',
+  'sim.part.current.wiper': 'זרם אל ה[[wiper]]',
+  'sim.part.voltage.component.potentiometer': 'מתח A–B',
+  'sim.part.state.component.potentiometer.resistanceAW': 'התנגדות A–W',
+  'sim.part.state.component.potentiometer.resistanceWB': 'התנגדות W–B',
+  'sim.part.state.component.potentiometer.power': 'הספק מתבזבז (כל המסלול)',
+  'sim.part.state.component.potentiometer.wiperVoltage': 'מתח ה[[wiper]] ביחס ל-GND',
+  'limitation.potentiometer_linear':
+    'מסלול ליניארי בלבד: שני מקטעים אידיאליים שסכומם ההתנגדות הכוללת, ביחס ישר למיקום. המיקום הוא חלק המסלול בין A ל[[wiper]], לא זווית הציר; מסלול לוגריתמי אינו מוצע.',
+  'limitation.potentiometer_end_resistance':
+    'התנגדות הקצה מקורבת ל-0 Ω: ב-0 % וב-100 % ה[[wiper]] נוגע בקצה ישירות. גיליון הנתונים נותן לה רק חסם עליון (500 Ω או 1 % לכל היותר).',
+  'limitation.potentiometer_tolerance': 'ערך נומינלי: סבולת ההתנגדות ±20 % אינה ממודלת.',
+  'limitation.potentiometer_power':
+    'דירוג הספק 0.05 W לכל המסלול (גיליון הנתונים של PTV09A), בטמפרטורת סביבה 25 °C. לא ניתן דירוג לחלק מהמסלול: מקטע קצר (שימוש כריאוסטט) עלול להיות מועמס מעבר ליכולתו גם מתחת ל-0.05 W, וזה אינו מאופיין.',
+  'limitation.potentiometer_wiper_current':
+    'התנגדות המגע של ה[[wiper]] והזרם המרבי דרכו אינם בגיליון הנתונים: אינם ממודלים, ושום גבול אינו נבדק.',
+  'limitation.potentiometer_no_adc':
+    'לצד ESP32 ה[[wiper]] נקרא כרמה דיגיטלית: כניסה אנלוגית (ADC) אינה נתמכת.',
 };

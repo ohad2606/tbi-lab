@@ -438,6 +438,14 @@ function moduleGlyph(glyph: SchModule['glyph']) {
           <line x1={6} y1={10} x2={6} y2={22} />
         </>
       );
+    case 'potentiometer':
+      return (
+        <>
+          <polyline points="-24,0 -20,-8 -12,8 -4,-8 4,8 12,-8 20,8 24,0" />
+          <line x1={0} y1={-24} x2={0} y2={-12} />
+          <polygon points="-5,-18 5,-18 0,-10" class="sch-arrow" />
+        </>
+      );
     case 'bjt.npn':
       return (
         <>

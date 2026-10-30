@@ -258,6 +258,12 @@ the original decision, but its "no component may be added" rule is **no longer a
 
 **Still deferred:** the **potentiometer** stays **V1.1 (PM-6)**, with the ADC.
 
+> **Changed 2026-10-30 (owner directive, Sprint POT-UNITS):** the owner now prioritises the
+> potentiometer as a **passive part**, independently of the ADC. It ships as
+> `component.potentiometer` (Bourns PTV09A, linear taper) for local circuits and next to an ESP32
+> as a resistive part; the **ADC stays refused** (an ESP32 reads a wiper only through the digital
+> input-threshold model). See docs/sprints/SPRINT-POT-UNITS.md.
+
 **Approved component families for V1 development:**
 
 | Family | Approved members | Condition for exposure |
@@ -360,7 +366,7 @@ open resistance is a **documented model parameter**, not a hidden fudge.
 
 | Component | Decision | Reason |
 |---|---|---|
-| **Potentiometer** | **V1.1 (PM-6)** | Electrically cheap (a wiper splitting one resistance), but its main teaching use is feeding an **ADC**, which V1 does not support. It belongs with ADC |
+| **Potentiometer** | **V1.1 (PM-6)** *(superseded 2026-10-30: shipped as a passive part, ADC still refused; SPRINT-POT-UNITS)* | Electrically cheap (a wiper splitting one resistance), but its main teaching use is feeding an **ADC**, which V1 does not support. It belongs with ADC |
 | **Capacitor / inductor** | **Deferred until transient can be modelled honestly (PM-6)** *(capacitor: shipped for local circuits, §6.0a)* | In a DC operating point a capacitor is an open circuit and an inductor a short. Showing them without transient analysis teaches something false |
 | **Transistor (BJT, MOSFET)** | **Future** | New nonlinear models plus validation against an independent reference; a dedicated sprint |
 | **Relay** | **Future** *(superseded: shipped for local circuits, §6.0a)* | Needs a coil/contact model and, realistically, transient behaviour |

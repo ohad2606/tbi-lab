@@ -58,7 +58,8 @@ const nets = (doc: ProjectDocument) => {
 
 describe('schema v4 (s20r)', () => {
   it('is 4; 3 -> 4 is the identity, with and without automatic wires, and deterministic', () => {
-    expect(SCHEMA_VERSION).toBe(4);
+    // Sprint POT-UNITS bumped the current version to 5 (identity 4 -> 5); the 3 -> 4 step is unchanged.
+    expect(SCHEMA_VERSION).toBe(5);
     const withAuto = ownerBench().doc;
     expect(withAuto.layout.wires.every((w) => w.auto)).toBe(true);
     const manual = JSON.parse(JSON.stringify(withAuto)) as ProjectDocument;
@@ -90,7 +91,7 @@ describe('schema v4 (s20r)', () => {
     v3pkg.integrity.project = projectHash(v3pkg.project);
     const r = parsePackage(JSON.stringify(v3pkg));
     if (!r.ok) throw new Error(JSON.stringify(r.error));
-    expect(r.doc.schemaVersion).toBe(4);
+    expect(r.doc.schemaVersion).toBe(SCHEMA_VERSION);
     expect(nets(r.doc)).toBe(nets(doc));
     const again = parsePackage(serializePackage(createPackage(r.doc, meta)));
     expect(again.ok && again.doc).toEqual(r.doc);
@@ -102,12 +103,12 @@ describe('schema v4 (s20r)', () => {
       project: ProjectDocument;
       integrity: { project: string };
     };
-    pkg.project.schemaVersion = 5;
+    pkg.project.schemaVersion = SCHEMA_VERSION + 1;
     pkg.integrity.project = projectHash(pkg.project);
     const text = JSON.stringify(pkg);
     expect(parsePackage(text)).toEqual({
       ok: false,
-      error: { code: 'newer_schema', version: 5 },
+      error: { code: 'newer_schema', version: SCHEMA_VERSION + 1 },
     });
     const before = await storage.list();
     expect(await app.importPackage(text)).toBe(false);
@@ -122,7 +123,7 @@ describe('schema v4 (s20r)', () => {
     const stored = JSON.stringify(await storage.load('prj_v3stored'));
     await app.openProject('prj_v3stored');
     await settle();
-    expect(app.state.doc!.schemaVersion).toBe(4);
+    expect(app.state.doc!.schemaVersion).toBe(SCHEMA_VERSION);
     expect(app.state.readOnly).toBeNull();
     expect(app.state.notice?.key).not.toBe('open.routesAdjusted'); // canonical already
     // Opened, nothing edited: the stored record is byte-for-byte what the v3 build wrote.
@@ -138,9 +139,9 @@ describe('schema v4 (s20r)', () => {
     );
     await app.flush();
     const saved = (await storage.load('prj_v3stored')) as ProjectDocument;
-    expect(saved.schemaVersion).toBe(4);
+    expect(saved.schemaVersion).toBe(SCHEMA_VERSION);
     expect((await storage.list()).find((e) => e.projectId === 'prj_v3stored')!.schemaVersion).toBe(
-      4,
+      SCHEMA_VERSION,
     );
     // Undo / redo of that edit, autosaved; reopening gives the same document.
     app.undo();
@@ -181,7 +182,7 @@ describe('schema v4 (s20r)', () => {
     expect(app.rename('Edited')).toBe(true);
     await app.flush();
     const saved = (await storage.load('prj_v3stale')) as ProjectDocument;
-    expect(saved.schemaVersion).toBe(4);
+    expect(saved.schemaVersion).toBe(SCHEMA_VERSION);
     expect(saved.layout.wires).toEqual(fresh.layout.wires);
     expect(nets(saved)).toBe(nets(stale));
   });
@@ -193,21 +194,25 @@ describe('schema v4 (s20r)', () => {
     const stored = JSON.stringify(await storage.load('prj_v3dup'));
     const copy = await app.duplicate('prj_v3dup');
     expect(copy).not.toBeNull();
-    expect(((await storage.load(copy!)) as ProjectDocument).schemaVersion).toBe(4);
+    expect(((await storage.load(copy!)) as ProjectDocument).schemaVersion).toBe(SCHEMA_VERSION);
     expect(nets((await storage.load(copy!)) as ProjectDocument)).toBe(nets(v3));
     const file = await app.exportProject('prj_v3dup');
     const back = parsePackage(file!.text);
-    expect(back.ok && back.doc.schemaVersion).toBe(4);
+    expect(back.ok && back.doc.schemaVersion).toBe(SCHEMA_VERSION);
     expect(JSON.stringify(await storage.load('prj_v3dup'))).toBe(stored);
   });
 
   it('a stored v5 project opens read-only and is never written', async () => {
     const { storage, app } = await setup();
-    const v5 = { ...ownerBench().doc, projectId: 'prj_v5stored', schemaVersion: 5 };
+    const v5 = {
+      ...ownerBench().doc,
+      projectId: 'prj_v5stored',
+      schemaVersion: SCHEMA_VERSION + 1,
+    };
     await storage.save(v5 as ProjectDocument);
     const stored = JSON.stringify(await storage.load('prj_v5stored'));
     await app.openProject('prj_v5stored');
-    expect(app.state.readOnly).toEqual({ schemaVersion: 5 });
+    expect(app.state.readOnly).toEqual({ schemaVersion: SCHEMA_VERSION + 1 });
     expect(app.apply(addComponent(app.state.doc!, 'component.resistor', { x: 400, y: 300 }))).toBe(
       false,
     );

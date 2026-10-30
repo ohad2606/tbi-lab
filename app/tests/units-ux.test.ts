@@ -179,6 +179,8 @@ describe('which parameters get a unit dropdown', () => {
       'sensor.hc_sr04.airTemperature': ['°C'],
       'sensor.dht22.temperature': ['°C'],
       'sensor.dht22.humidity': ['%RH'],
+      'component.potentiometer.resistance': ['Ω', 'kΩ', 'MΩ'],
+      'component.potentiometer.position': ['%'],
     });
   });
 });

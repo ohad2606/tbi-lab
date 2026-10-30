@@ -35,6 +35,11 @@ export type ParamDef =
        * control. `scale` picks the control's scale (illuminance spans decades: logarithmic).
        */
       environment?: { scale: 'linear' | 'log' };
+      /**
+       * Sprint POT-UNITS: a PART property (not the environment) that the inspector also offers
+       * as a slider, e.g. a potentiometer's wiper position. Only on a `live` parameter.
+       */
+      slider?: { scale: 'linear' };
     }
   | {
       kind: 'boolean';
@@ -241,6 +246,62 @@ const SPRINT10_TYPES = {
       },
     ],
     aliases: ['buzzer', 'beeper', 'sounder', 'active buzzer'],
+  },
+  /**
+   * Sprint POT-UNITS (v5): a three-terminal potentiometer, Bourns PTV09A, linear taper (datasheet
+   * PTV09.pdf REV. 01/25 p.1: 1 kΩ … 1 MΩ, ±20 %, 0.05 W, 20 VDC; pins 1/3 track ends, 2 wiper).
+   * `position` is the wiper's place along the resistive track, 0 % at end A … 100 % at end B
+   * (the fraction of the track resistance between A and the wiper), not the shaft angle.
+   */
+  'component.potentiometer': {
+    type: 'component.potentiometer',
+    typeVersion: 1,
+    refPrefix: 'RV',
+    nameKey: 'component.component.potentiometer.name',
+    symbol: 'symbol.potentiometer',
+    terminals: [
+      { id: 'a', offset: { x: -40, y: 0 }, labelKey: 'terminal.potEndA' },
+      { id: 'wiper', offset: { x: 0, y: -40 }, labelKey: 'terminal.wiper' },
+      { id: 'b', offset: { x: 40, y: 0 }, labelKey: 'terminal.potEndB' },
+    ],
+    params: [
+      {
+        kind: 'enum',
+        key: 'model',
+        options: [
+          {
+            value: 'model.potentiometer.bourns_ptv09a_linear',
+            labelKey: 'model.potentiometer.bourns_ptv09a_linear',
+          },
+        ],
+        default: 'model.potentiometer.bourns_ptv09a_linear',
+        labelKey: 'param.model',
+      },
+      {
+        kind: 'quantity',
+        key: 'resistance',
+        unit: 'ohm',
+        min: 1000,
+        max: 1e6,
+        default: 10_000,
+        labelKey: 'param.totalResistance',
+      },
+      {
+        kind: 'quantity',
+        key: 'position',
+        unit: 'percent',
+        min: 0,
+        max: 100,
+        default: 50,
+        labelKey: 'param.wiperPosition',
+        live: true,
+        slider: { scale: 'linear' },
+      },
+    ],
+    // The wiper may be left unwired: a two-terminal variable resistor between A and B is a fixed
+    // resistor, and a rheostat uses A (or B) and the wiper only.
+    optionalTerminals: ['a', 'wiper', 'b'],
+    aliases: ['pot', 'potentiometer', 'trimmer', 'rheostat', 'variable resistor', 'ptv09'],
   },
   'component.bjt_npn': {
     type: 'component.bjt_npn',
@@ -931,6 +992,7 @@ export const CATALOG_ORDER: readonly ComponentTypeId[] = [
   'logic.gate_or',
   'logic.gate_not',
   'logic.quad_and',
+  'component.potentiometer',
   'board.esp32_devkitc_wroom32',
 ];
 

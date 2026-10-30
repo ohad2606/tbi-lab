@@ -66,9 +66,9 @@ describe('automatic wires in a .tbilab (rt2 compatibility)', () => {
     ]);
   });
 
-  it('the schema version is 4 (Sprint 20): a file with automatic wires is a v4 file', () => {
-    expect(SCHEMA_VERSION).toBe(4);
-    expect(createPackage(autoCircuit(), meta).project.schemaVersion).toBe(4);
+  it('a file with automatic wires is at least a v4 file (Sprint 20; v5 since Sprint POT-UNITS)', () => {
+    expect(SCHEMA_VERSION).toBe(5);
+    expect(createPackage(autoCircuit(), meta).project.schemaVersion).toBe(SCHEMA_VERSION);
   });
 
   it('an unknown key inside `auto`, or a malformed waypoint, is refused by its path', () => {

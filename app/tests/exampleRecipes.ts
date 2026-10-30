@@ -451,6 +451,44 @@ export const RECIPES: Record<string, () => ProjectDocument> = {
     return r.centre(-60);
   },
   /**
+   * Sprint POT-UNITS: a potentiometer (Bourns PTV09A, 10 kΩ linear) across 5 V: the wiper divides
+   * the supply, V_W = 5 V × (1 − p) with p the wiper position from end A (A at +5 V, B at GND).
+   * At 50 %: 2.5 V. Drag the position slider while it runs.
+   */
+  'pot-divider': () => {
+    const r = new Recipe('pot-divider', 'Potentiometer divider');
+    r.supply(5, 0.1);
+    const RV = r.place('component.potentiometer', 80, -20);
+    const G = r.place('component.ground', 120, 100);
+    r.set(RV, 'resistance', 10_000, 'ohm');
+    r.set(RV, 'position', 50, 'percent');
+    r.wire(T('PSU1', 'positive'), T(RV, 'a'));
+    r.wire(T(RV, 'b'), T(G, 'ref'));
+    return r.centre(-60);
+  },
+  /**
+   * Sprint POT-UNITS: an LED dimmer. The potentiometer's W-B segment (a rheostat, end A unused)
+   * in series with a 220 Ω resistor and a red LED on 5 V: the series resistance is
+   * 220 Ω + 10 kΩ × (1 − p), so the LED current rises with the position and is largest at 100 %,
+   * where the 220 Ω resistor alone limits it (about 13.7 mA, as in the LED current example).
+   */
+  'pot-led-dimmer': () => {
+    const r = new Recipe('pot-led-dimmer', 'LED dimmer (potentiometer)');
+    r.supply(5, 0.1);
+    const RV = r.place('component.potentiometer', 80, -20);
+    const R1 = r.place('component.resistor', 200, -20);
+    const D1 = r.place('component.led', 280, 40, 1);
+    const G = r.place('component.ground', 280, 140);
+    r.set(RV, 'resistance', 10_000, 'ohm');
+    r.set(RV, 'position', 50, 'percent');
+    r.set(R1, 'resistance', 220, 'ohm');
+    r.wire(T('PSU1', 'positive'), T(RV, 'wiper'), [{ x: 0, y: -60 }]);
+    r.wire(T(RV, 'b'), T(R1, 'a'));
+    r.wire(T(R1, 'b'), T(D1, 'anode'));
+    r.wire(T(D1, 'cathode'), T(G, 'ref'));
+    return r.centre(-60);
+  },
+  /**
    * Sprint 6, Arduino source since Sprint 7. Classic ESP32 running the TbiGpioProof sketch
    * (visible, editable; Build then Run): GPIO2 drives a red LED through 220 Ω (blinking in an
    * 800 ms pattern). The board GND is the circuit reference.

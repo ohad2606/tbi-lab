@@ -391,7 +391,11 @@ function ParamField({
         max={def.max}
         value={current && typeof current === 'object' ? current.value : null}
         disabled={disabled}
-        {...(def.environment ? { slider: def.environment.scale ?? 'linear' } : {})}
+        {...(def.environment
+          ? { slider: def.environment.scale ?? 'linear' }
+          : def.slider
+            ? { slider: def.slider.scale }
+            : {})}
         onCommit={(value, { slider }) => {
           if (!doc) return;
           if (typeof current === 'object' && current.value === value) return;
@@ -630,6 +634,10 @@ const TEXT_STATES: ReadonlySet<string> = new Set(['line1', 'line2']);
 /** Units of numeric part states (language-neutral keys). */
 const STATE_UNITS: Record<string, UnitId> = {
   resistance: 'ohm',
+  // Sprint POT-UNITS: a potentiometer's two track segments and its wiper potential.
+  resistanceAW: 'ohm',
+  resistanceWB: 'ohm',
+  wiperVoltage: 'volt',
   // Sprint 19B: logic gates.
   supplyV: 'volt',
   outputValidA: 'ampere',
@@ -645,6 +653,8 @@ const STATE_FORMATS: Record<string, (locale: LocaleInfo, v: number) => string> =
   angleDeg: formatAngle,
   commandedDeg: formatAngle,
   pulseUs: formatPulseWidth,
+  // Sprint POT-UNITS: a potentiometer's total dissipation.
+  power: formatPower,
 };
 
 /**

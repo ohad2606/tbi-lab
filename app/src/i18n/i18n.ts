@@ -116,7 +116,7 @@ export function formatNumber(locale: LocaleInfo, value: number): string {
  * Units shown without SI prefixes (Sprint 12): a temperature in degrees Celsius and a relative
  * humidity read as plain numbers (21.5 °C, 55 %RH), never as 500 m°C.
  */
-const UNPREFIXED: ReadonlySet<UnitId> = new Set<UnitId>(['celsius', 'percent_rh']);
+const UNPREFIXED: ReadonlySet<UnitId> = new Set<UnitId>(['celsius', 'percent_rh', 'percent']);
 export const isUnprefixed = (unit: UnitId): boolean => UNPREFIXED.has(unit);
 
 /** `4.7 kΩ`, formatted for the locale; always a single LTR run. */

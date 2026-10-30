@@ -69,6 +69,8 @@ describe('Sprint 4 catalog: the non-MCU V1 catalog is complete and closed (A16)'
         'logic.gate_not',
         // Exploration Foundation L3: one packaged logic device (TI SN74LVC08A).
         'logic.quad_and',
+        // Sprint POT-UNITS (owner directive 2026-10-30): the potentiometer as a passive part.
+        'component.potentiometer',
       ].sort(),
     );
   });

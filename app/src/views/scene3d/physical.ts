@@ -263,6 +263,29 @@ export const LDR_GL5528 = {
   standoffMm: 4.0,
 };
 
+/**
+ * Bourns PTV09A-2 (vertical/side mount, bushingless, 10 mm height), PTV09.pdf REV. 01/25 p.1
+ * [PTV09]: body 10.0 mm wide and 6.8 mm deep, shaft axis 10.0 mm above the board, F-type shaft
+ * Ø6.0 mm, shaft length L = 15 mm (the shortest standard length, measured from the body's rear
+ * face), 3 terminals 0.8 mm wide at 2.5 mm pitch (5.0 mm outer span). The body's HEIGHT is not
+ * dimensioned: its front view is drawn square, so 10.0 mm centred on the shaft axis [DRAWING,
+ * approximate]. Terminal order facing the shaft: 1 (end A), 2 (wiper), 3 (end B).
+ */
+export const POT_PTV09A = {
+  bodyWidthMm: 10.0,
+  bodyDepthMm: 6.8,
+  /** [DRAWING] the square front view: 10.0 mm, centred on the shaft axis. */
+  bodyHeightMm: 10.0,
+  shaftAxisMm: 10.0,
+  shaftDiameterMm: 6.0,
+  shaftLengthMm: 15,
+  /** F-type flat: 4.5 mm across the flat. */
+  shaftFlatMm: 4.5,
+  pinPitchMm: 2.5,
+  pinWidthMm: 0.8,
+  pinOrder: ['a', 'wiper', 'b'] as const,
+};
+
 /** CEM-1205-IC: Ø12.0 x 9.5 mm black can, 2 pins Ø0.6 at 7.6 mm [CEM]. */
 export const BUZZER_CEM1205 = {
   diameterMm: 12.0,

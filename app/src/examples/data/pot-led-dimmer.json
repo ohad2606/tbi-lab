@@ -1,0 +1,284 @@
+{
+  "format": "tbi-lab.project",
+  "schemaVersion": 5,
+  "projectId": "prj_examplepotleddimmer",
+  "createdWith": {
+    "app": "0.2.0",
+    "schemaVersion": 5
+  },
+  "createdAt": "2026-09-23T00:00:00.000Z",
+  "revision": {
+    "localRevision": 1,
+    "cloudRevision": null,
+    "baseRevision": null,
+    "updatedAt": "2026-09-23T00:00:00.000Z",
+    "deviceId": "dev_tbilab_examples"
+  },
+  "name": "LED dimmer (potentiometer)",
+  "components": [
+    {
+      "id": "PSU1",
+      "type": "instrument.lab_psu",
+      "typeVersion": 1,
+      "params": {
+        "setpointVoltage": {
+          "value": 5,
+          "unit": "volt"
+        },
+        "currentLimit": {
+          "value": 0.1,
+          "unit": "ampere"
+        },
+        "outputEnabled": true
+      }
+    },
+    {
+      "id": "GND1",
+      "type": "component.ground",
+      "typeVersion": 1,
+      "params": {}
+    },
+    {
+      "id": "RV1",
+      "type": "component.potentiometer",
+      "typeVersion": 1,
+      "params": {
+        "model": "model.potentiometer.bourns_ptv09a_linear",
+        "resistance": {
+          "value": 10000,
+          "unit": "ohm"
+        },
+        "position": {
+          "value": 50,
+          "unit": "percent"
+        }
+      }
+    },
+    {
+      "id": "R1",
+      "type": "component.resistor",
+      "typeVersion": 1,
+      "params": {
+        "resistance": {
+          "value": 220,
+          "unit": "ohm"
+        }
+      }
+    },
+    {
+      "id": "D1",
+      "type": "component.led",
+      "typeVersion": 1,
+      "params": {
+        "model": "model.led.vishay_tlhr5400"
+      }
+    },
+    {
+      "id": "GND2",
+      "type": "component.ground",
+      "typeVersion": 1,
+      "params": {}
+    }
+  ],
+  "nets": [
+    {
+      "id": "N_1",
+      "role": "ground",
+      "userName": null
+    },
+    {
+      "id": "N_2",
+      "role": null,
+      "userName": null
+    },
+    {
+      "id": "N_3",
+      "role": null,
+      "userName": null
+    },
+    {
+      "id": "N_4",
+      "role": null,
+      "userName": null
+    },
+    {
+      "id": "N_5",
+      "role": "ground",
+      "userName": null
+    }
+  ],
+  "connections": [
+    {
+      "component": "PSU1",
+      "terminal": "positive",
+      "net": "N_2"
+    },
+    {
+      "component": "PSU1",
+      "terminal": "negative",
+      "net": "N_1"
+    },
+    {
+      "component": "GND1",
+      "terminal": "ref",
+      "net": "N_1"
+    },
+    {
+      "component": "RV1",
+      "terminal": "wiper",
+      "net": "N_2"
+    },
+    {
+      "component": "RV1",
+      "terminal": "b",
+      "net": "N_3"
+    },
+    {
+      "component": "R1",
+      "terminal": "a",
+      "net": "N_3"
+    },
+    {
+      "component": "R1",
+      "terminal": "b",
+      "net": "N_4"
+    },
+    {
+      "component": "D1",
+      "terminal": "anode",
+      "net": "N_4"
+    },
+    {
+      "component": "D1",
+      "terminal": "cathode",
+      "net": "N_5"
+    },
+    {
+      "component": "GND2",
+      "terminal": "ref",
+      "net": "N_5"
+    }
+  ],
+  "layout": {
+    "components": {
+      "PSU1": {
+        "x": -180,
+        "y": 0,
+        "rotation": 0
+      },
+      "GND1": {
+        "x": -140,
+        "y": 120,
+        "rotation": 0
+      },
+      "RV1": {
+        "x": 20,
+        "y": -20,
+        "rotation": 0
+      },
+      "R1": {
+        "x": 140,
+        "y": -20,
+        "rotation": 0
+      },
+      "D1": {
+        "x": 220,
+        "y": 40,
+        "rotation": 90
+      },
+      "GND2": {
+        "x": 220,
+        "y": 140,
+        "rotation": 0
+      }
+    },
+    "wires": [
+      {
+        "id": "W1",
+        "from": {
+          "kind": "terminal",
+          "component": "PSU1",
+          "terminal": "negative"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "GND1",
+          "terminal": "ref"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W2",
+        "from": {
+          "kind": "terminal",
+          "component": "PSU1",
+          "terminal": "positive"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "RV1",
+          "terminal": "wiper"
+        },
+        "vertices": [
+          {
+            "x": -60,
+            "y": -60
+          }
+        ]
+      },
+      {
+        "id": "W3",
+        "from": {
+          "kind": "terminal",
+          "component": "RV1",
+          "terminal": "b"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "R1",
+          "terminal": "a"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W4",
+        "from": {
+          "kind": "terminal",
+          "component": "R1",
+          "terminal": "b"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "D1",
+          "terminal": "anode"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W5",
+        "from": {
+          "kind": "terminal",
+          "component": "D1",
+          "terminal": "cathode"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "GND2",
+          "terminal": "ref"
+        },
+        "vertices": []
+      }
+    ],
+    "junctions": []
+  },
+  "idCounters": {
+    "PSU": 1,
+    "GND": 2,
+    "W": 5,
+    "N": 5,
+    "RV": 1,
+    "R": 1,
+    "D": 1
+  },
+  "programs": {}
+}

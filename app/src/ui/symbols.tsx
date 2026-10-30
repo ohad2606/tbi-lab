@@ -315,6 +315,20 @@ export const SYMBOLS: Record<ComponentTypeId, SymbolDef> = {
       </>
     ),
   },
+  // Sprint POT-UNITS: IEC/ANSI potentiometer: the resistor with the wiper's arrow pointing at the
+  // track from the wiper terminal (0, -40).
+  'component.potentiometer': {
+    bbox: [-40, -40, 40, 10],
+    draw: () => (
+      <>
+        <line x1={-40} y1={0} x2={-24} y2={0} />
+        <polyline points="-24,0 -20,-8 -12,8 -4,-8 4,8 12,-8 20,8 24,0" />
+        <line x1={24} y1={0} x2={40} y2={0} />
+        <line x1={0} y1={-40} x2={0} y2={-12} />
+        <polygon points="-5,-20 5,-20 0,-11" class="diode-body" />
+      </>
+    ),
+  },
   'component.buzzer': {
     bbox: [-40, -22, 40, 6],
     draw: (state) => (

@@ -24,6 +24,7 @@ import {
   RELAY_SRD,
   RGB_LED_5MM,
   TO92,
+  POT_PTV09A,
   PIR_HC_SR501,
   HC_SR04_MODULE,
   DHT22_CASE,
@@ -635,6 +636,56 @@ function buildTo92(c: SceneComponent, m: Materials, own: OwnedResources) {
       { terminal: 'emitter', from: [at('emitter'), 0], top: y0 + 0.2, knee: 1.8 },
       { terminal: 'base', from: [at('base'), 0], top: y0 + 0.2, knee: 1.0 },
       { terminal: 'collector', from: [at('collector'), 0], top: y0 + 0.2, knee: 1.4 },
+    ]),
+  );
+  return g;
+}
+
+/**
+ * Sprint POT-UNITS: Bourns PTV09A-2 rotary potentiometer (physical.ts POT_PTV09A): the moulded
+ * body standing on its three terminals, the insulated F-type shaft (with its flat) towards the
+ * default camera (+z), the terminals 1-2-3 left to right facing the shaft, splayed down to the
+ * part's terminals (end A, wiper, end B).
+ */
+function buildPotentiometer(c: SceneComponent, m: Materials, own: OwnedResources) {
+  const p = POT_PTV09A;
+  const g = new THREE.Group();
+  const bottom = p.shaftAxisMm - p.bodyHeightMm / 2;
+  g.add(
+    mesh(
+      own.shared(
+        'pot:body',
+        () => new RoundedBoxGeometry(p.bodyWidthMm, p.bodyHeightMm, p.bodyDepthMm, 2, 0.4),
+      ),
+      m.blackPlastic,
+      [0, p.shaftAxisMm, 0],
+    ),
+  );
+  // The insulated shaft (moulded, light grey), from the front face; its flat on top.
+  const shaftLen = p.shaftLengthMm - p.bodyDepthMm;
+  const shaft = cylinder(
+    own,
+    p.shaftDiameterMm / 2,
+    shaftLen,
+    m.white,
+    [0, p.shaftAxisMm, p.bodyDepthMm / 2 + shaftLen / 2],
+    32,
+  );
+  shaft.rotation.x = Math.PI / 2;
+  g.add(shaft);
+  const flat = box(own, p.shaftDiameterMm * 0.7, 0.2, shaftLen * 0.6, m.darkPlastic, [
+    0,
+    p.shaftAxisMm + p.shaftFlatMm - p.shaftDiameterMm / 2 + 0.1,
+    p.bodyDepthMm / 2 + shaftLen * 0.7,
+  ]);
+  g.add(flat);
+  const xs = p.pinOrder.map((_, i) => (i - 1) * p.pinPitchMm);
+  const at = (pin: (typeof p.pinOrder)[number]) => xs[p.pinOrder.indexOf(pin)]!;
+  g.add(
+    splayedLeads(c, own, m.lead, p.pinWidthMm / 2, [
+      { terminal: 'a', from: [at('a'), 0], top: bottom + 0.2, knee: 1.2 },
+      { terminal: 'wiper', from: [at('wiper'), 0], top: bottom + 0.2, knee: 1.8 },
+      { terminal: 'b', from: [at('b'), 0], top: bottom + 0.2, knee: 1.4 },
     ]),
   );
   return g;
@@ -1304,6 +1355,7 @@ const BUILDERS: Record<ModelKey, Builder> = {
   'logic.sot23': buildLogicSot23,
   'logic.soic14': buildLogicSoic14,
   'transistor.to92': buildTo92,
+  'pot.ptv09': buildPotentiometer,
   'led.rgb': buildRgbLed,
   'ldr.disc': buildPhotoresistor,
   'buzzer.can': buildBuzzer,

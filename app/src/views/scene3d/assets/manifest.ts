@@ -199,6 +199,11 @@ export const ASSETS: Record<ModelKey, AssetRecord> = {
     'models.ts buildTo92',
     '[TO92] onsemi Case 29-11 (TO-92, straight leads)',
   ),
+  'pot.ptv09': procedural(
+    'pot.ptv09',
+    'models.ts buildPotentiometer',
+    '[PTV09] Bourns PTV09 datasheet REV. 01/25 p.1, PTV09A-2 product dimensions (body height from the drawing)',
+  ),
   'sensor.pir': procedural(
     'sensor.pir',
     'models.ts buildPir',

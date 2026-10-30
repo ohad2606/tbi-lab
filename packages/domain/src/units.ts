@@ -33,6 +33,7 @@ const UNIT_SUFFIXES: Record<UnitId, string[]> = {
   metre: ['m', 'metres', 'metre', 'meters', 'meter'],
   celsius: ['°c', '℃', 'degc', 'celsius'],
   percent_rh: ['%rh', '%', 'rh'],
+  percent: ['%'],
 };
 
 export type ParseError = 'empty' | 'invalid' | 'decimal_comma' | 'wrong_unit';
@@ -169,6 +170,7 @@ export const DISPLAY_UNITS: Readonly<Record<UnitId, readonly DisplayUnit[]>> = {
   lux: BASE,
   celsius: BASE,
   percent_rh: BASE,
+  percent: BASE,
 };
 
 /**
