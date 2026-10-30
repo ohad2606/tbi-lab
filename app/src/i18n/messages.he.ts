@@ -646,6 +646,10 @@ export const he: Record<MessageKey, string> = {
     '{component}: ‏V_CC ו-GND מחוברים לאותה רשת, ולכן מתח ההזנה שלו תמיד 0 V: הוא לעולם לא יקבל הזנה. חברו את GND להדק ה-− של הספק (או ל-GND).',
   'checks.psu_no_load':
     '{component}: שום רכיב אינו מחובר בין + ל-−, ולכן הוא אינו מספק זרם לאף רכיב. חברו את מסלול החזרה של המעגל (למשל GND של רכיב) להדק ה-−.',
+  'checks.gpio_input_floating':
+    '{component} {terminal}: התוכנית קוראת את הפין הזה ככניסה, אבל כאשר {switches} פתוח שום דבר אינו מקבע את הרמה שלו (אין נגד pull-up או pull-down). ‏ESP32 אמיתי קורא אז רמה לא מוגדרת; הסימולטור קורא אותה כ-LOW. הוסיפו נגד (למשל 10 kΩ) מהפין אל GND או אל 3.3 V.',
+  'checks.gpio_input_floating_always':
+    '{component} {terminal}: התוכנית קוראת את הפין הזה ככניסה, אבל שום דבר אינו מקבע את הרמה שלו (אין נגד pull-up או pull-down). ‏ESP32 אמיתי קורא אז רמה לא מוגדרת; הסימולטור קורא אותה כ-LOW. הוסיפו נגד (למשל 10 kΩ) מהפין אל GND או אל 3.3 V.',
   'checks.psu_shorted_by_wire': '{component}: הדקי היציאה מחוברים זה לזה בחוט.',
   'history.undo': 'ביטול',
   'history.redo': 'ביצוע מחדש',

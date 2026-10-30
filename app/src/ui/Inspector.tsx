@@ -951,6 +951,14 @@ function ChecksSection({ hidden }: { hidden: boolean }) {
         return t('checks.supply_pins_shorted', { component });
       case 'psu_no_load':
         return t('checks.psu_no_load', { component });
+      // Sprint 24 (M2): an input the program reads, with nothing holding its level.
+      case 'gpio_input_floating': {
+        const terminal = termName(i.components[0]!, i.terminals?.[0] ?? '');
+        const switches = i.components.slice(1);
+        return switches.length
+          ? t('checks.gpio_input_floating', { component, terminal, switches: list(switches) })
+          : t('checks.gpio_input_floating_always', { component, terminal });
+      }
       case 'no_ground':
         return t('checks.no_ground');
       default:

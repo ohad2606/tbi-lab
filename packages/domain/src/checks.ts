@@ -11,6 +11,7 @@
 import { CATALOG } from './catalog.js';
 import { touchingUnconnected } from './contacts.js';
 import { terminalPosition, wireRoute, pointOnSegment } from './layout.js';
+import { programInputPins } from './inputPins.js';
 import { nodeKey, wireGroups } from './nets.js';
 import type { ProjectDocument } from './schema.js';
 
@@ -25,7 +26,13 @@ export type CheckCode =
   /** Sprint 21: a part's own V_CC and GND pins are on one net: it can never be powered. */
   | 'supply_pins_shorted'
   /** Sprint 21: nothing connects a supply's + to its −: it can deliver no current to any part. */
-  | 'psu_no_load';
+  | 'psu_no_load'
+  /**
+   * Sprint 24 (M2): the board's program reads a GPIO as a digital input, and while a switch on its
+   * net is open (or always) nothing holds the pin's level: no pull-up or pull-down. A real ESP32
+   * then reads an undefined level; the simulator's input leakage reads LOW. Non-blocking.
+   */
+  | 'gpio_input_floating';
 
 export interface CheckIssue {
   code: CheckCode;
@@ -190,6 +197,8 @@ export function checkCircuit(doc: ProjectDocument): CheckIssue[] {
       issues.push({ code: 'floating_island', severity: 'warning', components: floating });
   }
 
+  issues.push(...floatingInputs(doc, netOf, groundNets));
+
   // Visual ambiguity: a wire drawn across a terminal it is NOT connected to. Terminal
   // positions are computed once, and each wire is tested only against terminals inside its
   // route's bounding box, so the cost stays near-linear for V1-sized workspaces.
@@ -241,6 +250,79 @@ export function checkCircuit(doc: ProjectDocument): CheckIssue[] {
       components: [a.component, b.component],
       terminals: [a.terminal, b.terminal],
     });
+  }
+  return issues;
+}
+
+/**
+ * Parts that conduct at DC (both terminals one node for this check), and parts that neither conduct
+ * nor drive (junctions: whether one conducts needs a threshold this check does not have; capacitors;
+ * switches, taken OPEN: the state in which a pull resistor matters). Any other part's terminal, a
+ * supply, GND or another board pin counts as holding the level (no warning: conservative).
+ */
+const CONDUCTS = new Set(['component.resistor', 'component.photoresistor']);
+const SWITCHES = new Set(['component.push_button', 'component.toggle_switch']);
+const NEITHER = new Set([
+  'component.led',
+  'component.diode',
+  'component.rgb_led',
+  'component.capacitor',
+  'display.led_matrix_8x8',
+  ...SWITCHES,
+]);
+
+/**
+ * Sprint 24 (M2): a GPIO the program reads as an input (inputPins.ts) whose net, with every switch
+ * open, reaches nothing that holds a level: through resistors only to switches, junctions or
+ * nothing. Wired pins only (an unwired pin is not part of the circuit).
+ */
+function floatingInputs(
+  doc: ProjectDocument,
+  netOf: Map<string, string>,
+  groundNets: Set<string>,
+): CheckIssue[] {
+  const issues: CheckIssue[] = [];
+  for (const board of doc.components) {
+    if (board.type !== 'board.esp32_devkitc_wroom32') continue;
+    const program = doc.programs[board.id];
+    if (!program) continue;
+    for (const gpio of programInputPins(program)) {
+      const terminal = `gpio${gpio}`;
+      const start = netOf.get(`${board.id}\u0000${terminal}`);
+      if (start === undefined) continue;
+      // Walk the nets joined through conducting parts; note what else touches them.
+      const seen = new Set<string>([start]);
+      const queue = [start];
+      let held = false;
+      const switches = new Set<string>();
+      while (queue.length && !held) {
+        const net = queue.shift()!;
+        if (groundNets.has(net)) held = true;
+        for (const c of doc.connections) {
+          if (c.net !== net) continue;
+          if (c.component === board.id && c.terminal === terminal) continue;
+          const part = doc.components.find((x) => x.id === c.component);
+          if (!part) continue;
+          if (CONDUCTS.has(part.type)) {
+            for (const t of CATALOG[part.type].terminals) {
+              const n = netOf.get(`${part.id}\u0000${t.id}`);
+              if (n !== undefined && !seen.has(n)) {
+                seen.add(n);
+                queue.push(n);
+              }
+            }
+          } else if (SWITCHES.has(part.type)) switches.add(part.id);
+          else if (!NEITHER.has(part.type)) held = true;
+        }
+      }
+      if (held) continue;
+      issues.push({
+        code: 'gpio_input_floating',
+        severity: 'warning',
+        components: [board.id, ...[...switches].sort()],
+        terminals: [terminal],
+      });
+    }
   }
   return issues;
 }

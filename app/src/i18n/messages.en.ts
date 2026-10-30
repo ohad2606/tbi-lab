@@ -653,6 +653,10 @@ export const en = {
     '{component}: V_CC and GND are wired to the same net, so its supply is always 0 V: it can never be powered. Wire GND to the supply’s − (or to GND).',
   'checks.psu_no_load':
     '{component}: nothing is connected between + and −, so it supplies no current to any part. Wire the circuit’s return (e.g. a part’s GND) to −.',
+  'checks.gpio_input_floating':
+    '{component} {terminal}: the program reads this pin as an input, but while {switches} is open nothing holds its level (no pull-up or pull-down resistor). A real ESP32 then reads an undefined level; the simulator reads it as LOW. Add a resistor (for example 10 kΩ) from the pin to GND or to 3.3 V.',
+  'checks.gpio_input_floating_always':
+    '{component} {terminal}: the program reads this pin as an input, but nothing holds its level (no pull-up or pull-down resistor). A real ESP32 then reads an undefined level; the simulator reads it as LOW. Add a resistor (for example 10 kΩ) from the pin to GND or to 3.3 V.',
   'checks.psu_shorted_by_wire': '{component}: the output terminals are joined by a wire.',
   'history.undo': 'Undo',
   'history.redo': 'Redo',
