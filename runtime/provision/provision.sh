@@ -9,7 +9,8 @@
 #   runtime/provision/provision.sh qemu         # fetch pinned Espressif QEMU, apply patches, build, install
 #   runtime/provision/provision.sh arduino      # pinned arduino-cli + arduino-esp32 core
 #   runtime/provision/provision.sh micropython  # pinned MicroPython image
-#   runtime/provision/provision.sh micropython-tools  # the MicroPython build home (tbi-mklfs + image)
+#   runtime/provision/provision.sh mpy-cross    # the interpreter's compiler (Build syntax check)
+#   runtime/provision/provision.sh micropython-tools  # the MicroPython build home (tbi-mklfs, mpy-cross, image)
 #   runtime/provision/provision.sh firmware [name...]  # build the runtime test firmware (all, or the named sketches)
 #   runtime/provision/provision.sh all          # all of the above, in order
 #   runtime/provision/provision.sh env          # print the environment the runtime tests use
@@ -196,17 +197,60 @@ PY
   store_artifact "$img" micropython
 }
 
-# Sprint 19B (MicroPython M1): the MicroPython build home, $RT/micropython (bound read-only into
-# the build sandbox as /opt/tbi-micropython): bin/tbi-mklfs, compiled from runtime/micropython/
-# against the interpreter's OWN littlefs (pinned source release), and the pinned interpreter image.
-cmd_micropython_tools() {
-  [[ -f "$RT/artifacts/micropython.bin" ]] || die "run 'provision.sh micropython' first"
+micropython_src_tar() {
   local tar="$RT/downloads-micropython-src.tar.xz"
   if [[ ! -f "$tar" || "$(sha256 "$tar")" != "$MICROPYTHON_SRC_SHA256" ]]; then
     log "downloading the MicroPython source release"
     curl -fsSL -o "$tar" "$MICROPYTHON_SRC_URL"
   fi
   [[ "$(sha256 "$tar")" == "$MICROPYTHON_SRC_SHA256" ]] || die "MicroPython source checksum mismatch"
+  echo "$tar"
+}
+
+# Sprint 24 (M1): the interpreter's OWN compiler, mpy-cross, from the same pinned v1.29.0 source
+# release as the image, into $RT/mpy-cross-1.29.0 (bin/mpy-cross + mpy-cross.json). The build
+# service runs it in the build sandbox as a syntax check only (`-march=xtensawin`, the ESP32's
+# native emitter, so @micropython.native/viper compile as on the board); the image keeps main.py as
+# source. Reproducible: the version header is fixed (MICROPY_GIT_TAG, SOURCE_DATE_EPOCH = the
+# release date) and host paths are mapped away, so two builds give the same bytes.
+cmd_mpy_cross() {
+  local tar; tar="$(micropython_src_tar)"
+  local src="$RT/build/mpy-cross-src"
+  rm -rf "$src" && mkdir -p "$src"
+  tar -xJf "$tar" -C "$src" --strip-components=1 \
+    micropython-1.29.0/mpy-cross micropython-1.29.0/py micropython-1.29.0/shared micropython-1.29.0/extmod
+  env -i PATH=/usr/bin:/bin LANG=C.UTF-8 MICROPY_GIT_TAG=v1.29.0 MICROPY_GIT_HASH=release \
+    SOURCE_DATE_EPOCH="$MPY_CROSS_SOURCE_DATE_EPOCH" \
+    make -C "$src/mpy-cross" -j1 CFLAGS_EXTRA="-ffile-prefix-map=$src=/micropython-src" \
+    >"$RT/logs/mpy-cross.log" 2>&1 || die "mpy-cross build failed: $RT/logs/mpy-cross.log"
+  local out="$RT/mpy-cross-1.29.0"
+  rm -rf "$out.tmp" && mkdir -p "$out.tmp/bin"
+  cp "$src/mpy-cross/build/mpy-cross" "$out.tmp/bin/mpy-cross"
+  chmod 0555 "$out.tmp/bin/mpy-cross"
+  grep -a -q -F -e "$src" -e "$HOME/" "$out.tmp/bin/mpy-cross" && die "mpy-cross embeds a host path"
+  {
+    echo "{"
+    echo "  \"micropython\": \"v1.29.0\","
+    echo "  \"sourceSha256\": \"$MICROPYTHON_SRC_SHA256\","
+    echo "  \"version\": \"$("$out.tmp/bin/mpy-cross" --version)\","
+    echo "  \"sourceDateEpoch\": $MPY_CROSS_SOURCE_DATE_EPOCH,"
+    echo "  \"compiler\": \"$(gcc --version | head -1)\","
+    echo "  \"host\": \"$(uname -m)\","
+    echo "  \"mpyCross\": \"$(sha256 "$out.tmp/bin/mpy-cross")\""
+    echo "}"
+  } >"$out.tmp/mpy-cross.json"
+  rm -rf "$out" && mv "$out.tmp" "$out"
+  log "mpy-cross at $out ($(sha256 "$out/bin/mpy-cross" | cut -c1-16))"
+}
+
+# Sprint 19B (MicroPython M1): the MicroPython build home, $RT/micropython (bound read-only into
+# the build sandbox as /opt/tbi-micropython): bin/tbi-mklfs, compiled from runtime/micropython/
+# against the interpreter's OWN littlefs (pinned source release), and the pinned interpreter image.
+# Sprint 24: plus bin/mpy-cross (cmd_mpy_cross), the Build syntax check.
+cmd_micropython_tools() {
+  [[ -f "$RT/artifacts/micropython.bin" ]] || die "run 'provision.sh micropython' first"
+  [[ -x "$RT/mpy-cross-1.29.0/bin/mpy-cross" ]] || die "run 'provision.sh mpy-cross' first"
+  local tar; tar="$(micropython_src_tar)"
   local src="$RT/build/micropython-src"
   rm -rf "$src" && mkdir -p "$src"
   tar -xJf "$tar" -C "$src" --strip-components=1 micropython-1.29.0/lib/littlefs
@@ -218,6 +262,7 @@ cmd_micropython_tools() {
     "$src/lib/littlefs/lfs2.c" "$src/lib/littlefs/lfs2_util.c" || die "tbi-mklfs build failed"
   cp "$(readlink -f "$RT/artifacts/micropython.bin")" "$home.tmp/firmware/esp32-generic-1.29.0-4mb.bin"
   chmod 0444 "$home.tmp/firmware/esp32-generic-1.29.0-4mb.bin"
+  cp "$RT/mpy-cross-1.29.0/bin/mpy-cross" "$home.tmp/bin/mpy-cross"
   {
     echo "{"
     echo "  \"micropython\": \"v1.29.0\","
@@ -233,6 +278,7 @@ cmd_micropython_tools() {
     echo "  },"
     echo "  \"tbiMklfsSource\": \"$(sha256 "$REPO/runtime/micropython/tbi-mklfs.c")\","
     echo "  \"tbiMklfs\": \"$(sha256 "$home.tmp/bin/tbi-mklfs")\","
+    echo "  \"mpyCross\": \"$(sha256 "$home.tmp/bin/mpy-cross")\","
     echo "  \"image\": \"$(sha256 "$home.tmp/firmware/esp32-generic-1.29.0-4mb.bin")\""
     echo "}"
   } >"$home.tmp/micropython.json"
@@ -311,9 +357,10 @@ case "${1:-}" in
   qemu) cmd_qemu ;;
   arduino) cmd_arduino ;;
   micropython) cmd_micropython ;;
+  mpy-cross) cmd_mpy_cross ;;
   micropython-tools) cmd_micropython_tools ;;
   firmware) shift; cmd_firmware "$@" ;;
-  all) cmd_qemu && cmd_arduino && cmd_micropython && cmd_micropython_tools && cmd_firmware ;;
+  all) cmd_qemu && cmd_arduino && cmd_micropython && cmd_mpy_cross && cmd_micropython_tools && cmd_firmware ;;
   env) cmd_env ;;
   *) sed -n '2,20p' "$0"; exit 2 ;;
 esac

@@ -129,6 +129,7 @@ async function micropythonProvider(): Promise<MicroPythonProvider | null> {
     profile: ESP32_MICROPYTHON_PROFILE,
     record: micropythonRecord as MicroPythonProfileRecord,
     home: micropythonHome,
+    runtimeCapabilities,
     ...(jobUnit
       ? { runner: new SandboxToolRunner({ unit: jobUnit }), viewHome: '/opt/tbi-micropython' }
       : {}),

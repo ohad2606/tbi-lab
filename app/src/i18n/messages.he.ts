@@ -1166,6 +1166,14 @@ export const he: Record<MessageKey, string> = {
   'mcu.terminal.state.stopping': 'עוצר…',
   'mcu.terminal.state.failed': 'הסשן נכשל',
   'mcu.terminal.state.ended': 'הסשן הסתיים (הפלט האחרון)',
+  // Sprint 24 (M1): the end of a MicroPython program, read from its serial output.
+  'mcu.programEnd.errorLine': 'התוכנית שלך נעצרה עם שגיאה בשורה {line}.',
+  'mcu.programEnd.error': 'התוכנית שלך נעצרה עם שגיאה.',
+  'mcu.programEnd.finished': 'התוכנית שלך הסתיימה.',
+  'mcu.programEnd.repl':
+    'הלוח ממתין כעת בשורת הפקודה של MicroPython ‏(REPL); הסשן ממשיך לרוץ עד שתעצור אותו.',
+  'mcu.programEnd.derived':
+    'זוהה מתוך הפלט הטורי (ה-traceback ושורת הפקודה של MicroPython עצמו). תוכנית שמדפיסה בעצמה את אותו טקסט תיראה אותו דבר.',
   'mcu.warnings.heading': 'אזהרות ריצה',
   'mcu.warning.output_on_input_only_pad':
     'GPIO{gpio} הוא קלט בלבד: הקושחה ניסתה להפעיל אותו כיציאה, והוא נשאר קלט.',
@@ -1225,6 +1233,16 @@ export const he: Record<MessageKey, string> = {
   'example.esp32-logic-override.title': 'ESP32: שער OR עם עקיפה ידנית',
   'example.esp32-logic-override.summary':
     'לא מדומה: הדוגמה מראה גבול של גיליונות הנתונים. יציאה של ESP32 ומתג מזינים שער OR מדגם SN74LVC1G32 שמוזן ב-3.0 V (לשתי הכניסות נגדי pull-down של 10 kΩ), שמדליק נורית LED וה-ESP32 קורא את היציאה שלו בחזרה. גיליון הנתונים חוסם את זרם ההזנה I_CC של השער רק כשכל הכניסות ב-5.5 V או ב-GND (§5.5). יציאה של ESP32 לעולם אינה מגיעה ל-5.5 V, רמת ה-LOW המובטחת שלה (עד 0.33 V) אינה GND, והמתג ונגדי ה-pull-down נותנים 3.0 V או כ-50 mV מ-GND. ללא חסם זה מגבלת הזרם של ספק המעבדה אינה מובטחת, ולכן הסימולטור דוחה את המעגל בשם הסיבה בכל מצב ואינו מציג טבלת אמת.',
+  // Sprint 24 (M1): MicroPython examples.
+  'example.mpy-blink.title': 'MicroPython: הבהוב נורית LED',
+  'example.mpy-blink.summary':
+    'אותו מעגל כמו בהבהוב של Arduino, מתוכנת ב-MicroPython: ‏main.py מגדיר את GPIO2 כיציאה ומדליק ומכבה את הנורית האדומה (220 Ω אל GND) כל 500 ms באמצעות Pin.value().',
+  'example.mpy-button.title': 'MicroPython: לחצן מדליק נורית LED',
+  'example.mpy-button.summary':
+    'החזיקו את הלחצן: ‏3.3 V מגיעים ל-GPIO34 דרך 1 kΩ, ונגד pull-down של 10 kΩ מחזיק אותו ב-LOW כשהלחצן משוחרר (ל-GPIO34 אין pull פנימי). ‏main.py קורא אותו באמצעות Pin.IN כל 10 ms ומעתיק אותו ל-GPIO4, שמזין את הנורית האדומה דרך 220 Ω.',
+  'example.mpy-fade.title': 'MicroPython: עמעום נורית LED ב-PWM',
+  'example.mpy-fade.summary':
+    'machine.PWM מזין את GPIO18 ב-1 kHz; ‏main.py מעלה את duty_u16 מ-2048 עד 63488 ובחזרה (לעולם לא 0). הזרם הממוצע של הנורית עוקב אחרי ה-duty, על המעגל של העמעום ב-Arduino.',
   'example.esp32-servo-sweep.title': 'ESP32: סריקה של סרוו SG90 ב־PWM',
   'example.esp32-servo-sweep.summary':
     'אות LEDC של 50 Hz ב־GPIO18 עם פולסים של 1.0,‏ 2.0 ו־1.5 ms מזיז את הסרוו ל־0°,‏ 180° ו־90°. הסרוו מוזן מספק המעבדה של 5 V.',

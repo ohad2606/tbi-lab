@@ -1,0 +1,115 @@
+{
+  "_comment": "Sprint 24 (M1): exactly the session request the app sends for the mpy-blink example (minus artifact and ticket; app/tests/runtime-fixtures.test.ts keeps them equal). Firmware: the example's main.py, built by the MicroPython build profile.",
+  "request": {
+    "protocol": "tbi-lab.session/2",
+    "board": "board.esp32_devkitc_wroom32",
+    "circuit": {
+      "format": "tbi-lab.snapshot",
+      "schemaVersion": 4,
+      "snapshotId": "snap_90d4c6db2121f6e2",
+      "projectId": "prj_examplempyblink",
+      "projectRevision": 1,
+      "components": [
+        {
+          "id": "R1",
+          "type": "component.resistor",
+          "typeVersion": 1,
+          "params": {
+            "resistance": {
+              "value": 220,
+              "unit": "ohm"
+            }
+          }
+        },
+        {
+          "id": "D1",
+          "type": "component.led",
+          "typeVersion": 1,
+          "params": {
+            "model": "model.led.vishay_tlhr5400"
+          }
+        },
+        {
+          "id": "GND2",
+          "type": "component.ground",
+          "typeVersion": 1,
+          "params": {}
+        },
+        {
+          "id": "GND3",
+          "type": "component.ground",
+          "typeVersion": 1,
+          "params": {}
+        },
+        {
+          "id": "U1_gnd",
+          "type": "component.ground",
+          "typeVersion": 1,
+          "params": {}
+        }
+      ],
+      "nets": [
+        {
+          "id": "N_1",
+          "role": null
+        },
+        {
+          "id": "N_2",
+          "role": null
+        },
+        {
+          "id": "N_3",
+          "role": "ground"
+        },
+        {
+          "id": "N_4",
+          "role": "ground"
+        }
+      ],
+      "connections": [
+        {
+          "component": "R1",
+          "terminal": "a",
+          "net": "N_1"
+        },
+        {
+          "component": "R1",
+          "terminal": "b",
+          "net": "N_2"
+        },
+        {
+          "component": "D1",
+          "terminal": "anode",
+          "net": "N_2"
+        },
+        {
+          "component": "D1",
+          "terminal": "cathode",
+          "net": "N_3"
+        },
+        {
+          "component": "GND2",
+          "terminal": "ref",
+          "net": "N_3"
+        },
+        {
+          "component": "GND3",
+          "terminal": "ref",
+          "net": "N_4"
+        },
+        {
+          "component": "U1_gnd",
+          "terminal": "ref",
+          "net": "N_4"
+        }
+      ]
+    },
+    "attachments": [
+      {
+        "gpio": 2,
+        "component": "R1",
+        "terminal": "a"
+      }
+    ]
+  }
+}

@@ -388,6 +388,10 @@ export class BuildService {
     if (!found?.artifact) return null;
     // Analysed by an older rule set: build again (same image, an up-to-date feature report).
     if ((found.analyzer ?? 1) < FEATURES_ANALYZER) return null;
+    // Sprint 24: built with other pinned inputs or rules than the profile now has (MicroPython's
+    // compile check, its analysis version, the runtime's capabilities): build again.
+    const provider = this.providers.get(found.profile);
+    if (provider && found.profileHash !== provider.profileHash) return null;
     if (!this.store.exists(found.artifact.sha256)) {
       this.access.grants.dropArtifact(found.artifact.sha256);
       return null;

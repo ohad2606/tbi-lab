@@ -6,15 +6,22 @@
  * Everything here is ephemeral runtime view (bounded to the runtime view's serial window), never
  * project data. After Stop the last session's output stays readable, marked as ended, until the
  * next Run starts a fresh session or another project opens. Serial text is technical: always LTR.
+ *
+ * Sprint 24 (M1): for a MicroPython program, a non-blocking notice when main.py has ended (the
+ * interpreter's traceback and REPL prompt in the serial output, programEnd.ts): "stopped with an
+ * error on line N" with the traceback, or "finished". Derived from the serial text, and said so; it
+ * never changes the session state (the board waits at the REPL; the session runs until Stop).
  */
-import { useLayoutEffect, useRef, useState } from 'preact/hooks';
+import { useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { isolateLtr } from '../i18n/i18n.js';
 import type { MessageKey } from '../i18n/messages.en.js';
+import { micropythonProgramEnd } from '../programs/programEnd.js';
 import type { RuntimeView } from '../runtime/view.js';
 import { useAppState, useT } from './context.js';
 
 interface Shown {
   projectId: string;
+  board: string;
   serial: string;
   dropped: number;
 }
@@ -29,9 +36,20 @@ export function McuTerminal() {
 
   const runtime: RuntimeView | undefined = 'runtime' in sim ? sim.runtime : undefined;
   const projectId = doc?.projectId ?? '';
-  if (runtime) last.current = { projectId, serial: runtime.serial, dropped: runtime.serialDropped };
+  if (runtime)
+    last.current = {
+      projectId,
+      board: runtime.board,
+      serial: runtime.serial,
+      dropped: runtime.serialDropped,
+    };
   const shown = last.current?.projectId === projectId ? last.current : null;
   const ended = !runtime && shown !== null;
+  const micropython = !!shown && doc?.programs[shown.board]?.language === 'micropython';
+  const end = useMemo(
+    () => (micropython && shown ? micropythonProgramEnd(shown.serial) : null),
+    [micropython, shown?.serial],
+  );
 
   // Follow new output unless the reader has scrolled back to look at earlier lines.
   useLayoutEffect(() => {
@@ -90,6 +108,37 @@ export function McuTerminal() {
           </span>
         )}
       </header>
+      {end && (
+        <div
+          class={`mcu-program-end end-${end.kind}`}
+          role="status"
+          aria-live="polite"
+          data-testid="mcu-program-end"
+          data-kind={end.kind}
+          data-line={end.kind === 'error' && end.line !== undefined ? String(end.line) : undefined}
+        >
+          <p class="small">
+            <strong>
+              {end.kind === 'finished'
+                ? t('mcu.programEnd.finished')
+                : end.line !== undefined
+                  ? t('mcu.programEnd.errorLine', { line: isolateLtr(String(end.line)) })
+                  : t('mcu.programEnd.error')}
+            </strong>{' '}
+            {t('mcu.programEnd.repl')}
+          </p>
+          {end.kind === 'error' && (
+            <pre
+              class="mcu-program-end-trace technical"
+              dir="ltr"
+              data-testid="mcu-program-end-trace"
+            >
+              {end.traceback.join('\n')}
+            </pre>
+          )}
+          <p class="muted small">{t('mcu.programEnd.derived')}</p>
+        </div>
+      )}
       {open && (
         <pre
           ref={out}

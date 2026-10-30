@@ -5,12 +5,24 @@
   "fileName": "main.py",
   "interpreter": "MicroPython ESP32_GENERIC v1.29.0 (release blob e67ad6015a0a504c1fec9aa9bbf589d0432ed28e62546f4f8dd8a147f8bd95f6 at 0x1000)",
   "sourceSha256": "d925a7c664e79a2bdf3dfcb285ba5e2237041cc35a0bd4ee573b6c5711efeca0",
-  "filesystem": { "offset": 2097152, "blockSize": 4096, "blockCount": 512 },
-  "image": { "bytes": 4194304 },
+  "filesystem": {
+    "offset": 2097152,
+    "blockSize": 4096,
+    "blockCount": 512
+  },
+  "image": {
+    "bytes": 4194304
+  },
   "files": {
     "arm64": {
+      "bin/mpy-cross": "e95b1043360e81d3711e8878e790a8951e2f7b736996d0182dd40b8b3bb184d5",
       "bin/tbi-mklfs": "818182342613b74a574551290fdc9018f2f1d2a1212122d0716edaff8ec8b7bb",
       "firmware/esp32-generic-1.29.0-4mb.bin": "23b8b47fdab856b33c44eb5911852e86c96dfeac2f1d2033dba8ddb6c681b0a1"
     }
+  },
+  "syntaxCheck": {
+    "tool": "bin/mpy-cross",
+    "version": "MicroPython v1.29.0 on 2026-08-24; mpy-cross emitting mpy v6.3",
+    "args": ["-march=xtensawin"]
   }
 }

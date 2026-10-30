@@ -48,3 +48,26 @@ test('the Code view switches Arduino C++ ⇄ MicroPython, confirming before repl
   await expect(page.getByTestId('code-text')).toHaveValue(/void setup\(\)/);
   expect(asked).toBe(2);
 });
+
+// Sprint 24 (M1): the MicroPython examples open as MicroPython programs (main.py, the genuine
+// interpreter), on their circuits. (Their real-QEMU circuit results: s24-mpy/s24-i2c runtime tests.)
+for (const [id, text] of [
+  ['mpy-blink', /led = Pin\(2, Pin\.OUT\)/],
+  ['mpy-button', /button = Pin\(34, Pin\.IN\)/],
+  ['mpy-fade', /PWM\(Pin\(18\), freq=1000/],
+] as const)
+  test(`the ${id} example opens as a MicroPython program`, async ({ page }) => {
+    page.on('pageerror', (e) => {
+      throw e;
+    });
+    await page.goto('/');
+    const library = page.getByTestId('example-list');
+    await expect(library.or(page.getByTestId('canvas'))).toBeVisible();
+    if (!(await library.isVisible())) await goToProjects(page);
+    await page.getByTestId(`open-example-${id}`).click();
+    await expect(page.getByTestId('canvas')).toBeVisible();
+    await page.getByTestId('view-code').click();
+    await expect(page.getByTestId('program-language')).toHaveValue('esp32-micropython-1.29');
+    await expect(page.getByTestId('code-text')).toHaveValue(text);
+    await expect(page.getByTestId('code-view')).toContainText('main.py');
+  });

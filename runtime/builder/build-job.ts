@@ -24,11 +24,12 @@ import {
 const JOB = '/job';
 /**
  * Pinned tools by read-only toolchain home: the Arduino toolchain, and (Sprint 19B) the MicroPython
- * build home with its one tool, tbi-mklfs (the interpreter's file system image).
+ * build home with tbi-mklfs (the interpreter's file system image) and (Sprint 24) mpy-cross.
  */
 const TOOLCHAINS: ReadonlyMap<string, ReadonlySet<string>> = new Map([
   ['/opt/tbi-arduino/', new Set(['arduino-cli', 'esptool', 'xtensa-esp32-elf-nm'])],
-  ['/opt/tbi-micropython/', new Set(['tbi-mklfs'])],
+  // Sprint 24: and mpy-cross, the interpreter's own compiler (compile only: the Build syntax check).
+  ['/opt/tbi-micropython/', new Set(['tbi-mklfs', 'mpy-cross'])],
 ]);
 const ENV_KEYS = new Set(['PATH', 'HOME', 'TMPDIR', 'LANG', 'SOURCE_DATE_EPOCH']);
 const MAX_OUTPUT = 16 * 1024 * 1024;

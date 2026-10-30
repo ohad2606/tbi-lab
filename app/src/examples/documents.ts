@@ -33,6 +33,9 @@ import pirAlarm from './data/pir-alarm.json';
 import pushButton from './data/push-button.json';
 import rcFade from './data/rc-fade.json';
 import voltageDivider from './data/voltage-divider.json';
+import mpyBlink from './data/mpy-blink.json';
+import mpyButton from './data/mpy-button.json';
+import mpyFade from './data/mpy-fade.json';
 
 export const EXAMPLE_DOCUMENTS: Record<string, ProjectDocument> = {
   'ohms-law': ohmsLaw as unknown as ProjectDocument,
@@ -64,6 +67,9 @@ export const EXAMPLE_DOCUMENTS: Record<string, ProjectDocument> = {
   'logic-and-switches': logicAndSwitches as unknown as ProjectDocument,
   'logic-cascade': logicCascade as unknown as ProjectDocument,
   'esp32-logic-override': esp32LogicOverride as unknown as ProjectDocument,
+  'mpy-blink': mpyBlink as unknown as ProjectDocument,
+  'mpy-button': mpyButton as unknown as ProjectDocument,
+  'mpy-fade': mpyFade as unknown as ProjectDocument,
 };
 
 /** The examples with their documents (tests and tools; the app loads documents lazily). */

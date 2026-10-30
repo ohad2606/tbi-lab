@@ -37,6 +37,10 @@ describe('runtime fixtures', () => {
     ['s15-servo-sweep-session.json', 'esp32-servo-sweep'],
     // Sprint 19B (Exploration Foundation X1): ESP32 + logic gate.
     ['s19b-logic-and-session.json', 'esp32-logic-and'],
+    // Sprint 24 (M1): the MicroPython examples.
+    ['s24-mpy-blink-session.json', 'mpy-blink'],
+    ['s24-mpy-button-session.json', 'mpy-button'],
+    ['s24-mpy-fade-session.json', 'mpy-fade'],
   ] as const)
     it(`${file} is the app request for ${id}`, () => {
       const fx = JSON.parse(

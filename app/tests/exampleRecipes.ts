@@ -16,7 +16,9 @@ import {
   moveSelection,
   rotateComponents,
   setParam,
+  setProgramProfile,
   setProgramText,
+  ESP32_MICROPYTHON_PROFILE,
   type ComponentTypeId,
   type ParamValue,
   type ProjectDocument,
@@ -85,6 +87,15 @@ class Recipe {
    * (app/tests/exampleSketches): library-free Arduino/C++, Wire only for I2C.
    */
   sketch(id: string, file: string) {
+    const url = new URL(`./exampleSketches/${file}`, import.meta.url);
+    this.doc = this.ok(setProgramText(this.doc, id, readFileSync(url, 'utf8'))).doc;
+  }
+  /**
+   * Sprint 24 (M1): the board's program in MicroPython (the genuine interpreter's main.py), from
+   * a program authored with the examples (app/tests/exampleSketches/*.py).
+   */
+  python(id: string, file: string) {
+    this.doc = this.ok(setProgramProfile(this.doc, id, ESP32_MICROPYTHON_PROFILE.id)).doc;
     const url = new URL(`./exampleSketches/${file}`, import.meta.url);
     this.doc = this.ok(setProgramText(this.doc, id, readFileSync(url, 'utf8'))).doc;
   }
@@ -1214,6 +1225,81 @@ export const RECIPES: Record<string, () => ProjectDocument> = {
       { x: 900, y: -120 },
     ]);
     return r.centre(-400);
+  },
+  /**
+   * Sprint 24 (M1): MicroPython examples on the same circuits as their Arduino twins. Blink: GPIO2
+   * drives a red LED through 220 Ω (as esp32-blink), on 500 ms, off 500 ms.
+   */
+  'mpy-blink': () => {
+    const r = new Recipe('mpy-blink', 'MicroPython: blink an LED');
+    r.remove('PSU1', 'GND1');
+    const U1 = r.place('board.esp32_devkitc_wroom32', 300, 0);
+    r.python(U1, 'mpy_blink.py');
+    const R1 = r.place('component.resistor', 480, 100);
+    const D1 = r.place('component.led', 600, 100);
+    const G2 = r.place('component.ground', 680, 180);
+    const G3 = r.place('component.ground', 440, -120);
+    r.set(R1, 'resistance', 220, 'ohm');
+    r.wire(T(U1, 'gpio2'), T(R1, 'a'));
+    r.wire(T(R1, 'b'), T(D1, 'anode'));
+    r.wire(T(D1, 'cathode'), T(G2, 'ref'));
+    r.wire(T(U1, 'gnd'), T(G3, 'ref'));
+    return r.centre(-240);
+  },
+  /**
+   * Sprint 24 (M1/M2): a push button read with Pin.IN lights an LED. The input chain of
+   * esp32-input-echo without its toggle switch: 3.3 V -> button -> 1 kΩ -> GPIO34 (input only, no
+   * internal pull) with a 10 kΩ pull-down to GND; GPIO4 drives a red LED through 220 Ω.
+   */
+  'mpy-button': () => {
+    const r = new Recipe('mpy-button', 'MicroPython: a button lights an LED');
+    r.supply(3.3, 0.05);
+    const U1 = r.place('board.esp32_devkitc_wroom32', 300, 0);
+    r.python(U1, 'mpy_button.py');
+    const PB = r.place('component.push_button', 0, -100);
+    const R2 = r.place('component.resistor', 100, -100);
+    const R3 = r.place('component.resistor', 160, -40, 1);
+    const G2 = r.place('component.ground', 160, 60);
+    const R1 = r.place('component.resistor', 480, 60);
+    const D1 = r.place('component.led', 600, 60);
+    const G3 = r.place('component.ground', 680, 140);
+    const G4 = r.place('component.ground', 440, -120);
+    r.set(R2, 'resistance', 1000, 'ohm');
+    r.set(R3, 'resistance', 10_000, 'ohm');
+    r.set(R1, 'resistance', 220, 'ohm');
+    r.wire(T('PSU1', 'positive'), T(PB, 'a'));
+    r.wire(T(PB, 'b'), T(R2, 'a'));
+    const w = r.wire(T(R2, 'b'), T(U1, 'gpio34'));
+    r.wire({ kind: 'wire', wire: w, at: { x: 160, y: -100 } }, T(R3, 'a'));
+    r.wire(T(R3, 'b'), T(G2, 'ref'));
+    r.wire(T(U1, 'gpio4'), T(R1, 'a'));
+    r.wire(T(R1, 'b'), T(D1, 'anode'));
+    r.wire(T(D1, 'cathode'), T(G3, 'ref'));
+    r.wire(T(U1, 'gnd'), T(G4, 'ref'));
+    return r.centre(-240);
+  },
+  /**
+   * Sprint 24 (M1): an LED faded with PWM from MicroPython (machine.PWM, 1 kHz, duty_u16 2048 to
+   * 63488 and back, never 0), on the circuit of esp32-led-fade: GPIO18, 220 Ω, red LED.
+   */
+  'mpy-fade': () => {
+    const r = new Recipe('mpy-fade', 'MicroPython: fade an LED with PWM');
+    r.remove('PSU1', 'GND1');
+    const U1 = r.place('board.esp32_devkitc_wroom32', 300, 0);
+    r.python(U1, 'mpy_fade.py');
+    const R1 = r.place('component.resistor', 520, 20);
+    const D1 = r.place('component.led', 640, 20);
+    const G2 = r.place('component.ground', 720, 100);
+    const G3 = r.place('component.ground', 440, -120);
+    r.set(R1, 'resistance', 220, 'ohm');
+    r.wire(T(U1, 'gpio18'), T(R1, 'a'), [
+      { x: 430, y: -20 },
+      { x: 430, y: 20 },
+    ]);
+    r.wire(T(R1, 'b'), T(D1, 'anode'));
+    r.wire(T(D1, 'cathode'), T(G2, 'ref'));
+    r.wire(T(U1, 'gnd'), T(G3, 'ref'));
+    return r.centre(-300);
   },
   /**
    * Sprint 15 (R4): an SG90 servo swept by LEDC PWM (50 Hz, 16 bit) on GPIO18: 1.0, 2.0 and 1.5 ms

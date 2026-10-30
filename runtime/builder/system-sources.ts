@@ -21,6 +21,10 @@ import logicAnd from '../../app/src/examples/data/esp32-logic-and.json' with { t
 import logicQuadAnd from '../../app/src/examples/data/esp32-logic-quad-and.json' with { type: 'json' };
 // Sprint 20 logic example D (ESP32 + manual input + OR gate).
 import logicOverride from '../../app/src/examples/data/esp32-logic-override.json' with { type: 'json' };
+// Sprint 24 (M1): the MicroPython examples (built by the MicroPython profile where it is offered).
+import mpyBlink from '../../app/src/examples/data/mpy-blink.json' with { type: 'json' };
+import mpyButton from '../../app/src/examples/data/mpy-button.json' with { type: 'json' };
+import mpyFade from '../../app/src/examples/data/mpy-fade.json' with { type: 'json' };
 
 const programsOf = (doc: unknown): ProgramSource[] =>
   Object.values((doc as { programs?: Record<string, ProgramSource> }).programs ?? {});
@@ -37,6 +41,9 @@ function systemPrograms(): ProgramSource[] {
     ...programsOf(logicAnd),
     ...programsOf(logicQuadAnd),
     ...programsOf(logicOverride),
+    ...programsOf(mpyBlink),
+    ...programsOf(mpyButton),
+    ...programsOf(mpyFade),
     starterProgram('board.esp32_devkitc_wroom32'),
   ].filter((p): p is ProgramSource => !!p);
 }

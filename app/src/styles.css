@@ -2250,6 +2250,39 @@ select {
   text-align: left;
 }
 
+/* Sprint 24: the end of a MicroPython program (a notice, never a session state). */
+.mcu-program-end {
+  margin: 0;
+  padding: 0.4rem 0.6rem;
+  border-block-start: 1px solid var(--border, #d0d7de);
+}
+
+.mcu-program-end p {
+  margin: 0.15rem 0;
+}
+
+.mcu-program-end.end-error {
+  background: var(--warning-bg);
+  color: var(--warning-ink);
+}
+
+.mcu-program-end-trace {
+  margin: 0.25rem 0;
+  padding: 0.3rem 0.45rem;
+  background: #0f1720;
+  color: #f2c48d;
+  font:
+    0.75rem/1.4 ui-monospace,
+    'SFMono-Regular',
+    Menlo,
+    Consolas,
+    'Liberation Mono',
+    monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+
 .mcu-terminal-output[data-ended='true'] {
   color: #9fb0c2;
 }

@@ -1,0 +1,246 @@
+{
+  "_comment": "Sprint 24 (M1): exactly the session request the app sends for the mpy-button example (minus artifact and ticket; app/tests/runtime-fixtures.test.ts keeps them equal). Firmware: the example's main.py, built by the MicroPython build profile.",
+  "request": {
+    "protocol": "tbi-lab.session/2",
+    "board": "board.esp32_devkitc_wroom32",
+    "circuit": {
+      "format": "tbi-lab.snapshot",
+      "schemaVersion": 4,
+      "snapshotId": "snap_ce262b5403268312",
+      "projectId": "prj_examplempybutton",
+      "projectRevision": 1,
+      "components": [
+        {
+          "id": "PSU1",
+          "type": "instrument.lab_psu",
+          "typeVersion": 1,
+          "params": {
+            "setpointVoltage": {
+              "value": 3.3,
+              "unit": "volt"
+            },
+            "currentLimit": {
+              "value": 0.05,
+              "unit": "ampere"
+            },
+            "outputEnabled": true
+          }
+        },
+        {
+          "id": "GND1",
+          "type": "component.ground",
+          "typeVersion": 1,
+          "params": {}
+        },
+        {
+          "id": "SW1",
+          "type": "component.push_button",
+          "typeVersion": 1,
+          "params": {}
+        },
+        {
+          "id": "R1",
+          "type": "component.resistor",
+          "typeVersion": 1,
+          "params": {
+            "resistance": {
+              "value": 1000,
+              "unit": "ohm"
+            }
+          }
+        },
+        {
+          "id": "R2",
+          "type": "component.resistor",
+          "typeVersion": 1,
+          "params": {
+            "resistance": {
+              "value": 10000,
+              "unit": "ohm"
+            }
+          }
+        },
+        {
+          "id": "GND2",
+          "type": "component.ground",
+          "typeVersion": 1,
+          "params": {}
+        },
+        {
+          "id": "R3",
+          "type": "component.resistor",
+          "typeVersion": 1,
+          "params": {
+            "resistance": {
+              "value": 220,
+              "unit": "ohm"
+            }
+          }
+        },
+        {
+          "id": "D1",
+          "type": "component.led",
+          "typeVersion": 1,
+          "params": {
+            "model": "model.led.vishay_tlhr5400"
+          }
+        },
+        {
+          "id": "GND3",
+          "type": "component.ground",
+          "typeVersion": 1,
+          "params": {}
+        },
+        {
+          "id": "GND4",
+          "type": "component.ground",
+          "typeVersion": 1,
+          "params": {}
+        },
+        {
+          "id": "U1_gnd",
+          "type": "component.ground",
+          "typeVersion": 1,
+          "params": {}
+        }
+      ],
+      "nets": [
+        {
+          "id": "N_1",
+          "role": "ground"
+        },
+        {
+          "id": "N_2",
+          "role": null
+        },
+        {
+          "id": "N_3",
+          "role": null
+        },
+        {
+          "id": "N_4",
+          "role": null
+        },
+        {
+          "id": "N_5",
+          "role": "ground"
+        },
+        {
+          "id": "N_6",
+          "role": null
+        },
+        {
+          "id": "N_7",
+          "role": null
+        },
+        {
+          "id": "N_8",
+          "role": "ground"
+        },
+        {
+          "id": "N_9",
+          "role": "ground"
+        }
+      ],
+      "connections": [
+        {
+          "component": "PSU1",
+          "terminal": "positive",
+          "net": "N_2"
+        },
+        {
+          "component": "PSU1",
+          "terminal": "negative",
+          "net": "N_1"
+        },
+        {
+          "component": "GND1",
+          "terminal": "ref",
+          "net": "N_1"
+        },
+        {
+          "component": "SW1",
+          "terminal": "a",
+          "net": "N_2"
+        },
+        {
+          "component": "SW1",
+          "terminal": "b",
+          "net": "N_3"
+        },
+        {
+          "component": "R1",
+          "terminal": "a",
+          "net": "N_3"
+        },
+        {
+          "component": "R1",
+          "terminal": "b",
+          "net": "N_4"
+        },
+        {
+          "component": "R2",
+          "terminal": "a",
+          "net": "N_4"
+        },
+        {
+          "component": "R2",
+          "terminal": "b",
+          "net": "N_5"
+        },
+        {
+          "component": "GND2",
+          "terminal": "ref",
+          "net": "N_5"
+        },
+        {
+          "component": "R3",
+          "terminal": "a",
+          "net": "N_6"
+        },
+        {
+          "component": "R3",
+          "terminal": "b",
+          "net": "N_7"
+        },
+        {
+          "component": "D1",
+          "terminal": "anode",
+          "net": "N_7"
+        },
+        {
+          "component": "D1",
+          "terminal": "cathode",
+          "net": "N_8"
+        },
+        {
+          "component": "GND3",
+          "terminal": "ref",
+          "net": "N_8"
+        },
+        {
+          "component": "GND4",
+          "terminal": "ref",
+          "net": "N_9"
+        },
+        {
+          "component": "U1_gnd",
+          "terminal": "ref",
+          "net": "N_9"
+        }
+      ]
+    },
+    "attachments": [
+      {
+        "gpio": 4,
+        "component": "R3",
+        "terminal": "a"
+      },
+      {
+        "gpio": 34,
+        "component": "R1",
+        "terminal": "b"
+      }
+    ]
+  }
+}

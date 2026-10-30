@@ -366,6 +366,34 @@ export const EXAMPLES: readonly Example[] = [
       'logic.gate_or',
     ],
   },
+  // Sprint 24 (M1): MicroPython examples (the genuine interpreter), on their Arduino twins' circuits.
+  {
+    id: 'mpy-blink',
+    titleKey: 'example.mpy-blink.title',
+    summaryKey: 'example.mpy-blink.summary',
+    probes: [I('D1')],
+    parts: ['board.esp32_devkitc_wroom32', 'component.led', 'component.resistor'],
+  },
+  {
+    id: 'mpy-button',
+    titleKey: 'example.mpy-button.title',
+    summaryKey: 'example.mpy-button.summary',
+    probes: [I('D1'), V('R1', 'b')],
+    parts: [
+      'board.esp32_devkitc_wroom32',
+      'component.led',
+      'component.push_button',
+      'component.resistor',
+      'instrument.lab_psu',
+    ],
+  },
+  {
+    id: 'mpy-fade',
+    titleKey: 'example.mpy-fade.title',
+    summaryKey: 'example.mpy-fade.summary',
+    probes: [I('D1')],
+    parts: ['board.esp32_devkitc_wroom32', 'component.led', 'component.resistor'],
+  },
 ];
 
 export function findExample(id: string): Example | undefined {

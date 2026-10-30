@@ -1199,6 +1199,14 @@ export const en = {
   'mcu.terminal.state.stopping': 'Stopping…',
   'mcu.terminal.state.failed': 'Session failed',
   'mcu.terminal.state.ended': 'Session ended (last output)',
+  // Sprint 24 (M1): the end of a MicroPython program, read from its serial output.
+  'mcu.programEnd.errorLine': 'Your program stopped with an error on line {line}.',
+  'mcu.programEnd.error': 'Your program stopped with an error.',
+  'mcu.programEnd.finished': 'Your program finished.',
+  'mcu.programEnd.repl':
+    'The board now waits at the MicroPython prompt (REPL); the session keeps running until you stop it.',
+  'mcu.programEnd.derived':
+    'Read from the serial output (MicroPython’s own traceback and prompt). A program that prints the same text itself would look the same.',
   'mcu.warnings.heading': 'Runtime warnings',
   'mcu.warning.output_on_input_only_pad':
     'GPIO{gpio} is input-only: the firmware tried to drive it, and it stays an input.',
@@ -1259,6 +1267,16 @@ export const en = {
   'example.esp32-logic-override.title': 'ESP32: an OR gate with a manual override',
   'example.esp32-logic-override.summary':
     'Not simulated: this example shows a limit of the datasheets. An ESP32 output and a toggle switch drive an SN74LVC1G32 OR gate powered at 3.0 V (both inputs with 10 kΩ pull-downs), which lights an LED and is read back by the ESP32. The datasheet bounds the gate’s supply current I_CC only with every input at 5.5 V or GND (§5.5). An ESP32 output never reaches 5.5 V, its guaranteed LOW (at most 0.33 V) is not GND, and the switch and the pull-downs give 3.0 V or about 50 mV off GND. Without that bound the bench supply’s current limit is not guaranteed, so the simulator refuses the circuit by name in every state and shows no truth table.',
+  // Sprint 24 (M1): MicroPython examples.
+  'example.mpy-blink.title': 'MicroPython: blink an LED',
+  'example.mpy-blink.summary':
+    'The same circuit as the Arduino blink, programmed in MicroPython: main.py sets GPIO2 as an output and switches the red LED (220 Ω to GND) on and off every 500 ms with Pin.value().',
+  'example.mpy-button.title': 'MicroPython: a push button lights an LED',
+  'example.mpy-button.summary':
+    'Hold the button: 3.3 V reaches GPIO34 through 1 kΩ, and a 10 kΩ pull-down holds it LOW when released (GPIO34 has no internal pull). main.py reads it with Pin.IN every 10 ms and copies it to GPIO4, which drives the red LED through 220 Ω.',
+  'example.mpy-fade.title': 'MicroPython: fade an LED with PWM',
+  'example.mpy-fade.summary':
+    'machine.PWM drives GPIO18 at 1 kHz; main.py steps duty_u16 from 2048 up to 63488 and back (never 0). The LED’s average current follows the duty, on the circuit of the Arduino fade.',
   'example.esp32-servo-sweep.title': 'ESP32: sweep an SG90 servo with PWM',
   'example.esp32-servo-sweep.summary':
     'A 50 Hz LEDC signal on GPIO18 with 1.0, 2.0 and 1.5 ms pulses moves the servo to 0°, 180° and 90°. The servo runs from the 5 V bench supply.',
