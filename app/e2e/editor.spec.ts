@@ -184,8 +184,13 @@ test('A5: unit-aware resistance input is stored as canonical SI', async ({ page 
   await createProject(page, 'Values');
   await place(page, 'component.resistor', { x: 0, y: 0 });
   const field = page.getByTestId('param-R1-resistance');
-  await expect(field).toHaveValue('1k');
+  const unit = page.getByTestId('param-R1-resistance-unit');
+  // Phase 1 (units): a plain number and a unit chosen from a list.
+  await expect(field).toHaveValue('1');
+  await expect(unit).toHaveValue('3');
+  await expect(unit.locator('option:checked')).toHaveText('kΩ');
 
+  // A prefixed form typed into the number field is converted into number + unit (convenience).
   await field.fill('4k7');
   await field.press('Enter');
   let doc = await savedValid(
@@ -200,9 +205,12 @@ test('A5: unit-aware resistance input is stored as canonical SI', async ({ page 
     unit: 'ohm',
   });
   await expect(page.getByTestId('value-R1')).toHaveText('4.7 kΩ');
+  await expect(field).toHaveValue('4.7');
+  await expect(unit).toHaveValue('3');
 
+  // A number, then its unit from the list: one edit, read in the chosen unit.
   await field.fill('220');
-  await field.press('Enter');
+  await unit.selectOption('0');
   doc = await savedValid(
     page,
     (d) =>
@@ -219,7 +227,7 @@ test('A5: unit-aware resistance input is stored as canonical SI', async ({ page 
   const before = doc.revision.localRevision;
   await field.fill('abc');
   await field.press('Enter');
-  await expect(page.getByTestId('param-R1-resistance-error')).toContainText('Not a valid value');
+  await expect(page.getByTestId('param-R1-resistance-error')).toContainText('Not a valid number');
   await field.fill('2G');
   await field.press('Enter');
   await expect(page.getByTestId('param-R1-resistance-error')).toContainText('must be between');

@@ -67,7 +67,8 @@ for (const [locale, other] of [
     await expect(T(p, 'canvas')).toBeVisible();
     await select(p, 'U2');
     const distance = T(p, 'param-U2-distance');
-    await distance.fill('0.3');
+    // Phase 1 units: 0.5 m is shown as 50 cm; 0.3 m is 30 cm.
+    await distance.fill('30');
     await distance.press('Enter');
     await buildAndRun(p);
     await select(p, 'U1');
@@ -78,7 +79,7 @@ for (const [locale, other] of [
     await expect(T(p, 'pin-level-2')).toHaveAttribute('data-level', '0');
     // A live parameter changes the running result.
     await select(p, 'U2');
-    await distance.fill('0.1');
+    await distance.fill('10');
     await distance.press('Enter');
     await expect(T(p, 'pin-level-2')).toHaveAttribute('data-level', '1', { timeout: 30_000 });
     await p.screenshot({ path: info.outputPath(`journey-${locale}-running.png`) });

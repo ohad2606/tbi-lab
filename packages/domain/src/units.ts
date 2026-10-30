@@ -63,7 +63,7 @@ function stripUnit(text: string, unit: UnitId): { rest: string; wrongUnit: boole
 }
 
 /** Combine a decimal digit string and a power of ten without binary rounding drift. */
-function exact(intPart: string, fracPart: string, exponent: number): number {
+export function exact(intPart: string, fracPart: string, exponent: number): number {
   const digits = `${intPart}${fracPart}`.replace(/^0+(?=\d)/, '');
   return Number(`${digits || '0'}e${exponent - fracPart.length}`);
 }
@@ -125,4 +125,141 @@ export function toEngineering(value: number): EngineeringParts {
     }
   }
   return { mantissa: Number((value / 1e-12).toPrecision(12)), prefix: 'p' };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Display units (Sprint POT-UNITS, Phase 1): the editor shows a plain number and a unit chosen
+// from a short list, instead of asking the user to type SI prefixes. Data, not UI code: the app
+// renders the symbol (`prefix` + the locale's unit symbol). The stored value is always the
+// canonical SI number; the display unit is UI state, re-derived from the stored value.
+// ---------------------------------------------------------------------------------------------
+
+/** One choice in a quantity's unit list: the value shown is `SI value / 10^exponent`. */
+export interface DisplayUnit {
+  exponent: number;
+  /** The prefix symbol written before the unit symbol ('' for the base unit). */
+  prefix: string;
+}
+
+const BASE: readonly DisplayUnit[] = [{ exponent: 0, prefix: '' }];
+
+/** The display units offered per canonical unit, smallest first. One entry: a fixed symbol. */
+export const DISPLAY_UNITS: Readonly<Record<UnitId, readonly DisplayUnit[]>> = {
+  ohm: [
+    { exponent: 0, prefix: '' },
+    { exponent: 3, prefix: 'k' },
+    { exponent: 6, prefix: 'M' },
+  ],
+  farad: [
+    { exponent: -12, prefix: 'p' },
+    { exponent: -9, prefix: 'n' },
+    { exponent: -6, prefix: 'µ' },
+    { exponent: -3, prefix: 'm' },
+  ],
+  ampere: [
+    { exponent: -3, prefix: 'm' },
+    { exponent: 0, prefix: '' },
+  ],
+  metre: [
+    { exponent: -3, prefix: 'm' },
+    { exponent: -2, prefix: 'c' },
+    { exponent: 0, prefix: '' },
+  ],
+  volt: BASE,
+  lux: BASE,
+  celsius: BASE,
+  percent_rh: BASE,
+};
+
+/**
+ * The units offered for a parameter with the range [min, max]: a unit is hidden only when no
+ * value it naturally shows is in range. Unit i naturally shows [10^e_i, 10^e_{i+1}] (the
+ * smallest from 0, the largest without an upper bound); a capacitor's 1 nF minimum keeps pF
+ * because 1000 pF is in range.
+ */
+export function displayUnitsFor(unit: UnitId, min: number, max: number): DisplayUnit[] {
+  const all = DISPLAY_UNITS[unit];
+  if (all.length === 1) return [...all];
+  const lo = Math.min(Math.abs(min), Math.abs(max));
+  const hi = Math.max(Math.abs(min), Math.abs(max));
+  const spanLo = min <= 0 && max >= 0 ? 0 : lo;
+  return all.filter((u, i) => {
+    const from = i === 0 ? 0 : 10 ** u.exponent;
+    const to = i === all.length - 1 ? Infinity : 10 ** all[i + 1]!.exponent;
+    return from <= hi && to >= spanLo;
+  });
+}
+
+/**
+ * The deterministic display unit for a stored value: the largest unit whose number is >= 1
+ * (220 -> 220 Ω, 4700 -> 4.7 kΩ, 1e-4 F -> 100 µF); 0 (or a value below every unit) -> the
+ * base unit if offered, else the smallest.
+ */
+export function chooseDisplayUnit(value: number, units: readonly DisplayUnit[]): DisplayUnit {
+  const abs = Math.abs(value);
+  const base = units.find((u) => u.exponent === 0) ?? units[0]!;
+  if (abs === 0 || !Number.isFinite(abs)) return base;
+  let best: DisplayUnit | null = null;
+  for (const u of units) {
+    if (shiftDecimal(abs, -u.exponent) >= 1 && (!best || u.exponent > best.exponent)) best = u;
+  }
+  return best ?? units[0]!;
+}
+
+/**
+ * `value * 10^exponent`, exact in decimal: the shortest decimal digits of `value` are kept and
+ * only the decimal point moves (4700 at -3 -> 4.7, never 4.699999999999999).
+ */
+export function shiftDecimal(value: number, exponent: number): number {
+  if (value === 0 || !Number.isFinite(value) || exponent === 0) return value;
+  const [mantissa, exp] = value.toExponential().split('e') as [string, string];
+  return Number(`${mantissa}e${Number(exp) + exponent}`);
+}
+
+export type EntryResult =
+  | {
+      ok: true;
+      value: number;
+      /** The unit the text named, when it named one. */ unit?: DisplayUnit;
+    }
+  | { ok: false; error: ParseError };
+
+/**
+ * What the number field accepts (Phase 1): a plain decimal, read in the selected display unit,
+ * exactly. As an explicit convenience, a value written with its unit or prefix (`4.7 kΩ`,
+ * `100 µF`, `4k7`, `2M2`, `100u`) is converted by the exact parser into an SI value, and the
+ * field then shows it as number + unit; it is never re-scaled by the selected unit. `symbols`
+ * are the offered units' full symbols as displayed (`kΩ`), matched exactly.
+ */
+export function parseEntry(
+  input: string,
+  unit: UnitId,
+  selected: DisplayUnit,
+  offered: readonly { unit: DisplayUnit; symbol: string }[],
+  allowNegative: boolean,
+): EntryResult {
+  let text = input.trim();
+  if (text === '') return { ok: false, error: 'empty' };
+  if (/\d,\d/.test(text)) return { ok: false, error: 'decimal_comma' };
+  let sign = 1;
+  if (allowNegative && /^[-−]/.test(text)) {
+    sign = -1;
+    text = text.slice(1).trimStart();
+  }
+  const plain = /^(\d*)(?:\.(\d*))?$/.exec(text);
+  if (plain && (plain[1] || plain[2]))
+    return { ok: true, value: sign * exact(plain[1] ?? '', plain[2] ?? '', selected.exponent) };
+  // A number followed by one of the offered unit symbols (`50 cm`, `4.7 kΩ`).
+  for (const o of [...offered].sort((a, b) => b.symbol.length - a.symbol.length)) {
+    if (!text.endsWith(o.symbol)) continue;
+    const num = /^(\d*)(?:\.(\d*))?$/.exec(text.slice(0, -o.symbol.length).trimEnd());
+    if (num && (num[1] || num[2]))
+      return {
+        ok: true,
+        value: sign * exact(num[1] ?? '', num[2] ?? '', o.unit.exponent),
+        unit: o.unit,
+      };
+  }
+  const r = parseQuantity(text, unit);
+  return r.ok ? { ok: true, value: sign * r.value } : r;
 }

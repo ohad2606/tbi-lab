@@ -683,8 +683,8 @@ export const he: Record<MessageKey, string> = {
   'inspector.shortcuts': 'מקלדת: החיצים מזיזים, R מסובב, Delete מוחק, Esc מבטל.',
 
   'error.parse.empty': 'יש להזין ערך.',
-  'error.parse.invalid': 'ערך לא תקין. דוגמאות: 220, 1k, 4k7, 1.5k',
-  'error.parse.decimal_comma': 'יש להשתמש בנקודה כמפריד עשרוני, לדוגמה 1.5k.',
+  'error.parse.invalid': 'מספר לא תקין. יש להזין מספר כגון 4.7 ולבחור את היחידה.',
+  'error.parse.decimal_comma': 'יש להשתמש בנקודה כמפריד עשרוני, לדוגמה 1.5.',
   'error.parse.wrong_unit': 'היחידה אינה מתאימה למאפיין זה.',
   'error.range': 'הערך חייב להיות בין {min} לבין {max}.',
   'error.edit.same_endpoint': 'חוט אינו יכול להתחיל ולהסתיים באותה נקודה.',
@@ -1001,6 +1001,7 @@ export const he: Record<MessageKey, string> = {
     'חלק מנתיבי החוטים שורטטו מחדש כדי שלא יעברו מעל פינים, צגים או קווי המתאר של רכיבים. החיבורים לא השתנו. ביטול הפעולה האחרונה מחזיר את הנתיבים הקודמים.',
   // Sprint 13 a11y: the slider's own accessible name (distinct from its value field).
   'valueControl.slider': '{label}, מחוון',
+  'valueControl.unit': '{label}, יחידה',
   'build.blockedRunning': 'אפשר לבנות אחרי עצירה. הסשן שרץ ממשיך עם הקושחה שאיתה התחיל.',
   'build.unavailable': 'שירות הבנייה אינו זמין כאן.',
   'build.error.unreachable': 'לא ניתן היה להתחבר לשירות הבנייה. הקוד שלכם שמור; נסו שוב.',

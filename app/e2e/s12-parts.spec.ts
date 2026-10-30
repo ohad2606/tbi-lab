@@ -63,9 +63,10 @@ test('HC-SR04, DHT22, LCD: placed, named pins, bounded live environment, solved 
   // The environment: bounded by the catalog ranges, stored as language-neutral SI values.
   await select(page, us);
   await expect(page.getByTestId(`environment-${us}`)).toBeVisible();
-  await setField(page, `param-${us}-distance`, '6');
+  // Phase 1 units: 0.5 m shows as 50 cm, so plain numbers here are centimetres.
+  await setField(page, `param-${us}-distance`, '600');
   await expect(page.getByTestId(`param-${us}-distance-error`)).toBeVisible();
-  await setField(page, `param-${us}-distance`, '1.2');
+  await setField(page, `param-${us}-distance`, '120');
   await expect(page.getByTestId(`param-${us}-distance-error`)).toHaveCount(0);
   await setField(page, `param-${us}-airTemperature`, '-5');
   await select(page, dht);

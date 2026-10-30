@@ -690,8 +690,8 @@ export const en = {
   'inspector.shortcuts': 'Keyboard: arrows move, R rotates, Delete removes, Esc cancels.',
 
   'error.parse.empty': 'Enter a value.',
-  'error.parse.invalid': 'Not a valid value. Examples: 220, 1k, 4k7, 1.5k',
-  'error.parse.decimal_comma': 'Use a point as the decimal separator, for example 1.5k.',
+  'error.parse.invalid': 'Not a valid number. Enter a number such as 4.7 and choose the unit.',
+  'error.parse.decimal_comma': 'Use a point as the decimal separator, for example 1.5.',
   'error.parse.wrong_unit': 'That unit does not fit this property.',
   'error.range': 'The value must be between {min} and {max}.',
   'error.edit.same_endpoint': 'A wire cannot start and end at the same point.',
@@ -1025,6 +1025,7 @@ export const en = {
     'Some wire routes were redrawn so they no longer run over pins, displays or part outlines. Connections are unchanged. Undo restores the previous routes.',
   // Sprint 13 a11y: the slider's own accessible name (distinct from its value field).
   'valueControl.slider': '{label}, slider',
+  'valueControl.unit': '{label}, unit',
   'build.blockedRunning':
     'Build is available after Stop. The running session keeps the firmware it started with.',
   'build.unavailable': 'The build service is not available here.',

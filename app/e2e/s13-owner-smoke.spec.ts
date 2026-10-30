@@ -93,7 +93,7 @@ for (const width of [1400, 1024])
       }
     });
 
-test('OS-06: HC-SR04 distance in plain metres; slider in 5 mm steps; the canvas shows it', async ({
+test('OS-06: HC-SR04 distance as a number and a unit; slider in 5 mm steps; the canvas shows it', async ({
   page,
 }) => {
   await openExample(page, 'esp32-distance-alarm');
@@ -101,9 +101,11 @@ test('OS-06: HC-SR04 distance in plain metres; slider in 5 mm steps; the canvas 
   const field = page.getByTestId('param-U2-distance');
   const slider = page.getByTestId('param-U2-distance-slider');
   await expect(field).not.toHaveValue(/m$/);
-  await field.fill('0.3');
+  // Phase 1 units: the number is read in the unit shown beside it (0.5 m shows as 50 cm).
+  await expect(page.getByTestId('param-U2-distance-unit')).toHaveValue('-2');
+  await field.fill('30');
   await field.press('Enter');
-  await expect(field).toHaveValue('0.3');
+  await expect(field).toHaveValue('30');
   await expect(page.locator('.value-label', { hasText: '300 mm' })).toHaveCount(1);
   // Keyboard steps: each moves the value by exactly 5 mm, monotonically.
   const values: number[] = [];
@@ -111,7 +113,7 @@ test('OS-06: HC-SR04 distance in plain metres; slider in 5 mm steps; the canvas 
     await slider.press('ArrowRight');
     values.push(Number(await field.inputValue()));
   }
-  expect(values).toEqual([0.305, 0.31, 0.315, 0.32]);
+  expect(values).toEqual([30.5, 31, 31.5, 32]); // cm
   await expect(page.locator('.value-label', { hasText: '320 mm' })).toHaveCount(1);
 });
 
@@ -152,7 +154,7 @@ test('OS-03: dragging the light slider updates the circuit during the drag; the 
   for (const n of nums) expect(n).not.toBeNaN();
   for (let i = 1; i < nums.length; i++) expect(nums[i]!).toBeGreaterThanOrEqual(nums[i - 1]!);
   // The release value (the right end: 10 000 lx) is the one stored.
-  await expect(field).toHaveValue('10k');
+  await expect(field).toHaveValue('10000');
   await waitSaved(page);
   await expect
     .poll(async () => {

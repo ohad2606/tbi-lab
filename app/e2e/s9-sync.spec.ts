@@ -87,7 +87,7 @@ test('a value change shows in the schematic at once; the 3D scene is rebuilt fro
   await expect(page.locator('[data-part="R1"] .sch-value')).toHaveText('10 kΩ');
   await page.locator('[data-part="R1"] .sch-hit').click();
   const field = page.getByTestId('param-R1-resistance');
-  await field.fill('4.7k');
+  await field.fill('4.7');
   await field.press('Enter');
   await expect(page.locator('[data-part="R1"] .sch-value')).toHaveText('4.7 kΩ');
   await show3d(page);

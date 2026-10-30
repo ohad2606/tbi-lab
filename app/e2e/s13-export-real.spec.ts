@@ -54,7 +54,7 @@ test('export, import into an empty browser, restore, build and run: identical pr
   await expect(pa.getByTestId('canvas')).toBeVisible();
   await select(pa, 'U2');
   const field = pa.getByTestId('param-U2-distance');
-  await field.fill('0.3');
+  await field.fill('30'); // Phase 1 units: 0.5 m shows as 50 cm; 30 cm = 0.3 m
   await field.press('Enter');
   await pa.getByTestId('view-code').click();
   const code = pa.getByTestId('code-text');
@@ -96,7 +96,7 @@ test('export, import into an empty browser, restore, build and run: identical pr
   expect(await pb.getByTestId('code-text').inputValue()).toBe(MARK + original);
   await pb.getByTestId('view-circuit').click();
   await select(pb, 'U2');
-  await expect(pb.getByTestId('param-U2-distance')).toHaveValue(/^(300 ?m|0\.3)$/);
+  await expect(pb.getByTestId('param-U2-distance')).toHaveValue('30');
 
   // Same firmware-visible result: 0.3 m at 20 degC -> about 30 cm; LED off (> 20 cm).
   await buildAndRun(pb);

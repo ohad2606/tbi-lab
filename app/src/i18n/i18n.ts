@@ -4,7 +4,14 @@
  * a bundle and a registry entry, with no change to project data or application logic.
  */
 
-import { toEngineering, type Quantity, type UnitId } from '@tbi-lab/domain';
+import {
+  chooseDisplayUnit,
+  shiftDecimal,
+  toEngineering,
+  type DisplayUnit,
+  type Quantity,
+  type UnitId,
+} from '@tbi-lab/domain';
 import { en, type MessageKey } from './messages.en.js';
 import { he } from './messages.he.js';
 import { GLOSSARY, applyGlossary } from './glossary.js';
@@ -138,6 +145,47 @@ export function inputForm(value: number, unit?: UnitId): string {
 
 export function unitSymbol(locale: LocaleInfo, unit: UnitId): string {
   return translate(locale, `unit.${unit}.symbol`);
+}
+
+/** A display unit's full symbol (`kΩ`, `µF`, `cm`): an international prefix + the unit symbol. */
+export function displayUnitSymbol(locale: LocaleInfo, unit: UnitId, du: DisplayUnit): string {
+  return `${du.prefix}${unitSymbol(locale, unit)}`;
+}
+
+/**
+ * The number a field shows for a stored value in a display unit, exact in decimal and
+ * locale-independent (a technical field always uses `.`): 4700 in kΩ -> `4.7`.
+ */
+export function displayNumber(value: number, du: DisplayUnit): string {
+  return String(shiftDecimal(value, -du.exponent));
+}
+
+/**
+ * A value formatted with the same unit choice as the editor's dropdown (`10 mF`, `0 V`), for the
+ * range hint and range errors, so the hint names units the user can select.
+ */
+export function formatDisplayQuantity(
+  locale: LocaleInfo,
+  q: Quantity,
+  units: readonly DisplayUnit[],
+): string {
+  const du = chooseDisplayUnit(q.value, units);
+  return `${formatNumber(locale, shiftDecimal(q.value, -du.exponent))} ${displayUnitSymbol(locale, q.unit, du)}`;
+}
+
+/** A translated template split at its placeholders, for rendering parameters as elements. */
+export type MessagePart = { text: string } | { param: string };
+export function messageParts(locale: LocaleInfo, key: MessageKey): MessagePart[] {
+  const parts: MessagePart[] = [];
+  const template = locale.messages[key];
+  let last = 0;
+  for (const m of template.matchAll(/\{(\w+)\}/g)) {
+    if (m.index > last) parts.push({ text: template.slice(last, m.index) });
+    parts.push({ param: m[1]! });
+    last = m.index + m[0].length;
+  }
+  if (last < template.length) parts.push({ text: template.slice(last) });
+  return parts;
 }
 
 const dateTimeFormats = new Map<string, Intl.DateTimeFormat>();
