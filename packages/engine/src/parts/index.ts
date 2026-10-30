@@ -13,3 +13,4 @@ import './lcd.js';
 import './servo.js';
 import './logicGate.js';
 import './logicPackage.js';
+import './potentiometer.js';

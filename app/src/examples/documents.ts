@@ -37,6 +37,8 @@ import mpyBlink from './data/mpy-blink.json';
 import mpyButton from './data/mpy-button.json';
 import mpyFade from './data/mpy-fade.json';
 import mpyLcdHello from './data/mpy-lcd-hello.json';
+import potDivider from './data/pot-divider.json';
+import potLedDimmer from './data/pot-led-dimmer.json';
 
 export const EXAMPLE_DOCUMENTS: Record<string, ProjectDocument> = {
   'ohms-law': ohmsLaw as unknown as ProjectDocument,
@@ -53,6 +55,8 @@ export const EXAMPLE_DOCUMENTS: Record<string, ProjectDocument> = {
   'diode-polarity': diodePolarity as unknown as ProjectDocument,
   'push-button': pushButton as unknown as ProjectDocument,
   'cc-mode': ccMode as unknown as ProjectDocument,
+  'pot-divider': potDivider as unknown as ProjectDocument,
+  'pot-led-dimmer': potLedDimmer as unknown as ProjectDocument,
   'esp32-blink': esp32Blink as unknown as ProjectDocument,
   'esp32-input-echo': esp32InputEcho as unknown as ProjectDocument,
   'esp32-bench': esp32Bench as unknown as ProjectDocument,

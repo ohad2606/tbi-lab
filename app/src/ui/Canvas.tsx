@@ -1578,6 +1578,11 @@ function runtimeLabel(
       return `${v} · ${i}`;
     case 'instrument.lab_psu':
       return `${v} · ${i} · ${t(`sim.badge.${r.mode ?? 'off'}`)}`;
+    case 'component.potentiometer': {
+      // Sprint POT-UNITS: the divider's output, the wiper's potential to GND.
+      const w = r.state?.wiperVoltage;
+      return typeof w === 'number' ? `W ${formatResult(locale, w, 'volt')}` : '';
+    }
     case 'component.servo_sg90': {
       // Its position, not its supply current (not modelled, never shown as 0 A).
       const angle = servoAngle(r.state);
@@ -1624,6 +1629,9 @@ function valueLabel(c: ComponentInstance, fmt: (q: Quantity) => string): string 
       return q('resistance');
     case 'component.capacitor':
       return q('capacitance');
+    // Sprint POT-UNITS: total resistance and wiper position (updated live while dragged).
+    case 'component.potentiometer':
+      return `${q('resistance')} · ${q('position')}`;
     case 'instrument.lab_psu':
       return `${q('setpointVoltage')} / ${q('currentLimit')}`;
     // Sprint 13 OS-03/OS-06: the simulated environment a sensor is set to, visible on the

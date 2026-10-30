@@ -246,7 +246,7 @@ test('A7: malformed, damaged, future and oversized files are refused before anyt
       JSON.stringify({ ...good, project: { ...good.project, name: 'Changed' } }),
       'import.error.damaged',
     ],
-    [text.replace('"schemaVersion": 4', '"schemaVersion": 5'), 'import.error.damaged'],
+    [text.replace('"schemaVersion": 5', '"schemaVersion": 6'), 'import.error.damaged'],
   ];
   for (const [body, key] of cases) {
     await importText(page, body);
@@ -261,7 +261,7 @@ test('A7: malformed, damaged, future and oversized files are refused before anyt
     project: ProjectDocument;
     integrity: { project: string };
   };
-  future.project.schemaVersion = 5;
+  future.project.schemaVersion = 6; // one past this build's schema (v5, Sprint POT-UNITS)
   future.integrity.project = projectHash(future.project);
   await importText(page, JSON.stringify(future));
   await expect(page.getByTestId('notice')).toHaveAttribute('data-key', 'import.error.newer');

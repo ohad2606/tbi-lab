@@ -43,6 +43,8 @@ const PART_RULES: Record<ComponentTypeId, { categories: ExampleCategory[]; basic
   'component.resistor': { categories: [], basic: true },
   'component.diode': { categories: [], basic: true },
   'component.capacitor': { categories: [], basic: true },
+  // Sprint POT-UNITS: a passive part (two linear track segments).
+  'component.potentiometer': { categories: [], basic: true },
   'component.led': { categories: ['lighting'], basic: true },
   'component.rgb_led': { categories: ['lighting'], basic: true },
   'component.push_button': { categories: ['switching'], basic: true },

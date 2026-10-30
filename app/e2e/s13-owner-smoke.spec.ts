@@ -101,9 +101,21 @@ test('OS-06: HC-SR04 distance in plain metres; slider in 5 mm steps; the canvas 
   const field = page.getByTestId('param-U2-distance');
   const slider = page.getByTestId('param-U2-distance-slider');
   await expect(field).not.toHaveValue(/m$/);
+  // OS-06 (kept by the owner, OD-POT-4): a fixed `m`, no unit list; 0.5 m shows as `0.5`.
+  await expect(field).toHaveValue('0.5');
+  const unit = page.getByTestId('param-U2-distance-unit');
+  await expect(unit).toHaveText('m');
+  expect(await unit.evaluate((e) => e.tagName)).toBe('SPAN');
   await field.fill('0.3');
   await field.press('Enter');
   await expect(field).toHaveValue('0.3');
+  await expect
+    .poll(async () =>
+      JSON.stringify(
+        (await storedProject(page)).components.find((c) => c.id === 'U2')?.params.distance,
+      ),
+    )
+    .toBe(JSON.stringify({ value: 0.3, unit: 'metre' }));
   await expect(page.locator('.value-label', { hasText: '300 mm' })).toHaveCount(1);
   // Keyboard steps: each moves the value by exactly 5 mm, monotonically.
   const values: number[] = [];
@@ -152,7 +164,7 @@ test('OS-03: dragging the light slider updates the circuit during the drag; the 
   for (const n of nums) expect(n).not.toBeNaN();
   for (let i = 1; i < nums.length; i++) expect(nums[i]!).toBeGreaterThanOrEqual(nums[i - 1]!);
   // The release value (the right end: 10 000 lx) is the one stored.
-  await expect(field).toHaveValue('10k');
+  await expect(field).toHaveValue('10000');
   await waitSaved(page);
   await expect
     .poll(async () => {

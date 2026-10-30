@@ -15,7 +15,14 @@
  * bump makes builds before it refuse such a file BY NAME ("made by a newer version") and open
  * such a stored project read-only, instead of calling the file invalid or editing it blindly.
  */
-export const SCHEMA_VERSION = 4;
+/**
+ * v5 (Sprint POT-UNITS, 2026-10-30): no new field. v5 adds the component type
+ * `component.potentiometer` and the unit `percent` (its wiper position); the bump makes builds
+ * before it refuse a file that may hold one BY NAME ("made by a newer version") and open such a
+ * stored project read-only, instead of calling it invalid (unknown type). Migration v4 -> v5 is
+ * the identity.
+ */
+export const SCHEMA_VERSION = 5;
 export const DOCUMENT_FORMAT = 'tbi-lab.project';
 
 /**
@@ -31,7 +38,9 @@ export type UnitId =
   /** Sprint 12 (R2 environment quantities, additive). */
   | 'metre'
   | 'celsius'
-  | 'percent_rh';
+  | 'percent_rh'
+  /** Sprint POT-UNITS (v5, additive): a fraction in percent (a potentiometer's wiper position). */
+  | 'percent';
 
 /** An engineering value: an SI number plus its canonical unit id. */
 export interface Quantity {
@@ -83,7 +92,12 @@ export type ComponentTypeId =
    * Exploration Foundation L3 (additive): a packaged multi-gate device with its datasheet pin map
    * and one shared supply; `model` names the device (TI SN74LVC08A, quad 2-input AND).
    */
-  | 'logic.quad_and';
+  | 'logic.quad_and'
+  /**
+   * Sprint POT-UNITS (v5, additive): a three-terminal linear potentiometer (Bourns PTV09A,
+   * linear taper): end A, wiper W, end B.
+   */
+  | 'component.potentiometer';
 
 export interface ComponentInstance {
   /** Stable reference designator (`R1`, `PSU1`), unique per project, never reused. */

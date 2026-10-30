@@ -103,7 +103,7 @@ export interface PartCard {
 export type LimitKind = 'absolute' | 'operating' | 'unrated';
 
 export interface PartRatingExcess {
-  code: 'forward_current' | 'reverse_voltage' | 'power' | 'voltage' | 'current';
+  code: 'forward_current' | 'reverse_voltage' | 'power' | 'voltage' | 'current' | 'track_current';
   value: number;
   limit: number;
   /** Absent = `absolute` (every Sprint 5-12 check was an absolute or allowable maximum). */

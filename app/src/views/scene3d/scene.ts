@@ -47,6 +47,7 @@ import {
   RELAY_SRD,
   RGB_LED_5MM,
   TO92,
+  POT_PTV09A,
   PIR_HC_SR501,
   HC_SR04_MODULE,
   DHT22_CASE,
@@ -102,6 +103,7 @@ export type ModelKey =
   | 'buzzer.can'
   | 'relay.cube'
   | 'transistor.to92'
+  | 'pot.ptv09'
   | 'sensor.pir'
   | 'display.matrix'
   | 'capacitor.radial'
@@ -128,6 +130,7 @@ export const MODEL_FOR: Partial<Record<ComponentTypeId, ModelKey>> = {
   'component.buzzer': 'buzzer.can',
   'component.relay': 'relay.cube',
   'component.bjt_npn': 'transistor.to92',
+  'component.potentiometer': 'pot.ptv09',
   'sensor.pir_hc_sr501': 'sensor.pir',
   'display.led_matrix_8x8': 'display.matrix',
   'component.capacitor': 'capacitor.radial',
@@ -282,6 +285,7 @@ export const MODEL_HEIGHT: Record<ModelKey, number> = {
   'buzzer.can': BUZZER_CEM1205.standoffMm + BUZZER_CEM1205.heightMm,
   'relay.cube': RELAY_SRD.standoffMm + RELAY_SRD.heightMm,
   'transistor.to92': TO92.standoffMm + TO92.heightMm,
+  'pot.ptv09': POT_PTV09A.shaftAxisMm + POT_PTV09A.bodyHeightMm / 2,
   'logic.sot23':
     LOGIC_SOT23_BREAKOUT.standoffMm +
     LOGIC_SOT23_BREAKOUT.boardThicknessMm +
@@ -351,6 +355,13 @@ export const FOOTPRINT: Record<ModelKey, readonly [number, number, number, numbe
     RELAY_SRD.widthMm / 2,
   ],
   'transistor.to92': [-6.7, 3.6, -6.7, 6.7],
+  // The body, the shaft in front of it, and the leads out to the terminals (±6.35 mm, -6.35 mm).
+  'pot.ptv09': [
+    -6.7,
+    6.7,
+    -6.7,
+    POT_PTV09A.bodyDepthMm / 2 + POT_PTV09A.shaftLengthMm - POT_PTV09A.bodyDepthMm,
+  ],
   'logic.sot23': [
     -LOGIC_SOT23_BREAKOUT.boardSizeMm / 2,
     LOGIC_SOT23_BREAKOUT.boardSizeMm / 2,
@@ -2386,6 +2397,38 @@ function routeBoxes(model: ModelKey, farads?: number): Box[] | null {
         };
       };
       return [{ x0, x1: PSU.frontXMm, z0, z1, y0: 0, y1: top }, post('positive'), post('negative')];
+    }
+    case 'pot.ptv09': {
+      // The body on its terminals, the shaft in front of it (high above the bench), and each
+      // terminal's lead low out to its terminal.
+      const p = POT_PTV09A;
+      const W = p.bodyWidthMm / 2;
+      const D = p.bodyDepthMm / 2;
+      const r = p.shaftDiameterMm / 2;
+      const boxes: Box[] = [
+        { x0: -W, x1: W, z0: -D, z1: D, y0: 0, y1: top },
+        {
+          x0: -r,
+          x1: r,
+          z0: D,
+          z1: D + p.shaftLengthMm - p.bodyDepthMm,
+          y0: p.shaftAxisMm - r,
+          y1: p.shaftAxisMm + r,
+        },
+      ];
+      for (const t of CATALOG['component.potentiometer'].terminals) {
+        const tx = t.offset.x * SCALE;
+        const tz = t.offset.y * SCALE;
+        boxes.push({
+          x0: Math.min(0, tx) - 0.5,
+          x1: Math.max(0, tx) + 0.5,
+          z0: Math.min(0, tz) - 0.5,
+          z1: Math.max(0, tz) + 0.5,
+          y0: 0,
+          y1: 2.2,
+        });
+      }
+      return boxes;
     }
     case 'transistor.to92': {
       // The D-shaped body, and each lead from under it to its terminal: high near the body, low

@@ -697,8 +697,8 @@ export const en = {
   'inspector.shortcuts': 'Keyboard: arrows move, R rotates, Delete removes, Esc cancels.',
 
   'error.parse.empty': 'Enter a value.',
-  'error.parse.invalid': 'Not a valid value. Examples: 220, 1k, 4k7, 1.5k',
-  'error.parse.decimal_comma': 'Use a point as the decimal separator, for example 1.5k.',
+  'error.parse.invalid': 'Not a valid number. Enter a number such as 4.7 and choose the unit.',
+  'error.parse.decimal_comma': 'Use a point as the decimal separator, for example 1.5.',
   'error.parse.wrong_unit': 'That unit does not fit this property.',
   'error.range': 'The value must be between {min} and {max}.',
   'error.edit.same_endpoint': 'A wire cannot start and end at the same point.',
@@ -803,6 +803,12 @@ export const en = {
   'example.voltage-divider.title': 'Voltage divider',
   'example.voltage-divider.summary':
     'Two resistors split 9 V. The midpoint is 9 V × 20 kΩ / (10 kΩ + 20 kΩ) = 6 V; a probe at R2.a reads it.',
+  'example.pot-divider.title': 'Potentiometer divider',
+  'example.pot-divider.summary':
+    'A 10 kΩ potentiometer across 5 V, end A at GND and end B at +5 V: the [[wiper]] reads 5 V × p, 2.5 V at 50 %. Run it and drag the position slider: the [[probe]] at the [[wiper]] follows.',
+  'example.pot-led-dimmer.title': 'LED dimmer (potentiometer)',
+  'example.pot-led-dimmer.summary':
+    'A 1 kΩ potentiometer as a variable resistor in series with 470 Ω and a red LED on 5 V. Turning it up lowers the series resistance and the LED current rises, to 6.5 mA at 100 %: below the 7.07 mA the track carries at its rated 0.05 W, so it stays within the datasheet’s rated condition at every position.',
   'example.led-current.title': 'LED current limiting',
   'example.led-current.summary':
     'A 220 Ω resistor sets the current of a red LED from 5 V. The LED is nonlinear: it settles near 2 V and about 14 mA.',
@@ -1036,6 +1042,7 @@ export const en = {
     'Some wire routes were redrawn so they no longer run over pins, displays or part outlines. Connections are unchanged. Undo restores the previous routes.',
   // Sprint 13 a11y: the slider's own accessible name (distinct from its value field).
   'valueControl.slider': '{label}, slider',
+  'valueControl.unit': '{label}, unit',
   'build.blockedRunning':
     'Build is available after Stop. The running session keeps the firmware it started with.',
   'build.unavailable': 'The build service is not available here.',
@@ -1630,6 +1637,38 @@ export const en = {
   'report.failed.rejected': 'The report could not be accepted. Check the text and try again.',
   'report.failed.network':
     'The server did not confirm the report, so it may not have been received. Your text is kept here: you can send it again.',
+  'limitation.potentiometer_position_grid': 'The position is set in steps of 0.01 %.',
+  'rating.row.track_current':
+    'Current {value}: above the track current at the rated 0.05 W ({limit}), outside the datasheet’s rated condition',
+  'error.param.off_grid': 'The wiper position is set in steps of 0.01 %.',
+  // Sprint POT-UNITS: the potentiometer.
+  'component.component.potentiometer.name': '[[potentiometer]]',
+  'terminal.potEndA': 'End A (pin 1)',
+  'terminal.wiper': 'Wiper W (pin 2)',
+  'terminal.potEndB': 'End B (pin 3)',
+  'model.potentiometer.bourns_ptv09a_linear': '9 mm rotary, linear taper (Bourns PTV09A)',
+  'param.totalResistance': 'Total resistance (A–B)',
+  'param.wiperPosition': 'Wiper position (from A)',
+  'sim.part.current.aw': 'Current A → W',
+  'sim.part.current.wb': 'Current W → B',
+  'sim.part.current.wiper': 'Current into the [[wiper]]',
+  'sim.part.voltage.component.potentiometer': 'Voltage A–B',
+  'sim.part.state.component.potentiometer.resistanceAW': 'Resistance A–W',
+  'sim.part.state.component.potentiometer.resistanceWB': 'Resistance W–B',
+  'sim.part.state.component.potentiometer.power': 'Dissipation (whole track)',
+  'sim.part.state.component.potentiometer.wiperVoltage': 'Wiper voltage to GND',
+  'limitation.potentiometer_linear':
+    'Linear taper only: two ideal track segments, R·p and R·(1 − p). The position is the share of the track between A and the [[wiper]], not the shaft angle; audio tapers are not offered.',
+  'limitation.potentiometer_end_resistance':
+    'End resistance idealised to 0 Ω: at 0 % and 100 % the [[wiper]] touches the end directly. The datasheet only bounds it (500 Ω or 1 % max).',
+  'limitation.potentiometer_tolerance':
+    'Nominal value: the ±20 % resistance tolerance is not sampled.',
+  'limitation.potentiometer_power':
+    'Power rating 0.05 W for the whole track (PTV09A datasheet), at a 25 °C ambient. A segment or the wiper carrying more than the whole track does at 0.05 W (√(0.05 W / R)) is flagged as outside the datasheet’s rated condition: a conservative warning, not a damage threshold. Damage behaviour is not characterised.',
+  'limitation.potentiometer_wiper_current':
+    'Wiper contact resistance and a maximum wiper current are not in the datasheet: the contact resistance is not modelled; the wiper current is checked only against the rated-condition track current above.',
+  'limitation.potentiometer_no_adc':
+    'Next to an ESP32 the [[wiper]] is read as a digital level: analog input (analogRead) is not supported.',
 } as const;
 
 export type MessageKey = keyof typeof en;

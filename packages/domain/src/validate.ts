@@ -7,7 +7,7 @@
  * Errors are structured codes with data, never display text.
  */
 
-import { CATALOG, isComponentType } from './catalog.js';
+import { CATALOG, isComponentType, onStep } from './catalog.js';
 import { GRID, ROTATIONS } from './layout.js';
 import { nodeKey, wireGroups } from './nets.js';
 import { profileById, utf8Length } from './program.js';
@@ -28,6 +28,8 @@ export type ValidationCode =
   | 'unknown_type'
   | 'unsupported_type_version'
   | 'bad_param'
+  /** Sprint POT-UNITS: a quantity off its parameter's resolution grid (catalog `step`). */
+  | 'off_grid_param'
   | 'missing_param'
   | 'unknown_param'
   | 'missing_placement'
@@ -149,6 +151,8 @@ export function validateProject(input: unknown): ValidationIssue[] {
         Object.keys(v).length !== 2
       ) {
         add('bad_param', pp);
+      } else if (!onStep(p, v.value as number)) {
+        add('off_grid_param', pp);
       }
     }
     for (const k of Object.keys(c.params)) {

@@ -3,7 +3,7 @@
  *
  * Migrations are pure functions `vN -> vN+1`, run in the browser when a project is opened.
  * v2 is the first production schema (no v1 Gate D user data exists): v2 → v3 (Sprint 7, programs)
- * and v3 → v4 (Sprint 20, the identity). A document from a NEWER schema is never guessed at: it
+ * v3 → v4 (Sprint 20, the identity) and v4 → v5 (Sprint POT-UNITS, the identity). A document from a NEWER schema is never guessed at: it
  * opens read-only.
  */
 
@@ -43,6 +43,11 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = {
    * when that project is saved by a v4 build (app.ts openProject).
    */
   3: (doc) => ({ ...doc }),
+  /**
+   * v4 -> v5 (Sprint POT-UNITS): the IDENTITY. v5 adds a component type and a unit, no field; a
+   * v4 document means exactly the same in v5. Only `schemaVersion` changes (set by openDocument).
+   */
+  4: (doc) => ({ ...doc }),
 };
 
 export type OpenResult =

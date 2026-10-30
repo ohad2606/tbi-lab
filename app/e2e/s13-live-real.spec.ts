@@ -81,7 +81,7 @@ test('night light: dragging the light from bright to dark and back; the firmware
   });
   // And back to the bright end (10 000 lx): LOW again.
   await drag(page, 'param-LDR1-illuminance-slider', 'left', 40, 2000);
-  await expect(field).toHaveValue('10k');
+  await expect(field).toHaveValue('10000');
   await expect(page.getByTestId('pin-level-4')).toHaveAttribute('data-level', '0', {
     timeout: 30_000,
   });

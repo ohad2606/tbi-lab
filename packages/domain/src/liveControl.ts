@@ -10,7 +10,7 @@
  *   the declared kind and within the declared range (e.g. a photoresistor's `illuminance`
  *   1–10 000 lux, a PIR sensor's `motion` boolean). Quantities travel in SI units, as numbers.
  */
-import { CATALOG } from './catalog.js';
+import { CATALOG, onStep } from './catalog.js';
 import type { ComponentTypeId } from './schema.js';
 
 export interface LiveControlRequest {
@@ -25,6 +25,8 @@ export interface LiveControlRequest {
 export interface LiveControlProblem {
   reason: 'unsupported_control' | 'invalid_value';
   key?: string;
+  /** Sprint POT-UNITS: why a value is invalid, when it is in range but off its 0.01 % grid. */
+  detail?: 'off_grid';
 }
 
 const PSU_KEYS = ['setpointVoltage', 'currentLimit', 'outputEnabled'] as const;
@@ -62,6 +64,7 @@ export function liveControlProblem(
     const bad = { reason: 'invalid_value' as const, key };
     if (p.kind === 'quantity') {
       if (typeof v !== 'number' || !Number.isFinite(v) || v < p.min || v > p.max) return bad;
+      if (!onStep(p, v)) return { ...bad, detail: 'off_grid' };
     } else if (p.kind === 'boolean') {
       if (typeof v !== 'boolean') return bad;
     } else if (typeof v !== 'string' || !p.options.some((o) => o.value === v)) return bad;

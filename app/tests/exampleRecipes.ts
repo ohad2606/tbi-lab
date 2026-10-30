@@ -462,6 +462,47 @@ export const RECIPES: Record<string, () => ProjectDocument> = {
     return r.centre(-60);
   },
   /**
+   * Sprint POT-UNITS: a potentiometer (Bourns PTV09A, 10 kΩ linear) across 5 V, end A (pin 1) at
+   * GND and end B (pin 3) at +5 V (review L4: "turn up = more volts", as the datasheet's taper
+   * axis V_1-2 / V_1-3): the wiper reads V_W = 5 V × p, p the position from A. At 50 %: 2.5 V.
+   */
+  'pot-divider': () => {
+    const r = new Recipe('pot-divider', 'Potentiometer divider');
+    r.supply(5, 0.1);
+    // Turned half way: end B on the left (towards the supply), end A on the right, wiper below.
+    const RV = r.place('component.potentiometer', 80, -20, 2);
+    const G = r.place('component.ground', 120, 100);
+    r.set(RV, 'resistance', 10_000, 'ohm');
+    r.set(RV, 'position', 50, 'percent');
+    r.wire(T('PSU1', 'positive'), T(RV, 'b'));
+    r.wire(T(RV, 'a'), T(G, 'ref'));
+    return r.centre(-60);
+  },
+  /**
+   * Sprint POT-UNITS: an LED dimmer inside the potentiometer's rated condition at EVERY position
+   * (review H1). The W-B segment of a 1 kΩ pot (a rheostat, end A unused) in series with 470 Ω and
+   * the red LED on 5 V. The rated-condition track current is sqrt(0.05 W / 1 kΩ) = 7.07 mA; the
+   * largest current, at 100 % (only the 470 Ω limits it), is 6.50 mA: below it (engine sweep), so no segment
+   * or the wiper ever carries more than the rated condition. 430 Ω (the next E24 value down)
+   * gives 7.09 mA at 100 %, above it (a rating row). The current rises with the position.
+   */
+  'pot-led-dimmer': () => {
+    const r = new Recipe('pot-led-dimmer', 'LED dimmer (potentiometer)');
+    r.supply(5, 0.1);
+    const RV = r.place('component.potentiometer', 80, -20);
+    const R1 = r.place('component.resistor', 200, -20);
+    const D1 = r.place('component.led', 280, 40, 1);
+    const G = r.place('component.ground', 280, 140);
+    r.set(RV, 'resistance', 1000, 'ohm');
+    r.set(RV, 'position', 50, 'percent');
+    r.set(R1, 'resistance', 470, 'ohm');
+    r.wire(T('PSU1', 'positive'), T(RV, 'wiper'), [{ x: 0, y: -60 }]);
+    r.wire(T(RV, 'b'), T(R1, 'a'));
+    r.wire(T(R1, 'b'), T(D1, 'anode'));
+    r.wire(T(D1, 'cathode'), T(G, 'ref'));
+    return r.centre(-60);
+  },
+  /**
    * Sprint 6, Arduino source since Sprint 7. Classic ESP32 running the TbiGpioProof sketch
    * (visible, editable; Build then Run): GPIO2 drives a red LED through 220 Ω (blinking in an
    * 800 ms pattern). The board GND is the circuit reference.

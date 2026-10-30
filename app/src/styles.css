@@ -542,6 +542,21 @@ select {
   font-weight: 600;
 }
 
+/* Phase 1 (units): the unit dropdown beside a value field; sized by its content, never by an
+   English label, and kept LTR (a unit symbol is technical text). */
+.field-row .unit-select {
+  flex: 0 0 auto;
+  inline-size: auto;
+  min-inline-size: 4.5em;
+  padding: 0.35rem 0.3rem;
+  font-weight: 600;
+}
+
+.ltr-value {
+  unicode-bidi: isolate;
+  direction: ltr;
+}
+
 .inspector-actions {
   display: flex;
   flex-wrap: wrap;

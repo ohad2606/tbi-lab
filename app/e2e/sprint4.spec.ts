@@ -258,8 +258,10 @@ test('A8: PSU panel shows settings apart from measured V/I and OFF / CV / CC', a
   await expect(panel).toContainText('not a fault');
   await expect(page.getByTestId('sim-error')).toHaveCount(0);
   const limit = page.getByTestId('param-PSU1-currentLimit');
+  // 100 mA is shown as `100` in mA; 1 A is a number and the unit A from the list.
+  await expect(limit).toHaveValue('100');
   await limit.fill('1');
-  await limit.press('Enter');
+  await page.getByTestId('param-PSU1-currentLimit-unit').selectOption('0');
   await expect(page.getByTestId('psu-mode')).toHaveAttribute('data-mode', 'cv');
   await expect(page.getByTestId('psu-measured-current')).toHaveText('500 mA');
   await expect(page.getByTestId('psu-measured-voltage')).toHaveText('5 V');

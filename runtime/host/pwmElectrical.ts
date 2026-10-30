@@ -39,6 +39,8 @@ export const PWM_AVERAGED_TYPES: ReadonlySet<string> = new Set([
   'component.rgb_led',
   'display.led_matrix_8x8',
   'component.photoresistor',
+  // Sprint POT-UNITS: two linear resistors (no storage): instantaneous, like a resistor.
+  'component.potentiometer',
   'component.push_button',
   'component.toggle_switch',
   'board.esp32_devkitc_wroom32',

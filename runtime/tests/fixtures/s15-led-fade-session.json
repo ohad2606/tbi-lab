@@ -5,7 +5,7 @@
     "board": "board.esp32_devkitc_wroom32",
     "circuit": {
       "format": "tbi-lab.snapshot",
-      "schemaVersion": 4,
+      "schemaVersion": 5,
       "snapshotId": "snap_90d4c6db2121f6e2",
       "projectId": "prj_exampleesp32ledfade",
       "projectRevision": 1,

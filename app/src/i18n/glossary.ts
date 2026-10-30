@@ -24,6 +24,8 @@ export const GLOSSARY_TERMS = [
   'buzzer',
   'transistor',
   'logicGate',
+  'potentiometer',
+  'wiper',
 ] as const;
 
 export type GlossaryTerm = (typeof GLOSSARY_TERMS)[number];
@@ -46,6 +48,8 @@ export const GLOSSARY: Record<string, Record<GlossaryTerm, string>> = {
     buzzer: 'Buzzer',
     transistor: 'Transistor',
     logicGate: 'Logic gate',
+    potentiometer: 'Potentiometer',
+    wiper: 'wiper',
   },
   he: {
     ground: 'אדמה (GND)',
@@ -64,6 +68,8 @@ export const GLOSSARY: Record<string, Record<GlossaryTerm, string>> = {
     buzzer: 'זמזם',
     transistor: 'טרנזיסטור',
     logicGate: 'שער לוגי',
+    potentiometer: 'פוטנציומטר',
+    wiper: 'זרוע',
   },
 };
 
