@@ -25,6 +25,7 @@ import logicOverride from '../../app/src/examples/data/esp32-logic-override.json
 import mpyBlink from '../../app/src/examples/data/mpy-blink.json' with { type: 'json' };
 import mpyButton from '../../app/src/examples/data/mpy-button.json' with { type: 'json' };
 import mpyFade from '../../app/src/examples/data/mpy-fade.json' with { type: 'json' };
+import mpyLcdHello from '../../app/src/examples/data/mpy-lcd-hello.json' with { type: 'json' };
 
 const programsOf = (doc: unknown): ProgramSource[] =>
   Object.values((doc as { programs?: Record<string, ProgramSource> }).programs ?? {});
@@ -44,6 +45,7 @@ function systemPrograms(): ProgramSource[] {
     ...programsOf(mpyBlink),
     ...programsOf(mpyButton),
     ...programsOf(mpyFade),
+    ...programsOf(mpyLcdHello),
     starterProgram('board.esp32_devkitc_wroom32'),
   ].filter((p): p is ProgramSource => !!p);
 }

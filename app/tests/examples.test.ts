@@ -33,7 +33,7 @@ const near = (a: number | null | undefined, e: number, rel = REL) => {
 const example = (id: string) => EXAMPLES.find((e) => e.id === id)!.document;
 
 describe('the example set', () => {
-  it('has the sixteen local examples, the thirteen ESP32 examples and the three MicroPython examples, each titled in English and Hebrew', () => {
+  it('has the sixteen local examples, the thirteen ESP32 examples and the four MicroPython examples, each titled in English and Hebrew', () => {
     expect(EXAMPLES.map((e) => e.id)).toEqual([
       'ohms-law',
       'voltage-divider',
@@ -71,6 +71,7 @@ describe('the example set', () => {
       'mpy-blink',
       'mpy-button',
       'mpy-fade',
+      'mpy-lcd-hello',
     ]);
     for (const e of EXAMPLES) {
       for (const key of [e.titleKey, e.summaryKey]) {

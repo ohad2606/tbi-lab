@@ -95,8 +95,10 @@ describe('search', () => {
   });
 
   it('several words must all match', () => {
-    expect(ids('ESP32 LCD')).toEqual(['esp32-lcd-hello']);
-    expect(ids('LCD ESP32')).toEqual(['esp32-lcd-hello']);
+    // Sprint 24: the MicroPython LCD example runs on the same ESP32 + LCD circuit.
+    expect(ids('ESP32 LCD')).toEqual(['esp32-lcd-hello', 'mpy-lcd-hello']);
+    expect(ids('LCD ESP32')).toEqual(['esp32-lcd-hello', 'mpy-lcd-hello']);
+    expect(ids('MicroPython LCD')).toEqual(['mpy-lcd-hello']);
     expect(ids('ESP32 PIR')).toEqual(['esp32-motion-relay']);
     expect(ids('relay ESP32')).toEqual(
       withPart('component.relay').filter((id) =>
@@ -113,7 +115,7 @@ describe('search', () => {
     // Final letter forms: the singular "חיישן" (final nun) finds every sensor example, also those
     // whose texts only say "חיישנים" (regular nun). Found by the OS-12 visual check: 6 of 7.
     expect(ids('חיישן')).toEqual(ids('', ['sensors']));
-    expect(ids('ESP32 צג')).toEqual(['esp32-lcd-hello']); // mixed scripts
+    expect(ids('ESP32 צג')).toEqual(['esp32-lcd-hello', 'mpy-lcd-hello']); // mixed scripts
   });
 
   it('category words are searchable too, in every locale', () => {

@@ -1047,6 +1047,14 @@ export const he: Record<MessageKey, string> = {
   'build.feature.sleep': 'מצבי שינה',
   'build.feature.drive_strength': 'בחירת עוצמת ההנעה של פין (gpio_set_drive_capability)',
   'build.feature.i2c': 'אפיק I2C',
+  // Sprint 24 (M3): MicroPython machine.I2C outside the shape the simulator verified.
+  'build.feature.i2c_frequency':
+    'תדר שעון I2C ‏(freq=) שחסר, שאינו מספר שכתוב בקוד, או שגבוה מ-100 kHz (תדר השעון המדורג של PCF8574)',
+  'build.feature.i2c_bus': 'אפיק I2C שאינו אפיק החומרה 0, ‏I2C(0, …)',
+  'build.feature.i2c_pins': 'פיני I2C שאינם scl=Pin(22), ‏sda=Pin(21), כמספרים שכתובים בקוד',
+  'build.feature.i2c_option': 'אפשרות I2C שהסימולטור לא אימת (timeout=, ארגומנטים אחרים)',
+  'build.feature.i2c_operation':
+    'פעולת I2C ששום רכיב מדומה אינו עונה עליה (readfrom, ‏readfrom_into, ‏readfrom_mem, ‏writeto_mem, …), או שימוש עקיף ב-machine.I2C',
   'build.feature.spi': 'אפיק SPI',
   'build.feature.library': 'ספרייה {name}',
   'mcu.runs.program': 'מריץ את הקוד שלו. ערכו אותו בלשונית "קוד", בנו ואז הריצו.',
@@ -1247,6 +1255,9 @@ export const he: Record<MessageKey, string> = {
   'example.mpy-fade.title': 'MicroPython: עמעום נורית LED ב-PWM',
   'example.mpy-fade.summary':
     'machine.PWM מזין את GPIO18 ב-1 kHz; ‏main.py מעלה את duty_u16 מ-2048 עד 63488 ובחזרה (לעולם לא 0). הזרם הממוצע של הנורית עוקב אחרי ה-duty, על המעגל של העמעום ב-Arduino.',
+  'example.mpy-lcd-hello.title': 'MicroPython: שלום על צג LCD ב-I2C',
+  'example.mpy-lcd-hello.summary':
+    'המעגל של דוגמת ה-LCD של Arduino, מתוכנת ב-MicroPython: ‏machine.I2C על ערוץ 0 (SCL ב-GPIO22, ‏SDA ב-GPIO21) ב-100 kHz, תדר השעון המדורג של PCF8574, ודרייבר HD44780 קטן שנכתב ב-main.py מציגים “Hello, ESP32!” ואת זמן הפעולה. המודול מוזן ב-4.5 V; שני נגדי ה-pull-up של 4.7 kΩ מחוברים ל-3.3 V.',
   'example.esp32-servo-sweep.title': 'ESP32: סריקה של סרוו SG90 ב־PWM',
   'example.esp32-servo-sweep.summary':
     'אות LEDC של 50 Hz ב־GPIO18 עם פולסים של 1.0,‏ 2.0 ו־1.5 ms מזיז את הסרוו ל־0°,‏ 180° ו־90°. הסרוו מוזן מספק המעבדה של 5 V.',

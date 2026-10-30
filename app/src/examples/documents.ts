@@ -36,6 +36,7 @@ import voltageDivider from './data/voltage-divider.json';
 import mpyBlink from './data/mpy-blink.json';
 import mpyButton from './data/mpy-button.json';
 import mpyFade from './data/mpy-fade.json';
+import mpyLcdHello from './data/mpy-lcd-hello.json';
 
 export const EXAMPLE_DOCUMENTS: Record<string, ProjectDocument> = {
   'ohms-law': ohmsLaw as unknown as ProjectDocument,
@@ -70,6 +71,7 @@ export const EXAMPLE_DOCUMENTS: Record<string, ProjectDocument> = {
   'mpy-blink': mpyBlink as unknown as ProjectDocument,
   'mpy-button': mpyButton as unknown as ProjectDocument,
   'mpy-fade': mpyFade as unknown as ProjectDocument,
+  'mpy-lcd-hello': mpyLcdHello as unknown as ProjectDocument,
 };
 
 /** The examples with their documents (tests and tools; the app loads documents lazily). */

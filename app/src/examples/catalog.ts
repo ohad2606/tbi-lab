@@ -394,6 +394,19 @@ export const EXAMPLES: readonly Example[] = [
     probes: [I('D1')],
     parts: ['board.esp32_devkitc_wroom32', 'component.led', 'component.resistor'],
   },
+  // Sprint 24 (M3): hardware I2C from MicroPython.
+  {
+    id: 'mpy-lcd-hello',
+    titleKey: 'example.mpy-lcd-hello.title',
+    summaryKey: 'example.mpy-lcd-hello.summary',
+    probes: [V('R1', 'b'), V('R2', 'b')],
+    parts: [
+      'board.esp32_devkitc_wroom32',
+      'component.resistor',
+      'display.lcd1602_i2c',
+      'instrument.lab_psu',
+    ],
+  },
 ];
 
 export function findExample(id: string): Example | undefined {

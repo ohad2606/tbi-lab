@@ -103,3 +103,107 @@ while True:
     );
   });
 });
+
+/**
+ * Sprint 24 (M3): hardware I2C on a runtime with the `i2c` capability, in exactly the verified
+ * shape, every argument a literal; the clock at most the PCF8574's rated 100 kHz.
+ */
+describe('MicroPython hardware I2C (Sprint 24)', () => {
+  const I2C_RT = ['i2c', 'pad-func', 'pwm', 'sched-input', 'unmodelled'];
+  const ok = `from machine import Pin, I2C
+i2c = I2C(0, scl=Pin(22), sda=Pin(21), freq=100000)
+print(i2c.scan())
+i2c.writeto(0x27, bytes([0x08]))
+i2c.writevto(0x27, (b'\\x0c', b'\\x08'))
+`;
+
+  it('the verified shape is allowed and requires the i2c capability', () => {
+    expect(analyzeMicroPython(ok, I2C_RT)).toEqual({ ...clean, requires: ['i2c'] });
+    for (const src of [
+      'import machine\ni2c = machine.I2C(0, scl=machine.Pin(22), sda=machine.Pin(21), freq=50_000)',
+      'import machine as m\nb = m.I2C(id=0, sda=21, scl=22, freq=0x186A0)',
+      'from machine import I2C as Bus, Pin\nb = Bus(0, scl=Pin(22), sda=Pin(21), freq=100000)',
+      'from machine import *\nb = I2C(0, scl=Pin(22), sda=Pin(21), freq=10000)',
+    ])
+      expect(analyzeMicroPython(src, I2C_RT), src).toEqual({ ...clean, requires: ['i2c'] });
+  });
+
+  it('without the runtime capability I2C stays refused as i2c', () => {
+    expect(analyzeMicroPython(ok).unsupported).toEqual(['i2c']);
+    expect(analyzeMicroPython(ok, ['unmodelled']).unsupported).toEqual(['i2c']);
+    expect(analyzeMicroPython(ok).requires).toBeUndefined();
+  });
+
+  it('SoftI2C stays refused (a bit-banged bus is not decodable)', () => {
+    const src =
+      'from machine import Pin, SoftI2C\nb = SoftI2C(scl=Pin(22), sda=Pin(21), freq=100000)';
+    expect(analyzeMicroPython(src, I2C_RT).unsupported).toEqual(['i2c']);
+  });
+
+  it('freq missing, computed or above 100 kHz is refused by name (i2c_frequency)', () => {
+    for (const freq of [
+      '',
+      ', freq=400000',
+      ', freq=100001',
+      ', freq=F',
+      ', freq=100_000 * 2',
+      ', freq=1e5',
+    ])
+      expect(
+        analyzeMicroPython(
+          `from machine import Pin, I2C\nI2C(0, scl=Pin(22), sda=Pin(21)${freq})`,
+          I2C_RT,
+        ).unsupported,
+        freq,
+      ).toEqual(['i2c_frequency']);
+    // A later re-configuration with a faster clock, too.
+    expect(
+      analyzeMicroPython(`${ok}i2c.init(scl=Pin(22), sda=Pin(21), freq=400000)\n`, I2C_RT)
+        .unsupported,
+    ).toEqual(['i2c_frequency']);
+  });
+
+  it('another bus, other pins, other options are refused by name', () => {
+    const at = (args: string) =>
+      analyzeMicroPython(`from machine import Pin, I2C\nI2C(${args})`, I2C_RT).unsupported;
+    expect(at('1, scl=Pin(22), sda=Pin(21), freq=100000')).toEqual(['i2c_bus']);
+    expect(at('BUS, scl=Pin(22), sda=Pin(21), freq=100000')).toEqual(['i2c_bus']);
+    expect(at('0, scl=Pin(21), sda=Pin(22), freq=100000')).toEqual(['i2c_pins']);
+    expect(at('0, scl=Pin(18), sda=Pin(19), freq=100000')).toEqual(['i2c_pins']);
+    expect(at('0, freq=100000')).toEqual(['i2c_pins']);
+    expect(at('0, scl=Pin(22), sda=Pin(21), freq=100000, timeout=50000')).toEqual(['i2c_option']);
+    expect(at('0, Pin(22), Pin(21), freq=100000')).toEqual(['i2c_option', 'i2c_pins']);
+  });
+
+  it('operations no modelled part answers, and indirect use, are refused (i2c_operation)', () => {
+    for (const op of [
+      'i2c.readfrom(0x27, 1)',
+      'i2c.readfrom_into(0x27, buf)',
+      'i2c.readfrom_mem(0x27, 0, 1)',
+      'i2c.readfrom_mem_into(0x27, 0, buf)',
+      'i2c.writeto_mem(0x27, 0, b"x")',
+      'getattr(i2c, "readfrom")(0x27, 1)',
+    ])
+      expect(analyzeMicroPython(ok + op, I2C_RT).unsupported, op).toEqual(['i2c_operation']);
+    for (const src of [
+      'import machine\nB = machine.I2C\nb = B(0, scl=22, sda=21, freq=100000)',
+      'import machine\nb = getattr(machine, "I2C")(0, scl=22, sda=21, freq=400000)',
+    ])
+      expect(analyzeMicroPython(src, I2C_RT).unsupported, src).toContain('i2c_operation');
+  });
+
+  it('the rated clock is the PCF8574 data-sheet value pinned in the engine', async () => {
+    const { I2C_MAX_FREQ_HZ } = await import('../pyFeatures.js');
+    const { PCF8574_MAX_SCL_HZ } = await import('@tbi-lab/engine');
+    expect(I2C_MAX_FREQ_HZ).toBe(PCF8574_MAX_SCL_HZ);
+    expect(I2C_MAX_FREQ_HZ).toBe(100_000);
+  });
+});
+
+describe('MicroPython hardware I2C: names in strings and comments', () => {
+  it('I2C in a printed string or a comment is not a use of the bus', () => {
+    const src =
+      '# I2C on bus 0\nfrom machine import Pin, I2C\nb = I2C(0, scl=Pin(22), sda=Pin(21), freq=100000)\nprint("I2C scan:", b.scan())\n';
+    expect(analyzeMicroPython(src, ['i2c', 'unmodelled'])).toEqual({ ...clean, requires: ['i2c'] });
+  });
+});

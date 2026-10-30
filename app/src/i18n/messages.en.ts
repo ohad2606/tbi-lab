@@ -1077,6 +1077,16 @@ export const en = {
   'build.feature.sleep': 'sleep modes',
   'build.feature.drive_strength': 'pin drive strength selection (gpio_set_drive_capability)',
   'build.feature.i2c': 'I2C bus',
+  // Sprint 24 (M3): MicroPython machine.I2C outside the shape the simulator verified.
+  'build.feature.i2c_frequency':
+    'an I2C clock (freq=) that is missing, not a number written in the code, or above 100 kHz (the PCF8574’s rated clock)',
+  'build.feature.i2c_bus': 'an I2C bus other than hardware bus 0, I2C(0, …)',
+  'build.feature.i2c_pins':
+    'I2C pins other than scl=Pin(22), sda=Pin(21), written as numbers in the code',
+  'build.feature.i2c_option':
+    'an I2C option the simulator has not verified (timeout=, other arguments)',
+  'build.feature.i2c_operation':
+    'an I2C operation no simulated part answers (readfrom, readfrom_into, readfrom_mem, writeto_mem, …), or machine.I2C used indirectly',
   'build.feature.spi': 'SPI bus',
   'build.feature.library': 'library {name}',
   'mcu.runs.program': 'Runs its code. Edit it in the Code tab, Build, then Run.',
@@ -1281,6 +1291,9 @@ export const en = {
   'example.mpy-fade.title': 'MicroPython: fade an LED with PWM',
   'example.mpy-fade.summary':
     'machine.PWM drives GPIO18 at 1 kHz; main.py steps duty_u16 from 2048 up to 63488 and back (never 0). The LED’s average current follows the duty, on the circuit of the Arduino fade.',
+  'example.mpy-lcd-hello.title': 'MicroPython: hello on an I2C LCD',
+  'example.mpy-lcd-hello.summary':
+    'The circuit of the Arduino LCD example, programmed in MicroPython: machine.I2C on bus 0 (SCL GPIO22, SDA GPIO21) at 100 kHz, the PCF8574’s rated clock, and a small HD44780 driver written in main.py show “Hello, ESP32!” and the uptime. The module runs at 4.5 V; the two 4.7 kΩ pull-ups go to 3.3 V.',
   'example.esp32-servo-sweep.title': 'ESP32: sweep an SG90 servo with PWM',
   'example.esp32-servo-sweep.summary':
     'A 50 Hz LEDC signal on GPIO18 with 1.0, 2.0 and 1.5 ms pulses moves the servo to 0°, 180° and 90°. The servo runs from the 5 V bench supply.',

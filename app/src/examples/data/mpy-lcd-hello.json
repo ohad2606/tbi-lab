@@ -1,0 +1,576 @@
+{
+  "format": "tbi-lab.project",
+  "schemaVersion": 4,
+  "projectId": "prj_examplempylcdhello",
+  "createdWith": {
+    "app": "0.2.0",
+    "schemaVersion": 4
+  },
+  "createdAt": "2026-09-23T00:00:00.000Z",
+  "revision": {
+    "localRevision": 1,
+    "cloudRevision": null,
+    "baseRevision": null,
+    "updatedAt": "2026-09-23T00:00:00.000Z",
+    "deviceId": "dev_tbilab_examples"
+  },
+  "name": "MicroPython: hello on an I2C LCD",
+  "components": [
+    {
+      "id": "PSU1",
+      "type": "instrument.lab_psu",
+      "typeVersion": 1,
+      "params": {
+        "setpointVoltage": {
+          "value": 4.5,
+          "unit": "volt"
+        },
+        "currentLimit": {
+          "value": 0.1,
+          "unit": "ampere"
+        },
+        "outputEnabled": true
+      }
+    },
+    {
+      "id": "GND1",
+      "type": "component.ground",
+      "typeVersion": 1,
+      "params": {}
+    },
+    {
+      "id": "U1",
+      "type": "board.esp32_devkitc_wroom32",
+      "typeVersion": 1,
+      "params": {
+        "firmware": "program"
+      }
+    },
+    {
+      "id": "DS1",
+      "type": "display.lcd1602_i2c",
+      "typeVersion": 1,
+      "params": {
+        "model": "model.lcd.lcd1602_pcf8574",
+        "address": "i2c.0x27"
+      }
+    },
+    {
+      "id": "PSU2",
+      "type": "instrument.lab_psu",
+      "typeVersion": 1,
+      "params": {
+        "setpointVoltage": {
+          "value": 3.3,
+          "unit": "volt"
+        },
+        "currentLimit": {
+          "value": 0.1,
+          "unit": "ampere"
+        },
+        "outputEnabled": true
+      }
+    },
+    {
+      "id": "R1",
+      "type": "component.resistor",
+      "typeVersion": 1,
+      "params": {
+        "resistance": {
+          "value": 4700,
+          "unit": "ohm"
+        }
+      }
+    },
+    {
+      "id": "R2",
+      "type": "component.resistor",
+      "typeVersion": 1,
+      "params": {
+        "resistance": {
+          "value": 4700,
+          "unit": "ohm"
+        }
+      }
+    },
+    {
+      "id": "GND2",
+      "type": "component.ground",
+      "typeVersion": 1,
+      "params": {}
+    },
+    {
+      "id": "GND3",
+      "type": "component.ground",
+      "typeVersion": 1,
+      "params": {}
+    },
+    {
+      "id": "GND4",
+      "type": "component.ground",
+      "typeVersion": 1,
+      "params": {}
+    }
+  ],
+  "nets": [
+    {
+      "id": "N_1",
+      "role": "ground",
+      "userName": null
+    },
+    {
+      "id": "N_2",
+      "role": null,
+      "userName": null
+    },
+    {
+      "id": "N_3",
+      "role": "ground",
+      "userName": null
+    },
+    {
+      "id": "N_4",
+      "role": "ground",
+      "userName": null
+    },
+    {
+      "id": "N_5",
+      "role": null,
+      "userName": null
+    },
+    {
+      "id": "N_6",
+      "role": null,
+      "userName": null
+    },
+    {
+      "id": "N_7",
+      "role": "ground",
+      "userName": null
+    },
+    {
+      "id": "N_8",
+      "role": null,
+      "userName": null
+    }
+  ],
+  "connections": [
+    {
+      "component": "PSU1",
+      "terminal": "positive",
+      "net": "N_2"
+    },
+    {
+      "component": "PSU1",
+      "terminal": "negative",
+      "net": "N_1"
+    },
+    {
+      "component": "GND1",
+      "terminal": "ref",
+      "net": "N_1"
+    },
+    {
+      "component": "U1",
+      "terminal": "gnd",
+      "net": "N_4"
+    },
+    {
+      "component": "U1",
+      "terminal": "gpio22",
+      "net": "N_6"
+    },
+    {
+      "component": "U1",
+      "terminal": "gpio21",
+      "net": "N_5"
+    },
+    {
+      "component": "DS1",
+      "terminal": "gnd",
+      "net": "N_3"
+    },
+    {
+      "component": "DS1",
+      "terminal": "vcc",
+      "net": "N_2"
+    },
+    {
+      "component": "DS1",
+      "terminal": "sda",
+      "net": "N_5"
+    },
+    {
+      "component": "DS1",
+      "terminal": "scl",
+      "net": "N_6"
+    },
+    {
+      "component": "PSU2",
+      "terminal": "positive",
+      "net": "N_8"
+    },
+    {
+      "component": "PSU2",
+      "terminal": "negative",
+      "net": "N_7"
+    },
+    {
+      "component": "R1",
+      "terminal": "a",
+      "net": "N_8"
+    },
+    {
+      "component": "R1",
+      "terminal": "b",
+      "net": "N_5"
+    },
+    {
+      "component": "R2",
+      "terminal": "a",
+      "net": "N_8"
+    },
+    {
+      "component": "R2",
+      "terminal": "b",
+      "net": "N_6"
+    },
+    {
+      "component": "GND2",
+      "terminal": "ref",
+      "net": "N_3"
+    },
+    {
+      "component": "GND3",
+      "terminal": "ref",
+      "net": "N_4"
+    },
+    {
+      "component": "GND4",
+      "terminal": "ref",
+      "net": "N_7"
+    }
+  ],
+  "layout": {
+    "components": {
+      "PSU1": {
+        "x": -420,
+        "y": 0,
+        "rotation": 0
+      },
+      "GND1": {
+        "x": -380,
+        "y": 120,
+        "rotation": 0
+      },
+      "U1": {
+        "x": 0,
+        "y": 0,
+        "rotation": 0
+      },
+      "DS1": {
+        "x": 480,
+        "y": -80,
+        "rotation": 0
+      },
+      "PSU2": {
+        "x": 140,
+        "y": -320,
+        "rotation": 0
+      },
+      "R1": {
+        "x": 240,
+        "y": -180,
+        "rotation": 90
+      },
+      "R2": {
+        "x": 320,
+        "y": -180,
+        "rotation": 90
+      },
+      "GND2": {
+        "x": 420,
+        "y": -200,
+        "rotation": 0
+      },
+      "GND3": {
+        "x": 140,
+        "y": -200,
+        "rotation": 0
+      },
+      "GND4": {
+        "x": 180,
+        "y": -220,
+        "rotation": 0
+      }
+    },
+    "wires": [
+      {
+        "id": "W1",
+        "from": {
+          "kind": "terminal",
+          "component": "PSU1",
+          "terminal": "negative"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "GND1",
+          "terminal": "ref"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W2",
+        "from": {
+          "kind": "terminal",
+          "component": "PSU1",
+          "terminal": "positive"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "DS1",
+          "terminal": "vcc"
+        },
+        "vertices": [
+          {
+            "x": -340,
+            "y": -20
+          },
+          {
+            "x": -340,
+            "y": -400
+          },
+          {
+            "x": 380,
+            "y": -400
+          },
+          {
+            "x": 380,
+            "y": -100
+          }
+        ]
+      },
+      {
+        "id": "W3",
+        "from": {
+          "kind": "terminal",
+          "component": "DS1",
+          "terminal": "gnd"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "GND2",
+          "terminal": "ref"
+        },
+        "vertices": [
+          {
+            "x": 400,
+            "y": -120
+          },
+          {
+            "x": 400,
+            "y": -240
+          },
+          {
+            "x": 420,
+            "y": -240
+          }
+        ]
+      },
+      {
+        "id": "W4",
+        "from": {
+          "kind": "terminal",
+          "component": "U1",
+          "terminal": "gnd"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "GND3",
+          "terminal": "ref"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W5",
+        "from": {
+          "kind": "terminal",
+          "component": "U1",
+          "terminal": "gpio21"
+        },
+        "to": {
+          "kind": "junction",
+          "junction": "J2"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W6",
+        "from": {
+          "kind": "terminal",
+          "component": "U1",
+          "terminal": "gpio22"
+        },
+        "to": {
+          "kind": "junction",
+          "junction": "J3"
+        },
+        "vertices": [
+          {
+            "x": 180,
+            "y": -140
+          },
+          {
+            "x": 180,
+            "y": -60
+          }
+        ]
+      },
+      {
+        "id": "W7",
+        "from": {
+          "kind": "terminal",
+          "component": "PSU2",
+          "terminal": "negative"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "GND4",
+          "terminal": "ref"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W8",
+        "from": {
+          "kind": "terminal",
+          "component": "PSU2",
+          "terminal": "positive"
+        },
+        "to": {
+          "kind": "junction",
+          "junction": "J1"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W9",
+        "from": {
+          "kind": "junction",
+          "junction": "J1"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "R2",
+          "terminal": "a"
+        },
+        "vertices": [
+          {
+            "x": 320,
+            "y": -340
+          }
+        ]
+      },
+      {
+        "id": "W10",
+        "from": {
+          "kind": "terminal",
+          "component": "R1",
+          "terminal": "a"
+        },
+        "to": {
+          "kind": "junction",
+          "junction": "J1"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W11",
+        "from": {
+          "kind": "junction",
+          "junction": "J2"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "DS1",
+          "terminal": "sda"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W12",
+        "from": {
+          "kind": "terminal",
+          "component": "R1",
+          "terminal": "b"
+        },
+        "to": {
+          "kind": "junction",
+          "junction": "J2"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W13",
+        "from": {
+          "kind": "junction",
+          "junction": "J3"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "DS1",
+          "terminal": "scl"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W14",
+        "from": {
+          "kind": "terminal",
+          "component": "R2",
+          "terminal": "b"
+        },
+        "to": {
+          "kind": "junction",
+          "junction": "J3"
+        },
+        "vertices": []
+      }
+    ],
+    "junctions": [
+      {
+        "id": "J1",
+        "x": 240,
+        "y": -340
+      },
+      {
+        "id": "J2",
+        "x": 240,
+        "y": -80
+      },
+      {
+        "id": "J3",
+        "x": 320,
+        "y": -60
+      }
+    ]
+  },
+  "idCounters": {
+    "PSU": 2,
+    "GND": 4,
+    "W": 14,
+    "N": 8,
+    "U": 1,
+    "DS": 1,
+    "R": 2,
+    "J": 3
+  },
+  "programs": {
+    "U1": {
+      "language": "micropython",
+      "profile": "esp32-micropython-1.29",
+      "fileName": "main.py",
+      "text": "# TBI Lab example (MicroPython): \"Hello\" on a 16x2 character LCD over I2C, without an LCD library.\n#\n# The LCD (HD44780 controller) sits behind a PCF8574 I2C backpack at address 0x27. Each byte\n# written to the PCF8574 sets its eight outputs: P0 RS, P1 RW (always 0: write), P2 E,\n# P3 backlight, P4-P7 the LCD's D4-D7. The LCD runs in 4-bit mode: every byte is sent as two\n# nibbles, each latched by a pulse on E.\n# Hardware I2C bus 0: SCL = GPIO22, SDA = GPIO21, 100 kHz (the PCF8574's rated clock); the bus\n# pull-ups are the two 4.7 kOhm resistors to 3.3 V.\nfrom machine import Pin, I2C\nimport time\n\nLCD_ADDR = 0x27\nRS = 0x01\nEN = 0x04\nBACKLIGHT = 0x08\n\ni2c = I2C(0, scl=Pin(22), sda=Pin(21), freq=100000)\n\n\ndef expander_write(v):\n    # Set the PCF8574 outputs (backlight always on).\n    i2c.writeto(LCD_ADDR, bytes([v | BACKLIGHT]))\n\n\ndef nibble(high4, mode):\n    # Latch one nibble (in the high four bits) with an E pulse.\n    v = (high4 & 0xF0) | mode\n    expander_write(v | EN)\n    time.sleep_us(1)\n    expander_write(v)\n    time.sleep_us(50)\n\n\ndef send(value, mode):\n    # A whole byte: high nibble first.\n    nibble(value & 0xF0, mode)\n    nibble((value << 4) & 0xF0, mode)\n\n\ndef command(c):\n    send(c, 0)\n\n\ndef lcd_print(text):\n    for ch in text:\n        send(ord(ch), RS)\n\n\nprint(\"I2C scan:\", [hex(a) for a in i2c.scan()])\n# HD44780 initialisation by instruction, 4-bit interface (datasheet figure 24).\ntime.sleep_ms(50)\nexpander_write(0)\nnibble(0x30, 0)\ntime.sleep_ms(5)\nnibble(0x30, 0)\ntime.sleep_us(150)\nnibble(0x30, 0)\nnibble(0x20, 0)  # 4-bit interface from here on\ncommand(0x28)  # function set: 4-bit, 2 lines, 5x8 dots\ncommand(0x0C)  # display on, cursor off, blink off\ncommand(0x01)  # clear display\ntime.sleep_ms(2)\ncommand(0x06)  # entry mode: increment, no shift\ncommand(0x80)  # line 1, column 1\nlcd_print(\"Hello, ESP32!\")\nprint(\"LCD ready\")\n\nstart = time.ticks_ms()\nwhile True:\n    # Line 2: the uptime in seconds, padded to the 16 characters of the line.\n    up = time.ticks_diff(time.ticks_ms(), start) // 1000\n    command(0xC0)  # line 2, column 1\n    lcd_print(\"{:<16}\".format(\"Up: {} s\".format(up)))\n    time.sleep_ms(1000)\n"
+    }
+  }
+}

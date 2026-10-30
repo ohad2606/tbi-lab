@@ -129,4 +129,16 @@ export function pcf8574InputLimits(
 export const PCF8574_VIH_FRACTION = 0.7;
 export const PCF8574_VIL_FRACTION = 0.3;
 
+/**
+ * Sprint 24 (M3): the PCF8574's rated I2C clock, 100 kHz (NXP PCF8574 product data sheet Rev. 5,
+ * p.1 "100 kHz I2C-bus interface"; docs/sprints/s10-evidence/datasheets/FACTS.md §10). The fastest
+ * SCL a program may select for the bus, per I2C part type the simulator models: a faster bus would
+ * still "work" in the emulator (patch 0008 does not model SCL timing against the target), where the
+ * real part is not rated for it.
+ */
+export const PCF8574_MAX_SCL_HZ = 100_000;
+export const I2C_PART_MAX_SCL_HZ: Readonly<Record<string, number>> = {
+  'display.lcd1602_i2c': PCF8574_MAX_SCL_HZ,
+};
+
 registerPart('display.lcd1602_i2c', LCD1602_I2C);

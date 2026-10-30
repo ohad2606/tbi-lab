@@ -207,9 +207,13 @@ export class MicroPythonProvider implements BuildProvider {
     };
   }
 
-  /** The feature report: every artifact requires `unmodelled`. */
+  /** The feature report: every artifact requires `unmodelled`; I2C adds `i2c` where provided. */
   private features(source: string) {
-    return { ...analyzeMicroPython(source), requires: [...MICROPYTHON_REQUIRES] };
+    const f = analyzeMicroPython(source, this.opts.runtimeCapabilities ?? []);
+    return {
+      ...f,
+      requires: [...new Set([...MICROPYTHON_REQUIRES, ...(f.requires ?? [])])].sort(),
+    };
   }
 
   private internal(what: string, output: string): ProviderOutput {

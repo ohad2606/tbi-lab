@@ -55,6 +55,7 @@ for (const [id, text] of [
   ['mpy-blink', /led = Pin\(2, Pin\.OUT\)/],
   ['mpy-button', /button = Pin\(34, Pin\.IN\)/],
   ['mpy-fade', /PWM\(Pin\(18\), freq=1000/],
+  ['mpy-lcd-hello', /I2C\(0, scl=Pin\(22\), sda=Pin\(21\), freq=100000\)/],
 ] as const)
   test(`the ${id} example opens as a MicroPython program`, async ({ page }) => {
     page.on('pageerror', (e) => {

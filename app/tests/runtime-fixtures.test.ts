@@ -41,6 +41,8 @@ describe('runtime fixtures', () => {
     ['s24-mpy-blink-session.json', 'mpy-blink'],
     ['s24-mpy-button-session.json', 'mpy-button'],
     ['s24-mpy-fade-session.json', 'mpy-fade'],
+    // Sprint 24 (M3): hardware I2C from MicroPython.
+    ['s24-mpy-lcd-hello-session.json', 'mpy-lcd-hello'],
   ] as const)
     it(`${file} is the app request for ${id}`, () => {
       const fx = JSON.parse(
