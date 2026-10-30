@@ -39,7 +39,7 @@ describe('icons and the web app manifest', () => {
       const byName = new Map(files.map((f) => [`/${f.fileName}`, f.source]));
       // Content-hashed names under assets/ (the deployment caches assets/ as immutable).
       for (const f of files)
-        expect(f.fileName).toMatch(/^assets\/[a-z0-9-]+-[0-9a-f]{8}\.(png|webmanifest)$/);
+        expect(f.fileName).toMatch(/^assets\/[a-z0-9-]+-[0-9a-f]{8}\.(png|json)$/);
       const links = tags.map((t) => t.attrs as Record<string, string>);
       const icons = links.filter((a) => a.rel === 'icon');
       expect(icons.map((a) => a.sizes)).toEqual(['16x16', '32x32', '48x48']);

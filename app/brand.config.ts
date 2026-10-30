@@ -78,7 +78,10 @@ export function brandAssets(root: URL, env: TbiEnvironment, base = '/') {
       })),
   };
   const manifestSource = Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`);
-  const manifestName = hashed('manifest', 'webmanifest', manifestSource);
+  // Sprint 25: `.json`, not `.webmanifest`: a static file server's MIME table (Go's, under Caddy)
+  // has no type for `.webmanifest` and served it with none; `.json` gets application/json, which
+  // browsers accept for a manifest. No server configuration changes.
+  const manifestName = hashed('manifest', 'json', manifestSource);
   const files: BrandFile[] = [
     ...icons.map((i) => ({ fileName: i.fileName, source: i.source })),
     { fileName: manifestName, source: manifestSource },

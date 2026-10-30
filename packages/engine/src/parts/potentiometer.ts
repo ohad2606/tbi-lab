@@ -36,6 +36,7 @@
  *      warning (`track_current`, per segment and for the wiper), not a damage threshold;
  *   3. more than 20 VDC across any two terminals (an operating maximum; no absolute maximum).
  */
+import { POT_STANDARD_OHMS } from '@tbi-lab/domain';
 import { Resistor } from '../devices.js';
 import { registerPart, validateCard, type PartElement, type PartModel } from '../parts.js';
 
@@ -46,7 +47,18 @@ export const PTV09A = {
   maxOperatingV: 20,
   /** The datasheet's residual-resistance BOUND (Ω), recorded, not used (ASSUMPTION POT-1). */
   residualBoundOhm: 500,
+  /** …"or ±1 % max." of the total: the same bound as a share of the track. */
+  residualBoundShare: 0.01,
 };
+
+/**
+ * Sprint 25: the largest residual resistance the datasheet allows at a track end, read as the
+ * larger of its two figures ("500 ohms or ±1 % max."; the sheet does not say which applies, so the
+ * wider uncertainty is reported). Used only to say where a result is an ideal-track limit.
+ */
+export function residualBoundOhm(totalOhm: number): number {
+  return Math.max(PTV09A.residualBoundOhm, PTV09A.residualBoundShare * totalOhm);
+}
 
 /**
  * The track current at the rated whole-element dissipation (A): I_rated = sqrt(P_rated / R_total),
@@ -83,6 +95,14 @@ export const POTENTIOMETER: PartModel = {
     const r = ctx.quantity('resistance');
     if (!(r !== undefined && r > 0 && Number.isFinite(r)))
       return { code: 'invalid_parameter', components: [ctx.component.id], param: 'resistance' };
+    // Sprint 25: only the values the part is made in (the datasheet's standard table).
+    if (!POT_STANDARD_OHMS.includes(r))
+      return {
+        code: 'invalid_parameter',
+        components: [ctx.component.id],
+        param: 'resistance',
+        detail: { reason: 'not_standard', value: r, values: [...POT_STANDARD_OHMS] },
+      };
     const p = ctx.quantity('position');
     return p !== undefined && p >= 0 && p <= 100
       ? null
@@ -125,6 +145,12 @@ export const POTENTIOMETER: PartModel = {
         resistanceWB: wb,
         power,
         ...(w !== null ? { wiperVoltage: w } : {}),
+        // Sprint 25: a segment shorter than the datasheet's residual bound. A real part keeps
+        // between 0 and this much resistance there (ASSUMPTION POT-1 models 0), so values that
+        // depend on that end are the ideal-track limit, not an exact prediction.
+        ...(Math.min(aw, wb) < residualBoundOhm(aw + wb)
+          ? { residualMaxOhm: residualBoundOhm(aw + wb) }
+          : {}),
       },
     };
   },

@@ -205,7 +205,50 @@ export function engineErrorMessage(
       const c = doc?.components.find((x) => x.id === error.components?.[0]);
       const def = c ? CATALOG[c.type].params.find((p) => p.key === error.param) : undefined;
       const param = def ? catalogText(locale, def.labelKey) : (error.param ?? '');
+      // Sprint 25: a value outside the part's standard table (the PTV09A's 1-2-5 resistances).
+      const d = error.detail as { reason?: string; value?: number; values?: number[] } | undefined;
+      if (d?.reason === 'not_standard' && def?.kind === 'quantity')
+        return t('sim.error.invalid_parameter.not_standard', {
+          components,
+          param,
+          value: isolateLtr(formatResult(locale, d.value ?? 0, def.unit)),
+          values: (d.values ?? [])
+            .map((v) => isolateLtr(formatResult(locale, v, def.unit)))
+            .join(', '),
+        });
       return t('sim.error.invalid_parameter', { components, param });
+    }
+    // Sprint 25: I2C phases no simulated part can answer honestly (the run stops).
+    case 'i2c_clock_exceeded': {
+      const d = (error.detail ?? {}) as { hz?: number; max?: number };
+      const hz = (v: number | undefined) =>
+        typeof v === 'number'
+          ? isolateLtr(
+              `${new Intl.NumberFormat(locale.code, { maximumFractionDigits: 1 }).format(v / 1000)} kHz`,
+            )
+          : '';
+      return t('sim.error.i2c_clock_exceeded', { components, hz: hz(d.hz), max: hz(d.max) });
+    }
+    case 'i2c_read_unsupported':
+      return t('sim.error.i2c_read_unsupported', { components });
+    // Sprint 25: the firmware read an ESP32 input with no defensible level (Runtime v5).
+    case 'gpio_input_undefined': {
+      const d = (error.detail ?? {}) as {
+        inputs?: { gpio: number; cause: string; voltage?: number }[];
+        vil?: number;
+        vih?: number;
+      };
+      const inputs = d.inputs ?? [];
+      const first = inputs[0];
+      const key = `sim.error.gpio_input_undefined.${first?.cause ?? 'floating'}`;
+      const V = (v: number | undefined) =>
+        typeof v === 'number' ? formatResult(locale, v, 'volt') : '';
+      return t(isMessageKey(key) ? key : 'sim.error.gpio_input_undefined.floating', {
+        pins: isolateLtr(inputs.map((i) => `GPIO${i.gpio}`).join(', ')),
+        voltage: isolateLtr(V(first?.voltage)),
+        vil: isolateLtr(`V_IL ${V(d.vil)}`),
+        vih: isolateLtr(`V_IH ${V(d.vih)}`),
+      });
     }
     // Sprint 22 review 3: a constant-voltage supply the circuit would push current back into.
     case 'psu_sinking': {

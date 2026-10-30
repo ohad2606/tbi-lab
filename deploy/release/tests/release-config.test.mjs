@@ -191,7 +191,7 @@ function branding(dev, { sizes = {} } = {}) {
     icon('maskable-512', 512),
   ]);
   const name = dev ? 'TBI Lab DEV' : 'TBI Lab';
-  files['assets/manifest-0123abcd.webmanifest'] = JSON.stringify({
+  files['assets/manifest-0123abcd.json'] = JSON.stringify({
     name,
     short_name: name,
     icons: [192, 512].flatMap((n) =>
@@ -207,7 +207,7 @@ function branding(dev, { sizes = {} } = {}) {
 <link rel="icon" type="image/png" sizes="16x16" href="/assets/favicon-16-0123abcd.png">
 <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32-0123abcd.png">
 <link rel="apple-touch-icon" sizes="180x180" href="/assets/apple-touch-icon-180-0123abcd.png">
-<link rel="manifest" href="/assets/manifest-0123abcd.webmanifest" crossorigin="use-credentials">
+<link rel="manifest" href="/assets/manifest-0123abcd.json" crossorigin="use-credentials">
 </head></html>`;
   return files;
 }

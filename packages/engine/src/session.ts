@@ -88,6 +88,13 @@ export interface PinResult {
    * outputs (present when it changes), for the voltage ratings: they apply to the extremes.
    */
   voltageRange?: [number, number];
+  /**
+   * Sprint 25: an input-mode pad whose net nothing drives (`floating`: no resistive or source path
+   * to a level, the same rule as `logic_input_floating`; `voltage` is then only the numerical
+   * reference of the leakage model) or that an undetermined logic level reaches (`unknown`).
+   * Such a pad has no defensible digital level.
+   */
+  levelUndefined?: 'floating' | 'unknown';
 }
 
 /** R4: a PWM pad's waveform (ns, exact to float precision) and its high/low pad currents (A). */
@@ -169,6 +176,19 @@ export type EngineErrorCode =
    * - `logic_input_out_of_range`: an input outside the recommended V_I range.
    */
   | 'logic_input_floating'
+  /**
+   * Sprint 25 (Session Host, Runtime v5 `input-read`): the firmware read an ESP32 input that has
+   * no defensible digital level (`param`: the first pad; `detail.inputs`: each pad and why:
+   * unconnected, floating, unknown, or between V_IL and V_IH with no previous level).
+   */
+  | 'gpio_input_undefined'
+  /**
+   * Sprint 25 (Session Host): the I2C controller clocked a START to a part faster than its rated
+   * SCL (`detail.hz`, `detail.max`), or read a byte the modelled part cannot give
+   * (`i2c_read_unsupported`: the LCD backpack's port levels are not modelled).
+   */
+  | 'i2c_clock_exceeded'
+  | 'i2c_read_unsupported'
   /** Review round 4: a logic part's own V_CC or GND pin is reached only through junctions or capacitors (`param`: the pin). */
   | 'logic_supply_undriven'
   | 'logic_supply_missing'
@@ -1570,6 +1590,10 @@ export class EngineSession {
         const current = clean(currents.get(device.id) ?? device.current(xSolution));
         const result: PinResult = { gpio: pin.gpio, mode, voltage, current };
         if (outsideCharacterizedRegion(mode, voltage)) result.outsideModelRange = true;
+        if (mode === 'input') {
+          if (unknown.nodes.has(node)) result.levelUndefined = 'unknown';
+          else if (undriven(node)) result.levelUndefined = 'floating';
+        }
         return result;
       });
     }

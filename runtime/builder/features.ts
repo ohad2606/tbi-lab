@@ -15,6 +15,7 @@
  * use is literal, otherwise every input-capable pin is declared.
  */
 import { ESP32_DEVKITC_WROOM32 } from '@tbi-lab/domain';
+import { programInputReads } from '@tbi-lab/domain';
 import type { FeatureReport } from './protocol.js';
 
 /**
@@ -22,7 +23,7 @@ import type { FeatureReport } from './protocol.js';
  * older rule set are built (and analysed) again instead of being reused from the cache with a
  * report that misses the new rule (Sprint 18: `cpu_frequency`).
  */
-export const FEATURES_ANALYZER = 2;
+export const FEATURES_ANALYZER = 3;
 
 /** GPIOs the simulator can read (digital I/O and input-only pads). */
 export const INPUT_CAPABLE_GPIOS: number[] = ESP32_DEVKITC_WROOM32.pins
@@ -178,11 +179,35 @@ export function analyzeFeatures(input: {
     unsupported.delete(facility);
     requires.add(f.capability);
   }
+  // Sprint 25 (Runtime v5): the bus clock is checked against the part at every START.
+  if (requires.has('i2c') && input.capabilities?.includes('i2c-clock')) requires.add('i2c-clock');
+  // Sprint 25 (Runtime v5): edge interrupts are delivered (`gpio-irq`); the pins are inputs the
+  // host watches. A level / NMI / wake-up interrupt is still refused by the runtime at the write.
+  const irqRuntime = gpioInterrupt.length > 0 && !!input.capabilities?.includes('gpio-irq');
+  if (irqRuntime) requires.add('gpio-irq');
+  let inputReads: FeatureReport['inputReads'];
+  if (input.capabilities?.includes('input-read')) {
+    const r = programInputReads({
+      language: 'arduino-cpp',
+      profile: '',
+      fileName: 'sketch.ino',
+      text: input.source,
+    });
+    // Literal interrupt pins only; an interrupt pin that cannot be told makes the reads unresolved.
+    const irqPins = irqRuntime && gpioInterrupt !== INPUT_CAPABLE_GPIOS ? gpioInterrupt : [];
+    inputReads = {
+      pins: [...new Set([...r.pins, ...irqPins])].sort((a, b) => a - b),
+      // Interrupt pins that could not be told: every input-capable pin was declared.
+      unresolved: r.unresolved || (irqRuntime && gpioInterrupt === INPUT_CAPABLE_GPIOS),
+    };
+    requires.add('input-read');
+  }
   return {
     internalPull,
-    gpioInterrupt,
+    gpioInterrupt: irqRuntime ? [] : gpioInterrupt,
     restart,
     unsupported: [...unsupported].sort(),
     ...(requires.size ? { requires: [...requires].sort() } : {}),
+    ...(inputReads ? { inputReads } : {}),
   };
 }

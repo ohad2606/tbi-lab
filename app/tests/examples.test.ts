@@ -75,6 +75,9 @@ describe('the example set', () => {
       'mpy-button',
       'mpy-fade',
       'mpy-lcd-hello',
+      // Sprint 25 (Phase 4): a potentiometer read as a digital level.
+      'esp32-pot-threshold',
+      'mpy-pot-threshold',
     ]);
     for (const e of EXAMPLES) {
       for (const key of [e.titleKey, e.summaryKey]) {

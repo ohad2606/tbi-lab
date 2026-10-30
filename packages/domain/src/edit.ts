@@ -47,6 +47,8 @@ export type EditError =
   | 'out_of_range'
   /** Sprint POT-UNITS: a quantity off its parameter's resolution grid (catalog `step`). */
   | 'off_grid'
+  /** Sprint 25: a value outside the part's standard table (catalog `values`). */
+  | 'not_standard'
   | 'not_on_wire'
   | 'same_endpoint'
   | 'name_empty'
@@ -183,6 +185,7 @@ export function setParam(
         return 'out_of_range';
       }
       if (!onStep(def, value.value)) return 'off_grid';
+      if (def.values && !def.values.includes(value.value)) return 'not_standard';
     }
     // An optional parameter set back to its default is removed (stored only when it differs).
     if (def.kind === 'enum' && def.optional && value === def.default) delete c.params[key];

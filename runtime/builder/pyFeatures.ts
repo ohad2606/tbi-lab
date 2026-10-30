@@ -35,11 +35,12 @@
  * residual; the run-time U frames remain the backstop for ADC, interrupts and the clock.
  */
 import { I2C_PART_MAX_SCL_HZ } from '@tbi-lab/engine';
+import { programInputReads } from '@tbi-lab/domain';
 import type { FeatureReport } from './protocol.js';
 import { INPUT_CAPABLE_GPIOS } from './features.js';
 
 /** Version of this analysis; part of the MicroPython profile hash (cache key). */
-export const PY_FEATURES_ANALYZER = 3;
+export const PY_FEATURES_ANALYZER = 4;
 
 /**
  * Sprint 24 (M3): the fastest I2C clock a program may select: the lowest rated SCL of the I2C parts
@@ -436,12 +437,28 @@ export function analyzeMicroPython(
   ];
   if (freqCalls.some((re) => re.test(code))) unsupported.add('cpu_frequency');
 
+  // Sprint 25 (Runtime v5): `Pin.irq` edge interrupts are delivered (`gpio-irq`; a level or wake
+  // trigger is still refused by the runtime at the write), and the pins the program may read are
+  // watched (`input-read`).
+  if (capabilities.includes('gpio-irq') && /\.\s*irq\s*\(/.test(code)) requires.push('gpio-irq');
+  if (requires.includes('i2c') && capabilities.includes('i2c-clock')) requires.push('i2c-clock');
+  let inputReads: FeatureReport['inputReads'];
+  if (capabilities.includes('input-read')) {
+    inputReads = programInputReads({
+      language: 'micropython',
+      profile: '',
+      fileName: 'main.py',
+      text: source,
+    });
+    requires.push('input-read');
+  }
   return {
     // The pins cannot be told reliably from Python: every input-capable pin is declared.
     internalPull: pull ? INPUT_CAPABLE_GPIOS : [],
     gpioInterrupt: [],
     restart,
     unsupported: [...unsupported].sort(),
-    ...(requires.length ? { requires } : {}),
+    ...(requires.length ? { requires: requires.sort() } : {}),
+    ...(inputReads ? { inputReads } : {}),
   };
 }

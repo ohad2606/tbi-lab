@@ -556,6 +556,18 @@ export const en = {
     'These parts form a floating circuit with no connection to GND: {components}. Connect them to the circuit or remove them.',
   'sim.error.floating_output_off':
     'These parts reach GND only through {supplies}, whose output is off: {components}. Turn the output on or connect them to GND.',
+  'sim.error.gpio_input_undefined.floating':
+    '{pins}: the program read this ESP32 input while nothing held its level: no wire, resistor or closed switch connects it to a supply, GND or a driving output. A real ESP32 reads an undefined value there, so the run stopped at that read instead of choosing LOW or HIGH. The ESP32’s internal pull resistors are not simulated. Add a pull-down or pull-up resistor (for example 10 kΩ to GND or to 3.3 V) so the pin has a level whenever it is read.',
+  'sim.error.gpio_input_undefined.unconnected':
+    '{pins}: the program read this ESP32 pin, but nothing is connected to it. A real ESP32 reads an undefined value from an unconnected input, so the run stopped at that read instead of choosing LOW or HIGH. The ESP32’s internal pull resistors are not simulated. Connect the pin (with a pull-down or pull-up resistor if it is a button), or remove the read from the program.',
+  'sim.error.gpio_input_undefined.unknown':
+    '{pins}: the program read this ESP32 input while an undetermined logic level (X) reached it, so the run stopped at that read instead of choosing LOW or HIGH. Check the logic inputs marked unknown (X).',
+  'sim.error.gpio_input_undefined.between_thresholds':
+    '{pins}: the program read this ESP32 input at {voltage}, between {vil} and {vih}, before it had ever had a defined level. The datasheet guarantees no reading there, so the run stopped at that read instead of choosing LOW or HIGH. Drive the input to {vil} or below, or {vih} or above.',
+  'sim.error.i2c_clock_exceeded':
+    '{components}: the program clocks the I2C bus at {hz} when it addresses this display, faster than its PCF8574 backpack is rated for ({max}, NXP datasheet). A real module is not guaranteed to work there, so the run stopped. Use Wire.setClock(100000) or less (MicroPython: freq=100000 or less).',
+  'sim.error.i2c_read_unsupported':
+    '{components}: the program reads a byte from this display’s PCF8574 backpack. What a real backpack returns depends on the LCD controller’s pins and the backpack’s own wiring, which are not simulated, so the run stopped instead of inventing a value. The display works for writing; remove the read (Wire.requestFrom).',
   'sim.error.psu_sinking':
     '{components}: this supply is set to constant voltage, and the circuit would push {current} back into it — for example from another source, from a capacitor discharging into it after its setpoint was lowered, or from diode or other leakage current (even nanoamperes count). The bench-supply model cannot absorb current (an idealisation of the simulator), so the circuit is not simulated. Make sure nothing drives this supply’s output above its setpoint, or add a small load across its output (for example a resistor) so that it always delivers current.',
   'sim.error.psu_shorted':
@@ -564,6 +576,9 @@ export const en = {
   'sim.error.psu_parallel':
     '{supplies} are directly connected in parallel. The current simulator cannot determine a unique current sharing between supplies.',
   'sim.error.psu_parallel.hint': 'Use one supply, or separate the outputs with circuit elements.',
+  'sim.error.invalid_parameter.not_standard':
+    '{components}: {param} is {value}, which this part is not made in. The datasheet’s standard values are {values}. Pick one of them in the Properties panel.',
+  'param.notStandard': '{value} (not a standard value)',
   'sim.error.invalid_parameter': '{components}: the value of “{param}” cannot be simulated.',
   'sim.error.unsupported_component': '{components} cannot be simulated yet.',
   'sim.error.invalid_attachment':
@@ -657,9 +672,11 @@ export const en = {
   'checks.psu_no_load':
     '{component}: nothing is connected between + and −, so it supplies no current to any part. Wire the circuit’s return (e.g. a part’s GND) to −.',
   'checks.gpio_input_floating':
-    '{component} {terminal}: the program reads this pin as an input, but while {switches} is open nothing holds its level (no pull-up or pull-down resistor). A real ESP32 then reads an undefined level; the simulator reads it as LOW. Add a resistor (for example 10 kΩ) from the pin to GND or to 3.3 V.',
+    '{component} {terminal}: the program reads this pin as an input, but while {switches} is open nothing holds its level (no pull-up or pull-down resistor). A real ESP32 then reads an undefined level, so the run stops if the program reads it then. Add a resistor (for example 10 kΩ) from the pin to GND or to 3.3 V.',
   'checks.gpio_input_floating_always':
-    '{component} {terminal}: the program reads this pin as an input, but nothing holds its level (no pull-up or pull-down resistor). A real ESP32 then reads an undefined level; the simulator reads it as LOW. Add a resistor (for example 10 kΩ) from the pin to GND or to 3.3 V.',
+    '{component} {terminal}: the program reads this pin as an input, but nothing holds its level (no pull-up or pull-down resistor). A real ESP32 then reads an undefined level, so the run stops when the program reads it. Add a resistor (for example 10 kΩ) from the pin to GND or to 3.3 V.',
+  'checks.gpio_input_unconnected':
+    '{component} {terminal}: the program reads this pin as an input, but nothing is connected to it. A real ESP32 reads an undefined level from an unconnected input, so the run stops when the program reads it. Connect the pin, or remove the read from the program.',
   'checks.psu_shorted_by_wire': '{component}: the output terminals are joined by a wire.',
   'history.undo': 'Undo',
   'history.redo': 'Redo',
@@ -1299,6 +1316,12 @@ export const en = {
   'example.mpy-blink.title': 'MicroPython: blink an LED',
   'example.mpy-blink.summary':
     'The same circuit as the Arduino blink, programmed in MicroPython: main.py sets GPIO2 as an output and switches the red LED (220 Ω to GND) on and off every 500 ms with Pin.value().',
+  'example.esp32-pot-threshold.title': 'ESP32: potentiometer as a digital input',
+  'example.esp32-pot-threshold.summary':
+    'A 10 kΩ potentiometer across 3.3 V feeds GPIO34, which the Arduino program reads as a digital level: LOW at or below 0.825 V, HIGH at or above 2.475 V, the last level in between. GPIO4 lights the LED while it reads HIGH. Turn the wiper while running. Analog input (analogRead) is not supported. Runs on the ESP32 runtime service.',
+  'example.mpy-pot-threshold.title': 'MicroPython: potentiometer as a digital input',
+  'example.mpy-pot-threshold.summary':
+    'The same potentiometer circuit in MicroPython: Pin(34, Pin.IN).value() reads the wiper as 0 at or below 0.825 V and 1 at or above 2.475 V, keeping the last level in between; GPIO4 lights the LED. Turn the wiper while running. machine.ADC is not supported. Runs on the ESP32 runtime service.',
   'example.mpy-button.title': 'MicroPython: a push button lights an LED',
   'example.mpy-button.summary':
     'Hold the button: 3.3 V reaches GPIO34 through 1 kΩ, and a 10 kΩ pull-down holds it LOW when released (GPIO34 has no internal pull). main.py reads it with Pin.IN every 10 ms and copies it to GPIO4, which drives the red LED through 220 Ω.',
@@ -1657,6 +1680,10 @@ export const en = {
   'sim.part.state.component.potentiometer.resistanceWB': 'Resistance W–B',
   'sim.part.state.component.potentiometer.power': 'Dissipation (whole track)',
   'sim.part.state.component.potentiometer.wiperVoltage': 'Wiper voltage to GND',
+  'sim.part.state.component.potentiometer.residualMaxOhm':
+    'End residual resistance (datasheet maximum, not simulated)',
+  'sim.results.potNearEnd':
+    'The wiper is within the datasheet’s residual-resistance bound of a track end. A real PTV09A keeps 0 to {bound} there, which is not simulated: the values that depend on that end are the ideal-track limit, not an exact prediction.',
   'limitation.potentiometer_linear':
     'Linear taper only: two ideal track segments, R·p and R·(1 − p). The position is the share of the track between A and the [[wiper]], not the shaft angle; audio tapers are not offered.',
   'limitation.potentiometer_end_resistance':

@@ -1,0 +1,215 @@
+{
+  "_comment": "Sprint 25 (Phase 4): the app request for mpy-pot-threshold (app/tests/runtime-fixtures.test.ts keeps it equal).",
+  "request": {
+    "protocol": "tbi-lab.session/2",
+    "board": "board.esp32_devkitc_wroom32",
+    "circuit": {
+      "format": "tbi-lab.snapshot",
+      "schemaVersion": 5,
+      "snapshotId": "snap_00fb031e8a6f63bf",
+      "projectId": "prj_examplempypotthreshold",
+      "projectRevision": 1,
+      "components": [
+        {
+          "id": "PSU1",
+          "type": "instrument.lab_psu",
+          "typeVersion": 1,
+          "params": {
+            "setpointVoltage": {
+              "value": 3.3,
+              "unit": "volt"
+            },
+            "currentLimit": {
+              "value": 0.05,
+              "unit": "ampere"
+            },
+            "outputEnabled": true
+          }
+        },
+        {
+          "id": "GND1",
+          "type": "component.ground",
+          "typeVersion": 1,
+          "params": {}
+        },
+        {
+          "id": "RV1",
+          "type": "component.potentiometer",
+          "typeVersion": 1,
+          "params": {
+            "model": "model.potentiometer.bourns_ptv09a_linear",
+            "resistance": {
+              "value": 10000,
+              "unit": "ohm"
+            },
+            "position": {
+              "value": 10,
+              "unit": "percent"
+            }
+          }
+        },
+        {
+          "id": "GND2",
+          "type": "component.ground",
+          "typeVersion": 1,
+          "params": {}
+        },
+        {
+          "id": "R1",
+          "type": "component.resistor",
+          "typeVersion": 1,
+          "params": {
+            "resistance": {
+              "value": 220,
+              "unit": "ohm"
+            }
+          }
+        },
+        {
+          "id": "D1",
+          "type": "component.led",
+          "typeVersion": 1,
+          "params": {
+            "model": "model.led.vishay_tlhr5400"
+          }
+        },
+        {
+          "id": "GND3",
+          "type": "component.ground",
+          "typeVersion": 1,
+          "params": {}
+        },
+        {
+          "id": "GND4",
+          "type": "component.ground",
+          "typeVersion": 1,
+          "params": {}
+        },
+        {
+          "id": "U1_gnd",
+          "type": "component.ground",
+          "typeVersion": 1,
+          "params": {}
+        }
+      ],
+      "nets": [
+        {
+          "id": "N_1",
+          "role": "ground"
+        },
+        {
+          "id": "N_2",
+          "role": null
+        },
+        {
+          "id": "N_3",
+          "role": "ground"
+        },
+        {
+          "id": "N_4",
+          "role": null
+        },
+        {
+          "id": "N_5",
+          "role": null
+        },
+        {
+          "id": "N_6",
+          "role": null
+        },
+        {
+          "id": "N_7",
+          "role": "ground"
+        },
+        {
+          "id": "N_8",
+          "role": "ground"
+        }
+      ],
+      "connections": [
+        {
+          "component": "PSU1",
+          "terminal": "positive",
+          "net": "N_2"
+        },
+        {
+          "component": "PSU1",
+          "terminal": "negative",
+          "net": "N_1"
+        },
+        {
+          "component": "GND1",
+          "terminal": "ref",
+          "net": "N_1"
+        },
+        {
+          "component": "RV1",
+          "terminal": "a",
+          "net": "N_3"
+        },
+        {
+          "component": "RV1",
+          "terminal": "wiper",
+          "net": "N_4"
+        },
+        {
+          "component": "RV1",
+          "terminal": "b",
+          "net": "N_2"
+        },
+        {
+          "component": "GND2",
+          "terminal": "ref",
+          "net": "N_3"
+        },
+        {
+          "component": "R1",
+          "terminal": "a",
+          "net": "N_5"
+        },
+        {
+          "component": "R1",
+          "terminal": "b",
+          "net": "N_6"
+        },
+        {
+          "component": "D1",
+          "terminal": "anode",
+          "net": "N_6"
+        },
+        {
+          "component": "D1",
+          "terminal": "cathode",
+          "net": "N_7"
+        },
+        {
+          "component": "GND3",
+          "terminal": "ref",
+          "net": "N_7"
+        },
+        {
+          "component": "GND4",
+          "terminal": "ref",
+          "net": "N_8"
+        },
+        {
+          "component": "U1_gnd",
+          "terminal": "ref",
+          "net": "N_8"
+        }
+      ]
+    },
+    "attachments": [
+      {
+        "gpio": 4,
+        "component": "R1",
+        "terminal": "a"
+      },
+      {
+        "gpio": 34,
+        "component": "RV1",
+        "terminal": "wiper"
+      }
+    ]
+  }
+}

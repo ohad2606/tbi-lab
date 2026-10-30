@@ -380,6 +380,42 @@ function ParamField({
     );
   }
 
+  // Sprint 25: a part made only in a standard table of values is chosen from that list.
+  if (def.values) {
+    const v = current && typeof current === 'object' ? current.value : null;
+    const listed = v !== null && def.values.includes(v);
+    return (
+      <div class="field">
+        <label for={id}>{catalogText(locale, def.labelKey)}</label>
+        <select
+          id={id}
+          data-testid={id}
+          class="technical"
+          dir="ltr"
+          value={v === null ? '' : String(v)}
+          disabled={disabled}
+          onChange={(e) => {
+            const value = Number((e.target as HTMLSelectElement).value);
+            if (doc && def.values!.includes(value))
+              store.apply(setParam(doc, c.id, def.key, { value, unit: def.unit }));
+          }}
+        >
+          {v !== null && !listed && (
+            <option value={String(v)} disabled>
+              {t('param.notStandard', { value: formatResult(locale, v, def.unit) })}
+            </option>
+          )}
+          {def.values.map((x) => (
+            <option key={x} value={String(x)}>
+              {formatResult(locale, x, def.unit)}
+            </option>
+          ))}
+        </select>
+        {lockedHint}
+      </div>
+    );
+  }
+
   return (
     <>
       <ValueControl
@@ -625,6 +661,13 @@ function ComponentResultView({
         </p>
       )}
       {r?.type === 'component.led' && <p class="muted small">{t('sim.results.ledLit')}</p>}
+      {r?.type === 'component.potentiometer' && typeof r.state?.residualMaxOhm === 'number' && (
+        <p class="muted small" data-testid="pot-near-end">
+          {t('sim.results.potNearEnd', {
+            bound: isolateLtr(formatResult(locale, r.state.residualMaxOhm, 'ohm')),
+          })}
+        </p>
+      )}
     </section>
   );
 }
@@ -639,6 +682,7 @@ const STATE_UNITS: Record<string, UnitId> = {
   resistanceAW: 'ohm',
   resistanceWB: 'ohm',
   wiperVoltage: 'volt',
+  residualMaxOhm: 'ohm',
   // Sprint 19B: logic gates.
   supplyV: 'volt',
   outputValidA: 'ampere',
@@ -970,6 +1014,11 @@ function ChecksSection({ hidden }: { hidden: boolean }) {
           ? t('checks.gpio_input_floating', { component, terminal, switches: list(switches) })
           : t('checks.gpio_input_floating_always', { component, terminal });
       }
+      case 'gpio_input_unconnected':
+        return t('checks.gpio_input_unconnected', {
+          component,
+          terminal: termName(i.components[0]!, i.terminals?.[0] ?? ''),
+        });
       case 'no_ground':
         return t('checks.no_ground');
       default:

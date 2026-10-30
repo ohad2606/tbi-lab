@@ -1,0 +1,699 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: TBI Lab runtime <runtime@tbi-lab.local>
+Date: Fri, 30 Oct 2026 22:00:00 +0000
+Subject: [PATCH] hw/gpio/esp32_gpio, hw/i2c/esp32_i2c, hw/misc/tbi_bridge,
+ hw/xtensa: undefined-input reads, GPIO edge interrupts, I2C clock (Runtime
+ v5)
+
+TBI Lab (Sprint 25). Three bridge capabilities.
+
+input-read: the host marks pads whose level it cannot define (Z <pad> <0|1>: nothing holds the
+net, or its voltage is between V_IL and V_IH with no previous level). A guest read of GPIO_IN or
+GPIO_IN1 while such a pad of that register is not driving is reported once, at the read itself, as
+N <vns> <mask> (bit N = GPIO N); a pad is reported again only after the host defined it in between.
+The value read is unchanged: the host ends the session instead of letting it be used.
+
+gpio-irq: edge interrupts (ESP32 TRM v5.9, Register 6.30: GPIO_PINn_INT_TYPE 1 rising, 2 falling,
+3 any edge; INT_ENA bit 0 APP CPU, bit 2 PRO CPU). A change of a pad's GPIO_IN bit that matches
+its type sets its GPIO_STATUS/STATUS1 bit while the PRO or APP CPU interrupt is enabled;
+GPIO_PCPU_INT/ACPU_INT(1) read the status bits enabled for that CPU, and each CPU's
+GPIO_INTERRUPT line is high while one is set. The interrupt matrix gains per-CPU source inputs
+(the GPIO signal differs per CPU on ETS_GPIO_INTR_SOURCE), whose level follows a later map change.
+Level types (the TRM does not state how a cleared status behaves while the level persists), NMI
+and SDIO enables and wake-up enable stay reported as unmodelled gpio-interrupt.
+
+i2c-clock: each START frame carries the SCL period programmed then, in 80 MHz module clock cycles,
+as TRM v5.9 Table 21.3-1 defines it from SCL_LOW_PERIOD, SCL_HIGH_PERIOD and I2C_SCL_FILTER_CFG
+(now stored): B <vns> <bus> S <addr> <rw> <cycles>. The host checks it against the addressed
+part's rated clock. Rise time is not included, so the frequency derived is an upper bound.
+---
+ hw/gpio/esp32_gpio.c           | 161 +++++++++++++++++++++++++++++++--
+ hw/i2c/esp32_i2c.c             |  27 +++++-
+ hw/misc/tbi_bridge.c           |  52 ++++++++++-
+ hw/xtensa/esp32.c              |   7 ++
+ hw/xtensa/esp32_intc.c         |  50 ++++++++++
+ include/hw/gpio/esp32_gpio.h   |  32 +++++++
+ include/hw/i2c/esp32_i2c.h     |   5 +
+ include/hw/xtensa/esp32_intc.h |   8 ++
+ 8 files changed, 329 insertions(+), 13 deletions(-)
+
+diff --git a/hw/gpio/esp32_gpio.c b/hw/gpio/esp32_gpio.c
+index fe0a02e..0e76a1a 100644
+--- a/hw/gpio/esp32_gpio.c
++++ b/hw/gpio/esp32_gpio.c
+@@ -29,7 +29,20 @@
+  *     routed back to simple GPIO (then its current state is published again). A FUNCn_OUT_SEL the
+  *     guest never wrote counts as simple GPIO; register read-back is unchanged. An open-drain
+  *     pad that outputs 1 is released (not driving): only its 0 drives the net.
+- * Not modelled (documented runtime limitations): GPIO interrupts (STATUS bits are storage only),
++ *   - TBI Lab (Sprint 25, Runtime v5, input-read): the host marks pads whose level it cannot
++ *     define ("esp32-pad-undef"). When the guest reads GPIO_IN or GPIO_IN1 while such a pad of
++ *     that register is not driving, the pads are reported once (tbi_bridge_input_read) before the
++ *     read returns; a pad is reported again only after the host has defined it in between. The
++ *     value read is unchanged (the host ends the session instead of letting it be used).
++ *   - TBI Lab (Sprint 25, Runtime v5, gpio-irq): EDGE interrupts (TRM v5.9 Register 6.30,
++ *     GPIO_PINn_INT_TYPE 1 rising, 2 falling, 3 any edge). A change of a pad's input level (the
++ *     GPIO_IN bit: the applied level, or its own output while driving) that matches its type sets
++ *     its GPIO_STATUS/STATUS1 bit while GPIO_PINn_INT_ENA enables the PRO (bit 2) or APP (bit 0)
++ *     CPU interrupt. GPIO_PCPU_INT/ACPU_INT (and *_INT1) read the status bits enabled for that CPU;
++ *     the CPU's "esp32-gpio-irq" line is high while any is set (a level source: W1TC clears it).
++ *     Level types (4, 5: the TRM does not state how a cleared status behaves while the level
++ *     persists), NMI and SDIO enables, and wake-up enable are reported unmodelled at the write.
++ * Not modelled (documented runtime limitations): GPIO level/NMI/wake-up interrupts,
+  * the GPIO matrix input routing (FUNCm_IN_SEL is storage only), IO_MUX pad functions, internal
+  * pull-ups/pull-downs and drive strength. Peripheral signals other than I2C carry no meaning for
+  * the TBI host (ADR-011 §3).
+@@ -62,6 +75,12 @@ static uint64_t esp32_gpio_drivers(Esp32GpioState *s)
+ }
+ 
+ #define TBI_A_GPIO_PIN0         0x88
++/* GPIO_PINn_REG fields (TRM v5.9 Register 6.30). */
++#define TBI_PIN_INT_TYPE(v)     (((v) >> 7) & 7)
++#define TBI_PIN_WAKEUP(v)       (((v) >> 10) & 1)
++#define TBI_PIN_INT_ENA(v)      (((v) >> 13) & 0x1f)
++#define TBI_INT_ENA_APP         0x01
++#define TBI_INT_ENA_PRO         0x04
+ #define TBI_A_GPIO_FUNC0_OUT    0x530
+ #define TBI_SIG_GPIO_OUT        256
+ #define TBI_PAD_STATE_UNKNOWN   0xff
+@@ -151,6 +170,72 @@ static uint64_t esp32_gpio_inputs(Esp32GpioState *s)
+     return ((esp32_gpio_levels(s) & drivers) | (s->ext_in & ~drivers)) & PADS_EXIST;
+ }
+ 
++void tbi_bridge_input_read(uint64_t pads);
++
++static uint32_t esp32_gpio_pin_reg(Esp32GpioState *s, int i)
++{
++    return s->regs[(TBI_A_GPIO_PIN0 + 4 * i) / 4];
++}
++
++static uint64_t esp32_gpio_status(Esp32GpioState *s)
++{
++    return ((uint64_t)s->status | ((uint64_t)(s->status1 & 0xff) << 32)) & PADS_EXIST;
++}
++
++/* (gpio-irq) The status bits enabled for one CPU's interrupt (TBI_INT_ENA_PRO or _APP). */
++static uint64_t esp32_gpio_cpu_int(Esp32GpioState *s, uint32_t ena)
++{
++    uint64_t st = esp32_gpio_status(s), m = 0;
++
++    for (int i = 0; i < ESP32_GPIO_PADS; i++) {
++        if ((st >> i) & 1 && TBI_PIN_INT_ENA(esp32_gpio_pin_reg(s, i)) & ena) {
++            m |= 1ULL << i;
++        }
++    }
++    return m;
++}
++
++/*
++ * (gpio-irq) Latch the edges since the last check into STATUS, then drive both CPU lines. Called
++ * after every change of an input level, an output, a pin configuration or the status.
++ */
++static void esp32_gpio_irq_update(Esp32GpioState *s)
++{
++    uint64_t in = esp32_gpio_inputs(s);
++    uint64_t changed = in ^ s->irq_last_in;
++
++    s->irq_last_in = in;
++    for (int i = 0; changed && i < ESP32_GPIO_PADS; i++) {
++        uint32_t pin = esp32_gpio_pin_reg(s, i);
++        uint32_t type = TBI_PIN_INT_TYPE(pin);
++        bool rising = (in >> i) & 1;
++
++        if (!((changed >> i) & 1) || !(TBI_PIN_INT_ENA(pin) & (TBI_INT_ENA_PRO | TBI_INT_ENA_APP))) {
++            continue;
++        }
++        if (type == 3 || (type == 1 && rising) || (type == 2 && !rising)) {
++            if (i < 32) {
++                s->status |= 1u << i;
++            } else {
++                s->status1 |= 1u << (i - 32);
++            }
++        }
++    }
++    qemu_set_irq(s->cpu_irq[ESP32_GPIO_IRQ_PRO], esp32_gpio_cpu_int(s, TBI_INT_ENA_PRO) != 0);
++    qemu_set_irq(s->cpu_irq[ESP32_GPIO_IRQ_APP], esp32_gpio_cpu_int(s, TBI_INT_ENA_APP) != 0);
++}
++
++/* (input-read) A read of the input register covering `bank`: report its undefined input pads. */
++static void esp32_gpio_report_undefined(Esp32GpioState *s, uint64_t bank)
++{
++    uint64_t u = s->undefined & ~esp32_gpio_drivers(s) & bank & PADS_EXIST & ~s->undefined_reported;
++
++    if (u) {
++        s->undefined_reported |= u;
++        tbi_bridge_input_read(u);
++    }
++}
++
+ static uint64_t esp32_gpio_classic_read(Esp32GpioState *s, hwaddr addr)
+ {
+     switch (addr) {
+@@ -165,13 +250,30 @@ static uint64_t esp32_gpio_classic_read(Esp32GpioState *s, hwaddr addr)
+     case A_GPIO_STRAP:
+         return s->strap_mode;
+     case A_GPIO_IN:
++        esp32_gpio_report_undefined(s, 0xffffffffULL);
+         return (uint32_t)esp32_gpio_inputs(s);
+     case A_GPIO_IN1:
++        esp32_gpio_report_undefined(s, 0xff00000000ULL);
+         return (uint32_t)(esp32_gpio_inputs(s) >> 32) & 0xff;
+     case A_GPIO_STATUS:
+         return s->status;
+     case A_GPIO_STATUS1:
+         return s->status1 & 0xff;
++    case A_GPIO_PCPU_INT:
++        return (uint32_t)esp32_gpio_cpu_int(s, TBI_INT_ENA_PRO);
++    case A_GPIO_ACPU_INT:
++        return (uint32_t)esp32_gpio_cpu_int(s, TBI_INT_ENA_APP);
++    case A_GPIO_PCPU_INT1:
++        return (uint32_t)(esp32_gpio_cpu_int(s, TBI_INT_ENA_PRO) >> 32) & 0xff;
++    case A_GPIO_ACPU_INT1:
++        return (uint32_t)(esp32_gpio_cpu_int(s, TBI_INT_ENA_APP) >> 32) & 0xff;
++    case A_GPIO_PCPU_NMI_INT:
++    case A_GPIO_ACPU_NMI_INT:
++    case A_GPIO_CPUSDIO_INT:
++    case A_GPIO_PCPU_NMI_INT1:
++    case A_GPIO_ACPU_NMI_INT1:
++    case A_GPIO_CPUSDIO_INT1:
++        return 0; /* NMI / SDIO enables are refused (unmodelled) */
+     case A_GPIO_OUT_W1TS:
+     case A_GPIO_OUT_W1TC:
+     case A_GPIO_OUT1_W1TS:
+@@ -237,38 +339,53 @@ static void esp32_gpio_classic_write(Esp32GpioState *s, hwaddr addr, uint32_t v)
+         return; /* read-only */
+     case A_GPIO_STATUS:
+         s->status = v;
+-        return;
++        break;
+     case A_GPIO_STATUS_W1TS:
+         s->status |= v;
+-        return;
++        break;
+     case A_GPIO_STATUS_W1TC:
+         s->status &= ~v;
+-        return;
++        break;
+     case A_GPIO_STATUS1:
+         s->status1 = v & 0xff;
+-        return;
++        break;
+     case A_GPIO_STATUS1_W1TS:
+         s->status1 |= v & 0xff;
+-        return;
++        break;
+     case A_GPIO_STATUS1_W1TC:
+         s->status1 &= ~v;
+-        return;
++        break;
++    case A_GPIO_ACPU_INT:
++    case A_GPIO_ACPU_NMI_INT:
++    case A_GPIO_PCPU_INT:
++    case A_GPIO_PCPU_NMI_INT:
++    case A_GPIO_CPUSDIO_INT:
++    case A_GPIO_ACPU_INT1:
++    case A_GPIO_ACPU_NMI_INT1:
++    case A_GPIO_PCPU_INT1:
++    case A_GPIO_PCPU_NMI_INT1:
++    case A_GPIO_CPUSDIO_INT1:
++        return; /* read-only */
+     default:
+         s->regs[addr / 4] = v;
+         if (addr >= TBI_A_GPIO_FUNC0_OUT && addr < TBI_A_GPIO_FUNC0_OUT + 4 * ESP32_GPIO_PADS) {
+             s->out_sel_written |= 1ULL << ((addr - TBI_A_GPIO_FUNC0_OUT) / 4);
+         } else if (!(addr >= TBI_A_GPIO_PIN0 && addr < TBI_A_GPIO_PIN0 + 4 * ESP32_GPIO_PADS)) {
+             return;
+-        } else if (((v >> 7) & 7) && ((v >> 13) & 0x1f)) {
++        } else if ((TBI_PIN_INT_TYPE(v) &&
++                    (TBI_PIN_INT_TYPE(v) > 3 || TBI_PIN_INT_ENA(v) & ~(TBI_INT_ENA_PRO | TBI_INT_ENA_APP)) &&
++                    TBI_PIN_INT_ENA(v)) || TBI_PIN_WAKEUP(v)) {
+             /*
+-             * TBI Lab (Runtime v4): GPIO_PINn with an interrupt type AND an interrupt enable: the
+-             * guest enables a GPIO interrupt, which this emulator does not deliver (`unmodelled`).
++             * TBI Lab (Runtime v4, narrowed in v5): a GPIO interrupt this emulator does not
++             * deliver (level type, NMI or SDIO enable, wake-up enable) is `unmodelled`. Edge types
++             * on the PRO/APP CPU interrupt are delivered (gpio-irq).
+              */
+             tbi_bridge_unmodelled("gpio-interrupt");
+         }
+         break; /* functions, then pads, are published below */
+     }
+     esp32_gpio_update_pads(s);
++    esp32_gpio_irq_update(s);
+ }
+ 
+ static uint64_t esp32_gpio_read(void *opaque, hwaddr addr, unsigned int size)
+@@ -313,6 +430,25 @@ static void esp32_gpio_pad_in(void *opaque, int pad, int level)
+     } else {
+         s->ext_in &= ~(1ULL << pad);
+     }
++    if (s->classic) {
++        esp32_gpio_irq_update(s);
++    }
++}
++
++/* (input-read) The host marks a pad's level as undefined (1) or defined again (0). */
++static void esp32_gpio_pad_undef(void *opaque, int pad, int undefined)
++{
++    Esp32GpioState *s = ESP32_GPIO(opaque);
++
++    if (pad < 0 || pad >= ESP32_GPIO_PADS) {
++        return;
++    }
++    if (undefined) {
++        s->undefined |= 1ULL << pad;
++    } else {
++        s->undefined &= ~(1ULL << pad);
++        s->undefined_reported &= ~(1ULL << pad);
++    }
+ }
+ 
+ static const MemoryRegionOps uart_ops = {
+@@ -335,6 +471,8 @@ static void esp32_gpio_reset_hold(Object *obj, ResetType type)
+     memset(s->regs, 0, sizeof(s->regs));
+     s->out_sel_written = 0;
+     esp32_gpio_update_pads(s);
++    s->irq_last_in = esp32_gpio_inputs(s);
++    esp32_gpio_irq_update(s);
+ }
+ 
+ static void esp32_gpio_realize(DeviceState *dev, Error **errp)
+@@ -359,6 +497,9 @@ static void esp32_gpio_init(Object *obj)
+         s->pad_func[i] = TBI_SIG_GPIO_OUT;
+     }
+     qdev_init_gpio_in_named(DEVICE(obj), esp32_gpio_pad_in, ESP32_GPIO_PAD_IN, ESP32_GPIO_PADS);
++    qdev_init_gpio_in_named(DEVICE(obj), esp32_gpio_pad_undef, ESP32_GPIO_PAD_UNDEF,
++                            ESP32_GPIO_PADS);
++    qdev_init_gpio_out_named(DEVICE(obj), s->cpu_irq, ESP32_GPIO_IRQ_OUT, 2);
+ }
+ 
+ static Property esp32_gpio_properties[] = {
+diff --git a/hw/i2c/esp32_i2c.c b/hw/i2c/esp32_i2c.c
+index ae964ed..d7b9447 100644
+--- a/hw/i2c/esp32_i2c.c
++++ b/hw/i2c/esp32_i2c.c
+@@ -7,6 +7,24 @@
+ #include "hw/qdev-properties.h"
+ #include "qemu/timer.h"
+ 
++/*
++ * TBI Lab (Runtime v5, i2c-clock): one SCL period in 80 MHz module clock cycles as the ESP32 TRM
++ * v5.9 Table 21.3-1 defines it: (SCL_LOW_PERIOD + 1) + SCL_HIGH_PERIOD + 7 without the SCL filter,
++ * + 8 with a filter threshold of 0..2, + 6 + threshold for 3..7. Rise time (which only lengthens
++ * the period) is not included: the frequency derived from it is an upper bound.
++ */
++static uint32_t esp32_i2c_scl_cycles(Esp32I2CState *s)
++{
++    uint32_t low = (s->low_period_reg & 0x3fff) + 1;
++    uint32_t high = s->high_period_reg & 0x3fff;
++    uint32_t thres = FIELD_EX32(s->scl_filter_cfg_reg, I2C_SCL_FILTER_CFG, THRES);
++
++    if (!FIELD_EX32(s->scl_filter_cfg_reg, I2C_SCL_FILTER_CFG, EN)) {
++        return low + high + 7;
++    }
++    return low + high + (thres <= 2 ? 8 : 6 + thres);
++}
++
+ static void esp32_i2c_do_transaction(Esp32I2CState * s);
+ static void esp32_i2c_update_irq(Esp32I2CState * s);
+ 
+@@ -31,6 +49,7 @@ static void esp32_i2c_reset_hold(Object *obj, ResetType type)
+     s->sda_sample_reg = 0;
+     s->high_period_reg = 0;
+     s->low_period_reg = 0;
++    s->scl_filter_cfg_reg = 0;
+     s->start_hold_reg = 0;
+     s->rstart_setup_reg = 0;
+     s->stop_hold_reg = 0;
+@@ -99,6 +118,8 @@ static uint64_t esp32_i2c_read(void * opaque, hwaddr addr, unsigned int size)
+         return s->stop_hold_reg;
+     case A_I2C_STOP_SETUP:
+         return s->stop_setup_reg;
++    case A_I2C_SCL_FILTER_CFG:
++        return s->scl_filter_cfg_reg;
+     default:
+         return 0;
+     }
+@@ -175,6 +196,9 @@ static void esp32_i2c_write(void * opaque, hwaddr addr, uint64_t value, unsigned
+     case A_I2C_STOP_SETUP:
+         s->stop_setup_reg = value;
+         break;
++    case A_I2C_SCL_FILTER_CFG:
++        s->scl_filter_cfg_reg = value;
++        break;
+     default:
+         break;
+     }
+@@ -251,7 +275,8 @@ static void esp32_i2c_do_transaction(Esp32I2CState * s)
+                     int ack;
+                     if (!s->trans_ongoing) {
+                         s->trans_ongoing = true;
+-                        ack = tbi_bridge_i2c(s->tbi_bus, 'S', data);
++                        /* (i2c-clock, Runtime v5) the programmed SCL period rides on the START. */
++                        ack = tbi_bridge_i2c(s->tbi_bus, 'S', esp32_i2c_scl_cycles(s) << 8 | data);
+                     } else {
+                         ack = tbi_bridge_i2c(s->tbi_bus, 'W', data);
+                     }
+diff --git a/hw/misc/tbi_bridge.c b/hw/misc/tbi_bridge.c
+index 21810f1..0db0b25 100644
+--- a/hw/misc/tbi_bridge.c
++++ b/hw/misc/tbi_bridge.c
+@@ -25,6 +25,9 @@
+  *                                       inverted:<sel> (R4) when the routing is inverted;
+  *                                       <od> = open drain. Host replies (commands...) C
+  *   B <vns> <bus> S <addr> <rw>         (i2c) START or repeated START, 7-bit address (hex)
++ *                                       (i2c-clock, Runtime v5) followed by <cycles>: the SCL
++ *                                       period programmed then, in 80 MHz module clock cycles
++ *                                       (TRM v5.9 Table 21.3-1)
+  *   B <vns> <bus> W <byte>              (i2c) the controller writes a byte (hex)
+  *   B <vns> <bus> R <ack>               (i2c) the controller reads a byte; <ack> = it will ACK
+  *   B <vns> <bus> P                     (i2c) STOP
+@@ -40,6 +43,11 @@
+  *                                       two command ticks: a settled lowering). Sent
+  *                                       once per facility, at the access itself, before any dead or
+  *                                       crashed behaviour follows. Host replies (commands...) C
++ *   N <vns> <pads>                      (input-read, Runtime v5) the guest read GPIO_IN/GPIO_IN1
++ *                                       while these pads (hex bit mask, bit N = GPIO N), which
++ *                                       the host marked undefined, were not driving; once per
++ *                                       pad until the host defines it again. Host replies
++ *                                       (commands...) C
+  * host -> QEMU, inside a reply:
+  *   I <pad> <level>                     apply an external logic level to a pad (immediately)
+  *   R <hex>                             queue bytes for the guest UART0 receiver (tick replies)
+@@ -48,6 +56,8 @@
+  *                                       <vns>, strictly later than the frame being answered
+  *   X <pad>                             (sched-input) cancel every pending J on <pad>
+  *   K <ack> / D <hex>                   (i2c) only in, and required by, a reply to B
++ *   Z <pad> <0|1>                       (input-read) mark a pad's level undefined (1) or defined
++ *                                       (0); applies immediately, like I
+  *   C                                   end of reply; the guest continues
+  * <vns> is QEMU_CLOCK_VIRTUAL in ns (simulation time under -icount shift=3,sleep=off).
+  *
+@@ -57,6 +67,9 @@
+  * host knows its own schedule) and the same vCPU resumes, so a scheduled edge never reshapes vCPU
+  * scheduling. Entries due at the same time apply in the order they were received.
+  *
++ * gpio-irq (Runtime v5) adds no frame: GPIO edge interrupts are delivered inside QEMU
++ * (hw/gpio/esp32_gpio.c) from the levels the host applies; the token tells the host they are.
++ *
+  * Fail closed: a malformed or unexpected reply, or the loss of the host connection, terminates
+  * QEMU at once with a distinct exit status (EXIT_PROTOCOL / EXIT_PEER_LOST) and a diagnostic on
+  * stderr. There is no retry and no silent continuation. Guest serial output never goes to stderr;
+@@ -84,6 +97,7 @@
+ #define TBI_PAD_OUT "esp32-pad"
+ #define TBI_PAD_IN "esp32-pad-in"
+ #define TBI_PAD_FUNC "esp32-pad-func"
++#define TBI_PAD_UNDEF "esp32-pad-undef"
+ #define TBI_PADS 40
+ 
+ #define TBI_LINE_MAX 1024
+@@ -91,7 +105,7 @@
+ #define TBI_RX_PENDING_MAX 4096
+ 
+ /* Capability tokens this build implements, sorted (ADR-011 §1). */
+-#define TBI_BRIDGE_CAPS "i2c,pad-func,pwm,sched-input,unmodelled"
++#define TBI_BRIDGE_CAPS "gpio-irq,i2c,i2c-clock,input-read,pad-func,pwm,sched-input,unmodelled"
+ #define TBI_SCHED_MAX 512
+ /*
+  * (unmodelled) Command ticks a lowered CPU clock must hold before it counts as settled. Checked at
+@@ -115,6 +129,7 @@ struct TbiBridge {
+     char in[TBI_LINE_MAX];
+     size_t in_len;
+     qemu_irq pad_in[TBI_PADS];
++    qemu_irq pad_undef[TBI_PADS];
+     QEMUTimer *tick;
+     int64_t next_tick_ns;
+     uint8_t rx_pending[TBI_RX_PENDING_MAX];
+@@ -320,6 +335,16 @@ static void tbi_reply(TbiBridge *s, bool allow_rx)
+             qemu_set_irq(s->pad_in[pad], (int)level);
+             continue;
+         }
++        if (line[0] == 'Z' && line[1] == ' ') {
++            unsigned pad, undefined;
++            char tail;
++            if (sscanf(line + 2, "%u %u%c", &pad, &undefined, &tail) != 2 || pad >= TBI_PADS ||
++                undefined > 1) {
++                tbi_fail(EXIT_PROTOCOL, "malformed undefined-level command");
++            }
++            qemu_set_irq(s->pad_undef[pad], (int)undefined);
++            continue;
++        }
+         if (line[0] == 'J' && line[1] == ' ') {
+             int64_t vns;
+             unsigned pad, level;
+@@ -488,6 +513,26 @@ void tbi_bridge_unmodelled(const char *facility)
+     tbi_exchange(s, now, frame, false);
+ }
+ 
++/*
++ * (input-read, Runtime v5) The guest read an input register while `pads` (bit N = GPIO N), which
++ * the host marked undefined, were not driving (hw/gpio/esp32_gpio.c). Reported at the read itself;
++ * the host decides (it ends the session naming the pads). Without a bridge nothing is reported.
++ */
++void tbi_bridge_input_read(uint64_t pads);
++void tbi_bridge_input_read(uint64_t pads)
++{
++    TbiBridge *s = tbi_bridge;
++    int64_t now;
++    char frame[96];
++
++    if (!s) {
++        return;
++    }
++    now = tbi_now();
++    snprintf(frame, sizeof(frame), "N %" PRId64 " %010" PRIx64 "\n", now, pads);
++    tbi_exchange(s, now, frame, false);
++}
++
+ /* (unmodelled) The SoC applied a CPU clock (hw/xtensa/esp32.c esp32_clk_update), in Hz. */
+ void tbi_bridge_cpu_clock(uint32_t cpu_hz);
+ void tbi_bridge_cpu_clock(uint32_t cpu_hz)
+@@ -525,7 +570,9 @@ int tbi_bridge_i2c(int bus, char op, int arg)
+     n = snprintf(frame, sizeof(frame), "B %" PRId64 " %d ", now, bus);
+     switch (op) {
+     case 'S':
+-        snprintf(frame + n, sizeof(frame) - n, "S %02x %d\n", (arg >> 1) & 0x7f, arg & 1);
++        /* (i2c-clock, Runtime v5) arg >> 8: the SCL period in module clock cycles. */
++        snprintf(frame + n, sizeof(frame) - n, "S %02x %d %d\n", (arg >> 1) & 0x7f, arg & 1,
++                 (arg >> 8) & 0xffff);
+         s->bus_expect = 'K';
+         break;
+     case 'W':
+@@ -651,6 +698,7 @@ static void tbi_bridge_realize(DeviceState *dev, Error **errp)
+         qdev_connect_gpio_out_named(gpio, TBI_PAD_FUNC, i,
+                                     qdev_get_gpio_in_named(dev, "pad-func", i));
+         s->pad_in[i] = qdev_get_gpio_in_named(gpio, TBI_PAD_IN, i);
++        s->pad_undef[i] = qdev_get_gpio_in_named(gpio, TBI_PAD_UNDEF, i);
+     }
+ 
+     /* Scheduled inputs: a host synchronisation point only, like the tick (see timer.h). */
+diff --git a/hw/xtensa/esp32.c b/hw/xtensa/esp32.c
+index 7bf2223..ebd443c 100644
+--- a/hw/xtensa/esp32.c
++++ b/hw/xtensa/esp32.c
+@@ -484,6 +484,13 @@ static void esp32_soc_realize(DeviceState *dev, Error **errp)
+     object_property_set_bool(OBJECT(&s->gpio), "classic-registers", true, &error_fatal);
+     qdev_realize(DEVICE(&s->gpio), &s->periph_bus, &error_fatal);
+     esp32_soc_add_periph_device(sys_mem, &s->gpio, DR_REG_GPIO_BASE);
++    /* TBI Lab (Runtime v5, gpio-irq): GPIO_INTERRUPT_PRO / _APP, each to its own CPU's matrix. */
++    qdev_connect_gpio_out_named(DEVICE(&s->gpio), ESP32_GPIO_IRQ_OUT, ESP32_GPIO_IRQ_PRO,
++                                qdev_get_gpio_in_named(intmatrix_dev, ESP32_INTMATRIX_PERCPU_SOURCE,
++                                                       0 * ESP32_INT_MATRIX_INPUTS + ETS_GPIO_INTR_SOURCE));
++    qdev_connect_gpio_out_named(DEVICE(&s->gpio), ESP32_GPIO_IRQ_OUT, ESP32_GPIO_IRQ_APP,
++                                qdev_get_gpio_in_named(intmatrix_dev, ESP32_INTMATRIX_PERCPU_SOURCE,
++                                                       1 * ESP32_INT_MATRIX_INPUTS + ETS_GPIO_INTR_SOURCE));
+ 
+     for (int i = 0; i < ESP32_UART_COUNT; ++i) {
+         const hwaddr uart_base[] = {DR_REG_UART_BASE, DR_REG_UART1_BASE, DR_REG_UART2_BASE};
+diff --git a/hw/xtensa/esp32_intc.c b/hw/xtensa/esp32_intc.c
+index fed7cf7..04a16d6 100644
+--- a/hw/xtensa/esp32_intc.c
++++ b/hw/xtensa/esp32_intc.c
+@@ -39,6 +39,35 @@ static void esp32_intmatrix_irq_handler(void *opaque, int n, int level)
+     }
+ }
+ 
++/* The CPU interrupt line a map entry selects, or NULL (unmapped / not an external interrupt). */
++static qemu_irq esp32_intmatrix_line(Esp32IntMatrixState *s, int cpu, int out_index)
++{
++    if (s->outputs[cpu] == NULL) {
++        return NULL;
++    }
++    for (int int_index = 0; int_index < s->cpu[cpu]->env.config->nextint; ++int_index) {
++        if (s->cpu[cpu]->env.config->extint[int_index] == out_index) {
++            return s->outputs[cpu][int_index];
++        }
++    }
++    return NULL;
++}
++
++/* TBI Lab (Runtime v5): a source signal of one CPU only (see percpu_level). */
++static void esp32_intmatrix_percpu_handler(void *opaque, int n, int level)
++{
++    Esp32IntMatrixState *s = ESP32_INTMATRIX(opaque);
++    int cpu = n / ESP32_INT_MATRIX_INPUTS;
++    int source = n % ESP32_INT_MATRIX_INPUTS;
++    qemu_irq line;
++
++    s->percpu_level[cpu][source] = level != 0;
++    line = esp32_intmatrix_line(s, cpu, IRQ_MAP(cpu, source));
++    if (line) {
++        qemu_set_irq(line, level);
++    }
++}
++
+ static inline uint8_t* get_map_entry(Esp32IntMatrixState* s, hwaddr addr)
+ {
+     int source_index = addr / sizeof(uint32_t);
+@@ -63,7 +92,24 @@ static void esp32_intmatrix_write(void* opaque, hwaddr addr, uint64_t value, uns
+     Esp32IntMatrixState *s = ESP32_INTMATRIX(opaque);
+     uint8_t* map_entry = get_map_entry(s, addr);
+     if (map_entry != NULL) {
++        int index = addr / sizeof(uint32_t);
++        int cpu = index / ESP32_INT_MATRIX_INPUTS;
++        int source = index % ESP32_INT_MATRIX_INPUTS;
++        bool held = cpu < ESP32_CPU_COUNT && s->percpu_level[cpu][source];
++        qemu_irq old = held ? esp32_intmatrix_line(s, cpu, *map_entry) : NULL;
++        qemu_irq new;
++
+         *map_entry = value & 0x1f;
++        /* TBI Lab (Runtime v5): a raised per-CPU source follows its map entry. */
++        new = held ? esp32_intmatrix_line(s, cpu, *map_entry) : NULL;
++        if (old != new) {
++            if (old) {
++                qemu_irq_lower(old);
++            }
++            if (new) {
++                qemu_irq_raise(new);
++            }
++        }
+     }
+ }
+ 
+@@ -77,6 +123,7 @@ static void esp32_intmatrix_reset_hold(Object *obj, ResetType type)
+ {
+     Esp32IntMatrixState *s = ESP32_INTMATRIX(obj);
+     memset(s->irq_map, INTMATRIX_UNINT_VALUE, sizeof(s->irq_map));
++    memset(s->percpu_level, 0, sizeof(s->percpu_level));
+     for (int i = 0; i < ESP32_CPU_COUNT; ++i) {
+         if (s->outputs[i] == NULL) {
+             continue;
+@@ -110,6 +157,9 @@ static void esp32_intmatrix_init(Object *obj)
+     sysbus_init_mmio(sbd, &s->iomem);
+ 
+     qdev_init_gpio_in(DEVICE(s), esp32_intmatrix_irq_handler, ESP32_INT_MATRIX_INPUTS);
++    qdev_init_gpio_in_named(DEVICE(s), esp32_intmatrix_percpu_handler,
++                            ESP32_INTMATRIX_PERCPU_SOURCE,
++                            ESP32_CPU_COUNT * ESP32_INT_MATRIX_INPUTS);
+ }
+ 
+ static Property esp32_intmatrix_properties[] = {
+diff --git a/include/hw/gpio/esp32_gpio.h b/include/hw/gpio/esp32_gpio.h
+index 15a93eb..ddc573f 100644
+--- a/include/hw/gpio/esp32_gpio.h
++++ b/include/hw/gpio/esp32_gpio.h
+@@ -34,6 +34,17 @@ REG32(GPIO_STATUS_W1TC, 0x004c)
+ REG32(GPIO_STATUS1, 0x0050)
+ REG32(GPIO_STATUS1_W1TS, 0x0054)
+ REG32(GPIO_STATUS1_W1TC, 0x0058)
++/* TBI Lab (Runtime v5, gpio-irq): per-CPU interrupt status (read-only). */
++REG32(GPIO_ACPU_INT, 0x0060)
++REG32(GPIO_ACPU_NMI_INT, 0x0064)
++REG32(GPIO_PCPU_INT, 0x0068)
++REG32(GPIO_PCPU_NMI_INT, 0x006c)
++REG32(GPIO_CPUSDIO_INT, 0x0070)
++REG32(GPIO_ACPU_INT1, 0x0074)
++REG32(GPIO_ACPU_NMI_INT1, 0x0078)
++REG32(GPIO_PCPU_INT1, 0x007c)
++REG32(GPIO_PCPU_NMI_INT1, 0x0080)
++REG32(GPIO_CPUSDIO_INT1, 0x0084)
+ 
+ #define ESP32_STRAP_MODE_FLASH_BOOT 0x12
+ #define ESP32_STRAP_MODE_UART_BOOT  0x0f
+@@ -50,6 +61,21 @@ REG32(GPIO_STATUS1_W1TC, 0x0058)
+ #define ESP32_GPIO_PAD_OUT "esp32-pad"
+ #define ESP32_GPIO_PAD_FUNC "esp32-pad-func"
+ #define ESP32_GPIO_PAD_IN  "esp32-pad-in"
++/*
++ * TBI Lab (Sprint 25, Runtime v5, input-read): one line per pad; 1 = the host can assign the pad
++ * no defensible logic level (nothing holds the net, or its voltage sits between V_IL and V_IH with
++ * no previous level). A guest read of the input register holding such a pad, while the pad is not
++ * driving, is reported to the host (tbi_bridge_input_read) at the read itself.
++ */
++#define ESP32_GPIO_PAD_UNDEF "esp32-pad-undef"
++/*
++ * TBI Lab (Sprint 25, Runtime v5, gpio-irq): the GPIO interrupt signals, one per CPU
++ * (ESP32_GPIO_IRQ_PRO = 0, ESP32_GPIO_IRQ_APP = 1): "GPIO_INTERRUPT_PRO/APP", interrupt-matrix
++ * source ETS_GPIO_INTR_SOURCE of that CPU only.
++ */
++#define ESP32_GPIO_IRQ_OUT "esp32-gpio-irq"
++#define ESP32_GPIO_IRQ_PRO 0
++#define ESP32_GPIO_IRQ_APP 1
+ 
+ typedef struct Esp32GpioState {
+     SysBusDevice parent_obj;
+@@ -80,6 +106,12 @@ typedef struct Esp32GpioState {
+     uint16_t pad_func[ESP32_GPIO_PADS];
+     uint64_t out_sel_written;           /* pads whose FUNCn_OUT_SEL the guest has written */
+     qemu_irq pad_func_out[ESP32_GPIO_PADS];
++    /* TBI Lab (Runtime v5, input-read): pads with no defined level, and those already reported. */
++    uint64_t undefined;
++    uint64_t undefined_reported;
++    /* TBI Lab (Runtime v5, gpio-irq): pad input levels at the last edge check, per-CPU lines. */
++    uint64_t irq_last_in;
++    qemu_irq cpu_irq[2];
+ } Esp32GpioState;
+ 
+ typedef struct Esp32GpioClass {
+diff --git a/include/hw/i2c/esp32_i2c.h b/include/hw/i2c/esp32_i2c.h
+index f35ac96..356541c 100644
+--- a/include/hw/i2c/esp32_i2c.h
++++ b/include/hw/i2c/esp32_i2c.h
+@@ -49,6 +49,8 @@ typedef struct Esp32I2CState {
+     uint32_t rstart_setup_reg;
+     uint32_t stop_hold_reg;
+     uint32_t stop_setup_reg;
++    /* TBI Lab (Runtime v5, i2c-clock): I2C_SCL_FILTER_CFG (TRM Table 21.3-1). */
++    uint32_t scl_filter_cfg_reg;
+     uint32_t cmd_reg[ESP32_I2C_CMD_COUNT];
+ } Esp32I2CState;
+ 
+@@ -99,6 +101,9 @@ REG32(I2C_START_HOLD, 0x40);
+ REG32(I2C_RSTART_SETUP, 0x44);
+ REG32(I2C_STOP_HOLD, 0x48);
+ REG32(I2C_STOP_SETUP, 0x4c);
++REG32(I2C_SCL_FILTER_CFG, 0x50);
++    FIELD(I2C_SCL_FILTER_CFG, THRES, 0, 3);
++    FIELD(I2C_SCL_FILTER_CFG, EN, 3, 1);
+ 
+ REG32(I2C_CMD, 0x58);
+     FIELD(I2C_CMD, BYTE_NUM, 0, 8);
+diff --git a/include/hw/xtensa/esp32_intc.h b/include/hw/xtensa/esp32_intc.h
+index 262dbd1..eb1289f 100644
+--- a/include/hw/xtensa/esp32_intc.h
++++ b/include/hw/xtensa/esp32_intc.h
+@@ -25,6 +25,7 @@
+ #define ESP32_INT_MATRIX_INPUTS 69
+ 
+ #define TYPE_ESP32_INTMATRIX "misc.esp32.intmatrix"
++#define ESP32_INTMATRIX_PERCPU_SOURCE "percpu-source"
+ #define ESP32_INTMATRIX(obj) OBJECT_CHECK(Esp32IntMatrixState, (obj), TYPE_ESP32_INTMATRIX)
+ 
+ 
+@@ -34,6 +35,13 @@ typedef struct Esp32IntMatrixState {
+     MemoryRegion iomem;
+     qemu_irq *outputs[ESP32_CPU_COUNT];
+     uint8_t irq_map[ESP32_CPU_COUNT][ESP32_INT_MATRIX_INPUTS];
++    /*
++     * TBI Lab (Runtime v5): sources whose signal differs per CPU (the GPIO module's
++     * GPIO_INTERRUPT_PRO / _APP on ETS_GPIO_INTR_SOURCE). Each (cpu, source) pair is its own input
++     * ("percpu-source", index cpu * ESP32_INT_MATRIX_INPUTS + source); its level is kept so a
++     * later map change moves it to the newly mapped CPU interrupt.
++     */
++    uint8_t percpu_level[ESP32_CPU_COUNT][ESP32_INT_MATRIX_INPUTS];
+ 
+     /* properties */
+     XtensaCPU *cpu[ESP32_CPU_COUNT];
+-- 
+2.53.0
+

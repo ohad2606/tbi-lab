@@ -27,6 +27,11 @@ export interface TicketFeatures {
    * refuses the session at the bridge handshake if the runtime does not announce every one.
    */
   requires?: string[];
+  /**
+   * Sprint 25 (Runtime v5, `input-read`), additive: the GPIOs the program may read as inputs and
+   * whether a read could not be resolved to a pin (the host then watches every wired pad).
+   */
+  inputReads?: { pins: number[]; unresolved: boolean };
 }
 
 export interface RunTicket {
@@ -69,7 +74,12 @@ function validFeatures(f: unknown): f is TicketFeatures | null {
     (o.requires === undefined ||
       (Array.isArray(o.requires) &&
         o.requires.length <= 16 &&
-        o.requires.every((s) => typeof s === 'string' && /^[a-z0-9-]{1,32}$/.test(s))))
+        o.requires.every((s) => typeof s === 'string' && /^[a-z0-9-]{1,32}$/.test(s)))) &&
+    (o.inputReads === undefined ||
+      (typeof o.inputReads === 'object' &&
+        o.inputReads !== null &&
+        ints((o.inputReads as Record<string, unknown>).pins) &&
+        typeof (o.inputReads as Record<string, unknown>).unresolved === 'boolean'))
   );
 }
 

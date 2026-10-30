@@ -19,6 +19,7 @@
  * patch 0008 a real 100 kHz bus moves about 11 000 bytes per second.
  */
 import {
+  I2C_PART_MAX_SCL_HZ,
   I2cLcd,
   PCF8574_VIH_FRACTION,
   PCF8574_VIL_FRACTION,
@@ -30,6 +31,24 @@ import type { McuAttachmentRequest } from './protocol.js';
 import type { I2cPhase, PadFunction } from '../harness/protocol.js';
 
 export const I2C_PHASE_BUDGET_PER_SIM_S = 50_000;
+/** The ESP32 I2C module clock (APB, 80 MHz; TRM v5.9 Table 21.3-1). */
+export const I2C_MODULE_CLOCK_HZ = 80_000_000;
+
+/**
+ * Sprint 25: what the bus did that no simulated part can answer honestly. The session ends with it
+ * (an engine error), at the phase itself:
+ * - `i2c_clock_exceeded` (Runtime v5, i2c-clock): the START addressing a part was clocked faster
+ *   than the part's rated SCL (the PCF8574: 100 kHz). The TRM's period excludes rise time, so the
+ *   real clock is at most this: a refusal is never caused by the approximation.
+ * - `i2c_read_unsupported`: the controller reads a byte from the LCD backpack. A PCF8574 read
+ *   returns its port pins' levels, which the HD44780 pins and the backpack's own wiring (the
+ *   backlight transistor on P3) decide; neither is modelled, so no byte can be given.
+ */
+export interface I2cRefusal {
+  code: 'i2c_clock_exceeded' | 'i2c_read_unsupported';
+  components: string[];
+  detail: Record<string, number>;
+}
 export const I2C_TYPES = ['display.lcd1602_i2c'] as const;
 
 export interface I2cDiagnostic {
@@ -78,6 +97,8 @@ export class I2cDevices {
   private window = -1n;
   private used = 0;
   readonly diagnostics: { simNs: bigint; d: I2cDiagnostic }[] = [];
+  /** Sprint 25: the first phase no part can answer honestly (the session then ends). */
+  refusal: I2cRefusal | null = null;
   /** Parts whose display or backlight changed since the last publish. */
   readonly changed = new Set<string>();
 
@@ -229,6 +250,19 @@ export class I2cDevices {
     }
     if (p.op === 'S') {
       const t = this.lcds.find((x) => x.address === p.addr) ?? null;
+      if (t && p.sclCycles !== undefined) {
+        const hz = I2C_MODULE_CLOCK_HZ / p.sclCycles;
+        const max = I2C_PART_MAX_SCL_HZ['display.lcd1602_i2c']!;
+        if (hz > max) {
+          this.refusal ??= {
+            code: 'i2c_clock_exceeded',
+            components: [t.id],
+            detail: { hz, max, sclCycles: p.sclCycles, address: t.address },
+          };
+          this.current.set(bus, null);
+          return false;
+        }
+      }
       const ok = t !== null && this.present(vns, bus, t, out);
       this.current.set(bus, ok ? t : null);
       return ok;
@@ -245,8 +279,15 @@ export class I2cDevices {
       if (this.view(t) !== before) this.changed.add(t.id);
       return true;
     }
-    // A read with no target addressed sees the released bus.
-    return t ? t.lcd.expander.readByte() : 0xff;
+    // A read with no target addressed sees the released bus. A read of the backpack is refused:
+    // its port levels are not modelled (Sprint 25; the latch it returned before was not them).
+    if (t)
+      this.refusal ??= {
+        code: 'i2c_read_unsupported',
+        components: [t.id],
+        detail: { address: t.address },
+      };
+    return 0xff;
   }
 
   /**

@@ -57,6 +57,13 @@ export interface FeatureReport {
    * Wire), when the configured runtime provides them. Absent when none.
    */
   requires?: string[];
+  /**
+   * Sprint 25 (Runtime v5, `input-read`): the GPIOs the program may read as digital inputs (or
+   * attach an interrupt to), and whether a read names a pin the analysis cannot resolve. Present
+   * only when the runtime announces `input-read`; the Session Host refuses a read of such a pin
+   * while its level is undefined.
+   */
+  inputReads?: { pins: number[]; unresolved: boolean };
 }
 
 export interface ArtifactInfo {

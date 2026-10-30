@@ -110,6 +110,8 @@ export interface SessionHandler {
   tick?(vns: bigint): Command[];
   /** (unmodelled, Runtime v4) the guest started using a facility the emulator does not model. */
   unmodelled?(vns: bigint, facility: UnmodelledFacility): Command[];
+  /** (input-read, Runtime v5) the guest read an input register while these marked pads were undefined. */
+  inputRead?(vns: bigint, pads: readonly number[]): Command[];
   serial?(vns: bigint, bytes: Buffer): void;
 }
 
@@ -232,7 +234,7 @@ export function runSession(opts: SessionOptions, handler: SessionHandler): Promi
   const tickUs = opts.tickUs ?? 1000;
   const serialLimit = opts.serialLimitBytes ?? 1 << 20;
   const diagLimit = opts.diagnosticsLimitBytes ?? 64 << 10;
-  const frames = { H: 0, G: 0, T: 0, S: 0, F: 0, B: 0, P: 0, W: 0, U: 0 };
+  const frames = { H: 0, G: 0, T: 0, S: 0, F: 0, B: 0, P: 0, W: 0, U: 0, N: 0 };
   let caps: Capability[] = [];
   let hello = false;
   let pacedMs = 0;
@@ -340,10 +342,19 @@ export function runSession(opts: SessionOptions, handler: SessionHandler): Promi
         throw new ProtocolError('F frame without the pad-func capability');
       if (f.type === 'B' && !caps.includes('i2c'))
         throw new ProtocolError('B frame without the i2c capability');
+      // Runtime v5: with i2c-clock every START carries its SCL period; without it none does.
+      if (
+        f.type === 'B' &&
+        f.phase.op === 'S' &&
+        caps.includes('i2c-clock') !== (f.phase.sclCycles !== undefined)
+      )
+        throw new ProtocolError('B S frame with an SCL period that does not match i2c-clock');
       if ((f.type === 'P' || f.type === 'W') && !caps.includes('pwm'))
         throw new ProtocolError(`${f.type} frame without the pwm capability`);
       if (f.type === 'U' && !caps.includes('unmodelled'))
         throw new ProtocolError('U frame without the unmodelled capability');
+      if (f.type === 'N' && !caps.includes('input-read'))
+        throw new ProtocolError('N frame without the input-read capability');
       frames[f.type]++;
       if (f.type === 'S') {
         const room = serialLimit - serialBytes;
@@ -389,6 +400,13 @@ export function runSession(opts: SessionOptions, handler: SessionHandler): Promi
         if (!handler.unmodelled)
           throw new Error(`unmodelled facility ${f.facility} at ${f.vns} ns (no handler)`);
         cmds = handler.unmodelled(f.vns, f.facility);
+      } else if (f.type === 'N') {
+        // Fail closed like U: an unhandled read of an undefined input ends the run as a failure.
+        if (!handler.inputRead)
+          throw new Error(
+            `undefined input read on ${f.pads.join(',')} at ${f.vns} ns (no handler)`,
+          );
+        cmds = handler.inputRead(f.vns, f.pads);
       } else {
         cmds = handler.tick?.(f.vns) ?? [];
       }

@@ -422,6 +422,33 @@ export const EXAMPLES: readonly Example[] = [
       'instrument.lab_psu',
     ],
   },
+  // Sprint 25 (Phase 4): a potentiometer read as a digital level, Arduino and MicroPython.
+  {
+    id: 'esp32-pot-threshold',
+    titleKey: 'example.esp32-pot-threshold.title',
+    summaryKey: 'example.esp32-pot-threshold.summary',
+    probes: [V('RV1', 'wiper'), I('D1')],
+    parts: [
+      'board.esp32_devkitc_wroom32',
+      'component.led',
+      'component.potentiometer',
+      'component.resistor',
+      'instrument.lab_psu',
+    ],
+  },
+  {
+    id: 'mpy-pot-threshold',
+    titleKey: 'example.mpy-pot-threshold.title',
+    summaryKey: 'example.mpy-pot-threshold.summary',
+    probes: [V('RV1', 'wiper'), I('D1')],
+    parts: [
+      'board.esp32_devkitc_wroom32',
+      'component.led',
+      'component.potentiometer',
+      'component.resistor',
+      'instrument.lab_psu',
+    ],
+  },
 ];
 
 export function findExample(id: string): Example | undefined {

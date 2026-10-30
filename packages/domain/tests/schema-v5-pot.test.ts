@@ -43,7 +43,7 @@ function potProject(): ProjectDocument {
     if (!x.ok || !x.doc) throw new Error(JSON.stringify(x));
     doc = x.doc;
   };
-  step(setParam(doc, r.id, 'resistance', { value: 4700, unit: 'ohm' }));
+  step(setParam(doc, r.id, 'resistance', { value: 5000, unit: 'ohm' }));
   step(setParam(doc, r.id, 'position', { value: 37.5, unit: 'percent' }));
   step(
     addWire(
@@ -76,7 +76,7 @@ describe('schema v5 (Sprint POT-UNITS)', () => {
     });
     const r = addComponent(base, 'component.resistor', { x: 100, y: 0 });
     if (!r.ok) throw new Error(r.error);
-    const s = setParam(r.doc, r.id, 'resistance', { value: 4700, unit: 'ohm' });
+    const s = setParam(r.doc, r.id, 'resistance', { value: 5000, unit: 'ohm' });
     if (!s.ok) throw new Error(s.error);
     for (const v of [4, 3]) {
       const old = { ...JSON.parse(JSON.stringify(s.doc)), schemaVersion: v };
@@ -95,7 +95,7 @@ describe('schema v5 (Sprint POT-UNITS)', () => {
     const rv = doc.components.find((c) => c.type === 'component.potentiometer')!;
     expect(rv.params).toEqual({
       model: 'model.potentiometer.bourns_ptv09a_linear',
-      resistance: { value: 4700, unit: 'ohm' },
+      resistance: { value: 5000, unit: 'ohm' },
       position: { value: 37.5, unit: 'percent' },
     });
     const bad = (key: string, v: unknown) => {

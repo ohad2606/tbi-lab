@@ -1,0 +1,431 @@
+{
+  "format": "tbi-lab.project",
+  "schemaVersion": 5,
+  "projectId": "prj_examplempypotthreshold",
+  "createdWith": {
+    "app": "0.2.0",
+    "schemaVersion": 5
+  },
+  "createdAt": "2026-09-23T00:00:00.000Z",
+  "revision": {
+    "localRevision": 1,
+    "cloudRevision": null,
+    "baseRevision": null,
+    "updatedAt": "2026-09-23T00:00:00.000Z",
+    "deviceId": "dev_tbilab_examples"
+  },
+  "name": "MicroPython: potentiometer as a digital input",
+  "components": [
+    {
+      "id": "PSU1",
+      "type": "instrument.lab_psu",
+      "typeVersion": 1,
+      "params": {
+        "setpointVoltage": {
+          "value": 3.3,
+          "unit": "volt"
+        },
+        "currentLimit": {
+          "value": 0.05,
+          "unit": "ampere"
+        },
+        "outputEnabled": true
+      }
+    },
+    {
+      "id": "GND1",
+      "type": "component.ground",
+      "typeVersion": 1,
+      "params": {}
+    },
+    {
+      "id": "U1",
+      "type": "board.esp32_devkitc_wroom32",
+      "typeVersion": 1,
+      "params": {
+        "firmware": "program"
+      }
+    },
+    {
+      "id": "RV1",
+      "type": "component.potentiometer",
+      "typeVersion": 1,
+      "params": {
+        "model": "model.potentiometer.bourns_ptv09a_linear",
+        "resistance": {
+          "value": 10000,
+          "unit": "ohm"
+        },
+        "position": {
+          "value": 10,
+          "unit": "percent"
+        }
+      }
+    },
+    {
+      "id": "GND2",
+      "type": "component.ground",
+      "typeVersion": 1,
+      "params": {}
+    },
+    {
+      "id": "R1",
+      "type": "component.resistor",
+      "typeVersion": 1,
+      "params": {
+        "resistance": {
+          "value": 220,
+          "unit": "ohm"
+        }
+      }
+    },
+    {
+      "id": "D1",
+      "type": "component.led",
+      "typeVersion": 1,
+      "params": {
+        "model": "model.led.vishay_tlhr5400"
+      }
+    },
+    {
+      "id": "GND3",
+      "type": "component.ground",
+      "typeVersion": 1,
+      "params": {}
+    },
+    {
+      "id": "GND4",
+      "type": "component.ground",
+      "typeVersion": 1,
+      "params": {}
+    }
+  ],
+  "nets": [
+    {
+      "id": "N_1",
+      "role": "ground",
+      "userName": null
+    },
+    {
+      "id": "N_2",
+      "role": null,
+      "userName": null
+    },
+    {
+      "id": "N_3",
+      "role": "ground",
+      "userName": null
+    },
+    {
+      "id": "N_4",
+      "role": null,
+      "userName": null
+    },
+    {
+      "id": "N_5",
+      "role": null,
+      "userName": null
+    },
+    {
+      "id": "N_6",
+      "role": null,
+      "userName": null
+    },
+    {
+      "id": "N_7",
+      "role": "ground",
+      "userName": null
+    },
+    {
+      "id": "N_8",
+      "role": "ground",
+      "userName": null
+    }
+  ],
+  "connections": [
+    {
+      "component": "PSU1",
+      "terminal": "positive",
+      "net": "N_2"
+    },
+    {
+      "component": "PSU1",
+      "terminal": "negative",
+      "net": "N_1"
+    },
+    {
+      "component": "GND1",
+      "terminal": "ref",
+      "net": "N_1"
+    },
+    {
+      "component": "U1",
+      "terminal": "gpio34",
+      "net": "N_4"
+    },
+    {
+      "component": "U1",
+      "terminal": "gnd",
+      "net": "N_8"
+    },
+    {
+      "component": "U1",
+      "terminal": "gpio4",
+      "net": "N_5"
+    },
+    {
+      "component": "RV1",
+      "terminal": "a",
+      "net": "N_3"
+    },
+    {
+      "component": "RV1",
+      "terminal": "wiper",
+      "net": "N_4"
+    },
+    {
+      "component": "RV1",
+      "terminal": "b",
+      "net": "N_2"
+    },
+    {
+      "component": "GND2",
+      "terminal": "ref",
+      "net": "N_3"
+    },
+    {
+      "component": "R1",
+      "terminal": "a",
+      "net": "N_5"
+    },
+    {
+      "component": "R1",
+      "terminal": "b",
+      "net": "N_6"
+    },
+    {
+      "component": "D1",
+      "terminal": "anode",
+      "net": "N_6"
+    },
+    {
+      "component": "D1",
+      "terminal": "cathode",
+      "net": "N_7"
+    },
+    {
+      "component": "GND3",
+      "terminal": "ref",
+      "net": "N_7"
+    },
+    {
+      "component": "GND4",
+      "terminal": "ref",
+      "net": "N_8"
+    }
+  ],
+  "layout": {
+    "components": {
+      "PSU1": {
+        "x": -360,
+        "y": 0,
+        "rotation": 0
+      },
+      "GND1": {
+        "x": -320,
+        "y": 120,
+        "rotation": 0
+      },
+      "U1": {
+        "x": 60,
+        "y": 0,
+        "rotation": 0
+      },
+      "RV1": {
+        "x": -160,
+        "y": -100,
+        "rotation": 0
+      },
+      "GND2": {
+        "x": -260,
+        "y": -180,
+        "rotation": 0
+      },
+      "R1": {
+        "x": 240,
+        "y": 60,
+        "rotation": 0
+      },
+      "D1": {
+        "x": 360,
+        "y": 60,
+        "rotation": 0
+      },
+      "GND3": {
+        "x": 440,
+        "y": 140,
+        "rotation": 0
+      },
+      "GND4": {
+        "x": 200,
+        "y": -120,
+        "rotation": 0
+      }
+    },
+    "wires": [
+      {
+        "id": "W1",
+        "from": {
+          "kind": "terminal",
+          "component": "PSU1",
+          "terminal": "negative"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "GND1",
+          "terminal": "ref"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W2",
+        "from": {
+          "kind": "terminal",
+          "component": "PSU1",
+          "terminal": "positive"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "RV1",
+          "terminal": "b"
+        },
+        "vertices": [
+          {
+            "x": -280,
+            "y": -40
+          },
+          {
+            "x": -120,
+            "y": -40
+          }
+        ]
+      },
+      {
+        "id": "W3",
+        "from": {
+          "kind": "terminal",
+          "component": "RV1",
+          "terminal": "a"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "GND2",
+          "terminal": "ref"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W4",
+        "from": {
+          "kind": "terminal",
+          "component": "RV1",
+          "terminal": "wiper"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "U1",
+          "terminal": "gpio34"
+        },
+        "vertices": [
+          {
+            "x": -160,
+            "y": -180
+          },
+          {
+            "x": -100,
+            "y": -180
+          },
+          {
+            "x": -100,
+            "y": -100
+          }
+        ]
+      },
+      {
+        "id": "W5",
+        "from": {
+          "kind": "terminal",
+          "component": "U1",
+          "terminal": "gpio4"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "R1",
+          "terminal": "a"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W6",
+        "from": {
+          "kind": "terminal",
+          "component": "R1",
+          "terminal": "b"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "D1",
+          "terminal": "anode"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W7",
+        "from": {
+          "kind": "terminal",
+          "component": "D1",
+          "terminal": "cathode"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "GND3",
+          "terminal": "ref"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W8",
+        "from": {
+          "kind": "terminal",
+          "component": "U1",
+          "terminal": "gnd"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "GND4",
+          "terminal": "ref"
+        },
+        "vertices": []
+      }
+    ],
+    "junctions": []
+  },
+  "idCounters": {
+    "PSU": 1,
+    "GND": 4,
+    "W": 8,
+    "N": 8,
+    "U": 1,
+    "RV": 1,
+    "R": 1,
+    "D": 1
+  },
+  "programs": {
+    "U1": {
+      "language": "micropython",
+      "profile": "esp32-micropython-1.29",
+      "fileName": "main.py",
+      "text": "# TBI Lab example (MicroPython): a potentiometer read as a digital level.\n#\n# A 10 kOhm PTV09A potentiometer sits across the 3.3 V supply (end A to GND, end B to +3.3 V); its\n# wiper goes to GPIO34, an input-only pin. The ESP32 reads the wiper as a DIGITAL level, using the\n# datasheet thresholds: at or below V_IL = 0.825 V it reads 0, at or above V_IH = 2.475 V it reads\n# 1. In between the datasheet guarantees nothing, and the simulator keeps the last level. GPIO4\n# drives a red LED through 220 Ohm and follows the level. machine.ADC is not supported.\nfrom machine import Pin\nimport time\n\nwiper = Pin(34, Pin.IN)\nled = Pin(4, Pin.OUT)\n\nprint(\"POT-READY\")\nlast = None\nwhile True:\n    level = wiper.value()\n    led.value(level)\n    if level != last:\n        print(\"LEVEL=%d\" % level)\n        last = level\n    time.sleep_ms(5)\n"
+    }
+  }
+}

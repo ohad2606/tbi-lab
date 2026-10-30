@@ -158,6 +158,39 @@ describe('I2C LCD on the Session Host (engine-gated)', () => {
     expect(codes(b.dev)).toEqual([]);
   });
 
+  it('Sprint 25: a read of the backpack is refused (no byte invented); an absent address reads the released bus', () => {
+    const b = bench();
+    expect(b.phase({ op: 'S', addr: 0x50, read: true })).toBe(false);
+    expect(b.phase({ op: 'R', ack: false })).toBe(0xff);
+    b.phase({ op: 'P' });
+    expect(b.dev.refusal).toBeNull();
+    expect(b.phase({ op: 'S', addr: 0x27, read: true })).toBe(true);
+    expect(b.phase({ op: 'R', ack: false })).toBe(0xff);
+    expect(b.dev.refusal).toEqual({
+      code: 'i2c_read_unsupported',
+      components: [b.c.lcd],
+      detail: { address: 0x27 },
+    });
+  });
+
+  it('Sprint 25 (i2c-clock): a START to the display above its rated 100 kHz is refused; 100 kHz is fine', () => {
+    // TRM Table 21.3-1: f = 80 MHz / cycles. The IDF programs 800 cycles for 100 kHz.
+    const ok = bench();
+    expect(ok.phase({ op: 'S', addr: 0x27, read: false, sclCycles: 800 })).toBe(true);
+    expect(ok.dev.refusal).toBeNull();
+    const fast = bench();
+    expect(fast.phase({ op: 'S', addr: 0x27, read: false, sclCycles: 799 })).toBe(false);
+    expect(fast.dev.refusal).toMatchObject({
+      code: 'i2c_clock_exceeded',
+      components: [fast.c.lcd],
+      detail: { hz: 80e6 / 799, max: 100_000, sclCycles: 799 },
+    });
+    // 400 kHz to an address no part has: nothing is rated there, nothing refused.
+    const other = bench();
+    expect(other.phase({ op: 'S', addr: 0x50, read: false, sclCycles: 200 })).toBe(false);
+    expect(other.dev.refusal).toBeNull();
+  });
+
   it('only the configured address answers; 0x48 (the removed TMP105) does not (T-R3-3, -8)', () => {
     const b = bench({ address: 'i2c.0x20' });
     const acks = [];

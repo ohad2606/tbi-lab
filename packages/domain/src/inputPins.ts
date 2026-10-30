@@ -76,3 +76,43 @@ export function programInputPins(program: ProgramSource): number[] {
   }
   return [...found].filter((p) => !held.has(p)).sort((a, b) => a - b);
 }
+
+/**
+ * Sprint 25 (Runtime v5, input-read): every GPIO the program may read as a digital input, for the
+ * Session Host, which refuses a read of such a pin while its level is undefined. Unlike
+ * `programInputPins` nothing is excluded for being an output too (a bidirectional pin is read while
+ * it is an input; the runtime ignores pads that drive at the read). `unresolved` is true when a
+ * read names a pin this analysis cannot resolve (a computed pin, `gpio_get_level`, a register
+ * read, a Pin made without a literal number): the host then treats every wired pad as possibly
+ * read.
+ */
+export function programInputReads(program: ProgramSource): { pins: number[]; unresolved: boolean } {
+  const code = strip(program.text, program.language);
+  const consts = constants(code, program.language);
+  const found = new Set<number>();
+  let unresolved = false;
+  const add = (token: string) => {
+    const t = token.trim();
+    const p = /^\d+$/.test(t) ? Number(t) : (consts.get(t) ?? null);
+    if (p !== null && p >= 0 && p <= 39) found.add(p);
+    else unresolved = true;
+  };
+  if (program.language === 'micropython') {
+    // Pin(<pin>) or Pin(<pin>, <mode> …): any Pin object can be read with .value() / p().
+    for (const m of code.matchAll(/\bPin\s*\(\s*([^,()]*?)\s*(?:[,)])/g)) {
+      const arg = m[1]!;
+      if (/^(?:[A-Za-z_]\w*|\d+)$/.test(arg)) add(arg);
+      else unresolved = true;
+    }
+  } else {
+    for (const m of code.matchAll(/\bpinMode\s*\(\s*([^,()]+?)\s*,\s*INPUT\w*\s*\)/g)) add(m[1]!);
+    for (const m of code.matchAll(/\bdigitalRead\s*\(\s*([^()]*?)\s*\)/g)) add(m[1]!);
+    if (
+      /\bgpio_get_level\b|\bgpio_input_get\w*\b|\bGPIO_IN1?_REG\b|\bGPIO\s*\.\s*in1?\b|\bGPIO_INPUT_GET\b/.test(
+        code,
+      )
+    )
+      unresolved = true;
+  }
+  return { pins: [...found].sort((a, b) => a - b), unresolved };
+}

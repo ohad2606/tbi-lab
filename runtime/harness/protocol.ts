@@ -15,12 +15,31 @@
  *                                                     v4): the guest started using a facility the
  *                                                     emulator does not model (adc, gpio-interrupt,
  *                                                     cpu-clock); the host ends the session naming it
+ *   input-read   `N <vns> <mask>`                     (QEMU -> host, reply `C`; patch 0012, Runtime
+ *                                                     v5): the guest read GPIO_IN/GPIO_IN1 while these
+ *                                                     pads (hex mask, bit N = GPIO N) were marked
+ *                                                     undefined and not driving
+ *                `Z <pad> <0|1>`                      (host -> QEMU, any reply): mark a pad's level
+ *                                                     undefined (1) or defined again (0)
+ *   gpio-irq     (no frame; patch 0012, Runtime v5)   GPIO edge interrupts are delivered inside QEMU
+ *   i2c-clock    `B <vns> <bus> S <addr> <rw> <cycles>` (patch 0012, Runtime v5): every START
+ *                                                     carries the programmed SCL period in 80 MHz
+ *                                                     module clock cycles (TRM v5.9 Table 21.3-1)
  */
 
 export type Level = 0 | 1;
 
 /** Capability tokens of bridge v2, in their canonical (sorted) order. */
-export const CAPABILITIES = ['i2c', 'pad-func', 'pwm', 'sched-input', 'unmodelled'] as const;
+export const CAPABILITIES = [
+  'gpio-irq',
+  'i2c',
+  'i2c-clock',
+  'input-read',
+  'pad-func',
+  'pwm',
+  'sched-input',
+  'unmodelled',
+] as const;
 export type Capability = (typeof CAPABILITIES)[number];
 
 /**
@@ -39,7 +58,8 @@ export type PadFunction =
 
 /** One I2C bus phase (patch 0008). Addresses are 7-bit; `read` is the R/W bit. */
 export type I2cPhase =
-  | { op: 'S'; addr: number; read: boolean }
+  /** `sclCycles` (i2c-clock, Runtime v5): the programmed SCL period, 80 MHz module cycles. */
+  | { op: 'S'; addr: number; read: boolean; sclCycles?: number }
   | { op: 'W'; byte: number }
   | { op: 'R'; ack: boolean }
   | { op: 'P' };
@@ -78,7 +98,9 @@ export type Frame =
   | { type: 'B'; vns: bigint; bus: 0 | 1; phase: I2cPhase }
   | { type: 'P'; vns: bigint; timer: number; state: LedcTimerState }
   | { type: 'W'; vns: bigint; signal: number; state: LedcChannelState }
-  | { type: 'U'; vns: bigint; facility: UnmodelledFacility };
+  | { type: 'U'; vns: bigint; facility: UnmodelledFacility }
+  /** (input-read) The guest read an input register while these marked pads were undefined. */
+  | { type: 'N'; vns: bigint; pads: number[] };
 
 export type Command =
   | { type: 'I'; pad: number; level: Level }
@@ -91,7 +113,9 @@ export type Command =
   /** ACK (true) or NACK of an I2C START or written byte; only in a reply to `B S`/`B W`. */
   | { type: 'K'; ack: boolean }
   /** The byte the addressed target puts on the bus; only in a reply to `B R`. */
-  | { type: 'D'; byte: number };
+  | { type: 'D'; byte: number }
+  /** Mark a pad's level undefined (true) or defined again (input-read). */
+  | { type: 'Z'; pad: number; undefined: boolean };
 
 export class ProtocolError extends Error {
   constructor(message: string) {
@@ -184,9 +208,14 @@ export function parseFrame(line: string): Frame {
     const rest = m[3]!;
     let p: RegExpExecArray | null;
     let phase: I2cPhase;
-    if ((p = /^S ([0-7][0-9a-f]) ([01])$/.exec(rest)))
+    if ((p = /^S ([0-7][0-9a-f]) ([01])(?: ([1-9]\d{0,4}))?$/.exec(rest))) {
       phase = { op: 'S', addr: hexByte(p[1]!), read: p[2] === '1' };
-    else if ((p = /^W ([0-9a-f]{2})$/.exec(rest))) phase = { op: 'W', byte: hexByte(p[1]!) };
+      if (p[3] !== undefined) {
+        const sclCycles = Number(p[3]);
+        if (sclCycles > 0xffff) throw new ProtocolError(`SCL period out of range: ${line}`);
+        phase.sclCycles = sclCycles;
+      }
+    } else if ((p = /^W ([0-9a-f]{2})$/.exec(rest))) phase = { op: 'W', byte: hexByte(p[1]!) };
     else if ((p = /^R ([01])$/.exec(rest))) phase = { op: 'R', ack: p[1] === '1' };
     else if (rest === 'P') phase = { op: 'P' };
     else throw new ProtocolError(`malformed i2c frame: ${JSON.stringify(line.slice(0, 80))}`);
@@ -226,6 +255,14 @@ export function parseFrame(line: string): Frame {
   }
   if ((m = /^U (\d+) (adc|gpio-interrupt|cpu-clock)$/.exec(line)))
     return { type: 'U', vns: BigInt(m[1]!), facility: m[2] as UnmodelledFacility };
+  if ((m = /^N (\d+) ([0-9a-f]{10})$/.exec(line))) {
+    const mask = BigInt(`0x${m[2]!}`);
+    const pads: number[] = [];
+    for (let p = 0; p < PADS; p++) if ((mask >> BigInt(p)) & 1n) pads.push(p);
+    if (!pads.length || mask >> BigInt(PADS))
+      throw new ProtocolError(`invalid undefined-read mask: ${line}`);
+    return { type: 'N', vns: BigInt(m[1]!), pads };
+  }
   throw new ProtocolError(`malformed frame: ${JSON.stringify(line.slice(0, 80))}`);
 }
 
@@ -249,7 +286,7 @@ export function encodeReply(commands: readonly Command[], ctx?: ReplyContext): s
       throw new ProtocolError(`${what} needs runtime capability ${cap}`);
   };
   for (const c of commands) {
-    if (c.type === 'I' || c.type === 'J' || c.type === 'X') {
+    if (c.type === 'I' || c.type === 'J' || c.type === 'X' || c.type === 'Z') {
       if (!Number.isInteger(c.pad) || c.pad < 0 || c.pad >= PADS) {
         throw new ProtocolError(`${c.type} command for invalid pad ${c.pad}`);
       }
@@ -270,6 +307,9 @@ export function encodeReply(commands: readonly Command[], ctx?: ReplyContext): s
     } else if (c.type === 'X') {
       need('sched-input', 'X');
       out += `X ${c.pad}\n`;
+    } else if (c.type === 'Z') {
+      need('input-read', 'Z');
+      out += `Z ${c.pad} ${c.undefined ? 1 : 0}\n`;
     } else if (c.type === 'K' || c.type === 'D') {
       need('i2c', c.type);
       const f = ctx?.frame;

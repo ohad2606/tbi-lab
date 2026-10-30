@@ -43,6 +43,9 @@ describe('runtime fixtures', () => {
     ['s24-mpy-fade-session.json', 'mpy-fade'],
     // Sprint 24 (M3): hardware I2C from MicroPython.
     ['s24-mpy-lcd-hello-session.json', 'mpy-lcd-hello'],
+    // Sprint 25 (Phase 4): a potentiometer read as a digital level.
+    ['s25-esp32-pot-threshold-session.json', 'esp32-pot-threshold'],
+    ['s25-mpy-pot-threshold-session.json', 'mpy-pot-threshold'],
   ] as const)
     it(`${file} is the app request for ${id}`, () => {
       const fx = JSON.parse(

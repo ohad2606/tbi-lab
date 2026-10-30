@@ -30,9 +30,15 @@ export type CheckCode =
   /**
    * Sprint 24 (M2): the board's program reads a GPIO as a digital input, and while a switch on its
    * net is open (or always) nothing holds the pin's level: no pull-up or pull-down. A real ESP32
-   * then reads an undefined level; the simulator's input leakage reads LOW. Non-blocking.
+   * then reads an undefined level. Sprint 25 (Runtime v5): the run stops at such a read.
+   * Non-blocking here (the level depends on the switches while running).
    */
-  | 'gpio_input_floating';
+  | 'gpio_input_floating'
+  /**
+   * Sprint 25: the board's program reads a GPIO as a digital input, but nothing is wired to the
+   * pin: every read is undefined, and the run stops at the first one. Non-blocking here.
+   */
+  | 'gpio_input_unconnected';
 
 export interface CheckIssue {
   code: CheckCode;
@@ -274,7 +280,7 @@ const NEITHER = new Set([
 /**
  * Sprint 24 (M2): a GPIO the program reads as an input (inputPins.ts) whose net, with every switch
  * open, reaches nothing that holds a level: through resistors only to switches, junctions or
- * nothing. Wired pins only (an unwired pin is not part of the circuit).
+ * nothing. Sprint 25: an unwired pin the program reads is reported too (`gpio_input_unconnected`).
  */
 function floatingInputs(
   doc: ProjectDocument,
@@ -289,7 +295,16 @@ function floatingInputs(
     for (const gpio of programInputPins(program)) {
       const terminal = `gpio${gpio}`;
       const start = netOf.get(`${board.id}\u0000${terminal}`);
-      if (start === undefined) continue;
+      if (start === undefined) {
+        // Sprint 25: an input with nothing wired to it has no level at all.
+        issues.push({
+          code: 'gpio_input_unconnected',
+          severity: 'warning',
+          components: [board.id],
+          terminals: [terminal],
+        });
+        continue;
+      }
       // Walk the nets joined through conducting parts; note what else touches them.
       const seen = new Set<string>([start]);
       const queue = [start];

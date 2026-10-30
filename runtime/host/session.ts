@@ -29,6 +29,8 @@ import {
 } from '@tbi-lab/domain';
 import {
   EngineSession,
+  V_IH_V,
+  V_IL_V,
   interpretDigitalInput,
   type DigitalLevel,
   type RuntimePinMode,
@@ -190,6 +192,13 @@ export class HostSession {
   private pendingFailure: { reason: FailReason; detail?: unknown } | null = null;
   private endRequest: EndReason | null = null;
   private inputLevels = new Map<number, DigitalLevel>();
+  /**
+   * Sprint 25 (Runtime v5, `input-read`): the pads the program may read (from the ticket's
+   * analysis; `all`: every wired pad, when a read could not be resolved or the firmware was not
+   * analysed), and the watched pads currently marked undefined in the runtime, with why.
+   */
+  private inputWatch: { all: boolean; pins: ReadonlySet<number> } | null = null;
+  private readonly undefinedPads = new Map<number, UndefinedInput>();
   private gpioWindow = new Map<
     number,
     { drive: 0 | 1; level: 0 | 1; transitions: number; pwm?: PwmPadState }
@@ -583,6 +592,7 @@ export class HostSession {
           tick: (vns) => this.onTick(vns),
           serial: (vns, bytes) => this.onSerial(vns, bytes),
           unmodelled: (vns, facility) => this.onUnmodelled(vns, facility),
+          inputRead: (vns, pads) => this.onInputRead(vns, pads),
         },
       );
     } catch (e) {
@@ -688,8 +698,26 @@ export class HostSession {
         });
     }
     const cmds: Command[] = [];
+    const watch = this.inputWatch;
     for (const p of out.pins ?? []) {
       const prev = this.inputLevels.get(p.gpio);
+      // Sprint 25 (input-read): a pad the program may read, in input mode, with no defensible
+      // level is marked undefined (a read then ends the session); it is never given LOW or HIGH.
+      if (watch && p.mode === 'input' && !p.pwm && (watch.all || watch.pins.has(p.gpio))) {
+        const hold = p.voltage > V_IL_V && p.voltage < V_IH_V;
+        const why: UndefinedInput | null = p.levelUndefined
+          ? { cause: p.levelUndefined }
+          : hold && prev === undefined
+            ? { cause: 'between_thresholds', voltage: p.voltage }
+            : null;
+        if (why) {
+          // Nothing held it: there is no previous level to keep through the V_IL..V_IH band.
+          if (p.levelUndefined) this.inputLevels.delete(p.gpio);
+          cmds.push(...this.markUndefined(p.gpio, why));
+          continue;
+        }
+        cmds.push(...this.markUndefined(p.gpio, null));
+      }
       const next = interpretDigitalInput(p.voltage, prev ?? 0);
       if (prev === next) continue;
       this.inputLevels.set(p.gpio, next);
@@ -1092,7 +1120,69 @@ export class HostSession {
       };
       return [{ type: 'Q' }];
     }
-    return this.solveAndInject(0n);
+    // Sprint 25 (input-read): a pad the program reads with nothing wired to it has no level at all.
+    const watch = caps.includes('input-read')
+      ? this.features?.inputReads
+        ? {
+            all: this.features.inputReads.unresolved,
+            pins: new Set(this.features.inputReads.pins),
+          }
+        : { all: true, pins: new Set<number>() } // not analysed: every wired pad may be read
+      : null;
+    this.inputWatch = watch;
+    const unwired: Command[] = [];
+    const attached = new Set(this.request.attachments.map((a) => a.gpio));
+    for (const gpio of [...(watch?.pins ?? [])].sort((a, b) => a - b))
+      if (!attached.has(gpio)) unwired.push(...this.markUndefined(gpio, { cause: 'unconnected' }));
+    return [...unwired, ...this.solveAndInject(0n)];
+  }
+
+  /**
+   * Sprint 25 (input-read): mark a watched pad's level undefined (with why) or defined again in the
+   * runtime. Commands only on a change of definedness.
+   */
+  private markUndefined(gpio: number, why: UndefinedInput | null): Command[] {
+    const had = this.undefinedPads.has(gpio);
+    if (why) this.undefinedPads.set(gpio, why);
+    else this.undefinedPads.delete(gpio);
+    return had === !!why ? [] : [{ type: 'Z', pad: gpio, undefined: !!why }];
+  }
+
+  /**
+   * Sprint 25 (Runtime v5, `input-read`): the firmware read the input register while these pads,
+   * which it may read, had no defensible level (nothing holds the net, nothing is wired, an
+   * undetermined logic level reaches it, or its voltage is between V_IL and V_IH with no previous
+   * level). A real ESP32 reads an undefined value there; the simulator never substitutes LOW or
+   * HIGH: the session ends at this exact virtual time, naming the pads.
+   */
+  private onInputRead(vns: bigint, pads: readonly number[]): Command[] {
+    if (!this.pendingFailure) {
+      const inputs = pads.map((gpio) => ({
+        gpio,
+        ...(this.undefinedPads.get(gpio) ?? { cause: 'floating' as const }),
+      }));
+      const board = this.request.circuit.components.find(
+        (c) => c.type === 'board.esp32_devkitc_wroom32',
+      );
+      const parts = this.request.attachments
+        .filter((a) => pads.includes(a.gpio))
+        .map((a) => a.component);
+      const detail = {
+        code: 'gpio_input_undefined',
+        components: [...new Set([...(board ? [board.id] : []), ...parts])],
+        param: `gpio${pads[0]}`,
+        detail: { inputs, sinceNs: vns.toString(), vil: V_IL_V, vih: V_IH_V },
+      };
+      this.log.append({
+        type: 'diagnostic',
+        simNs: vns.toString(),
+        severity: 'error',
+        code: 'gpio_input_undefined',
+        detail,
+      });
+      this.pendingFailure = { reason: 'electrical_error', detail };
+    }
+    return [{ type: 'Q' }];
   }
 
   private onPad(vns: bigint, pad: number, drive: 0 | 1, level: 0 | 1): Command[] {
@@ -1198,6 +1288,22 @@ export class HostSession {
     const cmds: Command[] = [];
     for (const { simNs, d } of this.i2c?.diagnostics.splice(0) ?? [])
       this.log.append({ type: 'diagnostic', simNs: simNs.toString(), ...d });
+    // Sprint 25: a phase no part can answer honestly ends the session, naming it.
+    const refusal = this.i2c?.refusal;
+    if (refusal) {
+      if (!this.pendingFailure) {
+        const detail = { ...refusal, detail: { ...refusal.detail, sinceNs: vns.toString() } };
+        this.log.append({
+          type: 'diagnostic',
+          simNs: vns.toString(),
+          severity: 'error',
+          code: refusal.code,
+          detail,
+        });
+        this.pendingFailure = { reason: 'electrical_error', detail };
+      }
+      return [{ type: 'Q' }, ...reply];
+    }
     if (phase.op === 'W' && this.i2c) {
       let relit = false;
       for (const id of this.i2c.changed) {
@@ -1525,6 +1631,11 @@ export class HostSession {
  * If the real output at duty 0 were a steady high or a short pulse each period, how an SG90 reacts
  * is not established either, so a duty-0 pad that reaches a servo is refused like any other load.
  */
+/** Sprint 25 (input-read): why a watched pad has no defensible digital level. */
+type UndefinedInput =
+  | { cause: 'unconnected' | 'floating' | 'unknown' }
+  | { cause: 'between_thresholds'; voltage: number };
+
 const ZERO_NEUTRAL: ReadonlySet<string> = new Set([
   'board.esp32_devkitc_wroom32',
   'component.ground',

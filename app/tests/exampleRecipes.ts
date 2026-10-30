@@ -122,6 +122,40 @@ class Recipe {
   }
 }
 
+/** Sprint 25 (Phase 4): the potentiometer-into-GPIO34 circuit, with the board's program. */
+function potThreshold(id: string, title: string, program: (r: Recipe, board: string) => void) {
+  const r = new Recipe(id, title);
+  r.supply(3.3, 0.05);
+  const U1 = r.place('board.esp32_devkitc_wroom32', 300, 0);
+  program(r, U1);
+  const RV = r.place('component.potentiometer', 80, -100);
+  const G2 = r.place('component.ground', -20, -180);
+  const R1 = r.place('component.resistor', 480, 60);
+  const D1 = r.place('component.led', 600, 60);
+  const G3 = r.place('component.ground', 680, 140);
+  const G4 = r.place('component.ground', 440, -120);
+  r.set(RV, 'resistance', 10_000, 'ohm');
+  r.set(RV, 'position', 10, 'percent');
+  r.set(R1, 'resistance', 220, 'ohm');
+  // + reaches end B from below, clear of the potentiometer's body; end A goes up to its ground.
+  r.wire(T('PSU1', 'positive'), T(RV, 'b'), [
+    { x: -40, y: -40 },
+    { x: 120, y: -40 },
+  ]);
+  r.wire(T(RV, 'a'), T(G2, 'ref'));
+  // Into GPIO34 along mpy-button's approach (clear of the GPIO36/39 header pins).
+  r.wire(T(RV, 'wiper'), T(U1, 'gpio34'), [
+    { x: 80, y: -180 },
+    { x: 140, y: -180 },
+    { x: 140, y: -100 },
+  ]);
+  r.wire(T(U1, 'gpio4'), T(R1, 'a'));
+  r.wire(T(R1, 'b'), T(D1, 'anode'));
+  r.wire(T(D1, 'cathode'), T(G3, 'ref'));
+  r.wire(T(U1, 'gnd'), T(G4, 'ref'));
+  return r.centre(-240);
+}
+
 export const RECIPES: Record<string, () => ProjectDocument> = {
   /** 5 V across 1 kΩ: I = V / R = 5 mA. */
   'ohms-law': () => {
@@ -503,7 +537,7 @@ export const RECIPES: Record<string, () => ProjectDocument> = {
     return r.centre(-60);
   },
   /**
-   * Sprint 6, Arduino source since Sprint 7. Classic ESP32 running the TbiGpioProof sketch
+   * Sprint 6, Arduino source since Sprint 7. Classic ESP32 running the BlinkTwoPins sketch (app/tests/exampleSketches)
    * (visible, editable; Build then Run): GPIO2 drives a red LED through 220 Ω (blinking in an
    * 800 ms pattern). The board GND is the circuit reference.
    */
@@ -511,7 +545,7 @@ export const RECIPES: Record<string, () => ProjectDocument> = {
     const r = new Recipe('esp32-blink', 'ESP32: blink an LED');
     r.remove('PSU1', 'GND1');
     const U1 = r.place('board.esp32_devkitc_wroom32', 300, 0);
-    r.program(U1, 'TbiGpioProof');
+    r.sketch(U1, 'BlinkTwoPins.ino');
     const R1 = r.place('component.resistor', 480, 100);
     const D1 = r.place('component.led', 600, 100);
     const G2 = r.place('component.ground', 680, 180);
@@ -524,7 +558,7 @@ export const RECIPES: Record<string, () => ProjectDocument> = {
     return r.centre(-240);
   },
   /**
-   * Sprint 6, Arduino source since Sprint 7. Classic ESP32 running the TbiBanks sketch (visible,
+   * Sprint 6, Arduino source since Sprint 7. Classic ESP32 running the InputEcho sketch (app/tests/exampleSketches) (visible,
    * editable; Build then Run), which copies GPIO34 to GPIO4.
    * A toggle switch (persistent) and a push button (transient) in parallel feed 3.3 V through
    * 1 kΩ into the input-only GPIO34, pulled down by 10 kΩ (the pad has no internal pull). GPIO4
@@ -534,7 +568,7 @@ export const RECIPES: Record<string, () => ProjectDocument> = {
     const r = new Recipe('esp32-input-echo', 'ESP32: switch input to LED output');
     r.supply(3.3, 0.05);
     const U1 = r.place('board.esp32_devkitc_wroom32', 300, 0);
-    r.program(U1, 'TbiBanks');
+    r.sketch(U1, 'InputEcho.ino');
     const SW = r.place('component.toggle_switch', 0, -100);
     const PB = r.place('component.push_button', 0, -160);
     // The pull-down branch stands three grid steps clear of the J2 header row (Sprint 10: no
@@ -564,7 +598,7 @@ export const RECIPES: Record<string, () => ProjectDocument> = {
   },
   /**
    * Sprint 10 (realism benchmark): the ESP32 input echo on a fuller bench, one scene with every
-   * part family the 3D view is judged on. Same firmware (TbiBanks: GPIO34 copied to GPIO4) and
+   * part family the 3D view is judged on. Same firmware (InputEcho: GPIO34 copied to GPIO4) and
    * input chain as esp32-input-echo; GPIO4 drives the red LED through 220 Ω. Two indicators run
    * straight off the 3.3 V supply: a yellow LED behind a 1N4148 (3.3 V less ~0.7 V and ~2.3 V
    * over 33 Ω, about 7 mA) and a green LED through 68 Ω, its feed a long run across the bench.
@@ -573,7 +607,7 @@ export const RECIPES: Record<string, () => ProjectDocument> = {
     const r = new Recipe('esp32-bench', 'ESP32 bench: inputs and indicators');
     r.supply(3.3, 0.1);
     const U1 = r.place('board.esp32_devkitc_wroom32', 300, 0);
-    r.program(U1, 'TbiBanks');
+    r.sketch(U1, 'InputEcho.ino');
     const SW = r.place('component.toggle_switch', 0, -100);
     const PB = r.place('component.push_button', 0, -160);
     const R2 = r.place('component.resistor', 100, -100);
@@ -627,7 +661,7 @@ export const RECIPES: Record<string, () => ProjectDocument> = {
   },
   /**
    * Sprint 11 (R1): a motion alarm through a relay — the Sprint 10 parts with the ESP32. Same
-   * firmware as esp32-input-echo (TbiBanks: GPIO34 copied to GPIO4), so the build is a shared,
+   * firmware as esp32-input-echo (InputEcho: GPIO34 copied to GPIO4), so the build is a shared,
    * curated one. 5 V supply: the PIR (powered from >= 4.5 V) sends a 3.3 V level to GPIO34; GPIO4
    * drives a 2N3904 through 1 kΩ, which switches the relay coil (with a 1N4148 flyback diode);
    * the relay's contact switches an alarm LED (330 Ω) and the buzzer from 5 V. Click the sensor's
@@ -637,7 +671,7 @@ export const RECIPES: Record<string, () => ProjectDocument> = {
     const r = new Recipe('esp32-motion-relay', 'ESP32: motion alarm through a relay');
     r.supply(5, 0.5);
     const U1 = r.place('board.esp32_devkitc_wroom32', 300, 0);
-    r.program(U1, 'TbiBanks');
+    r.sketch(U1, 'InputEcho.ino');
     const PIR = r.place('sensor.pir_hc_sr501', 60, -100, 2);
     const G2 = r.place('component.ground', 120, -20);
     const RB = r.place('component.resistor', 460, 60);
@@ -686,7 +720,7 @@ export const RECIPES: Record<string, () => ProjectDocument> = {
   },
   /**
    * Sprint 11 (R1): an RGB night light with a light sensor — a digital input only (no ADC).
-   * Same firmware as esp32-input-echo (TbiBanks: GPIO34 copied to GPIO4). 3.3 V supply: 10 kΩ
+   * Same firmware as esp32-input-echo (InputEcho: GPIO34 copied to GPIO4). 3.3 V supply: 10 kΩ
    * from 3.3 V to GPIO34 with the photoresistor to GND, so darkness pulls GPIO34 HIGH (below about
    * 3 lx; above about 110 lx it reads LOW; in between it keeps its previous level — the ESP32's
    * own input thresholds). GPIO4 lights all three channels (220/100/100 Ω): white.
@@ -695,7 +729,7 @@ export const RECIPES: Record<string, () => ProjectDocument> = {
     const r = new Recipe('esp32-night-light', 'ESP32: RGB night light with a light sensor');
     r.supply(3.3, 0.1);
     const U1 = r.place('board.esp32_devkitc_wroom32', 300, 0);
-    r.program(U1, 'TbiBanks');
+    r.sketch(U1, 'InputEcho.ino');
     const R1 = r.place('component.resistor', 40, -100);
     const LDR = r.place('component.photoresistor', 80, -40, 1);
     const G2 = r.place('component.ground', 80, 60);
@@ -1287,6 +1321,21 @@ export const RECIPES: Record<string, () => ProjectDocument> = {
     r.wire(T(U1, 'gnd'), T(G3, 'ref'));
     return r.centre(-240);
   },
+  /**
+   * Sprint 25 (Phase 4): a 10 kΩ PTV09A across the 3.3 V bench supply (A to GND, B to +), its
+   * wiper on the input-only GPIO34, read as a DIGITAL level (V_IL / V_IH, the previous level held
+   * in between); GPIO4 drives a red LED through 220 Ω. Starts at 10 % (0.33 V: LOW), never in the
+   * band between the thresholds, where a first read has no defined level. ADC is not supported.
+   */
+  'esp32-pot-threshold': () =>
+    potThreshold('esp32-pot-threshold', 'ESP32: potentiometer as a digital input', (r, U1) =>
+      r.sketch(U1, 'PotThreshold.ino'),
+    ),
+  /** Sprint 25 (Phase 4): the same circuit and behaviour in MicroPython. */
+  'mpy-pot-threshold': () =>
+    potThreshold('mpy-pot-threshold', 'MicroPython: potentiometer as a digital input', (r, U1) =>
+      r.python(U1, 'mpy_pot_threshold.py'),
+    ),
   /**
    * Sprint 24 (M1/M2): a push button read with Pin.IN lights an LED. The input chain of
    * esp32-input-echo without its toggle switch: 3.3 V -> button -> 1 kΩ -> GPIO34 (input only, no

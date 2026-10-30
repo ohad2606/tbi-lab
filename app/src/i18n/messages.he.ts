@@ -550,6 +550,18 @@ export const he: Record<MessageKey, string> = {
     'ה[[components]] האלה יוצרים מעגל צף ללא חיבור ל-GND: {components}. חברו אותם למעגל או הסירו אותם.',
   'sim.error.floating_output_off':
     'ה[[components]] האלה מגיעים ל-GND רק דרך {supplies}, שהיציאה שלו כבויה: {components}. הפעילו את היציאה או חברו אותם ל-GND.',
+  'sim.error.gpio_input_undefined.floating':
+    '{pins}: התוכנית קראה את כניסת ה-ESP32 הזו כששום דבר לא קבע את הרמה שלה: שום חוט, נגד או מתג סגור לא מחבר אותה לספק, ל-GND או ליציאה פעילה. ‏ESP32 אמיתי קורא שם ערך לא מוגדר, ולכן ההרצה נעצרה בקריאה הזו במקום לבחור LOW או HIGH. נגדי ה-pull הפנימיים של ה-ESP32 אינם מדומים. הוסיפו נגד pull-down או pull-up (למשל ⁦10 kΩ⁩ אל GND או אל ⁦3.3 V⁩) כדי שלפין תהיה רמה בכל פעם שקוראים אותו.',
+  'sim.error.gpio_input_undefined.unconnected':
+    '{pins}: התוכנית קראה את הפין הזה של ה-ESP32, אבל שום דבר אינו מחובר אליו. ‏ESP32 אמיתי קורא ערך לא מוגדר מכניסה לא מחוברת, ולכן ההרצה נעצרה בקריאה הזו במקום לבחור LOW או HIGH. נגדי ה-pull הפנימיים של ה-ESP32 אינם מדומים. חברו את הפין (עם נגד pull-down או pull-up אם זה לחצן), או הסירו את הקריאה מהתוכנית.',
+  'sim.error.gpio_input_undefined.unknown':
+    '{pins}: התוכנית קראה את כניסת ה-ESP32 הזו כשהגיעה אליה רמה לוגית לא קבועה (X), ולכן ההרצה נעצרה בקריאה הזו במקום לבחור LOW או HIGH. בדקו את הכניסות הלוגיות המסומנות כלא ידועות (X).',
+  'sim.error.gpio_input_undefined.between_thresholds':
+    '{pins}: התוכנית קראה את כניסת ה-ESP32 הזו במתח {voltage}, בין {vil} ל-{vih}, לפני שהייתה לה אי-פעם רמה מוגדרת. גיליון הנתונים אינו מבטיח שם שום קריאה, ולכן ההרצה נעצרה בקריאה הזו במקום לבחור LOW או HIGH. הביאו את הכניסה אל {vil} או מתחת, או אל {vih} או מעל.',
+  'sim.error.i2c_clock_exceeded':
+    '{components}: התוכנית מפעילה את אפיק ה-I2C בתדר {hz} כשהיא פונה לתצוגה הזו, מהר יותר ממה שכרטיס ה-PCF8574 שלה מדורג לו ({max}, גיליון הנתונים של NXP). מודול אמיתי אינו מובטח לעבוד שם, ולכן ההרצה נעצרה. השתמשו ב-Wire.setClock(100000) או פחות (ב-MicroPython: freq=100000 או פחות).',
+  'sim.error.i2c_read_unsupported':
+    '{components}: התוכנית קוראת בית מכרטיס ה-PCF8574 של התצוגה הזו. מה שכרטיס אמיתי מחזיר תלוי בפינים של בקר ה-LCD ובחיווט של הכרטיס עצמו, שאינם מדומים, ולכן ההרצה נעצרה במקום להמציא ערך. התצוגה עובדת לכתיבה; הסירו את הקריאה (Wire.requestFrom).',
   'sim.error.psu_sinking':
     '{components}: ספק זה מכוון למתח קבוע, והמעגל היה דוחף {current} בחזרה אליו — למשל ממקור אחר, מקבל שמתפרק אליו לאחר שהמתח המכוון הונמך, או מזרם זליגה של דיודה או רכיב אחר (גם ננו-אמפרים נחשבים). מודל ספק המעבדה אינו יכול לבלוע זרם (הנחה מפשטת של הסימולטור), ולכן המעגל אינו מדומה. ודאו שדבר אינו מעלה את יציאת הספק מעל המתח המכוון שלו, או הוסיפו עומס קטן על היציאה (למשל נגד) כך שהספק יספק תמיד זרם.',
   'sim.error.psu_shorted':
@@ -558,6 +570,9 @@ export const he: Record<MessageKey, string> = {
   'sim.error.psu_parallel':
     '{supplies} מחוברים ישירות במקביל. הסימולטור אינו יכול עדיין לקבוע חלוקת זרם יחידה בין הספקים.',
   'sim.error.psu_parallel.hint': 'השתמשו בספק אחד, או הפרידו בין היציאות באמצעות רכיבי מעגל.',
+  'sim.error.invalid_parameter.not_standard':
+    '{components}: {param} הוא {value}, ערך שהרכיב הזה אינו מיוצר בו. הערכים הסטנדרטיים בגיליון הנתונים הם {values}. בחרו אחד מהם בחלונית המאפיינים.',
+  'param.notStandard': '{value} (לא ערך סטנדרטי)',
   'sim.error.invalid_parameter': '{components}: לא ניתן לדמות את הערך של „{param}”.',
   'sim.error.unsupported_component': 'עדיין לא ניתן לדמות את {components}.',
   'sim.error.invalid_attachment': 'פין של המיקרו-בקר מחובר להדק שאינו קיים: {components}.',
@@ -650,9 +665,11 @@ export const he: Record<MessageKey, string> = {
   'checks.psu_no_load':
     '{component}: שום רכיב אינו מחובר בין + ל-−, ולכן הוא אינו מספק זרם לאף רכיב. חברו את מסלול החזרה של המעגל (למשל GND של רכיב) להדק ה-−.',
   'checks.gpio_input_floating':
-    '{component} {terminal}: התוכנית קוראת את הפין הזה ככניסה, אבל כאשר {switches} פתוח שום דבר אינו מקבע את הרמה שלו (אין נגד pull-up או pull-down). ‏ESP32 אמיתי קורא אז רמה לא מוגדרת; הסימולטור קורא אותה כ-LOW. הוסיפו נגד (למשל 10 kΩ) מהפין אל GND או אל 3.3 V.',
+    '{component} {terminal}: התוכנית קוראת את הפין הזה ככניסה, אבל כאשר {switches} פתוח שום דבר אינו מקבע את הרמה שלו (אין נגד pull-up או pull-down). ‏ESP32 אמיתי קורא אז רמה לא מוגדרת, ולכן ההרצה נעצרת אם התוכנית קוראת אותו אז. הוסיפו נגד (למשל ⁦10 kΩ⁩) מהפין אל GND או אל ⁦3.3 V⁩.',
   'checks.gpio_input_floating_always':
-    '{component} {terminal}: התוכנית קוראת את הפין הזה ככניסה, אבל שום דבר אינו מקבע את הרמה שלו (אין נגד pull-up או pull-down). ‏ESP32 אמיתי קורא אז רמה לא מוגדרת; הסימולטור קורא אותה כ-LOW. הוסיפו נגד (למשל 10 kΩ) מהפין אל GND או אל 3.3 V.',
+    '{component} {terminal}: התוכנית קוראת את הפין הזה ככניסה, אבל שום דבר אינו מקבע את הרמה שלו (אין נגד pull-up או pull-down). ‏ESP32 אמיתי קורא אז רמה לא מוגדרת, ולכן ההרצה נעצרת כשהתוכנית קוראת אותו. הוסיפו נגד (למשל ⁦10 kΩ⁩) מהפין אל GND או אל ⁦3.3 V⁩.',
+  'checks.gpio_input_unconnected':
+    '{component} {terminal}: התוכנית קוראת את הפין הזה ככניסה, אבל שום דבר אינו מחובר אליו. ‏ESP32 אמיתי קורא רמה לא מוגדרת מכניסה לא מחוברת, ולכן ההרצה נעצרת כשהתוכנית קוראת אותו. חברו את הפין, או הסירו את הקריאה מהתוכנית.',
   'checks.psu_shorted_by_wire': '{component}: הדקי היציאה מחוברים זה לזה בחוט.',
   'history.undo': 'ביטול',
   'history.redo': 'ביצוע מחדש',
@@ -1262,6 +1279,12 @@ export const he: Record<MessageKey, string> = {
   'example.mpy-blink.title': 'MicroPython: הבהוב נורית LED',
   'example.mpy-blink.summary':
     'אותו מעגל כמו בהבהוב של Arduino, מתוכנת ב-MicroPython: ‏main.py מגדיר את GPIO2 כיציאה ומדליק ומכבה את הנורית האדומה (220 Ω אל GND) כל 500 ms באמצעות Pin.value().',
+  'example.esp32-pot-threshold.title': 'ESP32: פוטנציומטר ככניסה דיגיטלית',
+  'example.esp32-pot-threshold.summary':
+    '[[potentiometer]] של ⁦10 kΩ⁩ על ⁦3.3 V⁩ מזין את GPIO34, שתוכנית ה-Arduino קוראת כרמה דיגיטלית: LOW ב-⁦0.825 V⁩ ומטה, HIGH ב-⁦2.475 V⁩ ומעלה, והרמה האחרונה ביניהם. ‏GPIO4 מדליק את הנורית כשהקריאה HIGH. סובבו את ה[[wiper]] בזמן הריצה. כניסה אנלוגית (analogRead) אינה נתמכת. רץ על שירות זמן הריצה של ESP32.',
+  'example.mpy-pot-threshold.title': 'MicroPython: פוטנציומטר ככניסה דיגיטלית',
+  'example.mpy-pot-threshold.summary':
+    'אותו מעגל [[potentiometer]] ב-MicroPython: ‏Pin(34, Pin.IN).value() קורא את ה[[wiper]] כ-0 ב-⁦0.825 V⁩ ומטה וכ-1 ב-⁦2.475 V⁩ ומעלה, ושומר את הרמה האחרונה ביניהם; ‏GPIO4 מדליק את הנורית. סובבו את ה[[wiper]] בזמן הריצה. ‏machine.ADC אינו נתמך. רץ על שירות זמן הריצה של ESP32.',
   'example.mpy-button.title': 'MicroPython: לחצן מדליק נורית LED',
   'example.mpy-button.summary':
     'החזיקו את הלחצן: ‏3.3 V מגיעים ל-GPIO34 דרך 1 kΩ, ונגד pull-down של 10 kΩ מחזיק אותו ב-LOW כשהלחצן משוחרר (ל-GPIO34 אין pull פנימי). ‏main.py קורא אותו באמצעות Pin.IN כל 10 ms ומעתיק אותו ל-GPIO4, שמזין את הנורית האדומה דרך 220 Ω.',
@@ -1594,6 +1617,10 @@ export const he: Record<MessageKey, string> = {
   'sim.part.state.component.potentiometer.resistanceWB': 'התנגדות W–B',
   'sim.part.state.component.potentiometer.power': 'הספק מתבזבז (כל המסלול)',
   'sim.part.state.component.potentiometer.wiperVoltage': 'מתח ה[[wiper]] ביחס ל-GND',
+  'sim.part.state.component.potentiometer.residualMaxOhm':
+    'התנגדות שיורית בקצה (מקסימום לפי גיליון הנתונים, לא מדומה)',
+  'sim.results.potNearEnd':
+    'ה[[wiper]] נמצא בתוך תחום ההתנגדות השיורית של קצה המסלול לפי גיליון הנתונים. ‏PTV09A אמיתי משאיר שם בין 0 ל-{bound}, וזה אינו מדומה: הערכים שתלויים בקצה הזה הם הגבול של מסלול אידיאלי, לא חיזוי מדויק.',
   'limitation.potentiometer_linear':
     'מסלול ליניארי בלבד: שני מקטעים אידיאליים שסכומם ההתנגדות הכוללת, ביחס ישר למיקום. המיקום הוא חלק המסלול בין A ל[[wiper]], לא זווית הציר; מסלול לוגריתמי אינו מוצע.',
   'limitation.potentiometer_end_resistance':

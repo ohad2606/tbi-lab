@@ -18,6 +18,11 @@ export interface TerminalDef {
   labelKey: string;
 }
 
+/** Bourns PTV09A standard resistance table (datasheet REV. 01/25 p.1), ohms. */
+export const POT_STANDARD_OHMS: readonly number[] = [
+  1e3, 2e3, 5e3, 10e3, 20e3, 50e3, 100e3, 200e3, 500e3, 1e6,
+];
+
 export type ParamDef =
   | {
       kind: 'quantity';
@@ -46,6 +51,13 @@ export type ParamDef =
        * small; anything else is refused by name (`off_grid`).
        */
       step?: number;
+      /**
+       * Sprint 25: the only values the part is made in (a manufacturer's standard table, e.g. the
+       * PTV09A's 1-2-5 resistances), ascending, all within [min, max]. The inspector offers them
+       * as a list; any other value is refused by the editor (`not_standard`) and by the engine.
+       * Documents holding another value still open (nothing is migrated).
+       */
+      values?: readonly number[];
     }
   | {
       kind: 'boolean';
@@ -291,6 +303,9 @@ const SPRINT10_TYPES = {
         max: 1e6,
         default: 10_000,
         labelKey: 'param.totalResistance',
+        // Sprint 25: the PTV09A's standard resistance table (Bourns datasheet REV. 01/25 p.1;
+        // docs/sprints/s10-evidence/datasheets/FACTS.md §12): the 1-2-5 decades, codes 102 … 105.
+        values: POT_STANDARD_OHMS,
       },
       {
         kind: 'quantity',

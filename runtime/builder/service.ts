@@ -284,6 +284,7 @@ export class BuildService {
           restart: f.restart,
           unsupported: f.unsupported,
           ...(f.requires?.length ? { requires: f.requires } : {}),
+          ...(f.inputReads ? { inputReads: f.inputReads } : {}),
         }
       : null;
     const ticket = signTicket(this.access.ticketKey, {
