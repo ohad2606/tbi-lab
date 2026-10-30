@@ -93,7 +93,7 @@ for (const width of [1400, 1024])
       }
     });
 
-test('OS-06: HC-SR04 distance as a number and a unit; slider in 5 mm steps; the canvas shows it', async ({
+test('OS-06: HC-SR04 distance in plain metres; slider in 5 mm steps; the canvas shows it', async ({
   page,
 }) => {
   await openExample(page, 'esp32-distance-alarm');
@@ -101,11 +101,21 @@ test('OS-06: HC-SR04 distance as a number and a unit; slider in 5 mm steps; the 
   const field = page.getByTestId('param-U2-distance');
   const slider = page.getByTestId('param-U2-distance-slider');
   await expect(field).not.toHaveValue(/m$/);
-  // Phase 1 units: the number is read in the unit shown beside it (0.5 m shows as 50 cm).
-  await expect(page.getByTestId('param-U2-distance-unit')).toHaveValue('-2');
-  await field.fill('30');
+  // OS-06 (kept by the owner, OD-POT-4): a fixed `m`, no unit list; 0.5 m shows as `0.5`.
+  await expect(field).toHaveValue('0.5');
+  const unit = page.getByTestId('param-U2-distance-unit');
+  await expect(unit).toHaveText('m');
+  expect(await unit.evaluate((e) => e.tagName)).toBe('SPAN');
+  await field.fill('0.3');
   await field.press('Enter');
-  await expect(field).toHaveValue('30');
+  await expect(field).toHaveValue('0.3');
+  await expect
+    .poll(async () =>
+      JSON.stringify(
+        (await storedProject(page)).components.find((c) => c.id === 'U2')?.params.distance,
+      ),
+    )
+    .toBe(JSON.stringify({ value: 0.3, unit: 'metre' }));
   await expect(page.locator('.value-label', { hasText: '300 mm' })).toHaveCount(1);
   // Keyboard steps: each moves the value by exactly 5 mm, monotonically.
   const values: number[] = [];
@@ -113,7 +123,7 @@ test('OS-06: HC-SR04 distance as a number and a unit; slider in 5 mm steps; the 
     await slider.press('ArrowRight');
     values.push(Number(await field.inputValue()));
   }
-  expect(values).toEqual([30.5, 31, 31.5, 32]); // cm
+  expect(values).toEqual([0.305, 0.31, 0.315, 0.32]);
   await expect(page.locator('.value-label', { hasText: '320 mm' })).toHaveCount(1);
 });
 

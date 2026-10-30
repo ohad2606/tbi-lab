@@ -20,7 +20,7 @@ projects load unchanged. Only the editor changed.
 - `ValueControl` (app/src/ui/ValueControl.tsx): a plain number field plus a `<select>` of display
   units when a quantity has more than one useful unit; a fixed symbol otherwise.
 - Display-unit sets are data in `packages/domain/src/units.ts` (`DISPLAY_UNITS`):
-  ohm Ω/kΩ/MΩ; farad pF/nF/µF/mF; ampere mA/A; metre mm/cm/m; volt, lux, °C, %RH, % fixed.
+  ohm Ω/kΩ/MΩ; farad pF/nF/µF/mF; ampere mA/A; metre, volt, lux, °C, %RH, % fixed (metre per OS-06, OD-POT-4).
   A unit is hidden only when none of its values is in the parameter's range
   (`displayUnitsFor`; a capacitor's 1 nF minimum keeps pF because 1000 pF is in range).
 - Shown unit = deterministic: the largest unit whose number is ≥ 1 (`chooseDisplayUnit`); 0 shows
@@ -32,7 +32,7 @@ projects load unchanged. Only the editor changed.
   out of range: inline error, nothing committed, the list reverts. Typing a number then choosing
   its unit is ONE edit (focus moving from the field to its own unit list does not commit).
 - Convenience, explicit: a prefixed form typed or pasted into the number field (`4k7`, `4.7k`,
-  `100u`, `2M2`, `4.7 kΩ`, `50 cm`) is converted by the exact parser and then shown as number +
+  `100u`, `2M2`, `4.7 kΩ`) is converted by the exact parser and then shown as number +
   unit; it is never re-scaled by the selected unit. Typed text never reaches storage.
 - EN/HE: unit-list `aria-label` (`valueControl.unit`), new `error.parse.invalid` wording (no longer
   "type 1k"), `error.parse.decimal_comma` example `1.5`.
@@ -42,13 +42,14 @@ projects load unchanged. Only the editor changed.
 - Live params (PSU, environment sliders) keep their behaviour (coalesced undo, live mirror).
 
 Params with a unit list: PSU current limit (mA, A), resistor resistance (Ω, kΩ, MΩ), capacitor
-capacitance (pF, nF, µF, mF), HC-SR04 distance (mm, cm, m), potentiometer resistance (Ω, kΩ, MΩ).
-Fixed symbol: PSU setpoint (V), capacitor rated voltage (V), illuminance (lx), temperatures (°C),
+capacitance (pF, nF, µF, mF), potentiometer resistance (Ω, kΩ, MΩ).
+Fixed symbol: HC-SR04 distance (m, shown and typed in plain metres exactly as before, OS-06), PSU setpoint (V), capacitor rated voltage (V), illuminance (lx), temperatures (°C),
 humidity (%RH), wiper position (%).
 
-Behaviour change to note: a plain number is now read in the unit SHOWN beside it. A distance
-of 0.5 m shows as `50` `cm`; typing `0.3` there means 0.3 cm (out of range, refused), so the
-e2e specs that typed metres or base units were updated to the new model (listed in the evidence).
+Behaviour change to note: a plain number is now read in the unit SHOWN beside it (a resistor
+showing `1` `kΩ` reads `220` as 220 kΩ), so the e2e specs and the `setValue` helper that typed
+base-unit numbers into list fields were updated. A fixed-symbol quantity keeps its pre-sprint
+range text (`formatQuantity`). Distances are unaffected (OD-POT-4 below).
 
 ## Phase 2: the potentiometer (`component.potentiometer`, schema v5)
 
@@ -116,8 +117,11 @@ pages in `docs/sprints/s10-evidence/datasheets/FACTS.md` §12; provenance in
   proportional to the track fraction in use, i.e. max current √(P/R)) as a labelled assumption.
 - **OD-POT-3 (resistance values):** the PTV09A is made in 1-2-5 values only (1k, 2k, 5k … 1M);
   the parameter currently accepts any value in 1 kΩ … 1 MΩ. Restrict to the list?
-- **OD-POT-4 (metre display):** with the design's rule a 0.5 m distance shows as `50 cm` (an
-  earlier owner request, OS-06, asked for plain metres). Keep, or pin metre to `m`?
+- **OD-POT-4 (metre display): RESOLVED 2026-10-30** — the earlier owner decision OS-06 stands:
+  `metre` is a fixed-symbol unit again (no list); 0.5 m shows as `0.5` `m` and typing `0.3`
+  commits 0.3 m, exactly as before 0389c47. The e2e changes that existed only for the cm/mm
+  display were reverted (s12-parts, s12-real, s13-journey-real, s13-export-real, the distance
+  parts of s13-live-real and s13-owner-smoke OS-06, which now also checks the stored 0.3 m).
 - **OD-POT-5 (deploy):** rebuild/redeploy the DEV Session Host with this branch so ESP32 sessions
   accept the new type (the frontend alone is not enough).
 
@@ -140,3 +144,9 @@ pages in `docs/sprints/s10-evidence/datasheets/FACTS.md` §12; provenance in
   pass (after fixes; first run had 4 failures, listed in the evidence note). The real-runtime specs
   (s12-real, s13-journey-real, s13-live-real, s13-export-real) were updated but not run (they need
   the real Session Host + QEMU). The full Playwright suite was not run.
+
+### OD-POT-4 follow-up (metre fixed again)
+
+typecheck and lint pass; vitest units, units-ux, i18n, examples, s13-slider-scale, schema-v5-pot:
+190 tests pass; Playwright (CI=1) s13-owner-smoke, s12-parts, pot-units, editor: 27 passed. The
+real-runtime specs restored to their 0389c47 form were not run (real Session Host needed).

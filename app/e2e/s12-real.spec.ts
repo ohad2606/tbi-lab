@@ -60,8 +60,7 @@ test.describe('Runtime v2 host', () => {
     await select(page, 'U2');
     const field = page.getByTestId('param-U2-distance');
     await expect(field).toBeEnabled();
-    // 0.5 m is shown as 50 cm (Phase 1 units): 0.1 m is 10 cm.
-    await field.fill('10');
+    await field.fill('0.1');
     await field.press('Enter');
     await expect(page.getByTestId('pin-level-2')).toHaveAttribute('data-level', '1', {
       timeout: 30_000,
@@ -70,7 +69,7 @@ test.describe('Runtime v2 host', () => {
     await expect(serial(page)).toContainText(/Distance: 10\.\d cm/, { timeout: 30_000 });
     await page.screenshot({ path: info.outputPath('s12-real-distance-alarm.png') });
     await select(page, 'U2');
-    await field.fill('100'); // 100 cm = 1 m
+    await field.fill('1');
     await field.press('Enter');
     await expect(page.getByTestId('pin-level-2')).toHaveAttribute('data-level', '0', {
       timeout: 30_000,

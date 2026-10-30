@@ -90,8 +90,9 @@ describe('display units (Sprint POT-UNITS Phase 1)', () => {
   it('offers the unit lists as data; single-choice units have one entry', () => {
     expect(ohm.map((u) => u.prefix)).toEqual(['', 'k', 'M']);
     expect(displayUnitsFor('ampere', 0.001, 5).map((u) => u.prefix)).toEqual(['m', '']);
-    expect(displayUnitsFor('metre', 0.01, 5).map((u) => u.prefix)).toEqual(['m', 'c', '']);
-    for (const u of ['volt', 'lux', 'celsius', 'percent_rh'] as const)
+    // OS-06 / OD-POT-4: a distance stays in plain metres (no list).
+    expect(displayUnitsFor('metre', 0.01, 5).map((u) => u.prefix)).toEqual(['']);
+    for (const u of ['volt', 'lux', 'celsius', 'percent_rh', 'metre'] as const)
       expect(DISPLAY_UNITS[u]).toHaveLength(1);
   });
 
@@ -156,10 +157,10 @@ describe('display units (Sprint POT-UNITS Phase 1)', () => {
       unit: k,
     });
     expect(parseEntry('100u', 'farad', base, [], false)).toEqual({ ok: true, value: 1e-4 });
-    const cm = displayUnitsFor('metre', 0.01, 5).find((u) => u.prefix === 'c')!;
-    expect(parseEntry('50 cm', 'metre', base, [sym(cm, 'm')], false)).toMatchObject({
+    // A distance: typed in metres, exactly (OS-06).
+    expect(parseEntry('0.3', 'metre', base, [sym(base, 'm')], false)).toEqual({
       ok: true,
-      value: 0.5,
+      value: 0.3,
     });
     expect(parseEntry('-12.5', 'celsius', base, [], true)).toEqual({ ok: true, value: -12.5 });
     expect(parseEntry('-12.5', 'celsius', base, [], false)).toEqual({

@@ -161,11 +161,8 @@ export const DISPLAY_UNITS: Readonly<Record<UnitId, readonly DisplayUnit[]>> = {
     { exponent: -3, prefix: 'm' },
     { exponent: 0, prefix: '' },
   ],
-  metre: [
-    { exponent: -3, prefix: 'm' },
-    { exponent: -2, prefix: 'c' },
-    { exponent: 0, prefix: '' },
-  ],
+  // OS-06 (owner, kept by OD-POT-4): a distance is shown and typed in plain metres.
+  metre: BASE,
   volt: BASE,
   lux: BASE,
   celsius: BASE,
@@ -251,7 +248,7 @@ export function parseEntry(
   const plain = /^(\d*)(?:\.(\d*))?$/.exec(text);
   if (plain && (plain[1] || plain[2]))
     return { ok: true, value: sign * exact(plain[1] ?? '', plain[2] ?? '', selected.exponent) };
-  // A number followed by one of the offered unit symbols (`50 cm`, `4.7 kΩ`).
+  // A number followed by one of the offered unit symbols (`4.7 kΩ`, `100 µF`).
   for (const o of [...offered].sort((a, b) => b.symbol.length - a.symbol.length)) {
     if (!text.endsWith(o.symbol)) continue;
     const num = /^(\d*)(?:\.(\d*))?$/.exec(text.slice(0, -o.symbol.length).trimEnd());

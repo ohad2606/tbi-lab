@@ -1,7 +1,7 @@
 /**
  * The engineering value control (Sprint 13 OS-01; Sprint POT-UNITS Phase 1): one reusable control
  * for every physical quantity a user edits. A plain number field plus, for a quantity with more
- * than one useful unit, a unit dropdown (Ω/kΩ/MΩ, pF/nF/µF/mF, mA/A, mm/cm/m); a fixed unit
+ * than one useful unit, a unit dropdown (Ω/kΩ/MΩ, pF/nF/µF/mF, mA/A); a fixed unit
  * symbol otherwise. The allowed range, an error when a value cannot be used, and, for an
  * environment or live parameter, a slider with live updates while dragging (OS-03/OS-06).
  *
@@ -24,6 +24,7 @@ import {
   displayNumber,
   displayUnitSymbol,
   formatDisplayQuantity,
+  formatQuantity,
   isolateLtr,
   type MessageKey,
 } from '../i18n/i18n.js';
@@ -79,8 +80,14 @@ export function ValueControl(p: ValueControlProps) {
     setError(null);
   }, [shown, storedUnit.exponent]);
 
+  // A fixed-symbol quantity keeps its pre-sprint range text (`10 mm` to `5 m` for a distance,
+  // OS-06); a quantity with a unit list names units the list offers.
   const fmt = (value: number) =>
-    isolateLtr(formatDisplayQuantity(locale, { value, unit: p.unit }, units));
+    isolateLtr(
+      units.length > 1
+        ? formatDisplayQuantity(locale, { value, unit: p.unit }, units)
+        : formatQuantity(locale, { value, unit: p.unit }),
+    );
   const range = { min: fmt(p.min), max: fmt(p.max) };
 
   /**

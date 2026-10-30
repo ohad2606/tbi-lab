@@ -29,6 +29,7 @@ import {
   formatDisplayQuantity,
   formatQuantity,
   getLocale,
+  inputForm,
   messageParts,
 } from '../src/i18n/i18n.js';
 
@@ -106,7 +107,9 @@ describe('old projects display the same values (Phase 1)', () => {
       [def('instrument.lab_psu', 'currentLimit'), 0.1, '100', 'mA'],
       [def('instrument.lab_psu', 'currentLimit'), 1.5, '1.5', 'A'],
       [def('instrument.lab_psu', 'setpointVoltage'), 3.3, '3.3', 'V'],
-      [def('sensor.hc_sr04', 'distance'), 0.5, '50', 'cm'],
+      // OS-06 (OD-POT-4): plain metres, as before this sprint.
+      [def('sensor.hc_sr04', 'distance'), 0.5, '0.5', 'm'],
+      [def('sensor.hc_sr04', 'distance'), 0.01, '0.01', 'm'],
       [def('sensor.hc_sr04', 'distance'), 1.2, '1.2', 'm'],
       [def('sensor.dht22', 'temperature'), -12.5, '-12.5', '°C'],
     ];
@@ -159,6 +162,22 @@ describe('structured values round-trip exactly; a chosen unit is kept after comm
   });
 });
 
+describe('HC-SR04 distance: plain metres (OS-06, OD-POT-4)', () => {
+  it('shows "0.5" m, and typing 0.3 commits exactly 0.3 m, as before this sprint', () => {
+    const d = CATALOG['sensor.hc_sr04'].params.find((p) => p.key === 'distance')!;
+    if (d.kind !== 'quantity') throw new Error('catalog');
+    const units = displayUnitsFor('metre', d.min, d.max);
+    expect(units).toHaveLength(1);
+    const du = chooseDisplayUnit(0.5, units);
+    expect([displayNumber(0.5, du), displayUnitSymbol(en, 'metre', du)]).toEqual(['0.5', 'm']);
+    // The pre-sprint input form of a metre value is the same plain decimal.
+    expect(displayNumber(0.5, du)).toBe(inputForm(0.5, 'metre'));
+    expect(parseEntry('0.3', 'metre', du, [], false)).toEqual({ ok: true, value: 0.3 });
+    // The range text is the pre-sprint one.
+    expect(formatQuantity(en, { value: d.min, unit: 'metre' })).toBe('10 mm');
+  });
+});
+
 describe('which parameters get a unit dropdown', () => {
   it('the dropdown params and the fixed-symbol params of the catalog', () => {
     const lists: Record<string, string[]> = {};
@@ -175,7 +194,7 @@ describe('which parameters get a unit dropdown', () => {
       'component.photoresistor.illuminance': ['lx'],
       'component.capacitor.capacitance': ['pF', 'nF', 'µF', 'mF'],
       'component.capacitor.ratedVoltage': ['V'],
-      'sensor.hc_sr04.distance': ['mm', 'cm', 'm'],
+      'sensor.hc_sr04.distance': ['m'],
       'sensor.hc_sr04.airTemperature': ['°C'],
       'sensor.dht22.temperature': ['°C'],
       'sensor.dht22.humidity': ['%RH'],

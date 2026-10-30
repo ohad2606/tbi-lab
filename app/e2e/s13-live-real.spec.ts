@@ -102,10 +102,10 @@ test('distance alarm: dragging the HC-SR04 target near (0.10 m) lights the LED; 
   // from the 1 cm end: 0.10 m (inside the HC-SR04's 2 cm ... 4 m range, below the sketch's
   // 20 cm alarm threshold).
   await drag(page, 'param-U2-distance-slider', 'right', 30, 1500);
-  await expect(field).toHaveValue('1'); // 1 cm
+  await expect(field).toHaveValue('0.01');
   const slider = page.getByTestId('param-U2-distance-slider');
   for (let i = 0; i < 18; i++) await slider.press('ArrowRight');
-  await expect(field).toHaveValue('10'); // 10 cm
+  await expect(field).toHaveValue('0.1');
   await expect(page.getByTestId('pin-level-2')).toHaveAttribute('data-level', '1', {
     timeout: 60_000,
   });
