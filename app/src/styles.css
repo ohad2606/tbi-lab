@@ -1702,26 +1702,97 @@ select {
   background: var(--panel-alt);
 }
 
-/* Desktop first: narrower screens are explicitly unsupported, not squeezed. */
+/* Desktop first: the layout is built for 1024 px and wider; narrower screens scroll sideways rather
+   than being squeezed. Screen support (2026-10-29, ui/screenSupport.ts): computers and tablets,
+   tablets best in landscape; phone-size screens get a "not supported" note. */
 .app {
   min-width: 1024px;
 }
 
-.narrow-note {
-  display: none;
+/* The DEV strip and the screen note take a row of their own above the top bar: the page moves
+   down and nothing (editor controls included) is covered. */
+.app:has(> .app-notes) {
+  grid-template-rows: auto auto auto 1fr auto;
 }
 
-@media (max-width: 1023px) {
-  .app {
-    grid-template-rows: auto auto auto 1fr auto;
-  }
+/* The bands span the whole layout, like the top bar. On a screen narrower than the layout (the page
+   then pans sideways, and a mobile browser widens its layout viewport to the 1024 px content) their
+   TEXT follows the visible area: EnvironmentNotes sets its physical offset and width from the
+   visual viewport, in both directions (RTL included). Without script values it spans the band. */
+.app-notes {
+  position: relative;
+  z-index: 5;
+}
 
-  .narrow-note {
-    display: block;
-    padding: 0.5rem 1rem;
-    background: var(--warning-bg);
-    color: var(--warning-ink);
-  }
+.note-body {
+  box-sizing: border-box;
+  position: relative;
+  /* Physically left-anchored in LTR and RTL alike (the auto margin takes the rest). */
+  margin-left: 0;
+  margin-right: auto;
+  inline-size: var(--notes-width, 100%);
+  left: var(--notes-left, 0);
+  padding-inline: 1rem;
+}
+
+/* DEV-Lab builds only (environment.ts): unmistakable, high contrast (#111 on #ffcc00, 12.6:1). */
+.dev-strip {
+  padding-block: 0.25rem;
+  background: #ffcc00;
+  color: #111111;
+  border-block-end: 1px solid #b38f00;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  font-weight: 600;
+}
+
+.dev-strip > .note-body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.625rem;
+}
+
+.dev-strip-label {
+  padding: 0 0.4rem;
+  border-radius: 3px;
+  background: #111111;
+  color: #ffcc00;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+}
+
+/* The metrics of the earlier narrow-screen note (1rem text, 0.5rem padding, no border): the
+   layout below it, which the 768 px tablet layout tests measure to the pixel, is unchanged. */
+.screen-note {
+  padding-block: 0.5rem;
+}
+
+/* Phone-size: not supported (warning colours, 5.9:1). */
+.screen-note-phone {
+  background: var(--warning-bg);
+  color: var(--warning-ink);
+  font-weight: 600;
+}
+
+/* Tablet portrait or a narrow window: a gentle hint (7:1). */
+.screen-note-rotate,
+.screen-note-narrow {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
+/* The DEV label in the top bar, beside the product name (DEV-Lab builds only). */
+.env-badge {
+  padding: 0.05rem 0.4rem;
+  border: 1px solid #b38f00;
+  border-radius: 4px;
+  background: #ffcc00;
+  color: #111111;
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  line-height: 1.3;
 }
 
 /* ================================================================ Product Alpha: colour */

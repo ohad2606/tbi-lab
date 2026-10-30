@@ -41,6 +41,7 @@ Two of the previously inherited settings are not harmless defaults. `VITE_BUILD_
 ## 3. What changed in packaging (`deploy/release/`)
 
 - `rc4.release.json` and `rc4-reports.release.json`: the profiles. They are identical except for the two Report a Problem switches, which must agree.
+- `dev-lab.release.json` (release `rc4-dev-lab`, added 2026-10-29): DEV-Lab packages. Identical to `rc4.release.json` except `VITE_TBI_ENV="dev"`, which turns on the DEV branding (DEV icons and manifest names, `[DEV]` title, DEV strip and top-bar label; `app/src/environment.ts`). Every other profile pins `VITE_TBI_ENV` to `null`; `release-config.mjs` allows `"dev"` only in a `*-dev-lab` profile, and `check-dist.mjs` fails a package whose DEV markers do not match its profile.
 - `release-config.mjs`: validates a profile against the source being built. The build fails on:
   - an unpinned setting, or a pinned setting the source no longer reads;
   - an excluded setting or path (Active Minutes);

@@ -60,6 +60,8 @@ describe('locale bundles', () => {
       'canvas.componentLabel',
       // Sprint 13: a product name, used as-is in Hebrew.
       'capabilities.facility.bluetooth.name',
+      // 2026-10-29: the DEV environment marker, the same technical token in every locale.
+      'deployment.devBadge',
       // Sprint 15: a PWM pad's waveform (only placeholders and the PWM token) and a product name.
       // L2: the logic levels in the state inspection (technical tokens, as HIGH / LOW).
       'logic.inspect.level.high',

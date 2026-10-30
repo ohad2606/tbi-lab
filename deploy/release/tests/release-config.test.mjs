@@ -8,11 +8,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { buildEnvironment, loadProfile, sourceViteSettings, validate } from '../release-config.mjs';
-import { checkDist } from '../check-dist.mjs';
+import { checkBranding, checkDist } from '../check-dist.mjs';
 
 const ROOT = new URL('../../../', import.meta.url).pathname;
 const RC4 = join(ROOT, 'deploy/release/rc4.release.json');
 const RC4_REPORTS = join(ROOT, 'deploy/release/rc4-reports.release.json');
+const DEV_LAB = join(ROOT, 'deploy/release/dev-lab.release.json');
 const TOOLS = { node: 'v24.21.0', npm: '11.19.0', trackedFiles: () => [] };
 const GIT = { node: 'v24.21.0', npm: '11.19.0' }; // the real tracked-file listing (git)
 
@@ -33,9 +34,34 @@ const RC4_SETTINGS = Object.keys(loadProfile(RC4).vite);
 describe('release profile vs source', () => {
   it('the RC4 profile pins exactly the settings this source reads, Active Minutes absent', () => {
     expect([...sourceViteSettings(ROOT).keys()].sort()).toEqual([...RC4_SETTINGS].sort());
-    expect(RC4_SETTINGS).toHaveLength(8);
+    expect(RC4_SETTINGS).toHaveLength(9);
     expect(validate(loadProfile(RC4), ROOT, GIT)).toEqual([]);
     expect(validate(loadProfile(RC4_REPORTS), ROOT, GIT)).toEqual([]);
+    expect(validate(loadProfile(DEV_LAB), ROOT, GIT)).toEqual([]);
+  });
+
+  it('DEV branding only in the DEV-Lab profile, which differs from rc4 in nothing else', () => {
+    const rc4 = loadProfile(RC4);
+    const devLab = loadProfile(DEV_LAB);
+    expect(rc4.vite.VITE_TBI_ENV).toBeNull();
+    expect(loadProfile(RC4_REPORTS).vite.VITE_TBI_ENV).toBeNull();
+    expect(devLab.vite.VITE_TBI_ENV).toBe('dev');
+    expect({
+      ...devLab,
+      release: rc4.release,
+      vite: { ...devLab.vite, VITE_TBI_ENV: null },
+    }).toEqual(rc4);
+    const src = tree({ 'app/src/a.ts': reads(RC4_SETTINGS) });
+    expect(validate({ ...rc4, vite: { ...rc4.vite, VITE_TBI_ENV: 'dev' } }, src, TOOLS)).toEqual([
+      'VITE_TBI_ENV must be null outside a DEV-Lab profile (release rc4)',
+    ]);
+    expect(
+      validate({ ...devLab, vite: { ...devLab.vite, VITE_TBI_ENV: null } }, src, TOOLS),
+    ).toEqual(['VITE_TBI_ENV must be "dev" in a DEV-Lab profile']);
+    const { VITE_TBI_ENV: _unpinned, ...vite } = rc4.vite;
+    expect(validate({ ...rc4, vite }, src, TOOLS)).toContain(
+      'VITE_TBI_ENV must be pinned (null, or "dev" for DEV-Lab)',
+    );
   });
 
   it('a setting the source reads but the profile does not pin is refused', () => {
@@ -145,11 +171,85 @@ describe('release profile vs source', () => {
   });
 });
 
+/** A minimal branded entry HTML + manifest + icons (PNG headers only: checkBranding reads IHDR). */
+function branding(dev, { sizes = {} } = {}) {
+  const png = (wh) => {
+    const b = Buffer.alloc(24);
+    b.write('IHDR', 12, 'latin1');
+    b.writeUInt32BE(wh, 16);
+    b.writeUInt32BE(wh, 20);
+    return b;
+  };
+  const icon = (name, wh) => [`assets/${name}-0123abcd.png`, png(sizes[name] ?? wh)];
+  const files = Object.fromEntries([
+    icon('favicon-16', 16),
+    icon('favicon-32', 32),
+    icon('apple-touch-icon-180', 180),
+    icon('icon-192', 192),
+    icon('icon-512', 512),
+    icon('maskable-192', 192),
+    icon('maskable-512', 512),
+  ]);
+  const name = dev ? 'TBI Lab DEV' : 'TBI Lab';
+  files['assets/manifest-0123abcd.webmanifest'] = JSON.stringify({
+    name,
+    short_name: name,
+    icons: [192, 512].flatMap((n) =>
+      ['icon', 'maskable'].map((k) => ({
+        src: `/assets/${k}-${n}-0123abcd.png`,
+        sizes: `${n}x${n}`,
+        purpose: k === 'icon' ? 'any' : 'maskable',
+      })),
+    ),
+  });
+  files['index.html'] = `<html ${dev ? 'data-tbi-env="dev" ' : ''}lang="en"><head>
+<title>${dev ? '[DEV] ' : ''}TBI Lab</title>
+<link rel="icon" type="image/png" sizes="16x16" href="/assets/favicon-16-0123abcd.png">
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32-0123abcd.png">
+<link rel="apple-touch-icon" sizes="180x180" href="/assets/apple-touch-icon-180-0123abcd.png">
+<link rel="manifest" href="/assets/manifest-0123abcd.webmanifest" crossorigin="use-credentials">
+</head></html>`;
+  return files;
+}
+
+describe('built frontend branding vs profile', () => {
+  it('production profiles: icons, manifest and no DEV marker; DEV-Lab: every DEV marker', () => {
+    expect(checkBranding(loadProfile(RC4), tree(branding(false)))).toEqual([]);
+    expect(checkBranding(loadProfile(RC4_REPORTS), tree(branding(false)))).toEqual([]);
+    expect(checkBranding(loadProfile(DEV_LAB), tree(branding(true)))).toEqual([]);
+  });
+
+  it('refuses DEV branding in a production package, and a DEV package without it', () => {
+    expect(checkBranding(loadProfile(RC4), tree(branding(true)))).toEqual([
+      'production branding expected, but the build has the [DEV] title',
+      'production branding expected, but the build has data-tbi-env="dev"',
+      'production branding expected, but the build has DEV in the manifest names',
+    ]);
+    expect(checkBranding(loadProfile(DEV_LAB), tree(branding(false)))).toEqual([
+      'DEV profile, but the build lacks the [DEV] title',
+      'DEV profile, but the build lacks data-tbi-env="dev"',
+      'DEV profile, but the build lacks DEV in the manifest names',
+    ]);
+  });
+
+  it('refuses an icon whose pixels do not match its declared size, or a missing manifest icon', () => {
+    expect(
+      checkBranding(loadProfile(RC4), tree(branding(false, { sizes: { 'icon-512': 256 } }))),
+    ).toEqual(['manifest any /assets/icon-512-0123abcd.png: declared 512x512, is 256x256']);
+    const files = branding(false);
+    delete files['assets/maskable-192-0123abcd.png'];
+    expect(checkBranding(loadProfile(RC4), tree(files))).toEqual([
+      'manifest maskable /assets/maskable-192-0123abcd.png: missing (or not a content-hashed asset)',
+    ]);
+  });
+});
+
 describe('built frontend vs profile', () => {
   const sw = (v) =>
     `function gt(e){return typeof e==\`string\`&&e.trim()===\`1\`}var _t=gt(${v}),x=\`/build\`,y=\`/runtime\`,z=\`/oauth2/sign_out\`;`;
   const dist = (js, sources = ['../../src/main.tsx']) =>
     tree({
+      ...branding(false),
       'assets/index-x.js': js,
       'assets/index-x.js.map': JSON.stringify({ version: 3, sources, mappings: '' }),
     });
@@ -173,6 +273,7 @@ describe('built frontend vs profile', () => {
 
   it('refuses a source map carrying a bundler asset placeholder (G2, nondeterministic order)', () => {
     const d = tree({
+      ...branding(false),
       'assets/index-x.js': sw('`0`'),
       'assets/index-x.js.map': JSON.stringify({
         version: 3,

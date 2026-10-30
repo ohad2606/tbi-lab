@@ -1,8 +1,11 @@
 import type { IncomingMessage } from 'node:http';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { defineConfig, type Plugin, type ProxyOptions } from 'vite';
+import { fileURLToPath } from 'node:url';
+import { defineConfig, loadEnv, type Plugin, type ProxyOptions } from 'vite';
+import { brandPlugin } from './brand.config.js';
 import { currentBuildInfo, versionJson } from './buildInfo.config.js';
+import { parseTbiEnv } from './src/environment.js';
 
 /**
  * `/runtime` is the R2 Session Host API, same-origin (Sprint 6). In production the deployment's
@@ -83,12 +86,25 @@ const deterministicSourceMaps: Plugin = {
   },
 };
 
-export default defineConfig({
-  define: { __TBI_BUILD__: JSON.stringify(buildInfo) },
-  plugins: [versionFile, deterministicSourceMaps],
-  // Preact via the automatic JSX runtime; no framework preset or Babel needed.
-  oxc: { jsx: { runtime: 'automatic', importSource: 'preact' } },
-  build: { target: 'es2022', sourcemap: true },
-  preview: { port: 4173, strictPort: true, proxy: runtimeProxy },
-  server: { port: 5173, proxy: runtimeProxy },
+/**
+ * 2026-10-29: the deployment environment (src/environment.ts). VITE_TBI_ENV=dev (DEV-Lab's release
+ * profile only) selects the DEV icon set, manifest and title; read the way the app reads it
+ * (environment and .env files), and an invalid value fails the build.
+ */
+const appRoot = new URL('./', import.meta.url);
+
+export default defineConfig(({ mode }) => {
+  const tbiEnv = parseTbiEnv(
+    loadEnv(mode, fileURLToPath(appRoot), 'VITE_').VITE_TBI_ENV || undefined,
+    'VITE_TBI_ENV',
+  );
+  return {
+    define: { __TBI_BUILD__: JSON.stringify(buildInfo) },
+    plugins: [versionFile, deterministicSourceMaps, brandPlugin(appRoot, tbiEnv)],
+    // Preact via the automatic JSX runtime; no framework preset or Babel needed.
+    oxc: { jsx: { runtime: 'automatic', importSource: 'preact' } },
+    build: { target: 'es2022', sourcemap: true },
+    preview: { port: 4173, strictPort: true, proxy: runtimeProxy },
+    server: { port: 5173, proxy: runtimeProxy },
+  };
 });

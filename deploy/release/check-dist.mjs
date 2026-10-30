@@ -12,8 +12,12 @@
  *   located, e.g. after a minifier change).
  * - Every pinned value is present in the bundle.
  * - No source map carries a bundler asset placeholder (G2: assigned in a nondeterministic order).
+ * - Branding (2026-10-29): the entry HTML links the icon set and the web app manifest, each file
+ *   exists and every PNG has the size it is declared with; the DEV markers ([DEV] title,
+ *   data-tbi-env, "DEV" in the manifest names) are present exactly when the profile pins
+ *   VITE_TBI_ENV=dev, so a production or Alpha package can never carry them.
  */
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { loadProfile } from './release-config.mjs';
 
@@ -59,7 +63,65 @@ export function checkDist(profile, dist) {
     if (name === 'VITE_PROBLEM_REPORTS') continue;
     else if (v !== null && !all.includes(`\`${v}\``) && !all.includes(`"${v}"`))
       errors.push(`${name}: pinned value ${v} not found in the bundle`);
+  errors.push(...checkBranding(profile, dist));
   return { errors, files: assets.length };
+}
+
+/** The pixel size of a PNG (IHDR), or null. */
+function pngSize(buf) {
+  if (buf.length < 24 || buf.toString('latin1', 12, 16) !== 'IHDR') return null;
+  return `${buf.readUInt32BE(16)}x${buf.readUInt32BE(20)}`;
+}
+
+export function checkBranding(profile, dist) {
+  const errors = [];
+  const dev = profile.vite.VITE_TBI_ENV === 'dev';
+  const html = readFileSync(join(dist, 'index.html'), 'utf8');
+  const local = (href) => join(dist, href.replace(/^\//, ''));
+  const declared = [];
+  for (const m of html.matchAll(/<link rel="(icon|apple-touch-icon)"[^>]*>/g)) {
+    const href = /href="([^"]+)"/.exec(m[0])?.[1];
+    const sizes = /sizes="([^"]+)"/.exec(m[0])?.[1];
+    declared.push({ rel: m[1], href, sizes });
+  }
+  if (!declared.some((d) => d.rel === 'icon')) errors.push('index.html links no favicon');
+  if (!declared.some((d) => d.rel === 'apple-touch-icon'))
+    errors.push('index.html links no apple-touch-icon');
+  const manifestTag = /<link rel="manifest"[^>]*>/.exec(html)?.[0];
+  const manifestHref = manifestTag && /href="([^"]+)"/.exec(manifestTag)?.[1];
+  let manifest = null;
+  if (!manifestHref || !existsSync(local(manifestHref))) errors.push('no web app manifest');
+  else {
+    if (!/crossorigin="use-credentials"/.test(manifestTag))
+      errors.push('the manifest link must send credentials (the deployment gate)');
+    manifest = JSON.parse(readFileSync(local(manifestHref), 'utf8'));
+    for (const i of manifest.icons ?? [])
+      declared.push({ rel: `manifest ${i.purpose}`, href: i.src, sizes: i.sizes });
+    for (const p of ['any', 'maskable'])
+      for (const size of ['192x192', '512x512'])
+        if (!(manifest.icons ?? []).some((i) => i.purpose === p && i.sizes === size))
+          errors.push(`manifest: no ${p} ${size} icon`);
+  }
+  for (const d of declared) {
+    if (!d.href?.startsWith('/assets/') || !existsSync(local(d.href))) {
+      errors.push(`${d.rel} ${d.href}: missing (or not a content-hashed asset)`);
+      continue;
+    }
+    const size = pngSize(readFileSync(local(d.href)));
+    if (size !== d.sizes) errors.push(`${d.rel} ${d.href}: declared ${d.sizes}, is ${size}`);
+  }
+
+  const markers = {
+    'the [DEV] title': /<title>\[DEV\] /.test(html),
+    'data-tbi-env="dev"': html.includes('data-tbi-env="dev"'),
+    'DEV in the manifest names':
+      !!manifest && /\bDEV\b/.test(`${manifest.name} ${manifest.short_name}`),
+  };
+  for (const [what, present] of Object.entries(markers))
+    if (dev && !present) errors.push(`DEV profile, but the build lacks ${what}`);
+    else if (!dev && present)
+      errors.push(`production branding expected, but the build has ${what}`);
+  return errors;
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

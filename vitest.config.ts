@@ -19,6 +19,8 @@ export default defineConfig({
       'runtime/policy/tests/**/*.test.ts',
       // RC4 packaging gate: release profile and built-frontend validation.
       'deploy/release/tests/**/*.test.mjs',
+      // Brand icon pipeline (scripts/brand-image.mjs).
+      'scripts/tests/**/*.test.mjs',
     ],
     // *.esp32.test.ts spawn a real QEMU classic-ESP32 runtime and take minutes.
     // They are run explicitly via `npm run test:esp32`.

@@ -3,6 +3,7 @@
  * authentication in front of a deployment: a protected preview only tells it where signing
  * out goes (VITE_SIGN_OUT_URL, e.g. an authenticating proxy's sign-out endpoint).
  */
+import { parseTbiEnv, type TbiEnvironment } from './environment.js';
 
 /**
  * The sign-out destination, or null when the deployment has none (local and unauthenticated
@@ -86,3 +87,10 @@ export function parseEnabled(value: unknown): boolean {
 }
 
 export const PROBLEM_REPORTS = parseEnabled(import.meta.env.VITE_PROBLEM_REPORTS);
+
+/**
+ * 2026-10-29: the deployment environment (environment.ts). DEV-Lab builds say so on every screen;
+ * every other build has the production branding.
+ */
+export const TBI_ENV: TbiEnvironment = parseTbiEnv(import.meta.env.VITE_TBI_ENV);
+export const IS_DEV_ENV = TBI_ENV === 'dev';
