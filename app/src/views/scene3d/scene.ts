@@ -1862,6 +1862,42 @@ function coincident(path: Point[], runs: readonly Run[]): number {
   return n;
 }
 
+/**
+ * Phase 3 (owner report 2026-10-30, two orange wires knotted at an LED leg): two wires on ONE
+ * pin under a part's body leave it by lanes on one line (the fan-out gives the second lane one
+ * pitch more). The shorter lane's wire rises at its lane end and passes over the longer lane, by
+ * design; but when its plan then runs on over the longer lane's END and it is routed first, it
+ * hops only over that lane, and the other wire, rising at its lane end right under the hop, went
+ * straight up through it (a knot). Only then is the longer lane's wire routed just before the
+ * other: it stays low along that line and the other passes over all of it. Order only: plans,
+ * lanes and ends are untouched; every other wire keeps its document order.
+ */
+function sameLaneOrder(
+  inputs: WireRouteInput[],
+  preps: readonly { w: LayoutWire; under: [UnderEnd | null, UnderEnd | null] }[],
+): void {
+  const lanes = new Map<string, { id: string; e: UnderEnd }[]>();
+  for (const p of preps)
+    for (const e of p.under) {
+      if (!e) continue;
+      const key = `${e.comp.id}|${e.pin.x.toFixed(3)},${e.pin.y.toFixed(3)}|${e.side}`;
+      lanes.set(key, [...(lanes.get(key) ?? []), { id: p.w.id, e }]);
+    }
+  for (const g of lanes.values())
+    for (const short of g)
+      for (const long of g) {
+        if (long.e.lane < short.e.lane + COINCIDENT) continue;
+        const i = inputs.findIndex((x) => x.id === short.id);
+        const j = inputs.findIndex((x) => x.id === long.id);
+        if (i < 0 || j < i) continue;
+        const end = add(long.e.pin, long.e.u, long.e.lane);
+        const plan = inputs[i]!.plan;
+        if (!plan.some((q, k) => k > 0 && pointToRun(end, plan[k - 1]!, q) < COINCIDENT)) continue;
+        const [moved] = inputs.splice(j, 1);
+        inputs.splice(i, 0, moved!);
+      }
+}
+
 /** How far apart (plan, axis to axis) runs of two wires laid side by side are (mm). */
 const SIDE_BY_SIDE = COINCIDENT + 0.3;
 
@@ -3016,6 +3052,7 @@ function freshWires(
   }
 
   separatePlans(inputs, obstacles);
+  sameLaneOrder(inputs, preps);
 
   const spots: Spot[] = doc.layout.junctions.map((j) => ({
     x: j.x * SCALE,
