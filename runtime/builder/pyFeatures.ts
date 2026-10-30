@@ -39,7 +39,7 @@ import type { FeatureReport } from './protocol.js';
 import { INPUT_CAPABLE_GPIOS } from './features.js';
 
 /** Version of this analysis; part of the MicroPython profile hash (cache key). */
-export const PY_FEATURES_ANALYZER = 2;
+export const PY_FEATURES_ANALYZER = 3;
 
 /**
  * Sprint 24 (M3): the fastest I2C clock a program may select: the lowest rated SCL of the I2C parts
@@ -156,6 +156,42 @@ export function pythonCodeOnly(source: string): string {
   return out;
 }
 
+/**
+ * Sprint 24 (review H1, M1): one statement per line, so the line-anchored rules see every
+ * statement: a backslash line continuation is joined, and a `;` outside strings and brackets
+ * starts a new line (`import os; import socket`, `from machine import I2C; I2C(...)`).
+ */
+export function logicalLines(code: string): string {
+  let out = '';
+  let depth = 0;
+  for (let i = 0; i < code.length; i++) {
+    const c = code[i]!;
+    if (c === '"' || c === "'") {
+      const triple = code.startsWith(c.repeat(3), i);
+      const end = triple ? c.repeat(3) : c;
+      let j = i + end.length;
+      while (j < code.length && !code.startsWith(end, j)) {
+        if (code[j] === '\\') j++;
+        else if (!triple && code[j] === '\n') break;
+        j++;
+      }
+      j = Math.min(code.length, j + end.length);
+      out += code.slice(i, j);
+      i = j - 1;
+      continue;
+    }
+    if (c === '\\' && code[i + 1] === '\n') {
+      out += ' ';
+      i++;
+      continue;
+    }
+    if ('([{'.includes(c)) depth++;
+    else if (')]}'.includes(c)) depth = Math.max(0, depth - 1);
+    out += c === ';' && depth === 0 ? '\n' : c;
+  }
+  return out;
+}
+
 /** The text between the parenthesis at `open` and its partner (strings skipped); null: unclosed. */
 function callArgs(code: string, open: number): string | null {
   let depth = 0;
@@ -253,13 +289,19 @@ function analyzeI2c(code: string, names: string[], unsupported: Set<string>): bo
       /("""|'''|"|')(?:\\.|(?!\1)[\s\S])*?\1/g,
       (str, q: string) => q + ' '.repeat(str.length - 2 * q.length) + q,
     )
+    .replace(/^[ \t]*from[ \t]+[\w.]+[ \t]+import[ \t]*\([^)]*\)/gm, (l) =>
+      l.replace(/[^\n]/g, ' '),
+    )
     .replace(/^[ \t]*(?:from[ \t]+[\w.]+[ \t]+)?import[ \t][^\n]*/gm, (l) => ' '.repeat(l.length));
   let used = false;
+  /** Offsets of the `I2C` tokens a known name reached (every other one is refused below). */
+  const checked = new Set<number>();
   for (const name of names) {
     const dotted = name.includes('.');
     const pattern = `(?<![\\w.])${dotted ? name.replace('.', '\\s*\\.\\s*') : name}`;
     for (const m of body.matchAll(new RegExp(`${pattern}\\b(\\s*\\()?`, 'g'))) {
       used = true;
+      checked.add(m.index + m[0].replace(/\s*\($/, '').length - 3);
       if (!m[1]) {
         // Referenced without being called here (an alias, a subclass): not analysable.
         unsupported.add('i2c_operation');
@@ -270,13 +312,33 @@ function analyzeI2c(code: string, names: string[], unsupported: Set<string>): bo
       else for (const r of i2cCallRefusals(args)) unsupported.add(r);
     }
   }
+  // Review H1: an `I2C` no known name accounts for (an import the rules did not see, a name
+  // spelled another way) is not analysable: refused, never allowed unchecked.
+  for (const m of body.matchAll(/(?<!\w)I2C\b/g))
+    if (!checked.has(m.index)) {
+      used = true;
+      unsupported.add('i2c_operation');
+    }
   if (!used) return false;
+  // Review M2: with I2C in the program, attribute names built at run time (exec, eval, compile,
+  // getattr with a computed name, the attribute dictionaries) could reach a refused operation.
+  if (/(?<![\w.])(?:exec|eval|compile)\s*\(|__dict__|__getattribute__|\bsetattr\s*\(/.test(body))
+    unsupported.add('i2c_operation');
+  for (const m of code.matchAll(/(?<![\w.])getattr\s*\(/g)) {
+    const name = splitArgs(callArgs(code, m.index + m[0].length - 1) ?? '')[1];
+    if (name === undefined || !/^(["'])\w+\1$/.test(name)) unsupported.add('i2c_operation');
+  }
   for (const method of I2C_REFUSED_METHODS)
     if (new RegExp(`\\.\\s*${method}\\b|["']${method}["']`).test(code))
       unsupported.add('i2c_operation');
   // Re-configuration at run time: an `.init(...)` with a clock is checked like the constructor's.
   for (const m of code.matchAll(/\.\s*init\s*\(/g)) {
     const args = callArgs(code, m.index + m[0].length - 1) ?? '';
+    // Review L2: re-pinning at run time must keep the verified pins.
+    for (const a of splitArgs(args)) {
+      const kw = /^(scl|sda)\s*=(?!=)\s*([\s\S]*)$/.exec(a);
+      if (kw && pinLiteral(kw[2]!) !== I2C_BUS[kw[1] as 'scl' | 'sda']) unsupported.add('i2c_pins');
+    }
     const freq = splitArgs(args)
       .map((a) => /^freq\s*=(?!=)\s*([\s\S]*)$/.exec(a)?.[1])
       .find((x) => x !== undefined);
@@ -292,7 +354,7 @@ export function analyzeMicroPython(
   /** Bridge capabilities of the runtime tickets are issued for (Sprint 24: `i2c`). */
   capabilities: readonly string[] = [],
 ): FeatureReport {
-  const code = pythonCodeOnly(source);
+  const code = logicalLines(pythonCodeOnly(source));
   const i2cRuntime = capabilities.includes('i2c');
   /** Local names bound to machine.I2C (`from machine import I2C [as X]`). */
   const i2cLocal = new Set<string>();

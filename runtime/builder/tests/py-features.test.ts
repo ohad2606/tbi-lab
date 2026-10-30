@@ -200,6 +200,76 @@ i2c.writevto(0x27, (b'\\x0c', b'\\x08'))
   });
 });
 
+describe('MicroPython hardware I2C: review fixes (Sprint 24)', () => {
+  const RT = ['i2c', 'unmodelled'];
+  it('H1: a statement after `;` is analysed like its own line', () => {
+    for (const src of [
+      'from machine import I2C, Pin; i2c = I2C(1, scl=Pin(4), sda=Pin(5), freq=400000)\ni2c.readfrom(0x27, 1)\n',
+      'import machine; b = machine.I2C(1, scl=4, sda=5, freq=400000)\n',
+      'x = 1; from machine import I2C\nb = I2C(0, scl=22, sda=21)\n',
+    ]) {
+      const f = analyzeMicroPython(src, RT);
+      expect(f.unsupported.length, src).toBeGreaterThan(0);
+      expect(
+        f.unsupported.every((u) => u.startsWith('i2c_')),
+        src,
+      ).toBe(true);
+    }
+    // `;` inside a string or brackets does not split.
+    expect(
+      analyzeMicroPython(
+        'from machine import Pin, I2C\nb = I2C(0, scl=Pin(22), sda=Pin(21), freq=100000); print("a;b")\n',
+        RT,
+      ),
+    ).toEqual({ ...clean, requires: ['i2c'] });
+    // Other refusals see statements after `;` too.
+    expect(analyzeMicroPython('x = 1; import socket\n').unsupported).toEqual(['library:socket']);
+  });
+  it('H1: an I2C no known name accounts for is refused, never allowed unchecked', () => {
+    const f = analyzeMicroPython(
+      'import machine as m\nimport machine as n\nb = m.I2C(0, scl=22, sda=21, freq=100000)\nc = I2C\n',
+      RT,
+    );
+    expect(f.unsupported).toEqual(['i2c_operation']);
+    expect(f.requires).toEqual(['i2c']);
+  });
+  it('M1: a backslash continuation does not hide a refused method', () => {
+    const src =
+      'from machine import Pin, I2C\ni2c = I2C(0, scl=Pin(22), sda=Pin(21), freq=100000)\ni2c.\\\nreadfrom(0x27, 1)\n';
+    expect(analyzeMicroPython(src, RT).unsupported).toEqual(['i2c_operation']);
+  });
+  it('M2: names built at run time are refused while I2C is in the program', () => {
+    const base =
+      'from machine import Pin, I2C\ni2c = I2C(0, scl=Pin(22), sda=Pin(21), freq=100000)\n';
+    for (const op of [
+      'getattr(i2c, "read" + "from")(0x27, 1)',
+      'getattr(i2c, name)(0x27, 1)',
+      'exec("i2c.read" + "from(0x27, 1)")',
+      'eval("1")',
+      'f = compile("x", "s", "exec")',
+      'i2c.__dict__',
+    ])
+      expect(analyzeMicroPython(base + op, RT).unsupported, op).toEqual(['i2c_operation']);
+    // A literal getattr name is checked like a method call (scan is allowed).
+    expect(analyzeMicroPython(`${base}getattr(i2c, "scan")()`, RT)).toEqual({
+      ...clean,
+      requires: ['i2c'],
+    });
+  });
+  it('L2: re-pinning with .init is refused', () => {
+    const base =
+      'from machine import Pin, I2C\ni2c = I2C(0, scl=Pin(22), sda=Pin(21), freq=100000)\n';
+    expect(analyzeMicroPython(`${base}i2c.init(scl=Pin(4), sda=Pin(5))`, RT).unsupported).toEqual([
+      'i2c_pins',
+    ]);
+  });
+  it('a parenthesised import over several lines is not a use of the bus', () => {
+    const src =
+      'from machine import (Pin,\n    I2C)\nb = I2C(0, scl=Pin(22), sda=Pin(21), freq=100000)\n';
+    expect(analyzeMicroPython(src, RT)).toEqual({ ...clean, requires: ['i2c'] });
+  });
+});
+
 describe('MicroPython hardware I2C: names in strings and comments', () => {
   it('I2C in a printed string or a comment is not a use of the bus', () => {
     const src =

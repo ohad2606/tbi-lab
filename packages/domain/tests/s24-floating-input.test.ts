@@ -64,6 +64,31 @@ describe('programInputPins', () => {
     ).toEqual([5, 34]);
     expect(programInputPins(ino('void setup(){ pinMode(4, INPUT_PULLUP); }'))).toEqual([]);
   });
+  it('review M4: a pin with an internal pull, or an output read back, is not floating', () => {
+    expect(
+      programInputPins(
+        ino('void setup(){ pinMode(4, INPUT_PULLUP); }\nvoid loop(){ digitalRead(4); }'),
+      ),
+    ).toEqual([]);
+    expect(
+      programInputPins(
+        ino(
+          'void setup(){ pinMode(2, OUTPUT); }\nvoid loop(){ digitalWrite(2, !digitalRead(2)); }',
+        ),
+      ),
+    ).toEqual([]);
+    expect(
+      programInputPins(py('from machine import Pin\nb = Pin(4, Pin.IN, Pin.PULL_UP)\n')),
+    ).toEqual([]);
+    expect(
+      programInputPins(
+        py('from machine import Pin\nb = Pin(4, mode=Pin.IN, pull=Pin.PULL_DOWN)\n'),
+      ),
+    ).toEqual([]);
+    expect(programInputPins(py('from machine import Pin\nb = Pin(4, Pin.IN, None)\n'))).toEqual([
+      4,
+    ]);
+  });
 });
 
 /** ESP32 + bench supply: 3.3 V -> button -> 1 kΩ -> GPIO34, optionally a 10 kΩ pull-down. */

@@ -7,6 +7,9 @@
  *
  * - MicroPython: `Pin(<pin>, Pin.IN …)` / `Pin(<pin>, mode=Pin.IN …)` (any `x.Pin` spelling).
  * - Arduino/C++: `pinMode(<pin>, INPUT)` and `digitalRead(<pin>)`.
+ *
+ * A pin the program also gives an internal pull (`INPUT_PULLUP`, `Pin.PULL_UP`, …) or sets as an
+ * output is not reported: it is held by the chip, not floating.
  */
 import type { ProgramSource } from './schema.js';
 
@@ -50,15 +53,26 @@ export function programInputPins(program: ProgramSource): number[] {
     const p = pin(token);
     if (p !== null && p >= 0 && p <= 39) found.add(p);
   };
+  // Review M4: a pin the program gives an internal pull or makes an output is not floating.
+  const held = new Set<number>();
   if (program.language === 'micropython') {
     for (const m of code.matchAll(
-      /\bPin\s*\(\s*([A-Za-z_]\w*|\d+)\s*,\s*(?:mode\s*=\s*)?(?:[A-Za-z_]\w*\s*\.\s*)*Pin\s*\.\s*IN\b/g,
-    ))
-      add(m[1]!);
+      /\bPin\s*\(\s*([A-Za-z_]\w*|\d+)\s*,\s*(?:mode\s*=\s*)?(?:[A-Za-z_]\w*\s*\.\s*)*Pin\s*\.\s*IN\b([^()]*)/g,
+    )) {
+      if (/\bPULL_(?:UP|DOWN)\b/.test(m[2]!)) {
+        const p = pin(m[1]!);
+        if (p !== null) held.add(p);
+      } else add(m[1]!);
+    }
   } else {
-    for (const m of code.matchAll(/\bpinMode\s*\(\s*([A-Za-z_]\w*|\d+)\s*,\s*INPUT\s*\)/g))
-      add(m[1]!);
+    for (const m of code.matchAll(
+      /\bpinMode\s*\(\s*([A-Za-z_]\w*|\d+)\s*,\s*(INPUT|INPUT_PULLUP|INPUT_PULLDOWN|OUTPUT|OUTPUT_OPEN_DRAIN)\s*\)/g,
+    )) {
+      const p = pin(m[1]!);
+      if (m[2] !== 'INPUT' && p !== null) held.add(p);
+      else add(m[1]!);
+    }
     for (const m of code.matchAll(/\bdigitalRead\s*\(\s*([A-Za-z_]\w*|\d+)\s*\)/g)) add(m[1]!);
   }
-  return [...found].sort((a, b) => a - b);
+  return [...found].filter((p) => !held.has(p)).sort((a, b) => a - b);
 }

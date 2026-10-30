@@ -55,3 +55,26 @@ Evidence and measurements: `~/tbi-s24/evidence/m1-*/NOTE.md`, `m2-*/`, `m3-*/` o
   published LCD state.
 - Gap reported, not changed: Arduino `Wire.setClock()` / `Wire.begin(sda, scl, freq)` frequencies
   are not checked against the rated 100 kHz.
+
+## Independent review of M1–M3 (fixes)
+
+Review: `~/tbi-s24/evidence/review-m1-m3.md` (NO-GO on H1 before these fixes).
+
+- **H1 (HIGH) fixed.** An I2C call after `;` on an import line escaped every M3 rule (a read on
+  bus 1 at 400 kHz then returned the PCF8574's own latch: invented data). The analysis now splits
+  statements at `;` (outside strings and brackets) for every rule, and any `I2C` token no known
+  name accounts for is `i2c_operation`. The same split also closes `x = 1; import socket`.
+- **M1 fixed.** Backslash line continuations are joined before matching.
+- **M2 fixed.** With I2C in the program, `exec`, `eval`, `compile`, `setattr`, `__dict__`,
+  `__getattribute__` and a `getattr` whose name is not a string literal are `i2c_operation`.
+- **M4 fixed.** `gpio_input_floating` no longer warns for a pin given an internal pull
+  (`INPUT_PULLUP`, `Pin.PULL_UP`, …) or set as an output and read back.
+- **L2 fixed.** `.init(scl=…, sda=…)` with other pins than 22/21 is `i2c_pins`.
+- Analysis version 3 (cached MicroPython builds are re-analysed).
+- **Open (PM decision, M3):** Arduino `Wire.requestFrom` has been allowed since Sprint 12 and
+  returns the PCF8574 output latch, which the HD44780 model does not drive during a read; the
+  MicroPython rules refuse reads. Arduino is unchanged here.
+- **Residual (L1, L3, L4):** the program-end notice is a heuristic over serial text; the
+  mpy-cross pin is arm64 and toolchain-specific (a re-provision with another compiler fails closed
+  at service start); mpy-cross and the board may disagree on rare corner cases (the board stays
+  authoritative at Run).
