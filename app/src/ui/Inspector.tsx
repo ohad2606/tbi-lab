@@ -391,6 +391,7 @@ function ParamField({
         max={def.max}
         value={current && typeof current === 'object' ? current.value : null}
         disabled={disabled}
+        {...(def.step ? { step: def.step } : {})}
         {...(def.environment
           ? { slider: def.environment.scale ?? 'linear' }
           : def.slider

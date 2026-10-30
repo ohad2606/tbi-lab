@@ -7,7 +7,7 @@
  * persistence layer stamps revisions when a change is written (project.ts `stampRevision`).
  */
 
-import { CATALOG, defaultParams, getTypeDef } from './catalog.js';
+import { CATALOG, defaultParams, getTypeDef, onStep } from './catalog.js';
 import {
   GRID,
   endPosition,
@@ -45,6 +45,8 @@ export type EditError =
   | 'unknown_param'
   | 'param_type'
   | 'out_of_range'
+  /** Sprint POT-UNITS: a quantity off its parameter's resolution grid (catalog `step`). */
+  | 'off_grid'
   | 'not_on_wire'
   | 'same_endpoint'
   | 'name_empty'
@@ -180,6 +182,7 @@ export function setParam(
       if (!Number.isFinite(value.value) || value.value < def.min || value.value > def.max) {
         return 'out_of_range';
       }
+      if (!onStep(def, value.value)) return 'off_grid';
     }
     // An optional parameter set back to its default is removed (stored only when it differs).
     if (def.kind === 'enum' && def.optional && value === def.default) delete c.params[key];

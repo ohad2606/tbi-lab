@@ -45,7 +45,7 @@
       "params": {
         "model": "model.potentiometer.bourns_ptv09a_linear",
         "resistance": {
-          "value": 10000,
+          "value": 1000,
           "unit": "ohm"
         },
         "position": {
@@ -60,7 +60,7 @@
       "typeVersion": 1,
       "params": {
         "resistance": {
-          "value": 220,
+          "value": 470,
           "unit": "ohm"
         }
       }

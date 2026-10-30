@@ -149,6 +149,7 @@ export const MODEL_LIMITATIONS: Readonly<Partial<Record<ComponentTypeId, readonl
     'potentiometer_power',
     'potentiometer_wiper_current',
     'potentiometer_no_adc',
+    'potentiometer_position_grid',
   ],
   'sensor.hc_sr04': ['hcsr04_target', 'hcsr04_output', 'hcsr04_retrigger', 'supply_below_min'],
   'sensor.dht22': ['dht22_tgo', 'dht22_current', 'dht22_output', 'supply_below_min'],

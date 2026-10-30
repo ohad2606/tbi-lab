@@ -101,7 +101,13 @@ export type RatingCode =
    * Sprint 19B (F2 review): a resistor value the selected series is not made in: NO power or
    * voltage rating applies (value: the resistance; limit: the series bound it is beyond).
    */
-  | 'resistance_outside_series';
+  | 'resistance_outside_series'
+  /**
+   * Sprint POT-UNITS (review H1): a potentiometer track segment or its wiper carries more current
+   * than the whole track does at its rated dissipation, I = sqrt(P_rated / R_total): more heat per
+   * unit track length than in any rated condition (value: the current; limit: that current).
+   */
+  | 'track_current';
 
 /** The unit each warning's `value` and `limit` are in. */
 export const RATING_UNIT: Readonly<Record<RatingCode, 'ampere' | 'volt' | 'watt' | 'ohm'>> = {
@@ -119,6 +125,7 @@ export const RATING_UNIT: Readonly<Record<RatingCode, 'ampere' | 'volt' | 'watt'
   gpio_output_overvoltage: 'volt',
   gpio_cumulative_current: 'ampere',
   resistance_outside_series: 'ohm',
+  track_current: 'ampere',
 };
 
 export interface RatingWarning {

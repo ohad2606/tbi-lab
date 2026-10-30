@@ -107,6 +107,13 @@ describe('schema v5 (Sprint POT-UNITS)', () => {
     expect(bad('position', { value: 50, unit: 'percent_rh' })).toContain('bad_param');
     expect(bad('resistance', { value: 500, unit: 'ohm' })).toContain('bad_param');
     expect(bad('resistance', { value: 2e6, unit: 'ohm' })).toContain('bad_param');
+    expect(bad('position', { value: 1e-13, unit: 'percent' })).toEqual(['off_grid_param']);
+    expect(bad('position', { value: 12.345, unit: 'percent' })).toEqual(['off_grid_param']);
+    expect(bad('position', { value: 99.99, unit: 'percent' })).toEqual([]);
+    expect(setParam(doc, rv.id, 'position', { value: 1e-13, unit: 'percent' })).toEqual({
+      ok: false,
+      error: 'off_grid',
+    });
   });
 
   it('a v4 build opens a v5 file as `newer` (by name), never as invalid', () => {
@@ -129,6 +136,15 @@ describe('schema v5 (Sprint POT-UNITS)', () => {
     expect(liveParamKeys('component.potentiometer')).toEqual(['position']);
     expect(liveControlProblem('component.potentiometer', { params: { position: 0 } })).toBeNull();
     expect(liveControlProblem('component.potentiometer', { params: { position: 100 } })).toBeNull();
+    // Review M2: the 0.01 % grid, refused by name.
+    expect(liveControlProblem('component.potentiometer', { params: { position: 1e-13 } })).toEqual({
+      reason: 'invalid_value',
+      key: 'position',
+      detail: 'off_grid',
+    });
+    expect(
+      liveControlProblem('component.potentiometer', { params: { position: 33.33 } }),
+    ).toBeNull();
     for (const v of [-1, 100.5, Number.NaN])
       expect(
         liveControlProblem('component.potentiometer', { params: { position: v } }),

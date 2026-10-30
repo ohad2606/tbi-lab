@@ -97,12 +97,12 @@
     {
       "component": "RV1",
       "terminal": "a",
-      "net": "N_2"
+      "net": "N_3"
     },
     {
       "component": "RV1",
       "terminal": "b",
-      "net": "N_3"
+      "net": "N_2"
     },
     {
       "component": "GND2",
@@ -125,7 +125,7 @@
       "RV1": {
         "x": 20,
         "y": -20,
-        "rotation": 0
+        "rotation": 180
       },
       "GND2": {
         "x": 60,
@@ -158,7 +158,7 @@
         "to": {
           "kind": "terminal",
           "component": "RV1",
-          "terminal": "a"
+          "terminal": "b"
         },
         "vertices": []
       },
@@ -167,7 +167,7 @@
         "from": {
           "kind": "terminal",
           "component": "RV1",
-          "terminal": "b"
+          "terminal": "a"
         },
         "to": {
           "kind": "terminal",

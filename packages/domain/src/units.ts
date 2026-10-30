@@ -245,9 +245,15 @@ export function parseEntry(
     sign = -1;
     text = text.slice(1).trimStart();
   }
-  const plain = /^(\d*)(?:\.(\d*))?$/.exec(text);
+  // A plain number, optionally in exponent notation, is read in the selected unit (review L2:
+  // `1e3` with kΩ selected is 1 MΩ, like `1000`).
+  const plain = /^(\d*)(?:\.(\d*))?(?:[eE]([+-]?\d+))?$/.exec(text);
   if (plain && (plain[1] || plain[2]))
-    return { ok: true, value: sign * exact(plain[1] ?? '', plain[2] ?? '', selected.exponent) };
+    return {
+      ok: true,
+      value:
+        sign * exact(plain[1] ?? '', plain[2] ?? '', selected.exponent + Number(plain[3] ?? 0)),
+    };
   // A number followed by one of the offered unit symbols (`4.7 kΩ`, `100 µF`).
   for (const o of [...offered].sort((a, b) => b.symbol.length - a.symbol.length)) {
     if (!text.endsWith(o.symbol)) continue;

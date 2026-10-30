@@ -40,6 +40,12 @@ export type ParamDef =
        * as a slider, e.g. a potentiometer's wiper position. Only on a `live` parameter.
        */
       slider?: { scale: 'linear' };
+      /**
+       * Sprint POT-UNITS (review M2): the value's resolution. Stored values must be whole
+       * multiples of it (a potentiometer's position: 0.01 %), so no segment becomes vanishingly
+       * small; anything else is refused by name (`off_grid`).
+       */
+      step?: number;
     }
   | {
       kind: 'boolean';
@@ -296,6 +302,7 @@ const SPRINT10_TYPES = {
         labelKey: 'param.wiperPosition',
         live: true,
         slider: { scale: 'linear' },
+        step: 0.01,
       },
     ],
     // The wiper may be left unwired: a two-terminal variable resistor between A and B is a fixed
@@ -995,6 +1002,18 @@ export const CATALOG_ORDER: readonly ComponentTypeId[] = [
   'component.potentiometer',
   'board.esp32_devkitc_wroom32',
 ];
+
+/** The value on a quantity's grid nearest to `v` (itself when the parameter has no step). */
+export function snapToStep(def: { step?: number }, v: number): number {
+  if (!def.step) return v;
+  const decimals = Math.max(0, Math.round(-Math.log10(def.step)));
+  return Number((Math.round(v / def.step) * def.step).toFixed(decimals));
+}
+
+/** Whether `v` is exactly on the quantity's grid (always true without a step). */
+export function onStep(def: { step?: number }, v: number): boolean {
+  return !def.step || snapToStep(def, v) === v;
+}
 
 export function isComponentType(type: string): type is ComponentTypeId {
   return Object.prototype.hasOwnProperty.call(CATALOG, type);

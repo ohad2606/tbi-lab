@@ -150,6 +150,9 @@ describe('display units (Sprint POT-UNITS Phase 1)', () => {
     const offered = ohm.map((u) => sym(u, 'Ω'));
     expect(parseEntry('1', 'ohm', k, offered, false)).toEqual({ ok: true, value: 1000 });
     expect(parseEntry('4k7', 'ohm', k, offered, false)).toEqual({ ok: true, value: 4700 });
+    // Review L2: exponent notation is a plain number in the selected unit.
+    expect(parseEntry('1e3', 'ohm', k, offered, false)).toEqual({ ok: true, value: 1e6 });
+    expect(parseEntry('4.7e-3', 'ohm', k, offered, false)).toEqual({ ok: true, value: 4.7 });
     expect(parseEntry('2M2', 'ohm', base, offered, false)).toEqual({ ok: true, value: 2.2e6 });
     expect(parseEntry('4.7 kΩ', 'ohm', base, offered, false)).toEqual({
       ok: true,

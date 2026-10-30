@@ -671,11 +671,12 @@ Interpretation of the mounting-tab span (11.4) and the 7.4 (.291) dimension on t
 | 1 kΩ … 1 MΩ | the `resistance` parameter range | catalog.ts `component.potentiometer` |
 | ±20 % | not sampled: the nominal value is simulated (ASSUMPTION POT-2) | parts/potentiometer.ts |
 | 0.05 W | total-track dissipation check, `unrated` excess | parts/potentiometer.ts `ratings` |
+| 0.05 W (derived) | I_rated = √(0.05 W / R_total): the uniform track current at the rated whole-track dissipation; a segment or the wiper above it has more heat per unit track length than any rated condition → `unrated` `track_current` row (conservative warning, not a damage threshold; no other number introduced) | parts/potentiometer.ts `ratedTrackCurrentA` |
 | 20 VDC | voltage between any two terminals, `unrated` excess (operating maximum; no absolute maximum published) | parts/potentiometer.ts `ratings` |
 | Residual resistance 500 Ω or 1 % max (BOUND) | idealised to 0 Ω (ASSUMPTION POT-1): the end positions are ideal contacts | parts/potentiometer.ts |
 | Linear taper (B0) | the only taper offered; position = share of the track A–W, not the shaft angle | catalog.ts, limitation text |
 | Body 10.0 × 6.8 mm, shaft axis 10.0 mm, shaft Ø6.0, L = 15 mm, pins 0.8 mm at 2.5 mm pitch | 3D model (PTV09A-2); body height 10.0 mm read from the square front view (DRAWING, approximate) | app/src/views/scene3d/physical.ts `POT_PTV09A` |
-| Max wiper current, contact resistance, partial-track rating | NOT FOUND: not modelled, no limit checked; stated in the part's limitations | capabilities.ts `MODEL_LIMITATIONS` |
+| Max wiper current, contact resistance, partial-track rating | NOT FOUND: contact resistance not modelled; the wiper and segments are only checked against the derived rated-condition current above | capabilities.ts `MODEL_LIMITATIONS` |
 
 ---
 

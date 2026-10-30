@@ -17,6 +17,7 @@ import {
   chooseDisplayUnit,
   displayUnitsFor,
   parseEntry,
+  snapToStep,
   type DisplayUnit,
   type UnitId,
 } from '@tbi-lab/domain';
@@ -47,6 +48,8 @@ export interface ValueControlProps {
   disabled: boolean;
   /** An environment parameter: show a slider on this scale. */
   slider?: 'linear' | 'log';
+  /** The value's resolution (catalog `step`): a typed value is rounded to it and shown so. */
+  step?: number;
   /**
    * A new canonical value. `live`: an intermediate value while the slider is dragged (bounded
    * frequency); the final value of a drag and every typed value come with `live: false`.
@@ -71,6 +74,14 @@ export function ValueControl(p: ValueControlProps) {
   const [error, setError] = useState<FieldError | null>(null);
   const synced = useRef(`${shown}|${storedUnit.exponent}`);
   const unitRef = useRef<HTMLSelectElement>(null);
+  /**
+   * Review M1: whether the number was typed since it was last committed or shown. Only a typed
+   * number is committed (by Enter, blur or a unit choice); a unit choice on an untouched field
+   * re-expresses the same stored value (2 mA -> 0.002 A) and commits nothing.
+   */
+  const edited = useRef(false);
+  /** Review L3: a pointer went down on this field's unit list (Safari does not focus it). */
+  const toUnitList = useRef(false);
   useEffect(() => {
     const key = `${shown}|${storedUnit.exponent}`;
     if (synced.current === key) return;
@@ -78,6 +89,7 @@ export function ValueControl(p: ValueControlProps) {
     setDraft(shown);
     setDraftUnit(storedUnit);
     setError(null);
+    edited.current = false;
   }, [shown, storedUnit.exponent]);
 
   // A fixed-symbol quantity keeps its pre-sprint range text (`10 mm` to `5 m` for a distance,
@@ -95,7 +107,8 @@ export function ValueControl(p: ValueControlProps) {
    * unit. Returns false when nothing could be committed (the error is shown).
    */
   const commit = (raw: string, unit: DisplayUnit): boolean => {
-    if (raw === shown && unit.exponent === storedUnit.exponent) {
+    if (!edited.current || (raw === shown && unit.exponent === storedUnit.exponent)) {
+      edited.current = false;
       setError(null);
       return true;
     }
@@ -104,11 +117,14 @@ export function ValueControl(p: ValueControlProps) {
       setError({ key: `error.parse.${parsed.error}` });
       return false;
     }
+    // A parameter with a resolution (a potentiometer's 0.01 %): the typed value is rounded to it.
+    if (p.step) parsed.value = snapToStep({ step: p.step }, parsed.value);
     if (parsed.value < p.min || parsed.value > p.max) {
       setError({ key: 'error.range', params: range });
       return false;
     }
     setError(null);
+    edited.current = false;
     // The field shows the committed value in its derived unit at once (a value equal to the
     // stored one does not re-render from the store).
     const du = chooseDisplayUnit(parsed.value, units);
@@ -154,16 +170,23 @@ export function ValueControl(p: ValueControlProps) {
           disabled={p.disabled}
           aria-invalid={error ? 'true' : 'false'}
           aria-describedby={error ? `${p.id}-error` : `${p.id}-hint`}
-          onInput={(e) => setDraft((e.target as HTMLInputElement).value)}
+          onInput={(e) => {
+            edited.current = true;
+            setDraft((e.target as HTMLInputElement).value);
+          }}
+          onFocus={() => (toUnitList.current = false)}
           onBlur={(e) => {
             // Typing a number and then choosing its unit is one edit: focus moving to this
-            // field's own unit list does not commit the number in the previous unit.
+            // field's own unit list (or a pointer pressed on it, where the browser does not
+            // focus a list) does not commit the number in the previous unit.
             if (e.relatedTarget && e.relatedTarget === unitRef.current) return;
+            if (toUnitList.current) return;
             commit(e.currentTarget.value, draftUnit);
           }}
           onKeyDown={(e) => {
             if (e.key === 'Enter') commit(e.currentTarget.value, draftUnit);
             if (e.key === 'Escape') {
+              edited.current = false;
               setDraft(shown);
               setDraftUnit(storedUnit);
               setError(null);
@@ -177,9 +200,11 @@ export function ValueControl(p: ValueControlProps) {
             data-testid={`${p.id}-unit`}
             aria-label={t('valueControl.unit', { label: p.label })}
             ref={unitRef}
+            onPointerDown={() => (toUnitList.current = true)}
             value={String(draftUnit.exponent)}
             disabled={p.disabled}
             onBlur={(e) => {
+              toUnitList.current = false;
               // Leaving the unit list without changing it commits a number typed before it.
               const input = e.currentTarget.parentElement?.querySelector('input');
               if (input && e.relatedTarget !== input) commit(input.value, draftUnit);
@@ -188,7 +213,15 @@ export function ValueControl(p: ValueControlProps) {
               const el = e.currentTarget;
               const unit = units.find((u) => String(u.exponent) === el.value) ?? storedUnit;
               const input = el.parentElement?.querySelector('input');
-              // The typed number is kept and read in the new unit (220 Ω -> 220 kΩ); a value that
+              toUnitList.current = false;
+              if (!edited.current) {
+                // Untouched field: the same stored value, re-expressed in the chosen unit
+                // (2 mA -> 0.002 A). Nothing is committed (never a live change from a unit).
+                setDraftUnit(unit);
+                setDraft(p.value === null ? '' : displayNumber(p.value, unit));
+                return;
+              }
+              // A typed number is read in the chosen unit (220 + kΩ -> 220 kΩ); a value that
               // cannot be used commits nothing and the dropdown returns to the previous unit.
               if (!commit(input?.value ?? draft, unit)) el.value = String(draftUnit.exponent);
             }}
@@ -222,6 +255,7 @@ export function ValueControl(p: ValueControlProps) {
             const pos = Number((e.target as HTMLInputElement).value);
             const v = scale.value(pos);
             setDragPos(pos);
+            edited.current = false;
             setDraft(displayNumber(v, chooseDisplayUnit(v, units)));
             setDraftUnit(chooseDisplayUnit(v, units));
             setError(null);
@@ -230,6 +264,7 @@ export function ValueControl(p: ValueControlProps) {
           onChange={(e) => {
             const v = scale.value(Number((e.target as HTMLInputElement).value));
             setDragPos(null);
+            edited.current = false;
             setDraft(displayNumber(v, chooseDisplayUnit(v, units)));
             setDraftUnit(chooseDisplayUnit(v, units));
             // The release: no pending live value may arrive after it; the final value always does.

@@ -28,9 +28,15 @@ projects load unchanged. Only the editor changed.
   value (choose kΩ, enter 1 → stored 1000 → shown "1 kΩ"; after a reload the same).
 - number × unit → SI is exact in decimal (`parseEntry` → `exact`); display is the exact decimal
   shift (`shiftDecimal`), so the shown pair re-reads to the identical double.
-- Changing the unit keeps the typed number (220 Ω → 220 kΩ), validated against the range first;
-  out of range: inline error, nothing committed, the list reverts. Typing a number then choosing
-  its unit is ONE edit (focus moving from the field to its own unit list does not commit).
+- Unit choice (review M1): if the number was TYPED since it was last committed or shown, the
+  chosen unit applies to the typed number and commits (220 + kΩ → 220 kΩ), validated first; out of
+  range: inline error, nothing committed, the list reverts. If the number was NOT edited, a unit
+  choice only re-expresses the same stored value (2 mA → 0.002 A) and commits nothing, so a unit
+  change alone (mouse or arrow keys on a focused list) never changes a value, live or not.
+  Typing a number then choosing its unit is ONE edit: the field's blur towards its own unit list
+  (focus, or a pointer pressed on the list where the browser does not focus it: review L3) does
+  not commit in the old unit; Enter/blur commit only a typed number.
+- Exponent notation (review L2) is a plain number in the shown unit: `1e3` with kΩ is 1 MΩ.
 - Convenience, explicit: a prefixed form typed or pasted into the number field (`4k7`, `4.7k`,
   `100u`, `2M2`, `4.7 kΩ`) is converted by the exact parser and then shown as number +
   unit; it is never re-scaled by the selected unit. Typed text never reaches storage.
@@ -60,11 +66,25 @@ pages in `docs/sprints/s10-evidence/datasheets/FACTS.md` §12; provenance in
 
 - Terminals: end A (pin 1), wiper W (pin 2), end B (pin 3). Parameters: `model`
   (`model.potentiometer.bourns_ptv09a_linear`), `resistance` 1 kΩ … 1 MΩ (datasheet range,
-  default 10 kΩ), `position` 0 … 100 % (new unit `percent`, live, slider, coalesced undo).
+  default 10 kΩ), `position` 0 … 100 % (new unit `percent`, live, slider, coalesced undo) on a
+  **0.01 % grid** (review M2: arbitrarily small segments made the solver fail): the UI rounds a
+  typed position to 0.01 % and shows it; the domain refuses an off-grid value by name
+  (`setParam` → `off_grid`, `validateProject` → `off_grid_param`, `liveControlProblem` →
+  `invalid_value` with `detail: 'off_grid'`; EN/HE `error.param.off_grid`). Both examples solve at
+  0.01 % and 99.99 % with 1 kΩ and 1 MΩ.
 - Model (packages/engine/src/parts/potentiometer.ts): R_AW = R·p, R_WB = R·(1 − p),
   p = position/100: two linear resistors; a 0 Ω segment (0 % / 100 %) is an ideal closed contact.
-- Ratings: total track dissipation > 0.05 W → `unrated` power row; > 20 V between any two terminals →
-  `unrated` voltage row (an operating maximum; no absolute maximum is published).
+- Ratings (all `unrated`: outside the datasheet's specified/rated condition, never a damage claim):
+  - total track dissipation > 0.05 W → power row;
+  - **derived rated-condition track current (review H1)**, no new number: at the rated
+    whole-track dissipation the track current is uniform, I_rated = √(P_rated / R_total)
+    (7.07 mA for 1 kΩ, 2.24 mA for 10 kΩ, 0.224 mA for 1 MΩ). A segment (A–W, W–B) or the wiper
+    contact carrying more than I_rated dissipates more heat per unit track length than any rated
+    condition → a `track_current` row per segment/wiper ("outside the datasheet's rated
+    condition", EN/HE, quantities LTR-isolated). This is a conservative warning, not a damage
+    threshold; damage behaviour stays open (OD-POT-2). It closes the fail-open case the review
+    found (5 V through 100 Ω into a 2 % rheostat: 41.7 mA, 34.7 mW < 0.05 W, previously no row);
+  - > 20 V between any two terminals → voltage row (an operating maximum; no absolute maximum).
 - Results: voltage A–B, currents A→W, W→B and into the wiper, R_AW, R_WB, total dissipation, wiper
   voltage to GND; the canvas shows `W <voltage>` while running and `<R> · <position>` as the design
   value.
@@ -88,21 +108,30 @@ pages in `docs/sprints/s10-evidence/datasheets/FACTS.md` §12; provenance in
 | Linear divider / rheostat, any position 0 … 100 %, R 1 kΩ … 1 MΩ | **Supported** | Two linear resistors; numerics checked against closed forms (rel 1e-9) |
 | Live position change while running (local engine and ESP32 mirror) | **Supported** | `liveParams: ['position']`; engine, Session Host and e2e tests |
 | Total dissipation > 0.05 W, voltage > 20 VDC | **Supported (warning)** | Datasheet p.1; `unrated`: no damage threshold published |
+| Segment or wiper current above √(0.05 W / R) (rheostat use) | **Supported (warning)** | Derived from the datasheet's rated condition; `unrated`, conservative, not a damage threshold |
+| Position off the 0.01 % grid | **Refused** (by name, `off_grid`) | Resolution; keeps every segment ≥ 0.01 % of R |
 | Wiper on an ESP32 digital input | **Supported (digital threshold only)** | Existing pad model; no ADC |
 | `analogRead` / ADC of a wiper | **Refused** (by name, at Build) | ADC unsupported in V1 (unchanged) |
 | Audio (A) / reverse-audio (C) / S-shaped (B1–B5) tapers | **Refused** (not offered) | Only graphs in the datasheet; not characterised |
 | Resistance outside 1 kΩ … 1 MΩ | **Refused** (range) | Datasheet standard range |
 | End (residual) resistance | **Not characterised** → idealised 0 Ω (ASSUMPTION POT-1) | Datasheet gives only a bound: "500 ohms or ±1 % max." |
 | ±20 % tolerance | **Not characterised** → nominal value (ASSUMPTION POT-2) | As every other part |
-| Power on part of the track (rheostat), max wiper current, contact resistance | **Not characterised** (no limit checked; stated in the part's limitations) | NOT FOUND in the datasheet |
+| Damage behaviour of a segment or the wiper above the rated condition; contact resistance | **Not characterised** (warned, not modelled) | NOT FOUND in the datasheet (OD-POT-2) |
 | Shaft angle ↔ position (B0 curve end zones), electrical angle | **Not characterised** | Graph only; position is defined as the electrical share A–W |
 | Temperature (derating above 50 °C, TCR) | **Not characterised** | Results at 25 °C (full rating) |
 
 ### Examples
 
-1. `pot-divider` — 10 kΩ across 5 V, wiper probe; V_W = 5 V × (1 − p): checked at 0/25/50/100 %.
-2. `pot-led-dimmer` — W–B as a rheostat in series with 220 Ω and the red LED on 5 V; LED current
-   strictly rising in p (checked every 10 %), no rating row at any position, 13.72 mA at 100 %.
+1. `pot-divider` — 10 kΩ across 5 V, **end A (pin 1) at GND, end B at +5 V** (review L4: "turn up
+   = more volts", as the datasheet's V_1-2/V_1-3 taper axis); wiper probe; V_W = 5 V × p, checked
+   at 0/25/50/100 %.
+2. `pot-led-dimmer` (redesigned, review H1) — the W–B segment of a **1 kΩ** pot as a rheostat in
+   series with **470 Ω** and the red LED on 5 V. I_rated = √(0.05 W / 1 kΩ) = 7.07 mA; the
+   engine sweep (every 1 % plus 0.01, 0.1, 99.9, 99.99 %) gives LED current 2.12 mA at 0 % rising
+   strictly to **6.50 mA at 100 %**, below I_rated: no rating row of any kind at any position. This
+   is the brightest design with an E24 series resistor: 430 Ω gives 7.09 mA at 100 % and a
+   `track_current` (wiper) row (tested). The previous design (10 kΩ + 220 Ω) carried up to 6× the
+   rated-condition current near the B end.
 3. ESP32 pot example: **skipped.** It would only show the existing digital threshold model with a
    divider (already demonstrated by `esp32-night-light`), and a potentiometer next to an ESP32
    invites `analogRead`, which is refused; an example built around a refused facility would
@@ -112,9 +141,10 @@ pages in `docs/sprints/s10-evidence/datasheets/FACTS.md` §12; provenance in
 
 - **OD-POT-1 (end resistance):** keep the 0 Ω idealisation at the track ends, or model a value
   (the datasheet gives only the bound 500 Ω / 1 %), or refuse exactly 0 % and 100 %.
-- **OD-POT-2 (partial-track power):** the datasheet rates only the whole element (0.05 W). Keep the
-  total-dissipation check plus the limitation text, or adopt the common industry rule (power
-  proportional to the track fraction in use, i.e. max current √(P/R)) as a labelled assumption.
+- **OD-POT-2 (partial-track damage behaviour):** the datasheet rates only the whole element
+  (0.05 W). Decided now: a conservative warning at the rated-condition track current √(P/R)
+  (above). Still open: whether any DAMAGE/failure behaviour may be claimed above it (needs a
+  manufacturer source; none is used).
 - **OD-POT-3 (resistance values):** the PTV09A is made in 1-2-5 values only (1k, 2k, 5k … 1M);
   the parameter currently accepts any value in 1 kΩ … 1 MΩ. Restrict to the list?
 - **OD-POT-4 (metre display): RESOLVED 2026-10-30** — the earlier owner decision OS-06 stands:
@@ -124,6 +154,25 @@ pages in `docs/sprints/s10-evidence/datasheets/FACTS.md` §12; provenance in
   parts of s13-live-real and s13-owner-smoke OS-06, which now also checks the stored 0.3 m).
 - **OD-POT-5 (deploy):** rebuild/redeploy the DEV Session Host with this branch so ESP32 sessions
   accept the new type (the frontend alone is not enough).
+
+## Deployment (review M3)
+
+- Frontend and Session Host must be deployed **together** from the same commit: the host must
+  know `component.potentiometer` (and `percent`) for ESP32 sessions with a potentiometer; plain
+  v5 circuits without one keep working on the old host (it accepts schemaVersion 1–1000).
+- **One-way schema step.** Any project edited in this build is stored as v5. **Rollback caveat:**
+  rolling DEV-Lab back to 0389c47 makes every v5-saved project open **read-only** ("made by a
+  newer version"), and v5 files are refused on import as newer; projects containing a
+  potentiometer cannot be opened for editing or simulated at all on 0389c47. Rolling back is
+  safe for data (nothing is rewritten) but not transparent to users; plan it as such.
+
+## Review notes (2026-10-30)
+
+- L5: the 3D pin order (pins 1-2-3 left to right facing the shaft) is not independently
+  verifiable from the datasheet (its PCB layout shows t1-t2-t3 left to right but not the shaft
+  side). The 2D canvas (A left, W top, B right) and the schematic follow the datasheet schematic.
+- L1: every quantity in the new Hebrew potentiometer limitation, rating-row and example strings is
+  an LTR isolate (U+2066/U+2069); older strings are unchanged.
 
 ## Future / Backlog
 
@@ -150,3 +199,8 @@ pages in `docs/sprints/s10-evidence/datasheets/FACTS.md` §12; provenance in
 typecheck and lint pass; vitest units, units-ux, i18n, examples, s13-slider-scale, schema-v5-pot:
 190 tests pass; Playwright (CI=1) s13-owner-smoke, s12-parts, pot-units, editor: 27 passed. The
 real-runtime specs restored to their 0389c47 form were not run (real Session Host needed).
+
+### Review fixes (H1, M1, M2, M3, L1–L5) verification
+
+typecheck and lint pass; full vitest 192 files / 1873 tests pass; Playwright (CI=1, one suite at a
+time): pot-units 4, editor 7, os12-examples 2, s13-owner-smoke 13, locale 4, sprint5 11 — all pass.

@@ -798,10 +798,10 @@ export const en = {
     'Two resistors split 9 V. The midpoint is 9 V × 20 kΩ / (10 kΩ + 20 kΩ) = 6 V; a probe at R2.a reads it.',
   'example.pot-divider.title': 'Potentiometer divider',
   'example.pot-divider.summary':
-    'A 10 kΩ potentiometer across 5 V: the [[wiper]] reads 5 V × (1 − p), 2.5 V at 50 %. Run it and drag the position slider: the [[probe]] at the [[wiper]] follows.',
+    'A 10 kΩ potentiometer across 5 V, end A at GND and end B at +5 V: the [[wiper]] reads 5 V × p, 2.5 V at 50 %. Run it and drag the position slider: the [[probe]] at the [[wiper]] follows.',
   'example.pot-led-dimmer.title': 'LED dimmer (potentiometer)',
   'example.pot-led-dimmer.summary':
-    'The potentiometer as a variable resistor in series with 220 Ω and a red LED on 5 V. Turning it up lowers the series resistance and the LED current rises; at 100 % the 220 Ω resistor alone limits it to about 13.7 mA.',
+    'A 1 kΩ potentiometer as a variable resistor in series with 470 Ω and a red LED on 5 V. Turning it up lowers the series resistance and the LED current rises, to 6.5 mA at 100 %: below the 7.07 mA the track carries at its rated 0.05 W, so it stays within the datasheet’s rated condition at every position.',
   'example.led-current.title': 'LED current limiting',
   'example.led-current.summary':
     'A 220 Ω resistor sets the current of a red LED from 5 V. The LED is nonlinear: it settles near 2 V and about 14 mA.',
@@ -1595,6 +1595,10 @@ export const en = {
   'report.failed.rejected': 'The report could not be accepted. Check the text and try again.',
   'report.failed.network':
     'The server did not confirm the report, so it may not have been received. Your text is kept here: you can send it again.',
+  'limitation.potentiometer_position_grid': 'The position is set in steps of 0.01 %.',
+  'rating.row.track_current':
+    'Current {value}: above the track current at the rated 0.05 W ({limit}), outside the datasheet’s rated condition',
+  'error.param.off_grid': 'The wiper position is set in steps of 0.01 %.',
   // Sprint POT-UNITS: the potentiometer.
   'component.component.potentiometer.name': '[[potentiometer]]',
   'terminal.potEndA': 'End A (pin 1)',
@@ -1618,9 +1622,9 @@ export const en = {
   'limitation.potentiometer_tolerance':
     'Nominal value: the ±20 % resistance tolerance is not sampled.',
   'limitation.potentiometer_power':
-    'Power rating 0.05 W for the whole track (PTV09A datasheet), at a 25 °C ambient. The datasheet gives no rating for part of the track: a short segment (rheostat use) may be over-stressed below 0.05 W, and this is not characterised.',
+    'Power rating 0.05 W for the whole track (PTV09A datasheet), at a 25 °C ambient. A segment or the wiper carrying more than the whole track does at 0.05 W (√(0.05 W / R)) is flagged as outside the datasheet’s rated condition: a conservative warning, not a damage threshold. Damage behaviour is not characterised.',
   'limitation.potentiometer_wiper_current':
-    'Wiper contact resistance and maximum wiper current are not in the datasheet: not modelled, and no limit is checked.',
+    'Wiper contact resistance and a maximum wiper current are not in the datasheet: the contact resistance is not modelled; the wiper current is checked only against the rated-condition track current above.',
   'limitation.potentiometer_no_adc':
     'Next to an ESP32 the [[wiper]] is read as a digital level: analog input (analogRead) is not supported.',
 } as const;

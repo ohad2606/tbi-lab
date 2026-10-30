@@ -318,34 +318,67 @@ describe('expected engineering results (production engine)', () => {
     if (!r.ok) throw new Error('edit');
     return r.doc;
   };
-  it('potentiometer divider: V_W = 5 V × (1 − p) at 0, 25, 50 and 100 %; I = 0.5 mA', () => {
+  it('potentiometer divider: A at GND, B at +5 V: V_W = 5 V × p at 0, 25, 50 and 100 %; I = 0.5 mA', () => {
     expect(example('pot-divider').components.find((c) => c.id === 'RV1')!.params.position).toEqual({
       value: 50,
       unit: 'percent',
     });
     for (const p of [0, 25, 50, 100]) {
       const r = solve(atPosition('pot-divider', p));
-      near(r.components.RV1!.terminals.wiper, 5 * (1 - p / 100));
+      near(r.components.RV1!.terminals.wiper, 5 * (p / 100));
       near(r.components.PSU1!.current, 5 / 10_000);
       expect(ratingWarnings(createSnapshot(atPosition('pot-divider', p)), r)).toEqual([]);
     }
   });
-  it('LED dimmer: the LED current rises with the position and stays safe at every position', () => {
+  // Every 1 %, plus the positions next to the ends (review H1/M2).
+  const SWEEP = [...Array.from({ length: 101 }, (_, i) => i), 0.01, 0.1, 99.9, 99.99].sort(
+    (a, b) => a - b,
+  );
+  it('LED dimmer: current rising with the position, within the rated condition at every position', () => {
+    const rv = example('pot-led-dimmer').components.find((c) => c.id === 'RV1')!;
+    expect(rv.params.resistance).toEqual({ value: 1000, unit: 'ohm' });
+    const iRated = Math.sqrt(0.05 / 1000); // the track current at the rated 0.05 W
     let last = 0;
-    for (let p = 0; p <= 100; p += 10) {
+    for (const p of SWEEP) {
       const doc = atPosition('pot-led-dimmer', p);
       const r = solve(doc);
       const i = r.components.D1!.current!;
       expect(i, `${p} %`).toBeGreaterThan(last);
       last = i;
-      // KVL around the loop: 5 V = I × (10 kΩ × (1 − p) + 220 Ω) + V_LED.
-      near(i * (10_000 * (1 - p / 100) + 220) + r.components.D1!.voltage!, 5);
-      // No rating row anywhere (LED, resistor, potentiometer, supply).
+      // KVL around the loop: 5 V = I × (1 kΩ × (1 − p) + 470 Ω) + V_LED.
+      near(i * (1000 * (1 - p / 100) + 470) + r.components.D1!.voltage!, 5);
+      expect(i, `${p} %`).toBeLessThan(iRated);
+      // No rating row anywhere (LED, resistor, potentiometer segments and wiper, supply).
       expect(ratingWarnings(createSnapshot(doc), r), `${p} %`).toEqual([]);
       expect(r.components.PSU1!.mode).toBe('cv');
     }
-    // At 100 % only the 220 Ω limits it: the LED-current example's operating point.
-    near(last, 13.72e-3, 1e-3);
+    // At 100 % only the 470 Ω limits it.
+    near(last, 6.4997e-3, 1e-4);
+  });
+  it('LED dimmer with the next E24 value down (430 Ω): above the rated condition at 100 %', () => {
+    const r430 = setParam(atPosition('pot-led-dimmer', 100), 'R1', 'resistance', {
+      value: 430,
+      unit: 'ohm',
+    });
+    if (!r430.ok) throw new Error('edit');
+    const rows = ratingWarnings(createSnapshot(r430.doc), solve(r430.doc));
+    expect(rows.map((w) => [w.component, w.code, w.kind, w.channel])).toEqual([
+      ['RV1', 'track_current', 'unrated', 'wiper'],
+    ]);
+  });
+  it('both potentiometer examples solve at 0.01 % and 99.99 % at both resistance extremes', () => {
+    for (const id of ['pot-divider', 'pot-led-dimmer'])
+      for (const ohms of [1000, 1e6])
+        for (const p of [0.01, 99.99]) {
+          const e = setParam(atPosition(id, p), 'RV1', 'resistance', { value: ohms, unit: 'ohm' });
+          if (!e.ok) throw new Error('edit');
+          const o = new EngineSession(createSnapshot(e.doc)).solve();
+          expect(o.ok, `${id} ${ohms} Ω ${p} %`).toBe(true);
+        }
+    // Off the 0.01 % grid: refused by name, never handed to the engine.
+    expect(
+      setParam(example('pot-divider'), 'RV1', 'position', { value: 1e-13, unit: 'percent' }),
+    ).toEqual({ ok: false, error: 'off_grid' });
   });
 });
 

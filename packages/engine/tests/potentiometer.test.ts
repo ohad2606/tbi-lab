@@ -15,7 +15,7 @@ import {
   type SolveOutcome,
   type SolveSuccess,
 } from '../src/index.js';
-import { PTV09A, potSegments } from '../src/parts/potentiometer.js';
+import { potSegments, ratedTrackCurrentA } from '../src/parts/potentiometer.js';
 import { Bench } from './build.js';
 
 const REL = 1e-9;
@@ -86,8 +86,8 @@ describe('potentiometer: loaded divider (Thevenin)', () => {
   }
 });
 
-describe('potentiometer: rheostat LED dimmer, safe at every position', () => {
-  function dimmer(position: number) {
+describe('potentiometer: rheostat LED dimmer (1 kΩ + 470 Ω), within the rated condition', () => {
+  function dimmer(position: number, series = 470) {
     const b = new Bench();
     const rv = b.add('component.potentiometer');
     const r = b.add('component.resistor');
@@ -98,30 +98,89 @@ describe('potentiometer: rheostat LED dimmer, safe at every position', () => {
       .wire(`${rv}.b`, `${r}.a`)
       .wire(`${r}.b`, `${d}.anode`)
       .wire(`${d}.cathode`, 'GND1.ref')
-      .ohms(r, 220)
-      .set(rv, 'resistance', { value: 10_000, unit: 'ohm' })
+      .ohms(r, series)
+      .set(rv, 'resistance', { value: 1000, unit: 'ohm' })
       .set(rv, 'position', { value: position, unit: 'percent' });
     return { b, rv, r, d };
   }
-  it('current rises with the position, the 220 Ω bounds it, no rating row anywhere', () => {
+  const positions = [...Array.from({ length: 101 }, (_, i) => i), 0.01, 99.9, 99.99].sort(
+    (x, y) => x - y,
+  );
+  it('current rises with the position, stays below sqrt(0.05 W / 1 kΩ), no rating row anywhere', () => {
     let last = -1;
-    for (let pos = 0; pos <= 100; pos += 5) {
-      const { b, rv, r, d } = dimmer(pos);
+    for (const pos of positions) {
+      const { b, r, d } = dimmer(pos);
       const s = ok(new EngineSession(b.snapshot()).solve());
       const i = s.components[d]!.current!;
       expect(i).toBeGreaterThan(last);
       last = i;
-      // KVL: 5 V = I (R_WB + 220) + V_LED.
-      const { wb } = potSegments(10_000, pos);
-      near(i * (wb + 220) + s.components[d]!.voltage!, 5, 1e-9);
+      const { wb } = potSegments(1000, pos);
+      near(i * (wb + 470) + s.components[d]!.voltage!, 5, 1e-9);
       near(s.components[r]!.current, i);
-      // At most (5 V - V_F) / 220 Ω.
-      expect(i).toBeLessThanOrEqual(5 / 220);
+      expect(i).toBeLessThan(ratedTrackCurrentA(1000));
       expect(ratingWarnings(b.snapshot(), s)).toEqual([]);
-      expect(s.components[rv]!.state!.power as number).toBeLessThan(PTV09A.ratedPowerW);
     }
-    // At 100 % the pot is a 0 Ω contact: the LED-current example's operating point.
-    near(last, 13.72e-3, 1e-3);
+  });
+  it('the same dimmer with 430 Ω exceeds the rated condition at the wiper near 100 %', () => {
+    const { b, rv } = dimmer(100, 430);
+    const s = ok(new EngineSession(b.snapshot()).solve());
+    const rows = ratingWarnings(b.snapshot(), s).filter((w) => w.component === rv);
+    expect(rows.map((w) => [w.code, w.kind, w.channel])).toEqual([
+      ['track_current', 'unrated', 'wiper'],
+    ]);
+    near(rows[0]!.limit, Math.sqrt(0.05 / 1000));
+  });
+});
+
+describe('potentiometer: rated-condition track current (review H1 scenarios)', () => {
+  it('5 V through 100 Ω into a 1 kΩ rheostat at 2 % (A-W, B open): track-current rows, no power row', () => {
+    const b = new Bench();
+    const rv = b.add('component.potentiometer');
+    const r = b.add('component.resistor');
+    b.psu(5, 0.5)
+      .wire('PSU1.negative', 'GND1.ref')
+      .wire('PSU1.positive', `${r}.a`)
+      .wire(`${r}.b`, `${rv}.a`)
+      .wire(`${rv}.wiper`, 'GND1.ref')
+      .ohms(r, 100)
+      .set(rv, 'resistance', { value: 1000, unit: 'ohm' })
+      .set(rv, 'position', { value: 2, unit: 'percent' });
+    const s = ok(new EngineSession(b.snapshot()).solve());
+    const i = 5 / 120; // 41.7 mA through 100 Ω + 20 Ω
+    near(s.components[rv]!.currents!.aw, i);
+    near(s.components[rv]!.state!.power as number, i * i * 20);
+    const rows = ratingWarnings(b.snapshot(), s).filter((w) => w.component === rv);
+    // 34.7 mW is below 0.05 W: only the derived rows (segment A-W and the wiper) fire.
+    expect(rows.map((w) => [w.code, w.kind, w.channel])).toEqual([
+      ['track_current', 'unrated', 'aw'],
+      ['track_current', 'unrated', 'wiper'],
+    ]);
+    for (const w of rows) {
+      near(w.value, i);
+      near(w.limit, Math.sqrt(0.05 / 1000));
+    }
+  });
+  it('1 kΩ with +5 V on A, wiper at 2 % to GND: power and track-current rows', () => {
+    const b = new Bench();
+    const rv = b.add('component.potentiometer');
+    b.psu(5, 0.5)
+      .wire('PSU1.negative', 'GND1.ref')
+      .wire('PSU1.positive', `${rv}.a`)
+      .wire(`${rv}.wiper`, 'GND1.ref')
+      .set(rv, 'resistance', { value: 1000, unit: 'ohm' })
+      .set(rv, 'position', { value: 2, unit: 'percent' });
+    const s = ok(new EngineSession(b.snapshot()).solve());
+    const rows = ratingWarnings(b.snapshot(), s).filter((w) => w.component === rv);
+    const codes = rows.map((w) => `${w.code}:${w.channel ?? ''}`).sort();
+    expect(codes).toEqual(['power:', 'track_current:aw', 'track_current:wiper'].sort());
+    for (const w of rows) expect(w.kind).toBe('unrated');
+  });
+  it('an unloaded divider at any position stays inside the rated condition (5 V, 1 kΩ: 5 mA < 7.07 mA)', () => {
+    for (const pos of [0, 0.01, 50, 99.99, 100]) {
+      const { b } = divider(5, 1000, pos);
+      const s = ok(new EngineSession(b.snapshot()).solve());
+      expect(ratingWarnings(b.snapshot(), s)).toEqual([]);
+    }
   });
 });
 
@@ -143,7 +202,9 @@ describe('potentiometer: ratings and refusals', () => {
     // 20 V across 1 kΩ: 0.4 W.
     const { b, rv } = divider(20, 1000, 50);
     const s = ok(new EngineSession(b.snapshot()).solve());
-    const rows = ratingWarnings(b.snapshot(), s).filter((w) => w.component === rv);
+    const rows = ratingWarnings(b.snapshot(), s).filter(
+      (w) => w.component === rv && w.code === 'power',
+    );
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ code: 'power', kind: 'unrated', limit: 0.05 });
     near(rows[0]!.value, 0.4);
@@ -154,9 +215,12 @@ describe('potentiometer: ratings and refusals', () => {
     const rows = ratingWarnings(b.snapshot(), s).filter((w) => w.component === rv);
     expect(rows.map((w) => [w.code, w.kind, w.limit])).toEqual([['voltage', 'unrated', 20]]);
   });
-  it('a position outside 0 … 100 % is refused by name', () => {
+  it('a position outside 0 … 100 % or off the 0.01 % grid is refused', () => {
     const { b, rv } = divider(5, 10_000, 50);
     const s = new EngineSession(b.snapshot());
     expect(s.applyControl(rv, { params: { position: 120 } }, 2)).not.toBeNull();
+    expect(s.applyControl(rv, { params: { position: 1e-13 } }, 3)).not.toBeNull();
+    expect(s.applyControl(rv, { params: { position: 99.999 } }, 4)).not.toBeNull();
+    expect(s.applyControl(rv, { params: { position: 99.99 } }, 5)).toBeNull();
   });
 });

@@ -52,7 +52,27 @@ test('units: number + unit list, exact SI storage, chosen unit kept after commit
   await expect(page.getByTestId('value-R1')).toHaveText('2.2 MΩ');
 
   // Choose kΩ, enter 1: stored 1000, shown "1 kΩ"; the same after a reload.
-  await unit.selectOption('3'); // 2.2 kΩ
+  // Review M1: a unit choice on an UNTOUCHED field only re-expresses the stored value
+  // (2.2 MΩ -> 2200 kΩ): nothing is committed.
+  const rev0 = (await storedProject(page)).revision.localRevision;
+  await unit.selectOption('3');
+  await expect(field).toHaveValue('2200');
+  await waitSaved(page);
+  expect((await storedProject(page)).revision.localRevision).toBe(rev0);
+  expect(await resistance(page)).toEqual({ value: 2_200_000, unit: 'ohm' });
+  // Review L2: exponent notation is a plain number in the shown unit (1e3 kΩ = 1 MΩ).
+  await field.fill('1e3');
+  await field.press('Enter');
+  await expect(field).toHaveValue('1');
+  await expect(unit).toHaveValue('6');
+  await waitForStoredProject(
+    page,
+    (d) =>
+      (d.components.find((c) => c.id === 'R1')?.params.resistance as { value: number }).value ===
+      1e6,
+    'R1 = 1 MΩ',
+  );
+  await unit.selectOption('3'); // 1000 kΩ, display only
   await field.fill('1');
   await field.press('Enter');
   await waitForStoredProject(
@@ -148,18 +168,23 @@ test('potentiometer divider: the wiper reads 5 V × (1 − p); position and slid
   await expect(position).toBeEnabled(); // live while running
   await expect(position).toHaveValue('50');
   await expect(page.getByTestId('param-RV1-position-unit')).toHaveText('%');
-  // Typed while running: 25 % -> 3.75 V.
+  // Typed while running (A at GND, B at +5 V: V_W = 5 V × p): 25 % -> 1.25 V.
   await position.fill('25');
   await position.press('Enter');
-  await expect(reading).toContainText('3.75 V');
-  await expect(page.getByTestId('result-state-wiperVoltage')).toContainText('3.75 V');
-  // The slider while running: to the B end (100 %) -> 0 V; back to 80 % -> 1 V.
+  await expect(reading).toContainText('1.25 V');
+  await expect(page.getByTestId('result-state-wiperVoltage')).toContainText('1.25 V');
+  // Review M2: a typed position is rounded to the 0.01 % grid and shown so.
+  await position.fill('12.3456');
+  await position.press('Enter');
+  await expect(position).toHaveValue('12.35');
+  await expect(reading).toContainText('617.5 mV');
+  // The slider while running: to the B end (100 %) -> 5 V; back to 80 % -> 4 V.
   const slider = page.getByTestId('param-RV1-position-slider');
   await slider.fill('1000');
   await expect(position).toHaveValue('100');
-  await expect(reading).toContainText('0 V');
+  await expect(reading).toContainText('5 V');
   await slider.fill('800');
-  await expect(reading).toContainText('1 V');
+  await expect(reading).toContainText('4 V');
   await expect(page.getByTestId('sim-status')).toHaveAttribute('data-status', 'running');
   await waitForStoredProject(
     page,
@@ -170,5 +195,46 @@ test('potentiometer divider: the wiper reads 5 V × (1 − p); position and slid
   // Its limitations are listed (no ADC; end resistance idealised).
   await expect(page.getByTestId('limitation-potentiometer_no_adc')).toBeAttached();
   await expect(page.getByTestId('limitation-potentiometer_end_resistance')).toBeAttached();
+  await page.getByTestId('sim-stop').click();
+});
+
+test('review M1: arrow keys on a focused unit list of a running supply re-express, never commit', async ({
+  page,
+}) => {
+  await page.goto('/');
+  const library = page.getByTestId('example-list');
+  await expect(library.or(page.getByTestId('canvas'))).toBeVisible();
+  if (!(await library.isVisible())) await goToProjects(page);
+  await page.getByTestId('open-example-ohms-law').click();
+  await expect(page.getByTestId('canvas')).toBeVisible();
+  await page.getByTestId('sim-run').click();
+  const status = page.getByTestId('sim-status');
+  await expect(status).toHaveAttribute('data-status', 'running');
+  await component(page, 'PSU1').locator('.component-hit').click();
+  const limit = page.getByTestId('param-PSU1-currentLimit');
+  const unit = page.getByTestId('param-PSU1-currentLimit-unit');
+  await expect(limit).toHaveValue('100');
+  await expect(unit).toHaveValue('-3');
+  await waitSaved(page);
+  const before = await storedProject(page);
+  const solves = await status.getAttribute('data-solves');
+  // Keyboard: focus the closed list and press ArrowDown (mA -> A), then ArrowUp (back).
+  await unit.focus();
+  await page.keyboard.press('ArrowDown');
+  await expect(unit).toHaveValue('0');
+  await expect(limit).toHaveValue('0.1'); // the same 100 mA, in A
+  await page.keyboard.press('ArrowUp');
+  await expect(unit).toHaveValue('-3');
+  await expect(limit).toHaveValue('100');
+  await page.waitForTimeout(300);
+  const after = await storedProject(page);
+  expect(after.revision.localRevision).toBe(before.revision.localRevision);
+  expect(after.components.find((c) => c.id === 'PSU1')!.params.currentLimit).toEqual({
+    value: 0.1,
+    unit: 'ampere',
+  });
+  // Nothing reached the running session: no re-solve.
+  await expect(status).toHaveAttribute('data-solves', solves!);
+  await expect(status).toHaveAttribute('data-status', 'running');
   await page.getByTestId('sim-stop').click();
 });

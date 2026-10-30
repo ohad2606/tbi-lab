@@ -26,11 +26,15 @@
  * - Wiper contact resistance and maximum wiper current: NOT in the datasheet; not modelled and
  *   no limit is claimed (MODEL_LIMITATIONS: potentiometer_wiper_current).
  * - Ratings: the 0.05 W rating is for the whole element; the datasheet states no rating for a
- *   part of the track. The check compares the TOTAL dissipation with 0.05 W (`unrated`: outside
- *   the specified conditions, no damage threshold published). A rheostat concentrating that
- *   power in a short segment may be over-stressed below it: not characterised (stated in the
- *   limitations, owner decision OD-POT-2). Voltage above 20 VDC across any two terminals:
- *   `unrated` (an operating maximum; no absolute maximum is published).
+ *   part of the track. Three `unrated` checks (outside the specified conditions; no damage
+ *   threshold is published, owner decision OD-POT-2 stays open for damage behaviour):
+ *   1. total dissipation above 0.05 W;
+ *   2. DERIVED from the datasheet's own rated condition, no new number (review H1): at the rated
+ *      whole-track dissipation the track current is I_rated = sqrt(P_rated / R_total), uniform
+ *      along the track. A segment (or the wiper contact) carrying more than I_rated dissipates
+ *      more heat per unit track length (I^2 R / length) than any rated condition: a conservative
+ *      warning (`track_current`, per segment and for the wiper), not a damage threshold;
+ *   3. more than 20 VDC across any two terminals (an operating maximum; no absolute maximum).
  */
 import { Resistor } from '../devices.js';
 import { registerPart, validateCard, type PartElement, type PartModel } from '../parts.js';
@@ -43,6 +47,14 @@ export const PTV09A = {
   /** The datasheet's residual-resistance BOUND (Ω), recorded, not used (ASSUMPTION POT-1). */
   residualBoundOhm: 500,
 };
+
+/**
+ * The track current at the rated whole-element dissipation (A): I_rated = sqrt(P_rated / R_total),
+ * derived from the datasheet's 0.05 W (review H1); no other number is introduced.
+ */
+export function ratedTrackCurrentA(totalOhm: number): number {
+  return Math.sqrt(PTV09A.ratedPowerW / totalOhm);
+}
 
 /** The two track segments for a total resistance and a position in percent. */
 export function potSegments(totalOhm: number, positionPct: number): { aw: number; wb: number } {
@@ -127,6 +139,29 @@ export const POTENTIOMETER: PartModel = {
       [a, wiper],
       [wiper, b],
     ];
+    // (2) Track current per segment and at the wiper, against I_rated = sqrt(P_rated / R_total).
+    const total =
+      typeof r.state?.resistanceAW === 'number' && typeof r.state?.resistanceWB === 'number'
+        ? r.state.resistanceAW + r.state.resistanceWB
+        : null;
+    if (total !== null && total > 0) {
+      const iRated = ratedTrackCurrentA(total);
+      const segs: [string, number | null | undefined, number][] = [
+        ['aw', r.currents?.aw, r.state!.resistanceAW as number],
+        ['wb', r.currents?.wb, r.state!.resistanceWB as number],
+        // The wiper contact (whatever segment lengths): the current entering or leaving at W.
+        ['wiper', r.currents?.wiper, 1],
+      ];
+      for (const [channel, i, ohm] of segs)
+        if (ohm > 0 && i != null && Math.abs(i) > iRated)
+          out.push({
+            kind: 'unrated',
+            code: 'track_current',
+            value: Math.abs(i),
+            limit: iRated,
+            channel,
+          });
+    }
     let vmax = 0;
     for (const [x, y] of pairs) if (x != null && y != null) vmax = Math.max(vmax, Math.abs(x - y));
     if (vmax > PTV09A.maxOperatingV)
