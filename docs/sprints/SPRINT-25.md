@@ -157,5 +157,48 @@ Real QEMU, Runtime v5 `39f2229a66d45e43` (frozen at `~/tbi-s25-rt-release`, chec
   - Determinism pins: the engine's new `levelUndefined` field is the only difference in the
     Sprint 12 and R1 streams (with it removed every stream hashes to its previous pin exactly, v4
     and v5: `~/tbi-s25/evidence/drift`); re-pinned. R1 on v5 runs another firmware: new pins.
-- Unit: 202 files, 1988 passed, 3 skipped (the real `mpy-cross` tests, covered by the real-QEMU
+- Unit: 203 files, 1992 passed, 3 skipped (the real `mpy-cross` tests, covered by the real-QEMU
   MicroPython suites). Typecheck and lint clean.
+- Full runtime suite on 4ff4089 also showed the R1 slices, `r1-matrix-perf`, `r2-led-bench` and
+  `s13-pad-short` failing: their pinned test firmware reads inputs the test circuits leave unwired,
+  which v5 refuses (correctly). The tests now hold those inputs LOW through 10 kΩ, or run the
+  example's own sketch (7851942); 15/15 on v5. The browser fixtures (fake build service and Session
+  Host) learned the corrected example sketches: e2e 309 passed, 0 failed.
+
+## Staging findings (fixed before DEV-Lab)
+
+Installing on staging (`tbi-s8`) with Runtime v5 found two defects no test had exercised:
+- The build service's start-up reader of `runtime.json` kept its own list of capability tokens
+  (the v4 set) and refused `gpio-irq`, `i2c-clock` and `input-read`: the service did not start
+  (restart loop, fail closed). It now checks against the bridge's canonical list (aa0fbae,
+  `runtime/builder/runtimeJson.ts`, unit-tested). The deploy kit now refuses a service that
+  restarts after an install or a rollback.
+- A curated example built before this sprint ran with that older build's feature record (no
+  `inputReads`): the rebuild of a system source is recorded under `global`, the user's own older
+  record of the same image stayed, and both the cache and the run ticket preferred it. The runtime
+  then watched every pin and refused the first unwired one (`esp32-distance-alarm` on staging).
+  The service now uses the current record (analyzer version and profile hash) for both (4e9eeef,
+  unit test reproduces it). DEV-Lab testers who built a curated example under Sprint 24 hold such
+  records: without this fix their examples would have been refused after the upgrade.
+
+## Deployment (DEV-Lab, 2026-10-31)
+
+DEV-Lab (`tbi-lab-srv`) runs `4e9eeef` on Runtime v5 `39f2229a66d45e43` (frozen at
+`~/tbi-s25-rt-release`, checksums verified before the deploy), release artifact set
+`fc854ca8236611a4` (adds TbiIrq/TbiIrqLevel), package manifest `e2ee35ae822b1c7e` (built twice,
+byte-identical). It replaced `9dd2fd6` on Runtime v4 `cd778dc17d8edcdd`.
+
+Gates, in order: unit, typecheck, lint; e2e 309 passed, 0 failed; staging `tbi-s8` with real QEMU
+v5 (S25 cases 6/6, the earlier real browser suites 34 passed, 2 skipped by design: s6, s11, s12, s19b, s20-logic,
+s15, s18, s18f, s13; one s6 run hit the staging creation rate and passed on its re-run); backup
+verified; deploy (only `tbi-qemu@.service`'s runtime bind and `runtime.json` change; polkit,
+Caddy, the gate drop-in, policy and keys unchanged; both services active with 0 restarts); rollback
+rehearsed back to `9dd2fd6`/v4 (1.5 s) and forward (1.4 s); browser acceptance through the gate,
+real QEMU, 11/11 (version and manifest JSON, the pot example on desktop and tablet in EN and HE,
+the S25 cases).
+
+After a rollback to Runtime v4, builds made for v5 require `input-read` (and `i2c-clock` with
+I2C), so by design v4 refuses them at the handshake by name (fail closed). The `9dd2fd6` build
+service would reuse those records (their analyzer version, 3, is newer than its own, 2), so
+building again may not clear it: a real rollback should also remove the Sprint 25 build records.
+The rehearsal checked the services, units, links and identities, not a session on v4.
