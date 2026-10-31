@@ -11,6 +11,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import {
   BUILD_PROFILES,
+  PROGRAM_LIMITS,
   profileById,
   setProgramProfile,
   starterSourceFor,
@@ -25,6 +26,8 @@ import { BuildElapsed } from './buildElapsed.js';
 import type { Diagnostic } from '../programs/client.js';
 import type { MessageKey } from '../i18n/messages.en.js';
 import { isolateLtr } from '../i18n/i18n.js';
+import { ProgramFiles } from './ProgramFiles.js';
+import { LibrariesPanel } from './LibrariesPanel.js';
 
 const NO_DIAGNOSTICS: Diagnostic[] = [];
 
@@ -82,22 +85,34 @@ export function CodeView({ boardId, focusBuild }: { boardId: string; focusBuild:
   const escaped = useRef(false);
   const [pos, setPos] = useState({ line: 1, column: 1 });
   const active = sim.status === 'starting' || sim.status === 'running' || sim.status === 'stopping';
+  // Sprint 26: the file open in the editor (UI state, not project data); the entry file when the
+  // chosen one no longer exists (deleted, renamed, undone).
+  const [chosen, setChosen] = useState(program.fileName);
+  const files = program.files ?? [];
+  const file =
+    chosen !== program.fileName && files.some((f) => f.path === chosen) ? chosen : program.fileName;
+  const text = file === program.fileName ? program.text : files.find((f) => f.path === file)!.text;
+  const pendingJump = useRef<Diagnostic | null>(null);
 
   useEffect(() => {
     if (focusBuild > 0) buildButton.current?.focus();
   }, [focusBuild]);
 
-  const lines = useMemo(() => program.text.split('\n').length, [program.text]);
+  const lines = useMemo(() => text.split('\n').length, [text]);
   const result = view?.result ?? (view?.phase === 'required' ? view.previous : undefined);
   // Diagnostics are shown for the current source only (a stale build's lines may have moved).
   const diagnostics = view?.result?.diagnostics ?? NO_DIAGNOSTICS;
   const marked = useMemo(() => {
     const m = new Map<number, Diagnostic['severity']>();
     for (const d of diagnostics)
-      if (d.line && (m.get(d.line) !== 'error' || d.severity === 'error'))
+      if (
+        d.line &&
+        (d.file ?? program.fileName) === file &&
+        (m.get(d.line) !== 'error' || d.severity === 'error')
+      )
         m.set(d.line, d.severity);
     return m;
-  }, [diagnostics]);
+  }, [diagnostics, file, program.fileName]);
 
   // Re-rendered only when the number of lines or the diagnostics change, not per keystroke.
   const gutterLines = useMemo(
@@ -126,6 +141,12 @@ export function CodeView({ boardId, focusBuild }: { boardId: string; focusBuild:
   };
 
   const jump = (d: Diagnostic) => {
+    // Sprint 26: a diagnostic in another file opens that file first, then jumps.
+    if ((d.file ?? program.fileName) !== file) {
+      pendingJump.current = d;
+      setChosen(d.file ?? program.fileName);
+      return;
+    }
     const el = area.current;
     if (!el || !d.line) return;
     const at = offsetOf(el.value, d.line, d.column ?? 1);
@@ -153,7 +174,13 @@ export function CodeView({ boardId, focusBuild }: { boardId: string; focusBuild:
         ...f.unsupported,
       ]
     : [];
-  const size = utf8Length(program.text);
+  const size = utf8Length(text);
+  const total = utf8Length(program.text) + files.reduce((n, f) => n + utf8Length(f.text), 0);
+  useEffect(() => {
+    const d = pendingJump.current;
+    pendingJump.current = null;
+    if (d) jump(d);
+  }, [file]);
 
   return (
     <section class="code-view" data-testid="code-view" aria-label={t('program.tab.code')}>
@@ -170,8 +197,9 @@ export function CodeView({ boardId, focusBuild }: { boardId: string; focusBuild:
             onChange={(e) => {
               const next = (e.target as HTMLSelectElement).value;
               const edited =
+                files.length > 0 ||
                 program.text !==
-                starterSourceFor(profileById(program.profile)?.language ?? 'arduino-cpp');
+                  starterSourceFor(profileById(program.profile)?.language ?? 'arduino-cpp');
               if (edited && !window.confirm(t('program.language.confirm'))) {
                 (e.target as HTMLSelectElement).value = program.profile;
                 return;
@@ -188,8 +216,8 @@ export function CodeView({ boardId, focusBuild }: { boardId: string; focusBuild:
             ))}
           </select>
         </label>
-        <span class="code-file technical" dir="ltr">
-          {program.fileName}
+        <span class="code-file technical" dir="ltr" data-testid="code-file-active">
+          {file}
         </span>
         <span
           class={`build-phase phase-${phase}`}
@@ -281,6 +309,13 @@ export function CodeView({ boardId, focusBuild }: { boardId: string; focusBuild:
           </div>
         )}
       </div>
+      <ProgramFiles
+        boardId={boardId}
+        program={program}
+        active={file}
+        onSelect={setChosen}
+        disabled={false}
+      />
       <div class="code-editor" dir="ltr">
         <div class="code-gutter" ref={gutter} aria-hidden="true">
           {gutterLines}
@@ -295,10 +330,11 @@ export function CodeView({ boardId, focusBuild }: { boardId: string; focusBuild:
           autocapitalize="off"
           autocomplete="off"
           aria-label={t('program.editor.label', { board: boardId })}
+          data-file={file}
           readOnly={!!readOnly}
-          value={program.text.replace(/\r\n/g, '\n')}
+          value={text.replace(/\r\n/g, '\n')}
           onInput={(e) => {
-            store.setProgramText(boardId, withLineEndings(program.text, e.currentTarget.value));
+            store.setProgramText(boardId, withLineEndings(text, e.currentTarget.value), file);
             track();
           }}
           onScroll={(e) => {
@@ -316,7 +352,7 @@ export function CodeView({ boardId, focusBuild }: { boardId: string; focusBuild:
               e.preventDefault();
               const el = e.currentTarget;
               el.setRangeText('  ', el.selectionStart, el.selectionEnd, 'end');
-              store.setProgramText(boardId, withLineEndings(program.text, el.value));
+              store.setProgramText(boardId, withLineEndings(text, el.value), file);
               track();
             }
             escaped.current = false;
@@ -332,6 +368,15 @@ export function CodeView({ boardId, focusBuild }: { boardId: string; focusBuild:
             {t('program.size', {
               used: isolateLtr(formatBytes(locale, size)),
               max: isolateLtr(formatBytes(locale, profile.maxSourceBytes)),
+            })}
+          </span>
+        )}
+        {files.length > 0 && (
+          <span data-testid="code-total">
+            {t('program.total', {
+              files: isolateLtr(String(files.length + 1)),
+              used: isolateLtr(formatBytes(locale, total)),
+              max: isolateLtr(formatBytes(locale, PROGRAM_LIMITS.maxTotalBytes)),
             })}
           </span>
         )}
@@ -351,6 +396,7 @@ export function CodeView({ boardId, focusBuild }: { boardId: string; focusBuild:
                   class="diag-jump"
                   data-testid="diagnostic"
                   data-line={d.line}
+                  data-file={d.file ?? program.fileName}
                   disabled={!d.line}
                   onClick={() => jump(d)}
                 >
@@ -371,6 +417,7 @@ export function CodeView({ boardId, focusBuild }: { boardId: string; focusBuild:
           </ul>
         </section>
       )}
+      <LibrariesPanel doc={doc!} program={program} />
       {result && (
         <details class="build-details" data-testid="build-details">
           <summary>{t('build.details')}</summary>

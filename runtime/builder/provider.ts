@@ -4,6 +4,7 @@
  * files in a private job directory into an image (or diagnostics). Providers never see other
  * jobs, never choose paths outside their job directory and never take options from the client.
  */
+import type { ManagedLibrary } from '@tbi-lab/domain';
 import type { BuildProfile } from '@tbi-lab/domain';
 import type { Diagnostic, FeatureReport } from './protocol.js';
 
@@ -11,6 +12,11 @@ export interface JobContext {
   /** Private, empty, per-job directory (0700). The provider writes only here. */
   dir: string;
   files: { name: string; text: string }[];
+  /**
+   * Sprint 26: the managed libraries the request pinned, resolved against the registry (the
+   * service has checked ids, versions, language, profile and dependencies). Empty: none.
+   */
+  libraries?: readonly ManagedLibrary[];
   /** Aborted on timeout or resource limit: the provider must stop its processes promptly. */
   signal: AbortSignal;
   /**

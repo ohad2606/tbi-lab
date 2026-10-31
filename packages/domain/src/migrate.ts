@@ -3,7 +3,8 @@
  *
  * Migrations are pure functions `vN -> vN+1`, run in the browser when a project is opened.
  * v2 is the first production schema (no v1 Gate D user data exists): v2 → v3 (Sprint 7, programs)
- * v3 → v4 (Sprint 20, the identity) and v4 → v5 (Sprint POT-UNITS, the identity). A document from a NEWER schema is never guessed at: it
+ * v3 → v4 (Sprint 20, the identity), v4 → v5 (Sprint POT-UNITS, the identity) and v5 → v6 (Sprint 26,
+ * the identity). A document from a NEWER schema is never guessed at: it
  * opens read-only.
  */
 
@@ -48,6 +49,11 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = {
    * v4 document means exactly the same in v5. Only `schemaVersion` changes (set by openDocument).
    */
   4: (doc) => ({ ...doc }),
+  /**
+   * v5 -> v6 (Sprint 26): the IDENTITY. v6 adds two optional program fields (`files`,
+   * `libraries`); a v5 document (one file, no libraries) means exactly the same in v6.
+   */
+  5: (doc) => ({ ...doc }),
 };
 
 export type OpenResult =

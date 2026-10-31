@@ -27,7 +27,13 @@ import { readFileSync } from 'node:fs';
 import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { arch } from 'node:os';
 import { join } from 'node:path';
-import { canonicalJson, type BuildProfile } from '@tbi-lab/domain';
+import {
+  canonicalJson,
+  PROGRAM_LIMITS,
+  programPathIssue,
+  type BuildProfile,
+} from '@tbi-lab/domain';
+import { libraryFiles } from '../libraries/tree.js';
 import type { BuildProvider, JobContext, ProviderOutput } from './provider.js';
 import { LocalToolRunner, type ToolRunner } from './runner.js';
 import { analyzeMicroPython, PY_FEATURES_ANALYZER } from './pyFeatures.js';
@@ -123,43 +129,88 @@ export class MicroPythonProvider implements BuildProvider {
       diagnostics: [{ severity: 'error', message }],
       log: { text: '', truncated: false },
     });
-    if (job.files.length !== 1 || job.files[0]!.name !== p.fileName)
-      return fail(`This environment builds exactly one file named ${p.fileName}.`);
-    const source = job.files[0]!.text;
-    if (Buffer.byteLength(source, 'utf8') > p.maxSourceBytes)
-      return fail(`The program is larger than ${p.maxSourceBytes / 1024} KiB.`);
+    // Sprint 26: main.py first, then further modules and packages (the service checked the set;
+    // checked again here before anything is written).
+    if (job.files[0]?.name !== p.fileName)
+      return fail(`The first file of a build is ${p.fileName}.`);
+    const taken: string[] = [];
+    let total = 0;
+    for (const [i, f] of job.files.entries()) {
+      if (i > 0 && programPathIssue(p.language, f.name, taken, p.fileName))
+        return fail(`${f.name}: not a file name this environment builds.`);
+      if (i > 0) taken.push(f.name);
+      const n = Buffer.byteLength(f.text, 'utf8');
+      if (n > p.maxSourceBytes)
+        return fail(`${f.name} is larger than ${p.maxSourceBytes / 1024} KiB.`);
+      total += n;
+    }
+    if (job.files.length > PROGRAM_LIMITS.maxFiles || total > PROGRAM_LIMITS.maxTotalBytes)
+      return fail('The project is larger than one build takes.');
+    const managed = job.libraries ?? [];
+    const own = projectModules(job.files.map((f) => f.name));
+    // A project module may not hide a managed library's (the program's folder comes first on
+    // sys.path, before /lib).
+    for (const lib of managed)
+      for (const m of lib.provides)
+        if (own.includes(m))
+          return fail(`${m}.py: a module of the library ${lib.name} has this name.`);
+    const source = job.files.map((f) => f.text).join('\n');
 
     const fsr = this.opts.record.filesystem;
     const J = this.runner.jobPath(job.dir);
     await this.runner.prepare(job.dir);
-    await mkdir(join(job.dir, 'src'));
-    await chmod(join(job.dir, 'src'), 0o770);
-    await writeFile(join(job.dir, 'src', p.fileName), source);
-    await chmod(join(job.dir, 'src', p.fileName), 0o660);
+    const src = join(job.dir, 'src');
+    await mkdir(src);
+    await chmod(src, 0o770);
+    // Every file at its relative path (folders created here; files created exclusively).
+    const put = async (rel: string, data: string | Buffer, mode: number) => {
+      const parts = rel.split('/');
+      const target = join(src, ...parts);
+      if (!target.startsWith(src + '/')) throw new Error('outside the program folder');
+      for (let k = 1; k < parts.length; k++) {
+        const dir = join(src, ...parts.slice(0, k));
+        await mkdir(dir, { recursive: true });
+        await chmod(dir, 0o770);
+      }
+      await writeFile(target, data, { flag: 'wx' });
+      await chmod(target, mode);
+    };
+    for (const f of job.files) await put(f.name, f.text, 0o660);
+    // Managed libraries: their modules in /lib (on MicroPython's sys.path), verified first.
+    const libFiles: string[] = [];
+    for (const lib of managed)
+      for (const f of libraryFiles(lib))
+        if (f.path.endsWith('.py')) {
+          const rel = `lib/${f.path}`;
+          await put(rel, f.bytes, 0o640);
+          libFiles.push(rel);
+        }
     // Sprint 24: compile only, with the interpreter's own compiler (from the program's directory,
-    // so every message names the file as the user knows it).
+    // so every message names the file as the user knows it). Sprint 26: every project file.
     const check = this.opts.record.syntaxCheck;
-    const c = await this.runner.run(
-      job.dir,
-      join(this.viewHome, check.tool),
-      [...check.args, '-o', join(J, 'check.mpy'), p.fileName],
-      {
-        cwd: join(J, 'src'),
-        env: { PATH: '/usr/bin:/bin', LANG: 'C.UTF-8' },
-        signal: job.signal,
-        maxOutputBytes: 64 * 1024,
-      },
-    );
-    if (c.aborted) return this.internal('aborted', c.stderr);
-    if (c.code !== 0) {
-      const d = mpyCrossDiagnostic(c.stderr, p.fileName);
-      if (!d) return this.internal('syntax check failed', c.stderr);
-      return {
-        ok: false,
-        failure: 'compile_error',
-        diagnostics: [d],
-        log: { text: c.stderr.slice(0, 4096), truncated: c.stderr.length > 4096 },
-      };
+    for (const f of job.files) {
+      const c = await this.runner.run(
+        job.dir,
+        join(this.viewHome, check.tool),
+        [...check.args, '-o', join(J, 'check.mpy'), f.name],
+        {
+          cwd: join(J, 'src'),
+          env: { PATH: '/usr/bin:/bin', LANG: 'C.UTF-8' },
+          signal: job.signal,
+          maxOutputBytes: 64 * 1024,
+        },
+      );
+      if (c.aborted) return this.internal('aborted', c.stderr);
+      if (c.code !== 0) {
+        const d = mpyCrossDiagnostic(c.stderr, f.name);
+        if (!d) return this.internal('syntax check failed', c.stderr);
+        return {
+          ok: false,
+          failure: 'compile_error',
+          diagnostics: [d],
+          log: { text: c.stderr.slice(0, 4096), truncated: c.stderr.length > 4096 },
+        };
+      }
     }
     const r = await this.runner.run(
       job.dir,
@@ -168,7 +219,9 @@ export class MicroPythonProvider implements BuildProvider {
         join(J, 'fs.bin'),
         String(fsr.blockSize),
         String(fsr.blockCount),
-        `${p.fileName}=${join(J, 'src', p.fileName)}`,
+        ...[...job.files.map((f) => f.name), ...libFiles].map(
+          (rel) => `${rel}=${join(J, 'src', ...rel.split('/'))}`,
+        ),
       ],
       {
         cwd: J,
@@ -203,15 +256,15 @@ export class MicroPythonProvider implements BuildProvider {
     return {
       ok: true,
       imagePath: join(job.dir, 'image.bin'),
-      features: this.features(source),
+      features: this.features(source, [...own, ...managed.flatMap((l) => l.provides)]),
       diagnostics: [],
       log: { text: '', truncated: false },
     };
   }
 
   /** The feature report: every artifact requires `unmodelled`; I2C adds `i2c` where provided. */
-  private features(source: string) {
-    const f = analyzeMicroPython(source, this.opts.runtimeCapabilities ?? []);
+  private features(source: string, modules: readonly string[] = []) {
+    const f = analyzeMicroPython(source, this.opts.runtimeCapabilities ?? [], modules);
     return {
       ...f,
       requires: [...new Set([...MICROPYTHON_REQUIRES, ...(f.requires ?? [])])].sort(),
@@ -226,4 +279,26 @@ export class MicroPythonProvider implements BuildProvider {
       log: { text: output.slice(0, 4096), truncated: output.length > 4096 },
     };
   }
+}
+
+/**
+ * Sprint 26: the importable names the project's own files provide: `helpers.py` gives `helpers`;
+ * `pkg/__init__.py` makes `pkg` a package and `pkg/mod.py` then gives `pkg.mod` (a folder without
+ * `__init__.py` is not claimed importable).
+ */
+export function projectModules(paths: readonly string[]): string[] {
+  const out = new Set<string>();
+  const set = new Set(paths);
+  for (const path of paths) {
+    if (path === 'main.py') continue;
+    const parts = path.replace(/\.py$/, '').split('/');
+    const dirs = parts.slice(0, -1);
+    // Every folder on the way must be a package.
+    if (!dirs.every((_, k) => set.has([...dirs.slice(0, k + 1), '__init__.py'].join('/'))))
+      continue;
+    const name = parts[parts.length - 1] === '__init__' ? dirs : parts;
+    if (name.length) out.add(name.join('.'));
+    for (let k = 1; k <= dirs.length; k++) out.add(dirs.slice(0, k).join('.'));
+  }
+  return [...out].sort();
 }

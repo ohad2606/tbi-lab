@@ -6,8 +6,9 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { EXAMPLES_WITH_DOCUMENTS as EXAMPLES } from '../src/examples/documents.js';
 import { buildSessionRequest } from '../src/runtime/snapshot.js';
-import { sourceKey, type ProgramSource } from '@tbi-lab/domain';
-import { systemSourceKeys } from '../../runtime/builder/system-sources.js';
+import { type ProgramSource } from '@tbi-lab/domain';
+import { programRequest, systemSourceKeys } from '../../runtime/builder/system-sources.js';
+import { requestKey } from '../../runtime/builder/libraries.js';
 
 describe('runtime fixtures', () => {
   it('s10-bench-session.json is the app request for esp32-bench', () => {
@@ -46,6 +47,9 @@ describe('runtime fixtures', () => {
     // Sprint 25 (Phase 4): a potentiometer read as a digital level.
     ['s25-esp32-pot-threshold-session.json', 'esp32-pot-threshold'],
     ['s25-mpy-pot-threshold-session.json', 'mpy-pot-threshold'],
+    // Sprint 26: multi-file programs with a managed library.
+    ['s26-esp32-lcd-library-session.json', 'esp32-lcd-library'],
+    ['s26-mpy-lcd-library-session.json', 'mpy-lcd-library'],
   ] as const)
     it(`${file} is the app request for ${id}`, () => {
       const fx = JSON.parse(
@@ -72,7 +76,8 @@ describe('runtime fixtures', () => {
       );
       expect(programs.length, e.id).toBe(1);
       const p = programs[0]!;
-      expect(keys.has(sourceKey(p.profile, [{ name: p.fileName, text: p.text }])), e.id).toBe(true);
+      // Sprint 26: every file and pinned library is part of the curated source.
+      expect(keys.has(requestKey(programRequest(p))), e.id).toBe(true);
     }
   });
 });

@@ -19,7 +19,11 @@
 export const BUILD_PROTOCOL = 'tbi-lab.build/1';
 
 export interface SourceFile {
-  /** Fixed per profile (for example `sketch.ino`); never a path. */
+  /**
+   * The entry file's fixed name (for example `sketch.ino`), or (Sprint 26) a further project file's
+   * relative path (`display.h`, `src/util.cpp`, `pkg/mod.py`): the profile checks it
+   * (domain `programPathIssue`) before anything is written.
+   */
   name: string;
   /** Exact source text (UTF-8). */
   text: string;
@@ -29,6 +33,8 @@ export interface BuildRequest {
   protocol: typeof BUILD_PROTOCOL;
   profile: string;
   files: SourceFile[];
+  /** Sprint 26: the managed libraries to build with (registry id and exact version). */
+  libraries?: { id: string; version: string }[];
 }
 
 export type Severity = 'error' | 'warning' | 'note';
@@ -125,7 +131,8 @@ const isObj = (v: unknown): v is Record<string, unknown> =>
 export function validateBuildRequest(body: unknown): BuildRequest {
   if (!isObj(body)) throw new RequestError(400, 'bad_request');
   for (const k of Object.keys(body))
-    if (!['protocol', 'profile', 'files'].includes(k)) throw new RequestError(400, 'unknown_field');
+    if (!['protocol', 'profile', 'files', 'libraries'].includes(k))
+      throw new RequestError(400, 'unknown_field');
   if (body.protocol !== BUILD_PROTOCOL) throw new RequestError(400, 'unsupported_protocol');
   if (typeof body.profile !== 'string' || !/^[a-z0-9][a-z0-9.-]{0,63}$/.test(body.profile))
     throw new RequestError(400, 'bad_profile');
@@ -134,11 +141,42 @@ export function validateBuildRequest(body: unknown): BuildRequest {
   const files = body.files.map((f) => {
     if (!isObj(f) || Object.keys(f).some((k) => k !== 'name' && k !== 'text'))
       throw new RequestError(400, 'bad_files');
-    if (typeof f.name !== 'string' || !/^[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}$/.test(f.name))
+    // A name, or (Sprint 26) a relative path of such names: no `.`/`..`, no empty segment.
+    if (
+      typeof f.name !== 'string' ||
+      f.name.length > 96 ||
+      !f.name.split('/').every((seg) => /^[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}$/.test(seg))
+    )
       throw new RequestError(400, 'bad_file_name');
     if (typeof f.text !== 'string' || f.text.includes('\u0000'))
       throw new RequestError(400, 'bad_file_text');
     return { name: f.name, text: f.text };
   });
-  return { protocol: BUILD_PROTOCOL, profile: body.profile, files };
+  if (new Set(files.map((f) => f.name.toLowerCase())).size !== files.length)
+    throw new RequestError(400, 'bad_files');
+  let libraries: BuildRequest['libraries'];
+  if (body.libraries !== undefined) {
+    if (!Array.isArray(body.libraries) || body.libraries.length > 8)
+      throw new RequestError(400, 'bad_libraries');
+    libraries = body.libraries.map((l) => {
+      if (
+        !isObj(l) ||
+        Object.keys(l).some((k) => k !== 'id' && k !== 'version') ||
+        typeof l.id !== 'string' ||
+        typeof l.version !== 'string' ||
+        !/^[a-z0-9][a-z0-9.-]{0,63}$/.test(l.id) ||
+        !/^[A-Za-z0-9][A-Za-z0-9.+-]{0,63}$/.test(l.version)
+      )
+        throw new RequestError(400, 'bad_libraries');
+      return { id: l.id, version: l.version };
+    });
+    if (new Set(libraries.map((l) => l.id)).size !== libraries.length)
+      throw new RequestError(400, 'bad_libraries');
+  }
+  return {
+    protocol: BUILD_PROTOCOL,
+    profile: body.profile,
+    files,
+    ...(libraries?.length ? { libraries } : {}),
+  };
 }

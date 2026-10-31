@@ -11,7 +11,7 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { mkdtemp, readdir, readFile, rm, lstat } from 'node:fs/promises';
 import { join } from 'node:path';
-import { sourceKey } from '@tbi-lab/domain';
+import { checkRequestFiles, requestKey, requestLibraries } from './libraries.js';
 import {
   RequestError,
   type BuildRequest,
@@ -135,9 +135,9 @@ export class BuildService {
     if (!provider) throw new RequestError(400, 'unknown_profile');
     // Sprint 13 security audit (#4): refuse an over-size source BEFORE it is held in a build
     // record (records live up to a day; the provider's own check came after the record).
-    const bytes = request.files.reduce((n, f) => n + Buffer.byteLength(f.text, 'utf8'), 0);
-    if (bytes > provider.profile.maxSourceBytes) throw new RequestError(413, 'source_too_large');
-    const key = sourceKey(request.profile, request.files);
+    // Sprint 26: the whole file set (names, paths, per-file and project limits) and libraries.
+    checkRequestFiles(request);
+    const key = requestKey(request);
     const hit = this.cachedResult(principal, key);
     if (hit) return { cached: hit };
     const owner: Owner = this.access.systemKeys.has(key) ? GLOBAL : principal;
@@ -343,7 +343,7 @@ export class BuildService {
       if (opts.stopped?.()) break;
       const provider = this.providers.get(request.profile);
       if (!provider) continue;
-      const key = sourceKey(request.profile, request.files);
+      const key = requestKey(request);
       if (!this.access.systemKeys.has(key)) continue;
       // Built again although shared and current when the provider has no seed (lost, or a new
       // seed format): a curated build is the only thing that leaves one.
@@ -565,6 +565,7 @@ export class BuildService {
       out = await r.provider.build({
         dir,
         files: r.request.files,
+        libraries: requestLibraries(r.request),
         signal: abort.signal,
         curated: r.owner === GLOBAL,
       });

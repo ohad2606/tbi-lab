@@ -12,7 +12,11 @@
  * the build sandbox (runtime/builder/build-job.ts allow-lists it), on untrusted program text: it
  * only reads the named files and writes the one output file.
  *
- *   tbi-mklfs <image-out> <block-size> <block-count> <name>=<host-file>...
+ *   tbi-mklfs <image-out> <block-size> <block-count> <path>=<host-file>...
+ *
+ * Sprint 26: <path> may name a file in folders (`pkg/mod.py`, `lib/lcd_api.py`); every segment is
+ * a plain name ([A-Za-z0-9_.-], not empty, not `.` or `..`) and the folders are created in the
+ * image. Nothing outside the image is ever named by <path>.
  * Exit 0 on success; 1 (and a one-line reason on stderr) on any failure, including a file that
  * does not fit.
  */
@@ -55,6 +59,36 @@ static int sy(const struct lfs2_config *c)
 {
     (void)c;
     return 0;
+}
+
+/* A path of plain segments: [A-Za-z0-9_.-]+, never "." or "..", "/"-separated, no empty one. */
+static int valid_path(const char *p)
+{
+    size_t seg = 0;
+    const char *start = p;
+    if (!*p || strlen(p) > 200) {
+        return 0;
+    }
+    for (;; p++) {
+        if (*p == '/' || *p == 0) {
+            if (seg == 0 || (seg == 1 && start[0] == '.') ||
+                (seg == 2 && start[0] == '.' && start[1] == '.')) {
+                return 0;
+            }
+            if (*p == 0) {
+                return 1;
+            }
+            seg = 0;
+            start = p + 1;
+            continue;
+        }
+        char c = *p;
+        if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
+              c == '_' || c == '.' || c == '-')) {
+            return 0;
+        }
+        seg++;
+    }
 }
 
 static int fail(const char *what, const char *arg)
@@ -104,10 +138,22 @@ int main(int argc, char **argv)
     }
     for (int i = 4; i < argc; i++) {
         char *eq = strchr(argv[i], '=');
-        if (!eq || eq == argv[i] || (strchr(argv[i], '/') != NULL && strchr(argv[i], '/') < eq)) {
+        if (!eq || eq == argv[i]) {
             return fail("bad file argument", argv[i]);
         }
         *eq = 0;
+        if (!valid_path(argv[i])) {
+            return fail("bad file path", argv[i]);
+        }
+        /* Sprint 26: the folders on the way, in the image (an existing one is fine). */
+        for (char *sl = strchr(argv[i], '/'); sl; sl = strchr(sl + 1, '/')) {
+            *sl = 0;
+            int e = lfs2_mkdir(&fs, argv[i]);
+            *sl = '/';
+            if (e < 0 && e != LFS2_ERR_EXIST) {
+                return fail("cannot create folder", argv[i]);
+            }
+        }
         FILE *f = fopen(eq + 1, "rb");
         if (!f) {
             return fail("cannot read", eq + 1);

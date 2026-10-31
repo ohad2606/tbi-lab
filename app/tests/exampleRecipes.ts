@@ -10,6 +10,7 @@
 import { readFileSync } from 'node:fs';
 import {
   addComponent,
+  addProgramFile,
   addWire,
   createProject,
   deleteSelection,
@@ -99,6 +100,18 @@ class Recipe {
     const url = new URL(`./exampleSketches/${file}`, import.meta.url);
     this.doc = this.ok(setProgramText(this.doc, id, readFileSync(url, 'utf8'))).doc;
   }
+  /**
+   * Sprint 26: a multi-file program from app/tests/exampleSketches/<dir>/: the entry file
+   * (sketch.ino or main.py, in the board's environment) and every further file, by relative path.
+   */
+  project(id: string, dir: string, entry: string, further: string[], micropython = false) {
+    if (micropython)
+      this.doc = this.ok(setProgramProfile(this.doc, id, ESP32_MICROPYTHON_PROFILE.id)).doc;
+    const read = (f: string) =>
+      readFileSync(new URL(`./exampleSketches/${dir}/${f}`, import.meta.url), 'utf8');
+    this.doc = this.ok(setProgramText(this.doc, id, read(entry))).doc;
+    for (const f of further) this.doc = this.ok(addProgramFile(this.doc, id, f, read(f))).doc;
+  }
   /** Remove parts placed with every new project (an ESP32 example may not need the supply). */
   remove(...ids: string[]) {
     this.doc = this.ok(
@@ -154,6 +167,44 @@ function potThreshold(id: string, title: string, program: (r: Recipe, board: str
   r.wire(T(D1, 'cathode'), T(G3, 'ref'));
   r.wire(T(U1, 'gnd'), T(G4, 'ref'));
   return r.centre(-240);
+}
+
+/**
+ * The LCD1602 I2C circuit of the LCD examples (Sprint 12 R3): PSU1 at 4.5 V powers the module,
+ * PSU2 at 3.3 V feeds the two 4.7 kΩ bus pull-ups; SDA GPIO21, SCL GPIO22; address 0x27.
+ */
+function lcdCircuit(r: Recipe, U1: string) {
+  const LCD = r.place('display.lcd1602_i2c', 780, -80);
+  const PSU2 = r.extraSupply(440, -320, 3.3, 0.1);
+  const R1 = r.place('component.resistor', 540, -180, 1);
+  const R2 = r.place('component.resistor', 620, -180, 1);
+  const G2 = r.place('component.ground', 720, -200);
+  const G3 = r.place('component.ground', 440, -200);
+  const G4 = r.place('component.ground', 480, -220);
+  r.set(R1, 'resistance', 4700, 'ohm');
+  r.set(R2, 'resistance', 4700, 'ohm');
+  r.wire(T('PSU1', 'positive'), T(LCD, 'vcc'), [
+    { x: -40, y: -20 },
+    { x: -40, y: -400 },
+    { x: 680, y: -400 },
+    { x: 680, y: -100 },
+  ]);
+  r.wire(T(LCD, 'gnd'), T(G2, 'ref'), [
+    { x: 690, y: -120 },
+    { x: 690, y: -240 },
+    { x: 720, y: -240 },
+  ]);
+  r.wire(T(U1, 'gnd'), T(G3, 'ref'));
+  const sda = r.wire(T(U1, 'gpio21'), T(LCD, 'sda'));
+  const scl = r.wire(T(U1, 'gpio22'), T(LCD, 'scl'), [
+    { x: 480, y: -140 },
+    { x: 480, y: -60 },
+  ]);
+  r.wire(T(PSU2, 'negative'), T(G4, 'ref'));
+  const rail = r.wire(T(PSU2, 'positive'), T(R2, 'a'), [{ x: 620, y: -340 }]);
+  r.wire(T(R1, 'a'), { kind: 'wire', wire: rail, at: { x: 540, y: -340 } });
+  r.wire(T(R1, 'b'), { kind: 'wire', wire: sda, at: { x: 540, y: -80 } });
+  r.wire(T(R2, 'b'), { kind: 'wire', wire: scl, at: { x: 620, y: -60 } });
 }
 
 export const RECIPES: Record<string, () => ProjectDocument> = {
@@ -1459,6 +1510,31 @@ export const RECIPES: Record<string, () => ProjectDocument> = {
       { x: 430, y: 60 },
     ]);
     r.wire(T(U1, 'gnd'), T(G3, 'ref'));
+    return r.centre(-300);
+  },
+  /**
+   * Sprint 26: the LCD circuit with a three-file Arduino program (sketch.ino, display.h,
+   * display.cpp) using the managed library LiquidCrystal_PCF8574 2.2.0 (pinned by placing the
+   * display; nothing installed).
+   */
+  'esp32-lcd-library': () => {
+    const r = new Recipe('esp32-lcd-library', 'ESP32: LCD with a managed library (three files)');
+    r.supply(4.5, 0.1);
+    const U1 = r.place('board.esp32_devkitc_wroom32', 300, 0);
+    lcdCircuit(r, U1);
+    r.project(U1, 'lcd_library', 'sketch.ino', ['display.cpp', 'display.h']);
+    return r.centre(-300);
+  },
+  /**
+   * Sprint 26: the same circuit with a two-module MicroPython program (main.py, display.py) using
+   * the managed library python_lcd (I2cLcd), installed by the build in the interpreter's /lib.
+   */
+  'mpy-lcd-library': () => {
+    const r = new Recipe('mpy-lcd-library', 'MicroPython: LCD with a managed library (two files)');
+    r.supply(4.5, 0.1);
+    const U1 = r.place('board.esp32_devkitc_wroom32', 300, 0);
+    lcdCircuit(r, U1);
+    r.project(U1, 'mpy_lcd_library', 'main.py', ['display.py'], true);
     return r.centre(-300);
   },
 };

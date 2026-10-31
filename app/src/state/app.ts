@@ -27,6 +27,9 @@ import {
   renameProject,
   serializePackage,
   setProgramText,
+  addProgramFile,
+  renameProgramFile,
+  deleteProgramFile,
   useBoardProgram,
   stampRevision,
   validateProject,
@@ -274,12 +277,37 @@ export class AppStore {
    * allowed while running (the running session keeps its firmware), autosaved, and one undo
    * step per burst of typing.
    */
-  setProgramText(boardId: string, text: string): boolean {
+  setProgramText(boardId: string, text: string, path?: string): boolean {
     const doc = this.stateValue.doc;
     if (!doc) return false;
-    return this.apply(setProgramText(doc, boardId, text), undefined, {
-      coalesce: `program:${boardId}`,
+    // Sprint 26: one undo step per burst of typing in one file.
+    const file = path && path !== doc.programs[boardId]?.fileName ? `:${path}` : '';
+    return this.apply(setProgramText(doc, boardId, text, path), undefined, {
+      coalesce: `program:${boardId}${file}`,
     });
+  }
+
+  /** Sprint 26: a further program file (one undo step each). */
+  addProgramFile(boardId: string, path: string, text = ''): EditResult {
+    const doc = this.stateValue.doc;
+    if (!doc) return { ok: false, error: 'no_program' };
+    const r = addProgramFile(doc, boardId, path, text);
+    this.apply(r);
+    return r;
+  }
+
+  renameProgramFile(boardId: string, from: string, to: string): EditResult {
+    const doc = this.stateValue.doc;
+    if (!doc) return { ok: false, error: 'no_program' };
+    const r = renameProgramFile(doc, boardId, from, to);
+    this.apply(r);
+    return r;
+  }
+
+  deleteProgramFile(boardId: string, path: string): boolean {
+    const doc = this.stateValue.doc;
+    if (!doc) return false;
+    return this.apply(deleteProgramFile(doc, boardId, path));
   }
 
   /** A board on a reference image switches to running its own program (structural). */

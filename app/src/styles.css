@@ -2562,6 +2562,100 @@ select {
   padding-inline-start: 1.2rem;
 }
 
+/* Sprint 26: the program's files as tabs (they wrap on narrow screens), and the new-file form. */
+.code-files {
+  padding: 0.3rem 0.75rem;
+  border-block-end: 1px solid var(--border);
+}
+
+.code-file-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.code-file-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 4px 4px 0 0;
+  background: var(--panel-alt);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.code-file-tab.active {
+  background: var(--canvas-bg);
+  border-block-end-color: var(--canvas-bg);
+  font-weight: 600;
+}
+
+.code-file-main {
+  padding: 0 0.3rem;
+  border-radius: 3px;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.code-file-new {
+  margin-inline-start: 0.4rem;
+}
+
+.code-file-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.4rem 0.6rem;
+  margin-block-start: 0.4rem;
+}
+
+.code-file-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.code-file-form p {
+  flex: 1 1 100%;
+  margin: 0;
+}
+
+/* Sprint 26: the managed libraries (collapsed when there are none). */
+.code-libraries {
+  max-block-size: 14rem;
+  overflow: auto;
+  padding: 0.35rem 0.75rem;
+  border-block-start: 1px solid var(--border);
+}
+
+.code-libraries summary {
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.library-list {
+  margin: 0.3rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.library p {
+  margin: 0.15rem 0;
+}
+
+.library-example pre {
+  margin: 0.3rem 0;
+  padding: 0.4rem 0.6rem;
+  background: var(--panel-alt);
+  overflow: auto;
+}
+
 /* The editor: always LTR (code), a line gutter scrolled with the text, no wrapping. */
 .code-editor {
   display: grid;

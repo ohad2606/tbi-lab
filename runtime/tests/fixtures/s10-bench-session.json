@@ -5,7 +5,7 @@
     "board": "board.esp32_devkitc_wroom32",
     "circuit": {
       "format": "tbi-lab.snapshot",
-      "schemaVersion": 5,
+      "schemaVersion": 6,
       "snapshotId": "snap_8889ab37438e1284",
       "projectId": "prj_exampleesp32bench",
       "projectRevision": 1,

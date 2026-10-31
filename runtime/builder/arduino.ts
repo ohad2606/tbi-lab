@@ -15,7 +15,13 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { arch } from 'node:os';
 import { join } from 'node:path';
-import { canonicalJson, type BuildProfile } from '@tbi-lab/domain';
+import {
+  canonicalJson,
+  PROGRAM_LIMITS,
+  programPathIssue,
+  type BuildProfile,
+} from '@tbi-lab/domain';
+import { libraryFiles } from '../libraries/tree.js';
 import {
   applyCoreSeed,
   coreSeedKey,
@@ -182,11 +188,26 @@ export class ArduinoEsp32Provider implements BuildProvider {
       diagnostics: [{ severity: 'error', message }],
       log: { text: '', truncated: false },
     });
-    if (job.files.length !== 1 || job.files[0]!.name !== p.fileName)
-      return fail(`This environment builds exactly one file named ${p.fileName}.`);
-    const source = job.files[0]!.text;
-    if (Buffer.byteLength(source, 'utf8') > p.maxSourceBytes)
-      return fail(`The sketch is larger than ${p.maxSourceBytes / 1024} KiB.`);
+    // Sprint 26: the entry file first, then further project files (the service checked the set;
+    // checked again here before anything is written: names, paths, sizes).
+    if (job.files[0]?.name !== p.fileName)
+      return fail(`The first file of a build is ${p.fileName}.`);
+    const taken: string[] = [];
+    let total = 0;
+    for (const [i, f] of job.files.entries()) {
+      if (i > 0 && programPathIssue(p.language, f.name, taken, p.fileName))
+        return fail(`${f.name}: not a file name this environment builds.`);
+      if (i > 0) taken.push(f.name);
+      const n = Buffer.byteLength(f.text, 'utf8');
+      if (n > p.maxSourceBytes)
+        return fail(`${f.name} is larger than ${p.maxSourceBytes / 1024} KiB.`);
+      total += n;
+    }
+    if (job.files.length > PROGRAM_LIMITS.maxFiles || total > PROGRAM_LIMITS.maxTotalBytes)
+      return fail('The project is larger than one build takes.');
+    // What the analysis reads: every project file (the program's own code, not the libraries').
+    const source = job.files.map((f) => f.text).join('\n');
+    const managed = job.libraries ?? [];
 
     // Real paths (the service writes and reads the job) and the tools' view of the same job.
     const d = (sub: string) => join(job.dir, sub);
@@ -202,8 +223,42 @@ export class ArduinoEsp32Provider implements BuildProvider {
       await mkdir(d(sub));
       await chmod(d(sub), 0o770);
     }
-    await writeFile(join(d('sketch'), p.fileName), source);
-    await chmod(join(d('sketch'), p.fileName), 0o660);
+    // Every file under sketch/ at its relative path: folders created here (no symlink exists in a
+    // fresh private job directory), files created exclusively (`wx`: never through an existing
+    // entry), and each resolved path checked to stay inside sketch/.
+    for (const f of job.files) {
+      const target = join(d('sketch'), ...f.name.split('/'));
+      if (!target.startsWith(d('sketch') + '/')) return fail(`${f.name}: outside the sketch.`);
+      for (let k = 1; k < f.name.split('/').length; k++) {
+        const dir = join(d('sketch'), ...f.name.split('/').slice(0, k));
+        await mkdir(dir, { recursive: true });
+        await chmod(dir, 0o770);
+      }
+      await writeFile(target, f.text, { flag: 'wx' });
+      await chmod(target, 0o660);
+    }
+    // Sprint 26: the pinned managed libraries, verified against the registry's tree checksum, in
+    // the job's own sketchbook (user/libraries/<name>): the only libraries besides the core's, and
+    // read-only to the tools (the argv and configuration, so the core seed, do not change).
+    if (managed.length) {
+      await mkdir(join(d('user'), 'libraries'));
+      await chmod(join(d('user'), 'libraries'), 0o750);
+      for (const lib of managed) {
+        const root = join(d('user'), 'libraries', lib.name);
+        for (const f of libraryFiles(lib)) {
+          const target = join(root, ...f.path.split('/'));
+          if (!target.startsWith(root + '/')) return this.internal('library path', f.path);
+          const parts = f.path.split('/');
+          for (let k = 0; k < parts.length; k++) {
+            const dir = join(root, ...parts.slice(0, k));
+            await mkdir(dir, { recursive: true });
+            await chmod(dir, 0o750);
+          }
+          await writeFile(target, f.bytes, { flag: 'wx' });
+          await chmod(target, 0o640);
+        }
+      }
+    }
     const { config, env, argv } = this.compileSetup(J, t);
     // Pinned read-only core; an empty user directory (no sketchbook libraries); per-job cache.
     await writeFile(d('cli.yaml'), config);
@@ -245,6 +300,8 @@ export class ArduinoEsp32Provider implements BuildProvider {
       text
         .split(v('sketch') + '/')
         .join('')
+        .split(join(v('user'), 'libraries') + '/')
+        .join('libraries/')
         .split(J)
         .join('/build')
         .split(t.data)
@@ -252,17 +309,24 @@ export class ArduinoEsp32Provider implements BuildProvider {
         .split(this.data)
         .join('/arduino-data');
     const log = this.bounded(scrub((result.compiler_out ?? '') + (result.compiler_err ?? '')));
+    // Sprint 26: a diagnostic in a project file names that file (its path as in the request) and
+    // line; one in a managed library names the library file in its message, never a server path.
+    const names = new Map(job.files.map((f) => [join(v('sketch'), ...f.name.split('/')), f.name]));
     const diagnostics: Diagnostic[] = (result.builder_result?.diagnostics ?? []).map((x) => {
-      const inSketch = x.file === join(v('sketch'), p.fileName);
+      const file = x.file ? names.get(x.file) : undefined;
       const severity = (x.severity ?? 'ERROR').toLowerCase();
+      const where =
+        !file && x.file
+          ? `${scrub(x.file)}${typeof x.line === 'number' ? `:${x.line}` : ''}: `
+          : '';
       return {
         severity: (['error', 'warning', 'note'].includes(severity)
           ? severity
           : 'error') as Severity,
-        ...(inSketch ? { file: p.fileName } : {}),
-        ...(inSketch && typeof x.line === 'number' ? { line: x.line } : {}),
-        ...(inSketch && typeof x.column === 'number' ? { column: x.column } : {}),
-        message: scrub(firstLine(x.message ?? '')),
+        ...(file ? { file } : {}),
+        ...(file && typeof x.line === 'number' ? { line: x.line } : {}),
+        ...(file && typeof x.column === 'number' ? { column: x.column } : {}),
+        message: where + scrub(firstLine(x.message ?? '')),
       };
     });
     // A curated source's successful compile leaves the seed for later jobs (best effort: a
@@ -335,6 +399,7 @@ export class ArduinoEsp32Provider implements BuildProvider {
         source,
         symbols,
         libraries,
+        managed,
         ...(this.opts.runtimeCapabilities ? { capabilities: this.opts.runtimeCapabilities } : {}),
       }),
       ...sizesOf(result.compiler_out ?? ''),

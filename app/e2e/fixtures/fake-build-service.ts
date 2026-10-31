@@ -102,6 +102,29 @@ class ScriptedProvider implements BuildProvider {
         ],
         log: { text: "sketch.ino:1:1: error: 'setup' was not declared", truncated: false },
       };
+    // Sprint 26: a further file with a line `BROKEN` fails there (file and line, as the real
+    // toolchain reports them), so the editor's per-file diagnostics can be exercised.
+    for (const f of job.files.slice(1)) {
+      const k = f.text.split('\n').findIndex((l) => l.includes('BROKEN'));
+      if (k >= 0)
+        return {
+          ok: false,
+          failure: 'compile_error',
+          diagnostics: [
+            {
+              severity: 'error',
+              file: f.name,
+              line: k + 1,
+              column: 1,
+              message: "'BROKEN' does not name a type",
+            },
+          ],
+          log: {
+            text: `${f.name}:${k + 1}:1: error: 'BROKEN' does not name a type`,
+            truncated: false,
+          },
+        };
+    }
     const name = Object.entries(SKETCHES).find(([, src]) => src === text)?.[0];
     const image = join(job.dir, 'image.bin');
     await writeFile(image, standInImage(name ?? `custom:${sha(Buffer.from(text))}`));

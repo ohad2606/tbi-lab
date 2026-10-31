@@ -22,7 +22,13 @@
  * stored project read-only, instead of calling it invalid (unknown type). Migration v4 -> v5 is
  * the identity.
  */
-export const SCHEMA_VERSION = 5;
+/**
+ * v6 (Sprint 26, multi-file programs and managed libraries): a program may carry further project
+ * files (`ProgramSource.files`) and the managed libraries pinned for it
+ * (`ProgramSource.libraries`); both optional. A v5 document means exactly the same in v6
+ * (migration v5 -> v6 is the identity); builds before v6 open a v6 file read-only, by name.
+ */
+export const SCHEMA_VERSION = 6;
 export const DOCUMENT_FORMAT = 'tbi-lab.project';
 
 /**
@@ -249,16 +255,40 @@ export interface ProjectDocument {
   programs: Record<string, ProgramSource>;
 }
 
-/** One board's program: its programming environment, pinned build profile and source file. */
+/** One board's program: its programming environment, pinned build profile and source files. */
 export interface ProgramSource {
-  /** Programming environment (V1: `arduino-cpp`). */
+  /** Programming environment (`arduino-cpp`, `micropython`). */
   language: string;
   /** Build profile id: board + environment + pinned toolchain configuration. */
   profile: string;
-  /** The profile's source file name (V1: `sketch.ino`). */
+  /** The entry file: the profile's file name (`sketch.ino`, `main.py`); never renamed or removed. */
   fileName: string;
-  /** Exact source text. */
+  /** Exact source text of the entry file. */
   text: string;
+  /**
+   * Sprint 26 (schema v6): further project files, by relative path (program.ts
+   * `programPathIssue`), sorted by path; never the entry file. Absent or empty: a one-file program.
+   */
+  files?: ProgramFile[];
+  /**
+   * Sprint 26 (schema v6): the managed libraries pinned for this program (libraryRegistry.ts), by
+   * id and exact version, sorted by id. Kept by the product (components that need them, code that
+   * includes them); the build uses exactly these versions.
+   */
+  libraries?: LibraryRef[];
+}
+
+/** Sprint 26: one further project file of a program (user-authored, stored exactly). */
+export interface ProgramFile {
+  /** Relative path, `/`-separated (e.g. `display.h`, `src/util.cpp`, `sensors/dht.py`). */
+  path: string;
+  text: string;
+}
+
+/** Sprint 26: a managed library pinned for a program (an entry of the library registry). */
+export interface LibraryRef {
+  id: string;
+  version: string;
 }
 
 /** Deep copy of JSON data. Project documents are plain JSON by construction. */

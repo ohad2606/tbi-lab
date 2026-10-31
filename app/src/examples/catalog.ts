@@ -449,6 +449,31 @@ export const EXAMPLES: readonly Example[] = [
       'instrument.lab_psu',
     ],
   },
+  // Sprint 26: multi-file programs with a managed library (nothing installed), both languages.
+  {
+    id: 'esp32-lcd-library',
+    titleKey: 'example.esp32-lcd-library.title',
+    summaryKey: 'example.esp32-lcd-library.summary',
+    probes: [V('R1', 'b'), V('R2', 'b')],
+    parts: [
+      'board.esp32_devkitc_wroom32',
+      'component.resistor',
+      'display.lcd1602_i2c',
+      'instrument.lab_psu',
+    ],
+  },
+  {
+    id: 'mpy-lcd-library',
+    titleKey: 'example.mpy-lcd-library.title',
+    summaryKey: 'example.mpy-lcd-library.summary',
+    probes: [V('R1', 'b'), V('R2', 'b')],
+    parts: [
+      'board.esp32_devkitc_wroom32',
+      'component.resistor',
+      'display.lcd1602_i2c',
+      'instrument.lab_psu',
+    ],
+  },
 ];
 
 export function findExample(id: string): Example | undefined {

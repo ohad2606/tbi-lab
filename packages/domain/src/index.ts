@@ -22,3 +22,4 @@ export * from './firmware.js';
 export * from './program.js';
 export * from './connectivity.js';
 export * from './capabilities.js';
+export * from './libraryRegistry.js';

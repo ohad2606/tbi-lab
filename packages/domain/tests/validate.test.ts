@@ -135,7 +135,7 @@ describe('openDocument and the migration registry', () => {
   });
 
   it('registers exactly v2 → v3 (Sprint 7: programs), v3 → v4 (Sprint 20: identity) and v4 → v5 (Sprint POT-UNITS: identity)', () => {
-    expect(Object.keys(MIGRATIONS)).toEqual(['2', '3', '4']);
+    expect(Object.keys(MIGRATIONS)).toEqual(['2', '3', '4', '5']); // Sprint 26: v5 -> v6
   });
 
   it('refuses to interpret a NEWER schema and reports it for read-only opening', () => {
@@ -168,8 +168,12 @@ describe('openDocument and the migration registry', () => {
         calls.push(4);
         return MIGRATIONS[4]!(d);
       },
+      5: (d) => {
+        calls.push(5);
+        return MIGRATIONS[5]!(d);
+      },
     });
-    expect(calls).toEqual([1, 2, 3, 4]);
+    expect(calls).toEqual([1, 2, 3, 4, 5]);
     expect(r).toEqual({ status: 'ok', doc: target, migratedFrom: 1 });
   });
 

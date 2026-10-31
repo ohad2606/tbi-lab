@@ -354,7 +354,16 @@ export function analyzeMicroPython(
   source: string,
   /** Bridge capabilities of the runtime tickets are issued for (Sprint 24: `i2c`). */
   capabilities: readonly string[] = [],
+  /**
+   * Sprint 26: modules the program's own file system provides: the project's further files
+   * (`helpers`, `pkg`, `pkg.mod`) and the pinned managed libraries' modules. Importing them is
+   * allowed (their own code is the program's, analysed with it, or a vetted library's).
+   */
+  localModules: readonly string[] = [],
 ): FeatureReport {
+  const local = new Set(localModules);
+  const allowed = (mod: string) =>
+    local.has(mod) || (!mod.includes('.') && ALLOWED_MODULES.has(mod));
   const code = logicalLines(pythonCodeOnly(source));
   const i2cRuntime = capabilities.includes('i2c');
   /** Local names bound to machine.I2C (`from machine import I2C [as X]`). */
@@ -378,8 +387,7 @@ export function analyzeMicroPython(
   for (const m of code.matchAll(/^[ \t]*import[ \t]+([^\n;]+)/gm))
     for (const part of m[1]!.split(',')) {
       const [mod, alias] = part.trim().split(/\s+as\s+/) as [string, string | undefined];
-      const top = mod.split('.')[0]!;
-      if (!ALLOWED_MODULES.has(top) || mod.includes('.')) unsupported.add(`library:${mod}`);
+      if (!allowed(mod)) unsupported.add(`library:${mod}`);
       if (mod === 'machine') machineAliases.add(alias ?? 'machine');
     }
   // from m import a, b as c   /   from m import *
@@ -387,7 +395,9 @@ export function analyzeMicroPython(
     /^[ \t]*from[ \t]+([\w.]+)[ \t]+import[ \t]+(\([^)]*\)|[^\n;]+)/gm,
   )) {
     const mod = m[1]!;
-    if (!ALLOWED_MODULES.has(mod)) {
+    // A relative import inside one of the project's packages names the project's own module.
+    if (mod.startsWith('.') && [...local].some((l) => l.includes('.'))) continue;
+    if (!allowed(mod)) {
       unsupported.add(`library:${mod}`);
       continue;
     }

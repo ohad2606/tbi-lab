@@ -16,7 +16,7 @@
   "files": {
     "arm64": {
       "bin/mpy-cross": "e95b1043360e81d3711e8878e790a8951e2f7b736996d0182dd40b8b3bb184d5",
-      "bin/tbi-mklfs": "818182342613b74a574551290fdc9018f2f1d2a1212122d0716edaff8ec8b7bb",
+      "bin/tbi-mklfs": "52e6b9a56523bbcb6970c134578d9b7a9fe2025584ea25dc9ce670309634f5d7",
       "firmware/esp32-generic-1.29.0-4mb.bin": "23b8b47fdab856b33c44eb5911852e86c96dfeac2f1d2033dba8ddb6c681b0a1"
     }
   },

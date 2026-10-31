@@ -67,7 +67,7 @@ describe('automatic wires in a .tbilab (rt2 compatibility)', () => {
   });
 
   it('a file with automatic wires is at least a v4 file (Sprint 20; v5 since Sprint POT-UNITS)', () => {
-    expect(SCHEMA_VERSION).toBe(5);
+    expect(SCHEMA_VERSION).toBe(6); // Sprint 26: v6
     expect(createPackage(autoCircuit(), meta).project.schemaVersion).toBe(SCHEMA_VERSION);
   });
 

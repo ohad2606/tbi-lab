@@ -59,7 +59,7 @@ const nets = (doc: ProjectDocument) => {
 describe('schema v4 (s20r)', () => {
   it('is 4; 3 -> 4 is the identity, with and without automatic wires, and deterministic', () => {
     // Sprint POT-UNITS bumped the current version to 5 (identity 4 -> 5); the 3 -> 4 step is unchanged.
-    expect(SCHEMA_VERSION).toBe(5);
+    expect(SCHEMA_VERSION).toBe(6); // Sprint 26: v6 (5 -> 6 is the identity too)
     const withAuto = ownerBench().doc;
     expect(withAuto.layout.wires.every((w) => w.auto)).toBe(true);
     const manual = JSON.parse(JSON.stringify(withAuto)) as ProjectDocument;

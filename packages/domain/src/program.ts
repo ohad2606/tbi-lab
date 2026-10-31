@@ -12,7 +12,7 @@
  * identities and runtime state are never project data.
  */
 import { canonicalJson } from './canonical.js';
-import type { ProgramSource } from './schema.js';
+import type { LibraryRef, ProgramFile, ProgramSource } from './schema.js';
 import { sha256Utf8 } from './sha256.js';
 
 /**
@@ -80,14 +80,112 @@ export function defaultProfileForBoard(boardType: string): BuildProfile | undefi
 export function sourceKey(
   profile: string,
   files: readonly { name: string; text: string }[],
+  /**
+   * Sprint 26: the managed libraries of the build, with the checksum of each pinned source tree.
+   * Part of the key only when there are any, so every earlier key stays what it was.
+   */
+  libraries: readonly { id: string; version: string; tree: string }[] = [],
 ): string {
   const input = {
     profile,
     files: [...files]
       .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
       .map((f) => ({ name: f.name, sha256: sha256Utf8(f.text) })),
+    ...(libraries.length
+      ? {
+          libraries: [...libraries]
+            .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+            .map((l) => ({ id: l.id, version: l.version, tree: l.tree })),
+        }
+      : {}),
   };
   return sha256Utf8(canonicalJson(input));
+}
+
+/**
+ * Sprint 26: limits of a program's file set (the entry file included). The build protocol carries
+ * at most 16 files; each within the profile's per-file limit; all together at most 256 KiB.
+ */
+export const PROGRAM_LIMITS = {
+  maxFiles: 16,
+  maxTotalBytes: 256 * 1024,
+  maxPathLength: 96,
+  maxDepth: 3,
+} as const;
+
+/**
+ * Sprint 26: which project files an environment builds, by extension. Arduino compiles the sketch
+ * folder's own files and, recursively, its `src/` folder (arduino-cli sketch specification);
+ * MicroPython imports modules and packages from its file system.
+ */
+const FILE_RULES: Record<ProgramLanguage, { root: RegExp; nested: RegExp | null }> = {
+  'arduino-cpp': { root: /\.(ino|cpp|c|h|hpp)$/, nested: /^src\/.+\.(cpp|c|h|hpp)$/ },
+  micropython: { root: /\.py$/, nested: /\.py$/ },
+};
+
+/** A path segment: a portable file or folder name (no dot files, no `.`/`..`, no spaces). */
+const SEGMENT = /^[A-Za-z_][A-Za-z0-9_-]{0,47}(\.[A-Za-z0-9]{1,4})?$/;
+/** A MicroPython module or package segment must be a Python identifier to be importable. */
+const PY_SEGMENT = /^[A-Za-z_][A-Za-z0-9_]{0,47}(\.[A-Za-z0-9]{1,4})?$/;
+
+export type ProgramPathIssue =
+  | 'empty'
+  | 'too_long'
+  | 'bad_name'
+  | 'too_deep'
+  | 'bad_extension'
+  | 'entry'
+  | 'reserved'
+  | 'duplicate';
+
+/**
+ * Sprint 26: why a relative path cannot name a further file of a program in `language` (null: it
+ * can). Paths are `/`-separated, relative, without `.`/`..` segments, empty segments, backslashes,
+ * dot files or names that differ only in case from another file (`taken`); never the entry file.
+ * The same rules are enforced by the build service before any file is written.
+ */
+export function programPathIssue(
+  language: ProgramLanguage,
+  path: string,
+  taken: readonly string[] = [],
+  entry = language === 'micropython' ? 'main.py' : 'sketch.ino',
+): ProgramPathIssue | null {
+  if (!path) return 'empty';
+  if (path.length > PROGRAM_LIMITS.maxPathLength) return 'too_long';
+  const parts = path.split('/');
+  if (parts.length > PROGRAM_LIMITS.maxDepth) return 'too_deep';
+  const seg = language === 'micropython' ? PY_SEGMENT : SEGMENT;
+  if (parts.some((p, i) => !seg.test(p) || (i < parts.length - 1 && p.includes('.'))))
+    return 'bad_name';
+  const lower = path.toLowerCase();
+  if (lower === entry.toLowerCase()) return 'entry';
+  const rules = FILE_RULES[language];
+  if (parts.length === 1 ? !rules.root.test(path) : !rules.nested?.test(path))
+    return 'bad_extension';
+  // Arduino: the sketch folder's name is the entry's; a second `sketch.*` primary file, and the
+  // build service's own folders, are reserved. MicroPython: boot.py would run before main.py.
+  if (language === 'arduino-cpp' && /^sketch\./.test(lower)) return 'reserved';
+  if (language === 'micropython' && lower === 'boot.py') return 'reserved';
+  if (taken.some((t) => t.toLowerCase() === lower)) return 'duplicate';
+  return null;
+}
+
+/** Sprint 26: every file of a program, entry first, as the build protocol carries them. */
+export function programBuildFiles(program: ProgramSource): { name: string; text: string }[] {
+  return [
+    { name: program.fileName, text: program.text },
+    ...(program.files ?? []).map((f) => ({ name: f.path, text: f.text })),
+  ];
+}
+
+/** Sprint 26: the further files sorted by path (the stored order: deterministic save). */
+export function sortProgramFiles(files: readonly ProgramFile[]): ProgramFile[] {
+  return [...files].sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+}
+
+/** Sprint 26: libraries sorted by id (the stored order). */
+export function sortLibraryRefs(libs: readonly LibraryRef[]): LibraryRef[] {
+  return [...libs].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 }
 
 /** The program a newly placed board starts with (a product template, not user content). */

@@ -33,7 +33,7 @@ const near = (a: number | null | undefined, e: number, rel = REL) => {
 const example = (id: string) => EXAMPLES.find((e) => e.id === id)!.document;
 
 describe('the example set', () => {
-  it('has the eighteen local examples, the thirteen ESP32 examples and the four MicroPython examples, each titled in English and Hebrew', () => {
+  it('has the eighteen local examples, the fourteen ESP32 examples and the five MicroPython examples, each titled in English and Hebrew', () => {
     expect(EXAMPLES.map((e) => e.id)).toEqual([
       'ohms-law',
       'voltage-divider',
@@ -78,6 +78,9 @@ describe('the example set', () => {
       // Sprint 25 (Phase 4): a potentiometer read as a digital level.
       'esp32-pot-threshold',
       'mpy-pot-threshold',
+      // Sprint 26: multi-file programs with a managed library.
+      'esp32-lcd-library',
+      'mpy-lcd-library',
     ]);
     for (const e of EXAMPLES) {
       for (const key of [e.titleKey, e.summaryKey]) {

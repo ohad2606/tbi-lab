@@ -57,7 +57,7 @@ function potProject(): ProjectDocument {
 
 describe('schema v5 (Sprint POT-UNITS)', () => {
   it('is 5; 4 -> 5 is the identity and deterministic', () => {
-    expect(SCHEMA_VERSION).toBe(5);
+    expect(SCHEMA_VERSION).toBe(6); // Sprint 26: v6 (5 -> 6 is the identity)
     const doc = potProject();
     const v4 = { ...JSON.parse(JSON.stringify(doc)), schemaVersion: 4 };
     // A v4 document cannot hold a potentiometer; the identity is checked on any content.
@@ -84,7 +84,7 @@ describe('schema v5 (Sprint POT-UNITS)', () => {
       expect(o.status).toBe('ok');
       if (o.status !== 'ok') return;
       expect(o.migratedFrom).toBe(v);
-      expect(o.doc.schemaVersion).toBe(5);
+      expect(o.doc.schemaVersion).toBe(6); // through the chain, now to v6
       expect({ ...o.doc, schemaVersion: v }).toEqual(old);
     }
   });

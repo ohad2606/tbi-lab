@@ -1,0 +1,2 @@
+# Sprint 26: vendored managed-library sources are byte-exact upstream copies (checksummed).
+runtime/libraries/** -text

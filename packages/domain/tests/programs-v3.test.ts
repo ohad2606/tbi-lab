@@ -39,8 +39,8 @@ const TRICKY =
   '// שלום — מקור בעברית\r\nvoid setup() {\r\n\tSerial.begin(115200);  \r\n}\n\nvoid loop() {}\n\n\n';
 
 describe('schema v3 and the v2 → v3 migration', () => {
-  it('the v2 → v3 migration is deterministic and adds no user content (current schema: 5)', () => {
-    expect(SCHEMA_VERSION).toBe(5);
+  it('the v2 → v3 migration is deterministic and adds no user content (current schema: 6)', () => {
+    expect(SCHEMA_VERSION).toBe(6);
     const v3 = withBoard().doc;
     const v2 = JSON.parse(JSON.stringify(v3)) as Record<string, unknown> & {
       components: { params: Record<string, unknown> }[];
@@ -179,7 +179,7 @@ describe('package format v2', () => {
     const r = parsePackage(JSON.stringify(v1));
     expect(r.ok).toBe(true);
     if (!r.ok) return;
-    expect(r.doc.schemaVersion).toBe(5); // v2 -> v3 -> v4 -> v5 (identities since)
+    expect(r.doc.schemaVersion).toBe(6); // v2 -> v3 -> v4 -> v5 -> v6 (identities since)
     expect(r.doc.programs).toEqual({});
     expect(
       r.doc.components.find((c) => (c as { type?: string }).type === BOARD)!.params.firmware,

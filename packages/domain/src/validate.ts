@@ -10,7 +10,7 @@
 import { CATALOG, isComponentType, onStep } from './catalog.js';
 import { GRID, ROTATIONS } from './layout.js';
 import { nodeKey, wireGroups } from './nets.js';
-import { profileById, utf8Length } from './program.js';
+import { PROGRAM_LIMITS, profileById, programPathIssue, utf8Length } from './program.js';
 import {
   DOCUMENT_FORMAT,
   SCHEMA_VERSION,
@@ -318,8 +318,59 @@ export function validateProject(input: unknown): ValidationIssue[] {
         utf8Length(program.text) > profile.maxSourceBytes
       )
         add('bad_program', `${path}.text`);
+      // Sprint 26 (schema v6): further files and pinned libraries.
+      if (profile && program.files !== undefined) {
+        const files = program.files;
+        if (!Array.isArray(files)) add('bad_program', `${path}.files`);
+        else {
+          if (files.length + 1 > PROGRAM_LIMITS.maxFiles)
+            add('bad_program', `${path}.files`, 'too many files');
+          let total = typeof program.text === 'string' ? utf8Length(program.text) : 0;
+          const seen: string[] = [];
+          files.forEach((f: unknown, i: number) => {
+            const fp = `${path}.files.${i}`;
+            if (
+              !isObj(f) ||
+              typeof f.path !== 'string' ||
+              typeof f.text !== 'string' ||
+              Object.keys(f).some((k) => k !== 'path' && k !== 'text')
+            )
+              return add('bad_program', fp);
+            const why = programPathIssue(profile.language, f.path, seen, profile.fileName);
+            if (why) add('bad_program', `${fp}.path`, why);
+            if (seen.length && f.path <= seen[seen.length - 1]!)
+              add('bad_program', `${fp}.path`, 'not sorted');
+            if (f.text.includes('\u0000') || utf8Length(f.text) > profile.maxSourceBytes)
+              add('bad_program', `${fp}.text`);
+            total += utf8Length(f.text);
+            seen.push(f.path);
+          });
+          if (total > PROGRAM_LIMITS.maxTotalBytes)
+            add('bad_program', `${path}.files`, 'project too large');
+        }
+      }
+      if (program.libraries !== undefined) {
+        const libs = program.libraries;
+        if (!Array.isArray(libs)) add('bad_program', `${path}.libraries`);
+        else
+          libs.forEach((l: unknown, i: number) => {
+            const lp = `${path}.libraries.${i}`;
+            if (
+              !isObj(l) ||
+              typeof l.id !== 'string' ||
+              typeof l.version !== 'string' ||
+              !/^[a-z0-9][a-z0-9.-]{0,63}$/.test(l.id) ||
+              !/^[A-Za-z0-9][A-Za-z0-9.+-]{0,63}$/.test(l.version) ||
+              Object.keys(l).some((k) => k !== 'id' && k !== 'version')
+            )
+              return add('bad_program', lp);
+            const prev = libs[i - 1] as { id?: unknown } | undefined;
+            if (i > 0 && typeof prev?.id === 'string' && l.id <= prev.id)
+              add('bad_program', lp, 'not sorted');
+          });
+      }
       const extra = Object.keys(program).filter(
-        (k) => !['language', 'profile', 'fileName', 'text'].includes(k),
+        (k) => !['language', 'profile', 'fileName', 'text', 'files', 'libraries'].includes(k),
       );
       if (extra.length) add('bad_program', path, `unknown ${extra.join(',')}`);
     }

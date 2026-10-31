@@ -21,7 +21,16 @@ import {
 } from './layout.js';
 import { isContact, settleContacts } from './contacts.js';
 import { nodeKey, nodeNets, settleNets } from './nets.js';
-import { starterProgram, starterSourceFor, profileById, utf8Length } from './program.js';
+import {
+  PROGRAM_LIMITS,
+  programPathIssue,
+  sortProgramFiles,
+  starterProgram,
+  starterSourceFor,
+  profileById,
+  utf8Length,
+} from './program.js';
+import { resolveLibraries } from './libraryRegistry.js';
 import { allocateId } from './project.js';
 import {
   cloneDocument,
@@ -30,6 +39,7 @@ import {
   type ParamValue,
   type Point,
   type ProjectDocument,
+  type ProgramSource,
   type Wire,
   type WireColor,
   type WireEnd,
@@ -56,7 +66,13 @@ export type EditError =
   | 'source_too_large'
   | 'source_invalid'
   /** Sprint 19B: no programming environment of that id for the board. */
-  | 'unknown_profile';
+  | 'unknown_profile'
+  /** Sprint 26: a further program file's path is not one the environment builds (programPathIssue). */
+  | 'file_path_invalid'
+  | 'file_exists'
+  | 'no_file'
+  | 'too_many_files'
+  | 'project_too_large';
 
 export type EditResult<T = object> =
   ({ ok: true; doc: ProjectDocument } & T) | { ok: false; error: EditError };
@@ -86,7 +102,28 @@ function transact(
   settleContacts(doc, draft, placed());
   cleanupJunctions(draft);
   settleNets(draft, previous);
+  settleLibraries(draft);
   return { ok: true, doc: draft };
+}
+
+/**
+ * Sprint 26: keep every program's managed libraries what its project needs (libraryRegistry.ts
+ * `resolveLibraries`: the placed components' libraries and those its code names), inside the
+ * same edit (one undo step). Nothing else changes: code is never edited, a pinned version is
+ * kept, and a program that needs none carries no `libraries` field at all.
+ */
+export function settleLibraries(draft: ProjectDocument): void {
+  for (const [boardId, program] of Object.entries(draft.programs)) {
+    const libs = resolveLibraries(draft, program);
+    const same =
+      JSON.stringify(libs) === JSON.stringify(program.libraries ?? []) &&
+      (libs.length > 0 || program.libraries === undefined);
+    if (same) continue;
+    const next = { ...program };
+    if (libs.length) next.libraries = libs;
+    else delete next.libraries;
+    draft.programs[boardId] = next;
+  }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -298,6 +335,7 @@ export function setProgramProfile(
   const profile = profileById(profileId);
   if (!profile || profile.board !== board.type) return { ok: false, error: 'unknown_profile' };
   if (program.profile === profileId) return { ok: true, doc };
+  // Sprint 26: the further files and libraries of the other language go too (never translated).
   return transact(doc, (d) => {
     d.programs[boardId] = {
       language: profile.language,
@@ -309,19 +347,111 @@ export function setProgramProfile(
 }
 
 /**
- * Replace a board's program source text exactly (no normalisation of any kind). A program edit
- * never changes the loaded circuit: it is allowed while a session runs and never reaches it.
+ * Replace the text of a board's program file exactly (no normalisation of any kind): the entry
+ * file (`path` omitted or the entry's name) or (Sprint 26) a further file. A program edit never
+ * changes the loaded circuit: it is allowed while a session runs and never reaches it.
  */
-export function setProgramText(doc: ProjectDocument, boardId: string, text: string): EditResult {
+export function setProgramText(
+  doc: ProjectDocument,
+  boardId: string,
+  text: string,
+  path?: string,
+): EditResult {
   const program = doc.programs[boardId];
   if (!program) return { ok: false, error: 'no_program' };
   if (text.includes('\u0000')) return { ok: false, error: 'source_invalid' };
   const profile = profileById(program.profile);
   if (profile && utf8Length(text) > profile.maxSourceBytes)
     return { ok: false, error: 'source_too_large' };
-  if (program.text === text) return { ok: true, doc };
+  const entry = path === undefined || path === program.fileName;
+  const files = program.files ?? [];
+  const k = entry ? -1 : files.findIndex((f) => f.path === path);
+  if (!entry && k < 0) return { ok: false, error: 'no_file' };
+  if ((entry ? program.text : files[k]!.text) === text) return { ok: true, doc };
+  const next: ProgramSource = entry
+    ? { ...program, text }
+    : { ...program, files: files.map((f, i) => (i === k ? { path: f.path, text } : f)) };
+  if (programBytes(next) > PROGRAM_LIMITS.maxTotalBytes)
+    return { ok: false, error: 'project_too_large' };
   const draft = cloneDocument(doc);
-  draft.programs[boardId] = { ...program, text };
+  draft.programs[boardId] = next;
+  settleLibraries(draft);
+  return { ok: true, doc: draft };
+}
+
+const programBytes = (p: ProgramSource) =>
+  utf8Length(p.text) + (p.files ?? []).reduce((n, f) => n + utf8Length(f.text), 0);
+
+/** Sprint 26: add a further file to a board's program (empty unless `text` is given). */
+export function addProgramFile(
+  doc: ProjectDocument,
+  boardId: string,
+  path: string,
+  text = '',
+): EditResult {
+  const program = doc.programs[boardId];
+  const profile = program && profileById(program.profile);
+  if (!program || !profile) return { ok: false, error: 'no_program' };
+  const files = program.files ?? [];
+  const why = programPathIssue(
+    profile.language,
+    path,
+    files.map((f) => f.path),
+    profile.fileName,
+  );
+  if (why === 'duplicate' || why === 'entry') return { ok: false, error: 'file_exists' };
+  if (why) return { ok: false, error: 'file_path_invalid' };
+  if (files.length + 1 >= PROGRAM_LIMITS.maxFiles) return { ok: false, error: 'too_many_files' };
+  if (text.includes('\u0000')) return { ok: false, error: 'source_invalid' };
+  if (utf8Length(text) > profile.maxSourceBytes) return { ok: false, error: 'source_too_large' };
+  const next = { ...program, files: sortProgramFiles([...files, { path, text }]) };
+  if (programBytes(next) > PROGRAM_LIMITS.maxTotalBytes)
+    return { ok: false, error: 'project_too_large' };
+  const draft = cloneDocument(doc);
+  draft.programs[boardId] = next;
+  settleLibraries(draft);
+  return { ok: true, doc: draft };
+}
+
+/** Sprint 26: rename (or move) a further file of a board's program; the entry file never. */
+export function renameProgramFile(
+  doc: ProjectDocument,
+  boardId: string,
+  from: string,
+  to: string,
+): EditResult {
+  const program = doc.programs[boardId];
+  const profile = program && profileById(program.profile);
+  if (!program || !profile) return { ok: false, error: 'no_program' };
+  const files = program.files ?? [];
+  const k = files.findIndex((f) => f.path === from);
+  if (k < 0) return { ok: false, error: 'no_file' };
+  if (from === to) return { ok: true, doc };
+  const others = files.filter((_, i) => i !== k).map((f) => f.path);
+  const why = programPathIssue(profile.language, to, others, profile.fileName);
+  if (why === 'duplicate' || why === 'entry') return { ok: false, error: 'file_exists' };
+  if (why) return { ok: false, error: 'file_path_invalid' };
+  const draft = cloneDocument(doc);
+  draft.programs[boardId] = {
+    ...program,
+    files: sortProgramFiles(files.map((f, i) => (i === k ? { path: to, text: f.text } : f))),
+  };
+  settleLibraries(draft);
+  return { ok: true, doc: draft };
+}
+
+/** Sprint 26: delete a further file of a board's program (the entry file never). */
+export function deleteProgramFile(doc: ProjectDocument, boardId: string, path: string): EditResult {
+  const program = doc.programs[boardId];
+  if (!program) return { ok: false, error: 'no_program' };
+  const files = program.files ?? [];
+  if (!files.some((f) => f.path === path)) return { ok: false, error: 'no_file' };
+  const draft = cloneDocument(doc);
+  const rest = files.filter((f) => f.path !== path);
+  const next: ProgramSource = { ...program, files: rest };
+  if (!rest.length) delete next.files;
+  draft.programs[boardId] = next;
+  settleLibraries(draft);
   return { ok: true, doc: draft };
 }
 

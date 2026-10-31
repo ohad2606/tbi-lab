@@ -4,10 +4,10 @@
  * (a seeded build is byte-identical to a cold one, every curated example) and the latency
  * benchmark are runtime/tests/s18f-build-seed.runtime.test.ts.
  */
+import { requestKey } from '../libraries.js';
 import { mkdirSync, readdirSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { sourceKey } from '@tbi-lab/domain';
 import {
   applyCoreSeed,
   coreSeedKey,
@@ -146,7 +146,7 @@ function setup(systemKeys: ReadonlySet<string>) {
 const A = principalFor('user-a');
 const curatedA = sketch('void setup() {}\nvoid loop() {} // curated A\n');
 const curatedB = sketch('void setup() {}\nvoid loop() {} // curated B\n');
-const keyOf = (r: typeof curatedA) => sourceKey(r.profile, r.files);
+const keyOf = (r: typeof curatedA) => requestKey(r); // Sprint 26: files and libraries
 
 describe('prewarm of the curated sources', () => {
   it('builds each curated source without a current shared build, once; only those are curated jobs', async () => {

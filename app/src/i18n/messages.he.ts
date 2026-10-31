@@ -1002,6 +1002,55 @@ export const he: Record<MessageKey, string> = {
   'program.editor.label': 'קוד המקור (Arduino) של {board}',
   'program.position': 'שורה {line}, עמודה {column}',
   'program.size': '{used} מתוך {max}',
+  'program.total': '{files} קבצים, {used} מתוך {max}',
+  'program.files': 'קובצי התוכנית',
+  'program.file.main': 'ראשי',
+  'program.file.new': 'קובץ חדש',
+  'program.file.rename': 'שינוי שם',
+  'program.file.delete': 'מחיקת קובץ',
+  'program.file.deleteConfirm': 'למחוק את {file}? אפשר לבטל את הפעולה.',
+  'program.file.newLabel': 'שם הקובץ החדש',
+  'program.file.renameLabel': 'שם חדש',
+  'program.file.create': 'יצירה',
+  'program.file.renameApply': 'שינוי שם',
+  'program.file.cancel': 'ביטול',
+  'program.file.rules.arduino':
+    'קובצי Arduino: ‏⁦.ino⁩, ⁦.cpp⁩, ⁦.c⁩, ⁦.h⁩ או ⁦.hpp⁩ בתיקיית ה-sketch, או ⁦.cpp⁩, ⁦.c⁩, ⁦.h⁩ או ⁦.hpp⁩ תחת ⁦src/⁩ (למשל ⁦src/util.cpp⁩). כוללים כותרות משלכם במירכאות: ⁦#include "helpers.h"⁩.',
+  'program.file.rules.micropython':
+    'מודולי MicroPython: קובצי ⁦.py⁩ ששמם מזהה Python חוקי, בשורש או בתיקיית חבילה שיש בה ⁦__init__.py⁩ (למשל ⁦sensors/__init__.py⁩ ו-⁦sensors/dht.py⁩). מייבאים לפי שם: ⁦import helpers⁩.',
+  'program.file.error.empty': 'הזינו שם קובץ.',
+  'program.file.error.too_long': 'השם ארוך מדי.',
+  'program.file.error.bad_name':
+    'השתמשו באותיות לטיניות, ספרות, קו תחתון ומקף, סיומת אחת, ותיקיות מופרדות ב-⁦/⁩; בלי רווחים, בלי נקודה בתחילת השם, בלי ⁦.⁩ או ⁦..⁩.',
+  'program.file.error.too_deep': 'אפשר לכל היותר שתי תיקיות.',
+  'program.file.error.bad_extension':
+    'סביבת התכנות הזו אינה בונה קבצים מסוג זה (או לא בתיקייה זו).',
+  'program.file.error.entry': 'זה שם הקובץ הראשי.',
+  'program.file.error.reserved': 'השם הזה שמור לסביבת התכנות.',
+  'program.file.error.duplicate':
+    'כבר קיים קובץ בשם הזה (שמות שנבדלים רק באותיות גדולות נחשבים זהים).',
+  'program.file.error.limit': 'הפרויקט הגיע למגבלת הקבצים או הגודל (16 קבצים, ⁦256 KiB⁩ בסך הכול).',
+  'library.heading': 'ספריות מנוהלות',
+  'library.none':
+    'אין צורך בספרייה. הוסיפו רכיב שיש לו ספרייה מנוהלת (למשל תצוגת LCD1602 I²C) והיא תהיה זמינה כאן, בלי להתקין דבר.',
+  'library.issue.unknown_library':
+    '{id}: גרסת הספרייה הזו אינה זמינה בשרת הזה. הבנייה מסרבת לה ואינה משתמשת בגרסה אחרת.',
+  'library.issue.library_language': '{id}: הספרייה הזו מיועדת לשפת תכנות אחרת.',
+  'library.issue.library_profile': '{id}: הספרייה הזו לא אומתה עם כלי הבנייה הזה.',
+  'library.issue.library_dependency': '{id}: חסרה ספרייה שהיא תלויה בה.',
+  'library.reason.part': 'זמינה כי {parts} זקוק לה.',
+  'library.reason.code': 'נשמרת כי הקוד משתמש בה.',
+  'library.status.available': 'זמינה (גרסה נעוצה, בלי התקנה)',
+  'library.license': 'רישיון {spdx}, {copyright}. מקור:',
+  'library.validated': 'אומת בסימולטור:',
+  'library.example': 'דוגמת שימוש',
+  'library.copy': 'העתקת הדוגמה',
+  'library.limit.lcd_write_only':
+    'כתיבה בלבד: אי אפשר לקרוא בסימולטור את פורט המתאם של ה-LCD ואת הבקר (קריאה עוצרת את ההרצה, בציון שם).',
+  'library.limit.lcd_clock':
+    'שעון I²C עד ⁦100 kHz⁩ (הדירוג של ה-PCF8574); שעון מהיר יותר עוצר את ההרצה, בציון שם.',
+  'build.error.unknown_library':
+    'לשירות הבנייה אין את גרסת הספרייה המדויקת הזו, ולכן הבנייה לא בוצעה (הוא לעולם אינו מחליף בגרסה אחרת).',
   'build.button': 'בנייה',
   'toolbar.build': 'בנה קוד',
   'toolbar.build.group': 'בניית הקוד',
@@ -1050,7 +1099,7 @@ export const he: Record<MessageKey, string> = {
     'הבניות השמורות שלך הגיעו למגבלה וכולן בשימוש. עצרו את הריצה ונסו לבנות שוב.',
   'build.error.capability_disabled': 'הרצת קובץ בינארי מוכן אינה זמינה בחשבון שלך.',
   'build.error.refused': 'שירות הבנייה דחה את הבקשה.',
-  'build.error.too_large': 'הקוד גדול מדי לבנייה (המגבלה היא 64 KiB).',
+  'build.error.too_large': 'הקוד גדול מדי לבנייה (כל קובץ עד ⁦64 KiB⁩, הפרויקט עד ⁦256 KiB⁩).',
   'build.error.not_an_image': 'שירות הבנייה לא יכול היה להשתמש בקובץ הזה.',
   'build.error.protocol': 'תשובה לא צפויה משירות הבנייה. נסו שוב או טענו מחדש את הדף.',
   'build.failure.timeout': 'הבנייה ארכה יותר ממגבלת הזמן ונעצרה.',
@@ -1296,6 +1345,12 @@ export const he: Record<MessageKey, string> = {
   'example.mpy-fade.summary':
     'machine.PWM מזין את GPIO18 ב-1 kHz; ‏main.py מעלה את duty_u16 מ-2048 עד 63488 ובחזרה (לעולם לא 0). הזרם הממוצע של הנורית עוקב אחרי ה-duty, על המעגל של העמעום ב-Arduino.',
   'example.mpy-lcd-hello.title': 'MicroPython: שלום על צג LCD ב-I2C',
+  'example.esp32-lcd-library.title': 'ESP32: ‏LCD עם ספרייה מנוהלת (שלושה קבצים)',
+  'example.esp32-lcd-library.summary':
+    'מעגל ה-LCD בחיבור I2C עם תוכנית Arduino בשלושה קבצים: ⁦sketch.ino⁩ קורא לפונקציות שמוצהרות ב-⁦display.h⁩ וממומשות ב-⁦display.cpp⁩, שמשתמש בספרייה המנוהלת ⁦LiquidCrystal_PCF8574 2.2.0⁩. הצבת התצוגה הפכה את הספרייה לזמינה: לא מותקן דבר. פתחו את הקוד כדי לראות את הקבצים ואת רשימת הספריות המנוהלות. רץ על שירות זמן הריצה של ESP32.',
+  'example.mpy-lcd-library.title': 'MicroPython: ‏LCD עם ספרייה מנוהלת (שני קבצים)',
+  'example.mpy-lcd-library.summary':
+    'אותו מעגל ב-MicroPython: ⁦main.py⁩ מייבא את ⁦display.py⁩, שמשתמש בספרייה המנוהלת ⁦python_lcd⁩ ‏(⁦I2cLcd⁩). הבנייה מציבה את הספרייה ב-⁦/lib⁩ של המפרש ואת מודולי התוכנית לצד ⁦main.py⁩; המפרש האמיתי מייבא אותם. רץ על שירות זמן הריצה של ESP32.',
   'example.mpy-lcd-hello.summary':
     'המעגל של דוגמת ה-LCD של Arduino, מתוכנת ב-MicroPython: ‏machine.I2C על ערוץ 0 (SCL ב-GPIO22, ‏SDA ב-GPIO21) ב-100 kHz, תדר השעון המדורג של PCF8574, ודרייבר HD44780 קטן שנכתב ב-main.py מציגים “Hello, ESP32!” ואת זמן הפעולה. המודול מוזן ב-4.5 V; שני נגדי ה-pull-up של 4.7 kΩ מחוברים ל-3.3 V.',
   'example.esp32-servo-sweep.title': 'ESP32: סריקה של סרוו SG90 ב־PWM',

@@ -33,6 +33,8 @@ export class FakeProvider implements BuildProvider {
   /** Sprint 18F: the core seed's presence as the provider reports it (undefined: no seeds). */
   seed: boolean | undefined = undefined;
   hasCoreSeed?: (jobDir: string) => Promise<boolean>;
+  /** Sprint 26: what each job was given (files, resolved library ids). */
+  jobs: { files: { name: string; text: string }[]; libraries: string[] }[] = [];
   /** Sprint 18F: hold every build until released (`release()`), to observe ordering. */
   gate: Promise<void> | null = null;
 
@@ -48,6 +50,7 @@ export class FakeProvider implements BuildProvider {
   async build(job: JobContext): Promise<ProviderOutput> {
     this.builds++;
     this.dirs.push(job.dir);
+    this.jobs.push({ files: job.files, libraries: (job.libraries ?? []).map((l) => l.id) });
     this.curated.push(job.curated === true);
     if (job.curated && this.seed === false && !text0(job).includes('#noseed')) this.seed = true;
     if (this.gate) await this.gate;

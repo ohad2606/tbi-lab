@@ -8,7 +8,7 @@
  * an ESP32 session is running (D-S7-9). After a reload the state is recovered by a lookup (an
  * existing build of exactly this source), never by building.
  */
-import { sourceKey, type ProgramSource } from '@tbi-lab/domain';
+import { managedLibrary, programBuildFiles, sourceKey, type ProgramSource } from '@tbi-lab/domain';
 import { BuildTransportError, type BuildClient, type BuildResult } from './client.js';
 
 export type BuildPhase =
@@ -50,14 +50,34 @@ interface Input {
   profile: string;
   fileName: string;
   text: string;
+  /** Sprint 26: further files and pinned libraries (the arrays as stored: replaced on any edit). */
+  files: ProgramSource['files'];
+  libraries: ProgramSource['libraries'];
 }
+const sameList = <T>(a: readonly T[] | undefined, b: readonly T[] | undefined) =>
+  a === b || JSON.stringify(a ?? []) === JSON.stringify(b ?? []);
 const same = (a: Input | undefined, b: ProgramSource) =>
-  !!a && a.text === b.text && a.profile === b.profile && a.fileName === b.fileName;
+  !!a &&
+  a.text === b.text &&
+  a.profile === b.profile &&
+  a.fileName === b.fileName &&
+  sameList(a.files, b.files) &&
+  sameList(a.libraries, b.libraries);
 const inputOf = (p: ProgramSource): Input => ({
   profile: p.profile,
   fileName: p.fileName,
   text: p.text,
+  files: p.files,
+  libraries: p.libraries,
 });
+
+/** Sprint 26: the pinned libraries with their source trees (unknown ones: no tree, refused). */
+const librariesOf = (p: ProgramSource) =>
+  (p.libraries ?? []).map((r) => ({
+    id: r.id,
+    version: r.version,
+    tree: managedLibrary(r.id, r.version)?.tree ?? '',
+  }));
 
 interface Entry {
   result?: BuildResult;
@@ -75,10 +95,12 @@ const MAX_ENTRIES = 8;
  */
 const keyCache = new Map<string, string>();
 export function programKey(program: ProgramSource): string {
-  const id = `${program.profile}\u0000${program.fileName}\u0000${program.text}`;
+  const id = `${program.profile}\u0000${program.fileName}\u0000${program.text}\u0000${JSON.stringify(
+    [program.files ?? [], program.libraries ?? []],
+  )}`;
   let key = keyCache.get(id);
   if (key === undefined) {
-    key = sourceKey(program.profile, [{ name: program.fileName, text: program.text }]);
+    key = sourceKey(program.profile, programBuildFiles(program), librariesOf(program));
     keyCache.set(id, key);
     while (keyCache.size > 8) keyCache.delete(keyCache.keys().next().value!);
   }
@@ -169,7 +191,7 @@ export class ProgramBuilds {
     try {
       const result = await client.build(
         program.profile,
-        [{ name: program.fileName, text: program.text }],
+        programBuildFiles(program),
         (state, position) => {
           if (e.building?.input !== input) return;
           e.building = {
@@ -179,6 +201,8 @@ export class ProgramBuilds {
           };
           this.changed();
         },
+        undefined,
+        program.libraries,
       );
       e.result = result;
       e.resultInput = input;

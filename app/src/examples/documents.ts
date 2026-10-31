@@ -37,6 +37,8 @@ import mpyBlink from './data/mpy-blink.json';
 import mpyButton from './data/mpy-button.json';
 import mpyFade from './data/mpy-fade.json';
 import mpyLcdHello from './data/mpy-lcd-hello.json';
+import esp32LcdLibrary from './data/esp32-lcd-library.json';
+import mpyLcdLibrary from './data/mpy-lcd-library.json';
 import potDivider from './data/pot-divider.json';
 import potLedDimmer from './data/pot-led-dimmer.json';
 import esp32PotThreshold from './data/esp32-pot-threshold.json';
@@ -80,6 +82,8 @@ export const EXAMPLE_DOCUMENTS: Record<string, ProjectDocument> = {
   'mpy-lcd-hello': mpyLcdHello as unknown as ProjectDocument,
   'esp32-pot-threshold': esp32PotThreshold as unknown as ProjectDocument,
   'mpy-pot-threshold': mpyPotThreshold as unknown as ProjectDocument,
+  'esp32-lcd-library': esp32LcdLibrary as unknown as ProjectDocument,
+  'mpy-lcd-library': mpyLcdLibrary as unknown as ProjectDocument,
 };
 
 /** The examples with their documents (tests and tools; the app loads documents lazily). */

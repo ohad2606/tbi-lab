@@ -1022,6 +1022,56 @@ export const en = {
   'program.editor.label': 'Arduino source code of {board}',
   'program.position': 'Line {line}, column {column}',
   'program.size': '{used} of {max}',
+  'program.total': '{files} files, {used} of {max}',
+  'program.files': 'Program files',
+  'program.file.main': 'main',
+  'program.file.new': 'New file',
+  'program.file.rename': 'Rename',
+  'program.file.delete': 'Delete file',
+  'program.file.deleteConfirm': 'Delete {file}? You can undo this.',
+  'program.file.newLabel': 'New file name',
+  'program.file.renameLabel': 'New name',
+  'program.file.create': 'Create',
+  'program.file.renameApply': 'Rename',
+  'program.file.cancel': 'Cancel',
+  'program.file.rules.arduino':
+    'Arduino files: .ino, .cpp, .c, .h or .hpp in the sketch folder, or .cpp, .c, .h or .hpp under src/ (for example src/util.cpp). Include your own headers with quotes: #include "helpers.h".',
+  'program.file.rules.micropython':
+    'MicroPython modules: .py files whose names are Python identifiers, at the top or in a package folder that has an __init__.py (for example sensors/__init__.py and sensors/dht.py). Import them by name: import helpers.',
+  'program.file.error.empty': 'Enter a file name.',
+  'program.file.error.too_long': 'The name is too long.',
+  'program.file.error.bad_name':
+    'Use letters, digits, underscores and hyphens, a single extension, and folders separated by “/”; no spaces, no leading dot, no “.” or “..”.',
+  'program.file.error.too_deep': 'Use at most two folders.',
+  'program.file.error.bad_extension':
+    'This programming environment does not build files of this type (or not in this folder).',
+  'program.file.error.entry': 'This is the main file’s name.',
+  'program.file.error.reserved': 'This name is reserved by the programming environment.',
+  'program.file.error.duplicate':
+    'A file with this name already exists (names that differ only in capital letters count as the same).',
+  'program.file.error.limit':
+    'The project has reached its file or size limit (16 files, 256 KiB in all).',
+  'library.heading': 'Managed libraries',
+  'library.none':
+    'No library is needed. Add a part that has a managed library (for example the LCD1602 I²C display) and it becomes available here, with nothing to install.',
+  'library.issue.unknown_library':
+    '{id}: this library version is not available on this server. Builds refuse it rather than use another version.',
+  'library.issue.library_language': '{id}: this library is for another programming language.',
+  'library.issue.library_profile': '{id}: this library is not validated with this toolchain.',
+  'library.issue.library_dependency': '{id}: a library it needs is missing.',
+  'library.reason.part': 'Available because {parts} needs it.',
+  'library.reason.code': 'Kept because the code uses it.',
+  'library.status.available': 'available (pinned version, nothing to install)',
+  'library.license': 'Licence {spdx}, {copyright}. Source:',
+  'library.validated': 'Validated on the simulator:',
+  'library.example': 'Usage example',
+  'library.copy': 'Copy example',
+  'library.limit.lcd_write_only':
+    'Write-only: the LCD backpack’s port and the controller cannot be read in the simulator (a read stops the run by name).',
+  'library.limit.lcd_clock':
+    'I²C clock up to 100 kHz (the PCF8574 rating); a faster clock stops the run by name.',
+  'build.error.unknown_library':
+    'The build service does not have this exact library version, so it did not build (it never substitutes another version).',
   'build.button': 'Build',
   'toolbar.build': 'Build',
   'toolbar.build.group': 'Build the code',
@@ -1078,7 +1128,8 @@ export const en = {
     'Your saved builds are at their limit and are all in use. Stop the running session, then build again.',
   'build.error.capability_disabled': 'Running a prebuilt binary is not available for your account.',
   'build.error.refused': 'The build service refused this request.',
-  'build.error.too_large': 'The code is too large to build (the limit is 64 KiB).',
+  'build.error.too_large':
+    'The code is too large to build (each file up to 64 KiB, the project up to 256 KiB).',
   'build.error.not_an_image': 'The build service could not use this file.',
   'build.error.protocol':
     'Unexpected answer from the build service. Try again, or reload the page.',
@@ -1333,6 +1384,12 @@ export const en = {
   'example.mpy-fade.summary':
     'machine.PWM drives GPIO18 at 1 kHz; main.py steps duty_u16 from 2048 up to 63488 and back (never 0). The LED’s average current follows the duty, on the circuit of the Arduino fade.',
   'example.mpy-lcd-hello.title': 'MicroPython: hello on an I2C LCD',
+  'example.esp32-lcd-library.title': 'ESP32: LCD with a managed library (three files)',
+  'example.esp32-lcd-library.summary':
+    'The I2C LCD circuit with an Arduino program in three files: sketch.ino calls the functions declared in display.h and written in display.cpp, which uses the managed library LiquidCrystal_PCF8574 2.2.0. Placing the display made the library available: nothing is installed. Open Code to see the files and the Managed libraries list. Runs on the ESP32 runtime service.',
+  'example.mpy-lcd-library.title': 'MicroPython: LCD with a managed library (two files)',
+  'example.mpy-lcd-library.summary':
+    'The same circuit in MicroPython: main.py imports display.py, which uses the managed library python_lcd (I2cLcd). The build puts the library in the interpreter’s /lib and the program’s modules next to main.py; the genuine interpreter imports them. Runs on the ESP32 runtime service.',
   'example.mpy-lcd-hello.summary':
     'The circuit of the Arduino LCD example, programmed in MicroPython: machine.I2C on bus 0 (SCL GPIO22, SDA GPIO21) at 100 kHz, the PCF8574’s rated clock, and a small HD44780 driver written in main.py show “Hello, ESP32!” and the uptime. The module runs at 4.5 V; the two 4.7 kΩ pull-ups go to 3.3 V.',
   'example.esp32-servo-sweep.title': 'ESP32: sweep an SG90 servo with PWM',

@@ -4,7 +4,8 @@
  * exactly these sources are shared records (`global`), so everyone gets their cache hit; every
  * other source is private to the principal who built it.
  */
-import { sourceKey, starterProgram, type ProgramSource } from '@tbi-lab/domain';
+import { programBuildFiles, starterProgram, type ProgramSource } from '@tbi-lab/domain';
+import { requestKey } from './libraries.js';
 import { BUILD_PROTOCOL, type BuildRequest } from './protocol.js';
 import blink from '../../app/src/examples/data/esp32-blink.json' with { type: 'json' };
 import echo from '../../app/src/examples/data/esp32-input-echo.json' with { type: 'json' };
@@ -29,6 +30,9 @@ import mpyLcdHello from '../../app/src/examples/data/mpy-lcd-hello.json' with { 
 // Sprint 25 (Phase 4): a potentiometer read as a digital level.
 import potThreshold from '../../app/src/examples/data/esp32-pot-threshold.json' with { type: 'json' };
 import mpyPotThreshold from '../../app/src/examples/data/mpy-pot-threshold.json' with { type: 'json' };
+// Sprint 26: multi-file programs with a managed library.
+import lcdLibrary from '../../app/src/examples/data/esp32-lcd-library.json' with { type: 'json' };
+import mpyLcdLibrary from '../../app/src/examples/data/mpy-lcd-library.json' with { type: 'json' };
 
 const programsOf = (doc: unknown): ProgramSource[] =>
   Object.values((doc as { programs?: Record<string, ProgramSource> }).programs ?? {});
@@ -51,27 +55,31 @@ function systemPrograms(): ProgramSource[] {
     ...programsOf(mpyLcdHello),
     ...programsOf(potThreshold),
     ...programsOf(mpyPotThreshold),
+    ...programsOf(lcdLibrary),
+    ...programsOf(mpyLcdLibrary),
     starterProgram('board.esp32_devkitc_wroom32'),
   ].filter((p): p is ProgramSource => !!p);
 }
 
+/** Sprint 26: a program as its build request (every file, entry first, and its libraries). */
+export const programRequest = (p: ProgramSource): BuildRequest => ({
+  protocol: BUILD_PROTOCOL,
+  profile: p.profile,
+  files: programBuildFiles(p),
+  ...(p.libraries?.length ? { libraries: p.libraries } : {}),
+});
+
 export function systemSourceKeys(): Set<string> {
-  return new Set(
-    systemPrograms().map((p) => sourceKey(p.profile, [{ name: p.fileName, text: p.text }])),
-  );
+  return new Set(systemPrograms().map((p) => requestKey(programRequest(p))));
 }
 
 /** Sprint 18F: the curated sources as build requests (the service prewarms their builds). */
 export function systemBuildRequests(): BuildRequest[] {
   const seen = new Set<string>();
   return systemPrograms()
-    .filter((p) => {
-      const key = sourceKey(p.profile, [{ name: p.fileName, text: p.text }]);
+    .map(programRequest)
+    .filter((r) => {
+      const key = requestKey(r);
       return !seen.has(key) && seen.add(key);
-    })
-    .map((p) => ({
-      protocol: BUILD_PROTOCOL,
-      profile: p.profile,
-      files: [{ name: p.fileName, text: p.text }],
-    }));
+    });
 }
