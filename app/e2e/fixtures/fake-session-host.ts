@@ -58,7 +58,7 @@ const REF_BANKS = FIRMWARE_ARTIFACTS.find((f) => f.id === 'tbi-banks')!.sha256;
  * Scripted MCU behaviour by artifact identity: the pinned reference images, and (Sprint 7) the
  * fake build service's stand-in images of the same curated sketches.
  */
-const SCRIPT: Record<string, 'gpio-proof' | 'banks' | 'logic-quad' | 'logic-override'> = {
+const SCRIPT: Record<string, 'gpio-proof' | 'blink' | 'banks' | 'logic-quad' | 'logic-override'> = {
   [REF_GPIO_PROOF]: 'gpio-proof',
   [STAND_IN.gpioProof]: 'gpio-proof',
   [REF_BANKS]: 'banks',
@@ -67,6 +67,10 @@ const SCRIPT: Record<string, 'gpio-proof' | 'banks' | 'logic-quad' | 'logic-over
   [STAND_IN.logicQuad]: 'logic-quad',
   // Sprint 20 example D: LogicOrOverride.ino (GPIO18 toggled every second, GPIO19 read back).
   [STAND_IN.logicOverride]: 'logic-override',
+  // Sprint 25: BlinkTwoPins.ino (TbiGpioProof's pattern without the GPIO5 read) and InputEcho.ino
+  // (TbiBanks' sweep and GPIO34 echo without the GPIO35/36/39 reads).
+  [STAND_IN.blinkTwoPins]: 'blink',
+  [STAND_IN.inputEcho]: 'banks',
 };
 
 let capacity = 4096;
@@ -237,7 +241,8 @@ class FakeSession {
   private latest: ReturnType<EngineSession['solve']> | null = null;
   private firmware() {
     const t = Number(this.simNs / 1_000_000n); // ms
-    if (SCRIPT[this.req.artifact.sha256] === 'gpio-proof') {
+    const script = SCRIPT[this.req.artifact.sha256];
+    if (script === 'gpio-proof' || script === 'blink') {
       if (this.step === 0) this.serial += 'TBI-ARDUINO-READY\r\n';
       const phase = t % 800;
       if (phase === 0) this.drive(2, 1);
@@ -246,7 +251,8 @@ class FakeSession {
       if (phase === 600) {
         this.drive(18, 0);
       }
-      if (phase === 790) this.serial += `IN=${this.inputs.get(5) ?? 0}\r\n`;
+      if (phase === 790)
+        this.serial += script === 'blink' ? 'BLINK\r\n' : `IN=${this.inputs.get(5) ?? 0}\r\n`;
     } else if (SCRIPT[this.req.artifact.sha256] === 'logic-quad') {
       // The sketch's setup(): GPIO18 and GPIO19 outputs, both HIGH; loop() only waits.
       if (this.step === 0) {

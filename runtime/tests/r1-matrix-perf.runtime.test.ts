@@ -25,7 +25,7 @@ import type { HostSession } from '../host/session.js';
 import { waitEvent, waitState } from '../host/tests/support.js';
 import { Circuit, open } from '../host/tests/r1-support.js';
 import { realHost } from './r2-support.js';
-import { switchedInput } from './r1-support.js';
+import { BANKS_INPUTS, switchedInput, tieFreeInputs } from './r1-support.js';
 
 // No client streams in this test: the client lease must not end the companion session.
 const host = realHost({ stallTimeoutMs: 60_000, leaseMs: 3_600_000 });
@@ -55,6 +55,7 @@ function banksRequest(): CreateSessionRequest {
   const r = c.add('component.resistor');
   const d = c.add('component.led');
   c.ohms(r, 220).wire(`${r}.b`, `${d}.anode`).wire(`${d}.cathode`, 'GND1.ref').pad(4, `${r}.a`);
+  tieFreeInputs(c, BANKS_INPUTS);
   const a = artifact('TbiBanks');
   return { ...c.request(a.sha256), ticket: ticketFor(a.sha256) };
 }

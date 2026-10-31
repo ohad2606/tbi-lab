@@ -14,6 +14,7 @@ import { ticketFor } from '../identity/test-gate.js';
 import { alive, gone, waitEvent, waitState } from '../host/tests/support.js';
 import { PROTOCOL, type CreateSessionRequest, type SessionEvent } from '../host/protocol.js';
 import { open, realHost } from './r2-support.js';
+import { builtExample, runtimeCaps } from './s24-support.js';
 
 const fixture = JSON.parse(
   readFileSync(new URL('./fixtures/s10-bench-session.json', import.meta.url), 'utf8'),
@@ -35,12 +36,18 @@ const lastElectrical = (s: ReturnType<typeof open>) =>
 describe('esp32-bench on the real runtime (Sprint 10 LED cards)', () => {
   it('accepts red, yellow and green cards; firmware echoes the switch and the button; Stop cleans up', async () => {
     assertProvisioned();
-    const fw = artifact('TbiBanks');
+    // Runtime v5 refuses TbiBanks' reads of the unconnected GPIO35/36/39: run the example's sketch.
+    const fw = runtimeCaps().includes('input-read')
+      ? await builtExample('esp32-bench')
+      : {
+          sha256: artifact('TbiBanks').sha256,
+          ticket: () => ticketFor(artifact('TbiBanks').sha256),
+        };
     const req: CreateSessionRequest = {
       ...fixture.request,
       protocol: PROTOCOL,
       artifact: { sha256: fw.sha256 },
-      ticket: ticketFor(fw.sha256),
+      ticket: fw.ticket(),
     };
     const s = open(host, req);
     expect(s.state).toBe('ready');

@@ -24,11 +24,11 @@ const FAKE = 'http://127.0.0.1:7499';
 /** The example sketches' exact source (the examples embed these files). */
 const EXAMPLE_SOURCE: Record<string, string> = {
   'esp32-blink': readFileSync(
-    new URL('../../runtime/firmware/arduino/TbiGpioProof/TbiGpioProof.ino', import.meta.url),
+    new URL('../tests/exampleSketches/BlinkTwoPins.ino', import.meta.url),
     'utf8',
   ),
   'esp32-input-echo': readFileSync(
-    new URL('../../runtime/firmware/arduino/TbiBanks/TbiBanks.ino', import.meta.url),
+    new URL('../tests/exampleSketches/InputEcho.ino', import.meta.url),
     'utf8',
   ),
 };

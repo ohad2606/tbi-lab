@@ -15,6 +15,7 @@ import { ticketFor } from '../identity/test-gate.js';
 import { waitEvent } from '../host/tests/support.js';
 import { Circuit, open, outcomes } from '../host/tests/r1-support.js';
 import { realHost } from './r2-support.js';
+import { tieFreeInputs } from './r1-support.js';
 
 const host = realHost();
 afterAll(() => host.shutdown());
@@ -23,7 +24,8 @@ describe('Sprint 13 P2/P3: a pad wired to GND under real firmware', () => {
   it('HIGH reports the flagged model current; LOW reports 0 A unflagged', async () => {
     assertProvisioned();
     const fw = artifact('TbiGpioProof');
-    const c = new Circuit().psu(3.3).pad(2, 'GND1.ref');
+    // GPIO5 is the firmware's input: held LOW (Runtime v5 refuses a read of an unwired input).
+    const c = tieFreeInputs(new Circuit().psu(3.3).pad(2, 'GND1.ref'), [5]);
     const s = open(host, { ...c.request(fw.sha256), ticket: ticketFor(fw.sha256) });
     expect(s.state, JSON.stringify(s.status().detail)).toBe('ready');
     s.run();

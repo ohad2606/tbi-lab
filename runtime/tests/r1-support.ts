@@ -23,7 +23,25 @@ export function switchedInput(c: Circuit, gpio: 34 | 35): string {
   return sw;
 }
 
+/** The bank-1 inputs TbiBanks reads (GPIO_IN1). */
+export const BANKS_INPUTS = [34, 35, 36, 39] as const;
+
+/**
+ * Hold each of these inputs that the circuit leaves unwired LOW through 10 kΩ to GND. Runtime v5
+ * refuses a read of an input with nothing wired to it (no defined level), and the pinned test
+ * firmware reads inputs a slice does not use; this gives them a defined level and nothing else.
+ */
+export function tieFreeInputs(c: Circuit, gpios: readonly number[]): Circuit {
+  for (const gpio of gpios) {
+    if (c.attachments.some((a) => a.gpio === gpio)) continue;
+    const r = c.add('component.resistor');
+    c.ohms(r, 10_000).wire(`${r}.b`, 'GND1.ref').pad(gpio, `${r}.a`);
+  }
+  return c;
+}
+
 export function realRequest(c: Circuit): CreateSessionRequest {
+  tieFreeInputs(c, BANKS_INPUTS);
   const fw = artifact('TbiBanks');
   return { ...c.request(fw.sha256), ticket: ticketFor(fw.sha256) };
 }

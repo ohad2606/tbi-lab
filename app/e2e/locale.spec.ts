@@ -38,6 +38,7 @@ async function untranslatedWords(page: Page): Promise<string[]> {
     /^I$/, // the current symbol in formulas such as I = V / R (example summaries)
     /^N_\d+$/, // net ids
     /^(Arduino|MicroPython|main|py|Pin|IN|value|machine|duty|duty_u16|SCL|SDA|HD44780|Hello)$/, // Sprint 24: language names, the main.py file, MicroPython API names, I2C signal names, the LCD controller, the text the LCD example shows
+    /^analogRead$/, // Sprint 25: the Arduino API the pot examples name as not supported (LTR-isolated)
     /^[IV]?_(CC|DD|I|IH|IL|O|OH|OL)$/, // Sprint 22: datasheet symbols (I_CC, V_I; the V is removed with the units above)
     /^(k|m|M|G|µ|u|n|p)?(Ω|V|A)$/,
     /^m(Ω|V|A)$/, // units

@@ -48,6 +48,9 @@ export const STAND_IN = {
   logicQuad: sha(standInImage('LogicQuadAnd')),
   // Sprint 20 logic example D: the esp32-logic-override example's sketch.
   logicOverride: sha(standInImage('LogicOrOverride')),
+  // Sprint 25: the esp32-blink and esp32-input-echo examples' own sketches.
+  blinkTwoPins: sha(standInImage('BlinkTwoPins')),
+  inputEcho: sha(standInImage('InputEcho')),
 };
 
 const SKETCHES: Record<string, string> = {
@@ -65,6 +68,14 @@ const SKETCHES: Record<string, string> = {
   ),
   LogicOrOverride: readFileSync(
     new URL('../../tests/exampleSketches/LogicOrOverride.ino', import.meta.url),
+    'utf8',
+  ),
+  BlinkTwoPins: readFileSync(
+    new URL('../../tests/exampleSketches/BlinkTwoPins.ino', import.meta.url),
+    'utf8',
+  ),
+  InputEcho: readFileSync(
+    new URL('../../tests/exampleSketches/InputEcho.ino', import.meta.url),
     'utf8',
   ),
 };
