@@ -1,6 +1,6 @@
 # Sprint 26 — Managed libraries and multi-file programs (DEV)
 
-Branch `sprint-26` (from the Sprint 25 closure head `3c4cbd6`). Target: DEV only (tbi-lab-srv).
+Branch `sprint-26` (from `3c4cbd6`; the rest of the Sprint 25 closure merged in `d677926`). Target: DEV only (tbi-lab-srv).
 Runtime unchanged: Runtime v5 `39f2229a66d45e43`.
 
 ## Phase 0 — baseline (2026-10-31)
@@ -83,6 +83,27 @@ include that needs it; opening a project never rewrites it; user code is never e
   `/lib` (on `sys.path`), each project file syntax-checked by `mpy-cross` (diagnostics name the
   module); a project module may not shadow a library module. `tbi-mklfs` now creates folders
   (strict segment checks) — a new pinned MicroPython build home.
+
+## Gates and deployment (2026-10-31, head `d677926`)
+
+`d677926` = the Sprint 26 work (`2437b80`, `bd38c01`, `99759ac`), the gate test fixes (`92a9658`)
+and a merge of the Sprint 25 closure commits the branch had not yet carried (`a0c2b85`, `f695238`,
+`6c026c9`: the v5 night-light schedule, the current input-echo fixture, the s13 live test).
+
+| Gate | Result |
+|---|---|
+| Typecheck, lint, format, boundary | clean |
+| Unit | 2038 passed, 3 skipped (207 files) |
+| Browser e2e (fake services) | 309 passed, 40 skipped on `99759ac` with 5 failures, all expectations S26 made out of date: "ESP32 LCD" now finds 4 examples; A7's damaged/future cases moved one past schema v6; the LTR-isolated S26 file and library names added to the Hebrew technical-token list. The 3 specs: 17 passed after the fix |
+| Runtime suite (real toolchain, real QEMU v5) | 223 passed, 12 failed, 19 skipped of 254 on `99759ac`. Fixed: `s18f-build-seed` (built only a program's first file; now the whole request with its libraries), `r1-determinism` night-light (closure fixture missing until the merge; 2/2), `s8-policy` and `s8-qemu-tasks` (staging still ran S25 and refused schema v6; 9/9 on S26 staging). Remaining 8 known: the 7 R2 gate-workload tests (`psu_sinking`, Sprint 22 rule) and `s19b-x1` — unchanged owner decisions |
+| Sprint 26 real tests | `s26-multifile.runtime.test.ts` 8/8 |
+| Package | built twice, byte-identical: 34 files, manifest `6fdc715fb6ea2e96` |
+| Staging browser (tbi-s8, real QEMU) | s26-real 2/2; b1 16 passed + 2 skipped; b2 11/11 (a first run hit the staging session-creation rate limit, 20 per 10 min, at 15:20:40 — rerun alone); b3 7/7; services 0 restarts |
+| DEV-Lab deploy | `d677926`, Runtime v5 `39f2229a66d45e43`; the only unit change is the MicroPython bind (S24 → S26 build home); polkit, Caddy, policy and keys unchanged; 0 restarts |
+| DEV-Lab acceptance | 13/13 (S25 regression cases + the two S26 library cases, EN/HE) |
+| Rollback rehearsal | back to `a0c2b85` in 0.9 s (record tool: 113 rows, 0 incompatible), Build/Run/Stop 4/4; forward in 0.8 s, Build/Run/Stop 4/4 and the S26 library cases 2/2 |
+
+After a rollback, schema-v6 projects open read-only on `a0c2b85` (never rewritten).
 
 ## Status
 
