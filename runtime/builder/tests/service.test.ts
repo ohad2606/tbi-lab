@@ -21,7 +21,8 @@ import {
   startTestGate,
   testIdentity,
 } from '../../identity/test-gate.js';
-import { Grants } from '../grants.js';
+import { GLOBAL, Grants } from '../grants.js';
+import { verifyTicket } from '../../identity/ticket.js';
 import { FakeProvider, fakeImage, sketch, tempDir } from './support.js';
 
 const cleanup: string[] = [];
@@ -130,6 +131,34 @@ describe('BuildService', () => {
     // Rebuilt: the record is current again, and is reused.
     expect('cached' in service.submit(req, A)).toBe(true);
     expect(provider.builds).toBe(2);
+  });
+
+  it('Sprint 25: an older own record never hides a current shared one (cache hit and ticket)', async () => {
+    const req = sketch('void setup() {}\nvoid loop() {}\n');
+    const key = sourceKey(req.profile, req.files);
+    // A curated (system) source: its build is recorded under 'global'.
+    const { service, provider, grants } = setup({}, {}, new Set([key]));
+    const first = await finish(service, service.submit(req, A));
+    expect(grants.findBuilds(A, key).map((r) => r.owner)).toEqual([GLOBAL]);
+    const reads = { pins: [18], unresolved: false };
+    const current = grants.findBuilds(A, key)[0]!.build;
+    grants.recordBuild(GLOBAL, {
+      ...current,
+      features: { ...current.features!, requires: ['input-read'], inputReads: reads },
+    });
+    // What an earlier release left: A's own record of the same source and image, analysed by an
+    // older rule set (no analyzer version, no inputReads).
+    const { analyzer: _analyzer, ...old } = current;
+    grants.recordBuild(A, old);
+    expect(grants.findBuilds(A, key).map((r) => r.owner)).toEqual([A, GLOBAL]);
+    // The current shared record answers: a cache hit, no compilation.
+    expect('cached' in service.submit(req, A)).toBe(true);
+    expect(provider.builds).toBe(1);
+    // The ticket carries the current analysis, not the older record's.
+    const lease = service.lease(A, first.artifact!.sha256, 60_000)!;
+    expect(verifyTicket(TEST_TICKET_KEY, lease.ticket)).toMatchObject({
+      features: { requires: ['input-read'], inputReads: reads },
+    });
   });
 
   it('one compilation at a time, three queued, then busy; identical pending input is shared', async () => {

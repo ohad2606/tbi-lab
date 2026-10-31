@@ -21,7 +21,7 @@ import {
 } from './protocol.js';
 import type { Principal } from '../identity/principal.js';
 import { signTicket, type TicketFeatures } from '../identity/ticket.js';
-import { GLOBAL, type Grants, type Owner } from './grants.js';
+import { GLOBAL, type Grants, type Owner, type StoredBuild } from './grants.js';
 import { FEATURES_ANALYZER } from './features.js';
 import type { BuildProvider, ProviderOutput } from './provider.js';
 import type { ArtifactStore } from './store.js';
@@ -276,7 +276,11 @@ export class BuildService {
       return null;
     }
     if (!reference) this.access.grants.touchFor(principal, sha);
-    const f = reference ? null : this.access.grants.features(principal, sha);
+    // Sprint 25: the features of the current analysis of this image (never an older record's,
+    // which would lack what the runtime now needs, e.g. inputReads); none current: the first
+    // (the runtime then refuses what it cannot check, and the next Build writes a current one).
+    const builds = reference ? [] : this.access.grants.buildsOf(principal, sha);
+    const f = (builds.find((b) => this.isCurrent(b)) ?? builds[0])?.features ?? null;
     const features: TicketFeatures | null = f
       ? {
           internalPull: f.internalPull,
@@ -384,15 +388,24 @@ export class BuildService {
     return new Promise((resolve) => this.idle.add(resolve));
   }
 
+  /**
+   * A record of the current rules: analysed by the current rule set, with the inputs the profile
+   * now has (Sprint 24: MicroPython's compile check, its analysis version, the runtime's
+   * capabilities). Anything else is built again (same image, an up-to-date feature report).
+   */
+  private isCurrent(b: StoredBuild): boolean {
+    if ((b.analyzer ?? 1) < FEATURES_ANALYZER) return false;
+    const provider = this.providers.get(b.profile);
+    return !provider || b.profileHash === provider.profileHash;
+  }
+
   private cachedResult(principal: Owner, key: string): BuildResult | null {
-    const found = this.access.grants.findBuild(principal, key);
+    // Sprint 25: the first CURRENT record (own, then shared): an older own record must not hide
+    // a current shared one (a system build is rebuilt under 'global').
+    const hit = this.access.grants.findBuilds(principal, key).find((r) => this.isCurrent(r.build));
+    const found = hit?.build;
     if (!found?.artifact) return null;
-    // Analysed by an older rule set: build again (same image, an up-to-date feature report).
-    if ((found.analyzer ?? 1) < FEATURES_ANALYZER) return null;
-    // Sprint 24: built with other pinned inputs or rules than the profile now has (MicroPython's
-    // compile check, its analysis version, the runtime's capabilities): build again.
-    const provider = this.providers.get(found.profile);
-    if (provider && found.profileHash !== provider.profileHash) return null;
+    this.access.grants.touch(hit!.owner, found.artifact.sha256);
     if (!this.store.exists(found.artifact.sha256)) {
       this.access.grants.dropArtifact(found.artifact.sha256);
       return null;
