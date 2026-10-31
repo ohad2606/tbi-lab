@@ -81,43 +81,55 @@ export function summarize(found: readonly Incompatible[], total: number) {
   };
 }
 
-/** Back up, verify the backup, then delete exactly those rows (by primary key) in one transaction. */
+/**
+ * Back up, verify the backup, then delete exactly those rows, all inside one write transaction: the
+ * rows are read under the lock, and a row is deleted only if it still holds the record that was
+ * backed up (primary key and record), so nothing written meanwhile can be removed.
+ */
 export function removeIncompatible(db: DatabaseSync, targetCaps: string[], backup: string) {
-  if (existsSync(backup)) throw new Error(`${backup} exists: refusing to overwrite a backup`);
-  const found = incompatibleRecords(readRows(db), targetCaps);
-  const text = found.map((f) => JSON.stringify(f.row)).join('\n') + (found.length ? '\n' : '');
-  writeFileSync(backup, text, { mode: 0o600, flag: 'wx' });
-  const fd = openSync(backup, 'r');
-  fsyncSync(fd);
-  closeSync(fd);
-  const back = readBackup(backup);
-  if (
-    back.length !== found.length ||
-    back.some((r, i) => JSON.stringify(r) !== JSON.stringify(found[i]!.row))
-  )
-    throw new Error('backup verification failed: nothing deleted');
+  if (existsSync(backup)) throw new Error('the backup file exists: refusing to overwrite it');
   const del = db.prepare(
-    `DELETE FROM artifact_grant WHERE owner = ? AND sha256 = ? AND source_key = ? AND origin = 'build'`,
+    `DELETE FROM artifact_grant
+     WHERE owner = ? AND sha256 = ? AND source_key = ? AND origin = 'build' AND record IS ?`,
   );
   db.exec('BEGIN IMMEDIATE');
   try {
+    const found = incompatibleRecords(readRows(db), targetCaps);
+    const text = found.map((f) => JSON.stringify(f.row)).join('\n') + (found.length ? '\n' : '');
+    writeFileSync(backup, text, { mode: 0o600, flag: 'wx' });
+    const fd = openSync(backup, 'r');
+    fsyncSync(fd);
+    closeSync(fd);
+    const back = readBackup(backup);
+    if (
+      back.length !== found.length ||
+      back.some((r, i) => JSON.stringify(r) !== JSON.stringify(found[i]!.row))
+    )
+      throw new Error('backup verification failed: nothing deleted');
     let n = 0;
     for (const f of found)
-      n += Number(del.run(f.row.owner, f.row.sha256, f.row.source_key).changes);
+      n += Number(del.run(f.row.owner, f.row.sha256, f.row.source_key, f.row.record).changes);
     if (n !== found.length) throw new Error(`deleted ${n} of ${found.length}: rolled back`);
     db.exec('COMMIT');
+    return found;
   } catch (e) {
     db.exec('ROLLBACK');
     throw e;
   }
-  return found;
 }
 
+/** The backed-up rows. A malformed line is reported by its number only (rows carry principals). */
 export function readBackup(file: string): GrantRow[] {
   return readFileSync(file, 'utf8')
     .split('\n')
     .filter(Boolean)
-    .map((l) => JSON.parse(l) as GrantRow);
+    .map((l, i) => {
+      try {
+        return JSON.parse(l) as GrantRow;
+      } catch {
+        throw new Error(`backup line ${i + 1} is not valid JSON`);
+      }
+    });
 }
 
 /** Put backed-up rows back; a row that exists again (rebuilt since) is kept as it is. */

@@ -192,6 +192,9 @@ export class HostSession {
   private pendingFailure: { reason: FailReason; detail?: unknown } | null = null;
   private endRequest: EndReason | null = null;
   private inputLevels = new Map<number, DigitalLevel>();
+  /** Sprint 25 closure: whether the firmware may read `pad` (Runtime v5 input-read watch). */
+  private readonly watchedPad = (pad: number): boolean =>
+    !!this.inputWatch && (this.inputWatch.all || this.inputWatch.pins.has(pad));
   /**
    * Sprint 25 (Runtime v5, `input-read`): the pads the program may read (from the ticket's
    * analysis; `all`: every wired pad, when a read could not be resolved or the firmware was not
@@ -475,7 +478,7 @@ export class HostSession {
       this.request.attachments.map((a) => a.gpio),
       this.inputLevels,
       this.schedule,
-      (pad) => !!this.inputWatch && (this.inputWatch.all || this.inputWatch.pins.has(pad)),
+      this.watchedPad,
     );
     const servos = new ServoBank(this.request.circuit);
     this.servos = servos.empty ? null : servos;
@@ -731,15 +734,20 @@ export class HostSession {
     // Sprint 12 (R2): what the sensors saw; their responses are scheduled edges.
     if (this.devices && !this.devices.empty) cmds.push(...this.devices.observe(vns, out));
     this.flushDeviceDiagnostics();
-    // Sprint 25 closure: a sensor response would put a watched pad between V_IL and V_IH.
+    // Sprint 25 closure: a sensor response would put a watched input between V_IL and V_IH. It is
+    // not scheduled (no level can be given); the run stops now, before the response, naming it.
     const u = this.devices?.undefinedLevel;
     if (u && !this.pendingFailure) {
+      const board = this.request.circuit.components.find(
+        (c) => c.type === 'board.esp32_devkitc_wroom32',
+      );
       const detail = {
-        code: 'gpio_input_undefined',
-        components: [u.component],
+        code: 'sensor_level_undefined',
+        components: [u.component, ...(board ? [board.id] : [])],
         param: `gpio${u.gpio}`,
         detail: {
-          inputs: [{ gpio: u.gpio, cause: 'between_thresholds', voltage: u.voltage }],
+          gpio: u.gpio,
+          voltage: u.voltage,
           sinceNs: vns.toString(),
           vil: V_IL_V,
           vih: V_IH_V,
@@ -749,7 +757,7 @@ export class HostSession {
         type: 'diagnostic',
         simNs: vns.toString(),
         severity: 'error',
-        code: 'gpio_input_undefined',
+        code: 'sensor_level_undefined',
         detail,
       });
       this.pendingFailure = { reason: 'electrical_error', detail };
@@ -854,6 +862,9 @@ export class HostSession {
         null,
         this.types,
         this.inputLevels,
+        undefined,
+        undefined,
+        this.watchedPad,
       );
       const touched = Object.keys(low.components).filter((id) => c.outcome.components[id]?.pwm);
       const loads = touched.filter((id) => !ZERO_NEUTRAL.has(this.types[id] ?? ''));
@@ -902,6 +913,7 @@ export class HostSession {
       this.inputLevels,
       pairs,
       (solved.analysis ??= analysePwm(low, single, all, this.types, pairs)),
+      this.watchedPad,
     );
     for (const p of c.problems) problems.push({ key: pwmProblemKey(p), detail: { ...p } });
     return this.pwmDone(vns, problems, c.outcome);

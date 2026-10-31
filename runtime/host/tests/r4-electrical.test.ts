@@ -9,7 +9,7 @@ import { combinePwm } from '../pwmElectrical.js';
 import { Circuit } from './r1-support.js';
 
 /** Solve `c` with every listed pad low, each high alone, and all high; then combine. */
-function points(c: Circuit, pads: { gpio: number; duty: number }[]) {
+function points(c: Circuit, pads: { gpio: number; duty: number }[], watched: number[] = []) {
   const req = c.request('0'.repeat(64));
   const e = new EngineSession(req.circuit, { pins: req.attachments });
   const solve = (high: number[]) => {
@@ -30,6 +30,9 @@ function points(c: Circuit, pads: { gpio: number; duty: number }[]) {
     all,
     types,
     new Map(),
+    undefined,
+    undefined,
+    (gpio) => watched.includes(gpio),
   );
   return { ...r, low, single, all };
 }
@@ -80,8 +83,12 @@ describe('T-R4-5: A1 averages, peaks and refusals', () => {
     const r2 = c.add('component.resistor');
     c.ohms(r, 1000).ohms(r2, 1000).wire(`${r}.b`, `${r2}.a`).wire(`${r2}.b`, 'GND1.ref');
     c.pad(18, `${r}.a`).pad(5, `${r}.b`);
-    const { problems } = points(c, [{ gpio: 18, duty: 0.5 }]);
-    expect(problems).toEqual([{ code: 'pwm_input_unsupported', inputs: [5], gpios: [18] }]);
+    // Read by the firmware (watched): the band is a change, refused.
+    expect(points(c, [{ gpio: 18, duty: 0.5 }], [5]).problems).toEqual([
+      { code: 'pwm_input_unsupported', inputs: [5], gpios: [18] },
+    ]);
+    // Not read by the firmware: LOW at both points under the earlier rule, not refused (review M2).
+    expect(points(c, [{ gpio: 18, duty: 0.5 }]).problems).toEqual([]);
   });
 
   it('an MCU input that would read the PWM signal is refused, named', () => {

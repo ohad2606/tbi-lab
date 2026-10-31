@@ -179,9 +179,15 @@ export type EngineErrorCode =
   /**
    * Sprint 25 (Session Host, Runtime v5 `input-read`): the firmware read an ESP32 input that has
    * no defensible digital level (`param`: the first pad; `detail.inputs`: each pad and why:
-   * unconnected, floating, unknown, or between V_IL and V_IH with no previous level).
+   * unconnected, floating, unknown, or between V_IL and V_IH; the ESP32 specifies no hysteresis).
    */
   | 'gpio_input_undefined'
+  /**
+   * Sprint 25 closure (Session Host): a sensor's scheduled response (HC-SR04 echo, DHT22 frame)
+   * would put an ESP32 input the firmware may read between V_IL and V_IH (`param`: the pad;
+   * `detail.voltage`). The response cannot be delivered as levels, so the run stops before it.
+   */
+  | 'sensor_level_undefined'
   /**
    * Sprint 25 (Session Host): the I2C controller clocked a START to a part faster than its rated
    * SCL (`detail.hz`, `detail.max`), or read a byte the modelled part cannot give

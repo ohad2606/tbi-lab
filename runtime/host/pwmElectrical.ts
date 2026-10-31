@@ -307,6 +307,11 @@ export function combinePwm(
   /** Three or more pads: every pair high together (`i < j`), for the pairwise check. */
   pairs: readonly { i: number; j: number; o: SolveSuccess }[] = [],
   analysis: PwmAnalysis = analysePwm(low, single, allHigh, types, pairs),
+  /**
+   * Sprint 25 closure: the pads the firmware may read (Runtime v5 input-read watch). For them a
+   * point between V_IL and V_IH is its own undefined state; other pads keep the earlier rule.
+   */
+  watched: (gpio: number) => boolean = () => false,
 ): PwmCombination {
   const duties = pads.map((p) => p.duty);
   const gpios = pads.map((p) => p.gpio);
@@ -325,12 +330,12 @@ export function combinePwm(
     .filter((p) => p.mode === 'input' && !pwmGpios.has(p.gpio))
     .filter((p) => {
       const prev = prevInputs.get(p.gpio) ?? 0;
-      // Sprint 25 closure: no hysteresis is specified, so a point between V_IL and V_IH is its own
-      // (undefined) state, never the previous level: entering or leaving it is a change too.
+      // Sprint 25 closure: no hysteresis is specified, so for a pad the firmware may read a point
+      // between V_IL and V_IH is its own (undefined) state: entering or leaving it is a change too.
       const at = (o: SolveSuccess) => {
         const q = o.pins?.find((x) => x.gpio === p.gpio);
         if (!q) return prev;
-        return q.voltage > V_IL_V && q.voltage < V_IH_V
+        return watched(p.gpio) && q.voltage > V_IL_V && q.voltage < V_IH_V
           ? 'X'
           : interpretDigitalInput(q.voltage, prev);
       };

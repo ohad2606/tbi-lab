@@ -568,6 +568,8 @@ export const en = {
     '{pins}: the program read this ESP32 input at {voltage}, between {vil} and {vih}. The ESP32 datasheet guarantees no reading there and specifies no hysteresis, so the previous level is not kept either: the run stopped at that read instead of choosing LOW or HIGH. Drive the input to {vil} or below, or {vih} or above.',
   'sim.error.i2c_clock_exceeded':
     '{components}: the program clocks the I2C bus at {hz} when it addresses this display, faster than its PCF8574 backpack is rated for ({max}, NXP datasheet). A real module is not guaranteed to work there, so the run stopped. Use Wire.setClock(100000) or less (MicroPython: freq=100000 or less).',
+  'sim.error.sensor_level_undefined':
+    '{components}: the sensor’s response would put {pins} at {voltage}, between {vil} and {vih}. The ESP32 datasheet guarantees no reading there and specifies no hysteresis, so the simulator cannot give the program the levels of this response: the run stopped before it. Change the divider or wiring so that the signal reaches {vil} or below and {vih} or above.',
   'sim.error.i2c_read_unsupported':
     '{components}: the program reads a byte from this display’s PCF8574 backpack. What a real backpack returns depends on the LCD controller’s pins and the backpack’s own wiring, which are not simulated, so the run stopped instead of inventing a value. The display works for writing; remove the read (Wire.requestFrom).',
   'sim.error.psu_sinking':

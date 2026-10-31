@@ -231,14 +231,13 @@ describe('HC-SR04 driver (scheduled echo)', () => {
       state: 'failed',
       reason: 'electrical_error',
       detail: {
-        code: 'gpio_input_undefined',
-        components: [c.u],
+        code: 'sensor_level_undefined',
+        components: expect.arrayContaining([c.u]),
         param: 'gpio14',
-        detail: { inputs: [{ gpio: 14, cause: 'between_thresholds' }], sinceNs: '9510000' },
+        detail: { gpio: 14, sinceNs: '9510000' },
       },
     });
-    const v = (st.detail as { detail: { inputs: { voltage: number }[] } }).detail.inputs[0]!
-      .voltage;
+    const v = (st.detail as { detail: { voltage: number } }).detail.voltage;
     expect(v).toBeGreaterThan(0.825);
     expect(v).toBeLessThan(2.475);
     // No echo edge was ever scheduled on the pad (the reply, if echoed at all, carries only Q).

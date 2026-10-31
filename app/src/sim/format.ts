@@ -229,6 +229,24 @@ export function engineErrorMessage(
           : '';
       return t('sim.error.i2c_clock_exceeded', { components, hz: hz(d.hz), max: hz(d.max) });
     }
+    // Sprint 25 closure: a sensor response that would leave a read input between the thresholds.
+    case 'sensor_level_undefined': {
+      const d = (error.detail ?? {}) as {
+        gpio?: number;
+        voltage?: number;
+        vil?: number;
+        vih?: number;
+      };
+      const V = (v: number | undefined) =>
+        typeof v === 'number' ? formatResult(locale, v, 'volt') : '';
+      return t('sim.error.sensor_level_undefined', {
+        components,
+        pins: isolateLtr(`GPIO${d.gpio ?? ''}`),
+        voltage: isolateLtr(V(d.voltage)),
+        vil: isolateLtr(`V_IL ${V(d.vil)}`),
+        vih: isolateLtr(`V_IH ${V(d.vih)}`),
+      });
+    }
     case 'i2c_read_unsupported':
       return t('sim.error.i2c_read_unsupported', { components });
     // Sprint 25: the firmware read an ESP32 input with no defensible level (Runtime v5).
@@ -245,7 +263,9 @@ export function engineErrorMessage(
       // its own pins; never the first pin's cause for all of them.
       const groups = new Map<string, { gpio: number; cause: string; voltage?: number }[]>();
       for (const i of d.inputs ?? []) {
-        const g = `${i.cause}|${i.cause === 'between_thresholds' ? (i.voltage ?? '') : ''}`;
+        // Unresolved reads: every non-band pin shares the one "could not tell" sentence.
+        const cause = d.watchAll && i.cause !== 'between_thresholds' ? 'unresolved' : i.cause;
+        const g = `${cause}|${i.cause === 'between_thresholds' ? (i.voltage ?? '') : ''}`;
         groups.set(g, [...(groups.get(g) ?? []), i]);
       }
       if (!groups.size) groups.set('floating|', []);

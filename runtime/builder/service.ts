@@ -276,9 +276,10 @@ export class BuildService {
       return null;
     }
     if (!reference) this.access.grants.touchFor(principal, sha);
-    // Sprint 25: the features of the current analysis of this image (never an older record's,
-    // which would lack what the runtime now needs, e.g. inputReads); none current: the first
-    // (the runtime then refuses what it cannot check, and the next Build writes a current one).
+    // Sprint 25: the features of the current analysis of this image, when one exists (an older
+    // record may lack what the runtime now needs, e.g. inputReads). With none current, the first
+    // record's: this fails closed (no inputReads watches every pin; a `requires` the runtime does
+    // not announce is refused at the handshake), and the next Build writes a current one.
     const builds = reference ? [] : this.access.grants.buildsOf(principal, sha);
     const f = (builds.find((b) => this.isCurrent(b)) ?? builds[0])?.features ?? null;
     const features: TicketFeatures | null = f

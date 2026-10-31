@@ -220,10 +220,13 @@ guaranteed behaviour of the relevant input. Decision (per the closure directive)
   register read (or the arming / delivery check of an edge interrupt, review H1) ends the session
   with `gpio_input_undefined` / `between_thresholds` and the solved voltage. At or below V_IL is
   LOW, at or above V_IH is HIGH (unchanged).
-- The same rule applies to scheduled sensor responses (HC-SR04 echo, DHT22 frame): an edge that
-  would put a watched pad in the band is not scheduled; the session ends naming the sensor and pin.
-- PWM (A1 averaging): an input entering or leaving the band between the operating points is a
-  change (`pwm_input_unsupported`), never "the previous level".
+- Scheduled sensor responses (HC-SR04 echo, DHT22 frame): a response that would put a watched
+  input pad in the band cannot be given as levels; it is not scheduled and the session ends before
+  it with its own code, `sensor_level_undefined` (the sensor, the board, the pin and the voltage;
+  EN/HE) — not as a read the firmware never made (review M1).
+- PWM (A1 averaging): for a watched input, entering or leaving the band between the operating
+  points is a change (`pwm_input_unsupported`), never "the previous level"; unwatched inputs keep
+  the earlier rule (review M2).
 - Unwatched pads and runtimes without `input-read` (v4 and older) keep the level QEMU was last
   given; the firmware cannot read it there on v5 without that being refused. The R1 reference
   harness (`runtime/harness/closedLoop.ts`, the v1 bridge oracle used by `electrical.runtime`)
@@ -252,6 +255,23 @@ read (or every pad, when its reads cannot be resolved) are ever marked, and the 
 separate. Consequence (documented limitation): a read of one watched pin is refused while another
 watched pin of the same register is undefined; a program whose reads cannot be resolved is
 refused at any read while an unwired user pin of that register is undefined.
+
+### Independent review (closure round)
+
+No High finding. Fixed: M1 (sensor refusal reported as a read: now `sensor_level_undefined`, and
+only for input-mode pads), M2 (PWM band state applied to unwatched pads), M3 (the record tool now
+reads, backs up and deletes inside one write transaction, deleting a row only if it still holds the
+backed-up record), L6 (lease comment), L8 (rollback script: restarts the build service on any
+failed step, re-checks for a live session before the restarts, keeps the full database copy
+root-owned outside the tool's writable paths), L9 (a malformed backup line is reported by number,
+never quoted), L10 (unresolved reads share one sentence). Documented, not changed:
+- L4: while the operating point is a placeholder (Sprint 17C; at most until the refusal one tick
+  later) the firmware gets no input change and no `Z` mark, so a read inside that window sees the
+  last level QEMU was given. Pre-existing; the session is refused if the state lasts.
+- L5: on runtimes without `input-read` (v4 and older; i.e. after a rollback) the band keeps the
+  previous level, the v4 semantics.
+- L7: a record whose profile has no loaded provider counts as current (lease only; submit checks
+  the provider first).
 
 ### Diagnostics
 

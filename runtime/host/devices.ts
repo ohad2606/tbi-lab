@@ -100,8 +100,9 @@ export class RuntimeDevices {
   private budgetUsed = 0;
   readonly diagnostics: { simNs: bigint; d: DeviceDiagnostic }[] = [];
   /**
-   * Sprint 25 closure: a response that would put a pad the firmware may read between V_IL and
-   * V_IH (the ESP32 specifies no hysteresis there). The response is not given; the session ends.
+   * Sprint 25 closure: a response that would put an input pad the firmware may read between V_IL
+   * and V_IH (the ESP32 specifies no hysteresis there). The response is not given; the session
+   * ends before it (`sensor_level_undefined`), as no level could be scheduled.
    */
   undefinedLevel: { gpio: number; voltage: number; component: string } | null = null;
 
@@ -281,6 +282,7 @@ export class RuntimeDevices {
   ): Command[] | null {
     // Pad voltages per output state (the engine's state is restored afterwards).
     const volts = new Map<string, Map<number, number>>();
+    const inputs = new Set<number>();
     for (const token of new Set([idle, ...steps.map((s) => s.token)])) {
       this.engine.setPartRuntime(component, key, token);
       const o = this.engine.solve();
@@ -290,6 +292,7 @@ export class RuntimeDevices {
         return this.refuse(vns, component, 'electrical_error');
       }
       volts.set(token, new Map((o.pins ?? []).map((p) => [p.gpio, p.voltage])));
+      for (const p of o.pins ?? []) if (p.mode === 'input') inputs.add(p.gpio);
     }
     this.engine.setPartRuntime(component, key, idle);
     this.engine.solve();
@@ -302,7 +305,7 @@ export class RuntimeDevices {
       for (const pad of this.pads) {
         const v = volts.get(s.token)!.get(pad);
         if (v === undefined) continue;
-        if (v > V_IL_V && v < V_IH_V && this.watched(pad)) {
+        if (v > V_IL_V && v < V_IH_V && inputs.has(pad) && this.watched(pad)) {
           this.undefinedLevel ??= { gpio: pad, voltage: v, component };
           return null;
         }
