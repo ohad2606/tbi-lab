@@ -39,7 +39,8 @@ export const I2C_MODULE_CLOCK_HZ = 80_000_000;
  * (an engine error), at the phase itself:
  * - `i2c_clock_exceeded` (Runtime v5, i2c-clock): the START addressing a part was clocked faster
  *   than the part's rated SCL (the PCF8574: 100 kHz). The TRM's period excludes rise time, so the
- *   real clock is at most this: a refusal is never caused by the approximation.
+ *   real clock is at most this: an ACCEPTED clock is certainly within the rating; a refused one
+ *   is above it by the TRM's figure (rise time could only bring a real bus slightly lower).
  * - `i2c_read_unsupported`: the controller reads a byte from the LCD backpack. A PCF8574 read
  *   returns its port pins' levels, which the HD44780 pins and the backpack's own wiring (the
  *   backlight transistor on P3) decide; neither is modelled, so no byte can be given.

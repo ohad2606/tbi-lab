@@ -1,0 +1,161 @@
+# Sprint 25 — Engineering reliability, MicroPython hardening, Runtime v5
+
+DEV only (`tbi-lab-srv`). Branch `sprint-25`, from the DEV-Lab build `9dd2fd6` (`dev-lab-s24p`).
+
+## Runtime v5 (QEMU patch 0012)
+
+Runtime id `39f2229a66d45e43` = Espressif QEMU `40edccac` + patches 0001–0012. Patch 0012 is
+clean-room from the ESP32 TRM v5.9 (Register 6.30; Table 21.3-1) and the pinned ESP-IDF 3.3.12
+`gpio_ll.h` / `i2c_ll.h`. It adds three bridge capabilities; everything older is unchanged.
+
+| Capability | Wire format | Meaning |
+|---|---|---|
+| `input-read` | host `Z <pad> <0\|1>`; QEMU `N <vns> <mask>` | The host marks pads with no defensible level. A guest read of GPIO_IN/GPIO_IN1 while such a pad is not driving is reported at the read; the host ends the session there. |
+| `gpio-irq` | (no frame) | Edge interrupts (INT_TYPE 1 rising, 2 falling, 3 any) per CPU (INT_ENA bit 2 PRO, bit 0 APP), through new per-CPU interrupt-matrix inputs. Level types, NMI/SDIO enables and wake-up enable stay `U gpio-interrupt` (refused by name). |
+| `i2c-clock` | `B <vns> <bus> S <addr> <rw> <cycles>` | Every START carries the SCL period in 80 MHz cycles (TRM Table 21.3-1: (LOW+1) + HIGH + 7, or + 8 / + 6 + threshold with the SCL filter). Rise time is excluded, so 80 MHz / cycles is an upper bound of the real clock. |
+
+Programs built for a v5 runtime `require` the capabilities they rely on, so a rolled-back v4
+runtime refuses them at the handshake instead of running them unchecked.
+
+## Phase 1 — floating GPIO inputs (P0)
+
+Before: an ESP32 input with nothing holding its net was solved through the leakage model's
+numerical reference to 0 V and read as LOW; an unwired pin read 0 (the emulator's reset value); a
+first read between V_IL and V_IH was LOW. None of these is characterised physics
+(`~/tbi-s24/evidence/m2-input/FINDING-floating-input.md`).
+
+After (Runtime v5):
+- Which pins a program reads comes from the build (`programInputReads`: literal and constant pins of
+  `pinMode(…, INPUT…)`, `digitalRead`, `Pin(…)`, interrupt pins). A read the analysis cannot
+  resolve (computed pin, `gpio_get_level`, a register read), or firmware it did not analyse
+  (prebuilt, reference images), makes every wired pad watched.
+- A watched pad in input mode is marked undefined when: nothing drives its net (the engine's
+  `logic_input_floating` rule: no resistive or source path; junctions, capacitors and input pads
+  do not drive), an undetermined logic level reaches it, nothing is wired to it, or its voltage is
+  between V_IL (0.825 V) and V_IH (2.475 V) with no previous level.
+- When the firmware reads the input register while such a pad is not driving, the session ends at
+  that virtual time: `gpio_input_undefined` (EN/HE, the pin and why). No LOW or HIGH is ever
+  substituted, and no output that follows the read reaches the user.
+- Internal pull resistors stay refused at Build (they are not simulated); the messages say so.
+- Unread pins are untouched (their behaviour, and their determinism baselines, do not change).
+- Editor checks: `gpio_input_floating` reworded (the run stops at such a read);
+  `gpio_input_unconnected` (new) for a pin the program reads with nothing wired to it.
+- Examples corrected: `esp32-blink` no longer reads the unconnected GPIO5; `esp32-input-echo`,
+  `esp32-bench`, `esp32-motion-relay` and `esp32-night-light` no longer read the unconnected
+  GPIO35/36/39 (they now use example sketches in `app/tests/exampleSketches`; the runtime test
+  firmware TbiBanks/TbiGpioProof is unchanged).
+
+Limitation: the runtime sees the register read, not the bit the program uses. A read of GPIO_IN
+while another pad of the same register that the program also reads is undefined is refused too.
+
+## Phase 2 — I2C (P0)
+
+| Path | Before | After |
+|---|---|---|
+| Arduino `Wire.requestFrom` from the LCD backpack | returned the PCF8574 output latch (not the port levels: those depend on the HD44780 pins and the backpack wiring, e.g. P3's backlight transistor) | refused at the read: `i2c_read_unsupported` |
+| A read from an address no part has | released bus 0xFF after the address NACK | unchanged (physically defined) |
+| `Wire.setClock` / `Wire.begin(…, freq)` | unchecked | the programmed SCL period is checked at every START to the display: above the PCF8574's 100 kHz, `i2c_clock_exceeded` |
+| MicroPython `machine.I2C` | freq ≤ 100 kHz checked at Build; reads refused at Build | unchanged, plus the same runtime clock check |
+
+Measured on real QEMU v5: the shipped example (`Wire.begin(21, 22, 100000)`) runs and shows its
+text; `Wire.setClock(400000)` is refused at exactly 400 000 Hz (the TRM formula reproduces the
+IDF's register values exactly); `Wire.requestFrom(0x27, 1)` is refused and nothing it would have
+returned is printed.
+
+## Phase 3 — potentiometer (P1)
+
+Bourns PTV09A datasheet REV. 01/25 (FACTS.md §12):
+- Total resistance: only the standard table, 1, 2, 5, 10, 20, 50, 100, 200, 500 kΩ and 1 MΩ,
+  chosen from a list in the Inspector. Any other value is refused by the editor (`not_standard`)
+  and by the engine (named, with the standard values). Saved projects with another value still
+  open (nothing is migrated); they must pick a standard value to run.
+- End-of-track residual resistance: the datasheet gives only a bound ("500 ohms or ±1 % max."),
+  read as the larger of the two (the sheet does not say which applies). The model keeps an ideal
+  0 Ω contact (ASSUMPTION POT-1, unchanged). New: whenever a segment is shorter than that bound,
+  the result says the values depending on that end are the ideal-track limit, not an exact
+  prediction, and shows the bound.
+- Ratings: unchanged warnings (0.05 W whole track, the derived rated-condition track current per
+  segment and at the wiper, 20 VDC). No damage model: the datasheet publishes no damage threshold.
+- Live wiper on the 0.01 % grid during Run: unchanged.
+
+## Phase 4 — ESP32 + potentiometer (P1)
+
+Examples `esp32-pot-threshold` (Arduino) and `mpy-pot-threshold` (MicroPython): a 10 kΩ PTV09A
+across the 3.3 V supply, wiper to GPIO34 read as a digital level, GPIO4 drives an LED. Real-QEMU
+test `runtime/tests/s25-pot.runtime.test.ts`, both languages: 10 % reads LOW (wiper 0.3300 V, the
+reference engine's value to 1e-9 V, the pad's 50 nA leakage included); turned live to 90 % reads
+HIGH with the LED at the reference output-high current (to 1e-12 A); 50 % (1.65 V) keeps HIGH; 10 %
+reads LOW again. A run that starts at 50 % is refused at the first read (`between_thresholds`).
+
+ADC: **BLOCKED** in both languages. `analogRead` and `machine.ADC` stay refused: QEMU's SAR ADC
+crashes the guest and no measured transfer function exists. No analog reading is simulated.
+
+## Phase 5 — GPIO interrupts (P2, Runtime v5)
+
+Real firmware (`runtime/firmware/arduino/TbiIrq`, ordinary `attachInterrupt`), edges scheduled at
+exact virtual times off the command grid, each ISR answering with one register write whose virtual
+time the runtime reports (`runtime/tests/s25-irq.runtime.test.ts`):
+- CHANGE on GPIO4, RISING on GPIO5, FALLING on GPIO13: every edge of the selected type ran its ISR
+  exactly once, in order; no edge of another type did (60 edges, 40 ISR answers).
+- Latency edge → ISR's first output write: 2.136 µs (CHANGE, 20/20), 2.216 µs (RISING 10/10,
+  FALLING 10/10); identical across runs (deterministic).
+- `attachInterrupt(…, ONHIGH)` (level): the session ends at the register write, naming the facility.
+- MicroPython `Pin.irq(trigger=IRQ_RISING|IRQ_FALLING)` is allowed on Runtime v5 (it uses the same
+  hardware path); wake triggers stay refused.
+
+Known: QEMU runs the two cores in turn (F-R2-1), so an edge that arrives while the other core
+holds the slice is served at the slice's end (seen for polling in Sprint 12; not exercised by
+this schedule, whose answers were all ~2.2 µs).
+
+## Phase 6 — manifest and tablet
+
+The web app manifest is emitted as `assets/manifest-<hash>.json`: a static file server's MIME table
+(Go's, under Caddy) has no type for `.webmanifest`, which was served without a Content-Type;
+`.json` is served as `application/json`, which browsers accept for manifests. No server
+configuration changes. The manifest keeps `"id": "/"`, so installed apps keep their identity.
+
+## Phase 7 — routing
+
+The GND-post lead hook (owner screenshot 4) stays a known limitation: the only prototype fixed 2 of
+12 cases and added 13 crossings elsewhere (`data/deferred-post-fan-prototype.patch`), which fails
+this sprint's low-risk rule. Nothing in routing changed.
+
+## Independent review
+
+A review of the first commit (4a46fcf) found two highs and two mediums, all fixed before the
+runtime used for every result below (`39f2229a66d45e43`):
+- H1: an edge interrupt armed on a pad with no level would have fired from it. Now arming one is
+  reported like a read (`N`), at the arming (`s25-irq` H1 test).
+- H2: when every pin is watched, the board's unwired pins read LOW silently. They are now marked
+  `unconnected` too, so a register read while one is undefined is refused.
+- M1: an open-drain pad that releases its line is not driving (`esp32_gpio_driving()`).
+- M2: the read analysis follows constant arrays, range-for, balanced parentheses and `pulseIn`;
+  `shiftIn`, `rtc_gpio_get_level`, `gpio_ll_get_level`, register reads and `Pin` under another name
+  make it unresolved.
+Documented, not changed: register-level granularity (M3, above); the hold band keeps the previous
+level (M4, owner decision); peripheral-routed pads; a multi-pad message names the first cause.
+
+## Tests
+
+Real QEMU, Runtime v5 `39f2229a66d45e43` (frozen at `~/tbi-s25-rt-release`, checksums verified):
+- `s25-irq` 4/4, `s25-pot` 3/3, `s25-i2c` 3/3 (figures above). MicroPython `Pin.irq`: 20/20 edges,
+  latency 18.9–29.4 µs (the scheduled handler).
+- Whole runtime suite (except `s8-containment`, never run on this host). The failures that are not
+  Sprint 25's were measured on the Sprint 24 source (9dd2fd6) with Runtime v4 in an isolated home:
+  - pre-existing, identical on 9dd2fd6 + v4: the 7 R2 tests built on the gate workload (sessions
+    end `psu_sinking` at 0.89 s: the Sprint 22 rule "supplies never sink", bab7064) and `s19b-x1`
+    (`logic_supply_current_uncharacterized` at create: Sprint 21, 8c825e9; the same request as the
+    `esp32-logic-and` example). Not changed in this sprint.
+  - Sprint 25 behaviour, tests updated: builds on v5 report `inputReads` and require `input-read`
+    (and `i2c-clock` with `i2c`); `Pin.irq` is delivered (the probe arms it on an unconnected pin and
+    is refused, `gpio_input_undefined`); the DHT22 without a pull-up is refused at the read instead
+    of reading the leakage model's LOW; the malformed-reply fault uses an unused verb (`Z` is now
+    v5's); the core-seed test seeds Arduino sketches only.
+  - Prebuilt reference firmware: test tickets carry the input reads the build analysis gives for the
+    firmware's source (as a build would). The R1 examples and the MicroPython button's Arduino twin
+    run the examples' own sketch on v5 (TbiBanks also reads the unconnected GPIO35/36/39).
+  - Determinism pins: the engine's new `levelUndefined` field is the only difference in the
+    Sprint 12 and R1 streams (with it removed every stream hashes to its previous pin exactly, v4
+    and v5: `~/tbi-s25/evidence/drift`); re-pinned. R1 on v5 runs another firmware: new pins.
+- Unit: 202 files, 1988 passed, 3 skipped (the real `mpy-cross` tests, covered by the real-QEMU
+  MicroPython suites). Typecheck and lint clean.

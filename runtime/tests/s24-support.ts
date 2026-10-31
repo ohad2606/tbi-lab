@@ -5,18 +5,24 @@
  * build home (provision.sh mpy-cross + micropython-tools) and TBI_QEMU = a Runtime v4 binary.
  */
 import { createHash } from 'node:crypto';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect } from 'vitest';
-import { ESP32_MICROPYTHON_PROFILE } from '@tbi-lab/domain';
+import {
+  ESP32_ARDUINO_PROFILE,
+  ESP32_MICROPYTHON_PROFILE,
+  programInputReads,
+} from '@tbi-lab/domain';
 import type { SolveSuccess } from '@tbi-lab/engine';
+import { ArduinoEsp32Provider, type ArduinoProfileRecord } from '../builder/arduino.js';
 import { Grants } from '../builder/grants.js';
+import arduinoRecord from '../builder/profiles/esp32-arduino-3.3.12.json' with { type: 'json' };
 import { MicroPythonProvider, type MicroPythonProfileRecord } from '../builder/micropython.js';
 import record from '../builder/profiles/esp32-micropython-1.29.json' with { type: 'json' };
 import type { BuildResult } from '../builder/protocol.js';
 import { BuildService, DEFAULT_LIMITS } from '../builder/service.js';
 import { ArtifactStore } from '../builder/store.js';
-import { principalFor, TEST_TICKET_KEY } from '../identity/test-gate.js';
+import { principalFor, TEST_TICKET_KEY, ticketFor } from '../identity/test-gate.js';
 import { openAccessPolicy } from '../policy/testing.js';
 import { PROTOCOL, type CreateSessionRequest, type SessionEvent } from '../host/protocol.js';
 import type { SessionHost } from '../host/host.js';
@@ -35,6 +41,34 @@ export const runtimeCaps = (): string[] =>
       capabilities?: string[];
     }
   ).capabilities ?? [];
+
+/**
+ * Sprint 25: the features a build reports on the provisioned runtime. On a Runtime v5 (`input-read`)
+ * every build also declares the inputs it reads (the host watches them) and requires the v5
+ * capabilities it relies on, so a rolled-back v4 runtime refuses it; on v4 the expectation is unchanged.
+ */
+export function onRuntime<T extends { requires?: string[] }>(
+  expected: T,
+  language: 'arduino-cpp' | 'micropython',
+  text: string,
+  caps: readonly string[] = runtimeCaps(),
+): T & { inputReads?: { pins: number[]; unresolved: boolean } } {
+  if (!caps.includes('input-read')) return expected;
+  const extra = [
+    'input-read',
+    ...(expected.requires?.includes('i2c') && caps.includes('i2c-clock') ? ['i2c-clock'] : []),
+  ];
+  return {
+    ...expected,
+    requires: [...(expected.requires ?? []), ...extra].sort(),
+    inputReads: programInputReads({
+      language,
+      profile: '',
+      fileName: language === 'micropython' ? 'main.py' : 'sketch.ino',
+      text,
+    }),
+  };
+}
 
 export class MpyStack {
   readonly store = mkdtempSync(join('/var/tmp', 's24-mpy-store-'));
@@ -106,6 +140,71 @@ export class MpyStack {
     expect(s.run()).toEqual({ ok: true });
     return { s, req, build };
   }
+}
+
+/**
+ * Sprint 25: an Arduino example's OWN sketch, built by the real Arduino provider on the provisioned
+ * runtime's capabilities, its image placed in $TBI_RUNTIME_HOME/artifacts (where `realHost()`
+ * serves firmware), and a ticket carrying the build's features (its input reads included), as the
+ * build service would issue it. Built once per example per test file.
+ */
+const builtExamples = new Map<string, Promise<{ sha256: string; ticket: () => string }>>();
+export function builtExample(id: string): Promise<{ sha256: string; ticket: () => string }> {
+  let p = builtExamples.get(id);
+  if (!p) {
+    p = (async () => {
+      const doc = JSON.parse(
+        readFileSync(new URL(`../../app/src/examples/data/${id}.json`, import.meta.url), 'utf8'),
+      ) as { programs: Record<string, { text: string }> };
+      const text = Object.values(doc.programs)[0]!.text;
+      const store = mkdtempSync(join('/var/tmp', 's25-example-store-'));
+      const work = mkdtempSync(join('/var/tmp', 's25-example-work-'));
+      try {
+        const svc = new BuildService(
+          [
+            new ArduinoEsp32Provider({
+              profile: ESP32_ARDUINO_PROFILE,
+              record: arduinoRecord as ArduinoProfileRecord,
+              home: join(RT, 'arduino'),
+              retainedOutputBytes: 256 * 1024,
+              runtimeCapabilities: runtimeCaps(),
+            }),
+          ],
+          new ArtifactStore({ dir: store, capBytes: 256 * 1024 * 1024, graceMs: 0 }),
+          work,
+          DEFAULT_LIMITS,
+          {
+            grants: new Grants(':memory:'),
+            ticketKey: TEST_TICKET_KEY,
+            systemKeys: new Set(),
+            ...openAccessPolicy(),
+          },
+        );
+        const out = svc.submit(
+          {
+            protocol: 'tbi-lab.build/1',
+            profile: ESP32_ARDUINO_PROFILE.id,
+            files: [{ name: 'sketch.ino', text }],
+          },
+          A,
+        );
+        if (!('cached' in out)) await svc.whenIdle();
+        const r = 'cached' in out ? out.cached : svc.status(out.buildId, out.token, A)!.result!;
+        expect(r.ok, JSON.stringify(r.diagnostics)).toBe(true);
+        const sha256 = r.artifact!.sha256;
+        // Content-addressed: an image already there under this hash is these bytes (the host
+        // verifies the hash at every session).
+        const dest = join(RT, 'artifacts', `${sha256}.bin`);
+        if (!existsSync(dest)) copyFileSync(join(store, `${sha256}.bin`), dest);
+        const features = r.features!;
+        return { sha256, ticket: () => ticketFor(sha256, A, features) };
+      } finally {
+        for (const d of [store, work]) rmSync(d, { recursive: true, force: true });
+      }
+    })();
+    builtExamples.set(id, p);
+  }
+  return p;
 }
 
 /** A fixture request (the app's request for an example) and the example's main.py. */

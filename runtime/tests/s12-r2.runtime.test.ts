@@ -18,6 +18,7 @@ import { serialText, waitEvent } from '../host/tests/support.js';
 import { Circuit, open } from '../host/tests/r1-support.js';
 import { realHost } from './r2-support.js';
 import { stopped } from './r1-support.js';
+import { runtimeCaps } from './s24-support.js';
 
 const host = realHost();
 afterAll(() => host.shutdown());
@@ -136,6 +137,29 @@ describe('R2 on the real runtime', () => {
     const c = new Circuit().psu(3.3);
     const u = c.add('sensor.dht22');
     c.wire('PSU1.positive', `${u}.vdd`).wire(`${u}.gnd`, 'GND1.ref').pad(4, `${u}.data`);
+    if (runtimeCaps().includes('input-read')) {
+      // Sprint 25 (Runtime v5): between the sensor's bits nothing holds the open-drain DATA line,
+      // so it has no level; the first such read ends the session, naming GPIO4. Before v5 the
+      // read returned the leakage model's LOW and the firmware reported a read failure (E n): a
+      // level no datasheet gives. No frame is invented either way.
+      assertProvisioned();
+      const a = artifact('TbiDht22');
+      const s = open(host, { ...c.request(a.sha256), ticket: ticketFor(a.sha256) });
+      expect(s.state, JSON.stringify(s.status().detail)).toBe('ready');
+      expect(s.run()).toEqual({ ok: true });
+      await waitEvent(s, (e) => e.type === 'state' && e.state === 'failed', 120_000);
+      expect(s.status()).toMatchObject({
+        state: 'failed',
+        reason: 'electrical_error',
+        detail: {
+          code: 'gpio_input_undefined',
+          param: 'gpio4',
+          detail: { inputs: [{ gpio: 4, cause: 'floating' }] },
+        },
+      });
+      expect(serialText(s)).not.toMatch(/^T -?\d+ H \d+/m);
+      return;
+    }
     const s = await start(c, 'TbiDht22', 'TBI-DHT22-READY');
     const lines = await nextLines(s, /^(T -?\d+ H \d+|E \d+)\r?$/gm, 2, 0);
     await stopped(s);

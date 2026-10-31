@@ -237,10 +237,15 @@ export function engineErrorMessage(
         inputs?: { gpio: number; cause: string; voltage?: number }[];
         vil?: number;
         vih?: number;
+        watchAll?: boolean;
       };
       const inputs = d.inputs ?? [];
       const first = inputs[0];
-      const key = `sim.error.gpio_input_undefined.${first?.cause ?? 'floating'}`;
+      // Review H2: when the program's reads could not be told, it is not known that it read this pin.
+      const key =
+        d.watchAll && first?.cause !== 'between_thresholds'
+          ? 'sim.error.gpio_input_undefined.unresolved'
+          : `sim.error.gpio_input_undefined.${first?.cause ?? 'floating'}`;
       const V = (v: number | undefined) =>
         typeof v === 'number' ? formatResult(locale, v, 'volt') : '';
       return t(isMessageKey(key) ? key : 'sim.error.gpio_input_undefined.floating', {

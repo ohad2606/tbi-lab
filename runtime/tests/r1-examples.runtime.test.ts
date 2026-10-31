@@ -14,14 +14,29 @@ import type { HostSession } from '../host/session.js';
 import { waitEvent } from '../host/tests/support.js';
 import { realHost } from './r2-support.js';
 import { close, started, stopped } from './r1-support.js';
+import { builtExample, runtimeCaps } from './s24-support.js';
 
 const host = realHost();
 afterAll(() => host.shutdown());
 
-function fixture(name: string): CreateSessionRequest {
+/**
+ * Sprint 25: on a Runtime v5 (`input-read`) the examples run their OWN sketch, built by the real
+ * build service (TbiBanks, their program before Sprint 25, also reads the unconnected GPIO35/36/39,
+ * which v5 refuses: no level is invented for them). Earlier runtimes keep the pinned TbiBanks.
+ */
+async function fixture(name: string, example: string): Promise<CreateSessionRequest> {
   const fx = JSON.parse(readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8')) as {
     request: Omit<CreateSessionRequest, 'artifact' | 'ticket'>;
   };
+  if (runtimeCaps().includes('input-read')) {
+    const b = await builtExample(example);
+    return {
+      ...fx.request,
+      protocol: PROTOCOL,
+      artifact: { sha256: b.sha256 },
+      ticket: b.ticket(),
+    };
+  }
   const fw = artifact('TbiBanks');
   return {
     ...fx.request,
@@ -79,7 +94,7 @@ function engine(
 
 describe('the R1 curated examples on the real runtime', () => {
   it('esp32-motion-relay: motion pulls the relay in; the alarm LED lights and the buzzer sounds', async () => {
-    const req = fixture('r1-motion-relay-session.json');
+    const req = await fixture('r1-motion-relay-session.json', 'esp32-motion-relay');
     const s = await started(host, req);
     const set = live(s, req);
     const alarm = (o: SolveSuccess) =>
@@ -103,7 +118,7 @@ describe('the R1 curated examples on the real runtime', () => {
   });
 
   it('esp32-night-light: dark lights all three channels (white); bright turns them off', async () => {
-    const req = fixture('r1-night-light-session.json');
+    const req = await fixture('r1-night-light-session.json', 'esp32-night-light');
     const s = await started(host, req);
     const set = live(s, req);
     const ch = (o: SolveSuccess) => o.components.D1!.currents!;

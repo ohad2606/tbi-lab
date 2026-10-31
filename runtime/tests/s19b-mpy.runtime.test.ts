@@ -37,6 +37,7 @@ import type { HostSession } from '../host/session.js';
 import { serialText, waitEvent } from '../host/tests/support.js';
 import { open, reference } from '../host/tests/r1-support.js';
 import { realHost } from './r2-support.js';
+import { runtimeCaps } from './s24-support.js';
 
 const RT = process.env.TBI_RUNTIME_HOME ?? '';
 const V4 = (process.env.TBI_QEMU ?? '').length > 0;
@@ -196,6 +197,22 @@ describe.skipIf(!RT || !V4)(
       it(`${name} is refused by name at the access (${facility})`, async () => {
         const { s } = await run(program);
         const st = await terminal(s);
+        if (facility === 'interrupt' && runtimeCaps().includes('gpio-irq')) {
+          // Sprint 25 (Runtime v5): edge interrupts are delivered. This probe arms one on GPIO4,
+          // which nothing is wired to in this circuit: it has no level, so the arming (review H1)
+          // or the read after it ends the session, naming the pin. Never an invented count.
+          expect(st).toMatchObject({
+            state: 'failed',
+            reason: 'electrical_error',
+            detail: {
+              code: 'gpio_input_undefined',
+              param: 'gpio4',
+              detail: { inputs: [{ gpio: 4, cause: 'unconnected' }] },
+            },
+          });
+          expect(serialText(s)).not.toMatch(/IRQ-COUNT/);
+          return;
+        }
         expect(st).toMatchObject({
           state: 'failed',
           reason: 'unsupported_feature',

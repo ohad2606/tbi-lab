@@ -113,6 +113,20 @@ export const TEST_SUBJECT = 'user-a';
 export const principalFor = (subject = TEST_SUBJECT): Principal =>
   derivePrincipal(TEST_IDENTITY, subject);
 
+/**
+ * Sprint 25 (Runtime v5, `input-read`): the input reads of a prebuilt reference firmware, by image
+ * hash, as the build service would declare them for that source (harness/env.ts `artifact`). A
+ * ticket for such an image without explicit features carries them, so the host watches the pins
+ * the firmware reads, as it does for every built program.
+ */
+const firmwareReads = new Map<string, NonNullable<TicketFeatures['inputReads']>>();
+export function declareFirmwareReads(
+  sha256: string,
+  reads: NonNullable<TicketFeatures['inputReads']>,
+): void {
+  firmwareReads.set(sha256, reads);
+}
+
 /** A run ticket as the build service would issue it after a lease (default: 10 minutes). */
 export function ticketFor(
   sha256: string,
@@ -120,11 +134,22 @@ export function ticketFor(
   features: TicketFeatures | null = null,
   ttlMs = 600_000,
 ): string {
+  const reads = firmwareReads.get(sha256);
   return signTicket(TEST_TICKET_KEY, {
     v: 1,
     principal,
     sha256,
-    features,
+    features:
+      features ??
+      (reads
+        ? {
+            internalPull: [],
+            gpioInterrupt: [],
+            restart: false,
+            unsupported: [],
+            inputReads: reads,
+          }
+        : null),
     exp: Date.now() + ttlMs,
   });
 }

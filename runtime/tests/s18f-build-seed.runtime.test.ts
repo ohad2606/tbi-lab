@@ -67,7 +67,11 @@ describe.skipIf(!RT)('S18F core seed on the real toolchain', () => {
   it('seeded builds are byte-identical to cold builds for every curated example; latency', async () => {
     const seeds = join(root, 'seeds');
     mkdirSync(seeds, { recursive: true });
-    const curated = systemBuildRequests().map((r) => r.files[0]!.text);
+    // The Arduino toolchain's seed: the curated Arduino sketches (the MicroPython examples, curated
+    // since Sprint 24, are built by the MicroPython profile, which has no core to seed).
+    const curated = systemBuildRequests()
+      .filter((r) => r.profile === ESP32_ARDUINO_PROFILE.id)
+      .map((r) => r.files[0]!.text);
     const sweep = curated.find((t) => t.includes('servo'))!;
     const seeded = provider(seeds);
     const evidence: Record<string, unknown> = {};

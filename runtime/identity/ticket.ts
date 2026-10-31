@@ -79,6 +79,7 @@ function validFeatures(f: unknown): f is TicketFeatures | null {
       (typeof o.inputReads === 'object' &&
         o.inputReads !== null &&
         ints((o.inputReads as Record<string, unknown>).pins) &&
+        (o.inputReads as { pins: number[] }).pins.every((n) => n < 40) &&
         typeof (o.inputReads as Record<string, unknown>).unresolved === 'boolean'))
   );
 }

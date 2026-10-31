@@ -26,19 +26,25 @@ i2c-clock: each START frame carries the SCL period programmed then, in 80 MHz mo
 as TRM v5.9 Table 21.3-1 defines it from SCL_LOW_PERIOD, SCL_HIGH_PERIOD and I2C_SCL_FILTER_CFG
 (now stored): B <vns> <bus> S <addr> <rw> <cycles>. The host checks it against the addressed
 part's rated clock. Rise time is not included, so the frequency derived is an upper bound.
+
+Review fixes (Sprint 25): an enabled edge interrupt on an undefined pad is reported like a read
+(raised while the bridge answers the host, it is sent once the reply is complete, never
+re-entrantly); a released open-drain simple-GPIO pad reads the applied level, not its own latch;
+I2C_SCL_FILTER_CFG resets to 0x8 (TRM v5.9 Register 21.19); each CPU's GPIO interrupt line moves
+only when its level changes.
 ---
- hw/gpio/esp32_gpio.c           | 161 +++++++++++++++++++++++++++++++--
- hw/i2c/esp32_i2c.c             |  27 +++++-
- hw/misc/tbi_bridge.c           |  52 ++++++++++-
+ hw/gpio/esp32_gpio.c           | 206 +++++++++++++++++++++++++++++++--
+ hw/i2c/esp32_i2c.c             |  27 ++++-
+ hw/misc/tbi_bridge.c           |  81 ++++++++++++-
  hw/xtensa/esp32.c              |   7 ++
- hw/xtensa/esp32_intc.c         |  50 ++++++++++
- include/hw/gpio/esp32_gpio.h   |  32 +++++++
+ hw/xtensa/esp32_intc.c         |  50 ++++++++
+ include/hw/gpio/esp32_gpio.h   |  33 ++++++
  include/hw/i2c/esp32_i2c.h     |   5 +
  include/hw/xtensa/esp32_intc.h |   8 ++
- 8 files changed, 329 insertions(+), 13 deletions(-)
+ 8 files changed, 403 insertions(+), 14 deletions(-)
 
 diff --git a/hw/gpio/esp32_gpio.c b/hw/gpio/esp32_gpio.c
-index fe0a02e..0e76a1a 100644
+index fe0a02e..ec2905d 100644
 --- a/hw/gpio/esp32_gpio.c
 +++ b/hw/gpio/esp32_gpio.c
 @@ -29,7 +29,20 @@
@@ -63,9 +69,26 @@ index fe0a02e..0e76a1a 100644
   * the GPIO matrix input routing (FUNCm_IN_SEL is storage only), IO_MUX pad functions, internal
   * pull-ups/pull-downs and drive strength. Peripheral signals other than I2C carry no meaning for
   * the TBI host (ADR-011 §3).
-@@ -62,6 +75,12 @@ static uint64_t esp32_gpio_drivers(Esp32GpioState *s)
+@@ -61,7 +74,29 @@ static uint64_t esp32_gpio_drivers(Esp32GpioState *s)
+     return ((uint64_t)s->enable | ((uint64_t)(s->enable1 & 0xff) << 32)) & PADS_OUTPUT;
  }
  
++/*
++ * TBI Lab (Sprint 25, review M1): pads that actually drive their net. An open-drain simple-GPIO
++ * pad (GPIO_PINn_PAD_DRIVER) outputting 1 is released: it reads the applied level like an input.
++ */
++static uint64_t esp32_gpio_driving(Esp32GpioState *s)
++{
++    uint64_t od = 0;
++
++    for (int i = 0; i < ESP32_GPIO_PADS; i++) {
++        if ((s->regs[(0x88 + 4 * i) / 4] >> 2) & 1) {
++            od |= 1ULL << i;
++        }
++    }
++    return esp32_gpio_drivers(s) & ~(od & esp32_gpio_levels(s));
++}
++
  #define TBI_A_GPIO_PIN0         0x88
 +/* GPIO_PINn_REG fields (TRM v5.9 Register 6.30). */
 +#define TBI_PIN_INT_TYPE(v)     (((v) >> 7) & 7)
@@ -76,7 +99,12 @@ index fe0a02e..0e76a1a 100644
  #define TBI_A_GPIO_FUNC0_OUT    0x530
  #define TBI_SIG_GPIO_OUT        256
  #define TBI_PAD_STATE_UNKNOWN   0xff
-@@ -151,6 +170,72 @@ static uint64_t esp32_gpio_inputs(Esp32GpioState *s)
+@@ -147,10 +182,99 @@ static void esp32_gpio_update_pads(Esp32GpioState *s)
+ /* GPIO_IN / GPIO_IN1: a driving pad reads its own output, any other pad the applied level. */
+ static uint64_t esp32_gpio_inputs(Esp32GpioState *s)
+ {
+-    uint64_t drivers = esp32_gpio_drivers(s);
++    uint64_t drivers = esp32_gpio_driving(s);
      return ((esp32_gpio_levels(s) & drivers) | (s->ext_in & ~drivers)) & PADS_EXIST;
  }
  
@@ -109,6 +137,8 @@ index fe0a02e..0e76a1a 100644
 + * (gpio-irq) Latch the edges since the last check into STATUS, then drive both CPU lines. Called
 + * after every change of an input level, an output, a pin configuration or the status.
 + */
++static void esp32_gpio_report_undefined(Esp32GpioState *s, uint64_t bank);
++
 +static void esp32_gpio_irq_update(Esp32GpioState *s)
 +{
 +    uint64_t in = esp32_gpio_inputs(s);
@@ -131,14 +161,35 @@ index fe0a02e..0e76a1a 100644
 +            }
 +        }
 +    }
-+    qemu_set_irq(s->cpu_irq[ESP32_GPIO_IRQ_PRO], esp32_gpio_cpu_int(s, TBI_INT_ENA_PRO) != 0);
-+    qemu_set_irq(s->cpu_irq[ESP32_GPIO_IRQ_APP], esp32_gpio_cpu_int(s, TBI_INT_ENA_APP) != 0);
++    /*
++     * Sprint 25 (review H1): an enabled edge interrupt on a pad whose level the host marked
++     * undefined watches that level as surely as a read does: reported the same way (the bridge
++     * defers it while it is answering the host).
++     */
++    {
++        uint64_t armed = 0;
++        for (int i = 0; i < ESP32_GPIO_PADS; i++) {
++            uint32_t pin = esp32_gpio_pin_reg(s, i);
++            if (TBI_PIN_INT_TYPE(pin) && TBI_PIN_INT_ENA(pin) & (TBI_INT_ENA_PRO | TBI_INT_ENA_APP)) {
++                armed |= 1ULL << i;
++            }
++        }
++        esp32_gpio_report_undefined(s, armed);
++    }
++    /* Each CPU line moves only when its level changes (review L5: a shared CPU interrupt). */
++    for (int c = 0; c < 2; c++) {
++        int level = esp32_gpio_cpu_int(s, c == ESP32_GPIO_IRQ_PRO ? TBI_INT_ENA_PRO : TBI_INT_ENA_APP) != 0;
++        if (level != s->cpu_irq_level[c]) {
++            s->cpu_irq_level[c] = level;
++            qemu_set_irq(s->cpu_irq[c], level);
++        }
++    }
 +}
 +
 +/* (input-read) A read of the input register covering `bank`: report its undefined input pads. */
 +static void esp32_gpio_report_undefined(Esp32GpioState *s, uint64_t bank)
 +{
-+    uint64_t u = s->undefined & ~esp32_gpio_drivers(s) & bank & PADS_EXIST & ~s->undefined_reported;
++    uint64_t u = s->undefined & ~esp32_gpio_driving(s) & bank & PADS_EXIST & ~s->undefined_reported;
 +
 +    if (u) {
 +        s->undefined_reported |= u;
@@ -149,7 +200,7 @@ index fe0a02e..0e76a1a 100644
  static uint64_t esp32_gpio_classic_read(Esp32GpioState *s, hwaddr addr)
  {
      switch (addr) {
-@@ -165,13 +250,30 @@ static uint64_t esp32_gpio_classic_read(Esp32GpioState *s, hwaddr addr)
+@@ -165,13 +289,30 @@ static uint64_t esp32_gpio_classic_read(Esp32GpioState *s, hwaddr addr)
      case A_GPIO_STRAP:
          return s->strap_mode;
      case A_GPIO_IN:
@@ -180,7 +231,7 @@ index fe0a02e..0e76a1a 100644
      case A_GPIO_OUT_W1TS:
      case A_GPIO_OUT_W1TC:
      case A_GPIO_OUT1_W1TS:
-@@ -237,38 +339,53 @@ static void esp32_gpio_classic_write(Esp32GpioState *s, hwaddr addr, uint32_t v)
+@@ -237,38 +378,53 @@ static void esp32_gpio_classic_write(Esp32GpioState *s, hwaddr addr, uint32_t v)
          return; /* read-only */
      case A_GPIO_STATUS:
          s->status = v;
@@ -243,7 +294,7 @@ index fe0a02e..0e76a1a 100644
  }
  
  static uint64_t esp32_gpio_read(void *opaque, hwaddr addr, unsigned int size)
-@@ -313,6 +430,25 @@ static void esp32_gpio_pad_in(void *opaque, int pad, int level)
+@@ -313,6 +469,28 @@ static void esp32_gpio_pad_in(void *opaque, int pad, int level)
      } else {
          s->ext_in &= ~(1ULL << pad);
      }
@@ -266,19 +317,23 @@ index fe0a02e..0e76a1a 100644
 +        s->undefined &= ~(1ULL << pad);
 +        s->undefined_reported &= ~(1ULL << pad);
 +    }
++    if (s->classic) {
++        esp32_gpio_irq_update(s); /* an armed edge interrupt on it (review H1) */
++    }
  }
  
  static const MemoryRegionOps uart_ops = {
-@@ -335,6 +471,8 @@ static void esp32_gpio_reset_hold(Object *obj, ResetType type)
+@@ -335,6 +513,9 @@ static void esp32_gpio_reset_hold(Object *obj, ResetType type)
      memset(s->regs, 0, sizeof(s->regs));
      s->out_sel_written = 0;
      esp32_gpio_update_pads(s);
 +    s->irq_last_in = esp32_gpio_inputs(s);
++    s->cpu_irq_level[0] = s->cpu_irq_level[1] = -1; /* drive both lines again */
 +    esp32_gpio_irq_update(s);
  }
  
  static void esp32_gpio_realize(DeviceState *dev, Error **errp)
-@@ -359,6 +497,9 @@ static void esp32_gpio_init(Object *obj)
+@@ -359,6 +540,9 @@ static void esp32_gpio_init(Object *obj)
          s->pad_func[i] = TBI_SIG_GPIO_OUT;
      }
      qdev_init_gpio_in_named(DEVICE(obj), esp32_gpio_pad_in, ESP32_GPIO_PAD_IN, ESP32_GPIO_PADS);
@@ -289,7 +344,7 @@ index fe0a02e..0e76a1a 100644
  
  static Property esp32_gpio_properties[] = {
 diff --git a/hw/i2c/esp32_i2c.c b/hw/i2c/esp32_i2c.c
-index ae964ed..d7b9447 100644
+index ae964ed..e8ac551 100644
 --- a/hw/i2c/esp32_i2c.c
 +++ b/hw/i2c/esp32_i2c.c
 @@ -7,6 +7,24 @@
@@ -321,7 +376,7 @@ index ae964ed..d7b9447 100644
      s->sda_sample_reg = 0;
      s->high_period_reg = 0;
      s->low_period_reg = 0;
-+    s->scl_filter_cfg_reg = 0;
++    s->scl_filter_cfg_reg = 0x8; /* TRM v5.9 Register 21.19: SCL_FILTER_EN 1, THRES 0 */
      s->start_hold_reg = 0;
      s->rstart_setup_reg = 0;
      s->stop_hold_reg = 0;
@@ -355,7 +410,7 @@ index ae964ed..d7b9447 100644
                          ack = tbi_bridge_i2c(s->tbi_bus, 'W', data);
                      }
 diff --git a/hw/misc/tbi_bridge.c b/hw/misc/tbi_bridge.c
-index 21810f1..0db0b25 100644
+index 21810f1..e5639a4 100644
 --- a/hw/misc/tbi_bridge.c
 +++ b/hw/misc/tbi_bridge.c
 @@ -25,6 +25,9 @@
@@ -424,7 +479,18 @@ index 21810f1..0db0b25 100644
      QEMUTimer *tick;
      int64_t next_tick_ns;
      uint8_t rx_pending[TBI_RX_PENDING_MAX];
-@@ -320,6 +335,16 @@ static void tbi_reply(TbiBridge *s, bool allow_rx)
+@@ -136,6 +151,10 @@ struct TbiBridge {
+     int bus_got;
+     int bus_value;
+ 
++    /* (input-read) inside an exchange: pads to report once it has been answered (review H1). */
++    bool exchanging;
++    uint64_t input_read_pending;
++
+     /* (unmodelled) Facilities already reported (one U frame each). */
+     uint32_t unmodelled_sent;
+     /*
+@@ -320,6 +339,16 @@ static void tbi_reply(TbiBridge *s, bool allow_rx)
              qemu_set_irq(s->pad_in[pad], (int)level);
              continue;
          }
@@ -441,7 +507,43 @@ index 21810f1..0db0b25 100644
          if (line[0] == 'J' && line[1] == ' ') {
              int64_t vns;
              unsigned pad, level;
-@@ -488,6 +513,26 @@ void tbi_bridge_unmodelled(const char *facility)
+@@ -372,6 +401,8 @@ static void tbi_reply(TbiBridge *s, bool allow_rx)
+     }
+ }
+ 
++static void tbi_flush_input_read(TbiBridge *s);
++
+ static void tbi_exchange(TbiBridge *s, int64_t frame_ns, const char *frame, bool allow_rx)
+ {
+     unsigned before = s->sched_len;
+@@ -379,11 +410,26 @@ static void tbi_exchange(TbiBridge *s, int64_t frame_ns, const char *frame, bool
+ 
+     s->frame_ns = frame_ns;
+     tbi_send(s, frame, strlen(frame));
++    s->exchanging = true;
+     tbi_reply(s, allow_rx);
++    s->exchanging = false;
+     tbi_flush_rx(s);
+     if (s->sched_len != before || (before && s->sched[0].vns != head)) {
+         tbi_sched_arm(s);
+     }
++    tbi_flush_input_read(s);
++}
++
++static void tbi_send_input_read(TbiBridge *s, uint64_t pads);
++
++/* (input-read) Report what was deferred while answering the host (never re-entrantly). */
++static void tbi_flush_input_read(TbiBridge *s)
++{
++    while (s->input_read_pending && !s->exchanging) {
++        uint64_t pads = s->input_read_pending;
++        s->input_read_pending = 0;
++        tbi_send_input_read(s, pads);
++    }
+ }
+ 
+ /* A pad changed: (drive << 1) | level, from hw/gpio/esp32_gpio.c. */
+@@ -488,6 +534,34 @@ void tbi_bridge_unmodelled(const char *facility)
      tbi_exchange(s, now, frame, false);
  }
  
@@ -450,25 +552,33 @@ index 21810f1..0db0b25 100644
 + * the host marked undefined, were not driving (hw/gpio/esp32_gpio.c). Reported at the read itself;
 + * the host decides (it ends the session naming the pads). Without a bridge nothing is reported.
 + */
-+void tbi_bridge_input_read(uint64_t pads);
-+void tbi_bridge_input_read(uint64_t pads)
++static void tbi_send_input_read(TbiBridge *s, uint64_t pads)
 +{
-+    TbiBridge *s = tbi_bridge;
 +    int64_t now;
 +    char frame[96];
 +
-+    if (!s) {
-+        return;
-+    }
 +    now = tbi_now();
 +    snprintf(frame, sizeof(frame), "N %" PRId64 " %010" PRIx64 "\n", now, pads);
 +    tbi_exchange(s, now, frame, false);
 +}
 +
++void tbi_bridge_input_read(uint64_t pads);
++void tbi_bridge_input_read(uint64_t pads)
++{
++    TbiBridge *s = tbi_bridge;
++
++    if (!s) {
++        return;
++    }
++    /* Raised while answering the host (an I or Z command): sent once the reply is complete. */
++    s->input_read_pending |= pads;
++    tbi_flush_input_read(s);
++}
++
  /* (unmodelled) The SoC applied a CPU clock (hw/xtensa/esp32.c esp32_clk_update), in Hz. */
  void tbi_bridge_cpu_clock(uint32_t cpu_hz);
  void tbi_bridge_cpu_clock(uint32_t cpu_hz)
-@@ -525,7 +570,9 @@ int tbi_bridge_i2c(int bus, char op, int arg)
+@@ -525,7 +599,9 @@ int tbi_bridge_i2c(int bus, char op, int arg)
      n = snprintf(frame, sizeof(frame), "B %" PRId64 " %d ", now, bus);
      switch (op) {
      case 'S':
@@ -479,7 +589,7 @@ index 21810f1..0db0b25 100644
          s->bus_expect = 'K';
          break;
      case 'W':
-@@ -651,6 +698,7 @@ static void tbi_bridge_realize(DeviceState *dev, Error **errp)
+@@ -651,6 +727,7 @@ static void tbi_bridge_realize(DeviceState *dev, Error **errp)
          qdev_connect_gpio_out_named(gpio, TBI_PAD_FUNC, i,
                                      qdev_get_gpio_in_named(dev, "pad-func", i));
          s->pad_in[i] = qdev_get_gpio_in_named(gpio, TBI_PAD_IN, i);
@@ -589,7 +699,7 @@ index fed7cf7..04a16d6 100644
  
  static Property esp32_intmatrix_properties[] = {
 diff --git a/include/hw/gpio/esp32_gpio.h b/include/hw/gpio/esp32_gpio.h
-index 15a93eb..ddc573f 100644
+index 15a93eb..f06ef11 100644
 --- a/include/hw/gpio/esp32_gpio.h
 +++ b/include/hw/gpio/esp32_gpio.h
 @@ -34,6 +34,17 @@ REG32(GPIO_STATUS_W1TC, 0x004c)
@@ -632,7 +742,7 @@ index 15a93eb..ddc573f 100644
  
  typedef struct Esp32GpioState {
      SysBusDevice parent_obj;
-@@ -80,6 +106,12 @@ typedef struct Esp32GpioState {
+@@ -80,6 +106,13 @@ typedef struct Esp32GpioState {
      uint16_t pad_func[ESP32_GPIO_PADS];
      uint64_t out_sel_written;           /* pads whose FUNCn_OUT_SEL the guest has written */
      qemu_irq pad_func_out[ESP32_GPIO_PADS];
@@ -642,6 +752,7 @@ index 15a93eb..ddc573f 100644
 +    /* TBI Lab (Runtime v5, gpio-irq): pad input levels at the last edge check, per-CPU lines. */
 +    uint64_t irq_last_in;
 +    qemu_irq cpu_irq[2];
++    int cpu_irq_level[2];
  } Esp32GpioState;
  
  typedef struct Esp32GpioClass {

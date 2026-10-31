@@ -17,6 +17,8 @@ import { createSessionOverlay } from '../harness/artifacts.js';
 import { QEMU, artifact, assertProvisioned, recordEvidence, runtimeInfo } from '../harness/env.js';
 import type { Command, Level } from '../harness/protocol.js';
 import { runSession } from '../harness/session.js';
+import { join } from 'node:path';
+import { MpyStack } from './s24-support.js';
 
 type Edge = { pad: number; vns: bigint; level: Level };
 
@@ -129,6 +131,34 @@ describe('Runtime v5: GPIO edge interrupts (TbiIrq, real QEMU)', () => {
     });
   }, 900_000);
 
+  it('review H1: an edge interrupt armed on an undefined pad is reported like a read (N), at the arming', async () => {
+    assertProvisioned();
+    const fw = artifact('TbiIrq');
+    const ov = createSessionOverlay(fw.path, fw.sha256);
+    let reported: { vns: bigint; pads: readonly number[] } | null = null;
+    try {
+      const r = await runSession(
+        { qemu: QEMU, flash: ov.flash, dir: ov.dir, tickUs: 1000, wallTimeoutMs: 300_000 },
+        {
+          // GPIO13 has no defined level from the start (nothing drives it in this test).
+          hello: () => [{ type: 'Z', pad: 13, undefined: true }],
+          tick: (vns) => (vns >= 2_500_000_000n ? [{ type: 'Q' }] : []),
+          inputRead: (vns, pads) => {
+            reported ??= { vns, pads };
+            return [{ type: 'Q' }];
+          },
+        },
+      );
+      expect(r.outcome).not.toBe('failed');
+      expect(reported).not.toBeNull();
+      expect(reported!.pads).toEqual([13]);
+      // Before the firmware printed it was ready: at attachInterrupt(13, FALLING) itself.
+      expect(r.serial.toString()).not.toContain('TBI-IRQ-READY');
+    } finally {
+      ov.discard();
+    }
+  }, 600_000);
+
   it('a level interrupt (ONHIGH) is not delivered: the session ends at the write, naming it', async () => {
     assertProvisioned();
     const fw = artifact('TbiIrqLevel');
@@ -151,4 +181,83 @@ describe('Runtime v5: GPIO edge interrupts (TbiIrq, real QEMU)', () => {
       ov.discard();
     }
   }, 600_000);
+
+  it('MicroPython Pin.irq (rising | falling): the handler runs for every edge, in order', async () => {
+    assertProvisioned();
+    const stack = new MpyStack();
+    try {
+      const build = await stack.build(MPY_IRQ);
+      expect(build.features?.requires).toEqual(expect.arrayContaining(['gpio-irq']));
+      const sha = build.artifact!.sha256;
+      const ov = createSessionOverlay(join(stack.store, `${sha}.bin`), sha);
+      const edges = schedule().filter((e) => e.pad === 4);
+      const sent = new Set<number>();
+      const answers: { vns: bigint; level: number }[] = [];
+      try {
+        const r = await runSession(
+          { qemu: QEMU, flash: ov.flash, dir: ov.dir, tickUs: 1000, wallTimeoutMs: 600_000 },
+          {
+            pad(e) {
+              if (e.drive && e.pad === 2 && e.vns >= edges[0]!.vns)
+                answers.push({ vns: e.vns, level: e.level });
+              return [];
+            },
+            tick(vns) {
+              if (vns >= 2_300_000_000n) return [{ type: 'Q' }];
+              const out: Command[] = [];
+              edges.forEach((e, i) => {
+                if (!sent.has(i) && e.vns > vns && e.vns - vns <= 20_000_000n) {
+                  sent.add(i);
+                  out.push({ type: 'J', vns: e.vns, pad: 4, level: e.level });
+                }
+              });
+              return out;
+            },
+            unmodelled: (_v, f) => {
+              throw new Error(`unexpected unmodelled ${f}`);
+            },
+          },
+        );
+        expect(r.outcome).toBe('completed');
+        expect(r.serial.toString()).toContain('MPY-IRQ-READY');
+        // The handler mirrors the level it reads, once per edge, in order, after its edge.
+        expect(answers.map((a) => a.level)).toEqual(edges.map((e) => e.level));
+        const lat = answers.map((a, i) => Number(a.vns - edges[i]!.vns));
+        for (const ns of lat) expect(ns).toBeGreaterThanOrEqual(0);
+        expect(r.serial.toString()).toMatch(/edges=20/);
+        recordEvidence('s25-irq-mpy', {
+          runtime: runtimeInfo(),
+          artifact: sha,
+          latencyNs: { min: Math.min(...lat), max: Math.max(...lat), all: lat },
+        });
+      } finally {
+        ov.discard();
+      }
+    } finally {
+      stack.cleanup();
+    }
+  }, 900_000);
 });
+
+/** Sprint 25: a MicroPython program with an edge interrupt (scheduled handler, the default). */
+const MPY_IRQ = `from machine import Pin
+import time
+
+out = Pin(2, Pin.OUT)
+out.value(0)
+n = 0
+
+def edge(p):
+    global n
+    out.value(p.value())
+    n += 1
+
+Pin(4, Pin.IN).irq(trigger=Pin.IRQ_RISING | Pin.IRQ_FALLING, handler=edge)
+print("MPY-IRQ-READY")
+last = 0
+while True:
+    if n != last:
+        last = n
+        print("edges=%d" % n)
+    time.sleep_ms(20)
+`;

@@ -556,6 +556,8 @@ export const en = {
     'These parts form a floating circuit with no connection to GND: {components}. Connect them to the circuit or remove them.',
   'sim.error.floating_output_off':
     'These parts reach GND only through {supplies}, whose output is off: {components}. Turn the output on or connect them to GND.',
+  'sim.error.gpio_input_undefined.unresolved':
+    '{pins}: the firmware read the ESP32 input register while nothing held the level of this pin (it is unconnected, or nothing drives its net). The simulator could not tell from the program which pins it reads (a pin number computed at run time, or firmware it did not analyse), so it treats every pin as possibly read and stopped the run instead of choosing LOW or HIGH. Write the pin numbers as numbers or constants in the code, and give every input a pull-up or pull-down resistor.',
   'sim.error.gpio_input_undefined.floating':
     '{pins}: the program read this ESP32 input while nothing held its level: no wire, resistor or closed switch connects it to a supply, GND or a driving output. A real ESP32 reads an undefined value there, so the run stopped at that read instead of choosing LOW or HIGH. The ESP32’s internal pull resistors are not simulated. Add a pull-down or pull-up resistor (for example 10 kΩ to GND or to 3.3 V) so the pin has a level whenever it is read.',
   'sim.error.gpio_input_undefined.unconnected':

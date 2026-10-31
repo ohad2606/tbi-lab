@@ -24,7 +24,7 @@ import type { HostSession } from '../host/session.js';
 import { serialText, waitEvent } from '../host/tests/support.js';
 import { open } from '../host/tests/r1-support.js';
 import { realHost } from './r2-support.js';
-import { MpyStack, RT, V4, example, serialMatches, sha } from './s24-support.js';
+import { MpyStack, RT, V4, example, onRuntime, serialMatches, sha } from './s24-support.js';
 import { PROTOCOL } from '../host/protocol.js';
 import { principalFor } from '../identity/test-gate.js';
 
@@ -94,13 +94,19 @@ describe.skipIf(!stack)('Sprint 24 MicroPython hardware I2C on the real stack (R
     for (let k = 0; k < 2; k++) {
       const t0 = Date.now();
       const { s, build } = await stack!.run(host, LCD_PY, LCD_REQ);
-      expect(build.features).toEqual({
-        internalPull: [],
-        gpioInterrupt: [],
-        restart: false,
-        unsupported: [],
-        requires: ['i2c', 'unmodelled'],
-      });
+      expect(build.features).toEqual(
+        onRuntime(
+          {
+            internalPull: [],
+            gpioInterrupt: [],
+            restart: false,
+            unsupported: [],
+            requires: ['i2c', 'unmodelled'],
+          },
+          'micropython',
+          LCD_PY,
+        ),
+      );
       const shows = () => {
         const st = lcdStates(s, lcdId).at(-1);
         return st?.line1 === 'Hello, ESP32!   ' && /^Up: [1-9]\d* s +$/.test(String(st?.line2));

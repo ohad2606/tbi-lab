@@ -30,6 +30,7 @@ import { waitEvent } from '../host/tests/support.js';
 import { open } from '../host/tests/r1-support.js';
 import { realHost } from './r2-support.js';
 import { stopped } from './r1-support.js';
+import { onRuntime } from './s24-support.js';
 
 const RT = process.env.TBI_RUNTIME_HOME ?? '';
 const dirs: string[] = [];
@@ -150,7 +151,7 @@ describe.skipIf(!RT)('Sprint 15 PWM examples on the real stack', () => {
     expect(s.status().state).toBe('running'); // duty 0 never reached: not refused
     expect(
       (evidence['esp32-led-fade'] as { features: { requires?: string[] } }).features.requires,
-    ).toEqual(['pwm']);
+    ).toEqual(onRuntime({ requires: ['pwm'] }, 'arduino-cpp', '').requires);
     evidence['esp32-led-fade-samples'] = samples.slice(0, 20);
     await stopped(s);
   });

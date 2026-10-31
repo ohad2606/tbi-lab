@@ -51,4 +51,27 @@ describe('programInputReads', () => {
     ).toBe(true);
     expect(programInputReads(py('import machine\np = machine.Pin(n)\n')).unresolved).toBe(true);
   });
+
+  it('review M2: constant arrays and range-for variables resolve; any unparsed read is unresolved', () => {
+    expect(
+      programInputReads(
+        cpp(
+          'const int OUTS[] = {4, 16};\nconst int INS[] = {34, 35};\nvoid setup(){ for (int o : OUTS) digitalRead(o); digitalRead(INS[1]); }',
+        ),
+      ),
+    ).toEqual({ pins: [4, 16, 34, 35], unresolved: false });
+    expect(programInputReads(cpp('int v = digitalRead(f(i));')).unresolved).toBe(true);
+    expect(programInputReads(cpp('unsigned long d = pulseIn(5, HIGH);'))).toEqual({
+      pins: [5],
+      unresolved: false,
+    });
+    expect(programInputReads(cpp('byte b = shiftIn(4, 5, MSBFIRST);')).unresolved).toBe(true);
+    expect(programInputReads(cpp('int v = rtc_gpio_get_level(GPIO_NUM_4);')).unresolved).toBe(true);
+    expect(
+      programInputReads(py('from machine import Pin\nb = Pin(int(x), Pin.IN)\n')).unresolved,
+    ).toBe(true);
+    expect(programInputReads(py('from machine import Pin as P\nb = P(4, P.IN)\n')).unresolved).toBe(
+      true,
+    );
+  });
 });

@@ -30,6 +30,7 @@ import { serialText, waitEvent } from '../host/tests/support.js';
 import { open } from '../host/tests/r1-support.js';
 import { realHost } from './r2-support.js';
 import { stopped } from './r1-support.js';
+import { onRuntime } from './s24-support.js';
 
 const RT = process.env.TBI_RUNTIME_HOME ?? '';
 const dirs: string[] = [];
@@ -180,7 +181,7 @@ describe.skipIf(!RT)('Sprint 12 curated examples on the real stack', () => {
     await waitEvent(s, shows, 180_000);
     expect(
       (evidence['esp32-lcd-hello'] as { features: { requires?: string[] } }).features.requires,
-    ).toEqual(['i2c']);
+    ).toEqual(onRuntime({ requires: ['i2c'] }, 'arduino-cpp', '').requires);
     await stopped(s);
   });
 });

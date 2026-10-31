@@ -10,6 +10,8 @@
  * TBI_S12_DET_UNPINNED=1 skips the pin (only when establishing it).
  */
 import { createHash } from 'node:crypto';
+import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { artifact, assertProvisioned, recordEvidence, runtimeInfo } from '../harness/env.js';
 import { ticketFor } from '../identity/test-gate.js';
@@ -30,11 +32,17 @@ afterAll(() => host.shutdown());
  * `outsideModelRange` to every supply-limited part's outcome; it is the only difference in the
  * event streams, and with it removed all seven fingerprints equal the Sprint 12 pins
  * (docs/sprints/s13-evidence/ci/PIN-DRIFT-H2.md). Sprint 12 values in that record.
+ * Sprint 25 re-pin (3 converging runs each, Runtime v4 cd778dc17d8edcdd and v5 39f2229a66d45e43
+ * alike, 2026-10-31): the engine adds `levelUndefined: 'floating'` to GPIO5's pin result in the
+ * HC-SR04 sessions' first outcome (the trigger pad before the firmware makes it an output, held by
+ * nothing). It is the only difference: with it removed the streams hash to the previous pins
+ * (3dd25c5ae652c283, 4d076533f2a86241, 0307e9f722c52aa2) exactly; the DHT22 and LCD streams are
+ * unchanged (~/tbi-s25/evidence/drift).
  */
 const PINNED: Record<string, string> = {
-  'hcsr04-0.1m': '3dd25c5ae652c283',
-  'hcsr04-1m': '4d076533f2a86241',
-  'hcsr04-4m': '0307e9f722c52aa2',
+  'hcsr04-0.1m': '804c4af6437261b4',
+  'hcsr04-1m': '97a6c4c0d9c6528b',
+  'hcsr04-4m': 'db5c592d546178ef',
   'dht22--10C-30RH': '34cb128f5dbc7182',
   'dht22-21.5C-55.2RH': '58966db12b113310',
   'dht22-60C-95RH': '9c0249a9cfec605a',
@@ -122,6 +130,9 @@ async function fingerprint(sc: Scenario): Promise<string> {
   s.stop();
   await s.done();
   expect(lines.length).toBeGreaterThan(3);
+  // Pin drift investigation: the event lines, to compare two runtimes' streams.
+  if (process.env.TBI_DET_DUMP)
+    writeFileSync(join(process.env.TBI_DET_DUMP, `${sc.name}.jsonl`), lines.join('\n') + '\n');
   return createHash('sha256').update(lines.join('\n')).digest('hex').slice(0, 16);
 }
 

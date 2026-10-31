@@ -1132,7 +1132,14 @@ export class HostSession {
     this.inputWatch = watch;
     const unwired: Command[] = [];
     const attached = new Set(this.request.attachments.map((a) => a.gpio));
-    for (const gpio of [...(watch?.pins ?? [])].sort((a, b) => a - b))
+    // Review H2: watching every pin includes the board's unwired user pins (the solve sees only
+    // wired ones); a register read while one of them is undefined is then refused too.
+    const candidates = watch?.all
+      ? ESP32_DEVKITC_WROOM32.pins
+          .filter((p) => p.gpio !== null && p.simulatorSupport !== 'none')
+          .map((p) => p.gpio!)
+      : [...(watch?.pins ?? [])];
+    for (const gpio of [...new Set(candidates)].sort((a, b) => a - b))
       if (!attached.has(gpio)) unwired.push(...this.markUndefined(gpio, { cause: 'unconnected' }));
     return [...unwired, ...this.solveAndInject(0n)];
   }
@@ -1171,7 +1178,14 @@ export class HostSession {
         code: 'gpio_input_undefined',
         components: [...new Set([...(board ? [board.id] : []), ...parts])],
         param: `gpio${pads[0]}`,
-        detail: { inputs, sinceNs: vns.toString(), vil: V_IL_V, vih: V_IH_V },
+        detail: {
+          inputs,
+          sinceNs: vns.toString(),
+          vil: V_IL_V,
+          vih: V_IH_V,
+          // The program's reads could not all be told from its source (or it was not analysed).
+          ...(this.inputWatch?.all ? { watchAll: true } : {}),
+        },
       };
       this.log.append({
         type: 'diagnostic',

@@ -33,6 +33,9 @@ import {
   V4,
   electrical,
   example,
+  builtExample,
+  onRuntime,
+  runtimeCaps,
   serialMatches,
   sha,
   simNow,
@@ -107,13 +110,19 @@ describe.skipIf(!stack)('Sprint 24 MicroPython on the real stack (Runtime v4)', 
       } finally {
         other.cleanup();
       }
-      expect(a.features).toEqual({
-        internalPull: [],
-        gpioInterrupt: [],
-        restart: false,
-        unsupported: [],
-        requires: ['unmodelled'],
-      });
+      expect(a.features).toEqual(
+        onRuntime(
+          {
+            internalPull: [],
+            gpioInterrupt: [],
+            restart: false,
+            unsupported: [],
+            requires: ['unmodelled'],
+          },
+          'micropython',
+          text,
+        ),
+      );
       images[id] = a.artifact!.sha256;
     }
     evidence.build = { syntaxErrorDiagnostic: bad.diagnostics, checkMs, images };
@@ -318,14 +327,21 @@ describe.skipIf(!stack)('Sprint 24 MicroPython on the real stack (Runtime v4)', 
 
     // The Arduino twin: TbiBanks (the esp32-input-echo firmware, GPIO34 copied to GPIO4) on the
     // SAME circuit request.
-    const fw = artifact('TbiBanks');
+    // Sprint 25: on Runtime v5 the example's own sketch (built), which no longer reads the
+    // unconnected GPIO35/36/39 that TbiBanks reads (v5 refuses those reads).
+    const twin = runtimeCaps().includes('input-read')
+      ? await builtExample('esp32-input-echo')
+      : (() => {
+          const fw = artifact('TbiBanks');
+          return { sha256: fw.sha256, ticket: () => ticketFor(fw.sha256) };
+        })();
     const arduinoHost = realHost({ leaseMs: 600_000 });
     try {
       const a = open(arduinoHost, {
         ...request,
         protocol: PROTOCOL,
-        artifact: { sha256: fw.sha256 },
-        ticket: ticketFor(fw.sha256),
+        artifact: { sha256: twin.sha256 },
+        ticket: twin.ticket(),
       });
       expect(a.run()).toEqual({ ok: true });
       await serialMatches(a, /TBI-BANKS-SWEEP-DONE/, 120_000);

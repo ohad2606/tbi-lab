@@ -81,34 +81,84 @@ export function programInputPins(program: ProgramSource): number[] {
  * Sprint 25 (Runtime v5, input-read): every GPIO the program may read as a digital input, for the
  * Session Host, which refuses a read of such a pin while its level is undefined. Unlike
  * `programInputPins` nothing is excluded for being an output too (a bidirectional pin is read while
- * it is an input; the runtime ignores pads that drive at the read). `unresolved` is true when a
- * read names a pin this analysis cannot resolve (a computed pin, `gpio_get_level`, a register
- * read, a Pin made without a literal number): the host then treats every wired pad as possibly
- * read.
+ * it is an input; the runtime ignores pads that drive at the read).
+ *
+ * Resolved: integer literals, simple constants, and (review M2) members of a constant integer array
+ * (`const int PINS[] = {4, 5};`) used as `PINS[i]` or through a range-for variable
+ * (`for (int p : PINS) digitalRead(p);`). `unresolved` is true when any read call names a pin this
+ * analysis cannot resolve (a computed pin, `gpio_get_level`, a register read, a Pin made without a
+ * literal number, `Pin` under another name): the host then treats every pin as possibly read.
+ * Every read call is counted, so a call the patterns cannot parse is unresolved, never ignored.
  */
 export function programInputReads(program: ProgramSource): { pins: number[]; unresolved: boolean } {
   const code = strip(program.text, program.language);
   const consts = constants(code, program.language);
   const found = new Set<number>();
   let unresolved = false;
+  // Constant integer arrays (C/C++), and range-for variables bound to one of them.
+  const arrays = new Map<string, number[]>();
+  for (const m of code.matchAll(
+    /\b(?:static\s+)?(?:const(?:expr)?\s+)?(?:unsigned\s+)?(?:int|uint8_t|int8_t|byte|gpio_num_t)\s+([A-Za-z_]\w*)\s*\[\s*\d*\s*\]\s*=\s*\{([^{}]*)\}/g,
+  )) {
+    const items = m[2]!
+      .split(',')
+      .map((x) => x.trim())
+      .filter(Boolean);
+    if (items.every((x) => /^\d+$/.test(x) || consts.has(x)))
+      arrays.set(
+        m[1]!,
+        items.map((x) => (/^\d+$/.test(x) ? Number(x) : consts.get(x)!)),
+      );
+  }
+  const rangeVars = new Map<string, string>();
+  for (const m of code.matchAll(
+    /\bfor\s*\(\s*(?:const\s+)?(?:auto|int|uint8_t|byte)\s*&?\s+([A-Za-z_]\w*)\s*:\s*([A-Za-z_]\w*)\s*\)/g,
+  ))
+    if (arrays.has(m[2]!)) rangeVars.set(m[1]!, m[2]!);
   const add = (token: string) => {
     const t = token.trim();
+    const idx = /^([A-Za-z_]\w*)\s*\[[^\]]*\]$/.exec(t);
+    const list = idx
+      ? arrays.get(idx[1]!)
+      : rangeVars.has(t)
+        ? arrays.get(rangeVars.get(t)!)
+        : undefined;
+    if (list) {
+      for (const p of list) if (p >= 0 && p <= 39) found.add(p);
+      return;
+    }
     const p = /^\d+$/.test(t) ? Number(t) : (consts.get(t) ?? null);
     if (p !== null && p >= 0 && p <= 39) found.add(p);
     else unresolved = true;
   };
+  /** Every call of `name`, its first argument (balanced parentheses), resolved or unresolved. */
+  const calls = (name: string) => {
+    for (const m of code.matchAll(new RegExp(`\\b${name}\\s*\\(`, 'g'))) {
+      let depth = 1;
+      let k = m.index! + m[0].length;
+      let arg = '';
+      for (; k < code.length && depth > 0; k++) {
+        const ch = code[k]!;
+        if (ch === '(') depth++;
+        else if (ch === ')') depth--;
+        if (depth === 1 && ch === ',') break;
+        if (depth > 0) arg += ch;
+      }
+      add(arg);
+    }
+  };
   if (program.language === 'micropython') {
     // Pin(<pin>) or Pin(<pin>, <mode> …): any Pin object can be read with .value() / p().
-    for (const m of code.matchAll(/\bPin\s*\(\s*([^,()]*?)\s*(?:[,)])/g)) {
-      const arg = m[1]!;
-      if (/^(?:[A-Za-z_]\w*|\d+)$/.test(arg)) add(arg);
-      else unresolved = true;
-    }
+    calls('Pin');
+    // Pin under another name cannot be followed.
+    if (/\bPin\s+as\s+\w+|=\s*(?:machine\s*\.\s*)?Pin\s*$/m.test(code)) unresolved = true;
   } else {
     for (const m of code.matchAll(/\bpinMode\s*\(\s*([^,()]+?)\s*,\s*INPUT\w*\s*\)/g)) add(m[1]!);
-    for (const m of code.matchAll(/\bdigitalRead\s*\(\s*([^()]*?)\s*\)/g)) add(m[1]!);
+    calls('digitalRead');
+    calls('pulseIn');
+    calls('pulseInLong');
     if (
-      /\bgpio_get_level\b|\bgpio_input_get\w*\b|\bGPIO_IN1?_REG\b|\bGPIO\s*\.\s*in1?\b|\bGPIO_INPUT_GET\b/.test(
+      /\bgpio_get_level\b|\bgpio_ll_get_level\b|\brtc_gpio_get_level\b|\bgpio_input_get\w*\b|\bGPIO_IN1?_REG\b|\bGPIO\s*\.\s*in1?\b|\bGPIO_INPUT_GET\b|\bshiftIn\s*\(/.test(
         code,
       )
     )

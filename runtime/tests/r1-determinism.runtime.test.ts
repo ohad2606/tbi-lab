@@ -6,7 +6,8 @@
  * Firmware: the pinned TbiBanks image; runtime 33e35e4ac5e798d7.
  */
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { artifact, assertProvisioned, recordEvidence, runtimeInfo } from '../harness/env.js';
 import { ticketFor } from '../identity/test-gate.js';
@@ -14,6 +15,7 @@ import { PROTOCOL, type CreateSessionRequest } from '../host/protocol.js';
 import type { HostSession } from '../host/session.js';
 import { waitState } from '../host/tests/support.js';
 import { open, realHost, runtimeEvents } from './r2-support.js';
+import { builtExample, runtimeCaps } from './s24-support.js';
 
 const host = realHost();
 const evidence: Record<string, unknown> = {};
@@ -46,9 +48,32 @@ const PINNED_R1: Record<string, string> = {
  * supply-limited part): docs/sprints/s13-evidence/ci/PIN-DRIFT-H2.md.
  */
 const PINNED_V2: Record<string, string> = {
-  motion: '261f54efe0dd9a9c',
-  night: '5596d749c3ce4f8c',
+  motion: '738eafd0f967b9db',
+  night: 'd0fe9405be94f7bb',
 };
+/*
+ * Sprint 25 (3 runs each, 2026-10-31): re-pinned from 261f54efe0dd9a9c / 5596d749c3ce4f8c. The
+ * engine adds `levelUndefined: 'floating'` to GPIO4's pin result in the first outcome (10 ms: the
+ * firmware has not yet made it an output and nothing drives its net), the only difference: with
+ * that field removed both streams hash to the previous pins exactly, on Runtime v4 and with the
+ * Sprint 25 host (~/tbi-s25/evidence/drift).
+ *
+ * Runtime v5 (`input-read`): the examples' own sketch (built; it no longer reads the unconnected
+ * GPIO35/36/39, which v5 refuses), so another firmware and another stream, pinned separately:
+ * Runtime v5 39f2229a66d45e43, 2026-10-31, 3 runs each reproducing one stream (motion in two
+ * separate invocations).
+ */
+const PINNED_V5: Record<string, string> = {
+  motion: 'b2209dc279a78905',
+  night: 'df93d751adbb9938',
+};
+const V5 = (() => {
+  try {
+    return runtimeCaps().includes('input-read');
+  } catch {
+    return false;
+  }
+})();
 /** Runtime v2 is the one carrying patch 0007 (pad functions). */
 function isRuntimeV2(): boolean {
   try {
@@ -57,13 +82,25 @@ function isRuntimeV2(): boolean {
     return false; // not provisioned: assertProvisioned() reports it
   }
 }
-const PINNED = isRuntimeV2() ? PINNED_V2 : PINNED_R1;
+const PINNED = V5 ? PINNED_V5 : isRuntimeV2() ? PINNED_V2 : PINNED_R1;
 const RUNS = Number(process.env.TBI_R1_DET_RUNS ?? 3);
 
-function fixture(name: string): CreateSessionRequest {
+/** Sprint 25: on Runtime v5 the examples' own sketch (r1-examples.runtime.test.ts says why). */
+async function fixture(name: string): Promise<CreateSessionRequest> {
   const fx = JSON.parse(readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8')) as {
     request: Omit<CreateSessionRequest, 'artifact' | 'ticket'>;
   };
+  if (V5) {
+    const b = await builtExample(
+      name === 'r1-motion-relay-session.json' ? 'esp32-motion-relay' : 'esp32-night-light',
+    );
+    return {
+      ...fx.request,
+      protocol: PROTOCOL,
+      artifact: { sha256: b.sha256 },
+      ticket: b.ticket(),
+    };
+  }
   const fw = artifact('TbiBanks');
   return {
     ...fx.request,
@@ -132,8 +169,14 @@ describe('R1 determinism: the Sprint 10 parts in Session Host sessions', () => {
       const hashes: string[] = [];
       const streams: ReturnType<typeof runtimeEvents>[] = [];
       for (let i = 0; i < RUNS; i++) {
-        const s = await workload(fixture(file), component, schedule as never);
+        const s = await workload(await fixture(file), component, schedule as never);
         const events = runtimeEvents(s, END);
+        // Pin drift investigation: the event stream, to compare two runtimes' streams.
+        if (process.env.TBI_DET_DUMP && i === 0)
+          writeFileSync(
+            join(process.env.TBI_DET_DUMP, `${key}.jsonl`),
+            events.map((e) => JSON.stringify(e)).join('\n') + '\n',
+          );
         streams.push(events);
         hashes.push(sha(events));
       }

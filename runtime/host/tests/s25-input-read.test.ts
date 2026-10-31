@@ -170,6 +170,19 @@ describe('the Session Host refuses a read of an undefined input (fake runtime)',
     });
   });
 
+  it('review H2: watching every pin marks the unwired user pins too (unconnected, watchAll)', async () => {
+    for (const features of [null, reads([], true)]) {
+      const s = session({ TBI_FAKE_HELLO: V5, TBI_FAKE_FRAMES: 'N 9500000 0000800000' }, features);
+      s.run();
+      expect(await terminal(s)).toMatchObject({
+        detail: {
+          code: 'gpio_input_undefined',
+          detail: { inputs: [{ gpio: 23, cause: 'unconnected' }], watchAll: true },
+        },
+      });
+    }
+  });
+
   it('an N frame from a runtime without input-read fails closed (protocol error)', async () => {
     const s = session(
       {

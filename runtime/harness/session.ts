@@ -283,7 +283,8 @@ export function runSession(opts: SessionOptions, handler: SessionHandler): Promi
             if (reply === null) continue;
             handled++;
             if (opts.fault && handled >= opts.fault.afterFrames && quitAt === null) {
-              if (opts.fault.kind === 'malformed_reply') s.write('Z not-a-command\n');
+              if (opts.fault.kind === 'malformed_reply')
+                s.write('Y not-a-command\n'); // an unknown verb (Z is Runtime v5's)
               else if (opts.fault.kind === 'invalid_pad') s.write('I 40 1\nC\n');
               else if (opts.fault.kind === 'raw_reply')
                 s.write(`${(opts.fault.reply ?? []).map((l) => `${l}\n`).join('')}C\n`);
