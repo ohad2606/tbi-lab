@@ -25,7 +25,7 @@
  * SIGTERM: stop accepting requests; job directories are removed by each job's cleanup and by the
  * sweep at the next start.
  */
-import { existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { ESP32_ARDUINO_PROFILE, ESP32_MICROPYTHON_PROFILE } from '@tbi-lab/domain';
@@ -49,25 +49,8 @@ import micropythonRecord from './profiles/esp32-micropython-1.29.json' with { ty
 import { createBuildHttpServer } from './http.js';
 import { BuildService, DEFAULT_LIMITS } from './service.js';
 import { ArtifactStore } from './store.js';
+import { runtimeCapabilitiesFrom } from './runtimeJson.js';
 import record from './profiles/esp32-arduino-3.3.12.json' with { type: 'json' };
-
-/** The `capabilities` of a provisioned runtime.json: known tokens only, sorted (fail closed). */
-function runtimeCapabilitiesFrom(file: string | undefined): string[] {
-  if (!file) return [];
-  const caps = (JSON.parse(readFileSync(file, 'utf8')) as { capabilities?: unknown }).capabilities;
-  // A runtime provisioned before Sprint 12 records no capabilities: a v1 bridge has none.
-  if (caps === undefined) return [];
-  if (
-    !Array.isArray(caps) ||
-    !caps.every(
-      (c) =>
-        typeof c === 'string' &&
-        ['i2c', 'pad-func', 'pwm', 'sched-input', 'unmodelled'].includes(c),
-    )
-  )
-    throw new Error(`${file}: no valid "capabilities" list`);
-  return [...caps].sort();
-}
 
 const RUNTIME_HOME =
   process.env.TBI_RUNTIME_HOME ??
