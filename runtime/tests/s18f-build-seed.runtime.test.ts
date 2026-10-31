@@ -18,6 +18,8 @@ import { afterAll, describe, expect, it } from 'vitest';
 import { ESP32_ARDUINO_PROFILE } from '@tbi-lab/domain';
 import { ArduinoEsp32Provider, type ArduinoProfileRecord } from '../builder/arduino.js';
 import record from '../builder/profiles/esp32-arduino-3.3.12.json' with { type: 'json' };
+import { requestLibraries } from '../builder/libraries.js';
+import { BUILD_PROTOCOL, type BuildRequest } from '../builder/protocol.js';
 import { systemBuildRequests } from '../builder/system-sources.js';
 import { recordEvidence } from '../harness/env.js';
 
@@ -37,19 +39,29 @@ function provider(seeds: string | undefined, rec = record as ArduinoProfileRecor
   });
 }
 
+/** A build input: the program's files and its pinned managed libraries (Sprint 26). */
+type Input = { files: { name: string; text: string }[]; libraries?: BuildRequest['libraries'] };
+const sketch = (text: string): Input => ({ files: [{ name: 'sketch.ino', text }] });
+
 /** One build in the fixed job path; returns the image hash, the time and the seed state. */
 async function build(
   p: ArduinoEsp32Provider,
-  text: string,
+  input: string | Input,
   curated: boolean,
 ): Promise<{ sha: string; ms: number; seed: string | undefined }> {
   const dir = join(root, 'job');
   rmSync(dir, { recursive: true, force: true });
   mkdirSync(dir, { recursive: true });
   const t0 = Date.now();
+  const req = typeof input === 'string' ? sketch(input) : input;
   const out = await p.build({
     dir,
-    files: [{ name: 'sketch.ino', text }],
+    files: req.files,
+    libraries: requestLibraries({
+      protocol: BUILD_PROTOCOL,
+      profile: ESP32_ARDUINO_PROFILE.id,
+      ...req,
+    }),
     signal: new AbortController().signal,
     curated,
   });
@@ -69,10 +81,11 @@ describe.skipIf(!RT)('S18F core seed on the real toolchain', () => {
     mkdirSync(seeds, { recursive: true });
     // The Arduino toolchain's seed: the curated Arduino sketches (the MicroPython examples, curated
     // since Sprint 24, are built by the MicroPython profile, which has no core to seed).
-    const curated = systemBuildRequests()
+    // Sprint 26: a curated program may have several files and pinned libraries; each is built whole.
+    const curated: Input[] = systemBuildRequests()
       .filter((r) => r.profile === ESP32_ARDUINO_PROFILE.id)
-      .map((r) => r.files[0]!.text);
-    const sweep = curated.find((t) => t.includes('servo'))!;
+      .map((r) => ({ files: r.files, ...(r.libraries ? { libraries: r.libraries } : {}) }));
+    const sweep = curated.find((r) => r.files[0]!.text.includes('servo'))!.files[0]!.text;
     const seeded = provider(seeds);
     const evidence: Record<string, unknown> = {};
 

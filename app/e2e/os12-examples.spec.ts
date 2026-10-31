@@ -29,11 +29,13 @@ test('OS-12: search, categories, keyboard, empty state, clear, and opening a fil
   const search = page.getByTestId('example-search');
   await expect(search).toHaveAccessibleName('Search examples');
   await search.fill('ESP32 LCD');
-  // Sprint 24: the Arduino LCD example and its MicroPython twin.
-  await expect(cards(page)).toHaveCount(2);
+  // Sprint 24: the Arduino LCD example and its MicroPython twin; Sprint 26: both with a managed library.
+  await expect(cards(page)).toHaveCount(4);
   await expect(page.getByTestId('example-esp32-lcd-hello')).toBeVisible();
   await expect(page.getByTestId('example-mpy-lcd-hello')).toBeVisible();
-  await expect(page.getByTestId('example-count')).toHaveText(`Showing 2 of ${total} examples`);
+  await expect(page.getByTestId('example-esp32-lcd-library')).toBeVisible();
+  await expect(page.getByTestId('example-mpy-lcd-library')).toBeVisible();
+  await expect(page.getByTestId('example-count')).toHaveText(`Showing 4 of ${total} examples`);
 
   await search.fill('LDR');
   await expect(page.getByTestId('example-light-sensor')).toBeVisible();
@@ -91,8 +93,8 @@ test('OS-12: Hebrew UI (RTL): Hebrew and English queries, translated filters, no
   await expect(page.getByTestId('example-category-sensors')).toHaveText(/חיישנים/);
   const total = await cards(page).count();
 
-  await search.fill('ESP32 LCD'); // English words in the Hebrew UI (Sprint 24: Arduino + MicroPython)
-  await expect(cards(page)).toHaveCount(2);
+  await search.fill('ESP32 LCD'); // English words in the Hebrew UI (Sprint 24 and Sprint 26 library twins)
+  await expect(cards(page)).toHaveCount(4);
   await search.fill('ממסר'); // Hebrew
   await expect(page.getByTestId('example-relay-load')).toBeVisible();
   await expect(page.getByTestId('example-count')).toContainText(`מתוך ${total}`);
