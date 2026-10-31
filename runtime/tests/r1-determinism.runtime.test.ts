@@ -65,7 +65,9 @@ const PINNED_V2: Record<string, string> = {
  */
 const PINNED_V5: Record<string, string> = {
   motion: 'b2209dc279a78905',
-  night: 'df93d751adbb9938',
+  // Sprint 25 closure (2026-10-31): the v5 night workload is 1 -> 300 -> 1 lx (was 1 -> 20 -> 300,
+  // pinned df93d751adbb9938): 3 runs reproducing one stream.
+  night: '9cd2a738b4ffffde',
 };
 const V5 = (() => {
   try {
@@ -158,9 +160,13 @@ describe('R1 determinism: the Sprint 10 parts in Session Host sessions', () => {
       'r1-night-light-session.json',
       'LDR1',
       [
+        // Sprint 25 closure: on Runtime v5, defined levels only. 20 lx puts GPIO34 between V_IL
+        // and V_IH, where no hysteresis is specified: that read now ends the run by name (r1-ldr,
+        // s25-pot), so it cannot be part of a run-to-the-end workload. Earlier runtimes (no
+        // input-read) keep the band's hold and the original schedule and pins.
         [1_500_000_000n, { illuminance: 1 }],
-        [2_000_000_000n, { illuminance: 20 }],
-        [2_400_000_000n, { illuminance: 300 }],
+        [2_000_000_000n, { illuminance: V5 ? 300 : 20 }],
+        [2_400_000_000n, { illuminance: V5 ? 1 : 300 }],
       ],
     ],
   ] as const)

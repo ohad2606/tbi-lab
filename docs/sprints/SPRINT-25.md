@@ -291,3 +291,43 @@ never quoted), L10 (unresolved reads share one sentence). Documented, not change
   records the target can run, artifact files and projects are never touched. Output carries counts
   and artifact prefixes only, never a principal.
 
+### Gates (closure head a0c2b85; f695238 adds one test-only change)
+
+| Gate | Result |
+|---|---|
+| Typecheck / lint | clean |
+| Unit (vitest) | 2005 passed, 0 failed, 3 skipped (3c4cbd6) |
+| Browser e2e | 309 passed, 0 failed, 40 skipped (a0c2b85) |
+| Full runtime suite, Runtime v5 39f2229a66d45e43 (s8-containment excluded: DEV-Lab restart tests, never run on this host) | 218 passed, 9 failed, 19 skipped of 246 (3c4cbd6); the 2 test-fixture defects fixed and re-run (a0c2b85): 4/4 |
+| Real-QEMU closure cases | s25-pot 5/5, s25-irq 4/4, s25-i2c 3/3, r1-ldr 1/1 |
+| Reproducible package | two builds of a0c2b85 IDENTICAL, 34 files, manifest 93e7d99e8b953b3a |
+| Staging tbi-s8 (a0c2b85) browser, real QEMU | s25-real 6/6; batches 16+11+5 passed, 2 skipped by design; s13-live 2/2 after its test update (f695238); 0 restarts |
+| DEV-Lab acceptance (a0c2b85) | 11/11 |
+
+Runtime-suite failures, classified (baseline: the same files on 9dd2fd6 + Runtime v4 failed the
+same way, except as noted):
+
+| Test | Class |
+|---|---|
+| r2-acceptance: gate workload, quantum 1 vs 10 ms, R1 equivalence; r2-failures: isolation, failure injection, resource measurements (6) | previously known: expected refusal following corrected physics (S22 `psu_sinking`: the R1 gate workload holds VEXT at 0 V while GPIO2 drives 3.3 V through 20 kΩ into it, at 0.89 s). No fixture can avoid it at 0 V: a workload redesign is an owner decision. |
+| s19b-x1 (1) | previously known: expected refusal following corrected physics (S21 `logic_supply_current_uncharacterized`, owner decision Q7) |
+| r1-determinism night-light (1) | expected refusal following corrected physics (this closure): the v5 workload's 20 lx step is inside the band. Fixed (test): 1 -> 300 -> 1 lx on v5, re-pinned 9cd2a738b4ffffde (3 runs, reproduced in a second invocation); earlier runtimes keep their schedule and pins. |
+| s8-qemu-tasks (1) | test fixture defect: its sketch was the pre-S25 TbiBanks, no longer a curated source, so other principals' leases were correctly refused ("ticket"). Fixed: the current esp32-input-echo program. |
+| r2-failures client disconnect over SSE | failed on the v4 baseline and the 4ff4089 run, passes now (timing-sensitive; not claimed fixed) |
+| s13-live-real night-light drag (staging browser) | expected refusal following corrected physics: a drag across the LDR divider reads GPIO34 at 865 mV. Test updated (f695238). |
+
+No new regression.
+
+### Rollback rehearsal (DEV-Lab, 2026-10-31)
+
+| Step | Result |
+|---|---|
+| deploy a0c2b85 (from 4e9eeef, Runtime v5) | 5.5 s; units, polkit, Caddy, policy, keys unchanged; 0 restarts |
+| back to 9dd2fd6 / Runtime v4 cd778dc17d8edcdd | 1.6 s; build service stopped; full grants DB copied (root-only, `/var/lib/tbi-build/rollback-20261031T121543Z-db`); 21 of 112 rows listed and removed (19 shared curated records, 2 rows of 1 user; all `requires: input-read`, 3 also `i2c-clock`), backed up first (`…/rollback-20261031T121543Z/removed.jsonl`, verified); after: 91 rows, 0 incompatible; 0 restarts |
+| v4 Build / Run / Stop (browser through the gate) | 4/4: esp32-blink (v4 prewarm record), esp32-lcd-hello (compiled), mpy-blink (compiled); records afterwards: 99, 0 incompatible with v4 |
+| forward to a0c2b85 / Runtime v5 | 0.8 s; units and runtime.json byte-equal to the forward set; 0 restarts |
+| v5 Build / Run / Stop | 4/4; esp32-lcd-hello and mpy-blink compiled (no v4 record reused: records without the v5 capability binding are never current) |
+
+Nothing else was touched: prebuilt grants, the artifact store, projects and the policy are as
+they were. DEV-Lab ends on a0c2b85 / Runtime v5.
+
