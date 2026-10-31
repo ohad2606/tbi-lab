@@ -1046,7 +1046,8 @@ export const en = {
   'program.file.error.bad_extension':
     'This programming environment does not build files of this type (or not in this folder).',
   'program.file.error.entry': 'This is the main file’s name.',
-  'program.file.error.reserved': 'This name is reserved by the programming environment.',
+  'program.file.error.reserved':
+    'This name is reserved: the environment uses it, or (MicroPython) the interpreter already has a module of that name (for example network, machine or time), which would be imported instead of your file.',
   'program.file.error.duplicate':
     'A file with this name already exists (names that differ only in capital letters count as the same).',
   'program.file.error.limit':
@@ -1066,6 +1067,7 @@ export const en = {
   'library.validated': 'Validated on the simulator:',
   'library.example': 'Usage example',
   'library.copy': 'Copy example',
+  'library.unpin': 'Remove from this project',
   'library.limit.lcd_write_only':
     'Write-only: the LCD backpack’s port and the controller cannot be read in the simulator (a read stops the run by name).',
   'library.limit.lcd_clock':

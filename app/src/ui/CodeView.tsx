@@ -143,8 +143,11 @@ export function CodeView({ boardId, focusBuild }: { boardId: string; focusBuild:
   const jump = (d: Diagnostic) => {
     // Sprint 26: a diagnostic in another file opens that file first, then jumps.
     if ((d.file ?? program.fileName) !== file) {
+      // Only to a file that still exists (review L4: never a jump left pending).
+      const target = d.file ?? program.fileName;
+      if (target !== program.fileName && !files.some((f) => f.path === target)) return;
       pendingJump.current = d;
-      setChosen(d.file ?? program.fileName);
+      setChosen(target);
       return;
     }
     const el = area.current;
@@ -417,7 +420,7 @@ export function CodeView({ boardId, focusBuild }: { boardId: string; focusBuild:
           </ul>
         </section>
       )}
-      <LibrariesPanel doc={doc!} program={program} />
+      <LibrariesPanel doc={doc!} program={program} boardId={boardId} />
       {result && (
         <details class="build-details" data-testid="build-details">
           <summary>{t('build.details')}</summary>

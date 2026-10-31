@@ -50,6 +50,7 @@ import { createBuildHttpServer } from './http.js';
 import { BuildService, DEFAULT_LIMITS } from './service.js';
 import { ArtifactStore } from './store.js';
 import { runtimeCapabilitiesFrom } from './runtimeJson.js';
+import { verifyRegistry } from '../libraries/tree.js';
 import record from './profiles/esp32-arduino-3.3.12.json' with { type: 'json' };
 
 const RUNTIME_HOME =
@@ -129,6 +130,9 @@ const micropython = await micropythonProvider();
 // Jobs of a previous process never outlive it (they would write into swept directories).
 if (jobUnit) new SandboxToolRunner({ unit: jobUnit }).stopAll();
 await provider.verifyToolchain();
+// Sprint 26 (review L2): every managed library's vendored source matches its registry tree, or
+// the service does not start.
+verifyRegistry();
 const grants = new Grants(join(stateDir, 'grants.db'));
 const store = new ArtifactStore({
   dir: storeDir,

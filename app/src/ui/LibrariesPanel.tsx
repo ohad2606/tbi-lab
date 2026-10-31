@@ -12,12 +12,22 @@ import {
   type ProgramSource,
   type ProjectDocument,
 } from '@tbi-lab/domain';
-import { useT } from './context.js';
+import { useAppState, useStore, useT } from './context.js';
 import type { MessageKey } from '../i18n/messages.en.js';
 import { isolateLtr } from '../i18n/i18n.js';
 
-export function LibrariesPanel({ doc, program }: { doc: ProjectDocument; program: ProgramSource }) {
+export function LibrariesPanel({
+  doc,
+  program,
+  boardId,
+}: {
+  doc: ProjectDocument;
+  program: ProgramSource;
+  boardId: string;
+}) {
   const t = useT();
+  const store = useStore();
+  const { readOnly } = useAppState();
   const refs = program.libraries ?? [];
   const issues = libraryIssues(program);
   const language = program.language as ProgramLanguage;
@@ -74,6 +84,17 @@ export function LibrariesPanel({ doc, program }: { doc: ProjectDocument; program
                 </span>
               </p>
               <p class="small">{reasons.join(' ')}</p>
+              {!named.has(lib.id) && (
+                <button
+                  type="button"
+                  class="button small"
+                  data-testid="library-unpin"
+                  disabled={!!readOnly}
+                  onClick={() => store.unpinLibrary(boardId, lib.id)}
+                >
+                  {t('library.unpin')}
+                </button>
+              )}
               <p class="small">
                 {t('library.license', {
                   spdx: isolateLtr(lib.license.spdx),

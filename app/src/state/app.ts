@@ -30,6 +30,7 @@ import {
   addProgramFile,
   renameProgramFile,
   deleteProgramFile,
+  unpinLibrary,
   useBoardProgram,
   stampRevision,
   validateProject,
@@ -302,6 +303,13 @@ export class AppStore {
     const r = renameProgramFile(doc, boardId, from, to);
     this.apply(r);
     return r;
+  }
+
+  /** Sprint 26: remove a managed library pinned for a part (not one the code uses). */
+  unpinLibrary(boardId: string, id: string): boolean {
+    const doc = this.stateValue.doc;
+    if (!doc) return false;
+    return this.apply(unpinLibrary(doc, boardId, id));
   }
 
   deleteProgramFile(boardId: string, path: string): boolean {

@@ -37,7 +37,7 @@ import { libraryFiles } from '../libraries/tree.js';
 import type { BuildProvider, JobContext, ProviderOutput } from './provider.js';
 import { LocalToolRunner, type ToolRunner } from './runner.js';
 import { analyzeMicroPython, PY_FEATURES_ANALYZER } from './pyFeatures.js';
-import type { Diagnostic } from './protocol.js';
+import type { Diagnostic, FeatureReport } from './protocol.js';
 
 export interface MicroPythonProfileRecord {
   id: string;
@@ -153,8 +153,9 @@ export class MicroPythonProvider implements BuildProvider {
     for (const lib of managed)
       for (const m of lib.provides)
         if (own.includes(m))
-          return fail(`${m}.py: a module of the library ${lib.name} has this name.`);
-    const source = job.files.map((f) => f.text).join('\n');
+          return fail(
+            `${m}.py: the managed library ${lib.name} has a module of this name. Rename the file, or remove the library from the project (Managed libraries).`,
+          );
 
     const fsr = this.opts.record.filesystem;
     const J = this.runner.jobPath(job.dir);
@@ -256,15 +257,31 @@ export class MicroPythonProvider implements BuildProvider {
     return {
       ok: true,
       imagePath: join(job.dir, 'image.bin'),
-      features: this.features(source, [...own, ...managed.flatMap((l) => l.provides)]),
+      features: this.features(
+        job.files.map((f) => f.text),
+        [...own, ...managed.flatMap((l) => l.provides)],
+        managed,
+      ),
       diagnostics: [],
       log: { text: '', truncated: false },
     };
   }
 
   /** The feature report: every artifact requires `unmodelled`; I2C adds `i2c` where provided. */
-  private features(source: string, modules: readonly string[] = []) {
-    const f = analyzeMicroPython(source, this.opts.runtimeCapabilities ?? [], modules);
+  private features(
+    sources: readonly string[],
+    modules: readonly string[] = [],
+    managed: readonly { name: string; runtimeCapabilities: readonly string[] }[] = [],
+  ) {
+    // Sprint 26 (review M1): every file analysed on its own (a string or comment opened in one
+    // file never hides another's code), merged conservatively.
+    const caps = this.opts.runtimeCapabilities ?? [];
+    const f = mergeReports(sources.map((s) => analyzeMicroPython(s, caps, modules)));
+    // Review L3: a pinned library needs what its part needs from the runtime.
+    for (const lib of managed)
+      if (lib.runtimeCapabilities.every((c) => caps.includes(c)))
+        f.requires = [...new Set([...(f.requires ?? []), ...lib.runtimeCapabilities])].sort();
+      else f.unsupported = [...new Set([...f.unsupported, `library:${lib.name}`])].sort();
     return {
       ...f,
       requires: [...new Set([...MICROPYTHON_REQUIRES, ...(f.requires ?? [])])].sort(),
@@ -301,4 +318,26 @@ export function projectModules(paths: readonly string[]): string[] {
     for (let k = 1; k <= dirs.length; k++) out.add(dirs.slice(0, k).join('.'));
   }
   return [...out].sort();
+}
+
+/** Sprint 26: one feature report for several files (unions; any unresolved read is unresolved). */
+export function mergeReports(reports: readonly FeatureReport[]): FeatureReport {
+  const u = <T>(xs: T[][]) => [...new Set(xs.flat())];
+  const reads = reports.map((r) => r.inputReads).filter((r) => r !== undefined);
+  const requires = u(reports.map((r) => r.requires ?? [])).sort();
+  return {
+    internalPull: u(reports.map((r) => r.internalPull)).sort((a, b) => a - b),
+    gpioInterrupt: u(reports.map((r) => r.gpioInterrupt)).sort((a, b) => a - b),
+    restart: reports.some((r) => r.restart),
+    unsupported: u(reports.map((r) => r.unsupported)).sort(),
+    ...(requires.length ? { requires } : {}),
+    ...(reads.length
+      ? {
+          inputReads: {
+            pins: u(reads.map((r) => r.pins)).sort((a, b) => a - b),
+            unresolved: reads.some((r) => r.unresolved),
+          },
+        }
+      : {}),
+  };
 }

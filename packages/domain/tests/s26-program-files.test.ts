@@ -27,6 +27,8 @@ import {
   serializePackage,
   setProgramProfile,
   setProgramText,
+  moveSelection,
+  unpinLibrary,
   sourceKey,
   validateProject,
   type ProjectDocument,
@@ -224,6 +226,53 @@ describe('managed libraries', () => {
     expect(sourceKey('esp32-arduino-3.3.12', two)).toBe(
       sourceKey('esp32-arduino-3.3.12', [...two].reverse()),
     );
+  });
+});
+
+describe('review fixes', () => {
+  it('H1: MicroPython project files may not take a name the firmware already has', () => {
+    for (const p of [
+      'network.py',
+      'esp32/__init__.py',
+      'machine.py',
+      'Time.py',
+      'lib/x.py',
+      'umqtt/x.py',
+    ])
+      expect(programPathIssue('micropython', p), p).toBe('reserved');
+    expect(programPathIssue('micropython', 'sensors.py')).toBeNull();
+  });
+
+  it('M2: an unrelated edit never pins a library; placing the part does; the user can unpin', () => {
+    const { doc, id } = withBoard();
+    // An older (v5-era) project: LCD placed, no libraries field.
+    const placed = must(addComponent(doc, 'display.lcd1602_i2c', { x: 400, y: 0 }));
+    const old: ProjectDocument = JSON.parse(JSON.stringify(placed.doc));
+    delete old.programs[id]!.libraries;
+    const moved = must(
+      moveSelection(old, { components: [placed.id], wires: [], junctions: [] }, { x: 20, y: 0 }),
+    );
+    expect(moved.doc.programs[id]!.libraries).toBeUndefined();
+    // Placing (another) LCD pins it.
+    const again = must(addComponent(moved.doc, 'display.lcd1602_i2c', { x: 400, y: 200 }));
+    expect(again.doc.programs[id]!.libraries).toEqual([{ id: LCD_LIB, version: '2.2.0' }]);
+    // Unpinned by the user, it stays unpinned through other edits.
+    const un = must(unpinLibrary(again.doc, id, LCD_LIB));
+    expect(un.doc.programs[id]!.libraries).toBeUndefined();
+    const moved2 = must(
+      moveSelection(un.doc, { components: [again.id], wires: [], junctions: [] }, { x: 20, y: 0 }),
+    );
+    expect(moved2.doc.programs[id]!.libraries).toBeUndefined();
+    // Code that includes it: cannot be unpinned.
+    const coded = must(setProgramText(again.doc, id, '#include <LiquidCrystal_PCF8574.h>\n'));
+    expect(unpinLibrary(coded.doc, id, LCD_LIB)).toEqual({ ok: false, error: 'library_in_use' });
+  });
+
+  it('M2: a program switched to MicroPython with the LCD placed gets the MicroPython library', () => {
+    const { doc, id } = withBoard();
+    const placed = must(addComponent(doc, 'display.lcd1602_i2c', { x: 400, y: 0 })).doc;
+    const mpy = must(setProgramProfile(placed, id, ESP32_MICROPYTHON_PROFILE.id)).doc;
+    expect(mpy.programs[id]!.libraries).toEqual([{ id: PY_LIB, version: '0.0.0-git.7affb0b' }]);
   });
 });
 

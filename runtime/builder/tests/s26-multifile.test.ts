@@ -225,6 +225,40 @@ describe('analyses over every file', () => {
     ).toEqual(['library:LiquidCrystal_PCF8574']);
   });
 
+  it('review M1: a comment opened in one file, or "/*" in a string, hides nothing from the analysis', () => {
+    const hidden = 'void f(){ ESP.restart(); setCpuFrequencyMhz(80); pinMode(5, INPUT_PULLUP); }\n';
+    const r = analyzeFeatures({
+      source: '',
+      sources: ['void setup(){}\n/*', hidden + '// */\n'],
+      symbols: [],
+      libraries: [],
+    });
+    expect(r.restart).toBe(true);
+    expect(r.unsupported).toContain('cpu_frequency');
+    expect(r.internalPull).toEqual([5]);
+    const one = analyzeFeatures({
+      source: 'void a(){ Serial.print("/*"); ESP.restart(); Serial.print("*/"); }\n',
+      symbols: [],
+      libraries: [],
+    });
+    expect(one.restart).toBe(true);
+    // Input reads: every file's pins, each file analysed on its own.
+    const reads = analyzeFeatures({
+      source: '',
+      sources: ['/*', 'int f(){ return digitalRead(27); }\n'],
+      symbols: [],
+      libraries: [],
+      capabilities: ['input-read'],
+    });
+    expect(reads.inputReads).toEqual({ pins: [27], unresolved: false });
+  });
+
+  it('review H1: a project module named like a firmware module never allows the firmware module', () => {
+    expect(analyzeMicroPython('import network\n', ['i2c'], ['network']).unsupported).toEqual([
+      'library:network',
+    ]);
+  });
+
   it('MicroPython: the project’s modules and packages and the pinned library modules import; nothing else', () => {
     expect(
       projectModules(['main.py', 'helpers.py', 'pkg/__init__.py', 'pkg/mod.py', 'loose/x.py']),

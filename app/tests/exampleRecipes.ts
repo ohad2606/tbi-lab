@@ -12,6 +12,7 @@ import {
   addComponent,
   addProgramFile,
   addWire,
+  unpinLibrary,
   createProject,
   deleteSelection,
   moveSelection,
@@ -111,6 +112,11 @@ class Recipe {
       readFileSync(new URL(`./exampleSketches/${dir}/${f}`, import.meta.url), 'utf8');
     this.doc = this.ok(setProgramText(this.doc, id, read(entry))).doc;
     for (const f of further) this.doc = this.ok(addProgramFile(this.doc, id, f, read(f))).doc;
+  }
+  /** Sprint 26: an example that drives a part without its managed library keeps none. */
+  noLibraries(id: string) {
+    for (const l of this.doc.programs[id]?.libraries ?? [])
+      this.doc = this.ok(unpinLibrary(this.doc, id, l.id)).doc;
   }
   /** Remove parts placed with every new project (an ESP32 example may not need the supply). */
   remove(...ids: string[]) {
@@ -941,6 +947,8 @@ export const RECIPES: Record<string, () => ProjectDocument> = {
     r.wire(T(R1, 'a'), { kind: 'wire', wire: rail, at: { x: 540, y: -340 } });
     r.wire(T(R1, 'b'), { kind: 'wire', wire: sda, at: { x: 540, y: -80 } });
     r.wire(T(R2, 'b'), { kind: 'wire', wire: scl, at: { x: 620, y: -60 } });
+    // A hand-written PCF8574 driver: no managed library (as before Sprint 26).
+    r.noLibraries(U1);
     return r.centre(-300);
   },
   /**
@@ -1484,6 +1492,8 @@ export const RECIPES: Record<string, () => ProjectDocument> = {
     r.wire(T(R1, 'a'), { kind: 'wire', wire: rail, at: { x: 540, y: -340 } });
     r.wire(T(R1, 'b'), { kind: 'wire', wire: sda, at: { x: 540, y: -80 } });
     r.wire(T(R2, 'b'), { kind: 'wire', wire: scl, at: { x: 620, y: -60 } });
+    // A hand-written PCF8574 driver: no managed library (as before Sprint 26).
+    r.noLibraries(U1);
     return r.centre(-300);
   },
   /**

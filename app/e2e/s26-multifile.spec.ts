@@ -163,6 +163,10 @@ test('managed libraries follow the parts and the code; the user’s code is neve
   await code(page).fill(text.replace('#include <LiquidCrystal_PCF8574.h>\n', ''));
   await expect(lib).toBeVisible();
   await expect(lib).not.toContainText('the code uses it');
+  // Not used by the code any more: the user may remove it; it stays removed.
+  await lib.getByTestId('library-unpin').click();
+  await expect(lib).toHaveCount(0);
+  await expect(page.getByTestId('code-libraries-count')).toHaveText(/0/);
 });
 
 test('reload and export/import keep every file and library exactly; Hebrew keeps file names left-to-right', async ({

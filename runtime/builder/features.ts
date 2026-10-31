@@ -106,19 +106,40 @@ function changesCpuFrequency(code: string): boolean {
   return all > boot;
 }
 
-/** Strip comments and string/char literals so tokens in them do not count. */
+/**
+ * Strip comments and string/char literals so tokens in them do not count. Sprint 26 (review M1):
+ * one pass in source order, so a `/*` inside a string, or a comment opened in one file, cannot
+ * hide code (each file of a program is stripped on its own, `analyzeFeatures` `sources`).
+ */
 export function codeOnly(source: string): string {
-  return (
-    source
-      .replace(/\/\*[\s\S]*?\*\//g, ' ')
-      .replace(/\/\/[^\n]*/g, ' ')
-      .replace(/"(?:\\.|[^"\\\n])*"/g, '""')
-      // Sprint 18 (review): C++14 digit separators (1'000, 0xFF'FF) are not character literals;
-      // dropped first (inside a number token, one that starts with a digit), so a call between two
-      // of them is not mistaken for literal text. case'a' and u8'x' stay character literals.
-      .replace(/(?<=\b\d[\dA-Fa-fxXbB']*)'(?=[\dA-Fa-f])/g, '')
-      .replace(/'(?:\\.|[^'\\\n])*'/g, "''")
-  );
+  // Sprint 18 (review): C++14 digit separators (1'000, 0xFF'FF) are not character literals;
+  // dropped first (inside a number token, one that starts with a digit), so a call between two
+  // of them is not mistaken for literal text. case'a' and u8'x' stay character literals.
+  const text = source.replace(/(?<=\b\d[\dA-Fa-fxXbB']*)'(?=[\dA-Fa-f])/g, '');
+  let out = '';
+  let i = 0;
+  while (i < text.length) {
+    const c = text[i]!;
+    const n = text[i + 1];
+    if (c === '/' && n === '/') {
+      while (i < text.length && text[i] !== '\n') i++;
+      out += ' ';
+    } else if (c === '/' && n === '*') {
+      const end = text.indexOf('*/', i + 2);
+      i = end < 0 ? text.length : end + 2;
+      out += ' ';
+    } else if (c === '"' || c === "'") {
+      // A literal ends at its quote or (unterminated) at the end of the line.
+      let k = i + 1;
+      while (k < text.length && text[k] !== c && text[k] !== '\n') k += text[k] === '\\' ? 2 : 1;
+      i = text[k] === c ? k + 1 : k;
+      out += c + c;
+    } else {
+      out += c;
+      i++;
+    }
+  }
+  return out;
 }
 
 function literalPins(code: string, call: RegExp, any: RegExp): number[] {
@@ -155,8 +176,10 @@ export function analyzeFeatures(input: {
    * capabilities are then required. Any other library is reported as before.
    */
   managed?: readonly { name: string; runtimeCapabilities: readonly string[] }[];
+  /** Sprint 26: the program's files, each stripped on its own (then `source` is not used). */
+  sources?: readonly string[];
 }): FeatureReport {
-  const code = codeOnly(input.source);
+  const code = (input.sources ?? [input.source]).map(codeOnly).join('\n');
   const syms = new Set(input.symbols);
   const unsupported = new Set<string>();
   for (const s of syms)
@@ -200,12 +223,11 @@ export function analyzeFeatures(input: {
   if (irqRuntime) requires.add('gpio-irq');
   let inputReads: FeatureReport['inputReads'];
   if (input.capabilities?.includes('input-read')) {
-    const r = programInputReads({
-      language: 'arduino-cpp',
-      profile: '',
-      fileName: 'sketch.ino',
-      text: input.source,
-    });
+    // Sprint 26 (review M1): each file on its own; any unresolved file makes the reads unresolved.
+    const per = (input.sources ?? [input.source]).map((text) =>
+      programInputReads({ language: 'arduino-cpp', profile: '', fileName: 'sketch.ino', text }),
+    );
+    const r = { pins: per.flatMap((x) => x.pins), unresolved: per.some((x) => x.unresolved) };
     // Literal interrupt pins only; an interrupt pin that cannot be told makes the reads unresolved.
     const irqPins = irqRuntime && gpioInterrupt !== INPUT_CAPABLE_GPIOS ? gpioInterrupt : [];
     inputReads = {

@@ -35,7 +35,7 @@
  * residual; the run-time U frames remain the backstop for ADC, interrupts and the clock.
  */
 import { I2C_PART_MAX_SCL_HZ } from '@tbi-lab/engine';
-import { programInputReads } from '@tbi-lab/domain';
+import { MICROPYTHON_RESERVED_MODULES, programInputReads } from '@tbi-lab/domain';
 import type { FeatureReport } from './protocol.js';
 import { INPUT_CAPABLE_GPIOS } from './features.js';
 
@@ -361,7 +361,10 @@ export function analyzeMicroPython(
    */
   localModules: readonly string[] = [],
 ): FeatureReport {
-  const local = new Set(localModules);
+  // Review H1: a name the firmware already has (built in or frozen) is never the project's.
+  const local = new Set(
+    localModules.filter((m) => !MICROPYTHON_RESERVED_MODULES.has(m.split('.')[0]!)),
+  );
   const allowed = (mod: string) =>
     local.has(mod) || (!mod.includes('.') && ALLOWED_MODULES.has(mod));
   const code = logicalLines(pythonCodeOnly(source));

@@ -1026,7 +1026,8 @@ export const he: Record<MessageKey, string> = {
   'program.file.error.bad_extension':
     'סביבת התכנות הזו אינה בונה קבצים מסוג זה (או לא בתיקייה זו).',
   'program.file.error.entry': 'זה שם הקובץ הראשי.',
-  'program.file.error.reserved': 'השם הזה שמור לסביבת התכנות.',
+  'program.file.error.reserved':
+    'השם הזה שמור: סביבת התכנות משתמשת בו, או (ב-MicroPython) שלמפרש כבר יש מודול בשם הזה (למשל ⁦network⁩, ⁦machine⁩ או ⁦time⁩), והוא היה מיובא במקום הקובץ שלכם.',
   'program.file.error.duplicate':
     'כבר קיים קובץ בשם הזה (שמות שנבדלים רק באותיות גדולות נחשבים זהים).',
   'program.file.error.limit': 'הפרויקט הגיע למגבלת הקבצים או הגודל (16 קבצים, ⁦256 KiB⁩ בסך הכול).',
@@ -1045,6 +1046,7 @@ export const he: Record<MessageKey, string> = {
   'library.validated': 'אומת בסימולטור:',
   'library.example': 'דוגמת שימוש',
   'library.copy': 'העתקת הדוגמה',
+  'library.unpin': 'הסרה מהפרויקט',
   'library.limit.lcd_write_only':
     'כתיבה בלבד: אי אפשר לקרוא בסימולטור את פורט המתאם של ה-LCD ואת הבקר (קריאה עוצרת את ההרצה, בציון שם).',
   'library.limit.lcd_clock':

@@ -146,26 +146,40 @@ export function librariesNamedBy(language: ProgramLanguage, text: string): strin
 }
 
 /**
- * The managed libraries a program should have: those serving a component placed in the project
- * (for the program's language and profile), plus those its code still names (a library stays
- * while the code needs it, even when its component is removed), with their dependencies. Pinned
- * versions already in `current` are kept as they are; anything new gets the registry's version.
+ * The managed libraries a program should have after an edit from `before` (null: the program is
+ * new, e.g. created or switched to another language):
+ * - a library its code names (an `#include <…>` / `import`, comments ignored) is pinned;
+ * - a library serving a part is pinned when such a part is newly placed (more of that type than
+ *   `before` had), never because of an unrelated edit, so opening or moving parts never changes
+ *   an older project's libraries;
+ * - a pinned library stays while a part it serves is placed or the code names it, and goes
+ *   otherwise (a user can unpin one the code does not name: `unpinLibrary`);
+ * with their dependencies. A pinned version is kept; anything new gets the registry's version.
  * Sorted by id. User code is never edited.
  */
-export function resolveLibraries(doc: ProjectDocument, program: ProgramSource): LibraryRef[] {
+export function resolveLibraries(
+  doc: ProjectDocument,
+  program: ProgramSource,
+  before: ProjectDocument | null = doc,
+): LibraryRef[] {
   const language = program.language as ProgramLanguage;
-  const types = new Set<string>(doc.components.map((c) => c.type));
-  const byComponent = MANAGED_LIBRARIES.filter(
-    (l) =>
-      l.language === language &&
-      l.profiles.includes(program.profile) &&
-      l.components.some((t) => types.has(t)),
-  ).map((l) => l.id);
+  const count = (d: ProjectDocument | null, type: string) =>
+    d ? d.components.filter((c) => c.type === type).length : 0;
+  const fits = (l: ManagedLibrary) =>
+    l.language === language && l.profiles.includes(program.profile);
+  const placed = (l: ManagedLibrary) => l.components.some((t) => count(doc, t) > 0);
+  const newlyPlaced = (l: ManagedLibrary) =>
+    l.components.some((t) => count(doc, t) > count(before, t));
   const texts = [program.text, ...(program.files ?? []).map((f) => f.text)];
-  const byCode = texts.flatMap((t) => librariesNamedBy(language, t));
-  const wanted = withDependencies([...new Set([...byComponent, ...byCode])]).filter((l) =>
-    l.profiles.includes(program.profile),
-  );
+  const byCode = new Set(texts.flatMap((t) => librariesNamedBy(language, t)));
+  const pinned = new Set((program.libraries ?? []).map((r) => r.id));
+  const ids = MANAGED_LIBRARIES.filter(fits)
+    .filter(
+      (l) =>
+        byCode.has(l.id) || (placed(l) && (pinned.has(l.id) || newlyPlaced(l) || before === null)),
+    )
+    .map((l) => l.id);
+  const wanted = withDependencies(ids).filter(fits);
   const current = new Map((program.libraries ?? []).map((r) => [r.id, r.version]));
   return wanted
     .map((l) => ({ id: l.id, version: current.get(l.id) ?? l.version }))

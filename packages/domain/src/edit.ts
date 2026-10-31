@@ -30,7 +30,8 @@ import {
   profileById,
   utf8Length,
 } from './program.js';
-import { resolveLibraries } from './libraryRegistry.js';
+import { librariesNamedBy, resolveLibraries } from './libraryRegistry.js';
+import type { ProgramLanguage } from './program.js';
 import { allocateId } from './project.js';
 import {
   cloneDocument,
@@ -72,7 +73,9 @@ export type EditError =
   | 'file_exists'
   | 'no_file'
   | 'too_many_files'
-  | 'project_too_large';
+  | 'project_too_large'
+  /** Sprint 26: the code includes or imports this library. */
+  | 'library_in_use';
 
 export type EditResult<T = object> =
   ({ ok: true; doc: ProjectDocument } & T) | { ok: false; error: EditError };
@@ -102,9 +105,17 @@ function transact(
   settleContacts(doc, draft, placed());
   cleanupJunctions(draft);
   settleNets(draft, previous);
-  settleLibraries(draft);
+  settleLibraries(draft, doc, fresh(doc, draft));
   return { ok: true, doc: draft };
 }
+
+/** Programs that are new in `draft` or now in another environment (all their parts count). */
+const fresh = (before: ProjectDocument, draft: ProjectDocument) =>
+  new Set(
+    Object.entries(draft.programs)
+      .filter(([id, p]) => before.programs[id]?.profile !== p.profile)
+      .map(([id]) => id),
+  );
 
 /**
  * Sprint 26: keep every program's managed libraries what its project needs (libraryRegistry.ts
@@ -112,9 +123,13 @@ function transact(
  * same edit (one undo step). Nothing else changes: code is never edited, a pinned version is
  * kept, and a program that needs none carries no `libraries` field at all.
  */
-export function settleLibraries(draft: ProjectDocument): void {
+export function settleLibraries(
+  draft: ProjectDocument,
+  before: ProjectDocument | null = draft,
+  fresh: ReadonlySet<string> = new Set(),
+): void {
   for (const [boardId, program] of Object.entries(draft.programs)) {
-    const libs = resolveLibraries(draft, program);
+    const libs = resolveLibraries(draft, program, fresh.has(boardId) ? null : before);
     const same =
       JSON.stringify(libs) === JSON.stringify(program.libraries ?? []) &&
       (libs.length > 0 || program.libraries === undefined);
@@ -124,6 +139,25 @@ export function settleLibraries(draft: ProjectDocument): void {
     else delete next.libraries;
     draft.programs[boardId] = next;
   }
+}
+
+/**
+ * Sprint 26 (review M2): remove a managed library pinned for a part, at the user's request. One the
+ * code names cannot be removed (it would come back with the next edit): `library_in_use`.
+ */
+export function unpinLibrary(doc: ProjectDocument, boardId: string, id: string): EditResult {
+  const program = doc.programs[boardId];
+  if (!program) return { ok: false, error: 'no_program' };
+  if (!(program.libraries ?? []).some((r) => r.id === id)) return { ok: true, doc };
+  const texts = [program.text, ...(program.files ?? []).map((f) => f.text)];
+  if (texts.some((t) => librariesNamedBy(program.language as ProgramLanguage, t).includes(id)))
+    return { ok: false, error: 'library_in_use' };
+  const draft = cloneDocument(doc);
+  const rest = (program.libraries ?? []).filter((r) => r.id !== id);
+  const next: ProgramSource = { ...program, libraries: rest };
+  if (!rest.length) delete next.libraries;
+  draft.programs[boardId] = next;
+  return { ok: true, doc: draft };
 }
 
 // ---------------------------------------------------------------------------------------------

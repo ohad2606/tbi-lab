@@ -430,6 +430,7 @@ export class ArduinoEsp32Provider implements BuildProvider {
       imagePath: d('image.bin'),
       features: analyzeFeatures({
         source,
+        sources: job.files.map((f) => f.text),
         symbols,
         libraries,
         managed,

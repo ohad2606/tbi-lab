@@ -128,6 +128,79 @@ const SEGMENT = /^[A-Za-z_][A-Za-z0-9_-]{0,47}(\.[A-Za-z0-9]{1,4})?$/;
 /** A MicroPython module or package segment must be a Python identifier to be importable. */
 const PY_SEGMENT = /^[A-Za-z_][A-Za-z0-9_]{0,47}(\.[A-Za-z0-9]{1,4})?$/;
 
+/**
+ * Sprint 26 (review H1): module names the pinned MicroPython v1.29.0 ESP32_GENERIC firmware
+ * already has (built in or frozen), from the genuine interpreter's own `help('modules')` on the
+ * runtime (2026-10-31), top-level names. A project file with one of these names would not be the
+ * module the program imports (a built-in wins), so its code would escape the analysis: reserved.
+ * `lib` is reserved too: the managed libraries' folder.
+ */
+export const MICROPYTHON_RESERVED_MODULES: ReadonlySet<string> = new Set([
+  '__main__',
+  '_asyncio',
+  '_boot',
+  '_espnow',
+  '_onewire',
+  '_thread',
+  '_webrepl',
+  'aioespnow',
+  'apa106',
+  'array',
+  'asyncio',
+  'binascii',
+  'bluetooth',
+  'btree',
+  'builtins',
+  'cmath',
+  'collections',
+  'cryptolib',
+  'deflate',
+  'dht',
+  'ds18x20',
+  'errno',
+  'esp',
+  'esp32',
+  'espnow',
+  'flashbdev',
+  'framebuf',
+  'gc',
+  'hashlib',
+  'heapq',
+  'inisetup',
+  'io',
+  'json',
+  'lib',
+  'machine',
+  'math',
+  'micropython',
+  'mip',
+  'neopixel',
+  'network',
+  'ntptime',
+  'onewire',
+  'os',
+  'platform',
+  'random',
+  're',
+  'requests',
+  'select',
+  'socket',
+  'ssl',
+  'struct',
+  'sys',
+  'time',
+  'tls',
+  'uasyncio',
+  'uctypes',
+  'umqtt',
+  'upysh',
+  'urequests',
+  'vfs',
+  'webrepl',
+  'webrepl_setup',
+  'websocket',
+]);
+
 export type ProgramPathIssue =
   | 'empty'
   | 'too_long'
@@ -166,6 +239,11 @@ export function programPathIssue(
   // build service's own folders, are reserved. MicroPython: boot.py would run before main.py.
   if (language === 'arduino-cpp' && /^sketch\./.test(lower)) return 'reserved';
   if (language === 'micropython' && lower === 'boot.py') return 'reserved';
+  if (
+    language === 'micropython' &&
+    MICROPYTHON_RESERVED_MODULES.has(parts[0]!.replace(/\.py$/, '').toLowerCase())
+  )
+    return 'reserved';
   if (taken.some((t) => t.toLowerCase() === lower)) return 'duplicate';
   return null;
 }
