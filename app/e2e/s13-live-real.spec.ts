@@ -38,7 +38,15 @@ async function runOnBoard(page: Page) {
 }
 
 /** Drag a range input from one end to the other in `moves` steps over about `ms`. */
-async function drag(page: Page, testId: string, from: 'left' | 'right', moves: number, ms: number) {
+async function drag(
+  page: Page,
+  testId: string,
+  from: 'left' | 'right',
+  moves: number,
+  ms: number,
+  /** Sprint 25 closure: false where the values pass an input through V_IL..V_IH (refused). */
+  staysRunning = true,
+) {
   const box = (await page.getByTestId(testId).boundingBox())!;
   const y = box.y + box.height / 2;
   const x0 = from === 'left' ? box.x + 3 : box.x + box.width - 3;
@@ -48,8 +56,8 @@ async function drag(page: Page, testId: string, from: 'left' | 'right', moves: n
   for (let i = 1; i <= moves; i++) {
     await page.mouse.move(x0 + ((x1 - x0) * i) / moves, y);
     await page.waitForTimeout(ms / moves);
-    // The session is never failed by the stream of live values.
-    expect(await status(page).getAttribute('data-status')).toBe('running');
+    // The rate of live values never fails the session (the values themselves may).
+    if (staysRunning) expect(await status(page).getAttribute('data-status')).toBe('running');
   }
   await page.mouse.up();
 }
@@ -63,7 +71,7 @@ async function noRateWarnings(page: Page) {
   expect(codes).not.toContain('transient_rejected');
 }
 
-test('night light: dragging the light from bright to dark and back; the firmware follows the final value', async ({
+test('night light: the firmware follows typed light levels; dragging through the undefined band ends the run by name', async ({
   page,
 }) => {
   await openExample(page, 'esp32-night-light');
@@ -73,22 +81,27 @@ test('night light: dragging the light from bright to dark and back; the firmware
   });
   await component(page, 'LDR1').focus();
   const field = page.getByTestId('param-LDR1-illuminance');
-  // To the dark end (1 lx) in 40 moves over 2 s: darkness reads HIGH.
-  await drag(page, 'param-LDR1-illuminance-slider', 'right', 40, 2000);
-  await expect(field).toHaveValue('1');
+  // Sprint 25 closure: typed values jump between defined levels (dark 1 lx reads HIGH, bright
+  // 10 000 lx reads LOW) and the firmware follows each.
+  await field.fill('1');
+  await field.press('Enter');
   await expect(page.getByTestId('pin-level-4')).toHaveAttribute('data-level', '1', {
     timeout: 30_000,
   });
-  // And back to the bright end (10 000 lx): LOW again.
-  await drag(page, 'param-LDR1-illuminance-slider', 'left', 40, 2000);
-  await expect(field).toHaveValue('10000');
+  await field.fill('10000');
+  await field.press('Enter');
   await expect(page.getByTestId('pin-level-4')).toHaveAttribute('data-level', '0', {
     timeout: 30_000,
   });
   await expect(status(page)).toHaveAttribute('data-status', 'running');
   if (await page.getByTestId('mcu-warnings').count()) await noRateWarnings(page);
-  await page.getByTestId('sim-stop').click();
-  await expect(status(page)).toHaveAttribute('data-status', 'stopped', { timeout: 60_000 });
+  // A drag to the dark end passes the divider through V_IL..V_IH (about 3 to 110 lx), where the
+  // ESP32 specifies no hysteresis: the firmware's read there ends the run by name, never a level.
+  await drag(page, 'param-LDR1-illuminance-slider', 'right', 40, 2000, false);
+  const err = page.getByTestId('sim-error');
+  await expect(err).toHaveAttribute('data-code', 'gpio_input_undefined', { timeout: 60_000 });
+  await expect(err).toContainText('GPIO34');
+  await expect(err).toContainText('hysteresis');
 });
 
 test('distance alarm: dragging the HC-SR04 target near (0.10 m) lights the LED; the firmware measures it', async ({
