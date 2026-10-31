@@ -1,21 +1,23 @@
 /**
  * Sprint 11 (R1), slice 5, REAL runtime: a photoresistor divider (3.3 V -> LDR -> GPIO35 -> 10 kΩ
  * -> GND) read by the pinned TbiBanks firmware as a DIGITAL level and copied to GPIO33 (an LED);
- * the light level is mirrored live (ADR-010). Bright -> HIGH, dark -> LOW, in between -> the pad
- * holds its previous level (datasheet V_IL/V_IH band). No ADC (analogRead stays refused).
+ * the light level is mirrored live (ADR-010). Bright -> HIGH, dark -> LOW. In between (the
+ * datasheet's V_IL..V_IH band) the ESP32 specifies no hysteresis (datasheet v5.3 Table 5-3, TRM
+ * v5.9): Sprint 25 closure, the firmware's next read ends the run by name (gpio_input_undefined,
+ * between_thresholds) instead of keeping the previous level. No ADC (analogRead stays refused).
  */
 import { afterAll, describe, expect, it } from 'vitest';
 import { EngineSession, type SolveSuccess } from '@tbi-lab/engine';
-import { waitEvent } from '../host/tests/support.js';
+import { waitEvent, waitState } from '../host/tests/support.js';
 import { Circuit } from '../host/tests/r1-support.js';
 import { realHost } from './r2-support.js';
-import { close, realRequest, started, stopped } from './r1-support.js';
+import { close, realRequest, started } from './r1-support.js';
 
 const host = realHost();
 afterAll(() => host.shutdown());
 
 describe('slice 5 — photoresistor (digital threshold) on the real runtime', () => {
-  it('light mirrored live: bright lights the LED, dark turns it off, in between holds; values equal the engine', async () => {
+  it('light mirrored live: bright lights the LED, dark turns it off, in between ends the run at the read; values equal the engine', async () => {
     const c = new Circuit().psu(3.3);
     const ldr = c.add('component.photoresistor');
     const r = c.add('component.resistor');
@@ -66,30 +68,34 @@ describe('slice 5 — photoresistor (digital threshold) on the real runtime', ()
       'GPIO35 voltage',
     );
     close(bright.components[d]!.current!, want.components[d]!.current!, 'LED current');
-    // In the hold band (20 lx): still lit, for a while.
-    await lux(20, () => true, 1500);
-    expect(
-      lit(
-        s.log
-          .since(0)
-          .filter((e) => e.type === 'electrical')
-          .map((e) => (e as unknown as { outcome: SolveSuccess }).outcome)
-          .at(-1)!,
-      ),
-    ).toBe(true);
     // Dark: off.
     await lux(1, (o) => !lit(o));
-    // Back into the band: stays off.
-    await lux(20, () => true, 1500);
+    // Bright again: on (both transitions, each way).
+    await lux(200, lit);
+    // Into the band (20 lx): the previous HIGH is not kept; the next read ends the run.
     expect(
-      lit(
-        s.log
-          .since(0)
-          .filter((e) => e.type === 'electrical')
-          .map((e) => (e as unknown as { outcome: SolveSuccess }).outcome)
-          .at(-1)!,
-      ),
-    ).toBe(false);
-    await stopped(s);
+      s.submit({
+        category: 'mirror',
+        seq: ++seq,
+        projectRevision: ++rev,
+        component: ldr,
+        control: { params: { illuminance: 20 } },
+      }),
+    ).toMatchObject({ accepted: true });
+    await waitState(s, 'failed', 60_000);
+    await s.done();
+    const st = s.status();
+    expect(st).toMatchObject({
+      reason: 'electrical_error',
+      detail: {
+        code: 'gpio_input_undefined',
+        param: 'gpio35',
+        detail: { inputs: [{ gpio: 35, cause: 'between_thresholds' }] },
+      },
+    });
+    const v = (st.detail as { detail: { inputs: { voltage: number }[] } }).detail.inputs[0]!
+      .voltage;
+    expect(v).toBeGreaterThan(0.825);
+    expect(v).toBeLessThan(2.475);
   });
 });

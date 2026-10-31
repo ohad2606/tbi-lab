@@ -73,6 +73,17 @@ describe('T-R4-5: A1 averages, peaks and refusals', () => {
     expect(problems).toEqual([{ code: 'pwm_load_unsupported', components: [k], gpios: [18] }]);
   });
 
+  it('Sprint 25 closure: an input entering the V_IL..V_IH band with the PWM signal is a change too (no hysteresis)', () => {
+    // 1 kΩ over 1 kΩ: the high point puts GPIO5 at about 1.65 V (band), the low point at 0 V.
+    const c = new Circuit();
+    const r = c.add('component.resistor');
+    const r2 = c.add('component.resistor');
+    c.ohms(r, 1000).ohms(r2, 1000).wire(`${r}.b`, `${r2}.a`).wire(`${r2}.b`, 'GND1.ref');
+    c.pad(18, `${r}.a`).pad(5, `${r}.b`);
+    const { problems } = points(c, [{ gpio: 18, duty: 0.5 }]);
+    expect(problems).toEqual([{ code: 'pwm_input_unsupported', inputs: [5], gpios: [18] }]);
+  });
+
   it('an MCU input that would read the PWM signal is refused, named', () => {
     const c = new Circuit();
     const r = c.add('component.resistor');

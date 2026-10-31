@@ -84,11 +84,13 @@ const sha256File = (path: string) => createHash('sha256').update(readFileSync(pa
 export class MicroPythonProvider implements BuildProvider {
   readonly profile: BuildProfile;
   readonly profileHash: string;
+  readonly analysisCapabilities: readonly string[];
   private readonly runner: ToolRunner;
   private readonly viewHome: string;
 
   constructor(private readonly opts: MicroPythonProviderOptions) {
     this.profile = opts.profile;
+    this.analysisCapabilities = [...(opts.runtimeCapabilities ?? [])].sort();
     // The analysis version is part of the cache key: a rule change rebuilds (and re-analyses).
     this.profileHash = createHash('sha256')
       .update(

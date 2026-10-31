@@ -565,7 +565,7 @@ export const en = {
   'sim.error.gpio_input_undefined.unknown':
     '{pins}: the program read this ESP32 input while an undetermined logic level (X) reached it, so the run stopped at that read instead of choosing LOW or HIGH. Check the logic inputs marked unknown (X).',
   'sim.error.gpio_input_undefined.between_thresholds':
-    '{pins}: the program read this ESP32 input at {voltage}, between {vil} and {vih}, before it had ever had a defined level. The datasheet guarantees no reading there, so the run stopped at that read instead of choosing LOW or HIGH. Drive the input to {vil} or below, or {vih} or above.',
+    '{pins}: the program read this ESP32 input at {voltage}, between {vil} and {vih}. The ESP32 datasheet guarantees no reading there and specifies no hysteresis, so the previous level is not kept either: the run stopped at that read instead of choosing LOW or HIGH. Drive the input to {vil} or below, or {vih} or above.',
   'sim.error.i2c_clock_exceeded':
     '{components}: the program clocks the I2C bus at {hz} when it addresses this display, faster than its PCF8574 backpack is rated for ({max}, NXP datasheet). A real module is not guaranteed to work there, so the run stopped. Use Wire.setClock(100000) or less (MicroPython: freq=100000 or less).',
   'sim.error.i2c_read_unsupported':
@@ -1288,7 +1288,7 @@ export const en = {
     'A PIR motion sensor on GPIO34; the firmware copies it to GPIO4, which switches a 2N3904 and a 5 V relay (with a flyback diode). The relay contact sounds the buzzer and lights the alarm LED. Click the sensor dome while running to put motion in front of it. Runs on the ESP32 runtime service.',
   'example.esp32-night-light.title': 'ESP32: RGB night light with a light sensor',
   'example.esp32-night-light.summary':
-    'A light-sensor divider on GPIO34 read as a digital level (no ADC): dark (below about 3 lx) reads HIGH and the firmware lights all three RGB channels through GPIO4: white. Bright (above about 110 lx) reads LOW; in between the input keeps its last level. Change the light in the Properties panel while running. Runs on the ESP32 runtime service.',
+    'A light-sensor divider on GPIO34 read as a digital level (no ADC): dark (below about 3 lx) reads HIGH and the firmware lights all three RGB channels through GPIO4: white. Bright (above about 110 lx) reads LOW; in between the ESP32 guarantees no level (no hysteresis is specified), so a read there stops the run. Change the light in the Properties panel while running. Runs on the ESP32 runtime service.',
   'example.esp32-distance-alarm.title': 'ESP32: ultrasonic distance alarm',
   'example.esp32-distance-alarm.summary':
     'An HC-SR04 measures the distance to a target: GPIO5 sends the 10 µs trigger pulse and the echo pulse returns to GPIO18 through a 1 kΩ / 2 kΩ divider (the module runs from 5 V). The sketch prints the distance (pulse width in µs / 58 = cm); closer than 20 cm, GPIO2 lights the red LED. Change the target distance in the Properties panel while running. Runs on the ESP32 runtime service.',
@@ -1320,10 +1320,10 @@ export const en = {
     'The same circuit as the Arduino blink, programmed in MicroPython: main.py sets GPIO2 as an output and switches the red LED (220 Ω to GND) on and off every 500 ms with Pin.value().',
   'example.esp32-pot-threshold.title': 'ESP32: potentiometer as a digital input',
   'example.esp32-pot-threshold.summary':
-    'A 10 kΩ potentiometer across 3.3 V feeds GPIO34, which the Arduino program reads as a digital level: LOW at or below 0.825 V, HIGH at or above 2.475 V, the last level in between. GPIO4 lights the LED while it reads HIGH. Turn the wiper while running. Analog input (analogRead) is not supported. Runs on the ESP32 runtime service.',
+    'A 10 kΩ potentiometer across 3.3 V feeds GPIO34, which the Arduino program reads as a digital level: LOW at or below 0.825 V, HIGH at or above 2.475 V. A read in between stops the run: the datasheet guarantees no level there and specifies no hysteresis. GPIO4 lights the LED while it reads HIGH. Turn the wiper while running. Analog input (analogRead) is not supported. Runs on the ESP32 runtime service.',
   'example.mpy-pot-threshold.title': 'MicroPython: potentiometer as a digital input',
   'example.mpy-pot-threshold.summary':
-    'The same potentiometer circuit in MicroPython: Pin(34, Pin.IN).value() reads the wiper as 0 at or below 0.825 V and 1 at or above 2.475 V, keeping the last level in between; GPIO4 lights the LED. Turn the wiper while running. machine.ADC is not supported. Runs on the ESP32 runtime service.',
+    'The same potentiometer circuit in MicroPython: Pin(34, Pin.IN).value() reads the wiper as 0 at or below 0.825 V and 1 at or above 2.475 V; a read in between stops the run (the datasheet guarantees no level there and specifies no hysteresis); GPIO4 lights the LED. Turn the wiper while running. machine.ADC is not supported. Runs on the ESP32 runtime service.',
   'example.mpy-button.title': 'MicroPython: a push button lights an LED',
   'example.mpy-button.summary':
     'Hold the button: 3.3 V reaches GPIO34 through 1 kΩ, and a 10 kΩ pull-down holds it LOW when released (GPIO34 has no internal pull). main.py reads it with Pin.IN every 10 ms and copies it to GPIO4, which drives the red LED through 220 Ω.',

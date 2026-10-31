@@ -161,6 +161,33 @@ describe('BuildService', () => {
     });
   });
 
+  it('Sprint 25 closure: a record analysed for other runtime capabilities is never reused (built again)', async () => {
+    const req = sketch('void setup() {}\nvoid loop() {}\n');
+    const key = sourceKey(req.profile, req.files);
+    const { service, provider, grants } = setup();
+    // Built for Runtime v5's capabilities: the record says so.
+    provider.analysisCapabilities = ['gpio-irq', 'i2c', 'input-read'];
+    const first = await finish(service, service.submit(req, A));
+    expect(grants.findBuilds(A, key)[0]!.build.capabilities).toEqual([
+      'gpio-irq',
+      'i2c',
+      'input-read',
+    ]);
+    expect('cached' in service.submit(req, A)).toBe(true);
+    expect(provider.builds).toBe(1);
+    // The same service now serves a runtime without them (v4): not reused, built again.
+    provider.analysisCapabilities = ['i2c'];
+    const again = await finish(service, service.submit(req, A));
+    expect(provider.builds).toBe(2);
+    expect(again.artifact?.sha256).toBe(first.artifact?.sha256);
+    expect(grants.findBuilds(A, key)[0]!.build.capabilities).toEqual(['i2c']);
+    // A record from before the field (no capabilities) is not current either.
+    const { capabilities: _c, ...old } = grants.findBuilds(A, key)[0]!.build;
+    grants.recordBuild(A, old);
+    await finish(service, service.submit(req, A));
+    expect(provider.builds).toBe(3);
+  });
+
   it('one compilation at a time, three queued, then busy; identical pending input is shared', async () => {
     const { service, provider } = setup({ timeoutMs: 1500 });
     const a = service.submit(sketch('#stall a'), A);

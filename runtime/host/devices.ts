@@ -32,6 +32,8 @@ import {
   hcsr04Echo,
   hcsr04TrigLevel,
   interpretDigitalInput,
+  V_IH_V,
+  V_IL_V,
   type DigitalLevel,
   type SolveSuccess,
 } from '@tbi-lab/engine';
@@ -97,6 +99,11 @@ export class RuntimeDevices {
   private budgetWindow = -1n;
   private budgetUsed = 0;
   readonly diagnostics: { simNs: bigint; d: DeviceDiagnostic }[] = [];
+  /**
+   * Sprint 25 closure: a response that would put a pad the firmware may read between V_IL and
+   * V_IH (the ESP32 specifies no hysteresis there). The response is not given; the session ends.
+   */
+  undefinedLevel: { gpio: number; voltage: number; component: string } | null = null;
 
   constructor(
     snapshot: SimulationSnapshot,
@@ -104,6 +111,8 @@ export class RuntimeDevices {
     private readonly pads: readonly number[],
     private readonly inputLevels: Map<number, DigitalLevel>,
     private readonly schedule: InputSchedule,
+    /** Sprint 25 closure: whether the firmware may read `pad` (Runtime v5 input-read watch). */
+    private readonly watched: (pad: number) => boolean = () => false,
   ) {
     for (const c of snapshot.components) {
       if (c.type === 'sensor.hc_sr04')
@@ -293,6 +302,10 @@ export class RuntimeDevices {
       for (const pad of this.pads) {
         const v = volts.get(s.token)!.get(pad);
         if (v === undefined) continue;
+        if (v > V_IL_V && v < V_IH_V && this.watched(pad)) {
+          this.undefinedLevel ??= { gpio: pad, voltage: v, component };
+          return null;
+        }
         const next = interpretDigitalInput(v, level.get(pad)!);
         if (next === level.get(pad)) continue;
         level.set(pad, next);

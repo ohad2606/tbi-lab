@@ -24,6 +24,8 @@ export function fakeImage(seed: string): Buffer {
 export class FakeProvider implements BuildProvider {
   readonly profile = ESP32_ARDUINO_PROFILE;
   readonly profileHash = 'f'.repeat(64);
+  /** Sprint 25 closure: the runtime capabilities the analysis assumed (undefined: none). */
+  analysisCapabilities?: readonly string[];
   builds = 0;
   dirs: string[] = [];
   /** Sprint 18F: whether each job was a curated source's (may leave the core seed). */

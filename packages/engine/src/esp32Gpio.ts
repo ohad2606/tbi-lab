@@ -4,7 +4,7 @@
  * PROMOTED from experiments/gate-c-bridge/src/pinModel.ts (Sprint 0 Gate C, tag sprint-1-complete)
  * with the logic and every constant unchanged; see PROVENANCE.md. This is the approved V1 GPIO
  * electrical model: output = 3.3 V behind 16.5 ohm (high) / 17.679 ohm (low); input thresholds
- * V_IL = 0.825 V, V_IH = 2.475 V, holding the previous level in between.
+ * V_IL = 0.825 V, V_IH = 2.475 V; in between no level is defined (see interpretDigitalInput).
  *
  * Every number here is derived from the ESP32 Series Datasheet v5.3, Table 5-3
  * "DC Characteristics (3.3 V, 25 degC)". The derivations are shown so the model can be
@@ -118,10 +118,12 @@ export type DigitalLevel = 0 | 1;
 /**
  * Interpret a node voltage as a digital input level.
  *
- * Between V_IL and V_IH the datasheet guarantees nothing. Rather than invent a threshold,
- * the model HOLDS the previous level through that band, which is the conventional way to
- * represent a real Schmitt-trigger-ish input without claiming a specific hysteresis width.
- * The held value is part of the documented semantics, not an accident.
+ * Between V_IL and V_IH the datasheet guarantees nothing, and neither the datasheet (v5.3, Table
+ * 5-3) nor the TRM (v5.9) specifies input hysteresis. This function returns `previous` there only
+ * as the level QEMU keeps being given; it is NOT a reading. Sprint 25 closure: wherever the
+ * firmware can read the pad (Runtime v5 `input-read`), the Session Host marks a voltage in the band
+ * undefined and refuses the read (gpio_input_undefined, between_thresholds), whatever the previous
+ * level was. Callers that need a reading must check the band first.
  */
 export function interpretDigitalInput(voltageV: number, previous: DigitalLevel): DigitalLevel {
   if (voltageV >= V_IH_V) return 1;

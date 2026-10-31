@@ -14,7 +14,9 @@ import type { TicketFeatures } from '../../identity/ticket.js';
 import { principalFor, ticketFor } from '../../identity/test-gate.js';
 import type { SessionHost } from '../host.js';
 import type { HostSession } from '../session.js';
-import { createRequest, fakeHost, waitState } from './support.js';
+import { createRequest, fakeHost, waitEvent, waitState } from './support.js';
+import { Circuit } from './r1-support.js';
+import type { SolveSuccess } from '@tbi-lab/engine';
 
 const V5 = '2 gpio-irq,i2c,input-read,pad-func,pwm,sched-input,unmodelled';
 const bad = (line: string) => expect(() => parseFrame(line), line).toThrow(ProtocolError);
@@ -203,4 +205,76 @@ describe('the Session Host refuses a read of an undefined input (fake runtime)',
       detail: { requires: ['input-read'] },
     });
   });
+});
+
+describe('Sprint 25 closure: no hysteresis is specified, so the V_IL..V_IH band is never held', () => {
+  // A 10 kΩ potentiometer across 3.3 V feeds GPIO5. Paced at real time, so the wiper can be turned
+  // while the fake firmware runs; its read of GPIO5 comes at 3 s of simulated time.
+  async function potSession(read: string) {
+    const r = fakeHost('normal', {
+      paceRate: 1,
+      runtimeEnv: {
+        PATH: process.env.PATH,
+        TBI_FAKE_MODE: 'normal',
+        TBI_FAKE_HELLO: V5,
+        TBI_FAKE_FRAMES: read,
+      },
+    });
+    hosts.push(r.host);
+    const c = new Circuit().psu(3.3);
+    const rv = c.add('component.potentiometer');
+    c.set(rv, 'resistance', { value: 10_000, unit: 'ohm' });
+    c.set(rv, 'position', { value: 90, unit: 'percent' });
+    c.wire('PSU1.positive', `${rv}.a`).wire(`${rv}.b`, 'GND1.ref');
+    c.pad(5, `${rv}.wiper`);
+    const req = c.request(r.art.sha256);
+    req.ticket = ticketFor(r.art.sha256, principalFor(), reads([5]));
+    const created = r.host.create(req, principalFor());
+    if (!created.ok) throw new Error(created.error);
+    const s = created.value.session;
+    s.run();
+    let rev = req.circuit.projectRevision;
+    const turn = async (position: number) => {
+      const at = s.log.lastSeq;
+      expect(
+        s.submit({
+          category: 'mirror',
+          seq: rev,
+          projectRevision: ++rev,
+          component: rv,
+          control: { params: { position } },
+        }),
+      ).toMatchObject({ accepted: true });
+      const e = await waitEvent(
+        s,
+        (x) =>
+          x.seq > at &&
+          x.type === 'electrical' &&
+          (x as unknown as { outcome: SolveSuccess }).outcome.appliedRevision === rev,
+      );
+      return (e as unknown as { outcome: SolveSuccess }).outcome.pins!.find((p) => p.gpio === 5)!;
+    };
+    return { s, turn };
+  }
+
+  it('a pad that read HIGH and is then turned into the band is marked undefined: the read is refused', async () => {
+    const { s, turn } = await potSession('3000@N 3000000000 0000000020');
+    await waitEvent(s, (e) => e.type === 'electrical');
+    // 90 %: HIGH (defined), then 50 %: 1.65 V, inside 0.825..2.475 V.
+    const mid = await turn(50);
+    expect(mid.voltage).toBeGreaterThan(0.825);
+    expect(mid.voltage).toBeLessThan(2.475);
+    expect(await terminal(s)).toMatchObject({
+      state: 'failed',
+      reason: 'electrical_error',
+      detail: {
+        code: 'gpio_input_undefined',
+        param: 'gpio5',
+        detail: {
+          inputs: [{ gpio: 5, cause: 'between_thresholds', voltage: mid.voltage }],
+          sinceNs: '3000000000',
+        },
+      },
+    });
+  }, 20_000);
 });

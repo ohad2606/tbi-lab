@@ -475,6 +475,7 @@ export class HostSession {
       this.request.attachments.map((a) => a.gpio),
       this.inputLevels,
       this.schedule,
+      (pad) => !!this.inputWatch && (this.inputWatch.all || this.inputWatch.pins.has(pad)),
     );
     const servos = new ServoBank(this.request.circuit);
     this.servos = servos.empty ? null : servos;
@@ -704,14 +705,18 @@ export class HostSession {
       // Sprint 25 (input-read): a pad the program may read, in input mode, with no defensible
       // level is marked undefined (a read then ends the session); it is never given LOW or HIGH.
       if (watch && p.mode === 'input' && !p.pwm && (watch.all || watch.pins.has(p.gpio))) {
-        const hold = p.voltage > V_IL_V && p.voltage < V_IH_V;
+        // Sprint 25 closure: the ESP32 datasheet (v5.3, Table 5-3) and TRM (v5.9) specify no input
+        // hysteresis, so a previous level is not kept through the V_IL..V_IH band: any voltage
+        // there is undefined, whatever the pad read before.
+        const band = p.voltage > V_IL_V && p.voltage < V_IH_V;
         const why: UndefinedInput | null = p.levelUndefined
           ? { cause: p.levelUndefined }
-          : hold && prev === undefined
+          : band
             ? { cause: 'between_thresholds', voltage: p.voltage }
             : null;
         if (why) {
-          // Nothing held it: there is no previous level to keep through the V_IL..V_IH band.
+          // Nothing held it: it has no level at all. (Inside the band, inputLevels keeps the level
+          // QEMU was last given, for the edge on leaving it; the firmware cannot read it there.)
           if (p.levelUndefined) this.inputLevels.delete(p.gpio);
           cmds.push(...this.markUndefined(p.gpio, why));
           continue;
@@ -726,6 +731,30 @@ export class HostSession {
     // Sprint 12 (R2): what the sensors saw; their responses are scheduled edges.
     if (this.devices && !this.devices.empty) cmds.push(...this.devices.observe(vns, out));
     this.flushDeviceDiagnostics();
+    // Sprint 25 closure: a sensor response would put a watched pad between V_IL and V_IH.
+    const u = this.devices?.undefinedLevel;
+    if (u && !this.pendingFailure) {
+      const detail = {
+        code: 'gpio_input_undefined',
+        components: [u.component],
+        param: `gpio${u.gpio}`,
+        detail: {
+          inputs: [{ gpio: u.gpio, cause: 'between_thresholds', voltage: u.voltage }],
+          sinceNs: vns.toString(),
+          vil: V_IL_V,
+          vih: V_IH_V,
+        },
+      };
+      this.log.append({
+        type: 'diagnostic',
+        simNs: vns.toString(),
+        severity: 'error',
+        code: 'gpio_input_undefined',
+        detail,
+      });
+      this.pendingFailure = { reason: 'electrical_error', detail };
+      return [{ type: 'Q' }];
+    }
     return cmds;
   }
 
@@ -1158,8 +1187,7 @@ export class HostSession {
   /**
    * Sprint 25 (Runtime v5, `input-read`): the firmware read the input register while these pads,
    * which it may read, had no defensible level (nothing holds the net, nothing is wired, an
-   * undetermined logic level reaches it, or its voltage is between V_IL and V_IH with no previous
-   * level). A real ESP32 reads an undefined value there; the simulator never substitutes LOW or
+   * undetermined logic level reaches it, or its voltage is between V_IL and V_IH). A real ESP32 reads an undefined value there; the simulator never substitutes LOW or
    * HIGH: the session ends at this exact virtual time, naming the pads.
    */
   private onInputRead(vns: bigint, pads: readonly number[]): Command[] {

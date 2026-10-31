@@ -38,6 +38,12 @@ export interface BuildProvider {
   readonly profile: BuildProfile;
   /** sha256 over the canonical pinned-input record (toolchain file hashes, options). */
   readonly profileHash: string;
+  /**
+   * Sprint 25 closure: the runtime capabilities the feature analysis assumed (sorted). A stored
+   * build analysed for another set is not reused: what it declares (e.g. `requires: input-read`)
+   * belongs to that runtime. Absent: the analysis does not depend on the runtime.
+   */
+  readonly analysisCapabilities?: readonly string[];
   /** Refuse to serve when the installed toolchain does not match the pins. */
   verifyToolchain(): Promise<void>;
   build(job: JobContext): Promise<ProviderOutput>;

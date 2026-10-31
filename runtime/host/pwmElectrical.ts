@@ -23,6 +23,8 @@
  */
 import {
   interpretDigitalInput,
+  V_IH_V,
+  V_IL_V,
   type ComponentResult,
   type PinResult,
   type PwmComponentFigures,
@@ -292,7 +294,7 @@ export function analysePwm(
 /**
  * Combine the operating points. `low`: every PWM pad low; `single[i]`: only pad i high; `allHigh`:
  * every PWM pad high (only needed with two or more pads). `prevInputs`: the input levels the MCU
- * currently sees (for the hysteresis of interpretDigitalInput). `analysis`: `analysePwm` of the
+ * currently sees (a pad with no change between the points keeps it). `analysis`: `analysePwm` of the
  * same points, when the caller keeps it (Sprint 18); computed here otherwise.
  */
 export function combinePwm(
@@ -323,9 +325,14 @@ export function combinePwm(
     .filter((p) => p.mode === 'input' && !pwmGpios.has(p.gpio))
     .filter((p) => {
       const prev = prevInputs.get(p.gpio) ?? 0;
+      // Sprint 25 closure: no hysteresis is specified, so a point between V_IL and V_IH is its own
+      // (undefined) state, never the previous level: entering or leaving it is a change too.
       const at = (o: SolveSuccess) => {
         const q = o.pins?.find((x) => x.gpio === p.gpio);
-        return q ? interpretDigitalInput(q.voltage, prev) : prev;
+        if (!q) return prev;
+        return q.voltage > V_IL_V && q.voltage < V_IH_V
+          ? 'X'
+          : interpretDigitalInput(q.voltage, prev);
       };
       return points.some((o) => at(o) !== at(low));
     })

@@ -32,7 +32,7 @@ After (Runtime v5):
 - A watched pad in input mode is marked undefined when: nothing drives its net (the engine's
   `logic_input_floating` rule: no resistive or source path; junctions, capacitors and input pads
   do not drive), an undetermined logic level reaches it, nothing is wired to it, or its voltage is
-  between V_IL (0.825 V) and V_IH (2.475 V) with no previous level.
+  between V_IL (0.825 V) and V_IH (2.475 V) (closure: whatever the previous level; see below).
 - When the firmware reads the input register while such a pad is not driving, the session ends at
   that virtual time: `gpio_input_undefined` (EN/HE, the pin and why). No LOW or HIGH is ever
   substituted, and no output that follows the read reaches the user.
@@ -202,3 +202,72 @@ I2C), so by design v4 refuses them at the handshake by name (fail closed). The `
 service would reuse those records (their analyzer version, 3, is newer than its own, 2), so
 building again may not clear it: a real rollback should also remove the Sprint 25 build records.
 The rehearsal checked the services, units, links and identities, not a session on v4.
+
+## Closure (2026-10-31)
+
+### GPIO undefined region: no hold (P1)
+
+Evidence: ESP32 Series Datasheet v5.3 (sha256 `a7917e6b…cd29adf`), Table 5-3 "DC
+Characteristics (3.3 V, 25 °C)", gives V_IH min 0.75 × VDD and V_IL max 0.25 × VDD and **no
+input hysteresis or Schmitt-trigger parameter**; the ESP32 Technical Reference Manual v5.9
+(sha256 `1007b90e…40a64b82`, IO_MUX/GPIO chapter: FUN_IE, FUN_WPU/WPD, FUN_DRV, MCU_SEL) has no
+hysteresis control or figure either (full-text search of both documents: no match for
+"hysteresis" or "Schmitt"). Keeping the previous level through the band is therefore not a
+guaranteed behaviour of the relevant input. Decision (per the closure directive):
+
+- A watched pad (one the program may read, or an armed edge interrupt) whose solved voltage is
+  strictly between V_IL and V_IH is marked undefined, **whatever it read before**; the next
+  register read (or the arming / delivery check of an edge interrupt, review H1) ends the session
+  with `gpio_input_undefined` / `between_thresholds` and the solved voltage. At or below V_IL is
+  LOW, at or above V_IH is HIGH (unchanged).
+- The same rule applies to scheduled sensor responses (HC-SR04 echo, DHT22 frame): an edge that
+  would put a watched pad in the band is not scheduled; the session ends naming the sensor and pin.
+- PWM (A1 averaging): an input entering or leaving the band between the operating points is a
+  change (`pwm_input_unsupported`), never "the previous level".
+- Unwatched pads and runtimes without `input-read` (v4 and older) keep the level QEMU was last
+  given; the firmware cannot read it there on v5 without that being refused. The R1 reference
+  harness (`runtime/harness/closedLoop.ts`, the v1 bridge oracle used by `electrical.runtime`)
+  keeps its documented hold semantics: it is a reference loop with no input-read path, not a
+  product path.
+- Texts: the band message and the pot / night-light example summaries (EN, HE) say the datasheet
+  specifies no hysteresis, so a read there stops the run.
+
+Tests: host (fake runtime) band-after-HIGH refusal with the solved voltage (fails on the previous
+code: `floating`); HC-SR04 echo into the band; PWM band change; real QEMU: Arduino and MicroPython
+pot 10 → 90 → 10 → 90 → 50 % refused at the read; Arduino `attachInterrupt(CHANGE)` and
+MicroPython `Pin.irq` on the wiper pin (edges counted at 90 % and 10 %, then 50 % refused while
+armed); the photoresistor real test (bright, dark, bright, then the band refused).
+
+### Read granularity (P2): kept register-wide
+
+Arduino-ESP32 3.3.12 `digitalRead` → `gpio_get_level` → `gpio_ll_get_level`
+(`hal/esp32/include/hal/gpio_ll.h:534`): one 32-bit load of `GPIO_IN` (GPIO0–31) or `GPIO_IN1`
+(GPIO32–39), then a shift and mask in the CPU. MicroPython's `Pin.value()` uses the same HAL. The
+GPIO peripheral (and so the emulator's device model) sees only the bus read; which bit the
+program keeps is decided by later CPU instructions. Narrowing the refusal per bit would need
+data-flow tracking of the loaded value inside TCG, or a guess from the next instruction or the
+application source — neither is a faithful representation, and guessing is excluded. The refusal
+therefore stays per register and per watched pad: only pads the analysis says the program may
+read (or every pad, when its reads cannot be resolved) are ever marked, and the two registers are
+separate. Consequence (documented limitation): a read of one watched pin is refused while another
+watched pin of the same register is undefined; a program whose reads cannot be resolved is
+refused at any read while an unwired user pin of that register is undefined.
+
+### Diagnostics
+
+- `gpio_input_undefined` names each pin with its own cause (one sentence per cause, EN/HE); before,
+  every pin was described with the first pin's cause.
+
+### Build records and runtime identity (P4)
+
+- A build record now stores the runtime capabilities its analysis assumed (`capabilities`); a
+  record analysed for another set (or written before the field) is not reused: it is built again
+  (same image, a feature report for this runtime). Arduino's cache key did not name the runtime,
+  so before this a record analysed for v5 (`requires: input-read`) could be reused for v4.
+- `runtime/builder/records.ts` (CLI `records-cli.ts`): lists the build records whose `requires`
+  names a capability a target runtime.json does not announce; backs them up (JSON lines, verified
+  before deletion, never overwritten), deletes exactly those rows by primary key in one
+  transaction, and restores them without overwriting a rebuilt row. Prebuilt (uploaded) grants,
+  records the target can run, artifact files and projects are never touched. Output carries counts
+  and artifact prefixes only, never a principal.
+

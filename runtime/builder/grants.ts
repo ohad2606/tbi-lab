@@ -24,8 +24,13 @@ export type Owner = Principal | typeof GLOBAL;
 /**
  * A build record as stored. `analyzer`: the FEATURES_ANALYZER version that produced its feature
  * report (absent: before Sprint 18). A record from an older analyzer is not reused (service.ts).
+ * `capabilities`: the runtime capabilities that analysis assumed (Sprint 25 closure; absent before
+ * it); a record analysed for another runtime is not reused either.
  */
-export type StoredBuild = Omit<BuildResult, 'timings'> & { analyzer?: number };
+export type StoredBuild = Omit<BuildResult, 'timings'> & {
+  analyzer?: number;
+  capabilities?: string[];
+};
 
 export class Grants {
   private readonly db: DatabaseSync;

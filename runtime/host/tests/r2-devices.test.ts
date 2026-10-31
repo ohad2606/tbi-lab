@@ -68,7 +68,7 @@ function project(
 }
 
 /** PSU (vcc) -> HC-SR04; TRIG on GPIO13; ECHO -> 1k -> GPIO14 (the fake firmware uses 2, 5, 18) -> 2k -> GND (or direct). */
-function sonarCircuit(vcc = 5, divider = true, distance = 0.5) {
+function sonarCircuit(vcc = 5, divider = true, distance = 0.5, top = 1000, bottom = 2000) {
   const ids: Record<string, string> = {};
   const doc = project((p) => {
     const u = (ids.u = p.add('sensor.hc_sr04'));
@@ -81,8 +81,8 @@ function sonarCircuit(vcc = 5, divider = true, distance = 0.5) {
     if (divider) {
       const r1 = (ids.r1 = p.add('component.resistor'));
       const r2 = p.add('component.resistor');
-      p.set(r1, 'resistance', { value: 1000, unit: 'ohm' });
-      p.set(r2, 'resistance', { value: 2000, unit: 'ohm' });
+      p.set(r1, 'resistance', { value: top, unit: 'ohm' });
+      p.set(r2, 'resistance', { value: bottom, unit: 'ohm' });
       p.wire(`${u}.echo`, `${r1}.a`);
       p.wire(`${r1}.b`, `${r2}.a`);
       p.wire(`${r2}.b`, 'GND1.ref');
@@ -187,6 +187,62 @@ describe('HC-SR04 driver (scheduled echo)', () => {
       { vns: e.fallNs, pad: 14, level: 0 },
     ]);
     expect(s.status().state).toBe('ended');
+  });
+
+  it('Sprint 25 closure: an echo that would put the read pad between V_IL and V_IH ends the run, no edge scheduled', async () => {
+    const fall = 'G 9510000 13 1 0';
+    // 2 kΩ over 1 kΩ: about a third of the echo level, inside 0.825..2.475 V.
+    const c = sonarCircuit(5, true, 0.5, 2000, 1000);
+    const r = fakeHost('normal', {
+      runtimeEnv: {
+        PATH: process.env.PATH,
+        TBI_FAKE_MODE: 'normal',
+        TBI_FAKE_HELLO: '2 input-read,sched-input',
+        TBI_FAKE_FRAMES: [RISE, fall].join(';'),
+      },
+    });
+    hosts.push(r.host);
+    const features = {
+      internalPull: [],
+      gpioInterrupt: [],
+      restart: false,
+      unsupported: [],
+      requires: ['input-read'],
+      inputReads: { pins: [14], unresolved: false },
+    };
+    const created = r.host.create(
+      {
+        protocol: PROTOCOL,
+        artifact: { sha256: r.art.sha256 },
+        board: 'board.esp32_devkitc_wroom32',
+        circuit: createSnapshot(c.doc),
+        attachments: c.attachments,
+        ticket: ticketFor(r.art.sha256, principalFor(), features),
+      },
+      principalFor(),
+    );
+    if (!created.ok) throw new Error(created.error);
+    const s = created.value.session;
+    s.run();
+    await Promise.race([waitState(s, 'failed', 15_000), waitState(s, 'ended', 15_000)]);
+    await s.done();
+    const st = s.status();
+    expect(st).toMatchObject({
+      state: 'failed',
+      reason: 'electrical_error',
+      detail: {
+        code: 'gpio_input_undefined',
+        components: [c.u],
+        param: 'gpio14',
+        detail: { inputs: [{ gpio: 14, cause: 'between_thresholds' }], sinceNs: '9510000' },
+      },
+    });
+    const v = (st.detail as { detail: { inputs: { voltage: number }[] } }).detail.inputs[0]!
+      .voltage;
+    expect(v).toBeGreaterThan(0.825);
+    expect(v).toBeLessThan(2.475);
+    // No echo edge was ever scheduled on the pad (the reply, if echoed at all, carries only Q).
+    expect(serialText(s)).not.toMatch(/J \d+ 14 /);
   });
 
   it('a 5 us trigger, an out-of-range target or an unpowered module: no echo (T-R2-1/3)', async () => {

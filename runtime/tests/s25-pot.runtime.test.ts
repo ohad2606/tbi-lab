@@ -5,10 +5,11 @@
  *
  *   - 10 %: the wiper voltage is the reference engine's (to 1e-9 V), the firmware reports LEVEL=0;
  *   - turned live to 90 %: LEVEL=1, the LED current is the reference output-high operating point;
- *   - 50 % (between V_IL and V_IH): the previous level is held, nothing is reported;
- *   - back to 10 %: LEVEL=0;
- *   - a run that STARTS at 50 % has no defined level at the first read: refused by name
- *     (gpio_input_undefined, between_thresholds), never read as LOW or HIGH.
+ *   - back to 10 %: LEVEL=0; to 90 % again: LEVEL=1;
+ *   - then 50 % (between V_IL and V_IH): the ESP32 specifies no hysteresis (datasheet v5.3 Table
+ *     5-3, TRM v5.9), so the previous HIGH is NOT kept: the next read ends the run by name
+ *     (gpio_input_undefined, between_thresholds), never read as LOW or HIGH;
+ *   - a run that STARTS at 50 % is refused the same way at its first read.
  * Analog input stays refused: no ADC scenario exists (BLOCKED, see SPRINT-25.md).
  */
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -77,14 +78,14 @@ const FIXTURE: Record<Lang, [string, string]> = {
 };
 
 /** Build the example's program, lease it, start the app's request (optionally edited). */
-async function start(lang: Lang, edit?: (r: CreateSessionRequest) => void) {
+async function start(lang: Lang, edit?: (r: CreateSessionRequest) => void, text?: string) {
   assertProvisioned();
   const [id, fixture] = FIXTURE[lang];
   const ex = example(id, fixture);
   if (lang === 'micropython') {
     const r = await mpy!.run(
       mpyHost,
-      ex.text,
+      text ?? ex.text,
       ex.request as Omit<CreateSessionRequest, 'artifact' | 'ticket' | 'protocol'>,
     );
     evidence[`${lang}.features`] = r.build.features;
@@ -96,7 +97,7 @@ async function start(lang: Lang, edit?: (r: CreateSessionRequest) => void) {
     {
       protocol: 'tbi-lab.build/1',
       profile: ESP32_ARDUINO_PROFILE.id,
-      files: [{ name: 'sketch.ino', text: ex.text }],
+      files: [{ name: 'sketch.ino', text: text ?? ex.text }],
     },
     A,
   );
@@ -123,8 +124,8 @@ async function start(lang: Lang, edit?: (r: CreateSessionRequest) => void) {
 
 const outcomeOf = (e: unknown) => (e as { outcome: SolveSuccess }).outcome;
 
-async function scenario(lang: Lang) {
-  const { s, req } = await start(lang);
+async function scenario(lang: Lang, text?: string) {
+  const { s, req } = await start(lang, undefined, text);
   const rv = req.circuit.components.find((c) => c.type === 'component.potentiometer')!.id;
   const led = req.circuit.components.find((c) => c.type === 'component.led')!.id;
   let seq = 0;
@@ -179,27 +180,48 @@ async function scenario(lang: Lang) {
     1e-12,
   );
   await waitEvent(s, () => levels().at(-1) === 1, 120_000);
-  // 50 %: between V_IL and V_IH, the previous level (HIGH) is held: no new report, LED still on.
-  const hold = await turn(50, true);
-  expect(wiperOf(hold)).toBeGreaterThan(0.825);
-  expect(wiperOf(hold)).toBeLessThan(2.475);
-  const n = levels().length;
-  await new Promise((r) => setTimeout(r, 3000));
-  expect(levels().length).toBe(n);
-  expect(s.status().state).toBe('running');
-  // 10 % again: LOW.
+  // 10 % again: LOW; 90 % again: HIGH (both transitions in both directions).
   await turn(10, false);
-  await waitEvent(s, () => levels().at(-1) === 0 && levels().length > n, 120_000);
+  await waitEvent(s, () => levels().at(-1) === 0 && levels().length >= 3, 120_000);
+  await turn(90, true);
+  await waitEvent(s, () => levels().at(-1) === 1 && levels().length >= 4, 120_000);
+  const n = levels().length;
+  // 50 %: between V_IL and V_IH. No hysteresis is specified, so the HIGH just read is not kept:
+  // the program's next read ends the run by name, with the solved wiper voltage.
+  expect(
+    s.submit({
+      category: 'mirror',
+      seq: ++seq,
+      projectRevision: ++rev,
+      component: rv,
+      control: { params: { position: 50 } },
+    }),
+  ).toMatchObject({ accepted: true });
+  const end = await terminal(s);
+  expect(end).toMatchObject({
+    state: 'failed',
+    reason: 'electrical_error',
+    detail: {
+      code: 'gpio_input_undefined',
+      param: 'gpio34',
+      detail: { inputs: [{ gpio: 34, cause: 'between_thresholds' }] },
+    },
+  });
+  const band = (end.detail as { detail: { inputs: { voltage: number }[] } }).detail.inputs[0]!
+    .voltage;
+  expect(band).toBeGreaterThan(0.825);
+  expect(band).toBeLessThan(2.475);
+  // No level was reported after the turn to 50 %.
+  expect(levels().length).toBe(n);
   evidence[lang] = {
     levels: levels(),
-    wiper: { low: wiperOf(first), high: wiperOf(high), hold: wiperOf(hold) },
+    wiper: { low: wiperOf(first), high: wiperOf(high), band },
+    refusedAtNs: (end.detail as { detail: { sinceNs: string } }).detail.sinceNs,
   };
-  s.stop();
-  expect(await terminal(s)).toMatchObject({ state: 'ended' });
 }
 
 describe.skipIf(!RT)('Sprint 25: ESP32 + potentiometer as a digital input (real QEMU)', () => {
-  it('Arduino: LOW at 10 %, HIGH at 90 %, held at 50 %, LOW again; voltages = reference engine', async () => {
+  it('Arduino: LOW at 10 %, HIGH at 90 %, LOW, HIGH, then 50 % refused at the read; voltages = reference engine', async () => {
     await scenario('arduino');
   }, 900_000);
 
@@ -223,4 +245,107 @@ describe.skipIf(!RT)('Sprint 25: ESP32 + potentiometer as a digital input (real 
     });
     expect(serialText(s)).not.toMatch(/LEVEL=/);
   }, 600_000);
+  it('an edge interrupt on the wiper pin: CHANGE runs its ISR at 90 %, and 50 % ends the run while it is armed', async () => {
+    // No digitalRead at all: GPIO34 is watched only because an interrupt is attached to it.
+    const sketch = [
+      'volatile int edges = 0;',
+      'void IRAM_ATTR onEdge() { edges++; }',
+      'void setup() {',
+      '  Serial.begin(115200);',
+      '  pinMode(34, INPUT);',
+      '  pinMode(4, OUTPUT);',
+      '  attachInterrupt(digitalPinToInterrupt(34), onEdge, CHANGE);',
+      '  Serial.println("IRQ-READY");',
+      '}',
+      'void loop() {',
+      '  static int last = -1;',
+      '  int n = edges;',
+      '  if (n != last) { Serial.printf("EDGES=%d\\n", n); last = n; }',
+      '  delay(5);',
+      '}',
+      '',
+    ].join('\n');
+    const { s, req } = await start('arduino', undefined, sketch);
+    const rv = req.circuit.components.find((c) => c.type === 'component.potentiometer')!.id;
+    const edges = () => (serialText(s).match(/EDGES=\d+/g) ?? []).map((x) => Number(x.slice(6)));
+    await waitEvent(s, () => edges().at(-1) === 0, 240_000);
+    let rev = req.circuit.projectRevision;
+    let seq = 0;
+    const turn = (position: number) =>
+      s.submit({
+        category: 'mirror',
+        seq: ++seq,
+        projectRevision: ++rev,
+        component: rv,
+        control: { params: { position } },
+      });
+    expect(turn(90)).toMatchObject({ accepted: true });
+    await waitEvent(s, () => edges().at(-1) === 1, 120_000);
+    expect(turn(10)).toMatchObject({ accepted: true });
+    await waitEvent(s, () => edges().at(-1) === 2, 120_000);
+    expect(turn(50)).toMatchObject({ accepted: true });
+    const end = await terminal(s);
+    expect(end).toMatchObject({
+      state: 'failed',
+      reason: 'electrical_error',
+      detail: {
+        code: 'gpio_input_undefined',
+        param: 'gpio34',
+        detail: { inputs: [{ gpio: 34, cause: 'between_thresholds' }] },
+      },
+    });
+    expect(edges().at(-1)).toBe(2);
+    evidence['arduino.irq'] = { edges: edges(), end: end.detail };
+  }, 900_000);
+  it('MicroPython Pin.irq on the wiper pin: the handler runs at 90 % and 10 %, and 50 % ends the run', async () => {
+    const script = [
+      'from machine import Pin',
+      'import time',
+      'edges = 0',
+      'def on_edge(p):',
+      '    global edges',
+      '    edges += 1',
+      'w = Pin(34, Pin.IN)',
+      'w.irq(trigger=Pin.IRQ_RISING | Pin.IRQ_FALLING, handler=on_edge)',
+      'last = -1',
+      'while True:',
+      '    n = edges',
+      '    if n != last:',
+      '        print("EDGES=%d" % n)',
+      '        last = n',
+      '    time.sleep_ms(5)',
+      '',
+    ].join('\n');
+    const { s, req } = await start('micropython', undefined, script);
+    const rv = req.circuit.components.find((c) => c.type === 'component.potentiometer')!.id;
+    const edges = () => (serialText(s).match(/EDGES=\d+/g) ?? []).map((x) => Number(x.slice(6)));
+    await waitEvent(s, () => edges().at(-1) === 0, 240_000);
+    let rev = req.circuit.projectRevision;
+    let seq = 0;
+    const turn = (position: number) =>
+      s.submit({
+        category: 'mirror',
+        seq: ++seq,
+        projectRevision: ++rev,
+        component: rv,
+        control: { params: { position } },
+      });
+    expect(turn(90)).toMatchObject({ accepted: true });
+    await waitEvent(s, () => edges().at(-1) === 1, 120_000);
+    expect(turn(10)).toMatchObject({ accepted: true });
+    await waitEvent(s, () => edges().at(-1) === 2, 120_000);
+    expect(turn(50)).toMatchObject({ accepted: true });
+    const end = await terminal(s);
+    expect(end).toMatchObject({
+      state: 'failed',
+      reason: 'electrical_error',
+      detail: {
+        code: 'gpio_input_undefined',
+        param: 'gpio34',
+        detail: { inputs: [{ gpio: 34, cause: 'between_thresholds' }] },
+      },
+    });
+    expect(edges().at(-1)).toBe(2);
+    evidence['micropython.irq'] = { edges: edges(), end: end.detail };
+  }, 900_000);
 });

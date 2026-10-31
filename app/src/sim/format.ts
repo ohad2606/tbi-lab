@@ -239,21 +239,33 @@ export function engineErrorMessage(
         vih?: number;
         watchAll?: boolean;
       };
-      const inputs = d.inputs ?? [];
-      const first = inputs[0];
-      // Review H2: when the program's reads could not be told, it is not known that it read this pin.
-      const key =
-        d.watchAll && first?.cause !== 'between_thresholds'
-          ? 'sim.error.gpio_input_undefined.unresolved'
-          : `sim.error.gpio_input_undefined.${first?.cause ?? 'floating'}`;
       const V = (v: number | undefined) =>
         typeof v === 'number' ? formatResult(locale, v, 'volt') : '';
-      return t(isMessageKey(key) ? key : 'sim.error.gpio_input_undefined.floating', {
-        pins: isolateLtr(inputs.map((i) => `GPIO${i.gpio}`).join(', ')),
-        voltage: isolateLtr(V(first?.voltage)),
-        vil: isolateLtr(`V_IL ${V(d.vil)}`),
-        vih: isolateLtr(`V_IH ${V(d.vih)}`),
-      });
+      // Sprint 25 closure: one sentence per cause (and per voltage in the band), each naming only
+      // its own pins; never the first pin's cause for all of them.
+      const groups = new Map<string, { gpio: number; cause: string; voltage?: number }[]>();
+      for (const i of d.inputs ?? []) {
+        const g = `${i.cause}|${i.cause === 'between_thresholds' ? (i.voltage ?? '') : ''}`;
+        groups.set(g, [...(groups.get(g) ?? []), i]);
+      }
+      if (!groups.size) groups.set('floating|', []);
+      return [...groups.values()]
+        .map((inputs) => {
+          const first = inputs[0];
+          // Review H2: when the program's reads could not be told, it is not known that it read
+          // this pin.
+          const key =
+            d.watchAll && first?.cause !== 'between_thresholds'
+              ? 'sim.error.gpio_input_undefined.unresolved'
+              : `sim.error.gpio_input_undefined.${first?.cause ?? 'floating'}`;
+          return t(isMessageKey(key) ? key : 'sim.error.gpio_input_undefined.floating', {
+            pins: isolateLtr(inputs.map((i) => `GPIO${i.gpio}`).join(', ')),
+            voltage: isolateLtr(V(first?.voltage)),
+            vil: isolateLtr(`V_IL ${V(d.vil)}`),
+            vih: isolateLtr(`V_IH ${V(d.vih)}`),
+          });
+        })
+        .join(' ');
     }
     // Sprint 22 review 3: a constant-voltage supply the circuit would push current back into.
     case 'psu_sinking': {

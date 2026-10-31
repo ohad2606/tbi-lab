@@ -64,6 +64,7 @@ const sha256File = (path: string) => createHash('sha256').update(readFileSync(pa
 export class ArduinoEsp32Provider implements BuildProvider {
   readonly profile: BuildProfile;
   readonly profileHash: string;
+  readonly analysisCapabilities: readonly string[];
   private readonly data: string;
   private readonly toolsBin: string;
   private readonly runner: ToolRunner;
@@ -72,6 +73,7 @@ export class ArduinoEsp32Provider implements BuildProvider {
     this.runner = opts.runner ?? new LocalToolRunner(opts.home);
     this.profile = opts.profile;
     this.profileHash = createHash('sha256').update(canonicalJson(opts.record)).digest('hex');
+    this.analysisCapabilities = [...(opts.runtimeCapabilities ?? [])].sort();
     this.data = join(opts.home, 'data');
     const pkgs = join(this.data, 'packages', 'esp32');
     this.toolsBin = join(pkgs, 'tools');

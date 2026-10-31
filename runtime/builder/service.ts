@@ -396,7 +396,12 @@ export class BuildService {
   private isCurrent(b: StoredBuild): boolean {
     if ((b.analyzer ?? 1) < FEATURES_ANALYZER) return false;
     const provider = this.providers.get(b.profile);
-    return !provider || b.profileHash === provider.profileHash;
+    if (!provider) return true;
+    if (b.profileHash !== provider.profileHash) return false;
+    // Sprint 25 closure: analysed for this runtime's capabilities (a record from before the field,
+    // or for another runtime, is built again: its `requires` belongs to that runtime).
+    const caps = provider.analysisCapabilities;
+    return !caps || b.capabilities?.join(',') === caps.join(',');
   }
 
   private cachedResult(principal: Owner, key: string): BuildResult | null {
@@ -411,7 +416,7 @@ export class BuildService {
       return null;
     }
     this.store.used(found.artifact.sha256);
-    const { analyzer: _analyzer, ...result } = found;
+    const { analyzer: _analyzer, capabilities: _capabilities, ...result } = found;
     return { ...result, timings: { queuedMs: 0, buildMs: 0 } };
   }
 
@@ -584,7 +589,14 @@ export class BuildService {
         if (!isMergedImage(bytes))
           return this.failed(r, 'internal', 'Build service: the build produced no valid image.', 0);
         const artifact = await this.store.publish(bytes, 'build');
-        this.access.grants.recordBuild(r.owner, { ...base, artifact, analyzer: FEATURES_ANALYZER });
+        this.access.grants.recordBuild(r.owner, {
+          ...base,
+          artifact,
+          analyzer: FEATURES_ANALYZER,
+          ...(r.provider.analysisCapabilities
+            ? { capabilities: [...r.provider.analysisCapabilities] }
+            : {}),
+        });
         const result: BuildResult = {
           ...base,
           artifact,
