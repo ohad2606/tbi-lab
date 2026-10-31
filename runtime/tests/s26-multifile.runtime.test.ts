@@ -224,7 +224,7 @@ describe.skipIf(!RT)(
         .findIndex((l) => l.includes('lcd.clear();'));
       expect(e1.diagnostics.find((d) => d.severity === 'error')).toMatchObject({
         file: 'display.cpp',
-        line: line + 2, // the statement after the missing semicolon
+        line: line + 1, // GCC: "expected ';'" at the statement missing it (1-based)
       });
       // The same function defined in two translation units.
       const dup = await build(
@@ -236,9 +236,15 @@ describe.skipIf(!RT)(
       );
       expect(dup.ok).toBe(false);
       expect(dup.artifact).toBeUndefined();
-      expect(JSON.stringify(dup.diagnostics) + dup.log.text).toMatch(
-        /multiple definition of .twice/,
-      );
+      // The linker's error, on the second definition's file and line (the C++ name as linked).
+      expect(dup.diagnostics).toEqual([
+        expect.objectContaining({
+          severity: 'error',
+          file: 'b.cpp',
+          line: 1,
+          message: expect.stringMatching(/^multiple definition of .*twice/),
+        }),
+      ]);
       // Declared in a header, never defined.
       const undef = await build(
         arduino([
@@ -250,9 +256,16 @@ describe.skipIf(!RT)(
         ]),
       );
       expect(undef.ok).toBe(false);
-      expect(JSON.stringify(undef.diagnostics) + undef.log.text).toMatch(
-        /undefined reference to .missing/,
-      );
+      expect(undef.diagnostics).toEqual([
+        expect.objectContaining({
+          severity: 'error',
+          file: 'sketch.ino',
+          message: expect.stringMatching(/^undefined reference to .*missing/),
+        }),
+      ]);
+      // No server path in any diagnostic or log.
+      for (const r of [e1, dup, undef])
+        expect(JSON.stringify(r.diagnostics) + r.log.text).not.toMatch(/\/home\/|\/var\/tmp\//);
       // Sources under src/ (arduino-cli compiles that folder recursively).
       const nested = await build(
         arduino([
@@ -265,6 +278,9 @@ describe.skipIf(!RT)(
         ]),
       );
       expect(nested.ok, JSON.stringify(nested.diagnostics)).toBe(true);
+      // No server path in any diagnostic or log.
+      for (const r of [e1, dup, undef])
+        expect(JSON.stringify(r.diagnostics) + r.log.text).not.toMatch(/\/home\/|\/var\/tmp\//);
       evidence.arduinoDiagnostics = {
         syntax: e1.diagnostics,
         dup: dup.diagnostics,

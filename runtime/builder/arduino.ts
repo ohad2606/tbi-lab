@@ -11,7 +11,7 @@
  * into the job first (coreSeed.ts): about 7 s instead of about 29 s, the same bytes.
  */
 import { createHash } from 'node:crypto';
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, realpathSync } from 'node:fs';
 import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { arch } from 'node:os';
 import { join } from 'node:path';
@@ -72,6 +72,8 @@ export class ArduinoEsp32Provider implements BuildProvider {
   readonly profileHash: string;
   readonly analysisCapabilities: readonly string[];
   private readonly data: string;
+  /** Sprint 26: `data` with every link resolved (what the tools print). */
+  private readonly dataReal: string;
   private readonly toolsBin: string;
   private readonly runner: ToolRunner;
 
@@ -81,6 +83,7 @@ export class ArduinoEsp32Provider implements BuildProvider {
     this.profileHash = createHash('sha256').update(canonicalJson(opts.record)).digest('hex');
     this.analysisCapabilities = [...(opts.runtimeCapabilities ?? [])].sort();
     this.data = join(opts.home, 'data');
+    this.dataReal = existsSync(this.data) ? realpathSync(this.data) : this.data;
     const pkgs = join(this.data, 'packages', 'esp32');
     this.toolsBin = join(pkgs, 'tools');
   }
@@ -307,6 +310,9 @@ export class ArduinoEsp32Provider implements BuildProvider {
         .split(t.data)
         .join('/arduino-data')
         .split(this.data)
+        .join('/arduino-data')
+        // Sprint 26: the toolchain as the tools resolved it (a linked home prints its real path).
+        .split(this.dataReal)
         .join('/arduino-data');
     const log = this.bounded(scrub((result.compiler_out ?? '') + (result.compiler_err ?? '')));
     // Sprint 26: a diagnostic in a project file names that file (its path as in the request) and
@@ -339,6 +345,33 @@ export class ArduinoEsp32Provider implements BuildProvider {
         // the next curated build tries again
       }
     if (!result.success) {
+      // Sprint 26: the linker's own errors (a symbol defined twice, a declared function never
+      // defined), located in a project file, become diagnostics for that file and line; they
+      // replace arduino-cli's location-less "ld: in function ..." entries.
+      const linked: Diagnostic[] = [];
+      for (const line of scrub(result.compiler_err ?? '').split('\n')) {
+        const what = /: ((?:multiple definition of|undefined reference to) .*)$/.exec(line)?.[1];
+        if (!what) continue;
+        const message = what.split(';')[0]!.trim();
+        // With debug line information: `sketch/<file>:<line>: ...`.
+        const at = /(?:^|[\s/])sketch\/([^:\s]+):(\d+): /.exec(line);
+        if (at && job.files.some((f) => f.name === at[1])) {
+          linked.push({ severity: 'error', file: at[1]!, line: Number(at[2]), message });
+          continue;
+        }
+        // Without it (a literal-pool relocation): the object file names the project file only;
+        // no line is claimed. `sketch.ino.cpp.o` is sketch.ino, `src/a.cpp.o` is src/a.cpp.
+        const obj = /\/build\/sketch\/([^:\s]+?)(?:\.cpp)?\.o:/.exec(line)?.[1];
+        const file = obj && job.files.find((f) => f.name === obj)?.name;
+        if (file) linked.push({ severity: 'error', file, message });
+      }
+      if (linked.length && !diagnostics.some((d) => d.severity === 'error' && d.file))
+        diagnostics.splice(
+          0,
+          diagnostics.length,
+          ...diagnostics.filter((d) => d.severity !== 'error'),
+          ...linked,
+        );
       if (diagnostics.length === 0)
         diagnostics.push({
           severity: 'error',
