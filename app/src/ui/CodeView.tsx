@@ -14,7 +14,6 @@ import {
   PROGRAM_LIMITS,
   profileById,
   setProgramProfile,
-  starterSourceFor,
   utf8Length,
   type ProgramSource,
 } from '@tbi-lab/domain';
@@ -189,8 +188,10 @@ export function CodeView({ boardId, focusBuild }: { boardId: string; focusBuild:
     <section class="code-view" data-testid="code-view" aria-label={t('program.tab.code')}>
       <header class="code-bar">
         {/* Sprint 19B: the programming environment (Arduino C++ or the genuine MicroPython
-            interpreter). Switching starts that environment's starter program: code is never
-            translated between languages; edited code is replaced only after confirmation. */}
+            interpreter). Code is never translated between languages. P1 (schema v7): switching
+            keeps this language's code in the project and brings the other language's code back
+            exactly as it was (or that language's starter program, said so plainly), so no
+            confirmation is needed: nothing is discarded. */}
         <label class="code-language">
           <span class="visually-hidden">{t('program.language')}</span>
           <select
@@ -199,15 +200,22 @@ export function CodeView({ boardId, focusBuild }: { boardId: string; focusBuild:
             disabled={!!readOnly || active}
             onChange={(e) => {
               const next = (e.target as HTMLSelectElement).value;
-              const edited =
-                files.length > 0 ||
-                program.text !==
-                  starterSourceFor(profileById(program.profile)?.language ?? 'arduino-cpp');
-              if (edited && !window.confirm(t('program.language.confirm'))) {
-                (e.target as HTMLSelectElement).value = program.profile;
-                return;
-              }
-              if (doc) store.apply(setProgramProfile(doc, boardId, next));
+              if (!doc) return;
+              const r = setProgramProfile(doc, boardId, next);
+              const name = (p: string | undefined) =>
+                t(
+                  `program.language.${profileById(p ?? '')?.language ?? 'arduino-cpp'}` as MessageKey,
+                );
+              if (store.apply(r) && r.ok)
+                store.notify({
+                  key: r.restored ? 'program.language.restored' : 'program.language.started',
+                  params: {
+                    language: isolateLtr(name(next)),
+                    previous: isolateLtr(name(program.profile)),
+                  },
+                  tone: 'info',
+                });
+              else (e.target as HTMLSelectElement).value = program.profile;
             }}
           >
             {BUILD_PROFILES.filter(

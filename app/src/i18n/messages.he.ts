@@ -909,8 +909,10 @@ export const he: Record<MessageKey, string> = {
   'program.language': 'שפת תכנות',
   'program.language.arduino-cpp': 'Arduino C++',
   'program.language.micropython': 'MicroPython',
-  'program.language.confirm':
-    'החלפת השפה פותחת תוכנית חדשה בשפה הזו; הקוד הנוכחי אינו מתורגם. להחליף אותו? (ביטול פעולה משחזר אותו.)',
+  'program.language.restored':
+    'הוחלף ל-{language}. הקוד שלה חזר בדיוק כפי שהשארתם אותו; הקוד ב-{previous} נשמר בפרויקט.',
+  'program.language.started':
+    'הוחלף ל-{language}. לפרויקט הזה אין גרסת {language} של התוכנית (בדוגמה מובנית: לא אומתה גרסה כזו), ולכן נפתחה תוכנית ההתחלה של {language}. הקוד ב-{previous} נשמר ללא שינוי וחוזר כשמחליפים בחזרה.',
   'program.tab.circuit': 'מעגל',
   'program.tab.code': 'קוד',
   // Sprint 9: generated views of the same circuit.

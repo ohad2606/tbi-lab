@@ -502,3 +502,62 @@ export async function loadExampleDocument(id: string): Promise<ProjectDocument |
 export function prefetchExamples(): void {
   void loadDocuments().catch(() => undefined);
 }
+
+/**
+ * P1 language switching: the curated examples that have a verified version in the other
+ * programming language, on exactly the same circuit (both run on real QEMU in their sprint's
+ * acceptance: Sprint 24 blink/fade/LCD, Sprint 25 pot threshold, Sprint 26 LCD library). Opening
+ * one keeps its twin's program in the project (`alternates`), so switching language shows the
+ * verified twin, never a starter presented as the example. Pairs are symmetric; a test checks the
+ * two circuits are identical. Examples absent here have no verified version in another language.
+ */
+export const EXAMPLE_VARIANTS: Readonly<Record<string, string>> = Object.fromEntries(
+  (
+    [
+      ['esp32-blink', 'mpy-blink'],
+      ['esp32-led-fade', 'mpy-fade'],
+      ['esp32-pot-threshold', 'mpy-pot-threshold'],
+      ['esp32-lcd-hello', 'mpy-lcd-hello'],
+      ['esp32-lcd-library', 'mpy-lcd-library'],
+    ] as const
+  ).flatMap(([a, b]) => [
+    [a, b],
+    [b, a],
+  ]),
+);
+
+/** The circuit of a document (parts, parameters, connections): what twins must share exactly. */
+export function circuitKey(doc: ProjectDocument): string {
+  return JSON.stringify([
+    doc.components.map((c) => [c.id, c.type, c.typeVersion, c.params]),
+    doc.nets,
+    doc.connections,
+  ]);
+}
+
+/**
+ * `doc` (a copy of example `id`) with its verified twin's program kept as the other language's
+ * code. Unchanged when the example has no twin, or (failing closed) when the twin's circuit is not
+ * exactly the example's.
+ */
+export async function withExampleVariant(
+  id: string,
+  doc: ProjectDocument,
+): Promise<ProjectDocument> {
+  const twinId = EXAMPLE_VARIANTS[id];
+  const twin = twinId ? await loadExampleDocument(twinId) : undefined;
+  if (!twin) return doc;
+  const original = await loadExampleDocument(id);
+  if (!original || circuitKey(original) !== circuitKey(twin)) return doc;
+  const [boardId, program] = Object.entries(doc.programs)[0] ?? [];
+  const other = boardId ? twin.programs[boardId] : undefined;
+  if (!boardId || !program || !other || other.profile === program.profile) return doc;
+  const { alternates: _drop, ...variant } = other;
+  return {
+    ...doc,
+    programs: {
+      ...doc.programs,
+      [boardId]: { ...program, alternates: [structuredClone(variant)] },
+    },
+  };
+}

@@ -278,7 +278,7 @@ describe('review fixes', () => {
 
 describe('schema v6', () => {
   it('v5 -> v6 is the identity; a one-file document opens unchanged', () => {
-    expect(SCHEMA_VERSION).toBe(6);
+    expect(SCHEMA_VERSION).toBe(7); // P1: v7 (6 -> 7 is the identity too)
     const { doc } = withBoard();
     const v5 = { ...JSON.parse(JSON.stringify(doc)), schemaVersion: 5 };
     expect(MIGRATIONS[5]!(JSON.parse(JSON.stringify(v5)))).toEqual(v5);

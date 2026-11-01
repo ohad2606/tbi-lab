@@ -299,12 +299,16 @@ export function validateProject(input: unknown): ValidationIssue[] {
   else {
     const entries = Object.entries(input.programs);
     if (entries.length > 1) add('bad_program', 'programs', 'more than one program');
-    for (const [boardId, program] of entries) {
-      const path = `programs.${boardId}`;
-      const board = doc.components.find((c) => c.id === boardId);
+    // One program's source (the active one, or since schema v7 a kept alternate: same rules).
+    const checkProgram = (
+      program: unknown,
+      path: string,
+      board: { type: string } | undefined,
+      keys: string[],
+    ) => {
       if (!isObj(program)) {
         add('bad_program', path);
-        continue;
+        return;
       }
       const profile =
         typeof program.profile === 'string' ? profileById(program.profile) : undefined;
@@ -369,10 +373,30 @@ export function validateProject(input: unknown): ValidationIssue[] {
               add('bad_program', lp, 'not sorted');
           });
       }
-      const extra = Object.keys(program).filter(
-        (k) => !['language', 'profile', 'fileName', 'text', 'files', 'libraries'].includes(k),
-      );
+      const extra = Object.keys(program).filter((k) => !keys.includes(k));
       if (extra.length) add('bad_program', path, `unknown ${extra.join(',')}`);
+    };
+    const KEYS = ['language', 'profile', 'fileName', 'text', 'files', 'libraries'];
+    for (const [boardId, program] of entries) {
+      const path = `programs.${boardId}`;
+      const board = doc.components.find((c) => c.id === boardId);
+      checkProgram(program, path, board, [...KEYS, 'alternates']);
+      // Schema v7: the board's code in its other programming environments, kept while another is
+      // active (one per other profile of the board; never the active profile).
+      const alts = isObj(program) ? program.alternates : undefined;
+      if (alts === undefined) continue;
+      if (!Array.isArray(alts) || alts.length === 0) {
+        add('bad_program', `${path}.alternates`);
+        continue;
+      }
+      const seen = new Set([isObj(program) ? program.profile : undefined]);
+      alts.forEach((a: unknown, i: number) => {
+        const ap = `${path}.alternates.${i}`;
+        checkProgram(a, ap, board, KEYS);
+        const prof = isObj(a) ? a.profile : undefined;
+        if (seen.has(prof)) add('bad_program', ap, 'duplicate profile');
+        seen.add(prof);
+      });
     }
   }
 

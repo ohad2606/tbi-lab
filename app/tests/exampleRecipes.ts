@@ -93,11 +93,21 @@ class Recipe {
     this.doc = this.ok(setProgramText(this.doc, id, readFileSync(url, 'utf8'))).doc;
   }
   /**
+   * The board's program in MicroPython. P1 (schema v7): switching keeps the code it leaves (here the
+   * Arduino starter) in `alternates`; a curated example carries only its own language's code (a
+   * verified twin is attached when it is opened, catalog.ts EXAMPLE_VARIANTS), so that is dropped.
+   */
+  private toMicroPython(id: string) {
+    const r = this.ok(setProgramProfile(this.doc, id, ESP32_MICROPYTHON_PROFILE.id));
+    const { alternates: _starter, ...program } = r.doc.programs[id]!;
+    this.doc = { ...r.doc, programs: { ...r.doc.programs, [id]: program } };
+  }
+  /**
    * Sprint 24 (M1): the board's program in MicroPython (the genuine interpreter's main.py), from
    * a program authored with the examples (app/tests/exampleSketches/*.py).
    */
   python(id: string, file: string) {
-    this.doc = this.ok(setProgramProfile(this.doc, id, ESP32_MICROPYTHON_PROFILE.id)).doc;
+    this.toMicroPython(id);
     const url = new URL(`./exampleSketches/${file}`, import.meta.url);
     this.doc = this.ok(setProgramText(this.doc, id, readFileSync(url, 'utf8'))).doc;
   }
@@ -106,8 +116,7 @@ class Recipe {
    * (sketch.ino or main.py, in the board's environment) and every further file, by relative path.
    */
   project(id: string, dir: string, entry: string, further: string[], micropython = false) {
-    if (micropython)
-      this.doc = this.ok(setProgramProfile(this.doc, id, ESP32_MICROPYTHON_PROFILE.id)).doc;
+    if (micropython) this.toMicroPython(id);
     const read = (f: string) =>
       readFileSync(new URL(`./exampleSketches/${dir}/${f}`, import.meta.url), 'utf8');
     this.doc = this.ok(setProgramText(this.doc, id, read(entry))).doc;

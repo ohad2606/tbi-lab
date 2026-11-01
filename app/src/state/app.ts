@@ -56,7 +56,12 @@ import {
   type ProjectIndexEntry,
   type ProjectStorage,
 } from '../persistence/store.js';
-import { findExample, loadExampleDocument, type ExampleProbe } from '../examples/catalog.js';
+import {
+  findExample,
+  loadExampleDocument,
+  withExampleVariant,
+  type ExampleProbe,
+} from '../examples/catalog.js';
 import type { LiveControl } from '@tbi-lab/engine';
 import type { SimState, SimulationHost } from '../sim/controller.js';
 import type { ProgramBuilds } from '../programs/state.js';
@@ -824,7 +829,11 @@ export class AppStore {
     try {
       const title = translate(this.stateValue.locale, example.titleKey);
       const name = this.uniqueName(title, await this.libraryNames());
-      const copy = copyAsNewProject(opened.doc, this.newIdentity(name));
+      // P1: a verified version in the other language comes with it (kept, not active).
+      const copy = await withExampleVariant(
+        exampleId,
+        copyAsNewProject(opened.doc, this.newIdentity(name)),
+      );
       doc = this.layoutOnOpen(copy);
       await this.deps.storage!.add(doc);
     } catch (e) {
