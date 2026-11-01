@@ -26,6 +26,7 @@ import {
   programPathIssue,
   sortProgramFiles,
   starterProgram,
+  sortLibraryRefs,
   starterSourceFor,
   profileById,
   utf8Length,
@@ -41,6 +42,7 @@ import {
   type Point,
   type ProjectDocument,
   type ProgramSource,
+  type ProgramVariant,
   type Wire,
   type WireColor,
   type WireEnd,
@@ -354,30 +356,53 @@ export function useBoardProgram(doc: ProjectDocument, boardId: string): EditResu
 
 /**
  * Sprint 19B: switch a board's program to another programming environment of its board (Arduino
- * C++ or MicroPython). The program becomes that environment's starter: source in one language is
- * never translated into another. The caller confirms with the user before discarding edited code;
- * the edit is undoable like any other.
+ * C++ or MicroPython). Source in one language is never translated into another.
+ *
+ * P1 (schema v7): switching never discards code. The active source (entry file, further files,
+ * pinned libraries) is kept in `alternates`, exactly; the target environment's kept source, if any,
+ * becomes active again exactly as it was (`restored`), otherwise that environment's starter
+ * program starts (`restored: false`). The managed libraries the circuit needs are then settled for
+ * the environment now active only (never another environment's set). Undoable like any edit.
  */
 export function setProgramProfile(
   doc: ProjectDocument,
   boardId: string,
   profileId: string,
-): EditResult {
+): EditResult<{ restored: boolean }> {
   const program = doc.programs[boardId];
   const board = doc.components.find((c) => c.id === boardId);
   if (!program || !board) return { ok: false, error: 'no_program' };
   const profile = profileById(profileId);
   if (!profile || profile.board !== board.type) return { ok: false, error: 'unknown_profile' };
-  if (program.profile === profileId) return { ok: true, doc };
-  // Sprint 26: the further files and libraries of the other language go too (never translated).
-  return transact(doc, (d) => {
-    d.programs[boardId] = {
-      language: profile.language,
-      profile: profile.id,
-      fileName: profile.fileName,
-      text: starterSourceFor(profile.language),
-    };
-  });
+  if (program.profile === profileId) return { ok: true, doc, restored: true };
+  const { alternates = [], ...active } = program;
+  const kept = alternates.find((a) => a.profile === profileId);
+  const next: ProgramVariant = kept
+    ? cloneDocument(kept)
+    : {
+        language: profile.language,
+        profile: profile.id,
+        fileName: profile.fileName,
+        text: starterSourceFor(profile.language),
+      };
+  const others = [...alternates.filter((a) => a.profile !== profileId), cloneDocument(active)].sort(
+    (a, b) => (a.profile < b.profile ? -1 : a.profile > b.profile ? 1 : 0),
+  );
+  const draft = cloneDocument(doc);
+  draft.programs[boardId] = { ...next, alternates: others };
+  if (!kept) settleLibraries(draft, doc, new Set([boardId]));
+  else {
+    // Restored exactly: its pinned versions are kept and none is removed. Only a library the
+    // circuit now needs and the kept code lacks (a part placed while another language was
+    // active) is added, as placing the part would have added it.
+    const restored = draft.programs[boardId]!;
+    const pinned = restored.libraries ?? [];
+    const missing = resolveLibraries(draft, restored, null).filter(
+      (l) => !pinned.some((p) => p.id === l.id),
+    );
+    if (missing.length) restored.libraries = sortLibraryRefs([...pinned, ...missing]);
+  }
+  return { ok: true, doc: draft, restored: !!kept };
 }
 
 /**

@@ -931,8 +931,10 @@ export const en = {
   'program.language': 'Programming language',
   'program.language.arduino-cpp': 'Arduino C++',
   'program.language.micropython': 'MicroPython',
-  'program.language.confirm':
-    'Switching the language starts a new program in that language; the current code is not translated. Replace it? (Undo restores it.)',
+  'program.language.restored':
+    'Switched to {language}. Its code is back exactly as you left it; your {previous} code is kept in the project.',
+  'program.language.started':
+    'Switched to {language}. This project has no {language} version of its program (for a built-in example: none has been verified), so the {language} starter program is open. Your {previous} code is kept unchanged and comes back when you switch back.',
   'program.tab.circuit': 'Circuit',
   'program.tab.code': 'Code',
   // Sprint 9: generated views of the same circuit.

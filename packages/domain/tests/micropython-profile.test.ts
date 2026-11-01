@@ -36,24 +36,27 @@ describe('MicroPython profile', () => {
     expect(board().doc.programs[board().id]!.profile).toBe('esp32-arduino-3.3.12');
   });
 
-  it('switching starts the other environment’s starter (never a translation); valid; back again', () => {
+  it('switching starts the other environment’s starter (never a translation); valid; back again restores (P1)', () => {
     const { doc, id } = board();
     const edited = must(
       setProgramText(doc, id, 'void setup() { pinMode(2, OUTPUT); }\nvoid loop() {}\n'),
     ).doc;
     const py = must(setProgramProfile(edited, id, 'esp32-micropython-1.29')).doc;
+    // P1 (schema v7): the edited Arduino code is kept, not discarded.
     expect(py.programs[id]).toEqual({
       language: 'micropython',
       profile: 'esp32-micropython-1.29',
       fileName: 'main.py',
       text: starterSourceFor('micropython'),
+      alternates: [edited.programs[id]],
     });
     expect(validateProject(py)).toEqual([]);
     const text = 'from machine import Pin\nPin(2, Pin.OUT).value(1)\n';
     const written = must(setProgramText(py, id, text)).doc;
     expect(written.programs[id]!.text).toBe(text);
     const back = must(setProgramProfile(written, id, 'esp32-arduino-3.3.12')).doc;
-    expect(back.programs[id]!.text).toBe(starterSourceFor('arduino-cpp'));
+    expect(back.programs[id]!.text).toBe(edited.programs[id]!.text);
+    expect(back.programs[id]!.alternates![0]!.text).toBe(text);
     expect(setProgramProfile(back, id, 'esp32-nope')).toMatchObject({
       ok: false,
       error: 'unknown_profile',

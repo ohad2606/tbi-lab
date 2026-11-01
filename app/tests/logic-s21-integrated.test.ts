@@ -191,7 +191,7 @@ describe("PSU + gate: the owner's circuit (screenshot d855acf4), built as drawn 
       const { d } = owner(gnd);
       const back = roundTrip(d);
       expect(back.schemaVersion).toBe(SCHEMA_VERSION);
-      expect(SCHEMA_VERSION).toBe(6); // Sprint 26: v6
+      expect(SCHEMA_VERSION).toBe(7); // Sprint 26: v6; P1: v7
       expect(createSnapshot(back).connections).toEqual(createSnapshot(d).connections);
       // The same outcome (a result, or the same refusal) after the round trip.
       expect(solve(back)).toEqual(solve(d));

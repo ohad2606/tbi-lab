@@ -28,7 +28,7 @@
  * (`ProgramSource.libraries`); both optional. A v5 document means exactly the same in v6
  * (migration v5 -> v6 is the identity); builds before v6 open a v6 file read-only, by name.
  */
-export const SCHEMA_VERSION = 6;
+export const SCHEMA_VERSION = 7;
 export const DOCUMENT_FORMAT = 'tbi-lab.project';
 
 /**
@@ -276,7 +276,17 @@ export interface ProgramSource {
    * includes them); the build uses exactly these versions.
    */
   libraries?: LibraryRef[];
+  /**
+   * Schema v7 (P1 language switching): the board's code in its OTHER programming environments,
+   * kept exactly while this one is active (at most one per other profile of the board, never the
+   * active profile). Switching environment swaps the active source with the kept one, so no
+   * language's code is ever discarded. Never built, never sent to a service.
+   */
+  alternates?: ProgramVariant[];
 }
+
+/** Schema v7: a board's complete source in one programming environment (files and libraries). */
+export type ProgramVariant = Omit<ProgramSource, 'alternates'>;
 
 /** Sprint 26: one further project file of a program (user-authored, stored exactly). */
 export interface ProgramFile {
