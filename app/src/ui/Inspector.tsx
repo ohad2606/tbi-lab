@@ -30,7 +30,7 @@ import { RatingGroup } from './NoticeBar.js';
 import { warningsFor } from '../sim/ratings.js';
 import { servosOnSupply } from '../sim/servoSupply.js';
 import { useAppState, useStore, useT } from './context.js';
-import { checksFor } from './checks.js';
+import { checkIssueText, checksFor } from './checks.js';
 import { NEUTRAL_HEX, resolveWireColors } from '../views/wireColors.js';
 import { rotateRouted } from './routing.js';
 import { probeTargetName, readProbe, type Probe } from './probes.js';
@@ -973,58 +973,7 @@ function ChecksSection({ hidden }: { hidden: boolean }) {
   const t = useT();
   if (!doc) return null;
   const issues = checksFor(doc);
-  const list = (ids: string[]) => isolateLtr(ids.join(', '));
-  const termName = (component: string, term: string) => {
-    const c = doc.components.find((x) => x.id === component);
-    const def = c ? CATALOG[c.type].terminals.find((x) => x.id === term) : undefined;
-    return def ? catalogText(locale, def.labelKey) : term;
-  };
-  const text = (i: CheckIssue): string => {
-    const component = isolateLtr(i.components[0] ?? '');
-    switch (i.code) {
-      case 'partially_wired':
-        return t('checks.partially_wired', {
-          component,
-          terminals: (i.terminals ?? []).map((x) => termName(i.components[0]!, x)).join(', '),
-        });
-      case 'wire_over_terminal':
-        return t('checks.wire_over_terminal', {
-          component,
-          terminal: termName(i.components[0]!, i.terminals?.[0] ?? ''),
-        });
-      case 'terminals_touching':
-        return t('checks.terminals_touching', {
-          component,
-          terminal: termName(i.components[0]!, i.terminals?.[0] ?? ''),
-          other: isolateLtr(i.components[1] ?? ''),
-          otherTerminal: termName(i.components[1]!, i.terminals?.[1] ?? ''),
-        });
-      case 'psu_shorted_by_wire':
-        return t('checks.psu_shorted_by_wire', { component });
-      // Sprint 21: the owner's as-drawn circuit (GND on V_CC's net; nothing across the supply).
-      case 'supply_pins_shorted':
-        return t('checks.supply_pins_shorted', { component });
-      case 'psu_no_load':
-        return t('checks.psu_no_load', { component });
-      // Sprint 24 (M2): an input the program reads, with nothing holding its level.
-      case 'gpio_input_floating': {
-        const terminal = termName(i.components[0]!, i.terminals?.[0] ?? '');
-        const switches = i.components.slice(1);
-        return switches.length
-          ? t('checks.gpio_input_floating', { component, terminal, switches: list(switches) })
-          : t('checks.gpio_input_floating_always', { component, terminal });
-      }
-      case 'gpio_input_unconnected':
-        return t('checks.gpio_input_unconnected', {
-          component,
-          terminal: termName(i.components[0]!, i.terminals?.[0] ?? ''),
-        });
-      case 'no_ground':
-        return t('checks.no_ground');
-      default:
-        return t(`checks.${i.code}`, { components: list(i.components) });
-    }
-  };
+  const text = (i: CheckIssue): string => checkIssueText(locale, doc, i);
   return (
     <section
       class="checks-section"

@@ -1759,6 +1759,193 @@ export const en = {
     'Wiper contact resistance and a maximum wiper current are not in the datasheet: the contact resistance is not modelled; the wiper current is checked only against the rated-condition track current above.',
   'limitation.potentiometer_no_adc':
     'Next to an ESP32 the [[wiper]] is read as a digital level: analog input (analogRead) is not supported.',
+  // Sprint 27: the experimental circuit debugger (DEV-Lab only).
+  'assist.button': 'Analyze circuit',
+  'assist.button.title': 'Experimental: explain what the simulator found in this project',
+  'assist.panel.title': 'Circuit Debugger',
+  'assist.panel.experimental': 'Experimental · DEV only',
+  'assist.panel.intro':
+    'Collects what the simulator already knows about this project (circuit checks, the electrical result, the build and the run) and explains it. Nothing in your project is changed.',
+  'assist.panel.analyze': 'Analyze',
+  'assist.panel.again': 'Analyze again',
+  'assist.panel.cancel': 'Cancel',
+  'assist.panel.close': 'Close',
+  'assist.panel.analyzing': 'Analyzing…',
+  'assist.panel.stale': 'The project changed after this analysis. Analyze again to update it.',
+  'assist.findings.heading': 'Simulator findings',
+  'assist.findings.note':
+    'From the product’s own checks, the electrical engine, the build service and the runtime. These are the source of truth.',
+  'assist.findings.none': 'No findings.',
+  'assist.explain.heading': 'Explanation',
+  'assist.explain.mock':
+    'Experimental: template text from a deterministic mock provider, not a live AI model. It may only restate the findings above, and cites each one.',
+  'assist.explain.basedOn': 'Based on: {refs}',
+  'assist.explain.unexplained': 'This finding was not explained; see the finding itself.',
+  'assist.explain.declined': 'The provider declined to explain this finding: {reason}.',
+  'assist.explain.declined.insufficient_evidence': 'not enough evidence',
+  'assist.explain.declined.out_of_scope': 'outside what it may explain',
+  'assist.accounting':
+    'Provider {provider} ({model}): {tokens} tokens (estimated), {cost}, {ms} ms',
+  'assist.error.unavailable':
+    'No explanation provider is configured. The findings above are complete.',
+  'assist.error.rate_limited': 'Too many analyses in the last minute. Try again in {seconds} s.',
+  'assist.error.busy': 'An analysis is already running.',
+  'assist.error.timeout':
+    'The explanation took too long and was stopped. The findings above are complete.',
+  'assist.error.cancelled': 'The explanation was cancelled.',
+  'assist.error.invalid_response':
+    'The explanation was refused because it did not match the findings and their evidence. The findings above are complete.',
+  'assist.error.provider_error':
+    'The explanation provider failed. The findings above are complete.',
+  'assist.error.context_too_large':
+    'This project is too large to analyze in one piece. Nothing was sent anywhere.',
+  'assist.severity.error': 'Error',
+  'assist.severity.warning': 'Warning',
+  'assist.severity.info': 'Note',
+  'assist.certainty.verified': 'Established by the simulator',
+  'assist.certainty.conservative': 'Editor check (may miss cases, never invents them)',
+  'assist.certainty.indeterminate': 'Not established',
+  'assist.family.floating_input': 'Input without a defined level',
+  'assist.family.connection': 'Connection',
+  'assist.family.supply': 'Power supply',
+  'assist.family.current_limit': 'Current too high',
+  'assist.family.rating': 'Outside the part’s rating',
+  'assist.family.gpio_drive': 'ESP32 pad overloaded',
+  'assist.family.i2c': 'I2C',
+  'assist.family.logic': 'Logic part',
+  'assist.family.capability': 'Not supported by the simulator',
+  'assist.family.build': 'Build',
+  'assist.family.runtime': 'Run',
+  'assist.family.model_limit': 'Model limit',
+  'assist.family.analysis': 'Analysis',
+  'assist.analysis.analysis.no_operating_point':
+    'The circuit is not running, so there is no electrical result to check against ratings.',
+  'assist.analysis.analysis.unknown_values':
+    'The simulator has no defensible value for some quantities ({subjects}). Nothing is assumed for them.',
+  'assist.analysis.analysis.no_issue_found':
+    'The simulator’s checks report nothing for this project. This is not a proof that the circuit is right: only those checks were applied.',
+  'assist.analysis.build.not_current': 'The program has not been built in its current form.',
+  'assist.analysis.build.failed': 'The last build failed without a located diagnostic.',
+  'assist.analysis.capability.unsupported_feature':
+    'The program uses {feature}, which the simulator does not model.',
+  'assist.analysis.capability.runtime_missing':
+    'The program needs the runtime capability {feature}, which this deployment does not announce.',
+  'assist.action.heading': 'What you can do',
+  'assist.action.add_pull_resistor':
+    'Give the input a defined level: a pull-down resistor to GND (or a pull-up to 3.3 V) on that pin.',
+  'assist.action.connect_terminal':
+    'Connect the named terminal, or remove the part if it is not needed.',
+  'assist.action.fix_wire_overlap':
+    'Move the wire or the part so the wire does not pass over a terminal it is not connected to.',
+  'assist.action.connect_ground': 'Connect the circuit to GND (the reference) and to a supply.',
+  'assist.action.remove_short': 'Remove the wire or connection that ties the two levels together.',
+  'assist.action.add_load': 'Connect a load between the supply’s + and −.',
+  'assist.action.increase_series_resistance':
+    'Limit the current: use a larger series resistor (or a lower supply voltage), then run again to check.',
+  'assist.action.reduce_stress':
+    'Lower the voltage, current or power on this part until it is within its rating.',
+  'assist.action.lower_i2c_clock': 'Lower the I2C clock to the part’s rated speed or below.',
+  'assist.action.write_only_display':
+    'Do not read from the display: the simulated module is write-only.',
+  'assist.action.remove_unsupported_feature':
+    'Remove or replace the unsupported feature; see Capabilities for what the simulator runs.',
+  'assist.action.fix_compile_error':
+    'Open the named file at that line and correct the code, then build again.',
+  'assist.action.build_program': 'Build the program before running it.',
+  'assist.action.run_simulation': 'Run the simulation, then analyze again for electrical findings.',
+  'assist.action.use_supported_value':
+    'Choose a value the part is made in (the inspector lists them).',
+  'assist.action.review_supply':
+    'Check how the supplies are connected: a bench supply here cannot absorb current or share an output with another.',
+  'assist.action.drive_defined_level':
+    'Make sure the input is always at a defined LOW or HIGH level while the program reads it.',
+  'assist.action.retry_later': 'This is not a fault in your circuit. Try the run again later.',
+  'assist.limit.heading': 'Limits of this finding',
+  'assist.limit.static_analysis':
+    'Found by reading the drawing and the code before Run; pins named in other ways may be missed.',
+  'assist.limit.dc_only':
+    'DC steady state only: switching transients and timing are not simulated.',
+  'assist.limit.datasheet_limit':
+    'Compared with the datasheet value the simulator uses for this part.',
+  'assist.limit.operating_range':
+    'Outside the specified operating range, which is not by itself a damage limit.',
+  'assist.limit.extrapolated':
+    'The value is beyond what the model characterises, so it is not shown as a number; the condition itself is real.',
+  'assist.limit.no_operating_point': 'Without a run, ratings and levels cannot be checked.',
+  'assist.limit.scope_limited': 'Only the product’s own checks were applied.',
+  'assist.limit.model_unknown': 'The simulator has no defensible value here and assumes none.',
+  'assist.limit.not_a_circuit_fault': 'A service condition, not a property of the circuit.',
+  'assist.limit.unmodelled_behaviour':
+    'The simulator does not model this behaviour, so it does not guess it.',
+  'assist.evidence.heading': 'Evidence',
+  'assist.evidence.check': 'Circuit check',
+  'assist.evidence.solver': 'Electrical engine',
+  'assist.evidence.rating': 'Rating check',
+  'assist.evidence.result': 'Solved result',
+  'assist.evidence.pin': 'ESP32 pad result',
+  'assist.evidence.net': 'Net voltage',
+  'assist.evidence.build': 'Build',
+  'assist.evidence.code': 'Code excerpt',
+  'assist.evidence.failure': 'Run',
+  'assist.evidence.observed': 'Firmware report',
+  'assist.evidence.program': 'Program',
+  'assist.evidence.capabilities': 'Simulator capabilities',
+  'assist.evidence.unknown': 'Not established',
+  'assist.mock.summary.errors':
+    'The simulator found problems that stop or invalidate the run. Start with the errors; each is explained below with the evidence it rests on.',
+  'assist.mock.summary.warnings':
+    'Nothing stops the run, but the simulator flagged conditions that are probably mistakes.',
+  'assist.mock.summary.clear':
+    'There is nothing to correct in what the simulator checked. That is not a proof that the circuit is right.',
+  'assist.mock.gpio.input_floating':
+    'The program reads {pins} as a digital input, but when the switch is open nothing holds the pin at a level. A real ESP32 then reads noise, so the simulator refuses to choose HIGH or LOW for it.',
+  'assist.mock.gpio.input_unconnected':
+    'The program reads {pins}, but nothing is wired to that pin. An unconnected input has no defined level on a real ESP32.',
+  'assist.mock.gpio.input_undefined':
+    'While the program ran, it read {pins} at a moment when the input had no defined level, so the run stopped there instead of inventing a value.',
+  'assist.mock.gpio.sensor_level_undefined':
+    'The sensor’s signal would put {pins} between the ESP32’s LOW and HIGH thresholds, where the chip guarantees no reading, so the run stopped.',
+  'assist.mock.current.led_overcurrent':
+    'The electrical result puts more current through {components} than its datasheet maximum of {limit}. A real LED driven like this overheats and fails; the usual cause is a missing or too small series resistor.',
+  'assist.mock.current.part_overcurrent':
+    'The electrical result puts more current through {components} than its datasheet maximum of {limit}.',
+  'assist.mock.gpio.drive_current':
+    'An ESP32 pad ({pins}) would have to supply more current than the datasheet allows a pad ({limit}). Something on that pin draws too much, typically an LED without a resistor.',
+  'assist.mock.i2c.clock_exceeded':
+    'The program runs the I2C bus faster than {components} is rated for, so the simulator does not claim the transfer works.',
+  'assist.mock.build.compile_error':
+    'The compiler stopped at {file}, line {line}. The program cannot run until that line is corrected.',
+  'assist.mock.capability.unsupported_feature':
+    'The program uses {feature}, which the simulator does not model, so it cannot run the program honestly.',
+  'assist.mock.family.floating_input':
+    'An input here has no defined level, so the simulator does not choose one.',
+  'assist.mock.family.connection': 'The drawing has a connection problem: {components}.',
+  'assist.mock.family.supply':
+    'The way the supply is connected prevents a valid result ({components}).',
+  'assist.mock.family.current_limit':
+    'A part carries more current than its datasheet allows ({components}).',
+  'assist.mock.family.rating': 'A part operates outside its datasheet rating ({components}).',
+  'assist.mock.family.gpio_drive':
+    'An ESP32 pad is driven outside what the datasheet allows ({pins}).',
+  'assist.mock.family.i2c':
+    'An I2C operation is outside what the simulated part supports ({components}).',
+  'assist.mock.family.logic':
+    'A logic part is used where its datasheet gives no guaranteed behaviour ({components}).',
+  'assist.mock.family.capability':
+    'The project uses something the simulator does not model, so it is refused rather than guessed.',
+  'assist.mock.family.build': 'The build did not produce a program to run.',
+  'assist.mock.family.runtime':
+    'The run ended for a reason outside the circuit; this is not a fault in your design.',
+  'assist.mock.family.model_limit':
+    'The electrical engine could not establish a result here; nothing is guessed.',
+  'assist.mock.family.analysis':
+    'This is a note about what the analysis could and could not check.',
+  'assist.mock.family.floating_input.indeterminate':
+    'Whether this input has a defined level could not be established.',
+  'assist.mock.family.model_limit.indeterminate':
+    'The electrical engine could not establish a result here, and the debugger does not guess one.',
+  'assist.mock.family.analysis.indeterminate':
+    'Some values are not established, so no conclusion is drawn about them.',
 } as const;
 
 export type MessageKey = keyof typeof en;

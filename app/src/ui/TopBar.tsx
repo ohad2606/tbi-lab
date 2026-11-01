@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import symbolUrl from '../assets/brand/tbi-lab-symbol.png';
-import { IS_DEV_ENV, SIGN_OUT_URL } from '../deployment.js';
+import { ASSIST_ENABLED, IS_DEV_ENV, SIGN_OUT_URL } from '../deployment.js';
+import { openAssist } from '../assist/open.js';
 import { LOCALES } from '../i18n/i18n.js';
 import { AppMenu } from './AppMenu.js';
 import { useAppState, useStore, useT } from './context.js';
@@ -109,6 +110,8 @@ function EditorBar() {
         {/* Alpha UX-P1: Build beside Run, in every view (absent without a program). */}
         <BuildControl />
         <SimControls />
+        {/* Sprint 27: the experimental Circuit Debugger (DEV-Lab builds only). */}
+        {ASSIST_ENABLED && <AnalyzeButton />}
       </div>
       <span class="spacer" />
       <div class="topbar-group topbar-meta">
@@ -116,6 +119,22 @@ function EditorBar() {
         <Brand />
       </div>
     </>
+  );
+}
+
+/** Sprint 27 (DEV-Lab only): opens the Circuit Debugger; it changes nothing by itself. */
+function AnalyzeButton() {
+  const t = useT();
+  return (
+    <button
+      type="button"
+      class="button assist-open"
+      data-testid="assist-open"
+      title={t('assist.button.title')}
+      onClick={(e) => openAssist(e.currentTarget)}
+    >
+      {t('assist.button')}
+    </button>
   );
 }
 

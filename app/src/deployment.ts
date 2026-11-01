@@ -94,3 +94,10 @@ export const PROBLEM_REPORTS = parseEnabled(import.meta.env.VITE_PROBLEM_REPORTS
  */
 export const TBI_ENV: TbiEnvironment = parseTbiEnv(import.meta.env.VITE_TBI_ENV);
 export const IS_DEV_ENV = TBI_ENV === 'dev';
+
+/**
+ * Sprint 27: the experimental Circuit Debugger, on DEV-Lab builds only. A literal comparison of the
+ * build-time value (not IS_DEV_ENV, a function result) so that every other build drops the feature
+ * and its modules entirely; the release gate (check-dist.mjs) checks that.
+ */
+export const ASSIST_ENABLED: boolean = import.meta.env.VITE_TBI_ENV === 'dev';

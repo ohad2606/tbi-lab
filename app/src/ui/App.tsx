@@ -1,5 +1,7 @@
 import { CapabilitiesHost } from './Capabilities.js';
 import { ProblemReportHost } from './ProblemReport.js';
+import { ASSIST_ENABLED } from '../deployment.js';
+import { AssistHost } from '../assist/mount.js';
 import { useEffect, useLayoutEffect } from 'preact/hooks';
 import { useAppState, useStore, useT } from './context.js';
 import { Editor } from './Editor.js';
@@ -94,6 +96,7 @@ export function App() {
       <VersionStatus />
       <CapabilitiesHost />
       <ProblemReportHost />
+      {ASSIST_ENABLED && <AssistHost />}
     </div>
   );
 }

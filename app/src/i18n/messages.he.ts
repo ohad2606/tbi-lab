@@ -1693,4 +1693,168 @@ export const he: Record<MessageKey, string> = {
     'התנגדות המגע של ה[[wiper]] וזרם מרבי דרכו אינם בגיליון הנתונים: התנגדות המגע אינה ממודלת; הזרם דרך ה[[wiper]] נבדק רק מול זרם המסלול בתנאי הדירוג שלעיל.',
   'limitation.potentiometer_no_adc':
     'לצד ESP32 ה[[wiper]] נקרא כרמה דיגיטלית: כניסה אנלוגית (ADC) אינה נתמכת.',
+  // Sprint 27: מנפה התקלות הניסיוני (DEV-Lab בלבד).
+  'assist.button': 'ניתוח המעגל',
+  'assist.button.title': 'ניסיוני: הסבר של מה שהסימולטור מצא בפרויקט הזה',
+  'assist.panel.title': 'מנפה תקלות במעגל',
+  'assist.panel.experimental': 'ניסיוני · DEV בלבד',
+  'assist.panel.intro':
+    'אוסף את מה שהסימולטור כבר יודע על הפרויקט (בדיקות המעגל, התוצאה החשמלית, הבנייה וההרצה) ומסביר אותו. דבר בפרויקט שלכם אינו משתנה.',
+  'assist.panel.analyze': 'ניתוח',
+  'assist.panel.again': 'ניתוח מחדש',
+  'assist.panel.cancel': 'ביטול',
+  'assist.panel.close': 'סגירה',
+  'assist.panel.analyzing': 'מנתח…',
+  'assist.panel.stale': 'הפרויקט השתנה אחרי הניתוח הזה. נתחו מחדש כדי לעדכן אותו.',
+  'assist.findings.heading': 'ממצאי הסימולטור',
+  'assist.findings.note':
+    'מהבדיקות של המוצר עצמו, מהמנוע החשמלי, משירות הבנייה ומזמן הריצה. הם מקור האמת.',
+  'assist.findings.none': 'אין ממצאים.',
+  'assist.explain.heading': 'הסבר',
+  'assist.explain.mock':
+    'ניסיוני: טקסט מתבנית של ספק דמה דטרמיניסטי, לא מודל AI חי. הוא רשאי רק לחזור על הממצאים שלמעלה, ומפנה לכל אחד מהם.',
+  'assist.explain.basedOn': 'מבוסס על: {refs}',
+  'assist.explain.unexplained': 'הממצא הזה לא הוסבר; ראו את הממצא עצמו.',
+  'assist.explain.declined': 'הספק נמנע מלהסביר את הממצא הזה: {reason}.',
+  'assist.explain.declined.insufficient_evidence': 'אין די ראיות',
+  'assist.explain.declined.out_of_scope': 'מחוץ למה שהוא רשאי להסביר',
+  'assist.accounting': 'ספק {provider} ‏({model}): {tokens} טוקנים (הערכה), {cost}, {ms} ms',
+  'assist.error.unavailable': 'לא הוגדר ספק הסברים. הממצאים שלמעלה מלאים.',
+  'assist.error.rate_limited': 'יותר מדי ניתוחים בדקה האחרונה. נסו שוב בעוד {seconds} s.',
+  'assist.error.busy': 'ניתוח כבר מתבצע.',
+  'assist.error.timeout': 'ההסבר נמשך זמן רב מדי ונעצר. הממצאים שלמעלה מלאים.',
+  'assist.error.cancelled': 'ההסבר בוטל.',
+  'assist.error.invalid_response':
+    'ההסבר נדחה כי לא התאים לממצאים ולראיות שלהם. הממצאים שלמעלה מלאים.',
+  'assist.error.provider_error': 'ספק ההסברים נכשל. הממצאים שלמעלה מלאים.',
+  'assist.error.context_too_large': 'הפרויקט גדול מכדי לנתח אותו בבת אחת. דבר לא נשלח לשום מקום.',
+  'assist.severity.error': 'שגיאה',
+  'assist.severity.warning': 'אזהרה',
+  'assist.severity.info': 'הערה',
+  'assist.certainty.verified': 'נקבע על ידי הסימולטור',
+  'assist.certainty.conservative': 'בדיקת עורך (עשויה להחמיץ מקרים, לעולם אינה ממציאה אותם)',
+  'assist.certainty.indeterminate': 'לא נקבע',
+  'assist.family.floating_input': 'כניסה בלי רמה מוגדרת',
+  'assist.family.connection': 'חיבור',
+  'assist.family.supply': 'ספק כוח',
+  'assist.family.current_limit': 'זרם גבוה מדי',
+  'assist.family.rating': 'מחוץ לדירוג של הרכיב',
+  'assist.family.gpio_drive': 'עומס יתר על פין של ESP32',
+  'assist.family.i2c': 'I2C',
+  'assist.family.logic': 'רכיב לוגי',
+  'assist.family.capability': 'לא נתמך בסימולטור',
+  'assist.family.build': 'בנייה',
+  'assist.family.runtime': 'הרצה',
+  'assist.family.model_limit': 'גבול המודל',
+  'assist.family.analysis': 'ניתוח',
+  'assist.analysis.analysis.no_operating_point':
+    'המעגל אינו רץ, ולכן אין תוצאה חשמלית לבדוק מול הדירוגים.',
+  'assist.analysis.analysis.unknown_values':
+    'לסימולטור אין ערך מבוסס עבור חלק מהגדלים ({subjects}). שום דבר לא מונח עבורם.',
+  'assist.analysis.analysis.no_issue_found':
+    'הבדיקות של הסימולטור אינן מדווחות דבר עבור הפרויקט הזה. אין בכך הוכחה שהמעגל נכון: הופעלו רק הבדיקות האלה.',
+  'assist.analysis.build.not_current': 'התוכנית לא נבנתה בגרסתה הנוכחית.',
+  'assist.analysis.build.failed': 'הבנייה האחרונה נכשלה בלי אבחון עם מיקום.',
+  'assist.analysis.capability.unsupported_feature':
+    'התוכנית משתמשת ב-{feature}, שהסימולטור אינו ממדל.',
+  'assist.analysis.capability.runtime_missing':
+    'התוכנית צריכה את יכולת זמן הריצה {feature}, שהפריסה הזו אינה מכריזה עליה.',
+  'assist.action.heading': 'מה אפשר לעשות',
+  'assist.action.add_pull_resistor':
+    'תנו לכניסה רמה מוגדרת: נגד Pull-down ל-GND (או Pull-up ל-3.3 V) על הפין הזה.',
+  'assist.action.connect_terminal': 'חברו את ההדק שצוין, או הסירו את הרכיב אם אינו נחוץ.',
+  'assist.action.fix_wire_overlap':
+    'הזיזו את החוט או את הרכיב כך שהחוט לא יעבור מעל הדק שאינו מחובר אליו.',
+  'assist.action.connect_ground': 'חברו את המעגל ל-GND (נקודת הייחוס) ולספק.',
+  'assist.action.remove_short': 'הסירו את החוט או החיבור שמקשר בין שתי הרמות.',
+  'assist.action.add_load': 'חברו עומס בין ה-+ וה-− של הספק.',
+  'assist.action.increase_series_resistance':
+    'הגבילו את הזרם: נגד טורי גדול יותר (או מתח ספק נמוך יותר), ואז הריצו שוב כדי לבדוק.',
+  'assist.action.reduce_stress': 'הורידו את המתח, הזרם או ההספק על הרכיב עד שיהיה בתוך הדירוג שלו.',
+  'assist.action.lower_i2c_clock': 'הורידו את שעון ה-I2C למהירות המדורגת של הרכיב או מתחתיה.',
+  'assist.action.write_only_display': 'אל תקראו מהתצוגה: המודול המדומה מאפשר כתיבה בלבד.',
+  'assist.action.remove_unsupported_feature':
+    'הסירו או החליפו את היכולת שאינה נתמכת; ראו ביכולות מה הסימולטור מריץ.',
+  'assist.action.fix_compile_error': 'פתחו את הקובץ שצוין בשורה הזו ותקנו את הקוד, ואז בנו שוב.',
+  'assist.action.build_program': 'בנו את התוכנית לפני שמריצים אותה.',
+  'assist.action.run_simulation': 'הריצו את הסימולציה, ואז נתחו שוב לקבלת ממצאים חשמליים.',
+  'assist.action.use_supported_value': 'בחרו ערך שבו הרכיב מיוצר (המפקח מציג אותם).',
+  'assist.action.review_supply':
+    'בדקו איך הספקים מחוברים: ספק מעבדה כאן אינו יכול לקלוט זרם או לחלוק מוצא עם ספק אחר.',
+  'assist.action.drive_defined_level':
+    'ודאו שהכניסה תמיד ברמת LOW או HIGH מוגדרת בזמן שהתוכנית קוראת אותה.',
+  'assist.action.retry_later': 'זו אינה תקלה במעגל שלכם. נסו להריץ שוב מאוחר יותר.',
+  'assist.limit.heading': 'גבולות הממצא',
+  'assist.limit.static_analysis':
+    'נמצא מקריאת השרטוט והקוד לפני ההרצה; פינים שמצוינים בדרכים אחרות עלולים להיות מוחמצים.',
+  'assist.limit.dc_only': 'מצב יציב DC בלבד: מעברי מיתוג ותזמון אינם מדומים.',
+  'assist.limit.datasheet_limit': 'הושווה לערך מגיליון הנתונים שהסימולטור משתמש בו עבור הרכיב.',
+  'assist.limit.operating_range': 'מחוץ לתחום ההפעלה המוגדר, וזה כשלעצמו אינו גבול נזק.',
+  'assist.limit.extrapolated':
+    'הערך מעבר למה שהמודל מאפיין, ולכן אינו מוצג כמספר; המצב עצמו אמיתי.',
+  'assist.limit.no_operating_point': 'בלי הרצה אי אפשר לבדוק דירוגים ורמות.',
+  'assist.limit.scope_limited': 'הופעלו רק הבדיקות של המוצר עצמו.',
+  'assist.limit.model_unknown': 'לסימולטור אין כאן ערך מבוסס והוא אינו מניח אחד.',
+  'assist.limit.not_a_circuit_fault': 'מצב של השירות, לא תכונה של המעגל.',
+  'assist.limit.unmodelled_behaviour': 'הסימולטור אינו ממדל את ההתנהגות הזו, ולכן אינו מנחש אותה.',
+  'assist.evidence.heading': 'ראיות',
+  'assist.evidence.check': 'בדיקת מעגל',
+  'assist.evidence.solver': 'המנוע החשמלי',
+  'assist.evidence.rating': 'בדיקת דירוג',
+  'assist.evidence.result': 'תוצאה מחושבת',
+  'assist.evidence.pin': 'תוצאת פין של ESP32',
+  'assist.evidence.net': 'מתח רשת',
+  'assist.evidence.build': 'בנייה',
+  'assist.evidence.code': 'קטע קוד',
+  'assist.evidence.failure': 'הרצה',
+  'assist.evidence.observed': 'דיווח הקושחה',
+  'assist.evidence.program': 'תוכנית',
+  'assist.evidence.capabilities': 'יכולות הסימולטור',
+  'assist.evidence.unknown': 'לא נקבע',
+  'assist.mock.summary.errors':
+    'הסימולטור מצא בעיות שעוצרות את ההרצה או פוסלות אותה. התחילו בשגיאות; כל אחת מוסברת למטה עם הראיות שעליהן היא נשענת.',
+  'assist.mock.summary.warnings':
+    'דבר אינו עוצר את ההרצה, אבל הסימולטור סימן מצבים שהם כנראה טעויות.',
+  'assist.mock.summary.clear': 'במה שהסימולטור בדק אין מה לתקן. אין בכך הוכחה שהמעגל נכון.',
+  'assist.mock.gpio.input_floating':
+    'התוכנית קוראת את {pins} ככניסה דיגיטלית, אבל כשהמתג פתוח דבר אינו מחזיק את הפין ברמה כלשהי. ESP32 אמיתי קורא אז רעש, ולכן הסימולטור מסרב לבחור עבורו HIGH או LOW.',
+  'assist.mock.gpio.input_unconnected':
+    'התוכנית קוראת את {pins}, אבל דבר אינו מחובר לפין הזה. לכניסה לא מחוברת אין רמה מוגדרת ב-ESP32 אמיתי.',
+  'assist.mock.gpio.input_undefined':
+    'בזמן ההרצה התוכנית קראה את {pins} ברגע שבו לכניסה לא הייתה רמה מוגדרת, ולכן ההרצה נעצרה שם במקום להמציא ערך.',
+  'assist.mock.gpio.sensor_level_undefined':
+    'האות של החיישן היה מביא את {pins} בין ספי ה-LOW וה-HIGH של ה-ESP32, שם השבב אינו מבטיח שום קריאה, ולכן ההרצה נעצרה.',
+  'assist.mock.current.led_overcurrent':
+    'התוצאה החשמלית מעבירה דרך {components} זרם גבוה מהמקסימום בגיליון הנתונים, {limit}. נורית אמיתית שמוזנת כך מתחממת ונכשלת; הסיבה הרגילה היא נגד טורי חסר או קטן מדי.',
+  'assist.mock.current.part_overcurrent':
+    'התוצאה החשמלית מעבירה דרך {components} זרם גבוה מהמקסימום בגיליון הנתונים, {limit}.',
+  'assist.mock.gpio.drive_current':
+    'פין של ESP32 ‏({pins}) היה צריך לספק זרם גבוה ממה שגיליון הנתונים מתיר לפין ({limit}). משהו על הפין הזה צורך יותר מדי, בדרך כלל נורית בלי נגד.',
+  'assist.mock.i2c.clock_exceeded':
+    'התוכנית מפעילה את אפיק ה-I2C מהר יותר ממה ש-{components} מדורג לו, ולכן הסימולטור אינו טוען שההעברה עובדת.',
+  'assist.mock.build.compile_error':
+    'המהדר נעצר ב-{file}, שורה {line}. התוכנית לא יכולה לרוץ עד שהשורה הזו תתוקן.',
+  'assist.mock.capability.unsupported_feature':
+    'התוכנית משתמשת ב-{feature}, שהסימולטור אינו ממדל, ולכן אינו יכול להריץ אותה ביושר.',
+  'assist.mock.family.floating_input': 'לכניסה כאן אין רמה מוגדרת, ולכן הסימולטור אינו בוחר רמה.',
+  'assist.mock.family.connection': 'בשרטוט יש בעיית חיבור: {components}.',
+  'assist.mock.family.supply': 'האופן שבו הספק מחובר מונע תוצאה תקפה ({components}).',
+  'assist.mock.family.current_limit': 'רכיב נושא זרם גבוה ממה שגיליון הנתונים מתיר ({components}).',
+  'assist.mock.family.rating': 'רכיב פועל מחוץ לדירוג שבגיליון הנתונים שלו ({components}).',
+  'assist.mock.family.gpio_drive': 'פין של ESP32 מופעל מעבר למה שגיליון הנתונים מתיר ({pins}).',
+  'assist.mock.family.i2c': 'פעולת I2C מחוץ למה שהרכיב המדומה תומך בו ({components}).',
+  'assist.mock.family.logic':
+    'רכיב לוגי משמש במצב שבו גיליון הנתונים שלו אינו מבטיח התנהגות ({components}).',
+  'assist.mock.family.capability':
+    'הפרויקט משתמש במשהו שהסימולטור אינו ממדל, ולכן הוא נדחה במקום שינוחש.',
+  'assist.mock.family.build': 'הבנייה לא הפיקה תוכנית להרצה.',
+  'assist.mock.family.runtime': 'ההרצה הסתיימה מסיבה שמחוץ למעגל; זו אינה תקלה בתכנון שלכם.',
+  'assist.mock.family.model_limit': 'המנוע החשמלי לא הצליח לקבוע כאן תוצאה; דבר אינו מנוחש.',
+  'assist.mock.family.analysis': 'זו הערה על מה שהניתוח יכול היה לבדוק ומה לא.',
+  'assist.mock.family.floating_input.indeterminate':
+    'לא ניתן היה לקבוע אם לכניסה הזו יש רמה מוגדרת.',
+  'assist.mock.family.model_limit.indeterminate':
+    'המנוע החשמלי לא הצליח לקבוע כאן תוצאה, ומנפה התקלות אינו מנחש אחת.',
+  'assist.mock.family.analysis.indeterminate':
+    'חלק מהערכים לא נקבעו, ולכן לא מוסקת עליהם שום מסקנה.',
 };
