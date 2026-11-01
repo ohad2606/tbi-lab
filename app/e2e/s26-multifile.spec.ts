@@ -72,7 +72,7 @@ test('files: create with name rules, edit, rename, delete with confirmation, und
   expect(doc.programs.U1!.files).toEqual([
     { path: 'helpers.h', text: '#pragma once\nint helper();\n' },
   ]);
-  expect(doc.schemaVersion).toBe(6);
+  expect(doc.schemaVersion).toBe(7); // P1: v7 (files kept as in v6)
   // A duplicate differing only in case.
   await page.getByTestId('code-file-new').click();
   await page.getByTestId('code-file-name').fill('Helpers.h');
