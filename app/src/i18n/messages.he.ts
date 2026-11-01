@@ -1742,7 +1742,7 @@ export const he: Record<MessageKey, string> = {
   'assist.family.current_limit': 'זרם גבוה מדי',
   'assist.family.rating': 'מחוץ לדירוג של הרכיב',
   'assist.family.gpio_drive': 'עומס יתר על פין של ESP32',
-  'assist.family.i2c': 'I2C',
+  'assist.family.i2c': 'תקשורת I2C',
   'assist.family.logic': 'רכיב לוגי',
   'assist.family.capability': 'לא נתמך בסימולטור',
   'assist.family.build': 'בנייה',
