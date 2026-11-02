@@ -337,6 +337,20 @@ describe('Sprint 27: the Circuit Debugger only in DEV-Lab builds', () => {
     }
   });
 
+  it('Sprint 28: no build of any profile carries an AI provider client, endpoint or key header', () => {
+    for (const p of [RC4, DEV_LAB]) {
+      const base = p === DEV_LAB ? panel : clean;
+      for (const [code, what] of [
+        ['fetch("https://api.anthropic.com/v1/messages")', 'an AI provider endpoint'],
+        ['headers:{"anthropic-version":"2023-06-01"}', 'an AI provider SDK'],
+        ['h["x-api-key"]=k', 'an AI provider SDK'],
+      ])
+        expect(checkAssist(loadProfile(p), tree({ ...base, 'assets/index-x.js': code }))).toContain(
+          `index-x.js: carries ${what} (provider calls are server-side only)`,
+        );
+    }
+  });
+
   it('the DEV-Lab build carries the panel chunk and the button', () => {
     expect(checkAssist(loadProfile(DEV_LAB), tree(panel))).toEqual([]);
     expect(checkAssist(loadProfile(DEV_LAB), tree(clean))).toEqual([

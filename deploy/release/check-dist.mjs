@@ -68,6 +68,15 @@ export function checkDist(profile, dist) {
   return { errors, files: assets.length };
 }
 
+/** Sprint 28: traces of an AI provider client that must never reach a browser bundle. */
+const PROVIDER_TRACES = [
+  [
+    'an AI provider endpoint',
+    /api\.anthropic\.com|api\.openai\.com|generativelanguage\.googleapis/,
+  ],
+  ['an AI provider SDK', /@anthropic-ai\/sdk|anthropic-version|x-api-key/i],
+];
+
 /** Modules of the experimental Circuit Debugger (Sprint 27, DEV-Lab builds only). */
 // Source map paths are relative to the bundle (`../../src/assist/…`) or carry the repository path.
 const ASSIST_MODULE = /(^|\/)((app\/)?src\/assist|packages\/assist)\//;
@@ -89,6 +98,12 @@ export function checkAssist(profile, dist) {
   const button = assets
     .filter((f) => f.endsWith('.js'))
     .some((f) => readFileSync(join(dist, 'assets', f), 'utf8').includes('assist-open'));
+  // Sprint 28: no build, of any profile, carries a provider SDK, its endpoint or a key header:
+  // provider calls are server-side only (runtime/assist), never from a browser.
+  for (const f of assets.filter((a) => a.endsWith('.js')))
+    for (const [what, re] of PROVIDER_TRACES)
+      if (re.test(readFileSync(join(dist, 'assets', f), 'utf8')))
+        errors.push(`${f}: carries ${what} (provider calls are server-side only)`);
   if (dev) {
     if (!chunks.length) errors.push('DEV build without the Circuit Debugger panel chunk');
     if (!button) errors.push('DEV build without the Circuit Debugger button');
