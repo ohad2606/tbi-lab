@@ -1177,6 +1177,9 @@ export const en = {
     'an I2C option the simulator has not verified (timeout=, other arguments)',
   'build.feature.i2c_operation':
     'an I2C operation no simulated part answers (readfrom, readfrom_into, readfrom_mem, writeto_mem, …), or machine.I2C used indirectly',
+  // Sprint 28 (L7): MicroPython names looked up at run time; the checks read written names only.
+  'build.feature.dynamic_access':
+    'names looked up while the program runs (getattr/setattr/hasattr with a computed name, vars(), globals(), locals(), __dict__, exec, eval, compile, sys.modules), or the machine module used other than as machine.Name — the simulator could not check what they reach',
   'build.feature.spi': 'SPI bus',
   'build.feature.library': 'library {name}',
   'mcu.runs.program': 'Runs its code. Edit it in the Code tab, Build, then Run.',

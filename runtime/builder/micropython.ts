@@ -36,7 +36,7 @@ import {
 import { libraryFiles } from '../libraries/tree.js';
 import type { BuildProvider, JobContext, ProviderOutput } from './provider.js';
 import { LocalToolRunner, type ToolRunner } from './runner.js';
-import { analyzeMicroPython, PY_FEATURES_ANALYZER } from './pyFeatures.js';
+import { analyzeMicroPython, machineModuleAliases, PY_FEATURES_ANALYZER } from './pyFeatures.js';
 import type { Diagnostic, FeatureReport } from './protocol.js';
 
 export interface MicroPythonProfileRecord {
@@ -179,12 +179,14 @@ export class MicroPythonProvider implements BuildProvider {
     for (const f of job.files) await put(f.name, f.text, 0o660);
     // Managed libraries: their modules in /lib (on MicroPython's sys.path), verified first.
     const libFiles: string[] = [];
+    const librarySources: string[] = [];
     for (const lib of managed)
       for (const f of libraryFiles(lib))
         if (f.path.endsWith('.py')) {
           const rel = `lib/${f.path}`;
           await put(rel, f.bytes, 0o640);
           libFiles.push(rel);
+          librarySources.push(Buffer.from(f.bytes).toString('utf8'));
         }
     // Sprint 24: compile only, with the interpreter's own compiler (from the program's directory,
     // so every message names the file as the user knows it). Sprint 26: every project file.
@@ -261,6 +263,7 @@ export class MicroPythonProvider implements BuildProvider {
         job.files.map((f) => f.text),
         [...own, ...managed.flatMap((l) => l.provides)],
         managed,
+        librarySources,
       ),
       diagnostics: [],
       log: { text: '', truncated: false },
@@ -272,11 +275,16 @@ export class MicroPythonProvider implements BuildProvider {
     sources: readonly string[],
     modules: readonly string[] = [],
     managed: readonly { name: string; runtimeCapabilities: readonly string[] }[] = [],
+    librarySources: readonly string[] = [],
   ) {
     // Sprint 26 (review M1): every file analysed on its own (a string or comment opened in one
     // file never hides another's code), merged conservatively.
     const caps = this.opts.runtimeCapabilities ?? [];
-    const f = mergeReports(sources.map((s) => analyzeMicroPython(s, caps, modules)));
+    // Sprint 28 (L7): the machine module's names across every file and managed library module.
+    const aliases = [
+      ...new Set([...sources, ...librarySources].flatMap((s) => machineModuleAliases(s))),
+    ];
+    const f = mergeReports(sources.map((s) => analyzeMicroPython(s, caps, modules, aliases)));
     // Review L3: a pinned library needs what its part needs from the runtime.
     for (const lib of managed)
       if (lib.runtimeCapabilities.every((c) => caps.includes(c)))

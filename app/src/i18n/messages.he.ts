@@ -1142,6 +1142,9 @@ export const he: Record<MessageKey, string> = {
   'build.feature.i2c_option': 'אפשרות I2C שהסימולטור לא אימת (timeout=, ארגומנטים אחרים)',
   'build.feature.i2c_operation':
     'פעולת I2C ששום רכיב מדומה אינו עונה עליה (readfrom, ‏readfrom_into, ‏readfrom_mem, ‏writeto_mem, …), או שימוש עקיף ב-machine.I2C',
+  // Sprint 28 (L7)
+  'build.feature.dynamic_access':
+    'שמות שנמצאים רק בזמן ריצת התוכנית (getattr/‏setattr/‏hasattr עם שם מחושב, ‏vars()‎, ‏globals()‎, ‏locals()‎, ‏__dict__, ‏exec, ‏eval, ‏compile, ‏sys.modules), או שימוש במודול machine שלא בצורה machine.Name — הסימולטור לא יכול לבדוק למה הם מגיעים',
   'build.feature.spi': 'אפיק SPI',
   'build.feature.library': 'ספרייה {name}',
   'mcu.runs.program': 'מריץ את הקוד שלו. ערכו אותו בלשונית "קוד", בנו ואז הריצו.',

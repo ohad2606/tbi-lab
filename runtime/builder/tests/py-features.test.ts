@@ -4,7 +4,7 @@
  * `machine` names are refused; what runs (Pin, PWM, time, print) passes untouched.
  */
 import { describe, expect, it } from 'vitest';
-import { analyzeMicroPython, pythonCodeOnly } from '../pyFeatures.js';
+import { analyzeMicroPython, machineModuleAliases, pythonCodeOnly } from '../pyFeatures.js';
 import { INPUT_CAPABLE_GPIOS } from '../features.js';
 
 const clean = { internalPull: [], gpioInterrupt: [], restart: false, unsupported: [] };
@@ -249,7 +249,11 @@ describe('MicroPython hardware I2C: review fixes (Sprint 24)', () => {
       'f = compile("x", "s", "exec")',
       'i2c.__dict__',
     ])
-      expect(analyzeMicroPython(base + op, RT).unsupported, op).toEqual(['i2c_operation']);
+      // Sprint 28 (L7): also a run-time lookup anywhere in the program (dynamic_access).
+      expect(analyzeMicroPython(base + op, RT).unsupported, op).toEqual([
+        'dynamic_access',
+        'i2c_operation',
+      ]);
     // A literal getattr name is checked like a method call (scan is allowed).
     expect(analyzeMicroPython(`${base}getattr(i2c, "scan")()`, RT)).toEqual({
       ...clean,
@@ -275,5 +279,89 @@ describe('MicroPython hardware I2C: names in strings and comments', () => {
     const src =
       '# I2C on bus 0\nfrom machine import Pin, I2C\nb = I2C(0, scl=Pin(22), sda=Pin(21), freq=100000)\nprint("I2C scan:", b.scan())\n';
     expect(analyzeMicroPython(src, ['i2c', 'unmodelled'])).toEqual({ ...clean, requires: ['i2c'] });
+  });
+});
+
+describe('Sprint 28 (L7): the machine module is never reached indirectly', () => {
+  const RT = ['i2c', 'unmodelled'];
+  const refused = (
+    src: string,
+    ...rest: Parameters<typeof analyzeMicroPython> extends [string, ...infer R] ? R : never
+  ) => analyzeMicroPython(src, ...rest).unsupported;
+  it.each([
+    [
+      'computed getattr (the review case)',
+      "import machine\nb = getattr(machine, 'I'+'2C')(0, freq=400000)\n",
+    ],
+    ['computed getattr, reset', "import machine\ngetattr(machine, 're'+'set')()\n"],
+    ['getattr with a variable name', 'import machine\nn = input()\ngetattr(machine, n)()\n'],
+    ['rebinding the module', 'import machine\nm = machine\nm.reset()\n'],
+    ['rebinding an alias', 'import machine as mc\nx = [mc]\nx[0].reset()\n'],
+    ['passing it as an argument', 'import machine\ndef f(mod):\n    mod.reset()\nf(machine)\n'],
+    ['returning it', 'import machine\ndef hw():\n    return machine\nhw().reset()\n'],
+    ['sys.modules', "import sys\nm = sys.modules['mach'+'ine']\nm.reset()\n"],
+    ['from sys import modules', "from sys import modules\nmodules['machine'].reset()\n"],
+    ['vars()', "import machine\nvars(machine)['re'+'set']()\n"],
+    ['globals() after import *', "from machine import *\nglobals()['re'+'set']()\n"],
+    ['locals()', "from machine import *\nlocals()['DAC'](Pin(25))\n"],
+    ['__dict__', "import machine\nmachine.__dict__['reset']()\n"],
+    ['__getattribute__', "import machine\nmachine.__getattribute__('re'+'set')()\n"],
+    ['setattr with a computed name', "import machine\nsetattr(machine, 'x'+'y', 1)\n"],
+    ['hasattr with a computed name', "import machine\nhasattr(machine, 'I'+'2C')\n"],
+    ['exec', "exec('import machine; machine.reset()')\n"],
+    ['eval', "eval('1')\n"],
+    ['compile', "c = compile('x', 's', 'exec')\n"],
+  ])('%s: refused (dynamic_access)', (_, src) => {
+    expect(refused(src, RT)).toContain('dynamic_access');
+  });
+
+  it('a project module re-exporting machine is checked like machine', () => {
+    const mods = ['hw'];
+    const aliases = machineModuleAliases('import machine as mc\n');
+    expect(aliases).toEqual(['mc']);
+    // from hw import mc / *: mc.reset() is machine.reset()
+    expect(analyzeMicroPython('from hw import mc\nmc.reset()\n', RT, mods, aliases).restart).toBe(
+      true,
+    );
+    expect(
+      analyzeMicroPython('from hw import *\nmc.DAC(1)\n', RT, mods, aliases).unsupported,
+    ).toContain('dac');
+    expect(analyzeMicroPython('import hw\nhw.mc.reset()\n', RT, mods, aliases).restart).toBe(true);
+    expect(
+      analyzeMicroPython('import hw as h\nh . mc . DAC(1)\n', RT, mods, aliases).unsupported,
+    ).toContain('dac');
+    // `machine` itself re-exported (always a candidate name)
+    expect(analyzeMicroPython('from hw import machine\nmachine.reset()\n', RT, mods).restart).toBe(
+      true,
+    );
+    // and escaping it from there is refused too
+    expect(
+      analyzeMicroPython('import hw\nm = hw.mc\nm.reset()\n', RT, mods, aliases).unsupported,
+    ).toContain('dynamic_access');
+  });
+
+  it.each([
+    [
+      'static Pin use',
+      'from machine import Pin\nimport time\np = Pin(2, Pin.OUT)\nwhile True:\n    p.value(not p.value())\n    time.sleep_ms(100)\n',
+    ],
+    [
+      'machine.Pin by attribute',
+      'import machine\nled = machine.Pin(2, machine.Pin.OUT)\nled.on()\n',
+    ],
+    [
+      'getattr with a written name',
+      "from machine import Pin\np = Pin(2, Pin.OUT)\ngetattr(p, 'value')(1)\n",
+    ],
+    [
+      'getattr on the module with a written allowed name',
+      "import machine\ngetattr(machine, 'Pin')(2)\n",
+    ],
+    ['the word machine in text', 'import machine\nprint("machine ready")\n# the machine module\n'],
+    ['a multi-line import', 'from machine import (\n    Pin,\n    PWM,\n)\np = PWM(Pin(18))\n'],
+    ['own objects with hasattr', "class C:\n    a = 1\nprint(hasattr(C(), 'a'))\n"],
+    ['re.compile is a method', "import re\nr = re.compile('a+')\n"],
+  ])('%s: still accepted', (_, src) => {
+    expect(refused(src, RT)).not.toContain('dynamic_access');
   });
 });

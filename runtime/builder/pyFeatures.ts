@@ -31,8 +31,14 @@
  * Tokens are matched in the program with comments removed and string literals KEPT (so
  * `getattr(machine, "reset")` is refused too). A name in a docstring may therefore refuse a
  * program that does not call it: an explicit, explained refusal, never a wrong simulation.
- * What static analysis cannot see (names built at run time from pieces) is the documented
- * residual; the run-time U frames remain the backstop for ADC, interrupts and the clock.
+ * Sprint 28 (L7): the `machine` checks above hold only if every use of the machine module is a
+ * written attribute (`machine.Name`) the rules can read. So `dynamic_access` refuses, fail closed:
+ * the module object used any other way (`m = machine`, `f(machine)`, `[machine]`, a computed
+ * `getattr(machine, ...)`), a name looked up at run time anywhere in the program (`getattr`,
+ * `setattr`, `delattr`, `hasattr` with a name not written as a string; `vars()`, `globals()`,
+ * `locals()`, `__dict__`, `__getattribute__`, `exec`, `eval`, `compile`, `sys.modules`). The
+ * machine module re-exported by a project file (`from hw import mc`, `from hw import *`,
+ * `hw.mc`) is checked like `machine` itself (`projectMachineAliases`). Static code is unchanged.
  */
 import { I2C_PART_MAX_SCL_HZ } from '@tbi-lab/engine';
 import { MICROPYTHON_RESERVED_MODULES, programInputReads } from '@tbi-lab/domain';
@@ -40,7 +46,7 @@ import type { FeatureReport } from './protocol.js';
 import { INPUT_CAPABLE_GPIOS } from './features.js';
 
 /** Version of this analysis; part of the MicroPython profile hash (cache key). */
-export const PY_FEATURES_ANALYZER = 5; // Sprint 27: I2C re-exported by a project module (review L1)
+export const PY_FEATURES_ANALYZER = 6; // Sprint 28 (L7): the machine module never reached indirectly
 
 /**
  * Sprint 24 (M3): the fastest I2C clock a program may select: the lowest rated SCL of the I2C parts
@@ -350,6 +356,68 @@ function analyzeI2c(code: string, names: string[], unsupported: Set<string>): bo
   return true;
 }
 
+/**
+ * Sprint 28 (L7): the names a file binds to the machine module object (`import machine` ->
+ * `machine`, `import machine as m` -> `m`). The provider passes every file's (and every managed
+ * library module's) names to each file's analysis, so a re-export across files is still seen.
+ */
+export function machineModuleAliases(source: string): string[] {
+  const code = logicalLines(pythonCodeOnly(source));
+  const out = new Set<string>();
+  for (const m of code.matchAll(/^[ \t]*import[ \t]+([^\n;]+)/gm))
+    for (const part of m[1]!.split(',')) {
+      const [mod, alias] = part.trim().split(/\s+as\s+/) as [string, string | undefined];
+      if (mod === 'machine') out.add(alias ?? 'machine');
+    }
+  return [...out];
+}
+
+/** String literal contents blanked (offsets kept): text in strings is never code. */
+const blankStrings = (code: string) =>
+  code.replace(
+    /("""|'''|"|')(?:\\.|(?!\1)[\s\S])*?\1/g,
+    (str, q: string) => q + ' '.repeat(str.length - 2 * q.length) + q,
+  );
+
+/** A regular expression source for a (possibly dotted) name, spaces allowed around dots. */
+const nameSource = (name: string) => name.split('.').join('\\s*\\.\\s*');
+
+/**
+ * Sprint 28 (L7): run-time name lookups, and the machine module object used other than through a
+ * written attribute. Either could reach a refused machine facility the rules cannot see.
+ */
+function dynamicAccess(code: string, aliases: readonly string[]): boolean {
+  const body = blankStrings(code);
+  // Lookups by a computed name anywhere in the program.
+  if (
+    /(?<![\w.])(?:exec|eval|compile|vars|globals|locals)\s*\(|__dict__|__getattribute__|\b(?:u?sys)\s*\.\s*modules\b|^[ \t]*from[ \t]+u?sys[ \t]+import[^\n]*\bmodules\b/m.test(
+      body,
+    )
+  )
+    return true;
+  for (const m of body.matchAll(/(?<![\w.])(getattr|setattr|delattr|hasattr)\s*\(/g)) {
+    const name = splitArgs(callArgs(code, m.index + m[0].length - 1) ?? '')[1];
+    if (name === undefined || !/^(["'])\w+\1$/.test(name)) return true;
+  }
+  // The module object itself: every use must be `<alias>.<name>` (or getattr with a written
+  // name). Import lines bind it; they do not use it.
+  const uses = body
+    .replace(/^[ \t]*from[ \t]+[\w.]+[ \t]+import[ \t]*\([^)]*\)/gm, (l) =>
+      l.replace(/[^\n]/g, ' '),
+    )
+    .replace(/^[ \t]*(?:from[ \t]+[\w.]+[ \t]+)?import[ \t][^\n]*/gm, (l) => ' '.repeat(l.length));
+  for (const alias of aliases)
+    for (const m of uses.matchAll(
+      new RegExp(`(?<![\\w.])${nameSource(alias)}\\b(?!\\s*\\.\\s*\\w)`, 'g'),
+    )) {
+      const before = uses.slice(0, m.index);
+      const after = code.slice(m.index + m[0].length);
+      if (/getattr\s*\(\s*$/.test(before) && /^\s*,\s*(["'])\w+\1\s*[,)]/.test(after)) continue;
+      return true;
+    }
+  return false;
+}
+
 export function analyzeMicroPython(
   source: string,
   /** Bridge capabilities of the runtime tickets are issued for (Sprint 24: `i2c`). */
@@ -360,6 +428,11 @@ export function analyzeMicroPython(
    * allowed (their own code is the program's, analysed with it, or a vetted library's).
    */
   localModules: readonly string[] = [],
+  /**
+   * Sprint 28 (L7): names other files of the program (and its managed libraries) bind to the
+   * machine module (machineModuleAliases). `machine` is always among them.
+   */
+  projectMachineAliases: readonly string[] = [],
 ): FeatureReport {
   // Review H1: a name the firmware already has (built in or frozen) is never the project's.
   const local = new Set(
@@ -372,6 +445,7 @@ export function analyzeMicroPython(
   /** Local names bound to machine.I2C (`from machine import I2C [as X]`). */
   const i2cLocal = new Set<string>();
   const unsupported = new Set<string>();
+  const projectAliases = new Set(['machine', ...projectMachineAliases]);
   let restart = false;
   let pull = false;
   const machineNames = new Set<string>();
@@ -392,6 +466,9 @@ export function analyzeMicroPython(
       const [mod, alias] = part.trim().split(/\s+as\s+/) as [string, string | undefined];
       if (!allowed(mod)) unsupported.add(`library:${mod}`);
       if (mod === 'machine') machineAliases.add(alias ?? 'machine');
+      // Sprint 28 (L7): `import hw` then `hw.mc.reset()` (mc: hw's machine module).
+      else if (local.has(mod))
+        for (const a of projectAliases) machineAliases.add(`${alias ?? mod}.${a}`);
     }
   // from m import a, b as c   /   from m import *
   for (const m of code.matchAll(
@@ -411,6 +488,9 @@ export function analyzeMicroPython(
         // machine.I2C, under any name) is analysed call by call like machine's own; the
         // defining module is analysed on its own.
         if (name === 'I2C') i2cLocal.add(alias ?? 'I2C');
+        // Sprint 28 (L7): the machine module re-exported by a project module is machine.
+        if (name === '*') for (const a of projectAliases) machineAliases.add(a);
+        else if (name && projectAliases.has(name)) machineAliases.add(alias ?? name);
         continue;
       }
       if (name === '*') machineStar = true;
@@ -423,8 +503,12 @@ export function analyzeMicroPython(
 
   for (const name of machineNames) refuseMachine(name);
   for (const alias of machineAliases)
-    for (const m of code.matchAll(new RegExp(`\\b${alias}\\s*\\.\\s*(\\w+)`, 'g')))
+    for (const m of code.matchAll(
+      new RegExp(`(?<![\\w.])${nameSource(alias)}\\s*\\.\\s*(\\w+)`, 'g'),
+    ))
       refuseMachine(m[1]!);
+  // Sprint 28 (L7): everything above reads written names only.
+  if (dynamicAccess(code, [...machineAliases])) unsupported.add('dynamic_access');
   // A name passed as a string (getattr(machine, "reset")) or used after `from machine import *`.
   const quoted = new Set([...code.matchAll(/["'](\w+)["']/g)].map((m) => m[1]!));
   for (const name of MACHINE_REFUSED_NAMES)
