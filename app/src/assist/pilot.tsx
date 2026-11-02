@@ -17,6 +17,7 @@ import { EXPLAIN_CONTRACT } from '@tbi-lab/assist';
 import { isolateLtr } from '../i18n/i18n.js';
 import type { MessageKey } from '../i18n/messages.en.js';
 import { useT } from '../ui/context.js';
+import { gateFetch } from '../gate.js';
 
 const BASE = '/assist/v1';
 
@@ -40,7 +41,7 @@ async function json(r: Response): Promise<Record<string, unknown>> {
 
 export async function pilotStatus(signal?: AbortSignal): Promise<Status> {
   try {
-    const r = await fetch(`${BASE}/status`, { signal, credentials: 'same-origin' });
+    const r = await gateFetch(`${BASE}/status`, { signal, credentials: 'same-origin' });
     if (!r.ok) return { kind: 'unavailable' };
     const b = (await json(r)) as unknown as PilotStatus;
     if (b.state !== 'active' && b.state !== 'disabled') return { kind: 'unavailable' };
@@ -99,7 +100,7 @@ export function PilotSection({
     setBusy(true);
     setError(null);
     try {
-      const r = await fetch(`${BASE}/preview`, {
+      const r = await gateFetch(`${BASE}/preview`, {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'content-type': 'application/json' },
@@ -125,7 +126,7 @@ export function PilotSection({
     setBusy(true);
     setError(null);
     try {
-      const r = await fetch(`${BASE}/explain`, {
+      const r = await gateFetch(`${BASE}/explain`, {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'content-type': 'application/json' },
