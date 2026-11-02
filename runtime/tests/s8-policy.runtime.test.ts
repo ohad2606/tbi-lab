@@ -45,7 +45,10 @@ function installPolicy(c: PolicyConfig | string, restart = [`${N}-build`, `${N}-
 }
 
 async function relay(socket: string): Promise<string> {
-  const port = 4900 + Math.floor(Math.random() * 300);
+  // 5060 and 5061 (SIP) are in the range, and fetch refuses both ("bad port", Fetch standard).
+  let port: number;
+  do port = 4900 + Math.floor(Math.random() * 300);
+  while (port === 5060 || port === 5061);
   const code = `const net=require('node:net');net.createServer((c)=>{const u=net.connect(${JSON.stringify(socket)});c.pipe(u).pipe(c);u.on('error',()=>c.destroy());c.on('error',()=>u.destroy())}).listen(${port},'127.0.0.1',()=>console.log('ready'));`;
   const child = spawn('sudo', ['-n', process.execPath, '-e', code], {
     stdio: ['ignore', 'pipe', 'inherit'],
