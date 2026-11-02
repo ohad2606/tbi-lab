@@ -35,6 +35,9 @@ case "$target" in
     STORE=/var/lib/tbi-s8-artifacts
     BUNDLES=/srv/tbi-lab/s8-staging
     RUNTIME="${TBI_S8_RUNTIME:-/home/ubuntu/tbi-s8-rt/qemu-current}"
+    # Sprint 28: staging may run the AI provider service with the deterministic mock (tests).
+    ASSIST_ALLOW_MOCK=1
+    ASSIST_DEFAULT=assist.staging.json
     ;;
   dev-lab)
     N=tbi
@@ -43,10 +46,12 @@ case "$target" in
     STORE=/var/lib/tbi-lab/artifacts
     BUNDLES=/srv/tbi-lab/services/current
     RUNTIME="${TBI_S8_RUNTIME:?set TBI_S8_RUNTIME to the provisioned runtime prefix}"
+    ASSIST_ALLOW_MOCK=0
+    ASSIST_DEFAULT=assist.json
     ;;
   *) echo "unknown target: $target" >&2; exit 2 ;;
 esac
-units=("$N-build.service" "$N-build-job@.service" "$N-session-host.service" "$N-qemu@.service")
+units=("$N-build.service" "$N-build-job@.service" "$N-session-host.service" "$N-qemu@.service" "$N-assist.service")
 rule="/etc/polkit-1/rules.d/50-$N.rules"
 # A staging release is an exact commit: refuse a tree with uncommitted changes before any change.
 if [[ "$target" == staging && "$uninstall" != "--uninstall" ]]; then
@@ -54,13 +59,13 @@ if [[ "$target" == staging && "$uninstall" != "--uninstall" ]]; then
 fi
 
 if [[ "$uninstall" == "--uninstall" ]]; then
-  sudo systemctl disable --now "$N-build.service" "$N-session-host.service" 2>/dev/null || true
+  sudo systemctl disable --now "$N-build.service" "$N-session-host.service" "$N-assist.service" 2>/dev/null || true
   sudo systemctl stop "$N-build-job@*.service" "$N-qemu@*.service" 2>/dev/null || true
   for u in "${units[@]}"; do sudo rm -f "/etc/systemd/system/$u"; done
   sudo rm -f "$rule"
   sudo systemctl daemon-reload
   if [[ "$target" == staging ]]; then
-    sudo rm -rf "/var/lib/$N-build" "/var/lib/$N-runtime" "/var/lib/private/$N-build" \
+    sudo rm -rf "/var/lib/$N-build" "/var/lib/$N-runtime" "/var/lib/$N-assist" "/var/lib/private/$N-build" \
       "/var/lib/private/$N-runtime" "$STORE" "/etc/$N" "$BUNDLES"
   fi
   echo "removed $N"
@@ -84,7 +89,7 @@ if (( HOST_MAX < POLICY_LIVE )); then
 fi
 
 # Users and groups (system accounts, no home, no login).
-for g in "${U}buildio" "${U}runtimeio" "$G" "${U}artifacts"; do
+for g in "${U}buildio" "${U}runtimeio" "$G" "${U}artifacts" "${U}assist"; do
   getent group "$g" >/dev/null || sudo groupadd --system "$g"
 done
 mkuser() { getent passwd "$1" >/dev/null ||
@@ -93,7 +98,11 @@ mkuser "${U}build" "${U}artifacts"
 mkuser "${U}buildjob" "${U}buildio"
 mkuser "${U}runtime" "${U}runtimeio"
 mkuser "${U}qemu" "${U}runtimeio"
+# Sprint 28: the AI provider service's own user and group (NOT the gate group: its socket's group
+# is its own, and only the internal reverse proxy joins it).
+mkuser "${U}assist" "${U}assist"
 GATE_GID="$(getent group "$G" | cut -d: -f3)"
+ASSIST_GID="$(getent group "${U}assist" | cut -d: -f3)"
 JOB_UID="$(id -u "${U}buildjob")"
 
 # Keys: root-only files, handed to the two services as systemd credentials.
@@ -114,6 +123,11 @@ sudo install -m 0400 "$POLICY" "/etc/$N/policy.json"
 # at least users x quota (5 x 128 MiB = 640). TBI_S8_ARTIFACT_CAP_MB sets it; default 256 (unchanged).
 CAP_MB="${TBI_S8_ARTIFACT_CAP_MB:-256}"
 [[ "$CAP_MB" =~ ^[1-9][0-9]{0,5}$ ]] || { echo "TBI_S8_ARTIFACT_CAP_MB must be a whole number of MiB" >&2; exit 1; }
+
+# Sprint 28: the AI provider service's configuration. Installed only when absent: the owner's
+# approvals live there and a reinstall never replaces them. The default is disabled (dev-lab:
+# provider none; staging: the mock).
+sudo test -s "/etc/$N/assist.json" || sudo install -m 0400 "$here/$ASSIST_DEFAULT" "/etc/$N/assist.json"
 
 # Sprint 12: the runtime's identity and bridge capabilities, for the build service (ADR-011 §5).
 test -f "$RUNTIME/runtime.json" || { echo "no runtime.json in $RUNTIME" >&2; exit 1; }
@@ -161,14 +175,14 @@ if [[ "$target" == staging ]]; then
   # /health, as publish-runtime.sh does for dev-lab); only a clean tree is a commit.
   sha="$(git -C "$repo" rev-parse HEAD)"
   version="$(tr -d '[:space:]' < "$repo/VERSION")"
-  (cd "$repo" && npm run --silent buildsvc:build &&
+  (cd "$repo" && npm run --silent buildsvc:build && npm run --silent assist:build &&
     npx esbuild runtime/host/main.ts --bundle --platform=node --format=esm --target=node22 \
       --define:__TBI_RUNTIME_VERSION__="\"$version\"" --define:__TBI_RUNTIME_COMMIT__="\"$sha\"" \
       --outfile=runtime/host/dist/session-host.mjs --log-level=warning)
   grep -q "$sha" "$repo/runtime/host/dist/session-host.mjs" || { echo "host bundle not stamped" >&2; exit 1; }
   sudo install -d -m 0755 "$BUNDLES"
   sudo install -m 0644 "$repo/runtime/builder/dist/build-service.mjs" "$repo/runtime/builder/dist/build-job.mjs" \
-    "$repo/runtime/host/dist/session-host.mjs" "$BUNDLES/"
+    "$repo/runtime/host/dist/session-host.mjs" "$repo/runtime/assist/dist/assist-service.mjs" "$BUNDLES/"
 fi
 
 # Render a template and install it; a template with an unrendered placeholder is refused BEFORE
@@ -183,18 +197,23 @@ render_raw() {
   sed -e "s|@N@|$N|g" -e "s|@NRE@|${N//-/\\\\-}|g" -e "s|@STORE@|$STORE|g" -e "s|@BUNDLES@|$BUNDLES|g" \
     -e "s|@ARDUINO@|$ARDUINO|g" -e "s|@MICROPYTHON@|$MICROPYTHON|g" -e "s|@NODE@|$NODE|g" -e "s|@RUNTIME@|$RUNTIME|g" \
     -e "s|@GATE_GID@|$GATE_GID|g" -e "s|@JOB_UID@|$JOB_UID|g" -e "s|@ARTIFACT_CAP_MB@|$CAP_MB|g" \
-    -e "s|@HOST_MAX_SESSIONS@|$HOST_MAX|g" -e "s|@U@|$U|g" -e "s|@G@|$G|g" "$1"
+    -e "s|@HOST_MAX_SESSIONS@|$HOST_MAX|g" -e "s|@U@|$U|g" -e "s|@G@|$G|g" \
+    -e "s|@ASSIST_GID@|$ASSIST_GID|g" -e "s|@ASSIST_ALLOW_MOCK@|$ASSIST_ALLOW_MOCK|g" "$1"
 }
 render "$here/tbi-build.service.in" "/etc/systemd/system/$N-build.service"
 render "$here/tbi-build-job@.service.in" "/etc/systemd/system/$N-build-job@.service"
 render "$here/tbi-session-host.service.in" "/etc/systemd/system/$N-session-host.service"
 render "$here/tbi-qemu@.service.in" "/etc/systemd/system/$N-qemu@.service"
+render "$here/tbi-assist.service.in" "/etc/systemd/system/$N-assist.service"
 render "$here/50-tbi-lab.rules.in" "$rule"
 if [[ "$target" == dev-lab ]]; then
   # The gate: Caddy and oauth2-proxy reach the sockets through the tbi-gate group; Caddy's
   # internal-origin socket lives in /run/tbi-gate (Caddyfile, oauth2-proxy.cfg in deploy/dev-lab).
   sudo usermod -aG tbi-gate caddy
   sudo usermod -aG tbi-gate oauth2-proxy
+  # Sprint 28: Caddy reaches the AI provider service's socket through that service's own group
+  # (a Caddy RESTART applies it; the /assist/* route is in the hand-installed Caddyfile).
+  sudo usermod -aG "${U}assist" caddy
   sudo install -m 0644 "$here/tbi-gate.conf" /etc/tmpfiles.d/tbi-gate.conf
   sudo systemd-tmpfiles --create /etc/tmpfiles.d/tbi-gate.conf
   sudo install -d -m 0755 /etc/systemd/system/caddy.service.d
@@ -203,7 +222,9 @@ if [[ "$target" == dev-lab ]]; then
   # Caddyfile and oauth2-proxy.cfg are installed by hand, deploy/dev-lab/README.md.)
 fi
 sudo systemctl daemon-reload
-sudo systemctl enable "$N-build.service" "$N-session-host.service"
+sudo systemctl enable "$N-build.service" "$N-session-host.service" "$N-assist.service"
 # Both together: they must hold the same keys and matching code.
 sudo systemctl restart "$N-build.service" "$N-session-host.service"
-echo "installed $N (build: /run/$N-build/api.sock, runtime: /run/$N-runtime/api.sock)"
+# Sprint 28: independent of the other two (it reaches neither).
+sudo systemctl restart "$N-assist.service"
+echo "installed $N (build: /run/$N-build/api.sock, runtime: /run/$N-runtime/api.sock, assist: /run/$N-assist/api.sock)"

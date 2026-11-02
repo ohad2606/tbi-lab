@@ -58,6 +58,18 @@ http:// {
 		}
 	}
 
+	# Sprint 28: the AI provider service (inactive unless owner-approved; runtime/assist). Small
+	# JSON only; identity from the gate as for the build service; never cached.
+	handle_path /assist/* {
+		request_body {
+			max_size 128KB
+		}
+		header Cache-Control "no-store"
+		reverse_proxy unix//run/tbi-assist/api.sock {
+			header_up -X-Tbi-*
+		}
+	}
+
 	# Hashed build assets can be cached privately; the HTML entry point (and the SPA fallback)
 	# never is, so after sign-out the app cannot load without passing authentication again.
 	@assets path /assets/*

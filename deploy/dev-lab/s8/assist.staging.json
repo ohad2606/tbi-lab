@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "provider": { "kind": "mock" },
+  "pilot": { "principals": [] },
+  "approvals": {},
+  "consentVersion": "2026-11-02"
+}
