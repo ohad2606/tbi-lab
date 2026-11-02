@@ -97,6 +97,9 @@ afterAll(() => {
 
 describe.skipIf(!HAVE)('Sprint 28: the AI provider service on staging (real unit)', () => {
   it('its sandbox: own user, no gate group, no IP, other services unreachable', () => {
+    // The build service restarts first: its runtime directory is recreated AFTER this service's
+    // namespace was set up (the case an InaccessiblePaths= mask missed).
+    sudo('systemctl', 'restart', `${N}-build.service`);
     const show = sudo(
       'systemctl',
       'show',
