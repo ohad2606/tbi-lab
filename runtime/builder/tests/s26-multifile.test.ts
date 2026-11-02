@@ -253,6 +253,33 @@ describe('analyses over every file', () => {
     expect(reads.inputReads).toEqual({ pins: [27], unresolved: false });
   });
 
+  it('S27 (review L1): I2C imported under another name from a project module is analysed, never skipped', () => {
+    const local = ['hw', 'pkg', 'pkg.hw', 'pkg.mod'];
+    const call = (freq: number) =>
+      `from machine import Pin\nb = Bus(0, scl=Pin(22), sda=Pin(21), freq=${freq})\n`;
+    for (const imp of [
+      'from .hw import I2C as Bus\n',
+      'from hw import I2C as Bus\n',
+      'from pkg.hw import (I2C as Bus)\n',
+    ]) {
+      // Faster than the backpack is rated for: refused by name, as from machine directly.
+      expect(analyzeMicroPython(imp + call(400000), ['i2c'], local).unsupported, imp).toContain(
+        'i2c_frequency',
+      );
+      // Within the rating: analysed and declared, nothing refused.
+      expect(analyzeMicroPython(imp + call(100000), ['i2c'], local), imp).toMatchObject({
+        unsupported: [],
+        requires: ['i2c'],
+      });
+      // Passed on without a call: not analysable, refused.
+      expect(analyzeMicroPython(`${imp}x = Bus\n`, ['i2c'], local).unsupported, imp).toContain(
+        'i2c_operation',
+      );
+    }
+    // A relative import is still the project's own module: nothing else is refused for it.
+    expect(analyzeMicroPython('from . import hw\n', [], local).unsupported).toEqual([]);
+  });
+
   it('review H1: a project module named like a firmware module never allows the firmware module', () => {
     expect(analyzeMicroPython('import network\n', ['i2c'], ['network']).unsupported).toEqual([
       'library:network',

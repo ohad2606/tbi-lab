@@ -40,7 +40,7 @@ import type { FeatureReport } from './protocol.js';
 import { INPUT_CAPABLE_GPIOS } from './features.js';
 
 /** Version of this analysis; part of the MicroPython profile hash (cache key). */
-export const PY_FEATURES_ANALYZER = 4;
+export const PY_FEATURES_ANALYZER = 5; // Sprint 27: I2C re-exported by a project module (review L1)
 
 /**
  * Sprint 24 (M3): the fastest I2C clock a program may select: the lowest rated SCL of the I2C parts
@@ -399,14 +399,20 @@ export function analyzeMicroPython(
   )) {
     const mod = m[1]!;
     // A relative import inside one of the project's packages names the project's own module.
-    if (mod.startsWith('.') && [...local].some((l) => l.includes('.'))) continue;
-    if (!allowed(mod)) {
+    const relative = mod.startsWith('.') && [...local].some((l) => l.includes('.'));
+    if (!relative && !allowed(mod)) {
       unsupported.add(`library:${mod}`);
       continue;
     }
-    if (mod !== 'machine') continue;
     for (const part of m[2]!.replace(/[()\\]/g, ' ').split(',')) {
       const [name, alias] = part.trim().split(/\s+as\s+/) as [string, string | undefined];
+      if (mod !== 'machine') {
+        // Sprint 27 (review L1): `I2C` from the project's own module (a re-export of
+        // machine.I2C, under any name) is analysed call by call like machine's own; the
+        // defining module is analysed on its own.
+        if (name === 'I2C') i2cLocal.add(alias ?? 'I2C');
+        continue;
+      }
       if (name === '*') machineStar = true;
       else if (name) machineNames.add(name);
       if (name === 'I2C') i2cLocal.add(alias ?? 'I2C');
