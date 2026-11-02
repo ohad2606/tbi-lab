@@ -123,6 +123,7 @@ describe('R2 electrical equivalence: Session Host (EngineSession + pads) vs the 
       artifactSha256: fw.sha256,
       endNs: END,
       tickUs: 1000,
+      circuit: 'gate-v2', // Sprint 28: the same circuit as gateProject (GATE_V2)
     });
     // R1 timeline: `V <vns> <cause> io2=.. io5=.. iLED=..` and `G <vns> gpioN drive= level=`.
     const solves = ref.timeline

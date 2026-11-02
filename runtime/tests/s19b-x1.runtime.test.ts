@@ -5,6 +5,8 @@
  * request the app sends (fixtures/s19b-logic-and-session.json, kept equal to the app by
  * app/tests/runtime-fixtures.test.ts).
  *
+ * Sprint 28: under the owner rules S22-F3/Q1 the session is refused at creation (see the test);
+ * the S19B behaviour below is what the example did before those rules:
  * - button released: the gate's B input is LOW (10 kΩ pull-down), the output LOW whatever GPIO18
  *   does; the firmware reads GPIO4 = 0 on every line;
  * - button held (a transient press): the output follows GPIO18, and the firmware's read-back,
@@ -19,7 +21,6 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { ESP32_ARDUINO_PROFILE } from '@tbi-lab/domain';
-import type { SolveSuccess } from '@tbi-lab/engine';
 import { ArduinoEsp32Provider, type ArduinoProfileRecord } from '../builder/arduino.js';
 import { Grants } from '../builder/grants.js';
 import { BuildService, DEFAULT_LIMITS } from '../builder/service.js';
@@ -29,11 +30,8 @@ import { assertProvisioned, recordEvidence, runtimeInfo } from '../harness/env.j
 import { principalFor, TEST_TICKET_KEY } from '../identity/test-gate.js';
 import { openAccessPolicy } from '../policy/testing.js';
 import { PROTOCOL, type CreateSessionRequest } from '../host/protocol.js';
-import type { HostSession } from '../host/session.js';
-import { serialText, waitEvent } from '../host/tests/support.js';
 import { open } from '../host/tests/r1-support.js';
 import { realHost } from './r2-support.js';
-import { stopped } from './r1-support.js';
 
 const RT = process.env.TBI_RUNTIME_HOME ?? '';
 const store = RT ? mkdtempSync(join('/var/tmp', 's19b-x1-store-')) : '';
@@ -52,7 +50,7 @@ const caps = (): string[] =>
     }
   ).capabilities ?? [];
 
-async function x1(): Promise<{ s: HostSession; req: CreateSessionRequest }> {
+async function x1(): Promise<{ s: ReturnType<typeof open>; req: CreateSessionRequest }> {
   assertProvisioned();
   const doc = JSON.parse(
     readFileSync(
@@ -104,70 +102,51 @@ async function x1(): Promise<{ s: HostSession; req: CreateSessionRequest }> {
     artifact: { sha256: result.artifact!.sha256 },
     ticket: lease.ticket,
   };
-  const s = open(host, req);
-  expect(s.state, JSON.stringify(s.status().detail)).toBe('ready');
-  expect(s.run()).toEqual({ ok: true });
-  return { s, req };
+  return { s: open(host, req), req };
 }
 
-/** The firmware's lines `A=<a> Y=<y>` so far. */
-const lines = (s: HostSession) =>
-  [...serialText(s).matchAll(/A=(\d) Y=(\d)/g)].map((m) => [Number(m[1]), Number(m[2])] as const);
-const waitLines = (s: HostSession, n: number, timeoutMs = 120_000) =>
-  waitEvent(s, () => lines(s).length >= n, timeoutMs);
-
-describe.skipIf(!RT)('X1 on the real stack (Runtime v3, real QEMU)', () => {
+describe.skipIf(!RT)('X1 on the real stack (Runtime v5, real QEMU)', () => {
   const evidence: Record<string, unknown> = {};
   afterAll(() => recordEvidence('s19b-x1', { runtimeId: runtimeInfo().runtimeId, ...evidence }));
 
-  it('released: Y = 0 whatever A; held: Y = A on every line; the LED follows the gate', async () => {
-    const transcripts: string[] = [];
+  // Sprint 28: the S19B expectation (released Y = 0, held Y = A) predates the owner rules
+  // S22-F3 / S22-Q1. SN74LVC1G08 bounds I_CC only with every input within 1 mV of V_CC or GND;
+  // input A, on its 10 kΩ pull-down before setup() and later driven by GPIO18 (LOW guaranteed
+  // only ≤ 0.33 V), is never there, so PSU1's current limit cannot be checked and the session is
+  // refused by name at creation — exactly what the staging browser spec s19b-real asserts. No
+  // ESP32-driven X1 can satisfy the rule, so the workload cannot be redesigned without changing
+  // the owner rule; the test now asserts the refusal, deterministically, on two runs.
+  it('refused by name at creation (Sprint 22 Q1 strict): logic_supply_current_uncharacterized, identical on two runs', async () => {
+    const details: string[] = [];
     for (let run = 0; run < 2; run++) {
       const { s } = await x1();
-      // Released: 4 lines, A alternating, Y always 0.
-      await waitLines(s, 4);
-      const released = lines(s).slice(0, 4);
-      expect(new Set(released.map(([a]) => a))).toEqual(new Set([0, 1]));
-      expect(released.every(([, y]) => y === 0)).toBe(true);
-      // Held from here (a transient press between two lines).
-      const before = lines(s).length;
-      expect(
-        s.submit({ category: 'transient', seq: 1, action: 'press', component: 'SW1' }),
-      ).toMatchObject({ accepted: true });
-      const lit: number[] = [];
-      await waitEvent(
-        s,
-        (e) => {
-          if (e.type === 'electrical') {
-            const o = (e as unknown as { outcome: SolveSuccess }).outcome;
-            const g = o.components.U2;
-            if (g?.state?.gateOutput === 'high') lit.push(o.components.D1!.current!);
-          }
-          return lines(s).length >= before + 6 && lit.length > 0;
-        },
-        120_000,
-      );
-      // The first line after the press may predate it; every later line reads back what it wrote.
-      const held = lines(s).slice(before + 1, before + 6);
-      expect(held.length).toBe(5);
-      for (const [a, y] of held) expect(y, JSON.stringify(held)).toBe(a);
-      expect(new Set(held.map(([a]) => a))).toEqual(new Set([0, 1]));
-      for (const i of lit) {
-        expect(i).toBeGreaterThan(3e-3);
-        expect(i).toBeLessThan(6e-3);
-      }
-      evidence[`run${run}`] = { released, held, ledCurrentA: lit[0] };
-      transcripts.push(
-        lines(s)
-          .slice(0, before + 6)
-          .map(([a, y]) => `${a}${y}`)
-          .join(','),
-      );
-      await stopped(s);
-      expect(s.status().state).toBe('ended');
+      expect(s.state).toBe('failed');
+      const d = s.status().detail as {
+        code: string;
+        components: string[];
+        detail: {
+          part: string;
+          condition: string;
+          check: string;
+          psu: string;
+          worst: number;
+          pads: number[];
+        };
+      };
+      expect(d.code).toBe('logic_supply_current_uncharacterized');
+      expect(d.components).toEqual(['U2', 'PSU1']);
+      expect(d.detail).toMatchObject({
+        part: 'SN74LVC1G08',
+        condition: 'notInputs',
+        check: 'limit',
+        psu: 'PSU1',
+        pads: [18],
+      });
+      // ≈ 50 mV off GND, far outside the 1 mV of S22-F3 (an engine result, not a pinned constant)
+      expect(d.detail.worst).toBeGreaterThan(0.001);
+      details.push(JSON.stringify(d));
+      evidence[`run${run}`] = d;
     }
-    // Deterministic up to the press (whose virtual time depends on wall-clock submission): the
-    // released prefix is identical.
-    expect(transcripts[0]!.slice(0, 11)).toBe(transcripts[1]!.slice(0, 11));
+    expect(details[1]).toBe(details[0]);
   });
 });
