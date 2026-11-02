@@ -19,6 +19,8 @@ export default defineConfig({
       'runtime/policy/tests/**/*.test.ts',
       // RC4 packaging gate: release profile and built-frontend validation.
       'deploy/release/tests/**/*.test.mjs',
+      // Sprint 28 host-wide pipeline lock.
+      'deploy/ops/tests/**/*.test.mjs',
       // Brand icon pipeline (scripts/brand-image.mjs).
       'scripts/tests/**/*.test.mjs',
     ],
