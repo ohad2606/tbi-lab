@@ -31,7 +31,12 @@ StateDirectory=@N@-assist
 StateDirectoryMode=0700
 BindReadOnlyPaths=@NODE@:/opt/tbi-node
 BindReadOnlyPaths=@BUNDLES@:/opt/tbi-build
-InaccessiblePaths=-/run/@N@-build -/run/@N@-runtime -/run/tbi-gate -/var/lib/@N@-build -@STORE@ -/srv/tbi-lab -/home
+# A private, empty /run with only its own runtime directory: other services' sockets are not
+# merely unreadable, they do not exist here, also after those services restart and recreate their
+# runtime directories (an InaccessiblePaths= mask covers only the directory present at start).
+TemporaryFileSystem=/run:ro
+BindPaths=/run/@N@-assist
+InaccessiblePaths=-/var/lib/@N@-build -@STORE@ -/srv/tbi-lab -/home
 ExecStart=/opt/tbi-node/bin/node /opt/tbi-build/assist-service.mjs
 Restart=on-failure
 RestartSec=2

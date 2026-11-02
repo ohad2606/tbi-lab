@@ -112,28 +112,45 @@ describe.skipIf(!HAVE)('Sprint 28: the AI provider service on staging (real unit
     expect(show).toMatch(/^NoNewPrivileges=yes$/m);
     expect(show).toMatch(/^ProtectSystem=strict$/m);
     const pid = /^MainPID=(\d+)$/m.exec(show)![1]!;
-    // In the service's own mount namespace, as its own user: the other sockets and the store.
+    // In the service's own mount namespace: the other services' sockets do not exist there, also
+    // after those services restarted (the s8-policy suite restarts them), and the store is masked.
     for (const path of [
       `/run/${N}-build/api.sock`,
       `/run/${N}-runtime/api.sock`,
-      `/var/lib/${N}-artifacts`,
+      `/run/tbi-gate`,
     ]) {
-      const r = spawnSync('sudo', [
-        '-n',
-        'nsenter',
-        '-t',
-        pid,
-        '-m',
-        '-S',
-        'follow',
-        '-G',
-        'follow',
-        'test',
-        '-e',
-        path,
-      ]);
-      expect(r.status, path).not.toBe(0);
+      const r = spawnSync('sudo', ['-n', 'nsenter', '-t', pid, '-m', 'test', '-e', path]);
+      expect(r.status, `${path} visible to the service`).not.toBe(0);
     }
+    // As the service's own user and group, in its namespace: the host's build socket cannot be
+    // connected to even by path through /proc/1/root (its group is not the gate group).
+    const uid = sudo('id', '-u', 'tbi-s8-assist').trim();
+    const gid = sudo('id', '-g', 'tbi-s8-assist').trim();
+    const connect = spawnSync('sudo', [
+      '-n',
+      'nsenter',
+      '-t',
+      pid,
+      '-m',
+      '-S',
+      uid,
+      '-G',
+      gid,
+      '/usr/bin/python3',
+      '-c',
+      `import socket;s=socket.socket(socket.AF_UNIX);s.connect('/proc/1/root/run/${N}-build/api.sock')`,
+    ]);
+    expect(connect.status, 'connect to the build socket as tbi-s8-assist').not.toBe(0);
+    const store = spawnSync('sudo', [
+      '-n',
+      'nsenter',
+      '-t',
+      pid,
+      '-m',
+      'ls',
+      `/var/lib/${N}-artifacts`,
+    ]);
+    expect(store.stdout.toString().trim()).toBe(''); // masked: empty, nothing listed
     const groups = sudo('id', '-nG', 'tbi-s8-assist').trim().split(/\s+/);
     expect(groups).toEqual(['tbi-s8-assist']);
   });
