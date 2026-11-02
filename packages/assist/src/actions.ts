@@ -57,9 +57,14 @@ export type ProposedAction =
   | { kind: 'select_library'; board: string; id: string; version: string }
   | { kind: 'request_validation'; what: 'build' | 'run' };
 
+/**
+ * Who proposes. Review S27-M4: set by the caller from where the envelope came from (a provider's
+ * reply is always 'ai'), never read from the envelope, which a provider writes.
+ */
+export type ActionOrigin = 'ai' | 'user';
+
 export interface ActionEnvelope {
   protocol: typeof ACTION_PROTOCOL;
-  origin: 'ai' | 'user';
   /** Plain-text reason, shown to the user; never executed. */
   rationale?: string;
   /** Evidence references the proposal rests on (context refs). */
@@ -140,7 +145,9 @@ const termRef = (v: unknown): v is TerminalRef =>
 /** Strict shape check of an envelope received from anywhere (a provider's output included). */
 export function parseEnvelope(body: unknown): ActionEnvelope | null {
   if (!isObj(body) || body.protocol !== ACTION_PROTOCOL) return null;
-  if (body.origin !== 'ai' && body.origin !== 'user') return null;
+  // Exactly these keys: an envelope claiming its own origin (or anything else) is malformed.
+  if (Object.keys(body).some((k) => !['protocol', 'rationale', 'cites', 'actions'].includes(k)))
+    return null;
   if (
     body.rationale !== undefined &&
     (typeof body.rationale !== 'string' || body.rationale.length > ACTION_LIMITS.maxRationaleChars)
@@ -209,10 +216,17 @@ const pinKey = (r: TerminalRef) => `${r.component}.${r.terminal}`;
 export function dryRun(
   doc: ProjectDocument,
   envelope: unknown,
-  permissions: ActionPermissions = SPRINT27_PERMISSIONS,
+  /** Where the envelope came from, as the caller knows it; 'ai' unless stated (fails closed). */
+  origin: ActionOrigin = 'ai',
+  opts: {
+    permissions?: ActionPermissions;
+    /** The context's evidence refs: every citation must be one of them (contextRefs). */
+    refs?: ReadonlySet<string>;
+  } = {},
 ): DryRun {
+  const permissions = opts.permissions ?? SPRINT27_PERMISSIONS;
   const parsed = parseEnvelope(envelope);
-  if (!parsed)
+  if (!parsed || (opts.refs && !parsed.cites.every((c) => opts.refs!.has(c))))
     return {
       valid: false,
       applicable: false,
@@ -429,7 +443,7 @@ export function dryRun(
     });
   }
   const valid = !failed;
-  const applicable = valid && (parsed.origin === 'user' || permissions.aiWrite);
+  const applicable = valid && (origin === 'user' || permissions.aiWrite);
   return {
     valid,
     applicable,

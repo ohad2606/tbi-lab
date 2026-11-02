@@ -34,7 +34,7 @@ import {
   type RatingWarning,
   type SolveOutcome,
 } from '@tbi-lab/engine';
-import { maskComments, redactSecrets } from './redact.js';
+import { maskComments, maskMessage, redactSecrets } from './redact.js';
 
 /** C0 control characters except tab and newline, and DEL (built from code points: lint-clean). */
 const CONTROL_CHARS = new RegExp(
@@ -323,7 +323,8 @@ function detailOf(d: Record<string, unknown> | undefined): ContextSolverError['d
 
 /** Compiler text bounded and stripped of anything path-like outside the project's own files. */
 function cleanMessage(message: string): string {
-  return message
+  // Review S27-M3: quoted source text (#error "…", a quoted literal) is user text: emptied.
+  return maskMessage(message)
     .replace(/(?:\/[\w.@+-]+){2,}\/?/g, '…')
     .replace(new RegExp(CONTROL_CHARS.source, 'g'), '')
     .slice(0, CONTEXT_LIMITS.maxDiagnosticChars);
