@@ -458,3 +458,38 @@ describe('the candidate adapter (Anthropic Messages API) against a local fake â€
     expect(n).toBe(3); // one HTTP request per call
   });
 });
+
+describe('the real-model evaluation runner refuses without the owner approvals', () => {
+  it('default config, a mock, or a run limit above the cap: refused, reasons named', async () => {
+    const { planModelRun } = await import('../eval-model.js');
+    expect(planModelRun(DEFAULT_CONFIG, undefined, false, 1)).toEqual({
+      ok: false,
+      reasons: ['no_provider', 'run_limit_above_cap'],
+    });
+    const live = parseConfig({
+      version: 1,
+      provider: { kind: 'anthropic', model: 'claude-haiku-5-5' },
+      pricing: { inputPerMTok: 0.1, outputPerMTok: 0.5 },
+      approvals: {
+        providerAndModel: {
+          by: 'o',
+          at: '2026-11-10',
+          provider: 'anthropic',
+          model: 'claude-haiku-5-5',
+        },
+        dataTerms: { by: 'o', at: '2026-11-10' },
+        spendCap: { by: 'o', at: '2026-11-10', usdPerMonth: 2 },
+        securityReview: { by: 'r', at: '2026-11-10' },
+        ownerActivation: { by: 'o', at: '2026-11-10' },
+      },
+    });
+    expect(planModelRun(live, undefined, true, undefined).reasons).toEqual(['no_run_cost_limit']);
+    expect(planModelRun(live, undefined, true, 5).reasons).toEqual(['run_limit_above_cap']);
+    expect(planModelRun(live, undefined, false, 1).reasons).toEqual(['no_credential']);
+    expect(planModelRun(live, undefined, true, 1)).toEqual({ ok: true, reasons: [] });
+    expect(
+      planModelRun(parseConfig({ version: 1, provider: { kind: 'mock' } }), undefined, false, 1)
+        .reasons,
+    ).toEqual(['mock_not_allowed', 'run_limit_above_cap']);
+  });
+});

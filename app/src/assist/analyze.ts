@@ -24,7 +24,7 @@ import { getLocale, isMessageKey, isolateLtr, translate, type LocaleInfo } from 
 import type { MessageKey } from '../i18n/messages.en.js';
 import type { BuildView } from '../programs/state.js';
 import type { SimState } from '../sim/controller.js';
-import { formatPower, formatResult } from '../sim/format.js';
+import { featureName, formatPower, formatResult } from '../sim/format.js';
 import { warningsFor } from '../sim/ratings.js';
 import { checksFor } from '../ui/checks.js';
 
@@ -115,7 +115,15 @@ export function renderTemplate(
   const locale: LocaleInfo = getLocale(code);
   const out: Record<string, string> = {};
   for (const [k, v] of Object.entries(params)) {
-    if (typeof v === 'string') out[k] = isolateLtr(v);
+    // Sprint 28: a feature is named as the build panel names it (its localized label), never by
+    // its internal id: an id like `drive_strength` is the finding's own code, which the strict
+    // validator rightly refuses in an explanation (impersonation), so the explanation was lost.
+    if (k === 'feature' && typeof v === 'string')
+      out[k] = v
+        .split(/,\s*/)
+        .map((f) => featureName(locale, f))
+        .join(', ');
+    else if (typeof v === 'string') out[k] = isolateLtr(v);
     else
       out[k] = isolateLtr(
         v.unit === 'W'
