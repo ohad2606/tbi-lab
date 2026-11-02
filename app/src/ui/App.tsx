@@ -1,6 +1,5 @@
 import { CapabilitiesHost } from './Capabilities.js';
 import { ProblemReportHost } from './ProblemReport.js';
-import { ASSIST_ENABLED } from '../deployment.js';
 import { AssistHost } from '../assist/mount.js';
 import { useEffect, useLayoutEffect } from 'preact/hooks';
 import { useAppState, useStore, useT } from './context.js';
@@ -96,7 +95,7 @@ export function App() {
       <VersionStatus />
       <CapabilitiesHost />
       <ProblemReportHost />
-      {ASSIST_ENABLED && <AssistHost />}
+      {import.meta.env.VITE_TBI_ENV === 'dev' && <AssistHost />}
     </div>
   );
 }

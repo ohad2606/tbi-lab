@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { buildEnvironment, loadProfile, sourceViteSettings, validate } from '../release-config.mjs';
-import { checkBranding, checkDist } from '../check-dist.mjs';
+import { checkAssist, checkBranding, checkDist } from '../check-dist.mjs';
 
 const ROOT = new URL('../../../', import.meta.url).pathname;
 const RC4 = join(ROOT, 'deploy/release/rc4.release.json');
@@ -297,5 +297,51 @@ describe('built frontend vs profile', () => {
     );
     expect(errors).toContain('bundle names excluded setting VITE_ACTIVITY_ENDPOINT');
     expect(errors).toContain('VITE_ACTIVITY_ENDPOINT was not compiled to a value');
+  });
+});
+
+describe('Sprint 27: the Circuit Debugger only in DEV-Lab builds', () => {
+  const map = (sources) => JSON.stringify({ version: 3, sources, mappings: '' });
+  const panel = {
+    'assets/index-x.js': 'x',
+    'assets/index-x.js.map': map(['../../src/ui/App.tsx']),
+    'assets/AssistPanel-x.js': 'data-testid:`assist-open`',
+    'assets/AssistPanel-x.js.map': map([
+      '../../../packages/assist/src/context.ts',
+      '../../src/assist/AssistPanel.tsx',
+    ]),
+  };
+  const clean = {
+    'assets/index-x.js': 'x',
+    'assets/index-x.js.map': map(['../../src/ui/App.tsx']),
+  };
+
+  it('a production build with any of its modules, a chunk or the button is refused', () => {
+    for (const p of [RC4, RC4_REPORTS]) {
+      expect(checkAssist(loadProfile(p), tree(clean))).toEqual([]);
+      expect(checkAssist(loadProfile(p), tree(panel))).toEqual([
+        'Circuit Debugger module in a non-DEV build: AssistPanel-x.js.map: ../../../packages/assist/src/context.ts',
+        'Circuit Debugger module in a non-DEV build: AssistPanel-x.js.map: ../../src/assist/AssistPanel.tsx',
+        'Circuit Debugger chunk in a non-DEV build: AssistPanel-x.js',
+        'Circuit Debugger button in a non-DEV build',
+      ]);
+      // An unreferenced module left in the main bundle is refused too.
+      expect(
+        checkAssist(
+          loadProfile(p),
+          tree({ ...clean, 'assets/index-x.js.map': map(['../../src/assist/open.ts']) }),
+        ),
+      ).toEqual([
+        'Circuit Debugger module in a non-DEV build: index-x.js.map: ../../src/assist/open.ts',
+      ]);
+    }
+  });
+
+  it('the DEV-Lab build carries the panel chunk and the button', () => {
+    expect(checkAssist(loadProfile(DEV_LAB), tree(panel))).toEqual([]);
+    expect(checkAssist(loadProfile(DEV_LAB), tree(clean))).toEqual([
+      'DEV build without the Circuit Debugger panel chunk',
+      'DEV build without the Circuit Debugger button',
+    ]);
   });
 });

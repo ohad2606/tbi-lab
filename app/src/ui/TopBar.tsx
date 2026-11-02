@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import symbolUrl from '../assets/brand/tbi-lab-symbol.png';
-import { ASSIST_ENABLED, IS_DEV_ENV, SIGN_OUT_URL } from '../deployment.js';
+import { IS_DEV_ENV, SIGN_OUT_URL } from '../deployment.js';
 import { openAssist } from '../assist/open.js';
 import { LOCALES } from '../i18n/i18n.js';
 import { AppMenu } from './AppMenu.js';
@@ -111,7 +111,7 @@ function EditorBar() {
         <BuildControl />
         <SimControls />
         {/* Sprint 27: the experimental Circuit Debugger (DEV-Lab builds only). */}
-        {ASSIST_ENABLED && <AnalyzeButton />}
+        {import.meta.env.VITE_TBI_ENV === 'dev' && <AnalyzeButton />}
       </div>
       <span class="spacer" />
       <div class="topbar-group topbar-meta">

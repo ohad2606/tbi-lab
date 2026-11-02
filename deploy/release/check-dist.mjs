@@ -64,7 +64,40 @@ export function checkDist(profile, dist) {
     else if (v !== null && !all.includes(`\`${v}\``) && !all.includes(`"${v}"`))
       errors.push(`${name}: pinned value ${v} not found in the bundle`);
   errors.push(...checkBranding(profile, dist));
+  errors.push(...checkAssist(profile, dist));
   return { errors, files: assets.length };
+}
+
+/** Modules of the experimental Circuit Debugger (Sprint 27, DEV-Lab builds only). */
+// Source map paths are relative to the bundle (`../../src/assist/…`) or carry the repository path.
+const ASSIST_MODULE = /(^|\/)((app\/)?src\/assist|packages\/assist)\//;
+
+/**
+ * Sprint 27: the Circuit Debugger is in a build exactly when its profile pins VITE_TBI_ENV=dev.
+ * Any other build (production, Alpha, RC) carries none of its modules, no emitted chunk (an
+ * unreferenced chunk is still served) and no trace of its button.
+ */
+export function checkAssist(profile, dist) {
+  const errors = [];
+  const dev = profile.vite.VITE_TBI_ENV === 'dev';
+  const assets = readdirSync(join(dist, 'assets')).sort();
+  const modules = new Set();
+  for (const m of assets.filter((f) => f.endsWith('.js.map')))
+    for (const s of JSON.parse(readFileSync(join(dist, 'assets', m), 'utf8')).sources)
+      if (ASSIST_MODULE.test(s.replace(/\\/g, '/'))) modules.add(`${m}: ${s}`);
+  const chunks = assets.filter((f) => /^AssistPanel-.*\.js$/.test(f));
+  const button = assets
+    .filter((f) => f.endsWith('.js'))
+    .some((f) => readFileSync(join(dist, 'assets', f), 'utf8').includes('assist-open'));
+  if (dev) {
+    if (!chunks.length) errors.push('DEV build without the Circuit Debugger panel chunk');
+    if (!button) errors.push('DEV build without the Circuit Debugger button');
+  } else {
+    for (const m of modules) errors.push(`Circuit Debugger module in a non-DEV build: ${m}`);
+    for (const c of chunks) errors.push(`Circuit Debugger chunk in a non-DEV build: ${c}`);
+    if (button) errors.push('Circuit Debugger button in a non-DEV build');
+  }
+  return errors;
 }
 
 /** The pixel size of a PNG (IHDR), or null. */
