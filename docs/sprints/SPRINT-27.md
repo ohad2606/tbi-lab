@@ -76,10 +76,13 @@ builder or runtime produced the underlying result.
 
 - Contract `tbi-lab.assist.explain/1`: input = the findings and the evidence they cite (not the
   raw project); output = per finding a plain-language explanation that cites finding ids.
-- `validateResponse` rejects: unknown or missing finding ids, numbers not present in the cited
-  evidence (quantity and unit must match), links, markup, HTML, claims about findings not given.
-- `AssistGateway`: timeout 20 s, cancellation, at most 2 retries with backoff, 6 requests / min,
-  1 concurrent; token and estimated cost accounting (characters / 4 when a provider gives no
+- `validateResponse` rejects: unknown or missing finding ids; a number not present in the cited
+  evidence (with a unit: the same quantity in the same unit, rounded to no fewer than 2
+  significant digits, same sign); identifiers with digits that the context does not have; digits
+  of other scripts, exponents it cannot read, spelled-out numbers; finding ids in the text
+  (impersonation); links, URL schemes, bare domains, markup, entities, bidi overrides.
+- `AssistGateway`: timeout 20 s, cancellation, at most 2 retries with backoff, 6 provider calls
+  / min (retries included), 1 concurrent, the whole prompt ≤ 96 KiB; token and estimated cost accounting (characters / 4 when a provider gives no
   counts); typed errors (`unavailable`, `rate_limited`, `busy`, `timeout`, `cancelled`, `invalid_response`, `provider_error`).
 - `MockProvider` (`live: false`, model `template-mock-1`): templated text from the findings. The
   panel says it is an experimental template, not a live AI model.
@@ -96,7 +99,10 @@ envelope is rejected as `ai_write_disabled`.
 
 60 cases (`packages/assist/eval/cases.ts`): valid circuits, invalid circuits, missing connections,
 floating inputs, unsupported hardware, rating violations, Arduino and MicroPython build failures,
-ambiguous conditions, correct-refusal cases; plus 15 adversarial provider replies.
+ambiguous conditions, correct-refusal cases; plus 30 adversarial provider replies (15 added
+after the independent review: wrong units, 1-digit rounding, signs, unknown identifiers, other
+scripts' digits, exponents, spelled-out numbers EN/HE, impersonated findings, URL schemes, bare
+domains, entities, spaced tags, bidi overrides), each refused for its own reason.
 
 | Measure | Threshold (proposed) | Measured |
 |---|---|---|
@@ -104,15 +110,58 @@ ambiguous conditions, correct-refusal cases; plus 15 adversarial provider replie
 | Critical cases correct (15) | 1.0 — no aggregate may hide one | 15 / 15 |
 | Evidence traceability | 1.0 | 1.0 |
 | False claims | 0 | 0 |
-| Adversarial replies refused | 1.0 | 15 / 15 |
+| Adversarial replies refused | 1.0 | 30 / 30 |
 | Correct refusals | 1.0 | 1.0 |
 | Explanation usefulness (rubric) | ≥ 0.8 | 0.848 |
-| Local latency p95 | < 50 ms | 2.35 ms |
+| Local latency p95 (context + diagnosis + mock + validation) | < 50 ms | 8.8 ms (1 CPU, runtime suite running) |
 | Context size (max) | ≤ 48 KiB | 31.3 KB |
-| Prompt tokens (estimate, chars/4) | — | mean 1,376, max 12,838 |
+| Prompt tokens (estimate, chars/4) | — | mean 1,398, max 12,860 |
 
 Usefulness is a fixed rubric over the mock's templated text; it measures the deterministic part,
 not a language model.
+
+## Security review
+
+Own review against the brief's list, then an independent review of the code (not of this
+document). No High finding. Fixed (`0bfc90a`), each with a regression test:
+
+| # | Finding | Fix |
+|---|---|---|
+| M1 | Number check ignored units, accepted 1-digit rounding and dropped signs ("3.3 A" passed on 3.3 V evidence) | quantities carry units; same unit required; ≥ 2 significant digits; sign kept |
+| M2 | Digits the reader skipped passed: identifiers (R47, GPIO13), fullwidth/Arabic-Indic digits, `1e3`, "ten volts", "Simulator finding: supply.shorted"; excerpt line ranges whitelisted integers | identifiers must exist in the context; foreign digits, exponents (parsed), number words EN/HE and finding ids refused; line ranges dropped |
+| M3 | Credentials passed positionally (`WiFi.begin("net","pw")`), `#define WIFI_PW "…"`, `pw =`, a value on the next line; quoted text in build messages | every string literal in excerpts emptied; quoted literals emptied in build messages |
+| M4 | An action envelope declared its own `origin`; `origin: 'user'` from a provider was marked applicable (no apply exists, so not exploitable) | origin is the caller's, default `ai`; an envelope with `origin` is malformed; citations checked against context refs |
+| L1 | A null provider reply left the gateway busy for the page's life | in-flight released in `finally` |
+| L2 | Negative / absurd provider token counts accepted (negative cost) | implausible counts replaced by the estimate |
+| L3 | Abort before a retry not seen; sleep listeners kept; the rate counted requests, not provider calls | all three fixed |
+| L4 | `javascript:`, `data:`, bare domains, entities, `< script >`, bidi overrides passed (rendered as text, but spoofable) | refused |
+| L5 | Comment masking bypassed by C++14 digit separators and backslash-continued `//`; docstrings and string literals reached the prompt; component ids not called data | masking fixed; literals emptied; the system prompt names every user-written identifier as untrusted data |
+| L6 | Findings were outside the 48 KiB bound | the whole prompt bounded (96 KiB); over it nothing is sent |
+| L7 | Pre-existing (S24) MicroPython analysis: an I2C reached only through computed names (`getattr(machine, 'I'+'2C')`) with no `I2C` token skips the dynamic-name check | **not changed** (pre-existing; changing it alters which user programs build). Proposal: refuse computed attribute access on `machine` whatever the I2C use. Owner decision. |
+
+Brief items:
+- **Prompt injection / untrusted code:** comments and string contents never leave; user-written
+  identifiers are declared data; the reply cannot carry instructions back (validated structure,
+  text only, numbers and identifiers checked against evidence, nothing executed).
+- **Data minimisation:** no project name, net names, identities, serial output, string contents,
+  paths; 48 KiB context, 96 KiB prompt.
+- **Provider response validation:** above; an invalid reply is retried once, then the findings
+  are shown without explanation.
+- **Access control and isolation:** the feature runs in the browser of a DEV-Lab user behind the
+  existing gate; it calls no service; the provider interface has no handle to the Session Host,
+  build service, QEMU or files (`packages/assist` has no I/O imports; checked by the boundary of
+  its package: it imports `@tbi-lab/domain` and `@tbi-lab/engine` only).
+- **Resource exhaustion / abuse:** 1 concurrent, 6 calls/min, 20 s timeout, 2 retries, bounded
+  sizes; local cost measured (p95 8.8 ms).
+- **Build/Run isolation, library and file-system boundaries:** unchanged; actions that would
+  write files or select libraries are dry-run only and validated by the same path and registry
+  rules as the editor.
+- **Logging and retention:** nothing is logged or stored by the feature; accounting stays in the
+  page's memory.
+- **Future action authorisation:** AI-origin proposals are never applicable
+  (`SPRINT27_PERMISSIONS.aiWrite: false`); origin comes from the caller; there is no apply path.
+- **Production builds:** the feature is absent (release gate `checkAssist`); its translation
+  strings (~129 `assist.*` messages) still ship in every bundle — text only, no feature.
 
 ## Sprint 26 reliability carryover
 
@@ -139,7 +188,7 @@ its restart and gets `builder_busy`. Not changed in this sprint (owner decision)
 
 ## Estimated future AI operating cost (assumptions; not authorised, nothing connected)
 
-Per analysis: input ≈ 1,400 tokens (measured mean, chars/4 estimate; worst case 12,838), output
+Per analysis: input ≈ 1,400 tokens (measured mean, chars/4 estimate; worst case 12,860), output
 300–500 tokens of explanation, plus model reasoning tokens (billed as output; 0–600 assumed at low
 effort). Anthropic first-party list prices (per million tokens, 2026-10): Haiku 5.5 $0.10 in /
 $0.50 out; Sonnet 5.5 $2 / $10; Opus 5.5 $4 / $20. The fixed contract text is below the minimum
@@ -151,6 +200,6 @@ cacheable prefix, so no caching saving is assumed. Add ~10 % for retries and rej
 | Sonnet 5.5 | $0.007 – $0.014 | $7 – $14 | $375 – $705 |
 | Opus 5.5 | $0.014 – $0.028 | $15 – $28 | $750 – $1,410 |
 
-A worst-case context (12.8 k input) multiplies the input part by ~9. The gateway's 6 / min per
+A worst-case context (12.9 k input) multiplies the input part by ~9. The gateway's 6 / min per
 user and bounded retries cap abuse; a per-user monthly quota would be needed before any live use.
 Exact prices must be re-checked at activation.
