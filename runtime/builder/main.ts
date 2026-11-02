@@ -38,7 +38,7 @@ import { Grants } from './grants.js';
 import { watchLiveSessions } from './live-sessions.js';
 import { SandboxToolRunner } from './runner.js';
 import { systemBuildRequests, systemSourceKeys } from './system-sources.js';
-import { pruneCoreSeeds } from './coreSeed.js';
+import { pruneCoreSeedsAtStart } from './coreSeed.js';
 import { ArduinoEsp32Provider, type ArduinoProfileRecord } from './arduino.js';
 import {
   MICROPYTHON_REQUIRES,
@@ -83,10 +83,7 @@ const jobUnit = process.env.TBI_BUILD_JOB_UNIT;
 const coreSeeds = jobUnit
   ? (process.env.TBI_BUILD_CORE_SEEDS ?? join(stateDir, 'core-seeds'))
   : null;
-if (coreSeeds) {
-  mkdirSync(coreSeeds, { recursive: true, mode: 0o750 });
-  await pruneCoreSeeds(coreSeeds, new Set(), true).catch(() => undefined);
-}
+if (coreSeeds) mkdirSync(coreSeeds, { recursive: true, mode: 0o750 });
 const provider = new ArduinoEsp32Provider({
   profile: ESP32_ARDUINO_PROFILE,
   record: record as ArduinoProfileRecord,
@@ -96,6 +93,16 @@ const provider = new ArduinoEsp32Provider({
   ...(jobUnit ? { runner: new SandboxToolRunner({ unit: jobUnit }) } : {}),
   ...(coreSeeds ? { coreSeeds } : {}),
 });
+// At start no harvest can be running: remove interrupted harvests (.tmp-*) and the seeds of other
+// configurations, and KEEP the current configuration's complete seed. (Until Sprint 28 every
+// seed was removed here, so each restart queued a cold ~50-100 s curated rebuild through prewarm
+// that held the build queue right after start: s8-policy's builder_busy.) The key covers the
+// profile, argv, configuration and environment, so a kept seed is exactly the one a new job uses.
+if (coreSeeds)
+  await pruneCoreSeedsAtStart(
+    coreSeeds,
+    provider.coreSeedKeyFor(join(workRoot, 'job-000000')),
+  ).catch(() => undefined);
 // Sprint 19B (MicroPython M1): the genuine interpreter's profile, offered only where its build
 // home is provisioned and matches its pins (provision.sh micropython-tools) AND the runtime this
 // service issues tickets for announces `unmodelled` (Runtime v4): on an older runtime every

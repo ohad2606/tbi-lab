@@ -166,11 +166,13 @@ export class ArduinoEsp32Provider implements BuildProvider {
   async hasCoreSeed(jobDir: string): Promise<boolean> {
     const seeds = this.opts.coreSeeds;
     if (!seeds) return false;
+    return coreSeedPresent(seeds, this.coreSeedKeyFor(jobDir));
+  }
+
+  /** Sprint 28: the seed key a job in `jobDir` would use (the current configuration's seed). */
+  coreSeedKeyFor(jobDir: string): string {
     const { config, env, argv } = this.compileSetup(this.runner.jobPath(jobDir), this.view());
-    return coreSeedPresent(
-      seeds,
-      coreSeedKey({ profileHash: this.profileHash, argv, config, env }),
-    );
+    return coreSeedKey({ profileHash: this.profileHash, argv, config, env });
   }
 
   async verifyToolchain(): Promise<void> {

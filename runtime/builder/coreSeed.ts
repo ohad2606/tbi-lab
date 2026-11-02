@@ -139,6 +139,18 @@ export async function pruneCoreSeeds(
       await rm(join(seeds, name), { recursive: true, force: true });
 }
 
+/**
+ * Sprint 28, at service start (no harvest can be running): remove interrupted harvests and the
+ * seeds of other configurations; keep the complete seed of the current configuration (`current`,
+ * the key a new job would use). Each restart therefore no longer costs a cold core compile.
+ */
+export async function pruneCoreSeedsAtStart(seeds: string, current: string): Promise<void> {
+  await pruneCoreSeeds(seeds, new Set([current]), true);
+  // A directory under the current key without a valid marker is not a seed: it goes too.
+  if (!(await complete(seeds, current)))
+    await rm(seedDir(seeds, current), { recursive: true, force: true });
+}
+
 /** Undo a partly applied seed (the build then runs cold). */
 export async function removeCoreSeed(buildDir: string): Promise<void> {
   for (const entry of SEED_ENTRIES)

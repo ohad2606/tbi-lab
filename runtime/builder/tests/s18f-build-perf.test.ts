@@ -13,6 +13,8 @@ import {
   coreSeedKey,
   harvestCoreSeed,
   pruneCoreSeeds,
+  pruneCoreSeedsAtStart,
+  coreSeedPresent,
   removeCoreSeed,
 } from '../coreSeed.js';
 import { Grants } from '../grants.js';
@@ -124,6 +126,26 @@ describe('core seed', () => {
     expect(readdirSync(seeds).sort()).toEqual(['.tmp-abc', k2]);
     await pruneCoreSeeds(seeds, new Set([k2]), true);
     expect(readdirSync(seeds)).toEqual([k2]);
+  });
+
+  it('Sprint 28: a restart keeps the current complete seed (no cold rebuild); stale ones go', async () => {
+    const seeds = dir('seeds-');
+    const cur = coreSeedKey(base);
+    const old = coreSeedKey({ ...base, argv: ['older toolchain'] });
+    await harvestCoreSeed(seeds, cur, fakeBuild(dir('a-')));
+    await harvestCoreSeed(seeds, old, fakeBuild(dir('b-')));
+    mkdirSync(join(seeds, '.tmp-interrupted'));
+    await pruneCoreSeedsAtStart(seeds, cur);
+    expect(readdirSync(seeds)).toEqual([cur]);
+    expect(await coreSeedPresent(seeds, cur)).toBe(true);
+    const to = join(dir('job-'), 'build');
+    mkdirSync(to);
+    expect(await applyCoreSeed(seeds, cur, to)).toBe(true); // the next job starts seeded
+    // A directory under the current key with no valid marker is not kept.
+    const s2 = dir('seeds-');
+    mkdirSync(join(s2, cur, 'core'), { recursive: true });
+    await pruneCoreSeedsAtStart(s2, cur);
+    expect(readdirSync(s2)).toEqual([]);
   });
 });
 
