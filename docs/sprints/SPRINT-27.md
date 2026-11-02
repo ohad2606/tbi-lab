@@ -203,3 +203,36 @@ cacheable prefix, so no caching saving is assumed. Add ~10 % for retries and rej
 A worst-case context (12.9 k input) multiplies the input part by ~9. The gateway's 6 / min per
 user and bounded retries cap abuse; a per-user monthly quota would be needed before any live use.
 Exact prices must be re-checked at activation.
+
+## Gates and deployment (2026-11-02)
+
+Release commit `d9dc155` (code); DEV-Lab package `800356c94e15d275` (dev-lab profile), built
+twice, byte-identical (36 files); check-dist confirmed (Circuit Debugger chunk and button present
+in the DEV build; a production-profile build carries none, release-config tests).
+
+| Gate | Result |
+|---|---|
+| Typecheck, lint, boundaries | clean |
+| Unit (vitest) | 2179 passed, 3 skipped (211 files) |
+| e2e (Playwright, app) | 324 passed, 40 skipped; `s27-assist` 5/5 |
+| Runtime, real QEMU (`4e1ada0`; runtime code unchanged since) | 14 failed / 221 passed: 6 R2 + s19b-x1 (the classified failures above; R2 client-disconnect passed this run) and s8-policy 7/7 |
+| Staging tbi-s8 on `d9dc155`, real browser | P1 + S26 5/5; b1 16 passed / 2 skipped; b2 11; b3 7; services restarts 0 |
+| DEV-Lab acceptance | 18/18 (16 earlier + Circuit Debugger EN, HE) |
+| Rollback rehearsal | back to `b437f51` (1.4 s) and forward (0.9 s), Build/Run/Stop 4/4 each way; build records incompatible 0 |
+
+**s8-policy.** The 7/7 failure in the full run was `fetch failed: bad port`: the test's relay picks a
+random port in 4900–5199, which contains 5060 and 5061 (SIP), refused by the Fetch standard.
+Fixed in the test (`d9dc155`, verified: `fetch('http://127.0.0.1:5060')` → "bad port"). A
+standalone rerun then failed on the pre-existing `builder_busy` (start-up core-seed prune, above)
+and a missing artifact that the full suite builds first — the same state as at P1. Not green;
+owner decision pending.
+
+**Batch collision.** Between 09:40 and 10:40 a second Claude session ran the same pipeline on the
+same host and the shared staging rate window (20 creations / 10 min); b1 and b2 failed
+`rate_limited`. Both pipelines paused; the owner chose this session; b1 and b2 were rerun alone
+(results above). No product defect.
+
+DEV-Lab: `d9dc155` (frontend `/srv/tbi-lab/dev-lab/d9dc155…`, services `/srv/tbi-lab/services/d9dc155…`),
+Runtime v5 `39f2229a66d45e43`, units, polkit, Caddy, policy and keys unchanged. Rollback:
+`~/tbi-s27/kit/deploy/rollback-devlab.sh back` (to `b437f51`), backup
+`devlab-backup-20261102T125633Z`.
