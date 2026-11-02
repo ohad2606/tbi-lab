@@ -28,6 +28,7 @@ import {
   simFailureMessage,
 } from '../sim/format.js';
 import { analyze, assistGateway, type Analysis } from './analyze.js';
+import { PilotSection } from './pilot.js';
 
 type Phase =
   | { kind: 'idle' }
@@ -407,6 +408,15 @@ export function AssistPanel({
             )}
             {a.explanation && <Explanation a={a} r={a.explanation} />}
           </section>
+          {a.context && (
+            <PilotSection
+              context={a.context}
+              locale={state.locale.code}
+              findings={a.findings}
+              has={isMessageKey}
+              renderReply={(r, findings) => <Explanation a={{ ...a, findings }} r={r} />}
+            />
+          )}
         </>
       )}
     </aside>

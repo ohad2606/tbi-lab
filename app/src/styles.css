@@ -4033,3 +4033,23 @@ select {
 .assist-explanations p {
   margin-block: 0.2rem;
 }
+
+/* Sprint 28: the AI model pilot's payload preview — bounded, scrollable, wrapped, always LTR. */
+.assist-payload {
+  max-height: 16rem;
+  max-width: 100%;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 0.75rem;
+  border: 1px solid var(--border, #d0d4da);
+  border-radius: 4px;
+  padding: 0.5rem;
+  text-align: left;
+}
+.assist-consent {
+  display: flex;
+  gap: 0.4rem;
+  align-items: flex-start;
+  margin-block: 0.5rem;
+}

@@ -1180,6 +1180,77 @@ export const en = {
   // Sprint 28 (L7): MicroPython names looked up at run time; the checks read written names only.
   'build.feature.dynamic_access':
     'names looked up while the program runs (getattr/setattr/hasattr with a computed name, vars(), globals(), locals(), __dict__, exec, eval, compile, sys.modules), or the machine module used other than as machine.Name — the simulator could not check what they reach',
+  // Sprint 28: the owner-only AI model pilot (DEV-Lab builds only).
+  'assist.pilot.heading': 'AI model (owner pilot)',
+  'assist.pilot.loading': 'Checking the AI model pilot…',
+  'assist.pilot.unavailable': 'The AI model pilot is not available on this server.',
+  'assist.pilot.disabled':
+    'Off. Nothing is sent to any AI model. It stays off until the owner has approved:',
+  'assist.pilot.notPilot': 'The AI model pilot is limited to the owner.',
+  'assist.pilot.reason.no_provider': 'an AI provider and model (none is configured)',
+  'assist.pilot.reason.no_config': 'the pilot configuration (none is installed)',
+  'assist.pilot.reason.config_invalid':
+    'a valid pilot configuration (the installed one is refused)',
+  'assist.pilot.reason.mock_not_allowed': 'the template provider is not allowed on this server',
+  'assist.pilot.reason.no_model': 'the model to use',
+  'assist.pilot.reason.approval_missing.providerAndModel': 'the provider and model',
+  'assist.pilot.reason.approval_missing.dataTerms':
+    'the provider’s data-sharing and retention terms (review)',
+  'assist.pilot.reason.approval_missing.spendCap': 'a hard monthly spending cap',
+  'assist.pilot.reason.approval_missing.securityReview': 'the security review of this integration',
+  'assist.pilot.reason.approval_missing.ownerActivation': 'the owner’s explicit activation',
+  'assist.pilot.reason.approval_mismatch.providerAndModel':
+    'the approved provider and model (the configured ones differ)',
+  'assist.pilot.reason.approval_invalid.spendCap': 'a valid spending cap',
+  'assist.pilot.reason.no_pricing': 'the model’s prices (for the cost limits)',
+  'assist.pilot.reason.no_credential':
+    'the provider credential (installed on the server, never in the browser)',
+  'assist.pilot.reason.other': 'another condition (see the server status)',
+  'assist.pilot.model.live':
+    'Live AI model: {provider} {model}. It explains the findings above; the simulator stays the source of truth.',
+  'assist.pilot.model.mock':
+    'Server template provider ({model}): no AI model is involved, nothing leaves TBI Lab.',
+  'assist.pilot.data.heading': 'What would be sent',
+  'assist.pilot.data.sent': 'Sent with each request you approve:',
+  'assist.pilot.data.never': 'Never sent:',
+  'assist.pilot.data.instructions':
+    'fixed instructions (explain only these findings, cite evidence, no new values)',
+  'assist.pilot.data.locale': 'your interface language',
+  'assist.pilot.data.findings': 'the simulator’s findings (computed again on the server)',
+  'assist.pilot.data.circuit': 'the circuit: part types, their values and connections',
+  'assist.pilot.data.checks_and_results': 'electrical checks, results and ratings',
+  'assist.pilot.data.build_status': 'the build status and up to 20 messages (quoted text removed)',
+  'assist.pilot.data.code_excerpts':
+    'up to 8 short code excerpts (comments and text in quotes removed, secrets redacted)',
+  'assist.pilot.data.capabilities_and_assumptions':
+    'the runtime’s capabilities and the modelling assumptions',
+  'assist.pilot.data.identity': 'who you are (no account, name or email)',
+  'assist.pilot.data.project_name': 'the project name',
+  'assist.pilot.data.net_names': 'net names you wrote',
+  'assist.pilot.data.comments_and_strings': 'comments and text in quotes from your code',
+  'assist.pilot.data.serial_output': 'serial output',
+  'assist.pilot.data.screenshots': 'screenshots',
+  'assist.pilot.data.whole_source_files': 'whole source files',
+  'assist.pilot.preview': 'Show exactly what would be sent',
+  'assist.pilot.preview.size':
+    '{bytes} bytes, about {tokens} tokens (estimate). Nothing has been sent.',
+  'assist.pilot.consent':
+    'I agree to send exactly this to the AI provider for one explanation (consent version {version}).',
+  'assist.pilot.send': 'Send and explain',
+  'assist.pilot.error.pilot_disabled': 'The pilot is off on the server.',
+  'assist.pilot.error.not_pilot': 'The AI model pilot is limited to the owner.',
+  'assist.pilot.error.consent_required': 'Consent of the current version is required.',
+  'assist.pilot.error.rate_limited': 'Too many requests; wait a minute.',
+  'assist.pilot.error.daily_limit': 'Today’s limit for the pilot is reached.',
+  'assist.pilot.error.spend_cap': 'The monthly spending cap would be exceeded; nothing was sent.',
+  'assist.pilot.error.token_ceiling':
+    'The monthly token ceiling would be exceeded; nothing was sent.',
+  'assist.pilot.error.provider_error':
+    'The AI provider did not answer usefully. The findings above are unaffected.',
+  'assist.pilot.error.invalid_response':
+    'The model’s reply failed the evidence checks and is not shown.',
+  'assist.pilot.error.timeout': 'The AI provider did not answer in time.',
+  'assist.pilot.error.other': 'The request did not complete.',
   'build.feature.spi': 'SPI bus',
   'build.feature.library': 'library {name}',
   'mcu.runs.program': 'Runs its code. Edit it in the Code tab, Build, then Run.',
