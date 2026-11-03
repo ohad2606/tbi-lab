@@ -192,7 +192,6 @@ describe.skipIf(!RT || !V4)(
     for (const [name, program, facility] of [
       ['ADC (machine.ADC.read_u16)', ADC, 'adc'],
       ['GPIO interrupt (Pin.irq)', IRQ, 'interrupt'],
-      ['a lowered CPU clock (machine.freq(80 MHz))', FREQ, 'cpu_frequency'],
     ] as const)
       it(`${name} is refused by name at the access (${facility})`, async () => {
         const { s } = await run(program);
@@ -227,7 +226,6 @@ describe.skipIf(!RT || !V4)(
         expect(serialText(s)).not.toMatch(/Guru Meditation|IRQ-COUNT|ADC-VAL/);
         // Pin.irq is refused at the INT_ENA write itself: the line right after it never prints.
         if (facility === 'interrupt') expect(serialText(s)).not.toContain('IRQ-ARMED');
-        if (facility === 'cpu_frequency') expect(serialText(s)).toContain('F0 160000000');
       });
 
     for (const [name, program, refused] of [
@@ -235,6 +233,15 @@ describe.skipIf(!RT || !V4)(
         'a CPU clock change (machine.freq(240 MHz), a raise Runtime v4 cannot detect)',
         'import machine\nmachine.freq(240000000)\n',
         { unsupported: ['cpu_frequency'] },
+      ],
+      // Sprint 28 (L7): this probe reached machine.freq through a computed name to test the
+      // runtime's clock backstop ("what static analysis cannot see"). Such access is now refused
+      // at Build by name (dynamic_access, fail closed), so no built program reaches the backstop
+      // any more; the backstop itself is unchanged in the runtime.
+      [
+        'a lowered CPU clock through a computed name (getattr(machine, "fr" + "eq"))',
+        FREQ,
+        { unsupported: ['dynamic_access'] },
       ],
       [
         'an internal pull (Pin.PULL_UP)',
