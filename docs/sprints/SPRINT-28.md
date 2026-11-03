@@ -22,6 +22,25 @@ lease. `whose <pid>` attributes a process to its session through its ancestors; 
 on a process name alone, and the tool never signals a process. The other session on this host was
 told (cross-session message) and stayed idle.
 
+**Incident and fix (per-process ownership, `9bd3431`, 13 tests).** The v1 lease treated every
+process carrying the owner's session id as the owner. A resumed Claude Code session ran as two live
+processes with the same session id (PIDs 2531600 and 2621769); both passed `check`, so both could
+run pipelines. The duplicate was stopped at the peer's request and the owner rebooted the host.
+Now the owner is ONE process: session id + PID + that PID's kernel start time + boot id, and the
+claimed PID must be the caller or one of its ancestors. Another live process of the same session
+cannot acquire, refresh, check or release (exit 75, "another live process of the same session"); a
+lease from another boot, or whose holder has ended or whose PID was reused, is taken over with a
+`TAKEOVER … (another boot | process gone or PID reused)` history line. Acquisition is atomic
+(under flock(1) on a mutex file; the lease is written by rename); six concurrent CLI acquires give exactly one owner. Regression tests:
+duplicate resumed session, holder ended, after reboot, ancestry proof, concurrent acquire, release
+refused to a peer. Live after the reboot: a second process of this session was refused (75); the
+historical PID 2621769 was rejected as nonexistent (64).
+
+**Recovery after the reboot (2026-11-03).** Verified before any work: host `tbi-lab-srv`, a single
+Claude process, no pipeline running, the stale lease gone with `/run`; HEAD `dc411c9` intact, the
+uncommitted s19b-mpy change and this draft preserved and committed after review (nothing reset,
+stashed or cleaned); `sprint-28` pushed for the first time; staging `726b765`, DEV-Lab `d9dc155`.
+
 ## 2. Runtime reliability
 
 | Item | Root cause (verified) | Change |
@@ -48,7 +67,14 @@ module re-exporting `machine`. New refusal **`dynamic_access`** (fail closed, EN
   (`from hw import mc`, `from hw import *`, `hw.mc`) is checked like `machine` itself.
 
 Static code is unchanged (tests: `machine.Pin`, written `getattr` names, the word "machine" in text,
-multi-line imports, `re.compile`). 19 adversarial + 8 preservation tests. Analyzer 5 → 6 (earlier
+multi-line imports, `re.compile`). 19 adversarial + 8 preservation tests.
+
+The real-QEMU suite `s19b-mpy` had probed run-time refusal of the clock with a computed name
+(`getattr(machine, 'fr'+'eq')(80000000)`, written that way so that the S19B analyzer would not see
+it). L7 now refuses that program at Build as `dynamic_access` (verified: exactly that one reason),
+so the probe moved to the refused-at-Build list (`ea8d3b3`). This is the intended policy, not a
+masked defect: a written `machine.freq(80000000)` is still refused as `cpu_frequency`, and the
+run-time backstop for every other facility stays tested on real QEMU. Analyzer 5 → 6 (earlier
 builds re-analysed; seen on staging: six MicroPython prewarm rebuilds of ~0.5 s).
 
 ## 4. AI provider service — server side, provider-neutral, INACTIVE
@@ -174,6 +200,40 @@ activation).
 A one-off evaluation run (73 cases × 2 locales = 146 calls): Haiku ≈ $0.10, Sonnet ≈ $2,
 Opus ≈ $4. Suggested first cap: $5/month for the owner pilot.
 
-## Gates and deployment
+## 8. Gates and deployment (all on `f0960cc`, the final code revision)
 
-(filled in below after the gates)
+Earlier results (S28 mid-sprint: e2e 328, real-QEMU 238/1 failed, unit 1 failed) were not used as
+evidence; every gate was rerun after the reboot on `f0960cc`. Commits after it change only this
+document.
+
+| Gate | Result |
+|---|---|
+| Typecheck, lint | clean |
+| Unit (incl. pipeline lock 13, assist service, eval harness, os11 gate rule, policy 29) | 2,263 passed, 3 skipped, 0 failed |
+| Browser e2e | 328 passed, 40 skipped (19.6 min) |
+| Real-QEMU runtime (s8-containment excluded: DEV-Lab only) | 239 passed, 19 skipped, 0 failed (65 min) |
+| Determinism / critical bench | bench correctness 1.0, critical 17/17, traceability 1, false claims 0; routing and session determinism suites pass |
+| Package | `dev-lab` profile built twice: byte-identical, 37 files, manifest `be97a365e5e15177`; check-dist (31 assets, no provider endpoint/SDK/key); verify-build (bundle carries `f0960cc`); version `0.10-dev`, Runtime v5 `39f2229a66d45e43` |
+| Staging install (tbi-s8) | `f0960cc`, install 5.4 s, DEV-Lab unchanged during it |
+| Staging real stack | s8-policy 7/7, s28-assist 4/4, s8-gate 5/5, isolation 5/5 (a first attempt without the runtime-home variables failed on missing local artifacts — a harness invocation error, rerun correctly) |
+| Staging browser (real QEMU) | P1+S26 5/5; b1 16 passed / 2 skipped; b2 11/11; b3 7/7; no service restart |
+| DEV-Lab deploy | backup `devlab-backup-20261103T122227Z`; units, polkit, policy, keys unchanged; Caddyfile gains only `/assist/*`; `tbi-assist` active, `disabled: no_provider`, `IPAddressDeny=any`, `AF_UNIX` only |
+| DEV-Lab acceptance | 20/20 (S25, S26, P1, S27 Circuit Debugger EN/HE, S28 pilot disabled EN/HE) |
+| Rollback rehearsal | back to `d9dc155` (1.6 s; assist stopped, route removed, records incompatible 0) → Build/Run/Stop 4/4; forward to `f0960cc` (1.7 s) → 4/4 |
+
+DEV-Lab serves `f0960cc`; the previous known-good release `d9dc155` stays published with its
+backup and is one command away (`rollback-devlab.sh back`).
+
+## 9. Pilot readiness
+
+The product is ready for a **limited, owner-only real-model pilot only after** the owner approvals
+the service enforces: provider and model, data terms, a hard monthly cap, a security review of the
+activation drop-in (credential + egress to the provider only), and activation. No real model has
+been tested, so nothing is claimed about model quality; the first owner-approved step is one
+bounded evaluation run (`eval-model.ts --max-usd …`) against the thresholds in section 5.
+
+## Future / Backlog
+
+- The I_CC rule for `esp32-logic-and` (X1 cannot be driven by an ESP32 within 1 mV of a rail).
+- Whether `assist.*` UI strings may stay in non-DEV-Lab bundles.
+- `rollback-check/run.sh` usage guard (it needs both commit and tag; a missing tag aborts cleanly).
