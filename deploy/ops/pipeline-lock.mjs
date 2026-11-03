@@ -9,10 +9,18 @@
  *   pipeline-lock.mjs status                     who holds it (exit 0 free, 75 held)
  *   pipeline-lock.mjs whose <pid>                which owner a process belongs to (before any kill)
  *
- * The owner is a Claude Code session (CLAUDE_CODE_SESSION_ID + CLAUDE_PID) or, for a person at a
- * shell, TBI_PIPELINE_OWNER + TBI_PIPELINE_PID (default: the login shell's parent). The lease
- * records the owner's PID together with its kernel start time, so a reused PID never looks alive.
- * A lease whose holder no longer exists is stale: acquire takes it over and records that it did.
+ * The owner is ONE PROCESS: a Claude Code process (CLAUDE_CODE_SESSION_ID + CLAUDE_PID) or, for a
+ * person at a shell, TBI_PIPELINE_OWNER + TBI_PIPELINE_PID (default: the caller's parent). Its
+ * identity is the session/owner id AND the PID AND the PID's kernel start time AND the kernel boot
+ * id. Sprint 28 recovery: two processes of one resumed conversation share the session id; they are
+ * different owners (the first lock compared the session id only and let both through).
+ * - The claimed owner PID must be the caller itself or one of its ancestors: an inherited or copied
+ *   CLAUDE_PID that does not name a live ancestor is refused (a PID alone proves nothing).
+ * - acquire / check / release / refresh need the SAME process; another live process is refused,
+ *   whatever its session id, and can never release or refresh the holder's lease.
+ * - A lease whose holder is gone (no such PID, another start time = a reused PID, another boot id =
+ *   after a reboot) is stale: acquire takes it over and records that it did.
+ * - acquire and release run under flock(1) on the mutex file; the lease is written by rename.
  * Nothing here ever signals or stops a process.
  *
  * Exit codes: 0 ok; 75 held by another live owner (EX_TEMPFAIL); 64 usage; 70 internal error.
@@ -56,12 +64,56 @@ export function startTime(pid, procRoot = '/proc') {
   }
 }
 
-export function alive(holder, procRoot = '/proc') {
-  return !!holder && startTime(holder.pid, procRoot) === holder.start;
+/** The kernel's boot id (changes at every boot), or null where it cannot be read. */
+export function bootId(procRoot = '/proc') {
+  try {
+    return readFileSync(join(procRoot, 'sys/kernel/random/boot_id'), 'utf8').trim() || null;
+  } catch {
+    return null;
+  }
 }
 
-/** This caller's owner identity. */
-export function me(env = process.env, procRoot = '/proc') {
+/** The parent PID of a process, or null. */
+export function parentOf(pid, procRoot = '/proc') {
+  try {
+    const stat = readFileSync(join(procRoot, String(pid), 'stat'), 'utf8');
+    return Number(stat.slice(stat.lastIndexOf(')') + 2).split(' ')[1]);
+  } catch {
+    return null;
+  }
+}
+
+/** Whether `pid` is `self` or one of its ancestors. */
+export function isSelfOrAncestor(pid, self, procRoot = '/proc') {
+  let cur = Number(self);
+  for (let i = 0; i < 128 && cur > 0; i++) {
+    if (cur === Number(pid)) return true;
+    const up = parentOf(cur, procRoot);
+    if (up === null || up === cur) return false;
+    cur = up;
+  }
+  return false;
+}
+
+/** Whether the lease's holder process still exists (same PID, start time and boot). */
+export function alive(holder, procRoot = '/proc') {
+  if (!holder || holder.unreadable) return false;
+  if ((holder.boot ?? null) !== bootId(procRoot)) return false;
+  return startTime(holder.pid, procRoot) === holder.start;
+}
+
+/** The same owner PROCESS (not merely the same session id). */
+export const sameProcess = (a, b) =>
+  !!a &&
+  !!b &&
+  !a.unreadable &&
+  a.id === b.id &&
+  Number(a.pid) === Number(b.pid) &&
+  a.start === b.start &&
+  (a.boot ?? null) === (b.boot ?? null);
+
+/** This caller's owner identity (one process). */
+export function me(env = process.env, procRoot = '/proc', self = process.pid) {
   const id = env.TBI_PIPELINE_OWNER || env.CLAUDE_CODE_SESSION_ID;
   const pid = Number(env.TBI_PIPELINE_PID || env.CLAUDE_PID || process.ppid);
   if (!id)
@@ -70,10 +122,13 @@ export function me(env = process.env, procRoot = '/proc') {
     throw new UsageError('owner id must be 4-80 chars [A-Za-z0-9._:-]');
   const start = startTime(pid, procRoot);
   if (!start) throw new UsageError(`owner process ${pid} does not exist`);
+  if (!isSelfOrAncestor(pid, self, procRoot))
+    throw new UsageError(`owner process ${pid} is not this process or an ancestor of it`);
   return {
     id,
     pid,
     start,
+    boot: bootId(procRoot),
     host: hostname(),
     kind: env.TBI_PIPELINE_OWNER ? 'person' : 'claude-code',
   };
@@ -123,49 +178,59 @@ function locked(p, args) {
   return r.status ?? 70;
 }
 
+const sameSessionNote = (cur, who) =>
+  cur.id === who.id ? ' (another live process of the same session: not this process)' : '';
+
 export function acquire(p, who, purpose, procRoot = '/proc', now = new Date()) {
   const cur = readLease(p);
-  if (cur && cur.id !== who.id) {
+  const mine = sameProcess(cur, who);
+  if (cur && !mine) {
     if (cur.unreadable || alive(cur, procRoot))
-      return { code: HELD, msg: `refused: pipeline ${describe(cur, procRoot)}` };
+      return {
+        code: HELD,
+        msg: `refused: pipeline ${describe(cur, procRoot)}${sameSessionNote(cur, who)}`,
+      };
     history(
       p,
-      `TAKEOVER ${short(who.id)} took the stale lease of ${short(cur.id)} (pid ${cur.pid} gone)`,
+      `TAKEOVER ${short(who.id)} pid ${who.pid} took the stale lease of ${short(cur.id)} pid ${cur.pid} (${(cur.boot ?? null) !== (who.boot ?? null) ? 'another boot' : 'process gone or PID reused'})`,
     );
   }
   const lease = {
     ...who,
     purpose,
-    acquired: cur?.id === who.id ? cur.acquired : now.toISOString(),
+    acquired: mine ? cur.acquired : now.toISOString(),
     refreshed: now.toISOString(),
   };
   writeLease(p, lease);
-  history(
-    p,
-    `${cur?.id === who.id ? 'REFRESH' : 'ACQUIRE'} ${short(who.id)} pid ${who.pid}: ${purpose}`,
-  );
-  return { code: 0, msg: `pipeline lock held by ${short(who.id)}: ${purpose}` };
+  history(p, `${mine ? 'REFRESH' : 'ACQUIRE'} ${short(who.id)} pid ${who.pid}: ${purpose}`);
+  return { code: 0, msg: `pipeline lock held by ${short(who.id)} pid ${who.pid}: ${purpose}` };
 }
 
 export function check(p, who, procRoot = '/proc') {
   const cur = readLease(p);
-  if (cur && !cur.unreadable && cur.id === who.id)
-    return { code: 0, msg: `ok: ${short(who.id)} holds the pipeline lock` };
+  if (sameProcess(cur, who))
+    return { code: 0, msg: `ok: ${short(who.id)} pid ${who.pid} holds the pipeline lock` };
   if (!cur)
     return {
       code: HELD,
       msg: 'refused: the pipeline lock is free; acquire it first (pipeline-lock.mjs acquire --purpose ...)',
     };
-  return { code: HELD, msg: `refused: pipeline ${describe(cur, procRoot)}` };
+  return {
+    code: HELD,
+    msg: `refused: pipeline ${describe(cur, procRoot)}${sameSessionNote(cur, who)}`,
+  };
 }
 
 export function release(p, who) {
   const cur = readLease(p);
   if (!cur) return { code: 0, msg: 'already free' };
-  if (cur.id !== who.id)
-    return { code: HELD, msg: `refused: not the holder (${short(cur.id)} holds it)` };
+  if (!sameProcess(cur, who))
+    return {
+      code: HELD,
+      msg: `refused: not the holder (${short(cur.id)} pid ${cur.pid} holds it)${sameSessionNote(cur, who)}`,
+    };
   unlinkSync(p.lease);
-  history(p, `RELEASE ${short(who.id)}`);
+  history(p, `RELEASE ${short(who.id)} pid ${who.pid}`);
   return { code: 0, msg: 'released' };
 }
 
@@ -181,7 +246,12 @@ export function whose(pid, procRoot = '/proc', lease = null) {
     }
     const sid = /(?:^|\0)CLAUDE_CODE_SESSION_ID=([^\0]+)/.exec(env)?.[1];
     const cpid = /(?:^|\0)CLAUDE_PID=(\d+)/.exec(env)?.[1];
-    if (sid) return { owner: sid, claudePid: Number(cpid), holdsLease: lease?.id === sid };
+    if (sid)
+      return {
+        owner: sid,
+        claudePid: Number(cpid),
+        holdsLease: lease?.id === sid && Number(lease?.pid) === Number(cpid),
+      };
     let stat;
     try {
       stat = readFileSync(join(procRoot, String(cur), 'stat'), 'utf8');
