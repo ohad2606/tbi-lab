@@ -6,7 +6,8 @@
  *   model; open switches; supplies switched off; unpowered drivers);
  * - mixed 3.3 V / 5 V operation decided strictly by V_IH at the gate's own supply;
  * - cascades inside one package and between packages;
- * - the quiescent current only under the datasheet's own I_CC test conditions.
+ * - the quiescent current only under the datasheet's own I_CC test conditions or, since owner
+ *   decision S29-D1, bounded by I_CC + ΔI_CC with every input within 0.6 V of GND or V_CC.
  * Expected numbers are computed by hand from the datasheet figures, not read back.
  */
 import { describe, expect, it } from 'vitest';
@@ -75,6 +76,13 @@ function andGate(vcc: number, build: (b: Bench, g: string, hi: string) => void) 
 }
 /** Sprint 22 Q1 strict: the deferred refusal — every level/output check held, I_CC unbounded. */
 const limitOnly = { code: 'logic_supply_current_uncharacterized', detail: { check: 'limit' } };
+/** S29-D1: the ΔI_CC bound — I_CC 10 µA + ΔI_CC 500 µA for each of `n` inputs in a 0.6 V band. */
+const deltaIcc = (n: number) => ({
+  iccBasis: 'deltaIcc',
+  deltaIccA: 500e-6,
+  deltaIccInputs: n,
+  iccMaxA: expect.closeTo(10e-6 + n * 500e-6, 12),
+});
 
 /** PSU1 at `vcc` → SN74LVC08A U1, every input tied to GND except those `build` wires. */
 function quad(vcc: number, free: string[], build: (b: Bench, u: string) => void, extra?: string) {
@@ -109,17 +117,24 @@ describe('undriven inputs are floating, never a valid LOW (owner policy)', () =>
       param: 'a',
       detail: { pads: [18] },
     });
-    // Driven, A is no longer floating. Sprint 22 Q1 strict: an ESP32 HIGH (≤ 3.3 V) is not 5.5 V,
-    // its LOW (≤ 0.33 V guaranteed) not GND: I_CC is unbounded and PSU1's current limit is
-    // refused by name — after the level checks held (HIGH: V_OH 2.64 V ≥ V_IH 2.0 V).
+    // Driven, A is no longer floating. An ESP32 HIGH (≤ 3.3 V) is not 5.5 V, its LOW (≤ 0.33 V
+    // guaranteed) not GND: before S29-D1 (Q1 strict) PSU1's current limit was refused. S29-D1: at
+    // V_CC = 3.0 V the pad's HIGH band (2.64–3.3 V, all within 0.6 V of V_CC) and LOW band
+    // (0–0.33 V, within 0.6 V of GND) are ΔI_CC bands: I_CC ≤ 10 µA + 500 µA (A; B at 5.5 V is
+    // the test voltage). The level checks held first (HIGH: V_OH 2.64 V ≥ V_IH 2.0 V).
     s.setPinMode(18, 'output-high');
-    expect(fails(s.solve())).toMatchObject({ ...limitOnly, components: [G, 'PSU1'] });
+    expect(ok(s.solve()).components[G]!.state).toMatchObject({
+      gateOutput: 'high',
+      input_a: 'high',
+      input_b: 'high',
+      ...deltaIcc(1),
+    });
     s.setPinMode(18, 'output-low');
-    expect(fails(s.solve())).toMatchObject({
-      ...limitOnly,
-      components: [G, 'PSU1'],
-      param: 'a',
-      detail: { check: 'limit', causes: expect.arrayContaining(['esp32_vol']) },
+    expect(ok(s.solve()).components[G]!.state).toMatchObject({
+      gateOutput: 'low',
+      input_a: 'low',
+      input_b: 'high',
+      ...deltaIcc(1),
     });
   });
 
@@ -171,13 +186,13 @@ describe('undriven inputs are floating, never a valid LOW (owner policy)', () =>
     });
     const s = new EngineSession(bb.projected, { pins: bb.pins });
     // A real LOW (the input check held: 5 µA × 10 kΩ + the pad's leakage ≈ 50 mV ≤ V_IL 0.8 V).
-    // Sprint 22 Q1 strict: ~50 mV is not within 1 mV of GND, so I_CC leaves its test condition
-    // and PSU1's current limit is refused by name (naming A, worst ≈ 50.5 mV).
-    expect(fails(s.solve())).toMatchObject({
-      ...limitOnly,
-      components: [G, 'PSU1'],
-      param: 'a',
-      detail: { check: 'limit', condition: 'notInputs', worst: expect.closeTo(0.0505, 3) },
+    // ~50 mV is not within 1 mV of GND (before S29-D1, Q1 strict: refused by PSU1's current limit);
+    // S29-D1: it is within 0.6 V of GND → I_CC ≤ 10 µA + 500 µA (ΔI_CC, A).
+    expect(ok(s.solve()).components[G]!.state).toMatchObject({
+      gateOutput: 'low',
+      input_a: 'low',
+      input_b: 'high',
+      ...deltaIcc(1),
     });
     // Driven HIGH, the pad also feeds the pull-down (≈ 330 µA). Sprint 21 review (item 5): the
     // ESP32's V_OH ≥ 0.8 × VDD is stated with no load current (Table 5-3; 40 mA is typical), so it
@@ -292,9 +307,15 @@ describe("mixed 3.3 V / 5 V: decided by V_IH at the gate's own supply (§5.3)", 
       },
     });
     // The pad's LOW (≤ 0.33 V) is a valid LOW at 5 V (V_IL = 1.5 V): not refused as undefined.
-    // Sprint 22 Q1 strict: but not exactly GND, so I_CC is unbounded: refused by the limit.
+    // Not exactly GND (before S29-D1, Q1 strict: refused by the limit); S29-D1: within 0.6 V of
+    // GND → I_CC ≤ 510 µA (ΔI_CC row 3–5.5 V).
     s.setPinMode(18, 'output-low');
-    expect(fails(s.solve())).toMatchObject({ ...limitOnly, components: [G, 'PSU1'], param: 'a' });
+    expect(ok(s.solve()).components[G]!.state).toMatchObject({
+      gateOutput: 'low',
+      input_a: 'low',
+      supplyV: 5,
+      ...deltaIcc(1),
+    });
   });
 
   it("at 4.5 V, V_IH = 3.15 V: the pad model's 3.3 V passes, but the ESP32 guarantees only V_OH ≥ 2.64 V: refused (Sprint 21)", () => {
@@ -363,7 +384,7 @@ const inputThreshold = (vcc: number) => {
 };
 
 describe('cascades: inside a package and between packages', () => {
-  it('SN74LVC08A gate 1 → a SECOND SN74LVC08A gate 1, and an SN74LVC1G08 → the package: truth tables through the solve', () => {
+  it('SN74LVC08A gate 1 → a SECOND SN74LVC08A gate 1, and an SN74LVC1G08 → the package: every combination refused: an 08A output drives another input at either level, its I_CC is only given at I_O = 0 (Q9, made exact in S29)', () => {
     for (let m = 0; m < 8; m++) {
       const [x, y, z] = [m & 4, m & 2, m & 1].map(Boolean) as [boolean, boolean, boolean];
       const b = new Bench();
@@ -382,11 +403,21 @@ describe('cascades: inside a package and between packages', () => {
       b.wire(`${u2}.y1`, `${u2}.a2`);
       for (const t of ['a2', 'b2', 'a3', 'b3', 'a4', 'b4']) b.wire(`${u1}.${t}`, 'GND1.ref');
       for (const t of ['a3', 'b3', 'a4', 'b4']) b.wire(`${u2}.${t}`, 'GND1.ref');
-      // Sprint 22 Q1 strict: each chained input sits at a gate output (guaranteed only within
-      // V_OH/V_OL's band, never within 1 mV of V_CC or GND), and the single gate's inputs are at
-      // 3.6 V, not 5.5 V: I_CC leaves its test conditions. Every combination settles and its
-      // level checks hold, then PSU1's current limit is refused by name (never feedback).
-      expect(fails(solve(b)), `x=${x} y=${y} z=${z}`).toMatchObject(limitOnly);
+      // Each chained input sits at a gate output (guaranteed only within V_OH/V_OL's band, never
+      // within 1 mV of V_CC or GND), and the single gate's inputs are at 3.6 V, not 5.5 V: before
+      // S29-D1 (Q1 strict) every combination was refused by PSU1's current limit. S29-D1: those
+      // bands lie within 0.6 V of a rail → U2 (08A) I_CC ≤ 10 µA + 8 × 500 µA = 4.01 mA; the single
+      // gate ≤ 1.01 mA when an input is at 3.6 V, else the strict 10 µA; U1 (inputs at V_CC/GND)
+      // keeps the strict 10 µA. With U1's 1Y HIGH (x·y) the 08A output carries 2A's I_I: SCAS283W
+      // gives I_CC only at I_O = 0 → refused by name (Sprint 22 review 3, Q9; never feedback).
+      // S29: the LOW case too (two-sided sensitivity): 1Y carries 2A's I_I either way.
+      const at = `x=${x} y=${y} z=${z}`;
+      expect(fails(solve(b)), at).toMatchObject({
+        code: 'logic_supply_current_uncharacterized',
+        components: [expect.stringMatching(/^U[12]$/), 'PSU1'],
+        param: 'y1',
+        detail: { part: 'SN74LVC08A', condition: 'loaded', check: 'limit' },
+      });
     }
   });
 
@@ -407,13 +438,29 @@ describe('cascades: inside a package and between packages', () => {
   });
 });
 
-describe('quiescent current: only under the datasheet I_CC test conditions', () => {
-  it('SN74LVC1G: I_CC "V_I = 5.5V or GND, 1.65V to 5.5V" (§5.5); ΔI_CC only 3–5.5 V', () => {
+describe('quiescent current: the datasheet I_CC test conditions, or I_CC + ΔI_CC (S29-D1)', () => {
+  it('SN74LVC1G: I_CC "V_I = 5.5V or GND, 1.65V to 5.5V" (§5.5); off it, ΔI_CC bounds inputs within 0.6 V of a rail at 3–5.5 V (S29-D1)', () => {
     expect(quiescentAt(AND, 3.0, [0, 0])).toEqual({ iccMaxA: 10e-6 });
     expect(quiescentAt(AND, 5.5, [5.5, 0])).toEqual({ iccMaxA: 10e-6 });
     expect(quiescentAt(AND, 3.0, [5.5, 0])).toEqual({ iccMaxA: 10e-6 });
-    // An input HIGH at V_CC = 3.0 V is not the test condition (5.5 V): not characterized.
+    // An input HIGH at V_CC = 3.0 V is not the test condition (5.5 V): before S29-D1 not
+    // characterized; S29-D1: both inputs are in a 0.6 V band (V_CC, GND) → 10 µA + 2 × 500 µA.
     expect(quiescentAt(AND, 3.0, [3.0, 0])).toEqual({
+      iccMaxA: expect.closeTo(1.01e-3, 12),
+      iccBasis: 'deltaIcc',
+      deltaIccA: 500e-6,
+      deltaIccInputs: 2,
+    });
+    // Forced onto the ΔI_CC basis (a corner moves an input off GND): the 5.5 V input is still at
+    // its test voltage and adds nothing; the GND input counts (10 µA + 500 µA).
+    expect(quiescentAt(AND, 3.0, [5.5, 0], true)).toEqual({
+      iccMaxA: expect.closeTo(510e-6, 12),
+      iccBasis: 'deltaIcc',
+      deltaIccA: 500e-6,
+      deltaIccInputs: 1,
+    });
+    // Between the bands (0.6 V < 1.5 V < V_CC − 0.6 V): not characterized, even with the ΔI_CC row.
+    expect(quiescentAt(AND, 3.3, [1.5, 0])).toEqual({
       iccCondition: 'notInputs',
       deltaIccA: 500e-6,
     });
@@ -422,12 +469,12 @@ describe('quiescent current: only under the datasheet I_CC test conditions', () 
     expect(quiescentAt(AND, null, [0, 0])).toEqual({ iccCondition: 'notSupply' });
   });
 
-  it('in the solve: inputs at GND or 5.5 V → I_CC ≤ 10 µA reported; an input at V_CC → refused (Q1)', () => {
+  it('in the solve: inputs at GND or 5.5 V → I_CC ≤ 10 µA reported; an input at V_CC → bounded by ΔI_CC (S29-D1), I_CC ≤ 1.01 mA; between the bands → refused', () => {
     // andGate ties B to 5.5 V (Sprint 22): the test condition holds.
     const lowIn = andGate(3.0, (bb, gg) => bb.wire(`${gg}.a`, 'GND1.ref'));
     expect(ok(solve(lowIn.b)).components[lowIn.g]!.state).toMatchObject({ iccMaxA: 10e-6 });
-    // B at V_CC = 3.0 V instead: not the test condition; Sprint 22 Q1 strict: PSU1's current limit
-    // depends on that unbounded I_CC → refused by name (never ΔI_CC as a bound).
+    // B at V_CC = 3.0 V instead: not the test condition (before S29-D1, Q1 strict: PSU1's current
+    // limit refused by name). S29-D1: B within 0.6 V of V_CC, A at GND → 10 µA + 2 × 500 µA.
     const atVcc = new Bench();
     const h = atVcc.add('logic.gate_and');
     atVcc
@@ -437,9 +484,26 @@ describe('quiescent current: only under the datasheet I_CC test conditions', () 
       .wire(`${h}.gnd`, 'GND1.ref')
       .wire(`${h}.a`, 'GND1.ref')
       .wire(`${h}.b`, 'PSU1.positive');
-    expect(fails(solve(atVcc))).toMatchObject({
+    expect(ok(solve(atVcc)).components[h]!.state).toMatchObject({
+      gateOutput: 'low',
+      input_a: 'low',
+      input_b: 'high',
+      ...deltaIcc(2),
+    });
+    // B at 0.7 V instead (a valid LOW, V_IL 0.8 V) lies between the bands (S29-D1): I_CC is not
+    // characterized → refused by name.
+    const mid = new Bench();
+    const m = mid.add('logic.gate_and');
+    mid.psu(3.0, 0.5).wire('PSU1.negative', 'GND1.ref');
+    const r07 = mid.rail(0.7);
+    mid
+      .wire('PSU1.positive', `${m}.vcc`)
+      .wire(`${m}.gnd`, 'GND1.ref')
+      .wire(`${m}.a`, 'GND1.ref')
+      .wire(`${m}.b`, `${r07}.positive`);
+    expect(fails(solve(mid))).toMatchObject({
       ...limitOnly,
-      components: [h, 'PSU1'],
+      components: [m, 'PSU1'],
       detail: { check: 'limit', condition: 'notInputs' },
     });
     const b = new Bench();

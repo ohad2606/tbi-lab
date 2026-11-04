@@ -9,7 +9,7 @@
  * a junction conducts would need a threshold no model states, so it is refused, never inferred.
  */
 import { describe, expect, it } from 'vitest';
-import { EngineSession, type SolveOutcome } from '../src/index.js';
+import { EngineSession, type SolveOutcome, type SolveSuccess } from '../src/index.js';
 import { Bench } from './build.js';
 
 /**
@@ -30,6 +30,17 @@ const bleedAll = (b: Bench) => {
   return b;
 };
 const solve = (b: Bench) => new EngineSession(bleedAll(b).snapshot()).solve();
+const ok = (o: SolveOutcome): SolveSuccess => {
+  if (!o.ok) throw new Error(`expected success, got ${JSON.stringify(o.error)}`);
+  return o;
+};
+/** S29-D1: the ΔI_CC bound — I_CC 10 µA + ΔI_CC 500 µA for each of `n` inputs in a 0.6 V band. */
+const deltaIcc = (n: number) => ({
+  iccBasis: 'deltaIcc',
+  deltaIccA: 500e-6,
+  deltaIccInputs: n,
+  iccMaxA: expect.closeTo(10e-6 + n * 500e-6, 12),
+});
 const fails = (o: SolveOutcome) => {
   if (o.ok) throw new Error(`expected a refusal, got ${JSON.stringify(Object.keys(o.components))}`);
   return o.error;
@@ -85,7 +96,7 @@ describe('BLOCKING 1: high-impedance parts do not drive a logic input', () => {
     expect(fails(solve(b))).toMatchObject(floatingA(g));
   });
 
-  it('…and with the collector pull-up (open-collector inverter), driven: HIGH through the resistor', () => {
+  it('…and with the collector pull-up (open-collector inverter), driven: HIGH through the resistor (S29-D1: A within 0.6 V of V_CC → runs, I_CC ≤ 510 µA)', () => {
     const { b, g } = base(3.3);
     const q = b.add('component.bjt_npn');
     const rp = b.add('component.resistor');
@@ -95,13 +106,14 @@ describe('BLOCKING 1: high-impedance parts do not drive a logic input', () => {
       .wire(`${q}.base`, 'GND1.ref')
       .wire('PSU1.positive', `${rp}.a`)
       .wire(`${rp}.b`, `${g}.a`);
-    // Driven HIGH through the resistor (never floating; the HIGH level check held). Sprint 22 Q1
-    // strict: A at ≈ 3.3 V (not 5.5 V) leaves the I_CC test condition, so PSU1's current limit is
-    // refused by that name — deferred until every level check held.
-    expect(fails(solve(b))).toMatchObject({
-      code: 'logic_supply_current_uncharacterized',
-      components: [g, 'PSU1'],
-      detail: { check: 'limit', condition: 'notInputs' },
+    // Driven HIGH through the resistor (never floating; the HIGH level check held). A at ≈ 3.3 V
+    // (not 5.5 V) leaves the I_CC test condition (before S29-D1, Q1 strict: PSU1's current limit
+    // refused by that name); within 0.6 V of V_CC → bounded by ΔI_CC (S29-D1): runs.
+    expect(ok(solve(b)).components[g]!.state).toMatchObject({
+      gateOutput: 'high',
+      input_a: 'high',
+      input_b: 'high',
+      ...deltaIcc(1),
     });
   });
 
@@ -150,17 +162,17 @@ describe('BLOCKING 1: high-impedance parts do not drive a logic input', () => {
     expect(fails(solve(b))).toMatchObject(floatingA(g));
   });
 
-  it('still driven: a 1 kΩ pull-down (LOW); an LED clamp on a node with a pull-up is driven (refused only for its value)', () => {
+  it('still driven: a 1 kΩ pull-down (LOW; S29-D1: ≤ 5 mV off GND bounded by ΔI_CC → runs); an LED clamp on a node with a pull-up is driven (refused only for its value)', () => {
     const pd = base(3.3);
     const r2 = pd.b.add('component.resistor');
     pd.b.ohms(r2, 1000).wire(`${pd.g}.a`, `${r2}.a`).wire(`${r2}.b`, 'GND1.ref');
-    // Driven LOW (5 µA × 1 kΩ = 5 mV ≤ V_IL). Sprint 22 Q1 strict: 5 mV is not within 1 mV of
-    // GND, so I_CC leaves its test condition: refused by the current limit, naming A (worst 5 mV).
-    expect(fails(solve(pd.b))).toMatchObject({
-      code: 'logic_supply_current_uncharacterized',
-      components: [pd.g, 'PSU1'],
-      param: 'a',
-      detail: { check: 'limit', worst: expect.closeTo(0.005, 9) },
+    // Driven LOW (5 µA × 1 kΩ = 5 mV ≤ V_IL). 5 mV is not within 1 mV of GND (before S29-D1, Q1
+    // strict: refused by the current limit, naming A, worst 5 mV) but within 0.6 V → bounded by
+    // ΔI_CC (S29-D1): runs, a real LOW.
+    expect(ok(solve(pd.b)).components[pd.g]!.state).toMatchObject({
+      gateOutput: 'low',
+      input_a: 'low',
+      ...deltaIcc(1),
     });
     // V_CC → 220 Ω → node A → LED → GND: the node is driven through the resistor.
     const ind = base(3.0);

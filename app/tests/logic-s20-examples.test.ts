@@ -30,6 +30,13 @@ const ok = (o: SolveOutcome): SolveSuccess => {
   return o;
 };
 const doc = (id: string) => EXAMPLES.find((e) => e.id === id)!.document;
+/** S29-D1: the ΔI_CC bound — I_CC 10 µA + ΔI_CC 500 µA for each of `n` inputs in a 0.6 V band. */
+const deltaIcc = (n: number) => ({
+  iccBasis: 'deltaIcc',
+  deltaIccA: 500e-6,
+  deltaIccInputs: n,
+  iccMaxA: expect.closeTo(10e-6 + n * 500e-6, 12),
+});
 const en = getLocale('en');
 const he = getLocale('he');
 /** Strip the bidi isolation marks the formatter adds around technical runs. */
@@ -151,37 +158,58 @@ describe('A logic-and-switches: two switches → SN74LVC1G08 → LED', () => {
     }
   });
 
-  it('Q1 strict: the TI-recommended 10 kΩ pull-down instead leaves an open input up to 50 mV off GND (I_I 5 µA × 10 kΩ): I_CC unbounded, refused by the current limit (EN/HE)', () => {
-    let d = withSwitches(A, { SW1: true, SW2: false });
-    const r = setParam(d, 'R2', 'resistance', { value: 10_000, unit: 'ohm' });
-    if (!r.ok) throw new Error(r.error);
-    d = r.doc;
+  it('the TI-recommended 10 kΩ pull-down instead leaves an open input up to 50 mV off GND (I_I 5 µA × 10 kΩ): bounded by ΔI_CC (S29-D1) → runs, I_CC ≤ 510 µA; 130 kΩ (0.65 V, a valid LOW between the bands) refused by the current limit (EN/HE)', () => {
+    const pulled = (ohms: number) => {
+      const r = setParam(withSwitches(A, { SW1: true, SW2: false }), 'R2', 'resistance', {
+        value: ohms,
+        unit: 'ohm',
+      });
+      if (!r.ok) throw new Error(r.error);
+      return r.doc;
+    };
+    // Before S29-D1 (Q1 strict) 50 mV off GND was refused; it is within 0.6 V of GND.
+    const u = ok(local(pulled(10_000))).components.U1!;
+    expect(u.state).toMatchObject({
+      gateOutput: 'low',
+      input_a: 'high',
+      input_b: 'low',
+      supplyV: 3,
+      ...deltaIcc(1),
+    });
+    // 5 µA × 130 kΩ = 0.65 V ≤ V_IL 0.8 V, but between the ΔI_CC bands: I_CC not characterized.
+    const d = pulled(130_000);
     const o = local(d);
     if (o.ok) throw new Error('expected a refusal');
     expect(o.error).toMatchObject({
       code: 'logic_supply_current_uncharacterized',
       components: ['U1', 'PSU2'],
       param: 'b',
-      detail: { condition: 'notInputs', check: 'limit', worst: expect.closeTo(0.05, 9) },
+      detail: { condition: 'notInputs', check: 'limit', worst: expect.closeTo(0.65, 9) },
     });
     expect(plain(engineErrorMessage(en, o.error, d))).toContain('current limit');
     expect(plain(engineErrorMessage(en, o.error, d))).toContain('V_I = 5.5 V or GND');
     expect(plain(engineErrorMessage(he, o.error, d))).toContain('מגבלת הזרם');
   });
 
-  it('Q1 strict: the input rail at 3.0 V instead of 5.5 V (inputs at V_CC, not 5.5 V): refused by the current limit', () => {
+  it('the input rail at 3.0 V instead of 5.5 V (inputs at V_CC, not 5.5 V; refused by the current limit before S29-D1): bounded by ΔI_CC (S29-D1) → runs, Y HIGH, I_CC ≤ 1.01 mA', () => {
     const r = setParam(withSwitches(A, { SW2: true }), 'PSU1', 'setpointVoltage', {
       value: 3,
       unit: 'volt',
     });
     if (!r.ok) throw new Error(r.error);
-    const o = local(r.doc);
-    if (o.ok) throw new Error('expected a refusal');
-    expect(o.error).toMatchObject({
-      code: 'logic_supply_current_uncharacterized',
-      components: ['U1', 'PSU2'],
-      detail: { condition: 'notInputs', check: 'limit', psu: 'PSU2' },
+    const o = ok(local(r.doc));
+    const u = o.components.U1!;
+    expect(u.state).toMatchObject({
+      gateOutput: 'high',
+      input_a: 'high',
+      input_b: 'high',
+      supplyV: 3,
+      ...deltaIcc(2),
     });
+    // The LED lit from Y; PSU2 carries it plus the bleeder's 300 µA (I_CC is outside the solve).
+    const i = o.components.D1!.current!;
+    expect(i).toBeGreaterThan(3e-3);
+    expect(o.components.PSU2!.current!).toBeCloseTo(i + 3.0 / 10_000, 12);
   });
 
   it('removing a pull-down leaves B floating with SW2 open: refused, EN and HE name the pin', () => {
@@ -263,12 +291,16 @@ describe('B logic-cascade: (A·B·C) + D across an SN74LVC08A and an SN74LVC1G32
     }
   });
 
-  // Sprint 22 Q1 (owner decision, strict): even at 3.6 V (the 08A's I_I and I_CC row) the cascade
-  // cannot run: 2A is driven by 1Y and the OR gate's A by 2Y, and a gate output is guaranteed only
-  // within a band (V_OH ≥ V_CC − 0.2 V, V_OL ≤ 0.2 V at 100 µA, SCAS283W §5.7), never exactly at a
-  // rail, so neither part's I_CC test condition holds and the supply's current limit is refused.
-  // That refusal is reported only after every level and output check has held.
-  it('at 3.6 V (Q1 strict): all 16 switch combinations reach the current-limit refusal (every level held); never a truth table', () => {
+  // Sprint 22 Q1 (owner decision, strict — the rule before S29-D1): even at 3.6 V (the 08A's I_I
+  // and I_CC row) the cascade could not run: 2A is driven by 1Y and the OR gate's A by 2Y, and a
+  // gate output is guaranteed only within a band (V_OH ≥ V_CC − 0.2 V, V_OL ≤ 0.2 V at 100 µA,
+  // SCAS283W §5.7), never exactly at a rail. S29-D1: those bands lie within 0.6 V of a rail, so
+  // both parts are bounded by ΔI_CC (08A: 10 µA + 8 × 500 µA; 1G32: 10 µA + 2 × 500 µA). With
+  // A·B HIGH, 1Y carries 2A's I_I and SCAS283W gives I_CC only at I_O = 0: refused by name (Q9).
+  // S29 (Q9 made exact): an SN74LVC08A output that drives another input carries that input's I_I
+  // at either level, and SCAS283W gives I_CC only at I_O = 0 → refused by name in every switch
+  // setting (before the S29 two-sided sensitivity fix, a LOW output's load was missed).
+  it('at 3.6 V (S29-D1): every one of the 16 combinations is refused — an 08A output (1Y or 2Y) drives an input, so its I_CC is not characterized (loaded, Q9)', () => {
     for (let m = 0; m < 16; m++) {
       const [a, b, c, dd] = [8, 4, 2, 1].map((bit) => (m & bit) !== 0) as [
         boolean,
@@ -282,9 +314,10 @@ describe('B logic-cascade: (A·B·C) + D across an SN74LVC08A and an SN74LVC1G32
       if (o.ok) throw new Error(`expected a refusal: ${where}`);
       expect(o.error, where).toMatchObject({
         code: 'logic_supply_current_uncharacterized',
-        detail: { condition: 'notInputs', check: 'limit' },
+        components: ['U1', 'PSU1'],
+        param: expect.stringMatching(/^y[12]$/),
+        detail: { part: 'SN74LVC08A', condition: 'loaded', check: 'limit' },
       });
-      expect(['U1', 'U2'], where).toContain(o.error.components?.[0]);
       expect(plain(engineErrorMessage(en, o.error, d)), where).toContain('current limit');
     }
   });
@@ -372,7 +405,7 @@ describe('D esp32-logic-override: ESP32 + manual switch → SN74LVC1G32 → LED,
     // only V_OH ≥ 2.4 V (the 16 mA test point) is guaranteed — below the ESP32's V_IH
     // 0.75 × 3.3 = 2.475 V: the read-back on GPIO19 is not guaranteed and the state is refused by
     // name. Y LOW (sinking only the pad's leakage) is guaranteed ≤ 0.1 V (Sprint 22: then refused
-    // by Q1, below).
+    // by Q1; since S29-D1 bounded by ΔI_CC, below).
     for (const sw of [false, true])
       for (const mode of ['output-low', 'output-high', 'input'] as RuntimePinMode[]) {
         const { s } = hosted(withSwitches(D, { SW1: sw }));
@@ -391,13 +424,11 @@ describe('D esp32-logic-override: ESP32 + manual switch → SN74LVC1G32 → LED,
           });
           continue;
         }
-        // Sprint 22 Q1 strict: Y LOW is guaranteed (every level check holds), but input A is
-        // never at 5.5 V or exactly GND (GPIO18 LOW: V_OL ≤ 0.33 V; as an input: 5 µA × 10 kΩ
-        // ≈ 50 mV), so I_CC is unbounded and the supply's current limit is refused. Review F2:
-        // GPIO18 LOW at its band end carries 0.33 V / 10 kΩ + I_I 5 µA = 38 µA into R3 — more than
-        // leakage, so its V_OL guarantee is not relied on (Q7), refused first.
-        if (o.ok) throw new Error(`expected a refusal: ${at}`);
+        // Y LOW is guaranteed (every level check holds). Review F2: GPIO18 LOW at its band end
+        // carries 0.33 V / 10 kΩ + I_I 5 µA = 38 µA into R3 — more than leakage, so its V_OL
+        // guarantee is not relied on (Q7): refused.
         if (mode === 'output-low') {
+          if (o.ok) throw new Error(`expected a refusal: ${at}`);
           expect(o.error, at).toMatchObject({
             code: 'logic_mcu_output_uncharacterized',
             param: 'gpio18',
@@ -405,12 +436,19 @@ describe('D esp32-logic-override: ESP32 + manual switch → SN74LVC1G32 → LED,
           });
           continue;
         }
-        expect(o.error, at).toMatchObject({
-          code: 'logic_supply_current_uncharacterized',
-          components: ['U2', 'PSU1'],
-          param: 'a',
-          detail: { part: 'SN74LVC1G32', condition: 'notInputs', check: 'limit' },
+        // GPIO18 as an input: A at 5 µA × 10 kΩ ≈ 50 mV, never exactly GND (before S29-D1, Q1
+        // strict: refused by the supply's current limit). S29-D1: A and B within 0.6 V of GND →
+        // I_CC ≤ 10 µA + 2 × 500 µA; Y LOW, the LED off, GPIO19 reads LOW. PSU1 then delivers
+        // nothing but may see the inputs' leakage back — leakage-level, evaluated (S29-A3).
+        const r = ok(o);
+        expect(r.components.U2!.state, at).toMatchObject({
+          gateOutput: 'low',
+          input_a: 'low',
+          input_b: 'low',
+          ...deltaIcc(2),
         });
+        expect(r.pins!.find((p) => p.gpio === 19)!.voltage, at).toBeCloseTo(0, 9);
+        expect(r.components.PSU1!.current!, at).toBeCloseTo(0, 12);
       }
   });
 

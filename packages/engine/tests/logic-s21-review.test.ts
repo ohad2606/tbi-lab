@@ -38,10 +38,11 @@ const hi = (b: Bench) => {
   return `${id}.positive`;
 };
 /**
- * Sprint 22 Q1 strict: where a gate input is NOT at 5.5 V or GND (a divider, a pull-up, an ESP32
- * pad, another gate's output) its I_CC is unbounded. Every level and output check is evaluated
- * first; only when all of them hold is the circuit refused by the supply's current limit — so
- * this refusal also asserts "every level guaranteed".
+ * Sprint 22 Q1 strict (the rule before S29-D1): where a gate input is NOT at 5.5 V or GND (a
+ * divider, a pull-up, an ESP32 pad, another gate's output) its I_CC is unbounded. Since S29-D1 an
+ * input within 0.6 V of GND or V_CC is bounded by ΔI_CC; one between those bands stays unbounded.
+ * Every level and output check is evaluated first; only when all of them hold is the circuit
+ * refused by the supply's current limit — so this refusal also asserts "every level guaranteed".
  */
 const limitOnly = { code: 'logic_supply_current_uncharacterized', detail: { check: 'limit' } };
 
@@ -662,12 +663,13 @@ describe('verification of ab8cbca (probes vprobe/undef, esp, outcur)', () => {
       const B = gate(b, 'low');
       res(b, r, `${A}.y`, `${B}.y`);
       res(b, 1e7, `${A}.y`, 'GND1.ref');
+      let C = '';
       if (reader) {
-        const C = b.add('logic.gate_and');
+        C = b.add('logic.gate_and');
         b.wire('PSU1.positive', `${C}.vcc`).wire(`${C}.gnd`, 'GND1.ref').wire(`${C}.b`, hi(b));
         b.wire(`${A}.y`, `${C}.a`);
       }
-      return { b, A, B };
+      return { b, A, B, C };
     };
     // Sprint 22 (Q5): A's OWN stronger side counts too — with both outputs at their rails the
     // resistor carries V_CC / R: 37.5 mA at 80 Ω (was 28.108 mA with A on its weakest curve).
@@ -684,10 +686,22 @@ describe('verification of ab8cbca (probes vprobe/undef, esp, outcur)', () => {
         // (+ the 10 MΩ bleed's 0.3 µA, + the reader's 5 µA leakage)
         expect((e!.detail as { value: number }).value).toBeCloseTo(3.0 / 80, 4);
       });
-      it(`R = 130 Ω${reader ? ' (+reader)' : ''}: at most 23.08 mA ≤ 24 mA → ${reader ? 'holds (Q1: the reader input on Y_A is off the I_CC condition → refused by the current limit only)' : 'runs'}`, () => {
-        const e = err(solve(tied(130, reader).b));
-        if (reader) expect(e).toMatchObject(limitOnly);
-        else expect(e).toBeNull();
+      it(`R = 130 Ω${reader ? ' (+reader)' : ''}: at most 23.08 mA ≤ 24 mA → ${reader ? 'holds and runs (S29-D1: the reader input on Y_A, ≥ 2.41 V on the guaranteed curve, is within 0.6 V of V_CC → I_CC ≤ 510 µA; before S29-D1 refused by the current limit only)' : 'runs'}`, () => {
+        const { b, A, C } = tied(130, reader);
+        const o = solve(b);
+        expect(err(o)).toBeNull();
+        if (!o.ok || !reader) return;
+        // Y_A on the guaranteed curve at ≈ 15.6 mA: between the 16 mA / 2.4 V point and V_CC − 0.1 V.
+        expect(o.components[A]!.terminals.y!).toBeGreaterThanOrEqual(3.0 - 0.6);
+        expect(o.components[C]!.state).toMatchObject({
+          gateOutput: 'high',
+          input_a: 'high',
+          input_b: 'high',
+          iccBasis: 'deltaIcc',
+          deltaIccA: 500e-6,
+          deltaIccInputs: 1,
+          iccMaxA: expect.closeTo(510e-6, 12),
+        });
       });
     }
   });

@@ -69,6 +69,8 @@ import {
   inputRowAt,
   outputGuaranteeAt,
   outputStageAt,
+  DELTA_ICC_BAND_V,
+  iccZones,
   quiescentAt,
   RAIL_V,
   TABULATED_VCC_TOLERANCE_V,
@@ -344,9 +346,15 @@ export function evaluateBounds(
       const m0 = c.margin(x0);
       sensOf.set(
         c.id,
-        perts.map((p, j) =>
-          isBand(p) || c.excludes?.(p) ? 0 : (c.margin(add(x0, dx0[j]!, H)) - m0) / H,
-        ),
+        perts.map((p, j) => {
+          if (isBand(p) || c.excludes?.(p)) return 0;
+          // S29: two-sided. At a kink — an output stage at zero current, forward-only (pwl.ts) —
+          // one side of the step sees the open reverse segment and no response; the side with the
+          // larger response (and its sign) is the one a corner must be able to choose.
+          const up = (c.margin(add(x0, dx0[j]!, H)) - m0) / H;
+          const down = (m0 - c.margin(add(x0, dx0[j]!, -H))) / H;
+          return Math.abs(down) > Math.abs(up) ? down : up;
+        }),
       );
     }
     if (!bandIdx.length || !cs.length) return null;
@@ -709,6 +717,28 @@ type CornerOutcome =
  * ideal source at its guaranteed level or its rail (Sprint 22 review F2: never a typical drive
  * resistance). `forced`: a source held for this check (a supply at its setpoint).
  */
+/**
+ * Owner decision S29-A3 (leakage-level tolerance): the largest current that datasheet leakages
+ * alone can make flow anywhere in the circuit — the sum, over every leakage current (an input's
+ * I_I counted once whichever pin it returns through, I_off, ESP32 pad I_IH/I_IL), of its
+ * magnitude. A gate output (held at its rail, S22-Q5) or a CV bench supply whose reverse current at
+ * a corner is no larger than this is evaluated at that corner, not refused; anything larger (two
+ * drivers fighting, a load back-feeding a supply) stays refused. An engineering assumption, not a
+ * datasheet figure.
+ */
+export function leakageBudget(perts: readonly Perturbation[]): number {
+  const seen = new Set<string>();
+  let sum = 0;
+  for (const p of perts) {
+    if (!(p.kind === 'ii' || p.kind === 'ioff' || p.kind === 'padleak') || !p.range) continue;
+    const key = p.group ?? p.id;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    sum += Math.max(Math.abs(p.range[0]), Math.abs(p.range[1]));
+  }
+  return sum;
+}
+
 function solveCorner(
   solver: BoundsSolver,
   perts: readonly Perturbation[],
@@ -721,6 +751,7 @@ function solveCorner(
     { st: StageRef; mode: 'bound' | 'rail'; atA: number; volts: number }
   >();
   const padSources: CornerSpec['stages'] = [];
+  const budget = leakageBudget(perts);
   const stageOf = new Map<number, number>();
   const outNode = new Map<string, string>();
   const parallel: string[] = [];
@@ -792,6 +823,8 @@ function solveCorner(
           moved = true;
           continue;
         }
+        // S29-A3: a leakage-level reverse current leaves the output at its rail (evaluated).
+        if (-i <= budget + 1e-12) continue;
         corner.release();
         return { kind: 'beyond', output: s.st.key, current: i };
       }
@@ -862,6 +895,8 @@ export function buildBounds(
   access: BoundsAccess,
   x0: readonly number[],
   ref: string,
+  /** S29-D1: parts bounded on the ΔI_CC basis (re-evaluated after a strict test-condition refusal). */
+  deltaBasis: ReadonlySet<string> = new Set(),
 ): {
   perts: Perturbation[];
   checks: Check[];
@@ -895,6 +930,7 @@ export function buildBounds(
       card,
       s.vcc,
       s.inputs.map((i) => vin(s, i.node, x0)),
+      deltaBasis.has(s.component),
     );
     const leakIn =
       s.vcc >= card.iiVcc[0] - TABULATED_VCC_TOLERANCE_V &&
@@ -1130,6 +1166,7 @@ export function buildBounds(
   // Sprint 22 review 3: the bench-supply model cannot SINK current (devices.ts LabPsu: "no
   // current sinking"). A CV supply that would have to absorb current at any corner — a µA of
   // leakage returning into it included — is refused by name. Signed: the delivered current.
+  let budget: number | undefined;
   for (const p of psus)
     if (p.cv)
       checks.push({
@@ -1138,10 +1175,12 @@ export function buildBounds(
         unit: 'A',
         component: p.id,
         pin: 'sink',
-        margin: (x) => access.supply(x, p.key) + 1e-12,
+        // S29-A3: a supply absorbing no more than the circuit's datasheet leakages is evaluated
+        // (the leakage-level tolerance); any larger current into it stays refused.
+        margin: (x) => access.supply(x, p.key) + (budget ??= leakageBudget(perts)) + 1e-12,
         value: (x) => -access.supply(x, p.key),
         forced: { key: p.key, plus: p.plus, minus: p.minus, volts: p.setpointV },
-        detail: {},
+        detail: { tolerance: 'leakage' },
       });
 
   // Review item 3: an ESP32 input that reads a logic output must read a GUARANTEED level against
@@ -1230,6 +1269,14 @@ export function buildBounds(
         const limitOf = (_sp: LogicBoundSpec) => (psu ? { check: 'limit', psu } : {});
         const names = psu ? { alsoNames: [psu] } : {};
         const high = card.iccInputHigh === 'vcc' ? null : card.iccInputHigh;
+        // S29-D1: with the ΔI_CC bound, the supply must stay in both rows and every input in its
+        // zone (the bound counts every zoned input; a corner may move one within its zone).
+        const v0 = s.inputs.map((i) => vin(s, i.node, x0));
+        const q0 = quiescentAt(card, s.vcc, v0, deltaBasis.has(s.component));
+        const delta = 'iccBasis' in q0 && q0.iccBasis === 'deltaIcc';
+        const zones = delta ? iccZones(card, s.vcc!, v0) : null;
+        const vccLo = delta ? Math.max(card.iccVcc[0], card.deltaIccVcc[0]) : card.iccVcc[0];
+        const vccHi = delta ? Math.min(card.iccVcc[1], card.deltaIccVcc[1]) : card.iccVcc[1];
         const out: Check[] = (['low', 'high'] as const).map((side) => ({
           id: `icc-supply:${s.component}${side === 'high' ? ':high' : ''}`,
           kind: 'iccCondition' as const,
@@ -1241,53 +1288,88 @@ export function buildBounds(
           margin: (x: readonly number[]) => {
             const v = vccAt(s, x);
             return side === 'low'
-              ? v - (card.iccVcc[0] - TABULATED_VCC_TOLERANCE_V)
-              : card.iccVcc[1] + TABULATED_VCC_TOLERANCE_V - v;
+              ? v - (vccLo - TABULATED_VCC_TOLERANCE_V)
+              : vccHi + TABULATED_VCC_TOLERANCE_V - v;
           },
           value: (x: readonly number[]) => vccAt(s, x),
           detail: { vcc: s.vcc, condition: 'notSupply', ...limitOf(s) },
         }));
-        for (const i of s.inputs) {
-          const low = Math.abs(vin(s, i.node, x0)) <= RAIL_V;
-          const target = (x: readonly number[]) => (low ? 0 : (high ?? vccAt(s, x)));
-          // Two one-sided checks (each monotone; |V_I − target| is not, and its corner could pick
-          // the side a driving output cannot reach): first the side INTO the input range (a LOW
-          // input rising, a HIGH input falling — where a driving gate's band lies), then the side
-          // beyond the rail (only a resistance with leakage moves it there).
-          const sides = low ? [1, -1] : [-1, 1];
-          for (const side of sides)
-            out.push({
-              id: `icc-input:${s.component}:${i.pin}:${side > 0 ? 'up' : 'down'}`,
-              kind: 'iccCondition',
-              unit: 'V',
-              component: s.component,
-              ...names,
-              part: s.part,
-              pin: i.pin,
-              margin: (x) => RAIL_V - side * (vin(s, i.node, x) - target(x)),
-              value: (x) => vin(s, i.node, x),
-              detail: { vcc: s.vcc, condition: 'notInputs', ...limitOf(s) },
-            });
-        }
+        if (zones)
+          for (const [k, i] of s.inputs.entries()) {
+            const z = zones[k]!;
+            // Bounds of the zone, as functions of the corner (the high band follows V_CC).
+            const lo = (x: readonly number[]) =>
+              z === 'test'
+                ? high! - RAIL_V
+                : z === 'low'
+                  ? -DELTA_ICC_BAND_V
+                  : vccAt(s, x) - DELTA_ICC_BAND_V;
+            const hi = (x: readonly number[]) =>
+              z === 'test'
+                ? high! + RAIL_V
+                : z === 'low'
+                  ? DELTA_ICC_BAND_V
+                  : vccAt(s, x) + DELTA_ICC_BAND_V;
+            for (const side of [1, -1])
+              out.push({
+                id: `icc-input:${s.component}:${i.pin}:${side > 0 ? 'up' : 'down'}`,
+                kind: 'iccCondition',
+                unit: 'V',
+                component: s.component,
+                ...names,
+                part: s.part,
+                pin: i.pin,
+                margin: (x) => (side > 0 ? hi(x) - vin(s, i.node, x) : vin(s, i.node, x) - lo(x)),
+                value: (x) => vin(s, i.node, x),
+                detail: { vcc: s.vcc, condition: 'notInputs', ...limitOf(s) },
+              });
+          }
+        else
+          for (const i of s.inputs) {
+            const low = Math.abs(vin(s, i.node, x0)) <= RAIL_V;
+            const target = (x: readonly number[]) => (low ? 0 : (high ?? vccAt(s, x)));
+            // Two one-sided checks (each monotone; |V_I − target| is not, and its corner could pick
+            // the side a driving output cannot reach): first the side INTO the input range (a LOW
+            // input rising, a HIGH input falling — where a driving gate's band lies), then the side
+            // beyond the rail (only a resistance with leakage moves it there).
+            const sides = low ? [1, -1] : [-1, 1];
+            for (const side of sides)
+              out.push({
+                id: `icc-input:${s.component}:${i.pin}:${side > 0 ? 'up' : 'down'}`,
+                kind: 'iccCondition',
+                unit: 'V',
+                component: s.component,
+                ...names,
+                part: s.part,
+                pin: i.pin,
+                margin: (x) => RAIL_V - side * (vin(s, i.node, x) - target(x)),
+                value: (x) => vin(s, i.node, x),
+                detail: { vcc: s.vcc, condition: 'notInputs', ...limitOf(s) },
+              });
+          }
         // Sprint 22 review 3: where the sheet has no power rule for a loaded output (the
         // SN74LVC08A: I_CC only at I_O = 0), every output must carry no current at every corner
         // (a downstream input's leakage is a load too); otherwise the I_CC bound is not
         // established — refused by name (owner question Q9).
         if (!card.iccLoadedRule)
           for (const o of s.outputs)
-            out.push({
-              id: `icc-load:${s.component}:${o.pin}`,
-              kind: 'iccLoad',
-              unit: 'A',
-              component: s.component,
-              ...names,
-              part: s.part,
-              pin: o.pin,
-              code: 'logic_supply_current_uncharacterized',
-              margin: (x) => 1e-12 - Math.abs(access.device(x, o.key)),
-              value: (x) => Math.abs(access.device(x, o.key)),
-              detail: { vcc: s.vcc, condition: 'loaded', ...limitOf(s) },
-            });
+            // S29 (review of D1): two one-sided checks — |I| is not monotone at I = 0, so one
+            // check could choose no adverse side and let a LOW output carry a downstream input's
+            // leakage unrefused (exposed once D1 removed the earlier I_CC refusal).
+            for (const dir of [1, -1] as const)
+              out.push({
+                id: `icc-load:${s.component}:${o.pin}${dir > 0 ? '' : ':reverse'}`,
+                kind: 'iccLoad',
+                unit: 'A',
+                component: s.component,
+                ...names,
+                part: s.part,
+                pin: o.pin,
+                code: 'logic_supply_current_uncharacterized',
+                margin: (x) => 1e-12 - dir * access.device(x, o.key),
+                value: (x) => Math.abs(access.device(x, o.key)),
+                detail: { vcc: s.vcc, condition: 'loaded', ...limitOf(s) },
+              });
         return out;
       }),
   ];

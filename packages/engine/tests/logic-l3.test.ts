@@ -191,8 +191,8 @@ const load = (b: Bench, from: string, ohms: number) => {
 
 describe('SN74LVC08A in the solve: four gates, one shared supply', () => {
   // Sprint 22 Q1 strict: the SN74LVC08A's I_CC is bounded only at V_CC = 3.6 V with every input
-  // at V_CC or GND (SCAS283W §5.7), and the supply's current-limit check needs it: the solve
-  // tests run there. At 3.6 V only the ±100 µA point is guaranteed (§5.7: V_OH ≥ V_CC − 0.2 V,
+  // at V_CC or GND (SCAS283W §5.7; since S29-D1 also with every input within 0.6 V of a rail, by
+  // I_CC + ΔI_CC), and the supply's current-limit check needs it: the solve tests run there. At 3.6 V only the ±100 µA point is guaranteed (§5.7: V_OH ≥ V_CC − 0.2 V,
   // V_OL ≤ 0.2 V), so the loads are 100 kΩ: drop = 0.2 V / 100 µA × I = 2 kΩ × I.
   // Sprint 22 review 3: SCAS283W gives I_CC only at I_O = 0 and has no rule for a loaded output
   // (unlike the 1G §8.2.1.1): an output carrying current takes the package off its I_CC test
@@ -267,7 +267,7 @@ describe('SN74LVC08A in the solve: four gates, one shared supply', () => {
     }
   });
 
-  it('a chain between gates of the SAME package settles (not feedback): 1Y → 2A', () => {
+  it("a chain between gates of the SAME package settles (not feedback): 1Y → 2A; at 3.6 V 2A is bounded by ΔI_CC (S29-D1), and 1Y carrying 2A's I_I is refused as a loaded output (Q9)", () => {
     // Sprint 21: 2A is held by gate 1's output stage (a non-zero resistance), so its level needs
     // the input leakage bound, which SCAS283W §5.7 gives only at V_CC = 3.6 V (S21-Q2).
     const at30 = quad(3.0, ['a1', 'b1', 'b2', 'a3', 'b3', 'a4', 'b4'], []);
@@ -277,18 +277,25 @@ describe('SN74LVC08A in the solve: four gates, one shared supply', () => {
       code: 'logic_input_leakage_uncharacterized',
       param: 'a2',
     });
-    // At 3.6 V (±100 µA row only: a 100 kΩ load) the chain settles. Sprint 22 Q1 strict: 2A sits
-    // at 1Y, guaranteed only ≥ V_CC − 0.2 V = 3.4 V — not within 1 mV of V_CC — so the package's
-    // I_CC leaves its §5.7 test condition and PSU1's current limit is refused by that name, with
-    // 2A named (the settle and the level checks ran first: a feedback would be refused before).
+    // At 3.6 V (±100 µA row only: a 100 kΩ load) the chain settles. 2A sits at 1Y, guaranteed
+    // only ≥ V_CC − 0.2 V = 3.4 V — not within 1 mV of V_CC: before S29-D1 (Q1 strict) PSU1's
+    // current limit was refused naming 2A. S29-D1: 3.4 V is within 0.6 V of V_CC, so 2A no longer
+    // fails the I_CC input condition; but 1Y then carries 2A's I_I (±5 µA), and SCAS283W gives
+    // I_CC only at I_O = 0 → refused by name, naming 1Y (Sprint 22 review 3, Q9). The settle and
+    // the level checks ran first: a feedback would be refused before.
     const { b, u } = quad(3.6, ['a1', 'b1', 'b2', 'a3', 'b3', 'a4', 'b4'], []);
     b.wire(`${u}.y1`, `${u}.a2`);
     load(b, `${u}.y2`, 100_000);
     expect(fails(solve(b))).toMatchObject({
       code: 'logic_supply_current_uncharacterized',
       components: [u, 'PSU1'],
-      param: 'a2',
-      detail: { part: 'SN74LVC08A', condition: 'notInputs', check: 'limit' },
+      param: 'y1',
+      detail: {
+        part: 'SN74LVC08A',
+        condition: 'loaded',
+        check: 'limit',
+        worst: expect.closeTo(5e-6, 12),
+      },
     });
   });
 });

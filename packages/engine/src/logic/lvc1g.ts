@@ -334,16 +334,38 @@ export function outputStageAt(
 export const RAIL_V = 1e-3;
 
 /**
+ * Owner decision S29-D1: the band below V_CC (and above GND) where an input's supply-current
+ * increment is bounded by the datasheet ΔI_CC, whose test point is "one input at V_CC − 0.6 V".
+ */
+export const DELTA_ICC_BAND_V = 0.6;
+
+/** Where an input sits for the quiescent-current bound (S29-D1). */
+export type IccZone = 'test' | 'low' | 'high';
+
+/**
  * Sprint 20: the quiescent supply current as the datasheet states it. I_CC is a known bound only
  * under its own test conditions (the supply within `iccVcc`, every input at GND or at
- * `iccInputHigh`); otherwise it is NOT characterized — never reported as known — and ΔI_CC is
- * shown only where its row applies. The solve never includes I_CC.
+ * `iccInputHigh`); the solve never includes I_CC.
+ *
+ * Owner decision S29-D1 (ΔI_CC bound): when an input is off those test voltages but within
+ * DELTA_ICC_BAND_V of GND or below V_CC, and the supply is in both the I_CC and the ΔI_CC rows, the
+ * quiescent current is bounded by I_CC + ΔI_CC for EVERY input in such a band (including inputs at
+ * GND: a corner may move them). Two named engineering assumptions, not datasheet figures:
+ * - A1 monotonic: a CMOS input's supply-current increment falls monotonically from the threshold
+ *   region toward the rail, so the V_CC − 0.6 V test point bounds the band nearer V_CC;
+ * - A2 GND side: the same ΔI_CC bounds an input within 0.6 V of GND (the sheets tabulate only the
+ *   V_CC side).
+ * An input between the bands stays NOT characterized.
  */
 export function quiescentAt(
   card: LogicCard,
   vcc: number | null,
   inputVolts: readonly (number | null)[],
-): { iccMaxA: number } | { iccCondition: 'notInputs' | 'notSupply'; deltaIccA?: number } {
+  /** S29-D1: use the ΔI_CC basis even with every input at a test voltage (a corner may move one). */
+  forceDelta = false,
+):
+  | { iccMaxA: number; iccBasis?: 'deltaIcc'; deltaIccA?: number; deltaIccInputs?: number }
+  | { iccCondition: 'notInputs' | 'notSupply'; deltaIccA?: number } {
   if (vcc === null) return { iccCondition: 'notSupply' };
   const inSupply =
     vcc >= card.iccVcc[0] - TABULATED_VCC_TOLERANCE_V &&
@@ -352,13 +374,49 @@ export function quiescentAt(
   const atTest = inputVolts.every(
     (v) => v !== null && (Math.abs(v) <= RAIL_V || Math.abs(v - high) <= RAIL_V),
   );
-  if (inSupply && atTest) return { iccMaxA: card.iccMaxA };
-  const delta =
+  if (inSupply && atTest && !forceDelta) return { iccMaxA: card.iccMaxA };
+  const inDelta =
     vcc >= card.deltaIccVcc[0] - TABULATED_VCC_TOLERANCE_V &&
-    vcc <= card.deltaIccVcc[1] + TABULATED_VCC_TOLERANCE_V
-      ? { deltaIccA: card.deltaIccA }
-      : {};
-  return { iccCondition: inSupply ? 'notInputs' : 'notSupply', ...delta };
+    vcc <= card.deltaIccVcc[1] + TABULATED_VCC_TOLERANCE_V;
+  if (inSupply && inDelta) {
+    const zones = iccZones(card, vcc, inputVolts);
+    if (zones) {
+      const n = zones.filter((z) => z !== 'test').length;
+      return {
+        iccMaxA: card.iccMaxA + n * card.deltaIccA,
+        iccBasis: 'deltaIcc',
+        deltaIccA: card.deltaIccA,
+        deltaIccInputs: n,
+      };
+    }
+  }
+  return {
+    iccCondition: inSupply ? 'notInputs' : 'notSupply',
+    ...(inDelta ? { deltaIccA: card.deltaIccA } : {}),
+  };
+}
+
+/**
+ * S29-D1: each input's zone for the ΔI_CC bound — 'test' only at a high test voltage that is not
+ * V_CC (the 1G sheets' 5.5 V), else 'low' (within 0.6 V of GND) or 'high' (within 0.6 V of V_CC):
+ * "an input within 0.6 V of a rail", as decided; null in neither (not characterized). The input's
+ * recommended range (0 … 5.5 V) is checked on its own.
+ */
+export function iccZones(
+  card: LogicCard,
+  vcc: number,
+  inputVolts: readonly (number | null)[],
+): IccZone[] | null {
+  const zones: IccZone[] = [];
+  for (const v of inputVolts) {
+    if (v === null) return null;
+    if (card.iccInputHigh !== 'vcc' && Math.abs(v - card.iccInputHigh) <= RAIL_V)
+      zones.push('test');
+    else if (Math.abs(v) <= DELTA_ICC_BAND_V) zones.push('low');
+    else if (Math.abs(v - vcc) <= DELTA_ICC_BAND_V) zones.push('high');
+    else return null;
+  }
+  return zones;
 }
 
 /**

@@ -229,6 +229,22 @@ const ENGINE_ROWS: ProvenanceRow[] = [
     'I_CC condition (logic/lvc1g.ts quiescentAt, bounds.ts icc-input checks); shown to users as "engine tolerance 1 mV"',
   ],
   [
+    'DELTA_ICC_BAND_V',
+    0.6,
+    'V',
+    'owner decision S29-D1: an input within 0.6 V of GND or of V_CC (off the I_CC test voltages) is bounded by I_CC + ΔI_CC per such input, with the supply in both the I_CC and the ΔI_CC rows. A1: a CMOS input’s supply-current increment falls monotonically toward the rail, so the "one input at V_CC − 0.6 V" test point bounds the band; A2: the same bound on the GND side (the sheets tabulate only V_CC − 0.6 V); a band edge beyond the rail (input leakage across a resistance) is the same distance',
+    'assumption',
+    'logic/lvc1g.ts quiescentAt, iccZones; bounds.ts icc-input zone checks; session.ts ΔI_CC re-evaluation',
+  ],
+  [
+    'LEAKAGE_LEVEL_REVERSE',
+    0,
+    'A',
+    'owner decision S29-A3: a gate output (held at its rail, S22-Q5) or a CV bench supply whose reverse current at a corner is no larger than the sum of the circuit’s datasheet leakages (each input’s I_I once, I_off, ESP32 I_IH/I_IL) is evaluated at that corner, not refused; any larger reverse current stays refused',
+    'assumption',
+    'bounds.ts leakageBudget: solveCorner wrong-way stage, psu-sink check',
+  ],
+  [
     'UNPOWERED_V',
     1e-3,
     'V',

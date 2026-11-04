@@ -32,6 +32,13 @@ const ok = (o: SolveOutcome): SolveSuccess => {
   if (!o.ok) throw new Error(`expected success, got ${JSON.stringify(o.error)}`);
   return o;
 };
+/** S29-D1: the ΔI_CC bound — I_CC 10 µA + ΔI_CC 500 µA for each of `n` inputs in a 0.6 V band. */
+const deltaIcc = (n: number) => ({
+  iccBasis: 'deltaIcc',
+  deltaIccA: 500e-6,
+  deltaIccInputs: n,
+  iccMaxA: expect.closeTo(10e-6 + n * 500e-6, 12),
+});
 const fails = (o: SolveOutcome) => {
   if (o.ok) throw new Error('expected a refusal');
   return o.error;
@@ -97,42 +104,57 @@ describe('A1: a cascade on a rail behind a series supply element settles (was lo
   // (logic_supply_undriven, below); switch and resistor feeds are resistive/source paths.
   // Sprint 21 (guarantee bounds): a feed through a RESISTOR now also needs the gate's quiescent
   // current bounded (I_CC only with every input at 5.5 V or GND for the 1G sheets, at 3.6 V with
-  // inputs at V_CC or GND for the 08A): inputs tied to the 3.3 V rail are not that condition, so
-  // the resistor feed is refused by name; direct and switch feeds are stiff and still settle.
+  // inputs at V_CC or GND for the 08A): before S29-D1 inputs tied to the 3.3 V rail were not that
+  // condition, so the resistor feed was refused by name. S29-D1: inputs within 0.6 V of V_CC or
+  // GND are bounded by I_CC + ΔI_CC, so the 1G resistor feeds run too; the 08A's I_CC row is
+  // 3.6 V exactly, so its resistor feed is still refused.
   // The package runs at 3.6 V: its input leakage (needed for 1Y → 2A, held by gate 1's output
   // stage) is specified only there (SCAS283W §5.7, owner question S21-Q2).
   const cases: Series[] = ['direct', 'switch'];
   for (const series of cases) {
-    // Sprint 22 Q1 strict: a cascaded input sits at a gate output (guaranteed only within its
-    // V_OH/V_OL band, never within 1 mV of a rail), so the downstream I_CC leaves its test
-    // condition and PSU1's current limit is refused by name. That refusal comes from the
-    // guarantee bounds, which run only after the settle converged: the cascade settles (no
-    // logic_unknown_state / supply undriven), and every level check held first.
-    it(`two SN74LVC1G08, U1.Y → U2.A, rail via ${series}: settles; refused by the current limit (Q1)`, () => {
-      const { b } = singles(series, 3.3);
-      expect(fails(solve(b))).toMatchObject({
-        code: 'logic_supply_current_uncharacterized',
-        detail: { check: 'limit' },
-      });
+    // A cascaded input sits at a gate output (guaranteed only within its V_OH/V_OL band, never
+    // within 1 mV of a rail): before S29-D1 (Q1 strict) PSU1's current limit was refused by name.
+    // S29-D1: the band lies within 0.6 V of the rail, as do the inputs on the 3.3 V rail → every
+    // 1G is bounded by 10 µA + 2 × 500 µA and the cascade runs (it settled: no
+    // logic_unknown_state / supply undriven). The 08A's 1Y then carries 2A's I_I: SCAS283W gives
+    // I_CC only at I_O = 0 → refused by name, naming 1Y (Q9), after every level check held.
+    it(`two SN74LVC1G08, U1.Y → U2.A, rail via ${series}: settles; bounded by ΔI_CC (S29-D1) → runs, each I_CC ≤ 1.01 mA`, () => {
+      const { b, u1, u2 } = singles(series, 3.3);
+      const o = ok(solve(b));
+      for (const u of [u1, u2])
+        expect(o.components[u]!.state, u).toMatchObject({
+          gateOutput: 'high',
+          input_a: 'high',
+          input_b: 'high',
+          supplyV: 3.3,
+          ...deltaIcc(2),
+        });
     });
-    it(`SN74LVC08A, 1Y → 2A, rail via ${series} (3.6 V): settles; refused by the current limit at 2A (Q1)`, () => {
+    it(`SN74LVC08A, 1Y → 2A, rail via ${series} (3.6 V): settles; 2A bounded by ΔI_CC (S29-D1), refused as 1Y loaded by 2A's I_I (Q9)`, () => {
       const { b, u } = pkg(series, 3.6);
       expect(fails(solve(b))).toMatchObject({
         code: 'logic_supply_current_uncharacterized',
         components: [u, 'PSU1'],
-        param: 'a2',
-        detail: { check: 'limit', condition: 'notInputs' },
+        param: 'y1',
+        detail: { check: 'limit', condition: 'loaded', worst: expect.closeTo(5e-6, 12) },
       });
     });
   }
-  it('two SN74LVC1G08 via 10 Ω, inputs on the rail: I_CC has no bound there → refused (Sprint 21)', () => {
-    const { b, u1 } = singles('resistor', 3.3);
-    expect(fails(solve(b))).toMatchObject({
-      code: 'logic_supply_current_uncharacterized',
-      components: [u1],
-      param: 'vcc',
-      detail: { condition: 'notInputs' },
-    });
+  it('two SN74LVC1G08 via 10 Ω, inputs on the rail: no strict I_CC bound there (refused in Sprint 21), bounded by ΔI_CC (S29-D1): 10 Ω × (330 µA + 2 × 1.01 mA + leakage) ≈ 24 mV keeps V_CC in its row → runs', () => {
+    const { b, u1, u2 } = singles('resistor', 3.3);
+    const o = ok(solve(b));
+    for (const u of [u1, u2]) {
+      expect(o.components[u]!.state, u).toMatchObject({
+        gateOutput: 'high',
+        input_a: 'high',
+        input_b: 'high',
+        ...deltaIcc(2),
+      });
+      // V_CC = 3.3 V − 10 Ω × the solved feed current (the 10 kΩ load and bleeder; I_CC is a bound).
+      const v = (o.components[u]!.state as { supplyV: number }).supplyV;
+      expect(v).toBeLessThan(3.3);
+      expect(v).toBeGreaterThan(3.29);
+    }
   });
   it('SN74LVC08A via 10 Ω at 3.6 V: the I_CC row is 3.6 V exactly, any drop leaves it → refused (Sprint 21)', () => {
     const { b, u } = pkg('resistor', 3.6);
@@ -142,7 +164,7 @@ describe('A1: a cascade on a rail behind a series supply element settles (was lo
     });
   });
 
-  it('U1 behind 10 Ω and U2 on PSU+ directly (probe7): U1 refused, its I_CC has no bound (Sprint 21)', () => {
+  it('U1 behind 10 Ω and U2 on PSU+ directly (probe7): U1 (refused in Sprint 21, no strict I_CC bound) bounded by ΔI_CC (S29-D1) → runs, both ≤ 1.01 mA', () => {
     const { b, rail } = railBench('resistor', 3.3);
     const u1 = b.add('logic.gate_and');
     const u2 = b.add('logic.gate_and');
@@ -154,10 +176,14 @@ describe('A1: a cascade on a rail behind a series supply element settles (was lo
       .wire(`${u2}.gnd`, 'GND1.ref')
       .wire(`${u2}.b`, 'PSU1.positive');
     b.wire(`${u1}.y`, `${u2}.a`).wire(`${u2}.y`, `${rl}.a`).wire(`${rl}.b`, 'GND1.ref');
-    expect(fails(solve(b))).toMatchObject({
-      code: 'logic_supply_current_uncharacterized',
-      components: [u1],
-    });
+    const o = ok(solve(b));
+    for (const u of [u1, u2])
+      expect(o.components[u]!.state, u).toMatchObject({
+        gateOutput: 'high',
+        input_a: 'high',
+        input_b: 'high',
+        ...deltaIcc(2),
+      });
   });
 
   it('a GENUINELY unknown supply is still refused: a gate powered from another gate whose input is undefined', () => {
@@ -389,22 +415,22 @@ describe('A2: unpowered output-capable parts drive nothing (owner policy: unpowe
       .wire(`${g}.b`, `${hi}.positive`);
     b.wire('PSU1.positive', `${p}.vcc`).wire(`${p}.gnd`, 'GND1.ref').wire(`${p}.out`, `${g}.a`);
     b.set(p, 'motion', true);
-    // Driven (never floating): a guaranteed HIGH. Sprint 22 Q1 strict: 3.3 V through R14 is not
-    // the I_CC test voltage (5.5 V), so PSU2's current limit (the gate's supply) is refused by
-    // name — deferred, i.e. after A's level check held.
-    expect(fails(solve(b))).toMatchObject({
-      code: 'logic_supply_current_uncharacterized',
-      components: [g, p2],
-      detail: { check: 'limit', condition: 'notInputs' },
+    // Driven (never floating): a guaranteed HIGH. 3.3 V through R14 is not the I_CC test voltage
+    // (5.5 V; before S29-D1, Q1 strict: PSU2's current limit refused by name), but within 0.6 V of
+    // V_CC = 3.0 V → bounded by ΔI_CC (S29-D1): runs, I_CC ≤ 510 µA.
+    expect(ok(solve(b)).components[g]!.state).toMatchObject({
+      gateOutput: 'high',
+      input_a: 'high',
+      input_b: 'high',
+      ...deltaIcc(1),
     });
-    // Without motion: LOW through R14 to the module's GND — driven, a real LOW, but the input
-    // leakage × 1 kΩ (≤ 5 mV) is not within 1 mV of GND: refused by the same name, naming A.
+    // Without motion: LOW through R14 to the module's GND — driven, a real LOW; the input leakage
+    // × 1 kΩ (≤ 5 mV) is not within 1 mV of GND (refused before S29-D1) but within 0.6 V → runs.
     b.set(p, 'motion', false);
-    expect(fails(solve(b))).toMatchObject({
-      code: 'logic_supply_current_uncharacterized',
-      components: [g, 'PSU2'],
-      param: 'a',
-      detail: { check: 'limit', condition: 'notInputs' },
+    expect(ok(solve(b)).components[g]!.state).toMatchObject({
+      gateOutput: 'low',
+      input_a: 'low',
+      ...deltaIcc(1),
     });
   });
 
@@ -442,14 +468,13 @@ describe('A2: unpowered output-capable parts drive nothing (owner policy: unpowe
     const { b, g } = base(3.3);
     const z = b.add('component.photoresistor');
     b.wire(`${z}.a`, `${g}.a`).wire(`${z}.b`, 'GND1.ref');
-    // Sprint 22 Q1 strict: the input leakage × the photoresistor's resistance moves A more than
-    // 1 mV off GND, so I_CC leaves its test condition: refused by the current limit, naming A
-    // (a resistive driver, not floating; the LOW level check held first).
-    expect(fails(solve(b))).toMatchObject({
-      code: 'logic_supply_current_uncharacterized',
-      components: [g, 'PSU1'],
-      param: 'a',
-      detail: { check: 'limit' },
+    // The input leakage × the photoresistor's resistance moves A more than 1 mV off GND (before
+    // S29-D1, Q1 strict: refused by the current limit, naming A) but not past 0.6 V → bounded by
+    // ΔI_CC (S29-D1): a resistive driver, not floating — a real LOW, runs.
+    expect(ok(solve(b)).components[g]!.state).toMatchObject({
+      gateOutput: 'low',
+      input_a: 'low',
+      ...deltaIcc(1),
     });
   });
 

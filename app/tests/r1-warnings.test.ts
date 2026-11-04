@@ -56,7 +56,8 @@ describe('no shipped example raises a pad over-voltage warning (T-D3)', () => {
             out.error.code === 'logic_mcu_output_uncharacterized' ||
             // Sprint 22 Q1 (strict): a gate input that is never at 5.5 V or exactly GND (an
             // ESP32 pad's level, a pull-down's leakage drop): I_CC unbounded, the supply's current
-            // limit refused by name.
+            // limit refused by name. Since S29-D1 only where an input lies between the ΔI_CC
+            // bands or the 08A output is loaded (Q9).
             out.error.code === 'logic_supply_current_uncharacterized' ||
             // Sprint 22 review F2/F7: the read-back pad driven onto the gate output (two drivers
             // on one net).
@@ -80,11 +81,16 @@ describe('no shipped example raises a pad over-voltage warning (T-D3)', () => {
       // and driven HIGH (3.3 V) against its HIGH at 3.0 V: Y forced above the gate's own V_CC, a
       // wrong-way current no test point covers (1).
       const expected: Record<string, number> = {
-        // Sprint 22 Q1 (strict): every combination of the three ESP32 logic examples is refused.
-        'esp32-logic-and': 9,
-        'esp32-logic-override': 9,
+        // Sprint 22 Q1 (strict): every combination of the three ESP32 logic examples was refused.
+        // S29-D1: #0 (every pad an input: the gate inputs on their 10 kΩ pull-downs, ≈ 50 mV,
+        // within 0.6 V of GND → I_CC bounded by ΔI_CC) now runs in esp32-logic-and and
+        // esp32-logic-override; the SN74LVC08A example stays refused at 3.0 V (I_I, S21-Q2).
+        'esp32-logic-and': 8,
+        'esp32-logic-override': 8,
         'esp32-logic-quad-and': 9,
       };
       expect(refused, `${e.id} ${refusedAt}`).toBe(expected[e.id] ?? 0);
+      if (e.id === 'esp32-logic-and' || e.id === 'esp32-logic-override')
+        expect(refusedAt, e.id).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
     });
 });

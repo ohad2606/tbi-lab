@@ -43,9 +43,9 @@ describe('X1: ESP32 + AND gate + read-back (golden)', () => {
     // leakage level the ESP32's load-less V_OH guarantee is relied on at (item 5); Y HIGH into the
     // LED is guaranteed only ≥ 2.4 V, below the read-back pad's V_IH 2.475 V (item 3). Those states
     // are refused by name. GPIO18 LOW: every level holds (the gate's LOW is guaranteed ≤ 0.1 V),
-    // but Sprint 22 Q1 (strict): input A is GPIO18's LOW, guaranteed only ≤ 0.1 × VDD = 0.33 V,
-    // not within 1 mV of GND — the gate's I_CC (bounded only with every input at 5.5 V or GND,
-    // §5.5) is unbounded, and the supply's current limit is refused by name.
+    // but GPIO18's LOW carries more than leakage into the 10 kΩ pull-down (review F2, below).
+    // Before S29-D1 (Q1 strict) a gate input off 5.5 V / GND by more than 1 mV also refused the
+    // supply's current limit; S29-D1 bounds an input within 0.6 V of GND or V_CC by ΔI_CC.
     const { s } = session(X1);
     for (const b of [false, true]) {
       s.setPinMode(18, 'output-low');
@@ -73,15 +73,23 @@ describe('X1: ESP32 + AND gate + read-back (golden)', () => {
       );
     }
     // Before setup() (GPIO18 an input): A sits on its 10 kΩ pull-down, 5 µA × 10 kΩ + the pad's
-    // 50 nA leakage ≈ 50.5 mV off GND: refused the same way. The same inputs, the same answer.
+    // 50 nA leakage ≈ 50.5 mV off GND, B on its pull-down (button released). Before S29-D1 (Q1
+    // strict) refused by the current limit; S29-D1: both within 0.6 V of GND → I_CC ≤ 10 µA +
+    // 2 × 500 µA: Y LOW, the LED off, GPIO4 reads LOW. The same inputs, the same answer.
     s.setPinMode(18, 'input');
     s.setMomentary('SW1', false);
     const pre = s.solve();
-    expect(pre.ok ? null : pre.error).toMatchObject({
-      code: 'logic_supply_current_uncharacterized',
-      param: 'a',
-      detail: { check: 'limit' },
+    if (!pre.ok) throw new Error(JSON.stringify(pre.error));
+    expect(pre.components.U2!.state).toMatchObject({
+      gateOutput: 'low',
+      input_a: 'low',
+      input_b: 'low',
+      iccBasis: 'deltaIcc',
+      deltaIccA: 500e-6,
+      deltaIccInputs: 2,
+      iccMaxA: expect.closeTo(1.01e-3, 12),
     });
+    expect(pre.pins!.find((p) => p.gpio === 4)!.voltage).toBeCloseTo(0, 9);
     expect(JSON.stringify(s.solve())).toBe(JSON.stringify(pre));
   });
 
@@ -100,7 +108,7 @@ describe('X1: ESP32 + AND gate + read-back (golden)', () => {
     });
   });
 
-  it('the gate at 3.3 V instead: GPIO18 LOW still refused by Q1; with the LED its V_OH ≥ 2.4 V still misses the read-back V_IH', () => {
+  it('the gate at 3.3 V instead: GPIO18 LOW still refused (Q7); with the LED its V_OH ≥ 2.4 V still misses the read-back V_IH', () => {
     const d = structuredClone(X1);
     const psu = d.components.find((c) => c.id === 'PSU1')!;
     psu.params.setpointVoltage = { value: 3.3, unit: 'volt' };

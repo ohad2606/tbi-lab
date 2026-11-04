@@ -15,7 +15,7 @@ import {
   V_OH_CHAR_V,
 } from '../src/esp32Gpio.js';
 import { ESP32_INPUT_LEAKAGE_A, ESP32_V_OL_MAX_V } from '../src/logic/bounds.js';
-import { RAIL_V, TABULATED_VCC_TOLERANCE_V } from '../src/logic/lvc1g.js';
+import { DELTA_ICC_BAND_V, RAIL_V, TABULATED_VCC_TOLERANCE_V } from '../src/logic/lvc1g.js';
 
 const row = (id: string) => {
   const r = LOGIC_PROVENANCE.find((x) => x.id === id);
@@ -105,6 +105,9 @@ describe('logic bound provenance (P2)', () => {
     close(row('ENGINE.PSU_SINK_RESOLUTION_A').value, 1e-9);
     close(row('ENGINE.BOUNDS_CURRENT_RESOLUTION_A').value, 1e-12);
     close(row('ENGINE.WRONG_WAY_V').value, 1e-3);
+    close(row('ENGINE.DELTA_ICC_BAND_V').value, DELTA_ICC_BAND_V);
+    expect(row('ENGINE.DELTA_ICC_BAND_V').where).toContain('S29-D1');
+    expect(row('ENGINE.LEAKAGE_LEVEL_REVERSE').where).toContain('S29-A3');
     for (const id of [
       'ENGINE.RAIL_V',
       'ENGINE.UNPOWERED_V',
@@ -113,6 +116,8 @@ describe('logic bound provenance (P2)', () => {
       'ENGINE.PSU_SINK_RESOLUTION_A',
       'ENGINE.BOUNDS_CURRENT_RESOLUTION_A',
       'ENGINE.WRONG_WAY_V',
+      'ENGINE.DELTA_ICC_BAND_V',
+      'ENGINE.LEAKAGE_LEVEL_REVERSE',
     ])
       expect(row(id).kind).toBe('assumption');
   });

@@ -5,10 +5,24 @@
  * supply current-limit check now take that stronger side into account.
  */
 import { describe, expect, it } from 'vitest';
-import { EngineSession, type SolveOutcome } from '../src/index.js';
+import { EngineSession, type SolveOutcome, type SolveSuccess } from '../src/index.js';
 import { Bench, boardBench } from './build.js';
 
 const err = (o: SolveOutcome) => (o.ok ? null : o.error);
+const ok = (o: SolveOutcome): SolveSuccess => {
+  if (!o.ok) throw new Error(`expected success, got ${JSON.stringify(o.error)}`);
+  return o;
+};
+/** The state of the (single) gate of `type` in a solved bench. */
+const gateState = (o: SolveOutcome, type = 'logic.gate_and') =>
+  Object.values(ok(o).components).find((c) => c.type === type)!.state;
+/** S29-D1: the ΔI_CC bound — I_CC 10 µA + ΔI_CC 500 µA for each of `n` inputs in a 0.6 V band. */
+const deltaIcc = (n: number) => ({
+  iccBasis: 'deltaIcc',
+  deltaIccA: 500e-6,
+  deltaIccInputs: n,
+  iccMaxA: expect.closeTo(10e-6 + n * 500e-6, 12),
+});
 /**
  * Sprint 22 review 3: a 5.5 V input rail feeding only gate inputs could have to SINK their leakage
  * (±5 µA each, either sign); the bench-supply model cannot sink. A 10 kΩ bleeder (550 µA) keeps it
@@ -71,11 +85,14 @@ describe('Q5: the stronger side of an output (probe psulim)', () => {
 });
 
 /**
- * Sprint 22 Q1 (owner decision, strict): I_CC is bounded only under its datasheet test condition
- * (SN74LVC1G: every input at 5.5 V or GND, V_CC 1.65–5.5 V, SCES217AA §5.5; SN74LVC08A: V_CC =
- * 3.6 V, every input at V_CC or GND, SCAS283W §5.7). A supply's current-limit check depends on
- * the gate's I_CC, so outside that condition it is refused by name — never left out (fail-open),
- * never bounded by ΔI_CC or the §8.2.1.1 guideline. Hand values: probe s22q1/probe-q1.ts.
+ * Sprint 22 Q1 (owner decision, strict — the rule before S29-D1): I_CC was bounded only under its
+ * datasheet test condition (SN74LVC1G: every input at 5.5 V or GND, V_CC 1.65–5.5 V, SCES217AA
+ * §5.5; SN74LVC08A: V_CC = 3.6 V, every input at V_CC or GND, SCAS283W §5.7). A supply's
+ * current-limit check depends on the gate's I_CC, so it is never left out (fail-open).
+ * Owner decision S29-D1: off those test voltages but with every input within 0.6 V of GND or of
+ * V_CC (and V_CC in both the I_CC and the ΔI_CC rows; 1G: 3.0–5.5 V), I_CC is bounded by
+ * I_CC + ΔI_CC (500 µA) × the inputs in such a band; an input between the bands stays
+ * uncharacterized → refused by name. Hand values: probe s22q1/probe-q1.ts.
  */
 type In = 'vcc' | 'gnd' | 'hi';
 const q1gate = (limit: number, a: In, bIn: In, load?: number, bleed = false) => {
@@ -108,20 +125,52 @@ const pulled = (ohms: number) => {
   return new EngineSession(b.snapshot()).solve();
 };
 
-describe('Q1 strict: a supply current limit needs a bounded I_CC', () => {
-  it('inputs at V_CC = 3.0 V (not 5.5 V): I_CC unbounded → refused by name, naming the gate and the supply', () => {
-    expect(err(q1gate(0.1, 'vcc', 'vcc'))).toEqual({
-      code: 'logic_supply_current_uncharacterized',
-      components: [expect.any(String), 'PSU1'],
-      param: 'vcc',
-      detail: {
-        part: 'SN74LVC1G08',
-        vcc: 3,
-        condition: 'notInputs',
-        check: 'limit',
-        psu: 'PSU1',
-      },
+describe('a supply current limit needs a bounded I_CC (Q1 strict test condition, or ΔI_CC since S29-D1)', () => {
+  it('inputs at V_CC = 3.0 V (not 5.5 V, within 0.6 V of V_CC): bounded by ΔI_CC (S29-D1) → runs, I_CC ≤ 10 µA + 2 × 500 µA = 1.01 mA', () => {
+    expect(gateState(q1gate(0.1, 'vcc', 'vcc'))).toMatchObject({
+      gateOutput: 'high',
+      input_a: 'high',
+      input_b: 'high',
+      supplyV: 3,
+      ...deltaIcc(2),
     });
+  });
+  it('the ΔI_CC bound is used, not dropped (S29-D1): inputs at V_CC, 1 kΩ at the rail 3.000 mA + 1.01 mA + 2 × I_I 5 µA = 4.020 mA', () => {
+    for (const limit of [0.003025, 0.004015])
+      expect(err(q1gate(limit, 'vcc', 'vcc', 1000)), String(limit)).toMatchObject({
+        code: 'logic_supply_not_guaranteed',
+        param: 'limit',
+        detail: { limit, causes: expect.arrayContaining(['supply_current']) },
+      });
+    expect(gateState(q1gate(0.004025, 'vcc', 'vcc', 1000))).toMatchObject({
+      gateOutput: 'high',
+      ...deltaIcc(2),
+    });
+  });
+  it('an input between the bands (S29-D1: 0.6 V < V_I < V_CC − 0.6 V) stays uncharacterized: 0.7 V (a valid LOW, V_IL 0.8 V) and 2.2 V (a valid HIGH, V_IH 2.0 V) at V_CC = 3.0 V → refused by name', () => {
+    for (const volts of [0.7, 2.2]) {
+      const b = new Bench();
+      b.psu(3.0, 0.1).wire('PSU1.negative', 'GND1.ref');
+      b.bleed('PSU1');
+      const hi = bledRail(b);
+      const mid = b.rail(volts);
+      b.bleed(mid);
+      const g = b.add('logic.gate_and');
+      b.wire('PSU1.positive', `${g}.vcc`).wire(`${g}.gnd`, 'GND1.ref');
+      b.wire(`${g}.a`, `${mid}.positive`).wire(`${g}.b`, `${hi}.positive`);
+      expect(err(new EngineSession(b.snapshot()).solve()), String(volts)).toEqual({
+        code: 'logic_supply_current_uncharacterized',
+        components: [g, 'PSU1'],
+        param: 'vcc',
+        detail: {
+          part: 'SN74LVC1G08',
+          vcc: 3,
+          condition: 'notInputs',
+          check: 'limit',
+          psu: 'PSU1',
+        },
+      });
+    }
   });
   it('inputs at GND, or at 5.5 V from a second supply: bounded → runs', () => {
     expect(err(q1gate(0.1, 'gnd', 'gnd', undefined, true))).toBeNull();
@@ -137,19 +186,24 @@ describe('Q1 strict: a supply current limit needs a bounded I_CC', () => {
     });
     expect(err(q1gate(0.003025, 'hi', 'hi', 1000))).toBeNull();
   });
-  it('an input held at GND through R: I_I 5 µA × R must stay within 1 mV of GND (199 Ω runs, 201 Ω / 1 kΩ refused)', () => {
-    expect(err(pulled(199))).toBeNull();
-    for (const [ohms, worst] of [
-      [201, 0.001005],
-      [1000, 0.005],
-    ] as const)
-      expect(err(pulled(ohms))).toMatchObject({
-        code: 'logic_supply_current_uncharacterized',
-        param: 'b',
-        detail: { condition: 'notInputs', check: 'limit', worst: expect.closeTo(worst, 9) },
+  it('an input held at GND through R: within 1 mV of GND (199 Ω) the strict I_CC 10 µA; beyond it (201 Ω, 1 kΩ, 119 kΩ: ≤ 0.6 V) bounded by ΔI_CC (S29-D1) → runs, I_CC ≤ 510 µA; 121 kΩ (0.605 V) refused', () => {
+    const strict = gateState(pulled(199));
+    expect(strict).toMatchObject({ gateOutput: 'low', input_b: 'low', iccMaxA: 10e-6 });
+    expect(strict).not.toHaveProperty('iccBasis');
+    for (const ohms of [201, 1000, 119_000])
+      expect(gateState(pulled(ohms)), String(ohms)).toMatchObject({
+        gateOutput: 'low',
+        input_b: 'low',
+        ...deltaIcc(1),
       });
+    // 5 µA × 121 kΩ = 0.605 V: still a valid LOW (V_IL 0.8 V), but between the bands.
+    expect(err(pulled(121_000))).toMatchObject({
+      code: 'logic_supply_current_uncharacterized',
+      param: 'b',
+      detail: { condition: 'notInputs', check: 'limit', worst: expect.closeTo(0.605, 9) },
+    });
   });
-  it('a cascade (U1.Y → U2.A): a gate output is never within 1 mV of 5.5 V or GND → refused', () => {
+  it('a cascade (U1.Y → U2.A): a gate output is never within 1 mV of 5.5 V or GND, but its HIGH is within 0.6 V of V_CC → U2 bounded by ΔI_CC (S29-D1), runs: U1 I_CC ≤ 10 µA, U2 ≤ 510 µA', () => {
     const b = new Bench();
     b.psu(3.0, 0.1).wire('PSU1.negative', 'GND1.ref');
     const hi = bledRail(b);
@@ -158,10 +212,14 @@ describe('Q1 strict: a supply current limit needs a bounded I_CC', () => {
     for (const u of [u1, u2]) b.wire('PSU1.positive', `${u}.vcc`).wire(`${u}.gnd`, 'GND1.ref');
     b.wire(`${u1}.a`, `${hi}.positive`).wire(`${u1}.b`, `${hi}.positive`);
     b.wire(`${u2}.a`, `${u1}.y`).wire(`${u2}.b`, `${hi}.positive`);
-    expect(err(new EngineSession(b.snapshot()).solve())).toMatchObject({
-      code: 'logic_supply_current_uncharacterized',
-      components: [u2, 'PSU1'],
-      detail: { check: 'limit', condition: 'notInputs' },
+    const o = ok(new EngineSession(b.snapshot()).solve());
+    expect(o.components[u1]!.state).toMatchObject({ gateOutput: 'high', iccMaxA: 10e-6 });
+    expect(o.components[u1]!.state).not.toHaveProperty('iccBasis');
+    expect(o.components[u2]!.state).toMatchObject({
+      gateOutput: 'high',
+      input_a: 'high',
+      input_b: 'high',
+      ...deltaIcc(1),
     });
   });
   it('SN74LVC08A: at 3.6 V with every input at V_CC or GND runs; at 3.3 V refused (notSupply)', () => {
@@ -331,14 +389,15 @@ describe('review 3: the bench-supply model cannot sink; the SN74LVC08A I_CC only
     if (bleed) b.bleed('PSU1');
     return new EngineSession(b.snapshot()).solve();
   };
-  it("(b) Y HIGH unloaded, A/B at 5.5 V: I_CC ≥ 0 and both inputs' leakage (2 × 5 µA) may return into V_CC → PSU1 may have to sink 10 µA → refused; with a 10 kΩ bleeder (300 µA) it runs", () => {
-    expect(err(unloaded(false))).toMatchObject({
-      code: 'logic_supply_not_guaranteed',
-      components: ['PSU1'],
-      param: 'sink',
-      detail: { value: expect.closeTo(10e-6, 12), causes: expect.arrayContaining(['leakage']) },
-    });
-    expect(err(unloaded(true))).toBeNull();
+  it("(b) Y HIGH unloaded, A/B at 5.5 V: both inputs' leakage (2 × 5 µA) may return into V_CC — no more than the circuit's datasheet leakage → evaluated (S29-A3), runs; with a 10 kΩ bleeder (300 µA) it runs too", () => {
+    for (const bleed of [false, true])
+      expect(gateState(unloaded(bleed)), String(bleed)).toMatchObject({
+        gateOutput: 'high',
+        input_a: 'high',
+        input_b: 'high',
+        iccMaxA: 10e-6,
+      });
+    // A larger current into a supply (20 mA from another supply, (a) above) stays refused.
   });
   const pkg = (load: number | null) => {
     const b = new Bench();

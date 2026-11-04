@@ -20,6 +20,7 @@ import { PwlLoad } from './pwl.js';
 import { ConstantSink, RegulatedOutput } from './sources.js';
 import { GpioPin, outsideCharacterizedRegion, V_OH_CHAR_V } from './esp32Gpio.js';
 import { buildBounds, evaluateBounds, type Injection } from './logic/bounds.js';
+import { quiescentAt } from './logic/lvc1g.js';
 import { Npn } from './bjt.js';
 
 /** The solver's default junction gmin (circuit.ts DEFAULTS), for exact device readouts. */
@@ -457,6 +458,8 @@ export class EngineSession {
   private sinkRefusal: EngineError | null = null;
   /** Sprint 21: the guarantee-bound check of the latest pass (run once the states settle). */
   private boundsCheck: (() => EngineError | null) | null = null;
+  /** S29-D1: logic parts the last bounds pass held on the ΔI_CC basis, with that bound. */
+  private deltaBasis = new Map<string, Record<string, number | string>>();
   /** Sprint 21: ESP32 output pads on an input's signal net (for the undefined-input message). */
   private padsOnNet:
     ((component: string, terminal: string) => { gpio: number; mode: string }[]) | null = null;
@@ -750,6 +753,19 @@ export class EngineSession {
         // Sprint 21: every logic conclusion must hold within the datasheet bounds.
         const bound = this.boundsCheck?.() ?? null;
         if (bound) return this.fail(bound);
+        // S29-D1: a part bounded on the ΔI_CC basis reports that bound (never the strict one).
+        if (outcome.ok)
+          for (const [id, q] of this.deltaBasis) {
+            const r = outcome.components[id];
+            if (!r?.state) continue;
+            const {
+              iccCondition: _c,
+              deltaIccA: _d,
+              iccMaxA: _m,
+              ...rest
+            } = r.state as Record<string, unknown>;
+            r.state = { ...rest, ...q } as typeof r.state;
+          }
         return outcome;
       }
       const key = JSON.stringify([...next].sort(([a], [b]) => (a < b ? -1 : 1)));
@@ -1496,66 +1512,121 @@ export class EngineSession {
                 readsLogic: outputRoots.has(signalUf.find(node)),
                 key: padDevice.get(pin.gpio)!.id,
               }));
-            const { perts, checks, extra } = buildBounds(specs, pads, psus, access, xSolution, REF);
-            const live = perts.filter((p) => has(p.from) && has(p.to));
-            let n = 0;
-            const sens = (c: Circuit, x: readonly number[], inj: readonly Injection[]) => {
-              try {
-                return c.sensitivity(x, inj, {}, step).dx;
-              } catch (e) {
-                // Review item 12: a singular linearisation is refused explicitly.
-                if (e instanceof SingularMatrixError) return null;
-                throw e;
-              }
-            };
-            const failure = evaluateBounds(
-              {
-                x0: xSolution,
-                x0Modes: modes,
-                nodeRoot: (n: string) => shorts.find(n),
-                nodeIndex: index,
-                sensitivity: (inj) => sens(circuit, xSolution, inj),
-                corner: (spec) => {
-                  const replace = new Map<string, Device>(
-                    spec.stages.map((st) => [
-                      st.key,
-                      new VoltageSource(st.key, st.plus, st.minus, st.volts),
-                    ]),
-                  );
-                  const c = circuit.withExtra(
-                    spec.sinks.map((k) => new ConstantSink(`~bound${n++}`, k.from, k.to, k.amps)),
-                    replace,
-                  );
-                  replaced = replace;
-                  const release = () => {
-                    replaced = null;
-                    void circuit.nodes();
-                  };
-                  try {
-                    const r = step ? c.solveStep(step) : c.solve();
-                    const x = r.x;
-                    return {
-                      x,
-                      modes: r.supplyModes,
-                      sensitivity: (inj) => sens(c, x, inj),
-                      // The source's branch current flows out of its + terminal: for a HIGH stage
-                      // (+ = V_CC) that is −(current out of Y); for a LOW stage (+ = Y), −(into Y).
-                      stageCurrent: (key) => -replace.get(key)!.current(x, opts),
-                      release,
+            const evaluateWith = (deltaBasis: ReadonlySet<string>): EngineError | null => {
+              const { perts, checks, extra } = buildBounds(
+                specs,
+                pads,
+                psus,
+                access,
+                xSolution,
+                REF,
+                deltaBasis,
+              );
+              const live = perts.filter((p) => has(p.from) && has(p.to));
+              let n = 0;
+              const sens = (c: Circuit, x: readonly number[], inj: readonly Injection[]) => {
+                try {
+                  return c.sensitivity(x, inj, {}, step).dx;
+                } catch (e) {
+                  // Review item 12: a singular linearisation is refused explicitly.
+                  if (e instanceof SingularMatrixError) return null;
+                  throw e;
+                }
+              };
+              const failure = evaluateBounds(
+                {
+                  x0: xSolution,
+                  x0Modes: modes,
+                  nodeRoot: (n: string) => shorts.find(n),
+                  nodeIndex: index,
+                  sensitivity: (inj) => sens(circuit, xSolution, inj),
+                  corner: (spec) => {
+                    const replace = new Map<string, Device>(
+                      spec.stages.map((st) => [
+                        st.key,
+                        new VoltageSource(st.key, st.plus, st.minus, st.volts),
+                      ]),
+                    );
+                    const c = circuit.withExtra(
+                      spec.sinks.map((k) => new ConstantSink(`~bound${n++}`, k.from, k.to, k.amps)),
+                      replace,
+                    );
+                    replaced = replace;
+                    const release = () => {
+                      replaced = null;
+                      void circuit.nodes();
                     };
-                  } catch (e) {
-                    release();
-                    if (e instanceof SingularMatrixError || e instanceof ConvergenceError)
-                      return null;
-                    throw e;
-                  }
+                    try {
+                      const r = step ? c.solveStep(step) : c.solve();
+                      const x = r.x;
+                      return {
+                        x,
+                        modes: r.supplyModes,
+                        sensitivity: (inj) => sens(c, x, inj),
+                        // The source's branch current flows out of its + terminal: for a HIGH stage
+                        // (+ = V_CC) that is −(current out of Y); for a LOW stage (+ = Y), −(into Y).
+                        stageCurrent: (key) => -replace.get(key)!.current(x, opts),
+                        release,
+                      };
+                    } catch (e) {
+                      release();
+                      if (e instanceof SingularMatrixError || e instanceof ConvergenceError)
+                        return null;
+                      throw e;
+                    }
+                  },
                 },
-              },
-              live,
-              checks,
-              extra,
-            );
-            return failure ? (failure as EngineError) : null;
+                live,
+                checks,
+                extra,
+              );
+              return failure ? (failure as EngineError) : null;
+            };
+            // S29-D1: a part refused only because an input leaves the strict I_CC test condition
+            // at a corner is evaluated again on the ΔI_CC basis, if its inputs are in the bands.
+            const deltaBasis = new Set<string>();
+            for (;;) {
+              const f = evaluateWith(deltaBasis);
+              const c = f?.components?.[0];
+              const d = (f?.detail ?? {}) as Record<string, unknown>;
+              const spec = specs.find((s) => s.component === c);
+              if (
+                f?.code === 'logic_supply_current_uncharacterized' &&
+                d.condition === 'notInputs' &&
+                spec &&
+                !deltaBasis.has(spec.component) &&
+                spec.vcc !== null &&
+                'iccBasis' in
+                  quiescentAt(
+                    spec.card,
+                    spec.vcc,
+                    spec.inputs.map(
+                      (i) => access.v(xSolution, i.node) - access.v(xSolution, spec.gndNode),
+                    ),
+                    true,
+                  )
+              ) {
+                deltaBasis.add(spec.component);
+                continue;
+              }
+              this.deltaBasis = new Map();
+              if (!f)
+                for (const id of deltaBasis) {
+                  const sp = specs.find((s) => s.component === id)!;
+                  this.deltaBasis.set(
+                    id,
+                    quiescentAt(
+                      sp.card,
+                      sp.vcc,
+                      sp.inputs.map(
+                        (i) => access.v(xSolution, i.node) - access.v(xSolution, sp.gndNode),
+                      ),
+                      true,
+                    ) as Record<string, number | string>,
+                  );
+                }
+              return f;
+            }
           }
         : null;
 
