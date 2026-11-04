@@ -186,7 +186,8 @@ export const en = {
   'sim.part.state.outputModel.class':
     'guaranteed lower bound: the 3 V datasheet points over the 3.3 V ± 0.3 V class (a real part drives at least this well)',
   'sim.part.state.outputValidA': 'Characterized up to',
-  'sim.part.state.iccMaxA': 'Quiescent supply current (datasheet max, not included above)',
+  'sim.part.state.iccMaxA':
+    'Quiescent supply current bound (from the datasheet, not included above)',
   'sim.part.current.y': 'Output current (Y)',
   'sim.part.current.vcc': 'Supply pin current (V_CC)',
   'sim.part.current.gnd': 'Ground pin current (GND)',
@@ -1469,15 +1470,15 @@ export const en = {
   'example.mpy-pot-threshold.title': 'MicroPython: potentiometer as a digital input',
   'example.mpy-pot-threshold.summary':
     'The same potentiometer circuit in MicroPython: Pin(34, Pin.IN).value() reads the wiper as 0 at or below 0.825 V and 1 at or above 2.475 V; a read in between stops the run (the datasheet guarantees no level there and specifies no hysteresis); GPIO4 lights the LED. Turn the wiper while running. machine.ADC is not supported. Runs on the ESP32 runtime service.',
-  'example.logic-half-adder.title': 'Logic: a half adder (XOR + AND)',
+  'example.logic-half-adder.title': 'Logic: a half adder (four gates)',
   'example.logic-half-adder.summary':
-    'Beginner. Two switches add two bits: an SN74LVC1G86 XOR gate makes the sum S and an SN74LVC1G08 AND gate the carry C, both at 3.3 V; each lights an LED through 330 Ω. A 10 kΩ pull-down holds an open switch’s input LOW. Select a gate to see its truth table and live levels. Try: replace the XOR with NAND/OR/AND gates (S = (A + B) · NOT(A · B)), or add a third switch and a second half adder to build a full adder.',
-  'example.logic-full-adder.title': 'Logic: a 1-bit full adder (five gates)',
+    'Beginner. Two switches add two bits with four single gates at 3.3 V: an OR and a NAND of A and B feed an AND that makes the sum S = A ⊕ B; a second AND makes the carry C = A · B; each lights an LED through 330 Ω. A 10 kΩ pull-down holds an open switch’s input LOW. Select a gate to see its truth table and live levels. Why not an XOR part? The SN74LVC1G86 datasheet gives its supply current only with no output current, so a loaded XOR is not simulated; these gates’ sheets state the rule for a loaded output. Try: add a third switch and a second half adder to build a full adder.',
+  'example.logic-full-adder.title': 'Logic: a 1-bit full adder (seven gates)',
   'example.logic-full-adder.summary':
-    'Intermediate: three stages of real logic at 3.3 V. Switches A, B and the carry-in Cin (10 kΩ pull-downs) feed an XOR (X = A ⊕ B) and an AND (C1 = A · B); the second stage forms the sum S = X ⊕ Cin and C2 = X · Cin; an OR makes the carry-out Cout = C1 + C2. The LEDs show S and Cout: together they count A + B + Cin in binary. Select any gate to see its truth table and the live level of its inputs and output — the intermediate X, C1 and C2 included. Try: chain a second full adder for a 2-bit adder, or rebuild the carry with NAND gates only.',
+    'Intermediate: four stages of real logic at 3.3 V. Switches A, B and the carry-in Cin (10 kΩ pull-downs). An OR, a NAND and an AND make X = A ⊕ B; the same three gates on X and Cin make the sum S = X ⊕ Cin; one more NAND combines the two NANDs into the carry-out Cout = A · B + X · Cin. The LEDs show S and Cout: together they count A + B + Cin in binary. Select any gate to see its truth table and the live level of its inputs and output — X and the NAND outputs included. Try: chain a second full adder for a 2-bit adder.',
   'example.mpy-adder-monitor.title': 'MicroPython: an ESP32 watches a logic half adder',
   'example.mpy-adder-monitor.summary':
-    'Advanced: switches, logic gates and firmware together. The half adder (XOR sum S, AND carry C, 3.3 V) is built from real gates; the ESP32 only reads it — the switches on GPIO32/33, S and C on the input-only GPIO34/35 — and main.py prints each new state, checks it against A + B, and sets the LED on GPIO18 (PWM, 1 kHz) brighter for a larger sum. The gate outputs carry no other load, so their HIGH is guaranteed above the ESP32’s input threshold. Try: add a full adder, or count how often each sum appears.',
+    'Advanced: switches, logic gates and firmware together. The half adder (four single gates at 3.3 V: S = A ⊕ B from an OR, a NAND and an AND; carry C = A · B) is built from real gates; the ESP32 only reads it — the switches on GPIO32/33, S and C on the input-only GPIO34/35 — and main.py prints each new state, checks it against A + B, and sets the LED on GPIO18 (PWM, 1 kHz) brighter for a larger sum. The gate outputs carry no other load, so their HIGH is guaranteed above the ESP32’s input threshold. Try: add a full adder, or count how often each sum appears.',
   'example.mpy-button.title': 'MicroPython: a push button lights an LED',
   'example.mpy-button.summary':
     'Hold the button: 3.3 V reaches GPIO34 through 1 kΩ, and a 10 kΩ pull-down holds it LOW when released (GPIO34 has no internal pull). main.py reads it with Pin.IN every 10 ms and copies it to GPIO4, which drives the red LED through 220 Ω.',
@@ -1724,6 +1725,11 @@ export const en = {
     'The SOT-23-5 package is shown on a representative breakout board, so it fits a breadboard; the board’s layout is illustrative.',
   'sim.part.state.iccCondition': 'Quiescent supply current',
   'sim.part.state.deltaIccA': 'Datasheet ΔI_CC per input at V_CC − 0.6 V (max)',
+  // Sprint 29 (S29-D1): the basis of the bound above.
+  'sim.part.state.iccBasis': 'Basis of the bound',
+  'sim.part.state.iccBasis.deltaIcc':
+    'I_CC + ΔI_CC for each input within 0.6 V of GND or of V_CC (owner decision S29-D1, an engineering assumption)',
+  'sim.part.state.deltaIccInputs': 'Inputs counted with ΔI_CC',
   'limitation.logic_1g04_no_delay':
     'DC only: propagation delay is not simulated (SN74LVC1G04 datasheet §5.6: t_pd 0.7–3.3 ns at V_CC 3.3 V ± 0.3 V, C_L = 15 pF, −40 °C to 85 °C). Circuits that depend on it are refused: feedback between gates (latches, oscillators), PWM into a gate, clocks.',
   'limitation.logic_1g32_no_delay':

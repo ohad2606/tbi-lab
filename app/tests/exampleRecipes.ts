@@ -223,66 +223,90 @@ function lcdCircuit(r: Recipe, U1: string) {
 }
 
 /**
- * Sprint 29: the half adder's switches, pull-downs, gate inputs and supply (logic-half-adder,
- * mpy-adder-monitor). A feeds U1.a and U2.b, B feeds U1.b and U2.a (the AND is symmetric): one
- * clean crossing. V_CC from PSU1+ above the gates and down a bus at x = 560 to U2.
+ * Sprint 29: the half adder of logic-half-adder / mpy-adder-monitor, every gate from a sheet with
+ * the loaded-output power rule (§8.2.1.1; owner decision S29-D2 keeps the SN74LVC1G86 XOR strict):
+ * U1 OR and U2 NAND of A, B; U3 AND of both = S = A ⊕ B; U4 AND of A, B = C. Two switches from the
+ * supply with 10 kΩ pull-downs; V_CC by a bus at y = −320 (taps far end first: a tap keeps the
+ * wire's id on its first part). Returns the parts and the B branch to U4 (for taps).
  */
-function halfAdderCore(
-  r: Recipe,
-  p: Record<'SW1' | 'SW2' | 'R1' | 'R2' | 'G2' | 'G3' | 'U1' | 'U2' | 'G4' | 'G5', string>,
-): { a: string; b: string } {
-  const rail = r.wire(T('PSU1', 'positive'), T(p.SW1, 'a'), [
+function halfAdder(r: Recipe) {
+  const SW1 = r.place('component.toggle_switch', 40, -200);
+  const SW2 = r.place('component.toggle_switch', 40, -40);
+  const R1 = r.place('component.resistor', 160, -160, 1);
+  const R2 = r.place('component.resistor', 160, 0, 1);
+  const G2 = r.place('component.ground', 160, -80);
+  const G3 = r.place('component.ground', 160, 80);
+  const U1 = r.place('logic.gate_or', 440, -240);
+  const U2 = r.place('logic.gate_nand', 440, -60);
+  const U3 = r.place('logic.gate_and', 680, -150);
+  const U4 = r.place('logic.gate_and', 440, 120);
+  for (const id of [R1, R2]) r.set(id, 'resistance', 10_000, 'ohm');
+  // A starts closed: S lights; closing B moves the 1 to the carry.
+  r.set(SW1, 'closed', true);
+  const rail = r.wire(T('PSU1', 'positive'), T(SW1, 'a'), [
     { x: -40, y: -20 },
     { x: -40, y: -200 },
   ]);
-  r.wire(T(p.SW2, 'a'), { kind: 'wire', wire: rail, at: { x: -40, y: -40 } });
-  // Input A: SW1 → node (10 kΩ pull-down R1) → U1.a, and U2.b.
-  r.wire(T(p.SW1, 'b'), T(p.R1, 'a'));
-  const a = r.wire(T(p.R1, 'a'), T(p.U1, 'a'), [
-    { x: 280, y: -200 },
-    { x: 280, y: -160 },
+  r.wire(T(SW2, 'a'), { kind: 'wire', wire: rail, at: { x: -40, y: -40 } });
+  r.wire(T(SW1, 'b'), T(R1, 'a'));
+  r.wire(T(R1, 'b'), T(G2, 'ref'));
+  r.wire(T(SW2, 'b'), T(R2, 'a'));
+  r.wire(T(R2, 'b'), T(G3, 'ref'));
+  // A → U1.a, U2.a, U4.a (down x = 240); B → U1.b, U2.b, U4.b (x = 280 / 320).
+  const a = r.wire(T(R1, 'a'), T(U1, 'a'), [
+    { x: 240, y: -200 },
+    { x: 240, y: -260 },
   ]);
-  r.wire(T(p.U2, 'b'), { kind: 'wire', wire: a, at: { x: 280, y: -160 } }, [{ x: 280, y: 100 }]);
-  r.wire(T(p.R1, 'b'), T(p.G2, 'ref'));
-  // Input B: SW2 → node (10 kΩ pull-down R2) → U1.b, and U2.a.
-  r.wire(T(p.SW2, 'b'), T(p.R2, 'a'));
-  const b = r.wire(T(p.R2, 'a'), T(p.U1, 'b'), [
-    { x: 320, y: -40 },
-    { x: 320, y: -120 },
+  const a2 = r.wire(T(U2, 'a'), { kind: 'wire', wire: a, at: { x: 240, y: -200 } }, [
+    { x: 240, y: -80 },
   ]);
-  const b2 = r.wire(T(p.U2, 'a'), { kind: 'wire', wire: b, at: { x: 320, y: -40 } }, [
-    { x: 320, y: 60 },
+  r.wire(T(U4, 'a'), { kind: 'wire', wire: a2, at: { x: 240, y: -80 } }, [{ x: 240, y: 100 }]);
+  const b = r.wire(T(R2, 'a'), T(U1, 'b'), [
+    { x: 280, y: -40 },
+    { x: 280, y: -220 },
   ]);
-  r.wire(T(p.R2, 'b'), T(p.G3, 'ref'));
-  // V_CC: PSU1+ → U1 (above the gates), then a bus down to U2.
-  const vcc = r.wire(T(p.U1, 'vcc'), T(p.SW1, 'a'), [
-    { x: 440, y: -260 },
-    { x: 0, y: -260 },
+  const b2 = r.wire(T(U2, 'b'), { kind: 'wire', wire: b, at: { x: 280, y: -40 } });
+  const b3 = r.wire(T(U4, 'b'), { kind: 'wire', wire: b2, at: { x: 320, y: -40 } }, [
+    { x: 320, y: 140 },
   ]);
-  r.wire(T(p.U2, 'vcc'), { kind: 'wire', wire: vcc, at: { x: 440, y: -260 } }, [
-    { x: 440, y: 0 },
-    { x: 560, y: 0 },
-    { x: 560, y: -260 },
+  // S = (A + B) · NAND(A, B).
+  r.wire(T(U1, 'y'), T(U3, 'a'), [
+    { x: 560, y: -240 },
+    { x: 560, y: -170 },
   ]);
-  r.wire(T(p.U1, 'gnd'), T(p.G4, 'ref'));
-  r.wire(T(p.U2, 'gnd'), T(p.G5, 'ref'));
-  return { a, b: b2 };
+  r.wire(T(U2, 'y'), T(U3, 'b'), [
+    { x: 600, y: -60 },
+    { x: 600, y: -130 },
+  ]);
+  // V_CC: a bus from U3 along y = −320 to switch A's rail end; U1, U2, U4 tap it.
+  const bus = r.wire(T(U3, 'vcc'), T(SW1, 'a'), [
+    { x: 680, y: -320 },
+    { x: 0, y: -320 },
+  ]);
+  r.wire(T(U1, 'vcc'), { kind: 'wire', wire: bus, at: { x: 440, y: -320 } });
+  r.wire(T(U2, 'vcc'), { kind: 'wire', wire: bus, at: { x: 500, y: -320 } }, [{ x: 500, y: -100 }]);
+  r.wire(T(U4, 'vcc'), { kind: 'wire', wire: bus, at: { x: 520, y: -320 } }, [{ x: 520, y: 80 }]);
+  for (const [u, gx, gy] of [
+    [U1, 440, -160],
+    [U2, 440, 20],
+    [U3, 680, -70],
+    [U4, 440, 200],
+  ] as const) {
+    const g = r.place('component.ground', gx, gy);
+    r.wire(T(u, 'gnd'), T(g, 'ref'));
+  }
+  return { U1, U2, U3, U4, R1, b3 };
 }
 
-/** Sprint 29: S and C each drive an LED through 330 Ω (logic-half-adder). */
-function halfAdderOutputs(r: Recipe, U1: string, U2: string) {
-  for (const [u, y] of [
-    [U1, -140],
-    [U2, 80],
-  ] as const) {
-    const R = r.place('component.resistor', 640, y);
-    const D = r.place('component.led', 800, y);
-    const G = r.place('component.ground', 880, y + 60);
-    r.set(R, 'resistance', 330, 'ohm');
-    r.wire(T(u, 'y'), T(R, 'a'));
-    r.wire(T(R, 'b'), T(D, 'anode'));
-    r.wire(T(D, 'cathode'), T(G, 'ref'), [{ x: 880, y }]);
-  }
+/** Sprint 29: an output → 330 Ω → LED → GND at row y (the resistor at x). */
+function ledOut(r: Recipe, u: string, x: number, y: number) {
+  const R = r.place('component.resistor', x, y);
+  const D = r.place('component.led', x + 160, y);
+  const G = r.place('component.ground', x + 240, y + 60);
+  r.set(R, 'resistance', 330, 'ohm');
+  r.wire(T(u, 'y'), T(R, 'a'));
+  r.wire(T(R, 'b'), T(D, 'anode'));
+  r.wire(T(D, 'cathode'), T(G, 'ref'), [{ x: x + 240, y }]);
 }
 
 export const RECIPES: Record<string, () => ProjectDocument> = {
@@ -1620,100 +1644,24 @@ export const RECIPES: Record<string, () => ProjectDocument> = {
     return r.centre(-300);
   },
   /**
-   * Sprint 29 (S29-D1/A3, beginner): a half adder from two real single gates at 3.3 V. Two
-   * switches from the supply, each input held LOW by a 10 kΩ pull-down when open (I_I 5 µA ×
-   * 10 kΩ ≤ 50 mV: within 0.6 V of GND, so the gates' I_CC is bounded by ΔI_CC). The SN74LVC1G86
-   * XOR makes the sum S, the SN74LVC1G08 AND the carry C; each drives an LED through 330 Ω.
+   * Sprint 29 (S29-D1/A3, beginner): a half adder from four single gates at 3.3 V (see halfAdder):
+   * S = (A + B) · NAND(A, B), C = A · B; each output lights an LED through 330 Ω.
    */
   'logic-half-adder': () => {
-    const r = new Recipe('logic-half-adder', 'Logic: a half adder (XOR + AND)');
+    const r = new Recipe('logic-half-adder', 'Logic: a half adder (four gates)');
     r.supply(3.3, 0.1);
-    const SW1 = r.place('component.toggle_switch', 40, -200);
-    const SW2 = r.place('component.toggle_switch', 40, -40);
-    const R1 = r.place('component.resistor', 160, -160, 1);
-    const R2 = r.place('component.resistor', 160, 0, 1);
-    const G2 = r.place('component.ground', 160, -80);
-    const G3 = r.place('component.ground', 160, 80);
-    const U1 = r.place('logic.gate_xor', 440, -140);
-    const U2 = r.place('logic.gate_and', 440, 80);
-    const G4 = r.place('component.ground', 440, -60);
-    const G5 = r.place('component.ground', 440, 160);
-    halfAdderOutputs(r, U1, U2);
-    for (const [id, ohms] of [
-      [R1, 10_000],
-      [R2, 10_000],
-    ] as const)
-      r.set(id, 'resistance', ohms, 'ohm');
-    // A starts closed: S lights; closing B moves the 1 to the carry.
-    r.set(SW1, 'closed', true);
-    halfAdderCore(r, { SW1, SW2, R1, R2, G2, G3, U1, U2, G4, G5 });
+    const { U3, U4 } = halfAdder(r);
+    ledOut(r, U3, 840, -150);
+    ledOut(r, U4, 840, 120);
     return r.centre(-240);
   },
   /**
-   * Sprint 29 (M4, advanced): the half adder of logic-half-adder watched by an ESP32 in
-   * MicroPython. The ESP32 only READS: the switches on GPIO32/33, S and C on the input-only
-   * GPIO34/35 (each gate output loaded only by a pad's leakage: V_OH ≥ V_CC − 0.1 V = 3.2 V ≥ the
-   * ESP32's V_IH 2.475 V); it prints each new state and sets an LED's PWM brightness on GPIO18 from
-   * the sum. Logic, manual controls and firmware in one circuit.
-   */
-  'mpy-adder-monitor': () => {
-    const r = new Recipe('mpy-adder-monitor', 'MicroPython: an ESP32 watches a logic half adder');
-    r.supply(3.3, 0.1);
-    const SW1 = r.place('component.toggle_switch', 40, -200);
-    const SW2 = r.place('component.toggle_switch', 40, -40);
-    const R1 = r.place('component.resistor', 160, -160, 1);
-    const R2 = r.place('component.resistor', 160, 0, 1);
-    const G2 = r.place('component.ground', 160, -80);
-    const G3 = r.place('component.ground', 160, 80);
-    const U1 = r.place('logic.gate_xor', 440, -140);
-    const U2 = r.place('logic.gate_and', 440, 80);
-    const G4 = r.place('component.ground', 440, -60);
-    const G5 = r.place('component.ground', 440, 160);
-    const U3 = r.place('board.esp32_devkitc_wroom32', 760, -20);
-    r.python(U3, 'mpy_adder_monitor.py');
-    for (const id of [R1, R2]) r.set(id, 'resistance', 10_000, 'ohm');
-    r.set(SW1, 'closed', true);
-    const { b } = halfAdderCore(r, { SW1, SW2, R1, R2, G2, G3, U1, U2, G4, G5 });
-    // S → GPIO34, C → GPIO35 (inputs only); A → GPIO32, B → GPIO33.
-    r.wire(T(U1, 'y'), T(U3, 'gpio34'), [
-      { x: 600, y: -140 },
-      { x: 600, y: -120 },
-    ]);
-    r.wire(T(U2, 'y'), T(U3, 'gpio35'), [
-      { x: 620, y: 80 },
-      { x: 620, y: -100 },
-    ]);
-    r.wire(T(R1, 'a'), T(U3, 'gpio32'), [
-      { x: 160, y: -300 },
-      { x: 660, y: -300 },
-      { x: 660, y: -80 },
-    ]);
-    r.wire({ kind: 'wire', wire: b, at: { x: 360, y: 60 } }, T(U3, 'gpio33'), [
-      { x: 360, y: 200 },
-      { x: 640, y: 200 },
-      { x: 640, y: -60 },
-    ]);
-    // The ESP32's ground with the circuit's; GPIO18 → 220 Ω → LED → GND.
-    const G6 = r.place('component.ground', 900, -160);
-    r.wire(T(U3, 'gnd'), T(G6, 'ref'), [{ x: 900, y: -200 }]);
-    const R5 = r.place('component.resistor', 960, -40);
-    const D3 = r.place('component.led', 1080, -40);
-    const G7 = r.place('component.ground', 1160, 20);
-    r.set(R5, 'resistance', 220, 'ohm');
-    r.wire(T(U3, 'gpio18'), T(R5, 'a'));
-    r.wire(T(R5, 'b'), T(D3, 'anode'));
-    r.wire(T(D3, 'cathode'), T(G7, 'ref'), [{ x: 1160, y: -40 }]);
-    return r.centre(-360);
-  },
-  /**
-   * Sprint 29 (M2, intermediate): a 1-bit full adder from five single gates at 3.3 V, three
-   * stages: X = A ⊕ B (SN74LVC1G86), C1 = A·B (SN74LVC1G08); S = X ⊕ Cin, C2 = X·Cin; Cout =
-   * C1 + C2 (SN74LVC1G32). Three switches with 10 kΩ pull-downs; S and Cout each light an LED
-   * through 330 Ω. Every gate fed by a gate output is bounded by ΔI_CC (S29-D1); the solve gives
-   * every intermediate level.
+   * Sprint 29 (M2, intermediate): a 1-bit full adder from seven single gates at 3.3 V, four stages,
+   * every gate from a sheet with the §8.2.1.1 power rule: X = (A + B) · NAND(A, B);
+   * S = (X + Cin) · NAND(X, Cin); Cout = NAND(NAND(A, B), NAND(X, Cin)) = A·B + X·Cin.
    */
   'logic-full-adder': () => {
-    const r = new Recipe('logic-full-adder', 'Logic: a 1-bit full adder (five gates)');
+    const r = new Recipe('logic-full-adder', 'Logic: a 1-bit full adder (seven gates)');
     r.supply(3.3, 0.1);
     const SW1 = r.place('component.toggle_switch', 40, -280);
     const SW2 = r.place('component.toggle_switch', 40, -120);
@@ -1721,109 +1669,153 @@ export const RECIPES: Record<string, () => ProjectDocument> = {
     const R1 = r.place('component.resistor', 160, -240, 1);
     const R2 = r.place('component.resistor', 160, -80, 1);
     const R3 = r.place('component.resistor', 160, 80, 1);
-    const GR1 = r.place('component.ground', 160, -160);
-    const GR2 = r.place('component.ground', 160, 0);
-    const GR3 = r.place('component.ground', 160, 160);
-    const X = r.place('logic.gate_xor', 440, -240);
-    const C1 = r.place('logic.gate_and', 440, -40);
-    const S = r.place('logic.gate_xor', 680, -240);
-    const C2 = r.place('logic.gate_and', 680, -40);
-    const CO = r.place('logic.gate_or', 920, 80);
-    const gnds = [
-      [X, 440, -160],
-      [C1, 440, 40],
-      [S, 680, -160],
-      [C2, 680, 40],
-      [CO, 920, 160],
-    ] as const;
+    const GR = [
+      r.place('component.ground', 160, -160),
+      r.place('component.ground', 160, 0),
+      r.place('component.ground', 160, 160),
+    ];
+    const O1 = r.place('logic.gate_or', 440, -240);
+    const N1 = r.place('logic.gate_nand', 440, -40);
+    const X = r.place('logic.gate_and', 680, -140);
+    const O2 = r.place('logic.gate_or', 920, -240);
+    const N2 = r.place('logic.gate_nand', 920, -40);
+    const S = r.place('logic.gate_and', 1160, -140);
+    const CO = r.place('logic.gate_nand', 1160, 80);
     for (const id of [R1, R2, R3]) r.set(id, 'resistance', 10_000, 'ohm');
-    // A and Cin closed, B open: S = 0, Cout = 1 (1 + 0 + 1 = 2).
+    // A and Cin closed, B open: 1 + 0 + 1 = 2 → S LOW, Cout HIGH.
     r.set(SW1, 'closed', true);
     r.set(SW3, 'closed', true);
-    // The switch rail: PSU1+ up to switch A; B and Cin tap it (far end first: a tap keeps the
-    // wire's id on its first part).
     const rail = r.wire(T('PSU1', 'positive'), T(SW1, 'a'), [
       { x: -40, y: -20 },
       { x: -40, y: -280 },
     ]);
     r.wire(T(SW2, 'a'), { kind: 'wire', wire: rail, at: { x: -40, y: -120 } });
     r.wire(T(SW3, 'a'), { kind: 'wire', wire: rail, at: { x: -40, y: -20 } }, [{ x: -40, y: 40 }]);
-    // Inputs with their pull-downs.
     for (const [sw, res, g] of [
-      [SW1, R1, GR1],
-      [SW2, R2, GR2],
-      [SW3, R3, GR3],
+      [SW1, R1, GR[0]!],
+      [SW2, R2, GR[1]!],
+      [SW3, R3, GR[2]!],
     ] as const) {
       r.wire(T(sw, 'b'), T(res, 'a'));
       r.wire(T(res, 'b'), T(g, 'ref'));
     }
-    // A → X.a and C1.a; B → X.b and C1.b.
-    const a = r.wire(T(R1, 'a'), T(X, 'a'), [
+    // A → O1.a, N1.a; B → O1.b, N1.b.
+    const a = r.wire(T(R1, 'a'), T(O1, 'a'), [
       { x: 240, y: -280 },
       { x: 240, y: -260 },
     ]);
-    r.wire(T(C1, 'a'), { kind: 'wire', wire: a, at: { x: 240, y: -260 } }, [{ x: 240, y: -60 }]);
-    const b = r.wire(T(R2, 'a'), T(X, 'b'), [
+    r.wire(T(N1, 'a'), { kind: 'wire', wire: a, at: { x: 240, y: -260 } }, [{ x: 240, y: -60 }]);
+    const b = r.wire(T(R2, 'a'), T(O1, 'b'), [
       { x: 280, y: -120 },
       { x: 280, y: -220 },
     ]);
-    r.wire(T(C1, 'b'), { kind: 'wire', wire: b, at: { x: 280, y: -120 } }, [{ x: 280, y: -20 }]);
-    // Cin → C2.b and S.b (below the first stage, then up at x = 600).
-    const cin = r.wire(T(R3, 'a'), T(C2, 'b'), [
+    r.wire(T(N1, 'b'), { kind: 'wire', wire: b, at: { x: 280, y: -120 } }, [{ x: 280, y: -20 }]);
+    // Cin → N2.b and O2.b (along the bottom, up at x = 840).
+    const cin = r.wire(T(R3, 'a'), T(N2, 'b'), [
       { x: 200, y: 40 },
-      { x: 200, y: 100 },
-      { x: 600, y: 100 },
-      { x: 600, y: -20 },
+      { x: 200, y: 180 },
+      { x: 840, y: 180 },
+      { x: 840, y: -20 },
     ]);
-    r.wire(T(S, 'b'), { kind: 'wire', wire: cin, at: { x: 600, y: -20 } }, [{ x: 600, y: -220 }]);
-    // X → S.a and C2.a.
-    const x = r.wire(T(X, 'y'), T(S, 'a'), [
+    r.wire(T(O2, 'b'), { kind: 'wire', wire: cin, at: { x: 840, y: -20 } }, [{ x: 840, y: -220 }]);
+    // X = (A + B) · NAND(A, B).
+    r.wire(T(O1, 'y'), T(X, 'a'), [
       { x: 560, y: -240 },
-      { x: 560, y: -260 },
+      { x: 560, y: -160 },
     ]);
-    r.wire(T(C2, 'a'), { kind: 'wire', wire: x, at: { x: 560, y: -240 } }, [{ x: 560, y: -60 }]);
-    // C1 → CO.a (under the second stage), C2 → CO.b.
-    r.wire(T(C1, 'y'), T(CO, 'a'), [
-      { x: 520, y: -40 },
-      { x: 520, y: 160 },
-      { x: 840, y: 160 },
-      { x: 840, y: 60 },
+    const n1 = r.wire(T(N1, 'y'), T(X, 'b'), [
+      { x: 600, y: -40 },
+      { x: 600, y: -120 },
     ]);
-    r.wire(T(C2, 'y'), T(CO, 'b'), [
-      { x: 800, y: -40 },
-      { x: 800, y: 100 },
+    // X → O2.a and N2.a.
+    const x = r.wire(T(X, 'y'), T(O2, 'a'), [
+      { x: 800, y: -140 },
+      { x: 800, y: -260 },
     ]);
-    // V_CC: a bus at y = −320 from CO down to switch A's rail end; the other gates tap it (far
-    // end first).
+    r.wire(T(N2, 'a'), { kind: 'wire', wire: x, at: { x: 800, y: -140 } }, [{ x: 800, y: -60 }]);
+    // S = (X + Cin) · NAND(X, Cin); Cout = NAND(NAND(A, B), NAND(X, Cin)).
+    r.wire(T(O2, 'y'), T(S, 'a'), [
+      { x: 1040, y: -240 },
+      { x: 1040, y: -160 },
+    ]);
+    const n2 = r.wire(T(N2, 'y'), T(S, 'b'), [
+      { x: 1080, y: -40 },
+      { x: 1080, y: -120 },
+    ]);
+    r.wire(T(CO, 'a'), { kind: 'wire', wire: n1, at: { x: 600, y: -40 } }, [{ x: 600, y: 60 }]);
+    r.wire(T(CO, 'b'), { kind: 'wire', wire: n2, at: { x: 1080, y: -40 } }, [{ x: 1080, y: 100 }]);
+    // V_CC: a bus from CO along y = −320 to switch A's rail end; the others tap it (far end first).
     const bus = r.wire(T(CO, 'vcc'), T(SW1, 'a'), [
-      { x: 920, y: -320 },
+      { x: 1160, y: 20 },
+      { x: 1220, y: 20 },
+      { x: 1220, y: -320 },
       { x: 0, y: -320 },
     ]);
-    r.wire(T(X, 'vcc'), { kind: 'wire', wire: bus, at: { x: 440, y: -320 } });
-    r.wire(T(C1, 'vcc'), { kind: 'wire', wire: bus, at: { x: 500, y: -320 } }, [
+    r.wire(T(O1, 'vcc'), { kind: 'wire', wire: bus, at: { x: 440, y: -320 } });
+    r.wire(T(N1, 'vcc'), { kind: 'wire', wire: bus, at: { x: 500, y: -320 } }, [
       { x: 500, y: -80 },
     ]);
-    r.wire(T(S, 'vcc'), { kind: 'wire', wire: bus, at: { x: 680, y: -320 } });
-    r.wire(T(C2, 'vcc'), { kind: 'wire', wire: bus, at: { x: 740, y: -320 } }, [
-      { x: 740, y: -80 },
+    r.wire(T(X, 'vcc'), { kind: 'wire', wire: bus, at: { x: 680, y: -320 } });
+    r.wire(T(O2, 'vcc'), { kind: 'wire', wire: bus, at: { x: 920, y: -320 } });
+    r.wire(T(N2, 'vcc'), { kind: 'wire', wire: bus, at: { x: 980, y: -320 } }, [
+      { x: 980, y: -80 },
     ]);
-    for (const [u, gx, gy] of gnds) {
+    r.wire(T(S, 'vcc'), { kind: 'wire', wire: bus, at: { x: 1160, y: -320 } });
+    for (const [u, gx, gy] of [
+      [O1, 440, -160],
+      [N1, 440, 40],
+      [X, 680, -60],
+      [O2, 920, -160],
+      [N2, 920, 40],
+      [S, 1160, -60],
+      [CO, 1160, 160],
+    ] as const) {
       const g = r.place('component.ground', gx, gy);
       r.wire(T(u, 'gnd'), T(g, 'ref'));
     }
-    // S → 330 Ω → LED; Cout → 330 Ω → LED.
-    for (const [u, rx, dx, gx, y] of [
-      [S, 840, 1000, 1080, -240],
-      [CO, 1080, 1240, 1320, 80],
-    ] as const) {
-      const R = r.place('component.resistor', rx, y);
-      const D = r.place('component.led', dx, y);
-      const G = r.place('component.ground', gx, y + 60);
-      r.set(R, 'resistance', 330, 'ohm');
-      r.wire(T(u, 'y'), T(R, 'a'));
-      r.wire(T(R, 'b'), T(D, 'anode'));
-      r.wire(T(D, 'cathode'), T(G, 'ref'), [{ x: gx, y }]);
-    }
-    return r.centre(-480);
+    ledOut(r, S, 1320, -140);
+    ledOut(r, CO, 1320, 80);
+    return r.centre(-600);
+  },
+  /**
+   * Sprint 29 (M4, advanced): the half adder watched by an ESP32 in MicroPython. The ESP32 only
+   * READS: the switches on GPIO32/33, S and C on the input-only GPIO34/35 (each gate output loaded
+   * only by a pad's leakage: V_OH ≥ V_CC − 0.1 V = 3.2 V ≥ the ESP32's V_IH 2.475 V); it prints
+   * each new state and sets an LED's PWM brightness on GPIO18 from the sum.
+   */
+  'mpy-adder-monitor': () => {
+    const r = new Recipe('mpy-adder-monitor', 'MicroPython: an ESP32 watches a logic half adder');
+    r.supply(3.3, 0.1);
+    const { U3, U4, R1, b3 } = halfAdder(r);
+    const U5 = r.place('board.esp32_devkitc_wroom32', 920, -20);
+    r.python(U5, 'mpy_adder_monitor.py');
+    r.wire(T(U3, 'y'), T(U5, 'gpio34'), [
+      { x: 780, y: -150 },
+      { x: 780, y: -120 },
+    ]);
+    r.wire(T(U4, 'y'), T(U5, 'gpio35'), [
+      { x: 800, y: 120 },
+      { x: 800, y: -100 },
+    ]);
+    r.wire(T(R1, 'a'), T(U5, 'gpio32'), [
+      { x: 160, y: -360 },
+      { x: 820, y: -360 },
+      { x: 820, y: -80 },
+    ]);
+    r.wire({ kind: 'wire', wire: b3, at: { x: 360, y: 140 } }, T(U5, 'gpio33'), [
+      { x: 360, y: 260 },
+      { x: 760, y: 260 },
+      { x: 760, y: -60 },
+    ]);
+    const G6 = r.place('component.ground', 1060, -160);
+    r.wire(T(U5, 'gnd'), T(G6, 'ref'), [{ x: 1060, y: -200 }]);
+    const R5 = r.place('component.resistor', 1120, -40);
+    const D3 = r.place('component.led', 1240, -40);
+    const G7 = r.place('component.ground', 1320, 20);
+    r.set(R5, 'resistance', 220, 'ohm');
+    r.wire(T(U5, 'gpio18'), T(R5, 'a'));
+    r.wire(T(R5, 'b'), T(D3, 'anode'));
+    r.wire(T(D3, 'cathode'), T(G7, 'ref'), [{ x: 1320, y: -40 }]);
+    return r.centre(-400);
   },
 };

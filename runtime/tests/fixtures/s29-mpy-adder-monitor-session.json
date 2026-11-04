@@ -6,7 +6,7 @@
     "circuit": {
       "format": "tbi-lab.snapshot",
       "schemaVersion": 7,
-      "snapshotId": "snap_b3c69aec7ca803d3",
+      "snapshotId": "snap_b84b76a9e79220e3",
       "projectId": "prj_examplempyaddermonitor",
       "projectRevision": 1,
       "components": [
@@ -84,14 +84,30 @@
         },
         {
           "id": "U1",
-          "type": "logic.gate_xor",
+          "type": "logic.gate_or",
           "typeVersion": 1,
           "params": {
-            "model": "model.logic.sn74lvc1g86"
+            "model": "model.logic.sn74lvc1g32"
           }
         },
         {
           "id": "U2",
+          "type": "logic.gate_nand",
+          "typeVersion": 1,
+          "params": {
+            "model": "model.logic.sn74lvc1g00"
+          }
+        },
+        {
+          "id": "U3",
+          "type": "logic.gate_and",
+          "typeVersion": 1,
+          "params": {
+            "model": "model.logic.sn74lvc1g08"
+          }
+        },
+        {
+          "id": "U4",
           "type": "logic.gate_and",
           "typeVersion": 1,
           "params": {
@@ -117,6 +133,18 @@
           "params": {}
         },
         {
+          "id": "GND7",
+          "type": "component.ground",
+          "typeVersion": 1,
+          "params": {}
+        },
+        {
+          "id": "GND8",
+          "type": "component.ground",
+          "typeVersion": 1,
+          "params": {}
+        },
+        {
           "id": "R3",
           "type": "component.resistor",
           "typeVersion": 1,
@@ -136,13 +164,13 @@
           }
         },
         {
-          "id": "GND7",
+          "id": "GND9",
           "type": "component.ground",
           "typeVersion": 1,
           "params": {}
         },
         {
-          "id": "U3_gnd",
+          "id": "U5_gnd",
           "type": "component.ground",
           "typeVersion": 1,
           "params": {}
@@ -175,19 +203,19 @@
         },
         {
           "id": "N_7",
-          "role": "ground"
+          "role": null
         },
         {
           "id": "N_8",
-          "role": "ground"
+          "role": null
         },
         {
           "id": "N_9",
-          "role": null
+          "role": "ground"
         },
         {
           "id": "N_10",
-          "role": null
+          "role": "ground"
         },
         {
           "id": "N_11",
@@ -195,7 +223,7 @@
         },
         {
           "id": "N_12",
-          "role": null
+          "role": "ground"
         },
         {
           "id": "N_13",
@@ -203,6 +231,22 @@
         },
         {
           "id": "N_14",
+          "role": null
+        },
+        {
+          "id": "N_15",
+          "role": "ground"
+        },
+        {
+          "id": "N_16",
+          "role": null
+        },
+        {
+          "id": "N_17",
+          "role": null
+        },
+        {
+          "id": "N_18",
           "role": "ground"
         }
       ],
@@ -285,7 +329,7 @@
         {
           "component": "U1",
           "terminal": "y",
-          "net": "N_9"
+          "net": "N_7"
         },
         {
           "component": "U1",
@@ -295,22 +339,22 @@
         {
           "component": "U1",
           "terminal": "gnd",
-          "net": "N_7"
+          "net": "N_9"
         },
         {
           "component": "U2",
           "terminal": "a",
-          "net": "N_5"
-        },
-        {
-          "component": "U2",
-          "terminal": "b",
           "net": "N_3"
         },
         {
           "component": "U2",
+          "terminal": "b",
+          "net": "N_5"
+        },
+        {
+          "component": "U2",
           "terminal": "y",
-          "net": "N_10"
+          "net": "N_8"
         },
         {
           "component": "U2",
@@ -320,17 +364,67 @@
         {
           "component": "U2",
           "terminal": "gnd",
+          "net": "N_10"
+        },
+        {
+          "component": "U3",
+          "terminal": "a",
+          "net": "N_7"
+        },
+        {
+          "component": "U3",
+          "terminal": "b",
           "net": "N_8"
+        },
+        {
+          "component": "U3",
+          "terminal": "y",
+          "net": "N_13"
+        },
+        {
+          "component": "U3",
+          "terminal": "vcc",
+          "net": "N_2"
+        },
+        {
+          "component": "U3",
+          "terminal": "gnd",
+          "net": "N_11"
+        },
+        {
+          "component": "U4",
+          "terminal": "a",
+          "net": "N_3"
+        },
+        {
+          "component": "U4",
+          "terminal": "b",
+          "net": "N_5"
+        },
+        {
+          "component": "U4",
+          "terminal": "y",
+          "net": "N_14"
+        },
+        {
+          "component": "U4",
+          "terminal": "vcc",
+          "net": "N_2"
+        },
+        {
+          "component": "U4",
+          "terminal": "gnd",
+          "net": "N_12"
         },
         {
           "component": "GND4",
           "terminal": "ref",
-          "net": "N_7"
+          "net": "N_9"
         },
         {
           "component": "GND5",
           "terminal": "ref",
-          "net": "N_8"
+          "net": "N_10"
         },
         {
           "component": "GND6",
@@ -338,34 +432,44 @@
           "net": "N_11"
         },
         {
+          "component": "GND7",
+          "terminal": "ref",
+          "net": "N_12"
+        },
+        {
+          "component": "GND8",
+          "terminal": "ref",
+          "net": "N_15"
+        },
+        {
           "component": "R3",
           "terminal": "a",
-          "net": "N_12"
+          "net": "N_16"
         },
         {
           "component": "R3",
           "terminal": "b",
-          "net": "N_13"
+          "net": "N_17"
         },
         {
           "component": "D1",
           "terminal": "anode",
-          "net": "N_13"
+          "net": "N_17"
         },
         {
           "component": "D1",
           "terminal": "cathode",
-          "net": "N_14"
+          "net": "N_18"
         },
         {
-          "component": "GND7",
+          "component": "GND9",
           "terminal": "ref",
-          "net": "N_14"
+          "net": "N_18"
         },
         {
-          "component": "U3_gnd",
+          "component": "U5_gnd",
           "terminal": "ref",
-          "net": "N_11"
+          "net": "N_15"
         }
       ]
     },
@@ -387,12 +491,12 @@
       },
       {
         "gpio": 34,
-        "component": "U1",
+        "component": "U3",
         "terminal": "y"
       },
       {
         "gpio": 35,
-        "component": "U2",
+        "component": "U4",
         "terminal": "y"
       }
     ]

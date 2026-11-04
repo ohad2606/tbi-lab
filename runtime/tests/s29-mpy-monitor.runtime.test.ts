@@ -2,7 +2,7 @@
  * Sprint 29 (M4, real stack): mpy-adder-monitor on the genuine MicroPython interpreter in QEMU.
  *
  * Switches + logic + firmware in one session: the toggle switches A/B (session mirror commands)
- * feed a half adder of real single gates (SN74LVC1G86 XOR, SN74LVC1G08 AND, solved by the engine
+ * feed a half adder of real single gates (four single gates — OR, NAND, AND for the sum, AND for the carry — solved by the engine
  * within the datasheet bounds); the ESP32 reads A, B, S and C on GPIO32..35 and prints each new
  * state; its PWM LED on GPIO18 shows the sum. Asserted per state: the line the program printed
  * (computed by the guest from the levels it READ), the pads' voltages, and the LED's average
@@ -96,8 +96,8 @@ describe.skipIf(!stack)('Sprint 29 M4: MicroPython reads a logic half adder (rea
       ] as const)
         if (v) expect(pin(g), `GPIO${g}`).toBeGreaterThan(0.75 * 3.3);
         else expect(pin(g), `GPIO${g}`).toBeLessThan(0.25 * 3.3);
-      expect(got.components.U1!.logic!.gates[0]!.output.level).toBe(a !== b ? 'high' : 'low');
-      expect(got.components.U2!.logic!.gates[0]!.output.level).toBe(a && b ? 'high' : 'low');
+      expect(got.components.U3!.logic!.gates[0]!.output.level).toBe(a !== b ? 'high' : 'low');
+      expect(got.components.U4!.logic!.gates[0]!.output.level).toBe(a && b ? 'high' : 'low');
       states.push({
         a,
         b,

@@ -751,6 +751,8 @@ export class EngineSession {
         if (this.passRefusal) return this.fail(this.annotate(this.passRefusal));
         if (this.sinkRefusal) return this.fail(this.sinkRefusal);
         // Sprint 21: every logic conclusion must hold within the datasheet bounds.
+        // Review (minor): never a previous solve's ΔI_CC basis.
+        this.deltaBasis = new Map();
         const bound = this.boundsCheck?.() ?? null;
         if (bound) return this.fail(bound);
         // S29-D1: a part bounded on the ΔI_CC basis reports that bound (never the strict one).

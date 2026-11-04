@@ -192,15 +192,20 @@ export function checkCircuit(doc: ProjectDocument): CheckIssue[] {
       }
     }
     const two = doc.components.filter((c) => wiredParts.includes(c.id) && !isBoard(c));
+    // Sprint 29: the terminals that may conduct between each other. A logic part's OUTPUTS conduct
+    // to its supply pins (an input driven only by other gates' outputs is not floating); its
+    // INPUTS are high-impedance and join nothing (an island reached only through a gate input
+    // stays floating). Every other part: all its terminals.
+    const conducting = (c: (typeof doc.components)[number]) => {
+      const ids = CATALOG[c.type].terminals.map((t) => t.id);
+      return c.type.startsWith('logic.') ? ids.filter((t) => !/^[ab]\d*$/.test(t)) : ids;
+    };
     for (const c of two) {
-      // Sprint 29: EVERY terminal of the part, not only the first two: a logic gate's output
-      // conducts to its supply pins, so an input driven only by other gates' outputs is not
-      // floating (the first two of a gate are its inputs a and b).
-      const [t0, ...rest] = CATALOG[c.type].terminals.map((t) => t.id) as [string, ...string[]];
+      const [t0, ...rest] = conducting(c) as [string, ...string[]];
       for (const t of rest) parent.set(find(node(c.id, t)), find(node(c.id, t0)));
     }
     const floating = two
-      .filter((c) => find(node(c.id, CATALOG[c.type].terminals[0]!.id)) !== find(REF))
+      .filter((c) => find(node(c.id, conducting(c)[0]!)) !== find(REF))
       .map((c) => c.id);
     if (floating.length)
       issues.push({ code: 'floating_island', severity: 'warning', components: floating });

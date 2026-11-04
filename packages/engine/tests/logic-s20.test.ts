@@ -118,17 +118,16 @@ describe('undriven inputs are floating, never a valid LOW (owner policy)', () =>
       detail: { pads: [18] },
     });
     // Driven, A is no longer floating. An ESP32 HIGH (≤ 3.3 V) is not 5.5 V, its LOW (≤ 0.33 V
-    // guaranteed) not GND: before S29-D1 (Q1 strict) PSU1's current limit was refused. S29-D1: at
-    // V_CC = 3.0 V the pad's HIGH band (2.64–3.3 V, all within 0.6 V of V_CC) and LOW band
-    // (0–0.33 V, within 0.6 V of GND) are ΔI_CC bands: I_CC ≤ 10 µA + 500 µA (A; B at 5.5 V is
-    // the test voltage). The level checks held first (HIGH: V_OH 2.64 V ≥ V_IH 2.0 V).
+    // guaranteed) not GND: before S29-D1 (Q1 strict) PSU1's current limit was refused. S29-D3: at
+    // V_CC = 3.0 V the pad's model HIGH (3.3 V) is ABOVE V_CC — an overdriven input whose supply
+    // current no row bounds → refused by name (the level itself holds: V_OH 2.64 V ≥ V_IH 2.0 V).
     s.setPinMode(18, 'output-high');
-    expect(ok(s.solve()).components[G]!.state).toMatchObject({
-      gateOutput: 'high',
-      input_a: 'high',
-      input_b: 'high',
-      ...deltaIcc(1),
+    expect(fails(s.solve())).toMatchObject({
+      code: 'logic_supply_current_uncharacterized',
+      components: [G, 'PSU1'],
+      detail: { condition: 'notInputs', check: 'limit' },
     });
+    // LOW (0–0.33 V guaranteed) is within 0.6 V of GND: bounded by ΔI_CC (S29-D1) → runs.
     s.setPinMode(18, 'output-low');
     expect(ok(s.solve()).components[G]!.state).toMatchObject({
       gateOutput: 'low',

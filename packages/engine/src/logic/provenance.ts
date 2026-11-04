@@ -59,6 +59,8 @@ const TA = '−40 °C to 85 °C column (SN74LVC1G…, T_A −40 to 85 °C)';
 /** The rows the four SN74LVC1G sheets share (identical in each; checked per sheet in Sprint 20). */
 function lvc1gRows(part: keyof typeof TI_1G): ProvenanceRow[] {
   const doc = TI_1G[part];
+  // Sprint 29: SCES222R (SN74LVC1G86) differs from the set in its I_CC row and its sections.
+  const x86 = part === 'SN74LVC1G86';
   const r = (
     field: string,
     value: number | string | readonly (number | string)[],
@@ -94,7 +96,9 @@ function lvc1gRows(part: keyof typeof TI_1G): ProvenanceRow[] {
       5e-6,
       'A',
       '§5.5 I_I, "V_I = 5.5V or GND", V_CC "0 to 5.5V", ±5 µA',
-      `${TA}; tested at V_I = 5.5 V or GND (applied 0–5.5 V per §7.3.3 worst-case input resistance and §8.2.1.2 pull-resistor sizing)`,
+      x86
+        ? `${TA}; tested at V_I = 5.5 V or GND (applied 0–5.5 V per §7.3.2 worst-case input resistance)`
+        : `${TA}; tested at V_I = 5.5 V or GND (applied 0–5.5 V per §7.3.3 worst-case input resistance and §8.2.1.2 pull-resistor sizing)`,
       'guaranteed-max',
       'ii perturbation ±I_I',
     ),
@@ -120,20 +124,34 @@ function lvc1gRows(part: keyof typeof TI_1G): ProvenanceRow[] {
       'iccMaxA',
       10e-6,
       'A',
-      '§5.5 I_CC, "V_I = 5.5V or GND, I_O = 0", 10 µA',
-      `${TA}; V_CC 1.65–5.5 V; ONLY with every input at 5.5 V or GND`,
+      x86
+        ? '§5.5 I_CC, "V_I = VCC or GND, IO = 0", 10 µA'
+        : '§5.5 I_CC, "V_I = 5.5V or GND, I_O = 0", 10 µA',
+      x86
+        ? `${TA}; V_CC 1.65–5.5 V; with every input at V_CC or GND (S29-D1: or within 0.6 V of GND / below V_CC, + ΔI_CC per input)`
+        : `${TA}; V_CC 1.65–5.5 V; with every input at 5.5 V or GND (S29-D1: or within 0.6 V of GND / below V_CC, + ΔI_CC per input)`,
       'guaranteed-max',
       'icc perturbation where its condition holds',
     ),
-    r(
-      'iccLoaded',
-      'I_CC + I_O',
-      'A',
-      '§8.2.1.1 Power Considerations: "The positive voltage supply must be capable of sourcing current equal to the total current to be sourced by all outputs of the SN74LVC1G08 plus the maximum static supply current, ICC, listed in the Electrical Characteristics, and any transient current required for switching." (the same sentence in the 1G00/1G04/1G32 sheets, each naming its own part)',
-      `${TA}; ONLY with every input at the I_CC test voltages (5.5 V or GND)`,
-      'derived',
-      'owner decision S22-F4: a LOADED output keeps the I_CC bound (I_O is in the solve); never a bound for inputs off the test voltages (S22-Q1)',
-    ),
+    x86
+      ? r(
+          'iccLoaded',
+          'I_O = 0',
+          'A',
+          '§5.5 I_CC test condition "V_I = VCC or GND, IO = 0" — SCES222R contains no power-considerations rule for a loaded output (its §8.2 has no §8.2.1.1)',
+          TA,
+          'test-condition',
+          'owner decision S29-D2: like the SN74LVC08A (Q9), a loaded SN74LVC1G86 output (a downstream input leakage included) leaves the I_CC test condition → refused by name',
+        )
+      : r(
+          'iccLoaded',
+          'I_CC + I_O',
+          'A',
+          '§8.2.1.1 Power Considerations: "The positive voltage supply must be capable of sourcing current equal to the total current to be sourced by all outputs of the SN74LVC1G08 plus the maximum static supply current, ICC, listed in the Electrical Characteristics, and any transient current required for switching." (the same sentence in the 1G00/1G02/1G04/1G32 sheets, each naming its own part)',
+          `${TA}; with every input at the I_CC test voltages, or within the S29-D1 ΔI_CC band (the bound is then I_CC + n × ΔI_CC + I_O)`,
+          'derived',
+          'owner decision S22-F4: a LOADED output keeps the I_CC bound (I_O is in the solve); S29-D1 combines it with the ΔI_CC bound',
+        ),
     r(
       'iccVcc',
       [1.65, 5.5],
@@ -224,7 +242,9 @@ function lvc1gRows(part: keyof typeof TI_1G): ProvenanceRow[] {
       'outputRail',
       [0, 'V_CC'],
       'V',
-      '§5.3 Recommended Operating Conditions V_O 0 to V_CC (a recommended condition, not a measured limit); §8.2.1.3 "The positive supply voltage is used to produce the output HIGH voltage … The ground voltage is used to produce the output LOW voltage"',
+      x86
+        ? '§5.3 Recommended Operating Conditions V_O 0 to V_CC (a recommended condition, not a measured limit; SCES222R has no §8.2.1.3)'
+        : '§5.3 Recommended Operating Conditions V_O 0 to V_CC (a recommended condition, not a measured limit); §8.2.1.3 "The positive supply voltage is used to produce the output HIGH voltage … The ground voltage is used to produce the output LOW voltage"',
       TA,
       'recommended',
       'the stronger side of an output: Y at most at its own rail (Q5)',

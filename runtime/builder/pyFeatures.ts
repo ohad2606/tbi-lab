@@ -511,9 +511,10 @@ export function analyzeMicroPython(
   if (dynamicAccess(code, [...machineAliases])) unsupported.add('dynamic_access');
   // Sprint 29 (Workstream A): a session has no serial input path (the serial monitor is output
   // only), so input() or a read of sys.stdin would wait forever, silently: refused by name.
-  const codeNoStrings = blankStrings(code);
+  // A program's own function named input (def input(...)) is not the built-in.
+  const codeNoStrings = blankStrings(code).replace(/\bdef\s+input\b/g, 'def _');
   if (
-    /(?<![\w.])(?<!def )input\s*\(/.test(codeNoStrings) ||
+    /(?<![\w.])input\s*\(/.test(codeNoStrings) ||
     /(?<![\w.])u?sys\s*\.\s*stdin\b/.test(codeNoStrings) ||
     /^[ \t]*from[ \t]+u?sys[ \t]+import[^\n]*\bstdin\b/m.test(codeNoStrings)
   )

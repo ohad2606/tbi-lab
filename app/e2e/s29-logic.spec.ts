@@ -1,10 +1,10 @@
 /**
  * Sprint 29 in the browser (local simulation in the worker):
  * - logic-full-adder (M2): Run; every gate's Inspector shows its live level and the truth-table row
- *   it is in — the intermediate X (A ⊕ B), C1, C2 and the outputs S, Cout; toggling a switch from
+ *   it is in — the OR/NAND stages, X (A ⊕ B) and the outputs S, Cout; toggling a switch from
  *   a gate's panel moves the rows and the LEDs; Hebrew keeps pins/voltages/table LTR; save/reopen
  *   keeps the switch positions.
- * - logic-half-adder: the XOR's truth table (datasheet function) and its live row.
+ * - logic-half-adder: the sum stage (OR and NAND into AND) and the carry, live.
  * - NOR and XOR in the palette: placed, drawn, named in EN and HE.
  * Screenshots go to TBI_S29_SHOTS (a directory) when set.
  */
@@ -62,11 +62,13 @@ test('full adder (M2): every stage’s live level and truth-table row; toggling 
     await expect(level(page, 'y')).toHaveText(y);
     await expect(page.getByTestId(`logic-truth-${row}`)).toHaveAttribute('aria-current', 'true');
   };
-  await expectStage('U1', 'HIGH', 'HL'); // X = A ⊕ B = 1
-  await expectStage('U2', 'LOW', 'HL'); // C1 = A · B = 0
-  await expectStage('U3', 'LOW', 'HH'); // S = X ⊕ Cin = 0
-  await expectStage('U4', 'HIGH', 'HH'); // C2 = X · Cin = 1
-  await expectStage('U5', 'HIGH', 'LH'); // Cout = C1 + C2 = 1
+  await expectStage('U1', 'HIGH', 'HL'); // A + B = 1
+  await expectStage('U2', 'HIGH', 'HL'); // NAND(A, B) = 1
+  await expectStage('U3', 'HIGH', 'HH'); // X = A ⊕ B = 1
+  await expectStage('U4', 'HIGH', 'HH'); // X + Cin = 1
+  await expectStage('U5', 'LOW', 'HH'); // NAND(X, Cin) = 0
+  await expectStage('U6', 'LOW', 'HL'); // S = X ⊕ Cin = 0
+  await expectStage('U7', 'HIGH', 'HL'); // Cout = NAND(1, 0) = 1
   await expect(page.getByTestId('logic-why-a')).toContainText('V_CC = 3.3 V');
   await shot(page, 's29-fa-run-en');
 
@@ -74,14 +76,14 @@ test('full adder (M2): every stage’s live level and truth-table row; toggling 
   await inspect(page, 'U1');
   await page.getByTestId('logic-control-SW2').click();
   await expect(level(page, 'b')).toHaveText('HIGH');
-  await expect(level(page, 'y')).toHaveText('LOW'); // X = 0
-  await expectStage('U3', 'HIGH', 'LH'); // S = 0 ⊕ 1 = 1
-  await expectStage('U5', 'HIGH', 'HL'); // Cout = C1 (1) + C2 (0)
+  await expectStage('U3', 'LOW', 'HL'); // X = 0
+  await expectStage('U6', 'HIGH', 'HH'); // S = 0 ⊕ 1 = 1
+  await expectStage('U7', 'HIGH', 'LH'); // Cout = NAND(0, 1) = 1
   await shot(page, 's29-fa-run-111-en');
 
   // Hebrew: the panel is RTL; voltages and the truth table stay LTR; the levels are the same.
   await page.getByTestId('language-select').selectOption('he');
-  await inspect(page, 'U3');
+  await inspect(page, 'U6');
   await expect(page.getByTestId('logic-state')).toContainText('טבלת אמת');
   await expect(level(page, 'y')).toHaveText('HIGH');
   await expect(page.getByTestId('logic-volts-a')).toHaveAttribute('dir', 'ltr');
@@ -97,25 +99,21 @@ test('full adder (M2): every stage’s live level and truth-table row; toggling 
   await goToProjects(page);
   await reopenFromLibrary(page);
   await run(page);
-  await expectStage('U3', 'HIGH', 'LH');
-  await expectStage('U5', 'HIGH', 'HL');
+  await expectStage('U6', 'HIGH', 'HH');
+  await expectStage('U7', 'HIGH', 'LH');
   await page.getByTestId('sim-stop').click();
 });
 
-test('half adder: the XOR’s datasheet function table, and its live row (EN)', async ({ page }) => {
+test('half adder: the sum stage’s live row (OR and NAND into AND), the carry (EN)', async ({
+  page,
+}) => {
   await openExample(page, 'logic-half-adder');
-  await inspect(page, 'U1');
-  await expect(page.getByTestId('logic-thresholds')).toContainText('SN74LVC1G86');
-  // The XOR function table: H only for HL and LH.
-  await expect(page.getByTestId('logic-truth-HL')).toContainText('H');
-  await expect(page.getByTestId('logic-truth-LH')).toContainText('H');
-  await expect(page.getByTestId('logic-truth-HH')).toContainText('L');
-  await expect(page.getByTestId('logic-truth-LL')).toContainText('L');
   await run(page);
-  await inspect(page, 'U1');
-  await expect(level(page, 'y')).toHaveText('HIGH'); // A closed, B open
-  await expect(page.getByTestId('logic-truth-HL')).toHaveAttribute('aria-current', 'true');
-  await inspect(page, 'U2');
+  await inspect(page, 'U3');
+  await expect(page.getByTestId('logic-thresholds')).toContainText('SN74LVC1G08');
+  await expect(level(page, 'y')).toHaveText('HIGH'); // A closed, B open: (1 + 0) · NAND = 1
+  await expect(page.getByTestId('logic-truth-HH')).toHaveAttribute('aria-current', 'true');
+  await inspect(page, 'U4');
   await expect(level(page, 'y')).toHaveText('LOW');
   await shot(page, 's29-ha-run-en');
   await page.getByTestId('sim-stop').click();
@@ -133,6 +131,17 @@ test('NOR and XOR are in the palette, placed and named (EN and HE)', async ({ pa
   expect(nor.params.model).toBe('model.logic.sn74lvc1g02');
   await inspect(page, nor.id);
   await expect(page.getByTestId('inspector')).toContainText('SN74LVC1G02');
+  // The XOR part: its datasheet function table (H only for HL and LH) and part number.
+  await place(page, 'logic.gate_xor', { x: 200, y: 400 });
+  await waitSaved(page);
+  const xor = (await storedProject(page)).components.find((c) => c.type === 'logic.gate_xor')!;
+  await inspect(page, xor.id);
+  await expect(page.getByTestId('logic-thresholds')).toContainText('SN74LVC1G86');
+  await expect(page.getByTestId('logic-truth-HL')).toContainText('H');
+  await expect(page.getByTestId('logic-truth-LH')).toContainText('H');
+  await expect(page.getByTestId('logic-truth-HH')).toContainText('L');
+  await expect(page.getByTestId('logic-truth-LL')).toContainText('L');
+  await inspect(page, nor.id);
   await page.getByTestId('language-select').selectOption('he');
   await expect(page.getByTestId('palette-logic.gate_xor')).toContainText('XOR');
   await expect(page.getByTestId('inspector')).toContainText('שער NOR');

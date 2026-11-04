@@ -263,18 +263,16 @@ for (const size of SIZES)
           'aria-pressed',
           'false',
         );
-        // Run (Sprint 22 Q1 strict): before setup() GPIO18 is an input and A sits on its 10 kΩ
-        // pull-down, ≈ 50 mV off GND (I_I × R) — not the I_CC test condition (5.5 V or GND), so the
-        // supply's current limit is refused by name at once (deterministic: the first solve).
+        // Run (S29-D1): before setup() the inputs on their 10 kΩ pull-downs are within 0.6 V of
+        // GND and that state runs; once the sketch drives GPIO18 into its pull-down the pad carries
+        // more than leakage → refused by name, naming GPIO18 (owner decision Q7).
         await page.getByTestId('sim-run').click();
         await expect(page.getByTestId('sim-error')).toHaveAttribute(
           'data-code',
-          'logic_supply_current_uncharacterized',
+          'logic_mcu_output_uncharacterized',
           { timeout: 20_000 },
         );
-        await expect(page.getByTestId('sim-error')).toContainText(
-          lc === 'en' ? 'current limit' : 'מגבלת הזרם',
-        );
+        await expect(page.getByTestId('sim-error')).toContainText('GPIO18');
         await inspect(page, 'U2');
         await expect(page.getByTestId('logic-pin-y')).toHaveAttribute(
           'data-level',
@@ -292,7 +290,7 @@ for (const size of SIZES)
       await locale(page, 'en');
     });
 
-    test(`the owner's circuit: as drawn no reference / unpowered gate; corrected at 5 V refused by Q1, at 5.5 V HIGH with V_OH ≥ 5.4 V (${size.name})`, async ({
+    test(`the owner's circuit: as drawn no reference / unpowered gate; corrected at 5 V runs (S29-D1), at 5.5 V HIGH with V_OH ≥ 5.4 V (${size.name})`, async ({
       page,
     }) => {
       // Exactly as drawn: PSU− unconnected → no ground reference at all: refused, nothing shown.
@@ -335,8 +333,8 @@ for (const size of SIZES)
         await shot(page, `s21l-${size.name}-${lc}-owner-unpowered`);
         await page.getByTestId('sim-stop').click();
       }
-      // Corrected (GND on PSU−) at 5 V: A and B at 5 V are not the I_CC test voltage (V_I = 5.5 V
-      // or GND, §5.5): Sprint 22 Q1 (strict) refuses the supply's current limit by name.
+      // Corrected (GND on PSU−) at 5 V: A and B at V_CC = 5 V are not the I_CC test voltage
+      // (5.5 V, §5.5) but within 0.6 V of V_CC: bounded by ΔI_CC (S29-D1) → runs, Y HIGH.
       const fixed = ownerCircuit('PSU1.negative', true, 'prj_s21lOwnerFixed');
       await openImported(page, fixed.doc);
       await waitSaved(page);
@@ -345,11 +343,12 @@ for (const size of SIZES)
       for (const lc of LOCALES) {
         await locale(page, lc);
         await page.getByTestId('sim-run').click();
-        const err = page.getByTestId('sim-error');
-        await expect(err).toHaveAttribute('data-code', 'logic_supply_current_uncharacterized');
-        await expect(err).toContainText(lc === 'en' ? 'current limit' : 'מגבלת הזרם');
-        await expect(err).toContainText('5.5');
+        await expect(status(page)).toHaveAttribute('data-status', 'running', { timeout: 30_000 });
+        await inspect(page, fixed.u);
+        await expect(page.getByTestId('logic-level-y')).toHaveText('HIGH');
+        await expect(page.getByTestId('logic-level-a')).toHaveText('HIGH');
         await shot(page, `s21l-${size.name}-${lc}-owner-fixed-5v`);
+        await page.getByTestId('sim-stop').click();
       }
       // The same circuit at 5.5 V (V_CC and both inputs at 5.5 V: the test condition): runs.
       // (With a 10 kΩ bleeder: unloaded, PSU1 could otherwise have to sink the inputs' leakage.)

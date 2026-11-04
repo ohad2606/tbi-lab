@@ -1,13 +1,13 @@
 # TBI Lab example (MicroPython): an ESP32 watches a logic half adder and shows its sum.
 #
-# Two switches (A, B) feed a half adder built from real logic gates: an SN74LVC1G86 XOR gate
-# makes the sum bit S = A xor B and an SN74LVC1G08 AND gate makes the carry bit C = A and B.
+# Two switches (A, B) feed a half adder built from four real single logic gates: an OR, a NAND
+# and an AND make the sum bit S = A xor B, and a second AND makes the carry bit C = A and B.
 # The ESP32 reads the switches on GPIO32/GPIO33 and the gates' outputs on GPIO34/GPIO35 (inputs
 # only: the gates drive them, the ESP32 never drives the logic). It prints every new state and
 # sets the brightness of the LED on GPIO18 from the number the adder computed (C S, in binary).
 #
 # Try: change the duty levels, print the truth table you have seen so far, or rebuild the adder
-# from other gates (S = (A or B) and not (A and B)) and check the ESP32 still agrees.
+# from NAND gates only and check the ESP32 still agrees.
 from machine import Pin, PWM
 import time
 

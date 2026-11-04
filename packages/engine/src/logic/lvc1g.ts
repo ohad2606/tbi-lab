@@ -259,6 +259,9 @@ export const LVC1G_CARDS: Readonly<Record<string, LogicCard>> = {
     inputs: ['a', 'b'],
     ...LVC1G_COMMON,
     iccInputHigh: 'vcc',
+    // Owner decision S29-D2: SCES222R has no §8.2.1.1 power rule — a loaded output leaves the I_CC
+    // test condition ("I_O = 0"), as for the SN74LVC08A (Q9).
+    iccLoadedRule: false,
     ciF: 6e-12,
     tpd33: [0.6e-9, 4e-9],
   },
@@ -443,7 +446,9 @@ export function iccZones(
     if (card.iccInputHigh !== 'vcc' && Math.abs(v - card.iccInputHigh) <= RAIL_V)
       zones.push('test');
     else if (Math.abs(v) <= DELTA_ICC_BAND_V) zones.push('low');
-    else if (Math.abs(v - vcc) <= DELTA_ICC_BAND_V) zones.push('high');
+    // Owner decision S29-D3: at the operating point an input is at most at V_CC (+ RAIL_V); the
+    // band above V_CC is reached only at a corner, by leakage across a resistance (zone checks).
+    else if (v >= vcc - DELTA_ICC_BAND_V && v <= vcc + RAIL_V) zones.push('high');
     else return null;
   }
   return zones;

@@ -34,7 +34,8 @@ async function untranslatedWords(page: Page): Promise<string[]> {
     /^N4148$/, // the 1N4148 diode model (tokenized after its leading digit)
     /^(LCD|I2C|SR04|DHT22|AM2302|PCF8574|Wire|Pull|pull|up|down)$/, // Sprint 12: part numbers, I2C/LCD, the Wire library, Pull-up (glossary rule)
     /^(PWM|LEDC|SG90|TowerPro|analogWrite|ledcWrite|ledcDetach|digitalWrite|Hz|kHz|ms|us)$/, // Sprint 15 (R4): PWM/LEDC, the SG90, Arduino PWM API names, frequency/time units
-    /^(AND|NAND|OR|NOT|SN74LVC1G\d\d|SN74LVC08A?|TI|SOT|SOIC|Y|B|C|D|VCC|MicroPython|KOA|CF1|CFS1|W)$/, // Sprint 19B: gate functions and pin names (datasheet tokens), part numbers, packages, MicroPython, resistor series, the watt
+    /^(AND|NAND|OR|NOT|SN74LVC1G\d\d|SN74LVC08A?|TI|SOT|SOIC|Y|B|C|D|VCC|MicroPython|KOA|CF1|CFS1|W)$/,
+    /^(NOR|XOR|SN74LVC1G|S|Cin|Cout|X|C1|C2|Q7|Q9)$/, // Sprint 29: NOR/XOR, the part family, adder signal names, owner rule ids (LTR technical tokens) // Sprint 19B: gate functions and pin names (datasheet tokens), part numbers, packages, MicroPython, resistor series, the watt
     /^I$/, // the current symbol in formulas such as I = V / R (example summaries)
     /^N_\d+$/, // net ids
     /^(Arduino|MicroPython|main|py|Pin|IN|value|machine|duty|duty_u16|SCL|SDA|HD44780|Hello)$/, // Sprint 24: language names, the main.py file, MicroPython API names, I2C signal names, the LCD controller, the text the LCD example shows

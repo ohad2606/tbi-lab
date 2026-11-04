@@ -191,15 +191,15 @@ test('a refusal in an ESP32 session (runtime controller) is explained by pin (Sp
   await openExample(page, 'esp32-logic-override');
   await buildProgram(page);
   await page.getByTestId('sim-run').click();
-  // Sprint 22 Q1 (strict): input A (GPIO18's level or its pull-down's leakage drop) is never at
-  // 5.5 V or exactly GND: the gate's I_CC is unbounded and the supply's current limit is refused,
-  // naming input A.
+  // S29-D1: the pre-setup state runs (the inputs on their pull-downs are within 0.6 V of GND); once
+  // the sketch drives GPIO18 into its 10 kΩ pull-down the pad carries more than leakage → refused
+  // by name, naming the pad (owner decision Q7).
   await expect(page.getByTestId('sim-error')).toHaveAttribute(
     'data-code',
-    'logic_supply_current_uncharacterized',
+    'logic_mcu_output_uncharacterized',
     { timeout: 20_000 },
   );
-  await expect(page.getByTestId('sim-error')).toContainText('current limit');
+  await expect(page.getByTestId('sim-error')).toContainText('GPIO18');
   await inspect(page, 'U2');
   await expect(page.getByTestId('logic-level-y')).toHaveText('not simulated');
   await shot(page, 's21l-D-refused-by-pin-en');
@@ -401,7 +401,7 @@ test("B at 3.6 V (Sprint 22 Q1 strict): the cascade is refused by name — a gat
   await page.getByTestId('language-select').selectOption('en');
 });
 
-test('D: ESP32 + manual switch + OR gate (Sprint 22 Q1 strict): refused by name, the supply current limit (I_CC unbounded); the switch persists (save/reopen)', async ({
+test('D: ESP32 + manual switch + OR gate (S29-D1): refused by name once GPIO18 drives its pull-down (Q7); the switch persists (save/reopen)', async ({
   page,
   request,
 }) => {
@@ -411,17 +411,16 @@ test('D: ESP32 + manual switch + OR gate (Sprint 22 Q1 strict): refused by name,
   await expect(page.getByTestId('logic-mcu-a')).toContainText('GPIO18');
   await buildProgram(page);
   await page.getByTestId('sim-run').click();
-  // Sprint 22 Q1 (strict): input A is never at 5.5 V or exactly GND (GPIO18's level, or its
-  // pull-down's leakage drop): the gate's I_CC is unbounded, the supply's current limit refused.
+  // S29-D1: the pre-setup state runs; GPIO18 driven into its 10 kΩ pull-down carries more than
+  // leakage-level current: its level is not guaranteed (owner decision Q7) → refused by name.
   const err = page.getByTestId('sim-error');
-  await expect(err).toHaveAttribute('data-code', 'logic_supply_current_uncharacterized', {
+  await expect(err).toHaveAttribute('data-code', 'logic_mcu_output_uncharacterized', {
     timeout: 20_000,
   });
-  await expect(err).toContainText('current limit');
-  await expect(err).toContainText('V_I = 5.5 V or GND');
+  await expect(err).toContainText('GPIO18');
   await shot(page, 's21l-D-refused-en');
   await page.getByTestId('language-select').selectOption('he');
-  await expect(err).toContainText('מגבלת הזרם');
+  await expect(err).toContainText('GPIO18');
   await shot(page, 's21l-D-refused-he');
   await page.getByTestId('language-select').selectOption('en');
   // Close the switch from the panel (a persistent edit) and reopen: it is kept.

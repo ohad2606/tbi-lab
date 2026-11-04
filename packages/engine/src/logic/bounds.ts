@@ -153,6 +153,8 @@ export type CheckKind =
 export interface Check {
   id: string;
   kind: CheckKind;
+  /** S29-A3 (review M2): the strict margin a leakage-tolerated check must meet without leakage. */
+  leakageVerify?: (x: readonly number[]) => number;
   /** Volts or amperes: the numerical resolution below which a change is zero. */
   unit: 'V' | 'A';
   component: string;
@@ -595,6 +597,7 @@ export function evaluateBounds(
 
     let accepted = false;
     const visited = new Map<string, number>();
+    let lastX: readonly number[] = x0;
     // Sprint 22 review 3: a failing corner is followed to the stable (worst) corner; the most
     // adverse failure seen is reported (never the first one met on the way).
     let worstFail: { m: number; f: BoundFailure } | null = null;
@@ -656,6 +659,7 @@ export function evaluateBounds(
         }
       }
       const { x, dxc, stageOf, deviceMargins, modes } = solved;
+      lastX = x;
       const m = deviceMargins ? deviceMargins.m : c.margin(x);
       if (!(m >= 0)) {
         if (!worstFail || m < worstFail.m)
@@ -720,6 +724,16 @@ export function evaluateBounds(
     }
     if (worstFail) return worstFail.f;
     if (!accepted) return notEstablished('not_monotone', c);
+    // Review M2 (S29-A3): a supply that sinks at its worst corner within the leakage budget is
+    // accepted only if, without the leakage currents, that corner makes it sink nothing.
+    if (c.leakageVerify && !(c.leakageVerify(lastX) >= 0)) {
+      const r = solveCorner(solver, perts, withoutLeakage(perts, choice), c.forced);
+      if (r.kind !== 'ok') return notEstablished('corner_unsolved', c);
+      const held = c.leakageVerify(r.corner.x) >= 0;
+      const v = c.value(r.corner.x);
+      r.corner.release();
+      if (!held) return failure(c, v, adverseOf(choice), { cause: 'not_leakage' });
+    }
   }
   return deferred;
 }
@@ -759,11 +773,26 @@ export function leakageBudget(perts: readonly Perturbation[]): number {
   return sum;
 }
 
+/** The datasheet leakage currents (S29-A3: the only currents the reverse tolerance covers). */
+const isLeakage = (p: Perturbation) => p.kind === 'ii' || p.kind === 'ioff' || p.kind === 'padleak';
+
+/** The same corner with every leakage current removed (review M2: is a reverse leakage-driven?). */
+const withoutLeakage = (perts: readonly Perturbation[], choice: Choice): Choice =>
+  new Map([...choice].filter(([j]) => !isLeakage(perts[j]!)));
+
+/**
+ * `tolerate`: S29-A3 for output stages. 'verify' (default) tolerates a leakage-level reverse
+ * current only after checking that the SAME corner without the leakage currents drives no stage
+ * backwards (review M2: a small reverse current from another cause — fighting drivers, a back-fed
+ * load, a quiescent current — is never tolerated); 'none' tolerates nothing (that check);
+ * 'trusted' tolerates without re-checking (the verified re-solve).
+ */
 function solveCorner(
   solver: BoundsSolver,
   perts: readonly Perturbation[],
   choice: Choice,
   forced?: CornerSpec['stages'][number],
+  tolerate: 'verify' | 'none' | 'trusted' = 'verify',
 ): CornerOutcome {
   const sinks: CornerSpec['sinks'] = [];
   const stages = new Map<
@@ -843,8 +872,18 @@ function solveCorner(
           moved = true;
           continue;
         }
-        // S29-A3: a leakage-level reverse current leaves the output at its rail (evaluated).
-        if (-i <= budget + 1e-12) continue;
+        // S29-A3: a leakage-level reverse current leaves the output at its rail (evaluated) —
+        // once it is shown to be leakage-driven (review M2).
+        if (tolerate !== 'none' && -i <= budget + 1e-12) {
+          if (tolerate === 'trusted') continue;
+          corner.release();
+          const strict = solveCorner(solver, perts, withoutLeakage(perts, choice), forced, 'none');
+          if (strict.kind === 'ok') strict.corner.release();
+          else if (strict.kind === 'beyond')
+            return { kind: 'beyond', output: s.st.key, current: i };
+          else return strict;
+          return solveCorner(solver, perts, choice, forced, 'trusted');
+        }
         corner.release();
         return { kind: 'beyond', output: s.st.key, current: i };
       }
@@ -1201,6 +1240,8 @@ export function buildBounds(
         value: (x) => -access.supply(x, p.key),
         forced: { key: p.key, plus: p.plus, minus: p.minus, volts: p.setpointV },
         detail: { tolerance: 'leakage' },
+        // Review M2: the tolerance holds only for a leakage-DRIVEN sink (checked at its corner).
+        leakageVerify: (x) => access.supply(x, p.key) + 1e-12,
       });
 
   // Review item 3: an ESP32 input that reads a logic output must read a GUARANTEED level against

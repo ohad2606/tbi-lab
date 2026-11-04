@@ -19,9 +19,21 @@ const fails = (o: SolveOutcome) => {
   return o.error;
 };
 const lvl = (on: boolean) => (on ? 'high' : 'low');
+const COMBOS = [
+  [false, false],
+  [false, true],
+  [true, false],
+  [true, true],
+] as const;
 
 /** PSU1 at `vcc` powers one gate of `type`; inputs from PSU1+ or GND; Y → 1 kΩ → LED → GND. */
-const single = (type: 'logic.gate_nor' | 'logic.gate_xor', vcc: number, a: boolean, b: boolean) => {
+const single = (
+  type: 'logic.gate_nor' | 'logic.gate_xor',
+  vcc: number,
+  a: boolean,
+  b: boolean,
+  load = true,
+) => {
   const bench = new Bench();
   bench.psu(vcc, 0.1).wire('PSU1.negative', 'GND1.ref');
   const g = bench.add(type);
@@ -30,8 +42,10 @@ const single = (type: 'logic.gate_nor' | 'logic.gate_xor', vcc: number, a: boole
   bench.wire('PSU1.positive', `${g}.vcc`).wire(`${g}.gnd`, 'GND1.ref');
   bench.wire(`${g}.a`, a ? 'PSU1.positive' : 'GND1.ref');
   bench.wire(`${g}.b`, b ? 'PSU1.positive' : 'GND1.ref');
-  bench.ohms(r, 1000).wire(`${g}.y`, `${r}.a`).wire(`${r}.b`, `${led}.anode`);
-  bench.wire(`${led}.cathode`, 'GND1.ref');
+  if (load) {
+    bench.ohms(r, 1000).wire(`${g}.y`, `${r}.a`).wire(`${r}.b`, `${led}.anode`);
+    bench.wire(`${led}.cathode`, 'GND1.ref');
+  }
   return { s: new EngineSession(bench.snapshot()), g, led };
 };
 
@@ -75,34 +89,44 @@ describe('SN74LVC1G02 NOR and SN74LVC1G86 XOR: datasheet cards (SCES213Y, SCES22
 
 describe('NOR and XOR truth tables through the solve (3.0, 3.3, 4.5 V: tabulated output rows)', () => {
   for (const vcc of [3.0, 3.3, 4.5])
-    for (const [type, f] of [
-      ['logic.gate_nor', (a: boolean, b: boolean) => !(a || b)],
-      ['logic.gate_xor', (a: boolean, b: boolean) => a !== b],
-    ] as const)
-      it(`${type} at ${vcc} V: every input combination, the LED on iff Y HIGH`, () => {
-        for (const [a, b] of [
-          [false, false],
-          [false, true],
-          [true, false],
-          [true, true],
-        ] as const) {
-          const { s, g, led } = single(type, vcc, a, b);
-          const o = ok(s.solve());
-          const y = f(a, b);
-          const at = `${type} ${vcc} V a=${+a} b=${+b}`;
-          expect(o.components[g]!.state, at).toMatchObject({ gateOutput: lvl(y) });
-          expect(o.components[g]!.logic!.gates[0]!.output.level, at).toBe(lvl(y));
-          if (y) expect(o.components[led]!.current!, at).toBeGreaterThan(0.5e-3);
-          else expect(Math.abs(o.components[led]!.current!), at).toBeLessThan(1e-9);
-          // The bound the run was checked with is reported: XOR strict at V_CC/GND; NOR (test
-          // voltage 5.5 V) on the ΔI_CC basis whenever an input is at V_CC < 5.5 V.
-          const st = o.components[g]!.state as Record<string, unknown>;
-          if (type === 'logic.gate_xor') expect(st, at).toMatchObject({ iccMaxA: 10e-6 });
-          else if (a || b)
-            expect(st, at).toMatchObject({ iccBasis: 'deltaIcc', deltaIccInputs: 2 });
-          else expect(st, at).toMatchObject({ iccMaxA: 10e-6 });
-        }
-      });
+    it(`logic.gate_nor at ${vcc} V: every input combination, the LED on iff Y HIGH (a loaded 1G02 keeps its I_CC rule, §8.2.1.1)`, () => {
+      for (const [a, b] of COMBOS) {
+        const { s, g, led } = single('logic.gate_nor', vcc, a, b);
+        const o = ok(s.solve());
+        const y = !(a || b);
+        const at = `NOR ${vcc} V a=${+a} b=${+b}`;
+        expect(o.components[g]!.state, at).toMatchObject({ gateOutput: lvl(y) });
+        if (y) expect(o.components[led]!.current!, at).toBeGreaterThan(0.5e-3);
+        else expect(Math.abs(o.components[led]!.current!), at).toBeLessThan(1e-9);
+        const st = o.components[g]!.state as Record<string, unknown>;
+        if (a || b) expect(st, at).toMatchObject({ iccBasis: 'deltaIcc', deltaIccInputs: 2 });
+        else expect(st, at).toMatchObject({ iccMaxA: 10e-6 });
+      }
+    });
+  for (const vcc of [3.0, 3.3, 4.5])
+    it(`logic.gate_xor at ${vcc} V, output unloaded: every input combination from the solve (strict 10 µA: inputs at V_CC or GND)`, () => {
+      for (const [a, b] of COMBOS) {
+        const { s, g } = single('logic.gate_xor', vcc, a, b, false);
+        const o = ok(s.solve());
+        const at = `XOR ${vcc} V a=${+a} b=${+b}`;
+        expect(o.components[g]!.state, at).toMatchObject({
+          gateOutput: lvl(a !== b),
+          iccMaxA: 10e-6,
+        });
+      }
+    });
+  it('S29-D2: a LOADED SN74LVC1G86 output is refused by name (SCES222R gives I_CC only at I_O = 0; no power rule)', () => {
+    for (const vcc of [3.0, 3.3, 4.5])
+      for (const [a, b] of COMBOS.filter(([x, y]) => x !== y)) {
+        const { s, g } = single('logic.gate_xor', vcc, a, b);
+        expect(fails(s.solve()), `${vcc} V`).toMatchObject({
+          code: 'logic_supply_current_uncharacterized',
+          components: [g, 'PSU1'],
+          param: 'y',
+          detail: { part: 'SN74LVC1G86', condition: 'loaded' },
+        });
+      }
+  });
   it('at 5.0 V (no tabulated output row: only ±100 µA is guaranteed) the 1 kΩ LED load is refused by name', () => {
     for (const type of ['logic.gate_nor', 'logic.gate_xor'] as const) {
       const { s, g } = single(type, 5.0, false, type === 'logic.gate_xor');
@@ -136,25 +160,29 @@ describe('NOR and XOR truth tables through the solve (3.0, 3.3, 4.5 V: tabulated
 });
 
 /**
- * A 1-bit full adder from five single gates at 3.3 V (three stages): X = A ⊕ B, S = X ⊕ Cin,
- * C1 = A·B, C2 = X·Cin, Cout = C1 + C2. Inputs from PSU1+ or GND; S and Cout each light an LED.
+ * A 1-bit full adder from seven single gates at 3.3 V, every one from a sheet with the loaded-output
+ * power rule (§8.2.1.1; owner decision S29-D2 keeps the XOR part strict): X = (A + B) · NAND(A, B),
+ * S = (X + Cin) · NAND(X, Cin), Cout = NAND(NAND(A, B), NAND(X, Cin)) = A·B + X·Cin. Four stages.
+ * Inputs from PSU1+ or GND; S and Cout each light an LED.
  */
 const fullAdder = (a: boolean, b: boolean, cin: boolean, vcc = 3.3, limit = 0.2) => {
   const bench = new Bench();
   bench.psu(vcc, limit).wire('PSU1.negative', 'GND1.ref');
-  const x = bench.add('logic.gate_xor');
-  const sum = bench.add('logic.gate_xor');
-  const c1 = bench.add('logic.gate_and');
-  const c2 = bench.add('logic.gate_and');
-  const cout = bench.add('logic.gate_or');
-  for (const g of [x, sum, c1, c2, cout])
+  const o1 = bench.add('logic.gate_or');
+  const n1 = bench.add('logic.gate_nand');
+  const x = bench.add('logic.gate_and');
+  const o2 = bench.add('logic.gate_or');
+  const n2 = bench.add('logic.gate_nand');
+  const sum = bench.add('logic.gate_and');
+  const cout = bench.add('logic.gate_nand');
+  for (const g of [o1, n1, x, o2, n2, sum, cout])
     bench.wire('PSU1.positive', `${g}.vcc`).wire(`${g}.gnd`, 'GND1.ref');
   const lv = (on: boolean) => (on ? 'PSU1.positive' : 'GND1.ref');
-  bench.wire(`${x}.a`, lv(a)).wire(`${x}.b`, lv(b));
-  bench.wire(`${c1}.a`, lv(a)).wire(`${c1}.b`, lv(b));
-  bench.wire(`${sum}.a`, `${x}.y`).wire(`${sum}.b`, lv(cin));
-  bench.wire(`${c2}.a`, `${x}.y`).wire(`${c2}.b`, lv(cin));
-  bench.wire(`${cout}.a`, `${c1}.y`).wire(`${cout}.b`, `${c2}.y`);
+  for (const g of [o1, n1]) bench.wire(`${g}.a`, lv(a)).wire(`${g}.b`, lv(b));
+  bench.wire(`${x}.a`, `${o1}.y`).wire(`${x}.b`, `${n1}.y`);
+  for (const g of [o2, n2]) bench.wire(`${g}.a`, `${x}.y`).wire(`${g}.b`, lv(cin));
+  bench.wire(`${sum}.a`, `${o2}.y`).wire(`${sum}.b`, `${n2}.y`);
+  bench.wire(`${cout}.a`, `${n1}.y`).wire(`${cout}.b`, `${n2}.y`);
   const leds: string[] = [];
   for (const y of [`${sum}.y`, `${cout}.y`]) {
     const r = bench.add('component.resistor');
@@ -163,10 +191,10 @@ const fullAdder = (a: boolean, b: boolean, cin: boolean, vcc = 3.3, limit = 0.2)
     bench.wire(`${led}.cathode`, 'GND1.ref');
     leds.push(led);
   }
-  return { s: new EngineSession(bench.snapshot()), ids: { x, sum, c1, c2, cout }, leds };
+  return { s: new EngineSession(bench.snapshot()), ids: { o1, n1, x, o2, n2, sum, cout }, leds };
 };
 
-describe('multi-stage logic (S29-D1/A3): a 1-bit full adder from five single gates', () => {
+describe('multi-stage logic (S29-D1/A3): a 1-bit full adder from seven single gates', () => {
   it('all 8 input combinations: every intermediate and final level is the solved, guaranteed operating point; S and Cout match A + B + Cin', () => {
     for (let m = 0; m < 8; m++) {
       const [a, b, cin] = [m & 4, m & 2, m & 1].map(Boolean) as [boolean, boolean, boolean];
@@ -175,9 +203,11 @@ describe('multi-stage logic (S29-D1/A3): a 1-bit full adder from five single gat
       const at = `A=${+a} B=${+b} Cin=${+cin}`;
       const level = (id: string) => o.components[id]!.logic!.gates[0]!.output.level;
       const xv = a !== b;
+      expect(level(ids.o1), at).toBe(lvl(a || b));
+      expect(level(ids.n1), at).toBe(lvl(!(a && b)));
       expect(level(ids.x), at).toBe(lvl(xv));
-      expect(level(ids.c1), at).toBe(lvl(a && b));
-      expect(level(ids.c2), at).toBe(lvl(xv && cin));
+      expect(level(ids.o2), at).toBe(lvl(xv || cin));
+      expect(level(ids.n2), at).toBe(lvl(!(xv && cin)));
       const total = +a + +b + +cin;
       expect(level(ids.sum), at).toBe(lvl(total % 2 === 1));
       expect(level(ids.cout), at).toBe(lvl(total >= 2));
@@ -187,13 +217,10 @@ describe('multi-stage logic (S29-D1/A3): a 1-bit full adder from five single gat
       ] as const)
         if (on) expect(o.components[led]!.current!, at).toBeGreaterThan(0.5e-3);
         else expect(Math.abs(o.components[led]!.current!), at).toBeLessThan(1e-9);
-      // Every gate has a guaranteed quiescent-current bound: the first-stage XOR (inputs at V_CC
-      // or GND, its own test condition) the strict 10 µA; the gates fed by a gate output (or, for
-      // the 1G08/1G32, by V_CC < 5.5 V) on the ΔI_CC basis.
+      // Every gate fed by a gate output is on the ΔI_CC basis with both inputs counted.
       const st = (id: string) => o.components[id]!.state as Record<string, unknown>;
-      expect(st(ids.x), at).toMatchObject({ iccMaxA: 10e-6 });
-      expect(st(ids.cout), at).toMatchObject({ iccBasis: 'deltaIcc', deltaIccInputs: 2 });
-      expect(st(ids.sum).iccMaxA as number, at).toBeLessThanOrEqual(10e-6 + 2 * 500e-6 + 1e-12);
+      for (const id of [ids.x, ids.sum, ids.cout])
+        expect(st(id), `${at} ${id}`).toMatchObject({ iccBasis: 'deltaIcc', deltaIccInputs: 2 });
     }
   });
 
@@ -284,5 +311,48 @@ describe('interoperability: logic gate → 2N3904 → relay → LED (two supplie
       } else expect(Math.abs(o.components[led]!.current!), at).toBeLessThan(1e-9);
       expect(o.components[k]!.state, at).toMatchObject({ energized: a && b });
     }
+  });
+});
+
+describe('independent review regressions (Sprint 29)', () => {
+  it('M2: a supply that would sink a QUIESCENT current (a gate GND on a second supply) is refused even when unrelated leakage inflates the budget', () => {
+    const bench = new Bench();
+    bench.psu(5.0, 0.1).wire('PSU1.negative', 'GND1.ref');
+    const p2 = bench.rail(1.8, 0.1); // the gate's GND pin on PSU2+ (a stacked ground)
+    const u1 = bench.add('logic.gate_and');
+    bench.wire('PSU1.positive', `${u1}.vcc`).wire(`${u1}.gnd`, `${p2}.positive`);
+    bench.wire(`${u1}.a`, `${p2}.positive`).wire(`${u1}.b`, `${p2}.positive`);
+    // Unrelated gates: their leakage would cover U1's I_CC if the budget were global and blind.
+    for (let k = 0; k < 3; k++) {
+      const g = bench.add('logic.gate_and');
+      bench.wire('PSU1.positive', `${g}.vcc`).wire(`${g}.gnd`, 'GND1.ref');
+      bench.wire(`${g}.a`, 'GND1.ref').wire(`${g}.b`, 'GND1.ref');
+    }
+    const e = fails(new EngineSession(bench.snapshot()).solve());
+    expect(e).toMatchObject({
+      code: 'logic_supply_not_guaranteed',
+      components: [p2],
+      param: 'sink',
+      detail: { cause: 'not_leakage' },
+    });
+  });
+
+  it('M3 / S29-D3: an input overdriven ABOVE V_CC by a real source (3.8 V through 10 kΩ into a gate at 3.3 V) is refused; the same input at V_CC runs', () => {
+    const at = (volts: number) => {
+      const bench = new Bench();
+      bench.psu(3.3, 0.1).wire('PSU1.negative', 'GND1.ref');
+      const src = bench.rail(volts, 0.1);
+      const g = bench.add('logic.gate_and');
+      const r = bench.add('component.resistor');
+      bench.wire('PSU1.positive', `${g}.vcc`).wire(`${g}.gnd`, 'GND1.ref');
+      bench.ohms(r, 10_000).wire(`${src}.positive`, `${r}.a`).wire(`${r}.b`, `${g}.a`);
+      bench.wire(`${g}.b`, 'PSU1.positive');
+      return new EngineSession(bench.snapshot()).solve();
+    };
+    expect(fails(at(3.8))).toMatchObject({
+      code: 'logic_supply_current_uncharacterized',
+      detail: { condition: 'notInputs' },
+    });
+    expect(ok(at(3.3)).ok).toBe(true);
   });
 });
