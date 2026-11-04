@@ -55,21 +55,22 @@ async function micropython(page: Page, program: string) {
   await waitSaved(page);
 }
 
-test("X1 on Runtime v4 (Sprint 22 Q1 strict): refused by name at once — the AND gate's input A is never at 5.5 V or exactly GND, so the supply current limit is not guaranteed", async ({
+test('X1 on the real runtime (S29-D1): the pre-setup state runs; once the sketch drives GPIO18 into its 10 kΩ pull-down the pad carries more than leakage → refused by name (Q7)', async ({
   page,
 }, info) => {
   await openExample(page, 'esp32-logic-and');
   await buildProgram(page, 300_000);
   await page.getByTestId('sim-run').click();
-  // SN74LVC1G08 §5.5 bounds I_CC only with every input at 5.5 V or GND. Before setup() A sits on
-  // its 10 kΩ pull-down (≈ 50 mV off GND); GPIO18's LOW is guaranteed only ≤ 0.33 V and its HIGH
-  // never reaches 5.5 V: logic_supply_current_uncharacterized (the supply's current limit).
+  // Before setup() A and B sit on their 10 kΩ pull-downs, within 0.6 V of GND: the AND gate's
+  // I_CC is bounded by ΔI_CC (S29-D1) and that state runs. pinMode(18, OUTPUT) then drives GPIO18
+  // into the pull-down: an ESP32 output's level is guaranteed only at leakage-level current
+  // (owner decision Q7) → refused by name, naming GPIO18.
   const err = page.getByTestId('sim-error');
-  await expect(err).toHaveAttribute('data-code', 'logic_supply_current_uncharacterized', {
+  await expect(err).toHaveAttribute('data-code', 'logic_mcu_output_uncharacterized', {
     timeout: 120_000,
   });
-  await expect(err).toContainText('current limit');
-  await page.screenshot({ path: info.outputPath('s21l-real-x1-refused.png') });
+  await expect(err).toContainText('GPIO18');
+  await page.screenshot({ path: info.outputPath('s29-real-x1-refused.png') });
 });
 
 test('MicroPython on Runtime v4: PWM at 50 % on GPIO18 gives the LED its time-average', async ({

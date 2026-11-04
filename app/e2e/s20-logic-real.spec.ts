@@ -7,10 +7,10 @@
  *
  * - C `esp32-logic-quad-and`: Sprint 21, refused by name at 3.0 V (the SN74LVC08A input leakage
  *   is specified only at 3.6 V; owner question S21-Q2); the panel marks 1A "not guaranteed";
- * - D `esp32-logic-override`: Sprint 22 (owner decision Q1, strict) — refused by name at once: input
- *   A is never at 5.5 V or exactly GND (the I_CC test condition, SCES217AA §5.5), so the supply's
- *   current limit is not guaranteed (logic_supply_current_uncharacterized);
- * - D with the gate supply at 4.5 V: likewise refused at once (before setup() A is ≈ 50 mV off GND).
+ * - D `esp32-logic-override` (as shipped at 3.0 V, and with the gate at 4.5 V): since S29-D1 the
+ *   pre-setup state runs (the inputs on their pull-downs are within 0.6 V of GND); once the sketch
+ *   drives GPIO18 into its 10 kΩ pull-down the pad carries more than leakage-level current and is
+ *   refused by name (logic_mcu_output_uncharacterized, owner decision Q7).
  */
 import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
@@ -50,23 +50,22 @@ test('C on the real runtime (Sprint 21): refused by name at 3.0 V — SN74LVC08A
   await page.screenshot({ path: info.outputPath('s21l-real-c-refused.png') });
 });
 
-test('D on the real runtime (Sprint 22 Q1 strict): refused by name at once — input A is never at 5.5 V or exactly GND, so the supply current limit is not guaranteed', async ({
+test('D on the real runtime (S29-D1): the pre-setup state runs; once the sketch drives GPIO18 into its 10 kΩ pull-down the pad carries more than leakage → refused by name (Q7)', async ({
   page,
 }, info) => {
   await openExample(page, 'esp32-logic-override');
   await buildProgram(page, 300_000);
   await page.getByTestId('sim-run').click();
-  // Before setup() GPIO18 is an input: A sits on its 10 kΩ pull-down, ≈ 50 mV off GND (I_I × R);
-  // afterwards GPIO18's LOW is guaranteed only ≤ 0.33 V and its HIGH never reaches 5.5 V.
+  // Before setup() every pad is an input: A and B on their pull-downs, within 0.6 V of GND (the
+  // OR gate's I_CC bounded by ΔI_CC, S29-D1) — that state runs. pinMode(18, OUTPUT) then drives
+  // GPIO18 LOW into the 10 kΩ pull-down: an ESP32 output's level is relied on only at
+  // leakage-level current (owner decision Q7) → refused by name, naming GPIO18.
   const err = page.getByTestId('sim-error');
-  await expect(err).toHaveAttribute('data-code', 'logic_supply_current_uncharacterized', {
+  await expect(err).toHaveAttribute('data-code', 'logic_mcu_output_uncharacterized', {
     timeout: 120_000,
   });
-  await expect(err).toContainText('current limit');
-  await expect(err).toContainText('V_I = 5.5 V or GND');
-  await select(page, 'U2');
-  await expect(page.getByTestId('logic-level-y')).toHaveText('not simulated');
-  await page.screenshot({ path: info.outputPath('s21l-real-d-refused.png') });
+  await expect(err).toContainText('GPIO18');
+  await page.screenshot({ path: info.outputPath('s29-real-d-refused.png') });
 });
 
 /** Example D with the gate supply at 4.5 V (V_IH = 0.7 × 4.5 = 3.15 V > the ESP32's 2.64 V). */
@@ -87,7 +86,7 @@ function overrideAt45(): ProjectDocument {
   return r.doc;
 }
 
-test('D with the gate at 4.5 V on the real runtime (Sprint 22 Q1 strict): refused at once by the supply current limit (input A ≈ 50 mV off GND before setup())', async ({
+test('D with the gate at 4.5 V on the real runtime (S29-D1): the same — the pre-setup state runs, GPIO18 driven into its pull-down is refused by name (Q7)', async ({
   page,
 }, info) => {
   await openImported(page, overrideAt45());
@@ -95,9 +94,9 @@ test('D with the gate at 4.5 V on the real runtime (Sprint 22 Q1 strict): refuse
   await buildProgram(page, 300_000);
   await page.getByTestId('sim-run').click();
   const err = page.getByTestId('sim-error');
-  await expect(err).toHaveAttribute('data-code', 'logic_supply_current_uncharacterized', {
+  await expect(err).toHaveAttribute('data-code', 'logic_mcu_output_uncharacterized', {
     timeout: 120_000,
   });
-  await expect(err).toContainText('current limit');
-  await page.screenshot({ path: info.outputPath('s21l-real-d45-refused.png') });
+  await expect(err).toContainText('GPIO18');
+  await page.screenshot({ path: info.outputPath('s29-real-d45-refused.png') });
 });
