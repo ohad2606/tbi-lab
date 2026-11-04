@@ -5,7 +5,8 @@
  * request the app sends (fixtures/s19b-logic-and-session.json, kept equal to the app by
  * app/tests/runtime-fixtures.test.ts).
  *
- * Sprint 28: under the owner rules S22-F3/Q1 the session is refused at creation (see the test);
+ * Sprint 28: under the owner rules S22-F3/Q1 the session was refused at creation; Sprint 29
+ * (S29-D1) it is created and the refusal comes at GPIO18's drive (Q7, see the test);
  * the S19B behaviour below is what the example did before those rules:
  * - button released: the gate's B input is LOW (10 kΩ pull-down), the output LOW whatever GPIO18
  *   does; the firmware reads GPIO4 = 0 on every line;
@@ -32,6 +33,7 @@ import { openAccessPolicy } from '../policy/testing.js';
 import { PROTOCOL, type CreateSessionRequest } from '../host/protocol.js';
 import { open } from '../host/tests/r1-support.js';
 import { realHost } from './r2-support.js';
+import { terminal } from './s24-support.js';
 
 const RT = process.env.TBI_RUNTIME_HOME ?? '';
 const store = RT ? mkdtempSync(join('/var/tmp', 's19b-x1-store-')) : '';
@@ -109,43 +111,29 @@ describe.skipIf(!RT)('X1 on the real stack (Runtime v5, real QEMU)', () => {
   const evidence: Record<string, unknown> = {};
   afterAll(() => recordEvidence('s19b-x1', { runtimeId: runtimeInfo().runtimeId, ...evidence }));
 
-  // Sprint 28: the S19B expectation (released Y = 0, held Y = A) predates the owner rules
-  // S22-F3 / S22-Q1. SN74LVC1G08 bounds I_CC only with every input within 1 mV of V_CC or GND;
-  // input A, on its 10 kΩ pull-down before setup() and later driven by GPIO18 (LOW guaranteed
-  // only ≤ 0.33 V), is never there, so PSU1's current limit cannot be checked and the session is
-  // refused by name at creation — exactly what the staging browser spec s19b-real asserts. No
-  // ESP32-driven X1 can satisfy the rule, so the workload cannot be redesigned without changing
-  // the owner rule; the test now asserts the refusal, deterministically, on two runs.
-  it('refused by name at creation (Sprint 22 Q1 strict): logic_supply_current_uncharacterized, identical on two runs', async () => {
+  // Sprint 29 (owner decision S29-D1): before setup() A and B sit on their 10 kΩ pull-downs,
+  // within 0.6 V of GND, so the AND gate's I_CC is bounded by ΔI_CC and the session is CREATED
+  // and runs (Sprint 28 refused it at creation under strict S22-Q1). Once the sketch drives
+  // GPIO18 into its pull-down, the pad carries more than leakage-level current; an ESP32 output's
+  // level is guaranteed only at leakage-level current (owner decision Q7) → refused by name,
+  // naming GPIO18 — what the staging browser spec s19b-real asserts. Deterministic on two runs.
+  it('S29-D1: created and running; driving GPIO18 into its pull-down refused by name (Q7): logic_mcu_output_uncharacterized, identical on two runs', async () => {
     const details: string[] = [];
     for (let run = 0; run < 2; run++) {
       const { s } = await x1();
-      expect(s.state).toBe('failed');
-      const d = s.status().detail as {
-        code: string;
-        components: string[];
-        detail: {
-          part: string;
-          condition: string;
-          check: string;
-          psu: string;
-          worst: number;
-          pads: number[];
-        };
-      };
-      expect(d.code).toBe('logic_supply_current_uncharacterized');
-      expect(d.components).toEqual(['U2', 'PSU1']);
-      expect(d.detail).toMatchObject({
-        part: 'SN74LVC1G08',
-        condition: 'notInputs',
-        check: 'limit',
-        psu: 'PSU1',
-        pads: [18],
+      expect(s.state, JSON.stringify(s.status().detail)).toBe('ready');
+      expect(s.run()).toEqual({ ok: true });
+      const end = await terminal(s);
+      expect(end).toMatchObject({
+        state: 'failed',
+        reason: 'electrical_error',
+        detail: { code: 'logic_mcu_output_uncharacterized' },
       });
-      // ≈ 50 mV off GND, far outside the 1 mV of S22-F3 (an engine result, not a pinned constant)
-      expect(d.detail.worst).toBeGreaterThan(0.001);
+      const d = end.detail as { code: string; components?: string[]; detail?: { gpio?: number } };
+      expect(JSON.stringify(d)).toContain('gpio18');
       details.push(JSON.stringify(d));
       evidence[`run${run}`] = d;
+      await s.done();
     }
     expect(details[1]).toBe(details[0]);
   });
