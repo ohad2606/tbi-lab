@@ -1591,6 +1591,8 @@ function runtimeLabel(
     case 'logic.gate_and':
     case 'logic.gate_nand':
     case 'logic.gate_or':
+    case 'logic.gate_nor':
+    case 'logic.gate_xor':
     case 'logic.gate_not':
     case 'logic.quad_and': {
       // Sprint 21 (Phase 4): a logic part shows its output LEVELS on the canvas (compact, never

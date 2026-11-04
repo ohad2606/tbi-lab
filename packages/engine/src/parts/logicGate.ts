@@ -496,6 +496,8 @@ export const GATE_TYPES = {
   'logic.gate_and': 'and',
   'logic.gate_nand': 'nand',
   'logic.gate_or': 'or',
+  'logic.gate_nor': 'nor',
+  'logic.gate_xor': 'xor',
   'logic.gate_not': 'not',
 } as const;
 

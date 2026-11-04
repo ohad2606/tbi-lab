@@ -68,6 +68,8 @@ export type ModuleGlyph =
   | 'logic.and'
   | 'logic.nand'
   | 'logic.or'
+  | 'logic.nor'
+  | 'logic.xor'
   | 'logic.not'
   /** Sprint POT-UNITS: a resistor with the wiper's arrow. */
   | 'potentiometer';
@@ -309,6 +311,34 @@ export const SCHEMATIC_SYMBOLS: Record<ComponentTypeId, SchematicSymbol> = {
     ],
     partName: 'SN74LVC1G32',
     glyph: 'logic.or',
+  },
+  'logic.gate_nor': {
+    kind: 'module',
+    key: 'module',
+    // Sprint 19B: the supply pins are real, connectable pins (never hidden), on the right.
+    pins: [
+      { terminal: 'a', name: 'A', side: 'left', order: 1 },
+      { terminal: 'b', name: 'B', side: 'left', order: 2 },
+      { terminal: 'y', name: 'Y', side: 'right', order: 1 },
+      { terminal: 'vcc', name: 'VCC', side: 'right', order: 2 },
+      { terminal: 'gnd', name: 'GND', side: 'right', order: 3 },
+    ],
+    partName: 'SN74LVC1G02',
+    glyph: 'logic.nor',
+  },
+  'logic.gate_xor': {
+    kind: 'module',
+    key: 'module',
+    // Sprint 19B: the supply pins are real, connectable pins (never hidden), on the right.
+    pins: [
+      { terminal: 'a', name: 'A', side: 'left', order: 1 },
+      { terminal: 'b', name: 'B', side: 'left', order: 2 },
+      { terminal: 'y', name: 'Y', side: 'right', order: 1 },
+      { terminal: 'vcc', name: 'VCC', side: 'right', order: 2 },
+      { terminal: 'gnd', name: 'GND', side: 'right', order: 3 },
+    ],
+    partName: 'SN74LVC1G86',
+    glyph: 'logic.xor',
   },
   'logic.gate_not': {
     kind: 'module',

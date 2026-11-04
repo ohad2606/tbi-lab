@@ -50,6 +50,9 @@ const TI_1G = {
   SN74LVC1G00: 'SCES212AC (revised August 2026)',
   SN74LVC1G32: 'SCES219W (revised August 2026)',
   SN74LVC1G04: 'SCES214AF (revised October 2025)',
+  // Sprint 29 (pinned sha256 in logic/lvc1g.ts).
+  SN74LVC1G02: 'SCES213Y (April 1999, revised August 2026)',
+  SN74LVC1G86: 'SCES222R (April 1999, revised August 2026)',
 } as const;
 const TA = '−40 °C to 85 °C column (SN74LVC1G…, T_A −40 to 85 °C)';
 
@@ -140,15 +143,26 @@ function lvc1gRows(part: keyof typeof TI_1G): ProvenanceRow[] {
       'test-condition',
       'I_CC supply condition',
     ),
-    r(
-      'iccInputHigh',
-      5.5,
-      'V',
-      '§5.5 I_CC test condition "V_I = 5.5V or GND"',
-      TA,
-      'test-condition',
-      'I_CC input condition',
-    ),
+    // SN74LVC1G86 (SCES222R §5.5) is the one sheet of the set whose I_CC row reads V_CC.
+    part === 'SN74LVC1G86'
+      ? r(
+          'iccInputHigh',
+          'V_CC',
+          'V',
+          '§5.5 I_CC test condition "V_I = V_CC or GND, I_O = 0" (10 µA, −40 °C to 85 °C)',
+          TA,
+          'test-condition',
+          'I_CC input condition',
+        )
+      : r(
+          'iccInputHigh',
+          5.5,
+          'V',
+          '§5.5 I_CC test condition "V_I = 5.5V or GND"',
+          TA,
+          'test-condition',
+          'I_CC input condition',
+        ),
     r(
       'deltaIccA',
       500e-6,
@@ -307,7 +321,16 @@ const ENGINE_ROWS: ProvenanceRow[] = [
 
 export const LOGIC_PROVENANCE: readonly ProvenanceRow[] = [
   ...ENGINE_ROWS,
-  ...(['SN74LVC1G08', 'SN74LVC1G00', 'SN74LVC1G32', 'SN74LVC1G04'] as const).flatMap(lvc1gRows),
+  ...(
+    [
+      'SN74LVC1G08',
+      'SN74LVC1G00',
+      'SN74LVC1G32',
+      'SN74LVC1G02',
+      'SN74LVC1G86',
+      'SN74LVC1G04',
+    ] as const
+  ).flatMap(lvc1gRows),
   // SN74LVC08A, SCAS283W (January 1993, revised July 2024), SN74LVC08A −40 to +85 °C column.
   ...((): ProvenanceRow[] => {
     const r = (

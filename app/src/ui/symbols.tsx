@@ -589,6 +589,28 @@ export const SYMBOLS: Record<ComponentTypeId, SymbolDef> = {
       </>
     ),
   },
+  'logic.gate_nor': {
+    bbox: [-40, -40, 40, 40],
+    draw: (state) => (
+      <>
+        <path d="M -20 -24 Q 6 -24 24 0 Q 6 24 -20 24 Q -10 0 -20 -24 Z" class="symbol-body" />
+        <circle cx={27} cy={0} r={3} class="symbol-body" />
+        {gateLeads(2, 30, -15)}
+        {unknownMark(state)}
+      </>
+    ),
+  },
+  'logic.gate_xor': {
+    bbox: [-40, -40, 40, 40],
+    draw: (state) => (
+      <>
+        <path d="M -20 -24 Q 6 -24 24 0 Q 6 24 -20 24 Q -10 0 -20 -24 Z" class="symbol-body" />
+        <path d="M -26 -24 Q -16 0 -26 24" class="symbol-body" fill="none" />
+        {gateLeads(2, 24, -24)}
+        {unknownMark(state)}
+      </>
+    ),
+  },
   'logic.gate_not': {
     bbox: [-40, -40, 40, 40],
     draw: (state) => (

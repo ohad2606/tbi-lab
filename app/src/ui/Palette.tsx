@@ -42,6 +42,8 @@ export const PALETTE_GROUPS: readonly { key: MessageKey; types: readonly Compone
       'logic.gate_and',
       'logic.gate_nand',
       'logic.gate_or',
+      'logic.gate_nor',
+      'logic.gate_xor',
       'logic.gate_not',
       'logic.quad_and',
     ],

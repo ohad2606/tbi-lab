@@ -382,7 +382,7 @@ export function engineErrorMessage(
                               d.check === 'limit'
                             ? `sim.error.logic_supply_current_uncharacterized.${
                                 error.param && error.param !== 'vcc' ? 'limit_input' : 'limit'
-                              }${d.part === 'SN74LVC08A' ? '.sn74lvc08a' : ''}`
+                              }${d.part === 'SN74LVC08A' || d.part === 'SN74LVC1G86' ? `.${d.part.toLowerCase()}` : ''}`
                             : `sim.error.${error.code}.${(d.part ?? '').toLowerCase()}`;
       const why = `sim.bound.notEstablished.${d.reason ?? ''}`;
       const causes = (d.causes ?? [])

@@ -66,6 +66,9 @@ describe('Sprint 4 catalog: the non-MCU V1 catalog is complete and closed (A16)'
         'logic.gate_and',
         'logic.gate_nand',
         'logic.gate_or',
+        // Sprint 29 (Workstream B): NOR and XOR single gates (TI SN74LVC1G02 / SN74LVC1G86).
+        'logic.gate_nor',
+        'logic.gate_xor',
         'logic.gate_not',
         // Exploration Foundation L3: one packaged logic device (TI SN74LVC08A).
         'logic.quad_and',

@@ -110,7 +110,7 @@ export function facilityForFeature(code: string): FirmwareFacility | undefined {
  * entries (a test checks it).
  */
 /** Sprint 19B: what the single-gate model does not do (each shown in EN/HE). */
-const LOGIC_LIMITATIONS = (part: '1g08' | '1g00' | '1g32' | '1g04') => [
+const LOGIC_LIMITATIONS = (part: '1g08' | '1g00' | '1g32' | '1g02' | '1g86' | '1g04') => [
   // Sprint 20 (review #3): each device's own t_pd figure and table, not a shared range.
   `logic_${part}_no_delay`,
   'logic_guaranteed_output',
@@ -164,6 +164,8 @@ export const MODEL_LIMITATIONS: Readonly<Partial<Record<ComponentTypeId, readonl
   'logic.gate_and': LOGIC_LIMITATIONS('1g08'),
   'logic.gate_nand': LOGIC_LIMITATIONS('1g00'),
   'logic.gate_or': LOGIC_LIMITATIONS('1g32'),
+  'logic.gate_nor': LOGIC_LIMITATIONS('1g02'),
+  'logic.gate_xor': LOGIC_LIMITATIONS('1g86'),
   'logic.gate_not': LOGIC_LIMITATIONS('1g04'),
   // L3: the SN74LVC08A package (its own supply rows, no class bound, no power-off spec).
   'logic.quad_and': [

@@ -1512,7 +1512,10 @@ export class EngineSession {
                 readsLogic: outputRoots.has(signalUf.find(node)),
                 key: padDevice.get(pin.gpio)!.id,
               }));
-            const evaluateWith = (deltaBasis: ReadonlySet<string>): EngineError | null => {
+            const evaluateWith = (
+              deltaBasis: ReadonlySet<string>,
+              skipLimits = false,
+            ): EngineError | null => {
               const { perts, checks, extra } = buildBounds(
                 specs,
                 pads,
@@ -1577,56 +1580,60 @@ export class EngineSession {
                   },
                 },
                 live,
-                checks,
+                skipLimits
+                  ? checks.filter((c) => !(c.kind === 'psu' && c.pin === 'limit'))
+                  : checks,
                 extra,
               );
               return failure ? (failure as EngineError) : null;
             };
             // S29-D1: a part refused only because an input leaves the strict I_CC test condition
             // at a corner is evaluated again on the ΔI_CC basis, if its inputs are in the bands.
-            const deltaBasis = new Set<string>();
-            for (;;) {
-              const f = evaluateWith(deltaBasis);
-              const c = f?.components?.[0];
-              const d = (f?.detail ?? {}) as Record<string, unknown>;
-              const spec = specs.find((s) => s.component === c);
-              if (
-                f?.code === 'logic_supply_current_uncharacterized' &&
-                d.condition === 'notInputs' &&
-                spec &&
-                !deltaBasis.has(spec.component) &&
-                spec.vcc !== null &&
-                'iccBasis' in
-                  quiescentAt(
-                    spec.card,
-                    spec.vcc,
-                    spec.inputs.map(
-                      (i) => access.v(xSolution, i.node) - access.v(xSolution, spec.gndNode),
-                    ),
-                    true,
-                  )
-              ) {
-                deltaBasis.add(spec.component);
-                continue;
-              }
-              this.deltaBasis = new Map();
-              if (!f)
-                for (const id of deltaBasis) {
-                  const sp = specs.find((s) => s.component === id)!;
-                  this.deltaBasis.set(
-                    id,
-                    quiescentAt(
-                      sp.card,
-                      sp.vcc,
-                      sp.inputs.map(
-                        (i) => access.v(xSolution, i.node) - access.v(xSolution, sp.gndNode),
-                      ),
-                      true,
-                    ) as Record<string, number | string>,
-                  );
+            const inputsOf = (sp: (typeof specs)[number]) =>
+              sp.inputs.map((i) => access.v(xSolution, i.node) - access.v(xSolution, sp.gndNode));
+            const settle = (basis: Set<string>, skipLimits: boolean): EngineError | null => {
+              for (;;) {
+                const f = evaluateWith(basis, skipLimits);
+                const d = (f?.detail ?? {}) as Record<string, unknown>;
+                const sp = specs.find((x) => x.component === f?.components?.[0]);
+                if (
+                  f?.code === 'logic_supply_current_uncharacterized' &&
+                  d.condition === 'notInputs' &&
+                  sp &&
+                  !basis.has(sp.component) &&
+                  sp.vcc !== null &&
+                  'iccBasis' in quiescentAt(sp.card, sp.vcc, inputsOf(sp), true)
+                ) {
+                  basis.add(sp.component);
+                  continue;
                 }
-              return f;
+                return f;
+              }
+            };
+            const deltaBasis = new Set<string>();
+            let f = settle(deltaBasis, false);
+            // A supply's current limit is checked before the I_CC conditions: refused there, a part
+            // may still be on the strict basis its inputs would not keep at a corner. Its basis is
+            // then settled with the limits set aside — that pass only LEARNS the basis (without
+            // the limits first, a corner may reach a current limit: its refusals are not results)
+            // — and the full evaluation on it is the result: the refusal reports the true worst.
+            if (f?.code === 'logic_supply_not_guaranteed' && f.param === 'limit') {
+              settle(deltaBasis, true);
+              f = settle(deltaBasis, false);
             }
+            this.deltaBasis = new Map();
+            if (!f)
+              for (const id of deltaBasis) {
+                const sp = specs.find((x) => x.component === id)!;
+                this.deltaBasis.set(
+                  id,
+                  quiescentAt(sp.card, sp.vcc, inputsOf(sp), true) as Record<
+                    string,
+                    number | string
+                  >,
+                );
+              }
+            return f;
           }
         : null;
 

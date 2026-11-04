@@ -93,6 +93,8 @@ export type ComponentTypeId =
   | 'logic.gate_and'
   | 'logic.gate_nand'
   | 'logic.gate_or'
+  | 'logic.gate_nor'
+  | 'logic.gate_xor'
   | 'logic.gate_not'
   /**
    * Exploration Foundation L3 (additive): a packaged multi-gate device with its datasheet pin map

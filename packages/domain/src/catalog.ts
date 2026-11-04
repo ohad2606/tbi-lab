@@ -719,6 +719,56 @@ const LOGIC_TYPES = {
     ],
     aliases: ['or gate', '74lvc1g32', 'שער or', 'שער או'],
   },
+  'logic.gate_nor': {
+    type: 'logic.gate_nor',
+    typeVersion: 1,
+    refPrefix: 'U',
+    nameKey: 'component.logic.gate_nor.name',
+    symbol: 'symbol.gate_nor',
+    // Inputs left, output right, the part's own supply pins top (V_CC) and bottom (GND).
+    terminals: [
+      { id: 'a', offset: { x: -40, y: -20 }, labelKey: 'terminal.logic_a' },
+      { id: 'b', offset: { x: -40, y: 20 }, labelKey: 'terminal.logic_b' },
+      { id: 'y', offset: { x: 40, y: 0 }, labelKey: 'terminal.logic_y' },
+      { id: 'vcc', offset: { x: 0, y: -40 }, labelKey: 'terminal.vcc' },
+      { id: 'gnd', offset: { x: 0, y: 40 }, labelKey: 'terminal.logic_gnd' },
+    ],
+    params: [
+      {
+        kind: 'enum',
+        key: 'model',
+        options: [{ value: 'model.logic.sn74lvc1g02', labelKey: 'model.logic.sn74lvc1g02' }],
+        default: 'model.logic.sn74lvc1g02',
+        labelKey: 'param.model',
+      },
+    ],
+    aliases: ['nor gate', '74lvc1g02', 'שער nor', 'שער לא-או'],
+  },
+  'logic.gate_xor': {
+    type: 'logic.gate_xor',
+    typeVersion: 1,
+    refPrefix: 'U',
+    nameKey: 'component.logic.gate_xor.name',
+    symbol: 'symbol.gate_xor',
+    // Inputs left, output right, the part's own supply pins top (V_CC) and bottom (GND).
+    terminals: [
+      { id: 'a', offset: { x: -40, y: -20 }, labelKey: 'terminal.logic_a' },
+      { id: 'b', offset: { x: -40, y: 20 }, labelKey: 'terminal.logic_b' },
+      { id: 'y', offset: { x: 40, y: 0 }, labelKey: 'terminal.logic_y' },
+      { id: 'vcc', offset: { x: 0, y: -40 }, labelKey: 'terminal.vcc' },
+      { id: 'gnd', offset: { x: 0, y: 40 }, labelKey: 'terminal.logic_gnd' },
+    ],
+    params: [
+      {
+        kind: 'enum',
+        key: 'model',
+        options: [{ value: 'model.logic.sn74lvc1g86', labelKey: 'model.logic.sn74lvc1g86' }],
+        default: 'model.logic.sn74lvc1g86',
+        labelKey: 'param.model',
+      },
+    ],
+    aliases: ['xor gate', 'exclusive or', '74lvc1g86', 'שער xor', 'שער או בלעדי'],
+  },
   'logic.gate_not': {
     type: 'logic.gate_not',
     typeVersion: 1,
@@ -1012,6 +1062,8 @@ export const CATALOG_ORDER: readonly ComponentTypeId[] = [
   'logic.gate_and',
   'logic.gate_nand',
   'logic.gate_or',
+  'logic.gate_nor',
+  'logic.gate_xor',
   'logic.gate_not',
   'logic.quad_and',
   'component.potentiometer',

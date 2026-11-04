@@ -415,7 +415,15 @@ function moduleGlyph(glyph: SchModule['glyph']) {
         </>
       );
     case 'logic.or':
-      return <path d="M -18 -14 Q 2 -14 14 0 Q 2 14 -18 14 Q -10 0 -18 -14 Z" />;
+    case 'logic.nor':
+    case 'logic.xor':
+      return (
+        <>
+          <path d="M -18 -14 Q 2 -14 14 0 Q 2 14 -18 14 Q -10 0 -18 -14 Z" />
+          {glyph === 'logic.nor' && <circle cx={17} cy={0} r={3} />}
+          {glyph === 'logic.xor' && <path d="M -23 -14 Q -15 0 -23 14" fill="none" />}
+        </>
+      );
     case 'logic.not':
       return (
         <>

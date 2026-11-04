@@ -232,6 +232,36 @@ export const LVC1G_CARDS: Readonly<Record<string, LogicCard>> = {
     ciF: 3.5e-12,
     tpd33: [0.7e-9, 3.3e-9],
   },
+  // Sprint 29: SN74LVC1G02 (NOR). SCES213Y (April 1999, revised August 2026), pinned
+  // sha256 38895735614b7fee3e6ccee1c02026dc1256ff83da5375cdcc4022ad84460d0f: §5.3/§5.5 identical
+  // to the set (I_CC "V_I = 5.5V or GND"); C_i 4 pF; §5.6 t_pd 0.8–3.6 ns at 3.3 V ± 0.3 V.
+  'model.logic.sn74lvc1g02': {
+    partNumber: 'SN74LVC1G02',
+    function: 'nor',
+    source: `Texas Instruments SCES213Y (April 1999, revised August 2026), ${TABLES}`,
+    pkg: 'SOT-23-5 (DBV)',
+    pins: TWO_INPUT,
+    inputs: ['a', 'b'],
+    ...LVC1G_COMMON,
+    ciF: 4e-12,
+    tpd33: [0.8e-9, 3.6e-9],
+  },
+  // Sprint 29: SN74LVC1G86 (XOR). SCES222R (April 1999, revised August 2026), pinned
+  // sha256 2012506931c5c64be8fd27f2dc73e10b99a41ab00fd5a31fe374f75b5a5a4654. Its §5.5 differs
+  // from the set in one row: I_CC "V_I = V_CC or GND, I_O = 0" (10 µA, −40 °C to 85 °C), not
+  // 5.5 V; C_i 6 pF; §5.6 t_pd 0.6–4 ns at 3.3 V ± 0.3 V (C_L = 15 pF, −40 °C to 85 °C).
+  'model.logic.sn74lvc1g86': {
+    partNumber: 'SN74LVC1G86',
+    function: 'xor',
+    source: `Texas Instruments SCES222R (April 1999, revised August 2026), ${TABLES}`,
+    pkg: 'SOT-23-5 (DBV)',
+    pins: TWO_INPUT,
+    inputs: ['a', 'b'],
+    ...LVC1G_COMMON,
+    iccInputHigh: 'vcc',
+    ciF: 6e-12,
+    tpd33: [0.6e-9, 4e-9],
+  },
 };
 
 /** The logic function's output for defined inputs. */

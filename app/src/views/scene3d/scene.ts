@@ -141,6 +141,8 @@ export const MODEL_FOR: Partial<Record<ComponentTypeId, ModelKey>> = {
   'logic.gate_and': 'logic.sot23',
   'logic.gate_nand': 'logic.sot23',
   'logic.gate_or': 'logic.sot23',
+  'logic.gate_nor': 'logic.sot23',
+  'logic.gate_xor': 'logic.sot23',
   'logic.gate_not': 'logic.sot23',
   'logic.quad_and': 'logic.soic14',
 };
