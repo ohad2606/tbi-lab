@@ -85,8 +85,10 @@ describe('no shipped example raises a pad over-voltage warning (T-D3)', () => {
         // S29-D1: #0 (every pad an input: the gate inputs on their 10 kΩ pull-downs, ≈ 50 mV,
         // within 0.6 V of GND → I_CC bounded by ΔI_CC) now runs in esp32-logic-and and
         // esp32-logic-override; the SN74LVC08A example stays refused at 3.0 V (I_I, S21-Q2).
-        'esp32-logic-and': 8,
-        'esp32-logic-override': 8,
+        // S30-L1: GPIO18 driven LOW into its 10 kΩ pull-down (38 µA) runs in both (#2 with the
+        // read-back pad an input).
+        'esp32-logic-and': 7,
+        'esp32-logic-override': 7,
         'esp32-logic-quad-and': 9,
       };
       // Sprint 29, mpy-adder-monitor: the ESP32 only READS the adder (GPIO32/33 switches,
@@ -94,17 +96,26 @@ describe('no shipped example raises a pad over-voltage warning (T-D3)', () => {
       // fights a gate output or a switch node and is refused by name. Exactly the 3 combinations
       // with all four as inputs run (GPIO18 input / HIGH / LOW).
       if (e.id === 'mpy-adder-monitor') {
+        const mode = (n: number, k: number) =>
+          MODES[Math.floor(n / MODES.length ** k) % MODES.length];
+        // Sprint 30 (S30-L1): GPIO33 driven LOW onto the B switch node, which the OPEN switch SW2
+        // leaves on its 10 kΩ pull-down: the pad agrees with it and sinks ≤ 0.33 V / 10 kΩ + 5 µA =
+        // 38 µA, within the 100 µA envelope → runs too (refused under Q7 until Sprint 29).
         const allRead = (n: number) =>
-          gpios.every((g, k) => g === 18 || Math.floor(n / MODES.length ** k) % MODES.length === 0);
+          gpios.every(
+            (g, k) =>
+              g === 18 || mode(n, k) === 'input' || (g === 33 && mode(n, k) === 'output-low'),
+          );
         const expectRefused = [...Array(MODES.length ** gpios.length).keys()].filter(
           (n) => !allRead(n),
         );
         expect(refusedAt, e.id).toEqual(expectRefused);
-        expect(combos, e.id).toBe(3);
+        expect(combos, e.id).toBe(6);
         return;
       }
       expect(refused, `${e.id} ${refusedAt}`).toBe(expected[e.id] ?? 0);
-      if (e.id === 'esp32-logic-and' || e.id === 'esp32-logic-override')
-        expect(refusedAt, e.id).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+      // The combination with GPIO18 LOW and the read-back pad an input (#6 / #2: the pads' order).
+      if (e.id === 'esp32-logic-and') expect(refusedAt, e.id).toEqual([1, 2, 3, 4, 5, 7, 8]);
+      if (e.id === 'esp32-logic-override') expect(refusedAt, e.id).toEqual([1, 3, 4, 5, 6, 7, 8]);
     });
 });

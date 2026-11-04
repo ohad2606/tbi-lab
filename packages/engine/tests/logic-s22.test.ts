@@ -308,18 +308,21 @@ describe('review F2: an ESP32 output pad — its band an ideal-source interval, 
       detail: { reason: 'parallel_outputs', pads: [18] },
     });
   });
-  it('GPIO18 output-low into a gate input with a 10 kΩ pull-down: at V_OL 0.33 V the pad carries 0.33 V / 10 kΩ + I_I 5 µA = 38 µA > the leakage on its node (I_I 5 µA + 50 nA) → Q7 refusal', () => {
-    const { o } = padCase('output-low', (b, u, gg) => {
+  it('GPIO18 into a gate input with a 10 kΩ pull-down: LOW (V_OL 0.33 V) the pad carries 0.33 V / 10 kΩ + I_I 5 µA = 38 µA — refused under Q7 until Sprint 29, within the 100 µA envelope since S30-L1 → runs; HIGH it sources 3.3 V / 10 kΩ ≈ 330 µA > 100 µA → refused by name', () => {
+    const wire = (b: Bench, u: string, gg: string) => {
       const hi = bledRail(b);
       const r = b.add('component.resistor');
       b.wire(`${gg}.b`, `${hi}.positive`).wire(`${gg}.a`, `${u}.gpio18`);
       b.ohms(r, 10_000).wire(`${gg}.a`, `${r}.a`).wire(`${r}.b`, 'GND1.ref');
-    });
+    };
+    expect(ok(padCase('output-low', wire).o).ok).toBe(true);
+    const { o } = padCase('output-high', wire);
     expect(err(o)).toMatchObject({
       code: 'logic_mcu_output_uncharacterized',
       param: 'gpio18',
-      detail: { level: 'low', limit: expect.closeTo(5.05e-6, 12), value: expect.closeTo(38e-6, 9) },
+      detail: { level: 'high', limit: 100e-6 },
     });
+    expect((err(o)!.detail as { value: number }).value).toBeGreaterThan(320e-6);
   });
 });
 

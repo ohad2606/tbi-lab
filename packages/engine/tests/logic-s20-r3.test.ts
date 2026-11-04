@@ -415,13 +415,12 @@ describe('A2: unpowered output-capable parts drive nothing (owner policy: unpowe
       .wire(`${g}.b`, `${hi}.positive`);
     b.wire('PSU1.positive', `${p}.vcc`).wire(`${p}.gnd`, 'GND1.ref').wire(`${p}.out`, `${g}.a`);
     b.set(p, 'motion', true);
-    // Driven (never floating): a guaranteed HIGH level. But 3.3 V through R14 is ABOVE the gate's
-    // V_CC = 3.0 V: an overdriven input, whose supply current no datasheet row bounds (S29-D3:
-    // the ΔI_CC band stops at V_CC at the operating point) → PSU2's current limit refused by name.
-    expect(fails(solve(b))).toMatchObject({
-      code: 'logic_supply_current_uncharacterized',
-      components: [g, p2],
-      detail: { condition: 'notInputs', check: 'limit' },
+    // Driven (never floating): a guaranteed HIGH level. 3.3 V through R14 is ABOVE the gate's
+    // V_CC = 3.0 V: refused in Sprint 29 (S29-D3); since S30-A4 an input up to the 1G08's own I_CC
+    // test voltage (5.5 V) is bounded → runs, the gate HIGH.
+    expect(ok(solve(b)).components[g]!.state).toMatchObject({
+      gateOutput: 'high',
+      input_a: 'high',
     });
     // Without motion: LOW through R14 to the module's GND — driven, a real LOW; the input leakage
     // × 1 kΩ (≤ 5 mV) is not within 1 mV of GND (refused before S29-D1) but within 0.6 V → runs.

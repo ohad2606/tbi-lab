@@ -435,6 +435,18 @@ export function quiescentAt(
  * "an input within 0.6 V of a rail", as decided; null in neither (not characterized). The input's
  * recommended range (0 … 5.5 V) is checked on its own.
  */
+/**
+ * The top of the 'high' ΔI_CC zone at the operating point: V_CC + RAIL_V (S29-D3), or — owner
+ * decision S30-A4, engineering assumption — the part's own numeric I_CC input test voltage (the
+ * 1G00/02/08/32 sheets: "V_I = 5.5 V or GND") when that lies above V_CC: the inputs are
+ * overvoltage tolerant (no clamp to V_CC; recommended V_I 0 … 5.5 V at any V_CC) and above V_CC the
+ * input PMOS is off (V_GS > 0), so no DC path appears that the 5.5 V test point does not bound.
+ * Parts tested at "V_I = V_CC or GND" (1G86, 08A) keep D3.
+ */
+export function highBandTop(card: LogicCard, vcc: number): number {
+  return card.iccInputHigh !== 'vcc' && card.iccInputHigh > vcc ? card.iccInputHigh : vcc + RAIL_V;
+}
+
 export function iccZones(
   card: LogicCard,
   vcc: number,
@@ -448,7 +460,10 @@ export function iccZones(
     else if (Math.abs(v) <= DELTA_ICC_BAND_V) zones.push('low');
     // Owner decision S29-D3: at the operating point an input is at most at V_CC (+ RAIL_V); the
     // band above V_CC is reached only at a corner, by leakage across a resistance (zone checks).
-    else if (v >= vcc - DELTA_ICC_BAND_V && v <= vcc + RAIL_V) zones.push('high');
+    // Owner decision S30-A4 (refines D3 for the parts whose I_CC test voltage is 5.5 V, not V_CC):
+    // an input between V_CC and that test voltage is bounded too (zone 'high', counted with its
+    // ΔI_CC, a superset of the I_CC row it needs).
+    else if (v >= vcc - DELTA_ICC_BAND_V && v <= highBandTop(card, vcc)) zones.push('high');
     else return null;
   }
   return zones;

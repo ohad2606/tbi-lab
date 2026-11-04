@@ -33,7 +33,7 @@
  *   LOW in [0, V_OL max = 0.1 × VDD] (ESP32 Series Datasheet v5.3, Table 5-3, as pinned in
  *   esp32Gpio.ts) — the pad replaced in a corner by an IDEAL SOURCE at either end (never a shift
  *   through the typical drive resistance; Sprint 22 review F2). Relied on only while the pad
- *   carries leakage-level current (padLoad, owner decision Q7); two drivers on one node with
+ *   carries at most 100 µA (padLoad, owner decision S30-L1; Q7 before); two drivers on one node with
  *   nothing between them are refused (`parallel_outputs`).
  * - `padleak`: an ESP32 input pad's leakage, ±50 nA (Table 5-3 I_IH/I_IL), on top of the model's
  *   leakage conductance.
@@ -914,6 +914,15 @@ function solveCorner(
 export const ESP32_V_OL_MAX_V = 0.1 * VDD_V;
 /** Table 5-3 I_IH / I_IL max 50 nA (esp32Gpio.ts header). */
 export const ESP32_INPUT_LEAKAGE_A = 50e-9;
+/**
+ * Owner decision S30-L1 (light-load pad envelope, an engineering assumption, not a datasheet
+ * figure): Table 5-3 V_OH min 0.8 × VDD / V_OL max 0.1 × VDD (stated with no test current) are
+ * relied on while the pad carries at most 100 µA — the JEDEC LVCMOS / TI "CMOS load" test current
+ * (TI's own light-load V_OH row is at I_OH = −100 µA), 1/400 of the TYPICAL 40 mA drive and 1/290
+ * of the multi-pin ~29 mA (Table 5-3 notes 2–3). Above it the level is not guaranteed (refused by
+ * name, logic_mcu_output_uncharacterized). Replaces the Sprint 22 leakage-level rule (Q7).
+ */
+export const ESP32_PAD_LIGHT_LOAD_A = 100e-6;
 
 export interface BoundsAccess {
   v(x: readonly number[], node: string): number;
@@ -1062,7 +1071,7 @@ export function buildBounds(
   // Sprint 22 review F2: an output pad's level band as an IDEAL-SOURCE interval — HIGH anywhere in
   // [V_OH min, VDD], LOW in [0, V_OL max] (Table 5-3) — never a shift through the typical drive
   // resistance (R_DRIVE from the typical 40 mA / 28 mA). Its own current is then bounded only by
-  // the leakage-level trust of Q7 (padLoad below).
+  // the 100 µA light-load trust of S30-L1 (padLoad below).
   for (const p of pads) {
     if (p.mode === 'output-high' || p.mode === 'output-low') {
       const high = p.mode === 'output-high';
@@ -1296,6 +1305,9 @@ export function buildBounds(
     // An output pad's own input leakage (Table 5-3 I_IH/I_IL).
     return sum + ESP32_INPUT_LEAKAGE_A;
   };
+  // S30-L1: the pad's level is relied on up to the light-load envelope (never below the node's own
+  // guaranteed leakage, which a pad always carries).
+  const padLimit = (node: string) => Math.max(ESP32_PAD_LIGHT_LOAD_A, leakageAt(node));
   const padLoad = (relied: ReadonlySet<string>): Check[] =>
     pads
       .filter((p) => p.mode.startsWith('output') && relied.has(`pad:${p.gpio}`))
@@ -1307,13 +1319,13 @@ export function buildBounds(
         pin: `gpio${p.gpio}`,
         code: 'logic_mcu_output_uncharacterized',
         margin: (x: readonly number[]) =>
-          leakageAt(p.node) + 1e-15 - Math.abs(access.pad(x, p.gpio)),
+          padLimit(p.node) + 1e-15 - Math.abs(access.pad(x, p.gpio)),
         value: (x: readonly number[]) => Math.abs(access.pad(x, p.gpio)),
         // Sprint 22 review F2: its own level band counts too (the pad's guaranteed level is an
-        // ideal-source interval; the current it then carries must stay leakage-level, Q7).
+        // ideal-source interval; the current it then carries must stay within the 100 µA envelope, S30-L1).
         detail: {
           gpio: p.gpio,
-          limit: leakageAt(p.node),
+          limit: padLimit(p.node),
           level: p.mode === 'output-high' ? 'high' : 'low',
         },
       }));
@@ -1365,12 +1377,17 @@ export function buildBounds(
                 : z === 'low'
                   ? -DELTA_ICC_BAND_V
                   : vccAt(s, x) - DELTA_ICC_BAND_V;
+            // S30-A4: a part tested at 5.5 V keeps an input bounded up to that voltage (+ RAIL_V);
+            // otherwise the corner may reach V_CC + 0.6 V by leakage across a resistance (D3).
             const hi = (x: readonly number[]) =>
               z === 'test'
                 ? high! + RAIL_V
                 : z === 'low'
                   ? DELTA_ICC_BAND_V
-                  : vccAt(s, x) + DELTA_ICC_BAND_V;
+                  : Math.max(
+                      vccAt(s, x) + DELTA_ICC_BAND_V,
+                      high !== null && high > vccAt(s, x) ? high + RAIL_V : -Infinity,
+                    );
             for (const side of [1, -1])
               out.push({
                 id: `icc-input:${s.component}:${i.pin}:${side > 0 ? 'up' : 'down'}`,

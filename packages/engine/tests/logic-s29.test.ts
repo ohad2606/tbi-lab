@@ -7,6 +7,7 @@
  * level, the guaranteed I_CC bound it was evaluated with, and the LED current it drives.
  */
 import { describe, expect, it } from 'vitest';
+import type { ComponentTypeId } from '@tbi-lab/domain';
 import { EngineSession, LVC1G_CARDS, quiescentAt, type SolveOutcome } from '../src/index.js';
 import { Bench } from './build.js';
 
@@ -337,22 +338,24 @@ describe('independent review regressions (Sprint 29)', () => {
     });
   });
 
-  it('M3 / S29-D3: an input overdriven ABOVE V_CC by a real source (3.8 V through 10 kΩ into a gate at 3.3 V) is refused; the same input at V_CC runs', () => {
-    const at = (volts: number) => {
+  it('M3 / S29-D3, refined by S30-A4: a real source above V_CC (3.8 V through 10 kΩ into a gate at 3.3 V) — bounded for the 1G08 (I_CC tested at 5.5 V), refused for the 1G86 (tested at V_CC, D3 kept) and above 5.5 V; the same input at V_CC runs', () => {
+    const at = (volts: number, gate: ComponentTypeId = 'logic.gate_and') => {
       const bench = new Bench();
       bench.psu(3.3, 0.1).wire('PSU1.negative', 'GND1.ref');
       const src = bench.rail(volts, 0.1);
-      const g = bench.add('logic.gate_and');
+      const g = bench.add(gate);
       const r = bench.add('component.resistor');
       bench.wire('PSU1.positive', `${g}.vcc`).wire(`${g}.gnd`, 'GND1.ref');
       bench.ohms(r, 10_000).wire(`${src}.positive`, `${r}.a`).wire(`${r}.b`, `${g}.a`);
       bench.wire(`${g}.b`, 'PSU1.positive');
       return new EngineSession(bench.snapshot()).solve();
     };
-    expect(fails(at(3.8))).toMatchObject({
+    expect(ok(at(3.8)).ok).toBe(true); // S30-A4: 3.8 V ≤ the 1G08's I_CC test voltage 5.5 V
+    expect(fails(at(3.8, 'logic.gate_xor'))).toMatchObject({
       code: 'logic_supply_current_uncharacterized',
       detail: { condition: 'notInputs' },
     });
+    expect(fails(at(6.0)).code).toMatch(/^logic_/); // above 5.5 V: outside the input range
     expect(ok(at(3.3)).ok).toBe(true);
   });
 });

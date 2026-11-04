@@ -280,7 +280,7 @@ export const en = {
   'sim.error.logic_mcu_input_not_guaranteed.undefined':
     '{components}: {pin}, an ESP32 input, reads this logic output at {voltage}, between the ESP32’s {vil} and {vih}: no defined level, so the circuit is not simulated.',
   'sim.error.logic_mcu_output_uncharacterized':
-    '{components}: {pin} drives a logic input while carrying {current}, more than the inputs’ leakage ({limit}). The ESP32 datasheet states V_OH ≥ 0.8 × VDD and V_OL ≤ 0.1 × VDD with no load current (Table 5-3, 25 °C; its 40 mA / 28 mA drive figures are typical), so the level under this load is not guaranteed and the circuit is not simulated.',
+    '{components}: {pin} drives a logic input while carrying {current}, more than {limit}. The ESP32 datasheet states V_OH ≥ 0.8 × VDD and V_OL ≤ 0.1 × VDD with no load current (Table 5-3, 25 °C; its 40 mA / 28 mA drive figures are typical). The simulator relies on that level only up to 100 µA, the standard CMOS-load test current (an engineering assumption, owner decision S30-L1), so the level under this load is not guaranteed and the circuit is not simulated. Use a larger pull resistor (33 kΩ or more at 3.3 V) or a lighter load.',
   'sim.error.logic_mcu_pull_uncharacterized':
     '{components}: {pin} holds a logic input through its internal pull resistor, which the ESP32 datasheet gives only as typical (45 kΩ, no minimum or maximum). The level is not guaranteed, so the circuit is not simulated. Use an external pull resistor.',
   'logic.why.mcuInput':

@@ -425,15 +425,12 @@ describe('D esp32-logic-override: ESP32 + manual switch → SN74LVC1G32 → LED,
           continue;
         }
         // Y LOW is guaranteed (every level check holds). Review F2: GPIO18 LOW at its band end
-        // carries 0.33 V / 10 kΩ + I_I 5 µA = 38 µA into R3 — more than leakage, so its V_OL
-        // guarantee is not relied on (Q7): refused.
+        // carries 0.33 V / 10 kΩ + I_I 5 µA = 38 µA into R3 — refused under Q7 until Sprint 29;
+        // within the 100 µA envelope since S30-L1 → runs: Y LOW, GPIO19 reads LOW.
         if (mode === 'output-low') {
-          if (o.ok) throw new Error(`expected a refusal: ${at}`);
-          expect(o.error, at).toMatchObject({
-            code: 'logic_mcu_output_uncharacterized',
-            param: 'gpio18',
-            detail: { level: 'low', value: expect.closeTo(38e-6, 9) },
-          });
+          const r = ok(o);
+          expect(r.components.U2!.state, at).toMatchObject({ gateOutput: 'low', input_a: 'low' });
+          expect(r.pins!.find((p) => p.gpio === 19)!.voltage, at).toBeLessThan(0.825);
           continue;
         }
         // GPIO18 as an input: A at 5 µA × 10 kΩ ≈ 50 mV, never exactly GND (before S29-D1, Q1

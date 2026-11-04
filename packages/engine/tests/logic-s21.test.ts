@@ -208,17 +208,19 @@ describe('Task 2: input leakage and pull resistors (I_I ±5 µA)', () => {
     expect((e.detail as { value: number }).value).toBeCloseTo(0, 12);
   });
 
-  it('pull-up to 3.3 V: 100 kΩ → 3.3 − 0.5 = 2.8 V (3.8 V with the leakage reversed), within 0.6 V of V_CC → bounded by ΔI_CC (S29-D1), runs; 250 kΩ → 2.05 V ≥ V_IH 2.0 V: the level holds, but A spans 2.05–4.55 V, out of the V_CC ± 0.6 V band → refused by the current limit only, naming A; 300 kΩ → 1.8 V: refused by the level', () => {
+  it('pull-up to 3.3 V: 100 kΩ → 3.3 − 0.5 = 2.8 V (3.8 V with the leakage reversed), within 0.6 V of V_CC → bounded by ΔI_CC (S29-D1), runs; 250 kΩ → 2.05 V ≥ V_IH 2.0 V: the level holds, but A spans 2.05–4.55 V; the upper end is bounded since S30-A4, the lower end is below V_CC − 0.6 V → refused by the current limit only, naming A; 300 kΩ → 1.8 V: refused by the level', () => {
     const up = pull(100_000, true);
     expect(ok(solve(up.b)).components[up.g]!.state).toMatchObject({
       gateOutput: 'high',
       input_a: 'high',
       ...deltaIcc(1),
     });
+    // The worst corner: I_I flowing the other way lifts A to 3.3 + 5 µA × 250 kΩ = 4.55 V ≤ 5.5 V.
     const e250 = fails(solve(pull(250_000, true).b));
     expect(e250).toMatchObject({ ...limitOnly, param: 'a', detail: { condition: 'notInputs' } });
-    // The worst corner: I_I flowing the other way lifts A to 3.3 + 5 µA × 250 kΩ = 4.55 V.
-    expect((e250.detail as { worst: number }).worst).toBeCloseTo(3.3 + 1.25, 6);
+    // The upper corner (4.55 V) is bounded since S30-A4; the lower one is not: 3.3 − 5 µA × 250 kΩ
+    // = 2.05 V < V_CC − 0.6 V = 2.7 V (between the bands).
+    expect((e250.detail as { worst: number }).worst).toBeCloseTo(3.3 - 1.25, 6);
     const e = fails(solve(pull(300_000, true).b));
     expect(e).toMatchObject({ code: 'logic_input_not_guaranteed', detail: { level: 'high' } });
     expect((e.detail as { worst: number }).worst).toBeCloseTo(3.3 - 1.5, 6);

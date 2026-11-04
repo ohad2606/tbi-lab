@@ -118,14 +118,15 @@ describe('undriven inputs are floating, never a valid LOW (owner policy)', () =>
       detail: { pads: [18] },
     });
     // Driven, A is no longer floating. An ESP32 HIGH (≤ 3.3 V) is not 5.5 V, its LOW (≤ 0.33 V
-    // guaranteed) not GND: before S29-D1 (Q1 strict) PSU1's current limit was refused. S29-D3: at
-    // V_CC = 3.0 V the pad's model HIGH (3.3 V) is ABOVE V_CC — an overdriven input whose supply
-    // current no row bounds → refused by name (the level itself holds: V_OH 2.64 V ≥ V_IH 2.0 V).
+    // guaranteed) not GND: before S29-D1 (Q1 strict) PSU1's current limit was refused; Sprint 29
+    // (S29-D3) refused the pad's HIGH above V_CC = 3.0 V. S30-A4: the 1G08's I_CC is tested at
+    // 5.5 V, so its band [2.64, 3.3] V lies within V_CC − 0.6 … 5.5 V → bounded, runs (the pad
+    // carries only A's I_I ≤ 5 µA, within the S30-L1 envelope).
     s.setPinMode(18, 'output-high');
-    expect(fails(s.solve())).toMatchObject({
-      code: 'logic_supply_current_uncharacterized',
-      components: [G, 'PSU1'],
-      detail: { condition: 'notInputs', check: 'limit' },
+    expect(ok(s.solve()).components[G]!.state).toMatchObject({
+      gateOutput: 'high',
+      input_a: 'high',
+      input_b: 'high',
     });
     // LOW (0–0.33 V guaranteed) is within 0.6 V of GND: bounded by ΔI_CC (S29-D1) → runs.
     s.setPinMode(18, 'output-low');
@@ -159,13 +160,15 @@ describe('undriven inputs are floating, never a valid LOW (owner policy)', () =>
     // pad's ≤ 3.3 V is not V_CC = 3.6 V, so the package's I_CC (§5.7) is unbounded: PSU1's
     // current limit is refused by name, after 1A's HIGH level held (V_OH 2.64 V ≥ V_IH 2.0 V).
     // Sprint 22 review F2/F8: GPIO19's HIGH band is an ideal-source interval; through R the pad
-    // carries 1A's leakage (5 µA) + GPIO18's 50 nA, more than the leakage on its OWN node (its own
-    // and GPIO18's 50 nA): the load-less V_OH guarantee is not relied on (Q7) — refused by name.
+    // carries 1A's leakage (5 µA) + GPIO18's 50 nA: refused under Q7 until Sprint 29; within the
+    // 100 µA envelope since S30-L1. The 08A's I_CC is tested at "V_CC or GND" (no S30-A4): 1A at
+    // 2.64–3.3 V is neither within 0.6 V of V_CC = 3.6 V nor at a test voltage → PSU1's current
+    // limit is refused by name, naming both pads.
     s.setPinMode(19, 'output-high');
     expect(fails(s.solve())).toMatchObject({
-      code: 'logic_mcu_output_uncharacterized',
-      param: 'gpio19',
-      detail: { level: 'high', limit: expect.closeTo(1e-7, 15), value: expect.closeTo(5.1e-6, 12) },
+      code: 'logic_supply_current_uncharacterized',
+      components: [Q, 'PSU1'],
+      detail: { part: 'SN74LVC08A', condition: 'notInputs', check: 'limit', pads: [18, 19] },
     });
   });
 

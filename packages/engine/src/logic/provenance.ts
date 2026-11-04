@@ -279,6 +279,22 @@ const ENGINE_ROWS: ProvenanceRow[] = [
     'bounds.ts leakageBudget: solveCorner wrong-way stage, psu-sink check',
   ],
   [
+    'ESP32_PAD_LIGHT_LOAD_A',
+    100e-6,
+    'A',
+    'owner decision S30-L1: an ESP32 output pad’s Table 5-3 band (V_OH ≥ 0.8 × VDD, V_OL ≤ 0.1 × VDD, stated with NO test current) is relied on while the pad carries at most 100 µA — the JEDEC LVCMOS / TI "CMOS load" test current (TI’s light-load V_OH row is at I_OH = −100 µA), 1/400 of the TYPICAL 40 mA drive and 1/290 of the multi-pin ~29 mA (Table 5-3 notes 2–3); above it the level is not guaranteed (refused by name). Replaces the Sprint 22 leakage-level rule (Q7)',
+    'assumption',
+    'bounds.ts ESP32_PAD_LIGHT_LOAD_A, padLoad check (logic_mcu_output_uncharacterized)',
+  ],
+  [
+    'ABOVE_VCC_TO_ICC_TEST_V',
+    5.5,
+    'V',
+    'owner decision S30-A4 (refines S29-D3): for a part whose I_CC row is tested at "V_I = 5.5 V or GND" (SN74LVC1G00/02/08/32), an input between V_CC and that test voltage is in the bounded high zone (counted with its ΔI_CC). Basis: the inputs are overvoltage tolerant (no clamp to V_CC; recommended V_I 0 … 5.5 V at any V_CC) and above V_CC the input PMOS is off (V_GS > 0), so no DC path appears that the 5.5 V test point does not bound. Parts tested at "V_CC or GND" (1G86, 08A) keep D3',
+    'assumption',
+    'logic/lvc1g.ts highBandTop, iccZones; bounds.ts icc-input zone checks',
+  ],
+  [
     'UNPOWERED_V',
     1e-3,
     'V',
@@ -560,7 +576,7 @@ export const LOGIC_PROVENANCE: readonly ProvenanceRow[] = [
         '×VDD',
         'Table 5-3 V_OH min 0.8 × VDD — NO test current stated',
         'guaranteed-min',
-        'pad HIGH band; relied on only at leakage-level pad current (Q7)',
+        'pad HIGH band; relied on only up to 100 µA of pad current (S30-L1)',
       ),
       e(
         'V_OL_FRACTION',
@@ -568,7 +584,7 @@ export const LOGIC_PROVENANCE: readonly ProvenanceRow[] = [
         '×VDD',
         'Table 5-3 V_OL max 0.1 × VDD — NO test current stated',
         'guaranteed-max',
-        'pad LOW band; relied on only at leakage-level pad current (Q7)',
+        'pad LOW band; relied on only up to 100 µA of pad current (S30-L1)',
       ),
       e(
         'INPUT_LEAKAGE_A',
