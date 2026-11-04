@@ -154,6 +154,12 @@ export interface SessionStatus {
   };
 }
 
+/** Sprint 30 (M3 POC): one timing-trace entry (see HostSession.timingTrace). */
+export type TimingTraceEntry =
+  | { vns: string; kind: 'pad'; pad: number; mode: RuntimePinMode }
+  | { vns: string; kind: 'control'; component: string }
+  | { vns: string; kind: 'solve'; wallUs: number; injects: { pad: number; level: 0 | 1 }[] };
+
 export class HostSession {
   readonly id = randomBytes(16).toString('hex');
   /** Only its hash is kept; compared in constant time by the host. */
@@ -265,6 +271,24 @@ export class HostSession {
   static pwmSolveBudgetPerSimS = PWM_SOLVE_BUDGET_PER_SIM_S;
   /** The backlight token each I2C display's engine model has. */
   private readonly backlights = new Map<string, string>();
+
+  /**
+   * Sprint 30 (M3 POC): the timing trace, when `config.timingTraceCapacity` > 0. Every entry is
+   * stamped with the guest's virtual time (QEMU_CLOCK_VIRTUAL ns, the only clock that orders the
+   * simulation); `wallUs` is a MEASUREMENT of the host's solve cost (performance.now), recorded
+   * for overhead figures only and excluded from fingerprints — it never feeds a decision.
+   */
+  private readonly trace: TimingTraceEntry[] = [];
+  private traceDropped = 0;
+  timingTrace(): { entries: readonly TimingTraceEntry[]; dropped: number } {
+    return { entries: this.trace, dropped: this.traceDropped };
+  }
+  private traced(e: TimingTraceEntry): void {
+    const cap = this.config.timingTraceCapacity ?? 0;
+    if (cap <= 0) return;
+    if (this.trace.length >= cap) this.traceDropped++;
+    else this.trace.push(e);
+  }
 
   constructor(
     private readonly config: HostConfig,
@@ -660,6 +684,18 @@ export class HostSession {
   // The co-located loop (bridge handlers). Everything here is synchronous with QEMU.
 
   private solveAndInject(vns: bigint): Command[] {
+    if (!(this.config.timingTraceCapacity ?? 0)) return this.solveAndInjectAt(vns);
+    const t0 = performance.now();
+    const cmds = this.solveAndInjectAt(vns);
+    const wallUs = Math.round((performance.now() - t0) * 1000);
+    const injects = cmds.flatMap((c) =>
+      c.type === 'I' ? [{ pad: (c as { pad: number }).pad, level: (c as { level: 0 | 1 }).level }] : [],
+    );
+    this.traced({ vns: vns.toString(), kind: 'solve', wallUs, injects });
+    return cmds;
+  }
+
+  private solveAndInjectAt(vns: bigint): Command[] {
     this.devices?.advance(vns);
     this.servos?.sync(vns);
     let out = this.solvePoints(vns);
@@ -1271,6 +1307,7 @@ export class HostSession {
     const cancel = drive ? (this.devices?.contention(vns, pad) ?? []) : [];
     const mode: RuntimePinMode = drive ? (level ? 'output-high' : 'output-low') : 'input';
     this.engine!.setPinMode(pad, mode);
+    this.traced({ vns: vns.toString(), kind: 'pad', pad, mode });
     return [...cancel, ...this.solveAndInject(vns)];
   }
 
@@ -1470,6 +1507,7 @@ export class HostSession {
       }
       this.appliedRevision = c.projectRevision;
       ack('applied');
+      this.traced({ vns: vns.toString(), kind: 'control', component: c.component });
       return true;
     }
     const err = this.engine!.setMomentary(c.component, c.action === 'press');

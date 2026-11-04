@@ -89,3 +89,66 @@ describe('S30-L1 + A4: ESP32 GPIO18 drives a 1G08 at 3.0 V; the gate output is r
     expect(err(drive(100_000, 3.0, 'logic.gate_xor').at('output-high'))).not.toBeNull();
   });
 });
+
+/**
+ * M2/M4 topology (the flagship example): GPIO18 → U1 (1G08) A with a 100 kΩ pull-down; B from a
+ * toggle switch to the 3.0 V logic rail with a 10 kΩ pull-down; U1.Y → GPIO19 (the firmware's
+ * feedback) and → U2 (1G08 as a driver, its B at V_CC); U2.Y → 1 kΩ → 2N3904 → SRD-05 relay on a
+ * separate 5 V supply (1N4148 across the coil); the relay's NO contact lights an LED (330 Ω).
+ * U1.Y carries only U2's input leakage and GPIO19's 50 nA, so its light-load row (V_OH ≥ V_CC −
+ * 0.1 V at −100 µA) holds: GPIO19 reads ≥ 2.9 V > V_IH 2.475 V. U2 sources the base current.
+ */
+export function feedbackBench(sw: boolean) {
+  let ids = { u1: '', u2: '', k: '', led: '', q: '' };
+  const bb = boardBench((b, u) => {
+    b.psu(3.0, 0.05);
+    const p5 = b.rail(5.0, 0.5);
+    const u1 = b.add('logic.gate_and');
+    const u2 = b.add('logic.gate_and');
+    for (const g of [u1, u2]) b.wire('PSU1.positive', `${g}.vcc`).wire(`${g}.gnd`, 'GND1.ref');
+    const pa = b.add('component.resistor');
+    b.ohms(pa, 100_000).wire(`${u}.gpio18`, `${u1}.a`).wire(`${u1}.a`, `${pa}.a`);
+    b.wire(`${pa}.b`, 'GND1.ref');
+    const s1 = b.add('component.toggle_switch');
+    const pb = b.add('component.resistor');
+    b.set(s1, 'closed', sw).wire('PSU1.positive', `${s1}.a`).wire(`${s1}.b`, `${u1}.b`);
+    b.ohms(pb, 10_000).wire(`${u1}.b`, `${pb}.a`).wire(`${pb}.b`, 'GND1.ref');
+    b.wire(`${u1}.y`, `${u}.gpio19`).wire(`${u1}.y`, `${u2}.a`).wire(`${u2}.b`, 'PSU1.positive');
+    const rb = b.add('component.resistor');
+    const q = b.add('component.bjt_npn');
+    const k = b.add('component.relay');
+    const d = b.add('component.diode');
+    b.ohms(rb, 1000).wire(`${u2}.y`, `${rb}.a`).wire(`${rb}.b`, `${q}.base`);
+    b.wire(`${q}.emitter`, 'GND1.ref');
+    b.wire(`${p5}.positive`, `${k}.coil1`).wire(`${k}.coil2`, `${q}.collector`);
+    b.wire(`${d}.cathode`, `${k}.coil1`).wire(`${d}.anode`, `${k}.coil2`);
+    const rl = b.add('component.resistor');
+    const led = b.add('component.led');
+    b.wire(`${p5}.positive`, `${k}.com`).wire(`${k}.no`, `${rl}.a`);
+    b.ohms(rl, 330).wire(`${rl}.b`, `${led}.anode`).wire(`${led}.cathode`, 'GND1.ref');
+    ids = { u1, u2, k, led, q };
+  });
+  return { bb, ids };
+}
+
+describe('M2/M4: ESP32 → logic → ESP32 feedback, logic → transistor → relay → LED', () => {
+  for (const sw of [false, true])
+    it(`switch ${sw ? 'closed' : 'open'}: every GPIO18 mode — the relay and LED follow A·B, GPIO19 reads U1.Y`, () => {
+      for (const mode of ['input', 'output-low', 'output-high'] as Mode[]) {
+        const { bb, ids } = feedbackBench(sw);
+        const s = new EngineSession(bb.projected, { pins: bb.pins });
+        s.setPinMode(19, 'input');
+        s.setPinMode(18, mode);
+        const o = ok(s.solve());
+        const y = mode === 'output-high' && sw;
+        const at = `GPIO18 ${mode}, switch ${sw}`;
+        expect(gateOut(o, ids.u1), at).toBe(y ? 'high' : 'low');
+        expect(gateOut(o, ids.u2), at).toBe(y ? 'high' : 'low');
+        if (y) expect(pad(o, 19), at).toBeGreaterThan(2.9 - 1e-9);
+        else expect(pad(o, 19), at).toBeLessThan(0.1 + 1e-9);
+        expect(o.components[ids.k]!.state, at).toMatchObject({ energized: y });
+        if (y) expect(o.components[ids.led]!.current!, at).toBeGreaterThan(5e-3);
+        else expect(Math.abs(o.components[ids.led]!.current!), at).toBeLessThan(1e-9);
+      }
+    });
+});

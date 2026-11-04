@@ -53,6 +53,12 @@ export interface HostConfig {
   maxCommandsPerSecond: number;
   /** Events retained per session for ordered delivery and reconnect replay. */
   eventLogCapacity: number;
+  /**
+   * Sprint 30 (M3 POC, co-simulation timing): entries of the per-session timing trace kept in
+   * memory (0, the default: off). Host-internal — never set by a client, never sent on the wire;
+   * it records what already happens (virtual-time stamps) and changes nothing that is simulated.
+   */
+  timingTraceCapacity?: number;
   /** Serial bytes buffered per publish window; the excess is counted as dropped. */
   serialWindowMaxBytes: number;
   /** Bytes a session's private directory may occupy (the flash copy included). */

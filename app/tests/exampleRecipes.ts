@@ -150,6 +150,101 @@ class Recipe {
   }
 }
 
+/**
+ * Sprint 30 (M1/M2/M4): ESP32 firmware drives logic and reads it back; the logic drives a power
+ * stage. GPIO18 → U2 (SN74LVC1G08) A, held by a 100 kΩ pull-down until the firmware drives it
+ * (S30-L1: driven HIGH the pad sources ≤ 3.3 V / 100 kΩ = 33 µA, within the 100 µA envelope);
+ * B from the permit switch SW1 to the 3.0 V logic rail, 10 kΩ pull-down. U2.Y → GPIO4 (the
+ * firmware's feedback) and → U3 (a second 1G08 as a driver, its B at V_CC), so U2.Y carries only
+ * leakage and its light-load row holds (V_OH ≥ 2.9 V > the ESP32's V_IH 2.475 V). U3.Y → 1 kΩ →
+ * 2N3904 → SRD-05 relay coil on a separate 5 V supply (1N4148 across it); the relay's NO contact
+ * grounds the LED's cathode (330 Ω from 5 V). The gates run at 3.0 V: the ESP32's HIGH band
+ * (2.64–3.3 V) then lies in V_CC − 0.6 V … 5.5 V (S29-D1 + S30-A4).
+ */
+function logicFeedback(id: string, title: string, program: (r: Recipe, board: string) => void) {
+  const r = new Recipe(id, title);
+  r.supply(3, 0.05);
+  const U1 = r.place('board.esp32_devkitc_wroom32', 300, 0);
+  program(r, U1);
+  const U2 = r.place('logic.gate_and', 600, 0);
+  const U3 = r.place('logic.gate_and', 760, 0);
+  const SW1 = r.place('component.toggle_switch', 500, 200);
+  const R2 = r.place('component.resistor', 560, 120, 1);
+  const R3 = r.place('component.resistor', 500, -80, 3);
+  const RB = r.place('component.resistor', 880, 0);
+  const Q1 = r.place('component.bjt_npn', 980, 60);
+  const K1 = r.place('component.relay', 1180, 40);
+  const D1 = r.place('component.diode', 1080, 0, 3);
+  const RL = r.place('component.resistor', 1360, -40, 1);
+  const D2 = r.place('component.led', 1320, 40, 2);
+  const PSU2 = r.extraSupply(880, -180, 5, 0.3);
+  const G2 = r.place('component.ground', 600, 100);
+  const G3 = r.place('component.ground', 760, 80);
+  const G4 = r.place('component.ground', 560, 200);
+  const G5 = r.place('component.ground', 440, -140);
+  const G6 = r.place('component.ground', 580, -120);
+  const G7 = r.place('component.ground', 1000, 140);
+  const G8 = r.place('component.ground', 1200, 120);
+  const G9 = r.place('component.ground', 960, -140);
+  r.set(R2, 'resistance', 10_000, 'ohm');
+  r.set(R3, 'resistance', 100_000, 'ohm');
+  r.set(RB, 'resistance', 1000, 'ohm');
+  r.set(RL, 'resistance', 330, 'ohm');
+  // The permit starts closed: the first request is granted.
+  r.set(SW1, 'closed', true);
+  r.wire(T(U1, 'gnd'), T(G5, 'ref'));
+  // The 3.0 V logic rail: over the board to U2's and U3's V_CC, and down to the permit switch.
+  const rail = r.wire(T('PSU1', 'positive'), T(U2, 'vcc'), [
+    { x: -40, y: -20 },
+    { x: -40, y: -260 },
+    { x: 600, y: -260 },
+  ]);
+  r.wire(T(SW1, 'a'), { kind: 'wire', wire: rail, at: { x: 460, y: -260 } });
+  const v3 = r.wire(T(U3, 'vcc'), { kind: 'wire', wire: rail, at: { x: 560, y: -260 } }, [
+    { x: 760, y: -260 },
+  ]);
+  r.wire(T(U2, 'gnd'), T(G2, 'ref'));
+  r.wire(T(U3, 'gnd'), T(G3, 'ref'));
+  // GPIO18 → A, with its 100 kΩ pull-down (defined before setup() makes GPIO18 an output).
+  const a = r.wire(T(U1, 'gpio18'), T(U2, 'a'));
+  r.wire(T(R3, 'a'), { kind: 'wire', wire: a, at: { x: 500, y: -20 } });
+  r.wire(T(R3, 'b'), T(G6, 'ref'), [{ x: 500, y: -140 }]);
+  r.wire(T(SW1, 'b'), T(R2, 'a'), [{ x: 540, y: 80 }]);
+  r.wire(T(R2, 'a'), T(U2, 'b'), [{ x: 560, y: 20 }]);
+  r.wire(T(R2, 'b'), T(G4, 'ref'));
+  // U2.Y → U3.A (the driver), read back on GPIO4.
+  const y = r.wire(T(U2, 'y'), T(U3, 'a'), [
+    { x: 680, y: 0 },
+    { x: 680, y: -20 },
+  ]);
+  r.wire(T(U1, 'gpio4'), { kind: 'wire', wire: y, at: { x: 660, y: 0 } }, [
+    { x: 400, y: 60 },
+    { x: 400, y: 300 },
+    { x: 660, y: 300 },
+  ]);
+  r.wire(T(U3, 'b'), { kind: 'wire', wire: v3, at: { x: 760, y: -80 } }, [
+    { x: 700, y: 20 },
+    { x: 700, y: -80 },
+  ]);
+  // The power stage.
+  r.wire(T(U3, 'y'), T(RB, 'a'));
+  r.wire(T(RB, 'b'), T(Q1, 'base'), [{ x: 940, y: 0 }]);
+  r.wire(T(Q1, 'emitter'), T(G7, 'ref'));
+  r.wire(T(PSU2, 'negative'), T(G9, 'ref'));
+  const five = r.wire(T(PSU2, 'positive'), T(RL, 'a'), [{ x: 1360, y: -200 }]);
+  const coil = r.wire(T(K1, 'coil1'), { kind: 'wire', wire: five, at: { x: 1120, y: -200 } });
+  const col = r.wire(T(Q1, 'collector'), T(K1, 'coil2'), [
+    { x: 1040, y: 20 },
+    { x: 1040, y: 60 },
+  ]);
+  r.wire(T(D1, 'cathode'), { kind: 'wire', wire: coil, at: { x: 1120, y: -40 } });
+  r.wire(T(D1, 'anode'), { kind: 'wire', wire: col, at: { x: 1080, y: 60 } });
+  r.wire(T(K1, 'com'), T(G8, 'ref'));
+  r.wire(T(K1, 'no'), T(D2, 'cathode'));
+  r.wire(T(D2, 'anode'), T(RL, 'b'));
+  return r.centre(-400);
+}
+
 /** Sprint 25 (Phase 4): the potentiometer-into-GPIO34 circuit, with the board's program. */
 function potThreshold(id: string, title: string, program: (r: Recipe, board: string) => void) {
   const r = new Recipe(id, title);
@@ -1482,6 +1577,16 @@ export const RECIPES: Record<string, () => ProjectDocument> = {
    * in between); GPIO4 drives a red LED through 220 Ω. Starts at 10 % (0.33 V: LOW), never in the
    * band between the thresholds, where a first read has no defined level. ADC is not supported.
    */
+  /** Sprint 30 (M1/M2/M4): firmware → logic → firmware feedback, logic → transistor → relay → LED. */
+  'esp32-logic-feedback': () =>
+    logicFeedback('esp32-logic-feedback', 'ESP32: logic feedback and a relay', (r, U1) =>
+      r.sketch(U1, 'LogicFeedback.ino'),
+    ),
+  /** Sprint 30: the same circuit and behaviour in MicroPython. */
+  'mpy-logic-feedback': () =>
+    logicFeedback('mpy-logic-feedback', 'MicroPython: logic feedback and a relay', (r, U1) =>
+      r.python(U1, 'mpy_logic_feedback.py'),
+    ),
   'esp32-pot-threshold': () =>
     potThreshold('esp32-pot-threshold', 'ESP32: potentiometer as a digital input', (r, U1) =>
       r.sketch(U1, 'PotThreshold.ino'),
