@@ -33,6 +33,8 @@ import mpyPotThreshold from '../../app/src/examples/data/mpy-pot-threshold.json'
 // Sprint 26: multi-file programs with a managed library.
 import lcdLibrary from '../../app/src/examples/data/esp32-lcd-library.json' with { type: 'json' };
 import mpyLcdLibrary from '../../app/src/examples/data/mpy-lcd-library.json' with { type: 'json' };
+// Sprint 29 (M4): an ESP32 in MicroPython reading a logic half adder.
+import mpyAdderMonitor from '../../app/src/examples/data/mpy-adder-monitor.json' with { type: 'json' };
 
 const programsOf = (doc: unknown): ProgramSource[] =>
   Object.values((doc as { programs?: Record<string, ProgramSource> }).programs ?? {});
@@ -57,6 +59,7 @@ function systemPrograms(): ProgramSource[] {
     ...programsOf(mpyPotThreshold),
     ...programsOf(lcdLibrary),
     ...programsOf(mpyLcdLibrary),
+    ...programsOf(mpyAdderMonitor),
     starterProgram('board.esp32_devkitc_wroom32'),
   ].filter((p): p is ProgramSource => !!p);
 }

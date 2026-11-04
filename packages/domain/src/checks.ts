@@ -193,8 +193,11 @@ export function checkCircuit(doc: ProjectDocument): CheckIssue[] {
     }
     const two = doc.components.filter((c) => wiredParts.includes(c.id) && !isBoard(c));
     for (const c of two) {
-      const [t0, t1] = CATALOG[c.type].terminals.map((t) => t.id) as [string, string];
-      parent.set(find(node(c.id, t0)), find(node(c.id, t1)));
+      // Sprint 29: EVERY terminal of the part, not only the first two: a logic gate's output
+      // conducts to its supply pins, so an input driven only by other gates' outputs is not
+      // floating (the first two of a gate are its inputs a and b).
+      const [t0, ...rest] = CATALOG[c.type].terminals.map((t) => t.id) as [string, ...string[]];
+      for (const t of rest) parent.set(find(node(c.id, t)), find(node(c.id, t0)));
     }
     const floating = two
       .filter((c) => find(node(c.id, CATALOG[c.type].terminals[0]!.id)) !== find(REF))

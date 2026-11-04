@@ -33,7 +33,7 @@ const near = (a: number | null | undefined, e: number, rel = REL) => {
 const example = (id: string) => EXAMPLES.find((e) => e.id === id)!.document;
 
 describe('the example set', () => {
-  it('has the eighteen local examples, the fourteen ESP32 examples and the five MicroPython examples, each titled in English and Hebrew', () => {
+  it('has the twenty local examples, the fourteen Arduino ESP32 examples and the seven MicroPython examples, each titled in English and Hebrew', () => {
     expect(EXAMPLES.map((e) => e.id)).toEqual([
       'ohms-law',
       'voltage-divider',
@@ -68,6 +68,10 @@ describe('the example set', () => {
       'esp32-logic-quad-and',
       // Sprint 20 logic examples.
       'logic-and-switches',
+      // Sprint 29: multi-gate logic (S29-D1/A3) and the cross-domain example.
+      'logic-half-adder',
+      'logic-full-adder',
+      'mpy-adder-monitor',
       'logic-cascade',
       'esp32-logic-override',
       // Sprint 24: MicroPython examples.

@@ -89,6 +89,20 @@ describe('no shipped example raises a pad over-voltage warning (T-D3)', () => {
         'esp32-logic-override': 8,
         'esp32-logic-quad-and': 9,
       };
+      // Sprint 29, mpy-adder-monitor: the ESP32 only READS the adder (GPIO32/33 switches,
+      // GPIO34/35 the gate outputs); any combination driving one of those four pads as an output
+      // fights a gate output or a switch node and is refused by name. Exactly the 3 combinations
+      // with all four as inputs run (GPIO18 input / HIGH / LOW).
+      if (e.id === 'mpy-adder-monitor') {
+        const allRead = (n: number) =>
+          gpios.every((g, k) => g === 18 || Math.floor(n / MODES.length ** k) % MODES.length === 0);
+        const expectRefused = [...Array(MODES.length ** gpios.length).keys()].filter(
+          (n) => !allRead(n),
+        );
+        expect(refusedAt, e.id).toEqual(expectRefused);
+        expect(combos, e.id).toBe(3);
+        return;
+      }
       expect(refused, `${e.id} ${refusedAt}`).toBe(expected[e.id] ?? 0);
       if (e.id === 'esp32-logic-and' || e.id === 'esp32-logic-override')
         expect(refusedAt, e.id).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);

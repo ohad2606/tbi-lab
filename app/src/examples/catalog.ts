@@ -353,6 +353,52 @@ export const EXAMPLES: readonly Example[] = [
       'logic.gate_and',
     ],
   },
+  // Sprint 29: multi-gate logic that the guarantee bounds now carry (S29-D1/A3), and the
+  // cross-domain example (manual inputs + logic + MicroPython).
+  {
+    id: 'logic-half-adder',
+    titleKey: 'example.logic-half-adder.title',
+    summaryKey: 'example.logic-half-adder.summary',
+    probes: [V('U1', 'y'), V('U2', 'y')],
+    parts: [
+      'component.led',
+      'component.resistor',
+      'component.toggle_switch',
+      'instrument.lab_psu',
+      'logic.gate_and',
+      'logic.gate_xor',
+    ],
+  },
+  {
+    id: 'logic-full-adder',
+    titleKey: 'example.logic-full-adder.title',
+    summaryKey: 'example.logic-full-adder.summary',
+    probes: [V('U3', 'y'), V('U5', 'y')],
+    parts: [
+      'component.led',
+      'component.resistor',
+      'component.toggle_switch',
+      'instrument.lab_psu',
+      'logic.gate_and',
+      'logic.gate_or',
+      'logic.gate_xor',
+    ],
+  },
+  {
+    id: 'mpy-adder-monitor',
+    titleKey: 'example.mpy-adder-monitor.title',
+    summaryKey: 'example.mpy-adder-monitor.summary',
+    probes: [V('U1', 'y'), V('U2', 'y'), I('D1')],
+    parts: [
+      'board.esp32_devkitc_wroom32',
+      'component.led',
+      'component.resistor',
+      'component.toggle_switch',
+      'instrument.lab_psu',
+      'logic.gate_and',
+      'logic.gate_xor',
+    ],
+  },
   {
     id: 'logic-cascade',
     titleKey: 'example.logic-cascade.title',

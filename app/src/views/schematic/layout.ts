@@ -207,11 +207,23 @@ class Builder {
     const comps = this.doc.components;
     const modules = comps.filter((c) => schematicSymbol(c).kind === 'module');
     // Readable names for module-pin nodes (used by net labels when the user named nothing).
+    const pinOwner = new Map<string, string>();
     for (const m of modules)
       for (const p of (schematicSymbol(m) as ModuleSymbol).pins) {
         const n = this.nodeOf(m.id, p.terminal);
-        if (n && !this.pinNames.has(n)) this.pinNames.set(n, p.name);
+        if (n && !this.pinNames.has(n)) {
+          this.pinNames.set(n, p.name);
+          pinOwner.set(n, m.id);
+        }
       }
+    // Sprint 29: a name that would label two different nodes (two gates' "Y", or a user's net
+    // name) is qualified by its part ("U1.Y", "U2.Y"): equal labels read as one connection.
+    const users = new Set([...this.nodes.values()].map((n) => n.userName).filter(Boolean));
+    const count = new Map<string, number>();
+    for (const name of this.pinNames.values()) count.set(name, (count.get(name) ?? 0) + 1);
+    for (const [n, name] of this.pinNames)
+      if (count.get(name)! > 1 || users.has(name))
+        this.pinNames.set(n, `${pinOwner.get(n)}.${name}`);
 
     // 1. Parts standing between rails and ground (the supply itself, loads across it).
     const sources = comps.filter((c) => {
