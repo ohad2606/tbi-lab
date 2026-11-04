@@ -50,6 +50,8 @@ describe('runtime fixtures', () => {
     // Sprint 26: multi-file programs with a managed library.
     ['s26-esp32-lcd-library-session.json', 'esp32-lcd-library'],
     ['s26-mpy-lcd-library-session.json', 'mpy-lcd-library'],
+    // Sprint 29 (M4): an ESP32 in MicroPython reading a logic half adder.
+    ['s29-mpy-adder-monitor-session.json', 'mpy-adder-monitor'],
   ] as const)
     it(`${file} is the app request for ${id}`, () => {
       const fx = JSON.parse(

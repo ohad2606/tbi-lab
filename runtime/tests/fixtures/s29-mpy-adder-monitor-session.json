@@ -1,0 +1,400 @@
+{
+  "_comment": "Sprint 29 (M4): the app request for mpy-adder-monitor (app/tests/runtime-fixtures.test.ts keeps it equal).",
+  "request": {
+    "protocol": "tbi-lab.session/2",
+    "board": "board.esp32_devkitc_wroom32",
+    "circuit": {
+      "format": "tbi-lab.snapshot",
+      "schemaVersion": 7,
+      "snapshotId": "snap_b3c69aec7ca803d3",
+      "projectId": "prj_examplempyaddermonitor",
+      "projectRevision": 1,
+      "components": [
+        {
+          "id": "PSU1",
+          "type": "instrument.lab_psu",
+          "typeVersion": 1,
+          "params": {
+            "setpointVoltage": {
+              "value": 3.3,
+              "unit": "volt"
+            },
+            "currentLimit": {
+              "value": 0.1,
+              "unit": "ampere"
+            },
+            "outputEnabled": true
+          }
+        },
+        {
+          "id": "GND1",
+          "type": "component.ground",
+          "typeVersion": 1,
+          "params": {}
+        },
+        {
+          "id": "SW1",
+          "type": "component.toggle_switch",
+          "typeVersion": 1,
+          "params": {
+            "closed": true
+          }
+        },
+        {
+          "id": "SW2",
+          "type": "component.toggle_switch",
+          "typeVersion": 1,
+          "params": {
+            "closed": false
+          }
+        },
+        {
+          "id": "R1",
+          "type": "component.resistor",
+          "typeVersion": 1,
+          "params": {
+            "resistance": {
+              "value": 10000,
+              "unit": "ohm"
+            }
+          }
+        },
+        {
+          "id": "R2",
+          "type": "component.resistor",
+          "typeVersion": 1,
+          "params": {
+            "resistance": {
+              "value": 10000,
+              "unit": "ohm"
+            }
+          }
+        },
+        {
+          "id": "GND2",
+          "type": "component.ground",
+          "typeVersion": 1,
+          "params": {}
+        },
+        {
+          "id": "GND3",
+          "type": "component.ground",
+          "typeVersion": 1,
+          "params": {}
+        },
+        {
+          "id": "U1",
+          "type": "logic.gate_xor",
+          "typeVersion": 1,
+          "params": {
+            "model": "model.logic.sn74lvc1g86"
+          }
+        },
+        {
+          "id": "U2",
+          "type": "logic.gate_and",
+          "typeVersion": 1,
+          "params": {
+            "model": "model.logic.sn74lvc1g08"
+          }
+        },
+        {
+          "id": "GND4",
+          "type": "component.ground",
+          "typeVersion": 1,
+          "params": {}
+        },
+        {
+          "id": "GND5",
+          "type": "component.ground",
+          "typeVersion": 1,
+          "params": {}
+        },
+        {
+          "id": "GND6",
+          "type": "component.ground",
+          "typeVersion": 1,
+          "params": {}
+        },
+        {
+          "id": "R3",
+          "type": "component.resistor",
+          "typeVersion": 1,
+          "params": {
+            "resistance": {
+              "value": 220,
+              "unit": "ohm"
+            }
+          }
+        },
+        {
+          "id": "D1",
+          "type": "component.led",
+          "typeVersion": 1,
+          "params": {
+            "model": "model.led.vishay_tlhr5400"
+          }
+        },
+        {
+          "id": "GND7",
+          "type": "component.ground",
+          "typeVersion": 1,
+          "params": {}
+        },
+        {
+          "id": "U3_gnd",
+          "type": "component.ground",
+          "typeVersion": 1,
+          "params": {}
+        }
+      ],
+      "nets": [
+        {
+          "id": "N_1",
+          "role": "ground"
+        },
+        {
+          "id": "N_2",
+          "role": null
+        },
+        {
+          "id": "N_3",
+          "role": null
+        },
+        {
+          "id": "N_4",
+          "role": "ground"
+        },
+        {
+          "id": "N_5",
+          "role": null
+        },
+        {
+          "id": "N_6",
+          "role": "ground"
+        },
+        {
+          "id": "N_7",
+          "role": "ground"
+        },
+        {
+          "id": "N_8",
+          "role": "ground"
+        },
+        {
+          "id": "N_9",
+          "role": null
+        },
+        {
+          "id": "N_10",
+          "role": null
+        },
+        {
+          "id": "N_11",
+          "role": "ground"
+        },
+        {
+          "id": "N_12",
+          "role": null
+        },
+        {
+          "id": "N_13",
+          "role": null
+        },
+        {
+          "id": "N_14",
+          "role": "ground"
+        }
+      ],
+      "connections": [
+        {
+          "component": "PSU1",
+          "terminal": "positive",
+          "net": "N_2"
+        },
+        {
+          "component": "PSU1",
+          "terminal": "negative",
+          "net": "N_1"
+        },
+        {
+          "component": "GND1",
+          "terminal": "ref",
+          "net": "N_1"
+        },
+        {
+          "component": "SW1",
+          "terminal": "a",
+          "net": "N_2"
+        },
+        {
+          "component": "SW1",
+          "terminal": "b",
+          "net": "N_3"
+        },
+        {
+          "component": "SW2",
+          "terminal": "a",
+          "net": "N_2"
+        },
+        {
+          "component": "SW2",
+          "terminal": "b",
+          "net": "N_5"
+        },
+        {
+          "component": "R1",
+          "terminal": "a",
+          "net": "N_3"
+        },
+        {
+          "component": "R1",
+          "terminal": "b",
+          "net": "N_4"
+        },
+        {
+          "component": "R2",
+          "terminal": "a",
+          "net": "N_5"
+        },
+        {
+          "component": "R2",
+          "terminal": "b",
+          "net": "N_6"
+        },
+        {
+          "component": "GND2",
+          "terminal": "ref",
+          "net": "N_4"
+        },
+        {
+          "component": "GND3",
+          "terminal": "ref",
+          "net": "N_6"
+        },
+        {
+          "component": "U1",
+          "terminal": "a",
+          "net": "N_3"
+        },
+        {
+          "component": "U1",
+          "terminal": "b",
+          "net": "N_5"
+        },
+        {
+          "component": "U1",
+          "terminal": "y",
+          "net": "N_9"
+        },
+        {
+          "component": "U1",
+          "terminal": "vcc",
+          "net": "N_2"
+        },
+        {
+          "component": "U1",
+          "terminal": "gnd",
+          "net": "N_7"
+        },
+        {
+          "component": "U2",
+          "terminal": "a",
+          "net": "N_5"
+        },
+        {
+          "component": "U2",
+          "terminal": "b",
+          "net": "N_3"
+        },
+        {
+          "component": "U2",
+          "terminal": "y",
+          "net": "N_10"
+        },
+        {
+          "component": "U2",
+          "terminal": "vcc",
+          "net": "N_2"
+        },
+        {
+          "component": "U2",
+          "terminal": "gnd",
+          "net": "N_8"
+        },
+        {
+          "component": "GND4",
+          "terminal": "ref",
+          "net": "N_7"
+        },
+        {
+          "component": "GND5",
+          "terminal": "ref",
+          "net": "N_8"
+        },
+        {
+          "component": "GND6",
+          "terminal": "ref",
+          "net": "N_11"
+        },
+        {
+          "component": "R3",
+          "terminal": "a",
+          "net": "N_12"
+        },
+        {
+          "component": "R3",
+          "terminal": "b",
+          "net": "N_13"
+        },
+        {
+          "component": "D1",
+          "terminal": "anode",
+          "net": "N_13"
+        },
+        {
+          "component": "D1",
+          "terminal": "cathode",
+          "net": "N_14"
+        },
+        {
+          "component": "GND7",
+          "terminal": "ref",
+          "net": "N_14"
+        },
+        {
+          "component": "U3_gnd",
+          "terminal": "ref",
+          "net": "N_11"
+        }
+      ]
+    },
+    "attachments": [
+      {
+        "gpio": 18,
+        "component": "R3",
+        "terminal": "a"
+      },
+      {
+        "gpio": 32,
+        "component": "SW1",
+        "terminal": "b"
+      },
+      {
+        "gpio": 33,
+        "component": "SW2",
+        "terminal": "b"
+      },
+      {
+        "gpio": 34,
+        "component": "U1",
+        "terminal": "y"
+      },
+      {
+        "gpio": 35,
+        "component": "U2",
+        "terminal": "y"
+      }
+    ]
+  }
+}
