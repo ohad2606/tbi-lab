@@ -264,15 +264,16 @@ for (const size of SIZES)
           'false',
         );
         // Run (S29-D1): before setup() the inputs on their 10 kΩ pull-downs are within 0.6 V of
-        // GND and that state runs; once the sketch drives GPIO18 into its pull-down the pad carries
-        // more than leakage → refused by name, naming GPIO18 (owner decision Q7).
+        // GND and that state runs. S30-L1: GPIO18 LOW (38 µA) runs; once the sketch drives GPIO18
+        // HIGH the LED-loaded gate output is guaranteed only ≥ 2.4 V < V_IH 2.475 V → refused by
+        // name, naming the read-back pad GPIO19.
         await page.getByTestId('sim-run').click();
         await expect(page.getByTestId('sim-error')).toHaveAttribute(
           'data-code',
-          'logic_mcu_output_uncharacterized',
+          'logic_mcu_input_not_guaranteed',
           { timeout: 20_000 },
         );
-        await expect(page.getByTestId('sim-error')).toContainText('GPIO18');
+        await expect(page.getByTestId('sim-error')).toContainText('GPIO19');
         await inspect(page, 'U2');
         await expect(page.getByTestId('logic-pin-y')).toHaveAttribute(
           'data-level',

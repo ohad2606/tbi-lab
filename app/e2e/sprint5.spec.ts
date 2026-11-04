@@ -473,6 +473,7 @@ test('A13/A15: new Sprint 5 surfaces are Hebrew (technical tokens only), RTL chr
     // Sprint 19B: gate functions and pin names (datasheet tokens), part numbers, packages, MicroPython, resistor series, the watt.
     /^(AND|NAND|OR|NOT|SN74LVC1G\d\d|SN74LVC08A?|TI|SOT|SOIC|Y|B|C|D|VCC|MicroPython|KOA|CF1|CFS1|W)$/,
     /^(NOR|XOR|SN74LVC1G|S|Cin|Cout|X|C1|C2|Q7|Q9)$/, // Sprint 29: NOR/XOR, the part family, adder signal names, owner rule ids (LTR technical tokens)
+    /^(S30|L1|REQUEST|PERMIT|GRANTED|DENIED)$/, // Sprint 30: owner decision id S30-L1; the firmware's printed signal and verdict words (serial output, LTR)
     /^TBI$/,
     /^Lab$/,
     /^English$/,
