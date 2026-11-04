@@ -12,7 +12,8 @@
  * Asserted, per language, on two runs with the PERMIT switch opened at 3.0 s and closed at 4.4 s
  * (virtual time, queued before Run):
  * - every GPIO18 write is followed, at the same vns, by a solve whose GPIO4 level = request ·
- *   permit (0 ns virtual latency; the firmware's next read sees it);
+ *   permit (the same vns holds by construction — the blocking exchange; the evidence that the
+ *   firmware actually SAW that level is the next point);
  * - each printed line's FB equals that level and its verdict (GRANTED / DENIED / released) follows,
  *   with DENIED exactly for the requests while the permit was open; repeated transitions;
  * - each scheduled toggle applies at a tick ≥ its atSimNs and < atSimNs + 1 ms (measured error);
@@ -172,7 +173,13 @@ for (const id of ['esp32-logic-feedback', 'mpy-logic-feedback'])
         expect(r.writes.length).toBeGreaterThan(8);
         for (const w of r.writes) expect(w.fb, `@${w.vns}`).toBe(+(w.req === 1 && w.permit));
         // The firmware read what the circuit gave it, line for line (setup()'s LOW write first).
-        const reqWrites = r.writes.slice(r.writes.length - r.lines.length);
+        // Paired from the start (review M3): the first request write is the loop's first line;
+        // setup()'s LOW write (and MicroPython's Pin(…, value=0)) precede it; writes after the last
+        // printed line (at the stop) are simply not paired.
+        const first = r.writes.findIndex((w) => w.req === 1);
+        expect(first).toBeGreaterThanOrEqual(0);
+        const reqWrites = r.writes.slice(first);
+        expect(reqWrites.length).toBeGreaterThanOrEqual(r.lines.length);
         expect(r.lines.length).toBeGreaterThan(8);
         r.lines.forEach((l, k) => {
           expect(l.req, `line ${k}`).toBe(reqWrites[k]!.req);

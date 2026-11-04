@@ -1572,12 +1572,6 @@ export const RECIPES: Record<string, () => ProjectDocument> = {
     r.wire(T(U1, 'gnd'), T(G3, 'ref'));
     return r.centre(-240);
   },
-  /**
-   * Sprint 25 (Phase 4): a 10 kΩ PTV09A across the 3.3 V bench supply (A to GND, B to +), its
-   * wiper on the input-only GPIO34, read as a DIGITAL level (V_IL / V_IH, the previous level held
-   * in between); GPIO4 drives a red LED through 220 Ω. Starts at 10 % (0.33 V: LOW), never in the
-   * band between the thresholds, where a first read has no defined level. ADC is not supported.
-   */
   /** Sprint 30 (M1/M2/M4): firmware → logic → firmware feedback, logic → transistor → relay → LED. */
   'esp32-logic-feedback': () =>
     logicFeedback('esp32-logic-feedback', 'ESP32: logic feedback and a relay', (r, U1) =>
@@ -1588,6 +1582,12 @@ export const RECIPES: Record<string, () => ProjectDocument> = {
     logicFeedback('mpy-logic-feedback', 'MicroPython: logic feedback and a relay', (r, U1) =>
       r.python(U1, 'mpy_logic_feedback.py'),
     ),
+  /**
+   * Sprint 25 (Phase 4): a 10 kΩ PTV09A across the 3.3 V bench supply (A to GND, B to +), its
+   * wiper on the input-only GPIO34, read as a DIGITAL level (V_IL / V_IH, the previous level held
+   * in between); GPIO4 drives a red LED through 220 Ω. Starts at 10 % (0.33 V: LOW), never in the
+   * band between the thresholds, where a first read has no defined level. ADC is not supported.
+   */
   'esp32-pot-threshold': () =>
     potThreshold('esp32-pot-threshold', 'ESP32: potentiometer as a digital input', (r, U1) =>
       r.sketch(U1, 'PotThreshold.ino'),

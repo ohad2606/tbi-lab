@@ -91,7 +91,8 @@ describe('S30-L1 + A4: ESP32 GPIO18 drives a 1G08 at 3.0 V; the gate output is r
 });
 
 /**
- * M2/M4 topology (the flagship example): GPIO18 → U1 (1G08) A with a 100 kΩ pull-down; B from a
+ * M2/M4 topology (the same class as the shipped logic-feedback example, read back on GPIO19 here
+ * with the LED on the relay's COM side; app/tests/s30-examples.test.ts tests the shipped recipe): GPIO18 → U1 (1G08) A with a 100 kΩ pull-down; B from a
  * toggle switch to the 3.0 V logic rail with a 10 kΩ pull-down; U1.Y → GPIO19 (the firmware's
  * feedback) and → U2 (1G08 as a driver, its B at V_CC); U2.Y → 1 kΩ → 2N3904 → SRD-05 relay on a
  * separate 5 V supply (1N4148 across the coil); the relay's NO contact lights an LED (330 Ω).
@@ -151,4 +152,36 @@ describe('M2/M4: ESP32 → logic → ESP32 feedback, logic → transistor → re
         else expect(Math.abs(o.components[ids.led]!.current!), at).toBeLessThan(1e-9);
       }
     });
+});
+
+describe('Sprint 30 review B1: the pad check is one-sided in both directions (no |I| kink at zero current)', () => {
+  /** GPIO18 HIGH into A, which also has R to a separate 3.3 V supply (nominal pad current 0). */
+  const sinking = (r: number) => {
+    const bb = boardBench((b, u) => {
+      const g = b.add('logic.gate_and');
+      b.psu(3.0, 0.05).wire('PSU1.positive', `${g}.vcc`).wire(`${g}.gnd`, 'GND1.ref');
+      b.wire(`${g}.b`, 'PSU1.positive').wire(`${g}.a`, `${u}.gpio18`);
+      const p2 = b.rail(3.3, 0.1);
+      b.bleed(p2, 1000);
+      const rr = b.add('component.resistor');
+      b.ohms(rr, r).wire(`${p2}.positive`, `${rr}.a`).wire(`${rr}.b`, `${g}.a`);
+    });
+    const s = new EngineSession(bb.projected, { pins: bb.pins });
+    s.setPinMode(18, 'output-high');
+    return s.solve();
+  };
+  for (const r of [220, 470, 1000, 1500, 3300, 5000, 6000])
+    it(`${r} Ω to 3.3 V: at V_OH min (2.64 V) the pad SINKS (3.3 − 2.64) / R + I_I > 100 µA → refused by name (was accepted: zero nominal current)`, () => {
+      const o = sinking(r);
+      expect(o.ok ? null : o.error).toMatchObject({
+        code: 'logic_mcu_output_uncharacterized',
+        param: 'gpio18',
+        detail: { level: 'high', limit: 100e-6 },
+      });
+      expect((o.ok ? 0 : (o.error.detail as { value: number }).value) > 100e-6).toBe(true);
+    });
+  it('7 kΩ (0.66 V / 7 kΩ + 5 µA = 99.3 µA) and 10 kΩ (71 µA) to 3.3 V: within 100 µA either way → run', () => {
+    expect(sinking(7000).ok).toBe(true);
+    expect(sinking(10_000).ok).toBe(true);
+  });
 });

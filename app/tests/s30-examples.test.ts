@@ -95,7 +95,14 @@ for (const id of ['esp32-logic-feedback', 'mpy-logic-feedback']) {
       });
       const boot = hosted(edit(D, 'R2', 'resistance', { value: 200_000, unit: 'ohm' }));
       boot.setPinMode(18, 'input');
-      expect(boot.solve().ok).toBe(false);
+      // 5.05 µA × 200 kΩ ≈ 1 V off GND: above V_IL 0.8 V — no guaranteed LOW at boot, refused by
+      // name, naming A.
+      const b = boot.solve();
+      expect(b.ok ? null : b.error).toMatchObject({
+        code: 'logic_input_not_guaranteed',
+        param: 'a',
+        detail: { level: 'low' },
+      });
     });
 
     if (id === 'mpy-logic-feedback')

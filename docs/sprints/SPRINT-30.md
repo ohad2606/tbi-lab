@@ -100,7 +100,7 @@ Measured on real QEMU (s30-cosim; evidence `~/tbi-s30/evidence/s30-cosim-*.json`
 
 | | Arduino | MicroPython |
 |---|---|---|
-| Virtual latency, write → circuit response visible to the firmware | 0 ns (the same vns), every write | 0 ns |
+| Virtual latency, write → circuit response visible to the firmware | 0 ns (the same vns), every write — by construction of the blocking exchange; evidenced by every printed FB equalling the level injected at that write | 0 ns |
 | Scheduled toggle error (applied vns − atSimNs; times on 1 ms ticks) | 0 ns, 0 ns | 0 ns, 0 ns |
 | Fingerprint (virtual trace to 6 s), two runs | `1849ef616934e1ac` = | `8d6dbbf617fe43ef` = |
 | Transcript to 6 s, two runs | identical | identical |

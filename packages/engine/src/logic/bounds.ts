@@ -1308,27 +1308,33 @@ export function buildBounds(
   // S30-L1: the pad's level is relied on up to the light-load envelope (never below the node's own
   // guaranteed leakage, which a pad always carries).
   const padLimit = (node: string) => Math.max(ESP32_PAD_LIGHT_LOAD_A, leakageAt(node));
+  // Sprint 30 review B1: two ONE-SIDED checks (+I and −I), never |I|: |I| has a kink at I = 0, so a
+  // pad whose nominal current is zero (its node pulled to the pad's own level by something else)
+  // gave the corner search no adverse direction and its band end (2.64 V / 0.33 V) — where it may
+  // source or sink a large current — was never examined (the S29 icc-load fix, applied here).
   const padLoad = (relied: ReadonlySet<string>): Check[] =>
     pads
       .filter((p) => p.mode.startsWith('output') && relied.has(`pad:${p.gpio}`))
-      .map((p) => ({
-        id: `padLoad:${p.gpio}`,
-        kind: 'padLoad' as const,
-        unit: 'A' as const,
-        component: p.component,
-        pin: `gpio${p.gpio}`,
-        code: 'logic_mcu_output_uncharacterized',
-        margin: (x: readonly number[]) =>
-          padLimit(p.node) + 1e-15 - Math.abs(access.pad(x, p.gpio)),
-        value: (x: readonly number[]) => Math.abs(access.pad(x, p.gpio)),
-        // Sprint 22 review F2: its own level band counts too (the pad's guaranteed level is an
-        // ideal-source interval; the current it then carries must stay within the 100 µA envelope, S30-L1).
-        detail: {
-          gpio: p.gpio,
-          limit: padLimit(p.node),
-          level: p.mode === 'output-high' ? 'high' : 'low',
-        },
-      }));
+      .flatMap((p) =>
+        ([1, -1] as const).map((dir) => ({
+          id: `padLoad:${p.gpio}${dir > 0 ? '' : ':reverse'}`,
+          kind: 'padLoad' as const,
+          unit: 'A' as const,
+          component: p.component,
+          pin: `gpio${p.gpio}`,
+          code: 'logic_mcu_output_uncharacterized',
+          margin: (x: readonly number[]) => padLimit(p.node) + 1e-15 - dir * access.pad(x, p.gpio),
+          value: (x: readonly number[]) => Math.abs(access.pad(x, p.gpio)),
+          // Sprint 22 review F2: its own level band counts too (the pad's guaranteed level is an
+          // ideal-source interval; the current it then carries must stay within the 100 µA
+          // envelope, S30-L1).
+          detail: {
+            gpio: p.gpio,
+            limit: padLimit(p.node),
+            level: p.mode === 'output-high' ? 'high' : 'low',
+          },
+        })),
+      );
   // When a part's I_CC bound is relied on, its own test conditions must hold at every corner.
   const extra = (relied: ReadonlySet<string>, limitOnly: ReadonlyMap<string, string>): Check[] => [
     ...padLoad(relied),
