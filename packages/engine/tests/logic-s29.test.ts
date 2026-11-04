@@ -227,3 +227,62 @@ describe('multi-stage logic (S29-D1/A3): a 1-bit full adder from five single gat
     });
   });
 });
+
+/**
+ * Workstream C/D interoperability: logic → transistor → relay → LED, two supplies, one ground.
+ * Switches A, B (10 kΩ pull-downs) → SN74LVC1G08 at 3.3 V (PSU1) → 1 kΩ → 2N3904 base; the
+ * collector switches an SRD-05 coil from PSU2 at 5 V (1N4148 across the coil: reverse-biased at
+ * DC); the relay's NO contact lights an LED from PSU2 through 330 Ω.
+ */
+const relayDriver = (a: boolean, b: boolean) => {
+  const bench = new Bench();
+  bench.psu(3.3, 0.1).wire('PSU1.negative', 'GND1.ref');
+  const p2 = bench.rail(5.0, 0.5);
+  // No bleeder: with the relay off PSU2 delivers only leakage; S29-A3 evaluates it (before the
+  // S29 corner-cycle rule its no-sink check was not established: a resolution-level cycle).
+  const g = bench.add('logic.gate_and');
+  bench.wire('PSU1.positive', `${g}.vcc`).wire(`${g}.gnd`, 'GND1.ref');
+  for (const [pin, on] of [
+    ['a', a],
+    ['b', b],
+  ] as const) {
+    const pd = bench.add('component.resistor');
+    bench.ohms(pd, 10_000).wire(`${g}.${pin}`, `${pd}.a`).wire(`${pd}.b`, 'GND1.ref');
+    if (on) bench.wire(`${g}.${pin}`, 'PSU1.positive');
+  }
+  const rb = bench.add('component.resistor');
+  const q = bench.add('component.bjt_npn');
+  const k = bench.add('component.relay');
+  const d = bench.add('component.diode');
+  bench.ohms(rb, 1000).wire(`${g}.y`, `${rb}.a`).wire(`${rb}.b`, `${q}.base`);
+  bench.wire(`${q}.emitter`, 'GND1.ref');
+  bench.wire(`${p2}.positive`, `${k}.coil1`).wire(`${k}.coil2`, `${q}.collector`);
+  bench.wire(`${d}.cathode`, `${k}.coil1`).wire(`${d}.anode`, `${k}.coil2`);
+  const rl = bench.add('component.resistor');
+  const led = bench.add('component.led');
+  bench.wire(`${p2}.positive`, `${k}.com`).wire(`${k}.no`, `${rl}.a`);
+  bench.ohms(rl, 330).wire(`${rl}.b`, `${led}.anode`).wire(`${led}.cathode`, 'GND1.ref');
+  return { s: new EngineSession(bench.snapshot()), g, q, k, led };
+};
+
+describe('interoperability: logic gate → 2N3904 → relay → LED (two supplies)', () => {
+  it('the LED is on exactly when A·B; the transistor saturates, the gate output stays within its guarantee', () => {
+    for (const [a, b] of [
+      [false, false],
+      [true, false],
+      [false, true],
+      [true, true],
+    ] as const) {
+      const { s, g, k, led } = relayDriver(a, b);
+      const o = ok(s.solve());
+      const at = `A=${+a} B=${+b}`;
+      expect(o.components[g]!.state, at).toMatchObject({ gateOutput: lvl(a && b) });
+      if (a && b) {
+        expect(o.components[led]!.current!, at).toBeGreaterThan(5e-3);
+        // Base current through 1 kΩ from a ≤ 3.3 V output: well inside the 24 mA test point.
+        expect(Math.abs(o.components[g]!.currents!.y!), at).toBeLessThan(3e-3);
+      } else expect(Math.abs(o.components[led]!.current!), at).toBeLessThan(1e-9);
+      expect(o.components[k]!.state, at).toMatchObject({ energized: a && b });
+    }
+  });
+});

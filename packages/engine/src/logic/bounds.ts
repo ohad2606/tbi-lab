@@ -553,7 +553,7 @@ export function evaluateBounds(
       x: readonly number[];
       dxc: number[][];
       stageOf: Map<number, number>;
-      deviceMargins: { m: number; at: number[]; v: number } | null;
+      deviceMargins: { m: number; at: number[]; atDown: number[]; v: number } | null;
       modes?: ReadonlyMap<string, string>;
     }
   >();
@@ -594,6 +594,7 @@ export function evaluateBounds(
     // at its corner, so the refusal reports the exact worst value (N3; Sprint 22).
 
     let accepted = false;
+    const visited = new Map<string, number>();
     // Sprint 22 review 3: a failing corner is followed to the stable (worst) corner; the most
     // adverse failure seen is reported (never the first one met on the way).
     let worstFail: { m: number; f: BoundFailure } | null = null;
@@ -643,6 +644,9 @@ export function evaluateBounds(
             : {
                 m: c.margin(corner.x),
                 at: dxc.map((d) => c.margin(add(corner.x, d, H))),
+                // S29: two-sided at the corner too (a kink, e.g. an off transistor or a stage at
+                // zero current, gives one side no response and flips the chosen side otherwise).
+                atDown: dxc.map((d) => c.margin(add(corner.x, d, -H))),
                 v: c.value(corner.x),
               };
           solved = { x: [...corner.x], dxc, stageOf, deviceMargins, modes: corner.modes };
@@ -682,7 +686,10 @@ export function evaluateBounds(
       }
       const sc = perts.map((p, j) => {
         if (c.excludes?.(p)) return 0;
-        const d = ((deviceMargins ? deviceMargins.at[j]! : c.margin(add(x, dxc[j]!, H))) - m) / H;
+        const up = ((deviceMargins ? deviceMargins.at[j]! : c.margin(add(x, dxc[j]!, H))) - m) / H;
+        const down =
+          (m - (deviceMargins ? deviceMargins.atDown[j]! : c.margin(add(x, dxc[j]!, -H)))) / H;
+        const d = Math.abs(down) > Math.abs(up) ? down : up;
         if (!isBand(p)) return d;
         const sign = stageOf.get(j);
         // A replaced band: dm per volt of its source, as a rise of its node.
@@ -696,7 +703,20 @@ export function evaluateBounds(
         if (j >= 0 && !next.has(j)) next.set(j, choice.get(j) ?? 'rail');
       }
       if (keyOf(next) === keyOf(choice)) accepted = true;
-      else choice = next;
+      else {
+        // S29: a cycle between corners whose margins all hold and differ by less than the bounds'
+        // numerical resolution (e.g. a LOW output's band end against its rail, into an off
+        // transistor: femtoamperes) is that resolution, not a non-monotone worst case: the worst
+        // margin seen stands. Any other cycle stays not established.
+        visited.set(keyOf(choice), m);
+        const back = visited.get(keyOf(next));
+        if (back !== undefined) {
+          const ms = [...visited.values()];
+          const spread = Math.max(...ms) - Math.min(...ms);
+          if (Math.min(...ms) >= 0 && spread <= 10 * EPS[c.unit]) accepted = true;
+          else choice = next;
+        } else choice = next;
+      }
     }
     if (worstFail) return worstFail.f;
     if (!accepted) return notEstablished('not_monotone', c);
