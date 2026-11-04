@@ -199,10 +199,11 @@ function logicFeedback(id: string, title: string, program: (r: Recipe, board: st
     { x: -40, y: -260 },
     { x: 600, y: -260 },
   ]);
-  r.wire(T(SW1, 'a'), { kind: 'wire', wire: rail, at: { x: 460, y: -260 } });
+  // A tap splits the wire and the original id keeps the part from its start: the far tap first.
   const v3 = r.wire(T(U3, 'vcc'), { kind: 'wire', wire: rail, at: { x: 560, y: -260 } }, [
     { x: 760, y: -260 },
   ]);
+  r.wire(T(SW1, 'a'), { kind: 'wire', wire: rail, at: { x: 460, y: -260 } });
   r.wire(T(U2, 'gnd'), T(G2, 'ref'));
   r.wire(T(U3, 'gnd'), T(G3, 'ref'));
   // GPIO18 → A, with its 100 kΩ pull-down (defined before setup() makes GPIO18 an output).

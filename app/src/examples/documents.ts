@@ -23,6 +23,8 @@ import logicAndSwitches from './data/logic-and-switches.json';
 import logicHalfAdder from './data/logic-half-adder.json';
 import logicFullAdder from './data/logic-full-adder.json';
 import mpyAdderMonitor from './data/mpy-adder-monitor.json';
+import logicFeedback from './data/esp32-logic-feedback.json';
+import mpyLogicFeedback from './data/mpy-logic-feedback.json';
 import logicCascade from './data/logic-cascade.json';
 import ledColours from './data/led-colours.json';
 import ledCurrent from './data/led-current.json';
@@ -81,6 +83,8 @@ export const EXAMPLE_DOCUMENTS: Record<string, ProjectDocument> = {
   'logic-half-adder': logicHalfAdder as unknown as ProjectDocument,
   'logic-full-adder': logicFullAdder as unknown as ProjectDocument,
   'mpy-adder-monitor': mpyAdderMonitor as unknown as ProjectDocument,
+  'esp32-logic-feedback': logicFeedback as unknown as ProjectDocument,
+  'mpy-logic-feedback': mpyLogicFeedback as unknown as ProjectDocument,
   'esp32-logic-override': esp32LogicOverride as unknown as ProjectDocument,
   'mpy-blink': mpyBlink as unknown as ProjectDocument,
   'mpy-button': mpyButton as unknown as ProjectDocument,

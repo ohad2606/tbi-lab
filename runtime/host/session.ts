@@ -689,7 +689,9 @@ export class HostSession {
     const cmds = this.solveAndInjectAt(vns);
     const wallUs = Math.round((performance.now() - t0) * 1000);
     const injects = cmds.flatMap((c) =>
-      c.type === 'I' ? [{ pad: (c as { pad: number }).pad, level: (c as { level: 0 | 1 }).level }] : [],
+      c.type === 'I'
+        ? [{ pad: (c as { pad: number }).pad, level: (c as { level: 0 | 1 }).level }]
+        : [],
     );
     this.traced({ vns: vns.toString(), kind: 'solve', wallUs, injects });
     return cmds;

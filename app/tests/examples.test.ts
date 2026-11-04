@@ -72,6 +72,9 @@ describe('the example set', () => {
       'logic-half-adder',
       'logic-full-adder',
       'mpy-adder-monitor',
+      // Sprint 30 (M2/M4): firmware → logic → firmware, logic → transistor → relay → LED.
+      'esp32-logic-feedback',
+      'mpy-logic-feedback',
       'logic-cascade',
       'esp32-logic-override',
       // Sprint 24: MicroPython examples.

@@ -402,6 +402,40 @@ export const EXAMPLES: readonly Example[] = [
     ],
   },
   {
+    id: 'esp32-logic-feedback',
+    titleKey: 'example.esp32-logic-feedback.title',
+    summaryKey: 'example.esp32-logic-feedback.summary',
+    probes: [V('U2', 'y'), I('D2')],
+    parts: [
+      'board.esp32_devkitc_wroom32',
+      'component.bjt_npn',
+      'component.diode',
+      'component.led',
+      'component.relay',
+      'component.resistor',
+      'component.toggle_switch',
+      'instrument.lab_psu',
+      'logic.gate_and',
+    ],
+  },
+  {
+    id: 'mpy-logic-feedback',
+    titleKey: 'example.mpy-logic-feedback.title',
+    summaryKey: 'example.mpy-logic-feedback.summary',
+    probes: [V('U2', 'y'), I('D2')],
+    parts: [
+      'board.esp32_devkitc_wroom32',
+      'component.bjt_npn',
+      'component.diode',
+      'component.led',
+      'component.relay',
+      'component.resistor',
+      'component.toggle_switch',
+      'instrument.lab_psu',
+      'logic.gate_and',
+    ],
+  },
+  {
     id: 'logic-cascade',
     titleKey: 'example.logic-cascade.title',
     summaryKey: 'example.logic-cascade.summary',
@@ -567,6 +601,7 @@ export const EXAMPLE_VARIANTS: Readonly<Record<string, string>> = Object.fromEnt
       ['esp32-pot-threshold', 'mpy-pot-threshold'],
       ['esp32-lcd-hello', 'mpy-lcd-hello'],
       ['esp32-lcd-library', 'mpy-lcd-library'],
+      ['esp32-logic-feedback', 'mpy-logic-feedback'],
     ] as const
   ).flatMap(([a, b]) => [
     [a, b],

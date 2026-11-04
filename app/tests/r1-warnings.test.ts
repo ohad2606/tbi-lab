@@ -61,7 +61,11 @@ describe('no shipped example raises a pad over-voltage warning (T-D3)', () => {
             out.error.code === 'logic_supply_current_uncharacterized' ||
             // Sprint 22 review F2/F7: the read-back pad driven onto the gate output (two drivers
             // on one net).
-            out.error.code === 'logic_bound_not_established')
+            out.error.code === 'logic_bound_not_established' ||
+            // Sprint 30, the logic-feedback examples: GPIO4 (the read-back) driven LOW against U2's
+            // HIGH output, which also drives U3 → the relay: the contention has no settled state
+            // (refused by name; a clearer contention code is in the Sprint 30 backlog).
+            (out.error.code === 'no_steady_state' && /logic-feedback$/.test(e.id)))
         ) {
           refused++;
           refusedAt.push(n);
@@ -90,6 +94,8 @@ describe('no shipped example raises a pad over-voltage warning (T-D3)', () => {
         'esp32-logic-and': 7,
         'esp32-logic-override': 7,
         'esp32-logic-quad-and': 9,
+        'esp32-logic-feedback': 6,
+        'mpy-logic-feedback': 6,
       };
       // Sprint 29, mpy-adder-monitor: the ESP32 only READS the adder (GPIO32/33 switches,
       // GPIO34/35 the gate outputs); any combination driving one of those four pads as an output
@@ -116,6 +122,12 @@ describe('no shipped example raises a pad over-voltage warning (T-D3)', () => {
       expect(refused, `${e.id} ${refusedAt}`).toBe(expected[e.id] ?? 0);
       // The combination with GPIO18 LOW and the read-back pad an input (#6 / #2: the pads' order).
       if (e.id === 'esp32-logic-and') expect(refusedAt, e.id).toEqual([1, 2, 3, 4, 5, 7, 8]);
+      // Sprint 30 (S30-L1): GPIO18 in every mode with GPIO4 an input runs (#0, #3, #6); the read-back
+      // GPIO4 driven against U2's output is refused in all six other combinations.
+      if (/logic-feedback$/.test(e.id)) {
+        expect(refusedAt, e.id).toEqual([1, 2, 4, 5, 7, 8]); // GPIO4 is the first pad here
+        expect(combos, e.id).toBe(3);
+      }
       if (e.id === 'esp32-logic-override') expect(refusedAt, e.id).toEqual([1, 3, 4, 5, 6, 7, 8]);
     });
 });
