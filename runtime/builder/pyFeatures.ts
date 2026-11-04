@@ -46,7 +46,7 @@ import type { FeatureReport } from './protocol.js';
 import { INPUT_CAPABLE_GPIOS } from './features.js';
 
 /** Version of this analysis; part of the MicroPython profile hash (cache key). */
-export const PY_FEATURES_ANALYZER = 6; // Sprint 28 (L7): the machine module never reached indirectly
+export const PY_FEATURES_ANALYZER = 7; // Sprint 29: serial input (input(), sys.stdin) refused
 
 /**
  * Sprint 24 (M3): the fastest I2C clock a program may select: the lowest rated SCL of the I2C parts
@@ -509,6 +509,15 @@ export function analyzeMicroPython(
       refuseMachine(m[1]!);
   // Sprint 28 (L7): everything above reads written names only.
   if (dynamicAccess(code, [...machineAliases])) unsupported.add('dynamic_access');
+  // Sprint 29 (Workstream A): a session has no serial input path (the serial monitor is output
+  // only), so input() or a read of sys.stdin would wait forever, silently: refused by name.
+  const codeNoStrings = blankStrings(code);
+  if (
+    /(?<![\w.])(?<!def )input\s*\(/.test(codeNoStrings) ||
+    /(?<![\w.])u?sys\s*\.\s*stdin\b/.test(codeNoStrings) ||
+    /^[ \t]*from[ \t]+u?sys[ \t]+import[^\n]*\bstdin\b/m.test(codeNoStrings)
+  )
+    unsupported.add('serial_input');
   // A name passed as a string (getattr(machine, "reset")) or used after `from machine import *`.
   const quoted = new Set([...code.matchAll(/["'](\w+)["']/g)].map((m) => m[1]!));
   for (const name of MACHINE_REFUSED_NAMES)

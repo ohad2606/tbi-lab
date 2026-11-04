@@ -11,7 +11,6 @@
 import { afterAll, describe, expect, it } from 'vitest';
 import { EngineSession, type SolveSuccess } from '@tbi-lab/engine';
 import type { CreateSessionRequest } from '../host/protocol.js';
-import type { HostSession } from '../host/session.js';
 import { waitEvent } from '../host/tests/support.js';
 import { realHost } from './r2-support.js';
 import { MpyStack, RT, V4, electrical, example, serialMatches } from './s24-support.js';

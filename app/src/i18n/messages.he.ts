@@ -1156,6 +1156,9 @@ export const he: Record<MessageKey, string> = {
   // Sprint 28 (L7)
   'build.feature.dynamic_access':
     'שמות שנמצאים רק בזמן ריצת התוכנית (getattr/‏setattr/‏hasattr עם שם מחושב, ‏vars()‎, ‏globals()‎, ‏locals()‎, ‏__dict__, ‏exec, ‏eval, ‏compile, ‏sys.modules), או שימוש במודול machine שלא בצורה machine.Name — הסימולטור לא יכול לבדוק למה הם מגיעים',
+  // Sprint 29: no serial input path in a session.
+  'build.feature.serial_input':
+    'קריאת קלט טורי (input()‎, ‏sys.stdin): המוניטור הטורי מציג רק את הפלט של התוכנית, ולכן התוכנית הייתה ממתינה לנצח',
   // Sprint 28: the owner-only AI model pilot (DEV-Lab builds only).
   'assist.pilot.heading': 'מודל AI (פיילוט לבעלים)',
   'assist.pilot.loading': 'בודק את פיילוט מודל ה-AI…',

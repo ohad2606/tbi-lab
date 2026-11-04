@@ -1191,6 +1191,9 @@ export const en = {
   // Sprint 28 (L7): MicroPython names looked up at run time; the checks read written names only.
   'build.feature.dynamic_access':
     'names looked up while the program runs (getattr/setattr/hasattr with a computed name, vars(), globals(), locals(), __dict__, exec, eval, compile, sys.modules), or the machine module used other than as machine.Name — the simulator could not check what they reach',
+  // Sprint 29: no serial input path in a session.
+  'build.feature.serial_input':
+    'reading serial input (input(), sys.stdin): the serial monitor only shows the program’s output, so the program would wait forever',
   // Sprint 28: the owner-only AI model pilot (DEV-Lab builds only).
   'assist.pilot.heading': 'AI model (owner pilot)',
   'assist.pilot.loading': 'Checking the AI model pilot…',
