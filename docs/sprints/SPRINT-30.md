@@ -117,7 +117,47 @@ Not done (requires a reviewed architecture and explicit authorization): a transi
 
 ## 5. Gates, review, deployment
 
-(filled in after the gates)
+Independent review (`~/tbi-s30/evidence/review.md`), on `a707b08`:
+- **B1 (blocking), fixed in `04b7ab4`:** the pad check bounded `|I|`, whose kink at zero current made it fail-open. A HIGH pad tied through 220 Ω … 6 kΩ to a separate 3.3 V supply (zero nominal current, sinking at V_OH min) was accepted. Now two one-sided checks; a regression test covers 220 Ω … 6 kΩ refused and 7 kΩ / 10 kΩ running. The reviewer re-verified it, with no new false refusals.
+- **M1–M4 (minor), fixed:** wording, a misplaced doc comment, and the co-simulation test paired from the first request write.
+
+Gates (code `04b7ab4`; later commits change only e2e specs):
+- unit 2367 passed / 3 skipped;
+- browser e2e 325 passed / 40 skipped, plus 8 failing on S30-L1 expectations, each fixed in `a73d8b3` and rerun with their five files: 55/55;
+- runtime (real QEMU) 245 passed / 19 skipped, 0 failed, including s30-cosim (both languages, two runs each) and s19b-x1.
+
+Real-stack spec fix (`e38b444`): s20-logic-real's example D expected the S29 refusal. It now expects the refusals computed by the engine for the shipped circuit:
+- at 3.0 V, GPIO19 `logic_mcu_input_not_guaranteed` (LED-loaded V_OH ≥ 2.4 V < V_IH 2.475 V);
+- at 4.5 V, input A `logic_input_not_guaranteed` (V_OH min 2.64 V < V_IH 3.15 V).
+
+Package and staging:
+- **Package** `e38b444` (dev-lab profile): two builds byte-identical, 37 files, manifest `57fa212ee61f5e09`. It differs from the `a73d8b3` package (`1ad912c945ace313`, also reproduced) only through the embedded commit.
+- **Staging** `tbi-s8` real-stack vitest: s8-policy, s28-assist, s8-gate, isolation 21/21.
+- **Staging** real-QEMU browser:
+  - on `a73d8b3`: p1 + s26 5, b2 11, b3 7, s29 2, s30 4;
+  - b1 on `e38b444`: 16 passed / 2 skipped (older-host cases); on `a73d8b3` the single D failure was the spec above;
+  - s30 on `e38b444`: 4/4;
+  - no service restarts.
+
+DEV-Lab deployment:
+- **Deployed** `e38b444` (Runtime v5 `39f2229a66d45e43`, the S26 MicroPython home) in 4.5 s.
+- **Backup** `~/tbi-s30/kit/deploy/devlab-backup-20261104T230254Z`.
+- **Unchanged:** units, Caddyfile, polkit, policy and keys. The public origin answers 302. The AI provider service is active and `disabled` (`no_provider`).
+- **Acceptance** 28/28. In the first run, 24 passed; the 4 s30-real cases then hit the gate's session-creation rate (20 per 10 min; the 21st creation was `rate_limited`). They passed alone after the window.
+- **Rollback** `rollback-devlab.sh`:
+  - back to `bf05304` in 2.4 s: units and runtime.json byte-equal to the backup, build records 104 rows / 0 incompatible, rollback check 4/4;
+  - forward to `e38b444` in 2.2 s, 4/4.
+
+Performance:
+- **Engine solve**, one DC operating point, this 1-CPU host, 60 solves each:
+
+  | | esp32-logic-and | esp32-logic-feedback (new; 2 gates + transistor + relay + LED) |
+  |---|---|---|
+  | S29 | p50 5.7 ms | — |
+  | S30 | p50 6.0 ms (the extra one-sided pad check; within noise) | p50 16.3 ms, p95 49 ms |
+
+- **Host co-simulation** cost per edge as in §4.
+- **The timing trace** is off unless `timingTraceCapacity` is set; no service sets it.
 
 ## Future / Backlog
 
@@ -125,4 +165,5 @@ Not done (requires a reviewed architecture and explicit authorization): a transi
 - Transient (time-stepped) co-simulation under a running ESP32: capacitors, RC timing, LMC555 (needs an architecture review).
 - Gate propagation delay in time, only if a program could observe it (it cannot at the ESP32's GPIO rate).
 - The timing trace as a user-visible logic-analyzer view (it already has the events).
+- Split the DEV-Lab acceptance run into two windows: at 28 cases it exceeds the gate's 20 session creations per 10 minutes.
 - Phase C Admin (owner brief 2026-11-04) — after this sprint, by the owner's order.
