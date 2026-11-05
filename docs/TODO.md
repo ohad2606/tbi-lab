@@ -1061,3 +1061,122 @@ Recommended order:
 6. broader IC catalog according to real user demand.
 
 Model quality and correctness take priority over catalog size.
+
+
+---
+
+## Integrated Electronics + Robotics + 3D System View
+
+**Status:** Approved Product Direction / Backlog  
+**Priority:** Strategic differentiator after the core Workbench, electrical simulation, MCU runtime and 3D viewer foundations are stable.
+
+### Product intent
+
+TBI Lab should ultimately support one project that combines:
+
+- controller / MCU;
+- electronic components;
+- sensors and actuators;
+- wiring;
+- firmware;
+- robotics or mechatronic assemblies;
+- a 3D scene that shows the physical system and its behavior.
+
+The goal is not to create a separate robotics application.
+
+The robotics/3D layer must remain a view of the same canonical project and the same simulation truth.
+
+### Core experience
+
+A user should be able to:
+
+1. build and wire the electronic system in the Workbench;
+2. configure or write firmware;
+3. switch to a 3D system view;
+4. see the controller, sensors, motors, servos and mechanical assembly in one coherent scene;
+5. run the project and observe behavior derived from the actual simulated electrical/firmware state.
+
+### Wiring quality rule
+
+TBI Lab must not copy low-quality or visually ambiguous 3D wiring conventions.
+
+The Workbench remains the authoritative editing surface for precise wiring.
+
+3D wiring should:
+- reflect the real canonical netlist;
+- use clean, readable routing;
+- avoid visually confusing crossings where possible;
+- make endpoint ownership obvious;
+- remain consistent with pin numbers and connector positions;
+- support highlighting/selection linked back to Workbench and Schematic;
+- never invent a connection for visual convenience.
+
+The 3D scene is not the primary place to create arbitrary wires.
+
+### Canonical-model rule
+
+There must be one source of truth:
+
+**Canonical Project Model**
+→ Workbench
+→ Schematic
+→ 3D system view
+→ X-Ray
+→ instruments
+→ AI diagnostics
+
+Changing a wire, pin assignment, firmware setting or component value in the authoritative editing flow must propagate to every derived representation.
+
+### Robotics integration
+
+Future supported assemblies may include:
+- two-wheel robot car;
+- line follower;
+- sonar/radar platform;
+- robot arm;
+- pan/tilt mechanism;
+- sumo robot;
+- other validated mechatronic assemblies.
+
+Mechanical behavior must be derived from modeled actuator state.
+
+Examples:
+- motor direction/speed from the motor-driver outputs;
+- servo angle from the actual control signal;
+- ultrasonic reading from scene geometry;
+- line sensor state from track geometry;
+- robot movement from validated kinematics/physics.
+
+Do not play canned animations that merely look correct.
+
+### 3D purpose
+
+The 3D view should serve three professional purposes:
+
+1. **Physical comprehension** — how the complete system is assembled.
+2. **Behavioral simulation** — how the system reacts when running.
+3. **Presentation/demo** — a clear visual explanation for makers, students and instructors.
+
+It is not a PCB-design surface and not a replacement for the 2D engineering Workbench.
+
+### Linked interaction
+
+Eventually support linked selection across views.
+
+Examples:
+- select a motor in 3D → highlight its driver and nets in Workbench/Schematic;
+- select GPIO in Workbench → highlight the connected 3D sensor/actuator;
+- AI identifies a wiring fault → highlight the same physical path in all relevant views.
+
+### Product-quality requirement
+
+This feature is valuable only if the combination feels like one engineering environment rather than several disconnected demos.
+
+Priority order remains:
+1. electrical truth;
+2. firmware truth;
+3. connection/pin correctness;
+4. physical/robotic behavior;
+5. 3D presentation quality.
+
+Visual appeal must never outrank correctness.
