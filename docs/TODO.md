@@ -1180,3 +1180,110 @@ Priority order remains:
 5. 3D presentation quality.
 
 Visual appeal must never outrank correctness.
+
+
+---
+
+## 3D Assembly & Enclosure Builder
+
+**Status:** Approved Future Product Direction / Backlog  
+**Priority:** Later-stage capability after the electrical simulation, MCU/firmware, AI, Workbench, Schematic, 3D viewer and robotics foundations are mature.
+
+### Goal
+
+Allow users to move from a validated electronic/robotic project toward a physical product by creating simple mechanical structures around the system.
+
+This is not intended to become a general-purpose CAD replacement.
+
+The product direction is a focused **3D Assembly & Enclosure Builder** for electronics, embedded systems, IoT and robotics.
+
+### Intended capabilities
+
+Future scope may include:
+- primitive solids such as boxes, plates and cylinders;
+- precise dimensions in mm;
+- position / rotate / scale;
+- alignment and snapping;
+- holes, slots and cutouts;
+- mounting points;
+- screw holes;
+- standoffs;
+- simple brackets;
+- basic enclosure walls/lids;
+- component placement inside an enclosure;
+- basic clearance checks;
+- basic collision/interference checks;
+- export suitable for 3D printing where technically justified;
+- import of external mechanical models later if needed.
+
+### Product examples
+
+A user could:
+- place an ESP32, display, buttons and sensors into an enclosure;
+- create a USB access opening;
+- add button cutouts;
+- add standoffs for a controller board;
+- create a sensor bracket;
+- build a robot base plate;
+- position motors, wheels, battery and sensors;
+- verify whether a moving actuator collides with the surrounding structure.
+
+### Engineering integration
+
+The 3D builder must use the same canonical project data where possible.
+
+TBI Lab should eventually understand:
+- component physical dimensions;
+- connector positions;
+- mounting-hole locations;
+- keep-out/clearance regions where defined;
+- actuator movement envelopes;
+- sensor orientation / field of view where modeled.
+
+This enables engineering checks such as:
+- USB connector blocked by enclosure wall;
+- servo arm collision with enclosure;
+- ultrasonic sensor field of view blocked;
+- component does not fit in the selected volume;
+- insufficient clearance around a moving mechanism.
+
+### Relationship to the three existing views
+
+- **Workbench:** authoritative electrical wiring and circuit editing.
+- **Schematic:** professional electrical representation.
+- **3D System View:** physical/system visualization and behavior.
+- **3D Assembly & Enclosure Builder:** focused mechanical construction around the validated project.
+
+The 3D builder must not become a replacement for the electrical Workbench.
+
+### AI integration
+
+Future AI capabilities may include:
+- propose a simple enclosure for the current project;
+- place openings for USB, displays and buttons;
+- generate a sensor bracket;
+- create a mount for a servo or ultrasonic sensor;
+- warn about mechanical interference;
+- suggest practical clearances.
+
+AI-generated mechanical geometry must be validated against the same component dimensions and project geometry available to the system.
+
+### Explicit non-goals
+
+Do not expand this feature into:
+- full professional CAD;
+- AutoCAD/SolidWorks replacement;
+- complex parametric feature trees;
+- advanced surface modeling;
+- professional mechanical assemblies;
+- CAM/CNC workflows;
+- mechanical FEA;
+- advanced manufacturing simulation.
+
+### Product principle
+
+The goal is to help a maker move from:
+
+**Working circuit → physical assembly → buildable enclosure / robot structure**
+
+without forcing TBI Lab to become a full mechanical CAD suite.
