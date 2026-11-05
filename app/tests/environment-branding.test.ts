@@ -34,19 +34,31 @@ describe('the environment flag', () => {
 
 describe('icons and the web app manifest', () => {
   for (const env of ['production', 'dev'] as const)
-    it(`${env}: favicons 16/32/48, apple-touch-icon 180, manifest any + maskable 192/512`, () => {
+    it(`${env}: every desktop size, a .ico, apple-touch-icon 180, manifest any + maskable`, () => {
       const { files, tags, manifest } = brandAssets(ROOT, env);
       const byName = new Map(files.map((f) => [`/${f.fileName}`, f.source]));
       // Content-hashed names under assets/ (the deployment caches assets/ as immutable).
       for (const f of files)
-        expect(f.fileName).toMatch(/^assets\/[a-z0-9-]+-[0-9a-f]{8}\.(png|json)$/);
+        expect(f.fileName).toMatch(/^assets\/[a-z0-9-]+-[0-9a-f]{8}\.(png|json|ico)$/);
       const links = tags.map((t) => t.attrs as Record<string, string>);
       const icons = links.filter((a) => a.rel === 'icon');
-      expect(icons.map((a) => a.sizes)).toEqual(['16x16', '32x32', '48x48']);
+      const ICO_SIZES = '16x16 24x24 32x32 48x48 64x64 256x256';
+      expect(icons.map((a) => a.sizes)).toEqual([
+        '16x16',
+        '24x24',
+        '32x32',
+        '48x48',
+        '64x64',
+        ICO_SIZES,
+      ]);
       const apple = links.filter((a) => a.rel === 'apple-touch-icon');
       expect(apple.map((a) => a.sizes)).toEqual(['180x180']);
-      for (const a of [...icons, ...apple])
-        expect(pngSize(byName.get(a.href!)!).join('x')).toBe(a.sizes);
+      for (const a of [...icons, ...apple]) {
+        if (a.sizes === ICO_SIZES) {
+          const ico = byName.get(a.href!)!;
+          expect([ico.readUInt16LE(2), ico.readUInt16LE(4)]).toEqual([1, 6]); // an icon, 6 images
+        } else expect(pngSize(byName.get(a.href!)!).join('x')).toBe(a.sizes);
+      }
       const link = links.find((a) => a.rel === 'manifest')!;
       expect(link.crossorigin).toBe('use-credentials');
       expect(JSON.parse(byName.get(link.href!)!.toString())).toEqual(manifest);
@@ -61,7 +73,15 @@ describe('icons and the web app manifest', () => {
         theme_color: env === 'dev' ? '#ffcc00' : '#0a1a33',
       });
       expect(manifest.icons.map((i) => `${i.purpose} ${i.sizes}`)).toEqual([
+        'any 16x16',
+        'any 24x24',
+        'any 32x32',
+        'any 48x48',
+        'any 64x64',
+        'any 96x96',
+        'any 128x128',
         'any 192x192',
+        'any 256x256',
         'any 512x512',
         'maskable 192x192',
         'maskable 512x512',
@@ -81,12 +101,12 @@ describe('icons and the web app manifest', () => {
     prod.files.forEach((f, i) => expect(f.source.equals(dev.files[i]!.source)).toBe(false));
   });
 
-  it('the app and Apple icons are opaque (iOS fills transparency black); favicons keep alpha', () => {
+  it('Apple and maskable icons are opaque (iOS fills transparency black); the others have alpha', () => {
     const dir = new URL('src/assets/brand/icons/production/', ROOT);
     const colourType = (name: string) => readFileSync(new URL(name, dir))[25];
-    for (const n of ['favicon-16.png', 'favicon-32.png']) expect(colourType(n)).toBe(6);
-    for (const n of ['apple-touch-icon-180.png', 'icon-512.png', 'maskable-512.png'])
-      expect(colourType(n)).toBe(2);
+    for (const n of ['favicon-16.png', 'favicon-32.png', 'icon-96.png', 'icon-512.png'])
+      expect(colourType(n)).toBe(6);
+    for (const n of ['apple-touch-icon-180.png', 'maskable-512.png']) expect(colourType(n)).toBe(2);
   });
 
   it('the source HTML has no hard-coded icon link left (the plugin adds the set)', () => {

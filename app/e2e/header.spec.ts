@@ -69,16 +69,16 @@ test('the top bar shows the TBI Lab infinity symbol beside the product name: no 
     expect(srcs.filter((s) => /tbi-mark|tbi-logo/.test(s))).toEqual([]);
   }
   // Nothing the product renders or declares refers to the retired TBI assets, favicon metadata
-  // included: the tab icons are the TBI Lab set (2026-10-29: favicons 16/32/48, the
+  // included: the tab icons are the TBI Lab set (2026-11-05: favicons 16 to 64 and a .ico, the
   // apple-touch-icon and the web app manifest; dev-brand-tablet.spec.ts checks them in detail).
   const icons = await page
     .locator('link[rel~="icon"], link[rel="apple-touch-icon"], link[rel="manifest"]')
     .evaluateAll((links) => links.map((l) => (l as HTMLLinkElement).href));
-  expect(icons).toHaveLength(5);
+  expect(icons).toHaveLength(8);
   expect(
-    icons.slice(0, 3).every((h) => /\/assets\/favicon-(16|32|48)-[0-9a-f]{8}\.png$/.test(h)),
+    icons.slice(0, 5).every((h) => /\/assets\/favicon-(16|24|32|48|64)-[0-9a-f]{8}\.png$/.test(h)),
   ).toBe(true);
-  for (const href of icons.slice(0, 4)) {
+  for (const href of icons.filter((h) => h.endsWith('.png'))) {
     const icon = await page.request.get(href);
     expect(icon.headers()['content-type']).toBe('image/png');
   }

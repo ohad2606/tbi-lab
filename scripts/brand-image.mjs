@@ -244,6 +244,77 @@ export function resample(src, { sx = 0, sy = 0, sw = src.w, sh = src.h } = {}, d
   return { w: dw, h: dh, data: out };
 }
 
+/**
+ * Keep only what lies inside `inside(x, y)`, anti-aliased (premultiplied, so the colours under the
+ * edge are untouched and only the coverage changes). `edge(x, y)` is true for the pixels near the
+ * boundary; the rest are decided by a single test, which keeps a full-size source fast.
+ */
+export function maskTo(src, inside, edge) {
+  const out = { w: src.w, h: src.h, data: Float64Array.from(src.data) };
+  for (let y = 0; y < src.h; y++)
+    for (let x = 0; x < src.w; x++) {
+      let cov;
+      if (edge(x, y)) {
+        let n = 0;
+        for (let sy = 0; sy < SS; sy++)
+          for (let sx = 0; sx < SS; sx++) if (inside(x + (sx + 0.5) / SS, y + (sy + 0.5) / SS)) n++;
+        cov = n / (SS * SS);
+      } else cov = inside(x + 0.5, y + 0.5) ? 1 : 0;
+      if (cov === 1) continue;
+      const o = (y * src.w + x) * 4;
+      for (let k = 0; k < 4; k++) out.data[o + k] *= cov;
+    }
+  return out;
+}
+
+/**
+ * Unsharp mask over a 3 x 3 binomial blur, in linear light, colour only (alpha is the coverage and
+ * stays as resampled), clamped to a valid premultiplied pixel. Restores the edge contrast a large
+ * reduction averages away: the neon outlines of the artwork are 1 px or less at icon sizes.
+ */
+export function sharpen(src, amount) {
+  if (!amount) return src;
+  const { w, h, data } = src;
+  const out = new Float64Array(data.length);
+  const G = [1, 2, 1];
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++) {
+      const o = (y * w + x) * 4;
+      const a = data[o + 3];
+      out[o + 3] = a;
+      for (let k = 0; k < 3; k++) {
+        let s = 0;
+        for (let j = -1; j <= 1; j++)
+          for (let i = -1; i <= 1; i++) {
+            const xx = Math.min(w - 1, Math.max(0, x + i));
+            const yy = Math.min(h - 1, Math.max(0, y + j));
+            s += data[(yy * w + xx) * 4 + k] * G[i + 1] * G[j + 1];
+          }
+        out[o + k] = Math.min(a, Math.max(0, data[o + k] + (data[o + k] - s / 16) * amount));
+      }
+    }
+  return { w, h, data: out };
+}
+
+/** A Windows .ico holding the given square PNGs ([{ size, png }], smallest first, size <= 256). */
+export function encodeIco(images) {
+  const head = Buffer.alloc(6 + 16 * images.length);
+  head.writeUInt16LE(1, 2);
+  head.writeUInt16LE(images.length, 4);
+  let offset = head.length;
+  images.forEach(({ size, png }, i) => {
+    const e = 6 + 16 * i;
+    head[e] = size === 256 ? 0 : size;
+    head[e + 1] = size === 256 ? 0 : size;
+    head.writeUInt16LE(1, e + 4);
+    head.writeUInt16LE(32, e + 6);
+    head.writeUInt32LE(png.length, e + 8);
+    head.writeUInt32LE(offset, e + 12);
+    offset += png.length;
+  });
+  return Buffer.concat([head, ...images.map((i) => i.png)]);
+}
+
 /** Composite `top` over `dst` at integer offset (x, y), in place. */
 export function drawOver(dst, top, x0, y0) {
   for (let y = 0; y < top.h; y++)

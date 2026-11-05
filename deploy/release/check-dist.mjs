@@ -155,6 +155,19 @@ export function checkBranding(profile, dist) {
       errors.push(`${d.rel} ${d.href}: missing (or not a content-hashed asset)`);
       continue;
     }
+    if (d.href.endsWith('.ico')) {
+      // A .ico lists its sizes in `sizes` and holds them in its directory (0 means 256).
+      const b = readFileSync(local(d.href));
+      const held = [];
+      if (b.readUInt16LE(0) === 0 && b.readUInt16LE(2) === 1)
+        for (let i = 0; i < b.readUInt16LE(4); i++) {
+          const n = b[6 + 16 * i] || 256;
+          held.push(`${n}x${n}`);
+        }
+      if (held.join(' ') !== d.sizes)
+        errors.push(`${d.rel} ${d.href}: declared ${d.sizes}, holds ${held.join(' ')}`);
+      continue;
+    }
     const size = pngSize(readFileSync(local(d.href)));
     if (size !== d.sizes) errors.push(`${d.rel} ${d.href}: declared ${d.sizes}, is ${size}`);
   }

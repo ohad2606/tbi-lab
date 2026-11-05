@@ -11,20 +11,23 @@
  *   app_logo_01.png -> src/assets/brand/tbi-lab-logo.png    (the full logo with the TBI LAB wordmark and
  *                      tagline, transparent; 300 px tall, Projects band at 150 px)
  *
- * Application icons (2026-10-29; scripts/brand-image.mjs: Node only, Lanczos-3 in linear light):
- * src/assets/brand/icons/production/ and, for DEV-Lab builds only, src/assets/brand/icons/dev/:
- *   favicon-16.png, favicon-32.png, favicon-48.png   the infinity symbol alone (app_logo_04,
- *                      trimmed), centred on a transparent square: the detailed app icon is not
- *                      legible at tab sizes (its "LAB" and the scenes inside the symbol vanish;
- *                      evidence ~/tbi-dev-brand). 48 is what a 3x screen picks for a 16 px tab, so it
- *                      is the same symbol, not the detailed icon.
- *   apple-touch-icon-180.png, icon-192.png, icon-512.png   the app icon
- *                      (app_logo_05) cropped to its own rounded square: the source's centred square
- *                      x/y 48..1205, which keeps the whole rounded square and its outline and drops
- *                      most of the black margin around it. The square's corner radius (about 265 of
- *                      1158 px, 23%) matches the iPadOS/iOS home-screen mask (about 22%), so the mask
- *                      removes the black corners instead of framing a dark square inside a dark tile.
- *                      Opaque, as supplied (no corner is made transparent).
+ * Application icons (2026-10-29, sizes and small-size art revised 2026-11-05; scripts/brand-image.mjs:
+ * Node only, Lanczos-3 in linear light): src/assets/brand/icons/production/ and, for DEV-Lab builds
+ * only, src/assets/brand/icons/dev/. A platform given only 192 and 512 px scales them down itself for
+ * its taskbar and shortcuts, so every size a desktop uses is supplied, made for that size:
+ *   favicon-16.png, favicon-24.png (and DEV up to 96 px)   the official symbol (app_logo_04, trimmed) on the app icon's
+ *                      navy rounded square: below 32 px the wordmark and the scenes cannot be
+ *                      resolved. The square, because the symbol alone is drawn for a dark ground and
+ *                      washes out on a light browser tab or taskbar.
+ *   favicon-32.png, favicon-48.png, favicon-64.png, icon-96.png, icon-128.png, icon-192.png,
+ *   icon-256.png, icon-512.png   the whole app icon (app_logo_05): its rounded square with the
+ *                      painted black outside it made transparent (TILE: the measured outline, not a
+ *                      redraw), so no dark square shows around it on a light desktop. Sharpened after
+ *                      the reduction, more at the smaller sizes.
+ *   favicon.ico        16, 24, 32, 48, 64 and 256 px of the above, for Windows.
+ *   apple-touch-icon-180.png   the app icon cropped to its own rounded square, opaque: iOS draws
+ *                      transparency as black and masks the corners itself (the square's corner
+ *                      radius, 23%, matches its mask, about 22%).
  *   maskable-192.png, maskable-512.png   the whole app icon (with its black margin) at 70% of the
  *                      canvas, centred; the rest of the canvas repeats the source's own edge pixels
  *                      outward (its margin is near-black with a faint navy glow, up to #00061a at
@@ -32,15 +35,16 @@
  *                      the entire rounded square, outline included, lies inside
  *                      the 80% safe zone (its farthest point is 0.557 of the source size from the
  *                      centre, times 0.70 = 0.39 < 0.40 of the canvas), so no launcher mask cuts it.
- * The DEV set is the same images with a yellow "DEV" marker drawn over them: on the "LAB" plate of
- * the app icon (so it reads "TBI DEV"); on the maskable icons, which launchers show smallest, a
- * large plate across the whole wordmark row; and as a yellow band under the symbol at 16 and 32 px. The
- * glyphs are a 5-row pixel font (V five cells wide so it never reads as "U").
+ * The DEV set is the same images with a yellow "DEV" marker over them, drawn so it is unmistakable at
+ * each size: up to 96 px a band across the bottom of the rounded square; above that a yellow ring and
+ * the word on the "LAB" plate of the app icon; on the maskable icons, which launchers show smallest,
+ * a large plate across the whole wordmark row. The glyphs are a 5-row pixel font (V five cells wide
+ * so it never reads as "U").
  *
- * The artwork is used exactly as supplied: transparent files are only trimmed to their
- * non-transparent pixels (fully transparent margins removed, nothing visible cut), crops keep
- * whole source pixels, and images are scaled with the aspect ratio kept. Nothing is recoloured,
- * redrawn or made transparent; the DEV marker is an overlay on DEV builds only.
+ * The artwork is used as supplied: transparent files are only trimmed to their non-transparent
+ * pixels, images are scaled with the aspect ratio kept, and nothing is recoloured or redrawn. The
+ * only pixels removed are the painted black around the rounded square; the only additions are the
+ * navy square behind the symbol at 16 and 24 px and, on DEV builds, the DEV marker.
  */
 import { writeFileSync, readFileSync, mkdirSync } from 'node:fs';
 import { createHash } from 'node:crypto';
@@ -53,6 +57,15 @@ const sha = (b) => createHash('sha256').update(b).digest('hex');
 
 /** The app icon's rounded square inside app_logo_05 (1254 x 1254), measured from its pixels. */
 const TILE = { sx: 48, sy: 48, sw: 1158, sh: 1158 };
+/** The same square, centred on the outline's measured box (x 48..1205, y 60..1190, radius 270). */
+const OUTLINE = { x0: 48, y0: 60, x1: 1205, y1: 1190, radius: 270 };
+const OUTLINE_CROP = { sx: 48, sy: 47, sw: 1158, sh: 1158 };
+/** The small-size square: the navy of the app icon's ground and the blue of its outline. */
+const TILE_NAVY = [0x0a, 0x14, 0x2e];
+const TILE_EDGE = [0x1a, 0x4f, 0xd6];
+const CORNER = 0.235;
+/** Sharpening after the reduction: the larger the reduction, the more edge contrast it costs. */
+const sharpness = (size) => (size <= 48 ? 0.8 : size <= 96 ? 0.4 : size <= 256 ? 0.2 : 0);
 /** The centre of the "LAB" plate in app_logo_05 pixels: the DEV marker covers it. */
 const LAB_PLATE = { x: 925, y: 902 };
 /** Maskable icons: the whole source at this share of the canvas (see the header). */
@@ -153,34 +166,84 @@ function devPlate(dst, cx, cy, cell) {
   I.drawDevWord(dst, x0 + cell, y0 + cell, cell, DEV_INK);
 }
 
-/** Tab sizes: the symbol alone; DEV puts it on top and a yellow "DEV" band beneath. */
+const inSquare = (size) => I.roundedRect(0, 0, size, size, Math.round(size * CORNER));
+const allOf = (size) => ({ x0: 0, y0: 0, x1: size, y1: size });
+
+/** DEV, up to 96 px: a yellow band across the bottom of the rounded square, with the word. */
+function devBand(out, size) {
+  const cell = Math.max(1, Math.floor(size / 20));
+  const height = (I.DEV_WORD_CELLS.h + 2) * cell;
+  const top = size - height;
+  const inside = inSquare(size);
+  I.fillShape(out, (x, y) => y >= top && inside(x, y), DEV_YELLOW, { ...allOf(size), y0: top });
+  I.drawDevWord(out, Math.floor((size - I.DEV_WORD_CELLS.w * cell) / 2), top + cell, cell, DEV_INK);
+  return height;
+}
+
+/** DEV, above 96 px: a yellow ring just inside the edge of the rounded square. */
+function devRing(out, size) {
+  const c = Math.max(1, Math.round(size / 28));
+  const r = Math.round(size * CORNER);
+  const outer = I.roundedRect(0, 0, size, size, r);
+  const inner = I.roundedRect(c, c, size - c, size - c, Math.max(0, r - c));
+  I.fillShape(out, (x, y) => outer(x, y) && !inner(x, y), DEV_YELLOW, allOf(size));
+}
+
+/** 16 and 24 px: the symbol on the navy rounded square (DEV: above the band). */
 function symbolIcon(size, dev) {
   const { png, img } = source('app_logo_04.png');
   const b = I.opaqueBounds(png);
-  const h = Math.round((size * b.sh) / b.sw);
   const out = I.image(size, size);
-  I.drawOver(out, I.resample(img, b, size, h), 0, dev ? 0 : Math.floor((size - h) / 2));
-  if (dev) {
-    const cell = size / 16;
-    const top = h;
-    I.fillShape(out, (x, y) => y >= top, DEV_YELLOW, { x0: 0, y0: top, x1: size, y1: size });
-    const textW = I.DEV_WORD_CELLS.w * cell;
-    const textH = I.DEV_WORD_CELLS.h * cell;
-    I.drawDevWord(
-      out,
-      Math.floor((size - textW) / 2),
-      top + Math.floor((size - top - textH) / 2),
-      cell,
-      DEV_INK,
+  const r = Math.round(size * CORNER);
+  const e = Math.max(1, Math.round(size / 24));
+  I.fillShape(out, inSquare(size), TILE_EDGE, allOf(size));
+  I.fillShape(
+    out,
+    I.roundedRect(e, e, size - e, size - e, Math.max(0, r - e)),
+    TILE_NAVY,
+    allOf(size),
+  );
+  const w = size - 2 * Math.max(1, Math.round(size / 16));
+  const h = Math.round((w * b.sh) / b.sw);
+  const area = dev ? size - (I.DEV_WORD_CELLS.h + 2) * Math.max(1, Math.floor(size / 20)) : size;
+  const symbol = I.sharpen(I.resample(img, b, w, h), sharpness(size));
+  I.drawOver(out, symbol, Math.round((size - w) / 2), Math.round((area - h) / 2));
+  if (dev) devBand(out, size);
+  return { img: out, opaque: false };
+}
+
+let outlined;
+/** 32 px and up: the app icon, transparent outside its rounded square. */
+function tileIcon(size, dev) {
+  // A band over the wordmark would leave pieces of its letters: DEV up to 96 px is the symbol and the band.
+  if (dev && size <= 96) return symbolIcon(size, true);
+  if (!outlined) {
+    const { x0, y0, x1, y1, radius: r } = OUTLINE;
+    outlined = I.maskTo(
+      source('app_logo_05.png').img,
+      I.roundedRect(x0, y0, x1, y1, r),
+      (x, y) => x < x0 + r + 2 || x > x1 - r - 2 || y < y0 + r + 2 || y > y1 - r - 2,
     );
+  }
+  const out = I.sharpen(I.resample(outlined, OUTLINE_CROP, size, size), sharpness(size));
+  if (dev) {
+    devPlate(
+      out,
+      ((LAB_PLATE.x - OUTLINE_CROP.sx) / OUTLINE_CROP.sw) * size,
+      ((LAB_PLATE.y - OUTLINE_CROP.sy) / OUTLINE_CROP.sh) * size,
+      Math.max(1, Math.floor(size / 48)),
+    );
+    devRing(out, size);
   }
   return { img: out, opaque: false };
 }
 
-/** The app icon cropped to its rounded square. */
-function tileIcon(size, dev) {
-  const { img } = source('app_logo_05.png');
-  const out = I.resample(img, TILE, size, size);
+/** iOS: the app icon cropped to its rounded square, opaque (iOS masks the corners). */
+function touchIcon(size, dev) {
+  const out = I.sharpen(
+    I.resample(source('app_logo_05.png').img, TILE, size, size),
+    sharpness(size),
+  );
   if (dev)
     devPlate(
       out,
@@ -196,7 +259,13 @@ function maskableIcon(size, dev) {
   const { png, img } = source('app_logo_05.png');
   const inner = Math.round(size * MASKABLE_SCALE);
   const off = Math.floor((size - inner) / 2);
-  const out = I.extendEdges(I.resample(img, undefined, inner, inner), size, size, off, off);
+  const out = I.extendEdges(
+    I.sharpen(I.resample(img, undefined, inner, inner), sharpness(size)),
+    size,
+    size,
+    off,
+    off,
+  );
   // DEV: launchers show maskable icons at about 48 dp, where a plate the size of "LAB" is
   // unreadable; a large plate centred across the wordmark row ("TBI LAB") is, and stays inside
   // the safe zone (its farthest corner is about 0.32 of the canvas from the centre, < 0.40).
@@ -207,13 +276,27 @@ function maskableIcon(size, dev) {
 
 const ICONS = [
   ['favicon-16.png', (dev) => symbolIcon(16, dev), 'app_logo_04.png'],
-  ['favicon-32.png', (dev) => symbolIcon(32, dev), 'app_logo_04.png'],
-  ['favicon-48.png', (dev) => symbolIcon(48, dev), 'app_logo_04.png'],
-  ['apple-touch-icon-180.png', (dev) => tileIcon(180, dev), 'app_logo_05.png'],
+  ['favicon-24.png', (dev) => symbolIcon(24, dev), 'app_logo_04.png'],
+  ['favicon-32.png', (dev) => tileIcon(32, dev), 'app_logo_05.png'],
+  ['favicon-48.png', (dev) => tileIcon(48, dev), 'app_logo_05.png'],
+  ['favicon-64.png', (dev) => tileIcon(64, dev), 'app_logo_05.png'],
+  ['icon-96.png', (dev) => tileIcon(96, dev), 'app_logo_05.png'],
+  ['icon-128.png', (dev) => tileIcon(128, dev), 'app_logo_05.png'],
+  ['apple-touch-icon-180.png', (dev) => touchIcon(180, dev), 'app_logo_05.png'],
   ['icon-192.png', (dev) => tileIcon(192, dev), 'app_logo_05.png'],
+  ['icon-256.png', (dev) => tileIcon(256, dev), 'app_logo_05.png'],
   ['icon-512.png', (dev) => tileIcon(512, dev), 'app_logo_05.png'],
   ['maskable-192.png', (dev) => maskableIcon(192, dev), 'app_logo_05.png'],
   ['maskable-512.png', (dev) => maskableIcon(512, dev), 'app_logo_05.png'],
+];
+/** favicon.ico: these sizes, from the files above. */
+const ICO = [
+  [16, 'favicon-16.png'],
+  [24, 'favicon-24.png'],
+  [32, 'favicon-32.png'],
+  [48, 'favicon-48.png'],
+  [64, 'favicon-64.png'],
+  [256, 'icon-256.png'],
 ];
 
 function write(out, png, file) {
@@ -230,10 +313,21 @@ const chromiumJobs = [
 ].filter(([, , o]) => !only || o === only);
 if (chromiumJobs.length) await renderWithChromium(chromiumJobs);
 
-for (const variant of ['production', 'dev'])
+for (const variant of ['production', 'dev']) {
+  const made = new Map();
   for (const [name, make, file] of ICONS) {
     const out = `src/assets/brand/icons/${variant}/${name}`;
     if (only && only !== out) continue;
     const { img, opaque } = make(variant === 'dev');
-    write(out, I.encodePng(img.w, img.h, I.toRgba8(img), { opaque }), file);
+    const png = I.encodePng(img.w, img.h, I.toRgba8(img), { opaque });
+    made.set(name, png);
+    write(out, png, file);
   }
+  const ico = `src/assets/brand/icons/${variant}/favicon.ico`;
+  if (!only)
+    write(
+      ico,
+      I.encodeIco(ICO.map(([size, name]) => ({ size, png: made.get(name) }))),
+      'app_logo_05.png',
+    );
+}

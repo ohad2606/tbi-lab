@@ -25,13 +25,23 @@ import {
   type TbiEnvironment,
 } from './src/environment.js';
 
+/**
+ * `favicon` is linked from the HTML and also listed in the manifest; `any` only in the manifest. A
+ * desktop takes its taskbar and shortcut sizes from the manifest and scales down from the nearest
+ * larger icon when one is missing, so the sizes it uses are all listed.
+ */
 type Role = 'favicon' | 'apple-touch-icon' | 'any' | 'maskable';
 const ICONS: readonly { file: string; size: number; role: Role }[] = [
   { file: 'favicon-16.png', size: 16, role: 'favicon' },
+  { file: 'favicon-24.png', size: 24, role: 'favicon' },
   { file: 'favicon-32.png', size: 32, role: 'favicon' },
   { file: 'favicon-48.png', size: 48, role: 'favicon' },
+  { file: 'favicon-64.png', size: 64, role: 'favicon' },
+  { file: 'icon-96.png', size: 96, role: 'any' },
+  { file: 'icon-128.png', size: 128, role: 'any' },
   { file: 'apple-touch-icon-180.png', size: 180, role: 'apple-touch-icon' },
   { file: 'icon-192.png', size: 192, role: 'any' },
+  { file: 'icon-256.png', size: 256, role: 'any' },
   { file: 'icon-512.png', size: 512, role: 'any' },
   { file: 'maskable-192.png', size: 192, role: 'maskable' },
   { file: 'maskable-512.png', size: 512, role: 'maskable' },
@@ -69,12 +79,12 @@ export function brandAssets(root: URL, env: TbiEnvironment, base = '/') {
     background_color: BRAND_COLOURS.navy,
     theme_color: theme,
     icons: icons
-      .filter((i) => i.role === 'any' || i.role === 'maskable')
+      .filter((i) => i.role !== 'apple-touch-icon')
       .map((i) => ({
         src: url(i.fileName),
         sizes: `${i.size}x${i.size}`,
         type: 'image/png',
-        purpose: i.role,
+        purpose: i.role === 'maskable' ? 'maskable' : 'any',
       })),
   };
   const manifestSource = Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`);
@@ -82,8 +92,11 @@ export function brandAssets(root: URL, env: TbiEnvironment, base = '/') {
   // has no type for `.webmanifest` and served it with none; `.json` gets application/json, which
   // browsers accept for a manifest. No server configuration changes.
   const manifestName = hashed('manifest', 'json', manifestSource);
+  const ico = readFileSync(new URL('favicon.ico', iconDir(root, env)));
+  const icoName = hashed('favicon', 'ico', ico);
   const files: BrandFile[] = [
     ...icons.map((i) => ({ fileName: i.fileName, source: i.source })),
+    { fileName: icoName, source: ico },
     { fileName: manifestName, source: manifestSource },
   ];
   const tags: HtmlTagDescriptor[] = [
@@ -98,6 +111,15 @@ export function brandAssets(root: URL, env: TbiEnvironment, base = '/') {
           href: url(i.fileName),
         },
       })),
+    {
+      tag: 'link',
+      attrs: {
+        rel: 'icon',
+        type: 'image/x-icon',
+        sizes: '16x16 24x24 32x32 48x48 64x64 256x256',
+        href: url(icoName),
+      },
+    },
     ...icons
       .filter((i) => i.role === 'apple-touch-icon')
       .map((i) => ({
@@ -130,7 +152,11 @@ export function brandPlugin(root: URL, env: TbiEnvironment): Plugin {
         if (!file) return next();
         res.setHeader(
           'Content-Type',
-          file.fileName.endsWith('.png') ? 'image/png' : 'application/manifest+json',
+          file.fileName.endsWith('.png')
+            ? 'image/png'
+            : file.fileName.endsWith('.ico')
+              ? 'image/x-icon'
+              : 'application/manifest+json',
         );
         res.end(file.source);
       });

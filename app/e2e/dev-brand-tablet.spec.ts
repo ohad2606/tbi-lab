@@ -245,13 +245,16 @@ test.describe('icons and web app manifest', () => {
         );
       expect(links.map((l) => `${l.rel} ${l.sizes ?? ''}`.trim())).toEqual([
         'icon 16x16',
+        'icon 24x24',
         'icon 32x32',
         'icon 48x48',
+        'icon 64x64',
+        'icon 16x16 24x24 32x32 48x48 64x64 256x256',
         'apple-touch-icon 180x180',
         'manifest',
       ]);
       const sizeOf = (b: Buffer) => `${b.readUInt32BE(16)}x${b.readUInt32BE(20)}`;
-      for (const l of links.filter((x) => x.rel !== 'manifest')) {
+      for (const l of links.filter((x) => x.rel !== 'manifest' && !x.href.endsWith('.ico'))) {
         expect(l.href).toMatch(/\/assets\/[a-z0-9-]+-[0-9a-f]{8}\.png$/);
         const r = await page.request.get(l.href);
         expect(r.status()).toBe(200);
