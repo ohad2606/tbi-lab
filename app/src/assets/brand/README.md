@@ -38,7 +38,7 @@ every size it uses is supplied, made for that size:
 | `maskable-192.png`, `maskable-512.png`                | the content of `app_logo_05` on the brand navy, as large as the 80 % safe zone allows                                                      |
 
 DEV marker: up to 96 px the symbol on the square with a yellow band (a band over the wordmark would leave pieces of its
-letters); above that a yellow ring and DEV on the LAB plate; maskable, the symbol on the navy with a yellow band.
+letters); above that a yellow ring and DEV on the LAB plate; maskable and apple-touch-icon, the symbol on the navy with a yellow band (a ring would be masked away on iOS).
 
 The only pixels removed from the artwork are the painted black around the rounded square (on the maskable icons, the outline with it); nothing is recoloured or redrawn.
 

@@ -35,7 +35,7 @@
  *                      no launcher mask cuts it. No frame inside a frame, and no black margin.
  * The DEV set is the same images with a yellow "DEV" marker over them, drawn so it is unmistakable at
  * each size: up to 96 px a band across the bottom of the rounded square; above that a yellow ring and
- * the word on the "LAB" plate of the app icon; on the maskable icons, which launchers show smallest,
+ * the word on the "LAB" plate of the app icon; on the maskable and apple-touch icons, which launchers show smallest,
  * the symbol on the navy with a yellow band, full bleed. The glyphs are a 5-row pixel font (V five cells wide
  * so it never reads as "U").
  *
@@ -241,19 +241,17 @@ function tileIcon(size, dev) {
   return { img: out, opaque: false };
 }
 
-/** iOS: the app icon cropped to its rounded square, opaque (iOS masks the corners). */
+/**
+ * iOS: the app icon cropped to its rounded square, opaque (iOS masks the corners). DEV: the same design
+ * as the maskable icon: a ring would be masked away, and a plate the size of "LAB" is easily read as
+ * production at the 60 to 76 px of a home screen.
+ */
 function touchIcon(size, dev) {
+  if (dev) return maskableIcon(size, true);
   const out = I.sharpen(
     I.resample(source('app_logo_05.png').img, TILE, size, size),
     sharpness(size),
   );
-  if (dev)
-    devPlate(
-      out,
-      ((LAB_PLATE.x - TILE.sx) / TILE.sw) * size,
-      ((LAB_PLATE.y - TILE.sy) / TILE.sh) * size,
-      Math.max(1, Math.floor(size / 48)),
-    );
   return { img: out, opaque: true };
 }
 
