@@ -34,6 +34,7 @@
  *     POST /__test/reset-admin           fresh registry, helper answering
  *     POST /__test/admin-hold?on=1|0     keep requests unanswered (the 202 path), or release them
  *     POST /__test/admin-owner-unrecorded   the owner's Google id not recorded yet
+ *     POST /__test/admin-fill?n=30       Phase C: synthetic authorized testers up to n (cap tests)
  *   Sprint 23C feedback-only release: the same host on REPORTS_PORT (default 7497), whose
  *   `/admin` is the REAL reports mode (TBI_ADMIN_MODE=reports: report routes only, the owner
  *   `e2e-owner` from an owner reference file, every account path 404). The :4175 preview
@@ -494,6 +495,9 @@ const server = createServer((req: IncomingMessage, res: ServerResponse) => {
       return reply({ ok: true });
     case '/__test/admin-hold':
       fakeAdmin.hold(url.searchParams.get('on') === '1');
+      return reply({ ok: true });
+    case '/__test/admin-fill':
+      fakeAdmin.fill(Number(url.searchParams.get('n') ?? 30));
       return reply({ ok: true });
     case '/__test/admin-owner-unrecorded':
       fakeAdmin.ownerUnrecorded();

@@ -52,10 +52,23 @@ env -i "${base_env[@]}" npx esbuild runtime/host/main.ts --bundle --platform=nod
   --define:__TBI_RUNTIME_VERSION__="\"$version\"" --define:__TBI_RUNTIME_COMMIT__="\"$R\"" \
   --outfile=runtime/host/dist/session-host.mjs --log-level=warning
 grep -q "$R" runtime/host/dist/session-host.mjs
+# Phase C: a profile with the dedicated admin service (its `admin` section, release-config.mjs) ships its
+# bundle beside the others, stamped like the Session Host (tbi-admin.service runs
+# @BUNDLES@/admin-service.mjs, and on dev-lab @BUNDLES@ is the published services/). Profiles without it
+# keep exactly their three service files.
+admin_bundle=0
+node -e 'process.exit(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).admin ? 0 : 1)' "$profile" && admin_bundle=1
+if [ "$admin_bundle" = 1 ]; then
+  env -i "${base_env[@]}" npx esbuild runtime/admin/main.ts --bundle --platform=node --format=esm --target=node22 \
+    --define:__TBI_RUNTIME_VERSION__="\"$version\"" --define:__TBI_RUNTIME_COMMIT__="\"$R\"" \
+    --outfile=runtime/admin/dist/admin-service.mjs --log-level=warning
+  grep -q "$R" runtime/admin/dist/admin-service.mjs
+fi
 
 cp -a app/dist "$out/frontend"
 mkdir -p "$out/services"
 cp runtime/host/dist/session-host.mjs runtime/builder/dist/build-service.mjs runtime/builder/dist/build-job.mjs "$out/services/"
+[ "$admin_bundle" = 0 ] || cp runtime/admin/dist/admin-service.mjs "$out/services/"
 (cd "$out" && find frontend services -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum > MANIFEST.sha256)
 sha256sum package-lock.json runtime/firmware/artifacts.lock.json deploy/dev-lab/s8/policy.json \
   deploy/dev-lab/s8/policy.alpha.json "deploy/release/$(basename "$profile")" > "$out/inputs.sha256"

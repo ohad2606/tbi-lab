@@ -28,7 +28,7 @@ result="$work/G2-RESULT.txt"
 } > "$result"
 rc=0
 for profile in ${TBI_PROFILES:-rc4 rc4-reports}; do
-  [[ "$profile" =~ ^rc[0-9]+(-[a-z0-9]+)?$ ]] || { echo "bad profile name: $profile" >&2; exit 2; }
+  [[ "$profile" =~ ^rc[0-9]+(-[a-z0-9]+)*$ ]] || { echo "bad profile name: $profile" >&2; exit 2; }
   for n in 1 2; do
     "$here/build-package.sh" "deploy/release/$profile.release.json" "$R" "$work/pkg-$profile-$n" "$T" >> "$result" 2>&1 ||
       { echo "BUILD FAILED: $profile #$n" | tee -a "$result"; exit 1; }

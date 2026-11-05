@@ -1,7 +1,15 @@
 /** Sprint 23B: the owner's administration, client logic (answers, masking, request shapes). */
 import { describe, expect, it } from 'vitest';
 import {
+  accountCounts,
   addTester,
+  capFull,
+  israelTime,
+  normalizeDisplayName,
+  renameTester,
+  visibleAccounts,
+  type AccountRow,
+  type AccountsView,
   deleteReport,
   deleteTesterReports,
   interpretMutation,
@@ -142,5 +150,104 @@ describe('admin client', () => {
     expect(plausibleAddress('x@example.invalid')).toBe(true);
     expect(plausibleAddress('x@y')).toBe(false);
     expect(plausibleAddress('two words@example.invalid')).toBe(false);
+  });
+
+  it("Phase C: add with a name, rename; names travel only in the owner's own requests", async () => {
+    const f = fake(200, { id: 'x', ok: true, code: 'done', masked: 'ne***@example.invalid' });
+    await addTester(f.fn, 'n@example.invalid', '  Alex T. ');
+    expect(JSON.parse(f.calls[0]!.init?.body as string)).toEqual({
+      email: 'n@example.invalid',
+      name: 'Alex T.',
+    });
+    await addTester(f.fn, 'n@example.invalid', '   ');
+    expect(JSON.parse(f.calls[1]!.init?.body as string)).toEqual({ email: 'n@example.invalid' });
+    await renameTester(f.fn, 't_AAAAAAAAAAAAAAAA', 'אלכס ט.');
+    expect(f.calls[2]!.url).toBe('/admin-api/accounts/rename');
+    expect(JSON.parse(f.calls[2]!.init?.body as string)).toEqual({
+      target: 't_AAAAAAAAAAAAAAAA',
+      name: 'אלכס ט.',
+    });
+    expect(interpretMutation(400, { error: 'invalid_name' })).toEqual({
+      kind: 'refused',
+      error: 'invalid_name',
+    });
+  });
+
+  it("Phase C: the display-name rule is the server's", () => {
+    expect(normalizeDisplayName('  Alex   T. ')).toBe('Alex T.');
+    expect(normalizeDisplayName('e\u0301')).toBe('\u00e9');
+    for (const ok of ["O'Neil", 'Jean-Luc', 'שָׁלוֹם', 'x'.repeat(60)])
+      expect(normalizeDisplayName(ok)).toBe(ok);
+    for (const bad of [
+      '',
+      ' ',
+      '-x',
+      'x1',
+      'x_y',
+      'x\u00a0y',
+      'x\u202ey',
+      '\u0301x',
+      'x'.repeat(61),
+    ])
+      expect(normalizeDisplayName(bad), JSON.stringify(bad)).toBeNull();
+  });
+
+  it('Phase C: times are Israel time, in the UI language', () => {
+    // 2026-11-02 15:07 UTC = 17:07 in Israel (IST, UTC+2 after the October change)
+    expect(israelTime('2026-11-02T15:07:20.000001Z', 'en')).toMatch(/5:07\s?PM/);
+    expect(israelTime('2026-07-01T14:33:00Z', 'en')).toMatch(/5:33\s?PM/); // IDT, UTC+3
+    expect(israelTime('2026-11-02T15:07:20Z', 'he')).toContain('17:07');
+    expect(israelTime(null, 'en')).toBeNull();
+    expect(israelTime('soon', 'en')).toBeNull();
+  });
+
+  it('Phase C: filters, order, counts and the cap (authorized testers only)', async () => {
+    const row = (p: Partial<AccountRow>): AccountRow => ({
+      target: 't_AAAAAAAAAAAAAAAA',
+      masked: 'aa***@example.invalid',
+      class: 'alpha_tester',
+      status: 'authorized',
+      dateAdded: '2026-11-01',
+      googleIdRecorded: false,
+      displayName: null,
+      firstSignIn: null,
+      lastSignIn: null,
+      signIns: 0,
+      lastSeen: null,
+      statusUpdated: null,
+      ...p,
+    });
+    const v: AccountsView = {
+      generated: null,
+      cap: 30,
+      authorizedTesters: 2,
+      owner: 1,
+      warnings: [],
+      accounts: [
+        row({ target: 't_B', displayName: 'Zeev' }),
+        row({ target: 't_C', status: 'revoked', displayName: 'Dana' }),
+        row({ target: 't_O', class: 'owner', displayName: 'Owner' }),
+        row({ target: 't_A', displayName: 'Avi' }),
+      ],
+    };
+    expect(visibleAccounts(v, 'active').map((a) => a.target)).toEqual(['t_O', 't_A', 't_B']);
+    expect(visibleAccounts(v, 'disabled').map((a) => a.target)).toEqual(['t_C']);
+    expect(visibleAccounts(v, 'all')).toHaveLength(4);
+    expect(accountCounts(v)).toEqual({ active: 3, disabled: 1, all: 4 });
+    expect(capFull(v)).toBe(false);
+    expect(capFull({ ...v, authorizedTesters: 30 })).toBe(true);
+    // an older view without the Phase C fields still loads, with safe defaults
+    const f = fake(200, {
+      cap: 30,
+      authorizedTesters: 0,
+      owner: 1,
+      accounts: [{ target: 't_X', masked: 'x***@e.invalid', class: 'owner', status: 'authorized' }],
+    });
+    const l = await loadAccounts(f.fn);
+    expect(l.ok && l.value.accounts[0]).toMatchObject({
+      displayName: null,
+      signIns: 0,
+      lastSeen: null,
+    });
   });
 });

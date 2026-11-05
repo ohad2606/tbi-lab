@@ -8,6 +8,9 @@
  * (`/runtime/admin/me`, `/runtime/admin/reports…`, runtime/host/admin.ts); the account
  * administration (accounts, add, disable, reactivate, request status, capacity) is the dedicated
  * admin service's (`/admin-api/…`, runtime/admin/accounts.ts), called only in the full mode.
+ *
+ * Phase C (owner 2026-11-04): a private display name per record (add, rename), and the gate's
+ * sign-in data (first, last, how many). Names come only from the owner-only API at run time.
  */
 
 /** The Session Host's owner routes: the owner check and the reports. */
@@ -22,7 +25,14 @@ export interface AccountRow {
   status: 'authorized' | 'revoked' | 'pending';
   dateAdded: string | null;
   googleIdRecorded: boolean;
+  /** Phase C: the owner's private display name, or null. */
+  displayName: string | null;
+  /** Phase C: completed Google sign-ins at the gate. */
+  firstSignIn: string | null;
   lastSignIn: string | null;
+  signIns: number;
+  /** The Session Host's hourly observation (any authorized request), or null. */
+  lastSeen: string | null;
   statusUpdated: string | null;
 }
 
@@ -103,7 +113,7 @@ export type ResultCode = (typeof RESULT_CODES)[number];
 export type MutationOutcome =
   | { kind: 'result'; ok: boolean; code: ResultCode; masked: string | null; ownerPending: boolean }
   | { kind: 'pending'; id: string }
-  | { kind: 'refused'; error: 'invalid_email' | 'invalid' | LoadError | 'csrf' };
+  | { kind: 'refused'; error: 'invalid_email' | 'invalid_name' | 'invalid' | LoadError | 'csrf' };
 
 const isObj = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -172,7 +182,18 @@ export async function isOwner(fetchFn: Fetch): Promise<boolean> {
 export const loadAccounts = (fetchFn: Fetch) =>
   load<AccountsView>(fetchFn, '/accounts', (b) =>
     isObj(b) && Array.isArray(b.accounts) && typeof b.cap === 'number'
-      ? ({ warnings: [], ...b } as unknown as AccountsView)
+      ? ({
+          warnings: [],
+          ...b,
+          accounts: (b.accounts as Record<string, unknown>[]).map((a) => ({
+            displayName: null,
+            firstSignIn: null,
+            lastSignIn: null,
+            signIns: 0,
+            lastSeen: null,
+            ...a,
+          })),
+        } as unknown as AccountsView)
       : null,
   );
 
@@ -217,15 +238,110 @@ export function interpretMutation(status: number | null, body: unknown): Mutatio
     };
   const error = isObj(body) ? body.error : null;
   if (status === 400)
-    return { kind: 'refused', error: error === 'invalid_email' ? 'invalid_email' : 'invalid' };
+    return {
+      kind: 'refused',
+      error: error === 'invalid_email' || error === 'invalid_name' ? error : 'invalid',
+    };
   if (status === 403 && error === 'csrf') return { kind: 'refused', error: 'csrf' };
   return { kind: 'refused', error: loadError(status) };
 }
 
-export async function addTester(fetchFn: Fetch, email: string): Promise<MutationOutcome> {
-  const r = await request(fetchFn, '/accounts', mutating('POST', { email: email.trim() }));
+export async function addTester(
+  fetchFn: Fetch,
+  email: string,
+  name = '',
+): Promise<MutationOutcome> {
+  const n = name.trim();
+  const r = await request(
+    fetchFn,
+    '/accounts',
+    mutating('POST', { email: email.trim(), ...(n ? { name: n } : {}) }),
+  );
   return interpretMutation(r.status, r.body);
 }
+
+/** Phase C: give a record a (new) display name. */
+export async function renameTester(
+  fetchFn: Fetch,
+  target: string,
+  name: string,
+): Promise<MutationOutcome> {
+  const r = await request(fetchFn, '/accounts/rename', mutating('POST', { target, name }));
+  return interpretMutation(r.status, r.body);
+}
+
+/** Longest display name (the server's rule, runtime/admin/accounts.ts). */
+export const DISPLAY_NAME_MAX = 60;
+
+/**
+ * Category L/M code points that render as nothing: Hangul fillers, the combining grapheme joiner,
+ * Mongolian free variation selectors and vowel separator, Khmer inherent vowels, variation
+ * selectors. The same set as the helper's.
+ */
+const INVISIBLE_NAME_POINTS = new Set([
+  0x115f, 0x1160, 0x3164, 0xffa0, 0x034f, 0x180b, 0x180c, 0x180d, 0x180e, 0x180f, 0x17b4, 0x17b5,
+]);
+const invisibleNameChar = (s: string) =>
+  [...s].some((ch) => {
+    const cp = ch.codePointAt(0)!;
+    return (
+      INVISIBLE_NAME_POINTS.has(cp) ||
+      (cp >= 0xfe00 && cp <= 0xfe0f) ||
+      (cp >= 0xe0100 && cp <= 0xe01ef)
+    );
+  });
+
+/**
+ * The server's display-name rule, for immediate feedback only (the admin service and the helper
+ * validate again): NFC, trimmed, single spaces, 1-60 letters (with their marks), spaces and . ' -,
+ * starting with a letter. Returns the normalized name, or null.
+ */
+export function normalizeDisplayName(v: string): string | null {
+  if (v.length > 4 * DISPLAY_NAME_MAX) return null;
+  const s = v.normalize('NFC').replace(/ +/g, ' ').replace(/^ | $/g, '');
+  const n = [...s].length;
+  if (n < 1 || n > DISPLAY_NAME_MAX) return null;
+  // Letters and marks that render as nothing (blank or look-alike names; review R6), as the helper's rule.
+  if (invisibleNameChar(s)) return null;
+  return /^\p{L}[\p{L}\p{M} .'-]*$/u.test(s) ? s : null;
+}
+
+/** The time zone every administration date is shown in. */
+export const ADMIN_TIME_ZONE = 'Asia/Jerusalem';
+
+/** A date (and time) in Israel time, in the UI language; null when absent or unparseable. */
+export function israelTime(iso: string | null, locale: string, withTime = true): string | null {
+  if (!iso) return null;
+  const ms = Date.parse(iso);
+  if (!Number.isFinite(ms)) return null;
+  return new Intl.DateTimeFormat(locale, {
+    timeZone: ADMIN_TIME_ZONE,
+    ...(withTime ? { dateStyle: 'medium', timeStyle: 'short' } : { dateStyle: 'medium' }),
+  }).format(ms);
+}
+
+export type AccountFilter = 'active' | 'disabled' | 'all';
+
+/** The list the owner sees: the owner first, then by name (or masked address), per filter. */
+export function visibleAccounts(v: AccountsView, filter: AccountFilter): AccountRow[] {
+  const keep = (a: AccountRow) =>
+    filter === 'all' || (filter === 'active' ? a.status !== 'revoked' : a.status === 'revoked');
+  const label = (a: AccountRow) => (a.displayName ?? a.masked).toLocaleLowerCase();
+  return v.accounts
+    .filter(keep)
+    .sort((a, b) =>
+      a.class !== b.class ? (a.class === 'owner' ? -1 : 1) : label(a).localeCompare(label(b)),
+    );
+}
+
+export const accountCounts = (v: AccountsView) => ({
+  active: v.accounts.filter((a) => a.status !== 'revoked').length,
+  disabled: v.accounts.filter((a) => a.status === 'revoked').length,
+  all: v.accounts.length,
+});
+
+/** No tester place left (authorized testers only; the owner is not counted). */
+export const capFull = (v: AccountsView) => v.authorizedTesters >= v.cap;
 
 export async function setAccess(
   fetchFn: Fetch,

@@ -17,8 +17,15 @@ import { gateFetch } from '../gate.js';
 import type { MessageKey } from '../i18n/i18n.js';
 import { useAppState, useT } from './context.js';
 import {
+  accountCounts,
   addTester,
+  capFull,
   capText,
+  DISPLAY_NAME_MAX,
+  israelTime,
+  normalizeDisplayName,
+  renameTester,
+  visibleAccounts,
   deleteReport,
   deleteTesterReports,
   loadAccounts,
@@ -30,6 +37,7 @@ import {
   requestResult,
   setAccess,
   testerLabel,
+  type AccountFilter,
   type AccountRow,
   type AccountsView,
   type Capacity,
@@ -113,33 +121,29 @@ function AdminDialog({ trigger, onClose }: { trigger: HTMLElement | null; onClos
     else d?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.focus();
   }, [confirm]);
 
-  const date = (iso: string | null, withTime = true) => {
-    if (!iso) return null;
-    const ms = Date.parse(iso);
-    if (!Number.isFinite(ms)) return null;
-    return new Intl.DateTimeFormat(
-      locale.code,
-      withTime ? { dateStyle: 'medium', timeStyle: 'short' } : { dateStyle: 'medium' },
-    ).format(ms);
-  };
+  // Phase C: every time in the administration is Israel time (the owner's and the testers').
+  const date = (iso: string | null, withTime = true) => israelTime(iso, locale.code, withTime);
 
   const errorText = (e: LoadError) => t(`admin.error.${e}` as MessageKey);
 
   const outcomeText = (
     o: MutationOutcome,
-    masked: string,
-    action: 'add' | 'disable' | 'reactivate',
+    label: string,
+    action: 'add' | 'disable' | 'reactivate' | 'rename',
   ): string => {
     if (o.kind === 'pending') return t('admin.result.pending', { id: o.id });
     if (o.kind === 'refused')
       return o.error === 'invalid_email'
         ? t('admin.add.invalid')
-        : t(
-            `admin.error.${o.error === 'invalid' || o.error === 'csrf' ? 'network' : o.error}` as MessageKey,
-          );
+        : o.error === 'invalid_name'
+          ? t('admin.name.invalid', { max: DISPLAY_NAME_MAX })
+          : t(
+              `admin.error.${o.error === 'invalid' || o.error === 'csrf' ? 'network' : o.error}` as MessageKey,
+            );
     if (o.code === 'forbidden' && o.ownerPending) return t('admin.result.ownerPending');
     const key = o.code === 'done' ? `admin.result.done.${action}` : `admin.result.${o.code}`;
-    return t(key as MessageKey, { account: o.masked ?? masked });
+    // The owner's own label for the record (its name) when there is one, else the server's mask.
+    return t(key as MessageKey, { account: label || o.masked || '***' });
   };
 
   const runConfirmed = async () => {
@@ -148,7 +152,7 @@ function AdminDialog({ trigger, onClose }: { trigger: HTMLElement | null; onClos
     try {
       if (confirm.kind === 'disable' || confirm.kind === 'reactivate') {
         const o = await setAccess(api, confirm.kind, confirm.account.target);
-        setNotice(outcomeText(o, confirm.account.masked, confirm.kind));
+        setNotice(outcomeText(o, accountLabel(confirm.account), confirm.kind));
         await refreshTesters();
       } else if (confirm.kind === 'deleteReport') {
         const ok = await deleteReport(api, confirm.id);
@@ -265,6 +269,7 @@ function AdminDialog({ trigger, onClose }: { trigger: HTMLElement | null; onClos
             >
               <Capacities accounts={accounts} capacity={capacity} errorText={errorText} />
               <AddTester
+                full={accounts?.ok ? capFull(accounts.value) : false}
                 onDone={async (text) => {
                   setNotice(text);
                   await refreshTesters();
@@ -278,6 +283,13 @@ function AdminDialog({ trigger, onClose }: { trigger: HTMLElement | null; onClos
                 onAsk={(c) => {
                   setNotice(null);
                   setConfirm(c);
+                }}
+                onRename={async (a, name) => {
+                  const o = await renameTester(api, a.target, name);
+                  if (o.kind === 'refused' && o.error === 'invalid_name') return 'invalid';
+                  setNotice(outcomeText(o, name, 'rename'));
+                  await refreshTesters();
+                  return o.kind === 'result' && o.ok ? 'ok' : 'failed';
                 }}
               />
             </section>
@@ -361,41 +373,52 @@ function Capacities({
 }
 
 function AddTester({
+  full,
   onDone,
   outcomeText,
 }: {
+  full: boolean;
   onDone: (text: string) => Promise<void>;
-  outcomeText: (o: MutationOutcome, masked: string, action: 'add') => string;
+  outcomeText: (o: MutationOutcome, label: string, action: 'add') => string;
 }) {
   const t = useT();
   const [email, setEmail] = useState('');
-  const [problem, setProblem] = useState(false);
+  const [name, setName] = useState('');
+  const [problem, setProblem] = useState<'email' | 'name' | null>(null);
   const [sending, setSending] = useState(false);
   const [last, setLast] = useState<{ address: string; pendingId: string | null } | null>(null);
   const [reveal, setReveal] = useState(false);
-  const field = useRef<HTMLInputElement>(null);
+  const emailField = useRef<HTMLInputElement>(null);
+  const nameField = useRef<HTMLInputElement>(null);
 
   const submit = async () => {
-    if (sending) return;
-    if (!plausibleAddress(email)) {
-      setProblem(true);
-      field.current?.focus();
+    if (sending || full) return;
+    const n = name.trim() ? normalizeDisplayName(name) : '';
+    if (n === null) {
+      setProblem('name');
+      nameField.current?.focus();
       return;
     }
-    setProblem(false);
+    if (!plausibleAddress(email)) {
+      setProblem('email');
+      emailField.current?.focus();
+      return;
+    }
+    setProblem(null);
     setSending(true);
     const typed = email.trim().toLowerCase();
-    const o = await addTester(api, typed);
+    const o = await addTester(api, typed, n);
     setSending(false);
-    if (o.kind === 'refused' && o.error === 'invalid_email') {
-      setProblem(true);
-      field.current?.focus();
+    if (o.kind === 'refused' && (o.error === 'invalid_email' || o.error === 'invalid_name')) {
+      setProblem(o.error === 'invalid_name' ? 'name' : 'email');
+      (o.error === 'invalid_name' ? nameField : emailField).current?.focus();
       return;
     }
     setEmail('');
+    setName('');
     setReveal(false);
     setLast({ address: typed, pendingId: o.kind === 'pending' ? o.id : null });
-    await onDone(outcomeText(o, maskAddress(typed), 'add'));
+    await onDone(outcomeText(o, n || maskAddress(typed), 'add'));
   };
 
   const checkAgain = async () => {
@@ -416,41 +439,78 @@ function AddTester({
       }}
     >
       <h3>{t('admin.add.heading')}</h3>
-      <label for="admin-add-email" class="report-label">
-        {t('admin.add.label')}
-      </label>
-      <div class="admin-add-row">
-        <input
-          ref={field}
-          id="admin-add-email"
-          type="email"
-          dir="ltr"
-          autoComplete="off"
-          spellcheck={false}
-          data-testid="admin-add-email"
-          value={email}
-          readOnly={sending}
-          aria-invalid={problem}
-          aria-describedby={problem ? 'admin-add-hint admin-add-problem' : 'admin-add-hint'}
-          onInput={(e) => setEmail((e.target as HTMLInputElement).value)}
-        />
-        <button
-          type="submit"
-          class="button button-primary"
-          data-testid="admin-add-submit"
-          aria-disabled={sending ? 'true' : undefined}
-        >
-          {sending ? t('admin.add.sending') : t('admin.add.submit')}
-        </button>
-      </div>
-      <p id="admin-add-hint" class="small">
-        {t('admin.add.hint')}
-      </p>
-      {problem && (
-        <p id="admin-add-problem" class="report-problem" data-testid="admin-add-problem">
-          {t('admin.add.invalid')}
+      {full && (
+        <p role="note" class="admin-cap-full" data-testid="admin-add-cap-full">
+          {t('admin.result.cap_reached')}
         </p>
       )}
+      <div class="admin-add-fields">
+        <div class="admin-field">
+          <label for="admin-add-name" class="report-label">
+            {t('admin.add.nameLabel')}
+          </label>
+          <input
+            ref={nameField}
+            id="admin-add-name"
+            type="text"
+            autoComplete="off"
+            maxLength={4 * DISPLAY_NAME_MAX}
+            data-testid="admin-add-name"
+            value={name}
+            readOnly={sending}
+            disabled={full}
+            aria-invalid={problem === 'name'}
+            aria-describedby="admin-add-name-hint"
+            onInput={(e) => setName((e.target as HTMLInputElement).value)}
+          />
+          <p id="admin-add-name-hint" class="small">
+            {t('admin.add.nameHint', { max: DISPLAY_NAME_MAX })}
+          </p>
+        </div>
+        <div class="admin-field">
+          <label for="admin-add-email" class="report-label">
+            {t('admin.add.label')}
+          </label>
+          <input
+            ref={emailField}
+            id="admin-add-email"
+            type="email"
+            inputMode="email"
+            dir="ltr"
+            autoComplete="off"
+            autoCapitalize="off"
+            spellcheck={false}
+            data-testid="admin-add-email"
+            value={email}
+            readOnly={sending}
+            disabled={full}
+            aria-invalid={problem === 'email'}
+            aria-describedby={
+              problem === 'email' ? 'admin-add-hint admin-add-problem' : 'admin-add-hint'
+            }
+            onInput={(e) => setEmail((e.target as HTMLInputElement).value)}
+          />
+          <p id="admin-add-hint" class="small">
+            {t('admin.add.hint')}
+          </p>
+        </div>
+      </div>
+      {problem && (
+        <p id="admin-add-problem" class="report-problem" data-testid="admin-add-problem">
+          {problem === 'name'
+            ? t('admin.name.invalid', { max: DISPLAY_NAME_MAX })
+            : t('admin.add.invalid')}
+        </p>
+      )}
+      <button
+        type="submit"
+        class="button button-primary admin-add-submit"
+        data-testid="admin-add-submit"
+        disabled={full}
+        aria-disabled={sending ? 'true' : undefined}
+      >
+        {sending ? t('admin.add.sending') : t('admin.add.submit')}
+      </button>
       {last && (
         <p class="small admin-add-last" data-testid="admin-add-last">
           {t('admin.add.last')}{' '}
@@ -485,18 +545,25 @@ function AddTester({
   );
 }
 
+/** The record's label on the owner's screen: its private name, else the masked address. */
+const accountLabel = (a: AccountRow) => a.displayName ?? a.masked;
+
 function Accounts({
   accounts,
   date,
   errorText,
   onAsk,
+  onRename,
 }: {
   accounts: Loaded<AccountsView> | null;
   date: (iso: string | null, withTime?: boolean) => string | null;
   errorText: (e: LoadError) => string;
   onAsk: (c: Confirm) => void;
+  onRename: (a: AccountRow, name: string) => Promise<'ok' | 'invalid' | 'failed'>;
 }) {
   const t = useT();
+  const [filter, setFilter] = useState<AccountFilter>('active');
+  const [editing, setEditing] = useState<string | null>(null);
   if (!accounts) return <p class="small">{t('admin.loading')}</p>;
   if (!accounts.ok)
     return (
@@ -505,6 +572,8 @@ function Accounts({
       </p>
     );
   const v = accounts.value;
+  const counts = accountCounts(v);
+  const list = visibleAccounts(v, filter);
   const masked = (target: string | null) =>
     v.accounts.find((a) => a.target === target)?.masked ?? '***';
   return (
@@ -531,45 +600,128 @@ function Accounts({
           </ul>
         </section>
       )}
-      <h3>{t('admin.accounts.heading')}</h3>
-      <p class="small">{t('admin.accounts.effect')}</p>
-      <div class="admin-table-wrap">
-        <table class="admin-table" data-testid="admin-accounts">
-          <thead>
-            <tr>
-              <th scope="col">{t('admin.accounts.account')}</th>
-              <th scope="col">{t('admin.accounts.class')}</th>
-              <th scope="col">{t('admin.accounts.status')}</th>
-              <th scope="col">{t('admin.accounts.added')}</th>
-              <th scope="col">{t('admin.accounts.googleId')}</th>
-              <th scope="col">{t('admin.accounts.lastSignIn')}</th>
-              <th scope="col">
-                <span class="visually-hidden">{t('admin.accounts.actions')}</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {v.accounts.map((a) => (
-              <tr key={a.target} data-testid={`admin-account-${a.target}`} data-status={a.status}>
-                <td>
-                  <bdi dir="ltr">{a.masked}</bdi>
-                </td>
-                <td>{t(`admin.class.${a.class}` as MessageKey)}</td>
-                <td>
-                  <span class={`admin-status admin-status-${a.status}`}>
-                    {t(`admin.status.${a.status}` as MessageKey)}
+      <h3 id="admin-accounts-h">{t('admin.accounts.heading')}</h3>
+      <p class="small">
+        {t('admin.accounts.effect')} {t('admin.accounts.timeZone')}
+      </p>
+      <div
+        class="admin-filter"
+        role="group"
+        aria-label={t('admin.accounts.filter')}
+        data-testid="admin-filter"
+      >
+        {(['active', 'disabled', 'all'] as const).map((f) => (
+          <button
+            key={f}
+            type="button"
+            class="admin-filter-button"
+            aria-pressed={filter === f}
+            data-testid={`admin-filter-${f}`}
+            onClick={() => setFilter(f)}
+          >
+            {t(`admin.filter.${f}` as MessageKey)} <bdi dir="ltr">({counts[f]})</bdi>
+          </button>
+        ))}
+      </div>
+      {list.length === 0 ? (
+        <p class="small" data-testid="admin-accounts-empty">
+          {t('admin.accounts.none')}
+        </p>
+      ) : (
+        <ul class="admin-cards" data-testid="admin-accounts" aria-labelledby="admin-accounts-h">
+          {list.map((a) => (
+            <li
+              key={a.target}
+              class="admin-card"
+              data-testid={`admin-account-${a.target}`}
+              data-status={a.status}
+            >
+              <div class="admin-card-head">
+                <div class="admin-card-who">
+                  <span class="admin-card-name" data-testid="admin-account-name">
+                    {a.displayName ? (
+                      // user-authored: its own direction (a Latin name in Hebrew UI stays "Alex T.")
+                      <bdi dir="auto">{a.displayName}</bdi>
+                    ) : (
+                      <span class="admin-card-noname">{t('admin.accounts.noName')}</span>
+                    )}
                   </span>
-                </td>
-                <td>{date(a.dateAdded, false) ?? '—'}</td>
-                <td>{a.googleIdRecorded ? t('admin.yes') : t('admin.no')}</td>
-                <td>{date(a.lastSignIn) ?? t('admin.notMeasured')}</td>
-                <td>
+                  <bdi dir="ltr" class="admin-card-mail" data-testid="admin-account-masked">
+                    {a.masked}
+                  </bdi>
+                </div>
+                <span class={`admin-status admin-status-${a.status}`}>
+                  {a.class === 'owner'
+                    ? t('admin.class.owner')
+                    : t(`admin.status.${a.status}` as MessageKey)}
+                </span>
+              </div>
+              <dl class="admin-card-facts">
+                <div>
+                  <dt>{t('admin.accounts.added')}</dt>
+                  <dd>{date(a.dateAdded, false) ?? '—'}</dd>
+                </div>
+                {a.signIns > 0 ? (
+                  <>
+                    <div>
+                      <dt>{t('admin.accounts.firstSignIn')}</dt>
+                      <dd data-testid="admin-account-first">{date(a.firstSignIn) ?? '—'}</dd>
+                    </div>
+                    <div>
+                      <dt>{t('admin.accounts.lastSignIn')}</dt>
+                      <dd data-testid="admin-account-last">{date(a.lastSignIn) ?? '—'}</dd>
+                    </div>
+                    <div>
+                      <dt>{t('admin.accounts.signIns')}</dt>
+                      <dd data-testid="admin-account-count">
+                        <bdi dir="ltr">{a.signIns}</bdi>
+                      </dd>
+                    </div>
+                  </>
+                ) : (
+                  <div class="admin-card-never">
+                    <dt>{t('admin.accounts.lastSignIn')}</dt>
+                    <dd data-testid="admin-account-never">
+                      <span class="admin-badge admin-badge-never">
+                        {t('admin.accounts.neverSignedIn')}
+                      </span>
+                    </dd>
+                  </div>
+                )}
+                {a.status === 'revoked' && a.statusUpdated && (
+                  <div>
+                    <dt>{t('admin.accounts.disabledAt')}</dt>
+                    <dd>{date(a.statusUpdated) ?? '—'}</dd>
+                  </div>
+                )}
+              </dl>
+              {editing === a.target ? (
+                <RenameForm
+                  account={a}
+                  onCancel={() => setEditing(null)}
+                  onSave={async (name) => {
+                    const r = await onRename(a, name);
+                    if (r === 'ok') setEditing(null);
+                    return r;
+                  }}
+                />
+              ) : (
+                <div class="admin-card-actions">
+                  <button
+                    type="button"
+                    class="button"
+                    data-testid={`admin-rename-${a.target}`}
+                    aria-label={t('admin.rename.label', { account: accountLabel(a) })}
+                    onClick={() => setEditing(a.target)}
+                  >
+                    {t('admin.rename')}
+                  </button>
                   {a.class === 'owner' ? null : a.status === 'revoked' ? (
                     <button
                       type="button"
                       class="button"
                       data-testid={`admin-reactivate-${a.target}`}
-                      aria-label={t('admin.reactivate.label', { account: a.masked })}
+                      aria-label={t('admin.reactivate.label', { account: accountLabel(a) })}
                       onClick={() => onAsk({ kind: 'reactivate', account: a })}
                     >
                       {t('admin.reactivate')}
@@ -579,19 +731,99 @@ function Accounts({
                       type="button"
                       class="button button-danger"
                       data-testid={`admin-disable-${a.target}`}
-                      aria-label={t('admin.disable.label', { account: a.masked })}
+                      aria-label={t('admin.disable.label', { account: accountLabel(a) })}
                       onClick={() => onAsk({ kind: 'disable', account: a })}
                     >
                       {t('admin.disable')}
                     </button>
                   )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
     </>
+  );
+}
+
+function RenameForm({
+  account,
+  onCancel,
+  onSave,
+}: {
+  account: AccountRow;
+  onCancel: () => void;
+  onSave: (name: string) => Promise<'ok' | 'invalid' | 'failed'>;
+}) {
+  const t = useT();
+  const [value, setValue] = useState(account.displayName ?? '');
+  const [problem, setProblem] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const field = useRef<HTMLInputElement>(null);
+  useEffect(() => field.current?.focus(), []);
+  const id = `admin-rename-input-${account.target}`;
+  return (
+    <form
+      class="admin-rename"
+      noValidate
+      data-testid="admin-rename-form"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        if (saving) return;
+        const n = normalizeDisplayName(value);
+        if (!n) {
+          setProblem(true);
+          field.current?.focus();
+          return;
+        }
+        setSaving(true);
+        const r = await onSave(n);
+        setSaving(false);
+        setProblem(r === 'invalid');
+      }}
+    >
+      <label for={id} class="report-label">
+        {t('admin.rename.fieldLabel', { account: account.masked })}
+      </label>
+      <input
+        ref={field}
+        id={id}
+        type="text"
+        autoComplete="off"
+        maxLength={4 * DISPLAY_NAME_MAX}
+        data-testid="admin-rename-input"
+        value={value}
+        readOnly={saving}
+        aria-invalid={problem}
+        onInput={(e) => setValue((e.target as HTMLInputElement).value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') {
+            e.preventDefault();
+            e.stopPropagation();
+            onCancel();
+          }
+        }}
+      />
+      {problem && (
+        <p class="report-problem" data-testid="admin-rename-problem">
+          {t('admin.name.invalid', { max: DISPLAY_NAME_MAX })}
+        </p>
+      )}
+      <div class="admin-card-actions">
+        <button
+          type="submit"
+          class="button button-primary"
+          data-testid="admin-rename-save"
+          aria-disabled={saving ? 'true' : undefined}
+        >
+          {saving ? t('admin.rename.saving') : t('admin.rename.save')}
+        </button>
+        <button type="button" class="button" data-testid="admin-rename-cancel" onClick={onCancel}>
+          {t('admin.rename.cancel')}
+        </button>
+      </div>
+    </form>
   );
 }
 
@@ -609,7 +841,12 @@ function ConfirmPanel({
   onConfirm: () => void;
 }) {
   const t = useT();
-  const account = 'account' in confirm ? confirm.account.masked : '';
+  const account =
+    'account' in confirm
+      ? confirm.account.displayName
+        ? `${confirm.account.displayName} (${confirm.account.masked})`
+        : confirm.account.masked
+      : '';
   const body: string[] =
     confirm.kind === 'disable'
       ? [
@@ -622,7 +859,7 @@ function ConfirmPanel({
       : confirm.kind === 'reactivate'
         ? [
             t('admin.reactivate.confirm.what', { account }),
-            t('admin.reactivate.confirm.cap', { cap: cap ?? 20 }),
+            t('admin.reactivate.confirm.cap', { cap: cap ?? 30 }),
           ]
         : confirm.kind === 'deleteReport'
           ? [t('admin.reports.delete.confirm', { id: confirm.id })]

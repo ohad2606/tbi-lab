@@ -76,7 +76,7 @@ export const isObj = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v);
 
 /** Largest admin request body (an address or a target). */
-export const MAX_ADMIN_BODY_BYTES = 1024;
+export const MAX_ADMIN_BODY_BYTES = 2048; // Phase C: an address and a display name (up to 60 code points)
 /** Per-caller limits: every admin call, and the mutations among them. */
 export const ADMIN_RATE = { count: 120, windowMs: 60_000 };
 export const ADMIN_WRITE_RATE = { count: 20, windowMs: 60_000 };
