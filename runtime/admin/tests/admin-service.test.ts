@@ -32,6 +32,7 @@ import {
   DEFAULT_ADMIN,
   createAdminServer,
   normalizeAddEmail,
+  normalizeDisplayName,
   parseAccountsView,
   type AdminConfig,
 } from '../accounts.js';
@@ -416,7 +417,7 @@ describe('admin service: CSRF, rate limit, input', () => {
     expect((await add({ email: 'a@example.invalid', extra: 1 })).status).toBe(400);
     expect((await add('[]')).status).toBe(400);
     expect((await add('{"email":')).status).toBe(400);
-    expect((await add({ email: `${'a'.repeat(1100)}@example.invalid` })).status).toBe(413);
+    expect((await add({ email: `${'a'.repeat(2100)}@example.invalid` })).status).toBe(413);
     for (const target of [
       't_short',
       't_AAAAAAAAAAAAAAAA/../x',
@@ -640,6 +641,158 @@ describe('admin service: accounts, spool and results', () => {
     const o = await s.gate(OWNER);
     expect((await call(o, '/accounts')).status).toBe(503);
     expect((await call(o, '/sessions')).status).toBe(200);
+  });
+});
+
+describe('admin service: Phase C names and sign-in data (owner 2026-11-04)', () => {
+  async function spooled(dir: string): Promise<Record<string, unknown>> {
+    let names: string[] = [];
+    for (let i = 0; i < 300 && !names.length; i++) {
+      names = done(join(dir, 'spool'));
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    expect(names).toHaveLength(1);
+    return JSON.parse(readFileSync(join(dir, 'spool', names[0]!), 'utf8')) as Record<
+      string,
+      unknown
+    >;
+  }
+
+  it('add with a name: the normalized name travels as display_name; without one, no field', async () => {
+    const s = await serve({ admin: { resultWaitMs: 60_000 } });
+    const o = await s.gate(OWNER);
+    const p = call(
+      o,
+      '/accounts',
+      mutation(o, 'POST', { email: 'n@example.invalid', name: '  אלכס   ט. ' }),
+    );
+    const req = await spooled(s.dir);
+    expect(Object.keys(req)).toEqual(['v', 'id', 'at', 'actor', 'action', 'email', 'display_name']);
+    expect(req.display_name).toBe('אלכס ט.');
+    helperAnswers(s.dir);
+    expect((await p).status).toBe(200);
+    const q = call(o, '/accounts', mutation(o, 'POST', { email: 'm@example.invalid', name: '' }));
+    expect(Object.keys(await spooled(s.dir))).toEqual([
+      'v',
+      'id',
+      'at',
+      'actor',
+      'action',
+      'email',
+    ]);
+    helperAnswers(s.dir);
+    expect((await q).status).toBe(200);
+  });
+
+  it('rename: target + display_name only, the result never echoes the name; refusals never reach the spool', async () => {
+    const s = await serve({ admin: { resultWaitMs: 60_000 } });
+    const o = await s.gate(OWNER);
+    const p = call(o, '/accounts/rename', mutation(o, 'POST', { target: TARGET, name: 'Alex T.' }));
+    const req = await spooled(s.dir);
+    expect(Object.keys(req)).toEqual([
+      'v',
+      'id',
+      'at',
+      'actor',
+      'action',
+      'target',
+      'display_name',
+    ]);
+    expect(req).toMatchObject({
+      action: 'rename',
+      target: TARGET,
+      display_name: 'Alex T.',
+      actor: P(OWNER),
+    });
+    helperAnswers(s.dir);
+    const r = await p;
+    expect(r.status).toBe(200);
+    expect(r.text).not.toContain('Alex');
+    for (const body of [
+      { target: TARGET },
+      { target: TARGET, name: '' },
+      { target: TARGET, name: 'x'.repeat(61) },
+      { target: TARGET, name: '1st' },
+      { target: TARGET, name: 'a<script>' },
+      { target: TARGET, name: 'a\u200bb' },
+      { target: TARGET, name: 7 },
+      { target: 'tester@example.invalid', name: 'Alex' },
+      { target: TARGET, name: 'Alex', email: 'x@example.invalid' },
+    ]) {
+      const x = await call(o, '/accounts/rename', mutation(o, 'POST', body));
+      expect(x.status, JSON.stringify(body)).toBe(400);
+    }
+    expect(ls(join(s.dir, 'spool'))).toEqual([]);
+    // a tester can never rename
+    const t = await s.gate(TESTER);
+    expect(
+      (await call(t, '/accounts/rename', mutation(t, 'POST', { target: TARGET, name: 'X' })))
+        .status,
+    ).toBe(403);
+    expect(ls(join(s.dir, 'spool'))).toEqual([]);
+  });
+
+  it('the name rule matches the helper’s (the same vectors)', () => {
+    const cases: [string, string | null][] = [
+      ['  Alex   T. ', 'Alex T.'],
+      ['e\u0301', '\u00e9'],
+      ["O'Neil", "O'Neil"],
+      ['Jean-Luc', 'Jean-Luc'],
+      ['שָׁלוֹם', 'שָׁלוֹם'],
+      ['Ана Б.', 'Ана Б.'],
+      ['x'.repeat(60), 'x'.repeat(60)],
+      ['x'.repeat(61), null],
+      ['', null],
+      [' ', null],
+      ['-x', null],
+      ["'x", null],
+      ['.x', null],
+      ['x1', null],
+      ['x_y', null],
+      ['x\ty', null],
+      ['x\u00a0y', null],
+      ['x\u202ey', null],
+      ['\u0301x', null],
+      ['a<b', null],
+      ['\u3164', null],
+      ['a\u3164', null],
+      ['a\u034fb', null],
+      ['a\ufe0f', null],
+      ['a\u{e0100}', null],
+    ];
+    for (const [i, want] of cases) expect(normalizeDisplayName(i), JSON.stringify(i)).toBe(want);
+  });
+
+  it('the list carries names and sign-in data as the helper wrote them, re-validated', async () => {
+    const s = await serve();
+    const view = JSON.parse(accountsJson()) as { accounts: Record<string, unknown>[] };
+    Object.assign(view.accounts[0]!, {
+      displayName: 'Owner',
+      firstSignIn: '2026-10-20T18:07:20.123456Z',
+      lastSignIn: '2026-11-02T15:07:20.000001Z',
+      signIns: 12,
+      lastSeen: '2026-11-04T15:00:00Z',
+    });
+    Object.assign(view.accounts[1]!, { displayName: '<img src=x onerror=alert(1)>', signIns: -3 });
+    writeFileSync(join(s.dir, 'view', 'accounts.json'), JSON.stringify(view));
+    const o = await s.gate(OWNER);
+    const r = await call(o, '/accounts');
+    expect(r.status).toBe(200);
+    const rows = (r.body as { accounts: Record<string, unknown>[] }).accounts;
+    expect(rows[0]).toMatchObject({
+      displayName: 'Owner',
+      firstSignIn: '2026-10-20T18:07:20.123456Z',
+      lastSignIn: '2026-11-02T15:07:20.000001Z',
+      signIns: 12,
+      lastSeen: '2026-11-04T15:00:00Z',
+    });
+    expect(rows[1]).toMatchObject({
+      displayName: null,
+      signIns: 0,
+      firstSignIn: null,
+      lastSeen: null,
+    });
+    expect(r.text).not.toContain('onerror');
   });
 });
 

@@ -66,7 +66,14 @@ export interface AccountRow {
   status: 'authorized' | 'revoked' | 'pending';
   dateAdded: string | null;
   googleIdRecorded: boolean;
+  /** Phase C: the owner's private display name for the record, when one is set. */
+  displayName: string | null;
+  /** Phase C: completed Google sign-ins at the gate (first, last, how many). */
+  firstSignIn: string | null;
   lastSignIn: string | null;
+  signIns: number;
+  /** The Session Host's hourly observation of the account (any authorized request), when there is one. */
+  lastSeen: string | null;
   statusUpdated: string | null;
 }
 
@@ -114,7 +121,11 @@ export function parseAccountsView(text: string): AccountsView | null {
           ? a.dateAdded
           : null,
       googleIdRecorded: a.googleIdRecorded === true,
+      displayName: typeof a.displayName === 'string' ? normalizeDisplayName(a.displayName) : null,
+      firstSignIn: isoOrNull(a.firstSignIn),
       lastSignIn: isoOrNull(a.lastSignIn),
+      signIns: count(a.signIns) ?? 0,
+      lastSeen: isoOrNull(a.lastSeen),
       statusUpdated: isoOrNull(a.statusUpdated),
     });
   }
@@ -211,8 +222,47 @@ export function normalizeAddEmail(v: unknown): string | null {
   return e;
 }
 
+/** Phase C: longest display name. */
+export const DISPLAY_NAME_MAX = 60;
+
+/**
+ * Category L/M code points that render as nothing: Hangul fillers, the combining grapheme joiner,
+ * Mongolian free variation selectors and vowel separator, Khmer inherent vowels, variation
+ * selectors. The same set as the helper's.
+ */
+const INVISIBLE_NAME_POINTS = new Set([
+  0x115f, 0x1160, 0x3164, 0xffa0, 0x034f, 0x180b, 0x180c, 0x180d, 0x180e, 0x180f, 0x17b4, 0x17b5,
+]);
+const invisibleNameChar = (s: string) =>
+  [...s].some((ch) => {
+    const cp = ch.codePointAt(0)!;
+    return (
+      INVISIBLE_NAME_POINTS.has(cp) ||
+      (cp >= 0xfe00 && cp <= 0xfe0f) ||
+      (cp >= 0xe0100 && cp <= 0xe01ef)
+    );
+  });
+
+/**
+ * A display name the owner may give a record, normalized; null when not acceptable. THE rule of
+ * the helper's registry tool, kept identical: NFC, trimmed,
+ * inner runs of spaces collapsed to one; 1-60 characters (code points); only Unicode letters (with
+ * their combining marks), the ASCII space and `.` `'` `-`; it starts with a letter.
+ */
+export function normalizeDisplayName(v: unknown): string | null {
+  if (typeof v !== 'string' || v.length > 4 * DISPLAY_NAME_MAX) return null;
+  const s = v.normalize('NFC').replace(/ +/g, ' ').replace(/^ | $/g, '');
+  const chars = [...s];
+  if (chars.length < 1 || chars.length > DISPLAY_NAME_MAX) return null;
+  // Letters and marks that render as nothing (blank or look-alike names; review R6), as the helper's rule.
+  if (invisibleNameChar(s)) return null;
+  return /^\p{L}[\p{L}\p{M} .'-]*$/u.test(s) ? s : null;
+}
+
 export type AdminAction =
-  { action: 'add'; email: string } | { action: 'disable' | 'reactivate'; target: string };
+  | { action: 'add'; email: string; displayName?: string }
+  | { action: 'disable' | 'reactivate'; target: string }
+  | { action: 'rename'; target: string; displayName: string };
 
 export interface AdminConfig {
   /** The helper's base directory (spool/, results/, view/). */
@@ -256,6 +306,10 @@ export class AdminSpool {
       actor,
       action: a.action,
       ...(a.action === 'add' ? { email: a.email } : { target: a.target }),
+      // The helper's field name; it refuses a name it would normalize differently.
+      ...(a.action === 'rename' || (a.action === 'add' && a.displayName)
+        ? { display_name: a.displayName }
+        : {}),
     };
     const text = `${JSON.stringify(body)}\n`;
     if (Buffer.byteLength(text) > 4096) throw new Error('request too large');
@@ -328,7 +382,8 @@ const only = (o: Record<string, unknown>, keys: string[]) =>
 
 /**
  * The admin service's HTTP server. Behind the gate at `/admin-api/*` (prefix stripped), so it
- * sees `/accounts`, `/accounts/disable`, `/accounts/reactivate`, `/requests/<id>`, `/sessions`,
+ * sees `/accounts`, `/accounts/disable`, `/accounts/reactivate`, `/accounts/rename` (Phase C),
+ * `/requests/<id>`, `/sessions`,
  * and `GET /health` (no identity: `{"service":"tbi-admin","runtime":{"version","commit"}}`).
  * Every request needs the gate identity and an account the access view authorizes (deny wins;
  * the same rule as the backends), then the owner (the view's owner principal, or its email tag
@@ -409,10 +464,22 @@ async function routeAccounts(
     const body = await readJson(req);
     let action: AdminAction;
     if (n === 1) {
-      if (!only(body, ['email'])) throw new AdminError(400, 'invalid');
+      if (!only(body, ['email', 'name'])) throw new AdminError(400, 'invalid');
       const email = normalizeAddEmail(body.email);
       if (!email) throw new AdminError(400, 'invalid_email');
-      action = { action: 'add', email };
+      let displayName: string | undefined;
+      if (body.name !== undefined && body.name !== '') {
+        displayName = normalizeDisplayName(body.name) ?? undefined;
+        if (!displayName) throw new AdminError(400, 'invalid_name');
+      }
+      action = { action: 'add', email, ...(displayName ? { displayName } : {}) };
+    } else if (b === 'rename') {
+      if (!only(body, ['target', 'name'])) throw new AdminError(400, 'invalid');
+      if (typeof body.target !== 'string' || !TARGET_RE.test(body.target))
+        throw new AdminError(400, 'invalid_target');
+      const displayName = normalizeDisplayName(body.name);
+      if (!displayName) throw new AdminError(400, 'invalid_name');
+      action = { action: 'rename', target: body.target, displayName };
     } else if (b === 'disable' || b === 'reactivate') {
       if (!only(body, ['target'])) throw new AdminError(400, 'invalid');
       if (typeof body.target !== 'string' || !TARGET_RE.test(body.target))

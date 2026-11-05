@@ -22,7 +22,7 @@ import { ownedTempDir } from './temp-dirs.js';
 
 export const OWNER_SUBJECT = 'e2e-owner';
 export const OWNER_EMAIL = 'owner@example.invalid';
-const CAP = 20;
+const CAP = 30; // owner 2026-11-04 (Phase C)
 
 interface Rec {
   email: string;
@@ -30,7 +30,13 @@ interface Rec {
   class: 'owner' | 'alpha_tester';
   status: 'authorized' | 'revoked' | 'pending';
   dateAdded: string;
+  /** Phase C: private display name; gate sign-ins (first, last, count); the host's last sighting. */
+  name: string | null;
+  firstSignIn: string | null;
   lastSignIn: string | null;
+  signIns: number;
+  lastSeen: string | null;
+  statusUpdated: string | null;
 }
 
 const target = (email: string) =>
@@ -40,40 +46,54 @@ const mask = (email: string) => {
   return `${email.slice(0, Math.min(2, at))}***${email.slice(at)}`;
 };
 
+const rec = (p: Partial<Rec> & Pick<Rec, 'email'>): Rec => ({
+  sub: null,
+  class: 'alpha_tester',
+  status: 'authorized',
+  dateAdded: '2026-10-01',
+  name: null,
+  firstSignIn: null,
+  lastSignIn: null,
+  signIns: 0,
+  lastSeen: null,
+  statusUpdated: null,
+  ...p,
+});
+
 function seed(): Rec[] {
   return [
-    {
+    rec({
       email: OWNER_EMAIL,
       sub: OWNER_SUBJECT,
       class: 'owner',
-      status: 'authorized',
       dateAdded: '2026-09-25',
-      lastSignIn: '2026-10-29T08:12:00Z',
-    },
-    {
+      name: 'Owner',
+      firstSignIn: '2026-09-25T09:00:00.000001Z',
+      lastSignIn: '2026-10-29T08:12:00.000001Z',
+      signIns: 41,
+    }),
+    rec({
       email: 'tester.one@example.invalid',
       sub: 'e2e-user',
-      class: 'alpha_tester',
-      status: 'authorized',
       dateAdded: '2026-10-01',
-      lastSignIn: '2026-10-28T19:40:00Z',
-    },
-    {
-      email: 'tester.two@example.invalid',
-      sub: 'e2e-tester',
-      class: 'alpha_tester',
-      status: 'authorized',
-      dateAdded: '2026-10-05',
-      lastSignIn: null,
-    },
-    {
+      name: 'Alex T.',
+      firstSignIn: '2026-10-01T17:05:00.000001Z',
+      lastSignIn: '2026-11-02T15:07:20.000001Z',
+      signIns: 7,
+      lastSeen: '2026-11-04T15:00:00Z',
+    }),
+    rec({ email: 'tester.two@example.invalid', sub: 'e2e-tester', dateAdded: '2026-10-05' }),
+    rec({
       email: 'former@example.invalid',
       sub: 'e2e-former',
-      class: 'alpha_tester',
       status: 'revoked',
       dateAdded: '2026-10-02',
-      lastSignIn: null,
-    },
+      name: 'בודקת ל.',
+      firstSignIn: '2026-10-03T07:00:00.000001Z',
+      lastSignIn: '2026-10-20T07:00:00.000001Z',
+      signIns: 3,
+      statusUpdated: '2026-11-04T12:00:00Z',
+    }),
   ];
 }
 
@@ -133,8 +153,12 @@ export function startFakeAdmin(capacity: () => { live: number; max: number }) {
           status: r.status,
           dateAdded: r.dateAdded,
           googleIdRecorded: r.sub !== null && (r.class !== 'owner' || ownerRecorded),
+          ...(r.name ? { displayName: r.name } : {}),
+          firstSignIn: r.firstSignIn,
           lastSignIn: r.lastSignIn,
-          statusUpdated: null,
+          signIns: r.signIns,
+          lastSeen: r.lastSeen,
+          statusUpdated: r.statusUpdated,
         })),
         warnings: [
           {
@@ -166,7 +190,14 @@ export function startFakeAdmin(capacity: () => { live: number; max: number }) {
     if (hold) return;
     for (const name of readdirSync(join(dir, 'spool')).filter((n) => n.endsWith('.json'))) {
       const path = join(dir, 'spool', name);
-      let req: { id: string; actor: string; action: string; email?: string; target?: string };
+      let req: {
+        id: string;
+        actor: string;
+        action: string;
+        email?: string;
+        target?: string;
+        display_name?: string;
+      };
       try {
         req = JSON.parse(readFileSync(path, 'utf8')) as typeof req;
       } finally {
@@ -184,24 +215,29 @@ export function startFakeAdmin(capacity: () => { live: number; max: number }) {
         if (registry.some((r) => r.email === email)) answer(req.id, 'exists');
         else if (testers() >= CAP) answer(req.id, 'cap_reached');
         else {
-          registry.push({
-            email,
-            sub: null,
-            class: 'alpha_tester',
-            status: 'pending',
-            dateAdded: new Date().toISOString().slice(0, 10),
-            lastSignIn: null,
-          });
+          registry.push(
+            rec({
+              email,
+              status: 'pending',
+              dateAdded: new Date().toISOString().slice(0, 10),
+              name: req.display_name ?? null,
+            }),
+          );
           answer(req.id, 'done', { target: target(email), masked: mask(email), backup: 'e2e' });
         }
       } else {
-        const rec = registry.find((r) => target(r.email) === req.target);
-        if (!rec) answer(req.id, 'unknown_target');
-        else if (rec.class === 'owner') answer(req.id, 'last_owner');
+        const found = registry.find((r) => target(r.email) === req.target);
+        if (!found) answer(req.id, 'unknown_target');
+        else if (req.action === 'rename') {
+          found.name = req.display_name ?? found.name;
+          answer(req.id, 'done', { target: req.target, masked: mask(found.email), backup: 'e2e' });
+        } else if (found.class === 'owner') answer(req.id, 'last_owner');
         else if (req.action === 'reactivate' && testers() >= CAP) answer(req.id, 'cap_reached');
         else {
-          rec.status = req.action === 'disable' ? 'revoked' : rec.sub ? 'authorized' : 'pending';
-          answer(req.id, 'done', { target: req.target, masked: mask(rec.email), backup: 'e2e' });
+          found.status =
+            req.action === 'disable' ? 'revoked' : found.sub ? 'authorized' : 'pending';
+          found.statusUpdated = new Date().toISOString();
+          answer(req.id, 'done', { target: req.target, masked: mask(found.email), backup: 'e2e' });
         }
       }
       writeViews();
@@ -235,6 +271,17 @@ export function startFakeAdmin(capacity: () => { live: number; max: number }) {
     /** Keep requests unanswered (the 202 path); answer them once released. */
     hold(on: boolean) {
       hold = on;
+    },
+    /** Phase C: add synthetic authorized testers until `n` hold a place (the cap tests). */
+    fill(n: number) {
+      for (
+        let i = 0;
+        registry.filter((r) => r.class === 'alpha_tester' && r.status === 'authorized').length < n;
+        i++
+      )
+        registry.push(rec({ email: `filler${String(i).padStart(2, '0')}@example.invalid` }));
+      writeViews();
+      access.reload();
     },
     /** The owner's Google id not yet recorded: owner by email tag, privileged actions refused. */
     ownerUnrecorded() {

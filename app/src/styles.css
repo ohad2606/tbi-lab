@@ -3796,3 +3796,179 @@ select {
   padding: 0.6rem 0.75rem;
   background: var(--panel-alt);
 }
+
+/* Phase C (owner 2026-11-04): the tester administration, mobile-first. The dialog fills a phone
+   screen; every control is at least 44 px tall for touch; accounts are cards (one column on a
+   phone, a grid from 720 px); logical properties keep Hebrew RTL correct. */
+@media (max-width: 639px) {
+  .admin-dialog {
+    inline-size: 100vw;
+    max-inline-size: 100vw;
+    block-size: 100dvh;
+    max-block-size: 100dvh;
+    margin: 0;
+    border-radius: 0;
+    padding: 0.75rem 1rem 1.25rem;
+  }
+  .admin-tabs {
+    position: sticky;
+    inset-block-start: -0.75rem;
+    background: var(--panel);
+    z-index: 1;
+  }
+}
+.admin-dialog .button,
+.admin-tab,
+.admin-filter-button,
+.admin-add input,
+.admin-rename input {
+  min-block-size: 44px;
+}
+.admin-add-fields {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.25rem 1rem;
+}
+@media (min-width: 720px) {
+  .admin-add-fields {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+.admin-field input,
+.admin-rename input {
+  inline-size: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  font-size: max(1rem, 16px); /* 16 px: no zoom-on-focus on phones */
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.admin-field input[aria-invalid='true'],
+.admin-rename input[aria-invalid='true'] {
+  border-color: var(--danger);
+}
+.admin-field .small {
+  margin-block: 0.2rem 0.4rem;
+  color: var(--muted);
+}
+.admin-add-submit {
+  inline-size: 100%;
+}
+@media (min-width: 720px) {
+  .admin-add-submit {
+    inline-size: auto;
+  }
+}
+.admin-cap-full {
+  border: 1px solid var(--danger);
+  border-radius: 4px;
+  padding: 0.45rem 0.6rem;
+}
+.admin-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-block: 0.25rem 0.6rem;
+}
+.admin-filter-button {
+  font: inherit;
+  padding: 0.3rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--text);
+  cursor: pointer;
+}
+.admin-filter-button[aria-pressed='true'] {
+  background: var(--panel-alt);
+  border-color: var(--accent, #1e6fd9);
+  font-weight: 600;
+}
+.admin-filter-button:focus-visible {
+  outline: 2px solid var(--accent, #1e6fd9);
+  outline-offset: 1px;
+}
+.admin-cards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.6rem;
+}
+@media (min-width: 720px) {
+  .admin-cards {
+    grid-template-columns: repeat(auto-fill, minmax(19rem, 1fr));
+  }
+}
+.admin-card {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.6rem 0.75rem;
+  background: var(--panel);
+  min-inline-size: 0;
+}
+.admin-card[data-status='revoked'] {
+  background: var(--panel-alt);
+}
+.admin-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.admin-card-who {
+  display: flex;
+  flex-direction: column;
+  min-inline-size: 0;
+}
+.admin-card-name {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.admin-card-noname {
+  color: var(--muted);
+  font-weight: 400;
+  font-style: italic;
+}
+.admin-card-mail {
+  color: var(--muted);
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+.admin-card-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.3rem 0.75rem;
+  margin: 0.5rem 0;
+  font-size: 0.85rem;
+}
+.admin-card-facts dt {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+.admin-card-facts dd {
+  margin: 0;
+}
+.admin-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.admin-card-actions .button {
+  flex: 1 1 8rem;
+}
+.admin-badge-never {
+  color: var(--muted);
+  font-weight: 400;
+  display: inline-block;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0 0.5rem;
+  font-size: 0.78rem;
+}
+.admin-rename {
+  display: grid;
+  gap: 0.35rem;
+}

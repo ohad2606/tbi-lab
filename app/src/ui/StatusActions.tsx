@@ -20,7 +20,13 @@ export function StatusActions() {
   useEffect(() => {
     if (ADMIN_UI === 'off') return;
     let live = true;
-    void isOwner((input, init) => gateFetch(input, init)).then((o) => live && setOwner(o));
+    void isOwner((input, init) => gateFetch(input, init)).then((o) => {
+      if (!live) return;
+      setOwner(o);
+      // Phase C: a bookmarkable entry for the owner's phone (`…/#admin`). It opens the dialog only
+      // after the server confirmed the owner; for anyone else the address does nothing.
+      if (o && ADMIN_UI === 'full' && location.hash === '#admin') openAdmin(admin.current);
+    });
     return () => {
       live = false;
     };

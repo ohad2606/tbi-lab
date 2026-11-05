@@ -38,8 +38,9 @@ async function openAdmin(page: Page, locale = 'en') {
   return dialog;
 }
 
+// Phase C: accounts are cards (mobile-first), not table rows.
 const row = (page: Page, masked: string) =>
-  page.getByTestId('admin-accounts').locator('tbody tr', { hasText: masked });
+  page.getByTestId('admin-accounts').locator('li.admin-card', { hasText: masked });
 
 test.beforeEach(async ({ request }) => {
   await request.post(`${FAKE}/__test/reset-admin`);
@@ -98,26 +99,29 @@ for (const [size, viewport] of Object.entries(SIZES))
       await asOwner(context);
       const dialog = await openAdmin(page, locale);
       await expect(dialog).toHaveAttribute('dir', locale === 'he' ? 'rtl' : 'ltr');
-      await expect(page.getByTestId('admin-capacity-testers')).toContainText('2 / 20');
+      await expect(page.getByTestId('admin-capacity-testers')).toContainText('2 / 30');
       await expect(page.getByTestId('admin-capacity-sessions')).toContainText('/ 6');
       const table = page.getByTestId('admin-accounts');
-      await expect(table.locator('tbody tr')).toHaveCount(4);
+      await expect(table.locator('li.admin-card')).toHaveCount(3); // Active (the default filter)
+      await page.getByTestId('admin-filter-all').click();
+      await expect(table.locator('li.admin-card')).toHaveCount(4);
       // Masked only: no full address anywhere in the dialog.
       expect(await dialog.textContent()).not.toMatch(/[a-z.]+@example\.invalid/);
       await expect(row(page, 'te***@example.invalid').first()).toBeVisible();
       await expect(page.getByTestId('admin-warning')).toHaveCount(1);
       if (locale === 'en') {
-        await expect(table).toContainText('Not measured');
+        await expect(table).toContainText('Never signed in');
         await expect(table).toContainText('Disabled');
         await expect(page.getByTestId('admin-warning')).toContainText(
           'A different Google account signed in',
         );
       } else {
-        await expect(table).toContainText('לא נמדד');
+        await expect(table).toContainText('עדיין לא נכנס/ה');
         await expect(page.getByTestId('admin-warning')).toContainText('חשבון Google אחר');
       }
-      // The owner row has no action.
-      await expect(row(page, 'ow***@example.invalid').getByRole('button')).toHaveCount(0);
+      // The owner card can be renamed, never disabled.
+      await expect(row(page, 'ow***@example.invalid').getByRole('button')).toHaveCount(1);
+      await expect(row(page, 'ow***@example.invalid').getByTestId(/^admin-rename-/)).toBeVisible();
       await shot(page, `s23-admin-testers-${locale}-${size}`);
     });
 
@@ -170,7 +174,7 @@ test('disable says what happens and needs a confirmation; reactivate likewise', 
   await page.keyboard.press('Escape');
   await expect(confirm).toHaveCount(0);
   await expect(page.getByTestId('admin-dialog')).toBeVisible();
-  await expect(page.getByTestId('admin-capacity-testers')).toContainText('2 / 20');
+  await expect(page.getByTestId('admin-capacity-testers')).toContainText('2 / 30');
 
   await row(page, 'te***@example.invalid')
     .filter({ hasText: 'Active' })
@@ -179,17 +183,17 @@ test('disable says what happens and needs a confirmation; reactivate likewise', 
     .click();
   await page.getByTestId('admin-confirm-ok').click();
   await expect(page.getByTestId('admin-notice')).toContainText('has ended.');
-  await expect(page.getByTestId('admin-capacity-testers')).toContainText('1 / 20');
-  // Reactivate the former tester: the confirmation names the cap.
+  await expect(page.getByTestId('admin-capacity-testers')).toContainText('1 / 30');
+  // Reactivate the former tester (Disabled list): the confirmation names the cap.
+  await page.getByTestId('admin-filter-disabled').click();
   await row(page, 'fo***@example.invalid')
     .getByRole('button', { name: /^Reactivate / })
     .click();
-  await expect(page.getByTestId('admin-confirm')).toContainText('one of the 20 tester places');
+  await expect(page.getByTestId('admin-confirm')).toContainText('one of the 30 tester places');
   await page.getByTestId('admin-confirm-ok').click();
-  await expect(page.getByTestId('admin-notice')).toHaveText(
-    'fo***@example.invalid can sign in again.',
-  );
-  await expect(page.getByTestId('admin-capacity-testers')).toContainText('2 / 20');
+  // The owner's own label for the record: its private name (never sent anywhere else).
+  await expect(page.getByTestId('admin-notice')).toHaveText('בודקת ל. can sign in again.');
+  await expect(page.getByTestId('admin-capacity-testers')).toContainText('2 / 30');
 });
 
 test('HE: the confirmation of a revoking action, right to left', async ({ page, context }) => {
@@ -244,7 +248,10 @@ for (const locale of ['en', 'he'])
     await request.post(`${FAKE}/__test/admin-owner-unrecorded`);
     await asOwner(context, true); // recognised by the owner's email tag only
     await openAdmin(page, locale);
-    await row(page, 'te***@example.invalid').first().getByRole('button').click();
+    await row(page, 'te***@example.invalid')
+      .first()
+      .getByTestId(/^admin-disable-/)
+      .click();
     await page.getByTestId('admin-confirm-ok').click();
     await expect(page.getByTestId('admin-notice')).toHaveText(
       locale === 'en'

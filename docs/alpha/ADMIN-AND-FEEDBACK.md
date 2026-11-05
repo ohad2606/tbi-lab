@@ -249,6 +249,49 @@ fail with `EACCES`, and the Session Host's user must not be able to create a fil
 (no account route in any mode, never a spool write), and `app/e2e/s23-admin.spec.ts` against the
 real admin service with a fake helper.
 
+## Phase C: the owner's tester administration on a phone (owner-approved 2026-11-04)
+
+The `rc4-s23-admin` profile (`VITE_ADMIN_UI=full`, the admin service, the helper) with these
+additions. Everything else (D1 boundary, gate, CSRF, rate limits, revocation) is unchanged.
+
+- **Mobile-first dialog.** Below 640 px the administration fills the screen; every control is at
+  least 44 px tall; inputs use a 16 px font (no zoom on focus). Accounts are cards (one column on
+  a phone, a grid from 720 px) with an Active / Disabled / All filter. Logical CSS properties keep
+  Hebrew right to left. A bookmarkable entry `…/#admin` opens the dialog once the Session Host has
+  confirmed the owner; for anyone else it does nothing.
+- **Display name.** Optional, private, per record: 1–60 code points, NFC, trimmed, single
+  spaces, Unicode letters (with their combining marks) and `.` `'` `-` only, starting with a letter.
+  One rule in three places (the client for feedback, the admin service, the helper's registry
+  tool); the helper refuses any name the rule would change. Stored in the registry record only
+  (`display_name`). It is returned only by the owner-only `GET /admin-api/accounts`, never logged,
+  never in the audit log, results, the access view, backup names or Telegram, and never in the
+  bundle.
+- **Rename.** `POST /admin-api/accounts/rename {"target","name"}` spools `rename`
+  (`target` + `display_name`); same owner check, CSRF rule, rate limits (per caller, and the
+  helper's) and transaction (backup, verify, compensation) as the other
+  changes. The allowlist and the authorization are untouched. Add accepts an optional `name`.
+- **Sign-in data.** A completed Google sign-in is an oauth2-proxy `[AuthSuccess]` auth-log line. A
+  small root exporter unit (the helper's sandbox cannot read the journal, and must not) reads only
+  the gate's own journal entries after a persisted cursor, and accepts an entry only when it is
+  exactly an auth-log line, with the user name equal to the session e-mail. The gate's journal also
+  holds client-controlled text, so nothing is taken from any other line. `tester-registry.py
+  sync-ids` uses the same parser. The helper folds the exported batches into the registry record
+  (`first_sign_in`, `last_sign_in`, `sign_ins`) in one transaction. It counts an event only when it
+  is later than the record's last sign-in, so a batch exported twice (crash) counts once. A sign-in
+  whose Google id differs from the recorded one is not counted (`identity_mismatch`). The first run
+  backfills what the journal still holds.
+- **List.** Per record: name (or "No name"), the masked address, status, date added,
+  first and last sign-in and their count, or a "Never signed in" badge; disabled records keep all
+  of it and show when they were disabled. Times are Israel time (`Asia/Jerusalem`) in the UI
+  language. `lastSeen` (the Session Host's hourly observation) stays in the API.
+- **Telegram.** The `admin_change` line of a change that was made carries the masked address
+  (`ab***@domain`) and the action (`add`, `disable`, `reactivate`, `rename`). It never carries the
+  name or a full address. A refused request carries no address. The alerter refuses a line whose
+  `masked` is not of the mask form.
+- **Cap.** 30 external testers, counting **authorized** records only (a disabled tester frees a
+  place; the owner is not counted). At the cap, the add form is disabled and says why, and a
+  reactivation is refused with `cap_reached`.
+
 ## Trust model and access control policy
 
 - Identity comes only from the authenticating gate. The Session Host and the build service listen
@@ -519,3 +562,8 @@ reports keep `v: 1` and add `kind`, `component` and `context`.
 - `app/tests/admin.test.ts`, `app/tests/problem-report.test.ts`: the client logic.
 - `app/e2e/s23-feedback.spec.ts`, `app/e2e/s23-admin.spec.ts`: EN and HE, desktop (1400×860) and
   tablet (1024×768), against the real admin API with a fake helper.
+- Phase C: `runtime/admin/tests/admin-service.test.ts` (add with a name, rename, the name rule's
+  vectors shared with the helper, the view's new fields re-validated); `app/tests/admin.test.ts`
+  (requests, the name rule, Israel time, filters, the cap); `app/e2e/phasec-admin.spec.ts` (phone
+  360×740 with touch and desktop, EN and HE: list, add with a name, rename, disable with
+  confirmation, reactivate, the cap, no sideways scroll, 44 px targets, RTL).
