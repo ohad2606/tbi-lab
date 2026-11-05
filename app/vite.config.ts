@@ -2,6 +2,7 @@ import type { IncomingMessage } from 'node:http';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { defineConfig, type Plugin, type ProxyOptions } from 'vite';
+import { brandPlugin } from './brand.config.js';
 import { currentBuildInfo, versionJson } from './buildInfo.config.js';
 
 /**
@@ -100,7 +101,7 @@ const deterministicSourceMaps: Plugin = {
 
 export default defineConfig({
   define: { __TBI_BUILD__: JSON.stringify(buildInfo) },
-  plugins: [versionFile, deterministicSourceMaps],
+  plugins: [brandPlugin(new URL('./', import.meta.url)), versionFile, deterministicSourceMaps],
   // Preact via the automatic JSX runtime; no framework preset or Babel needed.
   oxc: { jsx: { runtime: 'automatic', importSource: 'preact' } },
   build: { target: 'es2022', sourcemap: true },

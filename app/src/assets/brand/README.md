@@ -25,6 +25,11 @@ ICO or small-size variants. The owner selected `logo_app/` for the application:
 | `app_logo_06.png` | 1254 × 1254 | light rounded app icon (symbol + TBI LAB), painted corners          |
 | `app_logo_07.png` | 2172 × 724  | wide banner with decorative background art; no placement            |
 
+**Application icons (`icons/production/`, 2026-11-05).** Made by `scripts/build-brand-assets.mjs` of the development line
+(branch `icon-quality`, commit d4bf2a4) from `app_logo_04.png` and `app_logo_05.png`: favicons 16 to 64, icons 96 to 512, a
+.ico, apple-touch-icon 180, maskable 192 and 512. They replace `tbi-lab-favicon.png`, which is no longer linked. See
+`app/brand.config.ts`. Nothing is recoloured or redrawn; the painted black around the rounded square is removed.
+
 Known limitations, reported to the owner: the package has no small-size favicon (the detailed app
 icon is hard to read at 16–32 px, and its corners are painted black, not transparent), and no
 transparent "TBI LAB without tagline" lock-up (the top bar therefore shows the symbol beside the
