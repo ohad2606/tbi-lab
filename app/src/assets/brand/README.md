@@ -35,12 +35,12 @@ every size it uses is supplied, made for that size:
 | `favicon-32/48/64.png`, `icon-96/128/192/256/512.png` | `app_logo_05`, transparent outside its measured rounded square, sharpened after the reduction                                              |
 | `favicon.ico`                                         | 16, 24, 32, 48, 64, 256 of the above                                                                                                       |
 | `apple-touch-icon-180.png`                            | `app_logo_05` cropped to its rounded square, opaque (iOS masks it)                                                                         |
-| `maskable-192.png`, `maskable-512.png`                | whole `app_logo_05` at 70 %, edge pixels extended: inside the 80 % safe zone                                                               |
+| `maskable-192.png`, `maskable-512.png`                | the content of `app_logo_05` on the brand navy, as large as the 80 % safe zone allows                                                      |
 
 DEV marker: up to 96 px the symbol on the square with a yellow band (a band over the wordmark would leave pieces of its
-letters); above that a yellow ring and DEV on the LAB plate; maskable, a large plate across the wordmark row.
+letters); above that a yellow ring and DEV on the LAB plate; maskable, the symbol on the navy with a yellow band.
 
-The only pixels removed from the artwork are the painted black around the rounded square; nothing is recoloured or redrawn.
+The only pixels removed from the artwork are the painted black around the rounded square (on the maskable icons, the outline with it); nothing is recoloured or redrawn.
 
 Known limitations, reported to the owner: the package has no small-size favicon (the detailed app
 icon is hard to read at 16–32 px, and its corners are painted black, not transparent), and no

@@ -28,23 +28,22 @@
  *   apple-touch-icon-180.png   the app icon cropped to its own rounded square, opaque: iOS draws
  *                      transparency as black and masks the corners itself (the square's corner
  *                      radius, 23%, matches its mask, about 22%).
- *   maskable-192.png, maskable-512.png   the whole app icon (with its black margin) at 70% of the
- *                      canvas, centred; the rest of the canvas repeats the source's own edge pixels
- *                      outward (its margin is near-black with a faint navy glow, up to #00061a at
- *                      the edge centres, so a flat black fill would show a visible square seam):
- *                      the entire rounded square, outline included, lies inside
- *                      the 80% safe zone (its farthest point is 0.557 of the source size from the
- *                      centre, times 0.70 = 0.39 < 0.40 of the canvas), so no launcher mask cuts it.
+ *   maskable-192.png, maskable-512.png   the content of the app icon (symbol and wordmark, inside
+ *                      the rounded square's outline, its ground fading out at the edge) on the brand
+ *                      navy, as large as the 80% safe zone allows: the farthest content point is
+ *                      HALF_DIAGONAL source pixels from the centre and lands at 0.40 of the canvas, so
+ *                      no launcher mask cuts it. No frame inside a frame, and no black margin.
  * The DEV set is the same images with a yellow "DEV" marker over them, drawn so it is unmistakable at
  * each size: up to 96 px a band across the bottom of the rounded square; above that a yellow ring and
  * the word on the "LAB" plate of the app icon; on the maskable icons, which launchers show smallest,
- * a large plate across the whole wordmark row. The glyphs are a 5-row pixel font (V five cells wide
+ * the symbol on the navy with a yellow band, full bleed. The glyphs are a 5-row pixel font (V five cells wide
  * so it never reads as "U").
  *
  * The artwork is used as supplied: transparent files are only trimmed to their non-transparent
  * pixels, images are scaled with the aspect ratio kept, and nothing is recoloured or redrawn. The
- * only pixels removed are the painted black around the rounded square; the only additions are the
- * navy square behind the symbol at 16 and 24 px and, on DEV builds, the DEV marker.
+ * only pixels removed are the painted black around the rounded square (and, on the maskable icons,
+ * the outline with it); the only additions are the brand navy behind the symbol at 16 and 24 px and
+ * behind the maskable icons and, on DEV builds, the DEV marker.
  */
 import { writeFileSync, readFileSync, mkdirSync } from 'node:fs';
 import { createHash } from 'node:crypto';
@@ -61,15 +60,19 @@ const TILE = { sx: 48, sy: 48, sw: 1158, sh: 1158 };
 const OUTLINE = { x0: 48, y0: 60, x1: 1205, y1: 1190, radius: 270 };
 const OUTLINE_CROP = { sx: 48, sy: 47, sw: 1158, sh: 1158 };
 /** The small-size square: the navy of the app icon's ground and the blue of its outline. */
-const TILE_NAVY = [0x0a, 0x14, 0x2e];
+const TILE_NAVY = [0x0a, 0x1a, 0x33]; // BRAND_COLOURS.navy, the manifest's background
 const TILE_EDGE = [0x1a, 0x4f, 0xd6];
 const CORNER = 0.235;
 /** Sharpening after the reduction: the larger the reduction, the more edge contrast it costs. */
 const sharpness = (size) => (size <= 48 ? 0.8 : size <= 96 ? 0.4 : size <= 256 ? 0.2 : 0);
 /** The centre of the "LAB" plate in app_logo_05 pixels: the DEV marker covers it. */
 const LAB_PLATE = { x: 925, y: 902 };
-/** Maskable icons: the whole source at this share of the canvas (see the header). */
-const MASKABLE_SCALE = 0.7;
+/** Maskable icons: the content's centre and farthest point from it, in app_logo_05 pixels. */
+const CONTENT = { x: 627, y: 627 };
+const HALF_DIAGONAL = 675;
+const SAFE_RADIUS = 0.4;
+/** Inside the outline: `inset` px in from OUTLINE, the ground fading out over `fade` px. */
+const GROUND = { inset: 28, fade: 45 };
 const DEV_YELLOW = [0xff, 0xcc, 0x00];
 const DEV_INK = [0x11, 0x11, 0x11];
 
@@ -203,7 +206,7 @@ function symbolIcon(size, dev) {
     TILE_NAVY,
     allOf(size),
   );
-  const w = size - 2 * Math.max(1, Math.round(size / 16));
+  const w = size - (size <= 24 ? 2 : 2 * Math.round(size / 16));
   const h = Math.round((w * b.sh) / b.sw);
   const area = dev ? size - (I.DEV_WORD_CELLS.h + 2) * Math.max(1, Math.floor(size / 20)) : size;
   const symbol = I.sharpen(I.resample(img, b, w, h), sharpness(size));
@@ -254,23 +257,63 @@ function touchIcon(size, dev) {
   return { img: out, opaque: true };
 }
 
-/** Maskable: the whole app icon at 70%, centred, its own edge pixels extended to the canvas. */
+let content;
+/** The app icon inside its outline, the ground fading out towards the outline. */
+function contentImage() {
+  if (content) return content;
+  const { img } = source('app_logo_05.png');
+  const { x0, y0, x1, y1, radius } = OUTLINE;
+  const r = radius - GROUND.inset;
+  const [cx, cy] = [(x0 + x1) / 2, (y0 + y1) / 2];
+  const [hx, hy] = [(x1 - x0) / 2 - GROUND.inset - r, (y1 - y0) / 2 - GROUND.inset - r];
+  const data = Float64Array.from(img.data);
+  for (let y = 0; y < img.h; y++)
+    for (let x = 0; x < img.w; x++) {
+      const qx = Math.abs(x + 0.5 - cx) - hx;
+      const qy = Math.abs(y + 0.5 - cy) - hy;
+      const d = Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) + Math.min(Math.max(qx, qy), 0) - r;
+      const a = Math.min(1, Math.max(0, -d / GROUND.fade));
+      if (a === 1) continue;
+      const o = (y * img.w + x) * 4;
+      for (let k = 0; k < 4; k++) data[o + k] *= a;
+    }
+  content = { w: img.w, h: img.h, data };
+  return content;
+}
+
+/** Maskable: full bleed on the brand navy, everything that matters inside the safe zone. */
 function maskableIcon(size, dev) {
-  const { png, img } = source('app_logo_05.png');
-  const inner = Math.round(size * MASKABLE_SCALE);
-  const off = Math.floor((size - inner) / 2);
-  const out = I.extendEdges(
-    I.sharpen(I.resample(img, undefined, inner, inner), sharpness(size)),
-    size,
-    size,
-    off,
-    off,
-  );
-  // DEV: launchers show maskable icons at about 48 dp, where a plate the size of "LAB" is
-  // unreadable; a large plate centred across the wordmark row ("TBI LAB") is, and stays inside
-  // the safe zone (its farthest corner is about 0.32 of the canvas from the centre, < 0.40).
-  if (dev)
-    devPlate(out, size / 2, off + (LAB_PLATE.y / png.h) * inner, Math.floor((size * 0.42) / 15));
+  const out = I.image(size, size);
+  I.fillShape(out, () => true, TILE_NAVY, allOf(size));
+  if (dev) {
+    const { png, img } = source('app_logo_04.png');
+    const b = I.opaqueBounds(png);
+    const w = Math.round(size * 0.72);
+    const h = Math.round((w * b.sh) / b.sw);
+    const top = Math.round(size * 0.64);
+    const symbol = I.sharpen(I.resample(img, b, w, h), sharpness(size));
+    I.drawOver(out, symbol, Math.round((size - w) / 2), Math.round((top - h) / 2 + size * 0.04));
+    I.fillShape(out, (x, y) => y >= top, DEV_YELLOW, { ...allOf(size), y0: top });
+    const cell = Math.floor(size / 32);
+    I.drawDevWord(
+      out,
+      Math.floor((size - I.DEV_WORD_CELLS.w * cell) / 2),
+      top + Math.round(size * 0.035),
+      cell,
+      DEV_INK,
+    );
+  } else {
+    const k = (SAFE_RADIUS * size) / HALF_DIAGONAL;
+    const src = contentImage();
+    const d = Math.round(src.w * k);
+    const art = I.sharpen(I.resample(src, undefined, d, d), sharpness(size));
+    I.drawOver(
+      out,
+      art,
+      Math.round(size / 2 - CONTENT.x * k),
+      Math.round(size / 2 - CONTENT.y * k),
+    );
+  }
   return { img: out, opaque: true };
 }
 
