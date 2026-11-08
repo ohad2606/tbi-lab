@@ -50,6 +50,8 @@ version="$(tr -d '[:space:]' < VERSION)"
 env -i "${base_env[@]}" npm run --silent buildsvc:build
 # Sprint 28: the AI provider service (inactive by default; its unit denies all IP traffic).
 env -i "${base_env[@]}" npm run --silent assist:build
+# RC6: the build-record rollback tool ships with the release it serves (runtime/builder/records.ts).
+env -i "${base_env[@]}" npm run --silent records:build
 env -i "${base_env[@]}" npx esbuild runtime/host/main.ts --bundle --platform=node --format=esm --target=node22 \
   --define:__TBI_RUNTIME_VERSION__="\"$version\"" --define:__TBI_RUNTIME_COMMIT__="\"$R\"" \
   --outfile=runtime/host/dist/session-host.mjs --log-level=warning
@@ -70,7 +72,7 @@ fi
 cp -a app/dist "$out/frontend"
 mkdir -p "$out/services"
 cp runtime/host/dist/session-host.mjs runtime/builder/dist/build-service.mjs runtime/builder/dist/build-job.mjs \
-  runtime/assist/dist/assist-service.mjs "$out/services/"
+  runtime/assist/dist/assist-service.mjs runtime/builder/dist/records-cli.mjs "$out/services/"
 [ "$admin_bundle" = 0 ] || cp runtime/admin/dist/admin-service.mjs "$out/services/"
 (cd "$out" && find frontend services -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum > MANIFEST.sha256)
 sha256sum package-lock.json runtime/firmware/artifacts.lock.json deploy/dev-lab/s8/policy.json \

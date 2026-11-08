@@ -20,6 +20,7 @@
     "test:runtime": "vitest run --config vitest.runtime.config.ts",
     "host:build": "esbuild runtime/host/main.ts --bundle --platform=node --format=esm --target=node22 --outfile=runtime/host/dist/session-host.mjs --log-level=warning",
     "buildsvc:build": "esbuild runtime/builder/main.ts --bundle --platform=node --format=esm --target=node22 --outfile=runtime/builder/dist/build-service.mjs --log-level=warning && esbuild runtime/builder/build-job.ts --bundle --platform=node --format=esm --target=node22 --outfile=runtime/builder/dist/build-job.mjs --log-level=warning",
+    "records:build": "esbuild runtime/builder/records-cli.ts --bundle --platform=node --format=esm --target=node22 --outfile=runtime/builder/dist/records-cli.mjs --log-level=warning",
     "assist:build": "esbuild runtime/assist/main.ts --bundle --platform=node --format=esm --target=node22 --outfile=runtime/assist/dist/assist-service.mjs --log-level=warning",
     "admin:build": "esbuild runtime/admin/main.ts --bundle --platform=node --format=esm --target=node22 --outfile=runtime/admin/dist/admin-service.mjs --log-level=warning",
     "test:r2": "npm run host:build && vitest run --config vitest.runtime.config.ts runtime/tests/r2-",

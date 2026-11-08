@@ -112,8 +112,45 @@ const SKETCH: Record<string, string> = {
   lcd: 'TbiLcd',
   gpio: 'TbiGpioProof',
 };
-const MIX = ['sonar', 'dht', 'gpio', 'lcd', 'gpio', 'sonar'];
+/**
+ * TBI_C5_MIX=v5 (Alpha Convergence RC): the Runtime v5 facilities join the mix. N = 5 runs sonar, dht, pwm,
+ * lcd and irq; gpio, the lightest and a subset of both new ones, is sixth. The default stays the C-5 mix, and
+ * every acceptance threshold is unchanged. Each new workload is bounded in its source (c5-workloads/), and
+ * `v5WorkloadsExercised` fails a run whose firmware did not really do the work.
+ */
+const MIX_NAME = process.env.TBI_C5_MIX ?? 'c5';
+/** TBI_C5_WORKLOAD=<one>: every user runs that workload (validating one workload on a small host). */
+const ONLY = process.env.TBI_C5_WORKLOAD;
+const MIX = ONLY
+  ? [ONLY]
+  : MIX_NAME === 'v5'
+    ? ['sonar', 'dht', 'pwm', 'lcd', 'irq', 'gpio']
+    : ['sonar', 'dht', 'gpio', 'lcd', 'gpio', 'sonar'];
+const OWN_SKETCH: Record<string, true> = { pwm: true, irq: true };
+/** Every session of a v5 workload did the work its source promises; a mix meant to include them must have run them. */
+function exercised(
+  rows: { workload: string; work?: number; measuredS?: number; fault?: unknown }[],
+) {
+  const own = rows.filter((r) => OWN_SKETCH[r.workload] && !r.fault);
+  if (own.length === 0) return MIX.slice(0, N).every((w) => !OWN_SKETCH[w]);
+  return own.every((r) => (r.work ?? 0) >= (r.measuredS ?? 0) * MIN_PER_S[r.workload]!);
+}
+/** Least work per measured second, half of what each source is bounded to: pwm 2 steps/s, irq 10 edges/s. */
+const MIN_PER_S: Record<string, number> = { pwm: 1, irq: 5 };
 function circuit(w: string): Circuit {
+  if (w === 'pwm') {
+    const c = new Circuit().psu(3.3);
+    const r = c.add('component.resistor');
+    const d = c.add('component.led');
+    c.ohms(r, 220).wire(`${r}.b`, `${d}.anode`).wire(`${d}.cathode`, 'GND1.ref');
+    return c.pad(2, `${r}.a`);
+  }
+  if (w === 'irq') {
+    const c = new Circuit().psu(3.3);
+    const r = c.add('component.resistor');
+    c.ohms(r, 10_000);
+    return c.pad(25, `${r}.a`).pad(4, `${r}.b`);
+  }
   if (w === 'sonar') {
     const c = new Circuit().psu(5);
     const u = c.add('sensor.hc_sr04');
@@ -158,7 +195,7 @@ function circuit(w: string): Circuit {
   return c.pad(2, `${r}.a`);
 }
 const sketchText = (w: string, user: string) =>
-  `${readFileSync(new URL(`../firmware/arduino/${SKETCH[w]}/${SKETCH[w]}.ino`, import.meta.url), 'utf8')}\n// c5-deployed ${user}\n`;
+  `${readFileSync(new URL(OWN_SKETCH[w] ? `./c5-workloads/${w}.ino` : `../firmware/arduino/${SKETCH[w]}/${SKETCH[w]}.ino`, import.meta.url), 'utf8')}\n// c5-deployed ${user}\n`;
 
 // ---- Host measurements.
 function cpu() {
@@ -207,6 +244,9 @@ interface Live {
   /** The session's event stream, held open as the real client does (it also holds the lease). */
   stream?: AbortController;
   streamBytes: number;
+  /** Work the firmware reported on its serial port (v5 workloads only): pwm steps, irq edges. */
+  work: number;
+  serialTail: string;
   /** Rotation: when this instance is replaced (ms, performance clock). */
   rotateAt?: number;
   /** Rotation: the slot (user index) and the instance number within it (0 = first). */
@@ -337,6 +377,8 @@ describe('C-5 deployed: N concurrent ESP32 sessions on a deployed instance', () 
           rates5: [],
           stream: new AbortController(),
           streamBytes: 0,
+          work: 0,
+          serialTail: '',
           slot: i,
           instance: replaces !== undefined ? sessions[replaces]!.instance + 1 : 0,
         };
@@ -352,10 +394,17 @@ describe('C-5 deployed: N concurrent ESP32 sessions on a deployed instance', () 
         })
           .then(async (r) => {
             const rd = r.body?.getReader();
+            const text = new TextDecoder();
+            let pending = '';
             for (;;) {
               const c = await rd?.read();
               if (!c || c.done) return;
               x.streamBytes += c.value.byteLength;
+              if (!OWN_SKETCH[x.workload]) continue;
+              pending += text.decode(c.value, { stream: true });
+              const lines = pending.split('\n');
+              pending = lines.pop()!;
+              for (const line of lines) noteSerial(x, line);
             }
           })
           .catch(() => undefined); // aborted at clean-up, or closed by the host at a terminal state
@@ -364,6 +413,24 @@ describe('C-5 deployed: N concurrent ESP32 sessions on a deployed instance', () 
         return a.status;
       };
       for (let i = 0; i < N; i++) await start(i);
+      const noteSerial = (x: Live, line: string) => {
+        if (!line.startsWith('data:')) return;
+        let ev: { type?: string; data?: string };
+        try {
+          ev = JSON.parse(line.slice(5)) as typeof ev;
+        } catch {
+          return;
+        }
+        if (ev.type !== 'serial' || !ev.data) return;
+        x.serialTail += Buffer.from(ev.data, 'base64').toString('latin1');
+        const rows = x.serialTail.split('\n');
+        x.serialTail = rows.pop()!.slice(-256);
+        for (const row of rows) {
+          if (x.workload === 'pwm' && row.startsWith('C5-PWM-STEP')) x.work += 1;
+          const m = /^C5-IRQ-COUNT (\d+)/.exec(row);
+          if (x.workload === 'irq' && m) x.work = Number(m[1]);
+        }
+      };
       const statusOf = (x: Live, user = x.user, token = x.token) =>
         fetch(`${HOST}/sessions/${x.id}`, {
           headers: as(user, { authorization: `Bearer ${token}` }),
@@ -564,6 +631,7 @@ describe('C-5 deployed: N concurrent ESP32 sessions on a deployed instance', () 
         windows5s: x.rates5.length,
         pace: x.status?.pace,
         streamBytes: x.streamBytes,
+        ...(OWN_SKETCH[x.workload] ? { work: x.work, measuredS: x.rates5.length * 5 } : {}),
       }));
       for (const x of sessions) {
         await fetch(`${HOST}/sessions/${x.id}`, {
@@ -658,6 +726,7 @@ describe('C-5 deployed: N concurrent ESP32 sessions on a deployed instance', () 
         admission,
         sessions: results,
         isolation,
+        mix: MIX_NAME,
         ...(FAULTS ? { faults } : {}),
         leftovers,
         pass: {
@@ -673,6 +742,7 @@ describe('C-5 deployed: N concurrent ESP32 sessions on a deployed instance', () 
                 Infinity) <= 100,
           ),
           noFailures: results.filter((r) => !r.fault).every((r) => r.state === 'running'),
+          ...(MIX_NAME === 'v5' || ONLY ? { v5WorkloadsExercised: exercised(results) } : {}),
           buildsAllSucceeded: allBuilds.every((b) => b.ok === true),
           buildsNoneRefused: allBuilds.every((b) => !b.refused),
           buildWorstAtMost120s: worstBuildAllMs <= 120_000,

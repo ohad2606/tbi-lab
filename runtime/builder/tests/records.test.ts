@@ -80,6 +80,26 @@ describe('build records across a rollback to Runtime v4', () => {
     db.close();
   });
 
+  it('a rollback and a forward keep every row they had no reason to touch, those created in between included', () => {
+    const { dir, path } = fixture();
+    const backup = join(dir, 'removed.jsonl');
+    const db = new DatabaseSync(path);
+    const rows = () => readRows(db).map((r) => JSON.stringify(r));
+    const before = rows();
+    const removed = removeIncompatible(db, V4, backup).length;
+    expect(removed).toBeGreaterThan(0);
+    // Built on the older runtime while rolled back, by another account: nothing about it is in the backup.
+    new Grants(path).recordBuild(B, build(sha('9'), 'k-after-rollback', ['i2c']));
+    const during = rows();
+    expect(during.filter((r) => r.includes('k-after-rollback'))).toHaveLength(1);
+    expect(restore(db, backup)).toEqual({ restored: removed, kept: 0 });
+    const after = rows();
+    expect(after).toEqual(expect.arrayContaining(before));
+    expect(after).toEqual(expect.arrayContaining(during));
+    expect(after).toHaveLength(before.length + 1);
+    db.close();
+  });
+
   it('backs up, deletes only those rows, and restores them without overwriting a rebuilt one', () => {
     const { dir, path } = fixture();
     const backup = join(dir, 'removed.jsonl');
