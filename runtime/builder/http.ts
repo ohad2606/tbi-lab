@@ -4,7 +4,8 @@
  * prefix is stripped by the proxy). See protocol.ts for the routes.
  */
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
-import { principalOf, type IdentityConfig, type Principal } from '../identity/principal.js';
+import { decideAccess, type AccessView } from '../identity/access.js';
+import type { IdentityConfig, Principal } from '../identity/principal.js';
 import { MemoryRate } from '../policy/rate.js';
 import { Refusal, admissionEvent, sendRefusal } from '../policy/refusal.js';
 import { RequestError, validateBuildRequest } from './protocol.js';
@@ -19,6 +20,12 @@ export interface HttpOptions {
   leaseMs: number;
   /** Identity asserted by the gate (Sprint 8, D-S8-1): every route but health requires it. */
   identity: IdentityConfig;
+  /**
+   * Sprint 23B access enforcement (TBI_ACCESS_VIEW, the same view as the Session Host): every
+   * route but health needs an authorized account (403 `account_disabled`; 503 on a bad view).
+   * Absent: RC4.
+   */
+  access?: AccessView | null;
 }
 
 export function createBuildHttpServer(service: BuildService, opts: HttpOptions): Server {
@@ -88,14 +95,18 @@ async function handle(
   }
 
   // Who is asking: only the gate asserts it; without an identity nothing else is answered.
-  const principal = principalOf(req, opts.identity);
+  const decision = decideAccess(req, opts.identity, opts.access ?? null);
+  if (!decision.ok && decision.status !== 401)
+    return send(res, decision.status, { error: decision.error });
+  const principal = decision.ok ? decision.principal : null;
   if (!principal) throw new RequestError(401, 'identity_required');
+  const emailTag = decision.ok ? decision.emailTag : null;
   // Anti-hammering backstop over every route of this principal (Phase 4).
   const plan = service.access.policy.plan(principal);
   const r = requests.take(principal, 'request', plan.requests);
   if (!r.ok) return refuse(new Refusal('rate_limited', r.retryAfterMs), principal, 'request');
   try {
-    await route(service, opts, req, res, url, principal);
+    await route(service, opts, req, res, url, principal, emailTag);
   } catch (e) {
     if (e instanceof Refusal) return refuse(e, principal, url.pathname.split('/')[2] ?? 'request');
     throw e;
@@ -114,6 +125,7 @@ async function route(
   res: ServerResponse,
   url: URL,
   principal: Principal,
+  emailTag: string | null,
 ): Promise<void> {
   const path = url.pathname;
   const method = req.method ?? 'GET';
@@ -128,7 +140,7 @@ async function route(
       if (e instanceof RequestError) throw e;
       throw new RequestError(400, 'bad_json');
     }
-    const out = service.submit(validateBuildRequest(body), principal);
+    const out = service.submit(validateBuildRequest(body), principal, emailTag);
     if ('cached' in out) send(res, 200, { build: out.cached });
     else send(res, 202, out);
     return;

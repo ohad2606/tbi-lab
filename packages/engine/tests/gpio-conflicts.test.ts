@@ -3,8 +3,9 @@
  * student can wire, solved exactly as drawn. The engine neither hides nor "fixes" them:
  * - two outputs fighting on one node (one HIGH, one LOW): the contention current through both
  *   drivers' datasheet-derived resistances, and the node between them;
- * - an output wired straight to GND (HIGH) or to the supply (LOW): the short-circuit current the
- *   driver model gives;
+ * - an output wired straight to GND (HIGH) or to the supply (LOW): the current the driver model
+ *   gives, which lies beyond the model's characterized region and is therefore marked
+ *   `outsideModelRange` / `unreliable` (Sprint 13 P2, s13-pad-validity.test.ts);
  * - an input with nothing driving it: its datasheet leakage holds it at 0 V, so it reads LOW,
  *   deterministically (no random floating input).
  * The numbers are the closed-form solutions of the documented driver model (Thevenin 3.3 V
@@ -22,7 +23,7 @@ import {
   type SolveOutcome,
   type SolveSuccess,
 } from '../src/index.js';
-import { Bench } from './build.js';
+import { Bench, boardBench as sharedBoardBench } from './build.js';
 
 const ok = (o: SolveOutcome): SolveSuccess => {
   if (!o.ok) throw new Error(`expected success, got ${o.error.code}`);
@@ -113,27 +114,7 @@ describe('ESP32 pads: contention and edge cases, solved as drawn', () => {
 describe('ESP32 pad diagnostics (ratingWarnings)', () => {
   /** A board wired by its terminals, plus the session over the board-less projection. */
   function boardBench(build: (b: Bench, u: string) => void) {
-    const b = new Bench();
-    const u = b.add('board.esp32_devkitc_wroom32');
-    b.wire(`${u}.gnd`, 'GND1.ref').wire('PSU1.negative', 'GND1.ref');
-    build(b, u);
-    const full = b.snapshot();
-    const projected = {
-      ...full,
-      components: full.components.filter((c) => c.id !== u),
-      connections: full.connections.filter((c) => c.component !== u),
-    };
-    // The pads attach to another terminal on their net (runtime/snapshot.ts does the same).
-    const pins = full.connections
-      .filter((c) => c.component === u && /^gpio\d+$/.test(c.terminal))
-      .map((c) => {
-        const at = projected.connections.find((x) => x.net === c.net)!;
-        return {
-          gpio: Number(c.terminal.slice(4)),
-          component: at.component,
-          terminal: at.terminal,
-        };
-      });
+    const { full, projected, pins, u } = sharedBoardBench(build);
     return { full, session: new EngineSession(projected, { pins }), u };
   }
 
@@ -169,6 +150,7 @@ describe('ESP32 pad diagnostics (ratingWarnings)', () => {
     const w = ratingWarnings(s.full, ok(s.session.solve()));
     expect(w.map((x) => x.code)).toEqual(['gpio_short_supply']);
     expect(w[0]!.value).toBeCloseTo(3.3 / R_DRIVE_LOW_OHM, 3);
+    expect(w[0]!.unreliable).toBe(true);
   });
 
   it('a pad loaded past its drive specification (but not shorted) is flagged; a normal LED load is not', () => {
@@ -180,6 +162,8 @@ describe('ESP32 pad diagnostics (ratingWarnings)', () => {
     const w = ratingWarnings(heavy.full, ok(heavy.session.solve()));
     expect(w.map((x) => [x.code, x.limit])).toEqual([['gpio_source_current', 0.04]]);
     expect(w[0]!.value).toBeCloseTo(VDD_V / (R_DRIVE_HIGH_OHM + 22), 6);
+    // 1.89 V at the pad: far below 2.64 V, so the 86 mA is the model's extrapolation (P2).
+    expect(w[0]!.unreliable).toBe(true);
 
     const normal = boardBench((b, u) => {
       const r = b.add('component.resistor');
@@ -191,5 +175,55 @@ describe('ESP32 pad diagnostics (ratingWarnings)', () => {
     });
     normal.session.setPinMode(5, 'output-high');
     expect(ratingWarnings(normal.full, ok(normal.session.solve()))).toEqual([]);
+  });
+
+  // Sprint 13 H2: ESP32 Series Datasheet v5.3. Table 5-3 drive values are TYPICAL characteristics
+  // with no per-pin absolute maximum (Table 5-1): rows are `unrated`; the VDD_SDIO domain's
+  // GPIO16/17 typical source current is 20 mA. Table 5-1's cumulative IO output current (1200 mA)
+  // is an absolute maximum.
+  it("drive rows are unrated, against each power domain's typical source current", () => {
+    for (const [gpio, limit] of [
+      [5, 0.04],
+      [17, 0.02],
+    ] as const) {
+      const bench = boardBench((b, u) => {
+        const r = b.add('component.resistor');
+        b.ohms(r, 100).wire(`${u}.gpio${gpio}`, `${r}.a`).wire(`${r}.b`, 'GND1.ref');
+      });
+      bench.session.setPinMode(gpio, 'output-high');
+      const w = ratingWarnings(bench.full, ok(bench.session.solve()));
+      const i = VDD_V / (R_DRIVE_HIGH_OHM + 100); // about 28 mA: above 20 mA, below 40 mA
+      if (gpio === 17)
+        expect(w).toEqual([
+          expect.objectContaining({ kind: 'unrated', code: 'gpio_source_current', gpio, limit }),
+        ]);
+      else expect(w).toEqual([]);
+      expect(i).toBeGreaterThan(0.02);
+      expect(i).toBeLessThan(0.04);
+    }
+  });
+
+  it('cumulative output current above the 1200 mA absolute maximum is a damage risk', () => {
+    const gpios = [2, 4, 5, 13, 14, 16, 18, 19];
+    // 1 mOhm links (a wire is not a device: see the short-circuit test above).
+    const bench = boardBench((b, u) => {
+      for (const g of gpios) {
+        const r = b.add('component.resistor');
+        b.ohms(r, 1e-3).wire(`${u}.gpio${g}`, `${r}.a`).wire(`${r}.b`, 'GND1.ref');
+      }
+    });
+    for (const g of gpios) bench.session.setPinMode(g, 'output-high');
+    const w = ratingWarnings(bench.full, ok(bench.session.solve()));
+    const total = w.find((x) => x.code === 'gpio_cumulative_current');
+    expect(total).toEqual(expect.objectContaining({ kind: 'absolute', limit: 1.2 }));
+    expect(total!.value).toBeGreaterThan(1.2);
+    // Each overloaded pad is its own unrated row.
+    // (The 1 mΩ loads are below any resistor series: Sprint 19B F2 names them, one row each.)
+    expect(w.filter((x) => x.code === 'resistance_outside_series')).toHaveLength(gpios.length);
+    const rows = w.filter(
+      (x) => x.code !== 'gpio_cumulative_current' && x.code !== 'resistance_outside_series',
+    );
+    expect(rows).toHaveLength(gpios.length);
+    for (const x of rows) expect(x.kind).toBe('unrated');
   });
 });

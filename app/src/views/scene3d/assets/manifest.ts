@@ -42,7 +42,7 @@ export interface AssetRecord {
   materials: string;
   levelOfDetail: string;
   /** Live presentation hooks driven from solved results (never electrical inputs). */
-  live: ('ledGlow' | 'rgbGlow' | 'matrixDots')[];
+  live: ('ledGlow' | 'rgbGlow' | 'matrixDots' | 'lcdFace' | 'servoHorn')[];
   /** Sources of the dimensions and of any reference used while modelling. */
   provenance: string;
   license: string;
@@ -184,10 +184,25 @@ export const ASSETS: Record<ModelKey, AssetRecord> = {
     'models.ts buildRelay',
     '[SRD] Songle SRD datasheet, dimension and drilling drawing p.1',
   ),
+  'logic.sot23': procedural(
+    'logic.sot23',
+    'models.ts buildLogicSot23',
+    '[DBV] TI DBV0005A (SOT-23-5) package drawing, in each SN74LVC1G datasheet; breakout [REP]',
+  ),
+  'logic.soic14': procedural(
+    'logic.soic14',
+    'models.ts buildLogicSoic14',
+    '[D14] TI D0014A (SOIC-14) package outline 4220718/A, in the SN74LVC08A datasheet SCAS283W; breakout [REP]',
+  ),
   'transistor.to92': procedural(
     'transistor.to92',
     'models.ts buildTo92',
     '[TO92] onsemi Case 29-11 (TO-92, straight leads)',
+  ),
+  'pot.ptv09': procedural(
+    'pot.ptv09',
+    'models.ts buildPotentiometer',
+    '[PTV09] Bourns PTV09 datasheet REV. 01/25 p.1, PTV09A-2 product dimensions (body height from the drawing)',
   ),
   'sensor.pir': procedural(
     'sensor.pir',
@@ -202,10 +217,36 @@ export const ASSETS: Record<ModelKey, AssetRecord> = {
       live: ['matrixDots'],
     },
   ),
+  'sensor.ultrasonic': procedural(
+    'sensor.ultrasonic',
+    'models.ts buildUltrasonic',
+    'HC-SR04 Elecfreaks sheet p.2 (45 x 20 x 15 mm, pin order); transducers [REP]',
+  ),
+  'sensor.dht22': procedural(
+    'sensor.dht22',
+    'models.ts buildDht22',
+    'AM2302 sheet p.2 drawing (15.1 x 25.1 x 7.7 mm, 2.54 mm pins)',
+  ),
+  'display.lcd1602': procedural(
+    'display.lcd1602',
+    'models.ts buildLcd1602',
+    'JHD 16x2 LCD specification p.5/p.15 (80 x 36 mm, viewing area 64.5 x 14.5 mm); backpack [REP]',
+    {
+      live: ['lcdFace'],
+    },
+  ),
   'capacitor.radial': procedural(
     'capacitor.radial',
     'models.ts buildCapacitor',
     '[REP] disc ceramic / radial electrolytic classes',
+  ),
+  'servo.sg90': procedural(
+    'servo.sg90',
+    'models.ts buildServo',
+    'TowerPro SG90 data sheet drawing (case 22.2 x 11.8 mm, 31 mm overall); tabs, gear tower, horn and plug [REP]',
+    {
+      live: ['servoHorn'],
+    },
   ),
   generic: procedural('generic', 'models.ts generic', 'a neutral block for types without a model'),
 };

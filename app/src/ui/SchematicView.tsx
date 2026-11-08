@@ -405,6 +405,32 @@ function moduleGlyph(glyph: SchModule['glyph']) {
           <line x1={14} y1={0} x2={30} y2={0} />
         </>
       );
+    // Sprint 19B: logic gates (distinctive shapes), inputs left, output right.
+    case 'logic.and':
+    case 'logic.nand':
+      return (
+        <>
+          <path d="M -18 -14 H -2 A 14 14 0 0 1 -2 14 H -18 Z" />
+          {glyph === 'logic.nand' && <circle cx={15} cy={0} r={3} />}
+        </>
+      );
+    case 'logic.or':
+    case 'logic.nor':
+    case 'logic.xor':
+      return (
+        <>
+          <path d="M -18 -14 Q 2 -14 14 0 Q 2 14 -18 14 Q -10 0 -18 -14 Z" />
+          {glyph === 'logic.nor' && <circle cx={17} cy={0} r={3} />}
+          {glyph === 'logic.xor' && <path d="M -23 -14 Q -15 0 -23 14" fill="none" />}
+        </>
+      );
+    case 'logic.not':
+      return (
+        <>
+          <path d="M -14 -12 L -14 12 L 8 0 Z" />
+          <circle cx={11} cy={0} r={3} />
+        </>
+      );
     case 'relay.spdt':
       // Coil (box) mechanically linked (dashed) to a change-over contact: COM, NC (rest), NO.
       return (
@@ -418,6 +444,14 @@ function moduleGlyph(glyph: SchModule['glyph']) {
           <circle cx={28} cy={-10} r={2} />
           <circle cx={28} cy={10} r={2} />
           <line x1={6} y1={10} x2={6} y2={22} />
+        </>
+      );
+    case 'potentiometer':
+      return (
+        <>
+          <polyline points="-24,0 -20,-8 -12,8 -4,-8 4,8 12,-8 20,8 24,0" />
+          <line x1={0} y1={-24} x2={0} y2={-12} />
+          <polygon points="-5,-18 5,-18 0,-10" class="sch-arrow" />
         </>
       );
     case 'bjt.npn':
@@ -448,6 +482,49 @@ function moduleGlyph(glyph: SchModule['glyph']) {
               <circle key={`${r}.${c}`} cx={-15 + c * 10} cy={-15 + r * 10} r={3} />
             )),
           )}
+        </>
+      );
+    case 'ultrasonic':
+      // The two transducers (transmitter, receiver) on the module.
+      return (
+        <>
+          <rect x={-30} y={-14} width={60} height={28} />
+          <circle cx={-13} cy={0} r={10} />
+          <circle cx={13} cy={0} r={10} />
+        </>
+      );
+    case 'dht22':
+      // The sensor case and its vent grille.
+      return (
+        <>
+          <rect x={-14} y={-20} width={28} height={40} />
+          {[-12, -4, 4, 12].map((y) => (
+            <line key={y} x1={-8} y1={y} x2={8} y2={y} />
+          ))}
+        </>
+      );
+    case 'lcd':
+      // A two-line character display.
+      return (
+        <>
+          <rect x={-34} y={-14} width={68} height={28} />
+          {[-5, 5].flatMap((y) =>
+            [0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
+              <rect key={`${i}.${y}`} x={-28 + i * 7} y={y - 3} width={5} height={6} />
+            )),
+          )}
+        </>
+      );
+    case 'servo':
+      // Sprint 15: the motor (circle) driving the output shaft and its horn, with the arc of travel.
+      return (
+        <>
+          <circle cx={-14} cy={0} r={14} />
+          <line x1={0} y1={0} x2={18} y2={0} />
+          <circle cx={18} cy={0} r={3} />
+          <line x1={18} y1={0} x2={18} y2={-16} />
+          <path d="M 30 0 A 12 12 0 0 0 18 -12" />
+          <polyline points="22,-15 18,-12 22,-9" />
         </>
       );
     default:

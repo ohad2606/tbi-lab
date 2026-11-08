@@ -197,3 +197,40 @@ angle, deadband, slew; pulse map an assumption: TowerPro gives about 150° trave
 1–2 ms for ±90°), `peripherals/hcsr04.ts` (echo width 2d/c, c = 331.3 + 0.606 T; echo start after
 the 8-cycle burst is an assumption), `peripherals/dht22.ts` (40-bit frame reproducing the AM2302
 worked example; bit timing 27/70 µs).
+
+## Added in Sprint 21 (logic guarantee bounds)
+
+`src/circuit.ts` gained two ADDITIVE methods; no existing solve path changed:
+
+- `sensitivity(x, injections)`: the linearised response J⁻¹·b of a solved operating point to unit
+  current injections or unit source-value changes (one LU factorisation of the Newton matrix at the
+  solution). It re-prepares this circuit's own devices (same indices) and changes no device state;
+  a singular matrix throws `SingularMatrixError` (the session refuses: `logic_bound_not_established`).
+- `withExtra(devices, replace)`: a new circuit with the same devices in the same order plus extra
+  devices on existing nodes and devices replaced by id, for the exact corner solves. The devices are
+  SHARED, so solving a corner DOES change their state (indices, PSU modes, junction limiting); the
+  session re-prepares the solved circuit (`nodes()`) after every corner and reads nothing of a
+  corner after that.
+  Both are used only by `src/logic/bounds.ts` through `session.ts` (see that file's header).
+
+## Added in Sprint 22 (logic bound provenance)
+
+`src/logic/provenance.ts` lists every numerical bound the logic guarantee checks use — manufacturer,
+exact part, document and revision, table/row/test conditions, the supply/temperature/load range it
+applies to and its kind (guaranteed / typical / absolute maximum / derived). The documents were
+downloaded from ti.com and espressif.com and pinned with SHA-256 in the sprint evidence
+(`~/tbi-s22/logic/datasheets/SOURCES.txt`). `tests/logic-provenance.test.ts` requires a row with
+the same value for every card bound and ESP32 pad figure.
+
+Sprint 22 review round: further kinds `recommended` (a recommended operating condition, e.g. §5.3
+V_O 0 to V_CC), `test-condition` (the condition a table is measured at, e.g. ESP32 Table 5-3
+"3.3 V, 25 °C") and `assumption` (engine tolerances that are NOT datasheet figures: RAIL_V 1 mV,
+UNPOWERED_V 1 mV, TABULATED_VCC_TOLERANCE_V 1 µV — owner decision F3). `iccLoaded` (I_CC + I_O
+for a loaded output, only with the inputs at the I_CC test voltages) is `derived` from 1G §8.2.1.1
+(owner decision F4). The bounds never use the typical ESP32 drive figures (I_OH 40 mA, I_OL 28 mA).
+
+## Added in Sprint POT-UNITS (2026-10-30): potentiometer
+
+| Part (model id)                                          | Source (SHA-256 prefix)                                                                                                                                                      | Model                                                                                                                                                   | Assumptions / limits                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Potentiometer `model.potentiometer.bourns_ptv09a_linear` | Bourns PTV09 datasheet REV. 01/25, p.1 (`411cdb6a…`), https://www.bourns.com/docs/Product-Datasheets/PTV09.pdf; facts in `docs/sprints/s10-evidence/datasheets/FACTS.md` §12 | Two linear `Resistor`s, R_AW = R·p and R_WB = R·(1 − p), p = position / 100 (a live parameter); a 0 Ω segment (0 % or 100 %) is an ideal closed contact | **ASSUMPTION POT-1:** residual (end) resistance idealised to 0 Ω (the datasheet gives only the bound "500 ohms or ±1 % max."). **ASSUMPTION POT-2:** nominal R (±20 % not sampled). Sprint 25: R limited to the datasheet's standard table (1, 2, 5, 10, 20, 50, 100, 200, 500 kΩ, 1 MΩ; `POT_STANDARD_OHMS`), any other value refused (`invalid_parameter`, reason `not_standard`). Sprint 25: where a segment is shorter than the residual bound, read as max(500 Ω, 1 % of R) (the sheet does not say which of its two figures applies; the wider is reported), the result carries `residualMaxOhm`: values depending on that end are the ideal-track limit, not an exact prediction. Linear taper only; position is the electrical share A–W, not the shaft angle (B0 graph end zones not modelled). Ratings: total dissipation vs 0.05 W and any terminal pair vs 20 VDC, both `unrated` (operating limits, no damage threshold published). Derived (review H1, no new number): segment A–W, W–B or wiper current above I_rated = √(0.05 W / R_total), the uniform track current at the rated whole-track dissipation (more heat per unit track length than any rated condition): `unrated` `track_current` row, a conservative warning, not a damage threshold. Position on a 0.01 % grid (off-grid refused). No wiper current limit or contact resistance in the datasheet: contact resistance not modelled. 25 °C ambient (full rating up to 50 °C per the derating graph) |

@@ -24,6 +24,8 @@
   --accent: #1565c0;
   --accent-strong: #0d4f9e;
   --accent-soft: #e3eefc;
+  /* Sprint 13 OS-10: a palette tile armed for placement. */
+  --palette-armed: #c6dbf7;
   --danger: #b3261e;
   --warning-bg: #fff3e0;
   --warning-ink: #9a4a00;
@@ -465,8 +467,19 @@ select {
 
 .field {
   display: grid;
+  /* Sprint 13 OS-07: one column that never grows past the panel (an implicit auto track sizes
+     to its widest child, e.g. a select with a long option). */
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.25rem;
   margin-block-end: 0.8rem;
+}
+
+/* A select fills its field: its width is the panel's, never its longest option's (OS-07). */
+.field select {
+  inline-size: 100%;
+  min-inline-size: 0;
+  max-inline-size: 100%;
+  text-overflow: ellipsis;
 }
 
 .field label {
@@ -493,8 +506,14 @@ select {
 
 .field-check {
   display: flex;
+  /* OS-07: the "stop to change" note goes on its own line instead of widening the row. */
+  flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem;
+}
+
+.field-check > p {
+  flex-basis: 100%;
 }
 
 .field-error {
@@ -521,6 +540,21 @@ select {
 
 .unit {
   font-weight: 600;
+}
+
+/* Phase 1 (units): the unit dropdown beside a value field; sized by its content, never by an
+   English label, and kept LTR (a unit symbol is technical text). */
+.field-row .unit-select {
+  flex: 0 0 auto;
+  inline-size: auto;
+  min-inline-size: 4.5em;
+  padding: 0.35rem 0.3rem;
+  font-weight: 600;
+}
+
+.ltr-value {
+  unicode-bidi: isolate;
+  direction: ltr;
 }
 
 .inspector-actions {
@@ -576,6 +610,16 @@ select {
 
 .symbol .symbol-body {
   fill: #f8f9fb;
+}
+
+/* L3: datasheet pin names on a logic package (technical labels: always LTR, never mirrored). */
+.symbol .ic-pin-label {
+  fill: var(--ink);
+  stroke: none;
+  font-family: ui-monospace, monospace;
+  font-size: 9px;
+  direction: ltr;
+  unicode-bidi: isolate;
 }
 
 .component {
@@ -1527,7 +1571,7 @@ select {
   flex-shrink: 0;
 }
 
-/* The regular TBI logo, light-surface version, at toolbar size; aspect ratio kept. */
+/* The TBI Lab infinity symbol at toolbar size, beside the product name; aspect ratio kept. */
 .brand-logo {
   display: block;
   block-size: 38px;
@@ -1566,7 +1610,7 @@ select {
   color: #fff;
 }
 
-/* The elongated TBI logo, transparent over the navy band (asset is 2x for sharp displays). */
+/* The full TBI Lab logo, transparent over the navy band (asset is 2x for sharp displays). */
 .brand-hero-logo {
   block-size: 150px;
   inline-size: auto;
@@ -1673,26 +1717,97 @@ select {
   background: var(--panel-alt);
 }
 
-/* Desktop first: narrower screens are explicitly unsupported, not squeezed. */
+/* Desktop first: the layout is built for 1024 px and wider; narrower screens scroll sideways rather
+   than being squeezed. Screen support (2026-10-29, ui/screenSupport.ts): computers and tablets,
+   tablets best in landscape; phone-size screens get a "not supported" note. */
 .app {
   min-width: 1024px;
 }
 
-.narrow-note {
-  display: none;
+/* The DEV strip and the screen note take a row of their own above the top bar: the page moves
+   down and nothing (editor controls included) is covered. */
+.app:has(> .app-notes) {
+  grid-template-rows: auto auto auto 1fr auto;
 }
 
-@media (max-width: 1023px) {
-  .app {
-    grid-template-rows: auto auto auto 1fr auto;
-  }
+/* The bands span the whole layout, like the top bar. On a screen narrower than the layout (the page
+   then pans sideways, and a mobile browser widens its layout viewport to the 1024 px content) their
+   TEXT follows the visible area: EnvironmentNotes sets its physical offset and width from the
+   visual viewport, in both directions (RTL included). Without script values it spans the band. */
+.app-notes {
+  position: relative;
+  z-index: 5;
+}
 
-  .narrow-note {
-    display: block;
-    padding: 0.5rem 1rem;
-    background: var(--warning-bg);
-    color: var(--warning-ink);
-  }
+.note-body {
+  box-sizing: border-box;
+  position: relative;
+  /* Physically left-anchored in LTR and RTL alike (the auto margin takes the rest). */
+  margin-left: 0;
+  margin-right: auto;
+  inline-size: var(--notes-width, 100%);
+  left: var(--notes-left, 0);
+  padding-inline: 1rem;
+}
+
+/* DEV-Lab builds only (environment.ts): unmistakable, high contrast (#111 on #ffcc00, 12.6:1). */
+.dev-strip {
+  padding-block: 0.25rem;
+  background: #ffcc00;
+  color: #111111;
+  border-block-end: 1px solid #b38f00;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  font-weight: 600;
+}
+
+.dev-strip > .note-body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.625rem;
+}
+
+.dev-strip-label {
+  padding: 0 0.4rem;
+  border-radius: 3px;
+  background: #111111;
+  color: #ffcc00;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+}
+
+/* The metrics of the earlier narrow-screen note (1rem text, 0.5rem padding, no border): the
+   layout below it, which the 768 px tablet layout tests measure to the pixel, is unchanged. */
+.screen-note {
+  padding-block: 0.5rem;
+}
+
+/* Phone-size: not supported (warning colours, 5.9:1). */
+.screen-note-phone {
+  background: var(--warning-bg);
+  color: var(--warning-ink);
+  font-weight: 600;
+}
+
+/* Tablet portrait or a narrow window: a gentle hint (7:1). */
+.screen-note-rotate,
+.screen-note-narrow {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
+/* The DEV label in the top bar, beside the product name (DEV-Lab builds only). */
+.env-badge {
+  padding: 0.05rem 0.4rem;
+  border: 1px solid #b38f00;
+  border-radius: 4px;
+  background: #ffcc00;
+  color: #111111;
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  line-height: 1.3;
 }
 
 /* ================================================================ Product Alpha: colour */
@@ -1720,6 +1835,43 @@ select {
 .palette-item:hover:not(:disabled) {
   border-color: var(--accent);
   background: var(--accent-soft);
+}
+
+/* Sprint 13 OS-10: armed for placement — a clearly stronger fill than hover, a double-weight
+   border, bold label and a check mark (a non-colour cue); hover stays the light tint. Text and
+   icon keep their colours (on the fill: text #14181f about 12.5:1, the check mark #0d4f9e 5.7:1). */
+.palette-item {
+  position: relative;
+}
+
+.palette-item.active,
+.palette-item.active:hover:not(:disabled) {
+  background: var(--palette-armed);
+  border-color: var(--accent-strong);
+  box-shadow: inset 0 0 0 1px var(--accent-strong);
+  font-weight: 600;
+}
+
+.palette-check {
+  margin-inline-start: auto;
+  inline-size: 1rem;
+  block-size: 1rem;
+  flex: none;
+  fill: none;
+  stroke: var(--accent-strong);
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* The placement preview where a click would be refused (it would overlap a part: OS-04). */
+.ghost-invalid {
+  stroke: var(--danger);
+  opacity: 0.7;
+}
+
+.canvas.mode-placing:has(.ghost-invalid) {
+  cursor: not-allowed;
 }
 
 .probes-section h3,
@@ -1813,6 +1965,17 @@ select {
 }
 .pin-low {
   fill: var(--canvas-bg);
+}
+/* Sprint 15 (R4): a switching PWM pad: half lit, neither HIGH nor LOW. */
+.pin-pwm {
+  fill: var(--brand-orange);
+  fill-opacity: 0.45;
+  stroke-dasharray: 2 1.5;
+}
+/* Sprint 17C: a PWM pad whose level is not established (duty 0, unsupported mode): hollow, dotted. */
+.pin-unknown {
+  fill: var(--canvas-bg);
+  stroke-dasharray: 1 1.5;
 }
 .mcu-panel h3 {
   margin: 0.75rem 0 0.25rem;
@@ -2173,6 +2336,39 @@ select {
   text-align: left;
 }
 
+/* Sprint 24: the end of a MicroPython program (a notice, never a session state). */
+.mcu-program-end {
+  margin: 0;
+  padding: 0.4rem 0.6rem;
+  border-block-start: 1px solid var(--border, #d0d7de);
+}
+
+.mcu-program-end p {
+  margin: 0.15rem 0;
+}
+
+.mcu-program-end.end-error {
+  background: var(--warning-bg);
+  color: var(--warning-ink);
+}
+
+.mcu-program-end-trace {
+  margin: 0.25rem 0;
+  padding: 0.3rem 0.45rem;
+  background: #0f1720;
+  color: #f2c48d;
+  font:
+    0.75rem/1.4 ui-monospace,
+    'SFMono-Regular',
+    Menlo,
+    Consolas,
+    'Liberation Mono',
+    monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+
 .mcu-terminal-output[data-ended='true'] {
   color: #9fb0c2;
 }
@@ -2303,6 +2499,14 @@ select {
   cursor: default;
 }
 
+/* Sprint 18F: a running build's elapsed seconds (fixed width: the text does not jitter). */
+.build-elapsed {
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+  margin-inline-start: 0.35rem;
+}
+
 .build-dot {
   inline-size: 0.55rem;
   block-size: 0.55rem;
@@ -2356,6 +2560,100 @@ select {
 .build-features ul {
   margin: 0.2rem 0 0;
   padding-inline-start: 1.2rem;
+}
+
+/* Sprint 26: the program's files as tabs (they wrap on narrow screens), and the new-file form. */
+.code-files {
+  padding: 0.3rem 0.75rem;
+  border-block-end: 1px solid var(--border);
+}
+
+.code-file-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.code-file-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 4px 4px 0 0;
+  background: var(--panel-alt);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.code-file-tab.active {
+  background: var(--canvas-bg);
+  border-block-end-color: var(--canvas-bg);
+  font-weight: 600;
+}
+
+.code-file-main {
+  padding: 0 0.3rem;
+  border-radius: 3px;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.code-file-new {
+  margin-inline-start: 0.4rem;
+}
+
+.code-file-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.4rem 0.6rem;
+  margin-block-start: 0.4rem;
+}
+
+.code-file-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.code-file-form p {
+  flex: 1 1 100%;
+  margin: 0;
+}
+
+/* Sprint 26: the managed libraries (collapsed when there are none). */
+.code-libraries {
+  max-block-size: 14rem;
+  overflow: auto;
+  padding: 0.35rem 0.75rem;
+  border-block-start: 1px solid var(--border);
+}
+
+.code-libraries summary {
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.library-list {
+  margin: 0.3rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.library p {
+  margin: 0.15rem 0;
+}
+
+.library-example pre {
+  margin: 0.3rem 0;
+  padding: 0.4rem 0.6rem;
+  background: var(--panel-alt);
+  overflow: auto;
 }
 
 /* The editor: always LTR (code), a line gutter scrolled with the text, no wrapping. */
@@ -2835,6 +3133,24 @@ select {
   color: var(--warning-ink);
 }
 
+.view-note-list {
+  margin: 0.1rem 0 0;
+  padding-inline-start: 1.1rem;
+}
+
+/* s21r review r5: a wire drawn where it may look connected (route.ts routeConflictsReport). A
+   wide dashed halo under the wire: a shape cue, readable without colour vision. */
+.wire-conflict-halo {
+  fill: none;
+  stroke: var(--warning-ink);
+  stroke-width: 9;
+  stroke-dasharray: 3 4;
+  stroke-linecap: butt;
+  stroke-linejoin: round;
+  opacity: 0.55;
+  pointer-events: none;
+}
+
 .view-note {
   position: absolute;
   inset-block-end: 0.5rem;
@@ -2994,6 +3310,86 @@ select {
   font-size: 8px;
 }
 
+/* Sprint 12: ultrasonic module, DHT22, 16x2 character LCD (2D symbols). */
+.symbol .pin-out-high {
+  stroke: var(--runtime);
+  stroke-width: 3;
+}
+
+.symbol .us-can {
+  fill: #d7dade;
+}
+
+.symbol .us-mesh {
+  fill: #3b3f45;
+  stroke-width: 1;
+}
+
+.symbol .dht-vent {
+  fill: #e4e6ea;
+  stroke-width: 1;
+}
+
+.symbol .lcd-bezel {
+  fill: #2a2d31;
+  stroke-width: 1.5;
+}
+
+/* Sprint 15: SG90 servo (2D symbol): the blue case and tabs, the white horn on the shaft. */
+.symbol .servo-case,
+.symbol .servo-tab {
+  fill: #cfe0f5;
+}
+
+.symbol .servo-tower {
+  fill: #b5cdec;
+  stroke-width: 1.5;
+}
+
+.symbol .servo-horn {
+  fill: #ffffff;
+  stroke-width: 1.5;
+}
+
+.symbol .servo-screw {
+  fill: var(--ink);
+  stroke: none;
+}
+
+/* Yellow-green STN (the module's sheet): dark unlit, lit by the backlight the engine reports. */
+.symbol .lcd-window {
+  fill: #3a4130;
+  stroke: none;
+}
+
+.symbol .lcd-window.lcd-lit {
+  fill: #a9c94a;
+}
+
+.symbol .lcd-cell {
+  fill: rgba(0, 0, 0, 0.1);
+  stroke: none;
+}
+
+.symbol .lcd-text text {
+  fill: #18200c;
+  stroke: none;
+  font:
+    600 13px ui-monospace,
+    'SFMono-Regular',
+    Menlo,
+    Consolas,
+    monospace;
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+
+.sim-results .lcd-line {
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  white-space: pre;
+  unicode-bidi: isolate;
+}
+
 .sim-time {
   margin-inline-start: 0.6rem;
   font-size: 0.85rem;
@@ -3066,4 +3462,1029 @@ select {
   block-size: 0.35rem;
   border-radius: 999px;
   flex: none;
+}
+
+/* Sprint 13 H1: what runs on the ESP32. */
+.capabilities-dialog {
+  max-inline-size: min(52rem, 92vw);
+  max-block-size: 85vh;
+  overflow-y: auto;
+}
+.capability-list {
+  list-style: none;
+  padding-inline-start: 0;
+  margin: 0.25rem 0 1rem;
+}
+.capability-list li {
+  padding: 0.35rem 0;
+  border-block-end: 1px solid var(--border, #ddd);
+}
+.capability-status {
+  font-size: 0.8em;
+  padding: 0 0.4em;
+  border-radius: 0.6em;
+  border: 1px solid currentColor;
+  white-space: nowrap;
+}
+.capability-status.status-supported {
+  color: var(--ok, #1b7a3a);
+}
+.capability-status.status-limited {
+  color: var(--warn, #8a5a00);
+}
+.capability-status.status-unsupported {
+  color: var(--error, #b42318);
+}
+.capabilities-link {
+  font-size: inherit;
+}
+
+/* Sprint 13 H2: a part's documented model limitations (inspector). */
+.model-limitations {
+  margin-block-start: 0.75rem;
+}
+.model-limitations ul {
+  padding-inline-start: 1.1rem;
+  margin: 0.25rem 0 0;
+}
+
+/* Sprint 13 H4: first-run guide. */
+.getting-started {
+  margin-block-end: 1rem;
+}
+.getting-started-steps {
+  padding-inline-start: 1.4rem;
+}
+.getting-started-steps li {
+  margin-block: 0.3rem;
+}
+.getting-started-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+.getting-started-reopen {
+  margin: 0 0 0.75rem;
+  text-align: end;
+}
+
+/* OS-12: example search and category filters (logical properties: RTL-safe; wraps, no overflow). */
+.example-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-block-end: 0.75rem;
+}
+
+.example-search {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  max-inline-size: 32rem;
+}
+
+.example-search input {
+  font: inherit;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text);
+  inline-size: 100%;
+  box-sizing: border-box;
+}
+
+.example-categories {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.example-category {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  border-radius: 999px;
+}
+
+.example-category-check {
+  inline-size: 0.8em;
+  block-size: 0.8em;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.example-category[aria-pressed='true'] {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.example-result-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+}
+
+.example-result-row p {
+  margin: 0;
+}
+
+.example-empty {
+  margin-block: 0.5rem;
+  padding: 0.75rem;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+}
+
+/* ================================================================ Alpha UX-P1: toolbar Build */
+
+.build-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.toolbar-build {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* aria-disabled, not disabled: it keeps focus; it reads as unavailable. */
+.toolbar-build[aria-disabled='true'] {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.toolbar-build.is-building[aria-disabled='true'] {
+  cursor: progress;
+}
+
+.build-icon.spinning {
+  animation: build-spin 0.9s linear infinite;
+}
+
+@keyframes build-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .build-icon.spinning {
+    animation: none;
+  }
+}
+
+.toolbar-build-state {
+  white-space: nowrap;
+}
+
+/* Failed: "Show problems" says it and acts on it; the state text stays for screen readers. */
+.toolbar-build-phase.phase-failed .toolbar-build-state-value {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.toolbar-build-problems {
+  white-space: nowrap;
+}
+
+.notice-build {
+  margin-inline-start: 0.5rem;
+  font-weight: 600;
+}
+
+/* Alpha UX-P1: the toolbar keeps Build and Run labelled and visible down to the narrowest
+   supported desktop width (1024 px). Below 1536 px, room is made without any menu: the
+   save-state text, the Undo/Redo labels, the "Project name" label and the "Status:" prefix are
+   visually
+   hidden (they remain the accessible names / live text; the save state keeps its icon, Undo/Redo
+   their icons; all have a tooltip). The build state text stays visible down to 1200 px.
+   From 1536 px all labels show. */
+@media (max-width: 1535px) {
+  .history-label,
+  .save-label,
+  .project-name-label,
+  .sim-status-prefix {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}
+
+/* Alpha UX-P1 (found while fitting Build): the editor's navigation group may not shrink below its
+   content. Before, it could (min-width: 0) while the project name box keeps min-width 9rem, so the
+   box overflowed the group and covered the save state (visible at 1024 px in 71b40fb, and at
+   1400 px once the toolbar holds Build). Now the other groups give way instead. */
+.topbar-editor .topbar-nav {
+  min-width: min-content;
+}
+
+/* Alpha UX-P1, narrowest desktops (below 1200 px): the project name box may shrink further, the
+   brand keeps its symbol only (the word "TBI Lab" is visually hidden and still names the brand for
+   assistive technology; the symbol itself is decorative)
+   and the build state is its coloured dot with a tooltip (the text stays the live region; a
+   failure still shows "Show problems"; building still spins the Build icon). */
+@media (max-width: 1199px) {
+  .project-name-box {
+    min-width: 6rem;
+  }
+
+  .toolbar-build-state-value,
+  .brand-word {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}
+
+/* Sprint 14: Report a problem. */
+.report-dialog {
+  inline-size: min(34rem, 92vw);
+  max-inline-size: none;
+  max-block-size: 90vh;
+  overflow-y: auto;
+}
+.report-dialog h3 {
+  font-size: 0.95rem;
+  margin-block: 0.75rem 0.25rem;
+}
+.report-label {
+  display: block;
+  font-weight: 600;
+  margin-block-end: 0.3rem;
+}
+.report-description {
+  display: block;
+  box-sizing: border-box;
+  inline-size: 100%;
+  min-block-size: 7rem;
+  resize: vertical;
+  font: inherit;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.report-description[aria-invalid='true'] {
+  border-color: var(--danger);
+}
+.report-counter {
+  text-align: end;
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin-block-start: 0.2rem;
+}
+.report-counter-over {
+  color: var(--danger);
+  font-weight: 600;
+}
+.report-problem,
+.report-error {
+  color: var(--danger);
+  margin-block: 0.3rem;
+}
+.report-error {
+  background: var(--error-bg);
+  padding: 0.45rem 0.6rem;
+  border-radius: 4px;
+}
+.report-categories {
+  border: 0;
+  padding: 0;
+  margin: 0.75rem 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1rem;
+}
+.report-categories legend {
+  font-weight: 600;
+  padding: 0;
+  margin-block-end: 0.3rem;
+}
+.report-choice {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+.report-blocking {
+  margin-block-start: 0.6rem;
+}
+.report-disclosure {
+  margin-block-start: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--panel-alt);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 0.85rem;
+}
+.report-disclosure h3 {
+  margin-block-start: 0;
+}
+.report-disclosure p {
+  margin-block: 0.3rem;
+}
+.report-id {
+  display: inline-block;
+  font-size: 1.15rem;
+  letter-spacing: 0.06em;
+  padding: 0.3rem 0.6rem;
+  background: var(--panel-alt);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  user-select: all;
+}
+.report-dialog .button[aria-disabled='true'] {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+/* L2: logic state / truth-table inspection (logical properties: RTL-safe; technical cells LTR). */
+.logic-state table {
+  border-collapse: collapse;
+  width: 100%;
+  margin-block: 0.25rem 0.5rem;
+  font-size: 0.85rem;
+}
+.logic-state th,
+.logic-state td {
+  border-block-end: 1px solid var(--grid);
+  padding-block: 0.15rem;
+  padding-inline: 0.3rem;
+  text-align: start;
+}
+.logic-state .logic-level-x td {
+  color: var(--warning-ink);
+}
+.logic-state .logic-truth tr.active td {
+  background: rgba(11, 87, 208, 0.1);
+  font-weight: 600;
+}
+
+/* Sprint 20 (Phase 5): the Inspector's logic panel — compact, RTL-safe (logical properties). */
+.logic-state h3 {
+  margin-block: 0.75rem 0.25rem;
+}
+.logic-state h4 {
+  margin-block: 0.5rem 0.25rem;
+  font-size: 0.9rem;
+}
+.logic-state .logic-gate-select {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-block: 0.25rem;
+}
+.logic-state .logic-gate-button {
+  padding-block: 0.15rem;
+  padding-inline: 0.4rem;
+  border: 1px solid var(--grid);
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+}
+.logic-state .logic-gate-button[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: rgba(11, 87, 208, 0.1);
+  font-weight: 600;
+}
+.logic-state tr.logic-why td {
+  border-block-end: 1px solid var(--grid);
+  padding-block-end: 0.3rem;
+}
+.logic-state tr[data-level] td {
+  border-block-end: none;
+}
+.logic-state .logic-level-undefined td,
+.logic-state .logic-level-floating td,
+.logic-state .logic-level-out_of_range td,
+.logic-state .logic-level-unsupported td,
+.logic-state .logic-level-not_guaranteed td,
+.logic-state .logic-level-unknown td {
+  color: var(--warning-ink);
+  font-weight: 600;
+}
+.logic-state .logic-truth tr.occupied td {
+  background: rgba(11, 87, 208, 0.04);
+}
+.logic-state .logic-controls ul {
+  list-style: none;
+  padding-inline-start: 0;
+  margin-block: 0.25rem;
+  display: grid;
+  gap: 0.25rem;
+}
+.logic-state .logic-controls .button[aria-pressed='true'] {
+  background: rgba(11, 87, 208, 0.12);
+}
+.logic-state .logic-rows caption {
+  caption-side: bottom;
+  text-align: start;
+}
+.logic-state .logic-no-row {
+  color: var(--warning-ink);
+  margin-block: 0 0.5rem;
+}
+.logic-state .logic-gate-summary {
+  margin-inline-start: 0.35em;
+}
+
+/* Sprint 27 (DEV-Lab only): the experimental Circuit Debugger, a non-modal side panel. */
+.assist-panel {
+  position: fixed;
+  inset-block: 4.5rem 0;
+  inset-inline-end: 0;
+  z-index: 40;
+  width: min(32rem, calc(100vw - 2rem));
+  overflow-y: auto;
+  padding: 0.75rem 1rem 1.5rem;
+  background: var(--panel);
+  border-inline-start: 1px solid var(--border);
+  box-shadow: 0 0 1.5rem rgb(0 0 0 / 18%);
+  overflow-wrap: anywhere;
+}
+.assist-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.assist-header h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+.assist-header .button {
+  margin-inline-start: auto;
+}
+.assist-badge {
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  background: var(--warning-bg);
+  color: var(--warning-ink);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+.assist-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  margin-block: 0.5rem;
+}
+.assist-section {
+  margin-block-start: 1rem;
+  padding-block-start: 0.5rem;
+  border-block-start: 1px solid var(--border);
+}
+.assist-section h3 {
+  margin: 0 0 0.25rem;
+  font-size: 1rem;
+}
+.assist-findings,
+.assist-explanations,
+.assist-evidence {
+  margin: 0;
+  padding-inline-start: 1.1rem;
+}
+.assist-finding {
+  margin-block: 0.6rem;
+  padding: 0.5rem 0.6rem;
+  border-inline-start: 4px solid var(--border);
+  background: var(--panel-alt);
+  list-style: none;
+}
+.assist-finding p {
+  margin-block: 0.25rem;
+}
+.assist-finding.assist-error {
+  border-inline-start-color: var(--danger);
+}
+.assist-finding.assist-warning {
+  border-inline-start-color: var(--warning-ink);
+}
+.assist-finding:focus,
+.assist-finding:target {
+  outline: 2px solid var(--focus);
+}
+.assist-severity {
+  padding: 0 0.4rem;
+  border-radius: 0.25rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+.assist-severity-error {
+  background: var(--error-bg);
+  color: var(--danger);
+}
+.assist-severity-warning {
+  background: var(--warning-bg);
+  color: var(--warning-ink);
+}
+.assist-severity-info {
+  background: var(--info-bg);
+  color: var(--accent-strong);
+}
+.assist-ev-kind {
+  font-weight: 600;
+}
+.assist-code {
+  margin: 0.25rem 0;
+  padding: 0.35rem 0.5rem;
+  overflow-x: auto;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  font-size: 0.8rem;
+  white-space: pre;
+  text-align: left;
+}
+.assist-ai {
+  background: var(--accent-soft);
+  padding-inline: 0.6rem;
+  padding-block-end: 0.5rem;
+}
+.assist-mock-label {
+  padding: 0.3rem 0.5rem;
+  border: 1px dashed var(--warning-ink);
+  background: var(--warning-bg);
+  color: var(--warning-ink);
+}
+.assist-explanations li {
+  margin-block: 0.5rem;
+}
+.assist-explanations p {
+  margin-block: 0.2rem;
+}
+
+/* Sprint 28: the AI model pilot's payload preview — bounded, scrollable, wrapped, always LTR. */
+.assist-payload {
+  max-height: 16rem;
+  max-width: 100%;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 0.75rem;
+  border: 1px solid var(--border, #d0d4da);
+  border-radius: 4px;
+  padding: 0.5rem;
+  text-align: left;
+}
+.assist-consent {
+  display: flex;
+  gap: 0.4rem;
+  align-items: flex-start;
+  margin-block: 0.5rem;
+}
+/* Sprint 23B: status bar actions (Feedback; Administration for the owner). */
+.statusbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-inline-start: auto;
+}
+.statusbar .statusbar-actions + .version-status {
+  margin-inline-start: 0.5rem;
+}
+.statusbar-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--panel);
+  padding: 0.05rem 0.55rem;
+  font: inherit;
+  color: var(--text);
+  cursor: pointer;
+  min-block-size: 1.2rem;
+}
+.statusbar-action:hover {
+  background: var(--panel-alt);
+}
+.statusbar-action:focus-visible {
+  outline: 2px solid var(--accent, #1e6fd9);
+  outline-offset: 2px;
+}
+.statusbar-action .control-icon {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.4;
+  stroke-linejoin: round;
+}
+
+/* Sprint 23B: feedback kinds and the component name. */
+.report-kinds {
+  border: 0;
+  padding: 0;
+  margin: 0 0 0.5rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1rem;
+}
+.report-kinds legend {
+  font-weight: 600;
+  padding: 0;
+  margin-block-end: 0.3rem;
+}
+.report-component {
+  display: block;
+  box-sizing: border-box;
+  inline-size: 100%;
+  font: inherit;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.report-component[aria-invalid='true'] {
+  border-color: var(--danger);
+}
+.report-context {
+  display: flex;
+  margin-block-start: 0.6rem;
+}
+.admin-add-last .text-button {
+  border: 0;
+  background: none;
+  padding: 0 0.2rem;
+  font: inherit;
+  color: var(--accent-strong, #174ea6);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.report-context-detail {
+  margin: 0.15rem 0 0;
+  padding-inline-start: 1.6rem;
+  color: var(--muted);
+}
+
+/* Sprint 23B: the owner's administration. */
+.admin-dialog {
+  inline-size: min(64rem, 94vw);
+  max-inline-size: none;
+  max-block-size: 90vh;
+  overflow-y: auto;
+}
+.admin-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.admin-head h2 {
+  margin: 0;
+}
+.admin-owner-note {
+  color: var(--muted);
+  margin-block: 0.25rem 0.5rem;
+}
+.admin-notice:not(:empty) {
+  background: var(--panel-alt);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.45rem 0.6rem;
+  margin-block-end: 0.6rem;
+}
+.admin-tabs {
+  display: flex;
+  gap: 0.25rem;
+  border-block-end: 1px solid var(--border);
+  margin-block-end: 0.75rem;
+}
+.admin-tab {
+  border: 1px solid transparent;
+  border-block-end: 0;
+  border-radius: 6px 6px 0 0;
+  background: none;
+  padding: 0.4rem 0.9rem;
+  font: inherit;
+  color: var(--muted);
+  cursor: pointer;
+}
+.admin-tab[aria-selected='true'] {
+  border-color: var(--border);
+  background: var(--panel);
+  color: var(--text);
+  font-weight: 600;
+  margin-block-end: -1px;
+}
+.admin-tab:focus-visible {
+  outline: 2px solid var(--accent, #1e6fd9);
+  outline-offset: 1px;
+}
+.admin-capacity {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 2rem;
+  margin: 0 0 0.75rem;
+}
+.admin-capacity dt {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.admin-capacity dd {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+.admin-capacity dd .small {
+  font-weight: 400;
+  color: var(--muted);
+}
+.admin-add h3,
+.admin-dialog h3 {
+  font-size: 0.95rem;
+  margin-block: 0.75rem 0.3rem;
+}
+.admin-add-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.admin-add-row input {
+  flex: 1 1 18rem;
+  font: inherit;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.admin-add-row input[aria-invalid='true'] {
+  border-color: var(--danger);
+}
+.admin-table-wrap {
+  overflow-x: auto;
+}
+.admin-table {
+  inline-size: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+.admin-table th,
+.admin-table td {
+  text-align: start;
+  padding: 0.35rem 0.5rem;
+  border-block-end: 1px solid var(--border);
+  vertical-align: middle;
+}
+.admin-table th {
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 0.78rem;
+}
+.admin-status {
+  display: inline-block;
+  padding: 0 0.45rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  border: 1px solid var(--border);
+}
+.admin-status-authorized {
+  border-color: #3b8a4a;
+  color: #2c6b38;
+}
+.admin-status-revoked {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+.admin-badge {
+  color: var(--danger);
+  font-weight: 600;
+}
+.admin-warnings {
+  border: 1px solid var(--warning-ink, #8a5a00);
+  background: var(--warning-bg, #fff4d6);
+  color: var(--warning-ink, #6b4700);
+  border-radius: 6px;
+  padding: 0.25rem 0.75rem 0.5rem;
+  margin-block-end: 0.75rem;
+}
+.admin-warnings ul {
+  margin: 0.25rem 0 0;
+  padding-inline-start: 1.2rem;
+}
+.admin-confirm {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.5rem 1rem 0.75rem;
+  background: var(--panel);
+}
+.admin-confirm ul {
+  margin-block: 0.25rem;
+}
+.admin-report-meta {
+  display: grid;
+  gap: 0.25rem;
+  margin: 0.5rem 0;
+}
+.admin-report-meta div {
+  display: grid;
+  grid-template-columns: 10rem 1fr;
+  gap: 0.6rem;
+}
+.admin-report-meta dt {
+  color: var(--muted);
+}
+.admin-report-meta dd {
+  margin: 0;
+}
+.admin-report-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.6rem 0.75rem;
+  background: var(--panel-alt);
+}
+
+/* Phase C (owner 2026-11-04): the tester administration, mobile-first. The dialog fills a phone
+   screen; every control is at least 44 px tall for touch; accounts are cards (one column on a
+   phone, a grid from 720 px); logical properties keep Hebrew RTL correct. */
+@media (max-width: 639px) {
+  .admin-dialog {
+    inline-size: 100vw;
+    max-inline-size: 100vw;
+    block-size: 100dvh;
+    max-block-size: 100dvh;
+    margin: 0;
+    border-radius: 0;
+    padding: 0.75rem 1rem 1.25rem;
+  }
+  .admin-tabs {
+    position: sticky;
+    inset-block-start: -0.75rem;
+    background: var(--panel);
+    z-index: 1;
+  }
+}
+.admin-dialog .button,
+.admin-tab,
+.admin-filter-button,
+.admin-add input,
+.admin-rename input {
+  min-block-size: 44px;
+}
+.admin-add-fields {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.25rem 1rem;
+}
+@media (min-width: 720px) {
+  .admin-add-fields {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+.admin-field input,
+.admin-rename input {
+  inline-size: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  font-size: max(1rem, 16px); /* 16 px: no zoom-on-focus on phones */
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.admin-field input[aria-invalid='true'],
+.admin-rename input[aria-invalid='true'] {
+  border-color: var(--danger);
+}
+.admin-field .small {
+  margin-block: 0.2rem 0.4rem;
+  color: var(--muted);
+}
+.admin-add-submit {
+  inline-size: 100%;
+}
+@media (min-width: 720px) {
+  .admin-add-submit {
+    inline-size: auto;
+  }
+}
+.admin-cap-full {
+  border: 1px solid var(--danger);
+  border-radius: 4px;
+  padding: 0.45rem 0.6rem;
+}
+.admin-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-block: 0.25rem 0.6rem;
+}
+.admin-filter-button {
+  font: inherit;
+  padding: 0.3rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--text);
+  cursor: pointer;
+}
+.admin-filter-button[aria-pressed='true'] {
+  background: var(--panel-alt);
+  border-color: var(--accent, #1e6fd9);
+  font-weight: 600;
+}
+.admin-filter-button:focus-visible {
+  outline: 2px solid var(--accent, #1e6fd9);
+  outline-offset: 1px;
+}
+.admin-cards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.6rem;
+}
+@media (min-width: 720px) {
+  .admin-cards {
+    grid-template-columns: repeat(auto-fill, minmax(19rem, 1fr));
+  }
+}
+.admin-card {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.6rem 0.75rem;
+  background: var(--panel);
+  min-inline-size: 0;
+}
+.admin-card[data-status='revoked'] {
+  background: var(--panel-alt);
+}
+.admin-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.admin-card-who {
+  display: flex;
+  flex-direction: column;
+  min-inline-size: 0;
+}
+.admin-card-name {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.admin-card-noname {
+  color: var(--muted);
+  font-weight: 400;
+  font-style: italic;
+}
+.admin-card-mail {
+  color: var(--muted);
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+.admin-card-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.3rem 0.75rem;
+  margin: 0.5rem 0;
+  font-size: 0.85rem;
+}
+.admin-card-facts dt {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+.admin-card-facts dd {
+  margin: 0;
+}
+.admin-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.admin-card-actions .button {
+  flex: 1 1 8rem;
+}
+.admin-badge-never {
+  color: var(--muted);
+  font-weight: 400;
+  display: inline-block;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0 0.5rem;
+  font-size: 0.78rem;
+}
+.admin-rename {
+  display: grid;
+  gap: 0.35rem;
 }

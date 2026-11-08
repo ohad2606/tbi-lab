@@ -1,0 +1,10 @@
+  -  1 [chromium] › app/e2e/s12-real.spec.ts:51:3 › Runtime v2 host › ESP32 distance alarm on real QEMU: the measured distance follows the part; below 20 cm the LED lights
+  -  2 [chromium] › app/e2e/s12-real.spec.ts:81:3 › Runtime v2 host › ESP32 thermo-hygrometer on real QEMU: the firmware prints exactly the DHT22 environment
+  -  3 [chromium] › app/e2e/s12-real.spec.ts:104:3 › Runtime v2 host › ESP32 LCD hello on real QEMU: the module shows the text the firmware wrote over I2C
+old host refusal: code=invalid_attachment text=A connected ESP32 pin cannot be used in the simulator.
+  ✘  4 [chromium] › app/e2e/s12-real.spec.ts:126:1 › against a Sprint 11 Session Host: Run of an R2 example fails explicitly, naming the part (1.2m)
+    Error: expect(locator).toContainText(expected) failed
+      136 |     `old host refusal: code=${await error.getAttribute('data-code')} text=${await error.innerText()}`,
+  1 failed
+  3 skipped
+playwright exit=1

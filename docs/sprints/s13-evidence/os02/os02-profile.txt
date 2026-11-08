@@ -1,0 +1,26 @@
+47439 ms  (program) :-1
+4299 ms  C renderer-DYLdqGlp.js:4157
+125 ms  (idle) :-1
+52 ms  (garbage collector) :-1
+50 ms  (anon) ThreeView-C1mZJh-N.js:5
+39 ms  (anon) renderer-DYLdqGlp.js:4763
+37 ms  Ni renderer-DYLdqGlp.js:4113
+30 ms  t ThreeView-C1mZJh-N.js:1
+26 ms  Ql renderer-DYLdqGlp.js:4763
+24 ms  (anon) renderer-DYLdqGlp.js:4215
+22 ms  (anon) renderer-DYLdqGlp.js:4804
+21 ms  e ThreeView-C1mZJh-N.js:1
+20 ms  Xl renderer-DYLdqGlp.js:4763
+18 ms  (anon) :-1
+16 ms  query :5718
+15 ms  Nl index-Bw3Dbr2_.js:13
+14 ms  lasting ThreeView-C1mZJh-N.js:5
+12 ms  Fl renderer-DYLdqGlp.js:4763
+12 ms  e ThreeView-C1mZJh-N.js:5
+12 ms  getPoint ThreeView-C1mZJh-N.js:1
+11 ms  applyMatrix4 ThreeView-C1mZJh-N.js:1
+11 ms  visit :4356
+11 ms  Os ThreeView-C1mZJh-N.js:1
+10 ms  Ce renderer-DYLdqGlp.js:4191
+10 ms  n renderer-DYLdqGlp.js:0
+{"derive":20,"chunk":111,"assets":180,"viewer":455,"updateMs":4613,"update":5271,"firstFrame":45126,"firstRenderCallMs":12}

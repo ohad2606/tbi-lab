@@ -1,0 +1,6 @@
+HC-SR04 at 1 m, events up to 3 s: old image 620e0627 vs new image 9fd371b1
+events: old 45 new 43
+serial text identical: True 'ets Jul 29 2019 12:21:46\r\n\r\nrst:0x1 (POWERON_RESET),boot:0x1'
+first 8 events (type@simNs) old: [('electrical', '10000000'), ('serial', '310000000'), ('gpio', '890000000'), ('electrical', '890000000'), ('serial', '890000000'), ('electrical', '900000000'), ('serial', '900000000'), ('gpio', '1010000000')]
+first 8 events (type@simNs) new: [('electrical', '10000000'), ('serial', '310000000'), ('gpio', '900000000'), ('electrical', '900000000'), ('serial', '900000000'), ('gpio', '1010000000'), ('serial', '1010000000'), ('gpio', '1110000000')]
+events after the first 7 (old) / 5 (new) identical: True

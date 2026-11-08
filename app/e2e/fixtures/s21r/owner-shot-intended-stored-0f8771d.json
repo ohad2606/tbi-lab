@@ -1,0 +1,246 @@
+{
+  "format": "tbi-lab.project",
+  "schemaVersion": 4,
+  "projectId": "prj_s21devlab",
+  "createdWith": {
+    "app": "0",
+    "schemaVersion": 4
+  },
+  "createdAt": "2026-10-25T07:23:38.541Z",
+  "revision": {
+    "localRevision": 1,
+    "cloudRevision": null,
+    "baseRevision": null,
+    "updatedAt": "2026-10-25T07:23:38.541Z",
+    "deviceId": "dev_s21"
+  },
+  "name": "owner screenshot devlab",
+  "components": [
+    {
+      "id": "PSU1",
+      "type": "instrument.lab_psu",
+      "typeVersion": 1,
+      "params": {
+        "setpointVoltage": {
+          "value": 5,
+          "unit": "volt"
+        },
+        "currentLimit": {
+          "value": 0.1,
+          "unit": "ampere"
+        },
+        "outputEnabled": true
+      }
+    },
+    {
+      "id": "GND1",
+      "type": "component.ground",
+      "typeVersion": 1,
+      "params": {}
+    },
+    {
+      "id": "U1",
+      "type": "logic.gate_and",
+      "typeVersion": 1,
+      "params": {
+        "model": "model.logic.sn74lvc1g08"
+      }
+    }
+  ],
+  "nets": [
+    {
+      "id": "N_1",
+      "role": "ground",
+      "userName": null
+    },
+    {
+      "id": "N_2",
+      "role": null,
+      "userName": null
+    }
+  ],
+  "connections": [
+    {
+      "component": "PSU1",
+      "terminal": "positive",
+      "net": "N_2"
+    },
+    {
+      "component": "PSU1",
+      "terminal": "negative",
+      "net": "N_1"
+    },
+    {
+      "component": "GND1",
+      "terminal": "ref",
+      "net": "N_1"
+    },
+    {
+      "component": "U1",
+      "terminal": "a",
+      "net": "N_2"
+    },
+    {
+      "component": "U1",
+      "terminal": "b",
+      "net": "N_2"
+    },
+    {
+      "component": "U1",
+      "terminal": "vcc",
+      "net": "N_2"
+    },
+    {
+      "component": "U1",
+      "terminal": "gnd",
+      "net": "N_1"
+    }
+  ],
+  "layout": {
+    "components": {
+      "PSU1": {
+        "x": -120,
+        "y": 0,
+        "rotation": 0
+      },
+      "GND1": {
+        "x": -80,
+        "y": 120,
+        "rotation": 0
+      },
+      "U1": {
+        "x": -280,
+        "y": 0,
+        "rotation": 0
+      }
+    },
+    "wires": [
+      {
+        "id": "W1",
+        "from": {
+          "kind": "terminal",
+          "component": "PSU1",
+          "terminal": "negative"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "GND1",
+          "terminal": "ref"
+        },
+        "vertices": [],
+        "auto": {
+          "waypoints": []
+        }
+      },
+      {
+        "id": "W2",
+        "from": {
+          "kind": "terminal",
+          "component": "U1",
+          "terminal": "vcc"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "PSU1",
+          "terminal": "positive"
+        },
+        "vertices": [
+          {
+            "x": -80,
+            "y": -40
+          }
+        ],
+        "auto": {
+          "waypoints": []
+        }
+      },
+      {
+        "id": "W3",
+        "from": {
+          "kind": "terminal",
+          "component": "U1",
+          "terminal": "b"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "PSU1",
+          "terminal": "positive"
+        },
+        "vertices": [
+          {
+            "x": -340,
+            "y": 20
+          },
+          {
+            "x": -340,
+            "y": -60
+          },
+          {
+            "x": -80,
+            "y": -60
+          }
+        ],
+        "auto": {
+          "waypoints": []
+        }
+      },
+      {
+        "id": "W4",
+        "from": {
+          "kind": "terminal",
+          "component": "U1",
+          "terminal": "a"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "PSU1",
+          "terminal": "positive"
+        },
+        "vertices": [
+          {
+            "x": -320,
+            "y": -60
+          },
+          {
+            "x": -80,
+            "y": -60
+          }
+        ],
+        "auto": {
+          "waypoints": []
+        }
+      },
+      {
+        "id": "W5",
+        "from": {
+          "kind": "terminal",
+          "component": "U1",
+          "terminal": "gnd"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "PSU1",
+          "terminal": "negative"
+        },
+        "vertices": [
+          {
+            "x": -80,
+            "y": 40
+          }
+        ],
+        "auto": {
+          "waypoints": []
+        }
+      }
+    ],
+    "junctions": []
+  },
+  "idCounters": {
+    "PSU": 1,
+    "GND": 1,
+    "U": 1,
+    "W": 5,
+    "N": 2
+  },
+  "programs": {}
+}

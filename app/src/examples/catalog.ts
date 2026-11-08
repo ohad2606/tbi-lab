@@ -11,7 +11,7 @@
  * `probes` are suggested measurement points: editor presentation state, applied when the
  * example is opened and never stored in the project.
  */
-import type { ProjectDocument } from '@tbi-lab/domain';
+import type { ComponentTypeId, ProjectDocument } from '@tbi-lab/domain';
 import type { MessageKey } from '../i18n/messages.en.js';
 
 export type ExampleProbe =
@@ -23,6 +23,12 @@ export interface Example {
   titleKey: MessageKey;
   summaryKey: MessageKey;
   probes: ExampleProbe[];
+  /**
+   * OS-12: the part types the example's circuit uses (ground excluded), for search and the
+   * category filters on the Projects screen. The documents load lazily, so this small list lives
+   * in the start-up catalog; a unit test keeps it equal to the document (examples-discover.test).
+   */
+  parts: readonly ComponentTypeId[];
 }
 const I = (component: string): ExampleProbe => ({ kind: 'current', component });
 const V = (component: string, terminal: string): ExampleProbe => ({
@@ -37,24 +43,28 @@ export const EXAMPLES: readonly Example[] = [
     titleKey: 'example.ohms-law.title',
     summaryKey: 'example.ohms-law.summary',
     probes: [I('R1')],
+    parts: ['component.resistor', 'instrument.lab_psu'],
   },
   {
     id: 'voltage-divider',
     titleKey: 'example.voltage-divider.title',
     summaryKey: 'example.voltage-divider.summary',
     probes: [V('R2', 'a'), I('R1')],
+    parts: ['component.resistor', 'instrument.lab_psu'],
   },
   {
     id: 'led-current',
     titleKey: 'example.led-current.title',
     summaryKey: 'example.led-current.summary',
     probes: [V('D1', 'anode'), I('D1')],
+    parts: ['component.led', 'component.resistor', 'instrument.lab_psu'],
   },
   {
     id: 'led-colours',
     titleKey: 'example.led-colours.title',
     summaryKey: 'example.led-colours.summary',
     probes: [I('D1'), I('D2'), I('D3')],
+    parts: ['component.led', 'component.resistor', 'instrument.lab_psu'],
   },
   // Sprint 10 (PM-6 revision): the new parts, each in a complete, explainable circuit.
   {
@@ -62,72 +72,141 @@ export const EXAMPLES: readonly Example[] = [
     titleKey: 'example.rgb-mixer.title',
     summaryKey: 'example.rgb-mixer.summary',
     probes: [I('R1'), I('R2'), I('R3')],
+    parts: [
+      'component.resistor',
+      'component.rgb_led',
+      'component.toggle_switch',
+      'instrument.lab_psu',
+    ],
   },
   {
     id: 'light-sensor',
     titleKey: 'example.light-sensor.title',
     summaryKey: 'example.light-sensor.summary',
     probes: [V('R1', 'a')],
+    parts: ['component.photoresistor', 'component.resistor', 'instrument.lab_psu'],
   },
   {
     id: 'night-light',
     titleKey: 'example.night-light.title',
     summaryKey: 'example.night-light.summary',
     probes: [V('Q1', 'base'), I('D1')],
+    parts: [
+      'component.bjt_npn',
+      'component.led',
+      'component.photoresistor',
+      'component.resistor',
+      'instrument.lab_psu',
+    ],
   },
   {
     id: 'pir-alarm',
     titleKey: 'example.pir-alarm.title',
     summaryKey: 'example.pir-alarm.summary',
     probes: [V('U1', 'out'), I('BZ1')],
+    parts: [
+      'component.bjt_npn',
+      'component.buzzer',
+      'component.resistor',
+      'instrument.lab_psu',
+      'sensor.pir_hc_sr501',
+    ],
   },
   {
     id: 'led-matrix',
     titleKey: 'example.led-matrix.title',
     summaryKey: 'example.led-matrix.summary',
     probes: [I('R1'), I('R2')],
+    parts: [
+      'component.resistor',
+      'component.toggle_switch',
+      'display.led_matrix_8x8',
+      'instrument.lab_psu',
+    ],
   },
   {
     id: 'rc-fade',
     titleKey: 'example.rc-fade.title',
     summaryKey: 'example.rc-fade.summary',
     probes: [V('C1', 'a'), I('D1')],
+    parts: [
+      'component.capacitor',
+      'component.led',
+      'component.resistor',
+      'component.toggle_switch',
+      'instrument.lab_psu',
+    ],
   },
   {
     id: 'relay-load',
     titleKey: 'example.relay-load.title',
     summaryKey: 'example.relay-load.summary',
     probes: [I('D1'), I('BZ1')],
+    parts: [
+      'component.buzzer',
+      'component.led',
+      'component.push_button',
+      'component.relay',
+      'component.resistor',
+      'instrument.lab_psu',
+    ],
   },
   {
     id: 'diode-polarity',
     titleKey: 'example.diode-polarity.title',
     summaryKey: 'example.diode-polarity.summary',
     probes: [I('D1'), I('D2')],
+    parts: ['component.diode', 'component.resistor', 'instrument.lab_psu'],
   },
   {
     id: 'push-button',
     titleKey: 'example.push-button.title',
     summaryKey: 'example.push-button.summary',
     probes: [I('D1')],
+    parts: ['component.led', 'component.push_button', 'component.resistor', 'instrument.lab_psu'],
   },
   {
     id: 'cc-mode',
     titleKey: 'example.cc-mode.title',
     summaryKey: 'example.cc-mode.summary',
     probes: [I('R2'), V('R2', 'a')],
+    parts: ['component.resistor', 'component.toggle_switch', 'instrument.lab_psu'],
+  },
+  // Sprint POT-UNITS: the potentiometer, as a divider and as a rheostat (LED dimmer).
+  {
+    id: 'pot-divider',
+    titleKey: 'example.pot-divider.title',
+    summaryKey: 'example.pot-divider.summary',
+    probes: [V('RV1', 'wiper')],
+    parts: ['component.potentiometer', 'instrument.lab_psu'],
+  },
+  {
+    id: 'pot-led-dimmer',
+    titleKey: 'example.pot-led-dimmer.title',
+    summaryKey: 'example.pot-led-dimmer.summary',
+    probes: [I('D1')],
+    parts: ['component.led', 'component.potentiometer', 'component.resistor', 'instrument.lab_psu'],
   },
   {
     id: 'esp32-blink',
     titleKey: 'example.esp32-blink.title',
     summaryKey: 'example.esp32-blink.summary',
     probes: [I('D1')],
+    parts: ['board.esp32_devkitc_wroom32', 'component.led', 'component.resistor'],
   },
   {
     id: 'esp32-input-echo',
     titleKey: 'example.esp32-input-echo.title',
     summaryKey: 'example.esp32-input-echo.summary',
     probes: [I('D1'), V('R1', 'b')],
+    parts: [
+      'board.esp32_devkitc_wroom32',
+      'component.led',
+      'component.push_button',
+      'component.resistor',
+      'component.toggle_switch',
+      'instrument.lab_psu',
+    ],
   },
   // Sprint 10 (realism benchmark): every part family the 3D view is judged on, in one valid circuit.
   {
@@ -135,6 +214,347 @@ export const EXAMPLES: readonly Example[] = [
     titleKey: 'example.esp32-bench.title',
     summaryKey: 'example.esp32-bench.summary',
     probes: [I('D1'), I('D3'), I('D4')],
+    parts: [
+      'board.esp32_devkitc_wroom32',
+      'component.diode',
+      'component.led',
+      'component.push_button',
+      'component.resistor',
+      'component.toggle_switch',
+      'instrument.lab_psu',
+    ],
+  },
+  // Sprint 11 (R1): the Sprint 10 parts with the ESP32 (same firmware as the input echo).
+  {
+    id: 'esp32-motion-relay',
+    titleKey: 'example.esp32-motion-relay.title',
+    summaryKey: 'example.esp32-motion-relay.summary',
+    probes: [I('D2')],
+    parts: [
+      'board.esp32_devkitc_wroom32',
+      'component.bjt_npn',
+      'component.buzzer',
+      'component.diode',
+      'component.led',
+      'component.relay',
+      'component.resistor',
+      'instrument.lab_psu',
+      'sensor.pir_hc_sr501',
+    ],
+  },
+  {
+    id: 'esp32-night-light',
+    titleKey: 'example.esp32-night-light.title',
+    summaryKey: 'example.esp32-night-light.summary',
+    probes: [I('R1')],
+    parts: [
+      'board.esp32_devkitc_wroom32',
+      'component.photoresistor',
+      'component.resistor',
+      'component.rgb_led',
+      'instrument.lab_psu',
+    ],
+  },
+  // Sprint 12 (R2/R3): the ultrasonic module, the DHT22 and the I2C LCD with the ESP32
+  // (library-free sketches).
+  {
+    id: 'esp32-distance-alarm',
+    titleKey: 'example.esp32-distance-alarm.title',
+    summaryKey: 'example.esp32-distance-alarm.summary',
+    probes: [V('R1', 'a'), I('D1')],
+    parts: [
+      'board.esp32_devkitc_wroom32',
+      'component.led',
+      'component.resistor',
+      'instrument.lab_psu',
+      'sensor.hc_sr04',
+    ],
+  },
+  {
+    id: 'esp32-thermo-hygrometer',
+    titleKey: 'example.esp32-thermo-hygrometer.title',
+    summaryKey: 'example.esp32-thermo-hygrometer.summary',
+    probes: [V('R1', 'b')],
+    parts: [
+      'board.esp32_devkitc_wroom32',
+      'component.resistor',
+      'instrument.lab_psu',
+      'sensor.dht22',
+    ],
+  },
+  {
+    id: 'esp32-lcd-hello',
+    titleKey: 'example.esp32-lcd-hello.title',
+    summaryKey: 'example.esp32-lcd-hello.summary',
+    probes: [V('R1', 'b'), V('R2', 'b')],
+    parts: [
+      'board.esp32_devkitc_wroom32',
+      'component.resistor',
+      'display.lcd1602_i2c',
+      'instrument.lab_psu',
+    ],
+  },
+  // Sprint 15 (R4): LEDC PWM — an LED dimmed by its duty, an SG90 swept by pulse width.
+  {
+    id: 'esp32-led-fade',
+    titleKey: 'example.esp32-led-fade.title',
+    summaryKey: 'example.esp32-led-fade.summary',
+    probes: [I('D1')],
+    parts: ['board.esp32_devkitc_wroom32', 'component.led', 'component.resistor'],
+  },
+  {
+    id: 'esp32-servo-sweep',
+    titleKey: 'example.esp32-servo-sweep.title',
+    summaryKey: 'example.esp32-servo-sweep.summary',
+    probes: [V('M1', 'vcc')],
+    parts: ['board.esp32_devkitc_wroom32', 'component.servo_sg90', 'instrument.lab_psu'],
+  },
+  // Sprint 19B (Exploration Foundation X1): ESP32 + logic gate + read-back.
+  {
+    id: 'esp32-logic-and',
+    titleKey: 'example.esp32-logic-and.title',
+    summaryKey: 'example.esp32-logic-and.summary',
+    probes: [V('U2', 'y'), I('D1')],
+    parts: [
+      'board.esp32_devkitc_wroom32',
+      'component.led',
+      'component.push_button',
+      'component.resistor',
+      'instrument.lab_psu',
+      'logic.gate_and',
+    ],
+  },
+  // Exploration Foundation L3 interop: ESP32 → packaged gate (SN74LVC08A) → LEDs.
+  {
+    id: 'esp32-logic-quad-and',
+    titleKey: 'example.esp32-logic-quad-and.title',
+    summaryKey: 'example.esp32-logic-quad-and.summary',
+    probes: [V('U2', 'y1'), I('D1'), I('D2')],
+    parts: [
+      'board.esp32_devkitc_wroom32',
+      'component.led',
+      'component.push_button',
+      'component.resistor',
+      'instrument.lab_psu',
+      'logic.quad_and',
+    ],
+  },
+  // Sprint 20: logic examples (A basic, B cascaded, D ESP32 + manual input; C is the one above).
+  {
+    id: 'logic-and-switches',
+    titleKey: 'example.logic-and-switches.title',
+    summaryKey: 'example.logic-and-switches.summary',
+    probes: [V('U1', 'y'), I('D1')],
+    parts: [
+      'component.led',
+      'component.resistor',
+      'component.toggle_switch',
+      'instrument.lab_psu',
+      'logic.gate_and',
+    ],
+  },
+  // Sprint 29: multi-gate logic that the guarantee bounds now carry (S29-D1/A3), and the
+  // cross-domain example (manual inputs + logic + MicroPython).
+  {
+    id: 'logic-half-adder',
+    titleKey: 'example.logic-half-adder.title',
+    summaryKey: 'example.logic-half-adder.summary',
+    probes: [V('U3', 'y'), V('U4', 'y')],
+    parts: [
+      'component.led',
+      'component.resistor',
+      'component.toggle_switch',
+      'instrument.lab_psu',
+      'logic.gate_and',
+      'logic.gate_nand',
+      'logic.gate_or',
+    ],
+  },
+  {
+    id: 'logic-full-adder',
+    titleKey: 'example.logic-full-adder.title',
+    summaryKey: 'example.logic-full-adder.summary',
+    probes: [V('U6', 'y'), V('U7', 'y')],
+    parts: [
+      'component.led',
+      'component.resistor',
+      'component.toggle_switch',
+      'instrument.lab_psu',
+      'logic.gate_and',
+      'logic.gate_nand',
+      'logic.gate_or',
+    ],
+  },
+  {
+    id: 'mpy-adder-monitor',
+    titleKey: 'example.mpy-adder-monitor.title',
+    summaryKey: 'example.mpy-adder-monitor.summary',
+    probes: [V('U3', 'y'), V('U4', 'y'), I('D1')],
+    parts: [
+      'board.esp32_devkitc_wroom32',
+      'component.led',
+      'component.resistor',
+      'component.toggle_switch',
+      'instrument.lab_psu',
+      'logic.gate_and',
+      'logic.gate_nand',
+      'logic.gate_or',
+    ],
+  },
+  {
+    id: 'esp32-logic-feedback',
+    titleKey: 'example.esp32-logic-feedback.title',
+    summaryKey: 'example.esp32-logic-feedback.summary',
+    probes: [V('U2', 'y'), I('D2')],
+    parts: [
+      'board.esp32_devkitc_wroom32',
+      'component.bjt_npn',
+      'component.diode',
+      'component.led',
+      'component.relay',
+      'component.resistor',
+      'component.toggle_switch',
+      'instrument.lab_psu',
+      'logic.gate_and',
+    ],
+  },
+  {
+    id: 'mpy-logic-feedback',
+    titleKey: 'example.mpy-logic-feedback.title',
+    summaryKey: 'example.mpy-logic-feedback.summary',
+    probes: [V('U2', 'y'), I('D2')],
+    parts: [
+      'board.esp32_devkitc_wroom32',
+      'component.bjt_npn',
+      'component.diode',
+      'component.led',
+      'component.relay',
+      'component.resistor',
+      'component.toggle_switch',
+      'instrument.lab_psu',
+      'logic.gate_and',
+    ],
+  },
+  {
+    id: 'logic-cascade',
+    titleKey: 'example.logic-cascade.title',
+    summaryKey: 'example.logic-cascade.summary',
+    probes: [V('U1', 'y2'), I('D1')],
+    parts: [
+      'component.led',
+      'component.resistor',
+      'component.toggle_switch',
+      'instrument.lab_psu',
+      'logic.gate_or',
+      'logic.quad_and',
+    ],
+  },
+  {
+    id: 'esp32-logic-override',
+    titleKey: 'example.esp32-logic-override.title',
+    summaryKey: 'example.esp32-logic-override.summary',
+    probes: [V('U2', 'y'), I('D1')],
+    parts: [
+      'board.esp32_devkitc_wroom32',
+      'component.led',
+      'component.resistor',
+      'component.toggle_switch',
+      'instrument.lab_psu',
+      'logic.gate_or',
+    ],
+  },
+  // Sprint 24 (M1): MicroPython examples (the genuine interpreter), on their Arduino twins' circuits.
+  {
+    id: 'mpy-blink',
+    titleKey: 'example.mpy-blink.title',
+    summaryKey: 'example.mpy-blink.summary',
+    probes: [I('D1')],
+    parts: ['board.esp32_devkitc_wroom32', 'component.led', 'component.resistor'],
+  },
+  {
+    id: 'mpy-button',
+    titleKey: 'example.mpy-button.title',
+    summaryKey: 'example.mpy-button.summary',
+    probes: [I('D1'), V('R1', 'b')],
+    parts: [
+      'board.esp32_devkitc_wroom32',
+      'component.led',
+      'component.push_button',
+      'component.resistor',
+      'instrument.lab_psu',
+    ],
+  },
+  {
+    id: 'mpy-fade',
+    titleKey: 'example.mpy-fade.title',
+    summaryKey: 'example.mpy-fade.summary',
+    probes: [I('D1')],
+    parts: ['board.esp32_devkitc_wroom32', 'component.led', 'component.resistor'],
+  },
+  // Sprint 24 (M3): hardware I2C from MicroPython.
+  {
+    id: 'mpy-lcd-hello',
+    titleKey: 'example.mpy-lcd-hello.title',
+    summaryKey: 'example.mpy-lcd-hello.summary',
+    probes: [V('R1', 'b'), V('R2', 'b')],
+    parts: [
+      'board.esp32_devkitc_wroom32',
+      'component.resistor',
+      'display.lcd1602_i2c',
+      'instrument.lab_psu',
+    ],
+  },
+  // Sprint 25 (Phase 4): a potentiometer read as a digital level, Arduino and MicroPython.
+  {
+    id: 'esp32-pot-threshold',
+    titleKey: 'example.esp32-pot-threshold.title',
+    summaryKey: 'example.esp32-pot-threshold.summary',
+    probes: [V('RV1', 'wiper'), I('D1')],
+    parts: [
+      'board.esp32_devkitc_wroom32',
+      'component.led',
+      'component.potentiometer',
+      'component.resistor',
+      'instrument.lab_psu',
+    ],
+  },
+  {
+    id: 'mpy-pot-threshold',
+    titleKey: 'example.mpy-pot-threshold.title',
+    summaryKey: 'example.mpy-pot-threshold.summary',
+    probes: [V('RV1', 'wiper'), I('D1')],
+    parts: [
+      'board.esp32_devkitc_wroom32',
+      'component.led',
+      'component.potentiometer',
+      'component.resistor',
+      'instrument.lab_psu',
+    ],
+  },
+  // Sprint 26: multi-file programs with a managed library (nothing installed), both languages.
+  {
+    id: 'esp32-lcd-library',
+    titleKey: 'example.esp32-lcd-library.title',
+    summaryKey: 'example.esp32-lcd-library.summary',
+    probes: [V('R1', 'b'), V('R2', 'b')],
+    parts: [
+      'board.esp32_devkitc_wroom32',
+      'component.resistor',
+      'display.lcd1602_i2c',
+      'instrument.lab_psu',
+    ],
+  },
+  {
+    id: 'mpy-lcd-library',
+    titleKey: 'example.mpy-lcd-library.title',
+    summaryKey: 'example.mpy-lcd-library.summary',
+    probes: [V('R1', 'b'), V('R2', 'b')],
+    parts: [
+      'board.esp32_devkitc_wroom32',
+      'component.resistor',
+      'display.lcd1602_i2c',
+      'instrument.lab_psu',
+    ],
   },
 ];
 
@@ -163,4 +583,64 @@ export async function loadExampleDocument(id: string): Promise<ProjectDocument |
 
 export function prefetchExamples(): void {
   void loadDocuments().catch(() => undefined);
+}
+
+/**
+ * P1 language switching: the curated examples that have a verified version in the other
+ * programming language, on exactly the same circuit (both run on real QEMU in their sprint's
+ * acceptance: Sprint 24 blink/fade/LCD, Sprint 25 pot threshold, Sprint 26 LCD library). Opening
+ * one keeps its twin's program in the project (`alternates`), so switching language shows the
+ * verified twin, never a starter presented as the example. Pairs are symmetric; a test checks the
+ * two circuits are identical. Examples absent here have no verified version in another language.
+ */
+export const EXAMPLE_VARIANTS: Readonly<Record<string, string>> = Object.fromEntries(
+  (
+    [
+      ['esp32-blink', 'mpy-blink'],
+      ['esp32-led-fade', 'mpy-fade'],
+      ['esp32-pot-threshold', 'mpy-pot-threshold'],
+      ['esp32-lcd-hello', 'mpy-lcd-hello'],
+      ['esp32-lcd-library', 'mpy-lcd-library'],
+      ['esp32-logic-feedback', 'mpy-logic-feedback'],
+    ] as const
+  ).flatMap(([a, b]) => [
+    [a, b],
+    [b, a],
+  ]),
+);
+
+/** The circuit of a document (parts, parameters, connections): what twins must share exactly. */
+export function circuitKey(doc: ProjectDocument): string {
+  return JSON.stringify([
+    doc.components.map((c) => [c.id, c.type, c.typeVersion, c.params]),
+    doc.nets,
+    doc.connections,
+  ]);
+}
+
+/**
+ * `doc` (a copy of example `id`) with its verified twin's program kept as the other language's
+ * code. Unchanged when the example has no twin, or (failing closed) when the twin's circuit is not
+ * exactly the example's.
+ */
+export async function withExampleVariant(
+  id: string,
+  doc: ProjectDocument,
+): Promise<ProjectDocument> {
+  const twinId = EXAMPLE_VARIANTS[id];
+  const twin = twinId ? await loadExampleDocument(twinId) : undefined;
+  if (!twin) return doc;
+  const original = await loadExampleDocument(id);
+  if (!original || circuitKey(original) !== circuitKey(twin)) return doc;
+  const [boardId, program] = Object.entries(doc.programs)[0] ?? [];
+  const other = boardId ? twin.programs[boardId] : undefined;
+  if (!boardId || !program || !other || other.profile === program.profile) return doc;
+  const { alternates: _drop, ...variant } = other;
+  return {
+    ...doc,
+    programs: {
+      ...doc.programs,
+      [boardId]: { ...program, alternates: [structuredClone(variant)] },
+    },
+  };
 }

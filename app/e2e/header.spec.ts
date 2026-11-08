@@ -23,7 +23,7 @@ async function box(page: Page, testId: string) {
   return (await page.getByTestId(testId).boundingBox())!;
 }
 
-test('the top bar uses the regular TBI logo for light surfaces: no tile, never the round mark', async ({
+test('the top bar shows the TBI Lab infinity symbol beside the product name: no tile, decorative', async ({
   page,
 }) => {
   await page.goto('/');
@@ -35,8 +35,11 @@ test('the top bar uses the regular TBI logo for light surfaces: no tile, never t
     }
     const logo = page.getByTestId('brand-logo');
     await expect(logo).toBeVisible();
-    expect(await logo.getAttribute('src')).toMatch(/tbi-logo-light/);
-    // Aspect ratio kept (204 x 120 asset), compact toolbar height, real transparency.
+    expect(await logo.getAttribute('src')).toMatch(/tbi-lab-symbol/);
+    // The name is the adjacent text, so the symbol is decorative.
+    await expect(logo).toHaveAttribute('alt', '');
+    await expect(page.getByTestId('brand')).toContainText('TBI Lab');
+    // Aspect ratio kept (135 x 76 asset), compact toolbar height, real transparency.
     const info = await logo.evaluate((img: HTMLImageElement) => {
       const c = document.createElement('canvas');
       c.width = img.naturalWidth;
@@ -54,37 +57,42 @@ test('the top bar uses the regular TBI logo for light surfaces: no tile, never t
         backgrounds: [bg(img), bg(img.parentElement!)],
       };
     });
-    expect(info.natural).toEqual([204, 120]);
+    expect(info.natural).toEqual([135, 76]);
     expect(info.h).toBeLessThanOrEqual(40);
-    expect(info.w / info.h).toBeCloseTo(204 / 120, 1);
+    expect(info.w / info.h).toBeCloseTo(135 / 76, 1);
     expect(info.corner).toBe(0);
     expect(info.backgrounds).toEqual(['rgba(0, 0, 0, 0)', 'rgba(0, 0, 0, 0)']);
     await expect(page.locator('.brand-logo-tile')).toHaveCount(0);
     const srcs = await page
       .locator('img')
       .evaluateAll((imgs) => imgs.map((i) => (i as HTMLImageElement).src));
-    expect(srcs.filter((s) => /tbi-mark/.test(s))).toEqual([]);
+    expect(srcs.filter((s) => /tbi-mark|tbi-logo/.test(s))).toEqual([]);
   }
-  // Nothing the product renders or declares refers to the round mark, favicon metadata
-  // included: the tab icon is the approved light logo.
+  // Nothing the product renders or declares refers to the retired TBI assets, favicon metadata
+  // included: the tab icons are the TBI Lab set (2026-11-05: favicons 16 to 64 and a .ico, the
+  // apple-touch-icon and the web app manifest; dev-brand-tablet.spec.ts checks them in detail).
   const icons = await page
     .locator('link[rel~="icon"], link[rel="apple-touch-icon"], link[rel="manifest"]')
     .evaluateAll((links) => links.map((l) => (l as HTMLLinkElement).href));
-  expect(icons).toHaveLength(1);
-  expect(icons[0]).toMatch(/tbi-logo-light/);
-  const icon = await page.request.get(icons[0]!);
-  expect(icon.headers()['content-type']).toBe('image/png');
+  expect(icons).toHaveLength(8);
+  expect(
+    icons.slice(0, 5).every((h) => /\/assets\/favicon-(16|24|32|48|64)-[0-9a-f]{8}\.png$/.test(h)),
+  ).toBe(true);
+  for (const href of icons.filter((h) => h.endsWith('.png'))) {
+    const icon = await page.request.get(href);
+    expect(icon.headers()['content-type']).toBe('image/png');
+  }
   const html = await page.evaluate(() => document.documentElement.outerHTML);
-  expect(html).not.toMatch(/tbi-mark|favicon\.png/);
+  expect(html).not.toMatch(/tbi-mark|tbi-logo|\/favicon\.png/);
   const styles = await page.evaluate(() =>
     [...document.styleSheets]
       .flatMap((sheet) => [...sheet.cssRules].map((r) => r.cssText))
       .join('\n'),
   );
   expect(styles).not.toMatch(/tbi-mark/);
-  // The large Projects hero logo is unchanged.
+  // The Projects band shows the full TBI Lab logo.
   await goToProjects(page);
-  expect(await page.locator('.brand-hero-logo').getAttribute('src')).toMatch(/tbi-logo-[^l]/);
+  expect(await page.locator('.brand-hero-logo').getAttribute('src')).toMatch(/tbi-lab-logo/);
 });
 
 test('Projects: three separate areas that use a wide desktop and collapse on narrower windows', async ({
@@ -294,6 +302,7 @@ test('the application menu: keyboard, Escape, click outside, Tab; contents; clos
     'Projects',
     'New project…',
     'Import project…',
+    'What runs on the ESP32',
     'Export project',
   ]);
   await expect(page.getByTestId('sign-out')).toHaveCount(0); // not configured in this build
@@ -311,7 +320,8 @@ test('the application menu: keyboard, Escape, click outside, Tab; contents; clos
   // Click outside closes; so does Tab; the button toggles.
   await button.click();
   await expect(menu(page)).toBeVisible();
-  await page.getByTestId('canvas').click({ position: { x: 20, y: 20 } });
+  // (The canvas centre: well clear of the open menu, which covers the canvas's top corner.)
+  await page.getByTestId('canvas').click();
   await expect(menu(page)).toHaveCount(0);
   await button.click();
   await page.keyboard.press('Tab');
@@ -338,6 +348,7 @@ test('the application menu: keyboard, Escape, click outside, Tab; contents; clos
         'פרויקטים',
         'פרויקט חדש…',
         'ייבוא פרויקט…',
+        'מה רץ על ה־ESP32',
         'ייצוא פרויקט',
       ]);
     await page.keyboard.press('Escape');

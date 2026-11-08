@@ -1,0 +1,65 @@
+{
+  "runtime": {
+    "runtimeId": "33e35e4ac5e798d7",
+    "upstream": "https://github.com/espressif/qemu.git",
+    "tag": "esp-develop-9.2.2-20260417",
+    "commit": "40edccac415693c5130f91c01d84176ae6008566",
+    "patches": [
+      {
+        "file": "0001-accel-tcg-defer-sleep-off-icount-warp-while-a-round-.patch",
+        "sha256": "7fc846113fefe3c43d995f337086ec6049eff464207ae225003475d845f8ca4e"
+      },
+      {
+        "file": "0002-hw-xtensa-esp32-apply-the-APP-CPU-reset-synchronousl.patch",
+        "sha256": "a29bf7bf7fa29685464d34c55ae42f1b7451f88159fc62c4db4f3f72e461e702"
+      },
+      {
+        "file": "0003-hw-gpio-esp32_gpio-classic-ESP32-digital-GPIO-regist.patch",
+        "sha256": "ee3fa808721d842ce4c7556dd84ca004d2e5961337d69889b7efc6ffe5890465"
+      },
+      {
+        "file": "0004-hw-misc-tbi_bridge-TBI-Lab-synchronous-runtime-bridg.patch",
+        "sha256": "f01a24f789764895a6681664871b6d938201175bbda790f230aea77c2e27dbba"
+      },
+      {
+        "file": "0005-accel-tcg-util-qemu-timer-host-sync-timers-must-not-.patch",
+        "sha256": "40a7f984ef05a8ce3111b2c8dbef093d62d8e3341a97355e5d2ab56a72a9021b"
+      }
+    ],
+    "builtAt": "2026-09-29T10:30:48Z",
+    "host": "aarch64"
+  },
+  "lifecycle": [
+    {
+      "pid": 3826841,
+      "reason": "stopped"
+    },
+    {
+      "pid": 3826905,
+      "reason": "stopped"
+    },
+    {
+      "pid": 3826986,
+      "reason": "stopped"
+    }
+  ],
+  "gateHashes": [
+    "72935ade7dce072d",
+    "72935ade7dce072d",
+    "72935ade7dce072d",
+    "72935ade7dce072d",
+    "72935ade7dce072d"
+  ],
+  "quantumNoCommands": [
+    "6c9dddce6df617fc",
+    "6c9dddce6df617fc"
+  ],
+  "quantumGate": [
+    "72935ade7dce072d",
+    "72935ade7dce072d"
+  ],
+  "equivalence": {
+    "comparedOperatingPoints": 41,
+    "worstRelative": 0
+  }
+}

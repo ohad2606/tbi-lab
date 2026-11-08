@@ -5,7 +5,7 @@
  * Session Host's ordered events, is cleared when a new session starts, and is NEVER written to
  * the project document: no session id or token, no serial output, no GPIO levels, no event ids.
  */
-import type { SessionState } from '../../../runtime/host/protocol.js';
+import type { PwmPadState, SessionState } from '../../../runtime/host/protocol.js';
 
 /** Bounds: the view never grows with session length. */
 export const SERIAL_MAX_CHARS = 16 * 1024;
@@ -14,8 +14,11 @@ export const TRACE_CHECKPOINTS_MAX = 120;
 
 export interface GpioLevel {
   drive: 0 | 1;
+  /** With `pwm`: the static level, or 0 while the pad switches. */
   level: 0 | 1;
   transitions: number;
+  /** Sprint 15 (R4): the pad is an LEDC (PWM) output with this waveform, as the host reports it. */
+  pwm?: PwmPadState;
 }
 
 export interface RuntimeWarning {
@@ -47,6 +50,16 @@ export interface RuntimeView {
    * every whole simulated second. Transport timing and event ids are excluded.
    */
   trace: { events: number; hash: string; checkpoints: [number, string][] };
+  /**
+   * Set about a minute before the session reaches its maximum lifetime (the host's value): the
+   * session will end then; nothing extends it. Null otherwise.
+   */
+  expiresSoon: { lifetimeMs: number } | null;
+  /**
+   * Sprint 14: the host's id of this session, once created. Only a problem report sends it; the
+   * host associates it only with the same user's own session.
+   */
+  sessionId?: string;
 }
 
 export function emptyView(board: string, firmware: string): RuntimeView {
@@ -63,6 +76,7 @@ export function emptyView(board: string, firmware: string): RuntimeView {
     missedEvents: 0,
     stale: false,
     trace: { events: 0, hash: '', checkpoints: [] },
+    expiresSoon: null,
   };
 }
 
@@ -81,5 +95,15 @@ export type RuntimeFailCode =
   | 'stalled'
   | 'session_lost'
   | 'session_expired'
+  /** Sprint 23B: the owner disabled the account; the host ended the session. */
+  | 'account_disabled'
   | 'mirror_failed'
+  /** R4: a PWM output that cannot be simulated honestly (details: SimFailure kind 'pwm'). */
+  | 'pwm_unsupported'
+  /** R4 (review M8): the GPIO matrix inverts an attached pin's output, which is not modelled. */
+  | 'inverted_output'
+  /** Sprint 11: the host's validator refused a live command (e.g. an older runtime). */
+  | 'command_refused'
+  /** Sprint 11: live commands exceeded the host's per-session rate. */
+  | 'commands_rate_limited'
   | 'protocol_error';

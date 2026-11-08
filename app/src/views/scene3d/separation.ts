@@ -53,6 +53,12 @@ export interface Box {
   y0: number;
   y1: number;
   node?: string;
+  /**
+   * The terminal this box is the fitting of (a supply's binding post): a routing obstacle of its
+   * own (`<part>:<terminal>`), so a wire is exempt only from the post it is fastened to, never
+   * from the part's other post (another node). Routing volumes only (scene.ts routeBoxes).
+   */
+  terminal?: string;
 }
 
 /** A part as placed by the 2D layout (base transform), scene mm. */
@@ -92,6 +98,10 @@ const CLASS: Partial<Record<ModelKey, number>> = {
   'ground.post': 3,
   'sensor.pir': 2,
   'display.matrix': 2,
+  'sensor.ultrasonic': 2,
+  'sensor.dht22': 2,
+  'display.lcd1602': 2,
+  'servo.sg90': 2,
   'relay.cube': 2,
   'buzzer.can': 2,
 };

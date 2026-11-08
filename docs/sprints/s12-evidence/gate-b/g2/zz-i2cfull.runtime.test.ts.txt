@@ -1,0 +1,52 @@
+/** G-2 investigation: the s12-r3 probe scenario (LCD 0x27 + register file 0x50), old vs new image. */
+import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { describe, expect, it } from 'vitest';
+import { I2cLcd } from '@tbi-lab/engine';
+import { QEMU, RUNTIME_HOME } from '../harness/env.js';
+import { createSessionOverlay } from '../harness/artifacts.js';
+import type { Command } from '../harness/protocol.js';
+import { runSession } from '../harness/session.js';
+
+const IMG = {
+  old: '6f75261c61a610e5bb6c30cda1c9b112cf26fe6df2c05de09a3eb7460bbc3777',
+  new: '768f52b5cc6aaa0e42152c463e2e7215f56966b8b10e2e773604e9e3d8433e55',
+};
+describe('i2c full', () => {
+  for (const [tag, sha] of Object.entries(IMG))
+    it(tag, async () => {
+      const ov = createSessionOverlay(join(RUNTIME_HOME, 'artifacts', `${sha}.bin`), sha);
+      const lcd = new I2cLcd(0x27);
+      const regs = Array.from({ length: 256 }, (_, i) => i ^ 0x5a);
+      let addr = -1, first = false, ptr = 0, serial = '';
+      const rec: string[] = [];
+      try {
+        const r = await runSession(
+          { qemu: QEMU, flash: ov.flash, dir: ov.dir, wallTimeoutMs: 600_000 },
+          {
+            serial: (v, b) => { serial += b.toString('latin1'); rec.push(`S ${v} ${JSON.stringify(b.toString('latin1'))}`); },
+            func: (e) => { rec.push(`F ${e.vns} ${e.pad} ${e.func} ${e.openDrain}`); return []; },
+            pad: (e) => { rec.push(`G ${e.vns} ${e.pad} ${e.drive} ${e.level}`); return []; },
+            i2c: (e): Command[] => {
+              const p = e.phase;
+              let out: Command[] = [];
+              if (p.op === 'S') { addr = p.addr; first = true; out = [{ type: 'K', ack: addr === 0x27 || addr === 0x50 }]; }
+              else if (p.op === 'W') {
+                if (addr === 0x27) out = [{ type: 'K', ack: lcd.expander.writeByte(p.byte) }];
+                else if (first) { first = false; ptr = p.byte; out = [{ type: 'K', ack: true }]; }
+                else if (p.byte === 0xee) out = [{ type: 'K', ack: false }];
+                else { regs[ptr++ & 0xff] = p.byte; out = [{ type: 'K', ack: true }]; }
+              } else if (p.op === 'R') out = [{ type: 'D', byte: addr === 0x27 ? lcd.expander.readByte() : regs[ptr++ & 0xff]! }];
+              rec.push(`B ${e.vns} ${e.bus} ${JSON.stringify(p)} -> ${JSON.stringify(out)}`);
+              return out;
+            },
+            tick: (v) => (serial.includes('PROBE-END') || v >= 20_000_000_000n ? [{ type: 'Q' }] : []),
+          },
+        );
+        expect(r.outcome, r.diagnostics).toBe('completed');
+        writeFileSync(join(process.env.DIAG_OUT!, `i2cfull-${tag}.txt`), rec.join('\n') + '\n');
+      } finally {
+        ov.discard();
+      }
+    }, 900_000);
+});

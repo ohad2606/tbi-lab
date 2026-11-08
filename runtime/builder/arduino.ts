@@ -7,13 +7,29 @@
  * the 4 MiB flash image R2 runs (same layout as runtime/provision/provision.sh), then analyse
  * features. Measured on the dev host: ~26-29 s cold per build, ~76 MB of temporary files, and
  * three clean builds of the same source are byte-identical (the prefix maps remove the job path).
+ * Sprint 18F: with `coreSeeds`, the compiled Arduino core of an earlier curated build is copied
+ * into the job first (coreSeed.ts): about 7 s instead of about 29 s, the same bytes.
  */
 import { createHash } from 'node:crypto';
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, realpathSync } from 'node:fs';
 import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { arch } from 'node:os';
 import { join } from 'node:path';
-import { canonicalJson, type BuildProfile } from '@tbi-lab/domain';
+import {
+  canonicalJson,
+  PROGRAM_LIMITS,
+  programPathIssue,
+  type BuildProfile,
+} from '@tbi-lab/domain';
+import { libraryFiles } from '../libraries/tree.js';
+import {
+  applyCoreSeed,
+  coreSeedKey,
+  coreSeedPresent,
+  harvestCoreSeed,
+  pruneCoreSeeds,
+  removeCoreSeed,
+} from './coreSeed.js';
 import { analyzeFeatures } from './features.js';
 import type { Diagnostic, Severity } from './protocol.js';
 import type { BuildProvider, JobContext, ProviderOutput } from './provider.js';
@@ -37,6 +53,13 @@ export interface ArduinoProviderOptions {
   retainedOutputBytes: number;
   /** Where the tools run (Sprint 8): the per-job sandbox in deployment; local by default. */
   runner?: ToolRunner;
+  /** Sprint 12: bridge capabilities of the runtime tickets are issued for (runtime.json). */
+  runtimeCapabilities?: readonly string[];
+  /**
+   * Sprint 18F: a service-owned directory for the Arduino core seed (coreSeed.ts). Useful only
+   * where every job sees the same path (the sandbox's `/job`); absent: every build is cold.
+   */
+  coreSeeds?: string;
 }
 
 /** Output the tools may produce before we stop reading (JSON wraps the compiler output). */
@@ -47,7 +70,10 @@ const sha256File = (path: string) => createHash('sha256').update(readFileSync(pa
 export class ArduinoEsp32Provider implements BuildProvider {
   readonly profile: BuildProfile;
   readonly profileHash: string;
+  readonly analysisCapabilities: readonly string[];
   private readonly data: string;
+  /** Sprint 26: `data` with every link resolved (what the tools print). */
+  private readonly dataReal: string;
   private readonly toolsBin: string;
   private readonly runner: ToolRunner;
 
@@ -55,7 +81,9 @@ export class ArduinoEsp32Provider implements BuildProvider {
     this.runner = opts.runner ?? new LocalToolRunner(opts.home);
     this.profile = opts.profile;
     this.profileHash = createHash('sha256').update(canonicalJson(opts.record)).digest('hex');
+    this.analysisCapabilities = [...(opts.runtimeCapabilities ?? [])].sort();
     this.data = join(opts.home, 'data');
+    this.dataReal = existsSync(this.data) ? realpathSync(this.data) : this.data;
     const pkgs = join(this.data, 'packages', 'esp32');
     this.toolsBin = join(pkgs, 'tools');
   }
@@ -81,6 +109,72 @@ export class ArduinoEsp32Provider implements BuildProvider {
     };
   }
 
+  /**
+   * The compile step in the tools' view of job `J`: arduino-cli's configuration, environment and
+   * argv (fixed; only the job path varies, and not at all in the sandbox).
+   */
+  private compileSetup(J: string, t: ReturnType<ArduinoEsp32Provider['view']>) {
+    const v = (sub: string) => join(J, sub);
+    const config = [
+      'directories:',
+      `  data: ${t.data}`,
+      `  downloads: ${v('downloads')}`,
+      `  user: ${v('user')}`,
+      'build_cache:',
+      `  path: ${v('cache')}`,
+      'network:',
+      '  connection_timeout: 1s',
+      '',
+    ].join('\n');
+    const maps = [
+      `-ffile-prefix-map=${t.data}=/arduino-data`,
+      `-ffile-prefix-map=${v('sketch')}=/sketch`,
+      `-ffile-prefix-map=${J}=/build`,
+    ].join(' ');
+    const env = {
+      PATH: '/usr/bin:/bin',
+      HOME: J,
+      TMPDIR: J,
+      LANG: 'C.UTF-8',
+      SOURCE_DATE_EPOCH: String(this.opts.record.sourceDateEpoch),
+    };
+    const argv = [
+      '--config-file',
+      v('cli.yaml'),
+      'compile',
+      '--format',
+      'json',
+      '--fqbn',
+      this.opts.record.fqbn,
+      '--build-path',
+      v('build'),
+      '--output-dir',
+      v('out'),
+      '--build-property',
+      `compiler.c.extra_flags=${maps}`,
+      '--build-property',
+      `compiler.cpp.extra_flags=${maps}`,
+      v('sketch'),
+    ];
+    return { config, env, argv };
+  }
+
+  /**
+   * Sprint 18F: whether a job in `jobDir` would start from a core seed. False without a seed
+   * directory, and always where the tools' job path differs per job (the local runner).
+   */
+  async hasCoreSeed(jobDir: string): Promise<boolean> {
+    const seeds = this.opts.coreSeeds;
+    if (!seeds) return false;
+    return coreSeedPresent(seeds, this.coreSeedKeyFor(jobDir));
+  }
+
+  /** Sprint 28: the seed key a job in `jobDir` would use (the current configuration's seed). */
+  coreSeedKeyFor(jobDir: string): string {
+    const { config, env, argv } = this.compileSetup(this.runner.jobPath(jobDir), this.view());
+    return coreSeedKey({ profileHash: this.profileHash, argv, config, env });
+  }
+
   async verifyToolchain(): Promise<void> {
     const key = arch() === 'arm64' ? 'arm64' : arch() === 'x64' ? 'x64' : arch();
     const pins = this.opts.record.files[key];
@@ -99,11 +193,26 @@ export class ArduinoEsp32Provider implements BuildProvider {
       diagnostics: [{ severity: 'error', message }],
       log: { text: '', truncated: false },
     });
-    if (job.files.length !== 1 || job.files[0]!.name !== p.fileName)
-      return fail(`This environment builds exactly one file named ${p.fileName}.`);
-    const source = job.files[0]!.text;
-    if (Buffer.byteLength(source, 'utf8') > p.maxSourceBytes)
-      return fail(`The sketch is larger than ${p.maxSourceBytes / 1024} KiB.`);
+    // Sprint 26: the entry file first, then further project files (the service checked the set;
+    // checked again here before anything is written: names, paths, sizes).
+    if (job.files[0]?.name !== p.fileName)
+      return fail(`The first file of a build is ${p.fileName}.`);
+    const taken: string[] = [];
+    let total = 0;
+    for (const [i, f] of job.files.entries()) {
+      if (i > 0 && programPathIssue(p.language, f.name, taken, p.fileName))
+        return fail(`${f.name}: not a file name this environment builds.`);
+      if (i > 0) taken.push(f.name);
+      const n = Buffer.byteLength(f.text, 'utf8');
+      if (n > p.maxSourceBytes)
+        return fail(`${f.name} is larger than ${p.maxSourceBytes / 1024} KiB.`);
+      total += n;
+    }
+    if (job.files.length > PROGRAM_LIMITS.maxFiles || total > PROGRAM_LIMITS.maxTotalBytes)
+      return fail('The project is larger than one build takes.');
+    // What the analysis reads: every project file (the program's own code, not the libraries').
+    const source = job.files.map((f) => f.text).join('\n');
+    const managed = job.libraries ?? [];
 
     // Real paths (the service writes and reads the job) and the tools' view of the same job.
     const d = (sub: string) => join(job.dir, sub);
@@ -119,59 +228,57 @@ export class ArduinoEsp32Provider implements BuildProvider {
       await mkdir(d(sub));
       await chmod(d(sub), 0o770);
     }
-    await writeFile(join(d('sketch'), p.fileName), source);
-    await chmod(join(d('sketch'), p.fileName), 0o660);
+    // Every file under sketch/ at its relative path: folders created here (no symlink exists in a
+    // fresh private job directory), files created exclusively (`wx`: never through an existing
+    // entry), and each resolved path checked to stay inside sketch/.
+    for (const f of job.files) {
+      const target = join(d('sketch'), ...f.name.split('/'));
+      if (!target.startsWith(d('sketch') + '/')) return fail(`${f.name}: outside the sketch.`);
+      for (let k = 1; k < f.name.split('/').length; k++) {
+        const dir = join(d('sketch'), ...f.name.split('/').slice(0, k));
+        await mkdir(dir, { recursive: true });
+        await chmod(dir, 0o770);
+      }
+      await writeFile(target, f.text, { flag: 'wx' });
+      await chmod(target, 0o660);
+    }
+    // Sprint 26: the pinned managed libraries, verified against the registry's tree checksum, in
+    // the job's own sketchbook (user/libraries/<name>): the only libraries besides the core's, and
+    // read-only to the tools (the argv and configuration, so the core seed, do not change).
+    if (managed.length) {
+      await mkdir(join(d('user'), 'libraries'));
+      await chmod(join(d('user'), 'libraries'), 0o750);
+      for (const lib of managed) {
+        const root = join(d('user'), 'libraries', lib.name);
+        for (const f of libraryFiles(lib)) {
+          const target = join(root, ...f.path.split('/'));
+          if (!target.startsWith(root + '/')) return this.internal('library path', f.path);
+          const parts = f.path.split('/');
+          for (let k = 0; k < parts.length; k++) {
+            const dir = join(root, ...parts.slice(0, k));
+            await mkdir(dir, { recursive: true });
+            await chmod(dir, 0o750);
+          }
+          await writeFile(target, f.bytes, { flag: 'wx' });
+          await chmod(target, 0o640);
+        }
+      }
+    }
+    const { config, env, argv } = this.compileSetup(J, t);
     // Pinned read-only core; an empty user directory (no sketchbook libraries); per-job cache.
-    await writeFile(
-      d('cli.yaml'),
-      [
-        'directories:',
-        `  data: ${t.data}`,
-        `  downloads: ${v('downloads')}`,
-        `  user: ${v('user')}`,
-        'build_cache:',
-        `  path: ${v('cache')}`,
-        'network:',
-        '  connection_timeout: 1s',
-        '',
-      ].join('\n'),
-    );
+    await writeFile(d('cli.yaml'), config);
     await chmod(d('cli.yaml'), 0o660);
-    const maps = [
-      `-ffile-prefix-map=${t.data}=/arduino-data`,
-      `-ffile-prefix-map=${v('sketch')}=/sketch`,
-      `-ffile-prefix-map=${J}=/build`,
-    ].join(' ');
-    const env = {
-      PATH: '/usr/bin:/bin',
-      HOME: J,
-      TMPDIR: J,
-      LANG: 'C.UTF-8',
-      SOURCE_DATE_EPOCH: String(this.opts.record.sourceDateEpoch),
-    };
-    const compile = await run(
-      t.cli,
-      [
-        '--config-file',
-        v('cli.yaml'),
-        'compile',
-        '--format',
-        'json',
-        '--fqbn',
-        this.opts.record.fqbn,
-        '--build-path',
-        v('build'),
-        '--output-dir',
-        v('out'),
-        '--build-property',
-        `compiler.c.extra_flags=${maps}`,
-        '--build-property',
-        `compiler.cpp.extra_flags=${maps}`,
-        v('sketch'),
-      ],
-      v('sketch'),
-      TOOL_OUTPUT_CAP,
-    );
+    // The core seed for exactly this configuration, when one exists (else a cold build).
+    const seeds = this.opts.coreSeeds;
+    const seedKey = coreSeedKey({ profileHash: this.profileHash, argv, config, env });
+    let coreSeed: 'seeded' | 'cold' = 'cold';
+    if (seeds)
+      try {
+        if (await applyCoreSeed(seeds, seedKey, d('build'))) coreSeed = 'seeded';
+      } catch {
+        await removeCoreSeed(d('build'));
+      }
+    const compile = await run(t.cli, argv, v('sketch'), TOOL_OUTPUT_CAP);
     if (compile.aborted) return this.internal('aborted', compile.stderr);
 
     let result: {
@@ -198,27 +305,75 @@ export class ArduinoEsp32Provider implements BuildProvider {
       text
         .split(v('sketch') + '/')
         .join('')
+        .split(join(v('user'), 'libraries') + '/')
+        .join('libraries/')
         .split(J)
         .join('/build')
         .split(t.data)
         .join('/arduino-data')
         .split(this.data)
+        .join('/arduino-data')
+        // Sprint 26: the toolchain as the tools resolved it (a linked home prints its real path).
+        .split(this.dataReal)
         .join('/arduino-data');
     const log = this.bounded(scrub((result.compiler_out ?? '') + (result.compiler_err ?? '')));
+    // Sprint 26: a diagnostic in a project file names that file (its path as in the request) and
+    // line; one in a managed library names the library file in its message, never a server path.
+    const names = new Map(job.files.map((f) => [join(v('sketch'), ...f.name.split('/')), f.name]));
     const diagnostics: Diagnostic[] = (result.builder_result?.diagnostics ?? []).map((x) => {
-      const inSketch = x.file === join(v('sketch'), p.fileName);
+      const file = x.file ? names.get(x.file) : undefined;
       const severity = (x.severity ?? 'ERROR').toLowerCase();
+      const where =
+        !file && x.file
+          ? `${scrub(x.file)}${typeof x.line === 'number' ? `:${x.line}` : ''}: `
+          : '';
       return {
         severity: (['error', 'warning', 'note'].includes(severity)
           ? severity
           : 'error') as Severity,
-        ...(inSketch ? { file: p.fileName } : {}),
-        ...(inSketch && typeof x.line === 'number' ? { line: x.line } : {}),
-        ...(inSketch && typeof x.column === 'number' ? { column: x.column } : {}),
-        message: scrub(firstLine(x.message ?? '')),
+        ...(file ? { file } : {}),
+        ...(file && typeof x.line === 'number' ? { line: x.line } : {}),
+        ...(file && typeof x.column === 'number' ? { column: x.column } : {}),
+        message: where + scrub(firstLine(x.message ?? '')),
       };
     });
+    // A curated source's successful compile leaves the seed for later jobs (best effort: a
+    // failed harvest never fails the build).
+    if (seeds && job.curated && result.success)
+      try {
+        if (await harvestCoreSeed(seeds, seedKey, d('build')))
+          await pruneCoreSeeds(seeds, new Set([seedKey]));
+      } catch {
+        // the next curated build tries again
+      }
     if (!result.success) {
+      // Sprint 26: the linker's own errors (a symbol defined twice, a declared function never
+      // defined), located in a project file, become diagnostics for that file and line; they
+      // replace arduino-cli's location-less "ld: in function ..." entries.
+      const linked: Diagnostic[] = [];
+      for (const line of scrub(result.compiler_err ?? '').split('\n')) {
+        const what = /: ((?:multiple definition of|undefined reference to) .*)$/.exec(line)?.[1];
+        if (!what) continue;
+        const message = what.split(';')[0]!.trim();
+        // With debug line information: `sketch/<file>:<line>: ...`.
+        const at = /(?:^|[\s/])sketch\/([^:\s]+):(\d+): /.exec(line);
+        if (at && job.files.some((f) => f.name === at[1])) {
+          linked.push({ severity: 'error', file: at[1]!, line: Number(at[2]), message });
+          continue;
+        }
+        // Without it (a literal-pool relocation): the object file names the project file only;
+        // no line is claimed. `sketch.ino.cpp.o` is sketch.ino, `src/a.cpp.o` is src/a.cpp.
+        const obj = /\/build\/sketch\/([^:\s]+?)(?:\.cpp)?\.o:/.exec(line)?.[1];
+        const file = obj && job.files.find((f) => f.name === obj)?.name;
+        if (file) linked.push({ severity: 'error', file, message });
+      }
+      if (linked.length && !diagnostics.some((d) => d.severity === 'error' && d.file))
+        diagnostics.splice(
+          0,
+          diagnostics.length,
+          ...diagnostics.filter((d) => d.severity !== 'error'),
+          ...linked,
+        );
       if (diagnostics.length === 0)
         diagnostics.push({
           severity: 'error',
@@ -275,9 +430,17 @@ export class ArduinoEsp32Provider implements BuildProvider {
     return {
       ok: true,
       imagePath: d('image.bin'),
-      features: analyzeFeatures({ source, symbols, libraries }),
+      features: analyzeFeatures({
+        source,
+        sources: job.files.map((f) => f.text),
+        symbols,
+        libraries,
+        managed,
+        ...(this.opts.runtimeCapabilities ? { capabilities: this.opts.runtimeCapabilities } : {}),
+      }),
       ...sizesOf(result.compiler_out ?? ''),
       diagnostics,
+      coreSeed,
       log,
     };
   }

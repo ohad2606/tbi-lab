@@ -8,7 +8,13 @@
  */
 
 import type { ProjectDocument } from '@tbi-lab/domain';
-import { isQuotaError, type ProjectStorage } from './store.js';
+import {
+  ProjectConflictError,
+  isQuotaError,
+  versionOf,
+  type ProjectStorage,
+  type StoredVersion,
+} from './store.js';
 
 /** Injectable timer so unit tests can drive the debounce deterministically. */
 export type ScheduleFn = (handler: () => void, delayMs: number) => unknown;
@@ -24,15 +30,29 @@ export interface AutosaveOptions {
 
 export class Autosave {
   private timer: unknown = null;
-  private pending: ProjectDocument | null = null;
+  /**
+   * Documents not yet confirmed on disk, ONE PER PROJECT (Sprint 13 Task D): a single slot for all
+   * projects let the first change to project B silently replace project A's failed write.
+   */
+  private readonly pending = new Map<string, ProjectDocument>();
   private inFlight: Promise<void> = Promise.resolve();
   private readonly debounceMs: number;
   private readonly schedule: ScheduleFn;
   private readonly cancel: CancelFn;
   private listeners = new Set<(s: SaveState) => void>();
   private stateValue: SaveState = 'saved';
-  /** Why the last write failed, so the UI can say something specific. */
-  lastError: 'quota' | 'write' | null = null;
+  /**
+   * Why the last write failed, so the UI can say something specific. `conflict`: another tab or
+   * window changed or deleted the project; this tab's version was NOT written (Sprint 13 Task D).
+   */
+  lastError: 'quota' | 'write' | 'conflict' | null = null;
+  /** The stored version each project is known to be at (what this tab opened or last wrote). */
+  private readonly known = new Map<string, StoredVersion>();
+
+  /** The project as it is stored now (just opened, created or imported in this tab). */
+  know(doc: Pick<ProjectDocument, 'projectId' | 'revision'>): void {
+    this.known.set(doc.projectId, versionOf(doc));
+  }
 
   /** Number of physical writes performed, so tests can assert debouncing actually happened. */
   writeCount = 0;
@@ -55,7 +75,7 @@ export class Autosave {
 
   /** True while a change exists that is not yet confirmed on disk. */
   get dirty(): boolean {
-    return this.pending !== null || this.stateValue !== 'saved';
+    return this.pending.size > 0 || this.stateValue !== 'saved';
   }
 
   onState(listener: (s: SaveState) => void): () => void {
@@ -71,7 +91,7 @@ export class Autosave {
 
   /** Queue a save. Returns immediately: editing is never blocked by persistence. */
   queue(doc: ProjectDocument): void {
-    this.pending = doc;
+    this.pending.set(doc.projectId, doc);
     this.setState('saving');
     if (this.timer !== null) this.cancel(this.timer);
     this.timer = this.schedule(() => void this.flush(), this.debounceMs);
@@ -82,16 +102,16 @@ export class Autosave {
    * flight. Used before deleting a project, so that a pending autosave cannot write the
    * deleted project back afterwards.
    */
-  async discard(projectId: string): Promise<void> {
-    if (this.pending?.projectId === projectId) {
-      if (this.timer !== null) {
-        this.cancel(this.timer);
-        this.timer = null;
-      }
-      this.pending = null;
+  async discard(projectId: string): Promise<ProjectDocument | null> {
+    const dropped = this.pending.get(projectId) ?? null;
+    if (this.pending.delete(projectId) && this.pending.size === 0 && this.timer !== null) {
+      this.cancel(this.timer);
+      this.timer = null;
     }
     await this.inFlight;
-    if (!this.pending) this.setState('saved');
+    if (this.pending.size === 0 && this.lastError === null) this.setState('saved');
+    // The dropped document, so a caller whose delete then fails can queue it again (Task D, M2).
+    return dropped;
   }
 
   /** Re-attempt after a failure. */
@@ -105,23 +125,37 @@ export class Autosave {
       this.cancel(this.timer);
       this.timer = null;
     }
-    const doc = this.pending;
-    if (!doc) return this.inFlight;
-    this.pending = null;
+    if (this.pending.size === 0) return this.inFlight;
+    const docs = [...this.pending.values()];
+    this.pending.clear();
     this.inFlight = this.inFlight.then(async () => {
       this.setState('saving');
-      try {
-        await this.store.save(doc);
-        this.writeCount++;
-        this.lastError = null;
-        // A newer change may have been queued while this write was in flight.
-        this.setState(this.pending ? 'saving' : 'saved');
-      } catch (e) {
-        // Keep the newest document: a later queue() replaces it, retry() re-attempts it.
-        this.pending ??= doc;
-        this.lastError = isQuotaError(e) ? 'quota' : 'write';
-        this.setState('error');
+      let failed: unknown = null;
+      for (const doc of docs) {
+        try {
+          await this.store.save(doc, this.known.get(doc.projectId));
+          this.known.set(doc.projectId, versionOf(doc));
+          this.writeCount++;
+        } catch (e) {
+          // Keep the newest document of THIS project: a later queue() of the same project
+          // replaces it, retry() or the next flush re-attempts it; other projects are unaffected.
+          if (!this.pending.has(doc.projectId)) this.pending.set(doc.projectId, doc);
+          failed ??= e;
+        }
       }
+      if (failed !== null) {
+        this.lastError =
+          failed instanceof ProjectConflictError
+            ? 'conflict'
+            : isQuotaError(failed)
+              ? 'quota'
+              : 'write';
+        this.setState('error');
+        return;
+      }
+      this.lastError = null;
+      // A newer change may have been queued while these writes were in flight.
+      this.setState(this.pending.size > 0 ? 'saving' : 'saved');
     });
     return this.inFlight;
   }

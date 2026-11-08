@@ -4,7 +4,7 @@
  * PROMOTED from experiments/gate-c-bridge/src/pinModel.ts (Sprint 0 Gate C, tag sprint-1-complete)
  * with the logic and every constant unchanged; see PROVENANCE.md. This is the approved V1 GPIO
  * electrical model: output = 3.3 V behind 16.5 ohm (high) / 17.679 ohm (low); input thresholds
- * V_IL = 0.825 V, V_IH = 2.475 V, holding the previous level in between.
+ * V_IL = 0.825 V, V_IH = 2.475 V; in between no level is defined (see interpretDigitalInput).
  *
  * Every number here is derived from the ESP32 Series Datasheet v5.3, Table 5-3
  * "DC Characteristics (3.3 V, 25 degC)". The derivations are shown so the model can be
@@ -34,6 +34,17 @@ export const V_IH_V = 0.75 * VDD_V;
 export const V_IL_V = 0.25 * VDD_V;
 
 /**
+ * The specified pad voltage range (Sprint 11, R1), ESP32 Series Datasheet v5.3, Table 5-3
+ * "DC Characteristics (3.3 V, 25 degC)", p. 52: V_IH max = VDD + 0.3 V, V_IL min = -0.3 V (the
+ * PDF does not render the minus sign; see docs/sprints/s11-evidence/datasheets/FACTS.md). Table
+ * 5-1 (absolute maximum, p. 51) bounds the supply pins to -0.3 ... 3.6 V. A pad outside this range
+ * is over-stressed: the pins are not 5 V tolerant. Used for warnings only (ratings.ts), never by
+ * the solver.
+ */
+export const V_PIN_MAX_V = VDD_V + 0.3;
+export const V_PIN_MIN_V = -0.3;
+
+/**
  * Output driver on-resistance, derived from the datasheet drive-current points.
  *
  *   High side: the datasheet guarantees V_OH >= 2.64 V while sourcing I_OH = 40 mA.
@@ -51,13 +62,44 @@ export const V_IL_V = 0.25 * VDD_V;
 export const R_DRIVE_HIGH_OHM = (VDD_V - 2.64) / 0.04;
 
 /**
- * The datasheet drive specification itself (Table 5-3, maximum drive strength): a pad sourcing
- * more than I_OH or sinking more than I_OL is outside what the manufacturer specifies. Used only
- * by the diagnostics (ratings.ts), never by the electrical model.
+ * The datasheet drive characteristics (ESP32 Series Datasheet v5.3, Table 5-3 "DC
+ * Characteristics", maximum drive strength): TYPICAL values, not maximum ratings. I_OH 40 mA for
+ * the VDD3P3_CPU and VDD3P3_RTC power domains and 20 mA for the VDD_SDIO domain (on the DevKitC
+ * header: GPIO16 and GPIO17, chip pins 25 and 27); I_OL 28 mA. Table 5-1 publishes no per-pin
+ * absolute maximum. Used only by the diagnostics (ratings.ts), never by the electrical model.
+ * (Sprint 13 H2 finding, for a PM decision: the pad DRIVER model uses the 40 mA point for every
+ * pin, so GPIO16/17 are modelled stronger than their domain's 20 mA characteristic.)
  */
 export const I_OH_A = 0.04;
+export const I_OH_SDIO_A = 0.02;
 export const I_OL_A = 0.028;
+/** GPIOs on the header in the VDD_SDIO power domain (datasheet pin layout: pins 25, 27). */
+export const SDIO_DOMAIN_GPIOS: ReadonlySet<number> = new Set([16, 17]);
+/** Typical source capability of a pad (Table 5-3, by power domain). */
+export const typicalSourceA = (gpio: number) =>
+  SDIO_DOMAIN_GPIOS.has(gpio) ? I_OH_SDIO_A : I_OH_A;
+/** Table 5-1 absolute maximum: cumulative IO output current, 1200 mA. */
+export const I_OUTPUT_CUMULATIVE_MAX_A = 1.2;
 export const R_DRIVE_LOW_OHM = 0.495 / 0.028;
+
+/**
+ * The characterized output points (Table 5-3): HIGH holds V_OH >= 2.64 V while sourcing I_OH;
+ * LOW is characterized at V_OL = 0.495 V while sinking I_OL. The linear driver model is a chord
+ * from the rail to that point: between the rail and the point it is anchored by the datasheet;
+ * beyond it (an overloaded or shorted pad) it is an extrapolation, and the real current is
+ * limited by the transistors in a way Espressif does not publish (Table 5-1: no short-circuit
+ * current). Sprint 13 P2: such a pad result is reported as outside the model range (unreliable),
+ * never as a measured value.
+ */
+export const V_OH_CHAR_V = 0.8 * VDD_V;
+export const V_OL_CHAR_V = 0.495;
+
+/** Whether a driven pad operates beyond its characterized point (P2). Inputs: never. */
+export function outsideCharacterizedRegion(mode: PinMode, voltageV: number): boolean {
+  if (mode === 'output-high') return voltageV < V_OH_CHAR_V;
+  if (mode === 'output-low') return voltageV > V_OL_CHAR_V;
+  return false;
+}
 
 /** Internal pull-up / pull-down resistance, datasheet typical. */
 export const R_PULL_OHM = 45_000;
@@ -76,10 +118,12 @@ export type DigitalLevel = 0 | 1;
 /**
  * Interpret a node voltage as a digital input level.
  *
- * Between V_IL and V_IH the datasheet guarantees nothing. Rather than invent a threshold,
- * the model HOLDS the previous level through that band, which is the conventional way to
- * represent a real Schmitt-trigger-ish input without claiming a specific hysteresis width.
- * The held value is part of the documented semantics, not an accident.
+ * Between V_IL and V_IH the datasheet guarantees nothing, and neither the datasheet (v5.3, Table
+ * 5-3) nor the TRM (v5.9) specifies input hysteresis. This function returns `previous` there only
+ * as the level QEMU keeps being given; it is NOT a reading. Sprint 25 closure: wherever the
+ * firmware can read the pad (Runtime v5 `input-read`), the Session Host marks a voltage in the band
+ * undefined and refuses the read (gpio_input_undefined, between_thresholds), whatever the previous
+ * level was. Callers that need a reading must check the band first.
  */
 export function interpretDigitalInput(voltageV: number, previous: DigitalLevel): DigitalLevel {
   if (voltageV >= V_IH_V) return 1;
@@ -162,11 +206,15 @@ export class GpioPin implements Device {
     t.addZ(this.ip, injectedA);
   }
 
-  /** Current delivered by the pin into the external circuit, amperes. */
+  /**
+   * Current delivered by the pin into the external circuit, amperes. A pin wired straight to GND
+   * has no unknown (its node IS the reference, 0 V) but still a defined model current: the model
+   * evaluated at V = 0 (Sprint 13 P3; previously reported as 0 A). Whether that value is inside
+   * the characterized region is decided by `outsideCharacterizedRegion`.
+   */
   current(x: readonly number[]): number {
-    if (this.ip < 0) return 0;
     const { conductanceS, injectedA } = this.norton();
-    return injectedA - conductanceS * x[this.ip]!;
+    return injectedA - conductanceS * (this.ip < 0 ? 0 : x[this.ip]!);
   }
 
   exactTerminalCurrents(x: readonly number[]): TerminalCurrent[] {

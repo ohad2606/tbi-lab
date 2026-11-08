@@ -277,6 +277,17 @@ describe('leases, limits and shutdown', () => {
     expect(host.get(s.id, s.token, principalFor()).ok).toBe(false);
   });
 
+  it('the enforced lifetime is reported: the host maximum, or the client limit if stricter, never longer', async () => {
+    const { host, art } = start('normal', { maxLifetimeMs: 30 * 60_000 });
+    const plain = created(host, art.sha256);
+    expect(plain.status().lifetimeMs).toBe(30 * 60_000);
+    const stricter = created(host, art.sha256, { limits: { maxLifetimeMs: 60_000 } });
+    expect(stricter.status().lifetimeMs).toBe(60_000);
+    const longer = created(host, art.sha256, { limits: { maxLifetimeMs: 2 * 3600_000 } });
+    expect(longer.status().lifetimeMs).toBe(30 * 60_000);
+    for (const s of [plain, stricter, longer]) await s.terminate('terminated');
+  });
+
   it('limits: maximum sessions, lifetime, storage, event buffering (resync), serial flood', async () => {
     const { host, art } = start('serial_flood', {
       maxSessions: 1,
@@ -284,6 +295,8 @@ describe('leases, limits and shutdown', () => {
       serialWindowMaxBytes: 256,
     });
     const s = created(host, art.sha256, { limits: { maxLifetimeMs: 1500 } });
+    // Alpha (Phase D): the enforced lifetime is reported, so a client can warn before it ends.
+    expect(s.status().lifetimeMs).toBe(1500);
     expect(host.create(createRequest(art.sha256), principalFor())).toMatchObject({
       ok: false,
       status: 429,
@@ -330,4 +343,35 @@ describe('leases, limits and shutdown', () => {
 
 it('no private directory survives any of the above', () => {
   for (const h of hosts) expect(readdirSync(h.tmpRoot)).toEqual([]);
+});
+
+// Sprint 13 security audit (#6): an internal error's text (it can name server paths) was sent to
+// the client in the `failed` state event. Now: the reason code only; the text goes to the log.
+describe('internal errors do not reach the client with their text', () => {
+  it('a launcher that throws ends the session as start_failed (no hang, no crash), without the message', async () => {
+    const secret = '/var/lib/tbi-runtime/sessions/s-0123/private';
+    const { host, art } = start('normal', {
+      launch: () => {
+        throw new Error(`bad session directory: ${secret}`);
+      },
+    });
+    const s = created(host, art.sha256);
+    const logged: string[] = [];
+    const orig = console.error;
+    console.error = (...a: unknown[]) => void logged.push(a.join(' '));
+    try {
+      s.run();
+      const st = await terminalOf(s);
+      expect(st.state).toBe('failed');
+      // A launch failure is a start failure (before the audit it escaped the listen callback:
+      // the session never settled, and the Session Host process would have crashed).
+      expect(st.reason).toBe('start_failed');
+      const events = JSON.stringify(s.log.since(0));
+      expect(events).not.toContain(secret);
+      expect(JSON.stringify(st)).not.toContain(secret);
+      expect(logged.join('\n')).toContain(secret); // kept for the operator
+    } finally {
+      console.error = orig;
+    }
+  });
 });

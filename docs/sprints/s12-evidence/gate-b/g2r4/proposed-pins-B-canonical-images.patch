@@ -1,0 +1,47 @@
+diff --git a/runtime/firmware/artifacts.lock.json b/runtime/firmware/artifacts.lock.json
+index d036501..3922310 100644
+--- a/runtime/firmware/artifacts.lock.json
++++ b/runtime/firmware/artifacts.lock.json
+@@ -40,7 +40,7 @@
+       "source": "runtime/firmware/arduino/TbiEdgeEcho (provision.sh firmware TbiEdgeEcho, 2026-10-09, TBI_RUNTIME_HOME=~/tbi-s12-rt, same pinned toolchain). Sprint 12 bridge v2 scheduled-input test firmware."
+     },
+     "TbiHcSr04": {
+-      "sha256": "620e06276aeaa4512e79a9c65c7d3200fbd2aaaba333137e11ffcdac9b85efba",
++      "sha256": "9fd371b1ea77a60fc19c4ec2122e191ec498639df3afc5a887954fe05d9677d5",
+       "source": "runtime/firmware/arduino/TbiHcSr04 (provision.sh firmware, 2026-10-09, TBI_RUNTIME_HOME=~/tbi-s12-rt, same pinned toolchain). Sprint 12 R2 HC-SR04 (pulseIn) runtime test firmware."
+     },
+     "TbiDht22": {
+@@ -49,7 +49,7 @@
+       "previousSha256": "a2e6b54c81ecc7c00cf31b372cbfd80936436dfa82cf62479eae40edc5c21820"
+     },
+     "TbiLcd": {
+-      "sha256": "2f70c09c14f7686bd6671c925adeabcb5564fb2de5ad8989b6c78c108e4bd4fd",
++      "sha256": "d8819c06411561f952ca4a0ceaa09eb01d047ec7d9c831adff6f19f3b1e5e2e9",
+       "source": "runtime/firmware/arduino/TbiLcd (provision.sh firmware, 2026-10-09, TBI_RUNTIME_HOME=~/tbi-s12-rt, same pinned toolchain). Sprint 12 R3 I2C LCD (raw Wire) runtime test firmware. (G-2: the reproducible rebuild d8819c06… is NOT yet re-pinned. Its first equivalence result was taken under the Session Host publication defect (H-1); under the final host (1cc45ac) old and new images publish identical streams, see docs/sprints/s12-evidence/gate-b/G2-EVIDENCE.md. Re-pin awaits PM acceptance.)"
+     },
+     "TbiI2cProbe": {
+diff --git a/runtime/tests/s12-determinism.runtime.test.ts b/runtime/tests/s12-determinism.runtime.test.ts
+index bef2e28..b22b534 100644
+--- a/runtime/tests/s12-determinism.runtime.test.ts
++++ b/runtime/tests/s12-determinism.runtime.test.ts
+@@ -24,13 +24,13 @@ afterAll(() => host.shutdown());
+ 
+ /** Pins for Runtime v2 b5b34b49cb7e4049 (10 converging runs each; docs/sprints/SPRINT-12.md). */
+ const PINNED: Record<string, string> = {
+-  'hcsr04-0.1m': '2371e2174c387d9c',
+-  'hcsr04-1m': 'caa97d8064a84841',
+-  'hcsr04-4m': '43dba895631b86e4',
+-  'dht22--10C-30RH': '85e3e8d5cf6c46bb',
+-  'dht22-21.5C-55.2RH': '838e065211c66629',
+-  'dht22-60C-95RH': 'afcb868539a8f893',
+-  'lcd1602-hello': '2ec207126b9067ba',
++  'hcsr04-0.1m': 'a6174faf18931c61',
++  'hcsr04-1m': 'f5c51475cc5dac18',
++  'hcsr04-4m': 'ce7868f0e5352722',
++  'dht22--10C-30RH': 'b87741773a4f3c7a',
++  'dht22-21.5C-55.2RH': '414a2379065bc425',
++  'dht22-60C-95RH': '10af087aa4803ee2',
++  'lcd1602-hello': '03d6e5f264ed9506',
+ };
+ 
+ interface Scenario {

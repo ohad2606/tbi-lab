@@ -1,0 +1,587 @@
+/**
+ * RC4 packaging gate G3: the release profile is validated against the source it builds, and a
+ * built frontend against its profile. Synthetic trees cover each refusal; the real profile is
+ * checked against this repository's own source.
+ */
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, describe, expect, it } from 'vitest';
+import { buildEnvironment, loadProfile, sourceViteSettings, validate } from '../release-config.mjs';
+import { checkAssist, checkBranding, checkDist } from '../check-dist.mjs';
+
+const ROOT = new URL('../../../', import.meta.url).pathname;
+const RC4 = join(ROOT, 'deploy/release/rc4.release.json');
+const RC4_REPORTS = join(ROOT, 'deploy/release/rc4-reports.release.json');
+const DEV_LAB = join(ROOT, 'deploy/release/dev-lab.release.json');
+const RC4_S23 = join(ROOT, 'deploy/release/rc4-s23.release.json');
+const RC4_S23_FEEDBACK = join(ROOT, 'deploy/release/rc4-s23-feedback.release.json');
+const RC4_S23_ADMIN = join(ROOT, 'deploy/release/rc4-s23-admin.release.json');
+const FEEDBACK = join(ROOT, 'deploy/release/rc6-feedback.release.json');
+const ADMIN = join(ROOT, 'deploy/release/rc6-admin.release.json');
+const TOOLS = { node: 'v24.21.0', npm: '11.19.0', trackedFiles: () => [] };
+const GIT = { node: 'v24.21.0', npm: '11.19.0' }; // the real tracked-file listing (git)
+
+const dirs = [];
+afterEach(() => dirs.splice(0).forEach((d) => rmSync(d, { recursive: true, force: true })));
+function tree(files) {
+  const d = mkdtempSync(join(tmpdir(), 'tbi-relcfg-'));
+  dirs.push(d);
+  for (const [p, body] of Object.entries(files)) {
+    mkdirSync(join(d, p, '..'), { recursive: true });
+    writeFileSync(join(d, p), body);
+  }
+  return d;
+}
+const reads = (names) => names.map((n) => `import.meta.env.${n};`).join('\n');
+const RC4_SETTINGS = Object.keys(loadProfile(RC4).vite);
+
+describe('release profile vs source', () => {
+  it('the DEV-Lab and RC6 profiles pin exactly the settings this source reads, Active Minutes absent', () => {
+    expect([...sourceViteSettings(ROOT).keys()].sort()).toEqual(
+      [...RC4_SETTINGS, 'VITE_ADMIN_UI'].sort(),
+    );
+    expect(RC4_SETTINGS).toHaveLength(9);
+    expect(validate(loadProfile(DEV_LAB), ROOT, GIT)).toEqual([]);
+    expect(validate(loadProfile(FEEDBACK), ROOT, GIT)).toEqual([]);
+    expect(validate(loadProfile(ADMIN), ROOT, GIT)).toEqual([]);
+  });
+
+  it('DEV branding only in the DEV-Lab profile, which differs from rc4 only by it and the admin pins', () => {
+    const rc4 = loadProfile(RC4);
+    const devLab = loadProfile(DEV_LAB);
+    expect(rc4.vite.VITE_TBI_ENV).toBeNull();
+    expect(loadProfile(RC4_REPORTS).vite.VITE_TBI_ENV).toBeNull();
+    expect(devLab.vite.VITE_TBI_ENV).toBe('dev');
+    expect(loadProfile(FEEDBACK).vite.VITE_TBI_ENV).toBeNull();
+    expect(loadProfile(ADMIN).vite.VITE_TBI_ENV).toBeNull();
+    // No administration on DEV-Lab: the app's and the host's modes are pinned off.
+    expect(devLab.vite.VITE_ADMIN_UI).toBe('off');
+    const { VITE_ADMIN_UI: _ui, ...devVite } = devLab.vite;
+    expect({
+      ...devLab,
+      release: rc4.release,
+      vite: { ...devVite, VITE_TBI_ENV: null },
+      host: { TBI_REPORTS_DIR: devLab.host.TBI_REPORTS_DIR },
+    }).toEqual(rc4);
+    expect(devLab.host).toEqual({
+      TBI_REPORTS_DIR: null,
+      TBI_ACCESS_VIEW: null,
+      TBI_ADMIN_DIR: null,
+      TBI_ADMIN_MODE: 'off',
+      TBI_OWNER_PRINCIPAL_FILE: null,
+      TBI_OBSERVATIONS_DIR: null,
+    });
+    const src = tree({ 'app/src/a.ts': reads(RC4_SETTINGS) });
+    expect(validate({ ...rc4, vite: { ...rc4.vite, VITE_TBI_ENV: 'dev' } }, src, TOOLS)).toEqual([
+      'VITE_TBI_ENV must be null outside a DEV-Lab profile (release rc4)',
+    ]);
+    const srcAdmin = tree({ 'app/src/a.ts': reads([...RC4_SETTINGS, 'VITE_ADMIN_UI']) });
+    expect(
+      validate({ ...devLab, vite: { ...devLab.vite, VITE_TBI_ENV: null } }, srcAdmin, TOOLS),
+    ).toEqual(['VITE_TBI_ENV must be "dev" in a DEV-Lab profile']);
+    const { VITE_TBI_ENV: _unpinned, ...vite } = rc4.vite;
+    expect(validate({ ...rc4, vite }, src, TOOLS)).toContain(
+      'VITE_TBI_ENV must be pinned (null, or "dev" for DEV-Lab)',
+    );
+  });
+
+  it('the rc6-feedback profile pins exactly the settings this source reads, Active Minutes absent', () => {
+    const p = loadProfile(FEEDBACK);
+    const settings = Object.keys(p.vite);
+    expect([...sourceViteSettings(ROOT).keys()].sort()).toEqual([...settings].sort());
+    expect(settings).toHaveLength(10);
+    expect(validate(p, ROOT, GIT)).toEqual([]);
+    expect(p.release).toBe('rc6-feedback');
+    expect(p.release).toMatch(/^[A-Za-z0-9][A-Za-z0-9._+~-]{0,63}$/);
+    // Feedback on, the administration reduced to the reports, no helper anywhere.
+    expect(p.vite.VITE_PROBLEM_REPORTS).toBe('1');
+    expect(p.vite.VITE_ADMIN_UI).toBe('reports');
+    expect(p.host).toEqual({
+      TBI_REPORTS_DIR: '/var/lib/@N@-runtime/state/reports',
+      TBI_ACCESS_VIEW: null,
+      TBI_ADMIN_DIR: null,
+      TBI_ADMIN_MODE: 'reports',
+      TBI_OWNER_PRINCIPAL_FILE: '/etc/@N@-owner/owner.principal',
+      TBI_OBSERVATIONS_DIR: null,
+    });
+  });
+
+  it('Sprint 23C: the rc6-admin profile is valid on this source and pins the admin service', () => {
+    const p = loadProfile(ADMIN);
+    expect(validate(p, ROOT, GIT)).toEqual([]);
+    expect(p.vite.VITE_ADMIN_UI).toBe('full');
+    expect(p.host.TBI_ADMIN_MODE).toBe('full');
+    expect(p.admin).toEqual({
+      TBI_ADMIN_LISTEN: 'unix:/run/@N@-admin/api.sock',
+      TBI_ACCESS_VIEW: '/var/lib/tbi-admin/view/access.json',
+      TBI_ADMIN_DIR: '/var/lib/tbi-admin',
+      TBI_RUNTIME_HEALTH: 'unix:/run/@N@-runtime/health.sock',
+    });
+    const src = tree({ 'app/src/a.ts': reads([...RC4_SETTINGS, 'VITE_ADMIN_UI']) });
+    expect(validate(p, src, TOOLS)).toEqual([]);
+    const { admin: _a, ...noAdmin } = p;
+    expect(validate(noAdmin, src, TOOLS)).toContain(
+      'admin: the admin service must be pinned when host.TBI_ADMIN_MODE is full',
+    );
+    expect(
+      validate({ ...p, admin: { ...p.admin, TBI_ADMIN_DIR: '/elsewhere' } }, src, TOOLS),
+    ).toContain('host.TBI_OBSERVATIONS_DIR must be admin.TBI_ADMIN_DIR/observations');
+    expect(
+      validate({ ...p, admin: { ...p.admin, TBI_ACCESS_VIEW: '/other/access.json' } }, src, TOOLS),
+    ).toContain('admin.TBI_ACCESS_VIEW must equal host.TBI_ACCESS_VIEW');
+    expect(
+      validate({ ...p, admin: { ...p.admin, TBI_ADMIN_LISTEN: '127.0.0.1:7410' } }, src, TOOLS),
+    ).toContain('admin.TBI_ADMIN_LISTEN must be a unix socket (unix:/...)');
+    expect(validate({ ...p, admin: { ...p.admin, EXTRA: 'x' } }, src, TOOLS)).toContain(
+      'admin: must pin exactly TBI_ADMIN_LISTEN, TBI_ACCESS_VIEW, TBI_ADMIN_DIR, TBI_RUNTIME_HEALTH',
+    );
+    // The admin service exists only with the full administration.
+    const f = loadProfile(FEEDBACK);
+    expect(validate({ ...f, admin: p.admin }, src, TOOLS)).toContain(
+      'admin: the admin service is for host.TBI_ADMIN_MODE full only',
+    );
+  });
+
+  it('release names: rcN or a named variant, nothing else', () => {
+    const src = tree({ 'app/src/a.ts': reads(RC4_SETTINGS) });
+    const p = loadProfile(RC4);
+    for (const ok of ['rc4', 'rc4-s23', 'rc5-a-b'])
+      expect(validate({ ...p, release: ok }, src, TOOLS)).toEqual([]);
+    for (const bad of ['RC4', 'rc4_s23', 'rc4-', 'release', 'rc4-S23', `rc4-${'a'.repeat(70)}`])
+      expect(validate({ ...p, release: bad }, src, TOOLS)).toEqual([`release: bad name ${bad}`]);
+  });
+
+  it('Sprint 23B/23C: the RC4 and rc4-s23 profiles are unchanged and fail closed on this source', () => {
+    // These profiles build older commits (rc4 and rc4-reports the RC4 commit, rc4-s23* the s23 line);
+    // on this tree each fails closed on the switches it does not pin.
+    const pins = [
+      'TBI_ACCESS_VIEW',
+      'TBI_ADMIN_DIR',
+      'TBI_ADMIN_MODE',
+      'TBI_OWNER_PRINCIPAL_FILE',
+      'TBI_OBSERVATIONS_DIR',
+    ].map((k) => `host.${k} must be pinned (a value or null) with the admin switch`);
+    for (const p of [RC4, RC4_REPORTS])
+      expect(validate(loadProfile(p), ROOT, GIT)).toEqual([
+        'unpinned setting VITE_ADMIN_UI (read by app/src/deployment.ts)',
+        'VITE_ADMIN_UI must be pinned to "off", "reports" or "full"',
+        ...pins,
+      ]);
+    const tbiEnv = 'VITE_TBI_ENV must be pinned (null, or "dev" for DEV-Lab)';
+    const tbiUnpinned = expect.stringMatching(/^unpinned setting VITE_TBI_ENV \(read by /);
+    expect(validate(loadProfile(RC4_S23), ROOT, GIT)).toEqual([
+      tbiUnpinned,
+      tbiEnv,
+      'VITE_ADMIN_UI must be pinned to "off", "reports" or "full"',
+      ...pins.slice(2),
+    ]);
+    for (const p of [RC4_S23_FEEDBACK, RC4_S23_ADMIN])
+      expect(validate(loadProfile(p), ROOT, GIT)).toEqual([tbiUnpinned, tbiEnv]);
+  });
+
+  it('Sprint 23C: the app and host admin modes are pinned together; inconsistent combinations are refused', () => {
+    const src = tree({ 'app/src/a.ts': reads([...RC4_SETTINGS, 'VITE_ADMIN_UI']) });
+    const p = loadProfile(FEEDBACK);
+    const v = (vite, host) =>
+      validate({ ...p, vite: { ...p.vite, ...vite }, host: { ...p.host, ...host } }, src, TOOLS);
+    expect(v({}, {})).toEqual([]);
+    // Every value of the app switch is spelled out.
+    for (const bad of [null, '1', '0', 'Reports', 'on'])
+      expect(v({ VITE_ADMIN_UI: bad }, {})).toContain(
+        'VITE_ADMIN_UI must be pinned to "off", "reports" or "full"',
+      );
+    // reports mode: never with the helper's directory or view; needs the owner file and reports.
+    expect(v({}, { TBI_ADMIN_DIR: '/var/lib/tbi-admin' })).toContain(
+      'host.TBI_ADMIN_DIR must be null when host.TBI_ADMIN_MODE is reports',
+    );
+    expect(v({}, { TBI_ACCESS_VIEW: '/var/lib/tbi-admin/view/access.json' })).toContain(
+      'host.TBI_ACCESS_VIEW must be null when host.TBI_ADMIN_MODE is reports (no helper)',
+    );
+    expect(v({}, { TBI_OWNER_PRINCIPAL_FILE: null })).toContain(
+      'host.TBI_OWNER_PRINCIPAL_FILE must be an absolute path when host.TBI_ADMIN_MODE is reports',
+    );
+    expect(v({}, { TBI_OWNER_PRINCIPAL_FILE: 'owner.principal' })).toContain(
+      'host.TBI_OWNER_PRINCIPAL_FILE must be null or an absolute path',
+    );
+    expect(v({ VITE_PROBLEM_REPORTS: '0' }, { TBI_REPORTS_DIR: null })).toContain(
+      'host.TBI_ADMIN_MODE reports needs VITE_PROBLEM_REPORTS "1"',
+    );
+    // The app's mode is the host's mode, both ways.
+    expect(v({ VITE_ADMIN_UI: 'full' }, {})).toContain(
+      'VITE_ADMIN_UI full needs host.TBI_ADMIN_MODE full, not reports',
+    );
+    expect(v({ VITE_ADMIN_UI: 'off' }, {})).toContain(
+      'VITE_ADMIN_UI off needs host.TBI_ADMIN_MODE off, not reports',
+    );
+    expect(v({}, { TBI_ADMIN_MODE: 'full' })).toContain(
+      'VITE_ADMIN_UI reports needs host.TBI_ADMIN_MODE reports, not full',
+    );
+    expect(v({}, { TBI_ADMIN_MODE: null })).toContain(
+      'host.TBI_ADMIN_MODE must be "off", "reports" or "full"',
+    );
+    // Every admin host switch pinned (a value or null), none other.
+    const { TBI_ACCESS_VIEW: _a, ...noView } = p.host;
+    expect(validate({ ...p, host: noView }, src, TOOLS)).toContain(
+      'host.TBI_ACCESS_VIEW must be pinned (a value or null) with the admin switch',
+    );
+    expect(v({}, { TBI_OTHER: '/x' })).toContain(
+      'host: must pin TBI_REPORTS_DIR, and optionally TBI_ACCESS_VIEW, TBI_ADMIN_DIR, TBI_ADMIN_MODE, TBI_OWNER_PRINCIPAL_FILE, TBI_OBSERVATIONS_DIR only',
+    );
+    // off: nothing of the administration on the host.
+    const off = { TBI_ADMIN_MODE: 'off', TBI_OWNER_PRINCIPAL_FILE: null };
+    expect(v({ VITE_ADMIN_UI: 'off' }, off)).toEqual([]);
+    expect(
+      v({ VITE_ADMIN_UI: 'off' }, { ...off, TBI_ADMIN_DIR: '/a', TBI_ACCESS_VIEW: '/v' }),
+    ).toContain('host.TBI_ADMIN_DIR must be null when host.TBI_ADMIN_MODE is off');
+    expect(v({ VITE_ADMIN_UI: 'off' }, { TBI_ADMIN_MODE: 'off' })).toContain(
+      'host.TBI_OWNER_PRINCIPAL_FILE is for host.TBI_ADMIN_MODE reports only',
+    );
+    // full: the access view and the admin directory, no owner file.
+    const full = {
+      TBI_ADMIN_MODE: 'full',
+      TBI_OWNER_PRINCIPAL_FILE: null,
+      TBI_ACCESS_VIEW: '/var/lib/tbi-admin/view/access.json',
+      TBI_ADMIN_DIR: null,
+      TBI_OBSERVATIONS_DIR: '/var/lib/tbi-admin/observations',
+    };
+    expect(v({ VITE_ADMIN_UI: 'full' }, full)).toEqual([
+      'admin: the admin service must be pinned when host.TBI_ADMIN_MODE is full',
+    ]);
+    expect(v({ VITE_ADMIN_UI: 'full' }, { ...full, TBI_OBSERVATIONS_DIR: null })).toContain(
+      'host.TBI_ADMIN_MODE full needs host.TBI_ACCESS_VIEW and host.TBI_OBSERVATIONS_DIR',
+    );
+    expect(v({ VITE_ADMIN_UI: 'full' }, { ...full, TBI_ACCESS_VIEW: null })).toContain(
+      'host.TBI_ADMIN_MODE full needs host.TBI_ACCESS_VIEW and host.TBI_OBSERVATIONS_DIR',
+    );
+    // The host never names the helper's base directory (spool, results) any more.
+    expect(
+      v({ VITE_ADMIN_UI: 'full' }, { ...full, TBI_ADMIN_DIR: '/var/lib/tbi-admin' }),
+    ).toContain('host.TBI_ADMIN_DIR must be null: the spool and results are the admin service’s');
+    // Observations: full mode only.
+    expect(v({}, { TBI_OBSERVATIONS_DIR: '/var/lib/tbi-admin/observations' })).toContain(
+      'host.TBI_OBSERVATIONS_DIR is for host.TBI_ADMIN_MODE full only',
+    );
+    expect(v({ VITE_ADMIN_UI: 'full' }, { ...full, TBI_OWNER_PRINCIPAL_FILE: '/etc/x' })).toContain(
+      'host.TBI_OWNER_PRINCIPAL_FILE is for host.TBI_ADMIN_MODE reports only',
+    );
+  });
+
+  it('a setting the source reads but the profile does not pin is refused', () => {
+    const src = tree({ 'app/src/a.ts': reads([...RC4_SETTINGS, 'VITE_NEW_THING']) });
+    expect(validate(loadProfile(RC4), src, TOOLS)).toEqual([
+      'unpinned setting VITE_NEW_THING (read by app/src/a.ts)',
+    ]);
+  });
+
+  it('a pinned setting the source no longer reads is refused', () => {
+    const src = tree({
+      'app/src/a.ts': reads(RC4_SETTINGS.filter((n) => n !== 'VITE_BUILD_BASE')),
+    });
+    expect(validate(loadProfile(RC4), src, TOOLS)).toEqual([
+      'pinned setting VITE_BUILD_BASE is not read by the source',
+    ]);
+  });
+
+  it('Active Minutes in the source is refused: absent, not merely disabled', () => {
+    const src = tree({
+      'app/src/a.ts': reads([...RC4_SETTINGS, 'VITE_ACTIVITY_ENDPOINT']),
+      'app/src/usage/activity.ts': 'export {};',
+    });
+    const errors = validate(loadProfile(RC4), src, TOOLS);
+    expect(errors).toContain(
+      'excluded setting VITE_ACTIVITY_ENDPOINT is read by the source (app/src/a.ts): the feature must be absent',
+    );
+    expect(errors).toContain('excluded path app/src/usage is present in the source');
+  });
+
+  it('Report a Problem switches must be explicit and agree (app and host)', () => {
+    const src = tree({ 'app/src/a.ts': reads(RC4_SETTINGS) });
+    const p = loadProfile(RC4);
+    expect(
+      validate({ ...p, vite: { ...p.vite, VITE_PROBLEM_REPORTS: null } }, src, TOOLS),
+    ).toContain('VITE_PROBLEM_REPORTS must be pinned to "0" or "1"');
+    expect(validate({ ...p, host: { TBI_REPORTS_DIR: '/var/lib/x' } }, src, TOOLS)).toContain(
+      'host.TBI_REPORTS_DIR must be null when the app switch is off',
+    );
+    expect(
+      validate({ ...p, vite: { ...p.vite, VITE_PROBLEM_REPORTS: '1' } }, src, TOOLS),
+    ).toContain('host.TBI_REPORTS_DIR must be an absolute path when the app switch is on');
+  });
+
+  it('unpinned tools, an empty string, the feedback form and a non-dev-lab build are refused', () => {
+    const src = tree({ 'app/src/a.ts': reads(RC4_SETTINGS) });
+    const p = loadProfile(RC4);
+    expect(validate(p, src, { ...TOOLS, node: 'v22.0.0' })).toEqual([
+      'node: pinned v24.21.0, running v22.0.0',
+    ]);
+    expect(validate({ ...p, vite: { ...p.vite, VITE_PREVIEW_NAME: '' } }, src, TOOLS)).toEqual([
+      'VITE_PREVIEW_NAME: use null for "unset" (an empty string can override a code default)',
+    ]);
+    expect(
+      validate(
+        { ...p, vite: { ...p.vite, VITE_FEEDBACK_URL: 'https://forms.example/x' } },
+        src,
+        TOOLS,
+      ),
+    ).toEqual([
+      'VITE_FEEDBACK_URL must stay null (external form needs owner approval, Sprint 13 H7)',
+    ]);
+    expect(validate({ ...p, build: { ...p.build, TBI_BUILD_ENV: 'alpha' } }, src, TOOLS)).toEqual([
+      'build.TBI_BUILD_ENV: the deployed build verifier expects dev-lab, not alpha',
+    ]);
+  });
+
+  it('a tracked .env file, or a tree whose tracked files cannot be listed, is refused (review)', () => {
+    const src = tree({ 'app/src/a.ts': reads(RC4_SETTINGS) });
+    const p = loadProfile(RC4);
+    expect(validate(p, src, { ...TOOLS, trackedFiles: () => ['app/.env.production'] })).toEqual([
+      'tracked env file app/.env.production would add build settings',
+    ]);
+    expect(validate(p, src, { ...TOOLS, trackedFiles: () => ['app/.env.example'] })).toEqual([]);
+    // Not a git tree (or git missing / refusing it): fails closed instead of assuming "no files".
+    const errors = validate(p, src, GIT);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatch(/^cannot list the tracked files of /);
+  });
+
+  it('the build environment is the profile and the identity only; null settings are absent', () => {
+    const env = buildEnvironment(loadProfile(RC4), {
+      commit: 'a'.repeat(40),
+      time: '2026-10-18T12:00:00Z',
+      path: '/usr/bin',
+      home: '/home/x',
+      npmrcDir: '/out/p.npmrc',
+    });
+    expect(env).toEqual({
+      PATH: '/usr/bin',
+      HOME: '/home/x',
+      NPM_CONFIG_USERCONFIG: '/out/p.npmrc/user.npmrc',
+      NPM_CONFIG_GLOBALCONFIG: '/out/p.npmrc/global.npmrc',
+      LC_ALL: 'C',
+      TZ: 'UTC',
+      TBI_BUILD_COMMIT: 'a'.repeat(40),
+      TBI_BUILD_ENV: 'dev-lab',
+      TBI_BUILD_TIME: '2026-10-18T12:00:00Z',
+      VITE_BUILD_BASE: '/build',
+      VITE_PROBLEM_REPORTS: '0',
+      VITE_RUNTIME_BASE: '/runtime',
+      VITE_SIGN_OUT_URL: '/oauth2/sign_out',
+    });
+    expect(() =>
+      buildEnvironment(loadProfile(RC4), { commit: 'abc', time: 'now', path: '', home: '' }),
+    ).toThrow(/40 hex/);
+  });
+});
+
+/** A minimal branded entry HTML + manifest + icons (PNG headers only: checkBranding reads IHDR). */
+function branding(dev, { sizes = {} } = {}) {
+  const png = (wh) => {
+    const b = Buffer.alloc(24);
+    b.write('IHDR', 12, 'latin1');
+    b.writeUInt32BE(wh, 16);
+    b.writeUInt32BE(wh, 20);
+    return b;
+  };
+  const icon = (name, wh) => [`assets/${name}-0123abcd.png`, png(sizes[name] ?? wh)];
+  const files = Object.fromEntries([
+    icon('favicon-16', 16),
+    icon('favicon-32', 32),
+    icon('apple-touch-icon-180', 180),
+    icon('icon-192', 192),
+    icon('icon-512', 512),
+    icon('maskable-192', 192),
+    icon('maskable-512', 512),
+  ]);
+  const name = dev ? 'TBI Lab DEV' : 'TBI Lab';
+  files['assets/manifest-0123abcd.json'] = JSON.stringify({
+    name,
+    short_name: name,
+    icons: [192, 512].flatMap((n) =>
+      ['icon', 'maskable'].map((k) => ({
+        src: `/assets/${k}-${n}-0123abcd.png`,
+        sizes: `${n}x${n}`,
+        purpose: k === 'icon' ? 'any' : 'maskable',
+      })),
+    ),
+  });
+  files['index.html'] = `<html ${dev ? 'data-tbi-env="dev" ' : ''}lang="en"><head>
+<title>${dev ? '[DEV] ' : ''}TBI Lab</title>
+<link rel="icon" type="image/png" sizes="16x16" href="/assets/favicon-16-0123abcd.png">
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32-0123abcd.png">
+<link rel="apple-touch-icon" sizes="180x180" href="/assets/apple-touch-icon-180-0123abcd.png">
+<link rel="manifest" href="/assets/manifest-0123abcd.json" crossorigin="use-credentials">
+</head></html>`;
+  return files;
+}
+
+describe('built frontend branding vs profile', () => {
+  it('production profiles: icons, manifest and no DEV marker; DEV-Lab: every DEV marker', () => {
+    expect(checkBranding(loadProfile(RC4), tree(branding(false)))).toEqual([]);
+    expect(checkBranding(loadProfile(RC4_REPORTS), tree(branding(false)))).toEqual([]);
+    expect(checkBranding(loadProfile(DEV_LAB), tree(branding(true)))).toEqual([]);
+  });
+
+  it('refuses DEV branding in a production package, and a DEV package without it', () => {
+    expect(checkBranding(loadProfile(RC4), tree(branding(true)))).toEqual([
+      'production branding expected, but the build has the [DEV] title',
+      'production branding expected, but the build has data-tbi-env="dev"',
+      'production branding expected, but the build has DEV in the manifest names',
+    ]);
+    expect(checkBranding(loadProfile(DEV_LAB), tree(branding(false)))).toEqual([
+      'DEV profile, but the build lacks the [DEV] title',
+      'DEV profile, but the build lacks data-tbi-env="dev"',
+      'DEV profile, but the build lacks DEV in the manifest names',
+    ]);
+  });
+
+  it('refuses an icon whose pixels do not match its declared size, or a missing manifest icon', () => {
+    expect(
+      checkBranding(loadProfile(RC4), tree(branding(false, { sizes: { 'icon-512': 256 } }))),
+    ).toEqual(['manifest any /assets/icon-512-0123abcd.png: declared 512x512, is 256x256']);
+    const files = branding(false);
+    delete files['assets/maskable-192-0123abcd.png'];
+    expect(checkBranding(loadProfile(RC4), tree(files))).toEqual([
+      'manifest maskable /assets/maskable-192-0123abcd.png: missing (or not a content-hashed asset)',
+    ]);
+  });
+});
+
+describe('built frontend vs profile', () => {
+  const sw = (v) =>
+    `function gt(e){return typeof e==\`string\`&&e.trim()===\`1\`}var _t=gt(${v}),x=\`/build\`,y=\`/runtime\`,z=\`/oauth2/sign_out\`;`;
+  const dist = (js, sources = ['../../src/main.tsx']) =>
+    tree({
+      ...branding(false),
+      'assets/index-x.js': js,
+      'assets/index-x.js.map': JSON.stringify({ version: 3, sources, mappings: '' }),
+    });
+
+  it('accepts a build that matches its profile', () => {
+    expect(checkDist(loadProfile(RC4), dist(sw('`0`'))).errors).toEqual([]);
+    expect(checkDist(loadProfile(RC4_REPORTS), dist(sw('`1`'))).errors).toEqual([]);
+  });
+
+  it('refuses a switch compiled differently from the profile, or one it cannot locate', () => {
+    expect(checkDist(loadProfile(RC4), dist(sw('`1`'))).errors).toEqual([
+      'Report a Problem switch compiled as `1`, profile pins `0`',
+    ]);
+    expect(checkDist(loadProfile(RC4), dist(sw('void 0'))).errors).toEqual([
+      'Report a Problem switch compiled as void 0, profile pins `0`',
+    ]);
+    expect(
+      checkDist(loadProfile(RC4), dist('x=`/build`,y=`/runtime`,z=`/oauth2/sign_out`')).errors,
+    ).toEqual(['Report a Problem switch: found 0 compiled switches, expected 1']);
+  });
+
+  it('refuses a source map carrying a bundler asset placeholder (G2, nondeterministic order)', () => {
+    const d = tree({
+      ...branding(false),
+      'assets/index-x.js': sw('`0`'),
+      'assets/index-x.js.map': JSON.stringify({
+        version: 3,
+        sources: ['../../src/assets/brand/logo.png'],
+        sourcesContent: ['export default import.meta.ROLLDOWN_FILE_URL_WPGYjwIlzWVNM1bYhOc83w'],
+        mappings: '',
+      }),
+    });
+    expect(checkDist(loadProfile(RC4), d).errors).toEqual([
+      'index-x.js.map: carries a bundler asset placeholder (nondeterministic)',
+    ]);
+  });
+
+  it('Sprint 23C: the administration switch is located exactly once and must be the pinned value', () => {
+    const admin = (v, name = 'Xt') =>
+      `function ${name}(e){let t=typeof e==\`string\`?e.trim():\`\`;return t===\`full\`?\`full\`:t===\`reports\`?\`reports\`:\`off\`}var Zt=${name}(${v});`;
+    const p = loadProfile(RC4_S23_FEEDBACK);
+    expect(checkDist(p, dist(sw('`1`') + admin('`reports`'))).errors).toEqual([]);
+    expect(checkDist(p, dist(sw('`1`') + admin('`full`'))).errors).toEqual([
+      'administration switch compiled as `full`, profile pins `reports`',
+    ]);
+    expect(checkDist(p, dist(sw('`1`') + admin('void 0'))).errors).toEqual([
+      'administration switch compiled as void 0, profile pins `reports`',
+    ]);
+    expect(checkDist(p, dist(sw('`1`'))).errors).toEqual([
+      'administration switch: found 0 compiled switches, expected 1',
+    ]);
+    expect(
+      checkDist(p, dist(sw('`1`') + admin('`reports`') + admin('`full`', 'Yt'))).errors,
+    ).toEqual(['administration switch: found 2 compiled switches, expected 1']);
+    // Neither switch is taken for the other.
+    const only = checkDist(p, dist(admin('`reports`'))).errors;
+    expect(only).toContain('Report a Problem switch: found 0 compiled switches, expected 1');
+    expect(only.filter((e) => e.startsWith('administration'))).toEqual([]);
+  });
+
+  it('refuses Active Minutes modules, excluded settings and uncompiled settings in the bundle', () => {
+    const errors = checkDist(
+      loadProfile(RC4),
+      dist(`${sw('`0`')}import.meta.env.VITE_ACTIVITY_ENDPOINT`, ['../../src/usage/activity.ts']),
+    ).errors;
+    expect(errors).toContain(
+      'index-x.js.map: bundles ../../src/usage/activity.ts (excluded: app/src/usage)',
+    );
+    expect(errors).toContain('bundle names excluded setting VITE_ACTIVITY_ENDPOINT');
+    expect(errors).toContain('VITE_ACTIVITY_ENDPOINT was not compiled to a value');
+  });
+});
+
+describe('Sprint 27: the Circuit Debugger only in DEV-Lab builds', () => {
+  const map = (sources) => JSON.stringify({ version: 3, sources, mappings: '' });
+  const panel = {
+    'assets/index-x.js': 'x',
+    'assets/index-x.js.map': map(['../../src/ui/App.tsx']),
+    'assets/AssistPanel-x.js': 'data-testid:`assist-open`',
+    'assets/AssistPanel-x.js.map': map([
+      '../../../packages/assist/src/context.ts',
+      '../../src/assist/AssistPanel.tsx',
+    ]),
+  };
+  const clean = {
+    'assets/index-x.js': 'x',
+    'assets/index-x.js.map': map(['../../src/ui/App.tsx']),
+  };
+
+  it('a production build with any of its modules, a chunk or the button is refused', () => {
+    for (const p of [RC4, RC4_REPORTS]) {
+      expect(checkAssist(loadProfile(p), tree(clean))).toEqual([]);
+      expect(checkAssist(loadProfile(p), tree(panel))).toEqual([
+        'Circuit Debugger module in a non-DEV build: AssistPanel-x.js.map: ../../../packages/assist/src/context.ts',
+        'Circuit Debugger module in a non-DEV build: AssistPanel-x.js.map: ../../src/assist/AssistPanel.tsx',
+        'Circuit Debugger chunk in a non-DEV build: AssistPanel-x.js',
+        'Circuit Debugger button in a non-DEV build',
+      ]);
+      // An unreferenced module left in the main bundle is refused too.
+      expect(
+        checkAssist(
+          loadProfile(p),
+          tree({ ...clean, 'assets/index-x.js.map': map(['../../src/assist/open.ts']) }),
+        ),
+      ).toEqual([
+        'Circuit Debugger module in a non-DEV build: index-x.js.map: ../../src/assist/open.ts',
+      ]);
+    }
+  });
+
+  it('Sprint 28: no build of any profile carries an AI provider client, endpoint or key header', () => {
+    for (const p of [RC4, DEV_LAB]) {
+      const base = p === DEV_LAB ? panel : clean;
+      for (const [code, what] of [
+        ['fetch("https://api.anthropic.com/v1/messages")', 'an AI provider endpoint'],
+        ['headers:{"anthropic-version":"2023-06-01"}', 'an AI provider SDK'],
+        ['h["x-api-key"]=k', 'an AI provider SDK'],
+      ])
+        expect(checkAssist(loadProfile(p), tree({ ...base, 'assets/index-x.js': code }))).toContain(
+          `index-x.js: carries ${what} (provider calls are server-side only)`,
+        );
+    }
+  });
+
+  it('the DEV-Lab build carries the panel chunk and the button', () => {
+    expect(checkAssist(loadProfile(DEV_LAB), tree(panel))).toEqual([]);
+    expect(checkAssist(loadProfile(DEV_LAB), tree(clean))).toEqual([
+      'DEV build without the Circuit Debugger panel chunk',
+      'DEV build without the Circuit Debugger button',
+    ]);
+  });
+});

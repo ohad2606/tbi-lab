@@ -87,11 +87,16 @@ describe('laboratory supplies in parallel', () => {
 
   it('supplies in series and supplies joined through a resistor are not direct parallels', () => {
     expect(ok(solve(bench('series'))).components.R1!.voltage).toBeCloseTo(8, 9);
-    const r = ok(solve(bench('via-resistor', { v2: 3 })));
-    expect(r.components.R1!.voltage).toBeCloseTo(5, 9); // PSU1 holds the node
-    // PSU2 sits at its own 3 V behind 100 ohm: a unique solution (it sinks (3 - 5) / 100 A).
-    expect(r.components.PSU2!.voltage).toBeCloseTo(3, 9);
-    expect(r.components.PSU2!.current).toBeCloseTo(-0.02, 9);
+    // PSU2 sits at its own 3 V behind 100 ohm: it would have to SINK (5 − 3) / 100 = 20 mA. Sprint
+    // 22 review 3: the bench-supply model cannot sink (devices.ts) — refused by name.
+    expect(solve(bench('via-resistor', { v2: 3 }))).toMatchObject({
+      ok: false,
+      error: {
+        code: 'psu_sinking',
+        components: ['PSU2'],
+        detail: { value: expect.closeTo(0.02, 9) },
+      },
+    });
   });
 
   it('a paralleled supply whose output is off is high impedance, not a parallel source', () => {

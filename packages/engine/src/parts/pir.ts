@@ -3,8 +3,8 @@
  * motion is in front of the sensor (`motion`, a live boolean parameter); the module's electrical
  * behaviour follows its published schematic:
  *
- * - Supply: VCC to GND, operating 4.5-20 V. Below 4.5 V the module is unpowered (output low, no
- *   quiescent current). Powered, it draws its quiescent current (< 50 uA; the model uses 50 uA, the
+ * - Supply: VCC to GND, operating 4.5-20 V. Below 4.5 V the module is unpowered: no quiescent
+ *   current and NO output drive (nothing attached to OUT; review round 3). Powered, it draws its quiescent current (< 50 uA; the model uses 50 uA, the
  *   stated bound) plus whatever its output delivers (the 7133 regulator feeds the BISS0001).
  * - Output: the BISS0001 output (3.3 V high / 0 V low) through R14 = 1 kOhm to the OUT pin. High
  *   while motion is detected; the output current comes from VCC (RegulatedOutput), low sinks to GND.
@@ -21,7 +21,15 @@
  */
 import { Resistor, VoltageSource } from '../devices.js';
 import { ConstantSink, RegulatedOutput } from '../sources.js';
-import { registerPart, validateCard, type PartModel, type PartState } from '../parts.js';
+import {
+  registerPart,
+  supplyAcross,
+  supplyLimits,
+  supplyOutsideModel,
+  validateCard,
+  type PartModel,
+  type PartState,
+} from '../parts.js';
 
 export const HC_SR501 = {
   minSupplyV: 4.5,
@@ -47,7 +55,11 @@ export const PIR: PartModel = {
     const vcc = ctx.node('vcc');
     const out = ctx.node('out');
     const drv = `${id}#drv`;
-    const high = powered(state) && ctx.value('motion') === true;
+    // Review round 3 (A2): unpowered (V_CC below the 4.5 V minimum, or a pin open) the module's
+    // output stage has no supply: nothing is attached to OUT (as for the HC-SR04 and DHT22). It
+    // was an ideal 0 V source behind R14, which made an input on OUT a valid LOW.
+    if (!powered(state)) return [];
+    const high = ctx.value('motion') === true;
     const els: ReturnType<PartModel['elements']> = [
       {
         kind: 'device',
@@ -69,13 +81,12 @@ export const PIR: PartModel = {
             make: () => new VoltageSource(`${id}/drv`, drv, gnd, 0),
           },
     ];
-    if (powered(state))
-      els.push({
-        kind: 'device',
-        key: `${id}/iq`,
-        nodes: [vcc, gnd],
-        make: () => new ConstantSink(`${id}/iq`, vcc, gnd, HC_SR501.quiescentA),
-      });
+    els.push({
+      kind: 'device',
+      key: `${id}/iq`,
+      nodes: [vcc, gnd],
+      make: () => new ConstantSink(`${id}/iq`, vcc, gnd, HC_SR501.quiescentA),
+    });
     return els;
   },
   nextState: (_ctx, _state, sol) => {
@@ -92,7 +103,7 @@ export const PIR: PartModel = {
     };
     const on = powered(state);
     const high = on && ctx.value('motion') === true;
-    const out = sol.deviceCurrent(`${id}/r14`); // into the OUT pin's load
+    const out = on ? sol.deviceCurrent(`${id}/r14`) : 0; // into the OUT pin's load
     const supply = on ? HC_SR501.quiescentA + (high ? sol.deviceCurrent(`${id}/drv`) : 0) : 0;
     return {
       current: null,
@@ -100,15 +111,15 @@ export const PIR: PartModel = {
       terminals,
       currents: { supply, output: out },
       state: { powered: on, output: high ? 'high' : 'low' },
+      outsideModelRange: supplyOutsideModel(supplyAcross(terminals, 'vcc'), {
+        minV: HC_SR501.minSupplyV,
+        maxV: HC_SR501.maxSupplyV,
+      }),
     };
   },
-  ratings: (_p, r) => {
-    const v = r.terminals.vcc;
-    const g = r.terminals.gnd;
-    return v != null && g != null && v - g > HC_SR501.maxSupplyV
-      ? [{ code: 'voltage', value: v - g, limit: HC_SR501.maxSupplyV, channel: 'supply' }]
-      : [];
-  },
+  // Sprint 13 H2: 4.5-20 V is the specified operating range; no absolute maximum is published.
+  ratings: (_p, r) =>
+    supplyLimits(supplyAcross(r.terminals, 'vcc'), { maxOperatingV: HC_SR501.maxSupplyV }),
 };
 
 registerPart('sensor.pir_hc_sr501', PIR);

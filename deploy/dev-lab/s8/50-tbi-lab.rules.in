@@ -1,15 +1,16 @@
 // Sprint 8 (D-S8-6/7), rendered by install.sh. The build service and the Session Host may start,
 // stop, signal and clear ONLY instances of their fixed sandbox templates — never define a unit,
-// never touch any other unit.
+// never touch any other unit. Sprint 19B (O2): each instance has its own users (@U@*), so an
+// instance's services can act only on their own instance's templates.
 polkit.addRule(function (action, subject) {
   if (action.id !== "org.freedesktop.systemd1.manage-units") return polkit.Result.NOT_HANDLED;
   var unit = action.lookup("unit");
   var verb = action.lookup("verb");
   var allowed = ["start", "stop", "kill", "reset-failed"];
   if (!unit || allowed.indexOf(verb) < 0) return polkit.Result.NOT_HANDLED;
-  if (subject.user === "tbi-build" && /^@NRE@-build-job@job-[A-Za-z0-9]{6}\.service$/.test(unit))
+  if (subject.user === "@U@build" && /^@NRE@-build-job@job-[A-Za-z0-9]{6}\.service$/.test(unit))
     return polkit.Result.YES;
-  if (subject.user === "tbi-runtime" && /^@NRE@-qemu@[0-9a-f]{32}\.service$/.test(unit))
+  if (subject.user === "@U@runtime" && /^@NRE@-qemu@[0-9a-f]{32}\.service$/.test(unit))
     return polkit.Result.YES;
   return polkit.Result.NOT_HANDLED;
 });

@@ -1,0 +1,7 @@
+journal: secret-shaped marker values=0 | kept: KEEPJSON=1 KEEPPAGE=1 KEEPUA=5 
+syslog: secret-shaped marker values=0 | kept: KEEPJSON=1 KEEPPAGE=1 KEEPUA=5 
+journal oauth2-proxy lines since: 6; with marker: 2
+  operational error kept (state parse): 1
+  request dumps stored: 0  callback queries stored: 0
+caddy callback audit lines: 3  statuses:  2 "status":403  1 "status":500 
+caddy lines with Cookie/Authorization header keys: 0

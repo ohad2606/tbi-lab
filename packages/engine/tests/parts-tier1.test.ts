@@ -173,8 +173,13 @@ describe('photoresistor (Senba GL5528) and its simulated light', () => {
     expect(ok(s.solve()).components[l]!.outsideModelRange).toBe(true);
     // Only declared live parameters are accepted; a non-positive light level is refused.
     expect(s.applyControl(l, { params: { model: 'x' } }, 4)?.code).toBe('unsupported_component');
-    s.applyControl(l, { params: { illuminance: 0 } }, 5);
-    expect((s.solve() as { error?: { code: string } }).error?.code).toBe('invalid_parameter');
+    // Sprint 11: refused when the mirror applies (the domain's live-control range, 1-10 000 lx),
+    // so an invalid value never reaches the circuit; the previous light level stays in effect.
+    expect(s.applyControl(l, { params: { illuminance: 0 } }, 5)).toMatchObject({
+      code: 'invalid_parameter',
+      param: 'illuminance',
+    });
+    expect(ok(s.solve()).components[l]!.outsideModelRange).toBe(true);
     expect(GL5528.validLux).toEqual([1, 100]);
   });
 });

@@ -8,6 +8,7 @@
  * Persistence is checked in the real IndexedDB with polled predicates, never with sleeps.
  */
 import { expect, test, type Page } from '@playwright/test';
+import { SCHEMA_VERSION } from '@tbi-lab/domain';
 import { drawLoop, link, run, setValue } from './circuits.js';
 import {
   component,
@@ -289,7 +290,7 @@ test('4. a new supply has its output on: the first Run of a simple circuit needs
   await link(page, ['R1', 'b'], ['GND1', 'ref']);
   await link(page, ['PSU1', 'negative'], ['GND1', 'ref']);
   const doc = await waitForStoredProject(page, (d) => d.layout.wires.length === 3, 'loop drawn');
-  expect(doc.schemaVersion).toBe(3);
+  expect(doc.schemaVersion).toBe(SCHEMA_VERSION);
   expect(doc.components[0]!.params.outputEnabled).toBe(true);
   await run(page);
   await expect(page.getByTestId('sim-status')).toHaveAttribute('data-status', 'running');
@@ -301,15 +302,15 @@ test('4. a new supply has its output on: the first Run of a simple circuit needs
   await expect(page.getByTestId('param-PSU2-outputEnabled')).toBeChecked();
 });
 
-test('5. Projects screen: the elongated TBI logo, transparent and prominent, in both locales', async ({
+test('5. Projects screen: the full TBI Lab logo, transparent and prominent, in both locales', async ({
   page,
 }) => {
   await createProject(page, 'Brand');
   await goLibrary(page);
   const logo = page.locator('.brand-hero-logo');
   for (const [locale, alt, title] of [
-    ['en', /^TBI: Think/, 'Projects'],
-    ['he', /^TBI: חושבים/, 'פרויקטים'],
+    ['en', /^TBI Lab: Think/, 'Projects'],
+    ['he', /^TBI Lab: חושבים/, 'פרויקטים'],
   ] as const) {
     await setLocale(page, locale);
     await expect(logo).toBeVisible();
@@ -332,8 +333,8 @@ test('5. Projects screen: the elongated TBI logo, transparent and prominent, in 
         cornerAlpha: corner,
       };
     });
-    expect(info.src).toMatch(/tbi-logo/);
-    expect(info.natural).toEqual([533, 300]);
+    expect(info.src).toMatch(/tbi-lab-logo/);
+    expect(info.natural).toEqual([520, 300]);
     expect(info.height).toBe(150); // was 100 px before this pass
     expect(info.width).toBeGreaterThan(info.height * 1.6); // the elongated logo, not the round mark
     expect(info.cornerAlpha).toBe(0); // real transparency over the navy band

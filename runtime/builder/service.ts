@@ -8,10 +8,10 @@
  * reference images); an identical private source of another user is compiled again (the bytes
  * are still stored once). A lease issues a run ticket for the Session Host.
  */
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { mkdtemp, readdir, readFile, rm, lstat } from 'node:fs/promises';
 import { join } from 'node:path';
-import { sourceKey } from '@tbi-lab/domain';
+import { checkRequestFiles, requestKey, requestLibraries } from './libraries.js';
 import {
   RequestError,
   type BuildRequest,
@@ -20,8 +20,10 @@ import {
   type BuildStatus,
 } from './protocol.js';
 import type { Principal } from '../identity/principal.js';
+import { isAuthorized, type AccessView, type EmailTag } from '../identity/access.js';
 import { signTicket, type TicketFeatures } from '../identity/ticket.js';
-import { GLOBAL, type Grants, type Owner } from './grants.js';
+import { GLOBAL, type Grants, type Owner, type StoredBuild } from './grants.js';
+import { FEATURES_ANALYZER } from './features.js';
 import type { BuildProvider, ProviderOutput } from './provider.js';
 import type { ArtifactStore } from './store.js';
 import type { Policy } from '../policy/policy.js';
@@ -50,6 +52,9 @@ export interface ServiceAccess {
    */
   liveSessions?: () => number | null;
 }
+
+/** The service itself, as the submitter of its prewarm builds (never a signed-in user). */
+export const PREWARM = 'p_service-prewarm' as Principal;
 
 export interface ServiceLimits {
   /** Builds waiting behind the active one (D-S7-8: 3). */
@@ -82,6 +87,11 @@ interface BuildRecord {
   owner: Owner;
   /** Who asked for it: their quota and limits apply (also for a shared system source). */
   submitter: Principal;
+  /** Sprint 23B: the email tag of the submitter's gate identity (revocation matches on it). */
+  emailTag: string | null;
+  /** Sprint 23B: stops the compile of a running build (revocation). */
+  cancel?: () => void;
+  revoked?: boolean;
   request: BuildRequest;
   provider: BuildProvider;
   state: BuildState;
@@ -94,7 +104,8 @@ export class BuildService {
   private readonly providers = new Map<string, BuildProvider>();
   private readonly records = new Map<string, BuildRecord>();
   private readonly queue: BuildRecord[] = [];
-  private active: BuildRecord | null = null;
+  /** Builds compiling now (at most the policy's `maxActiveBuilds`). */
+  private readonly active = new Set<BuildRecord>();
   private readonly idle = new Set<() => void>();
 
   constructor(
@@ -125,17 +136,20 @@ export class BuildService {
   submit(
     request: BuildRequest,
     principal: Principal,
+    emailTag: string | null = null,
   ): { cached: BuildResult } | { buildId: string; token: string } {
     const provider = this.providers.get(request.profile);
     if (!provider) throw new RequestError(400, 'unknown_profile');
-    const key = sourceKey(request.profile, request.files);
+    // Sprint 13 security audit (#4): refuse an over-size source BEFORE it is held in a build
+    // record (records live up to a day; the provider's own check came after the record).
+    // Sprint 26: the whole file set (names, paths, per-file and project limits) and libraries.
+    checkRequestFiles(request);
+    const key = requestKey(request);
     const hit = this.cachedResult(principal, key);
     if (hit) return { cached: hit };
     const owner: Owner = this.access.systemKeys.has(key) ? GLOBAL : principal;
     // Only the same owner's pending build is shared: joining someone else's would reveal it.
-    const pending = [...this.queue, ...(this.active ? [this.active] : [])].find(
-      (r) => r.key === key && r.owner === owner,
-    );
+    const pending = [...this.queue, ...this.active].find((r) => r.key === key && r.owner === owner);
     if (pending) return { buildId: pending.id, token: pending.token };
     this.admit(principal);
     this.prune();
@@ -145,6 +159,7 @@ export class BuildService {
       key,
       owner,
       submitter: principal,
+      emailTag,
       request,
       provider,
       state: 'queued',
@@ -153,7 +168,7 @@ export class BuildService {
     this.records.set(record.id, record);
     this.queue.push(record);
     admissionEvent('build', 'submit', 'admitted', principal);
-    void this.pump();
+    this.pump();
     return { buildId: record.id, token: record.token };
   }
 
@@ -166,7 +181,7 @@ export class BuildService {
     const plan = this.access.policy.plan(principal);
     const g = this.access.policy.config.global;
     const mine = (r: BuildRecord | null) => r?.submitter === principal;
-    const inFlight = this.queue.filter(mine).length + (mine(this.active) ? 1 : 0);
+    const inFlight = this.queue.filter(mine).length + [...this.active].filter(mine).length;
     if (inFlight >= plan.build.maxActive + plan.build.maxQueued) throw new Refusal('build_quota');
     const failures = this.access.rates.check(principal, 'build-failure', plan.build.failures);
     if (!failures.ok) {
@@ -235,7 +250,13 @@ export class BuildService {
    */
   status(id: string, token: string, principal: Principal): BuildStatus | null {
     const r = this.records.get(id);
-    if (!r || r.token !== token || (r.owner !== principal && r.owner !== GLOBAL)) return null;
+    // Constant-time token comparison (Sprint 13 audit #9; hashes give equal lengths).
+    const same = (a: string, b: string) =>
+      timingSafeEqual(
+        createHash('sha256').update(a).digest(),
+        createHash('sha256').update(b).digest(),
+      );
+    if (!r || !same(r.token, token) || (r.owner !== principal && r.owner !== GLOBAL)) return null;
     const position = r.state === 'queued' ? this.queue.indexOf(r) : undefined;
     return {
       buildId: r.id,
@@ -263,13 +284,20 @@ export class BuildService {
       return null;
     }
     if (!reference) this.access.grants.touchFor(principal, sha);
-    const f = reference ? null : this.access.grants.features(principal, sha);
+    // Sprint 25: the features of the current analysis of this image, when one exists (an older
+    // record may lack what the runtime now needs, e.g. inputReads). With none current, the first
+    // record's: this fails closed (no inputReads watches every pin; a `requires` the runtime does
+    // not announce is refused at the handshake), and the next Build writes a current one.
+    const builds = reference ? [] : this.access.grants.buildsOf(principal, sha);
+    const f = (builds.find((b) => this.isCurrent(b)) ?? builds[0])?.features ?? null;
     const features: TicketFeatures | null = f
       ? {
           internalPull: f.internalPull,
           gpioInterrupt: f.gpioInterrupt,
           restart: f.restart,
           unsupported: f.unsupported,
+          ...(f.requires?.length ? { requires: f.requires } : {}),
+          ...(f.inputReads ? { inputReads: f.inputReads } : {}),
         }
       : null;
     const ticket = signTicket(this.access.ticketKey, {
@@ -305,21 +333,101 @@ export class BuildService {
     return artifact;
   }
 
+  /**
+   * Sprint 18F: build the curated system sources that have no current shared build (after a
+   * deploy, a toolchain or analyser change), one at a time and only while nobody else is
+   * building or queued, so the first user to open an example gets a cache hit. The first one
+   * also leaves the core seed. Shared builds follow the usual start rules (live sessions defer
+   * them); a user's build of the same source joins the pending one. Returns what it built.
+   */
+  async prewarm(
+    sources: readonly BuildRequest[],
+    opts: { pollMs?: number; stopped?: () => boolean } = {},
+  ): Promise<number> {
+    let built = 0;
+    // At most one rebuild for a missing seed per run (a harvest that keeps failing costs one).
+    let seedTried = false;
+    for (const request of sources) {
+      if (opts.stopped?.()) break;
+      const provider = this.providers.get(request.profile);
+      if (!provider) continue;
+      const key = requestKey(request);
+      if (!this.access.systemKeys.has(key)) continue;
+      // Built again although shared and current when the provider has no seed (lost, or a new
+      // seed format): a curated build is the only thing that leaves one.
+      const seedless =
+        !seedTried &&
+        !!provider.hasCoreSeed &&
+        !(await provider.hasCoreSeed(join(this.workRoot, 'job-000000')).catch(() => true));
+      if (!seedless && this.cachedResult(GLOBAL, key)) continue;
+      // Wait for an idle service: users first.
+      while (this.queue.length || this.active.size) {
+        if (opts.stopped?.()) return built;
+        await new Promise((r) => setTimeout(r, opts.pollMs ?? 1000));
+      }
+      if (!seedless && this.cachedResult(GLOBAL, key)) continue;
+      if (seedless) seedTried = true;
+      const record: BuildRecord = {
+        id: `b_${randomBytes(12).toString('hex')}`,
+        token: randomBytes(24).toString('base64url'),
+        key,
+        owner: GLOBAL,
+        submitter: PREWARM,
+        emailTag: null,
+        request,
+        provider,
+        state: 'queued',
+        submittedAt: Date.now(),
+      };
+      this.records.set(record.id, record);
+      this.queue.push(record);
+      this.pump();
+      await new Promise<void>((resolve) => {
+        const check = () =>
+          record.finishedAt !== undefined ? resolve() : setTimeout(check, opts.pollMs ?? 1000);
+        check();
+      });
+      if (record.result?.ok) built++;
+    }
+    return built;
+  }
+
   /** Resolves when no build is active or queued (tests, shutdown). */
   whenIdle(): Promise<void> {
-    if (!this.active && this.queue.length === 0) return Promise.resolve();
+    if (this.active.size === 0 && this.queue.length === 0) return Promise.resolve();
     return new Promise((resolve) => this.idle.add(resolve));
   }
 
-  private cachedResult(principal: Principal, key: string): BuildResult | null {
-    const found = this.access.grants.findBuild(principal, key);
+  /**
+   * A record of the current rules: analysed by the current rule set, with the inputs the profile
+   * now has (Sprint 24: MicroPython's compile check, its analysis version, the runtime's
+   * capabilities). Anything else is built again (same image, an up-to-date feature report).
+   */
+  private isCurrent(b: StoredBuild): boolean {
+    if ((b.analyzer ?? 1) < FEATURES_ANALYZER) return false;
+    const provider = this.providers.get(b.profile);
+    if (!provider) return true;
+    if (b.profileHash !== provider.profileHash) return false;
+    // Sprint 25 closure: analysed for this runtime's capabilities (a record from before the field,
+    // or for another runtime, is built again: its `requires` belongs to that runtime).
+    const caps = provider.analysisCapabilities;
+    return !caps || b.capabilities?.join(',') === caps.join(',');
+  }
+
+  private cachedResult(principal: Owner, key: string): BuildResult | null {
+    // Sprint 25: the first CURRENT record (own, then shared): an older own record must not hide
+    // a current shared one (a system build is rebuilt under 'global').
+    const hit = this.access.grants.findBuilds(principal, key).find((r) => this.isCurrent(r.build));
+    const found = hit?.build;
     if (!found?.artifact) return null;
+    this.access.grants.touch(hit!.owner, found.artifact.sha256);
     if (!this.store.exists(found.artifact.sha256)) {
       this.access.grants.dropArtifact(found.artifact.sha256);
       return null;
     }
     this.store.used(found.artifact.sha256);
-    return { ...found, timings: { queuedMs: 0, buildMs: 0 } };
+    const { analyzer: _analyzer, capabilities: _capabilities, ...result } = found;
+    return { ...result, timings: { queuedMs: 0, buildMs: 0 } };
   }
 
   private prune() {
@@ -347,8 +455,7 @@ export class BuildService {
    *   a compile never starts on top of a live session nobody can see. A wait that outlasts the
    *   policy ends as `capacity_timeout` above.
    */
-  private async pump(): Promise<void> {
-    if (this.active) return;
+  private pump(): void {
     const policy = this.access.policy;
     const now = Date.now();
     for (const r of [...this.queue])
@@ -360,23 +467,33 @@ export class BuildService {
         admissionEvent('build', 'start', 'builder_busy', r.submitter);
       }
     if (!this.queue.length) {
-      for (const done of this.idle) done();
-      this.idle.clear();
+      if (this.active.size === 0) {
+        for (const done of this.idle) done();
+        this.idle.clear();
+      }
       return;
     }
-    const watch = this.access.liveSessions;
-    const live = watch ? watch() : 0;
-    if (live === null || live >= policy.deferBuildsAtLiveSessions) {
-      if (!this.deferred)
-        this.deferred = setTimeout(() => {
-          this.deferred = null;
-          void this.pump();
-        }, 1000);
-      return;
+    // Start queued builds in order (fair: first come, first served) while workers are free.
+    while (this.queue.length && this.active.size < policy.maxActiveBuilds) {
+      const watch = this.access.liveSessions;
+      const live = watch ? watch() : 0;
+      if (live === null || live >= policy.deferBuildsAtLiveSessions) {
+        if (!this.deferred)
+          this.deferred = setTimeout(() => {
+            this.deferred = null;
+            this.pump();
+          }, 1000);
+        return;
+      }
+      const next = this.queue.shift()!;
+      this.active.add(next);
+      next.state = 'building';
+      void this.execute(next);
     }
-    const next = this.queue.shift()!;
-    this.active = next;
-    next.state = 'building';
+  }
+
+  /** Compile one build to completion, then free its worker and start the next. */
+  private async execute(next: BuildRecord): Promise<void> {
     try {
       next.result = await this.run(next);
     } catch (e) {
@@ -389,7 +506,12 @@ export class BuildService {
     // Failed builds count toward the submitter's cool-down; they hold no capacity afterwards.
     // (Bookkeeping must never take the pump down: a failure here is logged, the queue goes on.)
     try {
-      if (!next.result.ok && next.result.failure !== 'internal')
+      if (
+        !next.result.ok &&
+        next.result.failure !== 'internal' &&
+        next.result.failure !== 'account_disabled' &&
+        next.submitter !== PREWARM
+      )
         this.access.rates.record(next.submitter, 'build-failure');
     } catch (e) {
       process.stderr.write(
@@ -398,15 +520,43 @@ export class BuildService {
     }
     if (next.result.ok && next.owner === next.submitter)
       await this.enforceStorage(next.submitter).catch(() => undefined);
-    this.active = null;
-    void this.pump();
+    this.active.delete(next);
+    this.pump();
+  }
+
+  /**
+   * Sprint 23B: cancel the queued and running builds of every submitter the access view no longer
+   * authorizes (`allowed` applies the host rule, deny wins). They end `failed` with
+   * `account_disabled`; other accounts' builds are untouched. Builds of curated system sources
+   * (owner `global`) may be shared with other accounts and only produce curated images: they are
+   * left to finish. Returns how many were cancelled.
+   */
+  revokeUnauthorized(allowed: (submitter: Principal, emailTag: string | null) => boolean): number {
+    let n = 0;
+    const now = Date.now();
+    for (const r of [...this.queue]) {
+      if (r.owner === GLOBAL || allowed(r.submitter, r.emailTag)) continue;
+      this.queue.splice(this.queue.indexOf(r), 1);
+      r.result = this.failed(r, 'account_disabled', 'Access to TBI Lab ended for this account.', 0);
+      r.state = 'failed';
+      r.finishedAt = now;
+      n++;
+    }
+    for (const r of this.active) {
+      if (r.owner === GLOBAL || r.revoked || allowed(r.submitter, r.emailTag)) continue;
+      r.revoked = true;
+      r.cancel?.();
+      n++;
+    }
+    if (n) this.pump();
+    return n;
   }
 
   /** Builds of a principal currently queued or compiling (tests, operator summaries). */
   inFlight(principal: Principal): number {
     return (
       this.queue.filter((r) => r.submitter === principal).length +
-      (this.active?.submitter === principal ? 1 : 0)
+      [...this.active].filter((r) => r.submitter === principal).length
     );
   }
 
@@ -434,12 +584,27 @@ export class BuildService {
     } satisfies BuildResult;
   }
 
+  /** A build stopped by revocation (Sprint 23B): failed, `account_disabled`. */
+  private cancelled(r: BuildRecord, started: number): BuildResult {
+    return this.failed(
+      r,
+      'account_disabled',
+      'Access to TBI Lab ended for this account.',
+      Date.now() - started,
+    );
+  }
+
   private async run(r: BuildRecord): Promise<BuildResult> {
     const started = Date.now();
     const queuedMs = started - r.submittedAt;
-    const dir = await mkdtemp(join(this.workRoot, 'job-'));
     const abort = new AbortController();
-    let reason: 'timeout' | 'storage_limit' | null = null;
+    let reason: 'timeout' | 'storage_limit' | 'account_disabled' | null = null;
+    r.cancel = () => {
+      reason = 'account_disabled';
+      abort.abort();
+    };
+    if (r.revoked) r.cancel();
+    const dir = await mkdtemp(join(this.workRoot, 'job-'));
     const timer = setTimeout(() => {
       reason = 'timeout';
       abort.abort();
@@ -454,7 +619,21 @@ export class BuildService {
     }, this.limits.watchdogMs);
     let out: ProviderOutput;
     try {
-      out = await r.provider.build({ dir, files: r.request.files, signal: abort.signal });
+      // Revoked before the compile started: no compile at all.
+      out = abort.signal.aborted
+        ? { ok: false, diagnostics: [], log: { text: '', truncated: false } }
+        : await r.provider.build({
+            dir,
+            files: r.request.files,
+            libraries: requestLibraries(r.request),
+            signal: abort.signal,
+            curated: r.owner === GLOBAL,
+          });
+      // Operator log (Sprint 18F evidence): duration and whether the core seed applied; no
+      // source text or identifiers.
+      process.stdout.write(
+        `${JSON.stringify({ event: 'build', outcome: out.ok ? 'ok' : (out.failure ?? 'failed'), curated: r.owner === GLOBAL, coreSeed: out.coreSeed ?? 'none', queuedMs, buildMs: Date.now() - started })}\n`,
+      );
       if (!abort.signal.aborted && out.ok && out.imagePath) {
         const base: Omit<BuildResult, 'timings' | 'artifact'> = {
           key: r.key,
@@ -471,8 +650,24 @@ export class BuildService {
         const bytes = await readFile(out.imagePath);
         if (!isMergedImage(bytes))
           return this.failed(r, 'internal', 'Build service: the build produced no valid image.', 0);
+        // Review N4: a revocation can land after the compile finished (during the reads and
+        // writes below). Checked again right before publishing and right before the grant: a
+        // revoked account gets neither an artifact nor a grant.
+        if (abort.signal.aborted) return this.cancelled(r, started);
         const artifact = await this.store.publish(bytes, 'build');
-        this.access.grants.recordBuild(r.owner, { ...base, artifact });
+        // Published but never granted: the blob is left to the store's normal eviction. Removing
+        // it here could race an identical build of another account that publishes and is
+        // granted in between (final review N7); an ungranted blob is unreachable to the revoked
+        // account in any case.
+        if (abort.signal.aborted) return this.cancelled(r, started);
+        this.access.grants.recordBuild(r.owner, {
+          ...base,
+          artifact,
+          analyzer: FEATURES_ANALYZER,
+          ...(r.provider.analysisCapabilities
+            ? { capabilities: [...r.provider.analysisCapabilities] }
+            : {}),
+        });
         const result: BuildResult = {
           ...base,
           artifact,
@@ -486,6 +681,7 @@ export class BuildService {
       await rm(dir, { recursive: true, force: true });
     }
     const buildMs = Date.now() - started;
+    if (reason === 'account_disabled') return this.cancelled(r, started);
     if (reason === 'timeout')
       return this.failed(
         r,
@@ -542,4 +738,25 @@ export async function treeBytes(dir: string): Promise<number> {
     }
   }
   return total;
+}
+
+/**
+ * Sprint 23B: on every reload of the access view, cancel the builds of accounts it no longer
+ * authorizes (deny wins, the Session Host's rule). One line with the count only.
+ */
+export function revokeBuildsOnReload(
+  service: BuildService,
+  access: AccessView,
+  log: (line: string) => void = (l) => void process.stderr.write(`${l}\n`),
+): () => void {
+  return access.onReload((view) => {
+    const n = service.revokeUnauthorized((p, tag) => isAuthorized(view, p, tag as EmailTag | null));
+    if (n > 0) {
+      try {
+        log(JSON.stringify({ event: 'builds_revoked', builds: n }));
+      } catch {
+        // logging never changes the outcome
+      }
+    }
+  });
 }

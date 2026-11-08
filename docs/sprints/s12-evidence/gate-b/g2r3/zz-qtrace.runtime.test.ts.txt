@@ -1,0 +1,31 @@
+/** G-2 round 3 (F-R2-1): QEMU exec/int trace of TbiEdgeTime with core 1's capture loop filtered out. */
+import { spawn } from 'node:child_process';
+import { join } from 'node:path';
+import { expect, it } from 'vitest';
+import { QEMU, RUNTIME_HOME } from '../harness/env.js';
+import { createSessionOverlay } from '../harness/artifacts.js';
+import { runSession } from '../harness/session.js';
+
+const SHA = 'b85bf69d17df101c06473d716b0b1e1c4457912e3870f14bed7d15ac0d086928';
+it('trace', async () => {
+  const ov = createSessionOverlay(join(RUNTIME_HOME, 'artifacts', `${SHA}.bin`), SHA);
+  try {
+    const r = await runSession(
+      {
+        qemu: QEMU,
+        flash: ov.flash,
+        dir: ov.dir,
+        tickUs: 1000,
+        wallTimeoutMs: 1_200_000,
+        launch: (o) =>
+          spawn(o.qemu, [...o.args, '-d', 'exec,int,nochain', '-dfilter',
+            '0x40000000..0x400d16e3,0x400d1798..0x4fffffff', '-D', process.env.QTRACE!],
+            { stdio: ['ignore', 'ignore', 'pipe'], env: o.env ?? process.env }) as never,
+      },
+      { tick: (vns) => (vns >= 1_300_000_000n ? [{ type: 'Q' }] : []) },
+    );
+    expect(r.outcome, r.diagnostics).toBe('completed');
+  } finally {
+    ov.discard();
+  }
+}, 1_200_000);

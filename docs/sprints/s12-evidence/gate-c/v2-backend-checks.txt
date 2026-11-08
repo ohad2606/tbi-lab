@@ -1,0 +1,28 @@
+ ✓ runtime/tests/s8-deployed-policy.runtime.test.ts > Sprint 8 policy on the deployed instance (tbi, real policy) > the installed policy is the repository policy, byte for byte
+ ✓ runtime/tests/s8-deployed-policy.runtime.test.ts > Sprint 8 policy on the deployed instance (tbi, real policy) > preview build quota (1 active + 1 queued): a third is refused; another user still gets in
+ ✓ runtime/tests/s8-deployed-policy.runtime.test.ts > Sprint 8 policy on the deployed instance (tbi, real policy) > Advanced .bin: allowed by the preview plan, private to the uploader, rate-limited at 10/h
+ ✓ runtime/tests/s8-deployed-policy.runtime.test.ts > Sprint 8 policy on the deployed instance (tbi, real policy) > sessions: one per preview user, one globally on this 1-vCPU host; ownership enforced
+ ✓ runtime/tests/s8-deployed-policy.runtime.test.ts > Sprint 8 policy on the deployed instance (tbi, real policy) > a live session holds a queued build (nothing stopped); it compiles once the session ends
+ ↓ runtime/tests/s8-deployed-policy.runtime.test.ts > Sprint 8 policy on the deployed instance (tbi, real policy) > stale runtime health admits no new compile; the build compiles once health is fresh
+ ✓ runtime/tests/s8-deployed-policy.runtime.test.ts > Sprint 8 policy on the deployed instance (tbi, real policy) > admission events are bounded: fixed keys, a 10-character reference, nothing else
+ ✓ runtime/tests/s8-containment.runtime.test.ts > Sprint 8 containment (staging instance, real toolchain and runtime) > no product service runs as a login user
+ ✓ runtime/tests/s8-containment.runtime.test.ts > Sprint 8 containment (staging instance, real toolchain and runtime) > both sandbox templates, as loaded by systemd, deny network and bound their resources
+ ✓ runtime/tests/s8-containment.runtime.test.ts > Sprint 8 containment (staging instance, real toolchain and runtime) > a real build runs in per-step sandbox units and is bit-identical to Sprint 7
+ ✓ runtime/tests/s8-containment.runtime.test.ts > Sprint 8 containment (staging instance, real toolchain and runtime) > a sketch cannot compile in anything from outside its sandbox view
+ ✓ runtime/tests/s8-containment.runtime.test.ts > Sprint 8 containment (staging instance, real toolchain and runtime) > user B can neither lease user A’s artifact nor see A’s build
+ ✓ runtime/tests/s8-containment.runtime.test.ts > Sprint 8 containment (staging instance, real toolchain and runtime) > a session’s QEMU runs sandboxed: own user, no network, only its session directory, on disk
+ ✓ runtime/tests/s8-containment.runtime.test.ts > Sprint 8 containment (staging instance, real toolchain and runtime) > a crashed runtime is cleaned up and reported, and the host keeps serving
+ ↓ runtime/tests/s8-containment.runtime.test.ts > Sprint 8 containment (staging instance, real toolchain and runtime) > a restarted build service stops its predecessor’s sandboxed steps and removes their jobs
+ ↓ runtime/tests/s8-containment.runtime.test.ts > Sprint 8 containment (staging instance, real toolchain and runtime) > a restarted Session Host ends its predecessor’s runtimes and clears their session files
+ ✓ runtime/tests/s8-qemu-tasks.runtime.test.ts > Sprint 8 runtime task limit (real QEMU under the deployed unit) > the QEMU unit’s TasksMax covers QEMU’s own ceiling with headroom, and stays finite
+ ✓ runtime/tests/s8-qemu-tasks.runtime.test.ts > Sprint 8 runtime task limit (real QEMU under the deployed unit) > real sessions with input bursts never hit the limit and leave nothing behind
+ ✓ runtime/tests/s11-deployed.runtime.test.ts > Sprint 11 R1 on the deployed instance (tbi) > esp32-motion-relay: motion pulls the relay in (LED + buzzer); no motion releases it; Stop cleans up
+ ✓ runtime/tests/s11-deployed.runtime.test.ts > Sprint 11 R1 on the deployed instance (tbi) > esp32-night-light: dark lights all three channels; bright turns them off; DELETE cleans up
+ ✓ runtime/tests/s11-deployed.runtime.test.ts > Sprint 11 R1 on the deployed instance (tbi) > command boundary: malformed, oversized, unknown, unsupported, out of range, rate-limited, foreign user
+ ✓ runtime/tests/s11-deployed.runtime.test.ts > Sprint 11 R1 on the deployed instance (tbi) > component.capacitor is refused for an ESP32 project before QEMU starts
+ ✓ runtime/tests/s11-deployed.runtime.test.ts > Sprint 11 R1 on the deployed instance (tbi) > display.led_matrix_8x8 is refused for an ESP32 project before QEMU starts
+ ✓ runtime/tests/s11-deployed.runtime.test.ts > Sprint 11 R1 on the deployed instance (tbi) > admission under the real policy: one session per preview user, one globally; ownership
+ ↓ runtime/tests/s11-deployed.runtime.test.ts > a Sprint 10 host refuses R1 explicitly (tbi) > the motion example: refused as an unsupported component (QEMU never starts)
+ ↓ runtime/tests/s11-deployed.runtime.test.ts > a Sprint 10 host refuses R1 explicitly (tbi) > a live-parameter command: refused as malformed (400), never applied
+ Test Files  4 passed (4)
+      Tests  21 passed | 5 skipped (26)

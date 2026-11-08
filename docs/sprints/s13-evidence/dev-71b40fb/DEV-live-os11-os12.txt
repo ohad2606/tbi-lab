@@ -1,0 +1,23 @@
+PASS  deployed frontend commit  — 71b40fb033df99789350f6fe07e25934dc347f47
+PASS  OS-12 all examples listed  — 22
+PASS  OS-12 "ESP32 LCD" -> exactly the LCD example
+PASS  OS-12 alias "LDR"
+PASS  OS-12 alias "PIR"
+PASS  OS-12 alias "hcsr04"
+PASS  OS-12 alias "I2C"
+PASS  OS-12 alias "ממסר"
+PASS  OS-12 keyboard: Tab to a category, Space toggles
+PASS  OS-12 a second category widens (OR)
+PASS  OS-12 words AND categories -> empty state
+PASS  OS-12 Clear filters restores all and focuses search
+PASS  OS-12 Hebrew "חיישן" -> all 7 sensor examples  — 7
+PASS  OS-12 English words in the Hebrew UI
+PASS  OS-12 Hebrew RTL, no horizontal overflow  — 0
+PASS  OS-12 opening a filtered example opens the editor
+PASS  OS-11 every background request of the deployed app carries application/json  — /build/*: application/json ×1; /version.json: application/json ×1
+PASS  OS-11 a gate 401 shows the sign-in banner
+PASS  OS-11 Sign in again: one navigation, project saved  — navigations=1
+PASS  OS-11 banner gone after the reload
+PASS  no page errors
+
+21/21 passed

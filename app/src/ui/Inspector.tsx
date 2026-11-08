@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { Fragment } from 'preact';
 import {
   CATALOG,
+  MODEL_LIMITATIONS,
   deleteSelection,
   emptySelection,
-  parseQuantity,
+  paramValue,
   setParam,
+  makeWiresAutomatic,
   setWireColor,
   WIRE_COLORS,
   type Wire,
@@ -17,22 +19,24 @@ import {
 import {
   catalogText,
   formatNumber,
-  formatQuantity,
-  inputForm,
   isMessageKey,
   isolateLtr,
-  unitSymbol,
+  type LocaleInfo,
+  type MessageKey,
 } from '../i18n/i18n.js';
 import type { ComponentResult, SolveSuccess } from '@tbi-lab/engine';
-import { formatPower, formatResult } from '../sim/format.js';
+import { formatAngle, formatPower, formatPulseWidth, formatResult } from '../sim/format.js';
 import { RatingGroup } from './NoticeBar.js';
 import { warningsFor } from '../sim/ratings.js';
+import { servosOnSupply } from '../sim/servoSupply.js';
 import { useAppState, useStore, useT } from './context.js';
-import { checksFor } from './checks.js';
+import { checkIssueText, checksFor } from './checks.js';
 import { NEUTRAL_HEX, resolveWireColors } from '../views/wireColors.js';
 import { rotateRouted } from './routing.js';
 import { probeTargetName, readProbe, type Probe } from './probes.js';
 import { McuPanel } from './McuPanel.js';
+import { isLogicType, LogicStateView } from './LogicStateView.js';
+import { ValueControl } from './ValueControl.js';
 
 interface InspectorProps {
   probes: Probe[];
@@ -83,6 +87,36 @@ function WireColorField({ wire, readOnly }: { wire: Wire; readOnly: boolean }) {
             </option>
           ))}
         </select>
+      </dd>
+    </>
+  );
+}
+
+/**
+ * Wire routing integrity: how a wire's route is drawn. Automatic: the router draws it from the
+ * current layout (through the points the user placed). Manual: its bends are the user's and stay
+ * as they are; "Route automatically" is the explicit way to hand it to the router (undoable).
+ */
+function WireRouteField({ wire, readOnly }: { wire: Wire; readOnly: boolean }) {
+  const { doc } = useAppState();
+  const store = useStore();
+  const t = useT();
+  if (!doc) return null;
+  return (
+    <>
+      <dt>{t('inspector.wireRoute')}</dt>
+      <dd data-testid="wire-route" data-route={wire.auto ? 'auto' : 'manual'}>
+        {wire.auto ? t('wireRoute.auto') : t('wireRoute.manual')}
+        {!wire.auto && !readOnly && (
+          <button
+            type="button"
+            class="small"
+            data-testid="wire-route-auto"
+            onClick={() => store.apply(makeWiresAutomatic(doc, [wire.id]))}
+          >
+            {t('wireRoute.makeAuto')}
+          </button>
+        )}
       </dd>
     </>
   );
@@ -149,6 +183,26 @@ export function Inspector({ probes, onRemoveProbe, onClearProbes }: InspectorPro
       ) : (
         single && <ComponentProperties component={single} readOnly={!!readOnly} />
       )}
+      {single && isLogicType(single.type) && (
+        // Sprint 20 (Phase 5): the truth table and pin states, discoverable before any Run;
+        // live while running; the refusal explained by pin when the Run was refused for it.
+        <LogicStateView
+          key={single.id}
+          component={single}
+          logic={outcome?.components[single.id]?.logic ?? null}
+          // The engine refusal in force: at Run start (status failed) or, review round 2, one
+          // that arrives while running (a toggle that floats an input keeps the session alive
+          // with a refused outcome). The panel explains it by pin when it names this part.
+          failure={
+            sim.status === 'failed' && sim.failure.kind === 'engine'
+              ? sim.failure.error
+              : sim.status === 'running' && !sim.outcome.ok
+                ? sim.outcome.error
+                : null
+          }
+          running={sim.status === 'running'}
+        />
+      )}
       {single && single.type !== 'instrument.lab_psu' && outcome && (
         <ComponentResultView outcome={outcome} component={single} />
       )}
@@ -157,6 +211,7 @@ export function Inspector({ probes, onRemoveProbe, onClearProbes }: InspectorPro
           <dt>{t('inspector.type')}</dt>
           <dd>{t('inspector.wire')}</dd>
           <WireColorField wire={wire} readOnly={!!readOnly} />
+          <WireRouteField wire={wire} readOnly={!!readOnly} />
           {netOfWire() && (
             <>
               <dt>{t('inspector.net')}</dt>
@@ -238,6 +293,19 @@ function ComponentProperties({
           {t('switch.toggle.hint')}
         </p>
       )}
+      {(MODEL_LIMITATIONS[c.type] ?? []).length > 0 && (
+        // Sprint 13 H2: what this part's model does not simulate, or simulates under an assumption.
+        <details class="model-limitations" data-testid={`limitations-${c.id}`}>
+          <summary>{t('inspector.limitations')}</summary>
+          <ul class="small">
+            {MODEL_LIMITATIONS[c.type]!.map((id) => (
+              <li key={id} data-testid={`limitation-${id}`}>
+                {t(`limitation.${id}` as MessageKey)}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
     </>
   );
 }
@@ -254,7 +322,8 @@ function ParamField({
   const { doc, locale, sim } = useAppState();
   const store = useStore();
   const t = useT();
-  const current = c.params[def.key];
+  // An optional parameter absent from the document shows its default (Sprint 19B).
+  const current = paramValue(c.params, def);
   // While a simulation runs only live-capable parameters (PSU controls) may change; any other
   // value belongs to the loaded snapshot and needs a Stop first.
   const locked =
@@ -267,24 +336,6 @@ function ParamField({
     </p>
   );
   const id = `param-${c.id}-${def.key}`;
-
-  const shown =
-    def.kind === 'quantity' && current && typeof current === 'object'
-      ? inputForm(current.value)
-      : '';
-  // The draft starts at the stored value, so the first render is complete by itself. The
-  // effect below resets it ONLY when the stored value or component really changes: a passive
-  // effect runs after paint, and on mount it would otherwise wipe text typed (and the error
-  // it produced) in the meantime (CI run 35828605417).
-  const [draft, setDraft] = useState(shown);
-  const [error, setError] = useState<string | null>(null);
-  const synced = useRef({ shown, id: c.id });
-  useEffect(() => {
-    if (synced.current.shown === shown && synced.current.id === c.id) return;
-    synced.current = { shown, id: c.id };
-    setDraft(shown);
-    setError(null);
-  }, [shown, c.id]);
 
   if (def.kind === 'boolean') {
     return (
@@ -329,105 +380,73 @@ function ParamField({
     );
   }
 
-  const range = {
-    min: isolateLtr(formatQuantity(locale, { value: def.min, unit: def.unit })),
-    max: isolateLtr(formatQuantity(locale, { value: def.max, unit: def.unit })),
-  };
-  /**
-   * Commit exactly the text being committed, taken from the input element itself. The draft
-   * state only drives rendering: a fast Enter or Blur can arrive before a pending state
-   * render has run, so correctness must not depend on it (CI run 35789744836).
-   */
-  const commit = (raw: string) => {
-    if (!doc || raw === shown) return setError(null);
-    const parsed = parseQuantity(raw, def.unit);
-    if (!parsed.ok) return setError(t(`error.parse.${parsed.error}`));
-    if (parsed.value < def.min || parsed.value > def.max) return setError(t('error.range', range));
-    setError(null);
-    // Committing the value already stored (e.g. Enter then Blur) is not a new revision.
-    if (typeof current === 'object' && current.value === parsed.value) return;
-    store.apply(setParam(doc, c.id, def.key, { value: parsed.value, unit: def.unit }));
-  };
-
-  return (
-    <div class="field">
-      <label for={id}>{catalogText(locale, def.labelKey)}</label>
-      <div class="field-row" dir="ltr">
-        <input
+  // Sprint 25: a part made only in a standard table of values is chosen from that list.
+  if (def.values) {
+    const v = current && typeof current === 'object' ? current.value : null;
+    const listed = v !== null && def.values.includes(v);
+    return (
+      <div class="field">
+        <label for={id}>{catalogText(locale, def.labelKey)}</label>
+        <select
           id={id}
           data-testid={id}
           class="technical"
           dir="ltr"
-          inputMode="decimal"
-          autocomplete="off"
-          spellcheck={false}
-          value={draft}
-          disabled={disabled}
-          aria-invalid={error ? 'true' : 'false'}
-          aria-describedby={`${id}-hint`}
-          onInput={(e) => setDraft((e.target as HTMLInputElement).value)}
-          onBlur={(e) => commit(e.currentTarget.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') commit(e.currentTarget.value);
-            if (e.key === 'Escape') {
-              setDraft(shown);
-              setError(null);
-            }
-          }}
-        />
-        <span class="unit">{unitSymbol(locale, def.unit)}</span>
-      </div>
-      {def.environment && (
-        <input
-          type="range"
-          class="environment-slider"
-          data-testid={`${id}-slider`}
-          aria-label={catalogText(locale, def.labelKey)}
-          min={0}
-          max={SLIDER_STEPS}
-          step={1}
-          value={sliderPosition(def, typeof current === 'object' ? current.value : def.default)}
+          value={v === null ? '' : String(v)}
           disabled={disabled}
           onChange={(e) => {
-            if (!doc) return;
-            const value = sliderValue(def, Number((e.target as HTMLInputElement).value));
-            if (typeof current === 'object' && current.value === value) return;
-            store.apply(setParam(doc, c.id, def.key, { value, unit: def.unit }));
+            const value = Number((e.target as HTMLSelectElement).value);
+            if (doc && def.values!.includes(value))
+              store.apply(setParam(doc, c.id, def.key, { value, unit: def.unit }));
           }}
-        />
-      )}
-      {error ? (
-        <p class="field-error" role="alert" data-testid={`${id}-error`}>
-          {error}
-        </p>
-      ) : (
-        <p class="muted small" id={`${id}-hint`}>
-          {t('inspector.range', range)}
-        </p>
-      )}
-      {lockedHint}
-    </div>
-  );
-}
+        >
+          {v !== null && !listed && (
+            <option value={String(v)} disabled>
+              {t('param.notStandard', { value: formatResult(locale, v, def.unit) })}
+            </option>
+          )}
+          {def.values.map((x) => (
+            <option key={x} value={String(x)}>
+              {formatResult(locale, x, def.unit)}
+            </option>
+          ))}
+        </select>
+        {lockedHint}
+      </div>
+    );
+  }
 
-/** Environment sliders: positions 0..SLIDER_STEPS over [min, max], linear or logarithmic. */
-const SLIDER_STEPS = 1000;
-type QuantityDef = Extract<ParamDef, { kind: 'quantity' }>;
-function sliderPosition(def: QuantityDef, value: number): number {
-  const f =
-    def.environment?.scale === 'log'
-      ? Math.log(value / def.min) / Math.log(def.max / def.min)
-      : (value - def.min) / (def.max - def.min);
-  return Math.round(Math.min(1, Math.max(0, f)) * SLIDER_STEPS);
-}
-function sliderValue(def: QuantityDef, position: number): number {
-  const f = position / SLIDER_STEPS;
-  const raw =
-    def.environment?.scale === 'log'
-      ? def.min * (def.max / def.min) ** f
-      : def.min + f * (def.max - def.min);
-  // Three significant digits: a slider sets a round value; the field accepts any exact one.
-  return Math.min(def.max, Math.max(def.min, Number(raw.toPrecision(3))));
+  return (
+    <>
+      <ValueControl
+        key={id}
+        id={id}
+        label={catalogText(locale, def.labelKey)}
+        unit={def.unit}
+        min={def.min}
+        max={def.max}
+        value={current && typeof current === 'object' ? current.value : null}
+        disabled={disabled}
+        {...(def.step ? { step: def.step } : {})}
+        {...(def.environment
+          ? { slider: def.environment.scale ?? 'linear' }
+          : def.slider
+            ? { slider: def.slider.scale }
+            : {})}
+        onCommit={(value, { slider }) => {
+          if (!doc) return;
+          if (typeof current === 'object' && current.value === value) return;
+          // A slider drag (its live steps and its release) is one edit for undo.
+          store.apply(
+            setParam(doc, c.id, def.key, { value, unit: def.unit }),
+            undefined,
+            slider ? { coalesce: `slider:${id}` } : {},
+          );
+        }}
+      />
+      {lockedHint}
+    </>
+  );
 }
 
 function ResultRow({ label, value, testId }: { label: string; value: string; testId: string }) {
@@ -437,6 +456,41 @@ function ResultRow({ label, value, testId }: { label: string; value: string; tes
       <dd class="technical" dir="ltr" data-testid={testId}>
         {value}
       </dd>
+    </>
+  );
+}
+
+/**
+ * A current row. Under PWM (Sprint 15, R4: `ComponentResult.pwm`) the value is the time-average
+ * over the waveform and says so, followed by the peak (what the ratings check).
+ */
+function CurrentRows({
+  label,
+  value,
+  peak,
+  pwm,
+  testId,
+}: {
+  label: string;
+  value: number | null;
+  /** The peak over the PWM operating points; ignored unless `pwm`. */
+  peak: number | null | undefined;
+  pwm: boolean;
+  testId: string;
+}) {
+  const { locale } = useAppState();
+  const t = useT();
+  const I = (v: number | null) =>
+    v === null ? t('sim.results.undefined') : formatResult(locale, v, 'ampere');
+  if (!pwm) return <ResultRow label={label} value={I(value)} testId={testId} />;
+  return (
+    <>
+      <ResultRow label={t('sim.results.pwmAverage', { label })} value={I(value)} testId={testId} />
+      <ResultRow
+        label={t('sim.results.pwmPeak', { label })}
+        value={I(peak ?? null)}
+        testId={`${testId}-peak`}
+      />
     </>
   );
 }
@@ -453,15 +507,22 @@ function ComponentResultView({
   const { locale, doc } = useAppState();
   const t = useT();
   const r = outcome.components[component.id];
-  const I = (v: number | null) =>
-    v === null ? t('sim.results.undefined') : formatResult(locale, v, 'ampere');
   const V = (v: number | null) =>
     v === null ? t('sim.results.undefined') : formatResult(locale, v, 'volt');
   const def = CATALOG[component.type];
+  // Sprint 15 (R4): a part a PWM output switches reports time-averages (and its peak currents).
+  const pwm = !!r?.pwm;
+  const avgLabel = (label: string) => (pwm ? t('sim.results.pwmAverage', { label }) : label);
   return (
     <section class="sim-results" aria-labelledby="sim-results-heading" data-testid="sim-results">
       <h3 id="sim-results-heading">{t('sim.results.heading')}</h3>
       <p class="muted small">{t('sim.results.note')}</p>
+      {/* Sprint 19B: an undetermined logic level reaches this part: no number is shown for it. */}
+      {r?.unknown && (
+        <p class="sim-unknown" role="note" data-testid="result-unknown">
+          {t('sim.results.unknown')}
+        </p>
+      )}
       {!r ? (
         <p data-testid="sim-results-none">
           {component.type === 'component.ground' ? V(0) : t('sim.results.notSimulated')}
@@ -476,27 +537,32 @@ function ComponentResultView({
                 testId="result-mode"
               />
               <ResultRow
-                label={t('sim.results.outputVoltage')}
+                label={avgLabel(t('sim.results.outputVoltage'))}
                 value={V(r.voltage)}
                 testId="result-voltage"
               />
-              <ResultRow
+              <CurrentRows
                 label={t('sim.results.outputCurrent')}
-                value={I(r.current)}
+                value={r.current}
+                peak={r.pwm?.peakCurrent}
+                pwm={pwm}
                 testId="result-current"
               />
+              <ServoCurrentNote psuId={component.id} />
             </>
           )}
           {(r.type === 'component.led' || r.type === 'component.diode') && (
             <>
               <ResultRow
-                label={t('sim.results.forwardVoltage')}
+                label={avgLabel(t('sim.results.forwardVoltage'))}
                 value={V(r.voltage)}
                 testId="result-voltage"
               />
-              <ResultRow
+              <CurrentRows
                 label={t('sim.results.forwardCurrent')}
-                value={I(r.current)}
+                value={r.current}
+                peak={r.pwm?.peakCurrent}
+                pwm={pwm}
                 testId="result-current"
               />
             </>
@@ -508,22 +574,26 @@ function ComponentResultView({
                 value={t(r.closed ? 'switch.state.closed' : 'switch.state.open')}
                 testId="result-contact"
               />
-              <ResultRow
+              <CurrentRows
                 label={t('sim.results.current')}
-                value={I(r.current)}
+                value={r.current}
+                peak={r.pwm?.peakCurrent}
+                pwm={pwm}
                 testId="result-current"
               />
             </>
           )}
           {r.type === 'component.resistor' && (
             <>
-              <ResultRow
+              <CurrentRows
                 label={t('sim.results.current')}
-                value={I(r.current)}
+                value={r.current}
+                peak={r.pwm?.peakCurrent}
+                pwm={pwm}
                 testId="result-current"
               />
               <ResultRow
-                label={t('sim.results.voltage')}
+                label={avgLabel(t('sim.results.voltage'))}
                 value={V(r.voltage)}
                 testId="result-voltage"
               />
@@ -549,32 +619,96 @@ function ComponentResultView({
           <dl class="props">
             <ResultRow
               label={t('sim.results.power')}
-              value={formatPower(locale, Math.abs(r.voltage * r.current))}
+              value={
+                // Under PWM, |V_avg x I_avg| is not the average power: not shown as one.
+                pwm
+                  ? t('sim.results.pwmPower')
+                  : formatPower(locale, Math.abs(r.voltage * r.current))
+              }
               testId="result-power"
             />
           </dl>
         )}
+      {pwm && (
+        <p class="muted small" data-testid="result-pwm-note">
+          {t('sim.results.pwmNote')}
+        </p>
+      )}
       {doc &&
         (() => {
           const rows = warningsFor(doc, outcome).filter((w) => w.component === component.id);
-          return rows.length ? (
+          const kinds = (['absolute', 'operating', 'unrated'] as const)
+            .map((k) => rows.filter((w) => w.kind === k))
+            .filter((g) => g.length);
+          return kinds.length ? (
             <div class="sim-warning" data-testid="result-rating">
-              <RatingGroup component={component.id} rows={rows} />
+              {kinds.map((g) => (
+                <RatingGroup key={g[0]!.kind} component={component.id} rows={g} />
+              ))}
             </div>
           ) : null;
         })()}
       {r?.outsideModelRange && (
         <p class="sim-note" data-testid="result-outside-model">
-          {t('sim.results.outsideModel')}
+          {
+            // A part may word it for its own model (Sprint 15: the servo's supply range).
+            t(
+              isMessageKey(`sim.results.outsideModel.${r.type}`)
+                ? (`sim.results.outsideModel.${r.type}` as MessageKey)
+                : 'sim.results.outsideModel',
+            )
+          }
         </p>
       )}
       {r?.type === 'component.led' && <p class="muted small">{t('sim.results.ledLit')}</p>}
+      {r?.type === 'component.potentiometer' && typeof r.state?.residualMaxOhm === 'number' && (
+        <p class="muted small" data-testid="pot-near-end">
+          {t('sim.results.potNearEnd', {
+            bound: isolateLtr(formatResult(locale, r.state.residualMaxOhm, 'ohm')),
+          })}
+        </p>
+      )}
     </section>
   );
 }
 
+/** Part states that carry text the part displays (Sprint 12: the LCD's two lines). */
+const TEXT_STATES: ReadonlySet<string> = new Set(['line1', 'line2']);
+
 /** Units of numeric part states (language-neutral keys). */
-const STATE_UNITS: Record<string, UnitId> = { resistance: 'ohm' };
+const STATE_UNITS: Record<string, UnitId> = {
+  resistance: 'ohm',
+  // Sprint POT-UNITS: a potentiometer's two track segments and its wiper potential.
+  resistanceAW: 'ohm',
+  resistanceWB: 'ohm',
+  wiperVoltage: 'volt',
+  residualMaxOhm: 'ohm',
+  // Sprint 19B: logic gates.
+  supplyV: 'volt',
+  outputValidA: 'ampere',
+  iccMaxA: 'ampere',
+  deltaIccA: 'ampere',
+};
+
+/**
+ * Numeric part states in units that are not stored engineering units (Sprint 15, the servo): its
+ * shaft angles in degrees and its last accepted pulse width (reported in microseconds).
+ */
+const STATE_FORMATS: Record<string, (locale: LocaleInfo, v: number) => string> = {
+  angleDeg: formatAngle,
+  commandedDeg: formatAngle,
+  pulseUs: formatPulseWidth,
+  // Sprint POT-UNITS: a potentiometer's total dissipation.
+  power: formatPower,
+};
+
+/**
+ * Named currents a part reports as unknown because they are NOT MODELLED (Sprint 15, decision
+ * R4-D3: the servo's supply current): shown as such, never as 0 A or "not defined".
+ */
+const NOT_MODELLED_CURRENTS: Partial<Record<string, ReadonlySet<string>>> = {
+  'component.servo_sg90': new Set(['supply']),
+};
 
 /** The eight original types have dedicated rows above; parts added since are described by data. */
 const ORIGINAL_TYPES = new Set<string>([
@@ -596,50 +730,85 @@ const ORIGINAL_TYPES = new Set<string>([
 function PartResultRows({ result: r }: { result: ComponentResult }) {
   const { locale } = useAppState();
   const t = useT();
-  const I = (v: number | null) =>
-    v === null ? t('sim.results.undefined') : formatResult(locale, v, 'ampere');
   const label = (key: string) => (isMessageKey(key) ? t(key) : key);
+  const pwm = !!r.pwm;
+  // A part may word a state for its own type (Sprint 12: an HC-SR04 is powered from 4.5 V, a
+  // DHT22 from 3.3 V): `sim.part.state.<type>.<key>[.<value>]` before the shared wording.
+  const stateText = (suffix: string) => {
+    const own = `sim.part.state.${r.type}.${suffix}`;
+    return label(isMessageKey(own) ? own : `sim.part.state.${suffix}`);
+  };
   return (
     <>
       {r.voltage !== null && (
         <ResultRow
           // A part may name its voltage (a transistor's is V_CE): `sim.part.voltage.<type>`.
-          label={
+          label={((name: string) => (pwm ? t('sim.results.pwmAverage', { label: name }) : name))(
             label(`sim.part.voltage.${r.type}`) === `sim.part.voltage.${r.type}`
               ? t('sim.results.voltage')
-              : label(`sim.part.voltage.${r.type}`)
-          }
+              : label(`sim.part.voltage.${r.type}`),
+          )}
           value={formatResult(locale, r.voltage, 'volt')}
           testId="result-voltage"
         />
       )}
       {r.current !== null && !r.currents && (
-        <ResultRow label={t('sim.results.current')} value={I(r.current)} testId="result-current" />
+        <CurrentRows
+          label={t('sim.results.current')}
+          value={r.current}
+          peak={r.pwm?.peakCurrent}
+          pwm={pwm}
+          testId="result-current"
+        />
       )}
-      {Object.entries(r.currents ?? {}).map(([k, v]) => (
-        <ResultRow
-          key={`i-${k}`}
-          label={label(`sim.part.current.${k}`)}
-          value={I(v)}
-          testId={`result-current-${k}`}
-        />
-      ))}
-      {Object.entries(r.state ?? {}).map(([k, v]) => (
-        <ResultRow
-          key={`s-${k}`}
-          label={label(`sim.part.state.${k}`)}
-          value={
-            typeof v === 'boolean'
-              ? t(v ? 'sim.part.yes' : 'sim.part.no')
-              : typeof v === 'number'
-                ? STATE_UNITS[k]
-                  ? formatResult(locale, v, STATE_UNITS[k])
-                  : formatNumber(locale, v)
-                : label(`sim.part.state.${k}.${v}`)
-          }
-          testId={`result-state-${k}`}
-        />
-      ))}
+      {Object.entries(r.currents ?? {}).map(([k, v]) =>
+        v === null && NOT_MODELLED_CURRENTS[r.type]?.has(k) ? (
+          <ResultRow
+            key={`i-${k}`}
+            label={label(`sim.part.current.${k}`)}
+            value={t('sim.results.notModelled')}
+            testId={`result-current-${k}`}
+          />
+        ) : (
+          <CurrentRows
+            key={`i-${k}`}
+            label={label(`sim.part.current.${k}`)}
+            value={v}
+            peak={r.pwm?.peakCurrents?.[k]}
+            pwm={pwm}
+            testId={`result-current-${k}`}
+          />
+        ),
+      )}
+      {Object.entries(r.state ?? {}).map(([k, v]) =>
+        TEXT_STATES.has(k) && typeof v === 'string' ? (
+          // Text the part itself shows (an LCD line, already mapped from its character ROM by
+          // the engine): verbatim, never translated or mirrored, LTR and monospaced.
+          <Fragment key={`s-${k}`}>
+            <dt>{stateText(k)}</dt>
+            <dd class="technical lcd-line" dir="ltr" data-testid={`result-state-${k}`}>
+              {v}
+            </dd>
+          </Fragment>
+        ) : (
+          <ResultRow
+            key={`s-${k}`}
+            label={stateText(k)}
+            value={
+              typeof v === 'boolean'
+                ? t(v ? 'sim.part.yes' : 'sim.part.no')
+                : typeof v === 'number'
+                  ? STATE_UNITS[k]
+                    ? formatResult(locale, v, STATE_UNITS[k])
+                    : STATE_FORMATS[k]
+                      ? STATE_FORMATS[k](locale, v)
+                      : formatNumber(locale, v)
+                  : stateText(`${k}.${v}`)
+            }
+            testId={`result-state-${k}`}
+          />
+        ),
+      )}
     </>
   );
 }
@@ -697,6 +866,11 @@ function PsuPanel({ component: c, readOnly }: { component: ComponentInstance; re
             <span class="psu-readout-value" data-testid="psu-measured-current">
               {r && r.current !== null ? formatResult(locale, r.current, 'ampere') : dash}
             </span>
+            {r?.pwm && (
+              <span class="psu-readout-label" data-testid="psu-current-average">
+                {t('psu.currentAverage')}
+              </span>
+            )}
           </div>
         </div>
         <div
@@ -710,6 +884,7 @@ function PsuPanel({ component: c, readOnly }: { component: ComponentInstance; re
           <span>{mode ? t(`sim.mode.${mode}`) : t('psu.notRunning')}</span>
         </div>
         {mode === 'cc' && <p class="small psu-cc-note">{t('psu.ccNote')}</p>}
+        {r && <ServoCurrentNote psuId={c.id} />}
       </div>
       <div class="psu-settings">
         <h4>{t('psu.settings')}</h4>
@@ -718,6 +893,19 @@ function PsuPanel({ component: c, readOnly }: { component: ComponentInstance; re
         ))}
       </div>
     </section>
+  );
+}
+
+/** Sprint 17C: a supply's current leaves out the servos on its output (R4-D3); say so, by name. */
+function ServoCurrentNote({ psuId }: { psuId: string }) {
+  const { doc } = useAppState();
+  const t = useT();
+  const servos = servosOnSupply(doc, psuId);
+  if (!servos.length) return null;
+  return (
+    <p class="small muted" data-testid="servo-current-excluded">
+      {t('sim.results.servoCurrentExcluded', { components: isolateLtr(servos.join(', ')) })}
+    </p>
   );
 }
 
@@ -785,40 +973,7 @@ function ChecksSection({ hidden }: { hidden: boolean }) {
   const t = useT();
   if (!doc) return null;
   const issues = checksFor(doc);
-  const list = (ids: string[]) => isolateLtr(ids.join(', '));
-  const termName = (component: string, term: string) => {
-    const c = doc.components.find((x) => x.id === component);
-    const def = c ? CATALOG[c.type].terminals.find((x) => x.id === term) : undefined;
-    return def ? catalogText(locale, def.labelKey) : term;
-  };
-  const text = (i: CheckIssue): string => {
-    const component = isolateLtr(i.components[0] ?? '');
-    switch (i.code) {
-      case 'partially_wired':
-        return t('checks.partially_wired', {
-          component,
-          terminals: (i.terminals ?? []).map((x) => termName(i.components[0]!, x)).join(', '),
-        });
-      case 'wire_over_terminal':
-        return t('checks.wire_over_terminal', {
-          component,
-          terminal: termName(i.components[0]!, i.terminals?.[0] ?? ''),
-        });
-      case 'terminals_touching':
-        return t('checks.terminals_touching', {
-          component,
-          terminal: termName(i.components[0]!, i.terminals?.[0] ?? ''),
-          other: isolateLtr(i.components[1] ?? ''),
-          otherTerminal: termName(i.components[1]!, i.terminals?.[1] ?? ''),
-        });
-      case 'psu_shorted_by_wire':
-        return t('checks.psu_shorted_by_wire', { component });
-      case 'no_ground':
-        return t('checks.no_ground');
-      default:
-        return t(`checks.${i.code}`, { components: list(i.components) });
-    }
-  };
+  const text = (i: CheckIssue): string => checkIssueText(locale, doc, i);
   return (
     <section
       class="checks-section"

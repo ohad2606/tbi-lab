@@ -1,0 +1,274 @@
+/**
+ * G-2 investigation (not product code): exact bridge traces of old vs new firmware images.
+ * The harness's runSession is wrapped (vi.mock) so every handler call and its reply is recorded
+ * with its simulated time; nothing in the product changes. Output: $DIAG_OUT/<scenario>-<old|new>.
+ */
+import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { afterAll, describe, expect, it, vi } from 'vitest';
+import { CATALOG } from '@tbi-lab/domain';
+import { QEMU, RUNTIME_HOME } from '../harness/env.js';
+import { createSessionOverlay } from '../harness/artifacts.js';
+import { ticketFor } from '../identity/test-gate.js';
+import { Circuit, open } from '../host/tests/r1-support.js';
+import { realHost } from './r2-support.js';
+import { switchedInput } from './r1-support.js';
+
+type Rec = Record<string, unknown>;
+const G = globalThis as unknown as { __trace?: Rec[] };
+const j = (v: unknown) => JSON.stringify(v, (_k, x) => (typeof x === 'bigint' ? x.toString() : x));
+
+vi.mock('../harness/session.js', async (importOriginal) => {
+  const m = await importOriginal<typeof import('../harness/session.js')>();
+  const wrap = (h: Rec): Rec => {
+    const out: Rec = { ...h };
+    const rec = (r: Rec) => (globalThis as unknown as { __trace?: Rec[] }).__trace?.push(r);
+    for (const k of ['hello', 'pad', 'func', 'i2c', 'tick'] as const) {
+      const f = h[k] as ((...a: unknown[]) => unknown[]) | undefined;
+      if (!f) continue;
+      out[k] = (...a: unknown[]) => {
+        const reply = f.apply(h, a) ?? [];
+        if (k !== 'tick' || reply.length) rec({ k, a, reply });
+        return reply;
+      };
+    }
+    const s = h.serial as ((v: bigint, b: Buffer) => void) | undefined;
+    if (s)
+      out.serial = (v: bigint, b: Buffer) => {
+        rec({ k: 'serial', vns: v, text: b.toString('latin1') });
+        s.call(h, v, b);
+      };
+    return out;
+  };
+  return {
+    ...m,
+    runSession: (o: Parameters<typeof m.runSession>[0], h: Parameters<typeof m.runSession>[1]) =>
+      m.runSession(o, wrap(h as unknown as Rec) as unknown as typeof h),
+  };
+});
+const { runSession } = await import('../harness/session.js');
+
+const OUT = process.env.DIAG_OUT!;
+const PAIRS: Record<string, [string, string]> = {
+  TbiHcSr04: [
+    '620e06276aeaa4512e79a9c65c7d3200fbd2aaaba333137e11ffcdac9b85efba',
+    '9fd371b1ea77a60fc19c4ec2122e191ec498639df3afc5a887954fe05d9677d5',
+  ],
+  TbiI2cProbe: [
+    '6f75261c61a610e5bb6c30cda1c9b112cf26fe6df2c05de09a3eb7460bbc3777',
+    '768f52b5cc6aaa0e42152c463e2e7215f56966b8b10e2e773604e9e3d8433e55',
+  ],
+  TbiR1Scan: [
+    '5ddd712902b1ac514f095b319a685de7f5a2a5da5e47bba49b167dbcee8f60b3',
+    'b86f9c5e7d86d840fdaf31f0ac7531dc7e7c63456136dbcf9e7e84215ce98a17',
+  ],
+  TbiLcd: [
+    '2f70c09c14f7686bd6671c925adeabcb5564fb2de5ad8989b6c78c108e4bd4fd',
+    'd8819c06411561f952ca4a0ceaa09eb01d047ec7d9c831adff6f19f3b1e5e2e9',
+  ],
+  TbiEdgeEcho: [
+    '8cf4804dc1ba37f5c1afc9acdb22498200c31b40a5e3a39715bafc6c625688de',
+    '6ceb6ac3bb0d1e60306d7f86bb1cb3f622a0293a84ea1b8e735036c35dea0c12',
+  ],
+};
+const host = realHost({ leaseMs: 3_600_000, stallTimeoutMs: 120_000 });
+afterAll(() => host.shutdown());
+
+async function hostRun(
+  name: string,
+  sha: string,
+  c: Circuit,
+  cutoffNs: bigint,
+  mirrors: { atSimNs: bigint; component: string; control: Rec }[] = [],
+) {
+  G.__trace = [];
+  const req = { ...c.request(sha), ticket: ticketFor(sha) };
+  const s = open(host, req);
+  expect(s.state, j(s.status().detail)).toBe('ready');
+  let rev = req.circuit.projectRevision;
+  mirrors.forEach((m, i) =>
+    expect(
+      s.submit({
+        category: 'mirror',
+        seq: i + 1,
+        atSimNs: m.atSimNs.toString(),
+        projectRevision: ++rev,
+        component: m.component,
+        control: m.control,
+      } as never),
+    ).toMatchObject({ accepted: true }),
+  );
+  s.run();
+  await expect
+    .poll(() => BigInt(s.status().simNs) > cutoffNs + 20_000_000n, { timeout: 600_000, interval: 50 })
+    .toBe(true);
+  // Publication can lag simulation under load: wait until the log stops growing for 3 s.
+  let n = -1;
+  let stable = 0;
+  while (stable < 30) {
+    await new Promise((r) => setTimeout(r, 100));
+    const m = s.log.since(0).length;
+    stable = m === n ? stable + 1 : 0;
+    n = m;
+  }
+  const events = s.log
+    .since(0)
+    .filter((e) => e.simNs !== null && BigInt(e.simNs) <= cutoffNs && e.type !== 'state')
+    .map((e) => {
+      const { seq: _s, ...r } = e as unknown as Rec;
+      return j(r);
+    });
+  const trace = G.__trace
+    .filter((r) => {
+      const a = r.a as unknown[] | undefined;
+      const v = (r.vns ?? (a?.[0] as Rec | bigint | undefined)) as unknown;
+      const ns = typeof v === 'bigint' ? v : ((v as Rec | undefined)?.vns as bigint | undefined);
+      return ns === undefined || ns <= cutoffNs;
+    })
+    .map(j);
+  s.stop();
+  await s.done();
+  writeFileSync(join(OUT, `${name}.events.jsonl`), events.join('\n') + '\n');
+  writeFileSync(join(OUT, `${name}.trace.jsonl`), trace.join('\n') + '\n');
+  G.__trace = undefined;
+}
+
+function sonar(distance: number): Circuit {
+  const c = new Circuit().psu(5);
+  const u = c.add('sensor.hc_sr04');
+  const r1 = c.add('component.resistor');
+  const r2 = c.add('component.resistor');
+  c.set(u, 'distance', { value: distance, unit: 'metre' });
+  c.wire('PSU1.positive', `${u}.vcc`).wire(`${u}.gnd`, 'GND1.ref').pad(5, `${u}.trig`);
+  c.ohms(r1, 1000).ohms(r2, 2000);
+  c.wire(`${u}.echo`, `${r1}.a`).wire(`${r1}.b`, `${r2}.a`).wire(`${r2}.b`, 'GND1.ref');
+  return c.pad(18, `${r1}.b`);
+}
+function lcdBus(): Circuit {
+  const c = new Circuit().psu(4.5);
+  const lcd = c.add('display.lcd1602_i2c');
+  const p2 = c.add('instrument.lab_psu');
+  c.set(p2, 'setpointVoltage', { value: 3.3, unit: 'volt' }).set(p2, 'outputEnabled', true);
+  c.wire(`${p2}.negative`, 'GND1.ref');
+  c.wire('PSU1.positive', `${lcd}.vcc`).wire(`${lcd}.gnd`, 'GND1.ref');
+  for (const [line, gpio] of [
+    ['sda', 21],
+    ['scl', 22],
+  ] as const) {
+    const r = c.add('component.resistor');
+    c.ohms(r, 4700).wire(`${r}.a`, `${p2}.positive`).wire(`${r}.b`, `${lcd}.${line}`);
+    c.pad(gpio, `${lcd}.${line}`);
+  }
+  return c;
+}
+/** r1-matrix-perf's matrix circuit; returns the mode switch id too. */
+function matrix(): { c: Circuit; mode: string } {
+  const c = new Circuit().psu(3.3);
+  const mode = switchedInput(c, 34);
+  const m = c.add('display.led_matrix_8x8');
+  [4, 16, 27, 25, 32, 33, 18, 19].forEach((g, i) => {
+    const r = c.add('component.resistor');
+    c.ohms(r, 220)
+      .wire(`${r}.b`, `${m}.c${i + 1}`)
+      .pad(g, `${r}.a`);
+  });
+  [23, 22, 21, 17, 13, 14, 26, 5].forEach((g, i) => c.pad(g, `${m}.r${i + 1}`));
+  return { c, mode };
+}
+
+describe('G-2 traces', () => {
+  for (const d of [0.1, 1, 4])
+    it(`HC-SR04 ${d} m`, async () => {
+      for (const [tag, sha] of [
+        ['old', PAIRS.TbiHcSr04[0]],
+        ['new', PAIRS.TbiHcSr04[1]],
+      ] as const)
+        await hostRun(`hcsr04-${d}m-${tag}`, sha, sonar(d), 3_000_000_000n);
+    }, 1_200_000);
+
+  it('LCD hello', async () => {
+    for (const [tag, sha] of [
+      ['old', PAIRS.TbiLcd![0]],
+      ['new', PAIRS.TbiLcd![1]],
+    ] as const)
+      await hostRun(`lcd-${tag}`, sha, lcdBus(), 3_000_000_000n);
+  }, 1_200_000);
+
+  it('I2C probe', async () => {
+    for (const [tag, sha] of [
+      ['old', PAIRS.TbiI2cProbe[0]],
+      ['new', PAIRS.TbiI2cProbe[1]],
+    ] as const)
+      await hostRun(`i2cprobe-${tag}`, sha, lcdBus(), 8_000_000_000n);
+  }, 1_200_000);
+
+  it('R1Scan static then scanning (matrix lifted for this test only, as r1-matrix-perf)', async () => {
+    const def = CATALOG['display.led_matrix_8x8'] as { mcuRuntime?: false };
+    const flagged = def.mcuRuntime;
+    delete def.mcuRuntime;
+    try {
+      for (const [tag, sha] of [
+        ['old', PAIRS.TbiR1Scan[0]],
+        ['new', PAIRS.TbiR1Scan[1]],
+      ] as const) {
+        const { c, mode } = matrix();
+        await hostRun(`r1scan-${tag}`, sha, c, 3_500_000_000n, [
+          { atSimNs: 2_500_000_000n, component: mode, control: { closed: true } },
+        ]);
+      }
+    } finally {
+      if (flagged === false) def.mcuRuntime = false;
+    }
+  }, 1_800_000);
+
+  it('EdgeEcho latency sweep on the bridge (no host)', async () => {
+    // 4 batches x 30 pulses; pulse k rises at batch start + k * 1.137 ms (+ batch * 0.031 ms),
+    // 200 us wide; 40 ms quiet after each batch (the firmware prints after 20 ms).
+    const pulses: { rise: bigint; fall: bigint }[] = [];
+    for (let b = 0; b < 4; b++)
+      for (let k = 0; k < 30; k++) {
+        const rise = 2_000_000_000n + BigInt(b) * 80_000_000n + BigInt(k) * 1_137_000n + BigInt(b) * 31_000n;
+        pulses.push({ rise, fall: rise + 200_000n });
+      }
+    for (const [tag, sha] of [
+      ['old', PAIRS.TbiEdgeEcho[0]],
+      ['new', PAIRS.TbiEdgeEcho[1]],
+    ] as const) {
+      G.__trace = [];
+      const ov = createSessionOverlay(join(RUNTIME_HOME, 'artifacts', `${sha}.bin`), sha);
+      try {
+        const sent = new Set<number>();
+        const r = await runSession(
+          { qemu: QEMU, flash: ov.flash, dir: ov.dir, tickUs: 1000, wallTimeoutMs: 600_000 },
+          {
+            tick(vns) {
+              if (vns >= 2_400_000_000n) return [{ type: 'Q' }];
+              const out: { type: 'J'; vns: bigint; pad: number; level: 0 | 1 }[] = [];
+              pulses.forEach((p, i) => {
+                // schedule each pulse 2 ms ahead, once
+                if (!sent.has(i) && p.rise - vns <= 2_000_000n && p.rise > vns) {
+                  sent.add(i);
+                  out.push({ type: 'J', vns: p.rise, pad: 4, level: 1 });
+                  out.push({ type: 'J', vns: p.fall, pad: 4, level: 0 });
+                }
+              });
+              return out;
+            },
+          },
+        );
+        expect(r.outcome, r.diagnostics).toBe('completed');
+        const edges = [...r.serial.toString().matchAll(/^E ([01]) (\d+)\r?$/gm)].map((m) => [
+          Number(m[1]),
+          Number(m[2]),
+        ]);
+        writeFileSync(
+          join(OUT, `edgesweep-${tag}.json`),
+          j({ scheduled: pulses.flatMap((p) => [p.rise, p.fall]), edges }),
+        );
+      } finally {
+        ov.discard();
+        G.__trace = undefined;
+      }
+    }
+  }, 1_200_000);
+});

@@ -246,7 +246,7 @@ test('A7: malformed, damaged, future and oversized files are refused before anyt
       JSON.stringify({ ...good, project: { ...good.project, name: 'Changed' } }),
       'import.error.damaged',
     ],
-    [text.replace('"schemaVersion": 3', '"schemaVersion": 4'), 'import.error.damaged'],
+    [text.replace('"schemaVersion": 7', '"schemaVersion": 8'), 'import.error.damaged'],
   ];
   for (const [body, key] of cases) {
     await importText(page, body);
@@ -261,7 +261,7 @@ test('A7: malformed, damaged, future and oversized files are refused before anyt
     project: ProjectDocument;
     integrity: { project: string };
   };
-  future.project.schemaVersion = 4;
+  future.project.schemaVersion = 8; // one past this build's schema (v7, P1 language switching)
   future.integrity.project = projectHash(future.project);
   await importText(page, JSON.stringify(future));
   await expect(page.getByTestId('notice')).toHaveAttribute('data-key', 'import.error.newer');
@@ -466,23 +466,36 @@ test('A13/A15: new Sprint 5 surfaces are Hebrew (technical tokens only), RTL chr
   await goLibrary(page);
   expect(await page.evaluate(() => document.documentElement.dir)).toBe('rtl');
   const allowed = [
+    // Sprint 12: part numbers and bus names kept verbatim in Hebrew (terminology rule).
+    /^(HC|SR04|DHT22|AM2302|LCD|I2C|PCF8574|HD44780|Wire)$/,
+    // Sprint 15 (R4): PWM/LEDC, the SG90 part number, Arduino PWM API names and frequency/time units.
+    /^(PWM|LEDC|SG90|TowerPro|analogWrite|ledcWrite|ledcDetach|digitalWrite|Hz|kHz|ms|us)$/,
+    // Sprint 19B: gate functions and pin names (datasheet tokens), part numbers, packages, MicroPython, resistor series, the watt.
+    /^(AND|NAND|OR|NOT|SN74LVC1G\d\d|SN74LVC08A?|TI|SOT|SOIC|Y|B|C|D|VCC|MicroPython|KOA|CF1|CFS1|W)$/,
+    /^(NOR|XOR|SN74LVC1G|S|Cin|Cout|X|C1|C2|Q7|Q9)$/, // Sprint 29: NOR/XOR, the part family, adder signal names, owner rule ids (LTR technical tokens)
+    /^(S30|L1|REQUEST|PERMIT|GRANTED|DENIED)$/, // Sprint 30: owner decision id S30-L1; the firmware's printed signal and verdict words (serial output, LTR)
     /^TBI$/,
     /^Lab$/,
     /^English$/,
     /^tbilab$/,
     /^(ESP32|DevKitC|GPIO\d+)$/, // Classic ESP32 technical tokens: MCU, board, pin names (Sprint 6)
     /^(RGB|NPN|LDR|PIR|NC|NO|COM|RC|GL5528|N3904|HC|SR501|F)$/, // Sprint 10: part numbers and standard acronyms (technical tokens)
+    /^(HIGH|LOW|ADC|Flyback|lx)$/, // Sprint 11: logic levels, ADC, flyback (kept in English by the glossary rule, CLAUDE.md) and the lux symbol
     /^(PSU|R|GND|D|SW)\d+$/,
     /^(GND|LED|DC|CV|CC|OFF|MB)$/,
     /^N4148$/,
     /^[VIRa]$/,
     /^k$/,
+    /^[IV]?_(CC|DD|I|IH|IL|O|OH|OL)$/, // Sprint 22: datasheet symbols (I_CC, V_I; the V is removed with the units above)
+    /^(Arduino|MicroPython|main|py|Pin|IN|value|machine|duty|duty_u16|SCL|SDA|HD44780|Hello|pull)$/, // Sprint 24: language names, the main.py file, MicroPython API names, I2C signal names, the LCD controller, the text the LCD example shows
+    /^analogRead$/, // Sprint 25: the Arduino API the pot examples name as not supported (LTR-isolated)
+    /^(sketch|ino|display|h|cpp|LiquidCrystal_PCF8574|python_lcd|I2cLcd|lib)$/, // Sprint 26: project file names, managed library names and the MicroPython /lib folder (LTR-isolated)
   ];
   const words = async () => {
-    const text = (await scannedText(page)).replace(
-      /(?<![A-Za-z])[kmMGµunp]?[ΩVA](?![A-Za-z])/g,
-      ' ',
-    );
+    const text = (await scannedText(page))
+      // Glossary terms (CLAUDE.md terminology rule): Pull-up / pull-down stay in English.
+      .replace(/[Pp]ull-(?:up|down)/g, ' ')
+      .replace(/(?<![A-Za-z])[kmMGµunp]?[ΩVA](?![A-Za-z])/g, ' ');
     return [
       ...new Set(
         (text.match(/[A-Za-z_][A-Za-z0-9_]*/g) ?? []).filter(

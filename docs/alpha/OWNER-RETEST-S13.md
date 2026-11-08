@@ -1,0 +1,30 @@
+# Owner retest: Sprint 13 fixes OS-01 … OS-10 and the pin-short physics (P2–P4)
+
+**When:** after the Sprint 13 release is deployed to the environment the PM approves.
+
+**Check the version first:** click the version at the bottom right of the window. Its details must show the release commit named in the release record.
+
+**Setup:**
+
+- Use a desktop browser, ideally the one used for the original smoke test.
+- Use your GPU machine for OS-02.
+- Test in English, and repeat the items marked **HE** in Hebrew.
+
+**If something fails:** note the step number, what you saw, and a screenshot. If you can, export the project (*Export*) and attach it.
+
+| # | Steps | Expected result | ✓/✗ |
+|---|---|---|---|
+| **OS-08** Build / Run | 1. Open the example *ESP32 blink*. Do not build. 2. Hover over **Run**. 3. Open the *Code* tab and press **Build**; while it says *Building…*, look at **Run**. 4. When it says *Built*, press **Run**, then **Stop**. 5. Type one character in the code. | (1–2) Run is greyed out. The tooltip says to build the code first. (3) Run stays greyed out during the build. (4) Run works. (5) Run is greyed out again: "it changed since the last build". | |
+| **OS-09** LCD wired wrongly | 1. Open *ESP32 LCD hello* and **Build**. 2. Swap two wires on the LCD: the wire to **VCC** goes to **SDA**, and the SDA wire goes to **VCC**. 3. **Run**. | The display stays dark. Select the ESP32 board: its runtime warnings name the problem, **GPIO21 (SDA) is wired to the module's VCC pin**, and VCC and SDA may be swapped. A rating warning for the LCD (it **may be damaged**): **SDA input** above its absolute maximum (supply + 0.5 V; NXP PCF8574 limiting value). The simulator does not model what that current would do. **HE:** the same in Hebrew. | |
+| **OS-04** overlaps | 1. In any example, drag one part (for example a resistor) onto another part's body and release. 2. Drag it next to the other part instead. 3. Open the **3D** view. | (1) The part returns to where it was. A message says it **would overlap** the other part. (2) The move is accepted. (3) In 3D the parts are separate, and nothing intersects. | |
+| **OS-05** wires over a display | 1. Open *ESP32 LCD hello*. 2. Add two resistors left and right of the LCD, on the height of its text, and wire them to each other. 3. Look at the 2D view and at **3D**. | The wire goes **around** the LCD's screen, in 2D and in 3D. It never crosses the text. | |
+| **OS-07** sensor panel width | 1. Open *ESP32 motion relay*, *ESP32 thermo-hygrometer*, *ESP32 LCD hello* and *PIR alarm*. 2. Select the PIR / DHT22 / LCD in each. 3. In *PIR alarm*, press **Run** and select the PIR. **HE:** repeat. | The properties panel has **no horizontal scrollbar**. Long model names fit the panel width (complete when the list is opened). The circuit area keeps its width. | |
+| **OS-06** HC-SR04 slider | 1. Open *ESP32 distance alarm*. Select the HC-SR04. 2. Look at the distance field. 3. Drag the slider slowly both ways. 4. **Build**, **Run**, and drag towards the sensor below 20 cm. | (2) The field shows metres as a plain number, for example `0.5`, next to `m`, never "500m m". (3) The value moves smoothly in one direction, without jumping back. The distance is shown next to the part on the circuit while dragging. (4) The alarm LED lights. | |
+| **OS-03** LDR live | 1. Open *Light sensor* and press **Run**. 2. Select the LDR and drag the light slider slowly from one end to the other, without releasing. 3. Release. | While dragging, the readings (voltage at the divider) and the lux value next to the LDR change continuously. After release, the final value stays. Same in *ESP32 night light* while running: the LED follows. | |
+| **OS-01** value entry | 1. Select a resistor and type `4k7`, then Enter. 2. Type `10k`, `220`, `1M`. 3. Type an invalid value, for example `abc`. **HE:** repeat 1. | (1–2) Shown as 4.7 kΩ, 10 kΩ, 220 Ω, 1 MΩ. (3) An error explains it, and the value is unchanged. The same entry style works for every value (supply voltage, sensor values). | |
+| **OS-10** palette selection (**EN and HE**) | 1. Click **Resistor** in the component list. 2. Move the mouse over another tile. 3. Move over an existing part on the circuit, then over empty space. 4. Press **Escape**. 5. Click **Resistor** again and click on empty space. 6. Use **Tab** to reach a tile and press **Enter**. | (1) Resistor gets a clearly stronger blue fill, a thicker border, a bold name and a ✓ (at the left in Hebrew). (2) The hovered tile is only lightly tinted, clearly different. (3) The preview turns red over the part (that placement would be refused) and blue on empty space. (4) The selection clears. (5) The resistor is placed and the tile clears. (6) A focus outline is visible, and Enter places the part in the middle of the view. | |
+| **OS-02** 3D speed (**GPU machine**) | 1. Open *Ohm's law* (supply and resistor), freshly loaded page. 2. Press the **3D** tab and time from the click to the first full picture. 3. Repeat with *ESP32 blink*. 4. Report the time, browser, and graphics card. | Target: **≤ 2 s** for *Ohm's law* (PM D-02). Report the times either way: they are the benchmark for the next decision. | |
+| **P2/P3** pin short | 1. New project with an ESP32 board. Wire the board's **GND** to a ground symbol, and **GPIO2** straight to the ground symbol. 2. Code: `void setup(){ pinMode(2, OUTPUT); digitalWrite(2, HIGH); } void loop(){}`. **Build**, **Run**. | Run works (before: "nothing to simulate"). A warning: **IO2 output HIGH is wired straight to GND**, current **not known** (beyond what the manufacturer characterizes). No "0 A", no invented number. **HE:** "זרם לא ידוע". | |
+| **P4** drive strength | Code: `#include "driver/gpio.h"` plus `gpio_set_drive_capability(GPIO_NUM_5, GPIO_DRIVE_CAP_3);` in `setup()`. **Build**. | After the build, the code view lists the unsupported feature **pin drive strength selection**. Run is refused and names it. | |
+
+After all rows, record the date, the tester and the build commit. **Owner Smoke stays open until you sign this off** (PM).

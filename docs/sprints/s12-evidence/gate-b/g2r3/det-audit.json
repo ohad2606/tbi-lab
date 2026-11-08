@@ -1,0 +1,1603 @@
+{
+ "hcsr04-0.1m": {
+  "oldhost": {
+   "runs": 1,
+   "fingerprints": [
+    "2371e2174c387d9c"
+   ],
+   "reproducible": true,
+   "events": 47,
+   "windows": 24,
+   "electricalIssues": [],
+   "operatingPoints": [
+    [
+     "high",
+     3.2258,
+     "output-low"
+    ],
+    [
+     "low",
+     0,
+     "input"
+    ],
+    [
+     "low",
+     0,
+     "output-low"
+    ]
+   ],
+   "values": {
+    "readings": 21,
+    "first": 582,
+    "firstErrUs": -0.377,
+    "laterDistinct": [
+     582
+    ],
+    "oracleUs": 582.377,
+    "withinT-R2-2(1us)": 21,
+    "outside": []
+   }
+  },
+  "committed": {
+   "runs": 10,
+   "fingerprints": [
+    "b0d9a191756612ba"
+   ],
+   "reproducible": true,
+   "events": 47,
+   "windows": 26,
+   "electricalIssues": [],
+   "operatingPoints": [
+    [
+     "high",
+     3.2258,
+     "output-low"
+    ],
+    [
+     "low",
+     0,
+     "input"
+    ],
+    [
+     "low",
+     0,
+     "output-low"
+    ]
+   ],
+   "values": {
+    "readings": 21,
+    "first": 582,
+    "firstErrUs": -0.377,
+    "laterDistinct": [
+     582
+    ],
+    "oracleUs": 582.377,
+    "withinT-R2-2(1us)": 21,
+    "outside": []
+   }
+  },
+  "proposed": {
+   "runs": 10,
+   "fingerprints": [
+    "a6174faf18931c61"
+   ],
+   "reproducible": true,
+   "events": 45,
+   "windows": 25,
+   "electricalIssues": [],
+   "operatingPoints": [
+    [
+     "low",
+     0,
+     "input"
+    ],
+    [
+     "low",
+     0,
+     "output-low"
+    ]
+   ],
+   "values": {
+    "readings": 21,
+    "first": 582,
+    "firstErrUs": -0.377,
+    "laterDistinct": [
+     582
+    ],
+    "oracleUs": 582.377,
+    "withinT-R2-2(1us)": 21,
+    "outside": []
+   }
+  },
+  "diff oldhost->committed": {
+   "common": 45,
+   "onlyA": [
+    [
+     "1000000000",
+     "gpio"
+    ],
+    [
+     "2010000000",
+     "gpio"
+    ]
+   ],
+   "onlyB": [
+    [
+     "990000000",
+     "gpio"
+    ],
+    [
+     "2000000000",
+     "gpio"
+    ]
+   ]
+  },
+  "diff committed->proposed": {
+   "common": 39,
+   "onlyA": [
+    [
+     "890000000",
+     "gpio"
+    ],
+    [
+     "890000000",
+     "electrical"
+    ],
+    [
+     "890000000",
+     "serial"
+    ],
+    [
+     "900000000",
+     "serial"
+    ],
+    [
+     "990000000",
+     "gpio"
+    ],
+    [
+     "1900000000",
+     "serial"
+    ],
+    [
+     "2000000000",
+     "gpio"
+    ],
+    [
+     "2910000000",
+     "serial"
+    ]
+   ],
+   "onlyB": [
+    [
+     "900000000",
+     "gpio"
+    ],
+    [
+     "900000000",
+     "serial"
+    ],
+    [
+     "1000000000",
+     "gpio"
+    ],
+    [
+     "1910000000",
+     "serial"
+    ],
+    [
+     "2010000000",
+     "gpio"
+    ],
+    [
+     "2920000000",
+     "serial"
+    ]
+   ]
+  }
+ },
+ "hcsr04-1m": {
+  "oldhost": {
+   "runs": 1,
+   "fingerprints": [
+    "caa97d8064a84841"
+   ],
+   "reproducible": true,
+   "events": 45,
+   "windows": 23,
+   "electricalIssues": [],
+   "operatingPoints": [
+    [
+     "high",
+     3.2258,
+     "output-low"
+    ],
+    [
+     "low",
+     0,
+     "input"
+    ],
+    [
+     "low",
+     0,
+     "output-low"
+    ]
+   ],
+   "values": {
+    "readings": 20,
+    "first": 5823,
+    "firstErrUs": -0.773,
+    "laterDistinct": [
+     5823
+    ],
+    "oracleUs": 5823.773,
+    "withinT-R2-2(1us)": 20,
+    "outside": []
+   }
+  },
+  "committed": {
+   "runs": 10,
+   "fingerprints": [
+    "efe9ac9393687eb6"
+   ],
+   "reproducible": true,
+   "events": 67,
+   "windows": 34,
+   "electricalIssues": [],
+   "operatingPoints": [
+    [
+     "high",
+     3.2258,
+     "output-low"
+    ],
+    [
+     "low",
+     0,
+     "input"
+    ],
+    [
+     "low",
+     0,
+     "output-low"
+    ]
+   ],
+   "values": {
+    "readings": 20,
+    "first": 5823,
+    "firstErrUs": -0.773,
+    "laterDistinct": [
+     5823
+    ],
+    "oracleUs": 5823.773,
+    "withinT-R2-2(1us)": 20,
+    "outside": []
+   }
+  },
+  "proposed": {
+   "runs": 10,
+   "fingerprints": [
+    "f5c51475cc5dac18"
+   ],
+   "reproducible": true,
+   "events": 59,
+   "windows": 33,
+   "electricalIssues": [],
+   "operatingPoints": [
+    [
+     "high",
+     3.2258,
+     "output-low"
+    ],
+    [
+     "low",
+     0,
+     "input"
+    ],
+    [
+     "low",
+     0,
+     "output-low"
+    ]
+   ],
+   "values": {
+    "readings": 20,
+    "first": 5823,
+    "firstErrUs": -0.773,
+    "laterDistinct": [
+     5823
+    ],
+    "oracleUs": 5823.773,
+    "withinT-R2-2(1us)": 20,
+    "outside": []
+   }
+  },
+  "diff oldhost->committed": {
+   "common": 34,
+   "onlyA": [
+    [
+     "1010000000",
+     "gpio"
+    ],
+    [
+     "1220000000",
+     "gpio"
+    ],
+    [
+     "1430000000",
+     "gpio"
+    ],
+    [
+     "1540000000",
+     "gpio"
+    ],
+    [
+     "1750000000",
+     "gpio"
+    ],
+    [
+     "1960000000",
+     "gpio"
+    ],
+    [
+     "2070000000",
+     "gpio"
+    ],
+    [
+     "2280000000",
+     "gpio"
+    ],
+    [
+     "2490000000",
+     "gpio"
+    ],
+    [
+     "2600000000",
+     "gpio"
+    ],
+    [
+     "2810000000",
+     "gpio"
+    ]
+   ],
+   "onlyB": [
+    [
+     "1000000000",
+     "gpio"
+    ],
+    [
+     "1000000000",
+     "electrical"
+    ],
+    [
+     "1010000000",
+     "electrical"
+    ],
+    [
+     "1210000000",
+     "gpio"
+    ],
+    [
+     "1210000000",
+     "electrical"
+    ],
+    [
+     "1220000000",
+     "electrical"
+    ],
+    [
+     "1420000000",
+     "gpio"
+    ],
+    [
+     "1420000000",
+     "electrical"
+    ],
+    [
+     "1430000000",
+     "electrical"
+    ],
+    [
+     "1530000000",
+     "gpio"
+    ],
+    [
+     "1530000000",
+     "electrical"
+    ],
+    [
+     "1540000000",
+     "electrical"
+    ],
+    [
+     "1740000000",
+     "gpio"
+    ],
+    [
+     "1740000000",
+     "electrical"
+    ],
+    [
+     "1750000000",
+     "electrical"
+    ],
+    [
+     "1950000000",
+     "gpio"
+    ],
+    [
+     "1950000000",
+     "electrical"
+    ],
+    [
+     "1960000000",
+     "electrical"
+    ],
+    [
+     "2060000000",
+     "gpio"
+    ],
+    [
+     "2060000000",
+     "electrical"
+    ],
+    [
+     "2070000000",
+     "electrical"
+    ],
+    [
+     "2270000000",
+     "gpio"
+    ],
+    [
+     "2270000000",
+     "electrical"
+    ],
+    [
+     "2280000000",
+     "electrical"
+    ],
+    [
+     "2480000000",
+     "gpio"
+    ],
+    [
+     "2480000000",
+     "electrical"
+    ],
+    [
+     "2490000000",
+     "electrical"
+    ],
+    [
+     "2590000000",
+     "gpio"
+    ],
+    [
+     "2590000000",
+     "electrical"
+    ],
+    [
+     "2600000000",
+     "electrical"
+    ],
+    [
+     "2800000000",
+     "gpio"
+    ],
+    [
+     "2800000000",
+     "electrical"
+    ],
+    [
+     "2810000000",
+     "electrical"
+    ]
+   ]
+  },
+  "diff committed->proposed": {
+   "common": 57,
+   "onlyA": [
+    [
+     "890000000",
+     "gpio"
+    ],
+    [
+     "890000000",
+     "electrical"
+    ],
+    [
+     "890000000",
+     "serial"
+    ],
+    [
+     "900000000",
+     "serial"
+    ],
+    [
+     "1420000000",
+     "electrical"
+    ],
+    [
+     "1430000000",
+     "electrical"
+    ],
+    [
+     "1950000000",
+     "electrical"
+    ],
+    [
+     "1960000000",
+     "electrical"
+    ],
+    [
+     "2480000000",
+     "electrical"
+    ],
+    [
+     "2490000000",
+     "electrical"
+    ]
+   ],
+   "onlyB": [
+    [
+     "900000000",
+     "gpio"
+    ],
+    [
+     "900000000",
+     "serial"
+    ]
+   ]
+  }
+ },
+ "hcsr04-4m": {
+  "oldhost": {
+   "runs": 1,
+   "fingerprints": [
+    "43dba895631b86e4"
+   ],
+   "reproducible": true,
+   "events": 39,
+   "windows": 20,
+   "electricalIssues": [],
+   "operatingPoints": [
+    [
+     "high",
+     3.2258,
+     "output-low"
+    ],
+    [
+     "low",
+     0,
+     "input"
+    ],
+    [
+     "low",
+     0,
+     "output-low"
+    ]
+   ],
+   "values": {
+    "readings": 17,
+    "first": 23294,
+    "firstErrUs": -1.091,
+    "laterDistinct": [
+     23295
+    ],
+    "oracleUs": 23295.091,
+    "withinT-R2-2(1us)": 16,
+    "outside": [
+     [
+      0,
+      23294,
+      -1.091
+     ]
+    ]
+   }
+  },
+  "committed": {
+   "runs": 10,
+   "fingerprints": [
+    "188a0e63e70a16bf"
+   ],
+   "reproducible": true,
+   "events": 73,
+   "windows": 37,
+   "electricalIssues": [],
+   "operatingPoints": [
+    [
+     "high",
+     3.2258,
+     "output-low"
+    ],
+    [
+     "low",
+     0,
+     "input"
+    ],
+    [
+     "low",
+     0,
+     "output-low"
+    ]
+   ],
+   "values": {
+    "readings": 17,
+    "first": 23294,
+    "firstErrUs": -1.091,
+    "laterDistinct": [
+     23295
+    ],
+    "oracleUs": 23295.091,
+    "withinT-R2-2(1us)": 16,
+    "outside": [
+     [
+      0,
+      23294,
+      -1.091
+     ]
+    ]
+   }
+  },
+  "proposed": {
+   "runs": 10,
+   "fingerprints": [
+    "ce7868f0e5352722"
+   ],
+   "reproducible": true,
+   "events": 73,
+   "windows": 40,
+   "electricalIssues": [],
+   "operatingPoints": [
+    [
+     "high",
+     3.2258,
+     "output-low"
+    ],
+    [
+     "low",
+     0,
+     "input"
+    ],
+    [
+     "low",
+     0,
+     "output-low"
+    ]
+   ],
+   "values": {
+    "readings": 17,
+    "first": 23294,
+    "firstErrUs": -1.091,
+    "laterDistinct": [
+     23295
+    ],
+    "oracleUs": 23295.091,
+    "withinT-R2-2(1us)": 16,
+    "outside": [
+     [
+      0,
+      23294,
+      -1.091
+     ]
+    ]
+   }
+  },
+  "diff oldhost->committed": {
+   "common": 23,
+   "onlyA": [
+    [
+     "1040000000",
+     "gpio"
+    ],
+    [
+     "1170000000",
+     "gpio"
+    ],
+    [
+     "1290000000",
+     "gpio"
+    ],
+    [
+     "1410000000",
+     "gpio"
+    ],
+    [
+     "1540000000",
+     "gpio"
+    ],
+    [
+     "1660000000",
+     "gpio"
+    ],
+    [
+     "1790000000",
+     "gpio"
+    ],
+    [
+     "1910000000",
+     "gpio"
+    ],
+    [
+     "2030000000",
+     "gpio"
+    ],
+    [
+     "2160000000",
+     "gpio"
+    ],
+    [
+     "2280000000",
+     "gpio"
+    ],
+    [
+     "2410000000",
+     "gpio"
+    ],
+    [
+     "2530000000",
+     "gpio"
+    ],
+    [
+     "2650000000",
+     "gpio"
+    ],
+    [
+     "2780000000",
+     "gpio"
+    ],
+    [
+     "2900000000",
+     "gpio"
+    ]
+   ],
+   "onlyB": [
+    [
+     "1020000000",
+     "gpio"
+    ],
+    [
+     "1020000000",
+     "electrical"
+    ],
+    [
+     "1040000000",
+     "electrical"
+    ],
+    [
+     "1140000000",
+     "gpio"
+    ],
+    [
+     "1140000000",
+     "electrical"
+    ],
+    [
+     "1170000000",
+     "electrical"
+    ],
+    [
+     "1270000000",
+     "gpio"
+    ],
+    [
+     "1270000000",
+     "electrical"
+    ],
+    [
+     "1290000000",
+     "electrical"
+    ],
+    [
+     "1390000000",
+     "gpio"
+    ],
+    [
+     "1390000000",
+     "electrical"
+    ],
+    [
+     "1410000000",
+     "electrical"
+    ],
+    [
+     "1510000000",
+     "gpio"
+    ],
+    [
+     "1510000000",
+     "electrical"
+    ],
+    [
+     "1540000000",
+     "electrical"
+    ],
+    [
+     "1640000000",
+     "gpio"
+    ],
+    [
+     "1640000000",
+     "electrical"
+    ],
+    [
+     "1660000000",
+     "electrical"
+    ],
+    [
+     "1760000000",
+     "gpio"
+    ],
+    [
+     "1760000000",
+     "electrical"
+    ],
+    [
+     "1790000000",
+     "electrical"
+    ],
+    [
+     "1890000000",
+     "gpio"
+    ],
+    [
+     "1890000000",
+     "electrical"
+    ],
+    [
+     "1910000000",
+     "electrical"
+    ],
+    [
+     "2010000000",
+     "gpio"
+    ],
+    [
+     "2010000000",
+     "electrical"
+    ],
+    [
+     "2030000000",
+     "electrical"
+    ],
+    [
+     "2130000000",
+     "gpio"
+    ],
+    [
+     "2130000000",
+     "electrical"
+    ],
+    [
+     "2160000000",
+     "electrical"
+    ],
+    [
+     "2260000000",
+     "gpio"
+    ],
+    [
+     "2260000000",
+     "electrical"
+    ],
+    [
+     "2280000000",
+     "electrical"
+    ],
+    [
+     "2380000000",
+     "gpio"
+    ],
+    [
+     "2380000000",
+     "electrical"
+    ],
+    [
+     "2410000000",
+     "electrical"
+    ],
+    [
+     "2510000000",
+     "gpio"
+    ],
+    [
+     "2510000000",
+     "electrical"
+    ],
+    [
+     "2530000000",
+     "electrical"
+    ],
+    [
+     "2630000000",
+     "gpio"
+    ],
+    [
+     "2630000000",
+     "electrical"
+    ],
+    [
+     "2650000000",
+     "electrical"
+    ],
+    [
+     "2750000000",
+     "gpio"
+    ],
+    [
+     "2750000000",
+     "electrical"
+    ],
+    [
+     "2780000000",
+     "electrical"
+    ],
+    [
+     "2880000000",
+     "gpio"
+    ],
+    [
+     "2880000000",
+     "electrical"
+    ],
+    [
+     "2900000000",
+     "electrical"
+    ],
+    [
+     "3000000000",
+     "gpio"
+    ],
+    [
+     "3000000000",
+     "electrical"
+    ]
+   ]
+  },
+  "diff committed->proposed": {
+   "common": 67,
+   "onlyA": [
+    [
+     "890000000",
+     "gpio"
+    ],
+    [
+     "890000000",
+     "electrical"
+    ],
+    [
+     "890000000",
+     "serial"
+    ],
+    [
+     "1510000000",
+     "electrical"
+    ],
+    [
+     "2130000000",
+     "electrical"
+    ],
+    [
+     "2750000000",
+     "electrical"
+    ]
+   ],
+   "onlyB": [
+    [
+     "900000000",
+     "gpio"
+    ],
+    [
+     "900000000",
+     "electrical"
+    ],
+    [
+     "900000000",
+     "serial"
+    ],
+    [
+     "1520000000",
+     "electrical"
+    ],
+    [
+     "2140000000",
+     "electrical"
+    ],
+    [
+     "2760000000",
+     "electrical"
+    ]
+   ]
+  }
+ },
+ "dht22--10C-30RH": {
+  "oldhost": {
+   "runs": 1,
+   "fingerprints": [
+    "85e3e8d5cf6c46bb"
+   ],
+   "reproducible": true,
+   "events": 8,
+   "windows": 5,
+   "electricalIssues": [],
+   "operatingPoints": [
+    [
+     "released",
+     "input",
+     3.2995
+    ]
+   ],
+   "values": {
+    "readings": 2,
+    "decoded": [
+     [
+      -100,
+      300
+     ]
+    ],
+    "expected": [
+     -100,
+     300
+    ],
+    "allExact": true
+   }
+  },
+  "committed": {
+   "runs": 10,
+   "fingerprints": [
+    "b87741773a4f3c7a"
+   ],
+   "reproducible": true,
+   "events": 11,
+   "windows": 6,
+   "electricalIssues": [],
+   "operatingPoints": [
+    [
+     "released",
+     "input",
+     3.2995
+    ],
+    [
+     "released",
+     "output-low",
+     0.0058
+    ]
+   ],
+   "values": {
+    "readings": 2,
+    "decoded": [
+     [
+      -100,
+      300
+     ]
+    ],
+    "expected": [
+     -100,
+     300
+    ],
+    "allExact": true
+   }
+  },
+  "proposed": {
+   "runs": 10,
+   "fingerprints": [
+    "b87741773a4f3c7a"
+   ],
+   "reproducible": true,
+   "events": 11,
+   "windows": 6,
+   "electricalIssues": [],
+   "operatingPoints": [
+    [
+     "released",
+     "input",
+     3.2995
+    ],
+    [
+     "released",
+     "output-low",
+     0.0058
+    ]
+   ],
+   "values": {
+    "readings": 2,
+    "decoded": [
+     [
+      -100,
+      300
+     ]
+    ],
+    "expected": [
+     -100,
+     300
+    ],
+    "allExact": true
+   }
+  },
+  "diff oldhost->committed": {
+   "common": 7,
+   "onlyA": [
+    [
+     "2400000000",
+     "gpio"
+    ]
+   ],
+   "onlyB": [
+    [
+     "2390000000",
+     "gpio"
+    ],
+    [
+     "2390000000",
+     "electrical"
+    ],
+    [
+     "2400000000",
+     "gpio"
+    ],
+    [
+     "2400000000",
+     "electrical"
+    ]
+   ]
+  },
+  "diff committed->proposed": {
+   "common": 11,
+   "onlyA": [],
+   "onlyB": []
+  }
+ },
+ "dht22-21.5C-55.2RH": {
+  "oldhost": {
+   "runs": 1,
+   "fingerprints": [
+    "838e065211c66629"
+   ],
+   "reproducible": true,
+   "events": 8,
+   "windows": 5,
+   "electricalIssues": [],
+   "operatingPoints": [
+    [
+     "released",
+     "input",
+     3.2995
+    ]
+   ],
+   "values": {
+    "readings": 2,
+    "decoded": [
+     [
+      215,
+      552
+     ]
+    ],
+    "expected": [
+     215,
+     552
+    ],
+    "allExact": true
+   }
+  },
+  "committed": {
+   "runs": 10,
+   "fingerprints": [
+    "414a2379065bc425"
+   ],
+   "reproducible": true,
+   "events": 11,
+   "windows": 6,
+   "electricalIssues": [],
+   "operatingPoints": [
+    [
+     "released",
+     "input",
+     3.2995
+    ],
+    [
+     "released",
+     "output-low",
+     0.0058
+    ]
+   ],
+   "values": {
+    "readings": 2,
+    "decoded": [
+     [
+      215,
+      552
+     ]
+    ],
+    "expected": [
+     215,
+     552
+    ],
+    "allExact": true
+   }
+  },
+  "proposed": {
+   "runs": 10,
+   "fingerprints": [
+    "414a2379065bc425"
+   ],
+   "reproducible": true,
+   "events": 11,
+   "windows": 6,
+   "electricalIssues": [],
+   "operatingPoints": [
+    [
+     "released",
+     "input",
+     3.2995
+    ],
+    [
+     "released",
+     "output-low",
+     0.0058
+    ]
+   ],
+   "values": {
+    "readings": 2,
+    "decoded": [
+     [
+      215,
+      552
+     ]
+    ],
+    "expected": [
+     215,
+     552
+    ],
+    "allExact": true
+   }
+  },
+  "diff oldhost->committed": {
+   "common": 7,
+   "onlyA": [
+    [
+     "2400000000",
+     "gpio"
+    ]
+   ],
+   "onlyB": [
+    [
+     "2390000000",
+     "gpio"
+    ],
+    [
+     "2390000000",
+     "electrical"
+    ],
+    [
+     "2400000000",
+     "gpio"
+    ],
+    [
+     "2400000000",
+     "electrical"
+    ]
+   ]
+  },
+  "diff committed->proposed": {
+   "common": 11,
+   "onlyA": [],
+   "onlyB": []
+  }
+ },
+ "dht22-60C-95RH": {
+  "oldhost": {
+   "runs": 1,
+   "fingerprints": [
+    "afcb868539a8f893"
+   ],
+   "reproducible": true,
+   "events": 8,
+   "windows": 5,
+   "electricalIssues": [],
+   "operatingPoints": [
+    [
+     "released",
+     "input",
+     3.2995
+    ]
+   ],
+   "values": {
+    "readings": 2,
+    "decoded": [
+     [
+      600,
+      950
+     ]
+    ],
+    "expected": [
+     600,
+     950
+    ],
+    "allExact": true
+   }
+  },
+  "committed": {
+   "runs": 10,
+   "fingerprints": [
+    "10af087aa4803ee2"
+   ],
+   "reproducible": true,
+   "events": 11,
+   "windows": 6,
+   "electricalIssues": [],
+   "operatingPoints": [
+    [
+     "released",
+     "input",
+     3.2995
+    ],
+    [
+     "released",
+     "output-low",
+     0.0058
+    ]
+   ],
+   "values": {
+    "readings": 2,
+    "decoded": [
+     [
+      600,
+      950
+     ]
+    ],
+    "expected": [
+     600,
+     950
+    ],
+    "allExact": true
+   }
+  },
+  "proposed": {
+   "runs": 10,
+   "fingerprints": [
+    "10af087aa4803ee2"
+   ],
+   "reproducible": true,
+   "events": 11,
+   "windows": 6,
+   "electricalIssues": [],
+   "operatingPoints": [
+    [
+     "released",
+     "input",
+     3.2995
+    ],
+    [
+     "released",
+     "output-low",
+     0.0058
+    ]
+   ],
+   "values": {
+    "readings": 2,
+    "decoded": [
+     [
+      600,
+      950
+     ]
+    ],
+    "expected": [
+     600,
+     950
+    ],
+    "allExact": true
+   }
+  },
+  "diff oldhost->committed": {
+   "common": 7,
+   "onlyA": [
+    [
+     "2400000000",
+     "gpio"
+    ]
+   ],
+   "onlyB": [
+    [
+     "2390000000",
+     "gpio"
+    ],
+    [
+     "2390000000",
+     "electrical"
+    ],
+    [
+     "2400000000",
+     "gpio"
+    ],
+    [
+     "2400000000",
+     "electrical"
+    ]
+   ]
+  },
+  "diff committed->proposed": {
+   "common": 11,
+   "onlyA": [],
+   "onlyB": []
+  }
+ },
+ "lcd1602-hello": {
+  "oldhost": {
+   "runs": 1,
+   "fingerprints": [
+    "2ec207126b9067ba"
+   ],
+   "reproducible": true,
+   "events": 8,
+   "windows": 5,
+   "electricalIssues": [],
+   "operatingPoints": [
+    [
+     false,
+     true,
+     "                ",
+     "                "
+    ],
+    [
+     true,
+     false,
+     "Hello, ESP32!   ",
+     "T=21.5C         "
+    ],
+    [
+     true,
+     true,
+     "                ",
+     "                "
+    ],
+    [
+     true,
+     true,
+     "Hello, ESP32!   ",
+     "T=21.5C         "
+    ]
+   ],
+   "values": {
+    "serial": [
+     "LCD 0",
+     "LCD-DONE",
+     "LCD 0",
+     "LCD-DARK"
+    ],
+    "finalText": [
+     true,
+     true,
+     "Hello, ESP32!   ",
+     "T=21.5C         "
+    ]
+   }
+  },
+  "committed": {
+   "runs": 10,
+   "fingerprints": [
+    "03d6e5f264ed9506"
+   ],
+   "reproducible": true,
+   "events": 9,
+   "windows": 6,
+   "electricalIssues": [],
+   "operatingPoints": [
+    [
+     false,
+     true,
+     "                ",
+     "                "
+    ],
+    [
+     true,
+     false,
+     "Hello, ESP32!   ",
+     "T=21.5C         "
+    ],
+    [
+     true,
+     true,
+     "                ",
+     "                "
+    ],
+    [
+     true,
+     true,
+     "Hello, ESP      ",
+     "                "
+    ],
+    [
+     true,
+     true,
+     "Hello, ESP32!   ",
+     "T=21.5C         "
+    ]
+   ],
+   "values": {
+    "serial": [
+     "LCD 0",
+     "LCD-DONE",
+     "LCD 0",
+     "LCD-DARK"
+    ],
+    "finalText": [
+     true,
+     true,
+     "Hello, ESP32!   ",
+     "T=21.5C         "
+    ]
+   }
+  },
+  "proposed": {
+   "runs": 10,
+   "fingerprints": [
+    "03d6e5f264ed9506"
+   ],
+   "reproducible": true,
+   "events": 9,
+   "windows": 6,
+   "electricalIssues": [],
+   "operatingPoints": [
+    [
+     false,
+     true,
+     "                ",
+     "                "
+    ],
+    [
+     true,
+     false,
+     "Hello, ESP32!   ",
+     "T=21.5C         "
+    ],
+    [
+     true,
+     true,
+     "                ",
+     "                "
+    ],
+    [
+     true,
+     true,
+     "Hello, ESP      ",
+     "                "
+    ],
+    [
+     true,
+     true,
+     "Hello, ESP32!   ",
+     "T=21.5C         "
+    ]
+   ],
+   "values": {
+    "serial": [
+     "LCD 0",
+     "LCD-DONE",
+     "LCD 0",
+     "LCD-DARK"
+    ],
+    "finalText": [
+     true,
+     true,
+     "Hello, ESP32!   ",
+     "T=21.5C         "
+    ]
+   }
+  },
+  "diff oldhost->committed": {
+   "common": 8,
+   "onlyA": [],
+   "onlyB": [
+    [
+     "960000000",
+     "electrical"
+    ]
+   ]
+  },
+  "diff committed->proposed": {
+   "common": 9,
+   "onlyA": [],
+   "onlyB": []
+  }
+ }
+}

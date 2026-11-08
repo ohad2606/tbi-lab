@@ -53,7 +53,26 @@ export interface ModulePin {
  * pin names; the glyph shows what the part IS: a relay's coil and change-over contact, an RGB
  * LED's three emitters on a common cathode, ...).
  */
-export type ModuleGlyph = 'mcu' | 'rgb_led.cc' | 'relay.spdt' | 'bjt.npn' | 'pir' | 'led_matrix';
+export type ModuleGlyph =
+  | 'mcu'
+  | 'rgb_led.cc'
+  | 'relay.spdt'
+  | 'bjt.npn'
+  | 'pir'
+  | 'led_matrix'
+  | 'ultrasonic'
+  | 'dht22'
+  | 'lcd'
+  | 'servo'
+  /** Sprint 19B: single logic gates (distinctive shapes). */
+  | 'logic.and'
+  | 'logic.nand'
+  | 'logic.or'
+  | 'logic.nor'
+  | 'logic.xor'
+  | 'logic.not'
+  /** Sprint POT-UNITS: a resistor with the wiper's arrow. */
+  | 'potentiometer';
 
 export interface ModuleSymbol {
   kind: 'module';
@@ -146,6 +165,18 @@ export const SCHEMATIC_SYMBOLS: Record<ComponentTypeId, SchematicSymbol> = {
     partName: 'NPN',
     glyph: 'bjt.npn',
   },
+  // Sprint POT-UNITS: the potentiometer's track ends on the left, the wiper on the right.
+  'component.potentiometer': {
+    kind: 'module',
+    key: 'module',
+    pins: [
+      { terminal: 'a', name: '1 (A)', side: 'left', order: 1 },
+      { terminal: 'b', name: '3 (B)', side: 'left', order: 2 },
+      { terminal: 'wiper', name: '2 (W)', side: 'right', order: 1 },
+    ],
+    partName: 'POT',
+    glyph: 'potentiometer',
+  },
   'display.led_matrix_8x8': {
     kind: 'module',
     key: 'module',
@@ -177,6 +208,55 @@ export const SCHEMATIC_SYMBOLS: Record<ComponentTypeId, SchematicSymbol> = {
     partName: 'PIR',
     glyph: 'pir',
   },
+  // Sprint 12: supply pins on the left, signal pins on the right (as the PIR module).
+  'sensor.hc_sr04': {
+    kind: 'module',
+    key: 'module',
+    pins: [
+      { terminal: 'vcc', name: 'VCC', side: 'left', order: 1 },
+      { terminal: 'gnd', name: 'GND', side: 'left', order: 2 },
+      { terminal: 'trig', name: 'TRIG', side: 'right', order: 1 },
+      { terminal: 'echo', name: 'ECHO', side: 'right', order: 2 },
+    ],
+    partName: 'Ultrasonic',
+    glyph: 'ultrasonic',
+  },
+  'sensor.dht22': {
+    kind: 'module',
+    key: 'module',
+    pins: [
+      { terminal: 'vdd', name: 'VDD', side: 'left', order: 1 },
+      { terminal: 'gnd', name: 'GND', side: 'left', order: 2 },
+      { terminal: 'data', name: 'DATA', side: 'right', order: 1 },
+      { terminal: 'nc', name: 'NC', side: 'right', order: 2 },
+    ],
+    partName: 'DHT22',
+    glyph: 'dht22',
+  },
+  'display.lcd1602_i2c': {
+    kind: 'module',
+    key: 'module',
+    pins: [
+      { terminal: 'vcc', name: 'VCC', side: 'left', order: 1 },
+      { terminal: 'gnd', name: 'GND', side: 'left', order: 2 },
+      { terminal: 'sda', name: 'SDA', side: 'right', order: 1 },
+      { terminal: 'scl', name: 'SCL', side: 'right', order: 2 },
+    ],
+    partName: 'LCD 16×2 I2C',
+    glyph: 'lcd',
+  },
+  // Sprint 15: supply pins on the left, the control signal on the right (as the sensor modules).
+  'component.servo_sg90': {
+    kind: 'module',
+    key: 'module',
+    pins: [
+      { terminal: 'vcc', name: 'VCC', side: 'left', order: 1 },
+      { terminal: 'gnd', name: 'GND', side: 'left', order: 2 },
+      { terminal: 'signal', name: 'PWM', side: 'right', order: 1 },
+    ],
+    partName: 'Servo SG90',
+    glyph: 'servo',
+  },
   'component.relay': {
     kind: 'module',
     key: 'module',
@@ -189,6 +269,113 @@ export const SCHEMATIC_SYMBOLS: Record<ComponentTypeId, SchematicSymbol> = {
     ],
     partName: 'Relay SPDT',
     glyph: 'relay.spdt',
+  },
+  'logic.gate_and': {
+    kind: 'module',
+    key: 'module',
+    // Sprint 19B: the supply pins are real, connectable pins (never hidden), on the right.
+    pins: [
+      { terminal: 'a', name: 'A', side: 'left', order: 1 },
+      { terminal: 'b', name: 'B', side: 'left', order: 2 },
+      { terminal: 'y', name: 'Y', side: 'right', order: 1 },
+      { terminal: 'vcc', name: 'VCC', side: 'right', order: 2 },
+      { terminal: 'gnd', name: 'GND', side: 'right', order: 3 },
+    ],
+    partName: 'SN74LVC1G08',
+    glyph: 'logic.and',
+  },
+  'logic.gate_nand': {
+    kind: 'module',
+    key: 'module',
+    // Sprint 19B: the supply pins are real, connectable pins (never hidden), on the right.
+    pins: [
+      { terminal: 'a', name: 'A', side: 'left', order: 1 },
+      { terminal: 'b', name: 'B', side: 'left', order: 2 },
+      { terminal: 'y', name: 'Y', side: 'right', order: 1 },
+      { terminal: 'vcc', name: 'VCC', side: 'right', order: 2 },
+      { terminal: 'gnd', name: 'GND', side: 'right', order: 3 },
+    ],
+    partName: 'SN74LVC1G00',
+    glyph: 'logic.nand',
+  },
+  'logic.gate_or': {
+    kind: 'module',
+    key: 'module',
+    // Sprint 19B: the supply pins are real, connectable pins (never hidden), on the right.
+    pins: [
+      { terminal: 'a', name: 'A', side: 'left', order: 1 },
+      { terminal: 'b', name: 'B', side: 'left', order: 2 },
+      { terminal: 'y', name: 'Y', side: 'right', order: 1 },
+      { terminal: 'vcc', name: 'VCC', side: 'right', order: 2 },
+      { terminal: 'gnd', name: 'GND', side: 'right', order: 3 },
+    ],
+    partName: 'SN74LVC1G32',
+    glyph: 'logic.or',
+  },
+  'logic.gate_nor': {
+    kind: 'module',
+    key: 'module',
+    // Sprint 19B: the supply pins are real, connectable pins (never hidden), on the right.
+    pins: [
+      { terminal: 'a', name: 'A', side: 'left', order: 1 },
+      { terminal: 'b', name: 'B', side: 'left', order: 2 },
+      { terminal: 'y', name: 'Y', side: 'right', order: 1 },
+      { terminal: 'vcc', name: 'VCC', side: 'right', order: 2 },
+      { terminal: 'gnd', name: 'GND', side: 'right', order: 3 },
+    ],
+    partName: 'SN74LVC1G02',
+    glyph: 'logic.nor',
+  },
+  'logic.gate_xor': {
+    kind: 'module',
+    key: 'module',
+    // Sprint 19B: the supply pins are real, connectable pins (never hidden), on the right.
+    pins: [
+      { terminal: 'a', name: 'A', side: 'left', order: 1 },
+      { terminal: 'b', name: 'B', side: 'left', order: 2 },
+      { terminal: 'y', name: 'Y', side: 'right', order: 1 },
+      { terminal: 'vcc', name: 'VCC', side: 'right', order: 2 },
+      { terminal: 'gnd', name: 'GND', side: 'right', order: 3 },
+    ],
+    partName: 'SN74LVC1G86',
+    glyph: 'logic.xor',
+  },
+  'logic.gate_not': {
+    kind: 'module',
+    key: 'module',
+    // Sprint 19B: the supply pins are real, connectable pins (never hidden), on the right.
+    pins: [
+      { terminal: 'a', name: 'A', side: 'left', order: 1 },
+      { terminal: 'y', name: 'Y', side: 'right', order: 1 },
+      { terminal: 'vcc', name: 'VCC', side: 'right', order: 2 },
+      { terminal: 'gnd', name: 'GND', side: 'right', order: 3 },
+    ],
+    partName: 'SN74LVC1G04',
+    glyph: 'logic.not',
+  },
+  'logic.quad_and': {
+    kind: 'module',
+    key: 'module',
+    // L3: the package's pins as on the device (pins 1–7 left, 14–8 right, top view), names as
+    // in the datasheet (SCAS283W Table 4-1); the supply pins are real, connectable pins.
+    pins: [
+      { terminal: 'a1', name: '1A', side: 'left', order: 1 },
+      { terminal: 'b1', name: '1B', side: 'left', order: 2 },
+      { terminal: 'y1', name: '1Y', side: 'left', order: 3 },
+      { terminal: 'a2', name: '2A', side: 'left', order: 4 },
+      { terminal: 'b2', name: '2B', side: 'left', order: 5 },
+      { terminal: 'y2', name: '2Y', side: 'left', order: 6 },
+      { terminal: 'gnd', name: 'GND', side: 'left', order: 7 },
+      { terminal: 'vcc', name: 'VCC', side: 'right', order: 1 },
+      { terminal: 'b4', name: '4B', side: 'right', order: 2 },
+      { terminal: 'a4', name: '4A', side: 'right', order: 3 },
+      { terminal: 'y4', name: '4Y', side: 'right', order: 4 },
+      { terminal: 'b3', name: '3B', side: 'right', order: 5 },
+      { terminal: 'a3', name: '3A', side: 'right', order: 6 },
+      { terminal: 'y3', name: '3Y', side: 'right', order: 7 },
+    ],
+    partName: 'SN74LVC08A',
+    glyph: 'logic.and',
   },
   'board.esp32_devkitc_wroom32': {
     kind: 'module',

@@ -1,0 +1,45 @@
+{
+  "current": {
+    "successLeaks": 2,
+    "failureLeaks": 10,
+    "auditKept": false,
+    "requestIdsKept": true,
+    "failureLeakLines": [
+      "[oauthproxy.go:1352] &{GET /oauth2/callback?code=<r>&state=<r> HTTP/1.1 1 1 map[Accept:[text/html,application/xhtml+xml] Accept-Encoding:[gzip, deflate] Accept-",
+      "[oauthproxy.go:921] &{GET /oauth2/callback?code=<r>&state=<r> HTTP/1.1 1 1 map[Accept:[text/html,application/xhtml+xml] Accept-Encoding:[gzip, deflate] Accept-L",
+      "127.0.0.1:6402 GET - \"/oauth2/callback?code=<r>&state=<r>\" HTTP/1.1 \"node\" 403 2731 0.000"
+    ],
+    "afterJournalFilter": {
+      "leaks": 0,
+      "cookieDumps": 0
+    }
+  },
+  "G2": {
+    "successLeaks": 0,
+    "failureLeaks": 8,
+    "auditKept": false,
+    "requestIdsKept": true,
+    "failureLeakLines": [
+      "[oauthproxy.go:1352] &{GET /oauth2/callback?code=<r>&state=<r> HTTP/1.1 1 1 map[Accept:[text/html,application/xhtml+xml] Accept-Encoding:[gzip, deflate] Accept-",
+      "[oauthproxy.go:921] &{GET /oauth2/callback?code=<r>&state=<r> HTTP/1.1 1 1 map[Accept:[text/html,application/xhtml+xml] Accept-Encoding:[gzip, deflate] Accept-L"
+    ],
+    "afterJournalFilter": {
+      "leaks": 0,
+      "cookieDumps": 0
+    }
+  },
+  "G1+G2": {
+    "successLeaks": 0,
+    "failureLeaks": 8,
+    "auditKept": false,
+    "requestIdsKept": true,
+    "failureLeakLines": [
+      "[oauthproxy.go:1352] &{GET /oauth2/callback?code=<r>&state=<r> HTTP/1.1 1 1 map[Accept:[text/html,application/xhtml+xml] Accept-Encoding:[gzip, deflate] Accept-",
+      "[oauthproxy.go:921] &{GET /oauth2/callback?code=<r>&state=<r> HTTP/1.1 1 1 map[Accept:[text/html,application/xhtml+xml] Accept-Encoding:[gzip, deflate] Accept-L"
+    ],
+    "afterJournalFilter": {
+      "leaks": 0,
+      "cookieDumps": 0
+    }
+  }
+}

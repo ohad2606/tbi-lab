@@ -1,0 +1,9 @@
+bf138f4 docs(s13/H2): P0 ESP32 physics investigation — drive strength (default 2 vs model at 3), short root cause, proposed fix P1-P4 and measured impact (no model change)
+ Test Files  124 passed (124)
+      Tests  1074 passed (1074)
+typecheck-pass
+lint-pass
+e2e exit=0
+  ✓  160 [chromium] › app/e2e/sprint4.spec.ts:434:1 › A12: a connected floating island is diagnosed, never silently skipped (1.7s)
+  14 skipped
+  181 passed (12.7m)

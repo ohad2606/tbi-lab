@@ -49,6 +49,11 @@ export const CLEARANCE = WIRE.radiusMm + BODY_GAP;
 const NEAR = WIRE.radiusMm + 0.6;
 /** How far a wire may run inside its own end part's footprint as it leaves it (mm). */
 const OWN_EXIT = 3;
+/**
+ * Around an end two wires of one node share (a post, a terminal, a junction) they converge by
+ * design: plan radius within which they are not obstacles to each other (mm).
+ */
+const SHARED_END = 4;
 /** Default corner radii: in plan, and where the height profile bends. */
 export const PLAN_BEND = 4;
 export const RAMP_BEND = 5;
@@ -94,6 +99,18 @@ export interface WireRouteInput {
 export interface WireRoute {
   points: Vec3[];
   radii: number[];
+  /** Routed without a height profile: the work budget was spent (s20r6). */
+  simple?: true;
+}
+
+/**
+ * Counted work left for routeWires (s20r6, review r4 MAJOR 2: stacked wires each saw every
+ * other wire nearby and their profiles were recomputed for each). A wire is charged its profile
+ * cells times the work its decisions take (the profile rounds and the wires near it); past the
+ * budget it is a simple cable (its plan path just above the bench), and reported.
+ */
+export interface Route3dBudget {
+  work: number;
 }
 
 interface Req {
@@ -303,6 +320,7 @@ function nearSegment(
   g: Seg3,
   reach: number,
   box: { x0: number; x1: number; z0: number; z1: number },
+  skip: readonly Point[] = [],
 ): { s0: number; s1: number; lo: number; hi: number } | null {
   const a = { x: g.a.x, y: g.a.z };
   const b = { x: g.b.x, y: g.b.z };
@@ -317,6 +335,7 @@ function nearSegment(
     const t = k / n;
     const p = { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
     if (p.x < box.x0 || p.x > box.x1 || p.y < box.z0 || p.y > box.z1) continue;
+    if (skip.some((q) => len(q, p) < SHARED_END)) continue;
     const y = g.a.y + (g.b.y - g.a.y) * t;
     const c = closest(plan, st, p);
     if (c.d >= reach) continue;
@@ -338,6 +357,7 @@ export function routeWires(
   inputs: readonly WireRouteInput[],
   obstacles: readonly Obstacle[],
   spots: readonly Spot[],
+  budget?: Route3dBudget,
 ): Map<string, WireRoute> {
   const r = WIRE.radiusMm;
   const out = new Map<string, WireRoute>();
@@ -360,7 +380,9 @@ export function routeWires(
     for (const o of obstacles) {
       // Its own end parts: only where it really runs over them (it meets them at their edge).
       const own = o.part === w.parts[0] || o.part === w.parts[1];
-      for (let [s0, s1] of rectIntervals(plan, st, o, own ? 0 : r + 0.3)) {
+      // (s20r4, review B6: its own end parts padded like any other too; unpadded, a run 0.05 mm
+      // outside its own supply's case got no requirement and its descent cut the case's edge.)
+      for (let [s0, s1] of rectIntervals(plan, st, o, r + 0.3)) {
         // Its own end part: only where it leaves it (the first few mm); a run back along or
         // across its own part clears it like any other.
         // Its own fitting (the housing it is plugged into) entirely; a part of its own no taller
@@ -374,8 +396,14 @@ export function routeWires(
         // Final actual-clearance check: the low route (resting on the bench, rising only to its
         // ends) is tested against the body's real volume by true 3D distance (corners included);
         // where it is already clear by a wire radius plus the gap, no rise is made.
-        if (!own && clearLow(plan, st, s0, s1, o, low)) continue;
-        if (o.bottom > 2 * r + BODY_GAP + FLOOR)
+        // Only for a body standing on the bench (rt2, PSU-post collision): a RAISED body (a
+        // binding post, a module on its header) that the low route clears by passing under it is
+        // decided over/under against the FINAL profile below, because a later requirement (a
+        // terminal passed near) can lift the wire into it; deciding it on the low route alone
+        // left a supply wire running through the other binding post.
+        const isRaised = o.bottom > 2 * r + BODY_GAP + FLOOR;
+        if (!own && !isRaised && clearLow(plan, st, s0, s1, o, low)) continue;
+        if (isRaised)
           raised.push({
             s0,
             s1,
@@ -414,24 +442,44 @@ export function routeWires(
         Math.max(g.a.z, g.b.z) >= bz0 &&
         Math.min(g.a.z, g.b.z) <= bz1,
     );
+    // Wires meeting at a shared end (a junction, a shared terminal) touch there by design: a
+    // wire of the same node is exempt only near the end the two share (SHARED_END), and is an
+    // obstacle like any other wire everywhere else (s20r owner report: several wires of one node
+    // to one binding post ran into and through each other along their whole length, because a
+    // segment touching the shared end was exempted entirely, whatever its length).
     const near = others
-      .map((g) => ({
-        g,
-        n: nearSegment(plan, st, g, reach, { x0: bx0, x1: bx1, z0: bz0, z1: bz1 }),
-      }))
-      .filter((x): x is { g: Seg3; n: NonNullable<typeof x.n> } => !!x.n)
-      // Wires meeting at a shared end (a junction, a shared terminal) touch there by design.
-      .filter(
-        ({ g }) =>
-          !(
-            g.node === w.node &&
-            w.node !== null &&
-            w.ownEnds.some(
-              (e) => len(e, { x: g.a.x, y: g.a.z }) < 3 || len(e, { x: g.b.x, y: g.b.z }) < 3,
-            )
-          ),
-      );
+      .map((g) => {
+        const shared =
+          g.node === w.node && w.node !== null
+            ? w.ownEnds.filter(
+                (e) => len(e, { x: g.a.x, y: g.a.z }) < 3 || len(e, { x: g.b.x, y: g.b.z }) < 3,
+              )
+            : [];
+        return {
+          g,
+          n: nearSegment(plan, st, g, reach, { x0: bx0, x1: bx1, z0: bz0, z1: bz1 }, shared),
+        };
+      })
+      .filter((x): x is { g: Seg3; n: NonNullable<typeof x.n> } => !!x.n);
     near.push(...raised.map((n) => ({ g: null as unknown as Seg3, n })));
+    if (budget) {
+      const cells = Math.ceil(L / GRID) + 1;
+      budget.work -= others.length + cells * (10 + near.length);
+      if (budget.work < 0) {
+        // Simple cable: the plan just above the bench between its fixed ends.
+        const pts: Vec3[] = [...w.head];
+        const push = (p: Vec3) => {
+          const last = pts[pts.length - 1];
+          if (!last || Math.hypot(last.x - p.x, last.y - p.y, last.z - p.z) > 1e-9) pts.push(p);
+        };
+        push({ x: plan[0]!.x, y: w.startY, z: plan[0]!.y });
+        for (const q of plan) push({ x: q.x, y: FLOOR, z: q.y });
+        push({ x: plan[plan.length - 1]!.x, y: w.endY, z: plan[plan.length - 1]!.y });
+        for (const p of w.tail) push(p);
+        out.set(w.id, { points: pts, radii: [], simple: true });
+        continue;
+      }
+    }
     const over = new Set<number>();
     const ceilings: { s0: number; s1: number; c: number }[] = [];
     let h = profile(L, w.startY, w.endY, reqs);

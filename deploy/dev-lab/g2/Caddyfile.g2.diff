@@ -1,0 +1,49 @@
+--- deploy/dev-lab/g2/Caddyfile.live-20261013	2026-10-13 11:41:26.269750888 +0000
++++ deploy/dev-lab/g2/Caddyfile.g2-candidate	2026-10-13 11:41:40.249044043 +0000
+@@ -10,8 +10,46 @@
+ #
+ # Installed as /etc/caddy/Caddyfile. No secrets here.
+ 
++# Sprint 13 G2 (c1): every Caddy log line (the error log of both sites included) drops the OAuth
++# callback's code and state from a logged URI, and any Cookie / Authorization header. Error lines
++# keep time, message, method, host, path, status. Output stays JSON on stderr (the journal).
++{
++	log default {
++		format filter {
++			wrap json
++			fields {
++				request>uri query {
++					delete code
++					delete state
++				}
++				request>headers>Cookie delete
++				request>headers>Authorization delete
++			}
++		}
++	}
++}
++
+ dev-lab.tbi-tech.net {
+ 	encode zstd gzip
++	# Sprint 13 G2 (c2): one redacted audit line per OAuth callback (time, status, duration, path,
++	# User-Agent; no code, state, Cookie, Authorization or Set-Cookie). Other paths are not logged,
++	# as before. It keeps a missing-CSRF failure visible once (b) drops oauth2-proxy's dump of it.
++	log {
++		format filter {
++			wrap json
++			fields {
++				request>uri query {
++					delete code
++					delete state
++				}
++				request>headers>Cookie delete
++				request>headers>Authorization delete
++				resp_headers>Set-Cookie delete
++			}
++		}
++	}
++	@notcallback not path /oauth2/callback
++	skip_log @notcallback
+ 	reverse_proxy 127.0.0.1:4180
+ 	header {
+ 		Strict-Transport-Security "max-age=31536000"

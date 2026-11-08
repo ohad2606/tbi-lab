@@ -1,7 +1,9 @@
 /**
  * Schematic symbols, drawn in component-local schematic units at rotation 0. Terminal
  * positions come from the domain catalog; the drawings here must end their leads exactly on
- * those points. Symbols contain no text at all, so they read correctly at every rotation.
+ * those points. Symbols contain no text at all, so they read correctly at every rotation; the one
+ * exception is a character display's own content (the LCD), which is part of the physical face
+ * and turns with it.
  */
 
 import {
@@ -13,6 +15,10 @@ import {
 
 /** Visual state some symbols depict. Presentation only: never an electrical input. */
 export interface SymbolState {
+  /** Sprint 19B: a logic gate's solved output level (`high`, `low`, `x`, `off`). */
+  gateOutput?: string;
+  /** L3: a packaged device's solved output levels, by output terminal (`y1`…`y4`). */
+  gateOutputs?: Readonly<Record<string, string>>;
   /** Toggle switch: the persisted position. */
   closed?: boolean;
   /** Push button: held right now (transient runtime input). */
@@ -23,9 +29,56 @@ export interface SymbolState {
   sounding?: boolean;
   /** PIR sensor: the simulated motion in front of it (persisted environment parameter). */
   motion?: boolean;
-  /** PIR sensor: its solved output level is high (runtime result). */
+  /** PIR sensor, ultrasonic module: its solved output level is high (runtime result). */
   outputHigh?: boolean;
+  /**
+   * Character LCD (Sprint 12): what the engine reports the display shows, verbatim (each line 16
+   * characters, already mapped from the controller's character ROM). Absent: a blank, unlit panel.
+   */
+  lcd?: LcdView;
+  /**
+   * Servo (Sprint 15): the output shaft's angle the engine or the runtime reports (0..180 deg).
+   * Absent: the rest position, 90 deg.
+   */
+  servoAngle?: number;
 }
+
+export interface LcdView {
+  backlight: boolean;
+  displayOn: boolean;
+  lines: readonly [string, string];
+}
+
+/**
+ * The LCD state from a part's solved `state` (the engine contract: powered, backlight, displayOn,
+ * line1, line2), or undefined when there is none. Nothing is invented: an unpowered display, or
+ * one whose controller has its display off, shows no characters.
+ */
+export function lcdView(state: Record<string, unknown> | undefined): LcdView | undefined {
+  if (!state || typeof state.line1 !== 'string' || typeof state.line2 !== 'string')
+    return undefined;
+  const powered = state.powered === true;
+  return {
+    backlight: powered && state.backlight === true,
+    displayOn: powered && state.displayOn === true,
+    lines: [state.line1, state.line2],
+  };
+}
+
+/** LCD 16x2 face (symbol units): the viewing window and the 5x8-dot character cells. */
+export const LCD_COLS = 16;
+export const LCD_CELL = { w: 9, h: 15, pitch: 10.5 } as const;
+export const LCD_WINDOW = { x: -24, y: -29, w: 172, h: 38 } as const;
+export const LCD_ROWS = [-18.5, -1.5] as const;
+export const lcdCellX = (i: number) =>
+  LCD_WINDOW.x + (LCD_WINDOW.w - LCD_COLS * LCD_CELL.pitch) / 2 + LCD_CELL.pitch * (i + 0.5);
+
+/** The characters of one LCD line, one per cell (code points, never reordered). */
+export const lcdChars = (line: string): string[] => Array.from(line).slice(0, LCD_COLS);
+
+/** Module leads: from each left-side terminal (x0, y) in to the body edge at x1. */
+const leftLeads = (x0: number, x1: number, ys: number[]) =>
+  ys.map((y) => <line key={y} x1={x0} y1={y} x2={x1} y2={y} />);
 
 export interface SymbolDef {
   /** Local bounding box [minX, minY, maxX, maxY] at rotation 0, including leads. */
@@ -102,7 +155,122 @@ export const RGB_CHANNELS = [
 ] as const;
 export const rgbTriangle = (y: number) => `-8,${y - 6} -8,${y + 6} 4,${y}`;
 
+/** Servo (top view): the output shaft near the case's right end. */
+export const SERVO_SHAFT = { x: 22, y: 0 } as const;
+/** The rest angle a servo is drawn at when nothing reports its position (deg). */
+export const SERVO_REST_DEG = 90;
+
+/** The servo's shaft angle from its solved `state` (engine contract: `angleDeg`), if reported. */
+export function servoAngle(state: Record<string, unknown> | undefined): number | undefined {
+  const a = state?.angleDeg;
+  return typeof a === 'number' && Number.isFinite(a) ? a : undefined;
+}
+
+/**
+ * The horn's drawing rotation (SVG degrees) for a shaft angle: 0 deg points along +x, increasing
+ * angles turn counter-clockwise as seen from above (the SG90 sheet: a longer pulse turns it
+ * "left"), clamped to the 0..180 deg travel the model reports.
+ */
+export const servoHornRotation = (angleDeg: number | undefined): number =>
+  -Math.min(180, Math.max(0, angleDeg ?? SERVO_REST_DEG));
+
+/**
+ * Sprint 19B: a gate's leads on the catalog grid: inputs from x = −40 (two at y = ∓20, one at
+ * 0) to the body at `inX`, the output from `outX` to x = 40, the supply pins from y = ∓40 to
+ * the body (`supply`: the body's half height at x = 0).
+ */
+function gateLeads(inputs: 1 | 2, outX: number, inX = -20, supply = 24) {
+  const ys = inputs === 2 ? [-20, 20] : [0];
+  return (
+    <>
+      {ys.map((y) => (
+        <line key={y} x1={-40} y1={y} x2={inX} y2={y} />
+      ))}
+      <line x1={outX} y1={0} x2={40} y2={0} />
+      <line x1={0} y1={-40} x2={0} y2={-supply} class="supply-pin" />
+      <line x1={0} y1={40} x2={0} y2={supply} class="supply-pin" />
+    </>
+  );
+}
+
+/** An unknown (X) output, marked on the output lead. */
+function unknownMark(state: SymbolState | undefined) {
+  return state?.gateOutput === 'x' ? (
+    <g class="logic-unknown">
+      <line x1={29} y1={-10} x2={37} y2={-2} />
+      <line x1={37} y1={-10} x2={29} y2={-2} />
+    </g>
+  ) : null;
+}
+
+/**
+ * L3: a 14-pin logic package as on the catalog grid: pins 1–7 down the left side, 8–14 up the
+ * right (the device's top view, SCAS283W Figure 4-1), labelled with the datasheet pin names. An
+ * output the solve leaves undetermined is marked X on its lead.
+ */
+const DIP14_PINS: readonly (readonly [string, string, number])[] = [
+  ['a1', '1A', 1],
+  ['b1', '1B', 2],
+  ['y1', '1Y', 3],
+  ['a2', '2A', 4],
+  ['b2', '2B', 5],
+  ['y2', '2Y', 6],
+  ['gnd', 'GND', 7],
+  ['y3', '3Y', 8],
+  ['a3', '3A', 9],
+  ['b3', '3B', 10],
+  ['y4', '4Y', 11],
+  ['a4', '4A', 12],
+  ['b4', '4B', 13],
+  ['vcc', 'VCC', 14],
+];
+const dip14Pos = (n: number) =>
+  n <= 7 ? { x: -60, y: -60 + (n - 1) * 20, side: -1 } : { x: 60, y: 60 - (n - 8) * 20, side: 1 };
+
+function dip14(state: SymbolState | undefined) {
+  return (
+    <>
+      <rect x={-44} y={-74} width={88} height={148} rx={3} class="symbol-body" />
+      <path d="M -8 -74 A 8 8 0 0 0 8 -74" />
+      {DIP14_PINS.map(([t, name, n]) => {
+        const p = dip14Pos(n);
+        const x = state?.gateOutputs?.[t] === 'x';
+        return (
+          <g key={t}>
+            <line
+              x1={p.x}
+              y1={p.y}
+              x2={p.side * 44}
+              y2={p.y}
+              class={t === 'vcc' || t === 'gnd' ? 'supply-pin' : undefined}
+            />
+            <text
+              x={p.side * 40}
+              y={p.y + 3.5}
+              class="ic-pin-label"
+              text-anchor={p.side < 0 ? 'start' : 'end'}
+            >
+              {name}
+            </text>
+            {x && (
+              <g class="logic-unknown">
+                <line x1={p.side * 48} y1={p.y - 9} x2={p.side * 56} y2={p.y - 1} />
+                <line x1={p.side * 56} y1={p.y - 9} x2={p.side * 48} y2={p.y - 1} />
+              </g>
+            )}
+          </g>
+        );
+      })}
+      <path d="M -10 -10 H 0 A 10 10 0 0 1 0 10 H -10 Z" />
+    </>
+  );
+}
+
 export const SYMBOLS: Record<ComponentTypeId, SymbolDef> = {
+  'logic.quad_and': {
+    bbox: [-60, -74, 60, 74],
+    draw: (state) => dip14(state),
+  },
   'component.rgb_led': {
     bbox: [-40, -30, 40, 28],
     draw: () => (
@@ -144,6 +312,20 @@ export const SYMBOLS: Record<ComponentTypeId, SymbolDef> = {
         <polyline points="-12,-14 -8,-14 -8,-18" />
         <line x1={-2} y1={-26} x2={8} y2={-14} />
         <polyline points="4,-14 8,-14 8,-18" />
+      </>
+    ),
+  },
+  // Sprint POT-UNITS: IEC/ANSI potentiometer: the resistor with the wiper's arrow pointing at the
+  // track from the wiper terminal (0, -40).
+  'component.potentiometer': {
+    bbox: [-40, -40, 40, 10],
+    draw: () => (
+      <>
+        <line x1={-40} y1={0} x2={-24} y2={0} />
+        <polyline points="-24,0 -20,-8 -12,8 -4,-8 4,8 12,-8 20,8 24,0" />
+        <line x1={24} y1={0} x2={40} y2={0} />
+        <line x1={0} y1={-40} x2={0} y2={-12} />
+        <polygon points="-5,-20 5,-20 0,-11" class="diode-body" />
       </>
     ),
   },
@@ -232,6 +414,116 @@ export const SYMBOLS: Record<ComponentTypeId, SymbolDef> = {
       </>
     ),
   },
+  'sensor.hc_sr04': {
+    bbox: [-60, -50, 46, 30],
+    // The module board, header on the left (VCC, TRIG, ECHO, GND as on the part; the canvas names
+    // each pin), and its two transducers (transmitter, receiver). The ECHO lead is marked while
+    // the solved output is high.
+    draw: (state) => (
+      <>
+        <rect x={-44} y={-50} width={90} height={80} rx={4} class="symbol-body" />
+        {leftLeads(-60, -44, [-40, -20, 20])}
+        <line x1={-60} y1={0} x2={-44} y2={0} class={state?.outputHigh ? 'pin-out-high' : ''} />
+        {[-29, 9].map((y) => (
+          <g key={y}>
+            <circle cx={22} cy={y} r={17} class="us-can" />
+            <circle cx={22} cy={y} r={11} class="us-mesh" />
+          </g>
+        ))}
+      </>
+    ),
+  },
+  'sensor.dht22': {
+    bbox: [-60, -50, 30, 30],
+    // The white case, pins on the left (VDD, DATA, NC, GND as on the part), the vent grille.
+    draw: () => (
+      <>
+        <rect x={-44} y={-50} width={74} height={80} rx={3} class="symbol-body" />
+        {leftLeads(-60, -44, [-40, -20, 0, 20])}
+        {[-40, -30, -20, -10, 0, 10].flatMap((y) =>
+          [-6, 6].map((x) => (
+            <rect key={`${x},${y}`} x={x} y={y} width={10} height={6} rx={1} class="dht-vent" />
+          )),
+        )}
+      </>
+    ),
+  },
+  'display.lcd1602_i2c': {
+    bbox: [-80, -58, 152, 38],
+    // The module: the I2C backpack's header on the left (GND, VCC, SDA, SCL; the canvas names each
+    // pin), the bezel and the 16x2 character window. Lit and filled ONLY from the engine's result.
+    draw: (state) => {
+      const lcd = state?.lcd;
+      return (
+        <>
+          <rect x={-64} y={-58} width={216} height={96} rx={3} class="symbol-body" />
+          {leftLeads(-80, -64, [-40, -20, 0, 20])}
+          <rect x={-28} y={-37} width={178} height={54} rx={2} class="lcd-bezel" />
+          <rect
+            x={LCD_WINDOW.x}
+            y={LCD_WINDOW.y}
+            width={LCD_WINDOW.w}
+            height={LCD_WINDOW.h}
+            class={lcd?.backlight ? 'lcd-window lcd-lit' : 'lcd-window'}
+          />
+          {LCD_ROWS.flatMap((y) =>
+            Array.from({ length: LCD_COLS }, (_, i) => (
+              <rect
+                key={`${i},${y}`}
+                x={lcdCellX(i) - LCD_CELL.w / 2}
+                y={y - LCD_CELL.h / 2}
+                width={LCD_CELL.w}
+                height={LCD_CELL.h}
+                class="lcd-cell"
+              />
+            )),
+          )}
+          {lcd?.displayOn && (
+            // Verbatim, one character per cell, always left to right (dir is LTR in every locale).
+            <g class="lcd-text" direction="ltr" data-testid="lcd-text">
+              {lcd.lines.flatMap((line, row) =>
+                lcdChars(line).map((ch, i) =>
+                  ch === ' ' ? null : (
+                    <text
+                      key={`${row}.${i}`}
+                      x={lcdCellX(i)}
+                      y={LCD_ROWS[row]! + 5}
+                      text-anchor="middle"
+                      direction="ltr"
+                    >
+                      {ch}
+                    </text>
+                  ),
+                ),
+              )}
+            </g>
+          )}
+        </>
+      );
+    },
+  },
+  'component.servo_sg90': {
+    bbox: [-60, -28, 52, 28],
+    // Top view: the case with its two mounting tabs, the three-wire lead on the left (GND, +V,
+    // signal, in the connector's order), the gear tower and the horn on the output shaft. The horn
+    // shows the angle the engine reports (rest: 90 deg), never a commanded or invented one.
+    draw: (state) => (
+      <>
+        <rect x={-52} y={-12} width={104} height={24} rx={2} class="servo-tab" />
+        <rect x={-44} y={-28} width={88} height={56} rx={3} class="symbol-body servo-case" />
+        {leftLeads(-60, -44, [-20, 0, 20])}
+        <circle cx={SERVO_SHAFT.x} cy={SERVO_SHAFT.y} r={13} class="servo-tower" />
+        <g
+          class="servo-horn"
+          transform={`rotate(${servoHornRotation(state?.servoAngle)} ${SERVO_SHAFT.x} ${SERVO_SHAFT.y})`}
+        >
+          <rect x={SERVO_SHAFT.x - 6} y={SERVO_SHAFT.y - 4} width={32} height={8} rx={4} />
+          <circle cx={SERVO_SHAFT.x} cy={SERVO_SHAFT.y} r={6} />
+        </g>
+        <circle cx={SERVO_SHAFT.x} cy={SERVO_SHAFT.y} r={2} class="servo-screw" />
+      </>
+    ),
+  },
   'component.relay': {
     bbox: [-60, -28, 60, 40],
     // Coil and change-over contact; the dashed link is mechanical, not electrical. The blade shows
@@ -263,6 +555,72 @@ export const SYMBOLS: Record<ComponentTypeId, SymbolDef> = {
         </>
       );
     },
+  },
+  // Sprint 19B (logic L1): distinctive-shape gates with their own supply pins (V_CC top, GND
+  // bottom). An output the solve leaves undetermined is marked X (never drawn as a level).
+  'logic.gate_and': {
+    bbox: [-40, -40, 40, 40],
+    draw: (state) => (
+      <>
+        <path d="M -20 -24 H 0 A 24 24 0 0 1 0 24 H -20 Z" class="symbol-body" />
+        {gateLeads(2, 24)}
+        {unknownMark(state)}
+      </>
+    ),
+  },
+  'logic.gate_nand': {
+    bbox: [-40, -40, 40, 40],
+    draw: (state) => (
+      <>
+        <path d="M -20 -24 H 0 A 24 24 0 0 1 0 24 H -20 Z" class="symbol-body" />
+        <circle cx={27} cy={0} r={3} class="symbol-body" />
+        {gateLeads(2, 30)}
+        {unknownMark(state)}
+      </>
+    ),
+  },
+  'logic.gate_or': {
+    bbox: [-40, -40, 40, 40],
+    draw: (state) => (
+      <>
+        <path d="M -20 -24 Q 6 -24 24 0 Q 6 24 -20 24 Q -10 0 -20 -24 Z" class="symbol-body" />
+        {gateLeads(2, 24, -15)}
+        {unknownMark(state)}
+      </>
+    ),
+  },
+  'logic.gate_nor': {
+    bbox: [-40, -40, 40, 40],
+    draw: (state) => (
+      <>
+        <path d="M -20 -24 Q 6 -24 24 0 Q 6 24 -20 24 Q -10 0 -20 -24 Z" class="symbol-body" />
+        <circle cx={27} cy={0} r={3} class="symbol-body" />
+        {gateLeads(2, 30, -15)}
+        {unknownMark(state)}
+      </>
+    ),
+  },
+  'logic.gate_xor': {
+    bbox: [-40, -40, 40, 40],
+    draw: (state) => (
+      <>
+        <path d="M -20 -24 Q 6 -24 24 0 Q 6 24 -20 24 Q -10 0 -20 -24 Z" class="symbol-body" />
+        <path d="M -26 -24 Q -16 0 -26 24" class="symbol-body" fill="none" />
+        {gateLeads(2, 24, -24)}
+        {unknownMark(state)}
+      </>
+    ),
+  },
+  'logic.gate_not': {
+    bbox: [-40, -40, 40, 40],
+    draw: (state) => (
+      <>
+        <path d="M -20 -20 L -20 20 L 16 0 Z" class="symbol-body" />
+        <circle cx={20} cy={0} r={4} class="symbol-body" />
+        {gateLeads(1, 24, -20, 9)}
+        {unknownMark(state)}
+      </>
+    ),
   },
   'board.esp32_devkitc_wroom32': {
     bbox: [-80, -196, 80, 196],

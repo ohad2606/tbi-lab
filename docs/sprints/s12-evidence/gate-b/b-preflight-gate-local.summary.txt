@@ -1,0 +1,5 @@
+ ✓ runtime/tests/s12-bridge.runtime.test.ts (10 tests) 33810ms
+ ✓ runtime/tests/gate.runtime.test.ts (6 tests) 163550ms
+ Test Files  2 passed (2)
+      Tests  16 passed (16)
+exit=0

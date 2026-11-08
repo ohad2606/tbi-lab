@@ -20,7 +20,9 @@
  *      reads as connected to it, so this ranks above everything else: a longer route around
  *      the part always beats a short one along a header. Only the hop's own two endpoints are
  *      exempt.
- *   2. HEADER-ROW BAND: length inside the exclusion band of a board header row (its pins and
+ *   2. PROTECTED REGIONS: length over a display face (Sprint 13 OS-05: an LCD's text, a matrix's
+ *      dots; a box the caller marks `display`), plus
+ *      HEADER-ROW BAND: length inside the exclusion band of a board header row (its pins and
  *      their stubs, grown by `HEADER_CLEARANCE` on every side; Sprint 10 second owner blocker).
  *      A wire running along or beside a pin row, or along the row's line beyond its last pin,
  *      reads as attached to the row. Only a hop's own pin on that row may cross the band, and
@@ -37,7 +39,18 @@
  *      a pin field with a visible gap when that costs only bends and length. The pins next to
  *      the hop's own endpoints are exempt (every way out of a header pin passes them)
  *   8. crossings + bends (a clean crossing is allowed and drawn with a bridge; it costs the
- *      same as one extra bend)
+ *      same as one extra bend). Sprint 20 (s20r owner report): crossing a wire of the hop's OWN
+ *      electrical node costs SAME_CROSS (3) bends: no hop is drawn there (a hop says "not
+ *      connected", which would be false), and a plain crossing of one node's wires is ambiguous.
+ *      Sprint 21 (s21r): each grid step run along a body's OUTLINE costs OUTLINE_BENDS bends (half
+ *      hidden under the symbol's knock-out, it reads as the symbol's edge)
+ *   8b. TRUNK (s20r): length run along, and points where the route meets or leaves, a wire of the
+ *      hop's own node (only when the caller says which node the wire is on, `node`). Wires of one
+ *      node may share a run and branch where they part (a T on a wire of the same node reads as
+ *      the connection it is), instead of each needing a free side of the terminal and wrapping
+ *      round across the others. Ranked after bends: it is free of the "never look like one
+ *      wire" rule (criterion 3), which protects DIFFERENT nodes; without a `node` such overlap
+ *      stays criterion 3 or 5
  *   9. total length
  *  10. candidate order (the short shapes before the search result)
  *
@@ -50,8 +63,18 @@ import { BOARD_HALF_WIDTH, boardPinPosition, boardTerminalId, getTypeDef } from 
 /** Length of the stub drawn for a board pin that cannot be wired (app symbol). */
 const BOARD_STUB = 8;
 import { ESP32_DEVKITC_WROOM32 } from './boards/esp32DevkitcWroom32.js';
-import { isContact } from './contacts.js';
-import { GRID, orthogonalRoute, rotatePoint, terminalPosition, wireRoute } from './layout.js';
+import { isContact, touchingUnconnected } from './contacts.js';
+import { wireNodes } from './connectivity.js';
+import {
+  GRID,
+  orthogonalRoute,
+  rotatePoint,
+  sameNodeCrossings,
+  terminalPosition,
+  wireCrossings,
+  wireRoute,
+  type WireCrossing,
+} from './layout.js';
 import type { Point, ProjectDocument, Wire } from './schema.js';
 
 /** An axis-aligned component body; only its strict interior is an obstacle. */
@@ -60,6 +83,12 @@ export interface RouteBox {
   minY: number;
   maxX: number;
   maxY: number;
+  /**
+   * Sprint 13 OS-05: a display face (an LCD's text, a matrix's dots), not a body: a wire over it
+   * hides what the part shows. Priced with the header bands (criterion 2), ahead of everything
+   * but terminal keep-out, so a route around it always wins when one exists.
+   */
+  display?: boolean;
 }
 
 export interface RouteObstacles {
@@ -87,6 +116,68 @@ export interface RouteObstacles {
    * grown by `HEADER_CLEARANCE`, except a hop endpoint's straight outward exit. Optional.
    */
   headers?: readonly HeaderRow[];
+  /**
+   * Sprint 20 (s20r): the electrical node of each wire segment (same order as `segments`), so a
+   * hop of a wire on a given node can price crossing its own node's wires (criterion 6b).
+   */
+  segmentNodes?: readonly (string | null)[];
+}
+
+/**
+ * Sprint 20 (s20r4, review B1: a large project froze the tab while its wires were routed): the
+ * WORK a routing pass may spend on grid searches, in lattice cells (a search over an nx x ny area
+ * costs nx * ny), counted, never timed, so routes never depend on the machine's speed. Once spent,
+ * the hops that would need a search keep the best of the short shapes; `skipped` counts them.
+ */
+export interface SearchBudget {
+  cells: number;
+  /** Pricing work left: path segments x obstacles priced against (short shapes, results). */
+  ops: number;
+  skipped: number;
+}
+/**
+ * What the last canonical routing pass did about its extra conflict pass (s22r; diagnostics and
+ * tests): tried / kept (0 or 1), and why it was not started ('' when it was, or there was nothing
+ * to do: 'degraded' the pass already ran out of budget, 'budget' less budget left than the first
+ * pass used, 'unfixable' every conflict is a wire ending on another part's terminal).
+ */
+export const extraPassStats: { tried: number; kept: number; skipped: string } = {
+  tried: 0,
+  kept: 0,
+  skipped: '',
+};
+/** The search-cell budget a pass starts with (s22r). */
+const SEARCH_BUDGET_CELLS_OF = (limits?: RouteLimits) => limits?.cells ?? SEARCH_BUDGET_CELLS;
+const EMPTY_OBSTACLES: RouteObstacles = { segments: [], boxes: [], points: [] };
+/** Number of obstacle elements (s20r4: the unit of the pricing budget). */
+const sizeOf = (o: RouteObstacles) =>
+  o.segments.length +
+  o.boxes.length +
+  o.points.length +
+  (o.leads?.length ?? 0) +
+  (o.field?.length ?? 0) +
+  (o.headers?.length ?? 0);
+/** Pricing work of one cost() call (s20r4). */
+const opsOf = (path: readonly Point[], o: RouteObstacles) => (path.length - 1) * sizeOf(o);
+/**
+ * The search budget of one canonical routing pass (routeAutoWires), shared by its reorder rounds:
+ * well under 1 s of searching on the 1-vCPU DEV host (~8 us per cell, s20r4-cells.txt). The first
+ * pass of an 80-wire dense ESP32 bench spends ~50 000 cells; beyond the budget the remaining
+ * wires that need a search keep their best short shape and are reported (`routeAutoWiresReport`).
+ */
+export const SEARCH_BUDGET_CELLS = 80_000;
+/**
+ * The pricing budget of one canonical routing pass (s20r4), in obstacle elements visited: the
+ * scans for a hop's nearby obstacles, a search's buckets, the wire list rebuilt per wire, and
+ * every shape and search result priced (path segments x obstacles). ~80 ns per unit on the DEV
+ * host (s20r4-large-*.txt); an 80-wire dense ESP32 bench spends ~3 M.
+ */
+export const PRICING_BUDGET_OPS = 6_000_000;
+
+/** Work limits of one routing or repair pass (defaults: SEARCH_BUDGET_CELLS, PRICING_BUDGET_OPS). */
+export interface RouteLimits {
+  cells?: number;
+  ops?: number;
 }
 
 export interface HeaderRow {
@@ -140,9 +231,30 @@ function normalize(pts: Point[]): Point[] | null {
   return minimal;
 }
 
+/**
+ * At most this many channel lines between a hop's endpoints (s20r5, review r3: a hop spanning
+ * 1e8 units made 5e6 candidate shapes). Spans up to this many grid steps (8 000 layout units,
+ * far beyond any layout drawn: examples < 2 000) keep every line; longer ones keep the lines
+ * nearest each endpoint.
+ */
+const MAX_CHANNELS = 400;
 function channels(lo: number, hi: number): number[] {
   const out: number[] = [];
-  for (let v = Math.ceil(lo / GRID) * GRID; v <= hi; v += GRID) if (v > lo && v < hi) out.push(v);
+  const first = Math.ceil(lo / GRID) * GRID;
+  const steps = (hi - first) / GRID;
+  if (steps <= MAX_CHANNELS) {
+    for (let v = first; v <= hi; v += GRID) if (v > lo && v < hi) out.push(v);
+  } else {
+    const last = Math.floor(hi / GRID) * GRID;
+    for (let k = 0; k < MAX_CHANNELS / 2; k++) {
+      const v = first + k * GRID;
+      if (v > lo && v < hi) out.push(v);
+    }
+    for (let k = MAX_CHANNELS / 2 - 1; k >= 0; k--) {
+      const v = last - k * GRID;
+      if (v > lo && v < hi) out.push(v);
+    }
+  }
   for (let k = 1; k <= CHANNEL_REACH; k++) out.push(hi + k * GRID, lo - k * GRID);
   return out;
 }
@@ -200,6 +312,58 @@ function boxLength(s: Seg, box: RouteBox): number {
   return 0;
 }
 
+/**
+ * Sprint 21 (s21r, owner screenshot): length of a segment running ALONG a body's outline (on its
+ * boundary line, within its extent). The Circuit view draws parts over wires with an opaque
+ * knock-out of the symbol box, so such a run is half hidden and reads as the symbol's own edge
+ * (the owner's V_CC and GND wires along the gate's and the supply's edges). Leaving a terminal on
+ * the edge straight outward, or crossing a corner, has zero length on it.
+ */
+function outlineLength(s: Seg, box: RouteBox, ends: readonly Point[] = []): number {
+  const n = outlineRun(s, box);
+  if (n <= 0) return 0;
+  // The first grid step out of (or into) a hop's own end on this box is exempt: a terminal at a
+  // corner of its part leaving along the edge for one step reads as its lead, not as the outline
+  // (s21r: 98 % of the outline length of the golden benches was such end runs).
+  const onBox = (e: Point) =>
+    e.x >= box.minX && e.x <= box.maxX && e.y >= box.minY && e.y <= box.maxY;
+  const atEnd = ends.some((e) => onBox(e) && (eq(e, s[0]) || eq(e, s[1])));
+  return atEnd ? Math.max(0, n - GRID) : n;
+}
+/** Length of a segment on a box's boundary line, within the box's extent. */
+function outlineRun(s: Seg, box: RouteBox): number {
+  if (horizontal(s)) {
+    if (s[0].y !== box.minY && s[0].y !== box.maxY) return 0;
+    const lo = Math.max(Math.min(s[0].x, s[1].x), box.minX);
+    const hi = Math.min(Math.max(s[0].x, s[1].x), box.maxX);
+    return Math.max(0, hi - lo);
+  }
+  if (vertical(s)) {
+    if (s[0].x !== box.minX && s[0].x !== box.maxX) return 0;
+    const lo = Math.max(Math.min(s[0].y, s[1].y), box.minY);
+    const hi = Math.min(Math.max(s[0].y, s[1].y), box.maxY);
+    return Math.max(0, hi - lo);
+  }
+  return 0;
+}
+const pathLength = (p: readonly Point[]) =>
+  p.slice(1).reduce((n, q, i) => n + Math.abs(q.x - p[i]!.x) + Math.abs(q.y - p[i]!.y), 0);
+/** Outline length of a path over the obstacles' bodies (s21r), the ends' first steps exempt. */
+function outlineOf(path: readonly Point[], obs: RouteObstacles, ends: readonly Point[]): number {
+  let n = 0;
+  for (let i = 1; i < path.length; i++)
+    for (const q of obs.boxes)
+      if (!q.display) n += outlineLength([path[i - 1]!, path[i]!], q, ends);
+  return n;
+}
+/**
+ * A grid step along a body's outline costs this many bends (criterion 8, s21r): a route leaves
+ * the outline when that takes at most this many extra bends per step; a short run along it (a wire
+ * leaving a corner terminal along the edge for one step) is kept rather than bought off with a
+ * detour.
+ */
+const OUTLINE_BENDS = 0.75;
+
 const inside = (v: number, p: number, q: number) => v > Math.min(p, q) && v < Math.max(p, q);
 const onSeg = (p: Point, s: Seg) =>
   (vertical(s) &&
@@ -248,7 +412,12 @@ function keepOutHits(segs: readonly Seg[], obs: RouteObstacles, isEnd: (p: Point
   return n;
 }
 
-function cost(path: Point[], obs: RouteObstacles, ends: readonly Point[]): number[] {
+function cost(
+  path: Point[],
+  obs: RouteObstacles,
+  ends: readonly Point[],
+  node: string | null = null,
+): number[] {
   const segs: Seg[] = [];
   for (let i = 0; i < path.length - 1; i++) segs.push([path[i]!, path[i + 1]!]);
   let overlap = 0;
@@ -256,29 +425,63 @@ function cost(path: Point[], obs: RouteObstacles, ends: readonly Point[]): numbe
   let body = 0;
   let touches = 0;
   let crossings = 0;
+  let sameCross = 0;
+  let trunk = 0;
+  let outline = 0;
   const isEnd = (p: Point) => ends.some((e) => eq(e, p));
+  // A TRUNK segment (s20r): a segment of a wire of the hop's own node (criterion 8b).
+  const isTrunk = (i: number) => node !== null && obs.segmentNodes?.[i] === node;
   for (const s of segs) {
-    for (const t of obs.segments) {
-      if (sharesEnd(t, ends)) shared += overlapLength(s, t);
+    obs.segments.forEach((t, i) => {
+      if (isTrunk(i)) trunk += overlapLength(s, t) / GRID;
+      else if (sharesEnd(t, ends)) shared += overlapLength(s, t);
       else overlap += overlapLength(s, t);
-      if (crosses(s, t)) crossings++;
-    }
-    for (const box of obs.boxes) body += boxLength(s, box);
+      if (crosses(s, t)) {
+        if (node !== null && obs.segmentNodes?.[i] === node) sameCross++;
+        else crossings++;
+      }
+    });
+    for (const box of obs.boxes)
+      if (!box.display) {
+        body += boxLength(s, box);
+        outline += outlineLength(s, box, ends);
+      }
   }
   const keepOut = keepOutHits(segs, obs, isEnd);
   const hug = hugs(segs, obs, ends);
   const banded = bandLength(segs, obs, ends);
   // Points where the new route meets an existing wire without a clean crossing.
-  for (const t of obs.segments) {
-    for (const q of [t[0], t[1]]) if (!isEnd(q) && segs.some((s) => onSeg(q, s))) touches++;
+  // (Meeting a trunk segment is where the wire branches off its own node's wire: priced as trunk.)
+  obs.segments.forEach((t, i) => {
+    for (const q of [t[0], t[1]])
+      if (!isEnd(q) && segs.some((s) => onSeg(q, s))) {
+        if (isTrunk(i)) trunk++;
+        else touches++;
+      }
+  });
+  for (const corner of path.slice(1, -1)) {
+    const on = obs.segments.map((t, i) => (onSeg(corner, t) ? i : -1)).filter((i) => i >= 0);
+    if (on.length === 0) continue;
+    if (on.every(isTrunk)) trunk++;
+    else touches++;
   }
-  for (const corner of path.slice(1, -1)) if (obs.segments.some((t) => onSeg(corner, t))) touches++;
   const bends = path.length - 2;
   const length = segs.reduce(
     (n, s) => n + Math.abs(s[1].x - s[0].x) + Math.abs(s[1].y - s[0].y),
     0,
   );
-  return [keepOut, banded, overlap, body, shared, touches, hug, crossings + bends, length];
+  return [
+    keepOut,
+    banded,
+    overlap,
+    body,
+    shared,
+    touches,
+    hug,
+    crossings + bends + SAME_CROSS * sameCross + (OUTLINE_BENDS * outline) / GRID,
+    trunk,
+    length,
+  ];
 }
 
 /** An existing wire segment that ends at one of the hop's endpoints (a wire on the same terminal). */
@@ -363,9 +566,13 @@ function onExitLine(s: Seg, h: HeaderRow, ends: readonly Point[]): boolean {
   });
 }
 
-/** Criterion 2: route length inside header-row bands, outward exits of its own pins exempt. */
+/**
+ * Criterion 2: route length inside header-row bands (outward exits of its own pins exempt) and
+ * over display faces.
+ */
 function bandLength(segs: readonly Seg[], obs: RouteObstacles, ends: readonly Point[]): number {
   let n = 0;
+  for (const q of obs.boxes) if (q.display) for (const s of segs) n += lengthInside(s, q);
   for (const h of obs.headers ?? []) {
     const q = band(h);
     for (const s of segs) if (!outwardExit(s, h, ends)) n += lengthInside(s, q);
@@ -380,6 +587,11 @@ const W_OVERLAP = 1e13; // per grid step
 const W_BODY = 1e11; // per grid step
 const W_SHARED = 1e9; // per grid step
 const W_TOUCH = 1e7;
+
+/** A crossing of a wire of the hop's own node costs this many bends (criterion 8, s20r). */
+const SAME_CROSS = 3;
+const W_SAME = SAME_CROSS * 1e3; // SAME_CROSS bends (W_BEND)
+const W_TRUNK = 0.5; // per grid step along, or a branch off, a wire of the own node (8b)
 const W_HUG = 1e5; // per grid step beside a pin-field point
 const W_BEND = 1e3; // a bend or a clean crossing; a grid step of length costs 1
 /**
@@ -389,6 +601,8 @@ const W_BEND = 1e3; // a bend or a clean crossing; a grid step of length costs 1
 const SEARCH_MARGIN = 4 * GRID;
 const SEARCH_MARGIN_MAX = 32 * GRID;
 const SEARCH_MAX_NODES = 60_000;
+/** Cell key stride (rt2): cx * CELL_KEY + cy is unique for |cy| < 2^19 lattice steps. */
+const CELL_KEY = 1 << 20;
 const DIRS: readonly Point[] = [
   { x: GRID, y: 0 },
   { x: 0, y: GRID },
@@ -404,7 +618,14 @@ const DIRS: readonly Point[] = [
  * grid lattice or the area is too large; the caller keeps the best short shape then.
  * The result is compared with the short shapes by `cost`, so it is used only when it is better.
  */
-function searchRoute(a: Point, b: Point, obs: RouteObstacles, margin: number): Point[] | null {
+function searchRoute(
+  a: Point,
+  b: Point,
+  obs: RouteObstacles,
+  margin: number,
+  wireNode: string | null = null,
+  budget?: SearchBudget,
+): Point[] | null {
   if ((b.x - a.x) % GRID !== 0 || (b.y - a.y) % GRID !== 0) return null;
   // Area: the endpoints, grown by every body it reaches, plus a margin to go around them.
   let minX = Math.min(a.x, b.x) - margin;
@@ -429,52 +650,97 @@ function searchRoute(a: Point, b: Point, obs: RouteObstacles, margin: number): P
   const nx = Math.floor((maxX - x0) / GRID) + 1;
   const ny = Math.floor((maxY - y0) / GRID) + 1;
   if (nx * ny > SEARCH_MAX_NODES) return null;
+  // Sprint 20 (s20r4, review B1): a routing pass spends at most its budget of lattice cells.
+  if (budget) {
+    if (budget.cells < nx * ny || budget.ops <= 0) {
+      budget.skipped++;
+      return null;
+    }
+    budget.cells -= nx * ny;
+    budget.ops -= sizeOf(obs); // the search's buckets are built from every obstacle
+  }
   const node = (p: Point) => ((p.y - y0) / GRID) * nx + (p.x - x0) / GRID;
   const at = (n: number): Point => ({ x: x0 + (n % nx) * GRID, y: y0 + Math.floor(n / nx) * GRID });
   const isEnd = (p: Point) => eq(p, a) || eq(p, b);
   const ends = [a, b];
   // Spatial buckets (by nearest lattice node) of keep-out points and wire segments.
+  // (Rt2: numeric cell keys and in-place appends; the same buckets in the same order as the
+  // former string keys, so every lookup returns the same lists.)
+  const key = (cx: number, cy: number) => cx * CELL_KEY + cy;
   const cell = (x: number, y: number) =>
-    `${Math.round((x - x0) / GRID)},${Math.round((y - y0) / GRID)}`;
-  const pointsAt = new Map<string, Point[]>();
+    key(Math.round((x - x0) / GRID), Math.round((y - y0) / GRID));
+  const append = <T>(map: Map<number, T[]>, k: number, v: T) => {
+    const list = map.get(k);
+    if (list) list.push(v);
+    else map.set(k, [v]);
+  };
+  const pointsAt = new Map<number, Point[]>();
   for (const p of obs.points) {
     if (isEnd(p)) continue;
-    const k = cell(p.x, p.y);
-    pointsAt.set(k, [...(pointsAt.get(k) ?? []), p]);
+    append(pointsAt, cell(p.x, p.y), p);
   }
-  const fieldAt = new Map<string, Point[]>();
+  const fieldAt = new Map<number, Point[]>();
   for (const p of obs.field ?? []) {
     if (Math.hypot(p.x - a.x, p.y - a.y) <= GRID || Math.hypot(p.x - b.x, p.y - b.y) <= GRID)
       continue;
-    const k = cell(p.x, p.y);
-    fieldAt.set(k, [...(fieldAt.get(k) ?? []), p]);
+    append(fieldAt, cell(p.x, p.y), p);
   }
-  const leadsAt = new Map<string, Seg[]>();
+  const leadsAt = new Map<number, Seg[]>();
   for (const l of obs.leads ?? []) {
     if (isEnd(l[0])) continue;
-    for (const q of [l[0], l[1]]) {
-      const k = cell(q.x, q.y);
-      leadsAt.set(k, [...(leadsAt.get(k) ?? []), l]);
-    }
+    for (const q of [l[0], l[1]]) append(leadsAt, cell(q.x, q.y), l);
   }
-  const segsAt = new Map<string, Seg[]>();
+  const segsAt = new Map<number, Seg[]>();
+  // Segments of the hop's own node (s20r): crossing one costs W_SAME; running along or
+  // branching off one costs W_TRUNK (criteria 8 and 8b).
+  const own = new Set<Seg>();
+  if (wireNode !== null)
+    obs.segments.forEach((t, i) => obs.segmentNodes?.[i] === wireNode && own.add(t));
+  const trunks = own;
+  // Only the part of a segment near the lattice is bucketed (s20r5, review r3: a segment a 1e8
+  // units long was walked grid step by grid step; the buckets far outside are never read).
+  const bx0 = x0 - 2 * GRID;
+  const bx1 = x0 + (nx + 1) * GRID;
+  const by0 = y0 - 2 * GRID;
+  const by1 = y0 + (ny + 1) * GRID;
   for (const t of obs.segments) {
     const len = Math.abs(t[1].x - t[0].x) + Math.abs(t[1].y - t[0].y);
     const n = Math.max(1, Math.ceil(len / GRID));
-    for (let i = 0; i <= n; i++) {
+    // Parameter range of the segment inside the box (axis-aligned: one coordinate varies).
+    let t0 = 0;
+    let t1 = 1;
+    for (const [p, q, lo, hi] of [
+      [t[0].x, t[1].x, bx0, bx1],
+      [t[0].y, t[1].y, by0, by1],
+    ] as const) {
+      if (p === q) {
+        if (p < lo || p > hi) t1 = -1;
+        continue;
+      }
+      const a = (lo - p) / (q - p);
+      const b = (hi - p) / (q - p);
+      t0 = Math.max(t0, Math.min(a, b));
+      t1 = Math.min(t1, Math.max(a, b));
+    }
+    if (t1 < t0) continue;
+    const i0 = Math.max(0, Math.floor(t0 * n) - 1);
+    const i1 = Math.min(n, Math.ceil(t1 * n) + 1);
+    for (let i = i0; i <= i1; i++) {
       const k = cell(t[0].x + ((t[1].x - t[0].x) * i) / n, t[0].y + ((t[1].y - t[0].y) * i) / n);
       const list = segsAt.get(k) ?? [];
       if (!list.includes(t)) list.push(t);
       segsAt.set(k, list);
     }
   }
-  const near = <T>(map: Map<string, T[]>, p: Point): T[] => {
+  const near = <T>(map: Map<number, T[]>, p: Point): T[] => {
     const out = new Set<T>();
     const cx = Math.round((p.x - x0) / GRID);
     const cy = Math.round((p.y - y0) / GRID);
     for (let i = -1; i <= 1; i++)
-      for (let j = -1; j <= 1; j++)
-        for (const v of map.get(`${cx + i},${cy + j}`) ?? []) out.add(v);
+      for (let j = -1; j <= 1; j++) {
+        const list = map.get(key(cx + i, cy + j));
+        if (list) for (const v of list) out.add(v);
+      }
     return [...out];
   };
   /** What lies near each lattice node (points, leads, wire segments); memoized. */
@@ -487,6 +753,36 @@ function searchRoute(a: Point, b: Point, obs: RouteObstacles, margin: number): P
       f: near(fieldAt, at(n)),
     });
   const union = <T>(x: T[], y: T[]): T[] => (y.length ? [...new Set([...x, ...y])] : x);
+  // Rt2: only the bodies and header bands that reach the lattice can price a step on it; every
+  // other one adds an exact 0 (no closed overlap with any step), so dropping them, in order,
+  // changes no sum.
+  const lattice: RouteBox = {
+    minX: x0,
+    minY: y0,
+    maxX: x0 + (nx - 1) * GRID,
+    maxY: y0 + (ny - 1) * GRID,
+  };
+  const touches = (q: RouteBox) =>
+    q.maxX >= lattice.minX &&
+    q.minX <= lattice.maxX &&
+    q.maxY >= lattice.minY &&
+    q.minY <= lattice.maxY;
+  // Per lattice node, the bodies and header bands that can touch a step leaving it (closed
+  // overlap with the step's segment, which lies within one grid step of the node), in their
+  // original order: the same nonzero terms in the same order as iterating all of them.
+  const boxesAt = new Map<number, RouteBox[]>();
+  const headersAt = new Map<number, HeaderRow[]>();
+  const spread = <T>(map: Map<number, T[]>, q: RouteBox, v: T) => {
+    if (!touches(q)) return;
+    const i0 = Math.max(0, Math.floor((q.minX - x0) / GRID) - 1);
+    const i1 = Math.min(nx - 1, Math.ceil((q.maxX - x0) / GRID) + 1);
+    const j0 = Math.max(0, Math.floor((q.minY - y0) / GRID) - 1);
+    const j1 = Math.min(ny - 1, Math.ceil((q.maxY - y0) / GRID) + 1);
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) append(map, j * nx + i, v);
+  };
+  for (const q of obs.boxes) spread(boxesAt, q, q);
+  for (const h of obs.headers ?? []) spread(headersAt, band(h), h);
+  const NONE: never[] = [];
   const total = nx * ny * 4;
   /** Price of one grid step from lattice node n in direction d (without bends); memoized. */
   const steps = new Float64Array(total).fill(-1);
@@ -502,14 +798,18 @@ function searchRoute(a: Point, b: Point, obs: RouteObstacles, margin: number): P
     for (const p of union(nu.p, nv.p)) if (distance(p, s) < TERMINAL_KEEP_OUT) c += W_KEEP;
     for (const l of union(nu.l, nv.l)) if (segDistance(s, l) < TERMINAL_KEEP_OUT) c += W_KEEP;
     for (const p of union(nu.f, nv.f)) if (beside(p, s)) c += W_HUG;
-    for (const h of obs.headers ?? [])
+    for (const h of headersAt.get(n) ?? NONE)
       if (!onExitLine(s, h, ends)) c += (lengthInside(s, band(h)) / GRID) * W_BAND;
     for (const t of union(nu.t, nv.t)) {
       const o = overlapLength(s, t) / GRID;
-      c += o * (sharesEnd(t, [a, b]) ? W_SHARED : W_OVERLAP);
-      if (crosses(s, t)) c += W_BEND;
+      c += o * (trunks.has(t) ? W_TRUNK : sharesEnd(t, [a, b]) ? W_SHARED : W_OVERLAP);
+      if (crosses(s, t)) c += own.has(t) ? W_SAME : W_BEND;
     }
-    for (const q of obs.boxes) c += (boxLength(s, q) / GRID) * W_BODY;
+    for (const q of boxesAt.get(n) ?? NONE)
+      c += q.display
+        ? (lengthInside(s, q) / GRID) * W_BAND
+        : (boxLength(s, q) / GRID) * W_BODY +
+          (outlineLength(s, q, ends) / GRID) * OUTLINE_BENDS * W_BEND;
     steps[n * 4 + d] = c;
     return c;
   };
@@ -533,8 +833,8 @@ function searchRoute(a: Point, b: Point, obs: RouteObstacles, margin: number): P
       const atEnd = eq(v, t[0]) || eq(v, t[1]);
       const perpendicular = vertical(t) ? DIRS[dout]!.y === 0 : DIRS[dout]!.x === 0;
       // Straight through a wire's interior is a clean crossing; anything else meets it (a T).
-      if (atEnd || !perpendicular || din !== dout) c += W_TOUCH;
-      else c += W_BEND;
+      if (atEnd || !perpendicular || din !== dout) c += trunks.has(t) ? W_TRUNK : W_TOUCH;
+      else c += own.has(t) ? W_SAME : W_BEND;
     }
     return c;
   };
@@ -613,6 +913,48 @@ function searchRoute(a: Point, b: Point, obs: RouteObstacles, margin: number): P
   return orthogonalRoute(pts.reverse());
 }
 
+/**
+ * How far from a hop's short shapes an obstacle can still price one of them: the widest cost
+ * term is the header band (`HEADER_CLEARANCE` beyond the row's box); the pin-field hug reaches one
+ * grid step, the keep-out half a step; wire overlap, touches, crossings and bodies need contact.
+ */
+const SHAPE_REACH = HEADER_CLEARANCE + GRID;
+
+/** The obstacles that can price a short shape of hop a-b (`candidates`), in their order. */
+function nearShapes(obs: RouteObstacles, a: Point, b: Point): RouteObstacles {
+  return nearBox(obs, [a, b], CHANNEL_REACH * GRID + SHAPE_REACH);
+}
+
+/**
+ * The obstacles within `r` of the bounding box of `pts`, in their order (s20r4: a found search
+ * route is priced against these only; farther ones add an exact 0 to every cost term, as for
+ * the short shapes).
+ */
+function nearBox(obs: RouteObstacles, pts: readonly Point[], r: number): RouteObstacles {
+  const minX = Math.min(...pts.map((p) => p.x)) - r;
+  const maxX = Math.max(...pts.map((p) => p.x)) + r;
+  const minY = Math.min(...pts.map((p) => p.y)) - r;
+  const maxY = Math.max(...pts.map((p) => p.y)) + r;
+  const hit = (x0: number, y0: number, x1: number, y1: number) =>
+    Math.max(x0, x1) >= minX &&
+    Math.min(x0, x1) <= maxX &&
+    Math.max(y0, y1) >= minY &&
+    Math.min(y0, y1) <= maxY;
+  const seg = (t: readonly [Point, Point]) => hit(t[0].x, t[0].y, t[1].x, t[1].y);
+  const pt = (p: Point) => hit(p.x, p.y, p.x, p.y);
+  const box = (q: RouteBox) => hit(q.minX, q.minY, q.maxX, q.maxY);
+  const kept = obs.segments.map(seg);
+  return {
+    segments: obs.segments.filter((_, i) => kept[i]),
+    segmentNodes: obs.segmentNodes?.filter((_, i) => kept[i]),
+    boxes: obs.boxes.filter(box),
+    points: obs.points.filter(pt),
+    leads: (obs.leads ?? []).filter(seg),
+    field: (obs.field ?? []).filter(pt),
+    headers: (obs.headers ?? []).filter((h) => box(h.box)),
+  };
+}
+
 function better(p: number[], q: number[]): boolean {
   for (let i = 0; i < p.length; i++) if (p[i] !== q[i]) return p[i]! < q[i]!;
   return false;
@@ -623,31 +965,124 @@ function better(p: number[], q: number[]): boolean {
  * Returns the full polyline; its interior points are the vertices to store. Hops are routed in
  * order, and each routed hop becomes an obstacle for the following ones.
  */
-export function autoRoute(waypoints: readonly Point[], obstacles: RouteObstacles): Point[] {
+export function autoRoute(
+  waypoints: readonly Point[],
+  obstacles: RouteObstacles,
+  options: { search?: boolean; node?: string | null; budget?: SearchBudget } = {},
+): Point[] {
+  const search = options.search ?? true;
+  const node = options.node ?? null;
   if (waypoints.length < 2) return waypoints.map((p) => ({ ...p }));
   const segments = [...obstacles.segments];
+  // Node of each segment (s20r).
+  const segmentNodes: (string | null)[] = obstacles.segments.map(
+    (_, i) => obstacles.segmentNodes?.[i] ?? null,
+  );
   const path: Point[] = [waypoints[0]!];
   for (let i = 0; i < waypoints.length - 1; i++) {
     const a = waypoints[i]!;
     const b = waypoints[i + 1]!;
-    const obs = { ...obstacles, segments };
+    const obs = { ...obstacles, segments, segmentNodes };
     let best: Point[] | null = null;
     let bestCost: number[] = [];
+    // Rt2: the short shapes lie within the endpoints' box grown by the channel reach; an obstacle
+    // farther than SHAPE_REACH from it adds an exact 0 to every cost term of every shape, so the
+    // shapes are priced against the nearer ones only (in their order: the same sums).
+    const budget = options.budget;
+    let starved = false;
+    // The scan for the hop's nearby obstacles costs one unit per obstacle (s20r4).
+    if (budget) budget.ops -= sizeOf(obs);
+    const shapeObs = nearShapes(obs, a, b);
     for (const c of candidates(a, b)) {
-      const k = cost(c, obs, [a, b]);
+      // s20r4 (review B1): with the pass's pricing budget spent, the first shape (an L) is taken
+      // as it is, unpriced: no further work for this hop.
+      if (budget) {
+        const ops = opsOf(c, shapeObs);
+        if (budget.ops < ops) {
+          starved = true;
+          break;
+        }
+        budget.ops -= ops;
+      }
+      const k = cost(c, shapeObs, [a, b], node);
       if (!best || better(k, bestCost)) {
         best = c;
         bestCost = k;
       }
     }
+    // Sprint 21 (s21r, owner screenshot): every short shape the hop took runs along a body's
+    // outline (a V_CC pin on the top edge of its gate leaving sideways along it, then along the
+    // supply's edge). The shapes are tried once more from one grid step straight out of each end
+    // that sits on a body's edge (as a person leaves a pin), priced like any shape.
+    // (s21r review r5, finding 9: the outline test and the wider obstacle scan are counted work.)
+    if (budget && !starved && best) budget.ops -= (best.length - 1) * shapeObs.boxes.length;
+    if (!starved && best && outlineOf(best, shapeObs, [a, b]) > 0) {
+      const stubs = (p: Point) =>
+        shapeObs.boxes
+          .filter((q) => !q.display)
+          .flatMap((q) => {
+            const d =
+              p.y === q.minY && p.x > q.minX && p.x < q.maxX
+                ? { x: 0, y: -GRID }
+                : p.y === q.maxY && p.x > q.minX && p.x < q.maxX
+                  ? { x: 0, y: GRID }
+                  : p.x === q.minX && p.y > q.minY && p.y < q.maxY
+                    ? { x: -GRID, y: 0 }
+                    : p.x === q.maxX && p.y > q.minY && p.y < q.maxY
+                      ? { x: GRID, y: 0 }
+                      : null;
+            return d ? [{ x: p.x + d.x, y: p.y + d.y }] : [];
+          });
+      const sa = stubs(a);
+      const sb = stubs(b);
+      const more: Point[][] = [];
+      for (const p of [a, ...sa])
+        for (const q of [b, ...sb]) {
+          if (p === a && q === b) continue;
+          for (const c of candidates(p, q)) {
+            const n = normalize([...(p === a ? [] : [a]), ...c, ...(q === b ? [] : [b])]);
+            if (n) more.push(n);
+          }
+        }
+      if (budget && more.length) budget.ops -= sizeOf(obs);
+      const wide = more.length
+        ? nearBox(obs, [a, b, ...sa, ...sb], CHANNEL_REACH * GRID + SHAPE_REACH)
+        : shapeObs;
+      // Leaving straight out is worth a few bends, never a detour: a shape from a step out may be
+      // at most four grid steps longer than the shape it replaces.
+      const plain = pathLength(best);
+      for (const c of more) {
+        if (pathLength(c) > plain + 4 * GRID) continue;
+        if (budget) {
+          const ops = opsOf(c, wide);
+          if (budget.ops < ops) break;
+          budget.ops -= ops;
+        }
+        const k = cost(c, wide, [a, b], node);
+        if (better(k, bestCost)) {
+          best = c;
+          bestCost = k;
+        }
+      }
+    }
+    if (starved) {
+      budget!.skipped++;
+      best ??= candidates(a, b)[0]!;
+    }
     // None of the short shapes is clean: search, widening the area while a keep-out remains.
     // Widening stops once keep-out and band are solved, or when a wider area no longer reduces
     // them (a pin boxed in by its neighbours cannot do better however far the search reaches).
     let previous: number[] | null = null;
-    for (let m = SEARCH_MARGIN; !clean(bestCost) && m <= SEARCH_MARGIN_MAX; m *= 2) {
-      const found = searchRoute(a, b, obs, m);
+    for (
+      let m = SEARCH_MARGIN;
+      search && !starved && !clean(bestCost) && m <= SEARCH_MARGIN_MAX;
+      m *= 2
+    ) {
+      const found = searchRoute(a, b, obs, m, node, options.budget);
       if (!found) break;
-      const k = cost(found, obs, [a, b]);
+      const near = nearBox(obs, found, SHAPE_REACH);
+      if (budget) budget.ops = Math.max(0, budget.ops - opsOf(found, near));
+      const k = cost(found, near, [a, b], node);
       if (better(k, bestCost)) {
         best = found;
         bestCost = k;
@@ -657,7 +1092,11 @@ export function autoRoute(waypoints: readonly Point[], obstacles: RouteObstacles
       if (previous && k[0] === 0 && !better(k.slice(0, 2), previous.slice(0, 2))) break;
       previous = k;
     }
-    for (let j = 0; j < best!.length - 1; j++) segments.push([best![j]!, best![j + 1]!]);
+    for (let j = 0; j < best!.length - 1; j++) {
+      segments.push([best![j]!, best![j + 1]!]);
+      // The wire's own earlier hops are never a trunk for it (it would double back along itself).
+      segmentNodes.push(null);
+    }
     path.push(...best!.slice(1));
   }
   // Minimal polyline (merges collinear corners where two hops meet).
@@ -665,8 +1104,12 @@ export function autoRoute(waypoints: readonly Point[], obstacles: RouteObstacles
 }
 
 /** The vertices to store for `autoRoute(waypoints, obstacles)`. */
-export function autoRouteVertices(waypoints: readonly Point[], obstacles: RouteObstacles): Point[] {
-  return autoRoute(waypoints, obstacles).slice(1, -1);
+export function autoRouteVertices(
+  waypoints: readonly Point[],
+  obstacles: RouteObstacles,
+  options: { search?: boolean; node?: string | null; budget?: SearchBudget } = {},
+): Point[] {
+  return autoRoute(waypoints, obstacles, options).slice(1, -1);
 }
 
 /**
@@ -680,13 +1123,20 @@ export function routeObstacles(
   doc: ProjectDocument,
   boxes: readonly RouteBox[],
   except: ReadonlySet<string> = new Set(),
+  /** The wires' electrical nodes when the caller has them (`wireNodes(doc)`). */
+  wireNodeMap?: ReadonlyMap<string, string>,
 ): RouteObstacles {
   const segments: [Point, Point][] = [];
+  const segmentNodes: string[] = [];
+  const nodes = wireNodeMap ?? wireNodes(doc);
   for (const w of doc.layout.wires) {
     if (except.has(w.id)) continue;
     const r = wireRoute(doc, w);
     if (!r) continue;
-    for (let i = 0; i < r.length - 1; i++) segments.push([r[i]!, r[i + 1]!]);
+    for (let i = 0; i < r.length - 1; i++) {
+      segments.push([r[i]!, r[i + 1]!]);
+      segmentNodes.push(nodes.get(w.id)!);
+    }
   }
   const points: Point[] = doc.layout.junctions.map((j) => ({ x: j.x, y: j.y }));
   const seen = new Set<string>();
@@ -744,7 +1194,7 @@ export function routeObstacles(
       }
     }
   }
-  return { segments, boxes, points, leads, field, headers };
+  return { segments, boxes, points, leads, field, headers, segmentNodes };
 }
 
 /**
@@ -765,21 +1215,77 @@ export function rerouteWires(
   wireIds: Iterable<string>,
   boxes: readonly RouteBox[],
 ): ProjectDocument {
+  return rerouteWiresReport(doc, wireIds, boxes).doc;
+}
+
+/**
+ * `rerouteWires` with an optional work budget (s20r4, review B1: the open-time repair of a large
+ * project of manual wires was quadratic with a large constant and unbounded). Wires left
+ * unrepaired because the budget was spent are returned (`unrepaired`): they keep their stored
+ * route, and the app says so.
+ */
+export function rerouteWiresReport(
+  doc: ProjectDocument,
+  wireIds: Iterable<string>,
+  boxes: readonly RouteBox[],
+  budget?: SearchBudget,
+  wires?: WireSegments,
+): { doc: ProjectDocument; unrepaired: string[] } {
   let out = doc;
+  const unrepaired: string[] = [];
+  // Nodes never change while routes are patched (s20r4, review B8: was recomputed per wire).
+  const nodes = wireNodes(doc);
+  const segs = wires ?? new WireSegments(doc, boxes, nodes);
   for (const id of new Set(wireIds)) {
     const wire = out.layout.wires.find((w) => w.id === id);
-    if (!wire || isContact(out, wire)) continue;
+    // Automatic wires are routed canonically (`routeAutoWires`), never patched from their old route.
+    if (!wire || wire.auto || isContact(out, wire)) continue;
     const route = wireRoute(out, wire);
     if (!route || route.length < 2) continue;
-    const obs = routeObstacles(out, boxes, new Set([id]));
+    if (budget && budget.ops <= 0) {
+      budget.skipped++;
+      unrepaired.push(id);
+      continue;
+    }
+    if (budget) budget.ops -= segs.size;
+    const obs = segs.obstacles(id);
     const ends = [route[0]!, route[route.length - 1]!];
-    const now = cost(route, obs, ends);
+    const node = nodes.get(id) ?? null;
+    const now = cost(route, obs, ends, node);
     if (clean(now)) continue;
     let best: Point[] | null = null;
     let bestCost = now;
-    for (const waypoints of [[ends[0]!, ...wire.vertices, ends[1]!], ends]) {
-      const candidate = autoRoute(waypoints, obs);
-      const k = cost(candidate, obs, ends);
+    // Sprint 20 (s20r round 3: the GPIO4 / GPIO19 wires of the logic examples): the user's bends
+    // are kept wherever the rules allow. First the route through ALL of them, then through the
+    // ones that are not themselves inside a header band, a terminal's keep-out or a body (a bend
+    // drawn one grid step beside a header pin can never be kept: any route through it runs along
+    // the header); the first of these that enters no keep-out and no header band, and runs along
+    // no more wire and through no more body than the stored route, is taken. Only when neither
+    // works, the best of all the router's shapes (the former rule, which could drop every bend).
+    const legal = (p: Point) =>
+      !(obs.headers ?? []).some((h) => inBox(p, band(h))) &&
+      !obs.points.some(
+        (q) => !ends.some((e) => eq(e, q)) && Math.hypot(q.x - p.x, q.y - p.y) < TERMINAL_KEEP_OUT,
+      ) &&
+      !obs.boxes.some(
+        (b) => !b.display && p.x > b.minX && p.x < b.maxX && p.y > b.minY && p.y < b.maxY,
+      );
+    const kept = wire.vertices.filter(legal);
+    const keeping = [[ends[0]!, ...wire.vertices, ends[1]!]];
+    if (kept.length > 0 && kept.length < wire.vertices.length)
+      keeping.push([ends[0]!, ...kept, ends[1]!]);
+    for (const waypoints of keeping) {
+      const candidate = autoRoute(waypoints, obs, { node, budget });
+      const k = cost(candidate, obs, ends, node);
+      if (keepsBends(k, now)) {
+        best = candidate;
+        bestCost = k;
+        break;
+      }
+    }
+    for (const waypoints of best ? [] : [[ends[0]!, ...wire.vertices, ends[1]!], ends]) {
+      const candidate = autoRoute(waypoints, obs, { node, budget });
+      const k = cost(candidate, obs, ends, node);
       if (better(k, bestCost)) {
         best = candidate;
         bestCost = k;
@@ -787,6 +1293,7 @@ export function rerouteWires(
     }
     if (!best) continue;
     const vertices = best.slice(1, -1);
+    segs.set(id, best);
     out = {
       ...out,
       layout: {
@@ -795,7 +1302,344 @@ export function rerouteWires(
       },
     };
   }
-  return out;
+  return { doc: out, unrepaired };
+}
+
+/**
+ * Every wire's route segments, in document order, with their electrical nodes, kept up to date
+ * as wires are re-routed; `obstacles(except)` gives exactly what routeObstacles(doc, boxes,
+ * {except}) gives, without recomputing every wire's route (s20r4, review B1).
+ */
+export class WireSegments {
+  private readonly base: RouteObstacles;
+  private readonly segsOf = new Map<string, [Point, Point][]>();
+  private readonly order: string[];
+  size = 0;
+  constructor(
+    doc: ProjectDocument,
+    boxes: readonly RouteBox[],
+    private readonly nodes: ReadonlyMap<string, string>,
+  ) {
+    this.base = routeObstacles(doc, boxes, new Set(doc.layout.wires.map((w) => w.id)), nodes);
+    this.order = doc.layout.wires.map((w) => w.id);
+    for (const w of doc.layout.wires) this.set(w.id, wireRoute(doc, w));
+    this.size += sizeOf(this.base);
+  }
+  set(id: string, route: readonly Point[] | null | undefined): void {
+    const segs: [Point, Point][] = [];
+    if (route) for (let i = 0; i < route.length - 1; i++) segs.push([route[i]!, route[i + 1]!]);
+    this.size += segs.length - (this.segsOf.get(id)?.length ?? 0);
+    this.segsOf.set(id, segs);
+  }
+  obstacles(except: string): RouteObstacles {
+    const segments: [Point, Point][] = [];
+    const segmentNodes: string[] = [];
+    for (const id of this.order) {
+      if (id === except) continue;
+      for (const sg of this.segsOf.get(id) ?? []) {
+        segments.push(sg);
+        segmentNodes.push(this.nodes.get(id)!);
+      }
+    }
+    return { ...this.base, segments, segmentNodes };
+  }
+}
+
+/**
+ * Whether a route through the user's bends (cost `k`) may replace a stored manual route (cost
+ * `now`) in the repair (s20r round 3; s20r4, review B4): it enters no keep-out and no header band,
+ * and is no worse than the stored route on any of the misleading criteria: wire overlap, body,
+ * run along a wire on its own terminal, touches (a T or an end on another wire reads as a
+ * connection) and pin-field hugging. (Crossings and bends may grow: the bends are the user's.)
+ */
+export function keepsBends(k: readonly number[], now: readonly number[]): boolean {
+  if (k[0] !== 0 || k[1] !== 0) return false;
+  for (let i = 2; i <= 6; i++) if (k[i]! > now[i]!) return false;
+  return true;
+}
+
+/** Wire ids in creation order (W1, W2, ..., W10): numeric, then textual. */
+const byCreation = (a: Wire, b: Wire) => {
+  // A total order (review minor): `W<n>` by n, any other id after them, then by id text.
+  const n = (w: Wire) => Number(/^W(\d+)$/.exec(w.id)?.[1] ?? Infinity);
+  const na = n(a);
+  const nb = n(b);
+  if (na !== nb) return na < nb ? -1 : 1;
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+};
+
+/**
+ * Wire routing integrity (2026-10-22): the CANONICAL route of every automatic wire (schema
+ * `Wire.auto`), recomputed from scratch from the current layout, never from its previous route.
+ *
+ * Root cause this replaces: a wire's route was chosen once, when it was drawn, and stored as
+ * ordinary vertices; a later move kept them (and `rerouteWires` reused them as if the user had
+ * placed them), so detours accumulated across drags and moving a part back did not restore the
+ * drawing. Now an automatic wire's drawing is a pure function of:
+ *   - the component bodies and terminals (the caller's `boxes`, the document's positions),
+ *   - every MANUAL wire (fixed geometry, an obstacle for all automatic wires),
+ *   - the automatic wires created BEFORE it (creation order, `W1` < `W2` < ...): each is routed
+ *     against the ones before it exactly as when it was drawn,
+ *   - its own ends and the user's waypoints (in order).
+ * So identical geometry and constraints give identical routes, and moving a part back restores
+ * the drawing it had there. Endpoints never change: connectivity and nets cannot either.
+ * Direct contacts (no route) are skipped. Returns the same document when nothing changes.
+ */
+export function routeAutoWires(
+  doc: ProjectDocument,
+  boxes: readonly RouteBox[],
+  preview?: { only: ReadonlySet<string> },
+): ProjectDocument {
+  return routeAutoWiresReport(doc, boxes, preview).doc;
+}
+
+/**
+ * `routeAutoWires`, with the automatic wires the pass could not route with a grid search because
+ * its search budget (SEARCH_BUDGET_CELLS) was spent (s20r4, review B1): they keep the best short
+ * shape; the app says so instead of leaving the drawing unexplained.
+ *
+ * Bound (s20r4): searches cost at most SEARCH_BUDGET_CELLS lattice cells per call in total (the
+ * first pass and every reorder round together); everything else is the short shapes, linear in
+ * the wires near each hop, and the obstacle list, kept incrementally (one pass over the wires per
+ * routed wire): O(n^2) in the number of wires with a small constant (s20r4-perf-*.txt: 1 280 dense
+ * wires on an ESP32 bench).
+ */
+export function routeAutoWiresReport(
+  doc: ProjectDocument,
+  boxes: readonly RouteBox[],
+  preview?: { only: ReadonlySet<string> },
+  /** Work limits other than the defaults (s21r: tests compare a limited and an unlimited pass). */
+  limits?: RouteLimits,
+): { doc: ProjectDocument; degraded: string[] } {
+  const autos = doc.layout.wires
+    .filter((w) => w.auto && !isContact(doc, w) && (!preview || preview.only.has(w.id)))
+    .sort(byCreation);
+  if (autos.length === 0) return { doc, degraded: [] };
+  // Electrical nodes never change while routing (routes are geometry only).
+  const nodes = wireNodes(doc);
+  const budget: SearchBudget = {
+    cells: limits?.cells ?? SEARCH_BUDGET_CELLS,
+    ops: limits?.ops ?? PRICING_BUDGET_OPS,
+    skipped: 0,
+  };
+  let best = routeInOrder(doc, autos, boxes, nodes, !preview, 0, budget, new Set());
+  if (preview) return { doc: best.doc, degraded: [] };
+  // Sprint 20 (s20r, owner report): wires of ONE node that still cross each other. Each is
+  // routed against the wires before it, so an earlier wire can wall in a later one's pin (two
+  // pins side by side on one node: the first wire goes round the second pin). The order is then
+  // changed deterministically, as a function of the document only (never of history): the later
+  // wire of each such pair is routed just before the earlier one; the result is kept when it has
+  // fewer same-node crossings, then fewer crossings, then fewer bends. Three rounds at most,
+  // whatever the number of wires (s20r4, review B3: a far-away wire no longer changes how many
+  // rounds the others get), sharing the pass's search budget.
+  const ids = new Set(autos.map((w) => w.id));
+  let order = autos;
+  // (The score is all-pairs over the wires: only computed when a round can run.)
+  let score = budget.skipped === 0 ? orderScore(best.doc, ids) : [0];
+  for (let round = 0; round < 3 && score[0]! > 0 && budget.skipped === 0; round++) {
+    const next = [...order];
+    for (const c of sameNodeCrossings(best.doc)) {
+      if (!ids.has(c.over) || !ids.has(c.under) || c.over === c.under) continue;
+      const i = next.findIndex((w) => w.id === c.over);
+      const j = next.findIndex((w) => w.id === c.under);
+      const [early, late] = i < j ? [i, j] : [j, i];
+      const [w] = next.splice(late, 1);
+      next.splice(early, 0, w!);
+    }
+    const from = next.findIndex((w, k) => w !== order[k]);
+    if (from < 0) break;
+    // The wires before the first change are routed against exactly what they were: kept.
+    const prefix = new Set(next.slice(0, from).map((w) => w.id));
+    const routed = routeInOrder(
+      best.doc,
+      next,
+      boxes,
+      nodes,
+      true,
+      from,
+      budget,
+      new Set([...best.degraded].filter((id) => prefix.has(id))),
+    );
+    // A round that ran out of budget is not taken (its later wires would have lost their search).
+    if (budget.skipped > 0) break;
+    const k = orderScore(routed.doc, ids);
+    if (!better(k, score)) break;
+    best = routed;
+    score = k;
+    order = next;
+  }
+  // Sprint 22 (s22r): automatic wires still drawn where they read as connected to another node
+  // (along / into its wire, over its pin, through a body: routeConflictsReport) get first pick:
+  // one more pass with them routed before the others. Kept only when (s22r review) no wire gains
+  // a kind of conflict it did not have, fewer wires are in conflict, and same-node crossings do
+  // not rise (then fewer crossings, bends). Deterministic; one pass at most, and only when there
+  // is a conflict routing can fix (not a wire ending on another part's terminal drawn on top of
+  // its own) and the pass's budget has at least what the first pass used left (an extra pass that
+  // would run out of budget is never started: it would be discarded).
+  extraPassStats.tried = extraPassStats.kept = 0;
+  extraPassStats.skipped = '';
+  const usedCells = SEARCH_BUDGET_CELLS_OF(limits) - budget.cells;
+  const usedOps = (limits?.ops ?? PRICING_BUDGET_OPS) - budget.ops;
+  if (budget.skipped !== 0) extraPassStats.skipped = 'degraded';
+  else if (budget.cells < usedCells || budget.ops < usedOps) extraPassStats.skipped = 'budget';
+  else {
+    const report = (d: ProjectDocument) => {
+      const c = routeConflictsReport(d, boxes);
+      if (c.limited) return null;
+      const kinds = new Map<string, Set<RouteConflictKind>>();
+      for (const k of ['wire', 'pin', 'body'] as const)
+        for (const id of c.kinds[k]) kinds.set(id, new Set([...(kinds.get(id) ?? []), k]));
+      return { wires: c.wires, kinds, stacked: new Set(c.atStacked) };
+    };
+    const now = report(best.doc);
+    const fixable = now ? now.wires.filter((id) => ids.has(id) && !now.stacked.has(id)) : [];
+    if (now && now.wires.length && !fixable.length) extraPassStats.skipped = 'unfixable';
+    if (now && fixable.length) {
+      const first = new Set(fixable);
+      const next = [
+        ...order.filter((w) => first.has(w.id)),
+        ...order.filter((w) => !first.has(w.id)),
+      ];
+      const from = next.findIndex((w, k) => w !== order[k]);
+      if (from >= 0) {
+        const prefix = new Set(next.slice(0, from).map((w) => w.id));
+        const routed = routeInOrder(
+          best.doc,
+          next,
+          boxes,
+          nodes,
+          true,
+          from,
+          budget,
+          new Set([...best.degraded].filter((id) => prefix.has(id))),
+        );
+        extraPassStats.tried = 1;
+        const after = budget.skipped === 0 ? report(routed.doc) : null;
+        const gains =
+          !after ||
+          [...after.kinds].some(([id, ks]) => [...ks].some((k) => !now.kinds.get(id)?.has(k)));
+        const k = after ? orderScore(routed.doc, ids) : [];
+        const accept =
+          after &&
+          !gains &&
+          k[0]! <= score[0]! &&
+          better([after.wires.length, ...k], [now.wires.length, ...score]);
+        if (accept) {
+          best = routed;
+          extraPassStats.kept = 1;
+        }
+      }
+    }
+  }
+  return { doc: best.doc, degraded: [...best.degraded].sort() };
+}
+
+/** Same-node crossings, crossings (hops) and bends of the automatic wires `ids` (s20r). */
+function orderScore(doc: ProjectDocument, ids: ReadonlySet<string>): number[] {
+  const involves = (c: WireCrossing) => ids.has(c.over) || ids.has(c.under);
+  let bends = 0;
+  for (const w of doc.layout.wires) if (ids.has(w.id)) bends += w.vertices.length;
+  return [
+    sameNodeCrossings(doc).filter(involves).length,
+    wireCrossings(doc).filter(involves).length,
+    bends,
+  ];
+}
+
+/** Route the automatic wires `autos` in this order, each against the ones before it. */
+function routeInOrder(
+  doc: ProjectDocument,
+  autos: readonly Wire[],
+  boxes: readonly RouteBox[],
+  nodes: ReadonlyMap<string, string>,
+  search: boolean,
+  /** The wires before this index are already routed in `doc` (in this order). */
+  from: number,
+  budget: SearchBudget,
+  /** Wires before `from` routed without a search the budget did not allow (carried over). */
+  degraded: Set<string>,
+): { doc: ProjectDocument; degraded: Set<string> } {
+  const pending = new Set(autos.slice(from).map((w) => w.id));
+  // The obstacles as routeObstacles(out, boxes, pending) gives them, kept incrementally (s20r4,
+  // review B1: rebuilding every wire's route for every routed wire was quadratic with a large
+  // constant). Everything but the wires' segments is the same for every wire of the pass; the
+  // segments are listed in document order, each routed wire's replaced when it is routed: the same
+  // list, in the same order, as rebuilding it.
+  const base = routeObstacles(doc, boxes, new Set(doc.layout.wires.map((w) => w.id)), nodes);
+  const segsOf = new Map<string, [Point, Point][]>();
+  for (const w of doc.layout.wires) {
+    const r = wireRoute(doc, w);
+    if (!r) continue;
+    const segs: [Point, Point][] = [];
+    for (let i = 0; i < r.length - 1; i++) segs.push([r[i]!, r[i + 1]!]);
+    segsOf.set(w.id, segs);
+  }
+  const vertices = new Map(doc.layout.wires.map((w) => [w.id, w.vertices]));
+  let totalSegments = 0;
+  for (const segs of segsOf.values()) totalSegments += segs.length;
+  for (const wire of autos.slice(from)) {
+    const ends = wireRoute(doc, { ...wire, vertices: [] });
+    if (!ends || ends.length < 1) {
+      pending.delete(wire.id);
+      continue;
+    }
+    const a = ends[0]!;
+    const b = ends[ends.length - 1]!;
+    // With the pass's pricing budget spent, the wire takes its first short shape (an L) as it is:
+    // no obstacles needed, no further work (s20r4, review B1).
+    if (budget.ops <= 0) {
+      budget.skipped++;
+      degraded.add(wire.id);
+      pending.delete(wire.id);
+      const v = autoRouteVertices([a, ...wire.auto!.waypoints, b], EMPTY_OBSTACLES, {
+        search: false,
+      });
+      vertices.set(wire.id, v);
+      continue;
+    }
+    // Obstacles: everything but this wire and the automatic wires after it (its cost counts).
+    const segments: [Point, Point][] = [];
+    const segmentNodes: string[] = [];
+    budget.ops -= doc.layout.wires.length + totalSegments;
+    for (const w of doc.layout.wires) {
+      if (pending.has(w.id)) continue;
+      for (const sg of segsOf.get(w.id) ?? []) {
+        segments.push(sg);
+        segmentNodes.push(nodes.get(w.id)!);
+      }
+    }
+    const skipped = budget.skipped;
+    const v = autoRouteVertices(
+      [a, ...wire.auto!.waypoints, b],
+      { ...base, segments, segmentNodes },
+      { search, node: nodes.get(wire.id) ?? null, budget },
+    );
+    if (budget.skipped > skipped) degraded.add(wire.id);
+    pending.delete(wire.id);
+    vertices.set(wire.id, v);
+    const r = wireRoute(doc, { ...wire, vertices: v });
+    const segs: [Point, Point][] = [];
+    if (r) for (let i = 0; i < r.length - 1; i++) segs.push([r[i]!, r[i + 1]!]);
+    segsOf.set(wire.id, segs);
+  }
+  // One new document at the end (only when a route changed).
+  const changed = doc.layout.wires.some(
+    (w) => JSON.stringify(w.vertices) !== JSON.stringify(vertices.get(w.id)),
+  );
+  const out = changed
+    ? {
+        ...doc,
+        layout: {
+          ...doc.layout,
+          wires: doc.layout.wires.map((w): Wire =>
+            JSON.stringify(w.vertices) === JSON.stringify(vertices.get(w.id))
+              ? w
+              : { ...w, vertices: vertices.get(w.id)! },
+          ),
+        },
+      }
+    : doc;
+  return { doc: out, degraded };
 }
 
 /**
@@ -812,23 +1656,51 @@ export function repairWireRoutes(
   doc: ProjectDocument,
   boxes: readonly RouteBox[],
 ): ProjectDocument {
+  return repairWireRoutesReport(doc, boxes).doc;
+}
+
+/**
+ * `repairWireRoutes`, bounded (s20r4, review B1): the check and the repair share one work budget
+ * (SEARCH_BUDGET_CELLS cells, PRICING_BUDGET_OPS units); wires left unchecked or unrepaired when it
+ * is spent keep their stored route and are returned (`unrepaired`).
+ */
+export function repairWireRoutesReport(
+  doc: ProjectDocument,
+  boxes: readonly RouteBox[],
+  limits?: RouteLimits,
+): { doc: ProjectDocument; unrepaired: string[] } {
+  const budget: SearchBudget = {
+    cells: limits?.cells ?? SEARCH_BUDGET_CELLS,
+    ops: limits?.ops ?? PRICING_BUDGET_OPS,
+    skipped: 0,
+  };
+  const nodes = wireNodes(doc);
+  const segs = new WireSegments(doc, boxes, nodes);
+  const unchecked: string[] = [];
   const broken = doc.layout.wires.filter((w) => {
-    if (isContact(doc, w)) return false;
+    if (w.auto || isContact(doc, w)) return false;
     const route = wireRoute(doc, w);
     if (!route || route.length < 2) return false;
-    const k = cost(route, routeObstacles(doc, boxes, new Set([w.id])), [
-      route[0]!,
-      route[route.length - 1]!,
-    ]);
+    if (budget.ops <= 0) {
+      unchecked.push(w.id);
+      return false;
+    }
+    const obs = segs.obstacles(w.id);
+    budget.ops -= segs.size;
+    const near = nearBox(obs, route, SHAPE_REACH);
+    budget.ops -= opsOf(route, near);
+    const k = cost(route, near, [route[0]!, route[route.length - 1]!]);
     return k[0]! > 0 || k[1]! > 0;
   });
-  return broken.length
-    ? rerouteWires(
-        doc,
-        broken.map((w) => w.id),
-        boxes,
-      )
-    : doc;
+  if (!broken.length) return { doc, unrepaired: unchecked };
+  const r = rerouteWiresReport(
+    doc,
+    broken.map((w) => w.id),
+    boxes,
+    budget,
+    segs,
+  );
+  return { doc: r.doc, unrepaired: [...unchecked, ...r.unrepaired].sort() };
 }
 
 /**
@@ -846,4 +1718,169 @@ export function attachedWires(
   return doc.layout.wires
     .filter((w) => !rigid.has(w.id) && (on(w.from) || on(w.to)))
     .map((w) => w.id);
+}
+
+/**
+ * Sprint 21 (s21r): how much work `routeConflictsReport` may spend (obstacle elements scanned and
+ * priced, counted, never timed): about as much as one 2D overlay (OVERLAY_WORK). A wire whose
+ * check would take it past this is not checked; it and every wire after it are listed as
+ * `unchecked` (review r5: the check runs on every Circuit view render of a new drawing).
+ */
+export const CONFLICT_WORK = 2_000_000;
+
+/** What a drawn route can wrongly suggest (s21r): see `routeConflictsReport`. */
+export type RouteConflictKind = 'wire' | 'pin' | 'body';
+
+export interface RouteConflicts {
+  /** Every wire with at least one conflict, in document order. */
+  wires: string[];
+  /** The wires of each kind, in document order. */
+  kinds: Record<RouteConflictKind, string[]>;
+  /**
+   * Terminals of different parts drawn exactly on top of each other without a connection
+   * between them (contacts.ts `touchingUnconnected`): they look joined and are not.
+   */
+  stacked: { x: number; y: number; terminals: string[] }[];
+  /** Wires not checked: the work cap was reached (`limited`). */
+  unchecked: string[];
+  /** Wires with an end on a terminal of another part drawn on top of its own (s22r). */
+  atStacked: string[];
+  limited: boolean;
+}
+
+/**
+ * Sprint 21 (s21r, owner directive "ambiguity between electrically distinct nets must never
+ * occur"): the wires whose DRAWN route reads as something it is not:
+ *  - `wire`: it runs along a wire of ANOTHER node, or meets one with a T or a corner instead of
+ *    a clean crossing (criteria 3 and 6);
+ *  - `pin`: it passes over (within the keep-out of) a terminal, header pin or junction that is
+ *    not one of its ends and not on its own node (criterion 1; a pin of its own node is
+ *    connected already, so nothing false is suggested; review r5);
+ *  - `body`: it runs through the body of a part it does not end on (criterion 4: drawn behind
+ *    the symbol, it can read as a lead of that part; review r5).
+ * The router avoids all of these; it keeps one only when nothing better exists (a congested
+ * layout, a manual wire, a hop past the work budget). Plus the terminals of different parts drawn
+ * on top of each other without a connection. Reported so the Circuit view says so instead of
+ * leaving a misleading picture unexplained. Presentation only: connectivity is the wires' end
+ * references, never their geometry. Deterministic and bounded (CONFLICT_WORK, `unchecked`).
+ */
+export function routeConflictsReport(
+  doc: ProjectDocument,
+  boxes: readonly RouteBox[],
+): RouteConflicts {
+  const nodes = wireNodes(doc);
+  const kinds: Record<RouteConflictKind, string[]> = { wire: [], pin: [], body: [] };
+  const wires: string[] = [];
+  const unchecked: string[] = [];
+  const atStacked: string[] = [];
+  const stacked = touchingUnconnected(doc).map((t) => ({
+    x: t.x,
+    y: t.y,
+    terminals: t.terminals.map((e) => `${e.component}.${e.terminal}`),
+  }));
+  // The node at each terminal / junction position (s21r review r5: a pin of the wire's own node
+  // is no conflict). Unwired terminals have none.
+  const nodeAt = new Map<string, Set<string | null>>();
+  const put = (p: Point | undefined, n: string | null) => {
+    if (!p) return;
+    const k = `${p.x},${p.y}`;
+    const set = nodeAt.get(k) ?? new Set();
+    set.add(n);
+    nodeAt.set(k, set);
+  };
+  const endNode = new Map<string, string>();
+  for (const w of doc.layout.wires) {
+    const n = nodes.get(w.id);
+    if (!n) continue;
+    for (const e of [w.from, w.to])
+      endNode.set(e.kind === 'terminal' ? `t:${e.component}:${e.terminal}` : `j:${e.junction}`, n);
+  }
+  for (const c of doc.components)
+    for (const t of getTypeDef(c.type)?.terminals ?? [])
+      put(terminalPosition(doc, c.id, t.id), endNode.get(`t:${c.id}:${t.id}`) ?? null);
+  for (const j of doc.layout.junctions) put(j, endNode.get(`j:${j.id}`) ?? null);
+  const segs = new WireSegments(doc, boxes, nodes);
+  let work = 0;
+  let limited = false;
+  for (const w of doc.layout.wires) {
+    if (isContact(doc, w)) continue;
+    const route = wireRoute(doc, w);
+    if (!route || route.length < 2) continue;
+    if (limited) {
+      unchecked.push(w.id);
+      continue;
+    }
+    // Its obstacle list (one pass over every segment), then its pricing: both counted BEFORE
+    // they are done, so one huge wire cannot run past the cap either.
+    work += segs.size + route.length;
+    if (work > CONFLICT_WORK) {
+      limited = true;
+      unchecked.push(w.id);
+      continue;
+    }
+    const near = nearBox(segs.obstacles(w.id), route, SHAPE_REACH);
+    const ops = opsOf(route, near) * 2;
+    if (work + ops > CONFLICT_WORK) {
+      limited = true;
+      unchecked.push(w.id);
+      continue;
+    }
+    work += ops;
+    const ends = [route[0]!, route[route.length - 1]!];
+    const own = nodes.get(w.id) ?? null;
+    const k = cost(route, near, ends, own);
+    const found: RouteConflictKind[] = [];
+    // Along or touching a wire of another node: criteria 3 and 6, plus what those exempt at the
+    // wire's own ends (a run along, or a wire of another node ending, at its end point: two
+    // parts' terminals drawn on top of each other, review r5).
+    const all: Seg[] = route.slice(1).map((q, i) => [route[i]!, q]);
+    const foreignSeg = (i: number) => (near.segmentNodes?.[i] ?? null) !== own || own === null;
+    const atEnds =
+      near.segments.some((t, i) => foreignSeg(i) && all.some((sg) => overlapLength(sg, t) > 0)) ||
+      near.segments.some((t, i) => foreignSeg(i) && ends.some((e) => onSeg(e, t)));
+    if (k[2]! > 0 || k[5]! > 0 || atEnds) found.push('wire');
+    // An end drawn on a terminal of another part that is not on its node (the two parts'
+    // terminals on top of each other: it looks attached to both).
+    const endOnForeign = ends.some((e) =>
+      [...(nodeAt.get(`${e.x},${e.y}`) ?? [])].some((n) => n !== own || n === null),
+    );
+    if (endOnForeign) {
+      found.push('pin');
+      atStacked.push(w.id);
+    } else if (k[0]! > 0) {
+      // Which keep-outs: only those of another node (or none) count.
+      const segments: Seg[] = route.slice(1).map((q, i) => [route[i]!, q]);
+      const isEnd = (p: Point) => ends.some((e) => eq(e, p));
+      const foreign = (p: Point) => {
+        const at = nodeAt.get(`${p.x},${p.y}`);
+        return !at || own === null || [...at].some((n) => n !== own);
+      };
+      const hit =
+        near.points.some(
+          (p) =>
+            !isEnd(p) && foreign(p) && segments.some((sg) => distance(p, sg) < TERMINAL_KEEP_OUT),
+        ) ||
+        (near.leads ?? []).some(
+          (l) =>
+            !isEnd(l[0]) &&
+            foreign(l[0]) &&
+            segments.some((sg) => segDistance(sg, l) < TERMINAL_KEEP_OUT),
+        );
+      if (hit) found.push('pin');
+    }
+    if (k[3]! > 0) {
+      // Only a part it does not end on (its own part's box holds one of its ends).
+      const segments: Seg[] = route.slice(1).map((q, i) => [route[i]!, q]);
+      const mine = (q: RouteBox) => ends.some((e) => inBox(e, q));
+      if (
+        near.boxes.some(
+          (q) => !q.display && !mine(q) && segments.some((sg) => boxLength(sg, q) > 0),
+        )
+      )
+        found.push('body');
+    }
+    for (const f of found) kinds[f].push(w.id);
+    if (found.length) wires.push(w.id);
+  }
+  return { wires, kinds, stacked, unchecked, atStacked, limited };
 }

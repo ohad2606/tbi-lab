@@ -10,7 +10,12 @@ import {
   deleteSelection,
   emptySelection,
   moveWireSegment,
+  autoRoute,
+  keepsBends,
+  sameNodeBranches,
+  sameNodeCrossings,
   wireCrossings,
+  wireNodes,
   type ProjectDocument,
 } from '../src/index.js';
 import { must, newDoc } from './helpers.js';
@@ -106,5 +111,132 @@ describe('wireCrossings', () => {
     const doc = crossing();
     const r = must(deleteSelection(doc, { ...emptySelection(), wires: ['W2'] })).doc;
     expect(wireCrossings(r)).toEqual([]);
+  });
+});
+
+describe('crossings of wires of ONE node (s20r round 2)', () => {
+  /** W1: PSU+ -> R3.a (horizontal at y=-20); W2: R1.b -> R2.b, vertical across it at x=40. */
+  const sameNode = () => {
+    // W2's ends joined to PSU+ by a third wire: W1 and W2 are on one node, crossing at (40,-20).
+    let doc = crossing();
+    doc = must(addWire(doc, t('R1', 'b'), t('PSU1', 'positive'), [{ x: 40, y: -140 }])).doc;
+    return doc;
+  };
+
+  it('no hop between wires of one node (a hop says "not connected"); they are listed apart', () => {
+    const doc = sameNode();
+    const nodes = wireNodes(doc);
+    expect(nodes.get('W1')).toBe(nodes.get('W2'));
+    expect(wireCrossings(doc).filter((c) => c.x === 40 && c.y === -20)).toEqual([]);
+    expect(sameNodeCrossings(doc)).toContainEqual({ x: 40, y: -20, over: 'W2', under: 'W1' });
+    // Different nodes: the hop stays (the Sprint 5 case).
+    expect(wireCrossings(crossing())).toEqual([{ x: 40, y: -20, over: 'W2', under: 'W1' }]);
+    expect(sameNodeCrossings(crossing())).toEqual([]);
+  });
+
+  it('every hop drawn is between different nodes', () => {
+    const doc = sameNode();
+    const nodes = wireNodes(doc);
+    for (const c of wireCrossings(doc)) expect(nodes.get(c.over)).not.toBe(nodes.get(c.under));
+  });
+
+  it('the router runs a wire along a wire of its own node instead of crossing it', () => {
+    // An obstacle wire of node N from (0,-100) down to (0,100); a hop from (-60,0) to (60,0).
+    const obs = {
+      segments: [
+        [
+          { x: 0, y: -100 },
+          { x: 0, y: 100 },
+        ],
+      ] as const,
+      boxes: [],
+      points: [],
+      segmentNodes: ['N'],
+    };
+    const foreign = autoRoute(
+      [
+        { x: -60, y: 0 },
+        { x: 60, y: 0 },
+      ],
+      { ...obs, segmentNodes: ['M'] },
+      {
+        node: 'N',
+      },
+    );
+    expect(foreign).toEqual([
+      { x: -60, y: 0 },
+      { x: 60, y: 0 },
+    ]); // a clean crossing (a hop)
+    const own = autoRoute(
+      [
+        { x: -60, y: 0 },
+        { x: 60, y: 0 },
+      ],
+      obs,
+      { node: 'N' },
+    );
+    // Crossing a wire of its own node would cost three bends: it goes round the end instead.
+    expect(own).not.toEqual([
+      { x: -60, y: 0 },
+      { x: 60, y: 0 },
+    ]);
+  });
+});
+
+describe('branch dots of wires of ONE node (s20r round 3)', () => {
+  // R1 (0,-100), R2 (0,100), R3 (200,-20); W1: PSU+ (-80,-20) -> R3.a (160,-20), horizontal.
+  it('a dot exactly where a wire of the node leaves a run it shares; none where nodes differ', () => {
+    let doc = base();
+    // W2: PSU+ -> R2.b (40,100), sharing W1's run to x=40, then down: a branch at (40,-20).
+    doc = must(addWire(doc, t('PSU1', 'positive'), t('R2', 'b'), [{ x: 40, y: -20 }])).doc;
+    expect(wireNodes(doc).get('W2')).toBe(wireNodes(doc).get('W1'));
+    expect(sameNodeBranches(doc)).toEqual([{ x: 40, y: -20 }]);
+    // W3 of ANOTHER node (R1.a -> R1.b's column... R1.b (40,-100) -> GND) meeting W1 in a T at
+    // (100,-20): a T of different nodes is no branch, and gets no dot.
+    doc = must(
+      addWire(doc, t('R1', 'a'), t('GND1', 'ref'), [
+        { x: 100, y: -100 },
+        { x: 100, y: -20 },
+        { x: 100, y: 100 },
+      ]),
+    ).doc;
+    expect(wireNodes(doc).get('W3')).not.toBe(wireNodes(doc).get('W1'));
+    expect(sameNodeBranches(doc)).toEqual([{ x: 40, y: -20 }]);
+    // Presentation only: no junction object, the nets are those of the wire endpoints.
+    expect(doc.layout.junctions).toEqual([]);
+  });
+
+  it('two wires of one node merely crossing, or running one over the other, get no dot', () => {
+    expect(sameNodeBranches(crossing())).toEqual([]);
+    let doc = base();
+    doc = must(addWire(doc, t('PSU1', 'positive'), t('R3', 'a'))).doc; // the same run twice
+    expect(sameNodeBranches(doc)).toEqual([]);
+  });
+});
+
+describe('review round 2 (s20r4)', () => {
+  it('B2: no branch dot where a wire of another node passes through the point (a hop is there)', () => {
+    let doc = base();
+    doc = must(addWire(doc, t('PSU1', 'positive'), t('R2', 'b'), [{ x: 40, y: -20 }])).doc;
+    expect(sameNodeBranches(doc)).toEqual([{ x: 40, y: -20 }]);
+    // W3, another node (R1.b -> R2.a), manual, straight down through the branch point.
+    doc = must(
+      addWire(doc, t('R1', 'b'), t('R2', 'a'), [
+        { x: 40, y: 40 },
+        { x: -40, y: 40 },
+      ]),
+    ).doc;
+    expect(wireNodes(doc).get('W3')).not.toBe(wireNodes(doc).get('W1'));
+    expect(wireCrossings(doc)).toContainEqual({ x: 40, y: -20, over: 'W3', under: 'W1' });
+    expect(sameNodeBranches(doc)).toEqual([]); // never a dot and a hop at one point
+  });
+
+  it('B4: the kept-bends repair never accepts a route worse on shared, touches or hugging', () => {
+    const now = [1, 0, 0, 0, 0, 0, 0, 5, 0, 100];
+    expect(keepsBends([0, 0, 0, 0, 0, 0, 0, 9, 0, 300], now)).toBe(true); // more bends: allowed
+    expect(keepsBends([0, 0, 0, 0, 0, 1, 0, 1, 0, 50], now)).toBe(false); // a T-touch
+    expect(keepsBends([0, 0, 0, 0, 20, 0, 0, 1, 0, 50], now)).toBe(false); // along a wire on its end
+    expect(keepsBends([0, 0, 0, 0, 0, 0, 1, 1, 0, 50], now)).toBe(false); // hugging a pin field
+    expect(keepsBends([0, 1, 0, 0, 0, 0, 0, 1, 0, 50], now)).toBe(false); // header band
   });
 });

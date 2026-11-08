@@ -1,102 +1,152 @@
 /**
- * Wire auto-routing, in Chromium (Product Alpha maintenance). The reproduced circuit:
- * PSU+ -> LED -> resistor on one row, then a return wire from the resistor to PSU-. The return
- * must get its own route below the circuit, both while it is being drawn (preview) and once
- * committed, so the drawing reads as a closed loop of two distinct conductors.
+ * Wire routing integrity (owner-reported defect, 2026-10-22), in the product UI: the owner's video.
+ * A PSU, a ground and an AND gate; the gate's supply wired by clicks; the gate dragged with the
+ * mouse right, left and back to where it was. After every drop no crossing bridge appears; back
+ * home the drawing is identical to the original; it stays identical across the Schematic and 3D
+ * views and a reload. Screenshots of each step are attached. (Body intrusion in 2D and 3D is
+ * checked geometrically by app/tests/wire-routing-integrity.test.ts.)
  */
 import { expect, test, type Page } from '@playwright/test';
+import { addComponent, addWire, createProject, type ProjectDocument } from '@tbi-lab/domain';
 import {
-  createProject,
+  component,
+  createProject as createProjectInUi,
+  openImported,
   place,
-  storedProject,
-  terminal,
+  reopenFromLibrary,
   toScreen,
   waitSaved,
   wire,
 } from './helpers.js';
 
-type P = { x: number; y: number };
-const parsePoints = (s: string): P[] =>
-  s
-    .trim()
-    .split(/\s+/)
-    .map((xy) => {
-      const [x, y] = xy.split(',').map(Number);
-      return { x: x!, y: y! };
-    });
+test.beforeEach(async ({ page }) => {
+  page.on('pageerror', (e) => {
+    throw e;
+  });
+});
 
-/** Length of coincident horizontal/vertical runs between two polylines. */
-function overlap(a: P[], b: P[]): number {
-  let n = 0;
-  for (let i = 0; i < a.length - 1; i++)
-    for (let j = 0; j < b.length - 1; j++) {
-      const [p, q, r, s] = [a[i]!, a[i + 1]!, b[j]!, b[j + 1]!];
-      if (p.y === q.y && r.y === s.y && p.y === r.y)
-        n += Math.max(
-          0,
-          Math.min(Math.max(p.x, q.x), Math.max(r.x, s.x)) -
-            Math.max(Math.min(p.x, q.x), Math.min(r.x, s.x)),
-        );
-      if (p.x === q.x && r.x === s.x && p.x === r.x)
-        n += Math.max(
-          0,
-          Math.min(Math.max(p.y, q.y), Math.max(r.y, s.y)) -
-            Math.max(Math.min(p.y, q.y), Math.min(r.y, s.y)),
-        );
-    }
-  return n;
+/** Every drawn wire's route (its hit polyline's points), by wire id. */
+async function drawing(page: Page): Promise<Record<string, string>> {
+  return page
+    .locator('[data-hit="wire"]')
+    .evaluateAll((els) =>
+      Object.fromEntries(
+        els.map((g) => [
+          g.getAttribute('data-id')!,
+          g.querySelector('polyline.wire-hit')!.getAttribute('points')!,
+        ]),
+      ),
+    );
 }
 
-async function drawnRoutes(page: Page): Promise<Record<string, P[]>> {
-  const out: Record<string, P[]> = {};
-  for (const g of await page.locator('g.wire-group').all()) {
-    const id = (await g.getAttribute('data-id'))!;
-    out[id] = parsePoints((await g.locator('polyline.wire-hit').getAttribute('points'))!);
-  }
-  return out;
+/** Drag a part by `dx` layout units, pressing on its own hit area wherever it is drawn. */
+async function dragBy(page: Page, id: string, dx: number) {
+  const box = (await component(page, id).locator('.component-hit').boundingBox())!;
+  const from = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  const o = await toScreen(page, { x: 0, y: 0 });
+  const d = (await toScreen(page, { x: dx, y: 0 })).x - o.x;
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move(from.x + d / 2, from.y, { steps: 6 });
+  await page.mouse.move(from.x + d, from.y, { steps: 6 });
+  await page.mouse.up();
 }
 
-test('the reproduced return wire gets its own route below the circuit (preview and committed)', async ({
+test("the owner's sequence: a gate wired to a PSU dragged right, left and back — clean, restored", async ({
   page,
 }, info) => {
-  await createProject(page, 'Loop');
-  await place(page, 'component.led', { x: 0, y: -20 });
-  await place(page, 'component.resistor', { x: 120, y: -20 });
-  await wire(page, ['PSU1', 'positive'], ['D1', 'anode']);
-  await wire(page, ['D1', 'cathode'], ['R1', 'a']);
+  await createProjectInUi(page, 'Routing integrity');
+  await place(page, 'logic.gate_and', { x: 160, y: 0 });
+  await wire(page, ['PSU1', 'negative'], ['GND1', 'ref']);
+  await wire(page, ['PSU1', 'positive'], ['U1', 'vcc']);
+  await wire(page, ['U1', 'gnd'], ['GND1', 'ref']);
+  await page.keyboard.press('Escape');
   await waitSaved(page);
-  const upper = Object.values(await drawnRoutes(page));
-  expect(upper).toHaveLength(2);
+  const start = await drawing(page);
+  expect(Object.keys(start)).toHaveLength(3);
+  await page.screenshot({ path: info.outputPath('0-initial.png') });
 
-  // Start the return at R1.b and hover PSU-: the live preview already takes its own channel.
-  await terminal(page, 'R1', 'b').locator('.terminal-hit').click();
-  const target = await toScreen(page, { x: -80, y: 20 });
-  await page.mouse.move(target.x, target.y, { steps: 8 });
-  const preview = parsePoints(
-    (await page.locator('polyline.wire-preview').getAttribute('points'))!,
+  // Zoom out twice so the whole excursion stays inside the visible canvas.
+  for (let k = 0; k < 2; k++) await page.getByRole('button', { name: 'Zoom out' }).click();
+  // Right, left past the start, back: 160 -> 240 -> 40 -> 160.
+  for (const [i, dx] of [80, -200, 120].entries()) {
+    await dragBy(page, 'U1', dx);
+    await waitSaved(page);
+    // No crossing bridge (the three wires need none in any of these positions).
+    await expect(page.getByTestId('wire-bridge')).toHaveCount(0);
+    await page.screenshot({ path: info.outputPath(`${i + 1}-after-drag-${dx}.png`) });
+  }
+  // Back where it started: exactly the original drawing (no obsolete segment, no detour).
+  expect(await drawing(page)).toEqual(start);
+
+  // Selecting a wire shows how it is routed.
+  // (W1 is straight: the centre of its box is on the wire.)
+  await page.locator('[data-hit="wire"][data-id="W1"] polyline.wire-hit').click({ force: true });
+  await expect(page.getByTestId('wire-route')).toHaveAttribute('data-route', 'auto');
+
+  // The other views and a reload do not resurrect anything.
+  await page.getByTestId('view-schematic').click();
+  await page.getByTestId('view-3d').click();
+  await expect(page.getByTestId('view3d')).toHaveAttribute('data-status', 'ready', {
+    timeout: 120_000,
+  });
+  await page.screenshot({ path: info.outputPath('4-3d.png') });
+  await page.getByTestId('view-circuit').click();
+  expect(await drawing(page)).toEqual(start);
+  await page.reload();
+  await reopenFromLibrary(page);
+  expect(await drawing(page)).toEqual(start);
+});
+
+/**
+ * s20r6 (review r4 MAJOR 1): a crafted project of 2 500 manual wires of one node, 80 mm tall side
+ * by side far off the bench (half a megabyte). Marking its crossings and branch points tested
+ * every pair; now the work is counted and capped, and the Circuit view says some line hops and
+ * junction dots are not drawn (the connections are unchanged), in English and Hebrew.
+ */
+test('a drawing too large to mark every crossing says so (EN, HE)', async ({ page }, info) => {
+  let doc: ProjectDocument = createProject({
+    projectId: 'prj_s20r6long',
+    deviceId: 'device-test',
+    name: 'Long wires',
+    appVersion: '0.1.0',
+    clock: { now: () => new Date('2026-10-25T00:00:00.000Z') },
+  });
+  const r1 = addComponent(doc, 'component.resistor', { x: 0, y: -100 });
+  if (!r1.ok) throw new Error(r1.error);
+  const one = addWire(
+    r1.doc,
+    { kind: 'terminal', component: 'PSU1', terminal: 'positive' },
+    { kind: 'terminal', component: r1.id, terminal: 'a' },
+    [
+      { x: 20000, y: -20 },
+      { x: 20000, y: -100 },
+    ],
   );
-  for (const u of upper) expect(overlap(preview, u)).toBe(0);
-  expect(preview[1]).toEqual({ x: 160, y: 20 });
-  await page.getByTestId('canvas').screenshot({ path: info.outputPath('wire-return-preview.png') });
-
-  await terminal(page, 'PSU1', 'negative').locator('.terminal-hit').click();
-  await waitSaved(page);
-  const doc = await storedProject(page);
-  const ret = doc.layout.wires.find(
-    (w) => w.from.kind === 'terminal' && w.from.component === 'R1' && w.from.terminal === 'b',
-  )!;
-  expect(ret.vertices).toEqual([{ x: 160, y: 20 }]);
-  const routes = await drawnRoutes(page);
-  const drawn = routes[ret.id]!;
-  expect(drawn).toEqual([
-    { x: 160, y: -20 },
-    { x: 160, y: 20 },
-    { x: -80, y: 20 },
-  ]);
-  for (const u of upper) expect(overlap(drawn, u)).toBe(0);
-  // A closed loop of distinct conductors: no junction was created, the return has its own row.
-  expect(doc.layout.junctions).toHaveLength(0);
-  await page
-    .getByTestId('canvas')
-    .screenshot({ path: info.outputPath('wire-return-committed.png') });
+  if (!one.ok) throw new Error(one.error);
+  const w0 = one.doc.layout.wires[0]!;
+  const N = 2500;
+  const wires = Array.from({ length: N }, (_, i) => ({
+    ...w0,
+    id: `W${i + 1}`,
+    vertices: [
+      { x: 20000 + 20 * i, y: -20 - 20 * (i % 50) },
+      { x: 20000 + 20 * i, y: -100 - 20 * (i % 50) },
+    ],
+  }));
+  doc = {
+    ...one.doc,
+    layout: { ...one.doc.layout, wires },
+    idCounters: { ...one.doc.idCounters, W: N },
+  };
+  // 2500 wires: opening (and repairing) them takes 4–8 s on the 1-vCPU DEV host.
+  await openImported(page, doc, { timeout: 60_000 });
+  const note = page.getByTestId('canvas-overlay-limit');
+  await expect(note).toBeVisible({ timeout: 60_000 });
+  await expect(note).toContainText('some line hops and junction dots are not drawn');
+  await expect(page.locator('[data-hit="wire"]')).toHaveCount(N);
+  await page.screenshot({ path: info.outputPath('overlay-limit-en.png') });
+  await page.getByTestId('language-select').selectOption('he');
+  await expect(note).toContainText('חלק מגשרי הקווים ומנקודות הצומת אינם משורטטים');
+  await page.screenshot({ path: info.outputPath('overlay-limit-he.png') });
 });

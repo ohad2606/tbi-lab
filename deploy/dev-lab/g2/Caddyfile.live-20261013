@@ -1,0 +1,80 @@
+# TBI Lab private development preview: dev-lab.tbi-tech.net
+#
+#   browser --HTTPS--> Caddy :443 --> oauth2-proxy 127.0.0.1:4180 (Google OIDC, exact-email
+#   allowlist) --> Caddy internal origin on unix:/run/tbi-gate/internal.sock (static production
+#   build, SPA fallback, /runtime, /build) --> backends on unix sockets (Sprint 8)
+#
+# Caddy is the only public listener (80, 443). Every request, static assets included, passes
+# through oauth2-proxy before any file is served. Port 80 only answers the ACME HTTP-01
+# challenge and redirects to HTTPS (Caddy's automatic HTTPS).
+#
+# Installed as /etc/caddy/Caddyfile. No secrets here.
+
+dev-lab.tbi-tech.net {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:4180
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+		-Server
+	}
+}
+
+# Internal static origin. Bound to loopback only; only oauth2-proxy forwards to it. It must
+# match any Host: oauth2-proxy passes the browser's Host (dev-lab.tbi-tech.net) upstream, and a
+# host-specific site address here would answer every authenticated request with an empty 200.
+# Assets are served as files only (a missing asset is a 404, never index.html); every other
+# path falls back to the single-page app's index.html.
+http:// {
+	# Sprint 8 (D-S8-1): no TCP port. Only oauth2-proxy (group tbi-gate) can reach this socket;
+	# /run/tbi-gate is 0750 caddy:tbi-gate (deploy/dev-lab/s8/tbi-gate.conf, tmpfiles.d).
+	bind unix//run/tbi-gate/internal.sock
+
+	root * /srv/tbi-lab/dev-lab/current
+
+	# Sprint 10 preview (deploy/dev-lab/s10-preview): /s10-preview/, same gate, own web root.
+	import /etc/caddy/tbi-s10-preview.caddy
+
+	# Sprint 9 preview (deploy/dev-lab/s9-preview): /s9-preview/, same gate, own web root.
+	import /etc/caddy/tbi-s9-preview.caddy
+
+	# The R2 Session Host API (Sprint 6), same-origin. Reached only through oauth2-proxy (this
+	# origin is loopback-only), so every runtime request needs the same Google login and allowlist
+	# as the site itself. The event stream is passed through unbuffered.
+	handle_path /runtime/* {
+		reverse_proxy unix//run/tbi-runtime/api.sock {
+			flush_interval -1
+			# Identity is asserted by oauth2-proxy only (X-Forwarded-User, which it always
+			# overwrites); nothing a client sends as X-Tbi-* reaches a backend.
+			header_up -X-Tbi-*
+		}
+	}
+
+	# The build service (Sprint 7), same-origin behind the same login. Build requests are small
+	# JSON; the Advanced prebuilt upload is one 4 MiB image. Never cached.
+	handle_path /build/* {
+		request_body {
+			max_size 5MB
+		}
+		header Cache-Control "no-store"
+		reverse_proxy unix//run/tbi-build/api.sock {
+			header_up -X-Tbi-*
+		}
+	}
+
+	# Hashed build assets can be cached privately; the HTML entry point (and the SPA fallback)
+	# never is, so after sign-out the app cannot load without passing authentication again.
+	@assets path /assets/*
+	handle @assets {
+		header Cache-Control "private, max-age=31536000, immutable"
+		file_server
+	}
+
+	handle {
+		header Cache-Control "no-store"
+		try_files {path} /index.html
+		file_server
+	}
+}

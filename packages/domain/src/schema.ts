@@ -9,14 +9,44 @@
  * stored verbatim and never translated. Runtime/simulation values never appear in this model.
  */
 
-export const SCHEMA_VERSION = 3;
+/**
+ * v4 (Sprint 20, owner-approved DP-rt2-1): no new field. A v4 document is a v3 document that may
+ * carry automatic wires (`Wire.auto`, added during v3 by the wire routing integrity work); the
+ * bump makes builds before it refuse such a file BY NAME ("made by a newer version") and open
+ * such a stored project read-only, instead of calling the file invalid or editing it blindly.
+ */
+/**
+ * v5 (Sprint POT-UNITS, 2026-10-30): no new field. v5 adds the component type
+ * `component.potentiometer` and the unit `percent` (its wiper position); the bump makes builds
+ * before it refuse a file that may hold one BY NAME ("made by a newer version") and open such a
+ * stored project read-only, instead of calling it invalid (unknown type). Migration v4 -> v5 is
+ * the identity.
+ */
+/**
+ * v6 (Sprint 26, multi-file programs and managed libraries): a program may carry further project
+ * files (`ProgramSource.files`) and the managed libraries pinned for it
+ * (`ProgramSource.libraries`); both optional. A v5 document means exactly the same in v6
+ * (migration v5 -> v6 is the identity); builds before v6 open a v6 file read-only, by name.
+ */
+export const SCHEMA_VERSION = 7;
 export const DOCUMENT_FORMAT = 'tbi-lab.project';
 
 /**
  * Canonical SI unit ids. Locale affects only how a value is displayed. `lux` (illuminance) was
  * added in Sprint 10 for a sensor's simulated environment (additive).
  */
-export type UnitId = 'ohm' | 'volt' | 'ampere' | 'lux' | 'farad';
+export type UnitId =
+  | 'ohm'
+  | 'volt'
+  | 'ampere'
+  | 'lux'
+  | 'farad'
+  /** Sprint 12 (R2 environment quantities, additive). */
+  | 'metre'
+  | 'celsius'
+  | 'percent_rh'
+  /** Sprint POT-UNITS (v5, additive): a fraction in percent (a potentiometer's wiper position). */
+  | 'percent';
 
 /** An engineering value: an SI number plus its canonical unit id. */
 export interface Quantity {
@@ -49,7 +79,33 @@ export type ComponentTypeId =
   | 'component.bjt_npn'
   | 'sensor.pir_hc_sr501'
   | 'display.led_matrix_8x8'
-  | 'component.capacitor';
+  | 'component.capacitor'
+  /** Sprint 12 (Runtime v2, additive): R2 sensors and the R3 I2C display. */
+  | 'sensor.hc_sr04'
+  | 'sensor.dht22'
+  | 'display.lcd1602_i2c'
+  /** Sprint 15 (R4, additive): the SG90 servo, driven by an ESP32 PWM (LEDC) output. */
+  | 'component.servo_sg90'
+  /**
+   * Sprint 19B (Exploration Foundation L1, additive): single logic gates with real supply pins,
+   * one type per function; `model` names the device (TI SN74LVC1G series).
+   */
+  | 'logic.gate_and'
+  | 'logic.gate_nand'
+  | 'logic.gate_or'
+  | 'logic.gate_nor'
+  | 'logic.gate_xor'
+  | 'logic.gate_not'
+  /**
+   * Exploration Foundation L3 (additive): a packaged multi-gate device with its datasheet pin map
+   * and one shared supply; `model` names the device (TI SN74LVC08A, quad 2-input AND).
+   */
+  | 'logic.quad_and'
+  /**
+   * Sprint POT-UNITS (v5, additive): a three-terminal linear potentiometer (Bourns PTV09A,
+   * linear taper): end A, wiper W, end B.
+   */
+  | 'component.potentiometer';
 
 export interface ComponentInstance {
   /** Stable reference designator (`R1`, `PSU1`), unique per project, never reused. */
@@ -127,6 +183,15 @@ export interface Wire {
    */
   vertices: Point[];
   /**
+   * Wire routing integrity (2026-10-22): present = an AUTOMATIC wire. Its `vertices` are then the
+   * router's, recomputed from scratch after every layout change (route.ts `routeAutoWires`), so
+   * its drawing is a function of the current positions and these `waypoints`: the points the user
+   * placed while drawing it, which the route passes through in order (intentional constraints).
+   * Absent = a MANUAL wire: `vertices` are the user's own geometry (a dragged segment, or a wire
+   * drawn before automatic routing existed) and are kept as they are.
+   */
+  auto?: { waypoints: Point[] };
+  /**
    * The user's colour for this wire (Sprint 10, optional). Absent = automatic: derived from the
    * wire's electrical net (app/src/views/wireColors.ts). Older projects have none.
    */
@@ -192,16 +257,50 @@ export interface ProjectDocument {
   programs: Record<string, ProgramSource>;
 }
 
-/** One board's program: its programming environment, pinned build profile and source file. */
+/** One board's program: its programming environment, pinned build profile and source files. */
 export interface ProgramSource {
-  /** Programming environment (V1: `arduino-cpp`). */
+  /** Programming environment (`arduino-cpp`, `micropython`). */
   language: string;
   /** Build profile id: board + environment + pinned toolchain configuration. */
   profile: string;
-  /** The profile's source file name (V1: `sketch.ino`). */
+  /** The entry file: the profile's file name (`sketch.ino`, `main.py`); never renamed or removed. */
   fileName: string;
-  /** Exact source text. */
+  /** Exact source text of the entry file. */
   text: string;
+  /**
+   * Sprint 26 (schema v6): further project files, by relative path (program.ts
+   * `programPathIssue`), sorted by path; never the entry file. Absent or empty: a one-file program.
+   */
+  files?: ProgramFile[];
+  /**
+   * Sprint 26 (schema v6): the managed libraries pinned for this program (libraryRegistry.ts), by
+   * id and exact version, sorted by id. Kept by the product (components that need them, code that
+   * includes them); the build uses exactly these versions.
+   */
+  libraries?: LibraryRef[];
+  /**
+   * Schema v7 (P1 language switching): the board's code in its OTHER programming environments,
+   * kept exactly while this one is active (at most one per other profile of the board, never the
+   * active profile). Switching environment swaps the active source with the kept one, so no
+   * language's code is ever discarded. Never built, never sent to a service.
+   */
+  alternates?: ProgramVariant[];
+}
+
+/** Schema v7: a board's complete source in one programming environment (files and libraries). */
+export type ProgramVariant = Omit<ProgramSource, 'alternates'>;
+
+/** Sprint 26: one further project file of a program (user-authored, stored exactly). */
+export interface ProgramFile {
+  /** Relative path, `/`-separated (e.g. `display.h`, `src/util.cpp`, `sensors/dht.py`). */
+  path: string;
+  text: string;
+}
+
+/** Sprint 26: a managed library pinned for a program (an entry of the library registry). */
+export interface LibraryRef {
+  id: string;
+  version: string;
 }
 
 /** Deep copy of JSON data. Project documents are plain JSON by construction. */

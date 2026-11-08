@@ -14,6 +14,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import esp32Url from './esp32-devkitc-v4.glb?url';
 import type { ModelKey } from '../scene.js';
+import { gateFetch } from '../../../gate.js';
 
 const SOURCES: Partial<Record<ModelKey, string>> = {
   'board.esp32_devkitc': esp32Url,
@@ -42,7 +43,7 @@ export function loadAssets(): Promise<void> {
     await Promise.all(
       (Object.entries(SOURCES) as [ModelKey, string][]).map(async ([key, url]) => {
         try {
-          const res = await fetch(url);
+          const res = await gateFetch(url);
           if (!res.ok) throw new Error(`${res.status}`);
           const buf = await res.arrayBuffer();
           stats.bytes[key] = buf.byteLength;

@@ -5,7 +5,7 @@
  * click selects instead; nothing ever stays pressed (release, cancel, leaving, Stop).
  */
 import { expect, test, type Page } from '@playwright/test';
-import { goToProjects, storedProject } from './helpers.js';
+import { goToProjects, waitForStoredProject } from './helpers.js';
 
 test.beforeEach(async ({ page }) => {
   page.on('pageerror', (e) => {
@@ -77,8 +77,11 @@ test('toggle switch: the 3D lever toggles while running, both views agree; stopp
   await expect(circuit(page, 'SW3')).toHaveAttribute('data-closed', 'true');
   await expect.poll(() => pose(page, 'SW3')).toBeCloseTo(-0.38, 2);
   await expect.poll(() => view.getAttribute('data-glow')).not.toBe(glowBefore);
-  expect((await storedProject(page)).components.find((c) => c.id === 'SW3')!.params.closed).toBe(
-    true,
+  // Autosave is asynchronous: wait for the toggle to reach IndexedDB, not a single read.
+  await waitForStoredProject(
+    page,
+    (doc) => doc.components.find((c) => c.id === 'SW3')?.params.closed === true,
+    'SW3 closed',
   );
   // The click operated it; it did not orbit the camera or change the selection.
   await expect(view).toHaveAttribute('data-selected', 'C:SW3');

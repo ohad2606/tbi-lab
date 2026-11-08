@@ -24,7 +24,15 @@ import {
   RELAY_SRD,
   RGB_LED_5MM,
   TO92,
+  POT_PTV09A,
   PIR_HC_SR501,
+  HC_SR04_MODULE,
+  DHT22_CASE,
+  LCD1602_MODULE,
+  LOGIC_SOT23_BREAKOUT,
+  LOGIC_SOIC14_BREAKOUT,
+  SERVO_SG90,
+  SERVO_SHAFT_X_MM,
   LED_MATRIX_1088AS,
   matrixPinXZ,
   capacitorPackage,
@@ -41,6 +49,7 @@ import {
   box,
   canvasTexture,
   cylinder,
+  drawTexture,
   lathe,
   mesh,
   roundPath,
@@ -632,6 +641,56 @@ function buildTo92(c: SceneComponent, m: Materials, own: OwnedResources) {
   return g;
 }
 
+/**
+ * Sprint POT-UNITS: Bourns PTV09A-2 rotary potentiometer (physical.ts POT_PTV09A): the moulded
+ * body standing on its three terminals, the insulated F-type shaft (with its flat) towards the
+ * default camera (+z), the terminals 1-2-3 left to right facing the shaft, splayed down to the
+ * part's terminals (end A, wiper, end B).
+ */
+function buildPotentiometer(c: SceneComponent, m: Materials, own: OwnedResources) {
+  const p = POT_PTV09A;
+  const g = new THREE.Group();
+  const bottom = p.shaftAxisMm - p.bodyHeightMm / 2;
+  g.add(
+    mesh(
+      own.shared(
+        'pot:body',
+        () => new RoundedBoxGeometry(p.bodyWidthMm, p.bodyHeightMm, p.bodyDepthMm, 2, 0.4),
+      ),
+      m.blackPlastic,
+      [0, p.shaftAxisMm, 0],
+    ),
+  );
+  // The insulated shaft (moulded, light grey), from the front face; its flat on top.
+  const shaftLen = p.shaftLengthMm - p.bodyDepthMm;
+  const shaft = cylinder(
+    own,
+    p.shaftDiameterMm / 2,
+    shaftLen,
+    m.white,
+    [0, p.shaftAxisMm, p.bodyDepthMm / 2 + shaftLen / 2],
+    32,
+  );
+  shaft.rotation.x = Math.PI / 2;
+  g.add(shaft);
+  const flat = box(own, p.shaftDiameterMm * 0.7, 0.2, shaftLen * 0.6, m.darkPlastic, [
+    0,
+    p.shaftAxisMm + p.shaftFlatMm - p.shaftDiameterMm / 2 + 0.1,
+    p.bodyDepthMm / 2 + shaftLen * 0.7,
+  ]);
+  g.add(flat);
+  const xs = p.pinOrder.map((_, i) => (i - 1) * p.pinPitchMm);
+  const at = (pin: (typeof p.pinOrder)[number]) => xs[p.pinOrder.indexOf(pin)]!;
+  g.add(
+    splayedLeads(c, own, m.lead, p.pinWidthMm / 2, [
+      { terminal: 'a', from: [at('a'), 0], top: bottom + 0.2, knee: 1.2 },
+      { terminal: 'wiper', from: [at('wiper'), 0], top: bottom + 0.2, knee: 1.8 },
+      { terminal: 'b', from: [at('b'), 0], top: bottom + 0.2, knee: 1.4 },
+    ]),
+  );
+  return g;
+}
+
 function buildPir(_c: SceneComponent, m: Materials, own: OwnedResources) {
   const p = PIR_HC_SR501;
   const g = new THREE.Group();
@@ -764,6 +823,405 @@ function buildLedMatrix(_c: SceneComponent, m: Materials, own: OwnedResources) {
   return g;
 }
 
+/**
+ * Header pins standing under an upright module (Sprint 12): the plastic spacer under the body, a
+ * gold pin per terminal down to the bench, its solder blob where the wire meets it.
+ */
+function headerDown(
+  g: THREE.Group,
+  m: Materials,
+  own: OwnedResources,
+  pins: Record<string, readonly [number, number]>,
+  y0: number,
+  attachY: number,
+) {
+  const xs = Object.values(pins).map((q) => q[0]);
+  const zs = Object.values(pins).map((q) => q[1]);
+  const span = Math.max(...zs) - Math.min(...zs) + 2.54;
+  const zc = (Math.max(...zs) + Math.min(...zs)) / 2;
+  g.add(box(own, 2.5, 2.5, span, m.blackPlastic, [xs[0]!, y0 - 1.25, zc]));
+  for (const [id, [x, z]] of Object.entries(pins)) {
+    g.add(box(own, 0.64, y0, 0.64, m.gold, [x, y0 / 2, z]));
+    const blob = cylinder(own, 0.55, 0.9, m.chrome, [x, attachY, z], 16, 0.75);
+    blob.userData.pin = id;
+    g.add(blob);
+  }
+}
+
+/** HC-SR04 (Sprint 12): the upright blue board, its two transducer cans facing +x, the crystal. */
+function buildUltrasonic(_c: SceneComponent, m: Materials, own: OwnedResources) {
+  const p = HC_SR04_MODULE;
+  const g = new THREE.Group();
+  const y0 = p.standoffMm;
+  const blue = own.sharedMat(
+    'usPcb',
+    () => new THREE.MeshStandardMaterial({ color: '#1f4e8c', roughness: 0.55 }),
+  );
+  g.add(
+    box(own, p.boardThicknessMm, p.boardYMm, p.boardZMm, blue, [
+      p.boardXMm,
+      y0 + p.boardYMm / 2,
+      p.centreZMm,
+    ]),
+  );
+  const front = p.boardXMm + p.boardThicknessMm / 2;
+  const R = p.transducerDiameterMm / 2;
+  const mesh_ = own.sharedMat(
+    'usMesh',
+    () => new THREE.MeshStandardMaterial({ color: '#2a2b2e', roughness: 0.9 }),
+  );
+  for (const z of [-p.transducerSpacingMm / 2, p.transducerSpacingMm / 2].map(
+    (dz) => p.centreZMm + dz,
+  )) {
+    const can = cylinder(
+      own,
+      R,
+      p.frontMm,
+      m.shield,
+      [front + p.frontMm / 2, y0 + p.boardYMm / 2, z],
+      40,
+    );
+    can.rotation.z = Math.PI / 2;
+    g.add(can);
+    const face = cylinder(
+      own,
+      R * 0.82,
+      0.3,
+      mesh_,
+      [front + p.frontMm + 0.05, y0 + p.boardYMm / 2, z],
+      40,
+    );
+    face.rotation.z = Math.PI / 2;
+    g.add(face);
+  }
+  // The 40 MHz crystal behind the board, between the cans.
+  g.add(
+    box(own, p.backMm, 4.5, 11, m.steel, [
+      p.boardXMm - p.boardThicknessMm / 2 - p.backMm / 2,
+      y0 + p.boardYMm - 4,
+      p.centreZMm,
+    ]),
+  );
+  headerDown(g, m, own, p.pins, y0, p.attachHeightMm);
+  return g;
+}
+
+/** DHT22 / AM2302 (Sprint 12): the white case on its four pins, the vent grille facing +x. */
+function buildDht22(_c: SceneComponent, m: Materials, own: OwnedResources) {
+  const p = DHT22_CASE;
+  const g = new THREE.Group();
+  const y0 = p.standoffMm;
+  const white = own.sharedMat(
+    'dhtCase',
+    () => new THREE.MeshStandardMaterial({ color: '#f1f1ec', roughness: 0.6 }),
+  );
+  g.add(
+    mesh(
+      own.shared(
+        'dht:case',
+        () => new RoundedBoxGeometry(p.depthXMm, p.heightMm, p.widthZMm, 2, 0.6),
+      ),
+      white,
+      [0, y0 + p.heightMm / 2, p.centreZMm],
+    ),
+  );
+  // The grille: rows of vent slots over the upper 20 mm of the front face.
+  const tex = own.lasting('dht:grille', () =>
+    drawTexture(128, 192, (ctx) => {
+      ctx.clearRect(0, 0, 128, 192);
+      ctx.fillStyle = '#3d3f43';
+      for (let r = 0; r < 9; r++)
+        for (let k = 0; k < 3; k++) {
+          ctx.beginPath();
+          ctx.roundRect(10 + k * 38, 8 + r * 20.5, 32, 12, 4);
+          ctx.fill();
+        }
+    }),
+  );
+  const grille = new THREE.Mesh(
+    own.shared(
+      'plane:dhtGrille',
+      () => new THREE.PlaneGeometry(p.widthZMm * 0.84, p.grilleHeightMm * 0.94),
+    ),
+    own.sharedMat(
+      'dhtGrille',
+      () => new THREE.MeshStandardMaterial({ map: tex, transparent: true, roughness: 0.7 }),
+    ),
+  );
+  grille.rotation.y = Math.PI / 2;
+  grille.position.set(
+    p.depthXMm / 2 + 0.02,
+    y0 + p.heightMm - 1.5 - p.grilleHeightMm / 2,
+    p.centreZMm,
+  );
+  g.add(grille);
+  headerDown(g, m, own, p.pins, y0, p.attachHeightMm);
+  return g;
+}
+
+/** What a character LCD shows (Sprint 12): the engine's result, verbatim. */
+export interface LcdFace {
+  backlight: boolean;
+  displayOn: boolean;
+  lines: readonly [string, string];
+}
+
+/** The LCD face texture size (px): the 64.5 x 14.5 mm viewing area. */
+export const LCD_FACE_PX: readonly [number, number] = [1024, 230];
+
+/**
+ * Paint the LCD's viewing area: the yellow-green STN panel (lit only by the backlight the engine
+ * reports), its 32 character cells, and, when the display is on, each character verbatim in its
+ * cell, left to right (never reordered, never translated). No state: blank and unlit.
+ */
+export function paintLcdFace(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  face: LcdFace | undefined,
+) {
+  const p = LCD1602_MODULE;
+  const sx = w / p.viewXMm;
+  const sz = h / p.viewZMm;
+  const x0 = (p.viewXMm - p.activeXMm) / 2;
+  const z0 = (p.viewZMm - p.activeZMm) / 2;
+  ctx.fillStyle = face?.backlight ? '#a9c94a' : '#3a4130';
+  ctx.fillRect(0, 0, w, h);
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.09)';
+  for (let row = 0; row < 2; row++)
+    for (let col = 0; col < 16; col++)
+      ctx.fillRect(
+        (x0 + col * p.charPitchXMm) * sx,
+        (z0 + row * p.charPitchZMm) * sz,
+        p.charXMm * sx,
+        p.charZMm * sz,
+      );
+  if (!face?.displayOn) return;
+  ctx.fillStyle = '#18200c';
+  ctx.font = `600 ${Math.round(p.charZMm * sz * 0.92)}px ui-monospace, Menlo, Consolas, monospace`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.direction = 'ltr';
+  face.lines.forEach((line, row) =>
+    Array.from(line)
+      .slice(0, 16)
+      .forEach((ch, col) => {
+        if (ch === ' ') return;
+        ctx.fillText(
+          ch,
+          (x0 + col * p.charPitchXMm + p.charXMm / 2) * sx,
+          (z0 + row * p.charPitchZMm + p.charZMm / 2) * sz,
+          p.charXMm * sx,
+        );
+      }),
+  );
+}
+
+/**
+ * 16x2 LCD with its I2C backpack (Sprint 12): green PCB, dark bezel, the viewing area (its own
+ * canvas, repainted live from the engine's result by the renderer), the backpack under the
+ * connector with its 4-pin header pointing out of the left edge.
+ */
+function buildLcd1602(_c: SceneComponent, m: Materials, own: OwnedResources) {
+  const p = LCD1602_MODULE;
+  const g = new THREE.Group();
+  const y0 = p.standoffMm;
+  const cx = p.pcbLeftXMm + p.pcbXMm / 2;
+  const cz = p.pcbCentreZMm;
+  const green = own.sharedMat(
+    'lcdPcb',
+    () => new THREE.MeshStandardMaterial({ color: '#1f6b3c', roughness: 0.6 }),
+  );
+  g.add(box(own, p.pcbXMm, p.pcbThicknessMm, p.pcbZMm, green, [cx, y0 + p.pcbThicknessMm / 2, cz]));
+  const top = y0 + p.pcbThicknessMm;
+  // Mounting holes (dark discs on the PCB), on their 75 x 31 mm grid.
+  for (const dx of [-1, 1])
+    for (const dz of [-1, 1])
+      g.add(
+        cylinder(own, p.holeDiameterMm / 2, 0.06, m.black, [
+          cx + (dx * p.holeGridXMm) / 2,
+          top + 0.03,
+          cz + (dz * p.holeGridZMm) / 2,
+        ]),
+      );
+  // The 16-pin connector's solder joints along the top edge (pin 1 8 mm from the left edge).
+  for (let i = 0; i < 16; i++)
+    g.add(
+      cylinder(
+        own,
+        0.7,
+        0.5,
+        m.lead,
+        [p.pcbLeftXMm + 8 + i * 2.54, top + 0.25, cz - p.pcbZMm / 2 + 2.5],
+        12,
+      ),
+    );
+  const bezel = own.sharedMat(
+    'lcdBezel',
+    () => new THREE.MeshStandardMaterial({ color: '#2b2e33', metalness: 0.5, roughness: 0.45 }),
+  );
+  g.add(
+    box(own, p.bezelXMm, p.bezelHeightMm, p.bezelZMm, bezel, [cx, top + p.bezelHeightMm / 2, cz]),
+  );
+  const [fw, fh] = LCD_FACE_PX;
+  const tex = canvasTexture(own, fw, fh, (ctx) => paintLcdFace(ctx, fw, fh, undefined));
+  const faceMat = own.mat(
+    new THREE.MeshStandardMaterial({
+      map: tex,
+      roughness: 0.3,
+      emissiveMap: tex,
+      emissive: '#000000',
+    }),
+  );
+  const face = new THREE.Mesh(
+    own.shared('plane:lcdFace', () => new THREE.PlaneGeometry(p.viewXMm, p.viewZMm)),
+    faceMat,
+  );
+  face.rotation.x = -Math.PI / 2;
+  face.position.set(cx, top + p.bezelHeightMm + 0.02, cz);
+  g.add(face);
+  // The backpack under the connector: its board, the PCF8574 and the contrast trimmer.
+  const backY = y0 - 2.5 - 0.8;
+  const hz = p.headerCentreZMm;
+  g.add(box(own, 41.5, 1.6, 19, m.pcb, [p.pcbLeftXMm + 20.75, backY, hz]));
+  g.add(box(own, 10, 1.5, 7.5, m.ic, [p.pcbLeftXMm + 24, backY - 1.55, hz + 2]));
+  const pot = own.sharedMat(
+    'lcdPot',
+    () => new THREE.MeshStandardMaterial({ color: '#2c5fb8', roughness: 0.5 }),
+  );
+  g.add(cylinder(own, 3.2, 4, pot, [p.pcbLeftXMm + 10, backY - 2.8, hz + 3], 20));
+  // The 4-pin header: its housing under the board's edge, the pins out to the left.
+  const tip = p.pinTipXMm;
+  const inner = p.pcbLeftXMm + 3;
+  g.add(box(own, 2.5, 2.5, 10.16, m.blackPlastic, [p.pcbLeftXMm + 1.75, p.pinHeightMm, hz]));
+  for (const [id, [, z]] of Object.entries(p.pins)) {
+    g.add(box(own, inner - tip, 0.64, 0.64, m.gold, [(inner + tip) / 2, p.pinHeightMm, z]));
+    const blob = cylinder(own, 0.55, 0.9, m.chrome, [tip, p.pinHeightMm, z], 16, 0.75);
+    blob.userData.pin = id;
+    g.add(blob);
+  }
+  g.userData.lcdFace = { texture: tex, material: faceMat };
+  return g;
+}
+
+/**
+ * Whether `o` is, or is inside, a part the simulation moves (`userData.moving`: a servo horn).
+ * Such meshes keep their own transform; the renderer's static batching (which bakes transforms
+ * into one merged draw) must leave them alone, or the part could never move (Sprint 18F).
+ */
+export function movingPart(o: THREE.Object3D): boolean {
+  for (let p: THREE.Object3D | null = o; p; p = p.parent) if (p.userData.moving) return true;
+  return false;
+}
+
+/** The rest angle the servo's horn shows when nothing reports its position (deg). */
+export const SERVO_REST_DEG = 90;
+
+/**
+ * The horn's rotation about the shaft (rad, +Y) for a reported angle: the arm points along +x at
+ * 0 deg and turns counter-clockwise seen from above as the angle grows (as the 2D symbol), clamped
+ * to the model's 0..180 deg travel.
+ */
+export const servoHornYaw = (angleDeg: number | undefined): number =>
+  (Math.min(180, Math.max(0, angleDeg ?? SERVO_REST_DEG)) * Math.PI) / 180;
+
+/**
+ * TowerPro SG90 (Sprint 15): the blue case with its mounting tabs and gear tower, the output shaft
+ * with a white single-arm horn (its own group, turned live by the renderer from the reported
+ * angle), and the three-wire lead (brown, red, orange) to the plug whose sockets are the terminals.
+ */
+function buildServo(_c: SceneComponent, m: Materials, own: OwnedResources) {
+  const P = SERVO_SG90;
+  const g = new THREE.Group();
+  const blue = own.sharedMat(
+    'servoCase',
+    () => new THREE.MeshStandardMaterial({ color: '#2a5db0', roughness: 0.4 }),
+  );
+  const cx = P.caseLeftXMm + P.caseXMm / 2;
+  g.add(box(own, P.caseXMm, P.caseHeightMm, P.caseZMm, blue, [cx, P.caseHeightMm / 2, 0]));
+  g.add(
+    box(own, P.tabSpanXMm, P.tabThicknessMm, P.caseZMm, blue, [
+      cx,
+      P.tabUndersideMm + P.tabThicknessMm / 2,
+      0,
+    ]),
+  );
+  // The tabs' mounting holes (dark discs on their top faces).
+  const tabTop = P.tabUndersideMm + P.tabThicknessMm;
+  for (const side of [-1, 1])
+    g.add(
+      cylinder(own, 1.0, 0.06, m.black, [cx + side * (P.tabSpanXMm / 2 - 2.4), tabTop + 0.03, 0]),
+    );
+  // The gear tower round the output shaft, and the shaft's spline under the horn.
+  const towerH = P.towerTopMm - P.caseHeightMm;
+  g.add(
+    cylinder(own, P.caseZMm / 2, towerH, blue, [SERVO_SHAFT_X_MM, P.caseHeightMm + towerH / 2, 0]),
+  );
+  const shaftH = P.hornBottomMm - P.towerTopMm;
+  g.add(
+    cylinder(own, P.shaftDiameterMm / 2, shaftH, m.white, [
+      SERVO_SHAFT_X_MM,
+      P.towerTopMm + shaftH / 2,
+      0,
+    ]),
+  );
+  // The horn: hub and arm (along +x at 0 deg), and its screw.
+  const horn = new THREE.Group();
+  const t = P.hornThicknessMm;
+  horn.add(cylinder(own, P.hornHubDiameterMm / 2, t, m.white, [0, t / 2, 0]));
+  horn.add(box(own, P.hornReachMm, t, P.hornTipWidthMm, m.white, [P.hornReachMm / 2, t / 2, 0]));
+  horn.add(cylinder(own, P.hornTipWidthMm / 2, t, m.white, [P.hornReachMm, t / 2, 0]));
+  horn.add(cylinder(own, 1.1, 0.4, m.steel, [0, t + 0.2, 0], 12));
+  horn.position.set(SERVO_SHAFT_X_MM, P.hornBottomMm, 0);
+  horn.rotation.y = servoHornYaw(undefined);
+  horn.name = 'servoHorn';
+  // It turns at run time: kept out of the static batches (renderer.ts batchStatic), which bake
+  // each mesh's transform into one merged draw.
+  horn.userData.moving = true;
+  g.add(horn);
+  // The lead: brown (GND), red (+V), orange (signal), from the plug's back into the case.
+  const plugEnd = P.plugTipXMm + P.plugXMm;
+  const wire = (color: string) =>
+    own.sharedMat(
+      `servoWire:${color}`,
+      () => new THREE.MeshStandardMaterial({ color, roughness: 0.5 }),
+    );
+  for (const [id, color] of [
+    ['gnd', '#6b3b1f'],
+    ['vcc', '#c4161c'],
+    ['signal', '#f08a1c'],
+  ] as const) {
+    const z = P.pins[id]![1];
+    g.add(
+      tube(
+        own,
+        [
+          [plugEnd - 1, P.attachHeightMm, z],
+          [plugEnd + 2.5, P.attachHeightMm, z],
+          [P.caseLeftXMm + 0.5, 3.0, z * 0.45],
+        ],
+        0.5,
+        wire(color),
+        1.2,
+      ),
+    );
+  }
+  // The plug, lying on the bench, its three sockets facing -x on the terminal column.
+  g.add(
+    box(own, P.plugXMm, P.plugHeightMm, P.plugZMm, m.blackPlastic, [
+      P.plugTipXMm + P.plugXMm / 2,
+      P.plugHeightMm / 2,
+      0,
+    ]),
+  );
+  for (const [id, [x, z]] of Object.entries(P.pins)) {
+    const socket = box(own, 0.2, 1.0, 1.0, m.ic, [x - 0.1, P.attachHeightMm, z]);
+    socket.userData.pin = id;
+    g.add(socket);
+  }
+  return g;
+}
+
 function buildCapacitor(c: SceneComponent, m: Materials, own: OwnedResources) {
   const p = capacitorPackage(c.visual.farads ?? 100e-6);
   const g = new THREE.Group();
@@ -890,7 +1348,14 @@ const BUILDERS: Record<ModelKey, Builder> = {
   'capacitor.radial': buildCapacitor,
   'display.matrix': buildLedMatrix,
   'sensor.pir': buildPir,
+  'sensor.ultrasonic': buildUltrasonic,
+  'sensor.dht22': buildDht22,
+  'display.lcd1602': buildLcd1602,
+  'servo.sg90': buildServo,
+  'logic.sot23': buildLogicSot23,
+  'logic.soic14': buildLogicSoic14,
   'transistor.to92': buildTo92,
+  'pot.ptv09': buildPotentiometer,
   'led.rgb': buildRgbLed,
   'ldr.disc': buildPhotoresistor,
   'buzzer.can': buildBuzzer,
@@ -1188,6 +1653,104 @@ function buildEsp32(c: SceneComponent, m: Materials, own: OwnedResources): THREE
     h.position.set(Math.sign(local.x) * rowX, top + d.dupontSeatMm, realPinZ(pin.position));
     h.userData.jumper = id;
     g.add(h);
+  }
+  return g;
+}
+
+/**
+ * Sprint 19B: an SN74LVC1G gate, SOT-23-5 (DBV0005A) on a representative breakout board: the
+ * board on four header pins, the package with its five gull-wing leads (3 on one side, 2 on the
+ * other, 0.95 mm pitch), the header pins at the gate's terminals.
+ */
+function buildLogicSot23(c: SceneComponent, m: Materials, own: OwnedResources) {
+  const P = LOGIC_SOT23_BREAKOUT;
+  const g = new THREE.Group();
+  const y0 = P.standoffMm;
+  g.add(
+    box(own, P.boardSizeMm, P.boardThicknessMm, P.boardSizeMm, m.pcb, [
+      0,
+      y0 + P.boardThicknessMm / 2,
+      0,
+    ]),
+  );
+  const top = y0 + P.boardThicknessMm;
+  g.add(box(own, P.bodyXMm, P.bodyHeightMm, P.bodyZMm, m.ic, [0, top + P.bodyHeightMm / 2, 0]));
+  // Leads: pins 1–3 on one long side, 4–5 on the other.
+  const lead = (P.leadSpanMm - P.bodyZMm) / 2;
+  for (const [x, side] of [
+    [-P.leadPitchMm, -1],
+    [0, -1],
+    [P.leadPitchMm, -1],
+    [P.leadPitchMm, 1],
+    [-P.leadPitchMm, 1],
+  ] as const)
+    g.add(
+      box(own, P.leadWidthMm, 0.15, lead, m.lead, [
+        x,
+        top + 0.08,
+        side * (P.bodyZMm / 2 + lead / 2),
+      ]),
+    );
+  for (const t of c.terminals) {
+    const x = t.x - c.x;
+    const z = t.z - c.z;
+    // Terminals are placed in world coordinates; undo the part's rotation for the local frame.
+    const ca = Math.cos(-c.rotationY);
+    const sa = Math.sin(-c.rotationY);
+    const lx = x * ca + z * sa;
+    const lz = -x * sa + z * ca;
+    g.add(box(own, 0.64, y0, 0.64, m.gold, [lx, y0 / 2, lz]));
+    const blob = cylinder(own, 0.55, 0.9, m.chrome, [lx, P.attachHeightMm, lz], 16, 0.75);
+    blob.userData.pin = t.id;
+    g.add(blob);
+  }
+  return g;
+}
+
+/**
+ * L3: an SN74LVC08A, SOIC-14 (D0014A) on a representative 14-pin breakout: the board on its
+ * header pins, the package with seven gull-wing leads per long side at 1.27 mm pitch, the
+ * header pins at the part's terminals.
+ */
+function buildLogicSoic14(c: SceneComponent, m: Materials, own: OwnedResources) {
+  const P = LOGIC_SOIC14_BREAKOUT;
+  const g = new THREE.Group();
+  const y0 = P.standoffMm;
+  g.add(
+    box(own, P.boardXMm, P.boardThicknessMm, P.boardZMm, m.pcb, [
+      0,
+      y0 + P.boardThicknessMm / 2,
+      0,
+    ]),
+  );
+  const top = y0 + P.boardThicknessMm;
+  // The body's long side along z (pins 1–7 run down the left column as on the symbol).
+  g.add(
+    box(own, P.bodyWideMm, P.bodyHeightMm, P.bodyLongMm, m.ic, [0, top + P.bodyHeightMm / 2, 0]),
+  );
+  const lead = (P.leadSpanMm - P.bodyWideMm) / 2;
+  for (let i = 0; i < 7; i++) {
+    const z = (i - 3) * P.leadPitchMm;
+    for (const side of [-1, 1])
+      g.add(
+        box(own, lead, 0.2, P.leadWidthMm, m.lead, [
+          side * (P.bodyWideMm / 2 + lead / 2),
+          top + 0.1,
+          z,
+        ]),
+      );
+  }
+  for (const t of c.terminals) {
+    const x = t.x - c.x;
+    const z = t.z - c.z;
+    const ca = Math.cos(-c.rotationY);
+    const sa = Math.sin(-c.rotationY);
+    const lx = x * ca + z * sa;
+    const lz = -x * sa + z * ca;
+    g.add(box(own, 0.64, y0, 0.64, m.gold, [lx, y0 / 2, lz]));
+    const blob = cylinder(own, 0.55, 0.9, m.chrome, [lx, P.attachHeightMm, lz], 16, 0.75);
+    blob.userData.pin = t.id;
+    g.add(blob);
   }
   return g;
 }

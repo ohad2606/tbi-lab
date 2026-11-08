@@ -29,7 +29,10 @@ prev="$(readlink -f "$root/current")"
 test -d "$prev" && test -f "$prev/build-service.mjs" && test -f "$prev/build-job.mjs"
 if [ "$prev" = "$root/$sha" ]; then echo "already serving $sha"; exit 0; fi
 
-work="$(mktemp -d)"
+# FU-11-2: disk-backed scratch space with a free-space check (deploy-tmp.sh).
+# shellcheck source=deploy-tmp.sh
+source "$(dirname "$0")/deploy-tmp.sh"
+work="$(deploy_tmp)"
 trap 'git -C "$repo" worktree remove --force "$work/src" >/dev/null 2>&1 || true; rm -rf "$work"' EXIT
 git -C "$repo" worktree add --detach "$work/src" "$sha" >/dev/null
 version="$(tr -d '[:space:]' < "$work/src/VERSION")"

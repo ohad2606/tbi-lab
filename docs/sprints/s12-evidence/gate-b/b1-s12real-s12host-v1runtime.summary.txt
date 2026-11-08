@@ -1,0 +1,8 @@
+  -  1 [chromium] › app/e2e/s12-real.spec.ts:51:3 › Runtime v2 host › ESP32 distance alarm on real QEMU: the measured distance follows the part; below 20 cm the LED lights
+  -  2 [chromium] › app/e2e/s12-real.spec.ts:81:3 › Runtime v2 host › ESP32 thermo-hygrometer on real QEMU: the firmware prints exactly the DHT22 environment
+  -  3 [chromium] › app/e2e/s12-real.spec.ts:104:3 › Runtime v2 host › ESP32 LCD hello on real QEMU: the module shows the text the firmware wrote over I2C
+old host refusal: code=unsupported_component text=⁦U2⁩ cannot be simulated yet.
+  ✓  4 [chromium] › app/e2e/s12-real.spec.ts:126:1 › against a Sprint 11 Session Host: Run of an R2 example fails explicitly, naming the part (3.5s)
+  3 skipped
+  1 passed (15.9s)
+playwright exit=0

@@ -137,9 +137,22 @@ describe('A7: PSU output OFF is an open circuit, not a 0 V source', () => {
     // Enabled at 0 V: it would have to SINK 5 mA. This lab-PSU model cannot sink (documented
     // idealisation), so it is not the same as OFF: the solver finds CC at the limit instead of
     // an open circuit, and the terminal is no longer the open-circuit 5 V.
-    const zero = build(true, 0);
-    expect(zero.components.PSU1!.mode).not.toBe('off');
-    expect(zero.components.PSU1!.voltage).not.toBeCloseTo(5, 3);
+    // Sprint 22 review 3: refused by name (psu_sinking), never shown as a negative current.
+    const b0 = new Bench();
+    const r0 = b0.add('component.resistor');
+    const q2 = b0.add('instrument.lab_psu');
+    b0.wire(`${q2}.positive`, `${r0}.a`).wire(`${r0}.b`, 'PSU1.positive');
+    b0.wire(`${q2}.negative`, 'GND1.ref').wire('PSU1.negative', 'GND1.ref');
+    b0.psu(0, 0.1, true).ohms(r0, 1000);
+    b0.set(q2, 'setpointVoltage', { value: 5, unit: 'volt' }).set(q2, 'outputEnabled', true);
+    expect(new EngineSession(b0.snapshot()).solve()).toMatchObject({
+      ok: false,
+      error: {
+        code: 'psu_sinking',
+        components: ['PSU1'],
+        detail: { value: expect.closeTo(0.005, 12) },
+      },
+    });
   });
 
   it('a live output-enable change re-solves the same snapshot', () => {

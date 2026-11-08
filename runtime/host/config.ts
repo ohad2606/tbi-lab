@@ -9,6 +9,7 @@ import type { RuntimeLauncher } from '../harness/launcher.js';
 import type { Policy } from '../policy/policy.js';
 import type { RateLimiter } from '../policy/rate.js';
 import type { ResourceProbe } from '../policy/resources.js';
+import type { DiagnosticsSink } from './diagnostics.js';
 import { COMMAND_QUANTUM_US } from './protocol.js';
 
 export interface HostConfig {
@@ -45,8 +46,19 @@ export interface HostConfig {
   /** Wall window in which less than 1 ms of simulation progress fails the session. */
   stallTimeoutMs: number;
   maxQueuedCommands: number;
+  /**
+   * Sprint 11 (ADR-010): commands a session accepts per wall-clock second (mirrors and transient
+   * input together), on top of the per-principal request rate. Beyond it: `rate_limited`.
+   */
+  maxCommandsPerSecond: number;
   /** Events retained per session for ordered delivery and reconnect replay. */
   eventLogCapacity: number;
+  /**
+   * Sprint 30 (M3 POC, co-simulation timing): entries of the per-session timing trace kept in
+   * memory (0, the default: off). Host-internal — never set by a client, never sent on the wire;
+   * it records what already happens (virtual-time stamps) and changes nothing that is simulated.
+   */
+  timingTraceCapacity?: number;
   /** Serial bytes buffered per publish window; the excess is counted as dropped. */
   serialWindowMaxBytes: number;
   /** Bytes a session's private directory may occupy (the flash copy included). */
@@ -65,6 +77,16 @@ export interface HostConfig {
   maxRequestBytes: number;
   /** Interval of the host's housekeeping (leases, storage, retention). */
   housekeepingMs: number;
+  /**
+   * Sprint 12 (D-10, V1-ARCHITECTURE §7.8): pacing cap, simulation time per wall time (1 = real
+   * time, for interactive sessions). Null: unpaced (tests and benchmarks of raw speed).
+   */
+  paceRate: number | null;
+  /**
+   * Sprint 14: where the one `session_end` line per terminal session goes (diagnostics.ts).
+   * Default: the service's stderr (journald). Tests substitute.
+   */
+  diagnostics?: DiagnosticsSink;
 }
 
 export function defaultConfig(
@@ -78,6 +100,7 @@ export function defaultConfig(
     startupTimeoutMs: 20_000,
     stallTimeoutMs: 10_000,
     maxQueuedCommands: 256,
+    maxCommandsPerSecond: 50,
     eventLogCapacity: 4096,
     serialWindowMaxBytes: 16 * 1024,
     maxSessionStorageBytes: 16 * 1024 * 1024,
@@ -88,6 +111,7 @@ export function defaultConfig(
     publishIntervalUs: 10 * COMMAND_QUANTUM_US,
     maxRequestBytes: 1024 * 1024,
     housekeepingMs: 250,
+    paceRate: null,
   };
   return { ...base, ...overrides };
 }

@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import logoUrl from '../assets/brand/tbi-logo-light.png';
-import { SIGN_OUT_URL } from '../deployment.js';
+import symbolUrl from '../assets/brand/tbi-lab-symbol.png';
+import { IS_DEV_ENV, SIGN_OUT_URL } from '../deployment.js';
+import { openAssist } from '../assist/open.js';
 import { LOCALES } from '../i18n/i18n.js';
 import { AppMenu } from './AppMenu.js';
 import { useAppState, useStore, useT } from './context.js';
 import { useImportPicker } from './importFile.js';
+import { BuildControl } from './BuildControl.js';
 import { SimControls } from './SimControls.js';
 
 /**
@@ -45,13 +47,23 @@ function Brand() {
         ))}
         {BRAND_SUFFIX}
       </span>
+      {/* DEV-Lab builds only: always visible, also where the narrowest layout hides the word. */}
+      {IS_DEV_ENV && (
+        <span class="env-badge" data-testid="env-badge" title={t('deployment.devBadgeTitle')}>
+          <span aria-hidden="true" dir="ltr">
+            {t('deployment.devBadge')}
+          </span>
+          <span class="visually-hidden">{t('deployment.devBadgeTitle')}</span>
+        </span>
+      )}
+      {/* Decorative: the product name is the text just before it. */}
       <img
         class="brand-logo"
         data-testid="brand-logo"
-        src={logoUrl}
-        alt={t('brand.logoAlt')}
-        width={204}
-        height={120}
+        src={symbolUrl}
+        alt=""
+        width={135}
+        height={76}
         decoding="async"
       />
     </span>
@@ -95,7 +107,11 @@ function EditorBar() {
       <div class="topbar-group topbar-work">
         {!state.readOnly && <SaveIndicator />}
         {!state.readOnly && <HistoryControls />}
+        {/* Alpha UX-P1: Build beside Run, in every view (absent without a program). */}
+        <BuildControl />
         <SimControls />
+        {/* Sprint 27: the experimental Circuit Debugger (DEV-Lab builds only). */}
+        {import.meta.env.VITE_TBI_ENV === 'dev' && <AnalyzeButton />}
       </div>
       <span class="spacer" />
       <div class="topbar-group topbar-meta">
@@ -103,6 +119,22 @@ function EditorBar() {
         <Brand />
       </div>
     </>
+  );
+}
+
+/** Sprint 27 (DEV-Lab only): opens the Circuit Debugger; it changes nothing by itself. */
+function AnalyzeButton() {
+  const t = useT();
+  return (
+    <button
+      type="button"
+      class="button assist-open"
+      data-testid="assist-open"
+      title={t('assist.button.title')}
+      onClick={(e) => openAssist(e.currentTarget)}
+    >
+      {t('assist.button')}
+    </button>
   );
 }
 
@@ -209,11 +241,13 @@ function SaveIndicator() {
       aria-live="polite"
       data-testid="save-state"
       data-state={saveState}
+      title={text}
     >
       <span class="save-icon" aria-hidden="true">
         {icon}
       </span>
-      {text}
+      {/* Alpha UX-P1: visually hidden below 1280 px (the icon stays; the text is the live text). */}
+      <span class="save-label">{text}</span>
       {saveState === 'error' && (
         <button type="button" class="link-button" onClick={() => void store.retrySave()}>
           {t('save.retry')}
@@ -234,6 +268,7 @@ function HistoryControls() {
         type="button"
         class="button"
         data-testid="undo"
+        title={t('history.undo')}
         disabled={history.undo === 0}
         aria-keyshortcuts="Control+Z Meta+Z"
         onClick={() => store.undo()}
@@ -241,12 +276,14 @@ function HistoryControls() {
         <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" class="control-icon">
           <path d="M6 3 L2 7 L6 11 M2 7 H10 a4 4 0 0 1 0 8 H8" />
         </svg>{' '}
-        {t('history.undo')}
+        {/* Alpha UX-P1: below 1280 px the label is visually hidden (still the accessible name). */}
+        <span class="history-label">{t('history.undo')}</span>
       </button>
       <button
         type="button"
         class="button"
         data-testid="redo"
+        title={t('history.redo')}
         disabled={history.redo === 0}
         aria-keyshortcuts="Control+Shift+Z Meta+Shift+Z Control+Y"
         onClick={() => store.redo()}
@@ -254,7 +291,8 @@ function HistoryControls() {
         <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" class="control-icon">
           <path d="M10 3 L14 7 L10 11 M14 7 H6 a4 4 0 0 0 0 8 H8" />
         </svg>{' '}
-        {t('history.redo')}
+        {/* Alpha UX-P1: below 1280 px the label is visually hidden (still the accessible name). */}
+        <span class="history-label">{t('history.redo')}</span>
       </button>
     </div>
   );

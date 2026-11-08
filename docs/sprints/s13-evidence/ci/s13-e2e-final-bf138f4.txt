@@ -1,0 +1,195 @@
+  ✓    1 [chromium] › app/e2e/commit-race.spec.ts:60:3 › a valid value committed immediately by enter is applied and persisted
+  ✓    2 [chromium] › app/e2e/commit-race.spec.ts:69:3 › an invalid localized value committed immediately by enter shows the Hebrew error
+  ✓    3 [chromium] › app/e2e/commit-race.spec.ts:60:3 › a valid value committed immediately by blur is applied and persisted
+  ✓    4 [chromium] › app/e2e/commit-race.spec.ts:69:3 › an invalid localized value committed immediately by blur shows the Hebrew error
+  ✓    5 [chromium] › app/e2e/commit-race.spec.ts:83:1 › the PSU setpoint committed immediately by Enter persists (the CI A5 case)
+  ✓    6 [chromium] › app/e2e/commit-race.spec.ts:100:1 › the project name committed immediately by Enter persists; Escape still cancels
+  ✓    7 [chromium] › app/e2e/commit-race.spec.ts:119:1 › a new project name submitted immediately by Enter is the one created
+  ✓    8 [chromium] › app/e2e/commit-race.spec.ts:132:1 › a value committed immediately survives a full browser restart (the CI A7 case)
+  ✓    9 [chromium] › app/e2e/commit-race.spec.ts:173:1 › Hebrew active first: invalid value typed the instant the field mounts keeps its error
+  ✓   10 [chromium] › app/e2e/commit-race.spec.ts:201:1 › Hebrew active first: invalid value, immediate real Enter, localized error remains visible
+  ✓   11 [chromium] › app/e2e/editor.spec.ts:48:1 › A1: a project named in Hebrew is created and appears in the recent list
+  ✓   12 [chromium] › app/e2e/editor.spec.ts:60:1 › A2-A4: place, wire, junction, crossing, delete — valid after every operation
+  ✓   13 [chromium] › app/e2e/editor.spec.ts:125:1 › A2: move and rotate keep wires attached; rubber band selects several
+  ✓   14 [chromium] › app/e2e/editor.spec.ts:183:1 › A5: unit-aware resistance input is stored as canonical SI
+  ✓   15 [chromium] › app/e2e/editor.spec.ts:244:1 › A6: autosave runs without user action and the indicator reflects reality
+  ✓   16 [chromium] › app/e2e/editor.spec.ts:258:1 › A16 (supersedes Sprint 2 A13): one Run/Stop control is the only simulation control; no value exists before Run
+  ✓   17 [chromium] › app/e2e/editor.spec.ts:273:1 › opening a project saved by a newer version is read-only and never written
+  ✓   18 [chromium] › app/e2e/footer.spec.ts:24:1 › footer: exact English and Hebrew text, mailto link, LTR tokens, keyboard focus
+  ✓   19 [chromium] › app/e2e/footer.spec.ts:58:1 › footer: present in Circuit, Schematic, 3D and Code, beside the version indicator
+  ✓   20 [chromium] › app/e2e/footer.spec.ts:70:1 › footer: a narrow window wraps it; it adds no horizontal overflow
+  ✓   21 [chromium] › app/e2e/header.spec.ts:26:1 › the top bar uses the regular TBI logo for light surfaces: no tile, never the round mark
+  ✓   22 [chromium] › app/e2e/header.spec.ts:90:1 › Projects: three separate areas that use a wide desktop and collapse on narrower windows
+  ✓   23 [chromium] › app/e2e/header.spec.ts:135:3 › editor header at 1366 px: menu and logo on the exact physical edges, groups between, no overflow
+  ✓   24 [chromium] › app/e2e/header.spec.ts:135:3 › editor header at 1600 px: menu and logo on the exact physical edges, groups between, no overflow
+  ✓   25 [chromium] › app/e2e/header.spec.ts:135:3 › editor header at 1920 px: menu and logo on the exact physical edges, groups between, no overflow
+  ✓   26 [chromium] › app/e2e/header.spec.ts:183:1 › one simulation action; its status is plain, non-interactive text that never moves
+  ✓   27 [chromium] › app/e2e/header.spec.ts:238:1 › the project name is a labelled, editable field that renames through the existing path
+  ✓   28 [chromium] › app/e2e/header.spec.ts:278:1 › the application menu: keyboard, Escape, click outside, Tab; contents; closes after an action
+  ✓   29 [chromium] › app/e2e/header.spec.ts:357:1 › menu Export and Import reuse the product flows; Projects navigates home
+  ✓   30 [chromium] › app/e2e/header.spec.ts:386:1 › menu: up to three recent projects, most recent first, never the open one; opens the chosen project safely
+  ✓   31 [chromium] › app/e2e/header.spec.ts:434:1 › one light header surface on Projects and in the editor, distinct from white
+  ✓   32 [chromium] › app/e2e/header.spec.ts:454:1 › locale direction switches in the same commit as the translated text (no mixed frame)
+  ✓   33 [chromium] › app/e2e/header.spec.ts:482:1 › menu keyboard contract holds when animation frames arrive late (slow runner)
+  ✓   34 [chromium] › app/e2e/insecure-context.spec.ts:11:1 › starts, creates and stores a project without crypto.randomUUID
+  ✓   35 [chromium] › app/e2e/insecure-context.spec.ts:27:1 › export, hashing and import work without crypto.subtle or randomUUID (plain HTTP)
+  ✓   36 [chromium] › app/e2e/keyboard.spec.ts:5:1 › A10: keyboard-only place, select, move, rotate and delete with visible focus
+  ✓   37 [chromium] › app/e2e/locale.spec.ts:52:1 › Hebrew: every shipped screen is translated, chrome is RTL, canvas stays LTR
+  ✓   38 [chromium] › app/e2e/locale.spec.ts:98:1 › English: every shipped screen reads in English with LTR chrome
+  ✓   39 [chromium] › app/e2e/locale.spec.ts:111:1 › A9: switching language changes no project byte and does not move the circuit
+  ✓   40 [chromium] › app/e2e/locale.spec.ts:161:1 › the language choice is remembered per device, not stored in the project
+  ✓   41 [chromium] › app/e2e/maintenance.spec.ts:37:3 › 1. project names › create: a whitespace/case/Unicode-equivalent name is refused inline and nothing is created
+  ✓   42 [chromium] › app/e2e/maintenance.spec.ts:58:3 › 1. project names › rename: a conflicting name is refused inline, the project is unchanged; Hebrew message
+  ✓   43 [chromium] › app/e2e/maintenance.spec.ts:77:3 › 1. project names › duplicate: deterministic copy numbering in English and Hebrew
+  ✓   44 [chromium] › app/e2e/maintenance.spec.ts:92:3 › 1. project names › import: importing an existing project again gets a copy-style name and says so
+  ✓   45 [chromium] › app/e2e/maintenance.spec.ts:134:1 › 2. directly paralleled supplies: a clear "not yet supported" diagnosis, in English and Hebrew
+  ✓   46 [chromium] › app/e2e/maintenance.spec.ts:222:5 › 3. one Run/Stop control › en: Run -> Stop -> Run on the same button, keyboard-operable, no layout shift
+  ✓   47 [chromium] › app/e2e/maintenance.spec.ts:222:5 › 3. one Run/Stop control › he: Run -> Stop -> Run on the same button, keyboard-operable, no layout shift
+  ✓   48 [chromium] › app/e2e/maintenance.spec.ts:264:3 › 3. one Run/Stop control › state is not conveyed by colour alone: icon and text change together
+  ✓   49 [chromium] › app/e2e/maintenance.spec.ts:281:1 › 4. a new supply has its output on: the first Run of a simple circuit needs no Output click
+  ✓   50 [chromium] › app/e2e/maintenance.spec.ts:304:1 › 5. Projects screen: the elongated TBI logo, transparent and prominent, in both locales
+  ✓   51 [chromium] › app/e2e/performance.spec.ts:44:1 › baseline: dragging a component in a 30-component circuit
+  ✓   52 [chromium] › app/e2e/restart.spec.ts:22:1 › A7: full browser restart restores the project exactly
+  ✓   53 [chromium] › app/e2e/routing-keepout.spec.ts:146:1 › ESP32 GND to a new ground: the wire goes around the board; only GND joins the ground net
+  ✓   54 [chromium] › app/e2e/routing-keepout.spec.ts:238:1 › an old project whose GND wire runs down the J3 header opens with that wire re-routed clear of the pins
+  ✓   55 [chromium] › app/e2e/s10-3d-assets.spec.ts:24:1 › the ESP32 glTF asset is fetched only when 3D opens, once per page; standard views work (EN/HE)
+  ✓   56 [chromium] › app/e2e/s10-parts.spec.ts:32:1 › RGB LED: the channels the switches enable glow, in every view; a switch flip remixes live
+  ✓   57 [chromium] › app/e2e/s10-parts.spec.ts:60:1 › photoresistor: the simulated light is a live environment control; the divider follows it (EN/HE)
+  ✓   58 [chromium] › app/e2e/s10-parts.spec.ts:94:1 › relay: holding the button energizes the coil, NO lights the LED and NC silences the buzzer
+  ✓   59 [chromium] › app/e2e/s10-parts.spec.ts:130:1 › PIR alarm: clicking the sensor dome puts motion in front of it; the transistor drives the buzzer
+  ✓   60 [chromium] › app/e2e/s10-parts.spec.ts:161:1 › LED matrix: a dot lights only where a driven column meets a grounded row (2D and 3D)
+  ✓   61 [chromium] › app/e2e/s10-parts.spec.ts:183:1 › capacitor (time-stepped): the LED fades in as C charges; Stop/Run restarts discharged at t = 0
+  ✓   62 [chromium] › app/e2e/s10-parts.spec.ts:217:1 › ESP32 projects: parts the runtime cannot simulate are disabled in the palette, with a reason (EN/HE)
+  ✓   63 [chromium] › app/e2e/s10-parts.spec.ts:267:1 › example documents load lazily, are prefetched when idle, and then open offline
+  ✓   64 [chromium] › app/e2e/s10.spec.ts:36:1 › LED colours: three approved cards, three currents, each glowing in its own colour in 2D and 3D
+  ✓   65 [chromium] › app/e2e/s10.spec.ts:77:1 › the inspector offers the approved LED cards by name (EN/HE); a choice changes only that part
+  ✓   66 [chromium] › app/e2e/s10.spec.ts:110:1 › physical 3D: viewing writes nothing; 20 enter/leave cycles of the ESP32 scene keep resources flat
+  ✓   67 [chromium] › app/e2e/s11-r1.spec.ts:33:1 › ESP32 motion alarm: the PIR dome mirrors motion live; the firmware switches the relay; LED and buzzer follow
+  ✓   68 [chromium] › app/e2e/s11-r1.spec.ts:61:1 › ESP32 night light: the light level is mirrored live; darkness reads HIGH and lights the RGB LED (EN/HE)
+  ✓   69 [chromium] › app/e2e/s11-r1.spec.ts:87:1 › ESP32 projects: the capacitor alone stays refused, with its reason; the board is refused next to it
+  -   70 [chromium] › app/e2e/s11-real.spec.ts:45:3 › R1 host › ESP32 motion alarm on real QEMU: motion pulls the relay in, LED and buzzer follow; no motion releases it
+  -   71 [chromium] › app/e2e/s11-real.spec.ts:69:3 › R1 host › ESP32 night light on real QEMU: darkness reads HIGH and lights the RGB LED; bright turns it off
+  -   72 [chromium] › app/e2e/s11-real.spec.ts:94:3 › R1 host › ESP32 projects: the matrix and the capacitor stay unavailable; the six R1 parts are offered
+  -   73 [chromium] › app/e2e/s11-real.spec.ts:123:1 › against a Sprint 10 Session Host: Run of an R1 example fails explicitly, naming the parts
+  ✓   74 [chromium] › app/e2e/s12-parts.spec.ts:35:1 › HC-SR04, DHT22, LCD: placed, named pins, bounded live environment, solved states, LTR tokens
+  ✓   75 [chromium] › app/e2e/s12-parts.spec.ts:156:3 › example esp32-distance-alarm: opens with its program, draws in every view
+  ✓   76 [chromium] › app/e2e/s12-parts.spec.ts:156:3 › example esp32-thermo-hygrometer: opens with its program, draws in every view
+  ✓   77 [chromium] › app/e2e/s12-parts.spec.ts:156:3 › example esp32-lcd-hello: opens with its program, draws in every view
+  -   78 [chromium] › app/e2e/s12-real.spec.ts:51:3 › Runtime v2 host › ESP32 distance alarm on real QEMU: the measured distance follows the part; below 20 cm the LED lights
+  -   79 [chromium] › app/e2e/s12-real.spec.ts:81:3 › Runtime v2 host › ESP32 thermo-hygrometer on real QEMU: the firmware prints exactly the DHT22 environment
+  -   80 [chromium] › app/e2e/s12-real.spec.ts:104:3 › Runtime v2 host › ESP32 LCD hello on real QEMU: the module shows the text the firmware wrote over I2C
+  -   81 [chromium] › app/e2e/s12-real.spec.ts:126:1 › against a Sprint 11 Session Host: Run of an R2 example fails explicitly, naming the part
+  ✓   82 [chromium] › app/e2e/s13-capabilities.spec.ts:17:1 › from the menu: firmware facilities, parts, timing and limits; Escape closes
+  ✓   83 [chromium] › app/e2e/s13-capabilities.spec.ts:53:1 › from a palette refusal: opens at the parts section, the refused part says why
+  ✓   84 [chromium] › app/e2e/s13-capabilities.spec.ts:69:1 › Hebrew: right-to-left, translated, same entries
+  -   85 [chromium] › app/e2e/s13-export-real.spec.ts:44:1 › export, import into an empty browser, restore, build and run: identical project, same result
+  -   86 [chromium] › app/e2e/s13-journey-real.spec.ts:60:3 › journey in en, reopened in he: same project, same result
+  -   87 [chromium] › app/e2e/s13-journey-real.spec.ts:60:3 › journey in he, reopened in en: same project, same result
+  ✓   88 [chromium] › app/e2e/s13-limits.spec.ts:58:1 › above the operating range: an operating notice and an unreliable result, no damage warning
+  ✓   89 [chromium] › app/e2e/s13-limits.spec.ts:83:1 › the inspector lists the part's documented model limitations (EN/HE)
+  ✓   90 [chromium] › app/e2e/s13-limits.spec.ts:96:1 › inside the operating range: no notice at all
+  ✓   91 [chromium] › app/e2e/s13-onboarding.spec.ts:8:1 › first visit: the guide, its three steps and note; dismissal is remembered; it can come back
+  ✓   92 [chromium] › app/e2e/s13-onboarding.spec.ts:28:1 › Hebrew: the guide is translated and right-to-left
+  -   93 [chromium] › app/e2e/s6-real.spec.ts:48:1 › ESP32 blink: Run creates a session, GPIO2 drives the LED, serial arrives; Stop releases everything
+  -   94 [chromium] › app/e2e/s6-real.spec.ts:96:1 › ESP32 input echo: toggle mirrors browser-first, push button is transient, Stop/Run is a fresh session
+  -   95 [chromium] › app/e2e/s6-real.spec.ts:166:1 › product-level determinism: the same project + firmware gives the same canonical runtime sequence
+  ✓   96 [chromium] › app/e2e/s6.spec.ts:76:1 › the board: only runtime-supported pins are connectable; Run without a build explains, offline
+  ✓   97 [chromium] › app/e2e/s6.spec.ts:105:1 › one-shot sessions: Run -> running (GPIO2 blinks, serial arrives) -> Stop; Run again is fresh
+  ✓   98 [chromium] › app/e2e/s6.spec.ts:143:1 › toggle mirrors browser-first; push button is transient; structural edits wait for Stop
+  ✓   99 [chromium] › app/e2e/s6.spec.ts:185:1 › a dropped event stream reconnects with Last-Event-ID; nothing is missed or repeated
+  ✓  100 [chromium] › app/e2e/s6.spec.ts:210:1 › history evicted while disconnected is reported by an explicit resync, never hidden
+  ✓  101 [chromium] › app/e2e/s6.spec.ts:231:1 › a lost session is reported, the project is safe, and the next Run starts fresh
+  ✓  102 [chromium] › app/e2e/s6.spec.ts:251:1 › local DC projects keep the browser Worker engine and never use the runtime service
+  ✓  103 [chromium] › app/e2e/s6.spec.ts:264:1 › no runtime state in the project: reload, duplicate and export carry only engineering data
+  ✓  104 [chromium] › app/e2e/s6.spec.ts:315:1 › Hebrew: S6 surfaces are translated; pins, levels and serial stay LTR
+  ✓  105 [chromium] › app/e2e/s6.spec.ts:331:1 › ESP32 terminal: the serial console under the properties, from boot; kept readable after Stop; fresh per Run
+  ✓  106 [chromium] › app/e2e/s6.spec.ts:396:1 › the app opens on the Projects screen, also after working in a project
+  ✓  107 [chromium] › app/e2e/s7.spec.ts:48:1 › the source is exact project data: typing, Tab, locale switch, reload and export keep every byte
+  ✓  108 [chromium] › app/e2e/s7.spec.ts:103:1 › Build required → Run refused before any runtime request → Build → Run; an edit makes the build stale
+  ✓  109 [chromium] › app/e2e/s7.spec.ts:142:1 › a build whose artifact was evicted fails its lease: Build required → Build → current → Run
+  ✓  110 [chromium] › app/e2e/s7.spec.ts:212:1 › compiler diagnostics are listed by line and jump to the source; build output never enters the terminal
+  ✓  111 [chromium] › app/e2e/s7.spec.ts:235:1 › features the simulator does not model are named at build time and Run is refused
+  ✓  112 [chromium] › app/e2e/s7.spec.ts:257:1 › Advanced: a prebuilt merged image runs once through the same artifact path; a wrong file is refused
+  ✓  113 [chromium] › app/e2e/s7.spec.ts:297:1 › reopening a project recovers its existing build by lookup (never rebuilds); DC projects never call /build
+  ✓  114 [chromium] › app/e2e/s7.spec.ts:322:1 › a CRLF sketch keeps CRLF when edited; unedited source is never touched
+  ✓  115 [chromium] › app/e2e/s8.spec.ts:34:1 › a private build stays private (even for identical source); curated examples are shared
+  ✓  116 [chromium] › app/e2e/s9-semantics.spec.ts:62:1 › a wire dragged along with a part is routed off the ESP32 header; crossed pins never connect
+  ✓  117 [chromium] › app/e2e/s9-semantics.spec.ts:106:1 › a lead dropped on another lead connects in every view and the simulation; pulled away, it does not
+  ✓  118 [chromium] › app/e2e/s9-semantics.spec.ts:156:1 › touching leads that an imported project does not connect are marked as not connected
+  ✓  119 [chromium] › app/e2e/s9-semantics.spec.ts:180:1 › 3D pans with right or middle drag and Shift + arrows; Fit and Reset re-centre; nothing is written
+  ✓  120 [chromium] › app/e2e/s9-sync.spec.ts:59:1 › switching projects never shows the previous project in a generated view
+  ✓  121 [chromium] › app/e2e/s9-sync.spec.ts:76:1 › a value change shows in the schematic at once; the 3D scene is rebuilt from it
+  ✓  122 [chromium] › app/e2e/s9-sync.spec.ts:99:1 › an imported project and an old (schema v2, package v1) project open in every view
+  ✓  123 [chromium] › app/e2e/s9-sync.spec.ts:153:1 › viewing Schematic and 3D changes nothing that export carries; the export re-imports alike
+  ✓  124 [chromium] › app/e2e/s9-sync.spec.ts:175:1 › LED glow follows the run across view switches; Stop returns it to dark
+  ✓  125 [chromium] › app/e2e/s9-sync.spec.ts:196:1 › Circuit → Schematic → 3D → Code → Circuit, in English and Hebrew, keeps code and identifiers LTR
+  ✓  126 [chromium] › app/e2e/s9-views.spec.ts:39:1 › every project offers Circuit · Schematic · 3D; arrow keys move between the tabs
+  ✓  127 [chromium] › app/e2e/s9-views.spec.ts:59:1 › the schematic follows circuit edits; selecting in it never changes the project
+  ✓  128 [chromium] › app/e2e/s9-views.spec.ts:84:1 › 3D: opens lazily, reflects the circuit, follows edits and project changes
+  ✓  129 [chromium] › app/e2e/s9-views.spec.ts:124:1 › 3D: entering and leaving repeatedly releases the renderer every time
+  ✓  130 [chromium] › app/e2e/s9-views.spec.ts:148:1 › 3D without WebGL: a localized explanation; Circuit and Schematic keep working
+  ✓  131 [chromium] › app/e2e/s9-views.spec.ts:176:1 › switching views while simulating is safe and changes neither the run nor the project
+  ✓  132 [chromium] › app/e2e/s9-views.spec.ts:196:1 › Hebrew: tabs and notes are localized; technical labels stay LTR
+  ✓  133 [chromium] › app/e2e/s9-views.spec.ts:216:1 › the ESP32 schematic block shows only the connected pins, in both languages
+  ✓  134 [chromium] › app/e2e/s9-views.spec.ts:232:1 › 3D: the keyboard orbits, zooms and resets; nothing is written
+  ✓  135 [chromium] › app/e2e/separation.spec.ts:43:1 › PIR beside the matrix: moved apart in 3D only; the project keeps its coordinates
+  ✓  136 [chromium] › app/e2e/separation.spec.ts:56:1 › a part laid on another: a non-blocking notice in English and Hebrew
+  ✓  137 [chromium] › app/e2e/signout.spec.ts:19:1 › without a configured sign-out URL there is no sign-out control
+  ✓  138 [chromium] › app/e2e/signout.spec.ts:28:1 › configured: Sign out on Projects and in the editor menu, localized, keyboard reachable
+  ✓  139 [chromium] › app/e2e/signout.spec.ts:73:1 › Sign out is a top-level navigation and leaves no auth state in projects
+  ✓  140 [chromium] › app/e2e/sim-performance.spec.ts:101:1 › Worker Run-to-result breakdown and main-thread responsiveness
+  ✓  141 [chromium] › app/e2e/sim-restart.spec.ts:11:1 › A12: browser restart during a run reopens stopped, intact, and able to run again
+  ✓  142 [chromium] › app/e2e/simulation.spec.ts:52:1 › A3/A4: 5 V -> 1 kΩ -> GND runs in a real Web Worker and shows 5 mA
+  ✓  143 [chromium] › app/e2e/simulation.spec.ts:68:1 › A5: 5 V -> 220 Ω -> LED -> GND shows the real nonlinear operating point
+  ✓  144 [chromium] › app/e2e/simulation.spec.ts:90:1 › A6: 5 V / 100 mA PSU into 10 Ω enters CC at 100 mA / 1 V
+  ✓  145 [chromium] › app/e2e/simulation.spec.ts:102:1 › A7 + A10: output OFF is an open circuit; enabling it live re-solves with persisted revision
+  ✓  146 [chromium] › app/e2e/simulation.spec.ts:150:1 › A8: a floating circuit is refused with a localized diagnostic naming its parts
+  ✓  147 [chromium] › app/e2e/simulation.spec.ts:176:1 › A9 + A11: results are runtime only; structural edits cannot reach the running topology
+  ✓  148 [chromium] › app/e2e/simulation.spec.ts:215:1 › A13: English and Hebrew show identical numbers; switching language writes nothing
+  ✓  149 [chromium] › app/e2e/simulation.spec.ts:243:1 › A14: a Worker failure leaves the project intact and gives a useful diagnostic
+  ✓  150 [chromium] › app/e2e/simulation.spec.ts:269:1 › empty and ground-less circuits are refused with specific messages
+  ✓  151 [chromium] › app/e2e/simulation.spec.ts:279:1 › parts with nothing wired are reported as not simulated, and get no values
+  ✓  152 [chromium] › app/e2e/sprint4-performance.spec.ts:97:1 › Sprint 4: interaction and re-solve measurements on a 30-part circuit
+  ✓  153 [chromium] › app/e2e/sprint4.spec.ts:113:1 › A1/A2: diode forward conducts and reverse blocks, matching the production engine
+  ✓  154 [chromium] › app/e2e/sprint4.spec.ts:136:1 › A3/A4: push button conducts only while held; pressing never touches the project
+  ✓  155 [chromium] › app/e2e/sprint4.spec.ts:190:1 › A5/A6: toggle position persists; while running it is persisted first, then re-solved
+  ✓  156 [chromium] › app/e2e/sprint4.spec.ts:236:1 › A8: PSU panel shows settings apart from measured V/I and OFF / CV / CC
+  ✓  157 [chromium] › app/e2e/sprint4.spec.ts:267:1 › A9: probes read node voltage to GND and branch current without changing anything
+  ✓  158 [chromium] › app/e2e/sprint4.spec.ts:303:1 › A10/A11: undo/redo of project edits with new revisions and stable ids (keyboard too)
+  ✓  159 [chromium] › app/e2e/sprint4.spec.ts:362:1 › A12/A13: unwired notice, partial-wiring and wire-over-terminal checks; nothing auto-connects
+  ✓  160 [chromium] › app/e2e/sprint4.spec.ts:434:1 › A12: a connected floating island is diagnosed, never silently skipped
+  ✓  161 [chromium] › app/e2e/sprint4.spec.ts:452:1 › A14: two GND symbols are one reference: the loop closes through both
+  ✓  162 [chromium] › app/e2e/sprint4.spec.ts:470:1 › A15: English and Hebrew show identical engineering results for Sprint 4 features
+  ✓  163 [chromium] › app/e2e/sprint4.spec.ts:518:1 › A15: new Sprint 4 surfaces are fully translated in Hebrew (technical tokens only)
+  ✓  164 [chromium] › app/e2e/sprint5-performance.spec.ts:81:1 › Sprint 5: project library and portability measurements
+  ✓  165 [chromium] › app/e2e/sprint5-prepush.spec.ts:53:1 › layering: a wire crossing a part runs behind its body; terminals and junctions stay on top
+  ✓  166 [chromium] › app/e2e/sprint5-prepush.spec.ts:113:1 › wire editing: drag a segment of a selected wire; ends stay connected; undo restores
+  ✓  167 [chromium] › app/e2e/sprint5-prepush.spec.ts:167:1 › over-stress: an LED past its datasheet maximum is a warning (not an error); a normal one is quiet
+  ✓  168 [chromium] › app/e2e/sprint5-prepush.spec.ts:277:1 › bridges: an unconnected crossing hops; the same geometry with a junction does not
+  ✓  169 [chromium] › app/e2e/sprint5-prepush.spec.ts:334:1 › bridges: follow a dragged wire, vanish when the crossing is dragged away or deleted, never change the solve
+  ✓  170 [chromium] › app/e2e/sprint5.spec.ts:120:1 › A1-A3: library create, rename, duplicate, delete (with confirmation) survive a restart
+  ✓  171 [chromium] › app/e2e/sprint5.spec.ts:171:1 › A1/A3: the library works from the keyboard alone, including the delete dialog
+  ✓  172 [chromium] › app/e2e/sprint5.spec.ts:195:1 › A4-A6: export -> delete -> import restores the exact project; no runtime state exported
+  ✓  173 [chromium] › app/e2e/sprint5.spec.ts:233:1 › A7: malformed, damaged, future and oversized files are refused before anything is written
+  ✓  174 [chromium] › app/e2e/sprint5.spec.ts:275:1 › A8: importing a project that already exists creates an independent copy and says so
+  ✓  175 [chromium] › app/e2e/sprint5.spec.ts:305:1 › A9/A14: a Hebrew-created, Hebrew-exported project imports in English unchanged
+  ✓  176 [chromium] › app/e2e/sprint5.spec.ts:342:1 › A10/A11: every example opens as a new project, runs, and shows the engine values
+  ✓  177 [chromium] › app/e2e/sprint5.spec.ts:417:1 › A12: a failing save and a crashed worker are explained, and the project stays safe
+  ✓  178 [chromium] › app/e2e/sprint5.spec.ts:460:1 › A13/A15: new Sprint 5 surfaces are Hebrew (technical tokens only), RTL chrome, LTR canvas
+  ✓  179 [chromium] › app/e2e/sprint5.spec.ts:517:1 › A16: races — rename+navigate, duplicate+open, delete after pending edit, export after edit, locale during autosave, example+run, import+reload
+  ✓  180 [chromium] › app/e2e/sprint5.spec.ts:594:1 › A20: a new user goes from example to edit, run, probe, export, import and language switch
+  ✓  181 [chromium] › app/e2e/three-controls.spec.ts:55:1 › toggle switch: the 3D lever toggles while running, both views agree; stopped, it selects
+  ✓  182 [chromium] › app/e2e/three-controls.spec.ts:112:1 › push button: held in 3D exactly while pressed; release, cancel, leaving and Stop all release it
+  ✓  183 [chromium] › app/e2e/three-diagnostics.spec.ts:24:1 › the diagnostics readout is hidden by default and shown with #diag3d
+  ✓  184 [chromium] › app/e2e/three-jumpers.spec.ts:34:1 › ESP32 blink: jumpers leave through a neck, mode-independent, project unchanged
+  ✓  185 [chromium] › app/e2e/three-layers.spec.ts:30:1 › Realistic by default; Engineering shows labels on the right parts; manual toggles; no project change
+  ✓  186 [chromium] › app/e2e/three-layers.spec.ts:75:1 › layers do not affect the simulation or 3D controls; the panel is localized (Hebrew, RTL)
+  ✓  187 [chromium] › app/e2e/three-layers.spec.ts:123:1 › visual mode (realism pass 8): Realistic / Engineering by keyboard, per browser, camera and project untouched
+  ✓  188 [chromium] › app/e2e/three-layers.spec.ts:173:1 › full tier: depth of field on in Realistic, off in Engineering; no material per part (1.5m)
+  ✓  189 [chromium] › app/e2e/three-pick.spec.ts:59:1 › 3D: click selects a part or a wire, drag only orbits, the bench clears; colour a wire from 3D
+  ✓  190 [chromium] › app/e2e/three-pick.spec.ts:121:1 › wire colour control in Hebrew; the supply wires are red and black automatically
+  ✓  191 [chromium] › app/e2e/version.spec.ts:8:1 › the visible version is the build that serves /version.json (EN/HE); no preview label
+  ✓  192 [chromium] › app/e2e/version.spec.ts:47:1 › a newer deployed build shows "A new version is available" (EN/HE, LTR commit); reload is the user's choice
+  ✓  193 [chromium] › app/e2e/version.spec.ts:91:1 › the same build as served: no new-version banner
+  ✓  194 [chromium] › app/e2e/version.spec.ts:99:1 › Reload in the banner reloads the page into the served build
+  ✓  195 [chromium] › app/e2e/wire-routing.spec.ts:59:1 › the reproduced return wire gets its own route below the circuit (preview and committed)

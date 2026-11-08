@@ -11,6 +11,7 @@
 import { CATALOG } from './catalog.js';
 import { touchingUnconnected } from './contacts.js';
 import { terminalPosition, wireRoute, pointOnSegment } from './layout.js';
+import { programInputPins } from './inputPins.js';
 import { nodeKey, wireGroups } from './nets.js';
 import type { ProjectDocument } from './schema.js';
 
@@ -21,7 +22,23 @@ export type CheckCode =
   | 'terminals_touching'
   | 'floating_island'
   | 'no_ground'
-  | 'psu_shorted_by_wire';
+  | 'psu_shorted_by_wire'
+  /** Sprint 21: a part's own V_CC and GND pins are on one net: it can never be powered. */
+  | 'supply_pins_shorted'
+  /** Sprint 21: nothing connects a supply's + to its −: it can deliver no current to any part. */
+  | 'psu_no_load'
+  /**
+   * Sprint 24 (M2): the board's program reads a GPIO as a digital input, and while a switch on its
+   * net is open (or always) nothing holds the pin's level: no pull-up or pull-down. A real ESP32
+   * then reads an undefined level. Sprint 25 (Runtime v5): the run stops at such a read.
+   * Non-blocking here (the level depends on the switches while running).
+   */
+  | 'gpio_input_floating'
+  /**
+   * Sprint 25: the board's program reads a GPIO as a digital input, but nothing is wired to the
+   * pin: every read is undefined, and the run stops at the first one. Non-blocking here.
+   */
+  | 'gpio_input_unconnected';
 
 export interface CheckIssue {
   code: CheckCode;
@@ -75,6 +92,72 @@ export function checkCircuit(doc: ProjectDocument): CheckIssue[] {
     }
   }
 
+  // Sprint 21 (DEV-Lab acceptance, the owner's as-drawn circuit): a part whose own supply pins
+  // (`vcc` and `gnd`) share one net. Its supply voltage is 0 V whatever the source: it can never
+  // be powered (the engine then reports it unpowered, never a level).
+  for (const c of doc.components) {
+    const ids = CATALOG[c.type].terminals.map((t) => t.id);
+    if (!ids.includes('vcc') || !ids.includes('gnd')) continue;
+    // Review item 10: every GND symbol is the one reference (two ground nets are one node).
+    const at = (t: string) => {
+      const n = netOf.get(`${c.id}\u0000${t}`);
+      return n === undefined ? undefined : groundNets.has(n) ? REF : n;
+    };
+    const v = at('vcc');
+    if (v !== undefined && v === at('gnd'))
+      issues.push({
+        code: 'supply_pins_shorted',
+        severity: 'warning',
+        components: [c.id],
+        terminals: ['vcc', 'gnd'],
+      });
+  }
+
+  // Sprint 21: a supply whose + and − no part connects, even counting every terminal of every
+  // part as joined (the most generous reading: a switch closed, a gate conducting): no current
+  // can leave it. Only when both terminals are wired (an unwired supply is `not_connected` or
+  // `partially_wired` above), and never for a shorted one (above). Conservative, so a normal
+  // circuit with any load across the supply never shows it.
+  {
+    const netAt = (c: string, t: string) => {
+      const n = netOf.get(`${c}\u0000${t}`);
+      return n === undefined ? undefined : groundNets.has(n) ? REF : n;
+    };
+    const supplies = doc.components.filter((c) => c.type === 'instrument.lab_psu');
+    const supplyNets = (id: string) =>
+      ['positive', 'negative'].map((t) => netAt(id, t)).filter((n): n is string => n !== undefined);
+    // Review item 9: a fresh union per supply (parts, plus the OTHER supplies conducting), so one
+    // supply's own terminals never count as a load for another.
+    for (const s of supplies) {
+      const nets = supplyNets(s.id);
+      if (nets.length !== 2 || nets[0] === nets[1]) continue;
+      const parent = new Map<string, string>();
+      const find = (k: string): string => {
+        if (!parent.has(k)) parent.set(k, k);
+        const q = parent.get(k)!;
+        if (q === k) return k;
+        const r = find(q);
+        parent.set(k, r);
+        return r;
+      };
+      const join = (ns: string[]) => {
+        for (const n of ns.slice(1)) parent.set(find(ns[0]!), find(n));
+      };
+      for (const c of doc.components) {
+        if (c.type === 'instrument.lab_psu' || c.type === 'component.ground') continue;
+        join(
+          CATALOG[c.type].terminals
+            .map((t) => netAt(c.id, t.id))
+            .filter((n): n is string => n !== undefined),
+        );
+      }
+      for (const o of supplies)
+        if (o !== s && supplyNets(o.id).length === 2) join(supplyNets(o.id));
+      if (find(nets[0]!) !== find(nets[1]!))
+        issues.push({ code: 'psu_no_load', severity: 'warning', components: [s.id] });
+    }
+  }
+
   // Reference analysis over the drawn topology. Every two-terminal part is treated as
   // possibly conducting (a switch may be closed, a supply switched on): an island that cannot
   // reach GND even then is certainly floating.
@@ -109,16 +192,26 @@ export function checkCircuit(doc: ProjectDocument): CheckIssue[] {
       }
     }
     const two = doc.components.filter((c) => wiredParts.includes(c.id) && !isBoard(c));
+    // Sprint 29: the terminals that may conduct between each other. A logic part's OUTPUTS conduct
+    // to its supply pins (an input driven only by other gates' outputs is not floating); its
+    // INPUTS are high-impedance and join nothing (an island reached only through a gate input
+    // stays floating). Every other part: all its terminals.
+    const conducting = (c: (typeof doc.components)[number]) => {
+      const ids = CATALOG[c.type].terminals.map((t) => t.id);
+      return c.type.startsWith('logic.') ? ids.filter((t) => !/^[ab]\d*$/.test(t)) : ids;
+    };
     for (const c of two) {
-      const [t0, t1] = CATALOG[c.type].terminals.map((t) => t.id) as [string, string];
-      parent.set(find(node(c.id, t0)), find(node(c.id, t1)));
+      const [t0, ...rest] = conducting(c) as [string, ...string[]];
+      for (const t of rest) parent.set(find(node(c.id, t)), find(node(c.id, t0)));
     }
     const floating = two
-      .filter((c) => find(node(c.id, CATALOG[c.type].terminals[0]!.id)) !== find(REF))
+      .filter((c) => find(node(c.id, conducting(c)[0]!)) !== find(REF))
       .map((c) => c.id);
     if (floating.length)
       issues.push({ code: 'floating_island', severity: 'warning', components: floating });
   }
+
+  issues.push(...floatingInputs(doc, netOf, groundNets));
 
   // Visual ambiguity: a wire drawn across a terminal it is NOT connected to. Terminal
   // positions are computed once, and each wire is tested only against terminals inside its
@@ -171,6 +264,88 @@ export function checkCircuit(doc: ProjectDocument): CheckIssue[] {
       components: [a.component, b.component],
       terminals: [a.terminal, b.terminal],
     });
+  }
+  return issues;
+}
+
+/**
+ * Parts that conduct at DC (both terminals one node for this check), and parts that neither conduct
+ * nor drive (junctions: whether one conducts needs a threshold this check does not have; capacitors;
+ * switches, taken OPEN: the state in which a pull resistor matters). Any other part's terminal, a
+ * supply, GND or another board pin counts as holding the level (no warning: conservative).
+ */
+const CONDUCTS = new Set(['component.resistor', 'component.photoresistor']);
+const SWITCHES = new Set(['component.push_button', 'component.toggle_switch']);
+const NEITHER = new Set([
+  'component.led',
+  'component.diode',
+  'component.rgb_led',
+  'component.capacitor',
+  'display.led_matrix_8x8',
+  ...SWITCHES,
+]);
+
+/**
+ * Sprint 24 (M2): a GPIO the program reads as an input (inputPins.ts) whose net, with every switch
+ * open, reaches nothing that holds a level: through resistors only to switches, junctions or
+ * nothing. Sprint 25: an unwired pin the program reads is reported too (`gpio_input_unconnected`).
+ */
+function floatingInputs(
+  doc: ProjectDocument,
+  netOf: Map<string, string>,
+  groundNets: Set<string>,
+): CheckIssue[] {
+  const issues: CheckIssue[] = [];
+  for (const board of doc.components) {
+    if (board.type !== 'board.esp32_devkitc_wroom32') continue;
+    const program = doc.programs[board.id];
+    if (!program) continue;
+    for (const gpio of programInputPins(program)) {
+      const terminal = `gpio${gpio}`;
+      const start = netOf.get(`${board.id}\u0000${terminal}`);
+      if (start === undefined) {
+        // Sprint 25: an input with nothing wired to it has no level at all.
+        issues.push({
+          code: 'gpio_input_unconnected',
+          severity: 'warning',
+          components: [board.id],
+          terminals: [terminal],
+        });
+        continue;
+      }
+      // Walk the nets joined through conducting parts; note what else touches them.
+      const seen = new Set<string>([start]);
+      const queue = [start];
+      let held = false;
+      const switches = new Set<string>();
+      while (queue.length && !held) {
+        const net = queue.shift()!;
+        if (groundNets.has(net)) held = true;
+        for (const c of doc.connections) {
+          if (c.net !== net) continue;
+          if (c.component === board.id && c.terminal === terminal) continue;
+          const part = doc.components.find((x) => x.id === c.component);
+          if (!part) continue;
+          if (CONDUCTS.has(part.type)) {
+            for (const t of CATALOG[part.type].terminals) {
+              const n = netOf.get(`${part.id}\u0000${t.id}`);
+              if (n !== undefined && !seen.has(n)) {
+                seen.add(n);
+                queue.push(n);
+              }
+            }
+          } else if (SWITCHES.has(part.type)) switches.add(part.id);
+          else if (!NEITHER.has(part.type)) held = true;
+        }
+      }
+      if (held) continue;
+      issues.push({
+        code: 'gpio_input_floating',
+        severity: 'warning',
+        components: [board.id, ...[...switches].sort()],
+        terminals: [terminal],
+      });
+    }
   }
   return issues;
 }

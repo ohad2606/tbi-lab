@@ -6,6 +6,7 @@
  */
 
 import { getTypeDef } from './catalog.js';
+import { wireNodes } from './connectivity.js';
 import type { Point, ProjectDocument, Rotation, Wire, WireEnd } from './schema.js';
 
 /** Editor grid pitch in schematic units. Placements and wire points snap to it. */
@@ -40,13 +41,31 @@ export function nextRotation(rotation: Rotation): Rotation {
   return ROTATIONS[(ROTATIONS.indexOf(rotation) + 1) % ROTATIONS.length]!;
 }
 
+/**
+ * Components by id, per components array (s20r4, review B1: a linear search per terminal made
+ * routing a large project quadratic). Documents are immutable: an array is never changed in
+ * place, so the map of an array stays valid.
+ */
+const byIdCache = new WeakMap<
+  readonly ProjectDocument['components'][number][],
+  Map<string, ProjectDocument['components'][number]>
+>();
+function componentById(list: readonly ProjectDocument['components'][number][]) {
+  let m = byIdCache.get(list);
+  if (!m) {
+    m = new Map(list.map((c) => [c.id, c]));
+    byIdCache.set(list, m);
+  }
+  return m;
+}
+
 /** Absolute position of a component terminal, or undefined if it does not exist. */
 export function terminalPosition(
   doc: ProjectDocument,
   componentId: string,
   terminalId: string,
 ): Point | undefined {
-  const component = doc.components.find((c) => c.id === componentId);
+  const component = componentById(doc.components).get(componentId);
   const placement = doc.layout.components[componentId];
   if (!component || !placement) return undefined;
   const terminal = getTypeDef(component.type)?.terminals.find((t) => t.id === terminalId);
@@ -154,7 +173,18 @@ export interface WireCrossing {
 }
 
 /**
- * Every unconnected orthogonal crossing in the drawing, in a deterministic order.
+ * Sprint 20 (s20r): where two wires of the SAME electrical node are drawn across each other.
+ * Not drawn with a hop (a hop says "not connected", which would be false); the router avoids
+ * these (route.ts, criterion 6b). Presentation only.
+ */
+export function sameNodeCrossings(doc: ProjectDocument): WireCrossing[] {
+  return allCrossings(doc, true).crossings;
+}
+
+/**
+ * Every unconnected orthogonal crossing in the drawing, in a deterministic order: between wires
+ * of DIFFERENT electrical nodes only (Sprint 20: a hop between two wires of one node would say
+ * "not connected", which is false; those are `sameNodeCrossings`).
  *
  * A vertical segment of one wire and a horizontal segment of another (or of the same wire,
  * non-adjacent) cross when the point lies STRICTLY inside both segments. Not a crossing:
@@ -163,6 +193,157 @@ export interface WireCrossing {
  * single crossing point).
  */
 export function wireCrossings(doc: ProjectDocument): WireCrossing[] {
+  return allCrossings(doc, false).crossings;
+}
+/** `wireCrossings` with whether its work cap (OVERLAY_WORK) cut it short (s20r6). */
+export function wireCrossingsReport(doc: ProjectDocument): {
+  crossings: WireCrossing[];
+  limited: boolean;
+} {
+  return allCrossings(doc, false);
+}
+
+/**
+ * Sprint 20 (s20r round 3, owner directive "Electrical junctions must be explicit"): the points
+ * where wires of ONE node branch off a run they share (the router lets them share runs: route.ts
+ * criterion 8b), drawn with a dot like a junction. PRESENTATION ONLY: never stored, never a
+ * junction object, no effect on connectivity (the wires' endpoints alone decide that).
+ *
+ * A point is a branch when it is not a terminal or a junction (those are marked already), a wire
+ * of the node bends or ends there, and the wires of that node leave it in at least three of the
+ * four directions. Two wires merely crossing (both straight through) are not a branch, and wires
+ * of different nodes never count together.
+ */
+export function sameNodeBranches(doc: ProjectDocument): Point[] {
+  return sameNodeBranchesReport(doc).points;
+}
+
+/**
+ * The 2D overlays' work cap (s20r6, review r4 MAJOR 1: crossings and branch dots are computed on
+ * every Canvas render, and their work can grow with the square of the wires, by output alone):
+ * at most this many candidate tests per overlay; past it the overlay is cut short (`limited`) and
+ * the Circuit view says so. Counted, never timed: the same drawing every time.
+ */
+export const OVERLAY_WORK = 2_000_000;
+
+/** `sameNodeBranches` with whether its work cap cut it short (s20r6). */
+export function sameNodeBranchesReport(doc: ProjectDocument): {
+  points: Point[];
+  limited: boolean;
+} {
+  const node = wireNodes(doc);
+  const marked = new Set<string>();
+  for (const j of doc.layout.junctions) marked.add(`${j.x},${j.y}`);
+  for (const c of doc.components)
+    for (const t of getTypeDef(c.type)?.terminals ?? []) {
+      const p = terminalPosition(doc, c.id, t.id);
+      if (p) marked.add(`${p.x},${p.y}`);
+    }
+  // Every segment, bucketed by the grid cells it covers (s20r4, review B7: each point was
+  // tested against every segment of its node).
+  type Seg = { a: Point; b: Point; n: string };
+  const index = new SegmentIndex<Seg>();
+  const vertices: { p: Point; n: string }[] = [];
+  for (const w of doc.layout.wires) {
+    const r = wireRoute(doc, w);
+    const n = node.get(w.id);
+    if (!r || !n) continue;
+    for (let i = 1; i < r.length; i++) index.add(r[i - 1]!, r[i]!, { a: r[i - 1]!, b: r[i]!, n });
+    for (const p of r) vertices.push({ p, n });
+  }
+  const out = new Map<string, Point>();
+  const refused = new Set<string>();
+  let work = 0;
+  let limited = false;
+  for (const { p, n } of vertices) {
+    const k = `${p.x},${p.y}`;
+    if (marked.has(k) || out.has(k) || refused.has(k)) continue;
+    const dirs = new Set<string>();
+    let foreign = false;
+    const [here, long] = index.atParts(p);
+    work += here.length + long.length;
+    if (work > OVERLAY_WORK) {
+      limited = true;
+      break;
+    }
+    for (const { a, b, n: m } of [here, long].flat()) {
+      if (!onSegment(p, a, b)) continue;
+      // s20r4 (review B2): a wire of ANOTHER node through or onto the point. A dot there would
+      // sit on a different-node crossing or T (where a hop or nothing is drawn): no dot.
+      if (m !== n) {
+        foreign = true;
+        break;
+      }
+      for (const q of [a, b])
+        if (q.x !== p.x || q.y !== p.y) dirs.add(`${Math.sign(q.x - p.x)},${Math.sign(q.y - p.y)}`);
+    }
+    if (foreign) refused.add(k);
+    else if (dirs.size >= 3) out.set(k, { x: p.x, y: p.y });
+  }
+  return { points: [...out.values()].sort((p, q) => p.x - q.x || p.y - q.y), limited };
+}
+
+const onSegment = (p: Point, a: Point, b: Point) =>
+  (a.x === b.x && p.x === a.x && p.y >= Math.min(a.y, b.y) && p.y <= Math.max(a.y, b.y)) ||
+  (a.y === b.y && p.y === a.y && p.x >= Math.min(a.x, b.x) && p.x <= Math.max(a.x, b.x));
+
+/**
+ * Axis-aligned segments bucketed by coarse cells (layout units), for point and run queries.
+ * s20r5 (review r3, BLOCKING 2): the work must not grow with coordinate size. A segment is put in
+ * at most MAX_CELLS cells; a longer one goes to a `long` list that every query scans instead (the
+ * pre-index behaviour, O(segments), for those only). Queries are capped the same way: a run
+ * covering more than MAX_CELLS cells scans every segment. So building costs at most
+ * O(segments x MAX_CELLS) and a query O(MAX_CELLS x bucket + long), whatever the coordinates.
+ */
+class SegmentIndex<T> {
+  static readonly CELL = 200;
+  static readonly MAX_CELLS = 64;
+  private readonly cells = new Map<string, T[]>();
+  readonly long: T[] = [];
+  private static span(a: Point, b: Point) {
+    const c = SegmentIndex.CELL;
+    const x0 = Math.floor(Math.min(a.x, b.x) / c);
+    const x1 = Math.floor(Math.max(a.x, b.x) / c);
+    const y0 = Math.floor(Math.min(a.y, b.y) / c);
+    const y1 = Math.floor(Math.max(a.y, b.y) / c);
+    return { x0, x1, y0, y1, count: (x1 - x0 + 1) * (y1 - y0 + 1) };
+  }
+  add(a: Point, b: Point, v: T): void {
+    const sp = SegmentIndex.span(a, b);
+    if (!(sp.count <= SegmentIndex.MAX_CELLS)) {
+      this.long.push(v);
+      return;
+    }
+    for (let x = sp.x0; x <= sp.x1; x++)
+      for (let y = sp.y0; y <= sp.y1; y++) {
+        const k = `${x},${y}`;
+        const list = this.cells.get(k);
+        if (list) list.push(v);
+        else this.cells.set(k, [v]);
+      }
+  }
+  /** Every segment that may contain p, as two lists (a superset; callers test exactly). */
+  atParts(p: Point): [readonly T[], readonly T[]] {
+    const c = SegmentIndex.CELL;
+    return [this.cells.get(`${Math.floor(p.x / c)},${Math.floor(p.y / c)}`) ?? [], this.long];
+  }
+  /** Every segment that may meet the run a-b (a superset, possibly with repeats). */
+  along(a: Point, b: Point): readonly T[] | 'all' {
+    const sp = SegmentIndex.span(a, b);
+    if (!(sp.count <= SegmentIndex.MAX_CELLS)) return 'all';
+    const out: T[] = [...this.long];
+    for (let x = sp.x0; x <= sp.x1; x++)
+      for (let y = sp.y0; y <= sp.y1; y++) out.push(...(this.cells.get(`${x},${y}`) ?? []));
+    return out;
+  }
+}
+
+/** Crossings between wires of one node (`same`), or of different nodes (s20r). */
+function allCrossings(
+  doc: ProjectDocument,
+  same: boolean,
+): { crossings: WireCrossing[]; limited: boolean } {
+  const node = wireNodes(doc);
   type Seg = { wire: string; a: Point; b: Point };
   const vertical: Seg[] = [];
   const horizontal: Seg[] = [];
@@ -186,16 +367,49 @@ export function wireCrossings(doc: ProjectDocument): WireCrossing[] {
   }
   const inside = (v: number, p: number, q: number) => v > Math.min(p, q) && v < Math.max(p, q);
   const out: WireCrossing[] = [];
+  // Horizontal segments bucketed by cell (s20r4, review B7: every vertical was tested against
+  // every horizontal on every frame); per vertical, the buckets along it, each segment once, in
+  // document order as before.
+  const index = new SegmentIndex<Seg & { k: number }>();
+  horizontal.forEach((h, k) => index.add(h.a, h.b, { ...h, k }));
+  const all = horizontal.map((h, k) => ({ ...h, k }));
+  let work = 0;
+  let limited = false;
   for (const v of vertical) {
-    for (const h of horizontal) {
+    const found = index.along(v.a, v.b);
+    let near: readonly (Seg & { k: number })[];
+    if (found === 'all')
+      near = all; // in order, each once: no copy, no sort
+    else {
+      const seen = new Set<number>();
+      const list: (Seg & { k: number })[] = [];
+      for (const h of found)
+        if (!seen.has(h.k)) {
+          seen.add(h.k);
+          list.push(h);
+        }
+      list.sort((p, q) => p.k - q.k);
+      near = list;
+    }
+    work += near.length + 1;
+    if (work > OVERLAY_WORK) {
+      limited = true;
+      break;
+    }
+    for (const h of near) {
       const x = v.a.x;
       const y = h.a.y;
       if (!inside(x, h.a.x, h.b.x) || !inside(y, v.a.y, v.b.y)) continue;
       if (blocked.has(`${x},${y}`)) continue;
+      // A hop marks wires that are NOT connected: only between different nodes (s20r).
+      if ((node.get(v.wire) === node.get(h.wire)) !== same) continue;
       out.push({ x, y, over: v.wire, under: h.wire });
     }
   }
-  return out.sort(
-    (p, q) => p.x - q.x || p.y - q.y || (p.over < q.over ? -1 : p.over > q.over ? 1 : 0),
-  );
+  return {
+    crossings: out.sort(
+      (p, q) => p.x - q.x || p.y - q.y || (p.over < q.over ? -1 : p.over > q.over ? 1 : 0),
+    ),
+    limited,
+  };
 }

@@ -30,9 +30,19 @@ async function untranslatedWords(page: Page): Promise<string[]> {
     /^Vishay$/,
     /^TLHR5400$/, // LED model card name
     /^(RGB|NPN|LDR|PIR|NC|NO|COM|RC|GL5528|N3904|HC|SR501|F)$/, // Sprint 10: part numbers and standard acronyms (technical tokens)
+    /^(HIGH|LOW|ADC|Flyback|lx)$/, // Sprint 11: logic levels, ADC, flyback (kept in English by the glossary rule, CLAUDE.md) and the lux symbol
     /^N4148$/, // the 1N4148 diode model (tokenized after its leading digit)
+    /^(LCD|I2C|SR04|DHT22|AM2302|PCF8574|Wire|Pull|pull|up|down)$/, // Sprint 12: part numbers, I2C/LCD, the Wire library, Pull-up (glossary rule)
+    /^(PWM|LEDC|SG90|TowerPro|analogWrite|ledcWrite|ledcDetach|digitalWrite|Hz|kHz|ms|us)$/, // Sprint 15 (R4): PWM/LEDC, the SG90, Arduino PWM API names, frequency/time units
+    /^(AND|NAND|OR|NOT|SN74LVC1G\d\d|SN74LVC08A?|TI|SOT|SOIC|Y|B|C|D|VCC|MicroPython|KOA|CF1|CFS1|W)$/,
+    /^(NOR|XOR|SN74LVC1G|S|Cin|Cout|X|C1|C2|Q7|Q9)$/, // Sprint 29: NOR/XOR, the part family, adder signal names, owner rule ids (LTR technical tokens)
+    /^(S30|L1|REQUEST|PERMIT|GRANTED|DENIED)$/, // Sprint 30: owner decision id S30-L1; the firmware's printed signal and verdict words (serial output, LTR) // Sprint 19B: gate functions and pin names (datasheet tokens), part numbers, packages, MicroPython, resistor series, the watt
     /^I$/, // the current symbol in formulas such as I = V / R (example summaries)
     /^N_\d+$/, // net ids
+    /^(Arduino|MicroPython|main|py|Pin|IN|value|machine|duty|duty_u16|SCL|SDA|HD44780|Hello)$/, // Sprint 24: language names, the main.py file, MicroPython API names, I2C signal names, the LCD controller, the text the LCD example shows
+    /^analogRead$/, // Sprint 25: the Arduino API the pot examples name as not supported (LTR-isolated)
+    /^(sketch|ino|display|h|cpp|LiquidCrystal_PCF8574|python_lcd|I2cLcd|lib)$/, // Sprint 26: project file names, managed library names and the MicroPython /lib folder (LTR-isolated)
+    /^[IV]?_(CC|DD|I|IH|IL|O|OH|OL)$/, // Sprint 22: datasheet symbols (I_CC, V_I; the V is removed with the units above)
     /^(k|m|M|G|µ|u|n|p)?(Ω|V|A)$/,
     /^m(Ω|V|A)$/, // units
     /^Esc$/,

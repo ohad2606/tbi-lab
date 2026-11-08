@@ -1,0 +1,12 @@
+ ✓ runtime/tests/s8-qemu-tasks.runtime.test.ts > Sprint 8 runtime task limit (real QEMU under the deployed unit) > the QEMU unit’s TasksMax covers QEMU’s own ceiling with headroom, and stays finite
+ ✓ runtime/tests/s8-qemu-tasks.runtime.test.ts > Sprint 8 runtime task limit (real QEMU under the deployed unit) > real sessions with input bursts never hit the limit and leave nothing behind
+ ✓ runtime/tests/s11-deployed.runtime.test.ts > Sprint 11 R1 on the deployed instance (tbi) > esp32-motion-relay: motion pulls the relay in (LED + buzzer); no motion releases it; Stop cleans up
+ ✓ runtime/tests/s11-deployed.runtime.test.ts > Sprint 11 R1 on the deployed instance (tbi) > esp32-night-light: dark lights all three channels; bright turns them off; DELETE cleans up
+ ✓ runtime/tests/s11-deployed.runtime.test.ts > Sprint 11 R1 on the deployed instance (tbi) > command boundary: malformed, oversized, unknown, unsupported, out of range, rate-limited, foreign user
+ ✓ runtime/tests/s11-deployed.runtime.test.ts > Sprint 11 R1 on the deployed instance (tbi) > component.capacitor is refused for an ESP32 project before QEMU starts
+ ✓ runtime/tests/s11-deployed.runtime.test.ts > Sprint 11 R1 on the deployed instance (tbi) > display.led_matrix_8x8 is refused for an ESP32 project before QEMU starts
+ ✓ runtime/tests/s11-deployed.runtime.test.ts > Sprint 11 R1 on the deployed instance (tbi) > admission under the real policy: one session per preview user, one globally; ownership
+ ↓ runtime/tests/s11-deployed.runtime.test.ts > a Sprint 10 host refuses R1 explicitly (tbi) > the motion example: refused as an unsupported component (QEMU never starts)
+ ↓ runtime/tests/s11-deployed.runtime.test.ts > a Sprint 10 host refuses R1 explicitly (tbi) > a live-parameter command: refused as malformed (400), never applied
+ Test Files  2 passed (2)
+      Tests  8 passed | 2 skipped (10)

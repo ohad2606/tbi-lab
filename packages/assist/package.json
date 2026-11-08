@@ -1,0 +1,14 @@
+{
+  "name": "@tbi-lab/assist",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "TBI Lab engineering assistance (Sprint 27): the Engineering Context API, the deterministic circuit debugger, the provider-neutral AI adapter (mock only), the typed action protocol (dry-run only) and the evaluation bench. Pure TypeScript, no I/O, no DOM, no locale text.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@tbi-lab/domain": "0.1.0",
+    "@tbi-lab/engine": "0.1.0"
+  }
+}

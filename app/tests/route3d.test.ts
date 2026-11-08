@@ -13,15 +13,14 @@ import {
   collisionBodies,
   deriveScene,
   deriveSceneVariant,
-  sceneObstacles,
   touchingNodes,
   WIRE_RADIUS,
   type SceneDescription,
   type SceneWire,
-  type Vec3,
 } from '../src/views/scene3d/scene.js';
 import { bodiesCollide } from '../src/views/scene3d/separation.js';
-import { CLEARANCE, FLOOR } from '../src/views/scene3d/route3d.js';
+import { expectNoWireThroughBodies, samples } from './support/scene3dChecks.js';
+import { CLEARANCE, FLOOR, routeWires, type Obstacle } from '../src/views/scene3d/route3d.js';
 import { RELAY_SRD } from '../src/views/scene3d/physical.js';
 import { EXAMPLE_DOCUMENTS } from '../src/examples/documents.js';
 import { denseBench, partsBench } from '../../scripts/evidence/benches.js';
@@ -40,20 +39,6 @@ const example = (id: string) =>
     readFileSync(new URL(`../src/examples/data/${id}.json`, import.meta.url), 'utf8'),
   ) as ProjectDocument;
 
-/** Points along a wire's control polyline, every `step` mm. */
-function samples(w: SceneWire, step = 0.25): Vec3[] {
-  const out: Vec3[] = [w.points[0]!];
-  for (let i = 1; i < w.points.length; i++) {
-    const a = w.points[i - 1]!;
-    const b = w.points[i]!;
-    const n = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z) / step));
-    for (let k = 1; k <= n; k++) {
-      const t = k / n;
-      out.push({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, z: a.z + (b.z - a.z) * t });
-    }
-  }
-  return out;
-}
 const ofWire = (doc: ProjectDocument, s: SceneDescription, from: string, to: string) => {
   const w = doc.layout.wires.find(
     (x) =>
@@ -74,38 +59,6 @@ const longestRiser = (w: SceneWire) =>
       return Math.hypot(b.x - a.x, b.z - a.z) < 0.05 ? Math.abs(b.y - a.y) : 0;
     }),
   );
-
-/**
- * No wire passes through a part's body: every point of a wire is outside every routing volume of
- * the parts it does not end on (by more than most of a wire radius), and outside the raised
- * bodies (a module board, its dome) of the parts it does end on.
- */
-function expectNoWireThroughBodies(doc: ProjectDocument, s: SceneDescription, label: string) {
-  const obstacles = sceneObstacles(doc, s);
-  const m = WIRE_RADIUS * 0.8;
-  for (const w of s.wires) {
-    const src = doc.layout.wires.find((x) => x.id === w.id)!;
-    const own = [src.from, src.to].flatMap((e) =>
-      e.kind === 'terminal' ? [e.component, `${e.component}:${e.terminal}`] : [],
-    );
-    const ends = [w.points[0]!, w.points.at(-1)!];
-    for (const p of samples(w, 0.5))
-      for (const o of obstacles) {
-        const isOwn = own.includes(o.part) || own.some((x) => o.part.startsWith(`${x}:`));
-        if (isOwn && o.bottom < 2) continue;
-        // Its own terminal fitting (a supply's binding post) where it is fastened.
-        if (isOwn && ends.some((e) => Math.hypot(e.x - p.x, e.y - p.y, e.z - p.z) < 3)) continue;
-        const inside =
-          p.x > o.x0 - m &&
-          p.x < o.x1 + m &&
-          p.z > o.z0 - m &&
-          p.z < o.z1 + m &&
-          p.y > o.bottom - m &&
-          p.y < o.top + m;
-        expect(inside, `${label}: ${w.id} through ${o.part} at ${JSON.stringify(p)}`).toBe(false);
-      }
-  }
-}
 
 /** No back-and-forth in plan: consecutive plan runs never reverse. */
 function expectNoZigZag(s: SceneDescription, label: string) {
@@ -425,11 +378,74 @@ describe('3D wire routes: modules, fan-out, separation', () => {
       const s = deriveScene(d);
       expect(s, id).toEqual(deriveSceneVariant(d, true, 'fresh'));
       expect(touchingNodes(s), id).toEqual([]);
+      expect(s.routeLimits, id).toEqual([]); // s20r: nothing to flag
     }
   });
 
   it('determinism across the fixtures', () => {
     for (const make of [pirMatrixCircuit, esp32ModuleCircuit, denseMixedCircuit])
       expect(deriveScene(make())).toEqual(deriveScene(make()));
+  });
+});
+
+describe('3D wire heights: a raised body is decided on the final profile (rt2, PSU post)', () => {
+  // A binding post sticking out at post height (bottom 3.1, top 5.3 mm), a wire running along the
+  // bench right beside its tip. On the bench the wire passes UNDER the post; a terminal it passes
+  // near lifts it to that terminal's clearance height, i.e. into the post's height band.
+  const post: Obstacle = {
+    part: 'P:other',
+    x0: -2,
+    x1: 0,
+    z0: -1.1,
+    z1: 1.1,
+    bottom: 3.1,
+    top: 5.3,
+  };
+  const input = {
+    id: 'W',
+    node: 'n1',
+    plan: [
+      { x: 0.45, y: -20 },
+      { x: 0.45, y: 20 },
+    ],
+    head: [],
+    tail: [],
+    startY: FLOOR,
+    endY: FLOOR,
+    parts: [null, null] as [null, null],
+    ownEnds: [
+      { x: 0.45, y: -20 },
+      { x: 0.45, y: 20 },
+    ],
+  };
+  const axisClear = (pts: { x: number; y: number; z: number }[], o: Obstacle) => {
+    let m = Infinity;
+    for (let i = 1; i < pts.length; i++)
+      for (let k = 0; k <= 40; k++) {
+        const a = pts[i - 1]!;
+        const b = pts[i]!;
+        const p = {
+          x: a.x + ((b.x - a.x) * k) / 40,
+          y: a.y + ((b.y - a.y) * k) / 40,
+          z: a.z + ((b.z - a.z) * k) / 40,
+        };
+        const dx = Math.max(o.x0 - p.x, 0, p.x - o.x1);
+        const dz = Math.max(o.z0 - p.z, 0, p.z - o.z1);
+        const dy = Math.max(o.bottom - p.y, 0, p.y - o.top);
+        m = Math.min(m, Math.hypot(dx, dy, dz));
+      }
+    return m;
+  };
+  it('alone, the wire stays on the bench and passes under the post (no needless rise)', () => {
+    const r = routeWires([input], [post], []).get('W')!;
+    expect(Math.max(...r.points.map((p) => p.y))).toBeCloseTo(FLOOR, 6);
+    expect(axisClear(r.points, post)).toBeGreaterThanOrEqual(WIRE_RADIUS + 0.3 - 1e-9);
+  });
+  it('lifted by a terminal beside the post, it goes OVER the post with clearance, never into it', () => {
+    const r = routeWires([input], [post], [{ x: 0.45, z: 0, h: 4.2 }]).get('W')!;
+    expect(axisClear(r.points, post)).toBeGreaterThanOrEqual(WIRE_RADIUS + 0.3 - 1e-9);
+    expect(Math.max(...r.points.map((p) => p.y))).toBeGreaterThanOrEqual(
+      post.top + CLEARANCE - 1e-6,
+    );
   });
 });

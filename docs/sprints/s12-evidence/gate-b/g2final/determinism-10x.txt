@@ -1,0 +1,16 @@
+[hcsr04-0.1m] a6174faf18931c61 a6174faf18931c61 a6174faf18931c61 a6174faf18931c61 a6174faf18931c61 a6174faf18931c61 a6174faf18931c61 a6174faf18931c61 a6174faf18931c61 a6174faf18931c61
+[hcsr04-1m] f5c51475cc5dac18 f5c51475cc5dac18 f5c51475cc5dac18 f5c51475cc5dac18 f5c51475cc5dac18 f5c51475cc5dac18 f5c51475cc5dac18 f5c51475cc5dac18 f5c51475cc5dac18 f5c51475cc5dac18
+[hcsr04-4m] ce7868f0e5352722 ce7868f0e5352722 ce7868f0e5352722 ce7868f0e5352722 ce7868f0e5352722 ce7868f0e5352722 ce7868f0e5352722 ce7868f0e5352722 ce7868f0e5352722 ce7868f0e5352722
+[dht22--10C-30RH] b87741773a4f3c7a b87741773a4f3c7a b87741773a4f3c7a b87741773a4f3c7a b87741773a4f3c7a b87741773a4f3c7a b87741773a4f3c7a b87741773a4f3c7a b87741773a4f3c7a b87741773a4f3c7a
+[dht22-21.5C-55.2RH] 414a2379065bc425 414a2379065bc425 414a2379065bc425 414a2379065bc425 414a2379065bc425 414a2379065bc425 414a2379065bc425 414a2379065bc425 414a2379065bc425 414a2379065bc425
+[dht22-60C-95RH] 10af087aa4803ee2 10af087aa4803ee2 10af087aa4803ee2 10af087aa4803ee2 10af087aa4803ee2 10af087aa4803ee2 10af087aa4803ee2 10af087aa4803ee2 10af087aa4803ee2 10af087aa4803ee2
+[lcd1602-hello] 03d6e5f264ed9506 03d6e5f264ed9506 03d6e5f264ed9506 03d6e5f264ed9506 03d6e5f264ed9506 03d6e5f264ed9506 03d6e5f264ed9506 03d6e5f264ed9506 03d6e5f264ed9506 03d6e5f264ed9506
+ ✓ runtime/tests/s12-determinism.runtime.test.ts (8 tests) 876323ms
+   ✓ Sprint 12 determinism: R2/R3 through the Session Host (T-DET-4/5/6) > hcsr04-0.1m: 10 runs give one fingerprint
+   ✓ Sprint 12 determinism: R2/R3 through the Session Host (T-DET-4/5/6) > hcsr04-1m: 10 runs give one fingerprint
+   ✓ Sprint 12 determinism: R2/R3 through the Session Host (T-DET-4/5/6) > hcsr04-4m: 10 runs give one fingerprint
+   ✓ Sprint 12 determinism: R2/R3 through the Session Host (T-DET-4/5/6) > dht22--10C-30RH: 10 runs give one fingerprint
+   ✓ Sprint 12 determinism: R2/R3 through the Session Host (T-DET-4/5/6) > dht22-21.5C-55.2RH: 10 runs give one fingerprint
+   ✓ Sprint 12 determinism: R2/R3 through the Session Host (T-DET-4/5/6) > dht22-60C-95RH: 10 runs give one fingerprint
+   ✓ Sprint 12 determinism: R2/R3 through the Session Host (T-DET-4/5/6) > lcd1602-hello: 10 runs give one fingerprint
+      Tests  8 passed (8)

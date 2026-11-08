@@ -1,0 +1,411 @@
+{
+  "format": "tbi-lab.project",
+  "schemaVersion": 3,
+  "projectId": "prj_examplepiralarm",
+  "createdWith": {
+    "app": "0.2.0",
+    "schemaVersion": 3
+  },
+  "createdAt": "2026-09-23T00:00:00.000Z",
+  "revision": {
+    "localRevision": 1,
+    "cloudRevision": null,
+    "baseRevision": null,
+    "updatedAt": "2026-09-23T00:00:00.000Z",
+    "deviceId": "dev_tbilab_examples"
+  },
+  "name": "PIR alarm",
+  "components": [
+    {
+      "id": "PSU1",
+      "type": "instrument.lab_psu",
+      "typeVersion": 1,
+      "params": {
+        "setpointVoltage": {
+          "value": 5,
+          "unit": "volt"
+        },
+        "currentLimit": {
+          "value": 0.2,
+          "unit": "ampere"
+        },
+        "outputEnabled": true
+      }
+    },
+    {
+      "id": "GND1",
+      "type": "component.ground",
+      "typeVersion": 1,
+      "params": {}
+    },
+    {
+      "id": "U1",
+      "type": "sensor.pir_hc_sr501",
+      "typeVersion": 1,
+      "params": {
+        "model": "model.pir.hc_sr501",
+        "motion": false
+      }
+    },
+    {
+      "id": "GND2",
+      "type": "component.ground",
+      "typeVersion": 1,
+      "params": {}
+    },
+    {
+      "id": "R1",
+      "type": "component.resistor",
+      "typeVersion": 1,
+      "params": {
+        "resistance": {
+          "value": 1000,
+          "unit": "ohm"
+        }
+      }
+    },
+    {
+      "id": "Q1",
+      "type": "component.bjt_npn",
+      "typeVersion": 1,
+      "params": {
+        "model": "model.bjt.fairchild_2n3904"
+      }
+    },
+    {
+      "id": "GND3",
+      "type": "component.ground",
+      "typeVersion": 1,
+      "params": {}
+    },
+    {
+      "id": "BZ1",
+      "type": "component.buzzer",
+      "typeVersion": 1,
+      "params": {
+        "model": "model.buzzer.cui_cem_1205_ic"
+      }
+    }
+  ],
+  "nets": [
+    {
+      "id": "N_1",
+      "role": "ground",
+      "userName": null
+    },
+    {
+      "id": "N_2",
+      "role": null,
+      "userName": null
+    },
+    {
+      "id": "N_3",
+      "role": "ground",
+      "userName": null
+    },
+    {
+      "id": "N_4",
+      "role": null,
+      "userName": null
+    },
+    {
+      "id": "N_5",
+      "role": null,
+      "userName": null
+    },
+    {
+      "id": "N_6",
+      "role": "ground",
+      "userName": null
+    },
+    {
+      "id": "N_7",
+      "role": null,
+      "userName": null
+    }
+  ],
+  "connections": [
+    {
+      "component": "PSU1",
+      "terminal": "positive",
+      "net": "N_2"
+    },
+    {
+      "component": "PSU1",
+      "terminal": "negative",
+      "net": "N_1"
+    },
+    {
+      "component": "GND1",
+      "terminal": "ref",
+      "net": "N_1"
+    },
+    {
+      "component": "U1",
+      "terminal": "gnd",
+      "net": "N_3"
+    },
+    {
+      "component": "U1",
+      "terminal": "out",
+      "net": "N_4"
+    },
+    {
+      "component": "U1",
+      "terminal": "vcc",
+      "net": "N_2"
+    },
+    {
+      "component": "GND2",
+      "terminal": "ref",
+      "net": "N_3"
+    },
+    {
+      "component": "R1",
+      "terminal": "a",
+      "net": "N_4"
+    },
+    {
+      "component": "R1",
+      "terminal": "b",
+      "net": "N_5"
+    },
+    {
+      "component": "Q1",
+      "terminal": "collector",
+      "net": "N_7"
+    },
+    {
+      "component": "Q1",
+      "terminal": "base",
+      "net": "N_5"
+    },
+    {
+      "component": "Q1",
+      "terminal": "emitter",
+      "net": "N_6"
+    },
+    {
+      "component": "GND3",
+      "terminal": "ref",
+      "net": "N_6"
+    },
+    {
+      "component": "BZ1",
+      "terminal": "positive",
+      "net": "N_2"
+    },
+    {
+      "component": "BZ1",
+      "terminal": "negative",
+      "net": "N_7"
+    }
+  ],
+  "layout": {
+    "components": {
+      "PSU1": {
+        "x": -280,
+        "y": 0,
+        "rotation": 0
+      },
+      "GND1": {
+        "x": -240,
+        "y": 120,
+        "rotation": 0
+      },
+      "U1": {
+        "x": -20,
+        "y": 60,
+        "rotation": 180
+      },
+      "GND2": {
+        "x": 60,
+        "y": 140,
+        "rotation": 0
+      },
+      "R1": {
+        "x": 120,
+        "y": 60,
+        "rotation": 0
+      },
+      "Q1": {
+        "x": 220,
+        "y": 60,
+        "rotation": 0
+      },
+      "GND3": {
+        "x": 240,
+        "y": 180,
+        "rotation": 0
+      },
+      "BZ1": {
+        "x": 240,
+        "y": -40,
+        "rotation": 90
+      }
+    },
+    "wires": [
+      {
+        "id": "W1",
+        "from": {
+          "kind": "terminal",
+          "component": "PSU1",
+          "terminal": "negative"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "GND1",
+          "terminal": "ref"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W2",
+        "from": {
+          "kind": "terminal",
+          "component": "PSU1",
+          "terminal": "positive"
+        },
+        "to": {
+          "kind": "junction",
+          "junction": "J1"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W3",
+        "from": {
+          "kind": "terminal",
+          "component": "U1",
+          "terminal": "gnd"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "GND2",
+          "terminal": "ref"
+        },
+        "vertices": [
+          {
+            "x": 60,
+            "y": 80
+          }
+        ]
+      },
+      {
+        "id": "W4",
+        "from": {
+          "kind": "terminal",
+          "component": "U1",
+          "terminal": "out"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "R1",
+          "terminal": "a"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W5",
+        "from": {
+          "kind": "terminal",
+          "component": "R1",
+          "terminal": "b"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "Q1",
+          "terminal": "base"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W6",
+        "from": {
+          "kind": "terminal",
+          "component": "Q1",
+          "terminal": "emitter"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "GND3",
+          "terminal": "ref"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W7",
+        "from": {
+          "kind": "terminal",
+          "component": "BZ1",
+          "terminal": "negative"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "Q1",
+          "terminal": "collector"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W8",
+        "from": {
+          "kind": "junction",
+          "junction": "J1"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "U1",
+          "terminal": "vcc"
+        },
+        "vertices": [
+          {
+            "x": 60,
+            "y": -20
+          },
+          {
+            "x": 60,
+            "y": 40
+          }
+        ]
+      },
+      {
+        "id": "W9",
+        "from": {
+          "kind": "junction",
+          "junction": "J1"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "BZ1",
+          "terminal": "positive"
+        },
+        "vertices": [
+          {
+            "x": -40,
+            "y": -80
+          }
+        ]
+      }
+    ],
+    "junctions": [
+      {
+        "id": "J1",
+        "x": -40,
+        "y": -20
+      }
+    ]
+  },
+  "idCounters": {
+    "PSU": 1,
+    "GND": 3,
+    "W": 9,
+    "N": 7,
+    "U": 1,
+    "R": 1,
+    "Q": 1,
+    "BZ": 1,
+    "J": 1
+  },
+  "programs": {}
+}

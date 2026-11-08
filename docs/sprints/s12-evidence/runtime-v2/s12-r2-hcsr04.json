@@ -1,0 +1,75 @@
+{
+  "runtimeId": "b5b34b49cb7e4049",
+  "rows": [
+    {
+      "distanceM": 0.02,
+      "tempC": 20,
+      "oracleUs": 116.47545279832275,
+      "readUs": [
+        116,
+        116,
+        116
+      ]
+    },
+    {
+      "distanceM": 0.1,
+      "tempC": 20,
+      "oracleUs": 582.3772639916137,
+      "readUs": [
+        582,
+        582,
+        582
+      ]
+    },
+    {
+      "distanceM": 1,
+      "tempC": 20,
+      "oracleUs": 5823.772639916137,
+      "readUs": [
+        5823,
+        5823,
+        5823
+      ]
+    },
+    {
+      "distanceM": 4,
+      "tempC": 20,
+      "oracleUs": 23295.09055966455,
+      "readUs": [
+        23295,
+        23295,
+        23295
+      ]
+    },
+    {
+      "distanceM": 1,
+      "tempC": 35,
+      "oracleUs": 5673.597912115969,
+      "readUs": [
+        5673,
+        5673,
+        5673
+      ]
+    },
+    {
+      "distanceM": 0.01,
+      "tempC": 20,
+      "oracleUs": null,
+      "readUs": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "distanceM": 5,
+      "tempC": 20,
+      "oracleUs": null,
+      "readUs": [
+        0,
+        0,
+        0
+      ]
+    }
+  ]
+}

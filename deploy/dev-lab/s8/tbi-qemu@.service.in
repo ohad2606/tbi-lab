@@ -10,8 +10,8 @@ Description=TBI Lab sandboxed runtime for session %i
 
 [Service]
 Type=exec
-User=tbi-qemu
-Group=tbi-runtimeio
+User=@U@qemu
+Group=@U@runtimeio
 UMask=0007
 RootDirectory=/var/lib/@N@-runtime/sandbox-root
 MountAPIVFS=yes

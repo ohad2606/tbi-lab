@@ -36,7 +36,28 @@ export const STIMULUS = [
   { atNs: 14_900_000_000n, setpointV: 0 },
 ];
 
+/**
+ * Sprint 28: the R2 gate workload (runtime/tests/r2-support.ts GATE_V2), the same firmware and
+ * timing with a circuit valid under the product's rules: GPIO2 -> 1 M -> GPIO5 <- 1 k <- VEXT,
+ * GPIO5 -> 10 k -> GND, VEXT 0.5 V <-> 3.3 V (the supply always sources, GPIO5 always defined).
+ * The default ('r1') stays the pinned R1 release-gate workload above.
+ */
+export const GATE_V2_CIRCUIT = {
+  r2Ohm: 1_000_000,
+  r3Ohm: 1_000,
+  r4Ohm: 10_000,
+  stimulus: [
+    { atNs: 13_000_000_000n, setpointV: 3.3 },
+    { atNs: 13_600_000_000n, setpointV: 0.5 },
+    { atNs: 14_200_000_000n, setpointV: 3.3 },
+    { atNs: 14_900_000_000n, setpointV: 0.5 },
+  ],
+  initialV: 0.5,
+} as const;
+
 export interface ClosedLoopOptions {
+  /** The circuit: the pinned R1 workload (default) or the Sprint 28 R2 gate workload. */
+  circuit?: 'r1' | 'gate-v2';
   qemu: string;
   artifact: string;
   artifactSha256: string;
@@ -48,6 +69,15 @@ export interface ClosedLoopOptions {
   /** Observation only (measurements): never changes what the session does. */
   onSpawn?(pid: number): void;
   onTick?(vns: bigint): void;
+  /**
+   * Sprint 12 (T-DET-3): scheduled input edges on a pad the firmware never reads, sent in the
+   * handshake reply (needs sched-input). They must leave every fingerprint unchanged.
+   */
+  noise?: { pad: number; edges: number; periodNs: bigint };
+  /** Filled with the runtime's bridge capabilities at the handshake. */
+  capsOut?: string[];
+  /** Sprint 12 (D-10): pacing cap (session.ts); must not change any fingerprint. */
+  pace?: { rate: number };
 }
 
 export interface ClosedLoopRecord {
@@ -72,13 +102,16 @@ export async function runClosedLoop(opts: ClosedLoopOptions): Promise<ClosedLoop
   const io2 = c.add(new GpioPin('IO2', 'io2', 'input'));
   c.add(new Resistor('R1', 'io2', 'led_a', 220));
   c.add(new Diode('D1', 'led_a', '0', LED_TLHR5400));
-  c.add(new Resistor('R2', 'io2', 'io5', 10_000));
+  const v2 = opts.circuit === 'gate-v2';
+  c.add(new Resistor('R2', 'io2', 'io5', v2 ? GATE_V2_CIRCUIT.r2Ohm : 10_000));
   c.add(new GpioPin('IO5', 'io5', 'input'));
-  const vext = c.add(new LabPsu('VEXT', 'ext', '0', 0, 0.1));
-  c.add(new Resistor('R3', 'ext', 'io5', 10_000));
+  const vext = c.add(new LabPsu('VEXT', 'ext', '0', v2 ? GATE_V2_CIRCUIT.initialV : 0, 0.1));
+  c.add(new Resistor('R3', 'ext', 'io5', v2 ? GATE_V2_CIRCUIT.r3Ohm : 10_000));
+  if (v2) c.add(new Resistor('R4', 'io5', '0', GATE_V2_CIRCUIT.r4Ohm));
+  const stimulus = v2 ? GATE_V2_CIRCUIT.stimulus : STIMULUS;
 
   const schedule = new CommandSchedule(
-    (opts.commands ?? true) ? STIMULUS.map((s) => ({ atNs: s.atNs, command: s.setpointV })) : [],
+    (opts.commands ?? true) ? stimulus.map((s) => ({ atNs: s.atNs, command: s.setpointV })) : [],
   );
   const timeline: string[] = [];
   const serialTimeline: string[] = [];
@@ -112,9 +145,23 @@ export async function runClosedLoop(opts: ClosedLoopOptions): Promise<ClosedLoop
         tickUs: opts.tickUs,
         ...(opts.stressMainLoop ? { stressMainLoop: true } : {}),
         ...(opts.onSpawn ? { onSpawn: opts.onSpawn } : {}),
+        ...(opts.pace ? { pace: opts.pace } : {}),
       },
       {
-        hello: () => solveAt(0n, 'initial'),
+        hello: (_tick, caps) => {
+          opts.capsOut?.push(...caps);
+          const cmds = solveAt(0n, 'initial');
+          const n = opts.noise;
+          if (n)
+            for (let i = 1; i <= n.edges; i++)
+              cmds.push({
+                type: 'J',
+                vns: BigInt(i) * n.periodNs,
+                pad: n.pad,
+                level: (i & 1) as 0 | 1,
+              });
+          return cmds;
+        },
         pad: (e) => {
           counts.padEvents++;
           timeline.push(`G ${e.vns} gpio${e.pad} drive=${e.drive} level=${e.level}`);

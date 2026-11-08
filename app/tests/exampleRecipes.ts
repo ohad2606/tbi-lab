@@ -10,13 +10,17 @@
 import { readFileSync } from 'node:fs';
 import {
   addComponent,
+  addProgramFile,
   addWire,
+  unpinLibrary,
   createProject,
   deleteSelection,
   moveSelection,
   rotateComponents,
   setParam,
+  setProgramProfile,
   setProgramText,
+  ESP32_MICROPYTHON_PROFILE,
   type ComponentTypeId,
   type ParamValue,
   type ProjectDocument,
@@ -80,6 +84,49 @@ class Recipe {
     const url = new URL(`../../runtime/firmware/arduino/${sketch}/${sketch}.ino`, import.meta.url);
     this.doc = this.ok(setProgramText(this.doc, id, readFileSync(url, 'utf8'))).doc;
   }
+  /**
+   * Sprint 12: the board's program from a sketch authored with the examples
+   * (app/tests/exampleSketches): library-free Arduino/C++, Wire only for I2C.
+   */
+  sketch(id: string, file: string) {
+    const url = new URL(`./exampleSketches/${file}`, import.meta.url);
+    this.doc = this.ok(setProgramText(this.doc, id, readFileSync(url, 'utf8'))).doc;
+  }
+  /**
+   * The board's program in MicroPython. P1 (schema v7): switching keeps the code it leaves (here the
+   * Arduino starter) in `alternates`; a curated example carries only its own language's code (a
+   * verified twin is attached when it is opened, catalog.ts EXAMPLE_VARIANTS), so that is dropped.
+   */
+  private toMicroPython(id: string) {
+    const r = this.ok(setProgramProfile(this.doc, id, ESP32_MICROPYTHON_PROFILE.id));
+    const { alternates: _starter, ...program } = r.doc.programs[id]!;
+    this.doc = { ...r.doc, programs: { ...r.doc.programs, [id]: program } };
+  }
+  /**
+   * Sprint 24 (M1): the board's program in MicroPython (the genuine interpreter's main.py), from
+   * a program authored with the examples (app/tests/exampleSketches/*.py).
+   */
+  python(id: string, file: string) {
+    this.toMicroPython(id);
+    const url = new URL(`./exampleSketches/${file}`, import.meta.url);
+    this.doc = this.ok(setProgramText(this.doc, id, readFileSync(url, 'utf8'))).doc;
+  }
+  /**
+   * Sprint 26: a multi-file program from app/tests/exampleSketches/<dir>/: the entry file
+   * (sketch.ino or main.py, in the board's environment) and every further file, by relative path.
+   */
+  project(id: string, dir: string, entry: string, further: string[], micropython = false) {
+    if (micropython) this.toMicroPython(id);
+    const read = (f: string) =>
+      readFileSync(new URL(`./exampleSketches/${dir}/${f}`, import.meta.url), 'utf8');
+    this.doc = this.ok(setProgramText(this.doc, id, read(entry))).doc;
+    for (const f of further) this.doc = this.ok(addProgramFile(this.doc, id, f, read(f))).doc;
+  }
+  /** Sprint 26: an example that drives a part without its managed library keeps none. */
+  noLibraries(id: string) {
+    for (const l of this.doc.programs[id]?.libraries ?? [])
+      this.doc = this.ok(unpinLibrary(this.doc, id, l.id)).doc;
+  }
   /** Remove parts placed with every new project (an ESP32 example may not need the supply). */
   remove(...ids: string[]) {
     this.doc = this.ok(
@@ -93,6 +140,269 @@ class Recipe {
     this.set('PSU1', 'outputEnabled', true);
     this.wire(T('PSU1', 'negative'), T('GND1', 'ref'));
   }
+  /** Sprint 12: one more bench supply (setpoint, limit, output ON); its own GND wiring is the caller's. */
+  extraSupply(x: number, y: number, volts: number, limit: number): string {
+    const id = this.place('instrument.lab_psu', x, y);
+    this.set(id, 'setpointVoltage', volts, 'volt');
+    this.set(id, 'currentLimit', limit, 'ampere');
+    this.set(id, 'outputEnabled', true);
+    return id;
+  }
+}
+
+/**
+ * Sprint 30 (M1/M2/M4): ESP32 firmware drives logic and reads it back; the logic drives a power
+ * stage. GPIO18 → U2 (SN74LVC1G08) A, held by a 100 kΩ pull-down until the firmware drives it
+ * (S30-L1: driven HIGH the pad sources ≤ 3.3 V / 100 kΩ = 33 µA, within the 100 µA envelope);
+ * B from the permit switch SW1 to the 3.0 V logic rail, 10 kΩ pull-down. U2.Y → GPIO4 (the
+ * firmware's feedback) and → U3 (a second 1G08 as a driver, its B at V_CC), so U2.Y carries only
+ * leakage and its light-load row holds (V_OH ≥ 2.9 V > the ESP32's V_IH 2.475 V). U3.Y → 1 kΩ →
+ * 2N3904 → SRD-05 relay coil on a separate 5 V supply (1N4148 across it); the relay's NO contact
+ * grounds the LED's cathode (330 Ω from 5 V). The gates run at 3.0 V: the ESP32's HIGH band
+ * (2.64–3.3 V) then lies in V_CC − 0.6 V … 5.5 V (S29-D1 + S30-A4).
+ */
+function logicFeedback(id: string, title: string, program: (r: Recipe, board: string) => void) {
+  const r = new Recipe(id, title);
+  r.supply(3, 0.05);
+  const U1 = r.place('board.esp32_devkitc_wroom32', 300, 0);
+  program(r, U1);
+  const U2 = r.place('logic.gate_and', 600, 0);
+  const U3 = r.place('logic.gate_and', 760, 0);
+  const SW1 = r.place('component.toggle_switch', 500, 200);
+  const R2 = r.place('component.resistor', 560, 120, 1);
+  const R3 = r.place('component.resistor', 500, -80, 3);
+  const RB = r.place('component.resistor', 880, 0);
+  const Q1 = r.place('component.bjt_npn', 980, 60);
+  const K1 = r.place('component.relay', 1180, 40);
+  const D1 = r.place('component.diode', 1080, 0, 3);
+  const RL = r.place('component.resistor', 1360, -40, 1);
+  const D2 = r.place('component.led', 1320, 40, 2);
+  const PSU2 = r.extraSupply(880, -180, 5, 0.3);
+  const G2 = r.place('component.ground', 600, 100);
+  const G3 = r.place('component.ground', 760, 80);
+  const G4 = r.place('component.ground', 560, 200);
+  const G5 = r.place('component.ground', 440, -140);
+  const G6 = r.place('component.ground', 580, -120);
+  const G7 = r.place('component.ground', 1000, 140);
+  const G8 = r.place('component.ground', 1200, 120);
+  const G9 = r.place('component.ground', 960, -140);
+  r.set(R2, 'resistance', 10_000, 'ohm');
+  r.set(R3, 'resistance', 100_000, 'ohm');
+  r.set(RB, 'resistance', 1000, 'ohm');
+  r.set(RL, 'resistance', 330, 'ohm');
+  // The permit starts closed: the first request is granted.
+  r.set(SW1, 'closed', true);
+  r.wire(T(U1, 'gnd'), T(G5, 'ref'));
+  // The 3.0 V logic rail: over the board to U2's and U3's V_CC, and down to the permit switch.
+  const rail = r.wire(T('PSU1', 'positive'), T(U2, 'vcc'), [
+    { x: -40, y: -20 },
+    { x: -40, y: -260 },
+    { x: 600, y: -260 },
+  ]);
+  // A tap splits the wire and the original id keeps the part from its start: the far tap first.
+  const v3 = r.wire(T(U3, 'vcc'), { kind: 'wire', wire: rail, at: { x: 560, y: -260 } }, [
+    { x: 760, y: -260 },
+  ]);
+  r.wire(T(SW1, 'a'), { kind: 'wire', wire: rail, at: { x: 460, y: -260 } });
+  r.wire(T(U2, 'gnd'), T(G2, 'ref'));
+  r.wire(T(U3, 'gnd'), T(G3, 'ref'));
+  // GPIO18 → A, with its 100 kΩ pull-down (defined before setup() makes GPIO18 an output).
+  const a = r.wire(T(U1, 'gpio18'), T(U2, 'a'));
+  r.wire(T(R3, 'a'), { kind: 'wire', wire: a, at: { x: 500, y: -20 } });
+  r.wire(T(R3, 'b'), T(G6, 'ref'), [{ x: 500, y: -140 }]);
+  r.wire(T(SW1, 'b'), T(R2, 'a'), [{ x: 540, y: 80 }]);
+  r.wire(T(R2, 'a'), T(U2, 'b'), [{ x: 560, y: 20 }]);
+  r.wire(T(R2, 'b'), T(G4, 'ref'));
+  // U2.Y → U3.A (the driver), read back on GPIO4.
+  const y = r.wire(T(U2, 'y'), T(U3, 'a'), [
+    { x: 680, y: 0 },
+    { x: 680, y: -20 },
+  ]);
+  r.wire(T(U1, 'gpio4'), { kind: 'wire', wire: y, at: { x: 660, y: 0 } }, [
+    { x: 400, y: 60 },
+    { x: 400, y: 300 },
+    { x: 660, y: 300 },
+  ]);
+  r.wire(T(U3, 'b'), { kind: 'wire', wire: v3, at: { x: 760, y: -80 } }, [
+    { x: 700, y: 20 },
+    { x: 700, y: -80 },
+  ]);
+  // The power stage.
+  r.wire(T(U3, 'y'), T(RB, 'a'));
+  r.wire(T(RB, 'b'), T(Q1, 'base'), [{ x: 940, y: 0 }]);
+  r.wire(T(Q1, 'emitter'), T(G7, 'ref'));
+  r.wire(T(PSU2, 'negative'), T(G9, 'ref'));
+  const five = r.wire(T(PSU2, 'positive'), T(RL, 'a'), [{ x: 1360, y: -200 }]);
+  const coil = r.wire(T(K1, 'coil1'), { kind: 'wire', wire: five, at: { x: 1120, y: -200 } });
+  const col = r.wire(T(Q1, 'collector'), T(K1, 'coil2'), [
+    { x: 1040, y: 20 },
+    { x: 1040, y: 60 },
+  ]);
+  r.wire(T(D1, 'cathode'), { kind: 'wire', wire: coil, at: { x: 1120, y: -40 } });
+  r.wire(T(D1, 'anode'), { kind: 'wire', wire: col, at: { x: 1080, y: 60 } });
+  r.wire(T(K1, 'com'), T(G8, 'ref'));
+  r.wire(T(K1, 'no'), T(D2, 'cathode'));
+  r.wire(T(D2, 'anode'), T(RL, 'b'));
+  return r.centre(-400);
+}
+
+/** Sprint 25 (Phase 4): the potentiometer-into-GPIO34 circuit, with the board's program. */
+function potThreshold(id: string, title: string, program: (r: Recipe, board: string) => void) {
+  const r = new Recipe(id, title);
+  r.supply(3.3, 0.05);
+  const U1 = r.place('board.esp32_devkitc_wroom32', 300, 0);
+  program(r, U1);
+  const RV = r.place('component.potentiometer', 80, -100);
+  const G2 = r.place('component.ground', -20, -180);
+  const R1 = r.place('component.resistor', 480, 60);
+  const D1 = r.place('component.led', 600, 60);
+  const G3 = r.place('component.ground', 680, 140);
+  const G4 = r.place('component.ground', 440, -120);
+  r.set(RV, 'resistance', 10_000, 'ohm');
+  r.set(RV, 'position', 10, 'percent');
+  r.set(R1, 'resistance', 220, 'ohm');
+  // + reaches end B from below, clear of the potentiometer's body; end A goes up to its ground.
+  r.wire(T('PSU1', 'positive'), T(RV, 'b'), [
+    { x: -40, y: -40 },
+    { x: 120, y: -40 },
+  ]);
+  r.wire(T(RV, 'a'), T(G2, 'ref'));
+  // Into GPIO34 along mpy-button's approach (clear of the GPIO36/39 header pins).
+  r.wire(T(RV, 'wiper'), T(U1, 'gpio34'), [
+    { x: 80, y: -180 },
+    { x: 140, y: -180 },
+    { x: 140, y: -100 },
+  ]);
+  r.wire(T(U1, 'gpio4'), T(R1, 'a'));
+  r.wire(T(R1, 'b'), T(D1, 'anode'));
+  r.wire(T(D1, 'cathode'), T(G3, 'ref'));
+  r.wire(T(U1, 'gnd'), T(G4, 'ref'));
+  return r.centre(-240);
+}
+
+/**
+ * The LCD1602 I2C circuit of the LCD examples (Sprint 12 R3): PSU1 at 4.5 V powers the module,
+ * PSU2 at 3.3 V feeds the two 4.7 kΩ bus pull-ups; SDA GPIO21, SCL GPIO22; address 0x27.
+ */
+function lcdCircuit(r: Recipe, U1: string) {
+  const LCD = r.place('display.lcd1602_i2c', 780, -80);
+  const PSU2 = r.extraSupply(440, -320, 3.3, 0.1);
+  const R1 = r.place('component.resistor', 540, -180, 1);
+  const R2 = r.place('component.resistor', 620, -180, 1);
+  const G2 = r.place('component.ground', 720, -200);
+  const G3 = r.place('component.ground', 440, -200);
+  const G4 = r.place('component.ground', 480, -220);
+  r.set(R1, 'resistance', 4700, 'ohm');
+  r.set(R2, 'resistance', 4700, 'ohm');
+  r.wire(T('PSU1', 'positive'), T(LCD, 'vcc'), [
+    { x: -40, y: -20 },
+    { x: -40, y: -400 },
+    { x: 680, y: -400 },
+    { x: 680, y: -100 },
+  ]);
+  r.wire(T(LCD, 'gnd'), T(G2, 'ref'), [
+    { x: 690, y: -120 },
+    { x: 690, y: -240 },
+    { x: 720, y: -240 },
+  ]);
+  r.wire(T(U1, 'gnd'), T(G3, 'ref'));
+  const sda = r.wire(T(U1, 'gpio21'), T(LCD, 'sda'));
+  const scl = r.wire(T(U1, 'gpio22'), T(LCD, 'scl'), [
+    { x: 480, y: -140 },
+    { x: 480, y: -60 },
+  ]);
+  r.wire(T(PSU2, 'negative'), T(G4, 'ref'));
+  const rail = r.wire(T(PSU2, 'positive'), T(R2, 'a'), [{ x: 620, y: -340 }]);
+  r.wire(T(R1, 'a'), { kind: 'wire', wire: rail, at: { x: 540, y: -340 } });
+  r.wire(T(R1, 'b'), { kind: 'wire', wire: sda, at: { x: 540, y: -80 } });
+  r.wire(T(R2, 'b'), { kind: 'wire', wire: scl, at: { x: 620, y: -60 } });
+}
+
+/**
+ * Sprint 29: the half adder of logic-half-adder / mpy-adder-monitor, every gate from a sheet with
+ * the loaded-output power rule (§8.2.1.1; owner decision S29-D2 keeps the SN74LVC1G86 XOR strict):
+ * U1 OR and U2 NAND of A, B; U3 AND of both = S = A ⊕ B; U4 AND of A, B = C. Two switches from the
+ * supply with 10 kΩ pull-downs; V_CC by a bus at y = −320 (taps far end first: a tap keeps the
+ * wire's id on its first part). Returns the parts and the B branch to U4 (for taps).
+ */
+function halfAdder(r: Recipe) {
+  const SW1 = r.place('component.toggle_switch', 40, -200);
+  const SW2 = r.place('component.toggle_switch', 40, -40);
+  const R1 = r.place('component.resistor', 160, -160, 1);
+  const R2 = r.place('component.resistor', 160, 0, 1);
+  const G2 = r.place('component.ground', 160, -80);
+  const G3 = r.place('component.ground', 160, 80);
+  const U1 = r.place('logic.gate_or', 440, -240);
+  const U2 = r.place('logic.gate_nand', 440, -60);
+  const U3 = r.place('logic.gate_and', 680, -150);
+  const U4 = r.place('logic.gate_and', 440, 120);
+  for (const id of [R1, R2]) r.set(id, 'resistance', 10_000, 'ohm');
+  // A starts closed: S lights; closing B moves the 1 to the carry.
+  r.set(SW1, 'closed', true);
+  const rail = r.wire(T('PSU1', 'positive'), T(SW1, 'a'), [
+    { x: -40, y: -20 },
+    { x: -40, y: -200 },
+  ]);
+  r.wire(T(SW2, 'a'), { kind: 'wire', wire: rail, at: { x: -40, y: -40 } });
+  r.wire(T(SW1, 'b'), T(R1, 'a'));
+  r.wire(T(R1, 'b'), T(G2, 'ref'));
+  r.wire(T(SW2, 'b'), T(R2, 'a'));
+  r.wire(T(R2, 'b'), T(G3, 'ref'));
+  // A → U1.a, U2.a, U4.a (down x = 240); B → U1.b, U2.b, U4.b (x = 280 / 320).
+  const a = r.wire(T(R1, 'a'), T(U1, 'a'), [
+    { x: 240, y: -200 },
+    { x: 240, y: -260 },
+  ]);
+  const a2 = r.wire(T(U2, 'a'), { kind: 'wire', wire: a, at: { x: 240, y: -200 } }, [
+    { x: 240, y: -80 },
+  ]);
+  r.wire(T(U4, 'a'), { kind: 'wire', wire: a2, at: { x: 240, y: -80 } }, [{ x: 240, y: 100 }]);
+  const b = r.wire(T(R2, 'a'), T(U1, 'b'), [
+    { x: 280, y: -40 },
+    { x: 280, y: -220 },
+  ]);
+  const b2 = r.wire(T(U2, 'b'), { kind: 'wire', wire: b, at: { x: 280, y: -40 } });
+  const b3 = r.wire(T(U4, 'b'), { kind: 'wire', wire: b2, at: { x: 320, y: -40 } }, [
+    { x: 320, y: 140 },
+  ]);
+  // S = (A + B) · NAND(A, B).
+  r.wire(T(U1, 'y'), T(U3, 'a'), [
+    { x: 560, y: -240 },
+    { x: 560, y: -170 },
+  ]);
+  r.wire(T(U2, 'y'), T(U3, 'b'), [
+    { x: 600, y: -60 },
+    { x: 600, y: -130 },
+  ]);
+  // V_CC: a bus from U3 along y = −320 to switch A's rail end; U1, U2, U4 tap it.
+  const bus = r.wire(T(U3, 'vcc'), T(SW1, 'a'), [
+    { x: 680, y: -320 },
+    { x: 0, y: -320 },
+  ]);
+  r.wire(T(U1, 'vcc'), { kind: 'wire', wire: bus, at: { x: 440, y: -320 } });
+  r.wire(T(U2, 'vcc'), { kind: 'wire', wire: bus, at: { x: 500, y: -320 } }, [{ x: 500, y: -100 }]);
+  r.wire(T(U4, 'vcc'), { kind: 'wire', wire: bus, at: { x: 520, y: -320 } }, [{ x: 520, y: 80 }]);
+  for (const [u, gx, gy] of [
+    [U1, 440, -160],
+    [U2, 440, 20],
+    [U3, 680, -70],
+    [U4, 440, 200],
+  ] as const) {
+    const g = r.place('component.ground', gx, gy);
+    r.wire(T(u, 'gnd'), T(g, 'ref'));
+  }
+  return { U1, U2, U3, U4, R1, b3 };
+}
+
+/** Sprint 29: an output → 330 Ω → LED → GND at row y (the resistor at x). */
+function ledOut(r: Recipe, u: string, x: number, y: number) {
+  const R = r.place('component.resistor', x, y);
+  const D = r.place('component.led', x + 160, y);
+  const G = r.place('component.ground', x + 240, y + 60);
+  r.set(R, 'resistance', 330, 'ohm');
+  r.wire(T(u, 'y'), T(R, 'a'));
+  r.wire(T(R, 'b'), T(D, 'anode'));
+  r.wire(T(D, 'cathode'), T(G, 'ref'), [{ x: x + 240, y }]);
 }
 
 export const RECIPES: Record<string, () => ProjectDocument> = {
@@ -435,7 +745,48 @@ export const RECIPES: Record<string, () => ProjectDocument> = {
     return r.centre(-60);
   },
   /**
-   * Sprint 6, Arduino source since Sprint 7. Classic ESP32 running the TbiGpioProof sketch
+   * Sprint POT-UNITS: a potentiometer (Bourns PTV09A, 10 kΩ linear) across 5 V, end A (pin 1) at
+   * GND and end B (pin 3) at +5 V (review L4: "turn up = more volts", as the datasheet's taper
+   * axis V_1-2 / V_1-3): the wiper reads V_W = 5 V × p, p the position from A. At 50 %: 2.5 V.
+   */
+  'pot-divider': () => {
+    const r = new Recipe('pot-divider', 'Potentiometer divider');
+    r.supply(5, 0.1);
+    // Turned half way: end B on the left (towards the supply), end A on the right, wiper below.
+    const RV = r.place('component.potentiometer', 80, -20, 2);
+    const G = r.place('component.ground', 120, 100);
+    r.set(RV, 'resistance', 10_000, 'ohm');
+    r.set(RV, 'position', 50, 'percent');
+    r.wire(T('PSU1', 'positive'), T(RV, 'b'));
+    r.wire(T(RV, 'a'), T(G, 'ref'));
+    return r.centre(-60);
+  },
+  /**
+   * Sprint POT-UNITS: an LED dimmer inside the potentiometer's rated condition at EVERY position
+   * (review H1). The W-B segment of a 1 kΩ pot (a rheostat, end A unused) in series with 470 Ω and
+   * the red LED on 5 V. The rated-condition track current is sqrt(0.05 W / 1 kΩ) = 7.07 mA; the
+   * largest current, at 100 % (only the 470 Ω limits it), is 6.50 mA: below it (engine sweep), so no segment
+   * or the wiper ever carries more than the rated condition. 430 Ω (the next E24 value down)
+   * gives 7.09 mA at 100 %, above it (a rating row). The current rises with the position.
+   */
+  'pot-led-dimmer': () => {
+    const r = new Recipe('pot-led-dimmer', 'LED dimmer (potentiometer)');
+    r.supply(5, 0.1);
+    const RV = r.place('component.potentiometer', 80, -20);
+    const R1 = r.place('component.resistor', 200, -20);
+    const D1 = r.place('component.led', 280, 40, 1);
+    const G = r.place('component.ground', 280, 140);
+    r.set(RV, 'resistance', 1000, 'ohm');
+    r.set(RV, 'position', 50, 'percent');
+    r.set(R1, 'resistance', 470, 'ohm');
+    r.wire(T('PSU1', 'positive'), T(RV, 'wiper'), [{ x: 0, y: -60 }]);
+    r.wire(T(RV, 'b'), T(R1, 'a'));
+    r.wire(T(R1, 'b'), T(D1, 'anode'));
+    r.wire(T(D1, 'cathode'), T(G, 'ref'));
+    return r.centre(-60);
+  },
+  /**
+   * Sprint 6, Arduino source since Sprint 7. Classic ESP32 running the BlinkTwoPins sketch (app/tests/exampleSketches)
    * (visible, editable; Build then Run): GPIO2 drives a red LED through 220 Ω (blinking in an
    * 800 ms pattern). The board GND is the circuit reference.
    */
@@ -443,7 +794,7 @@ export const RECIPES: Record<string, () => ProjectDocument> = {
     const r = new Recipe('esp32-blink', 'ESP32: blink an LED');
     r.remove('PSU1', 'GND1');
     const U1 = r.place('board.esp32_devkitc_wroom32', 300, 0);
-    r.program(U1, 'TbiGpioProof');
+    r.sketch(U1, 'BlinkTwoPins.ino');
     const R1 = r.place('component.resistor', 480, 100);
     const D1 = r.place('component.led', 600, 100);
     const G2 = r.place('component.ground', 680, 180);
@@ -456,7 +807,7 @@ export const RECIPES: Record<string, () => ProjectDocument> = {
     return r.centre(-240);
   },
   /**
-   * Sprint 6, Arduino source since Sprint 7. Classic ESP32 running the TbiBanks sketch (visible,
+   * Sprint 6, Arduino source since Sprint 7. Classic ESP32 running the InputEcho sketch (app/tests/exampleSketches) (visible,
    * editable; Build then Run), which copies GPIO34 to GPIO4.
    * A toggle switch (persistent) and a push button (transient) in parallel feed 3.3 V through
    * 1 kΩ into the input-only GPIO34, pulled down by 10 kΩ (the pad has no internal pull). GPIO4
@@ -466,7 +817,7 @@ export const RECIPES: Record<string, () => ProjectDocument> = {
     const r = new Recipe('esp32-input-echo', 'ESP32: switch input to LED output');
     r.supply(3.3, 0.05);
     const U1 = r.place('board.esp32_devkitc_wroom32', 300, 0);
-    r.program(U1, 'TbiBanks');
+    r.sketch(U1, 'InputEcho.ino');
     const SW = r.place('component.toggle_switch', 0, -100);
     const PB = r.place('component.push_button', 0, -160);
     // The pull-down branch stands three grid steps clear of the J2 header row (Sprint 10: no
@@ -496,7 +847,7 @@ export const RECIPES: Record<string, () => ProjectDocument> = {
   },
   /**
    * Sprint 10 (realism benchmark): the ESP32 input echo on a fuller bench, one scene with every
-   * part family the 3D view is judged on. Same firmware (TbiBanks: GPIO34 copied to GPIO4) and
+   * part family the 3D view is judged on. Same firmware (InputEcho: GPIO34 copied to GPIO4) and
    * input chain as esp32-input-echo; GPIO4 drives the red LED through 220 Ω. Two indicators run
    * straight off the 3.3 V supply: a yellow LED behind a 1N4148 (3.3 V less ~0.7 V and ~2.3 V
    * over 33 Ω, about 7 mA) and a green LED through 68 Ω, its feed a long run across the bench.
@@ -505,7 +856,7 @@ export const RECIPES: Record<string, () => ProjectDocument> = {
     const r = new Recipe('esp32-bench', 'ESP32 bench: inputs and indicators');
     r.supply(3.3, 0.1);
     const U1 = r.place('board.esp32_devkitc_wroom32', 300, 0);
-    r.program(U1, 'TbiBanks');
+    r.sketch(U1, 'InputEcho.ino');
     const SW = r.place('component.toggle_switch', 0, -100);
     const PB = r.place('component.push_button', 0, -160);
     const R2 = r.place('component.resistor', 100, -100);
@@ -556,5 +907,1021 @@ export const RECIPES: Record<string, () => ProjectDocument> = {
     r.wire(T(R5, 'b'), T(D3, 'anode'));
     r.wire(T(D3, 'cathode'), T(G6, 'ref'));
     return r.centre(-240);
+  },
+  /**
+   * Sprint 11 (R1): a motion alarm through a relay — the Sprint 10 parts with the ESP32. Same
+   * firmware as esp32-input-echo (InputEcho: GPIO34 copied to GPIO4), so the build is a shared,
+   * curated one. 5 V supply: the PIR (powered from >= 4.5 V) sends a 3.3 V level to GPIO34; GPIO4
+   * drives a 2N3904 through 1 kΩ, which switches the relay coil (with a 1N4148 flyback diode);
+   * the relay's contact switches an alarm LED (330 Ω) and the buzzer from 5 V. Click the sensor's
+   * dome while running to put motion in front of it.
+   */
+  'esp32-motion-relay': () => {
+    const r = new Recipe('esp32-motion-relay', 'ESP32: motion alarm through a relay');
+    r.supply(5, 0.5);
+    const U1 = r.place('board.esp32_devkitc_wroom32', 300, 0);
+    r.sketch(U1, 'InputEcho.ino');
+    const PIR = r.place('sensor.pir_hc_sr501', 60, -100, 2);
+    const G2 = r.place('component.ground', 120, -20);
+    const RB = r.place('component.resistor', 460, 60);
+    const Q1 = r.place('component.bjt_npn', 580, 60);
+    const G3 = r.place('component.ground', 600, 160);
+    const K1 = r.place('component.relay', 720, -60);
+    const DF = r.place('component.diode', 620, -60, 3);
+    const RL = r.place('component.resistor', 860, -60);
+    const D2 = r.place('component.led', 980, -60);
+    const G4 = r.place('component.ground', 1020, 0);
+    const BZ = r.place('component.buzzer', 860, 80);
+    const G5 = r.place('component.ground', 900, 200);
+    const G6 = r.place('component.ground', 440, -120);
+    r.set(RB, 'resistance', 1000, 'ohm');
+    r.set(RL, 'resistance', 330, 'ohm');
+    // Explicit bends: the supply runs clear of the sensor's own pins and of the board.
+    r.wire(T('PSU1', 'positive'), T(PIR, 'vcc'), [
+      { x: -40, y: -20 },
+      { x: -40, y: -160 },
+      { x: 140, y: -160 },
+      { x: 140, y: -120 },
+    ]);
+    r.wire(T(PIR, 'gnd'), T(G2, 'ref'));
+    r.wire(T(PIR, 'out'), T(U1, 'gpio34'));
+    r.wire(T(U1, 'gnd'), T(G6, 'ref'));
+    r.wire(T(U1, 'gpio4'), T(RB, 'a'));
+    r.wire(T(RB, 'b'), T(Q1, 'base'));
+    r.wire(T(Q1, 'emitter'), T(G3, 'ref'));
+    r.wire(T(Q1, 'collector'), T(K1, 'coil2'));
+    // The 5 V rail to the coil runs above the board.
+    r.wire(T('PSU1', 'positive'), T(K1, 'coil1'), [
+      { x: -60, y: -20 },
+      { x: -60, y: -240 },
+      { x: 640, y: -240 },
+      { x: 640, y: -80 },
+    ]);
+    r.wire(T(DF, 'cathode'), T(K1, 'coil1'));
+    r.wire(T(DF, 'anode'), T(K1, 'coil2'));
+    r.wire(T(K1, 'coil1'), T(K1, 'com'));
+    r.wire(T(K1, 'no'), T(RL, 'a'));
+    r.wire(T(RL, 'b'), T(D2, 'anode'));
+    r.wire(T(D2, 'cathode'), T(G4, 'ref'));
+    r.wire(T(K1, 'no'), T(BZ, 'positive'));
+    r.wire(T(BZ, 'negative'), T(G5, 'ref'));
+    return r.centre(-240);
+  },
+  /**
+   * Sprint 11 (R1): an RGB night light with a light sensor — a digital input only (no ADC).
+   * Same firmware as esp32-input-echo (InputEcho: GPIO34 copied to GPIO4). 3.3 V supply: 10 kΩ
+   * from 3.3 V to GPIO34 with the photoresistor to GND, so darkness pulls GPIO34 HIGH (below about
+   * 3 lx; above about 110 lx it reads LOW; in between it keeps its previous level — the ESP32's
+   * own input thresholds). GPIO4 lights all three channels (220/100/100 Ω): white.
+   */
+  'esp32-night-light': () => {
+    const r = new Recipe('esp32-night-light', 'ESP32: RGB night light with a light sensor');
+    r.supply(3.3, 0.1);
+    const U1 = r.place('board.esp32_devkitc_wroom32', 300, 0);
+    r.sketch(U1, 'InputEcho.ino');
+    const R1 = r.place('component.resistor', 40, -100);
+    const LDR = r.place('component.photoresistor', 80, -40, 1);
+    const G2 = r.place('component.ground', 80, 60);
+    const RR = r.place('component.resistor', 500, 20);
+    const RG = r.place('component.resistor', 500, 80);
+    const RB = r.place('component.resistor', 500, 140);
+    const D1 = r.place('component.rgb_led', 640, 80);
+    const G3 = r.place('component.ground', 680, 140);
+    const G4 = r.place('component.ground', 440, -120);
+    r.set(R1, 'resistance', 10_000, 'ohm');
+    r.set(RR, 'resistance', 220, 'ohm');
+    r.set(RG, 'resistance', 100, 'ohm');
+    r.set(RB, 'resistance', 100, 'ohm');
+    r.set(LDR, 'illuminance', 300, 'lux');
+    r.wire(T('PSU1', 'positive'), T(R1, 'a'));
+    r.wire(T(R1, 'b'), T(U1, 'gpio34'));
+    r.wire(T(R1, 'b'), T(LDR, 'a'));
+    r.wire(T(LDR, 'b'), T(G2, 'ref'));
+    r.wire(T(U1, 'gnd'), T(G4, 'ref'));
+    r.wire(T(U1, 'gpio4'), T(RR, 'a'));
+    r.wire(T(U1, 'gpio4'), T(RG, 'a'));
+    r.wire(T(U1, 'gpio4'), T(RB, 'a'));
+    r.wire(T(RR, 'b'), T(D1, 'red'));
+    r.wire(T(RG, 'b'), T(D1, 'green'));
+    r.wire(T(RB, 'b'), T(D1, 'blue'));
+    r.wire(T(D1, 'cathode'), T(G3, 'ref'));
+    return r.centre(-240);
+  },
+
+  /**
+   * Sprint 12 (R2): an ESP32 distance alarm with the HC-SR04. 5 V supply (0.1 A limit) to the
+   * module; GPIO5 drives TRIG directly (3.3 V is above the module's 2.0 V TTL threshold); ECHO, a
+   * 5 V output, reaches GPIO18 through a 1 kΩ / 2 kΩ divider (5 V × 2/3 = 3.3 V open-circuit,
+   * within the pad's range); GPIO2 lights a red LED through 220 Ω when the target is nearer than
+   * 20 cm. The target distance is the module's simulated environment (default 0.5 m).
+   */
+  'esp32-distance-alarm': () => {
+    const r = new Recipe('esp32-distance-alarm', 'ESP32: ultrasonic distance alarm');
+    r.supply(5, 0.1);
+    const U1 = r.place('board.esp32_devkitc_wroom32', 300, 0);
+    r.sketch(U1, 'DistanceAlarm.ino');
+    const US = r.place('sensor.hc_sr04', 680, 20);
+    const R1 = r.place('component.resistor', 520, 20);
+    const R2 = r.place('component.resistor', 480, 100, 1);
+    const G2 = r.place('component.ground', 480, 200);
+    const G3 = r.place('component.ground', 600, 120);
+    const R3 = r.place('component.resistor', 520, 260);
+    const D1 = r.place('component.led', 640, 260);
+    const G4 = r.place('component.ground', 720, 340);
+    const G5 = r.place('component.ground', 440, -120);
+    r.set(R1, 'resistance', 1000, 'ohm');
+    r.set(R2, 'resistance', 2000, 'ohm');
+    r.set(R3, 'resistance', 220, 'ohm');
+    // The 5 V feed runs above the board to the module's VCC.
+    r.wire(T('PSU1', 'positive'), T(US, 'vcc'), [
+      { x: -40, y: -20 },
+      { x: -40, y: -240 },
+      { x: 580, y: -240 },
+      { x: 580, y: -20 },
+    ]);
+    r.wire(T(US, 'gnd'), T(G3, 'ref'), [
+      { x: 600, y: 40 },
+      { x: 600, y: 100 },
+    ]);
+    r.wire(T(U1, 'gnd'), T(G5, 'ref'));
+    r.wire(T(U1, 'gpio5'), T(US, 'trig'));
+    r.wire(T(US, 'echo'), T(R1, 'b'));
+    r.wire(T(R1, 'a'), T(R2, 'a'));
+    r.wire(T(R2, 'b'), T(G2, 'ref'));
+    r.wire(T(U1, 'gpio18'), T(R1, 'a'), [
+      { x: 430, y: -20 },
+      { x: 430, y: 20 },
+    ]);
+    r.wire(T(U1, 'gpio2'), T(R3, 'a'), [
+      { x: 410, y: 100 },
+      { x: 410, y: 260 },
+    ]);
+    r.wire(T(R3, 'b'), T(D1, 'anode'));
+    r.wire(T(D1, 'cathode'), T(G4, 'ref'));
+    return r.centre(-300);
+  },
+  /**
+   * Sprint 12 (R2): an ESP32 thermo-hygrometer with the DHT22 / AM2302, read without a library.
+   * 3.3 V supply (the sensor's minimum) to VDD; DATA to GPIO4 with the 10 kΩ pull-up to 3.3 V the
+   * single-wire bus needs (the ESP32's internal pulls are not used); pin 3 (NC) left open. The
+   * temperature and humidity are the sensor's simulated environment.
+   */
+  'esp32-thermo-hygrometer': () => {
+    const r = new Recipe('esp32-thermo-hygrometer', 'ESP32: temperature and humidity');
+    r.supply(3.3, 0.1);
+    const U1 = r.place('board.esp32_devkitc_wroom32', 300, 0);
+    r.sketch(U1, 'ThermoHygrometer.ino');
+    const DHT = r.place('sensor.dht22', 680, 80);
+    const R1 = r.place('component.resistor', 520, 0, 1);
+    const G2 = r.place('component.ground', 600, 200);
+    const G3 = r.place('component.ground', 440, -120);
+    r.set(R1, 'resistance', 10_000, 'ohm');
+    // The 3.3 V feed runs above the board to the sensor's VDD; the pull-up taps it.
+    const feed = r.wire(T('PSU1', 'positive'), T(DHT, 'vdd'), [
+      { x: -40, y: -20 },
+      { x: -40, y: -240 },
+      { x: 580, y: -240 },
+      { x: 580, y: 40 },
+    ]);
+    const data = r.wire(T(U1, 'gpio4'), T(DHT, 'data'));
+    r.wire(T(R1, 'a'), { kind: 'wire', wire: feed, at: { x: 580, y: -40 } });
+    r.wire(T(R1, 'b'), { kind: 'wire', wire: data, at: { x: 520, y: 60 } });
+    r.wire(T(DHT, 'gnd'), T(G2, 'ref'), [
+      { x: 600, y: 100 },
+      { x: 600, y: 180 },
+    ]);
+    r.wire(T(U1, 'gnd'), T(G3, 'ref'));
+    return r.centre(-300);
+  },
+  /**
+   * Sprint 12 (R3): "Hello" on the 16x2 I2C LCD, driven by raw Wire writes to its PCF8574
+   * backpack (no LCD library). PSU1 at 4.5 V powers the module (its datasheet minimum): the
+   * PCF8574 then reads SDA/SCL HIGH from 0.7 × 4.5 V = 3.15 V, which the 3.3 V pull-ups reach (at
+   * 5 V they would not, and the simulator refuses it). PSU2 at 3.3 V feeds the two 4.7 kΩ bus
+   * pull-ups (the backpack is modelled without its own). SDA = GPIO21, SCL = GPIO22; address 0x27.
+   */
+  'esp32-lcd-hello': () => {
+    const r = new Recipe('esp32-lcd-hello', 'ESP32: hello on an I2C LCD');
+    r.supply(4.5, 0.1);
+    const U1 = r.place('board.esp32_devkitc_wroom32', 300, 0);
+    r.sketch(U1, 'LcdHello.ino');
+    const LCD = r.place('display.lcd1602_i2c', 780, -80);
+    const PSU2 = r.extraSupply(440, -320, 3.3, 0.1);
+    const R1 = r.place('component.resistor', 540, -180, 1);
+    const R2 = r.place('component.resistor', 620, -180, 1);
+    const G2 = r.place('component.ground', 720, -200);
+    const G3 = r.place('component.ground', 440, -200);
+    const G4 = r.place('component.ground', 480, -220);
+    r.set(R1, 'resistance', 4700, 'ohm');
+    r.set(R2, 'resistance', 4700, 'ohm');
+    // The 4.5 V module supply runs above everything to the LCD's VCC.
+    r.wire(T('PSU1', 'positive'), T(LCD, 'vcc'), [
+      { x: -40, y: -20 },
+      { x: -40, y: -400 },
+      { x: 680, y: -400 },
+      { x: 680, y: -100 },
+    ]);
+    r.wire(T(LCD, 'gnd'), T(G2, 'ref'), [
+      { x: 690, y: -120 },
+      { x: 690, y: -240 },
+      { x: 720, y: -240 },
+    ]);
+    r.wire(T(U1, 'gnd'), T(G3, 'ref'));
+    // The bus: SDA and SCL swap order between the board and the backpack (one crossing).
+    const sda = r.wire(T(U1, 'gpio21'), T(LCD, 'sda'));
+    const scl = r.wire(T(U1, 'gpio22'), T(LCD, 'scl'), [
+      { x: 480, y: -140 },
+      { x: 480, y: -60 },
+    ]);
+    // The 3.3 V pull-ups from PSU2.
+    r.wire(T(PSU2, 'negative'), T(G4, 'ref'));
+    const rail = r.wire(T(PSU2, 'positive'), T(R2, 'a'), [{ x: 620, y: -340 }]);
+    r.wire(T(R1, 'a'), { kind: 'wire', wire: rail, at: { x: 540, y: -340 } });
+    r.wire(T(R1, 'b'), { kind: 'wire', wire: sda, at: { x: 540, y: -80 } });
+    r.wire(T(R2, 'b'), { kind: 'wire', wire: scl, at: { x: 620, y: -60 } });
+    // A hand-written PCF8574 driver: no managed library (as before Sprint 26).
+    r.noLibraries(U1);
+    return r.centre(-300);
+  },
+  /**
+   * Sprint 15 (R4): an LED faded with PWM. analogWrite on GPIO18 (1 kHz LEDC), 220 Ω, red LED;
+   * the fade runs between duty 1 and 255 (duty 0 driving a load is refused until its hardware
+   * level is verified, O-R4-1). The board GND is the circuit reference.
+   */
+  'esp32-led-fade': () => {
+    const r = new Recipe('esp32-led-fade', 'ESP32: fade an LED with PWM');
+    r.remove('PSU1', 'GND1');
+    const U1 = r.place('board.esp32_devkitc_wroom32', 300, 0);
+    r.sketch(U1, 'LedFade.ino');
+    const R1 = r.place('component.resistor', 520, 20);
+    const D1 = r.place('component.led', 640, 20);
+    const G2 = r.place('component.ground', 720, 100);
+    const G3 = r.place('component.ground', 440, -120);
+    r.set(R1, 'resistance', 220, 'ohm');
+    r.wire(T(U1, 'gpio18'), T(R1, 'a'), [
+      { x: 430, y: -20 },
+      { x: 430, y: 20 },
+    ]);
+    r.wire(T(R1, 'b'), T(D1, 'anode'));
+    r.wire(T(D1, 'cathode'), T(G2, 'ref'));
+    r.wire(T(U1, 'gnd'), T(G3, 'ref'));
+    return r.centre(-300);
+  },
+  /**
+   * Sprint 19B (Exploration Foundation X1): ESP32 GPIO18 (10 kΩ pull-down, Sprint 20) and a push
+   * button (10 kΩ pull-down) into an SN74LVC1G08 AND gate powered at 3.0 V from the bench supply (where its output is
+   * characterized for real loads); the gate drives an LED through 220 Ω and is read back on GPIO4.
+   * Sprint 22 (owner decision Q1, strict): REFUSED in every state, by name
+   * (logic_supply_current_uncharacterized, the supply's current limit): an ESP32 output is never at 5.5 V or exactly GND,
+   * and the 10 kΩ pull-down leaves A ~50 mV off GND before setup() (SCES217AA §5.5 I_CC condition).
+   * Kept unchanged as a documented limit (its text says so); no truth table is claimed.
+   */
+  'esp32-logic-and': () => {
+    const r = new Recipe('esp32-logic-and', 'ESP32: an AND gate with read-back');
+    r.supply(3, 0.1);
+    const U1 = r.place('board.esp32_devkitc_wroom32', 300, 0);
+    r.sketch(U1, 'LogicAndReadback.ino');
+    const U2 = r.place('logic.gate_and', 600, 0);
+    const R1 = r.place('component.resistor', 720, 0);
+    const D1 = r.place('component.led', 840, 0);
+    const S1 = r.place('component.push_button', 500, 200);
+    const R2 = r.place('component.resistor', 560, 120, 1);
+    const G2 = r.place('component.ground', 600, 100);
+    const G3 = r.place('component.ground', 920, 60);
+    const G4 = r.place('component.ground', 560, 200);
+    const G5 = r.place('component.ground', 440, -140);
+    r.set(R1, 'resistance', 220, 'ohm');
+    r.set(R2, 'resistance', 10_000, 'ohm');
+    r.wire(T(U1, 'gnd'), T(G5, 'ref'));
+    // The 3.0 V rail: over the board to the gate's V_CC, and down to the button.
+    const rail = r.wire(T('PSU1', 'positive'), T(U2, 'vcc'), [
+      { x: -40, y: -20 },
+      { x: -40, y: -260 },
+      { x: 600, y: -260 },
+    ]);
+    r.wire(T(S1, 'a'), { kind: 'wire', wire: rail, at: { x: 460, y: -260 } });
+    r.wire(T(U2, 'gnd'), T(G2, 'ref'));
+    const a = r.wire(T(U1, 'gpio18'), T(U2, 'a'));
+    // Sprint 20: a 10 kΩ pull-down on A (SCES217AA §7.3.3: "If a system does not always drive an
+    // input, consider adding a pull-up or pull-down resistor … a 10kΩ resistor … is recommended").
+    // Until setup() makes GPIO18 an output the pad is an input: without it A would float.
+    // Drawn above the A wire (review round 2): below it, R3 sat on GPIO4's straight exit line.
+    const R3 = r.place('component.resistor', 500, -80, 3);
+    const G6 = r.place('component.ground', 580, -120);
+    r.set(R3, 'resistance', 10_000, 'ohm');
+    r.wire(T(R3, 'a'), { kind: 'wire', wire: a, at: { x: 500, y: -20 } });
+    r.wire(T(R3, 'b'), T(G6, 'ref'), [{ x: 500, y: -140 }]);
+    r.wire(T(S1, 'b'), T(R2, 'a'), [{ x: 540, y: 80 }]);
+    r.wire(T(R2, 'a'), T(U2, 'b'), [{ x: 560, y: 20 }]);
+    r.wire(T(R2, 'b'), T(G4, 'ref'));
+    r.wire(T(U2, 'y'), T(R1, 'a'));
+    r.wire(T(R1, 'b'), T(D1, 'anode'));
+    r.wire(T(D1, 'cathode'), T(G3, 'ref'), [{ x: 920, y: 0 }]);
+    r.wire(T(U1, 'gpio4'), T(R1, 'a'), [
+      { x: 400, y: 60 },
+      { x: 400, y: 300 },
+      { x: 680, y: 300 },
+    ]);
+    return r.centre(-300);
+  },
+  /**
+   * Exploration Foundation L3 interop: ESP32 GPIO18/GPIO19 into gate 1 of an SN74LVC08A (quad
+   * 2-input AND, one shared supply) at 3.0 V from the bench supply, each input with a 10 kΩ
+   * pull-down (Sprint 20: defined before setup() runs); 1Y lights D1 through 220 Ω and
+   * feeds 2A; the push button (10 kΩ pull-down) drives 2B, so D2 (220 Ω) lights only while it is
+   * held. The unused gates' inputs are tied to GND (SCAS283W: unused inputs at V_CC or GND).
+   * Sprint 22 (owner decision Q1, strict): REFUSED in every state, by name
+   * (logic_supply_current_uncharacterized, the supply's current limit): the SN74LVC08A bounds I_CC (and I_I) only at
+   * V_CC = 3.6 V with every input at V_CC or GND (SCAS283W §5.7); here V_CC = 3.0 V.
+   * Kept unchanged as a documented limit (its text says so); no truth table is claimed.
+   */
+  'esp32-logic-quad-and': () => {
+    const r = new Recipe('esp32-logic-quad-and', 'ESP32: a quad AND gate IC driving LEDs');
+    r.supply(3, 0.1);
+    const U1 = r.place('board.esp32_devkitc_wroom32', 300, 0);
+    r.sketch(U1, 'LogicQuadAnd.ino');
+    // Pins 1–7 at x = 700 (y −60…60), 14–8 at x = 820. Bends stay ≥ 120 units from the pin
+    // columns: the breakout's header pins leave its board outward in 3D before they turn.
+    const U2 = r.place('logic.quad_and', 760, 0);
+    const R1 = r.place('component.resistor', 1100, -200);
+    const D1 = r.place('component.led', 1240, -200);
+    const R2 = r.place('component.resistor', 1100, 260);
+    const D2 = r.place('component.led', 1240, 260);
+    const S1 = r.place('component.push_button', 460, 320);
+    const R3 = r.place('component.resistor', 640, 420, 1);
+    const G2 = r.place('component.ground', 700, 140);
+    const G3 = r.place('component.ground', 1320, -120);
+    const G4 = r.place('component.ground', 640, 500);
+    const G5 = r.place('component.ground', 440, -140);
+    const G6 = r.place('component.ground', 1320, 340);
+    const G7 = r.place('component.ground', 980, 120);
+    r.set(R1, 'resistance', 220, 'ohm');
+    r.set(R2, 'resistance', 220, 'ohm');
+    r.set(R3, 'resistance', 10_000, 'ohm');
+    r.wire(T(U1, 'gnd'), T(G5, 'ref'));
+    // The 3.0 V rail: over the board to the IC's V_CC (pin 14), and down to the button.
+    const rail = r.wire(T('PSU1', 'positive'), T(U2, 'vcc'), [
+      { x: -40, y: -20 },
+      { x: -40, y: -280 },
+      { x: 940, y: -280 },
+      { x: 940, y: -60 },
+    ]);
+    r.wire(T(S1, 'a'), { kind: 'wire', wire: rail, at: { x: 420, y: -280 } }, [
+      { x: 420, y: -280 },
+    ]);
+    r.wire(T(U2, 'gnd'), T(G2, 'ref'));
+    // Gate 1 from the ESP32.
+    const a1 = r.wire(T(U1, 'gpio18'), T(U2, 'a1'), [
+      { x: 480, y: -20 },
+      { x: 480, y: -60 },
+    ]);
+    const b1 = r.wire(T(U1, 'gpio19'), T(U2, 'b1'));
+    // Sprint 20: 10 kΩ pull-downs on 1A and 1B. Until setup() makes GPIO18/19 outputs the pads
+    // are inputs (high impedance): without them 1A/1B would float, which the datasheet forbids
+    // (SCAS283W §5.4 note 1) and the simulator refuses. The value is TI's recommendation for a
+    // not-always-driven CMOS input (SN74LVC1G08 sheet §7.3.3, "a 10kΩ resistor … is recommended").
+    const R4 = r.place('component.resistor', 460, 60, 1);
+    const R5 = r.place('component.resistor', 520, 60, 1);
+    const G8 = r.place('component.ground', 460, 140);
+    const G9 = r.place('component.ground', 520, 140);
+    r.set(R4, 'resistance', 10_000, 'ohm');
+    r.set(R5, 'resistance', 10_000, 'ohm');
+    r.wire(T(R4, 'a'), { kind: 'wire', wire: a1, at: { x: 460, y: -20 } });
+    r.wire(T(R5, 'a'), { kind: 'wire', wire: b1, at: { x: 520, y: -40 } });
+    r.wire(T(R4, 'b'), T(G8, 'ref'));
+    r.wire(T(R5, 'b'), T(G9, 'ref'));
+    // 1Y → R1 → D1, and 1Y → 2A (a chain inside the package).
+    const y1 = r.wire(T(U2, 'y1'), T(R1, 'a'), [
+      { x: 580, y: -20 },
+      { x: 580, y: -200 },
+    ]);
+    r.wire(T(U2, 'a2'), { kind: 'wire', wire: y1, at: { x: 580, y: -20 } }, [{ x: 580, y: 0 }]);
+    r.wire(T(R1, 'b'), T(D1, 'anode'));
+    r.wire(T(D1, 'cathode'), T(G3, 'ref'), [{ x: 1320, y: -200 }]);
+    // 2B from the button with its 10 kΩ pull-down (R3).
+    r.wire(T(S1, 'b'), T(R3, 'a'), [{ x: 640, y: 320 }]);
+    r.wire(T(R3, 'a'), T(U2, 'b2'), [
+      { x: 560, y: 380 },
+      { x: 560, y: 20 },
+    ]);
+    r.wire(T(R3, 'b'), T(G4, 'ref'));
+    // 2Y → R2 → D2.
+    r.wire(T(U2, 'y2'), T(R2, 'a'), [
+      { x: 540, y: 40 },
+      { x: 540, y: 260 },
+    ]);
+    r.wire(T(R2, 'b'), T(D2, 'anode'));
+    r.wire(T(D2, 'cathode'), T(G6, 'ref'), [{ x: 1320, y: 260 }]);
+    // Unused gates 3 and 4: inputs to GND (their outputs stay open).
+    const tie = r.wire(T(U2, 'b4'), T(G7, 'ref'), [{ x: 980, y: -40 }]);
+    // From the ground end back: each split leaves `tie` as the part towards 4B.
+    for (const [pin, y] of [
+      ['a3', 40],
+      ['b3', 20],
+      ['a4', -20],
+    ] as const)
+      r.wire(T(U2, pin), { kind: 'wire', wire: tie, at: { x: 980, y } });
+    return r.centre(-400);
+  },
+  /**
+   * Sprint 20 example A (basic logic), redesigned in Sprint 22 (owner decision Q1, strict): an
+   * SN74LVC1G08 AND gate at 3.0 V from PSU2 (the supply where its outputs are characterized for
+   * real loads, SCES217AA §5.5); Y lights the LED through 220 Ω only when both switches are closed.
+   * The gate's quiescent current I_CC is bounded only with every input at 5.5 V or GND (§5.5 I_CC,
+   * "V_I = 5.5V or GND", V_CC 1.65–5.5 V), and the bench supply's current-limit check needs that
+   * bound. So the switches take their HIGH from PSU1 set to 5.5 V (within the recommended V_I
+   * 0–5.5 V, §5.3, at any V_CC), and each input's pull-down is 150 Ω: the input leakage
+   * (I_I ±5 µA, §5.5) then moves an open input at most 0.75 mV from GND, inside the 1 mV the
+   * simulator accepts as "at GND" (a 10 kΩ pull-down would move it 50 mV, off the I_CC condition).
+   * A closed switch puts 5.5 V across its pull-down: 36.7 mA, 0.20 W (under the ¼ W rating).
+   */
+  'logic-and-switches': () => {
+    const r = new Recipe('logic-and-switches', 'Logic: an AND gate with two switches');
+    r.supply(5.5, 0.1);
+    // Review round 2: the gate sits BELOW the input rows, so the readout the canvas draws under
+    // a running part (its pin currents) crosses no other part or label.
+    const SW1 = r.place('component.toggle_switch', 40, -200);
+    const SW2 = r.place('component.toggle_switch', 40, -40);
+    const R1 = r.place('component.resistor', 160, -160, 1);
+    const R2 = r.place('component.resistor', 160, 0, 1);
+    const G2 = r.place('component.ground', 160, -80);
+    const G3 = r.place('component.ground', 160, 80);
+    const U1 = r.place('logic.gate_and', 360, 100);
+    const G4 = r.place('component.ground', 360, 220);
+    const R3 = r.place('component.resistor', 480, 100);
+    const D1 = r.place('component.led', 600, 100);
+    const G5 = r.place('component.ground', 800, 180);
+    // The gate's own 3.0 V supply, above the gate.
+    const PSU2 = r.extraSupply(240, -320, 3, 0.1);
+    // Right of PSU2's negative terminal, clear of its running readout (Sprint 22 acceptance).
+    const G6 = r.place('component.ground', 300, -280);
+    r.set(R1, 'resistance', 150, 'ohm');
+    r.set(R2, 'resistance', 150, 'ohm');
+    r.set(R3, 'resistance', 220, 'ohm');
+    // A starts closed: toggling B alone switches the LED.
+    r.set(SW1, 'closed', true);
+    // The 5.5 V input rail (PSU1): up to switch A; switch B taps it.
+    const rail = r.wire(T('PSU1', 'positive'), T(SW1, 'a'), [
+      { x: -40, y: -20 },
+      { x: -40, y: -200 },
+    ]);
+    r.wire(T(SW2, 'a'), { kind: 'wire', wire: rail, at: { x: -40, y: -40 } });
+    // The 3.0 V gate supply (PSU2) to V_CC; its negative to GND.
+    const vcc = r.wire(T(PSU2, 'positive'), T(U1, 'vcc'), [{ x: 360, y: -340 }]);
+    r.wire(T(PSU2, 'negative'), T(G6, 'ref'));
+    // Sprint 22 (owner decision Q10 (a)): a 10 kΩ bleeder across PSU2. The bench-supply model
+    // cannot absorb current, and with Y LOW the inputs' leakage (±5 µA each, possibly returning
+    // through the V_CC pin) could otherwise flow back into PSU2; the bleeder keeps PSU2 delivering
+    // 3.0 V / 10 kΩ = 300 µA ≫ 10 µA (0.9 mW).
+    // Right of the V_CC drop, clear of PSU2's running readout.
+    const R4 = r.place('component.resistor', 440, -300);
+    const G7 = r.place('component.ground', 520, -200);
+    r.set(R4, 'resistance', 10_000, 'ohm');
+    r.wire(T(R4, 'a'), { kind: 'wire', wire: vcc, at: { x: 360, y: -300 } });
+    r.wire(T(R4, 'b'), T(G7, 'ref'), [{ x: 520, y: -300 }]);
+    // Input A: SW1 → node (pull-down R1) → A.
+    r.wire(T(SW1, 'b'), T(R1, 'a'));
+    r.wire(T(R1, 'a'), T(U1, 'a'), [
+      { x: 280, y: -200 },
+      { x: 280, y: 80 },
+    ]);
+    r.wire(T(R1, 'b'), T(G2, 'ref'));
+    // Input B: SW2 → node (pull-down R2) → B.
+    r.wire(T(SW2, 'b'), T(R2, 'a'));
+    r.wire(T(R2, 'a'), T(U1, 'b'), [
+      { x: 240, y: -40 },
+      { x: 240, y: 120 },
+    ]);
+    r.wire(T(R2, 'b'), T(G3, 'ref'));
+    r.wire(T(U1, 'gnd'), T(G4, 'ref'));
+    // Y → 220 Ω → LED → GND.
+    r.wire(T(U1, 'y'), T(R3, 'a'));
+    r.wire(T(R3, 'b'), T(D1, 'anode'));
+    r.wire(T(D1, 'cathode'), T(G5, 'ref'), [{ x: 800, y: 100 }]);
+    return r.centre(-240);
+  },
+  /**
+   * Sprint 20 example B (cascaded gates): four switches with 10 kΩ pull-downs. Inside ONE
+   * SN74LVC08A package, gate 1 forms A·B and feeds gate 2 (1Y → 2A), which forms (A·B)·C; across
+   * packages, 2Y drives input A of an SN74LVC1G32 OR gate whose B is switch D (an override):
+   * LED = (A·B·C) + D. Everything at 3.0 V; the package's outputs drive only gate inputs (no DC
+   * load), the OR gate drives the LED. The unused gates 3 and 4 have their inputs tied to GND
+   * (SCAS283W §5.4 note 1).
+   * Sprint 22 (owner decision Q1, strict): REFUSED in every state, by name
+   * (logic_supply_current_uncharacterized, the supply's current limit): at 3.0 V the SN74LVC08A's I_CC is unbounded
+   * (SCAS283W §5.7: 3.6 V only), and the OR gate's input A is a gate output, never exactly at 5.5 V
+   * or GND (SCES217AA §5.5) — a cascade cannot meet an I_CC test condition.
+   * Kept unchanged as a documented limit (its text says so); no truth table is claimed.
+   */
+  'logic-cascade': () => {
+    const r = new Recipe('logic-cascade', 'Logic: cascaded gates (A·B·C) + D');
+    r.supply(3, 0.1);
+    const rows = [-240, -80, 80, 240];
+    const sw = rows.map((y) => r.place('component.toggle_switch', 40, y));
+    const pd = rows.map((y) => r.place('component.resistor', 160, y + 40, 1));
+    const pg = rows.map((y) => r.place('component.ground', 160, y + 120));
+    for (const R of pd) r.set(R, 'resistance', 10_000, 'ohm');
+    const U1 = r.place('logic.quad_and', 480, -80);
+    const G6 = r.place('component.ground', 420, 40);
+    const G7 = r.place('component.ground', 660, 20);
+    const U2 = r.place('logic.gate_or', 780, 120);
+    const G8 = r.place('component.ground', 780, 200);
+    const R5 = r.place('component.resistor', 900, 120);
+    const D1 = r.place('component.led', 980, 160, 1);
+    const G9 = r.place('component.ground', 980, 240);
+    r.set(R5, 'resistance', 220, 'ohm');
+    // The 3.0 V rail along the top to the OR gate's V_CC; the package's V_CC (pin 14) taps it.
+    const rail = r.wire(T('PSU1', 'positive'), T(U2, 'vcc'), [
+      { x: -40, y: -20 },
+      { x: -40, y: -320 },
+      { x: 780, y: -320 },
+    ]);
+    r.wire(T(U1, 'vcc'), { kind: 'wire', wire: rail, at: { x: 540, y: -320 } });
+    r.wire(T(sw[0]!, 'a'), { kind: 'wire', wire: rail, at: { x: -40, y: -240 } });
+    r.wire(T(sw[1]!, 'a'), { kind: 'wire', wire: rail, at: { x: -40, y: -80 } });
+    const low = r.wire(T(sw[3]!, 'a'), { kind: 'wire', wire: rail, at: { x: -40, y: -20 } }, [
+      { x: -40, y: 240 },
+    ]);
+    r.wire(T(sw[2]!, 'a'), { kind: 'wire', wire: low, at: { x: -40, y: 80 } });
+    for (let i = 0; i < 4; i++) {
+      r.wire(T(sw[i]!, 'b'), T(pd[i]!, 'a'));
+      r.wire(T(pd[i]!, 'b'), T(pg[i]!, 'ref'));
+    }
+    // A → 1A, B → 1B, C → 2B; 1Y → 2A inside the package.
+    r.wire(T(pd[0]!, 'a'), T(U1, 'a1'), [
+      { x: 380, y: -240 },
+      { x: 380, y: -140 },
+    ]);
+    r.wire(T(pd[1]!, 'a'), T(U1, 'b1'), [
+      { x: 340, y: -80 },
+      { x: 340, y: -120 },
+    ]);
+    r.wire(T(U1, 'y1'), T(U1, 'a2'), [
+      { x: 380, y: -100 },
+      { x: 380, y: -80 },
+    ]);
+    r.wire(T(pd[2]!, 'a'), T(U1, 'b2'), [
+      { x: 360, y: 80 },
+      { x: 360, y: -60 },
+    ]);
+    r.wire(T(U1, 'gnd'), T(G6, 'ref'));
+    // Gates 3 and 4 unused: inputs to GND, outputs open. The tie column stays ≥ 120 units from
+    // the pin column: the breakout's header pins leave its board outward in 3D before turning.
+    const tie = r.wire(T(U1, 'b4'), T(G7, 'ref'), [{ x: 660, y: -120 }]);
+    for (const [pin, y] of [
+      ['a3', -40],
+      ['b3', -60],
+      ['a4', -100],
+    ] as const)
+      r.wire(T(U1, pin), { kind: 'wire', wire: tie, at: { x: 660, y } });
+    // Across packages: 2Y → OR input A; switch D → OR input B.
+    r.wire(T(U1, 'y2'), T(U2, 'a'), [
+      { x: 380, y: -40 },
+      { x: 380, y: 100 },
+    ]);
+    r.wire(T(pd[3]!, 'a'), T(U2, 'b'), [
+      { x: 700, y: 240 },
+      { x: 700, y: 140 },
+    ]);
+    r.wire(T(U2, 'gnd'), T(G8, 'ref'));
+    r.wire(T(U2, 'y'), T(R5, 'a'));
+    r.wire(T(R5, 'b'), T(D1, 'anode'));
+    r.wire(T(D1, 'cathode'), T(G9, 'ref'));
+    return r.centre(-320);
+  },
+  /**
+   * Sprint 20 example D (ESP32, a manual input and logic together): an SN74LVC1G32 OR gate at
+   * 3.0 V. Input A: ESP32 GPIO18 (10 kΩ pull-down, so A is defined before setup() runs); input
+   * B: a toggle switch (10 kΩ pull-down), a manual override. Y lights the LED through 220 Ω and
+   * is read back on GPIO19: the firmware blinks GPIO18 and reports what the gate's output really
+   * is, including when the switch overrides it.
+   * Sprint 22 (owner decision Q1, strict): REFUSED in every state, by name
+   * (logic_supply_current_uncharacterized, the supply's current limit): an ESP32 output is never at 5.5 V or exactly GND,
+   * and the 10 kΩ pull-downs leave an open input ~50 mV off GND (SCES217AA §5.5 I_CC condition).
+   * Kept unchanged as a documented limit (its text says so); no truth table is claimed.
+   */
+  'esp32-logic-override': () => {
+    const r = new Recipe('esp32-logic-override', 'ESP32: an OR gate with a manual override');
+    r.supply(3, 0.1);
+    const U1 = r.place('board.esp32_devkitc_wroom32', 300, 0);
+    r.sketch(U1, 'LogicOrOverride.ino');
+    const U2 = r.place('logic.gate_or', 840, 0);
+    const R1 = r.place('component.resistor', 960, 0);
+    const D1 = r.place('component.led', 1080, 0);
+    const R2 = r.place('component.resistor', 640, 100, 1);
+    const R3 = r.place('component.resistor', 520, 40, 1);
+    const SW1 = r.place('component.toggle_switch', 720, 120, 1);
+    const G2 = r.place('component.ground', 840, 80);
+    const G3 = r.place('component.ground', 1160, 60);
+    const G4 = r.place('component.ground', 640, 180);
+    const G5 = r.place('component.ground', 520, 120);
+    // Well clear of the header (review round 2): the GND jumper drapes instead of necking up.
+    const G6 = r.place('component.ground', 500, -80);
+    r.set(R1, 'resistance', 220, 'ohm');
+    r.set(R2, 'resistance', 10_000, 'ohm');
+    r.set(R3, 'resistance', 10_000, 'ohm');
+    r.wire(T(U1, 'gnd'), T(G6, 'ref'), [{ x: 500, y: -180 }]);
+    // The 3.0 V rail: over the board to the gate's V_CC; under the board to the switch.
+    r.wire(T('PSU1', 'positive'), T(U2, 'vcc'), [
+      { x: -40, y: -20 },
+      { x: -40, y: -260 },
+      { x: 840, y: -260 },
+    ]);
+    r.wire(T(SW1, 'b'), T('PSU1', 'positive'), [
+      { x: 720, y: 260 },
+      { x: -40, y: 260 },
+      { x: -40, y: -20 },
+    ]);
+    // Input A from GPIO18, with its pull-down R3.
+    const a = r.wire(T(U1, 'gpio18'), T(U2, 'a'));
+    r.wire(T(R3, 'a'), { kind: 'wire', wire: a, at: { x: 520, y: -20 } });
+    r.wire(T(R3, 'b'), T(G5, 'ref'));
+    // Input B from the switch, with its pull-down R2.
+    const b = r.wire(T(SW1, 'a'), T(U2, 'b'), [{ x: 720, y: 20 }]);
+    r.wire(T(R2, 'a'), { kind: 'wire', wire: b, at: { x: 720, y: 60 } }, [{ x: 640, y: 60 }]);
+    r.wire(T(R2, 'b'), T(G4, 'ref'));
+    r.wire(T(U2, 'gnd'), T(G2, 'ref'));
+    // Y → 220 Ω → LED → GND, and read back on GPIO19.
+    const y = r.wire(T(U2, 'y'), T(R1, 'a'));
+    r.wire(T(R1, 'b'), T(D1, 'anode'));
+    r.wire(T(D1, 'cathode'), T(G3, 'ref'), [{ x: 1160, y: 0 }]);
+    r.wire(T(U1, 'gpio19'), { kind: 'wire', wire: y, at: { x: 900, y: 0 } }, [
+      { x: 420, y: -40 },
+      { x: 420, y: -120 },
+      { x: 900, y: -120 },
+    ]);
+    return r.centre(-400);
+  },
+  /**
+   * Sprint 24 (M1): MicroPython examples on the same circuits as their Arduino twins. Blink: GPIO2
+   * drives a red LED through 220 Ω (as esp32-blink), on 500 ms, off 500 ms.
+   */
+  'mpy-blink': () => {
+    const r = new Recipe('mpy-blink', 'MicroPython: blink an LED');
+    r.remove('PSU1', 'GND1');
+    const U1 = r.place('board.esp32_devkitc_wroom32', 300, 0);
+    r.python(U1, 'mpy_blink.py');
+    const R1 = r.place('component.resistor', 480, 100);
+    const D1 = r.place('component.led', 600, 100);
+    const G2 = r.place('component.ground', 680, 180);
+    const G3 = r.place('component.ground', 440, -120);
+    r.set(R1, 'resistance', 220, 'ohm');
+    r.wire(T(U1, 'gpio2'), T(R1, 'a'));
+    r.wire(T(R1, 'b'), T(D1, 'anode'));
+    r.wire(T(D1, 'cathode'), T(G2, 'ref'));
+    r.wire(T(U1, 'gnd'), T(G3, 'ref'));
+    return r.centre(-240);
+  },
+  /** Sprint 30 (M1/M2/M4): firmware → logic → firmware feedback, logic → transistor → relay → LED. */
+  'esp32-logic-feedback': () =>
+    logicFeedback('esp32-logic-feedback', 'ESP32: logic feedback and a relay', (r, U1) =>
+      r.sketch(U1, 'LogicFeedback.ino'),
+    ),
+  /** Sprint 30: the same circuit and behaviour in MicroPython. */
+  'mpy-logic-feedback': () =>
+    logicFeedback('mpy-logic-feedback', 'MicroPython: logic feedback and a relay', (r, U1) =>
+      r.python(U1, 'mpy_logic_feedback.py'),
+    ),
+  /**
+   * Sprint 25 (Phase 4): a 10 kΩ PTV09A across the 3.3 V bench supply (A to GND, B to +), its
+   * wiper on the input-only GPIO34, read as a DIGITAL level (V_IL / V_IH, the previous level held
+   * in between); GPIO4 drives a red LED through 220 Ω. Starts at 10 % (0.33 V: LOW), never in the
+   * band between the thresholds, where a first read has no defined level. ADC is not supported.
+   */
+  'esp32-pot-threshold': () =>
+    potThreshold('esp32-pot-threshold', 'ESP32: potentiometer as a digital input', (r, U1) =>
+      r.sketch(U1, 'PotThreshold.ino'),
+    ),
+  /** Sprint 25 (Phase 4): the same circuit and behaviour in MicroPython. */
+  'mpy-pot-threshold': () =>
+    potThreshold('mpy-pot-threshold', 'MicroPython: potentiometer as a digital input', (r, U1) =>
+      r.python(U1, 'mpy_pot_threshold.py'),
+    ),
+  /**
+   * Sprint 24 (M1/M2): a push button read with Pin.IN lights an LED. The input chain of
+   * esp32-input-echo without its toggle switch: 3.3 V -> button -> 1 kΩ -> GPIO34 (input only, no
+   * internal pull) with a 10 kΩ pull-down to GND; GPIO4 drives a red LED through 220 Ω.
+   */
+  'mpy-button': () => {
+    const r = new Recipe('mpy-button', 'MicroPython: a button lights an LED');
+    r.supply(3.3, 0.05);
+    const U1 = r.place('board.esp32_devkitc_wroom32', 300, 0);
+    r.python(U1, 'mpy_button.py');
+    const PB = r.place('component.push_button', 0, -100);
+    const R2 = r.place('component.resistor', 100, -100);
+    const R3 = r.place('component.resistor', 160, -40, 1);
+    const G2 = r.place('component.ground', 160, 60);
+    const R1 = r.place('component.resistor', 480, 60);
+    const D1 = r.place('component.led', 600, 60);
+    const G3 = r.place('component.ground', 680, 140);
+    const G4 = r.place('component.ground', 440, -120);
+    r.set(R2, 'resistance', 1000, 'ohm');
+    r.set(R3, 'resistance', 10_000, 'ohm');
+    r.set(R1, 'resistance', 220, 'ohm');
+    r.wire(T('PSU1', 'positive'), T(PB, 'a'));
+    r.wire(T(PB, 'b'), T(R2, 'a'));
+    const w = r.wire(T(R2, 'b'), T(U1, 'gpio34'));
+    r.wire({ kind: 'wire', wire: w, at: { x: 160, y: -100 } }, T(R3, 'a'));
+    r.wire(T(R3, 'b'), T(G2, 'ref'));
+    r.wire(T(U1, 'gpio4'), T(R1, 'a'));
+    r.wire(T(R1, 'b'), T(D1, 'anode'));
+    r.wire(T(D1, 'cathode'), T(G3, 'ref'));
+    r.wire(T(U1, 'gnd'), T(G4, 'ref'));
+    return r.centre(-240);
+  },
+  /**
+   * Sprint 24 (M1): an LED faded with PWM from MicroPython (machine.PWM, 1 kHz, duty_u16 2048 to
+   * 63488 and back, never 0), on the circuit of esp32-led-fade: GPIO18, 220 Ω, red LED.
+   */
+  'mpy-fade': () => {
+    const r = new Recipe('mpy-fade', 'MicroPython: fade an LED with PWM');
+    r.remove('PSU1', 'GND1');
+    const U1 = r.place('board.esp32_devkitc_wroom32', 300, 0);
+    r.python(U1, 'mpy_fade.py');
+    const R1 = r.place('component.resistor', 520, 20);
+    const D1 = r.place('component.led', 640, 20);
+    const G2 = r.place('component.ground', 720, 100);
+    const G3 = r.place('component.ground', 440, -120);
+    r.set(R1, 'resistance', 220, 'ohm');
+    r.wire(T(U1, 'gpio18'), T(R1, 'a'), [
+      { x: 430, y: -20 },
+      { x: 430, y: 20 },
+    ]);
+    r.wire(T(R1, 'b'), T(D1, 'anode'));
+    r.wire(T(D1, 'cathode'), T(G2, 'ref'));
+    r.wire(T(U1, 'gnd'), T(G3, 'ref'));
+    return r.centre(-300);
+  },
+  /**
+   * Sprint 24 (M3): "Hello" on the 16x2 I2C LCD from MicroPython: hardware machine.I2C bus 0
+   * (SCL GPIO22, SDA GPIO21, freq=100000, the PCF8574's rated clock) and a small pure-Python
+   * HD44780-over-PCF8574 driver in main.py. The circuit of esp32-lcd-hello: PSU1 4.5 V powers the
+   * module, PSU2 3.3 V feeds the two 4.7 kΩ bus pull-ups; address 0x27.
+   */
+  'mpy-lcd-hello': () => {
+    const r = new Recipe('mpy-lcd-hello', 'MicroPython: hello on an I2C LCD');
+    r.supply(4.5, 0.1);
+    const U1 = r.place('board.esp32_devkitc_wroom32', 300, 0);
+    r.python(U1, 'mpy_lcd_hello.py');
+    const LCD = r.place('display.lcd1602_i2c', 780, -80);
+    const PSU2 = r.extraSupply(440, -320, 3.3, 0.1);
+    const R1 = r.place('component.resistor', 540, -180, 1);
+    const R2 = r.place('component.resistor', 620, -180, 1);
+    const G2 = r.place('component.ground', 720, -200);
+    const G3 = r.place('component.ground', 440, -200);
+    const G4 = r.place('component.ground', 480, -220);
+    r.set(R1, 'resistance', 4700, 'ohm');
+    r.set(R2, 'resistance', 4700, 'ohm');
+    r.wire(T('PSU1', 'positive'), T(LCD, 'vcc'), [
+      { x: -40, y: -20 },
+      { x: -40, y: -400 },
+      { x: 680, y: -400 },
+      { x: 680, y: -100 },
+    ]);
+    r.wire(T(LCD, 'gnd'), T(G2, 'ref'), [
+      { x: 690, y: -120 },
+      { x: 690, y: -240 },
+      { x: 720, y: -240 },
+    ]);
+    r.wire(T(U1, 'gnd'), T(G3, 'ref'));
+    const sda = r.wire(T(U1, 'gpio21'), T(LCD, 'sda'));
+    const scl = r.wire(T(U1, 'gpio22'), T(LCD, 'scl'), [
+      { x: 480, y: -140 },
+      { x: 480, y: -60 },
+    ]);
+    r.wire(T(PSU2, 'negative'), T(G4, 'ref'));
+    const rail = r.wire(T(PSU2, 'positive'), T(R2, 'a'), [{ x: 620, y: -340 }]);
+    r.wire(T(R1, 'a'), { kind: 'wire', wire: rail, at: { x: 540, y: -340 } });
+    r.wire(T(R1, 'b'), { kind: 'wire', wire: sda, at: { x: 540, y: -80 } });
+    r.wire(T(R2, 'b'), { kind: 'wire', wire: scl, at: { x: 620, y: -60 } });
+    // A hand-written PCF8574 driver: no managed library (as before Sprint 26).
+    r.noLibraries(U1);
+    return r.centre(-300);
+  },
+  /**
+   * Sprint 15 (R4): an SG90 servo swept by LEDC PWM (50 Hz, 16 bit) on GPIO18: 1.0, 2.0 and 1.5 ms
+   * pulses, one second each. The servo runs from the 5 V bench supply; ground shared with the board.
+   */
+  'esp32-servo-sweep': () => {
+    const r = new Recipe('esp32-servo-sweep', 'ESP32: sweep a servo with PWM');
+    r.supply(5, 0.5);
+    const U1 = r.place('board.esp32_devkitc_wroom32', 300, 0);
+    r.sketch(U1, 'ServoSweep.ino');
+    const M1 = r.place('component.servo_sg90', 640, 40);
+    const G2 = r.place('component.ground', 560, 140);
+    const G3 = r.place('component.ground', 440, -120);
+    r.wire(T('PSU1', 'positive'), T(M1, 'vcc'), [
+      { x: -40, y: -20 },
+      { x: -40, y: -240 },
+      { x: 540, y: -240 },
+      { x: 540, y: 40 },
+    ]);
+    r.wire(T(M1, 'gnd'), T(G2, 'ref'), [{ x: 560, y: 20 }]);
+    r.wire(T(U1, 'gpio18'), T(M1, 'signal'), [
+      { x: 430, y: -20 },
+      { x: 430, y: 60 },
+    ]);
+    r.wire(T(U1, 'gnd'), T(G3, 'ref'));
+    return r.centre(-300);
+  },
+  /**
+   * Sprint 26: the LCD circuit with a three-file Arduino program (sketch.ino, display.h,
+   * display.cpp) using the managed library LiquidCrystal_PCF8574 2.2.0 (pinned by placing the
+   * display; nothing installed).
+   */
+  'esp32-lcd-library': () => {
+    const r = new Recipe('esp32-lcd-library', 'ESP32: LCD with a managed library (three files)');
+    r.supply(4.5, 0.1);
+    const U1 = r.place('board.esp32_devkitc_wroom32', 300, 0);
+    lcdCircuit(r, U1);
+    r.project(U1, 'lcd_library', 'sketch.ino', ['display.cpp', 'display.h']);
+    return r.centre(-300);
+  },
+  /**
+   * Sprint 26: the same circuit with a two-module MicroPython program (main.py, display.py) using
+   * the managed library python_lcd (I2cLcd), installed by the build in the interpreter's /lib.
+   */
+  'mpy-lcd-library': () => {
+    const r = new Recipe('mpy-lcd-library', 'MicroPython: LCD with a managed library (two files)');
+    r.supply(4.5, 0.1);
+    const U1 = r.place('board.esp32_devkitc_wroom32', 300, 0);
+    lcdCircuit(r, U1);
+    r.project(U1, 'mpy_lcd_library', 'main.py', ['display.py'], true);
+    return r.centre(-300);
+  },
+  /**
+   * Sprint 29 (S29-D1/A3, beginner): a half adder from four single gates at 3.3 V (see halfAdder):
+   * S = (A + B) · NAND(A, B), C = A · B; each output lights an LED through 330 Ω.
+   */
+  'logic-half-adder': () => {
+    const r = new Recipe('logic-half-adder', 'Logic: a half adder (four gates)');
+    r.supply(3.3, 0.1);
+    const { U3, U4 } = halfAdder(r);
+    ledOut(r, U3, 840, -150);
+    ledOut(r, U4, 840, 120);
+    return r.centre(-240);
+  },
+  /**
+   * Sprint 29 (M2, intermediate): a 1-bit full adder from seven single gates at 3.3 V, four stages,
+   * every gate from a sheet with the §8.2.1.1 power rule: X = (A + B) · NAND(A, B);
+   * S = (X + Cin) · NAND(X, Cin); Cout = NAND(NAND(A, B), NAND(X, Cin)) = A·B + X·Cin.
+   */
+  'logic-full-adder': () => {
+    const r = new Recipe('logic-full-adder', 'Logic: a 1-bit full adder (seven gates)');
+    r.supply(3.3, 0.1);
+    const SW1 = r.place('component.toggle_switch', 40, -280);
+    const SW2 = r.place('component.toggle_switch', 40, -120);
+    const SW3 = r.place('component.toggle_switch', 40, 40);
+    const R1 = r.place('component.resistor', 160, -240, 1);
+    const R2 = r.place('component.resistor', 160, -80, 1);
+    const R3 = r.place('component.resistor', 160, 80, 1);
+    const GR = [
+      r.place('component.ground', 160, -160),
+      r.place('component.ground', 160, 0),
+      r.place('component.ground', 160, 160),
+    ];
+    const O1 = r.place('logic.gate_or', 440, -240);
+    const N1 = r.place('logic.gate_nand', 440, -40);
+    const X = r.place('logic.gate_and', 680, -140);
+    const O2 = r.place('logic.gate_or', 920, -240);
+    const N2 = r.place('logic.gate_nand', 920, -40);
+    const S = r.place('logic.gate_and', 1160, -140);
+    const CO = r.place('logic.gate_nand', 1160, 80);
+    for (const id of [R1, R2, R3]) r.set(id, 'resistance', 10_000, 'ohm');
+    // A and Cin closed, B open: 1 + 0 + 1 = 2 → S LOW, Cout HIGH.
+    r.set(SW1, 'closed', true);
+    r.set(SW3, 'closed', true);
+    const rail = r.wire(T('PSU1', 'positive'), T(SW1, 'a'), [
+      { x: -40, y: -20 },
+      { x: -40, y: -280 },
+    ]);
+    r.wire(T(SW2, 'a'), { kind: 'wire', wire: rail, at: { x: -40, y: -120 } });
+    r.wire(T(SW3, 'a'), { kind: 'wire', wire: rail, at: { x: -40, y: -20 } }, [{ x: -40, y: 40 }]);
+    for (const [sw, res, g] of [
+      [SW1, R1, GR[0]!],
+      [SW2, R2, GR[1]!],
+      [SW3, R3, GR[2]!],
+    ] as const) {
+      r.wire(T(sw, 'b'), T(res, 'a'));
+      r.wire(T(res, 'b'), T(g, 'ref'));
+    }
+    // A → O1.a, N1.a; B → O1.b, N1.b.
+    const a = r.wire(T(R1, 'a'), T(O1, 'a'), [
+      { x: 240, y: -280 },
+      { x: 240, y: -260 },
+    ]);
+    r.wire(T(N1, 'a'), { kind: 'wire', wire: a, at: { x: 240, y: -260 } }, [{ x: 240, y: -60 }]);
+    const b = r.wire(T(R2, 'a'), T(O1, 'b'), [
+      { x: 280, y: -120 },
+      { x: 280, y: -220 },
+    ]);
+    r.wire(T(N1, 'b'), { kind: 'wire', wire: b, at: { x: 280, y: -120 } }, [{ x: 280, y: -20 }]);
+    // Cin → N2.b and O2.b (along the bottom, up at x = 840).
+    const cin = r.wire(T(R3, 'a'), T(N2, 'b'), [
+      { x: 200, y: 40 },
+      { x: 200, y: 180 },
+      { x: 840, y: 180 },
+      { x: 840, y: -20 },
+    ]);
+    r.wire(T(O2, 'b'), { kind: 'wire', wire: cin, at: { x: 840, y: -20 } }, [{ x: 840, y: -220 }]);
+    // X = (A + B) · NAND(A, B).
+    r.wire(T(O1, 'y'), T(X, 'a'), [
+      { x: 560, y: -240 },
+      { x: 560, y: -160 },
+    ]);
+    const n1 = r.wire(T(N1, 'y'), T(X, 'b'), [
+      { x: 600, y: -40 },
+      { x: 600, y: -120 },
+    ]);
+    // X → O2.a and N2.a.
+    const x = r.wire(T(X, 'y'), T(O2, 'a'), [
+      { x: 800, y: -140 },
+      { x: 800, y: -260 },
+    ]);
+    r.wire(T(N2, 'a'), { kind: 'wire', wire: x, at: { x: 800, y: -140 } }, [{ x: 800, y: -60 }]);
+    // S = (X + Cin) · NAND(X, Cin); Cout = NAND(NAND(A, B), NAND(X, Cin)).
+    r.wire(T(O2, 'y'), T(S, 'a'), [
+      { x: 1040, y: -240 },
+      { x: 1040, y: -160 },
+    ]);
+    const n2 = r.wire(T(N2, 'y'), T(S, 'b'), [
+      { x: 1080, y: -40 },
+      { x: 1080, y: -120 },
+    ]);
+    r.wire(T(CO, 'a'), { kind: 'wire', wire: n1, at: { x: 600, y: -40 } }, [{ x: 600, y: 60 }]);
+    r.wire(T(CO, 'b'), { kind: 'wire', wire: n2, at: { x: 1080, y: -40 } }, [{ x: 1080, y: 100 }]);
+    // V_CC: a bus from CO along y = −320 to switch A's rail end; the others tap it (far end first).
+    const bus = r.wire(T(CO, 'vcc'), T(SW1, 'a'), [
+      { x: 1160, y: 20 },
+      { x: 1220, y: 20 },
+      { x: 1220, y: -320 },
+      { x: 0, y: -320 },
+    ]);
+    r.wire(T(O1, 'vcc'), { kind: 'wire', wire: bus, at: { x: 440, y: -320 } });
+    r.wire(T(N1, 'vcc'), { kind: 'wire', wire: bus, at: { x: 500, y: -320 } }, [
+      { x: 500, y: -80 },
+    ]);
+    r.wire(T(X, 'vcc'), { kind: 'wire', wire: bus, at: { x: 680, y: -320 } });
+    r.wire(T(O2, 'vcc'), { kind: 'wire', wire: bus, at: { x: 920, y: -320 } });
+    r.wire(T(N2, 'vcc'), { kind: 'wire', wire: bus, at: { x: 980, y: -320 } }, [
+      { x: 980, y: -80 },
+    ]);
+    r.wire(T(S, 'vcc'), { kind: 'wire', wire: bus, at: { x: 1160, y: -320 } });
+    for (const [u, gx, gy] of [
+      [O1, 440, -160],
+      [N1, 440, 40],
+      [X, 680, -60],
+      [O2, 920, -160],
+      [N2, 920, 40],
+      [S, 1160, -60],
+      [CO, 1160, 160],
+    ] as const) {
+      const g = r.place('component.ground', gx, gy);
+      r.wire(T(u, 'gnd'), T(g, 'ref'));
+    }
+    ledOut(r, S, 1320, -140);
+    ledOut(r, CO, 1320, 80);
+    return r.centre(-600);
+  },
+  /**
+   * Sprint 29 (M4, advanced): the half adder watched by an ESP32 in MicroPython. The ESP32 only
+   * READS: the switches on GPIO32/33, S and C on the input-only GPIO34/35 (each gate output loaded
+   * only by a pad's leakage: V_OH ≥ V_CC − 0.1 V = 3.2 V ≥ the ESP32's V_IH 2.475 V); it prints
+   * each new state and sets an LED's PWM brightness on GPIO18 from the sum.
+   */
+  'mpy-adder-monitor': () => {
+    const r = new Recipe('mpy-adder-monitor', 'MicroPython: an ESP32 watches a logic half adder');
+    r.supply(3.3, 0.1);
+    const { U3, U4, R1, b3 } = halfAdder(r);
+    const U5 = r.place('board.esp32_devkitc_wroom32', 920, -20);
+    r.python(U5, 'mpy_adder_monitor.py');
+    r.wire(T(U3, 'y'), T(U5, 'gpio34'), [
+      { x: 780, y: -150 },
+      { x: 780, y: -120 },
+    ]);
+    r.wire(T(U4, 'y'), T(U5, 'gpio35'), [
+      { x: 800, y: 120 },
+      { x: 800, y: -100 },
+    ]);
+    r.wire(T(R1, 'a'), T(U5, 'gpio32'), [
+      { x: 160, y: -360 },
+      { x: 820, y: -360 },
+      { x: 820, y: -80 },
+    ]);
+    r.wire({ kind: 'wire', wire: b3, at: { x: 360, y: 140 } }, T(U5, 'gpio33'), [
+      { x: 360, y: 260 },
+      { x: 760, y: 260 },
+      { x: 760, y: -60 },
+    ]);
+    const G6 = r.place('component.ground', 1060, -160);
+    r.wire(T(U5, 'gnd'), T(G6, 'ref'), [{ x: 1060, y: -200 }]);
+    const R5 = r.place('component.resistor', 1120, -40);
+    const D3 = r.place('component.led', 1240, -40);
+    const G7 = r.place('component.ground', 1320, 20);
+    r.set(R5, 'resistance', 220, 'ohm');
+    r.wire(T(U5, 'gpio18'), T(R5, 'a'));
+    r.wire(T(R5, 'b'), T(D3, 'anode'));
+    r.wire(T(D3, 'cathode'), T(G7, 'ref'), [{ x: 1320, y: -40 }]);
+    return r.centre(-400);
   },
 };

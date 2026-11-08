@@ -1,0 +1,101 @@
+{
+  "lines": [
+    {
+      "vns": "300066792",
+      "text": "ets Jul 29 2019 12:21:46"
+    },
+    {
+      "vns": "300067560",
+      "text": ""
+    },
+    {
+      "vns": "300094448",
+      "text": "rst:0x1 (POWERON_RESET),boot:0x12 (SPI_FAST_FLASH_BOOT)"
+    },
+    {
+      "vns": "300140264",
+      "text": "configsip: 0, SPIWP:0xee"
+    },
+    {
+      "vns": "300172936",
+      "text": "clk_drv:0x00,q_drv:0x00,d_drv:0x00,cs0_drv:0x00,hd_drv:0x00,wp_drv:0x00"
+    },
+    {
+      "vns": "300185248",
+      "text": "mode:DIO, clock div:2"
+    },
+    {
+      "vns": "300208576",
+      "text": "load:0x3fff0030,len:4200"
+    },
+    {
+      "vns": "300379560",
+      "text": "load:0x40078000,len:15236"
+    },
+    {
+      "vns": "300935568",
+      "text": "load:0x40080400,len:3344"
+    },
+    {
+      "vns": "301072832",
+      "text": "entry 0x400805a8"
+    },
+    {
+      "vns": "1261285936",
+      "text": "Performing initial setup"
+    },
+    {
+      "vns": "1650316810",
+      "text": "MicroPython v1.29.0 on 2026-08-24; Generic ESP32 module with ESP32"
+    },
+    {
+      "vns": "1650326386",
+      "text": "Type \"help()\" for more information."
+    },
+    {
+      "vns": "3009123310",
+      "text": ">>> from machine import Pin"
+    },
+    {
+      "vns": "3071367390",
+      "text": ">>> p=Pin(32,Pin.OUT)"
+    },
+    {
+      "vns": "3071804638",
+      "text": ">>> p.value(1)"
+    },
+    {
+      "vns": "3072133678",
+      "text": ">>> print(6*7)"
+    },
+    {
+      "vns": "3072434854",
+      "text": "42"
+    },
+    {
+      "vns": "3072463406",
+      "text": ">>> p.value(0)"
+    }
+  ],
+  "pad32": [
+    {
+      "vns": "3071775710",
+      "pad": 32,
+      "drive": 1,
+      "level": 0
+    },
+    {
+      "vns": "3072105870",
+      "pad": 32,
+      "drive": 1,
+      "level": 1
+    },
+    {
+      "vns": "3072765422",
+      "pad": 32,
+      "drive": 1,
+      "level": 0
+    }
+  ],
+  "serialTimedSha256": "f35f7d240bff2084549b67d47f0b593d11823cb10bf55dc837926fe4fc8664cb"
+}

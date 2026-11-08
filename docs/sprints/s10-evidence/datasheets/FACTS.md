@@ -563,6 +563,123 @@ Kingbright alternative: the Kingbright 1.2-inch (30 mm, 3 mm dot) TA12-11/TC12-1
 
 ---
 
+## 12. Rotary potentiometer, 9 mm, carbon track: Bourns PTV09A series (Sprint POT-UNITS)
+
+Fetch date: **2026-10-30** (this section only).
+
+| Item | Value |
+|---|---|
+| Source URL | https://www.bourns.com/docs/Product-Datasheets/PTV09.pdf (Bourns, the manufacturer; fetched with curl) |
+| Local file | `PTV09_bourns.pdf` (5 pages; page 5 is the legal disclaimer) |
+| SHA-256 | `411cdb6a62e61f9c5bc2df76ed64ee21d7bcfbee035c1ba36beff08c43f28558` |
+| Doc id / rev / date | "PTV09 Series - 9 mm Potentiometer", REV. 01/25 (p.4 footer); PDF CreationDate 2025-01-16 |
+| Element | Carbon element; insulated shaft (p.1 "Features") |
+| Schematic | p.1: terminals 1 and 3 are the track ends, terminal 2 is the wiper |
+
+### Electrical characteristics (p.1, "Electrical Characteristics")
+| Parameter | Value | Kind | Page |
+|---|---|---|---|
+| Taper | Linear, audio | list | 1 |
+| Standard resistance range | 1 kΩ to 1 MΩ | range | 1 |
+| Standard resistance tolerance | ±20 % | tolerance | 1 |
+| Residual resistance | "500 ohms or ±1 % max." | **BOUND (max)**, not a value | 1 |
+| Contact resistance variation | **NOT FOUND** (the sheet gives Sliding Noise instead, below) | | |
+| Max wiper current | **NOT FOUND** | | |
+
+### Standard resistance table (p.1, "Standard Resistance Table")
+| Resistance (Ω) | Code |
+|---|---|
+| 1,000 | 102 |
+| 2,000 | 202 |
+| 5,000 | 502 |
+| 10,000 | 103 |
+| 20,000 | 203 |
+| 50,000 | 503 |
+| 100,000 | 104 |
+| 200,000 | 204 |
+| 500,000 | 504 |
+| 1,000,000 | 105 |
+
+These are the 1-2-5 decade values, not an E-series (E6/E12) set.
+
+### Environmental characteristics (p.1, "Environmental Characteristics")
+| Parameter | Value | Page |
+|---|---|---|
+| Operating temperature | −10 °C to +50 °C | 1 |
+| Power rating (linear and audio) | 0.05 W | 1 |
+| Maximum operating voltage (linear and audio) | 20 VDC, 50 VAC | 1 |
+| Sliding noise | 100 mV max. | 1 |
+| IP rating | IP40 | 1 |
+
+Power rating notes:
+- Derating curve (p.4, "Derating Curve", **GRAPH READING**): rating power ratio 100 % up to 50 °C ambient, falling linearly to about 33 % at 70 °C (a dashed 33 % line is drawn to 70 °C). The 50 °C knee coincides with the stated operating maximum (+50 °C).
+- The sheet says **nothing** about power on a partial track (wiper segment) or about wiper current. The 0.05 W figure is stated for the element without qualification. **NOT FOUND**: partial-track derating.
+
+### Mechanical characteristics (p.1, "Mechanical Characteristics")
+| Parameter | Value | Page |
+|---|---|---|
+| Mechanical angle | 280 ° ±10 ° | 1 |
+| Electrical (effective) angle | **NOT FOUND** as a number | |
+| Rotational torque | 10 to 100 g-cm | 1 |
+| Detent torque | 20 to 200 gf-cm (center detent option) | 1 |
+| Stop strength | 2 kg-cm min. | 1 |
+| Rotational life | 10,000 cycles | 1 |
+| Soldering | 300 °C max. within 3 s | 1 |
+| Full-CCW shaft flat orientation | 40 ° ±10 ° (front views) | 1 |
+
+### Tapers (p.4, "Tapers", GRAPH READING)
+| Series | Curves | Shape | Page |
+|---|---|---|---|
+| A | A1 (05A), A2 (10A), A (15A), A4 (20A), A5 (25A), A6 (30A) | audio (log-like, rising) | 4 |
+| B | B0 (0B), B1 (1B), B2 (2B), B3 (3B), B4 (4B), B5 (5B) | B0 is the straight linear taper; B1–B5 are S-shaped | 4 |
+| C | C1 (05C), C2 (10C), C (15C), C4 (20C), C5 (25C), C6 (30C) | reverse audio (falling) | 4 |
+
+- Y axis: "Terminal 1-2 Output Voltage / Terminal 1-3 Input Voltage × 100 (%)"; X axis: "Rotational Travel (%)".
+- **GRAPH READING**: the B0 linear curve rises from ~0 % at about 5 % travel to 100 % at about 95 % travel, i.e. the ends of travel are flat (consistent with the residual-resistance bound). Approximate; not tabulated.
+- How To Order (p.1): order code example `PTV09A - 2 0 20 F - B 203` (taper series + curve number, then resistance code).
+
+### Dimensions (p.1, "Product Dimensions"; mm, inches in brackets)
+| Feature | Value | Variant | Page |
+|---|---|---|---|
+| Body width (front view) | 10.0 (.394) | A-1, A-2 | 1 |
+| Body depth (front face to rear, excl. bushing) | 6.8 (.267) | A-2 (vertical, 10 mm height) | 1 |
+| Shaft axis height above PCB | 10.0 (.394) (the variant name "10 mm Height") | A-2 | 1 |
+| Shaft axis to PCB (horizontal mount) | 5.5 (.217); 7.0 (.276) to the pin-row reference | A-1 | 1 |
+| Shaft diameter (F flat type) | 6.0 +0.0/−0.1 (.236) | F-type | 1 |
+| Shaft flat | 4.5 (.177) wide flat region; F = flat length (variant-dependent) | F-type | 1 |
+| Sleeve bushing diameter | 6.8 (.268) DIA. | A-1 | 1 |
+| Shaft length L (from mounting face) | 15, 20, 25 or 30 mm ±0.5; 15 mm bushingless only | order code | 1 |
+| Terminals | 3 PLCS., outer-pin span 5.0 (.196) ⇒ 2.5 mm pitch | A-1, A-2 | 1 |
+| Terminal width | 1.5 (.059) A-1; 0.8 (.031) A-2 | | 1 |
+| Mounting-tab span (front view) | 11.4 (.449) | A-1 | 1 |
+| PCB layout, vertical mount | terminal holes 1.0 +0.2 dia, 3 PLCS; tab holes 1.8/2.2 +0.2, 2 PLCS; tab spacing 8.2 (.323); 3.3 (.130) row offset; outer pins 5.0 (.197) | A-2 | 1 |
+| PCB layout, horizontal mount | tab spacing 10.6 (.417); pin row to tab row 7.0 (.276); outer pins 5.0 (.197) | A-1 | 1 |
+
+Interpretation of the mounting-tab span (11.4) and the 7.4 (.291) dimension on the A-2 front view is from the drawing arrows; treat as approximate for a 3D model only.
+
+### NOT FOUND / bounds for this part
+- Residual (end) resistance: only a **bound** ("500 ohms or ±1 % max."). No typical value.
+- Contact resistance (variation): **NOT FOUND**.
+- Max wiper current: **NOT FOUND**.
+- Partial-track power derating: **NOT FOUND** (only 0.05 W for the element + ambient derating curve).
+- Electrical angle: **NOT FOUND** as a number (only the B0 curve graph suggests ~5 %…95 % travel).
+- Temperature coefficient of resistance: **NOT FOUND**.
+
+### Used by TBI Lab (Sprint POT-UNITS) and how
+| Fact | Used as | Where |
+|---|---|---|
+| 1 kΩ … 1 MΩ | the `resistance` parameter range | catalog.ts `component.potentiometer` |
+| ±20 % | not sampled: the nominal value is simulated (ASSUMPTION POT-2) | parts/potentiometer.ts |
+| 0.05 W | total-track dissipation check, `unrated` excess | parts/potentiometer.ts `ratings` |
+| 0.05 W (derived) | I_rated = √(0.05 W / R_total): the uniform track current at the rated whole-track dissipation; a segment or the wiper above it has more heat per unit track length than any rated condition → `unrated` `track_current` row (conservative warning, not a damage threshold; no other number introduced) | parts/potentiometer.ts `ratedTrackCurrentA` |
+| 20 VDC | voltage between any two terminals, `unrated` excess (operating maximum; no absolute maximum published) | parts/potentiometer.ts `ratings` |
+| Residual resistance 500 Ω or 1 % max (BOUND) | idealised to 0 Ω (ASSUMPTION POT-1): the end positions are ideal contacts | parts/potentiometer.ts |
+| Linear taper (B0) | the only taper offered; position = share of the track A–W, not the shaft angle | catalog.ts, limitation text |
+| Body 10.0 × 6.8 mm, shaft axis 10.0 mm, shaft Ø6.0, L = 15 mm, pins 0.8 mm at 2.5 mm pitch | 3D model (PTV09A-2); body height 10.0 mm read from the square front view (DRAWING, approximate) | app/src/views/scene3d/physical.ts `POT_PTV09A` |
+| Max wiper current, contact resistance, partial-track rating | NOT FOUND: contact resistance not modelled; the wiper and segments are only checked against the derived rated-condition current above | capabilities.ts `MODEL_LIMITATIONS` |
+
+---
+
 ## Summary of NOT FOUND / CONFLICT items
 - LED: none missing.
 - LDR: gamma 0.7 (generic sheet) vs 0.6 (Senba); lead spacing 3.4 vs 3.0 mm. Response time is only in Senba, and is matched to GL5528 by row order.
@@ -575,3 +692,4 @@ Kingbright alternative: the Kingbright 1.2-inch (30 mm, 3 mm dot) TA12-11/TC12-1
 - SG90: no manufacturer pulse-to-angle specification; dead band 1 µs vs 10 µs; dimensions and travel conflict.
 - PCF8574 backpack schematic: NOT FOUND. The mapping comes from library source code.
 - 1088AS: mechanical drawing, pin pitch and absolute maximum ratings NOT FOUND.
+- PTV09A potentiometer (Sprint POT-UNITS): residual resistance only a bound (500 Ω or 1 % max); max wiper current, contact resistance, partial-track power rating, electrical angle and TCR NOT FOUND.

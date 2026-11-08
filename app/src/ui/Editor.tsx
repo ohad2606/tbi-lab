@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import type { ComponentTypeId } from '@tbi-lab/domain';
 import { Canvas, type CanvasApi } from './Canvas.js';
 import { useAppState, useT } from './context.js';
+import { onCodeViewRequest, programBoardOf } from './buildAction.js';
 import { CodeView } from './CodeView.js';
 import { LazyView } from './LazyView.js';
 import { Inspector } from './Inspector.js';
@@ -37,12 +38,12 @@ export function Editor() {
   const { doc, suggestedProbes, sim } = useAppState();
   const t = useT();
   // The board whose program this project authors (V1: at most one), and which view shows.
-  const programBoard = doc
-    ? Object.keys(doc.programs).find((id) => doc.components.some((c) => c.id === id))
-    : undefined;
+  const programBoard = programBoardOf(doc);
   const [view, setView] = useState<View>('circuit');
   const [focusBuild, setFocusBuild] = useState(0);
   useEffect(() => setView('circuit'), [doc?.projectId]);
+  // Alpha UX-P1: the toolbar's "Show problems" opens the code view and its diagnostics.
+  useEffect(() => onCodeViewRequest(() => setView('code')), []);
   // Run refused for want of a current build: take the user to the code and its Build action.
   const refusal = sim.status === 'failed' && sim.failure.kind === 'mcu' ? sim.failure.code : null;
   useEffect(() => {
@@ -55,6 +56,33 @@ export function Editor() {
   const views: View[] = programBoard ? [...VIEWS, 'code'] : VIEWS;
   const active: View = views.includes(view) ? view : 'circuit';
   const [placing, setPlacing] = useState<ComponentTypeId | null>(null);
+  // Sprint 13 OS-10: the palette shows the ACTUAL placement state. Escape cancels an armed
+  // placement wherever the focus is (after a click the focus stays on the palette tile, where the
+  // canvas's own Escape never arrives), and a starting simulation disarms it (the palette is
+  // disabled while running; nothing could be placed).
+  useEffect(() => {
+    if (!placing) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented) return;
+      // Escape inside a field, the code editor, a menu or a dialog belongs to that control (it
+      // reverts or closes it); it does not also cancel the placement (Sprint 13 a11y, V7).
+      const t = e.target as HTMLElement | null;
+      if (
+        t?.closest?.(
+          'input, textarea, select, [contenteditable="true"], [role="menu"], [role="dialog"]',
+        )
+      )
+        return;
+      setPlacing(null);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [placing]);
+  const simBusy =
+    sim.status === 'running' || sim.status === 'starting' || sim.status === 'stopping';
+  useEffect(() => {
+    if (simBusy) setPlacing(null);
+  }, [simBusy]);
   const [probeMode, setProbeMode] = useState(false);
   const [probes, setProbes] = useState<Probe[]>([]);
   const nextProbe = useRef(1);

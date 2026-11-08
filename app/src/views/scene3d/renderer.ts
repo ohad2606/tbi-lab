@@ -14,12 +14,22 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { buildComponent, createMaterials, OwnedResources, paintMatrixFace } from './models.js';
+import {
+  buildComponent,
+  createMaterials,
+  OwnedResources,
+  paintLcdFace,
+  paintMatrixFace,
+  movingPart,
+  servoHornYaw,
+  type LcdFace,
+} from './models.js';
 import { assetLoadStats, loadAssets } from './assets/library.js';
 import { createStage } from './stage.js';
 import { chooseQuality, probeGpu } from '../../gpuInfo.js';
 import { bentPath, buildJoint, buildSplice, buildWire, wireMaterials } from './wires.js';
-import { shapeWires, type WireShape } from './wireShape.js';
+import { type WireShape } from './wireShape.js';
+import { sceneShapes } from './checked.js';
 import { familyOf, variationAttribute, variedMaterial } from './variation.js';
 
 export { assetLoadStats, loadAssets };
@@ -29,6 +39,7 @@ import { CSS2DObject, CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRe
 import { DEFAULT_PRESET, labelAnchors, presetVisibility, type LayerVisibility } from './layers.js';
 import type { Ray } from './pick.js';
 import { TOGGLE_TILT } from './assets/benchParts.js';
+import { SERVO_SG90 } from './physical.js';
 
 /** LED light pool size and the light's intensity per unit live level (mm scene, decay 2). */
 const LED_LIGHTS = 4;
@@ -125,6 +136,15 @@ export interface Viewer {
   }): void;
   /** Each actuator's current pose (lever tilt, rad; cap height, mm): tests and evidence. */
   poses(): Record<string, number>;
+  /**
+   * Each servo horn as drawn (tests and evidence): its yaw about the shaft (rad), the meshes it
+   * draws itself (0 would mean it was merged into a static batch and cannot turn), and the arm
+   * tip's world position (mm), which turns about the shaft centre.
+   */
+  horns(): Record<
+    string,
+    { yaw: number; meshes: number; tip: [number, number, number]; shaft: [number, number, number] }
+  >;
   stats(): ViewerStats;
   /**
    * Which visualization layers show (layers.ts: a view preference, never project data). Changing
@@ -166,7 +186,11 @@ export type LiveLevel =
   | number
   | { level: number; color: string }
   /** An LED matrix: each dot's level (0..1), row-major. */
-  | { dots: number[] };
+  | { dots: number[] }
+  /** A character LCD (Sprint 12): what the engine reports it shows. */
+  | { lcd: LcdFace }
+  /** A servo (Sprint 15): the shaft angle the simulation reports, degrees. */
+  | { servoDeg: number };
 /** Re-exported for the tests: the tier choice lives in gpuInfo.ts (no three.js there). */
 export { chooseQuality };
 
@@ -193,6 +217,10 @@ export function createViewer(
   } catch (e) {
     throw new WebGLUnavailableError((e as Error).message);
   }
+  // Sprint 13 OS-02 (measured: opening the 3D view is dominated by shader-program compilation,
+  // with three.js waiting synchronously for each program's link status to check it for errors):
+  // production builds skip that synchronous check (three.js's own advice); development keeps it.
+  renderer.debug.checkShaderErrors = import.meta.env.DEV;
   live++;
   const canvas = renderer.domElement;
   canvas.classList.add('view3d-canvas');
@@ -431,7 +459,7 @@ export function createViewer(
       const path = bentPath(shape.points, shape.radii, shape.arms);
       const geo = new THREE.TubeGeometry(
         path,
-        Math.max(16, Math.ceil(path.getLength() / 1.5)),
+        Math.min(4000, Math.max(16, Math.ceil(path.getLength() / 1.5))),
         1.05,
         10,
         false,
@@ -466,6 +494,13 @@ export function createViewer(
     string,
     { texture: THREE.CanvasTexture; material: THREE.MeshStandardMaterial }
   >();
+  /** Character LCD faces by component id (Sprint 12), repainted live from the engine's result. */
+  let lcds = new Map<
+    string,
+    { texture: THREE.CanvasTexture; material: THREE.MeshStandardMaterial }
+  >();
+  /** Servo horns by component id (Sprint 15), turned live to the reported shaft angle. */
+  let horns = new Map<string, THREE.Object3D>();
   let liveLevels: Record<string, LiveLevel> = {};
   /** Glow halos of the LEDs, by component id. */
   let halos = new Map<string, THREE.Sprite>();
@@ -482,11 +517,31 @@ export function createViewer(
       face.material.emissive.set(any ? '#ffffff' : '#000000');
       face.material.emissiveIntensity = any ? 0.9 : 0;
     }
+    // Character LCDs: blank and unlit unless the engine reports their content and backlight.
+    for (const [id, face] of lcds) {
+      const live = liveLevels[id];
+      const lcd = live && typeof live === 'object' && 'lcd' in live ? live.lcd : undefined;
+      const canvas = face.texture.image as HTMLCanvasElement;
+      paintLcdFace(canvas.getContext('2d')!, canvas.width, canvas.height, lcd);
+      face.texture.needsUpdate = true;
+      face.material.emissive.set(lcd?.backlight ? '#ffffff' : '#000000');
+      face.material.emissiveIntensity = lcd?.backlight ? 0.75 : 0;
+    }
+    // Servo horns: at the reported angle, at rest (90 deg) when nothing is reported. A turned
+    // horn moves its shadow too (the shadow map is redrawn only on demand).
+    for (const [id, horn] of horns) {
+      const live = liveLevels[id];
+      const yaw = servoHornYaw(
+        live && typeof live === 'object' && 'servoDeg' in live ? live.servoDeg : undefined,
+      );
+      if (horn.rotation.y !== yaw) renderer.shadowMap.needsUpdate = true;
+      horn.rotation.y = yaw;
+    }
     // The light pool (full tier): the brightest lit LEDs light their surroundings.
     const lit: { level: number; at: THREE.Vector3; color: string }[] = [];
     for (const [id, { lens: mat, die, core, coreObj, gain, at, color }] of lenses) {
       const raw = liveLevels[id] ?? 0;
-      if (typeof raw === 'object' && 'dots' in raw) continue;
+      if (typeof raw === 'object' && ('dots' in raw || 'lcd' in raw || 'servoDeg' in raw)) continue;
       const live = raw;
       const level = typeof live === 'number' ? live : live.level;
       // The die is the light source; the epoxy glows with the light it scatters (diffused lenses
@@ -613,7 +668,7 @@ export function createViewer(
     });
   }
 
-  function resize() {
+  function resize(draw = true) {
     const w = Math.max(1, container.clientWidth);
     const h = Math.max(1, container.clientHeight);
     renderer.setSize(w, h, false);
@@ -621,9 +676,9 @@ export function createViewer(
     tags.setSize(w, h);
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
-    render();
+    if (draw) render();
   }
-  const ro = new ResizeObserver(resize);
+  const ro = new ResizeObserver(() => resize());
   ro.observe(container);
 
   function build(desc: SceneDescription) {
@@ -635,7 +690,7 @@ export function createViewer(
     // Wires (coloured by electrical node) and direct contacts: wires.ts.
     const wm = wireMaterials(own, materials.lead);
     // Their natural shape (sag, hand-formed bends), checked clear of every part and wire.
-    const shapes = shapeWires(desc);
+    const shapes = sceneShapes(desc); // computed once per scene (checked.ts)
     currentShapes = shapes;
     for (const w of desc.wires) group.add(buildWire(w, own, wm, shapes.get(w.id)));
     // One twisted splice per junction (where the wires' stripped conductors meet).
@@ -699,6 +754,8 @@ export function createViewer(
       if (!mesh.isMesh || (mesh as unknown as THREE.InstancedMesh).isInstancedMesh) return;
       // Actuators move (operated during a simulation): never merged into a static batch.
       if (o.name === 'base' || o.userData.noAo || o.userData.actuator || o.userData.layer) return;
+      // Parts the simulation moves (a servo horn): their meshes keep their own transform.
+      if (movingPart(o)) return;
       const mat = mesh.material;
       // A textured material batches only when its maps need nothing but per-vertex UVs
       // (`userData.batchUv`: the wire jackets, realism pass 6).
@@ -834,6 +891,8 @@ export function createViewer(
       buildTags(desc);
       applyLayers();
       matrices = new Map();
+      lcds = new Map();
+      horns = new Map();
       content.traverse((o) => {
         const lens = o.userData.lensMaterial as THREE.MeshStandardMaterial | undefined;
         if (lens && o.userData.component)
@@ -850,6 +909,12 @@ export function createViewer(
           });
         if (o.userData.matrixFace && o.userData.component)
           matrices.set(o.userData.component as string, o.userData.matrixFace);
+        if (o.userData.lcdFace && o.userData.component)
+          lcds.set(o.userData.component as string, o.userData.lcdFace);
+        if (o.userData.component && o.userData.model === 'servo.sg90') {
+          const horn = o.getObjectByProperty('name', 'servoHorn');
+          if (horn) horns.set(o.userData.component as string, horn);
+        }
       });
       applyLive();
       drawSelection();
@@ -867,8 +932,18 @@ export function createViewer(
       });
       applyControls(false);
       if (first || opts.resetCamera) {
-        resize();
+        resize(false);
         frame(desc);
+      }
+      if (first) {
+        // OS-02 (measured, docs/sprints/s13-evidence/os02): the first scene's programs compile in
+        // parallel without blocking the page (KHR_parallel_shader_compile where available), then
+        // the first frame is drawn once. A later update or input before then renders as usual.
+        void renderer
+          .compileAsync(scene, camera)
+          .catch(() => undefined)
+          .then(() => requestRender());
+        return;
       }
       render();
     },
@@ -956,6 +1031,23 @@ export function createViewer(
       const out: Record<string, number> = {};
       for (const [id, a] of actuatorsById)
         out[id] = a.kind === 'toggle' ? a.obj.rotation.z : a.obj.position.y;
+      return out;
+    },
+    horns() {
+      const out: ReturnType<Viewer['horns']> = {};
+      for (const [id, horn] of horns) {
+        let meshes = 0;
+        horn.traverse((o) => {
+          if ((o as THREE.Mesh).isMesh) meshes++;
+        });
+        horn.updateWorldMatrix(true, false);
+        out[id] = {
+          yaw: horn.rotation.y,
+          meshes,
+          tip: horn.localToWorld(new THREE.Vector3(SERVO_SG90.hornReachMm, 0, 0)).toArray(),
+          shaft: horn.localToWorld(new THREE.Vector3(0, 0, 0)).toArray(),
+        };
+      }
       return out;
     },
     setControls(state) {

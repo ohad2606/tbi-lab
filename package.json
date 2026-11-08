@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "npm run dev --workspace @tbi-lab/app",
     "build": "npm run build --workspace @tbi-lab/app",
-    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.specs.json && tsc --noEmit -p packages/domain && tsc --noEmit -p packages/engine && tsc --noEmit -p runtime && tsc --noEmit -p app && tsc --noEmit -p app/tsconfig.test.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.specs.json && tsc --noEmit -p packages/domain && tsc --noEmit -p packages/engine && tsc --noEmit -p packages/assist && tsc --noEmit -p runtime && tsc --noEmit -p app && tsc --noEmit -p app/tsconfig.test.json",
     "lint": "eslint . && prettier --check app packages runtime scripts eslint.config.js playwright.app.config.ts vitest.config.ts vitest.runtime.config.ts && node scripts/check-boundaries.mjs",
     "format": "prettier --write app packages runtime scripts eslint.config.js playwright.app.config.ts vitest.config.ts vitest.runtime.config.ts",
     "test": "vitest run",
@@ -20,11 +20,15 @@
     "test:runtime": "vitest run --config vitest.runtime.config.ts",
     "host:build": "esbuild runtime/host/main.ts --bundle --platform=node --format=esm --target=node22 --outfile=runtime/host/dist/session-host.mjs --log-level=warning",
     "buildsvc:build": "esbuild runtime/builder/main.ts --bundle --platform=node --format=esm --target=node22 --outfile=runtime/builder/dist/build-service.mjs --log-level=warning && esbuild runtime/builder/build-job.ts --bundle --platform=node --format=esm --target=node22 --outfile=runtime/builder/dist/build-job.mjs --log-level=warning",
+    "records:build": "esbuild runtime/builder/records-cli.ts --bundle --platform=node --format=esm --target=node22 --outfile=runtime/builder/dist/records-cli.mjs --log-level=warning",
+    "assist:build": "esbuild runtime/assist/main.ts --bundle --platform=node --format=esm --target=node22 --outfile=runtime/assist/dist/assist-service.mjs --log-level=warning",
+    "admin:build": "esbuild runtime/admin/main.ts --bundle --platform=node --format=esm --target=node22 --outfile=runtime/admin/dist/admin-service.mjs --log-level=warning",
     "test:r2": "npm run host:build && vitest run --config vitest.runtime.config.ts runtime/tests/r2-",
     "test:r2:soak": "npm run host:build && vite-node runtime/soak/r2-soak.ts",
     "test:qemu-wasm": "TBI_QEMU_WASM=1 playwright test experiments/gate-b-esp32/browser/qemu-wasm.wasm.spec.ts"
   },
   "devDependencies": {
+    "@anthropic-ai/sdk": "1.3.0",
     "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.63.0",
     "@types/node": "^26.6.2",

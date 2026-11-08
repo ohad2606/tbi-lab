@@ -9,6 +9,23 @@ import diodePolarity from './data/diode-polarity.json';
 import esp32Blink from './data/esp32-blink.json';
 import esp32InputEcho from './data/esp32-input-echo.json';
 import esp32Bench from './data/esp32-bench.json';
+import esp32MotionRelay from './data/esp32-motion-relay.json';
+import esp32NightLight from './data/esp32-night-light.json';
+import esp32DistanceAlarm from './data/esp32-distance-alarm.json';
+import esp32ThermoHygrometer from './data/esp32-thermo-hygrometer.json';
+import esp32LcdHello from './data/esp32-lcd-hello.json';
+import esp32LedFade from './data/esp32-led-fade.json';
+import esp32ServoSweep from './data/esp32-servo-sweep.json';
+import esp32LogicAnd from './data/esp32-logic-and.json';
+import esp32LogicQuadAnd from './data/esp32-logic-quad-and.json';
+import esp32LogicOverride from './data/esp32-logic-override.json';
+import logicAndSwitches from './data/logic-and-switches.json';
+import logicHalfAdder from './data/logic-half-adder.json';
+import logicFullAdder from './data/logic-full-adder.json';
+import mpyAdderMonitor from './data/mpy-adder-monitor.json';
+import logicFeedback from './data/esp32-logic-feedback.json';
+import mpyLogicFeedback from './data/mpy-logic-feedback.json';
+import logicCascade from './data/logic-cascade.json';
 import ledColours from './data/led-colours.json';
 import ledCurrent from './data/led-current.json';
 import ledMatrix from './data/led-matrix.json';
@@ -21,6 +38,16 @@ import pirAlarm from './data/pir-alarm.json';
 import pushButton from './data/push-button.json';
 import rcFade from './data/rc-fade.json';
 import voltageDivider from './data/voltage-divider.json';
+import mpyBlink from './data/mpy-blink.json';
+import mpyButton from './data/mpy-button.json';
+import mpyFade from './data/mpy-fade.json';
+import mpyLcdHello from './data/mpy-lcd-hello.json';
+import esp32LcdLibrary from './data/esp32-lcd-library.json';
+import mpyLcdLibrary from './data/mpy-lcd-library.json';
+import potDivider from './data/pot-divider.json';
+import potLedDimmer from './data/pot-led-dimmer.json';
+import esp32PotThreshold from './data/esp32-pot-threshold.json';
+import mpyPotThreshold from './data/mpy-pot-threshold.json';
 
 export const EXAMPLE_DOCUMENTS: Record<string, ProjectDocument> = {
   'ohms-law': ohmsLaw as unknown as ProjectDocument,
@@ -37,9 +64,36 @@ export const EXAMPLE_DOCUMENTS: Record<string, ProjectDocument> = {
   'diode-polarity': diodePolarity as unknown as ProjectDocument,
   'push-button': pushButton as unknown as ProjectDocument,
   'cc-mode': ccMode as unknown as ProjectDocument,
+  'pot-divider': potDivider as unknown as ProjectDocument,
+  'pot-led-dimmer': potLedDimmer as unknown as ProjectDocument,
   'esp32-blink': esp32Blink as unknown as ProjectDocument,
   'esp32-input-echo': esp32InputEcho as unknown as ProjectDocument,
   'esp32-bench': esp32Bench as unknown as ProjectDocument,
+  'esp32-motion-relay': esp32MotionRelay as unknown as ProjectDocument,
+  'esp32-night-light': esp32NightLight as unknown as ProjectDocument,
+  'esp32-distance-alarm': esp32DistanceAlarm as unknown as ProjectDocument,
+  'esp32-thermo-hygrometer': esp32ThermoHygrometer as unknown as ProjectDocument,
+  'esp32-lcd-hello': esp32LcdHello as unknown as ProjectDocument,
+  'esp32-led-fade': esp32LedFade as unknown as ProjectDocument,
+  'esp32-servo-sweep': esp32ServoSweep as unknown as ProjectDocument,
+  'esp32-logic-and': esp32LogicAnd as unknown as ProjectDocument,
+  'esp32-logic-quad-and': esp32LogicQuadAnd as unknown as ProjectDocument,
+  'logic-and-switches': logicAndSwitches as unknown as ProjectDocument,
+  'logic-cascade': logicCascade as unknown as ProjectDocument,
+  'logic-half-adder': logicHalfAdder as unknown as ProjectDocument,
+  'logic-full-adder': logicFullAdder as unknown as ProjectDocument,
+  'mpy-adder-monitor': mpyAdderMonitor as unknown as ProjectDocument,
+  'esp32-logic-feedback': logicFeedback as unknown as ProjectDocument,
+  'mpy-logic-feedback': mpyLogicFeedback as unknown as ProjectDocument,
+  'esp32-logic-override': esp32LogicOverride as unknown as ProjectDocument,
+  'mpy-blink': mpyBlink as unknown as ProjectDocument,
+  'mpy-button': mpyButton as unknown as ProjectDocument,
+  'mpy-fade': mpyFade as unknown as ProjectDocument,
+  'mpy-lcd-hello': mpyLcdHello as unknown as ProjectDocument,
+  'esp32-pot-threshold': esp32PotThreshold as unknown as ProjectDocument,
+  'mpy-pot-threshold': mpyPotThreshold as unknown as ProjectDocument,
+  'esp32-lcd-library': esp32LcdLibrary as unknown as ProjectDocument,
+  'mpy-lcd-library': mpyLcdLibrary as unknown as ProjectDocument,
 };
 
 /** The examples with their documents (tests and tools; the app loads documents lazily). */

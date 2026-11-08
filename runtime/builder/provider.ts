@@ -4,6 +4,7 @@
  * files in a private job directory into an image (or diagnostics). Providers never see other
  * jobs, never choose paths outside their job directory and never take options from the client.
  */
+import type { ManagedLibrary } from '@tbi-lab/domain';
 import type { BuildProfile } from '@tbi-lab/domain';
 import type { Diagnostic, FeatureReport } from './protocol.js';
 
@@ -11,8 +12,18 @@ export interface JobContext {
   /** Private, empty, per-job directory (0700). The provider writes only here. */
   dir: string;
   files: { name: string; text: string }[];
+  /**
+   * Sprint 26: the managed libraries the request pinned, resolved against the registry (the
+   * service has checked ids, versions, language, profile and dependencies). Empty: none.
+   */
+  libraries?: readonly ManagedLibrary[];
   /** Aborted on timeout or resource limit: the provider must stop its processes promptly. */
   signal: AbortSignal;
+  /**
+   * Sprint 18F: the source is one of the product's curated sketches (never a user's own): its
+   * build may leave reusable toolchain state for later jobs (the Arduino core seed).
+   */
+  curated?: boolean;
 }
 
 export interface ProviderOutput {
@@ -22,6 +33,8 @@ export interface ProviderOutput {
   features?: FeatureReport;
   sizes?: { program: number; programMax: number; data: number; dataMax: number };
   diagnostics: Diagnostic[];
+  /** Sprint 18F: the core seed this build started from (`seeded`), or why it compiled cold. */
+  coreSeed?: 'seeded' | 'cold';
   /** Raw toolchain output, already bounded by the provider's output cap. */
   log: { text: string; truncated: boolean };
   failure?: 'compile_error' | 'unsupported_input' | 'internal';
@@ -31,7 +44,18 @@ export interface BuildProvider {
   readonly profile: BuildProfile;
   /** sha256 over the canonical pinned-input record (toolchain file hashes, options). */
   readonly profileHash: string;
+  /**
+   * Sprint 25 closure: the runtime capabilities the feature analysis assumed (sorted). A stored
+   * build analysed for another set is not reused: what it declares (e.g. `requires: input-read`)
+   * belongs to that runtime. Absent: the analysis does not depend on the runtime.
+   */
+  readonly analysisCapabilities?: readonly string[];
   /** Refuse to serve when the installed toolchain does not match the pins. */
   verifyToolchain(): Promise<void>;
   build(job: JobContext): Promise<ProviderOutput>;
+  /**
+   * Sprint 18F: whether a job in `jobDir` (a path under the service's work root) would start
+   * from reusable toolchain state (the core seed). Absent: the provider keeps none.
+   */
+  hasCoreSeed?(jobDir: string): Promise<boolean>;
 }

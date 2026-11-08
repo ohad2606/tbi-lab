@@ -20,7 +20,13 @@
 import { sha256Utf8, type ProjectDocument } from '@tbi-lab/domain';
 import type { LiveControl, SolveOutcome } from '@tbi-lab/engine';
 import type { FailReason, SessionEvent } from '../../../runtime/host/protocol.js';
-import type { RunOptions, SimFailure, SimState, SimulationHost } from '../sim/controller.js';
+import type {
+  PwmFailCode,
+  RunOptions,
+  SimFailure,
+  SimState,
+  SimulationHost,
+} from '../sim/controller.js';
 import {
   RuntimeTransportError,
   type RuntimeClient,
@@ -65,6 +71,13 @@ export interface McuDeps {
   stopTimeoutMs?: number;
 }
 
+/**
+ * Alpha (Phase D): warn this long before a running session reaches its maximum lifetime (the
+ * host's `lifetimeMs`, 30 minutes under the Alpha policy). The session is never extended: at the
+ * end the host ends it (`lifetime_exceeded` -> `session_expired`) and the next Run is a new one.
+ */
+export const EXPIRY_WARNING_MS = 60_000;
+
 /** Host failure reasons -> product error codes. */
 const FAIL: Record<FailReason, RuntimeFailCode> = {
   artifact_unknown: 'firmware_unavailable',
@@ -83,8 +96,47 @@ const FAIL: Record<FailReason, RuntimeFailCode> = {
   bridge_lost: 'runtime_crashed',
   guest_reset: 'guest_reset',
   storage_limit: 'session_lost',
+  pwm_unsupported: 'pwm_unsupported',
   internal: 'runtime_crashed',
 };
+
+export const PWM_CODES: readonly PwmFailCode[] = [
+  'pwm_duty_zero_unverified',
+  'pwm_unsupported_mode',
+  'pwm_load_unsupported',
+  'pwm_input_unsupported',
+  'pwm_outputs_interact',
+  'pwm_supply_limited',
+  'pwm_rate_exceeded',
+];
+
+/** R4 (review M8): the host refused an attached pad because the GPIO matrix inverts it. */
+function invertedRouting(detail: unknown): boolean {
+  const f = (detail as { function?: unknown } | null)?.function;
+  return typeof f === 'string' && f.startsWith('inverted:');
+}
+
+/** R4: the host's `pwm_unsupported` detail as a named product failure (unknown shapes: generic). */
+export function pwmFailure(detail: unknown): SimFailure {
+  const d = (detail ?? {}) as Record<string, unknown>;
+  const code = d.code as PwmFailCode;
+  if (!PWM_CODES.includes(code)) return { kind: 'runtime', code: 'pwm_unsupported' };
+  const nums = (v: unknown) =>
+    Array.isArray(v) ? v.filter((x): x is number => Number.isInteger(x)) : undefined;
+  const strs = (v: unknown) =>
+    Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : undefined;
+  const gpios = nums(d.gpios) ?? (Number.isInteger(d.gpio) ? [d.gpio as number] : []);
+  const components = strs(d.components);
+  const inputs = nums(d.inputs);
+  return {
+    kind: 'pwm',
+    code,
+    gpios,
+    ...(components?.length ? { components } : {}),
+    ...(inputs?.length ? { inputs } : {}),
+    ...(typeof d.why === 'string' ? { why: d.why } : {}),
+  };
+}
 
 export class McuSimulation implements SimulationHost {
   private stateValue: SimState = { status: 'stopped' };
@@ -96,8 +148,16 @@ export class McuSimulation implements SimulationHost {
   private outcome: SolveOutcome | null = null;
   private solves = 0;
   private pressed = new Set<string>();
+  /**
+   * Sprint 11 (ADR-010): live mirrors are coalesced per component while one is in flight; the
+   * next one carries the latest values at the latest revision (the protocol allows revision
+   * gaps), so ordinary use never approaches the host's command limits.
+   */
+  private mirrorsInFlight = new Set<string>();
+  private pendingMirrors = new Map<string, { control: LiveControl; projectRevision: number }>();
   private stopRequested = false;
   private stopTimer: ReturnType<typeof setTimeout> | null = null;
+  private expiryTimer: ReturnType<typeof setTimeout> | null = null;
   private startedAt = 0;
   private readonly now: () => number;
 
@@ -139,6 +199,8 @@ export class McuSimulation implements SimulationHost {
     this.outcome = null;
     this.solves = 0;
     this.pressed.clear();
+    this.mirrorsInFlight.clear();
+    this.pendingMirrors.clear();
     this.stopRequested = false;
     this.startedAt = this.now();
     const planned = buildSessionRequest(doc, (board) =>
@@ -187,6 +249,7 @@ export class McuSimulation implements SimulationHost {
       return;
     }
     this.session = session;
+    if (this.view) this.view.sessionId = session.id;
     session.stream(
       (e) => runId === this.runId && this.onEvent(e),
       (s) => runId === this.runId && this.onStream(s),
@@ -220,14 +283,31 @@ export class McuSimulation implements SimulationHost {
   control(component: string, control: LiveControl, projectRevision: number): boolean {
     const session = this.session;
     if (this.stateValue.status !== 'running' || !session) return false;
+    if (this.mirrorsInFlight.has(component)) {
+      const prev = this.pendingMirrors.get(component);
+      this.pendingMirrors.set(component, {
+        control: mergeControls(prev?.control, control),
+        projectRevision: Math.max(prev?.projectRevision ?? 0, projectRevision),
+      });
+      return true;
+    }
+    this.mirrorsInFlight.add(component);
     const runId = this.runId;
+    const next = () => {
+      if (runId !== this.runId) return;
+      this.mirrorsInFlight.delete(component);
+      const pending = this.pendingMirrors.get(component);
+      this.pendingMirrors.delete(component);
+      if (pending) this.control(component, pending.control, pending.projectRevision);
+    };
     void session
       .command({ category: 'mirror', projectRevision, component, control })
       .then((r) => {
-        if (runId === this.runId && !r.accepted)
-          this.failAndRelease({ kind: 'runtime', code: 'mirror_failed', detail: r.reason });
+        if (runId !== this.runId) return;
+        if (!r.accepted) return this.failAndRelease(commandRejection(r.reason));
+        next();
       })
-      .catch((e) => runId === this.runId && this.failAndRelease(transportFailure(e)));
+      .catch((e) => runId === this.runId && this.failAndRelease(commandFailure(e)));
     return true;
   }
 
@@ -245,9 +325,11 @@ export class McuSimulation implements SimulationHost {
       .then((r) => {
         if (runId !== this.runId || r.accepted) return;
         if (pressed) this.pressed.delete(component);
+        if (r.reason === 'rate_limited')
+          return this.failAndRelease({ kind: 'runtime', code: 'commands_rate_limited' });
         this.warn('transient_rejected', { component, reason: r.reason });
       })
-      .catch((e) => runId === this.runId && this.failAndRelease(transportFailure(e)));
+      .catch((e) => runId === this.runId && this.failAndRelease(commandFailure(e)));
     return true;
   }
 
@@ -256,6 +338,8 @@ export class McuSimulation implements SimulationHost {
     const session = this.session;
     const s = this.stateValue.status;
     this.pressed.clear();
+    this.mirrorsInFlight.clear();
+    this.pendingMirrors.clear();
     if (s === 'stopped' || s === 'failed') {
       if (s === 'failed') this.set({ status: 'stopped' });
       return;
@@ -291,6 +375,8 @@ export class McuSimulation implements SimulationHost {
   private release(): void {
     if (this.stopTimer) clearTimeout(this.stopTimer);
     this.stopTimer = null;
+    if (this.expiryTimer) clearTimeout(this.expiryTimer);
+    this.expiryTimer = null;
     this.session?.close();
     this.session = null;
   }
@@ -311,6 +397,25 @@ export class McuSimulation implements SimulationHost {
     const session = this.session;
     this.fail(failure);
     if (session) void session.terminate().catch(() => undefined);
+  }
+
+  /**
+   * From the moment the session runs (when the host starts its lifetime clock), warn
+   * EXPIRY_WARNING_MS before the host's enforced lifetime; at once if the lifetime is shorter.
+   * Without a lifetime from the host (an older host, or unbounded) there is no warning.
+   */
+  private scheduleExpiryWarning(): void {
+    const lifetimeMs = this.session?.created.lifetimeMs;
+    if (this.expiryTimer || typeof lifetimeMs !== 'number' || lifetimeMs <= 0) return;
+    const runId = this.runId;
+    this.expiryTimer = setTimeout(
+      () => {
+        if (runId !== this.runId || !this.view || this.stateValue.status === 'stopping') return;
+        this.view.expiresSoon = { lifetimeMs };
+        this.publish();
+      },
+      Math.max(0, lifetimeMs - EXPIRY_WARNING_MS),
+    );
   }
 
   private warn(code: string, detail?: unknown): void {
@@ -358,13 +463,25 @@ export class McuSimulation implements SimulationHost {
         v.sessionState = e.state;
         if (e.state === 'ended') {
           if (this.stopRequested) return this.finishStopped();
-          const code = e.reason === 'lifetime_exceeded' ? 'session_expired' : 'session_lost';
+          const code =
+            e.reason === 'lifetime_exceeded'
+              ? 'session_expired'
+              : e.reason === 'account_disabled'
+                ? 'account_disabled'
+                : 'session_lost';
           return this.fail({ kind: 'runtime', code, detail: e.reason });
         }
+        if (e.state === 'running') this.scheduleExpiryWarning();
         if (e.state === 'failed') {
           const reason = e.reason as FailReason;
           if (reason === 'electrical_error' && isEngineError(e.detail))
             return this.fail({ kind: 'engine', error: e.detail });
+          if (reason === 'pwm_unsupported') return this.fail(pwmFailure(e.detail));
+          const unmodelled = (e.detail as { unmodelled?: unknown } | null)?.unmodelled;
+          if (reason === 'unsupported_feature' && typeof unmodelled === 'string')
+            return this.fail({ kind: 'unmodelled', code: 'unmodelled', facility: unmodelled });
+          if (reason === 'unsupported_feature' && invertedRouting(e.detail))
+            return this.fail({ kind: 'runtime', code: 'inverted_output', detail: reason });
           return this.fail({
             kind: 'runtime',
             code: FAIL[reason] ?? 'runtime_crashed',
@@ -399,7 +516,12 @@ export class McuSimulation implements SimulationHost {
       case 'gpio': {
         const gpio = { ...v.gpio };
         for (const c of e.changes)
-          gpio[c.gpio] = { drive: c.drive, level: c.level, transitions: c.transitions };
+          gpio[c.gpio] = {
+            drive: c.drive,
+            level: c.level,
+            transitions: c.transitions,
+            ...(c.pwm ? { pwm: c.pwm } : {}),
+          };
         v.gpio = gpio;
         return this.publish();
       }
@@ -439,6 +561,32 @@ export class McuSimulation implements SimulationHost {
       }
     }
   }
+}
+
+/** Several persisted edits of one component in one mirror: later values win. */
+function mergeControls(a: LiveControl | undefined, b: LiveControl): LiveControl {
+  if (!a) return b;
+  const params = a.params || b.params ? { ...a.params, ...b.params } : undefined;
+  return { ...a, ...b, ...(params ? { params } : {}) };
+}
+
+/** A command the host answered with a rejection (409): its reason, as a product failure. */
+function commandRejection(reason: string | undefined): SimFailure {
+  if (reason === 'rate_limited') return { kind: 'runtime', code: 'commands_rate_limited' };
+  return { kind: 'runtime', code: 'mirror_failed', ...(reason ? { detail: reason } : {}) };
+}
+
+/**
+ * A command that failed at the transport (Sprint 11): a refusal by the host's validator (400, e.g.
+ * an older runtime without live part parameters) or the request rate is about the COMMAND, never
+ * "the runtime service is not reachable".
+ */
+function commandFailure(e: unknown): SimFailure {
+  if (e instanceof RuntimeTransportError) {
+    if (e.code === 'refused') return { kind: 'runtime', code: 'command_refused' };
+    if (e.code === 'rate_limited') return { kind: 'runtime', code: 'commands_rate_limited' };
+  }
+  return transportFailure(e);
 }
 
 function transportFailure(e: unknown): SimFailure {

@@ -7,20 +7,32 @@
  * persistence layer stamps revisions when a change is written (project.ts `stampRevision`).
  */
 
-import { CATALOG, defaultParams, getTypeDef } from './catalog.js';
+import { CATALOG, defaultParams, getTypeDef, onStep } from './catalog.js';
 import {
   GRID,
   endPosition,
   locateOnWire,
   nextRotation,
   orthogonalRoute,
+  pointOnSegment,
   snap,
   snapPoint,
   wireRoute,
 } from './layout.js';
-import { settleContacts } from './contacts.js';
+import { isContact, settleContacts } from './contacts.js';
 import { nodeKey, nodeNets, settleNets } from './nets.js';
-import { starterProgram, profileById, utf8Length } from './program.js';
+import {
+  PROGRAM_LIMITS,
+  programPathIssue,
+  sortProgramFiles,
+  starterProgram,
+  sortLibraryRefs,
+  starterSourceFor,
+  profileById,
+  utf8Length,
+} from './program.js';
+import { librariesNamedBy, resolveLibraries } from './libraryRegistry.js';
+import type { ProgramLanguage } from './program.js';
 import { allocateId } from './project.js';
 import {
   cloneDocument,
@@ -29,6 +41,8 @@ import {
   type ParamValue,
   type Point,
   type ProjectDocument,
+  type ProgramSource,
+  type ProgramVariant,
   type Wire,
   type WireColor,
   type WireEnd,
@@ -44,12 +58,26 @@ export type EditError =
   | 'unknown_param'
   | 'param_type'
   | 'out_of_range'
+  /** Sprint POT-UNITS: a quantity off its parameter's resolution grid (catalog `step`). */
+  | 'off_grid'
+  /** Sprint 25: a value outside the part's standard table (catalog `values`). */
+  | 'not_standard'
   | 'not_on_wire'
   | 'same_endpoint'
   | 'name_empty'
   | 'no_program'
   | 'source_too_large'
-  | 'source_invalid';
+  | 'source_invalid'
+  /** Sprint 19B: no programming environment of that id for the board. */
+  | 'unknown_profile'
+  /** Sprint 26: a further program file's path is not one the environment builds (programPathIssue). */
+  | 'file_path_invalid'
+  | 'file_exists'
+  | 'no_file'
+  | 'too_many_files'
+  | 'project_too_large'
+  /** Sprint 26: the code includes or imports this library. */
+  | 'library_in_use';
 
 export type EditResult<T = object> =
   ({ ok: true; doc: ProjectDocument } & T) | { ok: false; error: EditError };
@@ -79,6 +107,58 @@ function transact(
   settleContacts(doc, draft, placed());
   cleanupJunctions(draft);
   settleNets(draft, previous);
+  settleLibraries(draft, doc, fresh(doc, draft));
+  return { ok: true, doc: draft };
+}
+
+/** Programs that are new in `draft` or now in another environment (all their parts count). */
+const fresh = (before: ProjectDocument, draft: ProjectDocument) =>
+  new Set(
+    Object.entries(draft.programs)
+      .filter(([id, p]) => before.programs[id]?.profile !== p.profile)
+      .map(([id]) => id),
+  );
+
+/**
+ * Sprint 26: keep every program's managed libraries what its project needs (libraryRegistry.ts
+ * `resolveLibraries`: the placed components' libraries and those its code names), inside the
+ * same edit (one undo step). Nothing else changes: code is never edited, a pinned version is
+ * kept, and a program that needs none carries no `libraries` field at all.
+ */
+export function settleLibraries(
+  draft: ProjectDocument,
+  before: ProjectDocument | null = draft,
+  fresh: ReadonlySet<string> = new Set(),
+): void {
+  for (const [boardId, program] of Object.entries(draft.programs)) {
+    const libs = resolveLibraries(draft, program, fresh.has(boardId) ? null : before);
+    const same =
+      JSON.stringify(libs) === JSON.stringify(program.libraries ?? []) &&
+      (libs.length > 0 || program.libraries === undefined);
+    if (same) continue;
+    const next = { ...program };
+    if (libs.length) next.libraries = libs;
+    else delete next.libraries;
+    draft.programs[boardId] = next;
+  }
+}
+
+/**
+ * Sprint 26 (review M2): remove a managed library pinned for a part, at the user's request. One the
+ * code names cannot be removed (it would come back with the next edit): `library_in_use`.
+ */
+export function unpinLibrary(doc: ProjectDocument, boardId: string, id: string): EditResult {
+  const program = doc.programs[boardId];
+  if (!program) return { ok: false, error: 'no_program' };
+  if (!(program.libraries ?? []).some((r) => r.id === id)) return { ok: true, doc };
+  const texts = [program.text, ...(program.files ?? []).map((f) => f.text)];
+  if (texts.some((t) => librariesNamedBy(program.language as ProgramLanguage, t).includes(id)))
+    return { ok: false, error: 'library_in_use' };
+  const draft = cloneDocument(doc);
+  const rest = (program.libraries ?? []).filter((r) => r.id !== id);
+  const next: ProgramSource = { ...program, libraries: rest };
+  if (!rest.length) delete next.libraries;
+  draft.programs[boardId] = next;
   return { ok: true, doc: draft };
 }
 
@@ -132,6 +212,9 @@ export function moveSelection(doc: ProjectDocument, sel: Selection, delta: Point
         const w = draft.layout.wires.find((x) => x.id === id);
         if (!w) return 'unknown_wire';
         w.vertices = w.vertices.map((v) => ({ x: v.x + d.x, y: v.y + d.y }));
+        // An automatic wire's constraints move with it (its route is recomputed from them).
+        if (w.auto)
+          w.auto.waypoints = w.auto.waypoints.map((v) => ({ x: v.x + d.x, y: v.y + d.y }));
       }
     },
     () => (d.x || d.y ? sel.components : []),
@@ -174,8 +257,13 @@ export function setParam(
       if (!Number.isFinite(value.value) || value.value < def.min || value.value > def.max) {
         return 'out_of_range';
       }
+      if (!onStep(def, value.value)) return 'off_grid';
+      if (def.values && !def.values.includes(value.value)) return 'not_standard';
     }
-    c.params[key] = typeof value === 'object' ? { value: value.value, unit: value.unit } : value;
+    // An optional parameter set back to its default is removed (stored only when it differs).
+    if (def.kind === 'enum' && def.optional && value === def.default) delete c.params[key];
+    else
+      c.params[key] = typeof value === 'object' ? { value: value.value, unit: value.unit } : value;
   });
 }
 
@@ -267,19 +355,162 @@ export function useBoardProgram(doc: ProjectDocument, boardId: string): EditResu
 }
 
 /**
- * Replace a board's program source text exactly (no normalisation of any kind). A program edit
- * never changes the loaded circuit: it is allowed while a session runs and never reaches it.
+ * Sprint 19B: switch a board's program to another programming environment of its board (Arduino
+ * C++ or MicroPython). Source in one language is never translated into another.
+ *
+ * P1 (schema v7): switching never discards code. The active source (entry file, further files,
+ * pinned libraries) is kept in `alternates`, exactly; the target environment's kept source, if any,
+ * becomes active again exactly as it was (`restored`), otherwise that environment's starter
+ * program starts (`restored: false`). The managed libraries the circuit needs are then settled for
+ * the environment now active only (never another environment's set). Undoable like any edit.
  */
-export function setProgramText(doc: ProjectDocument, boardId: string, text: string): EditResult {
+export function setProgramProfile(
+  doc: ProjectDocument,
+  boardId: string,
+  profileId: string,
+): EditResult<{ restored: boolean }> {
+  const program = doc.programs[boardId];
+  const board = doc.components.find((c) => c.id === boardId);
+  if (!program || !board) return { ok: false, error: 'no_program' };
+  const profile = profileById(profileId);
+  if (!profile || profile.board !== board.type) return { ok: false, error: 'unknown_profile' };
+  if (program.profile === profileId) return { ok: true, doc, restored: true };
+  const { alternates = [], ...active } = program;
+  const kept = alternates.find((a) => a.profile === profileId);
+  const next: ProgramVariant = kept
+    ? cloneDocument(kept)
+    : {
+        language: profile.language,
+        profile: profile.id,
+        fileName: profile.fileName,
+        text: starterSourceFor(profile.language),
+      };
+  const others = [...alternates.filter((a) => a.profile !== profileId), cloneDocument(active)].sort(
+    (a, b) => (a.profile < b.profile ? -1 : a.profile > b.profile ? 1 : 0),
+  );
+  const draft = cloneDocument(doc);
+  draft.programs[boardId] = { ...next, alternates: others };
+  if (!kept) settleLibraries(draft, doc, new Set([boardId]));
+  else {
+    // Restored exactly: its pinned versions are kept and none is removed. Only a library the
+    // circuit now needs and the kept code lacks (a part placed while another language was
+    // active) is added, as placing the part would have added it.
+    const restored = draft.programs[boardId]!;
+    const pinned = restored.libraries ?? [];
+    const missing = resolveLibraries(draft, restored, null).filter(
+      (l) => !pinned.some((p) => p.id === l.id),
+    );
+    if (missing.length) restored.libraries = sortLibraryRefs([...pinned, ...missing]);
+  }
+  return { ok: true, doc: draft, restored: !!kept };
+}
+
+/**
+ * Replace the text of a board's program file exactly (no normalisation of any kind): the entry
+ * file (`path` omitted or the entry's name) or (Sprint 26) a further file. A program edit never
+ * changes the loaded circuit: it is allowed while a session runs and never reaches it.
+ */
+export function setProgramText(
+  doc: ProjectDocument,
+  boardId: string,
+  text: string,
+  path?: string,
+): EditResult {
   const program = doc.programs[boardId];
   if (!program) return { ok: false, error: 'no_program' };
   if (text.includes('\u0000')) return { ok: false, error: 'source_invalid' };
   const profile = profileById(program.profile);
   if (profile && utf8Length(text) > profile.maxSourceBytes)
     return { ok: false, error: 'source_too_large' };
-  if (program.text === text) return { ok: true, doc };
+  const entry = path === undefined || path === program.fileName;
+  const files = program.files ?? [];
+  const k = entry ? -1 : files.findIndex((f) => f.path === path);
+  if (!entry && k < 0) return { ok: false, error: 'no_file' };
+  if ((entry ? program.text : files[k]!.text) === text) return { ok: true, doc };
+  const next: ProgramSource = entry
+    ? { ...program, text }
+    : { ...program, files: files.map((f, i) => (i === k ? { path: f.path, text } : f)) };
+  if (programBytes(next) > PROGRAM_LIMITS.maxTotalBytes)
+    return { ok: false, error: 'project_too_large' };
   const draft = cloneDocument(doc);
-  draft.programs[boardId] = { ...program, text };
+  draft.programs[boardId] = next;
+  settleLibraries(draft);
+  return { ok: true, doc: draft };
+}
+
+const programBytes = (p: ProgramSource) =>
+  utf8Length(p.text) + (p.files ?? []).reduce((n, f) => n + utf8Length(f.text), 0);
+
+/** Sprint 26: add a further file to a board's program (empty unless `text` is given). */
+export function addProgramFile(
+  doc: ProjectDocument,
+  boardId: string,
+  path: string,
+  text = '',
+): EditResult {
+  const program = doc.programs[boardId];
+  const profile = program && profileById(program.profile);
+  if (!program || !profile) return { ok: false, error: 'no_program' };
+  const files = program.files ?? [];
+  const why = programPathIssue(
+    profile.language,
+    path,
+    files.map((f) => f.path),
+    profile.fileName,
+  );
+  if (why === 'duplicate' || why === 'entry') return { ok: false, error: 'file_exists' };
+  if (why) return { ok: false, error: 'file_path_invalid' };
+  if (files.length + 1 >= PROGRAM_LIMITS.maxFiles) return { ok: false, error: 'too_many_files' };
+  if (text.includes('\u0000')) return { ok: false, error: 'source_invalid' };
+  if (utf8Length(text) > profile.maxSourceBytes) return { ok: false, error: 'source_too_large' };
+  const next = { ...program, files: sortProgramFiles([...files, { path, text }]) };
+  if (programBytes(next) > PROGRAM_LIMITS.maxTotalBytes)
+    return { ok: false, error: 'project_too_large' };
+  const draft = cloneDocument(doc);
+  draft.programs[boardId] = next;
+  settleLibraries(draft);
+  return { ok: true, doc: draft };
+}
+
+/** Sprint 26: rename (or move) a further file of a board's program; the entry file never. */
+export function renameProgramFile(
+  doc: ProjectDocument,
+  boardId: string,
+  from: string,
+  to: string,
+): EditResult {
+  const program = doc.programs[boardId];
+  const profile = program && profileById(program.profile);
+  if (!program || !profile) return { ok: false, error: 'no_program' };
+  const files = program.files ?? [];
+  const k = files.findIndex((f) => f.path === from);
+  if (k < 0) return { ok: false, error: 'no_file' };
+  if (from === to) return { ok: true, doc };
+  const others = files.filter((_, i) => i !== k).map((f) => f.path);
+  const why = programPathIssue(profile.language, to, others, profile.fileName);
+  if (why === 'duplicate' || why === 'entry') return { ok: false, error: 'file_exists' };
+  if (why) return { ok: false, error: 'file_path_invalid' };
+  const draft = cloneDocument(doc);
+  draft.programs[boardId] = {
+    ...program,
+    files: sortProgramFiles(files.map((f, i) => (i === k ? { path: to, text: f.text } : f))),
+  };
+  settleLibraries(draft);
+  return { ok: true, doc: draft };
+}
+
+/** Sprint 26: delete a further file of a board's program (the entry file never). */
+export function deleteProgramFile(doc: ProjectDocument, boardId: string, path: string): EditResult {
+  const program = doc.programs[boardId];
+  if (!program) return { ok: false, error: 'no_program' };
+  const files = program.files ?? [];
+  if (!files.some((f) => f.path === path)) return { ok: false, error: 'no_file' };
+  const draft = cloneDocument(doc);
+  const rest = files.filter((f) => f.path !== path);
+  const next: ProgramSource = { ...program, files: rest };
+  if (!rest.length) delete next.files;
+  draft.programs[boardId] = next;
+  settleLibraries(draft);
   return { ok: true, doc: draft };
 }
 
@@ -292,12 +523,16 @@ export type WireTarget = WireEnd | { kind: 'wire'; wire: string; at: Point };
 /**
  * Draw a wire between two targets through optional waypoints. Ending on an existing wire
  * splits it and creates a junction there; wires that merely cross are never connected.
+ *
+ * With `auto` the wire is AUTOMATIC (schema `Wire.auto`): `auto.waypoints` are the points the user
+ * placed while drawing it, and `vertices` the router's current route through them.
  */
 export function addWire(
   doc: ProjectDocument,
   from: WireTarget,
   to: WireTarget,
   vertices: Point[] = [],
+  auto?: { waypoints: Point[] },
 ): EditResult<{ id: string }> {
   let id = '';
   const r = transact(doc, (draft) => {
@@ -307,7 +542,13 @@ export function addWire(
     if (typeof b === 'string') return b;
     if (nodeKey(a) === nodeKey(b)) return 'same_endpoint';
     id = allocateId(draft, 'W');
-    draft.layout.wires.push({ id, from: a, to: b, vertices: vertices.map(snapPoint) });
+    draft.layout.wires.push({
+      id,
+      from: a,
+      to: b,
+      vertices: vertices.map(snapPoint),
+      ...(auto ? { auto: { waypoints: auto.waypoints.map(snapPoint) } } : {}),
+    });
   });
   return r.ok ? { ...r, id } : r;
 }
@@ -353,6 +594,8 @@ export function moveWireSegment(
     // Consecutive points are axis-aligned, so the orthogonal route through them is exactly
     // this polyline; the minimal form drops points made redundant by the move.
     wire.vertices = orthogonalRoute(pts).slice(1, -1);
+    // The user shaped this wire by hand: from now on it is MANUAL (its geometry is kept as drawn).
+    delete wire.auto;
   });
 }
 
@@ -384,6 +627,11 @@ function splitWire(doc: ProjectDocument, wireId: string, at: Point): WireEnd | E
   const junction = { id: allocateId(doc, 'J'), x: at.x, y: at.y };
   doc.layout.junctions.push(junction);
   const jEnd: WireEnd = { kind: 'junction', junction: junction.id };
+  // An automatic wire stays automatic on both sides; each side keeps the user's waypoints on its
+  // own part of the route (in order along it).
+  const route = wireRoute(doc, wire) ?? [];
+  const along = (p: Point) => routeDistance(route, p);
+  const cut = along(at);
   const tail: Wire = {
     id: allocateId(doc, 'W'),
     from: jEnd,
@@ -391,7 +639,11 @@ function splitWire(doc: ProjectDocument, wireId: string, at: Point): WireEnd | E
     vertices: wire.vertices.slice(loc.hop),
     // A wire the user coloured stays that colour on both sides of the new junction.
     ...(wire.color ? { color: wire.color } : {}),
+    ...(wire.auto
+      ? { auto: { waypoints: wire.auto.waypoints.filter((p) => along(p) > cut) } }
+      : {}),
   };
+  if (wire.auto) wire.auto = { waypoints: wire.auto.waypoints.filter((p) => along(p) < cut) };
   wire.to = jEnd;
   wire.vertices = wire.vertices.slice(0, loc.hop);
   doc.layout.wires.push(tail);
@@ -430,8 +682,10 @@ export function cleanupJunctions(doc: ProjectDocument): void {
       const ids = new Set(wires.map((w) => w.id));
       if (wires.length === 2) {
         doc.layout.wires = doc.layout.wires.filter((w) => !ids.has(w.id) || w === wires[0]);
-        if (joined) Object.assign(wires[0]!, joined);
-        else doc.layout.wires = doc.layout.wires.filter((w) => w !== wires[0]);
+        if (joined) {
+          if (!joined.auto) delete wires[0]!.auto;
+          Object.assign(wires[0]!, joined);
+        } else doc.layout.wires = doc.layout.wires.filter((w) => w !== wires[0]);
       } else {
         doc.layout.wires = doc.layout.wires.filter((w) => !ids.has(w.id));
       }
@@ -457,7 +711,55 @@ function joinAt(doc: ProjectDocument, a: Wire, b: Wire, jId: string): Wire | und
   if (!pa || !pb) return undefined;
   // Every corner of the original paths becomes a waypoint, so the drawing is unchanged.
   const vertices = [...pa.slice(1), ...pb.slice(1, -1)];
-  return { id: a.id, from: aFar, to: bFar, vertices };
+  // A join with an automatic side stays automatic (review 3: never freeze router output as user
+  // geometry): an automatic side contributes its waypoints, a manual side its corners (the user's
+  // own geometry, kept as constraints). Two manual sides give a manual wire, unchanged.
+  if (a.auto || b.auto) {
+    const corners = (w: Wire, path: Point[]) => (w.auto ? null : path.slice(1, -1));
+    const wa = a.auto
+      ? isJ(a.to)
+        ? a.auto.waypoints
+        : [...a.auto.waypoints].reverse()
+      : corners(a, pa)!;
+    const wb = b.auto
+      ? isJ(b.from)
+        ? b.auto.waypoints
+        : [...b.auto.waypoints].reverse()
+      : corners(b, pb)!;
+    return { id: a.id, from: aFar, to: bFar, vertices, auto: { waypoints: [...wa, ...wb] } };
+  }
+  const joined: Wire = { id: a.id, from: aFar, to: bFar, vertices };
+  return joined;
+}
+
+/** Distance along a route (polyline) to point p on it; Infinity when p is not on it. */
+function routeDistance(route: readonly Point[], p: Point): number {
+  let d = 0;
+  for (let i = 0; i + 1 < route.length; i++) {
+    const a = route[i]!;
+    const b = route[i + 1]!;
+    if (pointOnSegment(p, a, b)) return d + Math.abs(p.x - a.x) + Math.abs(p.y - a.y);
+    d += Math.abs(b.x - a.x) + Math.abs(b.y - a.y);
+  }
+  return Infinity;
+}
+
+/**
+ * Wire routing integrity: make the given wires AUTOMATIC (an explicit user action, "Route
+ * automatically"): their bends are dropped and from now on the router draws them, recomputed after
+ * every layout change. Connectivity is unchanged. Contacts (no route) are skipped.
+ */
+export function makeWiresAutomatic(doc: ProjectDocument, wireIds: readonly string[]): EditResult {
+  return transact(doc, (draft) => {
+    for (const id of wireIds) {
+      const w = draft.layout.wires.find((x) => x.id === id);
+      if (!w) return 'unknown_wire';
+      // A contact has no route; an automatic wire keeps its waypoints (review minor).
+      if (w.auto || isContact(draft, w)) continue;
+      w.auto = { waypoints: [] };
+      w.vertices = [];
+    }
+  });
 }
 
 export { GRID };

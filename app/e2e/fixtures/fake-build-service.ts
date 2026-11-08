@@ -44,6 +44,13 @@ const sha = (b: Buffer) => createHash('sha256').update(b).digest('hex');
 export const STAND_IN = {
   gpioProof: sha(standInImage('TbiGpioProof')),
   banks: sha(standInImage('TbiBanks')),
+  // Exploration Foundation L3: the esp32-logic-quad-and example's sketch.
+  logicQuad: sha(standInImage('LogicQuadAnd')),
+  // Sprint 20 logic example D: the esp32-logic-override example's sketch.
+  logicOverride: sha(standInImage('LogicOrOverride')),
+  // Sprint 25: the esp32-blink and esp32-input-echo examples' own sketches.
+  blinkTwoPins: sha(standInImage('BlinkTwoPins')),
+  inputEcho: sha(standInImage('InputEcho')),
 };
 
 const SKETCHES: Record<string, string> = {
@@ -53,6 +60,22 @@ const SKETCHES: Record<string, string> = {
   ),
   TbiBanks: readFileSync(
     new URL('../../../runtime/firmware/arduino/TbiBanks/TbiBanks.ino', import.meta.url),
+    'utf8',
+  ),
+  LogicQuadAnd: readFileSync(
+    new URL('../../tests/exampleSketches/LogicQuadAnd.ino', import.meta.url),
+    'utf8',
+  ),
+  LogicOrOverride: readFileSync(
+    new URL('../../tests/exampleSketches/LogicOrOverride.ino', import.meta.url),
+    'utf8',
+  ),
+  BlinkTwoPins: readFileSync(
+    new URL('../../tests/exampleSketches/BlinkTwoPins.ino', import.meta.url),
+    'utf8',
+  ),
+  InputEcho: readFileSync(
+    new URL('../../tests/exampleSketches/InputEcho.ino', import.meta.url),
     'utf8',
   ),
 };
@@ -79,6 +102,29 @@ class ScriptedProvider implements BuildProvider {
         ],
         log: { text: "sketch.ino:1:1: error: 'setup' was not declared", truncated: false },
       };
+    // Sprint 26: a further file with a line `BROKEN` fails there (file and line, as the real
+    // toolchain reports them), so the editor's per-file diagnostics can be exercised.
+    for (const f of job.files.slice(1)) {
+      const k = f.text.split('\n').findIndex((l) => l.includes('BROKEN'));
+      if (k >= 0)
+        return {
+          ok: false,
+          failure: 'compile_error',
+          diagnostics: [
+            {
+              severity: 'error',
+              file: f.name,
+              line: k + 1,
+              column: 1,
+              message: "'BROKEN' does not name a type",
+            },
+          ],
+          log: {
+            text: `${f.name}:${k + 1}:1: error: 'BROKEN' does not name a type`,
+            truncated: false,
+          },
+        };
+    }
     const name = Object.entries(SKETCHES).find(([, src]) => src === text)?.[0];
     const image = join(job.dir, 'image.bin');
     await writeFile(image, standInImage(name ?? `custom:${sha(Buffer.from(text))}`));

@@ -1,0 +1,12 @@
+TbiBanks present (clean build reproduces pin)
+TbiGpioProof present (clean build reproduces pin)
+TbiNvs present (clean build reproduces pin)
+TbiRestart present (clean build reproduces pin)
+TbiTiming present (clean build reproduces pin)
+micropython present (clean build reproduces pin)
+TbiR1Scan imported pinned bytes 5ddd712902b1ac514f095b319a685de7f5a2a5da5e47bba49b167dbcee8f60b3
+TbiEdgeEcho imported pinned bytes 8cf4804dc1ba37f5c1afc9acdb22498200c31b40a5e3a39715bafc6c625688de
+TbiHcSr04 imported pinned bytes 620e06276aeaa4512e79a9c65c7d3200fbd2aaaba333137e11ffcdac9b85efba
+TbiDht22 imported pinned bytes a2e6b54c81ecc7c00cf31b372cbfd80936436dfa82cf62479eae40edc5c21820
+TbiLcd imported pinned bytes 2f70c09c14f7686bd6671c925adeabcb5564fb2de5ad8989b6c78c108e4bd4fd
+TbiI2cProbe imported pinned bytes 6f75261c61a610e5bb6c30cda1c9b112cf26fe6df2c05de09a3eb7460bbc3777

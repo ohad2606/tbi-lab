@@ -207,21 +207,37 @@ describe('commands and the co-located loop', () => {
     expect(applied).toEqual([5, 7]);
   });
 
-  it('a mirror the runtime cannot apply fails the session (stale), never the project', async () => {
+  it('a control that does not exist for the component is refused when it arrives, never applied (Sprint 11)', async () => {
+    // Before Sprint 11 this was accepted, failed at apply and failed the session (mirror_failed).
+    // ADR-010: the host now refuses it explicitly at submit; nothing reaches the runtime, so the
+    // session still represents its revisions. The browser stops the run on any refused mirror.
     const { host, art } = start();
     const s = created(host, art.sha256);
     s.run();
     await waitEvent(s, (e) => e.type === 'serial');
-    host.command(s, {
+    const r = host.command(s, {
       category: 'mirror',
       seq: 1,
       projectRevision: 5,
       component: 'PSU1',
       control: { closed: true },
     });
-    await waitState(s, 'failed');
-    expect(s.status()).toMatchObject({ state: 'failed', reason: 'mirror_failed' });
-    expect(gone(s.privateDir)).toBe(true);
+    expect(r).toEqual({
+      ok: true,
+      value: {
+        accepted: false,
+        reason: 'unsupported_control',
+        revisions: {
+          snapshot: expect.any(Number),
+          accepted: expect.any(Number),
+          applied: expect.any(Number),
+        },
+      },
+    });
+    expect(s.state).toBe('running');
+    expect(s.revisions().applied).toBeLessThan(5);
+    s.stop();
+    await waitState(s, 'ended');
   });
 
   it('a mirror value the engine refuses fails the session (mirror_failed)', async () => {

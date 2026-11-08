@@ -7,14 +7,16 @@
  * other views are unaffected.
  */
 
+import { isolateLtr } from '../i18n/i18n.js';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { emptySelection } from '@tbi-lab/domain';
-import { deriveScene, sceneObstacles, type SceneDescription } from '../views/scene3d/scene.js';
+import { sceneObstacles, type SceneDescription } from '../views/scene3d/scene.js';
+import { deriveCheckedScene } from '../views/scene3d/checked.js';
 import { actuators, pick } from '../views/scene3d/pick.js';
 import { controlKind, controlState, pressControl, toggleControl } from './controls.js';
 import type { Obstacle } from '../views/scene3d/route3d.js';
-import type { LiveLevel, Viewer, ViewerStats } from '../views/scene3d/renderer.js';
-import { rgbMix } from '../views/ledLooks.js';
+import type { Viewer, ViewerStats } from '../views/scene3d/renderer.js';
+import { liveLevels } from './liveLevels.js';
 import { isSoftwareRenderer } from '../gpuInfo.js';
 import {
   LAYERS,
@@ -71,7 +73,24 @@ export function ThreeView() {
   const dofUnavailable = stats?.dof === 'unavailable';
   // Development diagnostics (hidden): open the app with #diag3d to see the renderer readout.
   const diagnostics = typeof location !== 'undefined' && /(^|[#&])diag3d\b/.test(location.hash);
-  const scene = useMemo(() => (doc ? deriveScene(doc) : null), [doc]);
+  // Sprint 13 OS-02: where the time of opening the 3D view goes (ms from opening): the renderer
+  // chunk, the glTF assets, the viewer (context, environment, passes), the scene derivation, the
+  // scene build, and the first rendered frame (shader compilation happens in it). Exposed as
+  // `data-open-ms` for measurement; never shown.
+  const opened = useRef(performance.now());
+  const openMs = useRef<Record<string, number>>({});
+  const mark = (k: string) => {
+    if (openMs.current[k] === undefined)
+      openMs.current[k] = Math.round(performance.now() - opened.current);
+  };
+  const scene = useMemo(() => {
+    if (!doc) return null;
+    const t = performance.now();
+    // s21r (review r5): the drawn cables are checked too (checked.ts).
+    const s = deriveCheckedScene(doc);
+    openMs.current.derive ??= Math.round(performance.now() - t);
+    return s;
+  }, [doc]);
   const shownProject = useRef<string | null>(null);
 
   // Load the renderer once per opening; release everything on close.
@@ -80,16 +99,27 @@ export function ThreeView() {
     // The renderer chunk, then the bundled glTF assets (fetched once per page, never at start-up).
     import('../views/scene3d/renderer.js')
       .then(async (mod) => {
+        mark('chunk');
         await mod.loadAssets();
+        mark('assets');
         setAssetMs(mod.assetLoadStats()?.ms ?? null);
         return mod;
       })
       .then((mod) => {
         if (cancelled || !host.current) return;
         try {
-          viewer.current = mod.createViewer(host.current, (s) => setStats(s), {
-            layers: readLayers(storage()),
-          });
+          viewer.current = mod.createViewer(
+            host.current,
+            (s) => {
+              if (s.renders >= 1 && openMs.current.update !== undefined) {
+                mark('firstFrame');
+                openMs.current.firstRenderCallMs ??= Math.round(s.renderMs);
+              }
+              setStats(s);
+            },
+            { layers: readLayers(storage()) },
+          );
+          mark('viewer');
           // Evidence capture (screenshots at fixed close-up cameras): the viewer is reachable from
           // the page only when this browser opted in. Never used by the product.
           try {
@@ -122,7 +152,10 @@ export function ThreeView() {
     const key = structuralKey(scene);
     if (resetCamera || built.current !== key) {
       built.current = key;
+      const t = performance.now();
       viewer.current.update(scene, { resetCamera });
+      openMs.current.updateMs ??= Math.round(performance.now() - t);
+      mark('update');
     }
     // Evidence and browser tests (opted in, as tbiViewer): the scene the view shows.
     const h = host.current as unknown as {
@@ -252,27 +285,8 @@ export function ThreeView() {
     );
   };
 
-  // While running: LED glow from the solved forward current (visual cue only, as on the circuit
-  // canvas). Off when stopped.
-  const outcome = sim.status === 'running' && sim.outcome.ok ? sim.outcome : null;
-  const levels: Record<string, LiveLevel> = {};
-  if (outcome && doc)
-    for (const c of doc.components)
-      if (c.type === 'component.led') {
-        const i = outcome.components[c.id]?.current ?? 0;
-        if (i && i > 0) levels[c.id] = Math.min(1, Math.max(0.08, i / 0.02));
-      } else if (c.type === 'display.led_matrix_8x8') {
-        // Each dot's level from ITS solved current (full at 20 mA).
-        const arr = outcome.components[c.id]?.array;
-        if (arr && arr.currents.some((i) => i > 1e-6))
-          levels[c.id] = {
-            dots: arr.currents.map((i) => (i > 1e-6 ? Math.min(1, Math.max(0.15, i / 0.02)) : 0)),
-          };
-      } else if (c.type === 'component.rgb_led') {
-        // The emitted colour is the mix of the SOLVED channel currents (never a chosen colour).
-        const mix = rgbMix(outcome.components[c.id]?.currents ?? {});
-        if (mix) levels[c.id] = { level: mix.intensity, color: mix.color };
-      }
+  // While running: what the simulation reports, shown live (liveLevels.ts). Off when stopped.
+  const levels = liveLevels(doc, sim);
   const levelKey = JSON.stringify(levels);
   useEffect(() => {
     if (status === 'ready') viewer.current?.setLive(levels);
@@ -306,6 +320,8 @@ export function ThreeView() {
   const overlaps = scene?.separation.unresolved.length
     ? [...new Set(scene.separation.unresolved.flat())].sort().join(', ')
     : '';
+  // Wires the 3D router could not route safely (s20r): said plainly, never left unexplained.
+  const routeLimits = scene?.routeLimits?.length ? scene.routeLimits.join(', ') : '';
   return (
     <div
       class="view3d-wrap"
@@ -320,6 +336,9 @@ export function ThreeView() {
       data-gpu-bytes={stats ? stats.gpuBytes.geometry + stats.gpuBytes.textures : undefined}
       data-assets-ms={assetMs ?? undefined}
       data-render-ms={stats?.renderMs}
+      data-open-ms={
+        openMs.current.firstFrame !== undefined ? JSON.stringify(openMs.current) : undefined
+      }
       data-labels={layers.labels ? 'on' : 'off'}
       data-layers={LAYERS.filter((l) => l.kind === 'overlay' && layers[l.id])
         .map((l) => l.id)
@@ -332,7 +351,10 @@ export function ThreeView() {
       data-draw-calls={stats?.drawCalls}
       data-triangles={stats?.triangles}
       data-materials={stats?.materials}
-      data-lit={Object.keys(levels).join(' ')}
+      data-lit={Object.entries(levels)
+        // An LCD is lit only by its reported backlight.
+        .flatMap(([id, l]) => (typeof l === 'object' && 'lcd' in l && !l.lcd.backlight ? [] : [id]))
+        .join(' ')}
       data-glow={Object.entries(levels)
         .flatMap(([id, l]) => (typeof l === 'object' && 'color' in l ? [`${id}:${l.color}`] : []))
         .join(' ')}
@@ -702,6 +724,11 @@ export function ThreeView() {
             {overlaps && (
               <div class="view-note-warning" role="status" data-testid="view3d-overlap">
                 {t('view3d.overlap', { parts: overlaps })}
+              </div>
+            )}
+            {routeLimits && (
+              <div class="view-note-warning" role="status" data-testid="view3d-route-limit">
+                {t('view3d.routeLimit', { wires: isolateLtr(routeLimits) })}
               </div>
             )}
           </div>

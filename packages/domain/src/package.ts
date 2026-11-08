@@ -264,7 +264,11 @@ export function unexpectedFields(doc: ProjectDocument): string[] {
   }
   doc.layout.wires.forEach((w, i) => {
     const path = `layout.wires[${i}]`;
-    check(w, ['id', 'from', 'to', 'vertices', 'color'], path);
+    check(w, ['id', 'from', 'to', 'vertices', 'color', 'auto'], path);
+    if (w.auto) {
+      check(w.auto, ['waypoints'], `${path}.auto`);
+      w.auto.waypoints.forEach((v, j) => check(v, ['x', 'y'], `${path}.auto.waypoints[${j}]`));
+    }
     for (const end of ['from', 'to'] as const) {
       const e = w[end];
       check(

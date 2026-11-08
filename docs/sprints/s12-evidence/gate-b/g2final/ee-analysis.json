@@ -1,0 +1,96 @@
+{
+ "edges": 400,
+ "pulses": 200,
+ "lost": 0,
+ "normalLatencyUs": [
+  0.0,
+  12.0
+ ],
+ "normalEdges": 396,
+ "lateRises": [
+  {
+   "pulse": 40,
+   "riseNs": 4000104000,
+   "latencyUs": 277.6
+  },
+  {
+   "pulse": 84,
+   "riseNs": 5100108400,
+   "latencyUs": 276.2
+  },
+  {
+   "pulse": 116,
+   "riseNs": 5900111600,
+   "latencyUs": 273.0
+  },
+  {
+   "pulse": 120,
+   "riseNs": 6000112000,
+   "latencyUs": 272.6
+  }
+ ],
+ "loopInsnsMedian": 1476,
+ "loopIterationsPerSecondAt": null,
+ "stall": {
+  "loopGapInsns": 48357,
+  "medianLoopInsns": 1476,
+  "entriesInGap": [
+   [
+    "xPortEnterCriticalTimeout@spin cpu0",
+    2232
+   ],
+   [
+    "xPortEnterCriticalTimeout cpu1",
+    8
+   ],
+   [
+    "vPortExitCritical cpu1",
+    8
+   ],
+   [
+    "__cxa_guard_acquire cpu1",
+    2
+   ],
+   [
+    "xQueueSemaphoreTake cpu1",
+    2
+   ],
+   [
+    "pvTaskIncrementMutexHeldCount cpu1",
+    2
+   ],
+   [
+    "xQueueGenericSend cpu1",
+    2
+   ],
+   [
+    "prvCopyDataToQueue cpu1",
+    2
+   ],
+   [
+    "xTaskPriorityDisinherit cpu1",
+    2
+   ],
+   [
+    "_WindowOverflow8 cpu1",
+    1
+   ],
+   [
+    "__lshrdi3 cpu1",
+    1
+   ],
+   [
+    "esp_timer_impl_get_time cpu1",
+    1
+   ],
+   [
+    "_WindowUnderflow8 cpu1",
+    1
+   ],
+   [
+    "_Z14serialEventRunv cpu1",
+    1
+   ]
+  ]
+ }
+}

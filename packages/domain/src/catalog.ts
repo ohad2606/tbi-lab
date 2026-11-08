@@ -18,6 +18,11 @@ export interface TerminalDef {
   labelKey: string;
 }
 
+/** Bourns PTV09A standard resistance table (datasheet REV. 01/25 p.1), ohms. */
+export const POT_STANDARD_OHMS: readonly number[] = [
+  1e3, 2e3, 5e3, 10e3, 20e3, 50e3, 100e3, 200e3, 500e3, 1e6,
+];
+
 export type ParamDef =
   | {
       kind: 'quantity';
@@ -35,6 +40,24 @@ export type ParamDef =
        * control. `scale` picks the control's scale (illuminance spans decades: logarithmic).
        */
       environment?: { scale: 'linear' | 'log' };
+      /**
+       * Sprint POT-UNITS: a PART property (not the environment) that the inspector also offers
+       * as a slider, e.g. a potentiometer's wiper position. Only on a `live` parameter.
+       */
+      slider?: { scale: 'linear' };
+      /**
+       * Sprint POT-UNITS (review M2): the value's resolution. Stored values must be whole
+       * multiples of it (a potentiometer's position: 0.01 %), so no segment becomes vanishingly
+       * small; anything else is refused by name (`off_grid`).
+       */
+      step?: number;
+      /**
+       * Sprint 25: the only values the part is made in (a manufacturer's standard table, e.g. the
+       * PTV09A's 1-2-5 resistances), ascending, all within [min, max]. The inspector offers them
+       * as a list; any other value is refused by the editor (`not_standard`) and by the engine.
+       * Documents holding another value still open (nothing is migrated).
+       */
+      values?: readonly number[];
     }
   | {
       kind: 'boolean';
@@ -54,6 +77,12 @@ export type ParamDef =
       labelKey: string;
       live?: boolean;
       environment?: never;
+      /**
+       * Sprint 19B: absent from a stored component means `default`, and it is stored only when
+       * set to another value (so documents written before it existed, and documents that never
+       * change it, stay exactly as they were: no schema change, no rollback effect).
+       */
+      optional?: true;
     };
 
 export interface ComponentTypeDef {
@@ -91,6 +120,12 @@ export interface ComponentTypeDef {
    * before any session starts; local circuits simulate it normally. Absent means supported.
    */
   mcuRuntime?: false;
+  /**
+   * Sprint 11 (R1): why `mcuRuntime` is false, when the reason is known and permanent for the
+   * current runtime: `time_dependent` — the part's behaviour is defined over simulated time,
+   * which the ESP32 runtime does not step (a capacitor). The product names that reason.
+   */
+  mcuRuntimeReason?: 'time_dependent';
 }
 
 /**
@@ -173,7 +208,6 @@ const SPRINT10_TYPES = {
     ],
     aliases: ['rgb', 'rgb led', 'full colour led'],
     optionalTerminals: ['red', 'green', 'blue'],
-    mcuRuntime: false,
   },
   'component.photoresistor': {
     type: 'component.photoresistor',
@@ -207,7 +241,6 @@ const SPRINT10_TYPES = {
       },
     ],
     aliases: ['ldr', 'photoresistor', 'light sensor', 'cds', 'gl5528'],
-    mcuRuntime: false,
   },
   'component.buzzer': {
     type: 'component.buzzer',
@@ -231,7 +264,66 @@ const SPRINT10_TYPES = {
       },
     ],
     aliases: ['buzzer', 'beeper', 'sounder', 'active buzzer'],
-    mcuRuntime: false,
+  },
+  /**
+   * Sprint POT-UNITS (v5): a three-terminal potentiometer, Bourns PTV09A, linear taper (datasheet
+   * PTV09.pdf REV. 01/25 p.1: 1 kΩ … 1 MΩ, ±20 %, 0.05 W, 20 VDC; pins 1/3 track ends, 2 wiper).
+   * `position` is the wiper's place along the resistive track, 0 % at end A … 100 % at end B
+   * (the fraction of the track resistance between A and the wiper), not the shaft angle.
+   */
+  'component.potentiometer': {
+    type: 'component.potentiometer',
+    typeVersion: 1,
+    refPrefix: 'RV',
+    nameKey: 'component.component.potentiometer.name',
+    symbol: 'symbol.potentiometer',
+    terminals: [
+      { id: 'a', offset: { x: -40, y: 0 }, labelKey: 'terminal.potEndA' },
+      { id: 'wiper', offset: { x: 0, y: -40 }, labelKey: 'terminal.wiper' },
+      { id: 'b', offset: { x: 40, y: 0 }, labelKey: 'terminal.potEndB' },
+    ],
+    params: [
+      {
+        kind: 'enum',
+        key: 'model',
+        options: [
+          {
+            value: 'model.potentiometer.bourns_ptv09a_linear',
+            labelKey: 'model.potentiometer.bourns_ptv09a_linear',
+          },
+        ],
+        default: 'model.potentiometer.bourns_ptv09a_linear',
+        labelKey: 'param.model',
+      },
+      {
+        kind: 'quantity',
+        key: 'resistance',
+        unit: 'ohm',
+        min: 1000,
+        max: 1e6,
+        default: 10_000,
+        labelKey: 'param.totalResistance',
+        // Sprint 25: the PTV09A's standard resistance table (Bourns datasheet REV. 01/25 p.1;
+        // docs/sprints/s10-evidence/datasheets/FACTS.md §12): the 1-2-5 decades, codes 102 … 105.
+        values: POT_STANDARD_OHMS,
+      },
+      {
+        kind: 'quantity',
+        key: 'position',
+        unit: 'percent',
+        min: 0,
+        max: 100,
+        default: 50,
+        labelKey: 'param.wiperPosition',
+        live: true,
+        slider: { scale: 'linear' },
+        step: 0.01,
+      },
+    ],
+    // The wiper may be left unwired: a two-terminal variable resistor between A and B is a fixed
+    // resistor, and a rheostat uses A (or B) and the wiper only.
+    optionalTerminals: ['a', 'wiper', 'b'],
+    aliases: ['pot', 'potentiometer', 'trimmer', 'rheostat', 'variable resistor', 'ptv09'],
   },
   'component.bjt_npn': {
     type: 'component.bjt_npn',
@@ -254,7 +346,6 @@ const SPRINT10_TYPES = {
       },
     ],
     aliases: ['transistor', 'npn', 'bjt', '2n3904', 'טרנזיסטור'],
-    mcuRuntime: false,
   },
   'sensor.pir_hc_sr501': {
     type: 'sensor.pir_hc_sr501',
@@ -288,7 +379,159 @@ const SPRINT10_TYPES = {
     ],
     toggleParam: 'motion',
     aliases: ['pir', 'motion sensor', 'hc-sr501', 'חיישן תנועה'],
-    mcuRuntime: false,
+  },
+  'sensor.hc_sr04': {
+    type: 'sensor.hc_sr04',
+    typeVersion: 1,
+    refPrefix: 'U',
+    nameKey: 'component.sensor.hc_sr04.name',
+    symbol: 'symbol.ultrasonic',
+    // The module's header, in its pin order (Vcc, Trig, Echo, GND).
+    terminals: [
+      { id: 'vcc', offset: { x: -60, y: -40 }, labelKey: 'terminal.vcc' },
+      { id: 'trig', offset: { x: -60, y: -20 }, labelKey: 'terminal.trig' },
+      { id: 'echo', offset: { x: -60, y: 0 }, labelKey: 'terminal.echo' },
+      { id: 'gnd', offset: { x: -60, y: 20 }, labelKey: 'terminal.moduleGnd' },
+    ],
+    params: [
+      {
+        kind: 'enum',
+        key: 'model',
+        options: [{ value: 'model.ultrasonic.hc_sr04', labelKey: 'model.ultrasonic.hc_sr04' }],
+        default: 'model.ultrasonic.hc_sr04',
+        labelKey: 'param.model',
+      },
+      {
+        // The distance to a flat target: the simulated environment, not a part property. The
+        // range goes past the module's 2 cm - 4 m so out-of-range targets can be tried (no echo).
+        kind: 'quantity',
+        key: 'distance',
+        unit: 'metre',
+        min: 0.01,
+        max: 5,
+        default: 0.5,
+        labelKey: 'param.distance',
+        live: true,
+        environment: { scale: 'linear' },
+      },
+      {
+        kind: 'quantity',
+        key: 'airTemperature',
+        unit: 'celsius',
+        min: -20,
+        max: 50,
+        default: 20,
+        labelKey: 'param.airTemperature',
+        live: true,
+        environment: { scale: 'linear' },
+      },
+    ],
+    aliases: ['hc-sr04', 'ultrasonic', 'distance sensor', 'sonar', 'חיישן מרחק', 'אולטרסוני'],
+  },
+  'sensor.dht22': {
+    type: 'sensor.dht22',
+    typeVersion: 1,
+    refPrefix: 'U',
+    nameKey: 'component.sensor.dht22.name',
+    symbol: 'symbol.dht22',
+    // The sensor's four pins, front view, left to right (VDD, DATA, NC, GND).
+    terminals: [
+      { id: 'vdd', offset: { x: -60, y: -40 }, labelKey: 'terminal.vdd' },
+      { id: 'data', offset: { x: -60, y: -20 }, labelKey: 'terminal.data' },
+      { id: 'nc', offset: { x: -60, y: 0 }, labelKey: 'terminal.notConnected' },
+      { id: 'gnd', offset: { x: -60, y: 20 }, labelKey: 'terminal.moduleGnd' },
+    ],
+    optionalTerminals: ['nc'],
+    params: [
+      {
+        kind: 'enum',
+        key: 'model',
+        options: [{ value: 'model.humidity.am2302', labelKey: 'model.humidity.am2302' }],
+        default: 'model.humidity.am2302',
+        labelKey: 'param.model',
+      },
+      {
+        kind: 'quantity',
+        key: 'temperature',
+        unit: 'celsius',
+        min: -40,
+        max: 80,
+        default: 21.5,
+        labelKey: 'param.temperature',
+        live: true,
+        environment: { scale: 'linear' },
+      },
+      {
+        kind: 'quantity',
+        key: 'humidity',
+        unit: 'percent_rh',
+        min: 0,
+        max: 100,
+        default: 55,
+        labelKey: 'param.humidity',
+        live: true,
+        environment: { scale: 'linear' },
+      },
+    ],
+    aliases: ['dht22', 'am2302', 'humidity', 'temperature sensor', 'לחות', 'חיישן טמפרטורה'],
+  },
+  'display.lcd1602_i2c': {
+    type: 'display.lcd1602_i2c',
+    typeVersion: 1,
+    refPrefix: 'DS',
+    nameKey: 'component.display.lcd1602_i2c.name',
+    symbol: 'symbol.lcd_i2c',
+    // The PCF8574 backpack's header, in its pin order (GND, VCC, SDA, SCL).
+    terminals: [
+      { id: 'gnd', offset: { x: -80, y: -40 }, labelKey: 'terminal.moduleGnd' },
+      { id: 'vcc', offset: { x: -80, y: -20 }, labelKey: 'terminal.vcc' },
+      { id: 'sda', offset: { x: -80, y: 0 }, labelKey: 'terminal.sda' },
+      { id: 'scl', offset: { x: -80, y: 20 }, labelKey: 'terminal.scl' },
+    ],
+    params: [
+      {
+        kind: 'enum',
+        key: 'model',
+        options: [{ value: 'model.lcd.lcd1602_pcf8574', labelKey: 'model.lcd.lcd1602_pcf8574' }],
+        default: 'model.lcd.lcd1602_pcf8574',
+        labelKey: 'param.model',
+      },
+      {
+        // PCF8574 A2..A0 jumpers: 7-bit address 0x20-0x27 (NXP PCF8574 p.5). Technical tokens.
+        kind: 'enum',
+        key: 'address',
+        options: [0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27].map((a) => ({
+          value: `i2c.0x${a.toString(16)}`,
+          labelKey: `i2c.0x${a.toString(16)}`,
+        })),
+        default: 'i2c.0x27',
+        labelKey: 'param.i2cAddress',
+      },
+    ],
+    aliases: ['lcd', 'lcd1602', '16x2', 'i2c lcd', 'pcf8574', 'hd44780', 'צג', 'מסך'],
+  },
+  'component.servo_sg90': {
+    type: 'component.servo_sg90',
+    typeVersion: 1,
+    refPrefix: 'M',
+    nameKey: 'component.component.servo_sg90.name',
+    symbol: 'symbol.servo',
+    // The servo's three-wire lead, in its connector order (brown GND, red +V, orange signal).
+    terminals: [
+      { id: 'gnd', offset: { x: -60, y: -20 }, labelKey: 'terminal.moduleGnd' },
+      { id: 'vcc', offset: { x: -60, y: 0 }, labelKey: 'terminal.vcc' },
+      { id: 'signal', offset: { x: -60, y: 20 }, labelKey: 'terminal.servoSignal' },
+    ],
+    params: [
+      {
+        kind: 'enum',
+        key: 'model',
+        options: [{ value: 'model.servo.sg90', labelKey: 'model.servo.sg90' }],
+        default: 'model.servo.sg90',
+        labelKey: 'param.model',
+      },
+    ],
+    aliases: ['servo', 'sg90', 'micro servo', 'motor', 'סרוו', 'מנוע סרוו', 'מנוע'],
   },
   'display.led_matrix_8x8': {
     type: 'display.led_matrix_8x8',
@@ -360,6 +603,7 @@ const SPRINT10_TYPES = {
     ],
     aliases: ['capacitor', 'cap', 'קבל'],
     mcuRuntime: false,
+    mcuRuntimeReason: 'time_dependent',
   },
   'component.relay': {
     type: 'component.relay',
@@ -391,11 +635,208 @@ const SPRINT10_TYPES = {
     ],
     aliases: ['relay', 'spdt relay', 'srd-05vdc', 'ממסר', 'ריליי'],
     optionalTerminals: ['no', 'nc'],
-    mcuRuntime: false,
+  },
+} satisfies Partial<Record<ComponentTypeId, ComponentTypeDef>>;
+
+/**
+ * Sprint 19B (Exploration Foundation L1): single logic gates, TI SN74LVC1G series (SOT-23-5),
+ * with real V_CC and GND pins. Every electrical figure is in the engine's device card
+ * (packages/engine/src/logic/lvc1g.ts), cited to the datasheet revision.
+ */
+const LOGIC_TYPES = {
+  'logic.gate_and': {
+    type: 'logic.gate_and',
+    typeVersion: 1,
+    refPrefix: 'U',
+    nameKey: 'component.logic.gate_and.name',
+    symbol: 'symbol.gate_and',
+    // Inputs left, output right, the part's own supply pins top (V_CC) and bottom (GND).
+    terminals: [
+      { id: 'a', offset: { x: -40, y: -20 }, labelKey: 'terminal.logic_a' },
+      { id: 'b', offset: { x: -40, y: 20 }, labelKey: 'terminal.logic_b' },
+      { id: 'y', offset: { x: 40, y: 0 }, labelKey: 'terminal.logic_y' },
+      { id: 'vcc', offset: { x: 0, y: -40 }, labelKey: 'terminal.vcc' },
+      { id: 'gnd', offset: { x: 0, y: 40 }, labelKey: 'terminal.logic_gnd' },
+    ],
+    params: [
+      {
+        kind: 'enum',
+        key: 'model',
+        options: [{ value: 'model.logic.sn74lvc1g08', labelKey: 'model.logic.sn74lvc1g08' }],
+        default: 'model.logic.sn74lvc1g08',
+        labelKey: 'param.model',
+      },
+    ],
+    aliases: ['and gate', '2-input and', '74lvc1g08', 'שער and', 'שער וגם'],
+  },
+  'logic.gate_nand': {
+    type: 'logic.gate_nand',
+    typeVersion: 1,
+    refPrefix: 'U',
+    nameKey: 'component.logic.gate_nand.name',
+    symbol: 'symbol.gate_nand',
+    // Inputs left, output right, the part's own supply pins top (V_CC) and bottom (GND).
+    terminals: [
+      { id: 'a', offset: { x: -40, y: -20 }, labelKey: 'terminal.logic_a' },
+      { id: 'b', offset: { x: -40, y: 20 }, labelKey: 'terminal.logic_b' },
+      { id: 'y', offset: { x: 40, y: 0 }, labelKey: 'terminal.logic_y' },
+      { id: 'vcc', offset: { x: 0, y: -40 }, labelKey: 'terminal.vcc' },
+      { id: 'gnd', offset: { x: 0, y: 40 }, labelKey: 'terminal.logic_gnd' },
+    ],
+    params: [
+      {
+        kind: 'enum',
+        key: 'model',
+        options: [{ value: 'model.logic.sn74lvc1g00', labelKey: 'model.logic.sn74lvc1g00' }],
+        default: 'model.logic.sn74lvc1g00',
+        labelKey: 'param.model',
+      },
+    ],
+    aliases: ['nand gate', '74lvc1g00', 'שער nand'],
+  },
+  'logic.gate_or': {
+    type: 'logic.gate_or',
+    typeVersion: 1,
+    refPrefix: 'U',
+    nameKey: 'component.logic.gate_or.name',
+    symbol: 'symbol.gate_or',
+    // Inputs left, output right, the part's own supply pins top (V_CC) and bottom (GND).
+    terminals: [
+      { id: 'a', offset: { x: -40, y: -20 }, labelKey: 'terminal.logic_a' },
+      { id: 'b', offset: { x: -40, y: 20 }, labelKey: 'terminal.logic_b' },
+      { id: 'y', offset: { x: 40, y: 0 }, labelKey: 'terminal.logic_y' },
+      { id: 'vcc', offset: { x: 0, y: -40 }, labelKey: 'terminal.vcc' },
+      { id: 'gnd', offset: { x: 0, y: 40 }, labelKey: 'terminal.logic_gnd' },
+    ],
+    params: [
+      {
+        kind: 'enum',
+        key: 'model',
+        options: [{ value: 'model.logic.sn74lvc1g32', labelKey: 'model.logic.sn74lvc1g32' }],
+        default: 'model.logic.sn74lvc1g32',
+        labelKey: 'param.model',
+      },
+    ],
+    aliases: ['or gate', '74lvc1g32', 'שער or', 'שער או'],
+  },
+  'logic.gate_nor': {
+    type: 'logic.gate_nor',
+    typeVersion: 1,
+    refPrefix: 'U',
+    nameKey: 'component.logic.gate_nor.name',
+    symbol: 'symbol.gate_nor',
+    // Inputs left, output right, the part's own supply pins top (V_CC) and bottom (GND).
+    terminals: [
+      { id: 'a', offset: { x: -40, y: -20 }, labelKey: 'terminal.logic_a' },
+      { id: 'b', offset: { x: -40, y: 20 }, labelKey: 'terminal.logic_b' },
+      { id: 'y', offset: { x: 40, y: 0 }, labelKey: 'terminal.logic_y' },
+      { id: 'vcc', offset: { x: 0, y: -40 }, labelKey: 'terminal.vcc' },
+      { id: 'gnd', offset: { x: 0, y: 40 }, labelKey: 'terminal.logic_gnd' },
+    ],
+    params: [
+      {
+        kind: 'enum',
+        key: 'model',
+        options: [{ value: 'model.logic.sn74lvc1g02', labelKey: 'model.logic.sn74lvc1g02' }],
+        default: 'model.logic.sn74lvc1g02',
+        labelKey: 'param.model',
+      },
+    ],
+    aliases: ['nor gate', '74lvc1g02', 'שער nor', 'שער לא-או'],
+  },
+  'logic.gate_xor': {
+    type: 'logic.gate_xor',
+    typeVersion: 1,
+    refPrefix: 'U',
+    nameKey: 'component.logic.gate_xor.name',
+    symbol: 'symbol.gate_xor',
+    // Inputs left, output right, the part's own supply pins top (V_CC) and bottom (GND).
+    terminals: [
+      { id: 'a', offset: { x: -40, y: -20 }, labelKey: 'terminal.logic_a' },
+      { id: 'b', offset: { x: -40, y: 20 }, labelKey: 'terminal.logic_b' },
+      { id: 'y', offset: { x: 40, y: 0 }, labelKey: 'terminal.logic_y' },
+      { id: 'vcc', offset: { x: 0, y: -40 }, labelKey: 'terminal.vcc' },
+      { id: 'gnd', offset: { x: 0, y: 40 }, labelKey: 'terminal.logic_gnd' },
+    ],
+    params: [
+      {
+        kind: 'enum',
+        key: 'model',
+        options: [{ value: 'model.logic.sn74lvc1g86', labelKey: 'model.logic.sn74lvc1g86' }],
+        default: 'model.logic.sn74lvc1g86',
+        labelKey: 'param.model',
+      },
+    ],
+    aliases: ['xor gate', 'exclusive or', '74lvc1g86', 'שער xor', 'שער או בלעדי'],
+  },
+  'logic.gate_not': {
+    type: 'logic.gate_not',
+    typeVersion: 1,
+    refPrefix: 'U',
+    nameKey: 'component.logic.gate_not.name',
+    symbol: 'symbol.gate_not',
+    // Inputs left, output right, the part's own supply pins top (V_CC) and bottom (GND).
+    terminals: [
+      { id: 'a', offset: { x: -40, y: 0 }, labelKey: 'terminal.logic_a' },
+      { id: 'y', offset: { x: 40, y: 0 }, labelKey: 'terminal.logic_y' },
+      { id: 'vcc', offset: { x: 0, y: -40 }, labelKey: 'terminal.vcc' },
+      { id: 'gnd', offset: { x: 0, y: 40 }, labelKey: 'terminal.logic_gnd' },
+    ],
+    params: [
+      {
+        kind: 'enum',
+        key: 'model',
+        options: [{ value: 'model.logic.sn74lvc1g04', labelKey: 'model.logic.sn74lvc1g04' }],
+        default: 'model.logic.sn74lvc1g04',
+        labelKey: 'param.model',
+      },
+    ],
+    aliases: ['not gate', 'inverter', '74lvc1g04', 'מהפך', 'שער not'],
+  },
+  /**
+   * Exploration Foundation L3: TI SN74LVC08A, four 2-input AND gates sharing one supply. The
+   * terminals follow the datasheet pin map (SCAS283W Table 4-1, 14-pin D/PW): pins 1–7 down the
+   * left side, 8–14 up the right side (the package's top view), V_CC pin 14, GND pin 7.
+   */
+  'logic.quad_and': {
+    type: 'logic.quad_and',
+    typeVersion: 1,
+    refPrefix: 'U',
+    nameKey: 'component.logic.quad_and.name',
+    symbol: 'symbol.quad_and',
+    // An unused gate's OUTPUT may be left open; its inputs may not (the engine refuses them).
+    optionalTerminals: ['y1', 'y2', 'y3', 'y4'],
+    terminals: [
+      { id: 'a1', offset: { x: -60, y: -60 }, labelKey: 'terminal.logic_a1' },
+      { id: 'b1', offset: { x: -60, y: -40 }, labelKey: 'terminal.logic_b1' },
+      { id: 'y1', offset: { x: -60, y: -20 }, labelKey: 'terminal.logic_y1' },
+      { id: 'a2', offset: { x: -60, y: 0 }, labelKey: 'terminal.logic_a2' },
+      { id: 'b2', offset: { x: -60, y: 20 }, labelKey: 'terminal.logic_b2' },
+      { id: 'y2', offset: { x: -60, y: 40 }, labelKey: 'terminal.logic_y2' },
+      { id: 'gnd', offset: { x: -60, y: 60 }, labelKey: 'terminal.logic_gnd' },
+      { id: 'y3', offset: { x: 60, y: 60 }, labelKey: 'terminal.logic_y3' },
+      { id: 'a3', offset: { x: 60, y: 40 }, labelKey: 'terminal.logic_a3' },
+      { id: 'b3', offset: { x: 60, y: 20 }, labelKey: 'terminal.logic_b3' },
+      { id: 'y4', offset: { x: 60, y: 0 }, labelKey: 'terminal.logic_y4' },
+      { id: 'a4', offset: { x: 60, y: -20 }, labelKey: 'terminal.logic_a4' },
+      { id: 'b4', offset: { x: 60, y: -40 }, labelKey: 'terminal.logic_b4' },
+      { id: 'vcc', offset: { x: 60, y: -60 }, labelKey: 'terminal.vcc' },
+    ],
+    params: [
+      {
+        kind: 'enum',
+        key: 'model',
+        options: [{ value: 'model.logic.sn74lvc08a', labelKey: 'model.logic.sn74lvc08a' }],
+        default: 'model.logic.sn74lvc08a',
+        labelKey: 'param.model',
+      },
+    ],
+    aliases: ['quad and', '74lvc08', '74lvc08a', 'and ic', 'שער and', 'רכיב לוגי'],
   },
 } satisfies Partial<Record<ComponentTypeId, ComponentTypeDef>>;
 
 export const CATALOG: Record<ComponentTypeId, ComponentTypeDef> = {
+  ...LOGIC_TYPES,
   ...SPRINT10_TYPES,
   'instrument.lab_psu': {
     type: 'instrument.lab_psu',
@@ -470,6 +911,19 @@ export const CATALOG: Record<ComponentTypeId, ComponentTypeDef> = {
         max: 1e9,
         default: 1000,
         labelKey: 'param.resistance',
+      },
+      // Sprint 19B (F2): the power rating, from a verified datasheet series (engine
+      // resistorRating.ts); ¼ W by default. Optional: absent = the default.
+      {
+        kind: 'enum',
+        key: 'powerRating',
+        options: [
+          { value: 'model.resistor.koa_cf_1_4', labelKey: 'model.resistor.koa_cf_1_4' },
+          { value: 'model.resistor.koa_cfs_1_2', labelKey: 'model.resistor.koa_cfs_1_2' },
+        ],
+        default: 'model.resistor.koa_cf_1_4',
+        labelKey: 'param.powerRating',
+        optional: true,
       },
     ],
     aliases: ['res'],
@@ -601,8 +1055,32 @@ export const CATALOG_ORDER: readonly ComponentTypeId[] = [
   'sensor.pir_hc_sr501',
   'display.led_matrix_8x8',
   'component.capacitor',
+  'sensor.hc_sr04',
+  'sensor.dht22',
+  'display.lcd1602_i2c',
+  'component.servo_sg90',
+  'logic.gate_and',
+  'logic.gate_nand',
+  'logic.gate_or',
+  'logic.gate_nor',
+  'logic.gate_xor',
+  'logic.gate_not',
+  'logic.quad_and',
+  'component.potentiometer',
   'board.esp32_devkitc_wroom32',
 ];
+
+/** The value on a quantity's grid nearest to `v` (itself when the parameter has no step). */
+export function snapToStep(def: { step?: number }, v: number): number {
+  if (!def.step) return v;
+  const decimals = Math.max(0, Math.round(-Math.log10(def.step)));
+  return Number((Math.round(v / def.step) * def.step).toFixed(decimals));
+}
+
+/** Whether `v` is exactly on the quantity's grid (always true without a step). */
+export function onStep(def: { step?: number }, v: number): boolean {
+  return !def.step || snapToStep(def, v) === v;
+}
 
 export function isComponentType(type: string): type is ComponentTypeId {
   return Object.prototype.hasOwnProperty.call(CATALOG, type);
@@ -615,6 +1093,7 @@ export function getTypeDef(type: string): ComponentTypeDef | undefined {
 export function defaultParams(def: ComponentTypeDef): Record<string, ParamValue> {
   const params: Record<string, ParamValue> = {};
   for (const p of def.params) {
+    if (p.kind === 'enum' && p.optional) continue; // absent = default (Sprint 19B)
     params[p.key] = p.kind === 'quantity' ? { value: p.default, unit: p.unit } : p.default;
   }
   return params;
@@ -626,18 +1105,34 @@ export function defaultParams(def: ComponentTypeDef): Record<string, ParamValue>
  * - `part_needs_runtime`: the project has a Classic ESP32 and the part is not supported by the
  *   ESP32 runtime yet (catalog `mcuRuntime: false`);
  * - `board_needs_runtime`: `type` is the ESP32 board and the project already holds such parts.
+ * Sprint 11: when the reason is the part's time-dependent behaviour (`mcuRuntimeReason`), the
+ * block says so (`part_time_dependent`, `board_time_dependent`).
  * Local circuits (no board) can use every part.
  */
-export type PlacementBlock = 'part_needs_runtime' | 'board_needs_runtime';
+export type PlacementBlock =
+  'part_needs_runtime' | 'board_needs_runtime' | 'part_time_dependent' | 'board_time_dependent';
 
 export function placementBlock(
   doc: { components: readonly { type: ComponentTypeId }[] },
   type: ComponentTypeId,
 ): PlacementBlock | null {
   const isBoard = (t: ComponentTypeId) => t === 'board.esp32_devkitc_wroom32';
+  const timed = (t: ComponentTypeId) => CATALOG[t].mcuRuntimeReason === 'time_dependent';
   if (CATALOG[type].mcuRuntime === false && doc.components.some((c) => isBoard(c.type)))
-    return 'part_needs_runtime';
-  if (isBoard(type) && doc.components.some((c) => CATALOG[c.type].mcuRuntime === false))
-    return 'board_needs_runtime';
+    return timed(type) ? 'part_time_dependent' : 'part_needs_runtime';
+  if (isBoard(type)) {
+    const held = doc.components.filter((c) => CATALOG[c.type].mcuRuntime === false);
+    if (held.length)
+      return held.every((c) => timed(c.type)) ? 'board_time_dependent' : 'board_needs_runtime';
+  }
   return null;
+}
+
+/** Sprint 19B: a parameter's effective value (an optional parameter absent = its default). */
+export function paramValue(
+  params: Readonly<Record<string, ParamValue>>,
+  def: ParamDef,
+): ParamValue {
+  const v = params[def.key];
+  return v === undefined && def.kind === 'enum' && def.optional ? def.default : v!;
 }

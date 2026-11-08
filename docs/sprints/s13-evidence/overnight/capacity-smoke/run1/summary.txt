@@ -1,0 +1,30 @@
+== 0. preflight (tbi-s8)
+health: {"protocol":"tbi-lab.session/2","sessions":{},"runtime":{"version":"0.10-dev","commit":"dc1bff8c3f1480fd4063e1e77a2c3234b0592e6c"}}
+commit: d43977f89d2678dd797e53b47ff63504d369e81b
+runtime: b5b34b49cb7e4049
+policy sha256: d43ab503249b4a5b
+alpha policy:  f55d14d4f950fe24 (must match for the alpha acceptance)
+host: 1 CPU, 3894 MiB, 7.0.0-1009-oracle, Neoverse-N1
+artifact cap: TBI_ARTIFACT_CAP_MB=256
+== ramp-n1
+   PASS  sessionsAdmitted=y rate5sP5AtLeast0995=y tickGapP99AtMost100=y noFailures=y buildsAllSucceeded=y buildsNoneRefused=y buildWorstAtMost120s=y isolationEnforced=y noLeftovers=y
+   admitted 1/1, worst build 37391 ms, cpu mean 0.61, mem min 1838 MiB, leftovers {'qemuUnits': 0, 'buildJobs': 0, 'sessionDirs': 0}
+     sonar  p5(5s) 0.9998338586612796 startup 1057 ms  tick-gap p99 5 ms 
+== ramp-n2
+   FAIL  sessionsAdmitted=N rate5sP5AtLeast0995=y tickGapP99AtMost100=y noFailures=y buildsAllSucceeded=y buildsNoneRefused=y buildWorstAtMost120s=y isolationEnforced=y noLeftovers=y
+   admitted 1/2, worst build 74145 ms, cpu mean 0.57, mem min 1947 MiB, leftovers {'qemuUnits': 0, 'buildJobs': 0, 'sessionDirs': 0}
+     sonar  p5(5s) 0.9995385288538162 startup 1152 ms  tick-gap p99 5 ms 
+== faults-n2
+   FAIL  sessionsAdmitted=y rate5sP5AtLeast0995=y tickGapP99AtMost100=y noFailures=y buildsAllSucceeded=y buildsNoneRefused=y buildWorstAtMost120s=y isolationEnforced=y faultsRecovered=N noLeftovers=y
+   admitted 2/2, worst build 78382 ms, cpu mean 0.59, mem min 1868 MiB, leftovers {'qemuUnits': 0, 'buildJobs': 0, 'sessionDirs': 0}
+     sonar  p5(5s) 0.9997585976387998 startup 1042 ms  tick-gap p99 5 ms 
+== soak-n1
+   FAIL  sessionsAdmitted=y rate5sP5AtLeast0995=N tickGapP99AtMost100=y noFailures=N buildsAllSucceeded=y buildsNoneRefused=y buildWorstAtMost120s=y isolationEnforced=y noLeftovers=y
+   admitted 1/1, worst build 36367 ms, cpu mean 0.45, mem min 1878 MiB, leftovers {'qemuUnits': 0, 'buildJobs': 0, 'sessionDirs': 0}
+     sonar  p5(5s) 0 startup 1051 ms  tick-gap p99 4 ms 
+== summary
+ramp-n1: PASS
+ramp-n2: FAIL sessionsAdmitted
+faults-n2: FAIL faultsRecovered
+soak-n1: FAIL rate5sP5AtLeast0995,noFailures
+OVERALL: FAIL

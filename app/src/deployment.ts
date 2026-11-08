@@ -3,6 +3,7 @@
  * authentication in front of a deployment: a protected preview only tells it where signing
  * out goes (VITE_SIGN_OUT_URL, e.g. an authenticating proxy's sign-out endpoint).
  */
+import { parseTbiEnv, type TbiEnvironment } from './environment.js';
 
 /**
  * The sign-out destination, or null when the deployment has none (local and unauthenticated
@@ -45,3 +46,77 @@ export function storageName(name: string, namespace: string | null): string {
 }
 
 export const STORAGE_NAMESPACE = parseStorageNamespace(import.meta.env.VITE_STORAGE_NAMESPACE);
+
+/**
+ * Sprint 13 H7: the external feedback form, or null. DISABLED unless a deployment sets
+ * VITE_FEEDBACK_URL (an https form address) — external data collection needs the owner's approval
+ * first, and no build sets it today. VITE_FEEDBACK_VERSION_PARAM names the form's query parameter
+ * that is prefilled with the app version and commit (e.g. a form's prefill entry id).
+ */
+export function parseFeedbackUrl(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const url = value.trim();
+  return /^https:\/\/[^\s]+$/i.test(url) ? url : null;
+}
+
+export function parseFeedbackParam(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  return /^[A-Za-z0-9_.-]{1,64}$/.test(value.trim()) ? value.trim() : null;
+}
+
+export const FEEDBACK_URL = parseFeedbackUrl(import.meta.env.VITE_FEEDBACK_URL);
+export const FEEDBACK_VERSION_PARAM = parseFeedbackParam(
+  import.meta.env.VITE_FEEDBACK_VERSION_PARAM,
+);
+
+/** The form link with the version prefilled (when a parameter name is configured). */
+export function feedbackLink(base: string, param: string | null, version: string): string {
+  if (!param) return base;
+  const u = new URL(base);
+  u.searchParams.set(param, version);
+  return u.toString();
+}
+
+/**
+ * Sprint 14: the in-app "Report a problem" action. OFF unless a deployment builds with
+ * VITE_PROBLEM_REPORTS=1, and then only useful where its Session Host stores reports
+ * (TBI_REPORTS_DIR; without it every report is refused with a clear message, never lost silently).
+ */
+export function parseEnabled(value: unknown): boolean {
+  return typeof value === 'string' && value.trim() === '1';
+}
+
+export const PROBLEM_REPORTS = parseEnabled(import.meta.env.VITE_PROBLEM_REPORTS);
+
+/**
+ * 2026-10-29: the deployment environment (environment.ts). DEV-Lab builds say so on every screen;
+ * every other build has the production branding.
+ */
+export const TBI_ENV: TbiEnvironment = parseTbiEnv(import.meta.env.VITE_TBI_ENV);
+export const IS_DEV_ENV = TBI_ENV === 'dev';
+
+/*
+ * Sprint 27: the experimental Circuit Debugger is on DEV-Lab builds only. Each use site (App,
+ * TopBar, assist/mount) tests `import.meta.env.VITE_TBI_ENV === 'dev'` literally: a constant from
+ * this module is not folded across modules, and every other build must drop the feature and its
+ * modules entirely; the release gate (check-dist.mjs) checks that.
+ */
+
+/*
+ * Sprint 23B/23C: the owner's administration, VITE_ADMIN_UI = `off` | `reports` | `full`.
+ * - `off` (also anything else, or unset): no administration entry.
+ * - `reports` (the feedback-only release): the entry shows the Feedback tab only; no tester
+ *   management, and no account endpoint is ever called.
+ * - `full`: testers and feedback.
+ * Even then it only HIDES or shows: the server decides on every call who the owner is, and the
+ * entry appears only after it confirmed (GET /runtime/admin/me). No tester data is compiled into
+ * the app. (Its own parser, not parseEnabled: the release check locates each switch by its
+ * function's compiled form, and each form must stay unique; deploy/release/check-dist.mjs.)
+ */
+export type AdminUiMode = 'off' | 'reports' | 'full';
+export function parseAdminUi(value: unknown): AdminUiMode {
+  const v = typeof value === 'string' ? value.trim() : '';
+  return v === 'full' ? 'full' : v === 'reports' ? 'reports' : 'off';
+}
+
+export const ADMIN_UI: AdminUiMode = parseAdminUi(import.meta.env.VITE_ADMIN_UI);

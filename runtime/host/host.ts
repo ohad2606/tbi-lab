@@ -11,6 +11,7 @@
  */
 import { createHash, timingSafeEqual } from 'node:crypto';
 import type { Principal } from '../identity/principal.js';
+import { isAuthorized, type AccessView, type EmailTag } from '../identity/access.js';
 import { verifyTicket } from '../identity/ticket.js';
 import { Refusal } from '../policy/refusal.js';
 import { checkResources } from '../policy/resources.js';
@@ -18,7 +19,7 @@ import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import type { HostConfig } from './config.js';
 import { validateCommand, validateCreate, type EndReason } from './protocol.js';
-import { HostSession } from './session.js';
+import { HostSession, type SessionStatus } from './session.js';
 import { isTerminal } from './stateMachine.js';
 
 export type HostResult<T> =
@@ -61,7 +62,11 @@ export class SessionHost {
    * the build service's, for this principal and exactly this artifact, and unexpired (D-S8-4);
    * the session's firmware features come from it. Artifact problems yield a FAILED session.
    */
-  create(body: unknown, principal: Principal): HostResult<{ session: HostSession }> {
+  create(
+    body: unknown,
+    principal: Principal,
+    emailTag: string | null = null,
+  ): HostResult<{ session: HostSession }> {
     if (this.closing) return { ok: false, status: 503, error: 'host shutting down' };
     const v = validateCreate(body);
     if (!v.ok) return { ok: false, status: 400, error: v.error };
@@ -97,6 +102,7 @@ export class SessionHost {
     } else if (live.length >= this.config.maxSessions)
       return { ok: false, status: 429, error: 'session limit' };
     const session = new HostSession(this.config, this.tmpRoot, request, principal, ticket.features);
+    session.emailTag = emailTag;
     this.sessions.set(session.id, session);
     session.prepare();
     return { ok: true, value: { session } };
@@ -116,6 +122,16 @@ export class SessionHost {
       return { ok: false, status: 404, error: 'no such session' }; // never reveal existence
     s.lastActivity = performance.now();
     return { ok: true, value: s };
+  }
+
+  /**
+   * Sprint 14 problem reports: the status of `principal`'s OWN session, read-only (no token: the
+   * gate's principal alone may only see its own sessions; it renews no lease). Unknown ids and
+   * other principals' sessions are both null, so the caller cannot tell them apart.
+   */
+  statusFor(sessionId: string, principal: Principal): SessionStatus | null {
+    const s = /^[0-9a-f]{32}$/.test(sessionId) ? this.sessions.get(sessionId) : undefined;
+    return s && s.owner === principal ? s.status() : null;
   }
 
   command(s: HostSession, body: unknown): HostResult<{ accepted: boolean; reason?: string }> {
@@ -143,6 +159,38 @@ export class SessionHost {
   /** Terminate one session (idempotent). */
   terminate(s: HostSession, reason: EndReason = 'terminated'): Promise<void> {
     return s.terminate(reason);
+  }
+
+  /**
+   * Sprint 23B: end every live session whose account is no longer authorized (`allowed` decides
+   * from the owner principal and the recorded email tag), with reason `account_disabled`, and
+   * close its event streams. Other accounts' sessions are untouched. Returns how many were ended.
+   */
+  revokeUnauthorized(allowed: (owner: Principal, emailTag: string | null) => boolean): number {
+    let n = 0;
+    for (const s of this.sessions.values()) {
+      if (isTerminal(s.state) || allowed(s.owner, s.emailTag)) continue;
+      n++;
+      // The terminal state event reaches the streams first; whatever is still open after the
+      // runtime is gone (or after a bounded wait) is closed by the host.
+      const fallback = setTimeout(() => s.closeStreams(), 5_000);
+      fallback.unref();
+      void s.terminate('account_disabled').finally(() => {
+        clearTimeout(fallback);
+        s.closeStreams();
+      });
+    }
+    return n;
+  }
+
+  /** Sprint 23B: live (non-terminal) sessions, and the host's effective ceiling. */
+  capacity(): { live: number; max: number } {
+    const live = [...this.sessions.values()].filter((s) => !isTerminal(s.state)).length;
+    const policy = this.config.policy;
+    const max = policy
+      ? Math.min(policy.maxLiveSessions, this.config.maxSessions)
+      : this.config.maxSessions;
+    return { live, max };
   }
 
   /** Stop admitting sessions, terminate every live one, release every resource. */
@@ -183,4 +231,27 @@ function removeStaleRoots(parent: string): void {
     }
     if (!alive) rmSync(join(parent, name), { recursive: true, force: true });
   }
+}
+
+/**
+ * Sprint 23B: on every reload of the access view, end the live sessions of accounts the view no
+ * longer authorizes. One line with the count only (no principal, tag or address).
+ */
+export function revokeOnReload(
+  host: SessionHost,
+  access: AccessView,
+  log: (line: string) => void = (l) => void process.stderr.write(`${l}\n`),
+): () => void {
+  return access.onReload((view) => {
+    const n = host.revokeUnauthorized((owner, tag) =>
+      isAuthorized(view, owner, tag as EmailTag | null),
+    );
+    if (n > 0) {
+      try {
+        log(JSON.stringify({ event: 'access_revoked', sessions: n }));
+      } catch {
+        // logging never changes the outcome
+      }
+    }
+  });
 }

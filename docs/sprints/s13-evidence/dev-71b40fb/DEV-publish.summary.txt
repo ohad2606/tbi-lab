@@ -1,0 +1,43 @@
+OK   version.json (release): product
+OK   version.json (release): commit is the intended commit — 71b40fb033df99789350f6fe07e25934dc347f47
+OK   version.json (release): short commit — 71b40fb
+OK   version.json (release): environment dev-lab — dev-lab
+OK   version.json (release): built from a clean commit
+OK   index.html references content-hashed assets — /assets/tbi-logo-light-DRFbl6et.png /assets/index-D7WJFvAu.js /assets/src-DSr5xql4.js /assets/context-dKBqeCGT.js /assets/index-C9l7w9oT.css
+OK   asset present: /assets/tbi-logo-light-DRFbl6et.png
+OK   asset present: /assets/index-D7WJFvAu.js
+OK   asset present: /assets/src-DSr5xql4.js
+OK   asset present: /assets/context-dKBqeCGT.js
+OK   asset present: /assets/index-C9l7w9oT.css
+OK   the compiled bundle carries the same commit — /assets/index-D7WJFvAu.js
+all checks passed: 71b40fb033df99789350f6fe07e25934dc347f47
+OK   version.json (release): product
+OK   version.json (release): commit is the intended commit — 71b40fb033df99789350f6fe07e25934dc347f47
+OK   version.json (release): short commit — 71b40fb
+OK   version.json (release): environment dev-lab — dev-lab
+OK   version.json (release): built from a clean commit
+OK   index.html references content-hashed assets — /assets/tbi-logo-light-DRFbl6et.png /assets/index-D7WJFvAu.js /assets/src-DSr5xql4.js /assets/context-dKBqeCGT.js /assets/index-C9l7w9oT.css
+OK   asset present: /assets/tbi-logo-light-DRFbl6et.png
+OK   asset present: /assets/index-D7WJFvAu.js
+OK   asset present: /assets/src-DSr5xql4.js
+OK   asset present: /assets/context-dKBqeCGT.js
+OK   asset present: /assets/index-C9l7w9oT.css
+OK   the compiled bundle carries the same commit — /assets/index-D7WJFvAu.js
+OK   served /version.json: 200 — 200
+OK   version.json (served): product
+OK   version.json (served): commit is the intended commit — 71b40fb033df99789350f6fe07e25934dc347f47
+OK   version.json (served): short commit — 71b40fb
+OK   version.json (served): environment dev-lab — dev-lab
+OK   version.json (served): built from a clean commit
+OK   served /version.json is the release file
+OK   served /version.json is not long-cached — no-store
+OK   served / is the release index.html (byte for byte)
+OK   served / is not long-cached — no-store
+OK   served /assets/tbi-logo-light-DRFbl6et.png — 200 private, max-age=31536000, immutable
+OK   served /assets/index-D7WJFvAu.js — 200 private, max-age=31536000, immutable
+OK   served /assets/src-DSr5xql4.js — 200 private, max-age=31536000, immutable
+OK   served /assets/context-dKBqeCGT.js — 200 private, max-age=31536000, immutable
+OK   served /assets/index-C9l7w9oT.css — 200 private, max-age=31536000, immutable
+OK   public https://dev-lab.tbi-tech.net/version.json is up and behind the sign-in gate — 302 https://accounts.google.com/o/oauth2/auth?<redacted>
+all checks passed: 71b40fb033df99789350f6fe07e25934dc347f47
+dev-lab now serves 71b40fb033df99789350f6fe07e25934dc347f47 (verified from /version.json and index.html as served by the gate)

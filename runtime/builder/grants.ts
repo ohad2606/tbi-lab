@@ -21,7 +21,16 @@ import type { BuildResult } from './protocol.js';
 
 export const GLOBAL = 'global' as const;
 export type Owner = Principal | typeof GLOBAL;
-export type StoredBuild = Omit<BuildResult, 'timings'>;
+/**
+ * A build record as stored. `analyzer`: the FEATURES_ANALYZER version that produced its feature
+ * report (absent: before Sprint 18). A record from an older analyzer is not reused (service.ts).
+ * `capabilities`: the runtime capabilities that analysis assumed (Sprint 25 closure; absent before
+ * it); a record analysed for another runtime is not reused either.
+ */
+export type StoredBuild = Omit<BuildResult, 'timings'> & {
+  analyzer?: number;
+  capabilities?: string[];
+};
 
 export class Grants {
   private readonly db: DatabaseSync;
@@ -166,7 +175,25 @@ export class Grants {
    * The build of exactly this source visible to the principal: their own record, else a shared
    * system record. Never another principal's.
    */
-  findBuild(principal: Principal, key: string): StoredBuild | null {
+  /**
+   * Every build record of a source key the principal may use, own first, with its owner (see
+   * buildsOf: the caller picks the current one and touches it). Nothing is touched here.
+   */
+  findBuilds(principal: Owner, key: string): { owner: Owner; build: StoredBuild }[] {
+    const rows = this.db
+      .prepare(
+        `SELECT owner, record FROM artifact_grant
+         WHERE source_key = ? AND origin = 'build' AND owner IN (?, 'global')
+         ORDER BY owner = 'global'`,
+      )
+      .all(key, principal) as { owner: string; record: string }[];
+    return rows.map((r) => ({
+      owner: r.owner as Owner,
+      build: JSON.parse(r.record) as StoredBuild,
+    }));
+  }
+
+  findBuild(principal: Owner, key: string): StoredBuild | null {
     const row = this.db
       .prepare(
         `SELECT owner, sha256, record FROM artifact_grant
@@ -189,19 +216,20 @@ export class Grants {
   }
 
   /**
-   * The server-side feature record for a run of this artifact by this principal: from their own
-   * (else a global) build record; null when the artifact was never analysed (prebuilt).
+   * Every build record of an image the principal may use: their own first, then the shared one.
+   * Sprint 25: records of the same image can differ (an older analysis beside a current one: a
+   * system build is rebuilt under 'global' while the principal's own older record stays), so the
+   * caller picks the current one.
    */
-  features(principal: Principal, sha: string): StoredBuild['features'] | null {
-    const row = this.db
+  buildsOf(principal: Principal, sha: string): StoredBuild[] {
+    const rows = this.db
       .prepare(
         `SELECT record FROM artifact_grant
          WHERE sha256 = ? AND owner IN (?, 'global') AND origin = 'build'
-         ORDER BY owner = 'global', last_used_at DESC LIMIT 1`,
+         ORDER BY owner = 'global', last_used_at DESC`,
       )
-      .get(sha, principal) as { record: string } | undefined;
-    if (!row) return null;
-    return (JSON.parse(row.record) as StoredBuild).features ?? null;
+      .all(sha, principal) as { record: string }[];
+    return rows.map((r) => JSON.parse(r.record) as StoredBuild);
   }
 
   touch(owner: Owner, sha: string): void {

@@ -1,0 +1,82 @@
+{
+  "runtimeId": "b5b34b49cb7e4049",
+  "n": 3,
+  "seconds": 150,
+  "workload": "mix",
+  "pace": 1,
+  "warmupExcludedS": 30,
+  "host": {
+    "cpus": 1,
+    "cpuBusyMean": 1,
+    "stealShare": 0.008262810688345439,
+    "loadMax": 4.53,
+    "qemuRssMaxMb": 79.8515625
+  },
+  "sessions": [
+    {
+      "workload": "sonar",
+      "state": "running",
+      "reason": null,
+      "simS": 110.896,
+      "rateP5": 0.8220599456112311,
+      "rateMin": 0.779716619012264,
+      "rateMedian": 0.9130131098682517,
+      "pace": {
+        "rate": 1,
+        "simPerWall": 0.7415351555529351,
+        "pacedMs": 0,
+        "tickGapMs": {
+          "count": 110895,
+          "p99": 11,
+          "max": 883.3
+        }
+      },
+      "diagnostics": []
+    },
+    {
+      "workload": "dht",
+      "state": "running",
+      "reason": null,
+      "simS": 133.356,
+      "rateP5": 0.9196224090388495,
+      "rateMin": 0.8203807429795851,
+      "rateMedian": 1.102410253508354,
+      "pace": {
+        "rate": 1,
+        "simPerWall": 0.8917624990625663,
+        "pacedMs": 0,
+        "tickGapMs": {
+          "count": 133355,
+          "p99": 4,
+          "max": 886.4
+        }
+      },
+      "diagnostics": []
+    },
+    {
+      "workload": "gpio",
+      "state": "running",
+      "reason": null,
+      "simS": 141.775,
+      "rateP5": 1.060819278827655,
+      "rateMin": 0.9912517625283169,
+      "rateMedian": 1.1691885667320399,
+      "pace": {
+        "rate": 1,
+        "simPerWall": 0.948102707188889,
+        "pacedMs": 0,
+        "tickGapMs": {
+          "count": 141774,
+          "p99": 4,
+          "max": 791.5
+        }
+      },
+      "diagnostics": []
+    }
+  ],
+  "pass": {
+    "rateP5AtLeast1": false,
+    "tickGapP99AtMost100": true,
+    "noFailures": true
+  }
+}

@@ -41,7 +41,8 @@ export type EndReason =
   | 'terminated' // terminate requested (any time)
   | 'lease_expired' // no client for longer than the lease
   | 'lifetime_exceeded' // maximum session lifetime reached
-  | 'host_shutdown'; // the host process is shutting down
+  | 'host_shutdown' // the host process is shutting down
+  | 'account_disabled'; // Sprint 23B: the owner disabled the account (access view)
 
 export type FailReason =
   | 'artifact_unknown'
@@ -60,6 +61,12 @@ export type FailReason =
   | 'bridge_lost' // QEMU lost the bridge connection
   | 'guest_reset' // the firmware requested a reset: unsupported in V1, never repeated
   | 'storage_limit'
+  /**
+   * R4: a PWM (LEDC) output the session cannot simulate honestly, still in place a whole command
+   * tick later: an unrepresentable LEDC configuration, duty 0 driving a load (O-R4-1), or a load
+   * that does not settle instantly (architecture A1). `detail.code` names which.
+   */
+  | 'pwm_unsupported'
   | 'internal';
 
 // ---------------------------------------------------------------------------------------------
@@ -98,6 +105,13 @@ export type MirrorControl = {
   currentLimit?: number;
   outputEnabled?: boolean;
   closed?: boolean;
+  /**
+   * Sprint 11 (ADR-010, additive within `/2`): a part model's declared LIVE parameters (a PIR's
+   * `motion`, a photoresistor's `illuminance`), in SI units. Bounded here; the host then checks
+   * them against the component's catalog type when the command arrives, and the engine again
+   * when it applies.
+   */
+  params?: Record<string, number | boolean | string>;
 };
 
 interface CommandBase {
@@ -146,6 +160,14 @@ export interface EventBase {
   simNs: string | null;
 }
 
+/** R4: what an LEDC-driven pad does (gpio events). Times in ns (decimal, exact to 1e-3 ns). */
+export type PwmPadState =
+  | { kind: 'wave'; periodNs: number; highNs: number; duty: number; dutyTicks: number; res: number }
+  | { kind: 'static'; level: 0 | 1 }
+  /** Duty 0: the hardware's level is not established (O-R4-1). */
+  | { kind: 'zero'; periodNs: number }
+  | { kind: 'unsupported'; why: string };
+
 export type SessionEvent = EventBase &
   (
     | { type: 'state'; state: SessionState; reason?: EndReason | FailReason; detail?: unknown }
@@ -153,7 +175,17 @@ export type SessionEvent = EventBase &
     | {
         type: 'gpio';
         /** Pads whose (drive, level) changed in this publish window: final state + count. */
-        changes: { gpio: number; drive: 0 | 1; level: 0 | 1; transitions: number }[];
+        changes: {
+          gpio: number;
+          drive: 0 | 1;
+          level: 0 | 1;
+          transitions: number;
+          /**
+           * R4: the pad is driven by an LEDC channel with this waveform (absent for simple GPIO).
+           * `level` is then the static level, or 0 while it switches.
+           */
+          pwm?: PwmPadState;
+        }[];
       }
     | {
         type: 'electrical';
@@ -181,7 +213,10 @@ export type CommandRejection =
   | 'unknown_component'
   | 'unsupported_control'
   | 'stale_revision' // mirror: projectRevision below the latest accepted mirror revision
-  | 'duplicate_revision'; // mirror: projectRevision equal to it (retry of an accepted edit)
+  | 'duplicate_revision' // mirror: projectRevision equal to it (retry of an accepted edit)
+  // Sprint 11 (ADR-010), additive:
+  | 'invalid_value' // mirror: a live parameter of the wrong kind or outside its catalog range
+  | 'rate_limited'; // more commands than the session accepts per second
 
 /**
  * Mirror revisions of a session (status `revisions`). `snapshot`: the revision the session was
@@ -211,6 +246,25 @@ const DEC = /^(0|[1-9][0-9]{0,19})$/;
 const isInt = (v: unknown, min: number, max: number): v is number =>
   typeof v === 'number' && Number.isInteger(v) && v >= min && v <= max;
 const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+
+/** Sprint 11 (ADR-010): bounds of a mirror's `params` (live part parameters). */
+export const MAX_LIVE_PARAMS = 8;
+export const MAX_LIVE_PARAMS_BYTES = 512;
+const PARAM_KEY = /^[a-z][a-zA-Z0-9]{0,31}$/;
+
+function validParams(p: unknown): string | null {
+  if (!isObj(p)) return 'control.params';
+  const keys = Object.keys(p);
+  if (keys.length === 0 || keys.length > MAX_LIVE_PARAMS) return 'control.params';
+  for (const k of keys) {
+    if (!PARAM_KEY.test(k)) return 'control.params';
+    const v = p[k];
+    const ok = typeof v === 'boolean' || finite(v) || (typeof v === 'string' && v.length <= 32);
+    if (!ok) return 'control.params';
+  }
+  if (Buffer.byteLength(JSON.stringify(p)) > MAX_LIVE_PARAMS_BYTES) return 'control.params';
+  return null;
+}
 
 /** Hard structural bounds on a snapshot (the engine validates semantics). */
 export const MAX_COMPONENTS = 500;
@@ -304,7 +358,7 @@ export function validateCommand(v: unknown): Validation<SessionCommand> {
     const c = v.control;
     if (
       !isObj(c) ||
-      !onlyKeys(c, ['setpointVoltage', 'currentLimit', 'outputEnabled', 'closed']) ||
+      !onlyKeys(c, ['setpointVoltage', 'currentLimit', 'outputEnabled', 'closed', 'params']) ||
       Object.keys(c).length === 0
     )
       return bad('control');
@@ -314,6 +368,10 @@ export function validateCommand(v: unknown): Validation<SessionCommand> {
     if (c.outputEnabled !== undefined && typeof c.outputEnabled !== 'boolean')
       return bad('control.outputEnabled');
     if (c.closed !== undefined && typeof c.closed !== 'boolean') return bad('control.closed');
+    if (c.params !== undefined) {
+      const p = validParams(c.params);
+      if (p) return bad(p);
+    }
     return { ok: true, value: v as unknown as MirrorCommand };
   }
   if (v.category === 'transient') {

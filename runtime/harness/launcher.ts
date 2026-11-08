@@ -11,8 +11,9 @@
  *
  * The session loop (session.ts) sees the same small process interface either way.
  */
-import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
+import { execFile, spawn, type ChildProcess } from 'node:child_process';
 import { EventEmitter } from 'node:events';
+import { constants } from 'node:os';
 import { chmodSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { PassThrough, type Readable } from 'node:stream';
@@ -56,6 +57,12 @@ export interface SystemdLauncherOptions {
 
 /** Session directories are `s-<session id>`; the unit instance is the id. */
 const SESSION = /^s-([0-9a-f]{32})$/;
+
+/** A signal number as its name (SIGKILL for an unknown one: the runtime was killed either way). */
+function signalName(n: number): NodeJS.Signals {
+  const name = Object.entries(constants.signals).find(([, v]) => v === n)?.[0];
+  return (name ?? 'SIGKILL') as NodeJS.Signals;
+}
 
 export function systemdLauncher(opts: SystemdLauncherOptions): RuntimeLauncher {
   const systemctl = opts.systemctl ?? '/usr/bin/systemctl';
@@ -103,37 +110,54 @@ export function systemdLauncher(opts: SystemdLauncherOptions): RuntimeLauncher {
       },
     }) as unknown as RuntimeProcess;
     waiter.on('error', (e) => ev.emit('error', e));
+    // Sprint 13 (overnight audit #2): asynchronous throughout - this runs on the Session Host's one
+    // event loop, shared by every user's ticks, commands and event streams. The previous
+    // synchronous wait (spawnSync is-active + sleep, up to 100 rounds) stalled all of them.
+    const run = (args: string[]) =>
+      new Promise<string>((resolve) =>
+        execFile(systemctl, args, { encoding: 'utf8' }, (_err, stdout) => resolve(stdout ?? '')),
+      );
     waiter.on('close', () => {
-      // The waiter can end before the unit (e.g. it was signalled): report the end only once the
-      // unit is really inactive, so its exit record exists and its directory is no longer bound.
-      for (let i = 0; i < 100; i++) {
-        const state = spawnSync(systemctl, ['is-active', unit], { encoding: 'utf8' }).stdout.trim();
-        if (state !== 'active' && state !== 'activating' && state !== 'deactivating') break;
-        spawnSync('sleep', ['0.05']);
-      }
-      // How QEMU itself ended, as the unit's ExecStopPost recorded it: `exited <n>` or
-      // `killed|dumped <SIGNAME>`. Missing: the unit never ran QEMU (a start failure).
-      let code: number | null = null;
-      let signal: NodeJS.Signals | null = null;
-      try {
-        const [how, status] = readFileSync(join(spec.dir, 'runtime.exit'), 'utf8')
-          .trim()
-          .split(' ');
-        if (how === 'exited') code = Number(status);
-        else if (how === 'killed' || how === 'dumped')
-          signal = /^[A-Z0-9]{2,8}$/.test(status ?? '')
-            ? (`SIG${status}` as NodeJS.Signals)
-            : 'SIGKILL';
-      } catch {
-        signal = null;
-      }
-      spawnSync(systemctl, ['reset-failed', unit], { stdio: 'ignore' });
-      try {
-        stderr.end(readFileSync(join(spec.dir, 'runtime.stderr')));
-      } catch {
-        stderr.end();
-      }
-      ev.emit('close', code, signal);
+      void (async () => {
+        // The waiter can end before the unit (e.g. it was signalled): report the end only once the
+        // unit is really inactive, so its exit record exists and its directory is no longer bound.
+        for (let i = 0; i < 100; i++) {
+          const state = (await run(['is-active', unit])).trim();
+          if (state !== 'active' && state !== 'activating' && state !== 'deactivating') break;
+          await new Promise((r) => setTimeout(r, 50));
+        }
+        // How QEMU itself ended, as the unit's ExecStopPost recorded it: `exited <n>` or
+        // `killed|dumped <SIGNAME>`. Missing: the unit never ran QEMU (a start failure).
+        let code: number | null = null;
+        let signal: NodeJS.Signals | null = null;
+        try {
+          const [how, status] = readFileSync(join(spec.dir, 'runtime.exit'), 'utf8')
+            .trim()
+            .split(' ');
+          if (how === 'exited') code = Number(status);
+          else if (how === 'killed' || how === 'dumped')
+            signal = /^[A-Z0-9]{2,8}$/.test(status ?? '')
+              ? (`SIG${status}` as NodeJS.Signals)
+              : 'SIGKILL';
+        } catch {
+          // No record: ExecStopPost did not run to completion (a control-group-wide kill ends it
+          // too). systemd still holds how the main process ended (CLD_EXITED 1, CLD_KILLED 2,
+          // CLD_DUMPED 3); 0 means QEMU never ran. Without this an externally killed runtime
+          // read as a clean guest exit, reported to the user as a firmware reset (Sprint 16D).
+          const show = await run(['show', '-p', 'ExecMainCode', '-p', 'ExecMainStatus', unit]);
+          const how = Number(/^ExecMainCode=(\d+)$/m.exec(show)?.[1] ?? 0);
+          const status = Number(/^ExecMainStatus=(\d+)$/m.exec(show)?.[1] ?? 0);
+          if (how === 1) code = status;
+          else if (how === 2 || how === 3) signal = signalName(status);
+        }
+        await run(['reset-failed', unit]);
+        try {
+          stderr.end(readFileSync(join(spec.dir, 'runtime.stderr')));
+        } catch {
+          stderr.end();
+        }
+        ev.emit('close', code, signal);
+      })();
     });
     return proc;
   };

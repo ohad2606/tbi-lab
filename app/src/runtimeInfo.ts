@@ -5,6 +5,8 @@
  * Read once, on demand; only a version token and a 40-hex commit are accepted (nothing else is
  * shown); anything else (no backend, an older runtime) is "not reported".
  */
+import { gateFetch } from './gate.js';
+
 export interface RuntimeIdentity {
   version: string;
   commit: string;
@@ -19,7 +21,10 @@ export function parseRuntimeIdentity(body: unknown): RuntimeIdentity | null {
 
 export async function probeRuntime(base = '/runtime'): Promise<RuntimeIdentity | null> {
   try {
-    const res = await fetch(`${base}/health`, { credentials: 'same-origin', cache: 'no-store' });
+    const res = await gateFetch(`${base}/health`, {
+      credentials: 'same-origin',
+      cache: 'no-store',
+    });
     if (!res.ok) return null;
     return parseRuntimeIdentity(await res.json());
   } catch {

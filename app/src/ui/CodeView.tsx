@@ -9,14 +9,24 @@
  * (D-S7-9). Nothing builds automatically (D-S7-4).
  */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { profileById, utf8Length, type ProgramSource } from '@tbi-lab/domain';
+import {
+  BUILD_PROFILES,
+  PROGRAM_LIMITS,
+  profileById,
+  setProgramProfile,
+  utf8Length,
+  type ProgramSource,
+} from '@tbi-lab/domain';
 import { formatBytes } from './bytes.js';
 import { useAppState, useStore, useT } from './context.js';
 import { featureName } from '../sim/format.js';
 import type { BuildView } from '../programs/state.js';
+import { BuildElapsed } from './buildElapsed.js';
 import type { Diagnostic } from '../programs/client.js';
 import type { MessageKey } from '../i18n/messages.en.js';
 import { isolateLtr } from '../i18n/i18n.js';
+import { ProgramFiles } from './ProgramFiles.js';
+import { LibrariesPanel } from './LibrariesPanel.js';
 
 const NO_DIAGNOSTICS: Diagnostic[] = [];
 
@@ -74,22 +84,34 @@ export function CodeView({ boardId, focusBuild }: { boardId: string; focusBuild:
   const escaped = useRef(false);
   const [pos, setPos] = useState({ line: 1, column: 1 });
   const active = sim.status === 'starting' || sim.status === 'running' || sim.status === 'stopping';
+  // Sprint 26: the file open in the editor (UI state, not project data); the entry file when the
+  // chosen one no longer exists (deleted, renamed, undone).
+  const [chosen, setChosen] = useState(program.fileName);
+  const files = program.files ?? [];
+  const file =
+    chosen !== program.fileName && files.some((f) => f.path === chosen) ? chosen : program.fileName;
+  const text = file === program.fileName ? program.text : files.find((f) => f.path === file)!.text;
+  const pendingJump = useRef<Diagnostic | null>(null);
 
   useEffect(() => {
     if (focusBuild > 0) buildButton.current?.focus();
   }, [focusBuild]);
 
-  const lines = useMemo(() => program.text.split('\n').length, [program.text]);
+  const lines = useMemo(() => text.split('\n').length, [text]);
   const result = view?.result ?? (view?.phase === 'required' ? view.previous : undefined);
   // Diagnostics are shown for the current source only (a stale build's lines may have moved).
   const diagnostics = view?.result?.diagnostics ?? NO_DIAGNOSTICS;
   const marked = useMemo(() => {
     const m = new Map<number, Diagnostic['severity']>();
     for (const d of diagnostics)
-      if (d.line && (m.get(d.line) !== 'error' || d.severity === 'error'))
+      if (
+        d.line &&
+        (d.file ?? program.fileName) === file &&
+        (m.get(d.line) !== 'error' || d.severity === 'error')
+      )
         m.set(d.line, d.severity);
     return m;
-  }, [diagnostics]);
+  }, [diagnostics, file, program.fileName]);
 
   // Re-rendered only when the number of lines or the diagnostics change, not per keystroke.
   const gutterLines = useMemo(
@@ -118,6 +140,15 @@ export function CodeView({ boardId, focusBuild }: { boardId: string; focusBuild:
   };
 
   const jump = (d: Diagnostic) => {
+    // Sprint 26: a diagnostic in another file opens that file first, then jumps.
+    if ((d.file ?? program.fileName) !== file) {
+      // Only to a file that still exists (review L4: never a jump left pending).
+      const target = d.file ?? program.fileName;
+      if (target !== program.fileName && !files.some((f) => f.path === target)) return;
+      pendingJump.current = d;
+      setChosen(target);
+      return;
+    }
     const el = area.current;
     if (!el || !d.line) return;
     const at = offsetOf(el.value, d.line, d.column ?? 1);
@@ -145,13 +176,59 @@ export function CodeView({ boardId, focusBuild }: { boardId: string; focusBuild:
         ...f.unsupported,
       ]
     : [];
-  const size = utf8Length(program.text);
+  const size = utf8Length(text);
+  const total = utf8Length(program.text) + files.reduce((n, f) => n + utf8Length(f.text), 0);
+  useEffect(() => {
+    const d = pendingJump.current;
+    pendingJump.current = null;
+    if (d) jump(d);
+  }, [file]);
 
   return (
     <section class="code-view" data-testid="code-view" aria-label={t('program.tab.code')}>
       <header class="code-bar">
-        <span class="code-file technical" dir="ltr">
-          {program.fileName}
+        {/* Sprint 19B: the programming environment (Arduino C++ or the genuine MicroPython
+            interpreter). Code is never translated between languages. P1 (schema v7): switching
+            keeps this language's code in the project and brings the other language's code back
+            exactly as it was (or that language's starter program, said so plainly), so no
+            confirmation is needed: nothing is discarded. */}
+        <label class="code-language">
+          <span class="visually-hidden">{t('program.language')}</span>
+          <select
+            data-testid="program-language"
+            value={program.profile}
+            disabled={!!readOnly || active}
+            onChange={(e) => {
+              const next = (e.target as HTMLSelectElement).value;
+              if (!doc) return;
+              const r = setProgramProfile(doc, boardId, next);
+              const name = (p: string | undefined) =>
+                t(
+                  `program.language.${profileById(p ?? '')?.language ?? 'arduino-cpp'}` as MessageKey,
+                );
+              if (store.apply(r) && r.ok)
+                store.notify({
+                  key: r.restored ? 'program.language.restored' : 'program.language.started',
+                  params: {
+                    language: isolateLtr(name(next)),
+                    previous: isolateLtr(name(program.profile)),
+                  },
+                  tone: 'info',
+                });
+              else (e.target as HTMLSelectElement).value = program.profile;
+            }}
+          >
+            {BUILD_PROFILES.filter(
+              (p) => p.board === doc!.components.find((c) => c.id === boardId)?.type,
+            ).map((p) => (
+              <option key={p.id} value={p.id}>
+                {t(`program.language.${p.language}` as MessageKey)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <span class="code-file technical" dir="ltr" data-testid="code-file-active">
+          {file}
         </span>
         <span
           class={`build-phase phase-${phase}`}
@@ -165,13 +242,28 @@ export function CodeView({ boardId, focusBuild }: { boardId: string; focusBuild:
             ? t('build.phase.queued', { position: String(view.position + 1) })
             : t(phaseKey[phase])}
         </span>
+        <BuildElapsed since={view?.phase === 'building' ? view.since : undefined} />
         <button
           ref={buildButton}
           type="button"
           class="button build-button"
           data-testid="build-button"
-          disabled={!store.builds?.available || !!readOnly || active || phase === 'building'}
-          aria-describedby={active ? 'build-blocked-note' : undefined}
+          disabled={
+            !store.builds?.available ||
+            !!readOnly ||
+            active ||
+            phase === 'building' ||
+            !!view?.olderBuildRunning
+          }
+          aria-describedby={
+            !store.builds?.available
+              ? 'build-unavailable-note'
+              : active
+                ? 'build-blocked-note'
+                : view?.olderBuildRunning
+                  ? 'build-older-note'
+                  : undefined
+          }
           onClick={() => void store.buildProgram(boardId)}
         >
           {t('build.button')}
@@ -183,10 +275,19 @@ export function CodeView({ boardId, focusBuild }: { boardId: string; focusBuild:
         )}
       </header>
       <div class="code-notes">
-        {!store.builds?.available && <p class="small">{t('build.unavailable')}</p>}
+        {!store.builds?.available && (
+          <p class="small" id="build-unavailable-note">
+            {t('build.unavailable')}
+          </p>
+        )}
         {active && (
           <p class="small" id="build-blocked-note" data-testid="build-blocked-note">
             {t('build.blockedRunning')}
+          </p>
+        )}
+        {view?.olderBuildRunning && (
+          <p class="small" id="build-older-note" role="status" data-testid="build-older-running">
+            {t('build.olderRunning')}
           </p>
         )}
         {view?.phase === 'required' && view.previous && (
@@ -219,6 +320,13 @@ export function CodeView({ boardId, focusBuild }: { boardId: string; focusBuild:
           </div>
         )}
       </div>
+      <ProgramFiles
+        boardId={boardId}
+        program={program}
+        active={file}
+        onSelect={setChosen}
+        disabled={false}
+      />
       <div class="code-editor" dir="ltr">
         <div class="code-gutter" ref={gutter} aria-hidden="true">
           {gutterLines}
@@ -233,10 +341,11 @@ export function CodeView({ boardId, focusBuild }: { boardId: string; focusBuild:
           autocapitalize="off"
           autocomplete="off"
           aria-label={t('program.editor.label', { board: boardId })}
+          data-file={file}
           readOnly={!!readOnly}
-          value={program.text.replace(/\r\n/g, '\n')}
+          value={text.replace(/\r\n/g, '\n')}
           onInput={(e) => {
-            store.setProgramText(boardId, withLineEndings(program.text, e.currentTarget.value));
+            store.setProgramText(boardId, withLineEndings(text, e.currentTarget.value), file);
             track();
           }}
           onScroll={(e) => {
@@ -254,7 +363,7 @@ export function CodeView({ boardId, focusBuild }: { boardId: string; focusBuild:
               e.preventDefault();
               const el = e.currentTarget;
               el.setRangeText('  ', el.selectionStart, el.selectionEnd, 'end');
-              store.setProgramText(boardId, withLineEndings(program.text, el.value));
+              store.setProgramText(boardId, withLineEndings(text, el.value), file);
               track();
             }
             escaped.current = false;
@@ -270,6 +379,15 @@ export function CodeView({ boardId, focusBuild }: { boardId: string; focusBuild:
             {t('program.size', {
               used: isolateLtr(formatBytes(locale, size)),
               max: isolateLtr(formatBytes(locale, profile.maxSourceBytes)),
+            })}
+          </span>
+        )}
+        {files.length > 0 && (
+          <span data-testid="code-total">
+            {t('program.total', {
+              files: isolateLtr(String(files.length + 1)),
+              used: isolateLtr(formatBytes(locale, total)),
+              max: isolateLtr(formatBytes(locale, PROGRAM_LIMITS.maxTotalBytes)),
             })}
           </span>
         )}
@@ -289,6 +407,7 @@ export function CodeView({ boardId, focusBuild }: { boardId: string; focusBuild:
                   class="diag-jump"
                   data-testid="diagnostic"
                   data-line={d.line}
+                  data-file={d.file ?? program.fileName}
                   disabled={!d.line}
                   onClick={() => jump(d)}
                 >
@@ -309,6 +428,7 @@ export function CodeView({ boardId, focusBuild }: { boardId: string; focusBuild:
           </ul>
         </section>
       )}
+      <LibrariesPanel doc={doc!} program={program} boardId={boardId} />
       {result && (
         <details class="build-details" data-testid="build-details">
           <summary>{t('build.details')}</summary>

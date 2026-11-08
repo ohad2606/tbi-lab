@@ -1,0 +1,10 @@
+3b06b9de86d83316  ./50-tbi.rules
+7afc97cbcb404569  ./etc-tbi/identity.key
+d43ab503249b4a5b  ./etc-tbi/policy.json
+42b2069c85f9da36  ./etc-tbi/ticket.key
+bee128be4b23ad91  ./frontend-current
+abbd56f2cf46047c  ./services-current
+db2ac54986119925  ./tbi-build-job@.service
+69862a5341106554  ./tbi-build.service
+a0c0f5f18c3c221d  ./tbi-qemu@.service
+317ab910c0dd3402  ./tbi-session-host.service

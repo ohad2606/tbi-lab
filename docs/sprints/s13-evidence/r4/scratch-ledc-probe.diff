@@ -1,0 +1,78 @@
+diff --git a/hw/misc/esp32_ledc.c b/hw/misc/esp32_ledc.c
+index 9cebea9..54f0a07 100644
+--- a/hw/misc/esp32_ledc.c
++++ b/hw/misc/esp32_ledc.c
+@@ -3,10 +3,64 @@
+ #include "qemu/log.h"
+ #include "qapi/error.h"
+ #include "hw/misc/esp32_ledc.h"
++#include "qemu/timer.h"
++/* R4 PROBE (scratch only): trace every LEDC access with the virtual time. */
++#define R4P(kind, a, v) fprintf(stderr, "R4P %s %03x %08x %" PRId64 "\n", kind, (unsigned)(a), (unsigned)(v), qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL))
++
++
++/* R4 PROBE (scratch 0009 core): the waveform as a pure function of register state (TRM v5.8
++ * ch. 28; IDF ledc.h: parameters take effect at the next PWM cycle). High-speed channels only.
++ * Times in picoseconds, exact for APB (12.5 ns) and REF_TICK (1 us) with the 10.8 divider. */
++static uint32_t r4_timer[8], r4_conf0[16], r4_duty[16], r4_hpoint[16];
++static int64_t r4_t0[8];
++static void r4_wave(int ch)
++{
++    int64_t vns = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
++    uint32_t tc = r4_timer[r4_conf0[ch] & 3];
++    unsigned res = tc & 0x1f;
++    uint64_t div = (tc >> 5) & 0x3ffff;
++    uint64_t clk_ps = ((tc >> 25) & 1) ? 12500 : 1000000;
++    if (!(r4_conf0[ch] & 4) || res == 0 || res > 20 || div == 0) {
++        fprintf(stderr, "R4W %" PRId64 " %d static idle=%u\n", vns, ch, (r4_conf0[ch] >> 3) & 1);
++        return;
++    }
++    uint64_t n = 1ull << res;
++    uint64_t lo = r4_hpoint[ch], hi = lo + (r4_duty[ch] >> 4);
++    uint64_t cnt_high = hi > lo ? MIN(hi, n) - lo : 0;
++    /* tick = clk_ps * div / 256; keep exact by scaling by 256 */
++    uint64_t period_ps256 = clk_ps * div * n, high_ps256 = clk_ps * div * cnt_high;
++    uint64_t hpoint_ps256 = clk_ps * div * lo;
++    fprintf(stderr, "R4W %" PRId64 " %d period_ps=%" PRIu64 "%s high_ps=%" PRIu64 "%s hpoint_ps=%" PRIu64 " t0=%" PRId64 " dither=%u\n",
++            vns, ch, period_ps256 / 256, period_ps256 % 256 ? "+" : "", high_ps256 / 256,
++            high_ps256 % 256 ? "+" : "", hpoint_ps256 / 256, r4_t0[r4_conf0[ch] & 3], r4_duty[ch] & 0xf);
++}
++static void r4_write(hwaddr addr, uint32_t v)
++{
++    if (addr >= 0x140 && addr < 0x160) {
++        int t = (addr - 0x140) / 8;
++        if (((r4_timer[t] >> 24) & 1) && !((v >> 24) & 1)) {
++            r4_t0[t] = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
++        }
++        r4_timer[t] = v;
++    } else if (addr < 0xa0) {
++        int ch = addr / 0x14, r = addr % 0x14;
++        if (r == 0) { r4_conf0[ch] = v; }
++        else if (r == 4) { r4_hpoint[ch] = v & 0xfffff; }
++        else if (r == 8) { r4_duty[ch] = v & 0x1ffffff; }
++        else if (r == 0xc && (v >> 31)) { r4_wave(ch); }
++    }
++}
+ 
+ #define ESP32_LEDC_REGS_SIZE (A_LEDC_CONF_REG + 4)
+ 
++static uint64_t esp32_ledc_read_(void *opaque, hwaddr addr, unsigned int size);
+ static uint64_t esp32_ledc_read(void *opaque, hwaddr addr, unsigned int size)
++{
++    uint64_t r = esp32_ledc_read_(opaque, addr, size);
++    R4P("R", addr, r);
++    return r;
++}
++static uint64_t esp32_ledc_read_(void *opaque, hwaddr addr, unsigned int size)
+ {
+     Esp32LEDCState *s = ESP32_LEDC(opaque);
+     uint64_t r = 0;
+@@ -55,6 +109,8 @@ static void esp32_ledc_write(void *opaque, hwaddr addr,
+                             uint64_t value, unsigned int size)
+ {
+     Esp32LEDCState *s = ESP32_LEDC(opaque);
++    R4P("W", addr, value);
++    r4_write(addr, (uint32_t)value);
+     switch (addr) {
+     case A_LEDC_HSTIMER0_CONF_REG ... A_LEDC_LSTIMER3_CONF_REG:
+         /* get duty resolution from timer config */

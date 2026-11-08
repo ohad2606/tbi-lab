@@ -1,0 +1,76 @@
+{
+  "runtimeId": "b5b34b49cb7e4049",
+  "firmware": "620e06276aeaa4512e79a9c65c7d3200fbd2aaaba333137e11ffcdac9b85efba",
+  "0.1m-20C": {
+    "firstTriggerNs": "889207920",
+    "measurements": 10,
+    "triggerWidthsUs": [
+      10.92,
+      11.224
+    ],
+    "echoWidthNs": [
+      582377
+    ],
+    "oracleUs": 582.3772639916137,
+    "readingsUs": [
+      582,
+      582,
+      582,
+      582,
+      582,
+      582,
+      582,
+      582,
+      582,
+      582
+    ]
+  },
+  "1m-20C": {
+    "firstTriggerNs": "889207920",
+    "measurements": 10,
+    "triggerWidthsUs": [
+      10.92,
+      11.224
+    ],
+    "echoWidthNs": [
+      5823773
+    ],
+    "oracleUs": 5823.772639916137,
+    "readingsUs": [
+      5823,
+      5823,
+      5823,
+      5823,
+      5823,
+      5823,
+      5823,
+      5823,
+      5823,
+      5823
+    ]
+  },
+  "1m-35C": {
+    "firstTriggerNs": "889207920",
+    "measurements": 10,
+    "triggerWidthsUs": [
+      10.92,
+      11.224
+    ],
+    "echoWidthNs": [
+      5673598
+    ],
+    "oracleUs": 5673.597912115969,
+    "readingsUs": [
+      5673,
+      5673,
+      5673,
+      5673,
+      5673,
+      5673,
+      5673,
+      5673,
+      5673,
+      5673
+    ]
+  }
+}

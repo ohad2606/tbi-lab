@@ -1,0 +1,10 @@
+tests from 3a97254
+s11-deployed exit=0       Tests  6 passed | 2 skipped (8)
+s8-deployed-policy exit=0       Tests  7 passed (7)
+s8-containment exit=0       Tests  9 passed (9)
+s8-qemu-tasks exit=0       Tests  2 passed (2)
+s8-policy exit=0       Tests  7 passed (7)
+s13-deployed-security exit=0       Tests  1 passed (1)
+c5-deployed exit=0       Tests  1 passed (1)
+policy now: d43ab503249b4a5b
+B2 DONE

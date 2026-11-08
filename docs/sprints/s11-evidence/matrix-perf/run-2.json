@@ -1,0 +1,107 @@
+{
+  "measuredAt": "2026-10-08T18:06:59.593Z",
+  "host": "dev host (the same machine as dev-lab: 4 cores ARM64, 4 GB)",
+  "gates": {
+    "solveP99Ms": 2,
+    "companionRateDegradation": 0.2,
+    "maxTickGapMs": 100
+  },
+  "companionAlone": {
+    "wallS": 4.999790498000002,
+    "simulatedS": 18.135,
+    "simRate": 3.6271519791187847,
+    "solve": {
+      "n": 0,
+      "p50": null,
+      "p95": null,
+      "p99": null,
+      "max": null
+    },
+    "solvesPerSimS": 0,
+    "solvesPerWallS": 0,
+    "maxTickGapMs": 3.838164999999208,
+    "hostCpuPerWallS": 0.23423061435643366,
+    "qemuCpuPerWallS": 0.6760283258572646
+  },
+  "staticSolves": {
+    "n": 31,
+    "p50": 1.980083000002196,
+    "p95": 5.595567000003939,
+    "p99": 7.190449000001536,
+    "max": 7.190449000001536
+  },
+  "static": {
+    "wallS": 3.9998584709999996,
+    "simulatedS": 5.684,
+    "simRate": 1.421050279956268,
+    "solve": {
+      "n": 0,
+      "p50": null,
+      "p95": null,
+      "p99": null,
+      "max": null
+    },
+    "solvesPerSimS": 0,
+    "solvesPerWallS": 0,
+    "maxTickGapMs": 3.6866450000015902,
+    "hostCpuPerWallS": 0.18557731614299414,
+    "qemuCpuPerWallS": 0.362512826519456,
+    "companion": {
+      "simRate": 1.724311010003234,
+      "solve": {
+        "n": 0,
+        "p50": null,
+        "p95": null,
+        "p99": null,
+        "max": null
+      },
+      "maxTickGapMs": 3.591965000006894
+    }
+  },
+  "staticLit": 8,
+  "scanning": {
+    "wallS": 10.000982717,
+    "simulatedS": 0.21728663,
+    "simRate": 0.02172652789716845,
+    "solve": {
+      "n": 2144,
+      "p50": 0.5060000000012224,
+      "p95": 1.7384430000020075,
+      "p99": 3.240684999997029,
+      "max": 5.776246999994328
+    },
+    "solvesPerSimS": 9867.151052966305,
+    "solvesPerWallS": 214.37893261784748,
+    "maxTickGapMs": 84.92763099999866,
+    "hostCpuPerWallS": 0.2819962877454096,
+    "qemuCpuPerWallS": 0.3119693422423901,
+    "companion": {
+      "simRate": 1.724930488148548,
+      "solve": {
+        "n": 0,
+        "p50": null,
+        "p95": null,
+        "p99": null,
+        "max": null
+      },
+      "maxTickGapMs": 9.776492999997572
+    }
+  },
+  "companionAfter": {
+    "wallS": 2.9996295620000017,
+    "simulatedS": 11.3,
+    "simRate": 3.767131829593562,
+    "solve": {
+      "n": 0,
+      "p50": null,
+      "p95": null,
+      "p99": null,
+      "max": null
+    },
+    "solvesPerSimS": 0,
+    "solvesPerWallS": 0,
+    "maxTickGapMs": 2.904722999999649,
+    "hostCpuPerWallS": 0.2345776321563001,
+    "qemuCpuPerWallS": 0.7067539361715346
+  }
+}

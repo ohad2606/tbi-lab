@@ -1,0 +1,4 @@
+  ✓  1 [chromium] › app/e2e/s13-staging-real.spec.ts:67:1 › OS-09 on staging: LCD VCC and SDA swapped — dark, the miswiring named, SDA above its absolute maximum (13.6s)
+  ✓  2 [chromium] › app/e2e/s13-staging-real.spec.ts:85:1 › P4 on staging: a sketch selecting the pad drive strength is reported unsupported; Run refused (41.6s)
+  2 passed (1.1m)
+playwright exit=0

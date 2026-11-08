@@ -1,0 +1,9 @@
+ ✓ runtime/tests/gate.runtime.test.ts (7 tests) 2624511ms
+   ✓ R1 release gate: deterministic closed MCU <-> electrical loop > 1 ms tick, full workload: 40 runs reproduce one result
+   ✓ R1 release gate: deterministic closed MCU <-> electrical loop > 1 ms tick, full workload, main-loop stress: 40 runs reproduce one result
+   ✓ R1 release gate: deterministic closed MCU <-> electrical loop > 10 ms tick, full workload: 40 runs reproduce one result
+   ✓ R1 release gate: deterministic closed MCU <-> electrical loop > 1 ms tick, early boot window (3 s): 40 runs reproduce one result
+   ✓ R1 release gate: deterministic closed MCU <-> electrical loop > 10 ms tick, early boot window (3 s): 40 runs reproduce one result
+   ✓ R1 release gate: deterministic closed MCU <-> electrical loop > 1 ms tick, early boot window (3 s), main-loop stress: 40 runs reproduce one result
+      Tests  7 passed (7)
+exit=0

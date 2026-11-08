@@ -9,6 +9,7 @@
 
 import {
   CATALOG,
+  PROGRAM_FIRMWARE,
   SCHEMA_VERSION,
   copyAsNewProject,
   createPackage,
@@ -26,6 +27,10 @@ import {
   renameProject,
   serializePackage,
   setProgramText,
+  addProgramFile,
+  renameProgramFile,
+  deleteProgramFile,
+  unpinLibrary,
   useBoardProgram,
   stampRevision,
   validateProject,
@@ -37,6 +42,7 @@ import {
 import {
   negotiateLocale,
   getLocale,
+  isolateLtr,
   isolateUserText,
   translate,
   type LocaleInfo,
@@ -46,13 +52,20 @@ import { Autosave, type SaveState } from '../persistence/autosave.js';
 import {
   ProjectExistsError,
   isQuotaError,
+  versionOf,
   type ProjectIndexEntry,
   type ProjectStorage,
 } from '../persistence/store.js';
-import { findExample, loadExampleDocument, type ExampleProbe } from '../examples/catalog.js';
+import {
+  findExample,
+  loadExampleDocument,
+  withExampleVariant,
+  type ExampleProbe,
+} from '../examples/catalog.js';
 import type { LiveControl } from '@tbi-lab/engine';
 import type { SimState, SimulationHost } from '../sim/controller.js';
 import type { ProgramBuilds } from '../programs/state.js';
+import { bodyOverlaps, type Overlap } from '../geometry/overlap.js';
 import { BuildTransportError, type BuildClient } from '../programs/client.js';
 
 interface HistoryEntry {
@@ -61,6 +74,13 @@ interface HistoryEntry {
   /** Consecutive edits with the same tag (typing in the code editor) form one undo step. */
   tag?: string;
   at?: number;
+  /**
+   * Sprint 20 (owner decision, s20r round 2): the routes adjusted when the project was opened,
+   * shown but NOT stored. Undo/redo of it only changes what is shown while nothing has been
+   * stored since the project opened; the first genuine edit stores the document (adjusted routes
+   * and current schema) like any edit, and this flag is cleared.
+   */
+  unsaved?: boolean;
 }
 
 /** Typing pauses longer than this start a new undo step. */
@@ -78,6 +98,8 @@ export interface Preferences {
 export const PREF_LOCALE = 'tbi-lab.locale';
 /** The most recently opened project (a per-device note; the app no longer reopens it on start). */
 export const PREF_LAST_PROJECT = 'tbi-lab.lastProject';
+/** Sprint 13 H4: the first-run guide was dismissed on this device (versioned: a new guide shows again). */
+export const PREF_ONBOARDING = 'tbi-lab.onboarding.v1';
 
 /**
  * One user-facing message. `tone` separates technical failures (`error`: something did not
@@ -88,7 +110,28 @@ export type Notice = {
   key: MessageKey;
   params?: Record<string, string | number>;
   tone?: 'error' | 'warning' | 'info';
+  /**
+   * Sprint 21 (s21r): further messages shown in the same banner after the main one, so a notice
+   * that follows another (an import's "Imported ..." after the open's "routes adjusted") does
+   * not hide it.
+   */
+  also?: readonly MessageKey[];
 };
+
+/**
+ * Sprint 13 OS-04: the first body overlap an edit would CREATE for a part whose placement it
+ * adds or changes (overlaps already in the document are not the edit's doing), or null.
+ */
+function newOverlap(before: ProjectDocument, after: ProjectDocument): Overlap | null {
+  const moved = new Set<string>();
+  for (const [id, p] of Object.entries(after.layout.components)) {
+    const q = before.layout.components[id];
+    if (!q || q.x !== p.x || q.y !== p.y || q.rotation !== p.rotation) moved.add(id);
+  }
+  if (!moved.size) return null;
+  const existing = new Set(bodyOverlaps(before).map((o) => `${o.a}|${o.b}`));
+  return bodyOverlaps(after, moved).find((o) => !existing.has(`${o.a}|${o.b}`)) ?? null;
+}
 
 /** A project file ready to be handed to the browser as a download. */
 export interface ExportedFile {
@@ -113,7 +156,7 @@ export interface AppState {
   /** Undo/redo depth (the history itself is session state, never persisted). */
   history: { undo: number; redo: number };
   /** Why saving failed, when saveState is 'error'. */
-  saveError: 'quota' | 'write' | null;
+  saveError: 'quota' | 'write' | 'conflict' | null;
   /** Probes an opened example suggests for its project (editor presentation state only). */
   suggestedProbes: { projectId: string; probes: ExampleProbe[] } | null;
   /**
@@ -144,9 +187,34 @@ export interface AppDeps {
    * the canvas symbol boxes). Presentation only: endpoints and nets never change.
    */
   repairLayout?: (doc: ProjectDocument) => ProjectDocument;
+  /**
+   * Wire routing integrity: the canonical routes of the automatic wires (domain `routeAutoWires`,
+   * given the canvas symbol boxes), applied after every edit that changes the layout's geometry
+   * (positions, rotations, parts, junctions, wire ends or constraints), never to an undo/redo
+   * (which restores a document exactly as it was). Presentation only: endpoints never change.
+   */
+  routeLayout?: (doc: ProjectDocument) => ProjectDocument;
+}
+
+/**
+ * What automatic routes depend on: the parts and their placements, the junctions, every wire's ends
+ * and, for a manual wire, its geometry; for an automatic wire its constraints (not its route).
+ */
+export function layoutGeometryKey(doc: ProjectDocument): string {
+  return JSON.stringify([
+    doc.components.map((c) => [c.id, c.type]),
+    doc.layout.components,
+    doc.layout.junctions,
+    doc.layout.wires.map((w) => [w.id, w.from, w.to, w.auto ?? w.vertices]),
+  ]);
 }
 
 export class AppStore {
+  /** The repairs applied to a project as it is opened: manual wires' repair, automatic routes. */
+  private layoutOnOpen(doc: ProjectDocument): ProjectDocument {
+    const repaired = this.deps.repairLayout?.(doc) ?? doc;
+    return this.deps.routeLayout?.(repaired) ?? repaired;
+  }
   private stateValue: AppState;
   private listeners = new Set<() => void>();
   private autosave: Autosave | null = null;
@@ -215,12 +283,44 @@ export class AppStore {
    * allowed while running (the running session keeps its firmware), autosaved, and one undo
    * step per burst of typing.
    */
-  setProgramText(boardId: string, text: string): boolean {
+  setProgramText(boardId: string, text: string, path?: string): boolean {
     const doc = this.stateValue.doc;
     if (!doc) return false;
-    return this.apply(setProgramText(doc, boardId, text), undefined, {
-      coalesce: `program:${boardId}`,
+    // Sprint 26: one undo step per burst of typing in one file.
+    const file = path && path !== doc.programs[boardId]?.fileName ? `:${path}` : '';
+    return this.apply(setProgramText(doc, boardId, text, path), undefined, {
+      coalesce: `program:${boardId}${file}`,
     });
+  }
+
+  /** Sprint 26: a further program file (one undo step each). */
+  addProgramFile(boardId: string, path: string, text = ''): EditResult {
+    const doc = this.stateValue.doc;
+    if (!doc) return { ok: false, error: 'no_program' };
+    const r = addProgramFile(doc, boardId, path, text);
+    this.apply(r);
+    return r;
+  }
+
+  renameProgramFile(boardId: string, from: string, to: string): EditResult {
+    const doc = this.stateValue.doc;
+    if (!doc) return { ok: false, error: 'no_program' };
+    const r = renameProgramFile(doc, boardId, from, to);
+    this.apply(r);
+    return r;
+  }
+
+  /** Sprint 26: remove a managed library pinned for a part (not one the code uses). */
+  unpinLibrary(boardId: string, id: string): boolean {
+    const doc = this.stateValue.doc;
+    if (!doc) return false;
+    return this.apply(unpinLibrary(doc, boardId, id));
+  }
+
+  deleteProgramFile(boardId: string, path: string): boolean {
+    const doc = this.stateValue.doc;
+    if (!doc) return false;
+    return this.apply(deleteProgramFile(doc, boardId, path));
   }
 
   /** A board on a reference image switches to running its own program (structural). */
@@ -253,6 +353,10 @@ export class AppStore {
     if (!doc || !client || !this.deps.simulation) return false;
     if (this.deps.simulation.active) {
       this.set({ notice: { key: 'sim.stopToEdit' } });
+      return false;
+    }
+    if (this.deps.builds?.busy) {
+      this.set({ notice: { key: 'run.blocked.building', tone: 'warning' } });
       return false;
     }
     let artifact;
@@ -421,9 +525,29 @@ export class AppStore {
     };
     if (result.status === 'ok') {
       this.deps.prefs.set(PREF_LAST_PROJECT, projectId);
-      const repaired = this.deps.repairLayout?.(result.doc) ?? result.doc;
-      this.set({ ...base, screen: 'editor', doc: repaired, readOnly: null });
-      if (result.migratedFrom !== null || repaired !== result.doc) this.commit(repaired);
+      // The version as stored now: this tab's writes are checked against it (Sprint 13 Task D).
+      const stored = raw as Partial<ProjectDocument>;
+      if (stored.revision) this.autosave?.know({ projectId, revision: stored.revision });
+      // Wire routing integrity (review 1): the automatic wires are routed canonically on open too
+      // (after the manual-wire repair), so a route stored by another build or an older router
+      // never comes back; the change is the same undoable "routes adjusted" edit.
+      const repaired = this.layoutOnOpen(result.doc);
+      this.set({ ...base, screen: 'editor', doc: result.doc, readOnly: null });
+      // Sprint 20 (schema v4): a migrated project is NOT written back on open. The stored record
+      // stays exactly as it was (an older build can still open it) until this project is saved
+      // in this build: the user's first edit (or the routes-adjusted edit below) commits it at the
+      // current schema. Formerly every opened older project was rewritten immediately.
+      if (repaired !== result.doc) {
+        // Sprint 13 Task D (H3): re-routing stored wires on open (only their drawn routes; never an
+        // endpoint, connection or value) is shown with a notice, and one Undo restores the routes
+        // as they were stored.
+        // Sprint 20 (owner decision): it is NOT stored on open. The stored record stays exactly as
+        // it was (an older project is not upgraded to the current schema by merely opening it)
+        // until the user makes a genuine edit, which stores the document like any edit.
+        this.set({ doc: repaired, notice: { key: 'open.routesAdjusted', tone: 'info' } });
+        this.past.push({ before: result.doc, after: repaired, unsaved: true });
+        this.syncHistory();
+      }
     } else if (result.status === 'newer') {
       // Never guess at a newer schema. If its core still validates under this version's rules,
       // show it read-only; otherwise say plainly that it cannot be displayed.
@@ -512,7 +636,11 @@ export class AppStore {
         this.set({ nameConflict: { scope: 'rename', projectId, name: renamed.doc.name } });
         return false;
       }
-      await this.deps.storage!.save(stampRevision(renamed.doc, this.deviceId, this.deps.clock));
+      // Only over exactly the version just read: a concurrent change in another tab is a conflict.
+      await this.deps.storage!.save(
+        stampRevision(renamed.doc, this.deviceId, this.deps.clock),
+        versionOf(doc),
+      );
       await this.refreshProjects();
       this.clearNameConflict();
       return true;
@@ -558,10 +686,12 @@ export class AppStore {
       this.stateValue.doc?.name ??
       '';
     if (open) this.deps.simulation?.stop();
-    await this.autosave?.discard(projectId);
+    const dropped = (await this.autosave?.discard(projectId)) ?? null;
     try {
       await this.deps.storage!.delete(projectId);
     } catch (e) {
+      // The project stays: so do its unsaved edits (Sprint 13 Task D, M2).
+      if (dropped) this.autosave?.queue(dropped);
       this.storageFailure(e, 'library.error.delete');
       return false;
     }
@@ -584,9 +714,25 @@ export class AppStore {
    * and the in-memory document is exported, so an export right after an edit includes it (and
    * still works as a rescue copy if the browser storage is failing).
    */
+  /** Sprint 13 H4: whether this device has dismissed the first-run guide. */
+  onboardingDismissed(): boolean {
+    return this.deps.prefs.get(PREF_ONBOARDING) === 'dismissed';
+  }
+
+  /** Remember (per device) that the first-run guide was dismissed; `false` shows it again. */
+  setOnboardingDismissed(dismissed: boolean): void {
+    this.deps.prefs.set(PREF_ONBOARDING, dismissed ? 'dismissed' : '');
+  }
+
   async exportProject(projectId: string): Promise<ExportedFile | null> {
     try {
-      const doc = await this.loadValid(projectId);
+      // Sprint 13 Task D: when this tab's changes could not be saved because another tab or
+      // window changed the project, Export keeps THIS tab's version (the only copy of it).
+      const current = this.stateValue.doc;
+      const doc =
+        this.stateValue.saveError === 'conflict' && current?.projectId === projectId
+          ? current
+          : await this.loadValid(projectId);
       if (!doc) return null;
       const exportedAt = (this.deps.clock ?? { now: () => new Date() }).now().toISOString();
       const text = serializePackage(createPackage(doc, { appVersion: APP_VERSION, exportedAt }));
@@ -645,9 +791,13 @@ export class AppStore {
     // Open first, then refresh the list: re-rendering the whole library just before leaving it
     // was the largest part of the import time with 50+ projects (Sprint 5 measurement).
     await this.openProject(doc.projectId);
+    // Sprint 21 (s21r, Sprint 20 UX defect): the open's "routes adjusted" notice stays visible
+    // with the import's own confirmation (it was replaced by it).
+    const adjusted = this.stateValue.notice?.key === 'open.routesAdjusted';
     await this.refreshProjects().catch(() => undefined);
     this.set({
       notice: {
+        ...(adjusted ? { also: ['open.routesAdjusted' as const] } : {}),
         key: renamed
           ? copied
             ? 'import.doneCopyRenamed'
@@ -679,8 +829,12 @@ export class AppStore {
     try {
       const title = translate(this.stateValue.locale, example.titleKey);
       const name = this.uniqueName(title, await this.libraryNames());
-      const copy = copyAsNewProject(opened.doc, this.newIdentity(name));
-      doc = this.deps.repairLayout?.(copy) ?? copy;
+      // P1: a verified version in the other language comes with it (kept, not active).
+      const copy = await withExampleVariant(
+        exampleId,
+        copyAsNewProject(opened.doc, this.newIdentity(name)),
+      );
+      doc = this.layoutOnOpen(copy);
       await this.deps.storage!.add(doc);
     } catch (e) {
       this.storageFailure(e, 'library.error.create');
@@ -726,7 +880,15 @@ export class AppStore {
   apply(
     result: EditResult,
     selection?: Selection,
-    options: { record?: boolean; coalesce?: string } = {},
+    options: {
+      record?: boolean;
+      coalesce?: string;
+      /**
+       * Restoring a state the document already had (undo/redo): not a new placement, so the
+       * OS-04 overlap gate does not apply (an undo must always be able to go back).
+       */
+      restore?: boolean;
+    } = {},
   ): boolean {
     const current = this.stateValue.doc;
     if (this.stateValue.readOnly || !current) return false;
@@ -748,6 +910,25 @@ export class AppStore {
       const key = specific[result.error];
       this.set({
         notice: key ? { key } : { key: 'error.edit.generic', params: { code: result.error } },
+      });
+      return false;
+    }
+    if (
+      !options.restore &&
+      this.deps.routeLayout &&
+      layoutGeometryKey(current) !== layoutGeometryKey(result.doc)
+    )
+      result = { ...result, doc: this.deps.routeLayout(result.doc) };
+    const overlap = options.restore ? null : newOverlap(current, result.doc);
+    if (overlap) {
+      // Sprint 13 OS-04: a part added, moved or rotated onto another part's body is refused
+      // (one rule for the Circuit and 3D views, geometry/overlap.ts); the layout stays as it was.
+      this.set({
+        notice: {
+          key: `edit.overlap.${overlap.in}`,
+          params: { a: isolateLtr(overlap.a), b: isolateLtr(overlap.b) },
+          tone: 'warning',
+        },
       });
       return false;
     }
@@ -788,9 +969,21 @@ export class AppStore {
     const entry = this.past.at(-1);
     const current = this.stateValue.doc;
     if (!entry || !current) return false;
+    if (entry.unsaved) {
+      // Nothing stored since the project opened: show the stored routes again, store nothing.
+      this.set({
+        doc: entry.before,
+        selection: pruneSelection(this.stateValue.selection, entry.before),
+      });
+      this.past.pop();
+      this.future.push(entry);
+      this.syncHistory();
+      return true;
+    }
     if (
       !this.apply({ ok: true, doc: historyTarget(current, entry.before) }, undefined, {
         record: false,
+        restore: true,
       })
     ) {
       return false;
@@ -805,8 +998,19 @@ export class AppStore {
     const entry = this.future.at(-1);
     const current = this.stateValue.doc;
     if (!entry || !current) return false;
+    if (entry.unsaved) {
+      this.set({
+        doc: entry.after,
+        selection: pruneSelection(this.stateValue.selection, entry.after),
+      });
+      this.future.pop();
+      this.past.push(entry);
+      this.syncHistory();
+      return true;
+    }
     const target = historyTarget(current, entry.after);
-    if (!this.apply({ ok: true, doc: target }, undefined, { record: false })) return false;
+    if (!this.apply({ ok: true, doc: target }, undefined, { record: false, restore: true }))
+      return false;
     this.future.pop();
     this.past.push(entry); // undo returns to entry.before again
     this.syncHistory();
@@ -863,10 +1067,41 @@ export class AppStore {
     }
   }
 
+  /**
+   * Why Run is not available now (Sprint 13 OS-08), or null. Run never starts while a build is in
+   * progress (the build/session exclusion, D-S7-9, in both directions), nor for a board that runs
+   * its code without a current successful build of exactly that code (never built, edited since,
+   * or failed). The Run button shows the reason; `run()` enforces the same rule for every caller.
+   * Without a build service the existing explanation at Run (mcu_build_required) still applies.
+   */
+  runBlocker(): Notice | null {
+    const doc = this.stateValue.doc;
+    const builds = this.deps.builds;
+    if (!doc || !builds?.available) return null;
+    if (builds.busy) return { key: 'run.blocked.building', tone: 'warning' };
+    const notCurrent: { id: string; phase: string }[] = [];
+    for (const c of doc.components) {
+      const program = doc.programs[c.id];
+      if (c.params.firmware !== PROGRAM_FIRMWARE || !program) continue;
+      const phase = builds.view(doc.projectId, c.id, program).phase;
+      if (phase !== 'current') notCurrent.push({ id: c.id, phase });
+    }
+    if (!notCurrent.length) return null;
+    const components = isolateLtr(notCurrent.map((b) => b.id).join(', '));
+    return notCurrent.some((b) => b.phase === 'failed')
+      ? { key: 'run.blocked.buildFailed', params: { components }, tone: 'warning' }
+      : { key: 'run.blocked.buildRequired', params: { components }, tone: 'warning' };
+  }
+
   /** Run: simulate the current browser-owned project revision. */
   run(): void {
     const doc = this.stateValue.doc;
     if (!doc || !this.deps.simulation) return;
+    const blocked = this.runBlocker();
+    if (blocked) {
+      this.set({ notice: blocked });
+      return;
+    }
     this.set({ notice: null });
     void this.deps.simulation.run(doc);
   }
@@ -918,6 +1153,8 @@ export class AppStore {
       selection: selection ?? pruneSelection(this.stateValue.selection, stamped),
     });
     this.autosave?.queue(stamped);
+    // Stored now: an open-time adjustment in the history is an ordinary edit from here on.
+    for (const e of [...this.past, ...this.future]) delete e.unsaved;
   }
 
   /** Show a message from the UI layer (e.g. a file that could not be read). */

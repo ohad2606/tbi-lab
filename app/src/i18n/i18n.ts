@@ -4,7 +4,14 @@
  * a bundle and a registry entry, with no change to project data or application logic.
  */
 
-import { toEngineering, type Quantity, type UnitId } from '@tbi-lab/domain';
+import {
+  chooseDisplayUnit,
+  shiftDecimal,
+  toEngineering,
+  type DisplayUnit,
+  type Quantity,
+  type UnitId,
+} from '@tbi-lab/domain';
 import { en, type MessageKey } from './messages.en.js';
 import { he } from './messages.he.js';
 import { GLOSSARY, applyGlossary } from './glossary.js';
@@ -105,20 +112,80 @@ export function formatNumber(locale: LocaleInfo, value: number): string {
   return numberFormat(locale.code, { maximumFractionDigits: 3, useGrouping: false }).format(value);
 }
 
+/**
+ * Units shown without SI prefixes (Sprint 12): a temperature in degrees Celsius and a relative
+ * humidity read as plain numbers (21.5 °C, 55 %RH), never as 500 m°C.
+ */
+const UNPREFIXED: ReadonlySet<UnitId> = new Set<UnitId>(['celsius', 'percent_rh', 'percent']);
+export const isUnprefixed = (unit: UnitId): boolean => UNPREFIXED.has(unit);
+
 /** `4.7 kΩ`, formatted for the locale; always a single LTR run. */
 export function formatQuantity(locale: LocaleInfo, q: Quantity): string {
+  if (UNPREFIXED.has(q.unit))
+    return `${formatNumber(locale, q.value)} ${unitSymbol(locale, q.unit)}`;
   const { mantissa, prefix } = toEngineering(q.value);
   return `${formatNumber(locale, mantissa)} ${prefix}${unitSymbol(locale, q.unit)}`;
 }
 
+/**
+ * Units whose symbol is also an SI prefix letter (Sprint 13 OS-01/OS-06): the metre's `m` is the
+ * milli prefix, so the compact form of 0.5 m, `500m`, beside the unit `m` read as "500 m m". Their
+ * input form is the plain decimal in the base unit (`0.5`); displays keep the prefixed form with
+ * a space (`500 mm`), which is unambiguous.
+ */
+const PLAIN_INPUT: ReadonlySet<UnitId> = new Set<UnitId>(['metre']);
+
 /** The compact, locale-independent input form of a value (`4.7k`), for editing fields. */
-export function inputForm(value: number): string {
+export function inputForm(value: number, unit?: UnitId): string {
+  if (unit && (UNPREFIXED.has(unit) || PLAIN_INPUT.has(unit)))
+    return String(Number(value.toPrecision(12)));
   const { mantissa, prefix } = toEngineering(value);
   return `${mantissa}${prefix === 'µ' ? 'u' : prefix}`;
 }
 
 export function unitSymbol(locale: LocaleInfo, unit: UnitId): string {
   return translate(locale, `unit.${unit}.symbol`);
+}
+
+/** A display unit's full symbol (`kΩ`, `µF`, `cm`): an international prefix + the unit symbol. */
+export function displayUnitSymbol(locale: LocaleInfo, unit: UnitId, du: DisplayUnit): string {
+  return `${du.prefix}${unitSymbol(locale, unit)}`;
+}
+
+/**
+ * The number a field shows for a stored value in a display unit, exact in decimal and
+ * locale-independent (a technical field always uses `.`): 4700 in kΩ -> `4.7`.
+ */
+export function displayNumber(value: number, du: DisplayUnit): string {
+  return String(shiftDecimal(value, -du.exponent));
+}
+
+/**
+ * A value formatted with the same unit choice as the editor's dropdown (`10 mF`, `0 V`), for the
+ * range hint and range errors, so the hint names units the user can select.
+ */
+export function formatDisplayQuantity(
+  locale: LocaleInfo,
+  q: Quantity,
+  units: readonly DisplayUnit[],
+): string {
+  const du = chooseDisplayUnit(q.value, units);
+  return `${formatNumber(locale, shiftDecimal(q.value, -du.exponent))} ${displayUnitSymbol(locale, q.unit, du)}`;
+}
+
+/** A translated template split at its placeholders, for rendering parameters as elements. */
+export type MessagePart = { text: string } | { param: string };
+export function messageParts(locale: LocaleInfo, key: MessageKey): MessagePart[] {
+  const parts: MessagePart[] = [];
+  const template = locale.messages[key];
+  let last = 0;
+  for (const m of template.matchAll(/\{(\w+)\}/g)) {
+    if (m.index > last) parts.push({ text: template.slice(last, m.index) });
+    parts.push({ param: m[1]! });
+    last = m.index + m[0].length;
+  }
+  if (last < template.length) parts.push({ text: template.slice(last) });
+  return parts;
 }
 
 const dateTimeFormats = new Map<string, Intl.DateTimeFormat>();

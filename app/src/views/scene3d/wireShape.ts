@@ -37,6 +37,7 @@
  */
 import * as THREE from 'three';
 import {
+  MAX_SAMPLES,
   MODEL_HEIGHT,
   WIRE_RADIUS,
   type SceneDescription,
@@ -58,6 +59,29 @@ export interface WireShape {
   drape: 0 | 0.5 | 1;
   /** Per end: the bend radius of its neck out of a jumper housing (null: no neck there). */
   necks?: [number | null, number | null];
+}
+
+/** Drape work per scene, in samples checked (s20r5; ~1 s on the 1-vCPU DEV host). */
+export const DRAPE_WORK_BUDGET = 150_000;
+
+/** Sample pairs the route gaps between wires may compare per scene (s20r6; ~0.3 s). */
+export const GAP_WORK_BUDGET = 20_000_000;
+
+/** Route samples a scene may take for draping at all (s20r6; plainSampleCount). */
+export const PLAIN_SAMPLE_BUDGET = 400_000;
+
+/**
+ * At most how many samples sampleShape takes of the scene's routes: per wire its polyline length
+ * (never shorter than the bent path) every 0.6 mm, capped at MAX_SAMPLES.
+ */
+export function plainSampleCount(wires: readonly { points: Vec3[] }[]): number {
+  let n = 0;
+  for (const w of wires) {
+    let len = 0;
+    for (let i = 1; i < w.points.length; i++) len += dist(w.points[i - 1]!, w.points[i]!);
+    n += Math.min(MAX_SAMPLES, Math.max(2, Math.ceil(len / 0.6))) + 1;
+  }
+  return n;
 }
 
 /** One step of physical shaping (stepped down until the shape is clear of everything). */
@@ -226,7 +250,7 @@ function restOn(chain: Vec3[], lift: number): (Vec3 & { soft: true; want: number
     const u = (t - s[k - 1]!) / Math.max(1e-9, s[k]! - s[k - 1]!);
     return chain[k - 1]!.y + (chain[k]!.y - chain[k - 1]!.y) * Math.min(1, Math.max(0, u));
   };
-  const n = Math.max(2, Math.ceil(L / 0.4));
+  const n = Math.min(MAX_SAMPLES, Math.max(2, Math.ceil(L / 0.4)));
   const ts = Array.from({ length: n + 1 }, (_, i) => (L * i) / n);
   const raw = ts.map(yAt);
   // A stiff wire bridges a gap narrower than about 5 mm between two supports instead of dipping
@@ -583,26 +607,33 @@ export function cableShape(
 /** Points along a shape, every `step` mm. */
 export function sampleShape(s: WireShape, step = 0.6): THREE.Vector3[] {
   const path = bentPath(s.points, s.radii, s.arms);
-  const n = Math.max(2, Math.ceil(path.getLength() / step));
+  // At most MAX_SAMPLES per wire (s20r5: sampling must not grow without bound with length).
+  const n = Math.min(MAX_SAMPLES, Math.max(2, Math.ceil(path.getLength() / step)));
   return Array.from({ length: n + 1 }, (_, i) => path.getPointAt(i / n));
 }
 
 /** A grid of sample points for neighbour queries (cell = 2 mm). */
 class Grid {
   private readonly cells = new Map<string, { p: THREE.Vector3; wire: number }[]>();
+  /** The cells each wire has samples in (s20r5: removal visited every cell of the scene). */
+  private readonly keysOf = new Map<number, Set<string>>();
   private static key(x: number, y: number, z: number) {
     return `${Math.floor(x / 2)},${Math.floor(y / 2)},${Math.floor(z / 2)}`;
   }
   add(p: THREE.Vector3, wire: number) {
     const k = Grid.key(p.x, p.y, p.z);
     (this.cells.get(k) ?? this.cells.set(k, []).get(k)!).push({ p, wire });
+    (this.keysOf.get(wire) ?? this.keysOf.set(wire, new Set()).get(wire)!).add(k);
   }
   remove(wire: number) {
-    for (const [k, list] of this.cells) {
+    for (const k of this.keysOf.get(wire) ?? []) {
+      const list = this.cells.get(k);
+      if (!list) continue;
       const kept = list.filter((e) => e.wire !== wire);
       if (kept.length) this.cells.set(k, kept);
       else this.cells.delete(k);
     }
+    this.keysOf.delete(wire);
   }
   near(p: THREE.Vector3, r: number, visit: (q: THREE.Vector3, wire: number) => boolean): boolean {
     const c = Math.ceil(r / 2);
@@ -626,9 +657,20 @@ export function shapeWires(
   desc: SceneDescription,
   /** Diagnostics: per wire, the level kept and why the wider ones were refused. */
   report?: Map<string, string>,
+  /** Work caps (tests only; the defaults are the product's). */
+  limits: { gapWork?: number } = {},
 ): Map<string, WireShape> {
+  const gapBudget = limits.gapWork ?? GAP_WORK_BUDGET;
   const wires = desc.wires;
   const shapes = wires.map((w) => plainShape(w.points, w.radii));
+  // s20r6 (review r4 MAJOR 2): every route is sampled for the neighbour grid before any drape is
+  // tried, simple cables too (thousands of stacked wires: millions of samples). Counted first,
+  // from the routes' lengths (a bend is never longer than its corner); past PLAIN_SAMPLE_BUDGET
+  // no wire is draped: each keeps its plain shape, the route as drawn (every guarantee holds).
+  if (plainSampleCount(wires) > PLAIN_SAMPLE_BUDGET) {
+    for (const w of wires) report?.set(w.id, w.simple ? 'simple' : 'budget');
+    return new Map(wires.map((w, i) => [w.id, shapes[i]!]));
+  }
   const samples = shapes.map((s) => sampleShape(s));
   const grid = new Grid();
   samples.forEach((ss, i) => ss.forEach((p) => grid.add(p, i)));
@@ -677,10 +719,20 @@ export function shapeWires(
   const pairs = new Map<string, number>();
   const sharedEnds = (i: number, j: number) =>
     endsOf(i).filter((e) => endsOf(j).some((f) => same(e, f)));
+  // Drape work spent (DRAPE_WORK_BUDGET, s20r5/s20r6): shapes sampled, pairs and neighbours
+  // checked.
+  let work = 0;
+  // The pairs' gaps have their own count (sample pairs; a pair of long wires is millions).
+  let gapWork = 0;
   const routeGap = (i: number, j: number) => {
     const key = i < j ? `${i}:${j}` : `${j}:${i}`;
     let g = pairs.get(key);
     if (g === undefined) {
+      // s20r6 (review r4 MAJOR 2): all pairs of the two wires' samples, counted (GAP_WORK_BUDGET);
+      // past it the pair's gap is not measured and the drape must keep the full minimum gap
+      // (s21: it returned 0, which let a drape come as close as touching a wire of another node).
+      gapWork += 2 * plain[i]!.length * plain[j]!.length;
+      if (gapWork > gapBudget) return Infinity;
       const sh = sharedEnds(i, j);
       const one = (a: number, b: number) => {
         let m = Infinity;
@@ -694,6 +746,29 @@ export function shapeWires(
       pairs.set(key, g);
     }
     return g;
+  };
+  const enteredMemo = new Map<THREE.Vector3[], Set<string>>();
+  /** Whether the route's samples come over a body's footprint anywhere (memoized per route). */
+  const entered = (original: THREE.Vector3[], b: (typeof bodies)[number]) => {
+    let set = enteredMemo.get(original);
+    if (!set) {
+      set = new Set(
+        bodies
+          .filter((q) =>
+            original.some(
+              (p) =>
+                p.x > q.r.x0 - WIRE_RADIUS &&
+                p.x < q.r.x1 + WIRE_RADIUS &&
+                p.z > q.r.z0 - WIRE_RADIUS &&
+                p.z < q.r.z1 + WIRE_RADIUS &&
+                p.y < q.h + WIRE_RADIUS + BODY_GAP,
+            ),
+          )
+          .map((q) => q.id),
+      );
+      enteredMemo.set(original, set);
+    }
+    return set.has(b.id);
   };
   const ok = (i: number, ss: THREE.Vector3[], original: THREE.Vector3[]): string | null => {
     const w = wires[i]!;
@@ -713,7 +788,14 @@ export function shapeWires(
         if (!near && p.y < Math.min(WIRE_RADIUS, routeY(p)) - 1e-6) return 'bench';
       }
       for (const b of bodies) {
-        if (owners.get(w.id)!.has(b.id)) continue;
+        // A part the wire ends on: exempt near that end or at pin level under it (s20r4, review
+        // B6: the drape cut a corner through its own supply's case, far from the post).
+        if (
+          owners.get(w.id)!.has(b.id) &&
+          (mine.some((e) => Math.hypot(e.x - p.x, e.z - p.z) < 4) ||
+            mine.some((e) => p.y <= e.y + 2 * WIRE_RADIUS))
+        )
+          continue;
         const inPlan =
           p.x > b.r.x0 - WIRE_RADIUS &&
           p.x < b.r.x1 + WIRE_RADIUS &&
@@ -721,6 +803,9 @@ export function shapeWires(
           p.z < b.r.z1 + WIRE_RADIUS;
         if (inPlan && p.y < b.h + WIRE_RADIUS + BODY_GAP) {
           // Was the route itself this low here? Then the shape changed nothing that matters.
+          // (s20r: a body the route never came over at all is never entered: a bench-level
+          // route running just beside a ground plate was let bow sideways onto it.)
+          if (!entered(original, b)) return `body ${b.id}`;
           const before = original.reduce(
             (m, q) => (Math.hypot(q.x - p.x, q.z - p.z) < 1 ? Math.min(m, q.y) : m),
             Infinity,
@@ -730,6 +815,8 @@ export function shapeWires(
       }
       // Other wires: keep the route's separation, except near an end both wires share.
       const clear = grid.near(p, minGap, (q, j) => {
+        // Every neighbour visited is counted too (stacked wires: thousands per sample).
+        if (++work > DRAPE_WORK_BUDGET) return false;
         if (j === i) return true;
         const shared = endsOf(j).some((e) => mine.some((m) => same(m, e)) && dist(e, p) < 4);
         return shared || q.distanceTo(p) >= Math.min(minGap, routeGap(i, j)) - 1e-6;
@@ -741,12 +828,24 @@ export function shapeWires(
   const plainSamples = [...samples];
   const shaped = new Set<number>();
   const shapeOne = (w: SceneWire, i: number) => {
+    // A simple cable (s20r5) keeps its plain shape: no drape is tried.
+    if (w.simple) {
+      report?.set(w.id, 'simple');
+      return;
+    }
     const original = plainSamples[i]!;
     grid.remove(i);
     const refused: string[] = [];
     for (const [k, level] of LEVELS.entries()) {
+      // s20r5 (review r3, MAJOR 3): a counted budget of drape samples checked per scene; past
+      // it a wire keeps its plain shape (the route as drawn: every guarantee of the route holds).
+      if (work > DRAPE_WORK_BUDGET) {
+        refused.push('budget');
+        break;
+      }
       const s = cableShape(w.id, w.points, w.ends, level, neckCtx);
       const ss = sampleShape(s);
+      work += ss.length * (1 + bodies.length / 50);
       const why = ok(i, ss, original);
       if (!why) {
         shapes[i] = s;

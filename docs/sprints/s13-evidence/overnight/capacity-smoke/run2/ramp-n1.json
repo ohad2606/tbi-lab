@@ -1,0 +1,98 @@
+{
+ "instance": "tbi-s8",
+ "n": 1,
+ "seconds": 60,
+ "warmupExcludedS": 30,
+ "host": {
+  "cpus": 1,
+  "memTotalMb": 3895,
+  "kernel": "7.0.0-1009-oracle",
+  "cpuBusyMean": 0.5958102988592073,
+  "cpuBusyP95": 1,
+  "stealShare": 0.008453505718547987,
+  "loadMax": 1.45,
+  "memAvailableMinMb": 1875,
+  "qemuUnitMemMaxMb": 77
+ },
+ "deployed": {
+  "health": {
+   "protocol": "tbi-lab.session/2",
+   "sessions": {
+    "ended": 1
+   },
+   "runtime": {
+    "version": "0.10-dev",
+    "commit": "dc1bff8c3f1480fd4063e1e77a2c3234b0592e6c"
+   }
+  },
+  "policySha256": "d43ab503249b4a5b34fae0b65494df1ccc7c00d999d442bbabce536b2fc29cd4",
+  "runtimeJsonSha256": "481d7aa42c6e7e6fc806cc5aa23d0968ba9a3be0277014a0feeae07f7f35071c",
+  "qemuUnitSha256": "d338dbbbc57ab4bbb79238e0a1810a52021d6624e9ec48bd3205c3bb177bd41f"
+ },
+ "builds": [
+  {
+   "user": "c5d-mv5uqs75-u0",
+   "workload": "sonar",
+   "status": 202,
+   "ok": true,
+   "refused": null,
+   "completionMs": 35890
+  }
+ ],
+ "worstBuildMs": 35890,
+ "admission": [
+  {
+   "user": "c5d-mv5uqs75-u0",
+   "status": 201
+  }
+ ],
+ "sessions": [
+  {
+   "user": "c5d-mv5uqs75-u0",
+   "workload": "sonar",
+   "state": "running",
+   "reason": null,
+   "startupMs": 1046,
+   "rate5sP5": 0.9995099534788562,
+   "rate5sMin": 0.9995099534788562,
+   "windows5s": 5,
+   "pace": {
+    "rate": 1,
+    "simPerWall": 1.000003550141688,
+    "pacedMs": 0,
+    "tickGapMs": {
+     "count": 60034,
+     "p99": 5,
+     "max": 209.3
+    }
+   },
+   "streamBytes": 431563
+  }
+ ],
+ "isolation": [
+  {
+   "statusForeignUser": 404,
+   "statusOtherUsersToken": -1,
+   "eventsForeignUser": 404,
+   "commandForeignUser": 404,
+   "endForeignUser": 404,
+   "ownerStillRunningAfter": 1
+  }
+ ],
+ "leftovers": {
+  "qemuUnits": 0,
+  "buildJobs": 0,
+  "sessionDirs": 0
+ },
+ "pass": {
+  "sessionsAdmitted": true,
+  "rate5sP5AtLeast0995": true,
+  "tickGapP99AtMost100": true,
+  "noFailures": true,
+  "buildsAllSucceeded": true,
+  "buildsNoneRefused": true,
+  "buildWorstAtMost120s": true,
+  "isolationEnforced": true,
+  "noLeftovers": true
+ }
+}

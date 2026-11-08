@@ -8,6 +8,8 @@
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  CATALOG,
+  CATALOG_ORDER,
   addComponent,
   addWire,
   createSnapshot,
@@ -186,12 +188,8 @@ describe('LED model cards under a running board (the Sprint 10 engine in the run
 });
 
 describe('parts the ESP32 runtime does not simulate are refused exactly as before', () => {
-  for (const type of [
-    'component.capacitor',
-    'component.bjt_npn',
-    'component.relay',
-    'component.rgb_led',
-  ] as const)
+  // Sprint 11: whatever the catalog still flags (the capacitor at the end of R1).
+  for (const type of CATALOG_ORDER.filter((t) => CATALOG[t].mcuRuntime === false))
     it(`${type}: failed / electrical_error, unsupported_component, before any runtime starts`, () => {
       const { host, art } = fakeHost();
       hosts.push(host);

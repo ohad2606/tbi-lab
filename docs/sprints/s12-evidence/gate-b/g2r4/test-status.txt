@@ -1,0 +1,62 @@
+== s12-bridge
+ ✓ runtime/tests/s12-bridge.runtime.test.ts (10 tests)
+   ✓ Sprint 12 bridge v2: scheduled inputs (patch 0006) > T-DET-3: 512 edges on an unread pad leave the boot fingerprint unchanged 
+   ✓ Sprint 12 bridge v2: scheduled inputs (patch 0006) > edges arrive at the scheduled spacing; X cancels; 1 ms and 10 ms quanta agree 
+   ✓ Sprint 12 bridge v2: scheduled inputs (patch 0006) > the pair 1 us apart is accepted (the limit is inclusive) 
+      Tests  10 passed (10)
+== s12-examples
+ ✓ runtime/tests/s12-examples.runtime.test.ts (3 tests)
+   ✓ Sprint 12 curated examples on the real stack > distance alarm: the oracle distance on serial; below 20 cm the LED lights 
+   ✓ Sprint 12 curated examples on the real stack > thermo-hygrometer: the firmware prints exactly the environment 
+   ✓ Sprint 12 curated examples on the real stack > LCD hello: the published LCD shows the firmware text; Wire is a requirement, not refused 
+      Tests  3 passed (3)
+== s12-r3
+ ✓ runtime/tests/s12-r3.runtime.test.ts (3 tests)
+   ✓ R3: Wire on the real runtime (harness level) > pad functions, scan, transfers, NACKs and bus time (T-R3-1, -3, -4, -5, D-9) 
+   ✓ R3: the I2C LCD through the Session Host > in-spec wiring: the published LCD shows the text, then the backlight goes off (T-R3-6, -7) 
+   ✓ R3: the I2C LCD through the Session Host > 5 V module with 3.3 V pull-ups: Wire gets NACKs (4) and i2c_logic_level explains why 
+      Tests  3 passed (3)
+== s12-r2
+ ✓ runtime/tests/s12-r2.runtime.test.ts (3 tests)
+   ✓ R2 on the real runtime > HC-SR04: pulseIn equals the oracle echo width; out of range gives no echo (T-R2-2, -3) 
+   ✓ R2 on the real runtime > DHT22: the firmware decodes exactly the oracle values at three points (T-R2-7) 
+   ✓ R2 on the real runtime > DHT22 without a pull-up: the firmware reports a read failure, no frame is invented (T-R2-8) 
+      Tests  3 passed (3)
+== s12-pace
+ ✓ runtime/tests/s12-pace.runtime.test.ts (1 test)
+   ✓ pacing on the real runtime (D-10) > paced at 1x and unpaced: identical fingerprints; paced never ahead of real time 
+      Tests  1 passed (1)
+== s12-r2-timing
+   ✓ R2: HC-SR04 device timing at the bridge (startup-independent) > 0.1 m at 20 degC, bridge: every echo is the oracle for its trigger, to the ns 
+   ✓ R2: HC-SR04 device timing at the bridge (startup-independent) > 0.1 m at 20 degC, firmware: every pulseIn reading within T-R2-2 (1 us)
+   ✓ R2: HC-SR04 device timing at the bridge (startup-independent) > 1 m at 20 degC, bridge: every echo is the oracle for its trigger, to the ns 
+   ✓ R2: HC-SR04 device timing at the bridge (startup-independent) > 1 m at 20 degC, firmware: every pulseIn reading within T-R2-2 (1 us)
+   ✓ R2: HC-SR04 device timing at the bridge (startup-independent) > 4 m at 20 degC, bridge: every echo is the oracle for its trigger, to the ns 
+   × R2: HC-SR04 device timing at the bridge (startup-independent) > 4 m at 20 degC, firmware: every pulseIn reading within T-R2-2 (1 us)
+   ✓ R2: HC-SR04 device timing at the bridge (startup-independent) > 1 m at 35 degC, bridge: every echo is the oracle for its trigger, to the ns 
+   ✓ R2: HC-SR04 device timing at the bridge (startup-independent) > 1 m at 35 degC, firmware: every pulseIn reading within T-R2-2 (1 us)
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+      Tests  1 failed | 7 passed (8)
+== s12-bridge-timing
+   ✓ R2: scheduled inputs are seen at their scheduled time (TbiEdgeTime) > the s12-bridge schedule: every edge within 0.1 us, at both quanta 
+   × R2: scheduled inputs are seen at their scheduled time (TbiEdgeTime) > a phase sweep: every edge within 0.1 us (F-R2-1 open: fails in the other core's interval)
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+      Tests  1 failed | 1 passed (2)
+== s12-determinism
+   × Sprint 12 determinism: R2/R3 through the Session Host (T-DET-4/5/6) > hcsr04-0.1m: 3 runs give one fingerprint
+   × Sprint 12 determinism: R2/R3 through the Session Host (T-DET-4/5/6) > hcsr04-1m: 3 runs give one fingerprint
+   × Sprint 12 determinism: R2/R3 through the Session Host (T-DET-4/5/6) > hcsr04-4m: 3 runs give one fingerprint
+   × Sprint 12 determinism: R2/R3 through the Session Host (T-DET-4/5/6) > dht22--10C-30RH: 3 runs give one fingerprint
+   × Sprint 12 determinism: R2/R3 through the Session Host (T-DET-4/5/6) > dht22-21.5C-55.2RH: 3 runs give one fingerprint
+   × Sprint 12 determinism: R2/R3 through the Session Host (T-DET-4/5/6) > dht22-60C-95RH: 3 runs give one fingerprint
+   × Sprint 12 determinism: R2/R3 through the Session Host (T-DET-4/5/6) > lcd1602-hello: 3 runs give one fingerprint
+   ✓ Sprint 12 determinism: R2/R3 through the Session Host (T-DET-4/5/6) > records the evidence
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 7 ⎯⎯⎯⎯⎯⎯⎯
+      Tests  7 failed | 1 passed (8)
+== unit
+ Test Files  119 passed (119)
+      Tests  1026 passed (1026)
+== typecheck
+pass
+== lint
+pass

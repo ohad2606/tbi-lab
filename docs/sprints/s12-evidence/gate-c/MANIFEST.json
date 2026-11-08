@@ -1,0 +1,12 @@
+{
+  "release": "ba0f4a6893499b8728e8c902095b19b2be48404c",
+  "kind": "gate-c (Sprint 12): byte copies of the Gate B staging-validated bundles",
+  "replaces": "/srv/tbi-lab/services/0487ce6558640a4ce2dc54cb73acacf800617934",
+  "files": {
+    "session-host.mjs": { "sha256": "840bc8aeb52c48b48b6e6aa3ef2b2bc0d3820e23ae72fa735d0267597b1ffe7f", "from": "/srv/tbi-lab/s8-staging/session-host.mjs (ba0f4a6893499b8728e8c902095b19b2be48404c, Gate B)", "version": "0.10-dev" },
+    "build-service.mjs": { "sha256": "fbdc0b13bcae6f29f99aae4da36827ad09519a0280c2742c4e387e630fe243fe", "from": "/srv/tbi-lab/s8-staging/build-service.mjs (ba0f4a6893499b8728e8c902095b19b2be48404c, Gate B)" },
+    "build-job.mjs": { "sha256": "011f703c8ce87f472e5e4670d106dfe10cf3dbd4e1b4e01d7f017e4119c73f0f", "from": "/srv/tbi-lab/s8-staging/build-job.mjs (ba0f4a6893499b8728e8c902095b19b2be48404c, Gate B)" }
+  },
+  "runtime": "b5b34b49cb7e4049",
+  "releaseArtifacts": "767d3715fdaaef10"
+}

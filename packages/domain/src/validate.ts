@@ -7,10 +7,10 @@
  * Errors are structured codes with data, never display text.
  */
 
-import { CATALOG, isComponentType } from './catalog.js';
+import { CATALOG, isComponentType, onStep } from './catalog.js';
 import { GRID, ROTATIONS } from './layout.js';
 import { nodeKey, wireGroups } from './nets.js';
-import { profileById, utf8Length } from './program.js';
+import { PROGRAM_LIMITS, profileById, programPathIssue, utf8Length } from './program.js';
 import {
   DOCUMENT_FORMAT,
   SCHEMA_VERSION,
@@ -28,6 +28,8 @@ export type ValidationCode =
   | 'unknown_type'
   | 'unsupported_type_version'
   | 'bad_param'
+  /** Sprint POT-UNITS: a quantity off its parameter's resolution grid (catalog `step`). */
+  | 'off_grid_param'
   | 'missing_param'
   | 'unknown_param'
   | 'missing_placement'
@@ -134,7 +136,7 @@ export function validateProject(input: unknown): ValidationIssue[] {
       const v = c.params[p.key];
       const pp = `${path}.params.${p.key}`;
       if (v === undefined) {
-        add('missing_param', pp);
+        if (!(p.kind === 'enum' && p.optional)) add('missing_param', pp);
       } else if (p.kind === 'boolean') {
         if (typeof v !== 'boolean') add('bad_param', pp);
       } else if (p.kind === 'enum') {
@@ -149,6 +151,8 @@ export function validateProject(input: unknown): ValidationIssue[] {
         Object.keys(v).length !== 2
       ) {
         add('bad_param', pp);
+      } else if (!onStep(p, v.value as number)) {
+        add('off_grid_param', pp);
       }
     }
     for (const k of Object.keys(c.params)) {
@@ -215,6 +219,16 @@ export function validateProject(input: unknown): ValidationIssue[] {
       !w.vertices.every((v) => isObj(v) && isInt(v.x) && isInt(v.y))
     ) {
       add('bad_field', `${path}.vertices`);
+    }
+    if (
+      w.auto !== undefined &&
+      !(
+        isObj(w.auto) &&
+        Array.isArray(w.auto.waypoints) &&
+        w.auto.waypoints.every((v) => isObj(v) && isInt(v.x) && isInt(v.y))
+      )
+    ) {
+      add('bad_field', `${path}.auto`);
     }
     if (w.color !== undefined && !(WIRE_COLORS as readonly unknown[]).includes(w.color)) {
       add('bad_field', `${path}.color`);
@@ -285,12 +299,16 @@ export function validateProject(input: unknown): ValidationIssue[] {
   else {
     const entries = Object.entries(input.programs);
     if (entries.length > 1) add('bad_program', 'programs', 'more than one program');
-    for (const [boardId, program] of entries) {
-      const path = `programs.${boardId}`;
-      const board = doc.components.find((c) => c.id === boardId);
+    // One program's source (the active one, or since schema v7 a kept alternate: same rules).
+    const checkProgram = (
+      program: unknown,
+      path: string,
+      board: { type: string } | undefined,
+      keys: string[],
+    ) => {
       if (!isObj(program)) {
         add('bad_program', path);
-        continue;
+        return;
       }
       const profile =
         typeof program.profile === 'string' ? profileById(program.profile) : undefined;
@@ -304,10 +322,81 @@ export function validateProject(input: unknown): ValidationIssue[] {
         utf8Length(program.text) > profile.maxSourceBytes
       )
         add('bad_program', `${path}.text`);
-      const extra = Object.keys(program).filter(
-        (k) => !['language', 'profile', 'fileName', 'text'].includes(k),
-      );
+      // Sprint 26 (schema v6): further files and pinned libraries.
+      if (profile && program.files !== undefined) {
+        const files = program.files;
+        if (!Array.isArray(files)) add('bad_program', `${path}.files`);
+        else {
+          if (files.length + 1 > PROGRAM_LIMITS.maxFiles)
+            add('bad_program', `${path}.files`, 'too many files');
+          let total = typeof program.text === 'string' ? utf8Length(program.text) : 0;
+          const seen: string[] = [];
+          files.forEach((f: unknown, i: number) => {
+            const fp = `${path}.files.${i}`;
+            if (
+              !isObj(f) ||
+              typeof f.path !== 'string' ||
+              typeof f.text !== 'string' ||
+              Object.keys(f).some((k) => k !== 'path' && k !== 'text')
+            )
+              return add('bad_program', fp);
+            const why = programPathIssue(profile.language, f.path, seen, profile.fileName);
+            if (why) add('bad_program', `${fp}.path`, why);
+            if (seen.length && f.path <= seen[seen.length - 1]!)
+              add('bad_program', `${fp}.path`, 'not sorted');
+            if (f.text.includes('\u0000') || utf8Length(f.text) > profile.maxSourceBytes)
+              add('bad_program', `${fp}.text`);
+            total += utf8Length(f.text);
+            seen.push(f.path);
+          });
+          if (total > PROGRAM_LIMITS.maxTotalBytes)
+            add('bad_program', `${path}.files`, 'project too large');
+        }
+      }
+      if (program.libraries !== undefined) {
+        const libs = program.libraries;
+        if (!Array.isArray(libs)) add('bad_program', `${path}.libraries`);
+        else
+          libs.forEach((l: unknown, i: number) => {
+            const lp = `${path}.libraries.${i}`;
+            if (
+              !isObj(l) ||
+              typeof l.id !== 'string' ||
+              typeof l.version !== 'string' ||
+              !/^[a-z0-9][a-z0-9.-]{0,63}$/.test(l.id) ||
+              !/^[A-Za-z0-9][A-Za-z0-9.+-]{0,63}$/.test(l.version) ||
+              Object.keys(l).some((k) => k !== 'id' && k !== 'version')
+            )
+              return add('bad_program', lp);
+            const prev = libs[i - 1] as { id?: unknown } | undefined;
+            if (i > 0 && typeof prev?.id === 'string' && l.id <= prev.id)
+              add('bad_program', lp, 'not sorted');
+          });
+      }
+      const extra = Object.keys(program).filter((k) => !keys.includes(k));
       if (extra.length) add('bad_program', path, `unknown ${extra.join(',')}`);
+    };
+    const KEYS = ['language', 'profile', 'fileName', 'text', 'files', 'libraries'];
+    for (const [boardId, program] of entries) {
+      const path = `programs.${boardId}`;
+      const board = doc.components.find((c) => c.id === boardId);
+      checkProgram(program, path, board, [...KEYS, 'alternates']);
+      // Schema v7: the board's code in its other programming environments, kept while another is
+      // active (one per other profile of the board; never the active profile).
+      const alts = isObj(program) ? program.alternates : undefined;
+      if (alts === undefined) continue;
+      if (!Array.isArray(alts) || alts.length === 0) {
+        add('bad_program', `${path}.alternates`);
+        continue;
+      }
+      const seen = new Set([isObj(program) ? program.profile : undefined]);
+      alts.forEach((a: unknown, i: number) => {
+        const ap = `${path}.alternates.${i}`;
+        checkProgram(a, ap, board, KEYS);
+        const prof = isObj(a) ? a.profile : undefined;
+        if (seen.has(prof)) add('bad_program', ap, 'duplicate profile');
+        seen.add(prof);
+      });
     }
   }
 

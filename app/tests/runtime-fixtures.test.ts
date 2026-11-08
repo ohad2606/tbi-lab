@@ -6,6 +6,9 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { EXAMPLES_WITH_DOCUMENTS as EXAMPLES } from '../src/examples/documents.js';
 import { buildSessionRequest } from '../src/runtime/snapshot.js';
+import { type ProgramSource } from '@tbi-lab/domain';
+import { programRequest, systemSourceKeys } from '../../runtime/builder/system-sources.js';
+import { requestKey } from '../../runtime/builder/libraries.js';
 
 describe('runtime fixtures', () => {
   it('s10-bench-session.json is the app request for esp32-bench', () => {
@@ -20,5 +23,66 @@ describe('runtime fixtures', () => {
     if (!plan.ok) throw new Error(JSON.stringify(plan.error));
     const { artifact: _artifact, ...request } = plan.plan.request;
     expect(fx.request).toEqual(JSON.parse(JSON.stringify(request)));
+  });
+
+  // Sprint 11 (R1): the two curated examples with the Sprint 10 parts.
+  for (const [file, id] of [
+    ['r1-motion-relay-session.json', 'esp32-motion-relay'],
+    ['r1-night-light-session.json', 'esp32-night-light'],
+    // Sprint 12 (R2/R3): the three curated examples with the new parts.
+    ['s12-distance-alarm-session.json', 'esp32-distance-alarm'],
+    ['s12-thermo-hygrometer-session.json', 'esp32-thermo-hygrometer'],
+    ['s12-lcd-hello-session.json', 'esp32-lcd-hello'],
+    // Sprint 15 (R4): the two PWM examples.
+    ['s15-led-fade-session.json', 'esp32-led-fade'],
+    ['s15-servo-sweep-session.json', 'esp32-servo-sweep'],
+    // Sprint 19B (Exploration Foundation X1): ESP32 + logic gate.
+    ['s19b-logic-and-session.json', 'esp32-logic-and'],
+    // Sprint 24 (M1): the MicroPython examples.
+    ['s24-mpy-blink-session.json', 'mpy-blink'],
+    ['s24-mpy-button-session.json', 'mpy-button'],
+    ['s24-mpy-fade-session.json', 'mpy-fade'],
+    // Sprint 24 (M3): hardware I2C from MicroPython.
+    ['s24-mpy-lcd-hello-session.json', 'mpy-lcd-hello'],
+    // Sprint 25 (Phase 4): a potentiometer read as a digital level.
+    ['s25-esp32-pot-threshold-session.json', 'esp32-pot-threshold'],
+    ['s25-mpy-pot-threshold-session.json', 'mpy-pot-threshold'],
+    // Sprint 26: multi-file programs with a managed library.
+    ['s26-esp32-lcd-library-session.json', 'esp32-lcd-library'],
+    ['s26-mpy-lcd-library-session.json', 'mpy-lcd-library'],
+    // Sprint 29 (M4): an ESP32 in MicroPython reading a logic half adder.
+    ['s29-mpy-adder-monitor-session.json', 'mpy-adder-monitor'],
+    // Sprint 30 (M2/M4): firmware → logic → firmware with a relay stage, both languages.
+    ['s30-esp32-logic-feedback-session.json', 'esp32-logic-feedback'],
+    ['s30-mpy-logic-feedback-session.json', 'mpy-logic-feedback'],
+  ] as const)
+    it(`${file} is the app request for ${id}`, () => {
+      const fx = JSON.parse(
+        readFileSync(new URL(`../../runtime/tests/fixtures/${file}`, import.meta.url), 'utf8'),
+      ) as { request: unknown };
+      const doc = EXAMPLES.find((e) => e.id === id)!.document;
+      const plan = buildSessionRequest(doc, () => ({ sha256: '0'.repeat(64), origin: 'program' }));
+      if (!plan.ok) throw new Error(JSON.stringify(plan.error));
+      const { artifact: _artifact, ...request } = plan.plan.request;
+      expect(fx.request).toEqual(JSON.parse(JSON.stringify(request)));
+    });
+
+  it('every ESP32 example runs a curated system source (a shared build: no build-service change)', () => {
+    const keys = systemSourceKeys();
+    const boards = EXAMPLES.filter((e) =>
+      e.document.components.some((c) => c.type === 'board.esp32_devkitc_wroom32'),
+    );
+    expect(boards.map((e) => e.id)).toEqual(
+      expect.arrayContaining(['esp32-motion-relay', 'esp32-night-light']),
+    );
+    for (const e of boards) {
+      const programs = Object.values(
+        (e.document as unknown as { programs?: Record<string, ProgramSource> }).programs ?? {},
+      );
+      expect(programs.length, e.id).toBe(1);
+      const p = programs[0]!;
+      // Sprint 26: every file and pinned library is part of the curated source.
+      expect(keys.has(requestKey(programRequest(p))), e.id).toBe(true);
+    }
   });
 });

@@ -1,0 +1,31 @@
+/** G-2 targeted validation (F-R2-1 impact on DHT22): TbiDhtSweep through the real Session Host. */
+import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { afterAll, expect, it } from 'vitest';
+import { ticketFor } from '../identity/test-gate.js';
+import { serialText, waitEvent } from '../host/tests/support.js';
+import { Circuit, open } from '../host/tests/r1-support.js';
+import { realHost } from './r2-support.js';
+
+const SHA = process.env.DHT_SHA!;
+const host = realHost({ leaseMs: 600_000 });
+afterAll(() => host.shutdown());
+
+it('DHT22 phase sweep', async () => {
+  const c = new Circuit().psu(3.3);
+  const u = c.add('sensor.dht22');
+  const r = c.add('component.resistor');
+  c.wire('PSU1.positive', `${u}.vdd`).wire(`${u}.gnd`, 'GND1.ref');
+  c.ohms(r, 10_000).wire(`${r}.a`, 'PSU1.positive').wire(`${r}.b`, `${u}.data`).pad(4, `${u}.data`);
+  const s = open(host, { ...c.request(SHA), ticket: ticketFor(SHA) });
+  expect(s.state, JSON.stringify(s.status().detail)).toBe('ready');
+  s.run();
+  try {
+    await waitEvent(s, () => (serialText(s).match(/^R /gm) ?? []).length >= 80, 400_000);
+  } finally {
+    writeFileSync(join(process.env.DIAG_OUT!, 'dhtsweep.json'),
+      JSON.stringify({ serial: serialText(s), state: s.state, status: s.status() }));
+  }
+  s.stop();
+  await s.done();
+}, 500_000);

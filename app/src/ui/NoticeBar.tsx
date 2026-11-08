@@ -1,3 +1,4 @@
+import { LearnMore, sectionForFailure } from './Capabilities.js';
 import { PREVIEW_NAME } from '../deployment.js';
 import { isolateLtr } from '../i18n/i18n.js';
 import type { SimFailure } from '../sim/controller.js';
@@ -5,6 +6,17 @@ import type { RatingWarning } from '@tbi-lab/engine';
 import { engineErrorParts, groupByComponent, ratingRow, simFailureMessage } from '../sim/format.js';
 import { warningsFor } from '../sim/ratings.js';
 import { useAppState, useStore, useT } from './context.js';
+import { TOOLBAR_BUILD_ID, programBoardOf, requestCodeView } from './buildAction.js';
+
+const damage = (w: RatingWarning[]) => w.filter((x) => x.kind === 'absolute');
+const operating = (w: RatingWarning[]) => w.filter((x) => x.kind !== 'absolute');
+/** One group per component and kind (a part can be both `operating` and `unrated`). */
+const byComponentAndKind = (w: RatingWarning[]) =>
+  groupByComponent(w).flatMap(([id, rows]) =>
+    (['operating', 'unrated'] as const)
+      .map((k) => [id, rows.filter((r) => r.kind === k)] as const)
+      .filter(([, g]) => g.length),
+  );
 
 export function NoticeBar() {
   const { notice, readOnly, unreadable, sim, locale, doc, saveState, saveError, screen } =
@@ -34,6 +46,23 @@ export function NoticeBar() {
           ) : (
             simFailureMessage(locale, sim.failure, doc)
           )}
+          {sectionForFailure(failureCode(sim.failure)) && (
+            <>
+              {' '}
+              <LearnMore section={sectionForFailure(failureCode(sim.failure))!} />
+            </>
+          )}
+        </div>
+      )}
+      {sim.status === 'running' && sim.runtime?.expiresSoon && (
+        // Alpha: about a minute before the host's maximum session lifetime. Informational; the
+        // session is never extended (the final `session_expired` message follows at the end).
+        <div class="banner banner-warning" role="status" data-testid="session-expiring">
+          {t('sim.runtime.expiring', {
+            minutes: isolateLtr(
+              String(Math.max(1, Math.ceil(sim.runtime.expiresSoon.lifetimeMs / 60_000))),
+            ),
+          })}
         </div>
       )}
       {running && !running.ok && (
@@ -46,15 +75,37 @@ export function NoticeBar() {
           <EngineErrorText parts={engineErrorParts(locale, running.error, doc)} />
         </div>
       )}
-      {running?.ok && doc && warningsFor(doc, running).length > 0 && (
-        // A documented datasheet limit is exceeded: a WARNING (amber), distinct from the red
+      {running?.ok && doc && damage(warningsFor(doc, running)).length > 0 && (
+        // A documented ABSOLUTE MAXIMUM is exceeded: a WARNING (amber), distinct from the red
         // solver errors above. The solved values are unchanged.
         <div class="banner banner-warning banner-rating" role="status" data-testid="rating-warning">
           <strong class="rating-title">{t('rating.heading')}</strong>
-          {groupByComponent(warningsFor(doc, running)).map(([id, rows]) => (
+          {groupByComponent(damage(warningsFor(doc, running))).map(([id, rows]) => (
             <RatingGroup key={id} component={id} rows={rows} />
           ))}
           <span class="rating-note small">{t('rating.note')}</span>
+        </div>
+      )}
+      {running?.ok && doc && operating(warningsFor(doc, running)).length > 0 && (
+        // Sprint 13 H2: outside the specified OPERATING range only, no absolute maximum published: the damage threshold is unknown (never presented as safe); the result
+        // may not match a real part.
+        <div
+          class="banner banner-warning banner-rating banner-operating"
+          role="status"
+          data-testid="operating-warning"
+        >
+          <strong class="rating-title">{t('rating.operating.heading')}</strong>
+          {byComponentAndKind(operating(warningsFor(doc, running))).map(([id, rows]) => (
+            <RatingGroup key={`${id}-${rows[0]!.kind}`} component={id} rows={rows} />
+          ))}
+          {operating(warningsFor(doc, running)).some((w) => w.kind === 'operating') && (
+            <span class="rating-note small">{t('rating.operating.note')}</span>
+          )}
+          {operating(warningsFor(doc, running)).some((w) => w.kind === 'unrated') && (
+            <span class="rating-note small" data-testid="unrated-note">
+              {t('rating.unrated.note')}
+            </span>
+          )}
         </div>
       )}
       {running?.ok && running.notConnected.length > 0 && (
@@ -74,7 +125,17 @@ export function NoticeBar() {
           {t('readonly.unreadable', { version: isolateLtr(String(unreadable.schemaVersion)) })}
         </div>
       )}
-      {screen === 'editor' && saveState === 'error' && (
+      {screen === 'editor' && saveState === 'error' && saveError === 'conflict' && (
+        // Sprint 13 Task D: another tab or window changed or deleted this project. Retrying cannot
+        // help (it would overwrite their change): keep this version by Export, then reload.
+        <div class="banner banner-warning" role="alert" data-testid="save-conflict">
+          <span>{t('save.error.conflictBanner')}</span>
+          <button type="button" class="link-button" onClick={() => location.reload()}>
+            {t('save.reload')}
+          </button>
+        </div>
+      )}
+      {screen === 'editor' && saveState === 'error' && saveError !== 'conflict' && (
         <div class="banner banner-warning" role="alert" data-testid="save-error">
           <span>{t(saveError === 'quota' ? 'save.error.quotaBanner' : 'save.error.banner')}</span>
           <button type="button" class="link-button" onClick={() => void store.retrySave()}>
@@ -91,6 +152,42 @@ export function NoticeBar() {
           data-tone={notice.tone ?? 'error'}
         >
           <span>{t(notice.key, notice.params)}</span>
+          {notice.also?.map((k) => (
+            <span key={k} data-testid="notice-also" data-key={k}>
+              {' '}
+              {t(k)}
+            </span>
+          ))}
+          {/* Alpha UX-P1: Run without a current build offers the Build itself (never automatic). */}
+          {notice.key === 'run.blocked.buildRequired' && programBoardOf(doc) && (
+            <button
+              type="button"
+              class="button notice-build"
+              data-testid="notice-build"
+              onClick={() => {
+                const board = programBoardOf(doc)!;
+                store.dismissNotice();
+                // Focus follows to the toolbar Build: its live state reports progress and result.
+                document.getElementById(TOOLBAR_BUILD_ID)?.focus();
+                void store.buildProgram(board);
+              }}
+            >
+              {t('toolbar.build')}
+            </button>
+          )}
+          {notice.key === 'run.blocked.buildFailed' && programBoardOf(doc) && (
+            <button
+              type="button"
+              class="link-button"
+              data-testid="notice-build-problems"
+              onClick={() => {
+                store.dismissNotice();
+                requestCodeView();
+              }}
+            >
+              {t('toolbar.build.showProblems')}
+            </button>
+          )}
           <button type="button" class="link-button" onClick={() => store.dismissNotice()}>
             {t('notice.dismiss')}
           </button>
@@ -124,11 +221,25 @@ export function RatingGroup({ component, rows }: { component: string; rows: Rati
   const { locale } = useAppState();
   const t = useT();
   return (
-    <div class="rating-group" data-testid={`rating-${component}`} data-model={rows[0]?.model}>
-      <span class="rating-summary">{t('rating.atRisk', { component: isolateLtr(component) })}</span>
+    <div
+      class="rating-group"
+      data-testid={`rating-${component}`}
+      data-model={rows[0]?.model}
+      data-kind={rows[0]?.kind}
+    >
+      <span class="rating-summary">
+        {t(
+          rows[0]?.kind === 'operating'
+            ? 'rating.operating.summary'
+            : rows[0]?.kind === 'unrated'
+              ? 'rating.unrated.summary'
+              : 'rating.atRisk',
+          { component: isolateLtr(component) },
+        )}
+      </span>
       <ul class="rating-list">
         {rows.map((w) => (
-          <li key={w.code} data-code={w.code}>
+          <li key={w.code} data-code={w.code} data-unreliable={w.unreliable ? 'true' : undefined}>
             {ratingRow(locale, w)}
           </li>
         ))}

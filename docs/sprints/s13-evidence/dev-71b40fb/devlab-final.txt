@@ -1,0 +1,22 @@
+services/current -> /srv/tbi-lab/services/71b40fb033df99789350f6fe07e25934dc347f47
+250f5c901a10050e /etc/systemd/system/tbi-build.service
+db2ac54986119925 /etc/systemd/system/tbi-build-job@.service
+317ab910c0dd3402 /etc/systemd/system/tbi-session-host.service
+c34ea2d9fefb7839 /etc/systemd/system/tbi-qemu@.service
+3b06b9de86d83316 /etc/polkit-1/rules.d/50-tbi.rules
+7afc97cbcb404569 /etc/tbi/identity.key
+d43ab503249b4a5b /etc/tbi/policy.json
+481d7aa42c6e7e6f /etc/tbi/runtime.json
+42b2069c85f9da36 /etc/tbi/ticket.key
+04c22420fa5a8ddb /srv/tbi-lab/services/current/MANIFEST.json
+011f703c8ce87f47 /srv/tbi-lab/services/current/build-job.mjs
+fe2a2c50c1eb26ad /srv/tbi-lab/services/current/build-service.mjs
+26137bd81e6d7371 /srv/tbi-lab/services/current/session-host.mjs
+tbi-build pid=874736 since=Tue 2026-10-13 09:04:48 UTC
+tbi-session-host pid=874740 since=Tue 2026-10-13 09:04:48 UTC
+caddy pid=2213117 since=Sun 2026-10-04 13:19:44 UTC
+oauth2-proxy pid=2219933 since=Sun 2026-10-04 13:27:40 UTC
+tbi-qemu@ binds: BindReadOnlyPaths=/usr
+dev-lab frontend -> /srv/tbi-lab/dev-lab/71b40fb033df99789350f6fe07e25934dc347f47
+health: {"protocol":"tbi-lab.session/2","sessions":{},"runtime":{"version":"0.10-dev","commit":"71b40fb033df99789350f6fe07e25934dc347f47"}}
+qemu units: 0

@@ -1,0 +1,473 @@
+{
+  "format": "tbi-lab.project",
+  "schemaVersion": 3,
+  "projectId": "prj_exampleledmatrix",
+  "createdWith": {
+    "app": "0.2.0",
+    "schemaVersion": 3
+  },
+  "createdAt": "2026-09-23T00:00:00.000Z",
+  "revision": {
+    "localRevision": 1,
+    "cloudRevision": null,
+    "baseRevision": null,
+    "updatedAt": "2026-09-23T00:00:00.000Z",
+    "deviceId": "dev_tbilab_examples"
+  },
+  "name": "LED matrix",
+  "components": [
+    {
+      "id": "PSU1",
+      "type": "instrument.lab_psu",
+      "typeVersion": 1,
+      "params": {
+        "setpointVoltage": {
+          "value": 5,
+          "unit": "volt"
+        },
+        "currentLimit": {
+          "value": 0.2,
+          "unit": "ampere"
+        },
+        "outputEnabled": true
+      }
+    },
+    {
+      "id": "GND1",
+      "type": "component.ground",
+      "typeVersion": 1,
+      "params": {}
+    },
+    {
+      "id": "DS1",
+      "type": "display.led_matrix_8x8",
+      "typeVersion": 1,
+      "params": {
+        "model": "model.led_matrix.oasis_1088as"
+      }
+    },
+    {
+      "id": "SW1",
+      "type": "component.toggle_switch",
+      "typeVersion": 1,
+      "params": {
+        "closed": true
+      }
+    },
+    {
+      "id": "SW2",
+      "type": "component.toggle_switch",
+      "typeVersion": 1,
+      "params": {
+        "closed": false
+      }
+    },
+    {
+      "id": "GND2",
+      "type": "component.ground",
+      "typeVersion": 1,
+      "params": {}
+    },
+    {
+      "id": "GND3",
+      "type": "component.ground",
+      "typeVersion": 1,
+      "params": {}
+    },
+    {
+      "id": "R1",
+      "type": "component.resistor",
+      "typeVersion": 1,
+      "params": {
+        "resistance": {
+          "value": 220,
+          "unit": "ohm"
+        }
+      }
+    },
+    {
+      "id": "R2",
+      "type": "component.resistor",
+      "typeVersion": 1,
+      "params": {
+        "resistance": {
+          "value": 220,
+          "unit": "ohm"
+        }
+      }
+    }
+  ],
+  "nets": [
+    {
+      "id": "N_1",
+      "role": "ground",
+      "userName": null
+    },
+    {
+      "id": "N_2",
+      "role": null,
+      "userName": null
+    },
+    {
+      "id": "N_3",
+      "role": "ground",
+      "userName": null
+    },
+    {
+      "id": "N_4",
+      "role": null,
+      "userName": null
+    },
+    {
+      "id": "N_5",
+      "role": "ground",
+      "userName": null
+    },
+    {
+      "id": "N_6",
+      "role": null,
+      "userName": null
+    },
+    {
+      "id": "N_7",
+      "role": null,
+      "userName": null
+    },
+    {
+      "id": "N_8",
+      "role": null,
+      "userName": null
+    }
+  ],
+  "connections": [
+    {
+      "component": "PSU1",
+      "terminal": "positive",
+      "net": "N_8"
+    },
+    {
+      "component": "PSU1",
+      "terminal": "negative",
+      "net": "N_1"
+    },
+    {
+      "component": "GND1",
+      "terminal": "ref",
+      "net": "N_1"
+    },
+    {
+      "component": "DS1",
+      "terminal": "r7",
+      "net": "N_4"
+    },
+    {
+      "component": "DS1",
+      "terminal": "c2",
+      "net": "N_7"
+    },
+    {
+      "component": "DS1",
+      "terminal": "r2",
+      "net": "N_2"
+    },
+    {
+      "component": "DS1",
+      "terminal": "c7",
+      "net": "N_6"
+    },
+    {
+      "component": "SW1",
+      "terminal": "a",
+      "net": "N_2"
+    },
+    {
+      "component": "SW1",
+      "terminal": "b",
+      "net": "N_3"
+    },
+    {
+      "component": "SW2",
+      "terminal": "a",
+      "net": "N_5"
+    },
+    {
+      "component": "SW2",
+      "terminal": "b",
+      "net": "N_4"
+    },
+    {
+      "component": "GND2",
+      "terminal": "ref",
+      "net": "N_3"
+    },
+    {
+      "component": "GND3",
+      "terminal": "ref",
+      "net": "N_5"
+    },
+    {
+      "component": "R1",
+      "terminal": "a",
+      "net": "N_8"
+    },
+    {
+      "component": "R1",
+      "terminal": "b",
+      "net": "N_6"
+    },
+    {
+      "component": "R2",
+      "terminal": "a",
+      "net": "N_7"
+    },
+    {
+      "component": "R2",
+      "terminal": "b",
+      "net": "N_8"
+    }
+  ],
+  "layout": {
+    "components": {
+      "PSU1": {
+        "x": -360,
+        "y": 0,
+        "rotation": 0
+      },
+      "GND1": {
+        "x": -320,
+        "y": 120,
+        "rotation": 0
+      },
+      "DS1": {
+        "x": 180,
+        "y": 0,
+        "rotation": 0
+      },
+      "SW1": {
+        "x": 220,
+        "y": -200,
+        "rotation": 0
+      },
+      "SW2": {
+        "x": 40,
+        "y": 200,
+        "rotation": 0
+      },
+      "GND2": {
+        "x": 300,
+        "y": -140,
+        "rotation": 0
+      },
+      "GND3": {
+        "x": -40,
+        "y": 260,
+        "rotation": 0
+      },
+      "R1": {
+        "x": 120,
+        "y": -200,
+        "rotation": 90
+      },
+      "R2": {
+        "x": 140,
+        "y": 220,
+        "rotation": 90
+      }
+    },
+    "wires": [
+      {
+        "id": "W1",
+        "from": {
+          "kind": "terminal",
+          "component": "PSU1",
+          "terminal": "negative"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "GND1",
+          "terminal": "ref"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W2",
+        "from": {
+          "kind": "terminal",
+          "component": "DS1",
+          "terminal": "r2"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "SW1",
+          "terminal": "a"
+        },
+        "vertices": [
+          {
+            "x": 140,
+            "y": -200
+          }
+        ]
+      },
+      {
+        "id": "W3",
+        "from": {
+          "kind": "terminal",
+          "component": "SW1",
+          "terminal": "b"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "GND2",
+          "terminal": "ref"
+        },
+        "vertices": [
+          {
+            "x": 300,
+            "y": -200
+          }
+        ]
+      },
+      {
+        "id": "W4",
+        "from": {
+          "kind": "terminal",
+          "component": "DS1",
+          "terminal": "r7"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "SW2",
+          "terminal": "b"
+        },
+        "vertices": [
+          {
+            "x": 120,
+            "y": 200
+          }
+        ]
+      },
+      {
+        "id": "W5",
+        "from": {
+          "kind": "terminal",
+          "component": "SW2",
+          "terminal": "a"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "GND3",
+          "terminal": "ref"
+        },
+        "vertices": [
+          {
+            "x": -40,
+            "y": 200
+          }
+        ]
+      },
+      {
+        "id": "W6",
+        "from": {
+          "kind": "terminal",
+          "component": "R1",
+          "terminal": "b"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "DS1",
+          "terminal": "c7"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W7",
+        "from": {
+          "kind": "terminal",
+          "component": "DS1",
+          "terminal": "c2"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "R2",
+          "terminal": "a"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W8",
+        "from": {
+          "kind": "terminal",
+          "component": "PSU1",
+          "terminal": "positive"
+        },
+        "to": {
+          "kind": "junction",
+          "junction": "J1"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W9",
+        "from": {
+          "kind": "junction",
+          "junction": "J1"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "R1",
+          "terminal": "a"
+        },
+        "vertices": [
+          {
+            "x": -140,
+            "y": -20
+          },
+          {
+            "x": -140,
+            "y": -240
+          }
+        ]
+      },
+      {
+        "id": "W10",
+        "from": {
+          "kind": "junction",
+          "junction": "J1"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "R2",
+          "terminal": "b"
+        },
+        "vertices": [
+          {
+            "x": -160,
+            "y": 300
+          },
+          {
+            "x": 140,
+            "y": 300
+          }
+        ]
+      }
+    ],
+    "junctions": [
+      {
+        "id": "J1",
+        "x": -160,
+        "y": -20
+      }
+    ]
+  },
+  "idCounters": {
+    "PSU": 1,
+    "GND": 3,
+    "W": 10,
+    "N": 8,
+    "DS": 1,
+    "SW": 2,
+    "R": 2,
+    "J": 1
+  },
+  "programs": {}
+}

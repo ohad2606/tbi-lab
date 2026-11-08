@@ -263,6 +263,29 @@ export const LDR_GL5528 = {
   standoffMm: 4.0,
 };
 
+/**
+ * Bourns PTV09A-2 (vertical/side mount, bushingless, 10 mm height), PTV09.pdf REV. 01/25 p.1
+ * [PTV09]: body 10.0 mm wide and 6.8 mm deep, shaft axis 10.0 mm above the board, F-type shaft
+ * Ø6.0 mm, shaft length L = 15 mm (the shortest standard length, measured from the body's rear
+ * face), 3 terminals 0.8 mm wide at 2.5 mm pitch (5.0 mm outer span). The body's HEIGHT is not
+ * dimensioned: its front view is drawn square, so 10.0 mm centred on the shaft axis [DRAWING,
+ * approximate]. Terminal order facing the shaft: 1 (end A), 2 (wiper), 3 (end B).
+ */
+export const POT_PTV09A = {
+  bodyWidthMm: 10.0,
+  bodyDepthMm: 6.8,
+  /** [DRAWING] the square front view: 10.0 mm, centred on the shaft axis. */
+  bodyHeightMm: 10.0,
+  shaftAxisMm: 10.0,
+  shaftDiameterMm: 6.0,
+  shaftLengthMm: 15,
+  /** F-type flat: 4.5 mm across the flat. */
+  shaftFlatMm: 4.5,
+  pinPitchMm: 2.5,
+  pinWidthMm: 0.8,
+  pinOrder: ['a', 'wiper', 'b'] as const,
+};
+
 /** CEM-1205-IC: Ø12.0 x 9.5 mm black can, 2 pins Ø0.6 at 7.6 mm [CEM]. */
 export const BUZZER_CEM1205 = {
   diameterMm: 12.0,
@@ -386,3 +409,208 @@ export function capacitorPackage(farads: number) {
     standoffMm: CAPACITOR_PACKAGES.canStandoffMm,
   };
 }
+
+// ---- Sprint 12 parts (R2 sensors, R3 display) -------------------------------------------------
+// Sources: docs/sprints/s10-evidence/datasheets/FACTS.md §7 (HC-SR04: Elecfreaks p.2, Cytron),
+// §8 (AM2302 sheet p.2 drawing), §10d (JHD 16x2 LCD specification p.5, p.15). Where a document is
+// silent the value is representative [REP] and stated as such.
+
+/** Header pin plan offsets along the header (2.54 mm pitch, centred on the module origin). */
+/**
+ * The Sprint 12 modules' 2D header pins are at layout y = -40, -20, 0, 20: centred 10 layout units
+ * above the part origin. The physical header (and the body around it) is centred there too.
+ */
+const HEADER_CENTRE_Z = toMm(-10);
+const headerZ = (i: number, n: number) => HEADER_CENTRE_Z + (i - (n - 1) / 2) * 2.54;
+
+/**
+ * HC-SR04: 45 x 20 x 15 mm overall [Elecfreaks p.2; Cytron]. The board stands upright on its
+ * 4-pin header (Vcc, Trig, Echo, GND [Elecfreaks p.2]), its plane across x, the header along z on
+ * its lower edge, the two transducers facing +x. Transducer diameter NOT FOUND in the three
+ * documents: 16 mm [REP], 26 mm apart [REP]; the 15 mm depth is the board, the cans in front and
+ * the crystal behind. Header pin length as the PIR module's [REP].
+ */
+export const HC_SR04_MODULE = {
+  boardZMm: 45,
+  boardYMm: 20,
+  boardThicknessMm: 1.6,
+  /** The board's centre plane (local x) and the depth in front of / behind it (15 mm in all). */
+  boardXMm: -2.0,
+  frontMm: 12.0,
+  backMm: 1.4,
+  transducerDiameterMm: 16,
+  transducerSpacingMm: 26,
+  /** The board's centre along z: the header's centre (2D pins centred above the origin). */
+  centreZMm: HEADER_CENTRE_Z,
+  standoffMm: 8.5,
+  attachHeightMm: 0.8,
+  pins: {
+    vcc: [-2.0, headerZ(0, 4)],
+    trig: [-2.0, headerZ(1, 4)],
+    echo: [-2.0, headerZ(2, 4)],
+    gnd: [-2.0, headerZ(3, 4)],
+  } as Record<string, readonly [number, number]>,
+};
+
+/**
+ * DHT22 / AM2302, standard 4-pin case: 15.1 (W) x 25.1 (H) x 7.7 (D) mm, 2.54 mm pitch, pins
+ * 0.5 mm, 8.5 mm long [AM2302 p.2 drawing]. It stands on its pins with the vent grille facing +x;
+ * pins 1-4 (VDD, DATA, NC, GND) along z, near the rear face [REP: the drawing shows no offset].
+ */
+export const DHT22_CASE = {
+  widthZMm: 15.1,
+  heightMm: 25.1,
+  depthXMm: 7.7,
+  pinXMm: -2.35,
+  standoffMm: 8.5,
+  attachHeightMm: 0.8,
+  /** The grille area on the front face (20.0 mm tall [AM2302 p.2]). */
+  grilleHeightMm: 20.0,
+  /** The case's centre along z: the pins' centre. */
+  centreZMm: HEADER_CENTRE_Z,
+  pins: {
+    vdd: [-2.35, headerZ(0, 4)],
+    data: [-2.35, headerZ(1, 4)],
+    nc: [-2.35, headerZ(2, 4)],
+    gnd: [-2.35, headerZ(3, 4)],
+  } as Record<string, readonly [number, number]>,
+};
+
+/**
+ * 16x2 character LCD module with a PCF8574 I2C backpack, lying face up. Module: PCB 80.0 x 36.0
+ * mm, viewing area 64.5 x 14.5 mm, active area 57.70 x 9.40 mm, bezel 70.70 x 23.80 mm, character
+ * 2.95 x 4.35 mm at a 3.65 x 5.05 mm pitch, 4 mounting holes Ø2.9 on a 75.0 x 31.0 mm grid, the
+ * 16-pin connector along the top edge [JHD p.5, p.15]. The backpack's own dimensions are NOT FOUND:
+ * it sits under the connector, its 4-pin header (GND, VCC, SDA, SCL) pointing out of the module's
+ * left edge [REP]. The module lies on the backpack; the bezel stack above the PCB is 8 mm [REP]
+ * (13.5 mm overall maximum [JHD p.15]).
+ *
+ * Local frame: the header pins' tips are at the 2D terminals' x (so the wires end where the circuit
+ * view has them); the module extends to +x; the header is centred on the 2D pins' centre.
+ */
+export const LCD1602_MODULE = {
+  pcbXMm: 80.0,
+  pcbZMm: 36.0,
+  pcbThicknessMm: 1.6,
+  bezelXMm: 70.7,
+  bezelZMm: 23.8,
+  viewXMm: 64.5,
+  viewZMm: 14.5,
+  activeXMm: 57.7,
+  activeZMm: 9.4,
+  charXMm: 2.95,
+  charZMm: 4.35,
+  charPitchXMm: 3.65,
+  charPitchZMm: 5.05,
+  holeGridXMm: 75.0,
+  holeGridZMm: 31.0,
+  holeDiameterMm: 2.9,
+  bezelHeightMm: 8.0,
+  /** Underside of the LCD PCB above the bench: the backpack under it [REP]. */
+  standoffMm: 10.0,
+  /** The header pins: tips at the 2D terminal column, 6.0 mm out from the PCB edge [REP]. */
+  pinTipXMm: -12.7,
+  pcbLeftXMm: -6.7,
+  pinHeightMm: 4.65,
+  /** The PCB centre: 8.5 mm below the header (the header is under the top half) [REP]. */
+  pcbCentreZMm: HEADER_CENTRE_Z + 8.5,
+  /** The header's (and the backpack's) centre along z. */
+  headerCentreZMm: HEADER_CENTRE_Z,
+  pins: {
+    gnd: [-12.7, headerZ(0, 4)],
+    vcc: [-12.7, headerZ(1, 4)],
+    sda: [-12.7, headerZ(2, 4)],
+    scl: [-12.7, headerZ(3, 4)],
+  } as Record<string, readonly [number, number]>,
+};
+
+/**
+ * TowerPro SG90 micro servo (Sprint 15), standing on the bench with its output shaft up. Case
+ * 22.2 x 11.8 mm, 31 mm overall height [SG90: TowerPro SG90 data sheet drawing]; the mounting tabs
+ * (32.2 mm across, 2.5 mm thick, underside 15.9 mm up), the gear tower and the shaft position are
+ * [REP] (common SG90 drawings). The three-wire lead ends in a 3-pin 2.54 mm servo plug [REP]
+ * lying on the bench, its sockets at the 2D terminal column (GND, +V, signal along z, as the
+ * lead's brown, red and orange wires); the 25 cm lead is drawn shortened, plug to case. The horn
+ * (a single arm, white) turns with the shaft angle the simulation reports.
+ */
+export const SERVO_SG90 = {
+  caseXMm: 22.2,
+  caseZMm: 11.8,
+  caseHeightMm: 22.7,
+  /** The case's end nearest the plug (local x); the case extends to +x. */
+  caseLeftXMm: 10.5,
+  tabSpanXMm: 32.2,
+  tabThicknessMm: 2.5,
+  tabUndersideMm: 15.9,
+  /** The gear tower: its top, and the output shaft's centre from the case's far (+x) end. */
+  towerTopMm: 26.7,
+  shaftFromEndMm: 5.9,
+  shaftDiameterMm: 4.8,
+  /** The horn: its hub on top of the shaft, the arm's reach from the shaft centre. */
+  hornBottomMm: 28.6,
+  hornThicknessMm: 1.6,
+  hornHubDiameterMm: 7.0,
+  hornReachMm: 15.0,
+  hornTipWidthMm: 4.0,
+  /** Overall height, to the horn's top (28.6 + 1.6): within the 31 mm drawing envelope. */
+  heightMm: 30.2,
+  /** The plug: 14 x 7.6 x 4 mm, lying flat, sockets facing -x at the terminal column. */
+  plugXMm: 14.0,
+  plugZMm: 7.6,
+  plugHeightMm: 4.0,
+  plugTipXMm: toMm(-60),
+  attachHeightMm: 2.0,
+  pins: {
+    gnd: [toMm(-60), -2.54],
+    vcc: [toMm(-60), 0],
+    signal: [toMm(-60), 2.54],
+  } as Record<string, readonly [number, number]>,
+};
+
+/** The servo's output shaft centre (local x; z = 0). */
+export const SERVO_SHAFT_X_MM =
+  SERVO_SG90.caseLeftXMm + SERVO_SG90.caseXMm - SERVO_SG90.shaftFromEndMm;
+
+/**
+ * Sprint 19B: an SN74LVC1G single gate in TI's DBV0005A (SOT-23-5) package [DBV]: body
+ * 2.75–3.05 × 1.45–1.75 mm, 0.90–1.45 mm high, leads 0.3–0.5 mm wide at 0.95 mm pitch (1.9 mm
+ * between the outer leads), mid-tolerance values. A SOT-23 does not fit a breadboard: it sits on
+ * a representative 5-pin breakout board [REP] whose header pins stand at the part's terminals.
+ */
+export const LOGIC_SOT23_BREAKOUT = {
+  bodyXMm: 2.9,
+  bodyZMm: 1.6,
+  bodyHeightMm: 1.2,
+  leadPitchMm: 0.95,
+  leadWidthMm: 0.4,
+  /** Lead tip to lead tip across the body (DBV0005A: 2.6–3.0). */
+  leadSpanMm: 2.8,
+  boardSizeMm: 15.2,
+  boardThicknessMm: 1.6,
+  /** Header pin length under the board [REP]. */
+  standoffMm: 8.5,
+  attachHeightMm: 0.8,
+};
+
+/**
+ * L3: an SN74LVC08A in TI's D0014A (SOIC-14) package [D14] (SCAS283W, package outline 4220718/A):
+ * body 8.55–8.75 × 3.8–4.0 mm, 1.75 mm max height, lead tip to tip 5.8–6.2 mm, 14 leads
+ * 0.31–0.51 mm wide at 1.27 mm pitch; mid-tolerance values, the stated maximum for the height.
+ * A SOIC does not fit a breadboard: it sits on a representative 14-pin breakout [REP] whose header
+ * pins stand at the part's terminals (two rows of seven, pins 1–7 and 8–14 as on the device).
+ */
+export const LOGIC_SOIC14_BREAKOUT = {
+  bodyLongMm: 8.65,
+  bodyWideMm: 3.9,
+  bodyHeightMm: 1.75,
+  leadPitchMm: 1.27,
+  leadWidthMm: 0.41,
+  /** Lead tip to lead tip across the body (D0014A: 5.8–6.2). */
+  leadSpanMm: 6.0,
+  /** Board edge: the header rows (±60 layout units) plus a margin [REP]. */
+  boardXMm: 24,
+  boardZMm: 24,
+  boardThicknessMm: 1.6,
+  standoffMm: 8.5,
+  attachHeightMm: 0.8,
+};

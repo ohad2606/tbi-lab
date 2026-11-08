@@ -1,0 +1,518 @@
+{
+ "TbiDht22": {
+  "insnsOld": {
+   "1": 67245076,
+   "0": 64258392
+  },
+  "insnsNew": {
+   "1": 67245633,
+   "0": 64257866
+  },
+  "functionsDiffering": 3,
+  "top": [
+   [
+    "ROM",
+    111281436,
+    111281935,
+    499
+   ],
+   [
+    "bootloader",
+    2510943,
+    2510474,
+    -469
+   ],
+   [
+    "esp_app_format_init_elf_sha256$part$0",
+    94,
+    95,
+    1
+   ]
+  ],
+  "padFrames": [
+   3,
+   3
+  ],
+  "padContentIdentical": true,
+  "padDtNs": {
+   "first": [
+    0,
+    0,
+    0
+   ],
+   "min": 0,
+   "max": 0
+  },
+  "serialIdentical": true
+ },
+ "TbiLcd": {
+  "insnsOld": {
+   "0": 64447309,
+   "1": 67263686
+  },
+  "insnsNew": {
+   "0": 64446930,
+   "1": 67264264
+  },
+  "functionsDiffering": 22,
+  "top": [
+   [
+    "ROM",
+    111113785,
+    111114249,
+    464
+   ],
+   [
+    "bootloader",
+    2682528,
+    2682102,
+    -426
+   ],
+   [
+    "i2c_hal_set_timing_config",
+    22440,
+    22170,
+    -270
+   ],
+   [
+    "esp_timer_impl_get_counter_reg",
+    228323,
+    228484,
+    161
+   ],
+   [
+    "i2c_hal_master_init",
+    18360,
+    18507,
+    147
+   ],
+   [
+    "spi_flash_disable_interrupts_caches_and_other_cpu",
+    2403564,
+    2403656,
+    92
+   ],
+   [
+    "spi_flash_op_block_func",
+    7089683,
+    7089615,
+    -68
+   ],
+   [
+    "vTaskSwitchContext",
+    838698,
+    838759,
+    61
+   ],
+   [
+    "_WindowUnderflow8",
+    109460,
+    109480,
+    20
+   ],
+   [
+    "_WindowOverflow8",
+    109790,
+    109810,
+    20
+   ],
+   [
+    "_i2c_hal_set_bus_timing",
+    16183,
+    16200,
+    17
+   ],
+   [
+    "esp_cpu_compare_and_set",
+    686054,
+    686038,
+    -16
+   ]
+  ],
+  "padFrames": [
+   0,
+   0
+  ],
+  "padContentIdentical": true,
+  "padDtNs": {
+   "first": [],
+   "min": null,
+   "max": null
+  },
+  "serialIdentical": true
+ },
+ "TbiHcSr04": {
+  "insnsOld": {
+   "0": 64296484,
+   "1": 120896977
+  },
+  "insnsNew": {
+   "0": 64331368,
+   "1": 120850866
+  },
+  "functionsDiffering": 52,
+  "top": [
+   [
+    "perimanGetPinBus",
+    18897738,
+    18850792,
+    -46946
+   ],
+   [
+    "esp_cpu_compare_and_set",
+    661304,
+    702888,
+    41584
+   ],
+   [
+    "gpio_get_level",
+    16193116,
+    16152832,
+    -40284
+   ],
+   [
+    "spi_flash_op_block_func",
+    7090035,
+    7123787,
+    33752
+   ],
+   [
+    "spi_flash_disable_interrupts_caches_and_other_cpu",
+    2404096,
+    2436820,
+    32724
+   ],
+   [
+    "digitalRead",
+    8098850,
+    8078733,
+    -20117
+   ],
+   [
+    "xPortEnterCriticalTimeout",
+    889733,
+    903501,
+    13768
+   ],
+   [
+    "pulseIn",
+    5399248,
+    5385838,
+    -13410
+   ],
+   [
+    "ROM",
+    116679325,
+    116666712,
+    -12613
+   ],
+   [
+    "vPortExitCritical",
+    537612,
+    538254,
+    642
+   ],
+   [
+    "xTaskResumeAll",
+    72032,
+    72530,
+    498
+   ],
+   [
+    "bootloader",
+    2509869,
+    2509383,
+    -486
+   ]
+  ],
+  "padFrames": [
+   38,
+   38
+  ],
+  "padContentIdentical": true,
+  "padDtNs": {
+   "first": [
+    1000000,
+    1000000,
+    1000000
+   ],
+   "min": 999988,
+   "max": 1000000
+  },
+  "serialIdentical": true
+ },
+ "TbiI2cProbe": {
+  "insnsOld": {
+   "0": 64660448,
+   "1": 346103239
+  },
+  "insnsNew": {
+   "0": 64696235,
+   "1": 346057053
+  },
+  "functionsDiffering": 51,
+  "top": [
+   [
+    "s_i2c_send_commands",
+    172159520,
+    172077356,
+    -82164
+   ],
+   [
+    "xTaskGetTickCount",
+    107601243,
+    107550009,
+    -51234
+   ],
+   [
+    "esp_cpu_compare_and_set",
+    669814,
+    710598,
+    40784
+   ],
+   [
+    "spi_flash_op_block_func",
+    7089739,
+    7123655,
+    33916
+   ],
+   [
+    "spi_flash_disable_interrupts_caches_and_other_cpu",
+    2403496,
+    2436764,
+    33268
+   ],
+   [
+    "xPortEnterCriticalTimeout",
+    909447,
+    923047,
+    13600
+   ],
+   [
+    "ROM",
+    111103135,
+    111104055,
+    920
+   ],
+   [
+    "vPortExitCritical",
+    550912,
+    551622,
+    710
+   ],
+   [
+    "bootloader",
+    2707683,
+    2707131,
+    -552
+   ],
+   [
+    "xTaskResumeAll",
+    72032,
+    72579,
+    547
+   ],
+   [
+    "vTaskSwitchContext",
+    638822,
+    638546,
+    -276
+   ],
+   [
+    "esp_ipc_call_nonblocking",
+    30496,
+    30727,
+    231
+   ]
+  ],
+  "padFrames": [
+   246,
+   246
+  ],
+  "padContentIdentical": true,
+  "padDtNs": {
+   "first": [
+    999904,
+    999904,
+    999904
+   ],
+   "min": 999904,
+   "max": 1000080
+  },
+  "serialIdentical": true
+ },
+ "TbiEdgeEcho": {
+  "insnsOld": {
+   "0": 75713736,
+   "1": 318259376
+  },
+  "insnsNew": {
+   "0": 76683434,
+   "1": 317272806
+  },
+  "functionsDiffering": 59,
+  "top": [
+   [
+    "esp_cpu_compare_and_set",
+    31396566,
+    32056343,
+    659777
+   ],
+   [
+    "vPortExitCritical",
+    43717193,
+    43546455,
+    -170738
+   ],
+   [
+    "xTaskGetSchedulerState",
+    19601315,
+    19524679,
+    -76636
+   ],
+   [
+    "ROM",
+    129398506,
+    129328503,
+    -70003
+   ],
+   [
+    "xQueueGenericSend",
+    14078475,
+    14023257,
+    -55218
+   ],
+   [
+    "xQueueSemaphoreTake",
+    11330934,
+    11286616,
+    -44318
+   ],
+   [
+    "__cxa_guard_acquire",
+    9269677,
+    9233366,
+    -36311
+   ],
+   [
+    "xTaskPriorityDisinherit",
+    8240084,
+    8207804,
+    -32280
+   ],
+   [
+    "pvTaskIncrementMutexHeldCount",
+    8239867,
+    8207587,
+    -32280
+   ],
+   [
+    "esp_timer_impl_get_counter_reg",
+    7993875,
+    7962731,
+    -31144
+   ],
+   [
+    "prvCopyDataToQueue",
+    6180430,
+    6156220,
+    -24210
+   ],
+   [
+    "_Z4loopv",
+    4633926,
+    4615791,
+    -18135
+   ]
+  ],
+  "padFrames": [
+   1,
+   1
+  ],
+  "padContentIdentical": true,
+  "padDtNs": {
+   "first": [
+    168
+   ],
+   "min": 168,
+   "max": 168
+  },
+  "serialIdentical": true
+ },
+ "TbiR1Scan": {
+  "insnsOld": {
+   "0": 64628446,
+   "1": 70284529
+  },
+  "insnsNew": {
+   "0": 64627702,
+   "1": 70285337
+  },
+  "functionsDiffering": 8,
+  "top": [
+   [
+    "ROM",
+    111445146,
+    111445706,
+    560
+   ],
+   [
+    "bootloader",
+    2511527,
+    2510994,
+    -533
+   ],
+   [
+    "spi_flash_op_block_func",
+    7089639,
+    7089855,
+    216
+   ],
+   [
+    "spi_flash_disable_interrupts_caches_and_other_cpu",
+    2403584,
+    2403428,
+    -156
+   ],
+   [
+    "esp_cpu_compare_and_set",
+    802620,
+    802604,
+    -16
+   ],
+   [
+    "xPortEnterCriticalTimeout",
+    1315552,
+    1315547,
+    -5
+   ],
+   [
+    "esp_ipc_isr_waiting_for_finish_cmd",
+    249689,
+    249686,
+    -3
+   ],
+   [
+    "esp_app_format_init_elf_sha256$part$0",
+    95,
+    96,
+    1
+   ]
+  ],
+  "padFrames": [
+   31,
+   31
+  ],
+  "padContentIdentical": true,
+  "padDtNs": {
+   "first": [
+    200,
+    200,
+    200
+   ],
+   "min": 200,
+   "max": 200
+  },
+  "serialIdentical": true
+ }
+}

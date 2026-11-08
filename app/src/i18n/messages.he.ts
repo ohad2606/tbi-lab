@@ -25,6 +25,9 @@ export const he: Record<MessageKey, string> = {
   'topbar.projectName': 'שם הפרויקט',
   'topbar.language': 'שפה',
   'topbar.signOut': 'יציאה',
+  'deployment.devBadge': 'DEV',
+  'deployment.devBadgeTitle': 'סביבת פיתוח',
+  'deployment.devStrip': 'סביבת פיתוח, לא סביבת הייצור. לבדיקות בלבד.',
   'deployment.preview': 'תצוגה מקדימה {name} · ניסיונית',
   'deployment.previewNote':
     'תצוגה מקדימה ניסיונית, נפרדת מהסביבה המאומתת. הפרויקטים שלה נשמרים בנפרד.',
@@ -48,6 +51,21 @@ export const he: Record<MessageKey, string> = {
   'canvas.zoomFit': 'התאמה לתצוגה',
   'canvas.hint.wire':
     'גררו קטע ישר של החוט כדי להזיז אותו. הקצוות נשארים מחוברים. Delete מוחק אותו.',
+  'canvas.overlayLimit':
+    'השרטוט גדול מדי כדי לסמן כל הצטלבות ונקודת הסתעפות: חלק מגשרי הקווים ומנקודות הצומת אינם משורטטים. החיבורים הם בדיוק כפי שהם משורטטים.',
+  'canvas.routeConflict':
+    'חלק מהחוטים משורטטים במקום שבו הם עשויים להיראות מחוברים. הם אינם מחוברים שם: רק קצוות חוטים על [[terminal]] ונקודות [[junction]] יוצרים חיבור. החוטים המסומנים (קו מקווקו סביבם):',
+  'canvas.routeConflict.wire': 'לאורך חוט של רשת אחרת או אל תוכו: {ids}',
+  'canvas.routeConflict.pin': 'מעל [[pin]] של רשת אחרת: {ids}',
+  'canvas.routeConflict.body': 'דרך גוף של רכיב שאינם מחוברים אליו (משורטטים מאחוריו): {ids}',
+  'canvas.routeConflict.stacked':
+    '[[terminal]] של רכיבים שונים משורטטים זה על זה, ואינם מחוברים: {ids}',
+  'canvas.routeConflict.unchecked':
+    'השרטוט גדול מדי כדי לבדוק כל חוט אם הוא עשוי להיראות מחובר. לא נבדקו: {ids}. רק קצוות חוטים על [[terminal]] ונקודות [[junction]] יוצרים חיבור.',
+  'canvas.routeConflict.wireTitle':
+    'חוט {id}: משורטט במקום שבו הוא עשוי להיראות מחובר; הוא אינו מחובר שם',
+  'canvas.routeLimit':
+    'הפרויקט גדול מאוד: {count} חוטים משורטטים בצורה פשוטה (הם עשויים לעבור קרוב לפינים או לחוטים אחרים). החיבורים הם בדיוק כפי שהם משורטטים.',
   'canvas.hint.idle': 'לחצו על [[terminal]] כדי להתחיל חוט. גררו על שטח ריק כדי לבחור.',
   'canvas.hint.placing': 'לחצו על משטח השרטוט כדי למקם. Esc לביטול.',
   'canvas.hint.wiring':
@@ -103,6 +121,267 @@ export const he: Record<MessageKey, string> = {
   'model.ldr.senba_gl5528': 'תא CdS 5 מ"מ (GL5528)',
   'model.buzzer.cui_cem_1205_ic': 'אקטיבי 5 V, 12 מ"מ (CUI Devices CEM-1205-IC)',
   'model.relay.songle_srd_05vdc_sl_c': 'סליל 5 V, SPDT (Songle SRD-05VDC-SL-C)',
+  'component.logic.gate_and.name': 'שער AND',
+  'component.logic.gate_nand.name': 'שער NAND',
+  'component.logic.gate_or.name': 'שער OR',
+  'component.logic.gate_nor.name': 'שער NOR',
+  'component.logic.gate_xor.name': 'שער XOR',
+  'component.logic.gate_not.name': 'שער NOT (מהפך)',
+  'model.logic.sn74lvc1g08': 'TI SN74LVC1G08, SOT-23-5 על כרטיס מתאם',
+  'model.logic.sn74lvc1g00': 'TI SN74LVC1G00, SOT-23-5 על כרטיס מתאם',
+  'model.logic.sn74lvc1g32': 'TI SN74LVC1G32, SOT-23-5 על כרטיס מתאם',
+  'model.logic.sn74lvc1g02': 'TI SN74LVC1G02, SOT-23-5 על כרטיס מתאם',
+  'model.logic.sn74lvc1g86': 'TI SN74LVC1G86, SOT-23-5 על כרטיס מתאם',
+  'model.logic.sn74lvc1g04': 'TI SN74LVC1G04, SOT-23-5 על כרטיס מתאם',
+  'terminal.logic_a': 'כניסה A',
+  'terminal.logic_b': 'כניסה B',
+  'terminal.logic_y': 'יציאה Y',
+  'terminal.logic_gnd': '[[ground]]',
+  // Exploration Foundation L3: רכיב לוגי במארז (TI SN74LVC08A, ארבעה שערי AND בעלי שתי כניסות).
+  'component.logic.quad_and.name': 'רכיב ארבעה שערי AND (‏4 × 2 כניסות)',
+  'model.logic.sn74lvc08a': 'TI SN74LVC08A, SOIC-14 על כרטיס מתאם',
+  'terminal.logic_a1': 'שער 1 כניסה A (1A)',
+  'terminal.logic_b1': 'שער 1 כניסה B (1B)',
+  'terminal.logic_y1': 'שער 1 יציאה Y (1Y)',
+  'terminal.logic_a2': 'שער 2 כניסה A (2A)',
+  'terminal.logic_b2': 'שער 2 כניסה B (2B)',
+  'terminal.logic_y2': 'שער 2 יציאה Y (2Y)',
+  'terminal.logic_a3': 'שער 3 כניסה A (3A)',
+  'terminal.logic_b3': 'שער 3 כניסה B (3B)',
+  'terminal.logic_y3': 'שער 3 יציאה Y (3Y)',
+  'terminal.logic_a4': 'שער 4 כניסה A (4A)',
+  'terminal.logic_b4': 'שער 4 כניסה B (4B)',
+  'terminal.logic_y4': 'שער 4 יציאה Y (4Y)',
+  'sim.part.current.a1': 'כניסה 1A',
+  'sim.part.current.b1': 'כניסה 1B',
+  'sim.part.current.y1': 'זרם יציאה (1Y)',
+  'sim.part.current.a2': 'כניסה 2A',
+  'sim.part.current.b2': 'כניסה 2B',
+  'sim.part.current.y2': 'זרם יציאה (2Y)',
+  'sim.part.current.a3': 'כניסה 3A',
+  'sim.part.current.b3': 'כניסה 3B',
+  'sim.part.current.y3': 'זרם יציאה (3Y)',
+  'sim.part.current.a4': 'כניסה 4A',
+  'sim.part.current.b4': 'כניסה 4B',
+  'sim.part.current.y4': 'זרם יציאה (4Y)',
+  'palette.group.logic': 'לוגיקה',
+  'library.examples.category.logic': 'לוגיקה ספרתית',
+  'sim.part.state.gateOutput': 'יציאה',
+  'sim.part.state.gateOutput.high': 'HIGH',
+  'sim.part.state.gateOutput.low': 'LOW',
+  'sim.part.state.gateOutput.x': 'לא ידוע (X)',
+  'sim.part.state.gateOutput.off': 'כבוי (ללא הזנה)',
+  'sim.part.state.input_a': 'כניסה A',
+  'sim.part.state.input_a.high': 'HIGH',
+  'sim.part.state.input_a.low': 'LOW',
+  'sim.part.state.input_a.x': 'לא ידוע (X): בין V_IL ל-V_IH',
+  'sim.part.state.input_b': 'כניסה B',
+  'sim.part.state.input_b.high': 'HIGH',
+  'sim.part.state.input_b.low': 'LOW',
+  'sim.part.state.input_b.x': 'לא ידוע (X): בין V_IL ל-V_IH',
+  'sim.part.state.supplyV': 'מתח הזנה (V_CC − GND)',
+  'sim.part.state.outputModel': 'אופיין היציאה',
+  'sim.part.state.outputModel.tabulated': 'מובטח (נקודות הבדיקה של גיליון הנתונים במתח זה)',
+  'sim.part.state.outputModel.ranged': 'מובטח רק עד 100 µA במתח זה',
+  'sim.part.state.outputModel.class':
+    'חסם תחתון מובטח: נקודות גיליון הנתונים של 3 V על פני תחום 3.3 V ± 0.3 V (רכיב אמיתי מספק לפחות זאת)',
+  'sim.part.state.outputValidA': 'מאופיין עד',
+  'sim.part.state.iccMaxA': 'חסם זרם ההזנה במנוחה (מגיליון הנתונים, לא כלול למעלה)',
+  'sim.part.current.y': 'זרם יציאה (Y)',
+  'sim.part.current.vcc': 'זרם בפין ההזנה (V_CC)',
+  'sim.part.current.gnd': 'זרם בפין האדמה (GND)',
+  'sim.results.unknown':
+    'לא ידוע: רמה לוגית לא מוגדרת מגיעה לרכיב הזה, ולכן לא מוצג ערך. בדקו את הכניסות הלוגיות המסומנות כלא ידועות (X).',
+  'sim.error.logic_input_floating':
+    '{components}: דבר אינו מזין את כניסה {pin}: שום מסלול נגדי או מקור אינו מגיע אליה. ייתכן שאינה מחוברת, או שהיא מחוברת רק דרך רכיבים שאינם קובעים רמה (נורית LED, דיודה, צומת של טרנזיסטור, זמזם או קבל). לכניסת CMOS צפה אין רמה מוגדרת. חברו אותה לאות, ל-V_CC או ל-GND, או דרך נגד pull-up או pull-down.',
+  'sim.error.logic_supply_undriven':
+    '{components}: פין {pin} שלו מוזן רק דרך רכיבים שאינם קובעים מתח (נורית LED, דיודה, צומת של טרנזיסטור או קבל). זרם ההזנה של הרכיב עצמו (I_CC) אינו מדומה, ולכן המתח על רכיב כזה, וממילא מתח ההזנה, אינו מוגדר: המעגל אינו מדומה. הזינו את {pin} ישירות ממקור מתח, דרך חוט או מתג סגור.',
+  'sim.error.logic_supply_missing':
+    '{components}: ‏V_CC או GND אינם מחוברים. [[logicGate]] צריך שפיני ההזנה שלו יהיו מחוברים.',
+  'sim.error.logic_supply_uncharacterized':
+    '{components}: מתח ההזנה הוא {supply}, וגיליון הנתונים אינו מאפיין אותו (‎1.65–1.95 V, ‏2.3–2.7 V, ‏3.0–3.6 V או 4.5–5.5 V). הסימולטור אינו ממציא ספים בין שורות גיליון הנתונים.',
+  'sim.error.logic_output_uncharacterized':
+    '{components}: במתח {supply} גיליון הנתונים מבטיח את היציאה רק עד {limit}, והעומס הזה צורך {current}, או שהיציאה נדחפת מעבר לפס ההזנה שלה. השתמשו בעומס קל יותר, או במתח שבו היציאה מאופיינת לעומסים אמיתיים (1.65 V, ‏2.3 V או 4.5 V בדיוק, או 3.0–3.6 V).',
+  'sim.error.logic_feedback_unsupported':
+    '{components}: יציאה לוגית מוזנת חזרה לרשת שלה (נעילה או מתנד). התנהגותה תלויה בהשהיית ההתפשטות, שגרסה זו אינה מדמה.',
+  'sim.error.logic_unknown_state':
+    '{components}: רמה לוגית לא מוגדרת מגיעה אל {pin}, שחייב להיות לו ערך מוגדר. בדקו את הכניסות הלוגיות המסומנות כלא ידועות (X).',
+  'sim.error.logic_unpowered_uncharacterized':
+    '{components}: ‏V_CC הוא 0 V (ללא הזנה). גיליון הנתונים של רכיב זה אינו נותן מפרט למצב ללא הזנה (אין I_off), ולכן רכיב ללא הזנה אינו מדומה. הפעילו את ההזנה שלו.',
+  'sim.error.logic_input_undefined':
+    '{components}: כניסה {pin} נמצאת ב-{voltage}, בין {vil} ל-{vih} ‏({vccEq}). גיליון הנתונים אינו נותן רמה לוגית ואינו נותן זרם הזנה לכניסה במצב זה, ולכן המעגל אינו מדומה. הביאו את הכניסה לרמה תקפה (V_IL ומטה, או V_IH ומעלה).',
+  'sim.error.logic_input_out_of_range':
+    '{components}: כניסה {pin} נמצאת ב-{voltage}, מחוץ לתחום הכניסה המומלץ 0–5.5 V, שבו גיליון הנתונים אינו מפרט את התנהגות הרכיב.',
+  'sim.error.logic_input_floating.sn74lvc08a':
+    '{components}: דבר אינו מזין את כניסה {pin}: שום מסלול נגדי או מקור אינו מגיע אליה (ייתכן שאינה מחוברת, או שהיא מחוברת רק דרך נורית LED, דיודה, צומת של טרנזיסטור, זמזם או קבל). גיליון הנתונים של SN74LVC08A דורש שכל כניסה שאינה בשימוש, כולל כניסות של שערים שאינם בשימוש, תוחזק ב-V_CC או ב-GND. חברו אותה לאות, ל-V_CC או ל-GND, או דרך נגד pull-up או pull-down.',
+  'sim.error.logic_supply_uncharacterized.sn74lvc08a':
+    '{components}: מתח ההזנה הוא {supply}, וגיליון הנתונים של SN74LVC08A אינו מאפיין אותו (‎1.65–1.95 V או 2.3–3.6 V). הסימולטור אינו ממציא ספים בין שורות גיליון הנתונים.',
+  'sim.error.logic_output_uncharacterized.sn74lvc08a':
+    '{components}: במתח {supply} גיליון הנתונים של SN74LVC08A מבטיח את יציאה {pin} רק עד {limit}, היוצא מיציאה במצב HIGH או נכנס ליציאה במצב LOW; כאן עובר בה {current}, או שהיא נדחפת מעבר לפס ההזנה שלה. עומסים אמיתיים מאופיינים רק ב-1.65 V, ‏2.3 V, ‏2.7 V או 3.0 V בדיוק.',
+  // Sprint 21 (Phase 3): logic guarantee bounds.
+  'sim.error.logic_supply_current_uncharacterized':
+    '{components}: במסלול ההזנה שלו יש התנגדות, ולכן זרם ההזנה במנוחה של הרכיב עצמו (I_CC, שאינו חלק מהפתרון) מזיז את מתח ההזנה. גיליון הנתונים חוסם את I_CC כשכל הכניסות ב-5.5 V או ב-GND ‏(V_CC ‏1.65–5.5 V); כש-V_CC ב-3.0–5.5 V וכל כניסה בטווח 0.6 V מ-GND או מ-V_CC, המנוע חוסם אותו ב-I_CC + ΔI_CC (‏500 µA לכל כניסה כזו: שורת ΔI_CC בגיליון, כניסה אחת ב-V_CC − 0.6 V, המיושמת על כל הטווח — הנחה הנדסית, החלטת בעלים S29-D1); {reason} ללא חסם, מתח ההזנה וכל רמה שתלויה בו אינם מובטחים: המעגל אינו מדומה. הזינו את V_CC ישירות מהספק (חוט או מתג סגור), או השאירו כל כניסה בטווח 0.6 V מ-GND או מ-V_CC.',
+  'sim.error.logic_supply_current_uncharacterized.sn74lvc1g86':
+    '{components}: במסלול ההזנה שלו יש התנגדות, ולכן זרם ההזנה במנוחה של הרכיב עצמו (I_CC, שאינו חלק מהפתרון) מזיז את מתח ההזנה. גיליון הנתונים של SN74LVC1G86 חוסם את I_CC כשכל הכניסות ב-V_CC או ב-GND ‏(V_CC ‏1.65–5.5 V); כש-V_CC ב-3.0–5.5 V וכל כניסה בטווח 0.6 V מ-GND או מ-V_CC, המנוע חוסם אותו ב-I_CC + ΔI_CC (‏500 µA לכל כניסה כזו: שורת ΔI_CC בגיליון, כניסה אחת ב-V_CC − 0.6 V, המיושמת על כל הטווח — הנחה הנדסית, החלטת בעלים S29-D1); {reason} ללא חסם, מתח ההזנה וכל רמה שתלויה בו אינם מובטחים: המעגל אינו מדומה. הזינו את V_CC ישירות מהספק (חוט או מתג סגור), או השאירו כל כניסה בטווח 0.6 V מ-GND או מ-V_CC.',
+  'sim.error.logic_supply_current_uncharacterized.sn74lvc08a':
+    '{components}: במסלול ההזנה שלו יש התנגדות, ולכן זרם ההזנה במנוחה של הרכיב עצמו (I_CC, שאינו חלק מהפתרון) מזיז את מתח ההזנה. גיליון הנתונים של SN74LVC08A חוסם את I_CC רק ב-V_CC = 3.6 V כשכל הכניסות ב-V_CC או ב-GND; {reason} ללא חסם, מתח ההזנה וכל רמה שתלויה בו אינם מובטחים: המעגל אינו מדומה. הזינו את V_CC ישירות מהספק (חוט או מתג סגור).',
+  // Sprint 22 Q1 (owner decision).
+  'sim.error.logic_supply_current_uncharacterized.limit':
+    '{components}: האם הספק נשאר בתוך מגבלת הזרם שלו תלוי בזרם שהוא מספק, וזרם זה כולל את זרם ההזנה במנוחה של השער עצמו (I_CC, שאינו חלק מהפתרון). גיליון הנתונים חוסם את I_CC כשכל הכניסות ב-5.5 V או ב-GND (מאפיינים חשמליים §5.5, ‏I_CC: ‏V_I = 5.5 V או GND, ‏I_O = 0, ‏V_CC ‏1.65–5.5 V); כש-V_CC ב-3.0–5.5 V וכל כניסה בטווח 0.6 V מ-GND או מ-V_CC, המנוע חוסם אותו ב-I_CC + ΔI_CC (‏500 µA לכל כניסה כזו: §5.5 ‏ΔI_CC, כניסה אחת ב-V_CC − 0.6 V, המיושמת על כל הטווח — הנחה הנדסית, החלטת בעלים S29-D1); {reason} ללא חסם זה זרם הספק אינו ידוע, ולכן מגבלת הזרם אינה מובטחת: המעגל אינו מדומה. השאירו כל כניסה של השער בטווח 0.6 V מ-GND או מ-V_CC (יציאת שער, מתג עם נגד משיכה לאדמה של עד כ-100 kΩ, או פס הזנה), כש-V_CC ב-3.0–5.5 V.',
+  'sim.error.logic_supply_current_uncharacterized.limit.sn74lvc1g86':
+    '{components}: האם הספק נשאר בתוך מגבלת הזרם שלו תלוי בזרם שהוא מספק, וזרם זה כולל את זרם ההזנה במנוחה של השער עצמו (I_CC, שאינו חלק מהפתרון). גיליון הנתונים של SN74LVC1G86 חוסם את I_CC כשכל הכניסות ב-V_CC או ב-GND (מאפיינים חשמליים §5.5, ‏I_CC: ‏V_I = V_CC או GND, ‏I_O = 0, ‏V_CC ‏1.65–5.5 V); כש-V_CC ב-3.0–5.5 V וכל כניסה בטווח 0.6 V מ-GND או מ-V_CC, המנוע חוסם אותו ב-I_CC + ΔI_CC (‏500 µA לכל כניסה כזו: §5.5 ‏ΔI_CC, כניסה אחת ב-V_CC − 0.6 V, המיושמת על כל הטווח — הנחה הנדסית, החלטת בעלים S29-D1); {reason} ללא חסם זה זרם הספק אינו ידוע, ולכן מגבלת הזרם אינה מובטחת: המעגל אינו מדומה. השאירו כל כניסה של השער בטווח 0.6 V מ-GND או מ-V_CC (יציאת שער, מתג עם נגד משיכה לאדמה של עד כ-100 kΩ, או פס הזנה), כש-V_CC ב-3.0–5.5 V.',
+  'sim.error.logic_supply_current_uncharacterized.limit_input':
+    '{components}: האם הספק נשאר בתוך מגבלת הזרם שלו תלוי בזרם שהוא מספק, וזרם זה כולל את זרם ההזנה במנוחה של השער עצמו (I_CC, שאינו חלק מהפתרון). גיליון הנתונים חוסם את I_CC כשכל הכניסות ב-5.5 V או ב-GND (מאפיינים חשמליים §5.5, ‏I_CC: ‏V_I = 5.5 V או GND, ‏I_O = 0, ‏V_CC ‏1.65–5.5 V); כש-V_CC ב-3.0–5.5 V וכל כניסה בטווח 0.6 V מ-GND או מ-V_CC, המנוע חוסם אותו ב-I_CC + ΔI_CC (‏500 µA לכל כניסה כזו: §5.5 ‏ΔI_CC, כניסה אחת ב-V_CC − 0.6 V, המיושמת על כל הטווח — הנחה הנדסית, החלטת בעלים S29-D1); כאן כניסה {pin} עלולה לצאת מהמתחים והטווחים האלה (5.5 V או GND בסבולת המנוע של 1 mV, או בטווח 0.6 V מ-GND או מ-V_CC), למשל בגלל זליגת הכניסה דרך נגד גדול. ללא חסם זה זרם הספק אינו ידוע, ולכן מגבלת הזרם אינה מובטחת: המעגל אינו מדומה. השאירו כל כניסה של השער בטווח 0.6 V מ-GND או מ-V_CC (יציאת שער, מתג עם נגד משיכה לאדמה של עד כ-100 kΩ, או פס הזנה).',
+  'sim.error.logic_supply_current_uncharacterized.limit_input.sn74lvc1g86':
+    '{components}: האם הספק נשאר בתוך מגבלת הזרם שלו תלוי בזרם שהוא מספק, וזרם זה כולל את זרם ההזנה במנוחה של השער עצמו (I_CC, שאינו חלק מהפתרון). גיליון הנתונים של SN74LVC1G86 חוסם את I_CC כשכל הכניסות ב-V_CC או ב-GND (מאפיינים חשמליים §5.5, ‏I_CC: ‏V_I = V_CC או GND, ‏I_O = 0, ‏V_CC ‏1.65–5.5 V); כש-V_CC ב-3.0–5.5 V וכל כניסה בטווח 0.6 V מ-GND או מ-V_CC, המנוע חוסם אותו ב-I_CC + ΔI_CC (‏500 µA לכל כניסה כזו: §5.5 ‏ΔI_CC, כניסה אחת ב-V_CC − 0.6 V, המיושמת על כל הטווח — הנחה הנדסית, החלטת בעלים S29-D1); כאן כניסה {pin} עלולה לצאת מהמתחים והטווחים האלה (V_CC או GND בסבולת המנוע של 1 mV, או בטווח 0.6 V מ-GND או מ-V_CC), למשל בגלל זליגת הכניסה דרך נגד גדול. ללא חסם זה זרם הספק אינו ידוע, ולכן מגבלת הזרם אינה מובטחת: המעגל אינו מדומה. השאירו כל כניסה של השער בטווח 0.6 V מ-GND או מ-V_CC (יציאת שער, מתג עם נגד משיכה לאדמה של עד כ-100 kΩ, או פס הזנה).',
+  'sim.error.logic_supply_current_uncharacterized.limit.sn74lvc08a':
+    '{components}: האם הספק נשאר בתוך מגבלת הזרם שלו תלוי בזרם שהוא מספק, וזרם זה כולל את זרם ההזנה במנוחה של הרכיב עצמו (I_CC, שאינו חלק מהפתרון). גיליון הנתונים של SN74LVC08A חוסם את I_CC ב-V_CC = 3.6 V כשכל הכניסות ב-V_CC או ב-GND (מאפיינים חשמליים §5.7, ‏I_CC: ‏V_I = V_CC או GND, ‏I_O = 0); כשכל כניסה בטווח 0.6 V מ-GND או מ-V_CC, המנוע חוסם אותו ב-I_CC + ΔI_CC (‏500 µA לכל כניסה כזו, §5.7 ‏ΔI_CC, הנחה הנדסית, החלטת בעלים S29-D1), ורק כשאף יציאה אינה נושאת זרם (I_O = 0); {reason} ללא חסם זה זרם הספק אינו ידוע, ולכן מגבלת הזרם אינה מובטחת: המעגל אינו מדומה. כוונו את הספק ל-3.6 V והחזיקו את כל הכניסות, כולל אלה של שערים שאינם בשימוש, ב-V_CC או ב-GND.',
+  'sim.error.logic_supply_current_uncharacterized.limit_input.sn74lvc08a':
+    '{components}: האם הספק נשאר בתוך מגבלת הזרם שלו תלוי בזרם שהוא מספק, וזרם זה כולל את זרם ההזנה במנוחה של הרכיב עצמו (I_CC, שאינו חלק מהפתרון). גיליון הנתונים של SN74LVC08A חוסם את I_CC ב-V_CC = 3.6 V כשכל הכניסות ב-V_CC או ב-GND (מאפיינים חשמליים §5.7, ‏I_CC: ‏V_I = V_CC או GND, ‏I_O = 0); כשכל כניסה בטווח 0.6 V מ-GND או מ-V_CC, המנוע חוסם אותו ב-I_CC + ΔI_CC (‏500 µA לכל כניסה כזו, §5.7 ‏ΔI_CC, הנחה הנדסית, החלטת בעלים S29-D1), ורק כשאף יציאה אינה נושאת זרם (I_O = 0); כאן כניסה {pin} עלולה לצאת מהמתחים והטווחים האלה. ללא חסם זה זרם הספק אינו ידוע, ולכן מגבלת הזרם אינה מובטחת: המעגל אינו מדומה. כוונו את הספק ל-3.6 V והשאירו כל כניסה, כולל אלה של שערים שאינם בשימוש, בטווח 0.6 V מ-V_CC או מ-GND.',
+  'sim.bound.reason.notInputs':
+    'כאן כניסה אינה במתחים האלה, וגם לא בטווח 0.6 V מ-GND או מ-V_CC כשמתח ההזנה בשורת ΔI_CC.',
+  'sim.bound.reason.notSupply': 'כאן מתח ההזנה מחוץ לשורה הזו.',
+  'sim.bound.reason.notLeakage':
+    'כאן לזרם הזליגה של הכניסות, שחוזר דרך פיני ההזנה, אין חסם במתח הזנה זה.',
+  'sim.error.logic_supply_not_guaranteed':
+    '{components}: בתוך החסמים של גיליון הנתונים ({causes}) מתח ההזנה יכול להגיע ל-{worst} (בסימולציה: {supply}), מחוץ לשורת גיליון הנתונים שלפיה התוצאה מחושבת ({range}). הרמות הנגזרות ממנו אינן מובטחות, ולכן המעגל אינו מדומה. הקטינו את ההתנגדות במסלול ההזנה, או הזינו את V_CC ישירות מהספק.',
+  'sim.error.logic_supply_not_guaranteed.limit':
+    '{components}: בתוך החסמים של גיליון הנתונים ({causes}) ספק זה עשוי להידרש לספק עד {current}, יותר ממגבלת הזרם שלו ({limit}); המתח שלו, והרמות שתלויות בו, אינם מובטחים אז, ולכן המעגל אינו מדומה. הגדילו את מגבלת הזרם, או הקטינו את העומס.',
+  'sim.error.logic_supply_not_guaranteed.sink':
+    '{components}: בתוך החסמים של גיליון הנתונים ({causes}) ספק זה, המכוון למתח קבוע, עשוי להידרש לבלוע עד {current} — למשל זרם זליגה של כניסות או זליגה אחרת החוזרת אליו. מודל ספק המעבדה אינו יכול לבלוע זרם, ולכן המעגל אינו מדומה. הוסיפו עומס קטן על יציאת הספק (למשל נגד פריקה) כך שיספק תמיד יותר מכך.',
+  'sim.error.logic_supply_current_uncharacterized.loaded':
+    '{components}: ביציאה {pin} עובר כאן זרם, וגיליון הנתונים של SN74LVC08A נותן את זרם ההזנה במנוחה I_CC רק ב-I_O = 0 (מאפיינים חשמליים §5.7: ‏V_I = V_CC או GND, ‏I_O = 0, ‏V_CC = 3.6 V); אין בו כלל ל-I_CC כשיציאה נושאת עומס. זרם הספק, ולכן גם מגבלת הזרם של הספק, אינם מובטחים: המעגל אינו מדומה. השאירו את יציאות המארז ללא עומס, או השתמשו בשערים בודדים (SN74LVC1G…), שגיליונות הנתונים שלהם מציינים את כלל ההזנה ליציאה נושאת עומס (§8.2.1.1).',
+  'sim.error.logic_input_leakage_uncharacterized.limit':
+    '{components}: כניסה {pin} מושכת את זרם הזליגה שלה I_I מהספק, וב-{supply} גיליון הנתונים אינו נותן לו חסם (I_I מוגדר רק ב-{iiVcc}). זרם הספק, ולכן גם האם הספק נשאר בתוך מגבלת הזרם שלו, אינו מובטח: המעגל אינו מדומה. הפעילו את הרכיב במתח הזנה שבו I_I מוגדר.',
+  'sim.error.logic_input_leakage_uncharacterized':
+    '{components}: כניסה {pin} מוחזקת דרך התנגדות, וב-{supply} גיליון הנתונים אינו נותן חסם לזרם הזליגה של הכניסה (I_I מוגדר רק ב-{iiVcc}). המתח על ההתנגדות הזו, ולכן רמת הכניסה, אינם מובטחים: המעגל אינו מדומה. חברו את הכניסה ישירות ל-V_CC או ל-GND (חוט או מתג סגור), או הפעילו את הרכיב במתח הזנה שבו I_I מוגדר.',
+  'sim.error.logic_input_not_guaranteed':
+    '{components}: כניסה {pin} היא {level} בסימולציה ({voltage}), אבל בתוך החסמים של גיליון הנתונים ({causes}) היא יכולה להגיע ל-{worst}, {cmp} ‏({vccEq}). הרמה אינה מובטחת, ולכן המעגל אינו מדומה. השתמשו בנגד pull קטן יותר או במקור חזק יותר.',
+  'sim.error.logic_input_not_guaranteed.mcu_high':
+    '{components}: כניסה {pin} מוזנת HIGH מ-{pads}. גיליון הנתונים של ESP32 מבטיח רק V_OH ≥ 2.64 V ‏(0.8 × VDD); עם זה הכניסה יכולה לרדת עד {worst}, מתחת ל-{vih} ‏({vccEq}). רמת HIGH אינה מובטחת, ולכן המעגל אינו מדומה. הזינו את השער במתח שבו ה-ESP32 עומד ב-V_IH שלו (למשל 3.0–3.6 V, ‏V_IH = 2.0 V).',
+  'sim.error.logic_input_undefined.mcu_high':
+    '{components}: כניסה {pin} נמצאת ב-{voltage}, מוזנת מ-{pads}: יציאה של ESP32 היא לוגיקת 3.3 V, ומובטח בה רק V_OH ≥ 2.64 V. זה בין {vil} ל-{vih} ‏({vccEq}): ה-ESP32 אינו יכול להזין HIGH מובטח לשער הזה במתח הזנה זה, ולכן המעגל אינו מדומה. הזינו את השער במתח שבו ה-ESP32 עומד ב-V_IH שלו (למשל 3.0–3.6 V, ‏V_IH = 2.0 V).',
+  'sim.error.logic_bound_not_established':
+    '{components}: לא ניתן היה לקבוע את המקרה הגרוע בתוך החסמים של גיליון הנתונים ({reason}), ולכן אף רמה אינה מובטחת והמעגל אינו מדומה.',
+  'sim.bound.notEstablished.corner_unsolved':
+    'לא ניתן היה לפתור ולאמת את נקודת העבודה של המקרה הגרוע',
+  'sim.bound.notEstablished.parallel_outputs':
+    'שתי יציאות מזינות את אותה רשת בלי דבר ביניהן; אף גיליון נתונים אינו מאפיין כיצד הן מתחלקות בזרם',
+  'sim.bound.notEstablished.supply_mode':
+    'בתוך החסמים האלה ספק היה עובר בין מתח קבוע להגבלת הזרם שלו, והמקרה הגרוע על פני מעבר זה אינו נקבע',
+  'sim.bound.notEstablished.singular': 'הליניאריזציה של המעגל סינגולרית',
+  'sim.bound.notEstablished.not_monotone': 'המקרה הגרוע משתנה עם נקודת העבודה',
+  'sim.bound.notEstablished.part_not_bounded': 'לא ניתן היה לחסום את מצב הרכיב הזה',
+  'sim.bound.notEstablished.part_not_in_solve': 'פין של הרכיב הזה אינו במעגל שנפתר',
+  'sim.error.logic_mcu_input_not_guaranteed':
+    '{components}: ‏{pin}, כניסה של ESP32, קורא את היציאה הלוגית הזו ב-{voltage} בסימולציה, אבל בתוך החסמים של גיליון הנתונים ({causes}) היא יכולה להיות ב-{worst}, {cmp}. ה-ESP32 לא יקרא HIGH מובטח, ולכן המעגל אינו מדומה. יציאת HIGH של שער מובטחת קרוב לפס ההזנה רק בעומס קל (שורת גיליון הנתונים V_OH ≥ V_CC − 0.1 V עד 100 µA): הקטינו את העומס על היציאה.',
+  'sim.error.logic_mcu_input_not_guaranteed.undefined':
+    '{components}: ‏{pin}, כניסה של ESP32, קורא את היציאה הלוגית הזו ב-{voltage}, בין {vil} ל-{vih} של ה-ESP32: אין רמה מוגדרת, ולכן המעגל אינו מדומה.',
+  'sim.error.logic_mcu_output_uncharacterized':
+    '{components}: ‏{pin} מזין כניסה לוגית כשעובר בו {current}, יותר מ-{limit}. גיליון הנתונים של ESP32 מצהיר על V_OH ≥ 0.8 × VDD ו-V_OL ≤ 0.1 × VDD ללא זרם עומס (טבלה 5-3, ‏25 °C; ערכי ההנעה 40 mA / 28 mA טיפוסיים). הסימולטור מסתמך על רמה זו רק עד 100 µA, זרם הבדיקה המקובל לעומס CMOS (הנחה הנדסית, החלטת בעלים S30-L1), ולכן הרמה בעומס הזה אינה מובטחת והמעגל אינו מדומה. השתמשו בנגד pull גדול יותר (33 kΩ ומעלה ב-3.3 V) או בעומס קל יותר.',
+  'sim.error.logic_mcu_pull_uncharacterized':
+    '{components}: ‏{pin} מחזיק כניסה לוגית דרך נגד ה-pull הפנימי שלו, שגיליון הנתונים של ESP32 נותן רק כערך טיפוסי (45 kΩ, ללא מינימום או מקסימום). הרמה אינה מובטחת, ולכן המעגל אינו מדומה. השתמשו בנגד pull חיצוני.',
+  'logic.why.mcuInput':
+    'לא מדומה: פין ה-ESP32 שקורא את היציאה הזו לא יקרא רמה מובטחת (ראו את ההודעה למעלה).',
+  'logic.why.mcuDrive':
+    'לא מדומה: לפין ה-ESP32 שמזין את הכניסה של הרכיב הזה אין כאן רמה מובטחת (ראו את ההודעה למעלה).',
+  'sim.error.logic_mcu_input_not_guaranteed.low':
+    '{components}: ‏{pin}, כניסה של ESP32, קורא את היציאה הלוגית הזו ב-{voltage} בסימולציה, אבל בתוך החסמים של גיליון הנתונים ({causes}) היא יכולה להיות ב-{worst}, {cmp}. ה-ESP32 לא יקרא LOW מובטח, ולכן המעגל אינו מדומה. יציאת LOW של שער מובטחת קרוב ל-GND רק בעומס קל (שורת גיליון הנתונים V_OL ≤ 0.1 V עד 100 µA): הקטינו את מה שהיציאה סופגת (למשל נגד pull-up גדול יותר) או את מה שבינה לבין הפין.',
+  'sim.error.logic_mcu_pull_uncharacterized.reads':
+    '{components}: ‏{pin}, כניסה של ESP32 שקוראת את היציאה הלוגית הזו, מפעילה את נגד ה-pull הפנימי שלה. גיליון הנתונים של ESP32 נותן את הנגד הזה רק כערך טיפוסי (45 kΩ, ללא מינימום או מקסימום), ולכן העומס שהוא מטיל על היציאה והרמה שהפין קורא אינם מובטחים: המעגל אינו מדומה. כבו את ה-pull הפנימי (כניסה רגילה).',
+  'sim.error.logic_output_uncharacterized.forced':
+    '{components}: יציאה {pin} הייתה נמשכת {forced} מעבר לפס ההזנה שלה (מעל V_CC במצב HIGH, או מתחת ל-GND במצב LOW; זהו העודף כשהיציאה ממודלת כחוסמת, לא מתח שהרכיב האמיתי מגיע אליו). גיליון הנתונים אינו מאפיין זרם הנכנס ליציאה במצב HIGH (או יוצא מיציאה במצב LOW) והסימולטור אינו ממציא אותו, ולכן המעגל אינו מדומה. הסירו את מה שמושך את היציאה מעבר לפס — מקור אחר, או נגד למתח גבוה (נמוך) יותר.',
+  'sim.error.logic_output_uncharacterized.reverse':
+    '{components}: בתוך החסמים של גיליון הנתונים ({causes}), יציאה {pin} הייתה נושאת {current} בכיוון ההפוך — לתוך יציאה במצב HIGH או מתוך יציאה במצב LOW, למשל ממקור אחר שמחובר אליה. גיליון הנתונים אינו מאפיין זרם יציאה בכיוון הזה, ולכן המעגל אינו מדומה. לעולם אין לחבר יציאה למקור הזנה אחר (גיליון הנתונים §8.2.1.3).',
+  'sim.bound.cause.leakage': 'זרם זליגה בכניסה I_I',
+  'sim.bound.cause.supply_current': 'זרם הזנה במנוחה I_CC',
+  'sim.bound.cause.esp32_voh': 'V_OH של ESP32 ≥ 2.64 V',
+  'sim.bound.cause.esp32_vol': 'V_OL של ESP32 ≤ 0.33 V',
+  'sim.bound.cause.output_guarantee': 'יציאת שער בכל מקום בין הרמה המובטחת שלה לפס ההזנה שלה',
+  'sim.bound.cmp.high': 'מתחת ל-{th}',
+  'sim.bound.cmp.low': 'מעל {th}',
+  'logic.why.notGuaranteed':
+    '{v} בסימולציה, אבל בתוך החסמים של גיליון הנתונים ({causes}) יכול להגיע ל-{worst}: הרמה אינה מובטחת. הסימולציה נדחית.',
+  'logic.why.leakageUncharacterized':
+    'מוחזקת דרך התנגדות, וגיליון הנתונים אינו נותן חסם לזליגת הכניסה ב-{vcc}: הרמה אינה מובטחת. הסימולציה נדחית.',
+  'logic.why.supplyNotGuaranteed':
+    'לא מדומה: מתח ההזנה של הרכיב אינו מובטח בתוך החסמים של גיליון הנתונים (ראו את ההודעה למעלה).',
+  'logic.why.outBoundHigh':
+    'מובטח: {cmp} עד {a} (נקודת בדיקה בגיליון הנתונים). המתח המוצג הוא ערך המודל בין הנקודות המובטחות, לא הבטחה.',
+  'logic.why.outBoundLow':
+    'מובטח: {cmp} עד {a} (נקודת בדיקה בגיליון הנתונים). המתח המוצג הוא ערך המודל בין הנקודות המובטחות, לא הבטחה.',
+  'logic.inspect.level.notGuaranteed': 'לא מובטח',
+  'limitation.logic_guarantee_bounds':
+    'כל רמה נבדקת שוב בתוך החסמים של גיליון הנתונים: זליגת הכניסה (‏±5 µA), זרם ההזנה במנוחה (‏I_CC ≤ 10 µA כשהכניסות במתחי הבדיקה של הגיליון; כש-V_CC ב-3.0–5.5 V וכל כניסה בטווח 0.6 V מ-GND או מ-V_CC, ‏I_CC ועוד 500 µA לכל כניסה כזו משורת ΔI_CC — הנחה הנדסית, החלטת בעלים S29-D1), רמות V_OH ≥ 2.64 V / V_OL ≤ 0.33 V המובטחות של פין ESP32, ורמת היציאה המובטחת של שער מזין. רמה שאינה מובטחת, או שתלויה בזרם ללא חסם בגיליון, דוחה את ההרצה.',
+  'limitation.logic_power':
+    'הספק הפיזור אינו מדומה ואינו נבדק; ערכי ‎±50 mA ליציאה ו-‎±100 mA לפיני ההזנה הם דירוגי מאמץ מרביים מוחלטים (מסומנים, ולעולם אינם משמשים כמגבלת עומס). זרם ההזנה בזמן מיתוג (דינמי) אינו מדומה: DC בלבד.',
+  'limitation.logic_package_guarantee_bounds':
+    'כל רמה נבדקת שוב בתוך החסמים של גיליון הנתונים. גיליון נתונים זה מגדיר את זליגת הכניסה (‎±5 µA) ואת זרם ההזנה במנוחה (10 µA) רק ב-V_CC = 3.6 V: בכל מתח הזנה אחר כניסה שמוחזקת דרך התנגדות (נגד pull, פין ESP32, יציאה של שער אחר) נדחית, כי לשגיאת המתח שלה אין חסם.',
+  // L2: בדיקת מצב לוגי / טבלת אמת.
+  'logic.inspect.title': 'לוגיקה: טבלת אמת ומצב הפינים',
+  'logic.inspect.thresholds':
+    '{part} ב-{supply}: ‏HIGH מ-{vih} ומעלה, ‏LOW עד {vil} (גיליון הנתונים; היכן ששתי שורות נפגשות, המחמירה). ביניהם: לא מוגדר.',
+  'logic.inspect.noRow': '{part}: אין בגיליון הנתונים ספי כניסה במתח הזנה זה.',
+  'logic.inspect.pin': 'פין',
+  'logic.inspect.level': 'רמה לוגית',
+  'logic.inspect.voltage': 'מתח מדומה (ביחס לפין GND)',
+  'logic.inspect.level.high': 'HIGH',
+  'logic.inspect.level.low': 'LOW',
+  'logic.inspect.level.off': 'כבוי (ללא הזנה)',
+  'logic.inspect.level.undefined': 'לא מוגדר (בין V_IL ל-V_IH)',
+  'logic.inspect.level.unknown': 'לא ידוע (X)',
+  'logic.inspect.truthTable': 'טבלת אמת ({fn})',
+  'logic.inspect.gatesHere': 'שערים במצב זה',
+  'logic.inspect.note':
+    'הרמות והמתחים הם של הסימולציה, נמדדים ביחס לפין ה-GND של הרכיב עצמו. השורה המודגשת היא של השער הנבחר. כניסה מחוץ לתחומים המוגדרים דוחה את ההרצה; היא לעולם אינה מוצגת כרמה.',
+  'logic.controls.hold': '{id} ב-{pin}: החזיקו כדי ללחוץ',
+  'logic.controls.toggleOpen': '{id} ב-{pin}: פתוח (לחצו לסגירה)',
+  'logic.controls.toggleClosed': '{id} ב-{pin}: סגור (לחצו לפתיחה)',
+  'logic.controls.mcu': '{pin}: מוזנת מה-ESP32 ‏({gpio}) לפי הקושחה.',
+  'logic.controls.heading': 'הפעלת הכניסות',
+  'logic.why.idle': 'הפעילו את הסימולציה כדי לראות את הרמה והמתח של הפין הזה.',
+  'logic.why.waiting': 'ממתין לנקודת העבודה הראשונה.',
+  'logic.why.refusedElsewhere': 'לא מדומה: ההרצה נדחתה (ראו את ההודעה למעלה).',
+  'logic.why.supplyUndriven':
+    'לא מדומה: פין ה-{pin} של הרכיב מוזן רק דרך צומת או קבל, ולכן ההזנה שלו אינה מוגדרת.',
+  'logic.why.outputUncharacterized':
+    'העומס דורש יותר מזרם היציאה המובטח ({limit}, ‏{vcc}), או דוחף את היציאה מעבר לפס ההזנה: אין אופיין, ולכן הסימולציה נדחית.',
+  'logic.why.outOfRange':
+    '{v}: מחוץ לתחום הכניסה המומלץ 0–5.5 V, שבו גיליון הנתונים אינו מפרט את הרכיב. הסימולציה נדחית.',
+  'logic.why.floatingPads':
+    'דבר אינו מזין את הכניסה הזו: המקור האפשרי היחיד ברשת שלה (ישירות או דרך נגדים) הוא {pads}, פין של ESP32 במצב כניסה (עכבה גבוהה). הסימולציה נדחית. הוסיפו נגד pull-down או pull-up ‏(10 kΩ).',
+  'logic.why.floatingPadsMany':
+    'דבר אינו מזין את הכניסה הזו: המקורות האפשריים היחידים ברשת שלה (ישירות או דרך נגדים) הם {pads}, פינים של ESP32 במצב כניסה (עכבה גבוהה). הסימולציה נדחית. הוסיפו נגד pull-down או pull-up ‏(10 kΩ).',
+  'logic.why.floating':
+    'דבר אינו מזין את הכניסה הזו: שום מסלול נגדי או מקור אינו מגיע אליה (לא מחוברת, או רק דרך נורית LED, דיודה, צומת של טרנזיסטור, זמזם או קבל, שאינם קובעים רמה). לכניסת CMOS צפה אין רמה מוגדרת, ולכן הסימולציה נדחית.',
+  'logic.why.undefined':
+    '{v}: בין {vil} ל-{vih} ‏({vcc}). גיליון הנתונים אינו נותן שם רמה, ולכן הסימולציה נדחית.',
+  'logic.why.unknown': 'רמה לא מוגדרת מגיעה לפין הזה: לא מוצגים רמה ומתח.',
+  'logic.why.off': '‏V_CC הוא 0 V: היציאות מנותקות (I_off).',
+  'logic.why.offInput':
+    'הרכיב ללא הזנה (V_CC = 0 V): לכניסות שלו אין ספים בגיליון הנתונים, ולכן לא ניתנת רמה; המתח המוצג הוא המתח שחושב.',
+  'logic.why.out': '{fn} של הכניסות ({ins}) = {out}, לפי טבלת הפונקציה בגיליון הנתונים.',
+  'logic.why.inLow': '{cmp} ‏({vcc}): ‏LOW.',
+  'logic.why.inHigh': '{cmp} ‏({vcc}): ‏HIGH.',
+  'logic.inspect.level.idle': '—',
+  'logic.inspect.level.notSimulated': 'לא מדומה',
+  'logic.inspect.level.unsupported': 'לא מאופיין',
+  'logic.inspect.level.outOfRange': 'מחוץ ל-0–5.5 V',
+  'logic.inspect.level.floating': 'צפה (לא מוזנת)',
+  'logic.inspect.noteIdle':
+    'עדיין לא מדומה: זו טבלת הפונקציה מגיליון הנתונים. מתחים ורמות מוצגים בזמן שהסימולציה רצה.',
+  'logic.inspect.rowsCaption':
+    'ספי הכניסה מגיליון הנתונים לפי מתח ההזנה (V_CC). בין השורות הסימולטור דוחה במקום להמציא סף.',
+  'logic.inspect.noRowOff': 'אין שורה: הרכיב ללא הזנה (V_CC = 0 V), והיציאה שלו כבויה.',
+  'logic.inspect.noRowInvalid':
+    'אין שורה: לכניסה אין רמה מובטחת (ראו את הפינים למטה). לא מוצגת יציאה.',
+  'logic.inspect.noRowNotSimulated': 'אין שורה: המעגל לא דומה (ראו את ההודעה למעלה).',
+  'logic.inspect.noRowWaiting': 'עדיין אין שורה: ממתין לנקודת העבודה.',
+  'logic.inspect.pinsHeading': 'פינים: רמה לוגית ומתח מדומה',
+  'logic.inspect.gateN': 'שער {n}',
+  'logic.inspect.gates': 'שערים',
+  'logic.inspect.idle':
+    '{part}: טבלת הפונקציה וספי הכניסה מגיליון הנתונים. הפעילו את הסימולציה כדי לראות את הרמה והמתח של כל פין.',
   'sim.part.current.red': 'זרם הערוץ האדום',
   'sim.part.current.green': 'זרם הערוץ הירוק',
   'sim.part.current.blue': 'זרם הערוץ הכחול',
@@ -170,6 +449,83 @@ export const he: Record<MessageKey, string> = {
   'param.ratedVoltage': 'מתח נקוב',
   'sim.part.state.charge': 'מטען אגור (קולון)',
   'sim.part.state.energy': 'אנרגיה אגורה (ג׳אול)',
+  // ---- Sprint 12: R2 sensors and the R3 I2C display ----
+  'component.sensor.hc_sr04.name': 'חיישן מרחק אולטרסוני',
+  'component.sensor.dht22.name': 'חיישן טמפרטורה ולחות',
+  'component.display.lcd1602_i2c.name': 'צג LCD תווי 16×2 (I2C)',
+  'terminal.trig': 'כניסת הפעלה (TRIG)',
+  'terminal.echo': 'יציאת הד (ECHO)',
+  'terminal.vdd': 'הזנה (VDD)',
+  'terminal.data': 'נתונים (DATA)',
+  'terminal.notConnected': 'לא מחובר (NC)',
+  'terminal.sda': 'נתוני I2C (SDA)',
+  'terminal.scl': 'שעון I2C (SCL)',
+  'param.distance': 'מרחק מהמטרה',
+  'param.airTemperature': 'טמפרטורת האוויר',
+  'param.temperature': 'טמפרטורה',
+  'param.humidity': 'לחות יחסית',
+  'param.i2cAddress': 'כתובת I2C',
+  'model.ultrasonic.hc_sr04': 'מודול HC-SR04 (5 V, 40 kHz)',
+  'model.humidity.am2302': 'חיישן DHT22 / AM2302 (Aosong, 3.3–6 V)',
+  'model.lcd.lcd1602_pcf8574': 'HD44780 16×2 עם מתאם I2C (PCF8574)',
+  'i2c.0x20': '0x20',
+  'i2c.0x21': '0x21',
+  'i2c.0x22': '0x22',
+  'i2c.0x23': '0x23',
+  'i2c.0x24': '0x24',
+  'i2c.0x25': '0x25',
+  'i2c.0x26': '0x26',
+  'i2c.0x27': '0x27',
+  'sim.part.state.output.off': 'לא פעילה (ללא הזנה)',
+  'sim.part.state.output.released': 'משוחרר (החיישן אינו מושך את הקו)',
+  'sim.part.state.sensor.hc_sr04.powered': 'מוזן (הזנה של 4.5 V לפחות)',
+  'sim.part.state.sensor.hc_sr04.output': 'יציאת ECHO',
+  'sim.part.state.sensor.hc_sr04.output.high': 'HIGH (פולס הד)',
+  'sim.part.state.sensor.dht22.powered': 'מוזן (הזנה של 3.3 V לפחות)',
+  'sim.part.state.sensor.dht22.output': 'קו DATA (מצד החיישן)',
+  'sim.part.state.sensor.dht22.output.low': 'LOW (החיישן מושך את הקו לנמוך)',
+  'sim.part.state.display.lcd1602_i2c.powered': 'מוזן',
+  'sim.part.state.backlight': 'תאורה אחורית דולקת',
+  'sim.part.state.displayOn': 'התצוגה פעילה',
+  'sim.part.state.line1': 'שורה 1',
+  'sim.part.state.line2': 'שורה 2',
+  'lcd.screen': 'תוכן התצוגה, שורה 1: {line1}; שורה 2: {line2}',
+  'lcd.blank': 'התצוגה ריקה',
+  // ---- Sprint 15 (R4): the SG90 servo and PWM (LEDC) outputs ----
+  'component.component.servo_sg90.name': 'מנוע סרוו SG90',
+  'terminal.servoSignal': 'אות בקרה (PWM)',
+  'model.servo.sg90': 'TowerPro SG90',
+  'sim.results.notModelled': 'לא ממודל',
+  'sim.part.state.component.servo_sg90.powered': 'מוזן (הזנה של 4.8–6.0 V)',
+  'sim.part.state.angleDeg': 'זווית הציר',
+  'sim.part.state.commandedDeg': 'זווית מבוקשת',
+  'sim.part.state.signal': 'אות הבקרה',
+  'sim.part.state.signal.none': 'אין פולסים',
+  'sim.part.state.signal.pulses': 'פולסי סרוו',
+  'sim.part.state.signal.static': 'רמה קבועה (ללא פולסים)',
+  'sim.part.state.signal.undefined': 'לא רמה לוגית תקינה (אין פולס תקין)',
+  'sim.part.state.pulseUs': 'רוחב הפולס האחרון',
+  'sim.results.outsideModel.component.servo_sg90':
+    'ההזנה מחוץ לטווח הממודל של 4.8–6.0 V: הסרוו מוצג כנשאר במקומו; סרוו אמיתי עשוי להתנהג אחרת.',
+  'sim.results.servoCurrentExcluded':
+    'אינו כולל את הזרם ש־{components} צורך: זרם ההזנה של סרוו SG90 לא ממודל.',
+  'sim.results.pwmAverage': '{label}, ממוצע (PWM)',
+  'sim.results.pwmPeak': '{label}, שיא (PWM)',
+  'sim.results.pwmNote':
+    'מונע ב־PWM: הערכים שלמעלה הם ממוצעים בזמן לאורך צורת הגל; בדיקת הדירוגים משתמשת בזרם השיא.',
+  'sim.results.pwmPower': 'לא מוצג תחת PWM (מכפלת המתח הממוצע בזרם הממוצע אינה ההספק הממוצע)',
+  'unit.hertz.symbol': 'Hz',
+  'unit.second.symbol': 's',
+  'unit.percent.symbol': '%',
+  'unit.degree.symbol': '°',
+  'mcu.pwm.wave': 'PWM {frequency} · {duty}',
+  'mcu.pwm.zero': 'PWM · מחזור עבודה 0 (רמת היציאה לא אומתה)',
+  'mcu.pwm.static': 'PWM · {level} (קבוע)',
+  'mcu.pwm.unsupported': 'PWM · לא נתמך',
+  'mcu.pwm.levelUnknown': 'המתח לא ידוע',
+  'mcu.pwm.average': 'ממוצע {voltage}',
+  'mcu.warning.servo_signal_undefined':
+    '{component}: אות הבקרה אינו ברמה לוגית תקינה (או שכמה יציאות PWM פועלות עליו); הסרוו אינו מקבל פולס תקין.',
   'sim.time': 't = {time}',
   'sim.timeNote': 'זמן מדומה מאז ההרצה (צעדים של 1 ms). הקבלים מתחילים פרוקים בכל הרצה.',
   'sim.timeBehind': 'רץ לאט יותר מהזמן האמיתי',
@@ -185,6 +541,9 @@ export const he: Record<MessageKey, string> = {
   'unit.ampere.symbol': 'A',
   'unit.lux.symbol': 'lx',
   'unit.farad.symbol': 'F',
+  'unit.metre.symbol': 'm',
+  'unit.celsius.symbol': '°C',
+  'unit.percent_rh.symbol': '%RH',
 
   'sim.run': 'הרצה',
   'sim.stop': 'עצירה',
@@ -202,12 +561,33 @@ export const he: Record<MessageKey, string> = {
     'ה[[components]] האלה יוצרים מעגל צף ללא חיבור ל-GND: {components}. חברו אותם למעגל או הסירו אותם.',
   'sim.error.floating_output_off':
     'ה[[components]] האלה מגיעים ל-GND רק דרך {supplies}, שהיציאה שלו כבויה: {components}. הפעילו את היציאה או חברו אותם ל-GND.',
+  'sim.error.gpio_input_undefined.unresolved':
+    '{pins}: הקושחה קראה את רגיסטר הכניסות של ה-ESP32 כששום דבר לא קבע את הרמה של הפין הזה (הוא לא מחובר, או ששום דבר לא מזין את הרשת שלו). הסימולטור לא יכול היה לדעת מהתוכנית אילו פינים היא קוראת (מספר פין שמחושב בזמן ריצה, או קושחה שלא נותחה), ולכן הוא מתייחס לכל פין כאילו הוא נקרא ועצר את ההרצה במקום לבחור LOW או HIGH. כתבו את מספרי הפינים כמספרים או כקבועים בקוד, ותנו לכל כניסה נגד pull-up או pull-down.',
+  'sim.error.gpio_input_undefined.floating':
+    '{pins}: התוכנית קראה את כניסת ה-ESP32 הזו כששום דבר לא קבע את הרמה שלה: שום חוט, נגד או מתג סגור לא מחבר אותה לספק, ל-GND או ליציאה פעילה. ‏ESP32 אמיתי קורא שם ערך לא מוגדר, ולכן ההרצה נעצרה בקריאה הזו במקום לבחור LOW או HIGH. נגדי ה-pull הפנימיים של ה-ESP32 אינם מדומים. הוסיפו נגד pull-down או pull-up (למשל ⁦10 kΩ⁩ אל GND או אל ⁦3.3 V⁩) כדי שלפין תהיה רמה בכל פעם שקוראים אותו.',
+  'sim.error.gpio_input_undefined.unconnected':
+    '{pins}: התוכנית קראה את הפין הזה של ה-ESP32, אבל שום דבר אינו מחובר אליו. ‏ESP32 אמיתי קורא ערך לא מוגדר מכניסה לא מחוברת, ולכן ההרצה נעצרה בקריאה הזו במקום לבחור LOW או HIGH. נגדי ה-pull הפנימיים של ה-ESP32 אינם מדומים. חברו את הפין (עם נגד pull-down או pull-up אם זה לחצן), או הסירו את הקריאה מהתוכנית.',
+  'sim.error.gpio_input_undefined.unknown':
+    '{pins}: התוכנית קראה את כניסת ה-ESP32 הזו כשהגיעה אליה רמה לוגית לא קבועה (X), ולכן ההרצה נעצרה בקריאה הזו במקום לבחור LOW או HIGH. בדקו את הכניסות הלוגיות המסומנות כלא ידועות (X).',
+  'sim.error.gpio_input_undefined.between_thresholds':
+    '{pins}: התוכנית קראה את כניסת ה-ESP32 הזו במתח {voltage}, בין {vil} ל-{vih}. גיליון הנתונים של ה-ESP32 אינו מבטיח שם שום קריאה ואינו מגדיר היסטרזיס, ולכן גם הרמה הקודמת אינה נשמרת: ההרצה נעצרה בקריאה הזו במקום לבחור LOW או HIGH. הביאו את הכניסה אל {vil} או מתחת, או אל {vih} או מעל.',
+  'sim.error.i2c_clock_exceeded':
+    '{components}: התוכנית מפעילה את אפיק ה-I2C בתדר {hz} כשהיא פונה לתצוגה הזו, מהר יותר ממה שכרטיס ה-PCF8574 שלה מדורג לו ({max}, גיליון הנתונים של NXP). מודול אמיתי אינו מובטח לעבוד שם, ולכן ההרצה נעצרה. השתמשו ב-⁦Wire.setClock(100000)⁩ או פחות (ב-MicroPython: ⁦freq=100000⁩ או פחות).',
+  'sim.error.sensor_level_undefined':
+    '{components}: התגובה של החיישן הייתה מביאה את {pins} למתח {voltage}, בין {vil} ל-{vih}. גיליון הנתונים של ה-ESP32 אינו מבטיח שם שום קריאה ואינו מגדיר היסטרזיס, ולכן הסימולטור אינו יכול למסור לתוכנית את הרמות של התגובה הזו: ההרצה נעצרה לפניה. שנו את מחלק המתח או את החיווט כך שהאות יגיע אל {vil} או מתחת, ואל {vih} או מעל.',
+  'sim.error.i2c_read_unsupported':
+    '{components}: התוכנית קוראת בית מכרטיס ה-PCF8574 של התצוגה הזו. מה שכרטיס אמיתי מחזיר תלוי בפינים של בקר ה-LCD ובחיווט של הכרטיס עצמו, שאינם מדומים, ולכן ההרצה נעצרה במקום להמציא ערך. התצוגה עובדת לכתיבה; הסירו את הקריאה (⁦Wire.requestFrom⁩).',
+  'sim.error.psu_sinking':
+    '{components}: ספק זה מכוון למתח קבוע, והמעגל היה דוחף {current} בחזרה אליו — למשל ממקור אחר, מקבל שמתפרק אליו לאחר שהמתח המכוון הונמך, או מזרם זליגה של דיודה או רכיב אחר (גם ננו-אמפרים נחשבים). מודל ספק המעבדה אינו יכול לבלוע זרם (הנחה מפשטת של הסימולטור), ולכן המעגל אינו מדומה. ודאו שדבר אינו מעלה את יציאת הספק מעל המתח המכוון שלו, או הוסיפו עומס קטן על היציאה (למשל נגד) כך שהספק יספק תמיד זרם.',
   'sim.error.psu_shorted':
     '{components}: הדקי היציאה מחוברים זה לזה בחוט (קצר). הסירו את החוט כדי להריץ.',
   'sim.error.psu_parallel.title': 'ספקי כוח במקביל עדיין אינם נתמכים',
   'sim.error.psu_parallel':
     '{supplies} מחוברים ישירות במקביל. הסימולטור אינו יכול עדיין לקבוע חלוקת זרם יחידה בין הספקים.',
   'sim.error.psu_parallel.hint': 'השתמשו בספק אחד, או הפרידו בין היציאות באמצעות רכיבי מעגל.',
+  'sim.error.invalid_parameter.not_standard':
+    '{components}: {param} הוא {value}, ערך שהרכיב הזה אינו מיוצר בו. הערכים הסטנדרטיים בגיליון הנתונים הם {values}. בחרו אחד מהם בחלונית המאפיינים.',
+  'param.notStandard': '{value} (לא ערך סטנדרטי)',
   'sim.error.invalid_parameter': '{components}: לא ניתן לדמות את הערך של „{param}”.',
   'sim.error.unsupported_component': 'עדיין לא ניתן לדמות את {components}.',
   'sim.error.invalid_attachment': 'פין של המיקרו-בקר מחובר להדק שאינו קיים: {components}.',
@@ -219,6 +599,8 @@ export const he: Record<MessageKey, string> = {
     'למעגל אין מצב יציב: {components} ממשיך להדליק ולכבות את עצמו (ממסר שמנתק את הסליל של עצמו מרטט). סימולציית DC אינה יכולה להציג אחד ממצבי המעבר שלו.',
   'sim.error.mcu_component_unsupported':
     'סימולטור ה־ESP32 עדיין אינו תומך ב־{components}. רכיבים אלה מדומים במעגלים ללא ESP32; לשילובם עם הלוח נדרש עדכון של סביבת הריצה.',
+  'sim.error.mcu_component_time_dependent':
+    'ההתנהגות של {components} תלויה בזמן, וסימולטור ה־ESP32 אינו מקדם זמן מדומה. הם מדומים רק במעגלים ללא ESP32.',
   'sim.error.internal': 'אירעה שגיאה פנימית בסימולציה. הפרויקט לא נפגע.',
   'sim.error.worker_crashed':
     'הסימולציה נעצרה באופן בלתי צפוי. הפרויקט לא נפגע. לחצו על הרצה כדי לנסות שוב.',
@@ -246,7 +628,8 @@ export const he: Record<MessageKey, string> = {
   'sim.results.notSimulated': 'לא מחובר: לא מדומה.',
   'sim.results.outsideModel':
     'מחוץ לטווח המתועד של מודל ה-LED (‏1–20 mA). הערך נובע מהמודל אך עשוי להיות שונה מרכיב אמיתי.',
-  'sim.results.ledLit': 'בהירות סמל ה-LED היא רמז חזותי הנגזר מהזרם המחושב, לא מדידת אור.',
+  'sim.results.ledLit':
+    'בהירות סמל ה-LED היא רמז חזותי הנגזר מהזרם המחושב, לא מדידת אור. תחת PWM היא עוקבת אחר הזרם הממוצע.',
   'sim.mode.cv': 'CV · מתח קבוע',
   'sim.mode.cc': 'CC · הגבלת זרם',
   'sim.mode.off': 'היציאה כבויה',
@@ -280,6 +663,7 @@ export const he: Record<MessageKey, string> = {
   'psu.voltage': 'מתח',
   'psu.current': 'זרם',
   'psu.notRunning': 'לא פועל',
+  'psu.currentAverage': 'ממוצע (PWM)',
   'psu.ccNote': 'הגבלת זרם היא התנהגות תקינה של ספק, לא תקלה.',
   'checks.heading': 'בדיקות מעגל',
   'checks.none': 'לא נמצאו בעיות.',
@@ -291,6 +675,16 @@ export const he: Record<MessageKey, string> = {
     '{component} {terminal} נוגע ב-{other} {otherTerminal} אבל אינו מחובר אליו. הזיזו אחד הרכיבים והחזירו אותו כדי לחבר, או ציירו חוט.',
   'checks.floating_island': 'אין מסלול ל-GND: {components}.',
   'checks.no_ground': 'למעגל אין GND. הוסיפו [[ground]] וחברו אותה למעגל.',
+  'checks.supply_pins_shorted':
+    '{component}: ‏V_CC ו-GND מחוברים לאותה רשת, ולכן מתח ההזנה שלו תמיד 0 V: הוא לעולם לא יקבל הזנה. חברו את GND להדק ה-− של הספק (או ל-GND).',
+  'checks.psu_no_load':
+    '{component}: שום רכיב אינו מחובר בין + ל-−, ולכן הוא אינו מספק זרם לאף רכיב. חברו את מסלול החזרה של המעגל (למשל GND של רכיב) להדק ה-−.',
+  'checks.gpio_input_floating':
+    '{component} {terminal}: התוכנית קוראת את הפין הזה ככניסה, אבל כאשר {switches} פתוח שום דבר אינו מקבע את הרמה שלו (אין נגד pull-up או pull-down). ‏ESP32 אמיתי קורא אז רמה לא מוגדרת, ולכן ההרצה נעצרת אם התוכנית קוראת אותו אז. הוסיפו נגד (למשל ⁦10 kΩ⁩) מהפין אל GND או אל ⁦3.3 V⁩.',
+  'checks.gpio_input_floating_always':
+    '{component} {terminal}: התוכנית קוראת את הפין הזה ככניסה, אבל שום דבר אינו מקבע את הרמה שלו (אין נגד pull-up או pull-down). ‏ESP32 אמיתי קורא אז רמה לא מוגדרת, ולכן ההרצה נעצרת כשהתוכנית קוראת אותו. הוסיפו נגד (למשל ⁦10 kΩ⁩) מהפין אל GND או אל ⁦3.3 V⁩.',
+  'checks.gpio_input_unconnected':
+    '{component} {terminal}: התוכנית קוראת את הפין הזה ככניסה, אבל שום דבר אינו מחובר אליו. ‏ESP32 אמיתי קורא רמה לא מוגדרת מכניסה לא מחוברת, ולכן ההרצה נעצרת כשהתוכנית קוראת אותו. חברו את הפין, או הסירו את הקריאה מהתוכנית.',
   'checks.psu_shorted_by_wire': '{component}: הדקי היציאה מחוברים זה לזה בחוט.',
   'history.undo': 'ביטול',
   'history.redo': 'ביצוע מחדש',
@@ -307,6 +701,10 @@ export const he: Record<MessageKey, string> = {
   'inspector.delete': 'מחיקה',
   'inspector.wire': 'חוט',
   'inspector.junction': '[[junction]]',
+  'inspector.wireRoute': 'מסלול',
+  'wireRoute.auto': 'אוטומטי: עוקב אחרי הרכיבים כשהם זזים',
+  'wireRoute.manual': 'ידני: הכיפופים שלך נשמרים',
+  'wireRoute.makeAuto': 'נתב אוטומטית',
   'inspector.wireColor': 'צבע חוט',
   'wireColor.auto': 'אוטומטי',
   'wireColor.autoIs': 'אוטומטי ({color})',
@@ -324,8 +722,8 @@ export const he: Record<MessageKey, string> = {
   'inspector.shortcuts': 'מקלדת: החיצים מזיזים, R מסובב, Delete מוחק, Esc מבטל.',
 
   'error.parse.empty': 'יש להזין ערך.',
-  'error.parse.invalid': 'ערך לא תקין. דוגמאות: 220, 1k, 4k7, 1.5k',
-  'error.parse.decimal_comma': 'יש להשתמש בנקודה כמפריד עשרוני, לדוגמה 1.5k.',
+  'error.parse.invalid': 'מספר לא תקין. יש להזין מספר כגון 4.7 ולבחור את היחידה.',
+  'error.parse.decimal_comma': 'יש להשתמש בנקודה כמפריד עשרוני, לדוגמה 1.5.',
   'error.parse.wrong_unit': 'היחידה אינה מתאימה למאפיין זה.',
   'error.range': 'הערך חייב להיות בין {min} לבין {max}.',
   'error.edit.same_endpoint': 'חוט אינו יכול להתחיל ולהסתיים באותה נקודה.',
@@ -346,6 +744,17 @@ export const he: Record<MessageKey, string> = {
     'כל דוגמה נפתחת כפרויקט חדש משלכם. לחצו על "הרצה" כדי לראות תוצאות אמיתיות.',
   'library.examples.open': 'פתיחת הדוגמה',
   'library.examples.openNamed': 'פתיחת הדוגמה: {name}',
+  'library.examples.search': 'חיפוש דוגמאות',
+  'library.examples.searchHint': 'למשל: נורית, חיישן, ESP32 LCD, LDR',
+  'library.examples.categories': 'קטגוריות',
+  'library.examples.category.basic': 'מעגלים בסיסיים',
+  'library.examples.category.sensors': 'חיישנים',
+  'library.examples.category.lighting': 'תאורה ותצוגות',
+  'library.examples.category.controllers': 'בקרים ותכנות',
+  'library.examples.category.switching': 'מיתוג ובקרה',
+  'library.examples.count': 'מוצגות {shown} מתוך {total} דוגמאות',
+  'library.examples.empty': 'אין דוגמה מתאימה. נסו פחות מילים או מילים אחרות, או נקו את הסינון.',
+  'library.examples.clear': 'ניקוי הסינון',
   'library.import.button': 'ייבוא פרויקט…',
   'library.import.label': 'ייבוא קובץ פרויקט של TBI Lab ‏(.tbilab)',
   'library.actions': 'פעולות עבור {name}',
@@ -408,6 +817,12 @@ export const he: Record<MessageKey, string> = {
   'example.voltage-divider.title': 'מחלק מתח',
   'example.voltage-divider.summary':
     'שני נגדים מחלקים ⁦9 V⁩. נקודת האמצע היא ⁦9 V × 20 kΩ / (10 kΩ + 20 kΩ) = 6 V⁩; [[probe]] ב־⁦R2.a⁩ מודדת אותה.',
+  'example.pot-divider.title': 'מחלק מתח עם פוטנציומטר',
+  'example.pot-divider.summary':
+    '[[potentiometer]] של ⁦10 kΩ⁩ על ⁦5 V⁩, קצה A ל־GND וקצה B ל־⁦+5 V⁩: המתח ב[[wiper]] עולה מ־⁦0 V⁩ ל־⁦5 V⁩ ככל שהמיקום עולה, ⁦2.5 V⁩ ב־⁦50 %⁩. הריצו והזיזו את מחוון המיקום: [[probe]] ב[[wiper]] עוקבת.',
+  'example.pot-led-dimmer.title': 'עמעם LED עם פוטנציומטר',
+  'example.pot-led-dimmer.summary':
+    '[[potentiometer]] של ⁦1 kΩ⁩ כנגד משתנה בטור עם ⁦470 Ω⁩ ונורית LED אדומה על ⁦5 V⁩. הגדלת המיקום מקטינה את ההתנגדות בטור והזרם ב־LED עולה, עד ⁦6.5 mA⁩ ב־⁦100 %⁩: מתחת ל־⁦7.07 mA⁩ שזורמים במסלול בהספק המדורג ⁦0.05 W⁩, ולכן הוא נשאר בתנאי הדירוג של גיליון הנתונים בכל מיקום.',
   'example.led-current.title': 'הגבלת זרם לנורית LED',
   'example.led-current.summary':
     'נגד של ⁦220 Ω⁩ קובע את הזרם של נורית LED אדומה מ־⁦5 V⁩. הנורית אינה ליניארית: היא מתייצבת סביב ⁦2 V⁩ ובערך ⁦14 mA⁩.',
@@ -450,28 +865,40 @@ export const he: Record<MessageKey, string> = {
   'palette.unavailable.part_needs_runtime': 'דורש תמיכת Runtime שעדיין אינה זמינה ל־ESP32.',
   'palette.unavailable.board_needs_runtime':
     'לא זמין כל עוד בפרויקט יש רכיבים שה־Runtime של ESP32 עדיין אינו תומך בהם.',
+  'palette.unavailable.part_time_dependent': 'רכיבים תלויי־זמן מדומים רק במעגלים ללא ESP32.',
+  'palette.unavailable.board_time_dependent':
+    'לא זמין כל עוד בפרויקט יש רכיבים תלויי־זמן (הם מדומים רק ללא ESP32).',
   'palette.group.sensors': 'חיישנים',
-  'palette.group.output': 'צליל ואיתות',
+  'palette.group.output': 'צליל, תצוגה ותנועה',
   'palette.group.switches': 'מתגים',
   'inspector.shortcutsHeading': 'קיצורי מקלדת',
   'unit.watt.symbol': 'W',
   'sim.results.power': 'הספק',
-  'brand.logoAlt': 'TBI: חושבים, מפיחים חיים ברעיונות, ממציאים',
+  'brand.logoAlt': 'TBI Lab: חושבים, מפיחים חיים ברעיונות, ממציאים',
   'home.subtitle': 'המעגלים מדומים ונשמרים כאן, בדפדפן שלכם. התחילו מדוגמה, או צרו פרויקט משלכם.',
-  'app.narrowScreen': 'TBI Lab מיועד למסכי מחשב ברוחב של 1024 פיקסלים לפחות.',
+  'app.screen.phone':
+    'TBI Lab אינו תומך בטלפונים או במסכים קטנים כאלה. השתמשו במחשב או בטאבלט (מומלץ במצב לרוחב).',
+  'app.screen.rotate': 'לחוויה הטובה ביותר, סובבו את הטאבלט למצב לרוחב.',
+  'app.screen.narrow': 'לחוויה הטובה ביותר, השתמשו בחלון ברוחב של 1024 פיקסלים לפחות.',
   'rating.heading': 'חריגה מדירוגי הרכיב',
   'rating.atRisk': '{component} עלול להינזק',
   'rating.row.forward_current': 'זרם: {value} (מקסימום {limit})',
   'rating.row.reverse_voltage': 'מתח הפוך: {value} (מקסימום {limit})',
   'rating.row.power': 'הספק: {value} (מקסימום {limit})',
-  'rating.row.gpio_source_current': '{pin} ביציאה HIGH מספק {value} (דירוג ההנעה {limit})',
-  'rating.row.gpio_sink_current': '{pin} ביציאה LOW בולע {value} (דירוג ההנעה {limit})',
+  'rating.row.resistance_outside_series':
+    'אין דירוג הספק: ערך של {value} אינו מיוצר בסדרה שנבחרה (הטווח שלה מסתיים ב-{limit})',
+  'rating.row.gpio_source_current': '{pin} ביציאה HIGH מספק {value} (הנעה טיפוסית {limit})',
+  'rating.row.gpio_sink_current': '{pin} ביציאה LOW בולע {value} (הנעה טיפוסית {limit})',
   'rating.row.gpio_contention':
-    '{pin} ו־{other} מניעים רמות הפוכות על אותו נט: {value} זורם ביניהם (דירוג ההנעה {limit})',
+    '{pin} ו־{other} מניעים רמות הפוכות על אותו נט: {value} זורם ביניהם (הנעה טיפוסית {limit})',
   'rating.row.gpio_short_ground':
-    '{pin} ביציאה HIGH מחובר ישירות ל־GND: {value} (דירוג ההנעה {limit})',
+    '{pin} ביציאה HIGH מחובר ישירות ל־GND: {value} (הנעה טיפוסית {limit})',
   'rating.row.gpio_short_supply':
-    '{pin} ביציאה LOW מחובר ישירות ל־+ של ספק: {value} (דירוג ההנעה {limit})',
+    '{pin} ביציאה LOW מחובר ישירות ל־+ של ספק: {value} (הנעה טיפוסית {limit})',
+  'rating.row.gpio_input_overvoltage':
+    '{pin} בכניסה נמצא ב־{value}, מחוץ לטווח הכניסה המוגדר של הפין (גבול {limit}); פיני ESP32 אינם מוגדרים ל־5 V',
+  'rating.row.gpio_output_overvoltage':
+    '{pin} ביציאה נדחף ל־{value} על ידי המעגל (גבול {limit}); זרם נדחף לתוך מעגל ההנעה של הפין',
   'rating.note': 'הסימולציה ממשיכה להציג את הערכים המחושבים ואינה מדמה נזק לרכיב.',
 
   // ---- Sprint 6: Classic ESP32 through the R2 Session Host ----
@@ -490,6 +917,13 @@ export const he: Record<MessageKey, string> = {
   'sim.error.mcu_build_required': 'נדרשת בנייה: בנו את הקוד של {components} ואז לחצו על הרצה.',
   'sim.error.mcu_unsupported_features':
     'הקוד של {components} משתמש ביכולות שהסימולטור אינו מדמה: {features}. ההרצה נחסמה.',
+  'program.language': 'שפת תכנות',
+  'program.language.arduino-cpp': 'Arduino C++',
+  'program.language.micropython': 'MicroPython',
+  'program.language.restored':
+    'הוחלף ל-{language}. הקוד שלה חזר בדיוק כפי שהשארתם אותו; הקוד ב-{previous} נשמר בפרויקט.',
+  'program.language.started':
+    'הוחלף ל-{language}. לפרויקט הזה אין גרסת {language} של התוכנית (בדוגמה מובנית: לא אומתה גרסה כזו), ולכן נפתחה תוכנית ההתחלה של {language}. הקוד ב-{previous} נשמר ללא שינוי וחוזר כשמחליפים בחזרה.',
   'program.tab.circuit': 'מעגל',
   'program.tab.code': 'קוד',
   // Sprint 9: generated views of the same circuit.
@@ -576,16 +1010,99 @@ export const he: Record<MessageKey, string> = {
     'הדמיה של המעגל: גרירה או ← → לסיבוב; גרירה בלחצן הימני, Shift+גרירה או Shift+חצים להזזה; גלילה או + − לזום. העריכה נעשית בתצוגת המעגל.',
   'view3d.overlap':
     'חלק מהרכיבים גדולים בתלת־ממד מהסמל שלהם ועדיין נוגעים זה בזה כאן ({parts}). אפשר להרחיק אותם בתצוגת המעגל.',
+  'view3d.routeLimit':
+    'חלק מהחוטים לא ניתן היה לפרוש בצורה נקייה בתלת־ממד ({wires}): במקומות אלה הם עלולים להיראות כאילו הם נוגעים בחוט אחר או עוברים דרך רכיב. החיבורים הם בדיוק כפי שהם משורטטים בתצוגת המעגל.',
   'program.editor.label': 'קוד המקור (Arduino) של {board}',
   'program.position': 'שורה {line}, עמודה {column}',
   'program.size': '{used} מתוך {max}',
+  'program.total': '{files} קבצים, {used} מתוך {max}',
+  'program.files': 'קובצי התוכנית',
+  'program.file.main': 'ראשי',
+  'program.file.new': 'קובץ חדש',
+  'program.file.rename': 'שינוי שם',
+  'program.file.delete': 'מחיקת קובץ',
+  'program.file.deleteConfirm': 'למחוק את {file}? אפשר לבטל את הפעולה.',
+  'program.file.newLabel': 'שם הקובץ החדש',
+  'program.file.renameLabel': 'שם חדש',
+  'program.file.create': 'יצירה',
+  'program.file.renameApply': 'שינוי שם',
+  'program.file.cancel': 'ביטול',
+  'program.file.rules.arduino':
+    'קובצי Arduino: ‏⁦.ino⁩, ⁦.cpp⁩, ⁦.c⁩, ⁦.h⁩ או ⁦.hpp⁩ בתיקיית ה-sketch, או ⁦.cpp⁩, ⁦.c⁩, ⁦.h⁩ או ⁦.hpp⁩ תחת ⁦src/⁩ (למשל ⁦src/util.cpp⁩). כוללים כותרות משלכם במירכאות: ⁦#include "helpers.h"⁩.',
+  'program.file.rules.micropython':
+    'מודולי MicroPython: קובצי ⁦.py⁩ ששמם מזהה Python חוקי, בשורש או בתיקיית חבילה שיש בה ⁦__init__.py⁩ (למשל ⁦sensors/__init__.py⁩ ו-⁦sensors/dht.py⁩). מייבאים לפי שם: ⁦import helpers⁩.',
+  'program.file.error.empty': 'הזינו שם קובץ.',
+  'program.file.error.too_long': 'השם ארוך מדי.',
+  'program.file.error.bad_name':
+    'השתמשו באותיות לטיניות, ספרות, קו תחתון ומקף, סיומת אחת, ותיקיות מופרדות ב-⁦/⁩; בלי רווחים, בלי נקודה בתחילת השם, בלי ⁦.⁩ או ⁦..⁩.',
+  'program.file.error.too_deep': 'אפשר לכל היותר שתי תיקיות.',
+  'program.file.error.bad_extension':
+    'סביבת התכנות הזו אינה בונה קבצים מסוג זה (או לא בתיקייה זו).',
+  'program.file.error.entry': 'זה שם הקובץ הראשי.',
+  'program.file.error.reserved':
+    'השם הזה שמור: סביבת התכנות משתמשת בו, או (ב-MicroPython) שלמפרש כבר יש מודול בשם הזה (למשל ⁦network⁩, ⁦machine⁩ או ⁦time⁩), והוא היה מיובא במקום הקובץ שלכם.',
+  'program.file.error.duplicate':
+    'כבר קיים קובץ בשם הזה (שמות שנבדלים רק באותיות גדולות נחשבים זהים).',
+  'program.file.error.limit': 'הפרויקט הגיע למגבלת הקבצים או הגודל (16 קבצים, ⁦256 KiB⁩ בסך הכול).',
+  'library.heading': 'ספריות מנוהלות',
+  'library.none':
+    'אין צורך בספרייה. הוסיפו רכיב שיש לו ספרייה מנוהלת (למשל תצוגת LCD1602 I²C) והיא תהיה זמינה כאן, בלי להתקין דבר.',
+  'library.issue.unknown_library':
+    '{id}: גרסת הספרייה הזו אינה זמינה בשרת הזה. הבנייה מסרבת לה ואינה משתמשת בגרסה אחרת.',
+  'library.issue.library_language': '{id}: הספרייה הזו מיועדת לשפת תכנות אחרת.',
+  'library.issue.library_profile': '{id}: הספרייה הזו לא אומתה עם כלי הבנייה הזה.',
+  'library.issue.library_dependency': '{id}: חסרה ספרייה שהיא תלויה בה.',
+  'library.reason.part': 'זמינה כי {parts} זקוק לה.',
+  'library.reason.code': 'נשמרת כי הקוד משתמש בה.',
+  'library.status.available': 'זמינה (גרסה נעוצה, בלי התקנה)',
+  'library.license': 'רישיון {spdx}, {copyright}. מקור:',
+  'library.validated': 'אומת בסימולטור:',
+  'library.example': 'דוגמת שימוש',
+  'library.copy': 'העתקת הדוגמה',
+  'library.unpin': 'הסרה מהפרויקט',
+  'library.limit.lcd_write_only':
+    'כתיבה בלבד: אי אפשר לקרוא בסימולטור את פורט המתאם של ה-LCD ואת הבקר (קריאה עוצרת את ההרצה, בציון שם).',
+  'library.limit.lcd_clock':
+    'שעון I²C עד ⁦100 kHz⁩ (הדירוג של ה-PCF8574); שעון מהיר יותר עוצר את ההרצה, בציון שם.',
+  'build.error.unknown_library':
+    'לשירות הבנייה אין את גרסת הספרייה המדויקת הזו, ולכן הבנייה לא בוצעה (הוא לעולם אינו מחליף בגרסה אחרת).',
   'build.button': 'בנייה',
+  'toolbar.build': 'בנה קוד',
+  'toolbar.build.group': 'בניית הקוד',
+  'toolbar.build.readOnly': 'הפרויקט לקריאה בלבד: אי אפשר לבנות אותו כאן.',
+  'toolbar.build.error': 'הבנייה לא הושלמה',
+  'toolbar.build.showProblems': 'הצגת הבעיות',
   'build.phase.required': 'נדרשת בנייה',
   'build.phase.building': 'בונה…',
   'build.phase.queued': 'ממתין לבנייה ({position} לפניך)',
   'build.phase.current': 'נבנה',
   'build.phase.failed': 'הבנייה נכשלה',
+  'build.elapsed': '{seconds} שנ׳',
   'build.stale': 'הקוד השתנה מאז הבנייה האחרונה.',
+  // Sprint 13 OS-08: Run is not available during a build or without a current build.
+  'run.blocked.building': 'אי אפשר להריץ בזמן שבנייה מתבצעת.',
+  'run.blocked.buildRequired':
+    'יש לבנות קודם את הקוד של {components}: הוא לא נבנה, או שהשתנה מאז הבנייה האחרונה.',
+  'run.blocked.buildFailed': 'הבנייה האחרונה של הקוד של {components} נכשלה. תקנו אותו ובנו מחדש.',
+  'build.olderRunning':
+    'בנייה של גרסה קודמת של הקוד הזה עדיין מתבצעת. בנו את הגרסה הנוכחית כשהיא תסתיים.',
+  // Sprint 13 OS-04: component bodies may not overlap (Circuit view and its 3D view).
+  'edit.overlap.circuit': '{a} יחפוף את {b}. מקמו אותו במקום שבו הרכיבים אינם מכסים זה את זה.',
+  'edit.overlap.3d':
+    '{a} יחפוף את {b} בגודלם האמיתי (כפי שתצוגת התלת־ממד מציגה אותם). השאירו יותר מקום ביניהם.',
+  'edit.overlap.both': '{a} יחפוף את {b}. מקמו אותו במקום שבו הרכיבים אינם מכסים זה את זה.',
+  // Sprint 13 Task D: the project changed or was deleted in another tab or window.
+  'save.error.conflictBanner':
+    'הפרויקט שונה או נמחק בלשונית או בחלון אחרים, ולכן השינויים כאן לא נשמרו. כדי לשמור אותם, ייצאו עכשיו; לאחר מכן טענו מחדש כדי להמשיך עם הגרסה השמורה.',
+  'save.reload': 'טעינה מחדש',
+  'auth.expired': 'תוקף ההתחברות פג. הפרויקטים שלך שמורים בדפדפן הזה. יש להתחבר מחדש כדי להמשיך.',
+  'auth.signInAgain': 'התחברות מחדש',
+  // Sprint 13 Task D: wire routes adjusted when a project opened (layout only).
+  'open.routesAdjusted':
+    'חלק מנתיבי החוטים שורטטו מחדש כדי שלא יעברו מעל פינים, צגים או קווי המתאר של רכיבים. החיבורים לא השתנו. ביטול הפעולה האחרונה מחזיר את הנתיבים הקודמים.',
+  // Sprint 13 a11y: the slider's own accessible name (distinct from its value field).
+  'valueControl.slider': '{label}, מחוון',
+  'valueControl.unit': '{label}, יחידה',
   'build.blockedRunning': 'אפשר לבנות אחרי עצירה. הסשן שרץ ממשיך עם הקושחה שאיתה התחיל.',
   'build.unavailable': 'שירות הבנייה אינו זמין כאן.',
   'build.error.unreachable': 'לא ניתן היה להתחבר לשירות הבנייה. הקוד שלכם שמור; נסו שוב.',
@@ -597,7 +1114,7 @@ export const he: Record<MessageKey, string> = {
     'הבניות השמורות שלך הגיעו למגבלה וכולן בשימוש. עצרו את הריצה ונסו לבנות שוב.',
   'build.error.capability_disabled': 'הרצת קובץ בינארי מוכן אינה זמינה בחשבון שלך.',
   'build.error.refused': 'שירות הבנייה דחה את הבקשה.',
-  'build.error.too_large': 'הקוד גדול מדי לבנייה (המגבלה היא 64 KiB).',
+  'build.error.too_large': 'הקוד גדול מדי לבנייה (כל קובץ עד ⁦64 KiB⁩, הפרויקט עד ⁦256 KiB⁩).',
   'build.error.not_an_image': 'שירות הבנייה לא יכול היה להשתמש בקובץ הזה.',
   'build.error.protocol': 'תשובה לא צפויה משירות הבנייה. נסו שוב או טענו מחדש את הדף.',
   'build.failure.timeout': 'הבנייה ארכה יותר ממגבלת הזמן ונעצרה.',
@@ -605,6 +1122,7 @@ export const he: Record<MessageKey, string> = {
   'build.failure.unsupported_input': 'אי אפשר לבנות את הקוד הזה בסביבה הזו.',
   'build.failure.internal': 'בשירות הבנייה אירעה תקלה פנימית. נסו שוב.',
   'build.failure.capacity_timeout': 'הבנייה המתינה יותר מדי לשירות הבנייה ולא התחילה. נסו שוב.',
+  'build.failure.account_disabled': 'הבנייה הופסקה כי הגישה ל-TBI Lab הסתיימה עבור החשבון הזה.',
   'build.diagnostics.heading': 'בעיות',
   'build.severity.error': 'שגיאה',
   'build.severity.warning': 'אזהרה',
@@ -616,14 +1134,93 @@ export const he: Record<MessageKey, string> = {
   'build.feature.internal_pull': 'נגד Pull-up/Pull-down פנימי',
   'build.feature.interrupt': 'פסיקות GPIO',
   'build.feature.restart': 'אתחול השבב',
+  'build.feature.cpu_frequency': 'שינוי תדר המעבד (setCpuFrequencyMhz)',
   'build.feature.wifi': 'תקשורת Wi-Fi',
   'build.feature.bluetooth': "בלוטות'",
   'build.feature.adc': 'כניסה אנלוגית (ADC)',
   'build.feature.pwm': 'יציאת PWM/LEDC',
+  'build.feature.pwm_advanced':
+    'עמעום חומרתי של LEDC או היפוך היציאה (ledcFade,‏ ledcOutputInvert)',
   'build.feature.dac': 'יציאה אנלוגית (DAC)',
   'build.feature.touch': 'חישת מגע',
   'build.feature.sleep': 'מצבי שינה',
+  'build.feature.drive_strength': 'בחירת עוצמת ההנעה של פין (gpio_set_drive_capability)',
   'build.feature.i2c': 'אפיק I2C',
+  // Sprint 24 (M3): MicroPython machine.I2C outside the shape the simulator verified.
+  'build.feature.i2c_frequency':
+    'תדר שעון I2C ‏(freq=) שחסר, שאינו מספר שכתוב בקוד, או שגבוה מ-100 kHz (תדר השעון המדורג של PCF8574)',
+  'build.feature.i2c_bus': 'אפיק I2C שאינו אפיק החומרה 0, ‏I2C(0, …)',
+  'build.feature.i2c_pins': 'פיני I2C שאינם scl=Pin(22), ‏sda=Pin(21), כמספרים שכתובים בקוד',
+  'build.feature.i2c_option': 'אפשרות I2C שהסימולטור לא אימת (timeout=, ארגומנטים אחרים)',
+  'build.feature.i2c_operation':
+    'פעולת I2C ששום רכיב מדומה אינו עונה עליה (readfrom, ‏readfrom_into, ‏readfrom_mem, ‏writeto_mem, …), או שימוש עקיף ב-machine.I2C',
+  // Sprint 28 (L7)
+  'build.feature.dynamic_access':
+    'שמות שנמצאים רק בזמן ריצת התוכנית (getattr/‏setattr/‏hasattr עם שם מחושב, ‏vars()‎, ‏globals()‎, ‏locals()‎, ‏__dict__, ‏exec, ‏eval, ‏compile, ‏sys.modules), או שימוש במודול machine שלא בצורה machine.Name — הסימולטור לא יכול לבדוק למה הם מגיעים',
+  // Sprint 29: no serial input path in a session.
+  'build.feature.serial_input':
+    'קריאת קלט טורי (input()‎, ‏sys.stdin): המוניטור הטורי מציג רק את הפלט של התוכנית, ולכן התוכנית הייתה ממתינה לנצח',
+  // Sprint 28: the owner-only AI model pilot (DEV-Lab builds only).
+  'assist.pilot.heading': 'מודל AI (פיילוט לבעלים)',
+  'assist.pilot.loading': 'בודק את פיילוט מודל ה-AI…',
+  'assist.pilot.unavailable': 'פיילוט מודל ה-AI אינו זמין בשרת הזה.',
+  'assist.pilot.disabled': 'כבוי. שום דבר לא נשלח לשום מודל AI. הוא נשאר כבוי עד שהבעלים יאשר:',
+  'assist.pilot.notPilot': 'פיילוט מודל ה-AI מוגבל לבעלים.',
+  'assist.pilot.reason.no_provider': 'ספק AI ומודל (לא הוגדר אף אחד)',
+  'assist.pilot.reason.no_config': 'את הגדרות הפיילוט (לא הותקנו)',
+  'assist.pilot.reason.config_invalid': 'הגדרות פיילוט תקינות (ההגדרות המותקנות נדחו)',
+  'assist.pilot.reason.mock_not_allowed': 'ספק התבניות אינו מותר בשרת הזה',
+  'assist.pilot.reason.no_model': 'את המודל לשימוש',
+  'assist.pilot.reason.approval_missing.providerAndModel': 'את הספק ואת המודל',
+  'assist.pilot.reason.approval_missing.dataTerms': 'את תנאי שיתוף הנתונים והשמירה של הספק (בדיקה)',
+  'assist.pilot.reason.approval_missing.spendCap': 'תקרת הוצאה חודשית קשיחה',
+  'assist.pilot.reason.approval_missing.securityReview': 'את סקירת האבטחה של השילוב הזה',
+  'assist.pilot.reason.approval_missing.ownerActivation': 'הפעלה מפורשת של הבעלים',
+  'assist.pilot.reason.approval_mismatch.providerAndModel':
+    'את הספק והמודל המאושרים (המוגדרים שונים)',
+  'assist.pilot.reason.approval_invalid.spendCap': 'תקרת הוצאה תקינה',
+  'assist.pilot.reason.no_pricing': 'את מחירי המודל (לצורך מגבלות העלות)',
+  'assist.pilot.reason.no_credential': 'את פרטי הגישה לספק (מותקנים בשרת, אף פעם לא בדפדפן)',
+  'assist.pilot.reason.other': 'תנאי אחר (ראו את מצב השרת)',
+  'assist.pilot.model.live':
+    'מודל AI חי: {provider} {model}. הוא מסביר את הממצאים שלמעלה; הסימולטור נשאר מקור האמת.',
+  'assist.pilot.model.mock': 'ספק תבניות בשרת ({model}): אין מודל AI, שום דבר לא יוצא מ-TBI Lab.',
+  'assist.pilot.data.heading': 'מה היה נשלח',
+  'assist.pilot.data.sent': 'נשלח עם כל בקשה שתאשרו:',
+  'assist.pilot.data.never': 'אף פעם לא נשלח:',
+  'assist.pilot.data.instructions':
+    'הוראות קבועות (להסביר רק את הממצאים האלה, לצטט ראיות, בלי ערכים חדשים)',
+  'assist.pilot.data.locale': 'שפת הממשק שלכם',
+  'assist.pilot.data.findings': 'ממצאי הסימולטור (מחושבים שוב בשרת)',
+  'assist.pilot.data.circuit': 'המעגל: סוגי הרכיבים, הערכים והחיבורים שלהם',
+  'assist.pilot.data.checks_and_results': 'בדיקות חשמליות, תוצאות ודירוגים',
+  'assist.pilot.data.build_status': 'מצב הבנייה ועד 20 הודעות (בלי טקסט במירכאות)',
+  'assist.pilot.data.code_excerpts':
+    'עד 8 קטעי קוד קצרים (בלי הערות וטקסט במירכאות, סודות מוסתרים)',
+  'assist.pilot.data.capabilities_and_assumptions': 'יכולות סביבת הריצה והנחות המידול',
+  'assist.pilot.data.identity': 'מי אתם (בלי חשבון, שם או דוא״ל)',
+  'assist.pilot.data.project_name': 'שם הפרויקט',
+  'assist.pilot.data.net_names': 'שמות רשתות שכתבתם',
+  'assist.pilot.data.comments_and_strings': 'הערות וטקסט במירכאות מהקוד שלכם',
+  'assist.pilot.data.serial_output': 'פלט טורי',
+  'assist.pilot.data.screenshots': 'צילומי מסך',
+  'assist.pilot.data.whole_source_files': 'קובצי קוד שלמים',
+  'assist.pilot.preview': 'הצגת מה בדיוק היה נשלח',
+  'assist.pilot.preview.size': '{bytes} בתים, כ-{tokens} טוקנים (הערכה). שום דבר לא נשלח.',
+  'assist.pilot.consent':
+    'אני מסכים/ה לשלוח בדיוק את זה לספק ה-AI עבור הסבר אחד (גרסת הסכמה {version}).',
+  'assist.pilot.send': 'שליחה והסבר',
+  'assist.pilot.error.pilot_disabled': 'הפיילוט כבוי בשרת.',
+  'assist.pilot.error.not_pilot': 'פיילוט מודל ה-AI מוגבל לבעלים.',
+  'assist.pilot.error.consent_required': 'נדרשת הסכמה בגרסה הנוכחית.',
+  'assist.pilot.error.rate_limited': 'יותר מדי בקשות; המתינו דקה.',
+  'assist.pilot.error.daily_limit': 'הגעתם למגבלה היומית של הפיילוט.',
+  'assist.pilot.error.spend_cap': 'תקרת ההוצאה החודשית הייתה נחצית; שום דבר לא נשלח.',
+  'assist.pilot.error.token_ceiling': 'תקרת הטוקנים החודשית הייתה נחצית; שום דבר לא נשלח.',
+  'assist.pilot.error.provider_error': 'ספק ה-AI לא ענה תשובה שימושית. הממצאים שלמעלה לא הושפעו.',
+  'assist.pilot.error.invalid_response': 'תשובת המודל לא עברה את בדיקות הראיות ואינה מוצגת.',
+  'assist.pilot.error.timeout': 'ספק ה-AI לא ענה בזמן.',
+  'assist.pilot.error.other': 'הבקשה לא הושלמה.',
   'build.feature.spi': 'אפיק SPI',
   'build.feature.library': 'ספרייה {name}',
   'mcu.runs.program': 'מריץ את הקוד שלו. ערכו אותו בלשונית "קוד", בנו ואז הריצו.',
@@ -656,8 +1253,12 @@ export const he: Record<MessageKey, string> = {
     'הופעלו יותר מדי ריצות ESP32 בזמן קצר. נסו שוב בעוד כמה דקות. הפרויקט לא נפגע.',
   'sim.error.runtime.firmware_unavailable':
     'הקושחה שנבחרה אינה זמינה בשירות הריצה. הפרויקט לא נפגע.',
+  'sim.error.unmodelled':
+    'התוכנית התחילה להשתמש ב{feature}, שהסימולטור אינו ממדל. הסימולציה נעצרה ברגע זה, במקום להציג תוצאה מתה או קריסה.',
   'sim.error.runtime.unsupported_feature':
     'הקושחה משתמשת ביכולת שהסימולטור אינו תומך בה בגרסה זו (Pull-up/Pull-down פנימי או פסיקות GPIO).',
+  'sim.error.runtime.inverted_output':
+    'הקושחה הופכת את האות ביציאה של פין מחובר דרך מטריצת ה־GPIO. הסימולטור אינו מדמה יציאות הפוכות.',
   'sim.error.runtime.invalid_attachment': 'פין ESP32 מחובר אינו זמין לשימוש בסימולטור.',
   'sim.error.runtime.startup_failed':
     'לא ניתן היה להפעיל את ה-ESP32. הפרויקט לא נפגע. לחצו על הרצה כדי לנסות שוב.',
@@ -668,10 +1269,45 @@ export const he: Record<MessageKey, string> = {
   'sim.error.runtime.stalled': 'ה-ESP32 הפסיק להתקדם (למשל, קובץ הקושחה אינו עולה). הסשן הסתיים.',
   'sim.error.runtime.session_lost':
     'סשן ה-ESP32 אבד (החיבור נותק או שהסשן פג). הפרויקט בטוח; לחצו על הרצה לסשן חדש.',
+  'sim.runtime.expiring':
+    'סשן ה-ESP32 יסתיים בתוך דקה (סשן נמשך לכל היותר {minutes} דק׳). הפרויקט שמור; אחר כך לחצו על הרצה לסשן חדש.',
+  'sim.error.runtime.account_disabled':
+    'סשן ה-ESP32 הופסק כי הגישה ל-TBI Lab הסתיימה עבור החשבון הזה. הפרויקט שמור בדפדפן הזה.',
   'sim.error.runtime.session_expired':
     'סשן ה-ESP32 הגיע למשך המרבי שלו והסתיים. לחצו על הרצה לסשן חדש.',
   'sim.error.runtime.mirror_failed':
     'סשן ה-ESP32 הפעיל לא הצליח להחיל את השינוי שלכם ולכן נעצר. הפרויקט שומר על השינוי.',
+  'sim.error.runtime.command_refused':
+    'סביבת הריצה של ESP32 דחתה שינוי חי שאינה תומכת בו (ייתכן שהיא ישנה מהאפליקציה), ולכן הסשן נעצר. הפרויקט שומר את השינוי.',
+  'sim.error.runtime.commands_rate_limited':
+    'שינויים חיים נשלחו מהר יותר ממה שסביבת הריצה של ESP32 מקבלת, ולכן הסשן נעצר. הפרויקט שומר את השינוי; לחצו Run כדי להמשיך.',
+  'sim.error.runtime.pwm_unsupported':
+    'נעשה שימוש ביציאת PWM באופן שהסימולטור אינו יכול לשחזר נאמנה, והסשן הסתיים.',
+  'sim.error.pwm.pwm_duty_zero_unverified':
+    '{pins} מוציא PWM במחזור עבודה 0, והמעגל מגיב לפין הזה ({components}). הרמה ש־ESP32 אמיתי מוציא במחזור עבודה 0 עדיין לא אומתה, ולכן הסימולטור עוצר במקום לנחש. לכיבוי היציאה, השתמשו ב־ledcDetach()‎ ו־digitalWrite(pin, LOW)‎.',
+  'sim.error.pwm.pwm_unsupported_mode': '{pins} משתמש במצב LEDC שהסימולטור אינו תומך בו: {why}.',
+  'sim.error.pwm.pwm_load_unsupported':
+    'PWM ב־{pins} מגיע אל {components}, שאינו מגיב מיד לאות ממותג. רק נגדים, נורות LED, דיודות ומתגים ניתנים למיצוע נאמן.',
+  'sim.error.pwm.pwm_input_unsupported':
+    'PWM ב־{pins} מגיע אל כניסת ה־ESP32 ‏{inputs}. קריאת אות PWM אינה מדומה.',
+  'sim.error.pwm.pwm_outputs_interact':
+    'יציאות ה־PWM ‏{pins} חולקות עומס ({components}). ההשפעה המשולבת שלהן תלויה בחפיפה בין צורות הגל, וזו אינה מדומה.',
+  'sim.error.pwm.pwm_supply_limited':
+    'ה־PWM ב־{pins} מביא את {components} למגבלת הזרם שלו בחלק מכל מחזור. האופן שבו ספק מעבדה מווסת עומס ממותג בגבול הזרם אינו מדומה, ולכן הסשן נעצר. העלו את מגבלת הזרם של הספק או הקטינו את העומס.',
+  'sim.error.pwm.pwm_rate_exceeded':
+    'הסקיצה משנה לעיתים קרובות כל כך אילו מבין {pins} ממותגים (או נעצרים על 0% או 100%), שהסימולטור היה צריך יותר מ־1000 פתרונות מעגל לשנייה מדומה, שזו המגבלה שלו. הסשן נעצר במקום להאט או לקרב. שינוי מחזור העבודה בלבד של יציאת PWM פעילה אינו עולה דבר; העבירו יציאות בין PWM לרמה קבועה בתדירות נמוכה יותר.',
+  'sim.pwm.why.open-drain': 'יציאת PWM מסוג Open-drain',
+  'sim.pwm.why.inverted': 'יציאת PWM הפוכה (היפוך במטריצת ה־GPIO)',
+  'sim.pwm.why.low-speed': 'ערוץ איטי (יותר מ־8 ערוצי PWM)',
+  'sim.pwm.why.interrupt': 'פסיקות LEDC',
+  'sim.pwm.why.dither': 'מחזור עבודה שברי (Dithering)',
+  'sim.pwm.why.fade': 'עמעום חומרתי',
+  'sim.pwm.why.hpoint': 'היסט מופע שמגיע לסוף המחזור',
+  'sim.pwm.why.timer-reset': 'הטיימר שלו מוחזק באיפוס',
+  'sim.pwm.why.timer-paused': 'הטיימר שלו מושהה',
+  'sim.pwm.why.timer-resolution': 'רזולוציית טיימר מחוץ לטווח 1 עד 20 ביט',
+  'sim.pwm.why.timer-apb-clock': 'שעון מעבד מתחת ל־80 MHz, שמשנה את שעון ה־PWM באמצע מחזור',
+  'sim.pwm.why.timer-divider': 'מחלק טיימר קטן מ־1',
   'sim.error.runtime.protocol_error':
     'שירות הריצה שלח תשובה בלתי צפויה והסשן הסתיים. הפרויקט לא נפגע.',
   'mcu.heading': 'ריצת ESP32',
@@ -690,7 +1326,7 @@ export const he: Record<MessageKey, string> = {
   'mcu.caveat.power': 'פין הזנה',
   'mcu.caveat.enable': 'הפעלת השבב: איפוס אינו מדומה',
   'mcu.note.unsupported':
-    'לא מדומה בגרסה זו: Pull-up/Pull-down פנימי, פסיקות GPIO, איפוס שבב, אנלוגי, PWM, Wi-Fi.',
+    'לא מדומה בגרסה זו: Pull-up/Pull-down פנימי, פסיקות GPIO, איפוס שבב, אנלוגי, Wi-Fi.',
   'mcu.level.high': 'HIGH',
   'mcu.level.low': 'LOW',
   'mcu.mode.output': 'יציאה',
@@ -710,10 +1346,29 @@ export const he: Record<MessageKey, string> = {
   'mcu.terminal.state.stopping': 'עוצר…',
   'mcu.terminal.state.failed': 'הסשן נכשל',
   'mcu.terminal.state.ended': 'הסשן הסתיים (הפלט האחרון)',
+  // Sprint 24 (M1): the end of a MicroPython program, read from its serial output.
+  'mcu.programEnd.errorLine': 'התוכנית שלך נעצרה עם שגיאה בשורה {line}.',
+  'mcu.programEnd.error': 'התוכנית שלך נעצרה עם שגיאה.',
+  'mcu.programEnd.finished': 'התוכנית שלך הסתיימה.',
+  'mcu.programEnd.repl':
+    'הלוח ממתין כעת בשורת הפקודה של MicroPython ‏(REPL); הסשן ממשיך לרוץ עד שתעצור אותו.',
+  'mcu.programEnd.derived':
+    'זוהה מתוך הפלט הטורי (ה-traceback ושורת הפקודה של MicroPython עצמו). תוכנית שמדפיסה בעצמה את אותו טקסט תיראה אותו דבר.',
   'mcu.warnings.heading': 'אזהרות ריצה',
   'mcu.warning.output_on_input_only_pad':
     'GPIO{gpio} הוא קלט בלבד: הקושחה ניסתה להפעיל אותו כיציאה, והוא נשאר קלט.',
   'mcu.warning.transient_rejected': 'לחיצה על לחצן לא נמסרה לסשן הפעיל.',
+  // Sprint 13 OS-09: I2C diagnostics, specific and actionable.
+  'mcu.warning.i2c_wiring.supply_pin':
+    '{component}: {gpio} ({line}) מחובר לפין {terminal} של המודול ולא ל־{line}. בדקו את פיני המודול: ייתכן ש־VCC ו־{line} הוחלפו. המודול אינו מגיב.',
+  'mcu.warning.i2c_wiring.swapped':
+    '{component}: ‏SDA ו־SCL הוחלפו ({sda} מחובר ל־SCL, {scl} ל־SDA). המודול אינו מגיב.',
+  'mcu.warning.i2c_no_pullup':
+    '{component}: ל־{lines} אין נגד Pull-up, ולכן הקו אינו נח במצב גבוה. הוסיפו Pull-up לכל קו.',
+  'mcu.warning.i2c_logic_level':
+    '{component}: {lines} נח ברמה שהמודול או ה־ESP32 אינם קוראים כגבוהה. משכו את הקווים למתח ששניהם מקבלים (סף הכניסה של המודול הוא ⁦0.7 ×⁩ מתח האספקה שלו).',
+  'mcu.warning.i2c_rate_exceeded':
+    'תעבורת ה־I2C חורגת ממה שהסימולטור מעבד בשנייה מדומה; העברות נוספות אינן מאושרות.',
   'mcu.warning.generic': 'אזהרת ריצה: {code}',
   'mcu.connection.reconnecting': 'מתחבר מחדש לסשן ה-ESP32…',
   'mcu.resync': '{count} עדכוני ריצה לא התקבלו בזמן ההתחברות מחדש. הערכים יתעדכנו בשינוי הבא.',
@@ -727,6 +1382,83 @@ export const he: Record<MessageKey, string> = {
   'example.esp32-bench.title': 'שולחן ESP32: כניסות ונוריות חיווי',
   'example.esp32-bench.summary':
     'המעגל של מתג בכניסה ו-LED ביציאה על שולחן עבודה מלא יותר: נורית LED אדומה המונעת מ-GPIO4, ונוריות חיווי צהובה (מאחורי דיודת 1N4148) וירוקה המוזנות ישירות מספק ה-‏3.3 V. רץ בשירות הריצה של ESP32.',
+  'example.esp32-motion-relay.title': 'ESP32: אזעקת תנועה דרך ממסר',
+  'example.esp32-motion-relay.summary':
+    'חיישן תנועה PIR על GPIO34; הקושחה מעתיקה אותו ל-GPIO4, שמפעיל טרנזיסטור 2N3904 וממסר ‏5 V (עם דיודת Flyback). מגע הממסר מפעיל את הזמזם ומדליק את נורית האזעקה. לחצו על כיפת החיישן בזמן ריצה כדי ליצור תנועה מולו. רץ בשירות הריצה של ESP32.',
+  'example.esp32-night-light.title': 'ESP32: מנורת לילה RGB עם חיישן אור',
+  'example.esp32-night-light.summary':
+    'מחלק מתח עם חיישן אור על GPIO34, הנקרא כרמה דיגיטלית (ללא ADC): בחושך (מתחת לכ-‏3 lx) הוא נקרא HIGH והקושחה מדליקה את שלושת ערוצי ה-RGB דרך GPIO4: אור לבן. באור (מעל כ-‏110 lx) הוא נקרא LOW; בין הספים ה-ESP32 אינו מבטיח רמה (לא מוגדרת היסטרזיס), ולכן קריאה שם עוצרת את ההרצה. שנו את עוצמת האור בחלונית המאפיינים בזמן ריצה. רץ בשירות הריצה של ESP32.',
+  'example.esp32-distance-alarm.title': 'ESP32: התראת מרחק אולטרסונית',
+  'example.esp32-distance-alarm.summary':
+    'חיישן HC-SR04 מודד את המרחק למטרה: GPIO5 שולח פולס הפעלה של 10 מיקרו-שניות, ופולס ההד חוזר אל GPIO18 דרך מחלק מתח של 1 kΩ / 2 kΩ (המודול מוזן מ-‏5 V). הסקיצה מדפיסה את המרחק (רוחב הפולס במיקרו-שניות חלקי 58 = ס"מ); במרחק קטן מ-‏20 ס"מ, GPIO2 מדליק את נורית ה-LED האדומה. שנו את המרחק למטרה בחלונית המאפיינים בזמן ריצה. רץ בשירות הריצה של ESP32.',
+  'example.esp32-thermo-hygrometer.title': 'ESP32: טמפרטורה ולחות (DHT22)',
+  'example.esp32-thermo-hygrometer.summary':
+    'חיישן DHT22 / AM2302 על GPIO4, עם נגד Pull-up של 10 kΩ שקו הנתונים היחיד שלו דורש, נקרא בשגרה קצרה ללא ספרייה לפי התזמון שבגיליון הנתונים. הפלט הטורי מציג את הטמפרטורה ואת הלחות היחסית כל 2.5 שניות. שנו את שתיהן בחלונית המאפיינים בזמן ריצה. רץ בשירות הריצה של ESP32.',
+  'example.esp32-led-fade.title': 'ESP32: עמעום נורת LED ב־PWM',
+  'example.esp32-led-fade.summary':
+    'analogWrite מניע את GPIO18 באות PWM של 1 kHz; הזרם הממוצע של ה־LED, ואיתו הבהירות, עוקבים אחר מחזור העבודה. העמעום נשאר בין 1 ל־255: מחזור עבודה 0 עדיין אינו מדומה.',
+  'example.esp32-logic-and.title': 'ESP32: שער AND עם קריאה חוזרת',
+  'example.esp32-logic-and.summary':
+    'מדומה חלקית: הדוגמה מראה שני גבולות של גיליונות הנתונים. יציאת ESP32 ולחצן מזינים שער AND מדגם SN74LVC1G08 שמוזן ב-3.0 V (לשתי הכניסות נגדי pull-down של 10 kΩ), שמדליק נורית LED ונקרא חזרה על ידי ה-ESP32. לפני שהתוכנית מתחילה, וכל עוד GPIO18 ב-LOW, המעגל מדומה (הפין ב-LOW צורך לכל היותר 38 µA מנגד ה-pull-down). כש-GPIO18 ב-HIGH הוא מספק כ-330 µA לנגד ה-pull-down של 10 kΩ — יותר מ-100 µA, הגבול שעד אליו הסימולטור מסתמך על רמת יציאה של ESP32 (החלטת בעלים S30-L1) — ולכן המצב הזה נדחה בשמו; ועם נורית ה-LED על היציאה השער מבטיח רק V_OH ≥ 2.4 V, מתחת לסף הקריאה החוזרת. דוגמת המשוב הלוגי מראה את התכנון שעובד: pull-down של 100 kΩ וקריאה חוזרת מיציאת שער שאינה נושאת עומס.',
+  'example.esp32-logic-quad-and.title': 'ESP32: רכיב ארבעה שערי AND שמדליק נוריות',
+  'example.esp32-logic-quad-and.summary':
+    'לא מדומה: הדוגמה מראה גבול של גיליונות הנתונים. שתי יציאות של ESP32 ולחצן מזינים SN74LVC08A (ארבעה שערי AND במארז אחד, הזנה משותפת אחת) שמוזן ב-3.0 V; שער 1 אמור להדליק נורית ושער 2 אמור לשרשר אותו עם הלחצן. גיליון הנתונים של SN74LVC08A חוסם את זרם ההזנה I_CC רק ב-V_CC = 3.6 V כשכל הכניסות ב-V_CC או ב-GND (§5.7), ואת זרם הזליגה של הכניסות רק ב-3.6 V. אף אחד מהתנאים אינו מתקיים כאן (ויציאה של ESP32 לעולם אינה בדיוק באחד מפסי ההזנה), ולכן הרמות של הכניסות המוחזקות דרך נגדי ה-pull-down ומגבלת הזרם של ספק המעבדה אינן מובטחות: הסימולטור דוחה את המעגל בשם הסיבה בכל מצב ואינו מציג טבלת אמת.',
+  // Sprint 20 logic examples.
+  'example.logic-and-switches.title': 'לוגיקה: שער AND עם שני מתגים',
+  'example.logic-and-switches.summary':
+    'שני מתגים מזינים שער AND מדגם SN74LVC1G08 שמוזן ב-3.0 V מ-PSU2; נורית ה-LED נדלקת רק כששניהם סגורים. המתגים לוקחים את רמת ה-HIGH מ-PSU1 המכוון ל-5.5 V, ולכל כניסה נגד pull-down של 150 Ω, כך שכל כניסה נמצאת בדיוק ב-5.5 V או ב-GND (סבולת המנוע 1 mV, הנחה הנדסית; זרם הזליגה מזיז כניסה פתוחה לכל היותר 0.75 mV): תנאי הבדיקה של גיליון הנתונים עצמו לזרם ההזנה I_CC של השער (§5.5), החסם ההדוק ביותר שלו (10 µA). גם תכנון פשוט יותר מובטח: ספק אחד של 3.3 V ונגדי pull-down של 10 kΩ שומרים כל כניסה בטווח 0.6 V מ-GND או מ-V_CC (‏I_CC חסום על ידי ΔI_CC, ראו את מחבר החצי). הסתייגויות: התנגדות המגע של מתג אמיתי ב-36.7 mA עלולה להזיז כניסה סגורה ביותר מ-1 mV, ו-5.5 V הוא מתח הכניסה המרבי המומלץ V_I (§5.3), ללא מרווח מעליו. נגד פריקה של 10 kΩ על PSU2 שומר שהספק יספק תמיד לפחות 300 µA: ספק מעבדה אינו יכול לבלוע זרם, וכאשר Y במצב LOW זרם הזליגה של הכניסות עלול לחזור אליו. בחרו בשער כדי לראות את טבלת האמת שלו, את הרמה והמתח של כל פין, ולהחליף את הכניסות מהמפקח.',
+  'example.logic-cascade.title': 'לוגיקה: שערים בשרשור, (A·B·C) + D',
+  'example.logic-cascade.summary':
+    'לא מדומה: הדוגמה מראה גבול של גיליון הנתונים של SN74LVC08A. ארבעה מתגים עם נגדי pull-down; בתוך מארז SN74LVC08A אחד, שער 1 יוצר A·B ומזין את שער 2, שמוסיף את C; שער OR מדגם SN74LVC1G32 משלב את זה עם מתג D ומזין את הנורית, הכול ב-3.0 V. גיליון הנתונים של SN74LVC08A נותן את זרם ההזנה I_CC רק ב-V_CC = 3.6 V ורק כשאין זרם יציאה (I_O = 0), ואת זליגת הכניסה רק ב-3.6 V; כאן היציאות שלו מזינות כניסות של שערים אחרים (הזליגה שלהן היא עומס) ב-3.0 V, ולכן זרם ההזנה שלו, ומגבלת הזרם של הספק, אינם מובטחים: הסימולטור דוחה את המעגל בשמו בכל מצב של המתגים. לשערים בודדים (SN74LVC1G…) יש כלל זרם הזנה ליציאה נושאת עומס, כמו במחבר החצי ובמחבר המלא שבנויים מהם.',
+  'example.esp32-logic-override.title': 'ESP32: שער OR עם עקיפה ידנית',
+  'example.esp32-logic-override.summary':
+    'מדומה חלקית: הדוגמה מראה שני גבולות של גיליונות הנתונים. יציאת ESP32 ומתג מזינים שער OR מדגם SN74LVC1G32 שמוזן ב-3.0 V (לשתי הכניסות נגדי pull-down של 10 kΩ), שמדליק נורית LED ונקרא חזרה על ידי ה-ESP32. כשהמתג פתוח המעגל מדומה, לפני שהתוכנית מתחילה וכל עוד GPIO18 ב-LOW. כש-GPIO18 ב-HIGH הוא מספק כ-330 µA לנגד ה-pull-down של 10 kΩ — יותר מ-100 µA, הגבול שעד אליו הסימולטור מסתמך על רמת יציאה של ESP32 (החלטת בעלים S30-L1) — ועם נורית ה-LED על היציאה רמת ה-HIGH של השער מובטחת רק מ-2.4 V, מתחת לסף הקריאה החוזרת: המצבים האלה נדחים בשמם. דוגמת המשוב הלוגי מראה את התכנון שעובד.',
+  // Sprint 24 (M1): MicroPython examples.
+  'example.mpy-blink.title': 'MicroPython: הבהוב נורית LED',
+  'example.mpy-blink.summary':
+    'אותו מעגל כמו בהבהוב של Arduino, מתוכנת ב-MicroPython: ‏main.py מגדיר את GPIO2 כיציאה ומדליק ומכבה את הנורית האדומה (220 Ω אל GND) כל 500 ms באמצעות Pin.value().',
+  'example.esp32-pot-threshold.title': 'ESP32: פוטנציומטר ככניסה דיגיטלית',
+  'example.esp32-pot-threshold.summary':
+    '[[potentiometer]] של ⁦10 kΩ⁩ על ⁦3.3 V⁩ מזין את GPIO34, שתוכנית ה-Arduino קוראת כרמה דיגיטלית: LOW ב-⁦0.825 V⁩ ומטה, HIGH ב-⁦2.475 V⁩ ומעלה. קריאה בתחום שביניהם עוצרת את ההרצה: גיליון הנתונים אינו מבטיח שם רמה ואינו מגדיר היסטרזיס. ‏GPIO4 מדליק את הנורית כשהקריאה HIGH. סובבו את ה[[wiper]] בזמן הריצה. כניסה אנלוגית (⁦analogRead⁩) אינה נתמכת. רץ על שירות זמן הריצה של ESP32.',
+  'example.mpy-pot-threshold.title': 'MicroPython: פוטנציומטר ככניסה דיגיטלית',
+  'example.mpy-pot-threshold.summary':
+    'אותו מעגל [[potentiometer]] ב-MicroPython: ‏⁦Pin(34, Pin.IN).value()⁩ קורא את ה[[wiper]] כ-0 ב-⁦0.825 V⁩ ומטה וכ-1 ב-⁦2.475 V⁩ ומעלה; קריאה בתחום שביניהם עוצרת את ההרצה (גיליון הנתונים אינו מבטיח שם רמה ואינו מגדיר היסטרזיס); ‏GPIO4 מדליק את הנורית. סובבו את ה[[wiper]] בזמן הריצה. ‏⁦machine.ADC⁩ אינו נתמך. רץ על שירות זמן הריצה של ESP32.',
+  'example.logic-half-adder.title': 'לוגיקה: מחבר חצי (ארבעה שערים)',
+  'example.logic-half-adder.summary':
+    'מתחילים. שני מתגים מחברים שתי סיביות בעזרת ארבעה שערים בודדים ב-3.3 V: שער OR ושער NAND של A ו-B מזינים שער AND שנותן את הסכום S = A ⊕ B; שער AND שני נותן את הנשא C = A · B; כל אחד מדליק נורית LED דרך 330 Ω. נגד pull-down של 10 kΩ מחזיק כניסה של מתג פתוח ב-LOW. בחרו שער כדי לראות את טבלת האמת שלו ואת הרמות החיות. למה לא רכיב XOR? גיליון הנתונים של SN74LVC1G86 נותן את זרם ההזנה שלו רק ללא זרם יציאה, ולכן XOR נושא עומס אינו מדומה; בגיליונות של השערים האלה מופיע הכלל ליציאה נושאת עומס. נסו: להוסיף מתג שלישי ומחבר חצי נוסף כדי לבנות מחבר מלא.',
+  'example.logic-full-adder.title': 'לוגיקה: מחבר מלא של סיבית אחת (שבעה שערים)',
+  'example.logic-full-adder.summary':
+    'בינוני: ארבעה שלבים של לוגיקה אמיתית ב-3.3 V. המתגים A, ‏B ונשא הכניסה Cin (נגדי pull-down של 10 kΩ). שער OR, שער NAND ושער AND יוצרים X = A ⊕ B; אותם שלושה שערים על X ו-Cin יוצרים את הסכום S = X ⊕ Cin; שער NAND נוסף משלב את שני שערי ה-NAND לנשא היציאה Cout = A · B + X · Cin. הנוריות מציגות את S ואת Cout: יחד הן סופרות את A + B + Cin בבינארי. בחרו שער כלשהו כדי לראות את טבלת האמת שלו ואת הרמה החיה של הכניסות והיציאה שלו — כולל X ויציאות ה-NAND. נסו: לשרשר מחבר מלא שני למחבר של 2 סיביות.',
+  'example.esp32-logic-feedback.title': 'ESP32: ‏משוב לוגי וממסר',
+  'example.esp32-logic-feedback.summary':
+    'מתקדם: קושחה, שערים לוגיים ושלב הספק יחד. ‏GPIO18 מעלה בקשה (REQUEST) אל שער AND ‏SN74LVC1G08 ב-3.0 V (נגד pull-down של 100 kΩ מחזיק אותה ב-LOW עד שהסקיצה מזינה אותה); מתג ההרשאה (PERMIT) הוא הכניסה השנייה. הסקיצה קוראת את השער בחזרה ב-GPIO4 מיד אחרי כל שינוי ומחליטה: GRANTED (השער ענה HIGH) או DENIED (ההרשאה פתוחה), ואז מורידה את הבקשה ובודקת שהשער עוקב. השער מזין שער AND שני, שמפעיל 2N3904 וממסר 5 V; מגע הממסר מדליק את הנורית. הסימולטור מסתמך על רמת היציאה של ה-ESP32 רק עד 100 µA (החלטת בעלים S30-L1): ב-HIGH הוא נושא לכל היותר 38 µA ‏(33 µA לנגד ה-100 kΩ ועוד 5 µA זליגת הכניסה של השער). נסו: פתחו את מתג ההרשאה בזמן הריצה, או החליפו את ה-pull-down ל-22 kΩ וקראו מדוע זה נדחה.',
+  'example.mpy-logic-feedback.title': 'MicroPython: ‏משוב לוגי וממסר',
+  'example.mpy-logic-feedback.summary':
+    'מתקדם: אותו מעגל כמו ‎“ESP32: משוב לוגי וממסר”‎, ב-MicroPython. ‏main.py מעלה בקשה ב-GPIO18 אל שער AND ‏SN74LVC1G08 ב-3.0 V ‏(pull-down של 100 kΩ), קורא את השער בחזרה ב-GPIO4 מיד אחר כך ומדפיס GRANTED או DENIED (מתג ההרשאה), ואז מוריד את הבקשה ובודק שהשער עוקב. שער AND שני מפעיל 2N3904 וממסר 5 V, שהמגע שלו מדליק את הנורית. הסימולטור מסתמך על רמת היציאה של ה-ESP32 רק עד 100 µA (החלטת בעלים S30-L1). נסו: פתחו את מתג ההרשאה בזמן הריצה, או החליפו את ה-pull-down ל-22 kΩ וקראו מדוע זה נדחה.',
+  'example.mpy-adder-monitor.title': 'MicroPython: ‏ESP32 עוקב אחרי מחבר חצי לוגי',
+  'example.mpy-adder-monitor.summary':
+    'מתקדמים: מתגים, שערים לוגיים וקושחה יחד. מחבר החצי (ארבעה שערים בודדים ב-3.3 V: ‏S = A ⊕ B משערי OR, ‏NAND ו-AND; נשא C = A · B) בנוי משערים אמיתיים; ה-ESP32 רק קורא אותו — את המתגים ב-GPIO32/33, ואת S ו-C ב-GPIO34/35 (כניסות בלבד) — ו-main.py מדפיס כל מצב חדש, בודק אותו מול A + B, ומאיר את הנורית ב-GPIO18 ‏(PWM, ‏1 kHz) חזק יותר לסכום גדול יותר. יציאות השערים אינן נושאות עומס אחר, ולכן רמת ה-HIGH שלהן מובטחת מעל סף הכניסה של ה-ESP32. נסו: להוסיף מחבר מלא, או לספור כמה פעמים מופיע כל סכום.',
+  'example.mpy-button.title': 'MicroPython: לחצן מדליק נורית LED',
+  'example.mpy-button.summary':
+    'החזיקו את הלחצן: ‏3.3 V מגיעים ל-GPIO34 דרך 1 kΩ, ונגד pull-down של 10 kΩ מחזיק אותו ב-LOW כשהלחצן משוחרר (ל-GPIO34 אין pull פנימי). ‏main.py קורא אותו באמצעות Pin.IN כל 10 ms ומעתיק אותו ל-GPIO4, שמזין את הנורית האדומה דרך 220 Ω.',
+  'example.mpy-fade.title': 'MicroPython: עמעום נורית LED ב-PWM',
+  'example.mpy-fade.summary':
+    'machine.PWM מזין את GPIO18 ב-1 kHz; ‏main.py מעלה את duty_u16 מ-2048 עד 63488 ובחזרה (לעולם לא 0). הזרם הממוצע של הנורית עוקב אחרי ה-duty, על המעגל של העמעום ב-Arduino.',
+  'example.mpy-lcd-hello.title': 'MicroPython: שלום על צג LCD ב-I2C',
+  'example.esp32-lcd-library.title': 'ESP32: ‏LCD עם ספרייה מנוהלת (שלושה קבצים)',
+  'example.esp32-lcd-library.summary':
+    'מעגל ה-LCD בחיבור I2C עם תוכנית Arduino בשלושה קבצים: ⁦sketch.ino⁩ קורא לפונקציות שמוצהרות ב-⁦display.h⁩ וממומשות ב-⁦display.cpp⁩, שמשתמש בספרייה המנוהלת ⁦LiquidCrystal_PCF8574 2.2.0⁩. הצבת התצוגה הפכה את הספרייה לזמינה: לא מותקן דבר. פתחו את הקוד כדי לראות את הקבצים ואת רשימת הספריות המנוהלות. רץ על שירות זמן הריצה של ESP32.',
+  'example.mpy-lcd-library.title': 'MicroPython: ‏LCD עם ספרייה מנוהלת (שני קבצים)',
+  'example.mpy-lcd-library.summary':
+    'אותו מעגל ב-MicroPython: ⁦main.py⁩ מייבא את ⁦display.py⁩, שמשתמש בספרייה המנוהלת ⁦python_lcd⁩ ‏(⁦I2cLcd⁩). הבנייה מציבה את הספרייה ב-⁦/lib⁩ של המפרש ואת מודולי התוכנית לצד ⁦main.py⁩; המפרש האמיתי מייבא אותם. רץ על שירות זמן הריצה של ESP32.',
+  'example.mpy-lcd-hello.summary':
+    'המעגל של דוגמת ה-LCD של Arduino, מתוכנת ב-MicroPython: ‏machine.I2C על ערוץ 0 (SCL ב-GPIO22, ‏SDA ב-GPIO21) ב-100 kHz, תדר השעון המדורג של PCF8574, ודרייבר HD44780 קטן שנכתב ב-main.py מציגים “Hello, ESP32!” ואת זמן הפעולה. המודול מוזן ב-4.5 V; שני נגדי ה-pull-up של 4.7 kΩ מחוברים ל-3.3 V.',
+  'example.esp32-servo-sweep.title': 'ESP32: סריקה של סרוו SG90 ב־PWM',
+  'example.esp32-servo-sweep.summary':
+    'אות LEDC של 50 Hz ב־GPIO18 עם פולסים של 1.0,‏ 2.0 ו־1.5 ms מזיז את הסרוו ל־0°,‏ 180° ו־90°. הסרוו מוזן מספק המעבדה של 5 V.',
+  'example.esp32-lcd-hello.title': 'ESP32: שלום על צג LCD ‏16×2 ב-I2C',
+  'example.esp32-lcd-hello.summary':
+    'הסקיצה מפעילה את הצג דרך מתאם ה-I2C שלו (PCF8574) בכתיבות Wire פשוטות: שורה 1 אומרת שלום, ושורה 2 סופרת שניות. המודול מוזן מ-‏4.5 V כדי שנגדי ה-Pull-up של הקו (שני נגדים של 4.7 kΩ לספק שני של 3.3 V) ייקראו HIGH בכניסותיו (‏0.7 × 4.5 V = 3.15 V). רץ בשירות הריצה של ESP32.',
   'palette.group.mcu': 'בקר (מיקרו-בקר)',
   // Board pin silkscreen names (Sprint 6): technical tokens, verbatim in every locale.
   'pin.gpio36': 'VP',
@@ -754,4 +1486,626 @@ export const he: Record<MessageKey, string> = {
   'pin.gpio0': 'IO0',
   'pin.gpio2': 'IO2',
   'pin.gpio15': 'IO15',
+  // Sprint 13 H1: what runs on the ESP32 (packages/domain/src/capabilities.ts).
+  'menu.capabilities': 'מה רץ על ה־ESP32',
+  'capabilities.title': 'מה רץ על ה־ESP32 ב־TBI Lab',
+  'capabilities.intro':
+    'TBI Lab מריץ את הסקיצ׳ שלכם על ESP32 קלאסי מדומה (ESP32 DevKitC, ‏WROOM-32) ומדמה את המעגל סביבו. הרשימה מפרטת בדיוק מה מדומה, מה מוגבל ומה נדחה. יכולת שנדחית לעולם אינה רצה בשקט: המוצר מודיע על כך לפני הרצה.',
+  'capabilities.close': 'סגירה',
+  'capabilities.learnMore': 'מה רץ על ה־ESP32?',
+  'capabilities.section.firmware': 'יכולות קושחה',
+  'capabilities.section.parts': 'רכיבים לצד ESP32',
+  'capabilities.section.timing': 'תזמון',
+  'capabilities.section.limits': 'מגבלות השירות המשותף',
+  'capabilities.status.supported': 'נתמך',
+  'capabilities.status.limited': 'נתמך עם מגבלות',
+  'capabilities.status.unsupported': 'לא נתמך',
+  'capabilities.facility.digital_io.name': 'כניסות ויציאות דיגיטליות',
+  'capabilities.facility.digital_io.body':
+    'pinMode,‏ digitalWrite ו־digitalRead על הפינים שתרשים הלוח מסמן כזמינים. הרמות והזרמים מגיעים מסימולציית המעגל.',
+  'capabilities.facility.serial.name': 'צג טורי (UART0)',
+  'capabilities.facility.serial.body':
+    'Serial.print ו־Serial.read דרך מסוף ה־ESP32. הטקסט מדויק; תזמון הביטים בקו אינו מדומה.',
+  'capabilities.facility.preferences.name': 'Preferences (זיכרון בלתי נדיף)',
+  'capabilities.facility.preferences.body':
+    'ספריית Preferences פועלת בתוך הרצה אחת. דבר אינו נשמר אחרי עצירה.',
+  'capabilities.facility.i2c.name': 'אפיק I2C ‏(Wire)',
+  'capabilities.facility.i2c.body':
+    'Wire כבקר מול רכיבי ה־I2C הנתמכים, עם כתובות, אישורים (ACK) ורמות Pull-up אמיתיים. משך כל העברה באפיק אינו מדומה.',
+  'capabilities.facility.timing.name': 'millis,‏ micros,‏ delay,‏ delayMicroseconds,‏ pulseIn',
+  'capabilities.facility.timing.body': 'רצים בזמן מדומה. המגבלות המדויקות מפורטות בסעיף תזמון.',
+  'capabilities.facility.dual_core.name': 'שתי ליבות המעבד (משימות FreeRTOS)',
+  'capabilities.facility.dual_core.body':
+    'משימות רצות על שתי הליבות. סקיצ׳ שמעסיק את ליבה 0 ברציפות עלול לעכב קוד בליבה 1 עד כ־1 ms, ולכן תזמון ברמת מיקרו־שניות אינו נתמך בסקיצ׳ים כאלה.',
+  'capabilities.facility.pwm.name': 'יציאת PWM / LEDC ‏(analogWrite,‏ ledcWrite)',
+  'capabilities.facility.pwm.body':
+    'ערוצי LEDC מהירים, עם תדר ומחזור עבודה מדויקים. המעגל רואה את הממוצע בזמן (נורות LED מתעמעמות; בדיקת הדירוגים משתמשת בזרם השיא). נדחה בהרצה, עם הסיבה: מחזור עבודה 0 שמניע עומס (הרמה שלו בחומרה אמיתית עדיין לא אומתה), עומסים שאינם מגיבים מיד (רק נגדים, נורות LED, דיודות ומתגים מגיבים כך), כניסת ESP32 שקוראת את אות ה־PWM, ויותר מ־8 ערוצים.',
+  'capabilities.facility.pwm_advanced.name':
+    'עמעום חומרתי והיפוך יציאה של LEDC ‏(ledcFade,‏ ledcOutputInvert)',
+  'capabilities.facility.pwm_advanced.body':
+    'אינם מדומים. סקיצ׳ שמשתמש בהם נדחה בבנייה. לעמעום, קראו ל־ledcWrite בצעדים.',
+  'capabilities.facility.interrupt.name': 'פסיקות GPIO ‏(attachInterrupt)',
+  'capabilities.facility.interrupt.body': 'אינן מדומות. במקומן, קראו את הפין ב־digitalRead.',
+  'capabilities.facility.internal_pull.name':
+    'Pull-up / Pull-down פנימיים (INPUT_PULLUP,‏ INPUT_PULLDOWN)',
+  'capabilities.facility.internal_pull.body': 'אינם מדומים. הוסיפו נגד חיצוני למעגל.',
+  'capabilities.facility.adc.name': 'כניסה אנלוגית (analogRead,‏ ADC)',
+  'capabilities.facility.adc.body': 'אינה מדומה. חיישני אור וחיישנים אחרים נקראים כרמות דיגיטליות.',
+  'capabilities.facility.dac.name': 'יציאה אנלוגית (dacWrite)',
+  'capabilities.facility.dac.body': 'אינה מדומה.',
+  'capabilities.facility.touch.name': 'חישת מגע',
+  'capabilities.facility.touch.body': 'אינה מדומה.',
+  'capabilities.facility.spi.name': 'אפיק SPI',
+  'capabilities.facility.spi.body': 'אינו מדומה.',
+  'capabilities.facility.wifi.name': 'רשת Wi-Fi',
+  'capabilities.facility.wifi.body': 'אינה מדומה. סקיצ׳ים שמשתמשים ב־Wi-Fi נדחים לפני הרצה.',
+  'capabilities.facility.bluetooth.name': 'Bluetooth',
+  'capabilities.facility.bluetooth.body': 'אינו מדומה.',
+  'capabilities.facility.sleep.name': 'מצבי שינה',
+  'capabilities.facility.sleep.body': 'אינם מדומים.',
+  'capabilities.facility.drive_strength.name': 'עוצמת ההנעה של פין (gpio_set_drive_capability)',
+  'capabilities.facility.drive_strength.body':
+    'אינה מדומה: הפינים פועלים בעוצמת ההנעה של ברירת המחדל. קוד שבוחר עוצמה אחרת נדחה בבנייה.',
+  'capabilities.facility.restart.name': 'אתחול השבב (ESP.restart)',
+  'capabilities.facility.restart.body': 'אינו מדומה. לחצו עצירה ואז הרצה כדי להתחיל מחדש.',
+  'capabilities.facility.cpu_frequency.name': 'שינויי תדר המעבד (setCpuFrequencyMhz)',
+  'capabilities.facility.cpu_frequency.body':
+    'אינם מדומים: ה־ESP32 פועל ב־240 MHz. קוד שמשנה את תדר המעבד נדחה בבנייה.',
+  'capabilities.facility.library.name': 'ספריות Arduino',
+  'capabilities.facility.library.body':
+    'רצות רק ספריות מובנות של ליבת ה־ESP32 שמופיעות כאן (Preferences; ‏Wire מול רכיבי ה־I2C). ספריות אחרות, כמו DHT או LiquidCrystal_I2C, נדחות; הדוגמאות המוכנות מראות את אותם רכיבים בלעדיהן.',
+  'capabilities.timing.electrical_exact':
+    'אותות שהרכיבים המדומים שולחים (למשל הד של חיישן) ורמות הפינים שהסקיצ׳ כותב ממוקמים בזמן המדומה המדויק שלהם.',
+  'capabilities.timing.polling':
+    'הסקיצ׳ מזהה שינוי בכניסה בקריאה הבאה של הפין. בכל מילי־שנייה מדומה יש מרווחים קצרים, עד כ־13 µs, שבהם הליבה המדומה אינה יכולה לרוץ, ולכן שינוי עלול להתגלות מאוחר בשיעור זה.',
+  'capabilities.timing.outputs_longer':
+    'פולסים שהסקיצ׳ מתזמן ב־delayMicroseconds עשויים לצאת ארוכים עד כ־12 µs, לעולם לא קצרים יותר.',
+  'capabilities.timing.busy_core0':
+    'אם משימה מעסיקה את ליבה 0 ברציפות, קוד בליבה 1 עלול להתעכב עד כ־1 ms. תזמון ברמת מיקרו־שניות אינו נתמך בסקיצ׳ים כאלה.',
+  'capabilities.timing.delay_phase':
+    'delay() שומר על אורכו במדויק; היקיצה הראשונה עשויה להגיע עד כ־0.5 ms מאוחר יותר מאשר בלוח אמיתי.',
+  'capabilities.timing.pulsein':
+    'קריאות pulseIn נמצאות בטווח של מיקרו־שנייה אחת מהרוחב האמיתי; כשקצה נופל לאחד המרווחים הקצרים שלמעלה, קריאה עשויה לסטות עד כ־13.5 µs (כ־2 מ״מ ב־HC-SR04).',
+  'capabilities.timing.no_us_claim':
+    'TBI Lab אינו מתחייב לתזמון בלתי מוגבל ברמת מיקרו־שניות. אם תזמון מדויק חשוב לפרויקט שלכם, בדקו אותו על לוח אמיתי.',
+  'capabilities.limit.runtime_busy':
+    'סימולטור ה־ESP32 המשותף מלא כרגע. הפרויקט שלכם לא נפגע; נסו להריץ שוב בעוד רגע.',
+  'capabilities.limit.session_quota':
+    'כל משתמש מריץ סימולציית ESP32 אחת בכל פעם. עצרו קודם את האחרת.',
+  'capabilities.limit.rate_limited':
+    'הופעלו יותר מדי הרצות בזמן קצר. המתינו את הזמן המוצג ונסו שוב.',
+  'capabilities.limit.session_expired':
+    'הרצה מסתיימת אחרי 30 דקות או כשהדף מפסיק להגיב. לחצו הרצה כדי להתחיל חדשה.',
+  'capabilities.limit.commands_rate_limited':
+    'פקדי הרכיבים שונו מהר מדי בזמן ההרצה; חלק מהשינויים נדחו. שנו אותם לאט יותר.',
+  'capabilities.parts.supported': 'מדומה לצד ה־ESP32.',
+  'capabilities.board.power':
+    'איך הלוח מוזן: לוח ה־ESP32 פועל מספק פנימי של 3.3 V, כאילו הוא מוזן דרך מחבר ה־USB שלו. הפינים 3V3 ו־5V שלו אינם חלק מהמעגל המדומה ואי אפשר לחבר אליהם חוטים; חברו את ה־GND שלו לאדמה של המעגל. הרכיבים לידו מקבלים מתח מספק הכוח המעבדתי.',
+  // Sprint 13 H2: outside the specified operating range; damage threshold unknown (not "safe").
+  'rating.operating.heading': 'מחוץ לתנאי ההפעלה המוגדרים',
+  'rating.operating.summary': '{component} מחוץ לטווח ההפעלה המוגדר שלו',
+  'rating.operating.row.voltage': 'אספקה: {value} (מקסימום הפעלה מוגדר {limit})',
+  'rating.operating.note':
+    'מחוץ לטווח ההפעלה המומלץ אך בתוך הערך המקסימלי המוחלט שפורסם: האמינות והתוצאה המדומה אינן מובטחות. השאירו את הרכיב בתוך טווח ההפעלה שלו.',
+  // Sprint 13 P2: a value from a pad beyond its characterized point is not a physical value.
+  'rating.value.uncharacterized': 'זרם לא ידוע (מחוץ לתחום שהיצרן אפיין)',
+  'rating.unrated.summary': '{component} מחוץ לטווח המוגדר שלו; לא פורסם סף נזק',
+  'rating.unrated.note':
+    'היצרן אינו מפרסם סף נזק למצב זה: הסיכון אינו ידוע, אך אינו אפס. התייחסו אליו כלא בטוח; התוצאה המדומה עשויה שלא להתאים לרכיב אמיתי.',
+  'rating.row.gpio_cumulative_current':
+    'כל פיני היציאה של ה־ESP32 יחד מספקים {value} (מקסימום מוחלט {limit})',
+  // Sprint 13 H2: model limitations (packages/domain/src/capabilities.ts MODEL_LIMITATIONS).
+  'limitation.psu_ideal':
+    'ספק מעבדה אידיאלי: ללא עכבת מוצא וללא דינמיקה של לולאת הבקרה, והוא אינו יכול לבלוע זרם.',
+  'limitation.resistor_ideal': 'ערך מדויק: סבולת ומקדם טמפרטורה אינם ממודלים.',
+  'limitation.dc_25c': 'נקודת עבודה DC ב־25 °C: ללא השפעות תרמיות או התחממות עצמית.',
+  'limitation.led_card_range':
+    'מדויק בטווח הזרמים של עקומות גיליון הנתונים; מחוץ לו התוצאה מסומנת כמחוץ למודל.',
+  'limitation.no_breakdown':
+    'פריצה בממתח הפוך אינה ממודלת; במקומה נבדק דירוג המתח ההפוך ומוצגת אזהרה.',
+  'limitation.switch_ideal': 'מגע אידיאלי: ללא התנגדות מגע וללא ריטוט.',
+  'limitation.ldr_typical': 'GL5528 טיפוסי (מרכז מחלקת ההתנגדות שלו), לא רכיב שנמדד.',
+  'limitation.ldr_extrapolated': 'מחוץ לטווח 1–100 lx חוק האור מוחצן, והתוצאה מציינת זאת.',
+  'limitation.ldr_digital_esp32': 'לצד ESP32 הוא נקרא כרמה דיגיטלית: כניסה אנלוגית אינה נתמכת.',
+  'limitation.ldr_no_dynamics': 'זמן התגובה ותלות הטמפרטורה אינם ממודלים.',
+  'limitation.buzzer_curve':
+    'הזרם עוקב אחר עקומת גיליון הנתונים בטווח 3–6 V; מחוץ לו התוצאה מסומנת כמחוץ למודל.',
+  'limitation.buzzer_dc': 'זמזם אקטיבי ב־DC: מדומה האם הוא מזמזם, אך לא הטון ועוצמת הקול.',
+  'limitation.relay_thresholds':
+    'משיכה ושחרור משתמשים בגבולות המובטחים של גיליון הנתונים (3.75 V / 0.5 V), לא ברכיב מסוים.',
+  'limitation.relay_no_inductance':
+    'השראות הסליל אינה ממודלת, ולכן קוץ המתח בכיבוי אינו מדומה: השתמשו בדיודת Flyback כמו בלוח אמיתי.',
+  'limitation.relay_ideal_contacts':
+    'מגעים אידיאליים: התנגדות מגע, ריטוט וזמני הפעלה ושחרור אינם ממודלים.',
+  'limitation.bjt_dc': 'מודל טרנזיסטור DC ב־25 °C: ללא קיבולים, זמני מעבר או התחממות עצמית.',
+  'limitation.bjt_no_breakdown': 'פריצה אינה ממודלת; במקומה נבדקים דירוגי המתח ומוצגת אזהרה.',
+  'limitation.pir_static':
+    'התנועה היא פקד שאתם קובעים. זמן ההשהיה, זמן החסימה, דקת החימום, הטווח, הזווית והרגישות אינם ממודלים.',
+  'limitation.matrix_window':
+    'כל נקודה נפתרת מהמעגל; תצוגה סורקת מוצגת לפי מצבה האחרון בכל חלון של 10 ms (ללא התמדת ראייה).',
+  'limitation.matrix_no_esp32': 'עדיין אינה זמינה לצד ESP32.',
+  'limitation.capacitor_ideal': 'קבל אידיאלי: ללא ESR, זליגה, בליעה דיאלקטרית או קוטביות.',
+  'limitation.capacitor_no_esp32': 'רכיבים תלויי־זמן רצים רק במעגלים ללא ESP32.',
+  'limitation.hcsr04_target':
+    'מטרה שטוחה אחת במרחק שנקבע, באוויר דומם בטמפרטורה שנקבעה; מחוץ לטווח המודול אין הד.',
+  'limitation.hcsr04_output': 'התנגדות המוצא של ECHO‏ (100 Ω) היא הנחה: אף מקור אינו מציין אותה.',
+  'limitation.hcsr04_retrigger': 'הפעלה חדשה מתעלמת כל עוד ממתין הד.',
+  'limitation.supply_below_min':
+    'מתחת למתח האספקה המינימלי המודול מוצג ככבוי; מודול אמיתי במצב זה עלול להתנהג באופן בלתי צפוי, והתוצאה מסומנת כמחוץ למודל.',
+  'limitation.dht22_tgo':
+    'השהיית התגובה של החיישן היא 30 µs, אמצע הטווח 20–40 µs שבגיליון הנתונים.',
+  'limitation.dht22_current': 'זרם המדידה של 1–1.5 mA (כ־5 ms לכל קריאה) אינו כלול בתוצאת ה־DC.',
+  'limitation.dht22_output':
+    'התנגדות מוצא ברמה נמוכה של DATA‏ (100 Ω) היא הנחה: גיליונות הנתונים אינם מציינים אותה.',
+  'limitation.lcd_backlight':
+    'התאורה האחורית ממודלת לפי 20 mA שבגיליון הנתונים: שרטוט כרטיס המתאם לא נמצא.',
+  'limitation.lcd_bus_timing': 'I2C מדומה ברמת העברה: משך ההעברה ורמות הקווים במהלכה אינם מדומים.',
+  'limitation.lcd_pullups': 'המודול ממודל ללא נגדי Pull-up על הכרטיס: המעגל חייב לספק אותם.',
+  'limitation.esp32_timing': 'התזמון כפוף לחוזה התזמון של V1 (ראו מה רץ על ה־ESP32).',
+  'limitation.esp32_pulls': 'נגדי Pull-up ו־Pull-down פנימיים אינם מדומים.',
+  'limitation.esp32_drive':
+    'כל מניע פין משתמש במאפיין ההנעה בעוצמה המרבית מגיליון הנתונים (40 mA ב־2.64 V); קוד רץ בעוצמת ההנעה של ברירת המחדל, החלשה יותר, וגיליון הנתונים מציין 20 mA עבור GPIO16 ו־GPIO17. מעבר למאפיין זה (פין בעומס יתר או בקצר) הזרם אינו ידוע ואינו מוצג כערך.',
+  'limitation.lcd_input_clamp':
+    'דיודות ההגנה בכניסות של לוח המתאם אינן ממודלות: SDA או SCL מעל מתח האספקה של המודול ⁦+ 0.5 V⁩ מסומנים (מקסימום מוחלט), והזרם שהיה זורם לתוך הפין אינו מדומה.',
+  'sim.part.current.sda': 'כניסת SDA',
+  'sim.part.current.scl': 'כניסת SCL',
+  'limitation.esp32_input_clamp':
+    'דיודות ההגנה בכניסה אינן ממודלות: פין מחוץ לטווח המוגדר שלו מסומן, והזרם המדומה לתוכו אינו אמין.',
+  // Sprint 15 (R4): PWM averages, the SG90 servo and the ESP32's LEDC outputs.
+  'limitation.pwm_average':
+    'כשהרכיב מונע ב־PWM, הערכים המוצגים הם ממוצעים בזמן לאורך צורת הגל (מדויקים לרכיב הזה); בדיקת הדירוגים משתמשת בזרם השיא. הבהירות הנתפסת מקורבת לפי הזרם הממוצע.',
+  'limitation.logic_guaranteed_output':
+    'היציאה משתמשת באופיין המובטח (המקרה הגרוע) מגיליון הנתונים, לא בערכים טיפוסיים: יציאה של רכיב אמיתי קרובה בדרך כלל יותר לפסי ההזנה.',
+  'limitation.logic_supply_rows':
+    'ספים ורמות יציאה רק היכן שגיליון הנתונים מפרט אותם (‎1.65–1.95 V, ‏2.3–2.7 V, ‏3.0–3.6 V, ‏4.5–5.5 V). עומסים אמיתיים רק ב-1.65, ‏2.3 או 4.5 V בדיוק (נקודות הבדיקה של היציאה) ועל פני 3.0–3.6 V (נקודות 3 V כחסם, החלטת בעלים PM-1); במתחים אחרים עד 100 µA.',
+  'limitation.logic_unknown':
+    'כניסה בין V_IL ל-V_IH, מחוץ ל-0–5.5 V, צפה, או מוזנת רק מפין של ESP32 במצב כניסה — נדחית: שום רמה אינה מנוחשת, ולא מניחים "כניסה שולטת". זרם ההזנה במנוחה (I_CC ≤ 10 µA) אינו חלק מהפתרון ומפורט רק כשכל הכניסות ב-5.5 V או ב-GND.',
+  'limitation.logic_breakout':
+    'מארז ה-SOT-23-5 מוצג על כרטיס מתאם מייצג, כדי שיתאים למטריצה; פריסת הכרטיס להמחשה.',
+  'sim.part.state.iccCondition': 'זרם הזנה במנוחה',
+  'sim.part.state.deltaIccA': 'ΔI_CC מגיליון הנתונים לכל כניסה ב-V_CC − 0.6 V (מרבי)',
+  // Sprint 29 (S29-D1)
+  'sim.part.state.iccBasis': 'בסיס החסם',
+  'sim.part.state.iccBasis.deltaIcc':
+    'I_CC ועוד ΔI_CC לכל כניסה בטווח 0.6 V מ-GND או מ-V_CC (החלטת בעלים S29-D1, הנחה הנדסית)',
+  'sim.part.state.deltaIccInputs': 'כניסות שנספרו עם ΔI_CC',
+  'limitation.logic_1g04_no_delay':
+    'DC בלבד: השהיית ההתפשטות אינה מדומה (גיליון הנתונים של SN74LVC1G04 ‏§5.6: ‏t_pd ‏0.7–3.3 ns ב-V_CC ‏3.3 V ± 0.3 V, ‏C_L = 15 pF, ‏−40 °C עד 85 °C). מעגלים שתלויים בה נדחים: משוב בין שערים (נעילות, מתנדים), PWM לתוך שער, שעונים.',
+  'limitation.logic_1g32_no_delay':
+    'DC בלבד: השהיית ההתפשטות אינה מדומה (גיליון הנתונים של SN74LVC1G32 ‏§5.6: ‏t_pd ‏0.9–3.6 ns ב-V_CC ‏3.3 V ± 0.3 V, ‏C_L = 15 pF, ‏−40 °C עד 85 °C). מעגלים שתלויים בה נדחים: משוב בין שערים (נעילות, מתנדים), PWM לתוך שער, שעונים.',
+  'limitation.logic_1g02_no_delay':
+    'DC בלבד: השהיית ההתפשטות אינה מדומה (גיליון הנתונים של SN74LVC1G02 ‏§5.6: ‏t_pd ‏0.8–3.6 ns ב-V_CC ‏3.3 V ± 0.3 V, ‏C_L = 15 pF, ‏−40 °C עד 85 °C). מעגלים שתלויים בה נדחים: משוב בין שערים (נעילות, מתנדים), PWM לתוך שער, שעונים.',
+  'limitation.logic_1g86_no_delay':
+    'DC בלבד: השהיית ההתפשטות אינה מדומה (גיליון הנתונים של SN74LVC1G86 ‏§5.6: ‏t_pd ‏0.6–4 ns ב-V_CC ‏3.3 V ± 0.3 V, ‏C_L = 15 pF, ‏−40 °C עד 85 °C). מעגלים שתלויים בה נדחים: משוב בין שערים (נעילות, מתנדים), PWM לתוך שער, שעונים.',
+  'limitation.logic_1g00_no_delay':
+    'DC בלבד: השהיית ההתפשטות אינה מדומה (גיליון הנתונים של SN74LVC1G00 ‏§5.6: ‏t_pd ‏0.8–3.8 ns ב-V_CC ‏3.3 V ± 0.3 V, ‏C_L = 15 pF, ‏−40 °C עד 85 °C). מעגלים שתלויים בה נדחים: משוב בין שערים (נעילות, מתנדים), PWM לתוך שער, שעונים.',
+  'limitation.logic_1g08_no_delay':
+    'DC בלבד: השהיית ההתפשטות אינה מדומה (גיליון הנתונים של SN74LVC1G08 ‏§5.6: ‏t_pd ‏0.8–3.6 ns ב-V_CC ‏3.3 V ± 0.3 V, ‏C_L = 15 pF, ‏−40 °C עד 85 °C). מעגלים שתלויים בה נדחים: משוב בין שערים (נעילות, מתנדים), PWM לתוך שער, שעונים.',
+  'sim.part.state.iccCondition.notSupply': 'לא מאופיין במתח הזנה זה (לא נכלל למעלה)',
+  'sim.part.state.iccCondition.notInputs':
+    'לא מאופיין: כניסה אינה במתח הבדיקה של I_CC בגיליון הנתונים (לא נכלל למעלה)',
+  'sim.error.logic_input_floating.mcu_input':
+    '{components}: דבר אינו מזין את כניסה {pin}. המקור האפשרי היחיד ברשת שלה (ישירות או דרך נגדים) הוא {pads}, פין של ESP32 במצב כניסה (עכבה גבוהה), למשל לפני ש-setup() של הקושחה הופך אותו ליציאה. לכניסת CMOS שאינה מוזנת אין רמה מוגדרת (גיליון הנתונים: אין להשאיר כניסות CMOS צפות). הוסיפו נגד pull-down או pull-up ‏(TI ממליצה על 10 kΩ) כדי שהכניסה תהיה מוגדרת כשהפין אינו מזין.',
+  'sim.error.logic_input_floating.mcu_inputs':
+    '{components}: דבר אינו מזין את כניסה {pin}. המקורות האפשריים היחידים ברשת שלה (ישירות או דרך נגדים) הם {pads}, פינים של ESP32 במצב כניסה (עכבה גבוהה), למשל לפני ש-setup() של הקושחה הופך אותם ליציאות. לכניסת CMOS שאינה מוזנת אין רמה מוגדרת (גיליון הנתונים: אין להשאיר כניסות CMOS צפות). הוסיפו נגד pull-down או pull-up ‏(TI ממליצה על 10 kΩ) כדי שהכניסה תהיה מוגדרת כשהפינים אינם מזינים.',
+  'limitation.logic_package_dc_no_delay':
+    'DC בלבד: השהיית ההתפשטות אינה מדומה (גיליון הנתונים של SN74LVC08A ‏§5.9, ‏−40 °C עד 85 °C: ‏t_pd ‏1–4.1 ns ב-V_CC ‏3.3 V ± 0.3 V; ‏1–4.8 ns ב-2.7 V; ‏1–6.9 ns ב-2.5 V ± 0.2 V; ‏1–9.8 ns ב-1.8 V ± 0.15 V). מעגלים שתלויים בה נדחים: משוב בין שערים (נעילות, מתנדים), PWM לתוך שער, שעונים.',
+  'limitation.logic_package_input_band':
+    'כניסה בין V_IL ל-V_IH, מחוץ ל-0–5.5 V, צפה, או מוזנת רק מפין של ESP32 במצב כניסה — נדחית: גיליון הנתונים אינו נותן שם רמה ואינו נותן זרם הזנה. זרם ההזנה במנוחה (I_CC ≤ 10 µA) אינו חלק מהפתרון ומפורט רק ב-V_CC = 3.6 V כשכל הכניסות ב-V_CC או ב-GND.',
+  'limitation.logic_package_supply_rows':
+    'ספים ורמות יציאה רק היכן שגיליון הנתונים של SN74LVC08A מציג אותם (‎1.65–1.95 V, ‏2.3–3.6 V). עומסים אמיתיים רק ב-1.65, ‏2.3, ‏2.7 או 3.0 V בדיוק, היכן שנקודות הבדיקה של היציאה; בכל מתח אחר (כולל 3.3 V) עד 100 µA. החסם של מחלקת 3.3 V שמשמש לשערים הבודדים אינו מוחל: גיליון נתונים זה אינו מצהיר על הנעה ב-3.3 V.',
+  'limitation.logic_package_unused_inputs':
+    'גיליון הנתונים דורש שכל כניסה שאינה בשימוש תוחזק ב-V_CC או ב-GND: כניסה צפה, גם של שער שאינו בשימוש, נדחית.',
+  'limitation.logic_package_unpowered':
+    'אין בגיליון הנתונים מפרט למצב ללא הזנה (I_off): כש-V_CC הוא 0 V הרכיב נדחה, ואינו מדומה ככבוי.',
+  'limitation.logic_package_breakout':
+    'מארז ה-SOIC-14 מוצג על כרטיס מתאם מייצג, כדי שיתאים למטריצה; פריסת הכרטיס להמחשה. הספק הפיזור אינו מדומה ואינו נבדק: ה-500 mW בגיליון הנתונים (‏§5.1, מופחת מעל 70 °C במארז D) הם דירוג מאמץ מרבי מוחלט, לא מגבלת הפעלה. גם ‎±50 mA ליציאה ו-‎±100 mA לפיני ההזנה הם ערכים מרביים מוחלטים: מסומנים, ולעולם אינם משמשים כמגבלת עומס.',
+  'param.powerRating': 'הספק נקוב',
+  'model.resistor.koa_cf_1_4': 'פחם ¼ W (KOA CF1/4)',
+  'model.resistor.koa_cfs_1_2': 'פחם ½ W (KOA CFS1/2)',
+  'limitation.resistor_rating':
+    'ההספק הנקוב מגיליון הנתונים של הסדרה שנבחרה (KOA CF1/4 ‏¼ W או CFS1/2 ‏½ W ב-70 °C, בהפחתה עד 0 W ב-155 °C), בטמפרטורת סביבה של 25 °C. מעליו התוצאה מחוץ לתנאים המפורטים; לא מוסק נזק. ההתנגדות קבועה: סחיפה בגלל התחממות עצמית אינה ממודלת.',
+  'limitation.servo_supply_current':
+    'זרם ההזנה אינו ממודל: ספק חלש או פין 3.3 V אינם מוצגים כשוקעים תחת עומס הסרוו.',
+  'limitation.servo_thresholds':
+    'TowerPro אינה מציינת את ספי הרמה הלוגית של האות; המודל מניח 2.0 V לרמה גבוהה ו־0.8 V לרמה נמוכה.',
+  'limitation.servo_supply_range': 'מדומה רק בהזנה של 4.8–6.0 V; מחוץ לטווח הזה הסרוו נשאר במקומו.',
+  'limitation.servo_mapping':
+    'פולסים של 1.0–2.0 ms ממופים ל־0–180°; יחידות SG90 אמיתיות שונות זו מזו (חלקן נעות כ־150°). אזור מת של 10 µs, ‏600°/s, ללא מומנט או עומס.',
+  'limitation.servo_frames':
+    'פולסים של 400–2600 µs מתקבלים כשהמרווח בין מסגרות הוא עד 50 ms; התגובה למסגרות קצרות בהרבה מ־20 ms אינה מוגדרת על ידי היצרן.',
+  'limitation.esp32_pwm':
+    'PWM ‏(LEDC): מחזור עבודה 0 שמניע עומס, יותר מ־8 ערוצים, עמעום חומרתי והיפוך יציאה נדחים; זמני הרמה הגבוהה מדויקים עד מחזור שעון LEDC אחד.',
+  'inspector.limitations': 'מגבלות המודל',
+  // Sprint 13 H4: first-run guide.
+  'onboarding.heading': 'צעדים ראשונים',
+  'onboarding.intro': 'TBI Lab מדמה את ה־ESP32 הקלאסי ואת המעגל סביבו, כאן בדפדפן שלכם.',
+  'onboarding.step1': 'פתחו אחת מדוגמאות ה־ESP32 שלמטה, למשל אזעקת המרחק.',
+  'onboarding.step2': 'בלשונית הקוד, לחצו בנייה. הבנייה הראשונה עשויה להימשך כדקה.',
+  'onboarding.step3':
+    'לחצו הרצה. בזמן ההרצה, בחרו רכיב ושנו את מה שהוא חש (מרחק, טמפרטורה, אור, תנועה): הקושחה והמעגל מגיבים.',
+  'onboarding.note':
+    'הפרויקטים נשמרים בדפדפן הזה בלבד: השתמשו בייצוא כדי לשמור עותק. סימולטור ה־ESP32 משותף לבודקי האלפא; אם הוא תפוס, נסו שוב בעוד רגע.',
+  'onboarding.dismiss': 'הבנתי',
+  'onboarding.show': 'הצגת צעדים ראשונים',
+  // Sprint 13 H7 (shown only when a deployment configures the form).
+  'menu.feedback': 'שליחת משוב',
+  // Sprint 14: in-app problem reports (shown only when a deployment enables them).
+  'menu.reportProblem': 'דיווח על בעיה…',
+  'report.counter.label': '{count} מתוך {max} תווים',
+  'report.category.legend': 'תחום',
+  'report.category.simulation': 'סימולציה',
+  'report.category.build': 'בנייה',
+  'report.category.editor': 'עורך',
+  'report.category.other': 'משהו אחר',
+  'report.blocking': 'הבעיה מונעת ממני להמשיך',
+  'report.disclosure.heading': 'מה נשלח',
+  'report.disclosure.sent':
+    'התיאור שלכם, התחום והאם הבעיה חוסמת אתכם; גרסת האפליקציה ושפת הממשק; מצב הסימולציה הנוכחית, אם יש; שם הדפדפן, הגרסה שלו ומערכת ההפעלה. הדיווח מקושר לחשבון שאיתו נכנסתם.',
+  'report.disclosure.notSent':
+    'הפרויקט, המעגל, הקוד וצילומי מסך אינם נשלחים. נא לא לכלול מידע אישי.',
+  'report.disclosure.retention': 'הדיווחים נמחקים לאחר 90 יום לכל היותר.',
+  'report.problem.descriptionRequired': 'תארו את הבעיה.',
+  'report.problem.descriptionTooLong': 'קצרו את התיאור ל־{max} תווים לכל היותר.',
+  'report.problem.categoryRequired': 'בחרו תחום.',
+  'report.send': 'שליחת הדיווח',
+  'report.sending': 'בשליחה…',
+  'report.cancel': 'ביטול',
+  'report.close': 'סגירה',
+  'report.sent.heading': 'הדיווח התקבל',
+  'report.sent.body': 'תודה. הדיווח התקבל ונשמר. אם תפנו אלינו לגביו, ציינו את המזהה:',
+  'report.failed.rate_limited':
+    'שלחתם כמה דיווחים לאחרונה. הטקסט שלכם נשמר כאן: נסו שוב בעוד {minutes} דק׳.',
+  'report.failed.unavailable':
+    'לא ניתן לקבל דיווחים כרגע. הטקסט שלכם נשמר כאן: נסו שוב מאוחר יותר.',
+  'report.failed.signed_out': 'פג תוקף הכניסה שלכם. העתיקו את הטקסט, היכנסו שוב ושלחו אותו.',
+  'report.failed.rejected': 'לא ניתן היה לקבל את הדיווח. בדקו את הטקסט ונסו שוב.',
+  'report.failed.network':
+    'השרת לא אישר את הדיווח, ולכן ייתכן שלא התקבל. הטקסט שלכם נשמר כאן: אפשר לשלוח אותו שוב.',
+  'limitation.potentiometer_position_grid': 'המיקום נקבע בצעדים של ⁦0.01 %⁩.',
+  'rating.row.track_current':
+    'זרם {value}: מעל זרם המסלול בהספק המדורג ⁦0.05 W⁩ ({limit}), מחוץ לתנאי הדירוג של גיליון הנתונים',
+  'error.param.off_grid': 'מיקום ה[[wiper]] נקבע בצעדים של ⁦0.01 %⁩.',
+  // Sprint POT-UNITS: the potentiometer.
+  'component.component.potentiometer.name': '[[potentiometer]]',
+  'terminal.potEndA': 'קצה A (פין 1)',
+  'terminal.wiper': '[[wiper]] W (פין 2)',
+  'terminal.potEndB': 'קצה B (פין 3)',
+  'model.potentiometer.bourns_ptv09a_linear': 'סיבובי 9 מ"מ, ליניארי (Bourns PTV09A)',
+  'param.totalResistance': 'התנגדות כוללת (A–B)',
+  'param.wiperPosition': 'מיקום ה[[wiper]] (מ-A)',
+  'sim.part.current.aw': 'זרם A → W',
+  'sim.part.current.wb': 'זרם W → B',
+  'sim.part.current.wiper': 'זרם אל ה[[wiper]]',
+  'sim.part.voltage.component.potentiometer': 'מתח A–B',
+  'sim.part.state.component.potentiometer.resistanceAW': 'התנגדות A–W',
+  'sim.part.state.component.potentiometer.resistanceWB': 'התנגדות W–B',
+  'sim.part.state.component.potentiometer.power': 'הספק מתבזבז (כל המסלול)',
+  'sim.part.state.component.potentiometer.wiperVoltage': 'מתח ה[[wiper]] ביחס ל-GND',
+  'sim.part.state.component.potentiometer.residualMaxOhm':
+    'התנגדות שיורית בקצה (מקסימום לפי גיליון הנתונים, לא מדומה)',
+  'sim.results.potNearEnd':
+    'ה[[wiper]] נמצא בתוך תחום ההתנגדות השיורית של קצה המסלול לפי גיליון הנתונים. ‏PTV09A אמיתי משאיר שם בין 0 ל-{bound}, וזה אינו מדומה: הערכים שתלויים בקצה הזה הם הגבול של מסלול אידיאלי, לא חיזוי מדויק.',
+  'limitation.potentiometer_linear':
+    'מסלול ליניארי בלבד: שני מקטעים אידיאליים שסכומם ההתנגדות הכוללת, ביחס ישר למיקום. המיקום הוא חלק המסלול בין A ל[[wiper]], לא זווית הציר; מסלול לוגריתמי אינו מוצע.',
+  'limitation.potentiometer_end_resistance':
+    'התנגדות הקצה מקורבת ל־⁦0 Ω⁩: ב־⁦0 %⁩ וב־⁦100 %⁩ ה[[wiper]] נוגע בקצה ישירות. גיליון הנתונים נותן לה רק חסם עליון (⁦500 Ω⁩ או ⁦1 %⁩ לכל היותר).',
+  'limitation.potentiometer_tolerance': 'ערך נומינלי: סבולת ההתנגדות ⁦±20 %⁩ אינה ממודלת.',
+  'limitation.potentiometer_power':
+    'דירוג הספק ⁦0.05 W⁩ לכל המסלול (גיליון הנתונים של PTV09A), בטמפרטורת סביבה ⁦25 °C⁩. מקטע או [[wiper]] שזורם בהם זרם גדול מזה שזורם בכל המסלול ב־⁦0.05 W⁩ (⁦√(0.05 W / R)⁩) מסומנים כחורגים מתנאי הדירוג של גיליון הנתונים: אזהרה שמרנית, לא סף נזק. התנהגות הנזק אינה מאופיינת.',
+  'limitation.potentiometer_wiper_current':
+    'התנגדות המגע של ה[[wiper]] וזרם מרבי דרכו אינם בגיליון הנתונים: התנגדות המגע אינה ממודלת; הזרם דרך ה[[wiper]] נבדק רק מול זרם המסלול בתנאי הדירוג שלעיל.',
+  'limitation.potentiometer_no_adc':
+    'לצד ESP32 ה[[wiper]] נקרא כרמה דיגיטלית: כניסה אנלוגית (ADC) אינה נתמכת.',
+  // Sprint 27: מנפה התקלות הניסיוני (DEV-Lab בלבד).
+  'assist.button': 'ניתוח המעגל',
+  'assist.button.title': 'ניסיוני: הסבר של מה שהסימולטור מצא בפרויקט הזה',
+  'assist.panel.title': 'מנפה תקלות במעגל',
+  'assist.panel.experimental': 'ניסיוני · DEV בלבד',
+  'assist.panel.intro':
+    'אוסף את מה שהסימולטור כבר יודע על הפרויקט (בדיקות המעגל, התוצאה החשמלית, הבנייה וההרצה) ומסביר אותו. דבר בפרויקט שלכם אינו משתנה.',
+  'assist.panel.analyze': 'ניתוח',
+  'assist.panel.again': 'ניתוח מחדש',
+  'assist.panel.cancel': 'ביטול',
+  'assist.panel.close': 'סגירה',
+  'assist.panel.analyzing': 'מנתח…',
+  'assist.panel.stale': 'הפרויקט השתנה אחרי הניתוח הזה. נתחו מחדש כדי לעדכן אותו.',
+  'assist.findings.heading': 'ממצאי הסימולטור',
+  'assist.findings.note':
+    'מהבדיקות של המוצר עצמו, מהמנוע החשמלי, משירות הבנייה ומזמן הריצה. הם מקור האמת.',
+  'assist.findings.none': 'אין ממצאים.',
+  'assist.explain.heading': 'הסבר',
+  'assist.explain.mock':
+    'ניסיוני: טקסט מתבנית של ספק דמה דטרמיניסטי, לא מודל AI חי. הוא רשאי רק לחזור על הממצאים שלמעלה, ומפנה לכל אחד מהם.',
+  'assist.explain.basedOn': 'מבוסס על: {refs}',
+  'assist.explain.unexplained': 'הממצא הזה לא הוסבר; ראו את הממצא עצמו.',
+  'assist.explain.declined': 'הספק נמנע מלהסביר את הממצא הזה: {reason}.',
+  'assist.explain.declined.insufficient_evidence': 'אין די ראיות',
+  'assist.explain.declined.out_of_scope': 'מחוץ למה שהוא רשאי להסביר',
+  'assist.accounting': 'ספק {provider} ‏({model}): {tokens} טוקנים (הערכה), {cost}, {ms} ms',
+  'assist.error.unavailable': 'לא הוגדר ספק הסברים. הממצאים שלמעלה מלאים.',
+  'assist.error.rate_limited': 'יותר מדי ניתוחים בדקה האחרונה. נסו שוב בעוד {seconds} s.',
+  'assist.error.busy': 'ניתוח כבר מתבצע.',
+  'assist.error.timeout': 'ההסבר נמשך זמן רב מדי ונעצר. הממצאים שלמעלה מלאים.',
+  'assist.error.cancelled': 'ההסבר בוטל.',
+  'assist.error.invalid_response':
+    'ההסבר נדחה כי לא התאים לממצאים ולראיות שלהם. הממצאים שלמעלה מלאים.',
+  'assist.error.provider_error': 'ספק ההסברים נכשל. הממצאים שלמעלה מלאים.',
+  'assist.error.context_too_large': 'הפרויקט גדול מכדי לנתח אותו בבת אחת. דבר לא נשלח לשום מקום.',
+  'assist.severity.error': 'שגיאה',
+  'assist.severity.warning': 'אזהרה',
+  'assist.severity.info': 'הערה',
+  'assist.certainty.verified': 'נקבע על ידי הסימולטור',
+  'assist.certainty.conservative': 'בדיקת עורך (עשויה להחמיץ מקרים, לעולם אינה ממציאה אותם)',
+  'assist.certainty.indeterminate': 'לא נקבע',
+  'assist.family.floating_input': 'כניסה בלי רמה מוגדרת',
+  'assist.family.connection': 'חיבור',
+  'assist.family.supply': 'ספק כוח',
+  'assist.family.current_limit': 'זרם גבוה מדי',
+  'assist.family.rating': 'מחוץ לדירוג של הרכיב',
+  'assist.family.gpio_drive': 'עומס יתר על פין של ESP32',
+  'assist.family.i2c': 'תקשורת I2C',
+  'assist.family.logic': 'רכיב לוגי',
+  'assist.family.capability': 'לא נתמך בסימולטור',
+  'assist.family.build': 'בנייה',
+  'assist.family.runtime': 'הרצה',
+  'assist.family.model_limit': 'גבול המודל',
+  'assist.family.analysis': 'ניתוח',
+  'assist.analysis.analysis.no_operating_point':
+    'המעגל אינו רץ, ולכן אין תוצאה חשמלית לבדוק מול הדירוגים.',
+  'assist.analysis.analysis.unknown_values':
+    'לסימולטור אין ערך מבוסס עבור חלק מהגדלים ({subjects}). שום דבר לא מונח עבורם.',
+  'assist.analysis.analysis.no_issue_found':
+    'הבדיקות של הסימולטור אינן מדווחות דבר עבור הפרויקט הזה. אין בכך הוכחה שהמעגל נכון: הופעלו רק הבדיקות האלה.',
+  'assist.analysis.build.not_current': 'התוכנית לא נבנתה בגרסתה הנוכחית.',
+  'assist.analysis.build.failed': 'הבנייה האחרונה נכשלה בלי אבחון עם מיקום.',
+  'assist.analysis.capability.unsupported_feature':
+    'התוכנית משתמשת ב-{feature}, שהסימולטור אינו ממדל.',
+  'assist.analysis.capability.runtime_missing':
+    'התוכנית צריכה את יכולת זמן הריצה {feature}, שהפריסה הזו אינה מכריזה עליה.',
+  'assist.action.heading': 'מה אפשר לעשות',
+  'assist.action.add_pull_resistor':
+    'תנו לכניסה רמה מוגדרת: נגד Pull-down ל-GND (או Pull-up ל-3.3 V) על הפין הזה.',
+  'assist.action.connect_terminal': 'חברו את ההדק שצוין, או הסירו את הרכיב אם אינו נחוץ.',
+  'assist.action.fix_wire_overlap':
+    'הזיזו את החוט או את הרכיב כך שהחוט לא יעבור מעל הדק שאינו מחובר אליו.',
+  'assist.action.connect_ground': 'חברו את המעגל ל-GND (נקודת הייחוס) ולספק.',
+  'assist.action.remove_short': 'הסירו את החוט או החיבור שמקשר בין שתי הרמות.',
+  'assist.action.add_load': 'חברו עומס בין ה-+ וה-− של הספק.',
+  'assist.action.increase_series_resistance':
+    'הגבילו את הזרם: נגד טורי גדול יותר (או מתח ספק נמוך יותר), ואז הריצו שוב כדי לבדוק.',
+  'assist.action.reduce_stress': 'הורידו את המתח, הזרם או ההספק על הרכיב עד שיהיה בתוך הדירוג שלו.',
+  'assist.action.lower_i2c_clock': 'הורידו את שעון ה-I2C למהירות המדורגת של הרכיב או מתחתיה.',
+  'assist.action.write_only_display': 'אל תקראו מהתצוגה: המודול המדומה מאפשר כתיבה בלבד.',
+  'assist.action.remove_unsupported_feature':
+    'הסירו או החליפו את היכולת שאינה נתמכת; ראו ביכולות מה הסימולטור מריץ.',
+  'assist.action.fix_compile_error': 'פתחו את הקובץ שצוין בשורה הזו ותקנו את הקוד, ואז בנו שוב.',
+  'assist.action.build_program': 'בנו את התוכנית לפני שמריצים אותה.',
+  'assist.action.run_simulation': 'הריצו את הסימולציה, ואז נתחו שוב לקבלת ממצאים חשמליים.',
+  'assist.action.use_supported_value': 'בחרו ערך שבו הרכיב מיוצר (המפקח מציג אותם).',
+  'assist.action.review_supply':
+    'בדקו איך הספקים מחוברים: ספק מעבדה כאן אינו יכול לקלוט זרם או לחלוק מוצא עם ספק אחר.',
+  'assist.action.drive_defined_level':
+    'ודאו שהכניסה תמיד ברמת LOW או HIGH מוגדרת בזמן שהתוכנית קוראת אותה.',
+  'assist.action.retry_later': 'זו אינה תקלה במעגל שלכם. נסו להריץ שוב מאוחר יותר.',
+  'assist.limit.heading': 'גבולות הממצא',
+  'assist.limit.static_analysis':
+    'נמצא מקריאת השרטוט והקוד לפני ההרצה; פינים שמצוינים בדרכים אחרות עלולים להיות מוחמצים.',
+  'assist.limit.dc_only': 'מצב יציב DC בלבד: מעברי מיתוג ותזמון אינם מדומים.',
+  'assist.limit.datasheet_limit': 'הושווה לערך מגיליון הנתונים שהסימולטור משתמש בו עבור הרכיב.',
+  'assist.limit.operating_range': 'מחוץ לתחום ההפעלה המוגדר, וזה כשלעצמו אינו גבול נזק.',
+  'assist.limit.extrapolated':
+    'הערך מעבר למה שהמודל מאפיין, ולכן אינו מוצג כמספר; המצב עצמו אמיתי.',
+  'assist.limit.no_operating_point': 'בלי הרצה אי אפשר לבדוק דירוגים ורמות.',
+  'assist.limit.scope_limited': 'הופעלו רק הבדיקות של המוצר עצמו.',
+  'assist.limit.model_unknown': 'לסימולטור אין כאן ערך מבוסס והוא אינו מניח אחד.',
+  'assist.limit.not_a_circuit_fault': 'מצב של השירות, לא תכונה של המעגל.',
+  'assist.limit.unmodelled_behaviour': 'הסימולטור אינו ממדל את ההתנהגות הזו, ולכן אינו מנחש אותה.',
+  'assist.evidence.heading': 'ראיות',
+  'assist.evidence.check': 'בדיקת מעגל',
+  'assist.evidence.solver': 'המנוע החשמלי',
+  'assist.evidence.rating': 'בדיקת דירוג',
+  'assist.evidence.result': 'תוצאה מחושבת',
+  'assist.evidence.pin': 'תוצאת פין של ESP32',
+  'assist.evidence.net': 'מתח רשת',
+  'assist.evidence.build': 'בנייה',
+  'assist.evidence.code': 'קטע קוד',
+  'assist.evidence.failure': 'הרצה',
+  'assist.evidence.observed': 'דיווח הקושחה',
+  'assist.evidence.program': 'תוכנית',
+  'assist.evidence.capabilities': 'יכולות הסימולטור',
+  'assist.evidence.unknown': 'לא נקבע',
+  'assist.mock.summary.errors':
+    'הסימולטור מצא בעיות שעוצרות את ההרצה או פוסלות אותה. התחילו בשגיאות; כל אחת מוסברת למטה עם הראיות שעליהן היא נשענת.',
+  'assist.mock.summary.warnings':
+    'דבר אינו עוצר את ההרצה, אבל הסימולטור סימן מצבים שהם כנראה טעויות.',
+  'assist.mock.summary.clear': 'במה שהסימולטור בדק אין מה לתקן. אין בכך הוכחה שהמעגל נכון.',
+  'assist.mock.gpio.input_floating':
+    'התוכנית קוראת את {pins} ככניסה דיגיטלית, אבל כשהמתג פתוח דבר אינו מחזיק את הפין ברמה כלשהי. ESP32 אמיתי קורא אז רעש, ולכן הסימולטור מסרב לבחור עבורו HIGH או LOW.',
+  'assist.mock.gpio.input_unconnected':
+    'התוכנית קוראת את {pins}, אבל דבר אינו מחובר לפין הזה. לכניסה לא מחוברת אין רמה מוגדרת ב-ESP32 אמיתי.',
+  'assist.mock.gpio.input_undefined':
+    'בזמן ההרצה התוכנית קראה את {pins} ברגע שבו לכניסה לא הייתה רמה מוגדרת, ולכן ההרצה נעצרה שם במקום להמציא ערך.',
+  'assist.mock.gpio.sensor_level_undefined':
+    'האות של החיישן היה מביא את {pins} בין ספי ה-LOW וה-HIGH של ה-ESP32, שם השבב אינו מבטיח שום קריאה, ולכן ההרצה נעצרה.',
+  'assist.mock.current.led_overcurrent':
+    'התוצאה החשמלית מעבירה דרך {components} זרם גבוה מהמקסימום בגיליון הנתונים, {limit}. נורית אמיתית שמוזנת כך מתחממת ונכשלת; הסיבה הרגילה היא נגד טורי חסר או קטן מדי.',
+  'assist.mock.current.part_overcurrent':
+    'התוצאה החשמלית מעבירה דרך {components} זרם גבוה מהמקסימום בגיליון הנתונים, {limit}.',
+  'assist.mock.gpio.drive_current':
+    'פין של ESP32 ‏({pins}) היה צריך לספק זרם גבוה ממה שגיליון הנתונים מתיר לפין ({limit}). משהו על הפין הזה צורך יותר מדי, בדרך כלל נורית בלי נגד.',
+  'assist.mock.i2c.clock_exceeded':
+    'התוכנית מפעילה את אפיק ה-I2C מהר יותר ממה ש-{components} מדורג לו, ולכן הסימולטור אינו טוען שההעברה עובדת.',
+  'assist.mock.build.compile_error':
+    'המהדר נעצר ב-{file}, שורה {line}. התוכנית לא יכולה לרוץ עד שהשורה הזו תתוקן.',
+  'assist.mock.capability.unsupported_feature':
+    'התוכנית משתמשת ב-{feature}, שהסימולטור אינו ממדל, ולכן אינו יכול להריץ אותה ביושר.',
+  'assist.mock.family.floating_input': 'לכניסה כאן אין רמה מוגדרת, ולכן הסימולטור אינו בוחר רמה.',
+  'assist.mock.family.connection': 'בשרטוט יש בעיית חיבור: {components}.',
+  'assist.mock.family.supply': 'האופן שבו הספק מחובר מונע תוצאה תקפה ({components}).',
+  'assist.mock.family.current_limit': 'רכיב נושא זרם גבוה ממה שגיליון הנתונים מתיר ({components}).',
+  'assist.mock.family.rating': 'רכיב פועל מחוץ לדירוג שבגיליון הנתונים שלו ({components}).',
+  'assist.mock.family.gpio_drive': 'פין של ESP32 מופעל מעבר למה שגיליון הנתונים מתיר ({pins}).',
+  'assist.mock.family.i2c': 'פעולת I2C מחוץ למה שהרכיב המדומה תומך בו ({components}).',
+  'assist.mock.family.logic':
+    'רכיב לוגי משמש במצב שבו גיליון הנתונים שלו אינו מבטיח התנהגות ({components}).',
+  'assist.mock.family.capability':
+    'הפרויקט משתמש במשהו שהסימולטור אינו ממדל, ולכן הוא נדחה במקום שינוחש.',
+  'assist.mock.family.build': 'הבנייה לא הפיקה תוכנית להרצה.',
+  'assist.mock.family.runtime': 'ההרצה הסתיימה מסיבה שמחוץ למעגל; זו אינה תקלה בתכנון שלכם.',
+  'assist.mock.family.model_limit': 'המנוע החשמלי לא הצליח לקבוע כאן תוצאה; דבר אינו מנוחש.',
+  'assist.mock.family.analysis': 'זו הערה על מה שהניתוח יכול היה לבדוק ומה לא.',
+  'assist.mock.family.floating_input.indeterminate':
+    'לא ניתן היה לקבוע אם לכניסה הזו יש רמה מוגדרת.',
+  'assist.mock.family.model_limit.indeterminate':
+    'המנוע החשמלי לא הצליח לקבוע כאן תוצאה, ומנפה התקלות אינו מנחש אחת.',
+  'assist.mock.family.analysis.indeterminate':
+    'חלק מהערכים לא נקבעו, ולכן לא מוסקת עליהם שום מסקנה.',
+
+  // Sprint 23B: extended feedback and the owner's administration.
+  'report.title.bug': 'דיווח על בעיה',
+  'report.title.component': 'בקשה ל[[component]] חדש',
+  'report.title.feature': 'הצעה לשיפור',
+  'report.title.general': 'שליחת משוב',
+  'report.kind.legend': 'מה תרצו לשלוח?',
+  'report.kind.bug': 'דיווח על באג',
+  'report.kind.component': 'בקשה ל[[component]] חדש',
+  'report.kind.feature': 'יכולת חדשה או שיפור',
+  'report.kind.general': 'משוב כללי',
+  'report.intro.bug': 'ספרו לנו מה השתבש. תיאור קצר של מה שעשיתם ומה ציפיתם שיקרה עוזר יותר מכול.',
+  'report.intro.component': 'ספרו לנו איזה [[component]] אתם צריכים ומה הייתם בונים איתו.',
+  'report.intro.feature': 'ספרו לנו מה ישפר את TBI Lab עבורכם, ולמה.',
+  'report.intro.general': 'כל מה שתרצו שנדע: מה עובד, מה לא, ומה הייתם משנים.',
+  'report.description.label.bug': 'מה קרה?',
+  'report.description.label.component': 'מה הוא צריך לעשות, ואיך תשתמשו בו?',
+  'report.description.label.feature': 'ההצעה שלכם',
+  'report.description.label.general': 'המשוב שלכם',
+  'report.component.label': 'שם ה[[component]] (לא חובה)',
+  'report.problem.componentTooLong': 'קצרו את השם ל־{max} תווים לכל היותר.',
+  'report.problem.messageRequired': 'כתבו את ההודעה שלכם.',
+  'report.context.label': 'צירוף פרטים טכניים',
+  'report.context.detail':
+    'גרסת סביבת הריצה, סוג המכשיר (מחשב או טאבלט) והמזהה של הפרויקט הפתוח. לעולם לא תוכן הפרויקט.',
+  'report.disclosure.context':
+    'אם תצרפו פרטים טכניים: גרסת סביבת הריצה, סוג המכשיר והמזהה של הפרויקט הפתוח (לא תוכנו).',
+  'status.feedback': 'משוב',
+  'status.admin': 'ניהול',
+  'admin.title': 'ניהול',
+  'admin.close': 'סגירה',
+  'admin.ownerOnly': 'לבעלים בלבד. השרת בודק כל פעולה.',
+  'admin.tab.testers': 'בודקים',
+  'admin.tab.reports': 'משוב',
+  'admin.loading': 'טוען…',
+  'admin.capacity.testers': 'בודקים',
+  'admin.capacity.ownerExcluded': '(הבעלים אינו נספר)',
+  'admin.capacity.sessions': 'סימולציות פעילות',
+  'admin.add.heading': 'הוספת בודק',
+  'admin.add.label': 'כתובת האימייל של חשבון Google',
+  'admin.add.hint': 'הכתובת נשלחת לשרת בלבד. ברשימות היא מוצגת מוסתרת חלקית.',
+  'admin.add.invalid': 'הזינו כתובת אימייל תקינה אחת.',
+  'admin.add.submit': 'הוספת בודק',
+  'admin.add.sending': 'מוסיף…',
+  'admin.add.last': 'הכתובת שהוזנה:',
+  'admin.add.show': 'הצגה',
+  'admin.add.hide': 'הסתרה',
+  'admin.add.checkAgain': 'בדיקה חוזרת',
+  'admin.accounts.heading': 'חשבונות',
+  'admin.accounts.effect': 'שינויים נכנסים לתוקף תוך שניות, ללא הפעלה מחדש.',
+  'admin.accounts.account': 'חשבון',
+  'admin.accounts.class': 'תפקיד',
+  'admin.accounts.status': 'מצב',
+  'admin.accounts.added': 'נוסף',
+  'admin.accounts.googleId': 'חשבון Google נרשם',
+  'admin.add.nameLabel': 'שם (רשות, פרטי)',
+  'admin.add.nameHint': 'לרשימה שלך בלבד, למשל „אלכס ט.”. עד {max} אותיות; לעולם לא נשלח לטלגרם.',
+  'admin.name.invalid': "יש להשתמש ב־1–{max} אותיות, רווחים ו־. ' - בלבד, ולהתחיל באות.",
+  'admin.accounts.timeZone': 'השעות לפי שעון ישראל.',
+  'admin.accounts.filter': 'הצגה',
+  'admin.filter.active': 'פעילים',
+  'admin.filter.disabled': 'מושבתים',
+  'admin.filter.all': 'הכול',
+  'admin.accounts.none': 'אין חשבונות ברשימה הזו.',
+  'admin.accounts.noName': 'ללא שם',
+  'admin.accounts.firstSignIn': 'כניסה ראשונה',
+  'admin.accounts.signIns': 'מספר כניסות',
+  'admin.accounts.neverSignedIn': 'עדיין לא נכנס/ה',
+  'admin.accounts.disabledAt': 'הושבת בתאריך',
+  'admin.rename': 'שינוי שם',
+  'admin.rename.label': 'שינוי השם של {account}',
+  'admin.rename.fieldLabel': 'שם עבור {account}',
+  'admin.rename.save': 'שמירת השם',
+  'admin.rename.saving': 'שומר…',
+  'admin.rename.cancel': 'ביטול',
+  'admin.result.done.rename': 'השם נשמר: {account}.',
+  'admin.accounts.lastSignIn': 'כניסה אחרונה',
+  'admin.accounts.actions': 'פעולות',
+  'admin.class.owner': 'בעלים',
+  'admin.class.alpha_tester': 'בודק',
+  'admin.status.authorized': 'פעיל',
+  'admin.status.revoked': 'מושבת',
+  'admin.status.pending': 'ממתין',
+  'admin.yes': 'כן',
+  'admin.no': 'לא',
+  'admin.notMeasured': 'לא נמדד',
+  'admin.disable': 'השבתה',
+  'admin.disable.label': 'השבתת {account}',
+  'admin.reactivate': 'הפעלה מחדש',
+  'admin.reactivate.label': 'הפעלה מחדש של {account}',
+  'admin.confirm.title.disable': 'להשבית את הבודק?',
+  'admin.confirm.title.reactivate': 'להפעיל מחדש את הבודק?',
+  'admin.confirm.title.deleteReport': 'למחוק את הדיווח?',
+  'admin.confirm.title.deleteTester': 'למחוק את כל הדיווחים של הבודק?',
+  'admin.disable.confirm.what': 'הגישה של {account} מסתיימת עכשיו:',
+  'admin.disable.confirm.signIn': 'לא תתאפשר כניסה חדשה.',
+  'admin.disable.confirm.requests': 'בקשות נוכחיות יידחו.',
+  'admin.disable.confirm.sessions': 'סימולציות שרצות ייעצרו.',
+  'admin.disable.confirm.kept': 'הרשומה והדיווחים נשמרים. אפשר להפעיל את החשבון מחדש בהמשך.',
+  'admin.disable.confirm.action': 'השבתת הגישה',
+  'admin.reactivate.confirm.what': '{account} יוכל להיכנס שוב.',
+  'admin.reactivate.confirm.cap': 'הפעולה תתפוס אחד מ־{cap} המקומות לבודקים.',
+  'admin.reactivate.confirm.action': 'הפעלה מחדש',
+  'admin.cancel': 'ביטול',
+  'admin.working': 'מבצע…',
+  'admin.result.done.add': '{account} נוסף ויכול להיכנס עכשיו.',
+  'admin.result.done.disable': 'הגישה של {account} הסתיימה.',
+  'admin.result.done.reactivate': '{account} יכול להיכנס שוב.',
+  'admin.result.forbidden': 'השרת דחה את הפעולה.',
+  'admin.result.ownerPending':
+    'זהות הבעלים עדיין לא נרשמה בשרת; בקשו מהמפעיל להריץ את סנכרון הזהויות.',
+  'admin.result.invalid': 'השרת לא יכול היה לקבל את הבקשה. בדקו את הפרטים ונסו שוב.',
+  'admin.result.cap_reached': 'כל המקומות לבודקים תפוסים. השביתו קודם בודק אחר.',
+  'admin.result.exists': 'לכתובת הזו כבר יש חשבון.',
+  'admin.result.unknown_target': 'החשבון הזה כבר לא קיים. פתחו את הרשימה מחדש.',
+  'admin.result.last_owner': 'אי אפשר להשבית את חשבון הבעלים.',
+  'admin.result.conflict': 'החשבונות השתנו בינתיים. פתחו את הרשימה מחדש ונסו שוב.',
+  'admin.result.error': 'השינוי לא בוצע, ושום דבר לא השתנה. נסו שוב מאוחר יותר.',
+  'admin.result.pending': 'השרת עדיין מטפל בבקשה ({id}). בדקו שוב בעוד רגע.',
+  'admin.error.signed_out': 'פג תוקף הכניסה שלכם. היכנסו שוב.',
+  'admin.error.forbidden': 'רק הבעלים יכול לראות את זה.',
+  'admin.error.unavailable': 'לא זמין כרגע. נסו שוב מאוחר יותר.',
+  'admin.error.rate_limited': 'יותר מדי בקשות. המתינו דקה ונסו שוב.',
+  'admin.error.network': 'השרת לא ענה. נסו שוב.',
+  'admin.warnings.heading': 'דורש תשומת לב',
+  'admin.warnings.identity_mismatch':
+    'חשבון Google אחר נכנס עם הכתובת של {account} ({count} פעמים, לאחרונה {last}). החשבון הרשום לא שונה.',
+  'admin.warnings.other': 'אזהרה עבור {account}: {kind}',
+  'admin.reports.empty': 'אין עדיין משוב.',
+  'admin.reports.received': 'התקבל',
+  'admin.reports.kind': 'סוג',
+  'admin.reports.area': 'תחום',
+  'admin.reports.tester': 'בודק',
+  'admin.reports.length': 'תווים',
+  'admin.reports.open': 'פתיחה',
+  'admin.reports.open.label': 'פתיחת הדיווח {id}',
+  'admin.reports.unreadable': 'לא קריא',
+  'admin.reports.blocking': 'חוסם',
+  'admin.reports.back': 'חזרה לרשימה',
+  'admin.reports.component': '[[component]] מבוקש',
+  'admin.reports.technical': 'פרטים טכניים',
+  'admin.reports.delete': 'מחיקת הדיווח',
+  'admin.reports.deleteTester': 'מחיקת כל הדיווחים של הבודק',
+  'admin.reports.delete.confirm': 'הדיווח {id} יימחק לצמיתות.',
+  'admin.reports.deleteTester.confirm': 'כל הדיווחים של הבודק {tester} יימחקו לצמיתות.',
+  'admin.reports.deleted': 'הדיווח נמחק.',
+  'admin.reports.deletedTester': 'נמחקו דיווחים: {count}.',
 };

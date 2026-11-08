@@ -9,6 +9,7 @@ import { useEffect, useState } from 'preact/hooks';
 import { BUILD_INFO, versionLabel, type BuildInfo } from '../buildInfo.js';
 import { startUpdateCheck } from '../updateCheck.js';
 import { useAppState, useStore, useT } from './context.js';
+import { gateFetch } from '../gate.js';
 
 const DISMISSED = 'tbi-lab.update.dismissed';
 
@@ -33,7 +34,7 @@ export function UpdateBanner() {
       running,
       (s) => setServed((prev) => (prev?.commit === s.commit ? prev : s)),
       {
-        fetch: (url, init) => fetch(url, init),
+        fetch: (url, init) => gateFetch(url, init),
         window,
         document,
         setInterval: (fn, ms) => window.setInterval(fn, ms),

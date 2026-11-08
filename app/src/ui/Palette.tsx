@@ -1,3 +1,4 @@
+import { LearnMore } from './Capabilities.js';
 import { CATALOG, CATALOG_ORDER, placementBlock, type ComponentTypeId } from '@tbi-lab/domain';
 import { catalogText } from '../i18n/i18n.js';
 import type { MessageKey } from '../i18n/messages.en.js';
@@ -10,7 +11,10 @@ import { SYMBOLS } from './symbols.js';
  */
 export const PALETTE_GROUPS: readonly { key: MessageKey; types: readonly ComponentTypeId[] }[] = [
   { key: 'palette.group.sources', types: ['instrument.lab_psu', 'component.ground'] },
-  { key: 'palette.group.passive', types: ['component.resistor', 'component.capacitor'] },
+  {
+    key: 'palette.group.passive',
+    types: ['component.resistor', 'component.capacitor', 'component.potentiometer'],
+  },
   {
     key: 'palette.group.semiconductors',
     types: ['component.led', 'component.rgb_led', 'component.diode', 'component.bjt_npn'],
@@ -19,8 +23,31 @@ export const PALETTE_GROUPS: readonly { key: MessageKey; types: readonly Compone
     key: 'palette.group.switches',
     types: ['component.push_button', 'component.toggle_switch', 'component.relay'],
   },
-  { key: 'palette.group.sensors', types: ['component.photoresistor', 'sensor.pir_hc_sr501'] },
-  { key: 'palette.group.output', types: ['component.buzzer', 'display.led_matrix_8x8'] },
+  {
+    key: 'palette.group.sensors',
+    types: ['component.photoresistor', 'sensor.pir_hc_sr501', 'sensor.hc_sr04', 'sensor.dht22'],
+  },
+  {
+    key: 'palette.group.output',
+    types: [
+      'component.buzzer',
+      'display.led_matrix_8x8',
+      'display.lcd1602_i2c',
+      'component.servo_sg90',
+    ],
+  },
+  {
+    key: 'palette.group.logic',
+    types: [
+      'logic.gate_and',
+      'logic.gate_nand',
+      'logic.gate_or',
+      'logic.gate_nor',
+      'logic.gate_xor',
+      'logic.gate_not',
+      'logic.quad_and',
+    ],
+  },
   { key: 'palette.group.mcu', types: ['board.esp32_devkitc_wroom32'] },
 ];
 const GROUPS = PALETTE_GROUPS;
@@ -53,7 +80,10 @@ export function Palette({ placing, onPick }: Props) {
           id={`palette-note-${block}`}
           data-testid={`palette-note-${block}`}
         >
-          {t(`palette.unavailable.${block}`)}
+          <span data-testid={`palette-note-text-${block}`}>
+            {t(`palette.unavailable.${block}`)}
+          </span>{' '}
+          <LearnMore section="parts" />
         </p>
       ))}
       {GROUPS.map((group) => (
@@ -94,6 +124,17 @@ export function Palette({ placing, onPick }: Props) {
                       <g class="symbol">{SYMBOLS[type].draw()}</g>
                     </svg>
                     <span>{catalogText(locale, CATALOG[type].nameKey)}</span>
+                    {/* Sprint 13 OS-10: a non-colour indicator of the armed placement. */}
+                    {placing === type && (
+                      <svg
+                        class="palette-check"
+                        viewBox="0 0 16 16"
+                        aria-hidden="true"
+                        data-testid="palette-check"
+                      >
+                        <path d="M3 8.5 6.5 12 13 4.5" />
+                      </svg>
+                    )}
                   </button>
                 </li>
               );

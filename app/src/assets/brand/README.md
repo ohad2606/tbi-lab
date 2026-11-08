@@ -1,28 +1,53 @@
-# TBI brand assets
+# TBI Lab brand assets
 
-Derived from the TBI logo files provided by the PM (`~/TBI_logo`, 2026-09-24; not committed,
-1.1–1.4 MB each) by `scripts/build-brand-assets.mjs`, which uses Chromium's canvas for
-high-quality downscaling:
+Derived from the official TBI Lab logo package provided by the owner (`~/logo/logo_app`,
+2026-10-14; not committed, 1.3–1.9 MB each) by `scripts/build-brand-assets.mjs` (the top-bar and Projects images with
+Chromium's canvas; the application icons with `scripts/brand-image.mjs`, Node only, Lanczos-3 in
+linear light, byte-deterministic). Nothing is recoloured or redrawn; transparent files are only trimmed to their
+non-transparent pixels and scaled with the aspect ratio kept.
 
-| Asset                            | Source (SHA-256)                       | Treatment                                                                                                                                                                      |
-| -------------------------------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `tbi-mark.png` (128 px)          | `logo_rounded.png` (`c0c19526…8cfe7f`) | clipped to its circle, transparent outside; top bar at 30 px                                                                                                                   |
-| `tbi-logo.png` (533 × 300)       | `logo_main.png` (`0ef14ee2…677943`)    | auto-cropped to the artwork; its painted navy background turned into real alpha (see below); Projects header at 150 px (2x)                                                    |
-| `tbi-logo-light.png` (204 × 120) | `logo_no_bg.png` (`64f0ace5…fa35dc6`)  | same logo drawn for light surfaces: auto-cropped; its painted light checkerboard cleared by colour-to-alpha (dark-on-light); top bar at 38 px; also the favicon (`index.html`) |
+| Asset                           | Source (SHA-256)                      | Use                                                                                          |
+| ------------------------------- | ------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `tbi-lab-symbol.png` (135 × 76) | `app_logo_04.png` (`17bd314b…1f8dfa`) | the infinity symbol alone, transparent; top bar at 38 px beside the product name (2x)        |
+| `tbi-lab-logo.png` (520 × 300)  | `app_logo_01.png` (`e6efd96a…bdc4fc`) | the full logo (symbol, TBI LAB wordmark, tagline), transparent; Projects band at 150 px (2x) |
+| `icons/<env>/…` (see below)     | `app_logo_04.png`, `app_logo_05.png`  | favicons, apple-touch-icon, web app manifest icons (`app/brand.config.ts`)                   |
 
-**Source inspection (Product Alpha maintenance, 2026-09-24).** All four originals are 8-bit RGB PNGs
-with no alpha channel:
+**The package (2026-10-14).** 14 PNGs in two parallel sets, `logo_main/` and `logo_app/`; no SVG,
+ICO or small-size variants. The owner selected `logo_app/` for the application:
 
-| File               | SHA-256                                                            | Finding                                                                                                                                                                                                                   |
-| ------------------ | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `logo_no_bg.png`   | `64f0ace553638130d8ce95587107ebbc26dfdeb154df284d85e8bfd48fa35dc6` | **No real transparency.** Alpha 255 everywhere; a checkerboard (≈248 / ≈252 grey, ~20 px blocks) is painted into the pixels. **Used** (S6) for `tbi-logo-light.png`: the checkerboard is below the 6 % floor and cleared. |
-| `logo_main.png`    | `0ef14ee29603371d04ecaaaa004f1d5b6ee0e5cb4cc0e6704d5b68b69d677943` | Elongated logo on a near-black navy (≈ rgb(0, 9, 30)). **Used** for `tbi-logo.png`                                                                                                                                        |
-| `logo_banner.png`  | `1be0447d2042065d602fc2e5153e13e75961555f7abf86c054e39c1e17689e1f` | Wide banner with decorative background art; not a logo lock-up                                                                                                                                                            |
-| `logo_rounded.png` | `c0c1952620c423dc032c6b78b167dbe024ac72d020316422491469a6cf8cfe7f` | Round (profile) mark; `tbi-mark.png` kept as a profile asset, used nowhere in the product UI (S6)                                                                                                                         |
+| File              | Size        | Content                                                             |
+| ----------------- | ----------- | ------------------------------------------------------------------- |
+| `app_logo_01.png` | 1672 × 941  | full logo with tagline, transparent. **Used**                       |
+| `app_logo_02.png` | 1672 × 941  | full logo with tagline on a painted navy background                 |
+| `app_logo_03.png` | 1672 × 941  | full logo with tagline on a painted white background                |
+| `app_logo_04.png` | 1672 × 941  | infinity symbol only, transparent. **Used**                         |
+| `app_logo_05.png` | 1254 × 1254 | dark rounded app icon (symbol + TBI LAB), painted corners. **Used** |
+| `app_logo_06.png` | 1254 × 1254 | light rounded app icon (symbol + TBI LAB), painted corners          |
+| `app_logo_07.png` | 2172 × 724  | wide banner with decorative background art; no placement            |
 
-`tbi-logo.png` is `logo_main.png` with its background made transparent by colour-to-alpha against
-the measured background colour (every pixel is un-blended as artwork over that background; only
-brightness above it counts, and the background's own grain below 3 % opacity is cleared). The
-artwork is not redrawn or recoloured: composited on the navy header it reproduces the original,
-without a visible box. Re-run `node ../scripts/build-brand-assets.mjs ~/TBI_logo` from `app/`
-to regenerate; the originals are not committed.
+**Application icons (revised 2026-11-05).** Per environment (`production/`, and `dev/` with a yellow DEV marker, used only by
+DEV-Lab builds, `VITE_TBI_ENV=dev`). A desktop scales its taskbar and shortcut icons down from what the manifest lists, so
+every size it uses is supplied, made for that size:
+
+| File                                                  | Content                                                                                                                                    |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `favicon-16.png`, `favicon-24.png`                    | `app_logo_04` symbol on the app icon's navy rounded square (the wordmark cannot resolve; the symbol alone washes out on light backgrounds) |
+| `favicon-32/48/64.png`, `icon-96/128/192/256/512.png` | `app_logo_05`, transparent outside its measured rounded square, sharpened after the reduction                                              |
+| `favicon.ico`                                         | 16, 24, 32, 48, 64, 256 of the above                                                                                                       |
+| `apple-touch-icon-180.png`                            | `app_logo_05` cropped to its rounded square, opaque (iOS masks it)                                                                         |
+| `maskable-192.png`, `maskable-512.png`                | the content of `app_logo_05` on the brand navy, as large as the 80 % safe zone allows                                                      |
+
+DEV marker: up to 96 px the symbol on the square with a yellow band (a band over the wordmark would leave pieces of its
+letters); above that a yellow ring and DEV on the LAB plate; maskable and apple-touch-icon, the symbol on the navy with a yellow band (a ring would be masked away on iOS).
+
+The only pixels removed from the artwork are the painted black around the rounded square (on the maskable icons, the outline with it); nothing is recoloured or redrawn.
+
+Known limitations, reported to the owner: the package has no small-size favicon (the detailed app
+icon is hard to read at 16–32 px, and its corners are painted black, not transparent), and no
+transparent "TBI LAB without tagline" lock-up (the top bar therefore shows the symbol beside the
+existing text name). In the transparent originals the artwork reaches the bottom edge (no built-in
+clear space); the surrounding layout provides it.
+
+Re-run `node ../scripts/build-brand-assets.mjs ~/logo/logo_app` from `app/` to regenerate; the
+originals are not committed. The previous generic TBI assets (`tbi-logo.png`, `tbi-logo-light.png`,
+`tbi-mark.png`, from `~/TBI_logo`) are retired.

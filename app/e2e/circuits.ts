@@ -11,11 +11,21 @@ import {
   waitSaved,
 } from './helpers.js';
 
+/**
+ * Set a quantity through the inspector. Phase 1 (units): a plain number is read in the unit shown
+ * in the field's unit list, so a plain number here (`220`) means the BASE unit (Ω, A): it is
+ * typed and the base unit chosen from the list. A prefixed form (`4k7`, `100m`) is converted by
+ * the field itself.
+ */
 export async function setValue(page: Page, id: string, key: string, text: string): Promise<void> {
   await component(page, id).locator('.component-hit').click();
   const field = page.getByTestId(`param-${id}-${key}`);
   await field.fill(text);
-  await field.press('Enter');
+  const unit = page.getByTestId(`param-${id}-${key}-unit`);
+  const isList = (await unit.evaluate((e) => e.tagName)) === 'SELECT';
+  if (/^[\d.]+$/.test(text) && isList && (await unit.inputValue()) !== '0')
+    await unit.selectOption('0');
+  else await field.press('Enter');
 }
 
 export async function link(page: Page, a: [string, string], b: [string, string]) {

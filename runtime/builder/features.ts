@@ -7,13 +7,23 @@
  *   used): interrupts, Wi-Fi, Bluetooth, ADC, PWM/LEDC, DAC, touch, deep sleep;
  * - tokens in the sketch source: internal pulls and restart requests. (`esp_restart` is always
  *   linked by the core's panic handler, so a symbol cannot tell whether the sketch calls it.)
+ *   Sprint 18 (F-17C-1): CPU clock changes likewise (the core's main.cpp calls
+ *   `setCpuFrequencyMhz(F_CPU / 1000000)` at boot, so the symbol is always linked).
  *
  * Static analysis cannot prove absence through macros or wrappers; runtime diagnostics (for
  * example `guest_reset`) remain the backstop. Pins are taken from literal arguments when every
  * use is literal, otherwise every input-capable pin is declared.
  */
 import { ESP32_DEVKITC_WROOM32 } from '@tbi-lab/domain';
+import { programInputReads } from '@tbi-lab/domain';
 import type { FeatureReport } from './protocol.js';
+
+/**
+ * Version of this analysis. Raised whenever a rule is added or changed, so builds analysed by an
+ * older rule set are built (and analysed) again instead of being reused from the cache with a
+ * report that misses the new rule (Sprint 18: `cpu_frequency`).
+ */
+export const FEATURES_ANALYZER = 3;
 
 /** GPIOs the simulator can read (digital I/O and input-only pads). */
 export const INPUT_CAPABLE_GPIOS: number[] = ESP32_DEVKITC_WROOM32.pins
@@ -28,11 +38,19 @@ const SYMBOLS: [RegExp, string][] = [
   [/^(esp_bt_controller_init|btStart)$/, 'bluetooth'],
   [/^(__analogRead|analogRead|adc_oneshot_read)$/, 'adc'],
   [/^(ledcAttach|ledcAttachChannel|ledcWrite|__analogWrite|analogWrite)$/, 'pwm'],
+  // R4: the LEDC hardware fade (the runtime refuses duty_scale, decision R4-D4) and output
+  // inversion (the GPIO-matrix OUT_INV bit is not published to the host, so an inverted output
+  // would be simulated non-inverted): refused on every runtime.
+  [/^(ledcFade|ledcFadeWithInterrupt|ledcFadeWithInterruptArg|ledcOutputInvert)$/, 'pwm_advanced'],
   [/^(dacWrite|__dacWrite)$/, 'dac'],
   [/^(__touchRead|touchRead)$/, 'touch'],
   [/^(esp_deep_sleep_start|esp_light_sleep_start)$/, 'sleep'],
   [/^(i2cInit|i2c_master_bus_add_device|i2c_driver_install)$/, 'i2c'],
   [/^(spiStartBus|spi_bus_initialize)$/, 'spi'],
+  // Sprint 13 P4: the runtime does not report a pad's drive strength (IO_MUX FUN_DRV), so the pad
+  // model assumes the reset default; a sketch that selects another strength cannot be simulated
+  // faithfully. Neither the 3.3.12 core nor its I2C driver links this symbol on the classic ESP32.
+  [/^gpio_set_drive_capability$/, 'drive_strength'],
 ];
 const INTERRUPT_SYMBOLS =
   /^(attachInterrupt|__attachInterrupt|__attachInterruptFunctionalArg|gpio_isr_handler_add)$/;
@@ -53,13 +71,75 @@ const LIBRARY_FACILITY: Record<string, string> = {
   SPI: 'spi',
 };
 
-/** Strip comments and string/char literals so tokens in them do not count. */
+/**
+ * Every facility code a feature report can name (Sprint 13 H1: the product's capability panel has
+ * an entry for each; `library:<Name>` is reported per library and listed as `library`).
+ */
+export const FEATURE_CODES: readonly string[] = [
+  ...new Set([
+    ...SYMBOLS.map(([, f]) => f),
+    ...Object.values(LIBRARY_FACILITY),
+    'interrupt',
+    'internal_pull',
+    'restart',
+    'cpu_frequency',
+    'library',
+  ]),
+];
+
+/**
+ * Sprint 18 (F-17C-1): a sketch that changes the CPU clock. On Runtime v2 and v3 the emulator stops
+ * advancing simulated time about a second after any change (160, 80, 40 or 20 MHz alike: the next
+ * FreeRTOS delay never returns), so such a sketch is refused at Build instead of running into the
+ * `stalled` failure. The boot frequency, 240 MHz, is not a change (the core returns early) and is
+ * accepted when every call passes the literal 240. The IDF calls below it are refused outright.
+ */
+function changesCpuFrequency(code: string): boolean {
+  if (
+    /\b(?:rtc_clk_cpu_freq_set_config(?:_fast)?|rtc_clk_cpu_freq_set_xtal|esp_pm_configure)\b/.test(
+      code,
+    )
+  )
+    return true;
+  const all = code.match(/\bsetCpuFrequencyMhz\b/g)?.length ?? 0;
+  const boot = code.match(/\bsetCpuFrequencyMhz\s*\(\s*240\s*\)/g)?.length ?? 0;
+  return all > boot;
+}
+
+/**
+ * Strip comments and string/char literals so tokens in them do not count. Sprint 26 (review M1):
+ * one pass in source order, so a `/*` inside a string, or a comment opened in one file, cannot
+ * hide code (each file of a program is stripped on its own, `analyzeFeatures` `sources`).
+ */
 export function codeOnly(source: string): string {
-  return source
-    .replace(/\/\*[\s\S]*?\*\//g, ' ')
-    .replace(/\/\/[^\n]*/g, ' ')
-    .replace(/"(?:\\.|[^"\\\n])*"/g, '""')
-    .replace(/'(?:\\.|[^'\\\n])*'/g, "''");
+  // Sprint 18 (review): C++14 digit separators (1'000, 0xFF'FF) are not character literals;
+  // dropped first (inside a number token, one that starts with a digit), so a call between two
+  // of them is not mistaken for literal text. case'a' and u8'x' stay character literals.
+  const text = source.replace(/(?<=\b\d[\dA-Fa-fxXbB']*)'(?=[\dA-Fa-f])/g, '');
+  let out = '';
+  let i = 0;
+  while (i < text.length) {
+    const c = text[i]!;
+    const n = text[i + 1];
+    if (c === '/' && n === '/') {
+      while (i < text.length && text[i] !== '\n') i++;
+      out += ' ';
+    } else if (c === '/' && n === '*') {
+      const end = text.indexOf('*/', i + 2);
+      i = end < 0 ? text.length : end + 2;
+      out += ' ';
+    } else if (c === '"' || c === "'") {
+      // A literal ends at its quote or (unterminated) at the end of the line.
+      let k = i + 1;
+      while (k < text.length && text[k] !== c && text[k] !== '\n') k += text[k] === '\\' ? 2 : 1;
+      i = text[k] === c ? k + 1 : k;
+      out += c + c;
+    } else {
+      out += c;
+      i++;
+    }
+  }
+  return out;
 }
 
 function literalPins(code: string, call: RegExp, any: RegExp): number[] {
@@ -72,18 +152,47 @@ function literalPins(code: string, call: RegExp, any: RegExp): number[] {
   return INPUT_CAPABLE_GPIOS;
 }
 
+/**
+ * Facilities a runtime can provide (Sprint 12, ADR-011 §5): when the runtime the build service
+ * issues tickets for announces the bridge capability, the facility is no longer `unsupported` but
+ * `requires`d, and its core library is allowed. The capability set comes from the provisioned
+ * runtime.json, never typed by hand.
+ */
+const RUNTIME_FACILITIES: Record<string, { capability: string; libraries: string[] }> = {
+  i2c: { capability: 'i2c', libraries: ['Wire'] },
+  // R4 (patch 0009): LEDC waveforms on a runtime announcing `pwm` (Runtime v3).
+  pwm: { capability: 'pwm', libraries: [] },
+};
+
 export function analyzeFeatures(input: {
   source: string;
   symbols: string[];
   libraries: string[];
+  /** Bridge capabilities of the runtime tickets are issued for (absent: none). */
+  capabilities?: readonly string[];
+  /**
+   * Sprint 26: the managed libraries the request pinned (registry entries, vendored and vetted).
+   * Such a library is supported when the runtime announces every capability it needs; those
+   * capabilities are then required. Any other library is reported as before.
+   */
+  managed?: readonly { name: string; runtimeCapabilities: readonly string[] }[];
+  /** Sprint 26: the program's files, each stripped on its own (then `source` is not used). */
+  sources?: readonly string[];
 }): FeatureReport {
-  const code = codeOnly(input.source);
+  const code = (input.sources ?? [input.source]).map(codeOnly).join('\n');
   const syms = new Set(input.symbols);
   const unsupported = new Set<string>();
   for (const s of syms)
     for (const [re, facility] of SYMBOLS) if (re.test(s)) unsupported.add(facility);
-  for (const lib of input.libraries)
+  const managedRequires = new Set<string>();
+  for (const lib of input.libraries) {
+    const m = input.managed?.find((x) => x.name === lib);
+    if (m && m.runtimeCapabilities.every((c) => input.capabilities?.includes(c))) {
+      for (const c of m.runtimeCapabilities) managedRequires.add(c);
+      continue;
+    }
     if (!SUPPORTED_LIBRARIES.has(lib)) unsupported.add(LIBRARY_FACILITY[lib] ?? `library:${lib}`);
+  }
 
   const internalPull = literalPins(
     code,
@@ -99,10 +208,41 @@ export function analyzeFeatures(input: {
   );
   const gpioInterrupt = !interruptUsed ? [] : callPins.length > 0 ? callPins : INPUT_CAPABLE_GPIOS;
   const restart = /\bESP\s*\.\s*restart\s*\(|\besp_restart\s*\(/.test(code);
+  if (changesCpuFrequency(code)) unsupported.add('cpu_frequency');
+  const requires = new Set<string>(managedRequires);
+  for (const [facility, f] of Object.entries(RUNTIME_FACILITIES)) {
+    if (!input.capabilities?.includes(f.capability) || !unsupported.has(facility)) continue;
+    unsupported.delete(facility);
+    requires.add(f.capability);
+  }
+  // Sprint 25 (Runtime v5): the bus clock is checked against the part at every START.
+  if (requires.has('i2c') && input.capabilities?.includes('i2c-clock')) requires.add('i2c-clock');
+  // Sprint 25 (Runtime v5): edge interrupts are delivered (`gpio-irq`); the pins are inputs the
+  // host watches. A level / NMI / wake-up interrupt is still refused by the runtime at the write.
+  const irqRuntime = gpioInterrupt.length > 0 && !!input.capabilities?.includes('gpio-irq');
+  if (irqRuntime) requires.add('gpio-irq');
+  let inputReads: FeatureReport['inputReads'];
+  if (input.capabilities?.includes('input-read')) {
+    // Sprint 26 (review M1): each file on its own; any unresolved file makes the reads unresolved.
+    const per = (input.sources ?? [input.source]).map((text) =>
+      programInputReads({ language: 'arduino-cpp', profile: '', fileName: 'sketch.ino', text }),
+    );
+    const r = { pins: per.flatMap((x) => x.pins), unresolved: per.some((x) => x.unresolved) };
+    // Literal interrupt pins only; an interrupt pin that cannot be told makes the reads unresolved.
+    const irqPins = irqRuntime && gpioInterrupt !== INPUT_CAPABLE_GPIOS ? gpioInterrupt : [];
+    inputReads = {
+      pins: [...new Set([...r.pins, ...irqPins])].sort((a, b) => a - b),
+      // Interrupt pins that could not be told: every input-capable pin was declared.
+      unresolved: r.unresolved || (irqRuntime && gpioInterrupt === INPUT_CAPABLE_GPIOS),
+    };
+    requires.add('input-read');
+  }
   return {
     internalPull,
-    gpioInterrupt,
+    gpioInterrupt: irqRuntime ? [] : gpioInterrupt,
     restart,
     unsupported: [...unsupported].sort(),
+    ...(requires.size ? { requires: [...requires].sort() } : {}),
+    ...(inputReads ? { inputReads } : {}),
   };
 }

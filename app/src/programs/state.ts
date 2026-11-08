@@ -8,7 +8,7 @@
  * an ESP32 session is running (D-S7-9). After a reload the state is recovered by a lookup (an
  * existing build of exactly this source), never by building.
  */
-import { sourceKey, type ProgramSource } from '@tbi-lab/domain';
+import { managedLibrary, programBuildFiles, sourceKey, type ProgramSource } from '@tbi-lab/domain';
 import { BuildTransportError, type BuildClient, type BuildResult } from './client.js';
 
 export type BuildPhase =
@@ -29,8 +29,16 @@ export interface BuildView {
   previous?: BuildResult;
   /** Queue position while waiting. */
   position?: number;
+  /** Sprint 18F: when this build was asked for (epoch ms), for the elapsed time shown. */
+  since?: number;
   /** Why the service could not be used (transport), when the last attempt failed that way. */
   error?: BuildTransportError['code'];
+  /**
+   * Sprint 13 OS-08: a build of an EARLIER version of this program is still in progress (the code
+   * was edited during the build). Build is not possible until it ends (one build per program),
+   * and its result will not be current for the edited code.
+   */
+  olderBuildRunning?: true;
 }
 
 /**
@@ -42,20 +50,40 @@ interface Input {
   profile: string;
   fileName: string;
   text: string;
+  /** Sprint 26: further files and pinned libraries (the arrays as stored: replaced on any edit). */
+  files: ProgramSource['files'];
+  libraries: ProgramSource['libraries'];
 }
+const sameList = <T>(a: readonly T[] | undefined, b: readonly T[] | undefined) =>
+  a === b || JSON.stringify(a ?? []) === JSON.stringify(b ?? []);
 const same = (a: Input | undefined, b: ProgramSource) =>
-  !!a && a.text === b.text && a.profile === b.profile && a.fileName === b.fileName;
+  !!a &&
+  a.text === b.text &&
+  a.profile === b.profile &&
+  a.fileName === b.fileName &&
+  sameList(a.files, b.files) &&
+  sameList(a.libraries, b.libraries);
 const inputOf = (p: ProgramSource): Input => ({
   profile: p.profile,
   fileName: p.fileName,
   text: p.text,
+  files: p.files,
+  libraries: p.libraries,
 });
+
+/** Sprint 26: the pinned libraries with their source trees (unknown ones: no tree, refused). */
+const librariesOf = (p: ProgramSource) =>
+  (p.libraries ?? []).map((r) => ({
+    id: r.id,
+    version: r.version,
+    tree: managedLibrary(r.id, r.version)?.tree ?? '',
+  }));
 
 interface Entry {
   result?: BuildResult;
   /** The input `result` was built from. */
   resultInput?: Input;
-  building?: { input: Input; position?: number };
+  building?: { input: Input; position?: number; since: number };
   error?: { input: Input; code: BuildTransportError['code'] };
 }
 
@@ -67,10 +95,12 @@ const MAX_ENTRIES = 8;
  */
 const keyCache = new Map<string, string>();
 export function programKey(program: ProgramSource): string {
-  const id = `${program.profile}\u0000${program.fileName}\u0000${program.text}`;
+  const id = `${program.profile}\u0000${program.fileName}\u0000${program.text}\u0000${JSON.stringify(
+    [program.files ?? [], program.libraries ?? []],
+  )}`;
   let key = keyCache.get(id);
   if (key === undefined) {
-    key = sourceKey(program.profile, [{ name: program.fileName, text: program.text }]);
+    key = sourceKey(program.profile, programBuildFiles(program), librariesOf(program));
     keyCache.set(id, key);
     while (keyCache.size > 8) keyCache.delete(keyCache.keys().next().value!);
   }
@@ -128,6 +158,7 @@ export class ProgramBuilds {
     if (e.building && same(e.building.input, program))
       return {
         phase: 'building',
+        since: e.building.since,
         ...(e.building.position !== undefined ? { position: e.building.position } : {}),
       };
     if (e.result && same(e.resultInput, program))
@@ -136,6 +167,7 @@ export class ProgramBuilds {
       phase: 'required',
       ...(e.result ? { previous: e.result } : {}),
       ...(e.error && same(e.error.input, program) ? { error: e.error.code } : {}),
+      ...(e.building ? { olderBuildRunning: true as const } : {}),
     };
   }
 
@@ -152,21 +184,25 @@ export class ProgramBuilds {
     const input = inputOf(program);
     const e = this.entry(projectId, boardId);
     if (e.building) return false; // one build per program at a time
-    e.building = { input };
+    const since = Date.now();
+    e.building = { input, since };
     delete e.error;
     this.changed();
     try {
       const result = await client.build(
         program.profile,
-        [{ name: program.fileName, text: program.text }],
+        programBuildFiles(program),
         (state, position) => {
           if (e.building?.input !== input) return;
           e.building = {
             input,
+            since,
             ...(state === 'queued' && position !== undefined ? { position } : {}),
           };
           this.changed();
         },
+        undefined,
+        program.libraries,
       );
       e.result = result;
       e.resultInput = input;

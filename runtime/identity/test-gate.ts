@@ -35,6 +35,7 @@ export function gateHeaders(
   req: IncomingMessage,
   identity: IdentityConfig,
   subject: string | null,
+  email: string | null = null,
 ): OutgoingHttpHeaders {
   const out: OutgoingHttpHeaders = {};
   for (const [k, v] of Object.entries(req.headers)) {
@@ -43,6 +44,8 @@ export function gateHeaders(
     out[k] = v;
   }
   if (subject !== null) out[identity.subjectHeader] = subject;
+  // Sprint 23B: oauth2-proxy also sets the session's verified address (and deletes a client's).
+  if (email !== null) out['x-forwarded-email'] = email;
   return out;
 }
 
@@ -50,6 +53,7 @@ export function createTestGate(
   target: GateTarget,
   identity: IdentityConfig,
   subject: () => string | null,
+  email: () => string | null = () => null,
 ): Server {
   return createServer((req, res) => {
     const upstream = httpRequest(
@@ -59,7 +63,7 @@ export function createTestGate(
           : { host: target.host, port: target.port }),
         method: req.method,
         path: req.url,
-        headers: gateHeaders(req, identity, subject()),
+        headers: gateHeaders(req, identity, subject(), email()),
       },
       (up) => {
         res.writeHead(up.statusCode ?? 502, up.headers);
@@ -86,8 +90,14 @@ export async function startTestGate(
   target: GateTarget,
   identity: IdentityConfig,
   subject: string | null,
+  email: string | null = null,
 ): Promise<{ base: string; close: () => void }> {
-  const gate = createTestGate(target, identity, () => subject);
+  const gate = createTestGate(
+    target,
+    identity,
+    () => subject,
+    () => email,
+  );
   await new Promise<void>((r) => gate.listen(0, '127.0.0.1', r));
   return {
     base: `http://127.0.0.1:${(gate.address() as AddressInfo).port}`,
@@ -113,6 +123,20 @@ export const TEST_SUBJECT = 'user-a';
 export const principalFor = (subject = TEST_SUBJECT): Principal =>
   derivePrincipal(TEST_IDENTITY, subject);
 
+/**
+ * Sprint 25 (Runtime v5, `input-read`): the input reads of a prebuilt reference firmware, by image
+ * hash, as the build service would declare them for that source (harness/env.ts `artifact`). A
+ * ticket for such an image without explicit features carries them, so the host watches the pins
+ * the firmware reads, as it does for every built program.
+ */
+const firmwareReads = new Map<string, NonNullable<TicketFeatures['inputReads']>>();
+export function declareFirmwareReads(
+  sha256: string,
+  reads: NonNullable<TicketFeatures['inputReads']>,
+): void {
+  firmwareReads.set(sha256, reads);
+}
+
 /** A run ticket as the build service would issue it after a lease (default: 10 minutes). */
 export function ticketFor(
   sha256: string,
@@ -120,11 +144,22 @@ export function ticketFor(
   features: TicketFeatures | null = null,
   ttlMs = 600_000,
 ): string {
+  const reads = firmwareReads.get(sha256);
   return signTicket(TEST_TICKET_KEY, {
     v: 1,
     principal,
     sha256,
-    features,
+    features:
+      features ??
+      (reads
+        ? {
+            internalPull: [],
+            gpioInterrupt: [],
+            restart: false,
+            unsupported: [],
+            inputReads: reads,
+          }
+        : null),
     exp: Date.now() + ttlMs,
   });
 }

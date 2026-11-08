@@ -1,0 +1,77 @@
+/**
+ * G-2 targeted validation (not product code): run firmware images on the bare bridge from a job
+ * file ($JOBS, JSON). Per job: optional tbiprof plugin, optional scheduled pulses on a pad, optional
+ * trigger-fall echo schedule (as the Session Host's HC-SR04). Records every pad frame and the serial.
+ */
+import { spawn } from 'node:child_process';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { expect, it } from 'vitest';
+import { QEMU, RUNTIME_HOME } from '../harness/env.js';
+import { createSessionOverlay } from '../harness/artifacts.js';
+import { runSession } from '../harness/session.js';
+import type { Command } from '../harness/protocol.js';
+
+type Job = {
+  name: string; sha: string; endNs: string; plugin?: boolean; pluginArgs?: string; echo?: boolean;
+  pulses?: { pad: number; rise: string; fall: string }[];
+  serialIn?: { atNs: string; text: string };
+};
+const OUT = process.env.DIAG_OUT!;
+const jobs: Job[] = JSON.parse(readFileSync(process.env.JOBS!, 'utf8'));
+const PLUGIN = '/home/ubuntu/tbi-s12-rel/diag/plugin/tbiprof.so';
+const MS = 1_000_000n;
+
+for (const job of jobs)
+  it(job.name, async () => {
+    const ov = createSessionOverlay(join(RUNTIME_HOME, 'artifacts', `${job.sha}.bin`), job.sha);
+    const pads: string[] = [];
+    const ser: [string, string][] = [];
+    const end = BigInt(job.endNs);
+    const pulses = (job.pulses ?? []).map((p) => ({ pad: p.pad, rise: BigInt(p.rise), fall: BigInt(p.fall) }));
+    let next = 0;
+    let sent = false;
+    try {
+      const r = await runSession(
+        {
+          qemu: QEMU, flash: ov.flash, dir: ov.dir, tickUs: 1000, wallTimeoutMs: 1_500_000,
+          ...(job.plugin
+            ? {
+                launch: (o: { qemu: string; args: string[]; env?: NodeJS.ProcessEnv }) =>
+                  spawn(o.qemu, [...o.args, '-plugin', `${PLUGIN},out=${join(OUT, `${job.name}.prof`)}${job.pluginArgs ?? ''}`],
+                    { stdio: ['ignore', 'ignore', 'pipe'], env: o.env ?? process.env }) as never,
+              }
+            : {}),
+        },
+        {
+          serial: (vns, b) => { ser.push([vns.toString(), b.toString('latin1')]); },
+          pad: (e): Command[] => {
+            pads.push(`${e.vns} ${e.pad} ${e.drive} ${e.level}`);
+            if (!job.echo || e.pad !== 5 || e.level !== 0 || e.drive !== 1) return [];
+            return [
+              { type: 'J', vns: e.vns + 200_000n, pad: 18, level: 1 },
+              { type: 'J', vns: e.vns + 23_495_091n, pad: 18, level: 0 },
+            ];
+          },
+          tick: (vns): Command[] => {
+            if (vns >= end) return [{ type: 'Q' }];
+            const out: Command[] = [];
+            if (job.serialIn && !sent && vns >= BigInt(job.serialIn.atNs)) {
+              sent = true;
+              out.push({ type: 'R', bytes: Buffer.from(job.serialIn.text, 'latin1') });
+            }
+            while (next < pulses.length && pulses[next]!.rise - vns <= 20n * MS) {
+              const p = pulses[next++]!;
+              out.push({ type: 'J', vns: p.rise, pad: p.pad, level: 1 });
+              out.push({ type: 'J', vns: p.fall, pad: p.pad, level: 0 });
+            }
+            return out;
+          },
+        },
+      );
+      expect(r.outcome, r.diagnostics).toBe('completed');
+      writeFileSync(join(OUT, `${job.name}.json`), JSON.stringify({ pads, serial: r.serial.toString(), serialT: ser }));
+    } finally {
+      ov.discard();
+    }
+  }, 1_500_000);

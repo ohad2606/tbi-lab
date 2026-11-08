@@ -56,8 +56,36 @@ describe('Sprint 4 catalog: the non-MCU V1 catalog is complete and closed (A16)'
         'display.led_matrix_8x8',
         // Capacitor: exposed with time-stepped simulation (§6.0).
         'component.capacitor',
+        // Sprint 12 (Runtime v2, PM authorization D-8): R2 sensors and the R3 I2C display.
+        'sensor.hc_sr04',
+        'sensor.dht22',
+        'display.lcd1602_i2c',
+        // Sprint 15 (R4; servo is a PM-6 approved family, §6.0): exposed with LEDC PWM.
+        'component.servo_sg90',
+        // Sprint 19B (Exploration Foundation L1, owner-approved EF-D2 B): single logic gates.
+        'logic.gate_and',
+        'logic.gate_nand',
+        'logic.gate_or',
+        // Sprint 29 (Workstream B): NOR and XOR single gates (TI SN74LVC1G02 / SN74LVC1G86).
+        'logic.gate_nor',
+        'logic.gate_xor',
+        'logic.gate_not',
+        // Exploration Foundation L3: one packaged logic device (TI SN74LVC08A).
+        'logic.quad_and',
+        // Sprint POT-UNITS (owner directive 2026-10-30): the potentiometer as a passive part.
+        'component.potentiometer',
       ].sort(),
     );
+  });
+
+  it('Sprint 19B: logic terminal wording is used by logic gates only (other parts unchanged)', () => {
+    for (const def of Object.values(CATALOG)) {
+      const logic = def.type.startsWith('logic.');
+      for (const t of def.terminals)
+        expect(t.labelKey.startsWith('terminal.logic_'), `${def.type}.${t.id}`).toBe(
+          logic && t.id !== 'vcc',
+        );
+    }
   });
 
   it('diode: D reference, anode/cathode, curated datasheet model token', () => {
@@ -218,13 +246,21 @@ describe('Sprint 10: parts offered only where the board runtime can simulate the
     doc = place(doc, 'board.esp32_devkitc_wroom32', 0, 0).doc;
     for (const t of CATALOG_ORDER)
       expect(placementBlock(doc, t), t).toBe(
-        CATALOG[t].mcuRuntime === false ? 'part_needs_runtime' : null,
+        CATALOG[t].mcuRuntime !== false
+          ? null
+          : CATALOG[t].mcuRuntimeReason === 'time_dependent'
+            ? 'part_time_dependent'
+            : 'part_needs_runtime',
       );
     // The original parts stay available with the board.
     expect(placementBlock(doc, 'component.led')).toBeNull();
-    let local = place(newDoc(), 'component.relay', 0, 0).doc;
+    // Sprint 11 (R1): the relay runs with the board now; the matrix is still refused with it.
+    let local = place(newDoc(), 'display.led_matrix_8x8', 0, 0).doc;
     expect(placementBlock(local, 'board.esp32_devkitc_wroom32')).toBe('board_needs_runtime');
     local = place(local, 'component.led', 200, 0).doc;
     expect(placementBlock(local, 'component.capacitor')).toBeNull();
+    // Sprint 11: a project whose only blocking parts are time-dependent says so.
+    const timed = place(newDoc(), 'component.capacitor', 0, 0).doc;
+    expect(placementBlock(timed, 'board.esp32_devkitc_wroom32')).toBe('board_time_dependent');
   });
 });

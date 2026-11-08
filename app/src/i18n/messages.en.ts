@@ -22,6 +22,9 @@ export const en = {
   'topbar.projectName': 'Project name',
   'topbar.language': 'Language',
   'topbar.signOut': 'Sign out',
+  'deployment.devBadge': 'DEV',
+  'deployment.devBadgeTitle': 'Development environment',
+  'deployment.devStrip': 'Development environment, not production. For testing only.',
   'deployment.preview': '{name} preview · experimental',
   'deployment.previewNote':
     'An experimental preview, separate from the validated deployment. Its projects are stored apart.',
@@ -45,6 +48,22 @@ export const en = {
   'canvas.zoomFit': 'Fit to view',
   'canvas.hint.wire':
     'Drag a straight part of the wire to move it. Its ends stay connected. Delete removes it.',
+  'canvas.overlayLimit':
+    'This drawing is too large to mark every crossing and branch point: some line hops and junction dots are not drawn. The connections are exactly as drawn.',
+  'canvas.routeConflict':
+    'Some wires are drawn where they may look connected. They are NOT connected there: only wire ends at [[terminal]]s and [[junction]] dots connect. The marked wires (dashed outline):',
+  'canvas.routeConflict.wire': 'along or into a wire of another net: {ids}',
+  'canvas.routeConflict.pin': 'over a [[pin]] of another net: {ids}',
+  'canvas.routeConflict.body':
+    'through the body of a part they are not wired to (drawn behind it): {ids}',
+  'canvas.routeConflict.stacked':
+    '[[terminal]]s of different parts drawn on top of each other, not connected: {ids}',
+  'canvas.routeConflict.unchecked':
+    'This drawing is too large to check every wire for routes that may look like connections. Not checked: {ids}. Only wire ends at [[terminal]]s and [[junction]] dots connect.',
+  'canvas.routeConflict.wireTitle':
+    'Wire {id}: drawn where it may look connected; it is not connected there',
+  'canvas.routeLimit':
+    'This project is very large: {count} wires are drawn with a simple shape (they may pass close to pins or other wires). The connections are exactly as drawn.',
   'canvas.hint.idle': 'Click a terminal to start a wire. Drag on empty space to select.',
   'canvas.hint.placing': 'Click on the canvas to place. Esc cancels.',
   'canvas.hint.wiring':
@@ -101,6 +120,272 @@ export const en = {
   'model.ldr.senba_gl5528': 'CdS cell 5 mm (GL5528)',
   'model.buzzer.cui_cem_1205_ic': 'Active 5 V, 12 mm (CUI Devices CEM-1205-IC)',
   'model.relay.songle_srd_05vdc_sl_c': '5 V coil, SPDT (Songle SRD-05VDC-SL-C)',
+  // Sprint 19B (Exploration Foundation L1): single logic gates, TI SN74LVC1G series.
+  'component.logic.gate_and.name': 'AND gate',
+  'component.logic.gate_nand.name': 'NAND gate',
+  'component.logic.gate_or.name': 'OR gate',
+  'component.logic.gate_nor.name': 'NOR gate',
+  'component.logic.gate_xor.name': 'XOR gate',
+  'component.logic.gate_not.name': 'NOT gate (inverter)',
+  'model.logic.sn74lvc1g08': 'TI SN74LVC1G08, SOT-23-5 on a breakout',
+  'model.logic.sn74lvc1g00': 'TI SN74LVC1G00, SOT-23-5 on a breakout',
+  'model.logic.sn74lvc1g32': 'TI SN74LVC1G32, SOT-23-5 on a breakout',
+  'model.logic.sn74lvc1g02': 'TI SN74LVC1G02, SOT-23-5 on a breakout',
+  'model.logic.sn74lvc1g86': 'TI SN74LVC1G86, SOT-23-5 on a breakout',
+  'model.logic.sn74lvc1g04': 'TI SN74LVC1G04, SOT-23-5 on a breakout',
+  'terminal.logic_a': 'Input A',
+  'terminal.logic_b': 'Input B',
+  'terminal.logic_y': 'Output Y',
+  'terminal.logic_gnd': 'Ground (GND)',
+  // Exploration Foundation L3: a packaged logic device (TI SN74LVC08A, four 2-input AND gates).
+  'component.logic.quad_and.name': 'Quad AND gate IC (4 × 2-input)',
+  'model.logic.sn74lvc08a': 'TI SN74LVC08A, SOIC-14 on a breakout',
+  'terminal.logic_a1': 'Gate 1 input A (1A)',
+  'terminal.logic_b1': 'Gate 1 input B (1B)',
+  'terminal.logic_y1': 'Gate 1 output Y (1Y)',
+  'terminal.logic_a2': 'Gate 2 input A (2A)',
+  'terminal.logic_b2': 'Gate 2 input B (2B)',
+  'terminal.logic_y2': 'Gate 2 output Y (2Y)',
+  'terminal.logic_a3': 'Gate 3 input A (3A)',
+  'terminal.logic_b3': 'Gate 3 input B (3B)',
+  'terminal.logic_y3': 'Gate 3 output Y (3Y)',
+  'terminal.logic_a4': 'Gate 4 input A (4A)',
+  'terminal.logic_b4': 'Gate 4 input B (4B)',
+  'terminal.logic_y4': 'Gate 4 output Y (4Y)',
+  'sim.part.current.a1': 'Input 1A',
+  'sim.part.current.b1': 'Input 1B',
+  'sim.part.current.y1': 'Output current (1Y)',
+  'sim.part.current.a2': 'Input 2A',
+  'sim.part.current.b2': 'Input 2B',
+  'sim.part.current.y2': 'Output current (2Y)',
+  'sim.part.current.a3': 'Input 3A',
+  'sim.part.current.b3': 'Input 3B',
+  'sim.part.current.y3': 'Output current (3Y)',
+  'sim.part.current.a4': 'Input 4A',
+  'sim.part.current.b4': 'Input 4B',
+  'sim.part.current.y4': 'Output current (4Y)',
+  'palette.group.logic': 'Logic',
+  'library.examples.category.logic': 'Digital logic',
+  'sim.part.state.gateOutput': 'Output',
+  'sim.part.state.gateOutput.high': 'HIGH',
+  'sim.part.state.gateOutput.low': 'LOW',
+  'sim.part.state.gateOutput.x': 'unknown (X)',
+  'sim.part.state.gateOutput.off': 'off (unpowered)',
+  'sim.part.state.input_a': 'Input A',
+  'sim.part.state.input_a.high': 'HIGH',
+  'sim.part.state.input_a.low': 'LOW',
+  'sim.part.state.input_a.x': 'unknown (X): between V_IL and V_IH',
+  'sim.part.state.input_b': 'Input B',
+  'sim.part.state.input_b.high': 'HIGH',
+  'sim.part.state.input_b.low': 'LOW',
+  'sim.part.state.input_b.x': 'unknown (X): between V_IL and V_IH',
+  'sim.part.state.supplyV': 'Supply (V_CC − GND)',
+  'sim.part.state.outputModel': 'Output characteristic',
+  'sim.part.state.outputModel.tabulated': 'guaranteed (datasheet test points at this supply)',
+  'sim.part.state.outputModel.ranged': 'guaranteed only up to 100 µA at this supply',
+  'sim.part.state.outputModel.class':
+    'guaranteed lower bound: the 3 V datasheet points over the 3.3 V ± 0.3 V class (a real part drives at least this well)',
+  'sim.part.state.outputValidA': 'Characterized up to',
+  'sim.part.state.iccMaxA':
+    'Quiescent supply current bound (from the datasheet, not included above)',
+  'sim.part.current.y': 'Output current (Y)',
+  'sim.part.current.vcc': 'Supply pin current (V_CC)',
+  'sim.part.current.gnd': 'Ground pin current (GND)',
+  'sim.results.unknown':
+    'Unknown: an undetermined logic level reaches this part, so no value is shown. Check the logic inputs marked unknown (X).',
+  'sim.error.logic_input_floating':
+    '{components}: nothing drives input {pin}: no resistive or source path reaches it. It may be unconnected, or connected only through parts that do not set a level (an LED, a diode, a transistor junction, a buzzer or a capacitor). A floating CMOS input has no defined level. Connect it to a signal, to V_CC or GND, or through a pull-up or pull-down resistor.',
+  'sim.error.logic_supply_undriven':
+    '{components}: its {pin} pin is reached only through parts that do not set a voltage (an LED, a diode, a transistor junction or a capacitor). The device’s own supply current (I_CC) is not simulated, so the voltage across such a part, and therefore the supply, is undetermined: the circuit is not simulated. Feed {pin} directly from a supply, through a wire or a closed switch.',
+  'sim.error.logic_supply_missing':
+    '{components}: V_CC or GND is not connected. A [[logicGate]] needs its own supply pins connected.',
+  'sim.error.logic_supply_uncharacterized':
+    '{components}: the supply is {supply}, which the datasheet does not characterize (1.65–1.95 V, 2.3–2.7 V, 3.0–3.6 V or 4.5–5.5 V). The simulator does not invent thresholds between datasheet rows.',
+  'sim.error.logic_output_uncharacterized':
+    '{components}: at {supply} the datasheet guarantees the output only up to {limit}, and this load draws {current}, or the output is forced past its own rail. Use a lighter load, or a supply where the output is characterized for real loads (exactly 1.65 V, 2.3 V or 4.5 V, or 3.0–3.6 V).',
+  'sim.error.logic_feedback_unsupported':
+    '{components}: a logic output feeds back into its own network (a latch or an oscillator). Its behaviour depends on propagation delay, which this version does not simulate.',
+  'sim.error.logic_unknown_state':
+    '{components}: an undetermined logic level reaches {pin}, which must have a defined value. Check the logic inputs marked unknown (X).',
+  'sim.error.logic_unpowered_uncharacterized':
+    '{components}: V_CC is 0 V (unpowered). This device’s datasheet gives no power-off specification (no I_off), so an unpowered device is not simulated. Switch its supply on.',
+  'sim.error.logic_input_undefined':
+    '{components}: input {pin} is at {voltage}, between {vil} and {vih} ({vccEq}). The datasheet gives no logic level and no supply current for an input there, so the circuit is not simulated. Drive the input to a valid level (V_IL or below, V_IH or above).',
+  'sim.error.logic_input_out_of_range':
+    '{components}: input {pin} is at {voltage}, outside the recommended input range 0–5.5 V, where the datasheet does not specify the device’s behaviour.',
+  'sim.error.logic_input_floating.sn74lvc08a':
+    '{components}: nothing drives input {pin}: no resistive or source path reaches it (it may be unconnected, or connected only through an LED, a diode, a transistor junction, a buzzer or a capacitor). The SN74LVC08A datasheet requires every unused input, including those of unused gates, to be held at V_CC or GND. Connect it to a signal, to V_CC or GND, or through a pull-up or pull-down resistor.',
+  'sim.error.logic_supply_uncharacterized.sn74lvc08a':
+    '{components}: the supply is {supply}, which the SN74LVC08A datasheet does not characterize (1.65–1.95 V or 2.3–3.6 V). The simulator does not invent thresholds between datasheet rows.',
+  'sim.error.logic_output_uncharacterized.sn74lvc08a':
+    '{components}: at {supply} the SN74LVC08A datasheet guarantees output {pin} only up to {limit} flowing out of a HIGH output or into a LOW one; here it carries {current}, or is forced past its own rail. Real loads are characterized only at 1.65 V, 2.3 V, 2.7 V or 3.0 V exactly.',
+  // Sprint 21 (Phase 3): logic guarantee bounds.
+  'sim.error.logic_supply_current_uncharacterized':
+    '{components}: its supply path has resistance, so the device’s own quiescent supply current (I_CC, not part of the solve) moves its supply. The datasheet bounds I_CC with every input at 5.5 V or GND (V_CC 1.65–5.5 V); with V_CC at 3.0–5.5 V and every input within 0.6 V of GND or of V_CC, the engine bounds it by I_CC + ΔI_CC (500 µA per such input: the datasheet’s ΔI_CC row, one input at V_CC − 0.6 V, applied to the whole band — an engineering assumption, owner decision S29-D1); {reason} Without a bound the supply, and every level that depends on it, is not guaranteed: the circuit is not simulated. Feed V_CC straight from the supply (a wire or a closed switch), or keep every input within 0.6 V of GND or of V_CC.',
+  'sim.error.logic_supply_current_uncharacterized.sn74lvc1g86':
+    '{components}: its supply path has resistance, so the device’s own quiescent supply current (I_CC, not part of the solve) moves its supply. The SN74LVC1G86 datasheet bounds I_CC with every input at V_CC or GND (V_CC 1.65–5.5 V); with V_CC at 3.0–5.5 V and every input within 0.6 V of GND or of V_CC, the engine bounds it by I_CC + ΔI_CC (500 µA per such input: the datasheet’s ΔI_CC row, one input at V_CC − 0.6 V, applied to the whole band — an engineering assumption, owner decision S29-D1); {reason} Without a bound the supply, and every level that depends on it, is not guaranteed: the circuit is not simulated. Feed V_CC straight from the supply (a wire or a closed switch), or keep every input within 0.6 V of GND or of V_CC.',
+  'sim.error.logic_supply_current_uncharacterized.sn74lvc08a':
+    '{components}: its supply path has resistance, so the device’s own quiescent supply current (I_CC, not part of the solve) moves its supply. The SN74LVC08A datasheet bounds I_CC only at V_CC = 3.6 V with every input at V_CC or GND; {reason} Without a bound the supply, and every level that depends on it, is not guaranteed: the circuit is not simulated. Feed V_CC straight from the supply (a wire or a closed switch).',
+  // Sprint 22 Q1 (owner decision): a supply's current limit that the gate's own I_CC flows
+  // through is refused unless I_CC is bounded (its datasheet test condition holds).
+  'sim.error.logic_supply_current_uncharacterized.limit':
+    '{components}: whether the supply stays inside its current limit depends on the current it delivers, and that current includes the gate’s own quiescent supply current (I_CC, not part of the solve). The datasheet bounds I_CC with every input at 5.5 V or GND (Electrical Characteristics §5.5, I_CC: V_I = 5.5 V or GND, I_O = 0, V_CC 1.65–5.5 V); with V_CC at 3.0–5.5 V and every input within 0.6 V of GND or of V_CC, the engine bounds it by I_CC + ΔI_CC (500 µA per such input: §5.5 ΔI_CC, one input at V_CC − 0.6 V, applied to the whole band — an engineering assumption, owner decision S29-D1); {reason} Without that bound the supply current is not known, so the current limit is not guaranteed: the circuit is not simulated. Keep every input of the gate within 0.6 V of GND or of V_CC (a gate output, a switch with a pull-down of at most about 100 kΩ, or a rail), with V_CC at 3.0–5.5 V.',
+  'sim.error.logic_supply_current_uncharacterized.limit.sn74lvc1g86':
+    '{components}: whether the supply stays inside its current limit depends on the current it delivers, and that current includes the gate’s own quiescent supply current (I_CC, not part of the solve). The SN74LVC1G86 datasheet bounds I_CC with every input at V_CC or GND (Electrical Characteristics §5.5, I_CC: V_I = V_CC or GND, I_O = 0, V_CC 1.65–5.5 V); with V_CC at 3.0–5.5 V and every input within 0.6 V of GND or of V_CC, the engine bounds it by I_CC + ΔI_CC (500 µA per such input: §5.5 ΔI_CC, one input at V_CC − 0.6 V, applied to the whole band — an engineering assumption, owner decision S29-D1); {reason} Without that bound the supply current is not known, so the current limit is not guaranteed: the circuit is not simulated. Keep every input of the gate within 0.6 V of GND or of V_CC (a gate output, a switch with a pull-down of at most about 100 kΩ, or a rail), with V_CC at 3.0–5.5 V.',
+  'sim.error.logic_supply_current_uncharacterized.limit_input':
+    '{components}: whether the supply stays inside its current limit depends on the current it delivers, and that current includes the gate’s own quiescent supply current (I_CC, not part of the solve). The datasheet bounds I_CC with every input at 5.5 V or GND (Electrical Characteristics §5.5, I_CC: V_I = 5.5 V or GND, I_O = 0, V_CC 1.65–5.5 V); with V_CC at 3.0–5.5 V and every input within 0.6 V of GND or of V_CC, the engine bounds it by I_CC + ΔI_CC (500 µA per such input: §5.5 ΔI_CC, one input at V_CC − 0.6 V, applied to the whole band — an engineering assumption, owner decision S29-D1); here input {pin} can leave those voltages and bands (at 5.5 V or GND within the engine tolerance of 1 mV, or within 0.6 V of GND or V_CC), for example through the input leakage across a large resistor. Without that bound the supply current is not known, so the current limit is not guaranteed: the circuit is not simulated. Keep every input of the gate within 0.6 V of GND or of V_CC (a gate output, a switch with a pull-down of at most about 100 kΩ, or a rail).',
+  'sim.error.logic_supply_current_uncharacterized.limit_input.sn74lvc1g86':
+    '{components}: whether the supply stays inside its current limit depends on the current it delivers, and that current includes the gate’s own quiescent supply current (I_CC, not part of the solve). The SN74LVC1G86 datasheet bounds I_CC with every input at V_CC or GND (Electrical Characteristics §5.5, I_CC: V_I = V_CC or GND, I_O = 0, V_CC 1.65–5.5 V); with V_CC at 3.0–5.5 V and every input within 0.6 V of GND or of V_CC, the engine bounds it by I_CC + ΔI_CC (500 µA per such input: §5.5 ΔI_CC, one input at V_CC − 0.6 V, applied to the whole band — an engineering assumption, owner decision S29-D1); here input {pin} can leave those voltages and bands (at V_CC or GND within the engine tolerance of 1 mV, or within 0.6 V of GND or V_CC), for example through the input leakage across a large resistor. Without that bound the supply current is not known, so the current limit is not guaranteed: the circuit is not simulated. Keep every input of the gate within 0.6 V of GND or of V_CC (a gate output, a switch with a pull-down of at most about 100 kΩ, or a rail).',
+  'sim.error.logic_supply_current_uncharacterized.limit.sn74lvc08a':
+    '{components}: whether the supply stays inside its current limit depends on the current it delivers, and that current includes the device’s own quiescent supply current (I_CC, not part of the solve). The SN74LVC08A datasheet bounds I_CC at V_CC = 3.6 V with every input at V_CC or GND (Electrical Characteristics §5.7, I_CC: V_I = V_CC or GND, I_O = 0); with every input within 0.6 V of GND or of V_CC, the engine bounds it by I_CC + ΔI_CC (500 µA per such input, §5.7 ΔI_CC, an engineering assumption, owner decision S29-D1), and only while no output carries current (I_O = 0); {reason} Without that bound the supply current is not known, so the current limit is not guaranteed: the circuit is not simulated. Set the supply to 3.6 V and hold every input, including those of unused gates, at V_CC or GND.',
+  'sim.error.logic_supply_current_uncharacterized.limit_input.sn74lvc08a':
+    '{components}: whether the supply stays inside its current limit depends on the current it delivers, and that current includes the device’s own quiescent supply current (I_CC, not part of the solve). The SN74LVC08A datasheet bounds I_CC at V_CC = 3.6 V with every input at V_CC or GND (Electrical Characteristics §5.7, I_CC: V_I = V_CC or GND, I_O = 0); with every input within 0.6 V of GND or of V_CC, the engine bounds it by I_CC + ΔI_CC (500 µA per such input, §5.7 ΔI_CC, an engineering assumption, owner decision S29-D1), and only while no output carries current (I_O = 0); here input {pin} can leave those voltages and bands. Without that bound the supply current is not known, so the current limit is not guaranteed: the circuit is not simulated. Set the supply to 3.6 V and keep every input, including those of unused gates, within 0.6 V of V_CC or GND.',
+  'sim.bound.reason.notInputs':
+    'here an input is not at those voltages, nor within 0.6 V of GND or of V_CC with the supply in the ΔI_CC row.',
+  'sim.bound.reason.notSupply': 'here the supply is outside that row.',
+  'sim.bound.reason.notLeakage':
+    'here the input leakage that returns through the supply pins has no bound at this supply.',
+  'sim.error.logic_supply_not_guaranteed':
+    '{components}: within the datasheet bounds ({causes}) the supply can reach {worst} (simulated: {supply}), outside the datasheet row the result is computed for ({range}). The levels it implies are not guaranteed, so the circuit is not simulated. Lower the resistance in the supply path, or feed V_CC straight from the supply.',
+  'sim.error.logic_supply_not_guaranteed.limit':
+    '{components}: within the datasheet bounds ({causes}) this supply can have to deliver up to {current}, more than its current limit ({limit}); its voltage, and the levels that depend on it, are then not guaranteed, so the circuit is not simulated. Raise the current limit, or reduce the load.',
+  'sim.error.logic_supply_not_guaranteed.sink':
+    '{components}: within the datasheet bounds ({causes}) this supply, set to constant voltage, could have to absorb up to {current} — for example input or other leakage current returning into it. The bench-supply model cannot absorb current, so the circuit is not simulated. Add a small load across the supply’s output (for example a bleeder resistor) so that it always delivers more than that.',
+  'sim.error.logic_supply_current_uncharacterized.loaded':
+    '{components}: output {pin} carries current here, and the SN74LVC08A datasheet gives the quiescent supply current I_CC only at I_O = 0 (Electrical Characteristics §5.7: V_I = V_CC or GND, I_O = 0, V_CC = 3.6 V); it has no rule for I_CC with a loaded output. The supply current, and so the supply’s current limit, is not guaranteed: the circuit is not simulated. Leave the package’s outputs unloaded, or use single gates (SN74LVC1G…), whose datasheets state the supply rule for loaded outputs (§8.2.1.1).',
+  'sim.error.logic_input_leakage_uncharacterized.limit':
+    '{components}: input {pin} draws its leakage current I_I from the supply, and at {supply} the datasheet gives no bound for it (I_I is specified only at {iiVcc}). The supply current, and so whether the supply stays inside its current limit, is not guaranteed: the circuit is not simulated. Run the device at a supply where I_I is specified.',
+  'sim.error.logic_input_leakage_uncharacterized':
+    '{components}: input {pin} is held through a resistance, and at {supply} the datasheet gives no bound for the input leakage current (I_I is specified only at {iiVcc}). The voltage across that resistance, and so the input level, is not guaranteed: the circuit is not simulated. Tie the input straight to V_CC or GND (a wire or a closed switch), or run the device at a supply where I_I is specified.',
+  'sim.error.logic_input_not_guaranteed':
+    '{components}: input {pin} is {level} in the simulation ({voltage}), but within the datasheet bounds ({causes}) it can reach {worst}, {cmp} ({vccEq}). The level is not guaranteed, so the circuit is not simulated. Use a smaller pull resistor or a stronger driver.',
+  'sim.error.logic_input_not_guaranteed.mcu_high':
+    '{components}: input {pin} is driven HIGH by {pads}. The ESP32 datasheet guarantees only V_OH ≥ 2.64 V (0.8 × VDD); with that the input can be as low as {worst}, below {vih} ({vccEq}). A HIGH is not guaranteed, so the circuit is not simulated. Power the gate where the ESP32 meets its V_IH (for example 3.0–3.6 V, V_IH = 2.0 V).',
+  'sim.error.logic_input_undefined.mcu_high':
+    '{components}: input {pin} is at {voltage}, driven by {pads}: an ESP32 output is 3.3 V logic, guaranteed only V_OH ≥ 2.64 V. That is between {vil} and {vih} ({vccEq}): the ESP32 cannot drive a guaranteed HIGH into this gate at this supply, so the circuit is not simulated. Power the gate where the ESP32 meets its V_IH (for example 3.0–3.6 V, V_IH = 2.0 V).',
+  'sim.error.logic_bound_not_established':
+    '{components}: the worst case within the datasheet bounds could not be established ({reason}), so no level is guaranteed and the circuit is not simulated.',
+  'sim.bound.notEstablished.corner_unsolved':
+    'the worst-case operating point could not be solved and verified',
+  'sim.bound.notEstablished.parallel_outputs':
+    'two outputs drive the same net with nothing between them; no datasheet characterizes how they share the current',
+  'sim.bound.notEstablished.supply_mode':
+    'within those bounds a supply would switch between constant voltage and its current limit, and the worst case across that change is not established',
+  'sim.bound.notEstablished.singular': 'the circuit’s linearisation is singular',
+  'sim.bound.notEstablished.not_monotone': 'the worst case moves with the operating point',
+  'sim.bound.notEstablished.part_not_bounded': 'this part’s state could not be bounded',
+  'sim.bound.notEstablished.part_not_in_solve': 'a pin of this part is not in the solved circuit',
+  'sim.error.logic_mcu_input_not_guaranteed':
+    '{components}: {pin}, an ESP32 input, reads this logic output at {voltage} in the simulation, but within the datasheet bounds ({causes}) it can be at {worst}, {cmp}. The ESP32 would not read a guaranteed HIGH, so the circuit is not simulated. A gate output HIGH is guaranteed close to its rail only at light load (the datasheet row V_OH ≥ V_CC − 0.1 V at up to 100 µA): lighten the load on that output.',
+  'sim.error.logic_mcu_input_not_guaranteed.undefined':
+    '{components}: {pin}, an ESP32 input, reads this logic output at {voltage}, between the ESP32’s {vil} and {vih}: no defined level, so the circuit is not simulated.',
+  'sim.error.logic_mcu_output_uncharacterized':
+    '{components}: {pin} drives a logic input while carrying {current}, more than {limit}. The ESP32 datasheet states V_OH ≥ 0.8 × VDD and V_OL ≤ 0.1 × VDD with no load current (Table 5-3, 25 °C; its 40 mA / 28 mA drive figures are typical). The simulator relies on that level only up to 100 µA, the standard CMOS-load test current (an engineering assumption, owner decision S30-L1), so the level under this load is not guaranteed and the circuit is not simulated. Use a larger pull resistor (33 kΩ or more at 3.3 V) or a lighter load.',
+  'sim.error.logic_mcu_pull_uncharacterized':
+    '{components}: {pin} holds a logic input through its internal pull resistor, which the ESP32 datasheet gives only as typical (45 kΩ, no minimum or maximum). The level is not guaranteed, so the circuit is not simulated. Use an external pull resistor.',
+  'logic.why.mcuInput':
+    'Not simulated: the ESP32 pin reading this output would not read a guaranteed level (see the message above).',
+  'logic.why.mcuDrive':
+    'Not simulated: the ESP32 pin driving this part’s input has no guaranteed level here (see the message above).',
+  'sim.error.logic_mcu_input_not_guaranteed.low':
+    '{components}: {pin}, an ESP32 input, reads this logic output at {voltage} in the simulation, but within the datasheet bounds ({causes}) it can be at {worst}, {cmp}. The ESP32 would not read a guaranteed LOW, so the circuit is not simulated. A gate output LOW is guaranteed close to GND only at light load (the datasheet row V_OL ≤ 0.1 V at up to 100 µA): lighten what the output sinks (e.g. a larger pull-up) or what lies between it and the pin.',
+  'sim.error.logic_mcu_pull_uncharacterized.reads':
+    '{components}: {pin}, an ESP32 input that reads this logic output, has its internal pull resistor enabled. The ESP32 datasheet gives that resistor only as typical (45 kΩ, no minimum or maximum), so the load it puts on the output, and the level the pin reads, are not guaranteed: the circuit is not simulated. Turn the internal pull off (a plain input).',
+  'sim.error.logic_output_uncharacterized.forced':
+    '{components}: output {pin} would be pulled {forced} past its own rail (above V_CC while HIGH, or below GND while LOW; that is the overdrive with the output modelled as blocking, not a voltage the real part reaches). The datasheet characterizes no current into a HIGH output (or out of a LOW one) and the simulator does not invent one, so the circuit is not simulated. Remove whatever pulls the output past its rail — another driver, or a resistor to a higher (lower) voltage.',
+  'sim.error.logic_output_uncharacterized.reverse':
+    '{components}: within the datasheet bounds ({causes}), output {pin} would carry {current} the wrong way — into a HIGH output or out of a LOW one, for example from another driver tied to it. The datasheet characterizes no output current in that direction, so the circuit is not simulated. Never tie an output to another driver (datasheet §8.2.1.3).',
+  'sim.bound.cause.leakage': 'input leakage I_I',
+  'sim.bound.cause.supply_current': 'quiescent supply current I_CC',
+  'sim.bound.cause.esp32_voh': 'ESP32 V_OH ≥ 2.64 V',
+  'sim.bound.cause.esp32_vol': 'ESP32 V_OL ≤ 0.33 V',
+  'sim.bound.cause.output_guarantee':
+    'a gate output anywhere between its guaranteed level and its own rail',
+  'sim.bound.cmp.high': 'below {th}',
+  'sim.bound.cmp.low': 'above {th}',
+  'logic.why.notGuaranteed':
+    '{v} in the simulation, but within the datasheet bounds ({causes}) it can reach {worst}: the level is not guaranteed. The simulation is refused.',
+  'logic.why.leakageUncharacterized':
+    'Held through a resistance, and the datasheet gives no input-leakage bound at {vcc}: the level is not guaranteed. The simulation is refused.',
+  'logic.why.supplyNotGuaranteed':
+    'Not simulated: the part’s supply is not guaranteed within the datasheet bounds (see the message above).',
+  'logic.why.outBoundHigh':
+    'Guaranteed: {cmp} up to {a} (datasheet test point). The voltage shown is the model’s value between the guaranteed points, not a guarantee.',
+  'logic.why.outBoundLow':
+    'Guaranteed: {cmp} up to {a} (datasheet test point). The voltage shown is the model’s value between the guaranteed points, not a guarantee.',
+  'logic.inspect.level.notGuaranteed': 'not guaranteed',
+  'limitation.logic_guarantee_bounds':
+    'Every level is re-checked within the datasheet bounds: input leakage (±5 µA), the quiescent supply current (I_CC ≤ 10 µA with the inputs at the datasheet’s test voltages; with V_CC at 3.0–5.5 V and every input within 0.6 V of GND or of V_CC, I_CC + 500 µA per such input from the ΔI_CC row — an engineering assumption, owner decision S29-D1), an ESP32 pin’s guaranteed V_OH ≥ 2.64 V / V_OL ≤ 0.33 V, and a driving gate’s guaranteed output level. A level that is not guaranteed, or that depends on a current with no datasheet bound, refuses the Run.',
+  'limitation.logic_power':
+    'Power dissipation is not simulated or checked; the ±50 mA output and ±100 mA supply-pin figures are absolute-maximum stress ratings (flagged, never used as load limits). The switching (dynamic) supply current is not simulated: DC only.',
+  'limitation.logic_package_guarantee_bounds':
+    'Every level is re-checked within the datasheet bounds. This datasheet specifies the input leakage (±5 µA) and the quiescent supply current (10 µA) only at V_CC = 3.6 V: at any other supply an input held through a resistance (a pull resistor, an ESP32 pin, another gate’s output) is refused, because its voltage error has no bound.',
+  // L2: logic state / truth-table inspection.
+  'logic.inspect.title': 'Logic: truth table and pin states',
+  'logic.inspect.thresholds':
+    '{part} at {supply}: HIGH at or above {vih}, LOW at or below {vil} (datasheet; where two rows meet, the stricter). In between: undefined.',
+  'logic.inspect.noRow': '{part}: no datasheet input thresholds at this supply.',
+  'logic.inspect.pin': 'Pin',
+  'logic.inspect.level': 'Logic level',
+  'logic.inspect.voltage': 'Simulated voltage (to GND pin)',
+  'logic.inspect.level.high': 'HIGH',
+  'logic.inspect.level.low': 'LOW',
+  'logic.inspect.level.off': 'off (unpowered)',
+  'logic.inspect.level.undefined': 'undefined (between V_IL and V_IH)',
+  'logic.inspect.level.unknown': 'unknown (X)',
+  'logic.inspect.truthTable': 'Truth table ({fn})',
+  'logic.inspect.gatesHere': 'Gates in this state',
+  'logic.inspect.note':
+    'Levels and voltages are the simulation’s, measured to the part’s own GND pin. The highlighted row is the selected gate’s. An input outside the defined bands refuses the Run; it is never shown as a level.',
+  'logic.controls.hold': '{id} on {pin}: hold to press',
+  'logic.controls.toggleOpen': '{id} on {pin}: open (click to close)',
+  'logic.controls.toggleClosed': '{id} on {pin}: closed (click to open)',
+  'logic.controls.mcu': '{pin}: driven by the ESP32 ({gpio}) from the firmware.',
+  'logic.controls.heading': 'Operate the inputs',
+  'logic.why.idle': 'Run the simulation to see this pin’s level and voltage.',
+  'logic.why.waiting': 'Waiting for the first operating point.',
+  'logic.why.refusedElsewhere': 'Not simulated: the Run was refused (see the message above).',
+  'logic.why.supplyUndriven':
+    'Not simulated: the part’s {pin} pin is fed only through a junction or a capacitor, so its supply is undetermined.',
+  'logic.why.outputUncharacterized':
+    'The load needs more than the guaranteed output current ({limit}, {vcc}), or forces the output past its rail: no characteristic, so the simulation is refused.',
+  'logic.why.outOfRange':
+    '{v}: outside the recommended input range 0–5.5 V, where the datasheet does not specify the device. The simulation is refused.',
+  'logic.why.floatingPads':
+    'Nothing drives this input: the only possible source on its net (directly or through resistors) is {pads}, an ESP32 pin in input mode (high impedance). The simulation is refused. Add a pull-down or pull-up (10 kΩ).',
+  'logic.why.floatingPadsMany':
+    'Nothing drives this input: the only possible sources on its net (directly or through resistors) are {pads}, ESP32 pins in input mode (high impedance). The simulation is refused. Add a pull-down or pull-up (10 kΩ).',
+  'logic.why.floating':
+    'Nothing drives this input: no resistive or source path reaches it (unconnected, or only through an LED, diode, transistor junction, buzzer or capacitor, which set no level). A floating CMOS input has no defined level, so the simulation is refused.',
+  'logic.why.undefined':
+    '{v}: between {vil} and {vih} ({vcc}). The datasheet gives no level there, so the simulation is refused.',
+  'logic.why.unknown': 'An undetermined level reaches this pin: no level and no voltage are shown.',
+  'logic.why.off': 'V_CC is 0 V: the outputs are disabled (I_off).',
+  'logic.why.offInput':
+    'The part is unpowered (V_CC = 0 V): its inputs have no datasheet thresholds, so no level is given; the voltage shown is the solved one.',
+  'logic.why.out': '{fn} of the inputs ({ins}) = {out}, from the datasheet function table.',
+  'logic.why.inLow': '{cmp} ({vcc}): LOW.',
+  'logic.why.inHigh': '{cmp} ({vcc}): HIGH.',
+  'logic.inspect.level.idle': '—',
+  'logic.inspect.level.notSimulated': 'not simulated',
+  'logic.inspect.level.unsupported': 'not characterized',
+  'logic.inspect.level.outOfRange': 'outside 0–5.5 V',
+  'logic.inspect.level.floating': 'floating (not driven)',
+  'logic.inspect.noteIdle':
+    'Not simulated yet: this is the datasheet’s function table. Voltages and levels appear while the simulation runs.',
+  'logic.inspect.rowsCaption':
+    'Datasheet input thresholds by supply (V_CC). Between rows the simulator refuses rather than invent a threshold.',
+  'logic.inspect.noRowOff': 'No row: the part is unpowered (V_CC = 0 V), its output is off.',
+  'logic.inspect.noRowInvalid':
+    'No row: an input has no guaranteed level (see the pins below). No output is shown.',
+  'logic.inspect.noRowNotSimulated':
+    'No row: the circuit was not simulated (see the message above).',
+  'logic.inspect.noRowWaiting': 'No row yet: waiting for the operating point.',
+  'logic.inspect.pinsHeading': 'Pins: logic level and simulated voltage',
+  'logic.inspect.gateN': 'Gate {n}',
+  'logic.inspect.gates': 'Gates',
+  'logic.inspect.idle':
+    '{part}: the datasheet function table and input thresholds. Run the simulation to see each pin’s level and voltage.',
   'sim.part.current.red': 'Red channel current',
   'sim.part.current.green': 'Green channel current',
   'sim.part.current.blue': 'Blue channel current',
@@ -168,6 +453,84 @@ export const en = {
   'param.ratedVoltage': 'Rated voltage',
   'sim.part.state.charge': 'Stored charge (coulomb)',
   'sim.part.state.energy': 'Stored energy (joule)',
+  // ---- Sprint 12: R2 sensors and the R3 I2C display ----
+  'component.sensor.hc_sr04.name': 'Ultrasonic distance sensor',
+  'component.sensor.dht22.name': 'Temperature and humidity sensor',
+  'component.display.lcd1602_i2c.name': 'Character LCD 16×2 (I2C)',
+  'terminal.trig': 'Trigger input (TRIG)',
+  'terminal.echo': 'Echo output (ECHO)',
+  'terminal.vdd': 'Supply (VDD)',
+  'terminal.data': 'Data (DATA)',
+  'terminal.notConnected': 'Not connected (NC)',
+  'terminal.sda': 'I2C data (SDA)',
+  'terminal.scl': 'I2C clock (SCL)',
+  'param.distance': 'Distance to the target',
+  'param.airTemperature': 'Air temperature',
+  'param.temperature': 'Temperature',
+  'param.humidity': 'Relative humidity',
+  'param.i2cAddress': 'I2C address',
+  'model.ultrasonic.hc_sr04': 'HC-SR04 module (5 V, 40 kHz)',
+  'model.humidity.am2302': 'DHT22 / AM2302 (Aosong, 3.3–6 V)',
+  'model.lcd.lcd1602_pcf8574': 'HD44780 16×2 with PCF8574 I2C backpack',
+  'i2c.0x20': '0x20',
+  'i2c.0x21': '0x21',
+  'i2c.0x22': '0x22',
+  'i2c.0x23': '0x23',
+  'i2c.0x24': '0x24',
+  'i2c.0x25': '0x25',
+  'i2c.0x26': '0x26',
+  'i2c.0x27': '0x27',
+  'sim.part.state.output.off': 'not driven (unpowered)',
+  'sim.part.state.output.released': 'released (not driven by the sensor)',
+  'sim.part.state.sensor.hc_sr04.powered': 'Powered (supply at least 4.5 V)',
+  'sim.part.state.sensor.hc_sr04.output': 'ECHO output',
+  'sim.part.state.sensor.hc_sr04.output.high': 'HIGH (echo pulse)',
+  'sim.part.state.sensor.dht22.powered': 'Powered (supply at least 3.3 V)',
+  'sim.part.state.sensor.dht22.output': 'DATA line (sensor side)',
+  'sim.part.state.sensor.dht22.output.low': 'LOW (pulled low by the sensor)',
+  'sim.part.state.display.lcd1602_i2c.powered': 'Powered',
+  'sim.part.state.backlight': 'Backlight on',
+  'sim.part.state.displayOn': 'Display on',
+  'sim.part.state.line1': 'Line 1',
+  'sim.part.state.line2': 'Line 2',
+  'lcd.screen': 'Display contents, line 1: {line1}; line 2: {line2}',
+  'lcd.blank': 'Display blank',
+  // ---- Sprint 15 (R4): the SG90 servo and PWM (LEDC) outputs ----
+  'component.component.servo_sg90.name': 'SG90 servo',
+  'terminal.servoSignal': 'Control signal (PWM)',
+  'model.servo.sg90': 'TowerPro SG90',
+  'sim.results.notModelled': 'not modelled',
+  'sim.part.state.component.servo_sg90.powered': 'Powered (supply 4.8–6.0 V)',
+  'sim.part.state.angleDeg': 'Shaft angle',
+  'sim.part.state.commandedDeg': 'Commanded angle',
+  'sim.part.state.signal': 'Control signal',
+  'sim.part.state.signal.none': 'no pulses',
+  'sim.part.state.signal.pulses': 'servo pulses',
+  'sim.part.state.signal.static': 'steady level (no pulses)',
+  'sim.part.state.signal.undefined': 'not a valid logic level (no valid pulse)',
+  'sim.part.state.pulseUs': 'Last pulse width',
+  'sim.results.outsideModel.component.servo_sg90':
+    'Supply outside the modelled 4.8–6.0 V range: the servo is shown holding still; a real one may behave differently.',
+  'sim.results.servoCurrentExcluded':
+    'Does not include the current drawn by {components}: the SG90 servo’s supply current is not modelled.',
+  'sim.results.pwmAverage': '{label}, average (PWM)',
+  'sim.results.pwmPeak': '{label}, peak (PWM)',
+  'sim.results.pwmNote':
+    'Driven by PWM: the values above are time-averages over the waveform; the ratings check the peak current.',
+  'sim.results.pwmPower':
+    'not shown under PWM (the product of the average voltage and current is not the average power)',
+  'unit.hertz.symbol': 'Hz',
+  'unit.second.symbol': 's',
+  'unit.percent.symbol': '%',
+  'unit.degree.symbol': '°',
+  'mcu.pwm.wave': 'PWM {frequency} · {duty}',
+  'mcu.pwm.zero': 'PWM · duty 0 (its output level is not verified)',
+  'mcu.pwm.static': 'PWM · {level} (steady)',
+  'mcu.pwm.unsupported': 'PWM · unsupported',
+  'mcu.pwm.levelUnknown': 'voltage not established',
+  'mcu.pwm.average': 'average {voltage}',
+  'mcu.warning.servo_signal_undefined':
+    '{component}: the control signal is not a valid logic level (or several PWM outputs act on it); the servo sees no valid pulse.',
   'sim.time': 't = {time}',
   'sim.timeNote':
     'Simulated time since Run (1 ms steps). Capacitors start discharged at every Run.',
@@ -184,6 +547,9 @@ export const en = {
   'unit.ampere.symbol': 'A',
   'unit.lux.symbol': 'lx',
   'unit.farad.symbol': 'F',
+  'unit.metre.symbol': 'm',
+  'unit.celsius.symbol': '°C',
+  'unit.percent_rh.symbol': '%RH',
 
   'sim.run': 'Run',
   'sim.stop': 'Stop',
@@ -202,12 +568,33 @@ export const en = {
     'These parts form a floating circuit with no connection to GND: {components}. Connect them to the circuit or remove them.',
   'sim.error.floating_output_off':
     'These parts reach GND only through {supplies}, whose output is off: {components}. Turn the output on or connect them to GND.',
+  'sim.error.gpio_input_undefined.unresolved':
+    '{pins}: the firmware read the ESP32 input register while nothing held the level of this pin (it is unconnected, or nothing drives its net). The simulator could not tell from the program which pins it reads (a pin number computed at run time, or firmware it did not analyse), so it treats every pin as possibly read and stopped the run instead of choosing LOW or HIGH. Write the pin numbers as numbers or constants in the code, and give every input a pull-up or pull-down resistor.',
+  'sim.error.gpio_input_undefined.floating':
+    '{pins}: the program read this ESP32 input while nothing held its level: no wire, resistor or closed switch connects it to a supply, GND or a driving output. A real ESP32 reads an undefined value there, so the run stopped at that read instead of choosing LOW or HIGH. The ESP32’s internal pull resistors are not simulated. Add a pull-down or pull-up resistor (for example 10 kΩ to GND or to 3.3 V) so the pin has a level whenever it is read.',
+  'sim.error.gpio_input_undefined.unconnected':
+    '{pins}: the program read this ESP32 pin, but nothing is connected to it. A real ESP32 reads an undefined value from an unconnected input, so the run stopped at that read instead of choosing LOW or HIGH. The ESP32’s internal pull resistors are not simulated. Connect the pin (with a pull-down or pull-up resistor if it is a button), or remove the read from the program.',
+  'sim.error.gpio_input_undefined.unknown':
+    '{pins}: the program read this ESP32 input while an undetermined logic level (X) reached it, so the run stopped at that read instead of choosing LOW or HIGH. Check the logic inputs marked unknown (X).',
+  'sim.error.gpio_input_undefined.between_thresholds':
+    '{pins}: the program read this ESP32 input at {voltage}, between {vil} and {vih}. The ESP32 datasheet guarantees no reading there and specifies no hysteresis, so the previous level is not kept either: the run stopped at that read instead of choosing LOW or HIGH. Drive the input to {vil} or below, or {vih} or above.',
+  'sim.error.i2c_clock_exceeded':
+    '{components}: the program clocks the I2C bus at {hz} when it addresses this display, faster than its PCF8574 backpack is rated for ({max}, NXP datasheet). A real module is not guaranteed to work there, so the run stopped. Use Wire.setClock(100000) or less (MicroPython: freq=100000 or less).',
+  'sim.error.sensor_level_undefined':
+    '{components}: the sensor’s response would put {pins} at {voltage}, between {vil} and {vih}. The ESP32 datasheet guarantees no reading there and specifies no hysteresis, so the simulator cannot give the program the levels of this response: the run stopped before it. Change the divider or wiring so that the signal reaches {vil} or below and {vih} or above.',
+  'sim.error.i2c_read_unsupported':
+    '{components}: the program reads a byte from this display’s PCF8574 backpack. What a real backpack returns depends on the LCD controller’s pins and the backpack’s own wiring, which are not simulated, so the run stopped instead of inventing a value. The display works for writing; remove the read (Wire.requestFrom).',
+  'sim.error.psu_sinking':
+    '{components}: this supply is set to constant voltage, and the circuit would push {current} back into it — for example from another source, from a capacitor discharging into it after its setpoint was lowered, or from diode or other leakage current (even nanoamperes count). The bench-supply model cannot absorb current (an idealisation of the simulator), so the circuit is not simulated. Make sure nothing drives this supply’s output above its setpoint, or add a small load across its output (for example a resistor) so that it always delivers current.',
   'sim.error.psu_shorted':
     '{components}: the output terminals are joined by a wire (a short circuit). Remove that wire to run.',
   'sim.error.psu_parallel.title': 'Parallel power supplies are not yet supported',
   'sim.error.psu_parallel':
     '{supplies} are directly connected in parallel. The current simulator cannot determine a unique current sharing between supplies.',
   'sim.error.psu_parallel.hint': 'Use one supply, or separate the outputs with circuit elements.',
+  'sim.error.invalid_parameter.not_standard':
+    '{components}: {param} is {value}, which this part is not made in. The datasheet’s standard values are {values}. Pick one of them in the Properties panel.',
+  'param.notStandard': '{value} (not a standard value)',
   'sim.error.invalid_parameter': '{components}: the value of “{param}” cannot be simulated.',
   'sim.error.unsupported_component': '{components} cannot be simulated yet.',
   'sim.error.invalid_attachment':
@@ -220,6 +607,8 @@ export const en = {
     'This circuit has no steady state: {components} keeps switching itself on and off (a relay that interrupts its own coil chatters). A DC simulation cannot show one of its transitory states.',
   'sim.error.mcu_component_unsupported':
     'The ESP32 simulator does not support {components} yet. These parts simulate in circuits without an ESP32; with the board they need a runtime update.',
+  'sim.error.mcu_component_time_dependent':
+    '{components} behave over time, and the ESP32 simulator does not step time. They are simulated only in circuits without an ESP32.',
   'sim.error.internal': 'An internal simulation error occurred. The project is not affected.',
   'sim.error.worker_crashed':
     'The simulation stopped unexpectedly. The project is not affected. Press Run to try again.',
@@ -248,7 +637,7 @@ export const en = {
   'sim.results.outsideModel':
     'Outside the LED model’s documented range (1–20 mA). The value follows the model but may differ from a real part.',
   'sim.results.ledLit':
-    'The LED symbol brightness is a visual cue derived from the solved current, not a light measurement.',
+    'The LED symbol brightness is a visual cue derived from the solved current, not a light measurement. Under PWM it follows the average current.',
   'sim.mode.cv': 'CV · constant voltage',
   'sim.mode.cc': 'CC · current limit',
   'sim.mode.off': 'Output off',
@@ -282,6 +671,7 @@ export const en = {
   'psu.voltage': 'Voltage',
   'psu.current': 'Current',
   'psu.notRunning': 'Not running',
+  'psu.currentAverage': 'average (PWM)',
   'psu.ccNote': 'Current limiting is normal supply behaviour, not a fault.',
   'checks.heading': 'Circuit checks',
   'checks.none': 'No problems found.',
@@ -293,6 +683,16 @@ export const en = {
     '{component} {terminal} touches {other} {otherTerminal} but is not connected to it. Move one part away and back to join them, or draw a wire.',
   'checks.floating_island': 'No path to GND: {components}.',
   'checks.no_ground': 'The circuit has no GND. Add [[ground]] and wire it to the circuit.',
+  'checks.supply_pins_shorted':
+    '{component}: V_CC and GND are wired to the same net, so its supply is always 0 V: it can never be powered. Wire GND to the supply’s − (or to GND).',
+  'checks.psu_no_load':
+    '{component}: nothing is connected between + and −, so it supplies no current to any part. Wire the circuit’s return (e.g. a part’s GND) to −.',
+  'checks.gpio_input_floating':
+    '{component} {terminal}: the program reads this pin as an input, but while {switches} is open nothing holds its level (no pull-up or pull-down resistor). A real ESP32 then reads an undefined level, so the run stops if the program reads it then. Add a resistor (for example 10 kΩ) from the pin to GND or to 3.3 V.',
+  'checks.gpio_input_floating_always':
+    '{component} {terminal}: the program reads this pin as an input, but nothing holds its level (no pull-up or pull-down resistor). A real ESP32 then reads an undefined level, so the run stops when the program reads it. Add a resistor (for example 10 kΩ) from the pin to GND or to 3.3 V.',
+  'checks.gpio_input_unconnected':
+    '{component} {terminal}: the program reads this pin as an input, but nothing is connected to it. A real ESP32 reads an undefined level from an unconnected input, so the run stops when the program reads it. Connect the pin, or remove the read from the program.',
   'checks.psu_shorted_by_wire': '{component}: the output terminals are joined by a wire.',
   'history.undo': 'Undo',
   'history.redo': 'Redo',
@@ -310,6 +710,10 @@ export const en = {
   'inspector.wire': 'Wire',
   'inspector.junction': 'Junction',
   'inspector.wireColor': 'Wire color',
+  'inspector.wireRoute': 'Route',
+  'wireRoute.auto': 'Automatic: follows the parts when they move',
+  'wireRoute.manual': 'Manual: your bends are kept',
+  'wireRoute.makeAuto': 'Route automatically',
   'wireColor.auto': 'Auto',
   'wireColor.autoIs': 'Auto ({color})',
   'wireColor.red': 'Red',
@@ -326,8 +730,8 @@ export const en = {
   'inspector.shortcuts': 'Keyboard: arrows move, R rotates, Delete removes, Esc cancels.',
 
   'error.parse.empty': 'Enter a value.',
-  'error.parse.invalid': 'Not a valid value. Examples: 220, 1k, 4k7, 1.5k',
-  'error.parse.decimal_comma': 'Use a point as the decimal separator, for example 1.5k.',
+  'error.parse.invalid': 'Not a valid number. Enter a number such as 4.7 and choose the unit.',
+  'error.parse.decimal_comma': 'Use a point as the decimal separator, for example 1.5.',
   'error.parse.wrong_unit': 'That unit does not fit this property.',
   'error.range': 'The value must be between {min} and {max}.',
   'error.edit.same_endpoint': 'A wire cannot start and end at the same point.',
@@ -349,6 +753,18 @@ export const en = {
     'Each example opens as a new project of your own. Press Run to see real results.',
   'library.examples.open': 'Open example',
   'library.examples.openNamed': 'Open example: {name}',
+  // OS-12: search and category filters for the examples.
+  'library.examples.search': 'Search examples',
+  'library.examples.searchHint': 'e.g. LED, sensor, ESP32 LCD, LDR',
+  'library.examples.categories': 'Categories',
+  'library.examples.category.basic': 'Basic circuits',
+  'library.examples.category.sensors': 'Sensors',
+  'library.examples.category.lighting': 'Lighting and displays',
+  'library.examples.category.controllers': 'Controllers and programming',
+  'library.examples.category.switching': 'Switching and control',
+  'library.examples.count': 'Showing {shown} of {total} examples',
+  'library.examples.empty': 'No example matches. Try fewer or other words, or clear the filters.',
+  'library.examples.clear': 'Clear filters',
   'library.import.button': 'Import project…',
   'library.import.label': 'Import a TBI Lab project file (.tbilab)',
   'library.actions': 'Actions for {name}',
@@ -420,6 +836,12 @@ export const en = {
   'example.voltage-divider.title': 'Voltage divider',
   'example.voltage-divider.summary':
     'Two resistors split 9 V. The midpoint is 9 V × 20 kΩ / (10 kΩ + 20 kΩ) = 6 V; a probe at R2.a reads it.',
+  'example.pot-divider.title': 'Potentiometer divider',
+  'example.pot-divider.summary':
+    'A 10 kΩ potentiometer across 5 V, end A at GND and end B at +5 V: the [[wiper]] reads 5 V × p, 2.5 V at 50 %. Run it and drag the position slider: the [[probe]] at the [[wiper]] follows.',
+  'example.pot-led-dimmer.title': 'LED dimmer (potentiometer)',
+  'example.pot-led-dimmer.summary':
+    'A 1 kΩ potentiometer as a variable resistor in series with 470 Ω and a red LED on 5 V. Turning it up lowers the series resistance and the LED current rises, to 6.5 mA at 100 %: below the 7.07 mA the track carries at its rated 0.05 W, so it stays within the datasheet’s rated condition at every position.',
   'example.led-current.title': 'LED current limiting',
   'example.led-current.summary':
     'A 220 Ω resistor sets the current of a red LED from 5 V. The LED is nonlinear: it settles near 2 V and about 14 mA.',
@@ -462,29 +884,41 @@ export const en = {
   'palette.unavailable.part_needs_runtime': 'Requires runtime support not available for ESP32 yet.',
   'palette.unavailable.board_needs_runtime':
     'Not available while the project has parts the ESP32 runtime does not support yet.',
+  'palette.unavailable.part_time_dependent':
+    'Time-dependent parts are simulated only in circuits without an ESP32.',
+  'palette.unavailable.board_time_dependent':
+    'Not available while the project has time-dependent parts (they are simulated only without an ESP32).',
   'palette.group.sensors': 'Sensors',
-  'palette.group.output': 'Sound and signalling',
+  'palette.group.output': 'Sound, displays and motion',
   'palette.group.switches': 'Switches',
   'inspector.shortcutsHeading': 'Keyboard shortcuts',
   'unit.watt.symbol': 'W',
   'sim.results.power': 'Power',
-  'brand.logoAlt': 'TBI: Think, Bring ideas to life, Invent',
+  'brand.logoAlt': 'TBI Lab: Think, Bring ideas to life, Invent',
   'home.subtitle':
     'Circuits are simulated and saved right here in your browser. Start from an example, or create your own project.',
-  'app.narrowScreen': 'TBI Lab is designed for desktop screens at least 1024 pixels wide.',
+  // Screen support (2026-10-29): computers and tablets; tablets best in landscape; no phones.
+  'app.screen.phone':
+    'TBI Lab does not support phones or screens this small. Use a computer or a tablet (landscape recommended).',
+  'app.screen.rotate': 'For the best experience, rotate your tablet to landscape.',
+  'app.screen.narrow': 'For the best experience, use a window at least 1024 pixels wide.',
   'rating.heading': 'Component rating exceeded',
   'rating.atRisk': '{component} may be damaged',
   'rating.row.forward_current': 'Current: {value} (maximum {limit})',
   'rating.row.reverse_voltage': 'Reverse voltage: {value} (maximum {limit})',
   'rating.row.power': 'Power: {value} (maximum {limit})',
-  'rating.row.gpio_source_current': '{pin} output HIGH sources {value} (drive rating {limit})',
-  'rating.row.gpio_sink_current': '{pin} output LOW sinks {value} (drive rating {limit})',
+  'rating.row.resistance_outside_series':
+    'No power rating: {value} is not made in the selected series (its range ends at {limit})',
+  'rating.row.gpio_source_current': '{pin} output HIGH sources {value} (typical drive {limit})',
+  'rating.row.gpio_sink_current': '{pin} output LOW sinks {value} (typical drive {limit})',
   'rating.row.gpio_contention':
-    '{pin} and {other} drive opposite levels on the same net: {value} flows between them (drive rating {limit})',
+    '{pin} and {other} drive opposite levels on the same net: {value} flows between them (typical drive {limit})',
   'rating.row.gpio_short_ground':
-    '{pin} output HIGH is wired straight to GND: {value} (drive rating {limit})',
+    '{pin} output HIGH is wired straight to GND: {value} (typical drive {limit})',
   'rating.row.gpio_short_supply':
-    '{pin} output LOW is wired straight to a supply +: {value} (drive rating {limit})',
+    '{pin} output LOW is wired straight to a supply +: {value} (typical drive {limit})',
+  'rating.row.gpio_output_overvoltage':
+    '{pin} output is forced to {value} by the circuit (limit {limit}); current is pushed into the pin driver',
   'rating.note':
     'The simulation continues to show the calculated values and does not model physical damage.',
 
@@ -505,6 +939,14 @@ export const en = {
     'Build required: build the code for {components}, then press Run.',
   'sim.error.mcu_unsupported_features':
     'The code for {components} uses features the simulator does not model: {features}. Run is refused.',
+  // Sprint 19B: the programming environment of a board's program.
+  'program.language': 'Programming language',
+  'program.language.arduino-cpp': 'Arduino C++',
+  'program.language.micropython': 'MicroPython',
+  'program.language.restored':
+    'Switched to {language}. Its code is back exactly as you left it; your {previous} code is kept in the project.',
+  'program.language.started':
+    'Switched to {language}. This project has no {language} version of its program (for a built-in example: none has been verified), so the {language} starter program is open. Your {previous} code is kept unchanged and comes back when you switch back.',
   'program.tab.circuit': 'Circuit',
   'program.tab.code': 'Code',
   // Sprint 9: generated views of the same circuit.
@@ -589,16 +1031,105 @@ export const en = {
     'A visualization of the circuit: drag or ← → to rotate; right-drag, Shift-drag or Shift + arrows to pan; scroll or + − to zoom. Edit in the Circuit view.',
   'view3d.overlap':
     'Some parts are larger in 3D than their symbols and still touch here ({parts}). Move them further apart in the Circuit view.',
+  'view3d.routeLimit':
+    'Some wires could not be laid out cleanly in 3D ({wires}): there they may look as if they touch another wire or pass through a part. The connections are exactly as drawn in the Circuit view.',
   'program.editor.label': 'Arduino source code of {board}',
   'program.position': 'Line {line}, column {column}',
   'program.size': '{used} of {max}',
+  'program.total': '{files} files, {used} of {max}',
+  'program.files': 'Program files',
+  'program.file.main': 'main',
+  'program.file.new': 'New file',
+  'program.file.rename': 'Rename',
+  'program.file.delete': 'Delete file',
+  'program.file.deleteConfirm': 'Delete {file}? You can undo this.',
+  'program.file.newLabel': 'New file name',
+  'program.file.renameLabel': 'New name',
+  'program.file.create': 'Create',
+  'program.file.renameApply': 'Rename',
+  'program.file.cancel': 'Cancel',
+  'program.file.rules.arduino':
+    'Arduino files: .ino, .cpp, .c, .h or .hpp in the sketch folder, or .cpp, .c, .h or .hpp under src/ (for example src/util.cpp). Include your own headers with quotes: #include "helpers.h".',
+  'program.file.rules.micropython':
+    'MicroPython modules: .py files whose names are Python identifiers, at the top or in a package folder that has an __init__.py (for example sensors/__init__.py and sensors/dht.py). Import them by name: import helpers.',
+  'program.file.error.empty': 'Enter a file name.',
+  'program.file.error.too_long': 'The name is too long.',
+  'program.file.error.bad_name':
+    'Use letters, digits, underscores and hyphens, a single extension, and folders separated by “/”; no spaces, no leading dot, no “.” or “..”.',
+  'program.file.error.too_deep': 'Use at most two folders.',
+  'program.file.error.bad_extension':
+    'This programming environment does not build files of this type (or not in this folder).',
+  'program.file.error.entry': 'This is the main file’s name.',
+  'program.file.error.reserved':
+    'This name is reserved: the environment uses it, or (MicroPython) the interpreter already has a module of that name (for example network, machine or time), which would be imported instead of your file.',
+  'program.file.error.duplicate':
+    'A file with this name already exists (names that differ only in capital letters count as the same).',
+  'program.file.error.limit':
+    'The project has reached its file or size limit (16 files, 256 KiB in all).',
+  'library.heading': 'Managed libraries',
+  'library.none':
+    'No library is needed. Add a part that has a managed library (for example the LCD1602 I²C display) and it becomes available here, with nothing to install.',
+  'library.issue.unknown_library':
+    '{id}: this library version is not available on this server. Builds refuse it rather than use another version.',
+  'library.issue.library_language': '{id}: this library is for another programming language.',
+  'library.issue.library_profile': '{id}: this library is not validated with this toolchain.',
+  'library.issue.library_dependency': '{id}: a library it needs is missing.',
+  'library.reason.part': 'Available because {parts} needs it.',
+  'library.reason.code': 'Kept because the code uses it.',
+  'library.status.available': 'available (pinned version, nothing to install)',
+  'library.license': 'Licence {spdx}, {copyright}. Source:',
+  'library.validated': 'Validated on the simulator:',
+  'library.example': 'Usage example',
+  'library.copy': 'Copy example',
+  'library.unpin': 'Remove from this project',
+  'library.limit.lcd_write_only':
+    'Write-only: the LCD backpack’s port and the controller cannot be read in the simulator (a read stops the run by name).',
+  'library.limit.lcd_clock':
+    'I²C clock up to 100 kHz (the PCF8574 rating); a faster clock stops the run by name.',
+  'build.error.unknown_library':
+    'The build service does not have this exact library version, so it did not build (it never substitutes another version).',
   'build.button': 'Build',
+  'toolbar.build': 'Build',
+  'toolbar.build.group': 'Build the code',
+  'toolbar.build.readOnly': 'This project is read-only: it cannot be built here.',
+  'toolbar.build.error': 'Build not completed',
+  'toolbar.build.showProblems': 'Show problems',
   'build.phase.required': 'Build required',
   'build.phase.building': 'Building…',
   'build.phase.queued': 'Waiting to build ({position} ahead)',
   'build.phase.current': 'Built',
   'build.phase.failed': 'Build failed',
+  // Sprint 18F: the time a running build has taken so far (a clock, not an estimate).
+  'build.elapsed': '{seconds} s',
   'build.stale': 'The code changed since the last build.',
+  // Sprint 13 OS-08: Run is not available during a build or without a current build.
+  'run.blocked.building': 'Run is unavailable while a build is in progress.',
+  'run.blocked.buildRequired':
+    'Build the code for {components} first: it has not been built, or it changed since the last build.',
+  'run.blocked.buildFailed':
+    'The last build of the code for {components} failed. Fix it and Build.',
+  'build.olderRunning':
+    'A build of an earlier version of this code is still in progress. Build the current version when it finishes.',
+  // Sprint 13 OS-04: component bodies may not overlap (Circuit view and its 3D view).
+  'edit.overlap.circuit':
+    '{a} would overlap {b}. Place it where the parts do not cover each other.',
+  'edit.overlap.3d':
+    '{a} would overlap {b} at their real size (as the 3D view shows them). Leave more room between them.',
+  'edit.overlap.both': '{a} would overlap {b}. Place it where the parts do not cover each other.',
+  // Sprint 13 Task D: the project changed or was deleted in another tab or window.
+  'save.error.conflictBanner':
+    'This project was changed or deleted in another tab or window, so the changes here were not saved. To keep them, use Export now; then reload to continue with the saved version.',
+  'save.reload': 'Reload',
+  // OS-11: the gate's sign-in expired; background requests never start a login themselves.
+  'auth.expired':
+    'Your sign-in has expired. Your projects are saved in this browser. Sign in again to continue.',
+  'auth.signInAgain': 'Sign in again',
+  // Sprint 13 Task D: wire routes adjusted when a project opened (layout only).
+  'open.routesAdjusted':
+    'Some wire routes were redrawn so they no longer run over pins, displays or part outlines. Connections are unchanged. Undo restores the previous routes.',
+  // Sprint 13 a11y: the slider's own accessible name (distinct from its value field).
+  'valueControl.slider': '{label}, slider',
+  'valueControl.unit': '{label}, unit',
   'build.blockedRunning':
     'Build is available after Stop. The running session keeps the firmware it started with.',
   'build.unavailable': 'The build service is not available here.',
@@ -613,7 +1144,8 @@ export const en = {
     'Your saved builds are at their limit and are all in use. Stop the running session, then build again.',
   'build.error.capability_disabled': 'Running a prebuilt binary is not available for your account.',
   'build.error.refused': 'The build service refused this request.',
-  'build.error.too_large': 'The code is too large to build (the limit is 64 KiB).',
+  'build.error.too_large':
+    'The code is too large to build (each file up to 64 KiB, the project up to 256 KiB).',
   'build.error.not_an_image': 'The build service could not use this file.',
   'build.error.protocol':
     'Unexpected answer from the build service. Try again, or reload the page.',
@@ -623,6 +1155,8 @@ export const en = {
   'build.failure.internal': 'The build service had an internal problem. Try again.',
   'build.failure.capacity_timeout':
     'The build waited too long for the build service and did not start. Try again.',
+  'build.failure.account_disabled':
+    'The build was stopped because access to TBI Lab was ended for this account.',
   'build.diagnostics.heading': 'Problems',
   'build.severity.error': 'Error',
   'build.severity.warning': 'Warning',
@@ -635,14 +1169,105 @@ export const en = {
   'build.feature.internal_pull': 'internal pull-up/pull-down',
   'build.feature.interrupt': 'GPIO interrupts',
   'build.feature.restart': 'chip restart',
+  'build.feature.cpu_frequency': 'CPU clock change (setCpuFrequencyMhz)',
   'build.feature.wifi': 'Wi-Fi networking',
   'build.feature.bluetooth': 'Bluetooth',
   'build.feature.adc': 'analog input (ADC)',
   'build.feature.pwm': 'PWM/LEDC output',
+  'build.feature.pwm_advanced':
+    'LEDC hardware fade or output inversion (ledcFade, ledcOutputInvert)',
   'build.feature.dac': 'analog output (DAC)',
   'build.feature.touch': 'touch sensing',
   'build.feature.sleep': 'sleep modes',
+  'build.feature.drive_strength': 'pin drive strength selection (gpio_set_drive_capability)',
   'build.feature.i2c': 'I2C bus',
+  // Sprint 24 (M3): MicroPython machine.I2C outside the shape the simulator verified.
+  'build.feature.i2c_frequency':
+    'an I2C clock (freq=) that is missing, not a number written in the code, or above 100 kHz (the PCF8574’s rated clock)',
+  'build.feature.i2c_bus': 'an I2C bus other than hardware bus 0, I2C(0, …)',
+  'build.feature.i2c_pins':
+    'I2C pins other than scl=Pin(22), sda=Pin(21), written as numbers in the code',
+  'build.feature.i2c_option':
+    'an I2C option the simulator has not verified (timeout=, other arguments)',
+  'build.feature.i2c_operation':
+    'an I2C operation no simulated part answers (readfrom, readfrom_into, readfrom_mem, writeto_mem, …), or machine.I2C used indirectly',
+  // Sprint 28 (L7): MicroPython names looked up at run time; the checks read written names only.
+  'build.feature.dynamic_access':
+    'names looked up while the program runs (getattr/setattr/hasattr with a computed name, vars(), globals(), locals(), __dict__, exec, eval, compile, sys.modules), or the machine module used other than as machine.Name — the simulator could not check what they reach',
+  // Sprint 29: no serial input path in a session.
+  'build.feature.serial_input':
+    'reading serial input (input(), sys.stdin): the serial monitor only shows the program’s output, so the program would wait forever',
+  // Sprint 28: the owner-only AI model pilot (DEV-Lab builds only).
+  'assist.pilot.heading': 'AI model (owner pilot)',
+  'assist.pilot.loading': 'Checking the AI model pilot…',
+  'assist.pilot.unavailable': 'The AI model pilot is not available on this server.',
+  'assist.pilot.disabled':
+    'Off. Nothing is sent to any AI model. It stays off until the owner has approved:',
+  'assist.pilot.notPilot': 'The AI model pilot is limited to the owner.',
+  'assist.pilot.reason.no_provider': 'an AI provider and model (none is configured)',
+  'assist.pilot.reason.no_config': 'the pilot configuration (none is installed)',
+  'assist.pilot.reason.config_invalid':
+    'a valid pilot configuration (the installed one is refused)',
+  'assist.pilot.reason.mock_not_allowed': 'the template provider is not allowed on this server',
+  'assist.pilot.reason.no_model': 'the model to use',
+  'assist.pilot.reason.approval_missing.providerAndModel': 'the provider and model',
+  'assist.pilot.reason.approval_missing.dataTerms':
+    'the provider’s data-sharing and retention terms (review)',
+  'assist.pilot.reason.approval_missing.spendCap': 'a hard monthly spending cap',
+  'assist.pilot.reason.approval_missing.securityReview': 'the security review of this integration',
+  'assist.pilot.reason.approval_missing.ownerActivation': 'the owner’s explicit activation',
+  'assist.pilot.reason.approval_mismatch.providerAndModel':
+    'the approved provider and model (the configured ones differ)',
+  'assist.pilot.reason.approval_invalid.spendCap': 'a valid spending cap',
+  'assist.pilot.reason.no_pricing': 'the model’s prices (for the cost limits)',
+  'assist.pilot.reason.no_credential':
+    'the provider credential (installed on the server, never in the browser)',
+  'assist.pilot.reason.other': 'another condition (see the server status)',
+  'assist.pilot.model.live':
+    'Live AI model: {provider} {model}. It explains the findings above; the simulator stays the source of truth.',
+  'assist.pilot.model.mock':
+    'Server template provider ({model}): no AI model is involved, nothing leaves TBI Lab.',
+  'assist.pilot.data.heading': 'What would be sent',
+  'assist.pilot.data.sent': 'Sent with each request you approve:',
+  'assist.pilot.data.never': 'Never sent:',
+  'assist.pilot.data.instructions':
+    'fixed instructions (explain only these findings, cite evidence, no new values)',
+  'assist.pilot.data.locale': 'your interface language',
+  'assist.pilot.data.findings': 'the simulator’s findings (computed again on the server)',
+  'assist.pilot.data.circuit': 'the circuit: part types, their values and connections',
+  'assist.pilot.data.checks_and_results': 'electrical checks, results and ratings',
+  'assist.pilot.data.build_status': 'the build status and up to 20 messages (quoted text removed)',
+  'assist.pilot.data.code_excerpts':
+    'up to 8 short code excerpts (comments and text in quotes removed, secrets redacted)',
+  'assist.pilot.data.capabilities_and_assumptions':
+    'the runtime’s capabilities and the modelling assumptions',
+  'assist.pilot.data.identity': 'who you are (no account, name or email)',
+  'assist.pilot.data.project_name': 'the project name',
+  'assist.pilot.data.net_names': 'net names you wrote',
+  'assist.pilot.data.comments_and_strings': 'comments and text in quotes from your code',
+  'assist.pilot.data.serial_output': 'serial output',
+  'assist.pilot.data.screenshots': 'screenshots',
+  'assist.pilot.data.whole_source_files': 'whole source files',
+  'assist.pilot.preview': 'Show exactly what would be sent',
+  'assist.pilot.preview.size':
+    '{bytes} bytes, about {tokens} tokens (estimate). Nothing has been sent.',
+  'assist.pilot.consent':
+    'I agree to send exactly this to the AI provider for one explanation (consent version {version}).',
+  'assist.pilot.send': 'Send and explain',
+  'assist.pilot.error.pilot_disabled': 'The pilot is off on the server.',
+  'assist.pilot.error.not_pilot': 'The AI model pilot is limited to the owner.',
+  'assist.pilot.error.consent_required': 'Consent of the current version is required.',
+  'assist.pilot.error.rate_limited': 'Too many requests; wait a minute.',
+  'assist.pilot.error.daily_limit': 'Today’s limit for the pilot is reached.',
+  'assist.pilot.error.spend_cap': 'The monthly spending cap would be exceeded; nothing was sent.',
+  'assist.pilot.error.token_ceiling':
+    'The monthly token ceiling would be exceeded; nothing was sent.',
+  'assist.pilot.error.provider_error':
+    'The AI provider did not answer usefully. The findings above are unaffected.',
+  'assist.pilot.error.invalid_response':
+    'The model’s reply failed the evidence checks and is not shown.',
+  'assist.pilot.error.timeout': 'The AI provider did not answer in time.',
+  'assist.pilot.error.other': 'The request did not complete.',
   'build.feature.spi': 'SPI bus',
   'build.feature.library': 'library {name}',
   'mcu.runs.program': 'Runs its code. Edit it in the Code tab, Build, then Run.',
@@ -675,8 +1300,13 @@ export const en = {
     'Too many ESP32 sessions were started in a short time. Try again in a few minutes. The project is not affected.',
   'sim.error.runtime.firmware_unavailable':
     'The selected firmware is not available on the runtime service. The project is not affected.',
+  // Sprint 19B (Runtime v4): a facility the emulator does not model, refused when first used.
+  'sim.error.unmodelled':
+    'The program started using {feature}, which the simulator does not model. The simulation stopped at that moment instead of showing a dead or crashed result.',
   'sim.error.runtime.unsupported_feature':
     'The firmware uses a feature the simulator does not support in this version (internal pull-up/pull-down or GPIO interrupts).',
+  'sim.error.runtime.inverted_output':
+    'The firmware inverts a connected pin through the GPIO matrix. The simulator does not model inverted outputs.',
   'sim.error.runtime.invalid_attachment': 'A connected ESP32 pin cannot be used in the simulator.',
   'sim.error.runtime.startup_failed':
     'The ESP32 could not start. The project is not affected. Press Run to try again.',
@@ -688,10 +1318,46 @@ export const en = {
     'The ESP32 stopped making progress (for example, the firmware image does not boot). The session ended.',
   'sim.error.runtime.session_lost':
     'The ESP32 session was lost (connection lost or session expired). The project is safe; press Run for a fresh session.',
+  'sim.runtime.expiring':
+    'This ESP32 session will end within a minute (a session lasts at most {minutes} min). Your project is saved; afterwards, press Run for a fresh session.',
+  'sim.error.runtime.account_disabled':
+    'The ESP32 session was stopped because access to TBI Lab was ended for this account. The project is safe in this browser.',
   'sim.error.runtime.session_expired':
     'The ESP32 session reached its maximum duration and ended. Press Run for a fresh session.',
   'sim.error.runtime.mirror_failed':
     'The running ESP32 session could not apply your change, so it was stopped. The project keeps your change.',
+  'sim.error.runtime.command_refused':
+    'The ESP32 runtime refused a live change it does not support (it may be older than this app), so the session was stopped. The project keeps your change.',
+  'sim.error.runtime.commands_rate_limited':
+    'Live changes were sent faster than the ESP32 runtime accepts, so the session was stopped. The project keeps your change; press Run to continue.',
+  'sim.error.runtime.pwm_unsupported':
+    'A PWM output was used in a way the simulator cannot reproduce faithfully, and the session ended.',
+  'sim.error.pwm.pwm_duty_zero_unverified':
+    '{pins} outputs PWM at duty 0 while the circuit responds to that pin ({components}). The level a real ESP32 outputs at duty 0 is not verified yet, so the simulator stops instead of guessing. To switch the output off, use ledcDetach() and digitalWrite(pin, LOW).',
+  'sim.error.pwm.pwm_unsupported_mode':
+    '{pins} uses an LEDC mode the simulator does not support: {why}.',
+  'sim.error.pwm.pwm_load_unsupported':
+    'PWM on {pins} reaches {components}, which does not respond instantly to a switching signal. Only resistors, LEDs, diodes and switches can be averaged faithfully.',
+  'sim.error.pwm.pwm_input_unsupported':
+    'PWM on {pins} reaches the ESP32 input {inputs}. Reading a PWM signal is not simulated.',
+  'sim.error.pwm.pwm_outputs_interact':
+    'The PWM outputs {pins} share a load ({components}). Their combined effect depends on how the waveforms overlap, which is not simulated.',
+  'sim.error.pwm.pwm_supply_limited':
+    'PWM on {pins} makes {components} reach its current limit during part of each cycle. How a bench supply regulates a switching load at its limit is not simulated, so the session stopped. Raise the supply’s current limit or reduce the load.',
+  'sim.error.pwm.pwm_rate_exceeded':
+    'The sketch changes which of {pins} are switching (or stop at 0 % or 100 %) so often that the simulator would need more than 1000 circuit solutions per simulated second, its limit. The session stopped instead of slowing down or approximating. Changing only the duty of a running PWM output costs nothing; switch outputs between PWM and steady levels less often.',
+  'sim.pwm.why.open-drain': 'an open-drain PWM output',
+  'sim.pwm.why.inverted': 'an inverted PWM output (GPIO matrix inversion)',
+  'sim.pwm.why.low-speed': 'a low-speed channel (more than 8 PWM channels)',
+  'sim.pwm.why.interrupt': 'LEDC interrupts',
+  'sim.pwm.why.dither': 'fractional duty (dithering)',
+  'sim.pwm.why.fade': 'hardware fade',
+  'sim.pwm.why.hpoint': 'a phase offset that reaches the end of the period',
+  'sim.pwm.why.timer-reset': 'its timer is held in reset',
+  'sim.pwm.why.timer-paused': 'its timer is paused',
+  'sim.pwm.why.timer-resolution': 'a timer resolution outside 1 to 20 bits',
+  'sim.pwm.why.timer-apb-clock': 'a CPU clock below 80 MHz, which changes the PWM clock mid-period',
+  'sim.pwm.why.timer-divider': 'a timer divider below 1',
   'sim.error.runtime.protocol_error':
     'The runtime service sent an unexpected response and the session ended. The project is not affected.',
   'mcu.heading': 'ESP32 runtime',
@@ -710,7 +1376,7 @@ export const en = {
   'mcu.caveat.power': 'Supply pin',
   'mcu.caveat.enable': 'Chip enable: reset is not simulated',
   'mcu.note.unsupported':
-    'Not simulated in this version: internal pull-up/pull-down, GPIO interrupts, chip reset, analog, PWM, Wi-Fi.',
+    'Not simulated in this version: internal pull-up/pull-down, GPIO interrupts, chip reset, analog, Wi-Fi.',
   'mcu.level.high': 'HIGH',
   'mcu.level.low': 'LOW',
   'mcu.mode.output': 'output',
@@ -730,10 +1396,29 @@ export const en = {
   'mcu.terminal.state.stopping': 'Stopping…',
   'mcu.terminal.state.failed': 'Session failed',
   'mcu.terminal.state.ended': 'Session ended (last output)',
+  // Sprint 24 (M1): the end of a MicroPython program, read from its serial output.
+  'mcu.programEnd.errorLine': 'Your program stopped with an error on line {line}.',
+  'mcu.programEnd.error': 'Your program stopped with an error.',
+  'mcu.programEnd.finished': 'Your program finished.',
+  'mcu.programEnd.repl':
+    'The board now waits at the MicroPython prompt (REPL); the session keeps running until you stop it.',
+  'mcu.programEnd.derived':
+    'Read from the serial output (MicroPython’s own traceback and prompt). A program that prints the same text itself would look the same.',
   'mcu.warnings.heading': 'Runtime warnings',
   'mcu.warning.output_on_input_only_pad':
     'GPIO{gpio} is input-only: the firmware tried to drive it, and it stays an input.',
   'mcu.warning.transient_rejected': 'A button press could not be delivered to the running session.',
+  // Sprint 13 OS-09: I2C diagnostics, specific and actionable.
+  'mcu.warning.i2c_wiring.supply_pin':
+    "{component}: {gpio} ({line}) is wired to the module's {terminal} pin, not to {line}. Check the module's pins: VCC and {line} may be swapped. The module does not respond.",
+  'mcu.warning.i2c_wiring.swapped':
+    '{component}: SDA and SCL are swapped ({sda} is on SCL, {scl} on SDA). The module does not respond.',
+  'mcu.warning.i2c_no_pullup':
+    '{component}: {lines} has no pull-up resistor, so the bus cannot idle high. Add a pull-up to each line.',
+  'mcu.warning.i2c_logic_level':
+    "{component}: {lines} idles at a level the module or the ESP32 does not read as HIGH. Pull the lines up to a voltage both accept (the module's input threshold is 0.7 × its supply).",
+  'mcu.warning.i2c_rate_exceeded':
+    'The I2C traffic exceeds what the simulator processes per simulated second; further transfers are not acknowledged.',
   'mcu.warning.generic': 'Runtime warning: {code}',
   'mcu.connection.reconnecting': 'Reconnecting to the ESP32 session…',
   'mcu.resync':
@@ -748,6 +1433,83 @@ export const en = {
   'example.esp32-bench.title': 'ESP32 bench: inputs and indicators',
   'example.esp32-bench.summary':
     'The switch input to LED output circuit on a fuller bench: a red LED driven by GPIO4, and yellow (behind a 1N4148 diode) and green indicators fed straight from the 3.3 V supply. Runs on the ESP32 runtime service.',
+  'example.esp32-motion-relay.title': 'ESP32: motion alarm through a relay',
+  'example.esp32-motion-relay.summary':
+    'A PIR motion sensor on GPIO34; the firmware copies it to GPIO4, which switches a 2N3904 and a 5 V relay (with a flyback diode). The relay contact sounds the buzzer and lights the alarm LED. Click the sensor dome while running to put motion in front of it. Runs on the ESP32 runtime service.',
+  'example.esp32-night-light.title': 'ESP32: RGB night light with a light sensor',
+  'example.esp32-night-light.summary':
+    'A light-sensor divider on GPIO34 read as a digital level (no ADC): dark (below about 3 lx) reads HIGH and the firmware lights all three RGB channels through GPIO4: white. Bright (above about 110 lx) reads LOW; in between the ESP32 guarantees no level (no hysteresis is specified), so a read there stops the run. Change the light in the Properties panel while running. Runs on the ESP32 runtime service.',
+  'example.esp32-distance-alarm.title': 'ESP32: ultrasonic distance alarm',
+  'example.esp32-distance-alarm.summary':
+    'An HC-SR04 measures the distance to a target: GPIO5 sends the 10 µs trigger pulse and the echo pulse returns to GPIO18 through a 1 kΩ / 2 kΩ divider (the module runs from 5 V). The sketch prints the distance (pulse width in µs / 58 = cm); closer than 20 cm, GPIO2 lights the red LED. Change the target distance in the Properties panel while running. Runs on the ESP32 runtime service.',
+  'example.esp32-thermo-hygrometer.title': 'ESP32: temperature and humidity (DHT22)',
+  'example.esp32-thermo-hygrometer.summary':
+    'A DHT22 / AM2302 on GPIO4, with the 10 kΩ pull-up its single-wire data line needs, read by a short library-free routine that follows the datasheet timing. The serial output shows the temperature and relative humidity every 2.5 s. Change both in the Properties panel while running. Runs on the ESP32 runtime service.',
+  'example.esp32-led-fade.title': 'ESP32: fade an LED with PWM',
+  'example.esp32-led-fade.summary':
+    'analogWrite drives GPIO18 with a 1 kHz PWM signal; the LED’s average current, and its brightness, follow the duty. The fade stays between 1 and 255: duty 0 is not simulated yet.',
+  'example.esp32-logic-and.title': 'ESP32: an AND gate with read-back',
+  'example.esp32-logic-and.summary':
+    'Partly simulated: this example shows two limits of the datasheets. An ESP32 output and a push button drive an SN74LVC1G08 AND gate powered at 3.0 V (both inputs with 10 kΩ pull-downs), which lights an LED and is read back by the ESP32. Before the sketch starts, and whenever GPIO18 is LOW, the circuit runs (the LOW pad takes at most 38 µA from the pull-down). Driven HIGH, GPIO18 sources about 330 µA into the 10 kΩ pull-down — more than the 100 µA up to which the simulator relies on an ESP32 output level (owner decision S30-L1) — so that state is refused by name; and with the LED on its output the gate guarantees only V_OH ≥ 2.4 V, below the read-back threshold. The logic-feedback example shows the working design: a 100 kΩ pull-down and the read-back taken from a gate output that carries no load.',
+  'example.esp32-logic-quad-and.title': 'ESP32: a quad AND gate IC driving LEDs',
+  'example.esp32-logic-quad-and.summary':
+    'Not simulated: this example shows a limit of the datasheets. Two ESP32 outputs and a push button drive an SN74LVC08A (four AND gates in one package, one shared supply) powered at 3.0 V; gate 1 would light a LED and gate 2 would chain it with the button. The SN74LVC08A datasheet bounds its supply current I_CC only at V_CC = 3.6 V with every input at V_CC or GND (§5.7), and its input leakage only at 3.6 V. Neither holds here (and an ESP32 output is never exactly at a rail), so the levels of the inputs held through the pull-downs and the bench supply’s current limit are not guaranteed: the simulator refuses the circuit by name in every state and shows no truth table.',
+  // Sprint 20 logic examples.
+  'example.logic-and-switches.title': 'Logic: an AND gate with two switches',
+  'example.logic-and-switches.summary':
+    'Two switches drive an SN74LVC1G08 AND gate powered at 3.0 V by PSU2; the LED lights only when both are closed. The switches take their HIGH from PSU1 set to 5.5 V, and each input has a 150 Ω pull-down, so every input is at exactly 5.5 V or GND (engine tolerance 1 mV, an engineering assumption; the input leakage moves an open input at most 0.75 mV): the datasheet’s own test condition for the gate’s supply current I_CC (§5.5), its tightest bound (10 µA). A simpler design is guaranteed too: one 3.3 V supply and 10 kΩ pull-downs keep every input within 0.6 V of GND or V_CC (I_CC bounded by ΔI_CC, see the half adder). Caveats: a real switch’s contact resistance at 36.7 mA can move a closed input by more than 1 mV, and 5.5 V is the recommended maximum input voltage V_I (§5.3), with no margin above it. A 10 kΩ bleeder across PSU2 keeps it delivering at least 300 µA: a bench supply cannot absorb current, and with Y LOW the inputs’ leakage could otherwise flow back into it. Select the gate to see its truth table, each pin’s level and voltage, and toggle the inputs from the Inspector.',
+  'example.logic-cascade.title': 'Logic: cascaded gates, (A·B·C) + D',
+  'example.logic-cascade.summary':
+    'Not simulated: this example shows a limit of the SN74LVC08A datasheet. Four switches with pull-downs; inside one SN74LVC08A, gate 1 forms A·B and feeds gate 2, which adds C; an SN74LVC1G32 OR gate combines that with switch D and drives the LED, all at 3.0 V. The SN74LVC08A datasheet gives its supply current I_CC only at V_CC = 3.6 V and only with no output current (I_O = 0), and its input leakage only at 3.6 V; here its outputs drive other gates’ inputs (their leakage is a load) at 3.0 V, so its supply current, and the bench supply’s current limit, are not guaranteed: the simulator refuses the circuit by name in every switch position. Single gates (SN74LVC1G…) have a supply-current rule for a loaded output: see the half adder and the full adder built from them.',
+  'example.esp32-logic-override.title': 'ESP32: an OR gate with a manual override',
+  'example.esp32-logic-override.summary':
+    'Partly simulated: this example shows two limits of the datasheets. An ESP32 output and a toggle switch drive an SN74LVC1G32 OR gate powered at 3.0 V (both inputs with 10 kΩ pull-downs), which lights an LED and is read back by the ESP32. With the switch open the circuit runs, before the sketch starts and while GPIO18 is LOW. Driven HIGH, GPIO18 sources about 330 µA into the 10 kΩ pull-down — more than the 100 µA up to which the simulator relies on an ESP32 output level (owner decision S30-L1) — and with the LED on its output the gate’s HIGH is guaranteed only ≥ 2.4 V, below the read-back threshold: those states are refused by name. The logic-feedback example shows the working design.',
+  // Sprint 24 (M1): MicroPython examples.
+  'example.mpy-blink.title': 'MicroPython: blink an LED',
+  'example.mpy-blink.summary':
+    'The same circuit as the Arduino blink, programmed in MicroPython: main.py sets GPIO2 as an output and switches the red LED (220 Ω to GND) on and off every 500 ms with Pin.value().',
+  'example.esp32-pot-threshold.title': 'ESP32: potentiometer as a digital input',
+  'example.esp32-pot-threshold.summary':
+    'A 10 kΩ potentiometer across 3.3 V feeds GPIO34, which the Arduino program reads as a digital level: LOW at or below 0.825 V, HIGH at or above 2.475 V. A read in between stops the run: the datasheet guarantees no level there and specifies no hysteresis. GPIO4 lights the LED while it reads HIGH. Turn the wiper while running. Analog input (analogRead) is not supported. Runs on the ESP32 runtime service.',
+  'example.mpy-pot-threshold.title': 'MicroPython: potentiometer as a digital input',
+  'example.mpy-pot-threshold.summary':
+    'The same potentiometer circuit in MicroPython: Pin(34, Pin.IN).value() reads the wiper as 0 at or below 0.825 V and 1 at or above 2.475 V; a read in between stops the run (the datasheet guarantees no level there and specifies no hysteresis); GPIO4 lights the LED. Turn the wiper while running. machine.ADC is not supported. Runs on the ESP32 runtime service.',
+  'example.logic-half-adder.title': 'Logic: a half adder (four gates)',
+  'example.logic-half-adder.summary':
+    'Beginner. Two switches add two bits with four single gates at 3.3 V: an OR and a NAND of A and B feed an AND that makes the sum S = A ⊕ B; a second AND makes the carry C = A · B; each lights an LED through 330 Ω. A 10 kΩ pull-down holds an open switch’s input LOW. Select a gate to see its truth table and live levels. Why not an XOR part? The SN74LVC1G86 datasheet gives its supply current only with no output current, so a loaded XOR is not simulated; these gates’ sheets state the rule for a loaded output. Try: add a third switch and a second half adder to build a full adder.',
+  'example.logic-full-adder.title': 'Logic: a 1-bit full adder (seven gates)',
+  'example.logic-full-adder.summary':
+    'Intermediate: four stages of real logic at 3.3 V. Switches A, B and the carry-in Cin (10 kΩ pull-downs). An OR, a NAND and an AND make X = A ⊕ B; the same three gates on X and Cin make the sum S = X ⊕ Cin; one more NAND combines the two NANDs into the carry-out Cout = A · B + X · Cin. The LEDs show S and Cout: together they count A + B + Cin in binary. Select any gate to see its truth table and the live level of its inputs and output — X and the NAND outputs included. Try: chain a second full adder for a 2-bit adder.',
+  'example.esp32-logic-feedback.title': 'ESP32: logic feedback and a relay',
+  'example.esp32-logic-feedback.summary':
+    "Advanced: firmware, logic gates and a power stage together. GPIO18 raises a REQUEST into an SN74LVC1G08 AND gate at 3.0 V (a 100 kΩ pull-down holds it LOW until the sketch drives it); the PERMIT switch is its other input. The sketch reads the gate back on GPIO4 right after each change and decides: GRANTED (the gate answered HIGH) or DENIED (the permit is open), then drops the request and checks that the gate follows. The gate drives a second AND gate, which switches a 2N3904 and the 5 V relay; the relay's contact lights the LED. The ESP32's output level is relied on only up to 100 µA (owner decision S30-L1): driven HIGH it carries at most 38 µA (33 µA into the 100 kΩ pull-down plus the gate’s 5 µA input leakage). Try: open the PERMIT switch while it runs, or change the pull-down to 22 kΩ and read why it is refused.",
+  'example.mpy-logic-feedback.title': 'MicroPython: logic feedback and a relay',
+  'example.mpy-logic-feedback.summary':
+    "Advanced: the same circuit as “ESP32: logic feedback and a relay”, in MicroPython. main.py raises a REQUEST on GPIO18 into an SN74LVC1G08 AND gate at 3.0 V (100 kΩ pull-down), reads the gate back on GPIO4 right after and prints GRANTED or DENIED (the PERMIT switch), then drops the request and checks that the gate follows. A second AND gate drives a 2N3904 and the 5 V relay, whose contact lights the LED. The ESP32's output level is relied on only up to 100 µA (owner decision S30-L1). Try: open the PERMIT switch while it runs, or change the pull-down to 22 kΩ and read why it is refused.",
+  'example.mpy-adder-monitor.title': 'MicroPython: an ESP32 watches a logic half adder',
+  'example.mpy-adder-monitor.summary':
+    'Advanced: switches, logic gates and firmware together. The half adder (four single gates at 3.3 V: S = A ⊕ B from an OR, a NAND and an AND; carry C = A · B) is built from real gates; the ESP32 only reads it — the switches on GPIO32/33, S and C on the input-only GPIO34/35 — and main.py prints each new state, checks it against A + B, and sets the LED on GPIO18 (PWM, 1 kHz) brighter for a larger sum. The gate outputs carry no other load, so their HIGH is guaranteed above the ESP32’s input threshold. Try: add a full adder, or count how often each sum appears.',
+  'example.mpy-button.title': 'MicroPython: a push button lights an LED',
+  'example.mpy-button.summary':
+    'Hold the button: 3.3 V reaches GPIO34 through 1 kΩ, and a 10 kΩ pull-down holds it LOW when released (GPIO34 has no internal pull). main.py reads it with Pin.IN every 10 ms and copies it to GPIO4, which drives the red LED through 220 Ω.',
+  'example.mpy-fade.title': 'MicroPython: fade an LED with PWM',
+  'example.mpy-fade.summary':
+    'machine.PWM drives GPIO18 at 1 kHz; main.py steps duty_u16 from 2048 up to 63488 and back (never 0). The LED’s average current follows the duty, on the circuit of the Arduino fade.',
+  'example.mpy-lcd-hello.title': 'MicroPython: hello on an I2C LCD',
+  'example.esp32-lcd-library.title': 'ESP32: LCD with a managed library (three files)',
+  'example.esp32-lcd-library.summary':
+    'The I2C LCD circuit with an Arduino program in three files: sketch.ino calls the functions declared in display.h and written in display.cpp, which uses the managed library LiquidCrystal_PCF8574 2.2.0. Placing the display made the library available: nothing is installed. Open Code to see the files and the Managed libraries list. Runs on the ESP32 runtime service.',
+  'example.mpy-lcd-library.title': 'MicroPython: LCD with a managed library (two files)',
+  'example.mpy-lcd-library.summary':
+    'The same circuit in MicroPython: main.py imports display.py, which uses the managed library python_lcd (I2cLcd). The build puts the library in the interpreter’s /lib and the program’s modules next to main.py; the genuine interpreter imports them. Runs on the ESP32 runtime service.',
+  'example.mpy-lcd-hello.summary':
+    'The circuit of the Arduino LCD example, programmed in MicroPython: machine.I2C on bus 0 (SCL GPIO22, SDA GPIO21) at 100 kHz, the PCF8574’s rated clock, and a small HD44780 driver written in main.py show “Hello, ESP32!” and the uptime. The module runs at 4.5 V; the two 4.7 kΩ pull-ups go to 3.3 V.',
+  'example.esp32-servo-sweep.title': 'ESP32: sweep an SG90 servo with PWM',
+  'example.esp32-servo-sweep.summary':
+    'A 50 Hz LEDC signal on GPIO18 with 1.0, 2.0 and 1.5 ms pulses moves the servo to 0°, 180° and 90°. The servo runs from the 5 V bench supply.',
+  'example.esp32-lcd-hello.title': 'ESP32: hello on a 16×2 I2C LCD',
+  'example.esp32-lcd-hello.summary':
+    'The sketch drives the LCD through its PCF8574 I2C backpack with plain Wire writes: line 1 says hello, line 2 counts the seconds. The module runs from 4.5 V so that the 3.3 V bus pull-ups (two 4.7 kΩ resistors to a second supply) read HIGH at its inputs (0.7 × 4.5 V = 3.15 V). Runs on the ESP32 runtime service.',
   'palette.group.mcu': 'Microcontroller',
   // Board pin silkscreen names (Sprint 6): technical tokens, verbatim in every locale.
   'pin.gpio36': 'VP',
@@ -775,6 +1537,685 @@ export const en = {
   'pin.gpio0': 'IO0',
   'pin.gpio2': 'IO2',
   'pin.gpio15': 'IO15',
+  // Sprint 13 H1: what runs on the ESP32 (packages/domain/src/capabilities.ts).
+  'menu.capabilities': 'What runs on the ESP32',
+  'capabilities.title': 'What runs on the ESP32 in TBI Lab',
+  'capabilities.intro':
+    'TBI Lab runs your sketch on an emulated Classic ESP32 (ESP32 DevKitC, WROOM-32) and simulates the circuit around it. This list says exactly what is simulated, what has limits, and what is refused. A refused feature never runs silently: the product tells you before Run.',
+  'capabilities.close': 'Close',
+  'capabilities.learnMore': 'What runs on the ESP32?',
+  'capabilities.section.firmware': 'Firmware features',
+  'capabilities.section.parts': 'Parts next to an ESP32',
+  'capabilities.section.timing': 'Timing',
+  'capabilities.section.limits': 'Shared service limits',
+  'capabilities.status.supported': 'Supported',
+  'capabilities.status.limited': 'Supported with limits',
+  'capabilities.status.unsupported': 'Not supported',
+  'capabilities.facility.digital_io.name': 'Digital input and output',
+  'capabilities.facility.digital_io.body':
+    'pinMode, digitalWrite and digitalRead on the pins the board diagram marks as available. Levels and currents come from the circuit simulation.',
+  'capabilities.facility.serial.name': 'Serial monitor (UART0)',
+  'capabilities.facility.serial.body':
+    'Serial.print and Serial.read through the ESP32 terminal. The text is exact; the bit timing of the line is not simulated.',
+  'capabilities.facility.preferences.name': 'Preferences (non-volatile storage)',
+  'capabilities.facility.preferences.body':
+    'The Preferences library works within one run. Nothing is kept after Stop.',
+  'capabilities.facility.i2c.name': 'I2C bus (Wire)',
+  'capabilities.facility.i2c.body':
+    'Wire as controller on the supported I2C parts, with real addresses, acknowledgements and pull-up levels. The duration of each bus transfer is not simulated.',
+  'capabilities.facility.timing.name': 'millis, micros, delay, delayMicroseconds, pulseIn',
+  'capabilities.facility.timing.body':
+    'Run in simulated time. See Timing below for the exact limits.',
+  'capabilities.facility.dual_core.name': 'Both CPU cores (FreeRTOS tasks)',
+  'capabilities.facility.dual_core.body':
+    'Tasks run on both cores. A sketch that keeps core 0 busy can delay code on core 1 by up to about 1 ms, so microsecond timing is not supported in such sketches.',
+  'capabilities.facility.pwm.name': 'PWM / LEDC output (analogWrite, ledcWrite)',
+  'capabilities.facility.pwm.body':
+    'High-speed LEDC channels with exact frequency and duty. The circuit sees the time-average (LEDs dim; ratings use the peak current). Refused at Run with the reason named: duty 0 driving a load (its level on real hardware is not verified yet), loads that do not respond instantly (only resistors, LEDs, diodes and switches do), an ESP32 input reading the PWM signal, and more than 8 channels.',
+  'capabilities.facility.pwm_advanced.name':
+    'LEDC hardware fade and output inversion (ledcFade, ledcOutputInvert)',
+  'capabilities.facility.pwm_advanced.body':
+    'Not simulated. A sketch that uses them is refused at Build. Fade by calling ledcWrite in steps.',
+  'capabilities.facility.interrupt.name': 'GPIO interrupts (attachInterrupt)',
+  'capabilities.facility.interrupt.body': 'Not simulated. Poll the pin with digitalRead instead.',
+  'capabilities.facility.internal_pull.name':
+    'Internal pull-up / pull-down (INPUT_PULLUP, INPUT_PULLDOWN)',
+  'capabilities.facility.internal_pull.body':
+    'Not simulated. Add an external resistor to the circuit.',
+  'capabilities.facility.adc.name': 'Analog input (analogRead, ADC)',
+  'capabilities.facility.adc.body':
+    'Not simulated. Light and other sensors are read as digital levels.',
+  'capabilities.facility.dac.name': 'Analog output (dacWrite)',
+  'capabilities.facility.dac.body': 'Not simulated.',
+  'capabilities.facility.touch.name': 'Touch sensing',
+  'capabilities.facility.touch.body': 'Not simulated.',
+  'capabilities.facility.spi.name': 'SPI bus',
+  'capabilities.facility.spi.body': 'Not simulated.',
+  'capabilities.facility.wifi.name': 'Wi-Fi networking',
+  'capabilities.facility.wifi.body':
+    'Not simulated. Sketches that use Wi-Fi are refused before Run.',
+  'capabilities.facility.bluetooth.name': 'Bluetooth',
+  'capabilities.facility.bluetooth.body': 'Not simulated.',
+  'capabilities.facility.sleep.name': 'Sleep modes',
+  'capabilities.facility.sleep.body': 'Not simulated.',
+  'capabilities.facility.drive_strength.name': 'Pin drive strength (gpio_set_drive_capability)',
+  'capabilities.facility.drive_strength.body':
+    'Not simulated: pins use the default drive strength. Code that selects another strength is refused at Build.',
+  'capabilities.facility.restart.name': 'Chip restart (ESP.restart)',
+  'capabilities.facility.restart.body': 'Not simulated. Press Stop and Run to start again.',
+  'capabilities.facility.cpu_frequency.name': 'CPU clock changes (setCpuFrequencyMhz)',
+  'capabilities.facility.cpu_frequency.body':
+    'Not simulated: the ESP32 runs at 240 MHz. Code that changes the CPU clock is refused at Build.',
+  'capabilities.facility.library.name': 'Arduino libraries',
+  'capabilities.facility.library.body':
+    'Only libraries built into the ESP32 core that are listed here run (Preferences; Wire on the I2C parts). Other libraries, such as DHT or LiquidCrystal_I2C, are refused; the curated examples show the same parts without them.',
+  'capabilities.timing.electrical_exact':
+    'Signals the simulated parts send (for example a sensor echo) and the pin levels your sketch writes are placed at their exact simulated time.',
+  'capabilities.timing.polling':
+    'Your sketch sees an input change when it next reads the pin. In each simulated millisecond there are short intervals, up to about 13 µs, when the emulated core cannot run, so a change can be seen that much later.',
+  'capabilities.timing.outputs_longer':
+    'Pulses your sketch times with delayMicroseconds can come out up to about 12 µs longer, never shorter.',
+  'capabilities.timing.busy_core0':
+    'If a task keeps core 0 busy, code on core 1 can be delayed by up to about 1 ms. Microsecond timing is not supported in such sketches.',
+  'capabilities.timing.delay_phase':
+    'delay() keeps its length exactly; the first wake-up can come up to about 0.5 ms later than on a real board.',
+  'capabilities.timing.pulsein':
+    'pulseIn readings are within one microsecond of the true width; when an edge falls into one of the short intervals above, a reading can be off by up to about 13.5 µs (about 2 mm for an HC-SR04).',
+  'capabilities.timing.no_us_claim':
+    'TBI Lab does not claim unrestricted microsecond timing. If exact timing matters for your project, check it on a real board.',
+  'capabilities.limit.runtime_busy':
+    'The shared ESP32 simulator is at capacity. Your project is not affected; try Run again in a moment.',
+  'capabilities.limit.session_quota':
+    'Each person runs one ESP32 simulation at a time. Stop the other one first.',
+  'capabilities.limit.rate_limited':
+    'Too many runs were started in a short time. Wait the time shown, then try again.',
+  'capabilities.limit.session_expired':
+    'A run ends after 30 minutes or when the page stops responding. Press Run to start a new one.',
+  'capabilities.limit.commands_rate_limited':
+    'Part controls changed too quickly while running; some changes were refused. Change them more slowly.',
+  'capabilities.parts.supported': 'Simulated with the ESP32.',
+  'capabilities.board.power':
+    'How the board is powered: the ESP32 board runs from its own 3.3 V supply, as if powered through its USB connector. Its 3V3 and 5V pins are not part of the simulated circuit and cannot be wired; connect its GND to the circuit ground. Parts next to it take their power from the lab power supply.',
+  // Sprint 13 H2: outside the specified operating range; damage threshold unknown (not "safe").
+  'rating.operating.heading': 'Outside specified operating conditions',
+  'rating.operating.summary': '{component} is outside its specified operating range',
+  'rating.operating.row.voltage': 'Supply: {value} (specified operating maximum {limit})',
+  'rating.operating.note':
+    'Outside the recommended operating range but within the published absolute maximum: reliability and the simulated result are not guaranteed. Keep the part inside its operating range.',
+  // Sprint 13 P2: a value from a pad beyond its characterized point is not a physical value.
+  'rating.value.uncharacterized':
+    'current not known (beyond the range the manufacturer characterizes)',
+  'rating.unrated.summary':
+    '{component} is outside its specified range; no damage threshold is published',
+  'rating.unrated.note':
+    'The manufacturer publishes no damage threshold for this condition: the risk is unknown, not zero. Treat it as unsafe; the simulated result may not match a real part.',
+  'rating.row.gpio_input_overvoltage':
+    "{pin} input is at {value}, outside the pin's specified input range (limit {limit}); ESP32 pins are not specified for 5 V",
+  'rating.row.gpio_cumulative_current':
+    'All ESP32 output pins together deliver {value} (absolute maximum {limit})',
+  // Sprint 13 H2: model limitations (packages/domain/src/capabilities.ts MODEL_LIMITATIONS).
+  'limitation.psu_ideal':
+    'Ideal lab supply: no output impedance or control-loop dynamics, and it cannot sink current.',
+  'limitation.resistor_ideal':
+    'Exact value: tolerance and temperature coefficient are not modelled.',
+  'limitation.dc_25c': 'DC operating point at 25 °C: no thermal or self-heating effects.',
+  'limitation.led_card_range':
+    'Accurate within the current range of its datasheet curves; outside it the result is marked as outside the model.',
+  'limitation.no_breakdown':
+    'Reverse breakdown is not modelled; the reverse-voltage rating is checked and warned about instead.',
+  'limitation.switch_ideal': 'Ideal contact: no contact resistance or bounce.',
+  'limitation.ldr_typical':
+    'A typical GL5528 (the centre of its resistance class), not a measured part.',
+  'limitation.ldr_extrapolated':
+    'Outside 1–100 lx the light law is extrapolated, and the result says so.',
+  'limitation.ldr_digital_esp32':
+    'Next to an ESP32 it is read as a digital level: analog input is not supported.',
+  'limitation.ldr_no_dynamics': 'Response time and temperature dependence are not modelled.',
+  'limitation.buzzer_curve':
+    'Current follows the datasheet curve within 3–6 V; outside it the result is marked as outside the model.',
+  'limitation.buzzer_dc':
+    'An active buzzer on DC: whether it sounds is simulated, its tone and loudness are not.',
+  'limitation.relay_thresholds':
+    'Pull-in and drop-out use the guaranteed datasheet limits (3.75 V / 0.5 V), not a particular part.',
+  'limitation.relay_no_inductance':
+    'Coil inductance is not modelled, so the switch-off voltage spike is not simulated: use a flyback diode as on a real board.',
+  'limitation.relay_ideal_contacts':
+    'Ideal contacts: contact resistance, bounce and operate/release times are not modelled.',
+  'limitation.bjt_dc':
+    'DC transistor model at 25 °C: no capacitances, transit times or self-heating.',
+  'limitation.bjt_no_breakdown':
+    'Breakdown is not modelled; the voltage ratings are checked and warned about instead.',
+  'limitation.pir_static':
+    'Motion is a control you set. Retrigger delay, blocking time, the warm-up minute, range, angle and sensitivity are not modelled.',
+  'limitation.matrix_window':
+    'Each dot is solved from the circuit; a scanned display is shown as its last state in each 10 ms window (no persistence of vision).',
+  'limitation.matrix_no_esp32': 'Not available next to an ESP32 yet.',
+  'limitation.capacitor_ideal':
+    'Ideal capacitor: no ESR, leakage, dielectric absorption or polarity.',
+  'limitation.capacitor_no_esp32': 'Time-dependent parts run only in circuits without an ESP32.',
+  'limitation.hcsr04_target':
+    "One flat target at the set distance, in still air at the set temperature; outside the module's range there is no echo.",
+  'limitation.hcsr04_output':
+    'The ECHO output resistance (100 Ω) is an assumption: none of the sources specifies it.',
+  'limitation.hcsr04_retrigger': 'A new trigger is ignored while an echo is pending.',
+  'limitation.supply_below_min':
+    'Below the minimum supply voltage the module is shown as switched off; a real module there may behave unpredictably, and the result is marked as outside the model.',
+  'limitation.dht22_tgo':
+    "The sensor's response delay is 30 µs, the middle of the datasheet's 20–40 µs.",
+  'limitation.dht22_current':
+    'The 1–1.5 mA measuring current (about 5 ms per reading) is not in the DC result.',
+  'limitation.dht22_output':
+    'The DATA low-level output resistance (100 Ω) is an assumption: the datasheets do not give it.',
+  'limitation.lcd_backlight':
+    'The backlight is modelled as its datasheet 20 mA: the backpack schematic was not found.',
+  'limitation.lcd_bus_timing':
+    'I2C is simulated per transfer: the duration of a transfer and the line levels during it are not simulated.',
+  'limitation.lcd_pullups':
+    'The module is modelled without on-board pull-ups: the circuit must provide them.',
+  'limitation.esp32_timing': 'Timing follows the V1 timing contract (see What runs on the ESP32).',
+  'limitation.esp32_pulls': 'Internal pull-up and pull-down resistors are not simulated.',
+  'limitation.esp32_drive':
+    "Every pin driver uses the datasheet's maximum-drive-strength characteristic (40 mA at 2.64 V); sketches run at the default, weaker drive strength, and the datasheet gives 20 mA for GPIO16 and GPIO17. Beyond that characteristic (an overloaded or shorted pin) the current is not known and is not shown as a value.",
+  'limitation.lcd_input_clamp':
+    "The backpack's input protection diodes are not modelled: SDA or SCL above the module's supply + 0.5 V is flagged (absolute maximum), and the current that would flow into the pin is not simulated.",
+  'sim.part.current.sda': 'SDA input',
+  'sim.part.current.scl': 'SCL input',
+  'limitation.esp32_input_clamp':
+    'Input protection diodes are not modelled: a pin outside its specified range is flagged, and the simulated current into it is not reliable.',
+  // Sprint 15 (R4): PWM averages, the SG90 servo and the ESP32's LEDC outputs.
+  'limitation.pwm_average':
+    'Driven by PWM, the values shown are time-averages over the waveform (exact for this part); ratings use the peak current. Perceived brightness is approximated by the average current.',
+  'limitation.logic_guaranteed_output':
+    'The output uses the datasheet’s guaranteed (worst-case) characteristic, not typical values: a real part’s output is usually closer to the rails.',
+  'limitation.logic_supply_rows':
+    'Thresholds and output levels only where the datasheet tabulates them (1.65–1.95 V, 2.3–2.7 V, 3.0–3.6 V, 4.5–5.5 V). Real loads only at exactly 1.65, 2.3 or 4.5 V (the output test points) and over 3.0–3.6 V (the 3 V points as a bound, owner decision PM-1); elsewhere up to 100 µA.',
+  'limitation.logic_unknown':
+    'An input between V_IL and V_IH, outside 0–5.5 V, floating, or driven only by an ESP32 pin in input mode is refused: no level is guessed, and no “controlling input” is assumed. The quiescent supply current (I_CC ≤ 10 µA) is not part of the solve and is specified only with every input at 5.5 V or GND.',
+  'limitation.logic_breakout':
+    'The SOT-23-5 package is shown on a representative breakout board, so it fits a breadboard; the board’s layout is illustrative.',
+  'sim.part.state.iccCondition': 'Quiescent supply current',
+  'sim.part.state.deltaIccA': 'Datasheet ΔI_CC per input at V_CC − 0.6 V (max)',
+  // Sprint 29 (S29-D1): the basis of the bound above.
+  'sim.part.state.iccBasis': 'Basis of the bound',
+  'sim.part.state.iccBasis.deltaIcc':
+    'I_CC + ΔI_CC for each input within 0.6 V of GND or of V_CC (owner decision S29-D1, an engineering assumption)',
+  'sim.part.state.deltaIccInputs': 'Inputs counted with ΔI_CC',
+  'limitation.logic_1g04_no_delay':
+    'DC only: propagation delay is not simulated (SN74LVC1G04 datasheet §5.6: t_pd 0.7–3.3 ns at V_CC 3.3 V ± 0.3 V, C_L = 15 pF, −40 °C to 85 °C). Circuits that depend on it are refused: feedback between gates (latches, oscillators), PWM into a gate, clocks.',
+  'limitation.logic_1g32_no_delay':
+    'DC only: propagation delay is not simulated (SN74LVC1G32 datasheet §5.6: t_pd 0.9–3.6 ns at V_CC 3.3 V ± 0.3 V, C_L = 15 pF, −40 °C to 85 °C). Circuits that depend on it are refused: feedback between gates (latches, oscillators), PWM into a gate, clocks.',
+  'limitation.logic_1g02_no_delay':
+    'DC only: propagation delay is not simulated (SN74LVC1G02 datasheet §5.6: t_pd 0.8–3.6 ns at V_CC 3.3 V ± 0.3 V, C_L = 15 pF, −40 °C to 85 °C). Circuits that depend on it are refused: feedback between gates (latches, oscillators), PWM into a gate, clocks.',
+  'limitation.logic_1g86_no_delay':
+    'DC only: propagation delay is not simulated (SN74LVC1G86 datasheet §5.6: t_pd 0.6–4 ns at V_CC 3.3 V ± 0.3 V, C_L = 15 pF, −40 °C to 85 °C). Circuits that depend on it are refused: feedback between gates (latches, oscillators), PWM into a gate, clocks.',
+  'limitation.logic_1g00_no_delay':
+    'DC only: propagation delay is not simulated (SN74LVC1G00 datasheet §5.6: t_pd 0.8–3.8 ns at V_CC 3.3 V ± 0.3 V, C_L = 15 pF, −40 °C to 85 °C). Circuits that depend on it are refused: feedback between gates (latches, oscillators), PWM into a gate, clocks.',
+  'limitation.logic_1g08_no_delay':
+    'DC only: propagation delay is not simulated (SN74LVC1G08 datasheet §5.6: t_pd 0.8–3.6 ns at V_CC 3.3 V ± 0.3 V, C_L = 15 pF, −40 °C to 85 °C). Circuits that depend on it are refused: feedback between gates (latches, oscillators), PWM into a gate, clocks.',
+  'sim.part.state.iccCondition.notSupply': 'not characterized at this supply (not included above)',
+  'sim.part.state.iccCondition.notInputs':
+    'not characterized: an input is not at the datasheet’s I_CC test voltage (not included above)',
+  'sim.error.logic_input_floating.mcu_input':
+    '{components}: nothing drives input {pin}. The only possible source on its net (directly or through resistors) is {pads}, an ESP32 pin in input mode (high impedance), for example before the firmware’s setup() makes it an output. An undriven CMOS input has no defined level (the datasheet: do not leave CMOS inputs floating). Add a pull-down or pull-up resistor (TI recommends 10 kΩ) so the input is defined while the pin is not driving.',
+  'sim.error.logic_input_floating.mcu_inputs':
+    '{components}: nothing drives input {pin}. The only possible sources on its net (directly or through resistors) are {pads}, ESP32 pins in input mode (high impedance), for example before the firmware’s setup() makes them outputs. An undriven CMOS input has no defined level (the datasheet: do not leave CMOS inputs floating). Add a pull-down or pull-up resistor (TI recommends 10 kΩ) so the input is defined while the pins are not driving.',
+  'limitation.logic_package_dc_no_delay':
+    'DC only: propagation delay is not simulated (SN74LVC08A datasheet §5.9, −40 °C to 85 °C: t_pd 1–4.1 ns at V_CC 3.3 V ± 0.3 V; 1–4.8 ns at 2.7 V; 1–6.9 ns at 2.5 V ± 0.2 V; 1–9.8 ns at 1.8 V ± 0.15 V). Circuits that depend on it are refused: feedback between gates (latches, oscillators), PWM into a gate, clocks.',
+  'limitation.logic_package_input_band':
+    'An input between V_IL and V_IH, outside 0–5.5 V, floating, or driven only by an ESP32 pin in input mode is refused: the datasheet gives no level and no supply current there. The quiescent supply current (I_CC ≤ 10 µA) is not part of the solve and is specified only at V_CC = 3.6 V with every input at V_CC or GND.',
+  'limitation.logic_package_supply_rows':
+    'Thresholds and output levels only where the SN74LVC08A datasheet tabulates them (1.65–1.95 V, 2.3–3.6 V). Real loads only at exactly 1.65, 2.3, 2.7 or 3.0 V, where the output test points are; elsewhere (including 3.3 V) up to 100 µA. The 3.3 V class bound used for the single gates is not applied: this datasheet does not state a 3.3 V drive.',
+  'limitation.logic_package_unused_inputs':
+    'The datasheet requires every unused input held at V_CC or GND: a floating input, even of an unused gate, is refused.',
+  'limitation.logic_package_unpowered':
+    'The datasheet has no power-off specification (I_off): with V_CC at 0 V the device is refused, not simulated as off.',
+  'limitation.logic_package_breakout':
+    'The SOIC-14 package is shown on a representative breakout board so it fits a breadboard; the board’s layout is illustrative. Power dissipation is not simulated or checked: the datasheet’s 500 mW (§5.1, derated above 70 °C for the D package) is an absolute-maximum stress rating, not an operating limit. The ±50 mA per output and ±100 mA supply-pin figures are absolute maxima too: flagged, never used as load limits.',
+  // Sprint 19B (F2): resistor power ratings (KOA CF series).
+  'param.powerRating': 'Power rating',
+  'model.resistor.koa_cf_1_4': '¼ W carbon film (KOA CF1/4)',
+  'model.resistor.koa_cfs_1_2': '½ W carbon film (KOA CFS1/2)',
+  'limitation.resistor_rating':
+    'Power rating from the selected series’ datasheet (KOA CF1/4 ¼ W or CFS1/2 ½ W at 70 °C, derated to 0 W at 155 °C), at a 25 °C ambient. Above it the result is outside the specified conditions; no damage is inferred. Resistance stays constant: self-heating drift is not modelled.',
+  'limitation.servo_supply_current':
+    'Supply current is not modelled: a weak supply or a 3.3 V pin is not shown sagging under the servo’s load.',
+  'limitation.servo_thresholds':
+    'TowerPro does not specify the signal’s logic thresholds; the model assumes 2.0 V high and 0.8 V low.',
+  'limitation.servo_supply_range':
+    'Simulated only with a 4.8–6.0 V supply; outside that range the servo holds still.',
+  'limitation.servo_mapping':
+    '1.0–2.0 ms pulses map to 0–180°; real SG90 units vary (some travel about 150°). 10 µs deadband, 600°/s, no torque or load.',
+  'limitation.servo_frames':
+    'Pulses of 400–2600 µs are accepted with frames up to 50 ms apart; the response to frames much shorter than 20 ms is not specified by the manufacturer.',
+  'limitation.esp32_pwm':
+    'PWM (LEDC): duty 0 driving a load, more than 8 channels, hardware fade and output inversion are refused; high times are exact to one LEDC clock.',
+  'inspector.limitations': 'Model limitations',
+  // Sprint 13 H4: first-run guide.
+  'onboarding.heading': 'Getting started',
+  'onboarding.intro':
+    'TBI Lab simulates a Classic ESP32 and the circuit around it, here in your browser.',
+  'onboarding.step1': 'Open an ESP32 example below, for example the distance alarm.',
+  'onboarding.step2': 'In the Code tab, press Build. The first build can take about a minute.',
+  'onboarding.step3':
+    'Press Run. While it runs, select a part and change what it senses (distance, temperature, light, motion): the firmware and the circuit respond.',
+  'onboarding.note':
+    'Projects are saved in this browser only: use Export to keep a copy. The ESP32 simulator is shared by the alpha testers; if it is busy, try again in a moment.',
+  'onboarding.dismiss': 'Got it',
+  'onboarding.show': 'Show getting started',
+  // Sprint 13 H7 (shown only when a deployment configures the form).
+  'menu.feedback': 'Send feedback',
+  // Sprint 14: in-app problem reports (shown only when a deployment enables them).
+  'menu.reportProblem': 'Report a problem…',
+  'report.counter.label': '{count} of {max} characters',
+  'report.category.legend': 'Area',
+  'report.category.simulation': 'Simulation',
+  'report.category.build': 'Build',
+  'report.category.editor': 'Editor',
+  'report.category.other': 'Something else',
+  'report.blocking': 'This stops me from continuing',
+  'report.disclosure.heading': 'What is sent',
+  'report.disclosure.sent':
+    'Your description, the area and whether it blocks you; the app version and interface language; the status of the current simulation, if any; your browser name, version and operating system. The report is linked to the account you signed in with.',
+  'report.disclosure.notSent':
+    'Your project, circuit, code and screenshots are not sent. Please do not include personal information.',
+  'report.disclosure.retention': 'Reports are deleted after at most 90 days.',
+  'report.problem.descriptionRequired': 'Describe the problem.',
+  'report.problem.descriptionTooLong': 'Shorten the description to {max} characters or fewer.',
+  'report.problem.categoryRequired': 'Choose an area.',
+  'report.send': 'Send report',
+  'report.sending': 'Sending…',
+  'report.cancel': 'Cancel',
+  'report.close': 'Close',
+  'report.sent.heading': 'Report received',
+  'report.sent.body':
+    'Thank you. Your report was received and stored. If you follow up about it, mention this ID:',
+  'report.failed.rate_limited':
+    'You have sent several reports recently. Your text is kept here: try again in {minutes} min.',
+  'report.failed.unavailable':
+    'Reports cannot be received right now. Your text is kept here: try again later.',
+  'report.failed.signed_out':
+    'Your sign-in has expired. Copy your text, sign in again, then send it.',
+  'report.failed.rejected': 'The report could not be accepted. Check the text and try again.',
+  'report.failed.network':
+    'The server did not confirm the report, so it may not have been received. Your text is kept here: you can send it again.',
+  'limitation.potentiometer_position_grid': 'The position is set in steps of 0.01 %.',
+  'rating.row.track_current':
+    'Current {value}: above the track current at the rated 0.05 W ({limit}), outside the datasheet’s rated condition',
+  'error.param.off_grid': 'The wiper position is set in steps of 0.01 %.',
+  // Sprint POT-UNITS: the potentiometer.
+  'component.component.potentiometer.name': '[[potentiometer]]',
+  'terminal.potEndA': 'End A (pin 1)',
+  'terminal.wiper': 'Wiper W (pin 2)',
+  'terminal.potEndB': 'End B (pin 3)',
+  'model.potentiometer.bourns_ptv09a_linear': '9 mm rotary, linear taper (Bourns PTV09A)',
+  'param.totalResistance': 'Total resistance (A–B)',
+  'param.wiperPosition': 'Wiper position (from A)',
+  'sim.part.current.aw': 'Current A → W',
+  'sim.part.current.wb': 'Current W → B',
+  'sim.part.current.wiper': 'Current into the [[wiper]]',
+  'sim.part.voltage.component.potentiometer': 'Voltage A–B',
+  'sim.part.state.component.potentiometer.resistanceAW': 'Resistance A–W',
+  'sim.part.state.component.potentiometer.resistanceWB': 'Resistance W–B',
+  'sim.part.state.component.potentiometer.power': 'Dissipation (whole track)',
+  'sim.part.state.component.potentiometer.wiperVoltage': 'Wiper voltage to GND',
+  'sim.part.state.component.potentiometer.residualMaxOhm':
+    'End residual resistance (datasheet maximum, not simulated)',
+  'sim.results.potNearEnd':
+    'The wiper is within the datasheet’s residual-resistance bound of a track end. A real PTV09A keeps 0 to {bound} there, which is not simulated: the values that depend on that end are the ideal-track limit, not an exact prediction.',
+  'limitation.potentiometer_linear':
+    'Linear taper only: two ideal track segments, R·p and R·(1 − p). The position is the share of the track between A and the [[wiper]], not the shaft angle; audio tapers are not offered.',
+  'limitation.potentiometer_end_resistance':
+    'End resistance idealised to 0 Ω: at 0 % and 100 % the [[wiper]] touches the end directly. The datasheet only bounds it (500 Ω or 1 % max).',
+  'limitation.potentiometer_tolerance':
+    'Nominal value: the ±20 % resistance tolerance is not sampled.',
+  'limitation.potentiometer_power':
+    'Power rating 0.05 W for the whole track (PTV09A datasheet), at a 25 °C ambient. A segment or the wiper carrying more than the whole track does at 0.05 W (√(0.05 W / R)) is flagged as outside the datasheet’s rated condition: a conservative warning, not a damage threshold. Damage behaviour is not characterised.',
+  'limitation.potentiometer_wiper_current':
+    'Wiper contact resistance and a maximum wiper current are not in the datasheet: the contact resistance is not modelled; the wiper current is checked only against the rated-condition track current above.',
+  'limitation.potentiometer_no_adc':
+    'Next to an ESP32 the [[wiper]] is read as a digital level: analog input (analogRead) is not supported.',
+  // Sprint 27: the experimental circuit debugger (DEV-Lab only).
+  'assist.button': 'Analyze circuit',
+  'assist.button.title': 'Experimental: explain what the simulator found in this project',
+  'assist.panel.title': 'Circuit Debugger',
+  'assist.panel.experimental': 'Experimental · DEV only',
+  'assist.panel.intro':
+    'Collects what the simulator already knows about this project (circuit checks, the electrical result, the build and the run) and explains it. Nothing in your project is changed.',
+  'assist.panel.analyze': 'Analyze',
+  'assist.panel.again': 'Analyze again',
+  'assist.panel.cancel': 'Cancel',
+  'assist.panel.close': 'Close',
+  'assist.panel.analyzing': 'Analyzing…',
+  'assist.panel.stale': 'The project changed after this analysis. Analyze again to update it.',
+  'assist.findings.heading': 'Simulator findings',
+  'assist.findings.note':
+    'From the product’s own checks, the electrical engine, the build service and the runtime. These are the source of truth.',
+  'assist.findings.none': 'No findings.',
+  'assist.explain.heading': 'Explanation',
+  'assist.explain.mock':
+    'Experimental: template text from a deterministic mock provider, not a live AI model. It may only restate the findings above, and cites each one.',
+  'assist.explain.basedOn': 'Based on: {refs}',
+  'assist.explain.unexplained': 'This finding was not explained; see the finding itself.',
+  'assist.explain.declined': 'The provider declined to explain this finding: {reason}.',
+  'assist.explain.declined.insufficient_evidence': 'not enough evidence',
+  'assist.explain.declined.out_of_scope': 'outside what it may explain',
+  'assist.accounting':
+    'Provider {provider} ({model}): {tokens} tokens (estimated), {cost}, {ms} ms',
+  'assist.error.unavailable':
+    'No explanation provider is configured. The findings above are complete.',
+  'assist.error.rate_limited': 'Too many analyses in the last minute. Try again in {seconds} s.',
+  'assist.error.busy': 'An analysis is already running.',
+  'assist.error.timeout':
+    'The explanation took too long and was stopped. The findings above are complete.',
+  'assist.error.cancelled': 'The explanation was cancelled.',
+  'assist.error.invalid_response':
+    'The explanation was refused because it did not match the findings and their evidence. The findings above are complete.',
+  'assist.error.provider_error':
+    'The explanation provider failed. The findings above are complete.',
+  'assist.error.context_too_large':
+    'This project is too large to analyze in one piece. Nothing was sent anywhere.',
+  'assist.severity.error': 'Error',
+  'assist.severity.warning': 'Warning',
+  'assist.severity.info': 'Note',
+  'assist.certainty.verified': 'Established by the simulator',
+  'assist.certainty.conservative': 'Editor check (may miss cases, never invents them)',
+  'assist.certainty.indeterminate': 'Not established',
+  'assist.family.floating_input': 'Input without a defined level',
+  'assist.family.connection': 'Connection',
+  'assist.family.supply': 'Power supply',
+  'assist.family.current_limit': 'Current too high',
+  'assist.family.rating': 'Outside the part’s rating',
+  'assist.family.gpio_drive': 'ESP32 pad overloaded',
+  'assist.family.i2c': 'I2C',
+  'assist.family.logic': 'Logic part',
+  'assist.family.capability': 'Not supported by the simulator',
+  'assist.family.build': 'Build',
+  'assist.family.runtime': 'Run',
+  'assist.family.model_limit': 'Model limit',
+  'assist.family.analysis': 'Analysis',
+  'assist.analysis.analysis.no_operating_point':
+    'The circuit is not running, so there is no electrical result to check against ratings.',
+  'assist.analysis.analysis.unknown_values':
+    'The simulator has no defensible value for some quantities ({subjects}). Nothing is assumed for them.',
+  'assist.analysis.analysis.no_issue_found':
+    'The simulator’s checks report nothing for this project. This is not a proof that the circuit is right: only those checks were applied.',
+  'assist.analysis.build.not_current': 'The program has not been built in its current form.',
+  'assist.analysis.build.failed': 'The last build failed without a located diagnostic.',
+  'assist.analysis.capability.unsupported_feature':
+    'The program uses {feature}, which the simulator does not model.',
+  'assist.analysis.capability.runtime_missing':
+    'The program needs the runtime capability {feature}, which this deployment does not announce.',
+  'assist.action.heading': 'What you can do',
+  'assist.action.add_pull_resistor':
+    'Give the input a defined level: a pull-down resistor to GND (or a pull-up to 3.3 V) on that pin.',
+  'assist.action.connect_terminal':
+    'Connect the named terminal, or remove the part if it is not needed.',
+  'assist.action.fix_wire_overlap':
+    'Move the wire or the part so the wire does not pass over a terminal it is not connected to.',
+  'assist.action.connect_ground': 'Connect the circuit to GND (the reference) and to a supply.',
+  'assist.action.remove_short': 'Remove the wire or connection that ties the two levels together.',
+  'assist.action.add_load': 'Connect a load between the supply’s + and −.',
+  'assist.action.increase_series_resistance':
+    'Limit the current: use a larger series resistor (or a lower supply voltage), then run again to check.',
+  'assist.action.reduce_stress':
+    'Lower the voltage, current or power on this part until it is within its rating.',
+  'assist.action.lower_i2c_clock': 'Lower the I2C clock to the part’s rated speed or below.',
+  'assist.action.write_only_display':
+    'Do not read from the display: the simulated module is write-only.',
+  'assist.action.remove_unsupported_feature':
+    'Remove or replace the unsupported feature; see Capabilities for what the simulator runs.',
+  'assist.action.fix_compile_error':
+    'Open the named file at that line and correct the code, then build again.',
+  'assist.action.build_program': 'Build the program before running it.',
+  'assist.action.run_simulation': 'Run the simulation, then analyze again for electrical findings.',
+  'assist.action.use_supported_value':
+    'Choose a value the part is made in (the inspector lists them).',
+  'assist.action.review_supply':
+    'Check how the supplies are connected: a bench supply here cannot absorb current or share an output with another.',
+  'assist.action.drive_defined_level':
+    'Make sure the input is always at a defined LOW or HIGH level while the program reads it.',
+  'assist.action.retry_later': 'This is not a fault in your circuit. Try the run again later.',
+  'assist.limit.heading': 'Limits of this finding',
+  'assist.limit.static_analysis':
+    'Found by reading the drawing and the code before Run; pins named in other ways may be missed.',
+  'assist.limit.dc_only':
+    'DC steady state only: switching transients and timing are not simulated.',
+  'assist.limit.datasheet_limit':
+    'Compared with the datasheet value the simulator uses for this part.',
+  'assist.limit.operating_range':
+    'Outside the specified operating range, which is not by itself a damage limit.',
+  'assist.limit.extrapolated':
+    'The value is beyond what the model characterises, so it is not shown as a number; the condition itself is real.',
+  'assist.limit.no_operating_point': 'Without a run, ratings and levels cannot be checked.',
+  'assist.limit.scope_limited': 'Only the product’s own checks were applied.',
+  'assist.limit.model_unknown': 'The simulator has no defensible value here and assumes none.',
+  'assist.limit.not_a_circuit_fault': 'A service condition, not a property of the circuit.',
+  'assist.limit.unmodelled_behaviour':
+    'The simulator does not model this behaviour, so it does not guess it.',
+  'assist.evidence.heading': 'Evidence',
+  'assist.evidence.check': 'Circuit check',
+  'assist.evidence.solver': 'Electrical engine',
+  'assist.evidence.rating': 'Rating check',
+  'assist.evidence.result': 'Solved result',
+  'assist.evidence.pin': 'ESP32 pad result',
+  'assist.evidence.net': 'Net voltage',
+  'assist.evidence.build': 'Build',
+  'assist.evidence.code': 'Code excerpt',
+  'assist.evidence.failure': 'Run',
+  'assist.evidence.observed': 'Firmware report',
+  'assist.evidence.program': 'Program',
+  'assist.evidence.capabilities': 'Simulator capabilities',
+  'assist.evidence.unknown': 'Not established',
+  'assist.mock.summary.errors':
+    'The simulator found problems that stop or invalidate the run. Start with the errors; each is explained below with the evidence it rests on.',
+  'assist.mock.summary.warnings':
+    'Nothing stops the run, but the simulator flagged conditions that are probably mistakes.',
+  'assist.mock.summary.clear':
+    'There is nothing to correct in what the simulator checked. That is not a proof that the circuit is right.',
+  'assist.mock.gpio.input_floating':
+    'The program reads {pins} as a digital input, but when the switch is open nothing holds the pin at a level. A real ESP32 then reads noise, so the simulator refuses to choose HIGH or LOW for it.',
+  'assist.mock.gpio.input_unconnected':
+    'The program reads {pins}, but nothing is wired to that pin. An unconnected input has no defined level on a real ESP32.',
+  'assist.mock.gpio.input_undefined':
+    'While the program ran, it read {pins} at a moment when the input had no defined level, so the run stopped there instead of inventing a value.',
+  'assist.mock.gpio.sensor_level_undefined':
+    'The sensor’s signal would put {pins} between the ESP32’s LOW and HIGH thresholds, where the chip guarantees no reading, so the run stopped.',
+  'assist.mock.current.led_overcurrent':
+    'The electrical result puts more current through {components} than its datasheet maximum of {limit}. A real LED driven like this overheats and fails; the usual cause is a missing or too small series resistor.',
+  'assist.mock.current.part_overcurrent':
+    'The electrical result puts more current through {components} than its datasheet maximum of {limit}.',
+  'assist.mock.gpio.drive_current':
+    'An ESP32 pad ({pins}) would have to supply more current than the datasheet allows a pad ({limit}). Something on that pin draws too much, typically an LED without a resistor.',
+  'assist.mock.i2c.clock_exceeded':
+    'The program runs the I2C bus faster than {components} is rated for, so the simulator does not claim the transfer works.',
+  'assist.mock.build.compile_error':
+    'The compiler stopped at {file}, line {line}. The program cannot run until that line is corrected.',
+  'assist.mock.capability.unsupported_feature':
+    'The program uses {feature}, which the simulator does not model, so it cannot run the program honestly.',
+  'assist.mock.family.floating_input':
+    'An input here has no defined level, so the simulator does not choose one.',
+  'assist.mock.family.connection': 'The drawing has a connection problem: {components}.',
+  'assist.mock.family.supply':
+    'The way the supply is connected prevents a valid result ({components}).',
+  'assist.mock.family.current_limit':
+    'A part carries more current than its datasheet allows ({components}).',
+  'assist.mock.family.rating': 'A part operates outside its datasheet rating ({components}).',
+  'assist.mock.family.gpio_drive':
+    'An ESP32 pad is driven outside what the datasheet allows ({pins}).',
+  'assist.mock.family.i2c':
+    'An I2C operation is outside what the simulated part supports ({components}).',
+  'assist.mock.family.logic':
+    'A logic part is used where its datasheet gives no guaranteed behaviour ({components}).',
+  'assist.mock.family.capability':
+    'The project uses something the simulator does not model, so it is refused rather than guessed.',
+  'assist.mock.family.build': 'The build did not produce a program to run.',
+  'assist.mock.family.runtime':
+    'The run ended for a reason outside the circuit; this is not a fault in your design.',
+  'assist.mock.family.model_limit':
+    'The electrical engine could not establish a result here; nothing is guessed.',
+  'assist.mock.family.analysis':
+    'This is a note about what the analysis could and could not check.',
+  'assist.mock.family.floating_input.indeterminate':
+    'Whether this input has a defined level could not be established.',
+  'assist.mock.family.model_limit.indeterminate':
+    'The electrical engine could not establish a result here, and the debugger does not guess one.',
+  'assist.mock.family.analysis.indeterminate':
+    'Some values are not established, so no conclusion is drawn about them.',
+
+  // Sprint 23B: extended feedback and the owner's administration.
+  'report.title.bug': 'Report a problem',
+  'report.title.component': 'Request a new [[component]]',
+  'report.title.feature': 'Suggest an improvement',
+  'report.title.general': 'Send feedback',
+  'report.kind.legend': 'What would you like to send?',
+  'report.kind.bug': 'Bug report',
+  'report.kind.component': 'New [[component]] request',
+  'report.kind.feature': 'Feature or improvement',
+  'report.kind.general': 'General feedback',
+  'report.intro.bug':
+    'Tell us what went wrong. A short description of what you did and what you expected helps most.',
+  'report.intro.component':
+    'Tell us which [[component]] you need and what you would build with it.',
+  'report.intro.feature': 'Tell us what would make TBI Lab better for you, and why.',
+  'report.intro.general':
+    'Anything you want us to know: what works, what does not, what you would change.',
+  'report.description.label.bug': 'What happened?',
+  'report.description.label.component': 'What should it do, and how would you use it?',
+  'report.description.label.feature': 'Your suggestion',
+  'report.description.label.general': 'Your feedback',
+  'report.component.label': 'Name of the [[component]] (optional)',
+  'report.problem.componentTooLong': 'Shorten the name to {max} characters or fewer.',
+  'report.problem.messageRequired': 'Write your message.',
+  'report.context.label': 'Include technical details',
+  'report.context.detail':
+    'The runtime version, the device type (desktop or tablet) and the open project’s id. Never the project’s contents.',
+  'report.disclosure.context':
+    'If you include technical details: the runtime version, the device type and the open project’s id (not its contents).',
+  'status.feedback': 'Feedback',
+  'status.admin': 'Administration',
+  'admin.title': 'Administration',
+  'admin.close': 'Close',
+  'admin.ownerOnly': 'Owner only. The server checks every action.',
+  'admin.tab.testers': 'Testers',
+  'admin.tab.reports': 'Feedback',
+  'admin.loading': 'Loading…',
+  'admin.capacity.testers': 'Testers',
+  'admin.capacity.ownerExcluded': '(the owner is not counted)',
+  'admin.capacity.sessions': 'Live simulations',
+  'admin.add.heading': 'Add a tester',
+  'admin.add.label': 'Google account email address',
+  'admin.add.hint': 'The address goes to the server only. Lists show it masked.',
+  'admin.add.invalid': 'Enter one valid email address.',
+  'admin.add.submit': 'Add tester',
+  'admin.add.sending': 'Adding…',
+  'admin.add.last': 'Address entered:',
+  'admin.add.show': 'Show',
+  'admin.add.hide': 'Hide',
+  'admin.add.checkAgain': 'Check again',
+  'admin.accounts.heading': 'Accounts',
+  'admin.accounts.effect': 'Changes take effect within seconds, without a restart.',
+  'admin.accounts.account': 'Account',
+  'admin.accounts.class': 'Role',
+  'admin.accounts.status': 'Status',
+  'admin.accounts.added': 'Added',
+  'admin.accounts.googleId': 'Google account recorded',
+  'admin.add.nameLabel': 'Name (optional, private)',
+  'admin.add.nameHint':
+    'For your list only, e.g. “Alex T.”. Up to {max} letters; never sent to Telegram.',
+  'admin.name.invalid': "Use 1–{max} letters, spaces and . ' - only, starting with a letter.",
+  'admin.accounts.timeZone': 'Times are Israel time.',
+  'admin.accounts.filter': 'Show',
+  'admin.filter.active': 'Active',
+  'admin.filter.disabled': 'Disabled',
+  'admin.filter.all': 'All',
+  'admin.accounts.none': 'No accounts in this list.',
+  'admin.accounts.noName': 'No name',
+  'admin.accounts.firstSignIn': 'First sign-in',
+  'admin.accounts.signIns': 'Sign-ins',
+  'admin.accounts.neverSignedIn': 'Never signed in',
+  'admin.accounts.disabledAt': 'Disabled on',
+  'admin.rename': 'Rename',
+  'admin.rename.label': 'Rename {account}',
+  'admin.rename.fieldLabel': 'Name for {account}',
+  'admin.rename.save': 'Save name',
+  'admin.rename.saving': 'Saving…',
+  'admin.rename.cancel': 'Cancel',
+  'admin.result.done.rename': 'The name was saved: {account}.',
+  'admin.accounts.lastSignIn': 'Last sign-in',
+  'admin.accounts.actions': 'Actions',
+  'admin.class.owner': 'Owner',
+  'admin.class.alpha_tester': 'Tester',
+  'admin.status.authorized': 'Active',
+  'admin.status.revoked': 'Disabled',
+  'admin.status.pending': 'Pending',
+  'admin.yes': 'Yes',
+  'admin.no': 'No',
+  'admin.notMeasured': 'Not measured',
+  'admin.disable': 'Disable',
+  'admin.disable.label': 'Disable {account}',
+  'admin.reactivate': 'Reactivate',
+  'admin.reactivate.label': 'Reactivate {account}',
+  'admin.confirm.title.disable': 'Disable this tester?',
+  'admin.confirm.title.reactivate': 'Reactivate this tester?',
+  'admin.confirm.title.deleteReport': 'Delete this report?',
+  'admin.confirm.title.deleteTester': 'Delete every report of this tester?',
+  'admin.disable.confirm.what': 'Access for {account} ends now:',
+  'admin.disable.confirm.signIn': 'They can no longer sign in.',
+  'admin.disable.confirm.requests': 'Their current requests are refused.',
+  'admin.disable.confirm.sessions': 'Their running simulations are stopped.',
+  'admin.disable.confirm.kept':
+    'Their record and reports are kept. You can reactivate the account later.',
+  'admin.disable.confirm.action': 'Disable access',
+  'admin.reactivate.confirm.what': '{account} will be able to sign in again.',
+  'admin.reactivate.confirm.cap': 'This takes one of the {cap} tester places.',
+  'admin.reactivate.confirm.action': 'Reactivate',
+  'admin.cancel': 'Cancel',
+  'admin.working': 'Working…',
+  'admin.result.done.add': '{account} was added and can sign in now.',
+  'admin.result.done.disable': 'Access for {account} has ended.',
+  'admin.result.done.reactivate': '{account} can sign in again.',
+  'admin.result.forbidden': 'The server refused this action.',
+  'admin.result.ownerPending':
+    'Owner identity not yet recorded on the server; ask the operator to run the identity sync.',
+  'admin.result.invalid':
+    'The server could not accept this request. Check the details and try again.',
+  'admin.result.cap_reached': 'All tester places are taken. Disable a tester first.',
+  'admin.result.exists': 'This address already has an account.',
+  'admin.result.unknown_target': 'This account no longer exists. Reopen the list.',
+  'admin.result.last_owner': 'The owner account cannot be disabled.',
+  'admin.result.conflict': 'The accounts changed meanwhile. Reopen the list and try again.',
+  'admin.result.error': 'The change could not be made, and nothing was changed. Try again later.',
+  'admin.result.pending':
+    'The server is still processing the request ({id}). Check again in a moment.',
+  'admin.error.signed_out': 'Your sign-in has expired. Sign in again.',
+  'admin.error.forbidden': 'Only the owner can see this.',
+  'admin.error.unavailable': 'Not available right now. Try again later.',
+  'admin.error.rate_limited': 'Too many requests. Wait a minute and try again.',
+  'admin.error.network': 'The server did not answer. Try again.',
+  'admin.warnings.heading': 'Needs attention',
+  'admin.warnings.identity_mismatch':
+    'A different Google account signed in with the address of {account} ({count} times, last {last}). The recorded account was not changed.',
+  'admin.warnings.other': 'Warning for {account}: {kind}',
+  'admin.reports.empty': 'No feedback yet.',
+  'admin.reports.received': 'Received',
+  'admin.reports.kind': 'Type',
+  'admin.reports.area': 'Area',
+  'admin.reports.tester': 'Tester',
+  'admin.reports.length': 'Characters',
+  'admin.reports.open': 'Open',
+  'admin.reports.open.label': 'Open report {id}',
+  'admin.reports.unreadable': 'Unreadable',
+  'admin.reports.blocking': 'Blocking',
+  'admin.reports.back': 'Back to the list',
+  'admin.reports.component': 'Requested [[component]]',
+  'admin.reports.technical': 'Technical details',
+  'admin.reports.delete': 'Delete report',
+  'admin.reports.deleteTester': 'Delete all from this tester',
+  'admin.reports.delete.confirm': 'Report {id} will be deleted permanently.',
+  'admin.reports.deleteTester.confirm':
+    'Every report of tester {tester} will be deleted permanently.',
+  'admin.reports.deleted': 'The report was deleted.',
+  'admin.reports.deletedTester': 'Reports deleted: {count}.',
 } as const;
 
 export type MessageKey = keyof typeof en;

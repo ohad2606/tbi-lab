@@ -15,6 +15,7 @@ import type {
   SourceFile,
 } from '../../../runtime/builder/protocol.js';
 import { BUILD_PROTOCOL } from '../../../runtime/builder/protocol.js';
+import { gateFetch } from '../gate.js';
 
 export type {
   ArtifactInfo,
@@ -28,6 +29,8 @@ export type BuildErrorCode =
   | 'busy'
   | 'refused'
   | 'too_large'
+  /** Sprint 26: the build service does not have a pinned library version (or its dependency). */
+  | 'unknown_library'
   | 'not_an_image'
   | 'protocol'
   // Sprint 8 policy refusals (stable server codes, runtime/policy/refusal.ts):
@@ -84,7 +87,7 @@ export class BuildClient {
 
   constructor(opts: BuildClientOptions = {}) {
     this.base = (opts.base ?? '/build').replace(/\/$/, '');
-    this.fetchFn = opts.fetch ?? ((input, init) => fetch(input, init));
+    this.fetchFn = opts.fetch ?? ((input, init) => gateFetch(input, init));
     this.pollMs = opts.pollMs ?? 500;
     this.maxWaitMs = opts.maxWaitMs ?? 20 * 60 * 1000;
   }
@@ -119,17 +122,25 @@ export class BuildClient {
     files: SourceFile[],
     onProgress?: (s: BuildStatus['state'], position?: number) => void,
     signal?: AbortSignal,
+    /** Sprint 26: the program's pinned managed libraries (sent only when there are any). */
+    libraries?: readonly { id: string; version: string }[],
   ): Promise<BuildResult> {
     const { status, body } = await this.request('/builds', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ protocol: BUILD_PROTOCOL, profile, files }),
+      body: JSON.stringify({
+        protocol: BUILD_PROTOCOL,
+        profile,
+        files,
+        ...(libraries?.length ? { libraries } : {}),
+      }),
     });
     if (status === 200) return (body as { build: BuildResult }).build;
     const refused = refusal(body);
     if (refused) throw new BuildTransportError(refused, status);
     if (status === 429) throw new BuildTransportError('busy', status);
     if (status === 413) throw new BuildTransportError('too_large', status);
+    if (status === 422) throw new BuildTransportError('unknown_library', status);
     if (status !== 202)
       throw new BuildTransportError(status >= 500 ? 'unreachable' : 'refused', status);
     const { buildId, token } = body as { buildId: string; token: string };

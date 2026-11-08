@@ -1,0 +1,216 @@
+{
+  "format": "tbi-lab.project",
+  "schemaVersion": 4,
+  "projectId": "prj_v4quantities",
+  "createdWith": {
+    "app": "0.4.0",
+    "schemaVersion": 4
+  },
+  "createdAt": "2026-10-23T00:00:00.000Z",
+  "revision": {
+    "localRevision": 1,
+    "cloudRevision": null,
+    "baseRevision": null,
+    "updatedAt": "2026-10-23T00:00:00.000Z",
+    "deviceId": "dev_v4"
+  },
+  "name": "v4 quantities (saved before Sprint POT-UNITS)",
+  "components": [
+    {
+      "id": "PSU1",
+      "type": "instrument.lab_psu",
+      "typeVersion": 1,
+      "params": {
+        "setpointVoltage": {
+          "value": 3.3,
+          "unit": "volt"
+        },
+        "currentLimit": {
+          "value": 0.02,
+          "unit": "ampere"
+        },
+        "outputEnabled": true
+      }
+    },
+    {
+      "id": "GND1",
+      "type": "component.ground",
+      "typeVersion": 1,
+      "params": {}
+    },
+    {
+      "id": "R1",
+      "type": "component.resistor",
+      "typeVersion": 1,
+      "params": {
+        "resistance": {
+          "value": 4700,
+          "unit": "ohm"
+        }
+      }
+    },
+    {
+      "id": "R2",
+      "type": "component.resistor",
+      "typeVersion": 1,
+      "params": {
+        "resistance": {
+          "value": 2200000,
+          "unit": "ohm"
+        }
+      }
+    },
+    {
+      "id": "R3",
+      "type": "component.resistor",
+      "typeVersion": 1,
+      "params": {
+        "resistance": {
+          "value": 0.47,
+          "unit": "ohm"
+        }
+      }
+    },
+    {
+      "id": "C1",
+      "type": "component.capacitor",
+      "typeVersion": 1,
+      "params": {
+        "capacitance": {
+          "value": 0.0001,
+          "unit": "farad"
+        },
+        "ratedVoltage": {
+          "value": 16,
+          "unit": "volt"
+        }
+      }
+    },
+    {
+      "id": "C2",
+      "type": "component.capacitor",
+      "typeVersion": 1,
+      "params": {
+        "capacitance": {
+          "value": 3.3e-9,
+          "unit": "farad"
+        },
+        "ratedVoltage": {
+          "value": 16,
+          "unit": "volt"
+        }
+      }
+    },
+    {
+      "id": "LDR1",
+      "type": "component.photoresistor",
+      "typeVersion": 1,
+      "params": {
+        "model": "model.ldr.senba_gl5528",
+        "illuminance": {
+          "value": 250,
+          "unit": "lux"
+        }
+      }
+    },
+    {
+      "id": "U1",
+      "type": "sensor.hc_sr04",
+      "typeVersion": 1,
+      "params": {
+        "model": "model.ultrasonic.hc_sr04",
+        "distance": {
+          "value": 0.355,
+          "unit": "metre"
+        },
+        "airTemperature": {
+          "value": 21.5,
+          "unit": "celsius"
+        }
+      }
+    },
+    {
+      "id": "U2",
+      "type": "sensor.dht22",
+      "typeVersion": 1,
+      "params": {
+        "model": "model.humidity.am2302",
+        "temperature": {
+          "value": -12.5,
+          "unit": "celsius"
+        },
+        "humidity": {
+          "value": 55.2,
+          "unit": "percent_rh"
+        }
+      }
+    }
+  ],
+  "nets": [],
+  "connections": [],
+  "layout": {
+    "components": {
+      "PSU1": {
+        "x": -120,
+        "y": 0,
+        "rotation": 0
+      },
+      "GND1": {
+        "x": -80,
+        "y": 120,
+        "rotation": 0
+      },
+      "R1": {
+        "x": 0,
+        "y": 300,
+        "rotation": 0
+      },
+      "R2": {
+        "x": 120,
+        "y": 300,
+        "rotation": 0
+      },
+      "R3": {
+        "x": 240,
+        "y": 300,
+        "rotation": 0
+      },
+      "C1": {
+        "x": 360,
+        "y": 300,
+        "rotation": 0
+      },
+      "C2": {
+        "x": 480,
+        "y": 300,
+        "rotation": 0
+      },
+      "LDR1": {
+        "x": 600,
+        "y": 300,
+        "rotation": 0
+      },
+      "U1": {
+        "x": 760,
+        "y": 300,
+        "rotation": 0
+      },
+      "U2": {
+        "x": 960,
+        "y": 300,
+        "rotation": 0
+      }
+    },
+    "wires": [],
+    "junctions": []
+  },
+  "idCounters": {
+    "PSU": 1,
+    "GND": 1,
+    "R": 3,
+    "C": 2,
+    "LDR": 1,
+    "U": 2
+  },
+  "programs": {}
+}

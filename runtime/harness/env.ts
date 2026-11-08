@@ -7,6 +7,8 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { programInputReads } from '@tbi-lab/domain';
+import { declareFirmwareReads } from '../identity/test-gate.js';
 
 export const RUNTIME_HOME =
   process.env.TBI_RUNTIME_HOME ??
@@ -31,6 +33,8 @@ export function runtimeInfo(): RuntimeInfo {
  * not the provisioned directory, defines each artifact's identity: a rebuilt firmware that is not
  * byte-identical is a different artifact and fails verification (artifacts.ts).
  */
+const FIRMWARE_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'firmware');
+
 export const ARTIFACT_LOCK: Record<string, { sha256: string; source: string }> = JSON.parse(
   readFileSync(
     join(dirname(fileURLToPath(import.meta.url)), '..', 'firmware', 'artifacts.lock.json'),
@@ -48,6 +52,18 @@ export function artifact(name: string): { path: string; sha256: string } {
       `firmware artifact '${name}' (${pinned.sha256}) is not provisioned (provision.sh firmware)`,
     );
   }
+  // Sprint 25: the pins its source reads, as a build of that source would declare them.
+  const ino = join(FIRMWARE_DIR, 'arduino', name, `${name}.ino`);
+  if (existsSync(ino))
+    declareFirmwareReads(
+      pinned.sha256,
+      programInputReads({
+        language: 'arduino-cpp',
+        profile: '',
+        fileName: 'sketch.ino',
+        text: readFileSync(ino, 'utf8'),
+      }),
+    );
   return { path, sha256: pinned.sha256 };
 }
 

@@ -4,7 +4,7 @@
  * domain validator the product uses (A4: structurally valid after every operation).
  */
 import { expect, test, type Page } from '@playwright/test';
-import { validateProject, type ProjectDocument } from '@tbi-lab/domain';
+import { SCHEMA_VERSION, validateProject, type ProjectDocument } from '@tbi-lab/domain';
 import {
   clickWorld,
   component,
@@ -184,8 +184,13 @@ test('A5: unit-aware resistance input is stored as canonical SI', async ({ page 
   await createProject(page, 'Values');
   await place(page, 'component.resistor', { x: 0, y: 0 });
   const field = page.getByTestId('param-R1-resistance');
-  await expect(field).toHaveValue('1k');
+  const unit = page.getByTestId('param-R1-resistance-unit');
+  // Phase 1 (units): a plain number and a unit chosen from a list.
+  await expect(field).toHaveValue('1');
+  await expect(unit).toHaveValue('3');
+  await expect(unit.locator('option:checked')).toHaveText('kΩ');
 
+  // A prefixed form typed into the number field is converted into number + unit (convenience).
   await field.fill('4k7');
   await field.press('Enter');
   let doc = await savedValid(
@@ -200,9 +205,12 @@ test('A5: unit-aware resistance input is stored as canonical SI', async ({ page 
     unit: 'ohm',
   });
   await expect(page.getByTestId('value-R1')).toHaveText('4.7 kΩ');
+  await expect(field).toHaveValue('4.7');
+  await expect(unit).toHaveValue('3');
 
+  // A number, then its unit from the list: one edit, read in the chosen unit.
   await field.fill('220');
-  await field.press('Enter');
+  await unit.selectOption('0');
   doc = await savedValid(
     page,
     (d) =>
@@ -219,7 +227,7 @@ test('A5: unit-aware resistance input is stored as canonical SI', async ({ page 
   const before = doc.revision.localRevision;
   await field.fill('abc');
   await field.press('Enter');
-  await expect(page.getByTestId('param-R1-resistance-error')).toContainText('Not a valid value');
+  await expect(page.getByTestId('param-R1-resistance-error')).toContainText('Not a valid number');
   await field.fill('2G');
   await field.press('Enter');
   await expect(page.getByTestId('param-R1-resistance-error')).toContainText('must be between');
@@ -275,18 +283,20 @@ test('opening a project saved by a newer version is read-only and never written'
 }) => {
   await createProject(page, 'Future');
   const doc = await savedValid(page, (d) => d.name === 'Future', 'project stored');
+  // One schema newer than this build (Sprint 20: this build writes v4).
+  const next = SCHEMA_VERSION + 1;
   await page.evaluate(
-    (d) =>
+    ([d, v]) =>
       new Promise<void>((resolve, reject) => {
         const req = indexedDB.open('tbi-lab');
         req.onsuccess = () => {
           const tx = req.result.transaction('projects', 'readwrite');
-          tx.objectStore('projects').put({ ...d, schemaVersion: 4, futureField: { x: 1 } });
+          tx.objectStore('projects').put({ ...d, schemaVersion: v, futureField: { x: 1 } });
           tx.oncomplete = () => (req.result.close(), resolve());
           tx.onerror = () => reject(tx.error);
         };
       }),
-    doc,
+    [doc, next] as const,
   );
   await page.reload();
   await reopenFromLibrary(page);
@@ -297,6 +307,6 @@ test('opening a project saved by a newer version is read-only and never written'
   await page.keyboard.press('Delete');
   await page.waitForTimeout(600);
   const stored = await storedProject(page);
-  expect(stored.schemaVersion).toBe(4);
+  expect(stored.schemaVersion).toBe(next);
   expect(stored.components).toHaveLength(2);
 });

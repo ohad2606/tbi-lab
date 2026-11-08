@@ -1,9 +1,15 @@
+import { CapabilitiesHost } from './Capabilities.js';
+import { ProblemReportHost } from './ProblemReport.js';
+import { AssistHost } from '../assist/mount.js';
+import { AdminHost } from './AdminPanel.js';
 import { useEffect, useLayoutEffect } from 'preact/hooks';
 import { useAppState, useStore, useT } from './context.js';
 import { Editor } from './Editor.js';
+import { EnvironmentNotes } from './EnvironmentNotes.js';
 import { Home } from './Home.js';
 import { NoticeBar } from './NoticeBar.js';
 import { TopBar } from './TopBar.js';
+import { SignInBanner } from './SignInBanner.js';
 import { UpdateBanner } from './UpdateBanner.js';
 import { VersionStatus } from './VersionStatus.js';
 
@@ -57,31 +63,41 @@ export function App() {
 
   if (state.screen === 'loading') {
     return (
-      <div class="app-message" role="status">
-        {t('app.loading')}
-      </div>
+      <>
+        <EnvironmentNotes />
+        <div class="app-message" role="status">
+          {t('app.loading')}
+        </div>
+      </>
     );
   }
   if (state.screen === 'unavailable') {
     return (
-      <div class="app-message" role="alert" data-testid="storage-unavailable">
-        <p>{t('app.storageUnavailable')}</p>
-        <button type="button" class="button button-primary" onClick={() => location.reload()}>
-          {t('app.reload')}
-        </button>
-      </div>
+      <>
+        <EnvironmentNotes />
+        <div class="app-message" role="alert" data-testid="storage-unavailable">
+          <p>{t('app.storageUnavailable')}</p>
+          <button type="button" class="button button-primary" onClick={() => location.reload()}>
+            {t('app.reload')}
+          </button>
+        </div>
+      </>
     );
   }
   return (
     <div class="app">
-      <div class="narrow-note" role="note">
-        {t('app.narrowScreen')}
-      </div>
+      {/* The DEV strip and the screen support note: their own row, above the top bar. */}
+      <EnvironmentNotes />
       <TopBar />
+      <SignInBanner />
       <UpdateBanner />
       <NoticeBar />
       {state.screen === 'editor' && state.doc ? <Editor /> : <Home />}
       <VersionStatus />
+      <CapabilitiesHost />
+      <ProblemReportHost />
+      {import.meta.env.VITE_TBI_ENV === 'dev' && <AssistHost />}
+      <AdminHost />
     </div>
   );
 }

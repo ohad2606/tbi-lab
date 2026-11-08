@@ -30,7 +30,8 @@ import {
   snap,
   snapPoint,
   terminalPosition,
-  wireCrossings,
+  wireCrossingsReport,
+  sameNodeBranchesReport,
   wireRoute,
   type ComponentInstance,
   type Quantity,
@@ -45,22 +46,35 @@ import {
   catalogText,
   formatQuantity,
   isMessageKey,
+  isolateLtr,
   type LocaleInfo,
   type MessageKey,
 } from '../i18n/i18n.js';
 import type { ComponentResult } from '@tbi-lab/engine';
-import { formatResult } from '../sim/format.js';
+import { formatAngle, formatResult } from '../sim/format.js';
 import { useAppState, useStore, useT } from './context.js';
 import { checksFor } from './checks.js';
 import {
   MATRIX_COLS,
   MATRIX_ROWS,
   RGB_CHANNELS,
+  SERVO_REST_DEG,
   SYMBOLS,
+  lcdView,
   rgbTriangle,
+  servoAngle,
   type SymbolState,
 } from './symbols.js';
-import { componentBox, componentBoxes, moveRouted, rotateRouted } from './routing.js';
+import { bodyOverlaps } from '../geometry/overlap.js';
+import {
+  componentBox,
+  componentBoxes,
+  movePreview,
+  moveRouted,
+  rotateRouted,
+  routingLimited,
+  routeConflicts,
+} from './routing.js';
 import { RGB_LOOKS, ledLook } from '../views/ledLooks.js';
 import { resolveWireColors } from '../views/wireColors.js';
 import { pressControl, toggleControl } from './controls.js';
@@ -250,6 +264,13 @@ export function Canvas({
   const [camera, setCamera] = useState<Camera>({ x: -400, y: -300, scale: 1 });
   const [mode, setMode] = useState<Mode>({ kind: 'idle' });
   const [cursor, setCursor] = useState<Point | null>(null);
+  // Sprint 13 OS-10: the placement preview says whether a click here would be accepted (the
+  // OS-04 overlap rule the edit applies); evaluated once per grid point, not per pointer event.
+  const ghostValid = useMemo(() => {
+    if (!placing || !cursor || !doc) return true;
+    const r = addComponent(doc, placing, cursor);
+    return r.ok && bodyOverlaps(r.doc, new Set([r.id])).length === 0;
+  }, [doc, placing, cursor?.x, cursor?.y]);
   const spaceHeld = useRef(false);
   const heldByKey = useRef<string | null>(null);
   const pointerDown = useRef(false);
@@ -361,11 +382,23 @@ export function Canvas({
         x: camera.x + size.w / camera.scale / 2,
         y: camera.y + size.h / camera.scale / 2,
       });
+      // Sprint 13 OS-04: the nearest place to the centre where the new part overlaps nothing
+      // (the same rule the edit gate applies), searched ring by ring in a fixed order.
+      const free = (p: Point) => {
+        const r = addComponent(doc, type, p);
+        return r.ok && bodyOverlaps(r.doc, new Set([r.id])).length === 0;
+      };
       let at = center;
-      const taken = (p: Point) =>
-        Object.values(doc.layout.components).some((q) => q.x === p.x && q.y === p.y);
-      for (let i = 1; taken(at) && i < 50; i++)
-        at = { x: center.x + i * GRID * 2, y: center.y + i * GRID * 2 };
+      search: for (let ring = 1; !free(at) && ring <= 24; ring++)
+        for (let dy = -ring; dy <= ring; dy++)
+          for (let dx = -ring; dx <= ring; dx++) {
+            if (Math.max(Math.abs(dx), Math.abs(dy)) !== ring) continue;
+            const p = { x: center.x + dx * GRID * 2, y: center.y + dy * GRID * 2 };
+            if (free(p)) {
+              at = p;
+              break search;
+            }
+          }
       const id = place(type, at);
       if (id) focusComponent(id);
     },
@@ -407,10 +440,11 @@ export function Canvas({
     if (!to) return false;
     const end = to.kind === 'wire' ? to.at : endPosition(doc, to);
     if (!end) return false;
-    // The wire gets a visually independent route: the router's corners are stored as its
-    // ordinary vertices (the points the user clicked stay waypoints of the route).
+    // Wire routing integrity: the new wire is AUTOMATIC. The points the user clicked are its
+    // waypoints (kept as constraints); the router's corners are its current route, recomputed
+    // canonically after every layout change (store `routeLayout`).
     const vertices = autoRouteVertices([m.fromPos, ...m.vertices, end], routeObs);
-    store.apply(addWire(doc, m.from, to, vertices), emptySelection());
+    store.apply(addWire(doc, m.from, to, vertices, { waypoints: m.vertices }), emptySelection());
     setMode({ kind: 'idle' });
     return true;
   };
@@ -756,12 +790,19 @@ export function Canvas({
   // ---------------------------------------------------------------------------------------------
   // Rendering
 
+  // Wire routing integrity: the drag preview is bounded (movePreview: the moved parts' automatic
+  // wires by the short shapes only) and recomputed only when the snapped offset changes; the drop
+  // commits the canonical routing.
+  const dragDx = mode.kind === 'drag' ? mode.delta.x : 0;
+  const dragDy = mode.kind === 'drag' ? mode.delta.y : 0;
+  const dragView = useMemo(() => {
+    if (!dragDx && !dragDy) return null;
+    const r = movePreview(doc, selection, { x: dragDx, y: dragDy });
+    return r.ok ? r.doc : doc;
+  }, [doc, selection, dragDx, dragDy]);
   const view =
-    mode.kind === 'drag' && (mode.delta.x || mode.delta.y)
-      ? (() => {
-          const r = moveRouted(doc, selection, mode.delta);
-          return r.ok ? r.doc : doc;
-        })()
+    mode.kind === 'drag' && dragView
+      ? dragView
       : mode.kind === 'segment' && (mode.delta.x || mode.delta.y)
         ? (() => {
             const r = moveWireSegment(doc, mode.wire, mode.segment, mode.delta);
@@ -770,7 +811,39 @@ export function Canvas({
         : doc;
 
   // Unconnected crossings of the drawing being shown (including a live drag preview).
-  const crossings = useMemo(() => wireCrossings(view), [view]);
+  // Bounded work (s20r6): past OVERLAY_WORK the overlays are cut short and the view says so.
+  const crossingsReport = useMemo(() => wireCrossingsReport(view), [view]);
+  const crossings = crossingsReport.crossings;
+  // Wires the bounded routing drew with a simple shape (very large projects, s20r4).
+  const limited = routingLimited(doc);
+  // Wires drawn where they read as a connection they are not (s21r): said, never hidden.
+  const conflicts = useMemo(() => routeConflicts(doc), [doc]);
+  const conflicted = useMemo(() => new Set(conflicts.wires), [conflicts]);
+  // Branch points of wires of one node (s20r): drawn with a junction-style dot.
+  const branchesReport = useMemo(() => sameNodeBranchesReport(view), [view]);
+  const branches = branchesReport.points;
+  const overlaysLimited = crossingsReport.limited || branchesReport.limited;
+  // The conflict note's lines: per kind, the wires (named, so they can be found), terminals drawn
+  // on top of each other, and what the bounded check could not reach (s21r review r5).
+  const conflictLines = useMemo(() => {
+    const lines: { key: MessageKey; ids: string; kind: string }[] = [];
+    const list = (ids: readonly string[]) =>
+      ids.length > 12 ? `${ids.slice(0, 12).join(', ')}, … (+${ids.length - 12})` : ids.join(', ');
+    for (const kind of ['wire', 'pin', 'body'] as const)
+      if (conflicts.kinds[kind].length)
+        lines.push({
+          key: `canvas.routeConflict.${kind}`,
+          ids: list(conflicts.kinds[kind]),
+          kind,
+        });
+    if (conflicts.stacked.length)
+      lines.push({
+        key: 'canvas.routeConflict.stacked',
+        ids: list(conflicts.stacked.map((t) => t.terminals.join(' / '))),
+        kind: 'stacked',
+      });
+    return lines;
+  }, [conflicts]);
   // The same resolved colours as the 3D view (wireColors.ts).
   const wireColors = useMemo(() => resolveWireColors(view), [view]);
   const hopR = hopRadius(camera.scale);
@@ -811,13 +884,20 @@ export function Canvas({
     probes.filter((p) => p.kind === 'current').map((p) => (p as { component: string }).component),
   );
   const overstressed = new Set(
-    outcome?.ok ? warningsFor(doc, outcome).map((w) => w.component) : [],
+    outcome?.ok
+      ? warningsFor(doc, outcome)
+          .filter((w) => w.kind === 'absolute')
+          .map((w) => w.component)
+      : [],
   );
   const issues = simActive ? [] : checksFor(doc);
   const markers = issues.flatMap((i) =>
     i.code === 'terminals_touching'
       ? [{ code: i.code, component: i.components[0]!, terminal: i.terminals![0]! }]
-      : i.code === 'partially_wired' || i.code === 'wire_over_terminal'
+      : i.code === 'partially_wired' ||
+          i.code === 'wire_over_terminal' ||
+          // Sprint 21: both supply pins of a part on one net.
+          i.code === 'supply_pins_shorted'
         ? (i.terminals ?? []).map((term) => ({
             code: i.code,
             component: i.components[0]!,
@@ -891,9 +971,22 @@ export function Canvas({
                 data-id={w.id}
                 data-color={wireColors.get(w.id)?.color ?? 'neutral'}
                 data-color-source={wireColors.get(w.id)?.source}
+                data-conflict={conflicted.has(w.id) ? 'true' : undefined}
                 class={selected.wires.has(w.id) ? 'wire-group selected' : 'wire-group'}
                 style={{ '--wire-color': wireColors.get(w.id)?.hex }}
               >
+                {conflicted.has(w.id) && (
+                  <>
+                    {/* s21r review r5: a dashed halo (a shape, not only a colour) marks a wire
+                        drawn where it may look connected; its title names the case. */}
+                    <title>{t('canvas.routeConflict.wireTitle', { id: w.id })}</title>
+                    <polyline
+                      class="wire-conflict-halo"
+                      data-testid="wire-conflict-halo"
+                      points={points(route)}
+                    />
+                  </>
+                )}
                 <polyline class="wire-hit" points={points(route)} />
                 <path class="wire" d={wirePath(route, hopsOver.get(w.id), hopR)} />
               </g>
@@ -957,6 +1050,31 @@ export function Canvas({
                   ? outcome.components[c.id]?.state?.energized === true
                   : false,
                 sounding: outcome?.ok ? outcome.components[c.id]?.state?.sounding === true : false,
+                // Sprint 12: the LCD shows exactly what the engine reports (blank without it).
+                lcd:
+                  c.type === 'display.lcd1602_i2c' && outcome?.ok
+                    ? lcdView(outcome.components[c.id]?.state)
+                    : undefined,
+                // Sprint 19B: a logic gate's solved output level (X marked on the symbol).
+                gateOutput:
+                  c.type.startsWith('logic.') && outcome?.ok
+                    ? (outcome.components[c.id]?.state?.gateOutput as string | undefined)
+                    : undefined,
+                // L3: a packaged device's output levels, by output terminal.
+                gateOutputs:
+                  c.type === 'logic.quad_and' && outcome?.ok
+                    ? Object.fromEntries(
+                        (outcome.components[c.id]?.logic?.gates ?? []).map((g) => [
+                          g.output.pin,
+                          g.output.level,
+                        ]),
+                      )
+                    : undefined,
+                // Sprint 15: the servo's horn at the angle the engine or the runtime reports.
+                servoAngle:
+                  c.type === 'component.servo_sg90' && outcome?.ok
+                    ? servoAngle(outcome.components[c.id]?.state)
+                    : undefined,
               }}
               overstressed={overstressed.has(c.id)}
               pinLevels={
@@ -999,6 +1117,24 @@ export function Canvas({
               );
             }),
           )}
+        </g>
+
+        {/* Sprint 20 (s20r): where wires of one node branch off a run they share. Drawn like
+            a junction (electrical junctions must be explicit), but presentation only: never a
+            junction object, never selectable, no effect on connectivity. */}
+        <g class="wire-branches">
+          {branches.map((p) => (
+            <circle
+              key={`${p.x},${p.y}`}
+              class="junction-dot wire-branch-dot"
+              data-testid="wire-branch"
+              data-x={p.x}
+              data-y={p.y}
+              cx={p.x}
+              cy={p.y}
+              r={4.5}
+            />
+          ))}
         </g>
 
         <g class="junctions">
@@ -1062,7 +1198,7 @@ export function Canvas({
                 {/* A current probe sits on the part's centre: its label goes above the part's
                     reference label, or, for an upright part (whose labels are on its right),
                     to its left. A voltage label sits up and to the left of its pin. */}
-                <text class="probe-label" {...probeLabelAt(p, at, view)}>
+                <text class="probe-label" {...placeProbeLabel(p, at, view, label)}>
                   {label}
                 </text>
               </g>
@@ -1086,7 +1222,12 @@ export function Canvas({
           />
         )}
         {placing && cursor && (
-          <g class="ghost" transform={`translate(${cursor.x} ${cursor.y})`}>
+          <g
+            class={ghostValid ? 'ghost' : 'ghost ghost-invalid'}
+            data-testid="placement-ghost"
+            data-valid={ghostValid ? 'true' : 'false'}
+            transform={`translate(${cursor.x} ${cursor.y})`}
+          >
             {SYMBOLS[placing].draw()}
           </g>
         )}
@@ -1135,9 +1276,49 @@ export function Canvas({
           </svg>
         </button>
       </div>
-      {!readOnly && (
+      {(!readOnly ||
+        overlaysLimited ||
+        conflictLines.length > 0 ||
+        conflicts.unchecked.length > 0) && (
         <div class="canvas-hint" dir={state.locale.dir} data-testid="canvas-hint">
-          {t(hint)}
+          {!readOnly && t(hint)}
+          {overlaysLimited && (
+            <div class="view-note-warning" role="status" data-testid="canvas-overlay-limit">
+              {t('canvas.overlayLimit')}
+            </div>
+          )}
+          {conflictLines.length > 0 && (
+            <div class="view-note-warning" role="status" data-testid="canvas-route-conflict">
+              {t('canvas.routeConflict')}
+              <ul class="view-note-list">
+                {conflictLines.map((l) => (
+                  <li key={l.kind} data-kind={l.kind}>
+                    {t(l.key, { ids: isolateLtr(l.ids) })}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {conflicts.unchecked.length > 0 && (
+            <div
+              class="view-note-warning"
+              role="status"
+              data-testid="canvas-route-conflict-unchecked"
+            >
+              {t('canvas.routeConflict.unchecked', {
+                ids: isolateLtr(
+                  conflicts.unchecked.length > 12
+                    ? `${conflicts.unchecked.slice(0, 12).join(', ')}, … (+${conflicts.unchecked.length - 12})`
+                    : conflicts.unchecked.join(', '),
+                ),
+              })}
+            </div>
+          )}
+          {!readOnly && limited.length > 0 && (
+            <div class="view-note-warning" role="status" data-testid="canvas-route-limit">
+              {t('canvas.routeLimit', { count: limited.length })}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -1193,6 +1374,16 @@ function ComponentView({
     c.type !== 'component.ground';
   const side = upright ? { x: box.maxX + 10, anchor: 'start' } : { x: cx, anchor: 'middle' };
   const below = values || switchState;
+  // A character display's content, for assistive technology: verbatim, as an LTR run.
+  const screen =
+    c.type === 'display.lcd1602_i2c' && symbolState.lcd
+      ? symbolState.lcd.displayOn && symbolState.lcd.lines.some((l) => l.trim())
+        ? t('lcd.screen', {
+            line1: isolateLtr(symbolState.lcd.lines[0].trimEnd()),
+            line2: isolateLtr(symbolState.lcd.lines[1].trimEnd()),
+          })
+        : t('lcd.blank')
+      : '';
   return (
     <g
       data-hit="component"
@@ -1203,15 +1394,27 @@ function ComponentView({
       data-overstressed={overstressed ? 'true' : undefined}
       tabIndex={0}
       role="button"
-      aria-label={[label, values, switchState].filter(Boolean).join(', ')}
+      aria-label={[label, values, switchState, screen].filter(Boolean).join(', ')}
       data-closed={c.type === 'component.toggle_switch' ? String(symbolState.closed) : undefined}
       data-pressed={c.type === 'component.push_button' ? String(symbolState.pressed) : undefined}
       data-energized={c.type === 'component.relay' ? String(!!symbolState.energized) : undefined}
       data-motion={c.type === 'sensor.pir_hc_sr501' ? String(!!symbolState.motion) : undefined}
       data-output={
-        c.type === 'sensor.pir_hc_sr501' ? (symbolState.outputHigh ? 'high' : 'low') : undefined
+        c.type === 'sensor.pir_hc_sr501' || c.type === 'sensor.hc_sr04'
+          ? symbolState.outputHigh
+            ? 'high'
+            : 'low'
+          : undefined
+      }
+      data-backlight={
+        c.type === 'display.lcd1602_i2c' ? String(!!symbolState.lcd?.backlight) : undefined
       }
       data-sounding={c.type === 'component.buzzer' ? String(!!symbolState.sounding) : undefined}
+      data-angle={
+        c.type === 'component.servo_sg90'
+          ? String(symbolState.servoAngle ?? SERVO_REST_DEG)
+          : undefined
+      }
       onFocus={onFocus}
     >
       <rect
@@ -1304,7 +1507,10 @@ function ComponentView({
         <BoardPins rotation={p.rotation} at={p} levels={pinLevels} />
       )}
       {c.type === 'display.led_matrix_8x8' && (
-        <LinePins type={c.type} rotation={p.rotation} at={p} />
+        <LinePins type={c.type} rotation={p.rotation} at={p} inward={matrixInward} />
+      )}
+      {SIDE_PIN_TYPES.has(c.type) && (
+        <LinePins type={c.type} rotation={p.rotation} at={p} inward={sideInward} />
       )}
       {c.type !== 'component.ground' && (
         <text
@@ -1372,6 +1578,32 @@ function runtimeLabel(
       return `${v} · ${i}`;
     case 'instrument.lab_psu':
       return `${v} · ${i} · ${t(`sim.badge.${r.mode ?? 'off'}`)}`;
+    case 'component.potentiometer': {
+      // Sprint POT-UNITS: the divider's output, the wiper's potential to GND.
+      const w = r.state?.wiperVoltage;
+      return typeof w === 'number' ? `W ${formatResult(locale, w, 'volt')}` : '';
+    }
+    case 'component.servo_sg90': {
+      // Its position, not its supply current (not modelled, never shown as 0 A).
+      const angle = servoAngle(r.state);
+      return angle === undefined ? '' : formatAngle(locale, angle);
+    }
+    case 'logic.gate_and':
+    case 'logic.gate_nand':
+    case 'logic.gate_or':
+    case 'logic.gate_nor':
+    case 'logic.gate_xor':
+    case 'logic.gate_not':
+    case 'logic.quad_and': {
+      // Sprint 21 (Phase 4): a logic part shows its output LEVELS on the canvas (compact, never
+      // over its neighbours); its currents and voltages are in the Inspector's logic panel.
+      const L = (l: string) => (l === 'high' ? 'H' : l === 'low' ? 'L' : l === 'off' ? '–' : '?');
+      const gates = r.logic?.gates ?? [];
+      if (!gates.length) return '';
+      return gates.length === 1
+        ? `Y = ${L(gates[0]!.output.level)}`
+        : `Y ${gates.map((g) => `${g.unit}${L(g.output.level)}`).join(' ')}`;
+    }
     default: {
       // Sprint 10 parts: their named currents ("R 12.1 mA · G 0 A · B 3.2 mA"), else V · I.
       if (r.currents) {
@@ -1399,11 +1631,75 @@ function valueLabel(c: ComponentInstance, fmt: (q: Quantity) => string): string 
       return q('resistance');
     case 'component.capacitor':
       return q('capacitance');
+    // Sprint POT-UNITS: total resistance and wiper position (updated live while dragged).
+    case 'component.potentiometer':
+      return `${q('resistance')} · ${q('position')}`;
     case 'instrument.lab_psu':
       return `${q('setpointVoltage')} / ${q('currentLimit')}`;
+    // Sprint 13 OS-03/OS-06: the simulated environment a sensor is set to, visible on the
+    // circuit and updated live while its slider is dragged.
+    case 'component.photoresistor':
+      return q('illuminance');
+    case 'sensor.hc_sr04':
+      return q('distance');
+    case 'sensor.dht22':
+      return `${q('temperature')} · ${q('humidity')}`;
     default:
       return '';
   }
+}
+
+/**
+ * Sprint 22 (P5): a probe label is placed at its preferred spot (probeLabelAt) unless that would
+ * overlap a part's body or its reference/value label; then the first free alternative among the
+ * mirrored and the above/below positions is used. Text extents are estimated from the CSS sizes
+ * (probe 12 px bold ≈ 7.2 px per character; reference/value 14 px ≈ 8.4 px per character).
+ */
+function placeProbeLabel(p: Probe, at: Point, doc: ProjectDocument, text: string) {
+  const first = probeLabelAt(p, at, doc);
+  const w = text.length * 7.2;
+  type Rect = { x0: number; y0: number; x1: number; y1: number };
+  const rectOf = (c: { x: number; y: number; 'text-anchor': string }): Rect => {
+    const x0 =
+      c['text-anchor'] === 'end' ? c.x - w : c['text-anchor'] === 'middle' ? c.x - w / 2 : c.x;
+    return { x0, y0: c.y - 12, x1: x0 + w, y1: c.y + 3 };
+  };
+  const obstacles: Rect[] = [];
+  for (const c of doc.components) {
+    const b = componentBox(doc, c);
+    obstacles.push({ x0: b.minX, y0: b.minY, x1: b.maxX, y1: b.maxY });
+    if (c.type === 'component.ground') continue;
+    // Reference label above the body (or beside an upright two-terminal part), value label below.
+    const pl = doc.layout.components[c.id];
+    const upright =
+      !!pl && (pl.rotation === 90 || pl.rotation === 270) && CATALOG[c.type].terminals.length === 2;
+    const cx = (b.minX + b.maxX) / 2;
+    const lw = Math.max(c.id.length * 8.4, 40);
+    if (upright)
+      obstacles.push({
+        x0: b.maxX + 8,
+        y0: (b.minY + b.maxY) / 2 - 22,
+        x1: b.maxX + 10 + 80,
+        y1: (b.minY + b.maxY) / 2 + 20,
+      });
+    else {
+      obstacles.push({ x0: cx - lw / 2, y0: b.minY - 22, x1: cx + lw / 2, y1: b.minY - 4 });
+      obstacles.push({ x0: cx - 40, y0: b.maxY + 6, x1: cx + 40, y1: b.maxY + 24 });
+    }
+  }
+  const free = (r: Rect) =>
+    !obstacles.some((o) => r.x0 < o.x1 && o.x0 < r.x1 && r.y0 < o.y1 && o.y0 < r.y1);
+  const end = 'end' as const;
+  const start = 'start' as const;
+  const candidates: { x: number; y: number; 'text-anchor': 'start' | 'end' | 'middle' }[] = [first];
+  // Then right/left of the pin, stepping away above and below it.
+  for (const dy of [-10, 18, -26, 34, -42, 50, -58, 66])
+    for (const [dx, anchor] of [
+      [4, start],
+      [-4, end],
+    ] as const)
+      candidates.push({ x: at.x + dx, y: at.y + dy, 'text-anchor': anchor });
+  return candidates.find((c) => free(rectOf(c))) ?? first;
 }
 
 function probeLabelAt(p: Probe, at: Point, doc: ProjectDocument) {
@@ -1431,28 +1727,42 @@ function probeLabelAt(p: Probe, at: Point, doc: ProjectDocument) {
   return { x: at.x + 14, y: out.y < 0 ? at.y - 4 : at.y + 16, 'text-anchor': start };
 }
 
+/** LED matrix pins (front and rear edges): the name sits 50 units in from the pin. */
+const matrixInward = (o: Point): Point => ({ x: o.x, y: o.y - Math.sign(o.y) * 50 });
+/** Module headers on the left edge (Sprint 12): the name sits just inside the body. */
+const sideInward = (o: Point): Point => ({ x: o.x + 34, y: o.y });
+/** Modules whose header pins are named on the canvas (their silkscreen tokens). */
+const SIDE_PIN_TYPES: ReadonlySet<ComponentTypeId> = new Set<ComponentTypeId>([
+  'sensor.hc_sr04',
+  'sensor.dht22',
+  'display.lcd1602_i2c',
+  'component.servo_sg90',
+]);
+
 /**
- * A package's pin names as the lines they carry (Sprint 10, the LED matrix: R5, C2, ...): technical
- * tokens, drawn upright just inside each pin, always LTR. Presentation only.
+ * A package's pin names as the lines they carry (Sprint 10, the LED matrix: R5, C2, ...; Sprint
+ * 12, module headers: TRIG, ECHO, SDA, ...): technical tokens, drawn upright just inside each
+ * pin, always LTR. Presentation only.
  */
 function LinePins({
   type,
   rotation,
   at,
+  inward,
 }: {
   type: ComponentTypeId;
   rotation: Rotation;
   at: Point;
+  inward: (offset: Point) => Point;
 }) {
   return (
     <g class="board-pins" aria-hidden="true">
       {CATALOG[type].terminals.map((t) => {
-        const inward = { x: t.offset.x, y: t.offset.y - Math.sign(t.offset.y) * 50 };
-        const label = rotatePoint(inward, rotation);
+        const label = rotatePoint(inward(t.offset), rotation);
         return (
           <text
             key={t.id}
-            class="pin-label matrix-pin-label"
+            class={type === 'display.led_matrix_8x8' ? 'pin-label matrix-pin-label' : 'pin-label'}
             x={at.x + label.x}
             y={at.y + label.y + 3}
             text-anchor="middle"
@@ -1502,9 +1812,20 @@ function BoardPins({
             </text>
             {live && (
               <circle
-                class={live.level ? 'pin-level pin-high' : 'pin-level pin-low'}
+                class={
+                  // Sprint 15 (R4): a switching PWM pad is neither HIGH nor LOW. Sprint 17C: nor is
+                  // a duty-0 or unsupported one, whose level is not established (O-R4-1).
+                  live.pwm?.kind === 'wave'
+                    ? 'pin-level pin-pwm'
+                    : live.pwm?.kind === 'zero' || live.pwm?.kind === 'unsupported'
+                      ? 'pin-level pin-unknown'
+                      : live.level
+                        ? 'pin-level pin-high'
+                        : 'pin-level pin-low'
+                }
                 data-testid={`pin-level-${pin.gpio}`}
                 data-level={String(live.level)}
+                data-pwm={live.pwm?.kind}
                 cx={at.x + dot.x}
                 cy={at.y + dot.y}
                 r={4}

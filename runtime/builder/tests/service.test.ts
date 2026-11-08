@@ -13,6 +13,7 @@ import { sourceKey } from '@tbi-lab/domain';
 import { createBuildHttpServer, PREBUILT_IMAGE_BYTES } from '../http.js';
 import { validateBuildRequest } from '../protocol.js';
 import { BuildService, DEFAULT_LIMITS, type ServiceLimits } from '../service.js';
+import { FEATURES_ANALYZER } from '../features.js';
 import { ArtifactStore } from '../store.js';
 import {
   TEST_TICKET_KEY,
@@ -20,7 +21,8 @@ import {
   startTestGate,
   testIdentity,
 } from '../../identity/test-gate.js';
-import { Grants } from '../grants.js';
+import { GLOBAL, Grants } from '../grants.js';
+import { verifyTicket } from '../../identity/ticket.js';
 import { FakeProvider, fakeImage, sketch, tempDir } from './support.js';
 
 const cleanup: string[] = [];
@@ -85,6 +87,15 @@ describe('request validation', () => {
 });
 
 describe('BuildService', () => {
+  it('an over-size source is refused before it is held in a build record (security audit #4)', () => {
+    const { service, provider } = setup();
+    const max = provider.profile.maxSourceBytes;
+    expect(() => service.submit(sketch('x'.repeat(max + 1)), A)).toThrow('source_too_large');
+    expect((service as unknown as { records: Map<string, unknown> }).records.size).toBe(0);
+    // Exactly at the limit is still accepted.
+    expect('buildId' in service.submit(sketch('x'.repeat(max)), A)).toBe(true);
+  });
+
   it('builds, publishes a server-hashed artifact, cleans its job directory, then serves cache hits', async () => {
     const { service, provider, storeDir, work } = setup();
     const req = sketch('void setup() {}\nvoid loop() {}\n');
@@ -101,6 +112,80 @@ describe('BuildService', () => {
     expect(provider.builds).toBe(1);
     expect(service.lookup(first.key, A)?.artifact?.sha256).toBe(sha);
     expect(service.lookup('0'.repeat(64), A)).toBeNull();
+  });
+
+  it('Sprint 18: a build analysed by an older feature analyzer is built again, not reused', async () => {
+    const { service, provider, grants } = setup();
+    const req = sketch('void setup() {}\nvoid loop() {}\n');
+    const first = await finish(service, service.submit(req, A));
+    expect('cached' in service.submit(req, A)).toBe(true);
+    // The record as a pre-Sprint-18 service stored it: no analyzer version.
+    const stored = grants.findBuild(A, first.key)!;
+    const { analyzer, ...old } = stored;
+    expect(analyzer).toBe(FEATURES_ANALYZER);
+    grants.recordBuild(A, old);
+    expect(service.lookup(first.key, A)).toBeNull();
+    const again = await finish(service, service.submit(req, A));
+    expect(provider.builds).toBe(2);
+    expect(again.artifact?.sha256).toBe(first.artifact?.sha256);
+    // Rebuilt: the record is current again, and is reused.
+    expect('cached' in service.submit(req, A)).toBe(true);
+    expect(provider.builds).toBe(2);
+  });
+
+  it('Sprint 25: an older own record never hides a current shared one (cache hit and ticket)', async () => {
+    const req = sketch('void setup() {}\nvoid loop() {}\n');
+    const key = sourceKey(req.profile, req.files);
+    // A curated (system) source: its build is recorded under 'global'.
+    const { service, provider, grants } = setup({}, {}, new Set([key]));
+    const first = await finish(service, service.submit(req, A));
+    expect(grants.findBuilds(A, key).map((r) => r.owner)).toEqual([GLOBAL]);
+    const reads = { pins: [18], unresolved: false };
+    const current = grants.findBuilds(A, key)[0]!.build;
+    grants.recordBuild(GLOBAL, {
+      ...current,
+      features: { ...current.features!, requires: ['input-read'], inputReads: reads },
+    });
+    // What an earlier release left: A's own record of the same source and image, analysed by an
+    // older rule set (no analyzer version, no inputReads).
+    const { analyzer: _analyzer, ...old } = current;
+    grants.recordBuild(A, old);
+    expect(grants.findBuilds(A, key).map((r) => r.owner)).toEqual([A, GLOBAL]);
+    // The current shared record answers: a cache hit, no compilation.
+    expect('cached' in service.submit(req, A)).toBe(true);
+    expect(provider.builds).toBe(1);
+    // The ticket carries the current analysis, not the older record's.
+    const lease = service.lease(A, first.artifact!.sha256, 60_000)!;
+    expect(verifyTicket(TEST_TICKET_KEY, lease.ticket)).toMatchObject({
+      features: { requires: ['input-read'], inputReads: reads },
+    });
+  });
+
+  it('Sprint 25 closure: a record analysed for other runtime capabilities is never reused (built again)', async () => {
+    const req = sketch('void setup() {}\nvoid loop() {}\n');
+    const key = sourceKey(req.profile, req.files);
+    const { service, provider, grants } = setup();
+    // Built for Runtime v5's capabilities: the record says so.
+    provider.analysisCapabilities = ['gpio-irq', 'i2c', 'input-read'];
+    const first = await finish(service, service.submit(req, A));
+    expect(grants.findBuilds(A, key)[0]!.build.capabilities).toEqual([
+      'gpio-irq',
+      'i2c',
+      'input-read',
+    ]);
+    expect('cached' in service.submit(req, A)).toBe(true);
+    expect(provider.builds).toBe(1);
+    // The same service now serves a runtime without them (v4): not reused, built again.
+    provider.analysisCapabilities = ['i2c'];
+    const again = await finish(service, service.submit(req, A));
+    expect(provider.builds).toBe(2);
+    expect(again.artifact?.sha256).toBe(first.artifact?.sha256);
+    expect(grants.findBuilds(A, key)[0]!.build.capabilities).toEqual(['i2c']);
+    // A record from before the field (no capabilities) is not current either.
+    const { capabilities: _c, ...old } = grants.findBuilds(A, key)[0]!.build;
+    grants.recordBuild(A, old);
+    await finish(service, service.submit(req, A));
+    expect(provider.builds).toBe(3);
   });
 
   it('one compilation at a time, three queued, then busy; identical pending input is shared', async () => {

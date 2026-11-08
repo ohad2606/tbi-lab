@@ -11,6 +11,14 @@
  *   - prints `IN5=<level>` whenever GPIO5's injected level changes.
  * Failure modes: no_hello, crash, stall, garbage, guest_reset, serial_flood, ignore_term,
  * time_backwards; drive_input_only (drives input-only GPIO34 HIGH at 20 ms).
+ * Bridge v2 (Sprint 12, ADR-011): TBI_FAKE_HELLO replaces the handshake line's version and
+ * capability fields (e.g. `2 i2c,pad-func,sched-input`, `2 -`, `3 -`); TBI_FAKE_FRAMES is a list
+ * of extra frames, `;`-separated, sent before the tick at 10 ms, or before tick n with an `n@`
+ * prefix (e.g. `B 9500000 0 S 27 0`, `1300@G 1299000100 4 1 0`); every reply to them is echoed on
+ * UART0 as `REPLY <frame> -> <commands>`.
+ * Gate B G-2 (H-1): TBI_FAKE_TICK_LATE_NS reports ticks after their grid time, as QEMU's do when the
+ * timer callback runs an instruction past the deadline: a `,`-separated list of `d@n` (d ns late
+ * from tick n on) or `d@n-m` (ticks n..m only); `d` alone means from tick 1.
  */
 import { connect } from 'node:net';
 import { openSync, readSync, writeSync, closeSync } from 'node:fs';
@@ -89,10 +97,23 @@ function bootCounter() {
   return n;
 }
 
+// TBI_FAKE_TICK_LATE_NS (see the header): how late tick n reports, the first matching entry wins.
+const lateSpec = (process.env.TBI_FAKE_TICK_LATE_NS ?? '')
+  .split(',')
+  .filter(Boolean)
+  .map((e) => {
+    const [d, range = '1'] = e.split('@');
+    const [from, to] = range.split('-');
+    return { late: BigInt(d), from: Number(from), to: to === undefined ? Infinity : Number(to) };
+  });
+const tickLate = (n) => lateSpec.find((e) => n >= e.from && n <= e.to)?.late ?? 0n;
+
 async function main() {
   await new Promise((r) => sock.on('connect', r));
   if (mode === 'no_hello') return new Promise(() => {});
-  const hello = await exchange(`H tbi-bridge 1 ${tick}`);
+  const [ver, caps] = (process.env.TBI_FAKE_HELLO ?? '1').split(' ');
+  const hello = await exchange(`H tbi-bridge ${ver} ${tick}${caps ? ` ${caps}` : ''}`);
+  const extra = (process.env.TBI_FAKE_FRAMES ?? '').split(';').filter(Boolean);
   // Boot first (at time 0), then act on the initial input levels the host injected.
   serial(0n, `BOOT ${bootCounter()}\n`);
   await apply(hello);
@@ -105,6 +126,13 @@ async function main() {
       await setPad(2, 1, level, vns - tick + 1234n);
     }
     if (mode === 'drive_input_only' && n === 20) await setPad(34, 1, 1, vns - 500n);
+    for (const entry of extra) {
+      const [at, fr] = entry.includes('@') ? entry.split('@') : ['10', entry];
+      if (Number(at) !== n) continue;
+      const r = await exchange(fr);
+      serial(BigInt(fr.split(' ')[1]), `REPLY ${fr} -> ${r.join('|')}\n`);
+      await apply(r);
+    }
     if (mode === 'serial_flood') serial(vns, 'x'.repeat(200));
     if (mode === 'garbage' && n === 20) sock.write('Z this is not a frame\n');
     if (mode === 'time_backwards' && n === 20) {
@@ -114,6 +142,8 @@ async function main() {
     if (mode === 'crash' && n === 30) process.kill(process.pid, 'SIGSEGV');
     if (mode === 'guest_reset' && n === 30) process.exit(0);
     if (mode === 'stall' && n === 30) return new Promise(() => {});
+    // A late tick ran at that later time: what the firmware does next follows it, as in QEMU.
+    vns += tickLate(n);
     await apply(await exchange(`T ${vns}`));
     if (n % 256 === 0) await new Promise((r) => setImmediate(r)); // stay a polite process
   }

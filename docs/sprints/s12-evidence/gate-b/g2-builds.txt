@@ -1,0 +1,37 @@
+== F1 (/home/ubuntu/tbi-s12-rt-release) 19:08:47
+F1 [provision 19:09:25] artifact TbiR1Scan = b86f9c5e7d86d840fdaf31f0ac7531dc7e7c63456136dbcf9e7e84215ce98a17
+F1 [provision 19:10:21] artifact TbiEdgeEcho = 6ceb6ac3bb0d1e60306d7f86bb1cb3f622a0293a84ea1b8e735036c35dea0c12
+F1 [provision 19:11:21] artifact TbiHcSr04 = 9fd371b1ea77a60fc19c4ec2122e191ec498639df3afc5a887954fe05d9677d5
+F1 [provision 19:11:53] artifact TbiDht22 = 1c9a0e52d98cb433af249543f106c75b253c6232873717db90cc608a25dcfaf3
+F1 [provision 19:12:23] artifact TbiLcd = d8819c06411561f952ca4a0ceaa09eb01d047ec7d9c831adff6f19f3b1e5e2e9
+F1 [provision 19:12:53] artifact TbiI2cProbe = 768f52b5cc6aaa0e42152c463e2e7215f56966b8b10e2e773604e9e3d8433e55
+F1 [provision 19:13:19] artifact TbiGpioProof = 5f177cbe95f490dce1f6efe7dda501e03762d523b79771968f967b297d3a44af
+F1 [provision 19:13:45] artifact TbiBanks = 9ca3a5cea66e46a2b54f14f38e0b065f36bc8cf70398cc88fae421028930a03d
+== F2 (/home/ubuntu/tbi-s12-rel/g2/f2) 19:13:45
+F2 [provision 19:14:26] artifact TbiR1Scan = b86f9c5e7d86d840fdaf31f0ac7531dc7e7c63456136dbcf9e7e84215ce98a17
+F2 [provision 19:14:51] artifact TbiEdgeEcho = 6ceb6ac3bb0d1e60306d7f86bb1cb3f622a0293a84ea1b8e735036c35dea0c12
+F2 [provision 19:15:17] artifact TbiHcSr04 = 9fd371b1ea77a60fc19c4ec2122e191ec498639df3afc5a887954fe05d9677d5
+F2 [provision 19:15:42] artifact TbiDht22 = 1c9a0e52d98cb433af249543f106c75b253c6232873717db90cc608a25dcfaf3
+F2 [provision 19:16:10] artifact TbiLcd = d8819c06411561f952ca4a0ceaa09eb01d047ec7d9c831adff6f19f3b1e5e2e9
+F2 [provision 19:16:38] artifact TbiI2cProbe = 768f52b5cc6aaa0e42152c463e2e7215f56966b8b10e2e773604e9e3d8433e55
+F2 [provision 19:17:03] artifact TbiGpioProof = 5f177cbe95f490dce1f6efe7dda501e03762d523b79771968f967b297d3a44af
+F2 [provision 19:17:29] artifact TbiBanks = 9ca3a5cea66e46a2b54f14f38e0b065f36bc8cf70398cc88fae421028930a03d
+== F3 (/home/ubuntu/tbi-s12-rel/g2/f3) 19:17:29
+F3 [provision 19:17:56] artifact TbiR1Scan = b86f9c5e7d86d840fdaf31f0ac7531dc7e7c63456136dbcf9e7e84215ce98a17
+F3 [provision 19:18:23] artifact TbiEdgeEcho = 6ceb6ac3bb0d1e60306d7f86bb1cb3f622a0293a84ea1b8e735036c35dea0c12
+F3 [provision 19:18:48] artifact TbiHcSr04 = 9fd371b1ea77a60fc19c4ec2122e191ec498639df3afc5a887954fe05d9677d5
+F3 [provision 19:19:14] artifact TbiDht22 = 1c9a0e52d98cb433af249543f106c75b253c6232873717db90cc608a25dcfaf3
+F3 [provision 19:19:42] artifact TbiLcd = d8819c06411561f952ca4a0ceaa09eb01d047ec7d9c831adff6f19f3b1e5e2e9
+F3 [provision 19:20:10] artifact TbiI2cProbe = 768f52b5cc6aaa0e42152c463e2e7215f56966b8b10e2e773604e9e3d8433e55
+F3 [provision 19:20:35] artifact TbiGpioProof = 5f177cbe95f490dce1f6efe7dda501e03762d523b79771968f967b297d3a44af
+F3 [provision 19:21:01] artifact TbiBanks = 9ca3a5cea66e46a2b54f14f38e0b065f36bc8cf70398cc88fae421028930a03d
+== F4 arduino install 19:21:01
+== F4 (/home/ubuntu/tbi-s12-rel/g2/f4) 19:25:15
+F4 [provision 19:25:42] artifact TbiR1Scan = b86f9c5e7d86d840fdaf31f0ac7531dc7e7c63456136dbcf9e7e84215ce98a17
+F4 [provision 19:26:07] artifact TbiEdgeEcho = 6ceb6ac3bb0d1e60306d7f86bb1cb3f622a0293a84ea1b8e735036c35dea0c12
+F4 [provision 19:26:32] artifact TbiHcSr04 = 9fd371b1ea77a60fc19c4ec2122e191ec498639df3afc5a887954fe05d9677d5
+F4 [provision 19:26:57] artifact TbiDht22 = 1c9a0e52d98cb433af249543f106c75b253c6232873717db90cc608a25dcfaf3
+F4 [provision 19:27:24] artifact TbiLcd = d8819c06411561f952ca4a0ceaa09eb01d047ec7d9c831adff6f19f3b1e5e2e9
+F4 [provision 19:27:51] artifact TbiI2cProbe = 768f52b5cc6aaa0e42152c463e2e7215f56966b8b10e2e773604e9e3d8433e55
+F4 [provision 19:28:16] artifact TbiGpioProof = 5f177cbe95f490dce1f6efe7dda501e03762d523b79771968f967b297d3a44af
+F4 [provision 19:28:41] artifact TbiBanks = 9ca3a5cea66e46a2b54f14f38e0b065f36bc8cf70398cc88fae421028930a03d
