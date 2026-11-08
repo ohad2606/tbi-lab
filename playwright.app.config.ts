@@ -96,7 +96,7 @@ export default defineConfig({
         VITE_SIGN_OUT_URL: '/oauth2/sign_out',
         VITE_PROBLEM_REPORTS: '1',
         VITE_ADMIN_UI: 'reports',
-        TBI_RUNTIME_PROXY: 'http://127.0.0.1:7497',
+        TBI_RUNTIME_PROXY: process.env.TBI_FEEDBACK_RUNTIME_PROXY ?? 'http://127.0.0.1:7497',
         TBI_BUILD_PROXY: process.env.TBI_BUILD_PROXY ?? 'http://127.0.0.1:7498',
         TBI_TEST_GATE: '1',
       },

@@ -1,0 +1,395 @@
+{
+  "format": "tbi-lab.project",
+  "schemaVersion": 3,
+  "projectId": "prj_exampleesp32thermohygrometer",
+  "createdWith": {
+    "app": "0.2.0",
+    "schemaVersion": 3
+  },
+  "createdAt": "2026-09-23T00:00:00.000Z",
+  "revision": {
+    "localRevision": 1,
+    "cloudRevision": null,
+    "baseRevision": null,
+    "updatedAt": "2026-09-23T00:00:00.000Z",
+    "deviceId": "dev_tbilab_examples"
+  },
+  "name": "ESP32: temperature and humidity",
+  "components": [
+    {
+      "id": "PSU1",
+      "type": "instrument.lab_psu",
+      "typeVersion": 1,
+      "params": {
+        "setpointVoltage": {
+          "value": 3.3,
+          "unit": "volt"
+        },
+        "currentLimit": {
+          "value": 0.1,
+          "unit": "ampere"
+        },
+        "outputEnabled": true
+      }
+    },
+    {
+      "id": "GND1",
+      "type": "component.ground",
+      "typeVersion": 1,
+      "params": {}
+    },
+    {
+      "id": "U1",
+      "type": "board.esp32_devkitc_wroom32",
+      "typeVersion": 1,
+      "params": {
+        "firmware": "program"
+      }
+    },
+    {
+      "id": "U2",
+      "type": "sensor.dht22",
+      "typeVersion": 1,
+      "params": {
+        "model": "model.humidity.am2302",
+        "temperature": {
+          "value": 21.5,
+          "unit": "celsius"
+        },
+        "humidity": {
+          "value": 55,
+          "unit": "percent_rh"
+        }
+      }
+    },
+    {
+      "id": "R1",
+      "type": "component.resistor",
+      "typeVersion": 1,
+      "params": {
+        "resistance": {
+          "value": 10000,
+          "unit": "ohm"
+        }
+      }
+    },
+    {
+      "id": "GND2",
+      "type": "component.ground",
+      "typeVersion": 1,
+      "params": {}
+    },
+    {
+      "id": "GND3",
+      "type": "component.ground",
+      "typeVersion": 1,
+      "params": {}
+    }
+  ],
+  "nets": [
+    {
+      "id": "N_1",
+      "role": "ground",
+      "userName": null
+    },
+    {
+      "id": "N_2",
+      "role": null,
+      "userName": null
+    },
+    {
+      "id": "N_3",
+      "role": null,
+      "userName": null
+    },
+    {
+      "id": "N_4",
+      "role": "ground",
+      "userName": null
+    },
+    {
+      "id": "N_5",
+      "role": "ground",
+      "userName": null
+    }
+  ],
+  "connections": [
+    {
+      "component": "PSU1",
+      "terminal": "positive",
+      "net": "N_2"
+    },
+    {
+      "component": "PSU1",
+      "terminal": "negative",
+      "net": "N_1"
+    },
+    {
+      "component": "GND1",
+      "terminal": "ref",
+      "net": "N_1"
+    },
+    {
+      "component": "U1",
+      "terminal": "gnd",
+      "net": "N_5"
+    },
+    {
+      "component": "U1",
+      "terminal": "gpio4",
+      "net": "N_3"
+    },
+    {
+      "component": "U2",
+      "terminal": "vdd",
+      "net": "N_2"
+    },
+    {
+      "component": "U2",
+      "terminal": "data",
+      "net": "N_3"
+    },
+    {
+      "component": "U2",
+      "terminal": "gnd",
+      "net": "N_4"
+    },
+    {
+      "component": "R1",
+      "terminal": "a",
+      "net": "N_2"
+    },
+    {
+      "component": "R1",
+      "terminal": "b",
+      "net": "N_3"
+    },
+    {
+      "component": "GND2",
+      "terminal": "ref",
+      "net": "N_4"
+    },
+    {
+      "component": "GND3",
+      "terminal": "ref",
+      "net": "N_5"
+    }
+  ],
+  "layout": {
+    "components": {
+      "PSU1": {
+        "x": -420,
+        "y": 0,
+        "rotation": 0
+      },
+      "GND1": {
+        "x": -380,
+        "y": 120,
+        "rotation": 0
+      },
+      "U1": {
+        "x": 0,
+        "y": 0,
+        "rotation": 0
+      },
+      "U2": {
+        "x": 380,
+        "y": 80,
+        "rotation": 0
+      },
+      "R1": {
+        "x": 220,
+        "y": 0,
+        "rotation": 90
+      },
+      "GND2": {
+        "x": 300,
+        "y": 200,
+        "rotation": 0
+      },
+      "GND3": {
+        "x": 140,
+        "y": -120,
+        "rotation": 0
+      }
+    },
+    "wires": [
+      {
+        "id": "W1",
+        "from": {
+          "kind": "terminal",
+          "component": "PSU1",
+          "terminal": "negative"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "GND1",
+          "terminal": "ref"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W2",
+        "from": {
+          "kind": "terminal",
+          "component": "PSU1",
+          "terminal": "positive"
+        },
+        "to": {
+          "kind": "junction",
+          "junction": "J1"
+        },
+        "vertices": [
+          {
+            "x": -340,
+            "y": -20
+          },
+          {
+            "x": -340,
+            "y": -240
+          },
+          {
+            "x": 280,
+            "y": -240
+          }
+        ]
+      },
+      {
+        "id": "W3",
+        "from": {
+          "kind": "terminal",
+          "component": "U1",
+          "terminal": "gpio4"
+        },
+        "to": {
+          "kind": "junction",
+          "junction": "J2"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W4",
+        "from": {
+          "kind": "junction",
+          "junction": "J1"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "U2",
+          "terminal": "vdd"
+        },
+        "vertices": [
+          {
+            "x": 280,
+            "y": 40
+          }
+        ]
+      },
+      {
+        "id": "W5",
+        "from": {
+          "kind": "terminal",
+          "component": "R1",
+          "terminal": "a"
+        },
+        "to": {
+          "kind": "junction",
+          "junction": "J1"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W6",
+        "from": {
+          "kind": "junction",
+          "junction": "J2"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "U2",
+          "terminal": "data"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W7",
+        "from": {
+          "kind": "terminal",
+          "component": "R1",
+          "terminal": "b"
+        },
+        "to": {
+          "kind": "junction",
+          "junction": "J2"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W8",
+        "from": {
+          "kind": "terminal",
+          "component": "U2",
+          "terminal": "gnd"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "GND2",
+          "terminal": "ref"
+        },
+        "vertices": [
+          {
+            "x": 300,
+            "y": 100
+          },
+          {
+            "x": 300,
+            "y": 180
+          }
+        ]
+      },
+      {
+        "id": "W9",
+        "from": {
+          "kind": "terminal",
+          "component": "U1",
+          "terminal": "gnd"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "GND3",
+          "terminal": "ref"
+        },
+        "vertices": []
+      }
+    ],
+    "junctions": [
+      {
+        "id": "J1",
+        "x": 280,
+        "y": -40
+      },
+      {
+        "id": "J2",
+        "x": 220,
+        "y": 60
+      }
+    ]
+  },
+  "idCounters": {
+    "PSU": 1,
+    "GND": 3,
+    "W": 9,
+    "N": 5,
+    "U": 2,
+    "R": 1,
+    "J": 2
+  },
+  "programs": {
+    "U1": {
+      "language": "arduino-cpp",
+      "profile": "esp32-arduino-3.3.12",
+      "fileName": "sketch.ino",
+      "text": "/*\n * TBI Lab example: ESP32 thermo-hygrometer with a DHT22 / AM2302 sensor, without a library.\n *\n * DATA (GPIO4) has a 10 kOhm pull-up to 3.3 V: the sensor and the ESP32 only ever pull the line\n * low or release it. One read (AM2302 datasheet p.3-4):\n *   - the host pulls DATA low for at least 1 ms, then releases it;\n *   - the sensor answers 80 us low, 80 us high;\n *   - 40 bits follow, each a 50 us low then a high of 26-28 us (\"0\") or 70 us (\"1\");\n *   - bytes: humidity x10 (16 bits), temperature x10 (16 bits, bit 15 = sign), checksum (the\n *     low 8 bits of the sum of the four data bytes).\n * The sensor needs 1 s after power-up and at least 2 s between reads (datasheet p.2, p.5).\n */\nconst int DATA = 4;\n\n/** Wait until DATA reads `level`; false after `timeoutUs`. */\nstatic bool waitLevel(int level, uint32_t timeoutUs) {\n  uint32_t t0 = micros();\n  while (digitalRead(DATA) != level)\n    if (micros() - t0 > timeoutUs) return false;\n  return true;\n}\n\n/** One AM2302 read: 0 on success, else the step that failed. */\nstatic int dhtRead(int16_t *t10, uint16_t *h10) {\n  uint8_t d[5] = {0, 0, 0, 0, 0};\n  // Start signal: DATA low for 1.1 ms (at least 1 ms), then released to the pull-up.\n  pinMode(DATA, OUTPUT);\n  digitalWrite(DATA, LOW);\n  delayMicroseconds(1100);\n  pinMode(DATA, INPUT);\n  // Response: the sensor pulls low (80 us), releases (80 us), then the first bit starts low.\n  if (!waitLevel(LOW, 200)) return 1;\n  if (!waitLevel(HIGH, 200)) return 2;\n  if (!waitLevel(LOW, 200)) return 3;\n  for (int i = 0; i < 40; i++) {\n    if (!waitLevel(HIGH, 200)) return 4;\n    uint32_t t0 = micros();\n    if (!waitLevel(LOW, 200)) return 5;\n    // A high longer than 48 us is a \"1\" (70 us), shorter a \"0\" (26-28 us).\n    if (micros() - t0 > 48) d[i / 8] |= 0x80 >> (i % 8);\n  }\n  if (((d[0] + d[1] + d[2] + d[3]) & 0xff) != d[4]) return 6;\n  *h10 = (d[0] << 8) | d[1];\n  int16_t t = ((d[2] & 0x7f) << 8) | d[3];\n  *t10 = (d[2] & 0x80) ? -t : t;\n  return 0;\n}\n\nvoid setup() {\n  Serial.begin(115200);\n  pinMode(DATA, INPUT);\n  delay(1500);\n}\n\nvoid loop() {\n  int16_t t10;\n  uint16_t h10;\n  int err = dhtRead(&t10, &h10);\n  if (err)\n    Serial.printf(\"DHT22 read failed (step %d)\\n\", err);\n  else\n    Serial.printf(\"Temperature: %.1f C  Humidity: %.1f %%\\n\", t10 / 10.0, h10 / 10.0);\n  delay(2500);\n}\n"
+    }
+  }
+}

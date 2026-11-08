@@ -1,0 +1,228 @@
+{
+  "format": "tbi-lab.project",
+  "schemaVersion": 3,
+  "projectId": "prj_exampleesp32blink",
+  "createdWith": {
+    "app": "0.2.0",
+    "schemaVersion": 3
+  },
+  "createdAt": "2026-09-23T00:00:00.000Z",
+  "revision": {
+    "localRevision": 1,
+    "cloudRevision": null,
+    "baseRevision": null,
+    "updatedAt": "2026-09-23T00:00:00.000Z",
+    "deviceId": "dev_tbilab_examples"
+  },
+  "name": "ESP32: blink an LED",
+  "components": [
+    {
+      "id": "U1",
+      "type": "board.esp32_devkitc_wroom32",
+      "typeVersion": 1,
+      "params": {
+        "firmware": "program"
+      }
+    },
+    {
+      "id": "R1",
+      "type": "component.resistor",
+      "typeVersion": 1,
+      "params": {
+        "resistance": {
+          "value": 220,
+          "unit": "ohm"
+        }
+      }
+    },
+    {
+      "id": "D1",
+      "type": "component.led",
+      "typeVersion": 1,
+      "params": {
+        "model": "model.led.vishay_tlhr5400"
+      }
+    },
+    {
+      "id": "GND2",
+      "type": "component.ground",
+      "typeVersion": 1,
+      "params": {}
+    },
+    {
+      "id": "GND3",
+      "type": "component.ground",
+      "typeVersion": 1,
+      "params": {}
+    }
+  ],
+  "nets": [
+    {
+      "id": "N_1",
+      "role": null,
+      "userName": null
+    },
+    {
+      "id": "N_2",
+      "role": null,
+      "userName": null
+    },
+    {
+      "id": "N_3",
+      "role": "ground",
+      "userName": null
+    },
+    {
+      "id": "N_4",
+      "role": "ground",
+      "userName": null
+    }
+  ],
+  "connections": [
+    {
+      "component": "U1",
+      "terminal": "gnd",
+      "net": "N_4"
+    },
+    {
+      "component": "U1",
+      "terminal": "gpio2",
+      "net": "N_1"
+    },
+    {
+      "component": "R1",
+      "terminal": "a",
+      "net": "N_1"
+    },
+    {
+      "component": "R1",
+      "terminal": "b",
+      "net": "N_2"
+    },
+    {
+      "component": "D1",
+      "terminal": "anode",
+      "net": "N_2"
+    },
+    {
+      "component": "D1",
+      "terminal": "cathode",
+      "net": "N_3"
+    },
+    {
+      "component": "GND2",
+      "terminal": "ref",
+      "net": "N_3"
+    },
+    {
+      "component": "GND3",
+      "terminal": "ref",
+      "net": "N_4"
+    }
+  ],
+  "layout": {
+    "components": {
+      "U1": {
+        "x": 60,
+        "y": 0,
+        "rotation": 0
+      },
+      "R1": {
+        "x": 240,
+        "y": 100,
+        "rotation": 0
+      },
+      "D1": {
+        "x": 360,
+        "y": 100,
+        "rotation": 0
+      },
+      "GND2": {
+        "x": 440,
+        "y": 180,
+        "rotation": 0
+      },
+      "GND3": {
+        "x": 200,
+        "y": -120,
+        "rotation": 0
+      }
+    },
+    "wires": [
+      {
+        "id": "W1",
+        "from": {
+          "kind": "terminal",
+          "component": "U1",
+          "terminal": "gpio2"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "R1",
+          "terminal": "a"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W2",
+        "from": {
+          "kind": "terminal",
+          "component": "R1",
+          "terminal": "b"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "D1",
+          "terminal": "anode"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W3",
+        "from": {
+          "kind": "terminal",
+          "component": "D1",
+          "terminal": "cathode"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "GND2",
+          "terminal": "ref"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W4",
+        "from": {
+          "kind": "terminal",
+          "component": "U1",
+          "terminal": "gnd"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "GND3",
+          "terminal": "ref"
+        },
+        "vertices": []
+      }
+    ],
+    "junctions": []
+  },
+  "idCounters": {
+    "PSU": 1,
+    "GND": 3,
+    "U": 1,
+    "R": 1,
+    "D": 1,
+    "W": 4,
+    "N": 4
+  },
+  "programs": {
+    "U1": {
+      "language": "arduino-cpp",
+      "profile": "esp32-arduino-3.3.12",
+      "fileName": "sketch.ino",
+      "text": "/*\n * Phase 6 — Arduino compatibility proof for the classic ESP32 runtime.\n *\n * Deliberately minimal: it only has to show that ordinary Arduino-style GPIO firmware\n * executes through the runtime we selected, using the normal Arduino API rather than\n * register pokes. This is not a product feature and there is no Arduino IDE involved.\n *\n * Output pins are toggled in a fixed, recognisable pattern so the host bridge can assert\n * the exact sequence it observes. An input pin is read back and echoed over serial so the\n * host can prove injection reaches Arduino's digitalRead().\n */\n\nconst int OUT_PIN_A = 2;   // bank 0\nconst int OUT_PIN_B = 18;  // bank 0, different register bit\nconst int IN_PIN    = 5;   // bank 0 input\n\nvoid setup() {\n  Serial.begin(115200);\n  pinMode(OUT_PIN_A, OUTPUT);\n  pinMode(OUT_PIN_B, OUTPUT);\n  pinMode(IN_PIN, INPUT);\n\n  digitalWrite(OUT_PIN_A, LOW);\n  digitalWrite(OUT_PIN_B, LOW);\n  Serial.println(\"TBI-ARDUINO-READY\");\n}\n\nvoid loop() {\n  // A recognisable, asymmetric pattern: A and B must not be confusable.\n  digitalWrite(OUT_PIN_A, HIGH);\n  delay(200);\n  digitalWrite(OUT_PIN_B, HIGH);\n  delay(200);\n  digitalWrite(OUT_PIN_A, LOW);\n  delay(200);\n  digitalWrite(OUT_PIN_B, LOW);\n  delay(200);\n\n  Serial.print(\"IN=\");\n  Serial.println(digitalRead(IN_PIN));\n}\n"
+    }
+  }
+}

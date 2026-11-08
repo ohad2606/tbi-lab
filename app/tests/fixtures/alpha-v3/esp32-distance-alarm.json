@@ -1,0 +1,601 @@
+{
+  "format": "tbi-lab.project",
+  "schemaVersion": 3,
+  "projectId": "prj_exampleesp32distancealarm",
+  "createdWith": {
+    "app": "0.2.0",
+    "schemaVersion": 3
+  },
+  "createdAt": "2026-09-23T00:00:00.000Z",
+  "revision": {
+    "localRevision": 1,
+    "cloudRevision": null,
+    "baseRevision": null,
+    "updatedAt": "2026-09-23T00:00:00.000Z",
+    "deviceId": "dev_tbilab_examples"
+  },
+  "name": "ESP32: ultrasonic distance alarm",
+  "components": [
+    {
+      "id": "PSU1",
+      "type": "instrument.lab_psu",
+      "typeVersion": 1,
+      "params": {
+        "setpointVoltage": {
+          "value": 5,
+          "unit": "volt"
+        },
+        "currentLimit": {
+          "value": 0.1,
+          "unit": "ampere"
+        },
+        "outputEnabled": true
+      }
+    },
+    {
+      "id": "GND1",
+      "type": "component.ground",
+      "typeVersion": 1,
+      "params": {}
+    },
+    {
+      "id": "U1",
+      "type": "board.esp32_devkitc_wroom32",
+      "typeVersion": 1,
+      "params": {
+        "firmware": "program"
+      }
+    },
+    {
+      "id": "U2",
+      "type": "sensor.hc_sr04",
+      "typeVersion": 1,
+      "params": {
+        "model": "model.ultrasonic.hc_sr04",
+        "distance": {
+          "value": 0.5,
+          "unit": "metre"
+        },
+        "airTemperature": {
+          "value": 20,
+          "unit": "celsius"
+        }
+      }
+    },
+    {
+      "id": "R1",
+      "type": "component.resistor",
+      "typeVersion": 1,
+      "params": {
+        "resistance": {
+          "value": 1000,
+          "unit": "ohm"
+        }
+      }
+    },
+    {
+      "id": "R2",
+      "type": "component.resistor",
+      "typeVersion": 1,
+      "params": {
+        "resistance": {
+          "value": 2000,
+          "unit": "ohm"
+        }
+      }
+    },
+    {
+      "id": "GND2",
+      "type": "component.ground",
+      "typeVersion": 1,
+      "params": {}
+    },
+    {
+      "id": "GND3",
+      "type": "component.ground",
+      "typeVersion": 1,
+      "params": {}
+    },
+    {
+      "id": "R3",
+      "type": "component.resistor",
+      "typeVersion": 1,
+      "params": {
+        "resistance": {
+          "value": 220,
+          "unit": "ohm"
+        }
+      }
+    },
+    {
+      "id": "D1",
+      "type": "component.led",
+      "typeVersion": 1,
+      "params": {
+        "model": "model.led.vishay_tlhr5400"
+      }
+    },
+    {
+      "id": "GND4",
+      "type": "component.ground",
+      "typeVersion": 1,
+      "params": {}
+    },
+    {
+      "id": "GND5",
+      "type": "component.ground",
+      "typeVersion": 1,
+      "params": {}
+    }
+  ],
+  "nets": [
+    {
+      "id": "N_1",
+      "role": "ground",
+      "userName": null
+    },
+    {
+      "id": "N_2",
+      "role": null,
+      "userName": null
+    },
+    {
+      "id": "N_3",
+      "role": "ground",
+      "userName": null
+    },
+    {
+      "id": "N_4",
+      "role": "ground",
+      "userName": null
+    },
+    {
+      "id": "N_5",
+      "role": null,
+      "userName": null
+    },
+    {
+      "id": "N_6",
+      "role": null,
+      "userName": null
+    },
+    {
+      "id": "N_7",
+      "role": null,
+      "userName": null
+    },
+    {
+      "id": "N_8",
+      "role": "ground",
+      "userName": null
+    },
+    {
+      "id": "N_9",
+      "role": null,
+      "userName": null
+    },
+    {
+      "id": "N_10",
+      "role": null,
+      "userName": null
+    },
+    {
+      "id": "N_11",
+      "role": "ground",
+      "userName": null
+    }
+  ],
+  "connections": [
+    {
+      "component": "PSU1",
+      "terminal": "positive",
+      "net": "N_2"
+    },
+    {
+      "component": "PSU1",
+      "terminal": "negative",
+      "net": "N_1"
+    },
+    {
+      "component": "GND1",
+      "terminal": "ref",
+      "net": "N_1"
+    },
+    {
+      "component": "U1",
+      "terminal": "gnd",
+      "net": "N_4"
+    },
+    {
+      "component": "U1",
+      "terminal": "gpio18",
+      "net": "N_7"
+    },
+    {
+      "component": "U1",
+      "terminal": "gpio5",
+      "net": "N_5"
+    },
+    {
+      "component": "U1",
+      "terminal": "gpio2",
+      "net": "N_9"
+    },
+    {
+      "component": "U2",
+      "terminal": "vcc",
+      "net": "N_2"
+    },
+    {
+      "component": "U2",
+      "terminal": "trig",
+      "net": "N_5"
+    },
+    {
+      "component": "U2",
+      "terminal": "echo",
+      "net": "N_6"
+    },
+    {
+      "component": "U2",
+      "terminal": "gnd",
+      "net": "N_3"
+    },
+    {
+      "component": "R1",
+      "terminal": "a",
+      "net": "N_7"
+    },
+    {
+      "component": "R1",
+      "terminal": "b",
+      "net": "N_6"
+    },
+    {
+      "component": "R2",
+      "terminal": "a",
+      "net": "N_7"
+    },
+    {
+      "component": "R2",
+      "terminal": "b",
+      "net": "N_8"
+    },
+    {
+      "component": "GND2",
+      "terminal": "ref",
+      "net": "N_8"
+    },
+    {
+      "component": "GND3",
+      "terminal": "ref",
+      "net": "N_3"
+    },
+    {
+      "component": "R3",
+      "terminal": "a",
+      "net": "N_9"
+    },
+    {
+      "component": "R3",
+      "terminal": "b",
+      "net": "N_10"
+    },
+    {
+      "component": "D1",
+      "terminal": "anode",
+      "net": "N_10"
+    },
+    {
+      "component": "D1",
+      "terminal": "cathode",
+      "net": "N_11"
+    },
+    {
+      "component": "GND4",
+      "terminal": "ref",
+      "net": "N_11"
+    },
+    {
+      "component": "GND5",
+      "terminal": "ref",
+      "net": "N_4"
+    }
+  ],
+  "layout": {
+    "components": {
+      "PSU1": {
+        "x": -420,
+        "y": 0,
+        "rotation": 0
+      },
+      "GND1": {
+        "x": -380,
+        "y": 120,
+        "rotation": 0
+      },
+      "U1": {
+        "x": 0,
+        "y": 0,
+        "rotation": 0
+      },
+      "U2": {
+        "x": 380,
+        "y": 20,
+        "rotation": 0
+      },
+      "R1": {
+        "x": 220,
+        "y": 20,
+        "rotation": 0
+      },
+      "R2": {
+        "x": 180,
+        "y": 100,
+        "rotation": 90
+      },
+      "GND2": {
+        "x": 180,
+        "y": 200,
+        "rotation": 0
+      },
+      "GND3": {
+        "x": 300,
+        "y": 120,
+        "rotation": 0
+      },
+      "R3": {
+        "x": 220,
+        "y": 260,
+        "rotation": 0
+      },
+      "D1": {
+        "x": 340,
+        "y": 260,
+        "rotation": 0
+      },
+      "GND4": {
+        "x": 420,
+        "y": 340,
+        "rotation": 0
+      },
+      "GND5": {
+        "x": 140,
+        "y": -120,
+        "rotation": 0
+      }
+    },
+    "wires": [
+      {
+        "id": "W1",
+        "from": {
+          "kind": "terminal",
+          "component": "PSU1",
+          "terminal": "negative"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "GND1",
+          "terminal": "ref"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W2",
+        "from": {
+          "kind": "terminal",
+          "component": "PSU1",
+          "terminal": "positive"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "U2",
+          "terminal": "vcc"
+        },
+        "vertices": [
+          {
+            "x": -340,
+            "y": -20
+          },
+          {
+            "x": -340,
+            "y": -240
+          },
+          {
+            "x": 280,
+            "y": -240
+          },
+          {
+            "x": 280,
+            "y": -20
+          }
+        ]
+      },
+      {
+        "id": "W3",
+        "from": {
+          "kind": "terminal",
+          "component": "U2",
+          "terminal": "gnd"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "GND3",
+          "terminal": "ref"
+        },
+        "vertices": [
+          {
+            "x": 300,
+            "y": 40
+          },
+          {
+            "x": 300,
+            "y": 100
+          }
+        ]
+      },
+      {
+        "id": "W4",
+        "from": {
+          "kind": "terminal",
+          "component": "U1",
+          "terminal": "gnd"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "GND5",
+          "terminal": "ref"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W5",
+        "from": {
+          "kind": "terminal",
+          "component": "U1",
+          "terminal": "gpio5"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "U2",
+          "terminal": "trig"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W6",
+        "from": {
+          "kind": "terminal",
+          "component": "U2",
+          "terminal": "echo"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "R1",
+          "terminal": "b"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W7",
+        "from": {
+          "kind": "terminal",
+          "component": "R1",
+          "terminal": "a"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "R2",
+          "terminal": "a"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W8",
+        "from": {
+          "kind": "terminal",
+          "component": "R2",
+          "terminal": "b"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "GND2",
+          "terminal": "ref"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W9",
+        "from": {
+          "kind": "terminal",
+          "component": "U1",
+          "terminal": "gpio18"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "R1",
+          "terminal": "a"
+        },
+        "vertices": [
+          {
+            "x": 140,
+            "y": -20
+          },
+          {
+            "x": 140,
+            "y": 20
+          }
+        ]
+      },
+      {
+        "id": "W10",
+        "from": {
+          "kind": "terminal",
+          "component": "U1",
+          "terminal": "gpio2"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "R3",
+          "terminal": "a"
+        },
+        "vertices": [
+          {
+            "x": 120,
+            "y": 100
+          },
+          {
+            "x": 120,
+            "y": 260
+          }
+        ]
+      },
+      {
+        "id": "W11",
+        "from": {
+          "kind": "terminal",
+          "component": "R3",
+          "terminal": "b"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "D1",
+          "terminal": "anode"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W12",
+        "from": {
+          "kind": "terminal",
+          "component": "D1",
+          "terminal": "cathode"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "GND4",
+          "terminal": "ref"
+        },
+        "vertices": []
+      }
+    ],
+    "junctions": []
+  },
+  "idCounters": {
+    "PSU": 1,
+    "GND": 5,
+    "W": 12,
+    "N": 11,
+    "U": 2,
+    "R": 3,
+    "D": 1
+  },
+  "programs": {
+    "U1": {
+      "language": "arduino-cpp",
+      "profile": "esp32-arduino-3.3.12",
+      "fileName": "sketch.ino",
+      "text": "/*\n * TBI Lab example: ESP32 distance alarm with an HC-SR04 ultrasonic module.\n *\n * Every 100 ms a 10 us HIGH pulse on TRIG (GPIO5) starts a measurement (HC-SR04 datasheet:\n * \"10 us TTL pulse\"). The module answers with a HIGH pulse on ECHO whose width is the sound's\n * round trip. ECHO reaches GPIO18 through a 1 kOhm / 2 kOhm divider: the module runs from 5 V,\n * the ESP32 pad must stay within its 3.3 V supply range.\n * Distance in cm = pulse width in us / 58 (datasheet). No echo within 30 ms: nothing in range.\n * The red LED on GPIO2 lights when something is closer than 20 cm.\n */\nconst int TRIG = 5;\nconst int ECHO = 18;\nconst int LED = 2;\nconst float ALARM_CM = 20.0;\n\nvoid setup() {\n  Serial.begin(115200);\n  pinMode(TRIG, OUTPUT);\n  digitalWrite(TRIG, LOW);\n  pinMode(ECHO, INPUT);\n  pinMode(LED, OUTPUT);\n  digitalWrite(LED, LOW);\n}\n\nvoid loop() {\n  // The trigger pulse.\n  digitalWrite(TRIG, HIGH);\n  delayMicroseconds(10);\n  digitalWrite(TRIG, LOW);\n  // The echo pulse width in microseconds; 0 when no echo starts and ends within 30 ms.\n  unsigned long us = pulseIn(18, HIGH, 30000);\n  if (us == 0) {\n    Serial.println(\"No echo\");\n    digitalWrite(LED, LOW);\n  } else {\n    float cm = us / 58.0;\n    Serial.printf(\"Distance: %.1f cm\\n\", cm);\n    digitalWrite(LED, cm < ALARM_CM ? HIGH : LOW);\n  }\n  delay(100);\n}\n"
+    }
+  }
+}
