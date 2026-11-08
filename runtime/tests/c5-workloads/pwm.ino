@@ -6,7 +6,7 @@ static int duty = 0;
 void setup() {
   Serial.begin(115200);
   Serial.println("C5-PWM-READY");
-  ledcAttach(2, 1000, 8);
+  if (!ledcAttach(2, 1000, 8)) Serial.println("C5-PWM-ATTACH-FAILED");
   ledcWrite(2, 64);
 }
 void loop() {

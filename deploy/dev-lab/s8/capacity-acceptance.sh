@@ -92,10 +92,15 @@ PY
 
 # RC6: the ramp keeps the C-5 mix; N = FAULT_N is then repeated with the Runtime v5 mix (PWM, GPIO interrupts), and faults and the soak
 # run on that mix, the heavier one. Same thresholds. A runtime without the facilities (TBI_C5_V5_MIX=0) keeps the C-5 mix throughout.
-V5MIX=c5; python3 -c 'import json,subprocess,sys
-v = json.loads(subprocess.check_output(["sudo","-n","cat",f"/etc/{sys.argv[1]}/runtime.json"])); sys.exit(0 if {"pwm","gpio-irq"} <= set(v["capabilities"]) else 1)' "$inst" && [ "${TBI_C5_V5_MIX:-1}" = 1 ] && V5MIX=v5
+caps=$(sudo -n cat "/etc/$inst/runtime.json" | python3 -c 'import json,sys; print(" ".join(json.load(sys.stdin)["capabilities"]))') || { echo "refused: cannot read /etc/$inst/runtime.json" | tee -a "$out/summary.txt" >&2; exit 1; }
+V5MIX=c5
+case " $caps " in *" pwm "*) case " $caps " in *" gpio-irq "*) V5MIX=v5 ;; esac ;; esac
+[ "${TBI_C5_V5_MIX:-1}" = 1 ] || V5MIX=c5
+echo "mix after the ramp: $V5MIX (runtime capabilities: $caps)" | tee -a "$out/summary.txt"
 for n in $RAMP_N; do run "ramp-n$n" TBI_C5_N="$n" TBI_C5_SECONDS=$RAMP_S; done
 [ "$V5MIX" = c5 ] || run "ramp-v5-n$FAULT_N" TBI_C5_N=$FAULT_N TBI_C5_SECONDS=$RAMP_S TBI_C5_MIX=v5
+# The smoke's N is too small for the mix to reach them: each new workload runs alone, so the procedure check still proves them.
+if [ "$quick" = smoke ] && [ "$V5MIX" = v5 ]; then for w in pwm irq; do run "smoke-$w" TBI_C5_N=1 TBI_C5_SECONDS=$RAMP_S TBI_C5_WORKLOAD=$w; done; fi
 run "faults-n$FAULT_N" TBI_C5_N=$FAULT_N TBI_C5_SECONDS=$FAULT_S TBI_C5_FAULTS=1 TBI_C5_MIX=$V5MIX
 run "soak-n$SOAK_N" TBI_C5_N=$SOAK_N TBI_C5_SECONDS=$SOAK_S TBI_C5_BUILD_EVERY=$BURST_S TBI_C5_ROTATE=$ROTATE_S TBI_C5_MIX=$V5MIX
 
@@ -105,6 +110,7 @@ import json, os, sys
 out = sys.argv[1]
 need = [f'ramp-n{n}' for n in sys.argv[2].split() if n != '6'] + [f'faults-n{sys.argv[3]}', f'soak-n{sys.argv[4]}']
 if os.path.exists(os.path.join(out, f'ramp-v5-n{sys.argv[3]}.log')): need.append(f'ramp-v5-n{sys.argv[3]}')
+need += [n for n in ('smoke-pwm', 'smoke-irq') if os.path.exists(os.path.join(out, n + '.log'))]
 ok = True
 for name in need:
     f = os.path.join(out, name + '.json')

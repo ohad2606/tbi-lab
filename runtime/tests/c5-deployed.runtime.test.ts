@@ -129,11 +129,23 @@ const MIX = ONLY
 const OWN_SKETCH: Record<string, true> = { pwm: true, irq: true };
 /** Every session of a v5 workload did the work its source promises; a mix meant to include them must have run them. */
 function exercised(
-  rows: { workload: string; work?: number; measuredS?: number; fault?: unknown }[],
+  rows: {
+    workload: string;
+    work?: number;
+    measuredS?: number;
+    hostPwm?: boolean;
+    fault?: unknown;
+  }[],
 ) {
   const own = rows.filter((r) => OWN_SKETCH[r.workload] && !r.fault);
-  if (own.length === 0) return MIX.slice(0, N).every((w) => !OWN_SKETCH[w]);
-  return own.every((r) => (r.work ?? 0) >= (r.measuredS ?? 0) * MIN_PER_S[r.workload]!);
+  return (
+    own.length > 0 &&
+    own.every(
+      (r) =>
+        (r.work ?? 0) >= (r.measuredS ?? 0) * MIN_PER_S[r.workload]! &&
+        (r.workload !== 'pwm' || r.hostPwm === true),
+    )
+  );
 }
 /** Least work per measured second, half of what each source is bounded to: pwm 2 steps/s, irq 10 edges/s. */
 const MIN_PER_S: Record<string, number> = { pwm: 1, irq: 5 };
@@ -247,6 +259,8 @@ interface Live {
   /** Work the firmware reported on its serial port (v5 workloads only): pwm steps, irq edges. */
   work: number;
   serialTail: string;
+  /** pwm workload: the host reported a pad under PWM. */
+  hostPwm: boolean;
   /** Rotation: when this instance is replaced (ms, performance clock). */
   rotateAt?: number;
   /** Rotation: the slot (user index) and the instance number within it (0 = first). */
@@ -336,6 +350,26 @@ describe('C-5 deployed: N concurrent ESP32 sessions on a deployed instance', () 
         recreate?: true;
         rotation?: true;
       }[] = [];
+      const noteSerial = (x: Live, line: string) => {
+        if (!line.startsWith('data:')) return;
+        let ev: { type?: string; data?: string };
+        try {
+          ev = JSON.parse(line.slice(5)) as typeof ev;
+        } catch {
+          return;
+        }
+        // The host, not the firmware, says a pad is under PWM: a marker alone only proves the loop ran.
+        if (line.includes('"pwm":{')) x.hostPwm = true;
+        if (ev.type !== 'serial' || !ev.data) return;
+        x.serialTail += Buffer.from(ev.data, 'base64').toString('latin1');
+        const rows = x.serialTail.split('\n');
+        x.serialTail = rows.pop()!.slice(-256);
+        for (const row of rows) {
+          if (x.workload === 'pwm' && row.startsWith('C5-PWM-STEP')) x.work += 1;
+          const m = /^C5-IRQ-COUNT (\d+)/.exec(row);
+          if (x.workload === 'irq' && m) x.work = Number(m[1]);
+        }
+      };
       const start = async (i: number, replaces?: number, rotation = false) => {
         const user = users[i]!;
         const b = builds[i]!;
@@ -379,6 +413,7 @@ describe('C-5 deployed: N concurrent ESP32 sessions on a deployed instance', () 
           streamBytes: 0,
           work: 0,
           serialTail: '',
+          hostPwm: false,
           slot: i,
           instance: replaces !== undefined ? sessions[replaces]!.instance + 1 : 0,
         };
@@ -413,24 +448,6 @@ describe('C-5 deployed: N concurrent ESP32 sessions on a deployed instance', () 
         return a.status;
       };
       for (let i = 0; i < N; i++) await start(i);
-      const noteSerial = (x: Live, line: string) => {
-        if (!line.startsWith('data:')) return;
-        let ev: { type?: string; data?: string };
-        try {
-          ev = JSON.parse(line.slice(5)) as typeof ev;
-        } catch {
-          return;
-        }
-        if (ev.type !== 'serial' || !ev.data) return;
-        x.serialTail += Buffer.from(ev.data, 'base64').toString('latin1');
-        const rows = x.serialTail.split('\n');
-        x.serialTail = rows.pop()!.slice(-256);
-        for (const row of rows) {
-          if (x.workload === 'pwm' && row.startsWith('C5-PWM-STEP')) x.work += 1;
-          const m = /^C5-IRQ-COUNT (\d+)/.exec(row);
-          if (x.workload === 'irq' && m) x.work = Number(m[1]);
-        }
-      };
       const statusOf = (x: Live, user = x.user, token = x.token) =>
         fetch(`${HOST}/sessions/${x.id}`, {
           headers: as(user, { authorization: `Bearer ${token}` }),
@@ -631,7 +648,9 @@ describe('C-5 deployed: N concurrent ESP32 sessions on a deployed instance', () 
         windows5s: x.rates5.length,
         pace: x.status?.pace,
         streamBytes: x.streamBytes,
-        ...(OWN_SKETCH[x.workload] ? { work: x.work, measuredS: x.rates5.length * 5 } : {}),
+        ...(OWN_SKETCH[x.workload]
+          ? { work: x.work, measuredS: x.rates5.length * 5, hostPwm: x.hostPwm }
+          : {}),
       }));
       for (const x of sessions) {
         await fetch(`${HOST}/sessions/${x.id}`, {
@@ -742,7 +761,10 @@ describe('C-5 deployed: N concurrent ESP32 sessions on a deployed instance', () 
                 Infinity) <= 100,
           ),
           noFailures: results.filter((r) => !r.fault).every((r) => r.state === 'running'),
-          ...(MIX_NAME === 'v5' || ONLY ? { v5WorkloadsExercised: exercised(results) } : {}),
+          // Only where this run's users include a v5 workload: it never passes without them.
+          ...(MIX.slice(0, N).some((w) => OWN_SKETCH[w])
+            ? { v5WorkloadsExercised: exercised(results) }
+            : {}),
           buildsAllSucceeded: allBuilds.every((b) => b.ok === true),
           buildsNoneRefused: allBuilds.every((b) => !b.refused),
           buildWorstAtMost120s: worstBuildAllMs <= 120_000,
