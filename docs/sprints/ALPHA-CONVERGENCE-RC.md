@@ -41,6 +41,10 @@ Conflicts were resolved by intended behaviour, not by taking one side.
 - **Project formats**: schema v7 from the DEV line. Migrations v3 to v7 are the identity. A v3 reader
   opens a v7 document read-only, by name (`app/tests/rc6-alpha-formats.test.ts`).
 
+## Release kit
+
+The package now carries `records-cli.mjs`, the build-record tool a runtime rollback needs, beside the other service bundles. The capacity harness adds a bounded Runtime v5 mix; its default mix and every threshold are unchanged (`docs/ops/CAPACITY-ACCEPTANCE.md`).
+
 ## Out of scope
 
 No ADC, no new components, no billing, no live AI provider, no robotics, no model building. The

@@ -27,6 +27,7 @@ deploy/dev-lab/s8/capacity-acceptance.sh <instance> <evidence dir> smoke    # pr
 |---|---|---|
 | 0 Preflight | Refuses an uncommitted checkout or a busy instance; records health, commit, runtime id, the policy hash (and whether it is the alpha policy), host CPU/memory/kernel/model, the artifact cap | — |
 | 1 Ramp | N = 1 … 6 concurrent users (mix: HC-SR04 R2, DHT22 R2, GPIO R1, I2C LCD R3, GPIO, HC-SR04), 180 s each. N = 6 is informational (above the target: admitted or refused, recorded) | ~25 min |
+| 1b Runtime v5 mix | N = 5 repeated with PWM and a GPIO edge interrupt in the mix (sonar, dht, pwm, lcd, irq); on a runtime that has them. Same thresholds | ~3 min |
 | 2 Faults | N = 5, 600 s; one session ended and one session's QEMU unit killed, both re-created | ~12 min |
 | 3 Soak | N = 5, **7200 s**; a five-user real build burst every 600 s | ~2 h |
 | 4 Summary | Every criterion of every run; **OVERALL PASS** only if ramp N ≤ 5, faults and soak all pass | — |
@@ -42,6 +43,7 @@ Through the deployed instance's own sockets, sandbox, policy and admission. The 
 | `rate5sP5AtLeast0995` | Ratified D-2 rule: every session's simulation rate p5 ≥ 0.995× over 5 s windows, after a 30 s warm-up |
 | `tickGapP99AtMost100` | Every session's tick-gap p99 ≤ 100 ms (the host's own statistics) |
 | `noFailures` | No session failed |
+| `v5WorkloadsExercised` | Reported only when a v5 workload ran. Every such session did the work its source promises (at least half its bound: `runtime/tests/c5-workloads/`), and the host itself reported a pad under PWM | 
 | `isolationEnforced` | Under load, a foreign user, and another user's valid token, can neither read, stream, command nor end a session; the owner is unaffected |
 | `faultsRecovered` | Ended and crashed sessions are reported, their units are gone, and the users can start again |
 | `noLeftovers` | Afterwards no QEMU unit, build-job unit or session directory remains |
