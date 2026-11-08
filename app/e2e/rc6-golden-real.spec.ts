@@ -169,9 +169,12 @@ for (const [locale, other] of [
     const o = await owner.newPage();
     await o.goto('/');
     await T(o, 'admin-button').click();
-    await expect(T(o, 'admin-dialog')).toContainText(id, {
-      timeout: 30_000,
-    });
+    // The list shows no report text or id (by design); the newest report's detail shows this text.
+    const rows = T(o, 'admin-reports').locator('tbody tr');
+    await expect(rows.first()).toBeVisible({ timeout: 30_000 });
+    await rows.first().getByRole('button').click();
+    await expect(T(o, 'admin-report-text')).toHaveText(text);
+    await expect(T(o, 'admin-dialog')).toContainText(id);
     await owner.close();
   });
 }
