@@ -1,5 +1,11 @@
 # In-app problem reports (Sprint 14)
 
+> **Sprint 23B** extends this feature without a new store: feedback kinds (bug, component request,
+> suggestion, general), an optional component name and technical context, a Feedback button in the
+> status bar, the `problem_report` line **v2** (adds `kind` and a `component` boolean), and owner
+> retrieval and deletion in the app. See `ADMIN-AND-FEEDBACK.md`. Limits, status codes and the
+> 90-day retention below are unchanged.
+
 **Status: built, OFF by default.** Nothing changes on a deployment until BOTH switches are set:
 the app build flag `VITE_PROBLEM_REPORTS=1` (shows the menu item) and the Session Host's
 `TBI_REPORTS_DIR` (stores reports). Either one alone is harmless: without the flag nobody sees the

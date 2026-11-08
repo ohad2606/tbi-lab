@@ -101,3 +101,22 @@ export const IS_DEV_ENV = TBI_ENV === 'dev';
  * this module is not folded across modules, and every other build must drop the feature and its
  * modules entirely; the release gate (check-dist.mjs) checks that.
  */
+
+/*
+ * Sprint 23B/23C: the owner's administration, VITE_ADMIN_UI = `off` | `reports` | `full`.
+ * - `off` (also anything else, or unset): no administration entry.
+ * - `reports` (the feedback-only release): the entry shows the Feedback tab only; no tester
+ *   management, and no account endpoint is ever called.
+ * - `full`: testers and feedback.
+ * Even then it only HIDES or shows: the server decides on every call who the owner is, and the
+ * entry appears only after it confirmed (GET /runtime/admin/me). No tester data is compiled into
+ * the app. (Its own parser, not parseEnabled: the release check locates each switch by its
+ * function's compiled form, and each form must stay unique; deploy/release/check-dist.mjs.)
+ */
+export type AdminUiMode = 'off' | 'reports' | 'full';
+export function parseAdminUi(value: unknown): AdminUiMode {
+  const v = typeof value === 'string' ? value.trim() : '';
+  return v === 'full' ? 'full' : v === 'reports' ? 'reports' : 'off';
+}
+
+export const ADMIN_UI: AdminUiMode = parseAdminUi(import.meta.env.VITE_ADMIN_UI);

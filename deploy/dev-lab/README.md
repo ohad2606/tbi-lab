@@ -102,7 +102,13 @@ browser --HTTPS--> Caddy :443 --> oauth2-proxy 127.0.0.1:4180 (Google OIDC, allo
   (0770 caddy:tbi-gate) --> /build: unix:/run/tbi-build/api.sock, /runtime: unix:/run/tbi-runtime/api.sock
 ```
 
-- No backend TCP port is open (7400, 7420 and 8080 are gone). The sockets are group `tbi-gate`.
+- No backend TCP port is open (7400, 7420 and 8080 are gone). Sprint 23B (security review H1):
+  each backend socket has its own group, shared only with caddy: `/run/tbi-runtime/api.sock`
+  `tbi-sock-runtime`, `/run/tbi-build/api.sock` `tbi-sock-build` (mode 0660). Neither service is
+  in `tbi-gate` any more (that group is only Caddy's internal origin: caddy and oauth2-proxy), so
+  one backend cannot reach the other's socket. The build service's admission check reads the
+  Session Host's health-only socket `/run/tbi-runtime/health.sock` (group `tbi-artifacts`; it
+  answers `GET /health` only).
 - Services: `tbi-build` (user `tbi-build`), `tbi-session-host` (user `tbi-runtime`); each build step
   runs as `tbi-build-job@…` (user `tbi-buildjob`), each session's QEMU as `tbi-qemu@…` (user
   `tbi-qemu`). All are system accounts without login or home.
@@ -112,7 +118,8 @@ browser --HTTPS--> Caddy :443 --> oauth2-proxy 127.0.0.1:4180 (Google OIDC, allo
 - Deploy: `deploy/dev-lab/publish.sh <ref>` (app and service bundles, `/srv/tbi-lab/services/<sha>`),
   then `TBI_S8_RUNTIME=<runtime prefix> deploy/dev-lab/s8/install.sh dev-lab`, then install
   `Caddyfile` and `oauth2-proxy.cfg` and **restart** (not reload) caddy and oauth2-proxy, which
-  picks up the `tbi-gate` group and Caddy's `UMask=0007` drop-in (`s8/caddy-gate.conf`).
+  picks up the `tbi-gate` and (Sprint 23B) `tbi-sock-runtime` / `tbi-sock-build` groups and Caddy's
+  `UMask=0007` drop-in (`s8/caddy-gate.conf`).
 - Rollback to Sprint 7: `deploy/dev-lab/s8/rollback-dev-lab.sh /var/backups/tbi-lab/pre-s8-<date>`.
 
 ## Sprint 9 preview (`s9-preview/`, experimental)

@@ -64,6 +64,9 @@ export const REASON_CLASS: Readonly<
   lease_expired: { category: 'disconnect', severity: 'info' },
   lifetime_exceeded: { category: 'timeout', severity: 'info' },
   host_shutdown: { category: 'host_shutdown', severity: 'info' },
+  // Sprint 23B: the owner disabled the account. An existing category (the line's closed set and
+  // the alerter's rules are unchanged); the `reason` field names it exactly.
+  account_disabled: { category: 'client_release', severity: 'info' },
   // failed: what the user's project or firmware asked for (not host faults)
   unsupported_feature: { category: 'user_content', severity: 'info' },
   invalid_attachment: { category: 'user_content', severity: 'info' },

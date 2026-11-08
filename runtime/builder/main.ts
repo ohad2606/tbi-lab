@@ -3,14 +3,15 @@
  *
  *   TBI_BUILD_LISTEN       `unix:/path.sock` (deployment: reachable only by the internal proxy) or
  *                          `host:port` (development; default 127.0.0.1:7420)
- *   TBI_SOCKET_GID         group id given to the unix socket (mode 0660), e.g. the proxy's group
+ *   TBI_SOCKET_GID         group id given to the unix socket (mode 0660): Sprint 23B, the build
+ *                          socket's own group (tbi-sock-build), shared with the proxy only
  *   TBI_IDENTITY_KEY_FILE, TBI_IDENTITY_ISSUER, TBI_IDENTITY_HEADER   gate identity (identity/)
  *   TBI_TICKET_KEY_FILE    run-ticket key shared with the Session Host (identity/ticket.ts)
  *   TBI_BUILD_STATE        private state directory (grants.db)
  *   TBI_POLICY_FILE        plans, quotas and global limits (runtime/policy; default: built-in)
  *   TBI_RUNTIME_JSON       Sprint 12: the provisioned runtime.json of the runtime tickets are
  *                          issued for; its `capabilities` turn e.g. Wire into `requires: [i2c]`
- *   TBI_RUNTIME_HEALTH     the Session Host's socket (`unix:/path`): its live sessions defer new
+ *   TBI_RUNTIME_HEALTH     the Session Host's (health-only, Sprint 23B) socket: its live sessions defer new
  *                          builds (sessions first); stale/unreachable: no new build starts
  *                          (fail closed); unset: no runtime on this host, never deferred
  *   TBI_BUILD_JOB_UNIT     template unit prefix of the per-job sandbox (e.g. tbi-build-job);
@@ -20,6 +21,8 @@
  *   TBI_BUILD_WORK         private root for per-build job directories
  *   TBI_ARTIFACT_CAP_MB    managed artifact cache size (default 256)
  *   TBI_ARTIFACT_LEASE_MS  lease length before a Run (default 600000)
+ *   TBI_ACCESS_VIEW        Sprint 23B: the helper's view/access.json; every request but health
+ *                          needs an authorized account (fail closed). Unset: off (RC4).
  *
  * The toolchain is verified against its pins at start; the service refuses to run otherwise.
  * SIGTERM: stop accepting requests; job directories are removed by each job's cleanup and by the
@@ -29,8 +32,9 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { ESP32_ARDUINO_PROFILE, ESP32_MICROPYTHON_PROFILE } from '@tbi-lab/domain';
-import { describeListen, listen, parseListen } from '../identity/listen.js';
+import { describeListen, listen, parseListen, socketGidFromEnv } from '../identity/listen.js';
 import { identityFromEnv } from '../identity/principal.js';
+import { accessViewFromEnv } from '../identity/access.js';
 import { loadTicketKey } from '../identity/ticket.js';
 import { Policy } from '../policy/policy.js';
 import { RateLimiter } from '../policy/rate.js';
@@ -47,7 +51,7 @@ import {
 } from './micropython.js';
 import micropythonRecord from './profiles/esp32-micropython-1.29.json' with { type: 'json' };
 import { createBuildHttpServer } from './http.js';
-import { BuildService, DEFAULT_LIMITS } from './service.js';
+import { BuildService, DEFAULT_LIMITS, revokeBuildsOnReload } from './service.js';
 import { ArtifactStore } from './store.js';
 import { runtimeCapabilitiesFrom } from './runtimeJson.js';
 import { verifyRegistry } from '../libraries/tree.js';
@@ -57,7 +61,7 @@ const RUNTIME_HOME =
   process.env.TBI_RUNTIME_HOME ??
   join(process.env.XDG_DATA_HOME ?? join(homedir(), '.local', 'share'), 'tbi-lab-runtime');
 const where = parseListen(process.env.TBI_BUILD_LISTEN ?? '127.0.0.1:7420');
-const socketGid = process.env.TBI_SOCKET_GID ? Number(process.env.TBI_SOCKET_GID) : undefined;
+const socketGid = socketGidFromEnv();
 const identity = identityFromEnv();
 const ticketFile = process.env.TBI_TICKET_KEY_FILE;
 if (!ticketFile) throw new Error('TBI_TICKET_KEY_FILE is required');
@@ -172,7 +176,12 @@ setInterval(
   policy.config.global.retention.sweepIntervalMs,
 ).unref();
 await service.sweep();
-const server = createBuildHttpServer(service, { leaseMs, identity });
+// Sprint 23B: on every reload of the access view, the builds of accounts it no longer authorizes
+// stop (deny wins, the Session Host's rule). One line with the count only.
+const access = accessViewFromEnv();
+if (access) revokeBuildsOnReload(service, access);
+access?.start();
+const server = createBuildHttpServer(service, { leaseMs, identity, access });
 // Signal handlers first (see the Session Host): stop cleanly even right after start.
 const stop = () => {
   server.close();

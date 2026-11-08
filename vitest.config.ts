@@ -17,6 +17,8 @@ export default defineConfig({
       'runtime/identity/tests/**/*.test.ts',
       // Sprint 28: the AI provider service (inactive by default; local fakes only).
       'runtime/assist/tests/**/*.test.ts',
+      // Sprint 23C: the dedicated admin service (account administration, the spool's only writer).
+      'runtime/admin/tests/**/*.test.ts',
       // Sprint 8 Phase 4 policy, quotas, rate limits and admission.
       'runtime/policy/tests/**/*.test.ts',
       // RC4 packaging gate: release profile and built-frontend validation.

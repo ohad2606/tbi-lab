@@ -549,6 +549,7 @@ describe('sessionEndRecord (pure)', () => {
       lease_expired: 'disconnect/info',
       lifetime_exceeded: 'timeout/info',
       host_shutdown: 'host_shutdown/info',
+      account_disabled: 'client_release/info', // Sprint 23B revocation
       unsupported_feature: 'user_content/info',
       invalid_attachment: 'user_content/info',
       electrical_error: 'user_content/info',

@@ -1,6 +1,7 @@
 import { CapabilitiesHost } from './Capabilities.js';
 import { ProblemReportHost } from './ProblemReport.js';
 import { AssistHost } from '../assist/mount.js';
+import { AdminHost } from './AdminPanel.js';
 import { useEffect, useLayoutEffect } from 'preact/hooks';
 import { useAppState, useStore, useT } from './context.js';
 import { Editor } from './Editor.js';
@@ -96,6 +97,7 @@ export function App() {
       <CapabilitiesHost />
       <ProblemReportHost />
       {import.meta.env.VITE_TBI_ENV === 'dev' && <AssistHost />}
+      <AdminHost />
     </div>
   );
 }

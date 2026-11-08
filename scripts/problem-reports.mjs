@@ -11,7 +11,8 @@
  *   sudo node scripts/problem-reports.mjs purge-older 90
  *
  * Directory: --dir DIR, else $TBI_REPORTS_DIR, else /var/lib/tbi-runtime/state/reports.
- * No dependencies; plain Node.
+ * No dependencies; plain Node. The owner's administration (Sprint 23B) applies the same rules in
+ * the Session Host (runtime/host/reports.ts: list, get, delete, deleteByPrincipal), without a shell.
  */
 import { readFileSync, readdirSync, statSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
@@ -86,6 +87,7 @@ switch (command) {
         ? [
             id,
             new Date(received).toISOString(),
+            r.kind ?? 'bug', // Sprint 23B feedback kind (RC4 reports are bug reports)
             r.category,
             r.blocking ? 'blocking' : '-',
             String(r.principal ?? '').slice(0, 10),

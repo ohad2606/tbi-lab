@@ -95,6 +95,8 @@ export type RuntimeFailCode =
   | 'stalled'
   | 'session_lost'
   | 'session_expired'
+  /** Sprint 23B: the owner disabled the account; the host ended the session. */
+  | 'account_disabled'
   | 'mirror_failed'
   /** R4: a PWM output that cannot be simulated honestly (details: SimFailure kind 'pwm'). */
   | 'pwm_unsupported'

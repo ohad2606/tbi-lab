@@ -9,14 +9,30 @@
  *                      build service publishes to); default $TBI_RUNTIME_HOME/artifacts. Only
  *                      the location changes: lookup, re-hash and private copy are unchanged.
  *   TBI_HOST_*_MS etc. operator-tunable limits (see TUNABLE below)
+ *   TBI_SOCKET_GID     the API socket's group (Sprint 23B: tbi-sock-runtime, shared with the proxy only)
+ *   TBI_HOST_HEALTH_LISTEN, TBI_HOST_HEALTH_SOCKET_GID   a GET /health-only socket (build service)
  *   TBI_REPORTS_DIR    Sprint 14 problem reports (reports.ts); unset: the feature is off
+ *   TBI_ACCESS_VIEW    Sprint 23B access enforcement: the helper's view/access.json; unset: off
+ *                      (RC4). Set: unauthorized accounts get 403, a bad view 503 (fail closed),
+ *                      and the live sessions of accounts no longer authorized are ended.
+ *   TBI_ADMIN_DIR      Sprint 23B identity observations (admin.ts): the helper's base directory,
+ *                      of which the host writes observations/ only (Sprint 23C: account
+ *                      administration is the admin service's, runtime/admin). Needs
+ *                      TBI_ACCESS_VIEW. Unset: off.
+ *   TBI_OBSERVATIONS_DIR   Sprint 23C, `full` mode: the helper's observations/ directory (group
+ *                      tbi-admin-observe). Replaces TBI_ADMIN_DIR (still accepted: +/observations).
+ *   TBI_ADMIN_MODE     Sprint 23C: off | reports | full (admin.ts AdminMode). Unset: the Sprint
+ *                      23B rule (full with TBI_ACCESS_VIEW, off without). `reports`: the owner's
+ *                      feedback only, owner from TBI_OWNER_PRINCIPAL_FILE (owner.ts); refuses
+ *                      TBI_ADMIN_DIR. Inconsistent combinations refuse to start.
+ *   TBI_OWNER_PRINCIPAL_FILE   `reports` mode: root:<host group> 0640, exactly one principal
  *
  * SIGTERM / SIGINT: stop accepting requests, terminate every session (host_shutdown), release
  * every child process and temporary file, then exit.
  */
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { describeListen, listen, parseListen } from '../identity/listen.js';
+import { describeListen, listen, parseListen, socketGidFromEnv } from '../identity/listen.js';
 import { identityFromEnv } from '../identity/principal.js';
 import { loadTicketKey } from '../identity/ticket.js';
 import { systemdLauncher } from '../harness/launcher.js';
@@ -24,9 +40,12 @@ import { Policy } from '../policy/policy.js';
 import { RateLimiter } from '../policy/rate.js';
 import { stopTemplateInstances } from '../builder/runner.js';
 import { defaultConfig, type HostConfig } from './config.js';
-import { SessionHost } from './host.js';
-import { createHttpServer } from './http.js';
+import { SessionHost, revokeOnReload } from './host.js';
+import { createHealthServer, createHttpServer } from './http.js';
 import { ReportStore, reportsConfigFromEnv } from './reports.js';
+import { accessViewFromEnv } from '../identity/access.js';
+import { IdentityObserver, adminEnvFromEnv } from './admin.js';
+import { OwnerReference } from './owner.js';
 
 // Same locations as runtime/provision/provision.sh (and harness/env.ts).
 const RUNTIME_HOME =
@@ -39,7 +58,15 @@ const where = parseListen(
   process.env.TBI_HOST_LISTEN ??
     `${process.env.TBI_HOST_BIND ?? '127.0.0.1'}:${process.env.TBI_HOST_PORT ?? 7400}`,
 );
-const socketGid = process.env.TBI_SOCKET_GID ? Number(process.env.TBI_SOCKET_GID) : undefined;
+const socketGid = socketGidFromEnv();
+// Sprint 23B (review H1): a health-only socket for the build service's admission check (it no
+// longer shares the API socket's group). Answers GET /health only; no identity, no other route.
+//   TBI_HOST_HEALTH_LISTEN       `unix:/path.sock` (or host:port); unset: none
+//   TBI_HOST_HEALTH_SOCKET_GID   its group (e.g. the artifact group the build service is in)
+const healthWhere = process.env.TBI_HOST_HEALTH_LISTEN
+  ? parseListen(process.env.TBI_HOST_HEALTH_LISTEN)
+  : null;
+const healthGid = socketGidFromEnv('TBI_HOST_HEALTH_SOCKET_GID');
 const identity = identityFromEnv();
 /** Operator-tunable engineering controls (never client-controlled). */
 const TUNABLE: Record<string, keyof HostConfig> = {
@@ -88,20 +115,39 @@ const host = new SessionHost(config);
 const reportsConfig = reportsConfigFromEnv();
 const reports = reportsConfig ? new ReportStore(reportsConfig) : null;
 reports?.start();
-const server = createHttpServer(host, identity, reports);
+// Sprint 23B: access enforcement, revocation of live sessions, administration, observations.
+// Checked first: an inconsistent combination of the admin switches refuses to start.
+const adminEnv = adminEnvFromEnv();
+const access = accessViewFromEnv();
+if (access) {
+  revokeOnReload(host, access);
+  access.start();
+}
+const server = createHttpServer(host, identity, reports, {
+  access,
+  adminMode: adminEnv.mode,
+  owner: adminEnv.ownerFile ? new OwnerReference(adminEnv.ownerFile) : null,
+  // Sprint 23C: the host never writes the helper's spool; in `full` mode, observations only.
+  observer: adminEnv.observationsDir ? new IdentityObserver(adminEnv.observationsDir) : null,
+});
 
 // Signal handlers first: a supervisor may stop the host the moment it reports "listening", and
 // an unhandled SIGTERM would skip the cleanup of its sessions and temporary root.
 let stopping = false;
+const healthServer = healthWhere ? createHealthServer(host) : null;
 const stop = () => {
   if (stopping) return;
   stopping = true;
   server.close();
   server.closeAllConnections();
+  healthServer?.close();
+  healthServer?.closeAllConnections();
+  access?.stop();
   void host.shutdown().then(() => process.exit(0));
 };
 process.on('SIGTERM', stop);
 process.on('SIGINT', stop);
 
 await listen(server, where, socketGid);
+if (healthServer && healthWhere) await listen(healthServer, healthWhere, healthGid);
 process.stdout.write(`tbi-session-host listening on ${describeListen(where)}\n`);

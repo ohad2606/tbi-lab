@@ -20,12 +20,17 @@ import { randomBytes } from 'node:crypto';
 import { chmod, mkdir, open, readFile, readdir, rename, stat, unlink } from 'node:fs/promises';
 import type { FileHandle } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
-import type { Principal } from '../identity/principal.js';
+import { isPrincipal, type Principal } from '../identity/principal.js';
 import type { RateRule } from '../policy/policy.js';
 import { Refusal, admissionEvent } from '../policy/refusal.js';
 import { runtimeIdentity } from './identity.js';
 import type { SessionStatus } from './session.js';
-import { browserOf, validateReport, type ProblemReportRequest } from './reportProtocol.js';
+import {
+  REPORT_ID_RE,
+  browserOf,
+  validateReport,
+  type ProblemReportRequest,
+} from './reportProtocol.js';
 
 /** What the reports need from the host: the status of the principal's OWN session, or null. */
 export interface ReportSessionLookup {
@@ -238,13 +243,16 @@ export class ReportStore {
       this.pending--;
     }
     safely(() => admissionEvent('runtime', 'report', 'admitted', principal));
-    // The operator's alerter forwards this line (e.g. to Telegram). No description, no identity.
+    // The operator's alerter forwards this line (e.g. to Telegram). No description, no identity,
+    // no component name (v2, Sprint 23B: `kind` and whether a component name was given).
     this.line(
       JSON.stringify({
         event: 'problem_report',
-        v: 1,
+        v: 2,
         id,
         category: record.category,
+        kind: record.kind,
+        component: typeof record.component === 'string',
         blocking: record.blocking,
         release: record.release?.version ?? null,
         app: record.app?.version ?? null,
@@ -310,6 +318,116 @@ export class ReportStore {
   async purge(): Promise<number> {
     return purgeOlderThan(this.config.dir, this.now() - this.config.retentionMs);
   }
+
+  // ---- Sprint 23B: owner retrieval and deletion (the operator CLI's operations, in process) ----
+
+  /** Every stored report's metadata, newest first. Never the description or component name. */
+  async list(): Promise<ReportMeta[]> {
+    return (await readAll(this.config.dir))
+      .map(({ id, record, received }) => metaOf(id, record, received))
+      .sort((a, b) => b.receivedAt.localeCompare(a.receivedAt) || a.id.localeCompare(b.id));
+  }
+
+  /** One report in full, or null (malformed id, absent or unreadable). */
+  async get(id: string): Promise<StoredReport | null> {
+    if (!REPORT_ID_RE.test(id)) return null;
+    try {
+      const r = JSON.parse(await readFile(join(this.config.dir, `${id}.json`), 'utf8')) as unknown;
+      return isRecord(r) ? (r as unknown as StoredReport) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Delete one report; false when there is none with that id. */
+  async delete(id: string): Promise<boolean> {
+    if (!REPORT_ID_RE.test(id)) return false;
+    try {
+      await unlink(join(this.config.dir, `${id}.json`));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /** Delete every report of one tester (by the gate-derived principal); the number deleted. */
+  async deleteByPrincipal(principal: Principal): Promise<number> {
+    if (!isPrincipal(principal)) return 0;
+    let n = 0;
+    for (const { id, record } of await readAll(this.config.dir))
+      if (record?.principal === principal && (await this.delete(id))) n++;
+    return n;
+  }
+}
+
+/** A report's metadata for the owner's list (no free text). */
+export interface ReportMeta {
+  id: string;
+  receivedAt: string;
+  /** null: the file could not be read (listed so the owner can delete it). */
+  readable: boolean;
+  kind: string | null;
+  category: string | null;
+  blocking: boolean | null;
+  component: boolean;
+  principal: string | null;
+  release: string | null;
+  app: string | null;
+  session: string | null;
+  length: number;
+  locale: string | null;
+}
+
+const isRecord = (v: unknown): v is Record<string, unknown> =>
+  typeof v === 'object' && v !== null && !Array.isArray(v);
+
+async function readAll(
+  dir: string,
+): Promise<{ id: string; record: StoredReport | null; received: number }[]> {
+  let names: string[];
+  try {
+    names = await readdir(dir);
+  } catch {
+    return [];
+  }
+  const out: { id: string; record: StoredReport | null; received: number }[] = [];
+  for (const name of names.filter((n) => REPORT_FILE_RE.test(n))) {
+    const path = join(dir, name);
+    let record: StoredReport | null = null;
+    try {
+      const r = JSON.parse(await readFile(path, 'utf8')) as unknown;
+      if (isRecord(r)) record = r as unknown as StoredReport;
+    } catch {
+      // listed as unreadable
+    }
+    let received = Date.parse(record?.receivedAt ?? '');
+    try {
+      if (!Number.isFinite(received)) received = (await stat(path)).mtimeMs;
+    } catch {
+      continue; // deleted meanwhile
+    }
+    out.push({ id: name.slice(0, -5), record, received });
+  }
+  return out;
+}
+
+function metaOf(id: string, r: StoredReport | null, received: number): ReportMeta {
+  const str = (v: unknown) => (typeof v === 'string' ? v : null);
+  return {
+    id,
+    receivedAt: new Date(received).toISOString(),
+    readable: r !== null,
+    kind: r ? (str(r.kind) ?? 'bug') : null,
+    category: str(r?.category),
+    blocking: typeof r?.blocking === 'boolean' ? r.blocking : null,
+    component: typeof r?.component === 'string',
+    principal: str(r?.principal),
+    release: str(r?.release?.version),
+    app: str(r?.app?.version),
+    session: str(r?.session?.state),
+    length: typeof r?.description === 'string' ? [...r.description].length : 0,
+    locale: str(r?.locale),
+  };
 }
 
 function safely(fn: () => void): void {
@@ -321,6 +439,7 @@ function safely(fn: () => void): void {
 }
 
 export interface StoredReport {
+  /** Still 1: Sprint 23B only adds the optional kind, component and context. */
   v: 1;
   id: string;
   receivedAt: string;
@@ -348,6 +467,12 @@ export interface StoredReport {
   } | null;
   /** What the app showed (client-reported, kept apart from the host's diagnostics). */
   appSim: ProblemReportRequest['sim'] | null;
+  /** Sprint 23B. Absent in RC4 files (read as `bug`). */
+  kind?: NonNullable<ProblemReportRequest['kind']>;
+  /** Sprint 23B: the requested component's name (kind `component`), or null. */
+  component?: string | null;
+  /** Sprint 23B: the technical context the tester chose to include, or null. */
+  context?: ProblemReportRequest['context'] | null;
 }
 
 function buildRecord(
@@ -388,6 +513,9 @@ function buildRecord(
           }
         : null,
     appSim: r.sim ?? null,
+    kind: r.kind ?? 'bug',
+    component: r.component ?? null,
+    context: r.context ?? null,
   };
 }
 

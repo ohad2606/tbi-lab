@@ -11,6 +11,7 @@ import { probeGpu } from '../gpuInfo.js';
 import { probeRuntime, type RuntimeIdentity } from '../runtimeInfo.js';
 import { useAppState, useT } from './context.js';
 import { ProductFooter } from './ProductFooter.js';
+import { StatusActions } from './StatusActions.js';
 
 export function VersionStatus() {
   const t = useT();
@@ -32,6 +33,7 @@ export function VersionStatus() {
     return (
       <footer class="statusbar" dir={locale.dir} aria-label={t('footer.aria')}>
         <ProductFooter />
+        <StatusActions />
       </footer>
     );
   const label = versionLabel(info);
@@ -55,6 +57,7 @@ export function VersionStatus() {
   return (
     <footer class="statusbar" dir={locale.dir} aria-label={t('footer.aria')}>
       <ProductFooter />
+      <StatusActions />
       <div
         class={open ? 'version-status open' : 'version-status'}
         onKeyDown={(e) => e.key === 'Escape' && setOpen(false)}

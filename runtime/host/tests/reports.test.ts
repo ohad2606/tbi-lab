@@ -208,12 +208,26 @@ describe('POST /reports: identity and acceptance', () => {
     const n = JSON.parse(notes[0]!) as Record<string, unknown>;
     expect(n).toMatchObject({
       event: 'problem_report',
-      v: 1,
+      // Sprint 23B: v2 adds `kind` and `component` (a boolean; never the name).
+      v: 2,
       id: r.body.id,
       category: 'simulation',
+      kind: 'bug',
+      component: false,
     });
     expect(Object.keys(n).sort()).toEqual(
-      ['app', 'at', 'blocking', 'category', 'event', 'id', 'release', 'v'].sort(),
+      [
+        'app',
+        'at',
+        'blocking',
+        'category',
+        'component',
+        'event',
+        'id',
+        'kind',
+        'release',
+        'v',
+      ].sort(),
     );
     expect(notes[0]).not.toContain('secret');
     expect(notes[0]).not.toContain(A.slice(0, 10));
@@ -494,6 +508,12 @@ describe('retention and the operator CLI', () => {
     const bidi = 'abc \u202edcba\u202c \u2066x\u2069'; // RLO ... PDF, isolate
     const tricky = (await report(await s.gate('user-c'), valid({ description: bidi }))).body
       .id as string;
+    // Sprint 23B (review I3): new reports are stored without bidi controls.
+    const path = join(s.dir, `${tricky}.json`);
+    const rec = JSON.parse(readFileSync(path, 'utf8')) as StoredReport;
+    expect(rec.description).toBe('abc dcba x');
+    // A report stored before that (an RC4 host) still has them: `show` escapes them.
+    writeFileSync(path, JSON.stringify({ ...rec, description: bidi }, null, 2));
     const shown = cli('show', tricky);
     expect(shown).not.toMatch(/[\u202a-\u202e\u2066-\u2069]/);
     expect(shown).toContain('\\u202e');

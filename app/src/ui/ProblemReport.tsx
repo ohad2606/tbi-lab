@@ -15,11 +15,16 @@ import { PROBLEM_REPORTS } from '../deployment.js';
 import { gateFetch } from '../gate.js';
 import type { MessageKey } from '../i18n/i18n.js';
 import { useAppState, useT } from './context.js';
+import { probeRuntime } from '../runtimeInfo.js';
 import {
+  MAX_COMPONENT_NAME_CHARS,
   MAX_DESCRIPTION_CHARS,
   REPORT_CATEGORIES,
+  REPORT_KINDS,
   buildRequest,
+  componentLength,
   descriptionLength,
+  deviceClass,
   emptyDraft,
   nextPhase,
   sendReport,
@@ -96,6 +101,7 @@ function ReportDialog({
   const dialog = useRef<HTMLDialogElement>(null);
   const field = useRef<HTMLTextAreaElement>(null);
   const sendButton = useRef<HTMLButtonElement>(null);
+  const componentField = useRef<HTMLInputElement>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
   const [attempted, setAttempted] = useState(false);
   const unmounting = useRef(false);
@@ -124,6 +130,9 @@ function ReportDialog({
   const showDescriptionProblem =
     problems.description === 'too_long' || (attempted && !!problems.description);
   const showCategoryProblem = attempted && !!problems.category;
+  const showComponentProblem = !!problems.component;
+  const bug = draft.kind === 'bug';
+  const componentCount = componentLength(draft.component);
 
   const send = async () => {
     if (sending) return;
@@ -133,12 +142,18 @@ function ReportDialog({
       return dialog.current
         ?.querySelector<HTMLInputElement>('input[name="report-category"]')
         ?.focus();
+    if (problems.component) return componentField.current?.focus();
     setPhase((p) => nextPhase(p, { type: 'send', draft }));
+    // The optional context: looked up only when the tester keeps it included.
+    const runtime = draft.includeContext ? await probeRuntime().catch(() => null) : null;
     const request = buildRequest(draft, {
       locale: state.locale.code,
       view: state.screen === 'editor' ? 'editor' : 'home',
       build: BUILD_INFO,
       sim: state.sim,
+      runtimeVersion: runtime?.version ?? null,
+      device: deviceClass((q) => window.matchMedia(q).matches),
+      projectId: state.screen === 'editor' ? (state.doc?.projectId ?? null) : null,
     });
     const result = await sendReport(request, (input, init) => gateFetch(input, init));
     setPhase((p) => nextPhase(p, { type: 'result', result }));
@@ -177,7 +192,7 @@ function ReportDialog({
       // A browser may close a modal dialog itself (repeated Escape): keep the state in step.
       onClose={() => !unmounting.current && onClose()}
     >
-      <h2 id="report-title">{t('report.title')}</h2>
+      <h2 id="report-title">{t(`report.title.${draft.kind}` as MessageKey)}</h2>
       {phase.kind === 'sent' ? (
         <div role="status" data-testid="report-sent">
           <h3>{t('report.sent.heading')}</h3>
@@ -207,9 +222,77 @@ function ReportDialog({
             void send();
           }}
         >
-          <p class="small">{t('report.intro')}</p>
+          <fieldset class="report-kinds" data-testid="report-kinds">
+            <legend>{t('report.kind.legend')}</legend>
+            {REPORT_KINDS.map((k) => (
+              <label key={k} class="report-choice">
+                <input
+                  type="radio"
+                  name="report-kind"
+                  value={k}
+                  checked={draft.kind === k}
+                  disabled={sending}
+                  data-testid={`report-kind-${k}`}
+                  onChange={() => setDraft({ ...draft, kind: k })}
+                />{' '}
+                {t(`report.kind.${k}` as MessageKey)}
+              </label>
+            ))}
+          </fieldset>
+          <p class="small">{t(`report.intro.${draft.kind}` as MessageKey)}</p>
+          {draft.kind === 'component' && (
+            <>
+              <label for="report-component" class="report-label">
+                {t('report.component.label')}
+              </label>
+              <input
+                ref={componentField}
+                id="report-component"
+                class="report-component"
+                data-testid="report-component"
+                dir="auto"
+                type="text"
+                autoComplete="off"
+                value={draft.component}
+                readOnly={sending}
+                aria-invalid={showComponentProblem}
+                aria-describedby={
+                  showComponentProblem
+                    ? 'report-component-counter report-component-problem'
+                    : 'report-component-counter'
+                }
+                onInput={(e) =>
+                  setDraft({ ...draft, component: (e.target as HTMLInputElement).value })
+                }
+              />
+              <div
+                id="report-component-counter"
+                class={`report-counter${showComponentProblem ? ' report-counter-over' : ''}`}
+                data-testid="report-component-counter"
+              >
+                <span aria-hidden="true" dir="ltr">
+                  {componentCount} / {MAX_COMPONENT_NAME_CHARS}
+                </span>
+                <span class="visually-hidden">
+                  {t('report.counter.label', {
+                    count: componentCount,
+                    max: MAX_COMPONENT_NAME_CHARS,
+                  })}
+                </span>
+              </div>
+              {showComponentProblem && (
+                <p
+                  id="report-component-problem"
+                  class="report-problem"
+                  data-testid="report-problem-component"
+                >
+                  {t('report.problem.componentTooLong', { max: MAX_COMPONENT_NAME_CHARS })}
+                </p>
+              )}
+            </>
+          )}
           <label for="report-description" class="report-label">
-            {t('report.description.label')}
+            {t(`report.description.label.${draft.kind}` as MessageKey)}
           </label>
           <textarea
             ref={field}
@@ -250,51 +333,73 @@ function ReportDialog({
             >
               {problems.description === 'too_long'
                 ? t('report.problem.descriptionTooLong', { max: MAX_DESCRIPTION_CHARS })
-                : t('report.problem.descriptionRequired')}
+                : bug
+                  ? t('report.problem.descriptionRequired')
+                  : t('report.problem.messageRequired')}
             </p>
           )}
-          <fieldset
-            class="report-categories"
-            aria-describedby={showCategoryProblem ? 'report-category-problem' : undefined}
-          >
-            <legend>{t('report.category.legend')}</legend>
-            {REPORT_CATEGORIES.map((c) => (
-              <label key={c} class="report-choice">
+          {bug && (
+            <>
+              <fieldset
+                class="report-categories"
+                aria-describedby={showCategoryProblem ? 'report-category-problem' : undefined}
+              >
+                <legend>{t('report.category.legend')}</legend>
+                {REPORT_CATEGORIES.map((c) => (
+                  <label key={c} class="report-choice">
+                    <input
+                      type="radio"
+                      name="report-category"
+                      value={c}
+                      checked={draft.category === c}
+                      disabled={sending}
+                      aria-invalid={showCategoryProblem}
+                      data-testid={`report-category-${c}`}
+                      onChange={() => setDraft({ ...draft, category: c })}
+                    />{' '}
+                    {t(`report.category.${c}` as MessageKey)}
+                  </label>
+                ))}
+              </fieldset>
+              {showCategoryProblem && (
+                <p
+                  id="report-category-problem"
+                  class="report-problem"
+                  data-testid="report-problem-category"
+                >
+                  {t('report.problem.categoryRequired')}
+                </p>
+              )}
+              <label class="report-choice report-blocking">
                 <input
-                  type="radio"
-                  name="report-category"
-                  value={c}
-                  checked={draft.category === c}
+                  type="checkbox"
+                  checked={draft.blocking}
                   disabled={sending}
-                  aria-invalid={showCategoryProblem}
-                  data-testid={`report-category-${c}`}
-                  onChange={() => setDraft({ ...draft, category: c })}
+                  data-testid="report-blocking"
+                  onChange={(e) =>
+                    setDraft({ ...draft, blocking: (e.target as HTMLInputElement).checked })
+                  }
                 />{' '}
-                {t(`report.category.${c}` as MessageKey)}
+                {t('report.blocking')}
               </label>
-            ))}
-          </fieldset>
-          {showCategoryProblem && (
-            <p
-              id="report-category-problem"
-              class="report-problem"
-              data-testid="report-problem-category"
-            >
-              {t('report.problem.categoryRequired')}
-            </p>
+            </>
           )}
-          <label class="report-choice report-blocking">
+          <label class="report-choice report-context">
             <input
               type="checkbox"
-              checked={draft.blocking}
+              checked={draft.includeContext}
               disabled={sending}
-              data-testid="report-blocking"
+              data-testid="report-context"
+              aria-describedby="report-context-detail"
               onChange={(e) =>
-                setDraft({ ...draft, blocking: (e.target as HTMLInputElement).checked })
+                setDraft({ ...draft, includeContext: (e.target as HTMLInputElement).checked })
               }
             />{' '}
-            {t('report.blocking')}
+            {t('report.context.label')}
           </label>
+          <p id="report-context-detail" class="small report-context-detail">
+            {t('report.context.detail')}
+          </p>
           <section
             class="report-disclosure"
             aria-labelledby="report-disclosure-heading"
@@ -302,6 +407,7 @@ function ReportDialog({
           >
             <h3 id="report-disclosure-heading">{t('report.disclosure.heading')}</h3>
             <p>{t('report.disclosure.sent')}</p>
+            <p>{t('report.disclosure.context')}</p>
             <p>{t('report.disclosure.notSent')}</p>
             <p>{t('report.disclosure.retention')}</p>
           </section>

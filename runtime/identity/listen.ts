@@ -32,17 +32,47 @@ export function listen(server: Server, spec: ListenSpec, socketGroupGid?: number
       } catch (e) {
         if ((e as NodeJS.ErrnoException).code !== 'ENOENT') return reject(e as Error);
       }
-      server.listen(spec.unix, () => {
-        try {
-          if (socketGroupGid !== undefined) chownSync(spec.unix, -1, socketGroupGid);
-          chmodSync(spec.unix, 0o660);
-          resolve();
-        } catch (e) {
-          reject(e as Error);
-        }
-      });
+      // Review N5: the socket is created owner-only (umask 0077), so between bind and the
+      // chown/chmod below nobody else (not even the process's primary group) can connect. For a
+      // unix path Node binds synchronously inside listen() (errors are emitted later), so the
+      // process umask is restored before listen() returns: no other file the process creates,
+      // and no other listen, ever sees the narrowed umask.
+      const previous = process.umask(0o077);
+      try {
+        server.listen(spec.unix, onListening);
+      } finally {
+        process.umask(previous);
+      }
     } else server.listen(spec.port, spec.host, () => resolve());
+
+    function onListening() {
+      if (!('unix' in spec)) return;
+      try {
+        if (socketGroupGid !== undefined) chownSync(spec.unix, -1, socketGroupGid);
+        chmodSync(spec.unix, 0o660);
+        resolve();
+      } catch (e) {
+        reject(e as Error);
+      }
+    }
   });
+}
+
+/**
+ * The group id a service gives its unix socket, from the environment (`TBI_SOCKET_GID` unless
+ * named otherwise). Sprint 23B (review H1): each backend has its OWN socket group shared only
+ * with the internal reverse proxy (`tbi-sock-runtime`, `tbi-sock-build`), so one backend cannot
+ * reach the other's socket and replay gate identities there. Unset: the process's own group.
+ */
+export function socketGidFromEnv(
+  name = 'TBI_SOCKET_GID',
+  env: NodeJS.ProcessEnv = process.env,
+): number | undefined {
+  const v = env[name];
+  if (v === undefined || v === '') return undefined;
+  if (!/^\d{1,10}$/.test(v) || Number(v) > 0xfffffffe)
+    throw new Error(`${name} must be a group id`);
+  return Number(v);
 }
 
 export const describeListen = (spec: ListenSpec): string =>

@@ -26,9 +26,22 @@
  *     POST /__test/fail-next-report?status=N   answer the next report with HTTP N (429 with
  *                                        Retry-After: 120)
  *     POST /__test/hold-reports?ms=N     delay every report request by N ms (0: none)
+ *   Sprint 23B/23C owner administration: `/admin/...` (the owner check and the reports) is served
+ *   by the REAL Session Host routes in `full` mode (access view); the account administration by
+ *   the REAL admin service on ADMIN_PORT (default 7496; the preview proxies `/admin-api` there),
+ *   with a fake helper (fake-admin.ts). Every other route is unchanged (no access enforcement for
+ *   the routine tests).
+ *     POST /__test/reset-admin           fresh registry, helper answering
+ *     POST /__test/admin-hold?on=1|0     keep requests unanswered (the 202 path), or release them
+ *     POST /__test/admin-owner-unrecorded   the owner's Google id not recorded yet
+ *     POST /__test/admin-fill?n=30       Phase C: synthetic authorized testers up to n (cap tests)
+ *   Sprint 23C feedback-only release: the same host on REPORTS_PORT (default 7497), whose
+ *   `/admin` is the REAL reports mode (TBI_ADMIN_MODE=reports: report routes only, the owner
+ *   `e2e-owner` from an owner reference file, every account path 404). The :4175 preview
+ *   (VITE_ADMIN_UI=reports) proxies there. Reports are the same store as above.
  */
 import { randomBytes, createHash, timingSafeEqual } from 'node:crypto';
-import { readFileSync, readdirSync, rmSync } from 'node:fs';
+import { chmodSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { join } from 'node:path';
 import { EngineSession, interpretDigitalInput, type DigitalLevel } from '@tbi-lab/engine';
@@ -49,6 +62,9 @@ import {
 import type { SessionHost } from '../../../runtime/host/host.js';
 import { DEFAULT_REPORTS, REPORT_FILE_RE, ReportStore } from '../../../runtime/host/reports.js';
 import { ownedTempDir } from './temp-dirs.js';
+import { OWNER_SUBJECT, startFakeAdmin } from './fake-admin.js';
+import { OwnerReference } from '../../../runtime/host/owner.js';
+import { derivePrincipal } from '../../../runtime/identity/principal.js';
 
 const PORT = Number(process.env.PORT ?? 7499);
 const STEP_NS = 10_000_000n;
@@ -85,6 +101,9 @@ class FakeSession {
   readonly tokenHash = createHash('sha256').update(this.token).digest('hex');
   readonly log = new EventLog(capacity);
   streams = 0;
+  /** Sprint 23B: closers of the attached event streams (the real HostSession has them too). */
+  readonly streamClosers = new Set<() => void>();
+  emailTag: string | null = null;
   lastActivity = performance.now();
   state: SessionState = 'creating';
   reason: string | null = null;
@@ -374,6 +393,12 @@ const host = {
   async terminate(s: FakeSession) {
     s.terminate();
   },
+  // Sprint 23B: live sessions vs the ceiling, for the owner's administration.
+  capacity() {
+    let live = 0;
+    for (const s of sessions.values()) if (s.state !== 'ended' && s.state !== 'failed') live++;
+    return { live, max: 6 };
+  },
   health() {
     const out: Record<string, number> = {};
     for (const s of sessions.values()) out[s.state] = (out[s.state] ?? 0) + 1;
@@ -388,13 +413,32 @@ const host = {
 
 // Sprint 14: problem reports go to the real store; a reset gives fresh rate windows.
 const reportsDir = join(ownedTempDir('tbi-e2e-reports-'), 'reports');
-const newInner = () =>
-  createHttpServer(
-    host as unknown as SessionHost,
-    E2E_IDENTITY,
-    new ReportStore({ ...DEFAULT_REPORTS, dir: reportsDir }),
-  );
+let reportStore = new ReportStore({ ...DEFAULT_REPORTS, dir: reportsDir });
+const newInner = () => {
+  reportStore = new ReportStore({ ...DEFAULT_REPORTS, dir: reportsDir });
+  return createHttpServer(host as unknown as SessionHost, E2E_IDENTITY, reportStore);
+};
 let inner = newInner();
+// Sprint 23B: the owner's administration, on its own server instance (with the access view).
+const fakeAdmin = startFakeAdmin(() => host.capacity());
+const newAdminInner = () =>
+  createHttpServer(host as unknown as SessionHost, E2E_IDENTITY, reportStore, {
+    adminMode: 'full',
+    access: fakeAdmin.access,
+  });
+let adminInner = newAdminInner();
+// Sprint 23C: the feedback-only mode, owner from a reference file laid out as the operator makes
+// it (one principal, mode 0640; owned by this test process instead of root).
+const ownerFile = join(ownedTempDir('tbi-e2e-owner-'), 'owner.principal');
+writeFileSync(ownerFile, `${derivePrincipal(E2E_IDENTITY, OWNER_SUBJECT)}\n`, { mode: 0o640 });
+chmodSync(ownerFile, 0o640);
+const ownerRef = new OwnerReference(ownerFile, { uid: process.getuid!(), gid: process.getgid!() });
+const newReportsInner = () =>
+  createHttpServer(host as unknown as SessionHost, E2E_IDENTITY, reportStore, {
+    adminMode: 'reports',
+    owner: ownerRef,
+  });
+let reportsInner = newReportsInner();
 let failNextReport: number | null = null;
 let holdReportsMs = 0;
 const storedReports = () => {
@@ -425,6 +469,7 @@ const server = createServer((req: IncomingMessage, res: ServerResponse) => {
     setTimeout(() => inner.emit('request', req, res), holdReportsMs);
     return;
   }
+  if (url.pathname.startsWith('/admin/')) return adminInner.emit('request', req, res);
   if (!url.pathname.startsWith('/__test/')) return inner.emit('request', req, res);
   const reply = (body: unknown) => {
     res.writeHead(200, { 'content-type': 'application/json' });
@@ -456,6 +501,8 @@ const server = createServer((req: IncomingMessage, res: ServerResponse) => {
     case '/__test/reset-reports':
       rmSync(reportsDir, { recursive: true, force: true });
       inner = newInner();
+      adminInner = newAdminInner();
+      reportsInner = newReportsInner();
       failNextReport = null;
       holdReportsMs = 0;
       return reply({ ok: true });
@@ -467,6 +514,20 @@ const server = createServer((req: IncomingMessage, res: ServerResponse) => {
     case '/__test/hold-reports':
       holdReportsMs = Number(url.searchParams.get('ms') ?? 0);
       return reply({ ok: true });
+    case '/__test/reset-admin':
+      fakeAdmin.reset();
+      adminInner = newAdminInner(); // fresh rate windows
+      reportsInner = newReportsInner();
+      return reply({ ok: true });
+    case '/__test/admin-hold':
+      fakeAdmin.hold(url.searchParams.get('on') === '1');
+      return reply({ ok: true });
+    case '/__test/admin-fill':
+      fakeAdmin.fill(Number(url.searchParams.get('n') ?? 30));
+      return reply({ ok: true });
+    case '/__test/admin-owner-unrecorded':
+      fakeAdmin.ownerUnrecorded();
+      return reply({ ok: true });
     case '/__test/reset-builds':
       resetFakeBuildService(
         url.searchParams.has('capImages') ? Number(url.searchParams.get('capImages')) : undefined,
@@ -477,6 +538,21 @@ const server = createServer((req: IncomingMessage, res: ServerResponse) => {
   }
 });
 server.listen(PORT, '127.0.0.1', () => process.stdout.write(`fake session host on ${PORT}\n`));
+// Sprint 23C: the dedicated admin service (its gate route /admin-api/*, prefix stripped).
+const ADMIN_PORT = Number(process.env.ADMIN_PORT ?? 7496);
+createServer((req, res) => fakeAdmin.handle(req, res)).listen(ADMIN_PORT, '127.0.0.1', () =>
+  process.stdout.write(`fake admin service on ${ADMIN_PORT}\n`),
+);
+// Sprint 23C: the feedback-only release's Session Host (its `/admin` in reports mode).
+const REPORTS_PORT = Number(process.env.REPORTS_PORT ?? 7497);
+createServer((req, res) => {
+  const path = new URL(req.url ?? '/', 'http://fake.invalid').pathname;
+  if (path === '/admin' || path.startsWith('/admin/'))
+    return reportsInner.emit('request', req, res);
+  server.emit('request', req, res);
+}).listen(REPORTS_PORT, '127.0.0.1', () =>
+  process.stdout.write(`fake session host (reports mode) on ${REPORTS_PORT}\n`),
+);
 // Sprint 7: the fake build service beside it (the preview proxies /build there).
 const BUILD_PORT = Number(process.env.BUILD_PORT ?? 7498);
 void startFakeBuildService(BUILD_PORT).then(() =>

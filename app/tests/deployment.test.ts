@@ -1,6 +1,7 @@
 /** Deployment configuration (not product logic): sign-out destination, preview identity. */
 import { describe, expect, it } from 'vitest';
 import {
+  parseAdminUi,
   parsePreviewName,
   parseSignOutUrl,
   parseStorageNamespace,
@@ -63,5 +64,17 @@ describe('feedback form link (Sprint 13 H7: disabled unless configured)', () => 
     expect(feedbackLink('https://forms.example/f/abc', null, 'x')).toBe(
       'https://forms.example/f/abc',
     );
+  });
+});
+
+describe('Sprint 23C: the administration switch (VITE_ADMIN_UI)', () => {
+  it('off, reports or full; anything else, or unset, is off', () => {
+    expect(parseAdminUi('full')).toBe('full');
+    expect(parseAdminUi('reports')).toBe('reports');
+    expect(parseAdminUi(' reports ')).toBe('reports');
+    expect(parseAdminUi('off')).toBe('off');
+    // The Sprint 23B value "1" is not silently promoted to the full administration.
+    for (const v of [undefined, null, '', '1', '0', 'on', 'Full', 'REPORTS', 42, true])
+      expect(parseAdminUi(v), String(v)).toBe('off');
   });
 });

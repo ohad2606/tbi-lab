@@ -15,6 +15,9 @@ import { parseTbiEnv } from './src/environment.js';
  *
  * `/build` is the build service (Sprint 7), likewise same-origin: TBI_BUILD_PROXY, default
  * http://127.0.0.1:7420.
+ *
+ * `/admin-api` is the admin service (Sprint 23C, account administration): TBI_ADMIN_PROXY, default
+ * http://127.0.0.1:7410.
  */
 /**
  * TEST ONLY (TBI_TEST_GATE=1, set by the Playwright configuration): the proxy plays the
@@ -33,6 +36,11 @@ function gate(proxy: ProxyServer): void {
         proxyReq.removeHeader(name);
     const cookie = /(?:^|;\s*)tbi_test_user=([A-Za-z0-9._-]{1,64})/.exec(req.headers.cookie ?? '');
     proxyReq.setHeader('x-forwarded-user', cookie?.[1] ?? 'e2e-user');
+    // Sprint 23B: oauth2-proxy also passes the session's address (tests: `tbi_test_email`).
+    const email = /(?:^|;\s*)tbi_test_email=([A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9.-]{1,64})/.exec(
+      req.headers.cookie ?? '',
+    );
+    if (email) proxyReq.setHeader('x-forwarded-email', email[1]!);
   });
 }
 
@@ -47,6 +55,13 @@ const runtimeProxy = {
     target: process.env.TBI_BUILD_PROXY ?? 'http://127.0.0.1:7420',
     changeOrigin: false,
     rewrite: (path: string) => path.replace(/^\/build/, ''),
+    configure: gate,
+  },
+  // Sprint 23C: the dedicated admin service (account administration), behind the same gate.
+  '/admin-api': {
+    target: process.env.TBI_ADMIN_PROXY ?? 'http://127.0.0.1:7410',
+    changeOrigin: false,
+    rewrite: (path: string) => path.replace(/^\/admin-api/, ''),
     configure: gate,
   },
 };

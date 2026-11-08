@@ -41,7 +41,8 @@ export type EndReason =
   | 'terminated' // terminate requested (any time)
   | 'lease_expired' // no client for longer than the lease
   | 'lifetime_exceeded' // maximum session lifetime reached
-  | 'host_shutdown'; // the host process is shutting down
+  | 'host_shutdown' // the host process is shutting down
+  | 'account_disabled'; // Sprint 23B: the owner disabled the account (access view)
 
 export type FailReason =
   | 'artifact_unknown'
