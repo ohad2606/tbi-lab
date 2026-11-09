@@ -563,9 +563,18 @@ describe('C-5 deployed: N concurrent ESP32 sessions on a deployed instance', () 
             1,
           );
         }
-        // Rotation: at most one replacement per second, the earliest due first.
+        // Rotation: at most one replacement per second, the earliest due first. None starts in the
+        // run's last WARMUP_S: its replacement could yield no measured window, and the loop would end
+        // before polling it, leaving its state unset (noFailures false; W1 C4 on Alpha, 2026-11-10,
+        // where 420 s = 7 x the 60 s stagger put the last rotation exactly on the end).
         const due = sessions
-          .filter((x) => !x.fault && x.rotateAt !== undefined && x.rotateAt <= now)
+          .filter(
+            (x) =>
+              !x.fault &&
+              x.rotateAt !== undefined &&
+              x.rotateAt <= now &&
+              elapsed < SECONDS - WARMUP_S,
+          )
           .sort((a, b) => a.rotateAt! - b.rotateAt!)[0];
         if (due) {
           const k = sessions.indexOf(due);
