@@ -16,8 +16,10 @@
 #                 host-level continuity over 2 h, no single session lives longer than 25 min
 #   4. summary:   every criterion of every run; overall PASS only if stages 1 (N <= 5), 2, 3 pass
 # `quick` shortens the stages (60 s ramp, 180 s faults, 600 s soak); `smoke` runs only N = 1 and
-# 2 (60 s), faults at N = 2 (120 s) and a 180 s soak at N = 1: a check of the procedure itself
-# (e.g. on staging, whose policy admits one session: N = 2 then records the refusal).
+# 2 (60 s), faults at N = 2 (120 s) and a 330 s soak at N = 1 with one rotation at 270 s: a check of the
+# procedure itself (e.g. on staging, whose policy admits one session: N = 2 then records the refusal).
+# 270 s is the shortest rotation the harness accepts (4 x 60 s stagger + 30 s warm-up); the earlier 100 s
+# failed that validation, so the smoke soak never produced a report and its OVERALL was always FAIL.
 set -euo pipefail
 inst="${1:?usage: capacity-acceptance.sh <instance> <evidence dir> [quick]}"
 out="${2:?evidence dir}"
@@ -27,7 +29,7 @@ mkdir -p "$out"
 RAMP_S=180 FAULT_S=600 SOAK_S=7200 BURST_S=600 ROTATE_S=1500
 RAMP_N="1 2 3 4 5 6" FAULT_N=5 SOAK_N=5
 if [ "$quick" = quick ]; then RAMP_S=60 FAULT_S=180 SOAK_S=600 BURST_S=300 ROTATE_S=300; fi
-if [ "$quick" = smoke ]; then RAMP_S=60 FAULT_S=120 SOAK_S=180 BURST_S=90 ROTATE_S=100 RAMP_N="1 2" FAULT_N=2 SOAK_N=1; fi
+if [ "$quick" = smoke ]; then RAMP_S=60 FAULT_S=120 SOAK_S=330 BURST_S=90 ROTATE_S=270 RAMP_N="1 2" FAULT_N=2 SOAK_N=1; fi
 
 health() { sudo -n curl -s -m 5 --unix-socket "/run/$inst-runtime/api.sock" http://x/health; }
 echo "== 0. preflight ($inst)" | tee "$out/summary.txt"
