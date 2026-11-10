@@ -2,6 +2,8 @@ import { CapabilitiesHost } from './Capabilities.js';
 import { ProblemReportHost } from './ProblemReport.js';
 import { AssistHost } from '../assist/mount.js';
 import { useEffect, useLayoutEffect } from 'preact/hooks';
+import { PREVIEW_NAME, TBI_ENV } from '../deployment.js';
+import { documentTitle } from '../environment.js';
 import { useAppState, useStore, useT } from './context.js';
 import { Editor } from './Editor.js';
 import { EnvironmentNotes } from './EnvironmentNotes.js';
@@ -24,6 +26,8 @@ export function App() {
   useLayoutEffect(() => {
     document.documentElement.lang = state.locale.code;
     document.documentElement.dir = state.locale.dir;
+    // The window title carries the product's descriptor in the interface language (2026-11-10).
+    document.title = documentTitle(TBI_ENV, PREVIEW_NAME, t('app.descriptor'));
   }, [state.locale]);
 
   useEffect(() => {

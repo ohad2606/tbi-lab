@@ -19,6 +19,7 @@ import { createHash } from 'node:crypto';
 import type { HtmlTagDescriptor, Plugin } from 'vite';
 import {
   BRAND_COLOURS,
+  PRODUCT_DESCRIPTION,
   PRODUCT_NAME,
   appNames,
   documentTitle,
@@ -73,6 +74,7 @@ export function brandAssets(root: URL, env: TbiEnvironment, base = '/') {
     id: '/',
     name: names.name,
     short_name: names.shortName,
+    description: PRODUCT_DESCRIPTION,
     start_url: '/',
     scope: '/',
     display: 'standalone',
@@ -132,6 +134,14 @@ export function brandAssets(root: URL, env: TbiEnvironment, base = '/') {
     },
     { tag: 'meta', attrs: { name: 'theme-color', content: theme } },
     { tag: 'meta', attrs: { name: 'apple-mobile-web-app-title', content: names.shortName } },
+    // Positioning (2026-11-10): the description and the social preview (no image: the logo assets
+    // stay as they are). Static, so in English; the app localizes the window title.
+    { tag: 'meta', attrs: { name: 'application-name', content: names.name } },
+    { tag: 'meta', attrs: { name: 'description', content: PRODUCT_DESCRIPTION } },
+    { tag: 'meta', attrs: { property: 'og:type', content: 'website' } },
+    { tag: 'meta', attrs: { property: 'og:site_name', content: PRODUCT_NAME } },
+    { tag: 'meta', attrs: { property: 'og:title', content: documentTitle(env) } },
+    { tag: 'meta', attrs: { property: 'og:description', content: PRODUCT_DESCRIPTION } },
   ];
   return { files, tags, manifest };
 }

@@ -22,11 +22,15 @@ describe('the environment flag', () => {
     expect(() => parseTbiEnv('x')).toThrow(/^the environment setting must be/);
   });
 
-  it('titles: "[DEV] " first on DEV; production unchanged; previews keep their name', () => {
-    expect(documentTitle('production')).toBe('TBI Lab');
-    expect(documentTitle('dev')).toBe('[DEV] TBI Lab');
-    expect(documentTitle('production', 'Sprint 9')).toBe('Sprint 9 preview · TBI Lab');
-    expect(documentTitle('dev', 'Sprint 9')).toBe('[DEV] Sprint 9 preview · TBI Lab');
+  it('titles: "[DEV] " first on DEV; previews keep their name; the descriptor last, localizable', () => {
+    const D = 'Electronics Engineering Workspace';
+    expect(documentTitle('production')).toBe(`TBI Lab · ${D}`);
+    expect(documentTitle('dev')).toBe(`[DEV] TBI Lab · ${D}`);
+    expect(documentTitle('production', 'Sprint 9')).toBe(`Sprint 9 preview · TBI Lab · ${D}`);
+    expect(documentTitle('dev', 'Sprint 9')).toBe(`[DEV] Sprint 9 preview · TBI Lab · ${D}`);
+    expect(documentTitle('production', null, 'סביבת עבודה הנדסית לאלקטרוניקה')).toBe(
+      'TBI Lab · סביבת עבודה הנדסית לאלקטרוניקה',
+    );
     expect(appNames('production')).toEqual({ name: 'TBI Lab', shortName: 'TBI Lab' });
     expect(appNames('dev')).toEqual({ name: 'TBI Lab DEV', shortName: 'TBI Lab DEV' });
   });
