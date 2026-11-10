@@ -13,6 +13,9 @@ export default defineConfig({
       'runtime/host/tests/**/*.test.ts',
       // Build service (Sprint 7) with a fake provider; the real toolchain is the heavy suite.
       'runtime/builder/tests/**/*.test.ts',
+      // RC6: the deployed capacity harness's pure scheduling (no host; the harness itself is a
+      // runtime suite).
+      'runtime/tests/unit/**/*.test.ts',
       // Sprint 8 identity boundary (principal derivation, listening, the test gate).
       'runtime/identity/tests/**/*.test.ts',
       // Sprint 28: the AI provider service (inactive by default; local fakes only).

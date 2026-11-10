@@ -47,6 +47,7 @@ import { afterAll, describe, expect, it } from 'vitest';
 import { recordEvidence } from '../harness/env.js';
 import { Circuit } from '../host/tests/r1-support.js';
 import { PROTOCOL } from '../host/protocol.js';
+import { dueRotation, rotationCutoff } from './c5-rotation.js';
 
 const INSTANCE = process.env.TBI_C5_DEPLOYED ?? '';
 const N = Number(process.env.TBI_C5_N ?? 1);
@@ -471,6 +472,7 @@ describe('C-5 deployed: N concurrent ESP32 sessions on a deployed instance', () 
       const bursts: Promise<void>[] = [];
       const retired: Live[] = [];
       const rotations: Record<string, unknown>[] = [];
+      const clock = { t0, seconds: SECONDS, warmupS: WARMUP_S };
       /** Per sampled second: sessions in state running (host-level continuity). */
       const running: number[] = [];
       while (performance.now() - t0 < SECONDS * 1000) {
@@ -563,19 +565,10 @@ describe('C-5 deployed: N concurrent ESP32 sessions on a deployed instance', () 
             1,
           );
         }
-        // Rotation: at most one replacement per second, the earliest due first. None starts in the
-        // run's last WARMUP_S: its replacement could yield no measured window, and the loop would end
-        // before polling it, leaving its state unset (noFailures false; W1 C4 on Alpha, 2026-11-10,
-        // where 420 s = 7 x the 60 s stagger put the last rotation exactly on the end).
-        const due = sessions
-          .filter(
-            (x) =>
-              !x.fault &&
-              x.rotateAt !== undefined &&
-              x.rotateAt <= now &&
-              elapsed < SECONDS - WARMUP_S,
-          )
-          .sort((a, b) => a.rotateAt! - b.rotateAt!)[0];
+        // Rotation: at most one replacement per iteration, the earliest due first, none in the
+        // run's last WARMUP_S (c5-rotation.ts). Judged on a fresh clock: this iteration's polling,
+        // isolation probes and faults may have taken seconds since `now`.
+        const due = dueRotation(sessions, performance.now(), clock);
         if (due) {
           const k = sessions.indexOf(due);
           const before = await statusOf(due);
@@ -604,6 +597,7 @@ describe('C-5 deployed: N concurrent ESP32 sessions on a deployed instance', () 
           if (status === 201 && fresh !== due)
             for (let w = 0; w < 80 && runningAt === null; w++) {
               const st = await statusOf(fresh);
+              fresh.status = st.body;
               if (st.body.state === 'running' && Number(st.body.simNs ?? 0) > 0) {
                 runningAt = performance.now();
                 fresh.startupMs = Math.round(runningAt - fresh.startedAt);
@@ -640,6 +634,30 @@ describe('C-5 deployed: N concurrent ESP32 sessions on a deployed instance', () 
       }
 
       await Promise.all(bursts);
+
+      // Final observation: every current instance (a replacement started near the end included)
+      // is polled once more before anything is judged, so no state is left unset by the loop's end.
+      // A retired instance keeps the state polled just before it was ended. Then every replacement
+      // is accounted for: its instance's last observed state.
+      const loopEnd = performance.now();
+      for (const x of sessions) {
+        if (x.fault) continue;
+        x.status = (await statusOf(x)).body;
+      }
+      const byId = new Map([...retired, ...sessions].map((x) => [x.id, x]));
+      for (const r of rotations)
+        r.replacementState =
+          r.newId !== null
+            ? ((byId.get(r.newId as string)?.status?.state as string) ?? null)
+            : null;
+      // Instances due for replacement that the cut-off deferred (they end with the run instead).
+      const deferredAtCutoff = sessions
+        .filter((x) => !x.fault && x.rotateAt !== undefined && x.rotateAt < loopEnd)
+        .map((x) => ({
+          slot: x.slot,
+          dueS: Math.round((x.rotateAt! - t0) / 1000),
+          cutoffS: Math.round((rotationCutoff(clock) - t0) / 1000),
+        }));
 
       // 6. Clean-up and leak check.
       const results = [...retired, ...sessions].map((x) => ({
@@ -741,6 +759,7 @@ describe('C-5 deployed: N concurrent ESP32 sessions on a deployed instance', () 
                 staggerS: ROTATE_STAGGER_S,
                 gapMaxMs: ROTATE_GAP_MAX_MS,
                 replacements: rotations,
+                deferredAtCutoff,
                 // Host-level continuity: sampled seconds by the number of running sessions.
                 runningSeconds: running.reduce<Record<string, number>>((h, v) => {
                   h[v] = (h[v] ?? 0) + 1;
@@ -808,7 +827,8 @@ describe('C-5 deployed: N concurrent ESP32 sessions on a deployed instance', () 
           ...(ROTATE_S > 0
             ? {
                 // Every replacement: the old session was running, ended by its user, its unit and
-                // directory gone; the same user admitted again and running within the bound.
+                // directory gone; the same user admitted again and running within the bound, and
+                // still running when last observed (retired later, or at the final observation).
                 rotationsClean:
                   rotations.length > 0 &&
                   rotations.every(
@@ -817,6 +837,7 @@ describe('C-5 deployed: N concurrent ESP32 sessions on a deployed instance', () 
                       (r.endStatus as number) < 300 &&
                       r.cleanedUp === true &&
                       r.admitted === 201 &&
+                      r.replacementState === 'running' &&
                       r.gapMs !== null &&
                       (r.gapMs as number) <= ROTATE_GAP_MAX_MS,
                   ),
