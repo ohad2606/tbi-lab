@@ -8,6 +8,8 @@
  *                      tagline, transparent; 300 px tall, Projects band at 150 px)
  *   app_logo_05.png -> src/assets/brand/tbi-lab-favicon.png (the dark app icon, 64 px; interim tab icon:
  *                      the package has no dedicated small-size favicon)
+ *   app_logo_05.png -> ../admin-app/public/icon-192.png, icon-512.png (the same dark app icon for the
+ *                      TBI Admin app's web manifest and home-screen icon; admin app design §3)
  * The artwork is used exactly as supplied: transparent files are only trimmed to their non-transparent
  * pixels (fully transparent margins removed, nothing visible cut), then scaled with the aspect ratio
  * kept. Nothing is recoloured, redrawn or made transparent.
@@ -86,6 +88,8 @@ const outputs = [
   ['app_logo_04.png', { height: 76, trim: true }, 'src/assets/brand/tbi-lab-symbol.png'],
   ['app_logo_01.png', { height: 300, trim: true }, 'src/assets/brand/tbi-lab-logo.png'],
   ['app_logo_05.png', { height: 64 }, 'src/assets/brand/tbi-lab-favicon.png'],
+  ['app_logo_05.png', { height: 192 }, '../admin-app/public/icon-192.png'],
+  ['app_logo_05.png', { height: 512 }, '../admin-app/public/icon-512.png'],
 ];
 for (const [file, job, out] of outputs.filter(([, , o]) => !only || o === only)) {
   const png = await render(file, job);
