@@ -7,6 +7,7 @@ import type { MessageKey } from './messages.en.js';
  */
 export const he: Record<MessageKey, string> = {
   'app.loading': 'טוען…',
+  'app.descriptor': 'סביבת עבודה הנדסית לאלקטרוניקה',
   'app.storageUnavailable':
     'TBI Lab אינו יכול להשתמש באחסון המקומי של הדפדפן (ייתכן שהוא חסום, למשל בחלון גלישה פרטית), ולכן לא ניתן לשמור כאן פרויקטים. דבר לא שונה. אפשרו אחסון לאתר או השתמשו בחלון רגיל, ואז טענו מחדש.',
 
@@ -1045,7 +1046,8 @@ export const he: Record<MessageKey, string> = {
   'inspector.limitations': 'מגבלות המודל',
   // Sprint 13 H4: first-run guide.
   'onboarding.heading': 'צעדים ראשונים',
-  'onboarding.intro': 'TBI Lab מדמה את ה־ESP32 הקלאסי ואת המעגל סביבו, כאן בדפדפן שלכם.',
+  'onboarding.intro':
+    'TBI Lab היא סביבת עבודה הנדסית לאלקטרוניקה. היא מדמה את ה־ESP32 הקלאסי ואת המעגל סביבו, כאן בדפדפן שלכם.',
   'onboarding.step1': 'פתחו אחת מדוגמאות ה־ESP32 שלמטה, למשל אזעקת המרחק.',
   'onboarding.step2': 'בלשונית הקוד, לחצו בנייה. הבנייה הראשונה עשויה להימשך כדקה.',
   'onboarding.step3':

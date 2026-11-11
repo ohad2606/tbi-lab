@@ -2,6 +2,7 @@ import { CapabilitiesHost } from './Capabilities.js';
 import { ProblemReportHost } from './ProblemReport.js';
 import { AdminHost } from './AdminPanel.js';
 import { useEffect, useLayoutEffect } from 'preact/hooks';
+import { PREVIEW_NAME } from '../deployment.js';
 import { useAppState, useStore, useT } from './context.js';
 import { Editor } from './Editor.js';
 import { Home } from './Home.js';
@@ -23,6 +24,9 @@ export function App() {
   useLayoutEffect(() => {
     document.documentElement.lang = state.locale.code;
     document.documentElement.dir = state.locale.dir;
+    // The window title carries the product's descriptor in the interface language (2026-11-10).
+    const title = `TBI Lab · ${t('app.descriptor')}`;
+    document.title = PREVIEW_NAME ? `${PREVIEW_NAME} preview · ${title}` : title;
   }, [state.locale]);
 
   useEffect(() => {

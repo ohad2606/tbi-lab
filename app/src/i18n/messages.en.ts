@@ -4,6 +4,7 @@
  */
 export const en = {
   'app.loading': 'Loading…',
+  'app.descriptor': 'Electronics Engineering Workspace',
   'app.storageUnavailable':
     "TBI Lab cannot use this browser's local storage (it may be blocked, for example in some private windows), so projects cannot be saved here. Nothing was changed. Allow site storage or use a regular window, then reload.",
 
@@ -1095,7 +1096,7 @@ export const en = {
   // Sprint 13 H4: first-run guide.
   'onboarding.heading': 'Getting started',
   'onboarding.intro':
-    'TBI Lab simulates a Classic ESP32 and the circuit around it, here in your browser.',
+    'TBI Lab is an electronics engineering workspace. It simulates a Classic ESP32 and the circuit around it, here in your browser.',
   'onboarding.step1': 'Open an ESP32 example below, for example the distance alarm.',
   'onboarding.step2': 'In the Code tab, press Build. The first build can take about a minute.',
   'onboarding.step3':
