@@ -7,6 +7,11 @@
  * in-memory registry and regenerates the two views. The admin service's live-session count
  * comes from the fake Session Host (`capacity`).
  *
+ * Admin app: it also plays the ops side's two read-only views the admin service serves to the
+ * TBI Admin app: the usage exporter's `usage/usage.json` (synthetic activity of the seeded
+ * testers over the last 30 Israel days, relative to now) and the helper's `view/audit.json`
+ * (seeded lines, plus one per request it answers).
+ *
  * Registry addresses use example.invalid only. Subjects: the owner is `e2e-owner`; `e2e-user`
  * (the default test identity) is an ordinary tester, so the routine tests never see the entry.
  */
@@ -17,6 +22,7 @@ import { join } from 'node:path';
 import { AccessView, deriveEmailTag } from '../../../runtime/identity/access.js';
 import { derivePrincipal } from '../../../runtime/identity/principal.js';
 import { AdminSpool, DEFAULT_ADMIN, createAdminServer } from '../../../runtime/admin/accounts.js';
+import { AdminViews, todayIn, viewPathsFromEnv } from '../../../runtime/admin/views.js';
 import { E2E_IDENTITY } from './identity.js';
 import { ownedTempDir } from './temp-dirs.js';
 
@@ -97,10 +103,89 @@ function seed(): Rec[] {
   ];
 }
 
+/** Israel day `n` days before today. */
+const dayAgo = (n: number) => {
+  const today = todayIn('Asia/Jerusalem', Date.now());
+  const ms = Date.parse(`${today}T12:00:00Z`) - n * 86_400_000;
+  return new Date(ms).toISOString().slice(0, 10);
+};
+
+/** Synthetic usage: Alex every other day, tester two on a few days, some unmatched activity. */
+function usageFile(): string {
+  const alex = target('tester.one@example.invalid');
+  const two = target('tester.two@example.invalid');
+  const former = target('former@example.invalid');
+  const zero = { signIns: 0, builds: 0, prebuilt: 0, runs: 0, simSeconds: 0, refusals: 0 };
+  const days: Record<string, Record<string, typeof zero>> = {};
+  const put = (n: number, t: string, m: Partial<typeof zero>) =>
+    ((days[dayAgo(n)] ??= {})[t] = { ...zero, ...m });
+  for (let n = 28; n >= 0; n -= 2)
+    put(n, alex, { signIns: 1, builds: 2, runs: 3, simSeconds: 600 });
+  // Today: Alex 2 sign-ins, 4 builds, 1 prebuilt, 5 runs, 15 simulated minutes, 1 refusal.
+  put(0, alex, { signIns: 2, builds: 4, prebuilt: 1, runs: 5, simSeconds: 900, refusals: 1 });
+  put(0, two, { signIns: 1, runs: 2, simSeconds: 120 });
+  put(3, two, { builds: 1, runs: 1, simSeconds: 60 });
+  put(20, former, { signIns: 1, runs: 1, simSeconds: 30 });
+  put(0, 'unmatched', { refusals: 2 });
+  return JSON.stringify({
+    v: 1,
+    generated: new Date().toISOString(),
+    tz: 'Asia/Jerusalem',
+    from: dayAgo(29),
+    days,
+    lastActivity: {
+      [alex]: new Date(Date.now() - 3600_000).toISOString(),
+      [two]: new Date(Date.now() - 7200_000).toISOString(),
+      [former]: `${dayAgo(20)}T08:00:00Z`,
+    },
+  });
+}
+
+interface AuditLine {
+  at: string;
+  action: string;
+  target: string | null;
+  result: string;
+  corr: string;
+  count?: number;
+}
+const seedAudit = (): AuditLine[] => [
+  {
+    at: `${dayAgo(1)}T08:00:00Z`,
+    action: 'disable',
+    target: target('former@example.invalid'),
+    result: 'done',
+    corr: 'seed-2',
+  },
+  {
+    at: `${dayAgo(2)}T07:00:00Z`,
+    action: 'sign_ins',
+    target: null,
+    result: 'ok',
+    corr: 'seed-1',
+    count: 3,
+  },
+];
+
 export function startFakeAdmin(capacity: () => { live: number; max: number }) {
   const dir = ownedTempDir('tbi-e2e-admin-');
   for (const d of ['spool', 'results', 'view', 'observations']) mkdirSync(join(dir, d));
+  mkdirSync(join(dir, 'usage'));
   let registry = seed();
+  let audit = seedAudit();
+  let views = { usage: true, audit: true };
+  const writeHistory = () => {
+    const usage = join(dir, 'usage', 'usage.json');
+    const auditFile = join(dir, 'view', 'audit.json');
+    if (views.usage) writeFileSync(usage, usageFile());
+    else rmSync(usage, { force: true });
+    if (views.audit)
+      writeFileSync(
+        auditFile,
+        JSON.stringify({ v: 1, generated: new Date().toISOString(), entries: audit.slice(0, 500) }),
+      );
+    else rmSync(auditFile, { force: true });
+  };
   let hold = false;
   let ownerRecorded = true;
   let seq = 0;
@@ -173,7 +258,16 @@ export function startFakeAdmin(capacity: () => { live: number; max: number }) {
     );
   };
 
-  const answer = (id: string, code: string, extra: Record<string, unknown> = {}) =>
+  let current: { action: string; target: string | null } = { action: 'refused', target: null };
+  const answer = (id: string, code: string, extra: Record<string, unknown> = {}) => {
+    audit.unshift({
+      at: new Date().toISOString(),
+      action: code === 'done' ? current.action : 'refused',
+      target: (extra.target as string | undefined) ?? current.target,
+      result: code,
+      corr: id.slice(-8),
+    });
+    writeHistory();
     writeFileSync(
       join(dir, 'results', `${id}.json`),
       JSON.stringify({
@@ -185,6 +279,7 @@ export function startFakeAdmin(capacity: () => { live: number; max: number }) {
         ...extra,
       }),
     );
+  };
 
   const processSpool = () => {
     if (hold) return;
@@ -203,6 +298,10 @@ export function startFakeAdmin(capacity: () => { live: number; max: number }) {
       } finally {
         rmSync(path, { force: true });
       }
+      current = {
+        action: req.action,
+        target: req.target ?? (req.email ? target(req.email) : null),
+      };
       const owner = registry.find((r) => r.class === 'owner')!;
       if (!ownerRecorded || req.actor !== principal(owner.sub)) {
         answer(req.id, 'forbidden');
@@ -246,11 +345,17 @@ export function startFakeAdmin(capacity: () => { live: number; max: number }) {
   };
 
   writeViews();
+  writeHistory();
   const access = new AccessView(join(dir, 'view', 'access.json'), { pollMs: 1000 }).start();
   const spool = new AdminSpool({ ...DEFAULT_ADMIN, dir, resultWaitMs: 2000, pollMs: 50 });
   setInterval(processSpool, 100).unref();
   const newService = () =>
-    createAdminServer(E2E_IDENTITY, { access, spool, capacity: async () => capacity() });
+    createAdminServer(E2E_IDENTITY, {
+      access,
+      spool,
+      capacity: async () => capacity(),
+      views: new AdminViews(viewPathsFromEnv(dir, {})),
+    });
   let service = newService();
 
   return {
@@ -261,6 +366,9 @@ export function startFakeAdmin(capacity: () => { live: number; max: number }) {
     reset() {
       service = newService();
       registry = seed();
+      audit = seedAudit();
+      views = { usage: true, audit: true };
+      writeHistory();
       hold = false;
       ownerRecorded = true;
       for (const d of ['spool', 'results'])
@@ -282,6 +390,11 @@ export function startFakeAdmin(capacity: () => { live: number; max: number }) {
         registry.push(rec({ email: `filler${String(i).padStart(2, '0')}@example.invalid` }));
       writeViews();
       access.reload();
+    },
+    /** Admin app: make the usage history and the audit view unavailable (or available again). */
+    history(on: { usage: boolean; audit: boolean }) {
+      views = on;
+      writeHistory();
     },
     /** The owner's Google id not yet recorded: owner by email tag, privileged actions refused. */
     ownerUnrecorded() {
