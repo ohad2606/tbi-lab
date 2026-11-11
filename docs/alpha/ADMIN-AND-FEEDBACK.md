@@ -292,6 +292,96 @@ additions. Everything else (D1 boundary, gate, CSRF, rate limits, revocation) is
   place; the owner is not counted). At the cap, the add form is disabled and says why, and a
   reactivation is refused with `cap_reached`.
 
+## Admin app (`admin-lab`): the TBI Admin app and its read routes (design approved 2026-11-11)
+
+A separate owner administration app for phone and desktop (owner decisions D1-D6; the design and
+its deployment, a second gate and site, are in the private ops repository). Nothing is deployed
+by the app side; this section is what the code provides.
+
+**In-app phone fix (D4).** While the Lab's administration dialog is open on a screen narrower than
+1024 px, the Lab drops its desktop minimum (`body:has(.admin-dialog[open]) .app { min-width: 0 }`,
+`app/src/styles.css`). Mobile Chrome and Edge then no longer shrink the 1024 px page to fit, which
+made the dialog appear at about 40% of the screen. `app/e2e/phasec-phone-fit.spec.ts` (Pixel 7,
+mobile emulation, which does reproduce the shrink-to-fit: the layout viewport is 1024 px with the
+dialog closed) checks that with the dialog open the document is not wider than the 412 px viewport
+and the dialog fills it. The real-phone check stays part of acceptance.
+
+**Shared client** `packages/admin-client` (`@tbi-lab/admin-client`): the DOM-free client moved from
+`app/src/ui/admin.ts` (which now re-exports it) and the `admin.*` texts (EN, HE) with the report
+kind and area labels, spread unchanged into the Lab's bundles. Same paths for both apps:
+`/runtime/admin/*` (owner check, reports) and `/admin-api/*` (accounts, requests, sessions,
+usage, audit), relative URLs, `credentials: same-origin`, `cache: no-store`, and
+`Accept: application/json` on every request, so an expired gate session answers 401 rather than
+starting a login. New: `loadUsage(from?, to?)`, `loadAudit(limit)`.
+
+**New admin service routes** (`runtime/admin/views.ts`), read only:
+
+| Route (gate prefix `/admin-api`, stripped) | Answer |
+|---|---|
+| `GET /admin-api/usage?from=YYYY-MM-DD&to=YYYY-MM-DD` | `{generated, tz, from, to, days:[{date, accounts:{<target or "unmatched">: metrics}}], lastActivity}`: the days in range with activity, ascending. Israel days; default the last 30 (ending today in the file's time zone); `from`/`to` optional; at most 400 days; `from > to`, a bad date, an unknown or repeated parameter: `400` |
+| `GET /admin-api/audit?limit=N` | `{generated, entries:[{at, action, target, result, corr, count?}]}`, newest first; `N` 1-500, default 100; anything else `400` |
+
+The same chain as `GET /accounts`: the gate identity, the access view (deny wins), the per-caller
+rate limit, then the owner (403 for testers and everyone else, 401 without identity). GET only (a
+same-origin JSON POST is `405`, any other mutation attempt the CSRF refusal). `Cache-Control:
+no-store`. A missing, unreadable, non-regular, larger than 8 MiB, non-`v:1` or malformed file is
+`503 usage_unavailable` / `503 audit_unavailable`, never a partial answer.
+
+**File contracts** (written by the ops side as root, group `tbi-admin-view`, `0640`):
+
+```
+<TBI_ADMIN_DIR>/usage/usage.json   (TBI_ADMIN_USAGE overrides)       the usage exporter
+<TBI_ADMIN_DIR>/view/audit.json    (TBI_ADMIN_AUDIT_VIEW overrides)  the helper's last 500 audit lines
+```
+
+```json
+{"v":1,"generated":"<ISO UTC>","tz":"Asia/Jerusalem","from":"YYYY-MM-DD",
+ "days":{"YYYY-MM-DD":{"t_<target>":{"signIns":0,"builds":0,"prebuilt":0,"runs":0,"simSeconds":0,"refusals":0}}},
+ "lastActivity":{"t_<target>":"<ISO UTC>"}}
+{"v":1,"generated":"<ISO UTC>","entries":[{"at":"<ISO UTC>","action":"add|disable|reactivate|rename|refused|record_identity|identity_mismatch|unknown_identity|sign_ins|prune_backups","target":"t_…|null","result":"<code>","corr":"<id>","count":0}]}
+```
+
+Accounts are the same opaque targets as in `GET /accounts`; `unmatched` is activity that maps to no
+account (the app shows "unknown"). `usage.json` is validated in full (any bad day, key or metric
+fails the file; an absent metric is 0; an unknown metric is dropped). In `audit.json` an entry
+with an unknown action or a bad field is left out (a newer helper's action does not fail the
+view); entries are re-sorted newest first and capped at 500. No address, name or token is in
+either file or either answer.
+
+**The app** `admin-app/` (workspace `@tbi-lab/admin-app`; `npm run admin-app:dev`,
+`admin-app:build`): Preact + Vite, static files, hash routes, no service worker; web manifest and
+192/512 icons (from the same official artwork as the Lab's favicon). Mobile-first with no minimum
+width: one column on a phone, side navigation and tables from 900 px; touch targets at least
+44 px; inputs 16 px. Hebrew right to left by default, English in Settings (remembered per
+browser); numbers in `<bdi dir="ltr">`. Screens:
+
+- **Today**: live simulations (`/admin-api/sessions`), tester places N/30, active testers and the
+  day's sign-ins, builds, prebuilt uploads, runs, simulation minutes and refusals (`/usage`;
+  unmatched activity is counted and noted), new/total feedback, the last changes (`/audit`).
+- **Testers**: cards on a phone, a table on a desktop; search by name or masked address; Active /
+  Disabled / All; sorted by last activity (the latest of usage, gate sign-in and last seen).
+  Detail: the account data, 30-day totals and an SVG bar chart (runs, builds, simulation minutes,
+  sign-ins), and rename, disable (confirmed) and reactivate through the existing mutation flow;
+  a `202` is checked again automatically (`/admin-api/requests/<id>`, every 1.5 s for 60 s,
+  then on request).
+- **Add tester**, **Feedback** (newest first; "new" means not yet opened on this device, as the
+  server keeps no read state; the full text; delete one or all of a tester, confirmed),
+  **Activity log** (`/audit` joined to the accounts for names, else the mask, else "Unknown
+  account"), **Settings** (language; sign out = `/oauth2/sign_out`).
+- 401 anywhere: "signed out" with a link to `/oauth2/start?rd=/`; 403: "no access" and nothing
+  else; 503: that panel's own "not available right now".
+
+Development and tests: `admin-app/vite.config.ts` proxies `/admin-api` (`TBI_ADMIN_PROXY`) and
+`/runtime/admin` only (`TBI_RUNTIME_PROXY`), with the same test gate as the Lab
+(`TBI_TEST_GATE=1`, cookie `tbi_test_user`). Preview port 4176.
+
+**Packaging.** A profile with the admin service (`admin` section: `rc4-s23-admin`) also ships
+`admin-app/` in the package: built by `build-package.sh` in the same pinned environment, checked by
+`deploy/release/check-admin-app.mjs` (index, manifest and icons present; same-origin references
+only; no service worker; no source maps; no `VITE_*` left; static types only) and listed in
+`MANIFEST.sha256`, so `compare-packages.sh` covers it (G2). `release-config.mjs` also scans the
+admin app's sources for build settings (it reads none).
+
 ## Trust model and access control policy
 
 - Identity comes only from the authenticating gate. The Session Host and the build service listen
@@ -567,3 +657,11 @@ reports keep `v: 1` and add `kind`, `component` and `context`.
   (requests, the name rule, Israel time, filters, the cap); `app/e2e/phasec-admin.spec.ts` (phone
   360×740 with touch and desktop, EN and HE: list, add with a name, rename, disable with
   confirmation, reactivate, the cap, no sideways scroll, 44 px targets, RTL).
+- Admin app: `runtime/admin/tests/admin-views.test.ts` (`/usage` and `/audit`: authorization as
+  `GET /accounts`, GET only, ranges and limits, 503s, parsing); `packages/admin-client/tests/`
+  (shared request rules, the new calls, the texts); `admin-app/tests/views.test.ts` (routes, usage
+  sums, the testers list, the log, locales); `deploy/release/tests/check-admin-app.test.mjs`;
+  `app/e2e/phasec-phone-fit.spec.ts` (the in-app phone fix, Pixel 7); `admin-app/e2e/admin-app.spec.ts`
+  (`npm run test:e2e:admin`; Desktop Chrome and Pixel 7: every owner action, the 202 path, 503
+  panels, tester and stranger "no access" with 403 from every API, signed out, RTL, no sideways
+  scroll, 44 px targets and 16 px inputs).

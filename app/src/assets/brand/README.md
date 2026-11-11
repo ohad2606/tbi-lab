@@ -34,3 +34,7 @@ clear space); the surrounding layout provides it.
 Re-run `node ../scripts/build-brand-assets.mjs ~/logo/logo_app` from `app/` to regenerate; the
 originals are not committed. The previous generic TBI assets (`tbi-logo.png`, `tbi-logo-light.png`,
 `tbi-mark.png`, from `~/TBI_logo`) are retired.
+
+The same script also writes the TBI Admin app's home-screen icons, `admin-app/public/icon-192.png`
+and `icon-512.png` (192 and 512 px), from the same dark app icon `app_logo_05.png` (admin app
+design §3).
