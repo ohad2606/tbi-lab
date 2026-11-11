@@ -46,6 +46,7 @@ import { availableParallelism, totalmem } from 'node:os';
 import { afterAll, describe, expect, it } from 'vitest';
 import { recordEvidence } from '../harness/env.js';
 import { Circuit } from '../host/tests/r1-support.js';
+import { gpioProofCircuit, legacyGpioProofCircuit } from './c5-circuits.js';
 import { PROTOCOL } from '../host/protocol.js';
 import { dueRotation, rotationCutoff } from './c5-rotation.js';
 
@@ -201,11 +202,9 @@ function circuit(w: string): Circuit {
     }
     return c;
   }
-  const c = new Circuit().psu(3.3);
-  const r = c.add('component.resistor');
-  const d = c.add('component.led');
-  c.ohms(r, 220).wire(`${r}.b`, `${d}.anode`).wire(`${d}.cathode`, 'GND1.ref');
-  return c.pad(2, `${r}.a`);
+  // gpio (TbiGpioProof): GPIO5 is read, so it is held by a pull-up (c5-circuits.ts). TBI_C5_LEGACY_GPIO=1
+  // gives the pre-fix circuit, GPIO5 unconnected, only to reproduce the W1 retry's gpio_input_undefined.
+  return process.env.TBI_C5_LEGACY_GPIO === '1' ? legacyGpioProofCircuit() : gpioProofCircuit();
 }
 const sketchText = (w: string, user: string) =>
   `${readFileSync(new URL(OWN_SKETCH[w] ? `./c5-workloads/${w}.ino` : `../firmware/arduino/${SKETCH[w]}/${SKETCH[w]}.ino`, import.meta.url), 'utf8')}\n// c5-deployed ${user}\n`;
