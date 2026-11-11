@@ -30,6 +30,10 @@ RAMP_S=180 FAULT_S=600 SOAK_S=7200 BURST_S=600 ROTATE_S=1500
 RAMP_N="1 2 3 4 5 6" FAULT_N=5 SOAK_N=5
 if [ "$quick" = quick ]; then RAMP_S=60 FAULT_S=180 SOAK_S=600 BURST_S=300 ROTATE_S=300; fi
 if [ "$quick" = smoke ]; then RAMP_S=60 FAULT_S=120 SOAK_S=330 BURST_S=90 ROTATE_S=270 RAMP_N="1 2" FAULT_N=2 SOAK_N=1; fi
+# `ramps` (W1 completion run, 2026-11-11): ONLY the C-5 mix ramp runs of the full plan, same duration (180 s), same harness call,
+# same thresholds and the same per-run verdict; N from TBI_C5_RAMP_N (default "3 4 5"). No v5 ramp, faults or soak: those
+# passed in the 2026-11-11 full run and are reused, not repeated. OVERALL here covers only the ramps it ran.
+RAMPS_ONLY=""; if [ "$quick" = ramps ]; then RAMPS_ONLY=1 RAMP_N="${TBI_C5_RAMP_N:-3 4 5}"; fi
 
 health() { sudo -n curl -s -m 5 --unix-socket "/run/$inst-runtime/api.sock" http://x/health; }
 echo "== 0. preflight ($inst)" | tee "$out/summary.txt"
@@ -100,6 +104,20 @@ case " $caps " in *" pwm "*) case " $caps " in *" gpio-irq "*) V5MIX=v5 ;; esac 
 [ "${TBI_C5_V5_MIX:-1}" = 1 ] || V5MIX=c5
 echo "mix after the ramp: $V5MIX (runtime capabilities: $caps)" | tee -a "$out/summary.txt"
 for n in $RAMP_N; do run "ramp-n$n" TBI_C5_N="$n" TBI_C5_SECONDS=$RAMP_S; done
+if [ -n "$RAMPS_ONLY" ]; then
+  echo "== summary" | tee -a "$out/summary.txt"
+  python3 - "$out" "$RAMP_N" <<'PY' | tee -a "$out/summary.txt"
+import json, os, sys
+out, ok = sys.argv[1], True
+for name in [f'ramp-n{n}' for n in sys.argv[2].split()]:
+    f = os.path.join(out, name + '.json')
+    if not os.path.exists(f): print(f'{name}: NO REPORT'); ok = False; continue
+    p = json.load(open(f))['pass']; good = all(p.values()); ok &= good
+    print(f"{name}: {'PASS' if good else 'FAIL ' + ','.join(k for k, v in p.items() if not v)}")
+print('OVERALL: ' + (f'PASS (ramps {sys.argv[2]} only)' if ok else 'FAIL'))
+PY
+  exit 0
+fi
 [ "$V5MIX" = c5 ] || run "ramp-v5-n$FAULT_N" TBI_C5_N=$FAULT_N TBI_C5_SECONDS=$RAMP_S TBI_C5_MIX=v5
 # The smoke's N is too small for the mix to reach them: each new workload runs alone, so the procedure check still proves them.
 if [ "$quick" = smoke ] && [ "$V5MIX" = v5 ]; then for w in pwm irq; do run "smoke-$w" TBI_C5_N=1 TBI_C5_SECONDS=$RAMP_S TBI_C5_WORKLOAD=$w; done; fi
