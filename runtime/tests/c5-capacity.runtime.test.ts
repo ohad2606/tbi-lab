@@ -55,6 +55,7 @@ import { artifact, assertProvisioned, recordEvidence, runtimeInfo } from '../har
 import { ticketFor } from '../identity/test-gate.js';
 import type { HostSession } from '../host/session.js';
 import { Circuit, open } from '../host/tests/r1-support.js';
+import { gpioProofCircuit, gpioProofLed } from './c5-circuits.js';
 import { realHost } from './r2-support.js';
 
 const N = Number(process.env.TBI_C5_N ?? 1);
@@ -188,11 +189,9 @@ const workloads: Record<string, Build> = {
     return { c, fw: 'TbiLcd', id: lcd };
   },
   gpio: () => {
-    const c = new Circuit().psu(3.3);
-    const r = c.add('component.resistor');
-    const d = c.add('component.led');
-    c.ohms(r, 220).wire(`${r}.b`, `${d}.anode`).wire(`${d}.cathode`, 'GND1.ref').pad(2, `${r}.a`);
-    return { c, fw: 'TbiGpioProof', id: d };
+    // GPIO5 is read by TbiGpioProof: held by a pull-up (c5-circuits.ts), never left undefined.
+    const c = gpioProofCircuit();
+    return { c, fw: 'TbiGpioProof', id: gpioProofLed(c) };
   },
 };
 const MIX = ['sonar', 'dht', 'gpio', 'lcd', 'gpio'];
