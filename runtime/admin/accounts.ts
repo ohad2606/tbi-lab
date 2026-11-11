@@ -47,6 +47,7 @@ import {
   type Caller,
   type SpoolIo,
 } from './common.js';
+import { auditLimit, usageAnswer, usageRange, type AdminViews } from './views.js';
 
 // ---------------------------------------------------------------- views and results
 
@@ -368,6 +369,10 @@ export interface AccountsDeps {
   capacity: () => Promise<{ live: number; max: number } | null>;
   rate?: MemoryRate;
   limits?: AdminLimits;
+  /** Admin app: the read-only usage history and audit view (views.ts); null: both answer 503. */
+  views?: AdminViews | null;
+  /** The clock for the usage range's default (tests). */
+  now?: () => number;
 }
 
 /** A `forbidden` caused by the owner's Google id not being recorded yet says so. */
@@ -383,7 +388,7 @@ const only = (o: Record<string, unknown>, keys: string[]) =>
 /**
  * The admin service's HTTP server. Behind the gate at `/admin-api/*` (prefix stripped), so it
  * sees `/accounts`, `/accounts/disable`, `/accounts/reactivate`, `/accounts/rename` (Phase C),
- * `/requests/<id>`, `/sessions`,
+ * `/requests/<id>`, `/sessions`, `GET /usage` and `GET /audit` (admin app, views.ts),
  * and `GET /health` (no identity: `{"service":"tbi-admin","runtime":{"version","commit"}}`).
  * Every request needs the gate identity and an account the access view authorizes (deny wins;
  * the same rule as the backends), then the owner (the view's owner principal, or its email tag
@@ -441,6 +446,20 @@ async function routeAccounts(
     const c = await deps.capacity();
     if (!c) throw new AdminError(503, 'capacity_unavailable');
     return send(res, 200, c);
+  }
+  // Admin app design §2: the read-only history views, owner only (the checks above), GET only.
+  if ((a === 'usage' || a === 'audit') && n === 1) {
+    if (method !== 'GET') throw new AdminError(405, 'method_not_allowed');
+    const query = new URL(req.url ?? '/', 'http://admin.invalid').searchParams;
+    if (a === 'usage') {
+      const u = await deps.views?.usage();
+      if (!u) throw new AdminError(503, 'usage_unavailable');
+      return send(res, 200, usageAnswer(u, usageRange(query, u.tz, (deps.now ?? Date.now)())));
+    }
+    const limit = auditLimit(query);
+    const v = await deps.views?.audit();
+    if (!v) throw new AdminError(503, 'audit_unavailable');
+    return send(res, 200, { generated: v.generated, entries: v.entries.slice(0, limit) });
   }
   if (a !== 'accounts' && a !== 'requests') throw new AdminError(404, 'not_found');
   const spool = deps.spool;
