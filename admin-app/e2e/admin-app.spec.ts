@@ -52,7 +52,7 @@ async function layoutOk(page: Page) {
   );
   expect(small).toEqual([]);
   const fonts = await page.evaluate(() =>
-    [...document.querySelectorAll('input:not([type=radio])')]
+    [...document.querySelectorAll<HTMLInputElement>('input:not([type=radio])')]
       .filter((e) => e.offsetParent !== null)
       .map((e) => parseFloat(getComputedStyle(e).fontSize))
       .filter((s) => s < 16),
