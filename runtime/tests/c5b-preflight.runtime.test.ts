@@ -6,8 +6,9 @@
  * harness resolved its firmware under a default runtime directory nothing had provisioned. This checks:
  * - TBI_RUNTIME_HOME is set and is the directory the driver names (TBI_C5B_EXPECT_HOME), and the harness uses it;
  * - TbiGpioProof loads from there through the same `artifact()` C5b calls, and its bytes hash to the pinned sha256;
- * - every pin the TbiGpioProof source reads is held by a resistor to a supply rail or ground in the circuit C5b
- *   and the C-5 gpio workload use (no undefined input: Runtime v5 refuses such a read), and C5b uses that circuit.
+ * - no undefined input (Runtime v5 refuses such a read): in the C-5 gpio workload's circuit every pin the source reads is
+ *   held by a resistor to a rail; in C5b's, which leases the R1 reference image (no input-read analysis, so the host
+ *   watches every user pin), every watched pin is held, GPIO2 being the firmware's driven output on its LED load.
  */
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
@@ -16,7 +17,12 @@ import { describe, expect, it } from 'vitest';
 import { programInputReads } from '@tbi-lab/domain';
 import { RUNTIME_HOME, artifact } from '../harness/env.js';
 import type { Circuit } from '../host/tests/r1-support.js';
-import { gpioProofCircuit, legacyGpioProofCircuit } from './c5-circuits.js';
+import {
+  WATCHED_PINS,
+  gpioProofCircuit,
+  gpioProofReferenceCircuit,
+  legacyGpioProofCircuit,
+} from './c5-circuits.js';
 
 const PINNED = '5f177cbe95f490dce1f6efe7dda501e03762d523b79771968f967b297d3a44af';
 const source = (p: string) => readFileSync(new URL(p, import.meta.url), 'utf8');
@@ -61,7 +67,7 @@ describe('C5b preflight (W1, before the close)', () => {
     );
   });
 
-  it('every input TbiGpioProof reads has a defined level in the circuit C5b and the gpio workload use', () => {
+  it('C-5 gpio workload (built from source, reads analysed): every pin the source reads is held', () => {
     const reads = programInputReads({
       language: 'arduino-cpp',
       profile: '',
@@ -72,9 +78,32 @@ describe('C5b preflight (W1, before the close)', () => {
     expect(undefinedInputs(gpioProofCircuit(), reads.pins)).toEqual([]);
     // The check is not vacuous: the circuit of the 2026-11-11 retry leaves GPIO5 undefined.
     expect(undefinedInputs(legacyGpioProofCircuit(), reads.pins)).toEqual([5]);
+    expect(source('./c5-deployed.runtime.test.ts')).toContain(': gpioProofCircuit();');
+  });
+
+  it('C5b (reference image, no analysis: every user pin watched): every watched pin is held', () => {
+    expect(WATCHED_PINS.length).toBeGreaterThanOrEqual(20);
+    const driven = [2]; // TbiGpioProof's OUTPUT pin attached to its LED load (one attachment per pad)
+    expect(source('../firmware/arduino/TbiGpioProof/TbiGpioProof.ino')).toMatch(
+      /OUT_PIN_A = 2;[\s\S]*pinMode\(OUT_PIN_A, OUTPUT\)/,
+    );
+    const c = gpioProofReferenceCircuit();
+    expect(
+      undefinedInputs(
+        c,
+        WATCHED_PINS.filter((g) => !driven.includes(g)),
+      ),
+    ).toEqual([]);
+    expect(c.attachments.filter((a) => driven.includes(a.gpio)).length).toBe(1);
+    // Not vacuous: the GPIO5-only circuit leaves every other watched pin undefined for a reference image.
+    expect(
+      undefinedInputs(
+        gpioProofCircuit(),
+        WATCHED_PINS.filter((g) => !driven.includes(g)),
+      ).length,
+    ).toBe(WATCHED_PINS.length - 2);
     const c5b = source('./alpha-deployed-recovery.runtime.test.ts');
     expect(c5b).toContain('circuit: PROOF.circuit');
-    expect(c5b).toContain(': gpioProofCircuit();');
-    expect(source('./c5-deployed.runtime.test.ts')).toContain(': gpioProofCircuit();');
+    expect(c5b).toContain(': gpioProofReferenceCircuit();');
   });
 });

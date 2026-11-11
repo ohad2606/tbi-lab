@@ -13,7 +13,7 @@ import { readFileSync } from 'node:fs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { artifact } from '../harness/env.js';
 import { createSnapshot } from '@tbi-lab/domain';
-import { gpioProofCircuit, legacyGpioProofCircuit } from './c5-circuits.js';
+import { gpioProofReferenceCircuit, legacyGpioProofCircuit } from './c5-circuits.js';
 import { loadRequest } from './r2-support.js';
 import { deployedLimits } from './deployed-limits.js';
 
@@ -30,9 +30,12 @@ const REAL_POLICY =
 /** Three concurrent sessions are needed (on the 1-vCPU DEV host the policy admits one: skipped). */
 const ENOUGH = HAVE && deployedLimits(N, REAL_POLICY).maxLive >= 3;
 const R1_IMAGE = '5f177cbe95f490dce1f6efe7dda501e03762d523b79771968f967b297d3a44af';
-/** TBI_C5_LEGACY_GPIO=1: the pre-fix circuit (GPIO5 unconnected), only to reproduce gpio_input_undefined. */
+/**
+ * R1_IMAGE is a reference image: no input-read analysis, so the host watches every user pin (c5-circuits.ts). Every one is
+ * held at a defined level. TBI_C5_LEGACY_GPIO=1: the pre-fix circuit (GPIO5 unconnected), only to reproduce the refusal.
+ */
 const proofCircuit =
-  process.env.TBI_C5_LEGACY_GPIO === '1' ? legacyGpioProofCircuit() : gpioProofCircuit();
+  process.env.TBI_C5_LEGACY_GPIO === '1' ? legacyGpioProofCircuit() : gpioProofReferenceCircuit();
 const PROOF = { circuit: createSnapshot(proofCircuit.doc), attachments: proofCircuit.attachments };
 const LEASE_MS = 30_000; // Session Host default leaseMs (not overridden by the unit)
 const run = Date.now().toString(36);
@@ -84,7 +87,7 @@ async function session(user: string, limits?: { maxLifetimeMs: number }): Promis
     headers: as(user, { 'content-type': 'application/json' }),
     body: JSON.stringify({
       ...loadRequest('TbiGpioProof'),
-      // TbiGpioProof reads GPIO5: held by a pull-up (c5-circuits.ts) so the read is defined (Sprint 25).
+      // Every pin the host watches for this reference image has a defined level (c5-circuits.ts, Sprint 25).
       circuit: PROOF.circuit,
       attachments: PROOF.attachments,
       artifact: { sha256: R1_IMAGE },
