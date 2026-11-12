@@ -394,6 +394,11 @@ test('settings: English, left to right, remembered; sign out', async ({ page, co
   // The web manifest and its icon are served; there is no service worker.
   const manifest = await (await page.request.get(`${APP}/manifest.webmanifest`)).json();
   expect(manifest.icons.map((i: { sizes: string }) => i.sizes)).toEqual(['192x192', '512x512']);
+  // Behind the gate the manifest needs the session cookie: fetched with credentials.
+  await expect(page.locator('link[rel="manifest"]')).toHaveAttribute(
+    'crossorigin',
+    'use-credentials',
+  );
   expect((await page.request.get(`${APP}/icon-512.png`)).status()).toBe(200);
   expect(await page.evaluate(() => navigator.serviceWorker?.controller ?? null)).toBeNull();
 });

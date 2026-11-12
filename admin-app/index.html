@@ -9,7 +9,8 @@
     <meta name="application-name" content="TBI Admin" />
     <meta name="apple-mobile-web-app-title" content="TBI Admin" />
     <title>TBI Admin</title>
-    <link rel="manifest" href="/manifest.webmanifest" />
+    <!-- The manifest is behind the gate too (cookie auth): fetched with credentials. -->
+    <link rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials" />
     <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
     <link rel="apple-touch-icon" href="/icon-192.png" />
   </head>
