@@ -4,13 +4,12 @@
  * available. The bundles are the shared administration texts (@tbi-lab/admin-client, as the
  * Lab shows them) plus this app's own, with the Lab's controlled glossary applied.
  */
+import { GLOSSARY, applyGlossary } from '@tbi-lab/admin-client/glossary';
 import {
   adminMessagesEn,
   adminMessagesHe,
   type AdminMessageKey,
 } from '@tbi-lab/admin-client/messages';
-// The Lab's terminology glossary (pure data): the shared texts reference it as [[term]].
-import { GLOSSARY, applyGlossary } from '../../app/src/i18n/glossary.js';
 import { consoleEn, type ConsoleMessageKey } from './messages.en.js';
 import { consoleHe } from './messages.he.js';
 
