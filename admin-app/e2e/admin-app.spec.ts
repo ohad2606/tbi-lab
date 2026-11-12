@@ -240,6 +240,19 @@ test('add a tester: validated, masked afterwards, in the list at once', async ({
   await page.getByTestId('add-name').fill('  Test   B. ');
   await page.getByTestId('add-email').fill('New.Person@example.invalid');
   await layoutOk(page);
+  // A transient failure (the service unavailable) keeps what was typed.
+  await page.route('**/admin-api/accounts', (r) =>
+    r.request().method() === 'POST'
+      ? r.fulfill({ status: 503, contentType: 'application/json', body: '{"error":"x"}' })
+      : r.continue(),
+  );
+  await page.getByTestId('add-submit').click();
+  await expect(page.getByTestId('notice')).toBeVisible();
+  await expect(page.getByTestId('add-submit')).not.toHaveAttribute('aria-disabled', 'true');
+  await expect(page.getByTestId('add-email')).toHaveValue('New.Person@example.invalid');
+  await expect(page.getByTestId('add-name')).toHaveValue('  Test   B. ');
+  await expect(page.getByTestId('add-last')).toHaveCount(0);
+  await page.unrouteAll();
   await page.getByTestId('add-submit').click();
   await expect(page.getByTestId('notice')).toHaveText('Test B. was added and can sign in now.');
   await expect(page.getByTestId('add-last')).toContainText('ne***@example.invalid');

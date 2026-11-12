@@ -50,9 +50,13 @@ export function Add() {
         (o.error === 'invalid_name' ? nameField : emailField).current?.focus();
         return;
       }
-      setEmail('');
-      setName('');
-      setLast(maskAddress(typed));
+      // Only a completed add empties the form; after a refusal, an outage or a request still
+      // pending, the owner's typing stays for another try.
+      if (o.kind === 'result' && o.code === 'done') {
+        setEmail('');
+        setName('');
+        setLast(maskAddress(typed));
+      }
       await settle(o, n || maskAddress(typed), 'add');
     } finally {
       setSending(false);
