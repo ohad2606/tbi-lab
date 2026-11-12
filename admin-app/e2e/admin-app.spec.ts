@@ -7,7 +7,13 @@
  * Screenshots: TBI_SHOTS=dir.
  */
 import { createHash } from 'node:crypto';
-import { expect, test, type BrowserContext, type Page } from '@playwright/test';
+import {
+  expect,
+  test,
+  type APIRequestContext,
+  type BrowserContext,
+  type Page,
+} from '@playwright/test';
 
 const APP = 'http://127.0.0.1:4176';
 const FAKE = 'http://127.0.0.1:7499';
@@ -30,17 +36,35 @@ const shot = async (page: Page, name: string) => {
     });
 };
 
-/** The page never scrolls sideways, and every control is a comfortable touch target. */
+const phone = () => test.info().project.name === 'phone';
+
+/**
+ * The page never scrolls sideways (nothing wider than the screen, so a phone never zooms the
+ * page out), every control is a comfortable touch target (48 px), inputs are at least 16 px (no
+ * zoom on focus), body text at least 16 px, and on a phone nothing hides behind the tab bar.
+ */
 async function layoutOk(page: Page) {
-  const { scroll, inner } = await page.evaluate(() => ({
-    scroll: document.documentElement.scrollWidth,
-    inner: window.innerWidth,
-  }));
+  const { scroll, inner, wide } = await page.evaluate(() => {
+    const iw = window.innerWidth;
+    return {
+      scroll: document.documentElement.scrollWidth,
+      inner: iw,
+      // What sticks out, for a readable failure.
+      wide: [...document.querySelectorAll<HTMLElement>('body *')]
+        .filter((e) => {
+          const r = e.getBoundingClientRect();
+          return r.width > 0 && (r.right > iw + 0.5 || r.left < -0.5);
+        })
+        .slice(0, 5)
+        .map((e) => `${e.tagName}.${e.className} ${e.textContent?.slice(0, 30)}`),
+    };
+  });
+  expect(wide).toEqual([]);
   expect(scroll).toBeLessThanOrEqual(inner);
   const small = await page.evaluate(() =>
     [
       ...document.querySelectorAll<HTMLElement>(
-        'button, a.button, .nav a, input:not([type=radio]), .item-link, .back, .more',
+        'button, a.button, .nav a, .tabbar a, input:not([type=radio]), .item-link, .back, .more',
       ),
     ]
       .filter((e) => e.offsetParent !== null && !e.classList.contains('visually-hidden'))
@@ -48,9 +72,19 @@ async function layoutOk(page: Page) {
         what: e.dataset.testid ?? e.textContent,
         h: e.getBoundingClientRect().height,
       }))
-      .filter((x) => x.h < 43.5),
+      .filter((x) => x.h < 47.5),
   );
   expect(small).toEqual([]);
+  expect(
+    await page.evaluate(() => parseFloat(getComputedStyle(document.body).fontSize)),
+  ).toBeGreaterThanOrEqual(16);
+  if (phone() && (await page.getByTestId('tabbar').count())) {
+    const { pad, bar } = await page.evaluate(() => ({
+      pad: parseFloat(getComputedStyle(document.querySelector('main')!).paddingBottom),
+      bar: document.querySelector('.tabbar')!.getBoundingClientRect().height,
+    }));
+    expect(pad).toBeGreaterThan(bar);
+  }
   const fonts = await page.evaluate(() =>
     [...document.querySelectorAll<HTMLInputElement>('input:not([type=radio])')]
       .filter((e) => e.offsetParent !== null)
@@ -60,7 +94,16 @@ async function layoutOk(page: Page) {
   expect(fonts).toEqual([]);
 }
 
+/** To a section: the side navigation on a desktop; the tab bar (activity, settings: under More) on a phone. */
 const nav = async (page: Page, s: string) => {
+  if (phone() && (s === 'activity' || s === 'settings')) {
+    await page.getByTestId('nav-more').click();
+    await expect(page.getByTestId('nav-more')).toHaveAttribute('aria-current', 'page');
+    await page.getByTestId(`more-${s}`).click();
+    await expect(page.getByTestId('nav-more')).toHaveAttribute('aria-current', 'page');
+    await expect(page).toHaveURL(new RegExp(`#/${s}$`));
+    return;
+  }
   await page.getByTestId(`nav-${s}`).click();
   await expect(page.getByTestId(`nav-${s}`)).toHaveAttribute('aria-current', 'page');
 };
@@ -450,4 +493,268 @@ test('settings: English, left to right, remembered; sign out', async ({ page, co
   );
   expect((await page.request.get(`${APP}/icon-512.png`)).status()).toBe(200);
   expect(await page.evaluate(() => navigator.serviceWorker?.controller ?? null)).toBeNull();
+});
+
+// ---------------------------------------------------------------- the phone layout, realistic data
+
+const LONG_REPORT = [
+  'כשאני מחבר את הנגד של 220 אוהם בין GPIO 23 לבין הלד, הסימולציה נעצרת אחרי כמה שניות ומופיעה הודעה שלא ברור לי מה היא אומרת. ניסיתי גם עם נגד אחר וגם עם ספק כוח חיצוני של 5 וולט.',
+  'Steps: open the example, press Run, wait ~10 s. Link I was on: https://lab.example.invalid/projects/very-long-project-identifier-without-any-breaks-0123456789abcdefghijklmnopqrstuvwxyz',
+  'x'.repeat(180),
+].join('\n\n');
+
+/** 30 testers with long names, usage for all, 300 audit lines, three reports (one long). */
+async function richData(request: APIRequestContext) {
+  expect((await request.post(`${FAKE}/__test/admin-rich`)).status()).toBe(200);
+  for (const [description, kind] of [
+    [LONG_REPORT, 'bug'],
+    ['הממשק נראה מצוין בטלפון.', 'general'],
+    ['Short one.', 'general'],
+  ] as const)
+    expect(
+      (
+        await request.post(`${FAKE}/reports`, {
+          headers: { 'x-forwarded-user': 'e2e-user' },
+          data: {
+            description,
+            category: 'other',
+            blocking: false,
+            locale: 'he',
+            view: 'home',
+            kind,
+          },
+        })
+      ).status(),
+    ).toBe(201);
+}
+
+test('phone: a bottom tab bar (Today, Testers, Feedback, More); More holds the log, settings, sign out', async ({
+  page,
+  context,
+}) => {
+  await as(context, 'e2e-owner');
+  await page.goto(`${APP}/`);
+  if (!phone()) {
+    // The desktop keeps its side navigation; adding a tester is the Testers screen's action.
+    await expect(page.getByTestId('tabbar')).toHaveCount(0);
+    for (const s of ['today', 'testers', 'feedback', 'activity', 'settings'])
+      await expect(page.getByTestId(`nav-${s}`)).toBeVisible();
+    await expect(page.getByTestId('nav-add')).toHaveCount(0);
+    return;
+  }
+  const bar = page.getByTestId('tabbar');
+  await expect(bar.getByRole('link')).toHaveText(['היום', 'בודקים', 'משוב', 'עוד']);
+  await expect(page.getByTestId('nav-today')).toHaveAttribute('aria-current', 'page');
+  await expect(page.locator('nav.nav')).toHaveCount(0);
+  await expect(page.getByTestId('nav-add')).toHaveCount(0);
+  // Fixed at the bottom of the screen, full width; every tab a big target with an icon.
+  const box = (await bar.boundingBox())!;
+  const vp = page.viewportSize()!;
+  expect(Math.round(box.y + box.height)).toBe(vp.height);
+  expect(Math.round(box.width)).toBe(vp.width);
+  for (const a of await bar.getByRole('link').all()) {
+    expect((await a.boundingBox())!.height).toBeGreaterThanOrEqual(48);
+    await expect(a.locator('svg')).toHaveCount(1);
+  }
+  await page.getByTestId('nav-more').click();
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('עוד');
+  await expect(page.getByTestId('more-activity')).toHaveText('יומן שינויים');
+  await expect(page.getByTestId('more-settings')).toHaveText('הגדרות');
+  await expect(page.getByTestId('more-sign-out')).toHaveAttribute('href', '/oauth2/sign_out');
+  await layoutOk(page);
+  await page.getByTestId('more-settings').click();
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('הגדרות');
+  await expect(page.getByTestId('nav-more')).toHaveAttribute('aria-current', 'page');
+  await page.getByTestId('nav-testers').click();
+  await expect(page.getByTestId('nav-testers')).toHaveAttribute('aria-current', 'page');
+  // Adding a tester: the Testers screen's primary action, at the top of the list.
+  const add = page.getByTestId('testers-add');
+  await expect(add).toHaveText('הוספת בודק/ת');
+  expect((await add.boundingBox())!.y).toBeLessThan(
+    (await page.getByTestId('tester-row').first().boundingBox())!.y,
+  );
+  await add.click();
+  await expect(page).toHaveURL(/#\/add$/);
+  await expect(page.getByTestId('nav-testers')).toHaveAttribute('aria-current', 'page');
+  await page.getByTestId('add-back').click();
+  await expect(page).toHaveURL(/#\/testers$/);
+});
+
+test('Back from a tester: the list as it was (search, filter, scroll); a direct link: the list', async ({
+  page,
+  context,
+  request,
+}) => {
+  await richData(request);
+  await as(context, 'e2e-owner');
+  await page.goto(`${APP}/#/testers`);
+  const rows = page.getByTestId('tester-row');
+  await page.getByTestId('filter-all').click();
+  await page.getByTestId('testers-search').fill('a');
+  await expect.poll(() => rows.count()).toBeGreaterThan(10);
+  const count = await rows.count();
+  // Scroll well down the list and open a tester that is on screen there.
+  const y = await page.evaluate(() => {
+    scrollTo(0, Math.min(700, document.documentElement.scrollHeight - innerHeight));
+    return scrollY;
+  });
+  expect(y).toBeGreaterThan(200);
+  const visible = await page.evaluate(() => {
+    const r = [...document.querySelectorAll<HTMLElement>('[data-testid=tester-row]')].find(
+      (e) => e.getBoundingClientRect().top > 80,
+    )!;
+    return r.dataset.target!;
+  });
+  await page.getByTestId(`tester-open-${visible}`).click();
+  await expect(page).toHaveURL(new RegExp(`#/testers/${visible}$`));
+  const back = page.getByTestId('tester-back');
+  await expect(back).toHaveText('חזור');
+  // The arrow points right in Hebrew (mirrored), left in English.
+  expect(await back.locator('svg').evaluate((e) => getComputedStyle(e).transform)).not.toBe('none');
+  await layoutOk(page);
+  await back.click();
+  await expect(page).toHaveURL(/#\/testers$/);
+  await expect(page.getByTestId('testers-search')).toHaveValue('a');
+  await expect(page.getByTestId('filter-all')).toHaveAttribute('aria-pressed', 'true');
+  await expect(rows).toHaveCount(count);
+  await expect.poll(() => page.evaluate(() => scrollY)).toBeGreaterThan(y - 3);
+  expect(await page.evaluate(() => scrollY)).toBeLessThan(y + 3);
+  // The browser's own back (the phone's back gesture) does the same.
+  await page.getByTestId(`tester-open-${visible}`).click();
+  await expect(page.getByTestId('tester-detail')).toBeVisible();
+  await page.goBack();
+  await expect(page.getByTestId('testers-search')).toHaveValue('a');
+  await expect.poll(() => page.evaluate(() => scrollY)).toBeGreaterThan(y - 3);
+
+  // Opened from a link (no list behind it): Back is the default list.
+  await page.goto(`${APP}/#/testers/${ALEX}`);
+  await page.reload();
+  await expect(page.getByTestId('tester-title')).toHaveText('Alex T.');
+  await page.getByTestId('tester-back').click();
+  await expect(page).toHaveURL(/#\/testers$/);
+  await expect(page.getByTestId('testers-search')).toHaveValue('');
+  await expect(page.getByTestId('filter-active')).toHaveAttribute('aria-pressed', 'true');
+  expect(await page.evaluate(() => scrollY)).toBe(0);
+});
+
+test('English: Back points left', async ({ page, context }) => {
+  await as(context, 'e2e-owner');
+  await english(context);
+  await page.goto(`${APP}/#/testers/${ALEX}`);
+  const back = page.getByTestId('tester-back');
+  await expect(back).toHaveText('Back');
+  expect(await back.locator('svg').evaluate((e) => getComputedStyle(e).transform)).toBe('none');
+});
+
+test('usage with fractional seconds and a quiet today: minutes, and zeros (not "unavailable")', async ({
+  page,
+  context,
+}) => {
+  await as(context, 'e2e-owner');
+  await english(context);
+  // Tester two: 120.6 s today and 71.3 s three days ago (the exporter's 0.1 s): 3 minutes.
+  await page.goto(`${APP}/#/testers`);
+  const two = page.getByTestId('tester-row').filter({ hasText: 'te***@' }).nth(1);
+  await two.locator('a').first().click();
+  await page.getByTestId('chart-metric-simSeconds').click();
+  await expect(page.getByTestId('tester-metric-simSeconds').locator('dd')).toHaveText('3');
+  await expect(page.getByTestId('tester-chart')).toHaveAttribute('aria-label', /: 3 in total/);
+  // Nothing at all counted today (today absent from the history, as the exporter writes it).
+  await page.route('**/admin-api/usage*', async (r) => {
+    const res = await r.fetch();
+    const body = (await res.json()) as { to: string; days: { date: string }[] };
+    body.days = body.days.filter((d) => d.date !== body.to);
+    await r.fulfill({ response: res, json: body });
+  });
+  await page.goto(`${APP}/#/today`);
+  await page.reload();
+  await expect(page.getByTestId('today-metrics')).toBeVisible();
+  await expect(page.getByTestId('usage-problem')).toHaveCount(0);
+  for (const m of ['signIns', 'builds', 'prebuilt', 'runs', 'simSeconds', 'refusals'])
+    await expect(page.getByTestId(`today-metric-${m}`).locator('dd')).toHaveText('0');
+  await expect(page.getByTestId('today-active')).toContainText('0');
+});
+
+for (const width of [360, 390, 412, 430])
+  test(`phone ${width} px: no sideways scrolling on any screen, with realistic long data`, async ({
+    page,
+    context,
+    request,
+  }) => {
+    test.skip(!phone(), 'phone widths');
+    await page.setViewportSize({ width, height: 800 });
+    await richData(request);
+    await as(context, 'e2e-owner');
+    const screens = ['today', 'testers', 'add', 'feedback', 'more', 'activity', 'settings'];
+    for (const s of screens) {
+      await page.goto(`${APP}/#/${s}`);
+      await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+      await page.waitForLoadState('networkidle');
+      if (s === 'activity') await expect(page.getByTestId('activity-row')).toHaveCount(300);
+      await layoutOk(page);
+    }
+    // All 32 records (owner, 30 testers, one disabled), a tester with the longest name, its editors and dialogs.
+    await page.goto(`${APP}/#/testers`);
+    await page.getByTestId('filter-all').click();
+    await expect(page.getByTestId('tester-row')).toHaveCount(32);
+    await layoutOk(page);
+    await page.getByTestId('tester-row').filter({ hasText: 'אלכסנדרה' }).locator('a').click();
+    await expect(page.getByTestId('tester-detail')).toBeVisible();
+    await layoutOk(page);
+    await page.getByTestId('tester-rename').click();
+    await layoutOk(page);
+    await page.getByTestId('rename-input').fill('א'.repeat(60));
+    await layoutOk(page);
+    await page.getByText('ביטול').click();
+    await page.getByTestId('tester-disable').click();
+    await expect(page.getByTestId('confirm')).toBeVisible();
+    await layoutOk(page);
+    // The long report in full.
+    await page.goto(`${APP}/#/feedback`);
+    await page.getByTestId('report-row').last().locator('a').click();
+    await expect(page.getByTestId('report-text')).toContainText('GPIO 23');
+    await layoutOk(page);
+    // English, too.
+    await page.evaluate(() => localStorage.setItem('tbi-admin.locale', 'en'));
+    for (const s of ['today', 'testers', 'more', 'activity']) {
+      await page.goto(`${APP}/#/${s}`);
+      await page.reload();
+      await page.waitForLoadState('networkidle');
+      await layoutOk(page);
+    }
+  });
+
+/** The owner's screenshots (Hebrew, realistic data): TBI_OWNER_SHOTS=dir. */
+test('owner screenshots', async ({ page, context, request }) => {
+  const dir = process.env.TBI_OWNER_SHOTS;
+  test.skip(!dir, 'TBI_OWNER_SHOTS not set');
+  await richData(request);
+  await as(context, 'e2e-owner');
+  const suffix = phone() ? '390' : 'desktop';
+  if (phone()) await page.setViewportSize({ width: 390, height: 844 });
+  const snap = async (hash: string, name: string, only?: 'phone') => {
+    if (only && !phone()) return;
+    await page.goto(`${APP}/${hash}`);
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+    await page.waitForLoadState('networkidle');
+    // A phone-shaped full page: the window as tall as the content, so the tab bar sits at the
+    // bottom of the picture (a full-page capture would paint the fixed bar mid-page).
+    if (phone()) {
+      const h = await page.evaluate(() => document.documentElement.scrollHeight);
+      await page.setViewportSize({ width: 390, height: Math.max(844, h) });
+      await page.waitForTimeout(200);
+    }
+    await page.screenshot({ path: `${dir}/${name}-${suffix}.png`, fullPage: true });
+    if (phone()) await page.setViewportSize({ width: 390, height: 844 });
+  };
+  await snap('#/today', 'today');
+  await snap('#/testers', 'testers', 'phone');
+  // The rich registry's first tester: the longest Hebrew name.
+  const first = target(
+    'abrich.tester.number.00@electrical-engineering.university-of-somewhere.example.invalid',
+  );
+  await snap(`#/testers/${first}`, 'tester-detail');
+  await snap('#/more', 'more', 'phone');
+  await snap('#/add', 'add-tester', 'phone');
+  await snap('#/activity', 'activity', 'phone');
 });
