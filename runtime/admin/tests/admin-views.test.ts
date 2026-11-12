@@ -5,11 +5,12 @@
  * or malformed file is 503; ranges and limits are validated. The ops side's files are played by
  * the test (example.invalid identities only; targets are opaque).
  */
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { AccessView, deriveEmailTag } from '../../identity/access.js';
 import { TEST_IDENTITY, principalFor, startTestGate } from '../../identity/test-gate.js';
@@ -32,6 +33,11 @@ const T1 = 't_AAAAAAAAAAAAAAAA';
 const T2 = 't_BBBBBBBBBBBBBBBB';
 // 2026-11-11 10:00 UTC is 12:00 in Israel: "today" is 2026-11-11.
 const NOW = Date.parse('2026-11-11T10:00:00Z');
+/** The usage exporter's real output shape (synthetic values): simSeconds rounded to 0.1 s. */
+const EXPORTER_FIXTURE = readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'usage-exporter-v1.json'),
+  'utf8',
+);
 
 const m = (p: Partial<Record<string, number>> = {}) => ({
   signIns: 0,
@@ -281,6 +287,55 @@ describe('admin service: usage and audit views (admin app)', () => {
     // Absent metrics are 0; unknown ones are dropped.
     const u = parseUsage(usageJson({ days: { '2026-11-11': { [T1]: { runs: 2, future: 7 } } } }));
     expect(u!.days.get('2026-11-11')![T1]).toEqual(m({ runs: 2 }));
+  });
+
+  it('usage parser: simulated seconds are a duration (0.1 s), every other metric a count', () => {
+    const one = (p: Record<string, unknown>) =>
+      parseUsage(usageJson({ days: { '2026-11-11': { [T1]: { ...m(), ...p } } } }))?.days.get(
+        '2026-11-11',
+      )?.[T1] ?? null;
+    expect(one({ simSeconds: 71.3 })).toEqual(m({ simSeconds: 71.3 }));
+    expect(one({ simSeconds: 0.4 })!.simSeconds).toBe(0.4);
+    expect(one({ simSeconds: 1e9 })!.simSeconds).toBe(1e9);
+    // More precision than the exporter writes is rounded to 0.1 s on the way out.
+    expect(one({ simSeconds: 12.345 })!.simSeconds).toBe(12.3);
+    expect(one({ simSeconds: 0.04 })!.simSeconds).toBe(0);
+    for (const bad of [-0.1, 1e9 + 0.5, '71.3', null, Number.POSITIVE_INFINITY])
+      expect(one({ simSeconds: bad }), String(bad)).toBeNull();
+    // NaN and Infinity cannot be written in JSON at all; the file is then malformed.
+    expect(parseUsage(usageJson().replace('"simSeconds":61', '"simSeconds":NaN'))).toBeNull();
+    for (const name of ['signIns', 'builds', 'prebuilt', 'runs', 'refusals'])
+      expect(one({ [name]: 1.5 }), name).toBeNull();
+  });
+
+  it('usage parser: the exporter contract fixture (real shape, synthetic values) is accepted', () => {
+    const u = parseUsage(EXPORTER_FIXTURE);
+    expect(u).not.toBeNull();
+    expect(u!.tz).toBe('Asia/Jerusalem');
+    expect([...u!.days.keys()]).toEqual(['2026-11-09', '2026-11-11']);
+    expect(u!.days.get('2026-11-09')![T1]).toEqual(
+      m({ signIns: 1, builds: 3, runs: 4, simSeconds: 71.3 }),
+    );
+    expect(u!.days.get('2026-11-11')!.unmatched!.simSeconds).toBe(12.5);
+    expect(u!.days.get('2026-11-11')![T2]!.simSeconds).toBe(0.4);
+    expect(u!.lastActivity[T1]).toBe('2026-11-11T16:42:10Z');
+  });
+
+  it('usage: the exporter file with fractional simulated seconds is served (not 503)', async () => {
+    const s = await serve();
+    writeFileSync(join(s.dir, 'usage', 'usage.json'), EXPORTER_FIXTURE);
+    const r = await call(await s.gate(OWNER), '/usage');
+    expect(r.status).toBe(200);
+    const days = r.body.days as {
+      date: string;
+      accounts: Record<string, Record<string, number>>;
+    }[];
+    expect(days.map((d) => d.date)).toEqual(['2026-11-09', '2026-11-11']);
+    expect(days[0]!.accounts[T1]!.simSeconds).toBe(71.3);
+    expect(days[1]!.accounts[T1]).toEqual(
+      m({ signIns: 2, builds: 5, prebuilt: 1, runs: 6, simSeconds: 188.7, refusals: 1 }),
+    );
+    expect(days[1]!.accounts.unmatched!.simSeconds).toBe(12.5);
   });
 
   it('audit: newest first, limit 1..500 (default 100), unknown entries left out', async () => {

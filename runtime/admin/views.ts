@@ -110,6 +110,14 @@ export const dayString = (n: number): string => new Date(n * 86_400_000).toISOSt
 const accountKey = (k: string) => k === UNMATCHED || TARGET_RE.test(k);
 const metric = (v: unknown): number | null =>
   typeof v === 'number' && Number.isSafeInteger(v) && v >= 0 && v <= 1e9 ? v : null;
+/**
+ * Simulated seconds are a duration, not a count: the exporter rounds them to 0.1 s (71.3). Any
+ * finite non-negative number up to 1e9 is accepted and passed on rounded to 0.1 s.
+ */
+const seconds = (v: unknown): number | null =>
+  typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 1e9
+    ? Math.round(v * 10) / 10
+    : null;
 
 /** usage.json, re-validated in full; null when unusable (unknown version or any bad field). */
 export function parseUsage(text: string): UsageFile | null {
@@ -139,10 +147,11 @@ export function parseUsage(text: string): UsageFile | null {
       const m = accounts[k];
       if (!accountKey(k) || !isObj(m)) return null;
       const row = {} as UsageMetrics;
-      // Every known metric: absent is 0; a present one must be a count. Unknown metrics (a newer
-      // exporter's) are not passed on.
+      // Every known metric: absent is 0; a present one must be a count (simulated seconds: a
+      // duration, see `seconds`). Unknown metrics (a newer exporter's) are not passed on.
       for (const name of USAGE_METRICS) {
-        const v = m[name] === undefined ? 0 : metric(m[name]);
+        const v =
+          m[name] === undefined ? 0 : name === 'simSeconds' ? seconds(m[name]) : metric(m[name]);
         if (v === null) return null;
         row[name] = v;
       }
