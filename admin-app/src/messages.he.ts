@@ -1,8 +1,8 @@
 import type { ConsoleMessageKey } from './messages.en.js';
 
-/** TBI Admin's own Hebrew texts, typed against the English key set. */
+/** TBI Lab Admin's own Hebrew texts, typed against the English key set. */
 export const consoleHe: Record<ConsoleMessageKey, string> = {
-  'console.appName': 'TBI Admin',
+  'console.appName': 'TBI Lab Admin',
   'console.skip': 'דילוג לתוכן',
   'console.nav.label': 'אזורים',
   'console.nav.today': 'היום',
@@ -18,7 +18,7 @@ export const consoleHe: Record<ConsoleMessageKey, string> = {
   'console.access.signIn': 'כניסה מחדש',
   'console.access.forbidden.title': 'אין גישה',
   'console.access.forbidden.text':
-    'חשבון Google זה אינו יכול להשתמש ב-TBI Admin. אפשר להתנתק ולהיכנס בחשבון אחר.',
+    'חשבון Google זה אינו יכול להשתמש ב-TBI Lab Admin. אפשר להתנתק ולהיכנס בחשבון אחר.',
   'console.access.signOut': 'התנתקות',
 
   'console.today.heading': 'היום',
@@ -94,5 +94,5 @@ export const consoleHe: Record<ConsoleMessageKey, string> = {
   'console.settings.heading': 'הגדרות',
   'console.settings.language': 'שפה',
   'console.settings.signOut': 'התנתקות',
-  'console.settings.signOutHint': 'מסיים את הכניסה ל-TBI Admin בדפדפן זה.',
+  'console.settings.signOutHint': 'מסיים את הכניסה ל-TBI Lab Admin בדפדפן זה.',
 };

@@ -1,4 +1,4 @@
-/** TBI Admin: the screens' logic without the DOM (routes, usage sums, the testers list, the log). */
+/** TBI Lab Admin: the screens' logic without the DOM (routes, usage sums, the testers list, the log). */
 import { describe, expect, it } from 'vitest';
 import type {
   AccountRow,

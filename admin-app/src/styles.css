@@ -1,5 +1,5 @@
 /*
- * TBI Admin: mobile-first, no minimum width (admin app design §3). One column on a phone; from
+ * TBI Lab Admin: mobile-first, no minimum width (admin app design §3). One column on a phone; from
  * 900 px a side navigation and tables. Touch targets at least 44 px; inputs 16 px (no zoom on
  * focus). Logical properties only, so Hebrew (RTL, the default) and English mirror cleanly.
  * The TBI Lab colour tokens (app/src/styles.css).

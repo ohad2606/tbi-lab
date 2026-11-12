@@ -1,6 +1,6 @@
 /**
  * The administration's English texts (admin app design §3), shared by the Lab's in-app
- * administration (app/src/i18n/messages.en.ts spreads them in, unchanged) and the TBI Admin app.
+ * administration (app/src/i18n/messages.en.ts spreads them in, unchanged) and the TBI Lab Admin app.
  * The report kinds and areas are the Lab feedback form's labels, which the administration shows
  * too. `[[term]]` references the Lab's controlled glossary (./glossary.ts, shared with the Lab);
  * each app applies it.

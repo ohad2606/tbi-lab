@@ -1,7 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 
 /**
- * Browser acceptance of the TBI Admin app (admin app design §3), on a desktop and on a phone
+ * Browser acceptance of the TBI Lab Admin app (admin app design §3), on a desktop and on a phone
  * (Pixel 7: a mobile viewport, touch, device scale). The production build is served by Vite's
  * preview, whose proxy plays the gate (TBI_TEST_GATE=1, admin-app/vite.config.ts) in front of the
  * same REAL services as the Lab's administration tests: the admin service (with a fake root

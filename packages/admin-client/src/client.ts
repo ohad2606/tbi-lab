@@ -13,7 +13,7 @@
  * sign-in data (first, last, how many). Names come only from the owner-only API at run time.
  *
  * Admin app design §3: moved from app/src/ui/admin.ts to this shared package, unchanged in
- * behaviour, for the Lab's in-app administration and the TBI Admin app (admin-lab), which reach
+ * behaviour, for the Lab's in-app administration and the TBI Lab Admin app (admin-lab), which reach
  * the same two servers by the same relative paths. Every request asks for JSON (`Accept:
  * application/json`), so an expired gate session answers 401 instead of starting a login. New:
  * the admin service's read-only usage history and audit view (`/usage`, `/audit`).

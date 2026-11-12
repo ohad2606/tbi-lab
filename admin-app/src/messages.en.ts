@@ -1,9 +1,9 @@
 /**
- * TBI Admin's own English texts. The administration's shared texts (admin.*, the report kinds
+ * TBI Lab Admin's own English texts. The administration's shared texts (admin.*, the report kinds
  * and areas) come from @tbi-lab/admin-client, the same as the Lab's; these are the app's screens.
  */
 export const consoleEn = {
-  'console.appName': 'TBI Admin',
+  'console.appName': 'TBI Lab Admin',
   'console.skip': 'Skip to content',
   'console.nav.label': 'Sections',
   'console.nav.today': 'Today',
@@ -19,7 +19,7 @@ export const consoleEn = {
   'console.access.signIn': 'Sign in again',
   'console.access.forbidden.title': 'No access',
   'console.access.forbidden.text':
-    'This Google account cannot use TBI Admin. Sign out to use another account.',
+    'This Google account cannot use TBI Lab Admin. Sign out to use another account.',
   'console.access.signOut': 'Sign out',
 
   'console.today.heading': 'Today',
@@ -95,7 +95,7 @@ export const consoleEn = {
   'console.settings.heading': 'Settings',
   'console.settings.language': 'Language',
   'console.settings.signOut': 'Sign out',
-  'console.settings.signOutHint': 'Ends your TBI Admin sign-in in this browser.',
+  'console.settings.signOutHint': 'Ends your TBI Lab Admin sign-in in this browser.',
 } as const;
 
 export type ConsoleMessageKey = keyof typeof consoleEn;

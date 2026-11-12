@@ -2,7 +2,7 @@ import { defineConfig } from 'vite';
 import { identityGate } from '../scripts/vite-identity-gate.js';
 
 /**
- * TBI Admin (admin app design §1). In production the app is static files behind its own gate
+ * TBI Lab Admin (admin app design §1). In production the app is static files behind its own gate
  * (admin-lab), and the same two same-origin prefixes as on the Lab reach the backends:
  * `/admin-api/*` the admin service, `/runtime/admin/*` the Session Host's owner routes (that prefix
  * only). For development and tests Vite proxies them to loopback: TBI_ADMIN_PROXY (default

@@ -1,5 +1,5 @@
 /**
- * TBI Admin's locales: the Lab's pattern (app/src/i18n/i18n.ts), N locales in a registry, each a
+ * TBI Lab Admin's locales: the Lab's pattern (app/src/i18n/i18n.ts), N locales in a registry, each a
  * bundle and a direction. Hebrew (RTL) is the default (admin app design §3); English is
  * available. The bundles are the shared administration texts (@tbi-lab/admin-client, as the
  * Lab shows them) plus this app's own, with the Lab's controlled glossary applied.

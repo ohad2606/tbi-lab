@@ -1,6 +1,6 @@
 {
-  "name": "TBI Admin",
-  "short_name": "TBI Admin",
+  "name": "TBI Lab Admin",
+  "short_name": "TBI Lab Admin",
   "description": "TBI Lab tester administration (owner only).",
   "lang": "he",
   "dir": "rtl",

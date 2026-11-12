@@ -1,5 +1,5 @@
 /**
- * TBI Admin: what the screens show, without the DOM (unit-tested, tests/views.test.ts). Every
+ * TBI Lab Admin: what the screens show, without the DOM (unit-tested, tests/views.test.ts). Every
  * value comes from the owner-only APIs through @tbi-lab/admin-client; nothing here holds or
  * derives an address (the server masks them) and nothing is computed that the servers did not
  * count: usage is summed, never estimated.

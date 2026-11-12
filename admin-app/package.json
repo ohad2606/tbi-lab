@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "TBI Admin (admin-lab): the owner's tester administration, phone and desktop. Static files; no service worker.",
+  "description": "TBI Lab Admin (admin-lab): the owner's tester administration, phone and desktop. Static files; no service worker.",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

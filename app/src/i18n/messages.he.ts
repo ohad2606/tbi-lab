@@ -1113,6 +1113,6 @@ export const he: Record<MessageKey, string> = {
   'status.feedback': 'משוב',
   'status.admin': 'ניהול',
 
-  // Admin app design §3: shared with the TBI Admin app (packages/admin-client), unchanged.
+  // Admin app design §3: shared with the TBI Lab Admin app (packages/admin-client), unchanged.
   ...adminMessagesHe,
 };

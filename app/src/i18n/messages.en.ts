@@ -1169,7 +1169,7 @@ export const en = {
   'status.admin': 'Administration',
 
   // Admin app design §3: the administration's texts (and the report kinds and areas it shows)
-  // are shared with the TBI Admin app (packages/admin-client), unchanged.
+  // are shared with the TBI Lab Admin app (packages/admin-client), unchanged.
   ...adminMessagesEn,
 } as const;
 

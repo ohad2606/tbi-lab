@@ -1,5 +1,5 @@
 /**
- * TBI Admin (admin app design §3), on a desktop and on a phone (the two Playwright projects):
+ * TBI Lab Admin (admin app design §3), on a desktop and on a phone (the two Playwright projects):
  * the owner can do every action; a tester and a stranger see "no access" and get no data; no
  * sideways scrolling on the phone; Hebrew right to left by default. The services are real (the
  * admin service, the Session Host's owner routes); the root helper and the ops side's files are
@@ -394,6 +394,9 @@ test('settings: English, left to right, remembered; sign out', async ({ page, co
   // The web manifest and its icon are served; there is no service worker.
   const manifest = await (await page.request.get(`${APP}/manifest.webmanifest`)).json();
   expect(manifest.icons.map((i: { sizes: string }) => i.sizes)).toEqual(['192x192', '512x512']);
+  expect(manifest.name).toBe('TBI Lab Admin');
+  await expect(page).toHaveTitle('TBI Lab Admin');
+  await expect(page.locator('header .brand')).toHaveText('TBI Lab Admin');
   // Behind the gate the manifest needs the session cookie: fetched with credentials.
   await expect(page.locator('link[rel="manifest"]')).toHaveAttribute(
     'crossorigin',
