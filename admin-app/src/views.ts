@@ -120,8 +120,13 @@ export function seriesTotals(series: { metrics: UsageMetrics }[]): UsageMetrics 
   return series.reduce((t, d) => addMetrics(t, d.metrics), zeroMetrics());
 }
 
-/** Whole simulated minutes (rounded down: never more than was counted). */
-export const simMinutes = (seconds: number) => Math.floor(seconds / 60);
+/**
+ * Whole simulated minutes (rounded down: never more than was counted). The exporter counts
+ * seconds to 0.1 s (71.3), so a sum is first taken back to 0.1 s: floating-point sums such as
+ * 71.3 + 48.7 = 119.99999999999999 still make 2 minutes.
+ */
+export const simMinutes = (seconds: number) =>
+  Number.isFinite(seconds) && seconds > 0 ? Math.floor(Math.round(seconds * 10) / 600) : 0;
 
 /** What a chart shows for a metric (simulation time in minutes). */
 export const chartValue = (m: UsageMetrics, metric: UsageMetric) =>

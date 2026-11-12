@@ -153,6 +153,61 @@ describe('days and usage', () => {
     expect(chartValue(tot, 'runs')).toBe(5);
   });
 
+  it('fractional simulated seconds (the exporter writes 0.1 s) make whole minutes', () => {
+    expect(simMinutes(71.3)).toBe(1);
+    expect(simMinutes(59.9)).toBe(0);
+    expect(simMinutes(0.4)).toBe(0);
+    expect(simMinutes(0)).toBe(0);
+    expect(simMinutes(Number.NaN)).toBe(0);
+    // Floating-point sums land on the right minute.
+    const tenths = Array.from({ length: 1200 }, () => 0.1).reduce((a, b) => a + b);
+    expect(tenths).toBeLessThan(120);
+    expect(Math.floor(tenths / 60)).toBe(1);
+    expect(simMinutes(tenths)).toBe(2);
+    expect(simMinutes(71.3 + 48.7)).toBe(2);
+    const frac: UsageView = {
+      ...usage,
+      days: [
+        { date: '2026-11-09', accounts: { [T1]: m({ runs: 1, simSeconds: 71.3 }) } },
+        {
+          date: '2026-11-11',
+          accounts: {
+            [T1]: m({ runs: 2, simSeconds: 48.7 }),
+            [T2]: m({ simSeconds: 0.4 }),
+            unmatched: m({ simSeconds: 12.5 }),
+          },
+        },
+      ],
+    };
+    const d = dayTotals(frac, '2026-11-11');
+    expect(simMinutes(d.totals.simSeconds)).toBe(1); // 61.6 s
+    expect(d.activeTesters).toBe(2);
+    const s = accountSeries(frac, T1, daysEnding('2026-11-11', 30));
+    expect(s.length).toBe(30);
+    expect(s.filter((x) => x.metrics.simSeconds > 0).map((x) => x.date)).toEqual([
+      '2026-11-09',
+      '2026-11-11',
+    ]);
+    expect(s[0]!.metrics).toEqual(zeroMetrics());
+    expect(s[28]!.metrics).toEqual(zeroMetrics()); // 2026-11-10: no activity at all
+    expect(chartValue(seriesTotals(s), 'simSeconds')).toBe(2); // 120.0 s
+    expect(s.map((x) => chartValue(x.metrics, 'simSeconds')).slice(-3)).toEqual([1, 0, 0]);
+  });
+
+  it('a day with no activity at all (absent from the history) is zeros, not unavailable', () => {
+    const quiet: UsageView = { ...usage, days: [] };
+    expect(dayTotals(quiet, '2026-11-11')).toEqual({
+      totals: zeroMetrics(),
+      activeTesters: 0,
+      unmatched: false,
+    });
+    expect(
+      accountSeries(quiet, T1, daysEnding('2026-11-11', 30)).every((x) =>
+        Object.values(x.metrics).every((v) => v === 0),
+      ),
+    ).toBe(true);
+  });
+
   it('bar heights scale to the largest; any activity stays visible', () => {
     expect(barHeights([0, 0], 60)).toEqual([0, 0]);
     expect(barHeights([0, 1, 100], 60)).toEqual([0, 2, 60]);

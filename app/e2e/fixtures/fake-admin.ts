@@ -119,14 +119,15 @@ function usageFile(): string {
   const days: Record<string, Record<string, typeof zero>> = {};
   const put = (n: number, t: string, m: Partial<typeof zero>) =>
     ((days[dayAgo(n)] ??= {})[t] = { ...zero, ...m });
+  // Simulated seconds as the real exporter writes them: rounded to 0.1 s, not whole seconds.
   for (let n = 28; n >= 0; n -= 2)
-    put(n, alex, { signIns: 1, builds: 2, runs: 3, simSeconds: 600 });
+    put(n, alex, { signIns: 1, builds: 2, runs: 3, simSeconds: 600.4 });
   // Today: Alex 2 sign-ins, 4 builds, 1 prebuilt, 5 runs, 15 simulated minutes, 1 refusal.
-  put(0, alex, { signIns: 2, builds: 4, prebuilt: 1, runs: 5, simSeconds: 900, refusals: 1 });
-  put(0, two, { signIns: 1, runs: 2, simSeconds: 120 });
-  put(3, two, { builds: 1, runs: 1, simSeconds: 60 });
-  put(20, former, { signIns: 1, runs: 1, simSeconds: 30 });
-  put(0, 'unmatched', { refusals: 2 });
+  put(0, alex, { signIns: 2, builds: 4, prebuilt: 1, runs: 5, simSeconds: 899.7, refusals: 1 });
+  put(0, two, { signIns: 1, runs: 2, simSeconds: 120.6 });
+  put(3, two, { builds: 1, runs: 1, simSeconds: 71.3 });
+  put(20, former, { signIns: 1, runs: 1, simSeconds: 30.2 });
+  put(0, 'unmatched', { refusals: 2, simSeconds: 0.4 });
   return JSON.stringify({
     v: 1,
     generated: new Date().toISOString(),
