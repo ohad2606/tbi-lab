@@ -251,6 +251,8 @@ describe('admin service: usage and audit views (admin app)', () => {
     await expect503('truncated');
     writeFileSync(file, usageJson({ pad: 'x'.repeat(MAX_VIEW_BYTES) }));
     await expect503('too large');
+    writeFileSync(file, usageJson({ tz: 'Mars/Olympus_Mons' }));
+    await expect503('a time zone the runtime does not know');
     writeFileSync(file, usageJson());
     expect((await call(o, '/usage')).status).toBe(200);
     // No views configured at all.
@@ -273,6 +275,7 @@ describe('admin service: usage and audit views (admin app)', () => {
     expect(bad({ '2026-11-11': { [T1]: m({ runs: 1.5 }) } })).toBeNull();
     expect(bad({ '2026-11-11': { [T1]: { runs: '3' } } })).toBeNull();
     expect(bad({}, { tz: 'Asia/Jerusalem; rm' })).toBeNull();
+    expect(bad({}, { tz: 'Not/AZone' })).toBeNull();
     expect(bad({}, { generated: 'yesterday' })).toBeNull();
     expect(bad({}, { lastActivity: { 'a@example.invalid': '2026-11-11T09:00:00Z' } })).toBeNull();
     // Absent metrics are 0; unknown ones are dropped.

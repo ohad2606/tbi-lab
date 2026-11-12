@@ -76,6 +76,16 @@ const TZ_RE = /^[A-Za-z][A-Za-z0-9_+-]*(\/[A-Za-z0-9_+-]+){0,2}$/;
 const RESULT_RE = /^[a-z][a-z0-9_]{0,39}$/;
 const CORR_RE = /^[A-Za-z0-9._:-]{1,64}$/;
 
+/** A time zone the runtime knows (an unknown one would fail later, as a 500), else false. */
+function knownTimeZone(tz: string): boolean {
+  try {
+    new Intl.DateTimeFormat('en-CA', { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** An ISO UTC timestamp (as the ops side writes it), else null. */
 const isoUtc = (v: unknown): string | null =>
   typeof v === 'string' &&
@@ -111,7 +121,8 @@ export function parseUsage(text: string): UsageFile | null {
   }
   if (!isObj(raw) || raw.v !== 1) return null;
   const generated = isoUtc(raw.generated);
-  if (!generated || typeof raw.tz !== 'string' || !TZ_RE.test(raw.tz)) return null;
+  if (!generated || typeof raw.tz !== 'string' || !TZ_RE.test(raw.tz) || !knownTimeZone(raw.tz))
+    return null;
   if (raw.from !== undefined && raw.from !== null && dayNumber(raw.from) === null) return null;
   const from = typeof raw.from === 'string' ? raw.from : null;
   if (!isObj(raw.days)) return null;
