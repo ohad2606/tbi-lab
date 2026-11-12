@@ -177,7 +177,9 @@ export function parseAudit(text: string): AuditFile | null {
   const generated = isoUtc(raw.generated);
   if (!generated) return null;
   const entries: AuditEntry[] = [];
-  for (const e of raw.entries.slice(0, 2 * AUDIT_MAX)) {
+  // Every entry is read (the file is size-bounded) and sorted before the cap, so the newest are
+  // kept whatever the file's order.
+  for (const e of raw.entries) {
     if (!isObj(e)) continue;
     const at = isoUtc(e.at);
     if (!at || !(AUDIT_ACTIONS as readonly unknown[]).includes(e.action)) continue;

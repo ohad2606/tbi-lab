@@ -344,6 +344,20 @@ describe('admin service: usage and audit views (admin app)', () => {
     expect(parseAudit(auditJson(many))!.entries.length).toBe(500);
   });
 
+  it('audit parser sorts before the cap: an oldest-first file still yields the newest 500', () => {
+    const many = Array.from({ length: 1200 }, (_, i) => ({
+      at: new Date(NOW - (1199 - i) * 60_000).toISOString(),
+      action: 'sign_ins',
+      target: null,
+      result: 'ok',
+      corr: `c${i}`,
+    }));
+    const entries = parseAudit(auditJson(many))!.entries;
+    expect(entries.length).toBe(500);
+    expect(entries[0]!.corr).toBe('c1199');
+    expect(entries[499]!.corr).toBe('c700');
+  });
+
   it('range defaults follow the file’s time zone', () => {
     // 2026-11-10 23:30 UTC is already 2026-11-11 in Israel.
     const late = Date.parse('2026-11-10T23:30:00Z');
