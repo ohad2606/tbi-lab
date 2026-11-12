@@ -38,9 +38,12 @@ async function openAdmin(page: Page, locale = 'en') {
   return dialog;
 }
 
-// Phase C: accounts are cards (mobile-first), not table rows.
+// Phase C: a table row on a desktop or tablet, a card on a narrow screen (same test ids).
 const row = (page: Page, masked: string) =>
-  page.getByTestId('admin-accounts').locator('li.admin-card', { hasText: masked });
+  page
+    .getByTestId('admin-accounts')
+    .getByTestId(/^admin-account-t_/)
+    .filter({ hasText: masked });
 
 test.beforeEach(async ({ request }) => {
   await request.post(`${FAKE}/__test/reset-admin`);
@@ -102,9 +105,9 @@ for (const [size, viewport] of Object.entries(SIZES))
       await expect(page.getByTestId('admin-capacity-testers')).toContainText('2 / 30');
       await expect(page.getByTestId('admin-capacity-sessions')).toContainText('/ 6');
       const table = page.getByTestId('admin-accounts');
-      await expect(table.locator('li.admin-card')).toHaveCount(3); // Active (the default filter)
+      await expect(table.locator('tr.admin-row')).toHaveCount(3); // Active (the default filter)
       await page.getByTestId('admin-filter-all').click();
-      await expect(table.locator('li.admin-card')).toHaveCount(4);
+      await expect(table.locator('tr.admin-row')).toHaveCount(4);
       // Masked only: no full address anywhere in the dialog.
       expect(await dialog.textContent()).not.toMatch(/[a-z.]+@example\.invalid/);
       await expect(row(page, 'te***@example.invalid').first()).toBeVisible();
@@ -119,9 +122,14 @@ for (const [size, viewport] of Object.entries(SIZES))
         await expect(table).toContainText('עדיין לא נכנס/ה');
         await expect(page.getByTestId('admin-warning')).toContainText('חשבון Google אחר');
       }
-      // The owner card can be renamed, never disabled.
-      await expect(row(page, 'ow***@example.invalid').getByRole('button')).toHaveCount(1);
-      await expect(row(page, 'ow***@example.invalid').getByTestId(/^admin-rename-/)).toBeVisible();
+      // The owner's record can be renamed, never disabled (no access action at all).
+      const owner = row(page, 'ow***@example.invalid');
+      await expect(owner.getByTestId('admin-account-owner')).toHaveText(
+        locale === 'en' ? 'Owner' : 'בעלים',
+      );
+      await expect(owner.getByTestId(/^admin-(disable|reactivate)-/)).toHaveCount(0);
+      await expect(owner.getByTestId(/^admin-rename-/)).toBeVisible();
+      await expect(owner.getByRole('button')).toHaveCount(2); // Details, Rename
       await shot(page, `s23-admin-testers-${locale}-${size}`);
     });
 
@@ -131,6 +139,7 @@ test('add a tester: masked result, the typed address revealed only on request', 
 }) => {
   await asOwner(context);
   await openAdmin(page);
+  await page.getByTestId('admin-add-open').click();
   await page.getByTestId('admin-add-submit').click();
   await expect(page.getByTestId('admin-add-problem')).toHaveText('Enter one valid email address.');
   await page.getByTestId('admin-add-email').fill('new.tester@example.invalid');
@@ -145,6 +154,7 @@ test('add a tester: masked result, the typed address revealed only on request', 
   await page.getByTestId('admin-add-reveal').click();
   await expect(row(page, 'ne***@example.invalid')).toContainText('Pending');
   // The same address again: the helper's code, said plainly.
+  await page.getByTestId('admin-add-open').click();
   await page.getByTestId('admin-add-email').fill('new.tester@example.invalid');
   await page.getByTestId('admin-add-submit').click();
   await expect(page.getByTestId('admin-notice')).toHaveText('This address already has an account.');
@@ -221,6 +231,7 @@ test('a slow helper: 202 with the request id, then "check again" shows the resul
   await asOwner(context);
   await openAdmin(page);
   await request.post(`${FAKE}/__test/admin-hold?on=1`);
+  await page.getByTestId('admin-add-open').click();
   await page.getByTestId('admin-add-email').fill('late@example.invalid');
   await page.getByTestId('admin-add-submit').click();
   await expect(page.getByTestId('admin-notice')).toContainText('still processing the request', {

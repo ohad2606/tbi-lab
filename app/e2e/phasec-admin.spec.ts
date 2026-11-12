@@ -35,8 +35,12 @@ const shot = async (page: Page, name: string, whole = false) => {
   await cdp.detach();
 };
 
+// A tester's record: a card on a narrow screen, a table row on a desktop (same test ids).
 const card = (page: Page, text: string) =>
-  page.getByTestId('admin-accounts').locator('li.admin-card', { hasText: text });
+  page
+    .getByTestId('admin-accounts')
+    .getByTestId(/^admin-account-t_/)
+    .filter({ hasText: text });
 
 async function open(page: Page, locale: 'en' | 'he', viewport = PHONE) {
   await page.setViewportSize(viewport);
@@ -123,6 +127,9 @@ test('phone EN: add with a name, rename, disable (confirmed) and reactivate, all
 }) => {
   await asOwner(context);
   await open(page, 'en');
+  // The add form opens on demand, its first field focused.
+  await page.getByTestId('admin-add-open').tap();
+  await expect(page.getByTestId('admin-add-name')).toBeFocused();
   // Invalid name: refused on the phone before anything is sent.
   await page.getByTestId('admin-add-name').fill('R2-D2');
   await page.getByTestId('admin-add-email').fill('new.person@example.invalid');
@@ -180,6 +187,7 @@ test('phone EN: add with a name, rename, disable (confirmed) and reactivate, all
 test('phone HE: add, rename and disable, right to left', async ({ page, context }) => {
   await asOwner(context);
   await open(page, 'he');
+  await page.getByTestId('admin-add-open').tap();
   await page.getByTestId('admin-add-name').fill('בדיקה ד.');
   await page.getByTestId('admin-add-email').fill('named@example.invalid');
   await page.getByTestId('admin-add-submit').tap();
@@ -216,10 +224,14 @@ test('cap: 30 authorized testers fill every place; add is refused, a disabled te
   await asOwner(context);
   await open(page, 'en');
   await expect(page.getByTestId('admin-capacity-testers')).toContainText('30 / 30');
+  await page.getByTestId('admin-add-open').tap();
   await expect(page.getByTestId('admin-add-cap-full')).toHaveText(
     'All tester places are taken. Disable a tester first.',
   );
   await expect(page.getByTestId('admin-add-submit')).toBeDisabled();
+  // Every place taken: Cancel takes focus (the fields are disabled) and returns to the list.
+  await expect(page.getByTestId('admin-add-cancel')).toBeFocused();
+  await page.getByTestId('admin-add-cancel').tap();
   // Reactivating the disabled record would exceed the cap: the helper refuses, the UI says so.
   await page.getByTestId('admin-filter-disabled').tap();
   await card(page, 'fo***@example.invalid')
@@ -237,23 +249,27 @@ test('cap: 30 authorized testers fill every place; add is refused, a disabled te
     .tap();
   await page.getByTestId('admin-confirm-ok').tap();
   await expect(page.getByTestId('admin-capacity-testers')).toContainText('29 / 30');
+  await page.getByTestId('admin-add-open').tap();
+  await expect(page.getByTestId('admin-add-cap-full')).toHaveCount(0);
   await expect(page.getByTestId('admin-add-submit')).toBeEnabled();
 });
 
 for (const locale of ['en', 'he'] as const)
-  test(`desktop ${locale.toUpperCase()}: the same administration in a grid`, async ({
+  test(`desktop ${locale.toUpperCase()}: the same administration in a compact table`, async ({
     page,
     context,
   }) => {
     await asOwner(context);
     await open(page, locale, DESKTOP);
     await page.getByTestId('admin-filter-all').click();
-    await expect(page.locator('li.admin-card')).toHaveCount(4);
-    // Cards flow in columns on a wide screen.
-    const tops = await page
-      .locator('li.admin-card')
+    const table = page.locator('table[data-testid="admin-accounts"]');
+    await expect(table.locator('tbody tr.admin-row')).toHaveCount(4);
+    await expect(page.locator('li.admin-card')).toHaveCount(0);
+    // One line per tester: the rows stack (no grid of cards).
+    const tops = await table
+      .locator('tbody tr.admin-row')
       .evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().top)));
-    expect(new Set(tops).size).toBeLessThan(tops.length);
+    expect(new Set(tops).size).toBe(tops.length);
     await shot(page, `phasec-all-${locale}-desktop`);
   });
 
