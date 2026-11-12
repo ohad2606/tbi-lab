@@ -11,7 +11,9 @@ export const consoleHe: Record<ConsoleMessageKey, string> = {
   'console.nav.feedback': 'משוב',
   'console.nav.activity': 'יומן שינויים',
   'console.nav.settings': 'הגדרות',
+  'console.nav.more': 'עוד',
   'console.refresh': 'רענון',
+  'console.back': 'חזור',
 
   'console.access.signedOut.title': 'אינך מחובר/ת',
   'console.access.signedOut.text': 'פג תוקף הכניסה, או שעדיין לא נכנסת.',
@@ -55,7 +57,6 @@ export const consoleHe: Record<ConsoleMessageKey, string> = {
   'console.testers.open': 'פרטים',
   'console.testers.open.label': 'פרטים של {account}',
 
-  'console.tester.back': 'כל הבודקים',
   'console.tester.notFound': 'הבודק/ת אינו/ה ברשימה.',
   'console.tester.usage': '30 הימים האחרונים',
   'console.tester.chart.label': '{metric} ליום, 30 הימים האחרונים: {total} בסך הכול',

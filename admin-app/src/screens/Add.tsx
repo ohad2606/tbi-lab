@@ -7,13 +7,13 @@ import {
   normalizeDisplayName,
   plausibleAddress,
 } from '@tbi-lab/admin-client';
-import { Loading, Num, Problem } from '../common.js';
+import { BackButton, Loading, Num, Problem } from '../common.js';
 import { api, useConsole, useT } from '../context.js';
 
 /** Add a tester: a name and the address; afterwards the address is shown masked only. */
 export function Add() {
   const t = useT();
-  const { data, settle } = useConsole();
+  const { data, settle, go } = useConsole();
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
   const [problem, setProblem] = useState<'email' | 'name' | null>(null);
@@ -65,6 +65,7 @@ export function Add() {
 
   return (
     <section aria-labelledby="add-h" class="stack">
+      <BackButton testid="add-back" onClick={() => go({ name: 'testers' })} />
       <h1 id="add-h">{t('console.add.heading')}</h1>
       <p class="muted">
         {t('admin.capacity.testers')}:{' '}

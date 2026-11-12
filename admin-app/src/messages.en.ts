@@ -12,7 +12,9 @@ export const consoleEn = {
   'console.nav.feedback': 'Feedback',
   'console.nav.activity': 'Activity log',
   'console.nav.settings': 'Settings',
+  'console.nav.more': 'More',
   'console.refresh': 'Refresh',
+  'console.back': 'Back',
 
   'console.access.signedOut.title': 'You are signed out',
   'console.access.signedOut.text': 'Your sign-in has expired or you are not signed in.',
@@ -56,7 +58,6 @@ export const consoleEn = {
   'console.testers.open': 'Details',
   'console.testers.open.label': 'Details for {account}',
 
-  'console.tester.back': 'All testers',
   'console.tester.notFound': 'This tester is not in the list.',
   'console.tester.usage': 'Last 30 days',
   'console.tester.chart.label': '{metric} per day, last 30 days: {total} in total',

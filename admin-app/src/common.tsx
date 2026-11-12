@@ -171,3 +171,48 @@ export function BarChart({
     </svg>
   );
 }
+
+/** Inline icons (24 x 24, stroked with the text colour; decorative: the label says it all). */
+const ICONS = {
+  today: 'M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z',
+  testers:
+    'M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM2 21v-1a6 6 0 0 1 6-6h2a6 6 0 0 1 6 6v1M16 3.5a4 4 0 0 1 0 7M18 14a6 6 0 0 1 4 6v1',
+  feedback: 'M4 4h16a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H9l-5 4v-4H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z',
+  more: 'M4 6h16M4 12h16M4 18h16',
+  activity: 'M12 7v5l3 2M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z',
+  settings:
+    'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 13a7.5 7.5 0 0 0 0-2l2-1.6-2-3.4-2.4 1a7.5 7.5 0 0 0-1.7-1L15 3.5h-4L10.6 6a7.5 7.5 0 0 0-1.7 1l-2.4-1-2 3.4 2 1.6a7.5 7.5 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a7.5 7.5 0 0 0 1.7 1l.4 2.5h4l.4-2.5a7.5 7.5 0 0 0 1.7-1l2.4 1 2-3.4z',
+  signOut: 'M15 4h4a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-4M10 17l-5-5 5-5M5 12h11',
+  add: 'M12 5v14M5 12h14',
+  /** Points to the inline start (left in English); mirrored right to left. */
+  back: 'M19 12H5M11 6l-6 6 6 6',
+  /** Points to the inline end; mirrored right to left. */
+  forward: 'M9 6l6 6-6 6',
+} as const;
+export type IconName = keyof typeof ICONS;
+
+export function Icon({ name, class: cls }: { name: IconName; class?: string }) {
+  return (
+    <svg
+      class={`icon${name === 'back' || name === 'forward' ? ' icon-directional' : ''}${cls ? ` ${cls}` : ''}`}
+      viewBox="0 0 24 24"
+      width="24"
+      height="24"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path d={ICONS[name]} />
+    </svg>
+  );
+}
+
+/** "Back": an arrow toward the inline start (right in Hebrew, left in English) and the word. */
+export function BackButton({ onClick, testid }: { onClick: () => void; testid: string }) {
+  const t = useT();
+  return (
+    <button type="button" class="back" data-testid={testid} onClick={onClick}>
+      <Icon name="back" />
+      <span>{t('console.back')}</span>
+    </button>
+  );
+}

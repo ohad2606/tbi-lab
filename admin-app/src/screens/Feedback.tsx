@@ -7,7 +7,7 @@ import {
   type Loaded,
   type ReportDetail,
 } from '@tbi-lab/admin-client';
-import { Confirm, Loading, Num, Problem } from '../common.js';
+import { BackButton, Confirm, Loading, Num, Problem } from '../common.js';
 import { api, useConsole, useT } from '../context.js';
 import { codeKey } from '../i18n.js';
 import { reportsNewestFirst } from '../views.js';
@@ -96,19 +96,7 @@ export function Report({ id }: { id: string }) {
       live = false;
     };
   }, [id]);
-  const back = (
-    <a
-      href="#/feedback"
-      class="back"
-      data-testid="report-back"
-      onClick={(e) => {
-        e.preventDefault();
-        go({ name: 'feedback' });
-      }}
-    >
-      {t('admin.reports.back')}
-    </a>
-  );
+  const back = <BackButton testid="report-back" onClick={() => go({ name: 'feedback' })} />;
   if (!detail) return <Loading />;
   if (!detail.ok)
     return (

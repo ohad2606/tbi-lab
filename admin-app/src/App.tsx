@@ -10,18 +10,28 @@ import {
   requestResult,
   type MutationOutcome,
 } from '@tbi-lab/admin-client';
-import { SIGN_IN_URL, SIGN_OUT_URL, Loading } from './common.js';
+import { Icon, SIGN_IN_URL, SIGN_OUT_URL, Loading, useWide, type IconName } from './common.js';
 import { ConsoleContext, api, type Console, type Data, type MutationAction } from './context.js';
 import { getLocale, storeLocale, storedLocale, translate, type MessageKey } from './i18n.js';
-import { parseRoute, routeHash, section, type Route } from './views.js';
+import { TABS, afterRoute, parseRoute, routeHash, section, tab, type Route } from './views.js';
 import { Activity } from './screens/Activity.js';
 import { Add } from './screens/Add.js';
 import { Feedback, Report } from './screens/Feedback.js';
+import { More } from './screens/More.js';
 import { Settings } from './screens/Settings.js';
 import { TesterDetail, Testers } from './screens/Testers.js';
 import { Today } from './screens/Today.js';
 
-const SECTIONS = ['today', 'testers', 'add', 'feedback', 'activity', 'settings'] as const;
+/** The desktop's side navigation; adding a tester is an action of the Testers screen. */
+const SECTIONS = ['today', 'testers', 'feedback', 'activity', 'settings'] as const;
+const NAV_ICONS: Record<(typeof SECTIONS)[number] | 'more', IconName> = {
+  today: 'today',
+  testers: 'testers',
+  feedback: 'feedback',
+  activity: 'activity',
+  settings: 'settings',
+  more: 'more',
+};
 const SEEN_KEY = 'tbi-admin.seenReports';
 /** A pending request is checked this often, this many times; then on request only. */
 const POLL_MS = 1500;
@@ -58,6 +68,7 @@ export function App() {
   } | null>(null);
   const [seen, setSeen] = useState(loadSeen);
   const main = useRef<HTMLElement>(null);
+  const wide = useWide();
   const t = (key: MessageKey, params?: Record<string, string | number>) =>
     translate(locale, key, params);
 
@@ -67,14 +78,18 @@ export function App() {
   }, [locale]);
 
   useEffect(() => {
+    // Returning to the testers list restores its own scroll position (afterRoute below).
+    if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
     const on = () => setRoute(parseRoute(location.hash));
     addEventListener('hashchange', on);
     return () => removeEventListener('hashchange', on);
   }, []);
 
-  // A new screen: its heading takes focus (screen readers hear where they are), at the top.
+  // A new screen: its heading takes focus (screen readers hear where they are), at the top; back
+  // on the testers list from a tester opened there, where the list was.
   const first = useRef(true);
   useEffect(() => {
+    const restore = afterRoute(route);
     if (first.current) {
       first.current = false;
       return;
@@ -84,7 +99,8 @@ export function App() {
       h.tabIndex = -1;
       h.focus({ preventScroll: true });
     }
-    scrollTo(0, 0);
+    scrollTo(0, restore ?? 0);
+    if (restore !== null) requestAnimationFrame(() => scrollTo(0, restore));
   }, [routeHash(route)]);
 
   const refresh = async (parts: (keyof Data)[] = Object.keys(EMPTY) as (keyof Data)[]) => {
@@ -206,8 +222,9 @@ export function App() {
     );
   else {
     const current = section(route);
+    const currentTab = tab(route);
     body = (
-      <div class="shell">
+      <div class={`shell ${wide ? 'shell-wide' : 'shell-phone'}`}>
         <a class="skip" href="#main" onClick={(e) => (e.preventDefault(), main.current?.focus())}>
           {t('console.skip')}
         </a>
@@ -227,26 +244,51 @@ export function App() {
             {t('console.refresh')}
           </button>
         </header>
-        <nav class="nav" aria-label={t('console.nav.label')}>
-          <ul>
-            {SECTIONS.map((s) => (
-              <li key={s}>
-                <a
-                  href={`#/${s}`}
-                  aria-current={current === s ? 'page' : undefined}
-                  data-testid={`nav-${s}`}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    setNotice(null);
-                    ctx.go({ name: s });
-                  }}
-                >
-                  {t(`console.nav.${s}`)}
-                </a>
-              </li>
-            ))}
-          </ul>
-        </nav>
+        {wide ? (
+          <nav class="nav" aria-label={t('console.nav.label')}>
+            <ul>
+              {SECTIONS.map((s) => (
+                <li key={s}>
+                  <a
+                    href={`#/${s}`}
+                    aria-current={current === s ? 'page' : undefined}
+                    data-testid={`nav-${s}`}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setNotice(null);
+                      ctx.go({ name: s });
+                    }}
+                  >
+                    <Icon name={NAV_ICONS[s]} />
+                    <span>{t(`console.nav.${s}`)}</span>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </nav>
+        ) : (
+          <nav class="tabbar" aria-label={t('console.nav.label')} data-testid="tabbar">
+            <ul>
+              {TABS.map((s) => (
+                <li key={s}>
+                  <a
+                    href={`#/${s}`}
+                    aria-current={currentTab === s ? 'page' : undefined}
+                    data-testid={`nav-${s}`}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setNotice(null);
+                      ctx.go({ name: s });
+                    }}
+                  >
+                    <Icon name={NAV_ICONS[s]} />
+                    <span>{t(`console.nav.${s}`)}</span>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </nav>
+        )}
         <main id="main" ref={main} tabIndex={-1} class="main">
           <div role="status" aria-live="polite" class="notice-region">
             {notice && (
@@ -279,6 +321,7 @@ export function App() {
           {route.name === 'report' && <Report key={route.id} id={route.id} />}
           {route.name === 'activity' && <Activity />}
           {route.name === 'settings' && <Settings />}
+          {route.name === 'more' && <More />}
         </main>
       </div>
     );

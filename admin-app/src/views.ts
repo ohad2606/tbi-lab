@@ -29,7 +29,8 @@ export type Route =
   | { name: 'feedback' }
   | { name: 'report'; id: string }
   | { name: 'activity' }
-  | { name: 'settings' };
+  | { name: 'settings' }
+  | { name: 'more' };
 
 const TARGET = /^t_[A-Za-z0-9_-]{16}$/;
 const REPORT = /^[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$/;
@@ -46,6 +47,7 @@ export function parseRoute(hash: string): Route {
     a === 'feedback' ||
     a === 'activity' ||
     a === 'settings' ||
+    a === 'more' ||
     a === 'today'
   )
     return { name: a };
@@ -58,9 +60,58 @@ export function routeHash(r: Route): string {
   return `#/${r.name}`;
 }
 
-/** The navigation section a route belongs to. */
-export const section = (r: Route): Exclude<Route['name'], 'tester' | 'report'> =>
-  r.name === 'tester' ? 'testers' : r.name === 'report' ? 'feedback' : r.name;
+/** The navigation section a route belongs to (adding a tester is part of Testers). */
+export const section = (r: Route): Exclude<Route['name'], 'tester' | 'report' | 'add'> =>
+  r.name === 'tester' || r.name === 'add' ? 'testers' : r.name === 'report' ? 'feedback' : r.name;
+
+/** The phone's bottom tabs; "More" holds the activity log, settings and signing out. */
+export const TABS = ['today', 'testers', 'feedback', 'more'] as const;
+export type Tab = (typeof TABS)[number];
+export function tab(r: Route): Tab {
+  const s = section(r);
+  return s === 'activity' || s === 'settings' ? 'more' : s;
+}
+
+// ---------------------------------------------------------------- testers list memory
+
+/**
+ * What the testers list looked like (search, filter, scroll) when a tester was opened from it, so
+ * Back returns to the same place. In memory only: a fresh load starts from the default list.
+ */
+export interface ListMemory {
+  query: string;
+  filter: AccountFilter;
+  /** The page's scroll offset to restore on the next return to the list, if any. */
+  scrollY: number | null;
+  /** The tester opened from the list (Back then means "the list as it was"). */
+  openedFrom: string | null;
+}
+export const listMemory: ListMemory = {
+  query: '',
+  filter: 'active',
+  scrollY: null,
+  openedFrom: null,
+};
+export function resetListMemory(m: ListMemory = listMemory): void {
+  m.query = '';
+  m.filter = 'active';
+  m.scrollY = null;
+  m.openedFrom = null;
+}
+/**
+ * After every route change: a pending scroll is kept only on the way list -> tester -> list, and
+ * "opened from the list" only while that tester is shown. Returns the scroll to restore now.
+ */
+export function afterRoute(r: Route, m: ListMemory = listMemory): number | null {
+  if (!(r.name === 'tester' && r.target === m.openedFrom)) m.openedFrom = null;
+  if (r.name === 'testers') {
+    const y = m.scrollY;
+    m.scrollY = null;
+    return y;
+  }
+  if (r.name !== 'tester') m.scrollY = null;
+  return null;
+}
 
 // ---------------------------------------------------------------- days
 

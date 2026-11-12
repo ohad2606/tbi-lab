@@ -10,6 +10,7 @@ import {
 } from '@tbi-lab/admin-client';
 import {
   accountSeries,
+  afterRoute,
   auditRows,
   barHeights,
   chartValue,
@@ -20,8 +21,11 @@ import {
   parseRoute,
   reportsNewestFirst,
   routeHash,
+  resetListMemory,
   section,
   seriesTotals,
+  tab,
+  type ListMemory,
   simMinutes,
   testerList,
   unread,
@@ -102,6 +106,7 @@ describe('routes', () => {
       { name: 'report', id: 'ABCD-EFGH-JKMN' },
       { name: 'activity' },
       { name: 'settings' },
+      { name: 'more' },
     ] as const)
       expect(parseRoute(routeHash(r))).toEqual(r);
     for (const h of [
@@ -116,6 +121,36 @@ describe('routes', () => {
       expect(parseRoute(h)).toEqual({ name: 'today' });
     expect(section({ name: 'tester', target: T1 })).toBe('testers');
     expect(section({ name: 'report', id: 'ABCD-EFGH-JKMN' })).toBe('feedback');
+    expect(section({ name: 'add' })).toBe('testers');
+  });
+
+  it('the phone tabs: activity and settings are under More, adding a tester under Testers', () => {
+    expect(tab({ name: 'today' })).toBe('today');
+    expect(tab({ name: 'add' })).toBe('testers');
+    expect(tab({ name: 'tester', target: T1 })).toBe('testers');
+    expect(tab({ name: 'report', id: 'ABCD-EFGH-JKMN' })).toBe('feedback');
+    for (const name of ['more', 'activity', 'settings'] as const)
+      expect(tab({ name })).toBe('more');
+  });
+
+  it('the testers list memory: scroll kept only list -> tester -> list', () => {
+    const m: ListMemory = { query: 'a', filter: 'all', scrollY: 640, openedFrom: T1 };
+    expect(afterRoute({ name: 'tester', target: T1 }, m)).toBeNull();
+    expect(m).toEqual({ query: 'a', filter: 'all', scrollY: 640, openedFrom: T1 });
+    expect(afterRoute({ name: 'testers' }, m)).toBe(640);
+    expect(m.openedFrom).toBeNull();
+    expect(m.scrollY).toBeNull();
+    // Search and filter stay; the scroll is restored once.
+    expect(m.query).toBe('a');
+    expect(afterRoute({ name: 'testers' }, m)).toBeNull();
+    // Leaving for another screen forgets the scroll and the opener.
+    Object.assign(m, { scrollY: 300, openedFrom: T1 });
+    expect(afterRoute({ name: 'tester', target: T2 }, m)).toBeNull();
+    expect(m.openedFrom).toBeNull();
+    expect(afterRoute({ name: 'today' }, m)).toBeNull();
+    expect(m.scrollY).toBeNull();
+    resetListMemory(m);
+    expect(m).toEqual({ query: '', filter: 'active', scrollY: null, openedFrom: null });
   });
 });
 

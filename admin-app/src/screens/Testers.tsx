@@ -9,7 +9,7 @@ import {
   type AccountRow,
   type UsageMetric,
 } from '@tbi-lab/admin-client';
-import { BarChart, Confirm, Loading, Num, Problem, useWide } from '../common.js';
+import { BackButton, BarChart, Confirm, Icon, Loading, Num, Problem, useWide } from '../common.js';
 import { api, useConsole, useT } from '../context.js';
 import {
   accountLabel,
@@ -18,6 +18,8 @@ import {
   daysEnding,
   israelDay,
   lastActivity,
+  listMemory,
+  resetListMemory,
   seriesTotals,
   simMinutes,
   testerList,
@@ -37,11 +39,29 @@ function StatusBadge({ a }: { a: AccountRow }) {
 /** Testers: cards on a phone, a table on a desktop; search, filter, sorted by last activity. */
 export function Testers() {
   const t = useT();
-  const { data, date, go } = useConsole();
+  const { data, date, go, setNotice } = useConsole();
   const wide = useWide();
-  const [filter, setFilter] = useState<AccountFilter>('active');
-  const [query, setQuery] = useState('');
+  // The list as it was left (search, filter): kept in memory for Back from a tester.
+  const [filter, setFilterState] = useState<AccountFilter>(listMemory.filter);
+  const [query, setQueryState] = useState(listMemory.query);
+  const setFilter = (f: AccountFilter) => setFilterState((listMemory.filter = f));
+  const setQuery = (q: string) => setQueryState((listMemory.query = q));
   const { accounts, usage } = data;
+  const add = (
+    <a
+      class="button button-primary button-add"
+      href="#/add"
+      data-testid="testers-add"
+      onClick={(e) => {
+        e.preventDefault();
+        setNotice(null);
+        go({ name: 'add' });
+      }}
+    >
+      <Icon name="add" />
+      <span>{t('console.nav.add')}</span>
+    </a>
+  );
   if (!accounts) return <Loading />;
   if (!accounts.ok)
     return <Problem error={accounts.error} unavailable="console.accounts.unavailable" />;
@@ -49,6 +69,8 @@ export function Testers() {
   const rows = testerList(accounts.value, usage?.ok ? usage.value : null, { filter, query });
   const open = (a: AccountRow) => (e: Event) => {
     e.preventDefault();
+    listMemory.scrollY = scrollY;
+    listMemory.openedFrom = a.target;
     go({ name: 'tester', target: a.target });
   };
   const last = (iso: string | null) =>
@@ -56,7 +78,10 @@ export function Testers() {
 
   return (
     <section aria-labelledby="testers-h" class="stack">
-      <h1 id="testers-h">{t('console.testers.heading')}</h1>
+      <div class="screen-head">
+        <h1 id="testers-h">{t('console.testers.heading')}</h1>
+        {add}
+      </div>
       <div class="toolbar">
         <label class="field">
           <span>{t('console.testers.search')}</span>
@@ -199,18 +224,19 @@ export function TesterDetail({ target }: { target: string }) {
     if (renaming) renameField.current?.focus();
   }, [renaming]);
   const { accounts, usage } = data;
+  // Back: to the list as it was when this tester was opened from it (the browser's own history
+  // entry, so the phone's back gesture agrees); opened any other way, to the default list.
   const back = (
-    <a
-      href="#/testers"
-      class="back"
-      data-testid="tester-back"
-      onClick={(e) => {
-        e.preventDefault();
-        go({ name: 'testers' });
+    <BackButton
+      testid="tester-back"
+      onClick={() => {
+        if (listMemory.openedFrom === target && history.length > 1) history.back();
+        else {
+          resetListMemory();
+          go({ name: 'testers' });
+        }
       }}
-    >
-      {t('console.tester.back')}
-    </a>
+    />
   );
   if (!accounts) return <Loading />;
   if (!accounts.ok)
