@@ -1,4 +1,4 @@
-import { useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import {
   DISPLAY_NAME_MAX,
   accountCounts,
@@ -192,6 +192,12 @@ export function TesterDetail({ target }: { target: string }) {
   const [name, setName] = useState('');
   const [nameProblem, setNameProblem] = useState(false);
   const [busy, setBusy] = useState(false);
+  const renameField = useRef<HTMLInputElement>(null);
+  const renaming = action?.kind === 'rename';
+  // The name field takes focus when the editor opens, not on every render (typing re-renders).
+  useEffect(() => {
+    if (renaming) renameField.current?.focus();
+  }, [renaming]);
   const { accounts, usage } = data;
   const back = (
     <a
@@ -389,7 +395,7 @@ export function TesterDetail({ target }: { target: string }) {
                 data-testid="rename-input"
                 value={name}
                 aria-invalid={nameProblem}
-                ref={(el) => el?.focus()}
+                ref={renameField}
                 onInput={(e) => {
                   setName((e.target as HTMLInputElement).value);
                   setNameProblem(false);

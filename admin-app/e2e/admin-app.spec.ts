@@ -180,6 +180,12 @@ test('owner actions: rename, disable with confirmation, reactivate; the log reco
   await page.getByTestId('tester-rename').click();
   const input = page.getByTestId('rename-input');
   await expect(input).toBeFocused();
+  // Focus is taken once, when the editor opens: a later render (a refresh) leaves it alone.
+  await page.getByTestId('refresh').focus();
+  await page.getByTestId('refresh').click();
+  await expect(page.getByTestId('tester-detail')).toBeVisible();
+  await page.waitForLoadState('networkidle');
+  await expect(page.getByTestId('refresh')).toBeFocused();
   await input.fill('R2-D2');
   await page.getByTestId('rename-save').click();
   await expect(page.getByTestId('rename-problem')).toContainText('letters');
