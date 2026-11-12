@@ -8,10 +8,15 @@ import {
   ACCOUNTS_BASE,
   ADMIN_BASE,
   addTester,
+  inFilter,
   loadAccounts,
   loadAudit,
   loadReports,
   loadUsage,
+  matchesQuery,
+  visibleAccounts,
+  type AccountRow,
+  type AccountsView,
 } from '../src/index.js';
 import { adminMessagesEn, adminMessagesHe } from '../src/messages.js';
 
@@ -96,5 +101,83 @@ describe('shared admin client', () => {
     expect(Object.keys(adminMessagesHe).sort()).toEqual(Object.keys(adminMessagesEn).sort());
     for (const v of [...Object.values(adminMessagesEn), ...Object.values(adminMessagesHe)])
       expect(v.trim()).not.toBe('');
+  });
+});
+
+describe('testers search (shared by the Lab administration and the Admin app)', () => {
+  const row = (target: string, p: Partial<AccountRow>): AccountRow => ({
+    target,
+    masked: '***',
+    class: 'alpha_tester',
+    status: 'authorized',
+    dateAdded: null,
+    googleIdRecorded: false,
+    displayName: null,
+    firstSignIn: null,
+    lastSignIn: null,
+    signIns: 0,
+    lastSeen: null,
+    statusUpdated: null,
+    ...p,
+  });
+  const view: AccountsView = {
+    accounts: [
+      row('t_owner', { class: 'owner', masked: 'ow***@example.invalid', displayName: 'Owner' }),
+      row('t_alex', { masked: 'te***@example.invalid', displayName: 'Alex T.' }),
+      row('t_noa', { masked: 'no***@makers.example.invalid', displayName: 'נועה לוי' }),
+      row('t_none', { masked: 'ab***@example.invalid', status: 'pending' }),
+      row('t_gone', {
+        masked: 'fo***@example.invalid',
+        displayName: 'בודקת ל.',
+        status: 'revoked',
+      }),
+    ],
+    warnings: [],
+    generated: null,
+    authorizedTesters: 3,
+    owner: 1,
+    cap: 30,
+  };
+  const ids = (filter: 'active' | 'disabled' | 'all', q: string) =>
+    visibleAccounts(view, filter, q).map((a) => a.target);
+
+  it('matches the private name, case-insensitively', () => {
+    expect(matchesQuery(view.accounts[1]!, 'alex')).toBe(true);
+    expect(matchesQuery(view.accounts[1]!, '  ALEX t. ')).toBe(true);
+    expect(matchesQuery(view.accounts[1]!, 'bob')).toBe(false);
+  });
+
+  it('matches the visible masked address only (never a full one)', () => {
+    expect(matchesQuery(view.accounts[1]!, 'TE***@EXAMPLE')).toBe(true);
+    expect(matchesQuery(view.accounts[2]!, 'makers')).toBe(true);
+    // The full address is not known here: its hidden part never matches.
+    expect(matchesQuery(view.accounts[1]!, 'tester.one')).toBe(false);
+  });
+
+  it('Hebrew names, in the composed or decomposed form', () => {
+    expect(matchesQuery(view.accounts[2]!, 'לוי')).toBe(true);
+    expect(matchesQuery(view.accounts[2]!, 'נועה'.normalize('NFD'))).toBe(true);
+    expect(matchesQuery(view.accounts[4]!, 'בודקת')).toBe(true);
+    expect(matchesQuery(view.accounts[2]!, 'בודקת')).toBe(false);
+  });
+
+  it('an empty or blank query matches everything', () => {
+    for (const a of view.accounts) {
+      expect(matchesQuery(a, '')).toBe(true);
+      expect(matchesQuery(a, '   ')).toBe(true);
+    }
+    expect(ids('all', '')).toEqual(['t_owner', 't_none', 't_alex', 't_gone', 't_noa']);
+  });
+
+  it('combined with the filter; the owner stays first', () => {
+    expect(inFilter(view.accounts[3]!, 'active')).toBe(true); // pending counts as active
+    expect(inFilter(view.accounts[4]!, 'active')).toBe(false);
+    expect(ids('active', 'example.invalid')).toEqual(['t_owner', 't_none', 't_alex', 't_noa']);
+    expect(ids('active', '@example.invalid')).toEqual(['t_owner', 't_none', 't_alex']);
+    expect(ids('disabled', 'example.invalid')).toEqual(['t_gone']);
+    expect(ids('disabled', 'alex')).toEqual([]);
+    expect(ids('all', 'בודקת')).toEqual(['t_gone']);
+    expect(ids('active', 'בודקת')).toEqual([]);
+    expect(ids('all', 'o')).toEqual(['t_owner', 't_gone', 't_noa']);
   });
 });

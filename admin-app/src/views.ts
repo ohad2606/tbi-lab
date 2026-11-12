@@ -6,6 +6,8 @@
  */
 import {
   ADMIN_TIME_ZONE,
+  inFilter,
+  matchesQuery,
   UNMATCHED,
   USAGE_METRICS,
   type AccountFilter,
@@ -212,22 +214,18 @@ export const lastActivity = (a: AccountRow, u: UsageView | null): string | null 
 const fold = (s: string) => s.normalize('NFC').toLocaleLowerCase().trim();
 
 /**
- * The testers list: filtered (active / disabled / all), searched by name or masked address,
- * sorted by last activity (most recent first; never active last, then by label).
+ * The testers list: filtered (active / disabled / all), searched by name or masked address (the
+ * shared matcher, @tbi-lab/admin-client), sorted by last activity (most recent first; never
+ * active last, then by label).
  */
 export function testerList(
   v: AccountsView,
   u: UsageView | null,
   opts: { filter: AccountFilter; query: string },
 ): { account: AccountRow; last: string | null }[] {
-  const q = fold(opts.query);
-  const keep = (a: AccountRow) =>
-    opts.filter === 'all' ||
-    (opts.filter === 'active' ? a.status !== 'revoked' : a.status === 'revoked');
   const label = (a: AccountRow) => fold(a.displayName ?? a.masked);
   return v.accounts
-    .filter(keep)
-    .filter((a) => !q || label(a).includes(q) || fold(a.masked).includes(q))
+    .filter((a) => inFilter(a, opts.filter) && matchesQuery(a, opts.query))
     .map((account) => ({ account, last: lastActivity(account, u) }))
     .sort((x, y) => {
       const dx = x.last ? Date.parse(x.last) : -Infinity;

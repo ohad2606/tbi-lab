@@ -330,13 +330,28 @@ export function israelTime(iso: string | null, locale: string, withTime = true):
 
 export type AccountFilter = 'active' | 'disabled' | 'all';
 
+/** Whether an account belongs to a filter's list (Active also holds the pending ones). */
+export const inFilter = (a: AccountRow, filter: AccountFilter): boolean =>
+  filter === 'all' || (filter === 'active' ? a.status !== 'revoked' : a.status === 'revoked');
+
+/** Search text compared case- and form-insensitively (Hebrew has no case; NFC keeps marks stable). */
+const fold = (s: string) => s.normalize('NFC').toLocaleLowerCase().trim();
+
+/**
+ * The testers search, shared by the Lab's administration and the Admin app: the owner's private
+ * name or the server's masked address contains the query. An empty query matches every account.
+ * Only what the owner already sees is searched (never a full address).
+ */
+export function matchesQuery(a: AccountRow, query: string): boolean {
+  const q = fold(query);
+  return !q || fold(a.displayName ?? '').includes(q) || fold(a.masked).includes(q);
+}
+
 /** The list the owner sees: the owner first, then by name (or masked address), per filter. */
-export function visibleAccounts(v: AccountsView, filter: AccountFilter): AccountRow[] {
-  const keep = (a: AccountRow) =>
-    filter === 'all' || (filter === 'active' ? a.status !== 'revoked' : a.status === 'revoked');
+export function visibleAccounts(v: AccountsView, filter: AccountFilter, query = ''): AccountRow[] {
   const label = (a: AccountRow) => (a.displayName ?? a.masked).toLocaleLowerCase();
   return v.accounts
-    .filter(keep)
+    .filter((a) => inFilter(a, filter) && matchesQuery(a, query))
     .sort((a, b) =>
       a.class !== b.class ? (a.class === 'owner' ? -1 : 1) : label(a).localeCompare(label(b)),
     );
