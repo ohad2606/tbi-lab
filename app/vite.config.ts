@@ -1,7 +1,7 @@
-import type { IncomingMessage } from 'node:http';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { defineConfig, type Plugin, type ProxyOptions } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
+import { identityGate } from '../scripts/vite-identity-gate.js';
 import { currentBuildInfo, versionJson } from './buildInfo.config.js';
 
 /**
@@ -17,29 +17,13 @@ import { currentBuildInfo, versionJson } from './buildInfo.config.js';
  * http://127.0.0.1:7410.
  */
 /**
- * TEST ONLY (TBI_TEST_GATE=1, set by the Playwright configuration): the proxy plays the
- * deployment's authenticating gate (Sprint 8, D-S8-1). It removes every identity header the
- * browser sent and asserts the subject named by the `tbi_test_user` cookie (default `e2e-user`),
- * so tests can act as different users. Never enabled otherwise: without it the backends get no
- * identity and answer 401.
+ * Identity (scripts/vite-identity-gate.ts, shared with the admin app): the proxy always drops
+ * every identity header the browser sent; only in test mode (TBI_TEST_GATE=1, set by the
+ * Playwright configuration) does it play the deployment's authenticating gate (Sprint 8, D-S8-1)
+ * and assert the `tbi_test_user` / `tbi_test_email` cookies' identity. Without it the backends get
+ * no identity and answer 401.
  */
-const testGate = process.env.TBI_TEST_GATE === '1';
-type ProxyServer = Parameters<NonNullable<ProxyOptions['configure']>>[0];
-function gate(proxy: ProxyServer): void {
-  if (!testGate) return;
-  proxy.on('proxyReq', (proxyReq, req: IncomingMessage) => {
-    for (const name of proxyReq.getHeaderNames())
-      if (name === 'x-forwarded-user' || name === 'x-forwarded-email' || name.startsWith('x-tbi-'))
-        proxyReq.removeHeader(name);
-    const cookie = /(?:^|;\s*)tbi_test_user=([A-Za-z0-9._-]{1,64})/.exec(req.headers.cookie ?? '');
-    proxyReq.setHeader('x-forwarded-user', cookie?.[1] ?? 'e2e-user');
-    // Sprint 23B: oauth2-proxy also passes the session's address (tests: `tbi_test_email`).
-    const email = /(?:^|;\s*)tbi_test_email=([A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9.-]{1,64})/.exec(
-      req.headers.cookie ?? '',
-    );
-    if (email) proxyReq.setHeader('x-forwarded-email', email[1]!);
-  });
-}
+const gate = identityGate();
 
 const runtimeProxy = {
   '/runtime': {
