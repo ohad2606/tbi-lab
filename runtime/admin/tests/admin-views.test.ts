@@ -375,11 +375,35 @@ describe('admin service: usage and audit views (admin app)', () => {
         },
         { at: 'soon', action: 'add', target: null, result: 'done', corr: 'x3' },
         { at: '2026-11-06T00:00:00Z', action: 'add', target: null, result: 'Done!', corr: 'x4' },
+        // Automatic events (the helper's sign-in and identity records) carry no correlation id.
+        {
+          at: '2026-11-07T00:00:00Z',
+          action: 'sign_ins',
+          target: null,
+          result: 'done',
+          corr: null,
+          count: 3,
+        },
+        {
+          at: '2026-11-07T01:00:00Z',
+          action: 'record_identity',
+          target: T1,
+          result: 'done',
+          corr: null,
+        },
+        { at: '2026-11-06T00:00:00Z', action: 'add', target: T1, result: 'done', corr: 42 },
+        {
+          at: '2026-11-06T00:00:00Z',
+          action: 'add',
+          target: T1,
+          result: 'done',
+          corr: 'bad corr!',
+        },
       ]),
     );
     expect(
-      ((await call(o, '/audit')).body.entries as { corr: string }[]).map((e) => e.corr),
-    ).toEqual(['b', 'a']);
+      ((await call(o, '/audit')).body.entries as { corr: string | null }[]).map((e) => e.corr),
+    ).toEqual([null, null, 'b', 'a']);
     for (const text of [auditJson().replace('"v":1', '"v":2'), 'not json']) {
       writeFileSync(join(s.dir, 'view', 'audit.json'), text);
       expect((await call(o, '/audit')).body).toEqual({ error: 'audit_unavailable' });

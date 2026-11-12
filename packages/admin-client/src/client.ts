@@ -458,7 +458,7 @@ export interface AuditEntry {
   action: AuditAction;
   target: string | null;
   result: string;
-  corr: string;
+  corr: string | null;
   count?: number;
 }
 

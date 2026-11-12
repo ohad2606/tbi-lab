@@ -62,7 +62,8 @@ export interface AuditEntry {
   action: (typeof AUDIT_ACTIONS)[number];
   target: string | null;
   result: string;
-  corr: string;
+  /** The helper's correlation id; null for automatic events (sign-ins, identity records). */
+  corr: string | null;
   count?: number;
 }
 
@@ -200,7 +201,13 @@ export function parseAudit(text: string): AuditFile | null {
           : undefined;
     if (target === undefined) continue;
     if (typeof e.result !== 'string' || !RESULT_RE.test(e.result)) continue;
-    if (typeof e.corr !== 'string' || !CORR_RE.test(e.corr)) continue;
+    const corr =
+      e.corr === null || e.corr === undefined
+        ? null
+        : typeof e.corr === 'string' && CORR_RE.test(e.corr)
+          ? e.corr
+          : undefined;
+    if (corr === undefined) continue;
     const count = e.count === undefined ? undefined : metric(e.count);
     if (count === null) continue;
     entries.push({
@@ -208,7 +215,7 @@ export function parseAudit(text: string): AuditFile | null {
       action: e.action as AuditEntry['action'],
       target,
       result: e.result,
-      corr: e.corr,
+      corr,
       ...(count === undefined ? {} : { count }),
     });
   }

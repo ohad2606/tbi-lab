@@ -224,7 +224,7 @@ interface AuditLine {
   action: string;
   target: string | null;
   result: string;
-  corr: string;
+  corr: string | null;
   count?: number;
 }
 const seedAudit = (): AuditLine[] => [
@@ -240,7 +240,7 @@ const seedAudit = (): AuditLine[] => [
     action: 'sign_ins',
     target: null,
     result: 'ok',
-    corr: 'seed-1',
+    corr: null, // automatic events carry no correlation id (as the real helper writes them)
     count: 3,
   },
 ];
@@ -254,7 +254,10 @@ const richAudit = (registry: Rec[]): AuditLine[] => {
     action: i % 25 === 7 ? 'sign_ins' : actions[i % actions.length]!,
     target: i % 25 === 7 ? null : target(registry[i % registry.length]!.email),
     result: i % 25 === 7 ? 'ok' : results[(i * 7) % results.length]!,
-    corr: `rich-${String(i).padStart(3, '0')}`,
+    corr:
+      i % 25 === 7 || actions[i % actions.length] === 'record_identity'
+        ? null
+        : `rich-${String(i).padStart(3, '0')}`,
     ...(i % 25 === 7 ? { count: 12 + i } : {}),
   }));
 };
