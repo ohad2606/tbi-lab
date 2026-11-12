@@ -103,6 +103,68 @@ function seed(): Rec[] {
   ];
 }
 
+/**
+ * Admin app layout tests: a full, realistic registry (29 testers holding a place and one just
+ * added, long Hebrew and English names up to the 60-character limit, long address domains).
+ * Synthetic only.
+ */
+const RICH_NAMES = [
+  'אלכסנדרה בת-שבע רוזנבלום-גולדשטיין מהמחלקה להנדסת חשמל',
+  'Maximilian Alexander von Hohenzollern-Sigmaringen the Third',
+  'יוסף',
+  'נועה לוי',
+  'Christopher Montgomery-Fitzgerald',
+  'מרים שושנה אברבנאל-קרסו',
+  'Ana',
+  'דניאל בן-דוד',
+  "Siobhan O'Shaughnessy-MacGillycuddy",
+  'שירה',
+  'Bartholomew',
+  'אביגיל רחל טננבאום',
+  'Jean-Baptiste Emmanuel Zorg',
+  'עומר חדד',
+  'Олександра Коваленко',
+  'תמר',
+  'Wolfgang Amadeus Wunderlich-Schönberger',
+  'איתי',
+  'Lea',
+  'רונית קליין-שטרנברג',
+  'Priyanka Ramaswamy-Venkataraman',
+  'גיל',
+  'Elisabeth',
+  'מיכאל אברהם יצחק',
+  'Zoë',
+  'הדס',
+  'Noam',
+  'Konstantinos Papadopoulos',
+];
+const LONG_DOMAINS = [
+  'electrical-engineering.university-of-somewhere.example.invalid',
+  'example.invalid',
+  'makers-and-tinkerers-community-workshop.example.invalid',
+];
+function richRegistry(): Rec[] {
+  const base = seed().filter((r) => r.email !== 'former@example.invalid');
+  const extra = RICH_NAMES.map((name, i) =>
+    rec({
+      email: `${i % 2 ? 'x' : 'ab'}rich.tester.number.${String(i).padStart(2, '0')}@${
+        LONG_DOMAINS[i % LONG_DOMAINS.length]
+      }`,
+      sub: `e2e-rich-${i}`,
+      dateAdded: '2026-10-10',
+      name: i % 9 === 8 ? null : name,
+      firstSignIn: '2026-10-11T08:00:00.000001Z',
+      lastSignIn: `2026-11-0${(i % 9) + 1}T1${i % 10}:15:00.000001Z`,
+      signIns: 3 + i * 7,
+      // The last one was just added and has not signed in yet (29 of 30 places taken).
+      ...(i === RICH_NAMES.length - 1
+        ? { status: 'pending' as const, sub: null, firstSignIn: null, lastSignIn: null, signIns: 0 }
+        : {}),
+    }),
+  );
+  return [...base, ...extra, seed().find((r) => r.email === 'former@example.invalid')!];
+}
+
 /** Israel day `n` days before today. */
 const dayAgo = (n: number) => {
   const today = todayIn('Asia/Jerusalem', Date.now());
@@ -111,7 +173,7 @@ const dayAgo = (n: number) => {
 };
 
 /** Synthetic usage: Alex every other day, tester two on a few days, some unmatched activity. */
-function usageFile(): string {
+function usageFile(registry: Rec[] = []): string {
   const alex = target('tester.one@example.invalid');
   const two = target('tester.two@example.invalid');
   const former = target('former@example.invalid');
@@ -128,6 +190,20 @@ function usageFile(): string {
   put(3, two, { builds: 1, runs: 1, simSeconds: 71.3 });
   put(20, former, { signIns: 1, runs: 1, simSeconds: 30.2 });
   put(0, 'unmatched', { refusals: 2, simSeconds: 0.4 });
+  // Rich mode: everyone else active on a few days (fractional seconds as well).
+  const rich = registry.filter((r) => r.sub?.startsWith('e2e-rich-'));
+  rich.forEach((r, i) => {
+    for (let n = i % 4; n < 30; n += 3 + (i % 5))
+      put(n, target(r.email), {
+        signIns: 1,
+        builds: i % 3,
+        runs: 1 + (i % 4),
+        simSeconds: Math.round(373 * (i + 1)) / 10,
+      });
+  });
+  const richLast = Object.fromEntries(
+    rich.map((r, i) => [target(r.email), new Date(Date.now() - (i + 3) * 3_600_000).toISOString()]),
+  );
   return JSON.stringify({
     v: 1,
     generated: new Date().toISOString(),
@@ -138,6 +214,7 @@ function usageFile(): string {
       [alex]: new Date(Date.now() - 3600_000).toISOString(),
       [two]: new Date(Date.now() - 7200_000).toISOString(),
       [former]: `${dayAgo(20)}T08:00:00Z`,
+      ...richLast,
     },
   });
 }
@@ -168,6 +245,20 @@ const seedAudit = (): AuditLine[] => [
   },
 ];
 
+/** Rich mode: 300 audit lines over the registry (every action and result the app knows). */
+const richAudit = (registry: Rec[]): AuditLine[] => {
+  const actions = ['add', 'rename', 'disable', 'reactivate', 'refused', 'record_identity'];
+  const results = ['done', 'done', 'done', 'exists', 'cap_reached', 'unknown_target'];
+  return Array.from({ length: 300 }, (_, i) => ({
+    at: new Date(Date.now() - (i + 1) * 2_700_000).toISOString(),
+    action: i % 25 === 7 ? 'sign_ins' : actions[i % actions.length]!,
+    target: i % 25 === 7 ? null : target(registry[i % registry.length]!.email),
+    result: i % 25 === 7 ? 'ok' : results[(i * 7) % results.length]!,
+    corr: `rich-${String(i).padStart(3, '0')}`,
+    ...(i % 25 === 7 ? { count: 12 + i } : {}),
+  }));
+};
+
 export function startFakeAdmin(capacity: () => { live: number; max: number }) {
   const dir = ownedTempDir('tbi-e2e-admin-');
   for (const d of ['spool', 'results', 'view', 'observations']) mkdirSync(join(dir, d));
@@ -178,7 +269,7 @@ export function startFakeAdmin(capacity: () => { live: number; max: number }) {
   const writeHistory = () => {
     const usage = join(dir, 'usage', 'usage.json');
     const auditFile = join(dir, 'view', 'audit.json');
-    if (views.usage) writeFileSync(usage, usageFile());
+    if (views.usage) writeFileSync(usage, usageFile(registry));
     else rmSync(usage, { force: true });
     if (views.audit)
       writeFileSync(
@@ -390,6 +481,17 @@ export function startFakeAdmin(capacity: () => { live: number; max: number }) {
       )
         registry.push(rec({ email: `filler${String(i).padStart(2, '0')}@example.invalid` }));
       writeViews();
+      access.reload();
+    },
+    /**
+     * Admin app layout tests: 30 testers (29 holding a place, one pending) with long Hebrew and
+     * English names and long address domains, usage for all of them and 300 audit lines.
+     */
+    rich() {
+      registry = richRegistry();
+      audit = richAudit(registry);
+      writeViews();
+      writeHistory();
       access.reload();
     },
     /** Admin app: make the usage history and the audit view unavailable (or available again). */

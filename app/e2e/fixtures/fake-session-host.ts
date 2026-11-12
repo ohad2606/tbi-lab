@@ -37,6 +37,8 @@
  *     POST /__test/admin-fill?n=30       Phase C: synthetic authorized testers up to n (cap tests)
  *     POST /__test/admin-history?usage=0|1&audit=0|1   admin app: remove (0) or restore (1) the
  *                                        usage history and the audit view (503 tests)
+ *     POST /__test/admin-rich            admin app layout tests: 30 testers with long names, usage
+ *                                        for all, 300 audit lines (reset-admin restores the seed)
  *   Sprint 23C feedback-only release: the same host on REPORTS_PORT (default 7497), whose
  *   `/admin` is the REAL reports mode (TBI_ADMIN_MODE=reports: report routes only, the owner
  *   `e2e-owner` from an owner reference file, every account path 404). The :4175 preview
@@ -506,6 +508,9 @@ const server = createServer((req: IncomingMessage, res: ServerResponse) => {
         usage: url.searchParams.get('usage') !== '0',
         audit: url.searchParams.get('audit') !== '0',
       });
+      return reply({ ok: true });
+    case '/__test/admin-rich':
+      fakeAdmin.rich();
       return reply({ ok: true });
     case '/__test/admin-owner-unrecorded':
       fakeAdmin.ownerUnrecorded();
