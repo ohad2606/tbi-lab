@@ -1,0 +1,48 @@
+{
+  "v": 1,
+  "generated": "2026-11-11T18:55:02Z",
+  "tz": "Asia/Jerusalem",
+  "from": "2025-10-08",
+  "days": {
+    "2026-11-09": {
+      "t_AAAAAAAAAAAAAAAA": {
+        "signIns": 1,
+        "builds": 3,
+        "prebuilt": 0,
+        "runs": 4,
+        "simSeconds": 71.3,
+        "refusals": 0
+      }
+    },
+    "2026-11-11": {
+      "t_AAAAAAAAAAAAAAAA": {
+        "signIns": 2,
+        "builds": 5,
+        "prebuilt": 1,
+        "runs": 6,
+        "simSeconds": 188.7,
+        "refusals": 1
+      },
+      "t_BBBBBBBBBBBBBBBB": {
+        "signIns": 1,
+        "builds": 0,
+        "prebuilt": 2,
+        "runs": 2,
+        "simSeconds": 0.4,
+        "refusals": 0
+      },
+      "unmatched": {
+        "signIns": 0,
+        "builds": 0,
+        "prebuilt": 0,
+        "runs": 1,
+        "simSeconds": 12.5,
+        "refusals": 2
+      }
+    }
+  },
+  "lastActivity": {
+    "t_AAAAAAAAAAAAAAAA": "2026-11-11T16:42:10Z",
+    "t_BBBBBBBBBBBBBBBB": "2026-11-11T09:03:55Z"
+  }
+}

@@ -90,7 +90,7 @@
       "maxActive": 2
     },
     "runtime": {
-      "maxLiveSessions": "cpus"
+      "maxLiveSessions": 6
     },
     "resources": {
       "minFreeDiskMb": 1024,

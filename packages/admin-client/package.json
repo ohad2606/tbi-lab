@@ -1,0 +1,12 @@
+{
+  "name": "@tbi-lab/admin-client",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "TBI Lab administration client without the DOM: the owner-only API calls, their answers, the administration's texts and the Lab's controlled glossary. Shared by the Lab's in-app administration and the TBI Lab Admin app.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./messages": "./src/messages.ts",
+    "./glossary": "./src/glossary.ts"
+  }
+}

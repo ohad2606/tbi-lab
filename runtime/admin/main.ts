@@ -13,6 +13,8 @@
  *   TBI_ADMIN_DIR          the helper's base directory (required): spool/, results/, view/accounts.json
  *   TBI_RUNTIME_HEALTH     the Session Host's health-only socket, for the live-session count
  *                          (`unix:/run/<N>-runtime/health.sock`); unset: capacity answers 503
+ *   TBI_ADMIN_USAGE        admin app: the usage exporter's file (default <TBI_ADMIN_DIR>/usage/usage.json)
+ *   TBI_ADMIN_AUDIT_VIEW   admin app: the helper's audit view (default <TBI_ADMIN_DIR>/view/audit.json)
  *
  * SIGTERM / SIGINT: stop accepting requests and exit.
  */
@@ -21,6 +23,7 @@ import { describeListen, listen, parseListen, socketGidFromEnv } from '../identi
 import { identityFromEnv } from '../identity/principal.js';
 import { AdminSpool, adminConfigFromEnv, createAdminServer } from './accounts.js';
 import { healthCapacity } from './capacity.js';
+import { AdminViews, viewPathsFromEnv } from './views.js';
 
 const where = parseListen(process.env.TBI_ADMIN_LISTEN ?? '127.0.0.1:7410');
 const socketGid = socketGidFromEnv();
@@ -36,6 +39,7 @@ const server = createAdminServer(identity, {
   access,
   spool: new AdminSpool(config),
   capacity: health ? healthCapacity(health) : async () => null,
+  views: new AdminViews(viewPathsFromEnv(config.dir)),
 });
 
 let stopping = false;

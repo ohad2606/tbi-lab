@@ -1,0 +1,378 @@
+/** TBI Lab Admin: the screens' logic without the DOM (routes, usage sums, the testers list, the log). */
+import { describe, expect, it } from 'vitest';
+import {
+  RESULT_CODES,
+  type AccountRow,
+  type AccountsView,
+  type AuditView,
+  type ReportMeta,
+  type UsageView,
+} from '@tbi-lab/admin-client';
+import {
+  accountSeries,
+  afterRoute,
+  auditRows,
+  barHeights,
+  chartValue,
+  dayTotals,
+  daysEnding,
+  israelDay,
+  lastActivity,
+  parseRoute,
+  reportsNewestFirst,
+  routeHash,
+  resetListMemory,
+  section,
+  seriesTotals,
+  tab,
+  type ListMemory,
+  simMinutes,
+  testerList,
+  unread,
+  zeroMetrics,
+} from '../src/views.js';
+import { LOCALES, codeKey, getLocale, isMessageKey, translate } from '../src/i18n.js';
+
+const T1 = 't_AAAAAAAAAAAAAAAA';
+const T2 = 't_BBBBBBBBBBBBBBBB';
+const T3 = 't_CCCCCCCCCCCCCCCC';
+
+const row = (p: Partial<AccountRow> & Pick<AccountRow, 'target' | 'masked'>): AccountRow => ({
+  class: 'alpha_tester',
+  status: 'authorized',
+  dateAdded: '2026-10-01',
+  googleIdRecorded: true,
+  displayName: null,
+  firstSignIn: null,
+  lastSignIn: null,
+  signIns: 0,
+  lastSeen: null,
+  statusUpdated: null,
+  ...p,
+});
+
+const accounts: AccountsView = {
+  generated: null,
+  cap: 30,
+  authorizedTesters: 2,
+  owner: 1,
+  warnings: [],
+  accounts: [
+    row({
+      target: T1,
+      masked: 'al***@example.invalid',
+      displayName: 'Alex T.',
+      lastSignIn: '2026-11-10T08:00:00Z',
+    }),
+    row({ target: T2, masked: 'be***@example.invalid', lastSeen: '2026-11-11T07:00:00Z' }),
+    row({
+      target: T3,
+      masked: 'fo***@example.invalid',
+      displayName: 'בודקת ל.',
+      status: 'revoked',
+    }),
+  ],
+};
+
+const m = (p: Partial<Record<string, number>>) => ({ ...zeroMetrics(), ...p });
+const usage: UsageView = {
+  generated: '2026-11-11T09:55:00Z',
+  tz: 'Asia/Jerusalem',
+  from: '2026-10-13',
+  to: '2026-11-11',
+  days: [
+    { date: '2026-11-10', accounts: { [T1]: m({ runs: 2, simSeconds: 119 }) } },
+    {
+      date: '2026-11-11',
+      accounts: {
+        [T1]: m({ runs: 3, builds: 1, simSeconds: 61 }),
+        [T2]: m({}),
+        [T3]: m({ refusals: 1 }),
+        unmatched: m({ runs: 1 }),
+      },
+    },
+  ],
+  lastActivity: { [T1]: '2026-11-11T09:00:00Z' },
+};
+
+describe('routes', () => {
+  it('parse and print every screen; anything else is Today', () => {
+    for (const r of [
+      { name: 'today' },
+      { name: 'testers' },
+      { name: 'tester', target: T1 },
+      { name: 'add' },
+      { name: 'feedback' },
+      { name: 'report', id: 'ABCD-EFGH-JKMN' },
+      { name: 'activity' },
+      { name: 'settings' },
+      { name: 'more' },
+    ] as const)
+      expect(parseRoute(routeHash(r))).toEqual(r);
+    for (const h of [
+      '',
+      '#',
+      '#/x',
+      '#/testers/../../etc',
+      '#/testers/t_x',
+      '#/feedback/1/2',
+      '#/today/x',
+    ])
+      expect(parseRoute(h)).toEqual({ name: 'today' });
+    expect(section({ name: 'tester', target: T1 })).toBe('testers');
+    expect(section({ name: 'report', id: 'ABCD-EFGH-JKMN' })).toBe('feedback');
+    expect(section({ name: 'add' })).toBe('testers');
+  });
+
+  it('the phone tabs: activity and settings are under More, adding a tester under Testers', () => {
+    expect(tab({ name: 'today' })).toBe('today');
+    expect(tab({ name: 'add' })).toBe('testers');
+    expect(tab({ name: 'tester', target: T1 })).toBe('testers');
+    expect(tab({ name: 'report', id: 'ABCD-EFGH-JKMN' })).toBe('feedback');
+    for (const name of ['more', 'activity', 'settings'] as const)
+      expect(tab({ name })).toBe('more');
+  });
+
+  it('the testers list memory: scroll kept only list -> tester -> list', () => {
+    const m: ListMemory = { query: 'a', filter: 'all', scrollY: 640, openedFrom: T1 };
+    expect(afterRoute({ name: 'tester', target: T1 }, m)).toBeNull();
+    expect(m).toEqual({ query: 'a', filter: 'all', scrollY: 640, openedFrom: T1 });
+    expect(afterRoute({ name: 'testers' }, m)).toBe(640);
+    expect(m.openedFrom).toBeNull();
+    expect(m.scrollY).toBeNull();
+    // Search and filter stay; the scroll is restored once.
+    expect(m.query).toBe('a');
+    expect(afterRoute({ name: 'testers' }, m)).toBeNull();
+    // Leaving for another screen forgets the scroll and the opener.
+    Object.assign(m, { scrollY: 300, openedFrom: T1 });
+    expect(afterRoute({ name: 'tester', target: T2 }, m)).toBeNull();
+    expect(m.openedFrom).toBeNull();
+    expect(afterRoute({ name: 'today' }, m)).toBeNull();
+    expect(m.scrollY).toBeNull();
+    resetListMemory(m);
+    expect(m).toEqual({ query: '', filter: 'active', scrollY: null, openedFrom: null });
+  });
+});
+
+describe('days and usage', () => {
+  it('Israel days, and the 30 days ending one', () => {
+    expect(israelDay(Date.parse('2026-11-10T22:30:00Z'))).toBe('2026-11-11');
+    expect(israelDay(Date.parse('2026-11-10T21:30:00Z'))).toBe('2026-11-10');
+    const d = daysEnding('2026-11-11', 30);
+    expect(d.length).toBe(30);
+    expect(d[0]).toBe('2026-10-13');
+    expect(d[29]).toBe('2026-11-11');
+    expect(daysEnding('2026-03-01', 2)).toEqual(['2026-02-28', '2026-03-01']);
+  });
+
+  it('a day’s totals count every account; active testers exclude unmatched and idle rows', () => {
+    const d = dayTotals(usage, '2026-11-11');
+    expect(d.totals).toEqual(m({ runs: 4, builds: 1, simSeconds: 61, refusals: 1 }));
+    expect(d.activeTesters).toBe(2);
+    expect(d.unmatched).toBe(true);
+    expect(dayTotals(usage, '2026-01-01')).toEqual({
+      totals: zeroMetrics(),
+      activeTesters: 0,
+      unmatched: false,
+    });
+  });
+
+  it('one tester’s series fills empty days with 0; totals sum; minutes round down', () => {
+    const s = accountSeries(usage, T1, daysEnding('2026-11-11', 3));
+    expect(s.map((d) => d.metrics.runs)).toEqual([0, 2, 3]);
+    const tot = seriesTotals(s);
+    expect(tot.runs).toBe(5);
+    expect(tot.simSeconds).toBe(180);
+    expect(simMinutes(179)).toBe(2);
+    expect(chartValue(tot, 'simSeconds')).toBe(3);
+    expect(chartValue(tot, 'runs')).toBe(5);
+  });
+
+  it('fractional simulated seconds (the exporter writes 0.1 s) make whole minutes', () => {
+    expect(simMinutes(71.3)).toBe(1);
+    expect(simMinutes(59.9)).toBe(0);
+    expect(simMinutes(0.4)).toBe(0);
+    expect(simMinutes(0)).toBe(0);
+    expect(simMinutes(Number.NaN)).toBe(0);
+    // Floating-point sums land on the right minute.
+    const tenths = Array.from({ length: 1200 }, () => 0.1).reduce((a, b) => a + b);
+    expect(tenths).toBeLessThan(120);
+    expect(Math.floor(tenths / 60)).toBe(1);
+    expect(simMinutes(tenths)).toBe(2);
+    expect(simMinutes(71.3 + 48.7)).toBe(2);
+    const frac: UsageView = {
+      ...usage,
+      days: [
+        { date: '2026-11-09', accounts: { [T1]: m({ runs: 1, simSeconds: 71.3 }) } },
+        {
+          date: '2026-11-11',
+          accounts: {
+            [T1]: m({ runs: 2, simSeconds: 48.7 }),
+            [T2]: m({ simSeconds: 0.4 }),
+            unmatched: m({ simSeconds: 12.5 }),
+          },
+        },
+      ],
+    };
+    const d = dayTotals(frac, '2026-11-11');
+    expect(simMinutes(d.totals.simSeconds)).toBe(1); // 61.6 s
+    expect(d.activeTesters).toBe(2);
+    const s = accountSeries(frac, T1, daysEnding('2026-11-11', 30));
+    expect(s.length).toBe(30);
+    expect(s.filter((x) => x.metrics.simSeconds > 0).map((x) => x.date)).toEqual([
+      '2026-11-09',
+      '2026-11-11',
+    ]);
+    expect(s[0]!.metrics).toEqual(zeroMetrics());
+    expect(s[28]!.metrics).toEqual(zeroMetrics()); // 2026-11-10: no activity at all
+    expect(chartValue(seriesTotals(s), 'simSeconds')).toBe(2); // 120.0 s
+    expect(s.map((x) => chartValue(x.metrics, 'simSeconds')).slice(-3)).toEqual([1, 0, 0]);
+  });
+
+  it('a day with no activity at all (absent from the history) is zeros, not unavailable', () => {
+    const quiet: UsageView = { ...usage, days: [] };
+    expect(dayTotals(quiet, '2026-11-11')).toEqual({
+      totals: zeroMetrics(),
+      activeTesters: 0,
+      unmatched: false,
+    });
+    expect(
+      accountSeries(quiet, T1, daysEnding('2026-11-11', 30)).every((x) =>
+        Object.values(x.metrics).every((v) => v === 0),
+      ),
+    ).toBe(true);
+  });
+
+  it('bar heights scale to the largest; any activity stays visible', () => {
+    expect(barHeights([0, 0], 60)).toEqual([0, 0]);
+    expect(barHeights([0, 1, 100], 60)).toEqual([0, 2, 60]);
+    expect(barHeights([5, 10], 60)).toEqual([30, 60]);
+  });
+});
+
+describe('testers list', () => {
+  it('sorted by last activity (usage, sign-in, sighting), never-active last', () => {
+    const list = testerList(accounts, usage, { filter: 'all', query: '' });
+    expect(list.map((r) => r.account.target)).toEqual([T1, T2, T3]);
+    expect(list[0]!.last).toBe('2026-11-11T09:00:00Z');
+    expect(list[1]!.last).toBe('2026-11-11T07:00:00Z');
+    expect(list[2]!.last).toBeNull();
+    // Without usage the gate's sign-in decides.
+    expect(lastActivity(accounts.accounts[0]!, null)).toBe('2026-11-10T08:00:00Z');
+  });
+
+  it('filters and searches by name or masked address, case and form insensitive', () => {
+    const q = (query: string, filter: 'active' | 'disabled' | 'all' = 'all') =>
+      testerList(accounts, usage, { filter, query }).map((r) => r.account.target);
+    expect(q('', 'active')).toEqual([T1, T2]);
+    expect(q('', 'disabled')).toEqual([T3]);
+    expect(q('ALEX')).toEqual([T1]);
+    expect(q('be***')).toEqual([T2]);
+    expect(q('בודקת')).toEqual([T3]);
+    expect(q('al***@example')).toEqual([T1]);
+    expect(q('nobody')).toEqual([]);
+  });
+});
+
+describe('activity log and feedback', () => {
+  it('audit entries joined to names, masks, or unknown', () => {
+    const a: AuditView = {
+      generated: '2026-11-11T09:56:00Z',
+      entries: [
+        { at: '2026-11-11T09:00:00Z', action: 'rename', target: T1, result: 'done', corr: 'c3' },
+        { at: '2026-11-10T09:00:00Z', action: 'disable', target: T2, result: 'done', corr: 'c2' },
+        {
+          at: '2026-11-09T09:00:00Z',
+          action: 'add',
+          target: 't_ZZZZZZZZZZZZZZZZ',
+          result: 'done',
+          corr: 'c1',
+        },
+        {
+          at: '2026-11-08T09:00:00Z',
+          action: 'sign_ins',
+          target: null,
+          result: 'ok',
+          corr: 'c0',
+          count: 3,
+        },
+      ],
+    };
+    const rows = auditRows(a, accounts);
+    expect(rows.map((r) => [r.label, r.known])).toEqual([
+      ['Alex T.', true],
+      ['be***@example.invalid', true],
+      [null, false],
+      [null, true],
+    ]);
+    expect(auditRows(a, null)[0]!.known).toBe(false);
+  });
+
+  it('feedback newest first; unread is what this device has not opened', () => {
+    const r = (id: string, receivedAt: string) => ({ id, receivedAt }) as ReportMeta;
+    const list = [
+      r('AAAA-AAAA-AAAA', '2026-11-01T00:00:00Z'),
+      r('BBBB-BBBB-BBBB', '2026-11-02T00:00:00Z'),
+    ];
+    expect(reportsNewestFirst(list).map((x) => x.id)).toEqual(['BBBB-BBBB-BBBB', 'AAAA-AAAA-AAAA']);
+    const seen = new Set(['AAAA-AAAA-AAAA']);
+    expect(unread(list, seen).map((x) => x.id)).toEqual(['BBBB-BBBB-BBBB']);
+  });
+});
+
+describe('locales', () => {
+  it('Hebrew (RTL) is the default; every key in every locale, none empty, glossary applied', () => {
+    expect(getLocale(null).code).toBe('he');
+    expect(getLocale('he').dir).toBe('rtl');
+    expect(getLocale('en').dir).toBe('ltr');
+    expect(getLocale('xx').code).toBe('he');
+    const keys = Object.keys(LOCALES[0]!.messages).sort();
+    for (const l of LOCALES) {
+      expect(Object.keys(l.messages).sort()).toEqual(keys);
+      for (const v of Object.values(l.messages)) {
+        expect(v.trim()).not.toBe('');
+        expect(v).not.toMatch(/\[\[/);
+      }
+    }
+    expect(isMessageKey('console.nav.today')).toBe(true);
+    expect(translate(getLocale('en'), 'console.today.unread', { unread: 2, total: 5 })).toBe(
+      '2 new of 5',
+    );
+    // The shared texts are the Lab's, unchanged.
+    expect(translate(getLocale('en'), 'admin.result.done.disable', { account: 'X' })).toBe(
+      'Access for X has ended.',
+    );
+  });
+});
+
+describe('codes from the servers in words', () => {
+  const en = getLocale('en');
+  const he = getLocale('he');
+  const result = (code: string) => codeKey('console.result.', code, 'console.result.other');
+
+  it('every result code the helper writes has its own text in every locale', () => {
+    // The request results (RESULT_CODES), plus the audit-only ones (sign-ins, rate limits, pruning).
+    for (const code of [...RESULT_CODES, 'ok', 'rate_limited', 'unparseable', 'held']) {
+      expect(result(code).known, code).toBe(true);
+      for (const l of LOCALES) expect(translate(l, result(code).key)).not.toMatch(/console\./);
+    }
+    expect(translate(en, result('done').key)).toBe('Done');
+    expect(translate(he, result('done').key)).toBe('בוצע');
+  });
+
+  it('an unknown code gets the generic label, never a raw key', () => {
+    for (const code of ['exploded', '', null, undefined, '__proto__', 'constructor', 'done.x']) {
+      expect(result(code as string).known).toBe(false);
+      expect(translate(en, result(code as string).key)).toBe('Other result');
+      expect(translate(he, result(code as string).key)).toBe('תוצאה אחרת');
+    }
+    expect(
+      translate(en, codeKey('console.audit.action.', 'explode', 'console.audit.action.other').key),
+    ).toBe('Other change');
+    const kind = (k: string) => codeKey('report.kind.', k, 'console.feedback.kind.other');
+    expect(translate(en, kind('feature').key)).toBe('Feature or improvement');
+    expect(translate(en, kind('praise').key)).toBe('Other feedback');
+    const area = (c: string) => codeKey('report.category.', c, 'console.feedback.category.other');
+    expect(translate(he, area('hardware').key)).toBe('תחום אחר');
+  });
+});

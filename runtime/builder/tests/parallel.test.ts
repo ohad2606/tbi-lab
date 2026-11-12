@@ -159,16 +159,16 @@ describe('policy: global.build.maxActive', () => {
 });
 
 describe('repository policies', () => {
-  it('dev-lab/staging policy unchanged (one build worker); alpha policy: queue 10, two workers, sessions per CPU', async () => {
+  it('dev-lab/staging policy unchanged (one build worker); alpha policy: queue 10, two workers, six live sessions', async () => {
     const { readFileSync } = await import('node:fs');
-    const load = (f: string) =>
+    const load = (f: string, cpus = 6) =>
       new Policy(
         validatePolicy(
           JSON.parse(
             readFileSync(new URL(`../../../deploy/dev-lab/s8/${f}`, import.meta.url), 'utf8'),
           ),
         ),
-        6,
+        cpus,
       );
     const dev = load('policy.json');
     expect(dev.maxActiveBuilds).toBe(1);
@@ -178,9 +178,15 @@ describe('repository policies', () => {
     expect(alpha.config.global.build.maxQueued).toBeGreaterThanOrEqual(10);
     expect(alpha.maxLiveSessions).toBe(6);
     expect(alpha.deferBuildsAtLiveSessions).toBe(6);
+    // Owner decision 2026-11-11: an explicit six-session limit, not one per CPU. Alpha has 8 CPUs and the Session
+    // Host ceiling stays 6, so "cpus" (8) made install.sh refuse the ceiling. The limit no longer follows the host's
+    // CPU count; the build deferral threshold still does ("cpus"), as before.
+    for (const cpus of [1, 6, 8, 16])
+      expect(load('policy.alpha.json', cpus).maxLiveSessions).toBe(6);
+    expect(alpha.config.global.runtime).toEqual({ maxLiveSessions: 6 });
+    expect(alpha.config.global.build.deferWhileLiveSessionsAtLeast).toBe('cpus');
     // Everything else identical: per-user plans, quotas, retention, resources.
     expect(alpha.config.plans).toEqual(dev.config.plans);
-    expect(alpha.config.global.runtime).toEqual(dev.config.global.runtime);
     expect(alpha.config.global.resources).toEqual(dev.config.global.resources);
   });
 });

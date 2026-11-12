@@ -10,6 +10,9 @@
  *                      76 px tall, top bar at 38 px, i.e. 2x for sharp displays)
  *   app_logo_01.png -> src/assets/brand/tbi-lab-logo.png    (the full logo with the TBI LAB wordmark and
  *                      tagline, transparent; 300 px tall, Projects band at 150 px)
+ *   app_logo_05.png -> ../admin-app/public/icon-192.png, icon-512.png (the dark app icon, scaled as
+ *                      supplied, for the TBI Admin app's web manifest and home-screen icon; admin app
+ *                      design §3)
  *
  * Application icons (2026-10-29, sizes and small-size art revised 2026-11-05; scripts/brand-image.mjs:
  * Node only, Lanczos-3 in linear light): src/assets/brand/icons/production/ and, for DEV-Lab builds
@@ -351,6 +354,8 @@ function write(out, png, file) {
 const chromiumJobs = [
   ['app_logo_04.png', { height: 76, trim: true }, 'src/assets/brand/tbi-lab-symbol.png'],
   ['app_logo_01.png', { height: 300, trim: true }, 'src/assets/brand/tbi-lab-logo.png'],
+  ['app_logo_05.png', { height: 192 }, '../admin-app/public/icon-192.png'],
+  ['app_logo_05.png', { height: 512 }, '../admin-app/public/icon-512.png'],
 ].filter(([, , o]) => !only || o === only);
 if (chromiumJobs.length) await renderWithChromium(chromiumJobs);
 

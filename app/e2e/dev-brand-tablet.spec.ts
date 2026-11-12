@@ -13,6 +13,12 @@
 import { expect, test, devices, type Browser, type Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 
+/** The product's descriptor in the window title, per interface language (2026-11-10). */
+const DESCRIPTOR = {
+  en: 'Electronics Engineering Workspace',
+  he: 'סביבת עבודה הנדסית לאלקטרוניקה',
+} as const;
+
 const PROD = 'http://127.0.0.1:4173';
 const DEV = 'http://127.0.0.1:4175';
 const EVIDENCE = process.env.TBI_EVIDENCE_DIR;
@@ -138,7 +144,7 @@ test.describe('screen support message per device and orientation (production bui
         // Production branding: no DEV marker anywhere.
         await expect(page.getByTestId('dev-strip')).toHaveCount(0);
         await expect(page.getByTestId('env-badge')).toHaveCount(0);
-        await expect(page).toHaveTitle('TBI Lab');
+        await expect(page).toHaveTitle(`TBI Lab · ${DESCRIPTOR[locale]}`);
         await shot(page, `prod-${name}-${locale}`);
       }
       // Work is never blocked: the editor opens and the note stays.
@@ -184,7 +190,7 @@ test.describe('DEV-Lab build (VITE_TBI_ENV=dev)', () => {
               ? 'DEVDevelopment environment, not production. For testing only.'
               : 'DEVסביבת פיתוח, לא סביבת הייצור. לבדיקות בלבד.',
           );
-          await expect(page).toHaveTitle('[DEV] TBI Lab');
+          await expect(page).toHaveTitle(`[DEV] TBI Lab · ${DESCRIPTOR[locale]}`);
           const badge = page.getByTestId('env-badge');
           await expect(badge).toBeVisible();
           await expect(badge).toHaveAttribute(

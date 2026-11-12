@@ -69,12 +69,24 @@ if [ "$admin_bundle" = 1 ]; then
   grep -q "$R" runtime/admin/dist/admin-service.mjs
 fi
 
+# Admin app design §3: the same profiles also ship the TBI Admin app (admin-app/: static files for the
+# admin-lab origin), built in the same pinned environment (it reads no build setting) and checked
+# (check-admin-app.mjs: same-origin only, no service worker, no source maps). Reproducible like the
+# frontend (G2: no build stamp, content-hashed assets); listed in MANIFEST.sha256.
+pkg_dirs=(frontend services)
+if [ "$admin_bundle" = 1 ]; then
+  env -i "${ENV[@]}" npm run build --workspace @tbi-lab/admin-app > "$out/admin-app-build.log" 2>&1
+  node deploy/release/check-admin-app.mjs "$src/admin-app/dist" > "$out/check-admin-app.log" 2>&1
+  cp -a admin-app/dist "$out/admin-app"
+  pkg_dirs+=(admin-app)
+fi
+
 cp -a app/dist "$out/frontend"
 mkdir -p "$out/services"
 cp runtime/host/dist/session-host.mjs runtime/builder/dist/build-service.mjs runtime/builder/dist/build-job.mjs \
   runtime/assist/dist/assist-service.mjs runtime/builder/dist/records-cli.mjs "$out/services/"
 [ "$admin_bundle" = 0 ] || cp runtime/admin/dist/admin-service.mjs "$out/services/"
-(cd "$out" && find frontend services -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum > MANIFEST.sha256)
+(cd "$out" && find "${pkg_dirs[@]}" -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum > MANIFEST.sha256)
 sha256sum package-lock.json runtime/firmware/artifacts.lock.json deploy/dev-lab/s8/policy.json \
   deploy/dev-lab/s8/policy.alpha.json "deploy/release/$(basename "$profile")" > "$out/inputs.sha256"
 echo "$R" > "$out/COMMIT"; echo "$version" > "$out/VERSION"; echo "$T" > "$out/BUILD_TIME"

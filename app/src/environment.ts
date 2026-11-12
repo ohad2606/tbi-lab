@@ -23,10 +23,24 @@ export function parseTbiEnv(value: unknown, setting = 'the environment setting')
 
 export const PRODUCT_NAME = 'TBI Lab';
 
-/** The window title: "[DEV] " first on DEV, then a preview's name, then the product. */
-export function documentTitle(env: TbiEnvironment, previewName: string | null = null): string {
-  return `${env === 'dev' ? '[DEV] ' : ''}${previewName ? `${previewName} preview · ` : ''}${PRODUCT_NAME}`;
+/**
+ * The product's official descriptor (owner decision 2026-11-10): what TBI Lab is. English here, for
+ * the static page (title, metadata); the app localizes it (`app.descriptor`). "Simulation" stays the
+ * word for the physics-simulation capability and for the action, never for the product category.
+ */
+export const PRODUCT_DESCRIPTOR = 'Electronics Engineering Workspace';
+
+/** The window title: "[DEV] " first on DEV, then a preview's name, then the product and its descriptor. */
+export function documentTitle(
+  env: TbiEnvironment,
+  previewName: string | null = null,
+  descriptor: string = PRODUCT_DESCRIPTOR,
+): string {
+  return `${env === 'dev' ? '[DEV] ' : ''}${previewName ? `${previewName} preview · ` : ''}${PRODUCT_NAME} · ${descriptor}`;
 }
+
+/** The page's description (meta description, social previews, the web app manifest). */
+export const PRODUCT_DESCRIPTION = `${PRODUCT_NAME}: ${PRODUCT_DESCRIPTOR}. Build and test ESP32 and electronic circuits in your browser.`;
 
 /** Brand colours of the installed app (web app manifest, browser UI). */
 export const BRAND_COLOURS = {

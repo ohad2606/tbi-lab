@@ -7,13 +7,16 @@
   "scripts": {
     "dev": "npm run dev --workspace @tbi-lab/app",
     "build": "npm run build --workspace @tbi-lab/app",
-    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.specs.json && tsc --noEmit -p packages/domain && tsc --noEmit -p packages/engine && tsc --noEmit -p packages/assist && tsc --noEmit -p runtime && tsc --noEmit -p app && tsc --noEmit -p app/tsconfig.test.json",
-    "lint": "eslint . && prettier --check app packages runtime scripts eslint.config.js playwright.app.config.ts vitest.config.ts vitest.runtime.config.ts && node scripts/check-boundaries.mjs",
-    "format": "prettier --write app packages runtime scripts eslint.config.js playwright.app.config.ts vitest.config.ts vitest.runtime.config.ts",
+    "admin-app:dev": "npm run dev --workspace @tbi-lab/admin-app",
+    "admin-app:build": "npm run build --workspace @tbi-lab/admin-app",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.specs.json && tsc --noEmit -p packages/domain && tsc --noEmit -p packages/engine && tsc --noEmit -p packages/admin-client && tsc --noEmit -p packages/assist && tsc --noEmit -p runtime && tsc --noEmit -p app && tsc --noEmit -p app/tsconfig.test.json && tsc --noEmit -p admin-app && tsc --noEmit -p admin-app/tsconfig.test.json",
+    "lint": "eslint . && prettier --check app admin-app packages runtime scripts eslint.config.js playwright.app.config.ts playwright.admin.config.ts vitest.config.ts vitest.runtime.config.ts && node scripts/check-boundaries.mjs",
+    "format": "prettier --write app admin-app packages runtime scripts eslint.config.js playwright.app.config.ts playwright.admin.config.ts vitest.config.ts vitest.runtime.config.ts",
     "test": "vitest run",
     "test:product": "vitest run packages app/tests",
     "test:unit": "vitest run experiments/gate-a-electrical/tests",
     "test:e2e": "playwright test -c playwright.app.config.ts",
+    "test:e2e:admin": "playwright test -c playwright.admin.config.ts",
     "build:browser": "tsc -p experiments/gate-a-electrical/tsconfig.browser.json && cp experiments/gate-a-electrical/browser/index.html experiments/gate-a-electrical/dist-browser/browser/ && tsc -p experiments/gate-d-persistence/tsconfig.browser.json && cp experiments/gate-d-persistence/browser/index.html experiments/gate-d-persistence/dist-browser/browser/",
     "test:browser": "npm run build:browser && playwright test",
     "test:esp32": "vitest run --config vitest.esp32.config.ts",
@@ -43,6 +46,7 @@
   },
   "workspaces": [
     "app",
+    "admin-app",
     "packages/*"
   ]
 }

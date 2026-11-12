@@ -46,6 +46,10 @@ const SCAN_ROOTS = [
   'app/vite.config.ts',
   'app/buildInfo.config.ts',
   'packages',
+  // Admin app design §3: the TBI Admin app reads no build setting; any it ever reads is pinned too.
+  'admin-app/src',
+  'admin-app/index.html',
+  'admin-app/vite.config.ts',
 ];
 /** Host switches a profile may pin; TBI_REPORTS_DIR first (always pinned). */
 const HOST_KEYS = [

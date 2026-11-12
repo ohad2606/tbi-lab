@@ -16,10 +16,12 @@ export default tseslint.config(
   {
     files: [
       'app/**/*.{ts,tsx}',
+      'admin-app/**/*.{ts,tsx}',
       'packages/**/*.ts',
       'runtime/**/*.{ts,mjs}',
       '*.config.ts',
       'scripts/**/*.mjs',
+      'scripts/vite-identity-gate.ts',
       'eslint.config.js',
     ],
     extends: [js.configs.recommended, ...tseslint.configs.recommended],

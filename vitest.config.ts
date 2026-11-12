@@ -8,6 +8,8 @@ export default defineConfig({
       'experiments/**/tests/**/*.test.ts',
       'packages/*/tests/**/*.test.ts',
       'app/tests/**/*.test.ts',
+      // Admin app design §3: the TBI Admin app's view logic.
+      'admin-app/tests/**/*.test.ts',
       // Runtime R2 Session Host: protocol, state machine and lifecycle against a fake runtime
       // that speaks the real bridge protocol. No QEMU; the heavy suite is npm run test:r2.
       'runtime/host/tests/**/*.test.ts',

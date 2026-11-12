@@ -601,6 +601,35 @@ describe('runtime admission (Session Host)', () => {
     expect(host.get(a1.body.sessionId!, a1.body.token!, A).ok).toBe(true); // A's session runs on
   });
 
+  it('the Alpha policy file on an 8-CPU host with the Session Host ceiling 6: five testers (and a sixth) admitted, a seventh refused, one session per tester', async () => {
+    const { readFileSync } = await import('node:fs');
+    const alpha = validatePolicy(
+      JSON.parse(
+        readFileSync(
+          new URL('../../../deploy/dev-lab/s8/policy.alpha.json', import.meta.url),
+          'utf8',
+        ),
+      ),
+    );
+    const policy = new Policy(alpha, 8);
+    expect(policy.maxLiveSessions).toBe(6);
+    expect(policy.plan(A).runtime.maxSessions).toBe(1); // the per-user limit, unchanged (= the default plan)
+    const state = tempDir('tbi-pol-alpha8-');
+    dirs.push(state);
+    const rates = new RateLimiter(join(state, 'rates.db'));
+    const { host, art } = fakeHost('normal', { policy, rates, probe: plenty, maxSessions: 6 });
+    closers.push(() => host.shutdown());
+    const testers = [1, 2, 3, 4, 5, 6, 7].map((i) => principalFor(`tester-${i}`));
+    const create = (p: (typeof testers)[number]) =>
+      host.create(createRequest(art.sha256, { ticket: ticketFor(art.sha256, p) }), p);
+    const admitted = testers.slice(0, 5).map(create);
+    expect(admitted.map((r) => r.ok)).toEqual([true, true, true, true, true]); // five concurrent testers
+    const again = create(testers[0]!);
+    expect(again).toMatchObject({ ok: false, error: 'session_quota' }); // one per tester, as before
+    expect(create(testers[5]!).ok).toBe(true); // the sixth: the host-wide limit is 6
+    expect(create(testers[6]!)).toMatchObject({ ok: false, error: 'runtime_capacity' });
+  });
+
   it('the creation rate refuses with a wait and survives a host restart', async () => {
     const policy = preview(
       (c) => (c.plans.preview!.runtime.creations = { count: 2, windowMs: 600_000 }),

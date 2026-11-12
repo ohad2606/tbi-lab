@@ -1,0 +1,19 @@
+{
+  "name": "@tbi-lab/admin-app",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "TBI Lab Admin (admin-lab): the owner's tester administration, phone and desktop. Static files; no service worker.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@tbi-lab/admin-client": "0.1.0",
+    "preact": "^10.29.8"
+  },
+  "devDependencies": {
+    "vite": "8.3.0"
+  }
+}
