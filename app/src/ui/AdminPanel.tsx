@@ -10,6 +10,12 @@
  * Addresses are masked by the server; the one the owner types to add a tester stays in this
  * dialog only, masked by default (a "show" toggle reveals it to the owner). Actions that end
  * someone's access say exactly what happens and need a confirmation.
+ *
+ * Phase C (owner 2026-11-12): finding and managing existing testers comes first. A search (the
+ * shared matcher: private name or masked address) with the filters, the number of matches, and
+ * "Add tester", which opens the add form on demand; a compact table from the Lab's 1024 px
+ * breakpoint (secondary dates under "Details"), stacked cards below it. The search, the filter
+ * and the last typed address live in the dialog, so the add form and the confirmations keep them.
  */
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { ADMIN_UI } from '../deployment.js';
@@ -92,6 +98,17 @@ function AdminDialog({ trigger, onClose }: { trigger: HTMLElement | null; onClos
   const [reports, setReports] = useState<Loaded<ReportMeta[]> | null>(null);
   const [detail, setDetail] = useState<Loaded<ReportDetail> | null>(null);
   const [busy, setBusy] = useState(false);
+  // The testers list (search, filter, add form) and the address typed last: kept while the
+  // add form or a confirmation is shown.
+  const [testers, setTestersState] = useState<TestersState>({
+    query: '',
+    filter: 'active',
+    adding: false,
+  });
+  const setTesters = (s: Partial<TestersState>) => setTestersState((o) => ({ ...o, ...s }));
+  const [last, setLast] = useState<LastAdded | null>(null);
+  // Where focus goes back to after a confirmation or the add form (a data-testid).
+  const returnTo = useRef<string | null>(null);
   const unmounting = useRef(false);
 
   const refreshTesters = async () => {
@@ -114,12 +131,26 @@ function AdminDialog({ trigger, onClose }: { trigger: HTMLElement | null; onClos
     };
   }, []);
 
-  // A confirmation takes focus on its safe choice; leaving it returns to the dialog's content.
+  // A confirmation takes focus on its safe choice; leaving it returns to the control that asked
+  // for it (else the search, else the selected tab).
+  const focusBack = () => {
+    const d = dialog.current;
+    const by = (id: string) => d?.querySelector<HTMLElement>(`[data-testid="${id}"]`);
+    const el =
+      (returnTo.current && by(returnTo.current)) ||
+      (returnTo.current && by('admin-search')) ||
+      d?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]');
+    returnTo.current = null;
+    el?.focus();
+  };
   useEffect(() => {
     const d = dialog.current;
     if (confirm) d?.querySelector<HTMLElement>('[data-testid="admin-confirm-cancel"]')?.focus();
-    else d?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.focus();
+    else focusBack();
   }, [confirm]);
+  useEffect(() => {
+    if (!testers.adding && returnTo.current) focusBack();
+  }, [testers.adding]);
 
   // Phase C: every time in the administration is Israel time (the owner's and the testers').
   const date = (iso: string | null, withTime = true) => israelTime(iso, locale.code, withTime);
@@ -268,30 +299,54 @@ function AdminDialog({ trigger, onClose }: { trigger: HTMLElement | null; onClos
               data-testid="admin-panel-testers"
             >
               <Capacities accounts={accounts} capacity={capacity} errorText={errorText} />
-              <AddTester
-                full={accounts?.ok ? capFull(accounts.value) : false}
-                onDone={async (text) => {
-                  setNotice(text);
-                  await refreshTesters();
-                }}
-                outcomeText={outcomeText}
-              />
-              <Accounts
-                accounts={accounts}
-                date={date}
-                errorText={errorText}
-                onAsk={(c) => {
-                  setNotice(null);
-                  setConfirm(c);
-                }}
-                onRename={async (a, name) => {
-                  const o = await renameTester(api, a.target, name);
-                  if (o.kind === 'refused' && o.error === 'invalid_name') return 'invalid';
-                  setNotice(outcomeText(o, name, 'rename'));
-                  await refreshTesters();
-                  return o.kind === 'result' && o.ok ? 'ok' : 'failed';
-                }}
-              />
+              {testers.adding ? (
+                <AddTester
+                  full={accounts?.ok ? capFull(accounts.value) : false}
+                  onCancel={() => {
+                    returnTo.current = 'admin-add-open';
+                    setTesters({ adding: false });
+                  }}
+                  onDone={async (text, typed) => {
+                    setNotice(text);
+                    setLast(typed);
+                    await refreshTesters();
+                    returnTo.current = 'admin-add-open';
+                    setTesters({ adding: false });
+                  }}
+                  outcomeText={outcomeText}
+                />
+              ) : (
+                <Accounts
+                  accounts={accounts}
+                  state={testers}
+                  setState={(s) => {
+                    if (s.adding) setNotice(null);
+                    setTesters(s);
+                  }}
+                  last={last}
+                  onCheckLast={async () => {
+                    if (!last?.pendingId) return;
+                    const o = await requestResult(api, last.pendingId);
+                    if (o.kind !== 'pending') setLast({ ...last, pendingId: null });
+                    setNotice(outcomeText(o, maskAddress(last.address), 'add'));
+                    await refreshTesters();
+                  }}
+                  date={date}
+                  errorText={errorText}
+                  onAsk={(c, from) => {
+                    setNotice(null);
+                    returnTo.current = from;
+                    setConfirm(c);
+                  }}
+                  onRename={async (a, name) => {
+                    const o = await renameTester(api, a.target, name);
+                    if (o.kind === 'refused' && o.error === 'invalid_name') return 'invalid';
+                    setNotice(outcomeText(o, name, 'rename'));
+                    await refreshTesters();
+                    return o.kind === 'result' && o.ok ? 'ok' : 'failed';
+                  }}
+                />
+              )}
             </section>
           ) : (
             <section
@@ -372,13 +427,23 @@ function Capacities({
   );
 }
 
+/** What the owner typed last (kept for "show" and "check again" after returning to the list). */
+type LastAdded = { address: string; pendingId: string | null };
+
+/**
+ * Adding a tester, opened on demand from the list ("Add tester"). The validation, the request and
+ * the messages are the form's as before; any answer of the server returns to the list (its search
+ * and filter kept), where the notice says what happened.
+ */
 function AddTester({
   full,
+  onCancel,
   onDone,
   outcomeText,
 }: {
   full: boolean;
-  onDone: (text: string) => Promise<void>;
+  onCancel: () => void;
+  onDone: (text: string, last: LastAdded) => Promise<void>;
   outcomeText: (o: MutationOutcome, label: string, action: 'add') => string;
 }) {
   const t = useT();
@@ -386,10 +451,11 @@ function AddTester({
   const [name, setName] = useState('');
   const [problem, setProblem] = useState<'email' | 'name' | null>(null);
   const [sending, setSending] = useState(false);
-  const [last, setLast] = useState<{ address: string; pendingId: string | null } | null>(null);
-  const [reveal, setReveal] = useState(false);
   const emailField = useRef<HTMLInputElement>(null);
   const nameField = useRef<HTMLInputElement>(null);
+  const cancel = useRef<HTMLButtonElement>(null);
+  // The form's first field takes focus (its Cancel when every place is taken).
+  useEffect(() => (full ? cancel : nameField).current?.focus(), []);
 
   const submit = async () => {
     if (sending || full) return;
@@ -414,18 +480,10 @@ function AddTester({
       (o.error === 'invalid_name' ? nameField : emailField).current?.focus();
       return;
     }
-    setEmail('');
-    setName('');
-    setReveal(false);
-    setLast({ address: typed, pendingId: o.kind === 'pending' ? o.id : null });
-    await onDone(outcomeText(o, n || maskAddress(typed), 'add'));
-  };
-
-  const checkAgain = async () => {
-    if (!last?.pendingId) return;
-    const o = await requestResult(api, last.pendingId);
-    if (o.kind !== 'pending') setLast({ ...last, pendingId: null });
-    await onDone(outcomeText(o, maskAddress(last.address), 'add'));
+    await onDone(outcomeText(o, n || maskAddress(typed), 'add'), {
+      address: typed,
+      pendingId: o.kind === 'pending' ? o.id : null,
+    });
   };
 
   return (
@@ -433,12 +491,13 @@ function AddTester({
       class="admin-add"
       noValidate
       data-testid="admin-add"
+      aria-labelledby="admin-add-h"
       onSubmit={(e) => {
         e.preventDefault();
         void submit();
       }}
     >
-      <h3>{t('admin.add.heading')}</h3>
+      <h3 id="admin-add-h">{t('admin.add.heading')}</h3>
       {full && (
         <p role="note" class="admin-cap-full" data-testid="admin-add-cap-full">
           {t('admin.result.cap_reached')}
@@ -502,68 +561,131 @@ function AddTester({
             : t('admin.add.invalid')}
         </p>
       )}
+      <div class="admin-add-actions">
+        <button
+          type="submit"
+          class="button button-primary admin-add-submit"
+          data-testid="admin-add-submit"
+          disabled={full}
+          aria-disabled={sending ? 'true' : undefined}
+        >
+          {sending ? t('admin.add.sending') : t('admin.add.submit')}
+        </button>
+        <button
+          ref={cancel}
+          type="button"
+          class="button"
+          data-testid="admin-add-cancel"
+          onClick={() => !sending && onCancel()}
+        >
+          {t('admin.cancel')}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+/** The address the owner typed last: masked unless they ask to see it; "check again" if pending. */
+function LastAddedNote({ last, onCheck }: { last: LastAdded; onCheck: () => Promise<void> }) {
+  const t = useT();
+  const [reveal, setReveal] = useState(false);
+  return (
+    <p class="small admin-add-last" data-testid="admin-add-last">
+      {t('admin.add.last')}{' '}
+      <bdi dir="ltr" data-testid="admin-add-last-address">
+        {reveal ? last.address : maskAddress(last.address)}
+      </bdi>{' '}
       <button
-        type="submit"
-        class="button button-primary admin-add-submit"
-        data-testid="admin-add-submit"
-        disabled={full}
-        aria-disabled={sending ? 'true' : undefined}
+        type="button"
+        class="text-button"
+        aria-pressed={reveal}
+        data-testid="admin-add-reveal"
+        onClick={() => setReveal((r) => !r)}
       >
-        {sending ? t('admin.add.sending') : t('admin.add.submit')}
+        {reveal ? t('admin.add.hide') : t('admin.add.show')}
       </button>
-      {last && (
-        <p class="small admin-add-last" data-testid="admin-add-last">
-          {t('admin.add.last')}{' '}
-          <bdi dir="ltr" data-testid="admin-add-last-address">
-            {reveal ? last.address : maskAddress(last.address)}
-          </bdi>{' '}
+      {last.pendingId && (
+        <>
+          {' '}
           <button
             type="button"
             class="text-button"
-            aria-pressed={reveal}
-            data-testid="admin-add-reveal"
-            onClick={() => setReveal((r) => !r)}
+            data-testid="admin-add-check"
+            onClick={() => void onCheck()}
           >
-            {reveal ? t('admin.add.hide') : t('admin.add.show')}
+            {t('admin.add.checkAgain')}
           </button>
-          {last.pendingId && (
-            <>
-              {' '}
-              <button
-                type="button"
-                class="text-button"
-                data-testid="admin-add-check"
-                onClick={() => void checkAgain()}
-              >
-                {t('admin.add.checkAgain')}
-              </button>
-            </>
-          )}
-        </p>
+        </>
       )}
-    </form>
+    </p>
   );
 }
 
 /** The record's label on the owner's screen: its private name, else the masked address. */
 const accountLabel = (a: AccountRow) => a.displayName ?? a.masked;
 
+/** The list's state, kept by the dialog: it survives the add form and every confirmation. */
+export interface TestersState {
+  query: string;
+  filter: AccountFilter;
+  adding: boolean;
+}
+
+/**
+ * Phase C (owner 2026-11-12): narrow screens (the Lab's 1024 px breakpoint, where the dialog's
+ * phone fix applies) show stacked cards; wider ones a compact table.
+ */
+const NARROW = '(max-width: 1023px)';
+function useNarrow(): boolean {
+  const [narrow, setNarrow] = useState(() => window.matchMedia(NARROW).matches);
+  useEffect(() => {
+    const m = window.matchMedia(NARROW);
+    const on = () => setNarrow(m.matches);
+    m.addEventListener('change', on);
+    return () => m.removeEventListener('change', on);
+  }, []);
+  return narrow;
+}
+
+type Rename = (a: AccountRow, name: string) => Promise<'ok' | 'invalid' | 'failed'>;
+type DateFn = (iso: string | null, withTime?: boolean) => string | null;
+
 function Accounts({
   accounts,
+  state,
+  setState,
+  last,
+  onCheckLast,
   date,
   errorText,
   onAsk,
   onRename,
 }: {
   accounts: Loaded<AccountsView> | null;
-  date: (iso: string | null, withTime?: boolean) => string | null;
+  state: TestersState;
+  setState: (s: Partial<TestersState>) => void;
+  last: LastAdded | null;
+  onCheckLast: () => Promise<void>;
+  date: DateFn;
   errorText: (e: LoadError) => string;
-  onAsk: (c: Confirm) => void;
-  onRename: (a: AccountRow, name: string) => Promise<'ok' | 'invalid' | 'failed'>;
+  onAsk: (c: Confirm, from: string) => void;
+  onRename: Rename;
 }) {
   const t = useT();
-  const [filter, setFilter] = useState<AccountFilter>('active');
+  const narrow = useNarrow();
   const [editing, setEditing] = useState<string | null>(null);
+  const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
+  const toolbar = useRef<HTMLDivElement>(null);
+  const search = useRef<HTMLInputElement>(null);
+  const [toolbarHeight, setToolbarHeight] = useState(0);
+  // The table's header sticks under the (sticky) search bar: it needs that bar's height.
+  useEffect(() => {
+    const el = toolbar.current;
+    if (!el || narrow || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => setToolbarHeight(el.offsetHeight));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [narrow, accounts?.ok]);
   if (!accounts) return <p class="small">{t('admin.loading')}</p>;
   if (!accounts.ok)
     return (
@@ -573,11 +695,34 @@ function Accounts({
     );
   const v = accounts.value;
   const counts = accountCounts(v);
-  const list = visibleAccounts(v, filter);
+  const list = visibleAccounts(v, state.filter, state.query);
+  const searching = state.query.trim() !== '';
   const masked = (target: string | null) =>
     v.accounts.find((a) => a.target === target)?.masked ?? '***';
+  const toggle = (target: string) =>
+    setOpen((o) => {
+      const n = new Set(o);
+      if (!n.delete(target)) n.add(target);
+      return n;
+    });
+  const row: RowProps = {
+    date,
+    editing,
+    open,
+    onToggle: toggle,
+    onEdit: setEditing,
+    onAsk,
+    onRename: async (a, name) => {
+      const r = await onRename(a, name);
+      if (r === 'ok') setEditing(null);
+      return r;
+    },
+  };
   return (
-    <>
+    <div
+      class="admin-accounts-panel"
+      style={{ '--admin-toolbar-h': `${toolbarHeight}px` } as Record<string, string>}
+    >
       {v.warnings.length > 0 && (
         <section
           class="admin-warnings"
@@ -605,145 +750,364 @@ function Accounts({
         {t('admin.accounts.effect')} {t('admin.accounts.timeZone')}
       </p>
       <div
-        class="admin-filter"
-        role="group"
-        aria-label={t('admin.accounts.filter')}
-        data-testid="admin-filter"
+        ref={toolbar}
+        class={`admin-toolbar${narrow ? '' : ' admin-toolbar-sticky'}`}
+        data-testid="admin-toolbar"
       >
-        {(['active', 'disabled', 'all'] as const).map((f) => (
-          <button
-            key={f}
-            type="button"
-            class="admin-filter-button"
-            aria-pressed={filter === f}
-            data-testid={`admin-filter-${f}`}
-            onClick={() => setFilter(f)}
+        <div class="admin-toolbar-row">
+          <div class="admin-search">
+            <label for="admin-search" class="report-label">
+              {t('admin.search.label')}
+            </label>
+            <input
+              ref={search}
+              id="admin-search"
+              // A text field in the searchbox role: a native search field would take Escape
+              // (clearing itself) instead of the dialog, whose Escape stays as it was.
+              type="text"
+              role="searchbox"
+              enterKeyHint="search"
+              autoComplete="off"
+              spellcheck={false}
+              dir="auto"
+              data-testid="admin-search"
+              placeholder={t('admin.search.placeholder')}
+              aria-describedby="admin-search-count"
+              value={state.query}
+              onInput={(e) => setState({ query: (e.target as HTMLInputElement).value })}
+            />
+          </div>
+          <div
+            class="admin-filter"
+            role="group"
+            aria-label={t('admin.accounts.filter')}
+            data-testid="admin-filter"
           >
-            {t(`admin.filter.${f}` as MessageKey)} <bdi dir="ltr">({counts[f]})</bdi>
+            {(['active', 'disabled', 'all'] as const).map((f) => (
+              <button
+                key={f}
+                type="button"
+                class="admin-filter-button"
+                aria-pressed={state.filter === f}
+                data-testid={`admin-filter-${f}`}
+                onClick={() => setState({ filter: f })}
+              >
+                {t(`admin.filter.${f}` as MessageKey)} <bdi dir="ltr">({counts[f]})</bdi>
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            class="button button-primary admin-add-open"
+            data-testid="admin-add-open"
+            onClick={() => setState({ adding: true })}
+          >
+            {t('admin.add.open')}
           </button>
-        ))}
-      </div>
-      {list.length === 0 ? (
-        <p class="small" data-testid="admin-accounts-empty">
-          {t('admin.accounts.none')}
+        </div>
+        <p
+          id="admin-search-count"
+          class="small admin-count"
+          aria-live="polite"
+          aria-atomic="true"
+          data-testid="admin-search-count"
+        >
+          {t('admin.search.count', { shown: list.length, total: counts.all })}
         </p>
-      ) : (
+      </div>
+      {last && <LastAddedNote last={last} onCheck={onCheckLast} />}
+      {list.length === 0 ? (
+        searching ? (
+          <div class="admin-empty" data-testid="admin-search-empty">
+            <p>{t('admin.search.none')}</p>
+            <button
+              type="button"
+              class="button"
+              data-testid="admin-search-clear"
+              onClick={() => {
+                setState({ query: '' });
+                search.current?.focus();
+              }}
+            >
+              {t('admin.search.clear')}
+            </button>
+          </div>
+        ) : (
+          <p class="small admin-empty" data-testid="admin-accounts-empty">
+            {t('admin.accounts.none')}
+          </p>
+        )
+      ) : narrow ? (
         <ul class="admin-cards" data-testid="admin-accounts" aria-labelledby="admin-accounts-h">
           {list.map((a) => (
-            <li
-              key={a.target}
-              class="admin-card"
-              data-testid={`admin-account-${a.target}`}
-              data-status={a.status}
-            >
-              <div class="admin-card-head">
-                <div class="admin-card-who">
-                  <span class="admin-card-name" data-testid="admin-account-name">
-                    {a.displayName ? (
-                      // user-authored: its own direction (a Latin name in Hebrew UI stays "Alex T.")
-                      <bdi dir="auto">{a.displayName}</bdi>
-                    ) : (
-                      <span class="admin-card-noname">{t('admin.accounts.noName')}</span>
-                    )}
-                  </span>
-                  <bdi dir="ltr" class="admin-card-mail" data-testid="admin-account-masked">
-                    {a.masked}
-                  </bdi>
-                </div>
-                <span class={`admin-status admin-status-${a.status}`}>
-                  {a.class === 'owner'
-                    ? t('admin.class.owner')
-                    : t(`admin.status.${a.status}` as MessageKey)}
-                </span>
-              </div>
-              <dl class="admin-card-facts">
-                <div>
-                  <dt>{t('admin.accounts.added')}</dt>
-                  <dd>{date(a.dateAdded, false) ?? '—'}</dd>
-                </div>
-                {a.signIns > 0 ? (
-                  <>
-                    <div>
-                      <dt>{t('admin.accounts.firstSignIn')}</dt>
-                      <dd data-testid="admin-account-first">{date(a.firstSignIn) ?? '—'}</dd>
-                    </div>
-                    <div>
-                      <dt>{t('admin.accounts.lastSignIn')}</dt>
-                      <dd data-testid="admin-account-last">{date(a.lastSignIn) ?? '—'}</dd>
-                    </div>
-                    <div>
-                      <dt>{t('admin.accounts.signIns')}</dt>
-                      <dd data-testid="admin-account-count">
-                        <bdi dir="ltr">{a.signIns}</bdi>
-                      </dd>
-                    </div>
-                  </>
-                ) : (
-                  <div class="admin-card-never">
-                    <dt>{t('admin.accounts.lastSignIn')}</dt>
-                    <dd data-testid="admin-account-never">
-                      <span class="admin-badge admin-badge-never">
-                        {t('admin.accounts.neverSignedIn')}
-                      </span>
-                    </dd>
-                  </div>
-                )}
-                {a.status === 'revoked' && a.statusUpdated && (
-                  <div>
-                    <dt>{t('admin.accounts.disabledAt')}</dt>
-                    <dd>{date(a.statusUpdated) ?? '—'}</dd>
-                  </div>
-                )}
-              </dl>
-              {editing === a.target ? (
-                <RenameForm
-                  account={a}
-                  onCancel={() => setEditing(null)}
-                  onSave={async (name) => {
-                    const r = await onRename(a, name);
-                    if (r === 'ok') setEditing(null);
-                    return r;
-                  }}
-                />
-              ) : (
-                <div class="admin-card-actions">
-                  <button
-                    type="button"
-                    class="button"
-                    data-testid={`admin-rename-${a.target}`}
-                    aria-label={t('admin.rename.label', { account: accountLabel(a) })}
-                    onClick={() => setEditing(a.target)}
-                  >
-                    {t('admin.rename')}
-                  </button>
-                  {a.class === 'owner' ? null : a.status === 'revoked' ? (
-                    <button
-                      type="button"
-                      class="button"
-                      data-testid={`admin-reactivate-${a.target}`}
-                      aria-label={t('admin.reactivate.label', { account: accountLabel(a) })}
-                      onClick={() => onAsk({ kind: 'reactivate', account: a })}
-                    >
-                      {t('admin.reactivate')}
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      class="button button-danger"
-                      data-testid={`admin-disable-${a.target}`}
-                      aria-label={t('admin.disable.label', { account: accountLabel(a) })}
-                      onClick={() => onAsk({ kind: 'disable', account: a })}
-                    >
-                      {t('admin.disable')}
-                    </button>
-                  )}
-                </div>
-              )}
-            </li>
+            <AccountCard key={a.target} a={a} {...row} />
           ))}
         </ul>
+      ) : (
+        <table
+          class="admin-table admin-accounts-table"
+          data-testid="admin-accounts"
+          aria-labelledby="admin-accounts-h"
+        >
+          <thead>
+            <tr>
+              <th scope="col">{t('admin.accounts.account')}</th>
+              <th scope="col">{t('admin.accounts.status')}</th>
+              <th scope="col">{t('admin.accounts.lastSignIn')}</th>
+              <th scope="col" class="admin-num">
+                {t('admin.accounts.signIns')}
+              </th>
+              <th scope="col">
+                <span class="visually-hidden">{t('admin.accounts.actions')}</span>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {list.map((a) => (
+              <AccountRowView key={a.target} a={a} {...row} />
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
+interface RowProps {
+  date: DateFn;
+  editing: string | null;
+  open: ReadonlySet<string>;
+  onToggle: (target: string) => void;
+  onEdit: (target: string | null) => void;
+  onAsk: (c: Confirm, from: string) => void;
+  onRename: Rename;
+}
+
+/** The name (user-authored: its own direction), the owner's badge and the masked address. */
+function Who({ a }: { a: AccountRow }) {
+  const t = useT();
+  return (
+    <div class="admin-card-who">
+      <span class="admin-who-line">
+        <span class="admin-card-name" data-testid="admin-account-name">
+          {a.displayName ? (
+            // a Latin name in the Hebrew UI stays "Alex T."
+            <bdi dir="auto">{a.displayName}</bdi>
+          ) : (
+            <span class="admin-card-noname">{t('admin.accounts.noName')}</span>
+          )}
+        </span>
+        {a.class === 'owner' && (
+          <span class="admin-owner-badge" data-testid="admin-account-owner">
+            {t('admin.class.owner')}
+          </span>
+        )}
+      </span>
+      <bdi dir="ltr" class="admin-card-mail" data-testid="admin-account-masked">
+        {a.masked}
+      </bdi>
+    </div>
+  );
+}
+
+const Status = ({ a }: { a: AccountRow }) => {
+  const t = useT();
+  return (
+    <span class={`admin-status admin-status-${a.status}`} data-testid="admin-account-status">
+      {t(`admin.status.${a.status}` as MessageKey)}
+    </span>
+  );
+};
+
+/** Last sign-in, or the "never signed in" badge. */
+function LastSignIn({ a, date }: { a: AccountRow; date: DateFn }) {
+  const t = useT();
+  return a.signIns > 0 ? (
+    <span data-testid="admin-account-last">{date(a.lastSignIn) ?? '—'}</span>
+  ) : (
+    <span data-testid="admin-account-never" class="admin-badge admin-badge-never">
+      {t('admin.accounts.neverSignedIn')}
+    </span>
+  );
+}
+
+/** The secondary dates, shown on request ("Details"). */
+function Details({ a, date }: { a: AccountRow; date: DateFn }) {
+  const t = useT();
+  return (
+    <dl class="admin-card-facts admin-details" data-testid="admin-account-details">
+      <div>
+        <dt>{t('admin.accounts.added')}</dt>
+        <dd data-testid="admin-account-added">{date(a.dateAdded, false) ?? '—'}</dd>
+      </div>
+      <div>
+        <dt>{t('admin.accounts.firstSignIn')}</dt>
+        <dd data-testid="admin-account-first">{date(a.firstSignIn) ?? '—'}</dd>
+      </div>
+      <div>
+        <dt>{t('admin.accounts.lastSeen')}</dt>
+        <dd data-testid="admin-account-seen">{date(a.lastSeen) ?? '—'}</dd>
+      </div>
+      {a.status === 'revoked' && a.statusUpdated && (
+        <div>
+          <dt>{t('admin.accounts.disabledAt')}</dt>
+          <dd data-testid="admin-account-disabled-at">{date(a.statusUpdated) ?? '—'}</dd>
+        </div>
+      )}
+    </dl>
+  );
+}
+
+/**
+ * Details, rename and the access action. The owner's record can be renamed but never disabled:
+ * its access action is not offered at all (and the server refuses it: last_owner).
+ */
+function RowActions({ a, open, onToggle, onEdit, onAsk }: { a: AccountRow } & RowProps) {
+  const t = useT();
+  const label = accountLabel(a);
+  return (
+    <div class="admin-card-actions">
+      <button
+        type="button"
+        class="button button-quiet admin-details-toggle"
+        data-testid={`admin-details-${a.target}`}
+        aria-expanded={open.has(a.target)}
+        aria-controls={`admin-more-${a.target}`}
+        aria-label={t('admin.details.label', { account: label })}
+        onClick={() => onToggle(a.target)}
+      >
+        {t('admin.details')}
+      </button>
+      <button
+        type="button"
+        class="button"
+        data-testid={`admin-rename-${a.target}`}
+        aria-label={t('admin.rename.label', { account: label })}
+        onClick={() => onEdit(a.target)}
+      >
+        {t('admin.rename')}
+      </button>
+      {a.class === 'owner' ? null : a.status === 'revoked' ? (
+        <button
+          type="button"
+          class="button"
+          data-testid={`admin-reactivate-${a.target}`}
+          aria-label={t('admin.reactivate.label', { account: label })}
+          onClick={() => onAsk({ kind: 'reactivate', account: a }, `admin-reactivate-${a.target}`)}
+        >
+          {t('admin.reactivate')}
+        </button>
+      ) : (
+        <button
+          type="button"
+          class="button button-danger"
+          data-testid={`admin-disable-${a.target}`}
+          aria-label={t('admin.disable.label', { account: label })}
+          onClick={() => onAsk({ kind: 'disable', account: a }, `admin-disable-${a.target}`)}
+        >
+          {t('admin.disable')}
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** The rename form, then focus back on the row's Rename button. */
+function Renaming({ a, onEdit, onRename }: { a: AccountRow } & RowProps) {
+  const back = () => {
+    onEdit(null);
+    requestAnimationFrame(() =>
+      document.querySelector<HTMLElement>(`[data-testid="admin-rename-${a.target}"]`)?.focus(),
+    );
+  };
+  return (
+    <RenameForm
+      account={a}
+      onCancel={back}
+      onSave={async (name) => {
+        const r = await onRename(a, name);
+        if (r === 'ok') back();
+        return r;
+      }}
+    />
+  );
+}
+
+/** Desktop: one table row, its details (and the rename form) in a full-width row below. */
+function AccountRowView(p: { a: AccountRow } & RowProps) {
+  const { a, date, open, editing } = p;
+  const more = open.has(a.target);
+  const renaming = editing === a.target;
+  return (
+    <>
+      <tr data-testid={`admin-account-${a.target}`} data-status={a.status} class="admin-row">
+        <td class="admin-who-cell">
+          <Who a={a} />
+        </td>
+        <td>
+          <Status a={a} />
+        </td>
+        <td>
+          <LastSignIn a={a} date={date} />
+        </td>
+        <td class="admin-num">
+          <bdi dir="ltr" data-testid="admin-account-count">
+            {a.signIns}
+          </bdi>
+        </td>
+        <td class="admin-actions-cell">
+          <RowActions {...p} />
+        </td>
+      </tr>
+      {(more || renaming) && (
+        <tr
+          class="admin-row-more"
+          id={`admin-more-${a.target}`}
+          data-testid={`admin-more-${a.target}`}
+        >
+          <td colSpan={5}>
+            {more && <Details a={a} date={date} />}
+            {renaming && <Renaming {...p} />}
+          </td>
+        </tr>
       )}
     </>
+  );
+}
+
+/** Narrow screens: a stacked card with the same facts and actions. */
+function AccountCard(p: { a: AccountRow } & RowProps) {
+  const t = useT();
+  const { a, date, open, editing } = p;
+  return (
+    <li class="admin-card" data-testid={`admin-account-${a.target}`} data-status={a.status}>
+      <div class="admin-card-head">
+        <Who a={a} />
+        <Status a={a} />
+      </div>
+      <dl class="admin-card-facts">
+        <div>
+          <dt>{t('admin.accounts.lastSignIn')}</dt>
+          <dd>
+            <LastSignIn a={a} date={date} />
+          </dd>
+        </div>
+        <div>
+          <dt>{t('admin.accounts.signIns')}</dt>
+          <dd>
+            <bdi dir="ltr" data-testid="admin-account-count">
+              {a.signIns}
+            </bdi>
+          </dd>
+        </div>
+      </dl>
+      {open.has(a.target) && (
+        <div id={`admin-more-${a.target}`} data-testid={`admin-more-${a.target}`}>
+          <Details a={a} date={date} />
+        </div>
+      )}
+      {editing === a.target ? <Renaming {...p} /> : <RowActions {...p} />}
+    </li>
   );
 }
 
