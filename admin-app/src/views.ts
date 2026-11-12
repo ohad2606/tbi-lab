@@ -208,15 +208,7 @@ export function auditRows(a: AuditView, accounts: AccountsView | null): AuditRow
 export const reportsNewestFirst = (r: ReportMeta[]) =>
   [...r].sort((a, b) => Date.parse(b.receivedAt) - Date.parse(a.receivedAt));
 
-/**
- * "Unread" is per device: the reports not yet opened here (the server keeps no read state). The
- * remembered ids are pruned to the reports that still exist.
- */
+/** "Unread" is per device: the reports not yet opened here (the server keeps no read state). */
 export function unread(reports: ReportMeta[], seen: ReadonlySet<string>) {
   return reports.filter((r) => !seen.has(r.id));
-}
-
-export function rememberSeen(seen: ReadonlySet<string>, id: string, existing: ReportMeta[]) {
-  const keep = new Set(existing.map((r) => r.id));
-  return new Set([...seen, id].filter((x) => keep.has(x) || x === id));
 }

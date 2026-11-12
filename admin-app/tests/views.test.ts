@@ -18,7 +18,6 @@ import {
   israelDay,
   lastActivity,
   parseRoute,
-  rememberSeen,
   reportsNewestFirst,
   routeHash,
   section,
@@ -226,8 +225,7 @@ describe('activity log and feedback', () => {
       r('BBBB-BBBB-BBBB', '2026-11-02T00:00:00Z'),
     ];
     expect(reportsNewestFirst(list).map((x) => x.id)).toEqual(['BBBB-BBBB-BBBB', 'AAAA-AAAA-AAAA']);
-    const seen = rememberSeen(new Set(['GONE-GONE-GONE']), 'AAAA-AAAA-AAAA', list);
-    expect([...seen]).toEqual(['AAAA-AAAA-AAAA']);
+    const seen = new Set(['AAAA-AAAA-AAAA']);
     expect(unread(list, seen).map((x) => x.id)).toEqual(['BBBB-BBBB-BBBB']);
   });
 });
