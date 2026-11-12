@@ -27,19 +27,29 @@ export function Today() {
               </bdi>
             </span>
           ) : (
-            <Problem error={capacity.error} unavailable="console.capacity.unavailable" />
+            <Problem
+              error={capacity.error}
+              unavailable="console.capacity.unavailable"
+              testid="capacity-problem"
+            />
           )}
         </div>
         <div class="tile" data-testid="today-testers">
           <span class="tile-label">{t('console.today.testers')}</span>
-          {accounts?.ok ? (
+          {!accounts ? (
+            <Loading />
+          ) : accounts.ok ? (
             <span class="tile-value">
               <bdi dir="ltr">
                 {capText(accounts.value).n} / {capText(accounts.value).cap}
               </bdi>
             </span>
           ) : (
-            <Loading />
+            <Problem
+              error={accounts.error}
+              unavailable="console.capacity.unavailable"
+              testid="testers-problem"
+            />
           )}
         </div>
         <div class="tile" data-testid="today-active">

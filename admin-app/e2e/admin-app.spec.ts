@@ -340,6 +340,29 @@ test('the history views unavailable: each panel says so, the rest works', async 
   await layoutOk(page);
 });
 
+test('accounts and sessions unavailable (503): the capacity tiles say so, never load forever', async ({
+  page,
+  context,
+}) => {
+  await as(context, 'e2e-owner');
+  await english(context);
+  const unavailable = { status: 503, contentType: 'application/json' };
+  await page.route('**/admin-api/accounts', (r) =>
+    r.fulfill({ ...unavailable, body: '{"error":"accounts_view_unavailable"}' }),
+  );
+  await page.route('**/admin-api/sessions', (r) =>
+    r.fulfill({ ...unavailable, body: '{"error":"capacity_unavailable"}' }),
+  );
+  await page.goto(`${APP}/`);
+  await expect(page.getByTestId('testers-problem')).toHaveText('Not available right now.');
+  await expect(page.getByTestId('capacity-problem')).toHaveText('Not available right now.');
+  await expect(page.getByTestId('today-testers')).not.toContainText('Loading');
+  await expect(page.getByTestId('today-capacity')).not.toContainText('Loading');
+  // The rest of Today still works.
+  await expect(page.getByTestId('today-metric-runs').locator('dd')).toHaveText('7');
+  await layoutOk(page);
+});
+
 for (const subject of ['e2e-user', 'e2e-stranger'])
   test(`${subject === 'e2e-user' ? 'a tester' : 'a stranger'} sees "no access" and gets no data`, async ({
     page,
