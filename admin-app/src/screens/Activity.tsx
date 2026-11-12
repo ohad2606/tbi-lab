@@ -1,5 +1,6 @@
 import { Loading, Problem, useWide } from '../common.js';
 import { useConsole, useT } from '../context.js';
+import { codeKey } from '../i18n.js';
 import { auditRows, type AuditRow } from '../views.js';
 
 /** Recent administration changes: action, the account (name or masked), result, time. */
@@ -42,7 +43,7 @@ export function AuditList({ rows, testid }: { rows: AuditRow[]; testid: string }
       </p>
     );
   const action = (r: AuditRow) =>
-    `${t(`console.audit.action.${r.action}`)}${
+    `${t(codeKey('console.audit.action.', r.action, 'console.audit.action.other').key)}${
       r.count !== undefined ? ` ${t('console.activity.count', { count: r.count })}` : ''
     }`;
   const account = (r: AuditRow) =>
@@ -53,11 +54,27 @@ export function AuditList({ rows, testid }: { rows: AuditRow[]; testid: string }
     ) : (
       <bdi dir="auto">{r.label}</bdi>
     );
-  const result = (r: AuditRow) => (
-    <bdi dir="ltr" class={`code ${r.result === 'done' || r.result === 'ok' ? 'ok' : 'warn'}`}>
-      {r.result}
-    </bdi>
-  );
+  // The result in words; a code this app does not know gets a generic label and the code, small.
+  const result = (r: AuditRow) => {
+    const { key, known } = codeKey('console.result.', r.result, 'console.result.other');
+    return (
+      <span
+        class={`result ${r.result === 'done' || r.result === 'ok' ? 'ok' : 'warn'}`}
+        data-testid="activity-result"
+        data-code={r.result}
+      >
+        {t(key)}
+        {!known && (
+          <>
+            {' '}
+            <bdi dir="ltr" class="code small">
+              {r.result}
+            </bdi>
+          </>
+        )}
+      </span>
+    );
+  };
   if (wide)
     return (
       <div class="table-wrap">

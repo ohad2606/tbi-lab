@@ -9,8 +9,13 @@ import {
 } from '@tbi-lab/admin-client';
 import { Confirm, Loading, Num, Problem } from '../common.js';
 import { api, useConsole, useT } from '../context.js';
-import type { MessageKey } from '../i18n.js';
+import { codeKey } from '../i18n.js';
 import { reportsNewestFirst } from '../views.js';
+
+/** A report's kind and area in words; one this app does not know gets a generic label. */
+const kindKey = (kind: string) => codeKey('report.kind.', kind, 'console.feedback.kind.other').key;
+const categoryKey = (category: string) =>
+  codeKey('report.category.', category, 'console.feedback.category.other').key;
 
 /** The feedback list, newest first; "new" is per device (not opened here yet). */
 export function Feedback() {
@@ -43,11 +48,7 @@ export function Feedback() {
                   }}
                 >
                   <div class="item-head">
-                    <strong>
-                      {r.kind
-                        ? t(`report.kind.${r.kind}` as MessageKey)
-                        : t('admin.reports.unreadable')}
-                    </strong>
+                    <strong>{r.kind ? t(kindKey(r.kind)) : t('admin.reports.unreadable')}</strong>
                     {!seen.has(r.id) && (
                       <span class="badge badge-new" data-testid="report-new">
                         {t('console.feedback.new')}
@@ -55,7 +56,7 @@ export function Feedback() {
                     )}
                   </div>
                   <div class="small">
-                    {r.category ? t(`report.category.${r.category}` as MessageKey) : null}
+                    {r.category ? t(categoryKey(r.category)) : null}
                     {r.blocking ? ` · ${t('admin.reports.blocking')}` : ''}
                   </div>
                   <div class="muted small">
@@ -150,13 +151,13 @@ export function Report({ id }: { id: string }) {
         </div>
         <div>
           <dt>{t('admin.reports.kind')}</dt>
-          <dd>{t(`report.kind.${kind}` as MessageKey)}</dd>
+          <dd>{t(kindKey(kind))}</dd>
         </div>
         {kind === 'bug' && (
           <div>
             <dt>{t('admin.reports.area')}</dt>
             <dd>
-              {t(`report.category.${r.category}` as MessageKey)}
+              {r.category ? t(categoryKey(r.category)) : '—'}
               {r.blocking ? ` · ${t('admin.reports.blocking')}` : ''}
             </dd>
           </div>

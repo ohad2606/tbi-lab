@@ -51,6 +51,20 @@ export function translate(locale: LocaleInfo, key: MessageKey, params?: Params):
 export const isMessageKey = (key: string): key is MessageKey =>
   Object.prototype.hasOwnProperty.call(en, key);
 
+/**
+ * The text key for a code the servers send (an audit result, a report kind): `prefix + code` when
+ * that text exists, else `fallback` (a generic label; the screen may show the raw code beside it).
+ * A raw key is never shown.
+ */
+export function codeKey(
+  prefix: string,
+  code: string | null | undefined,
+  fallback: MessageKey,
+): { key: MessageKey; known: boolean } {
+  const key = `${prefix}${code ?? ''}`;
+  return code && isMessageKey(key) ? { key, known: true } : { key: fallback, known: false };
+}
+
 /** A count in the UI language's digits and grouping. */
 export const formatCount = (locale: LocaleInfo, n: number) =>
   new Intl.NumberFormat(locale.code, { maximumFractionDigits: 0 }).format(n);

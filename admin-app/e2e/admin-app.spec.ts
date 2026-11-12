@@ -114,6 +114,8 @@ test('Hebrew by default, right to left: Today shows the daily summary live', asy
   await expect(changes.getByTestId('activity-row')).toHaveCount(2);
   // The disabled tester's change carries the owner's name for the record, not an address.
   await expect(changes.getByTestId('activity-row').first()).toContainText('בודקת ל.');
+  await expect(changes.getByTestId('activity-result').first()).toHaveText('בוצע');
+  expect(await changes.textContent()).not.toMatch(/\b(done|ok)\b|console\./);
   expect(await page.locator('body').textContent()).not.toMatch(/[a-z.]+@example\.invalid/);
   await layoutOk(page);
   if (test.info().project.name === 'desktop') {
@@ -212,7 +214,9 @@ test('owner actions: rename, disable with confirmation, reactivate; the log reco
   await expect(log.nth(1)).toHaveAttribute('data-action', 'disable');
   await expect(log.nth(2)).toHaveAttribute('data-action', 'rename');
   await expect(log.nth(0)).toContainText('Alex Example');
-  await expect(log.nth(0)).toContainText('done');
+  // The result in words, not the helper's code.
+  await expect(log.nth(0).getByTestId('activity-result')).toHaveText('Done');
+  await expect(log.nth(0).getByTestId('activity-result')).toHaveAttribute('data-code', 'done');
   await layoutOk(page);
   await shot(page, 'activity-en');
 });

@@ -1,11 +1,12 @@
 /** TBI Lab Admin: the screens' logic without the DOM (routes, usage sums, the testers list, the log). */
 import { describe, expect, it } from 'vitest';
-import type {
-  AccountRow,
-  AccountsView,
-  AuditView,
-  ReportMeta,
-  UsageView,
+import {
+  RESULT_CODES,
+  type AccountRow,
+  type AccountsView,
+  type AuditView,
+  type ReportMeta,
+  type UsageView,
 } from '@tbi-lab/admin-client';
 import {
   accountSeries,
@@ -27,7 +28,7 @@ import {
   unread,
   zeroMetrics,
 } from '../src/views.js';
-import { LOCALES, getLocale, isMessageKey, translate } from '../src/i18n.js';
+import { LOCALES, codeKey, getLocale, isMessageKey, translate } from '../src/i18n.js';
 
 const T1 = 't_AAAAAAAAAAAAAAAA';
 const T2 = 't_BBBBBBBBBBBBBBBB';
@@ -253,5 +254,37 @@ describe('locales', () => {
     expect(translate(getLocale('en'), 'admin.result.done.disable', { account: 'X' })).toBe(
       'Access for X has ended.',
     );
+  });
+});
+
+describe('codes from the servers in words', () => {
+  const en = getLocale('en');
+  const he = getLocale('he');
+  const result = (code: string) => codeKey('console.result.', code, 'console.result.other');
+
+  it('every result code the helper writes has its own text in every locale', () => {
+    // The request results (RESULT_CODES), plus the audit-only ones (sign-ins, rate limits, pruning).
+    for (const code of [...RESULT_CODES, 'ok', 'rate_limited', 'unparseable', 'held']) {
+      expect(result(code).known, code).toBe(true);
+      for (const l of LOCALES) expect(translate(l, result(code).key)).not.toMatch(/console\./);
+    }
+    expect(translate(en, result('done').key)).toBe('Done');
+    expect(translate(he, result('done').key)).toBe('בוצע');
+  });
+
+  it('an unknown code gets the generic label, never a raw key', () => {
+    for (const code of ['exploded', '', null, undefined, '__proto__', 'constructor', 'done.x']) {
+      expect(result(code as string).known).toBe(false);
+      expect(translate(en, result(code as string).key)).toBe('Other result');
+      expect(translate(he, result(code as string).key)).toBe('תוצאה אחרת');
+    }
+    expect(
+      translate(en, codeKey('console.audit.action.', 'explode', 'console.audit.action.other').key),
+    ).toBe('Other change');
+    const kind = (k: string) => codeKey('report.kind.', k, 'console.feedback.kind.other');
+    expect(translate(en, kind('feature').key)).toBe('Feature or improvement');
+    expect(translate(en, kind('praise').key)).toBe('Other feedback');
+    const area = (c: string) => codeKey('report.category.', c, 'console.feedback.category.other');
+    expect(translate(he, area('hardware').key)).toBe('תחום אחר');
   });
 });

@@ -418,10 +418,10 @@ fieldset {
   font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
   font-size: 0.9rem;
 }
-.code.ok {
+.result.ok {
   color: var(--ok);
 }
-.code.warn {
+.result.warn {
   color: var(--warning-ink);
 }
 
