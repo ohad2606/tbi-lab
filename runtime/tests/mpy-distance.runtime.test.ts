@@ -308,4 +308,58 @@ describe.skipIf(!stack)('MicroPython time_pulse_us with the HC-SR04 model (real 
       }
     }
   }, 900_000);
+
+  /**
+   * Phase 2: the edges of the range and ten independent runs per case. Each run is a fresh session
+   * (fresh QEMU, same artifact) through the same scripted sequence; every reading (value and call
+   * duration) must be identical across the ten runs, and within the bound of the oracle.
+   */
+  const EDGES: [number, number][] = [
+    [0.0199, 20],
+    [0.02, 20],
+    [0.5, 20],
+    [4, 20],
+    [4.001, 20],
+    [1, -10],
+  ];
+  it('edges (just under 2 cm, 2 cm, 4 m, just over 4 m) and timeouts: ten runs, identical', async () => {
+    const runs: unknown[] = [];
+    for (let k = 0; k < 10; k++) {
+      const { s } = await stack!.run(mpyHost, probe(30_000), request());
+      await waitEvent(s, () => serialText(s).includes('TBI-PULSE-READY'), 120_000);
+      const rows: { distanceM: number; tempC: number; read: { us: number; callUs: number }[] }[] =
+        [];
+      for (const [distanceM, tempC] of EDGES)
+        rows.push({ distanceM, tempC, read: await readingsAt(s, distanceM, tempC) });
+      await stop(s);
+      runs.push(rows);
+      for (const r of rows) {
+        const o = hcsr04Echo(0n, 10, r.distanceM, r.tempC)?.widthUs ?? null;
+        for (const x of r.read)
+          if (o === null) {
+            expect(x.us, `${r.distanceM} m`).toBe(-2);
+            expect(x.callUs).toBeLessThan(31_000);
+          } else
+            expect(Math.abs(x.us - o), `${r.distanceM} m: ${x.us} vs ${o}`).toBeLessThanOrEqual(
+              TIME_PULSE_TOLERANCE_US,
+            );
+      }
+    }
+    evidence.edgesTenRuns = runs;
+    for (const r of runs) expect(r).toEqual(runs[0]);
+  }, 1_800_000);
+
+  it('a pulse longer than the timeout: ten runs, identical (−1, same call duration)', async () => {
+    const runs: unknown[] = [];
+    for (let k = 0; k < 10; k++) {
+      const { s } = await stack!.run(mpyHost, probe(1000), request());
+      await waitEvent(s, () => serialText(s).includes('TBI-PULSE-READY'), 120_000);
+      const long = await readingsAt(s, 1, 20);
+      await stop(s);
+      for (const x of long) expect(x.us).toBe(-1);
+      runs.push(long);
+    }
+    evidence.timeoutTenRuns = runs;
+    for (const r of runs) expect(r).toEqual(runs[0]);
+  }, 1_800_000);
 });

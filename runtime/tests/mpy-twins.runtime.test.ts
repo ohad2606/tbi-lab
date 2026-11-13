@@ -27,7 +27,16 @@ import { open } from '../host/tests/r1-support.js';
 import { principalFor, TEST_TICKET_KEY } from '../identity/test-gate.js';
 import { openAccessPolicy } from '../policy/testing.js';
 import { realHost } from './r2-support.js';
-import { MpyStack, RT, V4, electrical, example, runtimeCaps } from './s24-support.js';
+import {
+  MpyStack,
+  RT,
+  V4,
+  electrical,
+  example,
+  runtimeCaps,
+  simAdvance,
+  simNow,
+} from './s24-support.js';
 
 const stack = RT && V4 ? new MpyStack() : null;
 const store = stack ? mkdtempSync(join('/var/tmp', 'mpy-twins-store-')) : '';
@@ -340,14 +349,17 @@ describe.skipIf(!stack)('MicroPython expansion: the new verified twins on real Q
       const { s, req } = await start(id, 's29-mpy-adder-monitor-session.json');
       const d = driver(s, req);
       const led = d.byType('component.led');
-      const states: Record<string, unknown>[] = [];
+      const states: { a: boolean; b: boolean; line: string; sum: number; ledA?: number | null }[] =
+        [];
       const check = async (a: boolean, b: boolean, mark: number) => {
         const sum = +a + +b;
         const line = await d.serialAfter(
           mark,
           new RegExp(`A=${+a} B=${+b} -> C=${+(a && b)} S=${+(a !== b)} = ${sum} ok`),
         );
-        states.push({ a, b, line });
+        // The LED's average after the program set this sum's duty (100 ms of simulated time on).
+        await simAdvance(s, simNow(s), 100);
+        states.push({ a, b, line, sum, ledA: electrical(s).at(-1)!.o.components[led]?.current });
       };
       await check(true, false, 0);
       let m = d.mark();
@@ -359,9 +371,12 @@ describe.skipIf(!stack)('MicroPython expansion: the new verified twins on real Q
       m = d.mark();
       d.mirror('SW2', { closed: false });
       await check(false, false, m);
-      const last = electrical(s).at(-1)!.o; // the operating point at sum 0
       evidence[`${id}.states`] = states;
-      evidence[`${id}.ledA.sum0`] = last.components[led]?.current;
+      // Brighter for a larger sum: the LED's average current orders with the sum (0 < 1 < 2).
+      const at = (n: number) => (states.find((x) => x.sum === n)!.ledA as number) ?? 0;
+      expect(at(0)).toBeGreaterThan(0);
+      expect(at(1)).toBeGreaterThan(at(0));
+      expect(at(2)).toBeGreaterThan(at(1));
       await d.stop();
     });
 });
