@@ -280,3 +280,21 @@ All on DEV, Runtime v5 `39f2229a66d45e43`; logs and JSON evidence in `~/tbi-mpy/
 mpy-distance-alarm and mpy-thermo-hygrometer are not run on staging: its build service is at
 analyzer 7 and refuses `time_pulse_us` and `dht` until a build service with this branch is
 deployed (not done: the shared staging services were not redeployed).
+
+## 5. Release candidate `mpy-rc` (DEV, conditional GO)
+
+Branch `mpy-rc` from `bf24d16` (`mpy-expansion` unchanged). Baseline: RC6 `c38f2c9`.
+
+- **Included:** the seven runnable twins (§1), the HC-SR04 twin with `machine.time_pulse_us` (§2),
+  the DHT22 twin with the firmware's `dht` module (§4.1), the build-service analysis at analyzer 9,
+  the tester guide and these notes, and the fix for A11Y-005.
+- **Excluded:** the three logic limit-demonstrator twins (`git revert 5367fe7`, §4.3).
+- **A11Y-005 fixed:** the code editor's accessible name is `{language} source code of {board}`
+  (`קוד המקור ({language}) של {board}`) with the active language, so a MicroPython program is no
+  longer announced as Arduino. Regression e2e `app/e2e/a11y-005-editor-name.spec.ts` (EN/HE: switch
+  both ways, reload, a project opened in MicroPython; code preserved); it fails on `bf24d16` and
+  passes on the candidate.
+- **Staging:** only the build service was updated (analyzer 9), after a written preflight; the
+  Session Host (166eaa9), QEMU, firmware and the other services were not touched. Evidence, the
+  preflight and the rollback procedure are kept on DEV (`~/tbi-mpy/evidence/rc/`).
+- Nothing is prepared for Alpha.
