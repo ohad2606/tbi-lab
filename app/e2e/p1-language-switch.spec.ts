@@ -3,13 +3,30 @@
  * Arduino -> MicroPython -> Arduino. In the browser, English and Hebrew, desktop and tablet: the
  * example's code comes back byte for byte (also after a reload), the MicroPython side says plainly
  * that no verified version exists, and a multi-file program with a pinned library keeps every file.
- * MicroPython expansion: the distance alarm now has a verified MicroPython twin, so the
- * no-twin path runs on the DHT22 thermo-hygrometer (the remaining ESP32 example without one) and
- * the distance alarm switches to its twin.
+ * MicroPython expansion: every built-in ESP32 example now has a verified twin, so the no-twin
+ * path runs on the owner's own case as it was saved before twins existed: the distance alarm
+ * exported with no other-language code, imported; opened from the list it switches to its twin.
  */
 import { expect, test, type Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
-import { goToProjects, reopenFromLibrary, storedProject, waitSaved } from './helpers.js';
+import { readFileSync } from 'node:fs';
+import type { ProjectDocument } from '@tbi-lab/domain';
+import {
+  goToProjects,
+  openImported,
+  reopenFromLibrary,
+  storedProject,
+  waitSaved,
+} from './helpers.js';
+
+/** The distance alarm as saved before twins existed (no other-language code in the project). */
+const alarmWithoutTwin = () =>
+  JSON.parse(
+    readFileSync(
+      new URL('../src/examples/data/esp32-distance-alarm.json', import.meta.url),
+      'utf8',
+    ),
+  ) as ProjectDocument;
 
 const OUT = 'test-results/p1-language-switch';
 mkdirSync(OUT, { recursive: true });
@@ -29,7 +46,7 @@ for (const vp of [
   { n: 'tablet', width: 1024, height: 768 },
 ])
   for (const lang of ['en', 'he'] as const)
-    test(`thermo-hygrometer (${vp.n}, ${lang}): Arduino -> MicroPython -> Arduino keeps the example; reload keeps it`, async ({
+    test(`distance alarm without a twin (${vp.n}, ${lang}): Arduino -> MicroPython -> Arduino keeps the code; reload keeps it`, async ({
       page,
     }) => {
       page.on('pageerror', (e) => {
@@ -41,29 +58,30 @@ for (const vp of [
         void d.dismiss();
       });
       await page.setViewportSize({ width: vp.width, height: vp.height });
-      await openExample(page, 'esp32-thermo-hygrometer');
+      await openImported(page, alarmWithoutTwin());
+      await waitSaved(page);
       if (lang === 'he') await page.getByTestId('language-select').selectOption('he');
       await page.getByTestId('view-code').click();
       const language = page.getByTestId('program-language');
       const code = page.getByTestId('code-text');
       await expect(language).toHaveValue('esp32-arduino-3.3.12');
       const original = await code.inputValue();
-      expect(original).toMatch(/dhtRead/);
+      expect(original).toMatch(/pulseIn/);
       // MicroPython: no verified version of this example; the starter, said so; nothing asked.
       await language.selectOption('esp32-micropython-1.29');
       await expect(language).toHaveValue('esp32-micropython-1.29');
       const notice = page.getByTestId('notice');
       await expect(notice).toHaveAttribute('data-key', 'program.language.started');
       await expect(notice).toContainText(lang === 'en' ? 'none has been verified' : 'לא אומתה');
-      await expect(code).not.toHaveValue(/dhtRead/);
-      await page.screenshot({ path: `${OUT}/thermo-${vp.n}-${lang}-mpy.png` });
+      await expect(code).not.toHaveValue(/pulseIn/);
+      await page.screenshot({ path: `${OUT}/alarm-${vp.n}-${lang}-mpy.png` });
       await waitSaved(page);
       // Back to Arduino: the example's code, byte for byte.
       await language.selectOption('esp32-arduino-3.3.12');
       await expect(notice).toHaveAttribute('data-key', 'program.language.restored');
       await expect(code).toHaveValue(original);
       expect(await code.evaluate((el) => getComputedStyle(el).direction)).toBe('ltr');
-      await page.screenshot({ path: `${OUT}/thermo-${vp.n}-${lang}-arduino.png` });
+      await page.screenshot({ path: `${OUT}/alarm-${vp.n}-${lang}-arduino.png` });
       await waitSaved(page);
       const stored = await storedProject(page);
       const board = Object.keys(stored.programs)[0]!;

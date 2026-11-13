@@ -1535,6 +1535,9 @@ export const en = {
   'example.mpy-distance-alarm.title': 'MicroPython: ultrasonic distance alarm',
   'example.mpy-distance-alarm.summary':
     'The same circuit as “ESP32: ultrasonic distance alarm”, in MicroPython. GPIO5 sends the 10 µs trigger pulse; machine.time_pulse_us(echo, 1, 30000) times the echo pulse on GPIO18 (through the 1 kΩ / 2 kΩ divider; the module runs from 5 V). main.py prints the distance (pulse width in µs / 58 = cm), or “No echo” when nothing is in range; closer than 20 cm, GPIO2 lights the red LED. Change the target distance in the Properties panel while running. Runs on the ESP32 runtime service.',
+  'example.mpy-thermo-hygrometer.title': 'MicroPython: temperature and humidity (DHT22)',
+  'example.mpy-thermo-hygrometer.summary':
+    'The same circuit as “ESP32: temperature and humidity (DHT22)”, in MicroPython: a DHT22 / AM2302 on GPIO4 with the 10 kΩ pull-up its single-wire data line needs, read with the interpreter’s own dht module (dht.DHT22). The serial output shows the temperature and relative humidity every 2.5 s; a read that gets no answer prints “DHT22 read failed”. Change both in the Properties panel while running. Runs on the ESP32 runtime service.',
   'example.esp32-button.title': 'ESP32: a push button lights an LED',
   'example.esp32-button.summary':
     'The same circuit as “MicroPython: a push button lights an LED”, in Arduino C++. Hold the button: 3.3 V reaches GPIO34 through 1 kΩ, and a 10 kΩ pull-down holds it LOW when released (GPIO34 has no internal pull). The sketch reads it with digitalRead every 10 ms and copies it to GPIO4, which drives the red LED through 220 Ω.',

@@ -59,6 +59,7 @@ import mpyLogicAnd from './data/mpy-logic-and.json';
 import mpyLogicQuadAnd from './data/mpy-logic-quad-and.json';
 import mpyLogicOverride from './data/mpy-logic-override.json';
 import mpyDistanceAlarm from './data/mpy-distance-alarm.json';
+import mpyThermoHygrometer from './data/mpy-thermo-hygrometer.json';
 
 export const EXAMPLE_DOCUMENTS: Record<string, ProjectDocument> = {
   'ohms-law': ohmsLaw as unknown as ProjectDocument,
@@ -116,6 +117,7 @@ export const EXAMPLE_DOCUMENTS: Record<string, ProjectDocument> = {
   'mpy-logic-quad-and': mpyLogicQuadAnd as unknown as ProjectDocument,
   'mpy-logic-override': mpyLogicOverride as unknown as ProjectDocument,
   'mpy-distance-alarm': mpyDistanceAlarm as unknown as ProjectDocument,
+  'mpy-thermo-hygrometer': mpyThermoHygrometer as unknown as ProjectDocument,
 };
 
 /** The examples with their documents (tests and tools; the app loads documents lazily). */

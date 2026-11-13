@@ -56,12 +56,16 @@ async function flush(app: AppStore) {
 }
 
 describe('P1: switching the programming language never loses code', () => {
-  // MicroPython expansion: the distance alarm now has a verified twin; the owner's sequence on an
-  // example without one runs on the DHT22 thermo-hygrometer (the remaining ESP32 example).
-  it('owner reproduction: an Arduino example without a twin survives MicroPython and back, saved and reloaded', async () => {
+  // MicroPython expansion: every built-in ESP32 example now has a verified twin, so the owner's
+  // sequence on a project WITHOUT one runs on the distance alarm as it was saved before twins
+  // existed (an exported copy with no other-language code), imported.
+  it('owner reproduction: an Arduino project without a twin survives MicroPython and back, saved and reloaded', async () => {
     const { app, storage } = await setup();
-    expect(await app.openExample('esp32-thermo-hygrometer')).toBe(true);
-    const example = (await loadExampleDocument('esp32-thermo-hygrometer'))!;
+    const example = (await loadExampleDocument('esp32-distance-alarm'))!;
+    const text = serializePackage(
+      createPackage(example, { appVersion: '0', exportedAt: '2026-11-01T00:00:00.000Z' }),
+    );
+    expect(await app.importPackage(text)).toBe(true);
     const original = JSON.stringify(example.programs[boardOf(example)]);
     expect(JSON.stringify(active(app.state.doc!))).toBe(original);
     // No verified MicroPython version: the starter opens, said so (restored = false), Arduino kept.
@@ -97,6 +101,7 @@ describe('P1: switching the programming language never loses code', () => {
       ['esp32-blink', 'mpy-blink'],
       ['esp32-lcd-library', 'mpy-lcd-library'],
       ['esp32-distance-alarm', 'mpy-distance-alarm'],
+      ['esp32-thermo-hygrometer', 'mpy-thermo-hygrometer'],
     ] as const) {
       const { app } = await setup();
       await app.openExample(arduino);

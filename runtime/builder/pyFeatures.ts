@@ -6,8 +6,9 @@
  *
  * Fail closed, by allowlist:
  * - **Imports.** Only modules whose behaviour the simulator reproduces are accepted; any other
- *   import (network, bluetooth, esp32, neopixel, onewire, dht, random, os, …) is refused as
- *   `library:<module>`.
+ *   import (network, bluetooth, esp32, neopixel, onewire, random, os, …) is refused as
+ *   `library:<module>`. Phase 2 of the MicroPython expansion allows `dht` (the firmware's own
+ *   driver, validated with the DHT22 model; its DHT11 class has no simulated part to run with).
  * - **`machine` names.** Only Pin, PWM, ADC, Signal, idle and time_pulse_us are accepted (ADC is refused at RUN
  *   time by Runtime v4, at the access, as are Pin.irq and lowering the CPU clock). Every other
  *   name is refused, by its facility where one exists (SPI → spi, DAC → dac, reset → restart,
@@ -47,8 +48,9 @@ import { INPUT_CAPABLE_GPIOS } from './features.js';
 
 /** Version of this analysis; part of the MicroPython profile hash (cache key). */
 // Sprint 29: serial input (input(), sys.stdin) refused (7). MicroPython expansion: machine.time_pulse_us
-// allowed (8), validated against the HC-SR04 model across its range (mpy-distance.runtime.test.ts).
-export const PY_FEATURES_ANALYZER = 8;
+// allowed (8), validated against the HC-SR04 model across its range (mpy-distance.runtime.test.ts);
+// the firmware's dht module allowed (9), validated against the DHT22 model (mpy-dht.runtime.test.ts).
+export const PY_FEATURES_ANALYZER = 9;
 
 /**
  * Sprint 24 (M3): the fastest I2C clock a program may select: the lowest rated SCL of the I2C parts
@@ -91,6 +93,9 @@ const ALLOWED_MODULES = new Set([
   'ubinascii',
   'errno',
   'uerrno',
+  // MicroPython expansion phase 2: the firmware's own DHT11/DHT22 driver (validated on real QEMU
+  // against the DHT22 model, mpy-dht.runtime.test.ts).
+  'dht',
 ]);
 
 /** `machine` names that run as on the board (or are refused at the access by Runtime v4). */

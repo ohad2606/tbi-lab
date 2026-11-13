@@ -707,6 +707,18 @@ export const EXAMPLES: readonly Example[] = [
       'sensor.hc_sr04',
     ],
   },
+  {
+    id: 'mpy-thermo-hygrometer',
+    titleKey: 'example.mpy-thermo-hygrometer.title',
+    summaryKey: 'example.mpy-thermo-hygrometer.summary',
+    probes: [V('R1', 'b')],
+    parts: [
+      'board.esp32_devkitc_wroom32',
+      'component.resistor',
+      'instrument.lab_psu',
+      'sensor.dht22',
+    ],
+  },
 ];
 
 export function findExample(id: string): Example | undefined {
@@ -765,6 +777,7 @@ export const EXAMPLE_VARIANTS: Readonly<Record<string, string>> = Object.fromEnt
       ['esp32-logic-quad-and', 'mpy-logic-quad-and'],
       ['esp32-logic-override', 'mpy-logic-override'],
       ['esp32-distance-alarm', 'mpy-distance-alarm'],
+      ['esp32-thermo-hygrometer', 'mpy-thermo-hygrometer'],
     ] as const
   ).flatMap(([a, b]) => [
     [a, b],

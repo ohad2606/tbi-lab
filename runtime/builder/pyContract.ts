@@ -142,6 +142,17 @@ export const MICROPYTHON_CONTRACT: readonly ContractEntry[] = [
     probe: `${pin}from machine import time_pulse_us\nprint(time_pulse_us(Pin(18, Pin.IN), 1, 30000))\n`,
   },
   {
+    id: 'dht22',
+    api: 'import dht; dht.DHT22(Pin(n)).measure(), temperature(), humidity()',
+    status: 'supported',
+    at: 'run',
+    requires: ['input-read'],
+    note: 'the firmware’s own driver against the DHT22 model: every frame exact from −40 to 80 °C and 0 to 100 %RH; a read with no answer (no sensor, or within the sensor’s 2 s collecting period) raises OSError(ETIMEDOUT) after the driver’s 268 ms; without the pull-up the run is refused by name (gpio_input_undefined); the DHT11 class is not validated (no DHT11 part)',
+    evidence:
+      'runtime/tests/mpy-dht.runtime.test.ts (range, ten runs, error paths, the Arduino twin)',
+    probe: `${pin}import dht\ns = dht.DHT22(Pin(4))\ns.measure()\nprint(s.temperature(), s.humidity())\n`,
+  },
+  {
     id: 'i2c',
     api: 'I2C(0, scl=Pin(22), sda=Pin(21), freq<=100000); scan(), writeto()',
     status: 'supported',

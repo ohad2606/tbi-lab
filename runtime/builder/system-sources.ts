@@ -47,6 +47,7 @@ import mpyLogicAnd from '../../app/src/examples/data/mpy-logic-and.json' with { 
 import mpyLogicQuadAnd from '../../app/src/examples/data/mpy-logic-quad-and.json' with { type: 'json' };
 import mpyLogicOverride from '../../app/src/examples/data/mpy-logic-override.json' with { type: 'json' };
 import mpyDistanceAlarm from '../../app/src/examples/data/mpy-distance-alarm.json' with { type: 'json' };
+import mpyThermoHygrometer from '../../app/src/examples/data/mpy-thermo-hygrometer.json' with { type: 'json' };
 
 const programsOf = (doc: unknown): ProgramSource[] =>
   Object.values((doc as { programs?: Record<string, ProgramSource> }).programs ?? {});
@@ -83,6 +84,7 @@ function systemPrograms(): ProgramSource[] {
     ...programsOf(mpyLogicQuadAnd),
     ...programsOf(mpyLogicOverride),
     ...programsOf(mpyDistanceAlarm),
+    ...programsOf(mpyThermoHygrometer),
     starterProgram('board.esp32_devkitc_wroom32'),
   ].filter((p): p is ProgramSource => !!p);
 }

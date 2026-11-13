@@ -81,7 +81,7 @@ while True:
       ['import bluetooth', 'library:bluetooth'],
       ['import esp32', 'library:esp32'],
       ['from neopixel import NeoPixel', 'library:neopixel'],
-      ['import time, dht', 'library:dht'],
+      ['import time, onewire', 'library:onewire'], // dht: allowed since analyzer 9
       ['import random', 'library:random'],
       ['import os', 'library:os'],
       ["m = __import__('network')", 'library:__import__'],
@@ -396,5 +396,28 @@ describe('MicroPython expansion: machine.time_pulse_us (analyzer 8)', () => {
     expect(analyzeMicroPython('import machine\nmachine.Counter(0)\n').unsupported).toEqual([
       'library:machine.Counter',
     ]);
+  });
+});
+
+describe('MicroPython expansion phase 2: the firmware dht module (analyzer 9)', () => {
+  const RT = ['input-read'];
+  it('import dht is allowed; the data pin is declared as read', () => {
+    for (const src of [
+      'import dht\nfrom machine import Pin\nd = dht.DHT22(Pin(4))\nd.measure()\n',
+      'from dht import DHT22\nfrom machine import Pin\nDHT22(Pin(4)).measure()\n',
+    ]) {
+      const r = analyzeMicroPython(src, RT);
+      expect(r.unsupported, src).toEqual([]);
+      expect(r.inputReads, src).toEqual({ pins: [4], unresolved: false });
+    }
+  });
+  it('the shipped thermo-hygrometer passes; other driver modules stay refused', () => {
+    const src = readFileSync(
+      new URL('../../../app/tests/exampleSketches/mpy_thermo_hygrometer.py', import.meta.url),
+      'utf8',
+    );
+    expect(analyzeMicroPython(src, RT)).toMatchObject({ unsupported: [], restart: false });
+    for (const m of ['onewire', 'ds18x20', 'neopixel', 'esp', 'esp32'])
+      expect(analyzeMicroPython(`import ${m}\n`).unsupported).toEqual([`library:${m}`]);
   });
 });

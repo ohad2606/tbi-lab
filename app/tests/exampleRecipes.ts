@@ -2033,6 +2033,17 @@ export const RECIPES: Record<string, () => ProjectDocument> = {
       'MicroPython: ultrasonic distance alarm',
       (r, U) => r.python(U, 'mpy_distance_alarm.py'),
     ),
+  /**
+   * MicroPython expansion phase 2: the DHT22 with the interpreter's own dht module (allowed after
+   * its validation against the DHT22 model, mpy-dht.runtime.test.ts).
+   */
+  'mpy-thermo-hygrometer': () =>
+    twinOf(
+      'esp32-thermo-hygrometer',
+      'mpy-thermo-hygrometer',
+      'MicroPython: temperature and humidity',
+      (r, U) => r.python(U, 'mpy_thermo_hygrometer.py'),
+    ),
   /** MicroPython expansion: the Arduino twins of two MicroPython examples. */
   'esp32-button': () =>
     twinOf('mpy-button', 'esp32-button', 'ESP32: a button lights an LED', (r, U) =>

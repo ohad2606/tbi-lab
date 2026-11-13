@@ -1483,6 +1483,9 @@ export const he: Record<MessageKey, string> = {
   'example.mpy-distance-alarm.title': 'MicroPython: התראת מרחק אולטרסונית',
   'example.mpy-distance-alarm.summary':
     'אותו מעגל כמו ‎“ESP32: התראת מרחק אולטרסונית”‎, ב-MicroPython. ‏GPIO5 שולח את פולס ההפעלה של 10 מיקרו-שניות; ‏machine.time_pulse_us(echo, 1, 30000) מודד את פולס ההד ב-GPIO18 (דרך מחלק המתח של 1 kΩ / 2 kΩ; המודול מוזן מ-‏5 V). ‏main.py מדפיס את המרחק (רוחב הפולס במיקרו-שניות חלקי 58 = ס"מ), או “No echo” כשאין דבר בטווח; במרחק קטן מ-‏20 ס"מ, GPIO2 מדליק את נורית ה-LED האדומה. שנו את המרחק למטרה בחלונית המאפיינים בזמן ריצה. רץ בשירות הריצה של ESP32.',
+  'example.mpy-thermo-hygrometer.title': 'MicroPython: טמפרטורה ולחות (DHT22)',
+  'example.mpy-thermo-hygrometer.summary':
+    'אותו מעגל כמו ‎“ESP32: טמפרטורה ולחות (DHT22)”‎, ב-MicroPython: חיישן DHT22 / AM2302 על GPIO4 עם נגד ה-pull-up של 10 kΩ שקו הנתונים החד-חוטי שלו דורש, הנקרא באמצעות מודול dht של המפרש עצמו (dht.DHT22). הפלט הטורי מציג את הטמפרטורה והלחות היחסית כל 2.5 שניות; קריאה שלא נענתה מדפיסה “DHT22 read failed”. שנו את שני הערכים בחלונית המאפיינים בזמן ריצה. רץ בשירות הריצה של ESP32.',
   'example.esp32-button.title': 'ESP32: לחצן מדליק נורית LED',
   'example.esp32-button.summary':
     'אותו מעגל כמו ‎“MicroPython: לחצן מדליק נורית LED”‎, ב-Arduino C++‎. החזיקו את הלחצן: ‏3.3 V מגיעים ל-GPIO34 דרך 1 kΩ, ונגד pull-down של 10 kΩ מחזיק אותו ב-LOW כשהלחצן משוחרר (ל-GPIO34 אין pull פנימי). הסקיצה קוראת אותו באמצעות digitalRead כל 10 ms ומעתיקה אותו ל-GPIO4, שמזין את הנורית האדומה דרך 220 Ω.',
