@@ -94,10 +94,6 @@ describe('no shipped example raises a pad over-voltage warning (T-D3)', () => {
         'esp32-logic-and': 7,
         'esp32-logic-override': 7,
         'esp32-logic-quad-and': 9,
-        // MicroPython expansion: their twins (the same circuits).
-        'mpy-logic-and': 7,
-        'mpy-logic-override': 7,
-        'mpy-logic-quad-and': 9,
         'esp32-logic-feedback': 6,
         'mpy-logic-feedback': 6,
       };
@@ -126,13 +122,13 @@ describe('no shipped example raises a pad over-voltage warning (T-D3)', () => {
       }
       expect(refused, `${e.id} ${refusedAt}`).toBe(expected[e.id] ?? 0);
       // The combination with GPIO18 LOW and the read-back pad an input (#6 / #2: the pads' order).
-      if (/-logic-and$/.test(e.id)) expect(refusedAt, e.id).toEqual([1, 2, 3, 4, 5, 7, 8]);
+      if (e.id === 'esp32-logic-and') expect(refusedAt, e.id).toEqual([1, 2, 3, 4, 5, 7, 8]);
       // Sprint 30 (S30-L1): GPIO18 in every mode with GPIO4 an input runs (#0, #3, #6); the read-back
       // GPIO4 driven against U2's output is refused in all six other combinations.
       if (/logic-feedback$/.test(e.id)) {
         expect(refusedAt, e.id).toEqual([1, 2, 4, 5, 7, 8]); // GPIO4 is the first pad here
         expect(combos, e.id).toBe(3);
       }
-      if (/-logic-override$/.test(e.id)) expect(refusedAt, e.id).toEqual([1, 3, 4, 5, 6, 7, 8]);
+      if (e.id === 'esp32-logic-override') expect(refusedAt, e.id).toEqual([1, 3, 4, 5, 6, 7, 8]);
     });
 });

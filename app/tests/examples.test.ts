@@ -96,9 +96,6 @@ describe('the example set', () => {
       'mpy-servo-sweep',
       'esp32-button',
       'esp32-adder-monitor',
-      'mpy-logic-and',
-      'mpy-logic-quad-and',
-      'mpy-logic-override',
       'mpy-distance-alarm',
       'mpy-thermo-hygrometer',
     ]);

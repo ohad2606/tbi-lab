@@ -3,7 +3,7 @@
  * Arduino -> MicroPython -> Arduino. In the browser, English and Hebrew, desktop and tablet: the
  * example's code comes back byte for byte (also after a reload), the MicroPython side says plainly
  * that no verified version exists, and a multi-file program with a pinned library keeps every file.
- * MicroPython expansion: every built-in ESP32 example now has a verified twin, so the no-twin
+ * MicroPython expansion: every built-in ESP32 example that runs now has a verified twin, so the no-twin
  * path runs on the owner's own case as it was saved before twins existed: the distance alarm
  * exported with no other-language code, imported; opened from the list it switches to its twin.
  */

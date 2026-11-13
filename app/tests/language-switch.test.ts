@@ -56,7 +56,7 @@ async function flush(app: AppStore) {
 }
 
 describe('P1: switching the programming language never loses code', () => {
-  // MicroPython expansion: every built-in ESP32 example now has a verified twin, so the owner's
+  // MicroPython expansion: every built-in ESP32 example that runs now has a verified twin, so the owner's
   // sequence on a project WITHOUT one runs on the distance alarm as it was saved before twins
   // existed (an exported copy with no other-language code), imported.
   it('owner reproduction: an Arduino project without a twin survives MicroPython and back, saved and reloaded', async () => {

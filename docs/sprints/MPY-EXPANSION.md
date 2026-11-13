@@ -34,19 +34,17 @@ Real-QEMU runs: local, Runtime v5 `39f2229a66d45e43`, the real Arduino and Micro
 providers (14/14 in the final run, evidence `mpy-twins.json`). Staging (tbi-s8 build service,
 Session Host and QEMU, host `166eaa9`): 8/8 passed, screenshots kept on DEV.
 
-### Logic limit demonstrators (their own commit)
+### Logic limit demonstrators: excluded from the candidate
+
+> On the release-candidate branch `mpy-rc` this commit is reverted (§4.3 recommendation, owner
+> decision): the three twins below are not shipped. Kept on `mpy-expansion` for the record.
+
 
 esp32-logic-and, esp32-logic-override and esp32-logic-quad-and are limit demonstrators: the
-Arduino examples are refused by name once the sketch drives GPIO18, or (quad AND) at session
-creation. Their MicroPython twins (`mpy_logic_and.py`, `mpy_logic_override.py`,
-`mpy_logic_quad_and.py`, `Pin` only) are refused identically. In a separate commit so the owner
-can decide whether limit demonstrators need a twin.
-
-| Original | New twin | Real QEMU (both languages, identical end) | Staging |
-|---|---|---|---|
-| esp32-logic-and | **mpy-logic-and** | failed, `logic_mcu_output_uncharacterized`, U2 | builds; Run refused by that code |
-| esp32-logic-override | **mpy-logic-override** | failed, `logic_mcu_input_not_guaranteed`, U2 | builds; Run refused by that code |
-| esp32-logic-quad-and | **mpy-logic-quad-and** | refused at creation, `logic_input_leakage_uncharacterized`, U2 | builds; Run refused by that code |
+Arduino examples are refused by name (S30-L1 / the SN74LVC08A datasheet) once the sketch drives
+GPIO18, or in every state. Their MicroPython twins (`mpy_logic_and.py`, `mpy_logic_override.py`,
+`mpy_logic_quad_and.py`) only use `Pin`, and are refused exactly as the Arduino versions are; they
+are in a separate commit so the owner can decide whether limit demonstrators need a twin.
 
 ### Not feasible with the MicroPython support of phase 1
 
@@ -229,7 +227,7 @@ Measured on real QEMU (`mpy-twins.runtime.test.ts`): each pair ends with the sam
 code and component in both languages; on the staging stack each MicroPython twin's Run is
 refused by the same code.
 
-**Recommendation: exclude them from the next candidate** (keep the commit on the branch). They are
+**Recommendation: exclude them from the next candidate** (keep the commit on the branch). Applied on `mpy-rc` by reverting `5367fe7`. They are
 correct — the refusal is the datasheet truth and identical to the Arduino originals — but a twin
 that can only be refused adds little for testers: the limit is already demonstrated by the
 Arduino examples, the switch from those examples now opens a MicroPython program that is refused

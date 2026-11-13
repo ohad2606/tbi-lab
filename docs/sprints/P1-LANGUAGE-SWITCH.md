@@ -77,7 +77,7 @@ A unit test asserts every declared pair is identical.
 ### Ultrasonic distance alarm in MicroPython
 
 > Superseded on branch `mpy-expansion` (DEV, not released): `machine.time_pulse_us` was validated
-> against the HC-SR04 model and allowed, and every built-in ESP32 example now has a verified twin
+> against the HC-SR04 model and allowed, and every built-in ESP32 example that runs now has a verified twin
 > (docs/sprints/MPY-EXPANSION.md). The text below describes RC6.
 
 Not supported, and the product says so. `machine.time_pulse_us` (needed to time the HC-SR04 echo)

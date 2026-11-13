@@ -123,11 +123,6 @@ the real emulator:
 | ESP32: watching a logic half adder | MicroPython: an ESP32 watches a logic half adder |
 | ESP32: ultrasonic distance alarm | MicroPython: ultrasonic distance alarm |
 | ESP32: temperature and humidity (DHT22) | MicroPython: temperature and humidity (DHT22) |
-| ESP32: an AND gate with read-back | MicroPython: an AND gate with read-back |
-| ESP32: an OR gate with a manual override | MicroPython: an OR gate with a manual override |
-| ESP32: a quad AND gate IC driving LEDs | MicroPython: a quad AND gate IC driving LEDs |
-
-The last three show datasheet limits: both versions are refused by name at the same point.
 
 What happens when you change **Programming language**:
 
@@ -139,7 +134,8 @@ What happens when you change **Programming language**:
 - **A project without a twin** — your own project that has never had code in that language, or a
   project created before twins existed: the MicroPython (or Arduino) **starter program** opens, and a notice says
   that no version in that language exists. The starter is not your program: it does nothing of
-  yours until you write it. (Every built-in ESP32 example now has a twin.)
+  yours until you write it. (Every built-in ESP32 example that runs now has a twin; the three logic examples that show a
+  datasheet limit and are refused by design do not.)
 - Code is never translated or converted from one language to the other.
 
 ### Known MicroPython limits

@@ -43,9 +43,6 @@ import mpyInputEcho from '../../app/src/examples/data/mpy-input-echo.json' with 
 import mpyServoSweep from '../../app/src/examples/data/mpy-servo-sweep.json' with { type: 'json' };
 import esp32Button from '../../app/src/examples/data/esp32-button.json' with { type: 'json' };
 import esp32AdderMonitor from '../../app/src/examples/data/esp32-adder-monitor.json' with { type: 'json' };
-import mpyLogicAnd from '../../app/src/examples/data/mpy-logic-and.json' with { type: 'json' };
-import mpyLogicQuadAnd from '../../app/src/examples/data/mpy-logic-quad-and.json' with { type: 'json' };
-import mpyLogicOverride from '../../app/src/examples/data/mpy-logic-override.json' with { type: 'json' };
 import mpyDistanceAlarm from '../../app/src/examples/data/mpy-distance-alarm.json' with { type: 'json' };
 import mpyThermoHygrometer from '../../app/src/examples/data/mpy-thermo-hygrometer.json' with { type: 'json' };
 
@@ -80,9 +77,6 @@ function systemPrograms(): ProgramSource[] {
     ...programsOf(mpyServoSweep),
     ...programsOf(esp32Button),
     ...programsOf(esp32AdderMonitor),
-    ...programsOf(mpyLogicAnd),
-    ...programsOf(mpyLogicQuadAnd),
-    ...programsOf(mpyLogicOverride),
     ...programsOf(mpyDistanceAlarm),
     ...programsOf(mpyThermoHygrometer),
     starterProgram('board.esp32_devkitc_wroom32'),
