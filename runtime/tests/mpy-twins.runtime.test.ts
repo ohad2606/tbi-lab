@@ -13,7 +13,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { ESP32_ARDUINO_PROFILE } from '@tbi-lab/domain';
-import type { SolveSuccess } from '@tbi-lab/engine';
+import { EngineSession, type SolveSuccess } from '@tbi-lab/engine';
 import { ArduinoEsp32Provider, type ArduinoProfileRecord } from '../builder/arduino.js';
 import { Grants } from '../builder/grants.js';
 import record from '../builder/profiles/esp32-arduino-3.3.12.json' with { type: 'json' };
@@ -27,16 +27,7 @@ import { open } from '../host/tests/r1-support.js';
 import { principalFor, TEST_TICKET_KEY } from '../identity/test-gate.js';
 import { openAccessPolicy } from '../policy/testing.js';
 import { realHost } from './r2-support.js';
-import {
-  MpyStack,
-  RT,
-  V4,
-  electrical,
-  example,
-  runtimeCaps,
-  simAdvance,
-  simNow,
-} from './s24-support.js';
+import { MpyStack, RT, V4, example, runtimeCaps } from './s24-support.js';
 
 const stack = RT && V4 ? new MpyStack() : null;
 const store = stack ? mkdtempSync(join('/var/tmp', 'mpy-twins-store-')) : '';
@@ -351,25 +342,47 @@ describe.skipIf(!stack)('MicroPython expansion: the new verified twins on real Q
       const led = d.byType('component.led');
       const states: { a: boolean; b: boolean; line: string; sum: number; ledA?: number | null }[] =
         [];
-      const check = async (a: boolean, b: boolean, mark: number) => {
+      // Both programs set duty LEVELS[sum] / 65536 (2048, 24576, 63488): the LED's average is
+      // duty × the engine's ON current + (1 − duty) × its OFF current, for this switch state.
+      const LEVELS = [2048, 24576, 63488];
+      const closed: Record<string, boolean> = { SW1: true, SW2: false };
+      const engineAt = (pad18: 'output-high' | 'output-low') => {
+        const e = new EngineSession(req.circuit, { pins: req.attachments });
+        let rev = 2;
+        for (const [id, c] of Object.entries(closed)) e.applyControl(id, { closed: c }, rev++);
+        for (const g of [32, 33, 34, 35]) e.setPinMode(g, 'input');
+        e.setPinMode(18, pad18);
+        const o = e.solve();
+        if (!o.ok) throw new Error(JSON.stringify(o.error));
+        return o.components[led]!.current!;
+      };
+      // `since`: only events after this state's switch change count (the first state: any).
+      const check = async (a: boolean, b: boolean, mark: number, since = s.log.lastSeq) => {
         const sum = +a + +b;
         const line = await d.serialAfter(
           mark,
           new RegExp(`A=${+a} B=${+b} -> C=${+(a && b)} S=${+(a !== b)} = ${sum} ok`),
         );
-        // The LED's average after the program set this sum's duty (100 ms of simulated time on).
-        await simAdvance(s, simNow(s), 100);
-        states.push({ a, b, line, sum, ledA: electrical(s).at(-1)!.o.components[led]?.current });
+        const duty = LEVELS[sum]! / 65536;
+        const want = duty * engineAt('output-high') + (1 - duty) * engineAt('output-low');
+        const near = (o: SolveSuccess) =>
+          Math.abs((o.components[led]?.current ?? -1) - want) <= want * 1e-3 + 1e-9;
+        const e = await waitEvent(
+          s,
+          (x) => x.seq > since && x.type === 'electrical' && near(outcomeOf(x)),
+          120_000,
+        );
+        states.push({ a, b, line, sum, ledA: outcomeOf(e).components[led]?.current });
       };
-      await check(true, false, 0);
+      await check(true, false, 0, -1);
       let m = d.mark();
-      d.mirror('SW2', { closed: true });
+      d.mirror('SW2', { closed: (closed.SW2 = true) });
       await check(true, true, m);
       m = d.mark();
-      d.mirror('SW1', { closed: false });
+      d.mirror('SW1', { closed: (closed.SW1 = false) });
       await check(false, true, m);
       m = d.mark();
-      d.mirror('SW2', { closed: false });
+      d.mirror('SW2', { closed: (closed.SW2 = false) });
       await check(false, false, m);
       evidence[`${id}.states`] = states;
       // Brighter for a larger sum: the LED's average current orders with the sum (0 < 1 < 2).
