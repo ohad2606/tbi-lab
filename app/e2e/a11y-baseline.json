@@ -1,0 +1,48 @@
+{
+  "about": "Known axe-core violations at c38f2c9 (RC6), tracked in the accessibility gap register (accessibility-assessment.md, section 5). New violations fail a11y-wcag.spec.ts / a11y-admin.spec.ts. Remove entries when the gap is fixed; never add one without a gap ID and the accessibility owner's approval.",
+  "entries": [
+    {
+      "gap": "A11Y-007",
+      "rule": "aria-required-children",
+      "screen": "*",
+      "target": ".code-file-tabs"
+    },
+    { "gap": "A11Y-008", "rule": "color-contrast", "screen": "*", "target": ".gutter-line" },
+    {
+      "gap": "A11Y-009",
+      "rule": "label-content-name-mismatch",
+      "screen": "editor-circuit",
+      "target": "g[data-id="
+    },
+    {
+      "gap": "A11Y-009",
+      "rule": "label-content-name-mismatch",
+      "screen": "editor-schematic",
+      "target": ".sch-module"
+    },
+    {
+      "gap": "A11Y-009",
+      "rule": "label-content-name-mismatch",
+      "screen": "editor-schematic",
+      "target": "g[data-part="
+    },
+    {
+      "gap": "A11Y-009",
+      "rule": "label-content-name-mismatch",
+      "screen": "admin-feedback",
+      "target": ".item-link"
+    },
+    {
+      "gap": "A11Y-009",
+      "rule": "label-content-name-mismatch",
+      "screen": "admin-testers",
+      "target": "a[href=\"#/testers/"
+    },
+    {
+      "gap": "A11Y-010",
+      "rule": "target-size",
+      "screen": "report-dialog",
+      "target": "report-kind-"
+    }
+  ]
+}
