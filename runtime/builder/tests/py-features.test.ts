@@ -3,6 +3,7 @@
  * are refused at Build, by name, as the Arduino analysis does. Fail closed: unknown imports and
  * `machine` names are refused; what runs (Pin, PWM, time, print) passes untouched.
  */
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { analyzeMicroPython, machineModuleAliases, pythonCodeOnly } from '../pyFeatures.js';
 import { INPUT_CAPABLE_GPIOS } from '../features.js';
@@ -363,5 +364,37 @@ describe('Sprint 28 (L7): the machine module is never reached indirectly', () =>
     ['re.compile is a method', "import re\nr = re.compile('a+')\n"],
   ])('%s: still accepted', (_, src) => {
     expect(refused(src, RT)).not.toContain('dynamic_access');
+  });
+});
+
+describe('MicroPython expansion: machine.time_pulse_us (analyzer 8)', () => {
+  const RT = ['input-read'];
+  it('is allowed in every spelling, and the timed pin is declared as read', () => {
+    for (const src of [
+      'from machine import Pin, time_pulse_us\nprint(time_pulse_us(Pin(18, Pin.IN), 1, 30000))\n',
+      'import machine\nprint(machine.time_pulse_us(machine.Pin(18, machine.Pin.IN), 1))\n',
+      'from machine import *\nprint(time_pulse_us(Pin(18, Pin.IN), 0, 1000))\n',
+      'from machine import Pin, time_pulse_us as pulse\nprint(pulse(Pin(18, Pin.IN), 1))\n',
+    ]) {
+      const r = analyzeMicroPython(src, RT);
+      expect(r.unsupported, src).toEqual([]);
+      expect(r.inputReads, src).toEqual({ pins: [18], unresolved: false });
+      expect(r.requires, src).toEqual(['input-read']);
+    }
+  });
+  it('the shipped distance alarm passes the analysis unchanged', () => {
+    const src = readFileSync(
+      new URL('../../../app/tests/exampleSketches/mpy_distance_alarm.py', import.meta.url),
+      'utf8',
+    );
+    expect(analyzeMicroPython(src, RT)).toMatchObject({ unsupported: [], restart: false });
+  });
+  it('the facilities refused before it still are (e.g. bitstream, Counter)', () => {
+    expect(analyzeMicroPython('from machine import bitstream\n').unsupported).toEqual([
+      'library:machine.bitstream',
+    ]);
+    expect(analyzeMicroPython('import machine\nmachine.Counter(0)\n').unsupported).toEqual([
+      'library:machine.Counter',
+    ]);
   });
 });

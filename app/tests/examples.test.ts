@@ -99,6 +99,7 @@ describe('the example set', () => {
       'mpy-logic-and',
       'mpy-logic-quad-and',
       'mpy-logic-override',
+      'mpy-distance-alarm',
     ]);
     for (const e of EXAMPLES) {
       for (const key of [e.titleKey, e.summaryKey]) {

@@ -1532,6 +1532,9 @@ export const en = {
   'example.mpy-logic-override.title': 'MicroPython: an OR gate with a manual override',
   'example.mpy-logic-override.summary':
     'Partly simulated: the same circuit and the same datasheet limits as “ESP32: an OR gate with a manual override”, in MicroPython. main.py blinks GPIO18 into an SN74LVC1G32 OR gate at 3.0 V (the toggle switch is the other input; 10 kΩ pull-downs) and prints what GPIO19 reads back. With the switch open the circuit runs while GPIO18 is LOW; driven HIGH, GPIO18 sources about 330 µA into its pull-down, more than the 100 µA up to which the simulator relies on an ESP32 output level (owner decision S30-L1), so that state is refused by name.',
+  'example.mpy-distance-alarm.title': 'MicroPython: ultrasonic distance alarm',
+  'example.mpy-distance-alarm.summary':
+    'The same circuit as “ESP32: ultrasonic distance alarm”, in MicroPython. GPIO5 sends the 10 µs trigger pulse; machine.time_pulse_us(echo, 1, 30000) times the echo pulse on GPIO18 (through the 1 kΩ / 2 kΩ divider; the module runs from 5 V). main.py prints the distance (pulse width in µs / 58 = cm), or “No echo” when nothing is in range; closer than 20 cm, GPIO2 lights the red LED. Change the target distance in the Properties panel while running. Runs on the ESP32 runtime service.',
   'example.esp32-button.title': 'ESP32: a push button lights an LED',
   'example.esp32-button.summary':
     'The same circuit as “MicroPython: a push button lights an LED”, in Arduino C++. Hold the button: 3.3 V reaches GPIO34 through 1 kΩ, and a 10 kΩ pull-down holds it LOW when released (GPIO34 has no internal pull). The sketch reads it with digitalRead every 10 ms and copies it to GPIO4, which drives the red LED through 220 Ω.',

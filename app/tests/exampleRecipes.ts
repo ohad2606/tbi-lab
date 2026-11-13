@@ -2022,6 +2022,17 @@ export const RECIPES: Record<string, () => ProjectDocument> = {
       'MicroPython: an OR gate with a manual override',
       (r, U) => r.python(U, 'mpy_logic_override.py'),
     ),
+  /**
+   * MicroPython expansion: the HC-SR04 distance alarm with machine.time_pulse_us (allowed from
+   * analyzer 8 after its validation against the HC-SR04 model, mpy-distance.runtime.test.ts).
+   */
+  'mpy-distance-alarm': () =>
+    twinOf(
+      'esp32-distance-alarm',
+      'mpy-distance-alarm',
+      'MicroPython: ultrasonic distance alarm',
+      (r, U) => r.python(U, 'mpy_distance_alarm.py'),
+    ),
   /** MicroPython expansion: the Arduino twins of two MicroPython examples. */
   'esp32-button': () =>
     twinOf('mpy-button', 'esp32-button', 'ESP32: a button lights an LED', (r, U) =>

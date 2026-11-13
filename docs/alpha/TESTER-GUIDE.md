@@ -62,13 +62,14 @@ modules and packages to the project.
 | `machine.PWM` (`freq`, `duty_u16`, `duty`) | The load sees the average; a duty of 0 into a load is not simulated and is refused |
 | `Pin.irq` on rising / falling edges | Level-triggered interrupts are refused |
 | `time.sleep`, `sleep_ms`, `sleep_us`, `ticks_ms`, `ticks_us`, `ticks_diff` | Simulation time; two runs give the same result |
+| `machine.time_pulse_us(pin, level, timeout_us)` | Times a pulse on an input (for example the HC-SR04 echo); −2: no pulse started, −1: it did not end, within the timeout |
 | `machine.I2C(0, scl=Pin(22), sda=Pin(21), freq=100000)`: `scan()`, `writeto()`, `writevto()` | Bus 0 on GPIO22/21, at most 100 kHz (the LCD backpack's rating), written with literal values. Reads and `SoftI2C` are refused |
 | `print()` | Shown in the serial monitor |
 | Modules: `time`, `sys`, `gc`, `micropython`, `math`, `cmath`, `struct`, `array`, `collections`, `json`, `re`, `binascii`, `errno` (and their `u…` names), your own project modules, and the managed library below | Any other import is refused |
 
 **Refused, by name, before or while it runs:** internal pull-ups/pull-downs (use a real resistor in
 the circuit), `drive=`, `machine.ADC` (analog input), DAC, SPI, TouchPad, Timer, UART, RTC,
-`machine.time_pulse_us`, changing the CPU clock (`machine.freq(…)`), sleep modes, reset and the
+changing the CPU clock (`machine.freq(…)`), sleep modes, reset and the
 watchdog, Wi-Fi / Bluetooth / network modules, `dht`, `neopixel`, `onewire`, `input()` and
 `sys.stdin` (the serial monitor is output only), and looking names up at run time (`getattr` with
 a computed name, `exec`, `eval`, …). The message names what was refused.
@@ -94,6 +95,7 @@ the real emulator:
 | ESP32: sweep an SG90 servo with PWM | MicroPython: sweep an SG90 servo with PWM |
 | ESP32: a push button lights an LED | MicroPython: a push button lights an LED |
 | ESP32: watching a logic half adder | MicroPython: an ESP32 watches a logic half adder |
+| ESP32: ultrasonic distance alarm | MicroPython: ultrasonic distance alarm |
 | ESP32: an AND gate with read-back | MicroPython: an AND gate with read-back |
 | ESP32: an OR gate with a manual override | MicroPython: an OR gate with a manual override |
 | ESP32: a quad AND gate IC driving LEDs | MicroPython: a quad AND gate IC driving LEDs |
@@ -107,8 +109,7 @@ What happens when you change **Programming language**:
   is no confirmation dialog because nothing is discarded. One **Undo** reverts the switch.
 - **An example with a verified twin:** the twin's program opens ("its code is back exactly as you
   left it").
-- **An example without a twin** (for example **ESP32: ultrasonic distance alarm**, the DHT22
-  thermo-hygrometer), or your own project that has never had
+- **An example without a twin** (for example **ESP32: temperature and humidity (DHT22)**), or your own project that has never had
   code in that language: the MicroPython (or Arduino) **starter program** opens, and a notice says
   that no version in that language exists (for an example: none has been verified). The starter is
   not the example's program: it does not do what the example does until you write it.
@@ -118,9 +119,10 @@ What happens when you change **Programming language**:
 
 ### Known MicroPython limits
 
-- **HC-SR04 ultrasonic sensor:** there is no MicroPython version of the distance alarm. Timing the
-  echo pulse needs `machine.time_pulse_us`, which is refused: its accuracy on the simulator has not
-  been validated for the product. Use the Arduino version (`pulseIn`), which is supported.
+- **HC-SR04 ultrasonic sensor:** supported in MicroPython with `machine.time_pulse_us` (see
+  **MicroPython: ultrasonic distance alarm**). A reading is within about 2 µs of the simulated echo
+  (13 µs at most, the same timing limit as Arduino's `pulseIn`); a negative result means no echo
+  within the timeout.
 - **DHT22:** MicroPython's `dht` module is refused, so there is no MicroPython thermo-hygrometer.
 - **Analog input** (`machine.ADC`) is refused in MicroPython, as `analogRead` is in Arduino.
 - There is no serial input: programs cannot read from the serial monitor.

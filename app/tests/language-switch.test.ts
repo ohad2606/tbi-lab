@@ -56,10 +56,12 @@ async function flush(app: AppStore) {
 }
 
 describe('P1: switching the programming language never loses code', () => {
-  it('owner reproduction: the distance alarm’s Arduino example survives MicroPython and back, saved and reloaded', async () => {
+  // MicroPython expansion: the distance alarm now has a verified twin; the owner's sequence on an
+  // example without one runs on the DHT22 thermo-hygrometer (the remaining ESP32 example).
+  it('owner reproduction: an Arduino example without a twin survives MicroPython and back, saved and reloaded', async () => {
     const { app, storage } = await setup();
-    expect(await app.openExample('esp32-distance-alarm')).toBe(true);
-    const example = (await loadExampleDocument('esp32-distance-alarm'))!;
+    expect(await app.openExample('esp32-thermo-hygrometer')).toBe(true);
+    const example = (await loadExampleDocument('esp32-thermo-hygrometer'))!;
     const original = JSON.stringify(example.programs[boardOf(example)]);
     expect(JSON.stringify(active(app.state.doc!))).toBe(original);
     // No verified MicroPython version: the starter opens, said so (restored = false), Arduino kept.
@@ -94,6 +96,7 @@ describe('P1: switching the programming language never loses code', () => {
     for (const [arduino, mpy] of [
       ['esp32-blink', 'mpy-blink'],
       ['esp32-lcd-library', 'mpy-lcd-library'],
+      ['esp32-distance-alarm', 'mpy-distance-alarm'],
     ] as const) {
       const { app } = await setup();
       await app.openExample(arduino);

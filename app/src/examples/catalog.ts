@@ -694,6 +694,19 @@ export const EXAMPLES: readonly Example[] = [
       'logic.gate_or',
     ],
   },
+  {
+    id: 'mpy-distance-alarm',
+    titleKey: 'example.mpy-distance-alarm.title',
+    summaryKey: 'example.mpy-distance-alarm.summary',
+    probes: [V('R1', 'a'), I('D1')],
+    parts: [
+      'board.esp32_devkitc_wroom32',
+      'component.led',
+      'component.resistor',
+      'instrument.lab_psu',
+      'sensor.hc_sr04',
+    ],
+  },
 ];
 
 export function findExample(id: string): Example | undefined {
@@ -751,6 +764,7 @@ export const EXAMPLE_VARIANTS: Readonly<Record<string, string>> = Object.fromEnt
       ['esp32-logic-and', 'mpy-logic-and'],
       ['esp32-logic-quad-and', 'mpy-logic-quad-and'],
       ['esp32-logic-override', 'mpy-logic-override'],
+      ['esp32-distance-alarm', 'mpy-distance-alarm'],
     ] as const
   ).flatMap(([a, b]) => [
     [a, b],

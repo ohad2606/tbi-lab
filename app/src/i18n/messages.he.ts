@@ -1480,6 +1480,9 @@ export const he: Record<MessageKey, string> = {
   'example.mpy-logic-override.title': 'MicroPython: שער OR עם עקיפה ידנית',
   'example.mpy-logic-override.summary':
     'מדומה חלקית: אותו מעגל ואותן מגבלות של גיליונות הנתונים כמו ‎“ESP32: שער OR עם עקיפה ידנית”‎, ב-MicroPython. ‏main.py מהבהב את GPIO18 אל שער OR ‏SN74LVC1G32 ב-3.0 V (המתג הוא הכניסה השנייה; נגדי pull-down של 10 kΩ) ומדפיס מה GPIO19 קורא בחזרה. כשהמתג פתוח המעגל רץ כל עוד GPIO18 ב-LOW; ב-HIGH, ‏GPIO18 מספק כ-330 µA לנגד ה-pull-down שלו, יותר מ-100 µA שעד אליהם הסימולטור מסתמך על רמת יציאה של ה-ESP32 (החלטת בעלים S30-L1), ולכן מצב זה נדחה בשמו.',
+  'example.mpy-distance-alarm.title': 'MicroPython: התראת מרחק אולטרסונית',
+  'example.mpy-distance-alarm.summary':
+    'אותו מעגל כמו ‎“ESP32: התראת מרחק אולטרסונית”‎, ב-MicroPython. ‏GPIO5 שולח את פולס ההפעלה של 10 מיקרו-שניות; ‏machine.time_pulse_us(echo, 1, 30000) מודד את פולס ההד ב-GPIO18 (דרך מחלק המתח של 1 kΩ / 2 kΩ; המודול מוזן מ-‏5 V). ‏main.py מדפיס את המרחק (רוחב הפולס במיקרו-שניות חלקי 58 = ס"מ), או “No echo” כשאין דבר בטווח; במרחק קטן מ-‏20 ס"מ, GPIO2 מדליק את נורית ה-LED האדומה. שנו את המרחק למטרה בחלונית המאפיינים בזמן ריצה. רץ בשירות הריצה של ESP32.',
   'example.esp32-button.title': 'ESP32: לחצן מדליק נורית LED',
   'example.esp32-button.summary':
     'אותו מעגל כמו ‎“MicroPython: לחצן מדליק נורית LED”‎, ב-Arduino C++‎. החזיקו את הלחצן: ‏3.3 V מגיעים ל-GPIO34 דרך 1 kΩ, ונגד pull-down של 10 kΩ מחזיק אותו ב-LOW כשהלחצן משוחרר (ל-GPIO34 אין pull פנימי). הסקיצה קוראת אותו באמצעות digitalRead כל 10 ms ומעתיקה אותו ל-GPIO4, שמזין את הנורית האדומה דרך 220 Ω.',

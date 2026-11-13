@@ -46,6 +46,7 @@ import esp32AdderMonitor from '../../app/src/examples/data/esp32-adder-monitor.j
 import mpyLogicAnd from '../../app/src/examples/data/mpy-logic-and.json' with { type: 'json' };
 import mpyLogicQuadAnd from '../../app/src/examples/data/mpy-logic-quad-and.json' with { type: 'json' };
 import mpyLogicOverride from '../../app/src/examples/data/mpy-logic-override.json' with { type: 'json' };
+import mpyDistanceAlarm from '../../app/src/examples/data/mpy-distance-alarm.json' with { type: 'json' };
 
 const programsOf = (doc: unknown): ProgramSource[] =>
   Object.values((doc as { programs?: Record<string, ProgramSource> }).programs ?? {});
@@ -81,6 +82,7 @@ function systemPrograms(): ProgramSource[] {
     ...programsOf(mpyLogicAnd),
     ...programsOf(mpyLogicQuadAnd),
     ...programsOf(mpyLogicOverride),
+    ...programsOf(mpyDistanceAlarm),
     starterProgram('board.esp32_devkitc_wroom32'),
   ].filter((p): p is ProgramSource => !!p);
 }

@@ -53,6 +53,65 @@ can decide whether limit demonstrators need a twin.
 | Example | Missing |
 |---|---|
 | esp32-thermo-hygrometer (DHT22) | MicroPython's `dht` module is refused (`library:dht`), and a pure-Python read of the DHT22's 26–70 µs bits has no validated timing (the G2 contract does not cover bit-banged protocols with margins near the ≈ 13 µs polling interval). See §3 (libraries) for the path. |
-| esp32-distance-alarm (HC-SR04) | `machine.time_pulse_us` was refused; see §2. |
+
+The HC-SR04 distance alarm, refused before this branch (`machine.time_pulse_us`), now has a twin:
+§2.
 
 The examples without an ESP32 (resistors, logic, PSU) have no program, so no twin applies.
+
+## 2. HC-SR04: `machine.time_pulse_us`
+
+### How the Arduino path works
+
+`pulseIn(18, HIGH, 30000)` in arduino-esp32 is a C loop polling the GPIO input register with
+`micros()`. The Session Host (`runtime/host/devices.ts`) watches the TRIG pad's output frames
+(exact QEMU virtual time, patch 0007), measures the trigger width, and schedules the ECHO edges
+with `sched-input` (patch 0006) at the times `hcsr04Echo` gives (burst 200 µs, width
+2 d / c(T)). The firmware only sees register levels; nothing is language-specific.
+
+### Why MicroPython was refused, and what changed
+
+Sprint 12 G2 (round 4) measured MicroPython 1.29's `time_pulse_us` on scheduled pulses as
+research (−1.83..+2.96 µs on 124 pulses) but no product validation followed, so the Build analysis
+(`runtime/builder/pyFeatures.ts`) kept it refused. `time_pulse_us` is the interpreter's own C loop
+(`extmod/machine_pulse.c`: `mp_hal_pin_read` + `mp_hal_ticks_us`), the same mechanism as `pulseIn`,
+on the same runtime bridge. So it fits the existing design: **no runtime, host, firmware or QEMU
+change**, only the Build analysis.
+
+Change: `time_pulse_us` moves from the refused names to the allowed `machine` names; analyzer
+version 7 → 8 (part of the MicroPython profile hash: MicroPython build records are rebuilt once, no
+cached build is reused across the change); a contract entry (`pyContract.ts`, `pulse_timing`); unit
+tests (every spelling allowed, the timed pin declared as an input read, the facilities refused
+before still refused).
+
+### Product-level validation (real QEMU Runtime v5 `39f2229a66d45e43`, MicroPython 1.29)
+
+`runtime/tests/mpy-distance.runtime.test.ts`, on the app's own request for the distance-alarm
+circuit, oracle `hcsr04Echo` for the same environment:
+
+| Check | Result |
+|---|---|
+| Accuracy, 2 cm, 5 cm, 10 cm, 20 cm, 50 cm, 1 m, 2 m, 3 m, 4 m at 20 °C; 1 m at −10 °C and 40 °C (3 readings each, 36 in all) | error −1.77..+1.62 µs against the oracle width (≤ 0.03 cm); bound asserted: the timing contract's ≈ 13 µs for polled inputs (as `pulseIn`) |
+| Out of range (1 cm, 5 m: no echo) | `−2` every time, the call returns after 30.016 ms (timeout 30 ms); the program keeps running; back at 0.5 m the readings resume (2911–2912 µs vs 2911.89) |
+| Pulse longer than the timeout (1 m echo, timeout 1 ms) | `−1` after 1.20 ms (≈ 200 µs burst + 1 ms), no hang; a 583 µs echo with the same timeout reads 583 |
+| The shipped example vs its Arduino twin | 0.5 m: both `Distance: 50.2 cm`; 0.1 m: Arduino `10.0`, MicroPython `10.1` (583 vs 582 µs, both within 1 µs of 582.38), LED on (5.75 mA) in both; 5 m: both `No echo`; 0.3 m: both `30.1 cm`, LED off |
+
+Usage note (as on hardware): `time_pulse_us` measures from the call if the pin is already at the
+pulse level; the example calls it right after the trigger, 200 µs before the echo rises.
+
+### New twin
+
+**mpy-distance-alarm** (`mpy_distance_alarm.py`): the circuit of esp32-distance-alarm,
+`time_pulse_us(echo, 1, 30000)`, `Distance: %.1f cm` / `No echo`, LED below 20 cm.
+
+### W1 evidence and the frozen runtime
+
+- Unchanged: QEMU (Runtime v5 `39f2229a66d45e43`, patches 0001–0012), the MicroPython 1.29
+  interpreter image and mpy-cross, the arduino-esp32 core, the Session Host and its HC-SR04 model.
+  The W1 runtime evidence (the runtime artifact set) is not affected.
+- Changed: the **build service** (its MicroPython analysis, analyzer 8). It takes effect only where
+  a build service with this code is deployed; until then (staging tbi-s8, Alpha) `time_pulse_us`
+  stays refused at Build and mpy-distance-alarm would not build there. That is why its proof is the
+  local real-QEMU run above and not the staging browser run: deploying a build service to staging
+  was outside this task. A future candidate carries the build service change and should re-run
+  `mpy-distance.runtime.test.ts` and a staging Build + Run of mpy-distance-alarm.

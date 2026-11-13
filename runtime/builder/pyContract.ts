@@ -132,6 +132,16 @@ export const MICROPYTHON_CONTRACT: readonly ContractEntry[] = [
       'import time\ntime.sleep_ms(1)\nt = time.ticks_ms()\nprint(time.ticks_diff(time.ticks_ms(), t))\n',
   },
   {
+    id: 'pulse_timing',
+    api: 'machine.time_pulse_us(pin, level, timeout_us)',
+    status: 'supported',
+    at: 'run',
+    requires: ['input-read'],
+    note: 'times a pulse on an input from the edges the circuit gives it (e.g. the HC-SR04 echo): within ±2 µs measured, up to ≈ 13 µs late inside the other core’s interval (the timing contract, as pulseIn); −2 when no pulse starts within the timeout, −1 when it does not end; it measures from the call if the pin is already at the level',
+    evidence: 'runtime/tests/mpy-distance.runtime.test.ts (2 cm to 4 m, −10/20/40 °C, timeouts)',
+    probe: `${pin}from machine import time_pulse_us\nprint(time_pulse_us(Pin(18, Pin.IN), 1, 30000))\n`,
+  },
+  {
     id: 'i2c',
     api: 'I2C(0, scl=Pin(22), sda=Pin(21), freq<=100000); scan(), writeto()',
     status: 'supported',
