@@ -1,0 +1,461 @@
+{
+  "_comment": "MicroPython expansion: the app request for esp32-logic-quad-and and its MicroPython twin (app/tests/runtime-fixtures.test.ts keeps it equal).",
+  "request": {
+    "protocol": "tbi-lab.session/2",
+    "board": "board.esp32_devkitc_wroom32",
+    "circuit": {
+      "format": "tbi-lab.snapshot",
+      "schemaVersion": 7,
+      "snapshotId": "snap_c617d3c3bcf21a44",
+      "projectId": "prj_exampleesp32logicquadand",
+      "projectRevision": 1,
+      "components": [
+        {
+          "id": "PSU1",
+          "type": "instrument.lab_psu",
+          "typeVersion": 1,
+          "params": {
+            "setpointVoltage": {
+              "value": 3,
+              "unit": "volt"
+            },
+            "currentLimit": {
+              "value": 0.1,
+              "unit": "ampere"
+            },
+            "outputEnabled": true
+          }
+        },
+        {
+          "id": "GND1",
+          "type": "component.ground",
+          "typeVersion": 1,
+          "params": {}
+        },
+        {
+          "id": "U2",
+          "type": "logic.quad_and",
+          "typeVersion": 1,
+          "params": {
+            "model": "model.logic.sn74lvc08a"
+          }
+        },
+        {
+          "id": "R1",
+          "type": "component.resistor",
+          "typeVersion": 1,
+          "params": {
+            "resistance": {
+              "value": 220,
+              "unit": "ohm"
+            }
+          }
+        },
+        {
+          "id": "D1",
+          "type": "component.led",
+          "typeVersion": 1,
+          "params": {
+            "model": "model.led.vishay_tlhr5400"
+          }
+        },
+        {
+          "id": "R2",
+          "type": "component.resistor",
+          "typeVersion": 1,
+          "params": {
+            "resistance": {
+              "value": 220,
+              "unit": "ohm"
+            }
+          }
+        },
+        {
+          "id": "D2",
+          "type": "component.led",
+          "typeVersion": 1,
+          "params": {
+            "model": "model.led.vishay_tlhr5400"
+          }
+        },
+        {
+          "id": "SW1",
+          "type": "component.push_button",
+          "typeVersion": 1,
+          "params": {}
+        },
+        {
+          "id": "R3",
+          "type": "component.resistor",
+          "typeVersion": 1,
+          "params": {
+            "resistance": {
+              "value": 10000,
+              "unit": "ohm"
+            }
+          }
+        },
+        {
+          "id": "GND2",
+          "type": "component.ground",
+          "typeVersion": 1,
+          "params": {}
+        },
+        {
+          "id": "GND3",
+          "type": "component.ground",
+          "typeVersion": 1,
+          "params": {}
+        },
+        {
+          "id": "GND4",
+          "type": "component.ground",
+          "typeVersion": 1,
+          "params": {}
+        },
+        {
+          "id": "GND5",
+          "type": "component.ground",
+          "typeVersion": 1,
+          "params": {}
+        },
+        {
+          "id": "GND6",
+          "type": "component.ground",
+          "typeVersion": 1,
+          "params": {}
+        },
+        {
+          "id": "GND7",
+          "type": "component.ground",
+          "typeVersion": 1,
+          "params": {}
+        },
+        {
+          "id": "R4",
+          "type": "component.resistor",
+          "typeVersion": 1,
+          "params": {
+            "resistance": {
+              "value": 10000,
+              "unit": "ohm"
+            }
+          }
+        },
+        {
+          "id": "R5",
+          "type": "component.resistor",
+          "typeVersion": 1,
+          "params": {
+            "resistance": {
+              "value": 10000,
+              "unit": "ohm"
+            }
+          }
+        },
+        {
+          "id": "GND8",
+          "type": "component.ground",
+          "typeVersion": 1,
+          "params": {}
+        },
+        {
+          "id": "GND9",
+          "type": "component.ground",
+          "typeVersion": 1,
+          "params": {}
+        },
+        {
+          "id": "U1_gnd",
+          "type": "component.ground",
+          "typeVersion": 1,
+          "params": {}
+        }
+      ],
+      "nets": [
+        {
+          "id": "N_1",
+          "role": "ground"
+        },
+        {
+          "id": "N_2",
+          "role": "ground"
+        },
+        {
+          "id": "N_3",
+          "role": null
+        },
+        {
+          "id": "N_4",
+          "role": "ground"
+        },
+        {
+          "id": "N_5",
+          "role": null
+        },
+        {
+          "id": "N_6",
+          "role": null
+        },
+        {
+          "id": "N_7",
+          "role": "ground"
+        },
+        {
+          "id": "N_8",
+          "role": "ground"
+        },
+        {
+          "id": "N_9",
+          "role": null
+        },
+        {
+          "id": "N_10",
+          "role": null
+        },
+        {
+          "id": "N_11",
+          "role": "ground"
+        },
+        {
+          "id": "N_12",
+          "role": null
+        },
+        {
+          "id": "N_13",
+          "role": "ground"
+        },
+        {
+          "id": "N_14",
+          "role": null
+        },
+        {
+          "id": "N_15",
+          "role": null
+        },
+        {
+          "id": "N_16",
+          "role": "ground"
+        },
+        {
+          "id": "N_17",
+          "role": "ground"
+        }
+      ],
+      "connections": [
+        {
+          "component": "PSU1",
+          "terminal": "positive",
+          "net": "N_3"
+        },
+        {
+          "component": "PSU1",
+          "terminal": "negative",
+          "net": "N_1"
+        },
+        {
+          "component": "GND1",
+          "terminal": "ref",
+          "net": "N_1"
+        },
+        {
+          "component": "U2",
+          "terminal": "a1",
+          "net": "N_5"
+        },
+        {
+          "component": "U2",
+          "terminal": "b1",
+          "net": "N_6"
+        },
+        {
+          "component": "U2",
+          "terminal": "y1",
+          "net": "N_9"
+        },
+        {
+          "component": "U2",
+          "terminal": "a2",
+          "net": "N_9"
+        },
+        {
+          "component": "U2",
+          "terminal": "b2",
+          "net": "N_12"
+        },
+        {
+          "component": "U2",
+          "terminal": "y2",
+          "net": "N_14"
+        },
+        {
+          "component": "U2",
+          "terminal": "gnd",
+          "net": "N_4"
+        },
+        {
+          "component": "U2",
+          "terminal": "a3",
+          "net": "N_17"
+        },
+        {
+          "component": "U2",
+          "terminal": "b3",
+          "net": "N_17"
+        },
+        {
+          "component": "U2",
+          "terminal": "a4",
+          "net": "N_17"
+        },
+        {
+          "component": "U2",
+          "terminal": "b4",
+          "net": "N_17"
+        },
+        {
+          "component": "U2",
+          "terminal": "vcc",
+          "net": "N_3"
+        },
+        {
+          "component": "R1",
+          "terminal": "a",
+          "net": "N_9"
+        },
+        {
+          "component": "R1",
+          "terminal": "b",
+          "net": "N_10"
+        },
+        {
+          "component": "D1",
+          "terminal": "anode",
+          "net": "N_10"
+        },
+        {
+          "component": "D1",
+          "terminal": "cathode",
+          "net": "N_11"
+        },
+        {
+          "component": "R2",
+          "terminal": "a",
+          "net": "N_14"
+        },
+        {
+          "component": "R2",
+          "terminal": "b",
+          "net": "N_15"
+        },
+        {
+          "component": "D2",
+          "terminal": "anode",
+          "net": "N_15"
+        },
+        {
+          "component": "D2",
+          "terminal": "cathode",
+          "net": "N_16"
+        },
+        {
+          "component": "SW1",
+          "terminal": "a",
+          "net": "N_3"
+        },
+        {
+          "component": "SW1",
+          "terminal": "b",
+          "net": "N_12"
+        },
+        {
+          "component": "R3",
+          "terminal": "a",
+          "net": "N_12"
+        },
+        {
+          "component": "R3",
+          "terminal": "b",
+          "net": "N_13"
+        },
+        {
+          "component": "GND2",
+          "terminal": "ref",
+          "net": "N_4"
+        },
+        {
+          "component": "GND3",
+          "terminal": "ref",
+          "net": "N_11"
+        },
+        {
+          "component": "GND4",
+          "terminal": "ref",
+          "net": "N_13"
+        },
+        {
+          "component": "GND5",
+          "terminal": "ref",
+          "net": "N_2"
+        },
+        {
+          "component": "GND6",
+          "terminal": "ref",
+          "net": "N_16"
+        },
+        {
+          "component": "GND7",
+          "terminal": "ref",
+          "net": "N_17"
+        },
+        {
+          "component": "R4",
+          "terminal": "a",
+          "net": "N_5"
+        },
+        {
+          "component": "R4",
+          "terminal": "b",
+          "net": "N_7"
+        },
+        {
+          "component": "R5",
+          "terminal": "a",
+          "net": "N_6"
+        },
+        {
+          "component": "R5",
+          "terminal": "b",
+          "net": "N_8"
+        },
+        {
+          "component": "GND8",
+          "terminal": "ref",
+          "net": "N_7"
+        },
+        {
+          "component": "GND9",
+          "terminal": "ref",
+          "net": "N_8"
+        },
+        {
+          "component": "U1_gnd",
+          "terminal": "ref",
+          "net": "N_2"
+        }
+      ]
+    },
+    "attachments": [
+      {
+        "gpio": 18,
+        "component": "U2",
+        "terminal": "a1"
+      },
+      {
+        "gpio": 19,
+        "component": "U2",
+        "terminal": "b1"
+      }
+    ]
+  }
+}

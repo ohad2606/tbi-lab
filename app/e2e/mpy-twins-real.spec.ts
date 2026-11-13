@@ -95,3 +95,23 @@ test('esp32-input-echo: switching to MicroPython shows the verified twin, which 
   await shot(page, 'mpy-twin-switch-input-echo-en');
   await stop(page);
 });
+
+// The logic limit demonstrators' MicroPython twins: refused by name as the Arduino versions are.
+for (const [id, code] of [
+  ['mpy-logic-and', 'logic_mcu_output_uncharacterized'],
+  ['mpy-logic-override', 'logic_mcu_input_not_guaranteed'],
+  ['mpy-logic-quad-and', 'logic_input_leakage_uncharacterized'],
+] as const)
+  test(`${id} (en): builds; Run is refused by name (${code}), as its Arduino twin`, async ({
+    page,
+  }) => {
+    await open(page, id, 'en');
+    await page.getByTestId('view-code').click();
+    await expect(page.getByTestId('program-language')).toHaveValue(MPY);
+    await buildProgram(page, 300_000);
+    await page.getByTestId('sim-run').click();
+    await expect(page.getByTestId('sim-error')).toHaveAttribute('data-code', code, {
+      timeout: 180_000,
+    });
+    await shot(page, `mpy-twin-${id}-refused-en`);
+  });

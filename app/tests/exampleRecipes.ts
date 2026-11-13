@@ -2000,6 +2000,28 @@ export const RECIPES: Record<string, () => ProjectDocument> = {
     twinOf('esp32-servo-sweep', 'mpy-servo-sweep', 'MicroPython: sweep a servo with PWM', (r, U) =>
       r.python(U, 'mpy_servo_sweep.py'),
     ),
+  /**
+   * MicroPython expansion: the twins of the three ESP32 logic limit demonstrators. They are refused
+   * by name exactly where the Arduino versions are (S30-L1, the SN74LVC08A's I_CC conditions).
+   */
+  'mpy-logic-and': () =>
+    twinOf('esp32-logic-and', 'mpy-logic-and', 'MicroPython: an AND gate with read-back', (r, U) =>
+      r.python(U, 'mpy_logic_and.py'),
+    ),
+  'mpy-logic-quad-and': () =>
+    twinOf(
+      'esp32-logic-quad-and',
+      'mpy-logic-quad-and',
+      'MicroPython: a quad AND gate IC driving LEDs',
+      (r, U) => r.python(U, 'mpy_logic_quad_and.py'),
+    ),
+  'mpy-logic-override': () =>
+    twinOf(
+      'esp32-logic-override',
+      'mpy-logic-override',
+      'MicroPython: an OR gate with a manual override',
+      (r, U) => r.python(U, 'mpy_logic_override.py'),
+    ),
   /** MicroPython expansion: the Arduino twins of two MicroPython examples. */
   'esp32-button': () =>
     twinOf('mpy-button', 'esp32-button', 'ESP32: a button lights an LED', (r, U) =>

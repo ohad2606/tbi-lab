@@ -652,6 +652,48 @@ export const EXAMPLES: readonly Example[] = [
       'logic.gate_or',
     ],
   },
+  {
+    id: 'mpy-logic-and',
+    titleKey: 'example.mpy-logic-and.title',
+    summaryKey: 'example.mpy-logic-and.summary',
+    probes: [V('U2', 'y'), I('D1')],
+    parts: [
+      'board.esp32_devkitc_wroom32',
+      'component.led',
+      'component.push_button',
+      'component.resistor',
+      'instrument.lab_psu',
+      'logic.gate_and',
+    ],
+  },
+  {
+    id: 'mpy-logic-quad-and',
+    titleKey: 'example.mpy-logic-quad-and.title',
+    summaryKey: 'example.mpy-logic-quad-and.summary',
+    probes: [V('U2', 'y1'), I('D1'), I('D2')],
+    parts: [
+      'board.esp32_devkitc_wroom32',
+      'component.led',
+      'component.push_button',
+      'component.resistor',
+      'instrument.lab_psu',
+      'logic.quad_and',
+    ],
+  },
+  {
+    id: 'mpy-logic-override',
+    titleKey: 'example.mpy-logic-override.title',
+    summaryKey: 'example.mpy-logic-override.summary',
+    probes: [V('U2', 'y'), I('D1')],
+    parts: [
+      'board.esp32_devkitc_wroom32',
+      'component.led',
+      'component.resistor',
+      'component.toggle_switch',
+      'instrument.lab_psu',
+      'logic.gate_or',
+    ],
+  },
 ];
 
 export function findExample(id: string): Example | undefined {
@@ -706,6 +748,9 @@ export const EXAMPLE_VARIANTS: Readonly<Record<string, string>> = Object.fromEnt
       ['esp32-servo-sweep', 'mpy-servo-sweep'],
       ['esp32-button', 'mpy-button'],
       ['esp32-adder-monitor', 'mpy-adder-monitor'],
+      ['esp32-logic-and', 'mpy-logic-and'],
+      ['esp32-logic-quad-and', 'mpy-logic-quad-and'],
+      ['esp32-logic-override', 'mpy-logic-override'],
     ] as const
   ).flatMap(([a, b]) => [
     [a, b],

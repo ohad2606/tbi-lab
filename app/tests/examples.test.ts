@@ -96,6 +96,9 @@ describe('the example set', () => {
       'mpy-servo-sweep',
       'esp32-button',
       'esp32-adder-monitor',
+      'mpy-logic-and',
+      'mpy-logic-quad-and',
+      'mpy-logic-override',
     ]);
     for (const e of EXAMPLES) {
       for (const key of [e.titleKey, e.summaryKey]) {

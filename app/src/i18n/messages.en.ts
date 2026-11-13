@@ -1523,6 +1523,15 @@ export const en = {
   'example.mpy-servo-sweep.title': 'MicroPython: sweep an SG90 servo with PWM',
   'example.mpy-servo-sweep.summary':
     'machine.PWM makes a 50 Hz signal on GPIO18; main.py sets duty_u16 for 1.0, 2.0 and 1.5 ms pulses, one second each, which move the servo to 0°, 180° and 90°. The circuit of the Arduino sweep; the servo runs from the 5 V bench supply.',
+  'example.mpy-logic-and.title': 'MicroPython: an AND gate with read-back',
+  'example.mpy-logic-and.summary':
+    'Partly simulated: the same circuit and the same datasheet limits as “ESP32: an AND gate with read-back”, in MicroPython. main.py toggles GPIO18 into an SN74LVC1G08 AND gate at 3.0 V (10 kΩ pull-downs on both inputs; the push button on B) and prints what GPIO4 reads back. With GPIO18 LOW the circuit runs; driven HIGH, GPIO18 sources about 330 µA into the 10 kΩ pull-down — more than the 100 µA up to which the simulator relies on an ESP32 output level (owner decision S30-L1) — so that state is refused by name. The logic-feedback example shows the working design.',
+  'example.mpy-logic-quad-and.title': 'MicroPython: a quad AND gate IC driving LEDs',
+  'example.mpy-logic-quad-and.summary':
+    'Not simulated: the same circuit and the same datasheet limit as “ESP32: a quad AND gate IC driving LEDs”, in MicroPython. main.py drives GPIO18 and GPIO19 HIGH into gate 1 of an SN74LVC08A at 3.0 V. The datasheet bounds its supply current I_CC only at V_CC = 3.6 V with every input at V_CC or GND, which does not hold here, so the simulator refuses the circuit by name in every state and shows no truth table.',
+  'example.mpy-logic-override.title': 'MicroPython: an OR gate with a manual override',
+  'example.mpy-logic-override.summary':
+    'Partly simulated: the same circuit and the same datasheet limits as “ESP32: an OR gate with a manual override”, in MicroPython. main.py blinks GPIO18 into an SN74LVC1G32 OR gate at 3.0 V (the toggle switch is the other input; 10 kΩ pull-downs) and prints what GPIO19 reads back. With the switch open the circuit runs while GPIO18 is LOW; driven HIGH, GPIO18 sources about 330 µA into its pull-down, more than the 100 µA up to which the simulator relies on an ESP32 output level (owner decision S30-L1), so that state is refused by name.',
   'example.esp32-button.title': 'ESP32: a push button lights an LED',
   'example.esp32-button.summary':
     'The same circuit as “MicroPython: a push button lights an LED”, in Arduino C++. Hold the button: 3.3 V reaches GPIO34 through 1 kΩ, and a 10 kΩ pull-down holds it LOW when released (GPIO34 has no internal pull). The sketch reads it with digitalRead every 10 ms and copies it to GPIO4, which drives the red LED through 220 Ω.',

@@ -1471,6 +1471,15 @@ export const he: Record<MessageKey, string> = {
   'example.mpy-servo-sweep.title': 'MicroPython: סריקה של סרוו SG90 ב־PWM',
   'example.mpy-servo-sweep.summary':
     'machine.PWM יוצר אות של 50 Hz ב־GPIO18; ‏main.py קובע את duty_u16 לפולסים של 1.0,‏ 2.0 ו־1.5 ms, שנייה כל אחד, שמזיזים את הסרוו ל־0°,‏ 180° ו־90°. המעגל של הסריקה ב-Arduino; הסרוו מוזן מספק המעבדה של 5 V.',
+  'example.mpy-logic-and.title': 'MicroPython: שער AND עם קריאה חוזרת',
+  'example.mpy-logic-and.summary':
+    'מדומה חלקית: אותו מעגל ואותן מגבלות של גיליונות הנתונים כמו ‎“ESP32: שער AND עם קריאה חוזרת”‎, ב-MicroPython. ‏main.py מחליף את GPIO18 אל שער AND ‏SN74LVC1G08 ב-3.0 V (נגדי pull-down של 10 kΩ בשתי הכניסות; הלחצן על B) ומדפיס מה GPIO4 קורא בחזרה. כש-GPIO18 ב-LOW המעגל רץ; ב-HIGH, ‏GPIO18 מספק כ-330 µA לנגד ה-pull-down של 10 kΩ — יותר מ-100 µA, שעד אליהם הסימולטור מסתמך על רמת יציאה של ה-ESP32 (החלטת בעלים S30-L1) — ולכן מצב זה נדחה בשמו. דוגמת המשוב הלוגי מראה את התכנון שעובד.',
+  'example.mpy-logic-quad-and.title': 'MicroPython: רכיב AND מרובע שמפעיל נוריות LED',
+  'example.mpy-logic-quad-and.summary':
+    'לא מדומה: אותו מעגל ואותה מגבלה של גיליון הנתונים כמו ‎“ESP32: רכיב AND מרובע שמפעיל נוריות LED”‎, ב-MicroPython. ‏main.py מזין את GPIO18 ו-GPIO19 ב-HIGH אל שער 1 של SN74LVC08A ב-3.0 V. גיליון הנתונים חוסם את זרם האספקה I_CC רק ב-V_CC = 3.6 V כשכל כניסה ב-V_CC או ב-GND, וזה לא מתקיים כאן, ולכן הסימולטור דוחה את המעגל בשמו בכל מצב ואינו מציג טבלת אמת.',
+  'example.mpy-logic-override.title': 'MicroPython: שער OR עם עקיפה ידנית',
+  'example.mpy-logic-override.summary':
+    'מדומה חלקית: אותו מעגל ואותן מגבלות של גיליונות הנתונים כמו ‎“ESP32: שער OR עם עקיפה ידנית”‎, ב-MicroPython. ‏main.py מהבהב את GPIO18 אל שער OR ‏SN74LVC1G32 ב-3.0 V (המתג הוא הכניסה השנייה; נגדי pull-down של 10 kΩ) ומדפיס מה GPIO19 קורא בחזרה. כשהמתג פתוח המעגל רץ כל עוד GPIO18 ב-LOW; ב-HIGH, ‏GPIO18 מספק כ-330 µA לנגד ה-pull-down שלו, יותר מ-100 µA שעד אליהם הסימולטור מסתמך על רמת יציאה של ה-ESP32 (החלטת בעלים S30-L1), ולכן מצב זה נדחה בשמו.',
   'example.esp32-button.title': 'ESP32: לחצן מדליק נורית LED',
   'example.esp32-button.summary':
     'אותו מעגל כמו ‎“MicroPython: לחצן מדליק נורית LED”‎, ב-Arduino C++‎. החזיקו את הלחצן: ‏3.3 V מגיעים ל-GPIO34 דרך 1 kΩ, ונגד pull-down של 10 kΩ מחזיק אותו ב-LOW כשהלחצן משוחרר (ל-GPIO34 אין pull פנימי). הסקיצה קוראת אותו באמצעות digitalRead כל 10 ms ומעתיקה אותו ל-GPIO4, שמזין את הנורית האדומה דרך 220 Ω.',

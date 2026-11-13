@@ -55,6 +55,9 @@ describe('runtime fixtures', () => {
     // Sprint 30 (M2/M4): firmware → logic → firmware with a relay stage, both languages.
     ['s30-esp32-logic-feedback-session.json', 'esp32-logic-feedback'],
     ['s30-mpy-logic-feedback-session.json', 'mpy-logic-feedback'],
+    // MicroPython expansion: the logic limit demonstrators (the twins share the circuits).
+    ['mpyx-logic-override-session.json', 'esp32-logic-override'],
+    ['mpyx-logic-quad-and-session.json', 'esp32-logic-quad-and'],
   ] as const)
     it(`${file} is the app request for ${id}`, () => {
       const fx = JSON.parse(

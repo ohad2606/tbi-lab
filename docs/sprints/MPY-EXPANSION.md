@@ -34,13 +34,19 @@ Real-QEMU runs: local, Runtime v5 `39f2229a66d45e43`, the real Arduino and Micro
 providers (14/14 in the final run, evidence `mpy-twins.json`). Staging (tbi-s8 build service,
 Session Host and QEMU, host `166eaa9`): 8/8 passed, screenshots kept on DEV.
 
-### Feasible, added separately (their own commit)
+### Logic limit demonstrators (their own commit)
 
 esp32-logic-and, esp32-logic-override and esp32-logic-quad-and are limit demonstrators: the
-Arduino examples are refused by name (S30-L1 / the SN74LVC08A datasheet) once the sketch drives
-GPIO18, or in every state. Their MicroPython twins (`mpy_logic_and.py`, `mpy_logic_override.py`,
-`mpy_logic_quad_and.py`) only use `Pin`, and are refused exactly as the Arduino versions are; they
-are in a separate commit so the owner can decide whether limit demonstrators need a twin.
+Arduino examples are refused by name once the sketch drives GPIO18, or (quad AND) at session
+creation. Their MicroPython twins (`mpy_logic_and.py`, `mpy_logic_override.py`,
+`mpy_logic_quad_and.py`, `Pin` only) are refused identically. In a separate commit so the owner
+can decide whether limit demonstrators need a twin.
+
+| Original | New twin | Real QEMU (both languages, identical end) | Staging |
+|---|---|---|---|
+| esp32-logic-and | **mpy-logic-and** | failed, `logic_mcu_output_uncharacterized`, U2 | builds; Run refused by that code |
+| esp32-logic-override | **mpy-logic-override** | failed, `logic_mcu_input_not_guaranteed`, U2 | builds; Run refused by that code |
+| esp32-logic-quad-and | **mpy-logic-quad-and** | refused at creation, `logic_input_leakage_uncharacterized`, U2 | builds; Run refused by that code |
 
 ### Not feasible with the current MicroPython support
 

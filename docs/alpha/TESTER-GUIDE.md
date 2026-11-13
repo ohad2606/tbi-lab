@@ -94,6 +94,11 @@ the real emulator:
 | ESP32: sweep an SG90 servo with PWM | MicroPython: sweep an SG90 servo with PWM |
 | ESP32: a push button lights an LED | MicroPython: a push button lights an LED |
 | ESP32: watching a logic half adder | MicroPython: an ESP32 watches a logic half adder |
+| ESP32: an AND gate with read-back | MicroPython: an AND gate with read-back |
+| ESP32: an OR gate with a manual override | MicroPython: an OR gate with a manual override |
+| ESP32: a quad AND gate IC driving LEDs | MicroPython: a quad AND gate IC driving LEDs |
+
+The last three show datasheet limits: both versions are refused by name at the same point.
 
 What happens when you change **Programming language**:
 

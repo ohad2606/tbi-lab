@@ -108,6 +108,36 @@ async function start(
   return { s, req };
 }
 
+/**
+ * The end of a run that the simulator refuses: the terminal state and its named reason. A refusal
+ * at creation (the session is never ready) is caught as such.
+ */
+async function refusal(id: string, fixture: string): Promise<Record<string, unknown>> {
+  let started: { s: HostSession };
+  try {
+    started = await start(id, fixture);
+  } catch (e) {
+    return { atCreation: String((e as Error).message) };
+  }
+  const { s } = started;
+  const end = await waitEvent(
+    s,
+    (e) => e.type === 'state' && (e.state === 'failed' || e.state === 'ended'),
+    240_000,
+  ).then(() => s.status());
+  await s.done();
+  const detail = end.detail as { code?: string; components?: string[] } | undefined;
+  return {
+    state: end.state,
+    reason: (end as { reason?: string }).reason,
+    code: detail?.code,
+    components: detail?.components,
+    serial: serialText(s)
+      .split(/\r?\n/)
+      .filter((l) => /^A=|^1A=/.test(l)),
+  };
+}
+
 const outcomeOf = (e: unknown) => (e as { outcome: SolveSuccess }).outcome;
 
 /** A driver for one running session: user actions and waits on what the session reports. */
@@ -274,6 +304,35 @@ describe.skipIf(!stack)('MicroPython expansion: the new verified twins on real Q
       await d.serialAfter(m, /button released\r?\n/);
       evidence[`${id}.ledOnA`] = on.components[led]!.current;
       await d.stop();
+    });
+
+  // The logic limit demonstrators: refused by name, the same way, in both languages.
+  for (const [arduinoId, mpyId, fixture, code] of [
+    [
+      'esp32-logic-and',
+      'mpy-logic-and',
+      's19b-logic-and-session.json',
+      'logic_mcu_output_uncharacterized',
+    ],
+    [
+      'esp32-logic-override',
+      'mpy-logic-override',
+      'mpyx-logic-override-session.json',
+      // The read-back GPIO19 sees the OR gate's HIGH under the LED load (V_OH ≥ 2.4 V < V_IH).
+      'logic_mcu_input_not_guaranteed',
+    ],
+    ['esp32-logic-quad-and', 'mpy-logic-quad-and', 'mpyx-logic-quad-and-session.json', null],
+  ] as const)
+    it(`${mpyId}: refused by name exactly as ${arduinoId}`, async () => {
+      const ino = await refusal(arduinoId, fixture);
+      const mpy = await refusal(mpyId, fixture);
+      evidence[`${arduinoId}.refusal`] = ino;
+      evidence[`${mpyId}.refusal`] = mpy;
+      if (code) expect(ino).toMatchObject({ state: 'failed', reason: 'electrical_error', code });
+      else expect(ino.state === 'failed' || 'atCreation' in ino, JSON.stringify(ino)).toBe(true);
+      const { serial: _a, ...a } = ino;
+      const { serial: _b, ...b } = mpy;
+      expect(b).toEqual(a);
     });
 
   for (const [lang, id] of LANGS('esp32-adder-monitor', 'mpy-adder-monitor'))
