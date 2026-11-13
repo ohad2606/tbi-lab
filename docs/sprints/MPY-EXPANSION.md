@@ -115,3 +115,42 @@ pulse level; the example calls it right after the trigger, 200 µs before the ec
   local real-QEMU run above and not the staging browser run: deploying a build service to staging
   was outside this task. A future candidate carries the build service change and should re-run
   `mpy-distance.runtime.test.ts` and a staging Build + Run of mpy-distance-alarm.
+
+## 3. Libraries: survey and recommendation
+
+The managed library registry (`packages/domain/src/libraryRegistry.ts`) holds one library per
+language, both for the LCD1602 I²C display. Every other part of the palette that works with the
+ESP32 was surveyed for the library a maker would normally reach for:
+
+| Part | Arduino C++ today | MicroPython today | Usual library | Gap |
+|---|---|---|---|---|
+| LCD1602 I²C (PCF8574) | LiquidCrystal_PCF8574 2.2.0 (managed) or raw `Wire` | python_lcd I2cLcd (managed) or raw `I2C.writeto` | LiquidCrystal_I2C (Arduino) | none functionally; LiquidCrystal_I2C is the more common name, a second LCD library adds no capability |
+| HC-SR04 | `pulseIn`, no library | `time_pulse_us`, no library (this branch, §2) | NewPing (Arduino), `hcsr04` driver (MicroPython, built on `time_pulse_us`) | none functionally |
+| DHT22 / AM2302 | library-free sketch (validated 80/80 in S12 G2) | **none**: `dht` refused (`library:dht`) | Adafruit "DHT sensor library" + "Adafruit Unified Sensor" (Arduino); the firmware's built-in `dht` module (MicroPython) | **MicroPython cannot read the DHT22** |
+| SG90 servo | LEDC (`ledcAttach` / `ledcWrite`), no library | `machine.PWM`, no library (this branch) | ESP32Servo (Arduino) | none functionally; ESP32Servo is what most tutorials use |
+| PIR, relay, buzzer, LED, RGB LED, button, switch, potentiometer, LDR, logic gates | GPIO | GPIO | none | none |
+| LED matrix 8×8, capacitor | not available with the ESP32 runtime (`mcuRuntime: false`) | same | — | not a library question |
+
+### Recommendation
+
+1. **MicroPython DHT22 (the only real gap): allow the firmware's built-in `dht` module, after
+   validation; no registry entry.** `dht` is frozen into the MicroPython 1.29 image already on the
+   runtime (the build cannot vendor it: its Python wrapper calls the firmware's C routine
+   `esp.dht_readinto`, which times the bits itself). The work is the same as §2: allowlist `dht`
+   (`DHT22(pin)`, `measure()`, `temperature()`, `humidity()`) in the Build analysis, then validate
+   on real QEMU against the DHT22 model as S12 G2 did for the Arduino read (many reads across
+   start phases, exact values, the no-pull-up case refused). The DHT22's bit margin (a 0 is 26–28
+   µs high, a 1 is 70 µs) is wide compared with the ≈ 13 µs polling interval, so it is plausible,
+   but not claimed until measured.
+   If it passes: an mpy-thermo-hygrometer twin. Builder change only; no runtime artifact change.
+   Effort: about one day including the validation runs.
+2. **Arduino: add libraries only when testers ask for them.** Adafruit DHT (+ Unified Sensor, a
+   dependency the registry already models) and ESP32Servo are the two most likely requests. Each
+   is the existing registry pattern (vendored exact version, tree hash, licence, `validated`
+   operations run on real QEMU against the part), but none is "trivial": each needs its own
+   validation runs, and ESP32Servo's LEDC configuration must be checked against the host's PWM
+   model. Not implemented here.
+3. **Do not add alternative LCD libraries or NewPing**: they add no capability over what runs now.
+
+Nothing was implemented for this section: no addition is trivial within the registry pattern (each
+needs real-QEMU validation of its operations).
