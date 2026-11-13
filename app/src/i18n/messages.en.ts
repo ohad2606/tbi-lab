@@ -1507,6 +1507,28 @@ export const en = {
     'The same circuit in MicroPython: main.py imports display.py, which uses the managed library python_lcd (I2cLcd). The build puts the library in the interpreter’s /lib and the program’s modules next to main.py; the genuine interpreter imports them. Runs on the ESP32 runtime service.',
   'example.mpy-lcd-hello.summary':
     'The circuit of the Arduino LCD example, programmed in MicroPython: machine.I2C on bus 0 (SCL GPIO22, SDA GPIO21) at 100 kHz, the PCF8574’s rated clock, and a small HD44780 driver written in main.py show “Hello, ESP32!” and the uptime. The module runs at 4.5 V; the two 4.7 kΩ pull-ups go to 3.3 V.',
+  // MicroPython expansion: verified twins (same circuit, the other language).
+  'example.mpy-input-echo.title': 'MicroPython: switch input to LED output',
+  'example.mpy-input-echo.summary':
+    'The same circuit as “ESP32: switch input to LED output”, in MicroPython. Close the switch or hold the button: 3.3 V reaches GPIO34 (input only, held LOW by a 10 kΩ pull-down); main.py reads it with Pin.IN every 5 ms and copies it to GPIO4, which lights the LED. Runs on the ESP32 runtime service.',
+  'example.mpy-bench.title': 'MicroPython bench: inputs and indicators',
+  'example.mpy-bench.summary':
+    'The bench circuit of the Arduino version, in MicroPython: main.py copies GPIO34 (the switch and button input) to GPIO4, which drives the red LED; the yellow (behind a 1N4148 diode) and green indicators are fed straight from the 3.3 V supply. Runs on the ESP32 runtime service.',
+  'example.mpy-motion-relay.title': 'MicroPython: motion alarm through a relay',
+  'example.mpy-motion-relay.summary':
+    'The same circuit as the Arduino motion alarm, in MicroPython: the PIR sensor drives GPIO34; main.py copies it to GPIO4, which switches a 2N3904 and the 5 V relay (with a flyback diode). The relay contact sounds the buzzer and lights the alarm LED. Click the sensor dome while running to put motion in front of it. Runs on the ESP32 runtime service.',
+  'example.mpy-night-light.title': 'MicroPython: RGB night light with a light sensor',
+  'example.mpy-night-light.summary':
+    'The same circuit as the Arduino night light, in MicroPython: the light-sensor divider on GPIO34 is read with Pin.IN as a digital level (machine.ADC is not supported). Dark (below about 3 lx) reads 1 and main.py lights all three RGB channels through GPIO4: white. Bright (above about 110 lx) reads 0; in between the ESP32 guarantees no level, so a read there stops the run. Change the light in the Properties panel while running. Runs on the ESP32 runtime service.',
+  'example.mpy-servo-sweep.title': 'MicroPython: sweep an SG90 servo with PWM',
+  'example.mpy-servo-sweep.summary':
+    'machine.PWM makes a 50 Hz signal on GPIO18; main.py sets duty_u16 for 1.0, 2.0 and 1.5 ms pulses, one second each, which move the servo to 0°, 180° and 90°. The circuit of the Arduino sweep; the servo runs from the 5 V bench supply.',
+  'example.esp32-button.title': 'ESP32: a push button lights an LED',
+  'example.esp32-button.summary':
+    'The same circuit as “MicroPython: a push button lights an LED”, in Arduino C++. Hold the button: 3.3 V reaches GPIO34 through 1 kΩ, and a 10 kΩ pull-down holds it LOW when released (GPIO34 has no internal pull). The sketch reads it with digitalRead every 10 ms and copies it to GPIO4, which drives the red LED through 220 Ω.',
+  'example.esp32-adder-monitor.title': 'ESP32: watching a logic half adder',
+  'example.esp32-adder-monitor.summary':
+    'Advanced: the same circuit as “MicroPython: an ESP32 watches a logic half adder”, in Arduino C++. The half adder (four single gates at 3.3 V: S = A ⊕ B from an OR, a NAND and an AND; carry C = A · B) is built from real gates; the ESP32 only reads it — the switches on GPIO32/33, S and C on the input-only GPIO34/35 — and the sketch prints each new state, checks it against A + B, and sets the LED on GPIO18 (LEDC PWM, 1 kHz) brighter for a larger sum. Try: add a full adder, or count how often each sum appears.',
   'example.esp32-servo-sweep.title': 'ESP32: sweep an SG90 servo with PWM',
   'example.esp32-servo-sweep.summary':
     'A 50 Hz LEDC signal on GPIO18 with 1.0, 2.0 and 1.5 ms pulses moves the servo to 0°, 180° and 90°. The servo runs from the 5 V bench supply.',

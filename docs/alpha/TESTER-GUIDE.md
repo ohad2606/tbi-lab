@@ -75,8 +75,8 @@ a computed name, `exec`, `eval`, …). The message names what was refused.
 
 ### MicroPython examples, and switching an example's language
 
-Examples written in MicroPython start with "MicroPython:" in the examples list. Six examples have a
-**verified twin**: the same circuit, part for part, with a program in each language, both run on
+Examples written in MicroPython start with "MicroPython:" in the examples list. These examples have
+a **verified twin**: the same circuit, part for part, with a program in each language, both run on
 the real emulator:
 
 | Arduino C++ | MicroPython |
@@ -87,6 +87,13 @@ the real emulator:
 | ESP32: hello on a 16×2 I2C LCD | MicroPython: hello on an I2C LCD |
 | ESP32: LCD with a managed library (three files) | MicroPython: LCD with a managed library (two files) |
 | ESP32: logic feedback and a relay | MicroPython: logic feedback and a relay |
+| ESP32: switch input to LED output | MicroPython: switch input to LED output |
+| ESP32 bench: inputs and indicators | MicroPython bench: inputs and indicators |
+| ESP32: motion alarm through a relay | MicroPython: motion alarm through a relay |
+| ESP32: RGB night light with a light sensor | MicroPython: RGB night light with a light sensor |
+| ESP32: sweep an SG90 servo with PWM | MicroPython: sweep an SG90 servo with PWM |
+| ESP32: a push button lights an LED | MicroPython: a push button lights an LED |
+| ESP32: watching a logic half adder | MicroPython: an ESP32 watches a logic half adder |
 
 What happens when you change **Programming language**:
 
@@ -96,7 +103,7 @@ What happens when you change **Programming language**:
 - **An example with a verified twin:** the twin's program opens ("its code is back exactly as you
   left it").
 - **An example without a twin** (for example **ESP32: ultrasonic distance alarm**, the DHT22
-  thermo-hygrometer, the servo sweep, the motion alarm), or your own project that has never had
+  thermo-hygrometer), or your own project that has never had
   code in that language: the MicroPython (or Arduino) **starter program** opens, and a notice says
   that no version in that language exists (for an example: none has been verified). The starter is
   not the example's program: it does not do what the example does until you write it.

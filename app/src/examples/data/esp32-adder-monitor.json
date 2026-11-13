@@ -1,0 +1,1371 @@
+{
+  "format": "tbi-lab.project",
+  "schemaVersion": 7,
+  "projectId": "prj_exampleesp32addermonitor",
+  "createdWith": {
+    "app": "0.2.0",
+    "schemaVersion": 7
+  },
+  "createdAt": "2026-09-23T00:00:00.000Z",
+  "revision": {
+    "localRevision": 1,
+    "cloudRevision": null,
+    "baseRevision": null,
+    "updatedAt": "2026-09-23T00:00:00.000Z",
+    "deviceId": "dev_tbilab_examples"
+  },
+  "name": "ESP32: watching a logic half adder",
+  "components": [
+    {
+      "id": "PSU1",
+      "type": "instrument.lab_psu",
+      "typeVersion": 1,
+      "params": {
+        "setpointVoltage": {
+          "value": 3.3,
+          "unit": "volt"
+        },
+        "currentLimit": {
+          "value": 0.1,
+          "unit": "ampere"
+        },
+        "outputEnabled": true
+      }
+    },
+    {
+      "id": "GND1",
+      "type": "component.ground",
+      "typeVersion": 1,
+      "params": {}
+    },
+    {
+      "id": "SW1",
+      "type": "component.toggle_switch",
+      "typeVersion": 1,
+      "params": {
+        "closed": true
+      }
+    },
+    {
+      "id": "SW2",
+      "type": "component.toggle_switch",
+      "typeVersion": 1,
+      "params": {
+        "closed": false
+      }
+    },
+    {
+      "id": "R1",
+      "type": "component.resistor",
+      "typeVersion": 1,
+      "params": {
+        "resistance": {
+          "value": 10000,
+          "unit": "ohm"
+        }
+      }
+    },
+    {
+      "id": "R2",
+      "type": "component.resistor",
+      "typeVersion": 1,
+      "params": {
+        "resistance": {
+          "value": 10000,
+          "unit": "ohm"
+        }
+      }
+    },
+    {
+      "id": "GND2",
+      "type": "component.ground",
+      "typeVersion": 1,
+      "params": {}
+    },
+    {
+      "id": "GND3",
+      "type": "component.ground",
+      "typeVersion": 1,
+      "params": {}
+    },
+    {
+      "id": "U1",
+      "type": "logic.gate_or",
+      "typeVersion": 1,
+      "params": {
+        "model": "model.logic.sn74lvc1g32"
+      }
+    },
+    {
+      "id": "U2",
+      "type": "logic.gate_nand",
+      "typeVersion": 1,
+      "params": {
+        "model": "model.logic.sn74lvc1g00"
+      }
+    },
+    {
+      "id": "U3",
+      "type": "logic.gate_and",
+      "typeVersion": 1,
+      "params": {
+        "model": "model.logic.sn74lvc1g08"
+      }
+    },
+    {
+      "id": "U4",
+      "type": "logic.gate_and",
+      "typeVersion": 1,
+      "params": {
+        "model": "model.logic.sn74lvc1g08"
+      }
+    },
+    {
+      "id": "GND4",
+      "type": "component.ground",
+      "typeVersion": 1,
+      "params": {}
+    },
+    {
+      "id": "GND5",
+      "type": "component.ground",
+      "typeVersion": 1,
+      "params": {}
+    },
+    {
+      "id": "GND6",
+      "type": "component.ground",
+      "typeVersion": 1,
+      "params": {}
+    },
+    {
+      "id": "GND7",
+      "type": "component.ground",
+      "typeVersion": 1,
+      "params": {}
+    },
+    {
+      "id": "U5",
+      "type": "board.esp32_devkitc_wroom32",
+      "typeVersion": 1,
+      "params": {
+        "firmware": "program"
+      }
+    },
+    {
+      "id": "GND8",
+      "type": "component.ground",
+      "typeVersion": 1,
+      "params": {}
+    },
+    {
+      "id": "R3",
+      "type": "component.resistor",
+      "typeVersion": 1,
+      "params": {
+        "resistance": {
+          "value": 220,
+          "unit": "ohm"
+        }
+      }
+    },
+    {
+      "id": "D1",
+      "type": "component.led",
+      "typeVersion": 1,
+      "params": {
+        "model": "model.led.vishay_tlhr5400"
+      }
+    },
+    {
+      "id": "GND9",
+      "type": "component.ground",
+      "typeVersion": 1,
+      "params": {}
+    }
+  ],
+  "nets": [
+    {
+      "id": "N_1",
+      "role": "ground",
+      "userName": null
+    },
+    {
+      "id": "N_2",
+      "role": null,
+      "userName": null
+    },
+    {
+      "id": "N_3",
+      "role": null,
+      "userName": null
+    },
+    {
+      "id": "N_4",
+      "role": "ground",
+      "userName": null
+    },
+    {
+      "id": "N_5",
+      "role": null,
+      "userName": null
+    },
+    {
+      "id": "N_6",
+      "role": "ground",
+      "userName": null
+    },
+    {
+      "id": "N_7",
+      "role": null,
+      "userName": null
+    },
+    {
+      "id": "N_8",
+      "role": null,
+      "userName": null
+    },
+    {
+      "id": "N_9",
+      "role": "ground",
+      "userName": null
+    },
+    {
+      "id": "N_10",
+      "role": "ground",
+      "userName": null
+    },
+    {
+      "id": "N_11",
+      "role": "ground",
+      "userName": null
+    },
+    {
+      "id": "N_12",
+      "role": "ground",
+      "userName": null
+    },
+    {
+      "id": "N_13",
+      "role": null,
+      "userName": null
+    },
+    {
+      "id": "N_14",
+      "role": null,
+      "userName": null
+    },
+    {
+      "id": "N_15",
+      "role": "ground",
+      "userName": null
+    },
+    {
+      "id": "N_16",
+      "role": null,
+      "userName": null
+    },
+    {
+      "id": "N_17",
+      "role": null,
+      "userName": null
+    },
+    {
+      "id": "N_18",
+      "role": "ground",
+      "userName": null
+    }
+  ],
+  "connections": [
+    {
+      "component": "PSU1",
+      "terminal": "positive",
+      "net": "N_2"
+    },
+    {
+      "component": "PSU1",
+      "terminal": "negative",
+      "net": "N_1"
+    },
+    {
+      "component": "GND1",
+      "terminal": "ref",
+      "net": "N_1"
+    },
+    {
+      "component": "SW1",
+      "terminal": "a",
+      "net": "N_2"
+    },
+    {
+      "component": "SW1",
+      "terminal": "b",
+      "net": "N_3"
+    },
+    {
+      "component": "SW2",
+      "terminal": "a",
+      "net": "N_2"
+    },
+    {
+      "component": "SW2",
+      "terminal": "b",
+      "net": "N_5"
+    },
+    {
+      "component": "R1",
+      "terminal": "a",
+      "net": "N_3"
+    },
+    {
+      "component": "R1",
+      "terminal": "b",
+      "net": "N_4"
+    },
+    {
+      "component": "R2",
+      "terminal": "a",
+      "net": "N_5"
+    },
+    {
+      "component": "R2",
+      "terminal": "b",
+      "net": "N_6"
+    },
+    {
+      "component": "GND2",
+      "terminal": "ref",
+      "net": "N_4"
+    },
+    {
+      "component": "GND3",
+      "terminal": "ref",
+      "net": "N_6"
+    },
+    {
+      "component": "U1",
+      "terminal": "a",
+      "net": "N_3"
+    },
+    {
+      "component": "U1",
+      "terminal": "b",
+      "net": "N_5"
+    },
+    {
+      "component": "U1",
+      "terminal": "y",
+      "net": "N_7"
+    },
+    {
+      "component": "U1",
+      "terminal": "vcc",
+      "net": "N_2"
+    },
+    {
+      "component": "U1",
+      "terminal": "gnd",
+      "net": "N_9"
+    },
+    {
+      "component": "U2",
+      "terminal": "a",
+      "net": "N_3"
+    },
+    {
+      "component": "U2",
+      "terminal": "b",
+      "net": "N_5"
+    },
+    {
+      "component": "U2",
+      "terminal": "y",
+      "net": "N_8"
+    },
+    {
+      "component": "U2",
+      "terminal": "vcc",
+      "net": "N_2"
+    },
+    {
+      "component": "U2",
+      "terminal": "gnd",
+      "net": "N_10"
+    },
+    {
+      "component": "U3",
+      "terminal": "a",
+      "net": "N_7"
+    },
+    {
+      "component": "U3",
+      "terminal": "b",
+      "net": "N_8"
+    },
+    {
+      "component": "U3",
+      "terminal": "y",
+      "net": "N_13"
+    },
+    {
+      "component": "U3",
+      "terminal": "vcc",
+      "net": "N_2"
+    },
+    {
+      "component": "U3",
+      "terminal": "gnd",
+      "net": "N_11"
+    },
+    {
+      "component": "U4",
+      "terminal": "a",
+      "net": "N_3"
+    },
+    {
+      "component": "U4",
+      "terminal": "b",
+      "net": "N_5"
+    },
+    {
+      "component": "U4",
+      "terminal": "y",
+      "net": "N_14"
+    },
+    {
+      "component": "U4",
+      "terminal": "vcc",
+      "net": "N_2"
+    },
+    {
+      "component": "U4",
+      "terminal": "gnd",
+      "net": "N_12"
+    },
+    {
+      "component": "GND4",
+      "terminal": "ref",
+      "net": "N_9"
+    },
+    {
+      "component": "GND5",
+      "terminal": "ref",
+      "net": "N_10"
+    },
+    {
+      "component": "GND6",
+      "terminal": "ref",
+      "net": "N_11"
+    },
+    {
+      "component": "GND7",
+      "terminal": "ref",
+      "net": "N_12"
+    },
+    {
+      "component": "U5",
+      "terminal": "gpio34",
+      "net": "N_13"
+    },
+    {
+      "component": "U5",
+      "terminal": "gpio35",
+      "net": "N_14"
+    },
+    {
+      "component": "U5",
+      "terminal": "gpio32",
+      "net": "N_3"
+    },
+    {
+      "component": "U5",
+      "terminal": "gpio33",
+      "net": "N_5"
+    },
+    {
+      "component": "U5",
+      "terminal": "gnd",
+      "net": "N_15"
+    },
+    {
+      "component": "U5",
+      "terminal": "gpio18",
+      "net": "N_16"
+    },
+    {
+      "component": "GND8",
+      "terminal": "ref",
+      "net": "N_15"
+    },
+    {
+      "component": "R3",
+      "terminal": "a",
+      "net": "N_16"
+    },
+    {
+      "component": "R3",
+      "terminal": "b",
+      "net": "N_17"
+    },
+    {
+      "component": "D1",
+      "terminal": "anode",
+      "net": "N_17"
+    },
+    {
+      "component": "D1",
+      "terminal": "cathode",
+      "net": "N_18"
+    },
+    {
+      "component": "GND9",
+      "terminal": "ref",
+      "net": "N_18"
+    }
+  ],
+  "layout": {
+    "components": {
+      "PSU1": {
+        "x": -520,
+        "y": 0,
+        "rotation": 0
+      },
+      "GND1": {
+        "x": -480,
+        "y": 120,
+        "rotation": 0
+      },
+      "SW1": {
+        "x": -360,
+        "y": -200,
+        "rotation": 0
+      },
+      "SW2": {
+        "x": -360,
+        "y": -40,
+        "rotation": 0
+      },
+      "R1": {
+        "x": -240,
+        "y": -160,
+        "rotation": 90
+      },
+      "R2": {
+        "x": -240,
+        "y": 0,
+        "rotation": 90
+      },
+      "GND2": {
+        "x": -240,
+        "y": -80,
+        "rotation": 0
+      },
+      "GND3": {
+        "x": -240,
+        "y": 80,
+        "rotation": 0
+      },
+      "U1": {
+        "x": 40,
+        "y": -240,
+        "rotation": 0
+      },
+      "U2": {
+        "x": 40,
+        "y": -60,
+        "rotation": 0
+      },
+      "U3": {
+        "x": 280,
+        "y": -140,
+        "rotation": 0
+      },
+      "U4": {
+        "x": 40,
+        "y": 120,
+        "rotation": 0
+      },
+      "GND4": {
+        "x": 40,
+        "y": -160,
+        "rotation": 0
+      },
+      "GND5": {
+        "x": 40,
+        "y": 20,
+        "rotation": 0
+      },
+      "GND6": {
+        "x": 280,
+        "y": -60,
+        "rotation": 0
+      },
+      "GND7": {
+        "x": 40,
+        "y": 200,
+        "rotation": 0
+      },
+      "U5": {
+        "x": 520,
+        "y": -20,
+        "rotation": 0
+      },
+      "GND8": {
+        "x": 660,
+        "y": -160,
+        "rotation": 0
+      },
+      "R3": {
+        "x": 720,
+        "y": -40,
+        "rotation": 0
+      },
+      "D1": {
+        "x": 840,
+        "y": -40,
+        "rotation": 0
+      },
+      "GND9": {
+        "x": 920,
+        "y": 20,
+        "rotation": 0
+      }
+    },
+    "wires": [
+      {
+        "id": "W1",
+        "from": {
+          "kind": "terminal",
+          "component": "PSU1",
+          "terminal": "negative"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "GND1",
+          "terminal": "ref"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W2",
+        "from": {
+          "kind": "terminal",
+          "component": "PSU1",
+          "terminal": "positive"
+        },
+        "to": {
+          "kind": "junction",
+          "junction": "J1"
+        },
+        "vertices": [
+          {
+            "x": -440,
+            "y": -20
+          }
+        ]
+      },
+      {
+        "id": "W3",
+        "from": {
+          "kind": "junction",
+          "junction": "J1"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "SW1",
+          "terminal": "a"
+        },
+        "vertices": [
+          {
+            "x": -440,
+            "y": -200
+          }
+        ]
+      },
+      {
+        "id": "W4",
+        "from": {
+          "kind": "terminal",
+          "component": "SW2",
+          "terminal": "a"
+        },
+        "to": {
+          "kind": "junction",
+          "junction": "J1"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W5",
+        "from": {
+          "kind": "terminal",
+          "component": "SW1",
+          "terminal": "b"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "R1",
+          "terminal": "a"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W6",
+        "from": {
+          "kind": "terminal",
+          "component": "R1",
+          "terminal": "b"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "GND2",
+          "terminal": "ref"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W7",
+        "from": {
+          "kind": "terminal",
+          "component": "SW2",
+          "terminal": "b"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "R2",
+          "terminal": "a"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W8",
+        "from": {
+          "kind": "terminal",
+          "component": "R2",
+          "terminal": "b"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "GND3",
+          "terminal": "ref"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W9",
+        "from": {
+          "kind": "terminal",
+          "component": "R1",
+          "terminal": "a"
+        },
+        "to": {
+          "kind": "junction",
+          "junction": "J2"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W10",
+        "from": {
+          "kind": "junction",
+          "junction": "J2"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "U1",
+          "terminal": "a"
+        },
+        "vertices": [
+          {
+            "x": -160,
+            "y": -200
+          },
+          {
+            "x": -160,
+            "y": -260
+          }
+        ]
+      },
+      {
+        "id": "W11",
+        "from": {
+          "kind": "terminal",
+          "component": "U2",
+          "terminal": "a"
+        },
+        "to": {
+          "kind": "junction",
+          "junction": "J3"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W12",
+        "from": {
+          "kind": "junction",
+          "junction": "J3"
+        },
+        "to": {
+          "kind": "junction",
+          "junction": "J2"
+        },
+        "vertices": [
+          {
+            "x": -160,
+            "y": -80
+          }
+        ]
+      },
+      {
+        "id": "W13",
+        "from": {
+          "kind": "terminal",
+          "component": "U4",
+          "terminal": "a"
+        },
+        "to": {
+          "kind": "junction",
+          "junction": "J3"
+        },
+        "vertices": [
+          {
+            "x": -160,
+            "y": 100
+          }
+        ]
+      },
+      {
+        "id": "W14",
+        "from": {
+          "kind": "terminal",
+          "component": "R2",
+          "terminal": "a"
+        },
+        "to": {
+          "kind": "junction",
+          "junction": "J4"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W15",
+        "from": {
+          "kind": "junction",
+          "junction": "J4"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "U1",
+          "terminal": "b"
+        },
+        "vertices": [
+          {
+            "x": -120,
+            "y": -40
+          },
+          {
+            "x": -120,
+            "y": -220
+          }
+        ]
+      },
+      {
+        "id": "W16",
+        "from": {
+          "kind": "terminal",
+          "component": "U2",
+          "terminal": "b"
+        },
+        "to": {
+          "kind": "junction",
+          "junction": "J5"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W17",
+        "from": {
+          "kind": "junction",
+          "junction": "J5"
+        },
+        "to": {
+          "kind": "junction",
+          "junction": "J4"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W18",
+        "from": {
+          "kind": "terminal",
+          "component": "U4",
+          "terminal": "b"
+        },
+        "to": {
+          "kind": "junction",
+          "junction": "J9"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W19",
+        "from": {
+          "kind": "terminal",
+          "component": "U1",
+          "terminal": "y"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "U3",
+          "terminal": "a"
+        },
+        "vertices": [
+          {
+            "x": 160,
+            "y": -240
+          },
+          {
+            "x": 160,
+            "y": -160
+          }
+        ]
+      },
+      {
+        "id": "W20",
+        "from": {
+          "kind": "terminal",
+          "component": "U2",
+          "terminal": "y"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "U3",
+          "terminal": "b"
+        },
+        "vertices": [
+          {
+            "x": 200,
+            "y": -60
+          },
+          {
+            "x": 200,
+            "y": -120
+          }
+        ]
+      },
+      {
+        "id": "W21",
+        "from": {
+          "kind": "terminal",
+          "component": "U3",
+          "terminal": "vcc"
+        },
+        "to": {
+          "kind": "junction",
+          "junction": "J8"
+        },
+        "vertices": [
+          {
+            "x": 280,
+            "y": -320
+          }
+        ]
+      },
+      {
+        "id": "W22",
+        "from": {
+          "kind": "junction",
+          "junction": "J6"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "SW1",
+          "terminal": "a"
+        },
+        "vertices": [
+          {
+            "x": -400,
+            "y": -320
+          }
+        ]
+      },
+      {
+        "id": "W23",
+        "from": {
+          "kind": "terminal",
+          "component": "U1",
+          "terminal": "vcc"
+        },
+        "to": {
+          "kind": "junction",
+          "junction": "J6"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W24",
+        "from": {
+          "kind": "junction",
+          "junction": "J7"
+        },
+        "to": {
+          "kind": "junction",
+          "junction": "J6"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W25",
+        "from": {
+          "kind": "terminal",
+          "component": "U2",
+          "terminal": "vcc"
+        },
+        "to": {
+          "kind": "junction",
+          "junction": "J7"
+        },
+        "vertices": [
+          {
+            "x": 100,
+            "y": -100
+          }
+        ]
+      },
+      {
+        "id": "W26",
+        "from": {
+          "kind": "junction",
+          "junction": "J8"
+        },
+        "to": {
+          "kind": "junction",
+          "junction": "J7"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W27",
+        "from": {
+          "kind": "terminal",
+          "component": "U4",
+          "terminal": "vcc"
+        },
+        "to": {
+          "kind": "junction",
+          "junction": "J8"
+        },
+        "vertices": [
+          {
+            "x": 120,
+            "y": 80
+          }
+        ]
+      },
+      {
+        "id": "W28",
+        "from": {
+          "kind": "terminal",
+          "component": "U1",
+          "terminal": "gnd"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "GND4",
+          "terminal": "ref"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W29",
+        "from": {
+          "kind": "terminal",
+          "component": "U2",
+          "terminal": "gnd"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "GND5",
+          "terminal": "ref"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W30",
+        "from": {
+          "kind": "terminal",
+          "component": "U3",
+          "terminal": "gnd"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "GND6",
+          "terminal": "ref"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W31",
+        "from": {
+          "kind": "terminal",
+          "component": "U4",
+          "terminal": "gnd"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "GND7",
+          "terminal": "ref"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W32",
+        "from": {
+          "kind": "terminal",
+          "component": "U3",
+          "terminal": "y"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "U5",
+          "terminal": "gpio34"
+        },
+        "vertices": [
+          {
+            "x": 380,
+            "y": -140
+          },
+          {
+            "x": 380,
+            "y": -120
+          }
+        ]
+      },
+      {
+        "id": "W33",
+        "from": {
+          "kind": "terminal",
+          "component": "U4",
+          "terminal": "y"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "U5",
+          "terminal": "gpio35"
+        },
+        "vertices": [
+          {
+            "x": 400,
+            "y": 120
+          },
+          {
+            "x": 400,
+            "y": -100
+          }
+        ]
+      },
+      {
+        "id": "W34",
+        "from": {
+          "kind": "terminal",
+          "component": "R1",
+          "terminal": "a"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "U5",
+          "terminal": "gpio32"
+        },
+        "vertices": [
+          {
+            "x": -240,
+            "y": -360
+          },
+          {
+            "x": 420,
+            "y": -360
+          },
+          {
+            "x": 420,
+            "y": -80
+          }
+        ]
+      },
+      {
+        "id": "W35",
+        "from": {
+          "kind": "junction",
+          "junction": "J9"
+        },
+        "to": {
+          "kind": "junction",
+          "junction": "J5"
+        },
+        "vertices": [
+          {
+            "x": -80,
+            "y": 140
+          }
+        ]
+      },
+      {
+        "id": "W36",
+        "from": {
+          "kind": "junction",
+          "junction": "J9"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "U5",
+          "terminal": "gpio33"
+        },
+        "vertices": [
+          {
+            "x": -40,
+            "y": 260
+          },
+          {
+            "x": 360,
+            "y": 260
+          },
+          {
+            "x": 360,
+            "y": -60
+          }
+        ]
+      },
+      {
+        "id": "W37",
+        "from": {
+          "kind": "terminal",
+          "component": "U5",
+          "terminal": "gnd"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "GND8",
+          "terminal": "ref"
+        },
+        "vertices": [
+          {
+            "x": 660,
+            "y": -200
+          }
+        ]
+      },
+      {
+        "id": "W38",
+        "from": {
+          "kind": "terminal",
+          "component": "U5",
+          "terminal": "gpio18"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "R3",
+          "terminal": "a"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W39",
+        "from": {
+          "kind": "terminal",
+          "component": "R3",
+          "terminal": "b"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "D1",
+          "terminal": "anode"
+        },
+        "vertices": []
+      },
+      {
+        "id": "W40",
+        "from": {
+          "kind": "terminal",
+          "component": "D1",
+          "terminal": "cathode"
+        },
+        "to": {
+          "kind": "terminal",
+          "component": "GND9",
+          "terminal": "ref"
+        },
+        "vertices": [
+          {
+            "x": 920,
+            "y": -40
+          }
+        ]
+      }
+    ],
+    "junctions": [
+      {
+        "id": "J1",
+        "x": -440,
+        "y": -40
+      },
+      {
+        "id": "J2",
+        "x": -160,
+        "y": -200
+      },
+      {
+        "id": "J3",
+        "x": -160,
+        "y": -80
+      },
+      {
+        "id": "J4",
+        "x": -120,
+        "y": -40
+      },
+      {
+        "id": "J5",
+        "x": -80,
+        "y": -40
+      },
+      {
+        "id": "J6",
+        "x": 40,
+        "y": -320
+      },
+      {
+        "id": "J7",
+        "x": 100,
+        "y": -320
+      },
+      {
+        "id": "J8",
+        "x": 120,
+        "y": -320
+      },
+      {
+        "id": "J9",
+        "x": -40,
+        "y": 140
+      }
+    ]
+  },
+  "idCounters": {
+    "PSU": 1,
+    "GND": 9,
+    "W": 40,
+    "N": 18,
+    "SW": 2,
+    "R": 3,
+    "U": 5,
+    "J": 9,
+    "D": 1
+  },
+  "programs": {
+    "U5": {
+      "language": "arduino-cpp",
+      "profile": "esp32-arduino-3.3.12",
+      "fileName": "sketch.ino",
+      "text": "/*\n * TBI Lab example: an ESP32 watches a logic half adder and shows its sum (the Arduino version of\n * the MicroPython example).\n *\n * Two switches (A, B) feed a half adder built from four real single logic gates: an OR, a NAND\n * and an AND make the sum bit S = A xor B, and a second AND makes the carry bit C = A and B.\n * The ESP32 reads the switches on GPIO32/GPIO33 and the gates' outputs on GPIO34/GPIO35 (inputs\n * only: the gates drive them, the ESP32 never drives the logic). It prints every new state and\n * sets the brightness of the LED on GPIO18 (1 kHz PWM, 16 bit) from the number the adder computed.\n */\nconst int A_PIN = 32;\nconst int B_PIN = 33;\nconst int S_PIN = 34;\nconst int C_PIN = 35;\nconst int LED = 18;\n\n// Brightness for the adder's sum 0, 1, 2, out of 65536 (never a duty of 0: not simulated).\nconst uint32_t LEVELS[] = {2048, 24576, 63488};\n\nvoid setup() {\n  Serial.begin(115200);\n  pinMode(A_PIN, INPUT);\n  pinMode(B_PIN, INPUT);\n  pinMode(S_PIN, INPUT);\n  pinMode(C_PIN, INPUT);\n  ledcAttach(LED, 1000, 16);\n  ledcWrite(LED, LEVELS[0]);\n}\n\nvoid loop() {\n  static int last = -1;\n  int a = digitalRead(A_PIN);\n  int b = digitalRead(B_PIN);\n  int s = digitalRead(S_PIN);\n  int c = digitalRead(C_PIN);\n  int now = (a << 3) | (b << 2) | (s << 1) | c;\n  if (now != last) {\n    int total = 2 * c + s;\n    int expected = a + b;\n    Serial.printf(\"A=%d B=%d -> C=%d S=%d = %d %s\\n\", a, b, c, s, total,\n                  total == expected ? \"ok\" : \"MISMATCH\");\n    ledcWrite(LED, LEVELS[total]);\n    last = now;\n  }\n  delay(20);\n}\n"
+    }
+  }
+}

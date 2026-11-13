@@ -34,9 +34,26 @@ const T = (component: string, terminal: string): WireTarget => ({
   terminal,
 });
 
+/** The board's program of a twin example (see `twinOf`). */
+type ProgramStep = (r: Recipe, board: string) => void;
+
 class Recipe {
   doc: ProjectDocument;
+  /**
+   * Set by `twinOf` for one recipe run: the twin's identity and program. The base recipe's own
+   * program call (`sketch`, `python`, `project`) is replaced by `program`, at the same step, so
+   * the twin's circuit is the base recipe's, operation for operation.
+   */
+  static twin: { id: string; name: string; program: ProgramStep } | null = null;
+  private override: ProgramStep | null = null;
   constructor(id: string, name: string) {
+    const twin = Recipe.twin;
+    Recipe.twin = null;
+    if (twin) {
+      id = twin.id;
+      name = twin.name;
+      this.override = twin.program;
+    }
     this.doc = createProject({
       projectId: `prj_example${id.replace(/[^a-z0-9]/gi, '')}`,
       deviceId: 'dev_tbilab_examples',
@@ -89,6 +106,7 @@ class Recipe {
    * (app/tests/exampleSketches): library-free Arduino/C++, Wire only for I2C.
    */
   sketch(id: string, file: string) {
+    if (this.twinProgram(id)) return;
     const url = new URL(`./exampleSketches/${file}`, import.meta.url);
     this.doc = this.ok(setProgramText(this.doc, id, readFileSync(url, 'utf8'))).doc;
   }
@@ -107,6 +125,7 @@ class Recipe {
    * a program authored with the examples (app/tests/exampleSketches/*.py).
    */
   python(id: string, file: string) {
+    if (this.twinProgram(id)) return;
     this.toMicroPython(id);
     const url = new URL(`./exampleSketches/${file}`, import.meta.url);
     this.doc = this.ok(setProgramText(this.doc, id, readFileSync(url, 'utf8'))).doc;
@@ -116,11 +135,20 @@ class Recipe {
    * (sketch.ino or main.py, in the board's environment) and every further file, by relative path.
    */
   project(id: string, dir: string, entry: string, further: string[], micropython = false) {
+    if (this.twinProgram(id)) return;
     if (micropython) this.toMicroPython(id);
     const read = (f: string) =>
       readFileSync(new URL(`./exampleSketches/${dir}/${f}`, import.meta.url), 'utf8');
     this.doc = this.ok(setProgramText(this.doc, id, read(entry))).doc;
     for (const f of further) this.doc = this.ok(addProgramFile(this.doc, id, f, read(f))).doc;
+  }
+  /** A twin's program in place of the base recipe's (true: it was applied). */
+  private twinProgram(board: string): boolean {
+    const program = this.override;
+    if (!program) return false;
+    this.override = null;
+    program(this, board);
+    return true;
   }
   /** Sprint 26: an example that drives a part without its managed library keeps none. */
   noLibraries(id: string) {
@@ -147,6 +175,20 @@ class Recipe {
     this.set(id, 'currentLimit', limit, 'ampere');
     this.set(id, 'outputEnabled', true);
     return id;
+  }
+}
+
+/**
+ * MicroPython expansion: a verified twin of the example `base`: the base recipe run with the twin's
+ * identity, its board's program set by `program` at the step where the base sets its own. The two
+ * circuits are therefore identical (catalog.ts EXAMPLE_VARIANTS; a test compares them).
+ */
+function twinOf(base: string, id: string, name: string, program: ProgramStep): ProjectDocument {
+  Recipe.twin = { id, name, program };
+  try {
+    return RECIPES[base]!();
+  } finally {
+    Recipe.twin = null;
   }
 }
 
@@ -1924,4 +1966,50 @@ export const RECIPES: Record<string, () => ProjectDocument> = {
     r.wire(T(D3, 'cathode'), T(G7, 'ref'), [{ x: 1320, y: -40 }]);
     return r.centre(-400);
   },
+  /**
+   * MicroPython expansion: the MicroPython twins of the InputEcho examples (GPIO34 copied to
+   * GPIO4), one program for the four circuits, as InputEcho.ino is for the Arduino versions.
+   */
+  'mpy-input-echo': () =>
+    twinOf(
+      'esp32-input-echo',
+      'mpy-input-echo',
+      'MicroPython: switch input to LED output',
+      (r, U) => r.python(U, 'mpy_input_echo.py'),
+    ),
+  'mpy-bench': () =>
+    twinOf('esp32-bench', 'mpy-bench', 'MicroPython bench: inputs and indicators', (r, U) =>
+      r.python(U, 'mpy_input_echo.py'),
+    ),
+  'mpy-motion-relay': () =>
+    twinOf(
+      'esp32-motion-relay',
+      'mpy-motion-relay',
+      'MicroPython: motion alarm through a relay',
+      (r, U) => r.python(U, 'mpy_input_echo.py'),
+    ),
+  'mpy-night-light': () =>
+    twinOf(
+      'esp32-night-light',
+      'mpy-night-light',
+      'MicroPython: RGB night light with a light sensor',
+      (r, U) => r.python(U, 'mpy_input_echo.py'),
+    ),
+  /** MicroPython expansion: the servo sweep with machine.PWM (50 Hz, duty_u16). */
+  'mpy-servo-sweep': () =>
+    twinOf('esp32-servo-sweep', 'mpy-servo-sweep', 'MicroPython: sweep a servo with PWM', (r, U) =>
+      r.python(U, 'mpy_servo_sweep.py'),
+    ),
+  /** MicroPython expansion: the Arduino twins of two MicroPython examples. */
+  'esp32-button': () =>
+    twinOf('mpy-button', 'esp32-button', 'ESP32: a button lights an LED', (r, U) =>
+      r.sketch(U, 'Button.ino'),
+    ),
+  'esp32-adder-monitor': () =>
+    twinOf(
+      'mpy-adder-monitor',
+      'esp32-adder-monitor',
+      'ESP32: watching a logic half adder',
+      (r, U) => r.sketch(U, 'AdderMonitor.ino'),
+    ),
 };

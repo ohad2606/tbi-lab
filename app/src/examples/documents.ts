@@ -48,6 +48,13 @@ import potDivider from './data/pot-divider.json';
 import potLedDimmer from './data/pot-led-dimmer.json';
 import esp32PotThreshold from './data/esp32-pot-threshold.json';
 import mpyPotThreshold from './data/mpy-pot-threshold.json';
+import mpyInputEcho from './data/mpy-input-echo.json';
+import mpyBench from './data/mpy-bench.json';
+import mpyMotionRelay from './data/mpy-motion-relay.json';
+import mpyNightLight from './data/mpy-night-light.json';
+import mpyServoSweep from './data/mpy-servo-sweep.json';
+import esp32Button from './data/esp32-button.json';
+import esp32AdderMonitor from './data/esp32-adder-monitor.json';
 
 export const EXAMPLE_DOCUMENTS: Record<string, ProjectDocument> = {
   'ohms-law': ohmsLaw as unknown as ProjectDocument,
@@ -94,6 +101,13 @@ export const EXAMPLE_DOCUMENTS: Record<string, ProjectDocument> = {
   'mpy-pot-threshold': mpyPotThreshold as unknown as ProjectDocument,
   'esp32-lcd-library': esp32LcdLibrary as unknown as ProjectDocument,
   'mpy-lcd-library': mpyLcdLibrary as unknown as ProjectDocument,
+  'mpy-input-echo': mpyInputEcho as unknown as ProjectDocument,
+  'mpy-bench': mpyBench as unknown as ProjectDocument,
+  'mpy-motion-relay': mpyMotionRelay as unknown as ProjectDocument,
+  'mpy-night-light': mpyNightLight as unknown as ProjectDocument,
+  'mpy-servo-sweep': mpyServoSweep as unknown as ProjectDocument,
+  'esp32-button': esp32Button as unknown as ProjectDocument,
+  'esp32-adder-monitor': esp32AdderMonitor as unknown as ProjectDocument,
 };
 
 /** The examples with their documents (tests and tools; the app loads documents lazily). */

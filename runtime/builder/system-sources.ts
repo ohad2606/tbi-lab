@@ -38,6 +38,11 @@ import mpyAdderMonitor from '../../app/src/examples/data/mpy-adder-monitor.json'
 // Sprint 30 (M2/M4): firmware → logic → firmware feedback with a relay stage, both languages.
 import logicFeedback from '../../app/src/examples/data/esp32-logic-feedback.json' with { type: 'json' };
 import mpyLogicFeedback from '../../app/src/examples/data/mpy-logic-feedback.json' with { type: 'json' };
+// MicroPython expansion: verified twins (same circuits, the other language).
+import mpyInputEcho from '../../app/src/examples/data/mpy-input-echo.json' with { type: 'json' };
+import mpyServoSweep from '../../app/src/examples/data/mpy-servo-sweep.json' with { type: 'json' };
+import esp32Button from '../../app/src/examples/data/esp32-button.json' with { type: 'json' };
+import esp32AdderMonitor from '../../app/src/examples/data/esp32-adder-monitor.json' with { type: 'json' };
 
 const programsOf = (doc: unknown): ProgramSource[] =>
   Object.values((doc as { programs?: Record<string, ProgramSource> }).programs ?? {});
@@ -65,6 +70,11 @@ function systemPrograms(): ProgramSource[] {
     ...programsOf(mpyAdderMonitor),
     ...programsOf(logicFeedback),
     ...programsOf(mpyLogicFeedback),
+    // mpy-bench, mpy-motion-relay and mpy-night-light run mpy-input-echo's program.
+    ...programsOf(mpyInputEcho),
+    ...programsOf(mpyServoSweep),
+    ...programsOf(esp32Button),
+    ...programsOf(esp32AdderMonitor),
     starterProgram('board.esp32_devkitc_wroom32'),
   ].filter((p): p is ProgramSource => !!p);
 }

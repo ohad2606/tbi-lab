@@ -88,6 +88,14 @@ describe('the example set', () => {
       // Sprint 26: multi-file programs with a managed library.
       'esp32-lcd-library',
       'mpy-lcd-library',
+      // MicroPython expansion: verified twins.
+      'mpy-input-echo',
+      'mpy-bench',
+      'mpy-motion-relay',
+      'mpy-night-light',
+      'mpy-servo-sweep',
+      'esp32-button',
+      'esp32-adder-monitor',
     ]);
     for (const e of EXAMPLES) {
       for (const key of [e.titleKey, e.summaryKey]) {

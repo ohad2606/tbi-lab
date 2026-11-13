@@ -101,7 +101,8 @@ describe('search', () => {
     expect(ids('ESP32 LCD')).toEqual(lcd);
     expect(ids('LCD ESP32')).toEqual(lcd);
     expect(ids('MicroPython LCD')).toEqual(['mpy-lcd-hello', 'mpy-lcd-library']);
-    expect(ids('ESP32 PIR')).toEqual(['esp32-motion-relay']);
+    // MicroPython expansion: and its MicroPython twin.
+    expect(ids('ESP32 PIR')).toEqual(['esp32-motion-relay', 'mpy-motion-relay']);
     expect(ids('relay ESP32')).toEqual(
       withPart('component.relay').filter((id) =>
         withPart('board.esp32_devkitc_wroom32').includes(id),

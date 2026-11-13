@@ -1455,6 +1455,28 @@ export const he: Record<MessageKey, string> = {
     'אותו מעגל ב-MicroPython: ⁦main.py⁩ מייבא את ⁦display.py⁩, שמשתמש בספרייה המנוהלת ⁦python_lcd⁩ ‏(⁦I2cLcd⁩). הבנייה מציבה את הספרייה ב-⁦/lib⁩ של המפרש ואת מודולי התוכנית לצד ⁦main.py⁩; המפרש האמיתי מייבא אותם. רץ על שירות זמן הריצה של ESP32.',
   'example.mpy-lcd-hello.summary':
     'המעגל של דוגמת ה-LCD של Arduino, מתוכנת ב-MicroPython: ‏machine.I2C על ערוץ 0 (SCL ב-GPIO22, ‏SDA ב-GPIO21) ב-100 kHz, תדר השעון המדורג של PCF8574, ודרייבר HD44780 קטן שנכתב ב-main.py מציגים “Hello, ESP32!” ואת זמן הפעולה. המודול מוזן ב-4.5 V; שני נגדי ה-pull-up של 4.7 kΩ מחוברים ל-3.3 V.',
+  // MicroPython expansion: verified twins (same circuit, the other language).
+  'example.mpy-input-echo.title': 'MicroPython: מתג בכניסה, LED ביציאה',
+  'example.mpy-input-echo.summary':
+    'אותו מעגל כמו ‎“ESP32: מתג בכניסה, LED ביציאה”‎, ב-MicroPython. סגרו את המתג או החזיקו את הלחצן: ‏3.3 V מגיעים ל-GPIO34 (כניסה בלבד, מוחזקת ב-LOW על ידי pull-down של 10 kΩ); ‏main.py קורא אותו באמצעות Pin.IN כל 5 ms ומעתיק אותו ל-GPIO4, שמדליק את נורית ה-LED. רץ בשירות הריצה של ESP32.',
+  'example.mpy-bench.title': 'שולחן MicroPython: כניסות ונוריות חיווי',
+  'example.mpy-bench.summary':
+    'מעגל השולחן של גרסת ה-Arduino, ב-MicroPython: ‏main.py מעתיק את GPIO34 (הכניסה של המתג והלחצן) ל-GPIO4, שמזין את נורית ה-LED האדומה; נוריות החיווי הצהובה (מאחורי דיודת 1N4148) והירוקה מוזנות ישירות מספק ה-‏3.3 V. רץ בשירות הריצה של ESP32.',
+  'example.mpy-motion-relay.title': 'MicroPython: אזעקת תנועה דרך ממסר',
+  'example.mpy-motion-relay.summary':
+    'אותו מעגל כמו אזעקת התנועה של Arduino, ב-MicroPython: חיישן ה-PIR מזין את GPIO34; ‏main.py מעתיק אותו ל-GPIO4, שמפעיל טרנזיסטור 2N3904 וממסר ‏5 V (עם דיודת Flyback). מגע הממסר מפעיל את הזמזם ומדליק את נורית האזעקה. לחצו על כיפת החיישן בזמן ריצה כדי ליצור תנועה מולו. רץ בשירות הריצה של ESP32.',
+  'example.mpy-night-light.title': 'MicroPython: מנורת לילה RGB עם חיישן אור',
+  'example.mpy-night-light.summary':
+    'אותו מעגל כמו מנורת הלילה של Arduino, ב-MicroPython: מחלק המתח עם חיישן האור על GPIO34 נקרא באמצעות Pin.IN כרמה דיגיטלית (machine.ADC אינו נתמך). בחושך (מתחת לכ-‏3 lx) הוא נקרא 1 ו-main.py מדליק את שלושת ערוצי ה-RGB דרך GPIO4: אור לבן. באור (מעל כ-‏110 lx) הוא נקרא 0; בין הספים ה-ESP32 אינו מבטיח רמה, ולכן קריאה שם עוצרת את ההרצה. שנו את עוצמת האור בחלונית המאפיינים בזמן ריצה. רץ בשירות הריצה של ESP32.',
+  'example.mpy-servo-sweep.title': 'MicroPython: סריקה של סרוו SG90 ב־PWM',
+  'example.mpy-servo-sweep.summary':
+    'machine.PWM יוצר אות של 50 Hz ב־GPIO18; ‏main.py קובע את duty_u16 לפולסים של 1.0,‏ 2.0 ו־1.5 ms, שנייה כל אחד, שמזיזים את הסרוו ל־0°,‏ 180° ו־90°. המעגל של הסריקה ב-Arduino; הסרוו מוזן מספק המעבדה של 5 V.',
+  'example.esp32-button.title': 'ESP32: לחצן מדליק נורית LED',
+  'example.esp32-button.summary':
+    'אותו מעגל כמו ‎“MicroPython: לחצן מדליק נורית LED”‎, ב-Arduino C++‎. החזיקו את הלחצן: ‏3.3 V מגיעים ל-GPIO34 דרך 1 kΩ, ונגד pull-down של 10 kΩ מחזיק אותו ב-LOW כשהלחצן משוחרר (ל-GPIO34 אין pull פנימי). הסקיצה קוראת אותו באמצעות digitalRead כל 10 ms ומעתיקה אותו ל-GPIO4, שמזין את הנורית האדומה דרך 220 Ω.',
+  'example.esp32-adder-monitor.title': 'ESP32: מעקב אחרי מחבר חצי לוגי',
+  'example.esp32-adder-monitor.summary':
+    'מתקדמים: אותו מעגל כמו ‎“MicroPython: ‏ESP32 עוקב אחרי מחבר חצי לוגי”‎, ב-Arduino C++‎. מחבר החצי (ארבעה שערים בודדים ב-3.3 V: ‏S = A ⊕ B משערי OR, ‏NAND ו-AND; נשא C = A · B) בנוי משערים אמיתיים; ה-ESP32 רק קורא אותו — את המתגים ב-GPIO32/33, ואת S ו-C ב-GPIO34/35 (כניסות בלבד) — והסקיצה מדפיסה כל מצב חדש, בודקת אותו מול A + B, ומאירה את הנורית ב-GPIO18 ‏(LEDC PWM, ‏1 kHz) חזק יותר לסכום גדול יותר. נסו: להוסיף מחבר מלא, או לספור כמה פעמים מופיע כל סכום.',
   'example.esp32-servo-sweep.title': 'ESP32: סריקה של סרוו SG90 ב־PWM',
   'example.esp32-servo-sweep.summary':
     'אות LEDC של 50 Hz ב־GPIO18 עם פולסים של 1.0,‏ 2.0 ו־1.5 ms מזיז את הסרוו ל־0°,‏ 180° ו־90°. הסרוו מוזן מספק המעבדה של 5 V.',

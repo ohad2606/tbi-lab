@@ -101,7 +101,8 @@ describe('no shipped example raises a pad over-voltage warning (T-D3)', () => {
       // GPIO34/35 the gate outputs); any combination driving one of those four pads as an output
       // fights a gate output or a switch node and is refused by name. Exactly the 3 combinations
       // with all four as inputs run (GPIO18 input / HIGH / LOW).
-      if (e.id === 'mpy-adder-monitor') {
+      // MicroPython expansion: and its Arduino twin esp32-adder-monitor (the same circuit).
+      if (/adder-monitor$/.test(e.id)) {
         const mode = (n: number, k: number) =>
           MODES[Math.floor(n / MODES.length ** k) % MODES.length];
         // Sprint 30 (S30-L1): GPIO33 driven LOW onto the B switch node, which the OPEN switch SW2

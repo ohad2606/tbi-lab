@@ -135,8 +135,15 @@ describe('3D routing invariants (s20r)', () => {
       return sameNodeCrossings(doc).length;
     };
     // Curated examples: the two crossings left are between MANUAL wires, kept as authored.
+    // A verified twin (catalog.ts EXAMPLE_VARIANTS) is its original's drawing: counted once.
     let n = 0;
-    for (const [name, doc] of examples()) n += check(doc, name);
+    const drawn = new Set<string>();
+    for (const [name, doc] of examples()) {
+      const drawing = JSON.stringify([doc.components, doc.layout]);
+      if (drawn.has(drawing)) continue;
+      drawn.add(drawing);
+      n += check(doc, name);
+    }
     expect(n).toBe(2);
     // The golden random benches (5..80 automatic wires): 609 same-node crossings before round 2
     // (opened and moved), 37 after (s20r-golden-metrics.txt), 30 after Sprint 21 (s21r: leaving
