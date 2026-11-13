@@ -6,7 +6,7 @@ read this page once; it takes three minutes.
 ## What TBI Lab is
 
 A desktop browser app that simulates electronics: a **Classic ESP32** (ESP32 DevKitC, WROOM-32)
-running your Arduino sketch, and the DC circuit around it. The voltages, currents and timing come
+running your Arduino sketch or MicroPython program, and the DC circuit around it. The voltages, currents and timing come
 from the simulation engine. When something cannot be simulated honestly, TBI Lab refuses it and
 says why; it never fakes a result.
 
@@ -33,11 +33,36 @@ says why; it never fakes a result.
 
 ## Known limits of this alpha
 
+What is listed as supported here has been run on the simulator's real ESP32 emulator (QEMU) and
+checked against the circuit simulation. Anything else is refused by name — at **Build**, or at the
+moment the program uses it — never simulated approximately.
+
+**Both languages**
+
 - **Timing:** TBI Lab does not claim unrestricted microsecond timing (details in **What runs on the
-  ESP32 → Timing**). Sketches that keep both CPU cores busy are not supported for µs timing.
-- **Not yet supported:** PWM / `analogWrite`, GPIO interrupts, analog input, Wi-Fi, Bluetooth,
-  internal pull-ups, third-party Arduino libraries (for example DHT or LiquidCrystal_I2C; the
-  examples show the same parts without them). A sketch that needs them is refused before Run.
+  ESP32 → Timing**). A polled input can be seen up to about 13 µs late; programs that keep both CPU
+  cores busy are not supported for µs timing.
+- **Analog input** (ADC), DAC, touch, SPI, Wi-Fi, Bluetooth, sleep modes, restart, changing the
+  CPU clock, internal pull-ups/pull-downs (use a real resistor) and drive strength are refused.
+- **PWM** runs on the ESP32's high-speed LEDC: a load sees the average (duty × its ON current). A
+  duty of 0 into a load is refused (not simulated yet).
+- **GPIO interrupts:** rising, falling and change (both edges) are delivered; level-triggered
+  interrupts are refused.
+- **I²C:** bus 0 on GPIO21/22, writes to the LCD1602's PCF8574 backpack at up to 100 kHz. Reading
+  the bus, and faster clocks, stop the run by name.
+- **No serial input:** the serial monitor shows output only.
+
+**Arduino C++** (arduino-esp32 3.3.12): `pinMode` / `digitalWrite` / `digitalRead`, `Serial`
+output, `delay` / `millis` / `micros`, `pulseIn`, PWM with `analogWrite` or `ledcAttach` /
+`ledcWrite` (LEDC fade and output inversion are refused), `attachInterrupt` (edges), `Wire`
+writes. Libraries: only the managed LiquidCrystal_PCF8574 (see **Libraries** below); any other
+library, for example DHT or LiquidCrystal_I2C, is refused at Build — the examples show the same
+parts without them.
+
+**MicroPython** (MicroPython 1.29): see **MicroPython** below for the full list.
+
+**General**
+
 - **Your projects live in your browser.** Use **Export** (Projects screen or menu) to keep a copy;
   **Import** restores it in any browser.
 - **Warnings:** a part pushed beyond its published absolute maximum is marked "may be damaged";
@@ -58,19 +83,20 @@ modules and packages to the project.
 | Supported | Notes |
 |---|---|
 | `machine.Pin` as output (`value()`, `on()`, `off()`) and input (`Pin(n, Pin.IN).value()`) | Inputs read the level the circuit gives the pin. Reading a pin whose level is undefined or not connected stops the run and says so |
-| `machine.Signal` | Driving only; reading back through a Signal makes the run watch every pin |
+| `machine.Signal` | Driving a pin. Reading back through a Signal is accepted only while every pin has a defined level (otherwise the run stops at the read) |
 | `machine.PWM` (`freq`, `duty_u16`, `duty`) | The load sees the average; a duty of 0 into a load is not simulated and is refused |
 | `Pin.irq` on rising / falling edges | Level-triggered interrupts are refused |
 | `time.sleep`, `sleep_ms`, `sleep_us`, `ticks_ms`, `ticks_us`, `ticks_diff` | Simulation time; two runs give the same result |
 | `machine.time_pulse_us(pin, level, timeout_us)` | Times a pulse on an input (for example the HC-SR04 echo); −2: no pulse started, −1: it did not end, within the timeout |
-| `machine.I2C(0, scl=Pin(22), sda=Pin(21), freq=100000)`: `scan()`, `writeto()`, `writevto()` | Bus 0 on GPIO22/21, at most 100 kHz (the LCD backpack's rating), written with literal values. Reads and `SoftI2C` are refused |
+| `import dht`; `dht.DHT22(Pin(n))`: `measure()`, `temperature()`, `humidity()` | The interpreter's own DHT driver with the DHT22 / AM2302 part (not DHT11). A read that gets no answer raises `OSError` (ETIMEDOUT); the sensor answers at most once every 2 s |
+| `machine.I2C(0, scl=Pin(22), sda=Pin(21), freq=100000)`: `scan()`, `writeto()` | Bus 0 on GPIO22/21, at most 100 kHz (the LCD backpack's rating), written with literal values. Reads and `SoftI2C` are refused |
 | `print()` | Shown in the serial monitor |
-| Modules: `time`, `sys`, `gc`, `micropython`, `math`, `cmath`, `struct`, `array`, `collections`, `json`, `re`, `binascii`, `errno` (and their `u…` names), your own project modules, and the managed library below | Any other import is refused |
+| Modules that may be imported: `time`, `sys`, `gc`, `micropython`, `math`, `cmath`, `struct`, `array`, `collections`, `json`, `re`, `binascii`, `errno` (and their `u…` names), `dht`, your own project modules, and the managed library below | Any other import is refused |
 
 **Refused, by name, before or while it runs:** internal pull-ups/pull-downs (use a real resistor in
 the circuit), `drive=`, `machine.ADC` (analog input), DAC, SPI, TouchPad, Timer, UART, RTC,
 changing the CPU clock (`machine.freq(…)`), sleep modes, reset and the
-watchdog, Wi-Fi / Bluetooth / network modules, `dht`, `neopixel`, `onewire`, `input()` and
+watchdog, Wi-Fi / Bluetooth / network modules, `neopixel`, `onewire`, `input()` and
 `sys.stdin` (the serial monitor is output only), and looking names up at run time (`getattr` with
 a computed name, `exec`, `eval`, …). The message names what was refused.
 
@@ -96,6 +122,7 @@ the real emulator:
 | ESP32: a push button lights an LED | MicroPython: a push button lights an LED |
 | ESP32: watching a logic half adder | MicroPython: an ESP32 watches a logic half adder |
 | ESP32: ultrasonic distance alarm | MicroPython: ultrasonic distance alarm |
+| ESP32: temperature and humidity (DHT22) | MicroPython: temperature and humidity (DHT22) |
 | ESP32: an AND gate with read-back | MicroPython: an AND gate with read-back |
 | ESP32: an OR gate with a manual override | MicroPython: an OR gate with a manual override |
 | ESP32: a quad AND gate IC driving LEDs | MicroPython: a quad AND gate IC driving LEDs |
@@ -109,21 +136,20 @@ What happens when you change **Programming language**:
   is no confirmation dialog because nothing is discarded. One **Undo** reverts the switch.
 - **An example with a verified twin:** the twin's program opens ("its code is back exactly as you
   left it").
-- **An example without a twin** (for example **ESP32: temperature and humidity (DHT22)**), or your own project that has never had
-  code in that language: the MicroPython (or Arduino) **starter program** opens, and a notice says
-  that no version in that language exists (for an example: none has been verified). The starter is
-  not the example's program: it does not do what the example does until you write it.
+- **A project without a twin** — your own project that has never had code in that language, or a
+  project created before twins existed: the MicroPython (or Arduino) **starter program** opens, and a notice says
+  that no version in that language exists. The starter is not your program: it does nothing of
+  yours until you write it. (Every built-in ESP32 example now has a twin.)
 - Code is never translated or converted from one language to the other.
-- A project created from an example before language switching existed carries no twin: switching
-  opens the starter.
 
 ### Known MicroPython limits
 
-- **HC-SR04 ultrasonic sensor:** supported in MicroPython with `machine.time_pulse_us` (see
-  **MicroPython: ultrasonic distance alarm**). A reading is within about 2 µs of the simulated echo
-  (13 µs at most, the same timing limit as Arduino's `pulseIn`); a negative result means no echo
-  within the timeout.
-- **DHT22:** MicroPython's `dht` module is refused, so there is no MicroPython thermo-hygrometer.
+- **HC-SR04 ultrasonic sensor:** `machine.time_pulse_us` reads the echo within about 2 µs of the
+  simulated one from 2 cm to 4 m (13 µs at most, the same timing limit as Arduino's `pulseIn`);
+  out of range it returns −2 at the timeout.
+- **DHT22:** with `import dht`, every reading is exact across the sensor's range (−40 to 80 °C,
+  0 to 100 %RH). Without the 10 kΩ pull-up the run stops by name. The DHT11 class is not
+  validated (there is no DHT11 part).
 - **Analog input** (`machine.ADC`) is refused in MicroPython, as `analogRead` is in Arduino.
 - There is no serial input: programs cannot read from the serial monitor.
 
@@ -141,9 +167,11 @@ example. Today there is one per language, both for the **LCD1602 I²C display**:
 
 Only the validated operations are claimed (Arduino: `begin`, `setBacklight`, `clear`, `home`,
 `setCursor`, `print`; MicroPython: `I2cLcd`, `clear`, `move_to`, `putstr`, `backlight_on`). Both
-are write-only (reading the display stops the run) and limited to a 100 kHz I²C clock. Every other
-part is used without a library (the examples show how), and any other library is refused at
-Build.
+are write-only (reading the display stops the run) and limited to a 100 kHz I²C clock.
+
+MicroPython's built-in `dht` module is part of the interpreter, not a library: nothing is added
+to the project for it. Every other part is used without a library (the examples show how), and
+any other library is refused at Build.
 
 ## Reporting what you find
 
