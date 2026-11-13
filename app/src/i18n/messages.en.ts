@@ -1036,7 +1036,8 @@ export const en = {
     'Some parts are larger in 3D than their symbols and still touch here ({parts}). Move them further apart in the Circuit view.',
   'view3d.routeLimit':
     'Some wires could not be laid out cleanly in 3D ({wires}): there they may look as if they touch another wire or pass through a part. The connections are exactly as drawn in the Circuit view.',
-  'program.editor.label': 'Arduino source code of {board}',
+  // A11Y-005: named by the program's active language (Arduino C++ / MicroPython).
+  'program.editor.label': '{language} source code of {board}',
   'program.position': 'Line {line}, column {column}',
   'program.size': '{used} of {max}',
   'program.total': '{files} files, {used} of {max}',

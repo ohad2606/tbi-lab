@@ -1014,7 +1014,7 @@ export const he: Record<MessageKey, string> = {
     'חלק מהרכיבים גדולים בתלת־ממד מהסמל שלהם ועדיין נוגעים זה בזה כאן ({parts}). אפשר להרחיק אותם בתצוגת המעגל.',
   'view3d.routeLimit':
     'חלק מהחוטים לא ניתן היה לפרוש בצורה נקייה בתלת־ממד ({wires}): במקומות אלה הם עלולים להיראות כאילו הם נוגעים בחוט אחר או עוברים דרך רכיב. החיבורים הם בדיוק כפי שהם משורטטים בתצוגת המעגל.',
-  'program.editor.label': 'קוד המקור (Arduino) של {board}',
+  'program.editor.label': 'קוד המקור ({language}) של {board}',
   'program.position': 'שורה {line}, עמודה {column}',
   'program.size': '{used} מתוך {max}',
   'program.total': '{files} קבצים, {used} מתוך {max}',

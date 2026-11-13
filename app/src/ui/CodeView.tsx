@@ -340,7 +340,15 @@ export function CodeView({ boardId, focusBuild }: { boardId: string; focusBuild:
           spellcheck={false}
           autocapitalize="off"
           autocomplete="off"
-          aria-label={t('program.editor.label', { board: boardId })}
+          aria-label={t('program.editor.label', {
+            // A11Y-005: the active language, never a fixed one.
+            language: isolateLtr(
+              t(
+                `program.language.${profileById(program.profile)?.language ?? 'arduino-cpp'}` as MessageKey,
+              ),
+            ),
+            board: boardId,
+          })}
           data-file={file}
           readOnly={!!readOnly}
           value={text.replace(/\r\n/g, '\n')}
