@@ -36,7 +36,13 @@
   --ink: #1d232b;
   --wire: #1d232b;
   --selected: #1565c0;
-  --focus: #ef7d17;
+  /* A11Y-001: the keyboard focus indicator is a TWO-TONE ring, never colour alone: a 3 px navy
+     ring (>= 13:1 against every light surface) with a 2 px white band inside it (>= 17:1 against
+     the navy, dark and coloured surfaces: header, terminal, tab bar, primary buttons). One of the two
+     always contrasts >= 3:1 with whatever is next to it (WCAG 1.4.11, 2.4.7). The brand orange
+     stays an accent only. */
+  --focus: #0a1a33;
+  --focus-halo: #ffffff;
   font-family: system-ui, 'Segoe UI', Roboto, 'Noto Sans', 'Noto Sans Hebrew', Arial, sans-serif;
   font-size: 15px;
   color: var(--text);
@@ -143,6 +149,22 @@ body,
 :focus-visible {
   outline: 3px solid var(--focus);
   outline-offset: 2px;
+  /* The white band fills the 2 px offset: navy ring outside, white band against the control. */
+  box-shadow: 0 0 0 2px var(--focus-halo);
+}
+
+/* A11Y-001: Windows High Contrast / forced colours: box shadows are dropped by the browser, so the
+   ring alone carries focus, in the system highlight colour, a little thicker. */
+@media (forced-colors: active) {
+  :focus-visible {
+    outline: 3px solid Highlight;
+    outline-offset: 2px;
+  }
+  .focus-ring,
+  .sch-part:focus-visible .sch-hit,
+  .sch-part:focus-visible .sch-module-body {
+    stroke: Highlight;
+  }
 }
 
 /* ---------------------------------------------------------------- top bar */
@@ -585,6 +607,7 @@ select {
 
 .canvas:focus-visible {
   outline-offset: -3px;
+  box-shadow: inset 0 0 0 5px var(--focus-halo);
 }
 
 .canvas.mode-placing,
@@ -647,6 +670,8 @@ select {
   fill: none;
   stroke: var(--focus);
   stroke-width: 3;
+  /* A11Y-001: a white halo under the navy stroke (two-tone on any part or wire colour). */
+  filter: drop-shadow(0 0 1.5px var(--focus-halo)) drop-shadow(0 0 1px var(--focus-halo));
   visibility: hidden;
 }
 
@@ -910,7 +935,6 @@ select {
   direction: ltr;
   unicode-bidi: isolate;
   pointer-events: none;
-  paint-order: stroke;
 }
 
 .symbol .led-body {
@@ -1042,7 +1066,6 @@ select {
   fill: var(--runtime);
   stroke: #fff;
   stroke-width: 3px;
-  paint-order: stroke;
   direction: ltr;
   unicode-bidi: isolate;
   pointer-events: none;
@@ -1467,7 +1490,6 @@ select {
   stroke: var(--canvas-bg);
   stroke-width: 4px;
   stroke-linejoin: round;
-  paint-order: stroke;
 }
 
 .brand,
@@ -2114,7 +2136,8 @@ select {
 .app-menu-list [role='menuitem']:hover,
 .app-menu-list [role='menuitem']:focus-visible {
   background: var(--accent-soft);
-  outline-offset: -2px;
+  outline-offset: -3px;
+  box-shadow: none;
 }
 
 .app-menu-separator {
@@ -2181,8 +2204,9 @@ select {
 
 .project-name:focus {
   border-color: var(--accent);
-  outline: 2px solid var(--focus);
-  outline-offset: 1px;
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px var(--focus-halo);
 }
 
 .project-name-icon {
@@ -2393,6 +2417,7 @@ select {
 
 .mcu-terminal-output:focus-visible {
   outline-offset: -3px;
+  box-shadow: inset 0 0 0 5px var(--focus-halo);
 }
 
 .mcu-terminal-chevron {
@@ -2727,7 +2752,9 @@ select {
 }
 
 .code-text:focus-visible {
-  box-shadow: inset 0 0 0 2px var(--focus);
+  outline: 3px solid var(--focus);
+  outline-offset: -3px;
+  box-shadow: inset 0 0 0 5px var(--focus-halo);
 }
 
 .code-status {
@@ -3117,8 +3144,9 @@ select {
 }
 
 .view3d-mode label:has(input:focus-visible) {
-  outline: 2px solid var(--selected);
-  outline-offset: 1px;
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px var(--focus-halo);
 }
 
 .view3d-mode-custom {
@@ -3133,8 +3161,8 @@ select {
 }
 
 .view3d-presets button:focus-visible {
-  outline: 2px solid var(--selected);
-  outline-offset: 1px;
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
 }
 
 .view-note-hint {
@@ -3183,8 +3211,9 @@ select {
 }
 
 .view3d-host:focus-visible {
-  outline: 2px solid var(--focus);
+  outline: 3px solid var(--focus);
   outline-offset: -3px;
+  box-shadow: inset 0 0 0 5px var(--focus-halo);
 }
 
 .view3d-canvas {
@@ -3450,7 +3479,7 @@ select {
   color: var(--text);
 }
 .product-footer-mail:focus-visible {
-  outline: 2px solid var(--accent, #1e6fd9);
+  outline: 3px solid var(--focus);
   outline-offset: 2px;
   color: var(--text);
 }
@@ -3996,7 +4025,8 @@ select {
 }
 .assist-finding:focus,
 .assist-finding:target {
-  outline: 2px solid var(--focus);
+  outline: 3px solid var(--focus);
+  box-shadow: 0 0 0 2px var(--focus-halo);
 }
 .assist-severity {
   padding: 0 0.4rem;
@@ -4093,7 +4123,7 @@ select {
   background: var(--panel-alt);
 }
 .statusbar-action:focus-visible {
-  outline: 2px solid var(--accent, #1e6fd9);
+  outline: 3px solid var(--focus);
   outline-offset: 2px;
 }
 .statusbar-action .control-icon {
@@ -4199,8 +4229,8 @@ select {
   margin-block-end: -1px;
 }
 .admin-tab:focus-visible {
-  outline: 2px solid var(--accent, #1e6fd9);
-  outline-offset: 1px;
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
 }
 .admin-capacity {
   display: flex;
@@ -4415,8 +4445,8 @@ select {
   font-weight: 600;
 }
 .admin-filter-button:focus-visible {
-  outline: 2px solid var(--accent, #1e6fd9);
-  outline-offset: 1px;
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
 }
 .admin-cards {
   list-style: none;

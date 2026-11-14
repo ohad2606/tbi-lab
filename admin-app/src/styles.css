@@ -23,7 +23,9 @@
   --warning-ink: #9a4a00;
   --error-bg: #fde7e5;
   --ok: #2e7d32;
-  --focus: #ef7d17;
+  /* A11Y-001: two-tone focus ring (navy outline + white band), as in the Lab (app/src/styles.css). */
+  --focus: #0a1a33;
+  --focus-halo: #ffffff;
   /*
    * A real sans-serif stack with Hebrew: the platform's UI font first by name (Apple, Windows,
    * Android/ChromeOS), Hebrew-capable fallbacks (Noto Sans Hebrew on Android, Arial/Liberation
@@ -79,9 +81,18 @@ a {
 :focus-visible {
   outline: 3px solid var(--focus);
   outline-offset: 2px;
+  /* The white band fills the 2 px offset: navy ring outside, white band against the control. */
+  box-shadow: 0 0 0 2px var(--focus-halo);
+}
+@media (forced-colors: active) {
+  :focus-visible {
+    outline: 3px solid Highlight;
+    outline-offset: 2px;
+  }
 }
 h1:focus {
   outline: none;
+  box-shadow: none; /* programmatic focus target (not interactive): no ring */
 }
 
 .muted {
@@ -342,6 +353,7 @@ fieldset {
 }
 .main:focus {
   outline: none;
+  box-shadow: none; /* programmatic focus target (not interactive): no ring */
 }
 
 .notice {
