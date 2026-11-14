@@ -5,9 +5,9 @@
  */
 import { expect, test, type BrowserContext, type Locator, type Page } from '@playwright/test';
 
-const APP = 'http://127.0.0.1:4176';
-const as = (context: BrowserContext, subject: string) =>
-  context.addCookies([{ name: 'tbi_test_user', value: subject, url: APP }]);
+/** The admin app under test: the config's baseURL (4176 in the admin suite, 4276 in the a11y suite). */
+const as = (context: BrowserContext, subject: string, url: string) =>
+  context.addCookies([{ name: 'tbi_test_user', value: subject, url }]);
 
 const rgb = (c: string) => (/(\d+),\s*(\d+),\s*(\d+)/.exec(c) ?? []).slice(1, 4).map(Number);
 const lum = (c: string) => {
@@ -57,11 +57,12 @@ for (const lang of ['he', 'en'] as const)
   test(`A11Y-001 admin (${lang}): navigation, buttons and inputs (error state too)`, async ({
     page,
     context,
+    baseURL,
   }) => {
-    await as(context, 'e2e-owner');
+    await as(context, 'e2e-owner', baseURL!);
     if (lang === 'en')
       await context.addInitScript(() => localStorage.setItem('tbi-admin.locale', 'en'));
-    await page.goto(`${APP}/#/add`);
+    await page.goto('/#/add');
     await expect(page.getByTestId('add-email')).toBeVisible();
     const nav = page.locator('nav a, nav button').first();
     await check(page, 'navigation', nav);
@@ -78,10 +79,14 @@ for (const lang of ['he', 'en'] as const)
       });
   });
 
-test('A11Y-001 admin: forced colours use the system highlight', async ({ page, context }) => {
+test('A11Y-001 admin: forced colours use the system highlight', async ({
+  page,
+  context,
+  baseURL,
+}) => {
   await page.emulateMedia({ forcedColors: 'active' });
-  await as(context, 'e2e-owner');
-  await page.goto(`${APP}/#/add`);
+  await as(context, 'e2e-owner', baseURL!);
+  await page.goto('/#/add');
   await expect(page.getByTestId('add-email')).toBeVisible();
   await check(page, 'add-email', page.getByTestId('add-email'));
 });
