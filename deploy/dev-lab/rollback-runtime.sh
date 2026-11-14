@@ -6,6 +6,7 @@
 #   deploy/dev-lab/rollback-runtime.sh                       # to `replaces` of the current release
 #   deploy/dev-lab/rollback-runtime.sh /srv/tbi-lab/services/<sha>
 set -euo pipefail
+. "$(dirname "$0")/../ops/require-mutation.sh" && require_mutation_opt_in tbi
 root=/srv/tbi-lab/services
 target="${1:-$(node -e 'console.log(JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8")).replaces)' "$(readlink -f "$root/current")/MANIFEST.json")}"
 sudo test -f "$target/session-host.mjs" && sudo test -f "$target/build-service.mjs"

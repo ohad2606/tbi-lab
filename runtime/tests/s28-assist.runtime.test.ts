@@ -18,11 +18,13 @@ import { EXPLAIN_CONTRACT, buildEngineeringContext, diagnose } from '@tbi-lab/as
 import { CASES } from '../../packages/assist/eval/cases.js';
 import { derivePrincipal, identityConfig } from '../identity/principal.js';
 
-const N = 'tbi-s8';
+// The instance must be named explicitly (TBI_S8_INSTANCE, e.g. tbi-s8): no default shared target.
+const N = process.env.TBI_S8_INSTANCE ?? '';
 const SOCK = `/run/${N}-assist/api.sock`;
 // Config-mutating and service-restarting (installs /etc/tbi-s8/assist.json, restarts the assist
 // and build services) and it reads the instance's identity key as root: gated (mutation-gate.ts).
-const HAVE = spawnSync('sudo', ['-n', 'test', '-S', SOCK]).status === 0 && mutationAllowed(N);
+const HAVE =
+  N !== '' && spawnSync('sudo', ['-n', 'test', '-S', SOCK]).status === 0 && mutationAllowed(N);
 if (!HAVE)
   console.warn(mutationSkipReason(N, 's28-assist (assist.json install, service restarts)'));
 const STAGING_CONFIG = new URL('../../deploy/dev-lab/s8/assist.staging.json', import.meta.url)

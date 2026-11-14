@@ -9,6 +9,7 @@
 # Projects created in a preview were stored in that preview's own browser storage namespace;
 # they stay in the browser. To export them, re-open the preview temporarily (printed below).
 set -euo pipefail
+. "$(dirname "$0")/../ops/require-mutation.sh" && require_mutation_opt_in tbi
 name="${1:?usage: retire-preview.sh s9-preview|s10-preview}"
 case "$name" in s9-preview | s10-preview) ;; *) echo "unknown preview: $name" >&2; exit 2 ;; esac
 root="/srv/tbi-lab/$name"

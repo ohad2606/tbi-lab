@@ -18,6 +18,7 @@
 #   rollback: deploy/dev-lab/rollback-runtime.sh   (re-points to MANIFEST.json's `replaces`)
 # Requires sudo for /srv and systemctl.
 set -euo pipefail
+. "$(dirname "$0")/../ops/require-mutation.sh" && require_mutation_opt_in tbi
 
 ref="${1:?usage: publish-runtime.sh <git-ref>}"
 repo="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"

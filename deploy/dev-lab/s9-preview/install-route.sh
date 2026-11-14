@@ -8,6 +8,7 @@
 #   deploy/dev-lab/s9-preview/install-route.sh            install (idempotent)
 #   deploy/dev-lab/s9-preview/install-route.sh --remove   remove the route (files are kept)
 set -euo pipefail
+. "$(dirname "$0")/../../ops/require-mutation.sh" && require_mutation_opt_in tbi
 
 here="$(cd "$(dirname "$0")" && pwd)"
 caddyfile=/etc/caddy/Caddyfile

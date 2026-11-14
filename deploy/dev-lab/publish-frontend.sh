@@ -27,6 +27,7 @@
 # Any mismatch after the switch rolls `current` back to the previous release and fails.
 # TBI_BUILD_TIME may be given to reproduce a build byte for byte (an independent pre-build).
 set -euo pipefail
+. "$(dirname "$0")/../ops/require-mutation.sh" && require_mutation_opt_in tbi
 
 ref="${1:?usage: publish-frontend.sh <git-ref>}"
 repo="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"

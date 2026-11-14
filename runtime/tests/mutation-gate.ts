@@ -33,10 +33,17 @@ export function holdsPipelineLock(): boolean {
   return spawnSync(process.execPath, [LOCK, 'check'], { stdio: 'ignore' }).status === 0;
 }
 
-/** May a test change instance `target`? (opt-in naming it AND the pipeline lock held) */
-export function mutationAllowed(target: string, env: NodeJS.ProcessEnv = process.env): boolean {
+/**
+ * May a test change instance `target`? (opt-in naming it AND the pipeline lock held). `holdsLock`
+ * is injectable for the gate's own unit tests; production callers use the real lock check.
+ */
+export function mutationAllowed(
+  target: string,
+  env: NodeJS.ProcessEnv = process.env,
+  holdsLock: () => boolean = holdsPipelineLock,
+): boolean {
   if (!target || !allowedTargets(env).includes(target)) return false;
-  return holdsPipelineLock();
+  return holdsLock();
 }
 
 /** The skip reason a gated test reports. */

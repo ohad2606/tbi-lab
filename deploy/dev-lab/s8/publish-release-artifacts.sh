@@ -13,6 +13,7 @@
 # verified, never modified. install.sh reads its reference images from this set and nowhere else.
 # Needs sudo.
 set -euo pipefail
+. "$(dirname "$0")/../../ops/require-mutation.sh" && require_mutation_opt_in tbi-s8 tbi
 
 home="$(readlink -f "${1:?usage: publish-release-artifacts.sh <runtime home>}")"
 repo="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"

@@ -10,6 +10,7 @@
 # - installs tbi-build.service and points the Session Host at the shared store (TBI_ARTIFACTS).
 # The bundle itself is installed by publish.sh.
 set -euo pipefail
+. "$(dirname "$0")/../ops/require-mutation.sh" && require_mutation_opt_in tbi
 here="$(cd "$(dirname "$0")" && pwd)"
 runtime_home=/home/ubuntu/tbi-r1-clean/rt
 store=/var/lib/tbi-lab/artifacts

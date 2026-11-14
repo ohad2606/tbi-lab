@@ -13,6 +13,7 @@
 #   VITE_SIGN_OUT_URL=/oauth2/sign_out the gate's sign-out, as for dev-lab
 # Old releases are kept; roll back by re-pointing `current`. Requires sudo for /srv.
 set -euo pipefail
+. "$(dirname "$0")/../../ops/require-mutation.sh" && require_mutation_opt_in tbi
 
 ref="${1:?usage: publish.sh <git-ref>}"
 repo="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"

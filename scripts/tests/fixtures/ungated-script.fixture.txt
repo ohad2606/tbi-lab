@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Deliberately UN-GATED (fixture for scripts/tests/mutation-gate.test.mjs; never executed).
+set -euo pipefail
+sudo install -m 0400 policy.json /etc/tbi-s8/policy.json
+sudo systemctl restart tbi-s8-build.service

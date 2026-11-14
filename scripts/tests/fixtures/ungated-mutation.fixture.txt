@@ -1,0 +1,4 @@
+// Deliberately UN-GATED (fixture for scripts/tests/mutation-gate.test.mjs; never executed).
+import { spawnSync } from 'node:child_process';
+const sudo = (...args: string[]) => spawnSync('sudo', ['-n', ...args]);
+sudo('systemctl', 'restart', 'tbi-s8-session-host.service');

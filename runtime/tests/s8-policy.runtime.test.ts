@@ -15,11 +15,13 @@ import { DEFAULT_POLICY, type PolicyConfig } from '../policy/policy.js';
 import { loadRequest } from './r2-support.js';
 import { mutationAllowed, mutationSkipReason } from './mutation-gate.js';
 
-const N = 'tbi-s8';
+// The instance must be named explicitly (TBI_S8_INSTANCE, e.g. tbi-s8): no default shared target.
+const N = process.env.TBI_S8_INSTANCE ?? '';
 const sudo = (...args: string[]) => spawnSync('sudo', ['-n', ...args], { encoding: 'utf8' });
 // Config-mutating and service-restarting (installs /etc/tbi-s8/policy.json, restarts the build
 // service and the Session Host, stops the Session Host): gated (mutation-gate.ts).
 const HAVE =
+  N !== '' &&
   existsSync(`/etc/systemd/system/${N}-build.service`) &&
   sudo('true').status === 0 &&
   mutationAllowed(N);

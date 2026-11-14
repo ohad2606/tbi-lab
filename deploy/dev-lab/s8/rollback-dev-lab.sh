@@ -13,6 +13,7 @@
 # required", the existing UX). To restore the store byte for byte as well, extract
 # var-lib-tbi.tgz from the backup (with the services stopped).
 set -euo pipefail
+. "$(dirname "$0")/../../ops/require-mutation.sh" && require_mutation_opt_in tbi
 b="${1:?usage: rollback-dev-lab.sh <backup dir>}"
 sudo test -f "$b/tbi-build.service" && sudo test -f "$b/symlinks.txt"
 app="$(sudo sed -n 1p "$b/symlinks.txt")"
