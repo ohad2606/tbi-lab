@@ -2613,6 +2613,13 @@ select {
   gap: 0.3rem;
 }
 
+.code-file-tablist {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem;
+}
+
 .code-file-tab {
   display: inline-flex;
   align-items: center;
@@ -2713,7 +2720,8 @@ select {
   overflow: hidden;
   padding: 0.5rem 0.4rem 0.5rem 0.6rem;
   text-align: right;
-  color: #8a94a3;
+  /* A11Y-008: 5.9:1 on --panel-alt (was #8a94a3, 2.88:1). */
+  color: #5b6575;
   background: var(--panel-alt);
   border-inline-end: 1px solid var(--border);
   user-select: none;

@@ -16,6 +16,11 @@ import { useAppState, useStore, useT } from './context.js';
 import type { MessageKey } from '../i18n/messages.en.js';
 import { isolateLtr } from '../i18n/i18n.js';
 
+/** A11Y-007: the code editor is the file tabs' tabpanel (CodeView), labelled by the active tab. */
+export const CODE_PANEL_ID = 'code-editor-panel';
+/** A stable element id for a file's tab (paths may contain "/" and "."). */
+export const fileTabId = (path: string) =>
+  `code-file-tab-${path.replace(/[^A-Za-z0-9_-]/g, (c) => `_${c.charCodeAt(0).toString(16)}`)}`;
 export function ProgramFiles({
   boardId,
   program,
@@ -70,6 +75,8 @@ export function ProgramFiles({
       key={path}
       type="button"
       role="tab"
+      id={fileTabId(path)}
+      aria-controls={CODE_PANEL_ID}
       class={`code-file-tab${path === active ? ' active' : ''}`}
       aria-selected={path === active}
       data-testid={`code-file-${path}`}
@@ -90,9 +97,12 @@ export function ProgramFiles({
   const isEntry = active === program.fileName;
   return (
     <div class="code-files" data-testid="code-files">
-      <div class="code-file-tabs" role="tablist" aria-label={t('program.files')}>
-        {tab(program.fileName, true)}
-        {files.map((f) => tab(f.path, false))}
+      <div class="code-file-tabs">
+        {/* A11Y-007: the tablist holds only the file tabs; the file actions are its siblings. */}
+        <div class="code-file-tablist" role="tablist" aria-label={t('program.files')}>
+          {tab(program.fileName, true)}
+          {files.map((f) => tab(f.path, false))}
+        </div>
         <button
           type="button"
           class="button small code-file-new"

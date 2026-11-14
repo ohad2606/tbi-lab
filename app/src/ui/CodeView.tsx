@@ -25,7 +25,7 @@ import { BuildElapsed } from './buildElapsed.js';
 import type { Diagnostic } from '../programs/client.js';
 import type { MessageKey } from '../i18n/messages.en.js';
 import { isolateLtr } from '../i18n/i18n.js';
-import { ProgramFiles } from './ProgramFiles.js';
+import { CODE_PANEL_ID, ProgramFiles, fileTabId } from './ProgramFiles.js';
 import { LibrariesPanel } from './LibrariesPanel.js';
 
 const NO_DIAGNOSTICS: Diagnostic[] = [];
@@ -352,7 +352,13 @@ export function CodeView({ boardId, focusBuild }: { boardId: string; focusBuild:
         onSelect={setChosen}
         disabled={false}
       />
-      <div class="code-editor" dir="ltr">
+      <div
+        class="code-editor"
+        dir="ltr"
+        role="tabpanel"
+        id={CODE_PANEL_ID}
+        aria-labelledby={fileTabId(file)}
+      >
         <div class="code-gutter" ref={gutter} aria-hidden="true">
           {gutterLines}
         </div>
