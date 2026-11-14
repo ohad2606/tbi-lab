@@ -16,12 +16,33 @@ under `/etc/<instance>`, or kills QEMU / session units with systemctl runs only 
 
 Otherwise it is skipped and prints the reason. Tests that only create sessions on a deployed
 instance need the instance named explicitly (`TBI_S8_INSTANCE`, `TBI_C5_DEPLOYED`,
-`TBI_S13_SEC_DEPLOYED`); none defaults to a shared instance. The staging/DEV-Lab operator scripts
-`deploy/dev-lab/s8/install.sh` and `switch-runtime.sh` refuse (exit 64) unless
-`TBI_ALLOW_SERVICE_MUTATION` names the instance.
+`TBI_S13_SEC_DEPLOYED`, `TBI_S8_INSTANCE` also for s8-policy and s28-assist); none defaults to a
+shared instance. Every deploy script that restarts a service, installs into `/etc` or `/srv` or
+re-points a served release refuses (exit 64) unless `TBI_ALLOW_SERVICE_MUTATION` names the
+instance it changes (`tbi` = DEV-Lab and this host's routes, `tbi-s8` = staging):
+`deploy/ops/require-mutation.sh`, or the inline check in `s8/install.sh` and `switch-runtime.sh`.
 
-`scripts/tests/mutation-gate.test.mjs` (in the default unit suite and CI) fails if a runtime test or
-e2e spec contains a mutating `systemctl` call or an `install … /etc/…` without importing the gate.
+`scripts/tests/mutation-gate.test.mjs` (in the default unit suite and CI) fails if any runtime test,
+e2e spec or deploy script contains a mutation entry point without its gate, and proves on
+deliberately un-gated fixtures that it would.
+
+## Coverage of the guard
+
+| Entry point | Detected in | Gate required |
+|---|---|---|
+| `sudo systemctl restart/stop/start/kill/reload` | runtime tests, e2e specs | import of `mutation-gate` |
+| `sudo install … /etc/…` or `/srv/…` | runtime tests, e2e specs | import of `mutation-gate` |
+| writing a file under `/etc` or `/srv` (`writeFileSync`, `tee`) — policy, assist, runtime JSON | runtime tests, e2e specs | import of `mutation-gate` |
+| `sudo pkill` / `sudo kill` (service or QEMU processes); own-relay cleanup `pkill -TERM -P <relay>` exempt | runtime tests, e2e specs | import of `mutation-gate` |
+| `systemctl restart/stop/start/kill/reload/enable/disable` | deploy and scripts `*.sh` | `TBI_ALLOW_SERVICE_MUTATION` check |
+| `sudo install/cp/rm/ln/mv` into `/etc`, `/srv` (also via `$root`, `$page`, `$BUNDLES`) | deploy and scripts `*.sh` | `TBI_ALLOW_SERVICE_MUTATION` check |
+| `tee` into `/etc` or `/srv` | deploy and scripts `*.sh` | `TBI_ALLOW_SERVICE_MUTATION` check |
+
+Files currently carrying an entry point (all gated): the seven runtime tests and the e2e spec in
+the classification above; deploy/dev-lab/{publish, publish-frontend, publish-runtime,
+retire-preview, rollback-runtime, setup-build}.sh, s8/{install, switch-runtime, rollback-dev-lab,
+publish-release-artifacts}.sh, s9-preview/{install-route, publish}.sh, s10-preview/{install-route,
+publish}.sh.
 
 ## Classification
 
@@ -61,7 +82,8 @@ terminate only those): **read-only** for every deployed instance.
 |---|---|---|
 | `deploy/dev-lab/s8/install.sh` | config-mutating, service-restarting (both instances) | `TBI_ALLOW_SERVICE_MUTATION=<instance>` |
 | `deploy/dev-lab/s8/switch-runtime.sh` | config-mutating (`runtime.json`), service-restarting | `TBI_ALLOW_SERVICE_MUTATION=<instance>` |
-| `deploy/dev-lab/publish.sh`, `publish-runtime.sh`, `rollback-runtime.sh`, `s8/rollback-dev-lab.sh`, `setup-build.sh` | DEV-Lab operator procedures (restart / install by design) | manual operator use only; not called by CI, timers or the test suites |
+| `deploy/dev-lab/publish.sh`, `publish-frontend.sh`, `publish-runtime.sh`, `rollback-runtime.sh`, `s8/rollback-dev-lab.sh`, `setup-build.sh`, `retire-preview.sh`, `s9-preview/*`, `s10-preview/*` | DEV-Lab operator procedures (restart / install / re-point by design) | `TBI_ALLOW_SERVICE_MUTATION=tbi`; manual operator use only |
+| `deploy/dev-lab/s8/publish-release-artifacts.sh` | writes the release-artifact store under `/srv` | `TBI_ALLOW_SERVICE_MUTATION=tbi-s8` (or `tbi`) |
 | `scripts/*` | read-only (brand assets, checks) | – |
 
 ## Unattended execution
