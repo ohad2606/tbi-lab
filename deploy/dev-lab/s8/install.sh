@@ -51,6 +51,13 @@ case "$target" in
     ;;
   *) echo "unknown target: $target" >&2; exit 2 ;;
 esac
+# Test safety (docs/ops/TEST-SAFETY.md): this script restarts services and installs configuration
+# under /etc/$N. It refuses unless the operator names the instance explicitly, so no unattended job
+# or test kit can change a shared instance by default.
+case ",${TBI_ALLOW_SERVICE_MUTATION:-}," in
+  *",$N,"*) ;;
+  *) echo "refused: set TBI_ALLOW_SERVICE_MUTATION=$N to change instance $N" >&2; exit 64 ;;
+esac
 units=("$N-build.service" "$N-build-job@.service" "$N-session-host.service" "$N-qemu@.service" "$N-assist.service" "$N-admin.service")
 rule="/etc/polkit-1/rules.d/50-$N.rules"
 # A staging release is an exact commit: refuse a tree with uncommitted changes before any change.

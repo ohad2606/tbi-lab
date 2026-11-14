@@ -19,11 +19,13 @@ import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-const N = process.env.TBI_S8_INSTANCE ?? 'tbi-s8';
+// Session-creating on a deployed instance: it must be named explicitly (no default).
+const N = process.env.TBI_S8_INSTANCE ?? '';
 const CYCLES = Number(process.env.TBI_S8_QEMU_CYCLES ?? 5);
 const run = Date.now().toString(36);
 const sudo = (...args: string[]) => spawnSync('sudo', ['-n', ...args], { encoding: 'utf8' });
-const HAVE = existsSync(`/etc/systemd/system/${N}-build.service`) && sudo('true').status === 0;
+const HAVE =
+  N !== '' && existsSync(`/etc/systemd/system/${N}-build.service`) && sudo('true').status === 0;
 const SLICE = `/sys/fs/cgroup/system.slice/system-${N.replaceAll('-', '\\x2d')}\\x2dqemu.slice`;
 
 /** QEMU's legitimate maximum: idle threads + its block thread pool's default maximum + ExecStopPost. */

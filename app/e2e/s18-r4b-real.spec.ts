@@ -12,12 +12,15 @@
  * - Sprint 18F: the 3D view's SG90 horn follows the angle Runtime v3 reports (0 / 90 / 180, equal
  *   to the inspector's), through a view switch during the run; at rest and still after Stop and
  *   after a crash;
- * - recovery (only with TBI_S18_UNIT=<instance>, e.g. tbi-s8; it acts on that instance's units):
- *   the session's QEMU killed -> `runtime_crashed`, a new Run works; the Session Host restarted
- *   during a run -> the session ends with a named failure, a new Run works.
+ * - recovery (only with TBI_S18_UNIT=<instance>, e.g. tbi-s8, AND the service-mutation gate,
+ *   runtime/tests/mutation-gate.ts: TBI_ALLOW_SERVICE_MUTATION=<instance> plus the pipeline lock):
+ *   EVERY QEMU unit of the instance is killed (`--kill-whom=all <instance>-qemu@*`, other users'
+ *   sessions included) -> `runtime_crashed`, a new Run works; the Session Host is restarted during
+ *   a run (ending every live session) -> a named failure, a new Run works.
  */
 import { execFileSync } from 'node:child_process';
 import { expect, test, type Page } from '@playwright/test';
+import { mutationAllowed, mutationSkipReason } from '../../runtime/tests/mutation-gate.js';
 import {
   addComponent,
   addWire,
@@ -256,12 +259,14 @@ test('a CPU clock change is refused at Build (cpu_frequency); Run is refused nam
 });
 
 const unit = process.env.TBI_S18_UNIT;
+/** Service-restarting and session-terminating (all sessions of the instance): gated. */
+const mayMutate = !!unit && mutationAllowed(unit);
 const sudo = (...args: string[]) => execFileSync('sudo', ['-n', ...args], { stdio: 'pipe' });
 
 test('Sprint 18F: QEMU killed during the sweep -> runtime_crashed; the 3D horn rests, still', async ({
   page,
 }) => {
-  test.skip(!unit, 'acts on an installed instance: TBI_S18_UNIT=<instance>');
+  test.skip(!mayMutate, mutationSkipReason(unit ?? '', 'QEMU kill / Session Host restart'));
   await page.addInitScript(() => localStorage.setItem('tbi-lab.3d.inspect', '1'));
   await openExample(page, 'esp32-servo-sweep');
   await runOnBoard(page);
@@ -279,7 +284,7 @@ test('Sprint 18F: QEMU killed during the sweep -> runtime_crashed; the 3D horn r
 test('recovery: QEMU killed during a fade -> runtime_crashed; a new Run works', async ({
   page,
 }) => {
-  test.skip(!unit, 'acts on an installed instance: TBI_S18_UNIT=<instance>');
+  test.skip(!mayMutate, mutationSkipReason(unit ?? '', 'QEMU kill / Session Host restart'));
   await openExample(page, 'esp32-led-fade');
   await runOnBoard(page);
   await page.waitForTimeout(3000);
@@ -298,7 +303,7 @@ test('recovery: QEMU killed during a fade -> runtime_crashed; a new Run works', 
 test('recovery: the Session Host restarted during a run -> a named failure; a new Run works', async ({
   page,
 }) => {
-  test.skip(!unit, 'acts on an installed instance: TBI_S18_UNIT=<instance>');
+  test.skip(!mayMutate, mutationSkipReason(unit ?? '', 'QEMU kill / Session Host restart'));
   await openExample(page, 'esp32-led-fade');
   await runOnBoard(page);
   await page.waitForTimeout(3000);

@@ -3,7 +3,8 @@
  * `deploy/dev-lab/s8/install.sh staging` (units tbi-s8-*; the dev-lab services are untouched), or
  * with TBI_S8_INSTANCE=tbi against the deployed dev-lab instance (post-deploy validation; its real
  * policy applies, and every run uses fresh test principals).
- * Skipped unless that instance is running and passwordless sudo is available.
+ * Skipped unless that instance is named, installed, passwordless sudo is available and the
+ * service-mutation gate allows it.
  *
  * The backends' sockets belong to the gate group; a relay started with sudo plays the gate for
  * this test (it forwards to the socket; the test sets the gate's subject header itself).
@@ -14,14 +15,21 @@
  *   directory, disk-backed session files) and is cleaned up after Stop and after a crash;
  * - one user cannot lease another's artifact or reach another's session;
  * - no product service runs as a login user.
+ *
+ * DISRUPTIVE (docs/ops/TEST-SAFETY.md): it kills its own session's QEMU unit, restarts the build
+ * service and RESTARTS THE SESSION HOST, which ends every live session on the instance
+ * (`host_shutdown`), other users' included. It therefore runs only with the instance named
+ * (TBI_S8_INSTANCE, no default) and the service-mutation gate (mutation-gate.ts).
  */
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { loadRequest } from './r2-support.js';
+import { mutationAllowed, mutationSkipReason } from './mutation-gate.js';
 
-const N = process.env.TBI_S8_INSTANCE ?? 'tbi-s8';
+// The instance must be named explicitly (no default: a shared target is never implied).
+const N = process.env.TBI_S8_INSTANCE ?? '';
 /** Sprint 19B (O2): each instance's own system users (dev-lab `tbi-*`, staging `tbi-s8-*`). */
 const U = N === 'tbi' ? 'tbi-' : `${N}-`;
 const STORE = N === 'tbi' ? '/var/lib/tbi-lab/artifacts' : `/var/lib/${N}-artifacts`;
@@ -30,7 +38,15 @@ const BUILD_SOCK = `/run/${N}-build/api.sock`;
 const HOST_SOCK = `/run/${N}-runtime/api.sock`;
 const SESSIONS = `/var/lib/${N}-runtime/sessions`;
 const sudo = (...args: string[]) => spawnSync('sudo', ['-n', ...args], { encoding: 'utf8' });
-const HAVE = existsSync(`/etc/systemd/system/${N}-build.service`) && sudo('true').status === 0;
+// Service-restarting and unit-killing: it kills its own session's QEMU unit, restarts the build
+// service AND the Session Host (ending every live session on the instance, `host_shutdown`):
+// gated (mutation-gate.ts).
+const HAVE =
+  N !== '' &&
+  existsSync(`/etc/systemd/system/${N}-build.service`) &&
+  sudo('true').status === 0 &&
+  mutationAllowed(N);
+if (!HAVE) console.warn(mutationSkipReason(N, 's8-containment (service restarts, QEMU unit kill)'));
 
 const relays: ChildProcess[] = [];
 let BUILD = '';

@@ -44,6 +44,7 @@ import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { availableParallelism, totalmem } from 'node:os';
 import { afterAll, describe, expect, it } from 'vitest';
+import { mutationAllowed, mutationSkipReason } from './mutation-gate.js';
 import { recordEvidence } from '../harness/env.js';
 import { Circuit } from '../host/tests/r1-support.js';
 import { PROTOCOL } from '../host/protocol.js';
@@ -51,7 +52,10 @@ import { PROTOCOL } from '../host/protocol.js';
 const INSTANCE = process.env.TBI_C5_DEPLOYED ?? '';
 const N = Number(process.env.TBI_C5_N ?? 1);
 const SECONDS = Number(process.env.TBI_C5_SECONDS ?? 120);
-const FAULTS = process.env.TBI_C5_FAULTS === '1';
+// Fault injection kills a session's QEMU unit with systemctl: gated (mutation-gate.ts).
+const FAULTS = process.env.TBI_C5_FAULTS === '1' && mutationAllowed(INSTANCE);
+if (process.env.TBI_C5_FAULTS === '1' && !FAULTS)
+  console.warn(mutationSkipReason(INSTANCE, 'c5-deployed fault injection (QEMU unit kill)'));
 const BUILD_EVERY_S = Number(process.env.TBI_C5_BUILD_EVERY ?? 0);
 const WARMUP_S = 30;
 /** Replace each session after this many seconds (0: never). Must stay below the policy lifetime. */

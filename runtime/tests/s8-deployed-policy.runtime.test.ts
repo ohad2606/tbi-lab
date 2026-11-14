@@ -11,6 +11,7 @@ import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { mutationAllowed } from './mutation-gate.js';
 import { artifact } from '../harness/env.js';
 import { deployedLimits } from './deployed-limits.js';
 import { loadRequest } from './r2-support.js';
@@ -23,6 +24,8 @@ const HAVE =
   sudo('test', '-f', `/etc/systemd/system/${N}-build.service`).status === 0 &&
   sudo('true').status === 0;
 /** The repository policy the instance was installed with (install.sh TBI_S8_POLICY; default policy.json). */
+/** The stale-health case STOPS the Session Host (ending every live session): gated. */
+const MAY_STOP_HOST = HAVE && mutationAllowed(N);
 const REAL_POLICY =
   process.env.TBI_S8_POLICY ??
   new URL('../../deploy/dev-lab/s8/policy.json', import.meta.url).pathname;
@@ -137,7 +140,8 @@ beforeAll(async () => {
 }, 60_000);
 afterAll(() => {
   if (!HAVE) return;
-  sudo('systemctl', 'start', `${N}-session-host.service`); // in case a case stopped early
+  // In case the (gated) stale-health case stopped it early.
+  if (MAY_STOP_HOST) sudo('systemctl', 'start', `${N}-session-host.service`);
   for (const r of relays) if (r.pid) sudo('pkill', '-TERM', '-P', String(r.pid));
 });
 
@@ -271,21 +275,24 @@ describe.skipIf(!HAVE)(`Sprint 8 policy on the deployed instance (${N}, real pol
     expect((await until(u('f'), held)).result?.failure).toBe('compile_error');
   }, 400_000);
 
-  it('stale runtime health admits no new compile; the build compiles once health is fresh', async () => {
-    sudo('systemctl', 'stop', `${N}-session-host.service`);
-    let b: Awaited<ReturnType<typeof submit>>;
-    try {
-      await new Promise((r) => setTimeout(r, 6000));
-      b = await submit(u('i'), broken('stale'));
-      expect(b.status).toBe(202);
-      await new Promise((r) => setTimeout(r, 4000));
-      expect((await poll(u('i'), b)).state).toBe('queued');
-    } finally {
-      sudo('systemctl', 'start', `${N}-session-host.service`);
-    }
-    await healthy();
-    expect((await until(u('i'), b)).result?.failure).toBe('compile_error');
-  });
+  it.skipIf(!MAY_STOP_HOST)(
+    'stale runtime health admits no new compile; the build compiles once health is fresh',
+    async () => {
+      sudo('systemctl', 'stop', `${N}-session-host.service`);
+      let b: Awaited<ReturnType<typeof submit>>;
+      try {
+        await new Promise((r) => setTimeout(r, 6000));
+        b = await submit(u('i'), broken('stale'));
+        expect(b.status).toBe(202);
+        await new Promise((r) => setTimeout(r, 4000));
+        expect((await poll(u('i'), b)).state).toBe('queued');
+      } finally {
+        sudo('systemctl', 'start', `${N}-session-host.service`);
+      }
+      await healthy();
+      expect((await until(u('i'), b)).result?.failure).toBe('compile_error');
+    },
+  );
 
   it('admission events are bounded: fixed keys, a 10-character reference, nothing else', () => {
     const lines = sudo(

@@ -27,11 +27,14 @@
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { afterAll, describe, expect, it } from 'vitest';
+import { mutationAllowed } from './mutation-gate.js';
 import { recordEvidence } from '../harness/env.js';
 import { Circuit } from '../host/tests/r1-support.js';
 import { PROTOCOL } from '../host/protocol.js';
 
 const INSTANCE = process.env.TBI_S13_SEC_DEPLOYED ?? '';
+/** The case kills its own session's QEMU unit with systemctl (crash containment): gated. */
+const MAY_KILL_UNIT = mutationAllowed(INSTANCE);
 const sudo = (...args: string[]) => spawnSync('sudo', ['-n', ...args], { encoding: 'utf8' });
 const HAVE =
   INSTANCE !== '' &&
@@ -100,7 +103,7 @@ const SKETCH = readFileSync(
 );
 
 describe('Sprint 13 security fixes on a deployed instance', () => {
-  it.skipIf(!HAVE)(
+  it.skipIf(!HAVE || !MAY_KILL_UNIT)(
     `${INSTANCE || '(no instance)'}: limits, isolation, shutdown, crash containment`,
     async () => {
       const BUILD = await relay(`/run/${INSTANCE}-build/api.sock`);

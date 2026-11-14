@@ -13,10 +13,17 @@ import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { DEFAULT_POLICY, type PolicyConfig } from '../policy/policy.js';
 import { loadRequest } from './r2-support.js';
+import { mutationAllowed, mutationSkipReason } from './mutation-gate.js';
 
 const N = 'tbi-s8';
 const sudo = (...args: string[]) => spawnSync('sudo', ['-n', ...args], { encoding: 'utf8' });
-const HAVE = existsSync(`/etc/systemd/system/${N}-build.service`) && sudo('true').status === 0;
+// Config-mutating and service-restarting (installs /etc/tbi-s8/policy.json, restarts the build
+// service and the Session Host, stops the Session Host): gated (mutation-gate.ts).
+const HAVE =
+  existsSync(`/etc/systemd/system/${N}-build.service`) &&
+  sudo('true').status === 0 &&
+  mutationAllowed(N);
+if (!HAVE) console.warn(mutationSkipReason(N, 's8-policy (policy install, service restarts)'));
 const REAL_POLICY = new URL('../../deploy/dev-lab/s8/policy.json', import.meta.url).pathname;
 const R1_IMAGE = '5f177cbe95f490dce1f6efe7dda501e03762d523b79771968f967b297d3a44af';
 

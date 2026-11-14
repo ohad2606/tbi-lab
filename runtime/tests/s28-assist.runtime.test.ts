@@ -13,13 +13,18 @@
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { mutationAllowed, mutationSkipReason } from './mutation-gate.js';
 import { EXPLAIN_CONTRACT, buildEngineeringContext, diagnose } from '@tbi-lab/assist';
 import { CASES } from '../../packages/assist/eval/cases.js';
 import { derivePrincipal, identityConfig } from '../identity/principal.js';
 
 const N = 'tbi-s8';
 const SOCK = `/run/${N}-assist/api.sock`;
-const HAVE = spawnSync('sudo', ['-n', 'test', '-S', SOCK]).status === 0;
+// Config-mutating and service-restarting (installs /etc/tbi-s8/assist.json, restarts the assist
+// and build services) and it reads the instance's identity key as root: gated (mutation-gate.ts).
+const HAVE = spawnSync('sudo', ['-n', 'test', '-S', SOCK]).status === 0 && mutationAllowed(N);
+if (!HAVE)
+  console.warn(mutationSkipReason(N, 's28-assist (assist.json install, service restarts)'));
 const STAGING_CONFIG = new URL('../../deploy/dev-lab/s8/assist.staging.json', import.meta.url)
   .pathname;
 const sudo = (...a: string[]) => {

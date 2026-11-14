@@ -27,6 +27,13 @@ case "$target" in
   dev-lab) N=tbi; U=tbi- ;;
   *) echo "unknown target: $target" >&2; exit 2 ;;
 esac
+# Test safety (docs/ops/TEST-SAFETY.md): this script restarts services and installs configuration
+# under /etc/$N. It refuses unless the operator names the instance explicitly, so no unattended job
+# or test kit can change a shared instance by default.
+case ",${TBI_ALLOW_SERVICE_MUTATION:-}," in
+  *",$N,"*) ;;
+  *) echo "refused: set TBI_ALLOW_SERVICE_MUTATION=$N to change instance $N" >&2; exit 64 ;;
+esac
 unit="/etc/systemd/system/$N-qemu@.service"
 t0=$(date +%s%N)
 
