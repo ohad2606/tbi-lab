@@ -211,7 +211,7 @@ document.
 | Typecheck, lint | clean |
 | Unit (incl. pipeline lock 13, assist service, eval harness, os11 gate rule, policy 29) | 2,263 passed, 3 skipped, 0 failed |
 | Browser e2e | 328 passed, 40 skipped (19.6 min) |
-| Real-QEMU runtime (s8-containment excluded: DEV-Lab only) | 239 passed, 19 skipped, 0 failed (65 min) |
+| Real-QEMU runtime (s8-containment excluded. Correction 2026-11-14: it defaulted to the staging instance, not DEV-Lab, and restarts its build service and Session Host; see docs/ops/TEST-SAFETY.md) | 239 passed, 19 skipped, 0 failed (65 min) |
 | Determinism / critical bench | bench correctness 1.0, critical 17/17, traceability 1, false claims 0; routing and session determinism suites pass |
 | Package | `dev-lab` profile built twice: byte-identical, 37 files, manifest `be97a365e5e15177`; check-dist (31 assets, no provider endpoint/SDK/key); verify-build (bundle carries `f0960cc`); version `0.10-dev`, Runtime v5 `39f2229a66d45e43` |
 | Staging install (tbi-s8) | `f0960cc`, install 5.4 s, DEV-Lab unchanged during it |
