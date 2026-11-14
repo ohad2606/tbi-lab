@@ -71,6 +71,22 @@ function positionOf(text: string, offset: number): { line: number; column: numbe
   return { line, column: offset - before.lastIndexOf('\n') };
 }
 
+/** A11Y-003: the viewer's Tab-key mode for the code editor (per browser; storage may be blocked). */
+const TAB_MODE_KEY = 'tbi-lab.editor.tabMovesFocus';
+function readTabMoves(): boolean {
+  try {
+    return localStorage.getItem(TAB_MODE_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+function writeTabMoves(on: boolean): void {
+  try {
+    localStorage.setItem(TAB_MODE_KEY, on ? '1' : '0');
+  } catch {
+    /* the mode still applies to this page */
+  }
+}
 export function CodeView({ boardId, focusBuild }: { boardId: string; focusBuild: number }) {
   const { doc, sim, locale, readOnly } = useAppState();
   const store = useStore();
@@ -82,6 +98,15 @@ export function CodeView({ boardId, focusBuild }: { boardId: string; focusBuild:
   const gutter = useRef<HTMLDivElement>(null);
   const buildButton = useRef<HTMLButtonElement>(null);
   const escaped = useRef(false);
+  // A11Y-003: the Tab key either indents (the default, as in code editors) or moves focus, switched
+  // by Ctrl+M (the common editor convention) or the button below the editor. A per-browser
+  // convenience (localStorage), never project data.
+  const [tabMoves, setTabMoves] = useState(readTabMoves);
+  const toggleTabMoves = () =>
+    setTabMoves((v) => {
+      writeTabMoves(!v);
+      return !v;
+    });
   const [pos, setPos] = useState({ line: 1, column: 1 });
   const active = sim.status === 'starting' || sim.status === 'running' || sim.status === 'stopping';
   // Sprint 26: the file open in the editor (UI state, not project data); the entry file when the
@@ -340,6 +365,7 @@ export function CodeView({ boardId, focusBuild }: { boardId: string; focusBuild:
           spellcheck={false}
           autocapitalize="off"
           autocomplete="off"
+          aria-describedby="code-editor-hint"
           aria-label={t('program.editor.label', {
             // A11Y-005: the active language, never a fixed one.
             language: isolateLtr(
@@ -362,12 +388,18 @@ export function CodeView({ boardId, focusBuild }: { boardId: string; focusBuild:
           onKeyUp={track}
           onClick={track}
           onKeyDown={(e) => {
-            // Tab indents (two spaces). Escape, then Tab, leaves the editor (no keyboard trap).
+            // Tab indents (two spaces). Escape, then Tab, leaves the editor (no keyboard trap);
+            // Shift+Tab always leaves. A11Y-003: Ctrl+M switches Tab to moving focus (and back).
             if (e.key === 'Escape') {
               escaped.current = true;
               return;
             }
-            if (e.key === 'Tab' && !escaped.current && !e.shiftKey && !readOnly) {
+            if ((e.key === 'm' || e.key === 'M') && e.ctrlKey && !e.altKey && !e.metaKey) {
+              e.preventDefault();
+              toggleTabMoves();
+              return;
+            }
+            if (e.key === 'Tab' && !tabMoves && !escaped.current && !e.shiftKey && !readOnly) {
               e.preventDefault();
               const el = e.currentTarget;
               el.setRangeText('  ', el.selectionStart, el.selectionEnd, 'end');
@@ -378,6 +410,25 @@ export function CodeView({ boardId, focusBuild }: { boardId: string; focusBuild:
           }}
         />
       </div>
+      {/* A11Y-003: how to leave the editor, visible and announced with it (aria-describedby). */}
+      <p
+        id="code-editor-hint"
+        class="code-editor-hint small muted"
+        data-testid="code-editor-hint"
+        data-tab-moves={tabMoves ? 'true' : 'false'}
+        aria-live="polite"
+      >
+        {t(tabMoves ? 'program.editor.hint.moves' : 'program.editor.hint.indent')}{' '}
+        <button
+          type="button"
+          class="link-button"
+          data-testid="code-tab-mode"
+          aria-pressed={tabMoves}
+          onClick={toggleTabMoves}
+        >
+          {t('program.editor.tabMode')}
+        </button>
+      </p>
       <footer class="code-status small muted">
         <span dir="ltr" data-testid="code-position">
           {t('program.position', { line: String(pos.line), column: String(pos.column) })}

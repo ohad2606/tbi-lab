@@ -1014,6 +1014,11 @@ export const he: Record<MessageKey, string> = {
     'חלק מהרכיבים גדולים בתלת־ממד מהסמל שלהם ועדיין נוגעים זה בזה כאן ({parts}). אפשר להרחיק אותם בתצוגת המעגל.',
   'view3d.routeLimit':
     'חלק מהחוטים לא ניתן היה לפרוש בצורה נקייה בתלת־ממד ({wires}): במקומות אלה הם עלולים להיראות כאילו הם נוגעים בחוט אחר או עוברים דרך רכיב. החיבורים הם בדיוק כפי שהם משורטטים בתצוגת המעגל.',
+  'program.editor.hint.indent':
+    'בקוד, Tab מזיח שורה. כדי לצאת מהעורך הקישו Esc ואחר כך Tab (גם Shift+Tab יוצא). Ctrl+M גורם ל-Tab להעביר את המיקוד.',
+  'program.editor.hint.moves':
+    'Tab מעביר את המיקוד אל מחוץ לעורך הקוד (הזחה ב-Tab כבויה). Ctrl+M מחזיר את Tab להזחה.',
+  'program.editor.tabMode': 'Tab מעביר מיקוד',
   'program.editor.label': 'קוד המקור ({language}) של {board}',
   'program.position': 'שורה {line}, עמודה {column}',
   'program.size': '{used} מתוך {max}',

@@ -1037,6 +1037,12 @@ export const en = {
   'view3d.routeLimit':
     'Some wires could not be laid out cleanly in 3D ({wires}): there they may look as if they touch another wire or pass through a part. The connections are exactly as drawn in the Circuit view.',
   // A11Y-005: named by the program's active language (Arduino C++ / MicroPython).
+  // A11Y-003: how the Tab key behaves in the code editor, and how to leave it.
+  'program.editor.hint.indent':
+    'In the code, Tab indents. To leave the editor press Esc, then Tab (Shift+Tab also leaves). Ctrl+M makes Tab move focus.',
+  'program.editor.hint.moves':
+    'Tab moves focus out of the code editor (indenting with Tab is off). Ctrl+M makes Tab indent again.',
+  'program.editor.tabMode': 'Tab moves focus',
   'program.editor.label': '{language} source code of {board}',
   'program.position': 'Line {line}, column {column}',
   'program.size': '{used} of {max}',

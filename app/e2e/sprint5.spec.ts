@@ -489,6 +489,7 @@ test('A13/A15: new Sprint 5 surfaces are Hebrew (technical tokens only), RTL chr
     /^[IV]?_(CC|DD|I|IH|IL|O|OH|OL)$/, // Sprint 22: datasheet symbols (I_CC, V_I; the V is removed with the units above)
     /^(Arduino|MicroPython|main|py|Pin|IN|value|machine|duty|duty_u16|SCL|SDA|HD44780|Hello|pull)$/, // Sprint 24: language names, the main.py file, MicroPython API names, I2C signal names, the LCD controller, the text the LCD example shows
     /^analogRead$/, // Sprint 25: the Arduino API the pot examples name as not supported (LTR-isolated)
+    /^(Tab|Shift|Ctrl|M)$/, // A11Y-003: key names in the code editor's hint (like Esc, Delete)
     /^(digitalRead|time_pulse_us|dht)$/, // MicroPython expansion: API and module names the twins' summaries name (LTR-isolated)
     /^(sketch|ino|display|h|cpp|LiquidCrystal_PCF8574|python_lcd|I2cLcd|lib)$/, // Sprint 26: project file names, managed library names and the MicroPython /lib folder (LTR-isolated)
   ];

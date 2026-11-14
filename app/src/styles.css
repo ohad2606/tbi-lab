@@ -2757,6 +2757,12 @@ select {
   box-shadow: inset 0 0 0 5px var(--focus-halo);
 }
 
+/* A11Y-003: the editor's keyboard hint (visible and its accessible description). */
+.code-editor-hint {
+  margin: 0;
+  padding: 0.2rem 0.75rem;
+}
+
 .code-status {
   display: flex;
   gap: 1.25rem;
