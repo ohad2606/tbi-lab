@@ -70,6 +70,26 @@ parts without them.
   publishes no damage threshold, the risk is unknown — treat it as unsafe.
 - **Shared service:** if the simulator is busy, wait a moment and press Run again.
 
+## Accessibility limits of this alpha
+
+Three accessibility gaps are known and are **temporary limitations of this invitation-only alpha
+only**. Each of them blocks any public launch of TBI Lab, and all three are planned to be fixed
+in the first accessibility sprint (A11Y-1). This page makes no claim that TBI Lab meets an
+accessibility standard or regulation.
+
+| | What does not work yet | Who is affected | What you can do now |
+|---|---|---|---|
+| Wiring by keyboard (A11Y-002) | You cannot create or change a wire with the keyboard alone. | People who use only a keyboard, including screen-reader users. | Connecting wires needs a mouse or touchpad in this preview. Every example comes with its circuit ready: open an example to get a wired circuit. Everything else works by keyboard: part settings, code, Build, Run, and the results and serial output. |
+| Sign-in error page (A11Y-018) | If sign-in is refused or has expired, the error page is in English only, does not zoom well, and hides the reason behind a link that the keyboard cannot reach. | Anyone whose sign-in fails, especially Hebrew readers, people who zoom, and keyboard users. | If you cannot sign in, write to the address you were given with your invitation, or to support@tbi-tech.net (the support address shown at the bottom of every screen of the app). Include the Google address you sign in with. |
+| Circuit connections for screen readers (A11Y-028) | The circuit drawing does not tell a screen reader how the parts are connected. Parts are announced by name only. | Screen-reader users. | The code, build results and serial output are all text. Ask us for a description of an example's connections, using a channel under **Reporting what you find**. |
+
+To report a problem with any of these, or to ask for help, use the channels under **Reporting what
+you find** below, or the support address support@tbi-tech.net shown at the bottom of every
+screen.
+
+This guide is in English only. There is no Hebrew version, and this text is not shown inside the
+app.
+
 ## MicroPython
 
 The ESP32 can also be programmed in **MicroPython**. It is the genuine MicroPython 1.29 interpreter
