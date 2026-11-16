@@ -18,7 +18,7 @@ A target is not a result. **We do not claim that the site or the Lab conforms to
 - We have not yet verified behaviour with screen readers such as NVDA, JAWS, VoiceOver or TalkBack. **[TBD]** Which assistive technologies and browsers will be tested.
 - An independent expert review is planned before the public launch. **[PROPOSED]**
 
-## 4. What we do
+## 4. What we do [PROPOSED — planned practices, site not yet built]
 - Semantic page structure, visible labels, keyboard operation and visible focus are engineering requirements for the public site.
 - Pages in Hebrew and English set the language and the text direction. Technical terms such as `ESP32` stay left-to-right.
 - No CAPTCHA or puzzle on our side of the application flow.
@@ -50,7 +50,7 @@ Based on an internal review of a pre-public release (date: [DATE OF LAST REVIEW 
 
 This list is not complete, because the review did not cover everything (for example the in-Lab administration dialog and a step-by-step keyboard walk of the 3D view). **[TBD]** Keep this list in sync with the current status before publication, with fix dates only when real.
 
-## 6. Third-party content
+## 6. Third-party content [PROPOSED]
 Sign-in uses Google account pages. These are run by Google and are outside our control. We use our own link to start sign-in, not Google's embedded button. **[LAWYER]** How to describe third-party parts under the regulations.
 
 ## 7. Alternatives and help
