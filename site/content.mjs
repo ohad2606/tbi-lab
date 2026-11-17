@@ -36,7 +36,7 @@ const en = {
   applyPending: 'Apply for Alpha (applications open soon)',
   applyHint: 'Applications are not open yet. This link explains how applying will work.',
   desktopNote:
-    'Desktop browser only (Chromium-family browsers); mobile and tablet are not supported.',
+    'A computer with Chrome or Edge. Phones and tablets are not supported yet.',
   draftNote: 'Draft — will be published after legal review',
   companyLine: 'Company: [COMPANY LEGAL NAME TBD]',
   pages: {
@@ -66,8 +66,7 @@ const en = {
           id: 'platform',
           h: 'What you need',
           ul: [
-            'Desktop browser only (Chromium-family browsers); mobile and tablet are not supported.',
-            'A Chromium-family desktop browser.',
+            'A computer with Chrome or Edge. Phones and tablets are not supported yet.',
             'Hebrew and English interface.',
           ],
         },
@@ -119,7 +118,7 @@ const en = {
           id: 'limits',
           h: 'Limits',
           ul: [
-            'Desktop browser only (Chromium-family browsers); mobile and tablet are not supported.',
+            'A computer with Chrome or Edge. Phones and tablets are not supported yet.',
             'Building and running firmware needs a connection to the service; editing a circuit does not.',
             'No PCB design and no AC simulation.',
           ],
@@ -185,7 +184,7 @@ const en = {
           id: 'q-device',
           h: 'Can I use it on a phone?',
           p: [
-            'No. Desktop browser only (Chromium-family browsers); mobile and tablet are not supported.',
+            'Not yet. You need a computer with Chrome or Edge.',
           ],
         },
         {
@@ -252,7 +251,7 @@ const he = {
   contact: '[פרטי יצירת קשר יתווספו בעת הפרסום]',
   applyPending: 'הגשת מועמדות לאלפא (ההרשמה תיפתח בקרוב)',
   applyHint: 'ההרשמה עדיין לא נפתחה. הקישור מסביר איך ההגשה תעבוד.',
-  desktopNote: 'רק דפדפן שולחני (דפדפנים ממשפחת Chromium); נייד וטאבלט אינם נתמכים.',
+  desktopNote: 'מחשב עם Chrome או Edge. טלפון וטאבלט עדיין לא נתמכים.',
   draftNote: 'טיוטה — תפורסם לאחר בדיקה משפטית',
   companyLine: 'החברה: [COMPANY LEGAL NAME TBD]',
   pages: {
@@ -282,8 +281,7 @@ const he = {
           id: 'platform',
           h: 'מה צריך',
           ul: [
-            'רק דפדפן שולחני (דפדפנים ממשפחת Chromium); נייד וטאבלט אינם נתמכים.',
-            'דפדפן שולחני ממשפחת Chromium.',
+            'מחשב עם Chrome או Edge. טלפון וטאבלט עדיין לא נתמכים.',
             'ממשק בעברית ובאנגלית.',
           ],
         },
@@ -335,7 +333,7 @@ const he = {
           id: 'limits',
           h: 'מגבלות',
           ul: [
-            'רק דפדפן שולחני (דפדפנים ממשפחת Chromium); נייד וטאבלט אינם נתמכים.',
+            'מחשב עם Chrome או Edge. טלפון וטאבלט עדיין לא נתמכים.',
             'בניית קושחה והרצתה דורשות חיבור לשירות; עריכת מעגל לא דורשת.',
             'אין תכנון מעגלים מודפסים ואין סימולציית זרם חילופין.',
           ],
@@ -396,7 +394,7 @@ const he = {
         {
           id: 'q-device',
           h: 'אפשר להשתמש בטלפון?',
-          p: ['לא. רק דפדפן שולחני (דפדפנים ממשפחת Chromium); נייד וטאבלט אינם נתמכים.'],
+          p: ['עדיין לא. צריך מחשב עם Chrome או Edge.'],
         },
         {
           id: 'q-board',

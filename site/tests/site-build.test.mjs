@@ -119,7 +119,12 @@ describe('build output', () => {
     for (const f of walk(out).filter((x) => /\.(html|css)$/.test(x))) {
       const t = readFileSync(f, 'utf8');
       expect(t, f).not.toMatch(/<script|\sstyle=|\son[a-z]+=|<style/i);
-      expect(t, f).not.toMatch(/https?:\/\/|@import|url\(/i);
+      expect(t, f).not.toMatch(/https?:\/\/|@import|\/\/[a-z0-9.-]+\.[a-z]/i);
+      // url() only for the self-hosted fonts, and every one must exist in the build
+      for (const [, u] of t.matchAll(/url\(\s*['"]?([^'")]+)['"]?\s*\)/gi)) {
+        expect(u, f).toMatch(/^\/assets\/fonts\/[a-z0-9.-]+\.woff2$/);
+        expect(existsSync(join(out, u)), `${f} -> ${u}`).toBe(true);
+      }
       if (f.endsWith('.html')) expect(t, f).not.toContain('@');
       expect(t, f).not.toMatch(/\b\d{2,3}[-\s]?\d{3}[-\s]?\d{4}\b/);
     }
