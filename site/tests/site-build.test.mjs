@@ -123,6 +123,8 @@ describe('build output', () => {
       // the only absolute URLs allowed are the tester sign-in link and the configured sign-up form
       let noLab = t.replaceAll(`href="${LAB_URL}"`, '');
       if (APPLY_URL) noLab = noLab.replaceAll(`href="${APPLY_URL}"`, '');
+      // link-preview (Open Graph) tags must be absolute and point only at this site
+      noLab = noLab.replace(/<meta property="og:(?:url|image|image:secure_url)" content="https:\/\/join-lab\.tbi-tech\.net\/[^"]*">/g, '');
       expect(noLab, f).not.toMatch(/https?:\/\/|@import|\/\/[a-z0-9.-]+\.[a-z]/i);
       // url() only for the self-hosted fonts, and every one must exist in the build
       for (const [, u] of t.matchAll(/url\(\s*['"]?([^'")]+)['"]?\s*\)/gi)) {
@@ -273,6 +275,16 @@ describe('build output', () => {
       expect(html('he', 'home')).toContain('href="/he/alpha/#how-to-apply"');
     }
     expect(html('en', 'home')).toContain('Electronics Engineering Workspace');
+  });
+  it('every page has an Open Graph card with the TBI Lab preview image', () => {
+    const img = 'https://join-lab.tbi-tech.net/assets/og/tbi-lab-preview.png';
+    expect(existsSync(join(out, 'assets', 'og', 'tbi-lab-preview.png'))).toBe(true);
+    for (const f of walk(out).filter((x) => x.endsWith('.html'))) {
+      const t = readFileSync(f, 'utf8');
+      expect(t, f).toContain(`<meta property="og:image" content="${img}">`);
+      expect(t, f).toMatch(/<meta property="og:title" content="[^"]+">/);
+      expect(t, f).toMatch(/<meta property="og:url" content="https:\/\/join-lab\.tbi-tech\.net\/[^"]*">/);
+    }
   });
   it('copies brand assets', () => {
     for (const f of ['tbi-lab-logo.png', 'favicon.ico', 'site.css'])
