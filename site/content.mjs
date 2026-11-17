@@ -21,9 +21,51 @@ export const LAB_URL = 'https://lab.tbi-tech.net/';
 export const CONTACT_EMAIL = 'support@tbi-tech.net';
 /**
  * Product screenshots for the Home page (slice B). Empty = the section is not rendered.
- * Item shape: { src: '/assets/images/x.webp', width, height, alt: { he, en } }.
+ * Item shape: { src, width, height, alt: { he, en }, caption: { he, en } }.
+ * Captured by site/scripts/capture-screenshots.mjs from built-in example projects (static, not running;
+ * the app UI in the images is English).
  */
-export const SCREENSHOTS = [];
+export const SCREENSHOTS = [
+  {
+    src: '/assets/images/distance-alarm-circuit.png',
+    width: 1280,
+    height: 776,
+    alt: {
+      en: 'TBI Lab, Circuit view of the built-in example "ESP32: ultrasonic distance alarm": an ESP32 board wired to a distance sensor, a resistor divider, a lab power supply and an LED with its resistor. The simulation is stopped.',
+      he: 'TBI Lab, תצוגת המעגל של הדוגמה המובנית "ESP32: ultrasonic distance alarm": לוח ESP32 מחובר לחיישן מרחק, למחלק מתח של נגדים, לספק כוח מעבדה ולנורית LED עם נגד. הסימולציה מושבתת. הממשק באנגלית.',
+    },
+    caption: {
+      en: 'The Circuit view of a built-in example: an ESP32, a distance sensor and an LED.',
+      he: 'תצוגת המעגל בדוגמה מובנית: ESP32, חיישן מרחק ונורית LED. (הממשק בצילום באנגלית)',
+    },
+  },
+  {
+    src: '/assets/images/lcd-hello-schematic.png',
+    width: 1280,
+    height: 776,
+    alt: {
+      en: 'TBI Lab, Schematic view generated from the circuit of the built-in example "ESP32: hello on a 16x2 I2C LCD": an ESP32 DevKit symbol, two 4.7 kilohm pull-up resistors on the I2C lines, two power supplies and the LCD symbol.',
+      he: 'TBI Lab, תצוגת הסכמה שנוצרה מהמעגל של הדוגמה המובנית "ESP32: hello on a 16x2 I2C LCD": סמל של ESP32 DevKit, שני נגדי pull-up של 4.7 קילו-אוהם על קווי I2C, שני ספקי כוח וסמל של מסך LCD. הממשק באנגלית.',
+    },
+    caption: {
+      en: 'The Schematic view, generated from the same circuit (I2C LCD example).',
+      he: 'תצוגת הסכמה שנוצרת מאותו מעגל (דוגמת מסך LCD ב-I2C). (הממשק בצילום באנגלית)',
+    },
+  },
+  {
+    src: '/assets/images/distance-alarm-3d.png',
+    width: 1280,
+    height: 776,
+    alt: {
+      en: 'TBI Lab, 3D view of the distance alarm example: a 3D model of an ESP32 board, a blue ultrasonic distance sensor, resistors, a red LED, a power supply and coloured wires on a grey surface.',
+      he: 'TBI Lab, תצוגה תלת-ממדית של דוגמת התראת המרחק: מודל תלת-ממדי של לוח ESP32, חיישן מרחק אולטרסוני כחול, נגדים, נורית LED אדומה, ספק כוח וחוטים צבעוניים על משטח אפור. הממשק באנגלית.',
+    },
+    caption: {
+      en: 'The 3D view of the same example.',
+      he: 'התצוגה התלת-ממדית של אותה דוגמה. (הממשק בצילום באנגלית)',
+    },
+  },
+];
 
 const en = {
   lang: 'en',

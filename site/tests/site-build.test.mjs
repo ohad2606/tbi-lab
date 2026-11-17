@@ -188,13 +188,34 @@ describe('build output', () => {
     expect(a).toContain('do not claim conformance');
     expect(a).not.toMatch(/WCAG|compl(?:ies|iant) with|accessible to all/i);
   });
-  it('home has hero, six feature cards and a clean place for screenshots', () => {
+  it('home has hero, six feature cards and screenshots as figures', () => {
     for (const l of LANGS) {
       const h = html(l, 'home');
       expect(h).toContain('class="hero"');
       expect(h.match(/class="card"/g)).toHaveLength(6);
-      expect(h).toContain('screenshots section');
-      expect(h).not.toMatch(/<img[^>]+src="\/assets\/images/);
+      expect(h).toContain('id="screenshots"');
+      const imgs = [...h.matchAll(/<img[^>]+src="\/assets\/images\/[^"]+"[^>]*>/g)].map(
+        (m) => m[0],
+      );
+      expect(imgs.length).toBeGreaterThanOrEqual(2);
+      for (const i of imgs) {
+        expect(i).toMatch(/width="\d+" height="\d+"/);
+        expect(i).toContain('loading="lazy"');
+        expect(i).toMatch(/alt="[^"]{20,}"/);
+      }
+      expect(h.match(/<figcaption>/g)).toHaveLength(imgs.length);
+    }
+  });
+  it('screenshots are copied to dist, each <= 600 KB, with HE+EN alt and caption', async () => {
+    const { SCREENSHOTS } = await import('../content.mjs');
+    for (const i of SCREENSHOTS) {
+      const f = join(out, i.src.slice(1));
+      expect(existsSync(f)).toBe(true);
+      expect(statSync(f).size).toBeLessThanOrEqual(600 * 1024);
+      for (const l of LANGS) {
+        expect(i.alt[l].length).toBeGreaterThan(20);
+        expect(i.caption[l].length).toBeGreaterThan(5);
+      }
     }
   });
   it('CTA: pending state when APPLY_URL is empty, https link when set (both modes)', () => {

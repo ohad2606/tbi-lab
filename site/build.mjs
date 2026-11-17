@@ -82,7 +82,7 @@ function renderPage(lang, page, opts) {
 <div class="wrap">
 <h2 id="screenshots" tabindex="-1">${esc(t.screenshotsH)}</h2>
 <ul class="shots">
-${SCREENSHOTS.map((i) => `<li><img src="${i.src}" width="${i.width}" height="${i.height}" alt="${esc(i.alt[lang])}" loading="lazy"></li>`).join('\n')}
+${SCREENSHOTS.map((i) => `<li><figure><img src="${i.src}" width="${i.width}" height="${i.height}" alt="${esc(i.alt[lang])}" loading="lazy"><figcaption>${esc(i.caption[lang])}</figcaption></figure></li>`).join('\n')}
 </ul>
 </div>
 </section>`
@@ -243,6 +243,11 @@ export function buildSite(outDir = join(here, 'dist'), opts = {}) {
     'OFL-Heebo.txt',
   ])
     copyFileSync(join(here, 'fonts', f), join(out, 'assets', 'fonts', f));
+  mkdirSync(join(out, 'assets', 'images'), { recursive: true });
+  for (const i of SCREENSHOTS) {
+    const f = i.src.split('/').pop();
+    copyFileSync(join(here, 'images', f), join(out, 'assets', 'images', f));
+  }
   copyFileSync(join(BRAND_DIR, 'tbi-lab-logo.png'), join(out, 'assets', 'tbi-lab-logo.png'));
   for (const f of ['favicon.ico', 'favicon-32.png'])
     copyFileSync(join(BRAND_DIR, 'icons', 'production', f), join(out, 'assets', f));
