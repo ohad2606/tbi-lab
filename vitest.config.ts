@@ -31,6 +31,8 @@ export default defineConfig({
       'deploy/ops/tests/**/*.test.mjs',
       // Brand icon pipeline (scripts/brand-image.mjs).
       'scripts/tests/**/*.test.mjs',
+      // TBI-013 public static site generator.
+      'site/tests/**/*.test.mjs',
     ],
     // *.esp32.test.ts spawn a real QEMU classic-ESP32 runtime and take minutes.
     // They are run explicitly via `npm run test:esp32`.

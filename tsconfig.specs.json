@@ -11,6 +11,7 @@
   },
   "include": [
     "experiments/**/browser/*.spec.ts",
-    "*.config.ts"
+    "*.config.ts",
+    "site/e2e/*.spec.ts"
   ]
 }
