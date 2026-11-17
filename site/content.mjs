@@ -23,7 +23,6 @@ const en = {
   skip: 'Skip to main content',
   navLabel: 'Main',
   footerLabel: 'Legal and contact',
-  switchLabel: 'Language',
   switchTo: 'עברית',
   switchToLang: 'he',
   navNames: { home: 'Home', product: 'Product', alpha: 'Alpha program', faq: 'FAQ' },
@@ -241,7 +240,6 @@ const he = {
   skip: 'דילוג לתוכן הראשי',
   navLabel: 'ראשי',
   footerLabel: 'משפטי ויצירת קשר',
-  switchLabel: 'שפה',
   switchTo: 'English',
   switchToLang: 'en',
   navNames: { home: 'דף הבית', product: 'המוצר', alpha: 'תוכנית אלפא', faq: 'שאלות נפוצות' },
@@ -259,7 +257,7 @@ const he = {
   companyLine: 'החברה: [COMPANY LEGAL NAME TBD]',
   pages: {
     home: {
-      title: 'TBI Lab — Electronics Engineering Workspace',
+      title: 'TBI Lab — סביבת עבודה להנדסת אלקטרוניקה',
       description:
         'TBI Lab הוא סביבת עבודה להנדסת אלקטרוניקה בדפדפן: בונים מעגלים, כותבים קושחה ל-[[ESP32]], בונים אותה בשירות הבנייה ומריצים את המעגל בדפדפן. תוכנית גישה מוקדמת, קבוצה מוגבלת.',
       h1: 'TBI Lab',

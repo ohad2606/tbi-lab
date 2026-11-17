@@ -26,7 +26,7 @@ export const pagePath = (lang, page) => (page === 'home' ? `/${lang}/` : `/${lan
 function renderSection(s) {
   const p = (s.p ?? []).map((t) => `<p>${rich(t)}</p>`).join('\n');
   const ul = s.ul ? `<ul>\n${s.ul.map((t) => `<li>${rich(t)}</li>`).join('\n')}\n</ul>` : '';
-  return `<section id="${s.id}" aria-labelledby="${s.id}-h">\n<h2 id="${s.id}-h">${rich(s.h)}</h2>\n${p}\n${ul}\n</section>`;
+  return `<section>\n<h2 id="${s.id}" tabindex="-1">${rich(s.h)}</h2>\n${p}\n${ul}\n</section>`;
 }
 
 function renderPage(lang, page) {
@@ -87,7 +87,7 @@ ${alts}
 <nav aria-label="${esc(t.navLabel)}">
 <ul>
 ${nav}
-<li><a href="${pagePath(t.switchToLang, page)}" hreflang="${t.switchToLang}" lang="${other.lang}" aria-label="${esc(t.switchLabel)}: ${esc(t.switchTo)}">${esc(t.switchTo)}</a></li>
+<li><a href="${pagePath(t.switchToLang, page)}" hreflang="${t.switchToLang}" lang="${other.lang}">${esc(t.switchTo)}</a></li>
 </ul>
 </nav>
 </header>

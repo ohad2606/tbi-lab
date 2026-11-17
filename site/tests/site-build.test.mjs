@@ -160,3 +160,15 @@ describe('build output', () => {
       expect(existsSync(join(out, 'assets', f))).toBe(true);
   });
 });
+
+describe('HE titles are Hebrew', () => {
+  it('no HE page title or home meta is pure ASCII', () => {
+    for (const page of PAGES) {
+      const h = html('he', page);
+      const title = h.match(/<title>([^<]*)<\/title>/)[1];
+      expect(title, `${page} title`).toMatch(/[֐-׿]/);
+      const desc = h.match(/<meta name="description" content="([^"]*)"/)[1];
+      expect(desc, `${page} description`).toMatch(/[֐-׿]/);
+    }
+  });
+});
