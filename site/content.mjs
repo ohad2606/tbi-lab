@@ -14,7 +14,7 @@ export const FOOTER_PAGES = ['privacy', 'accessibility'];
 export const LEGAL_PAGES = ['privacy', 'accessibility'];
 
 /** Sign-up form (Google Forms). Empty = applications not open: the CTA keeps its "opens soon" state. https only. */
-export const APPLY_URL = 'https://forms.gle/aWJVjH9423GutwTB9';
+export const APPLY_URL = 'https://forms.gle/iSfCbg4BwWF7HqDCA';
 /** Approved testers sign in here. */
 export const LAB_URL = 'https://lab.tbi-tech.net/';
 /** The one public contact address. */
