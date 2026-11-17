@@ -103,7 +103,7 @@ describe('build output', () => {
       const h = readFileSync(f, 'utf8');
       for (const m of h.matchAll(/(?:href|src)="([^"]+)"/g)) {
         const url = m[1];
-        if (url === LAB_URL || url === 'mailto:' + CONTACT_EMAIL) continue;
+        if (url === LAB_URL || url === 'mailto:' + CONTACT_EMAIL || (APPLY_URL && url === APPLY_URL)) continue;
         expect(url).not.toMatch(/^[a-z]+:|^\/\//i);
         const [path, frag] = url.split('#');
         let target = f;
@@ -120,8 +120,9 @@ describe('build output', () => {
     for (const f of walk(out).filter((x) => /\.(html|css)$/.test(x))) {
       const t = readFileSync(f, 'utf8');
       expect(t, f).not.toMatch(/<script|\sstyle=|\son[a-z]+=|<style/i);
-      // the only absolute URL allowed is the tester sign-in link
-      const noLab = t.replaceAll(`href="${LAB_URL}"`, '');
+      // the only absolute URLs allowed are the tester sign-in link and the configured sign-up form
+      let noLab = t.replaceAll(`href="${LAB_URL}"`, '');
+      if (APPLY_URL) noLab = noLab.replaceAll(`href="${APPLY_URL}"`, '');
       expect(noLab, f).not.toMatch(/https?:\/\/|@import|\/\/[a-z0-9.-]+\.[a-z]/i);
       // url() only for the self-hosted fonts, and every one must exist in the build
       for (const [, u] of t.matchAll(/url\(\s*['"]?([^'")]+)['"]?\s*\)/gi)) {
@@ -219,8 +220,11 @@ describe('build output', () => {
     }
   });
   it('CTA: pending state when APPLY_URL is empty, https link when set (both modes)', () => {
-    expect(APPLY_URL).toBe('');
-    const h = html('en', 'home');
+    // the configured form (owner-supplied Google Form) is https and is what the default build links to
+    expect(APPLY_URL === '' || /^https:\/\/forms\.gle\/[A-Za-z0-9]+$/.test(APPLY_URL)).toBe(true);
+    if (APPLY_URL) for (const l of LANGS) expect(html(l, 'home')).toContain(`href="${APPLY_URL}" rel="noopener"`);
+    const out0 = buildSite(mkdtempSync(join(tmpdir(), 'tbi-site-pending-')), { applyUrl: '' });
+    const h = readFileSync(join(out0, 'en', 'index.html'), 'utf8');
     expect(h).toContain('class="btn btn-pending" href="/en/alpha/#how-to-apply"');
     expect(h).not.toContain('btn-primary');
     expect(h).toContain('Registration opens soon');
@@ -262,8 +266,12 @@ describe('build output', () => {
       'Data may be reset',
     ])
       expect(a).toContain(s);
-    expect(html('en', 'home')).toContain('href="/en/alpha/#how-to-apply"');
-    expect(html('he', 'home')).toContain('href="/he/alpha/#how-to-apply"');
+    if (APPLY_URL) {
+      for (const l of LANGS) expect(html(l, 'alpha')).toContain(`href="${APPLY_URL}" rel="noopener"`);
+    } else {
+      expect(html('en', 'home')).toContain('href="/en/alpha/#how-to-apply"');
+      expect(html('he', 'home')).toContain('href="/he/alpha/#how-to-apply"');
+    }
     expect(html('en', 'home')).toContain('Electronics Engineering Workspace');
   });
   it('copies brand assets', () => {
