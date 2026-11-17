@@ -51,6 +51,33 @@ function renderSection(s, level = 2) {
   return `<section>\n<h${level} id="${s.id}" tabindex="-1">${rich(s.h)}</h${level}>\n${p}\n${ul}\n</section>`;
 }
 
+/** Public origin of the landing site; used only for link-preview (Open Graph) tags, which must be absolute. */
+export const SITE_ORIGIN = 'https://join-lab.tbi-tech.net';
+const OG_IMAGE = '/assets/og/tbi-lab-preview.png';
+
+/** Open Graph tags so WhatsApp, Facebook and others show the TBI Lab logo card for a shared link. */
+function ogTags({ url, title, description, locale, altLocale }) {
+  const img = SITE_ORIGIN + OG_IMAGE;
+  return [
+    ['og:type', 'website'],
+    ['og:site_name', 'TBI Lab'],
+    ['og:title', title],
+    ['og:description', description],
+    ['og:url', SITE_ORIGIN + url],
+    ['og:image', img],
+    ['og:image:secure_url', img],
+    ['og:image:type', 'image/png'],
+    ['og:image:width', '1200'],
+    ['og:image:height', '630'],
+    ['og:image:alt', 'TBI Lab: Think, Bring ideas to life, Invent'],
+    ['og:locale', locale],
+    ...(altLocale ? [['og:locale:alternate', altLocale]] : []),
+  ]
+    .map(([k, v]) => `<meta property="${k}" content="${esc(v)}">`)
+    .join('\n');
+}
+const OG_LOCALE = { he: 'he_IL', en: 'en_US' };
+
 function renderPage(lang, page, opts) {
   const applyUrl = checkApplyUrl(opts.applyUrl);
   const t = content[lang];
@@ -146,6 +173,7 @@ ${pg.sections
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(plain(pg.title))}</title>
 <meta name="description" content="${esc(plain(pg.description))}">
+${ogTags({ url: pagePath(lang, page), title: plain(pg.title), description: plain(pg.description), locale: OG_LOCALE[lang] ?? lang, altLocale: OG_LOCALE[t.switchToLang] })}
 ${alts}
 <link rel="icon" href="/assets/favicon.ico" sizes="any">
 <link rel="icon" type="image/png" href="/assets/favicon-32.png" sizes="32x32">
@@ -199,6 +227,7 @@ function renderRoot() {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>TBI Lab — עברית / English</title>
 <meta name="description" content="TBI Lab — Electronics Engineering Workspace. Choose a language.">
+${ogTags({ url: '/', title: 'TBI Lab — Electronics Engineering Workspace', description: 'A real electronics and ESP32 lab in your browser. Free Alpha, limited places.', locale: 'he_IL', altLocale: 'en_US' })}
 ${alts}
 <link rel="alternate" hreflang="x-default" href="/">
 <link rel="icon" href="/assets/favicon.ico" sizes="any">
@@ -249,6 +278,8 @@ export function buildSite(outDir = join(here, 'dist'), opts = {}) {
     copyFileSync(join(here, 'images', f), join(out, 'assets', 'images', f));
   }
   copyFileSync(join(BRAND_DIR, 'tbi-lab-logo.png'), join(out, 'assets', 'tbi-lab-logo.png'));
+  mkdirSync(join(out, 'assets', 'og'), { recursive: true });
+  copyFileSync(join(here, 'images', 'og-preview.png'), join(out, 'assets', 'og', 'tbi-lab-preview.png'));
   for (const f of ['favicon.ico', 'favicon-32.png'])
     copyFileSync(join(BRAND_DIR, 'icons', 'production', f), join(out, 'assets', f));
   return out;
