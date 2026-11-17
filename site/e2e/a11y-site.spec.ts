@@ -180,3 +180,27 @@ test('sign-in link goes to the Lab and contact is a mailto', async ({ page }) =>
     'mailto:support@tbi-tech.net',
   );
 });
+
+for (const { lang } of LANGS) {
+  test(`${lang}/home: screenshots load, have alt and captions, no horizontal scroll at 320px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 320, height: 700 });
+    await page.goto(`/${lang}/`);
+    const imgs = page.locator('#screenshots ~ ul.shots img');
+    expect(await imgs.count()).toBeGreaterThanOrEqual(2);
+    for (const img of await imgs.all()) {
+      await img.scrollIntoViewIfNeeded();
+      await expect
+        .poll(() => img.evaluate((e: HTMLImageElement) => e.complete && e.naturalWidth > 0))
+        .toBe(true);
+      expect(((await img.getAttribute('alt')) ?? '').length).toBeGreaterThan(20);
+    }
+    await expect(page.locator('figure figcaption')).toHaveCount(await imgs.count());
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      ),
+    ).toBeLessThanOrEqual(0);
+  });
+}

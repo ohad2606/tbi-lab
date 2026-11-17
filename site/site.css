@@ -291,6 +291,14 @@ li {
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr));
   gap: 1.25rem;
 }
+.shots figure {
+  margin: 0;
+}
+.shots figcaption {
+  margin-block-start: 0.5rem;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
 .shots img {
   max-inline-size: 100%;
   block-size: auto;
