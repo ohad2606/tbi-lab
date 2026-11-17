@@ -72,7 +72,7 @@ function renderPage(lang, page, opts) {
   const cta = (where) =>
     applyUrl
       ? `<a class="btn btn-primary" href="${applyUrl}" rel="noopener">${esc(t.applyOpen)}</a>`
-      : `<a class="btn btn-pending" href="${pagePath(lang, 'alpha')}#how-to-apply" aria-describedby="apply-hint-${where}"><span>${esc(t.applyPending)}</span><span class="btn-sub">${esc(t.applyPendingNote)}</span></a>
+      : `<a class="btn btn-pending" href="${pagePath(lang, 'alpha')}#how-to-apply" aria-describedby="apply-hint-${where}"><span>${esc(t.applyPending)}</span><span class="visually-hidden">. </span><span class="btn-sub">${esc(t.applyPendingNote)}</span></a>
 <span class="visually-hidden" id="apply-hint-${where}">${esc(t.applyHint)}</span>`;
 
   let body;
@@ -81,7 +81,7 @@ function renderPage(lang, page, opts) {
       ? `<section class="band">
 <div class="wrap">
 <h2 id="screenshots" tabindex="-1">${esc(t.screenshotsH)}</h2>
-<ul class="shots">
+<ul class="shots" role="list">
 ${SCREENSHOTS.map((i) => `<li><figure><img src="${i.src}" width="${i.width}" height="${i.height}" alt="${esc(i.alt[lang])}" loading="lazy"><figcaption>${esc(i.caption[lang])}</figcaption></figure></li>`).join('\n')}
 </ul>
 </div>
@@ -99,7 +99,7 @@ ${SCREENSHOTS.map((i) => `<li><figure><img src="${i.src}" width="${i.width}" hei
 <section class="band">
 <div class="wrap">
 <h2 id="features" tabindex="-1">${esc(pg.featuresH)}</h2>
-<ul class="cards">
+<ul class="cards" role="list">
 ${pg.features.map((f) => `<li class="card"><h3>${rich(f.h)}</h3><p>${rich(f.p)}</p></li>`).join('\n')}
 </ul>
 </div>
@@ -157,7 +157,7 @@ ${alts}
 <div class="wrap bar">
 <p class="brand"><a href="${pagePath(lang, 'home')}"><img src="/assets/tbi-lab-logo.png" width="56" height="32" alt="">${esc(t.siteName)}</a></p>
 <nav aria-label="${esc(t.navLabel)}">
-<ul>
+<ul role="list">
 ${nav}
 <li><a href="${pagePath(t.switchToLang, page)}" hreflang="${t.switchToLang}" lang="${other.lang}">${esc(t.switchTo)}</a></li>
 </ul>
@@ -170,7 +170,7 @@ ${body}
 <footer>
 <div class="wrap foot">
 <nav aria-label="${esc(t.footerLabel)}">
-<ul>
+<ul role="list">
 ${foot}
 <li>${signIn('signin')}</li>
 </ul>
