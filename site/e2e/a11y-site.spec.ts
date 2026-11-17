@@ -6,7 +6,7 @@ const axeSource = readFileSync(
   createRequire(import.meta.url).resolve('axe-core/axe.min.js'),
   'utf8',
 );
-const PAGES = ['', 'product/', 'alpha/', 'faq/', 'privacy/', 'terms/', 'accessibility/'];
+const PAGES = ['', 'product/', 'alpha/', 'faq/', 'privacy/', 'accessibility/'];
 const LANGS = [
   { lang: 'he', dir: 'rtl' },
   { lang: 'en', dir: 'ltr' },
@@ -95,9 +95,13 @@ for (const { lang, dir } of LANGS) {
   }) => {
     await page.goto(`/${lang}/`);
     for (const img of await page.locator('img').all()) {
-      expect((await img.getAttribute('alt'))?.length ?? 0).toBeGreaterThan(0);
+      // decorative images (empty alt) must sit inside a link that has its own text
+      const alt = await img.getAttribute('alt');
+      expect(alt).not.toBeNull();
+      if (alt === '')
+        expect(await img.evaluate((e) => !!e.closest('a')?.textContent?.trim())).toBe(true);
     }
-    await page.locator('a.btn-pending').click();
+    await page.locator('a.btn-pending').first().click();
     await expect(page).toHaveURL(new RegExp(`/${lang}/alpha/#how-to-apply$`));
     await expect(page.locator('#how-to-apply')).toBeVisible();
   });
@@ -106,7 +110,7 @@ for (const { lang, dir } of LANGS) {
 test('keyboard tab order follows reading order (header, main, footer)', async ({ page }) => {
   await page.goto('/en/');
   const order: string[] = [];
-  for (let i = 0; i < 11; i++) {
+  for (let i = 0; i < 14; i++) {
     await page.keyboard.press('Tab');
     order.push(
       await page.evaluate(
@@ -117,4 +121,62 @@ test('keyboard tab order follows reading order (header, main, footer)', async ({
   const rank = (t: string) => ({ BODY: 0, HEADER: 1, MAIN: 2, FOOTER: 3 })[t] ?? 0;
   const ranks = order.map(rank);
   expect(ranks).toEqual([...ranks].sort((a, b) => a - b));
+});
+
+test('contrast: computed text colours meet 4.5:1 on key elements (en home)', async ({ page }) => {
+  await page.goto('/en/');
+  const ratio = await page.evaluate(() => {
+    const rgb = (c: string) => (c.match(/[\d.]+/g) ?? []).slice(0, 3).map(Number);
+    const L = ([r, g, b]: number[]) => {
+      const f = (v: number) => ((v /= 255) <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
+      return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+    };
+    const out: number[] = [];
+    for (const sel of ['.hero h1', '.hero .value', '.card p', '.card h3']) {
+      const e = document.querySelector(sel)!;
+      const bg = e;
+      let b = 'rgba(0, 0, 0, 0)';
+      for (let n: Element | null = bg; n; n = n.parentElement) {
+        b = getComputedStyle(n).backgroundColor;
+        if (b !== 'rgba(0, 0, 0, 0)') break;
+      }
+      const [x, y] = [L(rgb(getComputedStyle(e).color)), L(rgb(b))].sort((p, q) => q - p);
+      out.push((x + 0.05) / (y + 0.05));
+    }
+    return Math.min(...out);
+  });
+  expect(ratio).toBeGreaterThanOrEqual(4.5);
+});
+
+test('1440px: content stays within the max width, no horizontal scroll', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/en/');
+  const w = await page.evaluate(() => ({
+    over: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    card: document.querySelector('.cards')!.getBoundingClientRect().width,
+  }));
+  expect(w.over).toBeLessThanOrEqual(0);
+  expect(w.card).toBeLessThanOrEqual(72 * 16);
+});
+
+test('reduced motion: no transitions or animations', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('/en/');
+  const d = await page
+    .locator('.btn')
+    .first()
+    .evaluate((e) => getComputedStyle(e).transitionDuration);
+  expect(parseFloat(d)).toBe(0);
+});
+
+test('sign-in link goes to the Lab and contact is a mailto', async ({ page }) => {
+  await page.goto('/en/alpha/');
+  await expect(page.getByRole('link', { name: /Tester sign-in/ }).first()).toHaveAttribute(
+    'href',
+    'https://lab.tbi-tech.net/',
+  );
+  await expect(page.locator('footer a[href^="mailto:"]')).toHaveAttribute(
+    'href',
+    'mailto:support@tbi-tech.net',
+  );
 });

@@ -6,7 +6,19 @@
 import { copyFileSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { content, LANGS, DEFAULT_LANG, PAGES, NAV_PAGES, FOOTER_PAGES } from './content.mjs';
+import {
+  content,
+  LANGS,
+  DEFAULT_LANG,
+  PAGES,
+  NAV_PAGES,
+  FOOTER_PAGES,
+  LEGAL_PAGES,
+  APPLY_URL,
+  LAB_URL,
+  CONTACT_EMAIL,
+  SCREENSHOTS,
+} from './content.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const BRAND_DIR = join(here, '..', 'app', 'src', 'assets', 'brand');
@@ -23,13 +35,24 @@ const plain = (s) => String(s).replace(/\[\[([^\]]+)\]\]/g, '$1');
 
 export const pagePath = (lang, page) => (page === 'home' ? `/${lang}/` : `/${lang}/${page}/`);
 
-function renderSection(s) {
-  const p = (s.p ?? []).map((t) => `<p>${rich(t)}</p>`).join('\n');
-  const ul = s.ul ? `<ul>\n${s.ul.map((t) => `<li>${rich(t)}</li>`).join('\n')}\n</ul>` : '';
-  return `<section>\n<h2 id="${s.id}" tabindex="-1">${rich(s.h)}</h2>\n${p}\n${ul}\n</section>`;
+const mail = `<a href="mailto:${CONTACT_EMAIL}"><span dir="ltr">${CONTACT_EMAIL}</span></a>`;
+/** rich text plus the public contact address turned into a mailto link. */
+const rich2 = (s) => rich(s).replaceAll(CONTACT_EMAIL, mail);
+
+function checkApplyUrl(u) {
+  if (u !== '' && !/^https:\/\/[^\s"'<>]+$/.test(u))
+    throw new Error('APPLY_URL must be empty or an https URL');
+  return u;
 }
 
-function renderPage(lang, page) {
+function renderSection(s, level = 2) {
+  const p = (s.p ?? []).map((t) => `<p>${rich2(t)}</p>`).join('\n');
+  const ul = s.ul ? `<ul>\n${s.ul.map((t) => `<li>${rich2(t)}</li>`).join('\n')}\n</ul>` : '';
+  return `<section>\n<h${level} id="${s.id}" tabindex="-1">${rich(s.h)}</h${level}>\n${p}\n${ul}\n</section>`;
+}
+
+function renderPage(lang, page, opts) {
+  const applyUrl = checkApplyUrl(opts.applyUrl);
   const t = content[lang];
   const other = content[t.switchToLang];
   const pg = t.pages[page];
@@ -44,28 +67,76 @@ function renderPage(lang, page) {
   const alts = LANGS.map(
     (l) => `<link rel="alternate" hreflang="${l}" href="${pagePath(l, page)}">`,
   ).join('\n');
+  const signIn = (cls) =>
+    `<a class="${cls}" href="${LAB_URL}" rel="noopener">${esc(t.signIn)}<span class="hint"> (${esc(t.signInHint)})</span></a>`;
+  const cta = (where) =>
+    applyUrl
+      ? `<a class="btn btn-primary" href="${applyUrl}" rel="noopener">${esc(t.applyOpen)}</a>`
+      : `<a class="btn btn-pending" href="${pagePath(lang, 'alpha')}#how-to-apply" aria-describedby="apply-hint-${where}"><span>${esc(t.applyPending)}</span><span class="btn-sub">${esc(t.applyPendingNote)}</span></a>
+<span class="visually-hidden" id="apply-hint-${where}">${esc(t.applyHint)}</span>`;
 
   let body;
   if (page === 'home') {
-    body = `<div class="hero">
-<img class="logo" src="/assets/tbi-lab-logo.png" width="260" height="150" alt="${esc(t.logoAlt)}">
-<h1>${esc(pg.h1)}</h1>
-<p class="descriptor" lang="${t.descriptorLang}" dir="ltr">${esc(pg.lead)}</p>
-<p class="note">${rich(t.desktopNote)}</p>
-<p><a class="btn btn-pending" href="${pagePath(lang, 'alpha')}#how-to-apply" aria-describedby="apply-hint">${esc(t.applyPending)}</a></p>
-<p class="note" id="apply-hint">${esc(t.applyHint)}</p>
+    const shots = SCREENSHOTS.length
+      ? `<section class="band">
+<div class="wrap">
+<h2 id="screenshots" tabindex="-1">${esc(t.screenshotsH)}</h2>
+<ul class="shots">
+${SCREENSHOTS.map((i) => `<li><img src="${i.src}" width="${i.width}" height="${i.height}" alt="${esc(i.alt[lang])}" loading="lazy"></li>`).join('\n')}
+</ul>
 </div>
-${pg.sections.map(renderSection).join('\n')}`;
-  } else if (FOOTER_PAGES.includes(page)) {
-    body = `<h1>${esc(pg.h1)}</h1>
-<p class="draft">${esc(t.draftNote)}</p>
-<p>${esc(t.companyLine)}</p>
-<p>${esc(t.contactLabel)}: ${esc(t.contact)}</p>`;
+</section>`
+      : '<!-- screenshots section: filled from SCREENSHOTS in content.mjs (slice B) -->';
+    body = `<div class="hero">
+<div class="wrap">
+<p class="eyebrow" lang="${t.descriptorLang}" dir="ltr">${esc(t.descriptor)}</p>
+<h1>${rich(pg.h1)}</h1>
+<p class="value">${rich(pg.lead)}</p>
+<p class="cta-row">${cta('hero')}</p>
+<p class="req">${esc(t.desktopNote)}</p>
+</div>
+</div>
+<section class="band">
+<div class="wrap">
+<h2 id="features" tabindex="-1">${esc(pg.featuresH)}</h2>
+<ul class="cards">
+${pg.features.map((f) => `<li class="card"><h3>${rich(f.h)}</h3><p>${rich(f.p)}</p></li>`).join('\n')}
+</ul>
+</div>
+</section>
+${shots}
+${pg.sections.map((s) => `<div class="wrap prose">${renderSection(s)}</div>`).join('\n')}
+<div class="wrap prose join">
+<p class="cta-row">${cta('band')}</p>
+<p>${signIn('signin')}</p>
+</div>`;
+  } else if (LEGAL_PAGES.includes(page)) {
+    body = `<div class="wrap prose">
+<h1>${esc(pg.h1)}</h1>
+${page === 'privacy' ? `<p class="draft">${esc(t.interimNote)}</p>` : ''}
+${pg.sections.map((s) => renderSection(s)).join('\n')}
+</div>`;
   } else {
-    body = `<h1>${esc(pg.h1)}</h1>
+    const how = (s) => {
+      if (s.id !== 'how-to-apply') return s;
+      return { ...s, p: applyUrl ? s.pOpen : s.pPending };
+    };
+    body = `<div class="wrap prose">
+<h1>${esc(pg.h1)}</h1>
 ${pg.lead ? `<p class="lead">${rich(pg.lead)}</p>` : ''}
-${pg.sections.map(renderSection).join('\n')}
-${page === 'alpha' ? `<p><a class="btn btn-pending" href="#how-to-apply">${esc(t.applyPending)}</a></p>` : ''}`;
+${pg.sections
+  .map((s) => {
+    const r = renderSection(how(s));
+    if (s.id === 'how-to-apply')
+      return applyUrl
+        ? r.replace('</section>', `<p class="cta-row">${cta('alpha')}</p>\n</section>`)
+        : r;
+    if (s.id === 'tester-sign-in')
+      return r.replace('</section>', `<p>${signIn('signin')}</p>\n</section>`);
+    return r;
+  })
+  .join('\n')}
+</div>`;
   }
 
   return `<!doctype html>
@@ -83,25 +154,30 @@ ${alts}
 <body>
 <a class="skip" href="#main">${esc(t.skip)}</a>
 <header>
-<p class="brand"><a href="${pagePath(lang, 'home')}">${esc(t.siteName)}</a></p>
+<div class="wrap bar">
+<p class="brand"><a href="${pagePath(lang, 'home')}"><img src="/assets/tbi-lab-logo.png" width="56" height="32" alt="">${esc(t.siteName)}</a></p>
 <nav aria-label="${esc(t.navLabel)}">
 <ul>
 ${nav}
 <li><a href="${pagePath(t.switchToLang, page)}" hreflang="${t.switchToLang}" lang="${other.lang}">${esc(t.switchTo)}</a></li>
 </ul>
 </nav>
+</div>
 </header>
 <main id="main" tabindex="-1">
 ${body}
 </main>
 <footer>
+<div class="wrap foot">
 <nav aria-label="${esc(t.footerLabel)}">
 <ul>
 ${foot}
+<li>${signIn('signin')}</li>
 </ul>
 </nav>
-<p>${esc(t.contactLabel)}: ${esc(t.contact)}</p>
-<p><small>${esc(t.brand)}</small></p>
+<p>${esc(t.contactLabel)}: ${mail}</p>
+<p class="copy"><small>${esc(t.brand)}</small></p>
+</div>
 </footer>
 </body>
 </html>
@@ -144,7 +220,8 @@ ${links}
 `;
 }
 
-export function buildSite(outDir = join(here, 'dist')) {
+export function buildSite(outDir = join(here, 'dist'), opts = {}) {
+  const o = { applyUrl: APPLY_URL, ...opts };
   const out = resolve(outDir);
   rmSync(out, { recursive: true, force: true });
   const write = (rel, data) => {
@@ -155,12 +232,16 @@ export function buildSite(outDir = join(here, 'dist')) {
   write('index.html', renderRoot());
   for (const lang of LANGS)
     for (const page of PAGES)
-      write(`${lang}${pagePath(lang, page).slice(3)}index.html`, renderPage(lang, page));
+      write(`${lang}${pagePath(lang, page).slice(3)}index.html`, renderPage(lang, page, o));
   mkdirSync(join(out, 'assets'), { recursive: true });
   copyFileSync(join(here, 'site.css'), join(out, 'assets', 'site.css'));
   // Self-hosted Heebo (SIL OFL 1.1, see site/fonts/OFL-Heebo.txt): consistent look, no third-party requests.
   mkdirSync(join(out, 'assets', 'fonts'), { recursive: true });
-  for (const f of ['heebo-hebrew-wght-normal.woff2', 'heebo-latin-wght-normal.woff2', 'OFL-Heebo.txt'])
+  for (const f of [
+    'heebo-hebrew-wght-normal.woff2',
+    'heebo-latin-wght-normal.woff2',
+    'OFL-Heebo.txt',
+  ])
     copyFileSync(join(here, 'fonts', f), join(out, 'assets', 'fonts', f));
   copyFileSync(join(BRAND_DIR, 'tbi-lab-logo.png'), join(out, 'assets', 'tbi-lab-logo.png'));
   for (const f of ['favicon.ico', 'favicon-32.png'])

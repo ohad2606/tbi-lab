@@ -24,7 +24,8 @@ createServer(async (req, res) => {
     const data = await readFile(join(root, path));
     res.writeHead(200, {
       'content-type': TYPES[extname(path)] ?? 'application/octet-stream',
-      'content-security-policy': "default-src 'none'; img-src 'self'; style-src 'self'; font-src 'self'",
+      'content-security-policy':
+        "default-src 'none'; img-src 'self'; style-src 'self'; font-src 'self'",
     });
     res.end(data);
   } catch {

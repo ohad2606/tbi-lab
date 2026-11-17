@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, readdirSync, statSync } from 'no
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { buildSite, pagePath } from '../build.mjs';
-import { content, LANGS, PAGES } from '../content.mjs';
+import { content, LANGS, PAGES, CONTACT_EMAIL, LAB_URL, APPLY_URL } from '../content.mjs';
 
 let out;
 const read = (rel) => readFileSync(join(out, rel), 'utf8');
@@ -103,6 +103,7 @@ describe('build output', () => {
       const h = readFileSync(f, 'utf8');
       for (const m of h.matchAll(/(?:href|src)="([^"]+)"/g)) {
         const url = m[1];
+        if (url === LAB_URL || url === 'mailto:' + CONTACT_EMAIL) continue;
         expect(url).not.toMatch(/^[a-z]+:|^\/\//i);
         const [path, frag] = url.split('#');
         let target = f;
@@ -115,18 +116,111 @@ describe('build output', () => {
       }
     }
   });
-  it('has no scripts, inline styles/handlers, external URLs, emails or contact data', () => {
+  it('has no scripts, inline styles/handlers, third-party URLs, other emails or phone numbers', () => {
     for (const f of walk(out).filter((x) => /\.(html|css)$/.test(x))) {
       const t = readFileSync(f, 'utf8');
       expect(t, f).not.toMatch(/<script|\sstyle=|\son[a-z]+=|<style/i);
-      expect(t, f).not.toMatch(/https?:\/\/|@import|\/\/[a-z0-9.-]+\.[a-z]/i);
+      // the only absolute URL allowed is the tester sign-in link
+      const noLab = t.replaceAll(`href="${LAB_URL}"`, '');
+      expect(noLab, f).not.toMatch(/https?:\/\/|@import|\/\/[a-z0-9.-]+\.[a-z]/i);
       // url() only for the self-hosted fonts, and every one must exist in the build
       for (const [, u] of t.matchAll(/url\(\s*['"]?([^'")]+)['"]?\s*\)/gi)) {
         expect(u, f).toMatch(/^\/assets\/fonts\/[a-z0-9.-]+\.woff2$/);
-        expect(existsSync(join(out, u)), `${f} -> ${u}`).toBe(true);
+        expect(existsSync(join(out, u)), f + ' -> ' + u).toBe(true);
       }
-      if (f.endsWith('.html')) expect(t, f).not.toContain('@');
+      if (f.endsWith('.html')) {
+        // exactly one email address is allowed
+        const emails = t.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+/g) ?? [];
+        for (const e of emails) expect(e, f).toBe(CONTACT_EMAIL);
+        expect(t.replaceAll(CONTACT_EMAIL, '')).not.toContain('@');
+        expect(t, f).not.toMatch(/mailto:(?!support@tbi-tech\.net")/);
+      }
       expect(t, f).not.toMatch(/\b\d{2,3}[-\s]?\d{3}[-\s]?\d{4}\b/);
+    }
+  });
+  it('contact address is support@tbi-tech.net, linked in footer and legal pages', () => {
+    expect(CONTACT_EMAIL).toBe('support@tbi-tech.net');
+    for (const l of LANGS)
+      for (const p of PAGES)
+        expect(html(l, p), `${l}/${p}`).toContain('href="mailto:support@tbi-tech.net"');
+  });
+  it('no unfinished placeholders, no Terms page, footer brand is TBI', () => {
+    for (const l of LANGS) {
+      expect(existsSync(join(out, l, 'terms'))).toBe(false);
+      for (const p of PAGES) {
+        const h = html(l, p);
+        expect(h, `${l}/${p}`).not.toMatch(/TBD|to be added|COMPANY LEGAL|Draft —|טיוטה —/i);
+        expect(h).not.toMatch(/href="[^"]*terms/);
+        expect(h).toContain('<p class="copy"><small>TBI</small></p>');
+      }
+    }
+  });
+  it('forbidden claims are absent', () => {
+    for (const l of LANGS)
+      for (const p of PAGES) {
+        const text = html(l, p);
+        expect(text, `${l}/${p}`).not.toMatch(
+          /micropython|firefox|wi-?fi|phone|tablet|טלפון|טאבלט|פיירפוקס/i,
+        );
+      }
+  });
+  it('tester sign-in links to the Lab, labelled for approved testers', () => {
+    expect(LAB_URL).toBe('https://lab.tbi-tech.net/');
+    for (const l of LANGS)
+      for (const p of PAGES.filter((x) => x !== 'home' || true)) {
+        const h = html(l, p);
+        expect(h).toContain(`href="${LAB_URL}" rel="noopener">${content[l].signIn}`);
+        expect(h).toContain(content[l].signInHint);
+      }
+  });
+  it('privacy is marked interim and says what the site collects', () => {
+    expect(html('en', 'privacy')).toContain('Interim text');
+    expect(html('he', 'privacy')).toContain('טקסט ביניים');
+    const en = html('en', 'privacy');
+    for (const s of ['no cookies', 'no analytics', 'Google Forms', '90 days', '12 months'])
+      expect(
+        en.replace(/sets no cookies/, 'no cookies').replace(/uses no analytics/, 'no analytics'),
+      ).toContain(s);
+  });
+  it('accessibility statement is honest: no conformance claim, not screen-reader tested', () => {
+    const a = html('en', 'accessibility');
+    expect(a).toContain('has not yet been tested with screen readers');
+    expect(a).toContain('do not claim conformance');
+    expect(a).not.toMatch(/WCAG|compl(?:ies|iant) with|accessible to all/i);
+  });
+  it('home has hero, six feature cards and a clean place for screenshots', () => {
+    for (const l of LANGS) {
+      const h = html(l, 'home');
+      expect(h).toContain('class="hero"');
+      expect(h.match(/class="card"/g)).toHaveLength(6);
+      expect(h).toContain('screenshots section');
+      expect(h).not.toMatch(/<img[^>]+src="\/assets\/images/);
+    }
+  });
+  it('CTA: pending state when APPLY_URL is empty, https link when set (both modes)', () => {
+    expect(APPLY_URL).toBe('');
+    const h = html('en', 'home');
+    expect(h).toContain('class="btn btn-pending" href="/en/alpha/#how-to-apply"');
+    expect(h).not.toContain('btn-primary');
+    expect(h).toContain('Registration opens soon');
+    const url = 'https://forms.example.org/join';
+    const out2 = buildSite(mkdtempSync(join(tmpdir(), 'tbi-site-apply-')), { applyUrl: url });
+    for (const l of LANGS) {
+      const o = readFileSync(join(out2, l, 'index.html'), 'utf8');
+      expect(o).toContain(`class="btn btn-primary" href="${url}" rel="noopener"`);
+      expect(o).not.toContain('btn-pending');
+      const al = readFileSync(join(out2, l, 'alpha', 'index.html'), 'utf8');
+      expect(al).toContain(`href="${url}" rel="noopener"`);
+    }
+    for (const bad of [
+      'http://x.example/f',
+      'javascript:alert(1)',
+      '//x.example',
+      'https://x.example/"onclick=',
+    ]) {
+      expect(() =>
+        buildSite(mkdtempSync(join(tmpdir(), 'tbi-site-bad-')), { applyUrl: bad }),
+      ).toThrow();
     }
   });
   it('stylesheet uses logical properties only', () => {
@@ -134,15 +228,6 @@ describe('build output', () => {
     expect(css).not.toMatch(
       /(?:^|[;{\s])(margin|padding|border)-(left|right)|(?:^|[;{\s])(left|right|float)\s*:|text-align:\s*(left|right)/,
     );
-  });
-  it('legal pages are placeholders only', () => {
-    for (const l of LANGS)
-      for (const p of ['privacy', 'terms', 'accessibility']) {
-        const h = html(l, p);
-        expect(h).toContain(content[l].draftNote);
-        expect(h).toContain('[COMPANY LEGAL NAME TBD]');
-      }
-    expect(html('en', 'home')).not.toContain('COMPANY LEGAL NAME');
   });
   it('alpha page carries the required messaging and apply links to it', () => {
     const a = html('en', 'alpha');

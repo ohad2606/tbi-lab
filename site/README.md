@@ -2,9 +2,10 @@
 
 Static, pre-rendered, dependency-free site: Hebrew (`/he/`, default, RTL) and English (`/en/`), plus a
 static language-pair page at `/`. No client JavaScript, no third-party fonts or scripts, no forms.
-Pages: Home, Product, Alpha program, FAQ, and Privacy / Terms / Accessibility statement as
-**placeholders** ("Draft — will be published after legal review"). No legal text is written here.
-The Apply button is a plain link to the Alpha page section "how to apply" (applications are not open).
+Pages: Home, Product, Alpha program, FAQ, Privacy (interim notice) and Accessibility statement (short, honest, no
+conformance claim). No Terms page until a lawyer reviews one. Config constants in `content.mjs`: `APPLY_URL`
+(empty = "registration opens soon"; https only = CTA links to it), `LAB_URL` (tester sign-in), `CONTACT_EMAIL`,
+`SCREENSHOTS` (empty = no section; slice B fills it). Colour contrast is computed in `tests/contrast.test.mjs`.
 
 ## Layout
 
