@@ -2,14 +2,28 @@
  * All public-site copy, one object per language. Templates (build.mjs) only look keys up; they
  * never branch on the language. `[[TOKEN]]` marks a technical token that is rendered dir="ltr".
  * Page shape: { title, description, h1, lead?, sections: [{ id, h, p?: [], ul?: [] }] }.
- * Honest scope: every capability named here comes from docs/product/V1-PRODUCT-SCOPE.md.
- * No legal text lives here: privacy, terms and accessibility statement are placeholders.
+ * Honest scope: every capability named here comes from docs/product/V1-PRODUCT-SCOPE.md and the tester guide.
+ * Privacy text is an interim notice (marked as such); there is no Terms page until a lawyer reviews one.
  */
 export const LANGS = ['he', 'en'];
 export const DEFAULT_LANG = 'he';
-export const PAGES = ['home', 'product', 'alpha', 'faq', 'privacy', 'terms', 'accessibility'];
+export const PAGES = ['home', 'product', 'alpha', 'faq', 'privacy', 'accessibility'];
 export const NAV_PAGES = ['home', 'product', 'alpha', 'faq'];
-export const FOOTER_PAGES = ['privacy', 'terms', 'accessibility'];
+export const FOOTER_PAGES = ['privacy', 'accessibility'];
+/** Pages that are plain text documents (rendered with the interim/legal template). */
+export const LEGAL_PAGES = ['privacy', 'accessibility'];
+
+/** Sign-up form (Google Forms). Empty = applications not open: the CTA keeps its "opens soon" state. https only. */
+export const APPLY_URL = '';
+/** Approved testers sign in here. */
+export const LAB_URL = 'https://lab.tbi-tech.net/';
+/** The one public contact address. */
+export const CONTACT_EMAIL = 'support@tbi-tech.net';
+/**
+ * Product screenshots for the Home page (slice B). Empty = the section is not rendered.
+ * Item shape: { src: '/assets/images/x.webp', width, height, alt: { he, en } }.
+ */
+export const SCREENSHOTS = [];
 
 const en = {
   lang: 'en',
@@ -26,55 +40,65 @@ const en = {
   switchTo: 'עברית',
   switchToLang: 'he',
   navNames: { home: 'Home', product: 'Product', alpha: 'Alpha program', faq: 'FAQ' },
-  footerNames: {
-    privacy: 'Privacy',
-    terms: 'Terms',
-    accessibility: 'Accessibility statement',
-  },
+  footerNames: { privacy: 'Privacy', accessibility: 'Accessibility statement' },
   contactLabel: 'Contact',
-  contact: '[contact details to be added at publication]',
-  applyPending: 'Apply for Alpha (applications open soon)',
-  applyHint: 'Applications are not open yet. This link explains how applying will work.',
-  desktopNote:
-    'A computer with Chrome or Edge. Phones and tablets are not supported yet.',
-  draftNote: 'Draft — will be published after legal review',
-  companyLine: 'Company: [COMPANY LEGAL NAME TBD]',
+  signIn: 'Tester sign-in',
+  signInHint: 'For approved testers',
+  signInNote: 'Already approved? Sign in to the Lab',
+  applyPending: 'Join the Alpha',
+  applyPendingNote: 'Registration opens soon',
+  applyOpen: 'Join the Alpha',
+  applyHint: 'Registration is not open yet. This link explains how applying will work.',
+  desktopNote: 'Works on a computer with Chrome or Edge.',
+  interimNote: 'Interim text. It will be replaced by a reviewed version.',
+  screenshotsH: 'See it in the Lab',
   pages: {
     home: {
-      title: 'TBI Lab — Electronics Engineering Workspace',
+      title: 'TBI Lab — an electronics engineering lab for ESP32 in your browser',
       description:
-        'TBI Lab is an electronics engineering workspace in the browser: build circuits, write [[ESP32]] firmware, build it with the build service and run the circuit in the browser. Early access program, limited cohort.',
-      h1: 'TBI Lab',
-      lead: 'Electronics Engineering Workspace',
-      sections: [
+        'TBI Lab is an engineering tool in the browser: a deterministic simulation of circuits and [[ESP32]] with Arduino code, parts flagged beyond their absolute maximum ratings, and wiring errors explained. Free Alpha, limited places.',
+      h1: 'A real electronics lab for [[ESP32]], in your browser',
+      lead: 'Build a circuit, write Arduino code and run it on a simulated [[ESP32]], then see what actually happens in the circuit. An engineering tool, not a game.',
+      featuresH: 'Built for engineering, not for show',
+      features: [
         {
-          id: 'what',
-          h: 'What it is',
-          p: [
-            'TBI Lab is a laboratory in the browser. You build a DC circuit, power it from a laboratory power supply, run it and see voltages and currents that come from a real solver, not from an animation.',
-            'You can add a classic [[ESP32]] DevKit to the circuit, write firmware for it in Arduino C++ (a single sketch), have the build service build it, and run the circuit in the browser.',
-          ],
+          h: 'Real, deterministic simulation',
+          p: 'Voltages, currents and timing come from a simulation engine, not from an animation. The same circuit gives the same result every time.',
         },
+        {
+          h: 'Parts flagged beyond their limits',
+          p: 'A part driven past its manufacturer’s absolute maximum ratings is marked as “may be damaged”, so you find out on screen and not on the bench.',
+        },
+        {
+          h: 'Wiring errors explained',
+          p: 'A wrong connection is not hidden. You get an explanation of what is wrong and where.',
+        },
+        {
+          h: 'Honest “not supported”',
+          p: 'What cannot yet be simulated reliably is stated openly. There are no fake results.',
+        },
+        {
+          h: 'ESP32, Arduino and real parts',
+          p: 'Arduino code on a classic [[ESP32]], with an [[HC-SR04]] distance sensor, a temperature sensor and an [[I2C]] LCD.',
+        },
+        {
+          h: '2D and 3D, Hebrew and English',
+          p: 'Work in a 2D schematic view or look at the circuit in 3D. The interface is in Hebrew and English, and switching language never changes the circuit.',
+        },
+      ],
+      sections: [
         {
           id: 'who',
           h: 'Who it is for',
           p: [
-            'Students, teachers, makers and technicians at beginner and intermediate level. It is not a replacement for professional PCB or CAD suites.',
-          ],
-        },
-        {
-          id: 'platform',
-          h: 'What you need',
-          ul: [
-            'A computer with Chrome or Edge. Phones and tablets are not supported yet.',
-            'Hebrew and English interface.',
+            'Makers and beginners who want to see why a circuit works, and professionals and engineers who want to check an idea before they solder. It is not a replacement for professional PCB or CAD suites.',
           ],
         },
         {
           id: 'status',
-          h: 'Early access',
+          h: 'Free Alpha, limited places',
           p: [
-            'TBI Lab is in an early access program with a limited cohort. Applications are not open yet. Read how the program works on the Alpha program page.',
+            'TBI Lab is in an early access program. It is free, places are limited and applications are reviewed manually. Read how it works on the Alpha program page.',
           ],
         },
       ],
@@ -82,7 +106,7 @@ const en = {
     product: {
       title: 'Product — TBI Lab',
       description:
-        'What TBI Lab does today: DC circuits, a classic [[ESP32]], circuit simulation in the browser with firmware built by the service, Hebrew and English.',
+        'What TBI Lab does today: DC circuits, a classic [[ESP32]] with Arduino code, distance and temperature sensors, an [[I2C]] LCD, 2D and 3D views, Hebrew and English.',
       h1: 'Product',
       lead: 'What the workspace does, and what it deliberately does not.',
       sections: [
@@ -90,18 +114,20 @@ const en = {
           id: 'circuits',
           h: 'Circuits',
           ul: [
-            'A schematic workspace with standard symbols: place, move, rotate, wire, undo and redo.',
+            'A schematic workspace with standard symbols: place, move, rotate, wire, undo and redo, in a 2D view and a 3D view.',
             'DC operating point and limited time-domain simulation of capacitor circuits, with the results shown next to the circuit.',
             'A laboratory power supply with voltage setpoint and current limit.',
+            'Parts driven beyond their absolute maximum ratings are flagged, and wiring errors are explained.',
             'When something cannot be modeled reliably, the workspace says so instead of showing a made-up result.',
           ],
         },
         {
           id: 'esp32',
-          h: 'Microcontroller',
+          h: 'Microcontroller and parts',
           ul: [
             'The original ([[classic]]) [[ESP32]] DevKit with its real pin names, for example [[GPIO2]] and [[3V3]]. Other ESP32 variants are not supported.',
             'Firmware is written in Arduino C++ (a single sketch) and built by the build service; the built firmware runs against your circuit.',
+            'An [[HC-SR04]] distance sensor, a temperature sensor and an [[I2C]] LCD.',
             'Serial output is shown in a read-only monitor.',
           ],
         },
@@ -118,7 +144,7 @@ const en = {
           id: 'limits',
           h: 'Limits',
           ul: [
-            'A computer with Chrome or Edge. Phones and tablets are not supported yet.',
+            'You need a computer with Chrome or Edge.',
             'Building and running firmware needs a connection to the service; editing a circuit does not.',
             'No PCB design and no AC simulation.',
           ],
@@ -156,10 +182,19 @@ const en = {
         {
           id: 'how-to-apply',
           h: 'How to apply',
-          p: [
-            'Applications are not open yet. There is no form on this site and nothing to send yet.',
-            'When applications open, this page will explain the steps. Until then, please check back later.',
+          pPending: [
+            'Registration is not open yet. There is no form on this site and nothing to send yet.',
+            'When registration opens, this page will explain the steps. Until then, please check back later.',
           ],
+          pOpen: [
+            'Fill in the sign-up form with the button below. It is hosted on Google Forms, outside this site.',
+            'Applying does not give access. Approved applicants are notified by email.',
+          ],
+        },
+        {
+          id: 'tester-sign-in',
+          h: 'Already approved?',
+          p: ['Approved testers sign in to the Lab with the link below.'],
         },
       ],
     },
@@ -168,11 +203,7 @@ const en = {
       description: 'Short answers about TBI Lab and the Alpha program.',
       h1: 'Frequently asked questions',
       sections: [
-        {
-          id: 'q-free',
-          h: 'Is it free?',
-          p: ['The Alpha program is free of charge.'],
-        },
+        { id: 'q-free', h: 'Is it free?', p: ['The Alpha program is free of charge.'] },
         {
           id: 'q-access',
           h: 'If I apply, do I get access?',
@@ -181,11 +212,9 @@ const en = {
           ],
         },
         {
-          id: 'q-device',
-          h: 'Can I use it on a phone?',
-          p: [
-            'Not yet. You need a computer with Chrome or Edge.',
-          ],
+          id: 'q-need',
+          h: 'What do I need?',
+          p: ['A computer with Chrome or Edge.'],
         },
         {
           id: 'q-board',
@@ -199,30 +228,80 @@ const en = {
             'Projects are saved in your browser while you work. During the Alpha, data may be reset, so keep your own copies of anything important.',
           ],
         },
-        {
-          id: 'q-lang',
-          h: 'Which languages are available?',
-          p: ['Hebrew and English.'],
-        },
+        { id: 'q-lang', h: 'Which languages are available?', p: ['Hebrew and English.'] },
       ],
     },
     privacy: {
       title: 'Privacy — TBI Lab',
-      description: 'Privacy policy placeholder.',
+      description: 'Interim privacy notice for the TBI Lab public site and Alpha sign-up.',
       h1: 'Privacy',
-      sections: [],
-    },
-    terms: {
-      title: 'Terms — TBI Lab',
-      description: 'Terms placeholder.',
-      h1: 'Terms',
-      sections: [],
+      sections: [
+        {
+          id: 'site',
+          h: 'This website',
+          p: [
+            'This website collects no personal data. It sets no cookies, uses no analytics or advertising trackers, and loads no third-party scripts, fonts or images.',
+          ],
+        },
+        {
+          id: 'signup',
+          h: 'Signing up for the Alpha',
+          p: [
+            'To apply you fill in a form hosted on Google Forms. TBI collects the details in the form to review your request, give you access to the Alpha and update you about it. The form is run by Google and is also subject to Google’s own terms.',
+            'We will not sell your details or pass them on to others.',
+          ],
+        },
+        {
+          id: 'retention',
+          h: 'How long we keep it',
+          p: [
+            'Requests that are not approved are deleted within 90 days. Other requests are kept for up to 12 months.',
+          ],
+        },
+        {
+          id: 'contact',
+          h: 'Access and deletion',
+          p: ['To see or delete your details, write to support@tbi-tech.net.'],
+        },
+      ],
     },
     accessibility: {
       title: 'Accessibility statement — TBI Lab',
-      description: 'Accessibility statement placeholder.',
+      description:
+        'What was checked on the TBI Lab public site for accessibility, and what was not.',
       h1: 'Accessibility statement',
-      sections: [],
+      sections: [
+        {
+          id: 'scope',
+          h: 'Scope',
+          p: [
+            'This statement is about this public website only. The Lab application is a separate product and is not covered here.',
+          ],
+        },
+        {
+          id: 'checked',
+          h: 'What was checked',
+          ul: [
+            'Automatic checks with axe-core on every page in Hebrew and English.',
+            'Keyboard use: a skip link, a visible focus indicator and every link reachable in a sensible order.',
+            'Reflow: the pages fit a 320 pixel wide screen without horizontal scrolling.',
+          ],
+        },
+        {
+          id: 'not-checked',
+          h: 'What was not checked',
+          p: [
+            'The site has not yet been tested with screen readers. We do not claim conformance with any accessibility standard or level.',
+          ],
+        },
+        {
+          id: 'contact',
+          h: 'Report a barrier',
+          p: [
+            'If you meet a barrier on this site, write to support@tbi-tech.net and say which page it is on.',
+          ],
+        },
+      ],
     },
   },
 };
@@ -242,54 +321,65 @@ const he = {
   switchTo: 'English',
   switchToLang: 'en',
   navNames: { home: 'דף הבית', product: 'המוצר', alpha: 'תוכנית אלפא', faq: 'שאלות נפוצות' },
-  footerNames: {
-    privacy: 'פרטיות',
-    terms: 'תנאי שימוש',
-    accessibility: 'הצהרת נגישות',
-  },
+  footerNames: { privacy: 'פרטיות', accessibility: 'הצהרת נגישות' },
   contactLabel: 'יצירת קשר',
-  contact: '[פרטי יצירת קשר יתווספו בעת הפרסום]',
-  applyPending: 'הגשת מועמדות לאלפא (ההרשמה תיפתח בקרוב)',
+  signIn: 'כניסת בודקים',
+  signInHint: 'לבודקים שאושרו',
+  signInNote: 'כבר אושרתם? כניסה למעבדה',
+  applyPending: 'הצטרפו לאלפא',
+  applyPendingNote: 'ההרשמה תיפתח בקרוב',
+  applyOpen: 'הצטרפו לאלפא',
   applyHint: 'ההרשמה עדיין לא נפתחה. הקישור מסביר איך ההגשה תעבוד.',
-  desktopNote: 'מחשב עם Chrome או Edge. טלפון וטאבלט עדיין לא נתמכים.',
-  draftNote: 'טיוטה — תפורסם לאחר בדיקה משפטית',
-  companyLine: 'החברה: [COMPANY LEGAL NAME TBD]',
+  desktopNote: 'עובד במחשב עם Chrome או Edge.',
+  interimNote: 'טקסט ביניים. יוחלף בגרסה שנבדקה.',
+  screenshotsH: 'ככה זה נראה במעבדה',
   pages: {
     home: {
-      title: 'TBI Lab — סביבת עבודה להנדסת אלקטרוניקה',
+      title: 'TBI Lab — מעבדת הנדסת אלקטרוניקה ל-ESP32 בדפדפן',
       description:
-        'TBI Lab הוא סביבת עבודה להנדסת אלקטרוניקה בדפדפן: בונים מעגלים, כותבים קושחה ל-[[ESP32]], בונים אותה בשירות הבנייה ומריצים את המעגל בדפדפן. תוכנית גישה מוקדמת, קבוצה מוגבלת.',
-      h1: 'TBI Lab',
-      lead: 'Electronics Engineering Workspace',
-      sections: [
+        'TBI Lab הוא כלי הנדסי בדפדפן: סימולציה דטרמיניסטית של מעגלים ושל [[ESP32]] עם קוד Arduino, רכיבים שמסומנים כשהם חורגים מהמגבלות המקסימליות, והסבר על שגיאות חיווט. אלפא חינמית, מספר מקומות מוגבל.',
+      h1: 'מעבדת אלקטרוניקה אמיתית ל-[[ESP32]], בתוך הדפדפן',
+      lead: 'מתכננים מעגל, כותבים קוד Arduino ומריצים אותו על [[ESP32]] מדומה, ורואים מה באמת קורה במעגל. כלי הנדסי, לא משחק.',
+      featuresH: 'בנוי להנדסה, לא להצגה',
+      features: [
         {
-          id: 'what',
-          h: 'מה זה',
-          p: [
-            'TBI Lab הוא מעבדה בדפדפן. בונים מעגל זרם ישר, מזינים אותו ממקור מתח מעבדתי, מריצים ורואים מתחים וזרמים שמגיעים מפותר אמיתי ולא מאנימציה.',
-            'אפשר להוסיף למעגל לוח [[ESP32]] DevKit קלאסי, לכתוב לו קושחה ב-Arduino C++ (סקיצה אחת), לבנות אותה בשירות הבנייה ולהריץ את המעגל בדפדפן.',
-          ],
+          h: 'סימולציה אמיתית ודטרמיניסטית',
+          p: 'מתחים, זרמים ותזמון מחושבים במנוע סימולציה ולא באנימציה. אותו מעגל נותן אותה תוצאה בכל פעם.',
         },
+        {
+          h: 'רכיבים שחורגים מהמגבלות מסומנים',
+          p: 'רכיב שעובר את המגבלות המקסימליות שלו לפי היצרן מסומן כ”עלול להינזק”, ואתם מגלים את זה על המסך ולא על השולחן.',
+        },
+        {
+          h: 'שגיאות חיווט מוסברות',
+          p: 'חיבור שגוי לא מוסתר. מקבלים הסבר מה לא בסדר ואיפה.',
+        },
+        {
+          h: '”לא נתמך” בכנות',
+          p: 'מה שעדיין אי אפשר לדמות בצורה אמינה נאמר במפורש. אין תוצאות מזויפות.',
+        },
+        {
+          h: 'ESP32, Arduino ורכיבים אמיתיים',
+          p: 'קוד Arduino על [[ESP32]] קלאסי, עם חיישן מרחק [[HC-SR04]], חיישן טמפרטורה ומסך [[I2C]] LCD.',
+        },
+        {
+          h: 'דו-ממד ותלת-ממד, עברית ואנגלית',
+          p: 'עובדים בתצוגת סכמה דו-ממדית או מסתכלים על המעגל בתלת-ממד. הממשק בעברית ובאנגלית, והחלפת שפה לא משנה את המעגל.',
+        },
+      ],
+      sections: [
         {
           id: 'who',
           h: 'למי זה מיועד',
           p: [
-            'סטודנטים, מורים, יוצרים וטכנאים ברמת מתחילים ומתקדמים-בינוניים. זה לא תחליף לסביבות מקצועיות לתכנון מעגלים מודפסים.',
-          ],
-        },
-        {
-          id: 'platform',
-          h: 'מה צריך',
-          ul: [
-            'מחשב עם Chrome או Edge. טלפון וטאבלט עדיין לא נתמכים.',
-            'ממשק בעברית ובאנגלית.',
+            'ליוצרים ולמי שרק מתחיל, שרוצים להבין למה מעגל עובד, ולאנשי מקצוע ולמהנדסים שרוצים לבדוק רעיון לפני שמלחימים. זה לא תחליף לסביבות מקצועיות לתכנון מעגלים מודפסים.',
           ],
         },
         {
           id: 'status',
-          h: 'גישה מוקדמת',
+          h: 'אלפא חינמית, מקומות מוגבלים',
           p: [
-            'TBI Lab נמצא בתוכנית גישה מוקדמת עם קבוצה מוגבלת. ההרשמה עדיין לא נפתחה. איך התוכנית עובדת מוסבר בעמוד תוכנית אלפא.',
+            'TBI Lab נמצא בתוכנית גישה מוקדמת. זה ללא עלות, מספר המקומות מוגבל והבקשות נבדקות ידנית. איך זה עובד מוסבר בעמוד תוכנית אלפא.',
           ],
         },
       ],
@@ -297,7 +387,7 @@ const he = {
     product: {
       title: 'המוצר — TBI Lab',
       description:
-        'מה TBI Lab עושה היום: מעגלי זרם ישר, [[ESP32]] קלאסי, הרצת המעגל בדפדפן עם קושחה שנבנית בשירות, עברית ואנגלית.',
+        'מה TBI Lab עושה היום: מעגלי זרם ישר, [[ESP32]] קלאסי עם קוד Arduino, חיישני מרחק וטמפרטורה, מסך [[I2C]] LCD, תצוגות דו-ממד ותלת-ממד, עברית ואנגלית.',
       h1: 'המוצר',
       lead: 'מה סביבת העבודה עושה, ומה היא בכוונה לא עושה.',
       sections: [
@@ -305,18 +395,20 @@ const he = {
           id: 'circuits',
           h: 'מעגלים',
           ul: [
-            'סביבת סכמה עם סמלים סטנדרטיים: הצבה, הזזה, סיבוב, חיווט, ביטול וחזרה.',
+            'סביבת סכמה עם סמלים סטנדרטיים: הצבה, הזזה, סיבוב, חיווט, ביטול וחזרה, בתצוגה דו-ממדית ובתצוגה תלת-ממדית.',
             'נקודת עבודה בזרם ישר וסימולציה מוגבלת בזמן של מעגלי קבלים, עם התוצאות לצד המעגל.',
             'מקור מתח מעבדתי עם הגדרת מתח והגבלת זרם.',
-            'כשאי אפשר לדגום משהו באופן אמין, הסביבה אומרת זאת במקום להציג תוצאה מומצאת.',
+            'רכיבים שעוברים את המגבלות המקסימליות שלהם מסומנים, ושגיאות חיווט מוסברות.',
+            'כשאי אפשר לדמות משהו באופן אמין, הסביבה אומרת זאת במקום להציג תוצאה מומצאת.',
           ],
         },
         {
           id: 'esp32',
-          h: 'מיקרו-בקר',
+          h: 'מיקרו-בקר ורכיבים',
           ul: [
             'לוח [[ESP32]] DevKit המקורי ([[classic]]) עם שמות הפינים האמיתיים, למשל [[GPIO2]] ו-[[3V3]]. גרסאות ESP32 אחרות אינן נתמכות.',
             'הקושחה נכתבת ב-Arduino C++ (סקיצה אחת) ונבנית בשירות הבנייה; הקושחה הבנויה רצה מול המעגל שלכם.',
+            'חיישן מרחק [[HC-SR04]], חיישן טמפרטורה ומסך [[I2C]] LCD.',
             'פלט טורי מוצג בצג לקריאה בלבד.',
           ],
         },
@@ -333,7 +425,7 @@ const he = {
           id: 'limits',
           h: 'מגבלות',
           ul: [
-            'מחשב עם Chrome או Edge. טלפון וטאבלט עדיין לא נתמכים.',
+            'צריך מחשב עם Chrome או Edge.',
             'בניית קושחה והרצתה דורשות חיבור לשירות; עריכת מעגל לא דורשת.',
             'אין תכנון מעגלים מודפסים ואין סימולציית זרם חילופין.',
           ],
@@ -371,10 +463,19 @@ const he = {
         {
           id: 'how-to-apply',
           h: 'איך מגישים מועמדות',
-          p: [
+          pPending: [
             'ההרשמה עדיין לא נפתחה. אין באתר טופס ואין עדיין מה לשלוח.',
             'כשההרשמה תיפתח, העמוד הזה יסביר את השלבים. עד אז, אפשר לחזור מאוחר יותר.',
           ],
+          pOpen: [
+            'ממלאים את טופס ההרשמה בכפתור שלמטה. הטופס מנוהל ב-Google Forms, מחוץ לאתר הזה.',
+            'הגשת מועמדות אינה מקנה גישה. מי שיאושר יקבל הודעה במייל.',
+          ],
+        },
+        {
+          id: 'tester-sign-in',
+          h: 'כבר אושרתם?',
+          p: ['בודקים שאושרו נכנסים למעבדה בקישור שלמטה.'],
         },
       ],
     },
@@ -391,11 +492,7 @@ const he = {
             'לא. הגשת מועמדות אינה מקנה גישה. הבקשות נבדקות ידנית, מספר המקומות מוגבל וייתכנה רשימת המתנה. רק חשבונות שאושרו יכולים להיכנס.',
           ],
         },
-        {
-          id: 'q-device',
-          h: 'אפשר להשתמש בטלפון?',
-          p: ['עדיין לא. צריך מחשב עם Chrome או Edge.'],
-        },
+        { id: 'q-need', h: 'מה צריך?', p: ['מחשב עם Chrome או Edge.'] },
         {
           id: 'q-board',
           h: 'אילו לוחות נתמכים?',
@@ -413,21 +510,68 @@ const he = {
     },
     privacy: {
       title: 'פרטיות — TBI Lab',
-      description: 'מציין מקום למדיניות פרטיות.',
+      description: 'הודעת פרטיות זמנית לאתר הציבורי של TBI Lab ולהרשמה לאלפא.',
       h1: 'פרטיות',
-      sections: [],
-    },
-    terms: {
-      title: 'תנאי שימוש — TBI Lab',
-      description: 'מציין מקום לתנאי שימוש.',
-      h1: 'תנאי שימוש',
-      sections: [],
+      sections: [
+        {
+          id: 'site',
+          h: 'האתר הזה',
+          p: [
+            'האתר הזה לא אוסף מידע אישי. הוא לא מציב עוגיות, לא משתמש בכלי ניתוח או בעוקבי פרסום, ולא טוען סקריפטים, גופנים או תמונות מצדדים שלישיים.',
+          ],
+        },
+        {
+          id: 'signup',
+          h: 'הרשמה לאלפא',
+          p: [
+            'להגשת מועמדות ממלאים טופס שמנוהל ב-Google Forms. TBI אוספת את הפרטים בטופס כדי לבחון את הבקשה, לתת גישה לאלפא ולעדכן אותך לגביה. הטופס מופעל על ידי גוגל וכפוף גם לתנאים של גוגל.',
+            'לא נמכור את הפרטים ולא נעביר אותם לאחרים.',
+          ],
+        },
+        {
+          id: 'retention',
+          h: 'כמה זמן נשמור',
+          p: ['בקשות שלא אושרו יימחקו בתוך 90 יום. שאר הבקשות יישמרו עד 12 חודשים.'],
+        },
+        {
+          id: 'contact',
+          h: 'עיון ומחיקה',
+          p: ['לעיון בפרטים או למחיקתם: support@tbi-tech.net.'],
+        },
+      ],
     },
     accessibility: {
       title: 'הצהרת נגישות — TBI Lab',
-      description: 'מציין מקום להצהרת נגישות.',
+      description: 'מה נבדק מבחינת נגישות באתר הציבורי של TBI Lab, ומה עדיין לא.',
       h1: 'הצהרת נגישות',
-      sections: [],
+      sections: [
+        {
+          id: 'scope',
+          h: 'היקף',
+          p: [
+            'ההצהרה עוסקת באתר הציבורי הזה בלבד. אפליקציית המעבדה היא מוצר נפרד ואינה כלולה כאן.',
+          ],
+        },
+        {
+          id: 'checked',
+          h: 'מה נבדק',
+          ul: [
+            'בדיקות אוטומטיות עם axe-core בכל עמוד, בעברית ובאנגלית.',
+            'שימוש במקלדת: קישור דילוג, חיווי פוקוס גלוי וכל הקישורים נגישים בסדר הגיוני.',
+            'התאמה למסך: העמודים נכנסים למסך ברוחב 320 פיקסלים בלי גלילה אופקית.',
+          ],
+        },
+        {
+          id: 'not-checked',
+          h: 'מה לא נבדק',
+          p: ['האתר עדיין לא נבדק עם קוראי מסך. איננו טוענים לעמידה בתקן או ברמת נגישות כלשהם.'],
+        },
+        {
+          id: 'contact',
+          h: 'דיווח על חסם',
+          p: ['נתקלתם בחסם באתר? כתבו ל-support@tbi-tech.net וציינו באיזה עמוד.'],
+        },
+      ],
     },
   },
 };
