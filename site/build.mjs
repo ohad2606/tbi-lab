@@ -158,6 +158,10 @@ export function buildSite(outDir = join(here, 'dist')) {
       write(`${lang}${pagePath(lang, page).slice(3)}index.html`, renderPage(lang, page));
   mkdirSync(join(out, 'assets'), { recursive: true });
   copyFileSync(join(here, 'site.css'), join(out, 'assets', 'site.css'));
+  // Self-hosted Heebo (SIL OFL 1.1, see site/fonts/OFL-Heebo.txt): consistent look, no third-party requests.
+  mkdirSync(join(out, 'assets', 'fonts'), { recursive: true });
+  for (const f of ['heebo-hebrew-wght-normal.woff2', 'heebo-latin-wght-normal.woff2', 'OFL-Heebo.txt'])
+    copyFileSync(join(here, 'fonts', f), join(out, 'assets', 'fonts', f));
   copyFileSync(join(BRAND_DIR, 'tbi-lab-logo.png'), join(out, 'assets', 'tbi-lab-logo.png'));
   for (const f of ['favicon.ico', 'favicon-32.png'])
     copyFileSync(join(BRAND_DIR, 'icons', 'production', f), join(out, 'assets', f));
