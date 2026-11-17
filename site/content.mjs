@@ -36,14 +36,15 @@ const en = {
   contact: '[contact details to be added at publication]',
   applyPending: 'Apply for Alpha (applications open soon)',
   applyHint: 'Applications are not open yet. This link explains how applying will work.',
-  desktopNote: 'Desktop or tablet required (screen width of at least 1024 px).',
+  desktopNote:
+    'Desktop browser only (Chromium-family browsers); mobile and tablet are not supported.',
   draftNote: 'Draft — will be published after legal review',
   companyLine: 'Company: [COMPANY LEGAL NAME TBD]',
   pages: {
     home: {
       title: 'TBI Lab — Electronics Engineering Workspace',
       description:
-        'TBI Lab is an electronics engineering workspace in the browser: build circuits, write [[ESP32]] firmware, build and run it. Early access program, limited cohort.',
+        'TBI Lab is an electronics engineering workspace in the browser: build circuits, write [[ESP32]] firmware, build it with the build service and run the circuit in the browser. Early access program, limited cohort.',
       h1: 'TBI Lab',
       lead: 'Electronics Engineering Workspace',
       sections: [
@@ -52,7 +53,7 @@ const en = {
           h: 'What it is',
           p: [
             'TBI Lab is a laboratory in the browser. You build a DC circuit, power it from a laboratory power supply, run it and see voltages and currents that come from a real solver, not from an animation.',
-            'You can add a classic [[ESP32]] DevKit to the circuit, write firmware for it in Arduino C++ or MicroPython, build it and run it in the browser against your circuit.',
+            'You can add a classic [[ESP32]] DevKit to the circuit, write firmware for it in Arduino C++ (a single sketch), have the build service build it, and run the circuit in the browser.',
           ],
         },
         {
@@ -66,7 +67,7 @@ const en = {
           id: 'platform',
           h: 'What you need',
           ul: [
-            'Desktop or tablet required (screen width of at least 1024 px).',
+            'Desktop browser only (Chromium-family browsers); mobile and tablet are not supported.',
             'A Chromium-family desktop browser.',
             'Hebrew and English interface.',
           ],
@@ -83,7 +84,7 @@ const en = {
     product: {
       title: 'Product — TBI Lab',
       description:
-        'What TBI Lab does today: DC circuits, a classic [[ESP32]], build and run in the browser, Hebrew and English.',
+        'What TBI Lab does today: DC circuits, a classic [[ESP32]], circuit simulation in the browser with firmware built by the service, Hebrew and English.',
       h1: 'Product',
       lead: 'What the workspace does, and what it deliberately does not.',
       sections: [
@@ -102,7 +103,7 @@ const en = {
           h: 'Microcontroller',
           ul: [
             'The original ([[classic]]) [[ESP32]] DevKit with its real pin names, for example [[GPIO2]] and [[3V3]]. Other ESP32 variants are not supported.',
-            'Firmware in Arduino C++ or MicroPython; the build runs on a service and the firmware runs against your circuit.',
+            'Firmware is written in Arduino C++ (a single sketch) and built by the build service; the built firmware runs against your circuit.',
             'Serial output is shown in a read-only monitor.',
           ],
         },
@@ -119,7 +120,7 @@ const en = {
           id: 'limits',
           h: 'Limits',
           ul: [
-            'Desktop or tablet only (at least 1024 px wide); no phone interface.',
+            'Desktop browser only (Chromium-family browsers); mobile and tablet are not supported.',
             'Building and running firmware needs a connection to the service; editing a circuit does not.',
             'No PCB design and no AC simulation.',
           ],
@@ -184,7 +185,9 @@ const en = {
         {
           id: 'q-device',
           h: 'Can I use it on a phone?',
-          p: ['No. Desktop or tablet is required (screen width of at least 1024 px).'],
+          p: [
+            'No. Desktop browser only (Chromium-family browsers); mobile and tablet are not supported.',
+          ],
         },
         {
           id: 'q-board',
@@ -251,14 +254,14 @@ const he = {
   contact: '[פרטי יצירת קשר יתווספו בעת הפרסום]',
   applyPending: 'הגשת מועמדות לאלפא (ההרשמה תיפתח בקרוב)',
   applyHint: 'ההרשמה עדיין לא נפתחה. הקישור מסביר איך ההגשה תעבוד.',
-  desktopNote: 'נדרש מחשב שולחני או טאבלט (רוחב מסך של 1024 פיקסלים לפחות).',
+  desktopNote: 'רק דפדפן שולחני (דפדפנים ממשפחת Chromium); נייד וטאבלט אינם נתמכים.',
   draftNote: 'טיוטה — תפורסם לאחר בדיקה משפטית',
   companyLine: 'החברה: [COMPANY LEGAL NAME TBD]',
   pages: {
     home: {
       title: 'TBI Lab — Electronics Engineering Workspace',
       description:
-        'TBI Lab הוא סביבת עבודה להנדסת אלקטרוניקה בדפדפן: בונים מעגלים, כותבים קושחה ל-[[ESP32]], בונים ומריצים. תוכנית גישה מוקדמת, קבוצה מוגבלת.',
+        'TBI Lab הוא סביבת עבודה להנדסת אלקטרוניקה בדפדפן: בונים מעגלים, כותבים קושחה ל-[[ESP32]], בונים אותה בשירות הבנייה ומריצים את המעגל בדפדפן. תוכנית גישה מוקדמת, קבוצה מוגבלת.',
       h1: 'TBI Lab',
       lead: 'Electronics Engineering Workspace',
       sections: [
@@ -267,7 +270,7 @@ const he = {
           h: 'מה זה',
           p: [
             'TBI Lab הוא מעבדה בדפדפן. בונים מעגל זרם ישר, מזינים אותו ממקור מתח מעבדתי, מריצים ורואים מתחים וזרמים שמגיעים מפותר אמיתי ולא מאנימציה.',
-            'אפשר להוסיף למעגל לוח [[ESP32]] DevKit קלאסי, לכתוב לו קושחה ב-Arduino C++ או ב-MicroPython, לבנות אותה ולהריץ אותה בדפדפן מול המעגל שלכם.',
+            'אפשר להוסיף למעגל לוח [[ESP32]] DevKit קלאסי, לכתוב לו קושחה ב-Arduino C++ (סקיצה אחת), לבנות אותה בשירות הבנייה ולהריץ את המעגל בדפדפן.',
           ],
         },
         {
@@ -281,7 +284,7 @@ const he = {
           id: 'platform',
           h: 'מה צריך',
           ul: [
-            'נדרש מחשב שולחני או טאבלט (רוחב מסך של 1024 פיקסלים לפחות).',
+            'רק דפדפן שולחני (דפדפנים ממשפחת Chromium); נייד וטאבלט אינם נתמכים.',
             'דפדפן שולחני ממשפחת Chromium.',
             'ממשק בעברית ובאנגלית.',
           ],
@@ -298,7 +301,7 @@ const he = {
     product: {
       title: 'המוצר — TBI Lab',
       description:
-        'מה TBI Lab עושה היום: מעגלי זרם ישר, [[ESP32]] קלאסי, בנייה והרצה בדפדפן, עברית ואנגלית.',
+        'מה TBI Lab עושה היום: מעגלי זרם ישר, [[ESP32]] קלאסי, הרצת המעגל בדפדפן עם קושחה שנבנית בשירות, עברית ואנגלית.',
       h1: 'המוצר',
       lead: 'מה סביבת העבודה עושה, ומה היא בכוונה לא עושה.',
       sections: [
@@ -317,7 +320,7 @@ const he = {
           h: 'מיקרו-בקר',
           ul: [
             'לוח [[ESP32]] DevKit המקורי ([[classic]]) עם שמות הפינים האמיתיים, למשל [[GPIO2]] ו-[[3V3]]. גרסאות ESP32 אחרות אינן נתמכות.',
-            'קושחה ב-Arduino C++ או ב-MicroPython; הבנייה מתבצעת בשירות והקושחה רצה מול המעגל שלכם.',
+            'הקושחה נכתבת ב-Arduino C++ (סקיצה אחת) ונבנית בשירות הבנייה; הקושחה הבנויה רצה מול המעגל שלכם.',
             'פלט טורי מוצג בצג לקריאה בלבד.',
           ],
         },
@@ -334,7 +337,7 @@ const he = {
           id: 'limits',
           h: 'מגבלות',
           ul: [
-            'מחשב שולחני או טאבלט בלבד (רוחב של 1024 פיקסלים לפחות); אין ממשק לטלפון.',
+            'רק דפדפן שולחני (דפדפנים ממשפחת Chromium); נייד וטאבלט אינם נתמכים.',
             'בניית קושחה והרצתה דורשות חיבור לשירות; עריכת מעגל לא דורשת.',
             'אין תכנון מעגלים מודפסים ואין סימולציית זרם חילופין.',
           ],
@@ -395,7 +398,7 @@ const he = {
         {
           id: 'q-device',
           h: 'אפשר להשתמש בטלפון?',
-          p: ['לא. נדרש מחשב שולחני או טאבלט (רוחב מסך של 1024 פיקסלים לפחות).'],
+          p: ['לא. רק דפדפן שולחני (דפדפנים ממשפחת Chromium); נייד וטאבלט אינם נתמכים.'],
         },
         {
           id: 'q-board',
