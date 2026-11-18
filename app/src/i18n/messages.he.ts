@@ -1787,6 +1787,10 @@ export const he: Record<MessageKey, string> = {
   'onboarding.heading': 'צעדים ראשונים',
   'onboarding.intro':
     'TBI Lab היא סביבת עבודה הנדסית לאלקטרוניקה. היא מדמה את ה־ESP32 הקלאסי ואת המעגל סביבו, כאן בדפדפן שלכם.',
+  'onboarding.quick.heading': 'ההתחלה המהירה: בלי בנייה ובלי המתנה',
+  'onboarding.quick.body':
+    'פתחו מעגל LED קטן, לחצו הרצה בסרגל העליון, בחרו את הנגד ⁦R1⁩ ושנו את ערכו. זרם ה־LED משתנה בהתאם.',
+  'onboarding.quick.open': 'פתיחת דוגמת ה־LED',
   'onboarding.step1': 'פתחו אחת מדוגמאות ה־ESP32 שלמטה, למשל אזעקת המרחק.',
   'onboarding.step2': 'בלשונית הקוד, לחצו בנייה. הבנייה הראשונה עשויה להימשך כדקה.',
   'onboarding.step3':

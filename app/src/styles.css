@@ -3624,6 +3624,15 @@ select {
 .getting-started {
   margin-block-end: 1rem;
 }
+.getting-started-quick {
+  border-inline-start: 4px solid var(--accent, currentColor);
+  padding-inline-start: 0.75rem;
+  margin-block: 0.75rem;
+}
+.getting-started-quick h3 {
+  margin: 0 0 0.25rem;
+  font-size: 1rem;
+}
 .getting-started-steps {
   padding-inline-start: 1.4rem;
 }

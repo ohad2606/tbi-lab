@@ -1849,6 +1849,10 @@ export const en = {
   'onboarding.heading': 'Getting started',
   'onboarding.intro':
     'TBI Lab is an electronics engineering workspace. It simulates a Classic ESP32 and the circuit around it, here in your browser.',
+  'onboarding.quick.heading': 'Fastest start: no build, no waiting',
+  'onboarding.quick.body':
+    'Open a small LED circuit, press Run in the top bar, then select the resistor R1 and change its value. The LED current changes with it.',
+  'onboarding.quick.open': 'Open the LED example',
   'onboarding.step1': 'Open an ESP32 example below, for example the distance alarm.',
   'onboarding.step2': 'In the Code tab, press Build. The first build can take about a minute.',
   'onboarding.step3':
