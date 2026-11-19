@@ -2019,6 +2019,32 @@ export const he: Record<MessageKey, string> = {
   'status.feedback': 'משוב',
   'status.admin': 'ניהול',
 
+  // חיווט במקלדת (A11Y-002): הכרזות ותוויות פינים.
+  'kbwire.pins':
+    '{component}: {count} פינים, כעת ב-{pin}. מקשי החצים מעבירים בין פינים, Enter מתחיל חוט, Escape יוצא.',
+  'kbwire.pinLabel.free': '{component}, פין {pin}, לא מחובר',
+  'kbwire.pinLabel.connectedOne': '{component}, פין {pin}, מחובר לחוט אחד',
+  'kbwire.pinLabel.connected': '{component}, פין {pin}, מחובר ל-{n} חוטים',
+  'kbwire.start': 'התחלת חוט מ-{pin}. Tab או החצים בוחרים יעד, Enter מחבר, Escape מבטל.',
+  'kbwire.candidate': '{pin}, {n} מתוך {total}, במרחק {distance} משבצות רשת{hint}',
+  'kbwire.hint.ground_supply': '. אזהרה: מחבר אדמה (GND) לספק מתח',
+  'kbwire.hint.supply_supply': '. אזהרה: מחבר שני ספקי מתח',
+  'kbwire.done': 'חובר {from} אל {to}',
+  'kbwire.cancel': 'החיווט בוטל. לא נוסף חוט.',
+  'kbwire.refused': 'אי אפשר לחבר: {reason}',
+  'kbwire.reason.same_endpoint': 'שני הקצוות באותה נקודה',
+  'kbwire.reason.other': 'הפעולה נדחתה',
+  'kbwire.running': 'חיווט אינו זמין בזמן שהסימולציה רצה. עצרו את הסימולציה תחילה.',
+  'kbwire.noTargets': 'אין פין אחר לחבר אליו את {pin}.',
+  'kbwire.wireSelected': 'חוט {n} מתוך {total}: {from} אל {to}.{hint}',
+  'kbwire.wireSelected.hint': ' מקש {delete} מסיר אותו, מקש {escape} מבטל בחירה.',
+  'kbwire.wireDeleteRefused':
+    'אי אפשר להסיר את החוט: העריכה אינה זמינה (הסימולציה רצה או שהפרויקט לקריאה בלבד).',
+  'kbwire.wireRemoved': 'החוט הוסר: {from} אל {to}',
+  'kbwire.wireCleared': 'בחירת החוט בוטלה',
+  'kbwire.noWires': 'אין חוטים.',
+  'kbwire.endJunction': 'צומת {id}',
+
   // Admin app design §3: shared with the TBI Lab Admin app (packages/admin-client), unchanged.
   ...adminMessagesHe,
 };

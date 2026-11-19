@@ -37,6 +37,7 @@ import {
   type Quantity,
   type ComponentTypeId,
   type Point,
+  type Wire,
   type ProjectDocument,
   type Rotation,
   type Selection,
@@ -66,6 +67,16 @@ import {
   type SymbolState,
 } from './symbols.js';
 import { bodyOverlaps } from '../geometry/overlap.js';
+import {
+  distanceCells,
+  pinsOf,
+  reduceWireKeyboard,
+  stepWireSelection,
+  wireBracketStep,
+  type WireKbAction,
+  type WireKbEvent,
+  type WireKbState,
+} from './wireKeyboard.js';
 import {
   componentBox,
   componentBoxes,
@@ -263,6 +274,26 @@ export function Canvas({
   const [size, setSize] = useState({ w: 0, h: 0 });
   const [camera, setCamera] = useState<Camera>({ x: -400, y: -300, scale: 1 });
   const [mode, setMode] = useState<Mode>({ kind: 'idle' });
+  // Keyboard wiring (A11Y-002): pin mode / candidate cycling, and the text the live region reads.
+  const [kb, setKb] = useState<WireKbState>({ mode: 'idle' });
+  const [kbMessage, setKbMessage] = useState('');
+  const kbRaf = useRef(0);
+  const kbFlip = useRef(false);
+  // Live region: clear, then set on the next frame (plus an alternating trailing nbsp), so an
+  // identical consecutive message is still announced. Empty text clears and cancels a pending set.
+  const kbAnnounce = (text: string) => {
+    cancelAnimationFrame(kbRaf.current);
+    setKbMessage('');
+    if (!text) return;
+    kbFlip.current = !kbFlip.current;
+    kbRaf.current = requestAnimationFrame(() =>
+      setKbMessage(text + (kbFlip.current ? '\u00A0' : '')),
+    );
+  };
+  const kbReset = () => {
+    setKb((s) => (s.mode === 'idle' ? s : { mode: 'idle' }));
+    kbAnnounce('');
+  };
   const [cursor, setCursor] = useState<Point | null>(null);
   // Sprint 13 OS-10: the placement preview says whether a click here would be accepted (the
   // OS-04 overlap rule the edit applies); evaluated once per grid point, not per pointer event.
@@ -454,6 +485,7 @@ export function Canvas({
     const world = toWorld(e.clientX, e.clientY);
     const hit = hitOf(e.target);
     pointerDown.current = true;
+    kbReset();
     if (e.button === 1 || (e.button === 0 && spaceHeld.current)) {
       svg.setPointerCapture(e.pointerId);
       setMode({ kind: 'pan', client: { x: e.clientX, y: e.clientY }, camera });
@@ -702,7 +734,222 @@ export function Canvas({
     return c && (c.type === 'component.push_button' || CATALOG[c.type].toggleParam) ? c : undefined;
   };
 
+  // ---------------------------------------------------------------------------------------------
+  // Keyboard wiring (A11Y-002). Same domain edit as the pointer (addWire), no new electrics.
+
+  const pinName = (p: { component: string; terminal: string }) => {
+    const c = doc.components.find((x) => x.id === p.component);
+    const def = c ? CATALOG[c.type].terminals.find((x) => x.id === p.terminal) : undefined;
+    const name = def ? catalogText(state.locale, def.labelKey) : p.terminal;
+    return `${isolateLtr(p.component)} ${name}`;
+  };
+  const pinLabel = (p: { component: string; terminal: string }) => {
+    const c = doc.components.find((x) => x.id === p.component);
+    const def = c ? CATALOG[c.type].terminals.find((x) => x.id === p.terminal) : undefined;
+    const n = endCounts.get(`${p.component}\u0000${p.terminal}`) ?? 0;
+    const params = {
+      component: isolateLtr(p.component),
+      pin: def ? catalogText(state.locale, def.labelKey) : p.terminal,
+      n,
+    };
+    return t(
+      n === 0
+        ? 'kbwire.pinLabel.free'
+        : n === 1
+          ? 'kbwire.pinLabel.connectedOne'
+          : 'kbwire.pinLabel.connected',
+      params,
+    );
+  };
+  const wireEndName = (end: Wire['from']) =>
+    end.kind === 'terminal'
+      ? pinName(end)
+      : t('kbwire.endJunction', { id: isolateLtr(end.junction) });
+  /** Selects the next/previous wire (wrapping) and announces it with both endpoints. */
+  const kbSelectWire = (delta: 1 | -1) => {
+    const cur =
+      selection.wires.length === 1 && !selection.components.length && !selection.junctions.length
+        ? selection.wires[0]
+        : undefined;
+    const step = stepWireSelection(doc, cur, delta);
+    if (!step) {
+      kbAnnounce(t('kbwire.noWires'));
+      return;
+    }
+    const w = doc.layout.wires.find((x) => x.id === step.id)!;
+    store.select({ ...emptySelection(), wires: [step.id] });
+    kbAnnounce(
+      t('kbwire.wireSelected', {
+        n: step.n,
+        total: step.total,
+        from: wireEndName(w.from),
+        to: wireEndName(w.to),
+        // The Delete/Escape hint is wrong when nothing can be deleted.
+        hint: readOnly
+          ? ''
+          : t('kbwire.wireSelected.hint', {
+              delete: isolateLtr('Delete'),
+              escape: isolateLtr('Escape'),
+            }),
+      }),
+    );
+  };
+  const kbText = (ev: WireKbEvent): string => {
+    switch (ev.kind) {
+      case 'pins':
+        return t('kbwire.pins', {
+          component: isolateLtr(ev.pin.component),
+          count: ev.count,
+          pin: pinName(ev.pin),
+        });
+      case 'pin':
+        return pinLabel(ev.pin);
+      case 'start':
+        return t('kbwire.start', { pin: pinName(ev.pin) });
+      case 'candidate':
+        return t('kbwire.candidate', {
+          pin: pinName(ev.candidate.pin),
+          n: ev.n,
+          total: ev.total,
+          distance: distanceCells(ev.candidate.distance),
+          hint: ev.candidate.hint ? t(`kbwire.hint.${ev.candidate.hint}`) : '',
+        });
+      case 'done':
+        return t('kbwire.done', { from: pinName(ev.from), to: pinName(ev.to) });
+      case 'cancel':
+        return t('kbwire.cancel');
+      case 'refused':
+        return t('kbwire.refused', {
+          reason: t(
+            ev.reason === 'same_endpoint' ? 'kbwire.reason.same_endpoint' : 'kbwire.reason.other',
+          ),
+        });
+      case 'running':
+        return t('kbwire.running');
+      case 'noTargets':
+        return t('kbwire.noTargets', { pin: pinName(ev.pin) });
+    }
+  };
+  const kbDispatch = (action: WireKbAction) => {
+    const r = reduceWireKeyboard(kb, action, {
+      doc,
+      running: simActive,
+      route: (a, b) => ({ vertices: autoRouteVertices([a, b], routeObs) }),
+    });
+    if (r.doc) store.apply({ ok: true, doc: r.doc }, emptySelection());
+    setKb(r.state);
+    if (r.event) kbAnnounce(kbText(r.event));
+    return r;
+  };
+  const kbFocusComponent = (id: string) => {
+    const el = svgRef.current?.querySelector(`[data-hit="component"][data-id="${id}"]`);
+    (el as SVGElement | null)?.focus({ preventScroll: true });
+  };
+
+  /** Returns true when the key was consumed by keyboard wiring. */
+  const onKbKey = (e: KeyboardEvent): boolean => {
+    if (kb.mode === 'idle') {
+      if (e.code !== 'KeyW' || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey || readOnly)
+        return false;
+      const el = (e.target as Element | null)?.closest?.(
+        '[data-hit="component"]',
+      ) as SVGElement | null;
+      if (!el?.dataset.id) return false;
+      e.preventDefault();
+      if (simActive) {
+        kbAnnounce(t('kbwire.running'));
+        return true;
+      }
+      kbDispatch({ type: 'enterPins', component: el.dataset.id });
+      return true;
+    }
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      const wasWiring = kb.mode === 'wiring';
+      const component = kb.mode === 'wiring' ? kb.from.component : kb.component;
+      if (wasWiring) kbDispatch({ type: 'cancel' });
+      else setKb({ mode: 'idle' });
+      kbFocusComponent(component);
+      return true;
+    }
+    if (e.ctrlKey || e.metaKey || e.altKey) return false;
+    const next =
+      e.key === 'ArrowDown' || e.key === 'ArrowRight' || (e.key === 'Tab' && !e.shiftKey);
+    const prev = e.key === 'ArrowUp' || e.key === 'ArrowLeft' || (e.key === 'Tab' && e.shiftKey);
+    if (kb.mode === 'pins') {
+      if (e.key === 'Tab') {
+        setKb({ mode: 'idle' }); // Tab leaves pin mode and moves focus natively
+        return false;
+      }
+      if (next || prev) {
+        e.preventDefault();
+        kbDispatch({ type: 'movePin', delta: next ? 1 : -1 });
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        kbDispatch({ type: 'start' });
+      } else if (e.key === ' ') e.preventDefault();
+      else return false;
+      return true;
+    }
+    // wiring: Tab is trapped on purpose while a target is being chosen (Escape always leaves).
+    if (next || prev) {
+      e.preventDefault();
+      kbDispatch({ type: 'cycle', delta: next ? 1 : -1 });
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      kbDispatch({ type: 'commit' });
+    } else if (e.key === ' ') e.preventDefault();
+    else return false;
+    return true;
+  };
+
+  // Focus follows the roving pin; the candidate is panned into view when it is outside.
+  const kbPinKey =
+    kb.mode === 'pins'
+      ? `${kb.component}\u0000${pinsOf(doc, kb.component)[kb.index]?.terminal}`
+      : kb.mode === 'wiring'
+        ? `${kb.from.component}\u0000${kb.from.terminal}`
+        : '';
+  useEffect(() => {
+    if (!kbPinKey) return;
+    const [component, terminal] = kbPinKey.split('\u0000');
+    const el = svgRef.current?.querySelector(
+      `[data-hit="terminal"][data-component="${component}"][data-terminal="${terminal}"]`,
+    ) as SVGElement | null;
+    el?.focus({ preventScroll: true });
+  }, [kbPinKey]);
+  const kbCandidate = kb.mode === 'wiring' ? kb.candidates[kb.index] : undefined;
+  const kbCandidatePos = kbCandidate
+    ? terminalPosition(doc, kbCandidate.pin.component, kbCandidate.pin.terminal)
+    : undefined;
+  useEffect(() => {
+    if (!kbCandidatePos || size.w <= 0) return;
+    const w = size.w / camera.scale;
+    const h = size.h / camera.scale;
+    const m = 40;
+    const dx =
+      kbCandidatePos.x < camera.x + m
+        ? kbCandidatePos.x - camera.x - m
+        : kbCandidatePos.x > camera.x + w - m
+          ? kbCandidatePos.x - camera.x - w + m
+          : 0;
+    const dy =
+      kbCandidatePos.y < camera.y + m
+        ? kbCandidatePos.y - camera.y - m
+        : kbCandidatePos.y > camera.y + h - m
+          ? kbCandidatePos.y - camera.y - h + m
+          : 0;
+    if (dx || dy) setCamera((c) => ({ ...c, x: c.x + dx, y: c.y + dy }));
+  }, [kbCandidatePos?.x, kbCandidatePos?.y]);
+  // Leaving the document state (simulation start, component removed) ends keyboard wiring.
+  useEffect(() => {
+    if (kb.mode === 'idle') return;
+    const comp = kb.mode === 'pins' ? kb.component : kb.from.component;
+    if (simActive || !doc.components.some((c) => c.id === comp)) setKb({ mode: 'idle' });
+  }, [simActive, doc]);
+
   const onKeyDown = (e: KeyboardEvent) => {
+    if (onKbKey(e)) return;
     if (e.key === ' ') {
       e.preventDefault();
       const sw = focusedSwitch(e);
@@ -726,7 +973,16 @@ export function Canvas({
       if (probeMode) onProbeModeChange(false);
       else if (placing) onPlacingDone();
       else if (mode.kind !== 'idle') setMode({ kind: 'idle' });
-      else store.select(emptySelection());
+      else {
+        if (selection.wires.length) kbAnnounce(t('kbwire.wireCleared'));
+        store.select(emptySelection());
+      }
+      return;
+    }
+    const bracketStep = kb.mode === 'idle' ? wireBracketStep(e) : null;
+    if (bracketStep) {
+      e.preventDefault();
+      kbSelectWire(bracketStep);
       return;
     }
     if (e.key === '+' || e.key === '=') return zoomAt(1.25);
@@ -754,10 +1010,27 @@ export function Canvas({
         }));
       return;
     }
+    if (readOnly && hasSelection && (e.key === 'Delete' || e.key === 'Backspace')) {
+      if (selection.wires.length) kbAnnounce(t('kbwire.wireDeleteRefused'));
+      return;
+    }
     if (readOnly || !hasSelection) return;
     if (e.key === 'Delete' || e.key === 'Backspace') {
       e.preventDefault();
-      store.apply(deleteSelection(doc, selection), emptySelection());
+      const removed =
+        selection.wires.length === 1 && !selection.components.length && !selection.junctions.length
+          ? doc.layout.wires.find((x) => x.id === selection.wires[0])
+          : undefined;
+      const del = deleteSelection(doc, selection);
+      store.apply(del, emptySelection());
+      if (removed && !del.ok) kbAnnounce(t('kbwire.wireDeleteRefused'));
+      if (removed && del.ok)
+        kbAnnounce(
+          t('kbwire.wireRemoved', {
+            from: wireEndName(removed.from),
+            to: wireEndName(removed.to),
+          }),
+        );
       svgRef.current?.focus();
     } else if (e.code === 'KeyR' && !e.ctrlKey && !e.metaKey && selection.components.length) {
       store.apply(rotateRouted(doc, selection.components));
@@ -936,7 +1209,11 @@ export function Canvas({
         onPointerCancel={releaseButton}
         onLostPointerCapture={releaseButton}
         // focusout bubbles from the focused part (blur would not): any focus loss releases.
-        onFocusOut={releaseKeyHeld}
+        onFocusOut={(e: FocusEvent) => {
+          releaseKeyHeld();
+          const to = e.relatedTarget as Node | null;
+          if (!to || !svgRef.current?.contains(to)) kbReset();
+        }}
         onPointerLeave={() => setCursor(null)}
         onWheel={onWheel}
         onKeyDown={onKeyDown}
@@ -1092,6 +1369,14 @@ export function Canvas({
               const p = terminalPosition(view, c.id, term.id)!;
               const ends = endCounts.get(`${c.id}\u0000${term.id}`) ?? 0;
               const contact = contactAt.get(`${c.id}\u0000${term.id}`);
+              const kbComponent =
+                kb.mode === 'pins' ? kb.component : kb.mode === 'wiring' ? kb.from.component : '';
+              const kbPin = kbComponent === c.id;
+              const kbCurrentKey = kbPinKey === `${c.id}\u0000${term.id}`;
+              const kbCurrent = kbPin && kbCurrentKey;
+              const kbSource = kb.mode === 'wiring' && kbCurrent;
+              const kbTarget =
+                kbCandidate?.pin.component === c.id && kbCandidate.pin.terminal === term.id;
               return (
                 <g key={`${c.id}.${term.id}`}>
                   {(ends >= 2 || contact) && (
@@ -1105,13 +1390,20 @@ export function Canvas({
                     />
                   )}
                   <g
-                    class={ends > 0 ? 'terminal connected' : 'terminal'}
+                    class={`${ends > 0 ? 'terminal connected' : 'terminal'}${kbPin ? ' kb-pin' : ''}${kbSource ? ' kb-source' : ''}${kbTarget ? ' kb-target' : ''}`}
                     data-hit="terminal"
                     data-component={c.id}
                     data-terminal={term.id}
+                    data-kb-candidate={kbTarget ? 'true' : undefined}
+                    tabindex={kbPin ? (kbCurrent ? 0 : -1) : undefined}
+                    role={kbPin ? 'button' : undefined}
+                    aria-label={
+                      kbPin ? pinLabel({ component: c.id, terminal: term.id }) : undefined
+                    }
                   >
                     <circle class="terminal-hit" cx={p.x} cy={p.y} r={9} />
                     <circle class="terminal-mark" cx={p.x} cy={p.y} r={3.5} />
+                    {(kbPin || kbTarget) && <circle class="kb-ring" cx={p.x} cy={p.y} r={11} />}
                   </g>
                 </g>
               );
@@ -1275,6 +1567,15 @@ export function Canvas({
             <path d="M3 8V3h5M12 3h5v5M17 12v5h-5M8 17H3v-5" />
           </svg>
         </button>
+      </div>
+      <div
+        class="visually-hidden"
+        role="status"
+        aria-live="polite"
+        data-testid="kbwire-status"
+        dir={state.locale.dir}
+      >
+        {kbMessage}
       </div>
       {(!readOnly ||
         overlaysLimited ||
