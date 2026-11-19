@@ -4656,6 +4656,11 @@ select {
   border-radius: 4px;
   background: var(--bg);
 }
+@media (forced-colors: active) {
+  .shortcut-table kbd {
+    border: 1px solid ButtonText;
+  }
+}
 @media (max-width: 40rem) {
   .shortcut-table,
   .shortcut-table tbody,
