@@ -7,8 +7,16 @@ import { expect, test } from '@playwright/test';
 import { createProject, waitForStoredProject } from './helpers.js';
 
 const T = {
-  en: { empty: 'No wires yet. Connect two pins to add one.', item: /^W1: .*PSU1.* to / },
-  he: { empty: 'עדיין אין חוטים. חברו שני פינים כדי להוסיף חוט.', item: /^W1: .*PSU1.* אל / },
+  en: {
+    empty: 'No wires yet. Connect two pins to add one.',
+    sel: 'Wire W1 selected',
+    item: /^W1: .*PSU1.* to /,
+  },
+  he: {
+    empty: 'עדיין אין חוטים. חברו שני פינים כדי להוסיף חוט.',
+    sel: 'חוט W1 נבחר',
+    item: /^W1: .*PSU1.* אל /,
+  },
 } as const;
 
 for (const lang of ['en', 'he'] as const) {
@@ -43,6 +51,7 @@ for (const lang of ['en', 'he'] as const) {
     await item.focus();
     await page.keyboard.press('Enter');
     await expect(item).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByTestId('wires-list-status')).toContainText(T[lang].sel);
     await expect(item).toBeFocused();
     await expect(page.locator('.wire-group.selected')).toHaveCount(1);
 
