@@ -4591,7 +4591,7 @@ select {
   min-width: 24px;
   font: inherit;
   cursor: pointer;
-  border: 1px solid var(--border);
+  border: 1px solid var(--muted, #4b5563);
   background: transparent;
   color: inherit;
   border-radius: 4px;
