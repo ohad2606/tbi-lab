@@ -18,6 +18,7 @@ import {
   waitSaved,
   wire,
 } from './helpers.js';
+import { markReturningUser } from './helpers/returningUser.js';
 
 test('A7: full browser restart restores the project exactly', async ({ baseURL }) => {
   const profile = await mkdtemp(join(tmpdir(), 'tbi-lab-restart-'));
@@ -25,6 +26,7 @@ test('A7: full browser restart restores the project exactly', async ({ baseURL }
   try {
     // Session 1: build a circuit.
     let context = await chromium.launchPersistentContext(profile, { baseURL: baseURL!, viewport });
+    await markReturningUser(context);
     let page = context.pages()[0] ?? (await context.newPage());
     await createProject(page, 'שולחן עבודה');
     await place(page, 'component.resistor', { x: 0, y: 0 });
@@ -52,6 +54,7 @@ test('A7: full browser restart restores the project exactly', async ({ baseURL }
 
     // Session 2: a new browser process on the same profile.
     context = await chromium.launchPersistentContext(profile, { baseURL: baseURL!, viewport });
+    await markReturningUser(context);
     page = context.pages()[0] ?? (await context.newPage());
     await page.goto('/');
     await reopenFromLibrary(page); // the app opens on Projects (S6)

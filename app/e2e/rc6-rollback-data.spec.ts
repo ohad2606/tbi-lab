@@ -20,6 +20,7 @@ import {
   storedProjects,
   waitSaved,
 } from './helpers.js';
+import { markReturningUser } from './helpers/returningUser.js';
 
 const ALPHA = process.env.TBI_RC6_ALPHA_DIST;
 const RC = process.env.TBI_RC6_RC_DIST;
@@ -64,6 +65,7 @@ test('Alpha → RC → Alpha → RC keeps every project intact', async ({ browse
     baseURL: `http://127.0.0.1:${PORT}`,
     acceptDownloads: true,
   });
+  await markReturningUser(ctx);
   const page = await ctx.newPage();
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
