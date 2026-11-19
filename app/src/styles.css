@@ -717,8 +717,16 @@ select {
 
 .wire-group.selected .wire-hit {
   stroke: var(--selected);
-  stroke-opacity: 0.3;
+  stroke-opacity: 0.45;
   stroke-width: 10;
+}
+
+@media (forced-colors: active) {
+  .wire-group.selected .wire-hit {
+    forced-color-adjust: none;
+    stroke: Highlight;
+    stroke-opacity: 1;
+  }
 }
 
 .wire-preview {
@@ -729,6 +737,54 @@ select {
 
 .terminal {
   cursor: crosshair;
+}
+
+/* A11Y-002 keyboard wiring: the focused pin and the chosen target get a ring (navy on white,
+   well above 3:1); the target is also dashed and filled so it does not rely on colour alone. */
+.terminal.kb-pin:focus,
+.terminal.kb-pin:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+.kb-ring {
+  fill: none;
+  stroke: var(--focus);
+  stroke-width: 3;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+  visibility: hidden;
+  filter: drop-shadow(0 0 1.5px var(--focus-halo)) drop-shadow(0 0 1px var(--focus-halo));
+}
+
+.terminal.kb-pin:focus .kb-ring {
+  visibility: visible;
+}
+
+.terminal.kb-target .kb-ring {
+  visibility: visible;
+  stroke-dasharray: 4 3;
+  fill: var(--accent-soft);
+  fill-opacity: 0.6;
+}
+
+/* The wire's source pin stays marked while choosing a target: a solid, thicker ring (the target
+   ring is dashed and filled), so the two differ by shape and not by colour. */
+.terminal.kb-source .kb-ring {
+  visibility: visible;
+  stroke-width: 5;
+  stroke-dasharray: none;
+}
+
+@media (forced-colors: active) {
+  .kb-ring {
+    forced-color-adjust: none;
+    stroke: Highlight;
+  }
+  .terminal.kb-target .kb-ring {
+    fill: Canvas;
+    fill-opacity: 0.6;
+  }
 }
 
 .terminal-hit {
@@ -4544,4 +4600,85 @@ select {
 .admin-rename {
   display: grid;
   gap: 0.35rem;
+}
+
+/* TBI-020 slice 2: keyboard shortcuts dialog and its top-bar button. */
+.shortcuts-open {
+  min-inline-size: 1.75rem;
+  min-block-size: 1.75rem;
+  font-weight: 700;
+}
+.shortcuts-dialog {
+  max-inline-size: min(56rem, 94vw);
+  max-block-size: 88vh;
+  overflow-y: auto;
+}
+.shortcuts-dialog h2:focus {
+  outline: none;
+}
+.shortcut-table {
+  inline-size: 100%;
+  border-collapse: collapse;
+  margin-block: 0 1rem;
+}
+.shortcut-table caption {
+  text-align: start;
+  font-weight: 700;
+  padding-block: 0.4rem;
+}
+.shortcut-table th,
+.shortcut-table td {
+  text-align: start;
+  vertical-align: top;
+  padding: 0.35rem 0.5rem;
+  border-block-end: 1px solid var(--border);
+}
+.shortcut-table thead th {
+  color: var(--muted);
+  font-weight: 600;
+}
+.shortcut-table .shortcut-keys {
+  font-weight: 400;
+  white-space: nowrap;
+}
+.shortcut-chord {
+  display: inline-block;
+  unicode-bidi: isolate;
+}
+.shortcut-table kbd {
+  display: inline-block;
+  min-inline-size: 1.5rem;
+  padding: 0 0.35rem;
+  text-align: center;
+  font: inherit;
+  font-size: 0.9em;
+  border: 1px solid var(--muted);
+  border-radius: 4px;
+  background: var(--bg);
+}
+@media (forced-colors: active) {
+  .shortcut-table kbd {
+    border: 1px solid ButtonText;
+  }
+}
+@media (max-width: 40rem) {
+  .shortcut-table,
+  .shortcut-table tbody,
+  .shortcut-table tr,
+  .shortcut-table th,
+  .shortcut-table td {
+    display: block;
+  }
+  .shortcut-table thead {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  .shortcut-table .shortcut-keys {
+    white-space: normal;
+    border-block-end: 0;
+    padding-block-end: 0;
+  }
 }
