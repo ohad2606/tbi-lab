@@ -2036,6 +2036,12 @@ export const he: Record<MessageKey, string> = {
   'kbwire.reason.other': 'הפעולה נדחתה',
   'kbwire.running': 'חיווט אינו זמין בזמן שהסימולציה רצה. עצרו את הסימולציה תחילה.',
   'kbwire.noTargets': 'אין פין אחר לחבר אליו את {pin}.',
+  'kbwire.wireSelected':
+    'חוט {n} מתוך {total}: {from} אל {to}. Delete מסיר אותו, Escape מבטל בחירה.',
+  'kbwire.wireRemoved': 'החוט הוסר: {from} אל {to}',
+  'kbwire.wireCleared': 'בחירת החוט בוטלה',
+  'kbwire.noWires': 'אין חוטים.',
+  'kbwire.endJunction': 'צומת {id}',
 
   // Admin app design §3: shared with the TBI Lab Admin app (packages/admin-client), unchanged.
   ...adminMessagesHe,

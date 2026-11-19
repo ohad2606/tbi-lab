@@ -11,7 +11,13 @@ import {
 } from '@tbi-lab/domain';
 import { en } from '../src/i18n/messages.en.js';
 import { he } from '../src/i18n/messages.he.js';
-import { candidateTargets, reduceWireKeyboard, type WireKbState } from '../src/ui/wireKeyboard.js';
+import {
+  candidateTargets,
+  reduceWireKeyboard,
+  stepWireSelection,
+  wirePosition,
+  type WireKbState,
+} from '../src/ui/wireKeyboard.js';
 
 const pin = (component: string, terminal: string): PinRef => ({ component, terminal });
 const term = (p: PinRef) => ({ kind: 'terminal' as const, ...p });
@@ -222,6 +228,53 @@ describe('kbwire i18n keys', () => {
       const he_ = (he as Record<string, string>)[k];
       expect(he_, k).toBeTruthy();
       expect(ph(he_!), k).toEqual(ph((en as Record<string, string>)[k]!));
+    }
+  });
+});
+
+describe('stepWireSelection (wire selection by keyboard)', () => {
+  const three = () => {
+    let d = base();
+    d = wire(d, pin('D1', 'anode'), pin('R1', 'a'));
+    d = wire(d, pin('D1', 'cathode'), pin('R1', 'b'));
+    return d;
+  };
+  it('has nothing to select in an empty document', () => {
+    expect(stepWireSelection(base(), undefined, 1)).toBeUndefined();
+    expect(stepWireSelection(base(), 'W1', -1)).toBeUndefined();
+  });
+  it('starts at the first (next) or last (previous) wire, in stable document order', () => {
+    const d = three();
+    const ids = d.layout.wires.map((w) => w.id);
+    expect(stepWireSelection(d, undefined, 1)).toEqual({ id: ids[0], n: 1, total: 2 });
+    expect(stepWireSelection(d, undefined, -1)).toEqual({ id: ids[1], n: 2, total: 2 });
+    expect(stepWireSelection(d, 'gone', 1)?.n).toBe(1);
+  });
+  it('wraps around both ways and never changes the document', () => {
+    const d = three();
+    const before = JSON.stringify(d);
+    const [a, b] = d.layout.wires.map((w) => w.id);
+    expect(stepWireSelection(d, a, 1)?.id).toBe(b);
+    expect(stepWireSelection(d, b, 1)?.id).toBe(a);
+    expect(stepWireSelection(d, a, -1)?.id).toBe(b);
+    expect(stepWireSelection(d, b, -1)?.id).toBe(a);
+    expect(JSON.stringify(d)).toBe(before);
+    expect(wirePosition(d, b!)).toBe(2);
+    expect(wirePosition(d, 'nope')).toBe(0);
+  });
+});
+
+describe('wire selection i18n keys', () => {
+  it('exist in both languages', () => {
+    for (const k of [
+      'kbwire.wireSelected',
+      'kbwire.wireRemoved',
+      'kbwire.wireCleared',
+      'kbwire.noWires',
+      'kbwire.endJunction',
+    ]) {
+      expect((en as Record<string, string>)[k], k).toBeTruthy();
+      expect((he as Record<string, string>)[k], k).toBeTruthy();
     }
   });
 });
