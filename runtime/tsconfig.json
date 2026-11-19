@@ -12,6 +12,7 @@
     "soak/**/*.ts",
     "builder/**/*.ts",
     "identity/**/*.ts",
-    "admin/**/*.ts"
+    "admin/**/*.ts",
+    "plans/**/*.ts"
   ]
 }
