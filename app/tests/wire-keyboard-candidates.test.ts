@@ -16,6 +16,7 @@ import {
   candidateTargets,
   reduceWireKeyboard,
   stepWireSelection,
+  wireListEntries,
   wirePosition,
   type WireKbState,
 } from '../src/ui/wireKeyboard.js';
@@ -335,5 +336,35 @@ describe('kbwire.wireSelected strings', () => {
     }
     expect(he['kbwire.wireSelected.hint']).toContain('{delete}');
     expect(en['kbwire.wireSelected']).not.toMatch(/Delete/);
+  });
+});
+
+describe('wires list (slice 3)', () => {
+  it('lists wires in document order with stable 1-based numbers, matching wirePosition', () => {
+    let doc = base();
+    doc = wire(doc, pin('D1', 'anode'), pin('R1', 'a'));
+    doc = wire(doc, pin('D1', 'cathode'), pin('R1', 'b'));
+    const rows = wireListEntries(doc, (e) =>
+      e.kind === 'terminal' ? `${e.component}.${e.terminal}` : `J${e.junction}`,
+    );
+    expect(rows.map((r) => r.n)).toEqual([1, 2]);
+    expect(rows.map((r) => r.id)).toEqual(doc.layout.wires.map((w) => w.id));
+    expect(rows[0]).toMatchObject({ from: 'D1.anode', to: 'R1.a' });
+    for (const r of rows) expect(wirePosition(doc, r.id)).toBe(r.n);
+  });
+  it('is empty without wires and appends (never reorders) when a wire is added', () => {
+    const doc = base();
+    expect(wireListEntries(doc, () => 'x')).toEqual([]);
+    const d1 = wire(doc, pin('D1', 'anode'), pin('R1', 'a'));
+    const d2 = wire(d1, pin('D1', 'cathode'), pin('R1', 'b'));
+    expect(wireListEntries(d2, () => 'x')[0]!.id).toBe(wireListEntries(d1, () => 'x')[0]!.id);
+  });
+  it('list i18n keys exist in EN and HE with the same placeholders', () => {
+    for (const k of ['kbwire.list.title', 'kbwire.list.empty', 'kbwire.list.item'] as const) {
+      expect(en[k], k).toBeTruthy();
+      expect(he[k], k).toBeTruthy();
+      const ph = (s: string) => [...s.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort();
+      expect(ph(he[k])).toEqual(ph(en[k]));
+    }
   });
 });
