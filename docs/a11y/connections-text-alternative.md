@@ -20,7 +20,12 @@ Keys `connections.*` in `messages.en.ts` and `messages.he.ts` (parity enforced b
 ## Tests
 `app/tests/connections-text.test.ts` (several nets, an unconnected pin, ground merging); `app/e2e/a11y-028-connections.spec.ts` (EN+HE: keyboard open/close, content, no trap).
 
-## Out of scope / remaining slices
-- Keyboard wiring (A11Y-002, TBI-001); the canvas label "Schematic canvas" rename (A11Y-028 wording).
-- Selection sync (focusing a part in the list selects it), a live-region announcement when connections change, wire-level detail, supply-rail marking, per-part pin-to-net view.
-- Manual screen-reader pass (NVDA/JAWS/VoiceOver) of table and list reading, and Hebrew mixed-direction reading order.
+## Status
+- Slice 1 (e92ded8): parts table, nets list, details disclosure, HE/EN.
+- Slice 2 (TBI-002, done): (1) every part reference is `bdi dir="ltr"`, pin labels `bdi dir="auto"`, in the table, nets and unconnected-pin cells; (2) table has a visually hidden `<caption>` with the part count, the nets list an `aria-label` with the net count; (3) the body is `role="region"` + `tabindex=0` + label (scrollable, keyboard-scrollable, focus ring); (4) selection sync: each part row has a toggle button (`aria-pressed`, label "Select R1 on the canvas") that selects the component; canvas selection (click or keyboard focus) marks the row (`data-selected`), scrolls it into view (`nearest`, focus is never moved) and underlines that part's pins in the nets list; no trap; (5) supply rails: a net holding a lab supply's positive terminal is named "Net N, supply rail (+)" / "רשת N, פס אספקה (+)"; ground stays "Ground (GND)". The ESP32 3V3/5V/VIN pins are not connectable terminals in the catalog (not wired, so in no net); if they become terminals, extend `supplyRefs`.
+- Tests: `app/tests/connections-text.test.ts`, `app/e2e/a11y-028b-connections-sync.spec.ts` (EN+HE).
+
+## Out of scope / remaining
+- Keyboard wiring (A11Y-002, TBI-001); the canvas label "Schematic canvas" rename.
+- A live-region announcement when connections change, wire-level detail, per-part pin-to-net view; selecting several parts from the list (single selection only).
+- Manual screen-reader pass (NVDA/JAWS/VoiceOver) of table and list reading, Hebrew mixed-direction reading order, and whether the button label inside the row header reads well.

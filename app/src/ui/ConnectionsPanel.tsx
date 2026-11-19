@@ -1,5 +1,8 @@
-import { catalogText, formatQuantity, isolateLtr } from '../i18n/i18n.js';
-import { useAppState, useT } from './context.js';
+import { Fragment } from 'preact';
+import { useEffect, useRef } from 'preact/hooks';
+import { catalogText, formatQuantity } from '../i18n/i18n.js';
+import { emptySelection } from '@tbi-lab/domain';
+import { useAppState, useStore, useT } from './context.js';
 import { describeConnections } from './connectionsText.js';
 
 /**
@@ -20,18 +23,46 @@ export function ConnectionsPanel() {
 }
 
 function ConnectionsBody() {
-  const { doc, locale } = useAppState();
+  const { doc, locale, selection } = useAppState();
+  const store = useStore();
   const t = useT();
+  const tableRef = useRef<HTMLTableElement>(null);
+  const selectedRef = selection.components.length === 1 ? selection.components[0]! : null;
+  // Canvas -> list: bring the selected part's row into view (never moves focus).
+  useEffect(() => {
+    if (selectedRef === null) return;
+    const row = tableRef.current?.querySelector('tr[data-selected="true"]');
+    (row as HTMLElement | null)?.scrollIntoView?.({ block: 'nearest' });
+  }, [selectedRef]);
   if (!doc) return null;
   const text = describeConnections(doc, (q) => formatQuantity(locale, q));
-  const pin = (ref: string, key: string) => `${isolateLtr(ref)} ${catalogText(locale, key)}`;
+  const isSelected = (ref: string) => selection.components.includes(ref);
+  // Part names and pin ids are technical (LTR); pin labels follow their own text direction.
+  const pinList = (pins: { ref: string; terminalKey: string }[]) =>
+    pins.map((e, i) => (
+      <Fragment key={`${e.ref}.${e.terminalKey}`}>
+        {i > 0 && ', '}
+        <span class={isSelected(e.ref) ? 'conn-pin selected' : 'conn-pin'}>
+          <bdi dir="ltr">{e.ref}</bdi> <bdi dir="auto">{catalogText(locale, e.terminalKey)}</bdi>
+        </span>
+      </Fragment>
+    ));
   return (
-    <div class="connections-body">
+    <div
+      class="connections-body"
+      role="region"
+      tabIndex={0}
+      aria-label={t('connections.region')}
+      data-testid="connections-region"
+    >
       <h3 id="connections-parts">{t('connections.parts')}</h3>
       {text.parts.length === 0 ? (
         <p>{t('connections.noParts')}</p>
       ) : (
-        <table aria-labelledby="connections-parts" data-testid="connections-parts">
+        <table ref={tableRef} data-testid="connections-parts">
+          <caption class="visually-hidden">
+            {t('connections.partsCaption', { n: text.parts.length })}
+          </caption>
           <thead>
             <tr>
               <th scope="col">{t('connections.col.part')}</th>
@@ -42,18 +73,25 @@ function ConnectionsBody() {
           </thead>
           <tbody>
             {text.parts.map((p) => (
-              <tr key={p.ref}>
+              <tr key={p.ref} data-selected={isSelected(p.ref) ? 'true' : 'false'}>
                 <th scope="row">
-                  <bdi dir="ltr">{p.ref}</bdi>
+                  <button
+                    type="button"
+                    class="conn-select"
+                    data-testid={`connections-select-${p.ref}`}
+                    aria-pressed={isSelected(p.ref) ? 'true' : 'false'}
+                    aria-label={t('connections.select', { ref: p.ref })}
+                    onClick={() => store.select({ ...emptySelection(), components: [p.ref] })}
+                  >
+                    <bdi dir="ltr">{p.ref}</bdi>
+                  </button>
                 </th>
                 <td>{catalogText(locale, p.typeNameKey)}</td>
                 <td>
                   <bdi dir="ltr">{p.values.join(' · ')}</bdi>
                 </td>
                 <td>
-                  {p.unconnected.length === 0
-                    ? t('connections.none')
-                    : p.unconnected.map((u) => catalogText(locale, u.terminalKey)).join(', ')}
+                  {p.unconnected.length === 0 ? t('connections.none') : pinList(p.unconnected)}
                 </td>
               </tr>
             ))}
@@ -64,15 +102,22 @@ function ConnectionsBody() {
       {text.nets.length === 0 ? (
         <p>{t('connections.noNets')}</p>
       ) : (
-        <ul aria-labelledby="connections-nets" data-testid="connections-nets">
+        <ul
+          aria-label={t('connections.netsLabel', { n: text.nets.length })}
+          data-testid="connections-nets"
+        >
           {text.nets.map((n) => (
             <li key={n.id} data-testid={`connections-net-${n.ground ? 'gnd' : n.index}`}>
               <strong>
-                {n.ground ? t('connections.ground') : t('connections.net', { n: n.index })}
+                {n.ground
+                  ? t('connections.ground')
+                  : t(n.supplyRefs.length > 0 ? 'connections.netSupply' : 'connections.net', {
+                      n: n.index,
+                    })}
                 {n.userName !== null && <bdi dir="auto"> ({n.userName})</bdi>}
               </strong>
               {': '}
-              {n.endpoints.map((e) => pin(e.ref, e.terminalKey)).join(', ')}
+              {pinList(n.endpoints)}
             </li>
           ))}
         </ul>

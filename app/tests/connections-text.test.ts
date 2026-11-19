@@ -57,4 +57,17 @@ describe('describeConnections (A11Y-028)', () => {
     expect(d.nets).toEqual([]);
     expect(d.parts.map((p) => p.ref)).toEqual(['PSU1', 'GND1']);
   });
+
+  it('marks the net holding a lab supply positive terminal as a supply rail (not ground, not others)', () => {
+    const { doc, ids } = circuit();
+    const d = describeConnections(doc, (q) => fmt(q as never));
+    expect(d.nets.map((n) => n.supplyRefs)).toEqual([[], [ids.psu], []]);
+  });
+
+  it('every endpoint and part carries the component id used for selection sync', () => {
+    const { doc, ids } = circuit();
+    const d = describeConnections(doc, (q) => fmt(q as never));
+    expect(d.nets[1]!.endpoints.map((e) => e.ref)).toContain(ids.r1);
+    expect(d.parts.map((p) => p.ref)).toContain(ids.r2);
+  });
 });

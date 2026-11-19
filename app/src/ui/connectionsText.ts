@@ -38,6 +38,8 @@ export interface NetText {
   /** User-authored net name, verbatim, or null. */
   userName: string | null;
   endpoints: PinText[];
+  /** References of lab supplies whose positive terminal is on this net (a supply rail); else empty. */
+  supplyRefs: string[];
 }
 
 export interface ConnectionsText {
@@ -60,6 +62,16 @@ export function describeConnections(
     ground: n.id === GROUND_NODE,
     index: n.id === GROUND_NODE ? 0 : ++index,
     userName: n.userName,
+    supplyRefs:
+      n.id === GROUND_NODE
+        ? []
+        : n.pins
+            .filter(
+              (p) =>
+                p.terminal === 'positive' &&
+                doc.components.find((c) => c.id === p.component)!.type === 'instrument.lab_psu',
+            )
+            .map((p) => p.component),
     endpoints: n.pins.map((p) => ({
       ref: p.component,
       terminalKey: CATALOG[doc.components.find((c) => c.id === p.component)!.type].terminals.find(

@@ -4581,3 +4581,30 @@ select {
   margin: 0;
   padding-inline-start: 1.1rem;
 }
+.connections-body:focus-visible,
+.conn-select:focus-visible {
+  outline: 2px solid var(--focus, currentColor);
+  outline-offset: 2px;
+}
+.conn-select {
+  min-height: 24px;
+  min-width: 24px;
+  font: inherit;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: inherit;
+  border-radius: 4px;
+  padding: 0 0.4rem;
+}
+.conn-select[aria-pressed='true'] {
+  font-weight: 700;
+  border-width: 2px;
+}
+.connections-body tr[data-selected='true'] {
+  background: var(--selection-bg, rgba(80, 140, 255, 0.18));
+}
+.conn-pin.selected {
+  font-weight: 700;
+  text-decoration: underline;
+}
