@@ -274,6 +274,23 @@ export function Canvas({
   // Keyboard wiring (A11Y-002): pin mode / candidate cycling, and the text the live region reads.
   const [kb, setKb] = useState<WireKbState>({ mode: 'idle' });
   const [kbMessage, setKbMessage] = useState('');
+  const kbRaf = useRef(0);
+  const kbFlip = useRef(false);
+  // Live region: clear, then set on the next frame (plus an alternating trailing nbsp), so an
+  // identical consecutive message is still announced. Empty text clears and cancels a pending set.
+  const kbAnnounce = (text: string) => {
+    cancelAnimationFrame(kbRaf.current);
+    setKbMessage('');
+    if (!text) return;
+    kbFlip.current = !kbFlip.current;
+    kbRaf.current = requestAnimationFrame(() =>
+      setKbMessage(text + (kbFlip.current ? '\u00A0' : '')),
+    );
+  };
+  const kbReset = () => {
+    setKb((s) => (s.mode === 'idle' ? s : { mode: 'idle' }));
+    kbAnnounce('');
+  };
   const [cursor, setCursor] = useState<Point | null>(null);
   // Sprint 13 OS-10: the placement preview says whether a click here would be accepted (the
   // OS-04 overlap rule the edit applies); evaluated once per grid point, not per pointer event.
@@ -465,6 +482,7 @@ export function Canvas({
     const world = toWorld(e.clientX, e.clientY);
     const hit = hitOf(e.target);
     pointerDown.current = true;
+    kbReset();
     if (e.button === 1 || (e.button === 0 && spaceHeld.current)) {
       svg.setPointerCapture(e.pointerId);
       setMode({ kind: 'pan', client: { x: e.clientX, y: e.clientY }, camera });
@@ -731,7 +749,14 @@ export function Canvas({
       pin: def ? catalogText(state.locale, def.labelKey) : p.terminal,
       n,
     };
-    return t(n > 0 ? 'kbwire.pinLabel.connected' : 'kbwire.pinLabel.free', params);
+    return t(
+      n === 0
+        ? 'kbwire.pinLabel.free'
+        : n === 1
+          ? 'kbwire.pinLabel.connectedOne'
+          : 'kbwire.pinLabel.connected',
+      params,
+    );
   };
   const kbText = (ev: WireKbEvent): string => {
     switch (ev.kind) {
@@ -777,7 +802,7 @@ export function Canvas({
     });
     if (r.doc) store.apply({ ok: true, doc: r.doc }, emptySelection());
     setKb(r.state);
-    if (r.event) setKbMessage(kbText(r.event));
+    if (r.event) kbAnnounce(kbText(r.event));
     return r;
   };
   const kbFocusComponent = (id: string) => {
@@ -796,7 +821,7 @@ export function Canvas({
       if (!el?.dataset.id) return false;
       e.preventDefault();
       if (simActive) {
-        setKbMessage(t('kbwire.running'));
+        kbAnnounce(t('kbwire.running'));
         return true;
       }
       kbDispatch({ type: 'enterPins', component: el.dataset.id });
@@ -1122,7 +1147,11 @@ export function Canvas({
         onPointerCancel={releaseButton}
         onLostPointerCapture={releaseButton}
         // focusout bubbles from the focused part (blur would not): any focus loss releases.
-        onFocusOut={releaseKeyHeld}
+        onFocusOut={(e: FocusEvent) => {
+          releaseKeyHeld();
+          const to = e.relatedTarget as Node | null;
+          if (!to || !svgRef.current?.contains(to)) kbReset();
+        }}
         onPointerLeave={() => setCursor(null)}
         onWheel={onWheel}
         onKeyDown={onKeyDown}

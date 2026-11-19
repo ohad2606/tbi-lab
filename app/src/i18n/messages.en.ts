@@ -2128,6 +2128,7 @@ export const en = {
   'kbwire.pins':
     '{component}: {count} pins, now on {pin}. Arrow keys move between pins, Enter starts a wire, Escape leaves.',
   'kbwire.pinLabel.free': '{component} pin {pin}, not connected',
+  'kbwire.pinLabel.connectedOne': '{component} pin {pin}, connected to 1 wire',
   'kbwire.pinLabel.connected': '{component} pin {pin}, connected to {n} wires',
   'kbwire.start':
     'Wire started from {pin}. Tab or arrow keys choose a target, Enter connects, Escape cancels.',

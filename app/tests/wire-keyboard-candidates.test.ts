@@ -215,7 +215,9 @@ describe('kbwire i18n keys', () => {
   const ks = Object.keys(en).filter((k) => k.startsWith('kbwire.'));
   const ph = (s: string) => [...s.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort();
   it('exist in both languages with the same parameters', () => {
-    expect(ks.length).toBeGreaterThanOrEqual(14);
+    expect(ks.length).toBeGreaterThanOrEqual(15);
+    expect(ks).toContain('kbwire.pinLabel.connectedOne');
+    expect((en as Record<string, string>)['kbwire.pinLabel.connectedOne']).toContain('1 wire');
     for (const k of ks) {
       const he_ = (he as Record<string, string>)[k];
       expect(he_, k).toBeTruthy();

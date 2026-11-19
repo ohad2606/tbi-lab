@@ -21,7 +21,7 @@ const TEXT = {
   },
   he: {
     pins: /PSU1.*פינים/,
-    start: /חוט התחיל מ-.*PSU1/,
+    start: /התחלת חוט מ-.*PSU1/,
     candidate: /\d+ מתוך \d+/,
     done: /חובר .*PSU1.* אל /,
     cancel: 'החיווט בוטל. לא נוסף חוט.',
@@ -101,6 +101,59 @@ for (const lang of ['en', 'he'] as const) {
     await expect(page.getByTestId('canvas')).toBeVisible();
   });
 }
+
+test('A11Y-002 kbwire: leaving the canvas resets the mode and clears the message', async ({
+  page,
+}) => {
+  const psu = await open(page, 'en');
+  const status = page.getByTestId('kbwire-status');
+  await page.keyboard.press('w');
+  await page.keyboard.press('Enter');
+  await expect(status).toHaveText(TEXT.en.start);
+  await expect(page.locator('.kb-source')).toHaveCount(1);
+  await page.evaluate(() => (document.activeElement as HTMLElement).blur());
+  await expect(status).toHaveText('');
+  await expect(page.locator('.kb-pin')).toHaveCount(0);
+  // A later Enter on the part must not continue the stale wire.
+  await psu.focus();
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(300);
+  expect((await waitForStoredProject(page, () => true, 'stored')).layout.wires).toHaveLength(0);
+});
+
+test('A11Y-002 kbwire: pointer down on the canvas resets the mode', async ({ page }) => {
+  await open(page, 'en');
+  const status = page.getByTestId('kbwire-status');
+  await page.keyboard.press('w');
+  await expect(status).toHaveText(TEXT.en.pins);
+  const box = (await page.getByTestId('canvas').boundingBox())!;
+  await page.mouse.click(box.x + 5, box.y + 5);
+  await expect(status).toHaveText('');
+  await expect(page.locator('.kb-pin')).toHaveCount(0);
+});
+
+test('A11Y-002 kbwire: an identical consecutive message is re-announced', async ({ page }) => {
+  await open(page, 'en');
+  const status = page.getByTestId('kbwire-status');
+  await page.keyboard.press('w');
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Shift+Tab');
+  await expect(status).toHaveText(TEXT.en.candidate);
+  // Record every mutation of the live region while the same candidate text is produced twice.
+  await page.evaluate(() => {
+    const el = document.querySelector('[data-testid="kbwire-status"]')!;
+    (window as unknown as { __m: string[] }).__m = [];
+    new MutationObserver(() =>
+      (window as unknown as { __m: string[] }).__m.push(el.textContent ?? ''),
+    ).observe(el, { childList: true, characterData: true, subtree: true });
+  });
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Shift+Tab');
+  await expect(status).toHaveText(TEXT.en.candidate);
+  const seen = await page.evaluate(() => (window as unknown as { __m: string[] }).__m);
+  expect(seen.filter((x) => x === '').length).toBeGreaterThanOrEqual(2);
+});
 
 test('A11Y-002 kbwire: refused while the simulation runs', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('tbi-lab.locale', 'en'));
