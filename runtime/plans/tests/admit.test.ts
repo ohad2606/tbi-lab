@@ -264,6 +264,61 @@ describe('settle / release / sweep', () => {
     expect(!u.ok && u.error.code).toBe('invalid_state');
   });
 
+  it('release returns credits to a rollover bucket that the reserve drained fully', async () => {
+    const { engine, clock } = await setup({
+      plans: { advanced: { monthlyCredits: 1, rolloverMonths: 1 } },
+    });
+    await engine.grant(ADV, 'advanced', NOV, 'g1');
+    await engine.grant(ADV, 'advanced', { start: NOV.end, end: ms('2027-01-01T00:00:00Z') }, 'g2');
+    clock.t = ms('2026-12-02T10:00:00Z');
+    const r1 = req(ADV);
+    const r2 = req(ADV);
+    await engine.admit(r1);
+    clock.advance(60_000);
+    const a2 = await engine.admit(r2);
+    expect(a2.ok && a2.metered && a2.reservation.parts.map((p) => p.bucket)).toEqual(['rollover']);
+    expect(engine.account(ADV)?.rollover).toBeNull();
+    const expiredBefore = engine.account(ADV)?.expired ?? 0;
+    expect(await engine.release(r2.reqId)).toEqual({ ok: true });
+    const acc = engine.account(ADV);
+    expect(acc?.rollover?.credits).toBe(1);
+    expect(acc?.expired).toBe(expiredBefore);
+    const c = engine.conservation(ADV);
+    expect(c.balance + c.reserved + c.consumed + c.expired).toBe(c.granted);
+  });
+
+  it('release returns credits to a fully drained pack', async () => {
+    const { engine } = await setup({ plans: { advanced: { monthlyCredits: 1 } } });
+    await engine.grant(ADV, 'advanced', NOV, 'g1');
+    await engine.addPack(ADV, 'ai300', 'pk1');
+    const r = req(ADV, 'deep'); // 1 allowance + 14 pack
+    const expiredBefore = engine.conservation(ADV).expired;
+    await engine.admit(r);
+    await engine.release(r.reqId);
+    expect(engine.account(ADV)?.packs[0]?.credits).toBe(300);
+    const c = engine.conservation(ADV);
+    expect(c.expired).toBe(expiredBefore);
+    expect(c.balance + c.reserved + c.consumed + c.expired).toBe(c.granted);
+  });
+
+  it('re-admit of a released or settled reqId is refused invalid_state, nothing written', async () => {
+    const { engine, clock } = await setup();
+    const a = req(FREE);
+    const b = req(FREE);
+    await engine.admit(a);
+    await engine.admit(b);
+    expect((await engine.admit(a)).ok).toBe(true); // open duplicate: same reservation
+    await engine.release(a.reqId);
+    await engine.settle(b.reqId, 1);
+    clock.advance(60_000);
+    for (const q of [a, b]) {
+      const before = engine.stateJson();
+      const r = await engine.admit(q);
+      expect(!r.ok && r.error.code).toBe('invalid_state');
+      expect(engine.stateJson()).toBe(before);
+    }
+  });
+
   it('reservation older than ttl is auto-released by sweep and at open', async () => {
     const { engine, clock, store, cfg } = await setup();
     await engine.admit(req(FREE));

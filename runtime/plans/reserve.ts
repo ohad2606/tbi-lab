@@ -309,6 +309,8 @@ export class PlansEngine {
     if (existing) {
       if (existing.principal !== req.principal)
         return { ok: false, error: limitError('invalid_request') };
+      // a finished reservation must not be re-admitted as if it were live (the caller would run unmetered)
+      if (existing.state !== 'open') return { ok: false, error: limitError('invalid_state') };
       return { ok: true, metered: true, duplicate: true, reservation: structuredClone(existing) };
     }
     const now = this.opts.clock.now();

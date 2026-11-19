@@ -219,7 +219,10 @@ export function applyToAccount(prev: Account | undefined, ev: PendingEvent): Acc
           else a.expired += p.credits;
         } else if (p.bucket === 'rollover') {
           if (a.rollover && a.rollover.expiresAt === p.expiresAt) a.rollover.credits += p.credits;
-          else a.expired += p.credits;
+          else if (!a.rollover && p.expiresAt > ev.at) {
+            // the reserve drained the bucket fully (set to null): same bucket, still live
+            a.rollover = { credits: p.credits, expiresAt: p.expiresAt };
+          } else a.expired += p.credits;
         } else {
           const pk = a.packs.find((x) => x.id === p.packId);
           if (pk) pk.credits += p.credits;
