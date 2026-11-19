@@ -114,6 +114,65 @@ for (const lang of ['en', 'he'] as const) {
       await expect(dialog.getByTestId('shortcut-undo')).toContainText('Z');
     });
 
+    test('key names are LTR English; Ctrl and Cmd are separate keys with the "or" outside', async ({
+      page,
+    }) => {
+      await openEditor(page, lang);
+      await page.getByTestId('shortcuts-open').click();
+      const dialog = page.getByTestId('shortcuts-dialog');
+      expect(await dialog.locator('kbd:not([lang="en"])').count()).toBe(0);
+      expect(await dialog.locator('kbd', { hasText: /Ctrl or|או Cmd/ }).count()).toBe(0);
+      const undo = dialog.getByTestId('shortcut-undo').locator('th');
+      await expect(undo.locator('kbd')).toHaveText(['Ctrl', 'Z', 'Cmd', 'Z']);
+      await expect(undo.locator('.shortcut-or')).toHaveText(lang === 'he' ? 'או' : 'or');
+      expect(
+        await undo.locator('.shortcut-or').evaluate((e) => !e.closest('.shortcut-chord')),
+      ).toBe(true);
+      // Key names inside the intro text are isolated too.
+      const bdi = dialog.locator('#shortcuts-intro bdi');
+      await expect(bdi.first()).toHaveText('Esc');
+      await expect(bdi.first()).toHaveAttribute('dir', 'ltr');
+    });
+
+    test('narrow layout keeps the table semantics', async ({ page }) => {
+      await page.setViewportSize({ width: 360, height: 700 });
+      await openEditor(page, lang);
+      await page.getByTestId('shortcuts-open').click({ force: true });
+      const dialog = page.getByTestId('shortcuts-dialog');
+      const table = dialog.getByTestId('shortcuts-global');
+      expect(await table.evaluate((t) => getComputedStyle(t).display)).toBe('block');
+      await expect(table).toHaveAttribute('role', 'table');
+      expect(
+        await table
+          .locator('tr')
+          .evaluateAll((r) => r.every((e) => e.getAttribute('role') === 'row')),
+      ).toBe(true);
+      await expect(table.locator('thead th').first()).toHaveAttribute('role', 'columnheader');
+      await expect(table.locator('tbody th').first()).toHaveAttribute('role', 'rowheader');
+      await expect(table.locator('tbody td').first()).toHaveAttribute('role', 'cell');
+      await expect(table.getByRole('rowheader').first()).toBeVisible();
+      await expect(table.getByRole('cell').first()).toBeVisible();
+    });
+
+    test('forced colors: key names keep a ButtonText border', async ({ page }) => {
+      await page.emulateMedia({ forcedColors: 'active' });
+      await openEditor(page, lang);
+      await page.getByTestId('shortcuts-open').click();
+      const kbd = page.getByTestId('shortcuts-dialog').locator('kbd').first();
+      const ok = await kbd.evaluate((k) => {
+        const probe = document.createElement('span');
+        probe.style.color = 'ButtonText';
+        document.body.append(probe);
+        const want = getComputedStyle(probe).color;
+        probe.remove();
+        const cs = getComputedStyle(k);
+        return (
+          cs.borderTopStyle === 'solid' && cs.borderTopWidth === '1px' && cs.borderTopColor === want
+        );
+      });
+      expect(ok).toBe(true);
+    });
+
     test('reflows at 320px without sideways scrolling', async ({ page }) => {
       await page.setViewportSize({ width: 320, height: 700 });
       await openEditor(page, lang);
