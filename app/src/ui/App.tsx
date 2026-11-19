@@ -1,5 +1,6 @@
 import { CapabilitiesHost } from './Capabilities.js';
 import { ProblemReportHost } from './ProblemReport.js';
+import { ShortcutsHost } from './ShortcutsDialog.js';
 import { AssistHost } from '../assist/mount.js';
 import { AdminHost } from './AdminPanel.js';
 import { useEffect, useLayoutEffect } from 'preact/hooks';
@@ -100,6 +101,7 @@ export function App() {
       <VersionStatus />
       <CapabilitiesHost />
       <ProblemReportHost />
+      <ShortcutsHost />
       {import.meta.env.VITE_TBI_ENV === 'dev' && <AssistHost />}
       <AdminHost />
     </div>
