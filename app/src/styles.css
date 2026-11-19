@@ -4664,3 +4664,48 @@ select {
   font-weight: 700;
   text-decoration: underline;
 }
+
+/* Wires list (TBI-001 slice 3) */
+.wires-list {
+  border-block-start: 1px solid var(--border);
+  padding: 8px 12px;
+  max-height: 30vh;
+  overflow: auto;
+  min-width: 0;
+}
+.wires-list h2 {
+  font-size: 1rem;
+  margin: 0 0 6px;
+}
+.wires-list ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.wires-list-empty {
+  margin: 0;
+}
+.wires-list-item {
+  display: block;
+  inline-size: 100%;
+  min-block-size: 28px;
+  padding: 4px 8px;
+  text-align: start;
+  overflow-wrap: anywhere;
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  margin-block-end: 4px;
+  cursor: pointer;
+}
+.wires-list-item[aria-pressed='true'] {
+  border-width: 2px;
+  font-weight: 600;
+  background: color-mix(in srgb, currentColor 10%, transparent);
+}
+.wires-list-item:focus-visible {
+  outline: 3px solid currentColor;
+  outline-offset: 2px;
+}

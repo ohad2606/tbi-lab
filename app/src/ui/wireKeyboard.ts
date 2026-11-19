@@ -282,3 +282,25 @@ export function wireBracketStep(e: BracketKeyEvent): 1 | -1 | null {
   if (e.code === 'BracketRight') return 1;
   return null;
 }
+
+// Wires list (TBI-001 slice 3): the same stable document order as `stepWireSelection`.
+export interface WireListEntry {
+  id: string;
+  /** 1-based position, shown as "W{n}". */
+  n: number;
+  from: string;
+  to: string;
+}
+
+/** One entry per wire in document order; `endName` renders an endpoint (pin or junction). */
+export function wireListEntries(
+  doc: ProjectDocument,
+  endName: (end: ProjectDocument['layout']['wires'][number]['from']) => string,
+): WireListEntry[] {
+  return doc.layout.wires.map((w, i) => ({
+    id: w.id,
+    n: i + 1,
+    from: endName(w.from),
+    to: endName(w.to),
+  }));
+}
