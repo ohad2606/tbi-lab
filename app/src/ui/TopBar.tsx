@@ -8,6 +8,7 @@ import { useAppState, useStore, useT } from './context.js';
 import { useImportPicker } from './importFile.js';
 import { BuildControl } from './BuildControl.js';
 import { SimControls } from './SimControls.js';
+import { openShortcuts } from './ShortcutsDialog.js';
 
 /**
  * Top bar. Editor: brand and project | editing and simulation | language and the menu.
@@ -77,6 +78,7 @@ function HomeBar() {
     <>
       <span class="spacer" />
       <div class="topbar-group topbar-meta">
+        <ShortcutsButton />
         <LanguageSelect />
         {/* Only a protected deployment configures this; a plain navigation leaves it. */}
         {SIGN_OUT_URL && (
@@ -115,10 +117,32 @@ function EditorBar() {
       </div>
       <span class="spacer" />
       <div class="topbar-group topbar-meta">
+        <ShortcutsButton />
         <LanguageSelect />
         <Brand />
       </div>
     </>
+  );
+}
+
+/** Opens the keyboard shortcuts dialog (the typed `?` does the same). */
+function ShortcutsButton() {
+  const t = useT();
+  return (
+    <button
+      type="button"
+      class="button button-quiet shortcuts-open"
+      data-testid="shortcuts-open"
+      aria-label={t('shortcuts.open')}
+      aria-keyshortcuts="?"
+      aria-haspopup="dialog"
+      title={t('shortcuts.open')}
+      onClick={(e) => openShortcuts(e.currentTarget)}
+    >
+      <span aria-hidden="true" dir="ltr">
+        ?
+      </span>
+    </button>
   );
 }
 
