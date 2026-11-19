@@ -66,6 +66,8 @@ test('Esc closes and returns focus; Skip is for the session only; reopen from th
   await expect(dialog(page)).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(dialog(page)).toHaveCount(0);
+  // Focus returns to where it came from: the menu button (the menu item that opened it is gone).
+  await expect(page.getByTestId('app-menu-button')).toBeFocused();
 });
 
 test("Don't show again is remembered", async ({ page }) => {

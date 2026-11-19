@@ -98,9 +98,9 @@ export interface Preferences {
 export const PREF_LOCALE = 'tbi-lab.locale';
 /** The most recently opened project (a per-device note; the app no longer reopens it on start). */
 export const PREF_LAST_PROJECT = 'tbi-lab.lastProject';
-/** Sprint 13 H4: the first-run guide was dismissed on this device (versioned: a new guide shows again). */
 /** TBI-014: the first-run welcome was started or dismissed for good on this device. */
 export const PREF_FIRST_RUN = 'tbi-lab.firstRun.v1';
+/** Sprint 13 H4: the first-run guide was dismissed on this device (versioned: a new guide shows again). */
 export const PREF_ONBOARDING = 'tbi-lab.onboarding.v1';
 
 /**

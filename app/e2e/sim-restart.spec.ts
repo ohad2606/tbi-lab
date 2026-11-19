@@ -7,6 +7,7 @@ import { validateProject } from '@tbi-lab/domain';
 import { drawLoop, run } from './circuits.js';
 import { component, reopenFromLibrary, storedProject } from './helpers.js';
 import { ownedTempDir, removeOwnedTempDir } from './fixtures/temp-dirs.js';
+import { markReturningUser } from './helpers/returningUser.js';
 
 test('A12: browser restart during a run reopens stopped, intact, and able to run again', async ({
   baseURL,
@@ -15,6 +16,7 @@ test('A12: browser restart during a run reopens stopped, intact, and able to run
   const viewport = { width: 1400, height: 860 };
   try {
     let context = await chromium.launchPersistentContext(profile, { baseURL: baseURL!, viewport });
+    await markReturningUser(context);
     let page = context.pages()[0] ?? (await context.newPage());
     await drawLoop(page, { ohms: '220', led: true }, 'Restart bench');
     await run(page);
@@ -24,6 +26,7 @@ test('A12: browser restart during a run reopens stopped, intact, and able to run
     await context.close(); // the browser process ends while "running"
 
     context = await chromium.launchPersistentContext(profile, { baseURL: baseURL!, viewport });
+    await markReturningUser(context);
     page = context.pages()[0] ?? (await context.newPage());
     await page.goto('/');
     await reopenFromLibrary(page); // the app opens on Projects (S6)

@@ -19,6 +19,7 @@ import {
   waitSaved,
 } from './helpers.js';
 import { ownedTempDir, removeOwnedTempDir } from './fixtures/temp-dirs.js';
+import { markReturningUser } from './helpers/returningUser.js';
 
 type Commit = 'enter' | 'blur';
 
@@ -136,6 +137,7 @@ test('a value committed immediately survives a full browser restart (the CI A7 c
   const viewport = { width: 1400, height: 860 };
   try {
     let context = await chromium.launchPersistentContext(profile, { baseURL: baseURL!, viewport });
+    await markReturningUser(context);
     let page = context.pages()[0] ?? (await context.newPage());
     const field = await resistorBench(page);
     await typeAndCommitNow(field, '4k7', 'enter');
@@ -143,6 +145,7 @@ test('a value committed immediately survives a full browser restart (the CI A7 c
     await context.close();
 
     context = await chromium.launchPersistentContext(profile, { baseURL: baseURL!, viewport });
+    await markReturningUser(context);
     page = context.pages()[0] ?? (await context.newPage());
     await page.goto('/');
     await reopenFromLibrary(page); // the app opens on Projects (S6)
