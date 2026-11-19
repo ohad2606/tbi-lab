@@ -4664,3 +4664,20 @@ select {
   font-weight: 700;
   text-decoration: underline;
 }
+
+/* TBI-014: first-run welcome. */
+.first-run-dialog {
+  max-inline-size: 34rem;
+}
+.first-run-steps {
+  padding-inline-start: 1.4rem;
+  display: grid;
+  gap: 0.5rem;
+}
+.first-run-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.first-run-actions .button {
+  min-block-size: 2rem;
+}

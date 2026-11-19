@@ -1,3 +1,4 @@
+import { FirstRunHost } from './FirstRun.js';
 import { CapabilitiesHost } from './Capabilities.js';
 import { ProblemReportHost } from './ProblemReport.js';
 import { AssistHost } from '../assist/mount.js';
@@ -99,6 +100,7 @@ export function App() {
       {state.screen === 'editor' && state.doc ? <Editor /> : <Home />}
       <VersionStatus />
       <CapabilitiesHost />
+      <FirstRunHost />
       <ProblemReportHost />
       {import.meta.env.VITE_TBI_ENV === 'dev' && <AssistHost />}
       <AdminHost />
