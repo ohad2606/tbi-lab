@@ -4664,3 +4664,79 @@ select {
   font-weight: 700;
   text-decoration: underline;
 }
+
+/* TBI-020 slice 2: keyboard shortcuts dialog and its top-bar button. */
+.shortcuts-open {
+  min-inline-size: 1.75rem;
+  min-block-size: 1.75rem;
+  font-weight: 700;
+}
+.shortcuts-dialog {
+  max-inline-size: min(56rem, 94vw);
+  max-block-size: 88vh;
+  overflow-y: auto;
+}
+.shortcuts-dialog h2:focus {
+  outline: none;
+}
+.shortcut-table {
+  inline-size: 100%;
+  border-collapse: collapse;
+  margin-block: 0 1rem;
+}
+.shortcut-table caption {
+  text-align: start;
+  font-weight: 700;
+  padding-block: 0.4rem;
+}
+.shortcut-table th,
+.shortcut-table td {
+  text-align: start;
+  vertical-align: top;
+  padding: 0.35rem 0.5rem;
+  border-block-end: 1px solid var(--border);
+}
+.shortcut-table thead th {
+  color: var(--muted);
+  font-weight: 600;
+}
+.shortcut-table .shortcut-keys {
+  font-weight: 400;
+  white-space: nowrap;
+}
+.shortcut-chord {
+  display: inline-block;
+  unicode-bidi: isolate;
+}
+.shortcut-table kbd {
+  display: inline-block;
+  min-inline-size: 1.5rem;
+  padding: 0 0.35rem;
+  text-align: center;
+  font: inherit;
+  font-size: 0.9em;
+  border: 1px solid var(--muted);
+  border-radius: 4px;
+  background: var(--bg);
+}
+@media (max-width: 40rem) {
+  .shortcut-table,
+  .shortcut-table tbody,
+  .shortcut-table tr,
+  .shortcut-table th,
+  .shortcut-table td {
+    display: block;
+  }
+  .shortcut-table thead {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  .shortcut-table .shortcut-keys {
+    white-space: normal;
+    border-block-end: 0;
+    padding-block-end: 0;
+  }
+}
