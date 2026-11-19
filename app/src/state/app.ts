@@ -99,6 +99,8 @@ export const PREF_LOCALE = 'tbi-lab.locale';
 /** The most recently opened project (a per-device note; the app no longer reopens it on start). */
 export const PREF_LAST_PROJECT = 'tbi-lab.lastProject';
 /** Sprint 13 H4: the first-run guide was dismissed on this device (versioned: a new guide shows again). */
+/** TBI-014: the first-run welcome was started or dismissed for good on this device. */
+export const PREF_FIRST_RUN = 'tbi-lab.firstRun.v1';
 export const PREF_ONBOARDING = 'tbi-lab.onboarding.v1';
 
 /**
@@ -722,6 +724,15 @@ export class AppStore {
   /** Remember (per device) that the first-run guide was dismissed; `false` shows it again. */
   setOnboardingDismissed(dismissed: boolean): void {
     this.deps.prefs.set(PREF_ONBOARDING, dismissed ? 'dismissed' : '');
+  }
+
+  /** TBI-014: whether this device has finished with the first-run welcome. */
+  firstRunSeen(): boolean {
+    return this.deps.prefs.get(PREF_FIRST_RUN) === 'seen';
+  }
+
+  setFirstRunSeen(seen: boolean): void {
+    this.deps.prefs.set(PREF_FIRST_RUN, seen ? 'seen' : '');
   }
 
   async exportProject(projectId: string): Promise<ExportedFile | null> {

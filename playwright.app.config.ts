@@ -4,6 +4,17 @@ import { defineConfig, devices } from '@playwright/test';
  * Browser acceptance suite for the production app (Sprint 2+). Separate from the Sprint 0/1
  * experiment specs in playwright.config.ts. Builds the app and serves the production bundle.
  */
+// TBI-014: every spec but first-run.spec.ts runs as a returning user (welcome already seen).
+// The key is the app's per-device preference (state/app.ts PREF_FIRST_RUN under its namespace).
+const SEEN = (origin: string) => ({
+  origin,
+  localStorage: [{ name: 'tbi-lab.firstRun.v1', value: 'seen' }],
+});
+export const RETURNING_USER = {
+  cookies: [],
+  origins: [4173, 4174, 4175, 4176].map((p) => SEEN(`http://127.0.0.1:${p}`)),
+};
+
 export default defineConfig({
   testDir: './app/e2e',
   testMatch: '**/*.spec.ts',
@@ -17,6 +28,7 @@ export default defineConfig({
     ...devices['Desktop Chrome'],
     baseURL: 'http://127.0.0.1:4173',
     viewport: { width: 1400, height: 860 },
+    storageState: RETURNING_USER,
   },
   projects: [
     {

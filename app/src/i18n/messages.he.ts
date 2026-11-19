@@ -1624,6 +1624,20 @@ export const he: Record<MessageKey, string> = {
   'pin.gpio2': 'IO2',
   'pin.gpio15': 'IO15',
   // Sprint 13 H1: what runs on the ESP32 (packages/domain/src/capabilities.ts).
+  // TBI-014: first-run welcome.
+  'firstRun.title': 'ברוכים הבאים ל־TBI Lab',
+  'firstRun.intro': 'שלושה צעדים למעגל המדומה הראשון שלכם. זה לוקח כדקה.',
+  'firstRun.step1': 'פתחו את הדוגמה: נורית LED עם נגד מגביל זרם, מוזנת מספק הכוח של המעבדה.',
+  'firstRun.step2': 'לחצו על הרצה. הסימולטור פותר את המעגל והנורית נדלקת.',
+  'firstRun.step3':
+    'קראו את הבדיקה (probe) על הלוח, למשל {probe}, ואת האזהרה בסרגל ההודעות, אם יש: המספרים באים מהסימולטור.',
+  'firstRun.start': 'התחילו עם הדוגמה',
+  'firstRun.skip': 'דלגו',
+  'firstRun.never': 'אל תציגו שוב',
+  'firstRun.note': 'שום דבר לא נשלח: הבחירה נשמרת בדפדפן הזה בלבד.',
+  'firstRun.opened': 'הדוגמה נפתחה. לחצו על הרצה כדי להתחיל את הסימולציה.',
+  'firstRun.listLabel': 'צעדים',
+  'menu.firstRun': 'ברוכים הבאים וצעדים ראשונים',
   'menu.capabilities': 'מה רץ על ה־ESP32',
   'capabilities.title': 'מה רץ על ה־ESP32 ב־TBI Lab',
   'capabilities.intro':

@@ -1,3 +1,4 @@
+import { openFirstRun } from './FirstRun.js';
 import { openCapabilities } from './Capabilities.js';
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import {
@@ -190,6 +191,15 @@ export function AppMenu({ chooseImport }: { chooseImport: () => void }) {
             onClick={run(() => openGuide(button.current))}
           >
             {t('guide.open')}
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            tabIndex={-1}
+            data-testid="menu-first-run"
+            onClick={run(openFirstRun)}
+          >
+            {t('menu.firstRun')}
           </button>
           {recent.length > 0 && (
             <>
