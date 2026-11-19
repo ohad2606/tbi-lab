@@ -156,7 +156,8 @@ function merge(base: unknown, over: unknown, path: string): unknown {
 
 /** Strict parse of an override object over the defaults. */
 export function parseConfig(overrides: unknown = {}): PlansConfig {
-  if (overrides !== undefined && !isObj(overrides)) throw new ConfigError('config: expected an object');
+  if (overrides !== undefined && !isObj(overrides))
+    throw new ConfigError('config: expected an object');
   const cfg = merge(DEFAULT_CONFIG, overrides ?? {}, 'config') as PlansConfig;
   if (cfg.spend.dayAlertMicro > cfg.spend.dayStopMicro)
     throw new ConfigError('spend.dayAlertMicro must not exceed spend.dayStopMicro');

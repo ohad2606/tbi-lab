@@ -77,7 +77,14 @@ export type EventBody =
       granted: number;
       expired: number;
     }
-  | { t: 'grant'; principal: string; plan: PlanId; periodStart: number; periodEnd: number; ref: string }
+  | {
+      t: 'grant';
+      principal: string;
+      plan: PlanId;
+      periodStart: number;
+      periodEnd: number;
+      ref: string;
+    }
   | { t: 'revoke'; principal: string }
   | {
       t: 'pack';
@@ -220,14 +227,16 @@ export function applyToAccount(prev: Account | undefined, ev: PendingEvent): Acc
         }
       }
       a.reserved -= sum(ev.parts);
-      if (ev.dayKey in a.daily) a.daily[ev.dayKey] = Math.max(0, (a.daily[ev.dayKey] ?? 0) - ev.credits);
+      if (ev.dayKey in a.daily)
+        a.daily[ev.dayKey] = Math.max(0, (a.daily[ev.dayKey] ?? 0) - ev.credits);
       return a;
     }
   }
 }
 
 export function applyEvent(s: PlansState, ev: PlanEvent): void {
-  if (ev.seq !== s.seq + 1) throw new Error(`journal sequence gap: expected ${s.seq + 1}, got ${ev.seq}`);
+  if (ev.seq !== s.seq + 1)
+    throw new Error(`journal sequence gap: expected ${s.seq + 1}, got ${ev.seq}`);
   s.seq = ev.seq;
   if (ev.t === 'spend') {
     s.spend = applySpend(s.spend, ev.spend);

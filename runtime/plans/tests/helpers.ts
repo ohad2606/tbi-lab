@@ -27,7 +27,11 @@ export async function setup(
 }
 
 let n = 0;
-export const req = (principal: string, mode: 'standard' | 'deep' = 'standard', inputTokens = 100) => ({
+export const req = (
+  principal: string,
+  mode: 'standard' | 'deep' = 'standard',
+  inputTokens = 100,
+) => ({
   reqId: `r${++n}`,
   principal,
   mode,
@@ -38,7 +42,6 @@ export const code = (r: AdmitResult): string => (r.ok ? 'ok' : r.error.code);
 
 export const NOV = { start: ms('2026-11-01T00:00:00Z'), end: ms('2026-12-01T00:00:00Z') };
 
-import type { PlansEngine } from '../reserve.js';
 import type { FakeSpendProvider } from './fake-provider.js';
 
 /** One metered AI call as the (later) assist wiring will do it: admit, provider, settle or release. */

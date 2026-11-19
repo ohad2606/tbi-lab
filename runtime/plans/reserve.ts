@@ -20,7 +20,13 @@ import {
 } from './events.js';
 import { closePeriod, consume, type Part } from './ledger.js';
 import { limitError, validPrincipal, type LimitError } from './limits.js';
-import { effectivePlan, periodFor, renewDate, winningEntitlement, type Entitlement } from './plans.js';
+import {
+  effectivePlan,
+  periodFor,
+  renewDate,
+  winningEntitlement,
+  type Entitlement,
+} from './plans.js';
 import {
   applySpend,
   evaluate,
@@ -45,11 +51,15 @@ export type AdmitResult =
   | { ok: true; metered: true; duplicate: boolean; reservation: Reservation }
   | { ok: false; error: LimitError };
 
-export type CommandResult = { ok: true; duplicate?: boolean; noop?: boolean } | { ok: false; error: LimitError };
+export type CommandResult =
+  { ok: true; duplicate?: boolean; noop?: boolean } | { ok: false; error: LimitError };
 
 const DAY_MS = 86_400_000;
 const REQ_ID = /^[A-Za-z0-9_.:-]{1,128}$/;
-const unavailable = (): { ok: false; error: LimitError } => ({ ok: false, error: limitError('system_unavailable') });
+const unavailable = (): { ok: false; error: LimitError } => ({
+  ok: false,
+  error: limitError('system_unavailable'),
+});
 
 export interface EngineOptions {
   config: PlansConfig;
@@ -80,14 +90,20 @@ export class PlansEngine {
     try {
       loaded = await this.store.load();
     } catch (err) {
-      this.problem = { kind: 'corrupt', detail: err instanceof Error ? err.message : 'load failed' };
+      this.problem = {
+        kind: 'corrupt',
+        detail: err instanceof Error ? err.message : 'load failed',
+      };
       return;
     }
     const s = emptyState();
     try {
       for (const ev of loaded.events) applyEvent(s, ev);
     } catch (err) {
-      this.problem = { kind: 'corrupt', detail: err instanceof Error ? err.message : 'replay failed' };
+      this.problem = {
+        kind: 'corrupt',
+        detail: err instanceof Error ? err.message : 'replay failed',
+      };
       return;
     }
     this.state = s;
@@ -97,7 +113,8 @@ export class PlansEngine {
   /** Explicit recovery of a torn tail (drops the partial last record), then reloads. */
   async recover(): Promise<{ ok: boolean; problem?: StoreProblem }> {
     return this.run(async () => {
-      if (this.problem?.kind === 'torn_tail' && this.store.recoverTornTail) await this.store.recoverTornTail();
+      if (this.problem?.kind === 'torn_tail' && this.store.recoverTornTail)
+        await this.store.recoverTornTail();
       await this.reload();
       return this.problem ? { ok: false, problem: this.problem } : { ok: true };
     });
@@ -129,11 +146,24 @@ export class PlansEngine {
     return r ? structuredClone(r) : undefined;
   }
   /** Credits in all buckets (raw, including time-expired ones not yet purged) and the conservation terms. */
-  conservation(principal: string): { balance: number; reserved: number; consumed: number; expired: number; granted: number } {
+  conservation(principal: string): {
+    balance: number;
+    reserved: number;
+    consumed: number;
+    expired: number;
+    granted: number;
+  } {
     const a = this.state.accounts[principal];
     if (!a) return { balance: 0, reserved: 0, consumed: 0, expired: 0, granted: 0 };
-    const balance = a.allowance + (a.rollover?.credits ?? 0) + a.packs.reduce((n, p) => n + p.credits, 0);
-    return { balance, reserved: a.reserved, consumed: a.consumed, expired: a.expired, granted: a.granted };
+    const balance =
+      a.allowance + (a.rollover?.credits ?? 0) + a.packs.reduce((n, p) => n + p.credits, 0);
+    return {
+      balance,
+      reserved: a.reserved,
+      consumed: a.consumed,
+      expired: a.expired,
+      granted: a.granted,
+    };
   }
   principals(): string[] {
     return Object.keys(this.state.accounts);
@@ -194,9 +224,16 @@ export class PlansEngine {
     const plan: PlanId = ent?.plan ?? 'free';
     const period = periodFor(plan, ent, now, cfg);
     const monthly = cfg.plans[plan].monthlyCredits ?? 0;
-    const base = { t: 'account' as const, principal: acc?.principal ?? '', plan, periodStart: period.start, periodEnd: period.end };
+    const base = {
+      t: 'account' as const,
+      principal: acc?.principal ?? '',
+      plan,
+      periodStart: period.start,
+      periodEnd: period.end,
+    };
     if (!acc) return { ...base, allowance: monthly, rollover: null, granted: monthly, expired: 0 };
-    if (acc.plan === plan && acc.periodEnd === period.end && acc.periodStart === period.start) return null;
+    if (acc.plan === plan && acc.periodEnd === period.end && acc.periodStart === period.start)
+      return null;
     const live = acc.rollover && acc.rollover.expiresAt > now ? acc.rollover : null;
     const deadRollover = (acc.rollover?.credits ?? 0) - (live?.credits ?? 0);
     if (acc.plan === plan) {
@@ -257,7 +294,8 @@ export class PlansEngine {
   private async admitLocked(req: AdmitRequest): Promise<AdmitResult> {
     const cfg = this.cfg;
     if (!cfg.metering.enabled) return { ok: true, metered: false };
-    if (!validPrincipal(req.principal)) return { ok: false, error: limitError('invalid_principal') };
+    if (!validPrincipal(req.principal))
+      return { ok: false, error: limitError('invalid_principal') };
     if (typeof req.reqId !== 'string' || !REQ_ID.test(req.reqId))
       return { ok: false, error: limitError('invalid_request') };
     if (
@@ -269,7 +307,8 @@ export class PlansEngine {
     if (this.problem) return unavailable();
     const existing = this.state.reservations[req.reqId];
     if (existing) {
-      if (existing.principal !== req.principal) return { ok: false, error: limitError('invalid_request') };
+      if (existing.principal !== req.principal)
+        return { ok: false, error: limitError('invalid_request') };
       return { ok: true, metered: true, duplicate: true, reservation: structuredClone(existing) };
     }
     const now = this.opts.clock.now();
@@ -300,8 +339,7 @@ export class PlansEngine {
     if ((acc.daily[dk] ?? 0) + cost > pc.dailyCredits) return refuse(limitError('daily'));
 
     const c = consume(acc, cost, now, plan, cfg);
-    if (!c.ok)
-      return refuse(limitError(c.code, { date: renewDate(acc.entitlements, now, cfg) }));
+    if (!c.ok) return refuse(limitError(c.code, { date: renewDate(acc.entitlements, now, cfg) }));
 
     const worst = cfg.spend.worstMicro[req.mode];
     const check = reserveCheck(spend, worst, cfg);
@@ -310,7 +348,11 @@ export class PlansEngine {
       pre.push({
         t: 'spend',
         at: now,
-        spend: { k: 'trip', stop: check.stop, alerts: spend.alertsFired.includes(code) ? [] : [code] },
+        spend: {
+          k: 'trip',
+          stop: check.stop,
+          alerts: spend.alertsFired.includes(code) ? [] : [code],
+        },
       });
       return refuse(limitError('global_off'));
     }
@@ -383,17 +425,33 @@ export class PlansEngine {
     actualMicro: number,
     now: number,
   ): PendingEvent {
-    const counted = kind === 'settle' ? actualMicro : this.cfg.spend.failedCallCounts === 'worstCase' ? r.usdMicro : 0;
+    const counted =
+      kind === 'settle'
+        ? actualMicro
+        : this.cfg.spend.failedCallCounts === 'worstCase'
+          ? r.usdMicro
+          : 0;
     const probe: SpendDelta =
       kind === 'settle'
         ? { k: 'settle', reservedMicro: r.usdMicro, actualMicro, alerts: [] }
         : { k: 'release', reservedMicro: r.usdMicro, countedMicro: counted, alerts: [] };
     const after = applySpend(spendView, probe);
     const ev = evaluate(after, this.cfg);
-    const delta = { ...probe, alerts: ev.alerts, ...(ev.stop ? { stop: ev.stop } : {}) } as SpendDelta;
+    const delta = {
+      ...probe,
+      alerts: ev.alerts,
+      ...(ev.stop ? { stop: ev.stop } : {}),
+    } as SpendDelta;
     const deducted = r.parts.reduce((n, p) => n + p.credits, 0);
     if (kind === 'settle')
-      return { t: 'settle', at: now, principal: r.principal, reqId: r.reqId, deducted, spend: delta };
+      return {
+        t: 'settle',
+        at: now,
+        principal: r.principal,
+        reqId: r.reqId,
+        deducted,
+        spend: delta,
+      };
     return {
       t: 'release',
       at: now,
@@ -413,7 +471,9 @@ export class PlansEngine {
     return this.run(async () => {
       if (!this.cfg.metering.enabled || this.problem) return 0;
       const now = this.opts.clock.now();
-      const open = Object.values(this.state.reservations).filter((r) => r.state === 'open' && r.ttlAt <= now);
+      const open = Object.values(this.state.reservations).filter(
+        (r) => r.state === 'open' && r.ttlAt <= now,
+      );
       if (open.length === 0) return 0;
       const { events } = this.rolled(now);
       // spend views must chain across several releases in one append
@@ -437,7 +497,12 @@ export class PlansEngine {
   ): Promise<CommandResult> {
     return this.run(async () => {
       if (!validPrincipal(principal)) return { ok: false, error: limitError('invalid_principal') };
-      if (!ref || (plan !== 'legacy' && !(period.end > period.start)) || !(plan in this.cfg.plans) || plan === ('free' as PlanId))
+      if (
+        !ref ||
+        (plan !== 'legacy' && !(period.end > period.start)) ||
+        !(plan in this.cfg.plans) ||
+        plan === ('free' as PlanId)
+      )
         return { ok: false, error: limitError('invalid_request') };
       if (this.problem) return unavailable();
       if (this.state.refs[ref]) return { ok: true, duplicate: true };
@@ -454,7 +519,11 @@ export class PlansEngine {
       };
       const withGrant = applyToAccount(acc, grant) as Account;
       const tr = this.transition(withGrant, withGrant.entitlements, now);
-      const events = [...pre, grant, ...(tr ? [{ ...tr, principal, at: now } as PendingEvent] : [])];
+      const events = [
+        ...pre,
+        grant,
+        ...(tr ? [{ ...tr, principal, at: now } as PendingEvent] : []),
+      ];
       return (await this.commit(events)) ? { ok: true } : unavailable();
     });
   }

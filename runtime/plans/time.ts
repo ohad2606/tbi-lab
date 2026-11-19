@@ -68,7 +68,9 @@ export function formatDate(ms: number, tz: string): string {
 /** Offset (ms) of the zone from UTC at an instant: local wall time minus UTC. */
 function offsetAt(ms: number, tz: string): number {
   const p = localParts(ms, tz);
-  return Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second) - Math.floor(ms / 1000) * 1000;
+  return (
+    Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second) - Math.floor(ms / 1000) * 1000
+  );
 }
 
 /** Instant (ms UTC) of a local wall-clock time in the zone. Month/day may overflow and are normalised. */

@@ -4,12 +4,19 @@
  * A torn tail (partial last line) or a corrupt line is REPORTED by load(); it is never silently skipped.
  */
 import { createHash } from 'node:crypto';
-import { closeSync, existsSync, fsyncSync, openSync, readFileSync, truncateSync, writeSync } from 'node:fs';
+import {
+  closeSync,
+  existsSync,
+  fsyncSync,
+  openSync,
+  readFileSync,
+  truncateSync,
+  writeSync,
+} from 'node:fs';
 import type { PlanEvent } from './events.js';
 
 export type StoreProblem =
-  | { kind: 'torn_tail'; detail: string; validBytes: number }
-  | { kind: 'corrupt'; detail: string };
+  { kind: 'torn_tail'; detail: string; validBytes: number } | { kind: 'corrupt'; detail: string };
 
 export interface LoadResult {
   events: PlanEvent[];
@@ -69,7 +76,10 @@ export class JournalStore implements Store {
     while (pos < buf.length) {
       const nl = buf.indexOf(0x0a, pos);
       if (nl === -1)
-        return { events, problem: { kind: 'torn_tail', detail: 'last record has no newline', validBytes: pos } };
+        return {
+          events,
+          problem: { kind: 'torn_tail', detail: 'last record has no newline', validBytes: pos },
+        };
       const line = buf.subarray(pos, nl).toString('utf8');
       const tab = line.indexOf('\t');
       const json = tab === -1 ? '' : line.slice(tab + 1);
@@ -85,7 +95,10 @@ export class JournalStore implements Store {
       try {
         events.push(JSON.parse(json) as PlanEvent);
       } catch {
-        return { events, problem: { kind: 'corrupt', detail: `record at byte ${pos} is not JSON` } };
+        return {
+          events,
+          problem: { kind: 'corrupt', detail: `record at byte ${pos} is not JSON` },
+        };
       }
       pos = nl + 1;
     }

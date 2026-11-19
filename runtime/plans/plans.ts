@@ -62,7 +62,8 @@ export function periodFor(
   cfg: PlansConfig,
 ): Period {
   const tz = cfg.meter.timezone;
-  if (cfg.plans[plan].periodAnchor === 'billing' && ent) return { start: ent.periodStart, end: ent.periodEnd };
+  if (cfg.plans[plan].periodAnchor === 'billing' && ent)
+    return { start: ent.periodStart, end: ent.periodEnd };
   return { start: monthStart(now, tz), end: monthStart(now, tz, 1) };
 }
 

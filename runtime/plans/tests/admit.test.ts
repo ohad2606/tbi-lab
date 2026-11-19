@@ -19,7 +19,11 @@ describe('admit: Free plan table', () => {
     expect(code(await engine.admit(req(FREE)))).toBe('ok');
     clock.advance(5000);
     const third = await engine.admit(req(FREE));
-    expect(!third.ok && third.error).toMatchObject({ code: 'rate', messageKey: 'limit.ai.rate', params: { n: 50 } });
+    expect(!third.ok && third.error).toMatchObject({
+      code: 'rate',
+      messageKey: 'limit.ai.rate',
+      params: { n: 50 },
+    });
     // oldest (t0) leaves the window exactly at t0 + 60000
     clock.t = NOON + 59_999;
     expect(code(await engine.admit(req(FREE)))).toBe('rate');
@@ -57,7 +61,10 @@ describe('admit: Free plan table', () => {
     await engine.admit(req(FREE));
     clock.advance(60_000);
     const r = await engine.admit(req(FREE));
-    expect(!r.ok && r.error).toMatchObject({ code: 'credits_out_free', params: { date: '01.12.2026' } });
+    expect(!r.ok && r.error).toMatchObject({
+      code: 'credits_out_free',
+      params: { date: '01.12.2026' },
+    });
   });
 
   it('a new calendar month brings a fresh allowance (free does not roll)', async () => {
@@ -125,7 +132,9 @@ describe('admit: paid and legacy', () => {
     expect(await engine.addPack(ADV, 'ai300', 'pk1')).toMatchObject({ ok: true });
     await engine.admit(req(ADV));
     const r = await engine.admit(req(ADV)); // allowance empty -> pack (perMinute 3 ok)
-    expect(r.ok && r.metered && r.reservation.parts).toMatchObject([{ bucket: 'pack', credits: 1 }]);
+    expect(r.ok && r.metered && r.reservation.parts).toMatchObject([
+      { bucket: 'pack', credits: 1 },
+    ]);
     expect(engine.account(ADV)?.packs[0]?.credits).toBe(299);
   });
 });
@@ -161,13 +170,17 @@ describe('admit: atomicity, idempotency, validation', () => {
     (store as MemoryStore).failOnCall = 2;
     const before = engine.stateJson();
     const r = await engine.admit(req(FREE));
-    expect(!r.ok && r.error).toMatchObject({ code: 'system_unavailable', messageKey: 'limit.system.unavailable' });
+    expect(!r.ok && r.error).toMatchObject({
+      code: 'system_unavailable',
+      messageKey: 'limit.system.unavailable',
+    });
     expect(engine.stateJson()).toBe(before);
   });
 
   it('metering.enabled=false: always ok, journal untouched', async () => {
     const { engine, store } = await setup({}, { enabled: false });
-    for (let i = 0; i < 50; i++) expect(await engine.admit(req(FREE, 'deep', 999999))).toEqual({ ok: true, metered: false });
+    for (let i = 0; i < 50; i++)
+      expect(await engine.admit(req(FREE, 'deep', 999999))).toEqual({ ok: true, metered: false });
     expect(await engine.settle('x', 1)).toMatchObject({ ok: true });
     expect((store as MemoryStore).appendCalls).toBe(0);
   });
@@ -212,7 +225,10 @@ describe('settle / release / sweep', () => {
     await engine.addPack(ADV, 'ai300', 'pk1');
     const rq = req(ADV, 'deep'); // 15 = allowance 5 + pack 10
     const a = await engine.admit(rq);
-    expect(a.ok && a.metered && a.reservation.parts.map((p) => p.bucket)).toEqual(['allowance', 'pack']);
+    expect(a.ok && a.metered && a.reservation.parts.map((p) => p.bucket)).toEqual([
+      'allowance',
+      'pack',
+    ]);
     expect(await engine.release(rq.reqId)).toEqual({ ok: true });
     const acc = engine.account(ADV);
     expect(acc?.allowance).toBe(5);
@@ -262,7 +278,10 @@ describe('settle / release / sweep', () => {
     await second.engine.admit(req(FREE));
     second.clock.advance(second.cfg.reservation.ttlMs);
     const { PlansEngine } = await import('../reserve.js');
-    const reopened = await PlansEngine.open(second.store, { config: second.cfg, clock: second.clock });
+    const reopened = await PlansEngine.open(second.store, {
+      config: second.cfg,
+      clock: second.clock,
+    });
     expect(reopened.account(FREE)?.allowance).toBe(30);
     void store;
   });
@@ -331,13 +350,20 @@ describe('grant / revoke / addPack', () => {
   it('addPack without an active paid plan -> pack_needs_plan; with advanced ok and expiry set', async () => {
     const { engine } = await setup();
     const r = await engine.addPack(FREE, 'ai300', 'pk0');
-    expect(!r.ok && r.error).toMatchObject({ code: 'pack_needs_plan', messageKey: 'limit.pack.needs_plan' });
+    expect(!r.ok && r.error).toMatchObject({
+      code: 'pack_needs_plan',
+      messageKey: 'limit.pack.needs_plan',
+    });
     await engine.grant(ADV, 'advanced', NOV, 'g1');
     expect(await engine.addPack(ADV, 'ai1000', 'pk1')).toEqual({ ok: true });
     expect(await engine.addPack(ADV, 'ai1000', 'pk1')).toEqual({ ok: true, duplicate: true });
     const p = engine.account(ADV)?.packs;
     expect(p).toHaveLength(1);
-    expect(p?.[0]).toMatchObject({ credits: 1000, boughtAt: NOON, expiresAt: NOON + 365 * 86_400_000 });
+    expect(p?.[0]).toMatchObject({
+      credits: 1000,
+      boughtAt: NOON,
+      expiresAt: NOON + 365 * 86_400_000,
+    });
   });
 
   it('rejects bad input', async () => {

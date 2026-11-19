@@ -16,7 +16,9 @@ describe('config strict parse', () => {
   });
   it('rejects unknown keys at any depth', () => {
     expect(() => parseConfig({ bogus: 1 })).toThrow(ConfigError);
-    expect(() => parseConfig({ plans: { free: { monthlyCreditz: 1 } } })).toThrow(/unknown config key/);
+    expect(() => parseConfig({ plans: { free: { monthlyCreditz: 1 } } })).toThrow(
+      /unknown config key/,
+    );
     expect(() => parseConfig({ plans: { gold: {} } })).toThrow(ConfigError);
   });
   it('rejects negative numbers', () => {
@@ -39,11 +41,17 @@ describe('config strict parse', () => {
     expect(() => parseConfig('x')).toThrow(ConfigError);
   });
   it('allows unmetered (null) and null->number for monthlyCredits', () => {
-    expect(parseConfig({ plans: { legacy: { monthlyCredits: 50 } } }).plans.legacy.monthlyCredits).toBe(50);
-    expect(parseConfig({ plans: { free: { monthlyCredits: null } } }).plans.free.monthlyCredits).toBeNull();
+    expect(
+      parseConfig({ plans: { legacy: { monthlyCredits: 50 } } }).plans.legacy.monthlyCredits,
+    ).toBe(50);
+    expect(
+      parseConfig({ plans: { free: { monthlyCredits: null } } }).plans.free.monthlyCredits,
+    ).toBeNull();
   });
   it('fractions are allowed only for the refund cap', () => {
-    expect(parseConfig({ packs: { refund: { maxUsedFraction: 0.5 } } }).packs.refund.maxUsedFraction).toBe(0.5);
+    expect(
+      parseConfig({ packs: { refund: { maxUsedFraction: 0.5 } } }).packs.refund.maxUsedFraction,
+    ).toBe(0.5);
     expect(() => parseConfig({ packs: { refund: { maxUsedFraction: 1.5 } } })).toThrow(ConfigError);
   });
 });

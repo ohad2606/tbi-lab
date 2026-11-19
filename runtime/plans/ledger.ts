@@ -52,7 +52,8 @@ export function consume(
   if (a > 0) parts.push({ bucket: 'allowance', credits: a });
   if (need > 0 && buckets.rollover && buckets.rollover.expiresAt > now) {
     const r = take(buckets.rollover.credits);
-    if (r > 0) parts.push({ bucket: 'rollover', credits: r, expiresAt: buckets.rollover.expiresAt });
+    if (r > 0)
+      parts.push({ bucket: 'rollover', credits: r, expiresAt: buckets.rollover.expiresAt });
   }
   if (need > 0 && plan !== 'free') {
     const packs = buckets.packs

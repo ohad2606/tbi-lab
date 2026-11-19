@@ -37,7 +37,11 @@ describe('SpendGuard scenario 6.3 (fake provider, 500,000 micro-USD per call)', 
     expect(codes()).toEqual(['day_50']);
     // 6: 2,500,000 + 500,000 = cap is allowed; after settle the AI is off
     expect(await call(engine, provider, ADV)).toBe('ok');
-    expect(engine.spendState()).toMatchObject({ dayMicro: 3_000_000, state: 'auto_stopped', stopReason: 'daily_cap' });
+    expect(engine.spendState()).toMatchObject({
+      dayMicro: 3_000_000,
+      state: 'auto_stopped',
+      stopReason: 'daily_cap',
+    });
     expect(codes()).toEqual(['day_50', 'day_100']);
     // 7: global_off, provider not called, credits untouched
     const callsBefore = provider.calls;
@@ -69,7 +73,12 @@ describe('SpendGuard scenario 6.3 (fake provider, 500,000 micro-USD per call)', 
     // 11: next Jerusalem day clears a daily_cap stop; day counters and alerts reset
     clock.t = ms('2026-11-19T22:00:00Z');
     expect(await call(reopened, provider, ADV)).toBe('ok');
-    expect(reopened.spendState()).toMatchObject({ state: 'on', dayMicro: 500_000, dayKey: '2026-11-20', dayExtraMicro: 0 });
+    expect(reopened.spendState()).toMatchObject({
+      state: 'on',
+      dayMicro: 500_000,
+      dayKey: '2026-11-20',
+      dayExtraMicro: 0,
+    });
     expect(reopened.spendState().alertsFired).toEqual([]);
     // 12: provider failure: credits returned, worst case counted
     provider.mode = 'fail';
@@ -94,14 +103,22 @@ describe('SpendGuard scenario 6.3 (fake provider, 500,000 micro-USD per call)', 
     expect(await call(engine, provider, ADV)).toBe('global_off'); // no monthly headroom: trips again
     clock.t = ms('2026-12-01T10:00:00Z'); // new month key
     expect(await call(engine, provider, ADV)).toBe('ok');
-    expect(engine.spendState()).toMatchObject({ state: 'on', monthKey: '2026-12', monthMicro: 500_000 });
+    expect(engine.spendState()).toMatchObject({
+      state: 'on',
+      monthKey: '2026-12',
+      monthMicro: 500_000,
+    });
     expect(engine.spendState().alertsFired).not.toContain('month_100');
   });
 
   it('month alerts fire once each at 50/80/100 percent', async () => {
     const { engine, sink, provider } = await advancedSetup({
       ...BIG,
-      spend: { worstMicro: { standard: 500_000 }, dayStopMicro: 100_000_000, dayAlertMicro: 100_000_000 },
+      spend: {
+        worstMicro: { standard: 500_000 },
+        dayStopMicro: 100_000_000,
+        dayAlertMicro: 100_000_000,
+      },
     });
     await engine.testSeedSpend({ monthMicro: 29_500_000 });
     await call(engine, provider, ADV); // 30,000,000 = 50%
@@ -160,7 +177,10 @@ describe('SpendGuard scenario 6.3 (fake provider, 500,000 micro-USD per call)', 
   });
 
   it('16: auto-trigger on: 650,000 against a 200,000 average stops; off: no stop', async () => {
-    const hist = Array.from({ length: 7 }, (_, i) => ({ dayKey: `2026-11-0${i + 1}`, micro: 200_000 }));
+    const hist = Array.from({ length: 7 }, (_, i) => ({
+      dayKey: `2026-11-0${i + 1}`,
+      micro: 200_000,
+    }));
     for (const enabled of [true, false]) {
       const { engine, provider } = await advancedSetup({
         ...BIG,
@@ -170,7 +190,11 @@ describe('SpendGuard scenario 6.3 (fake provider, 500,000 micro-USD per call)', 
       await engine.testSeedSpend({ history: hist });
       provider.usdMicro = 650_000;
       expect(await call(engine, provider, ADV)).toBe('ok');
-      if (enabled) expect(engine.spendState()).toMatchObject({ state: 'auto_stopped', stopReason: 'auto_trigger' });
+      if (enabled)
+        expect(engine.spendState()).toMatchObject({
+          state: 'auto_stopped',
+          stopReason: 'auto_trigger',
+        });
       else expect(engine.spendState().state).toBe('on');
     }
   });
@@ -182,7 +206,10 @@ describe('SpendGuard scenario 6.3 (fake provider, 500,000 micro-USD per call)', 
       killSwitch: { autoTrigger: { enabled: true, multiple: 3, minMicro: 100_000 } },
     });
     await engine.testSeedSpend({
-      history: Array.from({ length: 7 }, (_, i) => ({ dayKey: `2026-11-0${i + 1}`, micro: 200_000 })),
+      history: Array.from({ length: 7 }, (_, i) => ({
+        dayKey: `2026-11-0${i + 1}`,
+        micro: 200_000,
+      })),
     });
     provider.usdMicro = 650_000;
     await call(engine, provider, ADV);

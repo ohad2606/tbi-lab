@@ -36,7 +36,10 @@ export interface LimitError {
   params: Record<string, string | number>;
 }
 
-export function limitError(code: LimitCode, params: Record<string, string | number> = {}): LimitError {
+export function limitError(
+  code: LimitCode,
+  params: Record<string, string | number> = {},
+): LimitError {
   return { code, messageKey: MESSAGE_KEY[code], params };
 }
 

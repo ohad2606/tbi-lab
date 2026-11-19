@@ -44,7 +44,12 @@ describe('effectivePlan', () => {
     const c = ent({ plan: 'pro', periodEnd: ms('2026-12-01T00:00:00Z'), seq: 3 });
     expect(effectivePlan([a, c], now)).toBe('pro');
     expect(effectivePlan([c, a], now)).toBe('pro');
-    const revoked = ent({ plan: 'pro', periodEnd: ms('2027-01-01T00:00:00Z'), status: 'revoked', seq: 9 });
+    const revoked = ent({
+      plan: 'pro',
+      periodEnd: ms('2027-01-01T00:00:00Z'),
+      status: 'revoked',
+      seq: 9,
+    });
     expect(effectivePlan([a, revoked], now)).toBe('advanced');
   });
 });
@@ -57,10 +62,15 @@ describe('renewDate dd.mm.yyyy', () => {
     expect(renewDate(undefined, ms('2026-12-31T22:30:00Z'), cfg)).toBe('01.02.2027');
   });
   it('advanced: periodEnd', () => {
-    const e = ent({ periodStart: ms('2026-11-20T09:00:00Z'), periodEnd: ms('2026-12-20T09:00:00Z') });
+    const e = ent({
+      periodStart: ms('2026-11-20T09:00:00Z'),
+      periodEnd: ms('2026-12-20T09:00:00Z'),
+    });
     expect(renewDate(e, ms('2026-11-25T09:00:00Z'), cfg)).toBe('20.12.2026');
   });
   it('lapsed paid shows the free calendar renewal', () => {
-    expect(renewDate(ent({ status: 'lapsed' }), ms('2026-11-19T12:00:00Z'), cfg)).toBe('01.12.2026');
+    expect(renewDate(ent({ status: 'lapsed' }), ms('2026-11-19T12:00:00Z'), cfg)).toBe(
+      '01.12.2026',
+    );
   });
 });

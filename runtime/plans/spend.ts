@@ -42,7 +42,13 @@ export type SpendDelta =
   | { k: 'roll'; dayKey: string; monthKey: string; clearState: boolean }
   | { k: 'reserve'; micro: number }
   | { k: 'settle'; reservedMicro: number; actualMicro: number; stop?: StopReason; alerts: string[] }
-  | { k: 'release'; reservedMicro: number; countedMicro: number; stop?: StopReason; alerts: string[] }
+  | {
+      k: 'release';
+      reservedMicro: number;
+      countedMicro: number;
+      stop?: StopReason;
+      alerts: string[];
+    }
   | { k: 'trip'; stop: StopReason; alerts: string[] }
   | { k: 'resume'; extraDayMicro: number }
   | { k: 'pause' }
@@ -53,7 +59,8 @@ export function applySpend(s: SpendState, d: SpendDelta): SpendState {
   switch (d.k) {
     case 'roll': {
       if (d.dayKey !== s.dayKey) {
-        if (s.dayKey !== '') n.history = [...s.history, { dayKey: s.dayKey, micro: s.dayMicro }].slice(-30);
+        if (s.dayKey !== '')
+          n.history = [...s.history, { dayKey: s.dayKey, micro: s.dayMicro }].slice(-30);
         n.dayKey = d.dayKey;
         n.dayMicro = 0;
         n.dayExtraMicro = 0;

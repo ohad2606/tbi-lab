@@ -69,7 +69,11 @@ describe('consume order and all-or-nothing', () => {
     expect(buckets.packs[0]?.credits).toBe(100);
   });
   it('legacy is unmetered', () => {
-    expect(consume(b(0, 0, []), 15, NOW, 'legacy', cfg)).toEqual({ ok: true, metered: false, parts: [] });
+    expect(consume(b(0, 0, []), 15, NOW, 'legacy', cfg)).toEqual({
+      ok: true,
+      metered: false,
+      parts: [],
+    });
   });
 });
 
@@ -122,7 +126,9 @@ describe('refundEligible', () => {
   it('used share 20% exactly ok, 20.1% not', () => {
     expect(refundEligible(pack, 200, pack.boughtAt + D, cfg)).toBe(true);
     expect(refundEligible(pack, 201, pack.boughtAt + D, cfg)).toBe(false);
-    expect(refundEligible({ credits: 300, boughtAt: pack.boughtAt }, 60, pack.boughtAt, cfg)).toBe(true);
+    expect(refundEligible({ credits: 300, boughtAt: pack.boughtAt }, 60, pack.boughtAt, cfg)).toBe(
+      true,
+    );
   });
   it('windowDays from config', () => {
     const c = parseConfig({ packs: { refund: { windowDays: 7 } } });
