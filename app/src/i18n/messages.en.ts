@@ -2153,6 +2153,7 @@ export const en = {
   'kbwire.list.title': 'Wires',
   'kbwire.list.empty': 'No wires yet. Connect two pins to add one.',
   'kbwire.list.item': 'W{n}: {from} to {to}',
+  'kbwire.list.selected': 'Wire W{n} selected',
 
   // Admin app design §3: the administration's texts (and the report kinds and areas it shows)
   // are shared with the TBI Lab Admin app (packages/admin-client), unchanged.

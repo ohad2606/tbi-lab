@@ -2047,6 +2047,7 @@ export const he: Record<MessageKey, string> = {
   'kbwire.list.title': 'חוטים',
   'kbwire.list.empty': 'עדיין אין חוטים. חברו שני פינים כדי להוסיף חוט.',
   'kbwire.list.item': 'W{n}: {from} אל {to}',
+  'kbwire.list.selected': 'חוט W{n} נבחר',
 
   // Admin app design §3: shared with the TBI Lab Admin app (packages/admin-client), unchanged.
   ...adminMessagesHe,
