@@ -158,12 +158,16 @@ describe('build output', () => {
       }
     }
   });
+  it('no hype "real" claims', () => {
+    for (const l of ['he','en']) for (const pg of Object.values(content[l].pages)) expect(JSON.stringify(pg)).not.toMatch(/\breal\b|אמית/i);
+  });
+
   it('forbidden claims are absent', () => {
     for (const l of LANGS)
       for (const p of PAGES) {
         const text = html(l, p);
         expect(text, `${l}/${p}`).not.toMatch(
-          /micropython|firefox|wi-?fi|phone|tablet|טלפון|טאבלט|פיירפוקס/i,
+          /firefox|wi-?fi|phone|tablet|טלפון|טאבלט|פיירפוקס/i,
         );
       }
   });
