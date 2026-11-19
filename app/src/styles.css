@@ -717,8 +717,16 @@ select {
 
 .wire-group.selected .wire-hit {
   stroke: var(--selected);
-  stroke-opacity: 0.3;
+  stroke-opacity: 0.45;
   stroke-width: 10;
+}
+
+@media (forced-colors: active) {
+  .wire-group.selected .wire-hit {
+    forced-color-adjust: none;
+    stroke: Highlight;
+    stroke-opacity: 1;
+  }
 }
 
 .wire-preview {
@@ -729,6 +737,54 @@ select {
 
 .terminal {
   cursor: crosshair;
+}
+
+/* A11Y-002 keyboard wiring: the focused pin and the chosen target get a ring (navy on white,
+   well above 3:1); the target is also dashed and filled so it does not rely on colour alone. */
+.terminal.kb-pin:focus,
+.terminal.kb-pin:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+.kb-ring {
+  fill: none;
+  stroke: var(--focus);
+  stroke-width: 3;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+  visibility: hidden;
+  filter: drop-shadow(0 0 1.5px var(--focus-halo)) drop-shadow(0 0 1px var(--focus-halo));
+}
+
+.terminal.kb-pin:focus .kb-ring {
+  visibility: visible;
+}
+
+.terminal.kb-target .kb-ring {
+  visibility: visible;
+  stroke-dasharray: 4 3;
+  fill: var(--accent-soft);
+  fill-opacity: 0.6;
+}
+
+/* The wire's source pin stays marked while choosing a target: a solid, thicker ring (the target
+   ring is dashed and filled), so the two differ by shape and not by colour. */
+.terminal.kb-source .kb-ring {
+  visibility: visible;
+  stroke-width: 5;
+  stroke-dasharray: none;
+}
+
+@media (forced-colors: active) {
+  .kb-ring {
+    forced-color-adjust: none;
+    stroke: Highlight;
+  }
+  .terminal.kb-target .kb-ring {
+    fill: Canvas;
+    fill-opacity: 0.6;
+  }
 }
 
 .terminal-hit {
@@ -2268,7 +2324,7 @@ select {
 /* The side column: the inspector (scrolls) and, for ESP32 projects, the terminal under it. */
 .side-column {
   display: grid;
-  grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-rows: minmax(0, 1fr) auto auto;
   min-width: 0;
   min-height: 0;
   border-inline-start: 1px solid var(--border);
@@ -4544,4 +4600,51 @@ select {
 .admin-rename {
   display: grid;
   gap: 0.35rem;
+}
+
+/* Wires list (TBI-001 slice 3) */
+.wires-list {
+  border-block-start: 1px solid var(--border);
+  padding: 8px 12px;
+  max-height: 30vh;
+  overflow: auto;
+  min-width: 0;
+}
+.wires-list h2 {
+  font-size: 1rem;
+  margin: 0 0 6px;
+}
+.wires-list ul {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+}
+.wires-list-empty {
+  margin: 0;
+}
+.wires-list-item {
+  display: block;
+  inline-size: 100%;
+  min-block-size: 28px;
+  padding: 4px 8px;
+  text-align: start;
+  overflow-wrap: anywhere;
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 1px solid var(--muted);
+  border-radius: 4px;
+  margin-block-end: 4px;
+  scroll-margin: 6px;
+  cursor: pointer;
+}
+.wires-list-item[aria-pressed='true'] {
+  border-width: 2px;
+  border-color: var(--accent-strong);
+  font-weight: 600;
+  background: var(--accent-soft);
+}
+.wires-list-item:focus-visible {
+  outline: 3px solid currentColor;
+  outline-offset: 2px;
 }

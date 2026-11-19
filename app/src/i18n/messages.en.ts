@@ -2124,6 +2124,37 @@ export const en = {
   'status.feedback': 'Feedback',
   'status.admin': 'Administration',
 
+  // Keyboard wiring (A11Y-002): announcements and pin labels. Parameters, no concatenation.
+  'kbwire.pins':
+    '{component}: {count} pins, now on {pin}. Arrow keys move between pins, Enter starts a wire, Escape leaves.',
+  'kbwire.pinLabel.free': '{component} pin {pin}, not connected',
+  'kbwire.pinLabel.connectedOne': '{component} pin {pin}, connected to 1 wire',
+  'kbwire.pinLabel.connected': '{component} pin {pin}, connected to {n} wires',
+  'kbwire.start':
+    'Wire started from {pin}. Tab or arrow keys choose a target, Enter connects, Escape cancels.',
+  'kbwire.candidate': '{pin}, {n} of {total}, {distance} grid cells away{hint}',
+  'kbwire.hint.ground_supply': '. Warning: joins ground to a supply',
+  'kbwire.hint.supply_supply': '. Warning: joins two supplies',
+  'kbwire.done': 'Connected {from} to {to}',
+  'kbwire.cancel': 'Wiring cancelled. No wire was added.',
+  'kbwire.refused': 'Cannot connect: {reason}',
+  'kbwire.reason.same_endpoint': 'both ends are the same point',
+  'kbwire.reason.other': 'the edit was refused',
+  'kbwire.running': 'Wiring is unavailable while the simulation runs. Stop the simulation first.',
+  'kbwire.noTargets': 'No other pin to connect {pin} to.',
+  'kbwire.wireSelected': 'Wire {n} of {total}: {from} to {to}.{hint}',
+  'kbwire.wireSelected.hint': ' {delete} removes it, {escape} deselects.',
+  'kbwire.wireDeleteRefused':
+    'Cannot remove the wire: editing is unavailable (the simulation is running or the project is read-only).',
+  'kbwire.wireRemoved': 'Removed wire: {from} to {to}',
+  'kbwire.wireCleared': 'Wire selection cleared',
+  'kbwire.noWires': 'There are no wires.',
+  'kbwire.endJunction': 'junction {id}',
+  'kbwire.list.title': 'Wires',
+  'kbwire.list.empty': 'No wires yet. Connect two pins to add one.',
+  'kbwire.list.item': 'W{n}: {from} to {to}',
+  'kbwire.list.selected': 'Wire W{n} selected',
+
   // Admin app design §3: the administration's texts (and the report kinds and areas it shows)
   // are shared with the TBI Lab Admin app (packages/admin-client), unchanged.
   ...adminMessagesEn,

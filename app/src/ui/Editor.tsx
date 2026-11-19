@@ -8,6 +8,7 @@ import { LazyView } from './LazyView.js';
 import { Inspector } from './Inspector.js';
 import { McuTerminal } from './McuTerminal.js';
 import { requiresMcuRuntime } from '../runtime/snapshot.js';
+import { WiresList } from './WiresList.js';
 import { Palette } from './Palette.js';
 import { probeExists, sameTarget, type Probe, type ProbeInput } from './probes.js';
 
@@ -191,6 +192,7 @@ export function Editor() {
           onRemoveProbe={(id) => setProbes(live.filter((p) => p.id !== id))}
           onClearProbes={() => setProbes([])}
         />
+        <WiresList />
         {doc && requiresMcuRuntime(doc) && <McuTerminal />}
       </div>
     </main>
