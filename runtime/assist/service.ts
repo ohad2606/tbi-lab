@@ -25,7 +25,11 @@ import {
   type AssistProvider,
   type GatewayOptions,
 } from '@tbi-lab/assist';
+import { randomUUID } from 'node:crypto';
 import { principalOf, type IdentityConfig } from '../identity/principal.js';
+import { limitError, type LimitError } from '../plans/limits.js';
+import { renderLimit } from '../plans/messages.js';
+import type { PlansEngine } from '../plans/reserve.js';
 import {
   ASSIST_SERVICE_PROTOCOL,
   activation,
@@ -69,6 +73,43 @@ export interface AssistServiceDeps {
   env: { allowMock: boolean; credentialPresent: boolean };
   gateway?: Partial<GatewayOptions>;
   now?: () => number;
+  /**
+   * TBI-018: the plans engine. Metering applies only when this is set AND its config has
+   * `metering.enabled` (default false); otherwise behaviour is exactly as before.
+   */
+  plans?: PlansEngine;
+  /** Tests: request id source for the reservation (default: random UUID). */
+  newReqId?: () => string;
+}
+
+const LIMIT_STATUS: Record<string, number> = {
+  credits_out: 429,
+  credits_out_free: 429,
+  daily: 429,
+  rate: 429,
+  global_off: 503,
+  too_long: 413,
+  deep_not_in_plan: 403,
+  system_unavailable: 503,
+};
+
+/** HTTP body for a plans refusal: code, params, and the he/en texts (server renders; never blank). */
+function limitResponse(e: LimitError): { status: number; body: Record<string, unknown> } {
+  const status = LIMIT_STATUS[e.code] ?? 409;
+  let message: { he: string; en: string } | undefined;
+  try {
+    message = { he: renderLimit('he', e), en: renderLimit('en', e) };
+  } catch {
+    message = undefined;
+  }
+  return {
+    status,
+    body: {
+      error: e.code,
+      limit: { code: e.code, messageKey: e.messageKey, params: e.params },
+      ...(message ? { message } : {}),
+    },
+  };
 }
 
 function send(
@@ -257,9 +298,35 @@ export function createAssistHttpServer(d: AssistServiceDeps): Server {
         d.ledger.audit({ action: 'explain', outcome: 'spend_cap', principal });
         return send(res, 429, { error: 'spend_cap' });
       }
-      if (month.tokens + worstTokens > c.limits.monthlyTokens) {
+      // With metering on, the credit/USD guards of the plans engine govern; the old fixed monthly
+      // token ceiling (2M) would block Free users long before any dollar cap, so it is skipped.
+      const metered = d.plans?.cfg.metering.enabled === true;
+      if (!metered && month.tokens + worstTokens > c.limits.monthlyTokens) {
         d.ledger.audit({ action: 'explain', outcome: 'token_ceiling', principal });
         return send(res, 429, { error: 'token_ceiling' });
+      }
+      let reqId: string | undefined;
+      if (metered && d.plans) {
+        // Admit (credits + spend guard reservation) BEFORE the provider call. Fail closed on any error.
+        const id = (d.newReqId ?? randomUUID)();
+        let a;
+        try {
+          a = await d.plans.admit({ reqId: id, principal, mode: 'standard', inputTokens: inTok });
+        } catch {
+          a = { ok: false as const, error: limitError('system_unavailable') };
+        }
+        if (!a.ok) {
+          d.ledger.audit({ action: 'explain', outcome: `plans_${a.error.code}`, principal });
+          const lr = limitResponse(a.error);
+          return send(res, lr.status, lr.body);
+        }
+        // A duplicate id or a reservation that is not open must never reach the provider.
+        if (a.metered && (a.duplicate || a.reservation.state !== 'open')) {
+          d.ledger.audit({ action: 'explain', outcome: 'plans_invalid_state', principal });
+          const lr = limitResponse(limitError('invalid_state'));
+          return send(res, lr.status, lr.body);
+        }
+        if (a.metered) reqId = id;
       }
       starts.push(t);
       perMinute.set(principal, starts);
@@ -267,7 +334,13 @@ export function createAssistHttpServer(d: AssistServiceDeps): Server {
       req.on('close', () => {
         if (!res.writableEnded) ctl.abort();
       });
-      const r = await gateway.explain(parsed.request, ctl.signal);
+      let r;
+      try {
+        r = await gateway.explain(parsed.request, ctl.signal);
+      } catch (e) {
+        if (reqId && d.plans) await d.plans.release(reqId, 'failed').catch(() => undefined);
+        throw e;
+      }
       const acc = r.accounting;
       // Charged: the provider's counts on success; a failed live attempt at its worst case.
       const usd = acc
@@ -280,11 +353,24 @@ export function createAssistHttpServer(d: AssistServiceDeps): Server {
           ? acc.outputTokens
           : acc.attempts * c.limits.maxOutputTokens
         : 0;
-      if (acc && acc.attempts > 0)
-        d.ledger.record(principal, { inputTokens: acc.inputTokens, outputTokens: outTok, usd });
+      try {
+        if (acc && acc.attempts > 0)
+          d.ledger.record(principal, { inputTokens: acc.inputTokens, outputTokens: outTok, usd });
+      } catch (e) {
+        if (reqId && d.plans) await d.plans.release(reqId, 'failed').catch(() => undefined);
+        throw e;
+      }
+      let settleFailed = false;
+      if (reqId && d.plans) {
+        // Success: settle with the real spend. Failure or abort: release (credits return).
+        const done = r.ok
+          ? await d.plans.settle(reqId, Math.round((acc?.costUsd ?? 0) * 1e6)).catch(() => null)
+          : await d.plans.release(reqId, 'failed').catch(() => null);
+        settleFailed = !done || !done.ok;
+      }
       d.ledger.audit({
         action: 'explain',
-        outcome: r.ok ? 'ok' : r.error,
+        outcome: r.ok ? (settleFailed ? 'ok_unsettled' : 'ok') : r.error,
         principal,
         inputTokens: acc?.inputTokens ?? 0,
         outputTokens: outTok,
