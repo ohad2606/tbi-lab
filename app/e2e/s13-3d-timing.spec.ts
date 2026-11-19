@@ -7,6 +7,7 @@
 import { appendFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 import { goToProjects } from './helpers.js';
+import { markReturningUser } from './helpers/returningUser.js';
 
 test.skip(!process.env.TBI_3D_TIMING, 'measurement only (TBI_3D_TIMING=1)');
 const OUT = process.env.TBI_3D_TIMING_OUT ?? 'test-results/s13-3d-timing.jsonl';
@@ -18,6 +19,7 @@ for (const quality of (process.env.TBI_3D_TIMING_TIERS ?? 'full,reduced').split(
       test.setTimeout(600_000);
       for (let run = 0; run < RUNS; run++) {
         const ctx = await browser.newContext({ viewport: { width: 1400, height: 860 } });
+        await markReturningUser(ctx);
         const page = await ctx.newPage();
         await page.addInitScript((q) => localStorage.setItem('tbi-lab.3d.quality', q), quality);
         await page.goto('/');

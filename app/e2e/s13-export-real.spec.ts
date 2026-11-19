@@ -20,6 +20,7 @@ import {
   storedProjects,
   waitSaved,
 } from './helpers.js';
+import { markReturningUser } from './helpers/returningUser.js';
 
 test.skip(!process.env.TBI_S12_REAL, 'heavy: needs the real Session Host + QEMU (TBI_S12_REAL=1)');
 test.describe.configure({ mode: 'serial' });
@@ -46,6 +47,7 @@ test('export, import into an empty browser, restore, build and run: identical pr
 }, info) => {
   // --- Machine A: edit and export ---------------------------------------------------------
   const a = await browser.newContext();
+  await markReturningUser(a);
   const pa = await a.newPage();
   await pa.goto('/');
   await expect(pa.getByTestId('example-list').or(pa.getByTestId('canvas'))).toBeVisible();
@@ -74,6 +76,7 @@ test('export, import into an empty browser, restore, build and run: identical pr
 
   // --- Machine B: empty storage, import ---------------------------------------------------
   const b = await browser.newContext();
+  await markReturningUser(b);
   const pb = await b.newPage();
   await pb.goto('/');
   await expect(pb.getByTestId('example-list').or(pb.getByTestId('canvas'))).toBeVisible();

@@ -1840,6 +1840,21 @@ export const en = {
     'Projects are saved in this browser only: use Export to keep a copy. The ESP32 simulator is shared by the alpha testers; if it is busy, try again in a moment.',
   'onboarding.dismiss': 'Got it',
   'onboarding.show': 'Show getting started',
+  // TBI-014: first-run welcome.
+  'firstRun.title': 'Welcome to TBI Lab',
+  'firstRun.intro': 'Three steps to your first simulated circuit. It takes about a minute.',
+  'firstRun.step1':
+    'Open the example: an LED with a current-limiting resistor, powered by the lab supply.',
+  'firstRun.step2': 'Press Run. The simulator solves the circuit and the LED lights up.',
+  'firstRun.step3':
+    'Read the probe on the canvas, for example {probe}, and any warning in the message bar: the numbers come from the simulator.',
+  'firstRun.start': 'Start with the example',
+  'firstRun.skip': 'Skip',
+  'firstRun.never': "Don't show again",
+  'firstRun.note': 'Nothing is sent anywhere: this choice is stored in this browser only.',
+  'firstRun.opened': 'Example opened. Press Run to start the simulation.',
+  'firstRun.listLabel': 'Steps',
+  'menu.firstRun': 'Welcome and first steps',
   // Sprint 13 H7 (shown only when a deployment configures the form).
   'menu.feedback': 'Send feedback',
   // Sprint 14: in-app problem reports (shown only when a deployment enables them).
