@@ -23,6 +23,8 @@ export default defineConfig({
       'runtime/admin/tests/**/*.test.ts',
       // Sprint 8 Phase 4 policy, quotas, rate limits and admission.
       'runtime/policy/tests/**/*.test.ts',
+      // TBI-018 slice 1: plans, credit metering and the spend guard (pure module, not wired anywhere).
+      'runtime/plans/tests/**/*.test.ts',
       // RC4 packaging gate: release profile and built-frontend validation.
       'deploy/release/tests/**/*.test.mjs',
       // Sprint 28 host-wide pipeline lock.
