@@ -21,6 +21,7 @@ export default tseslint.config(
       'runtime/**/*.{ts,mjs}',
       '*.config.ts',
       'scripts/**/*.mjs',
+      'site/**/*.{mjs,ts}',
       'scripts/vite-identity-gate.ts',
       'eslint.config.js',
     ],
