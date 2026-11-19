@@ -2142,8 +2142,10 @@ export const en = {
   'kbwire.reason.other': 'the edit was refused',
   'kbwire.running': 'Wiring is unavailable while the simulation runs. Stop the simulation first.',
   'kbwire.noTargets': 'No other pin to connect {pin} to.',
-  'kbwire.wireSelected':
-    'Wire {n} of {total}: {from} to {to}. Delete removes it, Escape deselects.',
+  'kbwire.wireSelected': 'Wire {n} of {total}: {from} to {to}.{hint}',
+  'kbwire.wireSelected.hint': ' {delete} removes it, {escape} deselects.',
+  'kbwire.wireDeleteRefused':
+    'Cannot remove the wire: editing is unavailable (the simulation is running or the project is read-only).',
   'kbwire.wireRemoved': 'Removed wire: {from} to {to}',
   'kbwire.wireCleared': 'Wire selection cleared',
   'kbwire.noWires': 'There are no wires.',

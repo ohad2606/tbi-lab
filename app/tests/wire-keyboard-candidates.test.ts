@@ -9,6 +9,7 @@ import {
   type PinRef,
   type ProjectDocument,
 } from '@tbi-lab/domain';
+import { wireBracketStep, type BracketKeyEvent } from '../src/ui/wireKeyboard.js';
 import { en } from '../src/i18n/messages.en.js';
 import { he } from '../src/i18n/messages.he.js';
 import {
@@ -276,5 +277,63 @@ describe('wire selection i18n keys', () => {
       expect((en as Record<string, string>)[k], k).toBeTruthy();
       expect((he as Record<string, string>)[k], k).toBeTruthy();
     }
+  });
+});
+
+describe('wireBracketStep (wire selection key match)', () => {
+  const ev = (o: Partial<BracketKeyEvent>): BracketKeyEvent => ({
+    key: '',
+    code: '',
+    ctrlKey: false,
+    altKey: false,
+    metaKey: false,
+    shiftKey: false,
+    ...o,
+  });
+  it('US layout', () => {
+    expect(wireBracketStep(ev({ key: '[', code: 'BracketLeft' }))).toBe(-1);
+    expect(wireBracketStep(ev({ key: ']', code: 'BracketRight' }))).toBe(1);
+  });
+  it('German AltGr reports ctrl+alt with AltGraph', () => {
+    const e = ev({
+      key: '[',
+      code: 'Digit8',
+      ctrlKey: true,
+      altKey: true,
+      getModifierState: (k) => k === 'AltGraph',
+    });
+    expect(wireBracketStep(e)).toBe(-1);
+    expect(wireBracketStep({ ...e, key: ']', code: 'Digit9' })).toBe(1);
+  });
+  it('Hebrew: follows the typed character', () => {
+    expect(wireBracketStep(ev({ key: ']', code: 'BracketLeft' }))).toBe(1);
+    expect(wireBracketStep(ev({ key: '[', code: 'BracketRight' }))).toBe(-1);
+  });
+  it('rejects Ctrl/Alt/Meta/Shift combinations', () => {
+    expect(wireBracketStep(ev({ key: '[', code: 'BracketLeft', ctrlKey: true }))).toBeNull();
+    expect(wireBracketStep(ev({ key: '[', code: 'BracketLeft', altKey: true }))).toBeNull();
+    expect(wireBracketStep(ev({ key: '[', code: 'BracketLeft', metaKey: true }))).toBeNull();
+    expect(wireBracketStep(ev({ key: '{', code: 'BracketLeft', shiftKey: true }))).toBeNull();
+    expect(
+      wireBracketStep(ev({ key: '[', ctrlKey: true, altKey: true, getModifierState: () => false })),
+    ).toBeNull();
+  });
+  it('rejects a different printable character on the bracket key', () => {
+    expect(wireBracketStep(ev({ key: 'ü', code: 'BracketLeft' }))).toBeNull();
+  });
+  it('falls back to code for non-printable keys', () => {
+    expect(wireBracketStep(ev({ key: 'Dead', code: 'BracketRight' }))).toBe(1);
+  });
+});
+
+describe('kbwire.wireSelected strings', () => {
+  it('has hint key and refusal key in both languages', async () => {
+    const { he } = await import('../src/i18n/messages.he.js');
+    for (const k of ['kbwire.wireSelected.hint', 'kbwire.wireDeleteRefused']) {
+      expect(en).toHaveProperty([k]);
+      expect(he).toHaveProperty([k]);
+    }
+    expect(he['kbwire.wireSelected.hint']).toContain('{delete}');
+    expect(en['kbwire.wireSelected']).not.toMatch(/Delete/);
   });
 });

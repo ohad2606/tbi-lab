@@ -177,12 +177,12 @@ test('A11Y-002 kbwire: refused while the simulation runs', async ({ page }) => {
 
 const SEL = {
   en: {
-    sel: (n: number) => new RegExp(`^Wire ${n} of 2: .*PSU1.* to .+\\. Delete removes it`),
+    sel: (n: number) => new RegExp(`^Wire ${n} of 2: .*PSU1.* to .+\\. .?Delete.? removes it`),
     removed: /^Removed wire: .*PSU1.* to /,
     cleared: 'Wire selection cleared',
   },
   he: {
-    sel: (n: number) => new RegExp(`^חוט ${n} מתוך 2: .*PSU1.* אל .+\\. Delete מסיר`),
+    sel: (n: number) => new RegExp(`^חוט ${n} מתוך 2: .*PSU1.* אל .+\\. מקש .*Delete.* מסיר`),
     removed: /^החוט הוסר: .*PSU1.* אל /,
     cleared: 'בחירת החוט בוטלה',
   },

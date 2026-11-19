@@ -72,6 +72,7 @@ import {
   pinsOf,
   reduceWireKeyboard,
   stepWireSelection,
+  wireBracketStep,
   type WireKbAction,
   type WireKbEvent,
   type WireKbState,
@@ -783,6 +784,13 @@ export function Canvas({
         total: step.total,
         from: wireEndName(w.from),
         to: wireEndName(w.to),
+        // The Delete/Escape hint is wrong when nothing can be deleted.
+        hint: readOnly
+          ? ''
+          : t('kbwire.wireSelected.hint', {
+              delete: isolateLtr('Delete'),
+              escape: isolateLtr('Escape'),
+            }),
       }),
     );
   };
@@ -971,16 +979,10 @@ export function Canvas({
       }
       return;
     }
-    if (
-      (e.code === 'BracketLeft' || e.code === 'BracketRight') &&
-      !e.ctrlKey &&
-      !e.metaKey &&
-      !e.altKey &&
-      !e.shiftKey &&
-      kb.mode === 'idle'
-    ) {
+    const bracketStep = kb.mode === 'idle' ? wireBracketStep(e) : null;
+    if (bracketStep) {
       e.preventDefault();
-      kbSelectWire(e.code === 'BracketRight' ? 1 : -1);
+      kbSelectWire(bracketStep);
       return;
     }
     if (e.key === '+' || e.key === '=') return zoomAt(1.25);
@@ -1008,6 +1010,10 @@ export function Canvas({
         }));
       return;
     }
+    if (readOnly && hasSelection && (e.key === 'Delete' || e.key === 'Backspace')) {
+      if (selection.wires.length) kbAnnounce(t('kbwire.wireDeleteRefused'));
+      return;
+    }
     if (readOnly || !hasSelection) return;
     if (e.key === 'Delete' || e.key === 'Backspace') {
       e.preventDefault();
@@ -1017,6 +1023,7 @@ export function Canvas({
           : undefined;
       const del = deleteSelection(doc, selection);
       store.apply(del, emptySelection());
+      if (removed && !del.ok) kbAnnounce(t('kbwire.wireDeleteRefused'));
       if (removed && del.ok)
         kbAnnounce(
           t('kbwire.wireRemoved', {
