@@ -2178,7 +2178,6 @@ export const en = {
   'shortcuts.col.action': 'What it does',
   'shortcuts.col.when': 'When',
   'shortcuts.or': 'or',
-  'shortcuts.mod': 'Ctrl or Cmd',
   'shortcuts.scope.global': 'Everywhere',
   'shortcuts.scope.circuit': 'Circuit view',
   'shortcuts.scope.wiring': 'Wiring with the keyboard',
@@ -2265,7 +2264,6 @@ export const en = {
   'shortcut.editorMode.when': 'Code editor (Ctrl only; Cmd does not work here)',
 
   // Admin app design §3: the administration's texts (and the report kinds and areas it shows)
-
   // are shared with the TBI Lab Admin app (packages/admin-client), unchanged.
   ...adminMessagesEn,
 } as const;

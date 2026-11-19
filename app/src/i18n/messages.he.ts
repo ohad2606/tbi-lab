@@ -2072,7 +2072,6 @@ export const he: Record<MessageKey, string> = {
   'shortcuts.col.action': 'מה זה עושה',
   'shortcuts.col.when': 'מתי',
   'shortcuts.or': 'או',
-  'shortcuts.mod': 'Ctrl או Cmd',
   'shortcuts.scope.global': 'בכל מקום',
   'shortcuts.scope.circuit': 'תצוגת המעגל',
   'shortcuts.scope.wiring': 'חיווט במקלדת',

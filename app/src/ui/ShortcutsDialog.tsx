@@ -49,7 +49,7 @@ function isolateKeyNames(text: string): ComponentChildren {
   const parts = text.split(KEY_WORDS);
   return parts.map((p, i) =>
     i % 2 === 1 ? (
-      <bdi key={i} dir="ltr">
+      <bdi key={i} dir="ltr" lang="en">
         {p}
       </bdi>
     ) : (
@@ -59,17 +59,23 @@ function isolateKeyNames(text: string): ComponentChildren {
 }
 
 function Chord({ chord }: { chord: string }) {
-  const t = useT();
   const names = chordKeys(chord);
   return (
     <span class="shortcut-chord" dir="ltr">
       {names.map((n, i) => (
         <Fragment key={i}>
           {i > 0 && <span aria-hidden="true">+</span>}
-          <kbd>{n === 'Mod' ? t('shortcuts.mod') : n}</kbd>
+          <kbd lang="en">{n}</kbd>
         </Fragment>
       ))}
     </span>
+  );
+}
+
+/** `Mod` is two keys: every chord that has it becomes a Ctrl chord and a Cmd chord. */
+function expandMod(chords: readonly string[]): string[] {
+  return chords.flatMap((c) =>
+    chordKeys(c).includes('Mod') ? [c.replace('Mod', 'Ctrl'), c.replace('Mod', 'Cmd')] : [c],
   );
 }
 
@@ -77,7 +83,7 @@ function Keys({ def }: { def: ShortcutDef }) {
   const t = useT();
   return (
     <>
-      {def.keys.map((chord, i) => (
+      {expandMod(def.keys).map((chord, i) => (
         <Fragment key={chord}>
           {i > 0 && <span class="shortcut-or"> {t('shortcuts.or')} </span>}
           <Chord chord={chord} />
@@ -152,26 +158,32 @@ function ShortcutsDialog({
       <h2 id="shortcuts-title" ref={heading} tabIndex={-1}>
         {t('shortcuts.title')}
       </h2>
-      <p id="shortcuts-intro">{t('shortcuts.intro')}</p>
+      <p id="shortcuts-intro">{isolateKeyNames(t('shortcuts.intro'))}</p>
       {SHORTCUT_SCOPES.map((scope) => (
         <section key={scope}>
-          <table class="shortcut-table" data-testid={`shortcuts-${scope}`}>
-            <caption>{t(key(`shortcuts.scope.${scope}`))}</caption>
-            <thead>
-              <tr>
-                <th scope="col">{t('shortcuts.col.keys')}</th>
-                <th scope="col">{t('shortcuts.col.action')}</th>
-                <th scope="col">{t('shortcuts.col.when')}</th>
+          <table class="shortcut-table" role="table" data-testid={`shortcuts-${scope}`}>
+            <caption role="caption">{t(key(`shortcuts.scope.${scope}`))}</caption>
+            <thead role="rowgroup">
+              <tr role="row">
+                <th scope="col" role="columnheader">
+                  {t('shortcuts.col.keys')}
+                </th>
+                <th scope="col" role="columnheader">
+                  {t('shortcuts.col.action')}
+                </th>
+                <th scope="col" role="columnheader">
+                  {t('shortcuts.col.when')}
+                </th>
               </tr>
             </thead>
-            <tbody>
+            <tbody role="rowgroup">
               {shortcutsIn(scope).map((def) => (
-                <tr key={def.id} data-testid={`shortcut-${def.id}`}>
-                  <th scope="row" class="shortcut-keys">
+                <tr key={def.id} role="row" data-testid={`shortcut-${def.id}`}>
+                  <th scope="row" role="rowheader" class="shortcut-keys">
                     <Keys def={def} />
                   </th>
-                  <td>{isolateKeyNames(t(key(`shortcut.${def.id}.action`)))}</td>
-                  <td>{isolateKeyNames(t(key(`shortcut.${def.id}.when`)))}</td>
+                  <td role="cell">{isolateKeyNames(t(key(`shortcut.${def.id}.action`)))}</td>
+                  <td role="cell">{isolateKeyNames(t(key(`shortcut.${def.id}.when`)))}</td>
                 </tr>
               ))}
             </tbody>
