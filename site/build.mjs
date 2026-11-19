@@ -227,7 +227,7 @@ function renderRoot() {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>TBI Lab — עברית / English</title>
 <meta name="description" content="TBI Lab — Electronics Engineering Workspace. Choose a language.">
-${ogTags({ url: '/', title: 'TBI Lab — Electronics Engineering Workspace', description: 'A real electronics and ESP32 lab in your browser. Free Alpha, limited places.', locale: 'he_IL', altLocale: 'en_US' })}
+${ogTags({ url: '/', title: 'TBI Lab — Electronics Engineering Workspace', description: 'An electronics and ESP32 lab in your browser, with Arduino (C++) and MicroPython. Free Alpha, limited places.', locale: 'he_IL', altLocale: 'en_US' })}
 ${alts}
 <link rel="alternate" hreflang="x-default" href="/">
 <link rel="icon" href="/assets/favicon.ico" sizes="any">

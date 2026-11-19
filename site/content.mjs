@@ -98,13 +98,13 @@ const en = {
     home: {
       title: 'TBI Lab — an electronics engineering lab for ESP32 in your browser',
       description:
-        'TBI Lab is an engineering tool in the browser: a deterministic simulation of circuits and [[ESP32]] with Arduino code, parts flagged beyond their absolute maximum ratings, and wiring errors explained. Free Alpha, limited places.',
-      h1: 'A real electronics lab for [[ESP32]], in your browser',
-      lead: 'Build a circuit, write Arduino code and run it on a simulated [[ESP32]], then see what actually happens in the circuit. An engineering tool, not a game.',
+        'TBI Lab is an engineering tool in the browser: a deterministic simulation of circuits and [[ESP32]] with Arduino (C++) or MicroPython code, parts flagged beyond their absolute maximum ratings, and wiring errors explained. Free Alpha, limited places.',
+      h1: 'An electronics lab for [[ESP32]], in your browser',
+      lead: 'Build a circuit, write Arduino (C++) or MicroPython code and run it on a simulated [[ESP32]], then see what happens in the circuit. An engineering tool, not a game.',
       featuresH: 'Built for engineering, not for show',
       features: [
         {
-          h: 'Real, deterministic simulation',
+          h: 'Deterministic simulation',
           p: 'Voltages, currents and timing come from a simulation engine, not from an animation. The same circuit gives the same result every time.',
         },
         {
@@ -120,8 +120,8 @@ const en = {
           p: 'What cannot yet be simulated reliably is stated openly. There are no fake results.',
         },
         {
-          h: 'ESP32, Arduino and real parts',
-          p: 'Arduino code on a classic [[ESP32]], with an [[HC-SR04]] distance sensor, a temperature sensor and an [[I2C]] LCD.',
+          h: 'ESP32, Arduino, MicroPython and parts',
+          p: 'Arduino (C++) or MicroPython code on a classic [[ESP32]], with an [[HC-SR04]] distance sensor, a temperature sensor and an [[I2C]] LCD.',
         },
         {
           h: '2D and 3D, Hebrew and English',
@@ -148,7 +148,7 @@ const en = {
     product: {
       title: 'Product — TBI Lab',
       description:
-        'What TBI Lab does today: DC circuits, a classic [[ESP32]] with Arduino code, distance and temperature sensors, an [[I2C]] LCD, 2D and 3D views, Hebrew and English.',
+        'What TBI Lab does today: DC circuits, a classic [[ESP32]] with Arduino or MicroPython code, distance and temperature sensors, an [[I2C]] LCD, 2D and 3D views, Hebrew and English.',
       h1: 'Product',
       lead: 'What the workspace does, and what it deliberately does not.',
       sections: [
@@ -167,8 +167,8 @@ const en = {
           id: 'esp32',
           h: 'Microcontroller and parts',
           ul: [
-            'The original ([[classic]]) [[ESP32]] DevKit with its real pin names, for example [[GPIO2]] and [[3V3]]. Other ESP32 variants are not supported.',
-            'Firmware is written in Arduino C++ (a single sketch) and built by the build service; the built firmware runs against your circuit.',
+            'The original ([[classic]]) [[ESP32]] DevKit with its actual pin names, for example [[GPIO2]] and [[3V3]]. Other ESP32 variants are not supported.',
+            'Code is written in Arduino C++ (a single sketch) or MicroPython; the build service compiles it into ESP32 firmware that runs against your circuit.',
             'An [[HC-SR04]] distance sensor, a temperature sensor and an [[I2C]] LCD.',
             'Serial output is shown in a read-only monitor.',
           ],
@@ -379,13 +379,13 @@ const he = {
     home: {
       title: 'TBI Lab — מעבדת הנדסת אלקטרוניקה ל-ESP32 בדפדפן',
       description:
-        'TBI Lab הוא כלי הנדסי בדפדפן: סימולציה דטרמיניסטית של מעגלים ושל [[ESP32]] עם קוד Arduino, רכיבים שמסומנים כשהם חורגים מהמגבלות המקסימליות, והסבר על שגיאות חיווט. אלפא חינמית, מספר מקומות מוגבל.',
-      h1: 'מעבדת אלקטרוניקה אמיתית ל-[[ESP32]], בתוך הדפדפן',
-      lead: 'מתכננים מעגל, כותבים קוד Arduino ומריצים אותו על [[ESP32]] מדומה, ורואים מה באמת קורה במעגל. כלי הנדסי, לא משחק.',
+        'TBI Lab הוא כלי הנדסי בדפדפן: סימולציה דטרמיניסטית של מעגלים ושל [[ESP32]] עם קוד Arduino (C++) או MicroPython, רכיבים שמסומנים כשהם חורגים מהמגבלות המקסימליות, והסבר על שגיאות חיווט. אלפא חינמית, מספר מקומות מוגבל.',
+      h1: 'מעבדת אלקטרוניקה ל-[[ESP32]], בתוך הדפדפן',
+      lead: 'מתכננים מעגל, כותבים קוד Arduino (C++) או MicroPython ומריצים אותו על [[ESP32]] מדומה, ורואים מה קורה במעגל. כלי הנדסי, לא משחק.',
       featuresH: 'בנוי להנדסה, לא להצגה',
       features: [
         {
-          h: 'סימולציה אמיתית ודטרמיניסטית',
+          h: 'סימולציה דטרמיניסטית',
           p: 'מתחים, זרמים ותזמון מחושבים במנוע סימולציה ולא באנימציה. אותו מעגל נותן אותה תוצאה בכל פעם.',
         },
         {
@@ -401,8 +401,8 @@ const he = {
           p: 'מה שעדיין אי אפשר לדמות בצורה אמינה נאמר במפורש. אין תוצאות מזויפות.',
         },
         {
-          h: 'ESP32, Arduino ורכיבים אמיתיים',
-          p: 'קוד Arduino על [[ESP32]] קלאסי, עם חיישן מרחק [[HC-SR04]], חיישן טמפרטורה ומסך [[I2C]] LCD.',
+          h: 'ESP32, Arduino, MicroPython ורכיבים',
+          p: 'קוד Arduino (C++) או MicroPython על [[ESP32]] קלאסי, עם חיישן מרחק [[HC-SR04]], חיישן טמפרטורה ומסך [[I2C]] LCD.',
         },
         {
           h: 'דו-ממד ותלת-ממד, עברית ואנגלית',
@@ -429,7 +429,7 @@ const he = {
     product: {
       title: 'המוצר — TBI Lab',
       description:
-        'מה TBI Lab עושה היום: מעגלי זרם ישר, [[ESP32]] קלאסי עם קוד Arduino, חיישני מרחק וטמפרטורה, מסך [[I2C]] LCD, תצוגות דו-ממד ותלת-ממד, עברית ואנגלית.',
+        'מה TBI Lab עושה היום: מעגלי זרם ישר, [[ESP32]] קלאסי עם קוד Arduino או MicroPython, חיישני מרחק וטמפרטורה, מסך [[I2C]] LCD, תצוגות דו-ממד ותלת-ממד, עברית ואנגלית.',
       h1: 'המוצר',
       lead: 'מה סביבת העבודה עושה, ומה היא בכוונה לא עושה.',
       sections: [
@@ -448,8 +448,8 @@ const he = {
           id: 'esp32',
           h: 'מיקרו-בקר ורכיבים',
           ul: [
-            'לוח [[ESP32]] DevKit המקורי ([[classic]]) עם שמות הפינים האמיתיים, למשל [[GPIO2]] ו-[[3V3]]. גרסאות ESP32 אחרות אינן נתמכות.',
-            'הקושחה נכתבת ב-Arduino C++ (סקיצה אחת) ונבנית בשירות הבנייה; הקושחה הבנויה רצה מול המעגל שלכם.',
+            'לוח [[ESP32]] DevKit המקורי ([[classic]]) עם שמות הפינים המקוריים, למשל [[GPIO2]] ו-[[3V3]]. גרסאות ESP32 אחרות אינן נתמכות.',
+            'הקוד נכתב ב-Arduino C++ (סקיצה אחת) או ב-MicroPython; שירות הבנייה הופך אותו לקושחת ESP32 שרצה מול המעגל שלכם.',
             'חיישן מרחק [[HC-SR04]], חיישן טמפרטורה ומסך [[I2C]] LCD.',
             'פלט טורי מוצג בצג לקריאה בלבד.',
           ],
