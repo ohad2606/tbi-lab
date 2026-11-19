@@ -353,8 +353,13 @@ export function createAssistHttpServer(d: AssistServiceDeps): Server {
           ? acc.outputTokens
           : acc.attempts * c.limits.maxOutputTokens
         : 0;
-      if (acc && acc.attempts > 0)
-        d.ledger.record(principal, { inputTokens: acc.inputTokens, outputTokens: outTok, usd });
+      try {
+        if (acc && acc.attempts > 0)
+          d.ledger.record(principal, { inputTokens: acc.inputTokens, outputTokens: outTok, usd });
+      } catch (e) {
+        if (reqId && d.plans) await d.plans.release(reqId, 'failed').catch(() => undefined);
+        throw e;
+      }
       let settleFailed = false;
       if (reqId && d.plans) {
         // Success: settle with the real spend. Failure or abort: release (credits return).
