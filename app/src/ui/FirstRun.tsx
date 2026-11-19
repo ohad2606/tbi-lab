@@ -11,6 +11,18 @@ import { FIRST_RUN_EXAMPLE, FIRST_RUN_PROBE, shouldAutoShowFirstRun } from './fi
 
 const listeners = new Set<() => void>();
 /** Open the welcome on request (the menu entry). */
+/**
+ * Return focus to the element that opened the dialog; when that is gone (the menu item that
+ * opened it), to the app-menu trigger. Deferred a frame: the native dialog close restores its
+ * own (possibly detached) previous focus first and would otherwise win.
+ */
+function restoreFocus(back: HTMLElement | null): void {
+  requestAnimationFrame(() => {
+    if (back?.isConnected) back.focus();
+    else document.querySelector<HTMLElement>('[data-testid="app-menu-button"]')?.focus();
+  });
+}
+
 export function openFirstRun(): void {
   for (const l of listeners) l();
 }
@@ -55,14 +67,19 @@ export function FirstRunHost() {
     setOpen(false);
     const back = opener.current;
     opener.current = null;
-    if (back?.isConnected) back.focus();
+    restoreFocus(back);
   };
 
   const start = async () => {
-    store.setFirstRunSeen(true);
+    const back = opener.current;
     setOpen(false);
     opener.current = null;
-    if (!(await store.openExample(FIRST_RUN_EXAMPLE))) return; // the store shows its own error notice
+    if (!(await store.openExample(FIRST_RUN_EXAMPLE))) {
+      // The store shows its own error notice; the welcome stays available and focus returns.
+      restoreFocus(back);
+      return;
+    }
+    store.setFirstRunSeen(true);
     setAnnounce(t('firstRun.opened'));
     // Put the next step (Run) under the keyboard once the editor has rendered it.
     const until = Date.now() + 3000;
