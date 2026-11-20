@@ -16,6 +16,8 @@
  *   TBI_ADMIN_USAGE        admin app: the usage exporter's file (default <TBI_ADMIN_DIR>/usage/usage.json)
  *   TBI_ADMIN_AUDIT_VIEW   admin app: the helper's audit view (default <TBI_ADMIN_DIR>/view/audit.json)
  *
+ *   TBI_SIGNUP_ADMIN       `1` enables the sign-up approval routes + purge (TBI-022; see signup/admin-wiring.ts); off by default
+ *
  * SIGTERM / SIGINT: stop accepting requests and exit.
  */
 import { accessViewFromEnv } from '../identity/access.js';
@@ -23,6 +25,7 @@ import { describeListen, listen, parseListen, socketGidFromEnv } from '../identi
 import { identityFromEnv } from '../identity/principal.js';
 import { AdminSpool, adminConfigFromEnv, createAdminServer } from './accounts.js';
 import { healthCapacity } from './capacity.js';
+import { adminSignupConfigFromEnv, wireSignupAdmin } from './signup/admin-wiring.js';
 import { AdminViews, viewPathsFromEnv } from './views.js';
 
 const where = parseListen(process.env.TBI_ADMIN_LISTEN ?? '127.0.0.1:7410');
@@ -35,9 +38,22 @@ if (!config) throw new Error('TBI_ADMIN_DIR is required');
 const health = process.env.TBI_RUNTIME_HEALTH ? parseListen(process.env.TBI_RUNTIME_HEALTH) : null;
 access.start();
 
+const spool = new AdminSpool(config);
+// TBI-022: sign-up approval routes and the retention purge, off unless TBI_SIGNUP_ADMIN=1.
+const signupCfg = adminSignupConfigFromEnv();
+if (signupCfg.error) throw new Error(`sign-up: ${signupCfg.reason}`);
+const signupWiring = signupCfg.enabled
+  ? await wireSignupAdmin(signupCfg.config, spool, {
+      fetch: (u, i) => fetch(u, i),
+      log: (l) => process.stdout.write(`tbi-admin: ${l}\n`),
+    })
+  : null;
+const stopPurge = signupWiring?.startPurge();
+
 const server = createAdminServer(identity, {
   access,
-  spool: new AdminSpool(config),
+  spool,
+  ...(signupWiring ? { signups: signupWiring.signups } : {}),
   capacity: health ? healthCapacity(health) : async () => null,
   views: new AdminViews(viewPathsFromEnv(config.dir)),
 });
@@ -47,6 +63,7 @@ const stop = () => {
   if (stopping) return;
   stopping = true;
   access.stop();
+  stopPurge?.();
   server.close(() => process.exit(0));
   server.closeAllConnections();
 };

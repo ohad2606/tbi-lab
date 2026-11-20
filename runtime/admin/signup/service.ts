@@ -125,9 +125,10 @@ export type ApproveOutcome =
       record?: SignupRecord;
     };
 
-export class SignupApprover {
-  private readonly locks = new Map<string, Promise<unknown>>();
+/** Shared by every approver instance (the admin route builds one per request): one operation per id. */
+const locks = new Map<string, Promise<unknown>>();
 
+export class SignupApprover {
   constructor(
     private readonly d: {
       store: PendingStore;
@@ -151,12 +152,12 @@ export class SignupApprover {
 
   /** One operation per id at a time (a double click cannot add or send twice). */
   private serial<T>(id: string, fn: () => Promise<T>): Promise<T> {
-    const prev = this.locks.get(id) ?? Promise.resolve();
+    const prev = locks.get(id) ?? Promise.resolve();
     const run = prev.then(fn, fn);
     const tail = run.catch(() => undefined);
-    this.locks.set(id, tail);
+    locks.set(id, tail);
     void tail.then(() => {
-      if (this.locks.get(id) === tail) this.locks.delete(id);
+      if (locks.get(id) === tail) locks.delete(id);
     });
     return run;
   }

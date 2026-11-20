@@ -2,8 +2,7 @@
  * TBI-022: the approval email (HE + EN) and its sender through the Resend HTTP API.
  * Plain text only (no HTML: no injection surface). URLs and the from address come from config;
  * the API key is read from a file by an injected reader at send time. Nothing here knows an
- * owner's name. The wording is a draft of the owner-approved mail: the owner confirms the final
- * text before enabling (see the design note, open questions).
+ * owner's name.  The Hebrew wording is the owner-approved text; the English is a translation pending owner OK.
  */
 import type { FetchLike } from './notify.js';
 
@@ -20,50 +19,79 @@ export interface Mail {
   text: string;
 }
 
-/** The name goes into the greeting only; it was sanitised on intake (no control characters). */
+/** The first whitespace-separated token of the (already sanitised) name; the greeting uses only it. */
+export function firstName(name: string): string {
+  return name.trim().split(/\s+/)[0] ?? '';
+}
+
+/** Gmail addresses need no hint about signing in with a Google account. */
+function isGmail(email: string): boolean {
+  return /@gmail\.com$/i.test(email.trim());
+}
+
+/**
+ * HE: the owner-approved text (2026-11-20), verbatim. EN: translation pending owner OK.
+ * The sign-off line is pending owner confirmation. The extra paragraph about a non-Google address
+ * appears only when the address is not @gmail.com.
+ */
 export function approvalEmail(
   lang: 'he' | 'en',
-  name: string,
+  to: { name: string; email: string },
   c: Pick<EmailConfig, 'labUrl'>,
 ): Mail {
+  const first = firstName(to.name);
+  const extra = !isGmail(to.email);
   if (lang === 'he') {
     return {
-      subject: 'הגישה שלך ל-TBI Lab אושרה',
+      subject: 'ההרשמה שלך ל-TBI Lab אושרה',
       text: [
-        `שלום ${name},`,
+        `שלום ${first},`,
         '',
-        'תודה שנרשמת. הבקשה שלך אושרה ויש לך גישה למעבדת TBI Lab (גרסת אלפא).',
+        'תודה שנרשמת לבדיקות של TBI Lab. ההרשמה שלך אושרה ואפשר להיכנס כבר עכשיו:',
+        c.labUrl,
         '',
-        `כניסה למעבדה: ${c.labUrl}`,
+        'כמה דברים חשובים:',
+        '• הכניסה היא עם חשבון Google. צריך להתחבר עם אותה כתובת מייל שאיתה נרשמת.',
+        '• המעבדה עובדת במחשב, בדפדפן Chrome או Edge.',
+        '• זו גרסת Alpha ומספר המקומות בו-זמנית מוגבל. אם כל המקומות תפוסים, כדאי לנסות שוב מאוחר יותר.',
         '',
-        'כדי להיכנס:',
-        '- התחברו עם אותו חשבון Google שבו נרשמתם.',
-        '- השתמשו ב-Chrome או ב-Edge במחשב (שולחני). אין תמיכה בטלפון או בטאבלט.',
+        ...(extra
+          ? [
+              'אם הכתובת שאיתה נרשמת אינה חשבון Google והכניסה לא מצליחה, אפשר להשיב למייל הזה עם כתובת Gmail, ואעדכן אותה.',
+              '',
+            ]
+          : []),
+        'כל משוב, תקלה או רעיון יעזרו לנו מאוד. אפשר פשוט להשיב למייל הזה.',
         '',
-        'שימו לב: גרסת האלפא מוגבלת במספר המקומות, והמעבדה עדיין בפיתוח.',
-        'נשמח לקבל משוב: פשוט השיבו למייל הזה.',
-        '',
-        'צוות TBI Lab',
+        'בהצלחה,',
+        'צוות TBI Lab', // sign-off pending owner confirmation
       ].join('\n'),
     };
   }
+  // English: translation pending owner OK.
   return {
-    subject: 'Your TBI Lab access is approved',
+    subject: "You're approved for TBI Lab",
     text: [
-      `Hello ${name},`,
+      `Hi ${first},`,
       '',
-      'Thank you for signing up. Your request is approved and you now have access to the TBI Lab alpha.',
+      'Thanks for signing up to test TBI Lab. Your registration is approved and you can sign in now:',
+      c.labUrl,
       '',
-      `Open the lab: ${c.labUrl}`,
+      'A few important things:',
+      '• Sign in with Google, using the same email address you registered with.',
+      '• The lab works on a computer, in Chrome or Edge.',
+      "• This is an Alpha with a limited number of simultaneous places. If they're all taken, please try again a bit later.",
       '',
-      'To sign in:',
-      '- Use the same Google account you signed up with.',
-      '- Use desktop Chrome or Edge on a computer. Phones and tablets are not supported.',
+      ...(extra
+        ? [
+            "If the address you registered with isn't a Google account and sign-in fails, reply to this email with a Gmail address and we'll update it.",
+            '',
+          ]
+        : []),
+      'Any feedback, bug or idea helps us a lot. Just reply to this email.',
       '',
-      'Please note: the alpha has a limited number of places, and the lab is still in development.',
-      'We would love your feedback: just reply to this email.',
-      '',
-      'The TBI Lab team',
+      'Good luck,',
+      'The TBI Lab team', // sign-off pending owner confirmation
     ].join('\n'),
   };
 }
@@ -96,7 +124,7 @@ export class ResendSender implements EmailSender {
   }): Promise<void> {
     const key = (await this.c.readKey()).trim();
     if (!/^re_[A-Za-z0-9_-]{8,}$/.test(key)) throw new EmailError('bad_key');
-    const mail = approvalEmail(to.lang, to.name, this.c);
+    const mail = approvalEmail(to.lang, to, this.c);
     let res;
     try {
       res = await this.c.fetch('https://api.resend.com/emails', {

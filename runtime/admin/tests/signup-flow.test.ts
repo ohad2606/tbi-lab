@@ -226,23 +226,80 @@ describe('telegram notifier', () => {
 });
 
 describe('approval email', () => {
-  it('HE and EN content: lab link, same Google account, desktop Chrome/Edge, limited places, reply; no owner name', () => {
-    const he = approvalEmail('he', 'דנה', { labUrl: 'https://lab.example.invalid/' });
-    const en = approvalEmail('en', 'Dana', { labUrl: 'https://lab.example.invalid/' });
-    for (const m of [he, en]) {
-      expect(m.text).toContain('https://lab.example.invalid/');
-      expect(m.text).toMatch(/Chrome/);
-      expect(m.text).toMatch(/Edge/);
+  const URL_ = 'https://lab.example.invalid/';
+  it('HE: owner-approved text, greeting by first name, sign-off', () => {
+    const he = approvalEmail('he', { name: 'דנה לוי', email: 'dana@gmail.com' }, { labUrl: URL_ });
+    expect(he.subject).toBe('ההרשמה שלך ל-TBI Lab אושרה');
+    expect(he.text).toBe(
+      [
+        'שלום דנה,',
+        '',
+        'תודה שנרשמת לבדיקות של TBI Lab. ההרשמה שלך אושרה ואפשר להיכנס כבר עכשיו:',
+        URL_,
+        '',
+        'כמה דברים חשובים:',
+        '• הכניסה היא עם חשבון Google. צריך להתחבר עם אותה כתובת מייל שאיתה נרשמת.',
+        '• המעבדה עובדת במחשב, בדפדפן Chrome או Edge.',
+        '• זו גרסת Alpha ומספר המקומות בו-זמנית מוגבל. אם כל המקומות תפוסים, כדאי לנסות שוב מאוחר יותר.',
+        '',
+        'כל משוב, תקלה או רעיון יעזרו לנו מאוד. אפשר פשוט להשיב למייל הזה.',
+        '',
+        'בהצלחה,',
+        'צוות TBI Lab',
+      ].join('\n'),
+    );
+  });
+  it('EN: translation, first name, sign-off, lab link', () => {
+    const en = approvalEmail(
+      'en',
+      { name: 'Dana Levi', email: 'dana@gmail.com' },
+      { labUrl: URL_ },
+    );
+    expect(en.subject).toBe("You're approved for TBI Lab");
+    expect(en.text.startsWith('Hi Dana,\n')).toBe(true);
+    expect(en.text).toContain(URL_);
+    expect(en.text).toContain('same email address');
+    expect(en.text).toContain('Chrome or Edge');
+    expect(en.text).toContain('limited number of simultaneous places');
+    expect(en.text.endsWith('Good luck,\nThe TBI Lab team')).toBe(true);
+  });
+  it('the non-Google paragraph appears only for addresses that are not @gmail.com', () => {
+    for (const lang of ['he', 'en'] as const) {
+      const key = lang === 'he' ? 'אינה חשבון Google' : "isn't a Google account";
+      const mk = (email: string) => approvalEmail(lang, { name: 'D', email }, { labUrl: URL_ });
+      expect(mk('Dana@GMAIL.com').text).not.toContain(key);
+      expect(mk('dana@example.com').text).toContain(key);
+      expect(mk('dana@gmail.com.example.com').text).toContain(key);
     }
-    expect(he.text).toContain('שלום דנה');
-    expect(he.text).toContain('אותו חשבון Google');
-    expect(he.text).toContain('מוגבלת במספר המקומות');
-    expect(he.text).toContain('השיבו');
-    expect(en.text).toContain('Hello Dana');
-    expect(en.text).toContain('same Google account');
-    expect(en.text).toContain('limited number of places');
-    expect(en.text).toContain('reply to this email');
-    expect(en.text).not.toMatch(/Ohad/i);
+  });
+  it('idempotence end to end: approve twice and resend after success send exactly one mail', async () => {
+    const store = await newStore();
+    const rec = await store.create({
+      name: 'Dana Levi',
+      email: 'dana@example.com',
+      role: 'T',
+      lang: 'he',
+      consent: true,
+    });
+    const f = fakeFetch();
+    const approver = new SignupApprover({
+      store,
+      accounts: { add: async () => 'done' },
+      email: new ResendSender({
+        from: 'support@example.invalid',
+        labUrl: URL_,
+        readKey: async () => RESEND_KEY,
+        fetch: f.fetch,
+      }),
+    });
+    await Promise.all([approver.approve(rec.id), approver.approve(rec.id)]);
+    await approver.approve(rec.id);
+    await approver.resend(rec.id);
+    expect(f.sent).toHaveLength(1);
+    const body = JSON.parse(f.sent[0]!.init.body);
+    expect(body.text).toContain('שלום Dana,');
+    expect(body.text).toContain('אינה חשבון Google');
+    expect(body.subject).toBe('ההרשמה שלך ל-TBI Lab אושרה');
   });
   it('Resend request: key from reader, from address from config, idempotency key, error class only', async () => {
     const f = fakeFetch();
