@@ -527,7 +527,7 @@ async function routeAccounts(
 }
 
 /**
- * TBI-022 (owner only, checked by the caller): `GET /signups` (list), `POST /signups/<id>/approve|reject|resend`.
+ * TBI-022 (owner only, checked by the caller): `GET /signups` (all), `GET /signups/pending`, `POST /signups/<id>/approve|reject|resend`.
  * Mutations already passed CSRF and the write rate limit. The records hold personal data: the
  * list is for the owner only and is never cached (`send` sets no-store).
  */
@@ -544,6 +544,10 @@ async function routeSignups(
   const [, id, op] = parts;
   if (method === 'GET' && parts.length === 1)
     return send(res, 200, { signups: await approver.list() });
+  if (method === 'GET' && parts.length === 2 && id === 'pending')
+    return send(res, 200, {
+      signups: (await approver.list()).filter((r) => r.status === 'pending'),
+    });
   if (method !== 'POST' || parts.length !== 3 || !id || !REQUEST_ID_RE.test(id))
     throw new AdminError(404, 'not_found');
   const body = await readJson(req);

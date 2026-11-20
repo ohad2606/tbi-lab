@@ -23,7 +23,7 @@ import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AccessView, deriveEmailTag } from '../../identity/access.js';
 import type { Principal } from '../../identity/principal.js';
 import { TEST_IDENTITY, principalFor, startTestGate } from '../../identity/test-gate.js';
@@ -36,6 +36,11 @@ import {
   parseAccountsView,
   type AdminConfig,
 } from '../accounts.js';
+import {
+  PURGE_INTERVAL_MS,
+  adminSignupConfigFromEnv,
+  wireSignupAdmin,
+} from '../signup/admin-wiring.js';
 import { REQUEST_ID_RE, newRequestId, writeSpoolFile, type SpoolIo } from '../common.js';
 
 // Gate subjects (Google subjects are decimal) and addresses (example.invalid only).
@@ -900,5 +905,127 @@ describe('admin service: sign-up routes (TBI-022), off unless configured', () =>
     expect((await call(o, `/signups/${ID}/resend`, mutation(o, 'POST', {}))).status).toBe(502);
     expect((await call(o, `/signups/bad/approve`, mutation(o, 'POST', {}))).status).toBe(404);
     expect(calls).toEqual([`approve:${ID}`]);
+  });
+});
+
+describe('admin service: sign-up admin wiring (TBI-022) with a fake helper', () => {
+  const FLAG_ENV = {
+    TBI_SIGNUP_ADMIN: '1',
+    TBI_SIGNUP_DIR: '/x/p',
+    TBI_SIGNUP_RESEND_KEY_FILE: '/x/k',
+    TBI_SIGNUP_FROM: 'TBI Lab <support@tbi-tech.net>',
+    TBI_SIGNUP_LAB_URL: 'https://lab.example.invalid/',
+  };
+
+  it('config is off by default and fails closed when the flag is set without settings', () => {
+    expect(adminSignupConfigFromEnv({})).toMatchObject({ enabled: false });
+    expect(adminSignupConfigFromEnv({}).error).toBeFalsy();
+    expect(adminSignupConfigFromEnv({ ...FLAG_ENV, TBI_SIGNUP_ADMIN: 'true' }).error).toBeFalsy();
+    for (const k of Object.keys(FLAG_ENV).filter((x) => x !== 'TBI_SIGNUP_ADMIN')) {
+      const env: Record<string, string> = { ...FLAG_ENV };
+      delete env[k];
+      expect(adminSignupConfigFromEnv(env)).toMatchObject({ enabled: false, error: true });
+    }
+    expect(adminSignupConfigFromEnv({ ...FLAG_ENV, TBI_SIGNUP_DIR: 'rel' }).error).toBe(true);
+    expect(adminSignupConfigFromEnv({ ...FLAG_ENV, TBI_SIGNUP_LAB_URL: 'http://a' }).error).toBe(
+      true,
+    );
+    expect(adminSignupConfigFromEnv(FLAG_ENV)).toMatchObject({ enabled: true });
+  });
+
+  it('list pending, approve (fake helper adds the account, mail sent once), reject, resend, purge', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'tbi-signup-wire-'));
+    cleanup.push(() => rmSync(root, { recursive: true, force: true }));
+    const added: string[] = [];
+    const fakeSpool = {
+      submit: async (_a: Principal, act: { action: string; email?: string }) => (
+        added.push(`${act.action}:${act.email}`),
+        'REQ'
+      ),
+      wait: async () => ({ ok: true, code: 'done' }),
+    };
+    const mails: { to: string; lang: string; id: string }[] = [];
+    let mailFails = false;
+    let t = Date.UTC(2026, 10, 20);
+    const wiring = await wireSignupAdmin(
+      { dir: join(root, 'p'), keyFile: '/unused', from: 'x', labUrl: 'https://l.example.invalid/' },
+      fakeSpool as never,
+      {
+        fetch: async () => ({ ok: true, status: 200 }),
+        log: () => undefined,
+        now: () => t,
+        email: {
+          sendApproval: async (to) => {
+            mails.push({ to: to.email, lang: to.lang, id: to.id });
+            if (mailFails) throw new Error('http_500');
+          },
+        },
+      },
+    );
+    const mk = (n: string) =>
+      wiring.store.create({
+        name: n,
+        email: `${n.toLowerCase()}@example.com`,
+        role: 'T',
+        lang: 'en',
+        consent: true,
+      });
+    const [a, b, c] = [await mk('Aaa'), await mk('Bbb'), await mk('Ccc')];
+    const s = await serve({ roomyLimits: true, signups: wiring.signups });
+    const o = await s.gate(OWNER);
+    const list = await call(o, '/signups/pending');
+    expect((list.body.signups as { id: string }[]).map((r) => r.id).sort()).toEqual(
+      [a.id, b.id, c.id].sort(),
+    );
+    // Approve: account added once, mail sent once, repeat is a no-op.
+    expect((await call(o, `/signups/${a.id}/approve`, mutation(o, 'POST', {}))).status).toBe(200);
+    expect((await call(o, `/signups/${a.id}/approve`, mutation(o, 'POST', {}))).status).toBe(200);
+    expect(added).toEqual(['add:aaa@example.com']);
+    expect(mails).toHaveLength(1);
+    // Reject sends nothing.
+    expect((await call(o, `/signups/${b.id}/reject`, mutation(o, 'POST', {}))).status).toBe(200);
+    expect(mails).toHaveLength(1);
+    // Mail failure: 502, approve will not resend, explicit resend does.
+    mailFails = true;
+    const f = await call(o, `/signups/${c.id}/approve`, mutation(o, 'POST', {}));
+    expect(f.status).toBe(502);
+    expect(f.body.error).toBe('email_failed');
+    expect((await call(o, `/signups/${c.id}/approve`, mutation(o, 'POST', {}))).status).toBe(409);
+    mailFails = false;
+    expect((await call(o, `/signups/${c.id}/resend`, mutation(o, 'POST', {}))).status).toBe(200);
+    expect(mails).toHaveLength(3);
+    expect((await call(o, '/signups/pending')).body.signups).toEqual([]);
+    // Tester: forbidden. Retention: rejected 30 d, done 90 d.
+    expect((await call(await s.gate(TESTER), '/signups/pending')).status).toBe(403);
+    t += 31 * 86_400_000;
+    expect(await wiring.store.purge()).toEqual([b.id]);
+    t += 60 * 86_400_000;
+    expect((await wiring.store.purge()).sort()).toEqual([a.id, c.id].sort());
+  });
+
+  it('purge runs at start and is scheduled daily; stop cancels it', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'tbi-signup-wire-'));
+    cleanup.push(() => rmSync(root, { recursive: true, force: true }));
+    const logs: string[] = [];
+    const wiring = await wireSignupAdmin(
+      { dir: join(root, 'p'), keyFile: '/u', from: 'x', labUrl: 'https://l.example.invalid/' },
+      {} as never,
+      { fetch: async () => ({ ok: true, status: 200 }), log: (l) => logs.push(l) },
+    );
+    const set = vi.spyOn(globalThis, 'setInterval');
+    const clear = vi.spyOn(globalThis, 'clearInterval');
+    try {
+      const stop = wiring.startPurge();
+      await vi.waitFor(() =>
+        expect(logs.filter((l) => l.includes('purge removed'))).toHaveLength(1),
+      );
+      expect(set).toHaveBeenCalledWith(expect.any(Function), PURGE_INTERVAL_MS);
+      expect(PURGE_INTERVAL_MS).toBe(24 * 3_600_000);
+      stop();
+      expect(clear).toHaveBeenCalledTimes(1);
+    } finally {
+      set.mockRestore();
+      clear.mockRestore();
+    }
   });
 });
