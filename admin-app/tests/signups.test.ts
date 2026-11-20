@@ -5,6 +5,7 @@ import { LOCALES, isMessageKey } from '../src/i18n.js';
 import {
   canResend,
   focusAfterRemoval,
+  signupCountKey,
   parseRoute,
   section,
   signupOutcomeView,
@@ -35,6 +36,15 @@ describe('sign-up requests view logic', () => {
     expect(canResend(rec('email_failed', true))).toBe(true);
     expect(canResend(rec('approved', true))).toBe(true);
     expect(canResend(rec('approved', false))).toBe(false);
+  });
+  it('count message: singular for one, plural otherwise, in both locales', () => {
+    expect(signupCountKey(1)).toBe('console.signups.count.one');
+    expect(signupCountKey(0)).toBe('console.signups.count.other');
+    expect(signupCountKey(2)).toBe('console.signups.count.other');
+    for (const l of LOCALES) {
+      expect(l.messages['console.signups.count.one']).not.toContain('{count}');
+      expect(l.messages['console.signups.count.other']).toContain('{count}');
+    }
   });
   it('focus after removal: next row, else previous, else none', () => {
     expect(focusAfterRemoval(['a', 'b', 'c'], 'b')).toBe('c');
