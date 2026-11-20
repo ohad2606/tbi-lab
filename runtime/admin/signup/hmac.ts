@@ -34,10 +34,16 @@ export function sign(secret: Buffer, timestampSec: number, nonce: string, body: 
 /** Remembers nonces for the replay window; bounded so a flood of valid-looking nonces cannot grow it. */
 export class NonceCache {
   private readonly seen = new Map<string, number>();
-  constructor(
-    private readonly ttlMs: number,
-    private readonly max = 10_000,
-  ) {}
+  readonly windowMs: number;
+  /** Derived, never configured: a nonce must outlive the whole accept interval (2 x window). */
+  readonly ttlMs: number;
+  private readonly max: number;
+  /** In memory only: a restart empties it and reopens replay of captured requests for up to the window. */
+  constructor(opts: { windowMs?: number; max?: number } = {}) {
+    this.windowMs = opts.windowMs ?? DEFAULT_REPLAY_WINDOW_MS;
+    this.ttlMs = 2 * this.windowMs;
+    this.max = opts.max ?? 10_000;
+  }
 
   /** Records the nonce; false when it was already seen (or the cache is full of live entries). */
   take(nonce: string, now: number): boolean {
@@ -65,6 +71,8 @@ const one = (v: string | string[] | undefined): string | null => (typeof v === '
 
 export function verifyRequest(i: VerifyInput): VerifyResult {
   const window = i.windowMs ?? DEFAULT_REPLAY_WINDOW_MS;
+  if (window > i.nonces.windowMs)
+    throw new Error('nonce cache window is shorter than the replay window');
   const sig = one(i.headers[SIGNATURE_HEADER]);
   const ts = one(i.headers[TIMESTAMP_HEADER]);
   const nonce = one(i.headers[NONCE_HEADER]);

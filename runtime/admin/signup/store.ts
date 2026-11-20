@@ -5,8 +5,18 @@
  * Personal data (name, address, role) lives only here until the request is purged; the account
  * itself lives in the helper's registry once approved.
  */
-import { randomBytes } from 'node:crypto';
-import { mkdir, open, readdir, readFile, rename, stat, unlink } from 'node:fs/promises';
+import { createHash, randomBytes } from 'node:crypto';
+import {
+  appendFile,
+  mkdir,
+  open,
+  readdir,
+  readFile,
+  rename,
+  stat,
+  unlink,
+  writeFile,
+} from 'node:fs/promises';
 import { join } from 'node:path';
 import { newRequestId, REQUEST_ID_RE } from '../common.js';
 import type { SignupInput } from './validate.js';
@@ -27,6 +37,7 @@ export interface SignupRecord extends SignupInput {
   emailAttempts: number;
   /** Error class only (never a response body or address). */
   lastError: string | null;
+  /** Derived on read from the `<id>.notified` marker (written by the intake, never a record rewrite). */
   notified: boolean;
 }
 
@@ -100,11 +111,80 @@ export class PendingStore {
     }
   }
 
-  async create(input: SignupInput): Promise<SignupRecord> {
-    const max = this.opts.maxRecords;
-    if (max !== undefined && (await this.list()).length >= max) throw new StoreError('full');
+  private markPath(email: string): string {
+    return join(this.dir, `${createHash('sha256').update(email).digest('hex')}.mark`);
+  }
+
+  private chain: Promise<unknown> = Promise.resolve();
+  /** In-process mutex for intake (the marker file is the cross-process guard). */
+  private exclusive<T>(fn: () => Promise<T>): Promise<T> {
+    const run = this.chain.then(fn, fn);
+    this.chain = run.catch(() => undefined);
+    return run;
+  }
+
+  /** Number of record files, without reading them. */
+  private async count(): Promise<number> {
+    return (await readdir(this.dir)).filter((f) => /^[0-9A-HJKMNP-TV-Z]{26}\.json$/.test(f)).length;
+  }
+
+  /**
+   * Create unless the address already has a live (non-rejected) request. The address is keyed by
+   * sha256 in `<hash>.mark` (created exclusively, holds the record id), so concurrent posts, in
+   * this process (mutex) or another one (O_EXCL), yield exactly one record. A marker whose record
+   * is gone or rejected is stale and is taken over.
+   */
+  createIfNew(input: SignupInput): Promise<{ created: boolean; record: SignupRecord }> {
+    return this.exclusive(async () => {
+      const mark = this.markPath(input.email);
+      const claim = async (id: string): Promise<boolean> => {
+        try {
+          await writeFile(mark, `${id}\n`, { flag: 'wx', mode: 0o600 });
+          return true;
+        } catch (e) {
+          if ((e as { code?: string }).code === 'EEXIST') return false;
+          throw e;
+        }
+      };
+      const max = this.opts.maxRecords;
+      if (max !== undefined && (await this.count()) >= max) throw new StoreError('full');
+      const rec = this.build(input);
+      if (!(await claim(rec.id))) {
+        const holder = (await readFile(mark, 'utf8').catch(() => '')).trim();
+        const cur = REQUEST_ID_RE.test(holder) ? await this.get(holder).catch(() => null) : null;
+        if (cur && cur.status !== 'rejected') return { created: false, record: cur };
+        await unlink(mark).catch(() => undefined); // stale: take over
+        if (!(await claim(rec.id))) throw new StoreError('corrupt');
+      }
+      try {
+        await this.write(rec.id, rec, true);
+      } catch (e) {
+        await unlink(mark).catch(() => undefined);
+        throw e;
+      }
+      return { created: true, record: rec };
+    });
+  }
+
+  /** Intake-only marker; the record file is not rewritten, so an owner update cannot be lost. */
+  async markNotified(id: string): Promise<void> {
+    await writeFile(join(this.dir, `${this.idOnly(id)}.notified`), '', { mode: 0o600 });
+  }
+
+  private idOnly(id: string): string {
+    if (!REQUEST_ID_RE.test(id)) throw new StoreError('not_found');
+    return id;
+  }
+
+  /** Append-only audit line: time, id, action, outcome class. No personal data. */
+  async audit(id: string, action: string, outcome: string): Promise<void> {
+    const line = `${new Date(this.now()).toISOString()} ${this.idOnly(id)} ${action} ${outcome}\n`;
+    await appendFile(join(this.dir, 'audit.log'), line, { mode: 0o600 });
+  }
+
+  private build(input: SignupInput): SignupRecord {
     const at = new Date(this.now()).toISOString();
-    const rec: SignupRecord = {
+    return {
       v: 1,
       id: newRequestId(this.now()),
       status: 'pending',
@@ -117,6 +197,12 @@ export class PendingStore {
       notified: false,
       ...input,
     };
+  }
+
+  async create(input: SignupInput): Promise<SignupRecord> {
+    const max = this.opts.maxRecords;
+    if (max !== undefined && (await this.list()).length >= max) throw new StoreError('full');
+    const rec = this.build(input);
     await this.write(rec.id, rec, true);
     return rec;
   }
@@ -132,6 +218,10 @@ export class PendingStore {
     try {
       const r = JSON.parse(text) as SignupRecord;
       if (r.v !== 1 || r.id !== id || !STATUSES.includes(r.status)) throw new Error('shape');
+      r.notified = await stat(join(this.dir, `${id}.notified`)).then(
+        () => true,
+        () => false,
+      );
       return r;
     } catch {
       throw new StoreError('corrupt');
@@ -180,11 +270,25 @@ export class PendingStore {
               : Infinity; // approved / email_failed need the owner's attention, never auto-deleted
       if (age > limit) {
         await unlink(this.path(r.id)).catch(() => undefined);
+        await unlink(join(this.dir, `${r.id}.notified`)).catch(() => undefined);
         removed.push(r.id);
       }
     }
-    // Orphaned temp files from a crash.
+    // Address markers whose record is gone, and orphaned temp files from a crash.
     for (const f of await readdir(this.dir)) {
+      if (f.endsWith('.mark')) {
+        const id = (await readFile(join(this.dir, f), 'utf8').catch(() => '')).trim();
+        const s = await stat(join(this.dir, f)).catch(() => null);
+        const live =
+          REQUEST_ID_RE.test(id) &&
+          (await this.get(id).then(
+            () => true,
+            () => false,
+          ));
+        if (!live && s && t - s.mtimeMs > 3600_000)
+          await unlink(join(this.dir, f)).catch(() => undefined);
+        continue;
+      }
       if (!f.endsWith('.tmp')) continue;
       const s = await stat(join(this.dir, f)).catch(() => null);
       if (s && t - s.mtimeMs > 3600_000) await unlink(join(this.dir, f)).catch(() => undefined);
