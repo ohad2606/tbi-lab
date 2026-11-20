@@ -59,10 +59,10 @@ reputation, the secrets above.
 | Threat | Control |
 |---|---|
 | Anyone on the internet can POST | HMAC-SHA256 over `v1\n<timestamp>\n<nonce>\n<raw body>`; hex signature compared with `timingSafeEqual`; one generic 401 for every authentication failure (reason only in the log) |
-| Replay of a captured request | timestamp must be within 5 minutes either side; nonce (16-64 chars) is remembered for the window, bounded cache (full = refuse, never evict); a bad signature never consumes a nonce |
-| Resource exhaustion | body cap 4 KiB (header and stream); per-source sliding-window limit (3/min default in tests, configurable) and a global limit, both checked BEFORE verification; bounded key tables; store capped (`maxRecords`) |
+| Replay of a captured request | timestamp must be within 5 minutes either side; nonce (16-64 chars) is remembered for a TTL derived inside `NonceCache` as 2 x the replay window (not configurable; verification refuses a window longer than the cache's), bounded cache (full = refuse, never evict); a bad signature never consumes a nonce |
+| Resource exhaustion | body cap 4 KiB (header and stream); per-source sliding-window limit (checked BEFORE verification) and a global limit taken only AFTER the HMAC verifies, so unsigned junk from many sources cannot spend it (accepted DoS: a holder of the secret, or a flood from many sources that each stays under the source limit, still costs one HMAC per request; the proxy rate limit and request timeouts bound that; a global 429 consumes the nonce, so the sender retries with a fresh nonce); bounded key tables; store capped (`maxRecords`) |
 | Spoofed client address behind the proxy | source key = the LAST hop of the header the trusted proxy appends, never the first (client-controlled) entry |
-| Spam / fake sign-ups with a valid signature (secret leak, or a spammed form) | nothing is approved automatically; strict allow-listed validation; duplicate address (non-rejected) is answered 202 but stored and notified once; owner decides |
+| Spam / fake sign-ups with a valid signature (secret leak, or a spammed form) | nothing is approved automatically; strict allow-listed validation; duplicate address (non-rejected) is answered 202 but stored and notified once (atomic: in-process mutex plus an `<sha256(email)>.mark` file created with O_EXCL that holds the record id; no per-request scan of all files); owner decides |
 | Injection (log, mail, shell, path) | text fields NFC-normalised, control/format/bidi characters removed, length-bounded; email via the account path's strict address rule; ids are fixed-format and never from the request; plain-text mail only; Telegram message has no parse mode |
 | Email abuse (the endpoint making us mail arbitrary people) | mail is sent only on the owner's Approve, never from the public endpoint; one send per request; idempotency key to the provider |
 | Double approval / double email | per-id serialisation, state persisted before each side effect, `emailAttemptedAt` set before sending so a crash mid-send never causes an automatic second mail; resend is an explicit owner action and only from `email_failed` or an interrupted send |
@@ -70,6 +70,33 @@ reputation, the secrets above.
 | Stored personal data | see 4 |
 | Someone reads the store | dir 0700, files 0600, atomic write; a dir readable by others is refused at start (explicit failure, no repair) |
 | CSRF on the admin routes | existing rule (JSON content type, same-origin, write rate limit), owner only |
+
+Operational rules added by the security review:
+
+- **Nonce TTL rule:** TTL >= 2 x window (enforced in code). The cache is in memory: a restart of the intake
+  reopens replay of any captured request still inside the 5-minute window, for at most that window (up to 10
+  minutes of timestamp validity either side is not reachable: the timestamp check still rejects older requests).
+  Accepted; the effect of a replay is a duplicate request, which the dedupe marker absorbs.
+- **Store directory shared between users:** the intake user owns the 0700 directory; the admin service user must
+  reach it through a shared group (dir 0770 is refused by the start check, which demands no group/other access), so
+  deploy review must choose: run both processes as one user, or a second directory with the admin service pulling
+  by a root-owned helper. Until decided the start check stays strict (no repair).
+- **Secret rotation:** replace the HMAC file and the form script property together, restart the intake; requests
+  signed with the old secret get 401 until the script is updated (a short outage is acceptable). The nonce cache
+  is emptied by the restart. Same for the Telegram token and the Resend key (read at use, no restart).
+- **Audit log:** `audit.log` in the store directory (0600, append-only): `<time> <id> <approve|reject|resend>
+  <outcome class>`. No name, address or role. Not purged by the retention job; rotate with the host's log rotation.
+- **Store full:** `create` refuses at `maxRecords`; the intake answers 503 and logs `store failed (full)`. The owner
+  must be told: the monitoring slice alerts on that log line (and on a rising 503 count); the form script retries later.
+- **Proxy header assertion:** at start the intake process must refuse to serve if the source header is not
+  configured explicitly or the proxy cannot be shown to set it (a startup self-check request in the deploy plan);
+  falling back to the socket address behind a proxy would put every client in one rate bucket.
+- **Server timeouts:** the intake `main` must set `server.requestTimeout`, `headersTimeout` (<= 10 s),
+  `keepAliveTimeout` and a small `maxConnections`, so slow-body clients cannot hold sockets (the body cap bounds
+  size, not time).
+- **Error classes:** secret-read and fs failures surface as class codes only (`secret_missing`,
+  `secret_unreadable`, `secret_short`, `fs_error`); `lastError` and logs never contain a path, URL or address.
+- **Approve after a failed email** answers 409 `email_failed_use_resend` (never a success); the owner presses Resend.
 
 Not mitigated here (accepted / owner decision): a leaked HMAC secret lets an attacker create pending requests
 (bounded by the limits, and the owner still must approve); Telegram notification may be dropped (the request is
@@ -97,8 +124,10 @@ Statuses: `pending`, `approved` (account step started or done, mail not yet sent
 `{"name","email","role","lang":"he"|"en","consent":true}`. Headers: `x-tbi-timestamp` (unix seconds),
 `x-tbi-nonce`, `x-tbi-signature` (hex). Answers: 202 `{ok:true}` (also for a duplicate), 400 invalid, 401
 unauthorized, 413, 415, 405, 429 (+`retry-after`), 503. Nothing from the request is echoed. The same store is
-shared by the intake (create) and the admin service (update); a single-writer-per-file discipline is kept by
-creating with a fresh id and updating only from the admin service.
+shared by the intake and the admin service. Single-writer per file: the record file (`<id>.json`) is written by
+the intake once at creation (exclusive) and afterwards only by the admin service. The intake's only later write is
+the separate `<id>.notified` marker (the `notified` flag is derived from it on read), so it can never overwrite an
+owner update. The address marker is written by the intake only.
 
 ## 6. Approval email
 

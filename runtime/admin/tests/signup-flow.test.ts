@@ -94,7 +94,7 @@ async function intakeSetup(opts: { notifyFails?: boolean; now?: number } = {}) {
     now: () => t,
     sourceRate: new SlidingWindowLimiter({ count: 3, windowMs: 60_000 }, () => t),
     globalRate: new SlidingWindowLimiter({ count: 100, windowMs: 60_000 }, () => t),
-    nonces: new NonceCache(600_000),
+    nonces: new NonceCache(),
     log: (l) => logs.push(l),
   });
   return { t, store, tg, intake, logs };
@@ -190,7 +190,7 @@ describe('intake', () => {
       now: () => t,
       sourceRate: new SlidingWindowLimiter({ count: 9, windowMs: 1000 }, () => t),
       globalRate: new SlidingWindowLimiter({ count: 9, windowMs: 1000 }, () => t),
-      nonces: new NonceCache(1000),
+      nonces: new NonceCache(),
     });
     const { raw, headers } = signed(GOOD, t);
     expect(await intake.submit('x', headers, raw)).toEqual({ status: 503, error: 'unavailable' });
@@ -328,7 +328,10 @@ describe('approver', () => {
       code: 'email_failed',
       record: { status: 'email_failed', accountAdded: true, lastError: 'http_500' },
     });
-    expect(await s.approver.approve(s.rec.id)).toMatchObject({ ok: true, note: 'already_done' });
+    expect(await s.approver.approve(s.rec.id)).toMatchObject({
+      ok: false,
+      code: 'email_failed_use_resend',
+    });
     expect(s.mails).toHaveLength(1);
     const again = await s.approver.resend(s.rec.id);
     expect(again.ok && again.record).toMatchObject({ status: 'email_sent', emailAttempts: 2 });

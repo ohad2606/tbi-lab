@@ -11,6 +11,7 @@ import { readFile } from 'node:fs/promises';
 import { normalizeDisplayName, type AdminSpool } from '../accounts.js';
 import type { Principal } from '../../identity/principal.js';
 import { send } from '../common.js';
+import { errorClass } from './errors.js';
 import { MIN_SECRET_BYTES } from './hmac.js';
 import { BodyTooLarge, readCappedBody } from './limits.js';
 import type { AccountAdder, AddOutcome, SignupIntake } from './service.js';
@@ -36,8 +37,16 @@ export function signupConfigFromEnv(env: NodeJS.ProcessEnv = process.env): Signu
 
 /** Reads the secret; a short or empty secret is a configuration error. */
 export async function readSecret(file: string): Promise<Buffer> {
-  const b = Buffer.from((await readFile(file, 'utf8')).trim(), 'utf8');
-  if (b.length < MIN_SECRET_BYTES) throw new Error('signup HMAC secret too short');
+  let text: string;
+  try {
+    text = await readFile(file, 'utf8');
+  } catch (e) {
+    // A class code only: the raw fs error carries the path.
+    // eslint-disable-next-line preserve-caught-error -- the cause would carry the secret file path
+    throw new Error(errorClass(e) === 'secret_missing' ? 'secret_missing' : 'secret_unreadable');
+  }
+  const b = Buffer.from(text.trim(), 'utf8');
+  if (b.length < MIN_SECRET_BYTES) throw new Error('secret_short');
   return b;
 }
 

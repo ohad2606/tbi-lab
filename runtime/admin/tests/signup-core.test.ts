@@ -44,7 +44,7 @@ const verify = (
     headers: h,
     body: o.body ?? BODY,
     now: o.now ?? NOW,
-    nonces: o.nonces ?? new NonceCache(600_000),
+    nonces: o.nonces ?? new NonceCache(),
   });
 
 describe('HMAC verification', () => {
@@ -89,13 +89,13 @@ describe('HMAC verification', () => {
     expect(verify(hdrs(), { now: NOW - 300_001 })).toEqual({ ok: false, reason: 'expired' });
   });
   it('rejects a replayed nonce, but a bad signature does not burn it', () => {
-    const nonces = new NonceCache(600_000);
+    const nonces = new NonceCache();
     expect(verify(hdrs({ 'x-tbi-signature': 'a'.repeat(64) }), { nonces }).ok).toBe(false);
     expect(verify(hdrs(), { nonces })).toEqual({ ok: true });
     expect(verify(hdrs(), { nonces })).toEqual({ ok: false, reason: 'replayed' });
   });
   it('nonce cache expires entries and is bounded', () => {
-    const c = new NonceCache(1000, 2);
+    const c = new NonceCache({ windowMs: 500, max: 2 }); // ttl = 2 x window = 1000
     expect(c.take('a', 0)).toBe(true);
     expect(c.take('a', 500)).toBe(false);
     expect(c.take('b', 600)).toBe(true);
