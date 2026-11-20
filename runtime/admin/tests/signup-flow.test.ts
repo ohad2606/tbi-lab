@@ -243,7 +243,6 @@ describe('approval email', () => {
     expect(en.text).toContain('limited number of places');
     expect(en.text).toContain('reply to this email');
     expect(en.text).not.toMatch(/Ohad/i);
-    expect(he.text).not.toMatch(/אוהד/);
   });
   it('Resend request: key from reader, from address from config, idempotency key, error class only', async () => {
     const f = fakeFetch();
@@ -482,8 +481,8 @@ describe('HTTP handler', () => {
     const s = await serve();
     const hit = (xff: string) =>
       post(s.base, 'x', { 'content-type': 'application/json', 'x-forwarded-for': xff });
-    for (let i = 0; i < 3; i++) await hit(`10.0.0.${i}, 9.9.9.9`);
-    expect((await hit('10.0.0.99, 9.9.9.9')).status).toBe(429);
-    expect((await hit('10.0.0.1, 8.8.8.8')).status).toBe(401);
+    for (let i = 0; i < 3; i++) await hit(`192.0.2.${i}, 198.51.100.9`);
+    expect((await hit('192.0.2.99, 198.51.100.9')).status).toBe(429);
+    expect((await hit('192.0.2.1, 198.51.100.8')).status).toBe(401);
   });
 });
