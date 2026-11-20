@@ -135,7 +135,7 @@ function loadError(status: number | null): LoadError {
 type Fetch = (input: string, init?: RequestInit) => Promise<Response>;
 
 /** Paths of the account administration (the admin service); every other one is the host's. */
-const ACCOUNT_PATH = /^\/(accounts|requests|sessions|usage|audit)(\/|$|\?)/;
+const ACCOUNT_PATH = /^\/(accounts|requests|sessions|usage|audit|signups)(\/|$|\?)/;
 
 async function request(
   fetchFn: Fetch,
@@ -496,4 +496,102 @@ export function loadAudit(fetchFn: Fetch, limit = 100): Promise<Loaded<AuditView
   return load<AuditView>(fetchFn, `/audit?limit=${n}`, (b) =>
     isObj(b) && Array.isArray(b.entries) ? (b as unknown as AuditView) : null,
   );
+}
+
+// ---------------------------------------------------------------- sign-up requests (TBI-022)
+
+/** One sign-up request as the admin service answers it (design §6.1). */
+export interface SignupRecord {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  lang: string;
+  status: string;
+  accountAdded: boolean;
+  emailAttempts: number;
+  lastError: string | null;
+  createdAt: string;
+}
+
+export const SIGNUP_ACTIONS = ['approve', 'reject', 'resend'] as const;
+export type SignupAction = (typeof SIGNUP_ACTIONS)[number];
+
+export const SIGNUP_ERRORS = [
+  'bad_state',
+  'email_failed_use_resend',
+  'cap_reached',
+  'account_error',
+  'email_failed',
+  'not_found',
+] as const;
+export type SignupError = (typeof SIGNUP_ERRORS)[number];
+
+/** What one approve / reject / resend ended with. */
+export type SignupOutcome =
+  | { kind: 'done'; record: SignupRecord | null; note: 'already_done' | 'email_not_resent' | null }
+  | { kind: 'account_pending' }
+  | { kind: 'error'; error: SignupError; record: SignupRecord | null }
+  | { kind: 'refused'; error: LoadError | 'csrf' };
+
+const SIGNUP_ID = /^[A-Za-z0-9_-]{1,64}$/;
+
+function signupRecord(v: unknown): SignupRecord | null {
+  if (!isObj(v) || typeof v.id !== 'string' || !SIGNUP_ID.test(v.id)) return null;
+  const str = (x: unknown) => (typeof x === 'string' ? x : '');
+  return {
+    id: v.id,
+    name: str(v.name),
+    email: str(v.email),
+    role: str(v.role),
+    lang: str(v.lang),
+    status: str(v.status),
+    accountAdded: v.accountAdded === true,
+    emailAttempts: typeof v.emailAttempts === 'number' ? v.emailAttempts : 0,
+    lastError: typeof v.lastError === 'string' ? v.lastError : null,
+    createdAt: str(v.createdAt),
+  };
+}
+
+/** The pending requests, oldest first. 404 (the feature is off on the server) is "unavailable". */
+export async function loadPendingSignups(fetchFn: Fetch): Promise<Loaded<SignupRecord[]>> {
+  const r = await request(fetchFn, '/signups/pending');
+  if (r.status === 404) return { ok: false, error: 'unavailable' };
+  if (r.status !== 200) return { ok: false, error: loadError(r.status) };
+  if (!isObj(r.body) || !Array.isArray(r.body.signups)) return { ok: false, error: 'network' };
+  const rows = (r.body.signups as unknown[])
+    .map(signupRecord)
+    .filter((x): x is SignupRecord => x !== null)
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  return { ok: true, value: rows };
+}
+
+/** The answer of a sign-up mutation, by the status codes of design §6.1. */
+export function interpretSignup(status: number | null, body: unknown): SignupOutcome {
+  const b = isObj(body) ? body : {};
+  if (status === 200)
+    return {
+      kind: 'done',
+      record: signupRecord(b.record),
+      note: b.note === 'already_done' || b.note === 'email_not_resent' ? b.note : null,
+    };
+  if (status === 202 && b.error === 'account_pending') return { kind: 'account_pending' };
+  if (status === 403 && b.error === 'csrf') return { kind: 'refused', error: 'csrf' };
+  if (status === 404 || status === 409 || status === 502) {
+    const code = status === 404 ? 'not_found' : b.error;
+    if ((SIGNUP_ERRORS as readonly unknown[]).includes(code))
+      return { kind: 'error', error: code as SignupError, record: signupRecord(b.record) };
+  }
+  return { kind: 'refused', error: loadError(status) };
+}
+
+export async function signupAction(
+  fetchFn: Fetch,
+  id: string,
+  action: SignupAction,
+): Promise<SignupOutcome> {
+  if (!SIGNUP_ID.test(id) || !SIGNUP_ACTIONS.includes(action))
+    return { kind: 'refused', error: 'network' };
+  const r = await request(fetchFn, `/signups/${id}/${action}`, mutating('POST', {}));
+  return interpretSignup(r.status, r.body);
 }
