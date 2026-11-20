@@ -14,6 +14,9 @@ import {
   type AuditEntry,
   type AuditView,
   type ReportMeta,
+  type SignupAction,
+  type SignupOutcome,
+  type SignupRecord,
   type UsageMetric,
   type UsageMetrics,
   type UsageView,
@@ -28,6 +31,7 @@ export type Route =
   | { name: 'add' }
   | { name: 'feedback' }
   | { name: 'report'; id: string }
+  | { name: 'signups' }
   | { name: 'activity' }
   | { name: 'settings' }
   | { name: 'more' };
@@ -46,6 +50,7 @@ export function parseRoute(hash: string): Route {
     a === 'add' ||
     a === 'feedback' ||
     a === 'activity' ||
+    a === 'signups' ||
     a === 'settings' ||
     a === 'more' ||
     a === 'today'
@@ -69,7 +74,7 @@ export const TABS = ['today', 'testers', 'feedback', 'more'] as const;
 export type Tab = (typeof TABS)[number];
 export function tab(r: Route): Tab {
   const s = section(r);
-  return s === 'activity' || s === 'settings' ? 'more' : s;
+  return s === 'activity' || s === 'settings' || s === 'signups' ? 'more' : s;
 }
 
 // ---------------------------------------------------------------- testers list memory
@@ -267,4 +272,58 @@ export const reportsNewestFirst = (r: ReportMeta[]) =>
 /** "Unread" is per device: the reports not yet opened here (the server keeps no read state). */
 export function unread(reports: ReportMeta[], seen: ReadonlySet<string>) {
   return reports.filter((r) => !seen.has(r.id));
+}
+
+// ---------------------------------------------------------------- sign-up requests (TBI-022)
+
+/** Resend is offered only for a request whose account exists but whose email did not go out. */
+export const canResend = (r: SignupRecord): boolean =>
+  r.status === 'email_failed' || (r.status === 'approved' && r.accountAdded);
+
+/** The text for one outcome: its key (in console.signups.*) and whether the row leaves the list. */
+export function signupOutcomeView(
+  o: SignupOutcome,
+  action: SignupAction,
+): { key: string; removed: boolean; ok: boolean; record: SignupRecord | null } {
+  switch (o.kind) {
+    case 'done': {
+      const note = action === 'approve' && o.note ? `.${o.note}` : '';
+      return {
+        key: `console.signups.done.${action}${note}`,
+        removed: true,
+        ok: true,
+        record: null,
+      };
+    }
+    case 'account_pending':
+      return {
+        key: 'console.signups.err.account_pending',
+        removed: false,
+        ok: false,
+        record: null,
+      };
+    case 'error':
+      return {
+        key: `console.signups.err.${o.error}`,
+        // Unknown id: nothing to act on. A failed email leaves a row that can be resent.
+        removed: o.error === 'not_found',
+        ok: false,
+        record:
+          o.error === 'email_failed' || o.error === 'email_failed_use_resend' ? o.record : null,
+      };
+    case 'refused':
+      return {
+        key: `admin.error.${o.error === 'csrf' ? 'network' : o.error}`,
+        removed: false,
+        ok: false,
+        record: null,
+      };
+  }
+}
+
+/** After a row is removed: the row that should take focus (the next, else the previous), or null. */
+export function focusAfterRemoval(ids: readonly string[], removed: string): string | null {
+  const i = ids.indexOf(removed);
+  if (i < 0) return null;
+  return ids[i + 1] ?? ids[i - 1] ?? null;
 }
