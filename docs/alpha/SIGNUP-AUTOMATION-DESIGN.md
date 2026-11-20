@@ -131,10 +131,45 @@ owner update. The address marker is written by the intake only.
 
 ## 6. Approval email
 
-Plain text, HE and EN, chosen by the sign-up language: the lab link (`<LAB_URL>`, from config), sign in with the
-same Google account, desktop Chrome or Edge, the alpha has limited places, reply to the email for feedback. Signed
-by the team, no personal name. `from` and reply-to are `<SUPPORT_ADDRESS>` from config. The wording in
-`email.ts` is a draft of the owner-approved mail and must be compared with the approved text before enabling.
+Plain text, HE and EN, chosen by the sign-up language. Hebrew is the owner-approved text of 2026-11-20, verbatim;
+English is a translation (pending owner OK). Greeting by the first name; a paragraph about signing in with a
+non-Google address appears only when the address is not `@gmail.com`; sign-off "צוות TBI Lab" / "The TBI Lab
+team" (pending owner confirmation). The lab link (`<LAB_URL>`) and the sender / reply-to (`<SUPPORT_ADDRESS>`)
+come from config. Never sent twice: the attempt is persisted before sending, approve never re-sends, and the mail
+provider is given an idempotency key per request.
+
+### 6.1 Owner API (admin service, behind the gate and the owner check; paths as the admin service sees them)
+
+Enabled only with `TBI_SIGNUP_ADMIN=1` (+ settings below); otherwise every route below is 404. All answers are
+JSON, `no-store`. Mutations need `content-type: application/json`, a same-origin request (CSRF), an empty body
+`{}`, and are rate limited like the other admin writes. Non-owner: 403; no identity: 401.
+
+| Route | Answer |
+|---|---|
+| `GET /signups` | 200 `{signups: Record[]}` all statuses |
+| `GET /signups/pending` | 200 `{signups: Record[]}` only `status: "pending"` (the admin UI list) |
+| `POST /signups/<id>/approve` | 200 `{record, note?}` (`note`: `already_done` or `email_not_resent`); 202 `account_pending` (helper has not answered yet; retry); 409 `bad_state` / `email_failed_use_resend`; 502 `cap_reached` / `account_error` / `email_failed`; 404 |
+| `POST /signups/<id>/reject` | 200 `{record}`; sends nothing; 409 if already approved |
+| `POST /signups/<id>/resend` | 200 only after a failed or interrupted send for an added account; 409 otherwise |
+
+Error answers: `{error: <code>, record?}`. `Record`: `id, name, email, role, lang, status, accountAdded,
+emailAttempts, emailAttemptedAt, lastError, notified, createdAt, updatedAt`. Approve adds the account through the
+existing spool and root helper (the owner's principal is the actor), then sends the mail. One operation per id at a
+time, also across requests. The routes sit under the gate's admin prefix (`/admin-api/...`) in deployment.
+
+Admin service settings (all required when enabled; missing means the service refuses to start): `TBI_SIGNUP_ADMIN=1`,
+`TBI_SIGNUP_DIR`, `TBI_SIGNUP_RESEND_KEY_FILE`, `TBI_SIGNUP_FROM`, `TBI_SIGNUP_LAB_URL` (https), optional
+`TBI_SIGNUP_REPLY_TO`. When enabled the retention purge runs at start and every 24 h (rejected 30 d, pending 60 d,
+sent 90 d).
+
+### 6.2 Intake process (`runtime/admin/signup/intake-main.ts`)
+
+Off unless `TBI_SIGNUP_INTAKE=1` (exit 0, one log line). With the flag set, a missing setting, a missing or short
+HMAC secret, a missing Telegram token or an unsafe store directory is a refusal to start (exit 1, class code only).
+Settings: `TBI_SIGNUP_DIR`, `TBI_SIGNUP_HMAC_FILE`, `TBI_SIGNUP_TELEGRAM_TOKEN_FILE`, `TBI_SIGNUP_TELEGRAM_CHAT_ID`,
+`TBI_SIGNUP_ADMIN_LINK` (https), `TBI_SIGNUP_LISTEN` (loopback only, default `127.0.0.1:7411`),
+`TBI_SIGNUP_SOURCE_HEADER`. Secrets are read from files, never from the environment, and never logged. Serves
+`POST /signup` only; SIGTERM / SIGINT close the listener.
 
 ## 7. What the owner must change on Alpha (private details later, in the private ops repo)
 
@@ -169,9 +204,10 @@ Nothing below has been done. All of it is an Alpha change and needs the owner in
 ## 9. Code status and what remains
 
 Done and unit-tested (fakes only; no network, no real secret): HMAC with replay window and nonce cache, size and
-rate limits, validation, store with permissions/atomicity/retention, Telegram and Resend adapters, HE/EN templates,
-the approve/reject/resend workflow with idempotency, the intake HTTP handler, owner routes in the admin service.
+rate limits, validation, store with permissions/atomicity/retention, Telegram and Resend adapters, the approved
+HE/EN mail, the approve/reject/resend workflow with idempotency, the intake HTTP handler and process entry
+(loopback, fail closed), the owner routes and their wiring plus the purge schedule in the admin service's `main.ts`
+(off by default), an end-to-end test with a fake helper.
 
-Remaining (not in this slice): the intake process entry (`main`) and systemd unit, wiring the approver and the
-purge schedule into the admin service's `main.ts`, the admin UI (HE + EN, WCAG 2.2 AA), the form script, the owner
-runbook, the deploy plan, an end-to-end test with a fake helper.
+Remaining (not in this slice): systemd unit for the intake, the admin UI (HE + EN, WCAG 2.2 AA), the form script, the
+owner runbook, the deploy plan. Open: owner OK of the English text and the sign-off line.
