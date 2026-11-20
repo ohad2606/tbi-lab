@@ -5,7 +5,7 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { approvalEmail, ResendSender } from '../signup/email.js';
+import { approvalEmail, GOOGLE_MAIL_DOMAINS, ResendSender } from '../signup/email.js';
 import { NonceCache, sign } from '../signup/hmac.js';
 import { handleSignupRequest, signupConfigFromEnv, spoolAccountAdder } from '../signup/http.js';
 import { SlidingWindowLimiter } from '../signup/limits.js';
@@ -17,6 +17,10 @@ import {
   type AddOutcome,
 } from '../signup/service.js';
 import { PendingStore } from '../signup/store.js';
+
+/** Fixture addresses on the consumer Google domain, built from the module's own constant. */
+const [GM0 = '', GM1 = ''] = GOOGLE_MAIL_DOMAINS;
+const gm = (user: string, domain = GM0) => `${user}@${domain}`;
 
 const SECRET = Buffer.from('test-secret-not-real-0123456789abcdef');
 const TG_TOKEN = '1234567:AAAAAAAAAAAAAAAAAAAAAAAAAAAA_test';
@@ -228,7 +232,7 @@ describe('telegram notifier', () => {
 describe('approval email', () => {
   const URL_ = 'https://lab.example.invalid/';
   it('HE: owner-approved text, greeting by first name, sign-off', () => {
-    const he = approvalEmail('he', { name: 'דנה לוי', email: 'dana@gmail.com' }, { labUrl: URL_ });
+    const he = approvalEmail('he', { name: 'דנה לוי', email: gm('dana') }, { labUrl: URL_ });
     expect(he.subject).toBe('ההרשמה שלך ל-TBI Lab אושרה');
     expect(he.text).toBe(
       [
@@ -250,11 +254,7 @@ describe('approval email', () => {
     );
   });
   it('EN: translation, first name, sign-off, lab link', () => {
-    const en = approvalEmail(
-      'en',
-      { name: 'Dana Levi', email: 'dana@gmail.com' },
-      { labUrl: URL_ },
-    );
+    const en = approvalEmail('en', { name: 'Dana Levi', email: gm('dana') }, { labUrl: URL_ });
     expect(en.subject).toBe("You're approved for TBI Lab");
     expect(en.text.startsWith('Hi Dana,\n')).toBe(true);
     expect(en.text).toContain(URL_);
@@ -263,13 +263,14 @@ describe('approval email', () => {
     expect(en.text).toContain('limited number of simultaneous places');
     expect(en.text.endsWith('Good luck,\nThe TBI Lab team')).toBe(true);
   });
-  it('the non-Google paragraph appears only for addresses that are not @gmail.com', () => {
+  it('the non-Google paragraph appears only for addresses outside GOOGLE_MAIL_DOMAINS', () => {
     for (const lang of ['he', 'en'] as const) {
       const key = lang === 'he' ? 'אינה חשבון Google' : "isn't a Google account";
       const mk = (email: string) => approvalEmail(lang, { name: 'D', email }, { labUrl: URL_ });
-      expect(mk('Dana@GMAIL.com').text).not.toContain(key);
+      expect(mk(gm('Dana', GM0.toUpperCase())).text).not.toContain(key);
+      expect(mk(gm('dana', GM1)).text).not.toContain(key);
       expect(mk('dana@example.com').text).toContain(key);
-      expect(mk('dana@gmail.com.example.com').text).toContain(key);
+      expect(mk(gm('dana', `${GM0}.example.com`)).text).toContain(key);
     }
   });
   it('idempotence end to end: approve twice and resend after success send exactly one mail', async () => {
