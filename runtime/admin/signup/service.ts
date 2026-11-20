@@ -7,6 +7,7 @@
  *                  approval email), reject, resend. Idempotent: an account is added once and an
  *                  approval email is sent once unless the owner explicitly resends after a failure.
  */
+import { errorClass } from './errors.js';
 import { NonceCache, verifyRequest, type VerifyFailure } from './hmac.js';
 import { SlidingWindowLimiter } from './limits.js';
 import type { SignupNotifier } from './notify.js';
@@ -42,13 +43,10 @@ export class SignupIntake {
     body: Buffer,
   ): Promise<IntakeOutcome> {
     const now = (this.d.now ?? Date.now)();
-    // Limits first: they bound the work an unauthenticated caller can cause.
-    const g = this.d.globalRate.take('all');
+    // Per-source limit first (bounds what one caller can make us do). The GLOBAL budget is taken
+    // only after the HMAC verifies, so unsigned junk from many sources cannot spend it.
     const s = this.d.sourceRate.take(source);
-    if (!g.ok || !s.ok) {
-      const retry = Math.max(g.ok ? 0 : g.retryAfterMs, s.ok ? 0 : s.retryAfterMs);
-      return { status: 429, error: 'rate_limited', retryAfterMs: retry };
-    }
+    if (!s.ok) return { status: 429, error: 'rate_limited', retryAfterMs: s.retryAfterMs };
     const v = verifyRequest({
       secret: this.d.secret,
       headers,
@@ -62,6 +60,12 @@ export class SignupIntake {
       this.d.log?.(`signup: refused (${v.reason})`);
       return { status: statusOf(v.reason), error: 'unauthorized' };
     }
+    const g = this.d.globalRate.take('all');
+    if (!g.ok) {
+      // The nonce is already consumed: the sender must retry with a fresh nonce and signature.
+      this.d.log?.('signup: global limit');
+      return { status: 429, error: 'rate_limited', retryAfterMs: g.retryAfterMs };
+    }
     let raw: unknown;
     try {
       raw = JSON.parse(body.toString('utf8'));
@@ -71,25 +75,26 @@ export class SignupIntake {
     const val = validateSignup(raw);
     if (!val.ok) return { status: 400, error: 'invalid' };
     // Duplicate address already waiting or accepted: answer as success, store and notify nothing.
-    const existing = await this.d.store.list();
-    if (existing.some((r) => r.email === val.value.email && r.status !== 'rejected')) {
-      this.d.log?.('signup: duplicate ignored');
-      return { status: 202 };
-    }
+    // Atomic (mutex + hash-keyed O_EXCL marker in the store), so concurrent posts give one record.
     let rec: SignupRecord;
     try {
-      rec = await this.d.store.create(val.value);
+      const r = await this.d.store.createIfNew(val.value);
+      if (!r.created) {
+        this.d.log?.('signup: duplicate ignored');
+        return { status: 202 };
+      }
+      rec = r.record;
     } catch (e) {
-      this.d.log?.(`signup: store failed (${e instanceof StoreError ? e.code : 'error'})`);
+      this.d.log?.(`signup: store failed (${e instanceof StoreError ? e.code : errorClass(e)})`);
       return { status: 503, error: 'unavailable' };
     }
     if (this.d.notifier) {
       try {
         await this.d.notifier.notify({ name: rec.name, role: rec.role });
-        await this.d.store.update(rec.id, { notified: true });
+        await this.d.store.markNotified(rec.id);
       } catch (e) {
         // The request is stored; the owner sees it in the admin list. Error class only.
-        this.d.log?.(`signup: notify failed (${(e as Error).message})`);
+        this.d.log?.(`signup: notify failed (${errorClass(e)})`);
       }
     }
     return { status: 202 };
@@ -115,7 +120,8 @@ export type ApproveOutcome =
         | 'account_pending'
         | 'cap_reached'
         | 'account_error'
-        | 'email_failed';
+        | 'email_failed'
+        | 'email_failed_use_resend';
       record?: SignupRecord;
     };
 
@@ -128,8 +134,20 @@ export class SignupApprover {
       accounts: AccountAdder;
       email: EmailSender;
       now?: () => number;
+      log?: (line: string) => void;
     },
   ) {}
+
+  /** Append-only audit line (id, action, outcome class); a failing audit write is logged, never silent. */
+  private async audited(id: string, action: string, out: ApproveOutcome): Promise<ApproveOutcome> {
+    const outcome = out.ok ? (out.note ?? 'ok') : out.code;
+    try {
+      await this.d.store.audit(id, action, outcome);
+    } catch (e) {
+      this.d.log?.(`signup: audit write failed (${errorClass(e)})`);
+    }
+    return out;
+  }
 
   /** One operation per id at a time (a double click cannot add or send twice). */
   private serial<T>(id: string, fn: () => Promise<T>): Promise<T> {
@@ -148,29 +166,35 @@ export class SignupApprover {
   }
 
   approve(id: string): Promise<ApproveOutcome> {
-    return this.serial(id, () => this.doApprove(id));
+    return this.serial(id, async () => this.audited(id, 'approve', await this.doApprove(id)));
   }
 
   reject(id: string): Promise<ApproveOutcome> {
-    return this.serial(id, async () => {
-      const r = await this.load(id);
-      if (!r) return { ok: false, code: 'not_found' };
-      if (r.status === 'rejected') return { ok: true, record: r, note: 'already_done' };
-      if (r.status !== 'pending') return { ok: false, code: 'bad_state', record: r };
-      return { ok: true, record: await this.d.store.update(id, { status: 'rejected' }) };
-    });
+    return this.serial(id, async () => this.audited(id, 'reject', await this.doReject(id)));
+  }
+
+  private async doReject(id: string): Promise<ApproveOutcome> {
+    const r = await this.load(id);
+    if (!r) return { ok: false, code: 'not_found' };
+    if (r.status === 'rejected') return { ok: true, record: r, note: 'already_done' };
+    if (r.status !== 'pending') return { ok: false, code: 'bad_state', record: r };
+    return { ok: true, record: await this.d.store.update(id, { status: 'rejected' }) };
   }
 
   /** Explicit resend: only after a failed (or interrupted) send, and only for an added account. */
   resend(id: string): Promise<ApproveOutcome> {
-    return this.serial(id, async () => {
+    return this.serial(id, async () => this.audited(id, 'resend', await this.doResend(id)));
+  }
+
+  private async doResend(id: string): Promise<ApproveOutcome> {
+    {
       const r = await this.load(id);
       if (!r) return { ok: false, code: 'not_found' };
       if (!r.accountAdded || r.status === 'rejected' || r.status === 'pending')
         return { ok: false, code: 'bad_state', record: r };
       if (r.status === 'email_sent') return { ok: true, record: r, note: 'already_done' };
       return this.send(r);
-    });
+    }
   }
 
   private async load(id: string): Promise<SignupRecord | null> {
@@ -187,7 +211,8 @@ export class SignupApprover {
     if (!r) return { ok: false, code: 'not_found' };
     if (r.status === 'email_sent') return { ok: true, record: r, note: 'already_done' };
     if (r.status === 'rejected') return { ok: false, code: 'bad_state', record: r };
-    if (r.status === 'email_failed') return { ok: true, record: r, note: 'already_done' }; // owner uses resend
+    if (r.status === 'email_failed')
+      return { ok: false, code: 'email_failed_use_resend', record: r };
     if (r.status === 'pending')
       r = await this.d.store.update(id, { status: 'approved', lastError: null });
     if (!r.accountAdded) {
@@ -218,7 +243,7 @@ export class SignupApprover {
     try {
       await this.d.email.sendApproval({ email: r.email, name: r.name, lang: r.lang, id: r.id });
     } catch (e) {
-      const code = (e as Error).message || 'error';
+      const code = errorClass(e);
       r = await this.d.store.update(r.id, { status: 'email_failed', lastError: code });
       return { ok: false, code: 'email_failed', record: r };
     }
