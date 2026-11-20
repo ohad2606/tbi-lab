@@ -47,6 +47,7 @@ import {
   type Caller,
   type SpoolIo,
 } from './common.js';
+import type { SignupApprover } from './signup/service.js';
 import { auditLimit, usageAnswer, usageRange, type AdminViews } from './views.js';
 
 // ---------------------------------------------------------------- views and results
@@ -373,6 +374,11 @@ export interface AccountsDeps {
   views?: AdminViews | null;
   /** The clock for the usage range's default (tests). */
   now?: () => number;
+  /**
+   * TBI-022: the sign-up approval routes (`/signups...`). Absent (the default): they do not exist
+   * (404). The caller builds the approver with `spoolAccountAdder(spool, <owner principal>)`.
+   */
+  signups?: { approver: (actor: Principal) => SignupApprover } | null;
 }
 
 /** A `forbidden` caused by the owner's Google id not being recorded yet says so. */
@@ -461,6 +467,7 @@ async function routeAccounts(
     if (!v) throw new AdminError(503, 'audit_unavailable');
     return send(res, 200, { generated: v.generated, entries: v.entries.slice(0, limit) });
   }
+  if (a === 'signups' && deps.signups) return routeSignups(method, parts, caller, deps, res, req);
   if (a !== 'accounts' && a !== 'requests') throw new AdminError(404, 'not_found');
   const spool = deps.spool;
   if (!spool) throw new AdminError(503, 'admin_unavailable');
@@ -517,4 +524,52 @@ async function routeAccounts(
       : send(res, out.ok ? 200 : 409, withHint(out, deps.access));
   }
   throw new AdminError(404, 'not_found');
+}
+
+/**
+ * TBI-022 (owner only, checked by the caller): `GET /signups` (all), `GET /signups/pending`, `POST /signups/<id>/approve|reject|resend`.
+ * Mutations already passed CSRF and the write rate limit. The records hold personal data: the
+ * list is for the owner only and is never cached (`send` sets no-store).
+ */
+async function routeSignups(
+  method: string,
+  parts: string[],
+  caller: Caller,
+  deps: AccountsDeps,
+  res: ServerResponse,
+  req: IncomingMessage,
+): Promise<void> {
+  if (!caller.principal) throw new AdminError(401, 'identity_required');
+  const approver = deps.signups!.approver(caller.principal);
+  const [, id, op] = parts;
+  if (method === 'GET' && parts.length === 1)
+    return send(res, 200, { signups: await approver.list() });
+  if (method === 'GET' && parts.length === 2 && id === 'pending')
+    return send(res, 200, {
+      signups: (await approver.list()).filter((r) => r.status === 'pending'),
+    });
+  if (method !== 'POST' || parts.length !== 3 || !id || !REQUEST_ID_RE.test(id))
+    throw new AdminError(404, 'not_found');
+  const body = await readJson(req);
+  if (Object.keys(body).length > 0) throw new AdminError(400, 'invalid');
+  const out =
+    op === 'approve'
+      ? await approver.approve(id)
+      : op === 'reject'
+        ? await approver.reject(id)
+        : op === 'resend'
+          ? await approver.resend(id)
+          : null;
+  if (!out) throw new AdminError(404, 'not_found');
+  if (out.ok)
+    return send(res, 200, { record: out.record, ...(out.note ? { note: out.note } : {}) });
+  const status =
+    out.code === 'not_found'
+      ? 404
+      : out.code === 'account_pending'
+        ? 202
+        : out.code === 'bad_state' || out.code === 'email_failed_use_resend'
+          ? 409
+          : 502;
+  return send(res, status, { error: out.code, ...(out.record ? { record: out.record } : {}) });
 }
