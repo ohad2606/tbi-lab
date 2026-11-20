@@ -129,6 +129,7 @@ function adminDir(): string {
   return d;
 }
 
+type AccountsDepsSignups = NonNullable<Parameters<typeof createAdminServer>[1]['signups']>;
 const CAPACITY = { live: 2, max: 6 };
 
 interface Setup {
@@ -145,6 +146,7 @@ async function serve(
     io?: SpoolIo;
     view?: ViewSpec | false;
     roomyLimits?: boolean;
+    signups?: AccountsDepsSignups;
     limits?: {
       all: { count: number; windowMs: number };
       write: { count: number; windowMs: number };
@@ -171,6 +173,7 @@ async function serve(
     access,
     spool: admin,
     capacity: async () => capacity,
+    ...(opts.signups ? { signups: opts.signups } : {}),
     ...(opts.limits
       ? { limits: opts.limits }
       : opts.roomyLimits
@@ -847,5 +850,55 @@ describe('admin service: its own boundary (Sprint 23C)', () => {
     ])
       expect((await call(t, '/accounts', { headers })).status).toBe(403);
     expect(ls(join(s.dir, 'spool'))).toEqual([]);
+  });
+});
+
+describe('admin service: sign-up routes (TBI-022), off unless configured', () => {
+  it('without configuration the routes do not exist, even for the owner', async () => {
+    const s = await serve({ roomyLimits: true });
+    const o = await s.gate(OWNER);
+    expect((await call(o, '/signups')).status).toBe(404);
+    expect(
+      (await call(o, '/signups/00000000000000000000000000/approve', mutation(o, 'POST', {})))
+        .status,
+    ).toBe(404);
+  });
+
+  it('configured: owner only, CSRF-protected, approve goes through the injected approver', async () => {
+    const calls: string[] = [];
+    const ID = '0123456789ABCDEFGHJKMNPQRS';
+    const approver = {
+      list: async () => [],
+      approve: async (id: string) => (calls.push(`approve:${id}`), { ok: true, record: { id } }),
+      reject: async () => ({ ok: false, code: 'bad_state' }),
+      resend: async () => ({ ok: false, code: 'email_failed' }),
+    };
+    const s = await serve({
+      roomyLimits: true,
+      signups: { approver: () => approver as never },
+    });
+    const t = await s.gate(TESTER);
+    expect((await call(t, '/signups')).status).toBe(403);
+    expect((await call(t, `/signups/${ID}/approve`, mutation(t, 'POST', {}))).status).toBe(403);
+    const o = await s.gate(OWNER);
+    expect((await call(o, '/signups')).body).toEqual({ signups: [] });
+    // No same-origin header: refused before the approver.
+    expect(
+      (
+        await call(o, `/signups/${ID}/approve`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: '{}',
+        })
+      ).status,
+    ).toBe(403);
+    expect((await call(o, `/signups/${ID}/approve`, mutation(o, 'POST', {}))).status).toBe(200);
+    expect((await call(o, `/signups/${ID}/approve`, mutation(o, 'POST', { x: 1 }))).status).toBe(
+      400,
+    );
+    expect((await call(o, `/signups/${ID}/reject`, mutation(o, 'POST', {}))).status).toBe(409);
+    expect((await call(o, `/signups/${ID}/resend`, mutation(o, 'POST', {}))).status).toBe(502);
+    expect((await call(o, `/signups/bad/approve`, mutation(o, 'POST', {}))).status).toBe(404);
+    expect(calls).toEqual([`approve:${ID}`]);
   });
 });
