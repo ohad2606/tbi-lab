@@ -9,7 +9,7 @@ import {
 import { Confirm, Loading, Problem } from '../common.js';
 import { api, useConsole, useT } from '../context.js';
 import type { MessageKey } from '../i18n.js';
-import { canResend, focusAfterRemoval, signupOutcomeView } from '../views.js';
+import { canResend, focusAfterRemoval, signupCountKey, signupOutcomeView } from '../views.js';
 
 /** A person's name inside a sentence or an accessible name: isolated, so it cannot reorder the text. */
 const isolate = (s: string) => `⁨${s}⁩`;
@@ -35,6 +35,17 @@ export function Signups() {
   const focusId = useRef<string | null | undefined>(undefined);
   const refreshBtn = useRef<HTMLButtonElement>(null);
   const alive = useRef(true);
+  const [keptTick, setKeptTick] = useState(0);
+  const keptId = useRef<string | null>(null);
+
+  // A live region only speaks when its text changes: clear it, then set it on the next frame, so
+  // the same sentence twice in a row is announced twice.
+  const say = (text: string) => {
+    setAnnounce('');
+    requestAnimationFrame(() => {
+      if (alive.current) setAnnounce(text);
+    });
+  };
 
   const reload = async () => {
     const v = await loadPendingSignups(api);
@@ -42,7 +53,7 @@ export function Signups() {
     setList(v);
     setMessages({});
     setConfirming(null);
-    if (v.ok) setAnnounce(t('console.signups.count', { count: v.value.length }));
+    if (v.ok) say(t(signupCountKey(v.value.length), { count: v.value.length }));
   };
   useEffect(() => {
     alive.current = true;
@@ -64,16 +75,36 @@ export function Signups() {
     (target ?? refreshBtn.current)?.focus();
   }, [list]);
 
+  // After an outcome that keeps the row (an error, or Approve turning into Resend), focus goes to
+  // that row's primary button, which may be a different element than the one that was pressed.
+  useEffect(() => {
+    const id = keptId.current;
+    if (!id) return;
+    keptId.current = null;
+    requestAnimationFrame(() =>
+      document.querySelector<HTMLElement>(`[data-signup-id="${id}"] button[data-primary]`)?.focus(),
+    );
+  }, [keptTick]);
+
   const act = async (r: SignupRecord, action: SignupAction) => {
     if (busy || !list?.ok) return;
     setBusy(r.id);
     setConfirming(null);
+    say(t('console.signups.status.working'));
+    if (action === 'reject') {
+      // The confirm unmounts now; keep focus on the row while the request runs.
+      requestAnimationFrame(() =>
+        document
+          .querySelector<HTMLElement>(`[data-signup-id="${r.id}"] button[data-act="reject"]`)
+          ?.focus(),
+      );
+    }
     try {
       const o = await signupAction(api, r.id, action);
       if (!alive.current) return;
       const v = signupOutcomeView(o, action);
       const text = t(v.key as MessageKey, { name: isolate(r.name) });
-      setAnnounce(text);
+      say(text);
       const ids = list.value.map((x) => x.id);
       if (v.removed) {
         focusId.current = focusAfterRemoval(ids, r.id);
@@ -84,6 +115,8 @@ export function Signups() {
           setList({ ok: true, value: list.value.map((x) => (x.id === r.id ? rec : x)) });
         }
         setMessages((m) => ({ ...m, [r.id]: { key: v.key as MessageKey, ok: v.ok } }));
+        keptId.current = r.id;
+        setKeptTick((n) => n + 1);
       }
     } finally {
       if (alive.current) setBusy(null);
@@ -123,7 +156,7 @@ export function Signups() {
       ) : (
         <>
           <p class="muted small" data-testid="signups-count">
-            {t('console.signups.count', { count: list.value.length })}
+            {t(signupCountKey(list.value.length), { count: list.value.length })}
           </p>
           <ul class="list" data-testid="signups-list">
             {list.value.map((r) => {

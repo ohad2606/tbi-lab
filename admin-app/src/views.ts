@@ -327,3 +327,10 @@ export function focusAfterRemoval(ids: readonly string[], removed: string): stri
   if (i < 0) return null;
   return ids[i + 1] ?? ids[i - 1] ?? null;
 }
+
+/** The count message for n pending requests: singular for exactly one, else the plural form. */
+export function signupCountKey(
+  n: number,
+): 'console.signups.count.one' | 'console.signups.count.other' {
+  return n === 1 ? 'console.signups.count.one' : 'console.signups.count.other';
+}
