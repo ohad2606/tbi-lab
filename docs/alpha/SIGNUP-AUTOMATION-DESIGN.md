@@ -133,7 +133,7 @@ owner update. The address marker is written by the intake only.
 
 Plain text, HE and EN, chosen by the sign-up language. Hebrew is the owner-approved text of 2026-11-20, verbatim;
 English is a translation (pending owner OK). Greeting by the first name; a paragraph about signing in with a
-non-Google address appears only when the address is not `@gmail.com`; sign-off "צוות TBI Lab" / "The TBI Lab
+non-Google address appears only when the address is not a consumer Google mail domain (`GOOGLE_MAIL_DOMAINS` in `email.ts`); sign-off "צוות TBI Lab" / "The TBI Lab
 team" (pending owner confirmation). The lab link (`<LAB_URL>`) and the sender / reply-to (`<SUPPORT_ADDRESS>`)
 come from config. Never sent twice: the attempt is persisted before sending, approve never re-sends, and the mail
 provider is given an idempotency key per request.

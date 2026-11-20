@@ -24,15 +24,19 @@ export function firstName(name: string): string {
   return name.trim().split(/\s+/)[0] ?? '';
 }
 
-/** Gmail addresses need no hint about signing in with a Google account. */
-function isGmail(email: string): boolean {
-  return /@gmail\.com$/i.test(email.trim());
+/** Consumer Google mail domains: these addresses need no hint about signing in with a Google account. */
+export const GOOGLE_MAIL_DOMAINS: readonly string[] = ['gmail.com', 'googlemail.com'];
+
+function isGoogleMail(email: string): boolean {
+  const e = email.trim().toLowerCase();
+  const at = e.lastIndexOf('@');
+  return at > 0 && GOOGLE_MAIL_DOMAINS.includes(e.slice(at + 1));
 }
 
 /**
  * HE: the owner-approved text (2026-11-20), verbatim. EN: translation pending owner OK.
  * The sign-off line is pending owner confirmation. The extra paragraph about a non-Google address
- * appears only when the address is not @gmail.com.
+ * appears only when the address is not in GOOGLE_MAIL_DOMAINS.
  */
 export function approvalEmail(
   lang: 'he' | 'en',
@@ -40,7 +44,7 @@ export function approvalEmail(
   c: Pick<EmailConfig, 'labUrl'>,
 ): Mail {
   const first = firstName(to.name);
-  const extra = !isGmail(to.email);
+  const extra = !isGoogleMail(to.email);
   if (lang === 'he') {
     return {
       subject: 'ההרשמה שלך ל-TBI Lab אושרה',
