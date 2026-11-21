@@ -330,6 +330,26 @@ test('a slow helper: 202 pending, then the result arrives without asking', async
   await expect(page.getByTestId('tester-status')).toHaveText('Disabled');
 });
 
+test('testers: the confirmation returns focus to the opener on Esc and on Cancel (2.4.3)', async ({
+  page,
+  context,
+}) => {
+  await as(context, 'e2e-owner');
+  await english(context);
+  await page.goto(`${APP}/#/testers/${ALEX}`);
+  const opener = page.getByTestId('tester-disable');
+  for (const how of ['Escape', 'Cancel']) {
+    await opener.focus();
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId('confirm')).toBeVisible();
+    await expect(page.getByTestId('confirm-cancel')).toBeFocused();
+    if (how === 'Escape') await page.keyboard.press('Escape');
+    else await page.keyboard.press('Enter');
+    await expect(page.getByTestId('confirm')).toHaveCount(0);
+    await expect(opener).toBeFocused();
+  }
+});
+
 test('feedback: newest first, new until opened, the full text, delete confirmed', async ({
   page,
   context,

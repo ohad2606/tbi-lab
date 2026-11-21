@@ -190,6 +190,21 @@ test('signups: a failed outcome keeps the row, shows text and keeps focus on its
   await expect(page.getByTestId('signups-live')).toContainText(/already handled/);
 });
 
+test('signups: an email_queued outcome is announced in the live region', async ({
+  page,
+  context,
+  baseURL,
+}) => {
+  await mock(page, 'list', {
+    'r1/approve': { status: 200, json: { record: null, note: 'email_queued' } },
+  });
+  await open(page, context, baseURL!, 'en');
+  await tabTo(page, 'signup-approve', 'r1');
+  await page.keyboard.press('Enter');
+  await expect(page.getByTestId('signups-live')).toContainText(/Dana Levi/);
+  await expect(page.getByTestId('signups-live')).toContainText(/quiet hours/i);
+});
+
 for (const lang of ['he', 'en'] as const)
   test(`signups (${lang}): 320 px reflow, no sideways scroll, long email`, async ({
     page,
