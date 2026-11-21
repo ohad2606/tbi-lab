@@ -172,3 +172,104 @@ test('A11Y-002 kbwire: refused while the simulation runs', async ({ page }) => {
   await expect(status).toHaveText(TEXT.en.running);
   await expect(page.locator('[data-hit="terminal"][tabindex]')).toHaveCount(0);
 });
+
+// ---- Slice 2: wire selection by keyboard ([ and ]), announcement, Delete, Escape ----
+
+const SEL = {
+  en: {
+    sel: (n: number) => new RegExp(`^Wire ${n} of 2: .*PSU1.* to .+\\. .?Delete.? removes it`),
+    removed: /^Removed wire: .*PSU1.* to /,
+    cleared: 'Wire selection cleared',
+  },
+  he: {
+    sel: (n: number) => new RegExp(`^חוט ${n} מתוך 2: .*PSU1.* אל .+\\. מקש .*Delete.* מסיר`),
+    removed: /^החוט הוסר: .*PSU1.* אל /,
+    cleared: 'בחירת החוט בוטלה',
+  },
+} as const;
+
+async function twoWires(page: Page, lang: 'en' | 'he') {
+  const psu = await open(page, lang);
+  const status = page.getByTestId('kbwire-status');
+  for (const moves of [0, 1]) {
+    await page.keyboard.press('w');
+    for (let i = 0; i < moves; i++) await page.keyboard.press('ArrowRight');
+    await page.keyboard.press('Enter');
+    await page.keyboard.press('Enter');
+    await expect(status).toHaveText(TEXT[lang].done);
+    await page.keyboard.press('Escape');
+    await expect(psu).toBeFocused();
+  }
+  await waitForStoredProject(page, (d) => d.layout.wires.length === 2, 'two wires');
+  return psu;
+}
+
+for (const lang of ['en', 'he'] as const) {
+  test(`A11Y-002 kbwire s2 (${lang}): [ ] select wires with wrap, announce, Delete, undo, Escape`, async ({
+    page,
+  }) => {
+    const t = SEL[lang];
+    await twoWires(page, lang);
+    const status = page.getByTestId('kbwire-status');
+    const selected = page.locator('.wire-group.selected');
+    await expect(selected).toHaveCount(0);
+
+    await page.keyboard.press(']');
+    await expect(status).toHaveText(t.sel(1));
+    await expect(selected).toHaveCount(1);
+    const first = await selected.getAttribute('data-id');
+    await page.keyboard.press(']');
+    await expect(status).toHaveText(t.sel(2));
+    const second = await selected.getAttribute('data-id');
+    expect(second).not.toBe(first);
+    await page.keyboard.press(']'); // wrap forward
+    await expect(status).toHaveText(t.sel(1));
+    await expect(selected).toHaveAttribute('data-id', first!);
+    await page.keyboard.press('['); // wrap backward
+    await expect(status).toHaveText(t.sel(2));
+    await expect(selected).toHaveAttribute('data-id', second!);
+    await page.keyboard.press('[');
+    await expect(status).toHaveText(t.sel(1));
+
+    // Escape clears the selection and says so.
+    await page.keyboard.press('Escape');
+    await expect(selected).toHaveCount(0);
+    await expect(status).toHaveText(t.cleared);
+
+    // Delete removes the selected wire; announced; undo restores it.
+    await page.keyboard.press(']');
+    await expect(status).toHaveText(t.sel(1));
+    await page.keyboard.press('Delete');
+    await expect(status).toHaveText(t.removed);
+    await waitForStoredProject(page, (d) => d.layout.wires.length === 1, 'one wire left');
+    await page.keyboard.press('Control+z');
+    await waitForStoredProject(page, (d) => d.layout.wires.length === 2, 'wire restored');
+  });
+}
+
+test('A11Y-002 kbwire s2: no wires announces so; brackets do not select while wiring', async ({
+  page,
+}) => {
+  await open(page, 'en');
+  const status = page.getByTestId('kbwire-status');
+  await page.keyboard.press(']');
+  await expect(status).toHaveText('There are no wires.');
+  await page.keyboard.press('w');
+  await page.keyboard.press(']');
+  await expect(page.locator('.wire-group.selected')).toHaveCount(0);
+});
+
+test('A11Y-002 kbwire s2: selected wire stays visible in forced-colors mode', async ({ page }) => {
+  await page.emulateMedia({ forcedColors: 'active' });
+  await twoWires(page, 'en');
+  await page.keyboard.press(']');
+  const halo = page.locator('.wire-group.selected .wire-hit');
+  await expect(halo).toHaveCount(1);
+  const [stroke, width] = await halo.evaluate((el) => {
+    const c = getComputedStyle(el);
+    return [c.stroke, c.strokeWidth];
+  });
+  expect(stroke).not.toBe('none');
+  expect(stroke).not.toBe('rgba(0, 0, 0, 0)');
+  expect(parseFloat(width!)).toBeGreaterThanOrEqual(10);
+});

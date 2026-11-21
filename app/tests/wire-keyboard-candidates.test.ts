@@ -9,9 +9,16 @@ import {
   type PinRef,
   type ProjectDocument,
 } from '@tbi-lab/domain';
+import { wireBracketStep, type BracketKeyEvent } from '../src/ui/wireKeyboard.js';
 import { en } from '../src/i18n/messages.en.js';
 import { he } from '../src/i18n/messages.he.js';
-import { candidateTargets, reduceWireKeyboard, type WireKbState } from '../src/ui/wireKeyboard.js';
+import {
+  candidateTargets,
+  reduceWireKeyboard,
+  stepWireSelection,
+  wirePosition,
+  type WireKbState,
+} from '../src/ui/wireKeyboard.js';
 
 const pin = (component: string, terminal: string): PinRef => ({ component, terminal });
 const term = (p: PinRef) => ({ kind: 'terminal' as const, ...p });
@@ -223,5 +230,110 @@ describe('kbwire i18n keys', () => {
       expect(he_, k).toBeTruthy();
       expect(ph(he_!), k).toEqual(ph((en as Record<string, string>)[k]!));
     }
+  });
+});
+
+describe('stepWireSelection (wire selection by keyboard)', () => {
+  const three = () => {
+    let d = base();
+    d = wire(d, pin('D1', 'anode'), pin('R1', 'a'));
+    d = wire(d, pin('D1', 'cathode'), pin('R1', 'b'));
+    return d;
+  };
+  it('has nothing to select in an empty document', () => {
+    expect(stepWireSelection(base(), undefined, 1)).toBeUndefined();
+    expect(stepWireSelection(base(), 'W1', -1)).toBeUndefined();
+  });
+  it('starts at the first (next) or last (previous) wire, in stable document order', () => {
+    const d = three();
+    const ids = d.layout.wires.map((w) => w.id);
+    expect(stepWireSelection(d, undefined, 1)).toEqual({ id: ids[0], n: 1, total: 2 });
+    expect(stepWireSelection(d, undefined, -1)).toEqual({ id: ids[1], n: 2, total: 2 });
+    expect(stepWireSelection(d, 'gone', 1)?.n).toBe(1);
+  });
+  it('wraps around both ways and never changes the document', () => {
+    const d = three();
+    const before = JSON.stringify(d);
+    const [a, b] = d.layout.wires.map((w) => w.id);
+    expect(stepWireSelection(d, a, 1)?.id).toBe(b);
+    expect(stepWireSelection(d, b, 1)?.id).toBe(a);
+    expect(stepWireSelection(d, a, -1)?.id).toBe(b);
+    expect(stepWireSelection(d, b, -1)?.id).toBe(a);
+    expect(JSON.stringify(d)).toBe(before);
+    expect(wirePosition(d, b!)).toBe(2);
+    expect(wirePosition(d, 'nope')).toBe(0);
+  });
+});
+
+describe('wire selection i18n keys', () => {
+  it('exist in both languages', () => {
+    for (const k of [
+      'kbwire.wireSelected',
+      'kbwire.wireRemoved',
+      'kbwire.wireCleared',
+      'kbwire.noWires',
+      'kbwire.endJunction',
+    ]) {
+      expect((en as Record<string, string>)[k], k).toBeTruthy();
+      expect((he as Record<string, string>)[k], k).toBeTruthy();
+    }
+  });
+});
+
+describe('wireBracketStep (wire selection key match)', () => {
+  const ev = (o: Partial<BracketKeyEvent>): BracketKeyEvent => ({
+    key: '',
+    code: '',
+    ctrlKey: false,
+    altKey: false,
+    metaKey: false,
+    shiftKey: false,
+    ...o,
+  });
+  it('US layout', () => {
+    expect(wireBracketStep(ev({ key: '[', code: 'BracketLeft' }))).toBe(-1);
+    expect(wireBracketStep(ev({ key: ']', code: 'BracketRight' }))).toBe(1);
+  });
+  it('German AltGr reports ctrl+alt with AltGraph', () => {
+    const e = ev({
+      key: '[',
+      code: 'Digit8',
+      ctrlKey: true,
+      altKey: true,
+      getModifierState: (k) => k === 'AltGraph',
+    });
+    expect(wireBracketStep(e)).toBe(-1);
+    expect(wireBracketStep({ ...e, key: ']', code: 'Digit9' })).toBe(1);
+  });
+  it('Hebrew: follows the typed character', () => {
+    expect(wireBracketStep(ev({ key: ']', code: 'BracketLeft' }))).toBe(1);
+    expect(wireBracketStep(ev({ key: '[', code: 'BracketRight' }))).toBe(-1);
+  });
+  it('rejects Ctrl/Alt/Meta/Shift combinations', () => {
+    expect(wireBracketStep(ev({ key: '[', code: 'BracketLeft', ctrlKey: true }))).toBeNull();
+    expect(wireBracketStep(ev({ key: '[', code: 'BracketLeft', altKey: true }))).toBeNull();
+    expect(wireBracketStep(ev({ key: '[', code: 'BracketLeft', metaKey: true }))).toBeNull();
+    expect(wireBracketStep(ev({ key: '{', code: 'BracketLeft', shiftKey: true }))).toBeNull();
+    expect(
+      wireBracketStep(ev({ key: '[', ctrlKey: true, altKey: true, getModifierState: () => false })),
+    ).toBeNull();
+  });
+  it('rejects a different printable character on the bracket key', () => {
+    expect(wireBracketStep(ev({ key: 'ü', code: 'BracketLeft' }))).toBeNull();
+  });
+  it('falls back to code for non-printable keys', () => {
+    expect(wireBracketStep(ev({ key: 'Dead', code: 'BracketRight' }))).toBe(1);
+  });
+});
+
+describe('kbwire.wireSelected strings', () => {
+  it('has hint key and refusal key in both languages', async () => {
+    const { he } = await import('../src/i18n/messages.he.js');
+    for (const k of ['kbwire.wireSelected.hint', 'kbwire.wireDeleteRefused']) {
+      expect(en).toHaveProperty([k]);
+      expect(he).toHaveProperty([k]);
+    }
+    expect(he['kbwire.wireSelected.hint']).toContain('{delete}');
+    expect(en['kbwire.wireSelected']).not.toMatch(/Delete/);
   });
 });

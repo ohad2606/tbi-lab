@@ -221,3 +221,64 @@ export function reduceWireKeyboard(
       return { state: { mode: 'idle' }, event: { kind: 'cancel' } };
   }
 }
+
+// ---------------------------------------------------------------------------------------------
+// Wire selection by keyboard (TBI-001 slice 2). Pure: order is document order (a new wire is
+// appended, so existing positions never shift when wires are added).
+
+export interface WireStep {
+  /** Wire id now selected. */
+  id: string;
+  /** 1-based position and total, for "Wire n of total". */
+  n: number;
+  total: number;
+}
+
+/** Next (delta 1) / previous (delta -1) wire, wrapping. With no (or a stale) current wire, next
+ *  starts at the first and previous at the last. Undefined when the document has no wires. */
+export function stepWireSelection(
+  doc: ProjectDocument,
+  current: string | undefined,
+  delta: 1 | -1,
+): WireStep | undefined {
+  const wires = doc.layout.wires;
+  if (!wires.length) return undefined;
+  const at = current === undefined ? -1 : wires.findIndex((w) => w.id === current);
+  const index = at < 0 ? (delta > 0 ? 0 : wires.length - 1) : wrap(at + delta, wires.length);
+  return { id: wires[index]!.id, n: index + 1, total: wires.length };
+}
+
+/** 1-based position of a wire in the stable order (0 when absent). */
+export const wirePosition = (doc: ProjectDocument, id: string) =>
+  doc.layout.wires.findIndex((w) => w.id === id) + 1;
+
+/** The subset of KeyboardEvent the wire-selection key match needs (pure, testable). */
+export interface BracketKeyEvent {
+  key: string;
+  code: string;
+  ctrlKey: boolean;
+  altKey: boolean;
+  metaKey: boolean;
+  shiftKey: boolean;
+  getModifierState?: (k: string) => boolean;
+}
+
+/**
+ * Maps a key event to a wire-selection step: ']' -> +1 (next), '[' -> -1 (previous), else null.
+ * Semantics follow the TYPED character (`key`), so AltGr layouts (German: AltGr+8 types '[') work
+ * and on a layout where the physical BracketLeft key types ']' (Hebrew) that key selects "next".
+ * `code` is only a fallback when `key` is not a single printable character (e.g. 'Dead',
+ * 'Unidentified'); a printable key such as 'ü' on the physical bracket key is rejected.
+ * Ctrl/Meta/Alt and Shift are rejected, except the Ctrl+Alt pair the OS reports for AltGr.
+ */
+export function wireBracketStep(e: BracketKeyEvent): 1 | -1 | null {
+  if (e.metaKey || e.shiftKey) return null;
+  const altGr = e.ctrlKey && e.altKey && e.getModifierState?.('AltGraph') === true;
+  if ((e.ctrlKey || e.altKey) && !altGr) return null;
+  if (e.key === '[') return -1;
+  if (e.key === ']') return 1;
+  if ([...e.key].length === 1) return null;
+  if (e.code === 'BracketLeft') return -1;
+  if (e.code === 'BracketRight') return 1;
+  return null;
+}

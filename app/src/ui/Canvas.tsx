@@ -37,6 +37,7 @@ import {
   type Quantity,
   type ComponentTypeId,
   type Point,
+  type Wire,
   type ProjectDocument,
   type Rotation,
   type Selection,
@@ -70,6 +71,8 @@ import {
   distanceCells,
   pinsOf,
   reduceWireKeyboard,
+  stepWireSelection,
+  wireBracketStep,
   type WireKbAction,
   type WireKbEvent,
   type WireKbState,
@@ -758,6 +761,39 @@ export function Canvas({
       params,
     );
   };
+  const wireEndName = (end: Wire['from']) =>
+    end.kind === 'terminal'
+      ? pinName(end)
+      : t('kbwire.endJunction', { id: isolateLtr(end.junction) });
+  /** Selects the next/previous wire (wrapping) and announces it with both endpoints. */
+  const kbSelectWire = (delta: 1 | -1) => {
+    const cur =
+      selection.wires.length === 1 && !selection.components.length && !selection.junctions.length
+        ? selection.wires[0]
+        : undefined;
+    const step = stepWireSelection(doc, cur, delta);
+    if (!step) {
+      kbAnnounce(t('kbwire.noWires'));
+      return;
+    }
+    const w = doc.layout.wires.find((x) => x.id === step.id)!;
+    store.select({ ...emptySelection(), wires: [step.id] });
+    kbAnnounce(
+      t('kbwire.wireSelected', {
+        n: step.n,
+        total: step.total,
+        from: wireEndName(w.from),
+        to: wireEndName(w.to),
+        // The Delete/Escape hint is wrong when nothing can be deleted.
+        hint: readOnly
+          ? ''
+          : t('kbwire.wireSelected.hint', {
+              delete: isolateLtr('Delete'),
+              escape: isolateLtr('Escape'),
+            }),
+      }),
+    );
+  };
   const kbText = (ev: WireKbEvent): string => {
     switch (ev.kind) {
       case 'pins':
@@ -937,7 +973,16 @@ export function Canvas({
       if (probeMode) onProbeModeChange(false);
       else if (placing) onPlacingDone();
       else if (mode.kind !== 'idle') setMode({ kind: 'idle' });
-      else store.select(emptySelection());
+      else {
+        if (selection.wires.length) kbAnnounce(t('kbwire.wireCleared'));
+        store.select(emptySelection());
+      }
+      return;
+    }
+    const bracketStep = kb.mode === 'idle' ? wireBracketStep(e) : null;
+    if (bracketStep) {
+      e.preventDefault();
+      kbSelectWire(bracketStep);
       return;
     }
     if (e.key === '+' || e.key === '=') return zoomAt(1.25);
@@ -965,10 +1010,27 @@ export function Canvas({
         }));
       return;
     }
+    if (readOnly && hasSelection && (e.key === 'Delete' || e.key === 'Backspace')) {
+      if (selection.wires.length) kbAnnounce(t('kbwire.wireDeleteRefused'));
+      return;
+    }
     if (readOnly || !hasSelection) return;
     if (e.key === 'Delete' || e.key === 'Backspace') {
       e.preventDefault();
-      store.apply(deleteSelection(doc, selection), emptySelection());
+      const removed =
+        selection.wires.length === 1 && !selection.components.length && !selection.junctions.length
+          ? doc.layout.wires.find((x) => x.id === selection.wires[0])
+          : undefined;
+      const del = deleteSelection(doc, selection);
+      store.apply(del, emptySelection());
+      if (removed && !del.ok) kbAnnounce(t('kbwire.wireDeleteRefused'));
+      if (removed && del.ok)
+        kbAnnounce(
+          t('kbwire.wireRemoved', {
+            from: wireEndName(removed.from),
+            to: wireEndName(removed.to),
+          }),
+        );
       svgRef.current?.focus();
     } else if (e.code === 'KeyR' && !e.ctrlKey && !e.metaKey && selection.components.length) {
       store.apply(rotateRouted(doc, selection.components));
