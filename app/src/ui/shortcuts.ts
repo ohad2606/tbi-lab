@@ -108,7 +108,8 @@ export function chordKeys(chord: string): string[] {
 }
 
 /** A text field where `?` is a character (the code editor is a textarea). */
-const TYPING_TARGET = 'input, textarea, select, [contenteditable], [role="textbox"]';
+const TYPING_TARGET =
+  'input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="textbox"], [role="combobox"]';
 
 export type HelpKeyEvent = {
   key: string;
@@ -127,6 +128,8 @@ export type HelpKeyEvent = {
 export function isHelpKey(e: HelpKeyEvent, otherDialogOpen: boolean): boolean {
   if (e.key !== '?' || e.defaultPrevented || otherDialogOpen) return false;
   if (e.metaKey || e.ctrlKey !== e.altKey) return false;
+  // WCAG 2.1.4 (D-1640-1): only while focus is on an element of the page, never in a text field.
   const el = e.target as { closest?: (s: string) => unknown } | null;
-  return !el?.closest?.(TYPING_TARGET);
+  if (typeof el?.closest !== 'function') return false;
+  return !el.closest(TYPING_TARGET);
 }

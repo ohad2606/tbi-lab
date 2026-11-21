@@ -3781,13 +3781,13 @@ select {
 }
 
 /* Alpha UX-P1: the toolbar keeps Build and Run labelled and visible down to the narrowest
-   supported desktop width (1024 px). Below 1536 px, room is made without any menu: the
+   supported desktop width (1024 px). Below 1600 px (was 1536 before the shortcuts button), room is made without any menu: the
    save-state text, the Undo/Redo labels, the "Project name" label and the "Status:" prefix are
    visually
    hidden (they remain the accessible names / live text; the save state keeps its icon, Undo/Redo
    their icons; all have a tooltip). The build state text stays visible down to 1200 px.
-   From 1536 px all labels show. */
-@media (max-width: 1535px) {
+   From 1600 px all labels show. */
+@media (max-width: 1599px) {
   .history-label,
   .save-label,
   .project-name-label,
@@ -4757,8 +4757,10 @@ select {
 
 /* TBI-020 slice 2: keyboard shortcuts dialog and its top-bar button. */
 .shortcuts-open {
-  min-inline-size: 1.75rem;
-  min-block-size: 1.75rem;
+  /* Compact (24px target, WCAG 2.5.8) so the top bar still fits at 1024px. */
+  min-inline-size: 24px;
+  min-block-size: 24px;
+  padding-inline: 0.25rem;
   font-weight: 700;
 }
 .shortcuts-dialog {
@@ -4800,7 +4802,7 @@ select {
 }
 .shortcut-table kbd {
   display: inline-block;
-  min-inline-size: 1.5rem;
+  min-inline-size: 24px;
   padding: 0 0.35rem;
   text-align: center;
   font: inherit;
