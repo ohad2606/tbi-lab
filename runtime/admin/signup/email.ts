@@ -110,6 +110,9 @@ export class EmailError extends Error {
   }
 }
 
+/** A sending-only mail key's shape; checked before every send (and once at admin start, warning only). */
+export const RESEND_KEY_RE = /^re_[A-Za-z0-9_-]{8,}$/;
+
 export interface ResendConfig extends EmailConfig {
   /** Reads the sending-only API key (a root-owned file in deployment). */
   readKey: () => Promise<string>;
@@ -127,7 +130,7 @@ export class ResendSender implements EmailSender {
     id: string;
   }): Promise<void> {
     const key = (await this.c.readKey()).trim();
-    if (!/^re_[A-Za-z0-9_-]{8,}$/.test(key)) throw new EmailError('bad_key');
+    if (!RESEND_KEY_RE.test(key)) throw new EmailError('bad_key');
     const mail = approvalEmail(to.lang, to, this.c);
     let res;
     try {

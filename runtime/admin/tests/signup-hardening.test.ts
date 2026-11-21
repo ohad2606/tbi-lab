@@ -148,7 +148,7 @@ describe('error classes carry no paths', () => {
   it('readSecret maps fs errors to a class', async () => {
     await expect(readSecret('/nonexistent/dir/secret-file')).rejects.toThrow(/^secret_missing$/);
     const { root } = await mkStore();
-    writeFileSync(join(root, 's'), 'short');
+    writeFileSync(join(root, 's'), 'short', { mode: 0o600 }); // 0600: other-readable is refused first
     await expect(readSecret(join(root, 's'))).rejects.toThrow(/^secret_short$/);
   });
   it('approver stores a class, not a path, in lastError', async () => {

@@ -7,13 +7,14 @@
  *   TBI_SIGNUP_SOURCE_HEADER  header the trusted proxy sets to the client address (default x-forwarded-for, last hop)
  */
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { readFile } from 'node:fs/promises';
+import { isIP } from 'node:net';
 import { normalizeDisplayName, type AdminSpool } from '../accounts.js';
 import type { Principal } from '../../identity/principal.js';
 import { send } from '../common.js';
 import { errorClass } from './errors.js';
 import { MIN_SECRET_BYTES } from './hmac.js';
 import { BodyTooLarge, readCappedBody } from './limits.js';
+import { readSecretFile } from './secret-file.js';
 import type { AccountAdder, AddOutcome, SignupIntake } from './service.js';
 
 export interface SignupEnvConfig {
@@ -35,27 +36,42 @@ export function signupConfigFromEnv(env: NodeJS.ProcessEnv = process.env): Signu
   };
 }
 
-/** Reads the secret; a short or empty secret is a configuration error. */
+/**
+ * Reads the secret; a short or empty secret is a configuration error, and so is a file that
+ * other users can read (`secret_unsafe_mode`, see secret-file.ts).
+ */
 export async function readSecret(file: string): Promise<Buffer> {
   let text: string;
   try {
-    text = await readFile(file, 'utf8');
+    text = await readSecretFile(file);
   } catch (e) {
     // A class code only: the raw fs error carries the path.
+    const c = errorClass(e);
     // eslint-disable-next-line preserve-caught-error -- the cause would carry the secret file path
-    throw new Error(errorClass(e) === 'secret_missing' ? 'secret_missing' : 'secret_unreadable');
+    throw new Error(
+      c === 'secret_missing' || c === 'secret_unsafe_mode' || c === 'secret_not_file'
+        ? c
+        : 'secret_unreadable',
+    );
   }
   const b = Buffer.from(text.trim(), 'utf8');
   if (b.length < MIN_SECRET_BYTES) throw new Error('secret_short');
   return b;
 }
 
-/** The client key: the LAST hop of the proxy header (the one our own proxy appended), else the socket. */
-export function sourceKey(req: IncomingMessage, header: string): string {
+/**
+ * The client key: the LAST hop of the proxy header (the one our own proxy appended), else the
+ * socket. Only an IP address counts; anything else (absent, empty, a port suffix, junk) is treated
+ * as missing and reported through `onFallback`: behind the proxy the socket address is the proxy
+ * itself, so every such request shares one rate bucket (a proxy misconfiguration to fix).
+ */
+export function sourceKey(req: IncomingMessage, header: string, onFallback?: () => void): string {
   const h = req.headers[header];
   const v = Array.isArray(h) ? h[h.length - 1] : h;
   const last = v?.split(',').pop()?.trim();
-  return last && last.length <= 64 ? last : (req.socket.remoteAddress ?? 'unknown');
+  if (last && last.length <= 64 && isIP(last) !== 0) return last;
+  onFallback?.();
+  return req.socket.remoteAddress ?? 'unknown';
 }
 
 /** `POST /signup` only. Every answer is a small JSON body; nothing about the request is echoed. */
@@ -64,6 +80,7 @@ export async function handleSignupRequest(
   res: ServerResponse,
   intake: SignupIntake,
   sourceHeader: string,
+  onSourceFallback?: () => void,
 ): Promise<void> {
   if (req.method !== 'POST') return send(res, 405, { error: 'method_not_allowed' });
   if (!/^application\/json\s*(;|$)/i.test(req.headers['content-type'] ?? ''))
@@ -78,7 +95,7 @@ export async function handleSignupRequest(
   }
   let out;
   try {
-    out = await intake.submit(sourceKey(req, sourceHeader), req.headers, body);
+    out = await intake.submit(sourceKey(req, sourceHeader, onSourceFallback), req.headers, body);
   } catch {
     return send(res, 500, { error: 'internal' });
   }
