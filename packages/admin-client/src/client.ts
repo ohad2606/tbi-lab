@@ -529,7 +529,11 @@ export type SignupError = (typeof SIGNUP_ERRORS)[number];
 
 /** What one approve / reject / resend ended with. */
 export type SignupOutcome =
-  | { kind: 'done'; record: SignupRecord | null; note: 'already_done' | 'email_not_resent' | null }
+  | {
+      kind: 'done';
+      record: SignupRecord | null;
+      note: 'already_done' | 'email_not_resent' | 'email_queued' | null;
+    }
   | { kind: 'account_pending' }
   | { kind: 'error'; error: SignupError; record: SignupRecord | null }
   | { kind: 'refused'; error: LoadError | 'csrf' };
@@ -573,7 +577,10 @@ export function interpretSignup(status: number | null, body: unknown): SignupOut
     return {
       kind: 'done',
       record: signupRecord(b.record),
-      note: b.note === 'already_done' || b.note === 'email_not_resent' ? b.note : null,
+      note:
+        b.note === 'already_done' || b.note === 'email_not_resent' || b.note === 'email_queued'
+          ? b.note
+          : null,
     };
   if (status === 202 && b.error === 'account_pending') return { kind: 'account_pending' };
   if (status === 403 && b.error === 'csrf') return { kind: 'refused', error: 'csrf' };

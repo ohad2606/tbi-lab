@@ -34,6 +34,7 @@ function files() {
     TBI_SIGNUP_TELEGRAM_CHAT_ID: '42',
     TBI_SIGNUP_ADMIN_LINK: 'https://admin.example.invalid/signups',
     TBI_SIGNUP_LISTEN: '127.0.0.1:0',
+    TBI_SIGNUP_QUIET: 'off', // real clock here; quiet hours are tested with an injected clock
   };
   return { root, env };
 }
@@ -50,7 +51,7 @@ describe('intake config', () => {
   it('fails closed on missing settings, relative paths, non-https link, non-loopback listen', () => {
     const { env } = files();
     for (const k of Object.keys(env).filter(
-      (x) => x !== 'TBI_SIGNUP_INTAKE' && x !== 'TBI_SIGNUP_LISTEN',
+      (x) => x !== 'TBI_SIGNUP_INTAKE' && x !== 'TBI_SIGNUP_LISTEN' && x !== 'TBI_SIGNUP_QUIET',
     )) {
       const e: Record<string, string> = { ...env };
       delete e[k];

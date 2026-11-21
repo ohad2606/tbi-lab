@@ -13,10 +13,13 @@
  *   TBI_SIGNUP_FROM              sender address, e.g. `TBI Lab <support@tbi-tech.net>`
  *   TBI_SIGNUP_LAB_URL           the lab link placed in the mail (https)
  *   TBI_SIGNUP_REPLY_TO          optional reply-to (default: the sender)
+ *   TBI_SIGNUP_QUIET             quiet hours `HH:MM-HH:MM` Israel time (default 23:00-08:00) or `off`;
+ *                                approval emails triggered inside it are queued (see quietHours.ts)
  */
 import { errorClass } from './errors.js';
 import { RESEND_KEY_RE, ResendSender, type EmailSender } from './email.js';
 import type { FetchLike } from './notify.js';
+import { parseQuiet, type QuietWindow } from './quietHours.js';
 import { SignupApprover } from './service.js';
 import { spoolAccountAdder } from './http.js';
 import { readSecretFile } from './secret-file.js';
@@ -30,6 +33,8 @@ export interface AdminSignupConfig {
   from: string;
   labUrl: string;
   replyTo?: string;
+  /** Quiet hours (null = off). Unset (tests building a config by hand) = off. */
+  quiet?: QuietWindow | null;
 }
 
 export type AdminSignupConfigResult =
@@ -59,9 +64,16 @@ export function adminSignupConfigFromEnv(
   if (!/^https:\/\//.test(labUrl)) return bad('TBI_SIGNUP_LAB_URL must be an https URL');
   if (/[\r\n]/.test(from) || /[\r\n]/.test(env.TBI_SIGNUP_REPLY_TO ?? ''))
     return bad('sender settings must be single-line');
+  let quiet: QuietWindow | null;
+  try {
+    quiet = parseQuiet(env.TBI_SIGNUP_QUIET);
+  } catch (e) {
+    return bad((e as Error).message);
+  }
   return {
     enabled: true,
     config: {
+      quiet,
       dir,
       keyFile,
       from,
@@ -79,7 +91,11 @@ export interface SignupAdminWiring {
   store: PendingStore;
   /** Runs the retention purge now and then daily; returns the stop function. */
   startPurge(): () => void;
+  /** Sends the queued approval emails whose quiet hours are over, now and every minute; returns stop. */
+  startDrain(): () => void;
 }
+
+export const DRAIN_INTERVAL_MS = 60_000;
 
 export async function wireSignupAdmin(
   c: AdminSignupConfig,
@@ -120,6 +136,25 @@ export async function wireSignupAdmin(
       io.log(`signup: purge failed (${errorClass(e)})`);
     }
   };
+  const quiet = c.quiet ?? null;
+  // The drain only sends mail for accounts that already exist; it never adds one.
+  const drainer = new SignupApprover({
+    store,
+    accounts: { add: async () => 'error' },
+    email,
+    quiet,
+    now: io.now,
+    log: io.log,
+  });
+  const runDrain = async () => {
+    try {
+      const n = await drainer.drainEmails();
+      if (n > 0) io.log(`signup: queued emails processed ${n}`);
+    } catch (e) {
+      io.log(`signup: email drain failed (${errorClass(e)})`);
+    }
+  };
+  let draining = false;
   return {
     store,
     signups: {
@@ -128,9 +163,25 @@ export async function wireSignupAdmin(
           store,
           accounts: spoolAccountAdder(spool, actor),
           email,
+          quiet,
           now: io.now,
           log: io.log,
         }),
+    },
+    startDrain() {
+      const tick = async () => {
+        if (draining) return;
+        draining = true;
+        try {
+          await runDrain();
+        } finally {
+          draining = false;
+        }
+      };
+      void tick();
+      const t = setInterval(() => void tick(), DRAIN_INTERVAL_MS);
+      t.unref();
+      return () => clearInterval(t);
     },
     startPurge() {
       void runPurge();

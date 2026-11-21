@@ -13,6 +13,8 @@
  *   TBI_SIGNUP_TELEGRAM_CHAT_ID   the owner's chat
  *   TBI_SIGNUP_ADMIN_LINK         link placed in the notification (https)
  *   TBI_SIGNUP_LISTEN             `127.0.0.1:<port>` or `[::1]:<port>` (default 127.0.0.1:7411)
+ *   TBI_SIGNUP_QUIET              quiet hours `HH:MM-HH:MM` Israel time (default 23:00-08:00) or `off`; alerts
+ *                                 triggered inside it are stored and sent when it ends
  *   TBI_SIGNUP_SOURCE_HEADER      header the trusted proxy sets to the client address (an IP); when unset
  *                                 the default is used and a `source_header_default` warning is logged
  *                                 at start; requests without a valid IP in it are logged (throttled)
@@ -25,6 +27,7 @@ import { NonceCache } from './hmac.js';
 import { handleSignupRequest, readSecret } from './http.js';
 import { SlidingWindowLimiter } from './limits.js';
 import { TELEGRAM_TOKEN_RE, TelegramNotifier, type FetchLike } from './notify.js';
+import { parseQuiet, type QuietWindow } from './quietHours.js';
 import { readSecretFile } from './secret-file.js';
 import { SignupIntake } from './service.js';
 import { PendingStore } from './store.js';
@@ -40,7 +43,11 @@ export interface IntakeConfig {
   sourceHeader: string;
   /** True when TBI_SIGNUP_SOURCE_HEADER was not set (the default header is assumed). */
   sourceHeaderDefaulted?: boolean;
+  /** Quiet hours (null / unset = off). */
+  quiet?: QuietWindow | null;
 }
+
+export const INTAKE_DRAIN_MS = 60_000;
 
 /** At most one `source_header_missing` line per this interval. */
 export const SOURCE_FALLBACK_LOG_MS = 10 * 60_000;
@@ -85,9 +92,16 @@ export function intakeConfigFromEnv(env: NodeJS.ProcessEnv = process.env): Intak
   const port = Number(m[2]);
   if (!LOOPBACK.has(host)) return bad('TBI_SIGNUP_LISTEN must be a loopback address');
   if (port > 65535) return bad('TBI_SIGNUP_LISTEN port out of range');
+  let quiet: QuietWindow | null;
+  try {
+    quiet = parseQuiet(env.TBI_SIGNUP_QUIET);
+  } catch (e) {
+    return bad((e as Error).message);
+  }
   return {
     enabled: true,
     config: {
+      quiet,
       dir: dir!,
       hmacFile: hmacFile!,
       tokenFile: tokenFile!,
@@ -142,6 +156,7 @@ export async function startIntake(
       fetch: io.fetch,
     }),
     now,
+    quiet: c.quiet ?? null,
     // A form sends one request per sign-up: generous for humans, tight for floods.
     sourceRate: new SlidingWindowLimiter({ count: 10, windowMs: 60_000 }, now),
     globalRate: new SlidingWindowLimiter({ count: 60, windowMs: 3_600_000 }, now),
@@ -173,11 +188,21 @@ export async function startIntake(
     server.once('error', reject);
     server.listen(c.port, c.host, () => resolve());
   });
+  // Alerts deferred by quiet hours: sent from here (this process holds the Telegram token), at
+  // start and then every minute; unref'd, and stopped by close().
+  let drainTimer: NodeJS.Timeout | null = null;
+  if (c.quiet) {
+    const tick = () => void intake.drainNotifications();
+    tick();
+    drainTimer = setInterval(tick, INTAKE_DRAIN_MS);
+    drainTimer.unref();
+  }
   return {
     server,
     port: (server.address() as AddressInfo).port,
     close: () =>
       new Promise<void>((resolve) => {
+        if (drainTimer) clearInterval(drainTimer);
         server.close(() => resolve());
         server.closeAllConnections();
       }),

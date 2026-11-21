@@ -22,7 +22,14 @@ import { newRequestId, REQUEST_ID_RE } from '../common.js';
 import { serialById } from './locks.js';
 import type { SignupInput } from './validate.js';
 
-export const STATUSES = ['pending', 'approved', 'rejected', 'email_sent', 'email_failed'] as const;
+export const STATUSES = [
+  'pending',
+  'approved',
+  'rejected',
+  'email_queued',
+  'email_sent',
+  'email_failed',
+] as const;
 export type SignupStatus = (typeof STATUSES)[number];
 
 export interface SignupRecord extends SignupInput {
@@ -36,10 +43,14 @@ export interface SignupRecord extends SignupInput {
   /** Set before a send is attempted: a crash mid-send never causes an automatic second email. */
   emailAttemptedAt: string | null;
   emailAttempts: number;
+  /** While status is `email_queued`: ISO time from which the approval email may be sent (quiet hours). */
+  emailSendAfter: string | null;
   /** Error class only (never a response body or address). */
   lastError: string | null;
   /** Derived on read from the `<id>.notified` marker (written by the intake, never a record rewrite). */
   notified: boolean;
+  /** Derived on read from the `<id>.notifyq` marker: the alert was deferred by quiet hours and is not sent yet. */
+  notifyPending: boolean;
 }
 
 export interface Retention {
@@ -172,6 +183,16 @@ export class PendingStore {
     await writeFile(join(this.dir, `${this.idOnly(id)}.notified`), '', { mode: 0o600 });
   }
 
+  /** Intake-only: the owner alert is deferred (quiet hours); the intake's drain sends it later. */
+  async markNotifyPending(id: string): Promise<void> {
+    await writeFile(join(this.dir, `${this.idOnly(id)}.notifyq`), '', { mode: 0o600 });
+  }
+
+  /** Removes the deferral marker (claim before a send: at most one attempt per record). */
+  async clearNotifyPending(id: string): Promise<void> {
+    await unlink(join(this.dir, `${this.idOnly(id)}.notifyq`)).catch(() => undefined);
+  }
+
   private idOnly(id: string): string {
     if (!REQUEST_ID_RE.test(id)) throw new StoreError('not_found');
     return id;
@@ -194,8 +215,10 @@ export class PendingStore {
       accountAdded: false,
       emailAttemptedAt: null,
       emailAttempts: 0,
+      emailSendAfter: null,
       lastError: null,
       notified: false,
+      notifyPending: false,
       ...input,
     };
   }
@@ -220,6 +243,11 @@ export class PendingStore {
       const r = JSON.parse(text) as SignupRecord;
       if (r.v !== 1 || r.id !== id || !STATUSES.includes(r.status)) throw new Error('shape');
       r.notified = await stat(join(this.dir, `${id}.notified`)).then(
+        () => true,
+        () => false,
+      );
+      r.emailSendAfter = r.emailSendAfter ?? null;
+      r.notifyPending = await stat(join(this.dir, `${id}.notifyq`)).then(
         () => true,
         () => false,
       );
@@ -270,7 +298,7 @@ export class PendingStore {
             ? retention.pendingMs
             : r.status === 'email_sent'
               ? retention.doneMs
-              : Infinity; // approved / email_failed need the owner's attention, never auto-deleted
+              : Infinity; // approved / email_queued / email_failed need the owner's attention, never auto-deleted
       return t - Date.parse(r.updatedAt) > limit;
     };
     const removed: string[] = [];
@@ -282,6 +310,7 @@ export class PendingStore {
         if (!cur || !expired(cur)) return false;
         await unlink(this.path(id)).catch(() => undefined);
         await unlink(join(this.dir, `${id}.notified`)).catch(() => undefined);
+        await unlink(join(this.dir, `${id}.notifyq`)).catch(() => undefined);
         return true;
       });
       if (gone) removed.push(id);
