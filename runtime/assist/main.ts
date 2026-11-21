@@ -7,6 +7,7 @@
  *   TBI_ASSIST_CONFIG        /etc/tbi/assist.json (absent or invalid: disabled)
  *   TBI_ASSIST_STATE         state directory (ledger, audit log)
  *   TBI_ASSIST_ALLOW_MOCK=1  accept provider.kind "mock" (tests, staging; never needed live)
+ *   TBI_PLANS_CONFIG / TBI_PLANS_STATE  opt-in plans engine (see runtime/plans/boot.ts)
  *   CREDENTIALS_DIRECTORY    systemd LoadCredential= directory; the provider key is the file
  *                            `provider-key` in it (never an environment variable)
  */
@@ -15,6 +16,7 @@ import { join } from 'node:path';
 import { identityFromEnv } from '../identity/principal.js';
 import { describeListen, listen, parseListen } from '../identity/listen.js';
 import { activation, loadConfig } from './config.js';
+import { bootPlans } from '../plans/boot.js';
 import { Ledger } from './ledger.js';
 import { createProvider } from './providers.js';
 import { createAssistHttpServer } from './service.js';
@@ -40,6 +42,17 @@ const provider =
 const ledger = new Ledger(process.env.TBI_ASSIST_STATE ?? '/var/lib/tbi-assist', config.retention);
 setInterval(() => ledger.prune(), 3_600_000).unref();
 
+// TBI-018: opt-in only (TBI_PLANS_CONFIG). A config/state error exits non-zero: metering never turns off silently.
+let plans;
+try {
+  plans = await bootPlans(process.env);
+} catch (e) {
+  process.stderr.write(
+    `${JSON.stringify({ event: 'plans_boot_failed', reason: e instanceof Error ? e.message : 'error' })}\n`,
+  );
+  process.exit(1);
+}
+
 const server = createAssistHttpServer({
   config,
   configError: error,
@@ -47,6 +60,7 @@ const server = createAssistHttpServer({
   ledger,
   provider,
   env,
+  plans,
 });
 const stop = () => {
   server.close();
