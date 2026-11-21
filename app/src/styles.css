@@ -731,6 +731,54 @@ select {
   cursor: crosshair;
 }
 
+/* A11Y-002 keyboard wiring: the focused pin and the chosen target get a ring (navy on white,
+   well above 3:1); the target is also dashed and filled so it does not rely on colour alone. */
+.terminal.kb-pin:focus,
+.terminal.kb-pin:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+.kb-ring {
+  fill: none;
+  stroke: var(--focus);
+  stroke-width: 3;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+  visibility: hidden;
+  filter: drop-shadow(0 0 1.5px var(--focus-halo)) drop-shadow(0 0 1px var(--focus-halo));
+}
+
+.terminal.kb-pin:focus .kb-ring {
+  visibility: visible;
+}
+
+.terminal.kb-target .kb-ring {
+  visibility: visible;
+  stroke-dasharray: 4 3;
+  fill: var(--accent-soft);
+  fill-opacity: 0.6;
+}
+
+/* The wire's source pin stays marked while choosing a target: a solid, thicker ring (the target
+   ring is dashed and filled), so the two differ by shape and not by colour. */
+.terminal.kb-source .kb-ring {
+  visibility: visible;
+  stroke-width: 5;
+  stroke-dasharray: none;
+}
+
+@media (forced-colors: active) {
+  .kb-ring {
+    forced-color-adjust: none;
+    stroke: Highlight;
+  }
+  .terminal.kb-target .kb-ring {
+    fill: Canvas;
+    fill-opacity: 0.6;
+  }
+}
+
 .terminal-hit {
   fill: transparent;
 }
