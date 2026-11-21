@@ -95,8 +95,14 @@ export function Confirm({
       aria-describedby="confirm-body"
       class="confirm"
       data-testid="confirm"
+      onKeyDown={(e) => {
+        if (e.key === 'Escape' && !busy) {
+          e.preventDefault();
+          onCancel();
+        }
+      }}
     >
-      <h3 id="confirm-title">{title}</h3>
+      <h2 id="confirm-title">{title}</h2>
       <div id="confirm-body">{children}</div>
       <div class="actions">
         <button

@@ -69,7 +69,8 @@ h2 {
   font-size: 1.2rem;
   margin: 0 0 0.5rem;
 }
-h3 {
+h3,
+.confirm h2 {
   font-size: 1rem;
   margin: 0 0 0.5rem;
 }
