@@ -103,7 +103,12 @@ describe('build output', () => {
       const h = readFileSync(f, 'utf8');
       for (const m of h.matchAll(/(?:href|src)="([^"]+)"/g)) {
         const url = m[1];
-        if (url === LAB_URL || url === 'mailto:' + CONTACT_EMAIL || (APPLY_URL && url === APPLY_URL)) continue;
+        if (
+          url === LAB_URL ||
+          url === 'mailto:' + CONTACT_EMAIL ||
+          (APPLY_URL && url === APPLY_URL)
+        )
+          continue;
         expect(url).not.toMatch(/^[a-z]+:|^\/\//i);
         const [path, frag] = url.split('#');
         let target = f;
@@ -124,7 +129,10 @@ describe('build output', () => {
       let noLab = t.replaceAll(`href="${LAB_URL}"`, '');
       if (APPLY_URL) noLab = noLab.replaceAll(`href="${APPLY_URL}"`, '');
       // link-preview (Open Graph) tags must be absolute and point only at this site
-      noLab = noLab.replace(/<meta property="og:(?:url|image|image:secure_url)" content="https:\/\/join-lab\.tbi-tech\.net\/[^"]*">/g, '');
+      noLab = noLab.replace(
+        /<meta property="og:(?:url|image|image:secure_url)" content="https:\/\/join-lab\.tbi-tech\.net\/[^"]*">/g,
+        '',
+      );
       expect(noLab, f).not.toMatch(/https?:\/\/|@import|\/\/[a-z0-9.-]+\.[a-z]/i);
       // url() only for the self-hosted fonts, and every one must exist in the build
       for (const [, u] of t.matchAll(/url\(\s*['"]?([^'")]+)['"]?\s*\)/gi)) {
@@ -159,16 +167,16 @@ describe('build output', () => {
     }
   });
   it('no hype "real" claims', () => {
-    for (const l of ['he','en']) for (const pg of Object.values(content[l].pages)) expect(JSON.stringify(pg)).not.toMatch(/\breal\b|אמית/i);
+    for (const l of ['he', 'en'])
+      for (const pg of Object.values(content[l].pages))
+        expect(JSON.stringify(pg)).not.toMatch(/\breal\b|אמית/i);
   });
 
   it('forbidden claims are absent', () => {
     for (const l of LANGS)
       for (const p of PAGES) {
         const text = html(l, p);
-        expect(text, `${l}/${p}`).not.toMatch(
-          /firefox|wi-?fi|phone|tablet|טלפון|טאבלט|פיירפוקס/i,
-        );
+        expect(text, `${l}/${p}`).not.toMatch(/firefox|wi-?fi|phone|tablet|טלפון|טאבלט|פיירפוקס/i);
       }
   });
   it('tester sign-in links to the Lab, labelled for approved testers', () => {
@@ -228,7 +236,9 @@ describe('build output', () => {
   it('CTA: pending state when APPLY_URL is empty, https link when set (both modes)', () => {
     // the configured form (owner-supplied Google Form) is https and is what the default build links to
     expect(APPLY_URL === '' || /^https:\/\/forms\.gle\/[A-Za-z0-9]+$/.test(APPLY_URL)).toBe(true);
-    if (APPLY_URL) for (const l of LANGS) expect(html(l, 'home')).toContain(`href="${APPLY_URL}" rel="noopener"`);
+    if (APPLY_URL)
+      for (const l of LANGS)
+        expect(html(l, 'home')).toContain(`href="${APPLY_URL}" rel="noopener"`);
     const out0 = buildSite(mkdtempSync(join(tmpdir(), 'tbi-site-pending-')), { applyUrl: '' });
     const h = readFileSync(join(out0, 'en', 'index.html'), 'utf8');
     expect(h).toContain('class="btn btn-pending" href="/en/alpha/#how-to-apply"');
@@ -273,7 +283,8 @@ describe('build output', () => {
     ])
       expect(a).toContain(s);
     if (APPLY_URL) {
-      for (const l of LANGS) expect(html(l, 'alpha')).toContain(`href="${APPLY_URL}" rel="noopener"`);
+      for (const l of LANGS)
+        expect(html(l, 'alpha')).toContain(`href="${APPLY_URL}" rel="noopener"`);
     } else {
       expect(html('en', 'home')).toContain('href="/en/alpha/#how-to-apply"');
       expect(html('he', 'home')).toContain('href="/he/alpha/#how-to-apply"');
@@ -287,7 +298,9 @@ describe('build output', () => {
       const t = readFileSync(f, 'utf8');
       expect(t, f).toContain(`<meta property="og:image" content="${img}">`);
       expect(t, f).toMatch(/<meta property="og:title" content="[^"]+">/);
-      expect(t, f).toMatch(/<meta property="og:url" content="https:\/\/join-lab\.tbi-tech\.net\/[^"]*">/);
+      expect(t, f).toMatch(
+        /<meta property="og:url" content="https:\/\/join-lab\.tbi-tech\.net\/[^"]*">/,
+      );
     }
   });
   it('copies brand assets', () => {

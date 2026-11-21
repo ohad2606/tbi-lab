@@ -127,7 +127,7 @@ test('contrast: computed text colours meet 4.5:1 on key elements (en home)', asy
   await page.goto('/en/');
   const ratio = await page.evaluate(() => {
     const rgb = (c: string) => (c.match(/[\d.]+/g) ?? []).slice(0, 3).map(Number);
-    const L = ([r, g, b]: number[]) => {
+    const L = ([r = 0, g = 0, b = 0]: number[]) => {
       const f = (v: number) => ((v /= 255) <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
       return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
     };
@@ -140,7 +140,7 @@ test('contrast: computed text colours meet 4.5:1 on key elements (en home)', asy
         b = getComputedStyle(n).backgroundColor;
         if (b !== 'rgba(0, 0, 0, 0)') break;
       }
-      const [x, y] = [L(rgb(getComputedStyle(e).color)), L(rgb(b))].sort((p, q) => q - p);
+      const [x = 0, y = 0] = [L(rgb(getComputedStyle(e).color)), L(rgb(b))].sort((p, q) => q - p);
       out.push((x + 0.05) / (y + 0.05));
     }
     return Math.min(...out);

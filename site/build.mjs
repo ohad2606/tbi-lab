@@ -279,7 +279,10 @@ export function buildSite(outDir = join(here, 'dist'), opts = {}) {
   }
   copyFileSync(join(BRAND_DIR, 'tbi-lab-logo.png'), join(out, 'assets', 'tbi-lab-logo.png'));
   mkdirSync(join(out, 'assets', 'og'), { recursive: true });
-  copyFileSync(join(here, 'images', 'og-preview.png'), join(out, 'assets', 'og', 'tbi-lab-preview.png'));
+  copyFileSync(
+    join(here, 'images', 'og-preview.png'),
+    join(out, 'assets', 'og', 'tbi-lab-preview.png'),
+  );
   for (const f of ['favicon.ico', 'favicon-32.png'])
     copyFileSync(join(BRAND_DIR, 'icons', 'production', f), join(out, 'assets', f));
   return out;
