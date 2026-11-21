@@ -291,8 +291,12 @@ export class SignupApprover {
       return { ok: true, record: q, note: 'email_queued' };
     }
     const at = new Date(nowMs).toISOString();
-    // Persist the attempt BEFORE sending.
+    // Persist the attempt BEFORE sending. A drained (queued) record also leaves `email_queued` in
+    // the same write: if the process dies after the provider accepted the mail but before
+    // `email_sent` is saved, the record is `approved` with an attempt recorded, so no later drain
+    // sends it again (approve answers email_not_resent; the owner decides).
     r = await this.d.store.update(r.id, {
+      ...(r.status === 'email_queued' ? { status: 'approved' as const, emailSendAfter: null } : {}),
       emailAttemptedAt: at,
       emailAttempts: r.emailAttempts + 1,
     });
