@@ -136,6 +136,14 @@ describe('isHelpKey (when "?" opens the dialog)', () => {
   it('is ignored in text fields and the code editor', () => {
     expect(press({}, typing)).toBe(false);
   });
+  it('is ignored in every kind of text control and when focus is not on a page element', () => {
+    const fieldOf = (sel: string) => ({ closest: (q: string) => (q.includes(sel) ? {} : null) });
+    for (const sel of ['input', 'select', 'textarea', '[contenteditable]', '[role="textbox"]']) {
+      expect(press({}, fieldOf(sel))).toBe(false);
+    }
+    expect(press({}, null)).toBe(false);
+    expect(press({}, {})).toBe(false);
+  });
   it('ignores other keys, Ctrl/Cmd/Alt chords and handled events', () => {
     expect(press({ key: '/' })).toBe(false);
     expect(press({ ctrlKey: true })).toBe(false);
