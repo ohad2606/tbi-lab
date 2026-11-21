@@ -484,7 +484,8 @@ test('A13/A15: new Sprint 5 surfaces are Hebrew (technical tokens only), RTL chr
     /^(PSU|R|GND|D|SW)\d+$/,
     /^(GND|LED|DC|CV|CC|OFF|MB)$/,
     /^N4148$/,
-    /^[VIRa]$/,
+    /^[VIRab]$/, // a, b: language-neutral terminal ids (Wires list endpoints)
+    /^J\d+$/, // junction ids (Wires list endpoints)
     /^k$/,
     /^[IV]?_(CC|DD|I|IH|IL|O|OH|OL)$/, // Sprint 22: datasheet symbols (I_CC, V_I; the V is removed with the units above)
     /^(Arduino|MicroPython|main|py|Pin|IN|value|machine|duty|duty_u16|SCL|SDA|HD44780|Hello|pull)$/, // Sprint 24: language names, the main.py file, MicroPython API names, I2C signal names, the LCD controller, the text the LCD example shows
