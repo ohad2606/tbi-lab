@@ -189,11 +189,12 @@ export async function startIntake(
     server.listen(c.port, c.host, () => resolve());
   });
   // Alerts deferred by quiet hours: sent from here (this process holds the Telegram token), at
-  // start and then every minute; unref'd, and stopped by close().
+  // start (always: markers left from before quiet hours were switched off are sent too) and then
+  // every minute while quiet hours are on; unref'd, and stopped by close().
   let drainTimer: NodeJS.Timeout | null = null;
+  const tick = () => void intake.drainNotifications();
+  tick();
   if (c.quiet) {
-    const tick = () => void intake.drainNotifications();
-    tick();
     drainTimer = setInterval(tick, INTAKE_DRAIN_MS);
     drainTimer.unref();
   }

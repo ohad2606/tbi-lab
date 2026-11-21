@@ -91,8 +91,11 @@ export interface SignupAdminWiring {
   store: PendingStore;
   /** Runs the retention purge now and then daily; returns the stop function. */
   startPurge(): () => void;
-  /** Sends the queued approval emails whose quiet hours are over, now and every minute; returns stop. */
-  startDrain(): () => void;
+  /**
+   * Sends the queued approval emails whose quiet hours are over, now and every minute; returns
+   * stop, which resolves once a drain in progress has finished.
+   */
+  startDrain(): () => Promise<void>;
 }
 
 export const DRAIN_INTERVAL_MS = 60_000;
@@ -154,7 +157,7 @@ export async function wireSignupAdmin(
       io.log(`signup: email drain failed (${errorClass(e)})`);
     }
   };
-  let draining = false;
+  let draining: Promise<void> | null = null;
   return {
     store,
     signups: {
@@ -169,19 +172,19 @@ export async function wireSignupAdmin(
         }),
     },
     startDrain() {
-      const tick = async () => {
+      const tick = () => {
         if (draining) return;
-        draining = true;
-        try {
-          await runDrain();
-        } finally {
-          draining = false;
-        }
+        draining = runDrain().finally(() => {
+          draining = null;
+        });
       };
-      void tick();
-      const t = setInterval(() => void tick(), DRAIN_INTERVAL_MS);
+      tick();
+      const t = setInterval(tick, DRAIN_INTERVAL_MS);
       t.unref();
-      return () => clearInterval(t);
+      return async () => {
+        clearInterval(t);
+        await draining;
+      };
     },
     startPurge() {
       void runPurge();

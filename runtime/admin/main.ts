@@ -20,7 +20,8 @@
  *                          A bad sign-up setting or store directory disables ONLY those routes (one log line
  *                          with a class code); the account administration starts regardless.
  *
- * SIGTERM / SIGINT: stop accepting requests and exit.
+ * SIGTERM / SIGINT: stop accepting requests, wait (at most 5 s) for an approval email being sent
+ * by the drain, and exit.
  */
 import { accessViewFromEnv } from '../identity/access.js';
 import { describeListen, listen, parseListen, socketGidFromEnv } from '../identity/listen.js';
@@ -58,14 +59,19 @@ const server = createAdminServer(identity, {
   views: new AdminViews(viewPathsFromEnv(config.dir)),
 });
 
+const DRAIN_STOP_WAIT_MS = 5_000;
 let stopping = false;
 const stop = () => {
   if (stopping) return;
   stopping = true;
   access.stop();
   stopPurge?.();
-  stopDrain?.();
-  server.close(() => process.exit(0));
+  // An approval email being sent now is allowed to finish and be saved (bounded: 5 s).
+  const drained = Promise.race([
+    stopDrain?.(),
+    new Promise<void>((r) => setTimeout(r, DRAIN_STOP_WAIT_MS).unref()),
+  ]);
+  server.close(() => void drained.then(() => process.exit(0)));
   server.closeAllConnections();
 };
 process.on('SIGTERM', stop);
