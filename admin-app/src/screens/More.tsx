@@ -27,7 +27,7 @@ export function More() {
     <section aria-labelledby="more-h" class="stack">
       <h1 id="more-h">{t('console.nav.more')}</h1>
       <ul class="list" data-testid="more-menu">
-        {row('signups', 'testers')}
+        {row('signups', 'add')}
         {row('activity', 'activity')}
         {row('settings', 'settings')}
         <li class="item">
