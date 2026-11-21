@@ -13,16 +13,19 @@
  *   TBI_SIGNUP_TELEGRAM_CHAT_ID   the owner's chat
  *   TBI_SIGNUP_ADMIN_LINK         link placed in the notification (https)
  *   TBI_SIGNUP_LISTEN             `127.0.0.1:<port>` or `[::1]:<port>` (default 127.0.0.1:7411)
- *   TBI_SIGNUP_SOURCE_HEADER      header the trusted proxy sets to the client address
+ *   TBI_SIGNUP_SOURCE_HEADER      header the trusted proxy sets to the client address (an IP); when unset
+ *                                 the default is used and a `source_header_default` warning is logged
+ *                                 at start; requests without a valid IP in it are logged (throttled)
+ *                                 as `source_header_missing` (they share the proxy's rate bucket)
  */
-import { readFile } from 'node:fs/promises';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { errorClass } from './errors.js';
 import { NonceCache } from './hmac.js';
 import { handleSignupRequest, readSecret } from './http.js';
 import { SlidingWindowLimiter } from './limits.js';
-import { TelegramNotifier, type FetchLike } from './notify.js';
+import { TELEGRAM_TOKEN_RE, TelegramNotifier, type FetchLike } from './notify.js';
+import { readSecretFile } from './secret-file.js';
 import { SignupIntake } from './service.js';
 import { PendingStore } from './store.js';
 
@@ -35,7 +38,12 @@ export interface IntakeConfig {
   host: string;
   port: number;
   sourceHeader: string;
+  /** True when TBI_SIGNUP_SOURCE_HEADER was not set (the default header is assumed). */
+  sourceHeaderDefaulted?: boolean;
 }
+
+/** At most one `source_header_missing` line per this interval. */
+export const SOURCE_FALLBACK_LOG_MS = 10 * 60_000;
 
 export type IntakeConfigResult =
   | { enabled: false; reason: string; error?: false }
@@ -87,7 +95,8 @@ export function intakeConfigFromEnv(env: NodeJS.ProcessEnv = process.env): Intak
       adminLink: adminLink!,
       host,
       port,
-      sourceHeader: (env.TBI_SIGNUP_SOURCE_HEADER ?? 'x-forwarded-for').toLowerCase(),
+      sourceHeader: (env.TBI_SIGNUP_SOURCE_HEADER || 'x-forwarded-for').toLowerCase(),
+      sourceHeaderDefaulted: !env.TBI_SIGNUP_SOURCE_HEADER,
     },
   };
 }
@@ -107,16 +116,19 @@ export async function startIntake(
   io: { fetch: FetchLike; log: (line: string) => void; now?: () => number },
 ): Promise<RunningIntake> {
   const secret = await readSecret(c.hmacFile); // throws secret_missing / secret_unreadable / secret_short
-  try {
-    if ((await readFile(c.tokenFile, 'utf8')).trim().length === 0) throw new Error('token_empty');
-  } catch (e) {
-    // eslint-disable-next-line preserve-caught-error -- the cause would carry the token file path
-    throw new Error(
-      e instanceof Error && e.message === 'token_empty'
-        ? 'token_empty'
-        : errorClass(e).replace('secret_', 'token_'),
+  // The token must be usable now (same shape check as the notifier), else nothing listens.
+  const token = await readSecretFile(c.tokenFile).then(
+    (t) => t.trim(),
+    (e: unknown) => {
+      throw new Error(errorClass(e).replace('secret_', 'token_'));
+    },
+  );
+  if (token.length === 0) throw new Error('token_empty');
+  if (!TELEGRAM_TOKEN_RE.test(token)) throw new Error('token_malformed');
+  if (c.sourceHeaderDefaulted)
+    io.log(
+      'signup: warning source_header_default (set TBI_SIGNUP_SOURCE_HEADER to the proxy header)',
     );
-  }
   const store = new PendingStore(c.dir, { now: io.now });
   await store.init();
   const now = io.now ?? Date.now;
@@ -124,7 +136,7 @@ export async function startIntake(
     secret,
     store,
     notifier: new TelegramNotifier({
-      readToken: () => readFile(c.tokenFile, 'utf8'),
+      readToken: () => readSecretFile(c.tokenFile),
       chatId: c.chatId,
       adminLink: c.adminLink,
       fetch: io.fetch,
@@ -136,6 +148,13 @@ export async function startIntake(
     nonces: new NonceCache(),
     log: io.log,
   });
+  let lastFallbackLog = -Infinity;
+  const onSourceFallback = () => {
+    const t = now();
+    if (t - lastFallbackLog < SOURCE_FALLBACK_LOG_MS) return;
+    lastFallbackLog = t;
+    io.log('signup: warning source_header_missing (no valid client IP in the proxy header)');
+  };
   const server = createServer((req, res) => {
     const path = (req.url ?? '').split('?')[0];
     if (path !== '/signup') {
@@ -145,7 +164,7 @@ export async function startIntake(
       req.resume();
       return;
     }
-    void handleSignupRequest(req, res, intake, c.sourceHeader);
+    void handleSignupRequest(req, res, intake, c.sourceHeader, onSourceFallback);
   });
   server.requestTimeout = 10_000;
   server.headersTimeout = 5_000;

@@ -16,7 +16,9 @@
  *   TBI_ADMIN_USAGE        admin app: the usage exporter's file (default <TBI_ADMIN_DIR>/usage/usage.json)
  *   TBI_ADMIN_AUDIT_VIEW   admin app: the helper's audit view (default <TBI_ADMIN_DIR>/view/audit.json)
  *
- *   TBI_SIGNUP_ADMIN       `1` enables the sign-up approval routes + purge (TBI-022; see signup/admin-wiring.ts); off by default
+ *   TBI_SIGNUP_ADMIN       `1` enables the sign-up approval routes + purge (TBI-022; see signup/admin-wiring.ts); off by default.
+ *                          A bad sign-up setting or store directory disables ONLY those routes (one log line
+ *                          with a class code); the account administration starts regardless.
  *
  * SIGTERM / SIGINT: stop accepting requests and exit.
  */
@@ -25,7 +27,7 @@ import { describeListen, listen, parseListen, socketGidFromEnv } from '../identi
 import { identityFromEnv } from '../identity/principal.js';
 import { AdminSpool, adminConfigFromEnv, createAdminServer } from './accounts.js';
 import { healthCapacity } from './capacity.js';
-import { adminSignupConfigFromEnv, wireSignupAdmin } from './signup/admin-wiring.js';
+import { signupWiringFromEnv } from './signup/admin-wiring.js';
 import { AdminViews, viewPathsFromEnv } from './views.js';
 
 const where = parseListen(process.env.TBI_ADMIN_LISTEN ?? '127.0.0.1:7410');
@@ -40,14 +42,11 @@ access.start();
 
 const spool = new AdminSpool(config);
 // TBI-022: sign-up approval routes and the retention purge, off unless TBI_SIGNUP_ADMIN=1.
-const signupCfg = adminSignupConfigFromEnv();
-if (signupCfg.error) throw new Error(`sign-up: ${signupCfg.reason}`);
-const signupWiring = signupCfg.enabled
-  ? await wireSignupAdmin(signupCfg.config, spool, {
-      fetch: (u, i) => fetch(u, i),
-      log: (l) => process.stdout.write(`tbi-admin: ${l}\n`),
-    })
-  : null;
+// Never throws: a broken sign-up setup is logged and leaves only the sign-up routes out (404).
+const signupWiring = await signupWiringFromEnv(process.env, spool, {
+  fetch: (u, i) => fetch(u, i),
+  log: (l) => process.stdout.write(`tbi-admin: ${l}\n`),
+});
 const stopPurge = signupWiring?.startPurge();
 
 const server = createAdminServer(identity, {

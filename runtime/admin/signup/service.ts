@@ -12,6 +12,7 @@ import { NonceCache, verifyRequest, type VerifyFailure } from './hmac.js';
 import { SlidingWindowLimiter } from './limits.js';
 import type { SignupNotifier } from './notify.js';
 import type { EmailSender } from './email.js';
+import { serialById } from './locks.js';
 import { PendingStore, StoreError, type SignupRecord } from './store.js';
 import { validateSignup } from './validate.js';
 
@@ -125,9 +126,6 @@ export type ApproveOutcome =
       record?: SignupRecord;
     };
 
-/** Shared by every approver instance (the admin route builds one per request): one operation per id. */
-const locks = new Map<string, Promise<unknown>>();
-
 export class SignupApprover {
   constructor(
     private readonly d: {
@@ -150,16 +148,12 @@ export class SignupApprover {
     return out;
   }
 
-  /** One operation per id at a time (a double click cannot add or send twice). */
+  /**
+   * One operation per id at a time (a double click cannot add or send twice); the lock is shared
+   * with every approver instance and with the store's purge (locks.ts).
+   */
   private serial<T>(id: string, fn: () => Promise<T>): Promise<T> {
-    const prev = locks.get(id) ?? Promise.resolve();
-    const run = prev.then(fn, fn);
-    const tail = run.catch(() => undefined);
-    locks.set(id, tail);
-    void tail.then(() => {
-      if (locks.get(id) === tail) locks.delete(id);
-    });
-    return run;
+    return serialById(id, fn);
   }
 
   list(): Promise<SignupRecord[]> {

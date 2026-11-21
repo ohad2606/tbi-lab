@@ -19,6 +19,7 @@ import {
 } from 'node:fs/promises';
 import { join } from 'node:path';
 import { newRequestId, REQUEST_ID_RE } from '../common.js';
+import { serialById } from './locks.js';
 import type { SignupInput } from './validate.js';
 
 export const STATUSES = ['pending', 'approved', 'rejected', 'email_sent', 'email_failed'] as const;
@@ -254,12 +255,14 @@ export class PendingStore {
     return out.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   }
 
-  /** Deletes records past their retention (by last update); returns the ids removed. */
+  /**
+   * Deletes records past their retention (by last update); returns the ids removed. Each
+   * candidate is re-read and re-judged under the per-id lock shared with the approver
+   * (locks.ts), so a record approved, rejected or resent meanwhile is never unlinked.
+   */
   async purge(retention: Retention = DEFAULT_RETENTION): Promise<string[]> {
     const t = this.now();
-    const removed: string[] = [];
-    for (const r of await this.list()) {
-      const age = t - Date.parse(r.updatedAt);
+    const expired = (r: SignupRecord): boolean => {
       const limit =
         r.status === 'rejected'
           ? retention.rejectedMs
@@ -268,11 +271,20 @@ export class PendingStore {
             : r.status === 'email_sent'
               ? retention.doneMs
               : Infinity; // approved / email_failed need the owner's attention, never auto-deleted
-      if (age > limit) {
-        await unlink(this.path(r.id)).catch(() => undefined);
-        await unlink(join(this.dir, `${r.id}.notified`)).catch(() => undefined);
-        removed.push(r.id);
-      }
+      return t - Date.parse(r.updatedAt) > limit;
+    };
+    const removed: string[] = [];
+    for (const candidate of await this.list()) {
+      if (!expired(candidate)) continue;
+      const id = candidate.id;
+      const gone = await serialById(id, async () => {
+        const cur = await this.get(id).catch(() => null);
+        if (!cur || !expired(cur)) return false;
+        await unlink(this.path(id)).catch(() => undefined);
+        await unlink(join(this.dir, `${id}.notified`)).catch(() => undefined);
+        return true;
+      });
+      if (gone) removed.push(id);
     }
     // Address markers whose record is gone, and orphaned temp files from a crash.
     for (const f of await readdir(this.dir)) {
