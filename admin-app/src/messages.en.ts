@@ -147,6 +147,10 @@ export const consoleEn = {
   'console.signups.done.approve.already_done': 'The request of {name} was already approved.',
   'console.signups.done.approve.email_not_resent':
     'The account of {name} exists. The email was not sent again.',
+  'console.signups.done.approve.email_queued':
+    'Approved {name}: the account was added. The email is scheduled and will be sent when quiet hours end.',
+  'console.signups.done.resend.email_queued':
+    'The email to {name} is scheduled and will be sent when quiet hours end.',
   'console.signups.done.reject': 'Rejected the request of {name}. No email was sent.',
   'console.signups.done.resend': 'The email to {name} was sent.',
   'console.signups.err.account_pending':

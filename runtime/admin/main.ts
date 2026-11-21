@@ -48,6 +48,7 @@ const signupWiring = await signupWiringFromEnv(process.env, spool, {
   log: (l) => process.stdout.write(`tbi-admin: ${l}\n`),
 });
 const stopPurge = signupWiring?.startPurge();
+const stopDrain = signupWiring?.startDrain();
 
 const server = createAdminServer(identity, {
   access,
@@ -63,6 +64,7 @@ const stop = () => {
   stopping = true;
   access.stop();
   stopPurge?.();
+  stopDrain?.();
   server.close(() => process.exit(0));
   server.closeAllConnections();
 };

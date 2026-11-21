@@ -144,6 +144,9 @@ export const consoleHe: Record<ConsoleMessageKey, string> = {
   'console.signups.done.approve': 'הבקשה של {name} אושרה: החשבון נוסף והמייל נשלח.',
   'console.signups.done.approve.already_done': 'הבקשה של {name} כבר אושרה קודם.',
   'console.signups.done.approve.email_not_resent': 'החשבון של {name} קיים. המייל לא נשלח שוב.',
+  'console.signups.done.approve.email_queued':
+    'הבקשה של {name} אושרה: החשבון נוסף. המייל מתוזמן ויישלח בתום שעות השקט.',
+  'console.signups.done.resend.email_queued': 'המייל אל {name} מתוזמן ויישלח בתום שעות השקט.',
   'console.signups.done.reject': 'הבקשה של {name} נדחתה. לא נשלח מייל.',
   'console.signups.done.resend': 'המייל אל {name} נשלח.',
   'console.signups.err.account_pending': 'החשבון של {name} עדיין לא מוכן. נסו שוב בעוד רגע.',

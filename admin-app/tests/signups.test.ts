@@ -80,6 +80,11 @@ describe('sign-up requests view logic', () => {
       false,
     );
   });
+  it('a queued email reads as scheduled, never as sent (approve and resend)', () => {
+    const o = interpretSignup(200, { record: null, note: 'email_queued' });
+    expect(signupOutcomeView(o, 'approve').key).toBe('console.signups.done.approve.email_queued');
+    expect(signupOutcomeView(o, 'resend').key).toBe('console.signups.done.resend.email_queued');
+  });
   it('every outcome key has a text in Hebrew and English (no raw keys)', () => {
     const keys = [
       ...SIGNUP_ERRORS.map((e) => `console.signups.err.${e}`),
@@ -87,6 +92,8 @@ describe('sign-up requests view logic', () => {
       'console.signups.done.approve',
       'console.signups.done.approve.already_done',
       'console.signups.done.approve.email_not_resent',
+      'console.signups.done.approve.email_queued',
+      'console.signups.done.resend.email_queued',
       'console.signups.done.reject',
       'console.signups.done.resend',
       'console.nav.signups',

@@ -11,6 +11,7 @@ import { errorClass } from './errors.js';
 import { NonceCache, verifyRequest, type VerifyFailure } from './hmac.js';
 import { SlidingWindowLimiter } from './limits.js';
 import type { SignupNotifier } from './notify.js';
+import { isQuiet, nextSendAt, type QuietWindow } from './quietHours.js';
 import type { EmailSender } from './email.js';
 import { serialById } from './locks.js';
 import { PendingStore, StoreError, type SignupRecord } from './store.js';
@@ -28,6 +29,8 @@ export interface IntakeDeps {
   sourceRate: SlidingWindowLimiter;
   globalRate: SlidingWindowLimiter;
   nonces: NonceCache;
+  /** Quiet hours for the owner alert (null / unset: always send at once). */
+  quiet?: QuietWindow | null;
   windowMs?: number;
   log?: (line: string) => void;
 }
@@ -89,7 +92,14 @@ export class SignupIntake {
       this.d.log?.(`signup: store failed (${e instanceof StoreError ? e.code : errorClass(e)})`);
       return { status: 503, error: 'unavailable' };
     }
-    if (this.d.notifier) {
+    if (this.d.notifier && isQuiet(now, this.d.quiet ?? null)) {
+      // Stored now, alerted when quiet hours end (drainNotifications).
+      try {
+        await this.d.store.markNotifyPending(rec.id);
+      } catch (e) {
+        this.d.log?.(`signup: notify defer failed (${errorClass(e)})`);
+      }
+    } else if (this.d.notifier) {
       try {
         await this.d.notifier.notify({ name: rec.name, role: rec.role });
         await this.d.store.markNotified(rec.id);
@@ -99,6 +109,40 @@ export class SignupIntake {
       }
     }
     return { status: 202 };
+  }
+
+  private draining = false;
+
+  /**
+   * Sends the alerts deferred by quiet hours, once the window is over. The deferral marker is
+   * removed BEFORE the send (a crash or a failure never causes a second alert; a failed alert is
+   * not retried, as for an immediate one). Requests already decided by the owner are not alerted.
+   * Returns the number of alerts attempted.
+   */
+  async drainNotifications(): Promise<number> {
+    const now = (this.d.now ?? Date.now)();
+    if (!this.d.notifier || this.draining || isQuiet(now, this.d.quiet ?? null)) return 0;
+    this.draining = true;
+    let n = 0;
+    try {
+      for (const r of await this.d.store.list()) {
+        if (!r.notifyPending) continue;
+        await this.d.store.clearNotifyPending(r.id);
+        if (r.notified || r.status !== 'pending') continue;
+        n++;
+        try {
+          await this.d.notifier.notify({ name: r.name, role: r.role });
+          await this.d.store.markNotified(r.id);
+        } catch (e) {
+          this.d.log?.(`signup: notify failed (${errorClass(e)})`);
+        }
+      }
+    } catch (e) {
+      this.d.log?.(`signup: notify drain failed (${errorClass(e)})`);
+    } finally {
+      this.draining = false;
+    }
+    return n;
   }
 }
 
@@ -112,7 +156,7 @@ export interface AccountAdder {
 }
 
 export type ApproveOutcome =
-  | { ok: true; record: SignupRecord; note?: 'already_done' | 'email_not_resent' }
+  | { ok: true; record: SignupRecord; note?: 'already_done' | 'email_not_resent' | 'email_queued' }
   | {
       ok: false;
       code:
@@ -132,6 +176,8 @@ export class SignupApprover {
       store: PendingStore;
       accounts: AccountAdder;
       email: EmailSender;
+      /** Quiet hours for applicant emails (null / unset: send at once). */
+      quiet?: QuietWindow | null;
       now?: () => number;
       log?: (line: string) => void;
     },
@@ -188,6 +234,7 @@ export class SignupApprover {
       if (!r.accountAdded || r.status === 'rejected' || r.status === 'pending')
         return { ok: false, code: 'bad_state', record: r };
       if (r.status === 'email_sent') return { ok: true, record: r, note: 'already_done' };
+      if (r.status === 'email_queued') return { ok: true, record: r, note: 'email_queued' };
       return this.send(r);
     }
   }
@@ -206,6 +253,7 @@ export class SignupApprover {
     if (!r) return { ok: false, code: 'not_found' };
     if (r.status === 'email_sent') return { ok: true, record: r, note: 'already_done' };
     if (r.status === 'rejected') return { ok: false, code: 'bad_state', record: r };
+    if (r.status === 'email_queued') return { ok: true, record: r, note: 'email_queued' };
     if (r.status === 'email_failed')
       return { ok: false, code: 'email_failed_use_resend', record: r };
     if (r.status === 'pending')
@@ -228,8 +276,21 @@ export class SignupApprover {
     return this.send(r);
   }
 
-  private async send(r: SignupRecord): Promise<ApproveOutcome> {
-    const at = new Date((this.d.now ?? Date.now)()).toISOString();
+  /**
+   * Sends the approval email, or, inside quiet hours, persists `email_queued` with its send time
+   * (no attempt is recorded). `force` is the drain, which has already checked the window.
+   */
+  private async send(r: SignupRecord, force = false): Promise<ApproveOutcome> {
+    const nowMs = (this.d.now ?? Date.now)();
+    if (!force && isQuiet(nowMs, this.d.quiet ?? null)) {
+      const q = await this.d.store.update(r.id, {
+        status: 'email_queued',
+        emailSendAfter: new Date(nextSendAt(nowMs, this.d.quiet ?? null)).toISOString(),
+        lastError: null,
+      });
+      return { ok: true, record: q, note: 'email_queued' };
+    }
+    const at = new Date(nowMs).toISOString();
     // Persist the attempt BEFORE sending.
     r = await this.d.store.update(r.id, {
       emailAttemptedAt: at,
@@ -244,7 +305,36 @@ export class SignupApprover {
     }
     return {
       ok: true,
-      record: await this.d.store.update(r.id, { status: 'email_sent', lastError: null }),
+      record: await this.d.store.update(r.id, {
+        status: 'email_sent',
+        emailSendAfter: null,
+        lastError: null,
+      }),
     };
+  }
+
+  /**
+   * Sends the approval emails whose quiet hours are over. Each record is re-read under the per-id
+   * lock and sent only if it is still `email_queued` and due, so a drain and an owner action (or
+   * two drains) never double-send; a failed send ends as `email_failed` (owner resends), as before.
+   * Returns the number of sends attempted.
+   */
+  async drainEmails(): Promise<number> {
+    const nowMs = (this.d.now ?? Date.now)();
+    if (isQuiet(nowMs, this.d.quiet ?? null)) return 0;
+    let n = 0;
+    for (const c of await this.d.store.list()) {
+      if (c.status !== 'email_queued') continue;
+      const sent = await this.serial(c.id, async () => {
+        const r = await this.load(c.id);
+        if (!r || r.status !== 'email_queued' || !r.accountAdded) return false;
+        if (r.emailSendAfter && Date.parse(r.emailSendAfter) > (this.d.now ?? Date.now)())
+          return false;
+        await this.audited(r.id, 'drain', await this.send(r, true));
+        return true;
+      });
+      if (sent) n++;
+    }
+    return n;
   }
 }

@@ -287,7 +287,9 @@ export function signupOutcomeView(
 ): { key: string; removed: boolean; ok: boolean; record: SignupRecord | null } {
   switch (o.kind) {
     case 'done': {
-      const note = action === 'approve' && o.note ? `.${o.note}` : '';
+      // A queued email must never read as "sent", for approve and for resend alike.
+      const note =
+        o.note && (action === 'approve' || o.note === 'email_queued') ? `.${o.note}` : '';
       return {
         key: `console.signups.done.${action}${note}`,
         removed: true,
