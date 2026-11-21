@@ -2268,7 +2268,7 @@ select {
 /* The side column: the inspector (scrolls) and, for ESP32 projects, the terminal under it. */
 .side-column {
   display: grid;
-  grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-rows: minmax(0, 1fr) auto auto;
   min-width: 0;
   min-height: 0;
   border-inline-start: 1px solid var(--border);
@@ -4544,4 +4544,67 @@ select {
 .admin-rename {
   display: grid;
   gap: 0.35rem;
+}
+
+/* A11Y-028: the connections text alternative. */
+.connections {
+  border-block-start: 1px solid var(--border);
+  background: var(--panel);
+  padding: 0.25rem 0.75rem;
+}
+.connections > summary {
+  cursor: pointer;
+  min-height: 24px;
+  padding-block: 0.35rem;
+  font-weight: 600;
+}
+.connections-body {
+  max-height: 40vh;
+  overflow: auto;
+  font-size: 0.875rem;
+}
+.connections-body h3 {
+  font-size: 0.9rem;
+  margin: 0.5rem 0 0.25rem;
+}
+.connections-body table {
+  border-collapse: collapse;
+  width: 100%;
+}
+.connections-body th,
+.connections-body td {
+  text-align: start;
+  padding: 0.2rem 0.4rem;
+  border-block-end: 1px solid var(--border);
+}
+.connections-body ul {
+  margin: 0;
+  padding-inline-start: 1.1rem;
+}
+.connections-body:focus-visible,
+.conn-select:focus-visible {
+  outline: 2px solid var(--focus, currentColor);
+  outline-offset: 2px;
+}
+.conn-select {
+  min-height: 24px;
+  min-width: 24px;
+  font: inherit;
+  cursor: pointer;
+  border: 1px solid var(--muted, #4b5563);
+  background: transparent;
+  color: inherit;
+  border-radius: 4px;
+  padding: 0 0.4rem;
+}
+.conn-select[aria-pressed='true'] {
+  font-weight: 700;
+  border-width: 2px;
+}
+.connections-body tr[data-selected='true'] {
+  background: var(--selection-bg, rgba(80, 140, 255, 0.18));
+}
+.conn-pin.selected {
+  font-weight: 700;
+  text-decoration: underline;
 }

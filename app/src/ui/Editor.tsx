@@ -6,6 +6,7 @@ import { onCodeViewRequest, programBoardOf } from './buildAction.js';
 import { CodeView } from './CodeView.js';
 import { LazyView } from './LazyView.js';
 import { Inspector } from './Inspector.js';
+import { ConnectionsPanel } from './ConnectionsPanel.js';
 import { McuTerminal } from './McuTerminal.js';
 import { requiresMcuRuntime } from '../runtime/snapshot.js';
 import { Palette } from './Palette.js';
@@ -191,6 +192,7 @@ export function Editor() {
           onRemoveProbe={(id) => setProbes(live.filter((p) => p.id !== id))}
           onClearProbes={() => setProbes([])}
         />
+        <ConnectionsPanel />
         {doc && requiresMcuRuntime(doc) && <McuTerminal />}
       </div>
     </main>
