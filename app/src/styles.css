@@ -4955,6 +4955,7 @@ select {
     min-block-size: auto;
     overflow: visible;
   }
+}
 
 /* TBI-014: first-run welcome. */
 .first-run-dialog {
