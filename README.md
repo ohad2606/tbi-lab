@@ -42,6 +42,7 @@ npm run typecheck
 npm run lint         # ESLint + Prettier + experiments/ import boundary
 npm test             # fast unit suites (experiments + domain + app)
 npm run test:e2e     # browser acceptance suite (Chromium; builds the app)
+npm run test:e2e:admin  # admin app browser suite incl. its a11y specs (also run in CI)
 ```
 
 The real-ESP32 suite (`npm run test:esp32`) needs the locally provisioned emulator toolchain and is
