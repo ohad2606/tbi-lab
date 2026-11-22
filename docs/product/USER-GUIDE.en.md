@@ -6,7 +6,7 @@ Draft for owner review. This guide describes what TBI Lab does on this branch. I
 
 TBI Lab is an electronics lab in your browser. You build a circuit around a Classic ESP32 (ESP32 DevKitC, WROOM-32), write a program for it, and run it. The voltages, currents and timing come from a simulation. When something cannot be simulated honestly, TBI Lab refuses it and says why.
 
-It works on a computer, in Chrome or Edge. Your projects are saved in your browser, on your device. Use **Export project** in the menu to keep a copy, and **Import** to restore it.
+It works on a computer, in Chrome or Edge. Your projects are saved in your browser, on your device. Use **Export project** in the menu to keep a copy, and **Import project…** on the Projects screen to restore it.
 
 ## Getting around
 
