@@ -2504,7 +2504,8 @@ export const en = {
   'compguide.button.circuit.body':
     'A lab power supply, a push button, a resistor, an LED and ground, wired in one loop. Open it in the Lab to see the real circuit.',
   'compguide.button.tryit.heading': 'Try it',
-  'compguide.button.tryit.action': 'Open the example, press Run, then hold the push button down.',
+  'compguide.button.tryit.action':
+    'Open the example, press Run, then hold the push button down with the pointer, or focus it and hold Space.',
   'compguide.button.tryit.expect':
     'While the button is held the LED is on and its current is {iOn}. When you release it the current returns to {iOff}.',
   'compguide.button.limits.heading': 'What is not modelled',

@@ -62,6 +62,7 @@ for (const lang of ['en', 'he'] as const) {
       expect(await values.count()).toBeGreaterThan(8);
       const text = (await panel.innerText()).replace(/\s+/g, ' ');
       expect(text).not.toMatch(/\{\w+\}/);
+      expect(text).not.toMatch(/\[\[/);
       await expect(page.getByTestId('guide-values-missing')).toHaveCount(0);
       await expect(panel.locator('bdi', { hasText: /mA/ }).first()).toBeVisible();
       // Not modal: no dialog, the page behind is not inert.
@@ -91,6 +92,7 @@ for (const lang of ['en', 'he'] as const) {
         expect(await panel.locator('bdi[dir="ltr"]').count()).toBeGreaterThan(3);
         const text = (await panel.innerText()).replace(/\s+/g, ' ');
         expect(text).not.toMatch(/\{\w+\}/);
+        expect(text).not.toMatch(/\[\[/);
         await page.keyboard.press('Escape');
         await expect(panel).toHaveCount(0);
         await expect(opener).toBeFocused();

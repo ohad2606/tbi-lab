@@ -2380,7 +2380,8 @@ export const he: Record<MessageKey, string> = {
   'compguide.button.circuit.body':
     'ספק מתח למעבדה, לחצן, נגד, נורית LED ואדמה (GND), מחוברים בלולאה אחת. פותחים אותו במעבדה ורואים את המעגל האמיתי.',
   'compguide.button.tryit.heading': 'נסו בעצמכם',
-  'compguide.button.tryit.action': 'פתחו את הדוגמה, לחצו על "הרצה" ואז החזיקו את הלחצן לחוץ.',
+  'compguide.button.tryit.action':
+    'פתחו את הדוגמה, לחצו על "הרצה" ואז החזיקו את הלחצן לחוץ, או העבירו אליו פוקוס והחזיקו רווח.',
   'compguide.button.tryit.expect':
     'כל עוד הלחצן לחוץ הנורית דולקת וזרמה {iOn}. כשמשחררים אותו הזרם חוזר ל-{iOff}.',
   'compguide.button.limits.heading': 'מה המודל לא כולל',
