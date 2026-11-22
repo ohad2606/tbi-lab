@@ -51,6 +51,9 @@ jobs:
       - run: npx playwright install --with-deps chromium
       # Product: editor, persistence incl. full browser restart, localization, keyboard.
       - run: npm run test:e2e
+      # Accessibility gate: app/e2e/a11y-*.spec.ts (above) plus the admin app's
+      # a11y-001-focus-admin, a11y-signups and admin-app specs (focus, names, reflow).
+      - run: npm run test:e2e:admin
       # Sprint 0 browser proofs (Worker bit-identity, Gate D restart) stay green.
       - run: npm run test:browser
       - uses: actions/upload-artifact@v4
