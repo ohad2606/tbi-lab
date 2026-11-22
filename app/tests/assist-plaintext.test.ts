@@ -24,6 +24,13 @@ describe('stripControls (model/service text is plain text)', () => {
     expect(stripControls(`a${ch(0, 7)}b${ch(0x1b)}c${ch(0x85)}d${ch(0x9f)}e`)).toBe('abcde');
     expect(stripControls('line1\nline2\tx')).toBe('line1\nline2\tx');
   });
+  it('drops other invisible format characters (review: BOM, word joiner, tags, separators)', () => {
+    for (const cp of [
+      0xfeff, 0x2060, 0x2064, 0x206a, 0x206f, 0xad, 0x180e, 0xe0041, 0x2028, 0x2029, 0xfe0f, 0xfff9,
+      0x3164,
+    ])
+      expect(stripControls(`a${ch(cp)}b`)).toBe('ab');
+  });
   it('keeps ordinary Hebrew, Latin, digits and punctuation', () => {
     expect(stripControls('נגד R1 = 220 Ω (±5%)')).toBe('נגד R1 = 220 Ω (±5%)');
   });
